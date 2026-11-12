@@ -109,7 +109,7 @@ try {
     svc.createReservation({ tenantId: tid, unitId: unit.id, roomTypeId: rtB.id, checkInDate: IN, checkOutDate: OUT, guestName: "แข่ง B", guestPhone: "0810000002" }),
   ]);
   const okCount = race.filter((r: any) => r.ok === true).length;
-  const bCount = await prisma.hotelReservation.count({ where: { tenantId: tid, unitId: unit.id, roomTypeId: rtB.id, status: { in: ["BOOKED", "CHECKED_IN"] } } });
+  const bCount = await prisma.hotelReservation.count({ where: { tenantId: tid, unitId: unit.id, roomTypeId: rtB.id, status: { in: ["BOOKED", "CONFIRMED", "CHECKED_IN"] } } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · hp51-confirmed): H.3 เขียน CONFIRMED แทน BOOKED
   chk("HP-5.1", "จองซ้อนห้องสุดท้าย (2 พร้อมกัน) → สำเร็จ 1 · การจอง active=1", okCount === 1 && bCount === 1, "1+1", `ok=${okCount}/active=${bCount}`);
   const av2 = await svc.listPublicAvailability(tid, unit.id, IN, OUT);
   chk("HP-5.2", "ประเภทเต็ม → availability free=0 (จองต่อไม่ได้)", av2.find((x: any) => x.id === rtB.id)?.free === 0, "0", `${av2.find((x: any) => x.id === rtB.id)?.free}`);

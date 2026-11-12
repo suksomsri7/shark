@@ -173,11 +173,43 @@ export async function setRoomLayout(
   return { ok: true, id: room.id };
 }
 
+// SVC H.6 ▸ setHkStatus รับ tx ของผู้เรียกได้ (ใบ h.6 §10 ข้อ 1 · ยกเว้น §1 แคบ ๆ) — เพิ่มพารามิเตอร์ตัวเลือกอย่างเดียว:
+//   ไม่ส่ง opts/tx ⇒ ทางเดิมด้านล่างทุกไบต์ · ส่ง { tx } ⇒ อ่าน/เขียนใน tx นั้น (1 connection ต่อ op · ล้ม = ย้อนพร้อม log ของผู้เรียก)
+export type SetHkStatusOpts = { tx?: Tx };
+const hkTxOf = (opts: unknown): Tx | null => {
+  if (!opts || typeof opts !== "object") return null;
+  const tx = (opts as { tx?: unknown }).tx;
+  return tx && typeof tx === "object" ? (tx as Tx) : null;
+};
+/** ทางใน tx — กติกาแมป status เดียวกับทางเดิม · ขอบเขตร้าน+หน่วยระบุใน where ตรง (tx ของผู้เรียกอาจไม่ผูก tenantDb) */
+async function setHkStatusInTx(tx: Tx, ctx: Ctx, input: { unitId: string; roomId: string; hkStatus: HkStatus }): Promise<Res> {
+  if (!isHk(input?.hkStatus)) return bad("INVALID_INPUT", "สถานะแม่บ้านไม่ถูกต้อง");
+  if (!ctx?.tenantId || !input.unitId || !input.roomId) return bad("NOT_FOUND", "ไม่พบห้อง");
+  const room = await tx.hotelRoom.findFirst({ where: { id: input.roomId, tenantId: ctx.tenantId, unitId: input.unitId }, select: { id: true, status: true } });
+  if (!room) return bad("NOT_FOUND", "ไม่พบห้อง");
+  let status = room.status;
+  if (input.hkStatus === "OUT_OF_ORDER") status = "OOO";
+  else if (input.hkStatus === "DIRTY") status = room.status === "OCCUPIED" ? room.status : "CLEANING";
+  else if (room.status === "CLEANING" || room.status === "OOO") status = "AVAILABLE";
+  await tx.hotelRoom.updateMany({ where: { id: room.id, tenantId: ctx.tenantId, unitId: input.unitId }, data: { hkStatus: input.hkStatus, status } });
+  if (input.hkStatus !== "OUT_OF_ORDER") return { ok: true, id: room.id };
+  const rows = await tx.roomOccupancy.findMany({
+    where: { tenantId: ctx.tenantId, unitId: input.unitId, roomId: room.id, active: true, kind: { in: OOO_CLASH }, endDate: { gt: ymdToDb(bkkYmd(new Date())) } },
+    orderBy: { startDate: "asc" },
+    select: { id: true, roomId: true, kind: true, refType: true, refId: true, startDate: true, endDate: true },
+  });
+  return { ok: true, id: room.id, affected: rows.map(toAffected) };
+}
+export function setHkStatus(ctx: Ctx, input: { unitId: string; roomId: string; hkStatus: HkStatus }, opts?: SetHkStatusOpts): Promise<Res>;
+// ◂ SVC H.6
 /**
  * แม่บ้าน: hkStatus = แหล่งความจริง · แมปกลับ status เดิมของ P1
  *   OUT_OF_ORDER → OOO · DIRTY → CLEANING (ถ้าไม่ได้มีแขกพักอยู่) · CLEAN/INSPECTED → AVAILABLE (ถ้าเดิม CLEANING|OOO)
  */
 export async function setHkStatus(ctx: Ctx, input: { unitId: string; roomId: string; hkStatus: HkStatus }): Promise<Res> {
+  // SVC H.6 ▸ พารามิเตอร์ที่ 3 { tx } ⇒ ทางใน tx · ไม่ส่ง ⇒ ทางเดิมด้านล่าง ◂
+  const hkTx = arguments.length > 2 ? hkTxOf(arguments[2] as unknown) : null;
+  if (hkTx) return setHkStatusInTx(hkTx, ctx, input);
   if (!isHk(input?.hkStatus)) return bad("INVALID_INPUT", "สถานะแม่บ้านไม่ถูกต้อง");
   if (!ctx?.tenantId || !input.unitId || !input.roomId) return bad("NOT_FOUND", "ไม่พบห้อง");
   const db = tenantDb({ tenantId: ctx.tenantId, unitId: input.unitId });

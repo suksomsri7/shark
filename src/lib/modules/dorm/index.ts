@@ -272,6 +272,8 @@ export type {
   PortalRepairView,
 } from "./repair";
 // ◂ SVC D.16
+export { createStaffRepair } from "./repair"; // SVC H.6 ▸ พนักงานแจ้งซ่อมเอง (แม่บ้านโรงแรม · ใบ h.6 §1 "ส่งออกผ่าน dorm facade") ◂
+export type { StaffRepairActor, StaffRepairInput } from "./repair"; // SVC H.6
 // ── SVC D.14 ▸ AI อ่านเลขมิเตอร์จากรูป (ระบบเสนอ · คนยืนยัน) — สัญญา ledger/svc-briefs/svc-brief-d.14.md §3 (บล็อกนี้ของใบ D.14 เท่านั้น) ──
 export { proposeMeterReading, meterProposals, meterAiStatus, defaultMeterReader } from "./meter-ai";
 export type { MeterPhotoReader, MeterProposal, MeterAiManualReason } from "./meter-ai";

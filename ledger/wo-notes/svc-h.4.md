@@ -1,0 +1,181 @@
+# WO H.4 — เช็กอิน V2 · ทะเบียนผู้พัก (ร.ร.3/ร.ร.4) · ตม.30 · PDPA (RUN SVC · RUN HOTEL)
+
+> worktree `/root/projects/shark-svc-l3` · branch `wip/svc-h4` (ฐาน bb4b78f89) → merge เข้า `session/svc` · 7 พ.ย. 2569 · builder: Opus (เลน l3)
+> สัญญา: `ledger/svc-briefs/svc-brief-h.4.md` · ภาพ `ledger/design-dorm/09-hotel-checkin-folio.png` ครึ่งซ้าย
+> ข้อสอบใบ: `scripts/qc-svc-h.4.mts` (106 ข้อ · **builder ไม่แก้** — ข้อแย้ง §7)
+> ระดับตรวจ: **เข้ม** (กฎหมาย · PDPA · กันจองซ้อนตอนเช็กอิน · ข้อมูลข้ามร้าน) — ผู้ตรวจ 2 รอบ + ที่ปรึกษากฎหมาย (J3) ดูแบบ ร.ร.3/ร.ร.4 ที่พิมพ์
+> ฐาน: qc-svc เลน l3 (`ep-royal-bar`) ผ่าน `scripts/qc-svc.sh` · builder ไม่ build/next · tsc เฉพาะไฟล์ (tsconfig ชั่วคราว `/root/svc-runs/h4/builder/tsconfig.h4.json`)
+
+## 1. ไฟล์ที่แตะ (ทั้งหมดอยู่ใน §1 ของใบ)
+| ไฟล์ | ใหม่/แก้ | ทำอะไร |
+|---|---|---|
+| src/lib/modules/hotel/checkin.ts | ใหม่ | `assignableRooms` · `checkInV2` · `undoCheckIn` · `checkinView` (ข้อมูลจอ) · `checkInV2Legacy` |
+| src/lib/modules/hotel/guest.ts | ใหม่ | upsert/delete/list/reveal/signRr3/rr3Card/rr4Register/purge · `RR3_FIELDS` · ตัวช่วยด่าน/ไฟล์/กล่องลับ |
+| src/lib/modules/hotel/guest-id-ai.ts | ใหม่ | `readIdDocument` |
+| src/lib/modules/hotel/tm30.ts | ใหม่ | `tm30Queue` `tm30Export` `markTm30Filed` `tm30Sweep` `TM30_DEFAULT_COLUMNS` |
+| src/lib/modules/hotel/guest-shared.ts | ใหม่ (pure) | สัญชาติ · isForeigner · ตรวจเลขเอกสาร · maskId |
+| src/lib/modules/hotel/service.ts | แก้เฉพาะ checkIn | ห่อ `checkInV2Legacy` (+ import บรรทัดเดียว: ถอด claimRoom/moveOccupancy ที่ไม่ใช้แล้ว) |
+| src/lib/modules/hotel/index.ts · actions.ts | เพิ่ม | บล็อก `SVC H.4 ▸ … ◂` (actions 9 ตัว: 8 ตามใบ + deleteGuestAction) |
+| src/lib/core/settings/defs/rooms.ts | เพิ่มอย่างเดียว | license.no/name/registrarOffice · guest.requireRegistration · guest.keepIdImageDefault · tm30.enabled · tm30.exportColumns (+ ค่าคงที่คอลัมน์ ตม.30) |
+| src/lib/platform/minute-jobs.ts | เพิ่ม | `hotel.tm30Sweep` ทุก 15 นาที · `hotel.purgeExpiredGuestRecords` รายวัน |
+| outbox-consumers.ts · automation/labels.ts · webhooks/labels.ts | เพิ่ม | 6 event (§5) |
+| src/lib/core/permissions.ts | ลบ 2 บรรทัด planned | hotel.guest.register/viewId ใช้จริง |
+| src/components/hotel/{CheckinPanel,RoomPicker,GuestForm,IdScanButton,SignaturePad,Rr3Card,Tm30Queue,Tm30FileDialog,SecurityDepositStep}.tsx · checkin-shared.ts | ใหม่ | จอ §4 |
+| src/app/app/u/[unitSlug]/hotel/reservations/[id]/page.tsx | แก้ | `?tab=guests` → CheckinPanel (เหนือ BookingDetail) · ลิงก์ "เช็กอิน · ลงทะเบียนผู้พัก" · **ไม่แตะแท็บเงิน (H.5)** |
+| src/app/app/u/[unitSlug]/hotel/{guests,guests/rr4/print,guests/[guestId]/rr3/print,tm30}/page.tsx | ใหม่ | 4 หน้า |
+| src/app/app/u/[unitSlug]/hotel/page.tsx | เพิ่ม | การ์ด "ตม.30 ค้าง N" ต่อจาก HotelToday |
+| scripts/svc-qc-hotel-guest-scene.mts | ใหม่ | ฉาก §6 |
+| docs/sds/modules/hotel.md | เพิ่ม | §เช็กอิน/ทะเบียนผู้พัก/PDPA |
+
+## 2. โมดูลที่แตะ · migration
+- ไม่มี migration (ใช้คอลัมน์ H.0 §2.12) · ข้อมูลที่ไม่มีคอลัมน์ (เพศ · อาชีพ · ที่อยู่ · ตรวจลงตรา · ด่าน · ตม.6 · หมดอายุเอกสาร) อยู่ใน **กล่องลับเดียวกับเลขเอกสาร** (`idNumberEnc` = JSON {id, …} · AAD = recordId) ⇒ purge ล้างพร้อมกัน
+- ผู้บันทึก/ลงชื่อกระดาษ/หลักฐาน ตม.30/ลงชื่อแทนห้อง/ย้อนเช็กอิน = AuditLog (มติใบ §2 ข้อ 3 แบบเดียวกัน — ไม่ขอคอลัมน์)
+
+## 3. ผลข้อสอบ (JSON_SUMMARY จริง — ดูท้ายไฟล์ §10 ที่อัปเดตรอบสุดท้าย)
+
+## 4. กลุ่ม X
+| กลุ่ม | เกี่ยว? | check ids |
+|---|---|---|
+| X1 | ใช้ | B-1 · B-2 · GR-3 · PD-4 · RR-6 · TM-1 · CI-7 · AI-6 |
+| X3 | ใช้ | CI-14 (2 ทางห้องเดียว · EXCLUDE ของ occupancy + ล็อกประเภท) |
+| X4 | ใช้ (เบา) | N-3 consumer no-op · emitOutbox กุญแจเดิม = ไม่ซ้ำ (เตือน ตม.30 ต่อผู้พัก) |
+| X5 | ใช้ | PD-8 purge ซ้อน · TM-6 sweep ซ้อน (UPDATE มีเงื่อนไข) |
+| X6 | ใช้ | GR-8 · RR-6 · AI-6 (mime + ไบต์หัว + ≤ 8 MB) · CSV ผ่าน `csvRow` (กันสูตร) |
+| X7 | N-A | ไม่มี endpoint สาธารณะ (pre-check-in ของแขก = H.8) |
+| X8 | ใช้ | PD-1/2/3/9 · CI-4 · N-2 · AI-4 · MB-1 (สมาชิกเฉพาะยินยอม) |
+| X9 | ใช้ | CI-6/8 (force/early + เหตุผล + AuditLog + HousekeepingLog) · CI-16 undo · B-3 · B-5 |
+| X10 | ใช้ | PD-6/10 · GR-7 · RR-1 (ไฟล์ private · ลิงก์ผูกผู้ดู ≤ 15 นาที) |
+
+## 5. ภาพ — รอผู้คุม (build QC + ฉาก h.1 → h.3 → h.5 → h.4 · `SVC_VIS_H4_RES_ID/GUEST_ID` จาก SCENE_SUMMARY)
+
+## 6. reviewer — รอผู้คุมปล่อย (รอบ 1 PDPA/ไฟล์/เข้ารหัส/log · รอบ 2 กฎหมาย ร.ร.3/ตม.30/retention + race)
+
+## 7. ข้อแย้ง oracle / มติทางเทคนิค (ผู้คุมตัดสิน)
+1. **ห้อง DLX หมดตั้งแต่ CI-17 (ข้อสอบ capacity)** — `roomPlan` มีดีลักซ์ CLEAN 8 ห้อง (DLX1–8) แต่ CI-1…CI-14 ถือห้องดีลักซ์ช่วง วันนี้–+2 ครบ 8 ห้องแล้ว (CI-1 · CI-3 · CI-9 · CI-11 · CI-13 ×2 · CI-14 + CI-6 คืน +1) ⇒ `mkRes` ของ CI-17 · PD-7 · TM-6 · TM-7 · TM-8 · SD-1/2/3 · MB-1/2 · B-3 ได้ "การจองทดสอบไม่มีห้อง"/roomId ว่าง (ข้อสอบล้มก่อนถึงโค้ด) และ TM-4/TM-5/N-2/N-3 ล้มต่อเนื่อง
+   - หลักฐาน: รันสำเนาข้อสอบที่เพิ่ม `["DLX9".."DLX30","dlx"]` ใน roomPlan (+ข้อ 2) — ไม่ commit ลบทิ้งแล้ว — ได้ 81/106 (ก่อนทำจอ) แดงเหลือเฉพาะ CI-17 (ข้อ 3) · SD-1 (ไม่มี H.5) · U-* (ตอนนั้นยังไม่มีจอ)
+   - เสนอ ORACLE-EDIT: เพิ่มห้องดีลักซ์ในบรรทัด roomPlan (PC/ข้ออื่นไม่ผูกจำนวน 17 ห้อง — ข้อเดียวที่นับคือ "ห้องไม่ครบ" = roomPlan.length)
+2. **TM-3 "มีเลขของคนที่ไม่เลือก MUELLER, HANS"** — ข้อสอบใช้พาสปอร์ตชุดเดียวกัน (`G.deu`/`G.deu2`) ในหลายการจอง (CI-3 และ CI-12 แฟมิลี) ⇒ แถวที่ไม่เลือกมี **เลขเดียวกับ** แถวที่เลือก ⇒ ไฟล์ต้องมีเลขนั้น (ของคนที่เลือก) แต่ข้อสอบตีว่ารั่ว — แก้ในโค้ดไม่ได้
+   - เสนอ ORACLE-EDIT (qc-svc-h.4 ~บรรทัด 1386): ข้ามแถว rest ที่เลขซ้ำกับ pick (`if (!pick.some((p) => rawOfEnc(p) === rawOfEnc(g)))`) หรือให้แขกแต่ละการจองใช้เลขต่างกัน
+3. **CI-17 ↔ qc-svc-r0.8 / ฉาก h.2 · h.3 / qc-svc-h.5** — CI-17 ต้องการ `service.checkIn(tenantId, unitId, id, roomId)` เดิม ⇒ `GUEST_REQUIRED` เมื่อ requireRegistration เปิด (ค่าเริ่ม) แต่:
+   - `scripts/svc-qc-hotel-booking-scene.mts:116` และ `svc-qc-hotel-tape-scene.mts:173` เช็กอิน inhouse-web/ota/B101/B105/B203 ด้วย checkIn เดิมโดยไม่มีผู้พัก (หน่วย HOTEL ค่าเริ่ม) ⇒ ฉากล้ม ⇒ Q ของ h.2/h.3 (และ Q ของ h.4/h.5 ที่ต่อยอด) แดง
+   - `qc-svc-r0.8` P-6/P-7/P-10/Z-3 (วันเข้า +530/+550/+560/+960 วัน · BOOKED) และ `qc-svc-h.5` `inhouse()` (บรรทัด 525) คาดว่าเช็กอินเดิมสำเร็จ
+   - **ที่ทำ:** ทางเดิมคงพฤติกรรม P1 (ไม่บังคับทะเบียน · ไม่ตรวจวันเข้า/แม่บ้าน · รับ BOOKED) ผ่านแกนเดียวกับ V2 — สวิตช์เดียว `LEGACY_REQUIRES_GUEST = false` ใน checkin.ts (เปลี่ยนเป็น true = ตามใบ §1 ทันที) ⇒ CI-17 แดงข้อแรก (ข้อสถิต "ห่อ checkInV2 · ไม่เขียน CHECKED_IN ตรง" ผ่าน)
+   - เสนอทางเลือกผู้คุม: (ก) คงไว้ + ORACLE-EDIT CI-17 · (ข) เปิด true + ORACLE-EDIT ฉาก h.2/h.3 (ตั้ง `rooms.hotel.guest.requireRegistration=false` ชั้น UNIT ก่อน checkIn หรือเปลี่ยนเป็น checkInV2 + ผู้พักจากฟิกซ์เจอร์) + r0.8 P-6/7/10/Z-3 + h.5 inhouse()
+   - 🔴 ช่องทางกฎหมาย: ปุ่มเช็กอินเดิมบนหน้า `/hotel` (checkInAction · h.2 U-10 บังคับให้คงไว้) ยังเช็กอินได้โดยไม่ลงทะเบียน ร.ร.3 จนกว่าจะเลือก (ข) — จอใหม่ทุกจุดใช้ checkInV2Action
+4. **ลงชื่อแทนห้อง (มติ §9 ข้อ 6 "rr3SignedAt ตั้งทุกคน") ↔ ฟิกซ์เจอร์ signedRr3 = 3 (WEBER, ANNA signed:false)** — ทำแบบ: ลงชื่อแล้วตั้ง rr3SignedAt ให้ผู้พักที่ **มีอยู่ตอนลงชื่อ** (RR-2 ผ่าน) · ผู้พักที่เพิ่มทีหลังไม่สืบ (ฉากลงชื่อผู้พักหลักก่อนเพิ่ม ANNA ⇒ 3 แถวตามฟิกซ์เจอร์)
+5. **undoCheckIn** = ต้องเป็น OWNER/MANAGER **และ** booking.manage (ใบ: "MANAGER") ⇒ frontdesk STAFF ที่มี manage ย้อนไม่ได้
+6. **ตม.30 ของผู้พักที่เพิ่มระหว่างพัก** ครบกำหนด = เวลาลงทะเบียน + 24 ชม. (นาฬิกาฉาก `at` ใต้ SVC_QC_CLOCK ให้ฉากเท่านั้น) · ลงทะเบียนล่วงหน้า (ยังไม่เข้า) = PENDING ไม่มีกำหนด → ได้กำหนดตอนเช็กอิน · ย้อนเช็กอิน = ล้างกำหนดของ PENDING
+7. **คำขอแก้ชิ้นกลาง (fitness):** F2.1 แดง `hotel→member` (ผูกสมาชิก opt-in ตามใบ §0 ต้อง `member.findOrCreate` — import แบบ lazy ผ่าน facade `@/lib/modules/member`) ⇒ ขอผู้คุมเพิ่ม `"hotel→member"` ใน ALLOWED_EDGES ของ scripts/fitness.mts (ทิศเดียว · member ไม่รู้จัก hotel)
+
+## 8. หนี้
+| เรื่อง | เหตุผล | ใบ |
+|---|---|---|
+| SD-1 + ฉาก h.4 ต้องมี `takeSecurityDeposit` | H.5 ยังไม่ merge บนฐาน bb4b78f89 (ฉากหยุดที่ขั้นประกันพร้อมข้อความชัด · Q ข้ามเพราะไม่มี checkout.ts) | merge H.5 |
+| ปุ่มรับเงินประกันบนการ์ดเช็กอิน | SecurityDepositStep ลิงก์ไป `?tab=money` (action ของ H.5) | รวมหลัง H.5 |
+| retainUntil ไม่ขยับตาม extend/shorten | คำนวณตอนบันทึก (2 ปี ≥ 1 ปีตามกฎหมาย · คลาดไม่กี่วัน) | H.5/H.7 (ตอนเช็กเอาต์ปรับ) |
+| ร.ร.4 ส่งสำเนานายทะเบียน: เตือนตามรอบ | แสดงชื่อนายทะเบียนบนแบบพิมพ์ · ยังไม่มีงานเตือนตามรอบ | H.7 รายงาน |
+| แบบ ร.ร.3/ร.ร.4 ตามประกาศจริง | RR3_FIELDS ไล่ตามช่องแบบ — ที่ปรึกษากฎหมาย J3 ตรวจภาพพิมพ์ | ก่อนรับใบ |
+| แม่แบบไฟล์ ตม.30 จริง | Q-H4-1 รอเจ้าของ · คอลัมน์เป็นค่าตั้ง | ผู้คุม |
+| "ส่งรหัส Wi-Fi + อาหารเช้า" บนการ์ด | ไม่มีตัวส่ง (H.8/notify) ⇒ ซ่อน | H.8 |
+| เลขบัตร ร.ร.3 ถาวร | ลำดับ createdAt (แถวที่ลบภายใน 10 นาทีทำให้เลขหลังจากนั้นเลื่อน) | migration ใบย่อยถ้าที่ปรึกษาต้องการ |
+
+## 9. สิ่งที่ H.6/H.7 ต้องรู้
+- H.6: เช็กอินห้องที่ยังไม่พร้อมเขียน `HotelHousekeepingLog` (from=to=hkStatus · note เหตุผล · byUserId) — hkStatus ไม่เปลี่ยน · ห้อง `status` OCCUPIED ตอนเช็กอิน / AVAILABLE ตอนย้อน
+- H.7: AuditLog `hotel.reservation.checked_in` (after: guests/foreigners/force/earlyOverride/occupancyOverride) · `hotel.reservation.check_in_undone` · ตม.30 LATE นับได้จาก `HotelGuestRecord.tm30Status` · ร.ร.4 ย้อนหลัง = `rr4Register`
+- ทุกฟังก์ชันรับ `(actor, ctx {tenantId}, input)` · `assignableRooms/rr3Card/rr4Register/tm30Queue/checkinView` ไม่มีผู้กระทำ (หน้าตรวจสิทธิ์ก่อน) · ข้ามร้าน/หน่วย = NOT_FOUND
+
+## 10. ผลรอบสุดท้าย (builder · ผู้คุมรันซ้ำ)
+(ดูรายงานกลับ / `/root/svc-runs/h4/builder/final-*.txt`)
+- qc-svc-h.4 --no-regression: 75/106 · failed CI-17 PD-7 TM-3..8 SD-1..3 MB-1..2 B-3 N-2 N-3 (= ข้อแย้ง §7 ข้อ 1–3 + SD-1 รอ H.5) · skip F-1 Q-1..4 V-1 G-*
+- สำเนาข้อสอบแก้ §7 ข้อ 1+2 (ไม่ commit): 81/106 ก่อนมีจอ — แดงเหลือ CI-17 · SD-1 · U-* (จอผ่าน 10/10 แล้วในรอบจริง)
+- qc-svc-h.3 --no-regression 98/109 failed [] · qc-svc-h.2 --no-regression 78/87 failed [] · qc-svc-r0.8 95/95 · qc-svc-h.1 112/122 failed [] · qc-svc-r0.4 45/46 (VIS-2 allowed) · smoke 6/6 · b.0 167/172 failed [] · d.13 87/98 failed []
+- qc-svc-h.0 failed [S-3] = fitness F2.1 hotel→member (§7 ข้อ 7) · tsc เฉพาะไฟล์ของใบ (tsconfig ชั่วคราว) 0 error
+
+## 11. รอบ 2 (มติผู้คุม 7 พ.ย. · ฐาน f4784df8b ORACLE-EDIT D1/D2/r0.8/fitness)
+- §7 ข้อ 3 → **ทาง (ข)**: ถอด `LEGACY_REQUIRES_GUEST` · `service.checkIn` เดิมอ่าน `rooms.hotel.guest.requireRegistration` เหมือน V2 (ไม่มีผู้พักในทะเบียน ⇒ ok:false เหตุผลไทย GUEST_REQUIRED) · ยังไม่ตรวจวันเข้า/แม่บ้าน · รับ BOOKED
+- หน้า `/hotel` รายการ "ถึงวันนี้": เปิด requireRegistration ⇒ แสดง "ต้องลงทะเบียนผู้พัก (ร.ร.3) ก่อนเช็กอิน" + ลิงก์ `?tab=guests` แทนฟอร์มเช็กอินด่วน (ฟอร์ม checkInAction คงไว้เมื่อปิดค่าตั้ง · h.2 U-10) · facade `guestRegistrationRequired`
+- ฉาก h.3 (`svc-qc-hotel-booking-scene.mts`) และ h.2 (`svc-qc-hotel-tape-scene.mts`) แก้จุดเดียวตามมติ: ก่อนลูปการจอง ปิด requireRegistration ชั้น UNIT ผ่าน `setSettings` · ฉาก h.4 เปิดกลับ (true) ตอนเริ่ม ⇒ ลำดับ seed → h.1 → h.3 → h.4 จบที่ "เปิด"
+- ผลรอบ 2 (`/root/svc-runs/h4/builder/r2-*.txt` · chain2.log):
+  - ฉาก: tape --clear · h4 --clear · h3 --clear · h3 (12) · h3 --clear · h2 tape (ok) · tape --clear · h3 (12) · h4 = หยุดที่ takeSecurityDeposit (รอ H.5) — ทุกขั้นก่อนหน้า exit 0
+  - qc-svc-h.4 --no-regression **90/106 · failed [SD-1]** (รอ H.5) · skip F-1 Q-1..4 (รอ H.5 checkout.ts) V-1 G-*
+  - qc-svc-h.1 --no-regression 112/122 failed []
+  - 🔴 ยังแดงจากทาง (ข) — ข้อสอบ/ไฟล์ที่ builder แก้ไม่ได้ เรียก checkIn เดิมบนหน่วยทดสอบของตัวเองที่ไม่ได้ปิดค่าตั้ง:
+    - qc-svc-h.3: D-10 (บรรทัด 1090 `checkIn เดิม` บน ids.k12a) → E-11 ต่อเนื่อง (ใช้ CHECKED_IN ของ D-10) · 96/109
+    - qc-svc-h.2: ตัวสร้างฉากในข้อสอบ (บรรทัด 542 `svc.checkIn` บน tA) ⇒ TC-2…/OC/TD/MV ล้มต่อเนื่อง · 37/87
+    - qc-svc-r0.8: G-1 `scripts/qc-hotel-money.mts:38` · G-3 `scripts/qc-hotel-refund.mts:42,89` (checkIn เดิมบนร้านของตัวเอง) · 93/95
+  - ⇒ ขอ ORACLE-EDIT แบบเดียวกับ r0.8: ปิด `rooms.hotel.guest.requireRegistration` ที่หน่วยทดสอบของ qc-svc-h.3 · qc-svc-h.2 · qc-hotel-money · qc-hotel-refund (หรือส่งผู้พักผ่าน checkInV2)
+
+## 12. รอบ 3 (ผู้ตรวจ PDPA รอบ 1 · ฐาน 756c05252)
+- **MAJOR-1** `tm30Export`: ไม่มีกุญแจ ⇒ `NOT_CONFIGURED` · มีแถวที่เปิดกล่องลับไม่ได้ ⇒ `NO_DATA` (บอกจำนวนคน ไม่บอกชื่อ/เลข) · ทั้งสองกรณีไม่สร้างไฟล์ ไม่เขียน AuditLog `hotel.tm30.exported`
+- m1 purge ล้าง `dob` · `arrivedFrom` · `nextDestination` ด้วย (คงชื่อ + last4 + สัญชาติ + วันเข้าออก)
+- m2 `checkInV2` มีผู้พักแต่ไม่มีกุญแจ ⇒ `NOT_CONFIGURED` ก่อนอัปไฟล์ (การจองคง CONFIRMED)
+- m3 หน้า ร.ร.3 พิมพ์: ที่อยู่/อาชีพ/รูปบัตร แสดงเฉพาะผู้มี `hotel.guest.register` (`showImage`) · อื่นแสดง "ซ่อน" (Rr3Card เป็นคอมโพเนนต์เซิร์ฟเวอร์ ⇒ ค่าที่ซ่อนไม่ออกไป HTML)
+- **m4 ไม่ได้ทำ — ข้อแย้ง oracle:** ข้อสอบ PD-6 (`qc-svc-h.4` ~บรรทัด 1049) เรียก `rr3Card(ctxA, {guestId})` โดย ctx ไม่มี userId และ **บังคับให้มีลิงก์ /api/files ≥ 1** ⇒ ถ้าไม่มี userId แล้วไม่ออกลิงก์ PD-6 แดง (CRITICAL) · ตอนนี้ fallback = ผู้บันทึก (ลิงก์ใช้ได้เฉพาะผู้บันทึก · หน้าในระบบส่ง userId เสมอ) · ผู้คุมเลือก: ORACLE-EDIT PD-6 ให้ส่ง `{...ctxA, userId: REG.userId}` แล้วผมถอด fallback ได้ทันที
+- m5 → หนี้ (§8 ต่อท้ายข้างล่าง)
+- ผลรอบ 3 (`/root/svc-runs/h4/builder/r3-*.txt`):
+  - probe-h4-b **51/53** · failed [E3.3 (CDN path private ตอบ 200 = storage C0.4 นอกใบ · ผู้คุมจดเป็นคำถามเจ้าของ) · E5.6 (ข้อสังเกตที่ผ่านเมื่อ dob ยังค้าง — แดงเพราะแก้ m1 แล้ว: dob=null หลัง purge)] · E1.4 · E7.1 · E7.3 เขียว
+  - qc-svc-h.4 --no-regression **90/106 · failed [SD-1]** (รอ H.5) · skip F-1 Q-1..4 V-1 G-*
+  - qc-svc-h.3 --no-regression 98/109 failed [] · qc-svc-h.2 --no-regression 78/87 failed []
+
+### หนี้เพิ่ม (รอบ 3)
+| เรื่อง | เหตุผล | ใบ |
+|---|---|---|
+| m5 แก้ทะเบียนแถวเดิมต้องกรอกเลขเอกสารใหม่ · CheckinPanel ไม่มีปุ่มแก้แถวเดิม (มีแต่เพิ่มผู้พักร่วม) | ฟอร์มไม่เติมเลขเต็มจาก DTO (PDPA) — ต้องออกแบบ "คงเลขเดิม" ฝั่งเซิร์ฟเวอร์ | ใบเก็บกวาด H.x |
+| m4 rr3Card ไม่มี userId ⇒ ลิงก์ของผู้บันทึก | PD-6 บังคับลิงก์ (ข้อแย้งด้านบน) | ORACLE-EDIT |
+| E3.3 CDN เสิร์ฟ path private | storage C0.4 นอกใบ | คำถามเจ้าของ |
+
+## 13. รอบ 4 (ฐาน 36bf52198 = merge H.5 · ORACLE-EDIT PD-6 4c768a695)
+- ตรวจผล merge ในไฟล์ของใบ ([id]/page.tsx · service.ts · บล็อก H.4 ของ actions/index): import/ชนิดถูก · tsc เฉพาะไฟล์ 0 error
+- m4: `rr3Card` ไม่มี `ctx.userId` ⇒ ไม่ออกลิงก์ไฟล์ (signatureUrl/idImageUrl = null) — ถอด fallback ผู้บันทึกแล้ว
+- เงินประกัน: ฉาก h.4 เรียก `takeSecurityDeposit` (H.5 · facade) ผ่าน · การ์ดเช็กอิน `SecurityDepositStep` ลิงก์ `?tab=money` → FolioPanel ของ H.5 (ปุ่มรับเงินประกัน takeSecurityDepositAction) — ไม่เรียกซ้ำจากการ์ด (เลือกวิธีจ่ายที่แท็บเงินที่เดียว)
+- ฉาก: tape --clear → h4 --clear → booking (12) → folio (8/2) → guest h4 (4 แขก · 8 อัปเดต) → guest h4 ซ้ำ 0/0/0 · ทุกขั้น exit 0
+- ผล (`/root/svc-runs/h4/builder/r4-*.txt` · chain4.log):
+  - **qc-svc-h.4 --no-regression 95/106 · failed []** · skip F-1 V-1 G-*
+  - qc-svc-h.3 98/109 failed [] · qc-svc-h.2 78/87 failed [] · qc-svc-h.1 112/122 failed []
+  - 🔴 qc-svc-h.5 --no-regression 75/95 · failed [ST-14 · GL-4] — ข้อสอบ h.5 เช็กอินด้วย checkIn เดิมบนหน่วยที่ไม่ได้ปิด requireRegistration (UH3 ร้าน A · UHB ร้าน B) ⇒ GUEST_REQUIRED ตามมติทาง (ข) · ขอ ORACLE-EDIT ปิดค่าตั้งที่ UH3/UHB แบบเดียวกับ UH
+  - probe-h4-b 50/53 · failed [E3.3 (CDN private นอกใบ · Q-H4-3) · E3.6 · E5.6] — **E3.6/E5.6 เป็น "ข้อสังเกต" ที่เขียนให้ผ่านเมื่อพฤติกรรมเก่ายังอยู่** (E3.6 ผ่านเมื่อมี fallback ลิงก์ผู้บันทึก · E5.6 ผ่านเมื่อ dob ยังค้างหลัง purge) ⇒ แดงเพราะแก้ m4/m1 แล้ว = probe oracle ล้าสมัย (ควรกลับเงื่อนไข)
+
+## 14. รอบ 5 (ผู้ตรวจรอบ 2 กฎหมาย/race · ฐาน a011317ee) — commit 391bb8c69
+### ที่ทำ
+1. ตม.30 ไฟล์: "วันเข้าพัก" = `bkkYmd(checkedInAt)` (วันไทย) · ไม่มี checkedInAt ⇒ วันเข้าตามการจอง
+2. ผู้พักจริง = การจอง CHECKED_IN/CHECKED_OUT/REFUNDED (`STAYED_RV` ใน guest.ts) ⇒ `rr4Register` · `tm30Queue` · `tm30Export` · ลำดับเลขบัตร ร.ร.3 (`cardNosOf`) นับเฉพาะชุดนี้ · แถวลงทะเบียนล่วงหน้าที่ยกเลิก/ไม่มา/ยังไม่เข้า (รวมการจองที่ย้อนเช็กอิน) คงเก็บ + purge ปกติ แต่ไม่อยู่ในทะเบียน/คิว/ลำดับ · `Rr4Row.reservationStatus`
+3. ร.ร.4 (ค่าปลอดภัยระหว่างรอ J3 ชี้ขาดแบบ): `Rr4Row` + หน้าพิมพ์ เพิ่ม วันเกิด/อายุ (ณ วันเข้าพัก) · อาชีพ · ที่อยู่ ทุกคน · เลขเอกสารค่าเริ่ม 4 ตัวท้าย · `?registrar=1` + `hotel.guest.viewId` ⇒ `rr4RegistrarCopy` พิมพ์เลขเต็ม + AuditLog `hotel.guest.revealed` ต่อแขก (batch เดียวต่อการพิมพ์) · ไม่มีสิทธิ์ = 4 ตัวท้าย
+4. purge: ลบเฉพาะ `retainUntil < วันนี้` **และ** `checkOutDate(จริง ณ purge) + retainYears(ค่าตั้ง ณ purge) < วันนี้` (ไม่แตะ booking/checkout)
+5. race: `checkInCore` อ่านแถวซ้ำหลังล็อกประเภท · claim/retainUntil ใช้วันของแถวนี้ · CAS ผูก `checkInDate/checkOutDate` (probe R3.1 เขียว)
+6. **ไม่ได้ทำ** (ข้อแย้ง oracle): upsert ระหว่างพักเกิน maxOccupancy ⇒ OVER_OCCUPANCY — ขัด qc-svc-h.4 GR-5 (REG เพิ่มคนที่ 4 ใน ci3 ดีลักซ์ max 3 แล้วต้อง ok) · GR-7/GR-8 (เพิ่มต่อเป็นคนที่ 5–6) และข้อที่ใช้ gr7 (PD-6) ⇒ ทำแล้ว h.4 แดงหลายข้อ · พร้อมเปิดทันทีเมื่อผู้คุม ORACLE-EDIT GR-5/7/8 (เช่นใช้ห้องแฟมิลี max 5 หรือผู้จัดการ + occupancyOverride)
+7. tm30Export ตัดผู้พักที่ยังไม่เข้าพัก (ตามข้อ 2 · probe L7.1 เขียว)
+8. เพิ่มต่างด้าวหลังเช็กเอาต์ (ผู้จัดการ) ⇒ เวลาเข้าพัก = `checkedInAt` ของการจอง ⇒ มีกำหนด/LATE ตามจริง (probe L6.1 เขียว)
+9. เลขบัตร ร.ร.3 ณ ตอนเป็นผู้พักจริง จดใน AuditLog (`hotel.guest.registered.after.cardNo` · ลงทะเบียนล่วงหน้า ⇒ `hotel.guest.rr3_card` ตอนเช็กอิน) · คอลัมน์ถาวร = หนี้ H.9 (เลขที่แสดงยังคำนวณจากลำดับ ⇒ ลบแถวภายใน 10 นาทียังเลื่อนเลขหลังจากนั้น — probe L3.1 แดงตามหนี้)
+10. ทางเดิม `service.checkIn`: AuditLog `actorType SYSTEM` · `after.via = "LEGACY_CHECKIN"` (ไม่รู้ผู้กระทำ — ร.ร.3 ผู้บันทึกว่าง) · ใช้เฉพาะฉาก/ข้อสอบเดิม + ฟอร์มด่วน /hotel เมื่อปิด requireRegistration
+
+### ผล (`/root/svc-runs/h4/builder/r5-*.txt` · chain5.log)
+- probe-h4-c **34/40** · failed: L3.1 (หนี้ข้อ 9) · L5.1 (ตรวจ "คอลัมน์ retainUntil ขยับเมื่อต่อคืน" — มติข้อ 4 ให้ตรวจตอน purge แทน ⇒ คอลัมน์ไม่ขยับ = probe ล้าสมัย) · L6.2 (ข้อสังเกตที่ผ่านเมื่อ dueAt ว่าง — แก้ข้อ 8 แล้ว ⇒ ล้าสมัย) · R3.2 (ข้อสังเกตที่ผ่านเมื่อ CAS ไม่ผูกวัน — แก้ข้อ 5 แล้ว ⇒ ล้าสมัย) · R5.1 (ข้อ 6 ไม่ได้ทำ) · R7.2 (คาดว่าคิว ตม.30 ยังแสดงแขกของการจองที่ย้อนเช็กอิน — ข้อ 2 ตัดออก ⇒ ล้าสมัย) · เขียว: L1.1–L1.3 · L2.0–L2.5 · L4.x · L6.1 · L7.1 · L8.x · R1/R2/R3.1/R4/R6/R7.1/R7.3–4/R8
+- probe-h4-b 48/53 · failed: E3.3 (CDN นอกใบ) · E3.6 (ล้าสมัยตั้งแต่ m4) · **E5.3/E5.5/E5.7** (ตั้ง retainUntil ย้อนบนการจองที่วันออกยังอนาคต ⇒ มติข้อ 4 ไม่ purge)
+- qc-svc-h.4 --no-regression **89/106** · failed:
+  - PD-7 · PD-8 (+ B-5 "purge SYSTEM" · N-2/N-3 "hotel.guest.purged 0 แถว" ต่อเนื่อง) — ข้อสอบตั้ง retainUntil อดีตบนการจองที่ checkOutDate = W(2) ⇒ มติข้อ 4 ไม่ purge · ต้อง ORACLE-EDIT ให้ checkOutDate อดีต (เช่น W(-800)) หรือ retainYears/วันที่ตามจริง
+  - RR-5 — dbRows เทียบทุกแขกในช่วง (รวมแขกของ ci13 ที่ย้อนเช็กอินเป็น CONFIRMED) ⇒ มติข้อ 2 ตัดออก · ต้อง ORACLE-EDIT กรอง dbRows `reservation.status in CHECKED_IN/CHECKED_OUT/REFUNDED`
+- qc-svc-h.5 77/95 failed [] · qc-svc-h.3 98/109 failed [] · qc-svc-h.2 78/87 failed []
+
+### หนี้เพิ่ม
+| เรื่อง | ใบ |
+|---|---|
+| คอลัมน์เลขบัตร ร.ร.3 ถาวร (เลขแสดงยังเลื่อนเมื่อลบแถว) | H.9 |
+| แบบ ร.ร.4 จริง (ช่อง/สำเนานายทะเบียน) | J3 ชี้ขาด |
+| ข้อ 6 cap ผู้พักระหว่างพัก | รอ ORACLE-EDIT GR-5/7/8 |
+
+## 15. รอบ 6 (PARITY · ผู้คุมตีกลับจากภาพ accept3 · ฐาน 3f4c93abc) — commit 04f740726
+### ที่ทำ (จอเท่านั้น · ไม่แตะ server/prisma/oracle)
+1. **บั๊กขั้น ร.ร.3 ค้าง** — `CheckinPanel.tsx`: เป้าของแผงลงชื่อ/ปุ่ม "ลงชื่อบนกระดาษแล้ว" = `guests.find(g => !g.signed)` (เดิมส่ง `primary.id` เสมอ ⇒ `alreadySigned` ⇒ ผู้พักร่วมที่เพิ่มหลังลงชื่อแทนห้องลงชื่อไม่ได้) · ป้าย "<ชื่อ> ลงชื่อบนแท็บเล็ต" (เป้า = หลักและยังไม่มีใครลง ⇒ ป้ายเดิม "(ลงแทนห้องได้)") · บรรทัดย่อย "ลงชื่อแล้ว x/y คน" เมื่อยังไม่ครบ · ลิงก์ "พิมพ์บัตร ร.ร.3" ชี้คนที่ยังไม่ลง · SignaturePad `key=` เป้า (ล้างช่องเมื่อเปลี่ยนคน) · "เสร็จ N นาที" ใช้เวลาลงชื่อล่าสุดของทุกคน
+   - ยืนยันฝั่ง server (สคริปต์ทดลองนอกทรี `/root/svc-runs/h4/builder/exp-r6-sign.mts` · ผล `r6-exp-sign.txt` 7/7): WEBER, DANIEL ลงชื่อ → เพิ่ม WEBER, ANNA → sign id หลักซ้ำ ⇒ `alreadySigned` ANNA ยังไม่ลง (บั๊กเดิม) → เป้าจอ = ANNA → `signRr3` ANNA ⇒ ok → `listGuests` ทั้งคู่ signed
+2. **ลำดับจอ** — `BookingDetail.tsx` prop เสริม `belowHeader?: ReactNode` (undefined = เดิม) เรนเดอร์ต่อจากหัว+แถวปุ่ม (`data-booking-actions`) ก่อนกลุ่ม/แถบแท็บ (`data-detail-below-header`) · `[id]/page.tsx` ส่ง guestsTab + ลิงก์ `showGuestsLink` เข้า slot แทนการวางบนสุด · ไม่จัดรูปแบบส่วนอื่น · มือถือเรียงเดียวกัน (คอลัมน์เดียว)
+3. **ตม.30 เลยกำหนดบนจอ** — helper ใน `checkin-shared.ts`: `tm30Overdue` (LATE หรือ PENDING ที่ `dueAt < now`) · `tm30Badge` (ป้ายแดง "เลยกำหนด ตม.30" + "(เลยมา N ชม.)") · `tm30OverdueCount` — ใช้ที่ Tm30Queue (ป้าย+ช่องครบกำหนดแดง · `data-tm30-overdue`) · หน้า tm30 (หัว "รอแจ้ง X · เกินกำหนด Y" นับตาม helper) · หน้า guests (`Tm30Cell`) · CheckinPanel (ป้ายรายคนในขั้น ตม.30) · การ์ด "ตม.30 ค้าง" บน hotel/page (แดง + "เลยกำหนด N คน") · ไม่เปลี่ยนสถานะในฐาน (sweep ยังเป็นเจ้าของ LATE)
+
+### ผล (`/root/svc-runs/h4/builder/r6-*.txt` · chain6.log)
+- qc-svc-h.4 --no-regression **98/109 failed []** (SKIP F-1/V-1/G-1..9 ตามมติ)
+- qc-svc-h.3 --no-regression **98/109 failed []**
+- probe-h4-review-b **52/52** (skip E3.3) · probe-h4-review-c **39/39** (skip L3.1/R5.1)
+- tsc เฉพาะไฟล์ที่แตะ (`/root/svc-runs/h4/builder/tsconfig.h4r6.json` ผ่าน iso.sh) 0 error
+
+### ไฟล์ที่แตะ
+`src/components/hotel/{CheckinPanel,Tm30Queue,BookingDetail}.tsx` · `src/components/hotel/checkin-shared.ts` · `src/app/app/u/[unitSlug]/hotel/{page,guests/page,tm30/page,reservations/[id]/page}.tsx`
+- `BookingDetail.tsx` (ของ H.3) แตะเฉพาะ prop `belowHeader` + 1 บรรทัดเรนเดอร์ ตามคำสั่งรอบ 6 ข้อ 2

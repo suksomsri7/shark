@@ -109,6 +109,8 @@ const FILES = {
 
 // ═══════════════ F. ไฟล์ (สแตติก) ═══════════════
 console.log("\nF. ไฟล์ · ขอบเขต import · actions · หน้าห่อ");
+// ORACLE-EDIT (ผู้คุม 7 พ.ย. · r04-unitTypes): เฟส H ซ่อนคีย์โรงแรมจากหน้าหอด้วย `unitTypes` (ไม่รวม DORM) — ถือเป็น "ซ่อน" เท่ากับ hiddenUntil ในทุกข้อที่นับคีย์ของหน้าหอ
+const hiddenOnDorm = (d: { hiddenUntil?: unknown; unitTypes?: unknown }): boolean => !!d.hiddenUntil || (Array.isArray(d.unitTypes) && !(d.unitTypes as string[]).includes("DORM"));
 await t("F-1", "ไฟล์ส่งมอบครบ (form.ts · settings-shared.ts · SettingsForm.tsx · หน้าห่อจองคิว · หน้าห่อหอ)", () => {
   const miss = [FILES.form, FILES.shared, FILES.comp, FILES.bookingPage, FILES.dormPage].filter((f) => !has(f));
   ok(miss.length === 0, `ไม่มี ${miss.join(" · ")}`);
@@ -244,7 +246,7 @@ await t("R-3", "ทุก def ชนิด enum ที่ไม่ซ่อน (
   const p: string[] = [];
   for (const dm of ["payments", "messaging", "rooms", "qcfx"]) {
     for (const d of listDefs(dm)) {
-      if (d.type !== "enum" || d.hiddenUntil) continue;
+      if (d.type !== "enum" || hiddenOnDorm(d)) continue; // ORACLE-EDIT r04-unitTypes
       const opts = enumOptions(d.schema);
       if (!opts) { p.push(`${d.key}: อ่านตัวเลือกจาก schema ไม่ได้`); continue; }
       for (const o of opts) {
@@ -412,7 +414,7 @@ const fieldsOf = (m: Any): Any[] => (Array.isArray(m?.groups) ? m.groups.flatMap
 const fieldMap = (m: Any): Map<string, Any> => new Map(fieldsOf(m).map((f: Any) => [String(f.key), f]));
 const keysOf = (m: Any): string[] => fieldsOf(m).map((f: Any) => String(f.key)).sort();
 const expectedKeys = (domains: string[], scope: string): string[] =>
-  domains.flatMap((d) => listDefs(d)).filter((d) => !d.hiddenUntil && (d.chain as string[]).includes(scope)).map((d) => String(d.key)).sort();
+  domains.flatMap((d) => listDefs(d)).filter((d) => !hiddenOnDorm(d) && (d.chain as string[]).includes(scope)).map((d) => String(d.key)).sort();
 const diffKeys = (a: string[], b: string[]) => {
   const A = new Set(a);
   const B = new Set(b);
@@ -673,7 +675,7 @@ try {
       if (d.missing.length || d.extra.length) p.push(`${scope}: ขาด ${d.missing.slice(0, 4)} เกิน ${d.extra.slice(0, 4)}`);
     }
     const open = new Set(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE"]);
-    for (const dm of DOMS) for (const d of listDefs(dm)) if (!d.hiddenUntil && !(d.chain as string[]).some((c) => open.has(c))) p.push(`${d.key}: ไม่มีชั้นที่เปิดได้`);
+    for (const dm of DOMS) for (const d of listDefs(dm)) if (!hiddenOnDorm(d) && !(d.chain as string[]).some((c) => open.has(c))) p.push(`${d.key}: ไม่มีชั้นที่เปิดได้`);
     ok(p.length === 0, p.join(" · "));
   });
   await t("D-3", "ป้าย \"⚠️ รอที่ปรึกษากฎหมายตรวจ\": pendingLegalReview = true เฉพาะคีย์ใน PENDING_LEGAL_REVIEW_KEYS", async () => {

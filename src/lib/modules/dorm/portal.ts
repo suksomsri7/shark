@@ -265,11 +265,45 @@ export async function portalActiveUnitIds(tenantId: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+// SVC H.6 ▸ ด่านพนักงานเปิดได้ทั้ง DORM|HOTEL (ใบ h.6 §1 · PLAN §2 ข้อ 7 — แจ้งซ่อมของหอใช้กับโรงแรม) — เพิ่มพารามิเตอร์อย่างเดียว:
+//   ไม่ส่ง opts / allowTypes ["DORM"] ⇒ ทางเดิมทุกไบต์ (หน่วย DORM ACTIVE) · อย่างอื่น ⇒ dormStaffGateTyped (หน่วยตามชนิดที่อนุญาต · ผลมี unitType)
+export type DormStaffGateType = "DORM" | "HOTEL";
+export type DormStaffGateOpts = { allowTypes?: DormStaffGateType[] };
+export type DormStaffGateResult = { tenantId: string; unitId: string; unitName: string; unitType?: DormStaffGateType };
+const STAFF_GATE_TYPES: readonly DormStaffGateType[] = ["DORM", "HOTEL"];
+/** allowTypes จากพารามิเตอร์ที่ 4 (ไม่มี/ผิดรูป ⇒ ["DORM"] = ค่าเริ่ม) */
+function staffGateAllowTypes(opts: unknown): DormStaffGateType[] {
+  const raw = isRec(opts) && Array.isArray(opts.allowTypes) ? opts.allowTypes : null;
+  const list = raw ? STAFF_GATE_TYPES.filter((t) => raw.includes(t)) : [];
+  return list.length ? list : ["DORM"];
+}
+/** ด่านพนักงานตามชนิดหน่วยที่อนุญาต (Membership สด · หน่วย ACTIVE ของร้าน · สิทธิ์ action ของโมดูล dorm) — ไม่ผ่าน ⇒ null */
+async function dormStaffGateTyped(ctx: unknown, unitId: unknown, action: string, allowTypes: DormStaffGateType[]): Promise<DormStaffGateResult | null> {
+  if (!isRec(ctx) || !isStr(ctx.tenantId) || !isStr(ctx.actorUserId) || !isStr(unitId) || !allowTypes.length) return null;
+  const tenantId = ctx.tenantId;
+  const db = tenantDb({ tenantId });
+  const unit = await db.businessUnit.findFirst({ where: { id: unitId, type: { in: allowTypes }, status: "ACTIVE" }, select: { id: true, name: true, type: true } });
+  if (!unit || (unit.type !== "DORM" && unit.type !== "HOTEL")) return null;
+  const mem = await db.membership.findFirst({ where: { tenantId, userId: ctx.actorUserId, acceptedAt: { not: null } }, select: { role: true, unitAccess: true, permissions: true } });
+  if (!mem) return null;
+  const m: MembershipCtx = {
+    role: mem.role,
+    unitAccess: Array.isArray(mem.unitAccess) ? mem.unitAccess.filter((x): x is string => typeof x === "string") : [],
+    permissions: isRec(mem.permissions) ? mem.permissions : {},
+  };
+  return evaluate(m, { module: "dorm", action, unitId: unit.id }) ? { tenantId, unitId: unit.id, unitName: unit.name, unitType: unit.type } : null;
+}
+/** ลายเซ็นสาธารณะ (SVC H.6): opts.allowTypes ค่าเริ่ม ["DORM"] = พฤติกรรมเดิม */
+export function dormStaffGate(ctx: unknown, unitId: unknown, action: string, opts?: DormStaffGateOpts): Promise<DormStaffGateResult | null>;
+// ◂ SVC H.6
 /**
  * ด่านพนักงานของหอ (Membership สด · หน่วย DORM ACTIVE ของร้าน · สิทธิ์ action) — ไม่ผ่าน ⇒ null
  *   ใช้กับจอออกรหัสผูก (dorm.lease.manage) และตั้งเมนู LINE (dorm.settings.edit)
  */
 export async function dormStaffGate(ctx: unknown, unitId: unknown, action: string): Promise<{ tenantId: string; unitId: string; unitName: string } | null> {
+  // SVC H.6 ▸ พารามิเตอร์ที่ 4 (opts) ⇒ ชนิดหน่วยอื่นนอกจาก DORM ไปทางใหม่ · ค่าเริ่ม/["DORM"] ⇒ ทางเดิมด้านล่างทุกไบต์ ◂
+  const staffGateAllow = staffGateAllowTypes(arguments.length > 3 ? (arguments[3] as unknown) : undefined);
+  if (staffGateAllow.length !== 1 || staffGateAllow[0] !== "DORM") return dormStaffGateTyped(ctx, unitId, action, staffGateAllow);
   if (!isRec(ctx) || !isStr(ctx.tenantId) || !isStr(ctx.actorUserId) || !isStr(unitId)) return null;
   const tenantId = ctx.tenantId;
   const db = tenantDb({ tenantId });

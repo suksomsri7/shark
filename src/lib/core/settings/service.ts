@@ -81,7 +81,7 @@ const CONSUMED_ACTION = "settings.legal_override.consumed";
 const PROPOSAL_TARGET = "SettingProposal";
 
 /** ชั้นที่มีตารางให้ตรวจความเป็นเจ้าของ — ชั้นอื่น (LEASE RATE_PLAN RESOURCE DEVICE COURSE) ปฏิเสธจนกว่าใบที่สร้างตารางยื่นขอเพิ่ม */
-const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂
+const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE", "RATE_PLAN"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂ · SVC H.0 ▸ RATE_PLAN = HotelRatePlan ◂
 const REF_FIELD: Record<ScopeKind, keyof ScopeRefs | null> = {
   TENANT: null,
   UNIT: "unitId",
@@ -266,6 +266,13 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
         for (const r of rs) out.set(`RESOURCE|${r.id}`, { unitId: r.unitId, known: { TENANT: T, UNIT: r.unitId, RESOURCE: r.id } });
       }),
     );
+  // SVC H.0 ▸ ชั้น RATE_PLAN = แถว HotelRatePlan ของร้าน (รวม ARCHIVED — ค่าตั้งคงไว้) ◂
+  if (by.has("RATE_PLAN"))
+    jobs.push(
+      db.hotelRatePlan.findMany({ where: { tenantId: T, id: { in: ids("RATE_PLAN") } }, select: { id: true, unitId: true } }).then((rs) => {
+        for (const r of rs) out.set(`RATE_PLAN|${r.id}`, { unitId: r.unitId, known: { TENANT: T, UNIT: r.unitId, RATE_PLAN: r.id } });
+      }),
+    );
   await Promise.all(jobs); // ชั้นที่ยังไม่มีตาราง — คง null (fail closed)
   return out;
 }
@@ -274,7 +281,7 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
 export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): Promise<{ scope: ScopeKind; scopeId: string }[]> {
   const w = { tenantId, unitId };
   const sel = { id: true } as const;
-  const [b, rt, rm, st, sv, dv, res] = await Promise.all([
+  const [b, rt, rm, st, sv, dv, res, rp] = await Promise.all([
     db.roomBuilding.findMany({ where: w, select: sel }),
     db.hotelRoomType.findMany({ where: w, select: sel }),
     db.hotelRoom.findMany({ where: w, select: sel }),
@@ -282,6 +289,7 @@ export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): 
     db.bookingService.findMany({ where: w, select: sel }),
     db.queueDisplay.findMany({ where: { ...w, revokedAt: null }, select: sel }), // SVC B.6 ▸ อุปกรณ์ที่ใช้อยู่ของสาขา (ชั้น DEVICE) ◂
     db.svcResource.findMany({ where: w, select: sel }), // SVC B.13 ▸ ทรัพยากรของสาขา (ชั้น RESOURCE) ◂
+    db.hotelRatePlan.findMany({ where: { ...w, status: "ACTIVE" }, select: sel }), // SVC H.0 ▸ แผนราคาที่ใช้อยู่ของหน่วย (ชั้น RATE_PLAN) ◂
   ]);
   return [
     ...b.map((r) => ({ scope: "BUILDING" as const, scopeId: r.id })),
@@ -291,6 +299,7 @@ export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): 
     ...sv.map((r) => ({ scope: "SERVICE" as const, scopeId: r.id })),
     ...dv.map((r) => ({ scope: "DEVICE" as const, scopeId: r.id })),
     ...res.map((r) => ({ scope: "RESOURCE" as const, scopeId: r.id })), // SVC B.13
+    ...rp.map((r) => ({ scope: "RATE_PLAN" as const, scopeId: r.id })), // SVC H.0
   ];
 }
 

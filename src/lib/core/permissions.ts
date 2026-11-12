@@ -272,7 +272,32 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "hotel.room.setStatus": "เปลี่ยนสถานะห้องพัก",
       "hotel.roomType.create": "เพิ่มประเภทห้องพัก",
       "hotel.roomType.delete": "ลบประเภทห้องพัก",
+      // SVC H.0 ▸ โรงแรม V2 (ใบสั่ง h.0 §7) ◂
+      "hotel.rates.read": "ดูราคาห้องพัก",
+      "hotel.rates.write": "ตั้งราคา/ฤดู/แผนราคา",
+      "hotel.settings.edit": "ตั้งค่าโรงแรม",
+      "hotel.booking.manage": "จัดการการจอง (ย้าย/ต่อ/ย่น/ไม่มา)",
+      "hotel.folio.post": "ลงรายการบิลห้อง",
+      "hotel.folio.void": "ยกเลิกรายการบิลห้อง",
+      "hotel.guest.register": "ลงทะเบียนผู้เข้าพัก (ร.ร.3/ตม.30)",
+      "hotel.guest.viewId": "ดูเลขบัตร/พาสปอร์ตเต็ม",
+      "hotel.housekeeping": "แม่บ้าน",
+      "hotel.housekeeping.inspect": "ตรวจห้องแม่บ้าน",
+      "hotel.audit.run": "ปิดวัน (night audit)",
+      "hotel.reports.read": "รายงานโรงแรม",
+      "hotel.channel.manage": "ช่องทาง OTA",
     },
+    // SVC H.0 ▸ คีย์ที่ยังไม่มีหน้า/โค้ดเรียก (H.1–H.10 เปิดใช้จริง · hotel.settings.edit ใช้แล้วที่ค่าตั้ง rooms.hotel.*) ◂
+    // SVC H.3 ▸ hotel.booking.manage ใช้จริงแล้ว (hotel/booking.ts + actions จอง V2) ⇒ ออกจาก planned ◂
+    // SVC H.4 ▸ hotel.guest.register/viewId ใช้จริงแล้ว (hotel/guest.ts · checkin.ts · tm30.ts + actions ทะเบียนผู้พัก) ⇒ ออกจาก planned ◂
+    // SVC H.5 ▸ hotel.folio.post / hotel.folio.void ใช้จริงแล้ว (hotel/folio.ts + actions บิลระหว่างพัก) ⇒ ออกจาก planned ◂
+    // SVC H.10 ▸ hotel.channel.manage ใช้จริงแล้ว (hotel/channel/* + actions/หน้า /hotel/channels) ⇒ ออกจาก planned ◂
+    // SVC H.6 ▸ hotel.housekeeping / hotel.housekeeping.inspect ใช้จริงแล้ว (hotel/housekeeping.ts + บอร์ดแม่บ้าน) ⇒ ออกจาก planned ◂
+    // SVC H.7 ▸ hotel.audit.run / hotel.reports.read ใช้จริงแล้ว (hotel/night-audit.ts · reports.ts + หน้ารายงาน/ปิดวัน) ⇒ ออกจาก planned ◂
+    planned: [
+      "hotel.rates.read",
+      "hotel.rates.write",
+    ],
   },
   {
     module: "dorm",
