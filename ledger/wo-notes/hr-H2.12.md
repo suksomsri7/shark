@@ -76,3 +76,9 @@ Source: `shark-thai-law/references/domain-labour-payroll.md` §ค (checked 13 N
 - **F3 — Paid cap separate from quota (M, migration `paidQuotaDays`, ~1.5 d + payroll seam).** SICK: unlimited leave, paid up to 30 days, rest unpaid automatically (s.32 + s.57). Needs the payroll engine (H3.4) to read paid vs unpaid days.
 - **F4 — Per-event quota (M, migration, ~1.5 d).** Maternity 120 per pregnancy and spouse leave 15 within 90 days of the birth date (event date on the request), instead of per leave year.
 - **F2 — Partial-pay leave (M/L, migration `paidPercent` + H3.4 engine, ~2–3 d).** Child-care continuation 15 days at 50 %. Depends on H3.4 adopting leave pay; do not start before H3.4's engine lands.
+
+## Part B — suite run on the lane DB (head 0fa0cc5b3, all forced, 21:34–22:06Z)
+seed-hr-qc 34/34 · h0.1 67/67 · h0.2 58/58 · h0.3 37/37 · **h0.5 67/71** (S6.2/S6.4/S6.5/S6.7 = known lane-DB non-defect) · h0.6 55/55 · h0.7 74/74 · h1.1 81/81 · h1.2 73/73 · h1.3 63/63 · h2.1 90/90 · h2.2 60/60 · h2.3 79/79 · h2.4 68/68 · h2.5 79/79 · h2.6 55/55 · h2.7 89/89 · **h2.9 57/58 → re-run 58/58** (S7.1 "list keys" failed once; green on the synthetic run before and on the re-run → intermittent, debt: find the flaky conjunct) · h2.10 57/57 · h2.11 66/66 · h3.1 58/58 · h3.3 51/51 · h4.1 47/47 · h4.4 86/86 · h4.6 69/69 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-bulk-ops 13/13 · qc-hf-hr-privacy 194/194 · fitness noenv 53/53 · env 53/53 · fitness-hr noenv 9/9 · env 9/9. qc-nav-functions not in this list (its S5 red is main's, known). Typecheck not run in this ticket.
+
+## Part D — visual
+See `hr-H2.12-visual.md`. 330 shots in `.qc-shots/hr/<wo>/` · 3 MAJOR → fix list for the controller. Build needed `SHARK_TSC_PREBUILD_OK=1` because main's `api/mobile/inbox/conversations/[id]/reply/route.ts` exports `REPLY_RATE` (Next route-type error; same on origin/main).
