@@ -5,13 +5,15 @@ import type { Locale } from "@/lib/i18n";
 
 // สลับภาษา TH | EN — ตั้ง cookie "lang" (path=/, 1 ปี) แล้ว refresh ให้ server re-render
 // ตัว active = font-semibold ink · อีกตัว = muted
-export function LanguageSwitcher({ locale }: { locale: Locale }) {
+// hrefs (ไม่บังคับ · SVC rel-fix): หน้าที่ส่งภาษาทาง ?lang= ด้วย (หน้าจองโรงแรม) — ตั้ง cookie แล้วไปยังลิงก์ของภาษานั้นแทน refresh
+export function LanguageSwitcher({ locale, hrefs }: { locale: Locale; hrefs?: { th: string; en: string } }) {
   const router = useRouter();
 
   function choose(next: Locale) {
     if (next === locale) return;
     document.cookie = `lang=${next}; path=/; max-age=${60 * 60 * 24 * 365}`;
-    router.refresh();
+    if (hrefs) router.push(hrefs[next], { scroll: false });
+    else router.refresh();
   }
 
   const cls = (active: boolean) =>

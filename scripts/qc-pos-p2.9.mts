@@ -409,6 +409,9 @@ function runStatic(): void {
     delete base["src/lib/modules/pos/api/ops/sales.ts"];
     // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): SVC B.10 จุด 1 บิลจากคิว — service-bill.ts เรียก createSale จุดเดิม 1 จุด (ใบสั่ง svc-brief-b.10 §1 · เจ้าของอนุญาต) · ยอมเฉพาะไฟล์นี้ = 1 พอดี
     if (now["src/lib/modules/pos/service-bill.ts"] === 1 && base["src/lib/modules/pos/service-bill.ts"] === undefined) base["src/lib/modules/pos/service-bill.ts"] = 1;
+    // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): RUN HOTEL (= qc-pos-p1.6 U4 · 25 sites/19 files) — hotel/service.ts 2→1 (checkOut → checkout.ts · H.5) ·
+    //   booking-sale.ts 3 (H.3 sites moved out of booking.ts · POS CD2) · checkout.ts 3 (H.5) · deposit-intent.ts 1 (H.8) — only these 4 hotel files, every other file still = base
+    Object.assign(base, { "src/lib/modules/hotel/service.ts": 1, "src/lib/modules/hotel/booking-sale.ts": 3, "src/lib/modules/hotel/checkout.ts": 3, "src/lib/modules/hotel/deposit-intent.ts": 1 });
     const diff = [...new Set([...Object.keys(now), ...Object.keys(base)])].filter((f) => now[f] !== base[f]).map((f) => `${f.replace("src/lib/", "")}:${base[f] ?? 0}→${now[f] ?? 0}`);
     if (diff.length) p.push(`ต่าง ${diff.join(", ")}`);
     chk("L2", p.length === 0, `= ฐาน (${sum(Object.values(base))} จุด/${Object.keys(base).length} ไฟล์)`, joinP(p, `${sum(Object.values(now))} จุด/${Object.keys(now).length} ไฟล์`));

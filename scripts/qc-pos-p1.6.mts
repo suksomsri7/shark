@@ -399,7 +399,7 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/booking/service.ts": 1, // recordDeposit · systemForUnit
   "src/lib/modules/clinic/service.ts": 1, // billVisit · POS ตัวแรกของร้าน (O21)
   "src/lib/modules/giftcard/service.ts": 2, // sell/reload · resolvePosForMember · tx ของผู้เรียก
-  "src/lib/modules/hotel/service.ts": 2, // checkOut/recordDeposit · systemForUnit
+  "src/lib/modules/hotel/service.ts": 1, // recordDeposit · systemForUnit · // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): checkOut moved to hotel/checkout.ts (SVC H.5 · 2→1)
   "src/lib/modules/member/subscription.ts": 1, // subscribe · resolvePosForMember
   // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) มติ 1: POST /sales ผ่าน submitRegisterSale ⇒ ไฟล์ pos/api/ops/sales.ts ไม่เรียก createSale แล้ว (1 → 0 · ถอดแถว)
   "src/lib/modules/pos/order.ts": 1, // ORACLE-EDIT P2.8 (มติ 3 · CD7 · CD9): orderCreateSale — บิลของออเดอร์ (PLATFORM ตอนรับ · DIRECT ตอน payOrder) · คีย์ posorder-<id> · tx ของออเดอร์
@@ -409,9 +409,14 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/school/service.ts": 1, // markPaid · POS ตัวแรกของร้าน (O21)
   "src/lib/modules/shop/service.ts": 1, // confirmOrderPaid · POS ตัวแรกของร้าน (O21)
   "src/lib/modules/ticket/service.ts": 1, // markPaid · systemForUnit
-  "src/lib/modules/hotel/booking.ts": 3, // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-createSale): SVC H.3 จอง V2 — มัดจำ (DEPOSIT tender) · ริบ · บิลค่าธรรมเนียมยกเลิก ผ่าน POS
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-createSale): SVC H.3 จอง V2 — มัดจำ (DEPOSIT tender) · ริบ · บิลค่าธรรมเนียมยกเลิก ผ่าน POS
+  // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): the 3 H.3 sites moved verbatim from hotel/booking.ts (3→0) into hotel/booking-sale.ts (POS CD2 · 22674fe7e)
+  "src/lib/modules/hotel/booking-sale.ts": 3,
+  // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): SVC H.5 checkout.ts — settleAndCheckOut bill · deposit receipt · forfeit (callerTx · systemForUnit · idempotency key) — was missing since H.5
+  "src/lib/modules/hotel/checkout.ts": 3,
   "src/lib/modules/hotel/deposit-intent.ts": 1, // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-createSale): SVC H.8 รอบ 3 — สลิปอนุมัติแต่ลงมัดจำไม่ได้ ⇒ ใบรับมัดจำผ่าน moduleTakeDeposit (callback createSale · คีย์ hotel-slip-<id>) แล้วคืนเต็ม
   "src/lib/modules/pos/service-bill.ts": 1, // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) SVC B.10 จุด 1 บิลจากคิว: payServiceBill → createSale จุดเดิม (ใบสั่ง svc-brief-b.10 §1 · เจ้าของอนุญาต) — 19 จุด/16 ไฟล์
+  // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): total now 25 sites / 19 files
 };
 
 const NEW_REFUSAL_KEYS: [string, string][] = [
