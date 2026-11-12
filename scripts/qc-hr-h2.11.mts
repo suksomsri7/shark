@@ -174,7 +174,9 @@ function runStatic(): void {
     const page = rd(F.page);
     const ui = rd(F.ui);
     const hrMods = (src: string) => importsOf(src).filter((i) => !i.type).map((i) => i.spec).map((s) => (s.startsWith("@/lib/modules/hr/") ? s.slice(17) : s.startsWith("./") ? s.slice(2) : null)).filter((x): x is string => !!x);
-    const okHr = new Set(["overview-ui", "inbox", "inbox-shared", "inbox-actions", "InboxBatch", "ui"]);
+    // ORACLE-EDIT (builder H2.11 · S1.6 vs fitness-hr F16.3): every HR page must import + call a guard from hr/privacy|hr/scope (F16.3) —
+    //   the page calls hr/scope (hrScopeOf · unitsForScope) for the unit filter; still no per-type module ◂
+    const okHr = new Set(["overview-ui", "inbox", "inbox-shared", "inbox-actions", "InboxBatch", "ui", "scope"]);
     const bad = [...hrMods(page), ...hrMods(ui)].filter((m) => !okHr.has(m));
     const cl = clientImports(rd(F.client), (s) => /^(react|next\/|next-intl|@\/components\/|@\/lib\/ui\/|\.\/inbox-actions$|\.\/inbox-shared$)/.test(s), /inbox-actions/);
     ck("S1.6", { page: !!page, ui: !!ui, client: cl.useClient, facadeOnly: bad.length === 0, clientOk: cl.bad.length === 0 && cl.dbReach.length === 0 }, "facade only", `bad=${bad.join(",") || "-"} client=${cl.bad.join(",") || "-"}`);

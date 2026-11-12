@@ -864,7 +864,10 @@ function runStatic(): void {
         return new RegExp(`\\b${name}\\(`).test(src) && importsHr(src, name === "loadPayslipForViewer" ? "privacy" : "payroll");
       });
     const isClient = (f: string) => /^\s*["']use (client|server)["']/m.test(rd(f).slice(0, 400));
-    const allowed: Record<string, string[]> = { listRuns: [PAY_UI], listAdjustments: [PAY_UI], payslipData: [PRIVACY], loadPayslipForViewer: [SLIP_PAGE] };
+    // ORACLE-EDIT (builder H2.11 · brief H2.11 R3 names listAdjustments(pendingUnbound) + listRuns as the inbox readers): hr/inbox.ts (server-only,
+    //   no directive) maps named fields only (adjustment DTO · run periodKey/status) — still no spread / stringify / client prop ◂
+    const INBOX = "src/lib/modules/hr/inbox.ts";
+    const allowed: Record<string, string[]> = { listRuns: [PAY_UI, INBOX], listAdjustments: [PAY_UI, INBOX], payslipData: [PRIVACY], loadPayslipForViewer: [SLIP_PAGE] };
     for (const [name, ok] of Object.entries(allowed)) {
       const cs = callers(name).filter((f) => !f.endsWith("/hr/index.ts"));
       const extra = cs.filter((f) => !ok.includes(f));

@@ -12,7 +12,7 @@
 //   • ไฟล์นี้ไม่เขียนตารางของ HR/สายอนุมัติ — เขียนได้เฉพาะ auditLog ◂
 import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
-import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
+import { assertCan, canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { thaiDateKey } from "@/lib/ui/date";
 import {
   INBOX_BATCH_MAX,
@@ -43,7 +43,7 @@ import { leaveDutyHintsMany } from "./availability";
 import { attendanceNeedsRecompute, loadAttendanceBoard, otDaySpans } from "./judge";
 import { lifecycleDue } from "./lifecycle";
 import { rosterLeaveOverlay } from "./roster-board";
-import { hrScopeOf, unitsForScope } from "./scope";
+import { hrScopeOf } from "./scope";
 import type { HrViewer } from "./privacy";
 
 type Ctx = { tenantId: string; systemId: string };
@@ -95,13 +95,14 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
   const owner = m.role === "OWNER";
   const keyHolder = owner || permOf(m, "hr.employee.create") || permOf(m, "hr.*");
 
+  const adjScope = { ...scope, pendingUnbound: true as const }; // listAdjustments: scope + pendingUnbound = รออนุมัติ ไม่ผูกรอบ ไม่ใช่แถวคำขอ OT (payroll.ts HR H2.11)
   // ── 1. ตัวอ่านของแต่ละชนิด (ขนานกัน · แต่ละตัว 1 ครั้ง) ──
   const [leaves, ots, swaps, corrs, adjs] = await Promise.all([
     types.has("LEAVE") ? pendingLeaves(ctx, INBOX_CAP, leaveListScopeOf(m, uid)) : Promise.resolve(null),
     types.has("OT") ? otRequestList(ctx, v, { status: "PENDING", from: "2000-01-01", to: "2100-12-31" }) : Promise.resolve(null),
     types.has("SWAP") ? listSwapsForManager(ctx, v, { status: "PENDING" }) : Promise.resolve(null),
     types.has("CORRECTION") ? listCorrections(ctx, v, { status: "PENDING" }, { now, max: INBOX_CAP }) : Promise.resolve(null),
-    types.has("ADJUSTMENT") ? listAdjustments(ctx, undefined, INBOX_CAP, { ...scope, pendingUnbound: true as const }) : Promise.resolve(null),
+    types.has("ADJUSTMENT") ? listAdjustments(ctx, undefined, INBOX_CAP, adjScope) : Promise.resolve(null),
   ]);
   const L = leaves ?? [];
   const O = ots && ots.ok ? ots.items : [];
@@ -125,7 +126,7 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
   const unitAt = (id: string, day: string | null) => who(id)?.unitAt(day) ?? null;
   const block = (chain: boolean, filed: boolean, right: boolean): InboxBlocker => (chain ? "CHAIN" : filed ? "FILED_BY_YOU" : right ? null : "NO_RIGHT");
   const out: Raw[] = [];
-  const push = (r: Omit<Raw, "ageDays" | "batchable" | "canDecide" | "createdAt"> & { at: Date }) => {
+  const push = (r: Omit<Raw, "ageDays" | "batchable" | "canDecide" | "createdAt" | "_at"> & { at: Date }) => {
     const { at, ...rest } = r;
     out.push({
       id: rest.id,
@@ -342,10 +343,10 @@ export async function inboxCounts(ctx: Ctx, v: HrViewer, opts: Opts = {}): Promi
   return (await listInbox(ctx, v, {}, opts))?.counts ?? null;
 }
 
-/** สาขาสำหรับตัวกรองของหน้า (เฉพาะสาขาในขอบเขตของผู้ดู) — ผู้ไม่เห็นกล่อง = [] */
-export async function inboxUnits(ctx: Ctx, v: HrViewer): Promise<{ id: string; name: string }[]> {
-  if (!visibleTypes(v).size) return [];
-  return unitsForScope(ctx.tenantId, hrScopeOf(memberOf(v)));
+/** ด่านของ action (fitness F6.1): ผู้ที่ไม่เห็นคำขอชนิดใดเลย ⇒ ForbiddenError (assertCan กับคีย์ตัดสินใบลา — ผู้ถือคีย์นั้นเห็นใบลาเสมอ) */
+export function assertInboxAccess(v: HrViewer): void {
+  if (visibleTypes(v).size) return;
+  assertCan(memberOf(v), { module: "hr", action: "hr.leave.decide" });
 }
 
 // ═══════════════════════════ ตัดสิน (R6 · R7 · R8) ═══════════════════════════

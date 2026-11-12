@@ -11,7 +11,7 @@ const muted = "text-[color:var(--color-muted)]";
 const chip = "inline-flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-sm";
 const chipOn = "border-[color:var(--color-ink)] bg-[color:var(--color-ink)] text-[color:var(--color-surface)]";
 
-function Tile({ testid, label, value, sub, href }: { testid: string; label: string; value: string; sub?: string; href?: string }) {
+function Tile({ testId, label, value, sub, href }: { testId: string; label: string; value: string; sub?: string; href?: string }) {
   const body = (
     <>
       <span className={`text-xs ${muted}`}>{label}</span>
@@ -20,11 +20,11 @@ function Tile({ testid, label, value, sub, href }: { testid: string; label: stri
     </>
   );
   return href ? (
-    <Link href={href} data-testid={testid} className="card flex min-h-[44px] flex-col gap-1 p-3 transition-colors hover:bg-[color:var(--color-surface-2)]">
+    <Link href={href} data-testid={testId} className="card flex min-h-[44px] flex-col gap-1 p-3 transition-colors hover:bg-[color:var(--color-surface-2)]">
       {body}
     </Link>
   ) : (
-    <div data-testid={testid} className="card flex flex-col gap-1 p-3">
+    <div data-testid={testId} className="card flex flex-col gap-1 p-3">
       {body}
     </div>
   );
@@ -46,7 +46,7 @@ export async function HrTeamOverviewSection({ systemId, overview, preview }: { s
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {b && (
           <Tile
-            testid="hr-overview-today"
+            testId="hr-overview-today"
             label={`${t("overview.today")} · ${formatThaiDate(b.day)}`}
             value={String(b.rows.length)}
             sub={shown.length ? shown.map((k) => `${ta(`count.${k}`)} ${counts[k]}`).join(" · ") : t("overview.noBoard")}
@@ -55,15 +55,15 @@ export async function HrTeamOverviewSection({ systemId, overview, preview }: { s
         )}
         {overview.inbox && (
           <Tile
-            testid="hr-overview-inbox"
+            testId="hr-overview-inbox"
             label={t("overview.inbox")}
             value={cap(overview.inbox.decidable, trunc)}
             sub={`${t("overview.inboxDecidable", { n: cap(overview.inbox.decidable, trunc) })} · ${t("overview.inboxTotal", { n: cap(overview.inbox.total, trunc) })}`}
             href={`${s}/hr/requests`}
           />
         )}
-        {overview.needsRecompute !== null && <Tile testid="hr-overview-recompute" label={t("overview.recompute")} value={String(overview.needsRecompute)} href={`${s}/hr/attendance`} />}
-        {overview.lifecycleDue !== null && <Tile testid="hr-overview-due" label={t("overview.due")} value={String(overview.lifecycleDue)} href={`${s}/hr/employees`} />}
+        {overview.needsRecompute !== null && <Tile testId="hr-overview-recompute" label={t("overview.recompute")} value={String(overview.needsRecompute)} href={`${s}/hr/attendance`} />}
+        {overview.lifecycleDue !== null && <Tile testId="hr-overview-due" label={t("overview.due")} value={String(overview.lifecycleDue)} href={`${s}/hr/employees`} />}
       </div>
       {preview && preview.items.length > 0 && (
         <div className="card flex flex-col gap-3 p-4">

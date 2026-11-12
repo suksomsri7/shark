@@ -269,7 +269,11 @@ function runStatic(): void {
   }
   {
     const tabs = (src: string) => block(src, /export function hrTabs/, 1600).split("\n}\n")[0];
-    const r = { layout: changedVsBase(BASE, [F.layout]) === "unchanged", tabs: tabs(rd(F.hrUi)) === tabs(atBase(F.hrUi)) && tabs(rd(F.hrUi)).length > 0 };
+    // ORACLE-EDIT (builder H2.11 · brief H2.11 R12 adds tab "คำขอ" after "ใบลา"): one marked `HR H2.11` line in hrTabs + layout HR children is tolerated —
+    //   H4.4 itself still adds no tab (every other line = base) ◂
+    const noH211 = (src: string) => src.split("\n").filter((l) => !/HR H2\.11/.test(l)).join("\n");
+    const layoutOk = changedVsBase(BASE, [F.layout]) === "unchanged" || (diffHunks(BASE, F.layout) ?? [{ added: [], removed: ["?"] }]).every((h) => h.removed.length === 0 && h.added.length > 0 && h.added.every((l) => /HR H2\.11/.test(l)));
+    const r = { layout: layoutOk, tabs: noH211(tabs(rd(F.hrUi))) === tabs(atBase(F.hrUi)) && tabs(rd(F.hrUi)).length > 0 };
     ck("S13.5", r, "layout + hrTabs as base", BASE.slice(0, 9));
   }
   {

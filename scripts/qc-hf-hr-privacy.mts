@@ -1256,7 +1256,11 @@ for (const f of srcFiles) {
   if (f !== "src/lib/modules/hr/payroll.ts" && /hrPayAdjustment\.(update|updateMany|upsert|create|createMany|createManyAndReturn)\(/.test(txt)) adjWriters.push(f);
 }
 chk("S-20", "อนุมัติรายการเงินมีทางเดียว: decideAdjustment ถูกเรียกใน src จุดเดียว (decideAdjustmentAction · userId = ผู้ใช้ใน session · isOwner = บทบาท OWNER) · ไม่มีไฟล์อื่นเขียนแถวรายการเงินตรง",
-  decAdjCalls.length === 1 && decAdjCalls[0]!.startsWith("src/lib/modules/hr/payroll-actions.ts") && /userId: auth\.active\.userId/.test(decAdjCalls[0]!) && /isOwner: auth\.active\.role === "OWNER"/.test(decAdjCalls[0]!) && adjWriters.length === 0,
+  // ORACLE-EDIT (builder H2.11 · brief R2 "decideAdjustmentAs = body of decideAdjustmentAction" in payroll.ts): exactly one more call site — the marked
+  //   wrapper in payroll.ts with the viewer's userId (uid from the session viewer) + isOwner from the role · the action stays the only other one ◂
+  ((decAdjCalls.length === 1 && decAdjCalls[0]!.startsWith("src/lib/modules/hr/payroll-actions.ts")) ||
+    (decAdjCalls.length === 2 && decAdjCalls.filter((c) => c.startsWith("src/lib/modules/hr/payroll-actions.ts")).length === 1 && decAdjCalls.some((c) => c === 'src/lib/modules/hr/payroll.ts: decideAdjustment(ctx, id, status, { userId: uid, isOwner: m.role === "OWNER" });'))) &&
+    decAdjCalls.filter((c) => c.startsWith("src/lib/modules/hr/payroll-actions.ts")).every((c) => /userId: auth\.active\.userId/.test(c) && /isOwner: auth\.active\.role === "OWNER"/.test(c)) && adjWriters.length === 0,
   "1 จุด · 0 ไฟล์", JSON.stringify({ decAdjCalls, adjWriters }), "MAJOR");
 // H3: ปุ่มตัดสินรายใบคืนเหตุผลเป็นข้อมูล · หน้า “อนุมัติ” แสดงเหตุผลที่แถวของคำขอนั้น · ไฟล์ "use server" export แค่ async function (+ type เดิม)
 const apActSrc = rd("src/lib/modules/approval/actions.ts");

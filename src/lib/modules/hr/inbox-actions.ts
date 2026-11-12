@@ -5,12 +5,17 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
 import { hrViewerOf } from "./privacy";
-import { decideInbox } from "./inbox";
+import { assertInboxAccess, decideInbox } from "./inbox";
 import { INBOX_TEXT, type InboxDecideInput, type InboxDecideOutcome } from "./inbox-shared";
 
 export async function decideInboxAction(systemId: string, input: InboxDecideInput): Promise<InboxDecideOutcome> {
   const auth = await requireTenant();
   const v = hrViewerOf(auth);
+  try {
+    assertInboxAccess(v); // ด่านสิทธิ์ก่อนอ่านฟอร์ม (ผู้ไม่เห็นคำขอชนิดใดเลย = ปฏิเสธ)
+  } catch {
+    return { ok: false, reason: INBOX_TEXT.noAccess };
+  }
   const sid = typeof systemId === "string" ? systemId.trim() : "";
   const sys = sid ? await tenantDb({ tenantId: auth.active.tenantId }).appSystem.findFirst({ where: { id: sid, type: "HR" }, select: { id: true } }) : null;
   if (!sys) return { ok: false, reason: INBOX_TEXT.noAccess };

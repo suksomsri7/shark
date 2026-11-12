@@ -6,7 +6,8 @@ import { systemDef } from "@/lib/systems";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { hrTabs, hrViewerOf } from "@/lib/modules/hr/ui";
-import { inboxUnits, listInbox, teamLeaveQuota } from "@/lib/modules/hr/inbox";
+import { listInbox, teamLeaveQuota } from "@/lib/modules/hr/inbox";
+import { hrScopeOf, unitsForScope } from "@/lib/modules/hr/scope"; // ตัวกันของหน้า (fitness-hr F16.3) — สาขาในขอบเขตของผู้ดูสำหรับตัวกรอง
 import { INBOX_TYPES } from "@/lib/modules/hr/inbox-shared";
 import { HrRequestsView } from "@/lib/modules/hr/overview-ui";
 
@@ -29,7 +30,7 @@ export default async function HrRequestsPage({ params, searchParams }: { params:
   const ctx = { tenantId: auth.active.tenantId, systemId: id };
   const one = (x: unknown) => (typeof x === "string" ? x : undefined);
   const type = INBOX_TYPES.find((k) => k === one(sp.type)) ?? null;
-  const units = await inboxUnits(ctx, v);
+  const units = await unitsForScope(auth.active.tenantId, hrScopeOf(v)); // ใช้แสดงเฉพาะเมื่อผ่าน listInbox (ไม่เห็นชนิดใด = 404 ด้านล่าง)
   const unitId = units.some((u) => u.id === one(sp.unit)) ? one(sp.unit)! : null;
   const age = Number(one(sp.age));
   const minAgeDays = age === 3 || age === 7 ? age : 0;
