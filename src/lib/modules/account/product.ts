@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/core/db";
 import { ciContains, ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix4 ◂ · C5.5-fix8 ciContains ◂
 import { safeReason } from "./errors";
+import { accountNow } from "./clock";
 import type {
   AccountDocType,
   AccountProductType,
@@ -1454,7 +1455,7 @@ export async function listGoodsIssuePaged(
   systemId: string,
   input: ListGoodsIssueInput,
 ): Promise<ListGoodsIssuePage> {
-  const now = new Date();
+  const now = accountNow();
   const pageSize = clampPageSize(input.pageSize);
   const page = clampPage(input.page);
   const q = clampSearch(input.q);

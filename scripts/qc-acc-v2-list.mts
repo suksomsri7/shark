@@ -126,9 +126,12 @@ const expectedPath = join(ROOT, "scripts/acc-v2-expected.json");
 //    เหตุผล (WO 0.7): `acc-v2-expected.json` ที่ commit ไว้เก็บ id ของ Neon branch `wo-acc-v2-qc`
 //    บน CI แต่ละ shard มี branch ของตัวเอง ⇒ id คนละชุด · ตัวเลข (invoiceTabs) ต่างหากที่เสถียรข้าม branch
 const { prisma } = await import("@/lib/core/db");
-const { resolveAccV2Scope } = (await import("./acc-v2-env.mts" as string)) as {
+const { resolveAccV2Scope, pinQcAccountClock } = (await import("./acc-v2-env.mts" as string)) as {
   resolveAccV2Scope: (p: unknown) => Promise<{ tenantId: string; systemId: string } | null>;
+  pinQcAccountClock: () => Promise<Date>;
 };
+// เฉลย invoiceTabs ตรึงที่ QC.today ⇒ "พ้นกำหนด" ต้องคิด ณ วันเดียวกัน ไม่ใช่นาฬิกาเครื่อง (T0.3b)
+const qcClock = await pinQcAccountClock();
 const qcScope = await resolveAccV2Scope(prisma);
 if (!existsSync(expectedPath)) {
   bad("L7 มีไฟล์เฉลย acc-v2-expected.json", `ไม่พบ ${expectedPath} — รัน seed-acc-v2-qc.mts ก่อน`);
@@ -154,7 +157,7 @@ if (!existsSync(expectedPath)) {
     eq(`L8 ${dt} ผลรวม all = Σ ทุกแท็บที่ไม่ใช่ "all"`, c.all, sumNonAll);
 
     // oracle อิสระ: นับตรงจาก DB ไม่ผ่าน computeListTabCounts — AWAITING_PAYMENT ที่ "ยังไม่เลย" dueDate เท่านั้น
-    const now = new Date();
+    const now = qcClock; // วันเดียวกับนาฬิกาที่ computeListTabCounts ใช้ (ตรึงไว้ด้านบน)
     const rawAwaitingTotal = await prisma.accountDocument.count({ where: { tenantId, systemId, docType: dt, status: "AWAITING_PAYMENT" } });
     const rawAwaitingOverdue = await prisma.accountDocument.count({
       where: { tenantId, systemId, docType: dt, status: "AWAITING_PAYMENT", dueDate: { lt: now } },

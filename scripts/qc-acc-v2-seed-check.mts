@@ -23,12 +23,15 @@ const accEnv = (await import("./acc-v2-env.mts" as string)) as {
     expectedPath: string;
     shotsDir: string;
     today: string;
-    oracleValidUntil: string;
+    asOfIso: string;
   };
+  pinQcAccountClock: () => Promise<Date>;
 };
-const { loadQcEnv, QC } = accEnv;
+const { loadQcEnv, QC, pinQcAccountClock } = accEnv;
 
 const { host } = loadQcEnv();
+// เฉลยตรึงที่ QC.today ⇒ "พ้นกำหนด" ต้องคิด ณ วันเดียวกัน ไม่ใช่นาฬิกาเครื่อง (T0.3b)
+const QC_CLOCK = await pinQcAccountClock();
 if (!existsSync(QC.expectedPath)) {
   console.error(`❌ ไม่พบเฉลย ${QC.expectedPath} — รัน pnpm exec tsx scripts/seed-acc-v2-qc.mts ก่อน`);
   process.exit(1);
@@ -1028,15 +1031,21 @@ console.log("\nU. สิทธิ์ผู้ใช้งาน + การเ�
   }
 }
 
-// ─────────── H. อายุของข้อสอบ ───────────
-console.log("\nH. อายุของชุดข้อมูล");
-chk(
-  "H1",
-  `ยังอยู่ในช่วงที่ตัวเลข "พ้นกำหนด" เชื่อถือได้ (ถึง ${E.oracleValidUntil})`,
-  Date.now() <= new Date(`${E.oracleValidUntil}T23:59:59+07:00`).getTime(),
-  new Date().toISOString().slice(0, 10),
-  `≤ ${E.oracleValidUntil}`,
-);
+// ─────────── H. นาฬิกาของข้อสอบ ───────────
+// เดิม H1 = "ยังไม่เลย oracleValidUntil" (ข้อสอบเน่าเองตามปฏิทิน) · T0.3b: ตรึงนาฬิกาพ้นกำหนดแทน
+// ⇒ ยืนยันว่าตรึงจริงและตรงวันเดียวกับเฉลย (ถ้าไม่ตรึง ตัวเลข B2/B3/B9/D ขยับตามวันที่รันจริง)
+console.log("\nH. นาฬิกาของชุดข้อมูล");
+{
+  const clockMod = await import("@/lib/modules/account/clock");
+  chk(
+    "H1",
+    `นาฬิกาพ้นกำหนดของโมดูลบัญชีตรึงที่ ${QC.asOfIso} (ตัวเลขพ้นกำหนดไม่เน่าตามวันที่รันจริง)`,
+    clockMod.isAccountClockPinned() && clockMod.accountNow().getTime() === QC_CLOCK.getTime() && QC_CLOCK.getTime() === new Date(QC.asOfIso).getTime(),
+    clockMod.accountNow().toISOString(),
+    new Date(QC.asOfIso).toISOString(),
+  );
+  chk("H2", "เฉลยถูก seed ณ วันอ้างอิงเดียวกัน (E.today · E.asOf)", E.today === QC.today && E.asOf === QC.asOfIso, { today: E.today, asOf: E.asOf }, { today: QC.today, asOf: QC.asOfIso });
+}
 
 console.log(`\n===== QC SEED CHECK บัญชี V2 =====`);
 console.log(`ผ่าน ${pass} · ตก ${fail} (รวม ${pass + fail} ข้อ)`);

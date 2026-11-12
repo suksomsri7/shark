@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/core/db";
 import { safeReason } from "./errors";
+import { accountNow } from "./clock";
 import type {
   AccountDocType,
   AccountDocStatus,
@@ -352,7 +353,7 @@ export async function listExpenseDocsPaged(
   systemId: string,
   input: ListExpenseDocsInput,
 ): Promise<ListExpenseDocsPage> {
-  const now = new Date();
+  const now = accountNow();
   const pageSize = clampPageSize(input.pageSize);
   const page = clampPage(input.page);
   const q = clampSearch(input.q);
