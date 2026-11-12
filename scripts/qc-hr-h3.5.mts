@@ -878,7 +878,10 @@ async function runDb(): Promise<void> {
         shapes.add(canon(x.value));
       });
     }
-    const oth = await Promise.all(ops(V.other, cO));
+    // ORACLE-EDIT H3.5 (builder, 12 Nov — reason: ops #4 listBankPresets(cO, V.other) takes no id, so it asks the OTHER tenant's OWNER for the
+    //   presets of the owner's OWN HR system — a legitimate success, never "other tenant ⇒ no". Kept ops #0–#3 on cO (they carry tenant A's run/file
+    //   ids) and added all 5 ops with tenant A's ctx (cA) for V.other — the real "other tenant" case; strictly more refusals checked, none removed)
+    const oth = [...(await Promise.all(ops(V.other, cO))).slice(0, 4), ...(await Promise.all(ops(V.other, cA)))];
     oth.forEach((x, i) => {
       if (!noOk(x)) denied.push(`other#${i}=${shown(x)}`);
       shapes.add(canon(x.value));
