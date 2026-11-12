@@ -36,7 +36,8 @@
 | T0.2 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.2.md` (มติ §11–§12) + ข้อสอบ `scripts/qc-trips-t0.2.mts` 84 ข้อ (แดง 79) พร้อม · รอ T0.1 merge |
 | T0.3 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.3.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.3.mts` 116 ข้อ (แดง 110) พร้อม · รอ T0.1 merge (ขนานกับ T0.2 ได้) |
 | T0.4 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.4.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.4.mts` 110 ข้อ (แดง) พร้อม · รอ T0.3 |
-| ที่เหลือ 65 ใบ | ⬜ | ตาม MASTER-PLAN §3/§4 |
+| T0.5 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.5.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.5.mts` 130 ข้อ (แดง) พร้อม · รอ T0.2 |
+| ที่เหลือ 64 ใบ | ⬜ | ตาม MASTER-PLAN §3/§4 |
 
 ภาพ: ชุด M1 วาดแล้ว = จอ 16–20 (e6b3a7a9f · ผู้คุมเปิดดูครบ 5 จอ · รอเจ้าของดู OQ1) · ที่เหลือ (TA §12.3 ชุด 4–7 · 9 · ค่าตั้ง agency/ticket) วาดก่อนใบของเฟสนั้น
 
@@ -73,3 +74,4 @@
 - 2026-11-12 ~12:3xZ · T0.1 · ผู้สร้างส่งงาน (94/96 · fitness 53/53 ×2 · tsc src สะอาด) · ORACLE-EDIT t0.1 **T-4** (regex `Minor$` จับ `isMinor` Bool) · **F-1** (`null ?? "ไม่มีช่อง"` ไม่มีทางผ่าน) · p0.1 บรรทัด 98 cast env (TS2769) · ⚠️ `migrate diff` จะเสนอ DROP INDEX ของ unique NULLS NOT DISTINCT 3 ตัว (TripDeparture · TripPrice · TripLinkStat) ทุกครั้ง — ห้ามรับ (จดในใบสั่งของ A1.1/K1.1/L1.1) · b.0 แดง 4 (M-1 · G-7 · G-8 · G-9) ต้องรันเทียบฐานก่อนแก้ตอนรับใบ
 - 2026-11-12 ~12:3xZ · T0.4 · ใบสั่ง+ข้อสอบ merge · มติ: เพิ่ม CHECK sold+held+reserved ≤ capacity (กลับมติ T0.1 §7 ข้อ 16) + ของ TripWaitlist/TripHold/guaranteedAt เข้า migration T0.1 รอบแก้
 - 2026-11-12 ~13:1xZ · T0.1 · ผู้ตรวจ FIX FIRST (0 BLOCKER · 4 MAJOR · 14 MINOR) + นักล่า FIX FIRST (1 MAJOR: หน้าค่าตั้ง/settingsDiff/RESET_ALL ล้มเมื่อหน่วยมี ~16,400 รอบ — เกินเพดานพารามิเตอร์ของ Postgres · RESET_ALL ไม่ reset จริง) · ที่ยืนแล้ว: กติกาหอ/โรงแรมไม่ถดถอยบนฐานจริง · กฎทัวร์ไม่บล็อก/ไม่ล้ม (2,650 + 154 ค่าแปลก · 20,000 ขั้นบันไดสุ่ม) · tenantDb 33 ตารางแยกร้าน · SellCounter 200 ขนาน ไม่ซ้ำไม่ขาด · รอบแก้ r2 ส่งผู้สร้างแล้ว (รายการ A1–C ในข้อความ · รายงาน `wo-notes/trips-T0.1-review.md` `-hunt.md`) · มติ: ขยาย unique ของ TripPrice (weekdayMask · bookFrom · travelFrom) · CHECK sold+held+reserved ≤ capacity · T22/T23 ปฏิเสธ CREDIT ตอนบันทึก · คีย์เงินใช้สิทธิ์ `trips.settings.money`
+- 2026-11-12 ~13:4xZ · T0.5 · ใบสั่ง+ข้อสอบ merge · เข้า migration T0.1 รอบแก้: TripPriceRule usedCount/bookFrom/bookTo · ตารางใหม่ TripPromoRedemption (รวมเป็น 34 ตาราง — ORACLE-EDIT ถ้าข้อสอบตรึง 33) · หยุดเขียนใบสั่งล่วงหน้าที่ T0.5 (T0.6+ ต้องอิงโค้ดจริง) · เลน l2 ว่าง รอ T0.1 merge → ผู้สร้าง T0.2 (l2) ∥ T0.3 (l1)
