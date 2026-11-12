@@ -69,3 +69,7 @@ Pay type in the H3.2 header snapshot: **not done** — HrAttendanceDeduction has
 - H3.7 JV: split claims/advances/receivable out of salary expense (gross keeps v1 meaning); book `receivable` of leavers; carry rows are not new expense.
 - H3.8/H3.9: v1 runs stay v1 forever; keep CARRY_BOUND order (reverse later runs first); v2 previews never give ฿ to managers.
 - NA-11: flip `V2_VARIABLE_PAY` only with the accountant ruling + header `payType` column + hourly-holiday-hours setting + minimum-wage table.
+
+## Phase B runs (lane DB wo-hr-qc-l3)
+qc-hr-h3.4 forced 61/61 ×2 + unforced 61/61 (residue none) · seed 34/34 · h3.2 64/64 · h3.1 58/58 · h3.3 51/51 · h2.11 66/66 · h2.10 57/57 · h2.9 58/58 · h2.6 55/55 · h2.5 79/79 · h4.6 69/69 · h1.2 73/73 · h1.3 63/63 · h0.1 67/67 · h0.6 55/55 · qc-payroll 19/19 · payroll-reverse 14/14 · payadjust 27/27 · bulk-ops 13/13 · hf-hr-privacy 194/194 · fitness + fitness-hr env/noenv exit 0 · clean typecheck 0 errors (tree 70be884e4; the last commit only edits one oracle line).
+Extra (controller): `workEntrySourceEmployeesInTx` now reads punch employees with `judge.ts#workEntryPunchEmployeesInTx` (distinct employeeId, no TAKE cap) — S7.4. v2 dispatch only for runs with engineVersion 2 **and** inputDigest (H3.1 fixtures that set engineVersion by hand keep the H3.1/H3.2 path).
