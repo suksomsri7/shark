@@ -114,8 +114,25 @@ export function assertLawJson(kind: HrLawKind, json: unknown): void {
 
 // ═════════════ เลขจำนวนเต็ม ═════════════
 const satang = (v: unknown, what: string): number => (isNonNegInt(v) ? v : fail("BAD_SATANG", `${what} must be a non-negative integer satang`));
-/** ปัดครึ่งขึ้นของ num/den (num ≥ 0, den > 0) แบบจำนวนเต็มล้วน = Math.round(num/den) ของรุ่น 1 */
-const roundDivHalfUp = (num: number, den: number): number => Math.floor((2 * num + den) / (2 * den));
+// HR H3.3 r2 ▸ ไม่ยอมเสียความแม่นยำเงียบ ๆ (hunt F2): ทุกผลคูณ/ผลบวกระหว่างทางต้องเป็น safe integer — เกิน = BAD_SATANG ◂
+/** ค่าระหว่างทางต้องเป็นจำนวนเต็มที่ JS แทนได้ตรง (|x| ≤ 2^53 − 1) — ผลจริงที่เกินจะปัดเป็น ≥ 2^53 จึงถูกจับได้เสมอ */
+const exact = (v: number, what: string): number => (Number.isSafeInteger(v) ? v : fail("BAD_SATANG", `${what} exceeds safe integer range`));
+const mul = (a: number, b: number, what: string): number => exact(a * b, what);
+const sum = (what: string, ...xs: number[]): number => xs.reduce((acc, x) => exact(acc + x, what), 0);
+/** ปัดครึ่งขึ้นของ num/den (num ≥ 0, den > 0) แบบจำนวนเต็มล้วน = Math.round(num/den) ของรุ่น 1 · ไม่คูณ 2 ก่อนหาร (กันล้นใกล้ 2^53) */
+function roundDivHalfUp(num: number, den: number): number {
+  exact(num, "dividend");
+  let q = Math.floor(num / den);
+  let r = num - q * den; // q × den ≤ num + den ⇒ ยังอยู่ในช่วงแทนได้ตรง
+  if (r < 0) {
+    q -= 1;
+    r += den;
+  } else if (r >= den) {
+    q += 1;
+    r -= den;
+  }
+  return r * 2 >= den ? q + 1 : q;
+}
 function month(v: unknown): number {
   if (!isInt(v) || v < 1 || v > 12) fail("BAD_MONTH", "monthIndex must be an integer 1..12");
   return v as number;
@@ -126,6 +143,8 @@ function deductionsOf(d: unknown): { spouse: boolean; children: number } {
   const raw = d.children ?? 0;
   if (!isInt(raw) || raw > 99) fail("BAD_DEDUCTION", "children must be an integer ≤ 99");
   // ติดลบ = 0 เหมือนรุ่น 1 (payroll-rules.monthlyWhtSatang · payroll.computeItem) — ตายตัวด้วยเวกเตอร์ WHA-23
+  // HR H3.3 r2 ▸ spouse ต้องเป็น boolean (hunt F3) — รุ่น 1 ถือค่า truthy ใด ๆ เป็น "มีคู่สมรส" · รุ่น 2 ไม่เดา (H3.4 แปลง JSON เก่าก่อนเรียก) ◂
+  if (d.spouse !== undefined && typeof d.spouse !== "boolean") fail("BAD_DEDUCTION", "spouse must be a boolean");
   return { spouse: d.spouse === true, children: Math.max(0, raw as number) };
 }
 
@@ -136,7 +155,7 @@ export function ssoV2(wageSatang: number, ssoJson: unknown): { baseSatang: numbe
   const wage = satang(wageSatang, "wage");
   const baseSatang = Math.min(Math.max(wage, law.minBaseSatang), law.maxBaseSatang);
   // ฐาน(สตางค์) × bp ÷ 10,000 = สตางค์ · ÷ 100 = บาท → ปัดบาทเต็ม → × 100
-  const employeeSatang = roundDivHalfUp(baseSatang * law.rateBp, 1_000_000) * 100;
+  const employeeSatang = mul(roundDivHalfUp(mul(baseSatang, law.rateBp, "SSO base × rate"), 1_000_000), 100, "SSO");
   return { baseSatang, employeeSatang, employerSatang: employeeSatang };
 }
 
@@ -152,7 +171,7 @@ export function annualTaxV2(netSatang: number, taxJson: unknown): number {
   for (const b of law.bands) {
     if (netSatang <= prev) break;
     const top = b.upToSatang === null ? netSatang : Math.min(netSatang, b.upToSatang);
-    num += (top - prev) * b.rateBp;
+    num = sum("tax", num, mul(top - prev, b.rateBp, "tax band × rate"));
     if (b.upToSatang === null) break;
     prev = b.upToSatang;
   }
@@ -161,11 +180,11 @@ export function annualTaxV2(netSatang: number, taxJson: unknown): number {
 
 /** เงินได้สุทธิทั้งปี = เงินได้ − ค่าใช้จ่าย (อัตรา·เพดาน) − ส่วนตัว − คู่สมรส − บุตร − ปสส.(เพดาน) · ไม่ติดลบ */
 function netIncomeV2(incomeSatang: number, ssoYearSatang: number, d: { spouse: boolean; children: number }, ded: DeductionLawJson): number {
-  const expense = Math.min(roundDivHalfUp(incomeSatang * ded.expenseRateBp, 10_000), ded.expenseCapSatang);
+  const expense = Math.min(roundDivHalfUp(mul(incomeSatang, ded.expenseRateBp, "income × expense rate"), 10_000), ded.expenseCapSatang);
   const spouse = d.spouse ? ded.spouseSatang : 0;
-  const children = d.children * ded.childSatang;
+  const children = mul(d.children, ded.childSatang, "child allowance");
   const sso = Math.min(ssoYearSatang, ded.ssoAllowanceCapSatang);
-  return Math.max(0, incomeSatang - expense - ded.personalSatang - spouse - children - sso);
+  return Math.max(0, exact(incomeSatang - sum("allowances", expense, ded.personalSatang, spouse, children, sso), "net income"));
 }
 
 // ═════════════ 3a) ภาษีหัก ณ ที่จ่าย วิธีรุ่น 1 (ทำให้เต็มปี × 12 ÷ 12) บนแถวกฎหมาย ═════════════
@@ -178,7 +197,7 @@ export function whtAnnualisedV2(
   parseTaxJson(taxJson);
   const monthly = satang(input.monthlyIncomeSatang, "monthlyIncome");
   const ssoYear = satang(input.ssoEmployeeYearSatang, "ssoEmployeeYear");
-  const net = netIncomeV2(monthly * 12, ssoYear, deductionsOf(input.deductions), ded);
+  const net = netIncomeV2(mul(monthly, 12, "annual income"), ssoYear, deductionsOf(input.deductions), ded);
   return roundDivHalfUp(annualTaxV2(net, taxJson), 12);
 }
 
@@ -210,8 +229,8 @@ export function whtYtdV2(input: WhtYtdInput, taxJson: unknown, dedJson: unknown)
   const pSso = satang(input.priorSsoSatang, "priorSso");
   const d = deductionsOf(input.deductions);
   const k = 12 - m;
-  const projectedIncomeSatang = pInc + cur + reg * k;
-  const projectedSsoSatang = pSso + cSso + rSso * k;
+  const projectedIncomeSatang = sum("projected income", pInc, cur, mul(reg, k, "regular × months"));
+  const projectedSsoSatang = sum("projected SSO", pSso, cSso, mul(rSso, k, "regular SSO × months"));
   const projectedNetSatang = netIncomeV2(projectedIncomeSatang, projectedSsoSatang, d, ded);
   const annualTaxSatang = annualTaxV2(projectedNetSatang, taxJson);
   const due = annualTaxSatang - pWht;
@@ -238,14 +257,20 @@ export function classifyIncomeV2(baseSatang: number, adjustments: readonly Adjus
     const kind = a?.kind;
     if (typeof kind !== "string" || (!WHT_KINDS.has(kind) && !DEDUCT_KINDS.has(kind))) fail("BAD_KIND", `unknown adjustment kind ${String(kind)}`);
     const amt = satang(a.amountSatang, `${kind} amount`);
-    if (DEDUCT_KINDS.has(kind)) deduct += amt;
+    if (DEDUCT_KINDS.has(kind)) deduct = sum("deductions", deduct, amt);
     else {
-      add += amt;
-      whtExtra += amt;
-      if (SSO_KINDS.has(kind)) ssoExtra += amt;
+      add = sum("additions", add, amt);
+      whtExtra = sum("40(1) income", whtExtra, amt);
+      if (SSO_KINDS.has(kind)) ssoExtra = sum("SSO wage", ssoExtra, amt);
     }
   }
-  return { whtIncomeSatang: base + whtExtra, ssoWageSatang: base + ssoExtra, addSatang: add, deductSatang: deduct, grossSatang: Math.max(0, base + add - deduct) };
+  return {
+    whtIncomeSatang: sum("40(1) income", base, whtExtra),
+    ssoWageSatang: sum("SSO wage", base, ssoExtra),
+    addSatang: add,
+    deductSatang: deduct,
+    grossSatang: Math.max(0, exact(sum("gross", base, add) - deduct, "gross")),
+  };
 }
 
 // ═════════════ 5) รายการเงินเดือน 1 คน (Q11 · H3.4 เป็นผู้เรียก/บันทึก) ═════════════
@@ -313,7 +338,7 @@ export function computeItemV2(input: ItemInputV2, lawSet: LawSetV2): ItemV2 {
     taxRow.json,
     dedRow.json,
   );
-  const netSatang = c.grossSatang - sso.employeeSatang - y.whtSatang;
+  const netSatang = exact(c.grossSatang - sso.employeeSatang - y.whtSatang, "net");
   return {
     engineVersion: 2,
     ...c,
@@ -348,11 +373,11 @@ export function totalsV2(items: readonly Pick<ItemV2, "grossSatang" | "ssoEmploy
 } {
   const t = { grossSatang: 0, ssoEmployeeSatang: 0, ssoEmployerSatang: 0, whtSatang: 0, netSatang: 0, blockedCount: 0 };
   for (const i of items) {
-    t.grossSatang += i.grossSatang;
-    t.ssoEmployeeSatang += i.ssoEmployeeSatang;
-    t.ssoEmployerSatang += i.ssoEmployerSatang;
-    t.whtSatang += i.whtSatang;
-    t.netSatang += i.netSatang;
+    t.grossSatang = sum("total gross", t.grossSatang, i.grossSatang);
+    t.ssoEmployeeSatang = sum("total SSO", t.ssoEmployeeSatang, i.ssoEmployeeSatang);
+    t.ssoEmployerSatang = sum("total SSO employer", t.ssoEmployerSatang, i.ssoEmployerSatang);
+    t.whtSatang = sum("total WHT", t.whtSatang, i.whtSatang);
+    t.netSatang = sum("total net", t.netSatang, i.netSatang);
     if (i.blocked) t.blockedCount += 1;
   }
   return t;
@@ -371,9 +396,9 @@ export function ytdPriorV2(rows: readonly PriorRowV2[], at: { onDay: string; run
     if (r.status !== "APPROVED" && r.status !== "PAID") continue;
     if (typeof r.payDay !== "string" || !DAY_RE.test(r.payDay)) fail("BAD_DAY", "payDay must be YYYY-MM-DD");
     if (r.payDay.slice(0, 4) !== year || r.payDay > at.onDay) continue;
-    out.incomeSatang += satang(r.whtIncomeSatang, "prior income");
-    out.whtSatang += satang(r.whtSatang, "prior wht");
-    out.ssoSatang += satang(r.ssoEmployeeSatang, "prior sso");
+    out.incomeSatang = sum("prior income", out.incomeSatang, satang(r.whtIncomeSatang, "prior income"));
+    out.whtSatang = sum("prior wht", out.whtSatang, satang(r.whtSatang, "prior wht"));
+    out.ssoSatang = sum("prior sso", out.ssoSatang, satang(r.ssoEmployeeSatang, "prior sso"));
   }
   return out;
 }

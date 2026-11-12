@@ -41,11 +41,11 @@ export function isLawDay(day: unknown): day is string {
 /** effectiveFrom (@db.Date = เที่ยงคืน UTC) → "YYYY-MM-DD" */
 export const lawDayString = (v: string | Date): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
 
-/** วันมีผลของงวด = วันตามปฏิทินไทย (Asia/Bangkok) ของวันจ่ายเงินเดือน (Q1) */
-export function lawDayOf(payDate: Date | string): string {
-  const t = new Date(payDate).getTime();
-  if (Number.isNaN(t)) throw Object.assign(new Error("LAW_BAD_DAY: payDate"), { code: "LAW_BAD_DAY" });
-  return thaiDateKey(new Date(t));
+/** วันมีผลของงวด = วันตามปฏิทินไทย (Asia/Bangkok) ของวันจ่ายเงินเดือน (Q1)
+ *  HR H3.3 r2 ▸ รับ Date เท่านั้น (HrPayrollRun.payDate) — สตริงไม่มีเขตเวลาจะถูกตีความตามเขตเวลาของเครื่อง ⇒ วันเพี้ยน (hunt N2) ⇒ LAW_BAD_DAY ◂ */
+export function lawDayOf(payDate: Date): string {
+  if (!(payDate instanceof Date) || Number.isNaN(payDate.getTime())) throw Object.assign(new Error("LAW_BAD_DAY: payDate must be a valid Date"), { code: "LAW_BAD_DAY" });
+  return thaiDateKey(payDate);
 }
 
 /** แถวที่มีผลของชนิดหนึ่ง ณ วันหนึ่ง */

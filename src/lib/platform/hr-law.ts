@@ -12,7 +12,7 @@ import { prisma } from "@/lib/core/db";
 import { assertLawJson } from "@/lib/modules/hr/payroll-rules-v2";
 import { isLawDay, lawDayString } from "@/lib/modules/hr/law";
 
-export type LawWriteCode = "NOT_ALLOWED" | "BAD_KIND" | "LAW_BAD_DAY" | "LAW_SHAPE" | "BAD_NOTE" | "BAD_SUPERSEDES" | "NOT_FOUND" | "NOT_DRAFT" | "NO_APPROVER" | "SLOT_TAKEN" | "NOT_RETIRABLE";
+export type LawWriteCode = "ACTIVE_NOT_RETIRABLE" | "NOT_ALLOWED" | "BAD_KIND" | "LAW_BAD_DAY" | "LAW_SHAPE" | "BAD_NOTE" | "BAD_SUPERSEDES" | "NOT_FOUND" | "NOT_DRAFT" | "NO_APPROVER" | "SLOT_TAKEN" | "NOT_RETIRABLE";
 export type LawWriteResult = { ok: true; id: string } | { ok: false; code: LawWriteCode };
 
 const KINDS: readonly HrLawKind[] = ["SSO", "TAX_BRACKET", "DEDUCTION", "OT", "MIN_WAGE"];
@@ -28,12 +28,22 @@ class Refuse extends Error {
 }
 const no = (code: LawWriteCode): LawWriteResult => ({ ok: false, code });
 
-/** อ่านผู้ใช้หลังบ้านซ้ำจากฐาน — ต้องมีจริงและเป็น SUPER_ADMIN ณ ตอนนี้ */
+/** อ่านผู้ใช้หลังบ้านซ้ำจากฐาน — ต้องมีจริงและเป็น SUPER_ADMIN ณ ตอนนี้
+ *  HR H3.3 r2 ▸ อ่านแบบ FOR SHARE (hunt F1): การลดบทบาทที่เกิดหลังจุดนี้ต้องรอธุรกรรมนี้จบ · ถ้าลดไปแล้วก่อนจุดนี้ = เห็นค่าใหม่ ⇒ ปฏิเสธ
+ *  ฟังก์ชันที่ล็อกช่อง (activate) เรียกซ้ำ "หลัง" ได้ล็อก — คนที่ถูกลดบทบาทระหว่างรอล็อกจึงถูกปฏิเสธ ◂ */
 async function superAdminId(tx: Tx, pu: Actor): Promise<string | null> {
   const id = typeof pu?.id === "string" ? pu.id : "";
   if (!id) return null;
-  const u = await tx.platformUser.findUnique({ where: { id }, select: { id: true, role: true } });
+  const rows = await tx.$queryRaw<{ id: string; role: string }[]>`SELECT id, role::text AS role FROM "PlatformUser" WHERE id = ${id} FOR SHARE`;
+  const u = rows[0];
   return u && u.role === "SUPER_ADMIN" ? u.id : null;
+}
+/** ตรวจเร็วก่อนรอล็อก (ไม่ล็อกแถวผู้ใช้ — ด่านจริงคือ superAdminId หลังล็อก) */
+async function looksSuperAdmin(tx: Tx, pu: Actor): Promise<boolean> {
+  const id = typeof pu?.id === "string" ? pu.id : "";
+  if (!id) return false;
+  const u = await tx.platformUser.findUnique({ where: { id }, select: { role: true } });
+  return u?.role === "SUPER_ADMIN";
 }
 const lawJsonOk = (kind: HrLawKind, json: unknown): boolean => {
   try {
@@ -94,14 +104,16 @@ export async function activateLawRow(pu: Actor, id: string, opts: { approvedByNa
   const name = String(opts?.approvedByName ?? "").trim();
   if (!name || name.length > 200) return no("NO_APPROVER");
   return run(async (tx) => {
-    const actor = await superAdminId(tx, pu);
-    if (!actor) return no("NOT_ALLOWED");
+    if (!(await looksSuperAdmin(tx, pu))) return no("NOT_ALLOWED");
     const row = await tx.hrLawTable.findUnique({ where: { id: String(id ?? "") }, select: { id: true, kind: true, effectiveFrom: true, status: true, json: true, supersedesId: true } });
     if (!row) return no("NOT_FOUND");
     if (row.status !== "DRAFT") return no("NOT_DRAFT");
     if (!lawJsonOk(row.kind, row.json)) return no("LAW_SHAPE");
     const day = lawDayString(row.effectiveFrom);
     await lockSlot(tx, row.kind, day);
+    // HR H3.3 r2 ▸ อ่านบทบาทซ้ำหลังได้ล็อก (FOR SHARE) — ลดบทบาทระหว่างรอล็อก = ปฏิเสธ ไม่เขียนอะไร ◂
+    const actor = await superAdminId(tx, pu);
+    if (!actor) return no("NOT_ALLOWED");
     // แทนแถวที่วันมีผลเดียวกัน ⇒ ปลดแถวเก่าในธุรกรรมนี้ (ช่องจึงว่างให้แถวใหม่)
     let retiring: string | null = null;
     if (row.supersedesId) {
@@ -125,14 +137,17 @@ export async function activateLawRow(pu: Actor, id: string, opts: { approvedByNa
   });
 }
 
-/** ปลดแถว (ACTIVE/DRAFT → RETIRED) · ไม่ลบ — งวดที่อนุมัติไปแล้วยังอ้าง id เดิมใน lawRowIds */
+/** ปลดแถวร่าง (DRAFT → RETIRED) · ไม่ลบ
+ *  HR H3.3 r2 ▸ (review M-1) แถว ACTIVE ปลดตรง ๆ ไม่ได้ — ปลดแล้วงวดจะถอยไปใช้แถว ACTIVE ที่เก่ากว่าเงียบ ๆ ·
+ *  ACTIVE ออกได้ทางเดียว = แถวใหม่วันมีผลเดียวกัน (supersedesId) ที่ activateLawRow ปลดให้ในธุรกรรมเดียวกัน ⇒ ACTIVE_NOT_RETIRABLE ไม่เขียนอะไร ◂ */
 export async function retireLawRow(pu: Actor, id: string): Promise<LawWriteResult> {
   return run(async (tx) => {
     const actor = await superAdminId(tx, pu);
     if (!actor) return no("NOT_ALLOWED");
     const row = await tx.hrLawTable.findUnique({ where: { id: String(id ?? "") }, select: { id: true, status: true } });
     if (!row) return no("NOT_FOUND");
-    const from: HrLawStatus[] = ["ACTIVE", "DRAFT"];
+    if (row.status === "ACTIVE") return no("ACTIVE_NOT_RETIRABLE");
+    const from: HrLawStatus[] = ["DRAFT"];
     const r = await tx.hrLawTable.updateMany({ where: { id: row.id, status: { in: from } }, data: { status: "RETIRED" } });
     if (r.count !== 1) return no("NOT_RETIRABLE");
     await tx.platformAuditLog.create({ data: { platformUserId: actor, action: "hr.law.retire", targetType: "HrLawTable", targetId: row.id, detail: `from ${row.status}` } });
