@@ -100,7 +100,14 @@ export async function clockSelf(
   const next = await nextClockKind(ctx, emp.employeeId, opts);
   if (next !== input.kind) return { ok: false, code: "ALREADY_CLOCKED" };
   const note = typeof input.note === "string" ? input.note.slice(0, 200) : null;
-  const r = await clock(ctx, { employeeId: emp.employeeId, kind: input.kind, note }, opts);
+  // HR H4.4 ▸ r2 มติ 3: ตรวจ "ยังทำงาน" ซ้ำใต้ล็อก hr:clock (สิ้นสุดการจ้างที่ commit ระหว่างรอ = ไม่มีแถวเข้างาน) — ปฏิเสธ = NO_EMPLOYEE เหมือนเดิม ◂
+  let r: Awaited<ReturnType<typeof clock>>;
+  try {
+    r = await clock(ctx, { employeeId: emp.employeeId, kind: input.kind, note, requireActive: true }, opts);
+  } catch (e) {
+    if (e instanceof Error && e.name === "ClockRefusedError") return { ok: false, code: "NO_EMPLOYEE" };
+    throw e;
+  }
   return { ok: true, kind: input.kind, judgement: r.judgement };
 }
 

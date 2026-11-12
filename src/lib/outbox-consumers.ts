@@ -1431,7 +1431,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hr.shift.swap_approved": withAutomation(async () => {}),
   // HR H2.7 ▸ ตัดสินใบลา (ยิงใน tx เดียวกับสถานะ + สมุดวันลา — hr/service.ts decideLeave/cancelLeave/requestLeave · hr/leave.ts applyLeaveDecision ·
   //   key `hr.leave.decided#<leaveId>#<status>` · payload id/วัน/สถานะ) · consumer no-op (ปิด DONE + กฎอัตโนมัติ/เว็บฮุค) — ส่งซ้ำไม่มีผล
-  "hr.leave.decided": withAutomation(async () => {}),
+  // HR H4.1 ▸ R10: ใบลา APPROVED ⇒ แจ้งผู้ดูแล (ผู้ดูคำใบ้ R11 ยกเว้นคนลา) ครั้งเดียวต่อใบ ถ้ามีกะที่ไม่มีคนแทน — กันซ้ำด้วย audit ใต้ล็อก hr-leave-hint:<id> ·
+  //   สถานะอื่น (REJECTED/CANCELLED/ถอนอนุมัติ) = ไม่ทำอะไร (ไม่ถอนข้อความ Q10) · ไม่แตะนัดจอง (R13) ◂
+  "hr.leave.decided": withAutomation(async (evt) => {
+    const p = (evt.payload ?? {}) as { leaveId?: unknown; systemId?: unknown; status?: unknown };
+    if (p.status !== "APPROVED" || typeof p.leaveId !== "string") return;
+    const sid = typeof p.systemId === "string" ? p.systemId : (evt.systemId ?? "");
+    await (await import("@/lib/modules/hr")).leaveDutyNotify({ tenantId: evt.tenantId, systemId: sid, leaveId: p.leaveId });
+  }),
   // ◂ HR H2.7
   // ◂ HR H2.3
   // HR H2.5 ▸ การเตือนลงเวลา (hr/judge.ts#runAttendanceJobs — ยิงใน tx เดียวกับแถว HrAttendanceAlert · key `<type>#<alertId>` · payload id ล้วน)
@@ -1439,6 +1446,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hr.attendance.late": withAutomation(async (evt) => (await import("@/lib/modules/hr/judge")).notifyAttendanceAlert(evt)),
   "hr.attendance.absent": withAutomation(async (evt) => (await import("@/lib/modules/hr/judge")).notifyAttendanceAlert(evt)),
   // ◂ HR H2.5
+  // HR H4.4 ▸ วงจรพนักงาน (hr/lifecycle.ts — ยิงใน tx เดียวกับงานหลัก · payload id/วันที่ล้วน): ครบกำหนด `…#<พนักงาน>#<ชนิด>#<วันที่>` ·
+  //   เริ่มรายการตรวจ `…#<พนักงาน>#<ชนิด>#<ms ของแถวแรก>` · สิ้นสุดการจ้าง `…#<พนักงาน>#<ms ของ offboardedAt>` — งานหลักไม่มี (no-op) ·
+  //   ของแถม = การ์ดบอร์ดงาน (platform/hr-lifecycle-bridges · เปิดเองรายระบบ HR · sourceKey กันซ้ำ ⇒ replay กี่รอบก็ผลเดียว) · โหลดตอนใช้ (กันวงโหลด)
+  "hr.employee.milestone_due": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onMilestoneDue(evt))),
+  "hr.employee.checklist_started": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onChecklistStarted(evt))),
+  "hr.employee.offboarded": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onOffboarded(evt))),
+  // ◂ HR H4.4
   "crm.commission.created": crmFirst(crmCommissionBridge("onCommissionCreated"), withAutomation(async () => {})),
   "crm.commission.approved": crmFirst(crmCommissionBridge("onCommissionApproved"), withAutomation(async () => {})),
   "crm.commission.reversed": crmFirst(crmCommissionBridge("onCommissionReversed"), withAutomation(async () => {})),

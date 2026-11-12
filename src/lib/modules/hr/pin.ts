@@ -505,3 +505,9 @@ export async function activateEmployeeKeepingPinUnique(
   }
   return { count: r.count, pinCleared: r.count === 1 };
 }
+
+// HR H4.4 ▸ สิ้นสุดการจ้าง: ล้าง PIN ในธุรกรรมของผู้เรียก (offboardEmployee — hr/lifecycle.ts) · คอลัมน์ PIN แตะได้ที่ไฟล์นี้ที่เดียว (F16.5 · qc-hr-h0.5 S8.1) ·
+//   tx = ของผู้เรียก (ผูกระบบ HR แล้ว) — ไม่เปิด connection ที่สอง · คืนจำนวนแถว ◂
+export async function clearPinInTx(tx: Prisma.TransactionClient, employeeId: string): Promise<number> {
+  return (await tx.hrEmployee.updateMany({ where: { id: employeeId }, data: { pinHash: null, pinSetAt: null, pinCode: null } })).count;
+}

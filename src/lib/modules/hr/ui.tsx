@@ -36,9 +36,11 @@ import { evaluate } from "@/lib/core/rbac";
 // HR H1.1 ▸ R4/R8 ขอบเขตสาขาของผู้ดู (ทะเบียน · ลงเวลา · ใบลา · kiosk · หน้าภาพรวม) ◂
 import { hrScopeOf, isAllBranches, unitsForScope } from "./scope";
 import { canManageHrSettings } from "./settings"; // HR H1.2 ▸ ลิงก์หน้าตั้งค่า (เฉพาะผู้ตั้งค่าได้) ◂
+import { LifecycleDuePanel } from "./lifecycle-ui"; // HR H4.4 ▸ แผง "ต้องจัดการ" ของทะเบียน ◂
 // HR H2.7 ▸ Q16: ช่องประเภทการลา/ครึ่งวัน + ยอดคงเหลือบนหน้าใบลาเดิม (หน้าเต็มตามภาพ 05 = H2.10/H2.11) ◂
 import { thaiDateKey } from "@/lib/ui/date"; // HR H2.7 ◂
 import { activeLeavePolicies, leaveBalances, leaveDetail, myLeaveBalances, type LeaveBalanceItem } from "./leave"; // HR H2.7 ◂
+import { leaveDutyHintsMany, type DutyHintItem } from "./availability"; // HR H4.1 ▸ R12 บรรทัด "กระทบ:" บนการ์ดใบลา (ภาพ 05) ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -172,6 +174,17 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
   const anyHours = policies.some((p) => p.allowHours);
   const attachNote = policies.some((p) => p.attachmentAfterDays !== null);
   // ◂ HR H2.7
+  // HR H4.1 ▸ R12: ผลกระทบต่อกะของใบรอ + ใบอนุมัติที่ยังไม่จบ — เฉพาะผู้ดูคำใบ้ (R11 · คนอื่นได้ ok:false ⇒ ไม่แสดง) · ไม่มีเหตุผล/ประเภทการลา
+  const ti = await getTranslations("hr.leaveImpact");
+  //   r2: ทุกใบในหน้า = อ่านครั้งเดียว (leaveDutyHintsMany) · อ่านไม่ครบ ⇒ ไม่สรุปว่า "ไม่ต้องหาคนแทน"
+  const impactCards: { id: string; title: string; items: DutyHintItem[]; incomplete: boolean }[] = [];
+  const impactLeaves = [...new Map([...pending, ...leaves.filter((x) => x.status === "APPROVED" && thaiDateKey(x.toDate) >= today)].map((l) => [l.id, l])).values()].slice(0, 60);
+  const hints = await leaveDutyHintsMany(ctx, viewer, { leaveIds: impactLeaves.map((l) => l.id) });
+  for (const l of impactLeaves) {
+    const h = hints.get(l.id);
+    if (h?.ok && h.items.length) impactCards.push({ id: l.id, title: `${l.employeeName} · ${dateRange(l.fromDate, l.toDate)}`, items: h.items, incomplete: h.incomplete === true });
+  }
+  // ◂ HR H4.1
 
   return (
     <div className="flex flex-col gap-6">
@@ -268,6 +281,47 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
         )}
       </Section>
 
+      {/* HR H4.1 ▸ R12 (ภาพ 05): "กระทบ: กะ … — ยังมี n คน · ไม่ต้องหาคนแทน" หรือ "— ขาด 1 คน → ระบบเสนอ <คนแรก>" */}
+      {impactCards.length > 0 && (
+        <Section title={ti("title")}>
+          <div className="flex flex-col gap-3">
+            {impactCards.map((c) => (
+              <div key={c.id} className="rounded-xl border border-[color:var(--color-line)] p-3" data-testid="hr-leave-impact">
+                <p className="text-sm font-medium">{c.title}</p>
+                {c.incomplete && <p className={`text-xs ${muted}`}>{ti("incomplete")}</p>}
+                <ul className="mt-1 flex flex-col gap-1">
+                  {c.items.map((it) => {
+                    const when = { date: formatThaiDate(new Date(`${it.date}T00:00:00Z`)), time: `${hhmm(it.startMin)}–${hhmm(it.endMin)}` };
+                    const first = it.candidates[0];
+                    return (
+                      <li key={it.entryId} className={`text-sm ${it.others > 0 ? muted : "text-[color:var(--color-accent)]"}`}>
+                        {it.others > 0 && c.incomplete ? (
+                          ti("checkManually", when)
+                        ) : it.others > 0 ? (
+                          ti("covered", { ...when, n: it.others })
+                        ) : (
+                          <>
+                            {ti("uncovered", when)}{" "}
+                            {first ? (
+                              <b data-testid={`hr-leave-impact-candidate-${first.employeeId}`}>
+                                {ti("candidate", { name: first.name, from: hoursOf(first.weekMin), to: hoursOf(first.weekMinAfter) })}
+                              </b>
+                            ) : (
+                              ti("noCandidate")
+                            )}
+                          </>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+      {/* ◂ HR H4.1 */}
+
       {/* HR H2.7 ▸ Q16: ยอดวันลาของตัวเอง (สิทธิ์ · ใช้ไป · คงเหลือ +n รออนุมัติ) */}
       {myItems.length > 0 && (
         <Section title={tl("myBalance")}>
@@ -323,6 +377,7 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
 const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const WD_LABEL: Record<number, string> = { 0: "อาทิตย์", 1: "จันทร์", 2: "อังคาร", 3: "พุธ", 4: "พฤหัสบดี", 5: "ศุกร์", 6: "เสาร์" };
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const hoursOf = (m: number) => (m % 60 === 0 ? String(m / 60) : (m / 60).toFixed(1)); // HR H4.1 ▸ ชั่วโมงสัปดาห์ (นาที → ชม.) ◂
 
 // HR H1.1 ▸ R8 (mockup 02): ทะเบียนมีสาขาประจำ + ป้ายสถานะ · ผู้ดูทุกสาขาได้ชิปกรองสาขา (ทั้งหมด / รายสาขา / ยังไม่ระบุ)
 //   ผู้ดูที่จำกัดสาขาไม่มีชิป และเห็นเฉพาะคนในสาขาตัวเอง (+ คนที่ยืมตัวเข้ามา) · `unit` = ค่าชิปจาก ?unit= ("none" = ยังไม่ระบุสาขา) ◂
@@ -348,6 +403,8 @@ export async function HrEmployeesSection({ systemId, unit }: { systemId: string;
 
   return (
     <Section title={`พนักงาน (${employees.length})`}>
+      {/* HR H4.4 ▸ แผง "ต้องจัดการ" (ภาพ 02 · lifecycleDue) — ผู้ดูข้อมูลบันทึกเท่านั้น ◂ */}
+      <LifecycleDuePanel systemId={systemId} />
       {showBranches && (
         <nav data-testid="hr-register-branch-filter" aria-label="กรองตามสาขา" className="mb-2 flex flex-wrap gap-2">
           {chips.map((c) => (

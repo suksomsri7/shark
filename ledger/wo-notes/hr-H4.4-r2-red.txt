@@ -1,0 +1,16 @@
+# H4.4 r2 red — oracle addendum S16.1–S16.12 on the r1 code (tree = 68e22fe32 · lane l2 · forced)
+  ❌ [H4.4-S16.11] [static] r2 sweep window ordered by due date — expected every due scan orderBy date | actual 1 scans
+  ❌ [H4.4-S16.1] r2 STAFF clerk offboard ⇒ STAFF target access revoked in tx (membership · link · push · task) — expected revoked in tx | actual ok,mem,link,push,task ok
+  ❌ [H4.4-S16.2] r2 MANAGER target: non-owner revoke refused (nothing written) · owner ok — expected manager ⇒ owner only | actual refused,quiet,owner ok "พนักงานคนนี้สิ้นสุดการจ้างแล้ว"
+  ❌ [H4.4-S16.3] r2 OWNER-linked row: offboard refused for everyone (nothing written) — expected owner row refused | actual refused,quiet ok "พนักงานคนนี้สิ้นสุดการจ้างแล้ว" "พนักงานคนนี้สิ้นสุดการจ้างแล้ว"
+  ❌ [H4.4-S16.4] r2 untick: non-owner refused when policy revokes · owner keeps ⇒ accessKept — expected keep = owner only | actual refused,kept ok "พนักงานคนนี้สิ้นสุดการจ้างแล้ว"
+  ❌ [H4.4-S16.5] r2 self row: no hidden notes · no checklist · no offboard reason/note · tick/start refused — expected self row hidden | actual notes,check,start,tick,off 2 {"onboarding":[{"id" ok ok {"at":"2031-06-10T03:00:00.000Z","endDate":"2031-06-10","rea
+  ❌ [H4.4-S16.6] [race] r2 clockSelf ∥ offboard ⇒ no IN row for the ENDED employee — expected no IN row | actual none true/true ok {"ok":true,"kind":"IN","judgement":"NO_S in=1
+  ❌ [H4.4-S16.7] r2 decided approval request ⇒ leave CANCELLED · audit names the kept request — expected cancelled + traced | actual trace {"swaps":0,"leaves":1,"roster":0,"endDate":"2031-06-10","spanning":0,"employeeId
+  ❌ [H4.4-S16.8] r2 audits: offboard ids + in tx · checklist start · tick/untick · acknowledge — expected ids · in tx · 3 audits | actual ids,inTx,start,tick,ack start=0 tick= ack=0
+  ❌ [H4.4-S16.9] r2 card assignee has HR rights · never the employee the card is about — expected HR assignee · not the subject | actual notSelf,hr 1
+  ❌ [H4.4-S16.10] r2 only OWNER switches off autoRevokePin / revokeAppAccess — expected owner only | actual refused ok ok
+  ❌ [H4.4-S16.12] r2 offboarding checklist refused on an ACTIVE employee — expected refused | actual refused,none ok
+RESIDUE none (tenants=2 users=19)
+===== qc-hr-h4.4 ===== passed 67/79 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h4.4","total":79,"passed":67,"failed":["H4.4-S16.11","H4.4-S16.1","H4.4-S16.2","H4.4-S16.3","H4.4-S16.4","H4.4-S16.5","H4.4-S16.6","H4.4-S16.7","H4.4-S16.8","H4.4-S16.9","H4.4-S16.10","H4.4-S16.12"],"findings":[{"id":"H4.4-S16.11","sev":"MAJOR"},{"id":"H4.4-S16.1","sev":"CRITICAL"},{"id":"H4.4-S16.2","sev":"CRITICAL"},{"id":"H4.4-S16.3","sev":"CRITICAL"},{"id":"H4.4-S16.4","sev":"MAJOR"},{"id":"H4.4-S16.5","sev":"CRITICAL"},{"id":"H4.4-S16.6","sev":"CRITICAL"},{"id":"H4.4-S16.7","sev":"MAJOR"},{"id":"H4.4-S16.8","sev":"MAJOR"},{"id":"H4.4-S16.9","sev":"MAJOR"},{"id

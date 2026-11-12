@@ -349,6 +349,8 @@ const MIG1 = "prisma/migrations/20261228000001_hr_clock_break_kinds/migration.sq
 const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7"; // payroll-rules.ts (FREEZE)
 const BRAIN_SHA = "edbeb819c3e3fc7d3da28ca7513c71f3168e9d53bae29eabbbe1cd96f36a1fa8"; // rules.ts (FREEZE · workedMinutes)
 const SEAM_SHA = "e7822846d2f4d37ba732237a8cd9286d836a6ad5f3c524ef19730e2869a2f508"; // pos-seam.ts at d505755d8 (Q2: untouched)
+// ORACLE-EDIT (H4.4 r2 ruling 3, controller): pos-seam.ts may carry exactly the one marked H4.4 hunk (clockSelf requireActive) — that file's sha
+const SEAM_SHA_H44 = "9e7bc4ef89815aecd21c980bc262c7bbb4618b68d903d950ab2f25d2f2c575b8";
 const FROZEN_CLOCK = "K1=DAY_OFF:-:-|K2=ON_TIME:0:0|K3=NO_SCHEDULE:-:-"; // qc-hr-h2.1 S8.8 (legacy path, unrostered)
 const RULES_WANT = { EARLY_IN_MIN: 120, CLOSE_GRACE_MIN: 240, GEO_KEEP_DAYS: 30, PHOTO_KEEP_DAYS: 90 };
 // fixed texts (brief table)
@@ -517,7 +519,7 @@ function runStatic(): void {
     chk("S12.2", s1 === RULES_SHA && s2 === BRAIN_SHA, `${RULES_SHA.slice(0, 12)} · ${BRAIN_SHA.slice(0, 12)}`, `${s1.slice(0, 12)} · ${s2.slice(0, 12)}`);
     const seam = sha(rd(`${HRD}pos-seam.ts`));
     const idx = stripComments(rd(`${HRD}index.ts`));
-    chk("S12.3", seam === SEAM_SHA && /export\s*\{\s*onShiftToday,\s*workedMinutesBetween,\s*clockSelf,\s*adjustmentStatuses\s*\}/.test(idx), "seam sha · 4 names", seam.slice(0, 12));
+    chk("S12.3", (seam === SEAM_SHA || seam === SEAM_SHA_H44) && /export\s*\{\s*onShiftToday,\s*workedMinutesBetween,\s*clockSelf,\s*adjustmentStatuses\s*\}/.test(idx), "seam sha · 4 names", seam.slice(0, 12));
   }
 }
 

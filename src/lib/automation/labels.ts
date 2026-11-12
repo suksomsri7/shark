@@ -66,6 +66,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // HR H2.5 ▸ การเตือนลงเวลา (hr/judge.ts — ยิงครั้งเดียวต่อกะ) ◂
   { value: "hr.attendance.late", label: "เมื่อพนักงานยังไม่ลงเวลาเข้างานหลังเริ่มกะ (HR)" },
   { value: "hr.attendance.absent", label: "เมื่อพนักงานไม่มาทำงานทั้งกะโดยไม่มีใบลา (HR)" },
+  // HR H4.4 ▸ ยิงจาก hr/lifecycle.ts (ตัวกวาดรายชั่วโมง · เริ่มรายการตรวจ · สิ้นสุดการจ้าง) · consumer + สะพานการ์ดใน outbox-consumers.ts · spread เข้า WEBHOOK_EVENTS แล้ว ◂
+  { value: "hr.employee.milestone_due", label: "เมื่อพนักงานใกล้ครบทดลองงาน/สัญญา (HR)" },
+  { value: "hr.employee.checklist_started", label: "เมื่อเริ่มรายการรับเข้า/ออกจากงาน (HR)" },
+  { value: "hr.employee.offboarded", label: "เมื่อพนักงานสิ้นสุดการจ้าง (HR)" },
   { value: "hr.leave.decided", label: "เมื่อตัดสินใบลา (HR)" }, // HR H2.7 ▸ อนุมัติ · ไม่อนุมัติ/ถอน · ยกเลิกใบที่อนุมัติแล้ว — consumer no-op · spread เข้า WEBHOOK_EVENTS แล้ว ◂
   // ── ธีมกิจการ (B1 · ledger/BRANDING-RUN.md) ────────────────────────────────
   // ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับการบันทึกแถว
