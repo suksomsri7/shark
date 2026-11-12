@@ -12,6 +12,8 @@ Base bcf352f88 (session/hr) + brief r3 commits 9bed5989d…7fa22097b. Phase A = 
 - **Messages** `hr.run2.*` th = en (flat keys — `msgParity` requires string values, so warnings are `warnCapRaised` … not a nested `warn` object).
 
 ## ORACLE-EDIT
+- `scripts/qc-hr-h1.3.mts` S1.9: `HrPaySource` may carry exactly one trailing label `CARRY_FORWARD` (H3.4 `_kinds` migration); the 7 H1.3 labels stay exact and ordered.
+- `scripts/qc-hr-h1.3.mts` S6.1: `hr/payroll-run-rules.ts` ignored for the tokens `lawRowIds`/`ytdJson` only (pure calculator returns them for payroll.ts to store, R4). Phase B: payroll.ts will need a `PAY_MARKED["HR H3.4"]` count there.
 - `scripts/qc-hr-h0.1.mts` S4.2 `SCHEMA_SHA` 97a2390d… → 3ff49315… (payroll.prisma after the additive H3.4 schema). H3.2 will also move this pin — expect a merge conflict on that one line; re-take the sha of the merged file.
 
 ## Vector check (my arithmetic vs fixture)
@@ -29,3 +31,6 @@ All 72 vectors + 5 OTN vectors reproduce from the design formulae with no tuning
 
 ## Left for phase B (needs H3.2 or builds on it)
 createPayrollRunV2 / recomputeDraftRun v2 / approve v2 (maker-checker, INPUTS_CHANGED, carry rows) / reverse CARRY_BOUND / previewPayrollRunV2 / confirmBranchHours / holidayWorkPricedInTx + `ot.ts` settlement hunks (N frozen in basisJson, subtract run-priced minutes) / setAdjustmentConsent / `hr/index.ts` exports / `payroll-run-ui.tsx` + page + engine card + inventory rows / S7 H3.2 gates. Note for phase B: the v1 duplicate text literal must stay only inside `createPayrollRun` (qc-hr-h0.1 S4.1 counts it) — the v2 create must build it from the same constant without repeating the template literal.
+
+## Suites (phase A head, lane DB wo-hr-qc-l3, forced)
+qc-hr-h3.4 32/58 (all S1.2–S1.6 · S1.8 · S2.* · S3.* · S4.1 · S4.17 · S7.1/S7.2 n/a · S8.1/S8.2 · X12.1 · Z1 green; RED-by-phase: S1.1 (UI file) · S1.7 (dispatch + ot.ts/index.ts hunks) · S1.9 (UI) · S1.10 (holidayWorkPricedInTx) · S4.2 v2 half · S4.3–S4.16 · S5.* · S6.*) · seed-hr-qc 33/33 · qc-hr-h3.3 51/51 · qc-hr-h1.3 63/63 (after the 2 ORACLE-EDITs) · qc-hr-h0.1 67/67 · qc-hr-h2.9 58/58 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-hf-hr-privacy 194/194 (F1-10 needs the literal `assertHrCan(auth, "hr.payadjust.approve")` in decideAdjustmentAction — kept as if/else) · fitness + fitness-hr env/noenv exit 0.
