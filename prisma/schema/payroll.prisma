@@ -16,6 +16,7 @@ enum HrPayItemKind {
   ALLOWANCE // เบี้ยเลี้ยง/ค่าเดินทาง
   DEDUCTION // หักเงิน (มาสาย/ขาดงาน/ค่าเสียหาย)
   ADVANCE // เบิกล่วงหน้า (หักคืน)
+  REFUND // HR H3.4 ▸ คืนเงินรายการหัก (ไม่ใช่เงินได้ 40(1) · ไม่ใช่ค่าจ้าง ปสส.) — ร้านที่เปิดเครื่องรุ่น 2 เท่านั้น ◂
 }
 
 enum HrPayItemStatus {
@@ -54,6 +55,9 @@ model HrPayAdjustment {
   //   กติกาผู้อ่าน (H2.9+): แหล่งของรายการ = sourceType ?? (crmCommissionId ? CRM_COMMISSION : MANUAL) ◂
   sourceType    HrPaySource?
   sourceRef     String?
+  // HR H3.4 ▸ หนังสือยินยอมให้หัก (ม.77) — มีแล้วจึงหักเกินเพดานตามกฎหมายได้ถึงค่าตั้งของร้าน · เก็บแค่ว่ามี ไม่เก็บไฟล์ (PDPA) ◂
+  consentAt     DateTime?
+  consentById   String?
 
   @@index([systemId, periodKey, status])
   @@index([systemId, employeeId])
@@ -120,6 +124,9 @@ model HrPayrollRun {
   approvedAt             DateTime?
   bankFileKey            String?
   filingJson             Json?
+  // HR H3.4 ▸ ขั้นยืนยันชั่วโมงของสาขา (ไม่บังคับ) · ลายนิ้วมือข้อมูลตอนสร้าง/สร้างใหม่ของรอบรุ่น 2 (อนุมัติเทียบ — INPUTS_CHANGED) ◂
+  stepsJson              Json?
+  inputDigest            String?
 
   items HrPayrollItem[]
 
@@ -213,6 +220,7 @@ enum HrPaySource {
   LATE_RULE
   ABSENT_RULE
   INVENTORY_ISSUE
+  CARRY_FORWARD // HR H3.4 ▸ ยอดหักที่ยกจากงวดก่อน (sourceRef "cf:<runId>:<employeeId>:<ADVANCE|DAMAGES|OVERPAY>") ◂
 }
 
 // HR H1.3 ▸ นาทีทำงานต่อวันต่อชนิด (snapshot ที่รอบจ่ายใช้) — H3.1 เขียน · H1.3 ว่าง
