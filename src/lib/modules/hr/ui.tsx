@@ -45,6 +45,8 @@ import { myOtRequests, otRequestList, type OtViewer } from "./ot"; // HR H2.9 �
 import type { OtItem } from "./ot-rules"; // HR H2.9 ◂
 import { OtRequestForm, OtRowActions } from "./ot-ui"; // HR H2.9 ◂
 import { formatBaht } from "@/lib/ui/money"; // HR H2.9 ◂
+import { hrNavFilter, type HrNavViewer } from "./nav"; // HR H2.10 ▸ แท็บตามผู้ดู ◂
+import { employeeOfUser } from "./service"; // HR H2.10 ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -93,6 +95,19 @@ export function hrTabs(systemId: string): { href: string; label: string }[] {
     { href: `${s}/hr/settings`, label: "ตั้งค่า" }, // HR H2.2 ▸ หนี้ D9: แท็บตั้งค่าให้ตรง layout.tsx (หน้ากันสิทธิ์เอง) ◂
     { href: `${s}/hr/settings/law`, label: "ตารางกฎหมาย" }, // HR H3.3 r3 ▸ ตรงกับ layout.tsx (อ่านอย่างเดียว · หน้ากันสิทธิ์เอง) ◂
   ];
+}
+
+// HR H2.10 ▸ แท็บที่ผู้ดูเปิดได้จริง (หนี้ VIS-1: แท็บที่กดแล้ว 404 ไม่แสดง) + "ของฉัน" เมื่อบัญชีผูกกับพนักงาน — hrTabs ข้างบนคงเดิม (ทะเบียนชุดเดียวกับ layout.tsx)
+//   ไม่ส่ง viewer/linked = อ่านจากเซสชันเอง (requireTenant + employeeOfUser) ◂
+export async function hrTabsFor(systemId: string, viewer?: HrNavViewer, linked?: boolean): Promise<{ href: string; label: string }[]> {
+  let v = viewer;
+  let l = linked;
+  if (!v || l === undefined) {
+    const auth = await requireTenant();
+    v ??= { role: auth.active.role, unitAccess: auth.active.unitAccess, permissions: auth.active.permissions, userId: auth.user.id };
+    l ??= (await employeeOfUser(auth.active.tenantId, auth.user.id)) !== null;
+  }
+  return hrNavFilter(hrTabs(systemId), v, { linked: l });
 }
 
 // ───────────── ลงเวลา (attendance) ─────────────
@@ -717,7 +732,8 @@ export async function HrHub({ systemId }: { systemId: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <ModuleTabs items={hrTabs(systemId)} />
+      {/* HR H2.10 ▸ แท็บตามผู้ดู ◂ */}
+      <ModuleTabs items={await hrTabsFor(systemId)} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards.map((c) => (
           <Link

@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation"; // HR H2.10 ▸ redirect โปรไฟล์ของตัวเอง ◂
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { hrTabs } from "@/lib/modules/hr/ui";
+import { hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂
 // HF-HR-0 (D4): ด่านสิทธิ์ + DTO รายช่อง — ห้ามส่งแถว HrEmployee ดิบให้ client component
 import { hrViewerOf, loadEmployeeProfileForViewer } from "@/lib/modules/hr/privacy";
 import { hrScopeOf, isAllBranches, unitsForScope } from "@/lib/modules/hr/scope"; // HR H1.1 ▸ ตัวเลือกสาขาประจำตามขอบเขตผู้แก้ ◂
@@ -15,7 +15,7 @@ import { Section } from "@/components/ui/Section";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { ModuleTabs } from "@/components/module-tabs";
 // HR H4.4 ▸ วงจรพนักงาน (แถบทดลองงาน · รายการรับเข้า/ออก · บันทึก · สิ้นสุดการจ้าง) — DTO ของ lifecycle.ts เท่านั้น ◂
-import { loadLifecycleForViewer } from "@/lib/modules/hr/lifecycle";
+import { isLinkedTo, loadLifecycleForViewer } from "@/lib/modules/hr/lifecycle"; // HR H2.10 ▸ isLinkedTo ◂
 import { LifecycleBanner, LifecycleMsg, LifecycleProfile } from "@/lib/modules/hr/lifecycle-ui";
 
 // หน้าโปรไฟล์พนักงาน 1 คน (ข้อ 8) — ข้อมูลเต็มรูปแบบ + เอกสารแนบ
@@ -50,6 +50,8 @@ export default async function HrEmployeeProfilePage({
     hrViewerOf(auth),
     employeeId,
   );
+  // HR H2.10 ▸ พนักงานเปิดโปรไฟล์ของตัวเองแต่ไม่มีสิทธิ์ดูโปรไฟล์ ⇒ ไปหน้า "ฉัน" ของบริการตัวเอง (หนี้ D-VIS1-selfprofile) · คนอื่น = 404 เหมือนเดิม ◂
+  if (!view && (await isLinkedTo({ tenantId: auth.active.tenantId, systemId: id }, auth.user.id, employeeId))) redirect("/app/me/hr/profile");
   if (!view) notFound();
   const emp = view.profile;
   const docs = view.docs;
@@ -68,7 +70,8 @@ export default async function HrEmployeeProfilePage({
         desc={[emp.position, emp.department].filter(Boolean).join(" · ") || "ข้อมูลพนักงาน"}
         back={{ href: `/app/sys/${id}/hr/employees`, label: "พนักงานทั้งหมด" }}
       />
-      <ModuleTabs items={hrTabs(id)} />
+      {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
+      <ModuleTabs items={await hrTabsFor(id)} />
       <LifecycleMsg code={typeof lifeCode === "string" ? lifeCode : undefined} />
       {/* VIS-1 B2 ▸ แถบทดลองงาน/สัญญา/สิ้นสุด อยู่บนสุดของโปรไฟล์ (ภาพ 02) ◂ */}
       <LifecycleBanner systemId={id} employeeId={emp.id} life={life} active={emp.active} />

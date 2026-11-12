@@ -5,7 +5,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { formatThaiDate, thaiDateKey } from "@/lib/ui/date";
-import { hrTabs } from "@/lib/modules/hr/ui";
+import { hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
 // HR H1.2 ▸ ตัวกันของหน้า (F16.3) = ขอบเขตสาขาจาก hr/scope — รายการ/ตัวเลือกสาขาตามขอบเขตของผู้ดู ◂
 import { hrScopeOf, isAllBranches, unitsForScope } from "@/lib/modules/hr/scope";
@@ -154,7 +154,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   return (
     <div className="flex max-w-2xl flex-col gap-5" data-testid="hr-settings-page">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
-      <ModuleTabs items={hrTabs(id)} />
+      {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
+      <ModuleTabs items={await hrTabsFor(id)} />
       {/* HR H3.3 ▸ ทางเข้าหน้าตารางกฎหมาย (อ่านอย่างเดียว · ภาพ 08 แท็บ "ตารางกฎหมาย") ◂ */}
       <Link href={`/app/sys/${id}/hr/settings/law`} className="card flex min-h-[44px] flex-col gap-1 p-3 hover:bg-[color:var(--color-surface-2)]" data-testid="hr-settings-law-link">
         <span className="text-sm font-medium">{tLaw("settingsLink")}</span>

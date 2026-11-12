@@ -3,7 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { HrAttendanceSection, hrTabs } from "@/lib/modules/hr/ui";
+import { HrAttendanceSection, hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
 // HR H2.5 ▸ ตัวกันของหน้า (F16.3) = ขอบเขตสาขาจาก hr/scope + ตัวโหลดที่คืน null ให้คนที่ไม่ใช่ผู้อ่านตารางกะ ◂
 import { hrScopeOf, unitWhere } from "@/lib/modules/hr/scope";
@@ -108,10 +108,12 @@ export default async function HrAttendancePage({ params, searchParams }: { param
   );
   // ◂ HR H2.6
 
+  const hrTabItems = await hrTabsFor(id); // HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂
   const header = (title: string) => (
     <>
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={title} />
-      <ModuleTabs items={hrTabs(id)} />
+      {/* HR H2.10 ▸ แท็บตามผู้ดู ◂ */}
+      <ModuleTabs items={hrTabItems} />
     </>
   );
 
