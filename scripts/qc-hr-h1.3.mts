@@ -799,7 +799,6 @@ function runStatic(): void {
     //   only the HrWorkEntry/hrWorkEntry tokens are ignored there; every other S6.1 token still counts
     const WE_FILES = new Set(["src/lib/modules/hr/work-entries.ts", "src/lib/modules/hr/work-entries-rules.ts"]);
     const WE_OK = /^(HrWorkEntry|hrWorkEntry)$/;
-    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t))).length;
     // ORACLE-EDIT (controller 12 Nov · H4.6 Q15 + H2.9, narrowed by the law.ts ruling): designed sourceRef writers — only that token is ignored there:
     //   hr/stock-charge.ts ("hrstock:<key>") · hr/ot.ts (OT_REQUEST; OT law rows go through hr/law.ts#loadOtLawRows, so HrLawTable stays ratcheted)
     const STOCK_OK = /^sourceRef$/;

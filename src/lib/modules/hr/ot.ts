@@ -459,7 +459,7 @@ async function measure(tx: Tx, ctx: Ctx, r: OtRow, now: Date): Promise<Entitleme
   if (!basis) {
     const p = await tx.hrSalaryProfile.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: r.employeeId }, select: { payType: true, baseSalarySatang: true, dailyRateSatang: true, hourlyRateSatang: true, otHourlyRateSatang: true } });
     if (!p) return { kind: "wait", code: "NO_RATE" };
-    const law = otLawOf(await loadOtLawRows(best.day, tx), best.day);
+    const law = otLawOf(await loadOtLawRows(best.day, tx as unknown as Parameters<typeof loadOtLawRows>[1]), best.day); // HR H3.1 ▸ cast: schema growth (HrWorkDay + HrStockCharge) makes TS2859 "excessive complexity" on TransactionClient → LawDb · same object, no behaviour change ◂
     if (!law.ok) return { kind: "wait", code: "LAW" };
     basis = { payType: p.payType, baseSalarySatang: p.baseSalarySatang, dailyRateSatang: p.dailyRateSatang, hourlyRateSatang: p.hourlyRateSatang, otHourlyRateSatang: p.otHourlyRateSatang, law: law.law, lawRowId: law.lawRowId };
   }

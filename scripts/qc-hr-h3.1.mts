@@ -296,7 +296,7 @@ function runStatic(): void {
     const dirs = readdirSync(join(ROOT, "prisma/migrations")).filter((d) => /^\d{14}_/.test(d)).sort();
     const r = {
       file: !!mig,
-      last: dirs.includes("20270103000000_hr_work_days") && (IN_BASE || !dirs.some((d) => d > "20270103000000_hr_work_days" && /_hr_/.test(d))), // ORACLE-EDIT: ordering n/a once in base
+      last: dirs.includes("20270103000000_hr_work_days") && (IN_BASE || !dirs.some((d) => d > "20270103000000_hr_work_days" && /_hr_/.test(d) && !pathInBase(`prisma/migrations/${d}/migration.sql`, BASE))), // ORACLE-EDIT: ordering n/a once in base · ORACLE-EDIT (merge 847d37bf3): later HR folders that arrived through the base (H4.6 20270104) are not this WO's
       cls: /CREATE TYPE "HrWorkDayClass" AS ENUM \('WORKDAY',\s*'DAY_OFF',\s*'HOLIDAY',\s*'UNSCHEDULED'\)/.test(mig),
       st: /CREATE TYPE "HrWorkDayStatus" AS ENUM \('WORKED',\s*'LEAVE',\s*'ABSENT',\s*'DAY_OFF',\s*'HOLIDAY',\s*'UNSCHEDULED',\s*'PENDING'\)/.test(mig),
       additive: !!mig && !/DROP |RENAME |ALTER TYPE/i.test(mig),
