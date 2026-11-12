@@ -940,3 +940,44 @@ export async function notifyAttendanceAlert(evt: AlertEvent): Promise<void> {
   }, TX_OPTS);
 }
 
+// HR H2.9 ▸ ตัวอ่านของการจ่าย OT (hr/ot.ts#settle) — แถว HrAttendanceDay ที่บันทึกของวันที่ส่งมา + stale/กำพร้า (กติกาเดียวกับหน้าจอ: isStale · hasOrphan) +
+//   ช่องสดที่ยังไม่บันทึก · ผู้เรียกถือล็อกงวด hr:payroll:run:<ระบบ>:<งวด> แล้ว hr:judge:<dayId> ของทุกแถวก่อนเรียก และส่ง tx ของตัวเอง (ทุกคำสั่งใช้ tx นี้) ·
+//   from = เวลาเลิกกะของแถว (มีกะ) หรือเวลาเข้า (ไม่มีกะ) · outAt = เวลาออกของแถว (outMissing = แถวชี้เวลาออกที่ถูกลบไปแล้ว) · ไม่แก้แถวใด ไม่ยิง event
+export type OtPayStoredRow = { id: string; day: string; slotKey: string; status: string; otMin: number; version: number; hasShift: boolean; holidayId: string | null; unitId: string | null; from: Date | null; outAt: Date | null; outMissing: boolean; stale: boolean };
+export type OtPayDays = { rows: OtPayStoredRow[]; pending: { day: string; slotKey: string; final: boolean }[] };
+export async function otPayDaysInTx(tx: Db, ctx: Ctx, employeeId: string, days: string[], now: Date): Promise<OtPayDays> {
+  const emp = (await employeesOf(tx, ctx, { id: employeeId }))[0];
+  const want = [...new Set(days.filter(isDay))].sort();
+  if (!emp || !want.length) return { rows: [], pending: [] };
+  const data = await loadData(tx, ctx, [emp.id], want[0]!, want[want.length - 1]!);
+  const live = slotsOf(emp, want, data, now);
+  const stored = (await tx.hrAttendanceDay.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, date: { in: want.map(dbDate) } },
+    select: { ...DAY_SELECT, startMin: true, endMin: true, crossesMidnight: true, holidayId: true, inAttendanceId: true, outAttendanceId: true },
+    orderBy: [{ date: "asc" }, { id: "asc" }],
+  })) as (DayRow & { startMin: number | null; endMin: number | null; crossesMidnight: boolean | null; holidayId: string | null; inAttendanceId: string | null; outAttendanceId: string | null })[];
+  const evIds = [...new Set(stored.flatMap((r) => [r.inAttendanceId, r.outAttendanceId]).filter((x): x is string => !!x))];
+  const evAt = new Map(
+    (evIds.length ? await tx.hrAttendance.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: evIds } }, select: { id: true, at: true } }) : []).map((e) => [e.id, e.at] as const),
+  );
+  const rows: OtPayStoredRow[] = stored.map((r) => {
+    const day = dayOf(r.date);
+    const liveDay = live.get(day) ?? [];
+    const slot = liveDay.find((x) => x.slotKey === r.slotKey) ?? null;
+    const orphan = hasOrphan(liveDay, stored.filter((x) => dayOf(x.date) === day));
+    const hasShift = r.startMin !== null && r.endMin !== null;
+    let from: Date | null = r.inAttendanceId ? (evAt.get(r.inAttendanceId) ?? null) : null;
+    if (hasShift) {
+      try {
+        from = shiftWindow(day, { startMin: r.startMin!, endMin: r.endMin!, crossesMidnight: !!r.crossesMidnight }).end;
+      } catch {
+        from = null;
+      }
+    }
+    const outMissing = !!r.outAttendanceId && !evAt.has(r.outAttendanceId);
+    return { id: r.id, day, slotKey: r.slotKey, status: r.status, otMin: r.otMin, version: r.version, hasShift, holidayId: r.holidayId, unitId: r.unitId, from, outAt: r.outAttendanceId ? (evAt.get(r.outAttendanceId) ?? null) : null, outMissing, stale: orphan || isStale(slot, r) };
+  });
+  const pending = want.flatMap((day) => (live.get(day) ?? []).filter((s) => !stored.some((r) => dayOf(r.date) === day && r.slotKey === s.slotKey)).map((s) => ({ day, slotKey: s.slotKey, final: s.out.final })));
+  return { rows, pending };
+}
+// ◂ HR H2.9
