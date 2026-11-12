@@ -9,9 +9,9 @@
 
 ## 1. อ่านตามลำดับ (ครั้งเดียวต่อ session)
 1. `ledger/TRIPS-MASTER-PLAN.md` ทั้งไฟล์ (§2 มติเทคนิค 14 ข้อ · §3 ใบงาน 72 ใบ · §4 ลำดับ/หมุด · §7 ของที่รอเจ้าของ)
-2. `ledger/DESIGN-TRIPS-AGENCY.md` ทั้งไฟล์ รวมตาราง "มติเจ้าของ รอบ 1–5" ท้ายไฟล์ §12 (วิเคราะห์รอบ 2) และ §13 (ผลตรวจกฎหมาย L1–L15)
+2. `ledger/DESIGN-TRIPS-AGENCY.md` ทั้งไฟล์ รวมตาราง "มติเจ้าของ รอบ 1–5" ท้ายไฟล์ §12 (วิเคราะห์รอบ 2) และ §13 + §13.1 (ผลตรวจกฎหมาย 2 รอบ)
 3. `ledger/design-trips/README.md` + เปิดภาพ 01–15 ดูเองทุกภาพ (ภาพคือสัญญาของหน้าจอ — `feedback_ui_must_match_approved_mockups`)
-4. `ledger/LEGAL-TRIPS-TH.md` §0 + §8 + §9
+4. `ledger/LEGAL-TRIPS-TH.md` หัว "รอบ 2" + §9–§11 · และเรียก skill `shark-thai-law` ทุกครั้งที่ใบงานแตะภาษี/เอกสารเงิน/คืนเงิน/ข้อมูลส่วนบุคคล
 5. `ledger/SVC-CORE-CONTRACT.md` (ค่าตั้งแบบชั้น · policySnapshot · ศูนย์เชื่อมต่อ · PaymentSlip · notifyCustomer)
 6. `ledger/SVC-RUN.md` §1 กติกาเหล็ก + §2 วิธีทำต่อใบ — ใช้กับ RUN นี้ทั้งหมด
 7. โค้ดที่ต้องรู้จักก่อน P0.3: `prisma/schema/ticket.prisma` · `hotel.prisma` (RatePlan · Folio · Channel*) · `src/lib/core/settings/` · `src/lib/modules/rooms/` · โมดูล POS ส่วนมัดจำ
