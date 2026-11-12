@@ -122,6 +122,7 @@ S8.16|fix2|C|R|[db] ORACLE-EDIT (fix r2 F2): in-force interval opens at the curr
 S8.17|fix2|C|R|[db] ORACLE-EDIT (fix r2 F3): run member without work hours passes the gate (a) · base → 0 ⇒ sync supersedes the approved row and the gate clears (b)
 S8.18|fix2|C|R|[db] ORACLE-EDIT (fix r2 F4): sync ∥ OFF ×4 ⇒ no PENDING and no live header (behavioural)
 S8.19|fix3|C|R|[db] ORACLE-EDIT (fix r3 N1): rule on · late 30 never pulled ⇒ approve(Aug) refused · pull + sync + approve ⇒ settled 3,125 (also with sync before pull)
+S8.20|fix3|C|R|[db] ORACLE-EDIT (fix r3 · H2.11 merge): inbox decideAdjustmentAs on an attendance row goes through the H3.2 gate (stale refused · re-synced row approves)
 S9.1|R10|C|R|[db] preview viewer matrix (money keys payroll only)
 S9.2|R10|C|R|[db] preview literals (eL · eF · eH)
 S9.3|R10|C|R|[db] lines reader: payroll literal · others identical bytes
@@ -473,7 +474,7 @@ async function runDb(): Promise<void> {
   };
   const SC = { G: await mkScen("G"), F: await mkScen("F"), H: await mkScen("H"), I: await mkScen("I"), J: await mkScen("J"), K: await mkScen("K") };
   // ORACLE-EDIT (fix r2) ▸ scenarios S8.15–S8.18 (rule NOT switched on in the S8.8 loop) · P1 has a 2nd employee with a salary but no roster/time ◂
-  const SC3 = { R: await mkScen("R"), S: await mkScen("S") }; // ORACLE-EDIT (fix r3) ◂ S8.19
+  const SC3 = { R: await mkScen("R"), S: await mkScen("S"), T: await mkScen("T") }; // ORACLE-EDIT (fix r3) ◂ S8.19
   const SC2 = { N: await mkScen("N"), O: await mkScen("O"), P1: await mkScen("P1"), P2: await mkScen("P2"), Q0: await mkScen("Q0"), Q1: await mkScen("Q1"), Q2: await mkScen("Q2"), Q3: await mkScen("Q3") };
   const eP1b = await me(SC2.P1.s, "พนักงาน P1b", { unitId: u1 });
   nameOf[eP1b] = "eP1b";
@@ -1027,6 +1028,24 @@ async function runDb(): Promise<void> {
         res.push(`${key}:${s0 ? `${shown(s0)}/${codes(s0, "wait")} ` : ""}${short(ap1, 40)} ${shown(s1)} ${short(ap2, 20)} ${short(ap3, 20)} settled=${set}`);
       }
       ck("S8.19", { both: all }, "never-pulled month refused · settled 3,125", res.join(" | "));
+    }
+    // S8.20 — H2.11 inbox: decideAdjustmentAs → decideAdjustment ⇒ same H3.2 lock + stale gate as the payroll page
+    {
+      const x = SC3.T;
+      const asInbox = (id: string | undefined) => (typeof pay.decideAdjustmentAs === "function" ? pay.decideAdjustmentAs(x.c, Vw.owner, id ?? "∅", "APPROVED").catch((e: unknown) => ({ ok: false, reason: errText(e) })) : Promise.resolve({ ok: false, reason: "∅decideAdjustmentAs" }));
+      await savePol(x.c, Vw.owner, { enabled: true });
+      await build(x.c);
+      await sync(x.c, Vw.owner);
+      const d0 = await firstDed(x.s);
+      await corr(x, "09:10");
+      const a1 = await asInbox(d0?.id);
+      const st1 = (await P.hrPayAdjustment.findUnique({ where: { id: d0?.id ?? "∅" } }))?.status;
+      await build(x.c);
+      const s1 = await sync(x.c, Vw.owner);
+      const q = await pendOf(x.s);
+      const a2 = await asInbox(q?.id);
+      const st2 = (await P.hrPayAdjustment.findUnique({ where: { id: q?.id ?? "∅" } }))?.status;
+      ck("S8.20", { stale: a1?.ok === false && a1?.reason === T.stale && st1 === "PENDING", resync: s1.ok && s1.value?.rejected === 1 && q?.amountSatang === 1041, ok: a2?.ok === true && st2 === "APPROVED" }, "inbox = same gate", `${short(a1, 60)} ${st1} ${shown(s1)} ${short(a2, 30)} ${st2}`);
     }
   }
 }
