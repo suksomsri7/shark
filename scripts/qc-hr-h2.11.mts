@@ -242,9 +242,11 @@ function runStatic(): void {
   {
     const own = /HR H2\.11/;
     const marked = (h: { added: string[] }) => h.added.some((l) => own.test(l) || MARK_OTHER.test(l));
-    const addOnly = [F.leave, F.payroll].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => h.removed.length > 0 || !marked(h)).map(() => f));
-    const markOnly = [F.corr, F.hrui, F.layout].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => !marked(h)).map(() => f));
-    ck("S13.2", { addOnly: addOnly.length === 0, marked: markOnly.length === 0 }, "marked hunks", `${[...new Set([...addOnly, ...markOnly])].join(",") || "-"}`);
+    // ORACLE-EDIT (H2.12 sweep): add-only / marked-hunk rules describe H2.11's own diff — n/a once H2.11 (inbox.ts) is in the base (later WOs / main syncs change these files)
+    const inBase = pathInBase(F.inbox, BASE);
+    const addOnly = inBase ? [] : [F.leave, F.payroll].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => h.removed.length > 0 || !marked(h)).map(() => f));
+    const markOnly = inBase ? [] : [F.corr, F.hrui, F.layout].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => !marked(h)).map(() => f));
+    ck("S13.2", { addOnly: addOnly.length === 0, marked: markOnly.length === 0 }, "marked hunks", inBase ? "n/a · H2.11 in base" : `${[...new Set([...addOnly, ...markOnly])].join(",") || "-"}`);
   }
   {
     const hub = stripComments(rd(F.hrui));
