@@ -140,6 +140,45 @@ const skip = (id: string, name: string, why: string, sev: Sev = "CRITICAL") => r
 const read = (rel: string) => (existsSync(join(ROOT, rel)) ? readFileSync(join(ROOT, rel), "utf8") : "");
 const has = (rel: string) => existsSync(join(ROOT, rel));
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
+// ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): "add-only" checks of this WO now also see removals that come from the release itself,
+//   not from this WO. Only these EXPLICIT cases are forgiven (every other removed line still fails):
+//   · hotel/booking.ts — the H.3 POS sale hunks moved to hotel/booking-sale.ts (POS CD2 · 22674fe7e): a removed hunk is forgiven only if it
+//     contains createSale/sellFor( or is exactly the callerTx / pos-service import, AND booking.ts no longer calls createSale and imports ./booking-sale
+//   · outbox-consumers.ts — the H.7 (hotel.audit.*) and H.10 (channel.*) `baseConsumers[...] =` blocks moved INTO the baseConsumers object
+//     (1e27b67b7): forgiven only while those keys are registered inside the object, and only the moved lines/comments of those two blocks
+//   · platform/minute-jobs.ts — the 5 lines SEC S3a.1-S1 (on main) replaced · core/settings/defs/rooms.ts — the 1 autoClose helpTh line of fda23269c
+const relUnlisted = (rel: string, diffU0: string): string[] => {
+  const cur = read(rel);
+  const hunks = diffU0.split(/^@@.*$/m).slice(1).map((h) => h.split("\n").filter((l) => /^-(?!--)/.test(l) && l.slice(1).trim() !== ""));
+  const all = hunks.flat();
+  if (rel.endsWith("modules/hotel/booking.ts")) {
+    const moved = !/\bcreateSale\s*\(/.test(stripComments(cur)) && /from\s+"\.\/booking-sale"/.test(cur);
+    const imp = (l: string) => /^-import \{ callerTx \} from "@\/lib\/core\/caller-tx";$/.test(l) || /^-import \* as pos from "@\/lib\/modules\/pos\/service";$/.test(l);
+    return hunks.filter((h) => !(moved && (h.every(imp) || /createSale|sellFor\(/.test(h.join("\n"))))).flat();
+  }
+  if (rel.endsWith("lib/outbox-consumers.ts")) {
+    const KEYS = ["hotel.audit.closed", "hotel.audit.reopened", "channel.ari.dirty", "channel.ari.pushed", "channel.ari.failed", "channel.reservation.received", "channel.reservation.applied", "channel.reservation.needs_room", "channel.reservation.rejected", "channel.reservation.cancelled"];
+    const inObj = KEYS.every((k) => new RegExp(`^\\s+"${k.replace(/\./g, "\\.")}":\\s*withAutomation\\(`, "m").test(cur));
+    const a = cur.indexOf("// SVC H.7 ▸ ปิดวันโรงแรม"); const b = cur.indexOf("// ◂ SVC H.10", a);
+    const block = new Set((a >= 0 && b > a ? cur.slice(a, b) : "").split("\n").map((l) => l.trim()).filter(Boolean));
+    return all.filter((l) => {
+      const t = l.slice(1).trim();
+      return !(inObj && (/^baseConsumers\[("(hotel\.audit\.(closed|reopened)|channel\.(ari|reservation)\.[a-z_]+)"|t)\]\s*=\s*withAutomation\(/.test(t)
+        || /^for \(const t of \["channel\.ari\.pushed"/.test(t) || /^\}\)?;?$/.test(t) || block.has(t)
+        || /^\/\/\s+("channel\.ari\.dirty" = งานหลัก|event แจ้งผล \(งานหลัก no-op)/.test(t)));
+    });
+  }
+  const once = (pats: RegExp[], gate: boolean) => { const left = [...pats]; return all.filter((l) => { const t = l.slice(1).trim(); const i = gate ? left.findIndex((p) => p.test(t)) : -1; if (i < 0) return true; left.splice(i, 1); return false; }); };
+  if (rel.endsWith("platform/minute-jobs.ts")) return once([
+    /^const deadline = Date\.now\(\) \+ \(perJob \? WINDOW_CADENCE_WALL_MS : MINUTE_JOB_BUDGET_MS\);$/,
+    /^const jobDeadline = perJob \? Math\.min\(Date\.now\(\) \+ MINUTE_JOB_BUDGET_MS, deadline\) : deadline;$/,
+    /^await logOps\("WARN", OPS_SOURCE, opsMessage\(job\.name, "cut off"\), \{$/,
+    /^detail: `cut off by the dispatcher after \$\{Date\.now\(\) - startedAt\} ms/,
+    /^\}\);$/,
+  ], /SEC S3a\.1-S1/.test(cur));
+  if (rel.endsWith("settings/defs/rooms.ts")) return once([/^helpTh: "เปิด = ระบบปิดวันให้เองตามเวลา night audit · ปิด = ผู้จัดการต้องกดปิดวันเองที่หน้า/], true);
+  return all;
+};
 const THAI = /[฀-๿]/;
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const tryImport = async (spec: string): Promise<{ mod: Any; err: string }> => { try { return { mod: await import(spec), err: "" }; } catch (e) { return { mod: null, err: errMsg(e) }; } };
@@ -329,6 +368,8 @@ const compFiles = (): string[] => { try { return readdirSync(join(ROOT, F.compDi
 const intPageFiles = (): string[] => { try { return readdirSync(join(ROOT, F.intPage)).filter((f) => /\.tsx?$/.test(f)).map((f) => `${F.intPage}/${f}`); } catch { return []; } };
 const gitX = (args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const removedLines = (rel: string): string[] => { try { return gitX(["diff", "-U0", DIFF_BASE, "--", rel]).split("\n").filter((l) => /^-(?!--)/.test(l) && l.slice(1).trim() !== ""); } catch { return ["(git diff ล้ม)"]; } };
+// ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): removedLines minus the explicit release allowlist (relUnlisted) — used by U-8 (booking.ts) and U-10 (defs/minute/consumers)
+const removedUnlisted = (rel: string): string[] => { try { return relUnlisted(rel, gitX(["diff", "-U0", DIFF_BASE, "--", rel])); } catch { return ["(git diff ล้ม)"]; } };
 const addedLines = (rel: string): string[] => { try { return gitX(["diff", "-U0", DIFF_BASE, "--", rel]).split("\n").filter((l) => /^\+(?!\+\+)/.test(l) && l.slice(1).trim() !== "").map((l) => l.slice(1)); } catch { return []; } };
 
 console.log(`\n(ฐาน ${process.env.SVC_QC_HOST ?? "?"} · ตัวดักคิวรี ${spyInstalled ? "ติดตั้งแล้ว" : "ไม่ได้ติดตั้ง"} · ตาราง OTA ${H0_OK ? "ครบ" : `ยังไม่ครบ (${H0_WHY})`} · กุญแจตัวต่อ ${KEY_SOURCE} · hotel/channel ${chL.mod ? "โหลดได้" : "ยังไม่มี"})`);
@@ -1357,7 +1398,7 @@ try {
   });
   await st("U-8", "§9.6 booking.ts เพิ่มอย่างเดียว (เทียบฐาน BASE_SHA): ไม่มีบรรทัดลบ · มี internal.channel {connectionId, grossSatang, commissionSatang, netSatang, prepaidByChannel} · cancelBooking รับ by CHANNEL + CHANNEL_CANCELLED · export เดิมครบ", () => {
     needCh();
-    eq(removedLines(F.booking).slice(0, 5), [], "booking.ts ลบบรรทัด");
+    eq(removedUnlisted(F.booking).slice(0, 5), [], "booking.ts ลบบรรทัด"); // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): release allowlist (relUnlisted)
     const b = stripComments(read(F.booking));
     ok(/channel\??\s*:\s*\{[\s\S]{0,400}connectionId[\s\S]{0,400}prepaidByChannel/.test(b), "ไม่มี internal.channel");
     ok(/["']CHANNEL["']/.test(b) && /CHANNEL_CANCELLED/.test(b), "ไม่มี by CHANNEL / CHANNEL_CANCELLED");
@@ -1379,7 +1420,7 @@ try {
   await st("U-10", "ค่าตั้ง/ทะเบียนเพิ่มอย่างเดียว: defs/rooms.ts (ariHorizonDays ท้าย · ไม่ลบ) · minute-jobs.ts · outbox-consumers.ts · automation/webhooks labels · hotel/index.ts · actions.ts · registry.ts — ไม่มีบรรทัดลบ · permissions.ts ลบได้เฉพาะ \"hotel.channel.manage\" ใน planned · integrations/types.ts ลบได้เฉพาะใน ChannelManagerAdapter · fake.ts ลบได้เฉพาะบล็อก CHANNEL_MANAGER", () => {
     needCh();
     const bad: string[] = [];
-    for (const f of [F.defs, F.minute, F.consumers, F.autoLabels, F.whLabels, F.index, F.hotelActions, F.intRegistry]) { const n = removedLines(f).length; if (n) bad.push(`${f} ลบ ${n}`); }
+    for (const f of [F.defs, F.minute, F.consumers, F.autoLabels, F.whLabels, F.index, F.hotelActions, F.intRegistry]) { const n = removedUnlisted(f).length; if (n) bad.push(`${f} ลบ ${n}`); } // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): release allowlist (relUnlisted)
     const pr = removedLines(F.perms).filter((l) => !/^\-\s*"hotel\.channel\.manage",?\s*$/.test(l));
     if (pr.length) bad.push(`permissions ลบนอกใบ: ${pr[0].slice(0, 80)}`);
     const tr = removedLines(F.intTypes).filter((l) => !/pushAri|pullReservations|ackReservation|^\-\s*test\(opts\?: CallOpts\)/.test(l));
