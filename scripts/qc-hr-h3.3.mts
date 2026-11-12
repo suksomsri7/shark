@@ -88,6 +88,12 @@ const CHECKS: Def[] = [
   D("S8.3", "R4", C, "RED", "[db] tenantDb(ctx).hrLawTable: create/createMany/update/updateMany/upsert/delete/deleteMany all throw · count/findMany work"),
   D("S8.4", "R4", C, "RED", "[db] platform writes: forged/SUPPORT actor refused · SUPER_ADMIN draft→activate (approver, audit) · slot taken · no approver · float json · retire"),
   D("S8.5", "R8", M, "RED", "[db] loadLawView: v1 rows shown DRAFT/not in force · pendingSignOff · no approvedById/sourceKey/supersedesId keys"),
+  // H3.3 r2 ▸ ORACLE-EDIT (controller pre-approved 12 Nov · review M-1 + hunt F1–F3 + hunter note N2) — RED on dc98d4f37 ◂
+  D("S9.1", "M-1", C, "RED", "[db] retireLawRow: ACTIVE row ⇒ ACTIVE_NOT_RETIRABLE · row stays ACTIVE · no hr.law.retire audit · DRAFT row still retires"),
+  D("S9.2", "F1", M, "RED", "[db] activateLawRow re-reads SUPER_ADMIN after the slot lock: demoted to FINANCE while waiting ⇒ NOT_ALLOWED · row stays DRAFT"),
+  D("S9.3", "F2", M, "RED", "[pure] no silent precision loss: annualTaxV2(26,302,679,918,950) · whtYtdV2 monthly 750,599,937,895,083 ⇒ BAD_SATANG · annualTaxV2(2e12) = 699,951,500,000 exact"),
+  D("S9.4", "F3", M, "RED", "[pure] deductions.spouse non-boolean (1/'yes'/'true'/'on'/null) ⇒ BAD_DEDUCTION · true = 2,897,916 · absent = v1"),
+  D("S9.5", "N2", M, "RED", "[pure] lawDayOf accepts a Date only: zone-less / ISO strings + invalid Date ⇒ LAW_BAD_DAY · Date 2026-06-30T17:00Z = 2026-07-01"),
   ...NA.map((n: Any, i: number) => D(`NA.${i + 1}`, "HQ23", M, "GREEN", `[accountant] ${n.id} ${String(n.q).slice(0, 90)}`)),
   D("X12.1", "X12", M, "GREEN", "[run] fitness + fitness-hr without env ⇒ exit 0"),
   D("Z1", "-", C, "GREEN", "residue: HrLawTable qc-h33-* · PlatformUser qc-h33-* · their PlatformAuditLog = 0"),
@@ -437,6 +443,36 @@ async function runPure(R1: Any, v2: Any, law: Any, seed: Any): Promise<void> {
     const pd = (V.payDay ?? []).filter((v: Any) => tryv(() => law.lawDayOf(new Date(v.payDate))) !== v.want).map((v: Any) => v.id);
     chk("S6.4", pd.length === 0 && (V.payDay ?? []).length === 4, "4/4", mism("4", pd));
   } else (["S6.2", "S6.3", "S6.4"] as const).forEach((id) => chk(id, false, "law.ts", `law.ts ${modState(law, F.law)}`));
+  // ── H3.3 r2 ▸ S9.3–S9.5 (ORACLE-EDIT pre-approved · hunter snippets F2/F3/N2) ◂ ──
+  if (has(v2, "annualTaxV2") && has(v2, "whtYtdV2")) {
+    const huge = { monthIndex: 1, currentIncomeSatang: 750599937895083, regularMonthlySatang: 750599937895083, priorIncomeSatang: 0, priorWhtSatang: 0, currentSsoSatang: 75000, regularSsoSatang: 75000, priorSsoSatang: 0 };
+    const r = {
+      tax: syncCode(() => v2.annualTaxV2(26_302_679_918_950, L.TAX_BRACKET)) === "BAD_SATANG",
+      ytd: syncCode(() => v2.whtYtdV2(huge, L.TAX_BRACKET, L.DEDUCTION)) === "BAD_SATANG",
+      exact: tryv(() => v2.annualTaxV2(2_000_000_000_000, L.TAX_BRACKET)) === 699_951_500_000,
+    };
+    chk("S9.3", Object.values(r).every(Boolean), "BAD_SATANG ×2 · exact below", `${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "ok"} · tax ${short(tryv(() => v2.annualTaxV2(26_302_679_918_950, L.TAX_BRACKET)), 40)}`);
+  } else chk("S9.3", false, "v2", "missing");
+  if (has(v2, "whtAnnualisedV2")) {
+    const inp = (spouse: unknown) => ({ monthlyIncomeSatang: 17999997, ssoEmployeeYearSatang: 900000, deductions: { spouse } as Any });
+    const absent = tryv(() => v2.whtAnnualisedV2({ monthlyIncomeSatang: 17999997, ssoEmployeeYearSatang: 900000, deductions: {} }, L.TAX_BRACKET, L.DEDUCTION));
+    const bad = [1, "yes", "true", "on", null].filter((x) => syncCode(() => v2.whtAnnualisedV2(inp(x), L.TAX_BRACKET, L.DEDUCTION)) !== "BAD_DEDUCTION").map((x) => JSON.stringify(x));
+    const r = {
+      yes: tryv(() => v2.whtAnnualisedV2(inp(true), L.TAX_BRACKET, L.DEDUCTION)) === 2897916,
+      refused: bad.length === 0,
+      absent: absent === R1.monthlyWhtSatang({ monthlySalarySatang: 17999997, ssoEmployeeYearSatang: 900000 }),
+    };
+    chk("S9.4", Object.values(r).every(Boolean), "boolean only", `${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "ok"}${bad.length ? ` · accepted ${bad.join(",")}` : ""}`);
+  } else chk("S9.4", false, "v2", "missing");
+  if (law && typeof law.lawDayOf === "function") {
+    const strs = ["2026-12-31T23:30:00", "2026-06-30T17:00:00.000Z", "2026-07-01"].filter((x) => syncCode(() => law.lawDayOf(x)) !== "LAW_BAD_DAY");
+    const r = {
+      strings: strs.length === 0,
+      invalid: syncCode(() => law.lawDayOf(new Date(Number.NaN))) === "LAW_BAD_DAY",
+      date: tryv(() => law.lawDayOf(new Date("2026-06-30T17:00:00.000Z"))) === "2026-07-01",
+    };
+    chk("S9.5", Object.values(r).every(Boolean), "Date only", `${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "ok"}${strs.length ? ` · accepted ${strs.join(",")}` : ""}`);
+  } else chk("S9.5", false, "law.ts", "missing");
   // ── NEEDS ACCOUNTANT (registered · skipped with the question until a value is supplied) ──
   NA.forEach((n: Any, i: number) => chk(`NA.${i + 1}`, n.want === null, "NEEDS ACCOUNTANT (skip)", n.want === null ? `⏭ SKIP · NEEDS ACCOUNTANT: ${String(n.q).slice(0, 120)}` : "value supplied — controller must turn it into a vector (ORACLE-EDIT)"));
 }
@@ -558,15 +594,64 @@ async function runDb(P: Any, law: Any, plat: Any, seed: Any): Promise<void> {
     r.slotTaken = !!id2 && (await codeOf(() => plat.activateLawRow(sa, id2, { approvedByName: "QC" }))) !== "NO_REFUSAL" && (await rowOf(id2))?.status === "DRAFT";
     const before = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "HrLawTable"`)) as Any[])[0]?.n ?? 0);
     r.float = (await codeOf(() => plat.createLawDraft(sa, { kind: "SSO", effectiveFrom: "2193-01-01", json: { ...L.SSO, rateBp: 500.5 } }))) !== "NO_REFUSAL" && Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "HrLawTable"`)) as Any[])[0]?.n ?? 0) === before;
-    const rt = await plat.retireLawRow(sa, id1 ?? "x").catch((e: unknown) => ({ ok: false, code: errText(e) }));
-    r.retire = rt?.ok === true && (await rowOf(id1 ?? "x"))?.status === "RETIRED";
+    // H3.3 r2 ▸ ORACLE-EDIT (ruling M-1): retire = DRAFT only ⇒ retire the DRAFT id2 (ACTIVE refusal = S9.1) ◂
+    const rt = await plat.retireLawRow(sa, id2 ?? "x").catch((e: unknown) => ({ ok: false, code: errText(e) }));
+    r.retire = rt?.ok === true && (await rowOf(id2 ?? "x"))?.status === "RETIRED";
     if (law && typeof law.loadLawSet === "function") {
       const s = await law.loadLawSet("2192-06-30").catch(() => null);
-      r.retiredIgnored = !(s?.ids ?? []).includes(id1);
+      r.retiredIgnored = !(s?.ids ?? []).includes(id2);
     }
     notes.push(`c1 ${short(c1, 40)} · a1 ${short(a1, 40)}`);
     chk("S8.4", Object.values(r).every(Boolean), "platform-only lifecycle", `${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "ok"} · ${notes.join(" ")}`);
   } else chk("S8.4", false, "platform/hr-law.ts", `${F.plat} ${modState(plat, F.plat)}`);
+  // ── H3.3 r2 ▸ S9.1–S9.2 (ORACLE-EDIT pre-approved · review M-1 · hunt F1) — rows 2194/2190-05-05, swept in cleanup ◂ ──
+  if (plat && ["createLawDraft", "activateLawRow", "retireLawRow"].every((n) => typeof plat[n] === "function")) {
+    const sa = await P.platformUser.create({ data: { email: `${TAG}-sa9@qc.invalid`, name: "QC H3.3 SA9", role: "SUPER_ADMIN" } });
+    PU_IDS.push(sa.id);
+    const st1 = async (id: string) => ((await P.$queryRawUnsafe(`SELECT status::text AS s FROM "HrLawTable" WHERE id = $1`, id)) as Any[])[0]?.s ?? null;
+    const retAudits = async (id: string) => Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "PlatformAuditLog" WHERE action = 'hr.law.retire' AND "targetId" = $1`, id)) as Any[])[0]?.n ?? -1);
+    // S9.1
+    {
+      const a = await plat.createLawDraft(sa, { kind: "SSO", effectiveFrom: "2194-01-01", json: L.SSO, note: `${TAG} s9.1a` }).catch((e: unknown) => ({ ok: false, code: errText(e) }));
+      const d = await plat.createLawDraft(sa, { kind: "SSO", effectiveFrom: "2194-02-01", json: L.SSO, note: `${TAG} s9.1d` }).catch((e: unknown) => ({ ok: false, code: errText(e) }));
+      const act = a?.ok ? await plat.activateLawRow(sa, a.id, { approvedByName: "QC FIXTURE — not a sign-off" }).catch((e: unknown) => ({ ok: false, code: errText(e) })) : null;
+      const code = a?.ok ? await codeOf(() => plat.retireLawRow(sa, a.id)) : "∅";
+      const rd2 = d?.ok ? await plat.retireLawRow(sa, d.id).catch((e: unknown) => ({ ok: false, code: errText(e) })) : null;
+      const r = {
+        setup: !!a?.ok && act?.ok === true,
+        code: code === "ACTIVE_NOT_RETIRABLE",
+        stays: a?.ok ? (await st1(a.id)) === "ACTIVE" : false,
+        noAudit: a?.ok ? (await retAudits(a.id)) === 0 : false,
+        draftRetires: rd2?.ok === true && (d?.ok ? (await st1(d.id)) === "RETIRED" : false),
+      };
+      chk("S9.1", Object.values(r).every(Boolean), "ACTIVE_NOT_RETIRABLE · DRAFT retires", `${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "ok"} · retire(ACTIVE)=${code}`);
+    }
+    // S9.2 (hunter F1 snippet)
+    {
+      const sa2 = await P.platformUser.create({ data: { email: `${TAG}-sa9b@qc.invalid`, name: "QC H3.3 SA9b", role: "SUPER_ADMIN" } });
+      PU_IDS.push(sa2.id);
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const c = await plat.createLawDraft(sa2, { kind: "SSO", effectiveFrom: "2190-05-05", json: L.SSO, note: `${TAG} s9.2` }).catch((e: unknown) => ({ ok: false, code: errText(e) }));
+      let res: Any = null;
+      if (c?.ok) {
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        const holder = P.$transaction(async (tx: Any) => {
+          await tx.$queryRaw`SELECT count(pg_advisory_xact_lock(hashtextextended(${"hrlaw:SSO:2190-05-05"}::text, 0)))::int AS n`;
+          await gate;
+        }, { timeout: 30_000, maxWait: 10_000 });
+        await sleep(1500);
+        const pending = plat.activateLawRow(sa2, c.id, { approvedByName: "QC" }).catch((e: unknown) => ({ ok: false, code: errText(e) }));
+        await sleep(2500);
+        await P.platformUser.update({ where: { id: sa2.id }, data: { role: "FINANCE" } });
+        release();
+        await holder;
+        res = await pending;
+      }
+      const s = c?.ok ? await st1(c.id) : null;
+      chk("S9.2", res?.ok === false && res.code === "NOT_ALLOWED" && s === "DRAFT", "NOT_ALLOWED · DRAFT", `${short(res, 50)} · row ${s}`);
+    }
+  } else (["S9.1", "S9.2"] as const).forEach((id) => chk(id, false, "platform/hr-law.ts", "missing"));
 }
 
 async function cleanup(P: Any): Promise<void> {
@@ -621,6 +706,8 @@ try {
 }
 const res = await residue(P);
 chk("Z1", res.length === 0, "none", res.join(",") || "none");
+// H3.3 r2 ▸ report only: ACTIVE law rows left on this DB after cleanup (must be 0 — Q3) ◂
+console.log(`  ℹ️  ACTIVE law rows after cleanup: ${Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "HrLawTable" WHERE status = 'ACTIVE'`)) as Any[])[0]?.n ?? -1)}`);
 console.log(`NEEDS-ACCOUNTANT ${NA.filter((n) => n.want === null).length}/${NA.length} skipped with reason (ledger/hr-briefs/hr-brief-H3.3.md §FOR THE ACCOUNTANT)`);
 const exit = REG.finish({ forced: FORCE, crashed, missing: skipReasons });
 await P.$disconnect?.().catch?.(() => {});
