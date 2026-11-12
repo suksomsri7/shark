@@ -146,6 +146,7 @@ const CHECKS: readonly Def[] = [
   d("S13.2", "H2.7", M, "[db] half-day AM through the H2.7 service (policy · requestLeave · decideLeave) ⇒ ABSENT · AM · 0.5"),
   d("S13.3", "H2.7", C, "[db] hourly leave (H2.7 hours, no clock times) ⇒ slot judged normally · leaveId · fraction = hours/8 (0.3) · no leaveHalf"),
   d("S13.4", "H2.8", M, "[db] holiday from the H2.8 preset table ⇒ holidayId on the row · branch row wins over shop-wide"),
+  d("S13.5", "r4-1", C, "[db] leave-only changes flag stale: hourly 2 h cancelled after finalise · hourly approved after finalise · recompute clears"),
   D("Z1", "-", C, "GREEN", "residue: qc-hr-h25-* tenants/rows/users/sessions/new tables gone"),
 ];
 const REG = makeRegistry(SUITE, "H2.5-", CHECKS);
@@ -1217,6 +1218,32 @@ async function runDb(): Promise<void> {
     };
     const [q1, q2] = [await rowsFor(k1, d0), await rowsFor(k2, d1)];
     ck("S13.4", { preset: pr?.ok === true && !!shopRow, shop: !!q1 && q1.holidayId === shopRow?.id, branch: !!q2 && q2.holidayId === unitRow?.id }, "preset row id · branch row id", `pr=${shown(pr)} d0=${d0} q1=${q1?.holidayId === shopRow?.id} q2=${q2?.holidayId === unitRow?.id}`);
+  }
+  {
+    // r4-1: stale on leaveId / leaveFraction changes only (status unchanged)
+    const pol2 = await call(setMod, "createLeavePolicy", cD, ownerV, { unitId: null, category: "OTHER", name: `ลาชั่วโมงสอง ${tag}`, paid: false, quotaDays: null, allowHalfDay: true, allowHours: true, sortOrder: 10 });
+    const [z1, z2] = [await meD("ลาชั่วโมงแล้วถอน"), await meD("ลาชั่วโมงหลังปิด")];
+    const mk = async (emp: string) => {
+      const x = await entX(sD, emp, "2031-07-16", shD);
+      await attX(sD, emp, "IN", bk("2031-07-16", "09:00"), x);
+      await attX(sD, emp, "OUT", bk("2031-07-16", "17:00"), x);
+      return x;
+    };
+    const [y1, y2] = [await mk(z1), await mk(z2)];
+    const a = await call(svc, "requestLeave", cD, { employeeId: z1, type: "OTHER", policyId: pol2?.id, fromDate: "2031-07-16", toDate: "2031-07-16", hours: 2 });
+    if (a?.id) await call(svc, "decideLeave", cD, a.id, "APPROVED");
+    await job(bk("2031-07-17", "12:00"));
+    const r1 = (await rowsX(z1)).find((r) => r.slotKey === y1);
+    if (a?.id) await P.hrLeave.update({ where: { id: a.id }, data: { status: "CANCELLED" } });
+    const b = await call(svc, "requestLeave", cD, { employeeId: z2, type: "OTHER", policyId: pol2?.id, fromDate: "2031-07-16", toDate: "2031-07-16", hours: 2 });
+    if (b?.id) await call(svc, "decideLeave", cD, b.id, "APPROVED");
+    const st = async (emp: string) => slotsOf(await monthX(cD, U.owner!, emp, "2031-07", bk("2031-07-18", "12:00")), "2031-07-16")[0];
+    const [s1, s2] = [await st(z1), await st(z2)];
+    const rc = await rcX(cD, U.owner!, r1?.id ?? "∅", bk("2031-07-18", "12:00"));
+    const s1b = await st(z1);
+    const r1b = (await rowsX(z1)).find((r) => r.slotKey === y1);
+    const r = { fin: Number(r1?.leaveFraction) === 0.2 && r1?.leaveId === a?.id, cancelled: s1?.stored === true && s1?.stale === true, approvedAfter: s2?.stored === true && s2?.stale === true, cleared: rc?.ok === true && rc?.changed === true && s1b?.stale === false && r1b?.leaveId === null };
+    ck("S13.5", r, "0.2 stored · cancel ⇒ stale · approve after ⇒ stale · recompute clears", `r1=${r1?.leaveFraction} s1=${s1?.stale} s2=${s2?.stale} rc=${shown(rc)} s1b=${s1b?.stale}`);
   }
 }
 const addDaysX = (d0: string, n: number) => new Date(Date.parse(`${d0}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
