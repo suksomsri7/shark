@@ -269,6 +269,11 @@ async function isOwnHrSubject(ctx: Ctx, req: Pick<ApprovalRequest, "entityType" 
     return (await prisma.hrEmployee.count({ where: { tenantId: ctx.tenantId, id: { in: ids }, linkedUserId: userId } })) > 0;
   }
   // ◂ HR H2.3
+  // HR H2.6 ▸ คำขอแก้เวลา: พนักงานเจ้าของเวลา (ผ่านบัญชีที่ผูก) และผู้ยื่นแทน ตัดสินคำขอนี้ไม่ได้ — อ่านด้วย prisma + tenantId แบบกิ่งใบลา ◂
+  if (req.entityType === "HrTimeCorrection") {
+    const c = await prisma.hrTimeCorrection.findFirst({ where: { id: req.entityId, tenantId: ctx.tenantId }, select: { requestedByUserId: true, employee: { select: { linkedUserId: true } } } }); // HR H2.6 ◂
+    return !!c && (c.employee.linkedUserId === userId || c.requestedByUserId === userId); // HR H2.6 ◂
+  }
   return false;
 }
 // ◂ HF-HR-0

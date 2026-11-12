@@ -1,0 +1,18 @@
+# H2.6 r3 green — 2026-11-12T10:12:59Z · lane DB
+h26-f1 exit=0 :: ===== qc-hr-h2.6 ===== passed 55/55 (QC_FORCE) :: RESIDUE none (tenants=3 users=18)
+h26-f2 exit=0 :: ===== qc-hr-h2.6 ===== passed 55/55 (QC_FORCE) :: RESIDUE none (tenants=3 users=18)
+h26-u exit=0 :: ===== qc-hr-h2.6 ===== passed 55/55 :: RESIDUE none (tenants=3 users=18)
+seed1 exit=0 :: ===== seed-hr-qc ===== ผ่าน 33/33 :: 
+seed2 exit=0 :: ===== seed-hr-qc ===== ผ่าน 33/33 :: 
+qc-hr-h2.5 exit=0 :: ===== qc-hr-h2.5 ===== passed 79/79 :: RESIDUE none (tenants=2 users=13)
+qc-hr-h2.4 exit=0 :: ===== qc-hr-h2.4 ===== passed 68/68 :: 
+qc-hr-h4.4 exit=0 :: ===== qc-hr-h4.4 ===== passed 86/86 :: RESIDUE none (tenants=2 users=20)
+qc-hr-h4.1 exit=0 :: ===== qc-hr-h4.1 ===== passed 47/47 :: RESIDUE none (tenants=3 users=12)
+qc-hr-h1.2 exit=0 :: ===== qc-hr-h1.2 ===== passed 73/73 :: RESIDUE none (tenants=2 users=8)
+qc-hr-h2.2 exit=0 :: ===== qc-hr-h2.2 ===== passed 60/60 :: RESIDUE none (tenants=3 users=16)
+qc-hf-hr-privacy exit=0 :: ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== :: 
+fitness-env exit=0 :: JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
+fitness-hr-env exit=0 :: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+fitness-noenv exit=0 :: JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
+fitness-hr-noenv exit=0 :: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+ALLDONE

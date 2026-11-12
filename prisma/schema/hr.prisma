@@ -305,6 +305,12 @@ model HrAttendance {
   distanceM     Int?
   inRadius      Boolean?
   corrections   HrTimeCorrection[]
+  // HR H2.6 ▸ ประวัติการแก้เวลา (migration 20270101000000_hr_time_correction) — แถวเดิมไม่ถูกลบ/เขียนทับ: voidedAt = ถูกยกเลิกโดยคำขอแก้เวลา
+  //   (voidedByCorrectionId) · correctionId = แถวที่เกิดจากคำขอแก้เวลาที่อนุมัติ (source CORRECTION) · ผู้เขียนเดียว = hr/correction.ts ·
+  //   🔴 ทุกตัวอ่านการลงเวลาต้องกรอง voidedAt: null ◂
+  voidedAt             DateTime?
+  voidedByCorrectionId String?
+  correctionId         String?
 
   @@index([systemId, employeeId, at])
   @@index([rosterEntryId])
@@ -471,9 +477,22 @@ model HrTimeCorrection {
   evidenceJson       Json?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+  // HR H2.6 ▸ ADD = เพิ่มแถว · CHANGE = ยกเลิกแถวเดิม + แถวใหม่ชนิดเดิม · VOID = ยกเลิกแถว · day = วันไทยของรอบ (วันของเข้างาน) ·
+  //   partial unique (SQL ดิบ): HrTimeCorrection_attendanceId_pending_key ("attendanceId" — ของ H1.2 · ตัวซ้ำ pending_target_key ลบแล้ว r2) · HrTimeCorrection_pending_add_key ("employeeId","day","kind") ◂
+  action             HrCorrectionAction @default(ADD)
+  day                DateTime?        @db.Date
+  // HR H2.6 r2 ▸ มติ Q4: เจ้าของร้านยื่นแก้แถวพนักงานที่ผูกกับตัวเอง ⇒ ใช้ผลทันทีแต่ติดธงไว้ (migration 20270101000001) ◂
+  selfApplied        Boolean          @default(false)
 
   @@index([tenantId])
   @@index([systemId, status])
+}
+
+// HR H2.6 ▸ ชนิดคำขอแก้เวลา ◂
+enum HrCorrectionAction {
+  ADD
+  CHANGE
+  VOID
 }
 
 // คำขอ OT — date = วันไทยที่ OT เริ่ม · multiplierBp = ตัวคูณ ณ ตอนอนุมัติ (ค่าตามกฎหมายมาจาก HrLawTable H1.3 ไม่ใช่โค้ด)

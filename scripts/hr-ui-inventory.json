@@ -5407,6 +5407,499 @@
    "note": "แม่แบบออกจากงาน: รหัส | หัวข้อ | วัน (≤ 20 ข้อ)"
   },
   {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-view-corr",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/attendance?view=corrections"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "แท็บคำขอแก้เวลา (การ์ด mockup 05)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-view-corr-self",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/attendance/page.tsx",
+   "conditional": "ปฏิทินของตัวเอง (ไม่ใช่ผู้อ่านตารางกะ)",
+   "roles": [
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/attendance?view=corrections"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "พนักงาน: คำขอแก้เวลาของฉัน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-back",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/attendance/page.tsx",
+   "conditional": "?view=corrections ของพนักงาน",
+   "roles": [
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/attendance?view=month"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "กลับปฏิทินของตัวเอง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-open",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "ฟอร์มคำขอแก้เวลา"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "04A แถว \"แก้เวลา\" (ยื่นแทน) · 04B \"ขอแก้เวลา\" (ของตัวเอง/คนที่เลือก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-form",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "เปิดฟอร์ม",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "requestCorrection"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "ชนิดคำขอ · ชนิดการลงเวลา · เวลาเดิม · วันเวลา · เหตุผล"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-action",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "เปิดฟอร์ม",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "ADD เพิ่ม · CHANGE แก้ · VOID ยกเลิก"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-kind",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "เปิดฟอร์ม",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "ชนิดการลงเวลา (ใช้กับ ADD)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-target",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "เปิดฟอร์ม",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "แถวเดิม (ใช้กับ CHANGE/VOID) — จาก correctablePunches"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-time",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "เปิดฟอร์ม",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "วันเวลาไทย (datetime-local)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-reason",
+   "kind": "textarea",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "เปิดฟอร์ม",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "เหตุผล 3–200 ตัวอักษร"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-submit",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "เปิดฟอร์ม",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "requestMyCorrectionAction | requestCorrectionForAction"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "ส่งคำขอ → redirect ?msg=c.*"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-list",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "?view=corrections",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "รายการการ์ดคำขอแก้เวลา"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-card-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "?view=corrections",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "การ์ดคำขอ · * = id HrTimeCorrection"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-evidence-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "?view=corrections",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "หลักฐานปิดกะ POS (snapshot ตอนยื่น · ไม่มีเงิน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-repeat-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "periodCount ≥ 3",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "ป้ายขอแก้ซ้ำ ≥ 3 ครั้งในเดือน (ไม่แสดงในมุมของพนักงานเอง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-approve-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "PENDING · ผู้ตัดสินตรง",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "decideCorrectionAction APPROVED"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "อนุมัติ (ผู้ตัดสินตรง: เจ้าของ/คีย์ · ไม่ใช่ของตัวเอง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-reject-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "PENDING · ผู้ตัดสินตรง",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "decideCorrectionAction REJECTED"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "ปฏิเสธ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-cancel-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "PENDING · ของฉัน",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "cancelCorrectionAction"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "ยกเลิกคำขอ (ผู้ยื่น/พนักงานเอง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-self-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "selfApplied (เจ้าของแก้แถวของตัวเอง — มติ Q4)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "ป้าย \"แก้โดยเจ้าของเอง\" · * = id HrTimeCorrection"
+  },
+  {
    "page": "/app/sys/[id]/hr/payroll",
    "testid": "hr-we-panel",
    "kind": "display",

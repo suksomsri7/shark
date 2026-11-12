@@ -1,0 +1,21 @@
+# post-merge sanity (lean) session/hr @1054c7468 · 2026-11-12T10:14:05Z · load 15.90 21.25 18.29
+prisma generate exit=0 [10:14Z]
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 33/33 JSON_SUMMARY {"suite":"seed-hr-qc","total":33,"passed":33,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":85,"BusinessUnit":2,"HrAttend  [10:15Z]
+qc-hr-h2.6 exit=0 ===== qc-hr-h2.6 ===== passed 55/55 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":51,"baseGreen":4,"offBase":["H2.6-S1.1(RED→pass)","H2.6-S1.3(RED→pass)","H2.6-S1.4(RED→pass)", · RESIDUE none (tenants=3 users=18) [10:17Z]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}   [10:17Z]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}   [10:17Z]
+ALLDONE 2026-11-12T10:17:42Z · red: 0
+qc-hr-h2.5 exit=0 JSON_SUMMARY {"suite":"qc-hr-h2.5","total":79,"passed":79,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-hr-h2.4 exit=0 JSON_SUMMARY {"suite":"qc-hr-h2.4","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-hr-h4.4 exit=0 JSON_SUMMARY {"suite":"qc-hr-h4.4","total":86,"passed":86,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-hr-h4.1 exit=0 JSON_SUMMARY {"suite":"qc-hr-h4.1","total":47,"passed":47,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-hr-h1.2 exit=0 JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-hr-h1.3 exit=0 JSON_SUMMARY {"suite":"qc-hr-h1.3","total":63,"passed":63,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"groupCras
+qc-hr-h0.1 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":nul
+qc-hr-h0.3 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.3","total":37,"passed":37,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-hr-h0.5 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.5","total":71,"passed":71,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-hr-h2.2 exit=0 JSON_SUMMARY {"suite":"qc-hr-h2.2","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-payroll exit=0 JSON_SUMMARY {"total":19,"passed":19,"findings":[]}
+qc-approval exit=0 JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+qc-hf-hr-privacy exit=0 JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+EXTRADONE

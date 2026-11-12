@@ -1005,7 +1005,7 @@ export async function listAttendance(ctx: Ctx, take = 50, scope?: HrScope) {
   const sw = await scopedAttendanceWhere(ctx, scope); // HR H1.1 ▸ ขอบเขตสาขา (ยืมตัวครอบวันที่ของแถว) ◂
   if (sw === null) return [];
   return tenantDb(ctx).hrAttendance.findMany({
-    where: sw,
+    where: { ...sw, voidedAt: null }, // HR H2.6 ▸ แถวที่ถูกยกเลิกโดยคำขอแก้เวลาไม่แสดง ◂
     select: ATTENDANCE_BASE_SELECT, // HR H1.2 ▸ R6 ◂
     orderBy: { at: "desc" },
     take,
@@ -1017,7 +1017,7 @@ export async function monthlyMinutes(ctx: Ctx, employeeId: string, monthStart: D
   const start = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1));
   const end = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
   const events = await tenantDb(ctx).hrAttendance.findMany({
-    where: { employeeId, at: { gte: start, lt: end } },
+    where: { employeeId, at: { gte: start, lt: end }, voidedAt: null }, // HR H2.6 ▸ voidedAt ◂
     select: { kind: true, at: true },
     orderBy: { at: "asc" },
   });
@@ -1154,7 +1154,7 @@ export async function monthlyAttendance(
   const db = tenantDb(ctx);
   const [events, schedRows, leaves] = await Promise.all([
     db.hrAttendance.findMany({
-      where: { employeeId, at: { gte: startUtc, lt: endUtc } },
+      where: { employeeId, at: { gte: startUtc, lt: endUtc }, voidedAt: null }, // HR H2.6 ▸ voidedAt ◂
       select: { kind: true, at: true, judgement: true, lateMin: true },
       orderBy: { at: "asc" },
     }),

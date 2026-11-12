@@ -26,7 +26,7 @@ export async function employeeActiveOf(ctx: Ctx, employeeId: string): Promise<bo
 /** การลงเวลาของพนักงานในช่วง [from, to] (เรียงตามเวลา · ไม่เกิน 2,000 แถว) — เฉพาะชนิดกับเวลา */
 export async function attendanceBetween(ctx: Ctx, employeeId: string, from: Date, to: Date): Promise<{ kind: string; at: Date }[]> {
   const rows = await tenantDb(ctx).hrAttendance.findMany({
-    where: { employeeId, at: { gte: from, lte: to } },
+    where: { employeeId, at: { gte: from, lte: to }, voidedAt: null }, // HR H2.6 ▸ แถวที่ถูกยกเลิกไม่นับ (รูปผลเดิม) ◂
     select: { kind: true, at: true },
     orderBy: [{ at: "asc" }, { id: "asc" }],
     take: 2_000,
@@ -38,8 +38,8 @@ export async function attendanceBetween(ctx: Ctx, employeeId: string, from: Date
 export async function attendanceMarks(ctx: Ctx, employeeId: string, dayStart: Date, upTo: Date): Promise<{ firstInAt: Date | null; lastKind: string | null; lastAt: Date | null }> {
   const db = tenantDb(ctx);
   const [firstIn, last] = await Promise.all([
-    db.hrAttendance.findFirst({ where: { employeeId, kind: "IN", at: { gte: dayStart, lte: upTo } }, select: { at: true }, orderBy: [{ at: "asc" }, { id: "asc" }] }),
-    db.hrAttendance.findFirst({ where: { employeeId, at: { lte: upTo } }, select: { kind: true, at: true }, orderBy: [{ at: "desc" }, { id: "desc" }] }),
+    db.hrAttendance.findFirst({ where: { employeeId, kind: "IN", at: { gte: dayStart, lte: upTo }, voidedAt: null }, select: { at: true }, orderBy: [{ at: "asc" }, { id: "asc" }] }), // HR H2.6 ▸ voidedAt ◂
+    db.hrAttendance.findFirst({ where: { employeeId, at: { lte: upTo }, voidedAt: null }, select: { kind: true, at: true }, orderBy: [{ at: "desc" }, { id: "desc" }] }), // HR H2.6 ▸ voidedAt ◂
   ]);
   return { firstInAt: firstIn?.at ?? null, lastKind: last ? String(last.kind) : null, lastAt: last?.at ?? null };
 }

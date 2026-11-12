@@ -1,0 +1,64 @@
+# H2.6 r2 RED proof — 2026-11-12T08:16:10Z · code at 0d777d93e + r2 oracle · lane DB
+[env] qc-hr-h2.6 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.6] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.6] modules: correction-rules=loaded · correction=loaded · hr-pos-evidence=loaded
+  ✅ [H2.6-S1.1] [static] files · pure rules
+  ✅ [H2.6-S1.3] [static] readers filter voidedAt · no other reader · sole writer
+  ✅ [H2.6-S1.4] [static] approval wiring (effect · label · allowlist · self-check · facade)
+  ✅ [H2.6-S1.6] [static] actions · self has no employeeId · no now: · testids · inventory · messages
+  ✅ [H2.6-S1.7] [control] frozen files unchanged · shas
+  ✅ [H2.6-S1.8] [control] every hot-file hunk vs base marked HR H2.6
+  ✅ [H2.6-S2.1] [pure] rules + texts literal
+  ✅ [H2.6-S2.2] [pure] cleanCorrectionReason
+  ✅ [H2.6-S2.3] [pure] checkCorrection V1–V16
+  ✅ [H2.6-S2.4] [pure] sessionDayOf W1–W6
+
+
+  ❌ [H2.6-S3.4] [db] PENDING row literal · evidence · no write · no chain — expected pending row | actual evidence · ok/PENDING
+  ✅ [H2.6-S4.1] [db] ADD OUT applied · stored ON_TIME W490 v2
+  ❌ [H2.6-S7.3] [db] POS evidence literal · never decides — expected evidence | actual fn · [{"shiftNo":7001,"openedAt":"2032-03-02T01:50:00.000Z","clos
+  ✅ [H2.6-S4.2] [db] CHANGE IN: original voided intact · replacement ON_TIME · W482
+  ✅ [H2.6-S4.3] [db] VOID duplicate IN · W482
+  ✅ [H2.6-S4.5] [db] overnight OUT belongs to D
+  ✅ [H2.6-S4.6] [db] kiosk originals · timesOverridden W365
+  ✅ [H2.6-S4.7] [db] orphaned stored row · one row W490
+  ✅ [H2.6-S4.8] [db] reject ⇒ rows byte-identical
+  ✅ [H2.6-S4.10] [db] decider gates
+  ✅ [H2.6-S4.4] [db] readers exclude voided rows
+  ✅ [H2.6-S3.1] [db] request refusals · nothing written · 35-day boundary
+  ✅ [H2.6-S3.3] [db] on-behalf gate matrix · filedOnBehalf
+  ✅ [H2.6-S3.5] [db] dupPending ×2 · tooMany
+  ✅ [H2.6-S3.6] [db] ORDER · TOO_LONG · DUP · SAME at request
+  ✅ [H2.6-S4.9] [db] cancel: notOwn · filer · then stale
+  ✅ [H2.6-S3.2] [db] self: unlinked · inactive · foreign employee/row
+  ❌ [H2.6-S7.1] [db] detail keys · viewer matrix · values — expected detail | actual viewers · ok/ keys=action,createdAt,day,decidedAt,employeeId,employeeName,evidence,filedOnBehalf,id,kind,originalAt,periodCount,proposedAt,reason,repeat,status no="ไม่พบคำขอแก้เวลานี้ หรือคุณไม่มีสิทธิ์ดู"|"ไม่พบคำขอแก้เวลานี้ หรือคุณไม่มีสิทธิ์ดู"|"ไม่พบคำขอแก้เวลานี้ หรือคุณไม่มีสิทธิ์ดู"|"ไม่พบคำขอแก้เวลานี้ หรือคุณไม่มีสิทธิ์ดู"|"ไม่พบคำขอแก้เวลานี้ หรือคุณไม่มีสิทธิ์ดู"|"ไม่พบคำขอแก้เวลานี้ หรือคุณไม่มีสิทธิ์ดู"
+  ✅ [H2.6-S7.4] [db] periodCount/repeat · lists scoped
+  ✅ [H2.6-S5.1] [db] chain request in tx · inChain · reject
+  ✅ [H2.6-S5.2] [db] core self-decision refused
+  ✅ [H2.6-S5.3] [db] core approve + effect ×2 once
+  ✅ [H2.6-S5.4] [db] chain apply after target voided ⇒ CANCELLED TARGET
+  ✅ [H2.6-S5.5] [db] employee cancels chained request
+  ✅ [H2.6-S6.1] [db] owner-auto with a policy
+  ✅ [H2.6-S9.5] [race] effect ×3 ⇒ one apply
+  ✅ [H2.6-S9.1] [race] payroll APPROVED meanwhile ⇒ paid
+  ✅ [H2.6-S9.2] [race] two deciders ⇒ one apply
+  ✅ [H2.6-S9.3] [race] kiosk punch meanwhile ⇒ dup
+  ✅ [H2.6-S9.4] [race] 5 parallel requests ⇒ 1 PENDING
+  ✅ [H2.6-S10.1] [db] ENDED employee
+  ✅ [H2.6-X2.1] [db] other tenant/system raw ids
+  ✅ [H2.6-S8.1] [db] one event per apply · payload · replay
+  ✅ [H2.6-S8.2] [db] notification recipients/titles
+  ✅ [H2.6-S7.2] [db] reason never in audit/outbox/notifications
+  ❌ [H2.6-S1.2] [static+db] migration · schema · live columns/indexes · only migration — expected migration | actual mig2,live · cols=5 idx=HrTimeCorrection_attendanceId_pending_key,HrTimeCorrection_pending_add_key,HrTimeCorrection_pending_target_key
+  ✅ [H2.6-S1.5] [static+runtime] consumer · one label · not webhooks
+  ❌ [H2.6-S11.1] [db] paid by session-owning day: IN moved into a paid month ⇒ later OUT fix refused, Feb untouched — expected refused · Feb untouched | actual refused,cancelled,punches · ok/APPROVED ok/APPROVED
+  ❌ [H2.6-S11.2] [db] overnight OUT in a paid month for an open-month session ⇒ accepted, nothing written to April — expected accepted · April untouched | actual accepted,march · "เดือนนี้อนุมัติเงินเดือนแล้ว — แก้เวลาย้" W0/v1
+  ❌ [H2.6-S7.5] [db] evidence: only this user's open/close times · DTO branch-scoped — expected own actions · branch scope | actual stored,owner,branch · {"posShifts":[{"forced":false,"shiftNo":7101,"closedAt":"2032-03-16T10:05:00.000
+  ❌ [H2.6-S7.6] [db] listCorrections complete for a narrow-scope manager (branch filter in the query) — expected complete list | actual c1 · n=0
+  ❌ [H2.6-S6.2] [db] owner self-filing applies at once · selfApplied on record + audit — expected self-applied | actual flag,audit,dto · ok/APPROVED
+  ✅ [H2.6-X12.1] [control] fitness ± env
+RESIDUE none (tenants=3 users=18)
+  ✅ [H2.6-Z1] [control] residue none
+BASE-EXPECTATION 13/54 as registered (RED-by-design 50 · GREEN controls 4) · off: H2.6-S1.1(RED→pass) H2.6-S1.3(RED→pass) H2.6-S1.4(RED→pass) H2.6-S1.6(RED→pass) H2.6-S2.1(RED→pass) H2.6-S2.2(RED→pass) H2.6-S2.3(RED→pass) H2.6-S2.4(RED→pass) H2.6-S4.1(RED→pass) H2.6-S4.2(RED→pass) H2.6-S4.3(RED→pass) H2.6-S4.5(RED→pass) H2.6-S4.6(RED→pass) H2.6-S4.7(RED→pass) H2.6-S4.8(RED→pass) H2.6-S4.10(RED→pass) H2.6-S4.4(RED→pass) H2.6-S3.1(RED→pass) H2.6-S3.3(RED→pass) H2.6-S3.5(RED→pass) H2.6-S3.6(RED→pass) H2.6-S4.9(RED→pass) H2.6-S3.2(RED→pass) H2.6-S7.4(RED→pass) H2.6-S5.1(RED→pass) H2.6-S5.2(RED→pass) H2.6-S5.3(RED→pass) H2.6-S5.4(RED→pass) H2.6-S5.5(RED→pass) H2.6-S6.1(RED→pass) H2.6-S9.5(RED→pass) H2.6-S9.1(RED→pass) H2.6-S9.2(RED→pass) H2.6-S9.3(RED→pass) H2.6-S9.4(RED→pass) H2.6-S10.1(RED→pass) H2.6-X2.1(RED→pass) H2.6-S8.1(RED→pass) H2.6-S8.2(RED→pass) H2.6-S7.2(RED→pass) H2.6-S1.5(RED→pass)
+
+===== qc-hr-h2.6 ===== passed 45/54 (QC_FORCE)
