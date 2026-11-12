@@ -709,6 +709,22 @@ export const TRIPS_SEED_PRODUCTS: readonly SeedProduct[] = [
 ];
 // ◂ TRIPS T0.2
 
+// ── T0.5 pricing ──
+// TRIPS T0.5 ▸ ฤดูกาลราชา + ราคารอบ 31 ธ.ค. (จอ 16 · README :24) · VAT ของค่าคอมฯ (สัญญา §H.4) ◂
+// ช่วงปีใหม่ = AGENCY_DEFAULTS.peakNewYear (จอ 10/16 ช่วงเดียวกัน) · หลัก/นอกฤดู = วันในจอ 16 · เด็ก = 70% ของผู้ใหญ่ (ตัวตรวจข้างล่าง)
+export const RACHA_SEASONS = [
+  { key: "MAIN", name: "ฤดูกาลหลัก", from: "2026-11-01", to: "2027-04-30", priority: 0, adultSatang: 350_000, childSatang: 245_000 },
+  { key: "NEW_YEAR", name: "ปีใหม่", from: AGENCY_DEFAULTS.peakNewYear.from, to: AGENCY_DEFAULTS.peakNewYear.to, priority: 10, adultSatang: 390_000, childSatang: 273_000 },
+  { key: "OFF", name: "นอกฤดู", from: "2027-05-01", to: "2027-10-31", priority: 0, adultSatang: 290_000, childSatang: 203_000 },
+] as const;
+export const RACHA_DEPARTURE_PRICE_1231 = { date: "2026-12-31", label: "ทริปเคาท์ดาวน์", adultSatang: 450_000, childSatang: 315_000 } as const;
+/** สัญญา §H.4 — เอเจนซี่ 2 ผู้ใหญ่ราชา (C 1,050 · WHT 3%) เมื่อเอเจนซี่จด VAT: EXCLUSIVE ⇒ ส่งร้าน 7,108.00 · INCLUSIVE ⇒ 7,179.44 */
+export const AGENCY_COMMISSION_VAT = {
+  exclusive: { commissionSatang: 105_000, commissionVatSatang: 7_350, whtSatang: 3_150, toShopSatang: 710_800 },
+  inclusive: { commissionInclVatSatang: 105_000, commissionSatang: 98_131, commissionVatSatang: 6_869, whtSatang: 2_944, toShopSatang: 717_944 },
+} as const;
+// ── /T0.5 pricing ──
+
 // ═══════════════ รวม ═══════════════
 export const TRIPS_FIXTURE = {
   shops: { dive: SHOP_DIVE, aquarium: SHOP_AQUARIUM },
@@ -736,6 +752,11 @@ export const TRIPS_FIXTURE = {
   refundPolicy: REFUND_POLICY_TEMPLATE,
   refund0188: REFUND_TR_0188,
   refundQueue: REFUND_QUEUE,
+  // ── T0.5 pricing ──
+  rachaSeasons: RACHA_SEASONS,
+  rachaDeparturePrice1231: RACHA_DEPARTURE_PRICE_1231,
+  agencyCommissionVat: AGENCY_COMMISSION_VAT,
+  // ── /T0.5 pricing ──
 } as const;
 /** ตัวเลขกว้างเป็น number + ไม่ readonly — ให้ข้อสอบโคลนแล้วแก้ค่าเพื่อทดสอบว่าตัวตรวจจับได้ (สตริง/คีย์คงเดิม) */
 export type Widen<T> = T extends number ? number : T extends string | boolean | null ? T : T extends readonly (infer U)[] ? readonly Widen<U>[] : { -readonly [K in keyof T]: Widen<T[K]> };
@@ -944,6 +965,27 @@ export function assertFixtureArithmetic(f: TripsFixture = TRIPS_FIXTURE): { chec
   eq("TR-6912-0188 ร้านเก็บ 4,975", sum(r.lines.map((x) => x.keptSatang)), r.keptSatang);
   eq("TR-6912-0188 จ่ายมา = ราคาแบบ TR-0142", r.paidSatang, b.totalSatang);
   eq("TR-6912-0188 เครดิต = คืน + 20% ของส่วนที่ร้านเก็บ", r.refundSatang + pct(r.keptSatang, r.creditBonusBp), r.creditSatang);
+
+  // ── T0.5 pricing ── ฤดูกาลราชา (จอ 16): เด็ก = 70% ทุกฤดู + ราคารอบ 31 ธ.ค. · ฤดูหลัก = ราคาฐาน · ปีใหม่ = ช่วง peakNewYear · VAT ค่าคอมฯ §H.4
+  for (const s of f.rachaSeasons) eq(`ฤดู ${s.key} เด็ก 70%`, pct(s.adultSatang, racha.childPriceBp), s.childSatang);
+  const main = f.rachaSeasons.find((s) => s.key === "MAIN");
+  eq("ฤดูหลัก = ราคาฐานราชา", `${main?.adultSatang}/${main?.childSatang}`, `${racha.adultSatang}/${racha.childSatang}`);
+  const ny = f.rachaSeasons.find((s) => s.key === "NEW_YEAR");
+  eq("ปีใหม่ = ช่วง peakNewYear", `${ny?.from}..${ny?.to}`, `${f.agencyDefaults.peakNewYear.from}..${f.agencyDefaults.peakNewYear.to}`);
+  const d31 = f.rachaDeparturePrice1231;
+  eq("รอบ 31 ธ.ค. เด็ก 70%", pct(d31.adultSatang, racha.childPriceBp), d31.childSatang);
+  eq("รอบ 31 ธ.ค. อยู่ในช่วงปีใหม่", ny !== undefined && ny.from <= d31.date && d31.date <= ny.to ? 1 : 0, 1);
+  const cv = f.agencyCommissionVat;
+  eq("§H.4 EXCLUSIVE คอมฯ", pct(a.commissionBaseSatang, a.commissionBp), cv.exclusive.commissionSatang);
+  eq("§H.4 EXCLUSIVE VAT คอมฯ 7%", pct(cv.exclusive.commissionSatang, rc.vatBp), cv.exclusive.commissionVatSatang);
+  eq("§H.4 EXCLUSIVE WHT 3%", pct(cv.exclusive.commissionSatang, a.whtBp), cv.exclusive.whtSatang);
+  eq("§H.4 EXCLUSIVE ส่งร้าน 7,108.00", a.collectSatang - cv.exclusive.commissionSatang - cv.exclusive.commissionVatSatang + cv.exclusive.whtSatang, cv.exclusive.toShopSatang);
+  eq("§H.4 INCLUSIVE C รวม VAT", pct(a.commissionBaseSatang, a.commissionBp), cv.inclusive.commissionInclVatSatang);
+  eq("§H.4 INCLUSIVE C ก่อน VAT", preVat(cv.inclusive.commissionInclVatSatang, rc.vatBp), cv.inclusive.commissionSatang);
+  eq("§H.4 INCLUSIVE VAT คอมฯ", cv.inclusive.commissionInclVatSatang - cv.inclusive.commissionSatang, cv.inclusive.commissionVatSatang);
+  eq("§H.4 INCLUSIVE WHT ของ C ก่อน VAT", pct(cv.inclusive.commissionSatang, a.whtBp), cv.inclusive.whtSatang);
+  eq("§H.4 INCLUSIVE ส่งร้าน 7,179.44", a.collectSatang - cv.inclusive.commissionInclVatSatang + cv.inclusive.whtSatang, cv.inclusive.toShopSatang);
+  // ── /T0.5 pricing ──
 
   if (errs.length) throw new Error(`ฟิกซ์เจอร์ TRIPS เลขไม่ตรง ${errs.length} จุด:\n- ${errs.join("\n- ")}`);
   return { checks };

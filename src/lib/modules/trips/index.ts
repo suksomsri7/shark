@@ -80,3 +80,57 @@ export type {
   ProductListItem as TripProductListItem,
 } from "./products-core";
 // ◂ TRIPS T0.2
+
+// ── T0.5 pricing ──
+// TRIPS T0.5 ▸ ตัวเลือกราคา 8 ขั้น · ฤดูกาล/ราคา/กฎราคา/โค้ดส่วนลด · snapshot + recompute · quote ของ Sellable (ใบสั่ง ledger/trips-briefs/T0.5.md) ◂
+export {
+  BP_UNIT,
+  MICROS_UNIT,
+  mulBpHalfUp,
+  mulDivHalfUp,
+  divCeil,
+  divFloor,
+  vatOfInclusive,
+  vatOfExclusive,
+  minorToSatang,
+  allocateLastRemainder,
+  allocateWithin,
+} from "./money-math";
+export {
+  PRICE_STEPS,
+  PRICING_POLICY_KEYS,
+  PricingAbort,
+  tripPricingInputSchema,
+  agencyPricingInputSchema,
+  resolveTripPrice,
+  priceFingerprint,
+} from "./pricing-core";
+export type {
+  PriceStep,
+  TripPricingInput,
+  AgencyPricingInput,
+  AgencyLevel,
+  PricedQuote,
+  PricedItem,
+  PricedTotals,
+  CommissionBlock,
+  PricingResult,
+  PricingWarning,
+} from "./pricing-core";
+export { toTripsSnapshot, snapshotValue, recomputeFromSnapshot, SnapshotKeyMissing } from "./snapshot";
+export type { TripsBookingSnapshot, RecomputeEvent, CancelComputed, CommissionComputed } from "./snapshot";
+export {
+  loadPricingInput,
+  quoteTripLine,
+  quoteTrips,
+  buildTripBookingSnapshot,
+  registerAgencyPricingPort,
+  registerTripPromoProvider,
+} from "./pricing";
+export type { AgencyPricingPort, AgencyPricingQuery, TripPromoProvider, QuoteLineOpts } from "./pricing";
+export { listSeasons, saveSeason, archiveSeason, listPrices, setPrice, removePrice, savePriceRule, setPriceRuleActive } from "./prices";
+export type { SeasonDTO, PriceDTO } from "./prices";
+export { redeemPromoInTx, releasePromoInTx } from "./promo";
+export type { Redemption as TripPromoRedemptionResult } from "./promo";
+export { tripSellable } from "./sellable-impl";
+// ── /T0.5 pricing ──

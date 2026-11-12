@@ -28,6 +28,12 @@ import {
   TRIPS_EMAILS,
   TRIPS_SEED_PRODUCTS,
   assertFixtureArithmetic,
+  // ── T0.5 pricing ──
+  PRODUCT_RACHA,
+  RACHA_DEPARTURE_PRICE_1231,
+  RACHA_SEASONS,
+  TRIPS_AS_OF,
+  // ── /T0.5 pricing ──
   type SeedProduct,
   type FixtureParty,
   type FixtureUnit,
@@ -331,6 +337,72 @@ for (const sp of TRIPS_SEED_PRODUCTS) {
     extras,
   };
 }
+
+// ── T0.5 pricing ──
+// TRIPS T0.5 ▸ ราคาราชา (จอ 16 · ผ่านบริการราคา `@/lib/modules/trips` · now = TRIPS_AS_OF · รันซ้ำ = อ่านเทียบ ไม่เขียน) ◂
+//   ราคาปลีกผู้ใหญ่ 3,500 · 3 ฤดูกาล + ราคาผู้ใหญ่ต่อฤดู · รอบ 31 ธ.ค. (บริการรอบของ T0.3 ถ้ามี ไม่งั้นแถวตรง) + ราคารอบผู้ใหญ่ 4,500
+//   ไม่ตั้งราคาเด็ก (คิด 70% จาก T28 ตอน quote) · ไม่มีโค้ดส่วนลด (ไม่มีภาพใดแสดงโค้ดจริง)
+{
+  const unitId = D.units.trips.id;
+  const racha = tripProducts["racha-yai-day-trip"];
+  const adultPt = racha?.paxTypes.ADULT;
+  const joinOpt = racha?.options["ร่วมกลุ่ม"];
+  if (!racha || !adultPt || !joinOpt) throw new Error("seed T0.5: ไม่พบสินค้าราชา/ประเภทผู้ใหญ่/ตัวเลือกร่วมกลุ่ม (seed ของ T0.2 ยังไม่ลง)");
+  const sctx = { tenantId: D.tenant.id, unitId, channel: "COUNTER" as const, actor: { kind: "STAFF" as const, userId: diveOwner.userId }, now: new Date(TRIPS_AS_OF), locale: "th" as const };
+  type SR<T> = { ok: true; value: T } | { ok: false; code: string; messageTh: string };
+  const ok = <T,>(r: SR<T>, what: string): T => {
+    if (!r.ok) throw new Error(`seed T0.5 ${what}: ${r.code} ${r.messageTh}`);
+    return r.value;
+  };
+  const prices = async () => ok(await trips.listPrices(sctx, { productId: racha.productId }), "listPrices");
+  const ensurePrice = async (want: { seasonId?: string; departureId?: string; amountMinor: number }, what: string) => {
+    const cur = (await prices()).find((p) => p.paxTypeId === adultPt && p.optionId === null && p.seasonId === (want.seasonId ?? null) && p.departureId === (want.departureId ?? null) && p.weekdayMask === null && p.bookFrom === null && p.travelFrom === null);
+    if (cur && cur.amountMinor === want.amountMinor && cur.currency === "THB") return;
+    bump(cur ? updated : created, "tripPrice");
+    ok(await trips.setPrice(sctx, { productId: racha.productId, paxTypeId: adultPt, currency: "THB", amountMinor: want.amountMinor, ...(want.seasonId ? { seasonId: want.seasonId } : {}), ...(want.departureId ? { departureId: want.departureId } : {}) }), `setPrice ${what}`);
+  };
+  await ensurePrice({ amountMinor: PRODUCT_RACHA.adultSatang }, "ปลีก");
+  for (const s of RACHA_SEASONS) {
+    const list = ok(await trips.listSeasons(sctx, { includeArchived: false }), "listSeasons");
+    let row = list.find((x) => x.name === s.name && x.dateStart === s.from && x.dateEnd === s.to);
+    if (row && row.priority !== s.priority) {
+      bump(updated, "tripSeason");
+      ok(await trips.saveSeason(sctx, { id: row.id, name: s.name, dateStart: s.from, dateEnd: s.to, priority: s.priority }), `saveSeason ${s.key}`);
+    }
+    if (!row) {
+      bump(created, "tripSeason");
+      const id = ok(await trips.saveSeason(sctx, { name: s.name, dateStart: s.from, dateEnd: s.to, priority: s.priority }), `saveSeason ${s.key}`).id;
+      row = { id, name: s.name, dateStart: s.from, dateEnd: s.to, priority: s.priority, status: "ACTIVE" };
+    }
+    await ensurePrice({ seasonId: row.id, amountMinor: s.adultSatang }, `ฤดู ${s.key}`);
+  }
+  // รอบราชา 31 ธ.ค. — มีอยู่แล้ว (เช่น จาก seed ของ T0.3) ใช้ตัวนั้น
+  const d31 = RACHA_DEPARTURE_PRICE_1231;
+  let dep = await prisma.tripDeparture.findFirst({ where: { tenantId: D.tenant.id, unitId, productId: racha.productId, localDate: new Date(`${d31.date}T00:00:00.000Z`) }, select: { id: true }, orderBy: { startsAt: "asc" } });
+  if (!dep) {
+    bump(created, "tripDeparture");
+    const start = new Date(`${d31.date}T${PRODUCT_RACHA.time.start}:00+07:00`);
+    const end = new Date(`${d31.date}T${PRODUCT_RACHA.time.end}:00+07:00`);
+    const viaT03 = (trips as unknown as Record<string, unknown>).createDeparture;
+    if (typeof viaT03 === "function") {
+      const [hh, mm] = PRODUCT_RACHA.time.start.split(":").map(Number);
+      const r = (await (viaT03 as (c: unknown, i: unknown, o?: unknown) => Promise<{ ok: boolean; id?: string; departure?: { id: string } }>)(
+        { tenantId: D.tenant.id, actorUserId: diveOwner.userId },
+        { unitId, productId: racha.productId, optionId: joinOpt, localDate: d31.date, departTimeMin: hh * 60 + mm, durationMin: (end.getTime() - start.getTime()) / 60_000, capacity: PRODUCT_RACHA.capacity },
+        { now: new Date(TRIPS_AS_OF) },
+      )) as { ok: boolean; id?: string; departure?: { id: string } };
+      if (!r.ok) throw new Error(`seed T0.5 createDeparture 31 ธ.ค.: ${JSON.stringify(r)}`);
+    } else {
+      await prisma.tripDeparture.create({
+        data: { tenantId: D.tenant.id, unitId, productId: racha.productId, optionId: joinOpt, localDate: new Date(`${d31.date}T00:00:00.000Z`), startsAt: start, endsAt: end, status: "OPEN", capacity: PRODUCT_RACHA.capacity, minPax: PRODUCT_RACHA.minPax },
+      });
+    }
+    dep = await prisma.tripDeparture.findFirst({ where: { tenantId: D.tenant.id, unitId, productId: racha.productId, localDate: new Date(`${d31.date}T00:00:00.000Z`) }, select: { id: true }, orderBy: { startsAt: "asc" } });
+    if (!dep) throw new Error("seed T0.5: สร้างรอบ 31 ธ.ค. แล้วอ่านไม่เจอ");
+  }
+  await ensurePrice({ departureId: dep.id, amountMinor: d31.adultSatang }, "รอบ 31 ธ.ค.");
+}
+// ── /T0.5 pricing ──
 
 // ═══════════════ สรุป (ต้องเหมือนเดิมทุกตัวอักษรเมื่อรันซ้ำ) ═══════════════
 async function countsOf(tenantId: string) {

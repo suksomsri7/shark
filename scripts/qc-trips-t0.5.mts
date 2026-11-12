@@ -1132,7 +1132,7 @@ try {
   console.log("\n── X1: แยกร้าน/หน่วย ──");
   await st("X1-1", "listSeasons: ร้าน B และหน่วย A2 ไม่เห็นฤดูกาลของหน่วย A", async () => {
     await needDb(); const s = await rawSeason("2030-01-01", "2030-01-31", 1);
-    const ids = async (ctx: Rec) => asArr(V(await call("listSeasons", ctx, { includeArchived: true }), "list")).map((x) => x.id);
+    const ids = async (ctx: Rec) => { const r = asRec(await call("listSeasons", ctx, { includeArchived: true })); return asArr(r?.value).map((x) => x.id); }; // ORACLE-EDIT X1-1 (ผู้คุม 12 พ.ย.): V() แปลง array เป็น {} — อ่าน value ตรง
     eq([(await ids(C())).includes(s), (await ids(C({ unit: uA2 }))).includes(s), (await ids(C({ tenant: tB, unit: uB, actor: { kind: "STAFF", userId: String(U.ob?.userId) } }))).includes(s)], [true, false, false], "เห็น");
   });
   await st("X1-2", "quote สินค้าของหน่วย A ด้วย ctx หน่วย A2 / ร้าน B ⇒ NOT_FOUND · สินค้า A2 ไม่มีราคาของตัวเอง (ราคา A ไม่รั่ว) ⇒ PRICE_MISSING", async () => {
@@ -1153,6 +1153,7 @@ try {
     codeR(await call("setPrice", cb, { productId: PRD.A.id, paxTypeId: PRD.A.pt.ADULT, currency: "THB", amountMinor: 1 }), "NOT_FOUND", "price");
     codeR(await call("setPriceRuleActive", cb, { id: r, active: false, reason: "พยายามข้ามร้าน ทดสอบ" }), "NOT_FOUND", "rule");
     eq([(await q<{ status: string }>(`SELECT status FROM "TripSeason" WHERE id = $1`, [s]))[0]?.status, (await q<{ active: boolean }>(`SELECT active FROM "TripPriceRule" WHERE id = $1`, [r]))[0]?.active], ["ACTIVE", true], "ไม่เปลี่ยน");
+    await q(`UPDATE "TripPriceRule" SET active = false WHERE id = $1`, [r]); // ORACLE-EDIT Q-1 (ผู้คุม 12 พ.ย.): กฎทดสอบของ X1-4 ค้าง active แล้วไปลดราคา 1% ในข้อ Q-1 — ปิดหลังตรวจ
   });
   groupLine("X1");
 

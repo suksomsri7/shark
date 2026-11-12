@@ -860,6 +860,10 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "trips.product.view": "ดูสินค้าทัวร์",
       "trips.product.edit": "แก้สินค้าทัวร์",
       "trips.product.publish": "เปิด/ปิดขายและเก็บสินค้าทัวร์",
+      // ── T0.5 pricing ── TRIPS T0.5 ▸ ราคา ฤดูกาล โปรโมชัน · ราคาแก้มือ ◂
+      "trips.price.edit": "ตั้งราคา ฤดูกาล และโปรโมชันทัวร์",
+      "trips.price.override": "แก้ราคามือในการจอง",
+      // ── /T0.5 pricing ──
     },
   },
 ] as const;

@@ -401,6 +401,11 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "trips.product.unpublished", label: "เมื่อปิดขายสินค้าทัวร์ (กลับเป็นร่าง)" },
   { value: "trips.product.archived", label: "เมื่อเก็บสินค้าทัวร์เข้าคลัง (เลิกขาย)" },
   // ◂ TRIPS T0.2
+  // ── T0.5 pricing ── TRIPS T0.5 ▸ ตัวยิง trips/prices.ts · trips/promo.ts · payload id/จำนวน/สตางค์ล้วน · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks) ◂
+  { value: "trips.price.changed", label: "เมื่อแก้ราคา/ฤดูกาล/กฎราคาทัวร์" },
+  { value: "trips.promo.redeemed", label: "เมื่อใช้โค้ดส่วนลดทัวร์" },
+  { value: "trips.promo.exhausted", label: "เมื่อโค้ดส่วนลดทัวร์ถูกใช้ครบ" },
+  // ── /T0.5 pricing ──
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

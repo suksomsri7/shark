@@ -602,6 +602,13 @@ export async function updateProduct(ctx: Ctx, input: unknown): Res<{ id: string 
         if (cur.status !== "DRAFT") return fail("BAD_STATE");
         if (p.currency !== cur.currency) {
           if (cur.publishedAt !== null) return fail("CURRENCY_LOCKED");
+          // ── T0.5 pricing ── TRIPS T0.5 ▸ มีแถวราคา/กฎราคาอ้างสินค้านี้ ⇒ สกุลเงินล็อก (ราคาจะค้างสกุลเดิม · หนี้ T0.2) — ใต้ล็อกสินค้าเดียวกัน ◂
+          const priced = await Promise.all([
+            tx.tripPrice.findFirst({ where: { tenantId: g.tenantId, unitId: g.unitId, productId: cur.id }, select: { id: true } }),
+            tx.tripPriceRule.findFirst({ where: { tenantId: g.tenantId, unitId: g.unitId, productId: cur.id }, select: { id: true } }),
+          ]);
+          if (priced.some((x) => x !== null)) return fail("CURRENCY_LOCKED");
+          // ── /T0.5 pricing ──
           const c = await checkProductCurrency(g, cur.productType, p.currency, { unitId: g.unitId, productId: cur.id });
           if (isFail(c)) return c;
           currency = c;
