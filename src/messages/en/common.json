@@ -513,6 +513,113 @@
         "m12": "Dec"
       },
       "needsRecompute": "{n} days need a recompute — the roster changed after the result was saved (hours still count from the saved result)"
+    },
+    "life": {
+      "saved": "Saved",
+      "savedKept": "Saved — employment ended, but this person's SHARK account was kept",
+      "due": {
+        "title": "To handle",
+        "sub": "Turn on task-board cards in settings",
+        "probation": "Probation ending",
+        "contract": "Contract ending",
+        "onboarding": "Onboarding open",
+        "offboarding": "Offboarding open",
+        "none": "None",
+        "items": "{n} items"
+      },
+      "banner": {
+        "probation": "Probation · ends {date} ({left})",
+        "left": "in {n} days",
+        "today": "ends today",
+        "over": "{n} days overdue",
+        "contract": "Contract until {date}",
+        "start": "Started {date}",
+        "pass": "Pass probation"
+      },
+      "ended": {
+        "title": "Employment ended",
+        "detail": "End date {date} · reason: {reason}",
+        "note": "Note: {note}"
+      },
+      "reason": {
+        "RESIGNED": "Resigned",
+        "CONTRACT_END": "Contract ended",
+        "PROBATION_FAILED": "Did not pass probation",
+        "TERMINATED": "Terminated",
+        "OTHER": "Other"
+      },
+      "checklist": {
+        "onboarding": "Onboarding checklist",
+        "offboarding": "Offboarding checklist",
+        "startOnboarding": "Start onboarding checklist",
+        "startOffboarding": "Start offboarding checklist",
+        "progress": "{done}/{total}",
+        "card": "Has a task-board card",
+        "markDone": "Mark done",
+        "markOpen": "Mark not done",
+        "kanbanOn": "Open items are cards on the chosen task board"
+      },
+      "notes": {
+        "title": "Notes · warnings · reviews",
+        "empty": "No notes yet",
+        "add": "Add note",
+        "kind": "Kind",
+        "kinds": {
+          "NOTE": "Note",
+          "VERBAL_WARNING": "Verbal warning",
+          "WRITTEN_WARNING": "Written warning",
+          "REVIEW": "Review"
+        },
+        "fieldTitle": "Title",
+        "fieldBody": "Details",
+        "period": "Quarter (reviews only)",
+        "score": "Score 1–5 (reviews only)",
+        "scoreOf": "Score {n}/5",
+        "visible": "Employee can see",
+        "visibleDefault": "By kind",
+        "visibleYes": "Visible",
+        "visibleNo": "Hidden",
+        "writtenAlways": "Written warnings are always visible to the employee (labour-law notice)",
+        "appendOnly": "Notes cannot be edited or deleted — add a new note to correct one",
+        "shown": "Visible to employee",
+        "hidden": "Hidden from employee",
+        "acked": "Acknowledged {date}",
+        "by": "by {name}",
+        "save": "Save"
+      },
+      "offboard": {
+        "open": "End employment",
+        "date": "Last working day (today or earlier)",
+        "future": "Not leaving yet? Set the contract end date instead — you will be reminded before it",
+        "reason": "Reason",
+        "choose": "Choose a reason",
+        "note": "Note (up to 500 characters · admins only)",
+        "access": "Revoke this person's SHARK account",
+        "effects": "Happens on confirm: no more clock-ins · leave and shift-swap requests starting after the end date are cancelled · roster after the end date is removed · leave spanning the end date stays",
+        "pin": "The clock-in PIN is cleared immediately",
+        "payslips": "If the account is revoked, the person can no longer open the app or see their own payslips — the owner sends past payslips on request",
+        "confirm": "Confirm end of employment"
+      },
+      "settings": {
+        "title": "Employee lifecycle",
+        "desc": "Probation/contract reminders · task-board cards · onboarding/offboarding templates",
+        "shopWide": "Shop-wide setting — edited by an all-branch admin",
+        "leadProbation": "Remind before probation ends (0–90 days)",
+        "leadContract": "Remind before contract ends (0–180 days)",
+        "kanban": "Create task-board cards",
+        "board": "Board",
+        "noBoard": "— choose a board —",
+        "assign": "Cards go to",
+        "assignManager": "Branch manager",
+        "assignOwner": "Owner",
+        "autoPin": "Clear the PIN when employment ends",
+        "revokeApp": "Revoke the SHARK account when employment ends (form default)",
+        "tplOn": "Onboarding template",
+        "tplOff": "Offboarding template",
+        "ownerSwitch": "Only the owner can switch off the automatic PIN clear and account revoke",
+        "tplHelp": "One per line: key | title | due days (from start/end date) · up to 20",
+        "save": "Save settings"
+      }
     }
   }
 }

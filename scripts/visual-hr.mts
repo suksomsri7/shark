@@ -37,8 +37,9 @@ const BASE = (opt("--base") ?? "").replace(/\/$/, "");
 const USERS = Object.keys(HQC.users) as HqcUserKey[];
 
 // HR H2.2 ▸ Ids + สาขา/สัปดาห์ตารางกะจาก seed (HQC.roster) · expect = HTTP ที่ต้องได้ต่อผู้ใช้ (ไม่ตรง = ❌ — ปิดหนี้ H0.4 "4xx = ⚠️ อย่างเดียว" เฉพาะหน้าที่ระบุ) ◂
-type Ids = { hr: string; namfon: string; paidRun: string; huahin: string; suanphueng: string; rosterWeek: string; today: string }; // HR H2.5 ▸ today ◂
-type PageSpec = { key: string; path: (ids: Ids) => string; users: readonly HqcUserKey[] | "all"; why: string; expect?: Partial<Record<HqcUserKey, number>> };
+// HR H4.4 ▸ emp = id พนักงานตามกุญแจ HQC (เฉลย employees) · click = selector ที่กดก่อนถ่าย (เช่นเปิดแผงยืนยันสิ้นสุดการจ้าง) ◂
+type Ids = { hr: string; namfon: string; paidRun: string; huahin: string; suanphueng: string; rosterWeek: string; today: string; emp: Record<string, string> }; // HR H2.5 ▸ today ◂
+type PageSpec = { key: string; path: (ids: Ids) => string; users: readonly HqcUserKey[] | "all"; why: string; expect?: Partial<Record<HqcUserKey, number>>; click?: string };
 /** หน้าที่มีอยู่จริงวันนี้ (7 page.tsx ของ HR) */
 const PAGES: readonly PageSpec[] = [
   { key: "employees", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: "all", why: "ทะเบียนพนักงาน" },
@@ -80,6 +81,17 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "att-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
     { key: "settings-attendance", path: (i) => `/app/sys/${i.hr}/hr/settings`, why: "การ์ดตัดสินผล/การเตือน hr-settings-attendance-policy (R12)", expect: { owner: 200 }, users: ["owner"] },
   ],
+  // HR H4.4 ▸ brief §5 (mockup 02) — ข้อมูลจาก seed (HQC.lifecycle: โบว์ ทดลองงาน + รายการรับเข้า 5/7 · เจ สัญญาถึงสิ้นเดือน · นัท ตักเตือนด้วยวาจา · ฝ้าย ผู้ลาออก) ◂
+  "4.4": [
+    { key: "life-due", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["owner", "manager-branch", "staff"], why: "ทะเบียน: แผง \"ต้องจัดการ\" 4 ช่อง (ทดลองงาน · สัญญา · รับเข้าค้าง · ออกจากงานค้าง) — staff ไม่เห็นแผง (H4.4)" },
+    { key: "life-probation", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.emp.bow}`, users: ["owner", "manager-branch"], why: "โปรไฟล์โบว์: แถบทดลองงาน + ปุ่มผ่านทดลองงาน · รายการรับเข้า 5/7 · บันทึก (H4.4)" },
+    { key: "life-notes", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.emp.nat}`, users: ["owner", "manager-branch"], why: "โปรไฟล์นัท: บันทึกตักเตือนด้วยวาจา (พนักงานเห็น) + ฟอร์มเพิ่มบันทึก (H4.4)" },
+    { key: "life-contract", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.emp.jay}`, users: ["owner"], why: "โปรไฟล์เจ: สัญญาถึงสิ้นเดือน (H4.4)" },
+    { key: "life-offboard-open", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.emp.nat}`, click: '[data-testid="hr-life-offboard"] > summary', users: ["owner", "manager-branch"], why: "แผงยืนยันสิ้นสุดการจ้าง: วัน · เหตุผล · หมายเหตุ · ช่องถอนสิทธิ์ (ผู้จัดการ = ล็อก) · คำเตือนสลิปเงินเดือน (H4.4)" },
+    { key: "life-ended-kept", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.emp.fai}?life=ok.kept`, users: ["owner"], why: "โปรไฟล์ฝ้าย (สิ้นสุดแล้ว): แถบสิ้นสุด · รายการออกจากงาน · ข้อความ \"เก็บสิทธิ์บัญชีไว้\" (H4.4)" },
+    { key: "life-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-life`, users: ["owner", "manager-branch"], why: "หน้าตั้งค่า: การ์ดวงจรพนักงาน (ผู้จัดการสาขา = ปิดแก้ · สวิตช์ถอนสิทธิ์ล็อก) (H4.4)" },
+    { key: "life-staff-self", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.namfon}`, users: ["staff"], why: "staff เปิดโปรไฟล์ตัวเอง: ไม่มีบันทึกลับ/รายการตรวจ/ปุ่มสิ้นสุด (H4.4 r2-2)" },
+  ],
 };
 const VIEWPORTS = [
   { name: "desktop", w: 1440, h: 900, mobile: false, touch: false },
@@ -100,10 +112,10 @@ const fileOf = (p: PageSpec, v: (typeof VIEWPORTS)[number]) => `${OUT}/${p.key}-
 
 // ═══════════════════ 2. --dry: พิมพ์ตารางแล้วจบ (ไม่มี env · DB · เซิร์ฟเวอร์) ═══════════════════
 if (DRY) {
-  const ph: Ids = { hr: "<hr>", namfon: "<น้ำฝน>", paidRun: "<paidRun>", huahin: "<หัวหิน>", suanphueng: "<สวนผึ้ง>", rosterWeek: "2030-01-07", today: "2030-01-08" }; // HR H2.2 ▸ ◂
+  const ph: Ids = { hr: "<hr>", namfon: "<น้ำฝน>", paidRun: "<paidRun>", huahin: "<หัวหิน>", suanphueng: "<สวนผึ้ง>", rosterWeek: "2030-01-07", today: "2030-01-08", emp: new Proxy({}, { get: (_t, k) => `<${String(k)}>` }) as Record<string, string> }; // HR H2.2 ▸ ◂
   console.log(`🧪 visual-hr --dry · ใบ ${WO} · ผู้ใช้ ${USER} (${HQC.users[USER].role}) · ${spec.length} หน้า × ${VIEWPORTS.length} ขนาดจอ = ${spec.length * VIEWPORTS.length} ภาพ`);
   for (const p of spec) {
-    console.log(`  ${p.key.padEnd(16)} ${p.path(ph)}   — ${p.why}`);
+    console.log(`  ${p.key.padEnd(16)} ${p.path(ph)}${p.click ? ` · click ${p.click}` : ""}   — ${p.why}`);
     for (const v of VIEWPORTS) console.log(`      ${v.name.padEnd(8)} ${String(v.w).padStart(4)}×${String(v.h).padEnd(4)} → ${fileOf(p, v)}`);
   }
   const skipped = PAGES.filter((p) => !spec.includes(p) && (WO === "all" || SPECS[WO]!.includes(p)));
@@ -132,7 +144,7 @@ if (!scope || scope.tenantId !== E.tenant?.id) {
   await prisma.$disconnect?.();
   die(`เฉลย ${HQC.expectedPath} ไม่ตรงกับฐาน (ร้านในฐาน ${scope?.tenantId ?? "ไม่มี"} · เฉลย ${E.tenant?.id}) — รัน seed-hr-qc ใหม่`);
 }
-const IDS: Ids = { hr: E.systems.HR, namfon: E.employees.namfon, paidRun: E.paidRun.id, huahin: E.units?.huahin ?? "", suanphueng: E.units?.suanphueng ?? "", rosterWeek: E.roster?.week ?? "", today: E.dates?.today ?? "" }; // HR H2.2 ▸ ◂ · HR H2.5 ▸ today ◂
+const IDS: Ids = { hr: E.systems.HR, namfon: E.employees.namfon, paidRun: E.paidRun.id, huahin: E.units?.huahin ?? "", suanphueng: E.units?.suanphueng ?? "", rosterWeek: E.roster?.week ?? "", today: E.dates?.today ?? "", emp: (E.employees ?? {}) as Record<string, string> }; // HR H2.2 ▸ ◂ · HR H2.5 ▸ today ◂
 /** ตรงกับ src/lib/env.ts:32 — เซิร์ฟเวอร์ QC อ่าน env ชุดเดียวกัน (qc4.sh) */
 const SECURE_COOKIES = (process.env.APP_ENV ?? "") !== "development";
 console.log(`🍪 APP_ENV=${process.env.APP_ENV ?? "(ไม่ตั้ง)"} ⇒ คุกกี้ ${SECURE_COOKIES ? "__Host-shark_session (secure)" : "shark_session"}`);
@@ -181,6 +193,11 @@ try {
           });
           const resp = await page.goto(`${BASE}${path}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
           await new Promise((r) => setTimeout(r, 600));
+          // HR H4.4 ▸ กดก่อนถ่าย (ไม่เจอ selector = บันทึกใน console error ของภาพนั้น · ไม่ล้มทั้งรอบ) ◂
+          if (p.click) {
+            const sel = p.click;
+            await page.click(sel).then(() => new Promise((r) => setTimeout(r, 400)), () => cErr.push(`click: ไม่พบ ${sel}`));
+          }
           const ov = (await page.evaluate(() => {
             const d = document.documentElement;
             const b = document.body;

@@ -1,0 +1,25 @@
+# H4.4 green (builder · lane l2 ep-orange-dust · head after notes commit)
+## r2/s-qc-hr-h4.4-F.txt
+RESIDUE none (tenants=2 users=12)
+===== qc-hr-h4.4 ===== passed 67/67 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h4.4","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":62,"baseGreen":5,"offBase":["H4.4-S1.1(RED→pass)","H4.4-S1.2(RED→pass)","H4.4-S1.3(RED→pass)","H4.4-S12.1(RED→pass)","H4.4-S12.2(RED→pass)","H4.4-S12.3(RED→pass)","H4.4-S12.4(RED→pass)","H4.4-S12.5(RED→pass)","H4.4-S13.1(RED→pass
+## r2/s-qc-hr-h4.4-F2.txt
+RESIDUE none (tenants=2 users=12)
+===== qc-hr-h4.4 ===== passed 67/67 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h4.4","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":62,"baseGreen":5,"offBase":["H4.4-S1.1(RED→pass)","H4.4-S1.2(RED→pass)","H4.4-S1.3(RED→pass)","H4.4-S12.1(RED→pass)","H4.4-S12.2(RED→pass)","H4.4-S12.3(RED→pass)","H4.4-S12.4(RED→pass)","H4.4-S12.5(RED→pass)","H4.4-S13.1(RED→pass
+## r2/s-qc-hr-h4.4-U.txt
+RESIDUE none (tenants=2 users=12)
+===== qc-hr-h4.4 ===== passed 67/67
+JSON_SUMMARY {"suite":"qc-hr-h4.4","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":62,"baseGreen":5,"offBase":["H4.4-S1.1(RED→pass)","H4.4-S1.2(RED→pass)","H4.4-S1.3(RED→pass)","H4.4-S12.1(RED→pass)","H4.4-S12.2(RED→pass)","H4.4-S12.3(RED→pass)","H4.4-S12.4(RED→pass)","H4.4-S12.5(RED→pass)","H4.4-S13.1(RED→pas
+## seed ×2
+seed1.txt:===== seed-hr-qc ===== ผ่าน 31/31
+seed2.txt:===== seed-hr-qc ===== ผ่าน 31/31
+counts identical: yes (HrOnboardingTask 13 · HrReviewNote 1 · OutboxEvent 7)
+## regression
+r2/s-qc-hr-h1.1-U.txt: ===== qc-hr-h1.1 ===== passed 81/81
+r2/s-qc-hr-h1.2-U.txt: ===== qc-hr-h1.2 ===== passed 72/73
+r2/s-qc-hr-h1.3-U.txt: ===== qc-hr-h1.3 ===== passed 63/63
+r2/s-qc-hr-h2.4-U.txt: ===== qc-hr-h2.4 ===== passed 66/66
+r2/s-qc-hf-hr-privacy-U.txt: ผ่าน 194/194
+  ❌ [H1.2-S7.4] [db read] hr-expected.json counts include HrShift 4 · HrLeavePolicy 4 · HrHoliday 2 · every Hr* count = live (roster/txn/request tables 0) — expected every Hr* count = live · new 3 = 4/4/2 · request tables 0 | actual diff=0 nonZero=HrRosterEntry=48
+fitness env/noenv 53/53 · fitness-hr env/noenv 9/9 · typecheck exit 0 (0 errors)

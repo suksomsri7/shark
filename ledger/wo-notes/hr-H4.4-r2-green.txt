@@ -1,0 +1,12 @@
+# H4.4 r2 green (lane l2 · builder)
+s-qc-hr-h4.4-F: ===== qc-hr-h4.4 ===== passed 79/79 (QC_FORCE) RESIDUE none (tenants=2 users=19)
+s-qc-hr-h4.4-F2: ===== qc-hr-h4.4 ===== passed 79/79 (QC_FORCE) RESIDUE none (tenants=2 users=19)
+s-qc-hr-h4.4-U: ===== qc-hr-h4.4 ===== passed 79/79 RESIDUE none (tenants=2 users=19)
+s-qc-hr-h1.1-U: ===== qc-hr-h1.1 ===== passed 81/81 RESIDUE none (tenants=3 users=14)
+s-qc-hr-h1.2-U: ===== qc-hr-h1.2 ===== passed 72/73 RESIDUE none (tenants=2 users=8)
+s-qc-hr-h1.3-U: ===== qc-hr-h1.3 ===== passed 63/63 RESIDUE none (tenants=2 users=7)
+s-qc-hr-h2.4-U: ===== qc-hr-h2.4 ===== passed 66/66 
+qc-hf-hr-privacy: ผ่าน 194/194
+  ❌ [H1.2-S7.4] [db read] hr-expected.json counts include HrShift 4 · HrLeavePolicy 4 · HrHoliday 2 · every Hr* count = live (roster/txn/request tables 0) — expected every Hr* count = live · n
+seed ×2: 31/31 · 31/31 · counts identical
+fitness 53/53 ×2 (env/no env) · fitness-hr 9/9 ×2 · typecheck exit 0 (0 errors)

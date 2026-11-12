@@ -49,6 +49,7 @@ const digest = (await import("@/lib/modules/hr/payroll-digest" as string)) as An
 const gl = (await import("@/lib/modules/account/gl" as string)) as Any;
 const staff = (await import("@/lib/staff/service" as string)) as Any;
 const settings = (await import("@/lib/modules/hr/settings" as string)) as Any; // HR H1.2 ▸ กะ / ประเภทการลา / วันหยุด ผ่าน service ◂
+const life = (await import("@/lib/modules/hr/lifecycle" as string)) as Any; // HR H4.4 ▸ วงจรพนักงาน ผ่าน service ในนามเจ้าของ ◂
 
 const q = makeChecker(SUITE);
 const t0 = Date.now();
@@ -169,6 +170,7 @@ try {
   }
   const uid = (k: HqcUserKey) => users[k]!.userId;
   const ownerActor = { userId: uid("owner"), isOwner: true };
+  const ownerViewer = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: uid("owner") }; // HR H4.4 ▸ ย้ายมาจากขั้น 9b (ค่าเดิม) ◂
 
   // ═══════════════════ 4. พนักงาน 14 คน ═══════════════════
   const emp: Record<string, string> = {};
@@ -189,6 +191,9 @@ try {
       startDate: D.startOf(e),
       ...(e.end === "lastDayOfMonthBeforePaidRun" ? { endDate: D.leaverEnd } : {}),
       ...(noteText(e) ? { note: noteText(e) } : {}),
+      // HR H4.4 ▸ วันครบทดลองงาน/สิ้นสุดสัญญาจริง (ตัวกวาดเตือน + แผง "ต้องจัดการ" ของภาพ 02) ◂
+      ...(e.key === HQC.lifecycle.probation.employee ? { probationEndAt: addDays(D.today, HQC.lifecycle.probation.endsInDays) } : {}),
+      ...(e.key === HQC.lifecycle.contract.employee ? { contractEndAt: D.endOfThisMonth } : {}),
       ...(e.sensitive ? sensitiveOf(e.sensitive) : {}),
     });
     if (!r?.ok) throw new Error(`saveEmployeeProfile ${e.key}: ${r?.reason}`);
@@ -201,7 +206,11 @@ try {
       const pr = await hr.setPin(ctx, id, e.pin);
       if (!pr?.ok) throw new Error(`setPin ${e.key}: ${pr?.reason}`);
     }
-    if (!e.active) await hr.setEmployeeActive(ctx, id, false);
+    // HR H4.4 ▸ ผู้ลาออกสิ้นสุดผ่าน offboardEmployee (ธุรกรรมเดียว · RESIGNED · วันสิ้นสุด leaverEnd) — ไม่ใช่ setEmployeeActive(false) ◂
+    if (!e.active && e.key === HQC.lifecycle.leaver.employee) {
+      const off = await life.offboardEmployee(ctx, ownerViewer, id, { reason: HQC.lifecycle.leaver.reason, endDate: D.leaverEnd, revokeAccess: false });
+      if (!off?.ok) throw new Error(`offboardEmployee ${e.key}: ${off?.reason}`);
+    } else if (!e.active) await hr.setEmployeeActive(ctx, id, false);
     // HR H1.1 ▸ R10: ยืมตัว (borrowedTo) = แถว HrEmployeeUnit ที่ยังเปิด ตั้งแต่วันเริ่มงาน (ผ่าน service) ◂
     if (e.borrowedTo) {
       const br = await hr.addEmployeeBorrowing(ctx, { employeeId: id, unitId: units[e.borrowedTo]!, fromDate: D.startOf(e), note: `ช่วยงาน${HQC.units[e.borrowedTo].name}` });
@@ -362,7 +371,7 @@ try {
   // 4 กะ (3 กะเดิมของ HQC.shifts ทั้งร้าน + กะดึกข้ามเที่ยงคืน) · 4 ประเภทการลา = ค่าตั้งต้นรอเจ้าของยืนยัน (HQ12) · 2 วันหยุด
   // 🔴 ไม่สร้างตารางงาน / สมุดวันลา / คำขอแลกกะ-แก้เวลา-OT (ของ H2.x)
   const TL = HQC.timeLeave;
-  const ownerViewer = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: uid("owner") };
+  // HR H4.4 ▸ ownerViewer ประกาศครั้งเดียวหลังสร้างผู้ใช้ (ขั้น 3 — ใช้ตั้งแต่ขั้น 4: ผู้ลาออกสิ้นสุดผ่าน offboardEmployee) ◂
   const settingsOk = (what: string, r: Any) => {
     if (!r?.ok) throw new Error(`settings ${what}: ${r?.reason}`);
   };
@@ -392,19 +401,50 @@ try {
     `${tlShifts.length} · ${tlPolicies} · ${tlHolidays.length} · ${tlZero}`,
   );
 
+  // ═══════════════════ 9b2. HR H4.4 ▸ วงจรพนักงาน (ภาพ 02) — รายการรับเข้า 5/7 ของโบว์ · ตักเตือนด้วยวาจา 1 ใบ (นัท) ◂ ═══════════════════
+  const LC = HQC.lifecycle;
+  const LX0 = LC.expect;
+  const lcCtx = { tenantId, systemId: hrSys.id };
+  const lcStart = await life.startChecklist(lcCtx, ownerViewer, emp[LC.onboarding.employee], "ONBOARDING");
+  if (!lcStart?.ok) throw new Error(`startChecklist: ${lcStart?.reason}`);
+  const lcList = await life.listChecklist(lcCtx, ownerViewer, emp[LC.onboarding.employee]);
+  const lcDoneKeys = new Set<string>(LC.onboarding.done);
+  const lcRows = (await P.hrOnboardingTask.findMany({ where: { tenantId, employeeId: emp[LC.onboarding.employee], kind: "ONBOARDING" }, select: { id: true, templateKey: true } })) as Any[];
+  for (const r of lcRows.filter((x) => lcDoneKeys.has(String(x.templateKey)))) {
+    const d = await life.setTaskDone(lcCtx, ownerViewer, r.id, true);
+    if (!d?.ok) throw new Error(`setTaskDone: ${d?.reason}`);
+  }
+  const lcNote = await life.addReviewNote(lcCtx, ownerViewer, { employeeId: emp[LC.warning.employee], kind: LC.warning.kind, title: LC.warning.title, body: LC.warning.body });
+  if (!lcNote?.ok) throw new Error(`addReviewNote: ${lcNote?.reason}`);
+  const lcAfter = await life.listChecklist(lcCtx, ownerViewer, emp[LC.onboarding.employee]);
+  const lcDone = (lcAfter?.onboarding ?? []).filter((x: Any) => x.done).length;
+  const lcLeaverTasks = await P.hrOnboardingTask.count({ where: { tenantId, employeeId: emp[LC.leaver.employee], kind: "OFFBOARDING" } });
+  const lcLeaver = (await P.hrEmployee.findUnique({ where: { id: emp[LC.leaver.employee] }, select: { offboardReason: true, offboardedAt: true, pinHash: true } })) as Any;
+  q.chk(
+    "LC1",
+    `วงจรพนักงาน (H4.4): รับเข้า ${LX0.onboardingDone}/${(lcList?.onboarding ?? []).length} · ผู้ลาออก ${LC.leaver.reason} + รายการออก ${LX0.offboardingTasks} · บันทึกเห็นได้ 1`,
+    (lcList?.onboarding ?? []).length === 7 && lcDone === LX0.onboardingDone && lcLeaverTasks === LX0.offboardingTasks && lcLeaver?.offboardReason === LC.leaver.reason && !!lcLeaver?.offboardedAt && lcLeaver?.pinHash === null,
+    `7 · ${LX0.onboardingDone} · ${LX0.offboardingTasks} · ${LC.leaver.reason}`,
+    `${(lcList?.onboarding ?? []).length} · ${lcDone} · ${lcLeaverTasks} · ${lcLeaver?.offboardReason ?? "∅"}`,
+  );
+
   // ═══════════════════ 9c. HR H1.3 ▸ เงินและกฎหมาย (R9) — seed ไม่เขียน 4 ตารางใหม่ · อ่านอย่างเดียว ◂ ═══════════════════
   // รอบที่จ่ายแล้ว = engineVersion 1 (ค่าปริยายของคอลัมน์) · นาทีทำงาน/บันทึก/งานรับเข้า-ออก ของร้าน = 0 แถว (H3.1 / H4.4)
   // แถวกฎหมาย v1:* = ตารางกลางของทั้ง SHARK — ลงด้วย `scripts/hr-seed-law-draft.mts --apply` (ไม่ใช่ seed นี้) ⇒ seed แค่นับ
   const { LAW_V1_ROWS } = (await import("./hr-seed-law-draft.mts" as string)) as { LAW_V1_ROWS: readonly unknown[] };
-  const mlZero = (await P.hrWorkEntry.count({ where: { tenantId } })) + (await P.hrReviewNote.count({ where: { tenantId } })) + (await P.hrOnboardingTask.count({ where: { tenantId } }));
+  // ORACLE-EDIT (H4.4 Q13) ▸ บันทึก/งานรับเข้า-ออก ไม่ใช่ 0 แล้ว — seed ลงผ่าน hr/lifecycle.ts (HQC.lifecycle.expect: งาน 13 · บันทึก 1) · นาทีทำงานยัง 0 ◂
+  const LX = HQC.lifecycle.expect;
+  const mlWork = await P.hrWorkEntry.count({ where: { tenantId } });
+  const mlNotes = await P.hrReviewNote.count({ where: { tenantId } });
+  const mlTasks = await P.hrOnboardingTask.count({ where: { tenantId } });
   const lawV1 = (await P.hrLawTable.findMany({ where: { sourceKey: { startsWith: "v1:" } }, select: { status: true } })) as Any[];
   const lawV1Draft = lawV1.filter((x) => x.status === "DRAFT").length;
   q.chk(
     "ML1",
-    `เงิน/กฎหมาย (H1.3): รอบจ่าย engineVersion 1 · นาทีทำงาน/บันทึก/งานรับเข้า-ออก 0 · แถวกฎหมาย v1 = ${LAW_V1_ROWS.length} DRAFT (จาก hr-seed-law-draft --apply)`,
-    run.engineVersion === 1 && mlZero === 0 && lawV1.length === LAW_V1_ROWS.length && lawV1Draft === LAW_V1_ROWS.length,
-    `1 · 0 · ${LAW_V1_ROWS.length}/${LAW_V1_ROWS.length}`,
-    `${run.engineVersion} · ${mlZero} · ${lawV1.length}/${lawV1Draft}`,
+    `เงิน/กฎหมาย (H1.3): รอบจ่าย engineVersion 1 · นาทีทำงาน 0 · บันทึก ${LX.notes} · งานรับเข้า-ออก ${LX.tasks} (H4.4) · แถวกฎหมาย v1 = ${LAW_V1_ROWS.length} DRAFT (จาก hr-seed-law-draft --apply)`,
+    run.engineVersion === 1 && mlWork === 0 && mlNotes === LX.notes && mlTasks === LX.tasks && lawV1.length === LAW_V1_ROWS.length && lawV1Draft === LAW_V1_ROWS.length,
+    `1 · 0/${LX.notes}/${LX.tasks} · ${LAW_V1_ROWS.length}/${LAW_V1_ROWS.length}`,
+    `${run.engineVersion} · ${mlWork}/${mlNotes}/${mlTasks} · ${lawV1.length}/${lawV1Draft}`,
   );
 
   // ═══════════════════ 9d. HR H2.2 ▸ ตารางกะของภาพ 03 (Q14) — ผ่านเครื่องยนต์ H2.1 ในนามเจ้าของ ◂ ═══════════════════
@@ -538,6 +578,14 @@ try {
     },
     // HR H1.3 ▸ เงินและกฎหมาย — engineVersion ของรอบที่จ่ายแล้ว · จำนวนแถวกฎหมาย v1:* (ตารางกลาง ไม่ใช่ของร้าน) ◂
     moneyLaw: { "HrPayrollRun.engineVersion": run.engineVersion, "HrLawTable.v1": lawV1.length },
+    // HR H4.4 ▸ วงจรพนักงาน — visual-hr อ่านพนักงานของแต่ละสถานะจากกุญแจ HQC (ไม่มี id ⇒ เท่ากันทุกรอบ) ◂
+    lifecycle: {
+      probation: { employee: LC.probation.employee, endsAt: addDays(D.today, LC.probation.endsInDays) },
+      contract: { employee: LC.contract.employee, endsAt: D.endOfThisMonth },
+      onboarding: { employee: LC.onboarding.employee, done: lcDone, total: (lcAfter?.onboarding ?? []).length },
+      warning: { employee: LC.warning.employee, kind: LC.warning.kind },
+      leaver: { employee: LC.leaver.employee, reason: LC.leaver.reason, endDate: D.leaverEnd },
+    },
     // HR H2.2 ▸ ตารางกะของภาพ 03 — visual-hr SPECS["2.2"] อ่าน rosterWeek (+ units.huahin) ◂
     roster: { week: rosterWeek, entries: rWant, published: rPub.published, unpublished: rList?.unpublishedCount ?? null, pendingLeave: { employee: PL.employee, from: plFrom, to: plTo } },
     // HR H2.5 ▸ Q9 ผลตัดสินรายวันของ 7 วันย้อนหลัง (ตัวปิดวันตอน seed) — จำนวนต่อสถานะเท่ากันทุกรอบของวันเดียวกัน ◂
