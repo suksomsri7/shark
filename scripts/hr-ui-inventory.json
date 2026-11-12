@@ -5326,6 +5326,245 @@
    "wo": "H4.4",
    "oracle": "qc-hr-h4.4",
    "note": "แม่แบบออกจากงาน: รหัส | หัวข้อ | วัน (≤ 20 ข้อ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-ot-form",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ot-ui.tsx",
+   "conditional": "พนักงานที่ผูกบัญชี หรือผู้ยื่นแทนได้ (OWNER · MANAGER · hr.payadjust.request)",
+   "roles": [
+    "owner",
+    "manager",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "ฟอร์มยื่นคำขอ OT (ตัวเอง/ยื่นแทน) · วันที่ เริ่ม เลิก เหตุผล"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-ot-submit",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ot-ui.tsx",
+   "conditional": "มีฟอร์มยื่นคำขอ OT",
+   "roles": [
+    "owner",
+    "manager",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "ส่งคำขอ OT · ปฏิเสธ = ข้อความคงที่ในแถว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-ot-list",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ตัดสิน/ผู้ดูเงินเดือน หรือพนักงานที่ผูกบัญชี",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "รายการคำขอ OT · ฿ เฉพาะ OWNER/hr.payroll.read/ตัวเอง (Q11)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-ot-approve",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ot-ui.tsx",
+   "conditional": "ผู้ตัดสิน · คำขอรออนุมัติของคนอื่น",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll"
+   ],
+   "expect": {
+    "type": "mutation"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "อนุมัติ (จ่ายเมื่อวันนั้นปิดผลแล้ว)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-ot-reject",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ot-ui.tsx",
+   "conditional": "ผู้ตัดสิน · คำขอรออนุมัติของคนอื่น",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll"
+   ],
+   "expect": {
+    "type": "mutation"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "ไม่อนุมัติ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-ot-revoke",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ot-ui.tsx",
+   "conditional": "ผู้ตัดสิน · คำขอที่อนุมัติแล้วของคนอื่น (ใส่เหตุผล 3–200 ตัวอักษร)",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll"
+   ],
+   "expect": {
+    "type": "mutation"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "ยกเลิก OT ที่อนุมัติแล้ว — เข้ารอบแล้ว = รายการหักในงวดที่ยังเปิด (Q13)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-ot-cancel",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ot-ui.tsx",
+   "conditional": "ผู้ยื่น/ตัวพนักงาน · คำขอที่ยังรออนุมัติ",
+   "roles": [
+    "owner",
+    "manager",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "ยกเลิกคำขอของตัวเอง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-ot-policy",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่า HR ที่ดูแลทุกสาขา",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "กฎคำขอ OT: ยื่นหลังทำ (0–72 ชม.) · ล่วงหน้า (1–90 วัน) · ปัดนาที (1 · 15 · 30)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-ot-policy-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่า HR ที่ดูแลทุกสาขา",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "บันทึกกฎ OT · ผล ?msg= (allowlist o.*)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-salary-ot-rate",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ดูเงินเดือน (OWNER/hr.payroll.read) · ต่อพนักงาน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.9",
+   "oracle": "qc-hr-h2.9",
+   "note": "#18 อัตรา OT ต่อชั่วโมง (บาท) · ว่าง = ตามกฎหมาย · ต่ำกว่า 1.5 เท่า = ปฏิเสธ"
   }
  ]
 }

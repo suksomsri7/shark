@@ -81,6 +81,12 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "att-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
     { key: "settings-attendance", path: (i) => `/app/sys/${i.hr}/hr/settings`, why: "การ์ดตัดสินผล/การเตือน hr-settings-attendance-policy (R12)", expect: { owner: 200 }, users: ["owner"] },
   ],
+  // HR H2.9 ▸ คำขอ OT (mockup 05 การ์ด OT · 07a ขอ OT) — หน้าใบลา: ฟอร์ม + รายการ (เจ้าของ ฿ · ผู้จัดการไม่เห็น ฿ — Q11) · ตั้งค่า: กฎ OT · เงินเดือน: อัตรา OT #18 ◂
+  "2.9": [
+    { key: "ot-leave", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager", "staff"], why: "ส่วนคำขอ OT: ฟอร์ม hr-ot-form · รายการ hr-ot-list · ปุ่มอนุมัติ/ไม่อนุมัติ/ยกเลิก (H2.9)" },
+    { key: "ot-settings", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner"], why: "การ์ดกฎคำขอ OT hr-settings-ot-policy (H2.9 R14)" },
+    { key: "ot-salary-rate", path: (i) => `/app/sys/${i.hr}/hr/payroll`, users: ["owner"], why: "ช่องอัตรา OT ต่อชั่วโมง hr-salary-ot-rate ในฟอร์มเงินเดือน (#18)" },
+  ],
   // HR H4.4 ▸ brief §5 (mockup 02) — ข้อมูลจาก seed (HQC.lifecycle: โบว์ ทดลองงาน + รายการรับเข้า 5/7 · เจ สัญญาถึงสิ้นเดือน · นัท ตักเตือนด้วยวาจา · ฝ้าย ผู้ลาออก) ◂
   "4.4": [
     { key: "life-due", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["owner", "manager-branch", "staff"], why: "ทะเบียน: แผง \"ต้องจัดการ\" 4 ช่อง (ทดลองงาน · สัญญา · รับเข้าค้าง · ออกจากงานค้าง) — staff ไม่เห็นแผง (H4.4)" },

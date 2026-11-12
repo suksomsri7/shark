@@ -41,6 +41,10 @@ import { LifecycleDuePanel } from "./lifecycle-ui"; // HR H4.4 ▸ แผง "�
 import { thaiDateKey } from "@/lib/ui/date"; // HR H2.7 ◂
 import { activeLeavePolicies, leaveBalances, leaveDetail, myLeaveBalances, type LeaveBalanceItem } from "./leave"; // HR H2.7 ◂
 import { leaveDutyHintsMany, type DutyHintItem } from "./availability"; // HR H4.1 ▸ R12 บรรทัด "กระทบ:" บนการ์ดใบลา (ภาพ 05) ◂
+import { myOtRequests, otRequestList, type OtViewer } from "./ot"; // HR H2.9 ▸ ส่วนคำขอ OT (ภาพ 05) ◂
+import type { OtItem } from "./ot-rules"; // HR H2.9 ◂
+import { OtRequestForm, OtRowActions } from "./ot-ui"; // HR H2.9 ◂
+import { formatBaht } from "@/lib/ui/money"; // HR H2.9 ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -721,3 +725,78 @@ export async function HrHub({ systemId }: { systemId: string }) {
     </div>
   );
 }
+
+// ───────────── HR H2.9 ▸ คำขอ OT (ภาพ 05 การ์ด OT · ภาพ 07a "ขอ OT") ─────────────
+//   ผู้ตัดสิน/ผู้ดูเงินเดือน = รายการของสาขาในขอบเขต (otRequestList) · พนักงานที่ผูกบัญชี = รายการของตัวเอง + ยอดเงินของตัวเอง (myOtRequests) ·
+//   ยอดเงิน (฿) แสดงเฉพาะเมื่อ DTO มี amountSatang (OWNER · hr.payroll.read · ตัวเอง — มติ Q11: ผู้จัดการเห็นนาที+ตัวคูณ ไม่เห็น ฿ ต่างจากภาพ 05) ·
+//   ปุ่มทุกปุ่มตรวจซ้ำที่ service (ด่านเดียวกับ API) — หน้านี้แค่ซ่อนปุ่มที่ไม่มีทางผ่าน
+const OT_HHMM = (iso: string) => new Date(iso).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Bangkok" });
+export async function HrOtSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const viewer = hrViewerOf(auth) as OtViewer;
+  const t = await getTranslations("hr.ot");
+  const perms = (viewer.permissions ?? {}) as Record<string, unknown>;
+  const isDecider = viewer.role === "OWNER" || viewer.role === "MANAGER" || perms["hr.payadjust.approve"] === true || perms["hr.*"] === true;
+  const canOnBehalf = viewer.role === "OWNER" || viewer.role === "MANAGER" || perms["hr.payadjust.request"] === true || perms["hr.*"] === true;
+  const [list, mine] = await Promise.all([otRequestList(ctx, viewer, {}), myOtRequests(ctx, viewer)]);
+  const others = canOnBehalf ? (await listEmployees(ctx, 200, hrScopeOf(hrViewerOf(auth)))).map((e) => ({ id: e.id, name: e.name })) : [];
+  if (!list.ok && !mine.ok && !others.length) return null;
+  const mineIds = new Set(mine.ok ? mine.items.map((x) => x.id) : []);
+  const row = (x: OtItem, own: boolean) => {
+    const money = "amountSatang" in x ? x : null;
+    const hours = `${Math.floor(x.requestedMin / 60)}:${String(x.requestedMin % 60).padStart(2, "0")}`;
+    const cls = x.dayClass === "HOLIDAY" ? t("holiday") : t("workday");
+    return (
+      <li key={x.id} className="flex flex-col gap-1 border-t py-3" style={{ borderColor: "var(--color-line)" }}>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium">{x.employeeName}</span>
+          <StatusChip value={x.status} map={{ PENDING: t("statusPENDING"), APPROVED: t("statusAPPROVED"), REJECTED: t("statusREJECTED"), CANCELLED: t("statusCANCELLED") }} tone={x.status === "APPROVED" ? "strong" : "muted"} />
+          <span className={`text-xs ${muted}`}>{x.timing === "BEFORE" ? t("timingBefore") : t("timingAfter")}</span>
+          {x.warnWeek && <span className="text-xs text-[color:var(--color-danger)]">{t("warnWeek")}</span>}
+        </div>
+        <div className="text-sm">
+          <b>
+            {formatThaiDate(new Date(`${x.date}T00:00:00Z`))} {OT_HHMM(x.startAt)}–{OT_HHMM(x.endAt)}
+          </b>
+          <span className={`text-xs ${muted}`}>
+            {" · "}
+            {t("hours", { h: hours })} · {cls}
+            {x.multiplierBp ? ` ×${(x.multiplierBp / 10000).toString()}` : ""}
+            {x.reason ? ` · “${x.reason}”` : ""}
+          </span>
+        </div>
+        <div className={`text-xs ${muted}`}>
+          {x.settled ? t("paidMin", { n: x.paidMin ?? 0 }) : x.status === "APPROVED" ? t("waiting") : ""}
+          {money && money.amountSatang !== null && x.settled ? ` · ${formatBaht(money.amountSatang)}` : ""}
+        </div>
+        <OtRowActions systemId={systemId} id={x.id} decide={isDecider && !own && x.status === "PENDING"} revoke={isDecider && !own && x.status === "APPROVED"} cancel={own && x.status === "PENDING"} />
+      </li>
+    );
+  };
+  return (
+    <Section title={t("title")} card>
+      <p className={`text-xs ${muted}`}>{t("desc")}</p>
+      {(mine.ok || others.length > 0) && <OtRequestForm systemId={systemId} employees={others} canSelf={mine.ok} />}
+      <ul className="flex flex-col" data-testid="hr-ot-list">
+        {list.ok
+          ? list.items.map((x) => row(x, mineIds.has(x.id)))
+          : mine.ok
+            ? mine.items.map((x) => row(x, true))
+            : null}
+      </ul>
+      {(list.ok ? list.items.length : mine.ok ? mine.items.length : 0) === 0 && <p className={`text-xs ${muted}`}>{t("empty")}</p>}
+    </Section>
+  );
+}
+
+/** HR H2.9 ▸ #18 ช่องอัตรา OT ต่อชั่วโมงในฟอร์มเงินเดือน (payroll-ui.tsx) — บาท · ว่าง = คิดจากค่าจ้างตามกฎหมาย (ล้างค่าที่ตั้งไว้) */
+export function HrSalaryOtRateField({ valueSatang, label, hint }: { valueSatang: number | null; label: string; hint: string }) {
+  return (
+    <label className={`flex flex-col gap-1 text-xs ${muted}`} title={hint}>
+      {label}
+      <input name="otHourlyRateBaht" inputMode="decimal" defaultValue={valueSatang ? String(valueSatang / 100) : ""} placeholder={hint} className="input w-28" data-testid="hr-salary-ot-rate" />
+    </label>
+  );
+}
+// ◂ HR H2.9
