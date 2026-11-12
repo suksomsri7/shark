@@ -759,3 +759,28 @@ export async function listSwapsForManager(ctx: Ctx, viewer: SwapActor, input: { 
   }
 }
 // ◂ HR H2.3
+
+// HR H2.10 ▸ ใครรับ/แลกกะนี้ได้ (หน้า "ของฉัน" — mySwapTargets) — ถามตัวตรวจเดียวกับ requestSwap (checkCore: บัญชีผูก · ยังทำงาน/อยู่ในช่วงการจ้าง ·
+//   สาขาเดียวกันในวันนั้น · ไม่ลาอนุมัติทั้งวัน · ไม่ถือกะซ้ำ · ไม่มีคำขอค้าง · กะปลายทางประกาศแล้ว) แบบอ่านอย่างเดียว ไม่ล็อก ไม่เขียน ·
+//   ผลต่อคน = ผ่าน/ไม่ผ่าน เท่านั้น (ไม่ส่งข้อความปฏิเสธรายคน — ไม่บอกว่าใครลา) · ผู้ยื่นจริงยังผ่าน requestSwap ใต้ล็อกตามเดิม ◂
+export async function swapCandidatesAccepted(
+  ctx: Ctx,
+  actorUserId: string,
+  fromEntryId: string,
+  candidates: readonly { employeeId: string; toEntryId: string | null }[],
+  today: string,
+): Promise<boolean[]> {
+  const db = tenantDb(ctx) as unknown as Tx;
+  const out: boolean[] = [];
+  for (const c of candidates) {
+    try {
+      await checkCore(db, ctx, { fromEntryId, targetEmployeeId: c.employeeId, toEntryId: c.toEntryId, actorUserId }, today);
+      out.push(true);
+    } catch (e) {
+      if (e instanceof SwapRefusal) out.push(false);
+      else throw e;
+    }
+  }
+  return out;
+}
+// ◂ HR H2.10

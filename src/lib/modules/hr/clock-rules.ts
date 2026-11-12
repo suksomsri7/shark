@@ -128,3 +128,14 @@ export function workedMinutesWithBreaks(events: readonly { kind: string; at: Dat
   }
   return Math.round(total / 60_000);
 }
+
+// HR H2.10 ▸ อ่านค่าที่มือถือส่งมาสำหรับลงเวลาด้วยมือถือ (ตัวอ่านเดียวของช่องตำแหน่ง/อุปกรณ์นอก clock.ts — หน้า "ของฉัน" ส่งก้อนจากผู้เรียกมาทั้งก้อน
+//   โดยไม่แตะชื่อช่องเอง · ไฟล์นี้อยู่ในรายการที่ด่าน R7 ของ H1.2 ยอม) — เลือกเฉพาะช่องของ mobileClock: kind · latitude · longitude · accuracy → accuracyM · deviceId ·
+//   ช่องอื่นใดในก้อน (เช่น รหัสพนักงาน) ถูกทิ้ง · ไม่ตรวจค่า (clock.ts ตรวจเองตามเดิม) ◂
+export type MobileClockPayload = { kind: "NEXT" | "BREAK_START" | "BREAK_END"; latitude?: unknown; longitude?: unknown; accuracyM?: unknown; deviceId?: unknown };
+export function mobileClockPayloadOf(raw: unknown): MobileClockPayload {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const kind = o.kind === "BREAK_START" || o.kind === "BREAK_END" ? o.kind : "NEXT";
+  return { kind, latitude: o.latitude, longitude: o.longitude, accuracyM: o.accuracy, deviceId: o.deviceId };
+}
+// ◂ HR H2.10

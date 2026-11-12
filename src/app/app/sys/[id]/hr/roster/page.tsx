@@ -3,7 +3,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { thaiDateKey } from "@/lib/ui/date";
 import { ModuleTabs } from "@/components/module-tabs";
-import { hrTabs } from "@/lib/modules/hr/ui";
+import { hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
 // HR H2.2 ▸ ตัวกันของหน้า (F16.3) = ขอบเขตสาขาจาก hr/scope + ตัวโหลดบอร์ดที่คืน null ให้คนที่ไม่ใช่ผู้อ่านตารางกะ ◂
 import { hrScopeOf } from "@/lib/modules/hr/scope";
@@ -31,7 +31,8 @@ export default async function HrRosterPage({ params, searchParams }: { params: P
   if (!board) notFound();
   return (
     <div data-testid="hr-roster-page" className="flex flex-col gap-6">
-      <ModuleTabs items={hrTabs(id)} />
+      {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
+      <ModuleTabs items={await hrTabsFor(id)} />
       <RosterBoard board={board} systemId={id} basePath={`/app/sys/${id}/hr/roster`} />
     </div>
   );

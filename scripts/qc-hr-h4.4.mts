@@ -269,11 +269,14 @@ function runStatic(): void {
   }
   {
     const tabs = (src: string) => block(src, /export function hrTabs/, 1600).split("\n}\n")[0];
-    // ORACLE-EDIT (builder H2.11 · brief H2.11 R12 adds tab "คำขอ" after "ใบลา"): one marked `HR H2.11` line in hrTabs + layout HR children is tolerated —
-    //   H4.4 itself still adds no tab (every other line = base) ◂
-    const noH211 = (src: string) => src.split("\n").filter((l) => !/HR H2\.11/.test(l)).join("\n");
-    const layoutOk = changedVsBase(BASE, [F.layout]) === "unchanged" || (diffHunks(BASE, F.layout) ?? [{ added: [], removed: ["?"] }]).every((h) => h.removed.length === 0 && h.added.length > 0 && h.added.every((l) => /HR H2\.11/.test(l)));
-    const r = { layout: layoutOk, tabs: noH211(tabs(rd(F.hrUi))) === tabs(atBase(F.hrUi)) && tabs(rd(F.hrUi)).length > 0 };
+    // ORACLE-EDIT H2.10 + H2.11 (controller rulings 12/13 Nov · one mechanism): the layout may differ from base only by hunks that carry a marked
+    //   `HR H2.10` (hrNavFilter wrap + "ของฉัน") or `HR H2.11` (tab "คำขอ") line · hrTabs body = base once those marked lines are removed ·
+    //   any unmarked hunk still fails · H4.4 itself adds no tab ◂
+    const NAV_MARK = /HR H2\.1[01]\b/;
+    const noNav = (src: string) => src.split("\n").filter((l) => !NAV_MARK.test(l)).join("\n");
+    const lh = diffHunks(BASE, F.layout);
+    const layoutOk = changedVsBase(BASE, [F.layout]) === "unchanged" || (lh !== null && lh.length > 0 && lh.every((h) => h.added.some((l) => NAV_MARK.test(l))));
+    const r = { layout: layoutOk, tabs: noNav(tabs(rd(F.hrUi))) === noNav(tabs(atBase(F.hrUi))) && tabs(rd(F.hrUi)).length > 0 };
     ck("S13.5", r, "layout + hrTabs as base", BASE.slice(0, 9));
   }
   {

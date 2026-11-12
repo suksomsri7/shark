@@ -1253,7 +1253,8 @@ const adjWriters: string[] = [];
 for (const f of srcFiles) {
   const txt = rd(f);
   for (const m of txt.matchAll(/(?<!function )\bdecideAdjustment\(([^;]*?)\);/g)) decAdjCalls.push(`${f}: ${m[0].replace(/\s+/g, " ").slice(0, 160)}`);
-  if (f !== "src/lib/modules/hr/payroll.ts" && /hrPayAdjustment\.(update|updateMany|upsert|create|createMany|createManyAndReturn)\(/.test(txt)) adjWriters.push(f);
+  // ORACLE-EDIT H2.10 r2 (controller ruling 12 Nov): delete/deleteMany are writes too — a self-service path bypassed the single writer with deleteMany ◂
+  if (f !== "src/lib/modules/hr/payroll.ts" && /hrPayAdjustment\.(update|updateMany|upsert|create|createMany|createManyAndReturn|delete|deleteMany)\(/.test(txt)) adjWriters.push(f);
 }
 chk("S-20", "อนุมัติรายการเงินมีทางเดียว: decideAdjustment ถูกเรียกใน src จุดเดียว (decideAdjustmentAction · userId = ผู้ใช้ใน session · isOwner = บทบาท OWNER) · ไม่มีไฟล์อื่นเขียนแถวรายการเงินตรง",
   // ORACLE-EDIT (builder H2.11 · brief R2 "decideAdjustmentAs = body of decideAdjustmentAction" in payroll.ts): exactly one more call site — the marked

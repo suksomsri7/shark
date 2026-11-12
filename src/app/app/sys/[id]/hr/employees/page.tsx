@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { HrEmployeesSection, hrTabs } from "@/lib/modules/hr/ui";
+import { HrEmployeesSection, hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 
@@ -18,7 +18,8 @@ export default async function HrEmployeesPage({ params, searchParams }: { params
   return (
     <div className="flex max-w-2xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="พนักงาน — รายชื่อ + เพิ่มพนักงาน" />
-      <ModuleTabs items={hrTabs(id)} />
+      {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
+      <ModuleTabs items={await hrTabsFor(id)} />
       <HrEmployeesSection systemId={id} unit={typeof unit === "string" ? unit : undefined} />
     </div>
   );

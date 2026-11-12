@@ -343,6 +343,10 @@ export async function inboxCounts(ctx: Ctx, v: HrViewer, opts: Opts = {}): Promi
   return (await listInbox(ctx, v, {}, opts))?.counts ?? null;
 }
 
+/** หน้า /hr/requests เปิดได้ไหม (เมนู/แท็บ — hr/nav.ts) = เห็นคำขออย่างน้อย 1 ชนิด (ตัวเดียวกับที่ listInbox คืน null) */
+export function canOpenInbox(v: { role: string; unitAccess: unknown; permissions: unknown; userId?: string | null } | null | undefined): boolean {
+  return !!v && visibleTypes({ role: v.role, unitAccess: v.unitAccess, permissions: v.permissions, userId: v.userId ?? "" } as HrViewer).size > 0;
+}
 /** ด่านของ action (fitness F6.1): ผู้ที่ไม่เห็นคำขอชนิดใดเลย ⇒ ForbiddenError (assertCan กับคีย์ตัดสินใบลา — ผู้ถือคีย์นั้นเห็นใบลาเสมอ) */
 export function assertInboxAccess(v: HrViewer): void {
   if (visibleTypes(v).size) return;

@@ -722,3 +722,7 @@ export async function notifyOtDecided(evt: OtEvent): Promise<void> {
     await tx.auditLog.createMany({ data: [{ tenantId: ctx.tenantId, actorType: "SYSTEM", actorId: null, action: NOTIFIED_AUDIT, targetType: "HrOtRequest", targetId: marker, after: { otRequestId: id, status, notified: !!emp?.linkedUserId } }] });
   }, TX_OPTS);
 }
+
+// HR H2.10 ▸ ประตูปุ่ม "ยกเลิก" ของหน้า "ของฉัน" — สถานะเดียวที่ cancelOtRequest ข้างบนยอม (PENDING · ผู้ยื่นหรือตัวพนักงาน) ◂
+export const otCancelOpen = (status: string): boolean => status === "PENDING";
+// ◂ HR H2.10

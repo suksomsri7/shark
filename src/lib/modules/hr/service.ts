@@ -1270,3 +1270,11 @@ export async function isOnLeave(tenantId: string, userId: string, at: Date): Pro
   });
   return hit > 0;
 }
+
+// HR H2.10 ▸ ประตูปุ่ม "ยกเลิก" ของพนักงานเองบนหน้า "ของฉัน" — เงื่อนไขเดียวกับ cancelLeave ข้างบน (H0.7 R5) สำหรับผู้กด = เจ้าของใบ:
+//   ใบรออนุมัติ · หรือใบของเจ้าของร้านที่อนุมัติทันที (ไม่มีผู้ตัดสิน) และยังไม่ถึงวันลา — cancelLeave ตัดสินจริงตอนกด (สายที่ตัดสินแล้ว/ข้อความเดิม) ◂
+export function leaveCancelOpen(row: { status: string; decidedById: string | null; fromDate: string }, viewer: { isOwner: boolean; today: string }): boolean {
+  if (row.status === "PENDING") return true;
+  return row.status === "APPROVED" && row.decidedById === null && viewer.isOwner && row.fromDate > viewer.today;
+}
+// ◂ HR H2.10

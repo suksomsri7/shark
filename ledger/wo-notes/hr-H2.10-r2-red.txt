@@ -1,0 +1,74 @@
+[env] qc-hr-h2.10 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.10] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.10] self=loaded · nav=loaded · base=b40c53138
+  ✅ [H2.10-S1.1] [static] self.ts: server module (no "use server") · exports resolveSelf + SELF_TEXT + 10 readers + 13 writers
+  ✅ [H2.10-S1.2] [static] every exported self function calls resolveSelf · resolveSelf calls employeeOfUser
+  ✅ [H2.10-S1.3] [static] self.ts never reads employeeId/userId/systemId/tenantId/linkedUserId from input (targetEmployeeId only)
+  ✅ [H2.10-S1.4] [static] self-actions: use server · wrappers only · requireTenant · no id form fields · no DB · no now:
+  ✅ [H2.10-S1.5] [static] me/hr pages exist · import only the self facade/actions/ui + shell/ui libs · no now:
+  ✅ [H2.10-S1.6] [static] "use client" files of the feature reach no prisma module
+  ✅ [H2.10-S1.7] SELF_TEXT byte-exact (7 texts)
+  ✅ [H2.10-S7.2] [static] layout case HR wraps hrNavFilter · literal labels as base · marked hunk · drawer item
+  ✅ [H2.10-S7.3] [static] hrTabs byte-identical · hrTabsFor exists · HR pages use hrTabsFor
+  ✅ [H2.10-S7.4] [static] own profile ⇒ redirect /app/me/hr/profile (marked hunk)
+  ✅ [H2.10-S8.1] [static] testids + tokens only + 44 px
+  ✅ [H2.10-S8.2] [static] inventory rows ⇄ testids (wo H2.10)
+  ✅ [H2.10-S8.3] [static] hr.self th = en
+  ✅ [H2.10-S8.4] [static] visual SPECS["2.10"] (staff · member · owner on /app/me/hr)
+  ❌ [H2.10-S10.4] [static] advance writes live in payroll.ts (marked HR H2.10 block · decideAdjustment hunk) · self.ts writes no hrPayAdjustment — expected payroll.ts block · self.ts no writes | actual block,decide,selfNoWrite
+  ❌ [H2.10-S10.5] [static] fitness-hr F16.3: my* reader counts as guard only under src/app/app/me/hr (page elsewhere calling only mySelf ⇒ unguarded) — expected outside unguarded · me/hr guarded | actual outside mySelf | mySelf, myToday, myWeek, myBalances
+  ❌ [H2.10-S10.7] [static] nav: "ของฉัน" once (top-level drawer only) · linked evaluated per HR system (layout + hrTabsFor) — expected once · per system | actual once,perSystem,tabs
+  ❌ [H2.10-S10.8] [static] resolveSelf cached per request · reason not cut · cancel flags / ranges from services · ENDED quick actions not links — expected cache · no cut · service flags · no ENDED links | actual cache,reason,range,cancel,ended
+  ✅ [H2.10-S9.1] [static] payroll-rules sha · frozen files without H2.10 hunks (other WOs' marked hunks tolerated)
+  ✅ [H2.10-S9.2] [static] no migration vs base · seed/env unchanged
+(node:1376701) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H2.10-S2.1] mySelf: keys · name/position/unit of the linked row
+  ✅ [H2.10-S2.2] myToday: own published shift · clock = myClockState verbatim · keys
+  ✅ [H2.10-S2.3] myWeek: Mon–Sun · published only · own leave · holiday · week normalised
+  ✅ [H2.10-S2.5] myBalances = myLeaveBalances of the linked row
+  ✅ [H2.10-S2.6] myDocuments: own APPROVED/PAID slips only · visible notes only · slots null · keys
+  ✅ [H2.10-S2.7] myLeaveForm/myLeavePreview: policies · own shifts in range only
+  ✅ [H2.10-S3.1] colleagues = same day · unit · overlap · published · active · not on leave · keys exact
+  ✅ [H2.10-S5.1] leave via facade: plain STAFF files without key · balance refusal = service text · nothing written
+  ✅ [H2.10-S5.2] owner who is an employee: own leave auto-APPROVED through the facade
+  ✅ [H2.10-S5.3] OT via facade: window refusal = service text · PENDING · cancel
+  ✅ [H2.10-S5.4] correction via facade: future/too-old/reason = service texts · PENDING · cancel
+  ✅ [H2.10-S3.3] mySwapTargets: same unit/day active peers · foreign fromEntryId ⇒ notFound
+  ✅ [H2.10-S5.5] swap via facade: give-away → peer accepts (facade) → PENDING · cancel
+  ✅ [H2.10-S5.6] clock via facade: no GPS = service text · in radius ⇒ MOBILE row · no coordinates in result
+  ✅ [H2.10-S5.7] notes via facade: ack own visible once (first wins) · hidden ⇒ notFound
+  ✅ [H2.10-S6.1] advance validation texts (0 · 1.5 · 50,001 · note 201)
+  ✅ [H2.10-S6.2] advance ok ⇒ PENDING ADVANCE · first open period · requestedById · audit without amount/note
+  ✅ [H2.10-S6.3] advance: second ⇒ advOpen · cancel own ⇒ deleted + audit · again ⇒ notFound
+  ✅ [H2.10-S6.4] advance: both months closed ⇒ advClosed · nothing written
+  ✅ [H2.10-S6.5] [race] advance ×2 ⇒ exactly 1 row · 1 advOpen
+  ✅ [H2.10-S2.4] myRequests: own items only · exact keys per kind
+  ✅ [H2.10-S3.2] reader outputs: no forbidden keys · no employee/user ids · no other person's name beyond colleague/peer
+  ✅ [H2.10-S4.1] [idor] injected ids in input/actor ⇒ rows for the linked employee in its own system only (leave · OT · correction · advance)
+  ✅ [H2.10-S4.2] [idor] same-branch peer's objects: 7 actions ⇒ notFound bytes · nothing changed
+  ✅ [H2.10-S4.3] [idor] other-branch objects ⇒ notFound bytes · nothing changed
+  ✅ [H2.10-S4.4] [idor] other-tenant objects ⇒ notFound bytes · nothing changed
+  ✅ [H2.10-S4.5] [idor] ENDED employee's objects + unknown ids ⇒ notFound bytes · nothing changed
+  ✅ [H2.10-S4.6] [idor] ENDED actor: writers ⇒ inactive · no row · mySelf.active=false
+  ✅ [H2.10-S4.7] [idor] unlinked actor: all 23 exports ⇒ noEmployee · no throw · no row
+  ✅ [H2.10-S4.8] [idor] linked user acting in another tenant ⇒ noEmployee everywhere
+  ✅ [H2.10-S4.9] [idor] correction on a peer's punch · swap from a peer's entry · swap to an out-of-list target ⇒ refused · no row
+  ✅ [H2.10-S7.1] hrNavFilter: owner/manager/key holder/kiosk/payroll/plain staff/member × linked
+  ❌ [H2.10-S10.1] [race] advance: 10 parallel self requests ∥ owner approving loop × 6 rounds ⇒ never > 1 non-rejected advance — expected ≤ 1 non-rejected every round | actual 1,2,3,4,5,8
+  ✅ [H2.10-S10.2] advance: 10 parallel, no approver ⇒ exactly 1 row · cancel own pending ok · cancel after approval refused (row stays APPROVED)
+  ❌ [H2.10-S10.3] advance approval guard: manager-path duplicates can never both be approved (decideAdjustment ADVANCE under hr:advance lock) — expected never two approved | actual dupRefused,single,unsettled,one true/true/false/true approved=3
+  ❌ [H2.10-S10.6] swap targets = people the swap service accepts (linked · active · not on approved leave · unit) · ENDED caller refused · leavePeer neutral · no 500 cap — expected service-eligible only | actual noUnlinked,noLeave,ended,neutral,noCap 5 "ไม่พบรายการนี้ในคำขอของคุณ — เปิดหน้าใหม่แล้"
+RESIDUE none (tenants=2 users=11)
+  ✅ [H2.10-Z1] no residue
+BASE-EXPECTATION 10/57 as registered (RED-by-design 54 · GREEN controls 3) · off: H2.10-S1.1(RED→pass) H2.10-S1.2(RED→pass) H2.10-S1.3(RED→pass) H2.10-S1.4(RED→pass) H2.10-S1.5(RED→pass) H2.10-S1.6(RED→pass) H2.10-S1.7(RED→pass) H2.10-S7.2(RED→pass) H2.10-S7.3(RED→pass) H2.10-S7.4(RED→pass) H2.10-S8.1(RED→pass) H2.10-S8.2(RED→pass) H2.10-S8.3(RED→pass) H2.10-S8.4(RED→pass) H2.10-S2.1(RED→pass) H2.10-S2.2(RED→pass) H2.10-S2.3(RED→pass) H2.10-S2.5(RED→pass) H2.10-S2.6(RED→pass) H2.10-S2.7(RED→pass) H2.10-S3.1(RED→pass) H2.10-S5.1(RED→pass) H2.10-S5.2(RED→pass) H2.10-S5.3(RED→pass) H2.10-S5.4(RED→pass) H2.10-S3.3(RED→pass) H2.10-S5.5(RED→pass) H2.10-S5.6(RED→pass) H2.10-S5.7(RED→pass) H2.10-S6.1(RED→pass) H2.10-S6.2(RED→pass) H2.10-S6.3(RED→pass) H2.10-S6.4(RED→pass) H2.10-S6.5(RED→pass) H2.10-S2.4(RED→pass) H2.10-S3.2(RED→pass) H2.10-S4.1(RED→pass) H2.10-S4.2(RED→pass) H2.10-S4.3(RED→pass) H2.10-S4.4(RED→pass) H2.10-S4.5(RED→pass) H2.10-S4.6(RED→pass) H2.10-S4.7(RED→pass) H2.10-S4.8(RED→pass) H2.10-S4.9(RED→pass) H2.10-S7.1(RED→pass) H2.10-S10.2(RED→pass)
+
+===== qc-hr-h2.10 ===== passed 50/57 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.10","total":57,"passed":50,"failed":["H2.10-S10.4","H2.10-S10.5","H2.10-S10.7","H2.10-S10.8","H2.10-S10.1","H2.10-S10.3","H2.10-S10.6"],"findings":[{"id":"H2.10-S10.4","sev":"CRITICAL"},{"id":"H2.10-S10.5","sev":"CRITICAL"},{"id":"H2.10-S10.7","sev":"MAJOR"},{"id":"H2.10-S10.8","sev":"MAJOR"},{"id":"H2.10-S10.1","sev":"CRITICAL"},{"id":"H2.10-S10.3","sev":"CRITICAL"},{"id":"H2.10-S10.6","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":54,"baseGreen":3,"offBase":["H2.10-S1.1(RED→pass)","H2.10-S1.2(RED→pass)","H2.10-S1.3(RED→pass)","H2.10-S1.4(RED→pass)","H2.10-S1.5(RED→pass)","H2.10-S1.6(RED→pass)","H2.10-S1.7(RED→pass)","H2.10-S7.2(RED→pass)","H2.10-S7.3(RED→pass)","H2.10-S7.4(RED→pass)","H2.10-S8.1(RED→pass)","H2.10-S8.2(RED→pass)","H2.10-S8.3(RED→pass)","H2.10-S8.4(RED→pass)","H2.10-S2.1(RED→pass)","H2.10-S2.2(RED→pass)","H2.10-S2.3(RED→pass)","H2.10-S2.5(RED→pass)","H2.10-S2.6(RED→pass)","H2.10-S2.7(RED→pass)","H2.10-S3.1(RED→pass)","H2.10-S5.1(RED→pass)","H2.10-S5.2(RED→pass)","H2.10-S5.3(RED→pass)","H2.10-S5.4(RED→pass)","H2.10-S3.3(RED→pass)","H2.10-S5.5(RED→pass)","H2.10-S5.6(RED→pass)","H2.10-S5.7(RED→pass)","H2.10-S6.1(RED→pass)","H2.10-S6.2(RED→pass)","H2.10-S6.3(RED→pass)","H2.10-S6.4(RED→pass)","H2.10-S6.5(RED→pass)","H2.10-S2.4(RED→pass)","H2.10-S3.2(RED→pass)","H2.10-S4.1(RED→pass)","H2.10-S4.2(RED→pass)","H2.10-S4.3(RED→pass)","H2.10-S4.4(RED→pass)","H2.10-S4.5(RED→pass)","H2.10-S4.6(RED→pass)","H2.10-S4.7(RED→pass)","H2.10-S4.8(RED→pass)","H2.10-S4.9(RED→pass)","H2.10-S7.1(RED→pass)","H2.10-S10.2(RED→pass)"]}

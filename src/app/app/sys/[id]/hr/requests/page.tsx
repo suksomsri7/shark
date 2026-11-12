@@ -5,7 +5,7 @@ import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
-import { hrTabs, hrViewerOf } from "@/lib/modules/hr/ui";
+import { hrTabsFor, hrViewerOf } from "@/lib/modules/hr/ui";
 import { listInbox, teamLeaveQuota } from "@/lib/modules/hr/inbox";
 import { hrScopeOf, unitsForScope } from "@/lib/modules/hr/scope"; // ตัวกันของหน้า (fitness-hr F16.3) — สาขาในขอบเขตของผู้ดูสำหรับตัวกรอง
 import { INBOX_TYPES } from "@/lib/modules/hr/inbox-shared";
@@ -40,11 +40,13 @@ export default async function HrRequestsPage({ params, searchParams }: { params:
   const focusRaw = one(sp.focus);
   const focus = focusRaw && ID_RE.test(focusRaw) && list.items.some((i) => i.id === focusRaw) ? focusRaw : null;
   const quota = await teamLeaveQuota(ctx, v, { unitId });
+  const tabs = await hrTabsFor(id, v); // HR H2.10 ▸ แท็บตามผู้ดู (+ "ของฉัน" เมื่อผูกบัญชี) ◂
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
-      <ModuleTabs items={hrTabs(id)} />
+      <ModuleTabs items={tabs} />
       <h1 className="text-2xl font-semibold">{t("title")}</h1>
+      {tabs.some((x) => x.href === "/app/me/hr") && <a href="/app/me/hr/requests" className="inline-flex min-h-[44px] items-center self-start text-sm text-[color:var(--color-accent)] underline">{t("mine")}</a> /* คำขอของตัวเองอยู่ที่ "ของฉัน" (Q7) */}
       <HrRequestsView systemId={id} list={list} quota={quota} units={units} filter={{ type, unitId, minAgeDays, cursor }} focus={focus} />
     </div>
   );

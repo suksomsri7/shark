@@ -752,3 +752,7 @@ export async function correctablePunches(ctx: Ctx, viewer: CorrectionActor, inpu
   });
   return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, kind: String(r.kind) as PunchKind, at: r.at.toISOString() }));
 }
+
+// HR H2.10 ▸ ประตูปุ่ม "ยกเลิก" ของหน้า "ของฉัน" — สถานะเดียวที่ cancelCorrection ข้างบนยอม (PENDING · ผู้ยื่นหรือตัวพนักงาน) ◂
+export const correctionCancelOpen = (status: string): boolean => status === "PENDING";
+// ◂ HR H2.10
