@@ -345,8 +345,8 @@ export async function reserveLeaveInTx(
   const days = await leaveDaysInTx(tx, plan.emp, plan.from, plan.to, plan.halfDay, plan.hours);
   if (tenthsOf(days) <= 0) throw new LeaveRuleError(LEAVE_TEXT.zeroDays);
   if (plan.policy && plan.leaveYear !== null) {
-    await ensureGrantInTx(tx, ctx, plan.emp, plan.policy, plan.leaveYear);
-    const live = await policyForShareInTx(tx, plan.policy.id); // r4 มติ 2: ค่าโควตาล่าสุด ใต้ล็อกแถว
+    const live = await policyForShareInTx(tx, plan.policy.id); // r4 มติ 2 · r5: ล็อกแถวก่อน แล้ว GRANT จากค่าล่าสุดใต้ล็อก
+    if (live) await ensureGrantInTx(tx, ctx, plan.emp, live, plan.leaveYear);
     if (live && !isUnlimited(live)) {
       const st = await leaveYearStateInTx(tx, plan.employeeId, plan.policy.id, plan.leaveYear);
       const today = thaiDateKey(new Date());
@@ -565,7 +565,7 @@ export type LeaveYearJobResult = { granted: number; carried: number; expired: nu
 /** เพดานธุรกรรมต่อรอบต่อระบบ (L7) — ที่เหลือทำรอบถัดไป */
 export const LEAVE_JOB_MAX_TX = 100;
 type JobPolicy = PolicyRow;
-type PendRow = { employeeId: string; policyId: string | null; fromDate: Date; toDate: Date };
+type PendRow = { employeeId: string; policyId: string | null; fromDate: Date; toDate: Date; createdAt: Date };
 /**
  * ต่อ (พนักงาน × ประเภท) ของปีการลา Y = leaveYearOf(asOf):
  *   GRANT(Y) เมื่อถึงวันมีสิทธิ์ ·
@@ -586,13 +586,17 @@ export async function runLeaveYearJob(input: { tenantId: string; systemId: strin
   if (policies.length === 0) return res;
   const emps = await db.hrEmployee.findMany({
     where: { active: true, OR: [{ employmentStatus: null }, { employmentStatus: { not: "ENDED" } }] },
-    select: { id: true, unitId: true, startDate: true, endDate: true },
+    select: { id: true, unitId: true, startDate: true, endDate: true, contractEndAt: true },
     orderBy: { id: "asc" },
     take: 5000,
   });
-  // r4 มติ 3b: พนักงานที่สิ้นสุดการจ้างก่อนวันเริ่มปีการลา = ไม่มี GRANT/ยกวันสะสมของปีนั้น
-  const forEmp = (e: { unitId: string | null; endDate: Date | null }) =>
-    policies.filter((p) => (p.unitId === null || p.unitId === e.unitId) && !(e.endDate && dayOf(e.endDate) < leaveYearBounds(leaveYearOf(asOf, ysmOf(p)), ysmOf(p)).from));
+  // r4 มติ 3b · r5: พนักงานที่สิ้นสุดการจ้าง (endDate ?? contractEndAt — กติกาเดียวกับตอนอนุมัติ) ก่อนวันเริ่มปีการลา = ไม่มี GRANT/ยกวันสะสมของปีนั้น
+  const forEmp = (e: { unitId: string | null; endDate: Date | null; contractEndAt: Date | null }) => {
+    const last = e.endDate ?? e.contractEndAt;
+    return policies.filter((p) => (p.unitId === null || p.unitId === e.unitId) && !(last && dayOf(last) < leaveYearBounds(leaveYearOf(asOf, ysmOf(p)), ysmOf(p)).from));
+  };
+  /** r5 มติ 2: จุดสิ้นสุด "ยื่นภายในวันหมดอายุ" = เที่ยงคืนต้นวันถัดไปตามเวลาไทย */
+  const filedByEnd = (exp: string) => new Date(Date.parse(`${addDays(exp, 1)}T00:00:00+07:00`));
   const carryCap = (p: JobPolicy) => tenthsOf(p.carryMaxDays);
   const yearOf = (p: JobPolicy) => leaveYearOf(asOf, ysmOf(p));
   const grantKey = (e: { id: string; startDate: Date | null }, p: JobPolicy) => {
@@ -608,10 +612,13 @@ export async function runLeaveYearJob(input: { tenantId: string; systemId: strin
     const rows = await db.hrLeaveBalanceTxn.findMany({ where: { sourceKey: { in: keys.slice(i, i + 5000) } }, select: { sourceKey: true, note: true }, take: 5000 });
     for (const r of rows) have.set(r.sourceKey, r.note);
   }
-  const pending: PendRow[] = await db.hrLeave.findMany({ where: { status: "PENDING", policyId: { not: null } }, select: { employeeId: true, policyId: true, fromDate: true, toDate: true }, take: 20_000 });
+  const pending: PendRow[] = await db.hrLeave.findMany({ where: { status: "PENDING", policyId: { not: null } }, select: { employeeId: true, policyId: true, fromDate: true, toDate: true, createdAt: true }, take: 20_000 });
+  /** toBy = วันหมดอายุ ⇒ นับเฉพาะใบที่จบ และยื่น ภายในวันหมดอายุ (r5 มติ 2 — ใบยื่นช้าใช้วันสะสมไม่ได้ จึงไม่รั้ง EXPIRE) */
   const pendOf = (empId: string, p: JobPolicy, year: number, toBy?: string) => {
     const b = leaveYearBounds(year, ysmOf(p));
-    return pending.some((l) => l.employeeId === empId && l.policyId === p.id && dayOf(l.fromDate) >= b.from && dayOf(l.fromDate) <= b.to && (!toBy || dayOf(l.toDate) <= toBy));
+    return pending.some(
+      (l) => l.employeeId === empId && l.policyId === p.id && dayOf(l.fromDate) >= b.from && dayOf(l.fromDate) <= b.to && (!toBy || (dayOf(l.toDate) <= toBy && l.createdAt < filedByEnd(toBy))),
+    );
   };
   /** งานที่ยังต้องทำของ (พนักงาน × ประเภท): "work" = เปิดธุรกรรม · "wait" = รอใบ PENDING · "none" = ครบ/ไม่ต้องทำ */
   const need = (e: { id: string; startDate: Date | null }, p: JobPolicy): "work" | "wait" | "none" => {
@@ -650,14 +657,19 @@ export async function runLeaveYearJob(input: { tenantId: string; systemId: strin
       const tx = t as unknown as Tx;
       await lockLeaveEmployeeInTx(tx, ctx.systemId, e.id);
       const one = { granted: 0, carried: 0, expired: 0, waited: 0 };
-      for (const p of forEmp(e)) {
+      for (const p0 of forEmp(e)) {
+        // r5 มติ 1: อ่านแถวประเภทการลาใหม่แบบ FOR SHARE ในธุรกรรมของพนักงาน (ค่าโควตา/เพดานล่าสุด · ตั้งค่าที่ถือ FOR UPDATE อยู่ = รอ)
+        const p = await policyForShareInTx(tx, p0.id);
+        if (!p || !p.active) continue;
         const ysm = ysmOf(p);
         const y = leaveYearOf(asOf, ysm);
         one.granted += await ensureGrantInTx(tx, ctx, e, p, y, asOf);
         if (carryCap(p) <= 0) continue;
         const pendIn = (year: number, toBy?: string) => {
           const b = leaveYearBounds(year, ysm);
-          return tx.hrLeave.count({ where: { employeeId: e.id, policyId: p.id, status: "PENDING", fromDate: { gte: dbDate(b.from), lte: dbDate(b.to) }, ...(toBy ? { toDate: { lte: dbDate(toBy) } } : {}) } });
+          return tx.hrLeave.count({
+            where: { employeeId: e.id, policyId: p.id, status: "PENDING", fromDate: { gte: dbDate(b.from), lte: dbDate(b.to) }, ...(toBy ? { toDate: { lte: dbDate(toBy) }, createdAt: { lt: filedByEnd(toBy) } } : {}) },
+          });
         };
         let cur = await leaveYearStateInTx(tx, e.id, p.id, y);
         if (!cur.carried) {

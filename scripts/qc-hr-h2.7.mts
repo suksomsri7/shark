@@ -463,6 +463,9 @@ const CHECKS: readonly Def[] = [
   D("S12.16", "r4-3a", C, "RED", "pending leave after the end date ⇒ refused at approval"),
   D("S12.17", "r4-3b", M, "RED", "job skips employees ended before the leave year"),
   D("S12.18", "r4-2", C, "RED", "quota change ∥ approval ⇒ approval waits for the policy row"),
+  D("S12.19", "r5-1", C, "RED", "quota 10→3 ∥ request / job ⇒ GRANT uses the locked row (3.0)"),
+  D("S12.20", "r5-2", C, "RED", "late-filed pending leave does not hold EXPIRE back"),
+  D("S12.21", "r5-3", M, "RED", "job skips employees whose contract ended before the leave year"),
   D("X1.1", "X1", C, "RED", "5 identical parallel requests ⇒ 1 row"),
   D("X2.1", "X2", C, "RED", "other tenant ⇒ refused · unchanged"),
   D("X12.1", "X12", M, "GREEN", "fitness + fitness-hr ± env"),
@@ -1310,8 +1313,9 @@ async function runDb(): Promise<void> {
     const ap7 = (r: RO | string, st = "APPROVED", from?: string) => decide(typeof r === "string" ? r : idv(r), st, U.mgrAll, from, ctx7);
     const sy7 = async (e: string, y: number, p = P7) => sum(await txOf({ employeeId: e, policyId: p, leaveYear: y }));
     const filedOn = (id: string, day: string) => P.hrLeave.update({ where: { id }, data: { createdAt: new Date(`${day}T05:00:00Z`) } }); // simulated filing day (Bangkok noon)
-    const X7 = { L: await e7("7L"), H: await e7("7H"), Q: await e7("7Q"), End: await e7("7End"), Gone: await e7("7Gone") };
+    const X7 = { L: await e7("7L"), H: await e7("7H"), Q: await e7("7Q"), End: await e7("7End"), Gone: await e7("7Gone"), Ctr: await e7("7Ctr") };
     await P.hrEmployee.update({ where: { id: X7.Gone }, data: { endDate: dbDate("2030-12-31") } }); // still active, ended before 2031
+    await P.hrEmployee.update({ where: { id: X7.Ctr }, data: { contractEndAt: dbDate("2030-12-31") } }); // r5: contract ended before 2031, endDate null
     await job7("2030-06-01");
     await job7("2031-01-02");
     await job7("2031-04-01"); // L / H: carry 5 unused ⇒ EXPIRE −5 ⇒ Σ2031 10.0
@@ -1337,6 +1341,8 @@ async function runDb(): Promise<void> {
     ck("S12.16", { filed: pe.ok, refused: said(pea, TR2.outOfEmploymentDecide), pending: (await leave(idv(pe)))?.status === "PENDING", noUse: (await txOf({ leaveId: idv(pe) || "∅" })).length === 0 }, "outOfEmploymentDecide · PENDING · no USE", `${shown(pe)} ${shown(pea)}`);
     // S12.17 (3b): ended before the leave year ⇒ the job writes nothing for that year
     const gone31 = await txOf({ employeeId: X7.Gone, leaveYear: 2031 });
+    const ctr31 = await txOf({ employeeId: X7.Ctr, leaveYear: 2031 });
+    ck("S12.21", { none: ctr31.length === 0, had2030: (await txOf({ employeeId: X7.Ctr, leaveYear: 2030, kind: "GRANT" })).length >= 1 }, "no 2031 rows (contractEndAt) · 2030 grant kept", `2031=${ctr31.length}`);
     ck("S12.17", { none: gone31.length === 0, had2030: (await txOf({ employeeId: X7.Gone, leaveYear: 2030, kind: "GRANT" })).length >= 1 }, "no 2031 rows · 2030 grant kept", `2031=${gone31.length}`);
     // S12.18 (2): quota change ∥ approval — the approval waits for the policy row and then sees the new quota
     const pq = await q7(X7.Q, "2031-08-04", "2031-08-07", { policyId: PW, type: "OTHER" });
@@ -1362,6 +1368,59 @@ async function runDb(): Promise<void> {
     await holder;
     const dr = await dp;
     ck("S12.18", { waited: seen >= 1, refused: said(dr, T.balanceDecide), noUse: (await txOf({ leaveId: idv(pq) || "∅", kind: "USE" })).length === 0, q31: (await sy7(X7.Q, 2031, PW)) === "0.0" }, "waits · balanceDecide (4 > 3) · nothing written (0.0)", `seen=${seen} ${shown(dr)} q31=${await sy7(X7.Q, 2031, PW)}`);
+  }
+
+  // ═══ S12.19–S12.20 r5 (own HR system s8) ═══
+  {
+    const s8 = await sysSvc.createSystem(TT, "HR", "HR H");
+    const ctx8 = { tenantId: TT, systemId: s8.id };
+    const PR = await pol(ctx8, "PERSONAL", "QC27 r5 ยื่น", 10, { sortOrder: 1 });
+    const PJ = await pol(ctx8, "OTHER", "QC27 r5 งาน", 10, { sortOrder: 2 });
+    const PC = await pol(ctx8, "VACATION", "QC27 r5 สะสม", 10, { carryMaxDays: 5, carryExpiresMonthDay: "03-31", sortOrder: 3 });
+    const e8 = (n: string) => emp(n, { unitId: u1 }, "2025-01-01", s8.id);
+    const X8 = { R1: await e8("8R1"), R2: await e8("8R2"), W1: await e8("8W1") };
+    const job8 = (asOf: string) => lv("runLeaveYearJob", { tenantId: TT, systemId: s8.id, asOf });
+    const key8 = async (k: string) => d1((await txOf({ sourceKey: k }))[0]?.days);
+    /** hold the policy row FOR UPDATE, set quota → 3 inside the holder, run `call` meanwhile, then commit */
+    const holdQuota3 = async <R,>(policyId: string, call: () => Promise<R>): Promise<{ r: R; seen: number }> => {
+      let release: () => void = () => {};
+      const gate = new Promise<void>((x) => (release = x));
+      let held: () => void = () => {};
+      const heldP = new Promise<void>((x) => (held = x));
+      const holder = P.$transaction(async (tx: Any) => {
+        await tx.$queryRawUnsafe(`SELECT id FROM "HrLeavePolicy" WHERE id = $1 FOR UPDATE`, policyId);
+        await tx.$executeRawUnsafe(`UPDATE "HrLeavePolicy" SET "quotaDays" = 3 WHERE id = $1`, policyId);
+        held();
+        await gate;
+      }, { maxWait: 10_000, timeout: 60_000 }).catch(() => held());
+      await heldP;
+      const p = call();
+      let seen = 0;
+      for (let i = 0; i < 40 && !seen; i++) {
+        await sleep(100);
+        const w = await rawRows(P, `SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event <> 'advisory'`);
+        seen = Number(w?.[0]?.n ?? 0);
+      }
+      release();
+      await holder;
+      return { r: await p, seen };
+    };
+    // S12.20 first (jobs only reach leave year 2031): a PENDING pre-expiry leave filed AFTER expiry must not hold EXPIRE back
+    await job8("2030-06-01");
+    await job8("2031-01-02");
+    const wl = await rq(U.mgrAll, X8.W1, "2031-03-10", "2031-03-11", { policyId: PC, type: "VACATION" }, ctx8);
+    if (wl.ok) await P.hrLeave.update({ where: { id: idv(wl) }, data: { createdAt: new Date("2031-04-03T05:00:00Z") } });
+    await job8("2031-04-05");
+    const wx = await key8(`expire:${X8.W1}:${PC}:2031`);
+    const wa = await decide(idv(wl), "APPROVED", U.mgrAll, undefined, ctx8);
+    const w31 = sum(await txOf({ employeeId: X8.W1, policyId: PC, leaveYear: 2031 }));
+    ck("S12.20", { pending: wl.ok, expired: wx === "-5.0", approved: wa.ok, w31: w31 === "8.0" }, "EXPIRE −5.0 despite late-filed pending · then 10 − 2 = 8.0", `x=${wx} ${shown(wa)} w31=${w31}`);
+    // S12.19: quota 10 → 3 while a request (a) / the job (b) is in flight ⇒ the GRANT is 3.0
+    const a = await holdQuota3(PR, () => rq(U.mgrAll, X8.R1, "2032-03-02", "2032-03-03", { policyId: PR, type: "PERSONAL" }, ctx8));
+    const ga = await key8(`grant:${X8.R1}:${PR}:2032`);
+    const b = await holdQuota3(PJ, () => job8("2032-01-05"));
+    const gb = await key8(`grant:${X8.R2}:${PJ}:2032`);
+    ck("S12.19", { req: a.r.ok && ga === "3.0", job: b.r.ok && gb === "3.0" }, "request GRANT 3.0 · job GRANT 3.0", `req=${shown(a.r)} ${ga} seen=${a.seen} · job=${gb} seen=${b.seen}`);
   }
 
   // ── L6 property (own system s4): generated request/approve/revoke/job sequences never make a year negative
