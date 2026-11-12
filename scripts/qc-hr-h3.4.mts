@@ -89,6 +89,7 @@ S4.14|R7|C|R|[db] reverse Sept while carry bound ⇒ CARRY_BOUND
 S4.15|R7|C|R|[db] reverse Oct then Sept ⇒ 3 carry rows REJECTED · rows restored · JV reversed
 S4.16|R4|C|R|[db] stale ⇒ WORK_ENTRIES at create and approve
 S4.17|R12|M|R|[db] REFUND request only in engine-2 shops
+S4.18|R6|C|R|[db] (controller ruling 4, phase B) refused approve (NEGATIVE_NET) writes no carry/receivable rows · blocked item carries nothing
 S5.1|R13|C|R|[race] 3 ∥ create ⇒ 1 ok · 2 dup
 S5.2|R13|C|R|[race] create waits on the period lock
 S5.3|R13|C|R|[race] approve-adjustment ∥ create ⇒ bound XOR moved
@@ -98,6 +99,7 @@ S6.2|R9|C|R|[db] IDOR ⇒ identical no
 S6.3|R10|M|R|[db] confirmBranchHours rules
 S7.1|H3.2|C|G|[db] (H3.2-guarded) LATE_RULE −2,777 reduces taxable + SSO wage · net 1,909,723
 S7.2|H3.2|C|G|[db] (H3.2-guarded) stale approved row ⇒ create refused
+S7.3|H3.2|C|G|[db] (H3.2-guarded, controller phase B) bound LATE deduction → approve → reverse → rebuild → sync → approve ⇒ money = entitlement (one LATE row, −2,777 · net 1,909,723)
 S8.1|frozen|C|G|[db] v1 golden: frozen MONTHLY digest/totals unchanged
 S8.2|frozen|C|G|[db] v1 shop cycle unchanged
 X12.1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
@@ -184,7 +186,10 @@ function runStatic(): void {
   }
   {
     const shaNow = sha(rd(PAYROLL_RULES_FILE));
-    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE)));
+    // ORACLE-EDIT (H3.4 builder, phase B — merge of H3.2 ac8de9d27): work-entries.ts carries H3.2's additive EOF exports (workEntryStatesInTx ·
+    //   workEntrySourceEmployeesInTx, marked HR H3.2) — tolerated only as pure additions whose hunks carry the HR H3.2 marker; every other frozen file unchanged
+    const h32Only = (f: string) => { const hs = diffHunks(BASE, f); return !!hs && hs.length > 0 && hs.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H3\.2/.test(l))); };
+    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !(p === `${H}work-entries.ts` && h32Only(p))));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
   }
   {
@@ -464,7 +469,9 @@ async function runDb(): Promise<void> {
   if (hasRefund) ADJ.b2 = await adj(sA, E.mB, SEP, "REFUND", 50000);
   const job = (now: Date) => JG.runAttendanceJobs({ now, tenantId: TT });
   const reqA = await OT.requestOt(cA, V.owner, { employeeId: E.mA, date: "2031-09-06", start: "09:00", end: "19:00" }, { now: bk("2031-09-05") }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
-  for (const d of ["2031-09-08", "2031-09-15", "2031-09-25", "2031-10-01"]) await job(bk(d));
+  // ORACLE-EDIT (H3.4 builder, phase B): + 2031-09-22 — runAttendanceJobs judges a 7-day window (judge.ts WINDOW_DAYS) and the 15th at noon is not over,
+  //   so 15–17 Sep were never stored (H3.1 NOT_STORED blocks the period ⇒ WORK_ENTRIES at create); no literal changes
+  for (const d of ["2031-09-08", "2031-09-15", "2031-09-22", "2031-09-25", "2031-10-01"]) await job(bk(d));
   await OT.decideOtRequest(cA, V.owner, reqA?.id ?? "∅", "APPROVED", { now: N_SEP8 }).catch(() => null);
   const otRow = (await rows(`SELECT id, "amountSatang" AS a, "periodKey" AS p FROM "HrPayAdjustment" WHERE "tenantId" = $1 AND "employeeId" = $2 AND "sourceType"::text = 'OT_REQUEST'`, TT, E.mA))[0];
   if (otRow) ADJ.aOT = otRow.id;
@@ -688,6 +695,25 @@ async function runDb(): Promise<void> {
     const [v1, v2] = [await req(cV, E.eV), await req(cB, E.eS)];
     ck("S4.17", { v1: !v1.ok && v1.text === T.refundV1, v2: v2.ok }, "refundV1 · ok", `${shown(v1)} ${shown(v2)}`);
   }
+  // ── S4.18 (controller ruling 4, phase B): a refused approve leaves no carry rows ──
+  {
+    const sN = await sys("ทีมติดลบ");
+    const cN = { tenantId: TT, systemId: sN };
+    const eN = await me(sN, "เอ็น", { unitId: u1 });
+    await P.hrSalaryProfile.create({ data: { tenantId: TT, systemId: sN, employeeId: eN, baseSalarySatang: 100, ssoEligible: true, personalDeductionJson: { spouse: false, children: 0 } } });
+    await adj(sN, eN, SEP, "ADVANCE", 50000);
+    await PY("setPayrollEngine", cN, V.owner, { engineVersion: 2 }, { now: N_OCT1 });
+    const cr = await createV2(cN, V.owner, SEP, PAY_SEP, A.owner);
+    const ap = await approve(cN, cr.value?.id, A.owner);
+    const carry = Number((await rows(`SELECT count(*)::int AS n FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD'`, sN))[0]?.n ?? -1);
+    const it = await itemBy(cr.value?.id, eN);
+    const r = {
+      created: cr.ok, refused: !ap.ok && codeOf(ap) === "NEGATIVE_NET", draft: (await runRow(cr.value?.id))?.status === "DRAFT", noCarry: carry === 0,
+      item: Number(it?.netSatang) < 0 && (it?.snapshotJson?.carry ?? []).length === 0 && (it?.snapshotJson?.receivable ?? []).length === 0,
+    };
+    ck("S4.18", r, "NEGATIVE_NET · 0 carry rows", `${shown(cr)} ${shown(ap)} carry=${carry} net=${it?.netSatang}`);
+    if (cr.value?.id) await pay.deleteDraftRun(cN, cr.value.id, A.owner).catch(() => null);
+  }
   // ── S5 races (system B) ──
   const del = async () => {
     for (const r of await liveRuns(sB, SEP)) await pay.deleteDraftRun(cB, r.id, A.owner).catch(() => null);
@@ -717,8 +743,11 @@ async function runDb(): Promise<void> {
     const [ca, cr] = await Promise.all([pay.cancelAdjustment(cB, id, A.owner).catch((e: unknown) => ({ ok: false, reason: errText(e) })), createV2(cB, V.pay1, SEP, PAY_SEP, A.pay1)]);
     const row = (await rows(`SELECT "runId" FROM "HrPayAdjustment" WHERE id = $1`, id))[0];
     const iS = await itemBy(cr.value?.id, E.eS);
-    const gone = !row && Number(iS?.addSatang) === 0 && ca?.ok;
-    const kept = !!row && row.runId === cr.value?.id && Number(iS?.addSatang) === 20000 && !ca?.ok;
+    // ORACLE-EDIT (H3.4 builder, phase B): S5.3's ALLOWANCE 10,000 stays APPROVED in 2031-09 when it bound (its draft is deleted, the row is not) ⇒
+    //   it is legitimately in this run too — compare the run's add with the other bound rows of eS instead of a bare 0 / 20,000
+    const others = Number((await rows(`SELECT COALESCE(SUM("amountSatang"), 0)::int AS n FROM "HrPayAdjustment" WHERE "runId" = $1 AND "employeeId" = $2 AND id <> $3 AND kind::text IN ('OT','COMMISSION','BONUS','ALLOWANCE','REFUND')`, cr.value?.id ?? "∅", E.eS, id))[0]?.n ?? 0);
+    const gone = !row && Number(iS?.addSatang) === others && ca?.ok;
+    const kept = !!row && row.runId === cr.value?.id && Number(iS?.addSatang) === others + 20000 && !ca?.ok;
     ck("S5.4", { ok: cr.ok, xor: gone !== kept }, "gone XOR bound", `${shown(cr)} cancel=${ca?.ok} row=${short(row, 60)} add=${iS?.addSatang}`);
     await del();
   }
@@ -726,8 +755,12 @@ async function runDb(): Promise<void> {
   if (!H32 || !AP || AP.__err) {
     chk("S7.1", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.2", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
+    chk("S7.3", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
   } else {
     const A_ = (fn: string, ...a: unknown[]) => callMod(AP, F.attPay, fn, a);
+    // ORACLE-EDIT (H3.4 builder, phase B): the S5.3/S5.4 race rows (ALLOWANCE 10,000 / 20,000 of eS in 2031-09) outlive their deleted drafts —
+    //   reject the leftover unbound ones so the S7.1 literal (no other additions) stays the hand arithmetic of the oracle notes
+    await P.$executeRawUnsafe(`UPDATE "HrPayAdjustment" SET status = 'REJECTED' WHERE "employeeId" = $1 AND kind::text = 'ALLOWANCE' AND "runId" IS NULL AND "sourceType" IS NULL`, E.eS);
     await A_("saveAttendancePayPolicy", cB, V.owner, { enabled: true });
     await callMod(await loadOpt(`${H}work-entries.ts`, "@/lib/modules/hr/work-entries"), "work-entries", "buildWorkEntrySnapshot", [cB, V.owner, { periodKey: SEP }, { now: N_OCT1 }]);
     await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
@@ -737,6 +770,24 @@ async function runDb(): Promise<void> {
     const i = await itemBy(cr.value?.id, E.eS);
     const ln = (i?.snapshotJson?.lines ?? []).find((l: Any) => l.code === "LATE_RULE");
     ck("S7.1", { ok: cr.ok, line: ln?.amountSatang === -2777, wht: i?.snapshotJson?.whtIncomeSatang === 1997223, net: Number(i?.netSatang) === 1909723 }, "LATE_RULE −2,777", `${shown(cr)} ${short(ln, 80)} net=${i?.netSatang}`);
+    {
+      // S7.3 (controller, phase B): bound deduction → run approved (JV) → reversed → rebuilt → work hours + deductions re-synced → approved ⇒ settled money = entitlement
+      const a1 = await approve(cB, cr.value?.id, A.pay3);
+      const rv = await PY("reverseRun", cB, cr.value?.id ?? "∅", "qc h3.4 S7.3", A.owner);
+      const cr2 = await createV2(cB, V.pay1, SEP, PAY_SEP, A.pay1);
+      await callMod(await loadOpt(`${H}work-entries.ts`, "@/lib/modules/hr/work-entries"), "work-entries", "buildWorkEntrySnapshot", [cB, V.owner, { periodKey: SEP }, { now: N_OCT1 }]);
+      await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
+      const a2 = await approve(cB, cr2.value?.id, A.pay3);
+      const i2 = await itemBy(cr2.value?.id, E.eS);
+      const lates = await rows(`SELECT status::text AS s, "runId" FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'LATE_RULE' AND status::text <> 'REJECTED'`, E.eS);
+      const ln2 = (i2?.snapshotJson?.lines ?? []).find((l: Any) => l.code === "LATE_RULE");
+      const r = {
+        first: a1.ok && rv.ok && (await runRow(cr.value?.id))?.status === "REVERSED", rebuilt: cr2.ok && a2.ok && (await runRow(cr2.value?.id))?.status === "APPROVED",
+        money: ln2?.amountSatang === -2777 && Number(i2?.netSatang) === 1909723 && Number(i2?.deductSatang) === 2777, oneRow: lates.length === 1 && lates[0]?.runId === cr2.value?.id,
+      };
+      ck("S7.3", r, "money = entitlement after reverse + rebuild", `${shown(a1)} ${shown(rv)} ${shown(cr2)} ${shown(a2)} net=${i2?.netSatang} lates=${short(lates, 80)}`);
+      if (cr2.value?.id) await PY("reverseRun", cB, cr2.value.id, "qc h3.4 S7.3 cleanup", A.owner);
+    }
     await del();
     await P.hrAttendance.updateMany({ where: { id: eSin }, data: { at: bk("2031-09-01", "07:30") } });
     await recB();

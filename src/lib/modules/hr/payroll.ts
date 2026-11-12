@@ -27,6 +27,10 @@ import { OT_LAW_DEFAULT, OT_TEXT, otLawOf, otLegalRateFloor, otText } from "./ot
 import { loadOtLawRows } from "./law"; // HR H2.9 ▸ #18 แถวกฎหมาย OT (law.ts = ผู้อ่านตารางเดียว) ◂
 import { LAW_MSG, lawDayOf, loadLawSet } from "./law"; // HR H3.4 ▸ ชุดกฎหมายของเครื่องรุ่น 2 (law.ts = ผู้อ่านตารางเดียว) ◂
 import { RUN_V2_DEFAULTS } from "./payroll-run-rules"; // HR H3.4 ▸ ค่าตั้งต้นเพดานหัก ม.76 ◂
+import { computeRunItemV2, type RunItemInputV2, type RunItemResultV2 } from "./payroll-run-rules"; // HR H3.4 ▸ phase B: เครื่องคิด pure ◂
+import { ytdPriorV2, type LawSetV2 } from "./payroll-rules-v2"; // HR H3.4 ▸ ยอดสะสมก่อนงวด (H3.3) ◂
+import { buildWorkEntrySnapshot, normalMinutesOf, workEntryStatesInTx } from "./work-entries"; // HR H3.4 ▸ ดึงชั่วโมงทำงานจนครบ · ชั่วโมงปกติต่อวัน · สถานะชั่วโมงทำงาน ◂
+import { createHash } from "node:crypto"; // HR H3.4 ▸ ลายนิ้วมือข้อมูลของรอบ (inputDigest) ◂
 import { ATT_TEXT } from "./attendance-pay-rules"; // HR H3.2 ◂ ข้อความคงที่ของรายการหักสาย/ขาด (ไฟล์ pure — ไม่มีวงโหลด)
 
 // Payroll ไทย — service ชั้นประกอบ (system-scoped HR) · WO-0036
@@ -163,7 +167,7 @@ export function listSalaryProfiles(ctx: Ctx) {
 
 // ─────────── รายการเพิ่ม/หักในงวด: OT · คอมมิชชั่น · โบนัส · เบี้ยเลี้ยง · หักเงิน · เบิกล่วงหน้า ───────────
 // (13 ส.ค. 2026 · เจ้าของสั่งข้อ 5+7) — 🔴 คนยื่น ≠ คนอนุมัติ (ยื่นแล้วรออนุมัติเสมอ ไม่เข้าเงินเดือนเอง)
-export type AdjustKind = "OT" | "COMMISSION" | "BONUS" | "ALLOWANCE" | "DEDUCTION" | "ADVANCE" | "REFUND"; // HR H3.4 ▸ R12 + REFUND (เฉพาะร้านที่เปิดเครื่องรุ่น 2) ◂
+export type AdjustKind = "OT" | "COMMISSION" | "BONUS" | "ALLOWANCE" | "DEDUCTION" | "ADVANCE";
 const ADJUST_KINDS: AdjustKind[] = ["OT", "COMMISSION", "BONUS", "ALLOWANCE", "DEDUCTION", "ADVANCE"];
 // H0.2 ▸ R4 (D12): ตัวเดียวกันทั้ง service (createPayrollRun · requestAdjustment) และ action (createPayrollRunAction) — เดือน 01–12 เท่านั้น ◂
 export const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -198,9 +202,8 @@ export async function requestAdjustment(
   // CRM C3.3 ▸ `tx` = ผู้เรียก (คอมมิชชัน CRM) ถือล็อกแถวคอมมิชชันอยู่ ⇒ เขียนใน tx เดียวกัน (ห้ามเปิด connection ที่สองใต้ล็อก) ◂
   opts: { tx?: Prisma.TransactionClient } = {},
 ): Promise<{ ok: boolean; reason?: string; id?: string; amountSatang?: number; code?: string }> {
-  // HR H3.4 ▸ R12: REFUND (คืนเงินรายการหัก — ไม่ใช่เงินได้ 40(1)/ค่าจ้าง ปสส.) รับเฉพาะร้านที่เปิดเครื่องรุ่น 2 · รุ่น 1 = refundV1 ◂
-  if (input.kind === "REFUND" ? (await getPayrollEngine(ctx)).engineVersion !== 2 : !ADJUST_KINDS.includes(input.kind)) // HR H3.4 ◂
-    return input.kind === "REFUND" ? { ok: false, code: "REFUND_V1", reason: RUN2_TEXT.refundV1 } : { ok: false, reason: "ชนิดรายการไม่ถูกต้อง" }; // HR H3.4 ◂
+  if ((input.kind as string) === "REFUND") return requestRefundAdjustment(ctx, input); // HR H3.4 ▸ R12: REFUND (คืนเงินรายการหัก — ไม่ใช่เงินได้ 40(1)/ค่าจ้าง ปสส.) ทางแยกของตัวเอง · ร้านรุ่น 1 = refundV1 ◂
+  if (!ADJUST_KINDS.includes(input.kind)) return { ok: false, reason: "ชนิดรายการไม่ถูกต้อง" };
   if (!PERIOD_RE.test(input.periodKey.trim())) return { ok: false, reason: "งวดต้องเป็นรูปแบบ YYYY-MM" };
   // CRM C3.3 ▸ รายการจากคอมมิชชัน CRM — ทางแยกของตัวเอง (ทางเดิมข้างล่างไม่เปลี่ยนแม้แต่บรรทัดเดียว)
   const crmCommissionId = typeof input.crmCommissionId === "string" && input.crmCommissionId.trim() ? input.crmCommissionId.trim() : null;
@@ -998,6 +1001,8 @@ async function cancelBoundDraftAdjustment(
 export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollActor): Promise<{ ok: true; note: string } | { ok: false; reason: string }> {
   const id = typeof runId === "string" ? runId.trim() : "";
   if (!id) return { ok: false, reason: RUN_NOT_FOUND };
+  // eslint-disable-next-line prefer-rest-params -- HR H3.4 ▸ R5: อาร์กิวเมนต์ที่ 4 ({viewer, now}) ของรอบรุ่น 2 — ลายเซ็นเดิมคงทุกไบต์ ◂
+  if ((await runEngineVersion(ctx, id)) === 2) return recomputeDraftRunV2(ctx, id, actor, ((arguments as unknown as unknown[])[3] ?? {}) as RecomputeV2Opts); // HR H3.4 ◂
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   type Snap = { totalAddSatang: number; totalDeductSatang: number; totalNetSatang: number; itemCount: number };
   let res: { ok: true; note: string; before: Snap; after: Snap } | { ok: false; reason: string; refused?: RunRefused };
@@ -1120,6 +1125,7 @@ export async function approveRun(
   // H0.1 ▸ CR19: ผู้กดใน session — ใช้ลงประวัติคำปฏิเสธ `hr.payroll.approve.refused` (ไม่ส่ง = actorId null) ◂
   actor?: PayrollActor,
 ): Promise<{ ok: boolean; note: string; code?: ApproveFailCode }> {
+  if ((await runEngineVersion(ctx, runId)) === 2) return approveRunV2(ctx, runId, expect, actor); // HR H3.4 ▸ R6: รอบรุ่น 2 = ผู้สร้าง ≠ ผู้อนุมัติ + ด่าน + ยกยอด (รอบรุ่น 1 ไม่มีด่านใหม่) ◂
   const db = tenantDb(ctx);
   const claimed = await claimApproveExpected(ctx, runId, expect);
   if (claimed.code === "NOT_FOUND") {
@@ -1227,6 +1233,7 @@ export async function reverseRun(
       WHERE "id" = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}
         AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") AND "journalEntryId" IS NOT NULL`;
     if (claimed !== 1) return { ok: false, code: "ALREADY_REVERSED" };
+    await reverseCarryInTx(tx, ctx, id); // HR H3.4 ▸ R7: ยอดยกไปของรอบนี้ — ถูกดึงเข้ารอบถัดไปแล้ว = CARRY_BOUND (ย้อนทั้ง tx) · ไม่งั้น REJECTED ◂
     let reversalEntryId: string | null = null;
     const liveAcct = acct ? await tx.appSystem.findFirst({ where: { id: acct.id, tenantId: ctx.tenantId, type: "ACCOUNT" }, select: { id: true } }) : null;
     if (liveAcct) {
@@ -1262,6 +1269,7 @@ export async function reverseRun(
       ? await tenantDb({ tenantId: ctx.tenantId, systemId: acct.id }).$transaction(work, REVERSE_TX_OPTS)
       : await tenantDb(ctx).$transaction(work, REVERSE_TX_OPTS);
   } catch (e) {
+    if (e instanceof CarryBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "CARRY_BOUND" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.carryBound }; // HR H3.4 ◂
     const code: ReverseRefusalCode = e instanceof JvReverseFailed ? "JV_REVERSE_FAILED" : "TX_FAILED";
     await logOps("WARN", "hr-payroll", code === "JV_REVERSE_FAILED" ? "กลับรายการรอบจ่าย: กลับ JV ไม่สำเร็จ — ย้อนทั้งธุรกรรม" : "กลับรายการรอบจ่ายไม่สำเร็จ — ย้อนทั้งธุรกรรม", {
       tenantId: ctx.tenantId,
@@ -2296,5 +2304,658 @@ export async function setPayrollEngine(
   });
   const warnings = out.after.catCapBp > RUN_V2_DEFAULTS.catCapBp || out.after.totalCapBp > RUN_V2_DEFAULTS.totalCapBp ? [RUN2_WARN.capRaised] : [];
   return { ok: true, engine: out.after, warnings };
+}
+// ◂ HR H3.4
+
+// ─────────── HR H3.4 ▸ เครื่องคิดเงินเดือนรุ่น 2 — phase B: สร้าง · สร้างใหม่ · อนุมัติ (ผู้สร้าง ≠ ผู้อนุมัติ) · ยกยอดหัก · กลับรายการ · ดูตัวอย่าง ───────────
+// brief R4–R11 · R13 · design §2. ลำดับล็อก (ไม่มีวงรอ — กติกาเดียวกับ H3.2): งวดงานก่อนหน้าของรายการหักสาย/ขาด (เรียงน้อย → มาก, attendancePreLockInTx) →
+//   งวดของรอบ P → แถวรอบ FOR UPDATE → แถวรายการเพิ่ม/หัก FOR UPDATE → (อนุมัติ) งวดปลายทางของยอดยกไป (> P เรียงน้อย → มาก) ·
+//   ดึงชั่วโมงทำงาน (buildWorkEntrySnapshot) ทำก่อนเปิด tx ของรอบ — แต่ละหน้าถือล็อก P ของตัวเองแล้วปล่อย
+// ผู้เขียนแถวรอบ/แถวพนักงาน/รายการยกยอด = ไฟล์นี้เท่านั้น · เงินทุกตัวมาจาก payroll-run-rules.ts (pure) · ตารางกฎหมายอ่านผ่าน law.ts
+const H34_TX = { maxWait: 20_000, timeout: 60_000 } as const;
+const H34_WAGE_KEYS = ["workMin", "paidLeaveMin", "unpaidLeaveMin", "holidayWorkMin", "holidayPaidMin", "unplannedMin"] as const;
+const H34_REVIEW_CODES = ["WORKED_ON_LEAVE", "UNPLANNED", "HOLIDAY_LEAVE", "PENDING_LEAVE"] as const;
+export type Run2Code =
+  | "NO" | "PERIOD" | "PAYDATE" | "ENGINE_V1" | "BUILD" | "DUPLICATE" | "LEGACY" | "LAW_MISSING" | "LAW_AMBIGUOUS" | "LAW_BAD_DAY" | "NO_PROFILE" | "VARIABLE_PAY"
+  | "WORK_ENTRIES" | "OT_OPEN" | "ATTENDANCE_STALE" | "ATTENDANCE_SYNC" | "ATTENDANCE_LOCK" | "YTD_DRAFT" | "NO_RATE" | "LAW" | "BIND" | "NOT_FOUND" | "NOT_DRAFT" | "DRAFT_HAS_JV";
+class Run2Refusal extends Error {
+  constructor(readonly code: Run2Code, message: string) {
+    super(message);
+    this.name = "Run2Refusal";
+  }
+}
+const dupRunText = (p: string) => ["มีรอบจ่ายงวด ", p, " อยู่แล้ว — ลบหรือเลือกงวดอื่น"].join(""); // ข้อความเดียวกับรุ่น 1 ทุกตัวอักษร (ไม่ซ้ำแม่แบบในไฟล์ — qc-hr-h0.1 S4.1)
+const canonJson = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, (x as Record<string, unknown>)[k]])) : x));
+const sha256Hex = (s: string): string => createHash("sha256").update(s).digest("hex");
+const bkkDay = (d: Date): string => bkkParts(d).dateStr;
+const H34_ATT_CODES = new Set(["ATTENDANCE_STALE", "ATTENDANCE_SYNC", "ATTENDANCE_LOCK"]);
+const objH34 = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+
+/** ช่วงวันที่จ่าย + งวด (ข้อความรุ่น 1) — คืน null = ผ่าน */
+function v2PeriodRefusal(periodKey: string, payDate: unknown): { code: Run2Code; reason: string } | null {
+  if (!PERIOD_RE.test(periodKey)) return { code: "PERIOD", reason: PERIOD_INVALID_TH };
+  if (!(payDate instanceof Date) || !Number.isFinite(payDate.getTime())) return { code: "PAYDATE", reason: PAYDATE_INVALID_TH };
+  const day = bkkDay(payDate);
+  const win = payDateWindow(periodKey);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < win.from || day > win.to) return { code: "PAYDATE", reason: PAYDATE_WINDOW_TH };
+  return null;
+}
+/** ดึงชั่วโมงทำงานจนครบทุกหน้า (`next` = null) — ≤ 100 หน้า · ปฏิเสธส่งต่อ */
+async function buildAllWorkEntries(ctx: Ctx, viewer: PayrollEngineViewer & { unitAccess?: unknown; permissions?: unknown }, periodKey: string, now: Date): Promise<{ ok: true } | { ok: false; reason: string }> {
+  let after: string | null = null;
+  for (let i = 0; i < 100; i += 1) {
+    const r = await buildWorkEntrySnapshot(ctx, viewer as never, { periodKey, ...(after ? { after } : {}) }, { now });
+    if (!r.ok) return { ok: false, reason: r.reason };
+    if (!r.next) return { ok: true };
+    after = r.next;
+  }
+  return { ok: false, reason: WE_TEXT.approveBlocked };
+}
+
+type V2Item = { employeeId: string; result: Extract<RunItemResultV2, { ok: true }>; snapshot: Record<string, unknown> };
+type V2Built = { items: V2Item[]; adjustmentIds: string[]; digest: string; totals: RunTotals };
+
+/** OT_OPEN: คำขอ OT ของงวดที่ยังรออนุมัติ หรืออนุมัติแล้วแต่ยังคิดเงินไม่เสร็จ */
+async function otOpenInTx(tx: Prisma.TransactionClient, ctx: Ctx, periodKey: string, employeeIds: string[]): Promise<boolean> {
+  const b = periodBounds(periodKey)!;
+  const n = await tx.hrOtRequest.count({
+    where: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      employeeId: { in: employeeIds },
+      date: { gte: new Date(`${b.firstDay}T00:00:00.000Z`), lte: new Date(`${b.lastDay}T00:00:00.000Z`) },
+      OR: [{ status: "PENDING" }, { status: "APPROVED", OR: [{ settledAt: null }, { settleCode: { not: null } }] }],
+    },
+  });
+  return n > 0;
+}
+/** YTD_DRAFT: รอบร่างอื่นของปีภาษีเดียวกันที่จ่ายก่อนหรือวันเดียวกัน (ภาษีสะสมจะผิดลำดับ) */
+async function ytdDraftInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: string | null, payDate: Date): Promise<boolean> {
+  const day = bkkDay(payDate);
+  const drafts = await tx.hrPayrollRun.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: "DRAFT", ...(runId ? { id: { not: runId } } : {}) }, select: { payDate: true }, take: 500 });
+  return drafts.some((r) => { const d = bkkDay(r.payDate); return d.slice(0, 4) === day.slice(0, 4) && d <= day; });
+}
+
+/**
+ * แถวรุ่น 2 ของงวด — ผู้เรียกถือล็อก (งวดงานก่อนหน้า →) P (→ แถวรอบ) อยู่แล้ว · `bound` = runId ที่จะคิดซ้ำจากรายการที่ผูกแล้ว (ตอนอนุมัติ — INPUTS_CHANGED) ·
+ * ไม่ส่ง = รายการ APPROVED ที่ยังไม่เข้ารอบของงวด (FOR UPDATE · ตัดรายการหักสาย/ขาดที่ต้องคำนวณใหม่ — H3.2) · ปฏิเสธ = Run2Refusal (ยังไม่เขียนอะไร)
+ */
+async function buildRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, run: { periodKey: string; payDate: Date; runId: string | null; bound?: string; gates: boolean }): Promise<V2Built> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const P = run.periodKey;
+  const law = await loadLawSet(lawDayOf(run.payDate), tx as unknown as Parameters<typeof loadLawSet>[1]);
+  if (!law.ok) throw new Run2Refusal(law.code, LAW_MSG[law.code]);
+  const allProfiles = await tx.hrSalaryProfile.findMany({
+    where: scope,
+    select: { employeeId: true, baseSalarySatang: true, ssoEligible: true, personalDeductionJson: true, payType: true, dailyRateSatang: true, hourlyRateSatang: true },
+    orderBy: { employeeId: "asc" },
+  });
+  if (!allProfiles.length) throw new Run2Refusal("NO_PROFILE", "ยังไม่มีโปรไฟล์เงินเดือน — ตั้งเงินเดือนพนักงานก่อนสร้างรอบจ่าย");
+  const member = await periodMembership(tx, ctx, P, allProfiles.map((p) => p.employeeId));
+  const profiles = allProfiles.filter((p) => member.included.has(p.employeeId));
+  if (!profiles.length) throw new Run2Refusal("NO_PROFILE", member.exclusions.length ? noMembersText(P) : "ยังไม่มีโปรไฟล์เงินเดือน — ตั้งเงินเดือนพนักงานก่อนสร้างรอบจ่าย");
+  if (!V2_VARIABLE_PAY && profiles.some((p) => p.payType !== "MONTHLY" || p.baseSalarySatang <= 0)) throw new Run2Refusal("VARIABLE_PAY", RUN2_TEXT.variablePay);
+  const ids = profiles.map((p) => p.employeeId);
+  if (run.gates) {
+    const states = await workEntryStatesInTx(tx, ctx, P, ids);
+    if (ids.some((id) => states.get(id) !== "CURRENT")) throw new Run2Refusal("WORK_ENTRIES", WE_TEXT.approveBlocked);
+    if (await otOpenInTx(tx, ctx, P, ids)) throw new Run2Refusal("OT_OPEN", RUN2_TEXT.otOpen);
+  }
+  // รายการเพิ่ม/หัก
+  let adjIds: string[];
+  if (run.bound) {
+    adjIds = (await tx.hrPayAdjustment.findMany({ where: { ...scope, runId: run.bound }, select: { id: true }, orderBy: { id: "asc" } })).map((a) => a.id);
+  } else {
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "HrPayAdjustment"
+      WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "periodKey" = ${P}
+        AND "status"::text = 'APPROVED' AND "runId" IS NULL
+      ORDER BY "id" FOR UPDATE`;
+    adjIds = locked.map((r) => r.id);
+    const held = await attendanceUnbindableInTx(tx, ctx, adjIds, P); // H3.2: หักสาย/ขาดที่ต้องคำนวณใหม่ · คืนเงินที่แถวหักยังไม่ถูกหักจริง ⇒ ไม่ผูก
+    if (held.size && run.gates) {
+      const staleDed = await tx.hrPayAdjustment.count({ where: { ...scope, id: { in: [...held] }, kind: "DEDUCTION" } });
+      if (staleDed > 0) throw new Run2Refusal("ATTENDANCE_STALE", ATT_TEXT.stale); // R4: รายการหักสาย/ขาดที่อนุมัติแล้วแต่ข้อมูลเวลาเปลี่ยน ⇒ ไม่สร้างรอบ (คำนวณรายการหักใหม่ก่อน)
+    }
+    if (held.size) adjIds = adjIds.filter((x) => !held.has(x)); // คืนเงิน (ALLOWANCE) ที่แถวหักยังไม่ถูกหักจริง ⇒ ค้างไว้รอบถัดไป (H3.2 fix r1 R2b)
+  }
+  const inSet = new Set(ids);
+  const adjRows = adjIds.length
+    ? (await tx.hrPayAdjustment.findMany({ where: { ...scope, id: { in: adjIds } }, select: { id: true, employeeId: true, kind: true, amountSatang: true, sourceType: true, sourceRef: true, consentAt: true }, orderBy: { id: "asc" } })).filter((a) => inSet.has(a.employeeId))
+    : [];
+  const stockConsent = new Set(
+    adjRows.length ? (await tx.hrStockCharge.findMany({ where: { ...scope, adjustmentId: { in: adjRows.map((a) => a.id) } }, select: { adjustmentId: true, consentRef: true } })).filter((s) => !!s.consentRef).map((s) => s.adjustmentId) : [],
+  );
+  if (run.gates && (await ytdDraftInTx(tx, ctx, run.runId, run.payDate))) throw new Run2Refusal("YTD_DRAFT", RUN2_TEXT.ytdDraft);
+  // ยอดสะสมก่อนงวด (รอบ APPROVED/PAID ปีภาษีเดียวกัน — ytdPriorV2)
+  const payDay = bkkDay(run.payDate);
+  const priorItems = await tx.hrPayrollItem.findMany({
+    where: { ...scope, employeeId: { in: ids }, run: { status: { in: ["APPROVED", "PAID"] }, ...(run.runId ? { id: { not: run.runId } } : {}) } },
+    select: { employeeId: true, runId: true, whtSatang: true, ssoEmployeeSatang: true, addSatang: true, snapshotJson: true, run: { select: { payDate: true, status: true, engineVersion: true } } },
+  });
+  // ชั่วโมงทำงาน (H3.1) + ชนิดวันหยุด + นาทีวันหยุดที่คำขอ OT จ่ายแล้ว (H2.9)
+  const days = await tx.hrWorkDay.findMany({
+    where: { ...scope, employeeId: { in: ids }, periodKey: P },
+    select: { id: true, employeeId: true, date: true, dayClass: true, workMin: true, paidLeaveMin: true, unpaidLeaveMin: true, holidayWorkMin: true, holidayPaidMin: true, unplannedMin: true, review: true, sourcesJson: true, digest: true },
+    orderBy: [{ employeeId: "asc" }, { date: "asc" }],
+  });
+  const holidayIds = [...new Set(days.map((d) => objH34(d.sourcesJson).holidayId).filter((x): x is string => typeof x === "string"))];
+  const hKind = new Map((holidayIds.length ? await tx.hrHoliday.findMany({ where: { ...scope, id: { in: holidayIds } }, select: { id: true, kind: true } }) : []).map((h) => [h.id, h.kind]));
+  const b = periodBounds(P)!;
+  const ots = await tx.hrOtRequest.findMany({
+    where: { ...scope, employeeId: { in: ids }, status: "APPROVED", settledAt: { not: null }, settleCode: null, date: { gte: new Date(`${b.firstDay}T00:00:00.000Z`), lte: new Date(`${b.lastDay}T00:00:00.000Z`) } },
+    select: { employeeId: true, date: true, segmentsJson: true },
+  });
+  const otHw = new Map<string, number>();
+  for (const o of ots) {
+    const segs = Array.isArray(o.segmentsJson) ? (o.segmentsJson as unknown[]) : [];
+    const m = segs.reduce((s: number, x) => s + (objH34(x).cls === "HOLIDAY_WORK" && Number.isSafeInteger(objH34(x).minutes) ? (objH34(x).minutes as number) : 0), 0);
+    const k = `${o.employeeId}|${dayOf(o.date)}`;
+    otHw.set(k, (otHw.get(k) ?? 0) + m);
+  }
+  const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
+  const engine = payrollEngineOf(sys?.settings);
+  const N = normalMinutesOf(sys?.settings);
+  const emps = new Map((await tx.hrEmployee.findMany({ where: { ...scope, id: { in: ids } }, select: { id: true, startDate: true, endDate: true } })).map((e) => [e.id, e]));
+  const monthIndex = Number(payDay.slice(5, 7));
+  const items: V2Item[] = [];
+  const digestIn: unknown[] = [];
+  for (const p of profiles) {
+    const e = emps.get(p.employeeId);
+    const dj = objH34(p.personalDeductionJson);
+    const prior = ytdPriorV2(
+      priorItems
+        .filter((i) => i.employeeId === p.employeeId)
+        .map((i) => {
+          const snap = objH34(i.snapshotJson);
+          const inc = i.run.engineVersion >= 2 ? Number(snap.whtIncomeSatang ?? 0) : Number(snap.baseSalarySatang ?? 0) + i.addSatang;
+          return { runId: i.runId, payDay: bkkDay(i.run.payDate), status: i.run.status, whtIncomeSatang: Math.max(0, inc), whtSatang: i.whtSatang, ssoEmployeeSatang: i.ssoEmployeeSatang };
+        }),
+      { onDay: payDay, runId: run.runId ?? "" },
+    );
+    const myDays = days.filter((d) => d.employeeId === p.employeeId);
+    const input: RunItemInputV2 = {
+      employeeId: p.employeeId,
+      payType: p.payType as RunItemInputV2["payType"],
+      baseSalarySatang: p.baseSalarySatang,
+      dailyRateSatang: p.dailyRateSatang,
+      hourlyRateSatang: p.hourlyRateSatang,
+      ssoEligible: p.ssoEligible,
+      deductions: { spouse: dj.spouse === true, children: typeof dj.children === "number" ? dj.children : 0 },
+      periodKey: P,
+      startDate: dayOf(e?.startDate ?? null),
+      endDate: dayOf(e?.endDate ?? null),
+      normalDayMin: N,
+      catCapBp: engine.catCapBp,
+      totalCapBp: engine.totalCapBp,
+      monthIndex,
+      prior,
+      days: myDays.map((d) => {
+        const hid = objH34(d.sourcesJson).holidayId;
+        const day = dayOf(d.date)!;
+        return {
+          workDayId: d.id,
+          day,
+          dayClass: d.dayClass,
+          ...(d.dayClass === "HOLIDAY" ? { holidayKind: (typeof hid === "string" ? hKind.get(hid) : undefined) ?? "PUBLIC" } : {}),
+          ...Object.fromEntries(H34_WAGE_KEYS.map((k) => [k, d[k]])),
+          review: [...d.review],
+          otHolidayWorkMin: Math.min(1440, otHw.get(`${p.employeeId}|${day}`) ?? 0),
+        };
+      }),
+      adjustments: adjRows
+        .filter((a) => a.employeeId === p.employeeId)
+        .map((a) => {
+          const cls = a.sourceType === "CARRY_FORWARD" ? /:(DAMAGES|OVERPAY|ADVANCE)$/.exec(String(a.sourceRef ?? ""))?.[1] : undefined;
+          return {
+            id: a.id,
+            kind: a.kind,
+            sourceType: a.sourceType,
+            amountSatang: a.amountSatang,
+            consent: !!a.consentAt || stockConsent.has(a.id),
+            ...(cls === "DAMAGES" || cls === "OVERPAY" ? { carryCls: cls } : {}),
+          };
+        }),
+    };
+    const r = computeRunItemV2(input, law.set as unknown as LawSetV2);
+    if (!r.ok) throw r.code === "NO_RATE" ? new Run2Refusal("NO_RATE", RUN2_TEXT.noRate) : new Run2Refusal("LAW", (LAW_MSG as Record<string, string>)[r.code] ?? LAW_MSG.BAD_SATANG);
+    const holidayWork = Object.fromEntries(r.lines.filter((l) => l.code === "HOLIDAY_WORK" && l.day).map((l) => [l.day as string, l.minutes ?? 0]));
+    const snapshot = {
+      engineVersion: 2,
+      payType: p.payType,
+      baseSalarySatang: p.baseSalarySatang,
+      normalDayMin: N,
+      catCapBp: engine.catCapBp,
+      totalCapBp: engine.totalCapBp,
+      lines: r.lines,
+      flags: r.flags,
+      carry: r.carry,
+      receivable: r.receivable,
+      availableSatang: r.availableSatang,
+      whtIncomeSatang: r.whtIncomeSatang,
+      whtOneOffSatang: r.whtOneOffSatang,
+      ssoWageSatang: r.ssoWageSatang,
+      workDays: myDays.map((d) => [d.id, d.digest]),
+      holidayWork,
+    };
+    items.push({ employeeId: p.employeeId, result: r, snapshot });
+    digestIn.push({ input, workDays: myDays.map((d) => [d.id, d.digest]) });
+  }
+  const totals = items.reduce(
+    (t, { result: i }) => ({ gross: t.gross + i.grossSatang, ssoEmployee: t.ssoEmployee + i.ssoEmployeeSatang, ssoEmployer: t.ssoEmployer + i.ssoEmployerSatang, wht: t.wht + i.whtSatang, net: t.net + i.netSatang, add: t.add + i.addSatang, deduct: t.deduct + i.deductSatang }),
+    { gross: 0, ssoEmployee: 0, ssoEmployer: 0, wht: 0, net: 0, add: 0, deduct: 0 },
+  );
+  const digest = sha256Hex(canonJson({ v: 2, items: digestIn, law: law.ids, payDay }));
+  return { items, adjustmentIds: adjRows.map((a) => a.id), digest, totals };
+}
+function v2ItemData(scope: { tenantId: string; systemId: string }, it: V2Item) {
+  const r = it.result;
+  return {
+    ...scope,
+    employeeId: it.employeeId,
+    grossSatang: r.grossSatang,
+    ssoBaseSatang: r.ssoBaseSatang,
+    ssoEmployeeSatang: r.ssoEmployeeSatang,
+    ssoEmployerSatang: r.ssoEmployerSatang,
+    whtSatang: r.whtSatang,
+    netSatang: r.netSatang,
+    addSatang: r.addSatang,
+    deductSatang: r.deductSatang,
+    snapshotJson: it.snapshot as Prisma.InputJsonValue,
+    lawRowIds: r.lawRowIds,
+    ytdJson: r.ytdJson as unknown as Prisma.InputJsonValue,
+  };
+}
+/** เขียนรอบ (ใหม่หรือร่างเดิม) + แถวพนักงาน + ผูกรายการ (guard runId IS NULL + APPROVED · ต้องครบ) */
+async function writeRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, built: V2Built, run: { id: string | null; periodKey: string; payDate: Date; createdById: string | null }): Promise<string> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const t = built.totals;
+  const totals = { totalGrossSatang: t.gross, totalSsoEmployeeSatang: t.ssoEmployee, totalSsoEmployerSatang: t.ssoEmployer, totalWhtSatang: t.wht, totalNetSatang: t.net, totalAddSatang: t.add, totalDeductSatang: t.deduct };
+  let id = run.id;
+  if (!id) {
+    id = (await tx.hrPayrollRun.create({ data: { ...scope, periodKey: run.periodKey, payDate: run.payDate, status: "DRAFT", engineVersion: 2, createdById: run.createdById, inputDigest: built.digest, ...totals }, select: { id: true } })).id;
+  } else {
+    const u = await tx.hrPayrollRun.updateMany({ where: { ...scope, id, status: "DRAFT", journalEntryId: null }, data: { ...totals, createdById: run.createdById, inputDigest: built.digest, stepsJson: Prisma.DbNull, note: `ดึงข้อมูลใหม่ ${bkkStamp(new Date())}` } });
+    if (u.count !== 1) throw new Run2Refusal("NOT_DRAFT", RECOMPUTE_ONLY_DRAFT);
+  }
+  if (built.items.length) await tx.hrPayrollItem.createMany({ data: built.items.map((it) => ({ ...v2ItemData(scope, it), runId: id! })) });
+  if (built.adjustmentIds.length) {
+    const bound = await tx.hrPayAdjustment.updateMany({ where: { ...scope, id: { in: built.adjustmentIds }, runId: null, status: "APPROVED" }, data: { runId: id } });
+    if (bound.count !== built.adjustmentIds.length) throw new Run2Refusal("BIND", `รายการปรับเงินของงวด ${run.periodKey} ถูกเปลี่ยนระหว่างสร้างรอบ — ลองสร้างรอบใหม่อีกครั้ง`);
+  }
+  return id;
+}
+const canRunV2 = (v: { role?: string; permissions?: unknown } | null | undefined): boolean =>
+  !!v && (v.role === "OWNER" || canViewPayroll({ role: v.role, permissions: objH34(v.permissions) } as unknown as MembershipCtx));
+type Run2Viewer = PayrollEngineViewer & { unitAccess?: unknown; permissions?: unknown };
+export type CreateRunV2Result = { ok: true; id: string; employees: number } | { ok: false; code: Run2Code; reason: string };
+
+/** R4 สร้างรอบรุ่น 2 — ลำดับปฏิเสธตาม brief · ปฏิเสธ = ไม่มีแถวรอบ/ผูกรายการ (ชั่วโมงทำงานที่ดึงก่อนเปิด tx คงอยู่ — เป็นข้อมูลของ H3.1) */
+export async function createPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: { periodKey: string; payDate: Date }, opts: { now?: Date; actor?: PayrollActor } = {}): Promise<CreateRunV2Result> {
+  if (!canRunV2(viewer)) return { ok: false, code: "NO", reason: RUN2_TEXT.no };
+  const periodKey = typeof input?.periodKey === "string" ? input.periodKey.trim() : "";
+  const bad = v2PeriodRefusal(periodKey, input?.payDate);
+  if (bad) return { ok: false, ...bad };
+  if ((await getPayrollEngine(ctx)).engineVersion !== 2) return { ok: false, code: "ENGINE_V1", reason: RUN2_TEXT.engineV1 };
+  const now = opts.now ?? new Date();
+  const b = await buildAllWorkEntries(ctx, viewer, periodKey, now);
+  if (!b.ok) return { ok: false, code: "BUILD", reason: b.reason };
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  let out: { id: string; employees: number };
+  try {
+    out = await tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await attendancePreLockInTx(tx, ctx, periodKey, null); // H3.2: งวดงานก่อนหน้าเรียงน้อย → มาก ก่อนงวดของรอบ
+      await lockRunPeriod(tx, ctx, periodKey);
+      if ((await payrollEngineIn(tx, ctx)).engineVersion !== 2) throw new Run2Refusal("ENGINE_V1", RUN2_TEXT.engineV1);
+      if (await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey, ...liveRunWhere() }, select: { id: true } })) throw new Run2Refusal("DUPLICATE", dupRunText(periodKey));
+      const legacy = await tx.$queryRaw<{ n: number }[]>`
+        SELECT 1 AS "n" FROM "HrPayAdjustment" a JOIN "HrPayrollRun" r ON r."id" = a."runId"
+        WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId} AND r."periodKey" = ${periodKey} AND r."status" = 'REVERSED'::"PayrollRunStatus"
+          AND a."tenantId" = ${ctx.tenantId} AND a."systemId" = ${ctx.systemId}
+        LIMIT 1`;
+      if (legacy.length) throw new Run2Refusal("LEGACY", LEGACY_REVERSED_BOUND_TH);
+      const built = await buildRunV2InTx(tx, ctx, { periodKey, payDate: input.payDate, runId: null, gates: true });
+      const id = await writeRunV2InTx(tx, ctx, built, { id: null, periodKey, payDate: input.payDate, createdById: opts.actor?.userId ?? viewer.userId ?? null });
+      return { id, employees: built.items.length };
+    }, H34_TX);
+  } catch (e) {
+    if (e instanceof Run2Refusal) return { ok: false, code: e.code, reason: e.message };
+    if (e instanceof PayrollInputError) return { ok: false, code: "ATTENDANCE_LOCK", reason: e.message };
+    throw e;
+  }
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: opts.actor?.userId ?? viewer.userId ?? null, action: "hr.payroll.create", targetType: "HrPayrollRun", targetId: out.id, after: { engineVersion: 2, periodKey, items: out.employees } });
+  return { ok: true, id: out.id, employees: out.employees };
+}
+
+async function runEngineVersion(ctx: Ctx, runId: string): Promise<number | null> {
+  if (typeof runId !== "string" || !runId.trim()) return null;
+  return (await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId.trim(), tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { engineVersion: true } }))?.engineVersion ?? null;
+}
+export type RecomputeV2Opts = { viewer?: Run2Viewer; now?: Date };
+/** R5 ดึงข้อมูลใหม่ของรอบร่างรุ่น 2 = สร้างซ้ำบนรอบเดิม · ผู้กดเป็น "ผู้สร้าง" คนใหม่ · ล้างขั้นยืนยันสาขา */
+async function recomputeDraftRunV2(ctx: Ctx, id: string, actor: PayrollActor, opts: RecomputeV2Opts): Promise<{ ok: true; note: string } | { ok: false; reason: string; code?: Run2Code }> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const pre = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { ...scope, id }, select: { periodKey: true } });
+  if (!pre) return { ok: false, reason: RUN_NOT_FOUND };
+  if (opts.viewer) {
+    const b = await buildAllWorkEntries(ctx, opts.viewer, pre.periodKey, opts.now ?? new Date());
+    if (!b.ok) return { ok: false, reason: b.reason, code: "BUILD" };
+  }
+  let before: Snap2 | null = null;
+  let after: Snap2 | null = null;
+  try {
+    await tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await attendancePreLockInTx(tx, ctx, pre.periodKey, id);
+      await lockRunPeriod(tx, ctx, pre.periodKey);
+      const cur = await lockRunRow(tx, ctx, id);
+      if (!cur || cur.periodKey !== pre.periodKey) throw new Run2Refusal("NOT_FOUND", RUN_CHANGED);
+      if (cur.status !== "DRAFT") throw new Run2Refusal("NOT_DRAFT", RECOMPUTE_ONLY_DRAFT);
+      if (cur.journalEntryId) throw new Run2Refusal("DRAFT_HAS_JV", DRAFT_HAS_JV);
+      const run = await tx.hrPayrollRun.findFirst({ where: { ...scope, id }, select: { payDate: true } });
+      before = { totalNetSatang: cur.totalNetSatang, totalAddSatang: cur.totalAddSatang, totalDeductSatang: cur.totalDeductSatang, itemCount: await tx.hrPayrollItem.count({ where: { ...scope, runId: id } }) };
+      await tx.hrPayAdjustment.updateMany({ where: { ...scope, runId: id }, data: { runId: null } });
+      await tx.hrPayrollItem.deleteMany({ where: { ...scope, runId: id } });
+      const built = await buildRunV2InTx(tx, ctx, { periodKey: pre.periodKey, payDate: run!.payDate, runId: id, gates: true });
+      await writeRunV2InTx(tx, ctx, built, { id, periodKey: pre.periodKey, payDate: run!.payDate, createdById: actor?.userId ?? null });
+      after = { totalNetSatang: built.totals.net, totalAddSatang: built.totals.add, totalDeductSatang: built.totals.deduct, itemCount: built.items.length };
+    }, H34_TX);
+  } catch (e) {
+    if (e instanceof Run2Refusal) return { ok: false, reason: e.message, code: e.code };
+    if (e instanceof PayrollInputError) return { ok: false, reason: e.message };
+    throw e;
+  }
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: actor?.userId ?? null, action: "hr.payroll.recompute", targetType: "HrPayrollRun", targetId: id, before, after: { ...(after ?? {}), engineVersion: 2 } });
+  return { ok: true, note: `ดึงข้อมูลใหม่ ${bkkStamp(new Date())}` };
+}
+type Snap2 = { totalNetSatang: number; totalAddSatang: number; totalDeductSatang: number; itemCount: number };
+
+export type ApproveV2Code = "NO_ACTOR" | "SAME_PERSON" | "OWN_PAY" | "OT_OPEN" | "YTD_DRAFT" | "INPUTS_CHANGED" | "LAW";
+const RUN2_APPROVE_TEXT: Record<string, string> = {
+  NO_ACTOR: RUN2_TEXT.noActor, SAME_PERSON: RUN2_TEXT.samePerson, OWN_PAY: RUN2_TEXT.ownPay, OT_OPEN: RUN2_TEXT.otOpen, YTD_DRAFT: RUN2_TEXT.ytdDraft, INPUTS_CHANGED: RUN2_TEXT.inputsChanged,
+};
+const CARRY_KIND: Record<string, "ADVANCE" | "DEDUCTION"> = { ADVANCE: "ADVANCE", DAMAGES: "DEDUCTION", OVERPAY: "DEDUCTION" };
+/** ยกยอดหักที่ยังเก็บไม่ได้ไปงวดเปิดถัดไป (ไม่ทำกับงวดสุดท้ายของคนที่ออก — receivable คงอยู่ในแถวพนักงาน) · ล็อกงวดปลายทาง (> P) */
+async function writeCarryRowsInTx(tx: Prisma.TransactionClient, ctx: Ctx, run: { id: string; periodKey: string }, approverId: string): Promise<number> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const items = await tx.hrPayrollItem.findMany({ where: { ...scope, runId: run.id }, select: { employeeId: true, snapshotJson: true } });
+  const carries = items.flatMap((i) => ((objH34(i.snapshotJson).carry as { cls: string; amountSatang: number }[] | undefined) ?? []).filter((c) => c.amountSatang > 0).map((c) => ({ employeeId: i.employeeId, ...c })));
+  if (!carries.length) return 0;
+  const bound = await tx.hrPayAdjustment.findMany({ where: { ...scope, runId: run.id, kind: { in: ["ADVANCE", "DEDUCTION"] } }, select: { employeeId: true, kind: true, sourceType: true, sourceRef: true, consentAt: true } });
+  let target: string | null = null;
+  for (let i = 0; i < 36; i += 1) {
+    const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+    const want = nextRunlessPeriod(run.periodKey, runs);
+    if (!want) throw new Run2Refusal("BIND", RUN_CHANGED);
+    if (want === target) break;
+    await lockRunPeriod(tx, ctx, want); // งวดปลายทาง > P เรียงน้อย → มาก (มากขึ้นเท่านั้น)
+    target = want;
+  }
+  const note = RUN2_TEXT.carryNote.replace("{p}", run.periodKey);
+  const now = new Date();
+  for (const c of carries) {
+    const src = bound.filter((a) => a.employeeId === c.employeeId && (c.cls === "ADVANCE" ? a.kind === "ADVANCE" : a.kind === "DEDUCTION" && a.sourceType !== "LATE_RULE" && a.sourceType !== "ABSENT_RULE"));
+    const allConsent = src.length > 0 && src.every((a) => !!a.consentAt);
+    await tx.hrPayAdjustment.create({
+      data: {
+        ...scope,
+        employeeId: c.employeeId,
+        periodKey: target!,
+        kind: CARRY_KIND[c.cls] ?? "DEDUCTION",
+        amountSatang: c.amountSatang,
+        note,
+        status: "APPROVED",
+        requestedById: approverId,
+        decidedById: null,
+        decidedAt: now,
+        sourceType: "CARRY_FORWARD",
+        sourceRef: `cf:${run.id}:${c.employeeId}:${c.cls}`,
+        ...(allConsent ? { consentAt: now, consentById: approverId } : {}),
+      },
+    });
+  }
+  return carries.length;
+}
+
+/** R6 อนุมัติรอบรุ่น 2 — ผู้สร้าง ≠ ผู้อนุมัติ (เว้นเจ้าของร้าน) · เงินเดือนตัวเอง = เจ้าของร้านอนุมัติ · ด่านใต้ล็อก → claim → ผูกชั่วโมง → ยกยอด → JV เดิม */
+async function approveRunV2(ctx: Ctx, runId: string, expect: ApproveExpect | undefined, actor: PayrollActor | undefined): Promise<{ ok: boolean; note: string; code?: ApproveFailCode }> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const fail = async (code: string, note: string) => {
+    await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: actor?.userId ?? null, action: "hr.payroll.approve.refused", targetType: "HrPayrollRun", targetId: runId, after: { code, engineVersion: 2 } });
+    return { ok: false, note, code: code as ApproveFailCode };
+  };
+  if (!actor?.userId) return fail("NO_ACTOR", RUN2_TEXT.noActor);
+  type R = { code: "OK" } | { code: string; note: string };
+  let r: R;
+  try {
+    r = await tenantDb(ctx).$transaction(async (t): Promise<R> => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      const per = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: runId }, select: { periodKey: true } });
+      if (!per) return { code: "NOT_FOUND", note: RUN_NOT_FOUND };
+      await attendancePreLockInTx(tx, ctx, per.periodKey, runId, true);
+      await lockRunPeriod(tx, ctx, per.periodKey);
+      const cur = await lockRunRow(tx, ctx, runId);
+      if (!cur) return { code: "NOT_FOUND", note: RUN_NOT_FOUND };
+      if (cur.status !== "DRAFT") return { code: "NOT_DRAFT", note: APPROVE_NOT_DRAFT };
+      if (cur.journalEntryId) return { code: "DRAFT_HAS_JV", note: APPROVE_DRAFT_HAS_JV };
+      const run = (await tx.hrPayrollRun.findFirst({ where: { ...scope, id: runId }, select: { createdById: true, payDate: true, inputDigest: true } }))!;
+      if (run.createdById === actor.userId && !actor.isOwner) return { code: "SAME_PERSON", note: RUN2_TEXT.samePerson };
+      const empIds = (await tx.hrPayrollItem.findMany({ where: { ...scope, runId }, select: { employeeId: true } })).map((i) => i.employeeId);
+      if (!actor.isOwner && (await tx.hrEmployee.count({ where: { ...scope, id: { in: empIds }, linkedUserId: actor.userId } })) > 0) return { code: "OWN_PAY", note: RUN2_TEXT.ownPay };
+      if (expect !== undefined) {
+        const actual = await runActual(tx, ctx, cur);
+        const stale = !Number.isSafeInteger(expect.totalNetSatang) || !Number.isSafeInteger(expect.itemCount) || actual.net !== expect.totalNetSatang || actual.items !== expect.itemCount ||
+          (expect.totalGrossSatang !== undefined && actual.gross !== expect.totalGrossSatang) || (expect.itemsDigest !== undefined && actual.digest !== expect.itemsDigest);
+        if (stale) return { code: "STALE", note: APPROVE_STALE };
+      }
+      const we = await workEntriesApproveCheckInTx(tx, ctx, { runId, periodKey: cur.periodKey });
+      if (!we.ok) return { code: "WORK_ENTRIES", note: WE_TEXT.approveBlocked };
+      if (await otOpenInTx(tx, ctx, cur.periodKey, empIds)) return { code: "OT_OPEN", note: RUN2_TEXT.otOpen };
+      const att = await attendanceRunGateInTx(tx, ctx, runId, cur.periodKey);
+      if (att) return { code: att, note: ATT_APPROVE_TEXT[att] ?? ATT_TEXT.runSync };
+      if (await ytdDraftInTx(tx, ctx, runId, run.payDate)) return { code: "YTD_DRAFT", note: RUN2_TEXT.ytdDraft };
+      let digest: string;
+      try {
+        digest = (await buildRunV2InTx(tx, ctx, { periodKey: cur.periodKey, payDate: run.payDate, runId, bound: runId, gates: false })).digest;
+      } catch (e) {
+        if (e instanceof Run2Refusal) return { code: "INPUTS_CHANGED", note: RUN2_TEXT.inputsChanged };
+        throw e;
+      }
+      if (digest !== run.inputDigest) return { code: "INPUTS_CHANGED", note: RUN2_TEXT.inputsChanged };
+      const negative = await tx.hrPayrollItem.count({ where: { ...scope, runId, netSatang: { lt: 0 } } });
+      if (negative > 0) return { code: "NEGATIVE_NET", note: approveNegativeNetText(negative) };
+      const claim = await tx.hrPayrollRun.updateMany({
+        where: { ...scope, id: runId, status: "DRAFT", journalEntryId: null, ...(expect !== undefined ? { totalNetSatang: expect.totalNetSatang } : {}), items: { none: { netSatang: { lt: 0 } } } },
+        data: { status: "APPROVED", approvedById: actor.userId, approvedAt: new Date() },
+      });
+      if (claim.count !== 1) return { code: "NOT_DRAFT", note: APPROVE_NOT_DRAFT };
+      await bindWorkEntriesToRunInTx(tx, ctx, { runId, periodKey: cur.periodKey });
+      await writeCarryRowsInTx(tx, ctx, { id: runId, periodKey: cur.periodKey }, actor.userId!);
+      return { code: "OK" };
+    }, H34_TX);
+  } catch (e) {
+    if (e instanceof PayrollInputError) return fail("ATTENDANCE_LOCK", e.message);
+    if (e instanceof Run2Refusal) return fail(e.code, e.message);
+    throw e;
+  }
+  if (r.code !== "OK") return fail(r.code, (r as { note: string }).note);
+  const db = tenantDb(ctx);
+  const run = await db.hrPayrollRun.findFirst({ where: { id: runId } });
+  if (!run) return { ok: false, note: RUN_NOT_FOUND, code: "NOT_FOUND" };
+  const acct = await db.appSystem.findFirst({ where: { type: "ACCOUNT" }, select: { id: true } });
+  if (!acct) {
+    await db.hrPayrollRun.update({ where: { id: runId }, data: { note: "อนุมัติแล้ว (ยังไม่ได้เปิดระบบบัญชี — ไม่ได้ลงบัญชี)" } });
+    await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: actor.userId, action: "hr.payroll.approve", targetType: "HrPayrollRun", targetId: runId, after: { engineVersion: 2, journal: false } });
+    return { ok: true, note: "อนุมัติแล้ว — ยังไม่ได้เปิดระบบบัญชี จึงไม่ได้ลงบัญชี" };
+  }
+  try {
+    const { entryId } = await postPayrollJV(
+      { tenantId: ctx.tenantId, systemId: acct.id },
+      { payDate: run.payDate, periodKey: run.periodKey, grossSatang: run.totalGrossSatang, ssoEmployeeSatang: run.totalSsoEmployeeSatang, ssoEmployerSatang: run.totalSsoEmployerSatang, whtSatang: run.totalWhtSatang, netSatang: run.totalNetSatang },
+    );
+    await db.hrPayrollRun.update({ where: { id: runId }, data: { journalEntryId: entryId, note: "อนุมัติและลงบัญชีแล้ว" } });
+    await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: actor.userId, action: "hr.payroll.approve", targetType: "HrPayrollRun", targetId: runId, after: { engineVersion: 2, journalEntryId: entryId } });
+    return { ok: true, note: "อนุมัติและลงบัญชีเรียบร้อย" };
+  } catch (e) {
+    // ลงบัญชีล้ม → คืนร่าง + ถอนยอดยกไปที่ยังไม่ถูกใช้ (ห้ามค้าง APPROVED ลอย / ยกยอดซ้ำ)
+    await tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await lockRunPeriod(tx, ctx, run.periodKey);
+      const back = await tx.hrPayrollRun.updateMany({ where: { ...scope, id: runId, status: "APPROVED", journalEntryId: null }, data: { status: "DRAFT", approvedById: null, approvedAt: null } });
+      if (back.count === 1) await tx.hrPayAdjustment.deleteMany({ where: { ...scope, sourceType: "CARRY_FORWARD", sourceRef: { startsWith: `cf:${runId}:` }, runId: null } });
+    }, H34_TX);
+    return { ok: false, note: e instanceof Error ? e.message : "ลงบัญชีไม่สำเร็จ", code: "POST_FAILED" };
+  }
+}
+
+/** R7 กลับรายการ: ยอดยกไปของรอบนี้ถูกดึงเข้ารอบถัดไปแล้ว ⇒ CARRY_BOUND (ย้อนทั้ง tx) · ไม่งั้น REJECTED (guard runId IS NULL · count ต้องครบ) */
+class CarryBoundRefusal extends Error {}
+async function reverseCarryInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: string): Promise<void> {
+  const rows = await tx.$queryRaw<{ id: string; runId: string | null }[]>`
+    SELECT "id", "runId" FROM "HrPayAdjustment"
+    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "sourceType"::text = 'CARRY_FORWARD' AND "sourceRef" LIKE ${`cf:${runId}:%`}
+    ORDER BY "id" FOR UPDATE`;
+  if (!rows.length) return;
+  if (rows.some((r) => r.runId !== null)) throw new CarryBoundRefusal("CARRY_BOUND");
+  // tx นี้อาจเปิดบนขอบเขตของระบบบัญชี (reverseRun) ⇒ เขียนด้วย SQL ที่ผูก tenantId + systemId ของ HR เอง (แบบเดียวกับการปลดรายการของ reverseRun)
+  const n = await tx.$executeRaw`
+    UPDATE "HrPayAdjustment" SET "status" = 'REJECTED'::"HrPayItemStatus", "decidedAt" = (now() AT TIME ZONE 'UTC')
+    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(rows.map((r) => r.id))}) AND "runId" IS NULL AND "status"::text = 'APPROVED'`;
+  if (n !== rows.length) throw new CarryBoundRefusal("CARRY_BOUND");
+}
+
+/** R11: นาทีที่รอบรุ่น 2 (APPROVED/PAID) คิดเป็น HOLIDAY_WORK แล้วของพนักงาน·วัน — H2.9 หักออกก่อนคิดคำขอ OT (ไม่จ่ายซ้ำ) */
+export async function holidayWorkPricedInTx(tx: Prisma.TransactionClient, ctx: Ctx, input: { employeeId: string; day: string }): Promise<number> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input?.day ?? "")) return 0;
+  const items = await tx.hrPayrollItem.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: input.employeeId, run: { periodKey: input.day.slice(0, 7), engineVersion: 2, status: { in: ["APPROVED", "PAID"] } } },
+    select: { snapshotJson: true },
+  });
+  return items.reduce((s, i) => s + (Number(objH34(objH34(i.snapshotJson).holidayWork)[input.day]) || 0), 0);
+}
+
+/** R12 คืนเงินรายการหัก (REFUND) — ร้านรุ่น 2 เท่านั้น · ด่านเดียวกับรายการปกติ (งวดที่มีรอบแล้ว · พนักงานในร้าน) · PENDING เสมอ */
+async function requestRefundAdjustment(ctx: Ctx, input: RequestAdjustInput): Promise<{ ok: boolean; reason?: string; id?: string; amountSatang?: number; code?: string }> {
+  if ((await getPayrollEngine(ctx)).engineVersion !== 2) return { ok: false, code: "REFUND_V1", reason: RUN2_TEXT.refundV1 };
+  const p = String(input.periodKey ?? "").trim();
+  if (!PERIOD_RE.test(p)) return { ok: false, reason: "งวดต้องเป็นรูปแบบ YYYY-MM" };
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId }, select: { id: true } });
+  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+  if (await tenantDb(ctx).hrPayrollRun.findFirst({ where: { systemId: ctx.systemId, periodKey: p, ...liveRunWhere() }, select: { id: true } })) return { ok: false, code: "PERIOD_CLOSED", reason: `งวด ${p} มีรอบจ่ายเงินเดือนแล้ว — ยื่นเข้างวดถัดไปแทน` };
+  const amount = Math.round(input.amountSatang ?? 0);
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > HR_INT_MAX) return { ok: false, reason: "ระบุจำนวนเงิน (หรือชั่วโมง OT) ให้มากกว่า 0" };
+  const row = await tenantDb(ctx).hrPayAdjustment.create({
+    data: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: input.employeeId, periodKey: p, kind: "REFUND", amountSatang: amount, hours: null, rateSatang: null, note: input.note?.trim() || null, requestedById: input.requestedById ?? null },
+    select: { id: true },
+  });
+  return { ok: true, id: row.id, amountSatang: amount };
+}
+
+/** R12 หนังสือยินยอมให้หัก (ม.77) — OWNER หรือ hr.payadjust.approve ในสาขา (+ ผู้ดูเงินเดือน) · เฉพาะรายการหักที่ยังไม่เข้ารอบ · ประวัติ hr.payadjust.consent */
+export async function setAdjustmentConsent(ctx: Ctx, viewer: Run2Viewer, input: { id: string; consent: boolean }, opts: { now?: Date } = {}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const NO = "ไม่พบรายการนี้ หรือคุณไม่มีสิทธิ์บันทึกหนังสือยินยอม";
+  const id = typeof input?.id === "string" ? input.id.trim() : "";
+  if (!id || typeof input.consent !== "boolean" || !viewer) return { ok: false, reason: NO };
+  const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id, systemId: ctx.systemId }, select: { employeeId: true, kind: true, runId: true, status: true } });
+  if (!row || row.kind !== "DEDUCTION" || row.runId !== null || row.status === "REJECTED") return { ok: false, reason: NO };
+  if (viewer.role !== "OWNER") {
+    const m = { role: viewer.role, permissions: objH34(viewer.permissions), unitAccess: viewer.unitAccess } as unknown as MembershipCtx;
+    const unitId = (await tenantDb(ctx).hrEmployee.findFirst({ where: { id: row.employeeId }, select: { unitId: true } }))?.unitId ?? undefined;
+    if (!canViewPayroll(m) || !evaluate(m, { module: "hr", action: "hr.payadjust.approve", ...(unitId ? { unitId } : {}) } as never)) return { ok: false, reason: NO };
+  }
+  const now = opts.now ?? new Date();
+  const n = await tenantDb(ctx).hrPayAdjustment.updateMany({ where: { id, systemId: ctx.systemId, runId: null, kind: "DEDUCTION" }, data: input.consent ? { consentAt: now, consentById: viewer.userId ?? null } : { consentAt: null, consentById: null } });
+  if (n.count !== 1) return { ok: false, reason: NO };
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: viewer.userId ?? null, action: "hr.payadjust.consent", targetType: "HrPayAdjustment", targetId: id, after: { consent: input.consent } });
+  return { ok: true };
+}
+
+// ── R9 ดูตัวอย่างรอบ: ผู้ดูเงินเดือน (OWNER · hr.payroll.read · สาขาของตัวเอง) เห็นเงิน · ผู้จัดการ (ไม่มีคีย์เงินเดือน · สาขาของตัวเอง) เห็นนาทีเท่านั้น · อื่น ๆ = "no" เดียวกันทุกไบต์ ──
+export type Run2PayRow = { employeeId: string; name: string; unitId: string | null; payType: string; lines: unknown[]; flags: string[]; carry: unknown[]; grossSatang: number; ssoEmployeeSatang: number; whtSatang: number; netSatang: number; addSatang: number; deductSatang: number; review: { day: string | null; code: string }[] };
+export type Run2MgrRow = { employeeId: string; name: string; unitId: string | null; days: number; workMin: number; paidLeaveMin: number; unpaidLeaveMin: number; holidayWorkMin: number; holidayPaidMin: number; unplannedMin: number; review: { day: string | null; code: string }[] };
+export type Run2Review = { employeeId: string; name: string; day: string | null; code: string };
+const unitsOfViewer = (v: Run2Viewer): "*" | string[] => (v.role === "OWNER" || (Array.isArray(v.unitAccess) && v.unitAccess.includes("*")) ? "*" : Array.isArray(v.unitAccess) ? (v.unitAccess as unknown[]).filter((x): x is string => typeof x === "string") : []);
+export async function previewPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: { runId: string }): Promise<
+  | { ok: true; run: Record<string, unknown>; rows: Run2PayRow[]; review: Run2Review[] }
+  | { ok: true; run: { id: string; periodKey: string; status: string }; rows: Run2MgrRow[] }
+  | { ok: false; reason: string }
+> {
+  const NO = { ok: false as const, reason: RUN2_TEXT.no };
+  const id = typeof input?.runId === "string" ? input.runId.trim() : "";
+  if (!id || !viewer) return NO;
+  const pay = canRunV2(viewer);
+  const mgr = !pay && viewer.role === "MANAGER";
+  if (!pay && !mgr) return NO;
+  const db = tenantDb(ctx);
+  const run = await db.hrPayrollRun.findFirst({ where: { id, systemId: ctx.systemId, tenantId: ctx.tenantId }, select: { id: true, periodKey: true, payDate: true, status: true, engineVersion: true, createdById: true, approvedById: true, stepsJson: true, totalGrossSatang: true, totalNetSatang: true, totalSsoEmployeeSatang: true, totalSsoEmployerSatang: true, totalWhtSatang: true, totalAddSatang: true, totalDeductSatang: true } });
+  if (!run) return NO;
+  const items = await db.hrPayrollItem.findMany({ where: { runId: id, systemId: ctx.systemId }, select: { employeeId: true, grossSatang: true, ssoEmployeeSatang: true, whtSatang: true, netSatang: true, addSatang: true, deductSatang: true, snapshotJson: true }, orderBy: { employeeId: "asc" } });
+  const emps = new Map((await db.hrEmployee.findMany({ where: { id: { in: items.map((i) => i.employeeId) } }, select: { id: true, name: true, unitId: true } })).map((e) => [e.id, e]));
+  const units = unitsOfViewer(viewer);
+  const mine = items.filter((i) => units === "*" || units.includes(emps.get(i.employeeId)?.unitId ?? "\u0000"));
+  if (mgr && units === "*") return NO;
+  const wd = await db.hrWorkDay.findMany({ where: { systemId: ctx.systemId, periodKey: run.periodKey, employeeId: { in: mine.map((i) => i.employeeId) } }, select: { employeeId: true, date: true, review: true, workMin: true, paidLeaveMin: true, unpaidLeaveMin: true, holidayWorkMin: true, holidayPaidMin: true, unplannedMin: true } });
+  const reviewOf = (emp: string) =>
+    wd.filter((d) => d.employeeId === emp).flatMap((d) => d.review.filter((c) => (H34_REVIEW_CODES as readonly string[]).includes(c)).map((code) => ({ day: dayOf(d.date), code }))).concat(wd.filter((d) => d.employeeId === emp && d.unplannedMin > 0 && !d.review.includes("UNPLANNED")).map((d) => ({ day: dayOf(d.date), code: "UNPLANNED" })));
+  if (mgr) {
+    return {
+      ok: true,
+      run: { id: run.id, periodKey: run.periodKey, status: run.status },
+      rows: mine.map((i) => {
+        const e = emps.get(i.employeeId);
+        const ds = wd.filter((d) => d.employeeId === i.employeeId);
+        const sum = (k: (typeof H34_WAGE_KEYS)[number]) => ds.reduce((s, d) => s + d[k], 0);
+        return { employeeId: i.employeeId, name: e?.name ?? "", unitId: e?.unitId ?? null, days: ds.length, workMin: sum("workMin"), paidLeaveMin: sum("paidLeaveMin"), unpaidLeaveMin: sum("unpaidLeaveMin"), holidayWorkMin: sum("holidayWorkMin"), holidayPaidMin: sum("holidayPaidMin"), unplannedMin: sum("unplannedMin"), review: reviewOf(i.employeeId) };
+      }),
+    };
+  }
+  const rows: Run2PayRow[] = mine.map((i) => {
+    const e = emps.get(i.employeeId);
+    const s = objH34(i.snapshotJson);
+    const receivable = ((s.receivable as { cls: string; amountSatang: number }[] | undefined) ?? []).map(() => ({ day: null, code: "RECEIVABLE" }));
+    return {
+      employeeId: i.employeeId, name: e?.name ?? "", unitId: e?.unitId ?? null, payType: String(s.payType ?? "MONTHLY"), lines: (s.lines as unknown[] | undefined) ?? [], flags: (s.flags as string[] | undefined) ?? [], carry: (s.carry as unknown[] | undefined) ?? [],
+      grossSatang: i.grossSatang, ssoEmployeeSatang: i.ssoEmployeeSatang, whtSatang: i.whtSatang, netSatang: i.netSatang, addSatang: i.addSatang, deductSatang: i.deductSatang, review: [...reviewOf(i.employeeId), ...receivable],
+    };
+  });
+  const review = rows.flatMap((r) => r.review.map((x) => ({ employeeId: r.employeeId, name: r.name, day: x.day, code: x.code })));
+  return {
+    ok: true,
+    run: { id: run.id, periodKey: run.periodKey, payDate: run.payDate, status: run.status, engineVersion: run.engineVersion, createdById: run.createdById, approvedById: run.approvedById, stepsJson: run.stepsJson, totals: { grossSatang: run.totalGrossSatang, netSatang: run.totalNetSatang, ssoEmployeeSatang: run.totalSsoEmployeeSatang, ssoEmployerSatang: run.totalSsoEmployerSatang, whtSatang: run.totalWhtSatang, addSatang: run.totalAddSatang, deductSatang: run.totalDeductSatang } },
+    rows,
+    review,
+  };
+}
+
+/** R10 ผู้จัดการยืนยันชั่วโมงทำงานของสาขา (ไม่บังคับ — ไม่บล็อกการอนุมัติ) · รอบร่างรุ่น 2 เท่านั้น */
+export async function confirmBranchHours(ctx: Ctx, viewer: Run2Viewer, input: { runId: string; unitId: string }, opts: { now?: Date } = {}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const NO = { ok: false as const, reason: RUN2_TEXT.confirmNo };
+  const runId = typeof input?.runId === "string" ? input.runId.trim() : "";
+  const unitId = typeof input?.unitId === "string" ? input.unitId.trim() : "";
+  if (!runId || !unitId || !viewer) return NO;
+  const units = unitsOfViewer(viewer);
+  const may = viewer.role === "OWNER" || (viewer.role === "MANAGER" && Array.isArray(units) && units.includes(unitId));
+  if (!may) return NO;
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const unit = await tenantDb({ tenantId: ctx.tenantId }).businessUnit.findFirst({ where: { id: unitId, tenantId: ctx.tenantId }, select: { id: true } }).catch(() => null);
+  if (!unit) return NO;
+  const at = (opts.now ?? new Date()).toISOString();
+  const ok = await tenantDb(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    const pre = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: runId }, select: { periodKey: true } });
+    if (!pre) return false;
+    await lockRunPeriod(tx, ctx, pre.periodKey);
+    const cur = await lockRunRow(tx, ctx, runId);
+    const run = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: runId }, select: { engineVersion: true, stepsJson: true } });
+    if (!cur || cur.status !== "DRAFT" || run?.engineVersion !== 2) return false;
+    const steps = objH34(run.stepsJson);
+    const branches = { ...objH34(steps.branches), [unitId]: { userId: viewer.userId ?? null, at } };
+    const u = await tx.hrPayrollRun.updateMany({ where: { ...scope, id: runId, status: "DRAFT" }, data: { stepsJson: { ...steps, branches } as Prisma.InputJsonValue } });
+    return u.count === 1;
+  }, H34_TX);
+  if (!ok) return NO;
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: viewer.userId ?? null, action: "hr.payroll.branch_confirm", targetType: "HrPayrollRun", targetId: runId, after: { unitId } });
+  return { ok: true };
 }
 // ◂ HR H3.4

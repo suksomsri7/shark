@@ -27,6 +27,9 @@ import { canManageHrSettings, SETTINGS_TEXT } from "./settings";
 import { otDaySpans, otPayDaysInTx, type OtPayStoredRow } from "./judge";
 import { loadOtLawRows } from "./law";
 import { OtAdjustmentConflict, writeOtAdjustmentInTx } from "./payroll";
+import { holidayWorkPricedInTx } from "./payroll"; // HR H3.4 ▸ R11: นาที HOLIDAY_WORK ที่รอบรุ่น 2 จ่ายแล้ว (ไม่จ่ายซ้ำ) ◂
+import { otDayMinutes } from "./ot-rules"; // HR H3.4 ▸ R11: แถบชั่วโมงปกติของวันหยุด = min(480, N) ◂
+import { normalMinutesOf } from "./work-entries"; // HR H3.4 ▸ R11: ชั่วโมงปกติต่อวันของร้าน (ตรึงใน basisJson ตอนคิดเงินครั้งแรก) ◂
 import {
   OT_POLICY_RANGE,
   OT_TEXT,
@@ -396,7 +399,7 @@ async function audit(ctx: Ctx, uid: string | null, action: string, r: { id: stri
 const settleAudit = (o: SettleOut) => ({ settleCode: o.settleCode ?? null, adjustmentId: o.created?.id ?? null, periodKey: o.created?.periodKey ?? null, gen: o.gen ?? null, rejected: o.rejected ?? 0 });
 
 // ═════════════ การจ่าย (R6 · R7 · R8 · R10) ═════════════
-type Basis = OtProfile & { law: OtLaw; lawRowId: string | null };
+type Basis = OtProfile & { law: OtLaw; lawRowId: string | null; normalDayMin?: number }; // HR H3.4 ▸ R11 + normalDayMin (ไม่มี = 480 — ฐานเดิมก่อน H3.4) ◂
 /** r2.7 สิ่งที่ตรึงตอนจ่ายครั้งแรก: ขั้นปัดนาที (otRoundMin) + ฐานค่าจ้าง/กฎหมาย (เมื่อมีนาทีที่ต้องคิดเงินครั้งแรก) */
 type Frozen = { otRoundMin: number; profile: Basis | null };
 type Entitlement =
@@ -461,9 +464,22 @@ async function measure(tx: Tx, ctx: Ctx, r: OtRow, now: Date): Promise<Entitleme
     if (!p) return { kind: "wait", code: "NO_RATE" };
     const law = otLawOf(await loadOtLawRows(best.day, tx as unknown as Parameters<typeof loadOtLawRows>[1]), best.day); // HR FIX (controller 12 Nov) ▸ cast ผ่าน unknown — tsc เทียบชนิด TransactionClient ทั้งก้อนกับชนิดพารามิเตอร์เกินขีดความซับซ้อน (TS2859) หลัง schema โตขึ้น · ไม่เอ่ยชื่อตารางกฎหมายในไฟล์นี้ (qc-hr-h3.3 S1.3: law.ts = ผู้อ่านเดียว) ◂
     if (!law.ok) return { kind: "wait", code: "LAW" };
-    basis = { payType: p.payType, baseSalarySatang: p.baseSalarySatang, dailyRateSatang: p.dailyRateSatang, hourlyRateSatang: p.hourlyRateSatang, otHourlyRateSatang: p.otHourlyRateSatang, law: law.law, lawRowId: law.lawRowId };
+    const sysN = normalMinutesOf((await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } }))?.settings); // HR H3.4 ▸ R11 ◂
+    basis = { payType: p.payType, baseSalarySatang: p.baseSalarySatang, dailyRateSatang: p.dailyRateSatang, hourlyRateSatang: p.hourlyRateSatang, otHourlyRateSatang: p.otHourlyRateSatang, law: law.law, lawRowId: law.lawRowId, normalDayMin: sysN }; // HR H3.4 ◂
   }
-  const amt = otAmount({ ...basis, hasShift: best.hasShift, dayClass, minutes: paid, law: basis.law });
+  let amt = otAmount({ ...basis, hasShift: best.hasShift, dayClass, minutes: paid, law: basis.law, normalDayMin: basis.normalDayMin }); // HR H3.4 ▸ R11: ตัวหาร min(480, N) ตรึงต่อคำขอ ◂
+  // HR H3.4 ▸ R11: นาที HOLIDAY_WORK ที่รอบเงินเดือนรุ่น 2 (APPROVED/PAID) คิดไปแล้วของวันนี้ หักออกจากส่วน HOLIDAY_WORK ของคำขอ (ไม่จ่ายซ้ำทั้งสองทาง) ◂
+  if (amt.ok && amt.segments.some((g) => g.cls === "HOLIDAY_WORK")) { // HR H3.4 ◂
+    const priced = await holidayWorkPricedInTx(tx as unknown as Prisma.TransactionClient, ctx, { employeeId: r.employeeId, day: date }); // HR H3.4 ◂
+    if (priced > 0) { // HR H3.4 ◂
+      const hw = amt.segments.find((g) => g.cls === "HOLIDAY_WORK")!; // HR H3.4 ◂
+      const rest = amt.segments.filter((g) => g.cls !== "HOLIDAY_WORK"); // HR H3.4 ◂
+      const left = Math.min(hw.minutes, Math.max(0, otDayMinutes(basis.law, basis.normalDayMin) - priced)); // HR H3.4 ▸ แถบปกติของวันมี min(480,N) นาที — รอบใช้ไป priced คำขอได้ส่วนที่เหลือ ◂
+      const hwAmt = left > 0 ? otAmount({ ...basis, hasShift: false, dayClass, minutes: left, law: basis.law, normalDayMin: basis.normalDayMin }) : null; // HR H3.4 ◂
+      const segs = [...(hwAmt && hwAmt.ok ? hwAmt.segments.filter((g) => g.cls === "HOLIDAY_WORK") : []), ...rest]; // HR H3.4 ◂
+      amt = { ok: true, segments: segs, amountSatang: segs.reduce((x, g) => x + g.amountSatang, 0) }; // HR H3.4 ◂
+    } // HR H3.4 ◂
+  } // HR H3.4 ◂
   if (!amt.ok) return { kind: "wait", code: amt.code === "OVERFLOW" ? "OVERFLOW" : "NO_RATE" };
   return { kind: "pay", paid, amount: amt.amountSatang, segments: amt.segments, dayId: best.id, version: best.version, frozen: { otRoundMin: step, profile: basis }, dayClass, code: null };
 }
