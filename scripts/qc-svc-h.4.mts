@@ -1184,10 +1184,16 @@ try {
     await prisma.aiCreditWallet.create({ data: { tenantId: tA, balanceMicro: 0, grantedAt: new Date() } });
     const n0 = orCount();
     try {
+      // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main · ตาม SEC S1.13 R-S1.13a บน main): แพ็กฟรีเปิด ⇒ กระเป๋า 0 ไม่ปฏิเสธ NO_CREDIT (ด่าน = เพดาน assist รายวัน) · ปิด ⇒ คาดเดิม
+      const freePack = (await import("@/lib/ai/secretary/pack")).FREE_PACK.enabled;
       const r = await readId(REG);
-      eq(failCode(r), "NO_CREDIT", `ผล ${codeOf(r)}`);
-      eq(orCount(), n0, "ยิงทั้งที่เครดิตหมด");
-      eq((await prisma.aiCreditWallet.findUnique({ where: { tenantId: tA } }))?.balanceMicro, 0, "ยอดเปลี่ยน");
+      if (freePack) {
+        ok(failCode(r) !== "NO_CREDIT", `แพ็กฟรีเปิดแต่ยังปฏิเสธ NO_CREDIT`);
+      } else {
+        eq(failCode(r), "NO_CREDIT", `ผล ${codeOf(r)}`);
+        eq(orCount(), n0, "ยิงทั้งที่เครดิตหมด");
+        eq((await prisma.aiCreditWallet.findUnique({ where: { tenantId: tA } }))?.balanceMicro, 0, "ยอดเปลี่ยน");
+      }
     } finally { await prisma.aiCreditWallet.deleteMany({ where: { tenantId: tA } }); }
   });
   await st("AI-4", "เส้นปกติ (กระเป๋า 5,000,000 µ$ · ตัวจำลอง OpenRouter ตอบ JSON): ⇒ {ok, proposal {fullName, nationality, idNumber, dob, docType, expiry, sex}, confidence 0.93, creditCharged > 0} · คำขอ 1 ครั้ง · Authorization มีคีย์ปลอม · body มีรูปแบบ data URL · ไม่มีชื่อแขก/เลขห้อง/tenantId ใน prompt · AiCreditTxn USAGE 1 แถว (note/ref มี hotel.guest.idReader · model) · ไม่เก็บรูป (FileAsset ไม่เพิ่ม) · idNumber ที่เสนอไม่ลง AuditLog/outbox", async () => {

@@ -724,7 +724,7 @@ const DEFS: SettingDef[] = [
   // SVC H.7 ▸ ปิดวันอัตโนมัติ (ใบสั่ง h.7 §1 · มติ §9.7: เวลาใช้ rooms.hotel.nightAuditTime เดิม — ไม่เพิ่ม auditAutoTime) ◂
   hotel({
     key: "rooms.hotel.audit.autoClose", type: "bool", labelTh: "ปิดวัน (night audit) อัตโนมัติทุกวัน",
-    helpTh: "เปิด = ระบบปิดวันให้เองตามเวลา night audit · ปิด = ผู้จัดการต้องกดปิดวันเองที่หน้ารายงาน", schema: z.boolean(), defaults: { _fallback: true }, chain: U,
+    helpTh: "เปิด = ระบบปิดวันให้เองตามเวลา night audit · ปิด = ผู้จัดการต้องกดปิดวันเองที่หน้ารายงาน", schema: z.boolean(), defaults: { _fallback: false }, chain: U, // มติเจ้าของ 12 พ.ย. 2569 (ก่อนขึ้น main): ค่าเริ่ม = ปิด — ร้านเปิดเองเมื่อพร้อม (กันริบมัดจำอัตโนมัติโดยร้านไม่ได้เลือก · UAT-HOTEL-V2 §0 ข้อ 2)
   }),
   hotel({
     key: "rooms.hotel.audit.notifyRoles", type: "table", labelTh: "ส่งอีเมลสรุปปิดวันถึง (บทบาท)",

@@ -1345,7 +1345,8 @@ try {
     const d = (k: string) => { const x = SET?.getDef?.(k); ok(x, `ไม่มี def ${k} (ยังไม่มีงาน H.7)`); return x; };
     const t = d("rooms.hotel.nightAuditTime"), c = d("rooms.hotel.audit.autoClose"), n = d("rooms.hotel.audit.notifyRoles");
     ok(!SET.getDef("rooms.hotel.auditAutoTime"), "เพิ่ม rooms.hotel.auditAutoTime ทั้งที่มติ §9.7 ให้ใช้ nightAuditTime");
-    eq([t.defaults._fallback, c.defaults._fallback, n.defaults._fallback], ["03:00", true, ["OWNER", "MANAGER"]], "ค่าเริ่ม");
+    // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main · มติเจ้าของ): rooms.hotel.audit.autoClose ค่าเริ่ม true → false (ร้านเปิดเอง)
+    eq([t.defaults._fallback, c.defaults._fallback, n.defaults._fallback], ["03:00", false, ["OWNER", "MANAGER"]], "ค่าเริ่ม");
     ok(t.schema.safeParse("23:30").success && !t.schema.safeParse("25:00").success && c.schema.safeParse(false).success && n.schema.safeParse(["OWNER"]).success && !n.schema.safeParse(["ALIEN"]).success, "schema");
     ok([t, c, n].every((x) => THAI.test(x.labelTh ?? "")), "ป้ายไทย");
     const src = stripComments(read(F.roomsDefs)).replace(/\n/g, " ");
