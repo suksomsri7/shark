@@ -25,16 +25,16 @@
 5. สคริปต์/ล็อกของตัวแทน: `scratchpad/<ใบ>/` เท่านั้น · งานยาว: สคริปต์ path เต็มใน `/root/trips-runs/` + `systemd-run --unit=trips-<ชื่อ>` + ตัวเฝ้าจนจบ
 6. รายงาน Telegram เฉพาะ `tg "📊 TRIPS · NN% (x/72)"` หลังปิดใบ · ไม่หยุดรอเช็กพอยต์ — คำถามลง `TRIPS-OWNER-QUESTIONS.md` พร้อมค่าปลอดภัย สรุปตอนถึงหมุด M1–M5
 
-## 2. สถานะสด (⬜ ยังไม่เริ่ม · 🔄 กำลังทำ · 🧪 รอผู้คุมรับ · ✅ รับแล้ว · ⏸ รอของภายนอก) — **3/72 = 4%**
+## 2. สถานะสด (⬜ ยังไม่เริ่ม · 🔄 กำลังทำ · 🧪 รอผู้คุมรับ · ✅ รับแล้ว · ⏸ รอของภายนอก) — **4/72 = 6%**
 
 | ใบ | สถานะ | หมายเหตุ |
 |---|---|---|
 | P0.1 | ✅ | ทรี + 2 เลน + ฐาน QC 3 ตัว + `qc-trips.sh` (e14585342) · ฟิกซ์เจอร์ `scripts/trips-fixture.mts` + `seed-trips-qc.mts` + ข้อสอบ 56/56 บนฐานหลัก (merge 5db329246) · บันทึก `ledger/wo-notes/trips-P0.1.md` |
 | P0.2 | ✅ | `ledger/TRIPS-DEFAULTS.md` (122 ค่าตั้ง · 46 คำเตือน + ภาคผนวก ก 27 คีย์ที่สัญญาเพิ่ม) · ผู้ตรวจอิสระเทียบกับสัญญาแล้ว |
 | P0.3 | ✅ | `ledger/TRIPS-CORE-CONTRACT.md` รอบ 2 (48b243186) · ผู้ตรวจอิสระ 2 รอบ: r1 FIX FIRST (3 BLOCKER) → r2 **READY** (ไม่เหลือ BLOCKER · N-1…N-11 = หนี้มีด่าน §3) · รายงาน `ledger/wo-notes/trips-P0.3-review-r1.md` `-r2.md` |
-| T0.1 | 🧪 | สร้างเสร็จ WIP 26b601500 (เลน l1 · ข้อสอบ 94/96 + ORACLE-EDIT T-4/F-1) → ผู้ตรวจ + นักล่า กำลังรัน → รอบแก้ (รวมคอลัมน์จาก T0.4) → ด่านผู้คุม · **ใบสั่ง `ledger/trips-briefs/T0.1.md` + ข้อสอบ `scripts/qc-trips-t0.1.mts` 96 ข้อ พร้อมแล้ว** (แดง 90 ก่อนสร้าง · ผู้คุมรันเอง) · มติคำถามเปิด 21 ข้อ = ท้ายใบสั่ง §8 |
-| T0.2 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.2.md` (มติ §11–§12) + ข้อสอบ `scripts/qc-trips-t0.2.mts` 84 ข้อ (แดง 79) พร้อม · รอ T0.1 merge |
-| T0.3 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.3.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.3.mts` 116 ข้อ (แดง 110) พร้อม · รอ T0.1 merge (ขนานกับ T0.2 ได้) |
+| T0.1 | ✅ | merge 836080029 · oracle 96/96 บนฐานหลัก · ด่านเต็มของใบ + ผู้ตรวจ 2 รอบ + นักล่า · `ledger/wo-notes/trips-T0.1.md` |
+| T0.2 | 🔄 | ผู้สร้างเลน l2 · ใบสั่ง `ledger/trips-briefs/T0.2.md` (มติ §11–§12) + ข้อสอบ `scripts/qc-trips-t0.2.mts` 84 ข้อ (แดง 79) พร้อม · รอ T0.1 merge |
+| T0.3 | 🔄 | ผู้สร้างเลน l1 · ใบสั่ง `ledger/trips-briefs/T0.3.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.3.mts` 116 ข้อ (แดง 110) พร้อม · รอ T0.1 merge (ขนานกับ T0.2 ได้) |
 | T0.4 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.4.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.4.mts` 110 ข้อ (แดง) พร้อม · รอ T0.3 |
 | T0.5 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.5.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.5.mts` 130 ข้อ (แดง) พร้อม · รอ T0.2 |
 | ที่เหลือ 64 ใบ | ⬜ | ตาม MASTER-PLAN §3/§4 |
@@ -75,3 +75,4 @@
 - 2026-11-12 ~12:3xZ · T0.4 · ใบสั่ง+ข้อสอบ merge · มติ: เพิ่ม CHECK sold+held+reserved ≤ capacity (กลับมติ T0.1 §7 ข้อ 16) + ของ TripWaitlist/TripHold/guaranteedAt เข้า migration T0.1 รอบแก้
 - 2026-11-12 ~13:1xZ · T0.1 · ผู้ตรวจ FIX FIRST (0 BLOCKER · 4 MAJOR · 14 MINOR) + นักล่า FIX FIRST (1 MAJOR: หน้าค่าตั้ง/settingsDiff/RESET_ALL ล้มเมื่อหน่วยมี ~16,400 รอบ — เกินเพดานพารามิเตอร์ของ Postgres · RESET_ALL ไม่ reset จริง) · ที่ยืนแล้ว: กติกาหอ/โรงแรมไม่ถดถอยบนฐานจริง · กฎทัวร์ไม่บล็อก/ไม่ล้ม (2,650 + 154 ค่าแปลก · 20,000 ขั้นบันไดสุ่ม) · tenantDb 33 ตารางแยกร้าน · SellCounter 200 ขนาน ไม่ซ้ำไม่ขาด · รอบแก้ r2 ส่งผู้สร้างแล้ว (รายการ A1–C ในข้อความ · รายงาน `wo-notes/trips-T0.1-review.md` `-hunt.md`) · มติ: ขยาย unique ของ TripPrice (weekdayMask · bookFrom · travelFrom) · CHECK sold+held+reserved ≤ capacity · T22/T23 ปฏิเสธ CREDIT ตอนบันทึก · คีย์เงินใช้สิทธิ์ `trips.settings.money`
 - 2026-11-12 ~13:4xZ · T0.5 · ใบสั่ง+ข้อสอบ merge · เข้า migration T0.1 รอบแก้: TripPriceRule usedCount/bookFrom/bookTo · ตารางใหม่ TripPromoRedemption (รวมเป็น 34 ตาราง — ORACLE-EDIT ถ้าข้อสอบตรึง 33) · หยุดเขียนใบสั่งล่วงหน้าที่ T0.5 (T0.6+ ต้องอิงโค้ดจริง) · เลน l2 ว่าง รอ T0.1 merge → ผู้สร้าง T0.2 (l2) ∥ T0.3 (l1)
+- 2026-11-12 13:1xZ · T0.1 ✅ · ด่านผู้คุม @0ef49c129 เขียวทั้งชุด (รายละเอียด wo-notes) · merge 836080029 · migrate deploy ฐานหลัก + l2 (l1 ลงแล้วตอนสร้าง) · oracle 96/96 บนฐานหลัก · ORACLE-EDIT รวมของใบนี้: T-4 F-1 U-1 M-4 R-9 RS-4 S-12 + p0.1 cast · ปล่อยผู้สร้าง T0.2 (l2) ∥ T0.3 (l1) — merge T0.2 ก่อน แล้ว T0.3 ตาม (ทั้งคู่แตะ seed + trips/index.ts)
