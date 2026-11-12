@@ -81,6 +81,7 @@ export const HR_TABLES = {
   // HR H1.3 ▸ เงินและกฎหมาย (migration 20261206000000_hr_money_law_model) — seed ไม่เขียน 4 ตารางนี้ ◂
   hrWorkEntry: { model: "HrWorkEntry", file: "payroll.prisma", tenantId: true, role: "นาทีทำงานต่อวันต่อชนิด (H3.1 เขียน · ว่างใน H1.3) (HR H1.3)" },
   hrWorkDay: { model: "HrWorkDay", file: "payroll.prisma", tenantId: true, role: "หัววันทำงาน 1 แถวต่อพนักงานต่อวัน (snapshot ต่องวด) (HR H3.1)" },
+  hrAttendanceDeduction: { model: "HrAttendanceDeduction", file: "payroll.prisma", tenantId: true, role: "หัวรายการหักสาย/ขาดงาน 1 แถวต่อ HrPayAdjustment (HR H3.2)" },
   hrReviewNote: { model: "HrReviewNote", file: "hr.prisma", tenantId: true, role: "บันทึก/ตักเตือน/ประเมิน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
   hrOnboardingTask: { model: "HrOnboardingTask", file: "hr.prisma", tenantId: true, role: "งานรับเข้า/ออกจากงาน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
   hrLawTable: { model: "HrLawTable", file: "payroll.prisma", tenantId: false, role: "ตารางกฎหมายกลางของทั้ง SHARK — ไม่ลบตามร้าน · แถว v1:* จาก hr-seed-law-draft (HR H1.3)" },
@@ -118,6 +119,7 @@ export const HR_DELETE_ORDER = [
   // HR H1.3 ▸ ลูกของพนักงาน (ก่อน hrEmployee) · hrLawTable ไม่อยู่ในลำดับนี้ (ตารางกลาง ไม่มี tenantId) ◂
   "hrWorkEntry", "hrReviewNote", "hrOnboardingTask",
   "hrWorkDay", // HR H3.1 ▸ หัววัน (แถวชนิดถูกลบก่อน — FK CASCADE) ◂
+  "hrAttendanceDeduction", // HR H3.2 ▸ หัวรายการหักสาย/ขาด (ไม่มี FK) ◂
   // สายอนุมัติ / ประวัติ / คิว / แจ้งเตือน
   "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
   "auditLog", "outboxEvent", "appNotification", "automationRun", "automationRule",

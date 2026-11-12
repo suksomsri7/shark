@@ -1,0 +1,64 @@
+# qc-hr-h3.2 RED on base ded3c7948 (wip/hr-h3.2) · lane DB wo-hr-qc-l1 · 2026-11-12T17:00:29Z
+# seed-hr-qc first: 33/33 exit 0
+# 1) forced: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26c… QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.2.mts → exit 1
+[env] qc-hr-h3.2 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.2] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️ QC_FORCE=1 — running although: src/lib/modules/hr/attendance-pay.ts absent (H3.2 not built)
+[qc-hr-h3.2] rules=∅ src/lib/modules/hr/attendance-pay-rules.ts · attendance-pay=∅ src/lib/modules/hr/attendance-pay.ts · base=ded3c7948
+  ❌ [H3.2-S1.1] [static] attendance-pay*.ts never write HrPayAdjustment · no emitOutbox — expected no HrPayAdjustment write · no outbox | actual files ∅src/lib/modules/hr/attendance-pay-rules.ts ∅src/lib/modules/hr/attendance-pay.ts ∅src/lib/modules/hr/attendance-pay-actions.ts ∅src/lib/modules/hr/attendance-pay-ui.tsx
+  ❌ [H3.2-S1.2] [static] no OT pricing tokens in attendance-pay*.ts + payroll.ts H3.2 block (no kind OT) — expected no OT tokens | actual files,ap,block
+  ❌ [H3.2-S1.3] [static] rules file pure (imports ⊆ node:crypto · no clock/random/db) — expected pure | actual file imports=-
+  ❌ [H3.2-S1.4] [static] payroll.ts writer · approve hook · cancel refusal · marked hunks — expected writer · hook · refusal · marked | actual writer,hook,cancel,marked
+  ❌ [H3.2-S1.5] [static] work-entries.ts: workEntryStatesInTx in a marked pure-addition hunk (n/a once in base) — expected marked export | actual fn,marked
+  ❌ [H3.2-S1.6] [static] migration 20270105000000 additive · model · scope · hr-qc-env — expected additive migration + model + scope + env | actual file,table,uAdj,uGen,checks,additive,model,scope,env
+  ❌ [H3.2-S1.7] [static] actions · UI testids · inventory · hr.attpay th=en · warn · pages — expected UI wired | actual useServer,noNow,testids,inv,msgs,warn,pages
+  ✅ [H3.2-S1.8] [static] payroll-rules sha · frozen files unchanged vs base
+  ❌ [H3.2-S2.1] [pure] policy default + 6 lenient vectors · ATT_TEXT byte-exact — expected policy · texts | actual policy,def,text ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.2] [pure] ฿15,000/480 late 1·4·5·29·30·31·180 (7 vectors) — expected 7 literals | actual ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.3] [pure] early out 45 · late+early one line · absent 480 · half-day 240 (4) — expected 4 literals | actual ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.4] [pure] ฿14,000 and ฿12,345: late 30 · absent 480 (4) — expected 4 literals | actual ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.5] [pure] N 420 late/absent cap · cap le ≤ N − a (2 + 2) — expected 4 literals | actual ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.6] [pure] freeMin 5 · step 15 · both (3 multi-day vectors) — expected 3 literals | actual ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.7] [pure] per-day floor (1,040 not 1,041) · 1-satang edges · max-int base (5) — expected 5 literals | actual ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.8] [pure] day classes HOLIDAY/DAY_OFF/UNSCHEDULED · info flags · toggles (5) — expected 5 literals | actual ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.9] [pure] refusal codes OFF/PAY_TYPE/NO_BASE/BAD_INPUT/BLOCKED + order (10) — expected 10 literals | actual ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.10] [pure] digest 64-hex deterministic · basis-sensitive · purity — expected pure · digest | actual pure,hex,basis ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ❌ [H3.2-S2.11] [pure] delta plan (16 vectors) — expected 16 plans | actual ∅ src/lib/modules/hr/attendance-pay-rules.ts
+  ✅ [H3.2-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+  ❌ [H3.2-S3.1] [db] default OFF: policy = default · sync refused off · nothing written — expected default · off | actual def,off undefined "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p"
+  ❌ [H3.2-S3.2] [db] save policy: owner only · sFree · sStep · stored literal — expected owner only · strict | actual refused,free,step,ok,stored "∅saveAttendancePayPolicy (∅ src/lib/modules/hr/attendance-pa" "∅saveAttendancePayPolicy (∅ src/lib/modules/hr/attendance-pa" "∅saveAttendancePayPolicy (∅ src/lib/modules/hr/attendance-pa" "∅saveAttendancePayPolicy (∅ src/lib/modules/hr/attendance-pa" undefined
+  ❌ [H3.2-S3.3] [db] sync refused: manager/member syncNo · bad period · nothing written — expected refused | actual mgr,member,period "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p"
+  ❌ [H3.2-S4.2] [db] sync before build ⇒ all wait MISSING · 0 rows — expected all MISSING | actual ok,wait "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" []
+  ✅ [H3.2-S4.1] [db] fixture sanity: H3.1 day minutes · states · H2.9 OT
+  ❌ [H3.2-S4.3] [db] first sync (payroll user): 5 rows literal · notes — expected 5 rows literal | actual ok,rows,notes,cols
+  ❌ [H3.2-S4.4] [db] header rows: lines literal · entitled · base · N · gen · digest — expected header literal | actual n,lit ∅ ∅ ∅ ∅ ∅
+  ❌ [H3.2-S4.5] [db] wait/skip codes (REVIEW · PAY_TYPE · NO_PROFILE) — expected codes | actual a,b  |  | "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" 
+  ❌ [H3.2-S4.6] [db] no double pay with H2.9 OT on a late day — expected OT only via H2.9 | actual line OT_REQUEST:18750 l07=undefined
+  ❌ [H3.2-S9.1] [db] preview viewer matrix (money keys payroll only) — expected matrix | actual owner,payroll,mgr,member,other "∅attendanceDeductionPreview (∅ src/lib/modules/hr/attendance" "∅attendanceDeductionPreview (∅ src/lib/modules/hr/attendance" [] "∅attendanceDeductionPreview (∅ src/lib/modules/hr/attendance" "∅attendanceDeductionPreview (∅ src/lib/modules/hr/attendance"
+  ❌ [H3.2-S9.2] [db] preview literals (eL · eF · eH) — expected eL · eF · eH literal | actual ∅ ∅ ∅
+  ❌ [H3.2-S9.3] [db] lines reader: payroll literal · others identical bytes — expected payroll only | actual ok,lit,same false:undefined:undefined:undefined:undefined:undefined: "∅attendanceDeductionLines (∅ src/lib/modules/hr/attendance-p" "∅attendanceDeductionLines (∅ src/lib/modules/hr/attendance-p" "∅attendanceDeductionLines (∅ src/lib/modules/hr/attendance-p" "∅attendanceDeductionLines (∅ src/lib/modules/hr/attendance-p"
+  ❌ [H3.2-S9.4] [db] self reader: own row · keys · noEmp · no forbidden keys — expected self only | actual own,keys,lit,noEmp "∅myAttendanceDeductions (∅ src/lib/modules/hr/attendance-pay" {} "∅myAttendanceDeductions (∅ src/lib/modules/hr/attendance-pay" 
+  ❌ [H3.2-S5.1] [db] idempotent: sync again + 2 in parallel ⇒ created 0 · same ids · 5 rows — expected no churn | actual again,par,same,hdr "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p"
+  ❌ [H3.2-S5.2] [race] sync waits on hr:payroll:run:<sys>:<P> then completes — expected waited · then ok | actual waited,ok false "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" 
+  ❌ [H3.2-S6.1] [db] approval: requester refused · employee refused · owner approves eL/eS — expected H1.3 rules | actual req,self,owner,st {"ok":false,"reason":"ไม่พบรายการ"} {"ok":false,"reason":"ไม่พบรายการ"} {"ok":false,"reason":"ไม่พบราย
+  ❌ [H3.2-S6.2] [db] leave approved later ⇒ approve refused stale · sync waits OUTDATED — expected stale ⇒ refused · no write | actual refused,pending,wait {"ok":false,"reason":"ไม่พบรายการ"} "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" 
+  ❌ [H3.2-S6.3] [db] cancelAdjustment of a rule row ⇒ attRow · row kept — expected attRow | actual refused,kept {"ok":false,"reason":"ไม่พบรายการ"}
+  ❌ [H3.2-S7.1] [db] rebuild + sync ⇒ ABSENT REJECTED (SUPERSEDED) · approved LATE kept — expected absent withdrawn | actual sy,ab,lt {"ok":true,"id":"cmwdsmjb6003334kzki56rq "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" undefined undefined
+  ❌ [H3.2-S7.2] [db] H2.6 correction ⇒ rebuild + sync ⇒ eM PENDING REJECTED — expected eM withdrawn | actual sy,gone,noNew {"ok":true,"id":"cmwdsmyg2005734kztc016w0t","statu "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" undefined
+  ❌ [H3.2-S7.3] [db] policy freeMin 5 ⇒ superseded + new PENDING literals — expected freeMin 5 literal | actual sv,sy,rows,sup,lines,note "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p"  
+  ❌ [H3.2-S7.4] [db] OFF ⇒ PENDING withdrawn (POLICY_OFF) · APPROVED kept · sync refused off — expected pending withdrawn · approved kept | actual aw,off,live,ends,refused   "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p"
+  ❌ [H3.2-S7.5] [db] ON again ⇒ gen 3 rows · E = approved ⇒ nothing — expected gen 3 | actual sy,rows "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" 
+  ❌ [H3.2-S8.1] [db] Aug DRAFT run ⇒ deduction targets 2031-09 — expected target 2031-09 | actual sync,row {"id":"cmwdsn1er005i34kzdazngr57"} "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" 
+  ❌ [H3.2-S8.2] [db] approved + bound to the APPROVED Sept run · sync Sept refused frozen — expected bound · frozen | actual ap,bound,frozen {"ok":false,"reason":"ไม่พบรายการ"} {"ok":true,"note":"อนุมัติแล้ว — ยังไม่ไ false "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p"
+  ❌ [H3.2-S8.3] [db] correction after binding ⇒ refund in 2031-10 · bound untouched · Σ 0 — expected refund next open period | actual sync,refund,bound,hdr {"ok":true} {"ok":true,"id":"cmwdsn22x005n34kzz3r7in "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" ∅ Σ0
+  ❌ [H3.2-S8.4] [db] sync again ⇒ no second refund — expected no second refund | actual ok,n "∅syncAttendanceDeductions (∅ src/lib/modules/hr/attendance-p" 0
+RESIDUE none (tenants=2 users=6)
+  ✅ [H3.2-Z1] no residue
+BASE-EXPECTATION 48/48 as registered (RED-by-design 44 · GREEN controls 4)
+===== qc-hr-h3.2 ===== passed 4/48 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.2","total":48,"passed":4,"failed":["H3.2-S1.1","H3.2-S1.2","H3.2-S1.3","H3.2-S1.4","H3.2-S1.5","H3.2-S1.6","H3.2-S1.7","H3.2-S2.1","H3.2-S2.2","H3.2-S2.3","H3.2-S2.4","H3.2-S2.5","H3.2-S2.6","H3.2-S2.7","H3.2-S2.8","H3.2-S2.9","H3.2-S2.10","H3.2-S2.11","H3.2-S3.1","H3.2-S3.2","H3.2-S3.3","H3.2-S4.2","H3.2-S4.3","H3.2-S4.4","H3.2-S4.5","H3.2-S4.6","H3.2-S9.1","H3.2-S9.2","H3.2-S9.3","H3.2-S9.4","H3.2-S5.1","H3.2-S5.2","H3.2-S6.1","H3.2-S6.2","H3.2-S6.3","H3.2-S7.1","H3.2-S7.2","H3.2-S7.3","H3.2-S7.4","H3.2-S7.5","H3.2-S8.1","H3.2-S8.2","H3.2-S8.3","H3.2-S8.4"],"findings":[{"id":"H3.2-S1.1","sev":"CRITICAL"},{"id":"H3.2-S1.2","sev":"CRITICAL"},{"id":"H3.2-S1.3","sev":"CRITICAL"},{"id":"H3.2-S1.4","sev":"CRITICAL"},{"id":"H3.2-S1.5","sev":"MAJOR"},{"id":"H3.2-S1.6","sev":"CRITICAL"},{"id":"H3.2-S1.7","sev":"MAJOR"},{"id":"H3.2-S2.1","sev":"CRITICAL"},{"id":"H3.2-S2.2","sev":"CRITICAL"},{"id":"H3.2-S2.3","sev":"CRITICAL"},{"id":"H3.2-S2.4","sev":"CRITICAL"},{"id":"H3.2-S2.5","sev":"CRITICAL"},{"id":"H3.2-S2.6","sev":"CRITICAL"},{"id":"H3.2-S2.7","sev":"CRITICAL"},{"id":"H3.2-S2.8","sev":"CRITICAL"},{"id":"H3.2-S2.9","sev":"CRITICAL"},{"id":"H3.2-S2.10","sev":"MAJOR"},{"id":"H3.2-S2.11","sev":"CRITICAL"},{"id":"H3.2-S3.1","sev":"CRITICAL"},{"id":"H3.2-S3.2","sev":"CRITICAL"},{"id":"H3.2-S3.3","sev":"CRITICAL"},{"id":"H3.2-S4.2","sev":"MAJOR"},{"id":"H3.2-S4.3","sev":"CRITICAL"},{"id":"H3.2-S4.4","sev":"CRITICAL"},{"id":"H3.2-S4.5","sev":"CRITICAL"},{"id":"H3.2-S4.6","sev":"CRITICAL"},{"id":"H3.2-S9.1","sev":"CRITICAL"},{"id":"H3.2-S9.2","sev":"CRITICAL"},{"id":"H3.2-S9.3","sev":"CRITICAL"},{"id":"H3.2-S9.4","sev":"CRITICAL"},{"id":"H3.2-S5.1","sev":"CRITICAL"},{"id":"H3.2-S5.2","sev":"CRITICAL"},{"id":"H3.2-S6.1","sev":"CRITICAL"},{"id":"H3.2-S6.2","sev":"CRITICAL"},{"id":"H3.2-S6.3","sev":"MAJOR"},{"id":"H3.2-S7.1","sev":"CRITICAL"},{"id":"H3.2-S7.2","sev":"CRITICAL"},{"id":"H3.2-S7.3","sev":"CRITICAL"},{"id":"H3.2-S7.4","sev":"CRITICAL"},{"id":"H3.2-S7.5","sev":"CRITICAL"},{"id":"H3.2-S8.1","sev":"CRITICAL"},{"id":"H3.2-S8.2","sev":"CRITICAL"},{"id":"H3.2-S8.3","sev":"CRITICAL"},{"id":"H3.2-S8.4","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":["src/lib/modules/hr/attendance-pay.ts absent (H3.2 not built)"],"baseRed":44,"baseGreen":4,"offBase":[]}
+
+# 2) unforced (same command without QC_FORCE) → exit 0
+⏭️  SKIPPED — qc-hr-h3.2: not built
+   • src/lib/modules/hr/attendance-pay.ts absent (H3.2 not built)
+JSON_SUMMARY {"suite":"qc-hr-h3.2","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["src/lib/modules/hr/attendance-pay.ts absent (H3.2 not built)"],"registered":48}

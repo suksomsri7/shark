@@ -366,3 +366,34 @@ model HrStockCharge {
   @@index([systemId, employeeId])
   @@index([tenantId])
 }
+
+// HR H3.2 ▸ หัวรายการหักสาย/ออกก่อน/ขาดงาน — 1 แถวต่อ HrPayAdjustment (sourceType LATE_RULE/ABSENT_RULE) · เขียนที่ hr/attendance-pay.ts ที่เดียว
+//   (แถวเงินเขียนที่ payroll.ts#writeAttendanceDeductionInTx) · ภาพนิ่งของที่มา: ฐานค่าจ้าง · N · นโยบาย · บรรทัดรายวัน · ลายนิ้วมือ (digest)
+//   entitledSatang = ยอดที่ควรหักทั้งงวดงานตอนคำนวณ · amountSatang = ยอดของแถวนี้ (ส่วนต่าง) · ALLOWANCE = คืนเงินหักเกิน (refundOfIds = แถวที่เข้ารอบแล้ว)
+//   endCode SUPERSEDED | POLICY_OFF เมื่อแถวเงินถูกปฏิเสธโดยระบบ · CHECK ยอด/รุ่น/ชนิด อยู่ใน migration.sql · ไม่มี FK (ลิงก์อ่อน) ◂
+model HrAttendanceDeduction {
+  id               String        @id @default(cuid())
+  tenantId         String
+  systemId         String
+  employeeId       String
+  adjustmentId     String        @unique
+  workPeriodKey    String
+  rule             HrPaySource
+  gen              Int
+  kind             HrPayItemKind
+  entitledSatang   Int
+  amountSatang     Int
+  baseSalarySatang Int
+  normalDayMin     Int
+  policyJson       Json
+  linesJson        Json
+  digest           String
+  refundOfIds      String[]      @default([])
+  endCode          String?
+  endedAt          DateTime?
+  createdAt        DateTime      @default(now())
+
+  @@unique([tenantId, employeeId, workPeriodKey, rule, gen])
+  @@index([systemId, workPeriodKey])
+  @@index([tenantId])
+}

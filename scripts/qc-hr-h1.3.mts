@@ -812,7 +812,9 @@ function runStatic(): void {
     //   tokens outside marked lines are ratcheted vs base (base split the same way) · a tag whose marked count ≠ declared counts all its tokens
     //   H2.9 = 2 (2× sourceRef in writeOtAdjustmentInTx) · H4.6 = 3 (sourceRef: destructure · findFirst where · create data in writeStockChargeAdjustmentInTx)
     const PAY_FILE = "src/lib/modules/hr/payroll.ts";
-    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3 };
+    //   ORACLE-EDIT (controller 12 Nov · H3.2, authorized per-tag declaration): H3.2 = 6 (sourceRef in writeAttendanceDeductionInTx: findMany where ·
+    //   select · gen parse · create data; attendanceApproveLockInTx: param type · parse "att:<P>:" of the row being approved)
+    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6 };
     const splitMarked = (src: string) => {
       const inside: Record<string, string[]> = Object.fromEntries(Object.keys(PAY_MARKED).map((t) => [t, []]));
       const outside: string[] = [];
