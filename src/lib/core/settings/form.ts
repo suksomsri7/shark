@@ -120,6 +120,11 @@ async function deeperPairs(ctx: SettingsCtx, unitId: string, scope: ScopeKind, s
     });
     return rooms.map((r) => ({ scope: "ROOM", scopeId: r.id }));
   }
+  // TRIPS T0.1 ▸ ชั้นสินค้า ⇒ รอบของสินค้านั้น (ชั้น DEPARTURE) ◂
+  if (scope === "PRODUCT") {
+    const deps = await prisma.tripDeparture.findMany({ where: { tenantId: ctx.tenantId, unitId, productId: scopeId }, select: { id: true } });
+    return deps.map((r) => ({ scope: "DEPARTURE", scopeId: r.id }));
+  }
   return [];
 }
 
@@ -238,6 +243,9 @@ export async function loadSettingsForm(actor: SettingsActor, ctx: SettingsCtx, q
       ownerOnly: isOwnerOnly(def),
       ...(def.percentScale !== undefined ? { percentScale: def.percentScale } : {}),
       ...(def.tableTh ? { tableSpec: def.tableTh } : {}), // G1UI
+      // TRIPS T0.1 ▸ ป้ายนักบัญชี/หน่วยงาน (ขึ้นแม้ค่ายังไม่ผิด) ◂
+      reviewHint: def.reviewHint ?? null,
+      reviewAuthorityTh: def.reviewHint === "AUTHORITY" ? (def.reviewAuthorityTh ?? null) : null,
     };
     const gk = `${def.domain}|${def.group}`;
     let gi = groupAt.get(gk);

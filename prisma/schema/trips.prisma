@@ -1,0 +1,690 @@
+// ─────────────────────────────────────────────────────────────
+// trips.prisma — ทัวร์ · เดย์ทริป · Liveaboard (31 ตาราง) · RUN TRIPS T0.1
+// สัญญา: ledger/TRIPS-CORE-CONTRACT.md §B.0 §B.1 §N.1 · ใบสั่ง ledger/trips-briefs/T0.1.md §2 §4.1
+// อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core)
+// 🔴 ไม่มี FK เข้า/ออกตารางเหล่านี้ (id ทุกตัว = String หลวม แบบ RoomOccupancy.refId · ใบสั่ง §7 ข้อ 21) · ไม่มี Prisma enum (สถานะ = String)
+// 🔴 CHECK ทุกตัว (ชุดค่าสถานะ/ชนิด · >= 0) + unique บางส่วน/NULLS NOT DISTINCT + EXCLUDE = SQL มือท้าย migration «trips»
+//    ชื่อ CHECK = "<Table>_<col>_check" · ฝั่ง Prisma ห้ามประกาศ @@unique ซ้ำกับ SQL มือ (ใช้ @@index ค้นได้)
+// เงินบาท = …Satang Int · เงินสกุลอื่น = …Minor Int + currency · วันท้องถิ่น = @db.Date
+// ─────────────────────────────────────────────────────────────
+
+// สินค้า (ทัวร์/Liveaboard/สถานที่) · SQL มือ: status · productType · sourceKind · TripProduct_thb_unless_liveaboard_check (currency = 'THB' OR productType = 'LIVEABOARD')
+model TripProduct {
+  id           String   @id @default(cuid())
+  tenantId     String
+  unitId       String
+  productType  String // TOUR | LIVEABOARD | ATTRACTION
+  sourceKind   String // OWN | SUPPLIER
+  supplierId   String?
+  slug         String
+  status       String // DRAFT | ACTIVE | ARCHIVED
+  title        Json // {th, en}
+  body         Json // {th, en}
+  currency     String
+  vesselId     String?
+  meetingPoint Json?
+  disclosure   Json? // ม.26
+  formSpec     Json?
+  deepDive     Boolean  @default(false)
+  crossBorder  Boolean  @default(false)
+  publishedAt  DateTime? // มติผู้คุม 12 พ.ย. ▸ เวลาเผยแพร่ครั้งแรก (T0.2 ตั้งครั้งเดียว ไม่ล้าง) ◂
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, unitId, status])
+}
+
+model TripOption {
+  id          String   @id @default(cuid())
+  tenantId    String
+  unitId      String
+  productId   String
+  name        Json
+  durationMin Int?
+  nights      Int?
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([productId, active])
+}
+
+// ageMin/ageMax null = ตามค่าตั้ง trips.pax.childAgeBand
+model TripPaxType {
+  id             String   @id @default(cuid())
+  tenantId       String
+  unitId         String
+  productId      String
+  code           String
+  label          Json
+  ageMin         Int?
+  ageMax         Int?
+  countsCapacity Boolean  @default(true)
+  active         Boolean  @default(true) // มติผู้คุม 12 พ.ย. (ที่ T0.2 ต้องใช้)
+  sortOrder      Int      @default(0) // มติผู้คุม 12 พ.ย.
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([productId, code])
+}
+
+// SQL มือ: kind · basis · taxKind · priceMinor >= 0 · TripExtra_passThrough_check (NOT passThrough OR (NOT commissionable AND NOT discountable AND taxKind = 'NONE'))
+model TripExtra {
+  id             String   @id @default(cuid())
+  tenantId       String
+  unitId         String
+  productId      String?
+  kind           String // PARK_FEE | PORT_FEE | FUEL | EQUIPMENT | NITROX | TRANSFER | COURSE | INSURANCE | OTHER
+  basis          String // PER_PAX | PER_BOOKING | PER_DAY | PER_PAX_DAY | PER_BOAT_NIGHT
+  mandatory      Boolean  @default(false)
+  priceMinor     Int
+  currency       String
+  commissionable Boolean  @default(false)
+  discountable   Boolean  @default(false)
+  passThrough    Boolean  @default(false)
+  taxKind        String // VAT7 | EXEMPT | NONE
+  stockItemId    String?
+  // มติผู้คุม 12 พ.ย. (ที่ T0.2 ต้องใช้) ▸ ชื่อ/หมายเหตุ {th,en} · ราคาต่อชนิดผู้เดินทาง (สตางค์ · null = ใช้ priceMinor เดียว) · % คอมฯ มาจากค่าตั้ง T44 ตาม kind ◂
+  name           Json     @default("{}")
+  note           Json?
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  paxPrices      Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId, unitId, productId])
+}
+
+// หลักฐานจ่ายเงินเก็บแทน (เช่น ค่าอุทยาน) · SQL มือ: extraKind (= ชุดของ TripExtra.kind) · amountSatang >= 0
+model TripPassThroughEvidence {
+  id           String   @id @default(cuid())
+  tenantId     String
+  unitId       String
+  departureId  String?
+  bookingId    String?
+  extraKind    String
+  paidToPayee  String
+  amountSatang Int
+  paidAt       DateTime
+  fileIds      String[]
+  accountDocId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([departureId])
+  @@index([bookingId])
+}
+
+model TripPickupZone {
+  id              String   @id @default(cuid())
+  tenantId        String
+  unitId          String
+  name            String
+  pickupOffsetMin Int
+  surchargeSatang Int
+  polygon         Json?
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, unitId])
+}
+
+// กฎสร้างรอบ (rule/exceptions = zod ใน src/lib/modules/trips/json-schemas.ts)
+model TripSchedule {
+  id            String   @id @default(cuid())
+  tenantId      String
+  unitId        String
+  productId     String
+  optionId      String?
+  rule          Json
+  exceptions    Json
+  departTimeMin Int
+  capacity      Int
+  minPax        Int?
+  resourceIds   String[]
+  dateFrom      DateTime  @db.Date
+  dateTo        DateTime? @db.Date // มติผู้คุม 12 พ.ย. (T0.3) ▸ null = กฎไม่มีวันสิ้นสุด ◂
+  pausedAt      DateTime? // มติผู้คุม 12 พ.ย. (T0.3) ▸ หยุดสร้างรอบจากกฎนี้ชั่วคราว ◂
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([productId])
+}
+
+// รอบ · ตัวนับ capacity sold held reserved (CHECK >= 0 · ไม่มี CHECK ผลรวม — D.1 คุม)
+// SQL มือ: TripDeparture_status_check · UNIQUE "TripDeparture_productId_optionId_startsAt_key" ("productId","optionId","startsAt") NULLS NOT DISTINCT
+//          UNIQUE "TripDeparture_scheduleId_localDate_key" ("scheduleId","localDate") WHERE "scheduleId" IS NOT NULL (รอบจากกฎ 1 รอบต่อวัน · T0.3)
+model TripDeparture {
+  id                String    @id @default(cuid())
+  tenantId          String
+  unitId            String
+  productId         String
+  optionId          String?
+  scheduleId        String?
+  localDate         DateTime  @db.Date
+  startsAt          DateTime
+  endsAt            DateTime
+  status            String // OPEN | GUARANTEED | FULL | CLOSED | CANCELLED
+  capacity          Int
+  sold              Int       @default(0)
+  held              Int       @default(0)
+  reserved          Int       @default(0)
+  minPax            Int?
+  cutoffAt          DateTime?
+  vesselId          String?
+  deckPlanVersionId String?
+  insurance         Json?
+  stopSell          Json?
+  version           Int       @default(0)
+  cancelReason      String? // มติผู้คุม 12 พ.ย. (T0.3)
+  cancelledAt       DateTime? // มติผู้คุม 12 พ.ย. (T0.3)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([productId, optionId, startsAt])
+  @@index([tenantId, unitId, localDate])
+  @@index([productId, localDate, status])
+}
+
+model TripResource {
+  id           String   @id @default(cuid())
+  tenantId     String
+  unitId       String
+  kind         String // BOAT | VAN | GUIDE | OTHER
+  name         String
+  seats        Int?
+  hrEmployeeId String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, unitId, kind])
+}
+
+// SQL มือ: "TripResourceUse_no_overlap" EXCLUDE USING gist ("resourceId" WITH =, tsrange("startsAt","endsAt",'[)') WITH &&) WHERE (active)
+//   (tsrange — DateTime ของ Prisma = timestamp ไม่มีเขตเวลา เก็บ UTC · มติผู้คุม 12 พ.ย.)
+model TripResourceUse {
+  id          String   @id @default(cuid())
+  tenantId    String
+  unitId      String
+  resourceId  String
+  departureId String
+  startsAt    DateTime
+  endsAt      DateTime
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([resourceId])
+  @@index([departureId])
+}
+
+model TripVehicleRun {
+  id               String   @id @default(cuid())
+  tenantId         String
+  unitId           String
+  departureId      String
+  resourceId       String
+  driverEmployeeId String?
+  stops            Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([departureId])
+}
+
+model TripSeason {
+  id        String   @id @default(cuid())
+  tenantId  String
+  unitId    String
+  name      String
+  dateStart DateTime @db.Date
+  dateEnd   DateTime @db.Date
+  priority  Int      @default(0)
+  status    String // ACTIVE | ARCHIVED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, unitId, dateStart, dateEnd])
+}
+
+// SQL มือ: UNIQUE "TripPrice_dims_key" ("productId","optionId","paxTypeId","cabinTypeId","seasonId","departureId","currency") NULLS NOT DISTINCT · amountMinor >= 0
+model TripPrice {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String
+  productId   String
+  optionId    String?
+  paxTypeId   String?
+  cabinTypeId String?
+  seasonId    String?
+  departureId String?
+  currency    String
+  amountMinor Int
+  weekdayMask Int?
+  bookFrom    DateTime? @db.Date
+  bookTo      DateTime? @db.Date
+  travelFrom  DateTime? @db.Date
+  travelTo    DateTime? @db.Date
+  priority    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([productId])
+}
+
+// params = zod tripPriceRuleParamsSchema · SQL มือ: kind IN (EARLY_BIRD … PROMO_CODE)
+model TripPriceRule {
+  id        String    @id @default(cuid())
+  tenantId  String
+  unitId    String
+  productId String?
+  kind      String
+  params    Json
+  dateFrom  DateTime? @db.Date
+  dateTo    DateTime? @db.Date
+  priority  Int       @default(0)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId, unitId, kind, active])
+}
+
+// ที่ถือ — expiresAt = แหล่งเดียวของเวลาหมด · SQL มือ: INDEX "TripHold_expiresAt_active_idx" ("expiresAt") WHERE status = 'ACTIVE'
+model TripHold {
+  id             String   @id @default(cuid())
+  tenantId       String
+  unitId         String
+  departureId    String
+  basketId       String?
+  bookingId      String?
+  channel        String
+  agentAccountId String?
+  allotmentId    String?
+  qtyPublic      Int      @default(0)
+  qtyAllot       Int      @default(0)
+  unitIds        String[]
+  purpose        String // PAYMENT | SHOP_CONFIRM | AGENT_REQUEST | SUPPLIER_REQUEST | WAITLIST_OFFER | AGENT_HOLD
+  capKeyHash     String
+  requestHash    String
+  idempotencyKey String
+  status         String // ACTIVE | CONVERTED | EXPIRED | RELEASED
+  expiresAt      DateTime
+  releasedReason String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([departureId, status])
+  @@index([bookingId])
+}
+
+// การจอง — ไม่มี holdExpiresAt (เวลาหมดอยู่ที่ TripHold.expiresAt) · policySnapshot NOT NULL
+model TripBooking {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  unitId                String
+  code                  String
+  publicTokenHash       String
+  status                String // §G.1: HOLD PENDING CONFIRMED PART_PAID PAID EXPIRED CANCELLED TRAVELLED NO_SHOW
+  productId             String
+  departureId           String
+  travelDate            DateTime  @db.Date
+  basketId              String?
+  channel               String
+  agentAccountId        String?
+  agentUserId           String?
+  salesStaffId          String?
+  linkId                String?
+  collectMode           String // SHOP | AGENT
+  payMethod             String // PAY_NOW | PAY_LATER | WALLET | CREDIT
+  bookerPartyId         String?
+  marketingEligible     Boolean   @default(false)
+  contactRoute          String // VIA_AGENT | DIRECT
+  currency              String
+  fxRateMicros          Int?
+  grossSatang           Int
+  discountSatang        Int
+  agentDiscountSatang   Int
+  passThroughSatang     Int
+  vatSatang             Int
+  commissionSatang      Int
+  commissionVatSatang   Int
+  whtSatang             Int
+  netToShopSatang       Int
+  agentActualSaleSatang Int?
+  paidSatang            Int       @default(0)
+  refundedSatang        Int       @default(0)
+  accountingState       String // NONE | UNEARNED | RECOGNISED | REVERSED
+  policySnapshot        Json
+  version               Int       @default(0)
+  cancelReason          String?
+  cancelledAt           DateTime?
+  travelledAt           DateTime?
+  piiPurgedAt           DateTime?
+  createdById           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([tenantId, code])
+  @@unique([publicTokenHash])
+  @@index([tenantId, unitId, status, travelDate])
+  @@index([departureId, status])
+  @@index([agentAccountId, createdAt])
+  @@index([bookerPartyId])
+}
+
+model TripBookingItem {
+  id             String   @id @default(cuid())
+  tenantId       String
+  unitId         String
+  bookingId      String
+  departureId    String
+  kind           String // SEAT | BERTH | CABIN | EXTRA | PICKUP | FEE | ADJUST
+  paxTypeId      String?
+  extraId        String?
+  tripUnitId     String?
+  qty            Int
+  unitPriceMinor Int
+  amountMinor    Int
+  amountSatang   Int
+  vatSatang      Int
+  commissionable Boolean  @default(false)
+  discountable   Boolean  @default(false)
+  passThrough    Boolean  @default(false)
+  taxKind        String // VAT7 | EXEMPT | NONE
+  priceSource    String
+  allotmentId    String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([bookingId])
+  @@index([departureId, active])
+}
+
+// ผู้เดินทาง — เลขเอกสารเก็บกล่องปิด (docNumberEnc) + 4 ตัวท้าย · SQL มือ: formStatus
+model TripPassenger {
+  id              String    @id @default(cuid())
+  tenantId        String
+  unitId          String
+  bookingId       String
+  itemId          String?
+  partyId         String?
+  fullName        String
+  nationality     String?
+  dob             DateTime? @db.Date
+  sex             String?
+  docType         String?
+  docNumberEnc    String?
+  docLast4        String?
+  docExpiry       DateTime? @db.Date
+  diver           Boolean?
+  phone           String?
+  birthPlace      String?
+  certLevel       String?
+  diveCount       Int?
+  lastDiveAt      DateTime?
+  isMinor         Boolean   @default(false)
+  guardianConsent Json?
+  answers         Json
+  formStatus      String // NOT_REQUIRED | PENDING | SUBMITTED | VERIFIED | NEEDS_FIX
+  waiverSignedAt  DateTime?
+  waiverEvidence  Json?
+  checkinAt       DateTime?
+  retainUntil     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([bookingId])
+  @@index([retainUntil])
+}
+
+model TripPaymentDue {
+  id                String   @id @default(cuid())
+  tenantId          String
+  unitId            String
+  bookingId         String
+  seq               Int
+  kind              String // DEPOSIT | BALANCE | INSTALMENT | PASSENGER_SHARE
+  passengerId       String?
+  dueAt             DateTime
+  amountSatang      Int
+  vatableSatang     Int
+  passThroughSatang Int
+  amountMinor       Int?
+  paidSatang        Int      @default(0)
+  status            String // OPEN | PARTLY_PAID | PAID | OVERDUE | WAIVED | CANCELLED
+  payTokenHash      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([bookingId, seq])
+  @@index([status, dueAt])
+}
+
+// ต่อท้ายอย่างเดียว (สถานะลงบัญชีเปลี่ยนได้)
+model TripMoneyEvent {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  unitId              String
+  bookingId           String
+  kind                String // RECEIVED | REFUNDED | RETAINED | REVENUE_RECOGNISED | PASS_THROUGH_PAID | CREDIT_ISSUED
+  amountSatang        Int
+  vatSatang           Int
+  passThroughSatang   Int
+  dueId               String?
+  tender              String // CASH | PROMPTPAY | TRANSFER | CARD | AGENCY
+  accountDocId        String?
+  accountEntryId      String?
+  postingStatus       String // POSTED | UNPOSTED | FAILED_NEEDS_ACTION
+  postingAttempts     Int       @default(0)
+  nextAttemptAt       DateTime?
+  postedDate          DateTime? @db.Date
+  slipId              String?
+  whtByCustomerSatang Int?
+  idempotencyKey      String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([bookingId])
+  @@index([tenantId, postingStatus])
+}
+
+// manualDeltaSatang ติดลบได้ (ไม่มี CHECK >= 0)
+model TripRefundRequest {
+  id                String   @id @default(cuid())
+  tenantId          String
+  unitId            String
+  bookingId         String
+  by                String // CUSTOMER | AGENT | STAFF | SYSTEM
+  reasonKind        String // CUSTOMER | EXTERNAL | MIN_NOT_MET | SHOP_FAULT
+  deductions        Json
+  status            String // §G.3: REQUESTED QUOTED APPROVED REJECTED WITHDRAWN EXECUTING DONE FAILED
+  computed          Json
+  choice            String // MONEY | CREDIT | MOVE_DATE
+  amountSatang      Int
+  manualDeltaSatang Int      @default(0)
+  approvalId        String?
+  creditNoteDocId   String?
+  damagesDocId      String?
+  decidedById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([tenantId, unitId, status])
+}
+
+model TripDocument {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String
+  passengerId String
+  kind        String // PASSPORT | MEDICAL | WAIVER | CERT | PARK_TICKET | INSURANCE
+  fileId      String
+  consent     Json?
+  retainUntil DateTime
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([retainUntil, deletedAt])
+}
+
+// ต่อท้ายอย่างเดียว (ไม่มี updatedAt)
+model TripDocView {
+  id         String   @id @default(cuid())
+  tenantId   String
+  unitId     String
+  documentId String
+  viewerKind String // STAFF | AGENT | LINK_CUSTOMER | CUSTOMER
+  viewerId   String
+  purpose    String
+  at         DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([documentId, at])
+}
+
+model TripPdpaRequest {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String
+  passengerId String?
+  partyId     String?
+  kind        String // ACCESS | RECTIFY | ERASE | OBJECT | PORTABILITY
+  status      String // RECEIVED | IN_PROGRESS | DONE | REJECTED
+  dueAt       DateTime
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, status, dueAt])
+}
+
+// varianceSatang ติดลบได้ (ไม่มี CHECK >= 0)
+model TripCashClose {
+  id               String   @id @default(cuid())
+  tenantId         String
+  unitId           String
+  businessDate     DateTime @db.Date
+  financeAccountId String
+  expectedSatang   Int
+  countedSatang    Int
+  varianceSatang   Int
+  countedById      String
+  varianceEntryId  String?
+  transferId       String?
+  approvalId       String?
+  closedAt         DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([unitId, businessDate])
+}
+
+// ต่อท้ายอย่างเดียว · SQL มือ: UNIQUE "TripCheckin_passengerId_first_key" ("passengerId") WHERE result = 'FIRST'
+model TripCheckin {
+  id          String   @id @default(cuid())
+  tenantId    String
+  unitId      String
+  passengerId String
+  deviceId    String
+  scannedAt   DateTime
+  receivedAt  DateTime
+  result      String // FIRST | DUPLICATE
+  createdAt   DateTime @default(now())
+
+  @@index([passengerId])
+}
+
+model TripWaitlist {
+  id             String    @id @default(cuid())
+  tenantId       String
+  unitId         String
+  departureId    String
+  partyId        String?
+  qty            Int
+  status         String // WAITING | OFFERED | ACCEPTED | DECLINED | EXPIRED | CANCELLED
+  offerHoldId    String?
+  offerExpiresAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([departureId, status])
+}
+
+model TripCost {
+  id           String   @id @default(cuid())
+  tenantId     String
+  unitId       String
+  departureId  String
+  kind         String // BOAT | FUEL | GUIDE | FOOD | PARK_FEE | TRANSPORT | EQUIPMENT | OTHER
+  amountSatang Int
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([departureId])
+}
+
+// ต่อรอบ × เตียง (Liveaboard)
+model TripUnit {
+  id            String   @id @default(cuid())
+  tenantId      String
+  unitId        String
+  departureId   String
+  berthId       String
+  cabinId       String
+  sortKey       String
+  status        String // FREE | HELD | SOLD | BLOCKED | ALLOTTED
+  holdId        String?
+  bookingItemId String?
+  allotmentId   String?
+  version       Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([departureId, berthId])
+  @@index([departureId, status])
+  @@index([allotmentId])
+}
+
+model TripImportBatch {
+  id          String   @id @default(cuid())
+  tenantId    String
+  unitId      String
+  kind        String // PRODUCTS | DEPARTURES | PRICES | BOOKINGS | SUPPLIER_COSTS
+  fileId      String
+  mapping     Json
+  status      String // PREVIEW | APPLIED | UNDONE
+  createdRefs Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, unitId, status])
+}
+
+// ตัวนับวันละแถว · SQL มือ: UNIQUE "TripLinkStat_unitId_day_channel_linkId_key" ("unitId","day","channel","linkId") NULLS NOT DISTINCT
+model TripLinkStat {
+  id             String   @id @default(cuid())
+  tenantId       String
+  unitId         String
+  day            DateTime @db.Date
+  channel        String
+  linkId         String?
+  agentAccountId String?
+  views          Int      @default(0)
+  starts         Int      @default(0)
+  paid           Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId, unitId, day])
+}

@@ -6,10 +6,13 @@
 // ─────────────────────────────────────────────────────────────
 import type { ZodType } from "zod";
 import type { MembershipCtx } from "@/lib/core/rbac";
-import type { LegalRuleId, LegalVerdict } from "./legal/th-rental-2568";
+import type { LegalRuleId as RentalRuleId, LegalVerdict } from "./legal/th-rental-2568";
+import type { TourRuleId, TourSeverity } from "./legal/th-tour-2569";
 
-// LegalVerdict/LegalRuleId ประกาศที่ legal/th-rental-2568.ts ที่เดียว (ห้ามประกาศซ้ำ)
-export type { LegalRuleId, LegalVerdict };
+// LegalVerdict ประกาศที่ legal/th-rental-2568.ts ที่เดียว (ห้ามประกาศซ้ำ)
+export type { LegalVerdict, RentalRuleId, TourRuleId, TourSeverity };
+/** TRIPS T0.1 ▸ ruleId ของตัวตรวจกฎหมาย = หอ (th-rental-2568) หรือทัวร์ (th-tour-2569 · W01–W46) ◂ */
+export type LegalRuleId = RentalRuleId | TourRuleId;
 
 /** ชั้นที่ตั้งค่าได้ — ข้อความ (เพิ่มชั้นใหม่ไม่ต้อง migrate · CC §1.2) */
 export const SCOPE_KINDS = [
@@ -25,11 +28,17 @@ export const SCOPE_KINDS = [
   "RESOURCE",
   "DEVICE",
   "COURSE",
+  // TRIPS T0.1 ▸ ต่อท้าย (ชั้นเดิมไม่เปลี่ยนตำแหน่ง · CC §E.1) ◂
+  "VESSEL",
+  "PRODUCT",
+  "DEPARTURE",
+  "AGENT_TIER",
+  "AGENT",
 ] as const;
 export type ScopeKind = (typeof SCOPE_KINDS)[number];
 
 /** "qcfx" = ฟิกซ์เจอร์ QC เท่านั้น (defs/_fixture.ts) */
-export type SettingDomain = "booking" | "rooms" | "payments" | "messaging" | "integrations" | "qcfx"; // SVC C.3 ▸ + integrations ◂
+export type SettingDomain = "booking" | "rooms" | "payments" | "messaging" | "integrations" | "qcfx" | "trips" | "agency" | "ticket"; // SVC C.3 ▸ + integrations ◂ · TRIPS T0.1 ▸ + trips agency ticket ◂
 
 export type SettingValueType =
   | "int"
@@ -45,7 +54,7 @@ export type SettingValueType =
   | "time";
 
 /** SVC H.1 ▸ ประเภทหน่วยที่ค่าตั้งผูกได้ (SettingDef.unitTypes) ◂ */
-export type SettingUnitType = "HOTEL" | "DORM" | "BOOKING" | "POS";
+export type SettingUnitType = "HOTEL" | "DORM" | "BOOKING" | "POS" | "TRIPS" | "TICKET"; // TRIPS T0.1 ▸ + TRIPS TICKET ◂
 
 export type SettingSensitivity = "MONEY" | "LEGAL" | "PRIVACY";
 
@@ -69,7 +78,7 @@ export type SettingDef = {
   ownerOnly?: boolean;
   /** LEGAL = เจ้าของเท่านั้นเสมอ (แม้ไม่ใส่ ownerOnly) · MONEY = ใช้ editPermission ของ def */
   sensitivity?: SettingSensitivity;
-  /** ruleId ของตัวตรวจกฎหมาย (ruleId ล้วน — D.1 oracle ผูกรูปนี้) */
+  /** ruleId ของตัวตรวจกฎหมาย (ruleId ล้วน — D.1 oracle ผูกรูปนี้) · TRIPS T0.1 ▸ โดเมน trips/agency/ticket อ้างได้เฉพาะ W01–W46 ◂ */
   legal?: readonly LegalRuleId[];
   legalInput?: LegalInputFn;
   requires?: { integration?: string };
@@ -78,7 +87,7 @@ export type SettingDef = {
   /** type=template: ตัวแปรที่อนุญาต */
   templateVars?: readonly string[];
   /** ซ่อนจากหน้าค่าตั้ง: "PHASE_H" = รอเฟสโรงแรม · "RETIRED" = เลิกใช้แล้ว (คง def ไว้ให้ค่าเริ่ม/ข้อสอบ) */
-  hiddenUntil?: "PHASE_H" | "RETIRED";
+  hiddenUntil?: "PHASE_H" | "RETIRED" | "PHASE_2"; // TRIPS T0.1 ▸ PHASE_2 = รอเฟส 2 ของ trips (บัตรของขวัญ · เครดิตร้าน) ◂
   /** SVC H.1 ▸ แสดงในหน้าตั้งค่าเฉพาะหน่วยประเภทเหล่านี้ (ไม่ประกาศ = ทุกประเภท · ประกาศแล้วแต่ฟอร์มไม่ระบุ unitType = ไม่แสดง) ◂ */
   unitTypes?: readonly SettingUnitType[];
   labelTh: string;
@@ -89,6 +98,12 @@ export type SettingDef = {
   percentScale?: 100 | 10000;
   /** G1UI ▸ type=table: ป้ายไทย + ชนิดของช่องย่อย (หน้าตั้งค่าแสดง/แก้เป็นช่องย่อย ไม่ใช่ข้อความดิบ) — JSON ล้วน (ส่งเข้าโมเดลฟอร์มได้) ◂ */
   tableTh?: TableSpecTh;
+  /**
+   * TRIPS T0.1 ▸ ป้ายให้ตรวจกับผู้รู้ (ขึ้นแม้ค่ายังไม่ผิด · ต่างจาก pendingReview ของผลกฎหมาย):
+   *   "ACCOUNTANT" = "ตรวจกับนักบัญชีของร้าน" · "AUTHORITY" = "ยังไม่ยืนยันกับ <reviewAuthorityTh>" (ต้องมี reviewAuthorityTh ไทย) ◂
+   */
+  reviewHint?: "ACCOUNTANT" | "AUTHORITY";
+  reviewAuthorityTh?: string;
   /** D.13 ▸ writeVia = ป้ายไทยของหน้าเฉพาะที่ต้องไปเปลี่ยนค่านี้ — action ทั่วไป (saveSettingsAction/resetSettingAction) ปฏิเสธคีย์ที่มี writeVia ◂ */
   writeVia?: string;
 };
@@ -175,6 +190,12 @@ export type ScopeRefs = {
   resourceId?: string;
   deviceId?: string;
   courseId?: string;
+  // TRIPS T0.1 ▸ ชั้นใหม่ (AGENT_TIER/AGENT ไม่มีหน่วยของตัวเอง — ผู้เรียกส่ง unitId ของสินค้าเอง · CC §E.1 L-4) ◂
+  vesselId?: string;
+  productId?: string;
+  departureId?: string;
+  agentTierId?: string;
+  agentId?: string;
 };
 
 export type ResolvedSource = ScopeKind | "TEMPLATE" | "FALLBACK";
@@ -186,7 +207,8 @@ export type Resolved = {
   differsFromTemplate: boolean;
 };
 
-export type SettingIssue = { key?: string; code: string; messageTh: string };
+/** TRIPS T0.1 ▸ severity = ลำดับการแสดงคำเตือนทัวร์ (ไม่ใช่ระดับที่สาม · CC §E.5 ข้อ 2) — เติมเฉพาะคำเตือนของ th-tour-2569 ◂ */
+export type SettingIssue = { key?: string; code: string; messageTh: string; severity?: TourSeverity };
 export type SetFailCode =
   | "PERMISSION"
   | "VALIDATION"

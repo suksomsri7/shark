@@ -559,7 +559,7 @@ try {
     const bad: string[] = [];
     let seen = 0;
     for (const t of NEW_TABLES) for (const c of await cols(t)) {
-      if (/(Satang|Minor)$|^qty|^(sold|held|reserved|capacity|seq|version|views|starts|paid|postingAttempts)$/.test(c.column_name)) { seen++; if (c.data_type !== "integer") bad.push(`${t}.${c.column_name}=${c.data_type}`); }
+      if (c.column_name !== "isMinor" /* ORACLE-EDIT T-4 (ผู้คุม 12 พ.ย.): isMinor = Bool ตามสัญญา §B.1 ไม่ใช่จำนวนเงิน */ && /(Satang|Minor)$|^qty|^(sold|held|reserved|capacity|seq|version|views|starts|paid|postingAttempts)$/.test(c.column_name)) { seen++; if (c.data_type !== "integer") bad.push(`${t}.${c.column_name}=${c.data_type}`); }
     }
     ok(seen > 20, `ยังไม่เจอคอลัมน์เงิน/ตัวนับ (${seen})`);
     ok(bad.length === 0, bad.slice(0, 6).join(", "));
@@ -1327,7 +1327,7 @@ try {
     const f = await formFields({ domains: ["trips"], unitId: uA, unitType: "TRIPS" });
     ok(f && f.length > 50, `ฟอร์มว่าง/null (${f?.length})`);
     const by = new Map((f ?? []).map((x) => [String(x.key), x]));
-    eq([by.get("trips.cancel.changeDateFee")?.reviewHint, by.get("trips.parkFee.table")?.reviewHint, by.get("trips.parkFee.table")?.reviewAuthorityTh, by.get("trips.sell.holdMinutes")?.reviewHint ?? "ไม่มีช่อง", by.get("trips.sell.holdMinutes")?.reviewAuthorityTh ?? "ไม่มีช่อง"], ["ACCOUNTANT", "AUTHORITY", "กรมอุทยานฯ", null, null], "ป้าย");
+    eq([by.get("trips.cancel.changeDateFee")?.reviewHint, by.get("trips.parkFee.table")?.reviewHint, by.get("trips.parkFee.table")?.reviewAuthorityTh, /* ORACLE-EDIT F-1 (ผู้คุม 12 พ.ย.): `null ?? "ไม่มีช่อง"` ไม่มีทางได้ null — ตรวจว่ามีช่องและค่าเป็น null */ (() => { const f = by.get("trips.sell.holdMinutes"); return f && "reviewHint" in f ? f.reviewHint : "ไม่มีช่อง"; })(), (() => { const f = by.get("trips.sell.holdMinutes"); return f && "reviewAuthorityTh" in f ? f.reviewAuthorityTh : "ไม่มีช่อง"; })()], ["ACCOUNTANT", "AUTHORITY", "กรมอุทยานฯ", null, null], "ป้าย");
     ok(!HIDDEN.some((k) => by.has(k)), "คีย์ซ่อนโผล่ในฟอร์ม");
   });
   await st("F-2", "ฟอร์มหน่วยชนิดอื่น (unitType BOOKING) ไม่มีคีย์ trips · ฟอร์มชั้น PRODUCT มีเฉพาะคีย์ที่ chain มี PRODUCT", async () => {

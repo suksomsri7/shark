@@ -18,14 +18,15 @@ import { prisma } from "@/lib/core/db";
 import { emitOutboxMany } from "@/lib/core/outbox";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { resolvePolicy, submitForApproval } from "@/lib/modules/approval";
+import { evaluateTourRule, isTourLegalDomain, isTourRuleId } from "./legal";
 import {
   evaluateLegal,
   isValidOutOfScopeReason,
   normalizeLegalMode,
   type LegalCtx,
   type LegalOutcome,
-  type LegalRuleId,
   type LegalRuleInputs,
+  type LegalRuleId as RentalRuleId,
 } from "./legal/th-rental-2568";
 import {
   defaultFor,
@@ -45,6 +46,7 @@ import {
 import { checkTemplate } from "./template";
 import type {
   ApplyTemplateInput,
+  LegalRuleId,
   PolicySnapshot,
   RemoveResult,
   ResetTarget,
@@ -62,6 +64,7 @@ import type {
   SettingsActor,
   SettingsCtx,
   SettingsDiffRow,
+  TourSeverity,
 } from "./types";
 
 type Tx = Prisma.TransactionClient;
@@ -81,7 +84,7 @@ const CONSUMED_ACTION = "settings.legal_override.consumed";
 const PROPOSAL_TARGET = "SettingProposal";
 
 /** ชั้นที่มีตารางให้ตรวจความเป็นเจ้าของ — ชั้นอื่น (LEASE RATE_PLAN RESOURCE DEVICE COURSE) ปฏิเสธจนกว่าใบที่สร้างตารางยื่นขอเพิ่ม */
-const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE", "RATE_PLAN"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂ · SVC H.0 ▸ RATE_PLAN = HotelRatePlan ◂
+const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE", "RATE_PLAN", "PRODUCT", "DEPARTURE"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂ · SVC H.0 ▸ RATE_PLAN = HotelRatePlan ◂ · TRIPS T0.1 ▸ PRODUCT = TripProduct · DEPARTURE = TripDeparture (VESSEL = L1.1 · AGENT_TIER/AGENT = A1.1 · Ticket* = K1.1) ◂
 const REF_FIELD: Record<ScopeKind, keyof ScopeRefs | null> = {
   TENANT: null,
   UNIT: "unitId",
@@ -95,6 +98,13 @@ const REF_FIELD: Record<ScopeKind, keyof ScopeRefs | null> = {
   RESOURCE: "resourceId",
   DEVICE: "deviceId",
   COURSE: "courseId",
+  // TRIPS T0.1 ▸
+  VESSEL: "vesselId",
+  PRODUCT: "productId",
+  DEPARTURE: "departureId",
+  AGENT_TIER: "agentTierId",
+  AGENT: "agentId",
+  // ◂
 };
 
 // ─────────────────── ตัวช่วย ───────────────────
@@ -273,6 +283,30 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
         for (const r of rs) out.set(`RATE_PLAN|${r.id}`, { unitId: r.unitId, known: { TENANT: T, UNIT: r.unitId, RATE_PLAN: r.id } });
       }),
     );
+  // TRIPS T0.1 ▸ ชั้น PRODUCT = TripProduct (รู้ UNIT · VESSEL ถ้ามี) · DEPARTURE = TripDeparture (รู้ UNIT · PRODUCT · VESSEL ของรอบ หรือของสินค้า) ◂
+  if (by.has("PRODUCT"))
+    jobs.push(
+      db.tripProduct.findMany({ where: { tenantId: T, id: { in: ids("PRODUCT") } }, select: { id: true, unitId: true, vesselId: true } }).then((rs) => {
+        for (const r of rs) out.set(`PRODUCT|${r.id}`, { unitId: r.unitId, known: { TENANT: T, UNIT: r.unitId, VESSEL: r.vesselId ?? null, PRODUCT: r.id } });
+      }),
+    );
+  if (by.has("DEPARTURE"))
+    jobs.push(
+      db.tripDeparture
+        .findMany({ where: { tenantId: T, id: { in: ids("DEPARTURE") } }, select: { id: true, unitId: true, productId: true, vesselId: true } })
+        .then(async (rs) => {
+          const needVessel = [...new Set(rs.filter((r) => !r.vesselId).map((r) => r.productId))];
+          const prods = needVessel.length
+            ? await db.tripProduct.findMany({ where: { tenantId: T, id: { in: needVessel } }, select: { id: true, vesselId: true } })
+            : [];
+          const pv = new Map(prods.map((p) => [p.id, p.vesselId]));
+          for (const r of rs)
+            out.set(`DEPARTURE|${r.id}`, {
+              unitId: r.unitId,
+              known: { TENANT: T, UNIT: r.unitId, VESSEL: r.vesselId ?? pv.get(r.productId) ?? null, PRODUCT: r.productId, DEPARTURE: r.id },
+            });
+        }),
+    );
   await Promise.all(jobs); // ชั้นที่ยังไม่มีตาราง — คง null (fail closed)
   return out;
 }
@@ -281,7 +315,7 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
 export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): Promise<{ scope: ScopeKind; scopeId: string }[]> {
   const w = { tenantId, unitId };
   const sel = { id: true } as const;
-  const [b, rt, rm, st, sv, dv, res, rp] = await Promise.all([
+  const [b, rt, rm, st, sv, dv, res, rp, tp, td] = await Promise.all([
     db.roomBuilding.findMany({ where: w, select: sel }),
     db.hotelRoomType.findMany({ where: w, select: sel }),
     db.hotelRoom.findMany({ where: w, select: sel }),
@@ -290,6 +324,8 @@ export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): 
     db.queueDisplay.findMany({ where: { ...w, revokedAt: null }, select: sel }), // SVC B.6 ▸ อุปกรณ์ที่ใช้อยู่ของสาขา (ชั้น DEVICE) ◂
     db.svcResource.findMany({ where: w, select: sel }), // SVC B.13 ▸ ทรัพยากรของสาขา (ชั้น RESOURCE) ◂
     db.hotelRatePlan.findMany({ where: { ...w, status: "ACTIVE" }, select: sel }), // SVC H.0 ▸ แผนราคาที่ใช้อยู่ของหน่วย (ชั้น RATE_PLAN) ◂
+    db.tripProduct.findMany({ where: w, select: sel }), // TRIPS T0.1 ▸ สินค้าทัวร์ของหน่วย (ชั้น PRODUCT · ทุกสถานะ) ◂
+    db.tripDeparture.findMany({ where: w, select: sel }), // TRIPS T0.1 ▸ รอบของหน่วย (ชั้น DEPARTURE · ทุกสถานะ) ◂
   ]);
   return [
     ...b.map((r) => ({ scope: "BUILDING" as const, scopeId: r.id })),
@@ -300,6 +336,8 @@ export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): 
     ...dv.map((r) => ({ scope: "DEVICE" as const, scopeId: r.id })),
     ...res.map((r) => ({ scope: "RESOURCE" as const, scopeId: r.id })), // SVC B.13
     ...rp.map((r) => ({ scope: "RATE_PLAN" as const, scopeId: r.id })), // SVC H.0
+    ...tp.map((r) => ({ scope: "PRODUCT" as const, scopeId: r.id })), // TRIPS T0.1
+    ...td.map((r) => ({ scope: "DEPARTURE" as const, scopeId: r.id })), // TRIPS T0.1
   ];
 }
 
@@ -331,8 +369,8 @@ export function editIssueFor(actor: SettingsActor, def: SettingDef, scope: Scope
   return permissionIssue(actor, def, scope, unitId, EPOCH, new Date());
 }
 
-const runLegal = (ruleId: LegalRuleId, input: unknown, ctx: LegalCtx): LegalOutcome =>
-  evaluateLegal(ruleId, input as LegalRuleInputs[LegalRuleId], ctx);
+const runLegal = (ruleId: RentalRuleId, input: unknown, ctx: LegalCtx): LegalOutcome =>
+  evaluateLegal(ruleId, input as LegalRuleInputs[RentalRuleId], ctx);
 
 // ─────────────────── อ่าน (CC §1.4) ───────────────────
 
@@ -524,7 +562,11 @@ type Draft = {
   reason: string | null;
 };
 type Prep = Draft & { unitId: string | null; known: Known; legalLevel: "OK" | "WARN"; legalCode: string | null };
-type LegalHit = { prep: Prep; outcome: LegalOutcome };
+/**
+ * คำเตือนที่ต้องรับทราบ — หอ (th-rental: tour=false · อาจต้องเจ้าของอนุมัติ) หรือทัวร์ (th-tour: tour=true · severity ·
+ * ไม่ต้องอนุมัติเจ้าของ · รับทราบไม่ต้องมีเหตุผล · TRIPS T0.1 CC §E.5 ข้อ 3)
+ */
+type LegalHit = { prep: Prep; code: string; messageTh: string; needsOwnerApproval: boolean; tour: boolean; severity?: TourSeverity };
 
 /** ใบสั่ง §5.1 ข้อ 1 (ไม่ต้องใช้ฐาน) */
 function checkShape(key: unknown, scope: unknown): { def: SettingDef; scope: ScopeKind } | SettingIssue {
@@ -775,6 +817,22 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     const sig = `${def.key}|${knownSig(known)}|${JSON.stringify(value) ?? ""}`;
     if (evaluated.has(sig)) return;
     evaluated.add(sig);
+    // TRIPS T0.1 ▸ โดเมน trips/agency/ticket: ไม่เรียก modeOf/evaluateLegal — evaluateTourRule เท่านั้น · WARN ⇒ warns · ไม่มีทางเข้า blocks ◂
+    if (isTourLegalDomain(def.domain)) {
+      let tin: { ruleId: LegalRuleId; input: unknown }[];
+      try {
+        tin = legalInputsOf(def, value, getterOf(known));
+      } catch {
+        tin = (def.legal ?? []).map((ruleId) => ({ ruleId, input: undefined }));
+      }
+      for (const { ruleId, input } of tin) {
+        const v = evaluateTourRule(ruleId, input);
+        if (v.level === "WARN") {
+          warns.push({ prep: p, code: v.code, messageTh: v.messageTh, needsOwnerApproval: false, tour: true, severity: v.severity });
+        }
+      }
+      return;
+    }
     const lctx = modeOf(p.unitId, p.scope, def.domain);
     let inputs: { ruleId: LegalRuleId; input: unknown }[];
     try {
@@ -784,9 +842,10 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
       return;
     }
     for (const { ruleId, input } of inputs) {
+      if (isTourRuleId(ruleId)) continue; // ทะเบียนไม่ยอมให้โดเมนหออ้างคำเตือนทัวร์ (กันไว้อีกชั้น)
       const o = runLegal(ruleId, input, lctx);
       if (o.level === "BLOCK") blocks.push({ key: def.key, code: o.code, messageTh: o.messageTh });
-      else if (o.needsAck) warns.push({ prep: p, outcome: o });
+      else if (o.needsAck) warns.push({ prep: p, code: o.code, messageTh: o.messageTh, needsOwnerApproval: o.needsOwnerApproval, tour: false });
       else if (o.raw !== "OK" && !p.legalCode) p.legalCode = o.code; // OUT_OF_SCOPE: บันทึก OK + code ดิบ
     }
   };
@@ -938,9 +997,10 @@ export async function setSettings(actor: SettingsActor, ctx: SettingsCtx, change
     if ("fail" in c) return c.fail;
     if (c.blocks.length) return fail("LEGAL_BLOCK", c.blocks);
     if (c.warns.length) {
-      const warnIssues = c.warns.map((w) => ({ key: w.prep.key, code: w.outcome.code, messageTh: w.outcome.messageTh }));
+      const warnIssues: SettingIssue[] = c.warns.map((w) => (w.tour ? { key: w.prep.key, code: w.code, messageTh: w.messageTh, severity: w.severity } : { key: w.prep.key, code: w.code, messageTh: w.messageTh }));
       if (opts.ackLegalWarn !== true) return fail("NEEDS_APPROVAL", warnIssues, null);
-      const noReason = c.warns.filter((w) => !isValidOutOfScopeReason(w.prep.reason));
+      // TRIPS T0.1 ▸ คำเตือนทัวร์: รับทราบแล้วบันทึกได้ ไม่ตรวจเหตุผล (มีก็เก็บ) · คำเตือนหอ: เหตุผล ≥ 10 ตัวอักษรเหมือนเดิม ◂
+      const noReason = c.warns.filter((w) => !w.tour && !isValidOutOfScopeReason(w.prep.reason));
       if (noReason.length) {
         return fail(
           "VALIDATION",
@@ -948,10 +1008,11 @@ export async function setSettings(actor: SettingsActor, ctx: SettingsCtx, change
         );
       }
       for (const w of c.warns) {
+        if (w.tour && w.prep.legalLevel === "WARN") continue; // ทัวร์: รหัสแรกของรายการ (ลำดับ legal ของ def) — W01 ก่อน W03
         w.prep.legalLevel = "WARN";
-        w.prep.legalCode = w.outcome.code;
+        w.prep.legalCode = w.code;
       }
-      const needOwner = c.warns.some((w) => w.outcome.needsOwnerApproval);
+      const needOwner = c.warns.some((w) => w.needsOwnerApproval);
       if (needOwner && actor.role !== "OWNER") {
         // fix 4 ▸ ชุดที่ขออนุมัติต้องอยู่สาขาเดียว (คำขอผูกสาขาเดียว · ผู้อนุมัติเห็นตามสาขา) ◂
         const units = new Set(c.preps.map((p) => p.unitId));
@@ -982,7 +1043,7 @@ export async function setSettings(actor: SettingsActor, ctx: SettingsCtx, change
               requestId: sub.requestId,
               unitId,
               requestedById: actor.userId,
-              codes: [...new Set(c.warns.map((w) => w.outcome.code))],
+              codes: [...new Set(c.warns.map((w) => w.code))],
               changes: c.preps.map((p) => {
                 const base = bySig.get(sigOf(p));
                 return {
@@ -1268,12 +1329,13 @@ export async function applyLegalOverrideApproval(input: {
       if (!base || base.present !== !!cur || (cur && !isDeepStrictEqual(cur.value ?? null, base.value))) return consume("STALE", p.key);
     }
     if (c.blocks.length) return consume("INVALID", `LEGAL_BLOCK ${c.blocks.map((b) => b.code).join(",")}`);
-    const notApproved = c.warns.filter((w) => !approvedCodes.has(w.outcome.code));
-    if (notApproved.length) return consume("INVALID", `คำเตือนใหม่ ${notApproved.map((w) => w.outcome.code).join(",")}`);
-    if (c.warns.some((w) => !isValidOutOfScopeReason(w.prep.reason))) return consume("INVALID", "REASON_REQUIRED");
+    const notApproved = c.warns.filter((w) => !approvedCodes.has(w.code));
+    if (notApproved.length) return consume("INVALID", `คำเตือนใหม่ ${notApproved.map((w) => w.code).join(",")}`);
+    if (c.warns.some((w) => !w.tour && !isValidOutOfScopeReason(w.prep.reason))) return consume("INVALID", "REASON_REQUIRED");
     for (const w of c.warns) {
+      if (w.tour && w.prep.legalLevel === "WARN") continue;
       w.prep.legalLevel = "WARN";
-      w.prep.legalCode = w.outcome.code;
+      w.prep.legalCode = w.code;
     }
     await writeChecked(tx, tenantId, actor.userId, c, requestId);
     return consume("APPLIED");

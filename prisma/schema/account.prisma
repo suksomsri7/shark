@@ -107,6 +107,9 @@ enum AccountDocSource {
   RECURRING // เอกสารประจำงวด (สร้างอัตโนมัติ)
   API // สร้างผ่าน REST /api/v1/account (คีย์ API ของแอปภายนอก — WO C1 · createdById = null)
   DORM // SVC D.0 · ไหลมาจากหอพัก (บิลค่าเช่า/ประกัน/คืนประกัน — ลง ALTER TYPE ก่อน client ที่เขียนค่านี้)
+  TRIPS // TRIPS T0.1 · ไหลมาจากทัวร์/Liveaboard (ALTER TYPE ใน migration trips_enum)
+  AGENCY // TRIPS T0.1 · สมุดเอเจนซี่ (ใบแจ้งยอด/คอมมิชชัน)
+  SUPPLIER // TRIPS T0.1 · ผู้ให้บริการ (ค่าบริการที่ต้องจ่าย)
 }
 
 // โหมดราคาที่ผู้ใช้ "คิด" ตอนกรอก — คนละชั้นกับ AccountVatMode ที่เป็นผลลัพธ์ในเอกสาร
@@ -192,6 +195,8 @@ model AccountDocument {
   // ── V2 (WO 1.3 · ฟอร์ม DocEditorV2 §5.2 B) · additive · nullable ──
   reference       String? // "อ้างอิง" ที่ผู้ใช้พิมพ์ (เลข PO ลูกค้า / เอกสารต้นทาง) ≤35 ตัว
   autoTaxInvoice  Boolean? // toggle "ออกใบกำกับภาษีพร้อมกัน" ต่อใบ (null = ตามตั้งค่ากิจการ §9.2)
+  // ── TRIPS T0.1 · additive · ยอดเงินเก็บแทน (นอกฐาน VAT) ในเอกสารนี้ — แถวเดิม 0 = พฤติกรรมเดิม ──
+  passThroughSatang Int                 @default(0)
 
   lines         AccountDocumentLine[]
   payments      AccountDocumentPayment[]

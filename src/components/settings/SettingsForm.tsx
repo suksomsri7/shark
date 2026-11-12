@@ -13,7 +13,10 @@ import type { RemoveResult, SetResult, SettingIssue } from "@/lib/core/settings/
 import {
   deepEqual,
   formatFieldValue,
+  legalAckNeedsReason,
   parseFieldInput,
+  reviewHintTh,
+  severityRank,
   submissionFor,
   TABLE_KEY_TH,
   unitLabelTh,
@@ -488,6 +491,12 @@ function FieldBox({ f, c }: { f: SettingsField; c: FieldCtx }) {
         {f.overrideCount > 0 && <span className={cx(BADGE, "text-[color:var(--color-ink-soft)]")}>{`ปรับรายคน ${f.overrideCount}`}</span>}
         {f.ownerOnly && <span className={cx(BADGE, "text-[color:var(--color-ink-soft)]")}>เฉพาะเจ้าของ</span>}
         {f.pendingLegalReview && <span className={cx(BADGE, "border-[color:var(--color-note-line)] bg-[color:var(--color-note)] text-[color:var(--color-note-ink)]")}>{PENDING_BADGE}</span>}
+        {/* TRIPS T0.1 ▸ ป้ายตรวจ (reviewHint) — ขึ้นแม้ค่ายังไม่ผิด ◂ */}
+        {f.reviewHint && (
+          <span data-review-hint={f.reviewHint} className={cx(BADGE, "border-[color:var(--color-note-line)] text-[color:var(--color-note-ink)]")}>
+            {reviewHintTh(f)}
+          </span>
+        )}
       </div>
       {help && <p className="text-xs text-[color:var(--color-muted)]">{help}</p>}
       {widget}
@@ -540,6 +549,8 @@ export default function SettingsForm({ model, actions }: { model: SettingsFormMo
   const [approval, setApproval] = useState<SettingIssue[] | null>(null);
   const [ack, setAck] = useState(false);
   const [reason, setReason] = useState("");
+  /** TRIPS T0.1 ▸ คำเตือน HIGHEST ต้องติ๊กรับทราบแยกต่อข้อ (ยังบันทึกได้) — ดัชนีในรายการที่เรียงแล้ว ◂ */
+  const [ackEach, setAckEach] = useState<ReadonlySet<number>>(new Set());
 
   const byKey = useMemo(() => {
     const m = new Map<string, SettingsField>();
@@ -623,6 +634,7 @@ export default function SettingsForm({ model, actions }: { model: SettingsFormMo
     setFollow(new Set());
     setApproval(null);
     setAck(false);
+    setAckEach(new Set());
     setReason("");
     setNotice(null);
   };
@@ -660,6 +672,7 @@ export default function SettingsForm({ model, actions }: { model: SettingsFormMo
             if (typeof r.approvalId === "string" && r.approvalId) {
               setApproval(null);
               setAck(false);
+              setAckEach(new Set());
               setReason("");
               setEdits({});
               setRaw({});
@@ -667,6 +680,7 @@ export default function SettingsForm({ model, actions }: { model: SettingsFormMo
               setNotice({ tone: "ok", text: "ส่งให้เจ้าของอนุมัติแล้ว — ค่าจะมีผลเมื่อเจ้าของอนุมัติ" });
             } else {
               setApproval(r.issues);
+              setAckEach(new Set());
               setNotice(null);
             }
             return;
@@ -691,6 +705,7 @@ export default function SettingsForm({ model, actions }: { model: SettingsFormMo
       setErrors({});
       setApproval(null);
       setAck(false);
+      setAckEach(new Set());
       setReason("");
       setNotice({ tone: "ok", text: "บันทึกแล้ว" });
     } catch {
@@ -699,6 +714,18 @@ export default function SettingsForm({ model, actions }: { model: SettingsFormMo
       setBusy(false);
     }
   }
+
+  // TRIPS T0.1 ▸ คำเตือนเรียง HIGHEST → HIGH → NORMAL (คงลำดับเดิมในระดับเดียวกัน) · เหตุผลบังคับเมื่อมีคำเตือนของโดเมนที่บังคับ
+  //   (คำเตือนที่ไม่รู้โดเมน = บังคับ · ทางเดิมของหอ/จองคิว) · HIGHEST ทุกข้อต้องติ๊กแยกก่อนบันทึก ◂
+  const approvalSorted = (approval ?? [])
+    .map((i, n) => ({ i, n }))
+    .sort((a, b) => severityRank(b.i.severity) - severityRank(a.i.severity) || a.n - b.n)
+    .map((x) => x.i);
+  const ackNeedsReason = (approval ?? []).some((i) => {
+    const f = i.key ? byKey.get(i.key) : undefined;
+    return !f || legalAckNeedsReason(f.domain);
+  });
+  const highestAcked = approvalSorted.every((i, n) => i.severity !== "HIGHEST" || ackEach.has(n));
 
   const visibleGroups = model.groups
     .map((g) => ({ ...g, fields: onlyChanged ? g.fields.filter((f) => f.differsFromTemplate || f.hasOwn || edits[f.key] !== undefined || follow.has(f.key)) : g.fields }))
@@ -769,14 +796,37 @@ export default function SettingsForm({ model, actions }: { model: SettingsFormMo
       ))}
       {visibleGroups.length === 0 && <p className="text-sm text-[color:var(--color-muted)]">ไม่มีค่าตั้งที่ตรงเงื่อนไข</p>}
 
-      {/* NEEDS_APPROVAL — ต้องยอมรับคำเตือนกฎหมาย + เหตุผล */}
+      {/* NEEDS_APPROVAL — ต้องยอมรับคำเตือนกฎหมาย (+ เหตุผล เฉพาะโดเมนที่บังคับ · TRIPS T0.1: trips/agency/ticket ไม่บังคับ) */}
       {approval && (
         <section role="alertdialog" aria-label="คำเตือนกฎหมาย" className="card flex flex-col gap-3 border-[color:var(--color-note-line)] bg-[color:var(--color-note)] p-4">
           <h2 className="text-base font-semibold text-[color:var(--color-note-ink)]">ค่าที่ตั้งอยู่นอกเกณฑ์กฎหมาย — ต้องยืนยันก่อนบันทึก</h2>
           <ul className="flex list-disc flex-col gap-1 pl-5 text-sm">
-            {approval.map((i, n) => (
-              <li key={`${i.code}-${n}`}>{i.messageTh}</li>
-            ))}
+            {approvalSorted.map((i, n) =>
+              i.severity === "HIGHEST" ? (
+                <li key={`${i.code}-${n}`} data-severity="HIGHEST" className="font-semibold text-[color:var(--color-danger)]">
+                  <label className="flex min-h-11 cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-5 w-5 shrink-0"
+                      checked={ackEach.has(n)}
+                      onChange={(e) =>
+                        setAckEach((p) => {
+                          const next = new Set(p);
+                          if (e.target.checked) next.add(n);
+                          else next.delete(n);
+                          return next;
+                        })
+                      }
+                    />
+                    <span>{`${i.messageTh} — รับทราบข้อนี้`}</span>
+                  </label>
+                </li>
+              ) : (
+                <li key={`${i.code}-${n}`} data-severity={i.severity ?? "NORMAL"} className={i.severity === "HIGH" ? "font-semibold" : undefined}>
+                  {i.messageTh}
+                </li>
+              ),
+            )}
           </ul>
           <label className="flex min-h-11 cursor-pointer items-start gap-2 text-sm">
             <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0" checked={ack} onChange={(e) => setAck(e.target.checked)} />
@@ -784,15 +834,20 @@ export default function SettingsForm({ model, actions }: { model: SettingsFormMo
           </label>
           <div className="flex flex-col gap-1">
             <label htmlFor="svc-ack-reason" className="text-sm font-medium">
-              เหตุผล (อย่างน้อย 10 ตัวอักษร)
+              {ackNeedsReason ? "เหตุผล (อย่างน้อย 10 ตัวอักษร)" : "เหตุผล (ไม่บังคับ)"}
             </label>
             <textarea id="svc-ack-reason" rows={3} className={`${INPUT} min-h-[72px] py-2`} value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={BTN_PRIMARY} disabled={busy || !ack || reason.trim().length < 10} onClick={() => void onSave(true)}>
+            <button
+              type="button"
+              className={BTN_PRIMARY}
+              disabled={busy || !ack || (ackNeedsReason && reason.trim().length < 10) || !highestAcked}
+              onClick={() => void onSave(true)}
+            >
               ยืนยันและบันทึก
             </button>
-            <button type="button" className={BTN_GHOST} onClick={() => { setApproval(null); setAck(false); setReason(""); }}>
+            <button type="button" className={BTN_GHOST} onClick={() => { setApproval(null); setAck(false); setReason(""); setAckEach(new Set()); }}>
               ยกเลิก
             </button>
           </div>

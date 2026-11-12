@@ -95,7 +95,7 @@ console.log("\n── B: ด่าน host ของ loadTripsQcEnv ──");
   const url = (host: string, q = "") => `postgresql://qc:fake@${host}.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require${q}`;
   const run = (env: Record<string, string>): { code: number | null; out: string } => {
     // env ใหม่ทั้งชุด — ไม่สืบ DATABASE_URL จริงของข้อสอบนี้ · QC_ENV_FILE ชี้ไฟล์ที่ไม่มี (ไม่อ่าน .env ใด ๆ)
-    const r = spawnSync(TSX, ["-e", probe], { cwd: ROOT, encoding: "utf8", timeout: 60_000, env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", QC_ENV_FILE: "/nonexistent/.env.qc-trips-probe", ...env } });
+    const r = spawnSync(TSX, ["-e", probe], { cwd: ROOT, encoding: "utf8", timeout: 60_000, env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", QC_ENV_FILE: "/nonexistent/.env.qc-trips-probe", ...env } as NodeJS.ProcessEnv }); // ORACLE-EDIT (ผู้คุม 12 พ.ย.): cast — typecheck TS2769 (NODE_ENV)
     return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
   };
   const L1 = TRIPS_QC_HOSTS[1];
