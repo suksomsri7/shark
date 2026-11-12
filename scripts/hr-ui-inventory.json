@@ -4739,6 +4739,85 @@
    "note": "แถบ 'n วันต้องคิดผลใหม่' + ลิงก์ไปวันนั้น (มติ r3 5)"
   },
   {
+   "page": "/app/sys/[id]/hr/attendance",
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "testid": "hr-att-scroll-hint",
+   "kind": "display",
+   "interactive": false,
+   "conditional": "จอ md–xl (ตารางกว้างกว่ากรอบ)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "note": "VIS-1 A1: บอกให้เลื่อนตารางทีมรายวันในกรอบตัวเอง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "testid": "hr-att-daylist",
+   "kind": "display",
+   "interactive": false,
+   "conditional": "จอ < xl · มีวันที่มีเวลา/ผลบันทึก",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "note": "VIS-1 A3: แถวรายวันใต้ปฏิทินบนจอแคบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "testid": "hr-att-dayrow-*",
+   "kind": "button",
+   "interactive": true,
+   "conditional": "จอ < xl · วันที่มีเวลา/ผลบันทึก",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "เวลาเข้า–ออก/ชม./OT + คิดผลใหม่ของวันนั้น"
+   },
+   "note": "VIS-1 A3 · * = วันที่ YYYY-MM-DD"
+  },
+  {
    "page": "/app/sys/[id]/hr/employees",
    "testid": "hr-life-due",
    "kind": "display",

@@ -49,11 +49,11 @@ const TONE: Record<string, string> = {
   DAY_OFF: "border-[color:var(--color-line)] text-[color:var(--color-muted)]",
   NO_SCHEDULE: "border-[color:var(--color-line)] text-[color:var(--color-muted)]",
 };
-function StatusChip({ t, s }: { t: T; s: AttendanceSlotDto }) {
+function StatusChip({ t, s, testid = true }: { t: T; s: AttendanceSlotDto; testid?: boolean }) {
   const notIn = s.status === "PENDING" && s.phase === "NOT_IN";
   const tone = notIn ? TONE.ABSENT : (TONE[s.status] ?? TONE.PENDING);
   return (
-    <span data-testid={`hr-att-status-${s.slotKey}`} className={`inline-flex items-center whitespace-nowrap rounded-lg border-[1.5px] px-2 py-0.5 text-[13px] ${tone}`}>
+    <span data-testid={testid ? `hr-att-status-${s.slotKey}` : undefined} className={`inline-flex items-center whitespace-nowrap rounded-lg border-[1.5px] px-2 py-0.5 text-[13px] ${tone}`}>
       {statusText(t, s)}
     </span>
   );
@@ -207,76 +207,104 @@ export async function AttendanceDayView({
         </div>
       )}
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start">
         <section className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
-          <div className={`hidden grid-cols-[minmax(150px,1.6fr)_1fr_1fr_0.8fr_1fr_1.2fr_0.7fr_0.6fr_auto] gap-2 border-b border-[color:var(--color-line)] px-4 py-3 text-xs font-semibold md:grid ${muted}`}>
-            <span>{t("cols.employee")}</span>
-            <span>{t("cols.shift")}</span>
-            <span>{t("cols.in")}</span>
-            <span>{t("cols.out")}</span>
-            <span>{t("cols.break")}</span>
-            <span>{t("cols.status")}</span>
-            <span>{t("cols.hours")}</span>
-            <span>{t("cols.ot")}</span>
-            <span>{t("cols.actions")}</span>
-          </div>
-          {board.rows.length === 0 && <p className={`px-4 py-6 text-sm ${muted}`}>{t("empty")}</p>}
-          {board.rows.map((r) =>
-            r.slots.map((s, i) => {
-              const notIn = s.status === "PENDING" && s.phase === "NOT_IN";
-              const alert = notIn || (s.status === "ABSENT" && !s.final);
-              return (
-                <div
-                  key={`${r.employeeId}-${s.slotKey}`}
-                  data-testid={i === 0 ? `hr-att-row-${r.employeeId}` : undefined}
-                  className={`grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 border-b border-[color:var(--color-line)] px-4 py-3 text-sm last:border-b-0 md:grid-cols-[minmax(150px,1.6fr)_1fr_1fr_0.8fr_1fr_1.2fr_0.7fr_0.6fr_auto] md:gap-2 ${alert ? "border-l-4 border-l-[color:var(--color-danger)] bg-[color:var(--color-stage)]" : ""}`}
-                >
-                  <div className="col-span-2 flex min-w-0 items-center gap-2 md:col-span-1" data-testid={`hr-att-slot-${s.slotKey}`}>
-                    <span aria-hidden="true" className="grid h-8 w-8 flex-none place-items-center rounded-full border border-[color:var(--color-line)] bg-[color:var(--color-stage)] text-sm">
-                      {r.initial}
-                    </span>
-                    <div className="min-w-0">
-                      <b className="block truncate font-semibold">{r.name}</b>
-                      <small className={`block truncate text-xs ${muted}`}>
-                        {[r.position, r.borrowed ? t("borrowed") : null].filter(Boolean).join(" · ")}
-                      </small>
+          {/* VIS-1 A1: ตาราง 9 คอลัมน์กว้างกว่าจอ iPad — เลื่อนในกรอบตัวเอง (คอลัมน์พนักงานติดซ้าย) + บอกให้เลื่อน */}
+          <p data-testid="hr-att-scroll-hint" className={`hidden border-b border-[color:var(--color-line)] px-4 py-2 text-xs md:block xl:hidden ${muted}`}>
+            {t("scrollHint")}
+          </p>
+          <div className="md:overflow-x-auto">
+            <div className="md:min-w-[940px]">
+              <div className={`hidden ${COLS} gap-2 border-b border-[color:var(--color-line)] px-4 py-3 text-xs font-semibold md:grid ${muted}`}>
+                <span className="sticky left-0 z-[1] -ml-4 bg-[color:var(--color-surface)] pl-4">{t("cols.employee")}</span>
+                <span>{t("cols.shift")}</span>
+                <span>{t("cols.in")}</span>
+                <span>{t("cols.out")}</span>
+                <span>{t("cols.break")}</span>
+                <span>{t("cols.status")}</span>
+                <span>{t("cols.hours")}</span>
+                <span>{t("cols.ot")}</span>
+                <span className="text-right">{t("cols.actions")}</span>
+              </div>
+              {board.rows.length === 0 && <p className={`px-4 py-6 text-sm ${muted}`}>{t("empty")}</p>}
+              {board.rows.map((r) =>
+                r.slots.map((s, i) => {
+                  const notIn = s.status === "PENDING" && s.phase === "NOT_IN";
+                  const alert = notIn || (s.status === "ABSENT" && !s.final);
+                  const rowBg = alert ? "bg-[color:var(--color-stage)]" : "bg-[color:var(--color-surface)]";
+                  return (
+                    <div
+                      key={`${r.employeeId}-${s.slotKey}`}
+                      data-testid={i === 0 ? `hr-att-row-${r.employeeId}` : undefined}
+                      className={`grid grid-cols-2 items-start gap-x-3 gap-y-2 border-b border-[color:var(--color-line)] px-4 py-3 text-sm last:border-b-0 md:items-center md:gap-2 ${COLS} ${rowBg} ${alert ? "border-l-4 border-l-[color:var(--color-danger)]" : ""}`}
+                    >
+                      <div className={`col-span-2 flex min-w-0 items-center gap-2 md:sticky md:left-0 md:z-[1] md:col-span-1 md:-ml-4 md:pl-4 ${rowBg}`} data-testid={`hr-att-slot-${s.slotKey}`}>
+                        <span aria-hidden="true" className="grid h-8 w-8 flex-none place-items-center rounded-full border border-[color:var(--color-line)] bg-[color:var(--color-stage)] text-sm">
+                          {r.initial}
+                        </span>
+                        <div className="min-w-0">
+                          <b className="block truncate font-semibold">{r.name}</b>
+                          <small className={`block truncate text-xs ${muted}`}>
+                            {[r.position, r.borrowed ? t("borrowed") : null].filter(Boolean).join(" · ")}
+                          </small>
+                        </div>
+                      </div>
+                      <Cell t={t} k="shift" wide>
+                        {s.shift ? (
+                          <>
+                            <span className="block">{s.shift.name}</span>
+                            <span className={`block tabular-nums text-xs ${muted}`}>
+                              {hhmm(s.shift.startMin)}–{hhmm(s.shift.endMin)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className={muted}>—</span>
+                        )}
+                      </Cell>
+                      <Cell t={t} k="in">
+                        {s.inAt ? (
+                          <>
+                            <b className="tabular-nums">{hm(s.inAt)}</b>
+                            {s.method && <small className={`block text-xs ${muted}`}>{t(`method.${s.method}`)}</small>}
+                          </>
+                        ) : notIn ? (
+                          <b className="text-[color:var(--color-danger)]">{t("status.PENDING")}</b>
+                        ) : (
+                          <span className={muted}>—</span>
+                        )}
+                      </Cell>
+                      <Cell t={t} k="out">
+                        <span className="tabular-nums">{s.outAt ? hm(s.outAt) : s.missingOut ? <span className="text-[color:var(--color-danger)]">{t("status.missingOut")}</span> : <span className={muted}>—</span>}</span>
+                      </Cell>
+                      <Cell t={t} k="break">
+                        <span className={`tabular-nums ${muted}`}>{s.breaks.length ? s.breaks.map((b) => `${hm(b.from)}–${hm(b.to)}`).join(", ") : "—"}</span>
+                      </Cell>
+                      <Cell t={t} k="status">
+                        <span className="flex flex-wrap items-center gap-1">
+                          <StatusChip t={t} s={s} />
+                          <StaleMark t={t} s={s} />
+                        </span>
+                      </Cell>
+                      <Cell t={t} k="hours">
+                        <span className="tabular-nums">{s.workedMin > 0 ? dur(s.workedMin) : <span className={muted}>—</span>}</span>
+                      </Cell>
+                      <Cell t={t} k="ot">
+                        <span className="tabular-nums">{s.otMin > 0 ? t("status.ot", { n: Math.round((s.otMin / 60) * 100) / 100 }) : <span className={muted}>—</span>}</span>
+                      </Cell>
+                      <span className="col-span-2 flex justify-end md:col-span-1">
+                        <Recompute t={t} s={s} systemId={systemId} onRecompute={onRecompute} />
+                      </span>
                     </div>
-                  </div>
-                  <span className={s.shift ? "" : muted}>{s.shift ? `${s.shift.name} ${hhmm(s.shift.startMin)}–${hhmm(s.shift.endMin)}` : "—"}</span>
-                  <span>
-                    {s.inAt ? (
-                      <>
-                        <b className="tabular-nums">{hm(s.inAt)}</b>
-                        <small className={`block text-xs ${muted}`}>{s.method ? t(`method.${s.method}`) : ""}</small>
-                      </>
-                    ) : notIn ? (
-                      <b className="text-[color:var(--color-danger)]">{t("status.PENDING")}</b>
-                    ) : (
-                      "—"
-                    )}
-                  </span>
-                  <span className="tabular-nums">
-                    {s.outAt ? hm(s.outAt) : s.missingOut ? <span className="text-[color:var(--color-danger)]">{t("status.missingOut")}</span> : "—"}
-                  </span>
-                  <span className={`tabular-nums ${muted}`}>{s.breaks.length ? s.breaks.map((b) => `${hm(b.from)}–${hm(b.to)}`).join(", ") : "—"}</span>
-                  <span className="flex flex-wrap items-center gap-1">
-                    <StatusChip t={t} s={s} />
-                    <StaleMark t={t} s={s} />
-                  </span>
-                  <span className="tabular-nums">{s.workedMin > 0 ? dur(s.workedMin) : "—"}</span>
-                  <span className="tabular-nums">{s.otMin > 0 ? t("status.ot", { n: Math.round((s.otMin / 60) * 100) / 100 }) : "—"}</span>
-                  <span className="flex justify-end">
-                    <Recompute t={t} s={s} systemId={systemId} onRecompute={onRecompute} />
-                  </span>
-                </div>
-              );
-            }),
-          )}
+                  );
+                }),
+              )}
+            </div>
+          </div>
           <p className={`border-t border-[color:var(--color-line)] px-4 py-3 text-xs ${muted}`}>{t("footer", { hours: dur(board.totals.workedMin) })}</p>
         </section>
-        <aside className="flex w-full flex-col gap-3 lg:w-72">
+        <aside className="grid w-full gap-3 sm:grid-cols-2 2xl:flex 2xl:w-72 2xl:flex-col">
           <div className="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 text-sm">
-            <b className="block">{t("countsTitle")}</b>
+            <b className="block">{board.day === board.todayKey ? t("countsTitle") : t("countsTitleDay", { day: dayLabel(t, board.day) })}</b>
             <ul className="mt-2 flex flex-col gap-1">
               {(["ON_TIME", "LATE", "EARLY_OUT", "ABSENT", "PENDING", "LEAVE", "DAY_OFF", "NO_SCHEDULE"] as const)
                 .filter((k) => board.totals.counts[k])
@@ -288,11 +316,24 @@ export async function AttendanceDayView({
                 ))}
             </ul>
           </div>
-          <a href={`${base.replace(/\/attendance$/, "/kiosk")}`} className="flex min-h-[44px] items-center rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-4 text-sm">
+          <a href={`${base.replace(/\/attendance$/, "/kiosk")}`} className="flex min-h-[44px] items-center self-start rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-4 text-sm">
             {t("kioskLink")}
           </a>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** คอลัมน์ตาราง 04A (จอกว้าง) — คอลัมน์พนักงานกว้างยืด ที่เหลือกว้างพอให้ป้าย "สาย 18 นาที"/ปุ่ม "คิดผลใหม่" ไม่ถูกตัด */
+const COLS = "md:grid-cols-[minmax(150px,1.6fr)_104px_92px_64px_96px_minmax(112px,1fr)_60px_72px_120px]";
+
+/** ช่องข้อมูลของแถว — จอแคบ (การ์ด) มีป้ายชื่อคอลัมน์กำกับทุกค่า · จอกว้างป้ายอยู่หัวตาราง (VIS-1 A2) */
+function Cell({ t, k, wide, children }: { t: T; k: string; wide?: boolean; children: ReactNode }) {
+  return (
+    <div className={`flex min-w-0 flex-col ${wide ? "col-span-2 md:col-span-1" : ""}`}>
+      <span className={`text-xs md:hidden ${muted}`}>{t(`cols.${k}`)}</span>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }
@@ -305,6 +346,7 @@ export async function AttendanceMonthView({
   people,
   onRecompute,
   self,
+  todayKey = null,
 }: {
   month: AttendanceMonthDto;
   base: string;
@@ -312,6 +354,7 @@ export async function AttendanceMonthView({
   people: { id: string; name: string }[];
   onRecompute: FormFn | null;
   self: boolean;
+  todayKey?: string | null;
 }) {
   const t = await getTranslations("hr.attendance");
   const first = month.days[0]?.day ?? `${month.month}-01`;
@@ -372,26 +415,31 @@ export async function AttendanceMonthView({
           {month.days.map((d) => {
             const missing = d.slots.some((x) => x.missingOut);
             return (
-              <div key={d.day} data-testid={`hr-att-cal-day-${d.day}`} className={`flex min-h-[72px] min-w-0 flex-col gap-0.5 border-b border-r border-[color:var(--color-line)] p-1 text-[11px] md:min-h-[88px] md:p-2 md:text-[13px] ${missing ? "outline outline-2 -outline-offset-2 outline-[color:var(--color-danger)]" : ""}`}>
-                <span className={muted}>{Number(d.day.slice(8))}</span>
+              <div key={d.day} data-testid={`hr-att-cal-day-${d.day}`} aria-current={d.day === todayKey ? "date" : undefined} className={`flex min-h-[72px] min-w-0 flex-col gap-0.5 border-b border-r border-[color:var(--color-line)] p-1 text-[11px] md:min-h-[88px] md:p-2 md:text-[13px] ${missing ? "outline outline-2 -outline-offset-2 outline-[color:var(--color-danger)]" : ""}`}>
+                <span className={d.day === todayKey ? "font-semibold text-[color:var(--color-accent)]" : muted}>{Number(d.day.slice(8))}</span>
                 {d.slots.map((x) => (
                   <div key={x.slotKey} className="flex min-w-0 flex-col" data-testid={`hr-att-slot-${x.slotKey}`}>
-                    <b className={`truncate ${x.status === "LATE" || x.status === "ABSENT" || x.missingOut ? "text-[color:var(--color-danger)]" : x.status === "ON_TIME" || x.status === "EARLY_OUT" ? "" : `font-normal ${muted}`}`}>
+                    <b className={`break-words ${x.status === "LATE" || x.status === "ABSENT" || x.missingOut ? "text-[color:var(--color-danger)]" : x.status === "ON_TIME" || x.status === "EARLY_OUT" ? "" : `font-normal ${muted}`}`}>
                       {x.missingOut ? t("status.missingOut") : x.status === "LATE" ? `+${x.lateMin}` : x.otMin > 0 ? t("status.ot", { n: Math.round((x.otMin / 60) * 100) / 100 }) : x.status === "ON_TIME" ? `● ${t("status.ON_TIME")}` : statusText(t, x)}
                     </b>
                     {x.inAt && (
-                      <span className={`hidden truncate tabular-nums md:block ${muted}`}>
-                        {hm(x.inAt)} – {x.outAt ? hm(x.outAt) : "?"}
+                      <span className={`hidden flex-wrap gap-x-1 tabular-nums md:flex ${muted}`}>
+                        <span className="whitespace-nowrap">{hm(x.inAt)} –</span>
+                        <span className="whitespace-nowrap">{x.outAt ? hm(x.outAt) : "?"}</span>
                       </span>
                     )}
                     <StaleMark t={t} s={x} />
-                    <Recompute t={t} s={x} systemId={systemId} onRecompute={onRecompute} />
+                    {/* VIS-1 A3: ปุ่มในช่องเฉพาะจอกว้าง — จอแคบใช้แถวรายวันใต้ปฏิทิน */}
+                    <div className="hidden xl:block">
+                      <Recompute t={t} s={x} systemId={systemId} onRecompute={onRecompute} />
+                    </div>
                   </div>
                 ))}
               </div>
             );
           })}
         </div>
+        <DayList t={t} days={month.days} systemId={systemId} onRecompute={onRecompute} />
         <div data-testid="hr-att-summary" className="flex flex-wrap gap-x-8 gap-y-3 border-t border-[color:var(--color-line)] px-4 py-4">
           <Stat label={t("sum.work")} value={t("sum.days", { n: s.workDays })} />
           <Stat label={t("sum.late")} value={t("sum.times", { n: s.lateCount, m: s.lateMin })} danger={s.lateCount > 0} />
@@ -410,6 +458,52 @@ function Stat({ label, value, danger }: { label: string; value: string; danger?:
     <div className="flex flex-col">
       <span className={`text-xs ${muted}`}>{label}</span>
       <b className={`text-lg tabular-nums ${danger ? "text-[color:var(--color-danger)]" : ""}`}>{value}</b>
+    </div>
+  );
+}
+
+/** VIS-1 A3: จอแคบ (< xl) — แถวรายวันใต้ปฏิทิน กดเปิดดูเวลาเข้า–ออก + คิดผลใหม่ของวันนั้น (ช่องปฏิทินแคบเกินจะใส่ปุ่ม) */
+function DayList({ t, days, systemId, onRecompute }: { t: T; days: AttendanceMonthDto["days"]; systemId: string; onRecompute: FormFn | null }) {
+  const rows = days.filter((d) => d.slots.some((x) => x.inAt || x.dayId));
+  if (!rows.length) return null;
+  return (
+    <div data-testid="hr-att-daylist" className="border-t border-[color:var(--color-line)] xl:hidden">
+      <b className={`block px-4 pt-3 text-xs font-semibold ${muted}`}>{t("dayListTitle")}</b>
+      <ul className="flex flex-col">
+        {rows.map((d) => (
+          <li key={d.day} className="border-b border-[color:var(--color-line)] last:border-b-0">
+            <details>
+              <summary data-testid={`hr-att-dayrow-${d.day}`} className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm">
+                <span className="whitespace-nowrap">{dayLabel(t, d.day)}</span>
+                <span className="flex flex-wrap justify-end gap-1">
+                  {d.slots.map((x) => (
+                    <StatusChip key={x.slotKey} t={t} s={x} testid={false} />
+                  ))}
+                </span>
+              </summary>
+              <div className="flex flex-col gap-2 px-4 pb-3 text-sm">
+                {d.slots.map((x) => (
+                  <div key={x.slotKey} className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    <span className={muted}>{t("cols.shift")}</span>
+                    <span>{x.shift ? `${x.shift.name} ${hhmm(x.shift.startMin)}–${hhmm(x.shift.endMin)}` : "—"}</span>
+                    <span className={muted}>{t("cols.in")}</span>
+                    <span className="tabular-nums">{hm(x.inAt)}</span>
+                    <span className={muted}>{t("cols.out")}</span>
+                    <span className="tabular-nums">{x.outAt ? hm(x.outAt) : x.missingOut ? t("status.missingOut") : "—"}</span>
+                    <span className={muted}>{t("cols.hours")}</span>
+                    <span className="tabular-nums">{x.workedMin > 0 ? dur(x.workedMin) : "—"}</span>
+                    <span className={muted}>{t("cols.ot")}</span>
+                    <span className="tabular-nums">{x.otMin > 0 ? t("status.ot", { n: Math.round((x.otMin / 60) * 100) / 100 }) : "—"}</span>
+                    <span className="col-span-2 flex justify-end">
+                      <Recompute t={t} s={x} systemId={systemId} onRecompute={onRecompute} />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

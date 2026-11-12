@@ -4,7 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { thaiDateKey } from "@/lib/ui/date";
+import { formatThaiDate, thaiDateKey } from "@/lib/ui/date";
 import { hrTabs } from "@/lib/modules/hr/ui";
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
 // HR H1.2 ▸ ตัวกันของหน้า (F16.3) = ขอบเขตสาขาจาก hr/scope — รายการ/ตัวเลือกสาขาตามขอบเขตของผู้ดู ◂
@@ -312,7 +312,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
         </form>
       </Section>
 
-      <Section title={`${t("holidays.title")} ${year}`} card>
+      <Section title={`${t("holidays.title")} ${year + 543}`} card>
         <form method="get" className="flex items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             {t("holidays.year")}
@@ -328,7 +328,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
             <input type="hidden" name="systemId" value={id} />
             <input type="hidden" name="year" value={year} />
             <button type="submit" className={btn} data-testid="hr-holiday-preset">
-              {t("holidays.presetApply", { year })}
+              {t("holidays.presetApply", { year: year + 543 })}
             </button>
           </form>
         )}
@@ -343,7 +343,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
             {holidays.map((h) => (
               <li key={h.id} className="flex flex-wrap items-center justify-between gap-2" data-testid={`hr-settings-holiday-${h.id}`}>
                 <span className="text-sm">
-                  {h.date.toISOString().slice(0, 10)} · {h.name} · {t(`kinds.${h.kind}`)}
+                  {formatThaiDate(h.date)} · {h.name} · {t(`kinds.${h.kind}`)}
                   {h.shopOpen ? ` · ${t("holidays.shopOpen")}` : ""} · {where(h.unitId)}
                 </span>
                 {(all || h.unitId) && (

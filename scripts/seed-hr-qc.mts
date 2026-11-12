@@ -519,15 +519,36 @@ try {
       arRows++;
     }
   }
+  // VIS-1 A4 ▸ ตารางกะของวันนี้ (ประกาศแล้ว) — ไม่เขียนลงเวลา · ตัวปิดวัน 05:00 ไม่แตะ (กะวันนี้ยังไม่เริ่ม) ◂
+  let arToday = 0;
+  for (const [key, sk] of Object.entries(AR.today)) {
+    const e = hqcEmployee(key);
+    const s = HQC.shifts[sk];
+    await P.hrRosterEntry.create({
+      data: { tenantId, systemId: ctx.systemId, employeeId: emp[e.key], date: new Date(`${D.today}T00:00:00Z`), shiftId: arShift[sk], unitId: units[e.borrowedTo ?? e.unit], startMin: s.startMin, endMin: s.endMin, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date(), source: "MANUAL", createdById: uid("owner") },
+    });
+    arToday++;
+  }
   const judge = (await import("@/lib/modules/hr/judge" as string)) as Any;
   // มติ r2 I: เวลาคงที่ 05:00 ของวันนี้ (เวลาไทย) — กะปิดร้านของเมื่อวาน (15–23) ปิดแล้ว (23:00 + 240) · กะของวันนี้ยังไม่เริ่ม ⇒ ไม่มีการเตือน ·
   //   ไม่ขึ้นกับเวลาที่รัน seed
   const jNow = atBkk(D.today, 5 * 60);
   const jRun = await judge.runAttendanceJobs({ now: jNow, tenantId });
+  // VIS-1 A4 ▸ รอบที่สอง เวลาคงที่ 07:30 ของวันนี้ — กะเช้าของวันนี้ (2 คน) ยังไม่ลงเวลา ⇒ การเตือน NOT_IN 2 ใบ · ไม่ปิดวันเพิ่ม ◂
+  const jRunToday = await judge.runAttendanceJobs({ now: atBkk(D.today, AR.todayAlertAtMin), tenantId });
+  const wantTodayAlerts = Object.values(AR.today).filter((k) => k === "morning").length;
+  const todayAlerts = await P.hrAttendanceAlert.count({ where: { tenantId, date: new Date(`${D.today}T00:00:00Z`), kind: "NOT_IN" } });
+  q.chk(
+    "AJ2",
+    `ตารางกะวันนี้ ${arToday} แถว (ประกาศแล้ว) · รอบ 07:30 เตือนยังไม่ลงเวลา ${wantTodayAlerts} คน (กะเช้า) · ไม่ปิดวันเพิ่ม`,
+    arToday === Object.keys(AR.today).length && jRunToday.finalized === 0 && jRunToday.late === wantTodayAlerts && jRunToday.absent === 0 && todayAlerts === wantTodayAlerts,
+    `${Object.keys(AR.today).length} · 0 · ${wantTodayAlerts}/0 · ${wantTodayAlerts}`,
+    `${arToday} · ${jRunToday.finalized} · ${jRunToday.late}/${jRunToday.absent} · ${todayAlerts}`,
+  );
   const jRows = (await P.hrAttendanceDay.findMany({ where: { tenantId }, select: { status: true } })) as Any[];
   const byStatus: Record<string, number> = {};
   for (const r of jRows) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
-  const attendanceDays = { rosterRows: arRows, finalized: jRun.finalized, rows: jRows.length, byStatus, alerts: jRun.late + jRun.absent };
+  const attendanceDays = { rosterRows: arRows, todayRosterRows: arToday, todayAlerts, finalized: jRun.finalized, rows: jRows.length, byStatus, alerts: jRun.late + jRun.absent };
   q.chk(
     "AJ1",
     `ผลตัดสินรายวัน (H2.5 Q9): ตารางกะ ${arRows} แถว (9 คน × ${AR.days} วัน) · ตัวปิดวัน (05:00 วันนี้) บันทึกครบ ${9 * AR.days} แถว · มีสาย/ขาด/ลา · ไม่มีการเตือน`,

@@ -457,6 +457,9 @@ const CHECKS: readonly Def[] = [
   D("S13.2", "R2", C, "RED", "[hunt P1] multi-branch kiosk [u1,u2]: u3 name ⇒ wrong (counted) · 0 rows · u2 name ⇒ ok"),
   D("S13.3", "R4", C, "RED", "[hunt P6] earlyInMin 0 · 16–24 entry: IN 15:59 ⇒ NEXT 00:30 = OUT · another IN 15:59 ⇒ NEXT 04:01 = IN (end + grace) · stray IN 20:00 D + entry D+1 01:00 ⇒ NEXT 00:55 = IN (r3)"),
   D("S13.4", "R5", M, "RED", "[hunt P3] gpsRequired=false site ⇒ deviceId not stored · cron-mode purge (no tenantId) nulls deviceId with lat/lng, keeps distanceM"),
+  // ORACLE-EDIT VIS-1 C (controller ruling 12 Nov, new checks): the kiosk page (names + positions + PIN pad) and kioskClockAction share one gate
+  D("S14.1", "VIS-1 C", C, "RED", "canRunKiosk matrix: OWNER · MANAGER (role, [] and [u1]) · STAFF hr.attendance.clock ([] and [u1]) · STAFF hr.* ⇒ true · plain member · STAFF leave.read/leave.request/payroll.read only · null ⇒ false"),
+  D("S14.2", "VIS-1 C", C, "RED", "[static] /hr/kiosk page: canRunKiosk(hrViewerOf(auth)) ⇒ notFound() before HrKioskSection · kioskClockAction: canRunKiosk refusal (fixed Thai text) before kioskClock( · assertCan kept"),
   D("Z1", "-", C, "GREEN", "residue: qc-hr-h24-* tenants, users, buckets, rows gone"),
 ];
 initRegistry("H2.4-", CHECKS);
@@ -1163,11 +1166,43 @@ async function runDb(): Promise<void> {
   }
 }
 
+// ═════════ VIS-1 C ▸ kiosk audience (ORACLE-EDIT: new checks) ═════════
+function runKioskGate(): void {
+  const g = csMod && !csMod.__err && typeof csMod.canRunKiosk === "function" ? (csMod.canRunKiosk as (v: Any) => boolean) : null;
+  const m = (role: string, unitAccess: string[], permissions: Record<string, boolean>) => ({ role, unitAccess, permissions, userId: "u" });
+  const yes = [m("OWNER", [], {}), m("MANAGER", [], {}), m("MANAGER", ["u1"], {}), m("STAFF", [], { "hr.attendance.clock": true }), m("STAFF", ["u1"], { "hr.attendance.clock": true }), m("STAFF", [], { "hr.*": true })];
+  const no = [m("STAFF", [], {}), m("STAFF", [], { "hr.leave.read": true }), m("STAFF", [], { "hr.leave.request": true }), m("STAFF", ["*"], { "hr.payroll.read": true }), null];
+  const call = (v: Any) => {
+    try {
+      return g ? g(v) === true : false;
+    } catch {
+      return false;
+    }
+  };
+  ck("S14.1", { fn: !!g, yes: yes.every(call), no: no.every((v) => g !== null && !call(v)) }, "6 true · 5 false", `yes=${yes.map((v) => (call(v) ? 1 : 0)).join("")} no=${no.map((v) => (call(v) ? 1 : 0)).join("")}`);
+  const page = stripComments(rd("src/app/app/sys/[id]/hr/kiosk/page.tsx"));
+  const gateAt = page.search(/if\s*\(\s*!canRunKiosk\(\s*hrViewerOf\(\s*auth\s*\)\s*\)\s*\)\s*notFound\(\)/);
+  const secAt = page.search(/<HrKioskSection\b/);
+  const act = stripComments(rd(`${HRD}actions.ts`));
+  const kfn = act.split(/export\s+async\s+function\s+/).find((x) => x.startsWith("kioskClockAction")) ?? "";
+  // VIS-1 builder fix (own new check): the argument nests parens (memberOf(auth)) — [^)]* stopped at the first ")"
+  const refAt = kfn.search(/if\s*\(\s*!canRunKiosk\(\s*memberOf\(\s*auth\s*\)\s*\)\s*\)\s*return\s*\{\s*status:\s*["']error["']\s*,\s*message:\s*KIOSK_REFUSED_TEXT\s*\}/);
+  const callAt = kfn.search(/kioskClock\(/);
+  const txt = String(csMod?.KIOSK_REFUSED_TEXT ?? "");
+  ck(
+    "S14.2",
+    { page: gateAt >= 0 && secAt > gateAt, action: refAt >= 0 && callAt > refAt && refAt < kfn.search(/formData\.get\(/), assert: /assertHrCan\(\s*auth\s*,\s*["']hr\.attendance\.clock["']\s*\)/.test(kfn), text: isThai(txt) && !CUID_RE.test(txt) && !/\$\{/.test(txt) },
+    "page gate · action gate first · assertCan kept · Thai fixed text",
+    `gate=${gateAt} sec=${secAt} ref=${refAt} call=${callAt}`,
+  );
+}
+
 // ═════════ run ═════════
 let crashed = "";
 let tenantsFx: string[] = [];
 try {
   runStatic();
+  runKioskGate();
   runPure();
   await runDb();
 } catch (e) {

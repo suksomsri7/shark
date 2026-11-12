@@ -75,7 +75,7 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   // HR H2.5 ▸ §7 หน้าลงเวลา (mockup 04): ทีมรายวันของเมื่อวาน (seed Q9 — ผลบันทึกแล้ว) · วันนี้ (phase/แถบเตือน) · ปฏิทินน้ำฝน · ปฏิทินของตัวเอง · 404 · การ์ดตั้งค่า ◂
   "2.5": [
     { key: "att-day-yesterday", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day&day=${addDays(i.today, -1)}`, why: "ทีมรายวันเมื่อวาน: สถานะบันทึกแล้ว · น้ำฝนสาย · ชม.จริง/OT (H2.5 04A)", expect: { owner: 200, manager: 200, "manager-branch": 200 }, users: ["owner", "manager", "manager-branch"] },
-    { key: "att-day-today", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day`, why: "ทีมรายวันวันนี้: ยังไม่ถึงเวลา/ยังไม่มา · แถบเตือน · ลงเวลาแทน (H2.5 04A)", expect: { owner: 200 }, users: ["owner"] },
+    { key: "att-day-today", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day`, why: "ทีมรายวันวันนี้ (seed VIS-1 A4: ตารางกะวันนี้ + เตือน 07:30 พี่เก่ง/น้ำฝน): ยังไม่ถึงเวลา/ยังไม่มา · แถบเตือน · ลงเวลาแทน (H2.5 04A)", expect: { owner: 200 }, users: ["owner"] },
     { key: "att-month-namfon", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, why: "ปฏิทินรายคนน้ำฝน + สรุปเดือน (ไม่มีเงิน Q8) (H2.5 04B)", expect: { owner: 200, "manager-branch": 200 }, users: ["owner", "manager-branch"] },
     { key: "att-self", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "พนักงาน (น้ำฝน) เห็นปฏิทินของตัวเอง (Q11)", expect: { staff: 200 }, users: ["staff"] },
     { key: "att-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
@@ -90,8 +90,28 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "life-offboard-open", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.emp.nat}`, click: '[data-testid="hr-life-offboard"] > summary', users: ["owner", "manager-branch"], why: "แผงยืนยันสิ้นสุดการจ้าง: วัน · เหตุผล · หมายเหตุ · ช่องถอนสิทธิ์ (ผู้จัดการ = ล็อก) · คำเตือนสลิปเงินเดือน (H4.4)" },
     { key: "life-ended-kept", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.emp.fai}?life=ok.kept`, users: ["owner"], why: "โปรไฟล์ฝ้าย (สิ้นสุดแล้ว): แถบสิ้นสุด · รายการออกจากงาน · ข้อความ \"เก็บสิทธิ์บัญชีไว้\" (H4.4)" },
     { key: "life-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-life`, users: ["owner", "manager-branch"], why: "หน้าตั้งค่า: การ์ดวงจรพนักงาน (ผู้จัดการสาขา = ปิดแก้ · สวิตช์ถอนสิทธิ์ล็อก) (H4.4)" },
-    { key: "life-staff-self", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.namfon}`, users: ["staff"], why: "staff เปิดโปรไฟล์ตัวเอง: ไม่มีบันทึกลับ/รายการตรวจ/ปุ่มสิ้นสุด (H4.4 r2-2)" },
+    // VIS-1 B3: "life-staff-self" ถอดออก — staff เปิดโปรไฟล์ตัวเอง = 404 มาก่อน H4.4 (หน้าบริการตัวเองมากับ H2.10 · หนี้ D-VIS1-selfprofile)
   ],
+  // HR VISUAL batch1 ▸ H2.4 ลงเวลา v2 (mockup 04A/07ก): จอ kiosk PIN + ปุ่มลงเวลา/เริ่มพัก · การ์ดจุดลงเวลา hr-clock-site-* บนหน้าตั้งค่า · ผู้ไม่ใช่ผู้ตั้งค่า = 404 ◂
+  "2.4": [
+    { key: "clock-kiosk", path: (i) => `/app/sys/${i.hr}/hr/kiosk`, users: ["kiosk", "owner", "manager-branch"], expect: { kiosk: 200, owner: 200, "manager-branch": 200 }, why: "จอลงเวลา: รายชื่อ (ขั้น NAME) (H2.4 R9)" },
+    { key: "clock-kiosk-refused", path: (i) => `/app/sys/${i.hr}/hr/kiosk`, users: ["member", "payrollSelf", "staff"], expect: { member: 404, payrollSelf: 404, staff: 404 }, why: "ไม่ใช่บัญชีจอ/เจ้าของ/ผู้จัดการ/ผู้ถือคีย์ลงเวลา = 404 (VIS-1 C)" },
+    { key: "clock-kiosk-pin", path: (i) => `/app/sys/${i.hr}/hr/kiosk`, click: '[data-testid^="hr-kiosk-name-"]', users: ["kiosk"], why: "จอลงเวลา หลังกดชื่อ: PIN pad · ลงเวลา · เริ่มพัก (H2.4 R9)" },
+    { key: "clock-settings", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner", "manager-branch"], expect: { owner: 200, "manager-branch": 200 }, why: "การ์ดจุดลงเวลา/GPS/รัศมี/PDPA hr-clock-site-* (H2.4 R10)" },
+    { key: "clock-settings-refused", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["staff", "kiosk"], expect: { staff: 404, kiosk: 404 }, why: "ไม่ใช่ผู้ตั้งค่า = 404 (H2.4)" },
+  ],
+  // HR VISUAL batch1 ▸ H3.3 ตารางกฎหมาย (mockup 08, อ่านอย่างเดียว) + ลิงก์จากหน้าตั้งค่า ◂
+  "3.3": [
+    { key: "law", path: (i) => `/app/sys/${i.hr}/hr/settings/law`, users: ["owner", "manager-branch"], expect: { owner: 200, "manager-branch": 200 }, why: "hr-law-table · แถวต่อชนิด · รอนักบัญชียืนยัน (H3.3 R8)" },
+    { key: "law-refused", path: (i) => `/app/sys/${i.hr}/hr/settings/law`, users: ["staff", "payroll", "member"], expect: { staff: 404, payroll: 404, member: 404 }, why: "ไม่ใช่ผู้ตั้งค่า = 404 (H3.3 Q8)" },
+  ],
+  // HR VISUAL batch1 ▸ H2.7+H2.8 ใบลา + วันหยุด (mockup 05/07ข): ฟอร์มยื่น (ประเภท · ครึ่งวัน · รายชั่วโมง) · ยอดคงเหลือ · รออนุมัติ · การ์ดนโยบายลา/วันหยุดบนหน้าตั้งค่า ◂
+  "2.7": [
+    { key: "leave", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager", "manager-branch", "staff", "member"], why: "หน้าใบลา: ฟอร์ม · ยอดคงเหลือ · รออนุมัติ (H2.7)" },
+    { key: "leave-settings", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner"], expect: { owner: 200 }, why: "การ์ดประเภทการลา (ครึ่งวัน/รายชั่วโมง/แนบไฟล์) + วันหยุด + preset (H2.7/H2.8)" },
+  ],
+  // HR VISUAL batch1 ▸ H4.1 บรรทัดผลกระทบบนการ์ดใบลา hr-leave-impact* (mockup 05) — staff ต้องไม่เห็น ◂
+  "4.1": [{ key: "leave-impact", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager-branch", "staff"], why: "กระทบ: กะ วัน เวลา — ยังมี n คน / ขาด 1 คน → ระบบเสนอ … (H4.1 R12)" }],
 };
 const VIEWPORTS = [
   { name: "desktop", w: 1440, h: 900, mobile: false, touch: false },
