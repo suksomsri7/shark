@@ -103,3 +103,6 @@ export type { StaffWindowsInput, StaffWindowsRow } from "./availability";
 export { staffWindows, leaveDutyNotify, leaveDutyHints } from "./availability";
 // ◂ HR H4.1
 // ◂ SVC B.1
+// HR H2.9 ▸ คำขอ OT — re-export ล้วน (ตรรกะอยู่ที่ `ot.ts`) · settleOtRequests = ตัวจ่ายรายชั่วโมง (cron/hourly) · notifyOtDecided = ผู้บริโภค hr.ot.decided
+export { settleOtRequests, notifyOtDecided } from "./ot";
+// ◂ HR H2.9

@@ -516,10 +516,26 @@ model HrOtRequest {
   multiplierBp      Int?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+  // HR H2.9 ▸ การจ่าย (20270102000000_hr_ot_settlement · CHECK อยู่ใน migration.sql) — ผลล่าสุด · ฐานตรึง ณ ครั้งแรก · แถวผลลงเวลา+รุ่น ·
+  //   settleGen = รุ่นของรายการปรับเงินล่าสุด (HrPayAdjustment.sourceRef "<id>:<gen>") · settleCode = เหตุที่ยังจ่ายไม่ได้ · revoked* = ยกเลิก OT ที่อนุมัติแล้ว
+  paidMinutes          Int?
+  amountSatang         Int?
+  segmentsJson         Json?
+  basisJson            Json?
+  attendanceDayId      String?
+  attendanceDayVersion Int?
+  lawRowId             String?
+  settleGen            Int       @default(0)
+  settleCode           String?
+  settledAt            DateTime?
+  revokedAt            DateTime?
+  revokedById          String?
+  revokeReason         String?
 
   @@index([tenantId])
   @@index([systemId, status])
   @@index([systemId, employeeId, date])
+  @@index([systemId, status, date]) // HR H2.9 ◂
 }
 
 // ประเภทการลาของร้าน (มติ review #10 — ไม่ใช่โมเดลชื่อ HrLeaveType) · category = enum HrLeaveType เดิม (หมวดตามกฎหมาย)

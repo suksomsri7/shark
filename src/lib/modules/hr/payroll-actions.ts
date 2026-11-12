@@ -86,8 +86,18 @@ export async function setSalaryProfileAction(formData: FormData) {
     ssoEligible,
     taxId: String(formData.get("taxId") ?? "").trim() || null,
     deductions: { spouse, children },
+    ...otHourlyRateOf(formData), // HR H2.9 ▸ #18 ◂
   });
   revalidate(systemId);
+}
+// HR H2.9 ▸ #18: ช่อง otHourlyRateBaht — ไม่มีช่อง = คงเดิม · ว่าง = ล้าง (null) · บาท (ทศนิยม ≤ 2 ตำแหน่ง) → สตางค์จำนวนเต็มจากสตริง (ไม่ผ่านทศนิยม) ·
+//   รูปแบบผิด = 0 ⇒ service ปฏิเสธด้วยข้อความคงที่ (rateBad) · ต่ำกว่ากฎหมาย = rateBelowLaw (PayrollInputError) ◂
+function otHourlyRateOf(formData: FormData): { otHourlyRateSatang?: number | null } {
+  if (!formData.has("otHourlyRateBaht")) return {};
+  const raw = String(formData.get("otHourlyRateBaht") ?? "").replace(/,/g, "").trim();
+  if (!raw) return { otHourlyRateSatang: null };
+  const m = /^(\d{1,8})(?:\.(\d{1,2}))?$/.exec(raw);
+  return { otHourlyRateSatang: m ? Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0")) : 0 };
 }
 
 // ── สร้างรอบจ่าย ──

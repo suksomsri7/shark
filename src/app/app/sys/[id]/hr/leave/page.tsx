@@ -3,6 +3,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { HrLeaveSection, hrTabs } from "@/lib/modules/hr/ui";
+import { HrOtSection } from "@/lib/modules/hr/ui"; // HR H2.9 ▸ คำขอ OT (ภาพ 05) ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 
@@ -19,6 +20,7 @@ export default async function HrLeavePage({ params }: { params: Promise<{ id: st
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="ใบลา — อนุมัติ/ยื่นใบลา" />
       <ModuleTabs items={hrTabs(id)} />
       <HrLeaveSection systemId={id} />
+      <HrOtSection systemId={id} /> {/* HR H2.9 ◂ */}
     </div>
   );
 }

@@ -19,6 +19,7 @@ import {
   reverseRunAction,
   setSalaryProfileAction,
 } from "./payroll-actions";
+import { HrSalaryOtRateField } from "./ui"; // HR H2.9 ▸ #18 ช่องอัตรา OT ต่อชั่วโมง (ui.tsx) ◂
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -180,6 +181,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                     />
                     หักประกันสังคม
                   </label>
+                  <HrSalaryOtRateField valueSatang={p?.otHourlyRateSatang ?? null} label="อัตรา OT/ชม. (บาท)" hint="ว่าง = ตามกฎหมาย" /> {/* HR H2.9 ▸ #18 ◂ */}
                   <SubmitButton variant="ghost">บันทึก</SubmitButton>
                 </form>
               );
