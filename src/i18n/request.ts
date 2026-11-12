@@ -11,5 +11,7 @@ export default getRequestConfig(async () => {
   const messages = (await import(`../messages/${locale}/common.json`)).default;
   // POS P1.3 ▸ module messages: messages/<locale>/pos.json under the "pos" namespace ◂
   const pos = (await import(`../messages/${locale}/pos.json`)).default;
-  return { locale, messages: { ...messages, pos } };
+  // ── T1.1 screens ── TRIPS T1.1 ▸ messages/<locale>/trips.json under the "trips" namespace (ไทย + อังกฤษเท่านั้น) ◂
+  const trips = (await import(`../messages/${locale}/trips.json`)).default;
+  return { locale, messages: { ...messages, pos, trips } };
 });

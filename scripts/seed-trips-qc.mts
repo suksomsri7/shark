@@ -47,6 +47,13 @@ import {
   TRIPS_SEED_SCHEDULES,
   TRIPS_SEED_SIMILAN,
   // ── /T0.3 departures ──
+  // ── T1.1 screens ──
+  TRIPS_SEED_CONFIRMATION,
+  TRIPS_SEED_PICKUP_ZONES,
+  TRIPS_SEED_RACHA_INFANT_SATANG,
+  TRIPS_SEED_SHOP_PARK_RATES,
+  TRIPS_SEED_SIMILAN_PAY,
+  // ── /T1.1 screens ──
 } from "./trips-fixture.mjs";
 
 const TRIPS_EXPECTED_PATH = "scripts/trips-expected.json";
@@ -558,6 +565,87 @@ console.log(`T0.3: รอบ ${Object.keys(tripsDepartures.departureIds).length}
   await ensurePrice({ departureId: dep.id, amountMinor: d31.adultSatang }, "รอบ 31 ธ.ค.");
 }
 // ── /T0.5 pricing ──
+
+// ── T1.1 screens ──
+// TRIPS T1.1 ▸ ส่วนขยาย seed ของจอ 16/17 (ใบสั่ง T1.1 §10) — ผ่านบริการเท่านั้น (createPickupZone/updatePickupZone/setPickupZoneActive/reorderPickupZones ·
+//   listPrices/setPrice · resolveSetting/setSettings) ด้วยเจ้าของร้าน · อ่านเทียบก่อน ต่างเท่านั้นถึงเขียน · ไม่ลบอะไร ◂
+{
+  const tenantId = D.tenant.id;
+  const unitId = D.units.trips.id;
+  const ctx = { tenantId, actorUserId: diveOwner.userId };
+  type R1 = { ok: boolean; code?: string; message?: string; messageTh?: string };
+  const okT = <T extends R1>(r: T, what: string): T => {
+    if (!r.ok) throw new Error(`seed T1.1 ${what}: ${r.code ?? ""} ${r.message ?? r.messageTh ?? ""}`);
+    return r;
+  };
+  // 1) โซนรับส่ง 3 โซน (จับคู่ด้วยชื่อไทย) + ลำดับตามฟิกซ์เจอร์
+  const listAll = async () => {
+    const r = await trips.listPickupZones(ctx, { unitId, includeInactive: true });
+    if (!r.ok) throw new Error(`seed T1.1 listPickupZones: ${r.code} ${r.message}`);
+    return r.items;
+  };
+  let zones = await listAll();
+  for (const want of TRIPS_SEED_PICKUP_ZONES) {
+    const cur = zones.find((z) => z.name.th === want.name.th);
+    if (!cur) {
+      bump(created, "tripPickupZone");
+      okT(await trips.createPickupZone(ctx, { unitId, ...want }), `createPickupZone ${want.name.th}`);
+      continue;
+    }
+    const d = diff({ kind: cur.kind, name: cur.name, areas: cur.areas, pickupOffsetMin: cur.pickupOffsetMin, windowMin: cur.windowMin, surchargeSatang: cur.surchargeSatang }, { ...want });
+    if (has(d)) {
+      bump(updated, "tripPickupZone");
+      okT(await trips.updatePickupZone(ctx, { unitId, zoneId: cur.id, ...want }), `updatePickupZone ${want.name.th}`);
+    }
+    if (!cur.active) {
+      bump(updated, "tripPickupZoneActive");
+      okT(await trips.setPickupZoneActive(ctx, { unitId, zoneId: cur.id, active: true }), `setPickupZoneActive ${want.name.th}`);
+    }
+  }
+  zones = await listAll();
+  const wantOrder = TRIPS_SEED_PICKUP_ZONES.map((w) => zones.find((z) => z.name.th === w.name.th)?.id ?? "");
+  const curOrder = zones.map((z) => z.id);
+  if (canon(curOrder.slice(0, wantOrder.length)) !== canon(wantOrder) || zones.some((z, i) => z.sortOrder !== i)) {
+    bump(updated, "tripPickupZoneOrder");
+    okT(await trips.reorderPickupZones(ctx, { unitId, ids: [...wantOrder, ...curOrder.filter((id) => !wantOrder.includes(id))] }), "reorderPickupZones");
+  }
+  // 2) ราคาปลีกทารกราชา = 0 (ไม่แตะราคาเด็ก)
+  const racha = tripProducts["racha-yai-day-trip"];
+  const infantPt = racha?.paxTypes.INFANT;
+  if (!racha || !infantPt) throw new Error("seed T1.1: ไม่พบสินค้าราชา/ประเภททารก (seed ของ T0.2 ยังไม่ลง)");
+  const sctx = { tenantId, unitId, channel: "COUNTER" as const, actor: { kind: "STAFF" as const, userId: diveOwner.userId }, now: new Date(TRIPS_AS_OF), locale: "th" as const };
+  const pl = await trips.listPrices(sctx, { productId: racha.productId });
+  if (!pl.ok) throw new Error(`seed T1.1 listPrices: ${pl.code} ${pl.messageTh}`);
+  const inf = pl.value.find((p) => p.paxTypeId === infantPt && p.optionId === null && p.seasonId === null && p.departureId === null && p.weekdayMask === null && p.bookFrom === null && p.travelFrom === null);
+  if (!inf || inf.amountMinor !== TRIPS_SEED_RACHA_INFANT_SATANG || inf.currency !== "THB") {
+    bump(inf ? updated : created, "tripPrice");
+    okT(await trips.setPrice(sctx, { productId: racha.productId, paxTypeId: infantPt, currency: "THB", amountMinor: TRIPS_SEED_RACHA_INFANT_SATANG }), "setPrice ทารกราชา");
+  }
+  // 3) ค่าตั้งชั้นหน่วย (จอ 17 "ปรับแล้ว"): ตารางค่าอุทยาน + อัตราของร้าน 2 แถว · ข้อความยืนยันการจอง
+  // 4) ชั้นสินค้าสิมิลัน: มัดจำ 30 · ที่เหลือ 60 วันก่อน · เตือน [7, 1]
+  const actor = { role: diveOwner.role, unitAccess: [...diveOwner.unitAccess], permissions: { ...diveOwner.permissions }, userId: diveOwner.userId };
+  const changes: { key: string; scope: string; scopeId: string; value: unknown }[] = [];
+  const want = async (key: string, scope: "UNIT" | "PRODUCT", scopeId: string, make: (cur: unknown) => unknown) => {
+    const refs = scope === "UNIT" ? { unitId } : { unitId, productId: scopeId };
+    const r = await settings.resolveSetting({ tenantId }, key, refs);
+    const value = make(r.value);
+    if (r.source !== scope || canon(r.value) !== canon(value)) changes.push({ key, scope, scopeId: scope === "UNIT" ? unitId : scopeId, value });
+  };
+  await want("trips.parkFee.table", "UNIT", unitId, (cur) => ({ ...(cur && typeof cur === "object" ? cur : {}), shopRates: TRIPS_SEED_SHOP_PARK_RATES.map((x) => ({ ...x })) }));
+  await want("trips.msg.confirmation", "UNIT", unitId, () => ({ ...TRIPS_SEED_CONFIRMATION }));
+  const similan = tripProducts["similan-4-nights"];
+  if (!similan) throw new Error("seed T1.1: ไม่พบสินค้าสิมิลัน");
+  await want("trips.pay.depositPct", "PRODUCT", similan.productId, () => TRIPS_SEED_SIMILAN_PAY.depositPct);
+  await want("trips.pay.balanceDueDaysBefore", "PRODUCT", similan.productId, () => TRIPS_SEED_SIMILAN_PAY.balanceDueDaysBefore);
+  await want("trips.pay.reminderDaysBefore", "PRODUCT", similan.productId, () => [...TRIPS_SEED_SIMILAN_PAY.reminderDaysBefore]);
+  if (changes.length) {
+    bump(updated, "tripSettingsT11", changes.length);
+    const r = await settings.setSettings(actor, { tenantId }, changes, { ackLegalWarn: true });
+    if (!r.ok) throw new Error(`seed T1.1 setSettings: ${JSON.stringify(r)}`);
+  }
+  console.log(`T1.1: โซนรับส่ง ${TRIPS_SEED_PICKUP_ZONES.length} · ค่าตั้ง ${changes.length ? `เขียน ${changes.length}` : "ตรงแล้ว"}`);
+}
+// ── /T1.1 screens ──
 
 // ═══════════════ สรุป (ต้องเหมือนเดิมทุกตัวอักษรเมื่อรันซ้ำ) ═══════════════
 async function countsOf(tenantId: string) {
