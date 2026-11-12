@@ -258,13 +258,18 @@
       }
     },
     "kiosk": {
-      "prompt": "Enter your PIN, then tap Clock or Start break",
+      "prompt": "Enter your 4–6 digit PIN, then tap Clock or Start break",
       "clear": "Clear",
       "back": "Delete",
       "submit": "Clock",
       "breakStart": "Start break",
       "saving": "Saving…",
-      "entered": "PIN digits entered"
+      "entered": "PIN digits entered",
+      "pick": "Tap your name, then enter your PIN",
+      "change": "Change name",
+      "noPin": "No PIN yet",
+      "tap": "Tap to clock",
+      "empty": "No employees yet — add them on the “Employees” tab first"
     },
     "mobileClock": {
       "title": "Clock with your phone",

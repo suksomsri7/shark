@@ -2972,6 +2972,56 @@
   },
   {
    "page": "/app/sys/[id]/hr/kiosk",
+   "testid": "hr-kiosk-name-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/KioskClock.tsx",
+   "conditional": "จอหน้าร้าน (บัญชีที่มีคีย์ hr.attendance.clock)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "member",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-kiosk-pin (แป้น PIN ของชื่อที่เลือก)"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "รายชื่อในขอบเขตสาขาของบัญชีจอ (R2) · * = id พนักงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/kiosk",
+   "testid": "hr-kiosk-change",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/KioskClock.tsx",
+   "conditional": "หลังเลือกชื่อ",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "member",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "กลับหน้าเลือกชื่อ"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "เปลี่ยนชื่อ (ล้าง PIN)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/kiosk",
    "testid": "hr-kiosk-pin",
    "kind": "input",
    "interactive": false,
@@ -2992,7 +3042,7 @@
    },
    "wo": "H2.4",
    "oracle": "qc-hr-h2.4",
-   "note": "PIN ที่กดจากแป้นตัวเลข (ช่องซ่อน) — จอ v2 ไม่มีรายชื่อ"
+   "note": "PIN ที่กดจากแป้นตัวเลข (ช่องซ่อน) หลังเลือกชื่อ — H2.4 r2: จอ = ชื่อ + PIN"
   },
   {
    "page": "/app/sys/[id]/hr/kiosk",

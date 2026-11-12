@@ -143,3 +143,93 @@ Requested (NOT applied — each proven green on a scratch copy `scripts/zz-*.mts
 | qc-hr-lib.mts (H2.2 lib) · feeds qc-hr-h2.2 S7.2/S7.3 | both fixture lines (≈451 S8-fixture, ≈574 K-control) `published: true, publishedAt: FIX_TS` → `published: false` | same R4 collision (lifted copy of the h2.1 fixtures) · scratch qc-hr-h2.2 S7.2/S7.3 green |
 
 Not mine (lane-wrapper): `qc-hr-h0.5` S6.2/S6.4/S6.5/S6.7 — its backfill child is spawned through `scripts/qc4.sh` (hard-coded) ⇒ runs against QC4 with a lane tenant id ⇒ zeros. pin.ts untouched by H2.4. NB: that child process did connect to QC4 (dry-run + --apply with a tenant id that does not exist there ⇒ changed 0).
+
+## r2 (12 Nov)
+> One combined fix round after review (`hr-H2.4-review.md`, FIX FIRST) + hunt (`hr-H2.4-hunt.md`, FIX FIRST) · controller rulings R1–R7 + pre-approved ORACLE-EDITs (a)/(b) · `git merge origin/session/hr` = already up to date (no conflicts).
+
+### Rulings applied
+| ruling | where | what |
+|---|---|---|
+| R1 kiosk = name + PIN (Q8 overruled · brief Q8 line updated) | `pin.ts` · `clock.ts` · `actions.ts` · `KioskClock.tsx` · `ui.tsx` · `messages/{th,en}/common.json` (`hr.kiosk.pick/change/noPin/tap/empty`) · inventory (+`hr-kiosk-name-*`, `hr-kiosk-change`) | `pin.ts`: H0.5 limiter lifted verbatim out of `verifyPin` into `pinGate(tenantId, callerKey)` (count caller → count shop → refund on ok/no-pepper · wrong stays · `hr.pin.locked` once per window · `hr.pin.tenant_limited` once) — `verifyPin` behaviour unchanged. New `verifyPinOfEmployee({tenantId, systemId, employeeId, pin, callerKey, scope})` = `pinGate` around the H0.5 per-employee compare `verifyPinForEmployee` (hash · `timingSafeEqual` · legacy upgrade). `kioskClock(ctx, {employeeId, pin, callerKey, scope?, kind?})` builds callerKey = `<kiosk account key>:<employeeId>` ⇒ bucket `hr-verifypin:<t>:kiosk:<userId>:<employeeId>` 10 wrong / 10 min = per name per kiosk; shop bucket `hr-verifypin:<t>` 120/60 s unchanged; no in-memory / second DB limiter. Texts as before H2.4: wrong `PIN ไม่ถูกต้อง` · no PIN `<ชื่อ> ยังไม่มี PIN — ให้เจ้าของตั้งที่หน้าพนักงาน` · locked `ลองใหม่ในอีก N วินาที` · format/no-name pre-checks `ใส่ PIN 4-6 หลัก` / `เลือกชื่อของคุณก่อน` (not counted, as before) · deduped `เพิ่งลงเวลาเข้า/ออกไปเมื่อ hh:mm` restored (review m7). Not-found / inactive / other-system id ⇒ `PIN ไม่ถูกต้อง` (counted). `clockWithPin` unchanged (no limiter, legacy oracles only). |
+| R2 kiosk branch scope | `pin.ts` `verifyPinOfEmployee` · `actions.ts` · `ui.tsx` | scope = `hrScopeOf` of the kiosk session (`[]`/`*`/OWNER ⇒ all). Name list = `kioskRoster(ctx, scope)` (H1.1 `unitWhere`: home unit in the list, or a borrowing into the list covering today); the verifier counts the slot first, then refuses an id outside the same `unitWhere` with `PIN ไม่ถูกต้อง` (slot stays = counted like a wrong PIN). Multi-branch accounts now keep their limit (review MEDIUM-2 / hunt P1). |
+| R3 session linking | `clock.ts` `sessionOf` · `roster.ts` `moveEntry` + `reassignEntriesInTx` | see rule below. Writers: moving an entry to another day unlinks every attendance row linked to it; moving/reassigning it to another employee unlinks the other employees' rows (rows kept, `rosterEntryId = null`) ⇒ one entry never carries two people's rows. |
+| R4 open unlinked session | `clock.ts` `sessionOf` (`ADOPT_BEFORE_MIN = 360`) | see rule below |
+| R5 deviceId | `clock.ts` `mobileClock` + `purgeClockPrivacy` | stored only at `gpsRequired` sites; geo purge (>30 d) sets `lat/lng/accuracyM/deviceId = NULL` (WHERE includes `"deviceId" IS NOT NULL`) |
+| R6 purge indexes | `prisma/migrations/20261228000002_hr_clock_purge_idx/migration.sql` (new) | 2 partial indexes `("tenantId","at")` whose predicates equal the purge WHERE clauses; applied on the lane DB with `prisma migrate deploy` via qc-hr.sh ("All migrations have been successfully applied."); the two applied files untouched; no schema change ⇒ no generate |
+| R7 decisions | – | accepted as built. tx waits: clock 15 s/20 s, site/policy 15 s/20 s. Callers: hourly cron `maxDuration = 300` ✓; HR server actions/pages set **no** `maxDuration` (repo has none; `vercel.json` sets none) ⇒ platform default applies — same situation as every existing HR tx (leave/swap/payroll use 20 s/60 s), so 20 s is within the established bound but I cannot read the project's default from the repo (**unverified**). |
+
+### R3 + R4 — exact rule (`clock.ts` `sessionOf`, used by `clock` · `nextClockKind` · `myClockState`)
+1. Last row OUT / none ⇒ CLOSED. Otherwise the session's IN = the last row if it is IN, else the latest IN with `at ≤ last.at`.
+2. Last row linked ⇒ that entry is used only if `entry.employeeId === employee` **and** `entry.start − earlyInMin ≤ IN.at ≤ entry.end + closeGraceMin` (entry's current position). Then OPEN/ON_BREAK until `now ≥ end + closeGraceMin` (brief R3a, unchanged). Otherwise the session is treated as unlinked.
+3. Unlinked (or 2 failed) ⇒ adopt the employee's published entry (D−1..D+1 of IN's Bangkok day) with `start − 360 min ≤ IN.at < end` (nearest start, R4 tie-break). If `now < end + closeGraceMin` the session is OPEN/ON_BREAK and OUT/BREAK rows link to the adopted entry; the IN row keeps its snapshot (unlinked, its judgement). If the adopted window has expired, step 4 decides (adoption never closes a session earlier than before).
+4. No entry to adopt ⇒ calendar-day rule of brief R3b / Q3 (open while last row is on Bangkok day of now). Unrostered staff unchanged (h2.4 S2.7 green).
+Midnight end (`endMin 1440`) = window end next-day 00:00 ⇒ open until 04:00 with grace 240.
+
+Hunter timelines:
+- **HUNT-6 / S13.3** (earlyInMin 0, entry 16:00–24:00): 15:59 NEXT ⇒ IN unlinked (NO_SCHEDULE) · 00:30 NEXT ⇒ adopt (15:59 ∈ [10:00, 24:00)), 00:30 < 04:00 ⇒ **OUT** linked to the entry (was IN). A second employee: 15:59 IN · 04:01 NEXT ⇒ 04:01 ≥ 24:00 + 240 and different Bangkok day ⇒ IN.
+- **6c** (earlyInMin 120, entry 16–24): 13:59 IN unlinked (window opens 14:00) · 16:05 NEXT ⇒ adopt ⇒ OUT (now linked) · 00:10 NEXT ⇒ last OUT ⇒ CLOSED ⇒ IN (00:10 ≥ end ⇒ no link, NO_SCHEDULE). Same kinds as before.
+- **6e** (earlyInMin 0): 15:59 IN unlinked · 16:01 NEXT ⇒ adopt ⇒ OUT linked (was OUT unlinked).
+- **P2b / S13.1** (entry 09–17 moved 05-12 → 05-14 after A's linked IN): move unlinks A's IN; 05-13 09:00 NEXT ⇒ entry now on 05-14 ⇒ step 2 fails (and the row is unlinked anyway) ⇒ no adoptable entry ⇒ calendar rule, different day ⇒ **IN** (was OUT).
+- **P2a / S13.1** (A's linked IN, entry reassigned to B): move unlinks A's IN; A 17:05 ⇒ OUT unlinked (calendar rule); B 09:30 ⇒ IN linked ⇒ rows on the entry = B only (was A:IN, A:OUT, B:IN).
+
+### ORACLE-EDITs made (all pre-approved by the controller 12 Nov; every hunk marked `ORACLE-EDIT … r2`)
+| file | change |
+|---|---|
+| `scripts/qc-hr-h2.4.mts` | S1.6: `imps` dropped from the spread · S9.1: 10 → 8 lanes · kiosk group S6.1–S6.6 rewritten for R1/R2 (name + PIN, per-name bucket `kiosk:<uid>:<emp>`, lock + 1 `hr.pin.locked`, other name / other kiosk not locked, single-branch + forged id + other tenant ⇒ wrong & counted, break) + new S6.7 (name list scope + UI static) + S6.8 (shop bucket +1 per wrong name · H0.5 limits 10/120) · S9.2 call shape (`employeeId`, `scope`) · new S13.1–S13.4 (hunter P2, P1, P6, P3) · fixture PINs for the S6.7/S6.8 employees (added after the RED run — S6.8 had compared no-PIN names) |
+| `scripts/qc-hr-h2.1.mts` | S8 fixture loop: `published: false` (S8.1/S8.4) |
+| `scripts/qc-hr-lib.mts` | both fixture lines (451, 574): `published: false` (h2.2 S7.2/S7.3) |
+| `scripts/qc-hr-h0.3.mts` | S4.9 reads `hr/clock.ts` · S6.4 MODIFY (kiosk order dropped, `kioskClock(` required, in-memory + setpin parts unchanged) · S2.1/S2.2/S2.4 n/a (reviewer APPROVE) · **S2.5 not edited** · S4.4 passes unmodified (no edit) |
+| `scripts/qc-hr-attendance.mts` | KI-10 MODIFY: old hr-kiosk regex OR (`kioskClock(` in actions.ts AND `verifyPin*(` inside clock.ts `kioskClock`) |
+| `scripts/qc-hr-h1.2.mts` | S6.4 file list excludes exactly `hr/clock.ts`, `hr/clock-rules.ts`, `hr/clock-actions.ts` |
+
+RED proof (rewritten/new checks vs the r1 product, `hr-H2.4-r2-red.txt`): `passed 56/65 · failed S6.6 S6.2 S6.3 S6.4 S6.7 S13.1 S13.2 S13.3 S13.4 · Z1 clean` (S6.1/S6.5/S6.8 pass on r1 too — they do not discriminate PIN-only vs name+PIN; S1.6/S9.1 green after their edits).
+
+### Review MINOR items
+- fixed: m4 (= R5) · m7 (deduped kiosk text restored).
+- debts below: m1, m2, m3 (file not touched in r2), m5, m6.
+
+### Verification r2 (lane DB via qc-hr.sh · `env QC_H06_BASE=d350c26c… [QC_FORCE=1]`)
+| suite | exit | summary |
+|---|---|---|
+| qc-hr-h2.4 unforced | 0 | passed 65/65 · Z1 clean |
+| qc-hr-h2.4 forced ×2 | 0 / 0 | passed 65/65 ×2 · Z1 clean (`hr-H2.4-green.txt`) |
+| qc-hr-h0.3 | 1 | 36/37 — **S2.5 red** (see ruling request) · S4.4 green unmodified · S2.1/S2.2/S2.4 n/a · S4.9/S6.4 edited |
+| qc-hr-attendance | 0 | 31/31 (KI-10 edited) |
+| qc-hr-h1.2 | 0 | 73/73 |
+| qc-hr-h2.1 | 0 | 90/90 |
+| qc-hr-h2.2 | 0 | 60/60 |
+| qc-hr-h2.3 | 0 | 79/79 |
+| qc-hr-roster | 0 | 24/24 · CRITICAL 0 |
+| qc-hf-hr-privacy | 0 | 194/194 · CRITICAL 0 |
+| qc-nav-functions | 1 | HR 8/8 route · only S5 BOOKING (known) |
+| fitness ± env | 0 / 0 | 53/53 ×2 |
+| fitness-hr ± env | 0 / 0 | 9/9 ×2 |
+| typecheck (12 GB · gate lock) | 0 | 0 errors |
+Not run: qc-hr-h0.5 (child hard-wired to qc4.sh — controller runs it on QC4; `pin.ts` changed in r2: limiter extracted into `pinGate`, `verifyPin` logic unchanged, new `verifyPinOfEmployee`) · build/server/screenshots.
+
+### Needs a ruling — h0.3 S2.5 cannot pass under R1 as written
+S2.5 = 60 wrong PINs spread over 60 names of one system within a minute, then the 61st name with the right PIN must be refused. Under R1 the only shop-wide limit is H0.5's `hr-verifypin:<t>` = **120** wrong / 60 s (asserted at 120 by qc-hr-h0.5 S4.7/S9.3/S10.5/S10.6); the per-name buckets each hold 1 ⇒ the 61st (≈65 wrong in the window) passes. The pre-H2.4 kiosk had `hr-kiosk:sys` = 60/60 s. Options: (a) keep the old `hr-kiosk:sys:<t>:<sys>` 60/60 s bucket on the kiosk path only (breaks "H0.5 counters only"); (b) lower `VERIFY_PIN_LIMIT` to 60 (H0.5 change + ORACLE-EDIT on qc-hr-h0.5); (c) waive S2.5 citing h0.5 S4.7 (shop cap 120/min; each guess now tests one name, so ~1.2·10⁻² hits/min at 4 digits vs ~0.6·10⁻² before). Left red, not edited.
+
+### Debts (r2)
+| id | debt | owner |
+|---|---|---|
+| D-H24-pinonly | PIN-only kiosk — only once PINs are ≥ 6 digits | controller / later WO |
+| D-H24-adopt | adopted session (R4): the IN row keeps its unlinked snapshot (NO_SCHEDULE); H2.5 must count an adopted session as attendance of the entry | H2.5 |
+| D-H24-m1 | split shifts + forgotten OUT: arrival NEXT gives OUT when next start < old end + grace | H2.5 |
+| D-H24-m2 | `pos-seam.onShiftToday` maps BREAK_* last rows to null (POS NO_CLOCK_OUT) — seam frozen | POS lane |
+| D-H24-m3 | `canManageClockSettings` hand-rolls `permissions[...]` instead of `evaluate()` (gate itself accepted R7) | H2.10 |
+| D-H24-m5 | mobile refusal audit has no throttle (card unmounted) | H2.10 |
+| D-H24-m6 | `AppSystem.settings` read-modify-write serialised only against itself | H2.10 |
+| D-H24-scope | kiosk name list uses H1.1 `unitWhere` (home unit in list or borrowing into it today) — an employee homed u1 but loaned to u3 today still shows at a u1 kiosk | H2.10 (or ruling) |
+
+### Runbook (supersedes §2 "Prod runbook" items 3 and 5)
+1. **Migrate first, then deploy code.** `prisma migrate deploy` applies 20261228000000 → 000001 → **000002 (purge indexes)**. Pre-check SQL of §2 unchanged; add `SELECT count(*) FROM "HrAttendance";` — if large, first run manually (outside a transaction): `CREATE INDEX CONCURRENTLY IF NOT EXISTS "HrAttendance_purge_geo_idx" ON "HrAttendance" ("tenantId","at") WHERE ("lat" IS NOT NULL OR "lng" IS NOT NULL OR "accuracyM" IS NOT NULL OR "deviceId" IS NOT NULL);` and `CREATE INDEX CONCURRENTLY IF NOT EXISTS "HrAttendance_purge_photo_idx" ON "HrAttendance" ("tenantId","at") WHERE "photoKey" IS NOT NULL;` — 000002 is then a no-op (`IF NOT EXISTS`).
+2. Kiosk is **unchanged for shops** (name + PIN) plus a "เริ่มพัก" button; nothing to announce except breaks. Wrong PIN 10× in 10 min locks that name on that tablet only (audit `hr.pin.locked`, callerKey `kiosk:<user>:<employee>`).
+3. Rollback: old code ignores the indexes too.
+
+### Screenshot guide (CONTROLLER-RUN · replaces §5 kiosk bullet)
+- `/app/sys/<id>/hr/kiosk` as `kiosk`: name grid (`hr-kiosk-name-<employeeId>`, "ยังไม่มี PIN" sub-line for staff without PIN) → tap a name → PIN pad (`hr-kiosk-pin`), `hr-kiosk-change` "เปลี่ยนชื่อ", `hr-kiosk-submit` "ลงเวลา" + `hr-kiosk-break` "เริ่มพัก". States: idle grid · after wrong PIN (`hr-kiosk-error` "PIN ไม่ถูกต้อง") · after a good PIN (`hr-kiosk-result`, back to the grid) · locked name ("ลองใหม่ในอีก N วินาที"). As `manager-branch`: grid shows only that branch's staff.
+- `/app/sys/<id>/hr/settings` as `owner`: unchanged from §5 (card "ลงเวลา": `hr-settings-clock-policy` earlyInMin 120 / closeGraceMin 240 · rows `hr-clock-site-all` + per branch · PDPA tick).
+
+### §F self-check (r2 delta)
+- [x] F.2 roster detach + clock reads use the tx client only · [x] F.3 kiosk scope `[]`/`*` = all, explicit list refused with the wrong-PIN text (no unit id) · [x] F.4 refusals = fixed texts (S11.3 green) · [x] F.5 tx options unchanged (R7 note) · [x] F.6 runbook migrate-first incl. 000002 · [x] F.7/F.8 PIN path: count first, refund on success, one limiter set (H0.5) · [x] F.10 r2 files ⊆ r1 list + `pin.ts` (R1 names it) + 1 migration

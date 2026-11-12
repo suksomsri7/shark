@@ -605,7 +605,7 @@ async function runDb(): Promise<void> {
     // published roster rows that contradict "no template" (incl. today) — clock() must keep judging NO_SCHEDULE
     const shD = await P.hrShift.create({ data: { tenantId: TD, systemId: sD.id, name: "กะดีเช้า", startMin: 420, endMin: 900 } });
     for (const [emp, day] of [[D1, today], [D2, today], [D1, "2030-03-04"], [D2, "2030-03-05"], [D3, "2030-03-04"], [D1, "2030-03-12"]] as [string, string][]) {
-      await P.hrRosterEntry.create({ data: { tenantId: TD, systemId: sD.id, employeeId: emp, date: dbDate(day), shiftId: shD.id, unitId: du1, startMin: 420, endMin: 900, breakMin: 0, crossesMidnight: false, published: true, publishedAt: FIX_TS, source: "MANUAL" } });
+      await P.hrRosterEntry.create({ data: { tenantId: TD, systemId: sD.id, employeeId: emp, date: dbDate(day), shiftId: shD.id, unitId: du1, startMin: 420, endMin: 900, breakMin: 0, crossesMidnight: false, published: false, source: "MANUAL" } }); // ORACLE-EDIT H2.4 r2 (controller 12 Nov): unpublished — R4 links published rows
     }
   }
   const attIds: string[] = [];

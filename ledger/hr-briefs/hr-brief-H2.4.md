@@ -71,7 +71,7 @@ Q4 Photo capture [deferred: `photoRequired` can only be false (sPhoto); retentio
 Q5 Where staff see the mobile button before H2.10 [component + actions ship, not mounted; H2.10 mounts in "ของฉัน"; visual 390 in H2.10].
 Q6 Retention hook in the hourly cron [yes, one marked hunk].
 Q7 Plausible forged coordinates are undetectable [accepted; accuracy + radius only].
-Q8 Kiosk drops name-pick [yes; PIN unique per tenant (H0.5) identifies the person].
+Q8 Kiosk drops name-pick [yes; PIN unique per tenant (H0.5) identifies the person]. **OVERRULED 12 Nov (controller r2 R1): kiosk = name + PIN again — PIN verified against the chosen employee only (pin.ts H0.5 path), H0.5 buckets only with callerKey = kiosk account + employee (per-name lock), shop-wide bucket unchanged, refusal texts as before H2.4; name list + forged ids limited to the kiosk account's branch scope (R2). PIN-only = debt D-H24-pinonly (only with ≥6-digit PINs).**
 Q9 Events [none in H2.4; H2.5 adds late/absent].
 Q10 POS `workedMinutesBetween` subtracts breaks [no — `rules.ts` FREEZE; H2.5 uses `workedMinutesWithBreaks`].
 Q11 Employee PDPA notice [a UI line on the mobile card; no per-employee acceptance column].

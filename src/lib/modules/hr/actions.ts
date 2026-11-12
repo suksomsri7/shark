@@ -25,7 +25,7 @@ import {
   updateEmployee,
   type Ctx,
 } from "./service";
-import { kioskClock } from "./clock"; // HR H2.4 ▸ R9 kiosk v2 (PIN อย่างเดียว) ◂
+import { kioskClock } from "./clock"; // HR H2.4 ▸ R9 kiosk · r2 ▸ R1 ชื่อ + PIN ◂
 import { employeeProfileInputFromForm, hrViewerOf } from "./privacy";
 // HR H1.1 ▸ R5 ขอบเขตสาขาของผู้กด — สาขาของเป้าหมายอ่านจากแถวใน DB เสมอ (ไม่เชื่อฟอร์ม) ◂
 import {
@@ -320,28 +320,35 @@ export type KioskState =
 
 /**
  * พนักงานกดลงเวลาเองบนจอ kiosk (หน้านี้เปิดค้างด้วยเซสชันของร้าน)
- * HR H2.4 ▸ R9 kiosk v2: PIN อย่างเดียว → kioskClock (verifyPin ของ H0.5 + ถังจำกัดของ H0.5 เท่านั้น — ถังชุดเดิมของจอนี้เลิกใช้)
- *   callerKey = kiosk:<user id ของบัญชีที่เปิดจอ> (เซิร์ฟเวอร์เป็นคนได้มา — ไม่รับจากฟอร์ม) · สาขาของเครื่อง = สาขาเดียวของบัญชีนั้น
- *   (บัญชีที่คุมหลายสาขา/ทุกสาขา = ไม่ระบุสาขา) · ปุ่ม: ลงเวลา (NEXT) / เริ่มพัก (BREAK_START) ◂
+ * HR H2.4 r2 ▸ R1/R2 (มติผู้คุม 12 พ.ย. — กลับทาง Q8): เลือกชื่อ + PIN แบบเดิมของร้าน → kioskClock
+ *   PIN เทียบกับคนที่เลือกคนเดียว (pin.ts) · ตัวจำกัด = ถังของ H0.5 ชุดเดียว (ผู้เรียก = kiosk:<user id ของบัญชีจอ>:<ชื่อที่เลือก> ·
+ *   เซิร์ฟเวอร์ประกอบเอง ไม่รับจากฟอร์ม · ผิด 10 ครั้ง/10 นาที ล็อกชื่อนั้นที่จอนี้ · ถังร้านคงเดิม) — ไม่มีตัวจำกัดชุดที่สอง
+ *   ขอบเขตสาขา = hrScopeOf ของบัญชีจอ (ชุดเดียวกับรายชื่อบนจอ) · ชื่อนอกขอบเขต/ปลอม = "PIN ไม่ถูกต้อง" นับเหมือนผิด
+ *   ปุ่ม: ลงเวลา (NEXT) / เริ่มพัก (BREAK_START) ◂
  */
 const KIOSK_KIND_TEXT: Record<string, string> = { IN: "เข้างาน", OUT: "ออกงาน", BREAK_START: "เริ่มพัก", BREAK_END: "กลับจากพัก" };
 export async function kioskClockAction(systemId: string, _prev: KioskState, formData: FormData): Promise<KioskState> {
   const auth = await requireTenant();
-  // ทุกสาขา: ด่านคีย์ระดับร้าน — สาขาของพนักงานตรวจใน verifyPin (unitId ของเครื่อง)
+  // ทุกสาขา: ด่านคีย์ระดับร้าน — สาขาของพนักงานตรวจใน kioskClock (ขอบเขตของบัญชีจอ)
   assertHrCan(auth, "hr.attendance.clock");
+  const employeeId = String(formData.get("employeeId") ?? "");
   const pin = String(formData.get("pin") ?? "");
+  if (!employeeId) return { status: "error", message: "เลือกชื่อของคุณก่อน" };
   if (!/^\d{4,6}$/.test(pin.trim())) return { status: "error", message: "ใส่ PIN 4-6 หลัก" };
   const kind = String(formData.get("kind") ?? "") === "BREAK_START" ? "BREAK_START" : "NEXT";
-  const ua = memberOf(auth).unitAccess;
-  const unitId = ua.length === 1 && ua[0] !== "*" ? ua[0]! : null;
-  const res = await kioskClock({ tenantId: auth.active.tenantId, systemId }, { pin, callerKey: `kiosk:${auth.user.id}`, unitId, kind });
+  const res = await kioskClock(
+    { tenantId: auth.active.tenantId, systemId },
+    { employeeId, pin, callerKey: `kiosk:${auth.user.id}`, scope: hrScopeOf(memberOf(auth)), kind },
+  );
   if (!res.ok) return { status: "error", message: res.reason };
   revalidatePath(`/app/sys/${systemId}/hr/attendance`);
   const time = new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }).format(res.at);
   const what = KIOSK_KIND_TEXT[res.kind] ?? "ลงเวลา";
   // HR H0.3 ▸ แตะซ้ำภายใน 60 วินาที = ไม่บันทึกเพิ่ม · บอกว่าลงไว้แล้ว (ไม่กลายเป็นออกงาน) ◂
   if (res.deduped) {
-    return { status: "ok", message: `${res.employeeName} · เพิ่ง${what}ไปเมื่อ ${time}`, detail: "บันทึกไว้แล้ว ไม่ต้องกดซ้ำ" };
+    // ข้อความเดิมก่อน H2.4 สำหรับเข้า/ออก ("เพิ่งลงเวลาเข้า/ออกไปเมื่อ") · พัก = "เพิ่งเริ่มพัก/กลับจากพักไปเมื่อ"
+    const again = res.kind === "IN" || res.kind === "OUT" ? `ลงเวลา${res.kind === "IN" ? "เข้า" : "ออก"}` : what;
+    return { status: "ok", message: `${res.employeeName} · เพิ่ง${again}ไปเมื่อ ${time}`, detail: "บันทึกไว้แล้ว ไม่ต้องกดซ้ำ" };
   }
   const detail =
     res.judgement === "LATE"

@@ -21,7 +21,7 @@ import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
 import { checkRateLimitDb, refundRateLimitDb } from "@/lib/core/rate-limit-db"; // HR H0.5 r4 ▸ R4.1 นับก่อน + คืนช่อง (แทน peek ของ r3) ◂
 import { logOps } from "@/lib/core/ops";
-import { bkkDay } from "./scope"; // HR H1.1 ▸ วันนี้ตามเวลาไทย (รูป @db.Date) ◂
+import { bkkDay, unitWhere, type HrScope } from "./scope"; // HR H1.1 ▸ วันนี้ตามเวลาไทย (รูป @db.Date) ◂ · HR H2.4 r2 ▸ R2 ขอบเขตสาขาของจอ kiosk ◂
 
 export type PinCtx = { tenantId: string; systemId: string };
 
@@ -37,7 +37,7 @@ const noPinText = (name: string) => `${name} ยังไม่มี PIN — �
 const limitedText = (sec: number | undefined) => `ลองใหม่ในอีก ${sec ?? 60} วินาที`;
 
 const PIN_RE = /^\d{4,6}$/;
-/** ถังจำกัดของ verifyPin ต่อร้าน (เพิ่มจากตัวจำกัดของผู้เรียก เช่น kiosk 5/60 s ต่อคน · 60/60 s ต่อระบบ) */
+/** ถังจำกัดของ verifyPin ต่อร้าน (เพิ่มจากถังต่อผู้เรียก · จอ kiosk ใช้ถังชุดนี้ด้วย — HR H2.4 r2) */
 export const VERIFY_PIN_LIMIT = { limit: 120, windowMs: 60_000 } as const;
 // HR H0.5 r3 ▸ R3.1 ถังต่อผู้เรียก (hr-verifypin:<tenantId>:<callerKey>) — ผิด 10 ครั้ง / 10 นาที = ล็อกผู้เรียกนั้น (hunt F1/F3)
 //   ทั้งสองถังนับ "เฉพาะครั้งที่ผิด" — ยืนยันถูกไม่กินโควตา (คนใส่ PIN ถูกทั้งวันไม่โดนล็อก · ขยะของเครื่องหนึ่งไม่ทำให้ PIN ถูกของทั้งร้านใช้ไม่ได้) ◂
@@ -166,32 +166,11 @@ export type VerifyPinOk = { ok: true; employeeId: string; systemId: string; user
 export type VerifyPinFail = { ok: false; reason: string };
 export type VerifyPinResult = VerifyPinOk | VerifyPinFail;
 
-/**
- * contract C-8 — "PIN นี้เป็นของพนักงานคนไหนในร้าน" (POS P1.15 เรียกผ่าน hr/index.ts)
- * คืน id เท่านั้น (ไม่มีชื่อ/ตำแหน่ง/hash) · ผิด / รูปแบบผิด / คนพ้นสภาพ / อีกร้าน = ข้อความเดียว "PIN ไม่ถูกต้อง"
- * HR H0.5 r4 ▸ R4.1–R4.4 ตัวจำกัด 2 ถัง "นับก่อนค้น แล้วคืนช่อง" (ตัวจำกัดล่ม = ปล่อยผ่าน เหมือน H0.3):
- *   ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10 / 10 นาที · ร้าน hr-verifypin:<tenantId> 120 / 60 s
- *   1) callerKey ว่าง / ไม่ตรง CALLER_KEY_RE ⇒ ผิดทันที (ไม่แตะ DB ไม่มีถัง ไม่มี OpsEvent ไม่มี audit)
- *   2) นับถังผู้เรียกก่อน แล้วถังร้าน (ลำดับตายตัว · แต่ละถัง = คำสั่ง atomic เดียว) — ถังใดเกินเพดาน ⇒ คืนช่องที่เพิ่งนับ
- *      (ทุกการคืน = count − 1 เมื่อ count > 0 ในหน้าต่างเดิม · HR H0.5 r5 ▸ R1 ไม่มีเงื่อนไขเพดานแล้ว ◂) แล้วตอบ "ลองใหม่ในอีก N วินาที"
- *      ⇒ ยิงพร้อมกันกี่ครั้งก็ผ่านถึงการเทียบได้ไม่เกินเพดาน (hunt G1) และครั้งที่ถูกปฏิเสธไม่กินโควตา
- *   3) ผ่านทั้งสองถังเท่านั้นจึงค้น · ถูก / ระบบไม่มี pepper ⇒ คืนช่องทั้งสองถัง (count > 0) ⇒ ทั้งสองถังนับเฉพาะครั้งที่ผิด
- *   4) ครั้งที่ผิดที่ถังผู้เรียกนับได้เท่าเพดานพอดี (10) และยังไม่มี hr.pin.locked ของ callerKey นี้ตั้งแต่ต้นหน้าต่าง ⇒ audit 1 แถว
- *      (ตรวจซ้ำเพราะการคืนช่องทำให้ค่า 10 เกิดซ้ำได้ในหน้าต่างเดียว)
- *   5) ครั้งที่ผิดที่ถังร้านนับได้ 120 พอดี (ซ้ำแบบเดียวกัน) ⇒ audit hr.pin.tenant_limited 1 แถว + OpsEvent WARN ของร้าน 1 แถว
- *      (ไม่มี callerKey / PIN / id พนักงาน) · ครั้งที่ถูกปฏิเสธไม่เขียนอะไร
- *   ช่องว่างที่รู้: ระหว่าง burst ช่องของคำขอที่ถูกยังค้างอยู่จนคืน ⇒ คำขอผิดที่มาพร้อมกันอาจถูกปฏิเสธเร็วกว่าที่ควร (เข้มขึ้น ไม่รั่ว) ◂
- * ลำดับ: หาด้วย hash ก่อน · ไม่เจอเท่านั้นจึงลองทางเก่า (HR H0.5 r3 ▸ R3.5 ครั้งละ 1 คำสั่งครอบทุกระบบ HR ของร้าน ไม่ใช่ 1 คำสั่งต่อระบบ ◂)
- * ทางเก่า: แถว pinCode ตรง (ยังไม่มี hash) **แถวเดียว** ในร้าน ⇒ ยืนยัน + อัปเกรดเป็น hash · ตรงหลายแถว = ไม่ยืนยัน (ต้องตั้งใหม่)
- * เฉพาะระบบ HR ที่ active (≤ 50) — ระบบที่ปิดแล้ว พนักงานในนั้นยืนยันระดับร้านไม่ได้ (kiosk ยังเป็นต่อระบบ ไม่กระทบ)
- */
-export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult> {
-  const wrong: VerifyPinFail = { ok: false, reason: PIN_TEXT.wrong };
-  const tenantId = String(input?.tenantId ?? "");
-  if (!tenantId) return wrong;
-  // HR H0.5 r4 ▸ R4.2 ผู้เรียกต้องมีและตรงรูปแบบ — ไม่ตรง = ผิดทันที ไม่นับ ไม่สร้างแถวถัง ไม่มี OpsEvent/audit ◂
-  const callerKey = String(input?.callerKey ?? "").trim();
-  if (!CALLER_KEY_RE.test(callerKey)) return wrong;
+// HR H2.4 r2 ▸ R1 ตัวจำกัดของ H0.5 แยกเป็นฟังก์ชันเดียว (ตัวเดิมของ verifyPin ทุกบรรทัด) — verifyPin และ verifyPinOfEmployee (kiosk ชื่อ + PIN)
+//   ใช้ถังชุดเดียวกัน: ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10 ผิด/10 นาที · ร้าน hr-verifypin:<tenantId> 120 ผิด/60 s ·
+//   นับก่อนค้น · ถูก/ไม่มี pepper = คืนช่อง · ผิด = ค้าง + audit hr.pin.locked ครั้งเดียวต่อหน้าต่าง (ไม่มีตัวจำกัดชุดที่สอง) ◂
+type PinGate = { release: () => Promise<void>; failed: (reason?: string) => Promise<VerifyPinFail> };
+async function pinGate(tenantId: string, callerKey: string): Promise<PinGate | VerifyPinFail> {
   const tenantKey = `hr-verifypin:${tenantId}`;
   const callerBucket = `${tenantKey}:${callerKey}`;
   // HR H0.5 r4 ▸ R4.1 นับก่อนค้น: ผู้เรียกก่อน แล้วร้าน · ถังที่ปฏิเสธคืนช่องของตัวเอง + คืนช่องผู้เรียกที่ผ่านไปแล้ว ◂
@@ -229,7 +208,7 @@ export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult>
       select: { id: true },
     }));
   // ครั้งที่ผิด: ช่องที่นับไว้ค้างอยู่ (ไม่คืน) · ถึงเพดานพอดี ⇒ audit (ครั้งเดียวต่อหน้าต่าง) — payload = ตัวเลข (+ callerKey เฉพาะ locked) ไม่มี PIN / hash / id พนักงาน
-  const failed = async (): Promise<VerifyPinFail> => {
+  const failed = async (reason: string = PIN_TEXT.wrong): Promise<VerifyPinFail> => {
     if (vC.count === VERIFY_PIN_CALLER_LIMIT.limit && !(await auditedSince("hr.pin.locked", vC.windowStart, callerKey))) {
       await writeAudit({
         tenantId,
@@ -253,8 +232,41 @@ export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult>
       });
       await logOps("WARN", "hr-verifypin", `ยืนยัน PIN ผิดครบ ${vT.count} ครั้งใน ${windowSec} วินาที — พักการยืนยัน PIN ของร้านชั่วคราว`, { tenantId }).catch(() => {});
     }
-    return wrong;
+    return { ok: false, reason };
   };
+  return { release, failed };
+}
+
+/**
+ * contract C-8 — "PIN นี้เป็นของพนักงานคนไหนในร้าน" (POS P1.15 เรียกผ่าน hr/index.ts)
+ * คืน id เท่านั้น (ไม่มีชื่อ/ตำแหน่ง/hash) · ผิด / รูปแบบผิด / คนพ้นสภาพ / อีกร้าน = ข้อความเดียว "PIN ไม่ถูกต้อง"
+ * HR H0.5 r4 ▸ R4.1–R4.4 ตัวจำกัด 2 ถัง "นับก่อนค้น แล้วคืนช่อง" (ตัวจำกัดล่ม = ปล่อยผ่าน เหมือน H0.3):
+ *   ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10 / 10 นาที · ร้าน hr-verifypin:<tenantId> 120 / 60 s
+ *   1) callerKey ว่าง / ไม่ตรง CALLER_KEY_RE ⇒ ผิดทันที (ไม่แตะ DB ไม่มีถัง ไม่มี OpsEvent ไม่มี audit)
+ *   2) นับถังผู้เรียกก่อน แล้วถังร้าน (ลำดับตายตัว · แต่ละถัง = คำสั่ง atomic เดียว) — ถังใดเกินเพดาน ⇒ คืนช่องที่เพิ่งนับ
+ *      (ทุกการคืน = count − 1 เมื่อ count > 0 ในหน้าต่างเดิม · HR H0.5 r5 ▸ R1 ไม่มีเงื่อนไขเพดานแล้ว ◂) แล้วตอบ "ลองใหม่ในอีก N วินาที"
+ *      ⇒ ยิงพร้อมกันกี่ครั้งก็ผ่านถึงการเทียบได้ไม่เกินเพดาน (hunt G1) และครั้งที่ถูกปฏิเสธไม่กินโควตา
+ *   3) ผ่านทั้งสองถังเท่านั้นจึงค้น · ถูก / ระบบไม่มี pepper ⇒ คืนช่องทั้งสองถัง (count > 0) ⇒ ทั้งสองถังนับเฉพาะครั้งที่ผิด
+ *   4) ครั้งที่ผิดที่ถังผู้เรียกนับได้เท่าเพดานพอดี (10) และยังไม่มี hr.pin.locked ของ callerKey นี้ตั้งแต่ต้นหน้าต่าง ⇒ audit 1 แถว
+ *      (ตรวจซ้ำเพราะการคืนช่องทำให้ค่า 10 เกิดซ้ำได้ในหน้าต่างเดียว)
+ *   5) ครั้งที่ผิดที่ถังร้านนับได้ 120 พอดี (ซ้ำแบบเดียวกัน) ⇒ audit hr.pin.tenant_limited 1 แถว + OpsEvent WARN ของร้าน 1 แถว
+ *      (ไม่มี callerKey / PIN / id พนักงาน) · ครั้งที่ถูกปฏิเสธไม่เขียนอะไร
+ *   ช่องว่างที่รู้: ระหว่าง burst ช่องของคำขอที่ถูกยังค้างอยู่จนคืน ⇒ คำขอผิดที่มาพร้อมกันอาจถูกปฏิเสธเร็วกว่าที่ควร (เข้มขึ้น ไม่รั่ว) ◂
+ * ลำดับ: หาด้วย hash ก่อน · ไม่เจอเท่านั้นจึงลองทางเก่า (HR H0.5 r3 ▸ R3.5 ครั้งละ 1 คำสั่งครอบทุกระบบ HR ของร้าน ไม่ใช่ 1 คำสั่งต่อระบบ ◂)
+ * ทางเก่า: แถว pinCode ตรง (ยังไม่มี hash) **แถวเดียว** ในร้าน ⇒ ยืนยัน + อัปเกรดเป็น hash · ตรงหลายแถว = ไม่ยืนยัน (ต้องตั้งใหม่)
+ * เฉพาะระบบ HR ที่ active (≤ 50) — ระบบที่ปิดแล้ว พนักงานในนั้นยืนยันระดับร้านไม่ได้ (kiosk ยังเป็นต่อระบบ ไม่กระทบ)
+ */
+export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult> {
+  const wrong: VerifyPinFail = { ok: false, reason: PIN_TEXT.wrong };
+  const tenantId = String(input?.tenantId ?? "");
+  if (!tenantId) return wrong;
+  // HR H0.5 r4 ▸ R4.2 ผู้เรียกต้องมีและตรงรูปแบบ — ไม่ตรง = ผิดทันที ไม่นับ ไม่สร้างแถวถัง ไม่มี OpsEvent/audit ◂
+  const callerKey = String(input?.callerKey ?? "").trim();
+  if (!CALLER_KEY_RE.test(callerKey)) return wrong;
+  const gate = await pinGate(tenantId, callerKey);
+  if (!("release" in gate)) return gate;
+  const { release, failed } = gate;
+  const db = tenantDb({ tenantId });
   const pin = String(input?.pin ?? "").trim();
   if (!PIN_RE.test(pin)) {
     hashEquals(null, DUMMY_HASH.toString("hex"));
@@ -351,7 +363,7 @@ export type VerifyForEmployeeResult = { ok: true; employeeId: string; name: stri
  * ข้อความเดิมของ kiosk: ไม่พบ / "<ชื่อ> ยังไม่มี PIN — …" / "PIN ไม่ถูกต้อง"
  * ทางเก่า: แถวตัวเปล่าตรง ⇒ ยืนยัน + พยายามอัปเกรดในที่ · ชนดัชนี (อีกคนถือ PIN เดียวกันเป็น hash แล้ว) ⇒ ข้ามการอัปเกรดเงียบ ๆ
  *   (logOps WARN มีแต่ id) แต่ยังยืนยัน — ชื่อถูกเลือกบนจออยู่แล้ว (มติผู้คุมงาน H0.5 F-1(c)) · backfill ล้างแถวซ้ำแบบนี้ที่ขั้น 2 ของ rollout
- * ตัวจำกัดอยู่ที่ kioskClockAction (H0.3: 5/60 s ต่อคน · 60/60 s ต่อระบบ)
+ * ตัวจำกัด: จอ kiosk เรียกผ่าน verifyPinOfEmployee (ถัง H0.5 · HR H2.4 r2) · clockWithPin เรียกตรง = ไม่มีตัวจำกัด (ข้อสอบ/งานภายในเท่านั้น)
  */
 export async function verifyPinForEmployee(ctx: PinCtx, employeeId: string, pin: string): Promise<VerifyForEmployeeResult> {
   const db = tenantDb(ctx);
@@ -389,6 +401,61 @@ export async function verifyPinForEmployee(ctx: PinCtx, employeeId: string, pin:
   }
   return { ok: true, employeeId: row.id, name: row.name };
 }
+
+// HR H2.4 r2 ▸ R1/R2 จอหน้าร้าน = เลือกชื่อ + PIN (มติผู้คุม 12 พ.ย. — กลับทาง Q8) ──────────────────────────────
+export type VerifyEmployeePinInput = {
+  tenantId: string;
+  systemId: string;
+  /** ชื่อที่พนักงานแตะบนจอ (มาจากฟอร์ม — ไม่เชื่อ: ต้องอยู่ในระบบนี้ · ยังทำงาน · ในขอบเขตสาขาของจอ) */
+  employeeId: string;
+  pin: string;
+  /** ผู้เรียก = บัญชีจอ + ชื่อที่เลือก (ผู้เรียกประกอบฝั่งเซิร์ฟเวอร์) ⇒ ผิด 10 ครั้ง ล็อก "ชื่อนี้ที่จอนี้" ไม่ใช่ทั้งแท็บเล็ต */
+  callerKey: string;
+  /** ขอบเขตสาขาของบัญชีจอ (hrScopeOf) — "*" = ทุกสาขา · รายการ = คนที่สาขาประจำ/ยืมตัววันนี้อยู่ในรายการ (unitWhere เดียวกับรายชื่อบนจอ) */
+  scope?: HrScope | null;
+};
+/**
+ * kiosk ชื่อ + PIN — เทียบ PIN กับ "คนที่เลือกคนเดียว" ด้วยทางเดิมของ H0.5 (verifyPinForEmployee: hash · timingSafeEqual · ทางเก่าอัปเกรดในที่)
+ * ครอบด้วยตัวจำกัดของ H0.5 ชุดเดียว (pinGate: นับก่อนเทียบ · ถูก = คืนช่อง · ผิด = ค้าง · hr.pin.locked ครั้งเดียวต่อการล็อก · ถังร้านคงเดิม)
+ * ข้อความ = ของจอเดิมก่อน H2.4: ผิด "PIN ไม่ถูกต้อง" · ไม่มี PIN "<ชื่อ> ยังไม่มี PIN — …" · ล็อก "ลองใหม่ในอีก N วินาที"
+ * ชื่อที่ไม่พบ / พ้นสภาพ / อีกระบบ / นอกขอบเขตสาขาของจอ (ปลอม employeeId) ⇒ "PIN ไม่ถูกต้อง" และนับเหมือน PIN ผิด
+ */
+export async function verifyPinOfEmployee(input: VerifyEmployeePinInput): Promise<VerifyForEmployeeResult> {
+  const wrong = { ok: false as const, reason: PIN_TEXT.wrong };
+  const tenantId = String(input?.tenantId ?? "");
+  const systemId = String(input?.systemId ?? "");
+  const employeeId = String(input?.employeeId ?? "").trim();
+  if (!tenantId || !systemId || !employeeId) return wrong;
+  const callerKey = String(input?.callerKey ?? "").trim();
+  if (!CALLER_KEY_RE.test(callerKey)) return wrong; // แบบ verifyPin R4.2 — ไม่นับ ไม่สร้างถัง
+  const gate = await pinGate(tenantId, callerKey);
+  if (!("release" in gate)) return gate;
+  const ctx: PinCtx = { tenantId, systemId };
+  try {
+    const scope = input?.scope ?? null;
+    if (scope && scope.unitIds !== "*") {
+      const inScope = await tenantDb(ctx).hrEmployee.count({ where: { id: employeeId, ...unitWhere(scope) } });
+      if (inScope !== 1) {
+        hashEquals(null, DUMMY_HASH.toString("hex"));
+        return gate.failed();
+      }
+    }
+    const v = await verifyPinForEmployee(ctx, employeeId, input?.pin ?? "");
+    if (v.ok) {
+      await gate.release();
+      return v;
+    }
+    if (v.reason === PIN_TEXT.notConfigured) {
+      await gate.release();
+      return v;
+    }
+    return gate.failed(v.reason === PIN_TEXT.notFound ? PIN_TEXT.wrong : v.reason);
+  } catch (e) {
+    await gate.release();
+    throw e;
+  }
+}
+// ◂ HR H2.4 r2
 
 /**
  * กลับมาทำงาน (active = true) โดยไม่ล้มเพราะ PIN — คนพ้นสภาพไม่อยู่ในดัชนี ระหว่างนั้นคนอื่นอาจตั้ง PIN เดียวกันไปแล้ว

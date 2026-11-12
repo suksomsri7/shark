@@ -543,6 +543,14 @@ export async function moveEntry(ctx: Ctx, viewer: RosterViewer, entryId: string,
         data: { employeeId, date: dbDate(day), shiftId: shift.id, unitId, ...times, ...(shiftChanged ? { timesOverridden: false } : {}) /* HR H2.4 ▸ R13 เปลี่ยนกะ = เวลาตามกะ ◂ */, source: "MANUAL", published: false },
       });
       if (res.count !== 1) throw new RosterRefusal(ROSTER_TEXT.entryNotFound);
+      // HR H2.4 r2 ▸ R3 ย้ายวัน ⇒ ปลดแถวลงเวลาที่ผูกกะนี้ทั้งหมด (เข้างานของวันเดิมไม่ใช่ของวันใหม่) · ย้ายคน ⇒ ปลดแถวของคนอื่น
+      //   (กะหนึ่งไม่มีแถวลงเวลาของสองคน — hunt P2) · แถวยังอยู่ครบ แค่ rosterEntryId = null ◂
+      if (day !== oldDay || employeeId !== row.employeeId) {
+        await tx.hrAttendance.updateMany({
+          where: { tenantId: ctx.tenantId, systemId: ctx.systemId, rosterEntryId: row.id, ...(day !== oldDay ? {} : { employeeId: { not: employeeId } }) },
+          data: { rosterEntryId: null },
+        });
+      }
       // HR H2.3 ▸ Q16 (มติผู้คุม 22 ต.ค.): แถวนี้เป็นกะต้นทาง/ปลายทางของคำขอสลับที่ยังเปิด ⇒ ยกเลิกคำขอ + คำขออนุมัติในธุรกรรมนี้ (ใต้ล็อกตารางกะเดิม)
       swapsCancelled = await cancelOpenSwapsInTx(tx, ctx, row.id);
       // ◂ HR H2.3
@@ -1098,6 +1106,11 @@ export async function reassignEntriesInTx(
         await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT hr_h23_reassign");
         return { ok: false, code: "ENTRY_CHANGED" };
       }
+      // HR H2.4 r2 ▸ R3 เปลี่ยนเจ้าของกะ ⇒ ปลดแถวลงเวลาของคนอื่นที่ผูกกะนี้ (hunt P2) ◂
+      await tx.hrAttendance.updateMany({
+        where: { tenantId: ctx.tenantId, systemId: ctx.systemId, rosterEntryId: m.entryId, employeeId: { not: m.toEmployeeId } },
+        data: { rosterEntryId: null },
+      });
     }
   } catch (e) {
     if (!isUniqueViolation(e)) throw e;

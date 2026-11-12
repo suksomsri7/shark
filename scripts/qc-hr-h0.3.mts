@@ -137,11 +137,13 @@ function runStatic(): void {
 
   // S4.9 — clock อยู่ในธุรกรรมเดียวพร้อม advisory lock
   const svc = rd(SERVICE_FILE);
-  const clockFn = block(svc, "export async function clock(");
+  // ORACLE-EDIT H2.4 r2 (controller 12 Nov · S4.9 APPROVED): clock() moved to hr/clock.ts (service.ts re-exports it)
+  const clockSrc = existsSync(join(ROOT, "src/lib/modules/hr/clock.ts")) ? rd("src/lib/modules/hr/clock.ts") : svc;
+  const clockFn = block(clockSrc, "export async function clock(");
   const s49 = {
     tx: /tenantDb\(ctx\)\.\$transaction\(/.test(clockFn) || /\.\$transaction\(/.test(clockFn),
     lock: clockFn.includes("pg_advisory_xact_lock") && clockFn.includes("hashtextextended") && clockFn.includes("hr:clock:"),
-    dedupe: /CLOCK_DEDUPE_SEC\s*=\s*60\b/.test(svc),
+    dedupe: /CLOCK_DEDUPE_SEC\s*=\s*60\b/.test(clockSrc),
   };
   chk("S4.9", s49.tx && s49.lock && s49.dedupe, "tx + lock hr:clock: + CLOCK_DEDUPE_SEC = 60", short(s49));
 
@@ -180,13 +182,14 @@ function runStatic(): void {
   const kPin = kiosk.indexOf("clockWithPin(");
   const sKey = setp.indexOf("hr-setpin:");
   const sCall = setp.indexOf("await setPin(");
+  // ORACLE-EDIT H2.4 r2 (controller 12 Nov · reviewer MODIFY): kiosk order dropped (H0.5 buckets live in pin.ts via kioskClock) — rest unchanged
+  void [kEmp, kSys, kPin];
   const s64 = {
     inMem,
-    db: /checkRateLimitDb\(/.test(kiosk) && /checkRateLimitDb\(/.test(setp),
-    kioskOrder: kEmp > 0 && kSys > 0 && kPin > Math.max(kEmp, kSys),
+    db: /checkRateLimitDb\(/.test(setp) && /kioskClock\(/.test(kiosk),
     setpinOrder: sKey > 0 && sCall > sKey,
   };
-  chk("S6.4", !s64.inMem && s64.db && s64.kioskOrder && s64.setpinOrder, "{inMem:false,db:true,kioskOrder:true,setpinOrder:true}", short(s64));
+  chk("S6.4", !s64.inMem && s64.db && s64.setpinOrder, "{inMem:false,db:true,setpinOrder:true}", short(s64));
 
   // S6.5 — clockAction ตรวจสิทธิ์จัดการพนักงาน
   const ca = block(act, "export async function clockAction(");
@@ -766,6 +769,10 @@ const leftTenants = await P.tenant.count({ where: { slug: { startsWith: SLUG_PRE
 if (leftTenants !== 0) residue.push(`tenant(${SLUG_PREFIX}*)=${leftTenants}`);
 console.log(`RESIDUE ${residue.length ? residue.join(",") : "none"} (tenant=${tid ? "สร้างแล้ว" : "ไม่ได้สร้าง"} users=${users.length})`);
 chk("Z1", residue.length === 0 && !!tid, "ไม่เหลือแถว", `${residue.join(",") || "none"}`);
+// ORACLE-EDIT H2.4 r2 (controller 12 Nov · reviewer verdict APPROVE n/a for S2.1/S2.2/S2.4 only): the kiosk limiter is now H0.5's per-name
+//   caller bucket (hr-verifypin:<t>:kiosk:<user>:<employee> 10 wrong / 10 min, DB-backed) — 5/60 s and the hr-kiosk:* keys no longer exist.
+//   Covered by qc-hr-h2.4 S6.2 (bucket counts) · S6.3 (10 wrong ⇒ locked) · qc-hr-h0.5 S9.x (DB bucket across processes). S2.5 is NOT waived.
+if (existsSync(join(ROOT, "src/lib/modules/hr/clock.ts"))) for (const id of ["S2.1", "S2.2", "S2.4"]) chk(id, true, "n/a", "superseded by H2.4 r2 R1 (H0.5 per-name bucket 10/10 min)");
 for (const [id] of CHECKS) if (!results.has(id)) chk(id.replace(/^H0\.3-/, ""), false, "ถูกตรวจ", crashed ? `ไม่ถึง (harness ล้ม: ${crashed.slice(0, 80)})` : "ไม่ถึง");
 const failed = [...results.entries()].filter(([, r]) => !r.ok).map(([id]) => id);
 console.log(`\n===== ${SUITE} ===== ผ่าน ${results.size - failed.length}/${results.size}${FORCE ? " (QC_FORCE)" : ""}${crashed ? " · CRASHED" : ""}`);

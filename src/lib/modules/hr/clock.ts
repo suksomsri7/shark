@@ -16,7 +16,8 @@ import type { HrAttendanceKind, HrClockSource, Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
 import { bkkParts, clockInDetail, employeeOfUser, type AttendanceJudgement, type ClockInDetail, type Ctx, type HrTx } from "./service";
-import { verifyPin, verifyPinForEmployee } from "./pin";
+import { verifyPinForEmployee, verifyPinOfEmployee } from "./pin";
+import type { HrScope } from "./scope";
 import { unitOfDay } from "./roster";
 import { addDays, bkkDayKey, shiftWindow, type Window } from "./time-rules";
 import { CLOCK_RULES, clockPolicyOf, distanceM, nextKindOf, pickRosterEntry, sessionState, type ClockPolicy, type ClockSessionState } from "./clock-rules";
@@ -84,8 +85,8 @@ const cleanDevice = (v: unknown): string | null => (typeof v === "string" && v.t
 
 // ── อ่านสถานะรอบ (ใช้ทั้งใน tx ของ clock และนอก tx ของ nextClockKind / myClockState) ──
 type Db = Prisma.TransactionClient;
-type EntryRow = { id: string; date: Date; startMin: number; endMin: number; crossesMidnight: boolean; shift: { graceMin: number; name: string } };
-const ENTRY_SELECT = { id: true, date: true, startMin: true, endMin: true, crossesMidnight: true, shift: { select: { graceMin: true, name: true } } } as const;
+type EntryRow = { id: string; employeeId: string; date: Date; startMin: number; endMin: number; crossesMidnight: boolean; shift: { graceMin: number; name: string } };
+const ENTRY_SELECT = { id: true, employeeId: true, date: true, startMin: true, endMin: true, crossesMidnight: true, shift: { select: { graceMin: true, name: true } } } as const;
 const windowOf = (e: Pick<EntryRow, "date" | "startMin" | "endMin" | "crossesMidnight">): Window | null => {
   try {
     return shiftWindow(dayOf(e.date), { startMin: e.startMin, endMin: e.endMin, crossesMidnight: e.crossesMidnight });
@@ -103,6 +104,18 @@ async function policyOf(db: Db, ctx: Ctx): Promise<ClockPolicy> {
 
 type LastRow = { id: string; kind: HrAttendanceKind; at: Date; judgement: AttendanceJudgement | null; lateMin: number | null; rosterEntryId: string | null };
 type Session = { last: LastRow | null; state: ClockSessionState; entry: EntryRow | null; window: Window | null };
+// HR H2.4 r2 ▸ R4 รอบที่เปิดอยู่แต่เข้างานไม่ได้ผูกกะ (มาก่อนช่วงเข้าก่อนเวลา) รับกะของตัวเองที่ "ครอบเวลาทำงาน" มาใช้ปิดรอบ:
+//   เข้างานอยู่ในช่วง start − 6 ชม. ≤ เข้างาน < end ของกะที่ประกาศแล้วของพนักงานคนเดียวกัน (วัน D−1..D+1 ของเวลาเข้างาน) ◂
+const ADOPT_BEFORE_MIN = 360;
+/**
+ * สถานะรอบของพนักงาน (R3 + มติ r2 R3/R4):
+ *   1) แถวล่าสุด OUT/ไม่มี ⇒ ปิด · ไม่งั้นหา "เข้างานของรอบ" (แถวล่าสุดเอง ถ้าเป็น IN · ไม่งั้น IN ล่าสุดที่ไม่หลังแถวล่าสุด)
+ *   2) แถวล่าสุดผูกกะ ⇒ ใช้กะนั้นเฉพาะเมื่อยังเป็นของพนักงานคนนี้ **และ** เข้างานของรอบอยู่ใน [start − earlyInMin, end + closeGraceMin]
+ *      ของตำแหน่งกะปัจจุบัน (กะถูกย้ายวัน/ย้ายคน ⇒ ถือว่ารอบนี้ไม่ผูกกะ — hunt P2) · เปิดอยู่จนถึง end + closeGraceMin
+ *   3) ไม่ผูก (หรือข้อ 2 ใช้ไม่ได้) ⇒ รับกะที่ครอบ (ADOPT_BEFORE_MIN) — เปิดอยู่ถ้า now < end + closeGraceMin **หรือ** กติกาวันไทยเดิมยังเปิด
+ *      (รับกะไม่ทำให้รอบปิดเร็วกว่าเดิม) · ออกงาน/พักผูกกะที่รับมาเฉพาะตอนกติกากะยังเปิด
+ *   4) ไม่มีกะให้รับ ⇒ กติกาวันไทยเดิม (คนที่ไม่มีตารางกะ — Q3 · qc-hr-h2.4 S2.7)
+ */
 async function sessionOf(db: Db, ctx: Ctx, employeeId: string, now: Date, policy: ClockPolicy): Promise<Session> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const last = await db.hrAttendance.findFirst({
@@ -110,15 +123,34 @@ async function sessionOf(db: Db, ctx: Ctx, employeeId: string, now: Date, policy
     orderBy: [{ at: "desc" }, { id: "desc" }],
     select: { id: true, kind: true, at: true, judgement: true, lateMin: true, rosterEntryId: true },
   });
-  const entry = last?.rosterEntryId ? ((await db.hrRosterEntry.findFirst({ where: { ...scope, id: last.rosterEntryId }, select: ENTRY_SELECT })) as EntryRow | null) : null;
-  const window = entry ? windowOf(entry) : null;
-  const state = sessionState(last ? { kind: last.kind, at: last.at, rosterEntryId: window ? last.rosterEntryId : null } : null, window, now, { closeGraceMin: policy.closeGraceMin });
-  return { last, state, entry, window };
+  if (!last || last.kind === "OUT") return { last, state: "CLOSED", entry: null, window: null };
+  const sesIn =
+    last.kind === "IN"
+      ? last
+      : await db.hrAttendance.findFirst({ where: { ...scope, employeeId, kind: "IN", at: { lte: last.at } }, orderBy: [{ at: "desc" }, { id: "desc" }], select: { at: true } });
+  const inAt = sesIn?.at ?? last.at;
+  const opt = { closeGraceMin: policy.closeGraceMin };
+  const graceMs = policy.closeGraceMin * MIN_MS;
+  const linkedState = (e: EntryRow, w: Window) => sessionState({ kind: last.kind, at: last.at, rosterEntryId: e.id }, w, now, opt);
+  if (last.rosterEntryId) {
+    const e = (await db.hrRosterEntry.findFirst({ where: { ...scope, id: last.rosterEntryId }, select: ENTRY_SELECT })) as EntryRow | null;
+    const w = e && e.employeeId === employeeId ? windowOf(e) : null;
+    if (e && w && inAt.getTime() >= w.start.getTime() - policy.earlyInMin * MIN_MS && inAt.getTime() <= w.end.getTime() + graceMs) {
+      return { last, state: linkedState(e, w), entry: e, window: w };
+    }
+  }
+  const legacy = sessionState({ kind: last.kind, at: last.at, rosterEntryId: null }, null, now, opt);
+  const adopt = await rosterPick(db, ctx, employeeId, inAt, ADOPT_BEFORE_MIN);
+  if (adopt) {
+    const st = linkedState(adopt.entry, adopt.window);
+    if (st !== "CLOSED") return { last, state: st, entry: adopt.entry, window: adopt.window };
+  }
+  return { last, state: legacy, entry: null, window: null };
 }
 
-/** กะที่ประกาศแล้วของพนักงาน วัน D−1..D+1 (วันไทยของ now) ที่เข้างาน ณ now ผูกได้ */
-async function rosterPick(db: Db, ctx: Ctx, employeeId: string, now: Date, policy: ClockPolicy): Promise<{ entry: EntryRow; window: Window } | null> {
-  const d = bkkDayKey(now);
+/** กะที่ประกาศแล้วของพนักงาน วัน D−1..D+1 (วันไทยของ at) ที่เข้างาน ณ at ผูกได้ (start − earlyMin ≤ at < end) */
+async function rosterPick(db: Db, ctx: Ctx, employeeId: string, at: Date, earlyMin: number): Promise<{ entry: EntryRow; window: Window } | null> {
+  const d = bkkDayKey(at);
   const rows = (await db.hrRosterEntry.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, publishedAt: { not: null }, date: { gte: dbDate(addDays(d, -1)), lte: dbDate(addDays(d, 1)) } },
     select: ENTRY_SELECT,
@@ -129,7 +161,7 @@ async function rosterPick(db: Db, ctx: Ctx, employeeId: string, now: Date, polic
     const w = windowOf(e);
     return w ? [{ id: e.id, start: w.start, end: w.end, e }] : [];
   });
-  const p = pickRosterEntry("IN", now, cands, { earlyMin: policy.earlyInMin });
+  const p = pickRosterEntry("IN", at, cands, { earlyMin });
   return p ? { entry: p.e, window: { start: p.start, end: p.end } } : null;
 }
 
@@ -173,8 +205,9 @@ export async function clock(ctx: Ctx, input: ClockInput, opts: ClockOpts = {}): 
     } else kind = input.kind; // IN/OUT ทางตรง (ผู้จัดการแก้ · POS) — บันทึกได้ทุกสถานะ (ออกระหว่างพัก = พักจบตอนออก)
 
     // กะที่ผูก: เข้างานเลือกใหม่ · อื่น ๆ สืบจากรอบที่เปิดอยู่
-    const pick = kind === "IN" ? await rosterPick(tx, ctx, emp.id, at, policy) : null;
-    const rosterEntryId = kind === "IN" ? (pick?.entry.id ?? null) : ses.state !== "CLOSED" ? (ses.window ? (last?.rosterEntryId ?? null) : null) : null;
+    const pick = kind === "IN" ? await rosterPick(tx, ctx, emp.id, at, policy.earlyInMin) : null;
+    // HR H2.4 r2 ▸ R3/R4 ออกงาน/พักผูกกะของรอบ (กะที่ยังใช้ได้ หรือกะที่รอบรับมา) — ไม่ใช่ rosterEntryId ดิบของแถวก่อนหน้า ◂
+    const rosterEntryId = kind === "IN" ? (pick?.entry.id ?? null) : ses.state !== "CLOSED" && ses.window ? (ses.entry?.id ?? null) : null;
 
     // กันแตะซ้ำชนิดเดียวกัน (D13a) — เข้างานนับเฉพาะรอบเดียวกัน (MINOR-3: เข้า 23:59:40 แล้วเข้า 00:00:10 ไม่ใช่การแตะซ้ำ)
     if (last && fresh && input.kind === last.kind) {
@@ -244,9 +277,10 @@ export type KioskClockResult =
     }
   | { ok: false; reason: string };
 
+const PIN_WRONG = "PIN ไม่ถูกต้อง"; // = PIN_TEXT.wrong (pin.ts)
 const kioskOk = (r: ClockOutcome): KioskClockResult => ({ ok: true, employeeName: r.employeeName, kind: r.kind, at: r.at, judgement: r.judgement, lateMin: r.lateMin, deduped: r.deduped });
 
-/** ทางเดิม (เลือกชื่อ + PIN) — คงไว้ให้ข้อสอบรุ่นเก่า · จอ kiosk v2 ใช้ kioskClock (PIN อย่างเดียว) */
+/** ทางเดิม (เลือกชื่อ + PIN · ไม่มีตัวจำกัด) — คงไว้ให้ข้อสอบรุ่นเก่า/งานภายใน · จอ kiosk ใช้ kioskClock (มีถัง H0.5) */
 export async function clockWithPin(ctx: Ctx, employeeId: string, pin: string): Promise<KioskClockResult> {
   const emp = await verifyPinForEmployee(ctx, employeeId, pin);
   if (!emp.ok) return { ok: false, reason: emp.reason };
@@ -259,12 +293,20 @@ export async function clockWithPin(ctx: Ctx, employeeId: string, pin: string): P
 }
 
 /**
- * HR H2.4 ▸ R9 จอหน้าร้าน v2: PIN อย่างเดียว (ไม่มีรายชื่อ — PIN ไม่ซ้ำทั้งร้าน H0.5 บอกได้ว่าเป็นใคร · Q8)
- *   verifyPin (ถังจำกัดของ H0.5 เท่านั้น — ไม่มีตัวจำกัดชุดที่สอง) → clock(source KIOSK) · callerKey มาจากเซิร์ฟเวอร์ (kiosk:<userId>) ·
- *   unitId = สาขาของเครื่อง (พนักงานต่างสาขา = "PIN ไม่ถูกต้อง") · kind: NEXT (ค่าปริยาย) หรือ BREAK_START
+ * HR H2.4 ▸ R9 จอหน้าร้าน · r2 ▸ R1/R2 (มติผู้คุม 12 พ.ย. — กลับทาง Q8): **เลือกชื่อ + PIN** แบบที่ร้านใช้อยู่
+ *   PIN เทียบกับคนที่เลือกคนเดียว (pin.ts verifyPinOfEmployee = ทาง H0.5 ของ verifyPinForEmployee + ถังจำกัดของ H0.5 ชุดเดียว)
+ *   callerKey ประกอบที่นี่ = <บัญชีจอ>:<ชื่อที่เลือก> ⇒ ผิด 10 ครั้งล็อก "ชื่อนี้ที่จอนี้" (ไม่ใช่ทั้งแท็บเล็ต) · ถังร้านคงเดิม
+ *   scope = ขอบเขตสาขาของบัญชีจอ (hrScopeOf) — ชื่อนอกขอบเขต/ปลอม = "PIN ไม่ถูกต้อง" นับเหมือนผิด · kind: NEXT (ค่าปริยาย) หรือ BREAK_START
  */
-export async function kioskClock(ctx: Ctx, input: { pin: string; callerKey: string; unitId?: string | null; kind?: "NEXT" | "BREAK_START" }, opts: { now?: Date } = {}): Promise<KioskClockResult> {
-  const v = await verifyPin({ tenantId: ctx.tenantId, pin: String(input?.pin ?? ""), callerKey: String(input?.callerKey ?? ""), unitId: input?.unitId ?? null, systemId: ctx.systemId });
+export async function kioskClock(
+  ctx: Ctx,
+  input: { employeeId: string; pin: string; callerKey: string; scope?: HrScope | null; kind?: "NEXT" | "BREAK_START" },
+  opts: { now?: Date } = {},
+): Promise<KioskClockResult> {
+  const employeeId = String(input?.employeeId ?? "").trim();
+  const kiosk = String(input?.callerKey ?? "").trim();
+  if (!employeeId || !kiosk) return { ok: false, reason: PIN_WRONG };
+  const v = await verifyPinOfEmployee({ tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, pin: String(input?.pin ?? ""), callerKey: `${kiosk}:${employeeId}`, scope: input?.scope ?? null });
   if (!v.ok) return { ok: false, reason: v.reason };
   try {
     return kioskOk(await clock(ctx, { employeeId: v.employeeId, kind: input?.kind === "BREAK_START" ? "BREAK_START" : "NEXT", requireActive: true, source: "KIOSK" }, { now: opts.now }));
@@ -349,7 +391,7 @@ export async function mobileClock(actor: { tenantId: string; userId: string }, i
   }
   const kind = input?.kind === "BREAK_START" || input?.kind === "BREAK_END" ? input.kind : "NEXT";
   try {
-    const r = await clock(me.ctx, { employeeId: me.employeeId, kind, requireActive: true, source: "MOBILE", deviceId: cleanDevice(input?.deviceId), geo }, { now });
+    const r = await clock(me.ctx, { employeeId: me.employeeId, kind, requireActive: true, source: "MOBILE", deviceId: site.gpsRequired ? cleanDevice(input?.deviceId) : null /* HR H2.4 r2 ▸ R5 */, geo }, { now });
     return { ok: true, kind: r.kind, at: r.at, judgement: r.judgement, lateMin: r.lateMin, deduped: r.deduped, distanceM: dist };
   } catch (e) {
     if (e instanceof ClockRefusedError) return refuse(CODE_OF_TEXT[e.reason] ?? "INACTIVE", e.reason === CLOCK_TEXT.noEmployee ? CLOCK_TEXT.mInactive : e.reason);
@@ -377,7 +419,7 @@ export async function myClockState(actor: { tenantId: string; userId: string }, 
   const db = tenantDb(me.ctx) as unknown as Prisma.TransactionClient;
   const policy = await policyOf(db, me.ctx);
   const ses = await sessionOf(db, me.ctx, me.employeeId, now, policy);
-  const e = ses.state !== "CLOSED" && ses.window ? ses.entry : ses.state === "CLOSED" ? ((await rosterPick(db, me.ctx, me.employeeId, now, policy))?.entry ?? null) : null;
+  const e = ses.state !== "CLOSED" && ses.window ? ses.entry : ses.state === "CLOSED" ? ((await rosterPick(db, me.ctx, me.employeeId, now, policy.earlyInMin))?.entry ?? null) : null;
   const site = await siteOf(me.ctx, me.unitId);
   return {
     ok: true,
@@ -392,7 +434,7 @@ export async function myClockState(actor: { tenantId: string; userId: string }, 
 // ─────────────────── ล้างพิกัด/รูปตามกำหนด (R11 · HQ27) ───────────────────
 const PURGE_BATCH = 1_000;
 /**
- * แถวที่เก่ากว่า GEO_KEEP_DAYS ⇒ lat/lng/accuracyM = null (คง distanceM/inRadius) · เก่ากว่า PHOTO_KEEP_DAYS ⇒ photoKey = null ·
+ * แถวที่เก่ากว่า GEO_KEEP_DAYS ⇒ lat/lng/accuracyM/deviceId = null (คง distanceM/inRadius · deviceId = HR H2.4 r2 R5) · เก่ากว่า PHOTO_KEEP_DAYS ⇒ photoKey = null ·
  * ครั้งละ ≤ 1 000 แถวต่อคำสั่ง วนจนหมด · รันซ้ำได้ (ครั้งที่สอง = 0) · ไม่ส่ง tenantId = ทุกร้านที่มีระบบ HR (cron รายชั่วโมง)
  * SQL ดิบผ่าน tenantDb(...).$executeRaw (ไม่ลาก prisma ดิบเข้าโมดูล — F5.1) · ทุกคำสั่งผูก "tenantId" เอง
  */
@@ -409,9 +451,9 @@ export async function purgeClockPrivacy(input: { now: Date; tenantId?: string | 
     const db = tenantDb({ tenantId });
     for (;;) {
       const n = await db.$executeRaw`
-        UPDATE "HrAttendance" SET "lat" = NULL, "lng" = NULL, "accuracyM" = NULL
+        UPDATE "HrAttendance" SET "lat" = NULL, "lng" = NULL, "accuracyM" = NULL, "deviceId" = NULL
         WHERE "id" IN (SELECT "id" FROM "HrAttendance" WHERE "tenantId" = ${tenantId} AND "at" < ${geoCut}
-          AND ("lat" IS NOT NULL OR "lng" IS NOT NULL OR "accuracyM" IS NOT NULL) LIMIT ${PURGE_BATCH})`;
+          AND ("lat" IS NOT NULL OR "lng" IS NOT NULL OR "accuracyM" IS NOT NULL OR "deviceId" IS NOT NULL) LIMIT ${PURGE_BATCH})`;
       geo += n;
       if (n < PURGE_BATCH) break;
     }

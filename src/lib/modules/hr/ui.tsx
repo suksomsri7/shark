@@ -589,14 +589,17 @@ export async function HrKioskSection({ systemId }: { systemId: string }) {
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   const people = await kioskRoster(ctx, hrScopeOf(hrViewerOf(auth))); // HR H1.1 ▸ จอของบัญชีที่จำกัดสาขา = เฉพาะคนในสาขา ◂
   const noPin = people.filter((p) => !p.hasPin);
-  // HR H2.4 ▸ R9 จอ PIN อย่างเดียว — ข้อความจาก hr.kiosk ◂
+  // HR H2.4 ▸ R9 ข้อความจาก hr.kiosk · r2 ▸ R1/R2 จอ = เลือกชื่อ + PIN · รายชื่อ = ขอบเขตสาขาของบัญชีจอ (ชุดเดียวกับที่ kioskClockAction ตรวจ) ◂
   const tk = await getTranslations("hr.kiosk");
-  const kioskLabels = { prompt: tk("prompt"), clear: tk("clear"), back: tk("back"), submit: tk("submit"), breakStart: tk("breakStart"), saving: tk("saving"), entered: tk("entered") };
+  const kioskLabels = {
+    prompt: tk("prompt"), clear: tk("clear"), back: tk("back"), submit: tk("submit"), breakStart: tk("breakStart"), saving: tk("saving"), entered: tk("entered"),
+    pick: tk("pick"), change: tk("change"), noPin: tk("noPin"), tap: tk("tap"), empty: tk("empty"),
+  };
 
   return (
     <div className="flex flex-col gap-6">
       <Section title="ลงเวลาเอง">
-        <KioskClock systemId={systemId} labels={kioskLabels} />
+        <KioskClock systemId={systemId} people={people} labels={kioskLabels} />
       </Section>
       {noPin.length > 0 && (
         <Section title="ยังไม่มี PIN">
