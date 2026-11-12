@@ -362,3 +362,43 @@
 | คำเตือน WARN | W01–W46 (ไม่มี BLOCK) | **46** |
 | ค่าตั้งที่ติด 🧾 "ตรวจกับนักบัญชีของร้าน" | §5.1 | **16** |
 | ค่าตั้งที่ติด "ยังไม่ยืนยันกับหน่วยงาน" | §5.2 | **10** (T24 · T43 · T45 · T48 · T59 · T60 · T61 · T66 · A37 · K15) |
+
+---
+
+## ภาคผนวก ก — คีย์ที่สัญญาเพิ่ม (จาก `ledger/TRIPS-CORE-CONTRACT.md` รอบ 2 · 12 พ.ย. 2569)
+
+> เพิ่มโดยใบ P0.3 รอบ 2 (มติผู้คุม) · ไม่เปลี่ยนชื่อ/ค่าของ 122 คีย์เดิม ยกเว้น T23 (แถวสุดท้าย) · รหัส `X1–X27` · ทุกตัวเลข = **ข้อเสนอ ไม่ใช่ตัวเลขจากกฎหมาย** เว้นแต่ระบุ · ชั้น SHOP = `UNIT`
+
+| # | คีย์ | ความหมาย | ชนิด/หน่วย | ค่าเริ่มต้น | ชั้น | ที่มา | 🧾 |
+|---|---|---|---|---|---|---|---|
+| X1 | `trips.sell.confirmMode` | ยืนยันการจองอัตโนมัติ หรือร้านยืนยันก่อน | enum AUTO·SHOP_CONFIRMS | ทุกแม่แบบ: `AUTO` | SHOP · PRODUCT · AGENT_TIER · AGENT | สัญญา §G.0 | |
+| X2 | `trips.sell.shopConfirmHours` | เวลาที่ร้านต้องตอบคำขอที่รอยืนยัน (ถือที่ไว้ระหว่างนี้) | int ชม. | DS/DT 12 · LA 48 | SHOP · PRODUCT | สัญญา §D.4 ข้อ 3 | |
+| X3 | `trips.sell.codePrefix` | อักษรนำเลขจอง | text | DS/DT `TR` · LA `LB` | SHOP | ภาพ 01/03 · สัญญา §K | |
+| X4 | `ticket.sell.orderPrefix` | อักษรนำเลขออเดอร์ตั๋ว (รหัสตั๋วรายใบคง `TK-`+10) | text | AT `TK` | SHOP | ภาพ 02 · สัญญา L-13 | |
+| X5 | `trips.fx.rates` | อัตราแลกเปลี่ยนที่ใช้ล็อก ณ วันจอง (ร้านกรอกตามแหล่ง T4) | table {currency, rateMicros} · effectiveDated | LA: ว่าง (ร้านกรอก) · อื่น: — | SHOP | MP §2 ข้อ 13 · สัญญา §H.5 | ใช่ (VAT แปลงสกุล ณ วันที่ความรับผิดเกิด) |
+| X6 | `trips.public.showLeftAtOrBelow` | แสดง "เหลือ N ที่" เมื่อ N ≤ ค่านี้ (เลขจริงเสมอ · R2) | int | 5 | SHOP · PRODUCT | R2 | |
+| X7 | `trips.public.embedDomains` | โดเมนที่ฝังหน้าจองได้ | table [domain] | ว่าง (ฝังไม่ได้จนร้านเพิ่ม) | SHOP | TA §9.4 | |
+| X8 | `trips.public.rateLimits` | เพดานถือที่/ขอ OTP/เดา token ต่อช่วงเวลา (มีพื้นที่ร้านลดต่ำกว่าไม่ได้) | table | ถือที่ 10/ชม./ผู้ติดต่อ · OTP 5/15 นาที · token 30/ชม./เครื่อง | SHOP | สัญญา L-22 | |
+| X9 | `trips.public.otpValidMinutes` | ยืนยัน OTP แล้วแก้การจองได้นานเท่าไร | minutes | 30 | SHOP | สัญญา §J.3.2 | |
+| X10 | `trips.public.holdCapPerContact` | จำนวนการถือที่พร้อมกันต่อเบอร์/LINE (G26) | int | 3 | SHOP | G26 | |
+| X11 | `trips.pay.overdueGraceHours` | ผ่อนผันหลังเลยกำหนดงวดก่อน `AUTO_RELEASE` (T17) | int ชม. | 24 | SHOP · PRODUCT | สัญญา §G.1 | |
+| X12 | `trips.cancel.autoApproveUpTo` | อนุมัติคำขอคืนเงินอัตโนมัติเมื่อผลตรงตารางและไม่เกินยอดนี้ | money | 0 (ทุกคำขอให้คนอนุมัติ) | SHOP | ภาพ 15 | |
+| X13 | `trips.cancel.manualEditApprovalSatang` | แก้ยอดคืนต่างจากที่ระบบคิดเกินยอดนี้ = ผู้จัดการอนุมัติ | money | 2,000 บาท | SHOP | ภาพ 15 | |
+| X14 | `trips.cancel.creditBonusPct` | เครดิตร้านแทนเงินคืน: โบนัส % ของส่วนที่ร้านเก็บ | percent (100) | 20 · **ซ่อน/ปิดในรุ่นแรก** (มติ 7 · เปิดใน X.2) | SHOP · PRODUCT | ภาพ 15 | |
+| X15 | `trips.cancel.creditValidityMonths` | อายุเครดิตร้าน | int เดือน | 12 · ซ่อนในรุ่นแรก | SHOP | ภาพ 15 | |
+| X16 | `trips.cancel.moveFreeWithinDays` | เลื่อนวันฟรีถ้าเลือกวันใหม่ภายใน | days | 90 | SHOP · PRODUCT | ภาพ 15 | |
+| X17 | `trips.ops.autoCloseHoursAfterEnd` | ปิดทริปอัตโนมัติหลังจบรอบ | int ชม. (`null` = ไม่ปิดเอง) | DS/DT 12 · LA 24 | SHOP · PRODUCT | สัญญา §J.2 | |
+| X18 | `trips.ops.offlineCheckin` | ไกด์เช็กอินออฟไลน์ได้ | bool | เปิด | SHOP · PRODUCT | MP §2 ข้อ 11 | |
+| X19 | `trips.ops.noShowFixHours` | แก้ "ไม่มา" กลับได้ภายใน | int ชม. | 48 | SHOP | สัญญา §G.1 | |
+| X20 | `trips.pdpa.viewLogDays` | เก็บบันทึกการเปิดดูเอกสาร | days | 1,095 (3 ปี — เท่าเอกสารรับทราบความเสี่ยง T61) | SHOP | MP §2 ข้อ 12 | |
+| X21 | `trips.pdpa.maskOnScreen` | ปิดบังเลขเอกสาร/วันเกิดบนจอ | bool | เปิด | SHOP | MP §2 ข้อ 12 | |
+| X22 | `trips.pdpa.abandonedRetentionDays` | ลบข้อมูลผู้จองของการจองหมดเวลาที่ไม่มีเงินเข้า | days | 30 | SHOP | ผลตรวจ m-14 | |
+| X23 | `trips.supplier.respondHours` · `trips.supplier.shopDecisionHours` · `trips.supplier.autoCancelOnTimeout` | ผู้ให้บริการต้องตอบภายใน · ร้านตัดสินต่อหลังหมดเวลา · หมดเวลาแล้วยกเลิกเอง | int ชม. · int ชม. · bool | 24 · 12 · ปิด (เข้าคิวร้าน) | SHOP · PRODUCT | สัญญา §G.2 | |
+| X24 | `agency.quota.requestFirst` | เอเจนซี่ต้องส่งคำขอก่อน (ไม่ตัดที่ทันที) | bool | ปิด | SHOP · AGENT_TIER · AGENT · PRODUCT | TA §2.3 | |
+| X25 | `agency.quota.returnCancelledToQuota` | ที่นั่งจากโควตาที่ยกเลิกกลับเข้าโควตา (ไม่ใช่ที่ว่างสาธารณะ) | bool | เปิด | SHOP · AGENT | สัญญา §D.1 ข้อ 5 | |
+| X26 | `agency.comm.vatMode` | VAT ของค่าคอมมิชชัน | enum NONE·EXCLUSIVE·INCLUSIVE | `NONE` เว้นแต่ `AgentAccount.vatRegistered` = จริง ⇒ `EXCLUSIVE` | SHOP · AGENT | มติผู้คุม 8 · สัญญา §H.4 | ใช่ |
+| X27 | `agency.msg.<kind>` · `ticket.msg.<kind>` | ข้อความแม่แบบต่อชนิด (th + en) แบบ T70 | template | ตามชนิด (ยืนยัน · ถือใกล้หมด · งวดใกล้ครบ · รอบเปลี่ยน · ใบแจ้งยอด / ตั๋ว: ยืนยัน · เตือนวันเข้าชม · ส่งต่อ) | SHOP | สัญญา L-42 | |
+| — | **T23 `trips.cancel.refundForm` ค่าเริ่มเปลี่ยน** | คืนเงินอย่างเดียวจนมีทางเครดิตร้าน | enum (เดิม) | ทุกแม่แบบ: **`MONEY`** (เดิมเสนอ `CUSTOMER_CHOOSES_MONEY_OR_CREDIT`) | SHOP | มติผู้คุม 7 · สัญญา §G.3 | |
+
+- คีย์ `trips.pay.depositBase` (T14) `TRIP_ONLY` = งวดเก็บแทนทั้งหมดอยู่ในงวดสุดท้าย (สัญญา §H.2 · ภาพ 03: 19,740 / 49,660) — ไม่เปลี่ยน
+- ฟิกซ์เจอร์ QC ต้องระบุ `AgentAccount.vatRegistered = false` สำหรับ PTD (ตัวเลข 7,181.50 / 86,121.15 อยู่บนกรณีไม่มี VAT คอมฯ)
