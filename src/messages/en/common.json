@@ -880,7 +880,10 @@
       "code_NO_BASE": "No salary set",
       "code_BLOCKED": "Days need review",
       "code_BAD_INPUT": "Incomplete data",
-      "code_OFF": "Rule is off"
+      "code_OFF": "Rule is off",
+      "code_RUN_STALE": "An item in a draft payroll run is out of date — press 'Recompute' on the run first, then compute deductions",
+      "runStale": "A late/absence deduction in this run is out of date — press 'Recompute' on the run first, then 'Compute late/absence deductions', then approve",
+      "runSync": "This period's late/absence deductions do not match the time data yet — press 'Recompute' on the run first, then 'Compute late/absence deductions', then approve"
     },
     "stock": {
       "title": "Stock & damage charges",
