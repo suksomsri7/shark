@@ -51,7 +51,7 @@ const RULES_FILE = "src/lib/modules/hr/payroll-rules.ts";
 const SCHEMA_FILE = "prisma/schema/payroll.prisma";
 // hashes taken on the base (f85f5455; SCHEMA_SHA + CRM_BLOCK_SHA re-taken after H0.6, ruled ORACLE-EDITs) — FREEZE (hr-brief-COMMON §C.4/C.5 · H0.1 §4)
 const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7";
-const SCHEMA_SHA = "22fc665b333004a49fb7f33b30eb24431359725f866b6dd5552c773dd45207e9"; // ORACLE-EDIT (controller 12 Nov · H4.6 r2): re-taken after the additive HrStockCharge model (+ r2 columns takeStock/claimOpen/refundRunId) (was 686b1910df91… after H1.3 D-1; H1.1 D-4 before)
+const SCHEMA_SHA = "97a2390d8d7b8abed9fc4f12f18ac980fe754bdcdfd2e5f49c0e32966069bfff"; // ORACLE-EDIT (H3.1 merge 847d37bf3): re-taken for the merged payroll.prisma = H4.6 HrStockCharge (pin 22fc665b…) + H3.1 HrWorkDay/workDayId (pin b4456ccd…) — both additive
 const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13";
 const CRM_BLOCK_SHA = "33ec8e46af7dd084ac1b1460167736a662bcc80bddc97db6ca1a22fb4c403869";
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";

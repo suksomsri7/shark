@@ -13,6 +13,7 @@ import { attendanceNeedsRecompute, JUDGE_TEXT, loadAttendanceBoard, loadAttendan
 import { recomputeAttendanceDayAction } from "@/lib/modules/hr/attendance-actions";
 import { AttendanceDayView, AttendanceFlash, AttendanceMonthView, AttendanceViewTabs } from "@/lib/modules/hr/attendance-ui";
 import { thaiDateKey } from "@/lib/ui/date";
+import { WorkEntriesMonth } from "@/lib/modules/hr/work-entries-ui"; // HR H3.1 ▸ สรุป + รายวันที่ดึงเข้าเงินเดือน (ภาพ 04B) ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 // HR H2.6 ▸ คำขอแก้เวลา: ฟอร์มยื่น (04A แถว · 04B) + ?view=corrections การ์ด mockup 05 · ผลส่งทาง URL เป็นรหัสสั้น (allowlist) ◂
 import { addDays as addDaysKey } from "@/lib/modules/hr/time-rules";
@@ -160,6 +161,7 @@ export default async function HrAttendancePage({ params, searchParams }: { param
           }
           corrFor={(day: string) => <CorrectionForm systemId={id} employeeId={null} day={day} punches={myPunches.filter((p) => near(p.at, day))} onSubmit={onRequestMine} self />}
         />
+        <WorkEntriesMonth systemId={id} employeeId={mine.employee.id} month={mine.month} self /> {/* HR H3.1 ◂ */}
       </div>
     );
   }
@@ -223,6 +225,7 @@ export default async function HrAttendancePage({ params, searchParams }: { param
         ) : (
           <p className="text-sm text-[color:var(--color-muted)]">{t("empty")}</p>
         )}
+        {month && <WorkEntriesMonth systemId={id} employeeId={month.employee.id} month={month.month} self={false} />} {/* HR H3.1 ◂ */}
       </div>
     );
   }

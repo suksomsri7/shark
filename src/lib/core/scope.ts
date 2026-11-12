@@ -195,6 +195,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrHoliday: sys(),
   // HR H1.3 ▸ นาทีทำงาน · บันทึก/ประเมิน · งานรับเข้า-ออก — มี systemId ของระบบ HR ◂
   HrWorkEntry: sys(),
+  HrWorkDay: sys(), // HR H3.1 ▸ หัววันทำงาน (snapshot ต่องวด) ◂
   HrReviewNote: sys(),
   HrOnboardingTask: sys(),
   Page: unit,

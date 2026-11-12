@@ -81,6 +81,13 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "att-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
     { key: "settings-attendance", path: (i) => `/app/sys/${i.hr}/hr/settings`, why: "การ์ดตัดสินผล/การเตือน hr-settings-attendance-policy (R12)", expect: { owner: 200 }, users: ["owner"] },
   ],
+  // HR H3.1 ▸ ชั่วโมงทำงาน (mockup 06 แผง · 04B สรุป/รายวัน) — seed ไม่สร้าง snapshot (seed คงเดิม) ⇒ แผงแสดง "ยังไม่ได้ดึง" จนเจ้าของกดดึง ·
+  //   การ์ดชั่วโมงทำงานปกติต่อวันบนหน้าตั้งค่า (เจ้าของแก้ได้ · ผู้จัดการสาขาอ่านอย่างเดียว) ◂
+  "3.1": [
+    { key: "we-panel", path: (i) => `/app/sys/${i.hr}/hr/payroll?period=${i.today.slice(0, 7)}`, users: ["owner", "payroll", "manager-branch"], why: "แผงชั่วโมงทำงานของงวด: สถานะ · ปุ่มดึง (ผู้ดึง) · แถวต่อคน (H3.1 06)" },
+    { key: "we-month", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, users: ["owner", "manager-branch"], why: "ปฏิทินรายคน + สรุป/รายวันที่ดึงเข้าเงินเดือน (มีเมื่อดึงแล้ว) (H3.1 04B)" },
+    { key: "we-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-we-normal`, users: ["owner", "manager-branch"], why: "การ์ดชั่วโมงทำงานปกติต่อวัน (เจ้าของแก้ · ผู้จัดการอ่าน) (H3.1 Q10)" },
+  ],
   // HR H2.9 ▸ คำขอ OT (mockup 05 การ์ด OT · 07a ขอ OT) — หน้าใบลา: ฟอร์ม + รายการ (เจ้าของ ฿ · ผู้จัดการไม่เห็น ฿ — Q11) · ตั้งค่า: กฎ OT · เงินเดือน: อัตรา OT #18 ◂
   "2.9": [
     { key: "ot-leave", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager", "staff"], why: "ส่วนคำขอ OT: ฟอร์ม hr-ot-form · รายการ hr-ot-list · ปุ่มอนุมัติ/ไม่อนุมัติ/ยกเลิก (H2.9)" },
