@@ -795,7 +795,10 @@ function runStatic(): void {
     // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
     //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
     const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
-    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t))).length;
+    // ORACLE-EDIT (controller 12 Nov · H4.6 Q15): hr/stock-charge.ts is the intended writer of HrPayAdjustment.sourceRef ("hrstock:<key>") — only that
+    //   one token is ignored there; every other S6.1 token still counts (same narrow style as the lifecycle exemption above)
+    const STOCK_OK = /^sourceRef$/;
+    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t))).length;
     const hits = files.map((f) => [f, cntOf(f, rd(f)) - cntOf(f, atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
     chk("S6.1", files.length > 20 && hits.length === 0, "0 new reads", `${hits.join(",") || "0"} of ${files.length} files (base ${baseRef().slice(0, 8)})`);
   }

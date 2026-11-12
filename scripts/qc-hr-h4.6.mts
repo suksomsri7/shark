@@ -3,6 +3,9 @@
 // Tenants qc-hr-h46-<stamp> · 2031 dates · opts.now injected · SKIP while hr/stock-charge.ts is absent (QC_FORCE=1 runs) · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h4.6.mts
 // Money = integer satang · every expectation below is a literal (brief R5) · base = baseRef("QC_H46_BASE") · statics vs base n/a once in base
+// ORACLE-EDIT (controller 12 Nov · Q8 ruled OPTION 2 — no ALLOWANCE refund row, no new kind): S1.3 field refundAdjustmentId → refundOwedSatang ·
+//   LIST_KEYS refundAdjustmentId → refund · S6.2 = (a) unbound APPROVED cancelled in place + (b) DRAFT-bound via cancelAdjustment · S6.3 = (c) APPROVED-run
+//   ⇒ payroll untouched + refundOwedSatang + markStockRefundRepaid idempotent/permissioned · S6.6 = 3 parallel withdraws ⇒ exactly 1 CANCELLED, no refund row
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -46,7 +49,7 @@ const T: Record<string, string> = {
 };
 const DECIDE_OWN_REQ = "อนุมัติรายการที่ตัวเองยื่นไม่ได้ — ให้เจ้าของหรือผู้มีสิทธิ์อนุมัติแทน";
 const DECIDE_OWN_ROW = "อนุมัติรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน";
-const LIST_KEYS = "amountSatang,consentAt,consentRef,createdAt,description,employeeId,employeeName,id,itemName,kind,movementId,overCap,periodKey,qty,refundAdjustmentId,requestedByName,status,unitCostSatang";
+const LIST_KEYS = "amountSatang,consentAt,consentRef,createdAt,description,employeeId,employeeName,id,itemName,kind,movementId,overCap,periodKey,qty,refund,requestedByName,status,unitCostSatang"; // ORACLE-EDIT (Q8 option 2): refundAdjustmentId → refund
 const SELF_KEYS = "amountSatang,consentAt,createdAt,description,id,itemName,kind,periodKey,qty,status";
 const UI_IDS = ["form", "kind", "employee", "inventory", "item", "qty", "take", "amount", "desc", "consent", "consent-ref", "consent-at", "submit", "list"].map((s) => `hr-stock-${s}`);
 const UI_DYN = ["hr-stock-row-*", "hr-stock-withdraw-*"];
@@ -80,11 +83,11 @@ S5.1|R6|C|R|Bangkok month: 2031-07-01 00:30 +07 ⇒ 2031-07
 S5.2|R6|C|R|live runs skip: Aug APPROVED + Sep PAID ⇒ 2031-10 · Nov REVERSED ⇒ 2031-11 · Dec DRAFT ⇒ 2032-01
 S5.3|R6|C|R|no INVENTORY_ISSUE row bound to a run · fake runs untouched
 S6.1|R7|C|R|withdraw PENDING ⇒ REJECTED (decidedById) · withdrawnAt/ById · status WITHDRAWN · second ⇒ withdrawn text
-S6.2|R7|C|R|withdraw APPROVED ⇒ refund ALLOWANCE 37035 PENDING hrstock:<key>#refund 2031-06 · original untouched · Σ D−A = 0
-S6.3|R7|C|R|withdraw APPROVED bound to APPROVED run ⇒ refund in 2032-04 · original row/run untouched
+S6.2|R7|C|R|withdraw APPROVED (a) unbound ⇒ CANCELLED in place (REJECTED · Σ approved 0) · (b) DRAFT-bound ⇒ CANCELLED via cancelAdjustment (row gone · Σ 0) · no ALLOWANCE row
+S6.3|R7|C|R|withdraw APPROVED bound to APPROVED run ⇒ REFUND_OWED 5000000 · payroll rows/run untouched · mark repaid: perm · ref · ok · idempotent
 S6.4|R7|C|R|withdraw rights: requester own PENDING ok · requester other's ⇒ withdrawPerm · manager w/o payroll ⇒ withdrawPerm · linked employee ⇒ self · member ⇒ noAccess
 S6.5|R7|M|R|adjustment deleted on payroll page ⇒ status REMOVED · withdraw ⇒ NOOP
-S6.6|R7|C|R|[race] 3 parallel withdraws of an APPROVED charge ⇒ exactly 1 refund
+S6.6|R7|C|R|[race] 3 parallel withdraws of an APPROVED charge ⇒ exactly 1 CANCELLED · no refund row
 S7.1|R3|C|R|nothing APPROVED without a decision (all charge rows PENDING after S2–S5)
 S7.2|R3|C|R|decideAdjustment: requester ⇒ own-request text · linked employee ⇒ own-row text · payroll approver ⇒ APPROVED
 S8.1|R8|C|R|list viewers: owner/payroll obj · manager w/o payroll · request staff · member · employee ⇒ null · other tenant sees none of T
@@ -165,7 +168,7 @@ function runStatic(): void {
     const m = /model HrStockCharge \{([\s\S]*?)\n\}/.exec(s)?.[1] ?? "";
     const r = {
       model: !!m, enum: /enum HrStockChargeKind \{\s*ISSUE\s+DAMAGE\s*\}/.test(s),
-      fields: ["requestKey", "adjustmentId", "amountSatang", "unitCostSatang", "movementId", "consentRef", "consentAt", "consentRecordedById", "withdrawnAt", "refundAdjustmentId"].every((f) => new RegExp(`\\n\\s*${f}\\s`).test(m)),
+      fields: ["requestKey", "adjustmentId", "amountSatang", "unitCostSatang", "movementId", "consentRef", "consentAt", "consentRecordedById", "withdrawnAt", "refundOwedSatang"] /* ORACLE-EDIT (Q8 option 2) */.every((f) => new RegExp(`\\n\\s*${f}\\s`).test(m)),
       scope: /\bHrStockCharge:\s*sys\(\)/.test(rd(F.scope)),
     };
     ck("S1.3", r, "model · enum · scope");
@@ -578,28 +581,61 @@ async function runDb(): Promise<void> {
     const s1 = ((await list(W.owner)).value?.items ?? []).find((x: Any) => x.id === v.v1.value?.chargeId)?.status;
     const w1b = await wd(W.owner, v.v1.value?.chargeId);
     ck("S6.1", { out: w1.ok && w1.value?.outcome === "REJECTED", adj: a1?.status === "REJECTED" && a1?.decidedById === W.owner.id, mark: !!c1?.withdrawnAt && c1?.withdrawnById === W.owner.id, list: s1 === "WITHDRAWN", again: is(w1b, T.withdrawn) }, "REJECTED · WITHDRAWN · once", `${shown(w1)} ${a1?.status} ${s1} ${shown(w1b)}`);
+    // ORACLE-EDIT (Q8 option 2) ▸ (a) APPROVED, not bound to a run ⇒ cancelled in place · no income row
+    const allowances = async () => (await P.hrPayAdjustment.findMany({ where: { tenantId: T1, kind: "ALLOWANCE" } })) as Any[];
+    const approvedSum = async (key: string) => (await adjs({ sourceRef: `hrstock:${key}`, status: "APPROVED" })).reduce((s, a) => s + Number(a.amountSatang), 0);
+    const statusIn = async (id: unknown) => ((await list(W.owner)).value?.items ?? []).find((x: Any) => x.id === id) as Any;
     const w2 = await wd(W.payAll, v.v2.value?.chargeId);
-    const ref = `hrstock:${vIn.v2.requestKey}#refund`;
-    const rf = (await adjs({ sourceRef: ref }))[0];
     const orig = (await adjs({ id: adjOf(v.v2) }))[0];
-    const d = (await adjs({ employeeId: E1, kind: "DEDUCTION", status: "APPROVED" })).filter((a) => a.id === adjOf(v.v2)).reduce((s, a) => s + Number(a.amountSatang), 0);
-    const al = (await adjs({ employeeId: E1, kind: "ALLOWANCE" })).reduce((s, a) => s + Number(a.amountSatang), 0);
-    ck("S6.2", {
-      out: w2.ok && w2.value?.outcome === "REFUND" && w2.value?.refundAdjustmentId === rf?.id,
-      refund: !!rf && rf.kind === "ALLOWANCE" && rf.amountSatang === 37_035 && rf.status === "PENDING" && rf.periodKey === "2031-06" && rf.runId === null && rf.employeeId === E1,
-      orig: orig?.status === "APPROVED" && orig?.amountSatang === 37_035 && orig?.kind === "DEDUCTION", net: d === 37_035 && al === 37_035 && d - al === 0,
-    }, "refund 37035 · net 0", `${shown(w2)} D=${d} A=${al}`);
+    const l2 = await statusIn(v.v2.value?.chargeId);
+    const ra = {
+      out: w2.ok && w2.value?.outcome === "CANCELLED" && w2.value?.refundOwedSatang === undefined,
+      orig: orig?.status === "REJECTED" && orig?.decidedById === W.payAll.id && orig?.amountSatang === 37_035 && orig?.kind === "DEDUCTION" && orig?.runId === null,
+      sum: (await approvedSum(vIn.v2.requestKey)) === 0, list: l2?.status === "CANCELLED" && l2?.refund === null,
+    };
+    // (b) APPROVED, bound to a DRAFT run ⇒ existing cancelAdjustment path (row deleted · draft recomputed)
+    const kb = input({ employeeId: E2, kind: "DAMAGE", description: "รอบร่าง", amountSatang: 4_321 });
+    const cb = await req(W.owner, kb, bkk("2033-02-10"));
+    const db1 = await dec(adjOf(cb), W.payAll);
+    const rDraft = await run("2033-02", "DRAFT");
+    await P.hrPayAdjustment.updateMany({ where: { id: adjOf(cb), tenantId: T1 }, data: { runId: rDraft } });
+    const wb = await wd(W.payAll, cb.value?.chargeId, bkk("2033-02-15"));
+    const lb = await statusIn(cb.value?.chargeId);
+    const rb = {
+      setup: cb.ok && cb.value?.periodKey === "2033-02" && db1?.ok === true, out: wb.ok && wb.value?.outcome === "CANCELLED",
+      gone: (await adjs({ id: adjOf(cb) })).length === 0, sum: (await approvedSum(kb.requestKey)) === 0,
+      run: (await P.hrPayrollRun.findUnique({ where: { id: rDraft } }))?.status === "DRAFT", list: lb?.status === "CANCELLED",
+    };
+    const al = (await allowances()).length;
+    ck("S6.2", { ...Object.fromEntries(Object.entries(ra).map(([k, x]) => [`a.${k}`, x])), ...Object.fromEntries(Object.entries(rb).map(([k, x]) => [`b.${k}`, x])), noAllowance: al === 0 }, "a CANCELLED in place · b CANCELLED via draft path · Σ 0 · no ALLOWANCE", `${shown(w2)} ${orig?.status} | ${shown(cb)} ${shown(wb)} | ALLOWANCE=${al}`);
+    // (c) APPROVED, bound to an APPROVED run ⇒ payroll untouched · refund owed outside payroll · mark repaid
     const dr = await dec(adjOf(v.v21), W.payAll);
     const r32 = await run("2032-03", "APPROVED");
     await P.hrPayAdjustment.updateMany({ where: { id: adjOf(v.v21), tenantId: T1 }, data: { runId: r32 } });
     const runBefore = JSON.stringify(await P.hrPayrollRun.findUnique({ where: { id: r32 } }));
+    const payBefore = JSON.stringify(await P.hrPayAdjustment.findMany({ where: { tenantId: T1 }, orderBy: { id: "asc" } }));
     const w3 = await wd(W.payAll, v.v21.value?.chargeId, bkk("2032-03-10"));
-    const rf3 = (await adjs({ sourceRef: `hrstock:${vIn.v21.requestKey}#refund` }))[0];
-    const o3 = (await adjs({ id: adjOf(v.v21) }))[0];
+    const payAfter = JSON.stringify(await P.hrPayAdjustment.findMany({ where: { tenantId: T1 }, orderBy: { id: "asc" } }));
+    const c3 = (await charges()).find((x) => x.id === v.v21.value?.chargeId);
+    const l3 = await statusIn(v.v21.value?.chargeId);
+    const mr = (w: Who, ref: string, now = bkk("2032-03-20")) => callMod(SC, "markStockRefundRepaid", [cH, vOf(w), v.v21.value?.chargeId, { ref }, { now }]);
+    const mPerm = await mr(W.reqBoth, "โอนคืน-001");
+    const mMem = await mr(W.member, "โอนคืน-001");
+    const mEmpty = await mr(W.payAll, "");
+    const mNotOwed = await callMod(SC, "markStockRefundRepaid", [cH, vOf(W.payAll), v.v3.value?.chargeId, { ref: "x" }, { now: bkk("2032-03-20") }]);
+    const m1 = await mr(W.payAll, "โอนคืน-001");
+    const m2 = await mr(W.payAll, "โอนคืน-002", bkk("2032-03-25"));
+    const c3b = (await charges()).find((x) => x.id === v.v21.value?.chargeId);
+    const l3b = await statusIn(v.v21.value?.chargeId);
     ck("S6.3", {
-      dec: dr?.ok === true, out: w3.ok && w3.value?.outcome === "REFUND", refund: !!rf3 && rf3.periodKey === "2032-04" && rf3.amountSatang === 5_000_000 && rf3.kind === "ALLOWANCE" && rf3.status === "PENDING",
-      orig: o3?.runId === r32 && o3?.status === "APPROVED" && o3?.amountSatang === 5_000_000, run: JSON.stringify(await P.hrPayrollRun.findUnique({ where: { id: r32 } })) === runBefore,
-    }, "2032-04 · untouched", `${shown(w3)} ${rf3?.periodKey}`);
+      dec: dr?.ok === true, out: w3.ok && w3.value?.outcome === "REFUND_OWED" && w3.value?.refundOwedSatang === 5_000_000,
+      payroll: payAfter === payBefore, run: JSON.stringify(await P.hrPayrollRun.findUnique({ where: { id: r32 } })) === runBefore,
+      owed: Number(c3?.refundOwedSatang) === 5_000_000 && c3?.withdrawnById === W.payAll.id && l3?.status === "REFUND_OWED" && l3?.refund?.owedSatang === 5_000_000,
+      perm: is(mPerm, "บันทึกการคืนเงินได้เฉพาะเจ้าของร้านหรือผู้อนุมัติรายการเงินเดือน") && is(mMem, T.noAccess) && is(mNotOwed, "รายการนี้ไม่มียอดค้างคืน"),
+      ref: is(mEmpty, "ระบุเลขที่หรือหลักฐานการคืนเงิน (1–80 ตัวอักษร)"),
+      repaid: m1.ok && m1.value?.replayed === false && m2.ok && m2.value?.replayed === true && m2.value?.repaidAt === m1.value?.repaidAt,
+      row: c3b?.repaidById === W.payAll.id && c3b?.repaidRef === "โอนคืน-001" && l3b?.status === "REPAID", noAllowance: (await allowances()).length === 0,
+    }, "REFUND_OWED · payroll untouched · repaid once", `${shown(w3)} ${l3?.status} ${shown(mPerm)} ${shown(m1)} ${shown(m2)}`);
     const own = await wd(W.reqBoth, g3.value?.chargeId);
     const others = await wd(W.reqBoth, v.v3.value?.chargeId);
     const mgr = await wd(W.mgrU1, v.v3.value?.chargeId);
@@ -618,7 +654,9 @@ async function runDb(): Promise<void> {
     const d4 = await dec(adjOf(v.v4), W.payAll);
     const ws = await Promise.all([0, 1, 2].map(() => wd(W.payAll, v.v4.value?.chargeId)));
     const n4 = (await adjs({ sourceRef: `hrstock:${vIn.v4.requestKey}#refund` })).length;
-    ck("S6.6", { dec: d4?.ok === true, one: ws.filter((x) => x.ok && x.value?.outcome === "REFUND").length === 1, rest: ws.filter((x) => is(x, T.withdrawn)).length === 2, rows: n4 === 1 }, "1 refund", `${ws.map(shown).join(" ")} rows=${n4}`);
+    const a4 = (await adjs({ id: adjOf(v.v4) }))[0];
+    // ORACLE-EDIT (Q8 option 2): exactly one CANCELLED (in place) · no refund row · no ALLOWANCE
+    ck("S6.6", { dec: d4?.ok === true, one: ws.filter((x) => x.ok && x.value?.outcome === "CANCELLED").length === 1, rest: ws.filter((x) => is(x, T.withdrawn)).length === 2, rows: n4 === 0, adj: a4?.status === "REJECTED", noAllowance: (await P.hrPayAdjustment.count({ where: { tenantId: T1, kind: "ALLOWANCE" } })) === 0 }, "1 CANCELLED · 0 refund rows", `${ws.map(shown).join(" ")} rows=${n4} adj=${a4?.status}`);
   }
 
   // ── S14.2 controls (base behaviour) ──
