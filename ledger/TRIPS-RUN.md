@@ -36,7 +36,7 @@
 | T0.2 | ✅ | merge 171b9ebc8 · oracle 84/84 + t0.1 96/96 บนฐานหลัก · `ledger/wo-notes/trips-T0.2.md` |
 | T0.3 | 🔄 | สร้างแล้ว WIP cdfa29102 (108/116 · กลุ่ม seed รอ T0.2) → ผู้ตรวจ FIX FIRST (1 BLOCKER · 5 MAJOR) + นักล่า FIX FIRST (2 BLOCKER · 4 MAJOR) → รอบแก้ r2 กำลังทำ (เลน l1) · รายงาน `wo-notes/trips-T0.3-review.md` `-hunt.md` |
 | T0.4 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.4.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.4.mts` 110 ข้อ (แดง) พร้อม · รอ T0.3 |
-| T0.5 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.5.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.5.mts` 130 ข้อ (แดง) พร้อม · รอ T0.2 |
+| T0.5 | 🔄 | ผู้สร้างเลน l2 (เริ่ม 12 พ.ย. ~14:1xZ · มติ §13) · ใบสั่ง `ledger/trips-briefs/T0.5.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.5.mts` 130 ข้อ (แดง) พร้อม · รอ T0.2 |
 | ที่เหลือ 64 ใบ | ⬜ | ตาม MASTER-PLAN §3/§4 |
 
 ภาพ: ชุด M1 วาดแล้ว = จอ 16–20 (e6b3a7a9f · ผู้คุมเปิดดูครบ 5 จอ · รอเจ้าของดู OQ1) · ที่เหลือ (TA §12.3 ชุด 4–7 · 9 · ค่าตั้ง agency/ticket) วาดก่อนใบของเฟสนั้น
