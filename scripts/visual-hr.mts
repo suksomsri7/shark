@@ -37,7 +37,7 @@ const BASE = (opt("--base") ?? "").replace(/\/$/, "");
 const USERS = Object.keys(HQC.users) as HqcUserKey[];
 
 // HR H2.2 ▸ Ids + สาขา/สัปดาห์ตารางกะจาก seed (HQC.roster) · expect = HTTP ที่ต้องได้ต่อผู้ใช้ (ไม่ตรง = ❌ — ปิดหนี้ H0.4 "4xx = ⚠️ อย่างเดียว" เฉพาะหน้าที่ระบุ) ◂
-type Ids = { hr: string; namfon: string; paidRun: string; huahin: string; suanphueng: string; rosterWeek: string };
+type Ids = { hr: string; namfon: string; paidRun: string; huahin: string; suanphueng: string; rosterWeek: string; today: string }; // HR H2.5 ▸ today ◂
 type PageSpec = { key: string; path: (ids: Ids) => string; users: readonly HqcUserKey[] | "all"; why: string; expect?: Partial<Record<HqcUserKey, number>> };
 /** หน้าที่มีอยู่จริงวันนี้ (7 page.tsx ของ HR) */
 const PAGES: readonly PageSpec[] = [
@@ -49,7 +49,7 @@ const PAGES: readonly PageSpec[] = [
   { key: "payroll", path: (i) => `/app/sys/${i.hr}/hr/payroll`, users: "all", why: "เงินเดือน (เห็นเฉพาะผู้ดูเงินเดือน)" },
   { key: "slip-namfon", path: (i) => `/app/sys/${i.hr}/payroll/${i.paidRun}/slip/${i.namfon}`, users: ["owner", "staff"], why: "สลิปน้ำฝน (เจ้าของ + ตัวน้ำฝนเอง)" },
 ];
-/** ชุดหน้าต่อใบงาน — ใบ UI หลัง ๆ เพิ่มของตัวเอง (เช่น SPECS["2.5"] = [หน้าลงเวลาใหม่]) */
+/** ชุดหน้าต่อใบงาน — ใบ UI หลัง ๆ เพิ่มของตัวเอง (เช่น SPECS["<ใบ>"] = [หน้าของใบนั้น]) */
 const SPECS: Record<string, readonly PageSpec[]> = {
   "0.4": PAGES,
   // HR H0.7 ▸ R5: หน้า "อนุมัติ" → คำขอของฉัน (ปุ่ม hr-leave-cancel-<leaveId>) — เห็นเฉพาะผู้ยื่น (มีใบลา PENDING ในสาย) ◂
@@ -71,6 +71,15 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   ],
   // HR H2.3 ▸ R11 หน้า "อนุมัติ": ส่วนคำขอสลับกะ (รับ/ไม่รับ · ยกเลิก) + แถวคำขอสลับกะใน "คำขอของฉัน" — ไม่มีหน้าใหม่ (Q14) · ไม่มี seed (Q15: ว่าง = ไม่มีส่วนนี้) ◂
   "2.3": [{ key: "approvals-swaps", path: () => `/app/approvals`, users: ["owner", "manager", "staff"], why: "คำขอสลับกะถึงคุณ + ยกเลิกคำขอสลับกะ (H2.3)" }],
+  // HR H2.5 ▸ §7 หน้าลงเวลา (mockup 04): ทีมรายวันของเมื่อวาน (seed Q9 — ผลบันทึกแล้ว) · วันนี้ (phase/แถบเตือน) · ปฏิทินน้ำฝน · ปฏิทินของตัวเอง · 404 · การ์ดตั้งค่า ◂
+  "2.5": [
+    { key: "att-day-yesterday", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day&day=${addDays(i.today, -1)}`, why: "ทีมรายวันเมื่อวาน: สถานะบันทึกแล้ว · น้ำฝนสาย · ชม.จริง/OT (H2.5 04A)", expect: { owner: 200, manager: 200, "manager-branch": 200 }, users: ["owner", "manager", "manager-branch"] },
+    { key: "att-day-today", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day`, why: "ทีมรายวันวันนี้: ยังไม่ถึงเวลา/ยังไม่มา · แถบเตือน · ลงเวลาแทน (H2.5 04A)", expect: { owner: 200 }, users: ["owner"] },
+    { key: "att-month-namfon", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, why: "ปฏิทินรายคนน้ำฝน + สรุปเดือน (ไม่มีเงิน Q8) (H2.5 04B)", expect: { owner: 200, "manager-branch": 200 }, users: ["owner", "manager-branch"] },
+    { key: "att-self", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "พนักงาน (น้ำฝน) เห็นปฏิทินของตัวเอง (Q11)", expect: { staff: 200 }, users: ["staff"] },
+    { key: "att-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
+    { key: "settings-attendance", path: (i) => `/app/sys/${i.hr}/hr/settings`, why: "การ์ดตัดสินผล/การเตือน hr-settings-attendance-policy (R12)", expect: { owner: 200 }, users: ["owner"] },
+  ],
 };
 const VIEWPORTS = [
   { name: "desktop", w: 1440, h: 900, mobile: false, touch: false },
@@ -91,7 +100,7 @@ const fileOf = (p: PageSpec, v: (typeof VIEWPORTS)[number]) => `${OUT}/${p.key}-
 
 // ═══════════════════ 2. --dry: พิมพ์ตารางแล้วจบ (ไม่มี env · DB · เซิร์ฟเวอร์) ═══════════════════
 if (DRY) {
-  const ph: Ids = { hr: "<hr>", namfon: "<น้ำฝน>", paidRun: "<paidRun>", huahin: "<หัวหิน>", suanphueng: "<สวนผึ้ง>", rosterWeek: "2030-01-07" }; // HR H2.2 ▸ ◂
+  const ph: Ids = { hr: "<hr>", namfon: "<น้ำฝน>", paidRun: "<paidRun>", huahin: "<หัวหิน>", suanphueng: "<สวนผึ้ง>", rosterWeek: "2030-01-07", today: "2030-01-08" }; // HR H2.2 ▸ ◂
   console.log(`🧪 visual-hr --dry · ใบ ${WO} · ผู้ใช้ ${USER} (${HQC.users[USER].role}) · ${spec.length} หน้า × ${VIEWPORTS.length} ขนาดจอ = ${spec.length * VIEWPORTS.length} ภาพ`);
   for (const p of spec) {
     console.log(`  ${p.key.padEnd(16)} ${p.path(ph)}   — ${p.why}`);
@@ -123,7 +132,7 @@ if (!scope || scope.tenantId !== E.tenant?.id) {
   await prisma.$disconnect?.();
   die(`เฉลย ${HQC.expectedPath} ไม่ตรงกับฐาน (ร้านในฐาน ${scope?.tenantId ?? "ไม่มี"} · เฉลย ${E.tenant?.id}) — รัน seed-hr-qc ใหม่`);
 }
-const IDS: Ids = { hr: E.systems.HR, namfon: E.employees.namfon, paidRun: E.paidRun.id, huahin: E.units?.huahin ?? "", suanphueng: E.units?.suanphueng ?? "", rosterWeek: E.roster?.week ?? "" }; // HR H2.2 ▸ ◂
+const IDS: Ids = { hr: E.systems.HR, namfon: E.employees.namfon, paidRun: E.paidRun.id, huahin: E.units?.huahin ?? "", suanphueng: E.units?.suanphueng ?? "", rosterWeek: E.roster?.week ?? "", today: E.dates?.today ?? "" }; // HR H2.2 ▸ ◂ · HR H2.5 ▸ today ◂
 /** ตรงกับ src/lib/env.ts:32 — เซิร์ฟเวอร์ QC อ่าน env ชุดเดียวกัน (qc4.sh) */
 const SECURE_COOKIES = (process.env.APP_ENV ?? "") !== "development";
 console.log(`🍪 APP_ENV=${process.env.APP_ENV ?? "(ไม่ตั้ง)"} ⇒ คุกกี้ ${SECURE_COOKIES ? "__Host-shark_session (secure)" : "shark_session"}`);

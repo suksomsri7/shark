@@ -321,7 +321,7 @@ function scopeExports(ROOT: string): Set<string> {
  * ปิดหนี้ = ใบที่เขียนหน้านั้นใหม่ถอดแถวออก (ถ้ามีตัวกันแล้วแต่ไม่ถอด = แดง)
  */
 export const PAGE_GUARD_BASELINE = new Map<string, string>([
-  ["src/app/app/sys/[id]/hr/attendance/page.tsx", "closes in H2.5"],
+  // HR H2.5 ▸ หน้าลงเวลาใหม่กันด้วย hrScopeOf (hr/scope) + ตัวโหลดที่คืน null ⇒ ปิดหนี้ (ratchet) ◂
   ["src/app/app/sys/[id]/hr/leave/page.tsx", "closes in H2.7"],
   ["src/app/app/sys/[id]/hr/employees/page.tsx", "closes in H1.1/H4.4"],
   ["src/app/app/sys/[id]/hr/kiosk/page.tsx", "closes in H2.4"],
