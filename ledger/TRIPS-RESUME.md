@@ -1,5 +1,10 @@
 # TRIPS-RESUME — จุดต่องาน (บล็อกใหม่อยู่บนสุด)
 
+## ▶️ 12 พ.ย. 2569 ~08:5xZ — **3/72 (4%)** · P0 ครบ · รอ ON_MAIN ก่อน T0.1
+- ✅ P0.1 · P0.2 · P0.3 (สัญญารอบ 2 · ผู้ตรวจ READY) · หนี้สัญญา N-1…N-11 มีด่านใน TRIPS-RUN §3 — ตัวแทนผู้ร่างกำลังแก้รอบ 3 (เอกสารอย่างเดียว · ถ้าตาย: เปิดใหม่ให้อ่าน `wo-notes/trips-P0.3-review-r2.md` แล้วแก้ N-1…N-11)
+- ถัดไป (ทำได้ระหว่างรอ main): ใบสั่ง `ledger/trips-briefs/T0.1.md` + ข้อสอบ `scripts/qc-trips-t0.1.mts` (ผู้เขียนข้อสอบแยกคน · เลน l1) — **ห้ามปล่อยผู้สร้าง T0.1 จน ON_MAIN + prod ปกติ** แล้ว merge origin/main เข้า session/trips ก่อน
+- คำถามเจ้าของ OQ1–OQ17 (`TRIPS-OWNER-QUESTIONS.md`) ใช้ค่าปลอดภัยอยู่
+
 ## ▶️ 12 พ.ย. 2569 ~07:4xZ — **1/72 (1%)** · P0.1 ✅ · `session/trips` a37370401+
 - ✅ P0.1 รับแล้ว (ข้อสอบ 56/56 บนฐานหลัก) · ฐาน l2 ยังไม่ได้ seed (`seed-trips-qc.mts` ก่อนใช้)
 - 🧪 P0.2 `ledger/TRIPS-DEFAULTS.md` + P0.3 `ledger/TRIPS-CORE-CONTRACT.md` (ร่าง · มีหัว L = คำถามเปิด 49 ข้อ) → **ผู้ตรวจอิสระกำลังรัน** ผลที่ `scratchpad/p0.3-review/REVIEW.md` → ผู้คุมตัดสิน L-1…L-49 + แก้ไฟล์ → รับ P0.2/P0.3 (3/72)
