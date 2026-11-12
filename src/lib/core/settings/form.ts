@@ -28,6 +28,8 @@ import {
   resolveSettings,
   resolveSettingsAtTenant,
   settingHistory,
+  settingRowsForPairs,
+  tripEntitiesWithRows,
 } from "./service";
 import type { Resolved, ScopeKind, ScopeRefs, SettingDef, SettingsActor, SettingsCtx } from "./types";
 import type { SettingUnitType } from "./types"; // SVC H.1
@@ -120,6 +122,8 @@ async function deeperPairs(ctx: SettingsCtx, unitId: string, scope: ScopeKind, s
     });
     return rooms.map((r) => ({ scope: "ROOM", scopeId: r.id }));
   }
+  // TRIPS T0.1 r2 ▸ ชั้นสินค้า ⇒ รอบของสินค้านั้นที่มีค่าตั้งจริง (ไม่ไล่ทุกรอบ · ผลล่า MAJOR-1) ◂
+  if (scope === "PRODUCT") return tripEntitiesWithRows(prisma, ctx.tenantId, unitId, { scopes: ["DEPARTURE"], productId: scopeId });
   return [];
 }
 
@@ -176,7 +180,7 @@ export async function loadSettingsForm(actor: SettingsActor, ctx: SettingsCtx, q
     keys.length ? (scope === "TENANT" ? resolveSettingsAtTenant(ctx, keys, unit.id) : resolveSettings(ctx, keys, scopeRefs)) : Promise.resolve({}),
     keys.length ? prisma.settingValue.findMany({ where: { tenantId: ctx.tenantId, key: { in: keys }, scope, scopeId }, select: { key: true } }) : Promise.resolve([]),
     keys.length && deeper.length
-      ? prisma.settingValue.findMany({ where: { tenantId: ctx.tenantId, key: { in: keys }, OR: deeper }, select: { key: true, scope: true, scopeId: true } })
+      ? settingRowsForPairs(prisma, { tenantId: ctx.tenantId, key: { in: keys } }, deeper, { key: true, scope: true, scopeId: true })
       : Promise.resolve([]),
     prisma.settingProfile.findMany({ where: { tenantId: ctx.tenantId, unitId: unit.id, domain: { in: q.domains } }, select: { domain: true, templateKey: true } }),
     keys.length
@@ -238,6 +242,9 @@ export async function loadSettingsForm(actor: SettingsActor, ctx: SettingsCtx, q
       ownerOnly: isOwnerOnly(def),
       ...(def.percentScale !== undefined ? { percentScale: def.percentScale } : {}),
       ...(def.tableTh ? { tableSpec: def.tableTh } : {}), // G1UI
+      // TRIPS T0.1 ▸ ป้ายนักบัญชี/หน่วยงาน (ขึ้นแม้ค่ายังไม่ผิด) ◂
+      reviewHint: def.reviewHint ?? null,
+      reviewAuthorityTh: def.reviewHint === "AUTHORITY" ? (def.reviewAuthorityTh ?? null) : null,
     };
     const gk = `${def.domain}|${def.group}`;
     let gi = groupAt.get(gk);

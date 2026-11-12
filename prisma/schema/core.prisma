@@ -71,6 +71,7 @@ enum UnitType {
   SCHOOL // โรงเรียน/คอร์สเรียน (WO-0051)
   CLINIC // คลินิก (WO-0052)
   DORM // หอพัก/อพาร์ตเมนต์ (SVC R0.1)
+  TRIPS // ทัวร์ · เดย์ทริป · Liveaboard (TRIPS T0.1 · ALTER TYPE ใน migration trips_enum)
 }
 
 enum UnitStatus {

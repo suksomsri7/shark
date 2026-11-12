@@ -6,15 +6,27 @@
 //   labelTh ว่าง · snapshot อ้าง key ที่ไม่มี · legal อ้าง ruleId ที่ไม่มี
 // เรียกซ้ำต่อ domain ได้ (defs/rooms.ts · defs/booking.ts) — แม่แบบ/snapshot/groupRules ต่อท้าย
 //
-// 🔴 pure: import ได้เฉพาะ zod · ไฟล์ pure ในโฟลเดอร์นี้ · ./legal/th-rental-2568 · core/permissions · import type
+// 🔴 pure: import ได้เฉพาะ zod · ไฟล์ pure ในโฟลเดอร์นี้ · ./legal (ทะเบียนตัวตรวจหลายไฟล์) · core/permissions · import type
+// TRIPS T0.1 ▸ โดเมน trips/agency/ticket: legal อ้างได้เฉพาะ th-tour-2569 (maxLevel WARN) · ค่าเริ่มทุกแม่แบบ + _fallback ต้องได้ OK
+//   (evaluateTourRule) · โดเมนอื่นใช้ทางเดิม (th-rental-2568 · STRICT ไม่ BLOCK) ◂
 // ─────────────────────────────────────────────────────────────
-import { evaluateLegal, TH_RENTAL_2568_RULES, type LegalRuleId, type LegalRuleInputs } from "./legal/th-rental-2568";
+import {
+  evaluateLegal,
+  evaluateTourRule,
+  isRentalRuleId,
+  isTourLegalDomain,
+  isTourRuleId,
+  TH_TOUR_2569_RULES,
+  type LegalRuleInputs,
+  type RentalRuleId,
+} from "./legal";
 import { templateTexts } from "./template";
 import {
   SCOPE_KINDS,
   type DefineSettingsOptions,
   type GroupIssue,
   type GroupRule,
+  type LegalRuleId,
   type ScopeKind,
   type SettingDef,
   type TableCellSpecTh,
@@ -56,6 +68,7 @@ function chainProblem(chain: unknown): string | null {
 
 /** ตัวแปลงค่าตั้ง → อินพุตตัวตรวจกฎหมาย (ปริยาย · ใบสั่ง §2) · undefined = ไม่มีอินพุต (evaluateLegal ⇒ BLOCK INVALID_INPUT · fail closed) */
 function defaultLegalInput(ruleId: LegalRuleId, value: unknown): unknown {
+  if (isTourRuleId(ruleId)) return value; // TRIPS T0.1 ▸ ทัวร์: อินพุต = ค่าของคีย์ (ใบสั่ง §3.3) ◂
   if (ruleId === "DEPOSIT_RETURN_DAYS") return { days: value };
   if (ruleId === "LATE_FEE_CAP") return { feeSatang: value };
   if (ruleId === "TEMPLATE_NO_THREAT") return { text: templateTexts(value).join("\n") };
@@ -137,8 +150,15 @@ export function defineSettings(domain: string, defs: readonly SettingDef[], opts
       if (!schemaOk(d, v)) problems.push(`${key}: ค่าเริ่ม ${tk} ไม่ผ่าน schema`);
     }
     for (const r of d.legal ?? []) {
-      if (!Object.prototype.hasOwnProperty.call(TH_RENTAL_2568_RULES, r)) problems.push(`${key}: legal อ้าง ruleId ที่ไม่มี ${String(r)}`);
+      if (isTourLegalDomain(domain)) {
+        // TRIPS T0.1 ▸ สามโดเมนนี้อ้างได้เฉพาะคำเตือนทัวร์ที่ระดับสูงสุด = WARN ◂
+        if (!isTourRuleId(r)) problems.push(`${key}: legal ของโดเมน ${domain} อ้างได้เฉพาะคำเตือนทัวร์ W01–W46 (ได้ ${String(r)})`);
+        else if (TH_TOUR_2569_RULES[r].maxLevel !== "WARN") problems.push(`${key}: คำเตือน ${r} ต้องมีระดับสูงสุด WARN`);
+      } else if (!isRentalRuleId(r)) problems.push(`${key}: legal อ้าง ruleId ที่ไม่มี ${String(r)}`);
     }
+    if (d.reviewHint !== undefined && d.reviewHint !== "ACCOUNTANT" && d.reviewHint !== "AUTHORITY") problems.push(`${key}: reviewHint ไม่ถูกต้อง (${String(d.reviewHint)})`);
+    if (d.reviewHint === "AUTHORITY" && !(typeof d.reviewAuthorityTh === "string" && /[\u0E00-\u0E7F]/.test(d.reviewAuthorityTh) && d.reviewAuthorityTh.trim().length > 0)) problems.push(`${key}: reviewHint AUTHORITY ต้องมี reviewAuthorityTh ภาษาไทย`);
+    if (d.reviewHint !== "AUTHORITY" && d.reviewAuthorityTh !== undefined) problems.push(`${key}: reviewAuthorityTh ใช้คู่กับ reviewHint AUTHORITY เท่านั้น`);
     batch.set(key, d);
   }
   const known = (k: string) => DEFS.has(k) || batch.has(k);
@@ -193,7 +213,13 @@ export function defineSettings(domain: string, defs: readonly SettingDef[], opts
           continue;
         }
         for (const { ruleId, input } of inputs) {
-          const o = evaluateLegal(ruleId, input as LegalRuleInputs[LegalRuleId], { mode: "STRICT" });
+          if (isTourRuleId(ruleId)) {
+            // TRIPS T0.1 ▸ ค่าเริ่มของสามโดเมนต้อง "ไม่เตือน" (OK · ไม่ใช่แค่ไม่ BLOCK) ◂
+            const t = evaluateTourRule(ruleId, input, { skipTimeDependent: true }); // r2 ▸ ไม่ขึ้นกับนาฬิกาจริง (ค่าเริ่มที่มีวันที่ต้องไม่ทำให้ทะเบียนล้มในอีก 180 วัน) ◂
+            if (t.level !== "OK") problems.push(`${key}: ค่าเริ่ม ${tk} ขึ้นคำเตือน ${ruleId} (${t.code})`);
+            continue;
+          }
+          const o = evaluateLegal(ruleId, input as LegalRuleInputs[RentalRuleId], { mode: "STRICT" });
           if (o.level !== "OK") problems.push(`${key}: ค่าเริ่ม ${tk} ไม่ผ่านกฎหมาย ${ruleId} (${o.code})`);
         }
       }

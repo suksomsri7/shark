@@ -50,6 +50,9 @@ export type SettingsField = {
   percentScale?: 100 | 10000;
   /** G1UI ▸ type=table: ป้ายไทย + ชนิดช่องย่อย (คัดลอกจาก def.tableTh) — สรุป/ตัวแก้ใช้แทนชื่อคีย์ดิบ ◂ */
   tableSpec?: TableSpecTh;
+  /** TRIPS T0.1 ▸ ป้าย "ตรวจกับนักบัญชีของร้าน" (ACCOUNTANT) / "ยังไม่ยืนยันกับ <หน่วยงาน>" (AUTHORITY) — ขึ้นแม้ค่ายังไม่ผิด ◂ */
+  reviewHint: "ACCOUNTANT" | "AUTHORITY" | null;
+  reviewAuthorityTh: string | null;
 };
 
 export type SettingsHistoryRow = {
@@ -94,7 +97,34 @@ export const SCOPE_LABEL_TH: Record<string, string> = {
   RESOURCE: "ทรัพยากร",
   DEVICE: "อุปกรณ์",
   COURSE: "คอร์ส",
+  // TRIPS T0.1 ▸
+  VESSEL: "เรือ",
+  PRODUCT: "สินค้า",
+  DEPARTURE: "รอบเดินทาง",
+  AGENT_TIER: "ระดับเอเจนซี่",
+  AGENT: "เอเจนซี่",
+  // ◂
 };
+
+// ───────────────────────── TRIPS T0.1 ▸ คำเตือนทัวร์ · ป้ายตรวจ ─────────────────────────
+
+/** โดเมนที่การรับทราบคำเตือนกฎหมาย "ต้องมีเหตุผล" (false = trips/agency/ticket: รับทราบอย่างเดียว · CC §E.5 ข้อ 3) */
+export function legalAckNeedsReason(domain: string): boolean {
+  return !(domain === "trips" || domain === "agency" || domain === "ticket");
+}
+
+/** ลำดับการแสดงคำเตือน: HIGHEST > HIGH > NORMAL (ไม่มี/ไม่รู้จัก = NORMAL) */
+export function severityRank(s: string | null | undefined): number {
+  return s === "HIGHEST" ? 3 : s === "HIGH" ? 2 : 1;
+}
+
+/** ข้อความป้ายตรวจของช่อง (null = ไม่มีป้าย) */
+export function reviewHintTh(f: Pick<SettingsField, "reviewHint" | "reviewAuthorityTh">): string | null {
+  if (f.reviewHint === "ACCOUNTANT") return "ตรวจกับนักบัญชีของร้าน";
+  if (f.reviewHint === "AUTHORITY") return `ยังไม่ยืนยันกับ${f.reviewAuthorityTh ? ` ${f.reviewAuthorityTh}` : "หน่วยงานที่เกี่ยวข้อง"}`;
+  return null;
+}
+// ◂ TRIPS T0.1
 
 // ───────────────────────── ตัวช่วย ─────────────────────────
 

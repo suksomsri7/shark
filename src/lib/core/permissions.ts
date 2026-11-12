@@ -848,6 +848,16 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     group: "admin",
     actions: { "marketplace.template.install": "ติดตั้งเทมเพลตลงร้าน" },
   },
+  // TRIPS T0.1 ▸ ทัวร์ · เดย์ทริป · Liveaboard — ค่าตั้งของโดเมน trips (คีย์อื่นของโมดูลเพิ่มในใบของตัวเอง) ◂
+  {
+    module: "trips",
+    label: "ทัวร์และทริป",
+    group: "booking",
+    actions: {
+      "trips.settings.edit": "ตั้งค่าทัวร์",
+      "trips.settings.money": "ตั้งค่าทัวร์เรื่องเงิน",
+    },
+  },
 ] as const;
 
 // CRM C1.7 ▸ 5 คีย์ตั้งค่าของ CRM ที่ MANAGER ไม่ได้โดยปริยาย (§6.1) — ให้ได้เฉพาะเจ้าของร้าน (ผู้อ่าน: crm/access.ts ·

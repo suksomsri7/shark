@@ -18,14 +18,15 @@ import { prisma } from "@/lib/core/db";
 import { emitOutboxMany } from "@/lib/core/outbox";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { resolvePolicy, submitForApproval } from "@/lib/modules/approval";
+import { evaluateTourRule, isTourLegalDomain, isTourRuleId } from "./legal";
 import {
   evaluateLegal,
   isValidOutOfScopeReason,
   normalizeLegalMode,
   type LegalCtx,
   type LegalOutcome,
-  type LegalRuleId,
   type LegalRuleInputs,
+  type LegalRuleId as RentalRuleId,
 } from "./legal/th-rental-2568";
 import {
   defaultFor,
@@ -45,6 +46,7 @@ import {
 import { checkTemplate } from "./template";
 import type {
   ApplyTemplateInput,
+  LegalRuleId,
   PolicySnapshot,
   RemoveResult,
   ResetTarget,
@@ -62,6 +64,7 @@ import type {
   SettingsActor,
   SettingsCtx,
   SettingsDiffRow,
+  TourSeverity,
 } from "./types";
 
 type Tx = Prisma.TransactionClient;
@@ -81,7 +84,7 @@ const CONSUMED_ACTION = "settings.legal_override.consumed";
 const PROPOSAL_TARGET = "SettingProposal";
 
 /** ชั้นที่มีตารางให้ตรวจความเป็นเจ้าของ — ชั้นอื่น (LEASE RATE_PLAN RESOURCE DEVICE COURSE) ปฏิเสธจนกว่าใบที่สร้างตารางยื่นขอเพิ่ม */
-const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE", "RATE_PLAN"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂ · SVC H.0 ▸ RATE_PLAN = HotelRatePlan ◂
+const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE", "RATE_PLAN", "PRODUCT", "DEPARTURE"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂ · SVC H.0 ▸ RATE_PLAN = HotelRatePlan ◂ · TRIPS T0.1 ▸ PRODUCT = TripProduct · DEPARTURE = TripDeparture (VESSEL = L1.1 · AGENT_TIER/AGENT = A1.1 · Ticket* = K1.1) ◂
 const REF_FIELD: Record<ScopeKind, keyof ScopeRefs | null> = {
   TENANT: null,
   UNIT: "unitId",
@@ -95,6 +98,13 @@ const REF_FIELD: Record<ScopeKind, keyof ScopeRefs | null> = {
   RESOURCE: "resourceId",
   DEVICE: "deviceId",
   COURSE: "courseId",
+  // TRIPS T0.1 ▸
+  VESSEL: "vesselId",
+  PRODUCT: "productId",
+  DEPARTURE: "departureId",
+  AGENT_TIER: "agentTierId",
+  AGENT: "agentId",
+  // ◂
 };
 
 // ─────────────────── ตัวช่วย ───────────────────
@@ -273,15 +283,100 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
         for (const r of rs) out.set(`RATE_PLAN|${r.id}`, { unitId: r.unitId, known: { TENANT: T, UNIT: r.unitId, RATE_PLAN: r.id } });
       }),
     );
+  // TRIPS T0.1 ▸ ชั้น PRODUCT = TripProduct (รู้ UNIT · VESSEL ถ้ามี) · DEPARTURE = TripDeparture (รู้ UNIT · PRODUCT · VESSEL ของรอบ หรือของสินค้า) ◂
+  if (by.has("PRODUCT"))
+    jobs.push(
+      db.tripProduct.findMany({ where: { tenantId: T, id: { in: ids("PRODUCT") } }, select: { id: true, unitId: true, vesselId: true } }).then((rs) => {
+        for (const r of rs) out.set(`PRODUCT|${r.id}`, { unitId: r.unitId, known: { TENANT: T, UNIT: r.unitId, VESSEL: r.vesselId ?? null, PRODUCT: r.id } });
+      }),
+    );
+  if (by.has("DEPARTURE"))
+    jobs.push(
+      db.tripDeparture
+        .findMany({ where: { tenantId: T, id: { in: ids("DEPARTURE") } }, select: { id: true, unitId: true, productId: true, vesselId: true } })
+        .then(async (rs) => {
+          const needVessel = [...new Set(rs.filter((r) => !r.vesselId).map((r) => r.productId))];
+          const prods = needVessel.length
+            ? await db.tripProduct.findMany({ where: { tenantId: T, id: { in: needVessel } }, select: { id: true, vesselId: true } })
+            : [];
+          const pv = new Map(prods.map((p) => [p.id, p.vesselId]));
+          for (const r of rs)
+            out.set(`DEPARTURE|${r.id}`, {
+              unitId: r.unitId,
+              known: { TENANT: T, UNIT: r.unitId, VESSEL: r.vesselId ?? pv.get(r.productId) ?? null, PRODUCT: r.productId, DEPARTURE: r.id },
+            });
+        }),
+    );
   await Promise.all(jobs); // ชั้นที่ยังไม่มีตาราง — คง null (fail closed)
   return out;
 }
 
 /** id ของ entity ชั้นลึกกว่า UNIT ที่อยู่ในสาขานี้ (ใช้กับ RESET_ALL / settingsDiff) */
+/** TRIPS T0.1 r2 ▸ ขนาดชุด id ต่อคิวรี (ห่างจากเพดาน 32,767 พารามิเตอร์ของ Postgres) ◂ */
+const ID_BATCH = 5_000;
+const chunks = <T,>(a: readonly T[], n: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < a.length; i += n) out.push(a.slice(i, i + n));
+  return out;
+};
+
+/**
+ * TRIPS T0.1 r2 (ผลล่า MAJOR-1 · รีวิว #4) ▸ ชั้นสินค้า/รอบ/เรือ: ไม่ไล่ทุกสินค้า/ทุกรอบของหน่วย (รอบโตไม่มีเพดาน)
+ * เริ่มจากแถว SettingValue ที่มีอยู่จริงของชั้นนั้น แล้วยืนยันความเป็นเจ้าของ (tenant + unit · + product ถ้าระบุ) ทีละชุดไม่เกิน ID_BATCH
+ * ⇒ ต้นทุนตามจำนวนค่าที่ร้านปรับ ไม่ใช่จำนวนรอบ · id ที่ไม่มีแถวค่าตั้งไม่จำเป็นต่อ diff/ฟอร์ม/RESET_ALL (ไม่มีอะไรให้นับหรือล้าง)
+ * VESSEL ยังไม่มีตาราง (L1.1) ⇒ ข้าม (เขียนชั้นนี้ไม่ได้อยู่แล้ว · SCOPE_UNSUPPORTED) ◂
+ */
+export async function tripEntitiesWithRows(
+  db: Tx,
+  tenantId: string,
+  unitId: string,
+  opts: { scopes?: readonly ("PRODUCT" | "DEPARTURE")[]; productId?: string } = {},
+): Promise<{ scope: ScopeKind; scopeId: string }[]> {
+  const scopes = opts.scopes ?? ["PRODUCT", "DEPARTURE"];
+  const rows = await db.settingValue.findMany({
+    where: { tenantId, scope: { in: [...scopes] } },
+    select: { scope: true, scopeId: true },
+    distinct: ["scope", "scopeId"],
+  });
+  const ids = (sc: string) => [...new Set(rows.filter((r) => r.scope === sc).map((r) => r.scopeId))];
+  const out: { scope: ScopeKind; scopeId: string }[] = [];
+  if (scopes.includes("PRODUCT") && !opts.productId) {
+    for (const part of chunks(ids("PRODUCT"), ID_BATCH)) {
+      const ok = await db.tripProduct.findMany({ where: { tenantId, unitId, id: { in: part } }, select: { id: true } });
+      for (const r of ok) out.push({ scope: "PRODUCT", scopeId: r.id });
+    }
+  }
+  if (scopes.includes("DEPARTURE")) {
+    for (const part of chunks(ids("DEPARTURE"), ID_BATCH)) {
+      const ok = await db.tripDeparture.findMany({
+        where: { tenantId, unitId, id: { in: part }, ...(opts.productId ? { productId: opts.productId } : {}) },
+        select: { id: true },
+      });
+      for (const r of ok) out.push({ scope: "DEPARTURE", scopeId: r.id });
+    }
+  }
+  return out;
+}
+
+/** แถว SettingValue ของคู่ (scope, scopeId) จำนวนมาก — แบ่ง OR เป็นชุด (กันเพดานพารามิเตอร์) แล้วรวมผล */
+export async function settingRowsForPairs<S extends Prisma.SettingValueSelect>(
+  db: Tx,
+  where: Prisma.SettingValueWhereInput,
+  pairs: readonly { scope: string; scopeId: string }[],
+  select: S,
+): Promise<Prisma.SettingValueGetPayload<{ select: S }>[]> {
+  const out: Prisma.SettingValueGetPayload<{ select: S }>[] = [];
+  for (const part of chunks(pairs, 2_000)) {
+    const rs = await db.settingValue.findMany({ where: { ...where, OR: part.map((p) => ({ scope: p.scope, scopeId: p.scopeId })) }, select });
+    out.push(...(rs as Prisma.SettingValueGetPayload<{ select: S }>[]));
+  }
+  return out;
+}
+
 export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): Promise<{ scope: ScopeKind; scopeId: string }[]> {
   const w = { tenantId, unitId };
   const sel = { id: true } as const;
-  const [b, rt, rm, st, sv, dv, res, rp] = await Promise.all([
+  const [b, rt, rm, st, sv, dv, res, rp, trips] = await Promise.all([
     db.roomBuilding.findMany({ where: w, select: sel }),
     db.hotelRoomType.findMany({ where: w, select: sel }),
     db.hotelRoom.findMany({ where: w, select: sel }),
@@ -290,6 +385,7 @@ export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): 
     db.queueDisplay.findMany({ where: { ...w, revokedAt: null }, select: sel }), // SVC B.6 ▸ อุปกรณ์ที่ใช้อยู่ของสาขา (ชั้น DEVICE) ◂
     db.svcResource.findMany({ where: w, select: sel }), // SVC B.13 ▸ ทรัพยากรของสาขา (ชั้น RESOURCE) ◂
     db.hotelRatePlan.findMany({ where: { ...w, status: "ACTIVE" }, select: sel }), // SVC H.0 ▸ แผนราคาที่ใช้อยู่ของหน่วย (ชั้น RATE_PLAN) ◂
+    tripEntitiesWithRows(db, tenantId, unitId), // TRIPS T0.1 r2 ▸ สินค้า/รอบของหน่วยที่มีค่าตั้งจริง (ไม่ไล่ทุกรอบ) ◂
   ]);
   return [
     ...b.map((r) => ({ scope: "BUILDING" as const, scopeId: r.id })),
@@ -300,6 +396,7 @@ export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): 
     ...dv.map((r) => ({ scope: "DEVICE" as const, scopeId: r.id })),
     ...res.map((r) => ({ scope: "RESOURCE" as const, scopeId: r.id })), // SVC B.13
     ...rp.map((r) => ({ scope: "RATE_PLAN" as const, scopeId: r.id })), // SVC H.0
+    ...trips, // TRIPS T0.1 r2
   ];
 }
 
@@ -331,8 +428,8 @@ export function editIssueFor(actor: SettingsActor, def: SettingDef, scope: Scope
   return permissionIssue(actor, def, scope, unitId, EPOCH, new Date());
 }
 
-const runLegal = (ruleId: LegalRuleId, input: unknown, ctx: LegalCtx): LegalOutcome =>
-  evaluateLegal(ruleId, input as LegalRuleInputs[LegalRuleId], ctx);
+const runLegal = (ruleId: RentalRuleId, input: unknown, ctx: LegalCtx): LegalOutcome =>
+  evaluateLegal(ruleId, input as LegalRuleInputs[RentalRuleId], ctx);
 
 // ─────────────────── อ่าน (CC §1.4) ───────────────────
 
@@ -436,6 +533,32 @@ export async function refsFor(ctx: SettingsCtx, scope: string, id: string): Prom
 }
 
 /** แถวที่ปรับจากแม่แบบของสาขา (UNIT + ชั้นลึกกว่าในสาขานี้ · + TENANT สำหรับผู้เห็นทั้งร้าน) */
+const DIFF_SELECT = { key: true, scope: true, scopeId: true, value: true, effectiveFrom: true } as const;
+const DIFF_ORDER: Prisma.SettingValueOrderByWithRelationInput[] = [{ key: "asc" }, { scope: "asc" }, { effectiveFrom: "asc" }];
+const DIFF_PAIR_BATCH = 2_000;
+/**
+ * r3 (R2-1) ▸ แถวของ settingsDiff — ชุดเดียว (ทุกโดเมนเดิมในการใช้งานจริง) = คิวรีเดิมตรงตัว (orderBy ของฐาน)
+ * หลายชุด (คู่ชั้นเกิน DIFF_PAIR_BATCH) = แต่ละชุดใช้ orderBy เดียวกัน แล้วรวมด้วยลำดับ key/scope ที่ "ฐาน" เรียงให้ (collation เดียวกับคิวรีเดียว)
+ * + effectiveFrom · แถวที่ key/scope/effectiveFrom เท่ากันคงลำดับชุด (คิวรีเดิมก็ไม่กำหนดลำดับของกรณีนี้) ◂
+ */
+async function settingsDiffRows(tenantId: string, domain: string, pairs: readonly { scope: string; scopeId: string }[]) {
+  const where = { tenantId, key: { startsWith: `${domain}.` } };
+  if (pairs.length <= DIFF_PAIR_BATCH) return prisma.settingValue.findMany({ where: { ...where, OR: [...pairs] }, select: DIFF_SELECT, orderBy: DIFF_ORDER });
+  const batches = [];
+  for (const part of chunks(pairs, DIFF_PAIR_BATCH)) batches.push(await prisma.settingValue.findMany({ where: { ...where, OR: part }, select: DIFF_SELECT, orderBy: DIFF_ORDER }));
+  const all = batches.flat();
+  if (batches.filter((b) => b.length > 0).length <= 1) return all;
+  const rankOf = async (vals: string[]): Promise<Map<string, number>> => {
+    const sorted = await prisma.$queryRaw<{ v: string }[]>`SELECT v FROM unnest(${vals}::text[]) AS u(v) ORDER BY v`;
+    return new Map(sorted.map((r, i) => [r.v, i]));
+  };
+  const [kr, sr] = await Promise.all([rankOf([...new Set(all.map((r) => r.key))]), rankOf([...new Set(all.map((r) => r.scope))])]);
+  return all
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => (kr.get(a.r.key) ?? 0) - (kr.get(b.r.key) ?? 0) || (sr.get(a.r.scope) ?? 0) - (sr.get(b.r.scope) ?? 0) || a.r.effectiveFrom.getTime() - b.r.effectiveFrom.getTime() || a.i - b.i)
+    .map((x) => x.r);
+}
+
 export async function settingsDiff(ctx: SettingsCtx, q: { unitId: string; domain: string; actor?: SettingsActor }): Promise<SettingsDiffRow[]> {
   const restricted = !!q.actor && !isUnrestricted(q.actor);
   if (q.actor && !canAccessUnit(q.actor, q.unitId)) return [];
@@ -444,11 +567,7 @@ export async function settingsDiff(ctx: SettingsCtx, q: { unitId: string; domain
   const ents = await entitiesOfUnit(prisma, ctx.tenantId, q.unitId);
   const pairs = [{ scope: "UNIT", scopeId: q.unitId }, ...ents, ...(restricted ? [] : [{ scope: "TENANT", scopeId: ctx.tenantId }])];
   const [rows, profiles] = await Promise.all([
-    prisma.settingValue.findMany({
-      where: { tenantId: ctx.tenantId, key: { startsWith: `${q.domain}.` }, OR: pairs },
-      select: { key: true, scope: true, scopeId: true, value: true, effectiveFrom: true },
-      orderBy: [{ key: "asc" }, { scope: "asc" }, { effectiveFrom: "asc" }],
-    }),
+    settingsDiffRows(ctx.tenantId, q.domain, pairs),
     loadProfilesFor(prisma, ctx.tenantId, [q.unitId], [q.domain]),
   ]);
   const tk = profiles.get(profKey(q.unitId, q.domain))?.templateKey ?? null;
@@ -524,7 +643,11 @@ type Draft = {
   reason: string | null;
 };
 type Prep = Draft & { unitId: string | null; known: Known; legalLevel: "OK" | "WARN"; legalCode: string | null };
-type LegalHit = { prep: Prep; outcome: LegalOutcome };
+/**
+ * คำเตือนที่ต้องรับทราบ — หอ (th-rental: tour=false · อาจต้องเจ้าของอนุมัติ) หรือทัวร์ (th-tour: tour=true · severity ·
+ * ไม่ต้องอนุมัติเจ้าของ · รับทราบไม่ต้องมีเหตุผล · TRIPS T0.1 CC §E.5 ข้อ 3)
+ */
+type LegalHit = { prep: Prep; code: string; messageTh: string; needsOwnerApproval: boolean; tour: boolean; severity?: TourSeverity };
 
 /** ใบสั่ง §5.1 ข้อ 1 (ไม่ต้องใช้ฐาน) */
 function checkShape(key: unknown, scope: unknown): { def: SettingDef; scope: ScopeKind } | SettingIssue {
@@ -541,12 +664,21 @@ function draftOne(c: { key?: unknown; scope?: unknown; scopeId?: unknown; value?
   if (!("def" in sh)) return sh;
   const { def, scope } = sh;
   if (typeof c.scopeId !== "string" || !c.scopeId) return { key: def.key, code: "INVALID_SCOPE_ID", messageTh: `ไม่ได้ระบุรายการที่จะตั้ง «${def.labelTh}»` };
+  // TRIPS T0.1 r2 ▸ ค่าที่ซ่อนรอเฟส 2 เขียนไม่ได้ทุกทาง (ไม่ใช่แค่ซ่อนในฟอร์ม · มีแค่ PHASE_2 ของ trips — ค่าซ่อนเดิมของโดเมนอื่นทำงานเหมือนเดิม) ◂
+  if (def.hiddenUntil === "PHASE_2") return { key: def.key, code: "NOT_YET_AVAILABLE", messageTh: `«${def.labelTh}» จะเปิดให้ตั้งในรุ่นถัดไป` };
   const parsed = def.schema.safeParse(c.value);
   if (!parsed.success) return { key: def.key, code: "INVALID_VALUE", messageTh: `ค่าของ «${def.labelTh}» อยู่นอกช่วงที่รับได้ — ตรวจตัวเลข/รูปแบบอีกครั้ง` };
   let effectiveFrom = EPOCH;
   if (c.effectiveFrom !== undefined && c.effectiveFrom !== null) {
     const d = c.effectiveFrom instanceof Date ? c.effectiveFrom : new Date(String(c.effectiveFrom));
     if (Number.isNaN(d.getTime())) return { key: def.key, code: "INVALID_EFFECTIVE_FROM", messageTh: `วันที่มีผลของ «${def.labelTh}» ไม่ถูกต้อง` };
+    // TRIPS T0.1 r2 ▸ ปีนอกช่วงที่ฐานเก็บได้ (≤ 0 · > 9999) เคยหลุดเป็นข้อผิดพลาดดิบของฐาน ⇒ VALIDATION (ค่าที่เคยบันทึกได้ไม่เปลี่ยนผล)
+    //   โดเมน trips/agency/ticket: ช่วงที่สมเหตุผล ปี 2000–2100 (1970 = "มีผลตลอด" ยังใช้ได้) ◂
+    const year = d.getUTCFullYear();
+    const tourRange = isTourLegalDomain(def.domain) && d.getTime() !== EPOCH.getTime() && (year < 2000 || year > 2100);
+    if (year < 1 || year > 9999 || tourRange) {
+      return { key: def.key, code: "INVALID_EFFECTIVE_FROM", messageTh: `วันที่มีผลของ «${def.labelTh}» อยู่นอกช่วงที่รับได้${isTourLegalDomain(def.domain) ? " (ปี ค.ศ. 2000–2100)" : ""}` };
+    }
     if (!def.effectiveDated && d.getTime() !== EPOCH.getTime()) {
       return { key: def.key, code: "EFFECTIVE_FROM_NOT_ALLOWED", messageTh: `«${def.labelTh}» ไม่มีวันที่มีผล — มีผลทันทีเมื่อบันทึก` };
     }
@@ -646,6 +778,22 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     deepSeen.add(sig);
     deepClauses.push({ key: { in: listDefs(p.def.domain, p.def.group).map((d) => d.key) }, scope: { in: [...deeper] } });
   }
+  // TRIPS T0.1 r2 ▸ คำเตือนทัวร์ข้ามคีย์ (เช่น W03 = มัดจำ T13 + ตาราง T20): แก้คีย์ต้นทางที่ชั้นบน ⇒ ตรวจ def ปลายทางที่ชั้นลึกกว่าที่มีแถวของตัวเองด้วย
+  //   (ผลล่า MINOR-2 · เฉพาะ def โดเมน trips/agency/ticket — ทางของหอเหมือนเดิม)
+  //   r3 (R2-4) ▸ แยกจาก deepClauses/deepCtx ของกฎข้ามค่า — กฎกลุ่มของโดเมนเดิมเห็นบริบทเท่าเดิมทุกไบต์ ◂
+  const tourDeepClauses: Prisma.SettingValueWhereInput[] = [];
+  const tourDomains = new Set<string>();
+  for (const p of preps) {
+    for (const d of dependents.get(p.key) ?? []) {
+      if (!isTourLegalDomain(d.domain) || !d.chain.includes(p.scope)) continue;
+      const deeper = d.chain.slice(d.chain.indexOf(p.scope) + 1);
+      const sig = `dep|${d.key}|${deeper.join(",")}`;
+      if (!deeper.length || deepSeen.has(sig)) continue;
+      deepSeen.add(sig);
+      tourDeepClauses.push({ key: d.key, scope: { in: [...deeper] } });
+      tourDomains.add(d.domain);
+    }
+  }
   const [rows0, profAll] = await Promise.all([
     tx.settingValue.findMany({
       where: { tenantId, OR: [{ key: { in: domainKeys }, OR: [...pairMap.values()] }, ...deepClauses] },
@@ -674,10 +822,32 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     const extra = new Map<string, { scope: string; scopeId: string }>();
     for (const k of deepCtx.values()) for (const x of pairsOf(k)) if (!pairMap.has(pairSig(x))) extra.set(pairSig(x), x);
     if (extra.size) {
-      const more = (await tx.settingValue.findMany({
-        where: { tenantId, key: { in: domainKeys }, OR: [...extra.values()] },
-        select: ROW_SELECT,
-      })) as Row[];
+      const more = (await settingRowsForPairs(tx, { tenantId, key: { in: domainKeys } }, [...extra.values()], ROW_SELECT)) as Row[];
+      const ids = new Set(rows.map((r) => r.id));
+      rows = [...rows, ...more.filter((r) => !ids.has(r.id))];
+    }
+  }
+
+  // r3 (R2-4) ▸ บริบทชั้นลึกของปลายทางทัวร์ (แผนที่แยก · ใช้เฉพาะวงตรวจปลายทางทัวร์) — แถวเพิ่มอ่านเฉพาะคีย์ของโดเมนทัวร์ ◂
+  const tourDeepCtx = new Map<string, Known>(); // pairSig → known
+  if (tourDeepClauses.length) {
+    const tRows = (await tx.settingValue.findMany({ where: { tenantId, OR: tourDeepClauses }, select: ROW_SELECT })) as Row[];
+    const need: { scope: string; scopeId: string }[] = [];
+    for (const r of tRows) {
+      const ps = pairSig(r);
+      if (tourDeepCtx.has(ps)) continue;
+      if (r.scope === "UNIT") tourDeepCtx.set(ps, { TENANT: tenantId, UNIT: r.scopeId });
+      else if (r.scope !== "TENANT") need.push({ scope: r.scope, scopeId: r.scopeId });
+    }
+    if (need.length) {
+      const l3 = await locateMany(tx, tenantId, need);
+      for (const [ps, loc] of l3) if (loc) tourDeepCtx.set(ps, loc.known);
+    }
+    const tourKeys = [...tourDomains].flatMap((dm) => listDefs(dm).map((d) => d.key));
+    const tPairs = new Map<string, { scope: string; scopeId: string }>();
+    for (const k of tourDeepCtx.values()) for (const x of pairsOf(k)) tPairs.set(pairSig(x), x);
+    if (tPairs.size && tourKeys.length) {
+      const more = (await settingRowsForPairs(tx, { tenantId, key: { in: tourKeys } }, [...tPairs.values()], ROW_SELECT)) as Row[];
       const ids = new Set(rows.map((r) => r.id));
       rows = [...rows, ...more.filter((r) => !ids.has(r.id))];
     }
@@ -758,15 +928,26 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     modeCache.set(ck, lctx);
     return lctx;
   };
-  const getterOf = (known: Known) => {
+  const getterOn = (base: readonly Row[], known: Known) => {
     const cache = new Map<string, unknown>();
     return (k: string): unknown => {
       if (cache.has(k)) return cache.get(k);
       const d = getDef(k);
-      const v = d ? resolveDef(d, after, known, now, profOf(known, d.domain)).value : undefined;
+      const v = d ? resolveDef(d, base, known, now, profOf(known, d.domain)).value : undefined;
       cache.set(k, v);
       return v;
     };
+  };
+  const getterOf = (known: Known) => getterOn(after, known);
+  /** TRIPS T0.1 r2 ▸ คำเตือนทัวร์ของ def ที่ค่า/บริบทหนึ่ง (ไม่โยน · legalInput โยน = INVALID_INPUT_WARN) ◂ */
+  const tourWarnsOf = (def: SettingDef, value: unknown, get: (k: string) => unknown) => {
+    let tin: { ruleId: LegalRuleId; input: unknown }[];
+    try {
+      tin = legalInputsOf(def, value, get);
+    } catch {
+      tin = (def.legal ?? []).map((ruleId) => ({ ruleId, input: undefined }));
+    }
+    return tin.map(({ ruleId, input }) => evaluateTourRule(ruleId, input, { now })).filter((v) => v.level === "WARN");
   };
   const blocks: SettingIssue[] = [];
   const warns: LegalHit[] = [];
@@ -775,6 +956,11 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     const sig = `${def.key}|${knownSig(known)}|${JSON.stringify(value) ?? ""}`;
     if (evaluated.has(sig)) return;
     evaluated.add(sig);
+    // TRIPS T0.1 ▸ โดเมน trips/agency/ticket: ไม่เรียก modeOf/evaluateLegal — evaluateTourRule เท่านั้น · WARN ⇒ warns · ไม่มีทางเข้า blocks ◂
+    if (isTourLegalDomain(def.domain)) {
+      for (const v of tourWarnsOf(def, value, getterOf(known))) warns.push({ prep: p, code: v.code, messageTh: v.messageTh, needsOwnerApproval: false, tour: true, severity: v.severity });
+      return;
+    }
     const lctx = modeOf(p.unitId, p.scope, def.domain);
     let inputs: { ruleId: LegalRuleId; input: unknown }[];
     try {
@@ -784,17 +970,38 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
       return;
     }
     for (const { ruleId, input } of inputs) {
+      if (isTourRuleId(ruleId)) continue; // ทะเบียนไม่ยอมให้โดเมนหออ้างคำเตือนทัวร์ (กันไว้อีกชั้น)
       const o = runLegal(ruleId, input, lctx);
       if (o.level === "BLOCK") blocks.push({ key: def.key, code: o.code, messageTh: o.messageTh });
-      else if (o.needsAck) warns.push({ prep: p, outcome: o });
+      else if (o.needsAck) warns.push({ prep: p, code: o.code, messageTh: o.messageTh, needsOwnerApproval: o.needsOwnerApproval, tour: false });
       else if (o.raw !== "OK" && !p.legalCode) p.legalCode = o.code; // OUT_OF_SCOPE: บันทึก OK + code ดิบ
     }
   };
   for (const p of preps) if (p.def.legal?.length) check(p, p.def, p.value, p.known);
+  const preKeys = new Set(preps.map((p) => p.key));
   for (const p of preps) {
     for (const d of dependents.get(p.key) ?? []) {
       if (d.key === p.key) continue;
-      check(p, d, resolveDef(d, after, p.known, now, profOf(p.known, d.domain)).value, p.known);
+      if (!isTourLegalDomain(d.domain)) {
+        check(p, d, resolveDef(d, after, p.known, now, profOf(p.known, d.domain)).value, p.known);
+        continue;
+      }
+      // TRIPS T0.1 r2 ▸ ปลายทางทัวร์: ตรวจที่บริบทของ change + ชั้นลึกกว่าที่ปลายทางมีแถวของตัวเอง · รายงานเฉพาะคำเตือน "ใหม่" ที่ change นี้ก่อ
+      //   (ก่อน = ค่าในฐาน · หลัง = ค่าหลังชุด) — ไม่ซ้ำคำเตือนเดิมที่รับทราบแล้ว (เช่น W01 ของตารางที่ไม่ได้แก้) ◂
+      // ปลายทางแก้ในชุดเดียวกันที่บริบทเดียวกัน = ตรวจตรงแล้ว (ไม่ตรวจบริบทนั้นซ้ำ · ชั้นลึกกว่ายังตรวจ)
+      const sameCtx = preKeys.has(d.key) && preps.some((x) => x.key === d.key && x.scope === p.scope && x.scopeId === p.scopeId);
+      const ctxs: Known[] = sameCtx ? [] : [p.known];
+      for (const k of tourDeepCtx.values()) if (k[p.scope] === p.scopeId && knownSig(k) !== knownSig(p.known) && !ctxs.some((c) => knownSig(c) === knownSig(k))) ctxs.push(k);
+      for (const known of ctxs) {
+        const sig = `dep|${d.key}|${knownSig(known)}`;
+        if (evaluated.has(sig)) continue;
+        evaluated.add(sig);
+        const prof = profOf(known, d.domain);
+        const before = new Set(tourWarnsOf(d, resolveDef(d, rows, known, now, prof).value, getterOn(rows, known)).map((v) => v.code));
+        for (const v of tourWarnsOf(d, resolveDef(d, after, known, now, prof).value, getterOf(known))) {
+          if (!before.has(v.code)) warns.push({ prep: p, code: v.code, messageTh: v.messageTh, needsOwnerApproval: false, tour: true, severity: v.severity });
+        }
+      }
     }
   }
   return { preps, rows, profiles, blocks, warns, now };
@@ -938,9 +1145,10 @@ export async function setSettings(actor: SettingsActor, ctx: SettingsCtx, change
     if ("fail" in c) return c.fail;
     if (c.blocks.length) return fail("LEGAL_BLOCK", c.blocks);
     if (c.warns.length) {
-      const warnIssues = c.warns.map((w) => ({ key: w.prep.key, code: w.outcome.code, messageTh: w.outcome.messageTh }));
+      const warnIssues: SettingIssue[] = c.warns.map((w) => (w.tour ? { key: w.prep.key, code: w.code, messageTh: w.messageTh, severity: w.severity } : { key: w.prep.key, code: w.code, messageTh: w.messageTh }));
       if (opts.ackLegalWarn !== true) return fail("NEEDS_APPROVAL", warnIssues, null);
-      const noReason = c.warns.filter((w) => !isValidOutOfScopeReason(w.prep.reason));
+      // TRIPS T0.1 ▸ คำเตือนทัวร์: รับทราบแล้วบันทึกได้ ไม่ตรวจเหตุผล (มีก็เก็บ) · คำเตือนหอ: เหตุผล ≥ 10 ตัวอักษรเหมือนเดิม ◂
+      const noReason = c.warns.filter((w) => !w.tour && !isValidOutOfScopeReason(w.prep.reason));
       if (noReason.length) {
         return fail(
           "VALIDATION",
@@ -948,10 +1156,11 @@ export async function setSettings(actor: SettingsActor, ctx: SettingsCtx, change
         );
       }
       for (const w of c.warns) {
+        if (w.tour && w.prep.legalLevel === "WARN") continue; // ทัวร์: รหัสแรกของรายการ (ลำดับ legal ของ def) — W01 ก่อน W03
         w.prep.legalLevel = "WARN";
-        w.prep.legalCode = w.outcome.code;
+        w.prep.legalCode = w.code;
       }
-      const needOwner = c.warns.some((w) => w.outcome.needsOwnerApproval);
+      const needOwner = c.warns.some((w) => w.needsOwnerApproval);
       if (needOwner && actor.role !== "OWNER") {
         // fix 4 ▸ ชุดที่ขออนุมัติต้องอยู่สาขาเดียว (คำขอผูกสาขาเดียว · ผู้อนุมัติเห็นตามสาขา) ◂
         const units = new Set(c.preps.map((p) => p.unitId));
@@ -982,7 +1191,7 @@ export async function setSettings(actor: SettingsActor, ctx: SettingsCtx, change
               requestId: sub.requestId,
               unitId,
               requestedById: actor.userId,
-              codes: [...new Set(c.warns.map((w) => w.outcome.code))],
+              codes: [...new Set(c.warns.map((w) => w.code))],
               changes: c.preps.map((p) => {
                 const base = bySig.get(sigOf(p));
                 return {
@@ -1103,10 +1312,7 @@ export async function applyTemplate(actor: SettingsActor, ctx: SettingsCtx, i: A
       // D.13 P3 ▸ RESET_ALL ไม่ล้างคีย์ที่ต้องเปลี่ยนผ่านหน้าเฉพาะ (def.writeVia เช่นโหมดกฎหมาย) และสิทธิ์ดูข้อมูล rooms.access.*
       //   (ล้างแล้วขอบเขตผู้ดูแลกว้างขึ้นเงียบ ๆ) — คงแถวเดิมไว้ ◂
       const rows = (
-        await tx.settingValue.findMany({
-          where: { tenantId, key: { startsWith: `${domain}.` }, OR: pairs },
-          select: { id: true, key: true, scope: true, scopeId: true, value: true, effectiveFrom: true },
-        })
+        await settingRowsForPairs(tx, { tenantId, key: { startsWith: `${domain}.` } }, pairs, { id: true, key: true, scope: true, scopeId: true, value: true, effectiveFrom: true })
       ).filter((r) => !getDef(r.key)?.writeVia && !r.key.startsWith("rooms.access."));
       if (rows.length) {
         await lockAll(tx, rows.map((r) => ({ key: keyLock(tenantId, r.key, r.scope, r.scopeId) })));
@@ -1268,12 +1474,13 @@ export async function applyLegalOverrideApproval(input: {
       if (!base || base.present !== !!cur || (cur && !isDeepStrictEqual(cur.value ?? null, base.value))) return consume("STALE", p.key);
     }
     if (c.blocks.length) return consume("INVALID", `LEGAL_BLOCK ${c.blocks.map((b) => b.code).join(",")}`);
-    const notApproved = c.warns.filter((w) => !approvedCodes.has(w.outcome.code));
-    if (notApproved.length) return consume("INVALID", `คำเตือนใหม่ ${notApproved.map((w) => w.outcome.code).join(",")}`);
-    if (c.warns.some((w) => !isValidOutOfScopeReason(w.prep.reason))) return consume("INVALID", "REASON_REQUIRED");
+    const notApproved = c.warns.filter((w) => !approvedCodes.has(w.code));
+    if (notApproved.length) return consume("INVALID", `คำเตือนใหม่ ${notApproved.map((w) => w.code).join(",")}`);
+    if (c.warns.some((w) => !w.tour && !isValidOutOfScopeReason(w.prep.reason))) return consume("INVALID", "REASON_REQUIRED");
     for (const w of c.warns) {
+      if (w.tour && w.prep.legalLevel === "WARN") continue;
       w.prep.legalLevel = "WARN";
-      w.prep.legalCode = w.outcome.code;
+      w.prep.legalCode = w.code;
     }
     await writeChecked(tx, tenantId, actor.userId, c, requestId);
     return consume("APPLIED");

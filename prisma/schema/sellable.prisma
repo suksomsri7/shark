@@ -1,0 +1,41 @@
+// ─────────────────────────────────────────────────────────────
+// sellable.prisma — ตะกร้าขาย + ตัวนับเลขเอกสารกลางของ "ของที่ขายได้" (ทัวร์ · ตั๋ว · …) · RUN TRIPS T0.1
+// สัญญา: ledger/TRIPS-CORE-CONTRACT.md §B.1 §C §K · ใบสั่ง ledger/trips-briefs/T0.1.md
+// อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core) · ไม่มี FK (id หลวม) · สถานะ = String + CHECK (SQL มือ migration trips)
+// ─────────────────────────────────────────────────────────────
+
+// ตะกร้า (scope tenant — บรรทัดข้ามหน่วยได้ · unitIds = หน่วยของทุกบรรทัด)
+// SQL มือ: SellBasket_status_check IN ('OPEN','CHECKED_OUT','EXPIRED','ABANDONED') · SellBasket_channel_check IN (SELL_CHANNELS)
+model SellBasket {
+  id              String   @id @default(cuid())
+  tenantId        String
+  channel         String
+  agentAccountId  String?
+  status          String
+  expiresAt       DateTime
+  publicTokenHash String?
+  idempotencyKey  String
+  requestHash     String? // มติผู้คุม 12 พ.ย. (CC §C ข้อ 3) ▸ คู่กับ idempotencyKey: คีย์เดิม+แฮชต่าง = IDEMPOTENCY_CONFLICT ◂
+  attribution     Json?
+  unitIds         String[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@unique([publicTokenHash]) // ตะกร้าสาธารณะ (NULL ซ้ำได้)
+  @@index([status, expiresAt])
+}
+
+// ตัวนับเลขจอง/เลขเอกสารต่อ (tenant, series, period) — คำสั่ง CC §K: INSERT … ON CONFLICT DO UPDATE SET seq = seq + 1 RETURNING seq
+// createdAt/updatedAt มี default ในฐาน (คำสั่ง §K ไม่ส่งสองช่องนี้) · SQL มือ: SellCounter_seq_check >= 0
+model SellCounter {
+  id        String   @id @default(cuid())
+  tenantId  String
+  series    String
+  period    String
+  seq       Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, series, period])
+}
