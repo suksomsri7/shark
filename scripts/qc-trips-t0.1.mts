@@ -817,7 +817,7 @@ try {
   await st("S-8", "เส้น import: โมดูล trips ไม่ import โมดูลอื่น (ใบนี้ไม่เพิ่ม ALLOWED_EDGES) · agency/supplier/ticket ไม่ import trips · fitness ไม่ถูกแก้", () => {
     ok(existsSync(join(ROOT, "src/lib/modules/trips")), "ยังไม่มีโฟลเดอร์ modules/trips");
     const walk = (dir: string): string[] => (existsSync(join(ROOT, dir)) ? readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${dir}/${e.name}`) : /\.(ts|tsx)$/.test(e.name) ? [`${dir}/${e.name}`] : [])) : []);
-    const out = walk("src/lib/modules/trips").filter((f) => /@\/lib\/modules\/(?!trips\/)/.test(read(f)));
+    const out = walk("src/lib/modules/trips").filter((f) => /@\/lib\/modules\/(?!trips\/|party["']|approval["'])/.test(read(f))); // ORACLE-EDIT S-8 รอบ 2 (ผู้คุม 12 พ.ย.): เส้น trips→party · trips→approval อนุมัติในมติ T0.6 §16 ข้อ 4
     ok(out.length === 0, `trips import โมดูลอื่น: ${out.join(", ")}`);
     const into = ["agency", "supplier", "ticket"].flatMap((m) => walk(`src/lib/modules/${m}`)).filter((f) => /@\/lib\/modules\/trips/.test(read(f)));
     ok(into.length === 0, `import trips: ${into.join(", ")}`);

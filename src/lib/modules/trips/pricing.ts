@@ -93,6 +93,12 @@ const OPTS = z.strictObject({
   flags: z.record(z.string(), z.unknown()).optional(),
 });
 export type QuoteLineOpts = z.input<typeof OPTS>;
+// TRIPS T0.6 ▸ มติผู้คุม T0.6 §16 ข้อ 3: คำอนุมัติราคาแก้มือรับ `resolvedMinor` (int4) แล้วส่งต่อถึง pricing-core (ตรวจ "ราคาระบบ ณ ตอนอนุมัติ" อยู่แล้ว)
+//   เพิ่มบรรทัดอย่างเดียว (ข้อสอบ T0.6 S-15) — loadAll ใช้ชุดนี้แทน OPTS เดิม (ประกาศทับในฟังก์ชัน) · ลายนิ้วมือไม่รวมคำอนุมัติ ⇒ quoteId เดิม ◂
+const OPTS_T06 = OPTS.extend({
+  overrideApprovals: z.array(z.strictObject({ approvalId: ID, itemRef: z.string().min(1).max(200), unitMinor: NN, resolvedMinor: NN.optional() })).max(200).optional(),
+});
+export type TripQuoteOpts = z.input<typeof OPTS_T06>;
 /**
  * ค่าตั้ง: อ่าน "ครั้งเดียว" ด้วย snapshotPolicy("trips.booking") — 35 คีย์ที่จดลง snapshot = ชุดเดียวกับที่ใช้คิดบรรทัด/ยอด/ตารางยกเลิก/งวด (มติ r2 ข้อ 6)
  * + คีย์ที่ไม่จดและไม่กระทบยอดเงิน: T11 (เพดานแก้มือ) · T12 (คำเตือนต้นทุน) · T5 (เวลาถือ → expiresAt) อ่านที่เวลาเดียวกัน
@@ -127,6 +133,7 @@ async function loadAll(ctx: SellCtx, line: LineRequest, opts?: QuoteLineOpts): P
   if (kind !== "TRIP") return fail("KIND_NOT_SUPPORTED", "สินค้าชนิดนี้ไม่ได้ขายผ่านโมดูลทัวร์");
   const l = LINE.safeParse(line);
   if (!l.success) return fail("VALIDATION", "ข้อมูลการจองยังไม่ครบหรือรูปแบบยังไม่ตรง", { issues: l.error.issues.slice(0, 5).map((i) => ({ path: i.path.join("."), message: i.message })) });
+  const OPTS = OPTS_T06; // TRIPS T0.6 ▸ มติ §16 ข้อ 3 (resolvedMinor) ◂
   const o = OPTS.safeParse(opts ?? {});
   if (!o.success) return fail("VALIDATION", "ตัวเลือกการคิดราคาไม่ถูกต้อง");
   const { tenantId, unitId } = c.data;
