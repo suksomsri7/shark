@@ -1,11 +1,14 @@
 // ─────────────────────────────────────────────────────────────
-// trips.prisma — ทัวร์ · เดย์ทริป · Liveaboard (31 ตาราง) · RUN TRIPS T0.1
+// trips.prisma — ทัวร์ · เดย์ทริป · Liveaboard (32 ตาราง · TripPromoRedemption เพิ่มตามมติผู้คุม T0.5) · RUN TRIPS T0.1
 // สัญญา: ledger/TRIPS-CORE-CONTRACT.md §B.0 §B.1 §N.1 · ใบสั่ง ledger/trips-briefs/T0.1.md §2 §4.1
 // อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core)
 // 🔴 ไม่มี FK เข้า/ออกตารางเหล่านี้ (id ทุกตัว = String หลวม แบบ RoomOccupancy.refId · ใบสั่ง §7 ข้อ 21) · ไม่มี Prisma enum (สถานะ = String)
 // 🔴 CHECK ทุกตัว (ชุดค่าสถานะ/ชนิด · >= 0) + unique บางส่วน/NULLS NOT DISTINCT + EXCLUDE = SQL มือท้าย migration «trips»
 //    ชื่อ CHECK = "<Table>_<col>_check" · ฝั่ง Prisma ห้ามประกาศ @@unique ซ้ำกับ SQL มือ (ใช้ @@index ค้นได้)
 // เงินบาท = …Satang Int · เงินสกุลอื่น = …Minor Int + currency · วันท้องถิ่น = @db.Date
+// ⚠️ `prisma migrate diff` (ฐาน → schema) จะเสนอ DROP INDEX ของ unique แบบ NULLS NOT DISTINCT เสมอ — ห้ามรับ · ลบบรรทัด DROP ทิ้ง:
+//    "TripDeparture_productId_optionId_startsAt_key" · "TripPrice_dims_key" · "TripLinkStat_unitId_day_channel_linkId_key"
+//    (ตรวจ 12 พ.ย. 2569 บนฐานเลน: Prisma 7.8 ไม่เสนอ DROP ของ partial unique/partial index/EXCLUDE/CHECK — ใบถัดไปที่แตะไฟล์นี้รัน migrate diff ตรวจซ้ำ)
 // ─────────────────────────────────────────────────────────────
 
 // สินค้า (ทัวร์/Liveaboard/สถานที่) · SQL มือ: status · productType · sourceKind · TripProduct_thb_unless_liveaboard_check (currency = 'THB' OR productType = 'LIVEABOARD')
@@ -134,6 +137,7 @@ model TripPickupZone {
 }
 
 // กฎสร้างรอบ (rule/exceptions = zod ใน src/lib/modules/trips/json-schemas.ts)
+// SQL มือ: TripSchedule_dates_check (dateTo IS NULL OR dateTo >= dateFrom) · departTimeMin 0–1439 · capacity/minPax >= 0
 model TripSchedule {
   id            String   @id @default(cuid())
   tenantId      String
@@ -155,7 +159,8 @@ model TripSchedule {
   @@index([productId])
 }
 
-// รอบ · ตัวนับ capacity sold held reserved (CHECK >= 0 · ไม่มี CHECK ผลรวม — D.1 คุม)
+// รอบ · ตัวนับ capacity sold held reserved (CHECK >= 0 · มติผู้คุม 12 พ.ย.: CHECK "TripDeparture_counters_capacity_check" sold + held + reserved <= capacity = ด่านสุดท้ายกันขายเกิน)
+//      CHECK "TripDeparture_times_check" endsAt > startsAt
 // SQL มือ: TripDeparture_status_check · UNIQUE "TripDeparture_productId_optionId_startsAt_key" ("productId","optionId","startsAt") NULLS NOT DISTINCT
 //          UNIQUE "TripDeparture_scheduleId_localDate_key" ("scheduleId","localDate") WHERE "scheduleId" IS NOT NULL (รอบจากกฎ 1 รอบต่อวัน · T0.3)
 model TripDeparture {
@@ -180,6 +185,7 @@ model TripDeparture {
   insurance         Json?
   stopSell          Json?
   version           Int       @default(0)
+  guaranteedAt      DateTime? // มติผู้คุม 12 พ.ย. (T0.4) ▸ เวลาที่รอบถึงขั้นต่ำ/ยืนยันออกเดินทาง ◂
   cancelReason      String? // มติผู้คุม 12 พ.ย. (T0.3)
   cancelledAt       DateTime? // มติผู้คุม 12 พ.ย. (T0.3)
   createdAt         DateTime  @default(now())
@@ -205,7 +211,7 @@ model TripResource {
   @@index([tenantId, unitId, kind])
 }
 
-// SQL มือ: "TripResourceUse_no_overlap" EXCLUDE USING gist ("resourceId" WITH =, tsrange("startsAt","endsAt",'[)') WITH &&) WHERE (active)
+// SQL มือ: TripResourceUse_times_check (endsAt > startsAt — ช่วงว่าง [s,s) เลี่ยง EXCLUDE ได้) · "TripResourceUse_no_overlap" EXCLUDE USING gist ("resourceId" WITH =, tsrange("startsAt","endsAt",'[)') WITH &&) WHERE (active)
 //   (tsrange — DateTime ของ Prisma = timestamp ไม่มีเขตเวลา เก็บ UTC · มติผู้คุม 12 พ.ย.)
 model TripResourceUse {
   id          String   @id @default(cuid())
@@ -237,6 +243,7 @@ model TripVehicleRun {
   @@index([departureId])
 }
 
+// SQL มือ: TripSeason_status_check · TripSeason_dates_check (dateEnd >= dateStart)
 model TripSeason {
   id        String   @id @default(cuid())
   tenantId  String
@@ -252,7 +259,8 @@ model TripSeason {
   @@index([tenantId, unitId, dateStart, dateEnd])
 }
 
-// SQL มือ: UNIQUE "TripPrice_dims_key" ("productId","optionId","paxTypeId","cabinTypeId","seasonId","departureId","currency") NULLS NOT DISTINCT · amountMinor >= 0
+// SQL มือ: UNIQUE "TripPrice_dims_key" ("productId","optionId","paxTypeId","cabinTypeId","seasonId","departureId","currency","weekdayMask","bookFrom","travelFrom") NULLS NOT DISTINCT
+//          (มติผู้คุม 12 พ.ย.: ราคาวันธรรมดา/สุดสัปดาห์ + ช่วงจอง/เดินทางเก็บแยกแถวได้) · amountMinor >= 0 · weekdayMask 0–127
 model TripPrice {
   id          String    @id @default(cuid())
   tenantId    String
@@ -277,7 +285,10 @@ model TripPrice {
   @@index([productId])
 }
 
-// params = zod tripPriceRuleParamsSchema · SQL มือ: kind IN (EARLY_BIRD … PROMO_CODE)
+// params = zod tripPriceRuleParamsSchema · SQL มือ: kind IN (EARLY_BIRD … PROMO_CODE) · usedCount >= 0
+//   dateFrom/dateTo = ช่วง "วันเดินทาง" · bookFrom/bookTo = ช่วง "วันจอง" (T0.5)
+//   code = โค้ดโปรของกฎ PROMO_CODE (สำเนาของ params.code ไว้ค้น/กันซ้ำ · null = กฎชนิดอื่น)
+//   SQL มือ: UNIQUE "TripPriceRule_unitId_code_active_key" ("unitId", lower("code")) WHERE "code" IS NOT NULL AND "active" (โค้ดที่ใช้อยู่ไม่ซ้ำในหน่วย ไม่สนตัวพิมพ์)
 model TripPriceRule {
   id        String    @id @default(cuid())
   tenantId  String
@@ -285,8 +296,12 @@ model TripPriceRule {
   productId String?
   kind      String
   params    Json
+  code      String? // มติผู้คุม 12 พ.ย. (T0.5)
   dateFrom  DateTime? @db.Date
   dateTo    DateTime? @db.Date
+  bookFrom  DateTime? @db.Date // มติผู้คุม 12 พ.ย. (T0.5)
+  bookTo    DateTime? @db.Date // มติผู้คุม 12 พ.ย. (T0.5)
+  usedCount Int       @default(0) // มติผู้คุม 12 พ.ย. (T0.5) ▸ จำนวนครั้งที่ใช้โค้ด (เพดาน maxUses) ◂
   priority  Int       @default(0)
   active    Boolean   @default(true)
   createdAt DateTime  @default(now())
@@ -295,7 +310,26 @@ model TripPriceRule {
   @@index([tenantId, unitId, kind, active])
 }
 
+// มติผู้คุม 12 พ.ย. (T0.5) ▸ การใช้โค้ดโปรต่อการจอง (นับเพดานต่อผู้ติดต่อ · คืนสิทธิ์เมื่อยกเลิก) · ไม่มี FK
+// SQL มือ: TripPromoRedemption_status_check IN ('ACTIVE','RELEASED') · discountSatang >= 0
+model TripPromoRedemption {
+  id             String    @id @default(cuid())
+  tenantId       String
+  unitId         String
+  ruleId         String
+  contactKeyHash String
+  bookingId      String
+  discountSatang Int
+  status         String    @default("ACTIVE") // ACTIVE | RELEASED
+  releasedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([ruleId, bookingId])
+  @@index([ruleId, contactKeyHash, status])
+}
+
 // ที่ถือ — expiresAt = แหล่งเดียวของเวลาหมด · SQL มือ: INDEX "TripHold_expiresAt_active_idx" ("expiresAt") WHERE status = 'ACTIVE'
+//          INDEX "TripHold_capKeyHash_active_idx" ("capKeyHash") WHERE status = 'ACTIVE' (เพดานถือ §D.6)
 model TripHold {
   id             String   @id @default(cuid())
   tenantId       String
@@ -409,6 +443,7 @@ model TripBookingItem {
 }
 
 // ผู้เดินทาง — เลขเอกสารเก็บกล่องปิด (docNumberEnc) + 4 ตัวท้าย · SQL มือ: formStatus
+//   sex · certLevel · docType ไม่มี CHECK ในฐาน — ตรวจชุดค่าที่ชั้นแอป (zod) ในใบ T0.8 (มติผู้คุม 12 พ.ย.)
 model TripPassenger {
   id              String    @id @default(cuid())
   tenantId        String
@@ -465,6 +500,7 @@ model TripPaymentDue {
   updatedAt         DateTime @updatedAt
 
   @@unique([bookingId, seq])
+  @@unique([payTokenHash]) // ลิงก์จ่ายสาธารณะ (NULL ซ้ำได้)
   @@index([status, dueAt])
 }
 
@@ -495,6 +531,7 @@ model TripMoneyEvent {
   @@unique([tenantId, idempotencyKey])
   @@index([bookingId])
   @@index([tenantId, postingStatus])
+  @@index([postingStatus, nextAttemptAt]) // ตัวลงบัญชีซ้ำข้ามร้าน
 }
 
 // manualDeltaSatang ติดลบได้ (ไม่มี CHECK >= 0)
@@ -515,10 +552,15 @@ model TripRefundRequest {
   creditNoteDocId   String?
   damagesDocId      String?
   decidedById       String?
+  // มติผู้คุม 12 พ.ย. (CC §C ข้อ 3) ▸ cancel(EXECUTE) กันซ้ำ: คีย์ "cancel:<bookingId>:<key>" คู่ requestHash (NULL = คำขอที่ไม่ได้มาจาก cancel EXECUTE) ◂
+  idempotencyKey    String?
+  requestHash       String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  @@unique([tenantId, idempotencyKey]) // NULL ซ้ำได้ (NULLS DISTINCT = มีผลเฉพาะแถวที่มีคีย์)
   @@index([tenantId, unitId, status])
+  @@index([bookingId])
 }
 
 model TripDocument {
@@ -535,6 +577,7 @@ model TripDocument {
   updatedAt   DateTime  @updatedAt
 
   @@index([retainUntil, deletedAt])
+  @@index([passengerId])
 }
 
 // ต่อท้ายอย่างเดียว (ไม่มี updatedAt)
@@ -604,12 +647,14 @@ model TripCheckin {
   @@index([passengerId])
 }
 
+// SQL มือ: UNIQUE "TripWaitlist_departureId_partyId_open_key" ("departureId","partyId") WHERE status IN ('WAITING','OFFERED') (T0.4) · channel = SELL_CHANNELS
 model TripWaitlist {
   id             String    @id @default(cuid())
   tenantId       String
   unitId         String
   departureId    String
   partyId        String?
+  channel        String    @default("WEB") // มติผู้คุม 12 พ.ย. (T0.4)
   qty            Int
   status         String // WAITING | OFFERED | ACCEPTED | DECLINED | EXPIRED | CANCELLED
   offerHoldId    String?
@@ -654,6 +699,7 @@ model TripUnit {
   @@unique([departureId, berthId])
   @@index([departureId, status])
   @@index([allotmentId])
+  @@index([holdId])
 }
 
 model TripImportBatch {

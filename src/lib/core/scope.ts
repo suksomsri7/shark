@@ -605,7 +605,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // TRIPS T0.1 ▸ ตะกร้าขาย + ตัวนับเลขกลาง (sellable.prisma · แกนร้าน — บรรทัดข้ามหน่วยได้)
   SellBasket: tenant,
   SellCounter: tenant,
-  // TRIPS T0.1 ▸ ทัวร์ · เดย์ทริป · Liveaboard (trips.prisma · 31 ตาราง · ทุกแถวมี tenantId + unitId)
+  // TRIPS T0.1 ▸ ทัวร์ · เดย์ทริป · Liveaboard (trips.prisma · 32 ตาราง · ทุกแถวมี tenantId + unitId)
   TripProduct: unit,
   TripOption: unit,
   TripPaxType: unit,
@@ -637,6 +637,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   TripUnit: unit,
   TripImportBatch: unit,
   TripLinkStat: unit,
+  TripPromoRedemption: unit, // มติผู้คุม 12 พ.ย. (T0.5)
   // ◂ TRIPS T0.1
 };
 

@@ -15,12 +15,14 @@ model SellBasket {
   expiresAt       DateTime
   publicTokenHash String?
   idempotencyKey  String
+  requestHash     String? // มติผู้คุม 12 พ.ย. (CC §C ข้อ 3) ▸ คู่กับ idempotencyKey: คีย์เดิม+แฮชต่าง = IDEMPOTENCY_CONFLICT ◂
   attribution     Json?
   unitIds         String[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@unique([tenantId, idempotencyKey])
+  @@unique([publicTokenHash]) // ตะกร้าสาธารณะ (NULL ซ้ำได้)
   @@index([status, expiresAt])
 }
 

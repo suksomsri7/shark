@@ -39,15 +39,17 @@ export const tripScheduleRuleSchema = z.discriminatedUnion("kind", [
 export type TripScheduleRule = z.infer<typeof tripScheduleRuleSchema>;
 
 /** TripSchedule.exceptions */
-export const tripScheduleExceptionsSchema = z.array(
-  z.strictObject({
-    date: YMD,
-    action: z.enum(["SKIP", "OVERRIDE"]),
-    departTimeMin: MIN_OF_DAY.optional(),
-    capacity: COUNT.optional(),
-    minPax: COUNT.nullable().optional(),
-  }),
-);
+export const tripScheduleExceptionsSchema = z
+  .array(
+    z.strictObject({
+      date: YMD,
+      action: z.enum(["SKIP", "OVERRIDE"]),
+      departTimeMin: MIN_OF_DAY.optional(),
+      capacity: COUNT.optional(),
+      minPax: z.number().int().min(1).nullable().optional(), // r2 ▸ 0 ไม่มีความหมาย (null = ไม่กำหนด) ◂
+    }),
+  )
+  .refine((a) => new Set(a.map((x) => x.date)).size === a.length, { message: "วันที่ยกเว้นซ้ำ" });
 export type TripScheduleExceptions = z.infer<typeof tripScheduleExceptionsSchema>;
 
 const APPLIES_TO = z
@@ -63,7 +65,7 @@ const groupTiers = z
   .min(1)
   .refine((ts) => ts.every((t, i) => i === 0 || t.minPax > ts[i - 1].minPax), { message: "ขั้นราคากลุ่มต้องเรียงจำนวนคนจากน้อยไปมาก" });
 
-/** TripPriceRule.params */
+/** TripPriceRule.params — r2 ▸ ส่วนลดต้องระบุอย่างใดอย่างหนึ่ง (bp หรือจำนวนเงิน) · ช่วงวันปิด from ≤ to ◂ */
 export const tripPriceRuleParamsSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("EARLY_BIRD"), appliesTo: APPLIES_TO, minDaysBefore: COUNT, discountBp: BP.optional(), discountMinor: MINOR.optional() }),
   z.strictObject({ kind: z.literal("LAST_MINUTE"), appliesTo: APPLIES_TO, maxHoursBefore: COUNT, discountBp: BP.optional(), discountMinor: MINOR.optional() }),
@@ -81,7 +83,13 @@ export const tripPriceRuleParamsSchema = z.discriminatedUnion("kind", [
     validFrom: YMD.optional(),
     validTo: YMD.optional(),
   }),
-]);
+]).superRefine((v, ctx) => {
+  if (v.kind === "EARLY_BIRD" || v.kind === "LAST_MINUTE" || v.kind === "PROMO_CODE") {
+    if ((v.discountBp === undefined) === (v.discountMinor === undefined)) ctx.addIssue({ code: "custom", message: "ระบุส่วนลดเป็นเปอร์เซ็นต์หรือจำนวนเงินอย่างใดอย่างหนึ่ง" });
+  }
+  if (v.kind === "BLACKOUT" && v.ranges.some((r) => r.from > r.to)) ctx.addIssue({ code: "custom", message: "ช่วงวันปิดต้องเริ่มก่อนหรือตรงวันสิ้นสุด" });
+  if (v.kind === "PROMO_CODE" && v.validFrom !== undefined && v.validTo !== undefined && v.validFrom > v.validTo) ctx.addIssue({ code: "custom", message: "วันเริ่มใช้โค้ดต้องไม่หลังวันหมดอายุ" });
+});
 export type TripPriceRuleParams = z.infer<typeof tripPriceRuleParamsSchema>;
 
 /** TripDeparture.stopSell — null = ขายปกติ · channels [] = ทุกช่องทาง */

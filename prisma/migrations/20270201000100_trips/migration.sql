@@ -1,10 +1,13 @@
--- TRIPS T0.1 · migration trips — ตาราง 33 ตัว (trips.prisma 31 + sellable.prisma 2) + AccountDocument.passThroughSatang + SQL มือท้ายไฟล์
+-- TRIPS T0.1 · migration trips — ตาราง 34 ตัว (trips.prisma 32 + sellable.prisma 2) + AccountDocument.passThroughSatang + SQL มือท้ายไฟล์
 -- สร้างจาก: prisma migrate diff --from-schema <schema f1c567c94> --to-schema prisma/schema --script (ไม่ใช้ migrate dev) · ADD VALUE ย้ายไป 20270201000000_trips_enum
--- additive ล้วน: ตารางใหม่ + ดัชนีของตารางใหม่ + คอลัมน์ใหม่ 1 ตัวบน AccountDocument (NOT NULL DEFAULT 0) · ไม่มีคำสั่งลบ/เปลี่ยนชื่อ/เปลี่ยนชนิด · ไม่แก้ข้อมูล
+-- additive ล้วน: ตารางใหม่ + ดัชนีของตารางใหม่ + คอลัมน์ใหม่ 1 ตัวบน AccountDocument (NOT NULL DEFAULT 0 · metadata อย่างเดียวบน PG ≥ 11) · ไม่มีคำสั่งลบ/เปลี่ยนชื่อ/เปลี่ยนชนิด · ไม่แก้ข้อมูล
 -- ไม่มี FK เข้า/ออกตารางใหม่ (id หลวม · ใบสั่ง §7 ข้อ 21) · ไม่ใช้ค่า enum ใหม่ในไฟล์นี้
+-- lock_timeout: AccountDocument เป็นตารางที่ใช้งานหนัก — รอล็อกไม่เกิน 5 วิ แล้วล้ม (ไม่ต่อคิวขวางผู้เขียนอื่น) · deploy นอกเวลาเร่งด่วน
 
 -- AlterTable
+SET lock_timeout = '5s';
 ALTER TABLE "AccountDocument" ADD COLUMN     "passThroughSatang" INTEGER NOT NULL DEFAULT 0;
+RESET lock_timeout;
 
 -- CreateTable
 CREATE TABLE "SellBasket" (
@@ -16,6 +19,7 @@ CREATE TABLE "SellBasket" (
     "expiresAt" TIMESTAMP(3) NOT NULL,
     "publicTokenHash" TEXT,
     "idempotencyKey" TEXT NOT NULL,
+    "requestHash" TEXT,
     "attribution" JSONB,
     "unitIds" TEXT[],
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -206,6 +210,7 @@ CREATE TABLE "TripDeparture" (
     "insurance" JSONB,
     "stopSell" JSONB,
     "version" INTEGER NOT NULL DEFAULT 0,
+    "guaranteedAt" TIMESTAMP(3),
     "cancelReason" TEXT,
     "cancelledAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -310,14 +315,34 @@ CREATE TABLE "TripPriceRule" (
     "productId" TEXT,
     "kind" TEXT NOT NULL,
     "params" JSONB NOT NULL,
+    "code" TEXT,
     "dateFrom" DATE,
     "dateTo" DATE,
+    "bookFrom" DATE,
+    "bookTo" DATE,
+    "usedCount" INTEGER NOT NULL DEFAULT 0,
     "priority" INTEGER NOT NULL DEFAULT 0,
     "active" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "TripPriceRule_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TripPromoRedemption" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "unitId" TEXT NOT NULL,
+    "ruleId" TEXT NOT NULL,
+    "contactKeyHash" TEXT NOT NULL,
+    "bookingId" TEXT NOT NULL,
+    "discountSatang" INTEGER NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "releasedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TripPromoRedemption_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -530,6 +555,8 @@ CREATE TABLE "TripRefundRequest" (
     "creditNoteDocId" TEXT,
     "damagesDocId" TEXT,
     "decidedById" TEXT,
+    "idempotencyKey" TEXT,
+    "requestHash" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -628,6 +655,7 @@ CREATE TABLE "TripWaitlist" (
     "unitId" TEXT NOT NULL,
     "departureId" TEXT NOT NULL,
     "partyId" TEXT,
+    "channel" TEXT NOT NULL DEFAULT 'WEB',
     "qty" INTEGER NOT NULL,
     "status" TEXT NOT NULL,
     "offerHoldId" TEXT,
@@ -714,6 +742,9 @@ CREATE INDEX "SellBasket_status_expiresAt_idx" ON "SellBasket"("status", "expire
 CREATE UNIQUE INDEX "SellBasket_tenantId_idempotencyKey_key" ON "SellBasket"("tenantId", "idempotencyKey");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "SellBasket_publicTokenHash_key" ON "SellBasket"("publicTokenHash");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "SellCounter_tenantId_series_period_key" ON "SellCounter"("tenantId", "series", "period");
 
 -- CreateIndex
@@ -774,6 +805,12 @@ CREATE INDEX "TripPrice_productId_idx" ON "TripPrice"("productId");
 CREATE INDEX "TripPriceRule_tenantId_unitId_kind_active_idx" ON "TripPriceRule"("tenantId", "unitId", "kind", "active");
 
 -- CreateIndex
+CREATE INDEX "TripPromoRedemption_ruleId_contactKeyHash_status_idx" ON "TripPromoRedemption"("ruleId", "contactKeyHash", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TripPromoRedemption_ruleId_bookingId_key" ON "TripPromoRedemption"("ruleId", "bookingId");
+
+-- CreateIndex
 CREATE INDEX "TripHold_departureId_status_idx" ON "TripHold"("departureId", "status");
 
 -- CreateIndex
@@ -819,10 +856,16 @@ CREATE INDEX "TripPaymentDue_status_dueAt_idx" ON "TripPaymentDue"("status", "du
 CREATE UNIQUE INDEX "TripPaymentDue_bookingId_seq_key" ON "TripPaymentDue"("bookingId", "seq");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "TripPaymentDue_payTokenHash_key" ON "TripPaymentDue"("payTokenHash");
+
+-- CreateIndex
 CREATE INDEX "TripMoneyEvent_bookingId_idx" ON "TripMoneyEvent"("bookingId");
 
 -- CreateIndex
 CREATE INDEX "TripMoneyEvent_tenantId_postingStatus_idx" ON "TripMoneyEvent"("tenantId", "postingStatus");
+
+-- CreateIndex
+CREATE INDEX "TripMoneyEvent_postingStatus_nextAttemptAt_idx" ON "TripMoneyEvent"("postingStatus", "nextAttemptAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TripMoneyEvent_tenantId_idempotencyKey_key" ON "TripMoneyEvent"("tenantId", "idempotencyKey");
@@ -831,7 +874,16 @@ CREATE UNIQUE INDEX "TripMoneyEvent_tenantId_idempotencyKey_key" ON "TripMoneyEv
 CREATE INDEX "TripRefundRequest_tenantId_unitId_status_idx" ON "TripRefundRequest"("tenantId", "unitId", "status");
 
 -- CreateIndex
+CREATE INDEX "TripRefundRequest_bookingId_idx" ON "TripRefundRequest"("bookingId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TripRefundRequest_tenantId_idempotencyKey_key" ON "TripRefundRequest"("tenantId", "idempotencyKey");
+
+-- CreateIndex
 CREATE INDEX "TripDocument_retainUntil_deletedAt_idx" ON "TripDocument"("retainUntil", "deletedAt");
+
+-- CreateIndex
+CREATE INDEX "TripDocument_passengerId_idx" ON "TripDocument"("passengerId");
 
 -- CreateIndex
 CREATE INDEX "TripDocView_documentId_at_idx" ON "TripDocView"("documentId", "at");
@@ -856,6 +908,9 @@ CREATE INDEX "TripUnit_departureId_status_idx" ON "TripUnit"("departureId", "sta
 
 -- CreateIndex
 CREATE INDEX "TripUnit_allotmentId_idx" ON "TripUnit"("allotmentId");
+
+-- CreateIndex
+CREATE INDEX "TripUnit_holdId_idx" ON "TripUnit"("holdId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TripUnit_departureId_berthId_key" ON "TripUnit"("departureId", "berthId");
@@ -915,6 +970,8 @@ ALTER TABLE "TripUnit" ADD CONSTRAINT "TripUnit_status_check" CHECK ("status" IN
 ALTER TABLE "TripImportBatch" ADD CONSTRAINT "TripImportBatch_kind_check" CHECK ("kind" IN ('PRODUCTS', 'DEPARTURES', 'PRICES', 'BOOKINGS', 'SUPPLIER_COSTS'));
 ALTER TABLE "TripImportBatch" ADD CONSTRAINT "TripImportBatch_status_check" CHECK ("status" IN ('PREVIEW', 'APPLIED', 'UNDONE'));
 ALTER TABLE "TripLinkStat" ADD CONSTRAINT "TripLinkStat_channel_check" CHECK ("channel" IN ('WEB', 'LIFF', 'EMBED', 'COUNTER', 'POS', 'AGENT_PORTAL', 'AGENT_LINK', 'AGENT_API', 'OTA', 'API', 'IMPORT', 'CHAT_AI'));
+ALTER TABLE "TripWaitlist" ADD CONSTRAINT "TripWaitlist_channel_check" CHECK ("channel" IN ('WEB', 'LIFF', 'EMBED', 'COUNTER', 'POS', 'AGENT_PORTAL', 'AGENT_LINK', 'AGENT_API', 'OTA', 'API', 'IMPORT', 'CHAT_AI'));
+ALTER TABLE "TripPromoRedemption" ADD CONSTRAINT "TripPromoRedemption_status_check" CHECK ("status" IN ('ACTIVE', 'RELEASED'));
 
 -- CHECK >= 0 (เงิน *Satang *Minor · ตัวนับ qty* seq sold held reserved capacity version · ยกเว้น manualDeltaSatang varianceSatang ที่ติดลบได้)
 ALTER TABLE "SellCounter" ADD CONSTRAINT "SellCounter_seq_check" CHECK ("seq" >= 0);
@@ -968,20 +1025,46 @@ ALTER TABLE "TripUnit" ADD CONSTRAINT "TripUnit_version_check" CHECK ("version" 
 ALTER TABLE "TripLinkStat" ADD CONSTRAINT "TripLinkStat_views_check" CHECK ("views" >= 0);
 ALTER TABLE "TripLinkStat" ADD CONSTRAINT "TripLinkStat_starts_check" CHECK ("starts" >= 0);
 ALTER TABLE "TripLinkStat" ADD CONSTRAINT "TripLinkStat_paid_check" CHECK ("paid" >= 0);
+ALTER TABLE "TripBooking" ADD CONSTRAINT "TripBooking_fxRateMicros_check" CHECK ("fxRateMicros" IS NULL OR "fxRateMicros" >= 0);
+ALTER TABLE "TripResource" ADD CONSTRAINT "TripResource_seats_check" CHECK ("seats" IS NULL OR "seats" >= 0);
+ALTER TABLE "TripSchedule" ADD CONSTRAINT "TripSchedule_minPax_check" CHECK ("minPax" IS NULL OR "minPax" >= 0);
+ALTER TABLE "TripDeparture" ADD CONSTRAINT "TripDeparture_minPax_check" CHECK ("minPax" IS NULL OR "minPax" >= 0);
+ALTER TABLE "TripPassenger" ADD CONSTRAINT "TripPassenger_diveCount_check" CHECK ("diveCount" IS NULL OR "diveCount" >= 0);
+ALTER TABLE "TripPaxType" ADD CONSTRAINT "TripPaxType_ageMin_check" CHECK ("ageMin" IS NULL OR "ageMin" >= 0);
+ALTER TABLE "TripPaxType" ADD CONSTRAINT "TripPaxType_ageMax_check" CHECK ("ageMax" IS NULL OR "ageMax" >= 0);
+ALTER TABLE "TripOption" ADD CONSTRAINT "TripOption_durationMin_check" CHECK ("durationMin" IS NULL OR "durationMin" >= 0);
+ALTER TABLE "TripOption" ADD CONSTRAINT "TripOption_nights_check" CHECK ("nights" IS NULL OR "nights" >= 0);
+ALTER TABLE "TripPriceRule" ADD CONSTRAINT "TripPriceRule_usedCount_check" CHECK ("usedCount" >= 0);
+ALTER TABLE "TripPromoRedemption" ADD CONSTRAINT "TripPromoRedemption_discountSatang_check" CHECK ("discountSatang" >= 0);
+ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_pickupOffsetMin_check" CHECK ("pickupOffsetMin" >= 0);
+ALTER TABLE "TripOption" ADD CONSTRAINT "TripOption_sortOrder_check" CHECK ("sortOrder" >= 0);
+ALTER TABLE "TripPaxType" ADD CONSTRAINT "TripPaxType_sortOrder_check" CHECK ("sortOrder" >= 0);
+ALTER TABLE "TripExtra" ADD CONSTRAINT "TripExtra_sortOrder_check" CHECK ("sortOrder" >= 0);
+ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_sortOrder_check" CHECK ("sortOrder" >= 0);
 
--- CHECK ข้ามคอลัมน์ (ชื่อเรียงหลัง CHECK ชุดค่าของตาราง — ตัวอ่านชุดค่าของคอลัมน์ใช้ CHECK แรกตามชื่อที่อ้างคอลัมน์นั้น)
+-- CHECK ข้ามคอลัมน์/ลำดับเวลา (ชื่อที่มีข้อความคงที่เรียงหลัง CHECK ชุดค่าของตาราง — ตัวอ่านชุดค่าของคอลัมน์ใช้ CHECK แรกตามชื่อที่อ้างคอลัมน์นั้น)
 ALTER TABLE "TripExtra" ADD CONSTRAINT "TripExtra_passThrough_check" CHECK (NOT "passThrough" OR (NOT "commissionable" AND NOT "discountable" AND "taxKind" = 'NONE'));
 ALTER TABLE "TripProduct" ADD CONSTRAINT "TripProduct_thb_unless_liveaboard_check" CHECK ("currency" = 'THB' OR "productType" = 'LIVEABOARD');
+ALTER TABLE "TripDeparture" ADD CONSTRAINT "TripDeparture_counters_capacity_check" CHECK ("sold" + "held" + "reserved" <= "capacity");
+ALTER TABLE "TripDeparture" ADD CONSTRAINT "TripDeparture_times_check" CHECK ("endsAt" > "startsAt");
+ALTER TABLE "TripResourceUse" ADD CONSTRAINT "TripResourceUse_times_check" CHECK ("endsAt" > "startsAt");
+ALTER TABLE "TripSeason" ADD CONSTRAINT "TripSeason_dates_check" CHECK ("dateEnd" >= "dateStart");
+ALTER TABLE "TripSchedule" ADD CONSTRAINT "TripSchedule_dates_check" CHECK ("dateTo" IS NULL OR "dateTo" >= "dateFrom");
+ALTER TABLE "TripSchedule" ADD CONSTRAINT "TripSchedule_departTimeMin_check" CHECK ("departTimeMin" >= 0 AND "departTimeMin" <= 1439);
+ALTER TABLE "TripPrice" ADD CONSTRAINT "TripPrice_weekdayMask_check" CHECK ("weekdayMask" IS NULL OR ("weekdayMask" >= 0 AND "weekdayMask" <= 127));
 
 -- UNIQUE NULLS NOT DISTINCT (PG ≥ 15 · ค่า NULL เท่ากัน = แถวเดียว)
 CREATE UNIQUE INDEX "TripDeparture_productId_optionId_startsAt_key" ON "TripDeparture"("productId", "optionId", "startsAt") NULLS NOT DISTINCT;
-CREATE UNIQUE INDEX "TripPrice_dims_key" ON "TripPrice"("productId", "optionId", "paxTypeId", "cabinTypeId", "seasonId", "departureId", "currency") NULLS NOT DISTINCT;
+CREATE UNIQUE INDEX "TripPrice_dims_key" ON "TripPrice"("productId", "optionId", "paxTypeId", "cabinTypeId", "seasonId", "departureId", "currency", "weekdayMask", "bookFrom", "travelFrom") NULLS NOT DISTINCT;
 CREATE UNIQUE INDEX "TripLinkStat_unitId_day_channel_linkId_key" ON "TripLinkStat"("unitId", "day", "channel", "linkId") NULLS NOT DISTINCT;
 
--- partial: เช็กอินครั้งแรกต่อผู้เดินทาง 1 แถว · รอบจากกฎ 1 รอบต่อวันท้องถิ่น (T0.3) · ตัวกวาดที่ถือหมดเวลาข้ามร้าน
+-- partial: เช็กอินครั้งแรกต่อผู้เดินทาง 1 แถว · รอบจากกฎ 1 รอบต่อวันท้องถิ่น (T0.3) · ตัวกวาดที่ถือหมดเวลาข้ามร้าน · เพดานถือ (§D.6) · คิวรอเปิดอยู่ 1 แถวต่อคนต่อรอบ (T0.4) · โค้ดโปรที่ใช้อยู่ไม่ซ้ำในหน่วย (T0.5)
 CREATE UNIQUE INDEX "TripCheckin_passengerId_first_key" ON "TripCheckin"("passengerId") WHERE "result" = 'FIRST';
 CREATE UNIQUE INDEX "TripDeparture_scheduleId_localDate_key" ON "TripDeparture"("scheduleId", "localDate") WHERE "scheduleId" IS NOT NULL;
 CREATE INDEX "TripHold_expiresAt_active_idx" ON "TripHold"("expiresAt") WHERE "status" = 'ACTIVE';
+CREATE INDEX "TripHold_capKeyHash_active_idx" ON "TripHold"("capKeyHash") WHERE "status" = 'ACTIVE';
+CREATE UNIQUE INDEX "TripWaitlist_departureId_partyId_open_key" ON "TripWaitlist"("departureId", "partyId") WHERE "status" IN ('WAITING', 'OFFERED');
+CREATE UNIQUE INDEX "TripPriceRule_unitId_code_active_key" ON "TripPriceRule"("unitId", lower("code")) WHERE "code" IS NOT NULL AND "active";
 
 -- กันทรัพยากรซ้อนเวลา (btree_gist มีแล้วจาก svc_r0) · tsrange: คอลัมน์ Prisma DateTime = timestamp ไม่มีเขตเวลา (เก็บ UTC) · มติผู้คุม 12 พ.ย.
 ALTER TABLE "TripResourceUse" ADD CONSTRAINT "TripResourceUse_no_overlap" EXCLUDE USING gist ("resourceId" WITH =, tsrange("startsAt", "endsAt", '[)') WITH &&) WHERE ("active");

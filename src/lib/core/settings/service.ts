@@ -312,10 +312,71 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
 }
 
 /** id ของ entity ชั้นลึกกว่า UNIT ที่อยู่ในสาขานี้ (ใช้กับ RESET_ALL / settingsDiff) */
+/** TRIPS T0.1 r2 ▸ ขนาดชุด id ต่อคิวรี (ห่างจากเพดาน 32,767 พารามิเตอร์ของ Postgres) ◂ */
+const ID_BATCH = 5_000;
+const chunks = <T,>(a: readonly T[], n: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < a.length; i += n) out.push(a.slice(i, i + n));
+  return out;
+};
+
+/**
+ * TRIPS T0.1 r2 (ผลล่า MAJOR-1 · รีวิว #4) ▸ ชั้นสินค้า/รอบ/เรือ: ไม่ไล่ทุกสินค้า/ทุกรอบของหน่วย (รอบโตไม่มีเพดาน)
+ * เริ่มจากแถว SettingValue ที่มีอยู่จริงของชั้นนั้น แล้วยืนยันความเป็นเจ้าของ (tenant + unit · + product ถ้าระบุ) ทีละชุดไม่เกิน ID_BATCH
+ * ⇒ ต้นทุนตามจำนวนค่าที่ร้านปรับ ไม่ใช่จำนวนรอบ · id ที่ไม่มีแถวค่าตั้งไม่จำเป็นต่อ diff/ฟอร์ม/RESET_ALL (ไม่มีอะไรให้นับหรือล้าง)
+ * VESSEL ยังไม่มีตาราง (L1.1) ⇒ ข้าม (เขียนชั้นนี้ไม่ได้อยู่แล้ว · SCOPE_UNSUPPORTED) ◂
+ */
+export async function tripEntitiesWithRows(
+  db: Tx,
+  tenantId: string,
+  unitId: string,
+  opts: { scopes?: readonly ("PRODUCT" | "DEPARTURE")[]; productId?: string } = {},
+): Promise<{ scope: ScopeKind; scopeId: string }[]> {
+  const scopes = opts.scopes ?? ["PRODUCT", "DEPARTURE"];
+  const rows = await db.settingValue.findMany({
+    where: { tenantId, scope: { in: [...scopes] } },
+    select: { scope: true, scopeId: true },
+    distinct: ["scope", "scopeId"],
+  });
+  const ids = (sc: string) => [...new Set(rows.filter((r) => r.scope === sc).map((r) => r.scopeId))];
+  const out: { scope: ScopeKind; scopeId: string }[] = [];
+  if (scopes.includes("PRODUCT") && !opts.productId) {
+    for (const part of chunks(ids("PRODUCT"), ID_BATCH)) {
+      const ok = await db.tripProduct.findMany({ where: { tenantId, unitId, id: { in: part } }, select: { id: true } });
+      for (const r of ok) out.push({ scope: "PRODUCT", scopeId: r.id });
+    }
+  }
+  if (scopes.includes("DEPARTURE")) {
+    for (const part of chunks(ids("DEPARTURE"), ID_BATCH)) {
+      const ok = await db.tripDeparture.findMany({
+        where: { tenantId, unitId, id: { in: part }, ...(opts.productId ? { productId: opts.productId } : {}) },
+        select: { id: true },
+      });
+      for (const r of ok) out.push({ scope: "DEPARTURE", scopeId: r.id });
+    }
+  }
+  return out;
+}
+
+/** แถว SettingValue ของคู่ (scope, scopeId) จำนวนมาก — แบ่ง OR เป็นชุด (กันเพดานพารามิเตอร์) แล้วรวมผล */
+export async function settingRowsForPairs<S extends Prisma.SettingValueSelect>(
+  db: Tx,
+  where: Prisma.SettingValueWhereInput,
+  pairs: readonly { scope: string; scopeId: string }[],
+  select: S,
+): Promise<Prisma.SettingValueGetPayload<{ select: S }>[]> {
+  const out: Prisma.SettingValueGetPayload<{ select: S }>[] = [];
+  for (const part of chunks(pairs, 2_000)) {
+    const rs = await db.settingValue.findMany({ where: { ...where, OR: part.map((p) => ({ scope: p.scope, scopeId: p.scopeId })) }, select });
+    out.push(...(rs as Prisma.SettingValueGetPayload<{ select: S }>[]));
+  }
+  return out;
+}
+
 export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): Promise<{ scope: ScopeKind; scopeId: string }[]> {
   const w = { tenantId, unitId };
   const sel = { id: true } as const;
-  const [b, rt, rm, st, sv, dv, res, rp, tp, td] = await Promise.all([
+  const [b, rt, rm, st, sv, dv, res, rp, trips] = await Promise.all([
     db.roomBuilding.findMany({ where: w, select: sel }),
     db.hotelRoomType.findMany({ where: w, select: sel }),
     db.hotelRoom.findMany({ where: w, select: sel }),
@@ -324,8 +385,7 @@ export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): 
     db.queueDisplay.findMany({ where: { ...w, revokedAt: null }, select: sel }), // SVC B.6 ▸ อุปกรณ์ที่ใช้อยู่ของสาขา (ชั้น DEVICE) ◂
     db.svcResource.findMany({ where: w, select: sel }), // SVC B.13 ▸ ทรัพยากรของสาขา (ชั้น RESOURCE) ◂
     db.hotelRatePlan.findMany({ where: { ...w, status: "ACTIVE" }, select: sel }), // SVC H.0 ▸ แผนราคาที่ใช้อยู่ของหน่วย (ชั้น RATE_PLAN) ◂
-    db.tripProduct.findMany({ where: w, select: sel }), // TRIPS T0.1 ▸ สินค้าทัวร์ของหน่วย (ชั้น PRODUCT · ทุกสถานะ) ◂
-    db.tripDeparture.findMany({ where: w, select: sel }), // TRIPS T0.1 ▸ รอบของหน่วย (ชั้น DEPARTURE · ทุกสถานะ) ◂
+    tripEntitiesWithRows(db, tenantId, unitId), // TRIPS T0.1 r2 ▸ สินค้า/รอบของหน่วยที่มีค่าตั้งจริง (ไม่ไล่ทุกรอบ) ◂
   ]);
   return [
     ...b.map((r) => ({ scope: "BUILDING" as const, scopeId: r.id })),
@@ -336,8 +396,7 @@ export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): 
     ...dv.map((r) => ({ scope: "DEVICE" as const, scopeId: r.id })),
     ...res.map((r) => ({ scope: "RESOURCE" as const, scopeId: r.id })), // SVC B.13
     ...rp.map((r) => ({ scope: "RATE_PLAN" as const, scopeId: r.id })), // SVC H.0
-    ...tp.map((r) => ({ scope: "PRODUCT" as const, scopeId: r.id })), // TRIPS T0.1
-    ...td.map((r) => ({ scope: "DEPARTURE" as const, scopeId: r.id })), // TRIPS T0.1
+    ...trips, // TRIPS T0.1 r2
   ];
 }
 
@@ -481,14 +540,12 @@ export async function settingsDiff(ctx: SettingsCtx, q: { unitId: string; domain
   if (!unit) return [];
   const ents = await entitiesOfUnit(prisma, ctx.tenantId, q.unitId);
   const pairs = [{ scope: "UNIT", scopeId: q.unitId }, ...ents, ...(restricted ? [] : [{ scope: "TENANT", scopeId: ctx.tenantId }])];
-  const [rows, profiles] = await Promise.all([
-    prisma.settingValue.findMany({
-      where: { tenantId: ctx.tenantId, key: { startsWith: `${q.domain}.` }, OR: pairs },
-      select: { key: true, scope: true, scopeId: true, value: true, effectiveFrom: true },
-      orderBy: [{ key: "asc" }, { scope: "asc" }, { effectiveFrom: "asc" }],
-    }),
+  const [rows0, profiles] = await Promise.all([
+    settingRowsForPairs(prisma, { tenantId: ctx.tenantId, key: { startsWith: `${q.domain}.` } }, pairs, { key: true, scope: true, scopeId: true, value: true, effectiveFrom: true }),
     loadProfilesFor(prisma, ctx.tenantId, [q.unitId], [q.domain]),
   ]);
+  // เรียงเหมือนเดิม (key → scope → effectiveFrom) หลังรวมผลหลายชุด
+  const rows = [...rows0].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.scope < b.scope ? -1 : a.scope > b.scope ? 1 : a.effectiveFrom.getTime() - b.effectiveFrom.getTime()));
   const tk = profiles.get(profKey(q.unitId, q.domain))?.templateKey ?? null;
   const out: SettingsDiffRow[] = [];
   for (const r of rows) {
@@ -583,12 +640,21 @@ function draftOne(c: { key?: unknown; scope?: unknown; scopeId?: unknown; value?
   if (!("def" in sh)) return sh;
   const { def, scope } = sh;
   if (typeof c.scopeId !== "string" || !c.scopeId) return { key: def.key, code: "INVALID_SCOPE_ID", messageTh: `ไม่ได้ระบุรายการที่จะตั้ง «${def.labelTh}»` };
+  // TRIPS T0.1 r2 ▸ ค่าที่ซ่อนรอเฟส 2 เขียนไม่ได้ทุกทาง (ไม่ใช่แค่ซ่อนในฟอร์ม · มีแค่ PHASE_2 ของ trips — ค่าซ่อนเดิมของโดเมนอื่นทำงานเหมือนเดิม) ◂
+  if (def.hiddenUntil === "PHASE_2") return { key: def.key, code: "NOT_YET_AVAILABLE", messageTh: `«${def.labelTh}» จะเปิดให้ตั้งในรุ่นถัดไป` };
   const parsed = def.schema.safeParse(c.value);
   if (!parsed.success) return { key: def.key, code: "INVALID_VALUE", messageTh: `ค่าของ «${def.labelTh}» อยู่นอกช่วงที่รับได้ — ตรวจตัวเลข/รูปแบบอีกครั้ง` };
   let effectiveFrom = EPOCH;
   if (c.effectiveFrom !== undefined && c.effectiveFrom !== null) {
     const d = c.effectiveFrom instanceof Date ? c.effectiveFrom : new Date(String(c.effectiveFrom));
     if (Number.isNaN(d.getTime())) return { key: def.key, code: "INVALID_EFFECTIVE_FROM", messageTh: `วันที่มีผลของ «${def.labelTh}» ไม่ถูกต้อง` };
+    // TRIPS T0.1 r2 ▸ ปีนอกช่วงที่ฐานเก็บได้ (≤ 0 · > 9999) เคยหลุดเป็นข้อผิดพลาดดิบของฐาน ⇒ VALIDATION (ค่าที่เคยบันทึกได้ไม่เปลี่ยนผล)
+    //   โดเมน trips/agency/ticket: ช่วงที่สมเหตุผล ปี 2000–2100 (1970 = "มีผลตลอด" ยังใช้ได้) ◂
+    const year = d.getUTCFullYear();
+    const tourRange = isTourLegalDomain(def.domain) && d.getTime() !== EPOCH.getTime() && (year < 2000 || year > 2100);
+    if (year < 1 || year > 9999 || tourRange) {
+      return { key: def.key, code: "INVALID_EFFECTIVE_FROM", messageTh: `วันที่มีผลของ «${def.labelTh}» อยู่นอกช่วงที่รับได้${isTourLegalDomain(def.domain) ? " (ปี ค.ศ. 2000–2100)" : ""}` };
+    }
     if (!def.effectiveDated && d.getTime() !== EPOCH.getTime()) {
       return { key: def.key, code: "EFFECTIVE_FROM_NOT_ALLOWED", messageTh: `«${def.labelTh}» ไม่มีวันที่มีผล — มีผลทันทีเมื่อบันทึก` };
     }
@@ -688,6 +754,18 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     deepSeen.add(sig);
     deepClauses.push({ key: { in: listDefs(p.def.domain, p.def.group).map((d) => d.key) }, scope: { in: [...deeper] } });
   }
+  // TRIPS T0.1 r2 ▸ คำเตือนทัวร์ข้ามคีย์ (เช่น W03 = มัดจำ T13 + ตาราง T20): แก้คีย์ต้นทางที่ชั้นบน ⇒ ตรวจ def ปลายทางที่ชั้นลึกกว่าที่มีแถวของตัวเองด้วย
+  //   (ผลล่า MINOR-2 · เฉพาะ def โดเมน trips/agency/ticket — ทางของหอเหมือนเดิม) ◂
+  for (const p of preps) {
+    for (const d of dependents.get(p.key) ?? []) {
+      if (!isTourLegalDomain(d.domain) || !d.chain.includes(p.scope)) continue;
+      const deeper = d.chain.slice(d.chain.indexOf(p.scope) + 1);
+      const sig = `dep|${d.key}|${deeper.join(",")}`;
+      if (!deeper.length || deepSeen.has(sig)) continue;
+      deepSeen.add(sig);
+      deepClauses.push({ key: d.key, scope: { in: [...deeper] } });
+    }
+  }
   const [rows0, profAll] = await Promise.all([
     tx.settingValue.findMany({
       where: { tenantId, OR: [{ key: { in: domainKeys }, OR: [...pairMap.values()] }, ...deepClauses] },
@@ -716,10 +794,7 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     const extra = new Map<string, { scope: string; scopeId: string }>();
     for (const k of deepCtx.values()) for (const x of pairsOf(k)) if (!pairMap.has(pairSig(x))) extra.set(pairSig(x), x);
     if (extra.size) {
-      const more = (await tx.settingValue.findMany({
-        where: { tenantId, key: { in: domainKeys }, OR: [...extra.values()] },
-        select: ROW_SELECT,
-      })) as Row[];
+      const more = (await settingRowsForPairs(tx, { tenantId, key: { in: domainKeys } }, [...extra.values()], ROW_SELECT)) as Row[];
       const ids = new Set(rows.map((r) => r.id));
       rows = [...rows, ...more.filter((r) => !ids.has(r.id))];
     }
@@ -800,15 +875,26 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     modeCache.set(ck, lctx);
     return lctx;
   };
-  const getterOf = (known: Known) => {
+  const getterOn = (base: readonly Row[], known: Known) => {
     const cache = new Map<string, unknown>();
     return (k: string): unknown => {
       if (cache.has(k)) return cache.get(k);
       const d = getDef(k);
-      const v = d ? resolveDef(d, after, known, now, profOf(known, d.domain)).value : undefined;
+      const v = d ? resolveDef(d, base, known, now, profOf(known, d.domain)).value : undefined;
       cache.set(k, v);
       return v;
     };
+  };
+  const getterOf = (known: Known) => getterOn(after, known);
+  /** TRIPS T0.1 r2 ▸ คำเตือนทัวร์ของ def ที่ค่า/บริบทหนึ่ง (ไม่โยน · legalInput โยน = INVALID_INPUT_WARN) ◂ */
+  const tourWarnsOf = (def: SettingDef, value: unknown, get: (k: string) => unknown) => {
+    let tin: { ruleId: LegalRuleId; input: unknown }[];
+    try {
+      tin = legalInputsOf(def, value, get);
+    } catch {
+      tin = (def.legal ?? []).map((ruleId) => ({ ruleId, input: undefined }));
+    }
+    return tin.map(({ ruleId, input }) => evaluateTourRule(ruleId, input, { now })).filter((v) => v.level === "WARN");
   };
   const blocks: SettingIssue[] = [];
   const warns: LegalHit[] = [];
@@ -819,18 +905,7 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     evaluated.add(sig);
     // TRIPS T0.1 ▸ โดเมน trips/agency/ticket: ไม่เรียก modeOf/evaluateLegal — evaluateTourRule เท่านั้น · WARN ⇒ warns · ไม่มีทางเข้า blocks ◂
     if (isTourLegalDomain(def.domain)) {
-      let tin: { ruleId: LegalRuleId; input: unknown }[];
-      try {
-        tin = legalInputsOf(def, value, getterOf(known));
-      } catch {
-        tin = (def.legal ?? []).map((ruleId) => ({ ruleId, input: undefined }));
-      }
-      for (const { ruleId, input } of tin) {
-        const v = evaluateTourRule(ruleId, input);
-        if (v.level === "WARN") {
-          warns.push({ prep: p, code: v.code, messageTh: v.messageTh, needsOwnerApproval: false, tour: true, severity: v.severity });
-        }
-      }
+      for (const v of tourWarnsOf(def, value, getterOf(known))) warns.push({ prep: p, code: v.code, messageTh: v.messageTh, needsOwnerApproval: false, tour: true, severity: v.severity });
       return;
     }
     const lctx = modeOf(p.unitId, p.scope, def.domain);
@@ -850,10 +925,30 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     }
   };
   for (const p of preps) if (p.def.legal?.length) check(p, p.def, p.value, p.known);
+  const preKeys = new Set(preps.map((p) => p.key));
   for (const p of preps) {
     for (const d of dependents.get(p.key) ?? []) {
       if (d.key === p.key) continue;
-      check(p, d, resolveDef(d, after, p.known, now, profOf(p.known, d.domain)).value, p.known);
+      if (!isTourLegalDomain(d.domain)) {
+        check(p, d, resolveDef(d, after, p.known, now, profOf(p.known, d.domain)).value, p.known);
+        continue;
+      }
+      // TRIPS T0.1 r2 ▸ ปลายทางทัวร์: ตรวจที่บริบทของ change + ชั้นลึกกว่าที่ปลายทางมีแถวของตัวเอง · รายงานเฉพาะคำเตือน "ใหม่" ที่ change นี้ก่อ
+      //   (ก่อน = ค่าในฐาน · หลัง = ค่าหลังชุด) — ไม่ซ้ำคำเตือนเดิมที่รับทราบแล้ว (เช่น W01 ของตารางที่ไม่ได้แก้) ◂
+      // ปลายทางแก้ในชุดเดียวกันที่บริบทเดียวกัน = ตรวจตรงแล้ว (ไม่ตรวจบริบทนั้นซ้ำ · ชั้นลึกกว่ายังตรวจ)
+      const sameCtx = preKeys.has(d.key) && preps.some((x) => x.key === d.key && x.scope === p.scope && x.scopeId === p.scopeId);
+      const ctxs: Known[] = sameCtx ? [] : [p.known];
+      for (const k of deepCtx.values()) if (k[p.scope] === p.scopeId && knownSig(k) !== knownSig(p.known) && !ctxs.some((c) => knownSig(c) === knownSig(k))) ctxs.push(k);
+      for (const known of ctxs) {
+        const sig = `dep|${d.key}|${knownSig(known)}`;
+        if (evaluated.has(sig)) continue;
+        evaluated.add(sig);
+        const prof = profOf(known, d.domain);
+        const before = new Set(tourWarnsOf(d, resolveDef(d, rows, known, now, prof).value, getterOn(rows, known)).map((v) => v.code));
+        for (const v of tourWarnsOf(d, resolveDef(d, after, known, now, prof).value, getterOf(known))) {
+          if (!before.has(v.code)) warns.push({ prep: p, code: v.code, messageTh: v.messageTh, needsOwnerApproval: false, tour: true, severity: v.severity });
+        }
+      }
     }
   }
   return { preps, rows, profiles, blocks, warns, now };
@@ -1164,10 +1259,7 @@ export async function applyTemplate(actor: SettingsActor, ctx: SettingsCtx, i: A
       // D.13 P3 ▸ RESET_ALL ไม่ล้างคีย์ที่ต้องเปลี่ยนผ่านหน้าเฉพาะ (def.writeVia เช่นโหมดกฎหมาย) และสิทธิ์ดูข้อมูล rooms.access.*
       //   (ล้างแล้วขอบเขตผู้ดูแลกว้างขึ้นเงียบ ๆ) — คงแถวเดิมไว้ ◂
       const rows = (
-        await tx.settingValue.findMany({
-          where: { tenantId, key: { startsWith: `${domain}.` }, OR: pairs },
-          select: { id: true, key: true, scope: true, scopeId: true, value: true, effectiveFrom: true },
-        })
+        await settingRowsForPairs(tx, { tenantId, key: { startsWith: `${domain}.` } }, pairs, { id: true, key: true, scope: true, scopeId: true, value: true, effectiveFrom: true })
       ).filter((r) => !getDef(r.key)?.writeVia && !r.key.startsWith("rooms.access."));
       if (rows.length) {
         await lockAll(tx, rows.map((r) => ({ key: keyLock(tenantId, r.key, r.scope, r.scopeId) })));

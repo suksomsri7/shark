@@ -215,7 +215,7 @@ export function defineSettings(domain: string, defs: readonly SettingDef[], opts
         for (const { ruleId, input } of inputs) {
           if (isTourRuleId(ruleId)) {
             // TRIPS T0.1 ▸ ค่าเริ่มของสามโดเมนต้อง "ไม่เตือน" (OK · ไม่ใช่แค่ไม่ BLOCK) ◂
-            const t = evaluateTourRule(ruleId, input);
+            const t = evaluateTourRule(ruleId, input, { skipTimeDependent: true }); // r2 ▸ ไม่ขึ้นกับนาฬิกาจริง (ค่าเริ่มที่มีวันที่ต้องไม่ทำให้ทะเบียนล้มในอีก 180 วัน) ◂
             if (t.level !== "OK") problems.push(`${key}: ค่าเริ่ม ${tk} ขึ้นคำเตือน ${ruleId} (${t.code})`);
             continue;
           }

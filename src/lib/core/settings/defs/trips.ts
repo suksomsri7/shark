@@ -82,11 +82,13 @@ type RowInput = {
   chain: readonly ScopeKind[];
   d: Tpl;
   extra?: Partial<Pick<SettingDef, "legal" | "legalInput" | "effectiveDated" | "templateVars" | "hiddenUntil" | "enumLabelsTh" | "percentScale" | "reviewHint" | "reviewAuthorityTh">>;
+  /** r2 ▸ ทับ sensitivity ของกลุ่มรายคีย์ (คีย์เงินในกลุ่มที่ไม่ใช่เงิน ⇒ "MONEY" + สิทธิ์ trips.settings.money · มติผู้คุม 12 พ.ย.) ◂ */
+  sensitivity?: SettingSensitivity;
 };
 
 function row(x: RowInput): SettingDef {
   const group = x.key.split(".")[1];
-  const sensitivity = SENSITIVITY[group];
+  const sensitivity = x.sensitivity ?? SENSITIVITY[group];
   const [ds, dt, la] = x.d.v;
   return {
     key: x.key,
@@ -226,9 +228,12 @@ const PARK_GROUP = z
     foreignAdultSatang: SATANG,
   })
   .strict();
+/** วันนี้ตามเวลาไทย "YYYY-MM-DD" (คำนวณจาก epoch + 7 ชม. · ไม่ใช้ getDay/getDate ของเครื่อง) */
+const bkkTodayYmd = (): string => new Date(Math.floor((Date.now() + 7 * 3_600_000) / 86_400_000) * 86_400_000).toISOString().slice(0, 10);
 const PARK_SCHEMA = z
   .object({
-    confirmedAt: YMD.nullable(),
+    // r2 ▸ วันที่ร้านยืนยันต้องไม่อยู่หลังวันนี้ (ผลล่า MINOR-4 · ใส่วันอนาคตเพื่อปิดคำเตือน W29 ไม่ได้) ◂
+    confirmedAt: YMD.refine((d) => d <= bkkTodayYmd(), { message: "วันที่ยืนยันต้องไม่อยู่หลังวันนี้" }).nullable(),
     groups: z.array(PARK_GROUP).min(1).max(4).refine((g) => unique(g.map((x) => x.code)), { message: "รหัสกลุ่มซ้ำ" }),
     diveSatangPerPaxDay: SATANG,
     mooring: z.object({ upTo20Satang: SATANG, from21Satang: SATANG }).strict(),
@@ -251,7 +256,9 @@ const PARK_SCHEMA = z
   .strict();
 const AGE_BANDS = z
   .object({ freeBelow: INT(0, 120), childFrom: INT(0, 120), childTo: INT(0, 120), adultFrom: INT(0, 120), thaiSeniorFreeFrom: INT(0, 120), childByHeightCm: INT(0, 250) })
-  .strict();
+  .strict()
+  // r2 ▸ ช่วงอายุต้องเรียงกัน (ฟรี ≤ เด็กเริ่ม ≤ เด็กถึง < ผู้ใหญ่ ≤ ผู้สูงอายุ) — ค่าที่ต่างจากระเบียบแต่ยังเรียงถูก = คำเตือน W30 ไม่ใช่ VALIDATION ◂
+  .refine((a) => a.freeBelow <= a.childFrom && a.childFrom <= a.childTo && a.childTo < a.adultFrom && a.adultFrom <= a.thaiSeniorFreeFrom, { message: "ช่วงอายุต้องเรียงจากน้อยไปมาก" });
 const RETENTION = z
   .object({
     passportImageDays: INT(1, 36_500).nullable(),
@@ -294,7 +301,7 @@ const DEFS: SettingDef[] = [
   row({ key: "trips.sell.codePrefix", type: "text", labelTh: "อักษรนำเลขจอง", chain: U, schema: z.string().regex(/^[A-Z]{1,4}$/, { message: "ใช้อักษรภาษาอังกฤษตัวใหญ่ 1–4 ตัว" }), d: per("TR", "TR", "LB") }),
   row({ key: "trips.price.manualOverrideApprovalPct", type: "percent", labelTh: "แก้ราคามือต่ำกว่าราคาระบบเกินกี่ % ต้องอนุมัติ", chain: U, schema: PCT, d: all(10), extra: { percentScale: 100 } }),
   row({ key: "trips.price.costWarnMarginPct", type: "percent", labelTh: "เตือนเมื่อราคาต่อคนต่ำกว่าต้นทุนรอบ + กี่ %", chain: U_P, schema: PCT, d: all(0), extra: { percentScale: 100 } }),
-  row({ key: "trips.fx.rates", type: "table", labelTh: "อัตราแลกเปลี่ยนที่ใช้ล็อก ณ วันจอง", chain: U, schema: z.array(z.object({ currency: z.enum(["USD", "EUR"]), rateMicros: INT(1, 2_000_000_000) }).strict()).max(10), d: all([]), extra: { effectiveDated: true, ...ACCOUNTANT } }),
+  row({ key: "trips.fx.rates", type: "table", labelTh: "อัตราแลกเปลี่ยนที่ใช้ล็อก ณ วันจอง", chain: U, schema: z.array(z.object({ currency: z.enum(["USD", "EUR"]), rateMicros: INT(1, 2_000_000_000) }).strict()).max(10).refine((a) => unique(a.map((x) => x.currency)), { message: "สกุลเงินซ้ำ" }), d: all([]), sensitivity: "MONEY", extra: { effectiveDated: true, ...ACCOUNTANT } }),
   row({ key: "trips.public.showLeftAtOrBelow", type: "int", labelTh: "แสดง \"เหลือ N ที่\" เมื่อเหลือไม่เกิน", chain: U_P, schema: INT(0, 1000), d: all(5) }),
   row({ key: "trips.public.embedDomains", type: "table", labelTh: "โดเมนที่ฝังหน้าจองได้", chain: U, schema: uniqArr(z.string().regex(/^(?=.{1,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/, { message: "ชื่อโดเมนไม่ถูกต้อง" }), 0, 20), d: all([]) }),
   row({
@@ -338,14 +345,14 @@ const DEFS: SettingDef[] = [
   }),
   row({ key: "trips.cancel.nameChangeFree", type: "bool", labelTh: "เปลี่ยนชื่อผู้เดินทางฟรี", chain: U_P, schema: BOOL, d: all(true) }),
   row({ key: "trips.cancel.changeDateFee", type: "money", labelTh: "ค่าเปลี่ยนวันเดินทาง", helpTh: "ไม่ตั้ง = ไม่เก็บ", chain: U_P, schema: SATANG.nullable(), d: all(null), extra: ACCOUNTANT }),
-  row({ key: "trips.cancel.autoApproveUpTo", type: "money", labelTh: "อนุมัติคืนเงินอัตโนมัติเมื่อไม่เกิน", helpTh: "0 = ทุกคำขอให้คนอนุมัติ", chain: U, schema: SATANG, d: all(0) }),
-  row({ key: "trips.cancel.manualEditApprovalSatang", type: "money", labelTh: "แก้ยอดคืนต่างจากที่ระบบคิดเกินยอดนี้ต้องให้ผู้จัดการอนุมัติ", chain: U, schema: SATANG, d: all(200_000) }),
+  row({ key: "trips.cancel.autoApproveUpTo", type: "money", labelTh: "อนุมัติคืนเงินอัตโนมัติเมื่อไม่เกิน", helpTh: "0 = ทุกคำขอให้คนอนุมัติ", chain: U, schema: SATANG, d: all(0), sensitivity: "MONEY" }),
+  row({ key: "trips.cancel.manualEditApprovalSatang", type: "money", labelTh: "แก้ยอดคืนต่างจากที่ระบบคิดเกินยอดนี้ต้องให้ผู้จัดการอนุมัติ", chain: U, schema: SATANG, d: all(200_000), sensitivity: "MONEY" }),
   row({ key: "trips.cancel.creditBonusPct", type: "percent", labelTh: "โบนัสเครดิตร้านแทนเงินคืน (%)", chain: U_P, schema: PCT, d: all(20), extra: { percentScale: 100, hiddenUntil: "PHASE_2" } }),
   row({ key: "trips.cancel.creditValidityMonths", type: "int", labelTh: "อายุเครดิตร้าน (เดือน)", chain: U, schema: INT(1, 120), d: all(12), extra: { hiddenUntil: "PHASE_2" } }),
   row({ key: "trips.cancel.moveFreeWithinDays", type: "days", labelTh: "เลื่อนวันฟรีถ้าเลือกวันใหม่ภายใน (วัน)", chain: U_P, schema: INT(0, 730), d: all(90) }),
 
   // ── 1.4 ผู้เดินทาง ──
-  row({ key: "trips.pax.childAgeBand", type: "table", labelTh: "ช่วงอายุราคาเด็ก", chain: U_P, schema: z.object({ infantBelow: INT(0, 30), childFrom: INT(0, 30), childTo: INT(0, 30) }).strict(), d: all({ infantBelow: 4, childFrom: 4, childTo: 11 }) }),
+  row({ key: "trips.pax.childAgeBand", type: "table", labelTh: "ช่วงอายุราคาเด็ก", chain: U_P, schema: z.object({ infantBelow: INT(0, 30), childFrom: INT(0, 30), childTo: INT(0, 30) }).strict().refine((a) => a.infantBelow <= a.childFrom && a.childFrom <= a.childTo, { message: "ช่วงอายุเด็กต้องเรียงจากน้อยไปมาก" }), d: all({ infantBelow: 4, childFrom: 4, childTo: 11 }) }),
   row({ key: "trips.pax.childPricePct", type: "percent", labelTh: "ราคาเด็กตั้งต้น (% ของผู้ใหญ่)", helpTh: "ไม่ตั้ง = ตั้งราคาเองต่อสินค้า", chain: U, schema: PCT.nullable(), d: per(70, 70, null), extra: { percentScale: 100 } }),
   row({
     key: "trips.pax.fields", type: "table", labelTh: "ข้อมูลผู้เดินทางที่ขอ", chain: U_P, schema: PAX_FIELDS_SCHEMA,
@@ -429,7 +436,7 @@ const DEFS: SettingDef[] = [
     extra: { legal: ["W33"], ...authority("ทนาย") },
   }),
   row({ key: "trips.pdpa.healthDataProducts", type: "bool", labelTh: "สินค้าที่ต้องใช้ข้อมูลสุขภาพ", chain: U_P, schema: BOOL, d: per(true, false, true) }),
-  row({ key: "trips.pdpa.minorConsent", type: "table", labelTh: "ความยินยอมของผู้เยาว์", chain: U, schema: z.object({ parentOnlyAtOrBelow: INT(0, 30), minorBelow: INT(0, 30) }).strict(), d: all({ parentOnlyAtOrBelow: 10, minorBelow: 20 }) }),
+  row({ key: "trips.pdpa.minorConsent", type: "table", labelTh: "ความยินยอมของผู้เยาว์", chain: U, schema: z.object({ parentOnlyAtOrBelow: INT(0, 30), minorBelow: INT(0, 30) }).strict().refine((a) => a.parentOnlyAtOrBelow < a.minorBelow, { message: "อายุที่ผู้ปกครองยินยอมแทนต้องน้อยกว่าอายุบรรลุนิติภาวะ" }), d: all({ parentOnlyAtOrBelow: 10, minorBelow: 20 }) }),
   row({ key: "trips.pdpa.requestDeadlines", type: "table", labelTh: "กำหนดทำคำขอเจ้าของข้อมูล (วัน)", chain: U, schema: z.object({ accessDays: INT(1, 365), deletionDays: INT(1, 365) }).strict(), d: all({ accessDays: 30, deletionDays: 90 }) }),
   row({ key: "trips.pdpa.ropaAutoDraft", type: "bool", labelTh: "ร่างบันทึกรายการประมวลผลข้อมูลสุขภาพให้อัตโนมัติ", chain: U, schema: BOOL, d: per(true, false, true, false) }),
   row({ key: "trips.pdpa.viewLogDays", type: "days", labelTh: "เก็บบันทึกการเปิดดูเอกสาร (วัน)", chain: U, schema: INT(1, 36_500), d: all(1095) }),
@@ -483,16 +490,27 @@ const SNAPSHOTS = {
   ],
 } as const;
 
-/** รูปข้อมูลเท่านั้น (ไม่ใช่คำเตือนกฎหมาย · CC §E.5 ข้อ 6): ขั้นบันไดคืนเงินเรียงจำนวนวันจากมากไปน้อย ไม่ซ้ำ */
+/** รูปข้อมูลเท่านั้น (ไม่ใช่คำเตือนกฎหมาย · CC §E.5 ข้อ 6): ขั้นบันไดคืนเงินเรียงจำนวนวันจากมากไปน้อย ไม่ซ้ำ · ตัวเลือกเครดิตยังไม่เปิด (r2) */
 const GROUP_RULES: GroupRule[] = [
   {
     group: "cancel",
     check: (values): GroupIssue[] => {
+      const out: GroupIssue[] = [];
       const v = values["trips.cancel.ladder"];
-      if (!Array.isArray(v)) return [];
-      const days = v.map((s) => (typeof s === "object" && s !== null && "fromDaysBefore" in s ? Number((s as { fromDaysBefore: unknown }).fromDaysBefore) : Number.NaN));
-      const ok = days.every((d, i) => Number.isFinite(d) && (i === 0 || d < days[i - 1]));
-      return ok ? [] : [{ key: "trips.cancel.ladder", code: "LADDER_ORDER", messageTh: "ตารางคืนเงินต้องเรียงจำนวนวันก่อนเดินทางจากมากไปน้อย และไม่ซ้ำกัน" }];
+      if (Array.isArray(v)) {
+        const days = v.map((s) => (typeof s === "object" && s !== null && "fromDaysBefore" in s ? Number((s as { fromDaysBefore: unknown }).fromDaysBefore) : Number.NaN));
+        const ok = days.every((d, i) => Number.isFinite(d) && (i === 0 || d < days[i - 1]));
+        if (!ok) out.push({ key: "trips.cancel.ladder", code: "LADDER_ORDER", messageTh: "ตารางคืนเงินต้องเรียงจำนวนวันก่อนเดินทางจากมากไปน้อย และไม่ซ้ำกัน" });
+      }
+      // r2 ▸ มติเจ้าของ "คืนเป็นเงินอย่างเดียวจนมีเครดิตร้าน" (CC §G.3 มติ 7) — ตัวเลือกเครดิตเปิดในรุ่นถัดไป (X.2) ◂
+      const opts = values["trips.cancel.shopCancelOptions"];
+      if (typeof opts === "object" && opts !== null && "options" in opts && Array.isArray((opts as { options: unknown }).options) && (opts as { options: unknown[] }).options.includes("CREDIT")) {
+        out.push({ key: "trips.cancel.shopCancelOptions", code: "CREDIT_NOT_YET_AVAILABLE", messageTh: "ตัวเลือกเครดิตร้านจะเปิดในรุ่นถัดไป — ตอนนี้เลือกได้แค่เลื่อนวันหรือคืนเงินเต็มจำนวน" });
+      }
+      if (values["trips.cancel.refundForm"] === "CUSTOMER_CHOOSES_MONEY_OR_CREDIT") {
+        out.push({ key: "trips.cancel.refundForm", code: "CREDIT_NOT_YET_AVAILABLE", messageTh: "การคืนเป็นเครดิตร้านจะเปิดในรุ่นถัดไป — ตอนนี้คืนเป็นเงินเท่านั้น" });
+      }
+      return out;
     },
   },
 ];

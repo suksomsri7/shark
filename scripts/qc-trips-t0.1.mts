@@ -287,6 +287,8 @@ const TABLES: Record<string, { axis: string; cols: string[] }> = {
   TripUnit: { axis: T_UNIT, cols: ["departureId", "berthId", "cabinId", "sortKey", "status", "holdId", "bookingItemId", "allotmentId", "version"] },
   TripImportBatch: { axis: T_UNIT, cols: ["kind", "fileId", "mapping", "status", "createdRefs"] },
   TripLinkStat: { axis: T_UNIT, cols: ["day", "channel", "linkId", "agentAccountId", "views", "starts", "paid"] },
+  // ORACLE-EDIT M-4 (ผู้คุม 12 พ.ย.): ตารางที่ 34 จากใบสั่ง T0.5
+  TripPromoRedemption: { axis: T_UNIT, cols: ["ruleId", "contactKeyHash", "bookingId", "discountSatang", "status", "releasedAt"] },
 };
 const NEW_TABLES = Object.keys(TABLES);
 const SELL_CHANNELS = ["WEB", "LIFF", "EMBED", "COUNTER", "POS", "AGENT_PORTAL", "AGENT_LINK", "AGENT_API", "OTA", "API", "IMPORT", "CHAT_AI"];
@@ -681,7 +683,7 @@ try {
   // ═══════════════ U. unique/index ═══════════════
   console.log("\n── U: unique · partial · NULLS NOT DISTINCT · EXCLUDE ──");
   await st("U-1", "pg_indexes: NND unique ของ TripDeparture/TripPrice/TripLinkStat ตรงคอลัมน์", async () => {
-    const want: [string, string[]][] = [["TripDeparture", ["productId", "optionId", "startsAt"]], ["TripPrice", ["productId", "optionId", "paxTypeId", "cabinTypeId", "seasonId", "departureId", "currency"]], ["TripLinkStat", ["unitId", "day", "channel", "linkId"]]];
+    const want: [string, string[]][] = [["TripDeparture", ["productId", "optionId", "startsAt"]], ["TripPrice", ["productId", "optionId", "paxTypeId", "cabinTypeId", "seasonId", "departureId", "currency", "weekdayMask", "bookFrom", "travelFrom"] /* ORACLE-EDIT U-1 (ผู้คุม 12 พ.ย.): มติรอบแก้ A1 ขยายคีย์ */], ["TripLinkStat", ["unitId", "day", "channel", "linkId"]]];
     const miss: string[] = [];
     for (const [t, c] of want) if (!(await hasIx(t, (r) => r.uniq && r.nnd && isDeepStrictEqual(r.cols, c) && !r.pred))) miss.push(t);
     ok(miss.length === 0, `ไม่มี NND unique: ${miss.join(", ")}`);
@@ -838,7 +840,7 @@ try {
     eq([is("W01"), is("W46"), is("W47"), is("DEPOSIT_RETURN_DAYS")], [true, true, false, false], "isTourRuleId");
   });
   await st("S-12", "ไม่แตะ POS · โรงแรม · หอ · จองคิว · defs/rooms · defs/booking · legal/th-rental-2568 · seed/ฟิกซ์เจอร์ P0.1", () => {
-    const ch = changedFiles(["src/lib/modules/pos", "src/lib/modules/hotel", "src/lib/modules/dorm", "src/lib/modules/booking", "src/lib/core/settings/defs/rooms.ts", "src/lib/core/settings/defs/booking.ts", "src/lib/core/settings/legal/th-rental-2568.ts", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts", "scripts/qc-trips-p0.1.mts"]);
+    const ch = changedFiles(["src/lib/modules/pos", "src/lib/modules/hotel", "src/lib/modules/dorm", "src/lib/modules/booking", "src/lib/core/settings/defs/rooms.ts", "src/lib/core/settings/defs/booking.ts", "src/lib/core/settings/legal/th-rental-2568.ts", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts"]); // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย.): เอา qc-trips-p0.1.mts ออก — ผู้คุมแก้ไฟล์นั้นเอง (cast env)
     ok(ch.length === 0, `แตะ: ${ch.join(", ")}`);
   });
 
@@ -937,6 +939,8 @@ try {
       const d = getDef(e.key);
       if (!d) { bad.push(`${e.key}(ไม่มี)`); continue; }
       const g = e.key.split(".")[1];
+      // ORACLE-EDIT R-9 (ผู้คุม 12 พ.ย.): มติรอบแก้ B4 — 3 คีย์นี้เป็น MONEY + trips.settings.money แม้กลุ่มของมันไม่ใช่กลุ่มเงิน
+      if (["trips.fx.rates", "trips.cancel.autoApproveUpTo", "trips.cancel.manualEditApprovalSatang"].includes(e.key)) { if (d.sensitivity !== "MONEY" || d.editPermission !== "trips.settings.money") bad.push(`${e.key}: ต้องเป็น MONEY + trips.settings.money`); continue; }
       if ((d.sensitivity ?? null) !== (SENS[g] ?? null)) bad.push(`${e.key}.sensitivity=${String(d.sensitivity)}`);
       const wantPerm = SENS[g] === "MONEY" ? "trips.settings.money" : "trips.settings.edit";
       if (SENS[g] !== "LEGAL" && d.editPermission !== wantPerm) bad.push(`${e.key}.editPermission=${String(d.editPermission)}`);
@@ -1182,7 +1186,9 @@ try {
     eq(await refsFor(ctxA, "PRODUCT", pB1), null, "สินค้าร้าน B");
     const ents = (await (fnOf(SVC, "entitiesOfUnit", "settings/service") as (...a: unknown[]) => Promise<unknown>)(DB?.prisma, tA, uA)) as Rec[];
     const sig = new Set(ents.map((e) => `${String(e.scope)}|${String(e.scopeId)}`));
-    ok([`PRODUCT|${pA1}`, `PRODUCT|${pA2}`, `DEPARTURE|${dA1}`].every((x) => sig.has(x)) && !sig.has(`PRODUCT|${pB1}`), `entitiesOfUnit: ${[...sig].filter((x) => /PRODUCT|DEPARTURE/.test(x)).join(", ") || "ไม่มี PRODUCT/DEPARTURE"}`);
+    // ORACLE-EDIT RS-4 (ผู้คุม 12 พ.ย.): มติรอบแก้ B1 — entitiesOfUnit คืนเฉพาะสินค้า/รอบที่ "มีแถวค่าตั้ง" (ห้ามไล่ทุกรอบ · นักล่า MAJOR-1) ⇒ ตรวจว่าไม่มีของร้านอื่นและทุกตัวที่คืนเป็นของหน่วย A · การคืนครบเมื่อมีแถว = probe scale ของนักล่า
+    const mineA = new Set([`PRODUCT|${pA1}`, `PRODUCT|${pA2}`, `DEPARTURE|${dA1}`]);
+    ok([...sig].filter((x) => /^(PRODUCT|DEPARTURE)\|/.test(x)).every((x) => mineA.has(x) || !x.endsWith(pB1)) && !sig.has(`PRODUCT|${pB1}`), `entitiesOfUnit: ${[...sig].filter((x) => /PRODUCT|DEPARTURE/.test(x)).join(", ") || "ไม่มี PRODUCT/DEPARTURE"}`);
   });
   await st("RS-5", "ชั้นที่ยังไม่รองรับ (AGENT · AGENT_TIER · VESSEL) ⇒ VALIDATION/SCOPE_UNSUPPORTED ไม่มีแถว", async () => {
     pre();

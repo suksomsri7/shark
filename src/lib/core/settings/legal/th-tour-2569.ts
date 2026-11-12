@@ -28,7 +28,8 @@ export type TourVerdict = {
   severity: TourSeverity;
   pendingReview?: true;
 };
-export type TourEvalOpts = { now?: Date };
+/** now = นาฬิกาที่ใช้ (ไม่ส่ง = เวลาเครื่อง) · skipTimeDependent = ข้ามเงื่อนไขที่ขึ้นกับวันนี้ (W29 · ตัวตรวจทะเบียนตอนโหลดใช้ — ค่าเริ่มต้องไม่เปลี่ยนผลตามวัน) */
+export type TourEvalOpts = { now?: Date; skipTimeDependent?: boolean };
 export type TourRule = {
   id: TourRuleId;
   maxLevel: "WARN";
@@ -39,8 +40,12 @@ export type TourRule = {
   pendingReview?: true;
   evaluate(input: unknown, opts?: TourEvalOpts): TourVerdict;
 };
-/** อินพุตของ rule จุดตรวจ RUNTIME — ผู้เรียกคำนวณเงื่อนไขเอง (A1.1 ปรับรูปข้อ WHT ได้) */
-export type TourRuntimeInput = { hit: boolean; vars?: Record<string, string | number> };
+/**
+ * อินพุตของ rule จุดตรวจ RUNTIME — ผู้เรียกคำนวณเงื่อนไขเอง (A1.1 ปรับรูปข้อ WHT ได้)
+ * rule จุดตรวจ SETTINGS ก็รับรูปนี้ได้เมื่อเงื่อนไขเกิดตอนทำงานจริง (เช่น W26 กลุ่มจริงเกินอัตรา · W29 e-ticket ไม่ตรง)
+ * variant = ข้อความทางเลือกของ rule (TOUR_RULE_VARIANTS) · ไม่ส่ง = ข้อความหลัก
+ */
+export type TourRuntimeInput = { hit: boolean; vars?: Record<string, string | number>; variant?: string };
 
 export const INVALID_INPUT_WARN = "INVALID_INPUT_WARN";
 
@@ -101,7 +106,8 @@ const shapeOk = (o: unknown, required: readonly string[], optional: readonly str
   const allowed = new Set([...required, ...optional]);
   return Object.keys(o).every((k) => allowed.has(k));
 };
-const normalizeText = (s: string): string => s.toLowerCase().replace(/\s+/g, "");
+/** เทียบถ้อยคำ: NFKC (ตัวเต็มความกว้าง → ปกติ) · ตัดอักขระมองไม่เห็น (zero-width · soft hyphen · BOM) · ตัดช่องว่าง · ตัวพิมพ์เล็ก */
+const normalizeText = (s: string): string => s.normalize("NFKC").replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "").toLowerCase().replace(/\s+/g, "");
 const ymdUtc = (s: unknown): number | null => {
   if (typeof s !== "string") return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
@@ -144,27 +150,30 @@ const ladderShortfalls = (ladder: readonly LadderStep[]): string[] => {
 };
 const readEnum = <T extends string>(v: unknown, values: readonly T[]): T | null => (typeof v === "string" && (values as readonly string[]).includes(v) ? (v as T) : null);
 const readRuntime = (v: unknown): TourRuntimeInput | null => {
-  if (!shapeOk(v, ["hit"], ["vars"]) || typeof v.hit !== "boolean") return null;
-  if (v.vars === undefined) return { hit: v.hit };
+  if (!shapeOk(v, ["hit"], ["vars", "variant"]) || typeof v.hit !== "boolean") return null;
+  if (v.variant !== undefined && typeof v.variant !== "string") return null;
+  const variant = typeof v.variant === "string" ? { variant: v.variant } : {};
+  if (v.vars === undefined) return { hit: v.hit, ...variant };
   if (!isRec(v.vars)) return null;
   const vars: Record<string, string | number> = Object.create(null) as Record<string, string | number>; // ไม่มี prototype (คีย์ "__proto__" จากอินพุตไม่ปน)
   for (const [k, x] of Object.entries(v.vars)) {
     if (typeof x === "string" || (typeof x === "number" && Number.isFinite(x))) vars[k] = x;
     else return null;
   }
-  return { hit: v.hit, vars };
+  return { hit: v.hit, vars, ...variant };
 };
 const fill = (text: string, vars: Record<string, string | number> | undefined): string =>
   text.replace(/\{([^{}]+)\}/g, (m, name: string) => {
     const x = vars?.[name.trim()];
-    return x === undefined ? m : String(x);
+    void m;
+    return x === undefined ? "—" : String(x); // ตัวแปรที่ผู้เรียกไม่ส่ง ⇒ "—" (ไม่ปล่อย {…} ให้ผู้ใช้เห็น)
   });
 
 // ─────────────────── ทะเบียน rule ───────────────────
 
 type Meta = { severity: TourSeverity; checkpoint: TourCheckpoint; messageTh: string; citation: string; pendingReview?: true };
 /** ผลของตัวประเมินเฉพาะ rule: null = อินพุตผิดรูป · false = ไม่เตือน · { vars } = เตือน (vars แทนในข้อความ) */
-type Judge = (input: unknown, now: Date) => null | false | { vars?: Record<string, string | number>; messageTh?: string };
+type Judge = (input: unknown, now: Date, opts: TourEvalOpts) => null | false | { vars?: Record<string, string | number>; messageTh?: string };
 
 const META: Record<TourRuleId, Meta> = {
   W01: {
@@ -510,7 +519,7 @@ const SETTINGS_JUDGES: Partial<Record<TourRuleId, Judge>> = {
     if (!shapeOk(input, keys) || !keys.every((k) => isInt(input[k], 0, 10_000))) return null;
     return keys.some((k) => (input[k] as number) > DIVE_RATIO_CAP[k]) ? { vars: { "อัตรา": DIVE_RATIO_TH } } : false;
   },
-  W29: (input, now) => {
+  W29: (input, now, opts) => {
     if (!shapeOk(input, ["confirmedAt", "groups", "diveSatangPerPaxDay", "mooring"], ["shopRates"])) return null;
     if (input.shopRates !== undefined && !Array.isArray(input.shopRates)) return null;
     if (!Array.isArray(input.groups) || !input.groups.every((g) => isRec(g) && typeof g.code === "string")) return null;
@@ -518,7 +527,10 @@ const SETTINGS_JUDGES: Partial<Record<TourRuleId, Judge>> = {
     if (input.confirmedAt === null) return false; // ยังไม่เคยยืนยัน = ไม่เตือน (ใบสั่ง §7 ข้อ 6)
     const t = ymdUtc(input.confirmedAt);
     if (t === null) return null;
-    return (bkkTodayUtc(now) - t) / DAY_MS > PARK_FEE_STALE_DAYS ? { vars: { "วันที่": String(input.confirmedAt) } } : false;
+    if (opts.skipTimeDependent) return false; // ตัวตรวจทะเบียน: ไม่ขึ้นกับวันนี้
+    const age = (bkkTodayUtc(now) - t) / DAY_MS;
+    if (age < 0) return { vars: { "วันที่": String(input.confirmedAt) }, messageTh: TOUR_RULE_VARIANTS.W29?.FUTURE_DATE };
+    return age > PARK_FEE_STALE_DAYS ? { vars: { "วันที่": String(input.confirmedAt) } } : false;
   },
   W30: (input) => {
     const keys = Object.keys(PARK_AGE_BANDS) as (keyof typeof PARK_AGE_BANDS)[];
@@ -532,7 +544,7 @@ const SETTINGS_JUDGES: Partial<Record<TourRuleId, Judge>> = {
     const keep = RETENTION_FIELDS.some((k) => input[k] === null);
     const taxShort = typeof input.taxDocsDays === "number" && input.taxDocsDays < TAX_DOCS_MIN_DAYS;
     if (!keep && !taxShort) return false;
-    const parts = [...(keep ? [META.W33.messageTh] : []), ...(taxShort ? ["เอกสารภาษีต้องเก็บไม่น้อยกว่า 5 ปี (ประมวลรัษฎากร ม.87/3)"] : [])];
+    const parts = [...(keep ? [META.W33.messageTh] : []), ...(taxShort ? [TOUR_RULE_VARIANTS.W33?.TAX_DOCS_SHORT ?? ""] : [])];
     return { messageTh: parts.join(" · ") };
   },
   W38: (input) => {
@@ -542,11 +554,38 @@ const SETTINGS_JUDGES: Partial<Record<TourRuleId, Judge>> = {
   },
 };
 
-const RUNTIME_JUDGE: Judge = (input) => {
-  const r = readRuntime(input);
-  if (!r) return null;
-  return r.hit ? { vars: r.vars } : false;
+/** ข้อความทางเลือกต่อ rule (TRIPS-DEFAULTS §4 คอลัมน์ข้อความที่มีหลายประโยค) — เลือกด้วย variant ในอินพุตรูป RUNTIME */
+export const TOUR_RULE_VARIANTS: Readonly<Partial<Record<TourRuleId, Readonly<Record<string, string>>>>> = {
+  W26: { GROUP_OVER_RATIO: "กลุ่มนี้มีแขกต่อผู้ควบคุมเกินอัตราในประกาศกระทรวง ทส. พ.ศ. 2568 ({อัตรา})" },
+  W28: {
+    OVER_LICENCE: "ผู้โดยสารเกินจำนวนในใบอนุญาตใช้เรือ (ม.169)",
+    DEPARTURE_NOTICE: "เรือ 60 ตันกรอสส์ขึ้นไปต้องแจ้งกำหนดออกเรือล่วงหน้าไม่น้อยกว่า 6 ชั่วโมง (ม.21)",
+  },
+  W29: {
+    ETICKET_MISMATCH: "จำนวน/สัญชาติไม่ตรงกับ e-ticket ที่แนบ",
+    PARK_STAY_OVER_5_DAYS: "พักในอุทยานได้ไม่เกิน 5 วันต่อคราว",
+    FUTURE_DATE: "วันที่ร้านยืนยันตารางค่าอุทยาน ({วันที่}) อยู่หลังวันนี้ — โปรดตรวจวันที่อีกครั้ง",
+  },
+  W33: {
+    NO_DELETE: "ข้อมูลส่วนบุคคลต้องลบเมื่อพ้นกำหนดเก็บ (ม.37(3))",
+    TAX_DOCS_SHORT: "เอกสารภาษีต้องเก็บไม่น้อยกว่า 5 ปี (ประมวลรัษฎากร ม.87/3)",
+  },
+  W45: {
+    LIVEABOARD:
+      "บันทึกส่วนต่าง 3% เป็น \"ถูกหัก ณ ที่จ่าย\" ได้ — อย่าลืมรับหนังสือรับรอง 50 ทวิ จากลูกค้า · ทริปเรือค้างคืนยังไม่มีแนวทางว่าลูกค้าต้องหักหรือไม่ โปรดตรวจกับนักบัญชี",
+  },
 };
+
+const runtimeJudgeOf =
+  (id: TourRuleId): Judge =>
+  (input) => {
+    const r = readRuntime(input);
+    if (!r) return null;
+    if (r.variant !== undefined && TOUR_RULE_VARIANTS[id]?.[r.variant] === undefined) return null; // variant ไม่รู้จัก = อินพุตผิดรูป
+    if (!r.hit) return false;
+    return { vars: r.vars, ...(r.variant !== undefined ? { messageTh: TOUR_RULE_VARIANTS[id]?.[r.variant] } : {}) };
+  };
+const looksRuntime = (v: unknown): boolean => isRec(v) && own(v, "hit");
 
 const invalidVerdict = (): TourVerdict => ({
   level: "WARN",
@@ -558,7 +597,10 @@ const invalidVerdict = (): TourVerdict => ({
 
 function buildRule(id: TourRuleId): TourRule {
   const m = META[id];
-  const judge: Judge = m.checkpoint === "SETTINGS" ? (SETTINGS_JUDGES[id] ?? (() => null)) : RUNTIME_JUDGE;
+  const runtime = runtimeJudgeOf(id);
+  const settingsJudge = SETTINGS_JUDGES[id] ?? (() => null);
+  // rule ชั้นค่าตั้งรับรูป RUNTIME ได้ด้วย (เงื่อนไขที่เกิดตอนทำงานจริง · รีวิว MINOR-3) — ค่าตั้งจริงไม่มีช่อง "hit"
+  const judge: Judge = m.checkpoint === "SETTINGS" ? (input, now, o) => (looksRuntime(input) ? runtime(input, now, o) : settingsJudge(input, now, o)) : runtime;
   return {
     id,
     maxLevel: "WARN",
@@ -571,7 +613,7 @@ function buildRule(id: TourRuleId): TourRule {
       let out: ReturnType<Judge>;
       try {
         const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
-        out = judge(input, now);
+        out = judge(input, now, opts ?? {});
       } catch {
         return invalidVerdict();
       }
