@@ -34,6 +34,8 @@ enum HrAttendanceJudgement {
   NO_SCHEDULE
   ABSENT
   EARLY_OUT
+  // HR H2.5 ▸ ลาทั้งวัน (ผลตัดสินรายวันของ HrAttendanceDay) — migration แยก 20261230000001_hr_judgement_leave (ALTER TYPE … ADD VALUE) ◂
+  LEAVE
 }
 
 // ── HR H1.2 ▸ เวลาและการลา (โมเดลอย่างเดียว — เครื่องยนต์ = H2.x) ◂ ──
@@ -205,6 +207,9 @@ model HrEmployee {
   contractEndAt     DateTime?         @db.Date
 
   attendances HrAttendance[]
+  // HR H2.5 ▸ ผลตัดสินรายวัน (snapshot) + การเตือนยังไม่เข้างาน/ไม่มา ◂
+  attendanceDays   HrAttendanceDay[]
+  attendanceAlerts HrAttendanceAlert[]
   leaves      HrLeave[]
   schedules   HrWorkSchedule[]
   docs        HrEmployeeDoc[]
@@ -646,4 +651,74 @@ model HrClockSite {
 
   @@index([tenantId])
   @@index([systemId])
+}
+
+// ════════ HR H2.5 ▸ ผลตัดสินการลงเวลารายวันจากตารางกะ (migration 20261230000000_hr_judgement) ◂ ════════
+// ชนิดการเตือน: ยังไม่เข้างานหลังเริ่มกะ N นาที / ไม่มาทั้งกะ
+enum HrAttendanceAlertKind {
+  NOT_IN
+  ABSENT
+}
+
+// ผลตัดสินของ "ช่อง" (slot) หนึ่งช่องของพนักงานในวันหนึ่ง — 1 แถว = 1 กะที่ประกาศแล้ว (slotKey = id แถวตารางกะ) หรือ "DAY" (ไม่มีกะในวันนั้น)
+//   เขียนโดยตัวปิดวัน (finaliser) เมื่อพ้นเลิกกะ + closeGraceMin เท่านั้น (ON CONFLICT DO NOTHING) และการคิดผลใหม่ (recompute) — ลงเวลา/ตารางกะ/ใบลา/ค่าตั้ง
+//   ไม่แตะตารางนี้ · ตัวเลขเป็นนาที · H3.1 (นาทีทำงาน → เงินเดือน) อ่านตารางนี้ · rosterEntryId/unitId/leaveId/holidayId/in/outAttendanceId = สตริงเฉย ๆ (ไม่มี FK)
+//   leaveFraction = ส่วนของวันที่ลาอนุมัติ (1.0 ทั้งวัน · 0.5 ครึ่งวัน · null ไม่มีใบลา) — มติผู้คุม Q4: ลาครึ่งวันแล้วอีกครึ่งไม่มา = ABSENT แต่หักเงินเดือนแค่ครึ่งวัน ◂
+model HrAttendanceDay {
+  id              String                 @id @default(cuid())
+  tenantId        String
+  systemId        String
+  employeeId      String
+  employee        HrEmployee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date            DateTime               @db.Date
+  slotKey         String
+  rosterEntryId   String?
+  unitId          String?
+  startMin        Int?
+  endMin          Int?
+  crossesMidnight Boolean?
+  graceMin        Int?
+  status          HrAttendanceJudgement
+  lateMin         Int                    @default(0)
+  earlyOutMin     Int                    @default(0)
+  workedMin       Int                    @default(0)
+  breakMin        Int                    @default(0)
+  otMin           Int                    @default(0)
+  missingOut      Boolean                @default(false)
+  leaveId         String?
+  leaveHalf       HrHalfDay?
+  leaveFraction   Decimal?               @db.Decimal(2, 1)
+  holidayId       String?
+  inAttendanceId  String?
+  outAttendanceId String?
+  engineVersion   Int                    @default(1)
+  version         Int                    @default(1)
+  judgedAt        DateTime
+  recomputedAt    DateTime?
+  recomputedById  String?
+  recomputeReason String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@unique([employeeId, date, slotKey])
+  @@index([systemId, date])
+  @@index([tenantId])
+}
+
+// การเตือนที่ยิงแล้ว (1 ครั้งต่อกะต่อชนิด — unique) · firedAt = เวลาของรอบที่ยิง · notifiedAt = ตัวรับ outbox ส่งแจ้งเตือนแล้ว
+model HrAttendanceAlert {
+  id            String                @id @default(cuid())
+  tenantId      String
+  systemId      String
+  employeeId    String
+  employee      HrEmployee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  rosterEntryId String
+  date          DateTime              @db.Date
+  kind          HrAttendanceAlertKind
+  firedAt       DateTime
+  notifiedAt    DateTime?
+
+  @@unique([employeeId, rosterEntryId, kind])
+  @@index([systemId, firedAt])
+  @@index([tenantId])
 }
