@@ -18,7 +18,7 @@ import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
 import { employeeOfUser } from "./service";
 import { hrScopeOf, type HrScope } from "./scope";
-import { canBuildWorkEntries, canReadWorkEntries, normalMinutesOf, workEntryStatesInTx, type WorkEntryState, type WorkEntryViewer } from "./work-entries";
+import { canBuildWorkEntries, canReadWorkEntries, normalMinutesOf, workEntrySourceEmployeesInTx, workEntryStatesInTx, type WorkEntryState, type WorkEntryViewer } from "./work-entries";
 import { AttendanceAdjustmentConflict, writeAttendanceDeductionInTx } from "./payroll";
 import {
   ATT_STEP_OPTIONS,
@@ -129,6 +129,7 @@ export async function saveAttendancePayPolicy(ctx: Ctx, viewer: WorkEntryViewer,
   let period = bkkMonth(nowOf(opts));
   for (let k = 0; k < 240 && (await frozenRun(tenantDb(ctx) as unknown as Db, ctx, period)); k++) period = nextMonth(period);
   const closeAt = bkkMonth(nowOf(opts));
+  // fix r3 (reviewer minor): ล็อกรอนานเกิน (sync ยาว) ⇒ คืนข้อความคงที่ failed แทนการ throw
   const res = await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
     const tx = t as unknown as Db;
     await lock(tx, `hr:clockpolicy:${ctx.systemId}`);
@@ -141,7 +142,7 @@ export async function saveAttendancePayPolicy(ctx: Ctx, viewer: WorkEntryViewer,
     const inForce = attendanceInForceToggle(attendanceInForceOf(base[INFORCE_KEY]), next.enabled, next.enabled ? period : closeAt);
     const u = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: { ...base, [SETTINGS_KEY]: next, [INFORCE_KEY]: inForce } as Prisma.InputJsonValue } });
     return u.count === 1 ? { cur, next, inForce } : null;
-  }, TX_OPTS);
+  }, TX_OPTS).catch(() => null);
   if (!res) return { ok: false, reason: ATT_TEXT.failed };
   await writeAudit({ tenantId: ctx.tenantId, actorType: viewer.userId ? "USER" : "SYSTEM", actorId: viewer.userId ?? null, action: "hr.attpay.policy", targetType: "AppSystem", targetId: ctx.systemId, after: { systemId: ctx.systemId, ...res.next, inForce: res.inForce } });
   if (!res.next.enabled) await withdrawPendingOnOff(ctx, nowOf(opts));
@@ -605,13 +606,20 @@ export async function attendanceRunGateInTx(tx: Db, ctx: Ctx, runId: string, run
   const cs = await calcSet(tx, ctx, runPeriod, emps);
   if (cs.inForce) {
     const { heads, adj } = await rowsOf(tx, ctx, runPeriod, emps);
+    // fix r3 (N1): ยังไม่ดึงชั่วโมงทำงาน แต่มีข้อมูลต้นทางในงวด (ลงเวลา · ตารางกะ · ตารางประจำ) ⇒ อาจมีสาย/ขาดที่ยังไม่ได้คิด ⇒ ต้องดึง + คำนวณก่อน
+    const unpulled = emps.filter((e) => {
+      const k = cs.byEmp.get(e);
+      return !k || k.state === "NONE" || k.state === "MISSING";
+    });
+    const withSource = unpulled.length ? await workEntrySourceEmployeesInTx(tx, ctx, runPeriod, unpulled) : new Set<string>();
     for (const e of emps) {
       const k = cs.byEmp.get(e);
       if (k?.skip) continue; // fix r2 (F1): ไม่มีภาพนิ่ง (งวดปิดแล้ว/กฎปิดอยู่โดยไม่เคยคำนวณ) ⇒ ไม่มียอดต้องหัก
       const mine = heads.filter((h) => h.employeeId === e).map((h) => adj.get(h.adjustmentId)).filter((a): a is AdjRow => !!a && (a.status === "APPROVED" || a.status === "PENDING"));
       // fix r2 (F3a): ไม่มีชั่วโมงทำงานในงวด (ไม่อยู่ในชุดของ work entries / ยังไม่ดึง) และไม่มีรายการหักที่ยังมีผล ⇒ ไม่มีอะไรต้องหัก
       if (!k || k.state === "NONE" || k.state === "MISSING") {
-        if (mine.length) return "ATTENDANCE_SYNC";
+        // fix r2 (F3a) แคบลงใน fix r3 (N1): ผ่านได้เฉพาะคนที่ไม่มีข้อมูลต้นทางในงวดจริง ๆ (ไม่ได้ทำงานในงวด / ไม่มีแถวพนักงาน / ไม่มีลงเวลา-กะ-ตารางประจำ)
+        if (mine.length || withSource.has(e)) return "ATTENDANCE_SYNC";
         continue;
       }
       if (k.state !== "CURRENT" && k.state !== "FROZEN") return "ATTENDANCE_SYNC";

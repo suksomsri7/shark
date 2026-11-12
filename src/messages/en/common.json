@@ -885,7 +885,7 @@
       "code_NOT_IN_FORCE": "This period is outside the months the rule was on — nothing to deduct",
       "code_NO_SNAPSHOT": "This period was closed without ever being computed — no retroactive deduction",
       "runStale": "A late/absence deduction in this run is out of date — press 'Recompute' on the run first, then 'Compute late/absence deductions', then approve",
-      "runSync": "This period's late/absence deductions do not match the time data yet — press 'Recompute' on the run first, then 'Compute late/absence deductions', then approve"
+      "runSync": "This period's late/absence deductions do not match the time data yet — press 'Recompute' on the run first, then 'Pull work hours' and 'Compute late/absence deductions', then approve"
     },
     "stock": {
       "title": "Stock & damage charges",
