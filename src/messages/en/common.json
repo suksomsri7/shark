@@ -698,7 +698,10 @@
         "HOLIDAY_LEAVE": "Leave on a holiday (counted per ruling — accountant to check)"
       },
       "buildMore": "Continue pulling work hours",
-      "more": "Partly pulled ({n} days) — not everyone yet, press 'Continue pulling work hours'"
+      "more": "Partly pulled ({n} days) — not everyone yet, press 'Continue pulling work hours'",
+      "finalize": "Close pending days",
+      "finalizeHint": "Days whose attendance result was never stored (e.g. older than 7 days)?",
+      "finalized": "Closed {n} pending slots — press 'Pull work hours' again"
     },
     "correction": {
       "tab": "Time corrections",

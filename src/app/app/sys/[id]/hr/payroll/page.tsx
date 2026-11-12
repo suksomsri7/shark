@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 // HR H3.1 ▸ แผงชั่วโมงทำงานของงวด (ภาพ 06) — ?period=YYYY-MM (ค่าปริยาย = เดือนนี้ตามเวลาไทย) · ผลการกด ?we= รหัสสั้นจาก WE_MSG เท่านั้น ◂
 import { WorkEntriesPanel, WE_MSG, weMsgCode } from "@/lib/modules/hr/work-entries-ui";
-import { buildWorkEntriesAction } from "@/lib/modules/hr/work-entries-actions";
+import { buildWorkEntriesAction, finalizeWorkEntriesAction } from "@/lib/modules/hr/work-entries-actions";
 import { thaiDateKey } from "@/lib/ui/date";
 import { getTranslations } from "next-intl/server";
 
@@ -26,7 +26,12 @@ export default async function HrPayrollPage({ params, searchParams }: { params: 
   const tWe = await getTranslations("hr.we");
   const num = (v: unknown) => (typeof v === "string" && /^\d{1,6}$/.test(v) ? Number(v) : 0);
   const weAfter = sp.we === "more" && typeof sp.after === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(sp.after) ? sp.after : ""; // ดึงยังไม่ครบ (r2 7)
-  const weFlash = sp.we === "more" ? tWe("more", { n: num(sp.n) }) : sp.we === "ok" ? tWe("built", { n: num(sp.n), review: num(sp.r) }) : typeof sp.we === "string" && Object.prototype.hasOwnProperty.call(WE_MSG, sp.we) ? WE_MSG[sp.we]! : "";
+  const weFlash = sp.we === "fin" ? tWe("finalized", { n: num(sp.n) }) : sp.we === "more" ? tWe("more", { n: num(sp.n) }) : sp.we === "ok" ? tWe("built", { n: num(sp.n), review: num(sp.r) }) : typeof sp.we === "string" && Object.prototype.hasOwnProperty.call(WE_MSG, sp.we) ? WE_MSG[sp.we]! : "";
+  const onFinalize = async (fd: FormData) => {
+    "use server";
+    const r = await finalizeWorkEntriesAction(fd);
+    redirect(`/app/sys/${id}/hr/payroll?period=${period}&${r.ok ? `we=fin&n=${r.finalized}` : `we=${encodeURIComponent(weMsgCode(r.reason))}`}`);
+  };
   const onBuild = async (fd: FormData) => {
     "use server";
     const r = await buildWorkEntriesAction(fd);
@@ -38,7 +43,7 @@ export default async function HrPayrollPage({ params, searchParams }: { params: 
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="เงินเดือน — โปรไฟล์ + รอบจ่าย + สลิป" />
       <ModuleTabs items={hrTabs(id)} />
       <PayrollSection systemId={id} />
-      <WorkEntriesPanel systemId={id} periodKey={period} flash={weFlash} onBuild={onBuild} after={weAfter} /> {/* HR H3.1 ◂ */}
+      <WorkEntriesPanel systemId={id} periodKey={period} flash={weFlash} onBuild={onBuild} after={weAfter} onFinalize={onFinalize} /> {/* HR H3.1 ◂ */}
     </div>
   );
 }

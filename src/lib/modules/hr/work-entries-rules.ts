@@ -18,9 +18,10 @@ export const WORK_RULES_DEFAULT: WorkRules = { normalDayMin: 480, breakRule: "PL
 export const NORMAL_DAY_RANGE = { min: 60, max: 720 } as const;
 
 /** รายการที่ต้องตรวจก่อนอนุมัติรอบรุ่น 2 (บล็อก) */
-export const WE_BLOCKING = ["LEAVE_MISMATCH", "MISSING_OUT", "NOT_FINAL", "NOT_STORED", "ORPHAN", "OVER_1440", "PENDING_LEAVE", "STALE", "STRAY_IN", "WORKED_ON_LEAVE"] as const;
+export const WE_BLOCKING = ["LEAVE_MISMATCH", "MISSING_OUT", "NOT_FINAL", "NOT_STORED", "ORPHAN", "OVER_1440", "PENDING_LEAVE", "STALE", "STRAY_IN"] as const;
 /** แจ้งให้รู้เท่านั้น */
-export const WE_INFO = ["HOLIDAY_LEAVE", "HOURLY_LEAVE_UNUSED", "LEGACY_LEAVE", "OT_VIA_ADJUSTMENT"] as const;
+/** แจ้งให้รู้ (ไม่บล็อก) — WORKED_ON_LEAVE: หลัง r4 ไม่มีนาทีใดนับซ้ำ (เกินฐานไป unplanned) ⇒ แจ้ง H3.4/ผู้ทำบัญชีเท่านั้น */
+export const WE_INFO = ["HOLIDAY_LEAVE", "HOURLY_LEAVE_UNUSED", "LEGACY_LEAVE", "OT_VIA_ADJUSTMENT", "WORKED_ON_LEAVE"] as const;
 export type WorkReview = (typeof WE_BLOCKING)[number] | (typeof WE_INFO)[number];
 
 export type WorkDayClass = "WORKDAY" | "DAY_OFF" | "HOLIDAY" | "UNSCHEDULED";
@@ -335,7 +336,15 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
     if (dayClass === "DAY_OFF" || dayClass === "HOLIDAY") {
       m.holidayWorkMin += Math.min(net, N);
       m.otHolidayMin += Math.max(0, Math.min(nat(s.otMin), net) - N);
-    } else m.workMin += net;
+    } else {
+      // r4 (hunter F1): วันไม่มีกะ — ลาก่อน แล้วงานปกติ ≤ ฐาน (นาทีปกติต่อวัน) − ลา · ส่วนเกินไป unplanned (+ WORKED_ON_LEAVE เมื่อมีลา)
+      const leaveNow = m.paidLeaveMin + m.unpaidLeaveMin;
+      const room = Math.max(0, N - leaveNow - m.workMin);
+      const w = Math.min(net, room);
+      m.workMin += w;
+      m.unplannedMin += net - w;
+      if (net > w && leaveNow > 0) review.add("WORKED_ON_LEAVE");
+    }
   }
   if (dayClass === "HOLIDAY" && m.paidLeaveMin + m.unpaidLeaveMin > 0) review.add("HOLIDAY_LEAVE"); // r2 (4c): มติ Q16 คงเดิม — แจ้งให้ H3.4/ผู้ทำบัญชีเห็น
   // r2 (4d): กะซ้อนกันจนเกิน 1 วัน — ไม่ตัดเงียบ ๆ
@@ -344,7 +353,7 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
 
   const leaveTenths = Math.min(10, f * (leaveDay ? 1 : 0) + hourlyTenths * (leaveDay ? 1 : 0));
   const attended = shiftSlots.some((s) => ATTENDED.has(s.status));
-  const workedAny = m.workMin + m.holidayWorkMin + m.otWorkdayMin + m.otHolidayMin + m.unplannedMin > 0;
+  const workedAny = m.workMin + m.holidayWorkMin + m.otWorkdayMin + m.otHolidayMin > 0; // r4: unplanned อย่างเดียวไม่ทำให้เป็น "ทำงาน"
   const dayStatus: WorkDayStatus = pending
     ? "PENDING"
     : attended || workedAny

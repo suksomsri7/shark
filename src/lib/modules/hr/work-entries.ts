@@ -16,7 +16,7 @@ import { canViewPayroll, type MembershipCtx } from "@/lib/core/rbac";
 import { employeeOfUser, leaveRowScopeOf } from "./service";
 import { hrScopeOf, type HrScope } from "./scope";
 import { canManageHrSettings } from "./settings";
-import { workEntryDaysInTx, workEntryPunchesInTx, type JudgeViewer } from "./judge";
+import { finalizeStoredGaps, workEntryDaysInTx, workEntryPunchesInTx, type JudgeViewer } from "./judge";
 import { attendancePolicyOf } from "./judge-rules";
 import { clockPolicyOf } from "./clock-rules";
 import { unitOfDay } from "./roster";
@@ -492,6 +492,26 @@ export async function buildWorkEntrySnapshot(
     throw e;
   }
   return { ok: true, periodKey, ...total, next };
+}
+
+// ═══════════════════════════ ปิดผลวันที่ค้าง (r4 — ทางออกของ NOT_STORED ที่เก่ากว่าหน้าต่าง 7 วัน) ═══════════════════════════
+/**
+ * ผู้ดึง (OWNER · hr.payroll.read) สั่งปิดผลวันที่ค้างของงวด — เรียกตัวปิดวันของ H2.5 (judge.ts#finalizeStoredGaps · ล็อก hr:clock → hr:roster ของมันเอง)
+ * นอกล็อกงวด (ไม่ถือล็อกใดอยู่ ⇒ ไม่มีวงรอ) · งวดที่อนุมัติแล้ว = frozen · ไม่เขียน HrWorkDay (ดึงชั่วโมงทำงานใหม่หลังจากนี้)
+ */
+export async function finalizeWorkEntryDays(ctx: Ctx, viewer: WorkEntryViewer, input: { periodKey?: unknown }, opts: { now?: Date } = {}): Promise<{ ok: true; finalized: number } | { ok: false; reason: string }> {
+  if (!canBuildWorkEntries(viewer)) return { ok: false, reason: WE_TEXT.buildNo };
+  const periodKey = typeof input?.periodKey === "string" ? input.periodKey.trim() : "";
+  if (!PERIOD_RE.test(periodKey)) return { ok: false, reason: WE_TEXT.period };
+  const db = tenantDb(ctx) as unknown as Db;
+  if (await frozenRun(db, ctx, periodKey)) return { ok: false, reason: WE_TEXT.frozen };
+  const scope = hrScopeOf({ role: viewer.role, unitAccess: viewer.unitAccess });
+  const emps = (await periodEmployees(db, ctx, periodKey)).filter((e) => covers(scope, e.unitId));
+  const b = bounds(periodKey);
+  const r = await finalizeStoredGaps(ctx, emps.map((e) => e.id), b.first, b.last, nowOf(opts));
+  if (r.truncated) return { ok: false, reason: WE_TEXT.tooMuch };
+  if (r.finalized) await writeAudit({ tenantId: ctx.tenantId, actorType: viewer.userId ? "USER" : "SYSTEM", actorId: viewer.userId ?? null, action: "hr.work_entries.finalized", targetType: "AppSystem", targetId: ctx.systemId, after: { systemId: ctx.systemId, periodKey, finalized: r.finalized } });
+  return { ok: true, finalized: r.finalized };
 }
 
 // ═══════════════════════════ ด่านอนุมัติ + แช่แข็ง (R6 — เรียกจาก payroll.ts ใต้ล็อกงวด) ═══════════════════════════

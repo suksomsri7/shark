@@ -7,7 +7,7 @@ import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
 import { assertCan } from "@/lib/core/rbac";
 import { hrViewerOf } from "./privacy";
-import { buildWorkEntrySnapshot, setNormalMinutesPerDay, WE_TEXT } from "./work-entries";
+import { buildWorkEntrySnapshot, finalizeWorkEntryDays, setNormalMinutesPerDay, WE_TEXT } from "./work-entries";
 
 async function systemOf(tenantId: string, formData: FormData): Promise<string | null> {
   const systemId = String(formData.get("systemId") ?? "").trim();
@@ -41,6 +41,17 @@ export async function buildWorkEntriesAction(formData: FormData): Promise<{ ok: 
   const r = await buildWorkEntrySnapshot({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { periodKey, ...(after ? { after } : {}) });
   revalidatePath(`/app/sys/${systemId}/hr/payroll`);
   return r.ok ? { ok: true, written: r.written, blocking: r.blocking, next: r.next } : { ok: false, reason: r.reason };
+}
+
+/** ปิดผลวันที่ค้างของงวด (ตัวปิดวันของ H2.5) — OWNER · hr.payroll.read · แล้วกดดึงชั่วโมงทำงานใหม่ */
+export async function finalizeWorkEntriesAction(formData: FormData): Promise<{ ok: true; finalized: number } | { ok: false; reason: string }> {
+  const auth = await requireTenant();
+  if (auth.active.role !== "OWNER" && !keyGate(auth, "hr.payroll.read")) return { ok: false, reason: WE_TEXT.buildNo };
+  const systemId = await systemOf(auth.active.tenantId, formData);
+  if (!systemId) return { ok: false, reason: WE_TEXT.buildNo };
+  const r = await finalizeWorkEntryDays({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { periodKey: String(formData.get("periodKey") ?? "") });
+  revalidatePath(`/app/sys/${systemId}/hr/payroll`);
+  return r;
 }
 
 /** ชั่วโมงทำงานปกติต่อวัน (นาที 60–720) — เจ้าของร้านเท่านั้น */

@@ -85,3 +85,9 @@ qc-hr-h3.1 forced 52/52 ×3 + unforced 52/52 (residue none) · seed-hr-qc 33/33 
 - Work entries still create no pay line: OT minutes are measured only; approved OT is paid by H2.9's HrPayAdjustment (kind OT, sourceType OT_REQUEST).
 - Each day lists its APPROVED, unrevoked OT requests in `sourcesJson.otRequestIds`, adds info flag `OT_VIA_ADJUSTMENT`, and the OT kind rows carry `otRequestId` ⇒ H3.4 can see the day's OT is already paid.
 - H2.9 settlement only reads HrAttendanceDay (stores attendanceDayId/version on the request) and writes HrOtRequest/HrPayAdjustment — none of these are in the inputHash ⇒ a settlement never makes the period OUTDATED (S8.7). OT request refs are not hashed either: a newly approved request shows up on the next rebuild (refs are informational; H3.4 must read HrPayAdjustment itself).
+
+## r4 (hunter F1/F2/LOW)
+- F1: on every day regular work + paid + unpaid leave ≤ basis (planned, or normalMinutesPerDay when unrostered); leave booked first, excess worked minutes → unplannedMin + WORKED_ON_LEAVE. Unplanned-only days are not "WORKED" (status LEAVE when leaveDays 1.0).
+- F2: WORKED_ON_LEAVE is review-info (not blocking); visible per day and counted in the preview's reviewCount.
+- LOW: "ปิดผลวันที่ค้าง" (`finalizeWorkEntryDays` → judge.ts `finalizeStoredGaps`, same finalizeSlot + hr:clock → hr:roster locks, outside the period lock) stores past final slots the 7-day job never reached; then rebuild.
+- Debt (hunter 4): a PENDING leave on an otherwise empty day blocks v2 approval (Q13); the preview must name the day and the leave so the approver can decide it — today the day row shows PENDING_LEAVE + the leave label, the panel shows only a count (H3.4 UI).

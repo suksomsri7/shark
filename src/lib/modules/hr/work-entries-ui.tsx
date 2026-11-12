@@ -17,7 +17,7 @@ export const WE_MSG: Record<string, string> = Object.fromEntries(Object.entries(
 export const weMsgCode = (reason: string) => Object.entries(WE_MSG).find(([, v]) => v === reason)?.[0] ?? "we.failed";
 
 /** แผงชั่วโมงทำงานของงวด (ภาพ 06) — ผู้อ่าน: OWNER · hr.payroll.read · MANAGER/hr.employee.create (สาขาของตัวเอง) · ปุ่มดึง = ผู้ดึงเท่านั้น */
-export async function WorkEntriesPanel({ systemId, periodKey, flash, onBuild, after = "" }: { systemId: string; periodKey: string; flash: string; onBuild: ((fd: FormData) => Promise<void>) | null; after?: string }) {
+export async function WorkEntriesPanel({ systemId, periodKey, flash, onBuild, after = "", onFinalize = null }: { systemId: string; periodKey: string; flash: string; onBuild: ((fd: FormData) => Promise<void>) | null; after?: string; onFinalize?: ((fd: FormData) => Promise<void>) | null }) {
   const auth = await requireTenant();
   const viewer = hrViewerOf(auth);
   if (!canReadWorkEntries(viewer)) return null;
@@ -48,6 +48,16 @@ export async function WorkEntriesPanel({ systemId, periodKey, flash, onBuild, af
         )}
       </div>
       <p className={muted}>{t("desc")}</p>
+      {canBuildWorkEntries(viewer) && onFinalize && p.state !== "FROZEN" && p.state !== "CURRENT" && (
+        <form action={onFinalize} className="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="systemId" value={systemId} />
+          <input type="hidden" name="periodKey" value={periodKey} />
+          <span className={muted}>{t("finalizeHint")}</span>
+          <button type="submit" className="btn btn-ghost min-h-[44px] text-sm" data-testid="hr-we-finalize">
+            {t("finalize")}
+          </button>
+        </form>
+      )}
       {flash && (
         <p role="status" className="text-sm">
           {flash}

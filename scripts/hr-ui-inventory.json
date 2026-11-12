@@ -6400,6 +6400,33 @@
    "wo": "H3.1",
    "oracle": "qc-hr-h3.1",
    "note": "บันทึก → ?msg=ok | รหัส we.*"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-we-finalize",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "ผู้ดึง (OWNER · hr.payroll.read) · งวดไม่ใช่ FROZEN/CURRENT",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "finalizeWorkEntriesAction"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "ปิดผลวันที่ค้าง (ตัวปิดวันของ H2.5) → ?we=fin&n="
   }
  ]
 }

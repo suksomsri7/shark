@@ -1135,6 +1135,42 @@ export async function workEntryDaysInTx(
     truncated: data.truncated || rows.length >= ENTRY_TAKE,
   };
 }
+/**
+ * HR H3.1 r4 ▸ ปิดผลวันที่ค้าง (เก่ากว่าหน้าต่าง 7 วันของงานตามเวลา) ของพนักงานชุดหนึ่งในช่วงวัน — ใช้ตัวปิดวันตัวเดียวกับงานตามเวลา (finalizeSlot:
+ *   ล็อก hr:clock → hr:roster · ON CONFLICT DO NOTHING · ข้ามวันที่มีแถวกำพร้า) · ไม่มีกติกาตัดสินชุดที่สอง · ข้อมูลถึงเพดาน = ข้ามชุดนั้น (truncated) ·
+ *   ผู้เรียกต้องไม่ถือล็อกงวดอยู่ (ตัวปิดวันเปิดธุรกรรมของตัวเอง) · คืนจำนวนแถวที่เพิ่ม
+ */
+export async function finalizeStoredGaps(ctx: Ctx, employeeIds: string[], from: string, to: string, now: Date): Promise<{ finalized: number; truncated: boolean }> {
+  const db = dbOf(ctx);
+  const days: string[] = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+  const ids = [...new Set(employeeIds)].sort();
+  let finalized = 0;
+  let truncated = false;
+  for (let i = 0; i < ids.length; i += PAGE_SIZE) {
+    const page = ids.slice(i, i + PAGE_SIZE);
+    const data = await loadData(db, ctx, page, from, to);
+    if (data.truncated) {
+      truncated = true;
+      continue;
+    }
+    const emps = await employeesOf(db, ctx, { id: { in: page } });
+    const stored = await db.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: page }, date: { gte: dbDate(from), lte: dbDate(to) } }, select: { employeeId: true, date: true, slotKey: true } });
+    const byDay = new Map<string, { slotKey: string }[]>();
+    for (const r of stored) {
+      const k = `${r.employeeId}|${dayOf(r.date)}`;
+      byDay.set(k, [...(byDay.get(k) ?? []), r]);
+    }
+    for (const e of emps) {
+      for (const [day, slots] of slotsOf(e, days, data, now)) {
+        const have = byDay.get(`${e.id}|${day}`) ?? [];
+        if (hasOrphan(slots, have)) continue;
+        for (const s of slots) if (s.out.final && !have.some((h) => h.slotKey === s.slotKey)) finalized += await finalizeSlot(ctx, e, day, s.slotKey, now);
+      }
+    }
+  }
+  return { finalized, truncated };
+}
 /** HR H3.1 r2 ▸ แถวลงเวลาที่ยังมีผล (ตัวกรองเดียวกับ loadData — แถวที่ถูกยกเลิกไม่นับ) สำหรับ inputHash ของชั่วโมงทำงาน · อ่านเป็นหน้า ๆ ตาม id */
 export async function workEntryPunchesInTx(tx: Db, ctx: Ctx, employeeIds: string[], from: Date, to: Date, after: string | null, take: number) {
   return tx.hrAttendance.findMany({
