@@ -1,5 +1,6 @@
 # TRIPS-CORE-CONTRACT — สัญญาชิ้นกลางของ RUN "TRIPS" (ตั๋ว · ทัวร์ · Liveaboard · เอเจนซี่ · ผู้ให้บริการ)
 
+> **รอบ 3 (12 พ.ย. 2569)**: ปิดข้อค้างของผลตรวจรอบ 2 `ledger/wo-notes/trips-P0.3-review-r2.md` (N-1–N-11 · m-1 m-2) · ป้าย "(แก้รอบ 3)" · เพิ่ม §D.6 และ §N (ค่าที่ใบสั่ง T0.1/T0.5 ต้องกำหนด)
 > **รอบ 2 (12 พ.ย. 2569)**: แก้ตามผลตรวจอิสระ `ledger/wo-notes/trips-P0.3-review-r1.md` (FIX FIRST · B-1–B-3 · M-1–M-15 · m-1–m-16 · C-1–C-12) + มติผู้คุม 15 ข้อ · ย่อหน้าที่แก้ติดป้าย "(แก้รอบ 2)" · ข้อที่ไม่เห็นด้วยกับผู้ตรวจอยู่ §M · ของที่ต้องขออนุญาตเจ้าของอยู่ §L.1 · คีย์ที่เพิ่มอยู่ภาคผนวก ก ของ `ledger/TRIPS-DEFAULTS.md`
 > เขียน 12 พ.ย. 2569 · ใบ P0.3 · ⚠️ เอกสารเท่านั้น — ยังไม่แตะโค้ด · รอผู้ตรวจอิสระ 1 รอบ (MASTER-PLAN §3 P0.3)
 > **ไฟล์นี้อยู่เหนือ** `ledger/DESIGN-TRIPS-AGENCY.md` (TA) และ `ledger/TRIPS-MASTER-PLAN.md` (MP) §2 ในทุกเรื่อง "ชื่อ/ที่อยู่/ตาราง/หน้าสัมผัส/ลำดับล็อก/รูป snapshot" — TA (รวม §13.1 ผลกฎหมายรอบ 2 ที่ทับ §13) ยังเป็นแหล่งของ **พฤติกรรม หน้าจอ** · **ชื่อคีย์ ชนิด ชั้น ค่าเริ่ม และคำเตือน W01–W46 อยู่ใน `ledger/TRIPS-DEFAULTS.md` (P0.2) — ชื่อคีย์ในไฟล์นั้นชนะไฟล์นี้** · กฎหมาย `ledger/LEGAL-TRIPS-TH.md` ฉบับรอบ 2 (N1–N26 · §10 · §11)
@@ -151,16 +152,17 @@
 | «TripSeason» | unit | `name` · `dateStart` `dateEnd` · `priority` · `status` | `@@index([tenantId, unitId, dateStart, dateEnd])` |
 | «TripPrice» | unit | `productId` · `optionId?` · `paxTypeId?` · `cabinTypeId?` · `seasonId?` · `departureId?` · `currency` · `amountMinor` · `weekdayMask?` · ช่วงจอง/เดินทาง · `priority` | SQL มือ NND · CHECK `amountMinor >= 0` |
 | «TripPriceRule» | unit | `productId?` · `kind` · `params Json` · ช่วงวัน · `priority` · `active` | `@@index([tenantId, unitId, kind, active])` |
-| «TripHold» | unit | `departureId` · `basketId?` · `bookingId?` · `channel` · `agentAccountId?` · `allotmentId?` · `qtyPublic` `qtyAllot` · `unitIds String[]` · `purpose` (`PAYMENT` `SHOP_CONFIRM` `AGENT_REQUEST` `SUPPLIER_REQUEST` `WAITLIST_OFFER` `AGENT_HOLD`) · `requestHash` · `idempotencyKey` · `status` (`ACTIVE` `CONVERTED` `EXPIRED` `RELEASED`) · **`expiresAt` (แหล่งเดียวของเวลาหมด · แก้รอบ 2 M-3)** · `releasedReason?` | `@@unique([tenantId, idempotencyKey])` · `@@index([departureId, status])` · `@@index([bookingId])` · SQL มือ partial `("expiresAt") WHERE status='ACTIVE'` |
+| «TripHold» | unit | `departureId` · `basketId?` · `bookingId?` · `channel` · `agentAccountId?` · `allotmentId?` · `qtyPublic` `qtyAllot` · `unitIds String[]` · `purpose` (`PAYMENT` `SHOP_CONFIRM` `AGENT_REQUEST` `SUPPLIER_REQUEST` `WAITLIST_OFFER` `AGENT_HOLD`) · `capKeyHash` (เพดานถือ §D.6 · แก้รอบ 3) · `requestHash` · `idempotencyKey` · `status` (`ACTIVE` `CONVERTED` `EXPIRED` `RELEASED`) · **`expiresAt` (แหล่งเดียวของเวลาหมด · แก้รอบ 2 M-3)** · `releasedReason?` | `@@unique([tenantId, idempotencyKey])` · `@@index([departureId, status])` · `@@index([bookingId])` · SQL มือ partial `("expiresAt") WHERE status='ACTIVE'` |
 | «TripBooking» | unit | `code` · `publicTokenHash` · `status` §G · `productId` `departureId` `travelDate` · `basketId?` · `channel` · `agentAccountId?` `agentUserId?` `salesStaffId?` `linkId?` · `collectMode` (`SHOP` `AGENT`) · `payMethod` (`PAY_NOW` `PAY_LATER` `WALLET` `CREDIT` · M-13) · `bookerPartyId?` · `marketingEligible Bool` · `contactRoute` · `currency` `fxRateMicros?` · ยอดสตางค์: `grossSatang` `discountSatang` `agentDiscountSatang` `passThroughSatang` `vatSatang` `commissionSatang` `commissionVatSatang` `whtSatang` `netToShopSatang` `agentActualSaleSatang?` `paidSatang` `refundedSatang` · `accountingState` (`NONE` `UNEARNED` `RECOGNISED` `REVERSED` · H) · `policySnapshot Json` NOT NULL · `version Int` · `cancelReason?` `cancelledAt?` `travelledAt?` · `piiPurgedAt?` (m-14) · `createdById?` — **ไม่มี `holdExpiresAt`** (แก้รอบ 2) | `@@unique([tenantId, code])` · `@@unique([publicTokenHash])` · `@@index([tenantId, unitId, status, travelDate])` · `@@index([departureId, status])` · `@@index([agentAccountId, createdAt])` · `@@index([bookerPartyId])` |
 | «TripBookingItem» | unit | `bookingId` · `departureId` · `kind` (`SEAT` `BERTH` `CABIN` `EXTRA` `PICKUP` `FEE` `ADJUST`) · `paxTypeId?` `extraId?` `tripUnitId?` · `qty` · `unitPriceMinor` `amountMinor` `amountSatang` `vatSatang` · ธง · `taxKind` · `priceSource` · `allotmentId?` (ที่มาของที่นั่ง · ใช้ตอนยกเลิก §D.1 ข้อ 5) · `active` | `@@index([bookingId])` · `@@index([departureId, active])` |
 | «TripPassenger» | unit | `bookingId` · `itemId?` · `partyId?` · `fullName` · `nationality?` · `dob?` · `sex?` · `docType?` `docNumberEnc?` (กล่องปิด) `docLast4?` `docExpiry?` · `diver Bool?` · `phone?` · `birthPlace?` (ทริปข้ามแดน) · `certLevel?` `diveCount?` `lastDiveAt?` (§13.1 L6) · `isMinor Bool` `guardianConsent Json?` (ผู้เยาว์ ≤ 10 ปี · §13.1 L12) · `answers Json` (ตาม `formSpec`) · `formStatus` · `waiverSignedAt?` `waiverEvidence Json?` (L11: ช่องทางยืนยัน · เวลา · แฮชข้อความ · เวอร์ชัน) · `checkinAt?` · `retainUntil?` | `@@index([bookingId])` · `@@index([retainUntil])` |
 | «TripPaymentDue» | unit | `bookingId` · `seq` · `kind` (`DEPOSIT` `BALANCE` `INSTALMENT` `PASSENGER_SHARE`) · `passengerId?` · `dueAt` · `amountSatang` (รวม) · `vatableSatang` `passThroughSatang` (แยกตามกติกา §H.1) · `amountMinor?` · `paidSatang` · `status` · `payTokenHash?` | `@@unique([bookingId, seq])` · `@@index([status, dueAt])` |
-| «TripMoneyEvent» | unit | ต่อท้ายอย่างเดียว: `bookingId` · `kind` (`RECEIVED` `REFUNDED` `RETAINED` `REVENUE_RECOGNISED` `PASS_THROUGH_PAID` `CREDIT_ISSUED`) · `amountSatang` · `vatSatang` · `passThroughSatang` · `dueId?` · `tender` (`CASH` `PROMPTPAY` `TRANSFER` `CARD` `AGENCY`) · `accountDocId?` `accountEntryId?` · `postingStatus` (`POSTED` `UNPOSTED` · ไม่มีสมุด = คิว) · `slipId?` · `whtByCustomerSatang?` · `idempotencyKey` | `@@unique([tenantId, idempotencyKey])` · `@@index([bookingId])` · `@@index([tenantId, postingStatus])` |
+| «TripMoneyEvent» | unit | ต่อท้ายอย่างเดียว: `bookingId` · `kind` (`RECEIVED` `REFUNDED` `RETAINED` `REVENUE_RECOGNISED` `PASS_THROUGH_PAID` `CREDIT_ISSUED`) · `amountSatang` · `vatSatang` · `passThroughSatang` · `dueId?` · `tender` (`CASH` `PROMPTPAY` `TRANSFER` `CARD` `AGENCY`) · `accountDocId?` `accountEntryId?` · `postingStatus` (`POSTED` `UNPOSTED` `FAILED_NEEDS_ACTION` · แก้รอบ 3 N-6) · `postingAttempts Int` · `nextAttemptAt?` · `postedDate?` (วันลงบัญชีจริงเมื่อเลื่อนพ้นงวดปิด) · `slipId?` · `whtByCustomerSatang?` · `idempotencyKey` | `@@unique([tenantId, idempotencyKey])` · `@@index([bookingId])` · `@@index([tenantId, postingStatus])` |
 | «TripRefundRequest» | unit | `bookingId` · `by` · `reasonKind` (`CUSTOMER` `EXTERNAL` `MIN_NOT_MET` `SHOP_FAULT` · ตาม T21) · `deductions Json` · `status` §G.3 · `computed Json` · `choice` (`MONEY` `CREDIT` `MOVE_DATE`) · `amountSatang` · `manualDeltaSatang` · `approvalId?` · `creditNoteDocId?` `damagesDocId?` · `decidedById?` | `@@index([tenantId, unitId, status])` |
 | «TripDocument» | unit | `passengerId` · `kind` (`PASSPORT` `MEDICAL` `WAIVER` `CERT` `PARK_TICKET` `INSURANCE`) · `fileId` (FileAsset private) · `consent Json?` · `retainUntil` · `deletedAt?` | `@@index([retainUntil, deletedAt])` |
 | «TripDocView» | unit | ต่อท้ายอย่างเดียว: `documentId` · `viewerKind` (`STAFF` `AGENT` `LINK_CUSTOMER` `CUSTOMER` · แก้รอบ 2) · `viewerId` · `purpose` · `at` | `@@index([documentId, at])` |
 | «TripPdpaRequest» | unit | คำขอของเจ้าของข้อมูล (ลบ/เข้าถึง/แก้): `passengerId?` `partyId?` · `kind` · `status` · `dueAt` (จาก `trips.pdpa.requestDeadlines` T64 · ลบ ≤ 90 วัน §13.1 L13) · `doneAt?` | `@@index([tenantId, status, dueAt])` |
+| «TripCashClose» (แก้รอบ 3 · N-4 · T1.3) | unit | `businessDate` @db.Date · `financeAccountId` · `expectedSatang` · `countedSatang` · `varianceSatang` · `countedById` · `varianceEntryId?` · `transferId?` (`AccountFinanceTransfer`) · `approvalId?` · `closedAt` | `@@unique([unitId, businessDate])` |
 | «TripCheckin» | unit | `passengerId` · `deviceId` · `scannedAt` · `receivedAt` · `result` (`FIRST` `DUPLICATE`) | `@@index([passengerId])` + SQL มือ partial unique `(passengerId) WHERE result='FIRST'` (แก้รอบ 2 M-10b) |
 | «TripWaitlist» | unit | `departureId` · `partyId?` · `qty` · `status` · `offerHoldId?` · `offerExpiresAt?` | `@@index([departureId, status])` |
 | «TripCost» | unit | `departureId` · `kind` · `amountSatang` · `note?` | `@@index([departureId])` |
@@ -172,12 +174,13 @@
 | ตาราง | scope | คอลัมน์หลัก | unique / index |
 |---|---|---|---|
 | «AgentIdentity» | **global** | **เฉพาะที่ใช้จำเอเจนซี่เดียวกันข้ามร้าน**: `displayName` · `publicCode` (รหัสที่เอเจนซี่ให้ร้าน เช่น `AG-7K3Q9P` สุ่ม) · `taxIdHash?` (HMAC-SHA256 คีย์แพลตฟอร์ม ของเลขภาษีนิติบุคคล — ไว้ "ยืนยันว่าตรง" เมื่อเอเจนซี่เองกรอก · **ห้ามเก็บเลขบัตรประชาชนบุคคล**) · `status` | `@@unique([publicCode])` · `@@unique([taxIdHash])` (partial `WHERE taxIdHash IS NOT NULL` · SQL มือ) |
-| «AgentUser» | **global** | ผู้ใช้ฝั่งเอเจนซี่: `identityId` · `loginKind` (`EMAIL` `LINE`) · `emailNorm?` · `lineUserId?` · `displayName` · `role` (`OWNER` `SALES` `ACCOUNTING`) · `status` · `lastLoginAt?` — **ไม่ใช้ตาราง `User`** (`User.email` บังคับ+unique `core.prisma:107` · เอเจนซี่ LINE อย่างเดียวเข้าไม่ได้) | SQL มือ partial unique `(emailNorm) WHERE emailNorm IS NOT NULL` · `(lineUserId) WHERE lineUserId IS NOT NULL` · `@@index([identityId])` |
+| «AgentUser» | **global** | ผู้ใช้ฝั่งเอเจนซี่: `identityId` · `displayName` · `role` (`OWNER` `ADMIN` `SALES` `ACCOUNTING`) · `status` · `lastLoginAt?` — **ไม่ใช้ตาราง `User`** (`User.email` บังคับ+unique `core.prisma:107`) · (แก้รอบ 3 · N-7) วิธีล็อกอินแยกตาราง «AgentLogin» (ผู้ใช้หนึ่งคนมีได้หลายวิธี) | `@@index([identityId])` |
+| «AgentLogin» (แก้รอบ 3 · N-7) | **global** | `agentUserId` · `kind` (`EMAIL` `LINE`) · `providerId` (EMAIL = `"email"` · LINE = **LINE provider/channel id** ที่ออก userId นั้น — LINE userId ต่างกันต่อ provider: ล็อกอินผ่าน OA ของร้าน A กับร้าน B ได้คนละ id) · `subject` (อีเมล normalize หรือ LINE userId) · `verifiedAt` · `lastUsedAt?` | `@@unique([kind, providerId, subject])` · `@@index([agentUserId])` · เพิ่มวิธีล็อกอินใหม่ให้ตัวเอง = ต้องล็อกอินด้วยวิธีเดิมก่อน (ผูกบัญชี) |
 | «AgentSession» | **global** | `agentUserId` · `tokenHash` · `activeAgentAccountId?` (ร้านที่กำลังใช้) · `expiresAt` · `idleExpiresAt` · `revokedAt?` · `ipHash?` `uaHash?` | `@@unique([tokenHash])` · `@@index([agentUserId])` · `@@index([expiresAt])` |
 | «AgentLoginCode» | **global** | `target` (อีเมลหรือ LINE userId แบบแฮช) · `codeHash` · `attempts` · `expiresAt` · `usedAt?` | `@@index([target, expiresAt])` |
 | «AgentTier» | tenant | `code` · `name` · `sortOrder` | `@@unique([tenantId, code])` |
 | «AgentAccount» | tenant | `identityId` · `code` (PTD) · `status` (`INVITED` `PENDING` `ACTIVE` `SUSPENDED` `CLOSED`) · `tierId?` · `partyId` · `crmCompanyId?` · `accountContactId?` · `unitIds String[]` · **ข้อมูลภาษี/เงินของร้านนี้**: `legalName` · `payeeType` (`TH_JURISTIC` `TH_PERSON` `FOREIGN`) · `taxIdEnc?` `taxIdLast4?` (กล่องปิด · บุคคล = เลขบัตร) · `branchCode?` · `country` · `treaty Bool?` · `vatRegistered Bool` (มติ 8) · `bankAccount Json?` (กล่องปิด) · `contact Json?` · `licenceNo?` `licenceExpiry?` · `approvedById?` `approvedAt?` | `@@unique([tenantId, code])` · `@@unique([tenantId, identityId])` |
-| «AgentAccountMember» (เดิม «AgentUser» ต่อร้าน · เปลี่ยนชื่อ) | tenant | `agentAccountId` · `agentUserId` · `role` · `active` | `@@unique([agentAccountId, agentUserId])` |
+| «AgentAccountMember» (เดิม «AgentUser» ต่อร้าน · เปลี่ยนชื่อ) | tenant | `agentAccountId` · `agentUserId` · `role` · `active` · `addedByAgentUserId` — (แก้รอบ 3 · N-7) **สร้างได้เฉพาะฝั่งเอเจนซี่**: แถวแรกเมื่อ `AgentUser` OWNER/ADMIN ของเอเจนซี่ "รับคำเชิญ" บัญชี `INVITED` · ผู้ใช้ถัดไปเพิ่มโดย OWNER/ADMIN ของเอเจนซี่เท่านั้น · **ร้านเพิ่ม/แก้สมาชิกของเอเจนซี่ไม่ได้** (ร้านทำได้แค่ระงับทั้งบัญชี) | `@@unique([agentAccountId, agentUserId])` |
 | «AgentContract» | tenant | `agentAccountId` · `version` · `validFrom` `validTo?` · `fileId?` · `signedAt?` `signEvidence Json?` · `termsSnapshot Json` (ค่าตั้งชั้น AGENT ที่ resolve ตอนเซ็น) | `@@unique([agentAccountId, version])` |
 | «AgentRateCard» | tenant | `ownerKind` (`TIER` `AGENT`) · `tierId?` `agentAccountId?` · `name` · `status` · `validFrom?` `validTo?` · `version` | `@@index([tenantId, ownerKind])` · CHECK มีเจ้าของ 1 ชนิด |
 | «AgentRate» | tenant | `rateCardId` · `productKind` (ตรวจกับ `PRODUCT_KINDS`) · `productId` · `optionId?` `paxTypeId?` `cabinTypeId?` · `mode` (`COMMISSION_PCT` `COMMISSION_FIXED` `NET` `MARKUP`) · `valueBp?` `valueMinor?` `currency` · `minSellMinor?` · `markupCapBp?` · ช่วงจอง/เดินทาง · `priority` | SQL มือ NND (rateCardId, productKind, productId, optionId, paxTypeId, cabinTypeId, bookFrom, travelFrom) · `@@index([rateCardId])` · `@@index([tenantId, productKind, productId])` |
@@ -217,6 +220,9 @@
 1. migration A (เพิ่มอย่างเดียว): ตาราง/คอลัมน์ใหม่ + backfill เริ่มต้น — ทุก `TicketEvent` → `TicketSession` 1 แถว (`capacity = Σ type.quota` · **`sold = Σ type.sold` ซึ่งรวมออเดอร์ `PENDING` เดิม** · `held = 0`) + `TicketChannelQuota(type,"*")` ต่อประเภท · `sessionId` ของออเดอร์/ตั๋วเดิม · idempotent (`ON CONFLICT DO NOTHING`)
 2. ดีพลอยโค้ด K1.1 (ตัดที่ผ่านรอบ · `TicketType.sold` หยุดเดิน)
 3. **งาน reconcile หลังดีพลอย** «ticket.reconcileSessions» (รันครั้งเดียว + รันซ้ำได้): ต่อรอบ ล็อกแถวรอบ (`FOR UPDATE`) → คำนวณ `sold` ใหม่จากออเดอร์จริง (`PENDING` + `PAID` ที่ไม่ใช่ CANCELLED · ตั๋วไม่ VOID) และ `held` จาก `TicketHold ACTIVE` → UPDATE · ล็อกแถวโควตาตามลำดับ §D.5 แล้วทำแบบเดียวกัน — แก้ส่วนต่างที่เกิดจากโค้ดเก่าเพิ่ม `TicketType.sold` ระหว่าง migration กับดีพลอย
+   - (แก้รอบ 3 · N-3) reconcile **ผูก `sessionId` ให้ออเดอร์/ตั๋วที่โค้ดเก่าสร้างในช่วงระหว่าง migration กับดีพลอย** (`sessionId IS NULL` ของอีเวนต์นั้น · รอบเดียวของอีเวนต์ที่ backfill สร้าง) ก่อนนับ `sold` ใหม่
+   - `TicketSession.reconciledAt DateTime?` (คอลัมน์ใน migration A · null ทุกแถวที่ backfill) · **โค้ด K1.1 ปฏิเสธการขาย/ถือบนรอบที่ `reconciledAt IS NULL`** ด้วย `BUSY` ("ระบบกำลังปรับยอด ลองอีกครั้ง") · reconcile ตั้ง `reconciledAt = now()` ในธุรกรรมเดียวกับการนับใหม่ (ล็อกแถวรอบ) · รอบที่สร้างใหม่หลังดีพลอยตั้ง `reconciledAt` ทันที
+   - ตัวอย่างที่ต้องผ่าน (ผลตรวจ N-3): โควตา 100 ขายแล้ว 99 ตอน migration · โค้ดเก่าขายอีก 1 · หลังดีพลอยขายไม่ได้จน reconcile ⇒ sold = 100 ⇒ ขายเพิ่มได้ 0 (ไม่เกิด 101)
 4. ข้อสอบเทียบก่อน/หลัง: Σ ที่นั่งขายแล้วต่ออีเวนต์ก่อน K1.1 = Σ `sold` ของรอบหลัง reconcile · ร้านตั๋วเดิมไม่เปลี่ยนพฤติกรรม (L-46)
 - ออเดอร์ `PENDING` แบบเดิม (ไม่มี `TicketHold`) นับเป็น `sold` ไม่ใช่ `held` — ข้อสอบ §D.3 ของตั๋วใช้สูตร `sold = Σ ตั๋วไม่ VOID ของออเดอร์ PENDING+PAID` (ไม่ใช่ "PAID เท่านั้น")
 
@@ -300,11 +306,11 @@ export type Booker = { name: string; phone?: string; email?: string; lineUserId?
 export type ConfirmRequest = {
   holdIds: string[]; idempotencyKey: string; quoteId: string;
   booker: Booker; passengers?: { name: string; paxTypeId: string; fields?: Record<string, unknown> }[];
-  pay: { mode: "PAY_NOW" | "PAY_LATER" | "AGENT_CREDIT" | "AGENT_WALLET" | "AGENT_COLLECTS"; method?: "PROMPTPAY" | "CARD" | "SLIP" | "CASH" };
+  pay: { method: "PAY_NOW" | "PAY_LATER" | "WALLET" | "CREDIT"; tender?: "PROMPTPAY" | "CARD" | "SLIP" | "CASH" };   // (แก้รอบ 3 · m-1) ค่าเดียวกับ `TripBooking.payMethod` · ผู้เก็บเงินไม่ส่งมา — มาจาก `agency.money.collector` (A10) ที่ resolve แล้ว
   note?: string;
 };
 export type BookingRef = { productKind: ProductKind; bookingId: string; code: string; status: string; publicToken: string; dues: DueSpec[] };
-export type CancelRequest = { bookingId: string; mode: "QUOTE" | "EXECUTE"; reason: string; choice?: "REFUND" | "CREDIT" | "MOVE"; moveToSlotId?: string; idempotencyKey: string };
+export type CancelRequest = { bookingId: string; mode: "QUOTE" | "EXECUTE"; reason: string; reasonKind?: "CUSTOMER" | "EXTERNAL" | "MIN_NOT_MET" | "SHOP_FAULT"; choice?: "MONEY" | "CREDIT" | "MOVE_DATE"; moveToSlotId?: string; idempotencyKey: string };   // (แก้รอบ 3 · m-1) ค่าเดียวกับ `TripRefundRequest`
 export type CancelResult = { computed: { refundSatang: number; feeSatang: number; ladderStep: CancelStep | null; source: "SNAPSHOT" }; requestId?: string; status?: string };
 export type AvailabilityQuery = { productId: string; from: string; to: string; optionId?: string; paxTotal?: number };
 export type AvailabilityRow = { slotId: string; startsAt: string; localDate: string; status: string; publicLeft: number; agentLeft?: number; priceFrom?: Money; belowMin?: boolean };
@@ -446,7 +452,7 @@ RETURNING "id";                                                                 
 ### D.4 ตัวกวาดที่ถือหมดเวลา (T0.4 · `trips.expireHolds` ทุก 1 นาที · K1.1 `ticket.expireHolds`)
 1. อ่านรายการครบกำหนด **ไม่ล็อก** (ใช้ดัชนีบางส่วน B.0): `SELECT id, "departureId" FROM "TripHold" WHERE status='ACTIVE' AND "expiresAt" <= $now ORDER BY "departureId", id LIMIT 200`
 2. ต่อรอบ (tx ละรอบ): เฟส 1 ล็อกรอบ → โควตาที่เกี่ยว (id) → เตียงของ hold เหล่านั้น · เฟส 2 CAS hold `UPDATE "TripHold" SET status='EXPIRED' WHERE id = ANY($ids) AND status='ACTIVE' AND "expiresAt" <= $now RETURNING …` → คืนตัวนับตามแถวที่ CAS ได้จริง (ข้อ 4) → การจองที่ผูก (`TripHold.bookingId`) สถานะ `HOLD` **หรือ `PENDING`** → `EXPIRED` (CAS · id เรียง) → `SupplierRequest`/`AgentRequest` ที่ผูก → `EXPIRED` → outbox
-3. **เวลาหมดของ hold PENDING** (M-3 · มติ 4): ตั้งตอนสร้างจาก `purpose` — `SHOP_CONFIRM` = «trips.sell.shopConfirmHours» · `AGENT_REQUEST` = `agency.quota.requestResponseHours` (A19) · `SUPPLIER_REQUEST` = `respondBy` («trips.supplier.respondHours») + (`autoCancelOnTimeout` เท็จ ⇒ + «trips.supplier.shopDecisionHours») · `PAYMENT` = `trips.sell.holdMinutes` (T5) · ไม่มีที่อื่นเก็บเวลาหมด
+3. **เวลาหมดของ hold** (M-3 · มติ 4 · แก้รอบ 3 N-9): ตั้งตอนสร้างจาก `purpose` — `SHOP_CONFIRM` = «trips.sell.shopConfirmHours» · `AGENT_REQUEST` = `agency.quota.requestResponseHours` (A19) · `SUPPLIER_REQUEST` = `respondBy` («trips.supplier.respondHours») + (`autoCancelOnTimeout` เท็จ ⇒ + «trips.supplier.shopDecisionHours») · `PAYMENT` **ไม่มีเอเจนซี่** = `trips.sell.holdMinutes` (T5) · `PAYMENT` **มี `agentAccountId`** (เอเจนซี่ PAY_NOW · G.0) และ `AGENT_HOLD` = `agency.hold.duration` (A16) · `WAITLIST_OFFER` = `trips.sell.waitlistHoldMinutes` (T9) · ไม่มีที่อื่นเก็บเวลาหมด
 4. รับเงินหลังหมดเวลา (W1.4 · ภาพ 07): consumer สลิปเห็นการจอง `EXPIRED` → ลองถือใหม่ (D.1 ข้อ 1) ใน tx ใหม่ · ได้ = เดินต่อ · ไม่ได้ = คืนเงินอัตโนมัติ + `trips.booking.paid_after_expiry`
 5. ข้อมูลส่วนบุคคลของการจอง `EXPIRED` ที่ไม่มีเงินเข้า: ลบชื่อ/เบอร์/อีเมลผู้จองหลัง «trips.pdpa.abandonedRetentionDays» (m-14) — job `trips.pdpaPurge` ตั้ง `piiPurgedAt`
 
@@ -454,7 +460,7 @@ RETURNING "id";                                                                 
 **กฎ:** ในธุรกรรมเดียว ล็อกทุกแถวที่ต้องใช้ตามลำดับชั้นข้างล่าง · **ห้ามขอล็อกแถวชั้น k หลังจากถือแถวชั้นที่มากกว่า k แล้ว** (ทั้งธุรกรรม ไม่ใช่ต่อบรรทัด) · ภายในชั้นเรียงตามคีย์ที่ระบุ · ตะกร้าทำเฟส 1 ของ **ทุกบรรทัดทุกชนิด** ให้เสร็จก่อนเริ่มเฟส 2 ของบรรทัดใด
 | ชั้น | แถว | เรียงภายในด้วย |
 |---|---|---|
-| 0 | `SellBasket` (FOR UPDATE) · `pg_advisory_xact_lock(hashtext('trips-holdcap:'||<agentAccountId หรือ contactKey>))` สำหรับนับเพดานถือ (G26 · A17 · m-7) | basketId · แล้วคีย์ advisory (ข้อความเรียง) |
+| 0 | `SellBasket` (FOR UPDATE) · `pg_advisory_xact_lock(hashtext('trips-holdcap:'||<capKey>))` สำหรับนับเพดานถือ (G26 · A17 · X10 · m-7) — capKey ดู §D.6 (แก้รอบ 3) | basketId · แล้ว capKey (ข้อความเรียง) |
 | **เฟส 1** 1a | แถวรอบ: `TripDeparture` แล้ว `TicketSession` | (ลำดับชนิดใน `PRODUCT_KINDS`, id) |
 | 1b | ตัวนับย่อย: `AgentAllotment` แล้ว `TicketChannelQuota` | (ตาราง, id) |
 | 1c | เตียง `TripUnit` · `TripResourceUse` (ตอนแก้รอบ) | (departureId, sortKey, id) |
@@ -466,7 +472,7 @@ RETURNING "id";                                                                 
 | 2f | `AgentBalance` → insert `AgentLedgerEntry` | agentAccountId |
 | 2g | `SupplierRequest` · `SupplierPayable` | id |
 | 2h | `emitOutbox` (insert) | — |
-- **อินเทอร์เฟซ** (แก้ §C): `reserveInTx(tx, ctx, line)` ทำเฉพาะเฟส 1 ของบรรทัดและคืน "ตั๋วจอง" (ตัวเลขที่ได้) · `finalizeInTx(tx, ctx, reservations)` ทำเฟส 2 · ตะกร้า: รวมทุกบรรทัด → เรียงแถวเฟส 1 ทั้งตะกร้าตามตาราง → `reserveInTx` ทีละแถวตามลำดับนั้น → `finalizeInTx` ของทุกชนิด (ชนิดตาม `PRODUCT_KINDS`) · facade agency ที่รับ tx (`postEntries` · `claimAllotmentInTx`) เรียกได้เฉพาะในเฟสของชั้นตัวเอง — `postEntries` **รวมรายการของทั้งตะกร้าแล้วเรียกครั้งเดียวท้ายเฟส 2** (ไม่ใช่ต่อบรรทัด)
+- **อินเทอร์เฟซ (นิยามเดียว · แก้รอบ 3 N-8)**: (1) `capacityRowsOf(ctx, line)` ของทุกบรรทัดคืน `CapacityRowRef[]` (อ่านไม่ล็อก) → (2) ตะกร้ารวมเป็นรายการเดียวแล้ว **เรียงครั้งเดียวทั้งตะกร้า** ตาม (layer, kindIndex, table, sortKey, id) → (3) เรียก `reserveInTx(tx, ctx, [row], intent)` **ทีละหนึ่งแถว** ตามลำดับนั้น — แต่ละครั้งรันเฉพาะคำสั่ง §D.1 ของแถวนั้นด้วย intent ของบรรทัดเจ้าของแถว (เช่น ถือจากโควตา (2): ครั้งแรก = คำสั่งบนแถวรอบ · ครั้งหลัง (หลังแถวรอบอื่น ๆ ที่เรียงก่อน) = คำสั่งบนแถวโควตา) · ผลสะสมเป็น `Reservation` ต่อบรรทัด → (4) `finalizeInTx` ของทุกชนิด (ตาม `PRODUCT_KINDS`) ทำชั้น 2a–2e → (5) `postEntries` ของสมุดเอเจนซี่ครั้งเดียว (2f) · `TicketChannelQuota` เรียงตาม id ในชั้น 1b ได้ (ลำดับความหมาย type→channel ไม่จำเป็น เพราะทุกการเข้าถึงต้องผ่านแถว `TicketSession` ชั้น 1a ก่อนเสมอ)
 - แถวที่ต้องรู้จากการอ่านก่อน (ยกเลิก/ย้าย/ปิดทริป): อ่าน **ไม่ล็อก** เพื่อรู้ชุดแถว → ล็อกตามลำดับ → **อ่านซ้ำและตรวจ `version`/สถานะ** · ถ้าชุดแถวเปลี่ยน (เช่น การจองถูกย้ายรอบระหว่างนั้น) = rollback แล้วเริ่มใหม่ (สูงสุด 3 ครั้ง ⇒ `BUSY`)
 - **บัญชี/POS อยู่นอก tx ของ trips เสมอ** (claim สถานะใน tx → เรียกบัญชีด้วยคีย์กันซ้ำหลัง commit → ล้ม = `TripMoneyEvent.postingStatus='UNPOSTED'` เข้าคิวลองซ้ำ ไม่คืนสถานะ)
 
@@ -488,6 +494,13 @@ RETURNING "id";                                                                 
 | ผู้ให้บริการยืนยัน (S1.2) | 1a → 1b → 1c → 2a(CAS) → 2b → 2d → 2e → 2f → 2g → 2h |
 | จัดเคบิน/แชร์ห้อง | 1c(ทุกเตียงของเคบิน) → 2b(CabinAssignment = ลูกการจอง) |
 - ข้อสอบ X (บังคับ): ลำดับสลับของผลตรวจ B-2 ทุกตัว — ตะกร้า [TRIP(D)+TICKET(S)] ของเอเจนซี่ X ∥ ออเดอร์ตั๋วเอเจนซี่ X บน S · ตะกร้า [D1, D2] ∥ จองเดี่ยว D2 ของเอเจนซี่เดียวกัน · ยกเลิก ∥ ตัวกวาด ∥ คืนโควตา ∥ ยืนยัน บนรอบเดียว 50 รอบ ⇒ ไม่มี `40P01` + ค่าคงที่ D.2/D.3 ถูก
+
+
+### D.6 เพดานถือที่พร้อมกัน (แก้รอบ 3 · N-11)
+- **ใครนับ**: เอเจนซี่ = `capKey = agent:<agentAccountId>` นับ `TripHold` ที่ `agentAccountId` ตรง · สาธารณะ = ตอนถือยังไม่รู้เบอร์/LINE ⇒ `capKey = basket:<basketTokenHash>` (ต่อเบราว์เซอร์/LIFF session) และ **ตรวจซ้ำตอนกรอกผู้จอง** (confirm) ด้วย `capKey = contact:<แฮชเบอร์ normalize หรือ LINE userId>` — เกิน = `HOLD_LIMIT` ที่ confirm (ที่ถืออยู่ปล่อยตามปกติ) · `TripHold.capKeyHash` จดทุกแถวเพื่อนับ
+- **นับเฉพาะ** `status = 'ACTIVE' AND "expiresAt" > now()` (แถวที่หมดเวลาแต่ตัวกวาดยังไม่ถึง ไม่นับ)
+- **เส้นทางที่นับ**: ถือที่สาธารณะ · เอเจนซี่ (`PAYMENT` ที่มีเอเจนซี่ · `AGENT_HOLD` · `AGENT_REQUEST`) · ต่ออายุ `AGENT_HOLD` · **ไม่นับ**: `WAITLIST_OFFER` (ระบบสร้าง · แต่ยังขอ advisory lock ของ capKey ของผู้รอคิวเพื่อเรียงกับการถือของคนเดียวกัน) · ย้ายรอบ (ปล่อยแล้วถือแทนในการจองเดิม = ยอดสุทธิไม่เพิ่ม · ไม่ขอ lock) · พนักงานหน้าร้าน (`SHOP_CONFIRM`/ถือแทนลูกค้าที่เคาน์เตอร์)
+- นับและ INSERT hold อยู่ใต้ advisory lock เดียวกัน (ชั้น 0 ก่อนเฟส 1) ⇒ เกินเพดานพร้อมกันไม่ได้
 
 ---
 
@@ -525,8 +538,8 @@ RETURNING "id";                                                                 
 - ค่าที่ LG ยังไม่ยืนยัน: `helpTh` ขึ้นต้นป้าย "ตรวจกับนักบัญชีของร้าน" (มติรอบ 5) — รายการคีย์ใน TRIPS-DEFAULTS
 
 ### E.4 คีย์ (ชื่อ ชนิด ชั้น ค่าเริ่ม = «ledger/TRIPS-DEFAULTS.md» §1–§3 · **ชื่อในไฟล์นั้นชนะ**)
-- 122 คีย์ (แก้รอบ 2 · m-2): trips `T1–T70` (70 — T55 ไม่มีในไฟล์ · T43 `trips.consumer.withdraw7Days` ใช้ที่หน้าจองแสดงสิทธิ์เลิกสัญญา) · ข้อความ T70 `trips.msg.<kind>` · agency `A1–A37` (37) · ticket `K1–K15` (15) · คำเตือน `W01–W46` · ป้ายนักบัญชี 16 คีย์ (§5.1) · ป้ายหน่วยงาน 10 คีย์ (§5.2) — ใบ T0.1/A1.1/K1.1 ลงทะเบียนตามนั้นทุกตัว (ชั้น "SHOP" ในไฟล์นั้น = ชั้น `UNIT`)
-- คีย์ที่สัญญานี้อ้าง (ตัวอย่าง · ⓢ = จดลง snapshot §F):
+- 122 คีย์ (แก้รอบ 2/3 · m-2): trips `T1–T70` (70 · T55 `trips.license.fields` มีอยู่ — TRIPS-DEFAULTS บรรทัด 125 · T43 `trips.consumer.withdraw7Days` ใช้ที่หน้าจองแสดงสิทธิ์เลิกสัญญา) · ข้อความ T70 `trips.msg.<kind>` · agency `A1–A37` (37) · ticket `K1–K15` (15) · คำเตือน `W01–W46` · ป้ายนักบัญชี 16 คีย์ (§5.1) · ป้ายหน่วยงาน 10 คีย์ (§5.2) — ใบ T0.1/A1.1/K1.1 ลงทะเบียนตามนั้นทุกตัว (ชั้น "SHOP" ในไฟล์นั้น = ชั้น `UNIT`) · คีย์เพิ่มของสัญญา = ภาคผนวก ก (X1–X28)
+- คีย์ที่สัญญานี้อ้าง (ตัวอย่าง · ⓢ = จดลง snapshot §F — **รายการจริงที่ทะเบียนต้องลง = §N.3** · แก้รอบ 3):
 | เรื่อง | คีย์ (รหัส P0.2) |
 |---|---|
 | ถือที่/ปิดรับ/ขั้นต่ำ | `trips.sell.holdMinutes` (T5) · `trips.sell.cutoff` (T6) · `trips.sell.minToDepart` (T7) · `trips.sell.departureHorizonDays` (T8) · `trips.sell.waitlistHoldMinutes` (T9) · `trips.sell.abandonedReminder` (T10) · `agency.hold.duration` (A16) · `agency.hold.maxConcurrent` (A17) · `ticket.sell.holdMinutes` (K1) · `ticket.sell.cutoffMinutes` (K2) |
@@ -554,7 +567,7 @@ RETURNING "id";                                                                 
 | «trips.ops.autoCloseHoursAfterEnd» · «trips.ops.offlineCheckin» | int · bool · U·P | §J.2 | T1.5 |
 | «trips.pdpa.viewLogDays» · «trips.pdpa.maskOnScreen» | days · bool · U | §J.4 | T0.8 |
 | «trips.supplier.respondHours» · «trips.supplier.autoCancelOnTimeout» | U·P | §G.2 | S1.2 |
-| «agency.quota.requestFirst» · «agency.quota.returnCancelledToQuota» | bool · AT·A·P | §D.1 · §G.1 | A1.4 |
+| «agency.quota.requestFirst» (X24) · «agency.quota.returnCancelledToQuota» (X25) | bool · X24: U·AT·A·P · X25: U·AT·A (แก้รอบ 3 · N-10 ตรงกับภาคผนวก) | §D.1 · §G.1 | A1.4 |
 | «agency.msg.<ชนิด>» · «ticket.msg.<ชนิด>» (template ต่อข้อความ · trips มีแล้ว = T70) | template · U·P | `notifyCustomer` อ่าน `${domain}.msg.${messageKey}` (`notify-customer.ts:183`) (แก้รอบ 2 · C-9) | A2.2 · K1.3 |
 | «trips.sell.shopConfirmHours» · «trips.supplier.shopDecisionHours» | int ชม. · U·P | §D.4 ข้อ 3 (เวลาหมดของ hold PENDING · M-3) | T0.6 · S1.2 |
 | «trips.pay.overdueGraceHours» | int · U·P | §G.1 | T0.7 |
@@ -563,7 +576,8 @@ RETURNING "id";                                                                 
 | «trips.cancel.creditBonusPct» · «trips.cancel.creditValidityMonths» · «trips.cancel.moveFreeWithinDays» | percent · int · int · U·P (ภาพ 15: 20 · 12 · 90 · เครดิตปิดในรุ่นแรก) | §G.3 | T0.7 · X.2 |
 | «trips.public.otpValidMinutes» · «trips.public.holdCapPerContact» | int · U | §J.3.2 · §D.5 ชั้น 0 | W1.3 · T0.4 |
 | «trips.pdpa.abandonedRetentionDays» | days · U | §D.4 ข้อ 5 (m-14) | T0.8 |
-| «agency.comm.vatMode» | enum `NONE`/`EXCLUSIVE`/`INCLUSIVE` · U·A · ⚖️ | §H.4 (มติ 8) | A1.3 |
+| «agency.comm.vatMode» (X26) | enum `NONE`/`EXCLUSIVE`/`INCLUSIVE` · U·AT·A · ⚖️ | §H.4 (มติ 8) · (แก้รอบ 3 · N-10) ค่าเริ่มของ def = `NONE` (เครื่องยนต์ให้ได้แค่ค่าแม่แบบ) · **ตัดสินตอนใช้**: ถ้า resolve ได้ `source` = `TEMPLATE`/`FALLBACK` (ร้านไม่ได้ตั้ง) และ `AgentAccount.vatRegistered = true` ⇒ ใช้ `EXCLUSIVE` · ผลจดลง snapshot | A1.3 |
+| «trips.cash.varianceApprovalSatang» (X28 · แก้รอบ 3) | money · U | §H.0 เงินสดหน้าร้าน | T1.3 |
 | `trips.cancel.refundForm` (T23) **ค่าเริ่มเปลี่ยน** → `MONEY` | — | §G.3 (มติ 7) | T0.7 |
 
 ### E.5 ตัวตรวจกฎหมาย = `OK` / `WARN` เท่านั้น · ข้อตัดสินจาก P0.2
@@ -597,7 +611,7 @@ RETURNING "id";                                                                 
 - WHT ตามตาราง **ผู้จ่าย × ผู้รับ** (§13.1 L1 · A25 `agency.wht.payerType` × A26): ร้านนิติบุคคล→นิติบุคคลไทย 3% (หรือ 1% เมื่อ `agency.wht.eWht` A28) · →บุคคลธรรมดาไทย = โหมด ม.50(1) **ไม่คำนวณอัตโนมัติ** (ยอดว่างรอร้านกรอก · W10 · P0.2 C1) · →ต่างประเทศ = ไม่หัก + ยืนยันข้อเท็จจริง (W08 · C3) · ร้านบุคคลธรรมดา→นิติบุคคล = ไม่มีหน้าที่หัก · ใครนำส่ง = `agency.wht.remitter` (A30)
 - ราคาเน็ต: ค่าเริ่ม = **โหมดตัวแทน** (`agency.price.sellerOfRecord` A5 · §13.1 L7) — ผลต่างเป็นค่าบำเหน็จ · `agentActualSaleSatang` ไม่กรอก = WARN (ไม่บล็อก)
 - WHT gross-up (L2): `collectMode = AGENT` และ `agency.wht.ruleByPayee` (A26 ตามคู่ ผู้จ่าย×ผู้รับ) ให้หัก และ `agency.wht.grossUpOnNetRemit` (A29) ⇒ ส่งร้าน = ปลีก − คอมฯ + round(คอมฯ × whtRate) เมื่อยอดต่อครั้ง ≥ `agency.wht.minPerContract` (A27 · เฉพาะผู้รับนิติบุคคล · สัญญาต่อเนื่อง = หักทุกรายการ — P0.2 C2) (ภาพ 04ค: 8,200 − 1,050 + 31.50 = 7,181.50)
-- ปัดเศษ: ต่อบรรทัด half-up เป็นสตางค์ · ผลรวม = Σ บรรทัด (ไม่ปัดผลรวมซ้ำ) · สกุลต่างประเทศ: ราคาตั้งต่อสกุล (ไม่แปลงสด · MP ข้อ 13) · ยอดบาท = round(minor × `fxRateMicros` / 1e6) ต่อบรรทัด · อัตราจาก «trips.fx.rates» (effectiveFrom ≤ เวลาจอง)
+- ปัดเศษ (แก้รอบ 3 · N-10/M-e): **ยอดเงิน** ต่อบรรทัด half-up เป็นสตางค์ · ผลรวมยอด = Σ บรรทัด · **VAT คิดต่อเอกสาร** = round(Σ บรรทัด VATable ที่รวม VAT × rate/(10000+rate)) ครั้งเดียว (§H.2) · `vatSatang` ต่อบรรทัดเป็นการปันเพื่อรายงาน (บรรทัดสุดท้ายรับเศษ) · สกุลต่างประเทศ: ราคาตั้งต่อสกุล (ไม่แปลงสด · MP ข้อ 13) · ยอดบาท = round(minor × `fxRateMicros` / 1e6) ต่อบรรทัด · อัตราจาก «trips.fx.rates» (effectiveFrom ≤ เวลาจอง)
 
 ### F.2 รูป «TripsBookingSnapshot v1» (คอลัมน์ `TripBooking.policySnapshot` · `TicketOrder.policySnapshot`)
 ```ts
@@ -719,55 +733,77 @@ type TripsBookingSnapshot = {
 | เอเจนซี่ (ยอดยืนยัน · รับยอดส่ง · หักกลบคอมฯ · WHT · 50 ทวิ · ใบแจ้งยอด) · คอมฯ ลิงก์ · ผู้ให้บริการ | บัญชี V2 | ไม่มีใน POS |
 | บิลบนเรือ (บาร์ · ไนตร็อกซ์ · ของที่ระลึก) | **POS ไม่แก้** → «TripFolio» | ขายเต็ม VAT · แบบเดียวกับลงห้องโรงแรม (§H.6) |
 | ตั๋ว (`TicketOrder`) ที่ทุกบรรทัด VAT7 | **POS เดิม** (`ticket/service.ts` `markPaid` → `pos.createSale`) | ใช้ได้วันนี้ไม่ต้องแก้ · ตั๋วที่มีบรรทัดเก็บแทน/ขายผ่านเอเจนซี่เก็บเงิน = เส้นบัญชี V2 แบบทัวร์ |
-- **ผลต่อใบ T1.3 "ขายหน้าร้าน"**: จอหน้าร้านสร้างการจอง (ผ่าน sellable) แล้วรับเงินเป็น **ใบเสร็จของบัญชี V2** (`tender` = `CASH` · `PROMPTPAY` · `CARD`) — ไม่เปิดบิล POS · เงินสดหน้าร้านจึงไม่อยู่ในกะ POS (รายงานปิดวันของ trips แสดงแยก) · ใบภายหลังเปลี่ยนเป็น POS ได้ถ้าเจ้าของอนุญาตแก้ POS (OQ9 · ไม่สมมติว่าได้)
+- **ผลต่อใบ T1.3 "ขายหน้าร้าน"** (แก้รอบ 3 · N-4): จอหน้าร้านสร้างการจอง (ผ่าน sellable) แล้วรับเงินเป็น **ใบเสร็จของบัญชี V2** (`tender` = `CASH` · `PROMPTPAY` · `CARD`) — ไม่เปิดบิล POS · ใบภายหลังเปลี่ยนเป็น POS ได้ถ้าเจ้าของอนุญาต (OQ9) · **เงินสดหน้าร้านของ trips**:
+  - บัญชีเงิน = `AccountFinance` ชนิด `CASH` ต่อหน่วย TRIPS ชื่อ "เงินสดหน้าร้าน (ทริป) — <หน่วย>" ผูกด้วย mapping «TRIPS_COUNTER_CASH:<unitId>» (สร้าง lazy ตอนรับเงินสดครั้งแรก) · ขา Dr ของเงินสดใน «applyTripReceipt» = บัญชีนี้ (`financeLedgerId(financeAccountId)` `gl.ts:100`)
+  - **ห้ามใช้ลิ้นชัก POS**: เงินสดของ trips อยู่ซอง/ลิ้นชักแยก — ถ้าเข้าลิ้นชัก POS ปิดกะ POS จะเกินทุกวัน · จอหน้าร้านแสดงแถบถาวร "เงินสดการจองเก็บแยก ไม่ใส่ลิ้นชัก POS" + ยอดเงินสดที่ต้องมีวันนี้ + แยกตาม tender + ปุ่ม "ปิดยอดเงินสดวันนี้"
+  - ปิดยอดรายวัน = ตาราง «TripCashClose» (unit · `businessDate` · `expectedSatang` (Σ เงินสดรับ − คืนเงินสด ของวัน) · `countedSatang` · `varianceSatang` · `countedById` · `varianceEntryId?` · `transferId?` · unique (unitId, businessDate)) · ส่วนต่าง ≠ 0 = JV Dr/Cr «TRIPS_CASH_VARIANCE» คู่บัญชีเงินสดนี้ (สิทธิ์ `trips.cash.close` · เกิน «trips.cash.varianceApprovalSatang» = approval) · ส่งมอบเงิน = `AccountFinanceTransfer` จากบัญชีนี้ไปเงินสดหลัก/ธนาคาร (`account_gl.prisma:330`) · วันที่ยังไม่ปิดยอด = เตือนเจ้าของวันถัดไป
 - ไม่มีสมุดบัญชีผูกหน่วย TRIPS: การจองและการรับเงินยังเกิดได้ (`TripMoneyEvent.postingStatus = UNPOSTED` + คิวบนจอ "เอกสารเงินรอออก") · ออกเอกสารย้อนเมื่อผูกสมุด (คีย์เดิม) · T1.9 ตัวช่วยเปิดร้านผูกสมุดให้ในขั้น "รับเงิน" (แก้ C-11 — ไม่ใช่ `NO_POS`)
 - เลขเอกสาร = เลขจริงของโมดูลบัญชี (`nextDocNo` ตามชนิดเอกสาร/สมุด · `account/service.ts:1245`) · `RC-6911-0588` ในภาพ = ตัวอย่างการแสดงผล
 
 ### H.1 ฟังก์ชันใหม่ใน facade บัญชี (`src/lib/modules/account/index.ts` · overload/ฟังก์ชันเพิ่มแบบ DORM D.2 — ทางเดิมไม่เปลี่ยน · ทุกตัว idempotent ต่อคีย์ · ผูกสมุดด้วย (tenantId, unitId))
 | ฟังก์ชัน | ใบเจ้าของ | เอกสาร | รายการบัญชี (Dr / Cr) |
 |---|---|---|---|
-| «applyTripReceipt»({tenantId, unitId, bookingId, dueId, tender, paidAt, lines[{description, amountSatang, kind: "VATABLE"\|"PASS_THROUGH"}], customer, customerWhtSatang?, idempotencyKey: `trips-rcv:<dueId>:<slipId\|seq>`}) | T0.7 | `DEPOSIT_RECEIPT` ชื่อ "ใบเสร็จรับเงิน/ใบกำกับภาษี" (อย่างย่อ/เต็มรูปตาม T37) · บรรทัดเก็บแทนแสดงแยก "เก็บแทน · ไม่มีภาษี" | Dr 1000/1010 (ตาม tender) = รวม − ภาษีที่ลูกค้าหัก · Dr 1160 ภาษีถูกหัก (T41 · ⚖️ LA) / Cr 2110 ฐานก่อน VAT · Cr 2200 VAT (จุดภาษี = รับเงิน · T36) · Cr **«2140 เงินรับแทน»** (หนี้สิน · ⚖️ U2) |
+| «applyTripReceipt»({tenantId, unitId, bookingId, dueId, tender, paidAt, lines[{description, amountSatang, kind: "VATABLE"\|"PASS_THROUGH"}], customer, customerWhtSatang?, idempotencyKey: `trips-rcv:<dueId>:<slipId\|seq>`}) | T0.7 | (แก้รอบ 3 · N-2) `TAX_INVOICE` ชื่อ "ใบเสร็จรับเงิน/ใบกำกับภาษี" (อย่างย่อ/เต็มรูปตาม T37) **เป็นเอกสารภายนอกที่ยอดหัวเอกสารกำหนดมา และไม่โพสต์อัตโนมัติ** (แบบ `upsertExternalSaleDocument` — `account/index.ts:385–404`) — ดูกติกาใต้ตาราง | **JV ของตัวเอง** (แบบ `postExternalDepositReceipt` + ขาเก็บแทน): Dr เงินตาม tender (`financeLedgerId`) = รวม − ภาษีที่ลูกค้าหัก · Dr `WHT_ASSET` ภาษีถูกหัก (T41 · ⚖️ LA) / Cr `DEPOSIT_RECEIVED` ฐานก่อน VAT · Cr `VAT_OUTPUT` VAT (จุดภาษี = รับเงิน · T36) · Cr «TRIPS_PASS_THROUGH» (หนี้สิน · ⚖️ U2) |
 | «recogniseTripRevenue»({bookingId, closedAt, key `trips-rev:<bookingId>`}) | T1.5 | — (JV) | Dr 2110 ฐานที่รับไว้ / Cr 4030 รายได้ค่าบริการ · ยอดที่ยังไม่รับ: Dr 1100 ลูกหนี้ / Cr 4030 + Cr 2210 VAT ยังไม่ถึงกำหนด (แปลงเป็น 2200 ตอนรับเงิน) |
-| «applyTripPassThroughPayout»({evidenceId, key}) | T1.5/T0.7 | รายการจ่าย + แนบหลักฐาน (`TripPassThroughEvidence`) | Dr 2140 / Cr 1000/1010 |
-| «applyTripRefund»({requestId, refunded[{VATABLE\|PASS_THROUGH, amount}], retained, tender, key `trips-ref:<requestId>`}) | T0.7 | `CREDIT_NOTE` อ้างใบรับเดิม (T40) สำหรับส่วนที่คืน · ส่วนที่ร้านเก็บตาม T38/T39 | คืน: Dr 2110 ฐาน · Dr 2200 VAT · Dr 2140 เก็บแทน / Cr เงิน · เก็บ (T39 `NO_AUTO_CREDIT_NOTE` ค่าเริ่ม ⚖️ U3): Dr 2110 ฐานส่วนที่เก็บ / Cr **«4040 รายได้ค่ายกเลิก»** (VAT ที่นำส่งคงไว้) · T39 `CREDIT_NOTE_PLUS_DAMAGES_RECEIPT`: ใบลดหนี้เต็ม + "ใบรับเงินค่าเสียหาย" ไม่มี VAT (T38 `DAMAGES_NO_VAT_NO_WHT`) Dr 2110 + Dr 2200 / Cr 4040 เต็มยอด |
+| «applyTripPassThroughPayout»({evidenceId, key}) | T1.5/T0.7 | รายการจ่าย + แนบหลักฐาน (`TripPassThroughEvidence`) | Dr «TRIPS_PASS_THROUGH» / Cr 1000/1010 |
+| «applyTripRefund»({requestId, refunded[{VATABLE\|PASS_THROUGH, amount}], retained, tender, key `trips-ref:<requestId>`}) | T0.7 | `CREDIT_NOTE` อ้างใบรับเดิม (T40) สำหรับส่วนที่คืน · ส่วนที่ร้านเก็บตาม T38/T39 | คืน: Dr 2110 ฐาน · Dr 2200 VAT · Dr «TRIPS_PASS_THROUGH» เก็บแทน / Cr เงิน · เก็บ (T39 `NO_AUTO_CREDIT_NOTE` ค่าเริ่ม ⚖️ U3): Dr 2110 ฐานส่วนที่เก็บ / Cr **«TRIPS_CANCEL_INCOME» รายได้ค่ายกเลิก»** (VAT ที่นำส่งคงไว้) · T39 `CREDIT_NOTE_PLUS_DAMAGES_RECEIPT`: ใบลดหนี้เต็ม + "ใบรับเงินค่าเสียหาย" ไม่มี VAT (T38 `DAMAGES_NO_VAT_NO_WHT`) Dr 2110 + Dr 2200 / Cr «TRIPS_CANCEL_INCOME» เต็มยอด |
 | «postAgencyCharge»({bookingId, key `ag-chg:<bookingId>`}) | A1.5 | — (JV · ยังไม่มีเอกสารภาษี) | ดู H.2 แถว "ยืนยัน" |
 | «applyAgencyRemittance»({agentAccountId, statementId?, bookingIds[], amountSatang, tender, key}) | A1.5/A1.6 | `TAX_INVOICE`/`RECEIPT` เต็มรูป (T37 `FULL_ONLY` ผ่านเอเจนซี่) ต่อการจองที่ครอบคลุม (เรียงวันยืนยัน) ⚖️ U1 | ดู H.2 แถว "รับยอดส่ง" |
 | «issueAgentWhtCert»({agentAccountId, settledAt, whtSatang, baseSatang, key}) | A1.6/A1.7 | `WHT_CERT` ฝั่ง **ผู้จ่าย = ร้าน** (ร้านหักภาษีค่านายหน้าของเอเจนซี่ · ห่อ `issueWhtCert` `account/wht.ts:310` · ภ.ง.ด.53/3 ผ่าน `pnd`) | ไม่มี JV เพิ่ม (2130 ลงแล้วตอนหักกลบ/จ่าย) |
-| «postAgencyStatement»({statementId}) | A1.6 | `BILLING_NOTE` "ใบแจ้งยอด" (ไม่ใช่เอกสารภาษี · บรรทัดตามภาพ 13ง) | Dr 2135 / Cr 2130 ของคอมฯ ที่หักกลบในงวด (H.3) |
+| «postAgencyStatement»({statementId}) | A1.6 | `BILLING_NOTE` "ใบแจ้งยอด" (ไม่ใช่เอกสารภาษี · บรรทัดตามภาพ 13ง) | Dr «WHT_PENDING» / Cr 2130 ของคอมฯ ที่หักกลบในงวด (H.3) |
 | «accrueAgentCommission» · «payAgentCommission» | A1.7 | ใบสำคัญจ่าย + `WHT_CERT` | ดู H.3 |
-| «postSupplierBill» · «paySupplier» | S1.3 | `PURCHASE`/`EXPENSE` อ้างใบกำกับของผู้ให้บริการ | Dr «5100 ต้นทุนบริการจากผู้ให้บริการ» (+ Dr 1150 ภาษีซื้อ) / Cr 2100 เจ้าหนี้ · จ่ายล่วงหน้าก่อนเดินทาง: Dr 1130 / Cr เงิน แล้วตัดตอนปิดทริป · WHT ถ้าเป็นค่าบริการ ⚖️ |
+| «postSupplierBill» · «paySupplier» | S1.3 | `PURCHASE`/`EXPENSE` อ้างใบกำกับของผู้ให้บริการ | Dr «SUPPLIER_COST» ต้นทุนบริการจากผู้ให้บริการ» (+ Dr 1150 ภาษีซื้อ) / Cr 2100 เจ้าหนี้ · จ่ายล่วงหน้าก่อนเดินทาง: Dr 1130 / Cr เงิน แล้วตัดตอนปิดทริป · WHT ถ้าเป็นค่าบริการ ⚖️ |
 | «applyTripFolioSettlement» | L1.9 | ห่อ `reverseRoomChargePosting`/`restoreRoomChargePosting` (`account/index.ts:2546,2549`) แบบโรงแรม | §H.6 |
-- ผังบัญชีใหม่ (สร้างแบบ lazy ในสมุดของร้าน แบบบัญชีเงินประกันหอ · รหัสว่างในผังเริ่ม `coa.ts`): **2140 เงินรับแทน** · **2116 เงินรับล่วงหน้า-เอเจนซี่ (กระเป๋า · L-52)** · **2135 ภาษีหัก ณ ที่จ่ายรอถึงวันจ่าย** · **2150 ค่าคอมมิชชันค้างจ่าย** · **1170 ค่าคอมมิชชันจ่ายล่วงหน้า (รอตัดจ่าย)** · **4040 รายได้ค่ายกเลิก/ค่าเสียหาย** · **5100 ต้นทุนบริการจากผู้ให้บริการ** · **6520 ค่าคอมมิชชันตัวแทน** — ใช้ของเดิม: 1100 · 1130 · 1150 · 1155 · 1160 · 2100 · 2110 · 2130 · 2200 · 2210 · 4030 · ⚖️ รหัส/ชื่อให้นักบัญชีของร้านเปลี่ยนได้
+- **(แก้รอบ 3 · N-2) ทำไมไม่ใช้การโพสต์มาตรฐานของ `DEPOSIT_RECEIPT`**: `gl.ts:667–676` ลง Cr `DEPOSIT_RECEIVED` = ยอดรวม − VAT ⇒ เงินเก็บแทนจะไปอยู่ 2110 และไม่สนบัญชีรายบรรทัด · ใบลดหนี้อ้าง `DEPOSIT_RECEIPT` ถูกปฏิเสธ (`account/service.ts:1929–1930`) ⇒ เอกสารของ trips ทุกใบ (`TAX_INVOICE` ตอนรับเงิน · `CREDIT_NOTE` ตอนคืน · `RECEIPT` "ใบรับเงินค่าเสียหาย") สร้างเป็น **เอกสารภายนอก `source TRIPS` ยอดกำหนดมา ไม่คำนวณใหม่ ไม่โพสต์อัตโนมัติ** + JV ของฟังก์ชัน trips เอง (คีย์กันซ้ำเดียวกับเอกสาร)
+- **หัวเอกสาร**: `subTotal` = ฐาน VAT ของบรรทัด VATable เท่านั้น (9,299.07) · `vatAmount` = VAT ต่อเอกสาร (650.93) · ยอดเก็บแทนเก็บในคอลัมน์ใหม่ «AccountDocument.passThroughSatang Int @default(0)» (add-only · T0.7) · `grandTotal` = subTotal − ส่วนลด + VAT + passThrough (11,450) · บรรทัด VATable รวมเป็น **บรรทัดเดียวหรือหลายบรรทัดที่ VAT ไม่ถูกคำนวณใหม่** (ข้อสอบ: VAT ที่พิมพ์ = VAT หัวเอกสาร = ขา `VAT_OUTPUT` ของ JV) · บรรทัดเก็บแทน `vatRateBp = 0` พร้อมป้าย "เก็บแทน · ไม่อยู่ในฐานภาษี"
+- **ภ.พ.30 / รายงานภาษีขาย**: รายงานรวม VAT จากขา GL ของเอกสาร และฐาน = `subTotal − discountAmount` (`account/reports.ts:550–564`) ⇒ เก็บแทนไม่ขึ้นทั้งเป็นฐานและเป็น "ยอดขายยกเว้น" (ไม่มีขา VAT และไม่อยู่ใน `subTotal`) · ⚖️ U2 ถ้านักบัญชีต้องการแสดงเป็นรายการนอกฐานแยก = รายงานเสริมของ trips (ยอด «TRIPS_PASS_THROUGH» ต่อเดือน)
+- **ไม่อยู่ในมุมมองมัดจำค้าง/ลูกหนี้ค้าง**: เอกสารเหล่านี้ไม่ใช่ `DEPOSIT_RECEIPT` จึงไม่ถูกเสนอให้ "หักมัดจำ" ในใบเสร็จ/ใบแจ้งหนี้อื่น (`gl.ts:650–652` · `service.ts:219–223`) · สถานะ = ชำระแล้ว · T0.7 เพิ่มตัวกรอง `source <> 'TRIPS'` ในรายการเอกสารที่ "แปลง/หักมัดจำได้" และในแดชบอร์ดยอดขายที่นับจากเอกสาร (กำไรขาดทุนอ่านจาก GL ถูกอยู่แล้ว — รายได้รับรู้ตอนปิดทริป)
+- **(แก้รอบ 3 · N-6) งวดบัญชีปิด**: โมดูลบัญชีปฏิเสธการโพสต์ลงงวด `CLOSED` (`assertPeriodOpen` `gl.ts:171–176`) และช่วงล็อกของสมุด (`assertNotLockedTx` · `service.ts:8413`) — กติกาของ trips: **JV** ใช้วันที่ลงบัญชี = วันแรกของงวดเปิดถัดไป ด้วยตัวช่วยเดิม `resolveOpenDate` (`gl.ts:205–217` · แบบเดียวกับ `reverseFor`) และจด "วันที่เกิดเหตุ <วัน> · เลขจอง" ใน memo · **เอกสารภาษี** (ใบกำกับ/ใบลดหนี้/ใบรับค่าเสียหาย) ลงวันที่ = วันที่ออกจริง (ไม่ย้อนเข้างวดปิด · อ้างวันเกิดเหตุในหมายเหตุ) · งวดปิดจึง **ไม่ใช่เหตุให้ลองซ้ำ** · คิว `UNPOSTED` ลองซ้ำเฉพาะข้อผิดพลาดชั่วคราว (สูงสุด 10 ครั้ง · ถอยเวลา 5 นาที→6 ชม.) แล้วเป็น `FAILED_NEEDS_ACTION` (ขึ้นจอ "เอกสารเงินรอออก" + `logOps` WARN · หยุดลอง) · ไม่มีสมุด/ไม่มีบัญชีตั้ง (`ACCOUNT_SETUP`) = รอจนร้านแก้ ไม่นับครั้ง
+- **(แก้รอบ 3 · N-1) บัญชีใหม่อ้างด้วย "คีย์การลงบัญชีอัตโนมัติ" (`AccountMapping.key`) — ห้ามฝังรหัสบัญชีในโค้ด** · สร้างแบบ lazy ในธุรกรรมเดียวกับรายการแรก ตามแบบ `ensureTenantDepositLedgerInTx` ของหอ (`src/lib/modules/account/gl.ts:2193–2223`: อ่าน mapping → ไม่มีก็หารหัสว่างในช่วงที่กำหนด (`TENANT_DEPOSIT_CODES` 2140–2149 `:2176`) → `accountLedger.createMany(skipDuplicates)` → ตรวจชนิด/ชื่อ → `accountMapping.createMany` → อ่านซ้ำ · ช่วงเต็ม = ปฏิเสธ `ACCOUNT_SETUP` ให้ร้านผูกเองที่หน้าการลงบัญชีอัตโนมัติ) · ⚠️ รอบ 2 เขียนรหัส 2140/4040 ซึ่งชนจริง: 2140–2149 = เงินประกันผู้เช่าของหอ · 4040 = "รายได้ค่าเช่าอุปกรณ์" ในผังนำเข้า (`account/import-shared.ts:114`)
+  | คีย์ | ชนิด | ชื่อเริ่มต้น | ช่วงรหัสที่หาว่าง (ข้อเสนอ · ⚖️) |
+  |---|---|---|---|
+  | «TRIPS_PASS_THROUGH» | LIABILITY | เงินรับแทน (ค่าอุทยาน ฯลฯ) | 2160–2169 |
+  | «AGENCY_ADVANCE» | LIABILITY | เงินรับล่วงหน้า-เอเจนซี่ (กระเป๋า · L-52) | 2170–2179 |
+  | «WHT_PENDING» | LIABILITY | ภาษีหัก ณ ที่จ่ายรอถึงวันจ่าย | 2180–2189 |
+  | «COMMISSION_PAYABLE» | LIABILITY | ค่าคอมมิชชันค้างจ่าย | 2190–2199 |
+  | «COMMISSION_PREPAID» | ASSET | ค่าคอมมิชชันจ่ายล่วงหน้า (รอตัดจ่าย) | 1180–1189 |
+  | «TRIPS_CANCEL_INCOME» | INCOME | รายได้ค่ายกเลิก/ค่าเสียหาย | 4060–4069 |
+  | «SUPPLIER_COST» | COGS | ต้นทุนบริการจากผู้ให้บริการ | 5110–5119 |
+  | «AGENT_COMMISSION_EXP» | EXPENSE | ค่าคอมมิชชันตัวแทน | 6530–6539 |
+  | «TRIPS_CASH_VARIANCE» | EXPENSE | เงินสดหน้าร้านขาด/เกิน (N-4) | 6540–6549 |
+  ช่วงข้างบนตรวจแล้วว่าไม่อยู่ในผังเริ่ม (`account/coa.ts`) และไม่ใช่ช่วงของหอ · T0.7 ตรวจกับผังนำเข้า (`import-shared.ts`) อีกครั้งก่อนลงรหัส · ถ้าร้านมีรหัสในช่วงอยู่แล้ว = ข้ามไปรหัสว่างถัดไป · บัญชีเดิมอ้างด้วยคีย์มาตรฐานที่มีอยู่: `AR` (1100) · `DEPOSIT_PAID` (1130) · `VAT_INPUT` (1150) · `VAT_INPUT_UNDUE` (1155) · `WHT_ASSET` (1160) · `AP` (2100) · `DEPOSIT_RECEIVED` (2110) · `WHT_PAYABLE` (2130) · `VAT_OUTPUT` (2200) · `VAT_OUTPUT_UNDUE` (2210) · `INCOME_SERVICE` (4030) (`account/coa.ts:89–117`) · รหัสในตัวอย่างของเอกสารนี้ = รหัสของผังเริ่มเพื่ออ่านง่ายเท่านั้น
 - enum: `AccountDocSource` + `TRIPS` `AGENCY` `SUPPLIER` (B.0 ข้อ 2 · `account.prisma:100` ยังไม่มี) · `recordExternalPayment`/`createExternalCreditNote` เดิมเป็นของหอเท่านั้น (`DormChannel` · `dormBook` `account/index.ts:1926,1948`) ⇒ trips ใช้ฟังก์ชันของตัวเองข้างบน ไม่เรียกของหอ (แก้ C-3)
 
 ### H.2 ลูกค้าจ่ายร้านตรง — ตัวอย่างใบเสร็จภาพ 13ค (ต้องได้ตัวเลขนี้)
 - TR-6911-0142: ค่าทริป 2 × 3,500 + 2,450 = 9,450 · กล้อง 500 ⇒ **VATable 9,950** (ราคารวม VAT · T34) · ค่าอุทยาน 2 × 600 + 300 = **1,500 เก็บแทน**
 - VAT คิดต่อเอกสาร (ส่วนรวม VAT ของบรรทัด VATable) = round(9,950 × 7/107) = **650.93** · ฐาน = 9,950 − 650.93 = **9,299.07** · เก็บแทน 1,500 นอกฐาน · รวม **11,450**
-- JV ตอนรับ: Dr 1010 11,450 / Cr 2110 9,299.07 · Cr 2200 650.93 · Cr 2140 1,500 · ปิดทริป: Dr 2110 9,299.07 / Cr 4030 9,299.07 · จ่ายค่าอุทยาน: Dr 2140 1,500 / Cr 1010 1,500
+- JV ตอนรับ: Dr 1010 11,450 / Cr 2110 9,299.07 · Cr 2200 650.93 · Cr «TRIPS_PASS_THROUGH» 1,500 · ปิดทริป: Dr 2110 9,299.07 / Cr 4030 9,299.07 · จ่ายค่าอุทยาน: Dr «TRIPS_PASS_THROUGH» 1,500 / Cr 1010 1,500
 - **งวดไหนมีเก็บแทน** (B-1): ตาม `trips.pay.depositBase` (T14 · ค่าเริ่ม `TRIP_ONLY`): มัดจำ = % ของบรรทัด VATable เท่านั้น · เก็บแทนทั้งหมดอยู่ในงวดสุดท้าย · ภาพ 03: มัดจำ 30% × 65,800 = 19,740 (VATable ล้วน) · งวด 2 = 46,060 VATable + 3,600 เก็บแทน = 49,660 · `ALL_LINES` = แบ่งตามสัดส่วนทุกงวด — `TripPaymentDue.vatableSatang/passThroughSatang` จดตอนสร้างงวด
 - ไม่มา (NO_SHOW): เงินที่รับแล้วฝั่ง VATable = เก็บตาม snapshot (ลงแบบ "ร้านเก็บ" ของ «applyTripRefund» ยอดคืน 0) · เก็บแทนที่ยังไม่จ่ายออก = คืนลูกค้า (ค่าเริ่ม · ภาพ 15 หลักเดียวกัน)
-- คืนเงินภาพ 15 (TR-6912-0188 · จ่ายครบ 11,450 · ขั้น 50%): คืน VATable 4,975 ⇒ ใบลดหนี้ ฐาน 4,649.53 + VAT 325.47 · คืนเก็บแทน 1,500 · รวมโอนคืน **6,475** · JV: Dr 2110 4,649.53 · Dr 2200 325.47 · Dr 2140 1,500 / Cr 1010 6,475 · ร้านเก็บ 4,975 (T39 ค่าเริ่ม): Dr 2110 4,649.54 / Cr 4040 4,649.54 (VAT 325.46 คงนำส่ง) ⚖️
+- คืนเงินภาพ 15 (TR-6912-0188 · จ่ายครบ 11,450 · ขั้น 50%): คืน VATable 4,975 ⇒ ใบลดหนี้ ฐาน 4,649.53 + VAT 325.47 · คืนเก็บแทน 1,500 · รวมโอนคืน **6,475** · JV: Dr 2110 4,649.53 · Dr 2200 325.47 · Dr «TRIPS_PASS_THROUGH» 1,500 / Cr 1010 6,475 · ร้านเก็บ 4,975 (T39 ค่าเริ่ม): Dr 2110 4,649.54 / Cr «TRIPS_CANCEL_INCOME» 4,649.54 (VAT 325.46 คงนำส่ง) ⚖️
 
 ### H.3 การจองผ่านเอเจนซี่ — ชุดรายการบัญชีครบสองโหมด (มติ 3 · ผลตรวจ B-3)
 สัญลักษณ์ต่อการจอง b: **G** = ราคาปลีกบรรทัด VATable (รวม VAT) · **V** = VAT ใน G · **P** = เก็บแทน · **C** = คอมฯ ก่อน VAT · **Vc** = VAT ของคอมฯ (0 ถ้าเอเจนซี่ไม่จด VAT) · **W** = ภาษีหัก ณ ที่จ่ายของคอมฯ (คิดจาก C ก่อน VAT · ตาราง A26 · 0 ถ้าไม่หัก)
 **ก. เอเจนซี่เก็บเงิน (`AGENT_COLLECTS` · ค่าเริ่ม Q2/A10)**
 | จังหวะ | เอกสาร (ใครออก) | รายการบัญชีของร้าน |
 |---|---|---|
-| ยืนยัน (ที่นั่ง sold) | ไม่มีเอกสารภาษี · วอเชอร์เอเจนซี่ | «postAgencyCharge»: Dr 1100 ลูกหนี้-เอเจนซี่ (G + P − C − Vc + W) · Dr 1170 คอมฯ จ่ายล่วงหน้า C · Dr 1155 ภาษีซื้อรอใบกำกับ Vc ⚖️ / Cr 2110 (G − V) · Cr 2210 V · Cr 2140 P · Cr **«2135 ภาษีหัก ณ ที่จ่ายรอถึงวันจ่าย»** W |
-| หักกลบคอมฯ (= วันจ่ายคอมฯ ตาม L3 · `settledAt`) — CREDIT: วันออกใบแจ้งยอด · PAY_NOW/WALLET: วันรับยอดส่ง | ร้านออก **50 ทวิ ให้เอเจนซี่** («issueAgentWhtCert» · ผู้จ่าย = ร้าน) | Dr 2135 W / Cr 2130 W (ภาษีค้างนำส่ง · ภ.ง.ด.53/3 เดือนของ `settledAt`) ⚖️ U1 |
+| ยืนยัน (ที่นั่ง sold) | ไม่มีเอกสารภาษี · วอเชอร์เอเจนซี่ | «postAgencyCharge»: Dr 1100 ลูกหนี้-เอเจนซี่ (G + P − C − Vc + W) · Dr «COMMISSION_PREPAID» คอมฯ จ่ายล่วงหน้า C · Dr 1155 ภาษีซื้อรอใบกำกับ Vc ⚖️ / Cr 2110 (G − V) · Cr 2210 V · Cr «TRIPS_PASS_THROUGH» P · Cr **«WHT_PENDING» ภาษีหัก ณ ที่จ่ายรอถึงวันจ่าย»** W |
+| หักกลบคอมฯ (= วันจ่ายคอมฯ ตาม L3 · `settledAt`) — CREDIT: วันออกใบแจ้งยอด · PAY_NOW/WALLET: วันรับยอดส่ง | ร้านออก **50 ทวิ ให้เอเจนซี่** («issueAgentWhtCert» · ผู้จ่าย = ร้าน) | Dr «WHT_PENDING» W / Cr 2130 W (ภาษีค้างนำส่ง · ภ.ง.ด.53/3 เดือนของ `settledAt`) ⚖️ U1 |
 | รับยอดส่ง R = G + P − C − Vc + W | ร้านออกใบกำกับ/ใบเสร็จเต็มรูปของการจองที่ครอบคลุม (ในนามลูกค้า ส่งผ่านเอเจนซี่ — SHOP_PRINCIPAL) · เอเจนซี่ออกใบกำกับค่าคอมฯ ให้ร้าน (ถ้าจด VAT) | «applyAgencyRemittance»: Dr เงิน R / Cr 1100 R · Dr 2210 V / Cr 2200 V (จุดภาษีของบริการ) ⚖️ U1 · รับใบกำกับคอมฯ: Dr 1150 / Cr 1155 Vc |
-| ปิดทริป | — | «recogniseTripRevenue»: Dr 2110 (G − V) / Cr 4030 · Dr 6520 C / Cr 1170 C |
-| ยกเลิกก่อนเดินทาง หลังหักกลบแล้ว (คืนลูกค้าเต็ม) | ใบลดหนี้ถ้าออกใบกำกับแล้ว (T40) · ไม่ออก 50 ทวิ ฉบับใหม่ | กลับ «postAgencyCharge» ทั้งชุด (Dr 2110 · Dr 2210/2200 · Dr 2140 · Dr 2135 (ยังไม่ถึงวันจ่าย) หรือ Dr 2130 (หักกลบแล้ว · ยังไม่ยื่นเดือนนั้น — ยื่นแล้ว = ปรับเดือนถัดไป ⚖️) / Cr 1170 · Cr 1155/1150 · Cr 1100) · สมุด `CANCELLATION` = −(G + P − C − Vc + W) (ภาพ 13ง "ยกเลิก/คืน −7,181.50") |
-| ยกเลิกมีค่ายกเลิก | ตาม H.1 «applyTripRefund» ส่วนที่ร้านเก็บ · คอมฯ ส่วนที่คืนดึงกลับ | ส่วนคืน = กลับตามสัดส่วนของบรรทัดที่คืน · ส่วนเก็บ = 4040 · คอมฯ ส่วนที่เหลือ = ตาม `agency.comm.clawbackOnCancel` (A23) |
-| ยกเลิกหลังเดินทาง / ดึงคอมฯ กลับหลังได้สิทธิ์ | ใบลดหนี้ | Dr 4030 / Cr 1100 · Dr 1100 / Cr 6520 (คอมฯ ดึงกลับ) · สมุด `COMMISSION_CLAWBACK` |
+| ปิดทริป | — | «recogniseTripRevenue»: Dr 2110 (G − V) / Cr 4030 · Dr «AGENT_COMMISSION_EXP» C / Cr «COMMISSION_PREPAID» C |
+| ยกเลิกก่อนเดินทาง หลังหักกลบแล้ว (คืนลูกค้าเต็ม) | ใบลดหนี้ถ้าออกใบกำกับแล้ว (T40) · ไม่ออก 50 ทวิ ฉบับใหม่ | กลับ «postAgencyCharge» ทั้งชุด (Dr 2110 · Dr 2210/2200 · Dr «TRIPS_PASS_THROUGH» · Dr «WHT_PENDING» (ยังไม่ถึงวันจ่าย) หรือ Dr 2130 (หักกลบแล้ว · ยังไม่ยื่นเดือนนั้น — ยื่นแล้ว = ปรับเดือนถัดไป ⚖️) / Cr «COMMISSION_PREPAID» · Cr 1155/1150 · Cr 1100) · สมุด `CANCELLATION` = −(G + P − C − Vc + W) (ภาพ 13ง "ยกเลิก/คืน −7,181.50") |
+| ยกเลิกมีค่ายกเลิก (แก้รอบ 3 · N-5) | ส่วนคืน: ใบลดหนี้ถ้าออกใบกำกับแล้ว · ส่วนที่ร้านเก็บ: ยังไม่ออกใบกำกับ (ยังไม่รับยอดส่ง) ⇒ "ใบรับเงินค่าเสียหาย" ตาม T38 · ออกแล้ว ⇒ ไม่ออกใบลดหนี้ตาม T39 | ให้ r = สัดส่วนที่คืนของแต่ละบรรทัด (ตามขั้นบันได) · k = ส่วนที่ร้านเก็บ · **ส่วนคืน**: กลับ «postAgencyCharge» ตามสัดส่วน r (Dr `DEPOSIT_RECEIVED` · Dr `VAT_OUTPUT_UNDUE` (หรือ `VAT_OUTPUT` + ใบลดหนี้ ถ้ารับยอดส่งแล้ว) · Dr «TRIPS_PASS_THROUGH» (เก็บแทนยังไม่จ่ายออก = คืนเต็ม) · Dr «WHT_PENDING»/`WHT_PAYABLE` ส่วนของ r / Cr «COMMISSION_PREPAID» C·r · Cr `VAT_INPUT_UNDUE` Vc·r · Cr `AR` สุทธิ) · **ส่วนเก็บ (k)**: ยังไม่รับยอดส่ง (VAT ยังอยู่ `VAT_OUTPUT_UNDUE`) + T38 `DAMAGES_NO_VAT_NO_WHT` ⇒ Dr `DEPOSIT_RECEIVED` (G_k − V_k) · Dr `VAT_OUTPUT_UNDUE` V_k / Cr «TRIPS_CANCEL_INCOME» G_k (ไม่มี VAT · ⚖️) · รับยอดส่งแล้ว (VAT อยู่ `VAT_OUTPUT`) + T39 `NO_AUTO_CREDIT_NOTE` ⇒ Dr `DEPOSIT_RECEIVED` / Cr «TRIPS_CANCEL_INCOME» (G_k − V_k) · VAT คงไว้ · **คอมฯ ของส่วนเก็บ** (C·k ใน «COMMISSION_PREPAID»): A23 `clawbackOnCancel` = จริง (ค่าเริ่ม) ⇒ ดึงคืน Dr `AR` / Cr «COMMISSION_PREPAID» (+ Vc·k) และ WHT ส่วนนั้นกลับแบบส่วนคืน · เท็จ ⇒ Dr «AGENT_COMMISSION_EXP» / Cr «COMMISSION_PREPAID» ณ วันยกเลิก (เอเจนซี่ได้คอมฯ ส่วนนี้) · **สมุด: แถวเดียว `CANCELLATION`** = −(ยอดที่เอเจนซี่ไม่ต้องส่งแล้ว) = −[(G_r + P_r) − C_r − Vc_r + W_r] (+ ส่วนคอมฯ ของ k ถ้าดึงคืน: + (C_k + Vc_k − W_k)) — **ไม่มีแถว `CANCEL_FEE` แยก** (ส่วนเก็บคงอยู่ใน CHARGE เดิม) |
+| ยกเลิกหลังเดินทาง / ดึงคอมฯ กลับหลังได้สิทธิ์ | ใบลดหนี้ | Dr 4030 / Cr 1100 · Dr 1100 / Cr «AGENT_COMMISSION_EXP» (คอมฯ ดึงกลับ) · สมุด `COMMISSION_CLAWBACK` |
+- (แก้รอบ 3 · N-5) **โหมด `AGENT_RESELLS` (A5 "เอเจนซี่ซื้อมาขายไปในนามตัวเอง") ซ่อนในรุ่นแรก**: ตัวเลือกนี้ไม่แสดงในจอค่าตั้ง/สัญญา · def ของ A5 ยังมีค่านี้ใน enum (ตาม TRIPS-DEFAULTS) แต่ `setSettings` ปฏิเสธค่า `AGENT_RESELLS` ด้วย `VALIDATION` "ยังไม่เปิดใช้ในรุ่นนี้" (ไม่ใช่การบล็อกกฎหมาย — ยังไม่มีชุดรายการบัญชี) ⇒ W13 ไม่เกิดในรุ่นแรก · เปิดได้เมื่อมีใบที่เขียนชุดบัญชี (ร้านขายให้เอเจนซี่ = ใบกำกับถึงเอเจนซี่ตามราคาเน็ต · ไม่มีคอมฯ/WHT ค่านายหน้า)
+
 **ข. ร้านเก็บเงิน (`SHOP_COLLECTS` · ลิงก์เอเจนซี่)**
 | จังหวะ | เอกสาร | รายการบัญชี |
 |---|---|---|
 | ลูกค้าจ่าย | ใบเสร็จ/ใบกำกับของร้าน (H.2) | «applyTripReceipt» |
-| ปิดทริป (`agency.comm.earnedAt` A21 = `AFTER_TRAVEL` · ค่าเริ่ม) | — | «recogniseTripRevenue» + «accrueAgentCommission»: Dr 6520 C · Dr 1155 Vc / Cr 2150 (C + Vc) · สมุด `COMMISSION_EARNED` · A21 = `ON_CONFIRM` ⇒ ทำตอนยืนยัน แต่ลง Dr 1170 แทน 6520 แล้วตัดตอนปิดทริป |
-| รอบจ่ายคอมฯ | ร้านออก 50 ทวิ ให้เอเจนซี่ (วันจ่าย) · เอเจนซี่ออกใบกำกับค่าคอมฯ | «payAgentCommission»: Dr 2150 (C + Vc) / Cr เงิน (C + Vc − W) · Cr 2130 W · Dr 1150 / Cr 1155 Vc · สมุด `COMMISSION_PAID` + `WHT_WITHHELD` |
-| ยกเลิกหลังได้สิทธิ์ ก่อนจ่าย | — | Dr 2150 / Cr 6520 (+ Cr 1155) · `AgentCommission VOID`/`CLAWED_BACK` |
-| ยกเลิกหลังจ่ายแล้ว | — | Dr 1100 ลูกหนี้-เอเจนซี่ / Cr 6520 (+ Cr 1150) · หักในรอบจ่ายถัดไป · WHT ที่หักไปแล้ว ⚖️ |
+| ปิดทริป (`agency.comm.earnedAt` A21 = `AFTER_TRAVEL` · ค่าเริ่ม) | — | «recogniseTripRevenue» + «accrueAgentCommission»: Dr «AGENT_COMMISSION_EXP» C · Dr 1155 Vc / Cr «COMMISSION_PAYABLE» (C + Vc) · สมุด `COMMISSION_EARNED` · A21 = `ON_CONFIRM` ⇒ ทำตอนยืนยัน แต่ลง Dr «COMMISSION_PREPAID» แทน «AGENT_COMMISSION_EXP» แล้วตัดตอนปิดทริป |
+| รอบจ่ายคอมฯ | ร้านออก 50 ทวิ ให้เอเจนซี่ (วันจ่าย) · เอเจนซี่ออกใบกำกับค่าคอมฯ | «payAgentCommission»: Dr «COMMISSION_PAYABLE» (C + Vc) / Cr เงิน (C + Vc − W) · Cr 2130 W · Dr 1150 / Cr 1155 Vc · สมุด `COMMISSION_PAID` + `WHT_WITHHELD` |
+| ยกเลิกหลังได้สิทธิ์ ก่อนจ่าย | — | Dr «COMMISSION_PAYABLE» / Cr «AGENT_COMMISSION_EXP» (+ Cr 1155) · `AgentCommission VOID`/`CLAWED_BACK` |
+| ยกเลิกหลังจ่ายแล้ว | — | Dr 1100 ลูกหนี้-เอเจนซี่ / Cr «AGENT_COMMISSION_EXP» (+ Cr 1150) · หักในรอบจ่ายถัดไป · WHT ที่หักไปแล้ว ⚖️ |
 
 **ตัวเลขยืนยัน (ฟิกซ์เจอร์):** เอเจนซี่ PTD (ไม่จด VAT · Vc = 0) 2 ผู้ใหญ่เกาะราชา: G = 7,000 · P = 1,200 · C = 15% × 7,000 = 1,050 · W = 3% × 1,050 = 31.50 ⇒ ส่งร้าน **7,181.50** · ใบแจ้งยอด ST-6911-PTD-1: 101,700 + 11,400 − 15,255 + 457.65 − 7,181.50 − 5,000 = **86,121.15** (§I.3)
 
@@ -797,7 +833,7 @@ type TripsBookingSnapshot = {
 
 ### H.8 ค่าคงที่ของเงิน (ข้อสอบ 🔴)
 - ต่อการจอง: Σ `TripMoneyEvent RECEIVED` − Σ `REFUNDED` = Σ ยอดเอกสารรับเงินบัญชีของคีย์ `trips-rcv:*` − Σ ใบลดหนี้ `trips-ref:*`
-- `2140` ของการจอง = Σ เก็บแทนที่รับ − คืน − จ่ายออก ≥ 0 · ไม่มีเก็บแทนในฐาน VAT/ฐานคอมฯ/ส่วนลด
+- `«TRIPS_PASS_THROUGH»` ของการจอง = Σ เก็บแทนที่รับ − คืน − จ่ายออก ≥ 0 · ไม่มีเก็บแทนในฐาน VAT/ฐานคอมฯ/ส่วนลด
 - `2110` ของการจองเป็น 0 หลังปิดทริป (รับรู้หมด) หรือหลังยกเลิก (คืน+เก็บ)
 - ยอดสมุดเอเจนซี่ = ยอดลูกหนี้ 1100 ของคู่ค้าเอเจนซี่ในสมุดบัญชี (เทียบรายวัน · ต่างกัน = แจ้ง ops)
 - ทุกฟังก์ชันเงินกันซ้ำด้วยคีย์ (ยิงซ้ำ/ซ้อน = ลงครั้งเดียว · X4)
@@ -815,7 +851,7 @@ type TripsBookingSnapshot = {
 | `COMMISSION_VAT` | − Vc | คู่กับ CHARGE เมื่อ vatMode ≠ NONE (H.4) | "หัก VAT คอมมิชชัน" (ไม่แสดงเมื่อ 0) | commissionId |
 | `WHT_GROSSUP` | + W | คู่กับ CHARGE (ยอดที่เอเจนซี่ต้องบวกส่ง) · `settledAt` ตั้งตอนหักกลบ | "บวก ภาษีหัก ณ ที่จ่าย" | commissionId · whtCertDocId (ตอนหักกลบ) |
 | `CANCELLATION` | −(สุทธิของการจองที่ยกเลิก) | ยกเลิก: กลับ CHARGE+PASS_THROUGH−NETTED−VAT+GROSSUP ของส่วนที่คืน (ตาม snapshot) | "ยกเลิก / คืน N การจอง" | refEntryIds · requestId |
-| `CANCEL_FEE` | + | ค่ายกเลิกที่เอเจนซี่ต้องจ่าย (ส่วนที่ร้านเก็บของการจองที่เอเจนซี่เก็บเงิน — ถ้าไม่ได้หักออกจาก CANCELLATION อยู่แล้ว) | รวมใน "ยกเลิก / คืน" | requestId |
+| ~~`CANCEL_FEE`~~ | — | (แก้รอบ 3 · N-5) **ยกเลิกชนิดนี้** — ค่ายกเลิกของการจองที่เอเจนซี่เก็บเงินแสดงเป็น "ส่วนที่ไม่ได้กลับ" ใน `CANCELLATION` แถวเดียว (§H.3 ก) | — | — |
 | `PAYMENT` | − | เอเจนซี่จ่ายเงิน | "ชำระแล้วระหว่างงวด" | accountDocId · slipId |
 | `WALLET_TOPUP` | − | เติมกระเป๋า | "ชำระแล้วระหว่างงวด" | accountDocId |
 | `COMMISSION_EARNED` | − | ปิดทริป (ร้านเก็บเงิน · ร้านค้างคอมฯ) | (พอร์ทัลแสดง "คอมฯ ที่จะได้รับ") | commissionId · `entitledAt` |
@@ -1022,17 +1058,17 @@ RETURNING "seq";
 | L-49 | TA §13.1 อ้าง "ข้อสอบจากกฎ 52 ข้อ" แต่ LG §11 มี 47 แถว (P0.2 C7) | ตัวเลขเอกสาร | ใช้ 47 + คู่ W01–W46 · ผู้คุมแก้ข้อความใน TA/MP | — |
 | L-50 | consumer `pos.sale.paid` ของโรงแรม (`outbox-consumers.ts:1519–1526` → `hotel/room-charge.ts`) จะจับบิล ROOM_CHARGE ของเรือเป็น "ยังไม่ผูกห้อง" | แตะโมดูลโรงแรม (แก้รอบ 2) | ให้ consumer โรงแรมข้ามบิลที่ POS ผูกหน่วย TRIPS หรือ reference ตรงรูปเลขจองของ trips (แก้ไฟล์โรงแรม 1 จุด · ตรวจเข้ม · `qc-hotel-*` เขียวเท่าเดิม) — **ขออนุญาตผู้คุม SVC/เจ้าของ** · ระหว่างนี้: บิลบนเรือใช้ POS ที่ไม่ผูกหน่วย HOTEL ใด และ reference ขึ้นต้น `LB-` (consumer โรงแรมหาไม่เจอ = คิว unmatched ของโรงแรม ⇒ ยังรบกวน) | L1.9 |
 | L-51 | ใบแจ้งยอดภาพ 13ง: 50 ทวิ ฿457.65 = 3% ของคอมฯ ทั้ง 31 การจอง ทั้งที่ 2 การจองถูกยกเลิกในงวดเดียวกัน | ภาพ/ฟิกซ์เจอร์ vs ภาษี | ค่าเริ่ม: บรรทัด "บวก ภาษีหัก" แสดงตามภาพ (Σ WHT_GROSSUP) · **50 ทวิ = WHT สุทธิหลังกลับรายการของงวด** · ⚖️ นักบัญชียืนยัน · ฟิกซ์เจอร์เพิ่มค่าคาด `whtCertSatang` | A1.6 |
-| L-52 | กระเป๋าเอเจนซี่ (WALLET): รับเงินล่วงหน้าค่าบริการ — จุดภาษี VAT ตอนรับหรือตอนตัดใช้ | ภาษี (U1) | ค่าเริ่ม: เติมกระเป๋า = "ใบรับเงินล่วงหน้า" ไม่มี VAT (Dr เงิน / Cr «2116 เงินรับล่วงหน้า-เอเจนซี่») · ตัดใช้ตอนยืนยัน = จุดรับเงินของการจองนั้น (ใบกำกับออกตอนนั้น) · ⚖️ | A1.5 |
+| L-52 | กระเป๋าเอเจนซี่ (WALLET): รับเงินล่วงหน้าค่าบริการ — จุดภาษี VAT ตอนรับหรือตอนตัดใช้ | ภาษี (U1) | ค่าเริ่ม: เติมกระเป๋า = "ใบรับเงินล่วงหน้า" ไม่มี VAT (Dr เงิน / Cr «AGENCY_ADVANCE» เงินรับล่วงหน้า-เอเจนซี่») · ตัดใช้ตอนยืนยัน = จุดรับเงินของการจองนั้น (ใบกำกับออกตอนนั้น) · ⚖️ | A1.5 |
 | L-53 | ใบกำกับเมื่อเอเจนซี่เก็บเงิน (SHOP_PRINCIPAL): ออกในนามลูกค้าส่งผ่านเอเจนซี่ ตอนร้านรับยอดส่ง หรือตอนเอเจนซี่รับเงินจากลูกค้า | ภาษี (U1 · LG §10 ข้อ 1) | ค่าเริ่ม: ตอนร้านรับยอดส่ง (ร้านไม่รู้วันที่เอเจนซี่รับ) · เต็มรูป (T37) · ⚖️ | A1.5 |
 | L-54 | ตาราง/คีย์ที่ผู้สร้างจะต้องเดา (M-15) | แก้รอบ 2 | เพิ่มแล้วใน §B: `TripVehicleRun` (T1.4) · `TripImportBatch` (T1.10/S1.4) · `TripLinkStat` (W1.1/A1.8) · `AgentStopSell` + `TripDeparture.stopSell` (A1.4) · `AgentWebhook` `AgentMediaAsset` (A2.4) · `GateSigningKey` (K1.5) · `repointDepartures` (L1.2) · `nameEn` ตั๋ว · `SellBasket.unitIds` · ที่เหลือให้ใบสั่งของใบนั้นเขียน: โดเมนร้านเอง (W3.2 — ใช้ระบบโดเมนของ `pages`?) · พักเดี่ยวจ่ายเพิ่ม/เหมาเคบิน (L1.4 — บรรทัด `CABIN`/`FEE` + ตัวนับเป็น "ที่" ไม่ใช่คน) · ช่องทาง OTA = `AgentAccount` ชนิด OTA + แผนที่สินค้าแบบ `ChannelRateMap` (C1.1) | ต่อใบ |
-| L-55 | หน้าร้าน T1.3 รับเงินสดเป็นใบเสร็จบัญชี ⇒ ไม่อยู่ในกะ/ลิ้นชัก POS | ผลของมติ 1 | รายงานปิดวันของ trips แยก "เงินสดหน้าร้าน (trips)" · บอกเจ้าของในจอปิดวัน · ย้ายไป POS ได้เมื่อ OQ9 อนุญาต | T1.3 |
+| L-55 | หน้าร้าน T1.3 รับเงินสดเป็นใบเสร็จบัญชี ⇒ ไม่อยู่ในกะ/ลิ้นชัก POS | **ปิดด้วย §H.0 (แก้รอบ 3 · N-4)** | บัญชีเงินสด trips ต่อหน่วย + ปิดยอดรายวัน «TripCashClose» + JV ส่วนต่าง + โอนส่งมอบ · ห้ามใช้ลิ้นชัก POS (แจ้งเจ้าของใน L.1 P-1) | T1.3 |
 | L-56 | ตะกร้า 2 หน่วย (TRIP หน่วย TRIPS + TICKET หน่วย TICKET) แต่ `SellCtx.unitId` เดียว | แก้รอบ 2 (M-15) | `LineRequest` มี `unitId` ต่อบรรทัด · `SellCtx.unitId` = หน่วยของหน้าจอง (ใช้กับสิทธิ์/ค่าตั้งของหน้า) · `SellBasket.unitIds` | T0.6 |
 | L-57 | ยอดสมุดเอเจนซี่ = ลูกหนี้ 1100 ของเอเจนซี่ (H.8) ต้องการให้บัญชีแยกลูกหนี้ต่อผู้ติดต่อ | ตรวจตอนสร้าง | ผูก `AgentAccount.accountContactId` ตอนอนุมัติ · ไม่มีสมุด = ข้ามการเทียบ (UNPOSTED) | A1.5 |
 
 ### L.1 ต้องขออนุญาตเจ้าของ (แก้รอบ 2 · มติ 12 — ไม่สมมติว่าได้)
 | # | เรื่อง | แตะอะไร | ถ้าไม่อนุญาต (ค่าปลอดภัยที่สัญญาใช้อยู่) |
 |---|---|---|---|
-| P-1 | ย้ายการรับเงินของการจอง/หน้าร้านไป POS: `lines[].taxKind` + เงินเก็บแทนเป็นหนี้สินใน `createSale`/`moduleTakeDeposit` · ส่งออกฟังก์ชันมัดจำบน `pos/index.ts` · เพดานมัดจำต่อบิล | **POS** (OQ9) | เอกสารเงินผ่านบัญชี V2 ทั้งหมด (§H) · หน้าร้านไม่อยู่ในกะ POS (L-55) |
+| P-1 | ย้ายการรับเงินของการจอง/หน้าร้านไป POS: `lines[].taxKind` + เงินเก็บแทนเป็นหนี้สินใน `createSale`/`moduleTakeDeposit` · ส่งออกฟังก์ชันมัดจำบน `pos/index.ts` · เพดานมัดจำต่อบิล | **POS** (OQ9) | เอกสารเงินผ่านบัญชี V2 ทั้งหมด (§H) · หน้าร้านไม่อยู่ในกะ POS (L-55) · **เงินสดหน้าร้านของ trips อยู่นอกลิ้นชัก POS** (บัญชีเงินสดแยก + ปิดยอดรายวัน §H.0 · N-4) |
 | P-2 | ข้ามบิลลงห้องของเรือใน consumer โรงแรม | โมดูลโรงแรม (RUN SVC) | ใช้ POS แยกที่ไม่ผูกหน่วย HOTEL · ยอมรับคิว unmatched ของโรงแรม (L-50) |
 | P-3 | เบี่ยงจากแบบ: «TripFolio» แทน `HotelFolio` | ถ้อยคำแบบที่อนุมัติแล้ว (OQ11) | — (ผู้คุมใช้ค่าปลอดภัยนี้แล้ว) |
 | P-4 | เพิ่มผู้ดู `AGENT` และ `LINK_CUSTOMER` ใน `api/files/[id]` | route ไฟล์ส่วนตัวชั้นแพลตฟอร์ม (ของ CRM C0.4) | เอเจนซี่/ลูกค้าไม่ล็อกอินอัปโหลดได้แต่เปิดดูไฟล์ไม่ได้ |
@@ -1052,3 +1088,48 @@ RETURNING "seq";
 | M-d | m-11: "จ่ายแยกคน > 3 ใบ ⇒ หลายบิลปิดต่อการจอง และผ่อนค่าคงที่ ≤ 1 บิลปิด" | ไม่เกิดแล้ว: ปิดทริปเป็น JV ของบัญชี («recogniseTripRevenue») ไม่ใช่บิล POS ที่ใช้มัดจำ ⇒ ไม่มีเพดาน 3 ใบ · ค่าคงที่ใหม่อยู่ที่ §H.8 | `pos/service.ts:354–359` ใช้กับ `createSale` เท่านั้น · §H.1 |
 | M-e | §3 ตารางคำนวณ: VAT ของใบเสร็จคิด "ต่อบรรทัด half-up" (457.94 + 160.28 + 32.71) | สัญญาคิด **ต่อเอกสาร** (round(Σ VATable × 7/107)) เพราะเอกสารรับเงินของบัญชีรับ VAT ยอดเดียว · ภาพนี้ได้ 650.93 เท่ากันทั้งสองวิธี แต่กรณีอื่นอาจต่าง 0.01 ⇒ ข้อสอบยึดวิธีต่อเอกสาร · `TripBookingItem.vatSatang` เป็นการปันส่วนเพื่อรายงาน | `account/index.ts:356–375` (`applyExternalDepositReceipt` รับ `vatSatang` เดียวต่อเอกสาร) |
 | M-f | B-1 ข้อเสนอ (b): "แยกงวดที่จ่ายเป็นใบรับมัดจำ POS (ส่วน VAT) + รายการเก็บแทนของบัญชี" | ไม่ใช้ตามมติ 1 (เอกสารเงินของ trips ทั้งหมดผ่านบัญชี) — เหตุผลเพิ่ม: ใบรับมัดจำ POS + เอกสารบัญชีอีกใบ = ลูกค้าได้ 2 เอกสารต่อการจ่ายครั้งเดียว ไม่ตรงภาพ 13ค ที่เป็นใบเดียว 11,450 | ภาพ `design-trips/13-documents.body.html` ส่วน ค (ใบเดียวมีบรรทัดเก็บแทน) |
+
+---
+
+## N. สิ่งที่ใบสั่ง T0.1/T0.5 ต้องกำหนด — ค่าที่เสนอ (แก้รอบ 3 · ผลตรวจรอบ 2 §3e)
+ผู้คุมคัดลงใบสั่ง (เปลี่ยนได้ก่อนเขียนข้อสอบ) · ทุกค่าเป็นข้อความ + `CHECK … IN (…)` SQL มือ (§B.0)
+
+### N.1 รายการค่าสถานะ
+| คอลัมน์ | ค่า (ลำดับ = วงจร) |
+|---|---|
+| `TripPaymentDue.status` | `OPEN` · `PARTLY_PAID` · `PAID` · `OVERDUE` · `WAIVED` · `CANCELLED` |
+| `TripPassenger.formStatus` | `NOT_REQUIRED` · `PENDING` · `SUBMITTED` · `VERIFIED` · `NEEDS_FIX` |
+| `TripPdpaRequest.kind` · `.status` | `ACCESS` · `RECTIFY` · `ERASE` · `OBJECT` · `PORTABILITY` ‖ `RECEIVED` · `IN_PROGRESS` · `DONE` · `REJECTED` (เลย `dueAt` = แจ้งเตือน ไม่ใช่สถานะ) |
+| `TripWaitlist.status` | `WAITING` · `OFFERED` · `ACCEPTED` · `DECLINED` · `EXPIRED` · `CANCELLED` |
+| `TripSeason.status` · `TripProduct.status` | `ACTIVE` · `ARCHIVED` ‖ `DRAFT` · `ACTIVE` · `ARCHIVED` |
+| `TripHold.purpose` · `.status` | ตาม §B.1 |
+| `TripMoneyEvent.postingStatus` | `POSTED` · `UNPOSTED` · `FAILED_NEEDS_ACTION` |
+| `TripCheckin.result` · `TicketScan.result` | `FIRST` · `DUPLICATE` ‖ `FIRST` · `REENTRY` · `DUPLICATE` · `INVALID` |
+
+### N.2 รูป JSON (zod ใน «trips/json-schemas.ts» บริสุทธิ์ · ใบ T0.1)
+```ts
+TripSchedule.rule       = { kind: "DAILY" } | { kind: "WEEKLY"; weekdays: (0|1|2|3|4|5|6)[] /* 0 = อาทิตย์ */ } | { kind: "DATES"; dates: string[] /* YYYY-MM-DD */ }
+TripSchedule.exceptions = { date: string; action: "SKIP" | "OVERRIDE"; departTimeMin?: number; capacity?: number; minPax?: number | null }[]
+TripPriceRule.params    = { appliesTo?: { optionIds?: string[]; paxTypeCodes?: string[]; channels?: SellChannel[] } } & (
+    { kind: "EARLY_BIRD";  minDaysBefore: number; discountBp?: number; discountMinor?: number }
+  | { kind: "LAST_MINUTE"; maxHoursBefore: number; discountBp?: number; discountMinor?: number }
+  | { kind: "GROUP_TIER";  tiers: { minPax: number; discountBp: number }[] }            // เรียง minPax น้อย→มาก
+  | { kind: "FREE_LEADER"; everyPaid: number; freeQty: number; paxTypeCode: string }   // เช่น 10 จ่าย 1 ฟรี
+  | { kind: "BLACKOUT";    dates: string[]; ranges: { from: string; to: string }[] }   // ปิดใช้ราคา/โปรในวันเหล่านี้
+  | { kind: "PROMO_CODE";  code: string; discountBp?: number; discountMinor?: number; maxUses?: number; perContact?: number; validFrom?: string; validTo?: string })
+TripDeparture.stopSell  = null | { channels: SellChannel[] /* [] = ทุกช่องทาง */; agentAccountIds?: string[]; reason: string; until?: string /* ISO */ }
+TripDeparture.insurance = null | { insurer: string; policyNo: string; sumDeathSatang: number; sumMedicalSatang: number; coversDeepDive: boolean; fileId?: string }
+```
+
+### N.3 คีย์ที่จดลง snapshot (แทนเครื่องหมาย ⓢ "ตัวอย่าง" ใน §E.4 · ทะเบียนลง `snapshots` ของแต่ละโดเมน)
+- **`"trips.booking"`** (defs/trips): `trips.general.currencies` (T3) · `trips.fx.rateSource` (T4) · `trips.fx.rates` (X5) · `trips.pay.depositPct` `depositBase` `balanceDueDaysBefore` `overdueAction` (T13–T15 · T17) · `trips.pay.overdueGraceHours` (X11) · `trips.cancel.ladder` `shopCancelRefund` `shopCancelOptions` `refundForm` `deductions` `nameChangeFree` `changeDateFee` (T20–T26) · `trips.cancel.creditBonusPct` `creditValidityMonths` `moveFreeWithinDays` (X14–X16) · `trips.pax.childAgeBand` `childPricePct` (T27–T28) · `trips.tax.vatRegistered` `priceIncludesVat` `vatRate` `invoiceOnEachPayment` `invoiceForm` `cancelFeeVat` `forfeitAfterInvoice` `refundCreditNote` `corporateCustomerWht` (T33–T41) · `trips.consumer.withdraw7Days` (T43) · `trips.line.defaults` (T44) · `trips.parkFee.table` `ageBands` `exemptFlags` `countMode` (T45–T48)
+- **`"agency.booking"`** (defs/agency · เฉพาะการจองที่มีเอเจนซี่): `agency.tier.table` (A1) · `agency.price.defaultModel` `sellerOfRecord` `minResalePrice` `hidePriceOnVoucher` (A4 A5 A7 A8) · `agency.cancel.policySource` (A9) · `agency.money.collector` `paymentMethod` `creditTermDays` (A10–A12) · `agency.comm.earnedAt` `currency` `clawbackOnCancel` `discountFromCommission` (A21–A24) · `agency.comm.vatMode` (X26 · จดค่าที่ตัดสินแล้ว) · `agency.wht.payerType` `ruleByPayee` `minPerContract` `eWht` `grossUpOnNetRemit` `remitter` (A25–A30) · `agency.crm.addToShopMarketing` `whoMessagesCustomer` `customerContactRoute` (A31–A33) · `agency.quota.returnCancelledToQuota` (X25)
+- **`"ticket.order"`** (defs/ticket): `ticket.change.session` `ticket.cancel.refund` `ticket.cancel.venueCancelRefundPct` `ticket.tax.vatMode` `ticket.tax.invoiceForm` `ticket.tax.resellerBase` `ticket.consumer.withdraw7Days` (K4–K9 · K15)
+- ไม่จด: เวลาถือที่/ปิดรับ/ข้อความ/จอ/PDPA (ใช้ ณ เวลาทำงาน ไม่ใช่สัญญากับลูกค้า)
+
+### N.4 หน่วยที่ค่าตั้งใช้ได้ (`SettingDef.unitTypes` · `SettingUnitType` + `"TRIPS"` `"TICKET"`)
+- defs/trips → `["TRIPS"]` · defs/ticket → `["TICKET"]` · defs/agency → `["TRIPS", "TICKET"]` (ชั้นเอเจนซี่ใช้ร่วม) · แม่แบบ `DIVE_SHOP` `DAY_TOUR` `LIVEABOARD` ผูกหน่วย TRIPS · `ATTRACTION` ผูกหน่วย TICKET
+
+### N.5 ใครเพิ่มคำเตือนระดับ (severity) และป้ายนักบัญชี (reviewHint) ในจอค่าตั้ง
+- **T0.1** (ตรวจเข้ม · แตะชิ้นกลางของ R0.3/R0.4): ชนิด `SettingDef.reviewHint` `reviewAuthorityTh` + ผลกฎหมาย `severity` (`types.ts`) · ตัวตรวจทะเบียน (`registry.ts`) · การแสดงผลใน `src/lib/core/settings/form.ts` + `src/components/settings/SettingsForm.tsx` (ป้าย "ตรวจกับนักบัญชีของร้าน" / "ยังไม่ยืนยันกับ <หน่วยงาน>" · เรียงคำเตือนตาม severity · กล่องรับทราบไม่บังคับเหตุผลในสามโดเมนนี้) · ข้อสอบหอ/จองคิวเดิมเขียวเท่าเดิม
+- T1.1 · A1.3 · K1.2 (จอค่าตั้งของแต่ละโดเมน) **ใช้** ของที่ T0.1 ทำ ไม่แก้ฟอร์มกลางเอง

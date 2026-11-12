@@ -367,7 +367,7 @@
 
 ## ภาคผนวก ก — คีย์ที่สัญญาเพิ่ม (จาก `ledger/TRIPS-CORE-CONTRACT.md` รอบ 2 · 12 พ.ย. 2569)
 
-> เพิ่มโดยใบ P0.3 รอบ 2 (มติผู้คุม) · ไม่เปลี่ยนชื่อ/ค่าของ 122 คีย์เดิม ยกเว้น T23 (แถวสุดท้าย) · รหัส `X1–X27` · ทุกตัวเลข = **ข้อเสนอ ไม่ใช่ตัวเลขจากกฎหมาย** เว้นแต่ระบุ · ชั้น SHOP = `UNIT`
+> เพิ่มโดยใบ P0.3 รอบ 2 (มติผู้คุม) · ไม่เปลี่ยนชื่อ/ค่าของ 122 คีย์เดิม ยกเว้น T23 (แถวสุดท้าย) · รหัส `X1–X28` (แก้รอบ 3: X25 X26 X28 + หมายเหตุ A5) · ทุกตัวเลข = **ข้อเสนอ ไม่ใช่ตัวเลขจากกฎหมาย** เว้นแต่ระบุ · ชั้น SHOP = `UNIT`
 
 | # | คีย์ | ความหมาย | ชนิด/หน่วย | ค่าเริ่มต้น | ชั้น | ที่มา | 🧾 |
 |---|---|---|---|---|---|---|---|
@@ -395,9 +395,11 @@
 | X22 | `trips.pdpa.abandonedRetentionDays` | ลบข้อมูลผู้จองของการจองหมดเวลาที่ไม่มีเงินเข้า | days | 30 | SHOP | ผลตรวจ m-14 | |
 | X23 | `trips.supplier.respondHours` · `trips.supplier.shopDecisionHours` · `trips.supplier.autoCancelOnTimeout` | ผู้ให้บริการต้องตอบภายใน · ร้านตัดสินต่อหลังหมดเวลา · หมดเวลาแล้วยกเลิกเอง | int ชม. · int ชม. · bool | 24 · 12 · ปิด (เข้าคิวร้าน) | SHOP · PRODUCT | สัญญา §G.2 | |
 | X24 | `agency.quota.requestFirst` | เอเจนซี่ต้องส่งคำขอก่อน (ไม่ตัดที่ทันที) | bool | ปิด | SHOP · AGENT_TIER · AGENT · PRODUCT | TA §2.3 | |
-| X25 | `agency.quota.returnCancelledToQuota` | ที่นั่งจากโควตาที่ยกเลิกกลับเข้าโควตา (ไม่ใช่ที่ว่างสาธารณะ) | bool | เปิด | SHOP · AGENT | สัญญา §D.1 ข้อ 5 | |
-| X26 | `agency.comm.vatMode` | VAT ของค่าคอมมิชชัน | enum NONE·EXCLUSIVE·INCLUSIVE | `NONE` เว้นแต่ `AgentAccount.vatRegistered` = จริง ⇒ `EXCLUSIVE` | SHOP · AGENT | มติผู้คุม 8 · สัญญา §H.4 | ใช่ |
+| X25 | `agency.quota.returnCancelledToQuota` | ที่นั่งจากโควตาที่ยกเลิกกลับเข้าโควตา (ไม่ใช่ที่ว่างสาธารณะ) | bool | เปิด | SHOP · AGENT_TIER · AGENT (แก้รอบ 3 · ตรงกับสัญญา §E.4) | สัญญา §D.1 ข้อ 5 | |
+| X26 | `agency.comm.vatMode` | VAT ของค่าคอมมิชชัน | enum NONE·EXCLUSIVE·INCLUSIVE | ค่าใน def = `NONE` ทุกแม่แบบ · (แก้รอบ 3) **ตัดสินตอนใช้**: ร้านไม่ได้ตั้งเอง (resolve ได้ TEMPLATE/FALLBACK) และ `AgentAccount.vatRegistered` = จริง ⇒ ใช้ `EXCLUSIVE` (เครื่องยนต์ค่าตั้งให้ค่าตามแม่แบบได้อย่างเดียว) · ผลจดลง snapshot | SHOP · AGENT_TIER · AGENT | มติผู้คุม 8 · สัญญา §H.4 | ใช่ |
 | X27 | `agency.msg.<kind>` · `ticket.msg.<kind>` | ข้อความแม่แบบต่อชนิด (th + en) แบบ T70 | template | ตามชนิด (ยืนยัน · ถือใกล้หมด · งวดใกล้ครบ · รอบเปลี่ยน · ใบแจ้งยอด / ตั๋ว: ยืนยัน · เตือนวันเข้าชม · ส่งต่อ) | SHOP | สัญญา L-42 | |
+| X28 | `trips.cash.varianceApprovalSatang` | เงินสดหน้าร้าน (ทริป) ขาด/เกินเกินยอดนี้ = ต้องอนุมัติก่อนลงบัญชี | money | 200 บาท | SHOP | สัญญา §H.0 (N-4) | |
+| — | **A5 `agency.price.sellerOfRecord` ค่า `AGENT_RESELLS` ซ่อนในรุ่นแรก** (แก้รอบ 3) | ไม่แสดงในจอ · บันทึกไม่ได้ (`VALIDATION`) จนมีชุดรายการบัญชีของโหมดนี้ ⇒ W13 ไม่เกิดในรุ่นแรก | enum (เดิม) | `SHOP_PRINCIPAL` (เดิม) | — | สัญญา §H.3 (N-5) | |
 | — | **T23 `trips.cancel.refundForm` ค่าเริ่มเปลี่ยน** | คืนเงินอย่างเดียวจนมีทางเครดิตร้าน | enum (เดิม) | ทุกแม่แบบ: **`MONEY`** (เดิมเสนอ `CUSTOMER_CHOOSES_MONEY_OR_CREDIT`) | SHOP | มติผู้คุม 7 · สัญญา §G.3 | |
 
 - คีย์ `trips.pay.depositBase` (T14) `TRIP_ONLY` = งวดเก็บแทนทั้งหมดอยู่ในงวดสุดท้าย (สัญญา §H.2 · ภาพ 03: 19,740 / 49,660) — ไม่เปลี่ยน
