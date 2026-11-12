@@ -33,7 +33,8 @@
 | P0.2 | ✅ | `ledger/TRIPS-DEFAULTS.md` (122 ค่าตั้ง · 46 คำเตือน + ภาคผนวก ก 27 คีย์ที่สัญญาเพิ่ม) · ผู้ตรวจอิสระเทียบกับสัญญาแล้ว |
 | P0.3 | ✅ | `ledger/TRIPS-CORE-CONTRACT.md` รอบ 2 (48b243186) · ผู้ตรวจอิสระ 2 รอบ: r1 FIX FIRST (3 BLOCKER) → r2 **READY** (ไม่เหลือ BLOCKER · N-1…N-11 = หนี้มีด่าน §3) · รายงาน `ledger/wo-notes/trips-P0.3-review-r1.md` `-r2.md` |
 | T0.1 | 🔄 | ผู้สร้างเลน l1 (เริ่ม 12 พ.ย. ~10Z) · **ใบสั่ง `ledger/trips-briefs/T0.1.md` + ข้อสอบ `scripts/qc-trips-t0.1.mts` 96 ข้อ พร้อมแล้ว** (แดง 90 ก่อนสร้าง · ผู้คุมรันเอง) · มติคำถามเปิด 21 ข้อ = ท้ายใบสั่ง §8 |
-| ที่เหลือ 68 ใบ | ⬜ | ตาม MASTER-PLAN §3/§4 |
+| T0.2 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.2.md` (มติ §11–§12) + ข้อสอบ `scripts/qc-trips-t0.2.mts` 84 ข้อ (แดง 79) พร้อม · รอ T0.1 merge |
+| ที่เหลือ 67 ใบ | ⬜ | ตาม MASTER-PLAN §3/§4 |
 
 ภาพ: ชุด M1 วาดแล้ว = จอ 16–20 (e6b3a7a9f · ผู้คุมเปิดดูครบ 5 จอ · รอเจ้าของดู OQ1) · ที่เหลือ (TA §12.3 ชุด 4–7 · 9 · ค่าตั้ง agency/ticket) วาดก่อนใบของเฟสนั้น
 
@@ -63,3 +64,4 @@
 - 2026-11-12 ~09:0xZ · P0.3 รอบ 3 · ปิด N-1…N-11 + เพิ่ม §N (ค่าสถานะ · รูป JSON · คีย์ snapshot · ชนิดหน่วย · T0.1 เป็นใบที่เพิ่ม severity/ป้ายนักบัญชีในจอค่าตั้งกลาง) · ⚠️ N-2 เสนอคอลัมน์ใหม่ `AccountDocument.passThroughSatang` + N-4 ตาราง `TripCashClose` + N-7 `AgentLogin` ⇒ ต้องอยู่ใน migration ของ T0.1/A1.1 (ไม่มี migration นอกใบที่กำหนด)
 - 2026-11-12 ~09:5xZ · T0.1 · ใบสั่ง + ข้อสอบ merge เข้า session/trips · ORACLE-EDIT svc-qc-hosts: เพิ่ม host ฐาน TRIPS 3 ตัว (เหตุผล: ชุด regression r0.3/r0.4/d.1/b.0/smoke ตรึง host SVC · ฐาน TRIPS เป็นลูกของ wo-svc-qc-l1 มี seed SVC ครบ) · มติ: migration ของ L1.9/L1.10 ที่สัญญาแยกไว้ → รวมใน L1.1 · `passThroughSatang` → T0.1 · tsrange แทน tstzrange · หนี้เอกสาร: แก้สัญญา :150 :229 :758 :1056 + TRIPS-DEFAULTS :85 (T44→T46) :76 (T22 ไม่มี CREDIT) ในรอบแก้สัญญาถัดไป
 - 2026-11-12 ~10:0xZ · มติเจ้าของ · เริ่มสร้าง T0.1 และใบถัดไปได้โดยไม่รอ ON_MAIN · กติกาอื่นคงเดิม (ห้าม push main · ห้ามใช้เลน SVC) ⇒ ปล่อยผู้สร้าง T0.1 (l1) + ผู้เขียนใบสั่ง/ข้อสอบ T0.2 (l2) · ⚠️ เมื่อ merge main ทีหลัง: ส่วนโรงแรม/CRM/POS ใน main จะต่างจากฐาน release ที่ทรีนี้แตกมา — ต้องรัน regression ซ้ำ
+- 2026-11-12 ~11:1xZ · T0.2 · ใบสั่ง+ข้อสอบ merge · มติ: ไม่มีการลบแถวจริง · `paxPrices` ต่อประเภทคน · คอลัมน์เพิ่มใน migration T0.1 (TripExtra name/note/active/sortOrder/paxPrices · TripPaxType active/sortOrder · TripOption sortOrder · TripProduct publishedAt) สั่งผู้สร้าง T0.1 แล้ว · หนี้ภาพ: จอ 17 เขียนค่าอุทยานราชา "300 / 600" สลับกับจอ 16/01 (ผู้ใหญ่ 600 เด็ก 300) — แก้ภาพก่อน T1.1
