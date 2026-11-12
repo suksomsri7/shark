@@ -396,6 +396,11 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "hotel.audit.closed", label: "เมื่อปิดวันโรงแรม (night audit) เสร็จ" },
   { value: "hotel.audit.reopened", label: "เมื่อผู้จัดการเปิดวันที่ปิดแล้วของโรงแรมอีกครั้ง" },
   // ◂ SVC H.7
+  // TRIPS T0.2 ▸ สินค้าทัวร์ — ตัวยิง trips/products.ts (ใน tx เดียวกับ CAS สถานะ) · payload { productId, unitId, productType, status } ล้วน · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks)
+  { value: "trips.product.published", label: "เมื่อเปิดขายสินค้าทัวร์" },
+  { value: "trips.product.unpublished", label: "เมื่อปิดขายสินค้าทัวร์ (กลับเป็นร่าง)" },
+  { value: "trips.product.archived", label: "เมื่อเก็บสินค้าทัวร์เข้าคลัง (เลิกขาย)" },
+  // ◂ TRIPS T0.2
   // TRIPS T0.3 ▸ รอบทัวร์ — ตัวยิง `trips/departures.ts` (ใน tx เดียวกับการเขียน) · payload ตรง 6 คีย์ { departureId, productId, unitId, status, paxSold, minPax }
   //   ไม่มีข้อมูลบุคคล (X8) · consumer อยู่ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น) ◂
   { value: "trips.departure.created", label: "เมื่อสร้างรอบทัวร์" },

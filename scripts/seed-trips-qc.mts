@@ -8,6 +8,8 @@
 //   • ร้าน "อควาเรียมอันดามัน" (andaman-aquarium) หน่วย TICKET 1 · เจ้าของ + พนักงานประตู · Party: ภัทรา (ชื่อซ้ำข้ามร้านโดยตั้งใจ)
 //     + TicketEvent รอบ 13:00 · TicketType ผู้ใหญ่ 350 / เด็ก 200 / ผู้สูงอายุ 200 ผ่าน `ticket/service` ของจริง
 //   • ตาราง trips/agency ยังไม่มี (ใบ T0.1) ⇒ ใบนี้ไม่สร้างรอบ/การจอง/สัญญาเอเจนซี่
+//   • TRIPS T0.2 ▸ หน่วยที่สองของอันดามันไดฟ์ ชนิด TRIPS (andaman-dive-trips) + แม่แบบค่าตั้ง trips DIVE_SHOP (KEEP_CUSTOM)
+//     + สินค้า 4 ตัวของจอ 16 (`TRIPS_SEED_PRODUCTS`) **ผ่าน facade `@/lib/modules/trips`** ด้วยเจ้าของร้าน · รันซ้ำ = อ่านเทียบแล้วแก้เฉพาะที่ต่าง ◂
 //
 // กติกา:
 //   🔴 รันซ้ำ = ไม่มีแถวเพิ่ม และไม่มีการเขียน — อ่านมาเทียบก่อน ต่างเท่านั้นถึงเขียน
@@ -24,7 +26,9 @@ import {
   SHOP_DIVE,
   TRIPS_ACCEPTED_AT,
   TRIPS_EMAILS,
+  TRIPS_SEED_PRODUCTS,
   assertFixtureArithmetic,
+  type SeedProduct,
   type FixtureParty,
   type FixtureUnit,
   type FixtureUser,
@@ -37,7 +41,6 @@ import {
   TRIPS_SEED_RESOURCES,
   TRIPS_SEED_SCHEDULES,
   TRIPS_SEED_SIMILAN,
-  TRIPS_SEED_TRIPS_UNIT_ID,
   // ── /T0.3 departures ──
 } from "./trips-fixture.mjs";
 
@@ -50,6 +53,8 @@ assertFixtureArithmetic();
 
 const { prisma } = await import("@/lib/core/db");
 const ticket = await import("@/lib/modules/ticket/service");
+const trips = await import("@/lib/modules/trips"); // TRIPS T0.2 ▸ สินค้าผ่าน facade เท่านั้น ◂
+const settings = await import("@/lib/core/settings");
 
 const t0 = Date.now();
 const created: Record<string, number> = {};
@@ -198,6 +203,108 @@ async function ensureTickets(tenantId: string, unitId: string) {
   return { eventId: ev.id, typeIds };
 }
 
+// ═══════════════ TRIPS T0.2 ▸ หน่วย TRIPS + แม่แบบ + สินค้าจอ 16 (ผ่าน facade trips) ═══════════════
+type TripsResult = { ok: true } | { ok: false; code: string; message: string };
+function must<R extends TripsResult>(r: R, what: string): Extract<R, { ok: true }> {
+  if (!r.ok) throw new Error(`${what}: ${r.code} ${r.message}`);
+  return r as Extract<R, { ok: true }>;
+}
+
+async function ensureTripsTemplate(tenantId: string, unitId: string, owner: FixtureUser, templateKey: string) {
+  const prof = await prisma.settingProfile.findFirst({ where: { tenantId, unitId, domain: "trips" }, select: { templateKey: true } });
+  if (prof?.templateKey === templateKey) return;
+  bump(prof ? updated : created, "settingProfileTrips");
+  const r = await settings.applyTemplate(
+    { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: owner.userId },
+    { tenantId },
+    { unitId, domain: "trips", templateKey, overwrite: "KEEP_CUSTOM" },
+  );
+  if (!r.ok) throw new Error(`applyTemplate trips ${templateKey}: ${JSON.stringify(r)}`);
+}
+
+type ProductDTO = Extract<Awaited<ReturnType<typeof trips.getProduct>>, { ok: true }>["product"];
+async function ensureTripProduct(ctx: { tenantId: string; actorUserId: string }, unitId: string, sp: SeedProduct): Promise<string> {
+  const read = async (): Promise<ProductDTO | null> => {
+    const r = await trips.getProductBySlug(ctx, { unitId, slug: sp.slug });
+    if (r.ok) return r.product;
+    if (r.code === "NOT_FOUND") return null;
+    throw new Error(`getProductBySlug ${sp.slug}: ${r.code} ${r.message}`);
+  };
+  const want = {
+    title: sp.title,
+    body: sp.body,
+    meetingPoint: { text: sp.meeting },
+    disclosure: sp.disclosure,
+    deepDive: sp.deepDive,
+    crossBorder: false,
+  };
+  let p = await read();
+  if (!p) {
+    bump(created, "tripProduct");
+    must(await trips.createProduct(ctx, { unitId, slug: sp.slug, productType: sp.productType, currency: sp.currency, ...want }), `createProduct ${sp.slug}`);
+    p = await read();
+    if (!p) throw new Error(`สร้างสินค้า ${sp.slug} แล้วอ่านไม่เจอ`);
+  } else {
+    if (p.productType !== sp.productType || p.currency !== sp.currency) throw new Error(`สินค้า ${sp.slug} ชนิด/สกุลไม่ตรงฟิกซ์เจอร์ (${p.productType}/${p.currency}) — ตรวจเอง หยุด`);
+    const d = diff(p as unknown as Record<string, unknown>, want);
+    if (has(d)) {
+      bump(updated, "tripProduct");
+      must(await trips.updateProduct(ctx, { unitId, productId: p.id, ...d }), `updateProduct ${sp.slug}`);
+    }
+  }
+  const productId = p.id;
+  // ตัวเลือก (จับคู่ด้วยชื่อไทย)
+  for (const o of sp.options) {
+    const cur = p.options.find((x) => x.name.th === o.name.th);
+    if (!cur) {
+      bump(created, "tripOption");
+      must(await trips.createOption(ctx, { unitId, productId, name: o.name, durationMin: o.durationMin, nights: o.nights, active: o.active }), `createOption ${o.name.th}`);
+      continue;
+    }
+    const d = diff(cur as unknown as Record<string, unknown>, { name: o.name, durationMin: o.durationMin, nights: o.nights });
+    if (has(d)) {
+      bump(updated, "tripOption");
+      must(await trips.updateOption(ctx, { unitId, optionId: cur.id, ...d }), `updateOption ${o.name.th}`);
+    }
+    if (cur.active !== o.active) {
+      bump(updated, "tripOptionActive");
+      must(await trips.setOptionActive(ctx, { unitId, optionId: cur.id, active: o.active }), `setOptionActive ${o.name.th}`);
+    }
+  }
+  // รายการเสริม (จับคู่ด้วยชนิด + ชื่อไทย · ธงไม่ส่ง = จาก T44)
+  for (const e of sp.extras) {
+    const cur = p.extras.find((x) => x.kind === e.kind && x.name.th === e.name.th);
+    if (!cur) {
+      bump(created, "tripExtra");
+      must(
+        await trips.createExtra(ctx, { unitId, productId, kind: e.kind, basis: e.basis, mandatory: e.mandatory, priceMinor: e.priceMinor, paxPrices: e.paxPrices, name: e.name, note: e.note }),
+        `createExtra ${e.name.th}`,
+      );
+      continue;
+    }
+    const d = diff(cur as unknown as Record<string, unknown>, { basis: e.basis, mandatory: e.mandatory, priceMinor: e.priceMinor, paxPrices: e.paxPrices, name: e.name, note: e.note });
+    if (has(d)) {
+      bump(updated, "tripExtra");
+      must(await trips.updateExtra(ctx, { unitId, extraId: cur.id, ...d }), `updateExtra ${e.name.th}`);
+    }
+    if (!cur.active) {
+      bump(updated, "tripExtraActive");
+      must(await trips.setExtraActive(ctx, { unitId, extraId: cur.id, active: true }), `setExtraActive ${e.name.th}`);
+    }
+  }
+  // สถานะ: ทุกตัว ACTIVE
+  if (p.status === "ARCHIVED") {
+    bump(updated, "tripProductStatus");
+    must(await trips.restoreProduct(ctx, { unitId, productId }), `restoreProduct ${sp.slug}`);
+  }
+  if (p.status !== "ACTIVE") {
+    bump(p.status === "DRAFT" && !p.publishedAt ? created : updated, "tripProductPublish");
+    must(await trips.publishProduct(ctx, { unitId, productId }), `publishProduct ${sp.slug}`);
+  }
+  return productId;
+}
+// ◂ TRIPS T0.2
+
 // ═══════════════════════════ ลงมือ ═══════════════════════════
 const D = SHOP_DIVE;
 const A = SHOP_AQUARIUM;
@@ -213,11 +320,33 @@ for (const u of A.users) await ensureUser(A.tenant.id, u);
 await ensureParties(A.tenant.id, AQUARIUM_PARTIES);
 const tickets = await ensureTickets(A.tenant.id, A.units.main.id);
 
+// TRIPS T0.2 ▸ หน่วย TRIPS ของอันดามันไดฟ์ → แม่แบบ trips DIVE_SHOP → สินค้า 4 ตัว (เจ้าของร้าน · ผ่าน facade) ◂
+await ensureUnit(D.tenant.id, D.units.trips);
+const diveOwner = D.users[0];
+await ensureTripsTemplate(D.tenant.id, D.units.trips.id, diveOwner, D.template);
+const tripProductIds: Record<string, string> = {};
+for (const sp of TRIPS_SEED_PRODUCTS) tripProductIds[sp.key] = await ensureTripProduct({ tenantId: D.tenant.id, actorUserId: diveOwner.userId }, D.units.trips.id, sp);
+// r2 ▸ id ลูกของสินค้า seed ให้ seed ของ T0.3/T0.5 หาได้: dive.products.<slug>.{productId, options{ชื่อไทย}, paxTypes{code}, extras{kind}} ◂
+type SeedProductIds = { productId: string; options: Record<string, string>; paxTypes: Record<string, string>; extras: Record<string, string> };
+const tripProducts: Record<string, SeedProductIds> = {};
+for (const sp of TRIPS_SEED_PRODUCTS) {
+  const r = await trips.getProductBySlug({ tenantId: D.tenant.id, actorUserId: diveOwner.userId }, { unitId: D.units.trips.id, slug: sp.slug });
+  if (!r.ok) throw new Error(`อ่านสินค้า ${sp.slug} หลัง seed ไม่ได้: ${r.code}`);
+  const extras: Record<string, string> = {};
+  for (const e of r.product.extras) extras[e.kind in extras ? `${e.kind}:${e.name.th}` : e.kind] = e.id;
+  tripProducts[sp.slug] = {
+    productId: r.product.id,
+    options: Object.fromEntries(r.product.options.map((o) => [o.name.th, o.id])),
+    paxTypes: Object.fromEntries(r.product.paxTypes.map((x) => [x.code, x.id])),
+    extras,
+  };
+}
+
 // ── T0.3 departures ──
 // ═══════════════ รอบสัปดาห์ฟิกซ์เจอร์ (ใบ T0.3 §8) ═══════════════
 // ผ่าน facade `@/lib/modules/trips` ด้วยเจ้าของร้าน (createResource · createSchedule · materializeSchedule · setDepartureStatus · cancelDeparture · createDeparture)
 // ไม่เขียนตาราง Trip* ตรง (อ่านอย่างเดียว) · ทุกคำสั่งส่ง opts.now = TRIPS_AS_OF ยกเว้น materialize (TRIPS_SEED_MATERIALIZE_AT)
-// ต้องมีหน่วย TRIPS + สินค้า 4 ตัวของ seed T0.2 ก่อน — ไม่มี ⇒ แจ้งแล้วข้าม (ไม่ล้ม seed ส่วนอื่น)
+// ต่อจาก seed ของ T0.2 (หน่วย TRIPS + สินค้า 4 ตัว · id จาก `tripProducts` = dive.products ใน trips-expected.json) — ไม่มี ⇒ ล้ม (ไม่ข้ามเงียบ)
 const tripsMod = await import("@/lib/modules/trips");
 const settingsMod = await import("@/lib/core/settings");
 const SEED_T6 = "trips.sell.cutoff";
@@ -229,25 +358,21 @@ function mustOk<T extends { ok: boolean }>(r: T, what: string): Extract<T, { ok:
   return r as Extract<T, { ok: true }>;
 }
 
-async function ensureTripsDepartures(): Promise<{ departureIds: Record<string, string>; resourceIds: Record<string, string> } | null> {
+async function ensureTripsDepartures(): Promise<{ departureIds: Record<string, string>; resourceIds: Record<string, string> }> {
   const tenantId = D.tenant.id;
-  const unitId = TRIPS_SEED_TRIPS_UNIT_ID;
+  const unitId = D.units.trips.id;
   const owner = D.users[0];
-  const unit = await prisma.businessUnit.findFirst({ where: { id: unitId, tenantId, type: "TRIPS" }, select: { id: true } });
-  if (!unit) {
-    console.log(`⏭️ T0.3: ยังไม่มีหน่วย TRIPS ${unitId} (seed ของ T0.2 ยังไม่ลง) — ไม่สร้างรอบ/ทรัพยากร`);
-    return null;
-  }
   const slugs = [...TRIPS_SEED_SCHEDULES.map((x) => x.slug), TRIPS_SEED_SIMILAN.slug];
-  const prods: Record<string, { id: string; optionId: string; durationMin: number | null }> = {};
+  const prods: Record<string, { id: string; optionId: string }> = {};
   for (const slug of slugs) {
-    const p = await prisma.tripProduct.findFirst({ where: { tenantId, unitId, slug }, select: { id: true } });
-    const o = p ? await prisma.tripOption.findFirst({ where: { tenantId, productId: p.id, active: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true, durationMin: true } }) : null;
-    if (!p || !o) {
-      console.log(`⏭️ T0.3: ยังไม่มีสินค้า/ตัวเลือก ${slug} (seed ของ T0.2 ยังไม่ลง) — ไม่สร้างรอบ`);
-      return null;
-    }
-    prods[slug] = { id: p.id, optionId: o.id, durationMin: o.durationMin };
+    const sp = TRIPS_SEED_PRODUCTS.find((x) => x.slug === slug);
+    const ids = tripProducts[slug];
+    const optName = sp?.options.find((o) => o.active)?.name.th;
+    const optionId = optName ? ids?.options[optName] : undefined;
+    if (!sp || !ids || !optionId) throw new Error(`seed T0.3: ไม่มีสินค้า/ตัวเลือก ${slug} จาก seed ของ T0.2`);
+    const hasDuration = sp.options.find((o) => o.active)?.durationMin ?? sp.options.find((o) => o.active)?.nights;
+    if (!hasDuration) throw new Error(`seed T0.3: ตัวเลือก ${slug} ในฟิกซ์เจอร์ T0.2 ไม่มีระยะเวลา`);
+    prods[slug] = { id: ids.productId, optionId };
   }
   const ctx = { tenantId, actorUserId: owner.userId };
   const opts = { now: new Date(TRIPS_AS_OF) };
@@ -288,17 +413,6 @@ async function ensureTripsDepartures(): Promise<{ departureIds: Record<string, s
     bump(updated, "tripSettings", changes.length);
     const r = await settingsMod.setSettings(actor, { tenantId }, changes, { ackLegalWarn: true });
     if (!r.ok) throw new Error(`seed T0.3 setSettings: ${JSON.stringify(r)}`);
-  }
-
-  // 3) ระยะเวลาของตัวเลือก (พีพี/ดำน้ำลึกไม่มีใน T0.2) — ผ่าน updateOption ของ T0.2
-  const updateOption = (tripsMod as unknown as Record<string, unknown>).updateOption;
-  for (const s of TRIPS_SEED_SCHEDULES) {
-    const pr = prods[s.slug];
-    if (pr.durationMin === s.durationMin) continue;
-    if (typeof updateOption !== "function") throw new Error(`seed T0.3: ตัวเลือก ${s.slug} ไม่มีระยะเวลา ${s.durationMin} นาที และ facade ยังไม่มี updateOption (T0.2)`);
-    bump(updated, "tripOptionDuration");
-    const r = asObj(await (updateOption as (c: unknown, i: unknown) => Promise<unknown>)(ctx, { unitId, optionId: pr.optionId, durationMin: s.durationMin }));
-    if (r.ok !== true) throw new Error(`seed T0.3 updateOption ${s.slug}: ${JSON.stringify(r)}`);
   }
 
   // 4) กฎ DAILY + materialize (สัปดาห์ 11–17)
@@ -373,6 +487,7 @@ async function ensureTripsDepartures(): Promise<{ departureIds: Record<string, s
   return { departureIds, resourceIds };
 }
 const tripsDepartures = await ensureTripsDepartures();
+console.log(`T0.3: รอบ ${Object.keys(tripsDepartures.departureIds).length} · ทรัพยากร ${Object.keys(tripsDepartures.resourceIds).length}`);
 // ── /T0.3 departures ──
 
 // ═══════════════ สรุป (ต้องเหมือนเดิมทุกตัวอักษรเมื่อรันซ้ำ) ═══════════════
@@ -390,10 +505,26 @@ const summary = {
   dive: await countsOf(D.tenant.id),
   aquarium: await countsOf(A.tenant.id),
   users: await prisma.user.count({ where: { email: { in: TRIPS_EMAILS } } }),
+  // TRIPS T0.2 ▸ ◂
+  tripsDive: {
+    products: await prisma.tripProduct.count({ where: { tenantId: D.tenant.id } }),
+    options: await prisma.tripOption.count({ where: { tenantId: D.tenant.id } }),
+    paxTypes: await prisma.tripPaxType.count({ where: { tenantId: D.tenant.id } }),
+    extras: await prisma.tripExtra.count({ where: { tenantId: D.tenant.id } }),
+  },
 };
 const expected = {
-  note: "สร้างโดย scripts/seed-trips-qc.mts (ใบ P0.1) — ข้อสอบ TRIPS อ่าน id จากที่นี่ · ค่าเงินอยู่ที่ scripts/trips-fixture.mts",
-  dive: { tenantId: D.tenant.id, slug: D.tenant.slug, unitId: D.units.main.id, userIds: D.users.map((u) => u.userId), partyIds: DIVE_PARTIES.map((p) => p.id) },
+  note: "สร้างโดย scripts/seed-trips-qc.mts (ใบ P0.1 + T0.2) — ข้อสอบ TRIPS อ่าน id จากที่นี่ · ค่าเงินอยู่ที่ scripts/trips-fixture.mts",
+  dive: {
+    tenantId: D.tenant.id,
+    slug: D.tenant.slug,
+    unitId: D.units.main.id,
+    userIds: D.users.map((u) => u.userId),
+    partyIds: DIVE_PARTIES.map((p) => p.id),
+    tripsUnitId: D.units.trips.id, // TRIPS T0.2
+    productIds: tripProductIds, // TRIPS T0.2 (คงไว้เพื่อความเข้ากันได้)
+    products: tripProducts, // TRIPS T0.2 r2 ▸ <slug> → { productId, options{ชื่อไทย: id}, paxTypes{code: id}, extras{kind: id} } ◂
+  },
   aquarium: {
     tenantId: A.tenant.id,
     slug: A.tenant.slug,
@@ -406,7 +537,7 @@ const expected = {
   counts: summary,
 };
 // ── T0.3 departures ──
-if (tripsDepartures) Object.assign(expected.dive, { departureIds: tripsDepartures.departureIds, resourceIds: tripsDepartures.resourceIds });
+Object.assign(expected.dive, { departureIds: tripsDepartures.departureIds, resourceIds: tripsDepartures.resourceIds });
 // ── /T0.3 departures ──
 writeFileSync(TRIPS_EXPECTED_PATH, JSON.stringify(expected, null, 2) + "\n");
 

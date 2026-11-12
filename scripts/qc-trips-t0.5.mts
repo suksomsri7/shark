@@ -117,7 +117,7 @@ const SELL_CODES = ["VALIDATION", "NOT_FOUND", "FORBIDDEN", "KIND_NOT_SUPPORTED"
   "IDEMPOTENCY_CONFLICT", "RATE_LIMITED", "BUSY", "STATE_CONFLICT"];
 
 // ═══════════════ ตัวคำนวณอ้างอิงของข้อสอบ (BigInt · ไม่พึ่งโค้ดที่ตรวจ) ═══════════════
-const halfUp = (num: bigint, den: bigint): bigint => { const s = (num < 0n) !== (den < 0n) ? -1n : 1n; const a = num < 0n ? -num : num, b = den < 0n ? -den : den; return s * ((2n * a + b) / (2n * b)); };
+const halfUp = (num: bigint, den: bigint): bigint => { const s = (num < BigInt(0)) !== (den < BigInt(0)) ? -BigInt(1) : BigInt(1); const a = num < BigInt(0) ? -num : num, b = den < BigInt(0) ? -den : den; return s * ((BigInt(2) * a + b) / (BigInt(2) * b)); }; // ORACLE-EDIT (ผู้คุม 12 พ.ย.): BigInt() แทน literal — tsconfig target < ES2020
 const refMulDiv = (a: number, b: number, c: number) => Number(halfUp(BigInt(a) * BigInt(b), BigInt(c)));
 const refVatIncl = (amt: number, bp: number) => refMulDiv(amt, bp, 10_000 + bp);
 const rng = (seed: number) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };

@@ -70,6 +70,7 @@ export const TRIP_DEPARTURE_ERROR_CODES = [
   "RESOURCE_IN_USE",
   "AGENT_STOP_SELL_NOT_SUPPORTED",
   "BUSY",
+  "OPTION_INACTIVE", // r2 ▸ ตัวเลือกปิดใช้ (จาก assertProductSellableInTx ของ T0.2) ◂
 ] as const;
 export type TripDepartureErrorCode = (typeof TRIP_DEPARTURE_ERROR_CODES)[number];
 
@@ -83,6 +84,7 @@ export type DepartureFail = {
   used?: number;
   conflict?: DepartureConflict;
   departureIds?: string[];
+  scheduleIds?: string[];
 };
 
 /** ข้อความไทยมาตรฐานต่อรหัส (ผู้เรียกแทนได้เมื่อมีรายละเอียดกว่า) */
@@ -107,6 +109,7 @@ export const DEPARTURE_MESSAGES: Record<TripDepartureErrorCode, string> = {
   RESOURCE_IN_USE: "ทรัพยากรนี้ยังถูกใช้กับรอบที่ยังไม่ถึง",
   AGENT_STOP_SELL_NOT_SUPPORTED: "หยุดขายรายเอเจนซี่ยังไม่เปิดใช้",
   BUSY: "ระบบกำลังทำรายการเดียวกันอยู่ ลองใหม่อีกครั้ง",
+  OPTION_INACTIVE: "ตัวเลือกนี้ปิดใช้อยู่ สร้างรอบไม่ได้",
 };
 
 export function failOf(code: TripDepartureErrorCode, message?: string, extra?: Omit<DepartureFail, "ok" | "code" | "message">): DepartureFail {

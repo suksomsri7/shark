@@ -1508,6 +1508,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hotel.tm30.filed": withAutomation(async () => {}),
   "hotel.guest.purged": withAutomation(async () => {}),
   // ◂ SVC H.4
+  // TRIPS T0.2 ▸ สินค้าทัวร์เปิด/ปิดขาย/เก็บ — ยิงจาก trips/products.ts ใน tx เดียวกับ CAS สถานะ · payload { productId, unitId, productType, status } ล้วน (ไม่มี PII/ชื่อ/ราคา) ·
+  //   งานหลัก no-op (เขียนครบในบริการแล้ว) + กฎอัตโนมัติ/เว็บฮุค (webhook ได้จาก spread ของ AUTOMATION_EVENTS)
+  "trips.product.published": withAutomation(async () => {}),
+  "trips.product.unpublished": withAutomation(async () => {}),
+  "trips.product.archived": withAutomation(async () => {}),
+  // ◂ TRIPS T0.2
   // TRIPS T0.3 ▸ รอบทัวร์ (ใบสั่ง T0.3 §7) — ยิงจาก `trips/departures.ts` ใน tx เดียวกับการเขียน · payload 6 คีย์ (X8) · งานหลัก = no-op (กฎอัตโนมัติ/เว็บฮุค)
   "trips.departure.created": withAutomation(async () => {}),
   "trips.departure.status_changed": withAutomation(async () => {}),

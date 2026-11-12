@@ -173,6 +173,14 @@ export async function auditTx(tx: Tx, g: Gate, action: string, targetType: strin
 
 const iso = (d: Date) => d.toISOString();
 export const ID = z.string().trim().min(1).max(128);
+/** เพดานของคอลัมน์ int4 (Postgres integer) — ตัวเลขจาก input ต้องไม่เกิน (ไม่งั้นเป็น error ดิบของฐาน) */
+export const INT4_MAX = 2_147_483_647;
+/** เวลา "ตอนนี้" ของผู้เรียก — opts.now ต้องเป็น Date ที่ถูกต้อง (ไม่ส่ง = นาฬิกาจริง) · ผิด ⇒ null (ผู้เรียกคืน INVALID_INPUT) */
+export function nowOf(opts?: TripOpts): Date | null {
+  const n = opts?.now;
+  if (n === undefined) return new Date();
+  return n instanceof Date && Number.isFinite(n.getTime()) ? n : null;
+}
 
 // ═══════════════════════ กันชนทรัพยากร ═══════════════════════
 type ClashRow = { departureId: string; productId: string; localDate: string; startsAt: Date; endsAt: Date; title: string | null; resourceName: string | null; resourceId: string };
@@ -215,11 +223,29 @@ export function clashFail(g: Gate, c: ClashRow): DepartureFail {
   return failOf("RESOURCE_CLASH", msg, { conflict });
 }
 
-/** ทรัพยากรของหน่วยนี้ (ไม่ใช่ ⇒ NOT_FOUND · ปิดใช้ ⇒ RESOURCE_INACTIVE) — อ่านผ่าน tx ของผู้เรียก (tenantDb ผูกหน่วย · ไม่ขอ connection ที่สองระหว่างถือ tx) */
-export async function checkResources(tx: Tx, ids: readonly string[]): Promise<DepartureFail | null> {
-  const uniq = [...new Set(ids)];
+/** id ทรัพยากรไม่ซ้ำ เรียงตามตัวอักษร (ลำดับล็อกเดียวกันทุกทาง — กัน deadlock เมื่อสองทางถือชุดเดียวกันคนละลำดับ) */
+export function sortedIds(ids: readonly string[]): string[] {
+  return [...new Set(ids)].sort();
+}
+
+/** ล็อกแถวทรัพยากร FOR SHARE เรียง id ใน tx ของผู้เรียก · คืนแถวที่พบ (ทรัพยากรของหน่วยนี้เท่านั้น) */
+export async function lockResourcesShared(tx: Tx, g: Gate, ids: readonly string[]): Promise<{ id: string; active: boolean; name: string }[]> {
+  const uniq = sortedIds(ids);
+  if (!uniq.length) return [];
+  return tx.$queryRaw<{ id: string; active: boolean; name: string }[]>`
+    SELECT "id", "active", "name" FROM "TripResource"
+    WHERE "id" = ANY(${uniq}::text[]) AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}
+    ORDER BY "id" FOR SHARE`;
+}
+
+/**
+ * ทรัพยากรของหน่วยนี้ (ไม่ใช่ ⇒ NOT_FOUND · ปิดใช้ ⇒ RESOURCE_INACTIVE) — ล็อก FOR SHARE เรียง id ใน tx ของผู้เรียก
+ * ชนกับ FOR UPDATE ของ setResourceActive ⇒ ปิดใช้แทรกกลางการมอบไม่ได้ · ลำดับ: แถวรอบ (1a) → ทรัพยากร → แถวใช้ (ไม่มีวง: setResourceActive ไม่ล็อกรอบ)
+ */
+export async function checkResources(tx: Tx, g: Gate, ids: readonly string[]): Promise<DepartureFail | null> {
+  const uniq = sortedIds(ids);
   if (!uniq.length) return null;
-  const rows = await tx.tripResource.findMany({ where: { id: { in: uniq } }, select: { id: true, active: true, name: true } });
+  const rows = await lockResourcesShared(tx, g, uniq);
   if (rows.length !== uniq.length) return failOf("NOT_FOUND", "ไม่พบทรัพยากรในหน่วยนี้");
   const off = rows.find((r) => !r.active);
   if (off) return failOf("RESOURCE_INACTIVE", `"${off.name}" ปิดใช้อยู่`);
@@ -251,7 +277,7 @@ export async function assignUseTx(tx: Tx, g: Gate, dep: { id: string; startsAt: 
 }
 
 /** ย้ายช่วงแถวใช้ทรัพยากร active ของรอบ (แก้เวลา) — ล็อกเรียง id (ชั้น 1c) · ชน ⇒ RESOURCE_CLASH (ผู้เรียกย้อนทั้ง tx) */
-export async function moveUsesTx(tx: Tx, g: Gate, departureId: string, start: Date, end: Date): Promise<DepartureFail | null> {
+export async function moveUsesTx(tx: Tx, g: Gate, departureId: string, start: Date, end: Date, now: Date): Promise<DepartureFail | null> {
   const uses = await tx.$queryRaw<{ id: string; resourceId: string }[]>`
     SELECT "id", "resourceId" FROM "TripResourceUse"
     WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "departureId" = ${departureId} AND "active"
@@ -260,7 +286,7 @@ export async function moveUsesTx(tx: Tx, g: Gate, departureId: string, start: Da
     const pre = await findClash(tx, g, u.resourceId, start, end, departureId);
     if (pre) return clashFail(g, pre);
     const res = await underSavepoint(tx, () =>
-      tx.$executeRaw`UPDATE "TripResourceUse" SET "startsAt" = ${iso(start)}::timestamp, "endsAt" = ${iso(end)}::timestamp, "updatedAt" = ${iso(new Date())}::timestamp
+      tx.$executeRaw`UPDATE "TripResourceUse" SET "startsAt" = ${iso(start)}::timestamp, "endsAt" = ${iso(end)}::timestamp, "updatedAt" = ${iso(now)}::timestamp
         WHERE "id" = ${u.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "active"`,
     );
     if (!res.ok) {
@@ -275,8 +301,8 @@ export async function moveUsesTx(tx: Tx, g: Gate, departureId: string, start: Da
 }
 
 /** ปิดแถวใช้ทรัพยากรทั้งหมดของรอบ (ยกเลิกรอบ) — ไม่ลบ */
-export async function releaseUsesTx(tx: Tx, g: Gate, departureId: string): Promise<number> {
-  return tx.$executeRaw`UPDATE "TripResourceUse" SET "active" = false, "updatedAt" = ${iso(new Date())}::timestamp
+export async function releaseUsesTx(tx: Tx, g: Gate, departureId: string, now: Date): Promise<number> {
+  return tx.$executeRaw`UPDATE "TripResourceUse" SET "active" = false, "updatedAt" = ${iso(now)}::timestamp
     WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "departureId" = ${departureId} AND "active"`;
 }
 
@@ -310,7 +336,7 @@ export async function lockDeparture(tx: Tx, g: Gate, id: string): Promise<Locked
 // ═══════════════════════ บริการทรัพยากร ═══════════════════════
 export const RESOURCE_KINDS = ["BOAT", "VAN", "GUIDE", "OTHER"] as const;
 const NAME = z.string().trim().min(1).max(80);
-const SEATS = z.number().int().min(1).nullable();
+const SEATS = z.number().int().min(1).max(INT4_MAX).nullable();
 const HR = z.string().trim().min(1).max(128).nullable();
 
 const createResourceInput = z.strictObject({ unitId: ID, kind: z.enum(RESOURCE_KINDS), name: NAME, seats: SEATS.optional(), hrEmployeeId: HR.optional() });
@@ -366,7 +392,8 @@ export async function setResourceActive(ctx: TripCtx, input: unknown, opts?: Tri
   const p = setActiveInput.safeParse(input);
   if (!p.success) return invalid(p.error);
   const v = p.data;
-  const now = opts?.now ?? new Date();
+  const now = nowOf(opts);
+  if (!now) return failOf("INVALID_INPUT", "เวลาไม่ถูกต้อง");
   return inTx(g, async (tx) => {
     const r = await tx.$queryRaw<{ id: string; active: boolean }[]>`
       SELECT "id", "active" FROM "TripResource" WHERE "id" = ${v.resourceId} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} FOR UPDATE`;
@@ -378,7 +405,19 @@ export async function setResourceActive(ctx: TripCtx, input: unknown, opts?: Tri
         JOIN "TripDeparture" d ON d."id" = u."departureId" AND d."tenantId" = u."tenantId" AND d."unitId" = u."unitId"
         WHERE u."tenantId" = ${g.tenantId} AND u."unitId" = ${g.unitId} AND u."resourceId" = ${v.resourceId} AND u."active"
           AND d."status" <> 'CANCELLED' AND d."startsAt" > ${iso(now)}::timestamp`;
-      if (busy.length) return failOf("RESOURCE_IN_USE", undefined, { departureIds: busy.map((b) => b.departureId).sort() });
+      // กฎซ้ำที่ยังไม่พักและยังไม่จบ (dateTo ว่าง หรือไม่ก่อนเมื่อวานตาม UTC — เผื่อเขตเวลา) ที่อ้างทรัพยากรนี้ ⇒ งานรายวันจะมอบต่อ
+      const scheds = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "TripSchedule"
+        WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "pausedAt" IS NULL AND ${v.resourceId} = ANY("resourceIds")
+          AND ("dateTo" IS NULL OR "dateTo" >= ${iso(now).slice(0, 10)}::date - 1)
+        ORDER BY "id"`;
+      if (busy.length || scheds.length) {
+        return failOf(
+          "RESOURCE_IN_USE",
+          `ทรัพยากรนี้ยังถูกใช้กับรอบที่ยังไม่ถึง ${busy.length} รอบ และกฎซ้ำที่ยังเปิดอยู่ ${scheds.length} กฎ — ถอนออกหรือพักกฎก่อน`,
+          { departureIds: busy.map((b) => b.departureId).sort(), scheduleIds: scheds.map((x) => x.id) },
+        );
+      }
     }
     await tx.tripResource.updateMany({ where: { id: v.resourceId }, data: { active: v.active } });
     await auditTx(tx, g, "trips.resource.activate", "TripResource", v.resourceId, { active: v.active });
@@ -410,7 +449,7 @@ export async function assignResource(ctx: TripCtx, input: unknown): Promise<{ ok
   return inTx(g, async (tx) => {
     const dep = await lockDeparture(tx, g, v.departureId);
     if (!dep) return failOf("NOT_FOUND");
-    const bad = await checkResources(tx, [v.resourceId]);
+    const bad = await checkResources(tx, g, [v.resourceId]);
     if (bad) return bad;
     if (dep.status === "CANCELLED") return failOf("BAD_STATE", "รอบนี้ยกเลิกแล้ว");
     const r = await assignUseTx(tx, g, dep, v.resourceId);

@@ -821,7 +821,8 @@ try {
     ok(out.length === 0, `trips import โมดูลอื่น: ${out.join(", ")}`);
     const into = ["agency", "supplier", "ticket"].flatMap((m) => walk(`src/lib/modules/${m}`)).filter((f) => /@\/lib\/modules\/trips/.test(read(f)));
     ok(into.length === 0, `import trips: ${into.join(", ")}`);
-    ok(changedFiles(["scripts/fitness.mts"]).length === 0, "fitness.mts ถูกแก้ (ORACLE-EDIT ผู้คุมเท่านั้น)");
+    // ORACLE-EDIT S-8 (ผู้คุม 12 พ.ย.): ผู้คุมแก้ fitness.mts เอง (F5 baseline 50→51 · trips/jobs.ts ของ T0.3) — ตรวจว่า baseline ไม่เกิน 51 แทนการห้ามแก้ไฟล์
+    ok(/f5RawPrisma:\s*(50|51)\b/.test(read("scripts/fitness.mts")), "fitness F5 baseline ถูกขยับเกิน 51 (ORACLE-EDIT ผู้คุมเท่านั้น)");
   });
   await st("S-9", "permissions: trips.settings.edit + trips.settings.money ลงทะเบียนพร้อมป้ายไทย", () => {
     const keys = PERM?.PERMISSION_KEYS;
@@ -840,7 +841,7 @@ try {
     eq([is("W01"), is("W46"), is("W47"), is("DEPOSIT_RETURN_DAYS")], [true, true, false, false], "isTourRuleId");
   });
   await st("S-12", "ไม่แตะ POS · โรงแรม · หอ · จองคิว · defs/rooms · defs/booking · legal/th-rental-2568 · seed/ฟิกซ์เจอร์ P0.1", () => {
-    const ch = changedFiles(["src/lib/modules/pos", "src/lib/modules/hotel", "src/lib/modules/dorm", "src/lib/modules/booking", "src/lib/core/settings/defs/rooms.ts", "src/lib/core/settings/defs/booking.ts", "src/lib/core/settings/legal/th-rental-2568.ts", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts"]); // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย.): เอา qc-trips-p0.1.mts ออก — ผู้คุมแก้ไฟล์นั้นเอง (cast env)
+    const ch = changedFiles(["src/lib/modules/pos", "src/lib/modules/hotel", "src/lib/modules/dorm", "src/lib/modules/booking", "src/lib/core/settings/defs/rooms.ts", "src/lib/core/settings/defs/booking.ts", "src/lib/core/settings/legal/th-rental-2568.ts"]); // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย. รอบ 2): seed/ฟิกซ์เจอร์ถูกขยายโดย T0.2+ ตามใบสั่ง — เอาออกจากรายการ · เดิม: ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย.): เอา qc-trips-p0.1.mts ออก — ผู้คุมแก้ไฟล์นั้นเอง (cast env)
     ok(ch.length === 0, `แตะ: ${ch.join(", ")}`);
   });
 
