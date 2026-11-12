@@ -1429,6 +1429,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   ยังไม่มีผลข้างเคียง (แจ้งเพื่อน/พนักงาน = H2.10) ⇒ no-op ปิด event เป็น DONE + จุดให้ automation/เว็บฮุค · ส่งซ้ำได้
   "hr.shift.swap_requested": withAutomation(async () => {}),
   "hr.shift.swap_approved": withAutomation(async () => {}),
+  // HR H2.7 ▸ ตัดสินใบลา (ยิงใน tx เดียวกับสถานะ + สมุดวันลา — hr/service.ts decideLeave/cancelLeave/requestLeave · hr/leave.ts applyLeaveDecision ·
+  //   key `hr.leave.decided#<leaveId>#<status>` · payload id/วัน/สถานะ) · consumer no-op (ปิด DONE + กฎอัตโนมัติ/เว็บฮุค) — ส่งซ้ำไม่มีผล
+  "hr.leave.decided": withAutomation(async () => {}),
+  // ◂ HR H2.7
   // ◂ HR H2.3
   // HR H4.4 ▸ วงจรพนักงาน (hr/lifecycle.ts — ยิงใน tx เดียวกับงานหลัก · payload id/วันที่ล้วน): ครบกำหนด `…#<พนักงาน>#<ชนิด>#<วันที่>` ·
   //   เริ่มรายการตรวจ `…#<พนักงาน>#<ชนิด>#<ms ของแถวแรก>` · สิ้นสุดการจ้าง `…#<พนักงาน>#<ms ของ offboardedAt>` — งานหลักไม่มี (no-op) ·

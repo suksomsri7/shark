@@ -333,7 +333,11 @@ try {
   const A = HQC.attendance;
   const L = HQC.leave;
   const onLeave = new Set<string>();
-  for (let o = L.approved.fromOffset; o <= L.approved.toOffset; o++) onLeave.add(`${L.approved.employee}:${addDays(D.today, o)}`);
+  // HR H2.7 r2 ▸ ใบลาที่อนุมัติแล้ว (2 วัน) ต้องอยู่ในปีการลาเดียวกันเสมอ (review m7 — วันที่ 6 ม.ค. เคยข้ามปี ⇒ crossYear) — ข้ามปีเมื่อไร เลื่อนทั้งคู่ถอยไป 1 วัน ◂
+  const lvShift = addDays(D.today, L.approved.fromOffset).slice(0, 4) !== addDays(D.today, L.approved.toOffset).slice(0, 4) ? -1 : 0;
+  const lvFrom = L.approved.fromOffset + lvShift;
+  const lvTo = L.approved.toOffset + lvShift;
+  for (let o = lvFrom; o <= lvTo; o++) onLeave.add(`${L.approved.employee}:${addDays(D.today, o)}`);
   let clockRows = 0;
   const shiftPeople = HQC.employees.filter((e) => e.shift);
   for (let off = -A.days; off <= -1; off++) {
@@ -355,7 +359,7 @@ try {
   q.chk("A2", "มีสายครั้งเดียวในชุด (น้ำฝน)", lateCount === 1, 1, lateCount);
 
   // ═══════════════════ 9. ลา: 1 อนุมัติแล้ว (ผู้ตัดสิน = ผู้จัดการ) + 1 รออนุมัติ ═══════════════════
-  const lvA = await hr.requestLeave(ctx, { employeeId: emp[L.approved.employee], type: L.approved.type, fromDate: addDays(D.today, L.approved.fromOffset), toDate: addDays(D.today, L.approved.toOffset), reason: L.approved.reason });
+  const lvA = await hr.requestLeave(ctx, { employeeId: emp[L.approved.employee], type: L.approved.type, fromDate: addDays(D.today, lvFrom), toDate: addDays(D.today, lvTo), reason: L.approved.reason }); // HR H2.7 r2 ▸ lvFrom/lvTo ◂
   await hr.decideLeave(ctx, lvA.id, "APPROVED", uid(L.decider));
   const lvP = await hr.requestLeave(ctx, { employeeId: emp[L.pending.employee], type: L.pending.type, fromDate: addDays(D.today, L.pending.fromOffset), toDate: addDays(D.today, L.pending.toOffset), reason: L.pending.reason });
   const leaves = await P.hrLeave.findMany({ where: { tenantId }, select: { id: true, status: true, decidedById: true } });

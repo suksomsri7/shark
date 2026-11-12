@@ -1,0 +1,96 @@
+# H2.7 r2 green (12 Nov) — lane DB via qc-hr.sh
+[env] qc-hr-h2.7 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.7] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.7] modules: leave=loaded · leave-rules=loaded · holidays=loaded
+  ✅ [H2.7-S1.1] holiday JSON shape
+  ✅ [H2.7-S1.3] leave-rules.ts pure
+  ✅ [H2.7-S1.4] lock order hr-leave → emp → roster
+  ✅ [H2.7-S1.5] ledger + event in tx · append-only · bodies in service.ts
+  ✅ [H2.7-S1.6] actions · testids · inventory
+  ✅ [H2.7-S11.2] frozen files unchanged (n/a in base)
+  ✅ [H2.7-S11.3] hot files = base + hunks (n/a in base)
+  ✅ [H2.7-S11.1] payroll-rules.ts sha
+  ✅ [H2.7-S2.1] leave year vectors
+  ✅ [H2.7-S2.2] countLeaveDays vectors
+  ✅ [H2.7-S2.3] hourlyLeaveDays vectors
+  ✅ [H2.7-S2.4] grantDays vectors
+  ✅ [H2.7-S2.5] carry/expire vectors
+  ✅ [H2.7-S2.6] LEAVE_TEXT = brief §3
+  ✅ [H2.7-S1.2] JSON ⊇ repo list · extras sourced · pending
+(node:3223925) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H2.7-S3.1] from > to ⇒ range
+  ✅ [H2.7-S3.2] 4-year range ⇒ tooLong
+  ✅ [H2.7-S3.3] overlap rules (AM+PM ok)
+  ✅ [H2.7-S3.4] bad policy ×4 ⇒ policyNf
+  ✅ [H2.7-S3.5] half / hours refusals
+  ✅ [H2.7-S3.6] crossYear ×2 · Apr year 2.0
+  ✅ [H2.7-S3.7] employment · eligibility
+  ✅ [H2.7-S3.8] holiday-only range ⇒ zeroDays
+  ✅ [H2.7-S3.9] pending reserves · unlimited
+  ✅ [H2.7-S3.10] legacy w/o policy ⇒ 3.0 · no ledger
+  ✅ [H2.7-S3.11] legacy ⇒ policy by category
+  ✅ [H2.7-S4.1] rostered weekend ⇒ 2.0
+  ✅ [H2.7-S4.2] template day off ⇒ 1.0
+  ✅ [H2.7-S4.3] holidays out ⇒ 2.0
+  ✅ [H2.7-S4.4] AM 0.5 · 3 h 0.3
+  ✅ [H2.7-S4.5] borrowed into u2 holiday ⇒ zeroDays
+  ✅ [H2.7-S5.1] approve ⇒ GRANT once + USE use:<id>
+  ✅ [H2.7-S5.2] leaveBalances keys + vectors
+  ✅ [H2.7-S5.3] revoke ⇒ one use-revert · balance back
+  ✅ [H2.7-S5.4] reject / cancel PENDING ⇒ no ledger
+  ✅ [H2.7-S5.5] short at decide ⇒ balanceDecide · PENDING
+  ✅ [H2.7-S5.6] owner-auto ⇒ USE + event
+  ✅ [H2.7-S5.7] chain approve · reject · short
+  ✅ [H2.7-S6.1] CARRY 5.0 · cap 3.0
+  ✅ [H2.7-S6.2] EXPIRE · 6.0
+  ✅ [H2.7-S6.3] job re-run ×3 ⇒ ledger unchanged
+  ✅ [H2.7-S6.4] job writes nothing in sys2
+  ✅ [H2.7-S7.1] attachLeaveFile refusals + ok
+  ✅ [H2.7-S7.2] attachment link matrix · viewer-bound
+  ✅ [H2.7-S7.3] leaveDetail matrix · keys · reason
+  ✅ [H2.7-S7.4] balances matrix · my = own
+  ✅ [H2.7-S7.5] needsAttachment flag
+  ✅ [H2.7-S7.6] payload keys
+  ✅ [H2.7-S8.1] consumer = withAutomation
+  ✅ [H2.7-S8.2] one label · WEBHOOK_EVENTS once
+  ✅ [H2.7-S8.3] replay ×4 ⇒ no change
+  ✅ [H2.7-S8.4] re-emit same key ⇒ 1 row
+  ✅ [H2.7-S8.5] one event per decision
+  ✅ [H2.7-S9.1] 5 approvals (pool-safe) ⇒ 1 ok · 1 USE · 1 event
+  ✅ [H2.7-S9.2] approve ∥ revoke ⇒ REJECTED · 1 revert
+  ✅ [H2.7-S9.3] 5 requests on one balance ⇒ queued · 1 row
+  ✅ [H2.7-S9.4] leave decide ∥ swap apply on a held roster key
+  ✅ [H2.7-S10.1] holidayPreset CE = BE · 2028 null
+  ✅ [H2.7-S10.2] preset: missing only · idempotent
+  ✅ [H2.7-S10.3] preset permission matrix · presetNone
+  ✅ [H2.7-S10.4] dayClassOf / holidaysBetween
+  ✅ [H2.7-S12.1] carry = transfer · Y−1 pending ⇒ job waits · back-dated Y−1 refused
+  ✅ [H2.7-S12.2] carry only for leaves ending ≤ expiry
+  ✅ [H2.7-S12.3] expiry waits for pending ≤ expiry ⇒ EXPIRE −2 · 10.0
+  ✅ [H2.7-S12.4] revoke after EXPIRE ⇒ expire-late once · 10.0
+  ✅ [H2.7-S12.5] revert = USE row's year · ysm change refused
+  ✅ [H2.7-S12.8] days recounted at approval (holiday added/removed)
+  ✅ [H2.7-S12.9] holiday on a published roster day counts
+  ✅ [H2.7-S12.10] attachments off: refused · nothing written · no link
+  ✅ [H2.7-S12.7] job quiet: 2nd run 0 tx · bounded · ineligible skipped
+  ✅ [H2.7-S12.6] property: no op sequence makes a year negative
+  ✅ [H2.7-S11.4] half-day blocks whole day
+  ✅ [H2.7-S11.5] self-decision refused (hotfix text)
+  ✅ [H2.7-X1.1] 5 identical parallel requests ⇒ 1 row
+  ✅ [H2.7-X2.1] other tenant ⇒ refused · unchanged
+  ✅ [H2.7-S7.7] every refusal = fixed Thai text
+  ✅ [H2.7-X12.1] fitness + fitness-hr ± env
+RESIDUE none (tenants=2 users=17)
+  ✅ [H2.7-Z1] residue none
+BASE-EXPECTATION 7/78 as registered (RED-by-design 71 · GREEN controls 7) · off: H2.7-S1.1(RED→pass) H2.7-S1.3(RED→pass) H2.7-S1.4(RED→pass) H2.7-S1.5(RED→pass) H2.7-S1.6(RED→pass) H2.7-S2.1(RED→pass) H2.7-S2.2(RED→pass) H2.7-S2.3(RED→pass) H2.7-S2.4(RED→pass) H2.7-S2.5(RED→pass) H2.7-S2.6(RED→pass) H2.7-S1.2(RED→pass) H2.7-S3.1(RED→pass) H2.7-S3.2(RED→pass) H2.7-S3.3(RED→pass) H2.7-S3.4(RED→pass) H2.7-S3.5(RED→pass) H2.7-S3.6(RED→pass) H2.7-S3.7(RED→pass) H2.7-S3.8(RED→pass) H2.7-S3.9(RED→pass) H2.7-S3.10(RED→pass) H2.7-S3.11(RED→pass) H2.7-S4.1(RED→pass) H2.7-S4.2(RED→pass) H2.7-S4.3(RED→pass) H2.7-S4.4(RED→pass) H2.7-S4.5(RED→pass) H2.7-S5.1(RED→pass) H2.7-S5.2(RED→pass) H2.7-S5.3(RED→pass) H2.7-S5.4(RED→pass) H2.7-S5.5(RED→pass) H2.7-S5.6(RED→pass) H2.7-S5.7(RED→pass) H2.7-S6.1(RED→pass) H2.7-S6.2(RED→pass) H2.7-S6.3(RED→pass) H2.7-S6.4(RED→pass) H2.7-S7.1(RED→pass) H2.7-S7.2(RED→pass) H2.7-S7.3(RED→pass) H2.7-S7.4(RED→pass) H2.7-S7.5(RED→pass) H2.7-S7.6(RED→pass) H2.7-S8.1(RED→pass) H2.7-S8.2(RED→pass) H2.7-S8.3(RED→pass) H2.7-S8.4(RED→pass) H2.7-S8.5(RED→pass) H2.7-S9.1(RED→pass) H2.7-S9.2(RED→pass) H2.7-S9.3(RED→pass) H2.7-S9.4(RED→pass) H2.7-S10.1(RED→pass) H2.7-S10.2(RED→pass) H2.7-S10.3(RED→pass) H2.7-S10.4(RED→pass) H2.7-S12.1(RED→pass) H2.7-S12.2(RED→pass) H2.7-S12.3(RED→pass) H2.7-S12.4(RED→pass) H2.7-S12.5(RED→pass) H2.7-S12.8(RED→pass) H2.7-S12.9(RED→pass) H2.7-S12.10(RED→pass) H2.7-S12.7(RED→pass) H2.7-S12.6(RED→pass) H2.7-X1.1(RED→pass) H2.7-X2.1(RED→pass) H2.7-S7.7(RED→pass)
+
+===== qc-hr-h2.7 ===== passed 78/78 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.7","total":78,"passed":78,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":71,"baseGreen":7,"offBase":["H2.7-S1.1(RED→pass)","H2.7-S1.3(RED→pass)","H2.7-S1.4(RED→pass)","H2.7-S1.5(RED→pass)","H2.7-S1.6(RED→pass)","H2.7-S2.1(RED→pass)","H2.7-S2.2(RED→pass)","H2.7-S2.3(RED→pass)","H2.7-S2.4(RED→pass)","H2.7-S2.5(RED→pass)","H2.7-S2.6(RED→pass)","H2.7-S1.2(RED→pass)","H2.7-S3.1(RED→pass)","H2.7-S3.2(RED→pass)","H2.7-S3.3(RED→pass)","H2.7-S3.4(RED→pass)","H2.7-S3.5(RED→pass)","H2.7-S3.6(RED→pass)","H2.7-S3.7(RED→pass)","H2.7-S3.8(RED→pass)","H2.7-S3.9(RED→pass)","H2.7-S3.10(RED→pass)","H2.7-S3.11(RED→pass)","H2.7-S4.1(RED→pass)","H2.7-S4.2(RED→pass)","H2.7-S4.3(RED→pass)","H2.7-S4.4(RED→pass)","H2.7-S4.5(RED→pass)","H2.7-S5.1(RED→pass)","H2.7-S5.2(RED→pass)","H2.7-S5.3(RED→pass)","H2.7-S5.4(RED→pass)","H2.7-S5.5(RED→pass)","H2.7-S5.6(RED→pass)","H2.7-S5.7(RED→pass)","H2.7-S6.1(RED→pass)","H2.7-S6.2(RED→pass)","H2.7-S6.3(RED→pass)","H2.7-S6.4(RED→pass)","H2.7-S7.1(RED→pass)","H2.7-S7.2(RED→pass)","H2.7-S7.3(RED→pass)","H2.7-S7.4(RED→pass)","H2.7-S7.5(RED→pass)","H2.7-S7.6(RED→pass)","H2.7-S8.1(RED→pass)","H2.7-S8.2(RED→pass)","H2.7-S8.3(RED→pass)","H2.7-S8.4(RED→pass)","H2.7-S8.5(RED→pass)","H2.7-S9.1(RED→pass)","H2.7-S9.2(RED→pass)","H2.7-S9.3(RED→pass)","H2.7-S9.4(RED→pass)","H2.7-S10.1(RED→pass)","H2.7-S10.2(RED→pass)","H2.7-S10.3(RED→pass)","H2.7-S10.4(RED→pass)","H2.7-S12.1(RED→pass)","H2.7-S12.2(RED→pass)","H2.7-S12.3(RED→pass)","H2.7-S12.4(RED→pass)","H2.7-S12.5(RED→pass)","H2.7-S12.8(RED→pass)","H2.7-S12.9(RED→pass)","H2.7-S12.10(RED→pass)","H2.7-S12.7(RED→pass)","H2.7-S12.6(RED→pass)","H2.7-X1.1(RED→pass)","H2.7-X2.1(RED→pass)","H2.7-S7.7(RED→pass)"]}

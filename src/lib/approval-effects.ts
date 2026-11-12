@@ -195,6 +195,19 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
   }
   // ◂ HR H2.3
 
+  // HR H2.7 ▸ ใบลา (entityId = HrLeave.id) — systemId จากแถวใบลา · facade hr (dynamic import) · applyLeaveDecision: ล็อกต่อใบ → พนักงาน → ตารางกะ ·
+  //   สถานะ ≠ PENDING / คำขอไม่ตรงผล = เงียบ (ส่งซ้ำปลอดภัย) · อนุมัติแต่วันลาไม่พอ = ใบลา CANCELLED + audit BALANCE (ไม่ throw — Q4) ·
+  //   อนุมัติ = USE ในสมุด + hr.leave.decided ใน tx เดียวกัน · ข้อผิดพลาดฐานข้อมูล = throw ⇒ event retry ·
+  //   กิ่ง updateMany เดิมด้านล่างไม่ถูกเรียกแล้ว (คงไว้ตามไฟล์ฐาน — ด่าน "ฐาน + บล็อกเดียว" ของ qc-hr-h2.7 S11.3)
+  if (entityType === "HrLeave") {
+    if (!requestId) return;
+    const lv = await prisma.hrLeave.findFirst({ where: { id: entityId, tenantId: evt.tenantId }, select: { systemId: true } });
+    if (!lv) return;
+    const hr = await import("@/lib/modules/hr");
+    await hr.applyLeaveDecision({ tenantId: evt.tenantId, systemId: lv.systemId, leaveId: entityId, requestId, approved });
+    return;
+  }
+  // ◂ HR H2.7
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

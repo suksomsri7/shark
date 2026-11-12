@@ -1,0 +1,4 @@
+  ❌ [H2.7-S12.21] job skips employees whose contract ended before the leave year — expected no 2031 rows (contractEndAt) · 2030 grant kept | actual none 2031=3
+  ❌ [H2.7-S12.20] late-filed pending leave does not hold EXPIRE back — expected EXPIRE −5.0 despite late-filed pending · then 10 − 2 = 8.0 | actual expired,w31 x=null ok w31=13.0
+  ❌ [H2.7-S12.19] quota 10→3 ∥ request / job ⇒ GRANT uses the locked row (3.0) — expected request GRANT 3.0 · job GRANT 3.0 | actual req,job req=ok 10.0 seen=1 · job=10.0 seen=1
+===== qc-hr-h2.7 ===== passed 86/89 (QC_FORCE)
