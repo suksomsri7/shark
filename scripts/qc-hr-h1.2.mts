@@ -150,7 +150,9 @@ const R7_FIELDS = ["lat", "lng", "accuracyM", "photoKey", "deviceId", "attachmen
 /** every H1.2 column name that may not surface in an existing DTO */
 const H12_NEW_KEYS = ["rosterEntryId", "source", ...R7_FIELDS, "policyId", "days", "halfDay", "hours"];
 /** keys H0.7 / H1.1 add by design — dropped before the S5 digests (see FROZEN above) */
-const PRIOR_WO_KEYS = new Set(["filedById", "linkApprovedById", "unitId", "employmentStatus", "probationEndAt", "contractEndAt", "filedBy"]);
+// ORACLE-EDIT (builder H4.4 · not in the Q13 list — controller to confirm): + the 4 additive HrEmployee columns of H4.4 R1 (offboard*), which
+//   `employee: true` in listAttendance/listLeaves now carries (null in the fixture) — same mechanism as the H0.7/H1.1 keys
+const PRIOR_WO_KEYS = new Set(["filedById", "linkApprovedById", "unitId", "employmentStatus", "probationEndAt", "contractEndAt", "filedBy", "offboardedAt", "offboardReason", "offboardNote", "offboardedById"]);
 const SETTINGS_ACTION_NAMES = ["createShiftAction", "updateShiftAction", "archiveShiftAction", "createLeavePolicyAction", "updateLeavePolicyAction", "archiveLeavePolicyAction", "upsertHolidayAction", "deleteHolidayAction"] as const;
 
 // ── S5.6 MONTHLY fixture — copied verbatim from qc-hr-h1.1 (S6.5) · values frozen there ──
