@@ -2078,7 +2078,7 @@ export async function setPayrollEngine(
     const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
     if (!sys) return { ok: false as const, code: "FAILED" as const, reason: ENGINE_FAILED_TH };
     if (version === 2) {
-      const law = await loadLawSet(lawDayOf(now), tx);
+      const law = await loadLawSet(lawDayOf(now), tx as unknown as Pick<Prisma.TransactionClient, "hrLawTable">);
       if (!law.ok) return { ok: false as const, code: law.code, reason: LAW_MSG[law.code] };
     }
     const before = payrollEngineOf(sys.settings);
