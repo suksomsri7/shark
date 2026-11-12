@@ -4,11 +4,12 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
-import { formatDateTh, thaiDateKey } from "@/lib/ui/date";
+import { formatDateTh, formatThaiDate, thaiDateKey } from "@/lib/ui/date";
 import { hrViewerOf } from "./privacy";
 import {
   canOffboard,
   canSeeLifecycle,
+  canSeeLifecycleOps,
   getLifecyclePolicy,
   isLinkedTo,
   LIFE_MSG,
@@ -37,7 +38,8 @@ type Life = Awaited<ReturnType<typeof loadLifecycleForViewer>>;
 const muted = "text-[color:var(--color-muted)]";
 const btn = "btn btn-primary min-h-[44px] text-sm";
 const ghost = "btn btn-ghost min-h-[44px] text-sm";
-const dateTh = (day: string | null | undefined) => (day ? formatDateTh(`${day}T00:00:00+07:00`) : "—");
+// VIS-1 G: วันที่มีปี = พ.ศ. รูปสั้น (formatThaiDate "26 พ.ย. 69") เหมือนหน้าอื่นของ HR · ไม่มีปี = "26 พ.ย."
+const dateTh = (day: string | null | undefined) => (day ? formatThaiDate(`${day}T00:00:00+07:00`) : "—");
 const dayMs = (day: string) => new Date(`${day}T00:00:00Z`).getTime();
 const daysFrom = (today: string, day: string) => Math.round((dayMs(day) - dayMs(today)) / 86_400_000);
 
@@ -56,7 +58,7 @@ export async function LifecycleMsg({ code }: { code?: string }) {
 }
 
 // ═══════════════════════════ ทะเบียน: แผง "ต้องจัดการ" ═══════════════════════════
-/** แผง 4 ช่องของภาพ 02 — ผู้ดูข้อมูลบันทึก (OWNER/คีย์ตรง) เท่านั้น · คนอื่นไม่เห็นแผง */
+/** แผง 4 ช่องของภาพ 02 — ผู้ดูข้อมูลบันทึก (OWNER/คีย์ตรง) + ผู้สิ้นสุดการจ้างได้ในสาขาตัวเอง (VIS-1 B1) · คนอื่นไม่เห็นแผง */
 export async function LifecycleDuePanel({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const due = await lifecycleDue({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth));
@@ -142,70 +144,103 @@ function Task({ t, systemId, employeeId, item, today }: { t: Awaited<ReturnType<
   );
 }
 
-/** ส่วนวงจรพนักงานในหน้าโปรไฟล์ — ผู้ดูข้อมูลบันทึกเห็นทั้งหมด · ผู้สิ้นสุดการจ้างได้ (ด่านปุ่มลบเดิม) เห็นปุ่มสิ้นสุด · คนอื่นไม่เห็นอะไรเพิ่ม */
-export async function LifecycleProfile({ systemId, employeeId, life, active }: ProfileProps) {
+/**
+ * VIS-1 B2 ▸ แถบทดลองงาน/สัญญา/สิ้นสุดการจ้าง — บนสุดของโปรไฟล์ เหนือฟอร์มแก้ไข (ภาพ 02) · life = null ⇒ ไม่แสดง (ผู้ดูไม่มีสิทธิ์/นอกสาขา) ·
+ *   ปุ่ม "ผ่านทดลองงาน" เฉพาะผู้ดูข้อมูลบันทึก (confirmProbation) ◂
+ */
+export async function LifecycleBanner({ systemId, employeeId, life, active }: ProfileProps) {
+  if (!life) return null;
   const auth = await requireTenant();
   const viewer = hrViewerOf(auth);
   const ctx = { tenantId: auth.active.tenantId, systemId };
-  // ผู้ดูคือพนักงานคนนี้เอง (ผูกบัญชี) — ไม่แสดงปุ่มที่ทำกับตัวเองไม่ได้ (lifecycle ปฏิเสธซ้ำอยู่แล้ว)
   const isSelf = await isLinkedTo(ctx, viewer.userId, employeeId);
-  const records = !!life && canSeeLifecycle(viewer);
-  const offOk = canOffboard(viewer) && active && !isSelf;
-  if (!records && !offOk) return null;
+  const records = canSeeLifecycle(viewer);
   const t = await getTranslations("hr.life");
   const today = thaiDateKey(new Date());
-  const [check, notes, policy] = records
-    ? await Promise.all([listChecklist(ctx, viewer, employeeId), listReviewNotes(ctx, viewer, employeeId), getLifecyclePolicy(ctx)])
-    : [null, null, await getLifecyclePolicy(ctx)];
   const hidden = (
     <>
       <input type="hidden" name="systemId" value={systemId} />
       <input type="hidden" name="employeeId" value={employeeId} />
     </>
   );
-  const probation = life?.status === "PROBATION" && life.probationEndAt ? life.probationEndAt : null;
+  const probation = life.status === "PROBATION" && life.probationEndAt ? life.probationEndAt : null;
   const left = probation ? daysFrom(today, probation) : 0;
   const leftText = left > 0 ? t("banner.left", { n: left }) : left === 0 ? t("banner.today") : t("banner.over", { n: -left });
+  const ended = !!life.offboard && !active;
+  const cLeft = life.contractEndAt ? daysFrom(today, life.contractEndAt) : 0;
+  const cLeftText = cLeft > 0 ? t("banner.left", { n: cLeft }) : cLeft === 0 ? t("banner.today") : t("banner.over", { n: -cLeft });
+  const tone = ended ? "border-[color:var(--color-line)] bg-[color:var(--color-stage)]" : "border-[color:var(--color-accent)]";
+  const head = ended ? "" : "text-[color:var(--color-accent)]";
+  if (!(probation || ended || life.contractEndAt)) return null;
+  return (
+    <div data-testid="hr-life-banner" className={`flex flex-wrap items-center gap-3 rounded-2xl border-[1.5px] px-4 py-3 ${tone}`}>
+      <div className="min-w-0 flex-1">
+        {probation ? (
+          <b className="block text-[color:var(--color-accent)]">{t("banner.probation", { date: dateTh(probation), left: leftText })}</b>
+        ) : ended ? (
+          <b className={`block ${head}`}>{t("ended.title")}</b>
+        ) : (
+          <b className={`block ${head}`}>
+            {t("banner.contract", { date: dateTh(life.contractEndAt) })} · {cLeftText}
+          </b>
+        )}
+        <small className="mt-1 block text-[color:var(--color-ink-soft)]">
+          {life.startDate ? t("banner.start", { date: dateTh(life.startDate) }) : ""}
+          {probation && life.contractEndAt ? ` · ${t("banner.contract", { date: dateTh(life.contractEndAt) })}` : ""}
+        </small>
+        {ended && life.offboard && (
+          <small className="mt-1 block">
+            {t("ended.detail", { date: dateTh(life.offboard.endDate), reason: life.offboard.reason ? t(`reason.${life.offboard.reason}`) : "—" })}
+            {life.offboard.note ? ` · ${t("ended.note", { note: life.offboard.note })}` : ""}
+          </small>
+        )}
+      </div>
+      {probation && active && !isSelf && records && (
+        <form action={confirmProbationAction}>
+          {hidden}
+          <button type="submit" data-testid="hr-life-pass" className={btn}>
+            {t("banner.pass")}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/** ส่วนวงจรพนักงานในหน้าโปรไฟล์ — ผู้ดูข้อมูลบันทึกเห็นทั้งหมด · ผู้สิ้นสุดการจ้างได้เห็นรายการรับเข้า/ออก (อ่าน+ติ๊ก) ของสาขาตัวเอง + ปุ่มสิ้นสุด (VIS-1 B1) · คนอื่นไม่เห็นอะไรเพิ่ม */
+export async function LifecycleProfile({ systemId, employeeId, life, active }: ProfileProps) {
+  const auth = await requireTenant();
+  const viewer = hrViewerOf(auth);
+  const ctx = { tenantId: auth.active.tenantId, systemId };
+  // ผู้ดูคือพนักงานคนนี้เอง (ผูกบัญชี) — ไม่แสดงปุ่มที่ทำกับตัวเองไม่ได้ (lifecycle ปฏิเสธซ้ำอยู่แล้ว)
+  const isSelf = await isLinkedTo(ctx, viewer.userId, employeeId);
+  // life ≠ null ⇒ ผ่าน canSeeLifecycleOps + ขอบเขตสาขาของแถวแล้ว (lifecycle.ts) · records = บันทึก/เริ่มรายการ (คีย์ตรงเท่านั้น)
+  const ops = !!life && canSeeLifecycleOps(viewer);
+  const records = ops && canSeeLifecycle(viewer);
+  const offOk = canOffboard(viewer) && active && !isSelf;
+  if (!ops && !offOk) return null;
+  const t = await getTranslations("hr.life");
+  const today = thaiDateKey(new Date());
+  const [check, notes, policy] = await Promise.all([
+    ops ? listChecklist(ctx, viewer, employeeId) : Promise.resolve(null),
+    records ? listReviewNotes(ctx, viewer, employeeId) : Promise.resolve(null),
+    getLifecyclePolicy(ctx),
+  ]);
+  const hidden = (
+    <>
+      <input type="hidden" name="systemId" value={systemId} />
+      <input type="hidden" name="employeeId" value={employeeId} />
+    </>
+  );
   const onDone = check?.onboarding.filter((x) => x.done).length ?? 0;
   const onTotal = check?.onboarding.length ?? 0;
 
   return (
     <div id="hr-life" className="flex flex-col gap-5">
-      {records && life && (probation || (life.offboard && !active) || life.contractEndAt) && (
-        <div data-testid="hr-life-banner" className="flex flex-wrap items-center gap-3 rounded-2xl border-[1.5px] border-[color:var(--color-accent)] px-4 py-3">
-          <div className="min-w-0 flex-1">
-            {probation ? (
-              <b className="block text-[color:var(--color-accent)]">{t("banner.probation", { date: dateTh(probation), left: leftText })}</b>
-            ) : life.offboard && !active ? (
-              <b className="block text-[color:var(--color-accent)]">{t("ended.title")}</b>
-            ) : (
-              <b className="block text-[color:var(--color-accent)]">{t("banner.contract", { date: dateTh(life.contractEndAt) })}</b>
-            )}
-            <small className="mt-1 block text-[color:var(--color-ink-soft)]">
-              {life.startDate ? t("banner.start", { date: dateTh(life.startDate) }) : ""}
-              {probation && life.contractEndAt ? ` · ${t("banner.contract", { date: dateTh(life.contractEndAt) })}` : ""}
-            </small>
-            {life.offboard && !active && (
-              <small className="mt-1 block">
-                {t("ended.detail", { date: dateTh(life.offboard.endDate), reason: life.offboard.reason ? t(`reason.${life.offboard.reason}`) : "—" })}
-                {life.offboard.note ? ` · ${t("ended.note", { note: life.offboard.note })}` : ""}
-              </small>
-            )}
-          </div>
-          {probation && active && !isSelf && (
-            <form action={confirmProbationAction}>
-              {hidden}
-              <button type="submit" data-testid="hr-life-pass" className={btn}>
-                {t("banner.pass")}
-              </button>
-            </form>
-          )}
-        </div>
-      )}
-
-      {records && check && (
+      {ops && check && (
         <section data-testid="hr-life-checklist" className="flex flex-col gap-3">
-          <h3 className="flex items-center gap-2 text-sm font-semibold">
+          {/* VIS-1 ▸ ไม่มีรายการรับเข้าและเริ่มไม่ได้ (สิ้นสุดแล้ว/ไม่มีคีย์) = ไม่แสดงหัวข้อว่าง ◂ */}
+          <h3 className={`items-center gap-2 text-sm font-semibold ${onTotal > 0 || (active && records) ? "flex" : "hidden"}`}>
             {t("checklist.onboarding")}
             <span className="flex-1" />
             {onTotal > 0 && <b>{t("checklist.progress", { done: onDone, total: onTotal })}</b>}
@@ -223,7 +258,8 @@ export async function LifecycleProfile({ systemId, employeeId, life, active }: P
               {policy.kanban.enabled && <p className={`text-xs ${muted}`}>{t("checklist.kanbanOn")}</p>}
             </>
           ) : (
-            active && (
+            active &&
+            records && (
               <form action={startChecklistAction}>
                 {hidden}
                 <input type="hidden" name="kind" value="ONBOARDING" />
@@ -242,7 +278,7 @@ export async function LifecycleProfile({ systemId, employeeId, life, active }: P
                     <Task key={x.id} t={t} systemId={systemId} employeeId={employeeId} item={x} today={today} />
                   ))}
                 </div>
-              ) : (
+              ) : records ? (
                 <form action={startChecklistAction}>
                   {hidden}
                   <input type="hidden" name="kind" value="OFFBOARDING" />
@@ -250,6 +286,8 @@ export async function LifecycleProfile({ systemId, employeeId, life, active }: P
                     {t("checklist.startOffboarding")}
                   </button>
                 </form>
+              ) : (
+                <p className={`text-xs ${muted}`}>—</p>
               )}
             </>
           )}
@@ -266,7 +304,7 @@ export async function LifecycleProfile({ systemId, employeeId, life, active }: P
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full border px-2 py-0.5 text-xs">{t(`notes.kinds.${n.kind}`)}</span>
                   <b className="min-w-0 flex-1 truncate">{n.title}</b>
-                  <span className={`text-xs ${muted}`}>{formatDateTh(n.createdAt)}</span>
+                  <span className={`text-xs ${muted}`}>{formatThaiDate(n.createdAt)}</span>
                 </div>
                 <p className="mt-1 whitespace-pre-wrap">{n.body}</p>
                 <p className={`mt-1 text-xs ${muted}`}>
@@ -275,7 +313,7 @@ export async function LifecycleProfile({ systemId, employeeId, life, active }: P
                     n.score !== null ? t("notes.scoreOf", { n: n.score }) : null,
                     n.authorName ? t("notes.by", { name: n.authorName }) : null,
                     n.visibleToEmployee ? t("notes.shown") : t("notes.hidden"),
-                    n.acknowledgedAt ? t("notes.acked", { date: formatDateTh(n.acknowledgedAt) }) : null,
+                    n.acknowledgedAt ? t("notes.acked", { date: formatThaiDate(n.acknowledgedAt) }) : null,
                   ]
                     .filter(Boolean)
                     .join(" · ")}

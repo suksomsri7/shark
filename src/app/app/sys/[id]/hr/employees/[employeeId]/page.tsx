@@ -16,7 +16,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { ModuleTabs } from "@/components/module-tabs";
 // HR H4.4 ▸ วงจรพนักงาน (แถบทดลองงาน · รายการรับเข้า/ออก · บันทึก · สิ้นสุดการจ้าง) — DTO ของ lifecycle.ts เท่านั้น ◂
 import { loadLifecycleForViewer } from "@/lib/modules/hr/lifecycle";
-import { LifecycleMsg, LifecycleProfile } from "@/lib/modules/hr/lifecycle-ui";
+import { LifecycleBanner, LifecycleMsg, LifecycleProfile } from "@/lib/modules/hr/lifecycle-ui";
 
 // หน้าโปรไฟล์พนักงาน 1 คน (ข้อ 8) — ข้อมูลเต็มรูปแบบ + เอกสารแนบ
 // 🔒 ช่องอ่อนไหว (เลขบัตร/ประกันสังคม/ทะเบียนบ้าน/บัญชี) + เอกสาร = เห็นเฉพาะผู้มีสิทธิ์ดูเงินเดือน
@@ -70,6 +70,8 @@ export default async function HrEmployeeProfilePage({
       />
       <ModuleTabs items={hrTabs(id)} />
       <LifecycleMsg code={typeof lifeCode === "string" ? lifeCode : undefined} />
+      {/* VIS-1 B2 ▸ แถบทดลองงาน/สัญญา/สิ้นสุด อยู่บนสุดของโปรไฟล์ (ภาพ 02) ◂ */}
+      <LifecycleBanner systemId={id} employeeId={emp.id} life={life} active={emp.active} />
       {!emp.active && (
         <p className="rounded-lg border px-3 py-2 text-xs text-[color:var(--color-danger)]">
           พนักงานคนนี้ถูกลบออกจากทะเบียนแล้ว (ข้อมูลและประวัติยังอยู่ · กู้คืนได้ที่หน้าพนักงานทั้งหมด)
