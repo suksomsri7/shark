@@ -91,15 +91,11 @@ export { rehomeStrandedSystemAdjustments } from "./payroll";
 // POS P4.3 ▸ fix2 (R1 F5): ผู้ใช้ในชุดที่ผูกพนักงาน (ทั้งชุดในคำขอเดียว · ป้าย "จาก HR" ของแท็บพนักงาน POS) — re-export ล้วน ◂
 export { linkedUserIdsOf } from "./service";
 // SVC B.1 ▸ BQ-1: กะรายวัน → หน้าต่างเวลาช่าง (ผู้เรียก: booking/service#staffDayProfiles — เรียกครั้งเดียวต่อคำขอ)
-//   ยังไม่มีกะบน main ⇒ [] เสมอ (ไม่แตะฐาน) · RUN HR เติมของจริงจาก HrRosterEntry ในใบ X-HR.1 — 🔴 ห้ามเปลี่ยนลายเซ็น
-//   นาที = นาทีจากเที่ยงคืนของวันไทย (`date` = "YYYY-MM-DD" ไทย) · breaks = ช่วงพักที่ booking หักออกจาก windows
-export type StaffWindowsInput = { tenantId: string; unitId: string; date: string; employeeIds: string[] };
-export type StaffWindowsRow = {
-  employeeId: string;
-  windows: { startMin: number; endMin: number }[];
-  breaks: { startMin: number; endMin: number }[];
-};
-export async function staffWindows(_i: StaffWindowsInput): Promise<StaffWindowsRow[]> {
-  return [];
-}
+//   นาที = นาทีจากเที่ยงคืนของวันไทย (`date` = "YYYY-MM-DD" ไทย) · breaks = ช่วงพักที่ booking หักออกจาก windows — 🔴 ห้ามเปลี่ยนลายเซ็น
+// HR H4.1 ▸ X-HR.1: ของจริงจากตารางกะที่ประกาศแล้ว + ใบลา APPROVED (re-export ล้วน — ตรรกะอยู่ที่ `availability.ts` · กติกาล้วน `availability-rules.ts`)
+//   ชนิดข้อมูลของ seam ย้ายไปประกาศที่ availability.ts (ช่องเดิมทุกตัว) · ไม่มีตารางกะในสัปดาห์นั้น = ไม่มีแถว (booking ใช้แหล่งถัดไป)
+//   leaveDutyNotify = ผู้บริโภค hr.leave.decided (APPROVED) แจ้งผู้ดูแลว่ามีกะที่ต้องหาคนแทน · leaveDutyHints = คำใบ้บนหน้าใบลา
+export type { StaffWindowsInput, StaffWindowsRow } from "./availability";
+export { staffWindows, leaveDutyNotify, leaveDutyHints } from "./availability";
+// ◂ HR H4.1
 // ◂ SVC B.1
