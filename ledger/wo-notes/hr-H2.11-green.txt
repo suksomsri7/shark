@@ -1,0 +1,31 @@
+# H2.11 GREEN (lane DB wo-hr-qc-l2 via qc-hr.sh) — 2026-11-12T16:34:04Z
+qc-hr-h2.11-F exit=0 ===== qc-hr-h2.11 ===== passed 57/57 (QC_FORCE)
+qc-hr-h2.11-F exit=0 ===== qc-hr-h2.11 ===== passed 57/57 (QC_FORCE)
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 57/57
+qc-hr-h2.3 exit=0 ===== qc-hr-h2.3 ===== passed 79/79
+qc-hr-h2.6 exit=0 ===== qc-hr-h2.6 ===== passed 55/55
+qc-hr-h2.7 exit=0 ===== qc-hr-h2.7 ===== passed 89/89
+qc-hr-h2.9 exit=0 ===== qc-hr-h2.9 ===== passed 58/58
+qc-hr-h4.1 exit=0 ===== qc-hr-h4.1 ===== passed 47/47
+qc-hr-h4.4 exit=0 ===== qc-hr-h4.4 ===== passed 86/86
+qc-hr-h4.6 exit=0 ===== qc-hr-h4.6 ===== passed 69/69
+qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63
+qc-hr-h2.2 exit=0 ===== qc-hr-h2.2 ===== passed 60/60
+qc-approval exit=0 ===== QC Approval Engine =====
+qc-approval-wiring exit=0 ===== QC Approval Wiring =====
+qc-bulk-ops exit=0 ===== QC Bulk Operations =====
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+DONE
+typecheck (clean: .next/types + tsconfig.tsbuildinfo deleted, merged 6d9ea29df): exit=0 secs=1426 errors=0
+fitness 53/53 + fitness-hr 9/9 bare and with env
+seed-hr-qc ×2: 34/34 · counts identical
+listInbox owner on qc-hr-v2 (5 types, 9 items): 49 queries (repeat 49)
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+RESIDUE none (tenants=2 users=13)
+BASE-EXPECTATION 5/57 as registered (RED-by-design 52 · GREEN controls 5) · off: H2.11-S1.1(RED→pass) H2.11-S1.2(RED→pass) H2.11-S1.3(RED→pass) H2.11-S1.4(RED→pass) H2.11-S1.5(RED→pass) H2.11-S1.6(RED→pass) H2.11-S1.7(RED→pass) H2.11-S12.1(RED→pass) H2.11-S12.2(RED→pass) H2.11-S12.3(RED→pass) H2.11-S2.1(RED→pass) H2.11-S2.2(RED→pass) H2.11-S2.3(RED→pass) H2.11-S2.4(RED→pass) H2.11-S2.5(RED→pass) H2.11-S2.6(RED→pass) H2.11-S2.7(RED→pass) H2.11-S3.1(RED→pass) H2.11-S3.2(RED→pass) H2.11-S3.3(RED→pass) H2.11-S3.4(RED→pass) H2.11-S3.5(RED→pass) H2.11-S4.1(RED→pass) H2.11-S4.2(RED→pass) H2.11-S4.3(RED→pass) H2.11-S4.4(RED→pass) H2.11-S4.5(RED→pass) H2.11-S5.1(RED→pass) H2.11-S5.2(RED→pass) H2.11-S5.3(RED→pass) H2.11-S5.4(RED→pass) H2.11-S9.1(RED→pass) H2.11-S9.2(RED→pass) H2.11-S10.1(RED→pass) H2.11-S10.2(RED→pass) H2.11-S6.1(RED→pass) H2.11-S6.2(RED→pass) H2.11-S6.3(RED→pass) H2.11-S6.4(RED→pass) H2.11-S6.5(RED→pass) H2.11-S7.1(RED→pass) H2.11-S7.2(RED→pass) H2.11-S7.3(RED→pass) H2.11-S7.4(RED→pass) H2.11-S8.1(RED→pass) H2.11-S8.2(RED→pass) H2.11-S8.3(RED→pass) H2.11-S8.4(RED→pass) H2.11-S8.5(RED→pass) H2.11-S8.6(RED→pass) H2.11-S8.7(RED→pass) H2.11-S11.1(RED→pass)
+
+===== qc-hr-h2.11 ===== passed 57/57 (QC_FORCE)
