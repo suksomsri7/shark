@@ -1508,6 +1508,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hotel.tm30.filed": withAutomation(async () => {}),
   "hotel.guest.purged": withAutomation(async () => {}),
   // ◂ SVC H.4
+  // TRIPS T0.2 ▸ สินค้าทัวร์เปิด/ปิดขาย/เก็บ — ยิงจาก trips/products.ts ใน tx เดียวกับ CAS สถานะ · payload { productId, unitId, productType, status } ล้วน (ไม่มี PII/ชื่อ/ราคา) ·
+  //   งานหลัก no-op (เขียนครบในบริการแล้ว) + กฎอัตโนมัติ/เว็บฮุค (webhook ได้จาก spread ของ AUTOMATION_EVENTS)
+  "trips.product.published": withAutomation(async () => {}),
+  "trips.product.unpublished": withAutomation(async () => {}),
+  "trips.product.archived": withAutomation(async () => {}),
+  // ◂ TRIPS T0.2
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —
