@@ -785,7 +785,9 @@ function runStatic(): void {
       ...listFiles("src/app", (p) => /\.(ts|tsx)$/.test(p) && /\/(hr|payroll)\//.test(p)),
       ...listFiles("src/lib/ai", (p) => /\.(ts|tsx)$/.test(p)),
       CONSUMERS,
-    ].filter((p) => existsSync(join(ROOT, p)));
+    ].filter((p) => existsSync(join(ROOT, p)))
+      // ORACLE-EDIT (controller 12 Nov): H3.3 ships the law engine — these two files are the intended readers of HrLawTable/lawRowIds/ytdJson
+      .filter((p) => p !== "src/lib/modules/hr/law.ts" && p !== "src/lib/modules/hr/payroll-rules-v2.ts");
     const cnt = (s: string) => (stripComments(s).match(S61_RE) ?? []).length;
     const hits = files.map((f) => [f, cnt(rd(f)) - cnt(atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
     chk("S6.1", files.length > 20 && hits.length === 0, "0 new reads", `${hits.join(",") || "0"} of ${files.length} files (base ${baseRef().slice(0, 8)})`);

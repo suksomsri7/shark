@@ -28,7 +28,8 @@
 //         prisma/schema/** (@@unique/@@index/คอมเมนต์) หรือ migration ที่ใหม่กว่า · migration ที่ใหม่กว่าห้าม DROP มัน
 //   F16.9 (HR H1.3 review F1 · MAJOR) ห้ามเขียน HrLawTable (create/createMany/update/updateMany/upsert/delete/deleteMany ·
 //         $executeRaw ที่อ้าง "HrLawTable" · SQL INSERT/UPDATE/DELETE ของ "HrLawTable") ใต้ src/lib/modules/** · src/app/** · src/lib/ai/**
-//         — ตารางกลาง tenantDb ปล่อยผ่าน ⇒ เขียนได้เฉพาะหลังบ้าน (src/lib/platform/**) หรือ scripts/hr-seed-law-draft.mts จนกว่า H3.3
+//         — ตารางกลาง ⇒ เขียนได้เฉพาะหลังบ้าน (src/lib/platform/**) หรือ scripts/hr-seed-law-draft.mts
+//         HR H3.3 ▸ ทางเขียนจริง = src/lib/platform/hr-law.ts (SUPER_ADMIN อ่านซ้ำจากฐาน) · tenantDb โยนทุกการเขียน HrLawTable (core/db.ts) · ด่านนี้คงไว้ ◂
 //   F16.8 (HR H2.2 ▸ มติ Q15 · หนี้ H0.4 R5 · MAJOR) ทะเบียนปุ่ม scripts/hr-ui-inventory.json ↔ data-testid ในโค้ดของขอบเขต HR สองทาง:
 //         ทุก testid/testId (สตริง · template `${…}` → `*` · ทั้งสองกิ่งของ ?: ) ใต้ src/lib/modules/hr/** · src/app/app/sys/[id]/{hr,payroll}/**
 //         มีแถว (ตรงตัว หรือแถว `<id>-trigger|-sheet` ของ ConfirmDialog) และทุกแถวมีโค้ด — ช่องว่างวันนี้อยู่ใน F168_*_BASELINE (ratchet: ลดได้อย่างเดียว) ◂

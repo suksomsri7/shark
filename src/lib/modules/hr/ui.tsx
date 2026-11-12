@@ -114,6 +114,7 @@ export function hrTabs(systemId: string): { href: string; label: string }[] {
     { href: `${s}/hr/employees`, label: "พนักงาน" },
     { href: `${s}/hr/payroll`, label: "เงินเดือน" },
     { href: `${s}/hr/settings`, label: "ตั้งค่า" }, // HR H2.2 ▸ หนี้ D9: แท็บตั้งค่าให้ตรง layout.tsx (หน้ากันสิทธิ์เอง) ◂
+    { href: `${s}/hr/settings/law`, label: "ตารางกฎหมาย" }, // HR H3.3 r3 ▸ ตรงกับ layout.tsx (อ่านอย่างเดียว · หน้ากันสิทธิ์เอง) ◂
   ];
 }
 

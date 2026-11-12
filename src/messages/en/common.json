@@ -314,6 +314,69 @@
       "colEntitled": "Entitled (days)",
       "colUsed": "Used",
       "colLeft": "Left"
+    },
+    "law": {
+      "title": "Law tables",
+      "desc": "Social security · withholding tax · allowances · OT — one SHARK-wide table shared by every shop and branch",
+      "howPicked": "The row in force on the payroll pay date (Thai calendar day) is picked automatically",
+      "whtMethod": "Monthly PND.1 in the new engine = the year's tax on projected income, minus tax already withheld, spread over the remaining months · adjusts every month to actual income · December settles the year",
+      "warn": "Every figure must be checked by an accountant/adviser before real use",
+      "readOnly": "Shops can only view this — the SHARK team updates it from official notices and an accountant signs off before each activation",
+      "pending": "Awaiting accountant sign-off — the law tables are not active yet; every payroll run still uses the current engine as before",
+      "asOf": "As of {day}",
+      "settingsLink": "Law tables",
+      "settingsLinkDesc": "Social security · tax bands · allowances · OT (view only)",
+      "backToSettings": "Back to settings",
+      "empty": "No rows yet",
+      "effectiveFrom": "Effective from",
+      "defaultSet": "System default (start date not set yet)",
+      "status": {
+        "inForce": "In force",
+        "activeLater": "Starts later",
+        "activeOld": "Replaced by a newer row",
+        "draft": "Draft · awaiting accountant",
+        "retired": "Retired"
+      },
+      "approvedBy": "Signed off by {name} · {date}",
+      "kinds": {
+        "SSO": "Social security",
+        "TAX_BRACKET": "Personal income tax (bands)",
+        "DEDUCTION": "Basic allowances",
+        "OT": "Overtime (OT)",
+        "MIN_WAGE": "Minimum wage"
+      },
+      "sso": {
+        "employee": "Employee",
+        "employer": "Employer",
+        "minBase": "Minimum base",
+        "maxBase": "Maximum base",
+        "maxPerMonth": "Max contribution/month",
+        "rounding": "Contributions rounded to whole baht"
+      },
+      "tax": {
+        "range": "Annual net income (baht)",
+        "rate": "Rate",
+        "cumulative": "Tax at top of band",
+        "exempt": "Exempt",
+        "andUp": "{from} and above"
+      },
+      "ded": {
+        "expense": "Expenses (salary)",
+        "expenseDetail": "{pct}% of income, up to {cap}",
+        "personal": "Personal",
+        "spouse": "Spouse (no income)",
+        "child": "Child (each)",
+        "sso": "Social security (as paid, up to)"
+      },
+      "ot": {
+        "workday": "Workday OT",
+        "basis": "Hourly wage = salary ÷ {days} days ÷ {hours} hours",
+        "notRead": "Shown for reference — 2×/3× OT rates come in a later work order"
+      },
+      "minWageEmpty": "No minimum-wage table yet — check the provincial notice",
+      "raw": "Row values",
+      "sharedAll": "The law tables apply to every branch · shifts/holidays/late rules can be set per branch on the settings page",
+      "sharedBranch": "The law tables apply to every branch, including the ones you manage — one set of values for the whole shop"
     }
   }
 }

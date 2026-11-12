@@ -1,0 +1,2868 @@
+{
+ "_meta": {
+  "wo": "H3.3",
+  "note": "Expected values are literals computed by an independent exact-fraction reference (Python, outside the repo), NOT by the code under test. 'src': v1 = also equal to frozen payroll-rules.ts (verified at write time); v2 = v2-only method (brief Q4/Q5 defaults), values from the seeded rows cited. want:null = NEEDS ACCOUNTANT (check registered, skipped with reason).",
+  "rows": {
+   "v1:SSO@1970-01-01": "scripts/hr-seed-law-draft.mts LAW_V1_ROWS[0]",
+   "v1:TAX_BRACKET@1970-01-01": "LAW_V1_ROWS[1]",
+   "v1:DEDUCTION@1970-01-01": "LAW_V1_ROWS[2]"
+  },
+  "lawDigest": "0ed9de8c2c4df9b4b05ce320889318cc4c755527448f56628235960ae38d9470"
+ },
+ "law": {
+  "SSO": {
+   "rateBp": 500,
+   "minBaseSatang": 165000,
+   "maxBaseSatang": 1500000,
+   "rounding": "BAHT_HALF_UP",
+   "employerEqualsEmployee": true
+  },
+  "TAX_BRACKET": {
+   "bands": [
+    {
+     "upToSatang": 15000000,
+     "rateBp": 0
+    },
+    {
+     "upToSatang": 30000000,
+     "rateBp": 500
+    },
+    {
+     "upToSatang": 50000000,
+     "rateBp": 1000
+    },
+    {
+     "upToSatang": 75000000,
+     "rateBp": 1500
+    },
+    {
+     "upToSatang": 100000000,
+     "rateBp": 2000
+    },
+    {
+     "upToSatang": 200000000,
+     "rateBp": 2500
+    },
+    {
+     "upToSatang": 500000000,
+     "rateBp": 3000
+    },
+    {
+     "upToSatang": null,
+     "rateBp": 3500
+    }
+   ],
+   "rounding": "SATANG_HALF_UP_ONCE"
+  },
+  "DEDUCTION": {
+   "expenseRateBp": 5000,
+   "expenseCapSatang": 10000000,
+   "personalSatang": 6000000,
+   "spouseSatang": 6000000,
+   "childSatang": 3000000,
+   "ssoAllowanceCapSatang": 900000
+  }
+ },
+ "sso": [
+  {
+   "id": "SSO-01",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 1,
+   "want": {
+    "baseSatang": 165000,
+    "employeeSatang": 8300,
+    "employerSatang": 8300
+   }
+  },
+  {
+   "id": "SSO-02",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 100000,
+   "want": {
+    "baseSatang": 165000,
+    "employeeSatang": 8300,
+    "employerSatang": 8300
+   }
+  },
+  {
+   "id": "SSO-03",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 164999,
+   "want": {
+    "baseSatang": 165000,
+    "employeeSatang": 8300,
+    "employerSatang": 8300
+   }
+  },
+  {
+   "id": "SSO-04",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 165000,
+   "want": {
+    "baseSatang": 165000,
+    "employeeSatang": 8300,
+    "employerSatang": 8300
+   }
+  },
+  {
+   "id": "SSO-05",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 165001,
+   "want": {
+    "baseSatang": 165001,
+    "employeeSatang": 8300,
+    "employerSatang": 8300
+   }
+  },
+  {
+   "id": "SSO-06",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 166999,
+   "want": {
+    "baseSatang": 166999,
+    "employeeSatang": 8300,
+    "employerSatang": 8300
+   }
+  },
+  {
+   "id": "SSO-07",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 167000,
+   "want": {
+    "baseSatang": 167000,
+    "employeeSatang": 8400,
+    "employerSatang": 8400
+   }
+  },
+  {
+   "id": "SSO-08",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 168999,
+   "want": {
+    "baseSatang": 168999,
+    "employeeSatang": 8400,
+    "employerSatang": 8400
+   }
+  },
+  {
+   "id": "SSO-09",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 169000,
+   "want": {
+    "baseSatang": 169000,
+    "employeeSatang": 8500,
+    "employerSatang": 8500
+   }
+  },
+  {
+   "id": "SSO-10",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 170000,
+   "want": {
+    "baseSatang": 170000,
+    "employeeSatang": 8500,
+    "employerSatang": 8500
+   }
+  },
+  {
+   "id": "SSO-11",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 1000000,
+   "want": {
+    "baseSatang": 1000000,
+    "employeeSatang": 50000,
+    "employerSatang": 50000
+   }
+  },
+  {
+   "id": "SSO-12",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 1234567,
+   "want": {
+    "baseSatang": 1234567,
+    "employeeSatang": 61700,
+    "employerSatang": 61700
+   }
+  },
+  {
+   "id": "SSO-13",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 1499999,
+   "want": {
+    "baseSatang": 1499999,
+    "employeeSatang": 75000,
+    "employerSatang": 75000
+   }
+  },
+  {
+   "id": "SSO-14",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 1500000,
+   "want": {
+    "baseSatang": 1500000,
+    "employeeSatang": 75000,
+    "employerSatang": 75000
+   }
+  },
+  {
+   "id": "SSO-15",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 1500001,
+   "want": {
+    "baseSatang": 1500000,
+    "employeeSatang": 75000,
+    "employerSatang": 75000
+   }
+  },
+  {
+   "id": "SSO-16",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 1750000,
+   "want": {
+    "baseSatang": 1500000,
+    "employeeSatang": 75000,
+    "employerSatang": 75000
+   }
+  },
+  {
+   "id": "SSO-17",
+   "cite": "v1:SSO@1970-01-01",
+   "src": "v1",
+   "wageSatang": 9999999,
+   "want": {
+    "baseSatang": 1500000,
+    "employeeSatang": 75000,
+    "employerSatang": 75000
+   }
+  }
+ ],
+ "tax": [
+  {
+   "id": "TAX-01",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": -1,
+   "want": 0
+  },
+  {
+   "id": "TAX-02",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 0,
+   "want": 0
+  },
+  {
+   "id": "TAX-03",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 1,
+   "want": 0
+  },
+  {
+   "id": "TAX-04",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 15000000,
+   "want": 0
+  },
+  {
+   "id": "TAX-05",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 15000001,
+   "want": 0
+  },
+  {
+   "id": "TAX-06",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 15000009,
+   "want": 0
+  },
+  {
+   "id": "TAX-07",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 15000010,
+   "want": 1
+  },
+  {
+   "id": "TAX-08",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 21500000,
+   "want": 325000
+  },
+  {
+   "id": "TAX-09",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 30000000,
+   "want": 750000
+  },
+  {
+   "id": "TAX-10",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 30000001,
+   "want": 750000
+  },
+  {
+   "id": "TAX-11",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 50000000,
+   "want": 2750000
+  },
+  {
+   "id": "TAX-12",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 75000000,
+   "want": 6500000
+  },
+  {
+   "id": "TAX-13",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 100000000,
+   "want": 11500000
+  },
+  {
+   "id": "TAX-14",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 123456789,
+   "want": 17364197
+  },
+  {
+   "id": "TAX-15",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 200000000,
+   "want": 36500000
+  },
+  {
+   "id": "TAX-16",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 500000000,
+   "want": 126500000
+  },
+  {
+   "id": "TAX-17",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 500000001,
+   "want": 126500000
+  },
+  {
+   "id": "TAX-18",
+   "cite": "v1:TAX_BRACKET@1970-01-01",
+   "src": "v1",
+   "netSatang": 1000000000,
+   "want": 301500000
+  }
+ ],
+ "whtAnnualised": [
+  {
+   "id": "WHA-01",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 1000000,
+   "ssoEmployeeYearSatang": 600000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 0
+  },
+  {
+   "id": "WHA-02",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 1000000,
+   "ssoEmployeeYearSatang": 600000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 0
+  },
+  {
+   "id": "WHA-03",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 1500000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 0
+  },
+  {
+   "id": "WHA-04",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 1500000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 0
+  },
+  {
+   "id": "WHA-05",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 2000000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 0
+  },
+  {
+   "id": "WHA-06",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 2000000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 0
+  },
+  {
+   "id": "WHA-07",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 2500000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 0
+  },
+  {
+   "id": "WHA-08",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 2500000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 0
+  },
+  {
+   "id": "WHA-09",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 3000000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 17083
+  },
+  {
+   "id": "WHA-10",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 3000000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 0
+  },
+  {
+   "id": "WHA-11",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 4166667,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 88333
+  },
+  {
+   "id": "WHA-12",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 4166667,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 25417
+  },
+  {
+   "id": "WHA-13",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 5000000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 171667
+  },
+  {
+   "id": "WHA-14",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 5000000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 71667
+  },
+  {
+   "id": "WHA-15",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 8333333,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 676667
+  },
+  {
+   "id": "WHA-16",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 8333333,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 492917
+  },
+  {
+   "id": "WHA-17",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 12500000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 1647917
+  },
+  {
+   "id": "WHA-18",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 12500000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 1397917
+  },
+  {
+   "id": "WHA-19",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 41666667,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 10119167
+  },
+  {
+   "id": "WHA-20",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 41666667,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 2
+   },
+   "want": 9819167
+  },
+  {
+   "id": "WHA-21",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 3000000,
+   "ssoEmployeeYearSatang": 0,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 20833
+  },
+  {
+   "id": "WHA-22",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 3000000,
+   "ssoEmployeeYearSatang": 900001,
+   "deductions": {
+    "spouse": false,
+    "children": 0
+   },
+   "want": 17083
+  },
+  {
+   "id": "WHA-23",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 3000000,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": false,
+    "children": -1
+   },
+   "want": 17083
+  },
+  {
+   "id": "WHA-24",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v1",
+   "monthlyIncomeSatang": 16666667,
+   "ssoEmployeeYearSatang": 900000,
+   "deductions": {
+    "spouse": true,
+    "children": 4
+   },
+   "want": 2314583
+  }
+ ],
+ "whtYtd": [
+  {
+   "id": "YTD-01",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "month 1 steady = v1 (17,083)",
+   "input": {
+    "monthIndex": 1,
+    "currentIncomeSatang": 3000000,
+    "regularMonthlySatang": 3000000,
+    "priorIncomeSatang": 0,
+    "priorWhtSatang": 0,
+    "currentSsoSatang": 75000,
+    "regularSsoSatang": 75000,
+    "priorSsoSatang": 0,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    }
+   },
+   "want": {
+    "whtSatang": 17083,
+    "projectedIncomeSatang": 36000000,
+    "projectedNetSatang": 19100000,
+    "annualTaxSatang": 205000
+   }
+  },
+  {
+   "id": "YTD-02",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "December true-up after 11×v1 (worked example §3)",
+   "input": {
+    "monthIndex": 12,
+    "currentIncomeSatang": 3000000,
+    "regularMonthlySatang": 3000000,
+    "priorIncomeSatang": 33000000,
+    "priorWhtSatang": 187913,
+    "currentSsoSatang": 75000,
+    "regularSsoSatang": 75000,
+    "priorSsoSatang": 825000,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    }
+   },
+   "want": {
+    "whtSatang": 17087,
+    "projectedIncomeSatang": 36000000,
+    "projectedNetSatang": 19100000,
+    "annualTaxSatang": 205000
+   }
+  },
+  {
+   "id": "YTD-03",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "June with OT 10,000 baht after 5 months",
+   "input": {
+    "monthIndex": 6,
+    "currentIncomeSatang": 4000000,
+    "regularMonthlySatang": 3000000,
+    "priorIncomeSatang": 15000000,
+    "priorWhtSatang": 85416,
+    "currentSsoSatang": 75000,
+    "regularSsoSatang": 75000,
+    "priorSsoSatang": 375000,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    }
+   },
+   "want": {
+    "whtSatang": 24226,
+    "projectedIncomeSatang": 37000000,
+    "projectedNetSatang": 20100000,
+    "annualTaxSatang": 255000
+   }
+  },
+  {
+   "id": "YTD-04",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "over-withheld ⇒ 0, never negative",
+   "input": {
+    "monthIndex": 12,
+    "currentIncomeSatang": 3000000,
+    "regularMonthlySatang": 3000000,
+    "priorIncomeSatang": 33000000,
+    "priorWhtSatang": 300000,
+    "currentSsoSatang": 75000,
+    "regularSsoSatang": 75000,
+    "priorSsoSatang": 825000,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    }
+   },
+   "want": {
+    "whtSatang": 0,
+    "projectedIncomeSatang": 36000000,
+    "projectedNetSatang": 19100000,
+    "annualTaxSatang": 205000
+   }
+  },
+  {
+   "id": "YTD-05",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "joiner in July (no prior income in the year)",
+   "input": {
+    "monthIndex": 7,
+    "currentIncomeSatang": 2500000,
+    "regularMonthlySatang": 2500000,
+    "priorIncomeSatang": 0,
+    "priorWhtSatang": 0,
+    "currentSsoSatang": 75000,
+    "regularSsoSatang": 75000,
+    "priorSsoSatang": 0,
+    "deductions": {
+     "spouse": true,
+     "children": 1
+    }
+   },
+   "want": {
+    "whtSatang": 0,
+    "projectedIncomeSatang": 15000000,
+    "projectedNetSatang": 0,
+    "annualTaxSatang": 0
+   }
+  },
+  {
+   "id": "YTD-06",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "not SSO-eligible",
+   "input": {
+    "monthIndex": 1,
+    "currentIncomeSatang": 5000000,
+    "regularMonthlySatang": 5000000,
+    "priorIncomeSatang": 0,
+    "priorWhtSatang": 0,
+    "currentSsoSatang": 0,
+    "regularSsoSatang": 0,
+    "priorSsoSatang": 0,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    }
+   },
+   "want": {
+    "whtSatang": 179167,
+    "projectedIncomeSatang": 60000000,
+    "projectedNetSatang": 44000000,
+    "annualTaxSatang": 2150000
+   }
+  },
+  {
+   "id": "YTD-07",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "high earner, commission month, nothing withheld before",
+   "input": {
+    "monthIndex": 3,
+    "currentIncomeSatang": 17000000,
+    "regularMonthlySatang": 15000000,
+    "priorIncomeSatang": 30000000,
+    "priorWhtSatang": 0,
+    "currentSsoSatang": 75000,
+    "regularSsoSatang": 75000,
+    "priorSsoSatang": 150000,
+    "deductions": {
+     "spouse": false,
+     "children": 2
+    }
+   },
+   "want": {
+    "whtSatang": 2627500,
+    "projectedIncomeSatang": 182000000,
+    "projectedNetSatang": 159100000,
+    "annualTaxSatang": 26275000
+   }
+  },
+  {
+   "id": "YTD-08",
+   "cite": [
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "zero everything ⇒ 0",
+   "input": {
+    "monthIndex": 12,
+    "currentIncomeSatang": 0,
+    "regularMonthlySatang": 0,
+    "priorIncomeSatang": 0,
+    "priorWhtSatang": 0,
+    "currentSsoSatang": 0,
+    "regularSsoSatang": 0,
+    "priorSsoSatang": 0,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    }
+   },
+   "want": {
+    "whtSatang": 0,
+    "projectedIncomeSatang": 0,
+    "projectedNetSatang": 0,
+    "annualTaxSatang": 0
+   }
+  }
+ ],
+ "years": [
+  {
+   "id": "YR1",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "steady 30,000: Σ=205,000.00 vs v1 12×17,083=204,996",
+   "spouse": false,
+   "children": 0,
+   "ssoEligible": true,
+   "months": [
+    {
+     "m": 1,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 2,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 3,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 4,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 5,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 6,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 7,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 8,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 9,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 10,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 11,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 12,
+     "baseSatang": 3000000,
+     "adjustments": []
+    }
+   ],
+   "want": [
+    {
+     "m": 1,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 2,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 3,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 4,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 5,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17084,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 6,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 7,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17084,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 8,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 9,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17084,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 10,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 11,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17084,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 12,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    }
+   ]
+  },
+  {
+   "id": "YR2",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "OT 10,000 in June",
+   "spouse": false,
+   "children": 0,
+   "ssoEligible": true,
+   "months": [
+    {
+     "m": 1,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 2,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 3,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 4,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 5,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 6,
+     "baseSatang": 3000000,
+     "adjustments": [
+      {
+       "kind": "OT",
+       "amountSatang": 1000000
+      }
+     ]
+    },
+    {
+     "m": 7,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 8,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 9,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 10,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 11,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 12,
+     "baseSatang": 3000000,
+     "adjustments": []
+    }
+   ],
+   "want": [
+    {
+     "m": 1,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 2,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 3,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 4,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 5,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17084,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 6,
+     "whtIncomeSatang": 4000000,
+     "ssoWageSatang": 4000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 24226,
+     "annualTaxSatang": 255000
+    },
+    {
+     "m": 7,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 24226,
+     "annualTaxSatang": 255000
+    },
+    {
+     "m": 8,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 24226,
+     "annualTaxSatang": 255000
+    },
+    {
+     "m": 9,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 24227,
+     "annualTaxSatang": 255000
+    },
+    {
+     "m": 10,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 24226,
+     "annualTaxSatang": 255000
+    },
+    {
+     "m": 11,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 24227,
+     "annualTaxSatang": 255000
+    },
+    {
+     "m": 12,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 24226,
+     "annualTaxSatang": 255000
+    }
+   ]
+  },
+  {
+   "id": "YR3",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "December bonus 60,000 (bonus not SSO wage, HQ8 default)",
+   "spouse": false,
+   "children": 0,
+   "ssoEligible": true,
+   "months": [
+    {
+     "m": 1,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 2,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 3,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 4,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 5,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 6,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 7,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 8,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 9,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 10,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 11,
+     "baseSatang": 3000000,
+     "adjustments": []
+    },
+    {
+     "m": 12,
+     "baseSatang": 3000000,
+     "adjustments": [
+      {
+       "kind": "BONUS",
+       "amountSatang": 6000000
+      }
+     ]
+    }
+   ],
+   "want": [
+    {
+     "m": 1,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 2,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 3,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 4,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 5,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17084,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 6,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 7,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17084,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 8,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 9,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17084,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 10,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17083,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 11,
+     "whtIncomeSatang": 3000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 17084,
+     "annualTaxSatang": 205000
+    },
+    {
+     "m": 12,
+     "whtIncomeSatang": 9000000,
+     "ssoWageSatang": 3000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 317083,
+     "annualTaxSatang": 505000
+    }
+   ]
+  },
+  {
+   "id": "YR4",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "joiner July, spouse + 1 child",
+   "spouse": true,
+   "children": 1,
+   "ssoEligible": true,
+   "months": [
+    {
+     "m": 7,
+     "baseSatang": 2500000,
+     "adjustments": []
+    },
+    {
+     "m": 8,
+     "baseSatang": 2500000,
+     "adjustments": []
+    },
+    {
+     "m": 9,
+     "baseSatang": 2500000,
+     "adjustments": []
+    },
+    {
+     "m": 10,
+     "baseSatang": 2500000,
+     "adjustments": []
+    },
+    {
+     "m": 11,
+     "baseSatang": 2500000,
+     "adjustments": []
+    },
+    {
+     "m": 12,
+     "baseSatang": 2500000,
+     "adjustments": []
+    }
+   ],
+   "want": [
+    {
+     "m": 7,
+     "whtIncomeSatang": 2500000,
+     "ssoWageSatang": 2500000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 0,
+     "annualTaxSatang": 0
+    },
+    {
+     "m": 8,
+     "whtIncomeSatang": 2500000,
+     "ssoWageSatang": 2500000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 0,
+     "annualTaxSatang": 0
+    },
+    {
+     "m": 9,
+     "whtIncomeSatang": 2500000,
+     "ssoWageSatang": 2500000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 0,
+     "annualTaxSatang": 0
+    },
+    {
+     "m": 10,
+     "whtIncomeSatang": 2500000,
+     "ssoWageSatang": 2500000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 0,
+     "annualTaxSatang": 0
+    },
+    {
+     "m": 11,
+     "whtIncomeSatang": 2500000,
+     "ssoWageSatang": 2500000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 0,
+     "annualTaxSatang": 0
+    },
+    {
+     "m": 12,
+     "whtIncomeSatang": 2500000,
+     "ssoWageSatang": 2500000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 0,
+     "annualTaxSatang": 0
+    }
+   ]
+  },
+  {
+   "id": "YR5",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "150,000 + quarterly commission 20,000",
+   "spouse": false,
+   "children": 2,
+   "ssoEligible": true,
+   "months": [
+    {
+     "m": 1,
+     "baseSatang": 15000000,
+     "adjustments": []
+    },
+    {
+     "m": 2,
+     "baseSatang": 15000000,
+     "adjustments": []
+    },
+    {
+     "m": 3,
+     "baseSatang": 15000000,
+     "adjustments": [
+      {
+       "kind": "COMMISSION",
+       "amountSatang": 2000000
+      }
+     ]
+    },
+    {
+     "m": 4,
+     "baseSatang": 15000000,
+     "adjustments": []
+    },
+    {
+     "m": 5,
+     "baseSatang": 15000000,
+     "adjustments": []
+    },
+    {
+     "m": 6,
+     "baseSatang": 15000000,
+     "adjustments": [
+      {
+       "kind": "COMMISSION",
+       "amountSatang": 2000000
+      }
+     ]
+    },
+    {
+     "m": 7,
+     "baseSatang": 15000000,
+     "adjustments": []
+    },
+    {
+     "m": 8,
+     "baseSatang": 15000000,
+     "adjustments": []
+    },
+    {
+     "m": 9,
+     "baseSatang": 15000000,
+     "adjustments": [
+      {
+       "kind": "COMMISSION",
+       "amountSatang": 2000000
+      }
+     ]
+    },
+    {
+     "m": 10,
+     "baseSatang": 15000000,
+     "adjustments": []
+    },
+    {
+     "m": 11,
+     "baseSatang": 15000000,
+     "adjustments": []
+    },
+    {
+     "m": 12,
+     "baseSatang": 15000000,
+     "adjustments": [
+      {
+       "kind": "COMMISSION",
+       "amountSatang": 2000000
+      }
+     ]
+    }
+   ],
+   "want": [
+    {
+     "m": 1,
+     "whtIncomeSatang": 15000000,
+     "ssoWageSatang": 15000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2147917,
+     "annualTaxSatang": 25775000
+    },
+    {
+     "m": 2,
+     "whtIncomeSatang": 15000000,
+     "ssoWageSatang": 15000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2147917,
+     "annualTaxSatang": 25775000
+    },
+    {
+     "m": 3,
+     "whtIncomeSatang": 17000000,
+     "ssoWageSatang": 17000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2197917,
+     "annualTaxSatang": 26275000
+    },
+    {
+     "m": 4,
+     "whtIncomeSatang": 15000000,
+     "ssoWageSatang": 15000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2197917,
+     "annualTaxSatang": 26275000
+    },
+    {
+     "m": 5,
+     "whtIncomeSatang": 15000000,
+     "ssoWageSatang": 15000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2197917,
+     "annualTaxSatang": 26275000
+    },
+    {
+     "m": 6,
+     "whtIncomeSatang": 17000000,
+     "ssoWageSatang": 17000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2269345,
+     "annualTaxSatang": 26775000
+    },
+    {
+     "m": 7,
+     "whtIncomeSatang": 15000000,
+     "ssoWageSatang": 15000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2269345,
+     "annualTaxSatang": 26775000
+    },
+    {
+     "m": 8,
+     "whtIncomeSatang": 15000000,
+     "ssoWageSatang": 15000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2269345,
+     "annualTaxSatang": 26775000
+    },
+    {
+     "m": 9,
+     "whtIncomeSatang": 17000000,
+     "ssoWageSatang": 17000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2394345,
+     "annualTaxSatang": 27275000
+    },
+    {
+     "m": 10,
+     "whtIncomeSatang": 15000000,
+     "ssoWageSatang": 15000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2394345,
+     "annualTaxSatang": 27275000
+    },
+    {
+     "m": 11,
+     "whtIncomeSatang": 15000000,
+     "ssoWageSatang": 15000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2394345,
+     "annualTaxSatang": 27275000
+    },
+    {
+     "m": 12,
+     "whtIncomeSatang": 17000000,
+     "ssoWageSatang": 17000000,
+     "ssoEmployeeSatang": 75000,
+     "whtSatang": 2894345,
+     "annualTaxSatang": 27775000
+    }
+   ]
+  },
+  {
+   "id": "YR6",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "not SSO-eligible 50,000",
+   "spouse": false,
+   "children": 0,
+   "ssoEligible": false,
+   "months": [
+    {
+     "m": 1,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 2,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 3,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 4,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 5,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 6,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 7,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 8,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 9,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 10,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 11,
+     "baseSatang": 5000000,
+     "adjustments": []
+    },
+    {
+     "m": 12,
+     "baseSatang": 5000000,
+     "adjustments": []
+    }
+   ],
+   "want": [
+    {
+     "m": 1,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179167,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 2,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179167,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 3,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179167,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 4,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179167,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 5,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179167,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 6,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179166,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 7,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179167,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 8,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179166,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 9,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179167,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 10,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179166,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 11,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179167,
+     "annualTaxSatang": 2150000
+    },
+    {
+     "m": 12,
+     "whtIncomeSatang": 5000000,
+     "ssoWageSatang": 0,
+     "ssoEmployeeSatang": 0,
+     "whtSatang": 179166,
+     "annualTaxSatang": 2150000
+    }
+   ]
+  }
+ ],
+ "classify": [
+  {
+   "id": "CLS-01",
+   "cite": "brief Q5 (HQ8/HQ9 defaults)",
+   "src": "v2",
+   "note": "",
+   "baseSatang": 3000000,
+   "adjustments": [],
+   "want": {
+    "whtIncomeSatang": 3000000,
+    "ssoWageSatang": 3000000,
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 3000000
+   }
+  },
+  {
+   "id": "CLS-02",
+   "cite": "brief Q5 (HQ8/HQ9 defaults)",
+   "src": "v2",
+   "note": "",
+   "baseSatang": 3000000,
+   "adjustments": [
+    {
+     "kind": "OT",
+     "amountSatang": 500000
+    },
+    {
+     "kind": "COMMISSION",
+     "amountSatang": 200000
+    }
+   ],
+   "want": {
+    "whtIncomeSatang": 3700000,
+    "ssoWageSatang": 3700000,
+    "addSatang": 700000,
+    "deductSatang": 0,
+    "grossSatang": 3700000
+   }
+  },
+  {
+   "id": "CLS-03",
+   "cite": "brief Q5 (HQ8/HQ9 defaults)",
+   "src": "v2",
+   "note": "",
+   "baseSatang": 3000000,
+   "adjustments": [
+    {
+     "kind": "BONUS",
+     "amountSatang": 6000000
+    }
+   ],
+   "want": {
+    "whtIncomeSatang": 9000000,
+    "ssoWageSatang": 3000000,
+    "addSatang": 6000000,
+    "deductSatang": 0,
+    "grossSatang": 9000000
+   }
+  },
+  {
+   "id": "CLS-04",
+   "cite": "brief Q5 (HQ8/HQ9 defaults)",
+   "src": "v2",
+   "note": "",
+   "baseSatang": 3000000,
+   "adjustments": [
+    {
+     "kind": "DEDUCTION",
+     "amountSatang": 100000
+    },
+    {
+     "kind": "ADVANCE",
+     "amountSatang": 500000
+    }
+   ],
+   "want": {
+    "whtIncomeSatang": 3000000,
+    "ssoWageSatang": 3000000,
+    "addSatang": 0,
+    "deductSatang": 600000,
+    "grossSatang": 2400000
+   }
+  },
+  {
+   "id": "CLS-05",
+   "cite": "brief Q5 (HQ8/HQ9 defaults)",
+   "src": "v2",
+   "note": "gross clamps at 0 like v1 payableGrossSatang",
+   "baseSatang": 1000000,
+   "adjustments": [
+    {
+     "kind": "ADVANCE",
+     "amountSatang": 1500000
+    }
+   ],
+   "want": {
+    "whtIncomeSatang": 1000000,
+    "ssoWageSatang": 1000000,
+    "addSatang": 0,
+    "deductSatang": 1500000,
+    "grossSatang": 0
+   }
+  }
+ ],
+ "classifyRefused": [
+  {
+   "id": "CLR-01",
+   "baseSatang": 3000000,
+   "adjustments": [
+    {
+     "kind": "TIP",
+     "amountSatang": 100
+    }
+   ],
+   "code": "BAD_KIND"
+  },
+  {
+   "id": "CLR-02",
+   "baseSatang": 3000000,
+   "adjustments": [
+    {
+     "kind": "OT",
+     "amountSatang": -100
+    }
+   ],
+   "code": "BAD_SATANG"
+  },
+  {
+   "id": "CLR-03",
+   "baseSatang": 3000000,
+   "adjustments": [
+    {
+     "kind": "OT",
+     "amountSatang": 100.5
+    }
+   ],
+   "code": "BAD_SATANG"
+  },
+  {
+   "id": "CLR-04",
+   "baseSatang": -1,
+   "adjustments": [],
+   "code": "BAD_SATANG"
+  }
+ ],
+ "lawSet": {
+  "SSO": {
+   "id": "fx-sso-v1",
+   "kind": "SSO",
+   "effectiveFrom": "1970-01-01",
+   "status": "ACTIVE",
+   "json": {
+    "rateBp": 500,
+    "minBaseSatang": 165000,
+    "maxBaseSatang": 1500000,
+    "rounding": "BAHT_HALF_UP",
+    "employerEqualsEmployee": true
+   }
+  },
+  "TAX_BRACKET": {
+   "id": "fx-tax-v1",
+   "kind": "TAX_BRACKET",
+   "effectiveFrom": "1970-01-01",
+   "status": "ACTIVE",
+   "json": {
+    "bands": [
+     {
+      "upToSatang": 15000000,
+      "rateBp": 0
+     },
+     {
+      "upToSatang": 30000000,
+      "rateBp": 500
+     },
+     {
+      "upToSatang": 50000000,
+      "rateBp": 1000
+     },
+     {
+      "upToSatang": 75000000,
+      "rateBp": 1500
+     },
+     {
+      "upToSatang": 100000000,
+      "rateBp": 2000
+     },
+     {
+      "upToSatang": 200000000,
+      "rateBp": 2500
+     },
+     {
+      "upToSatang": 500000000,
+      "rateBp": 3000
+     },
+     {
+      "upToSatang": null,
+      "rateBp": 3500
+     }
+    ],
+    "rounding": "SATANG_HALF_UP_ONCE"
+   }
+  },
+  "DEDUCTION": {
+   "id": "fx-ded-v1",
+   "kind": "DEDUCTION",
+   "effectiveFrom": "1970-01-01",
+   "status": "ACTIVE",
+   "json": {
+    "expenseRateBp": 5000,
+    "expenseCapSatang": 10000000,
+    "personalSatang": 6000000,
+    "spouseSatang": 6000000,
+    "childSatang": 3000000,
+    "ssoAllowanceCapSatang": 900000
+   }
+  }
+ },
+ "items": [
+  {
+   "id": "ITM-01",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "steady month 1",
+   "input": {
+    "baseSatang": 3000000,
+    "adjustments": [],
+    "ssoEligible": true,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    },
+    "monthIndex": 1,
+    "prior": {
+     "incomeSatang": 0,
+     "whtSatang": 0,
+     "ssoSatang": 0
+    }
+   },
+   "want": {
+    "grossSatang": 3000000,
+    "whtIncomeSatang": 3000000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 17083,
+    "netSatang": 2907917,
+    "blocked": null,
+    "lawRowIds": [
+     "fx-ded-v1",
+     "fx-sso-v1",
+     "fx-tax-v1"
+    ]
+   }
+  },
+  {
+   "id": "ITM-02",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "= YR2 June",
+   "input": {
+    "baseSatang": 3000000,
+    "adjustments": [
+     {
+      "kind": "OT",
+      "amountSatang": 1000000
+     }
+    ],
+    "ssoEligible": true,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    },
+    "monthIndex": 6,
+    "prior": {
+     "incomeSatang": 15000000,
+     "whtSatang": 85416,
+     "ssoSatang": 375000
+    }
+   },
+   "want": {
+    "grossSatang": 4000000,
+    "whtIncomeSatang": 4000000,
+    "ssoWageSatang": 4000000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 24226,
+    "netSatang": 3900774,
+    "blocked": null,
+    "lawRowIds": [
+     "fx-ded-v1",
+     "fx-sso-v1",
+     "fx-tax-v1"
+    ]
+   }
+  },
+  {
+   "id": "ITM-03",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "net −500.00 ⇒ blocked",
+   "input": {
+    "baseSatang": 1000000,
+    "adjustments": [
+     {
+      "kind": "ADVANCE",
+      "amountSatang": 1000000
+     }
+    ],
+    "ssoEligible": true,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    },
+    "monthIndex": 1,
+    "prior": {
+     "incomeSatang": 0,
+     "whtSatang": 0,
+     "ssoSatang": 0
+    }
+   },
+   "want": {
+    "grossSatang": 0,
+    "whtIncomeSatang": 1000000,
+    "ssoWageSatang": 1000000,
+    "ssoBaseSatang": 1000000,
+    "ssoEmployeeSatang": 50000,
+    "ssoEmployerSatang": 50000,
+    "whtSatang": 0,
+    "netSatang": -50000,
+    "blocked": "NET_NEGATIVE",
+    "lawRowIds": [
+     "fx-ded-v1",
+     "fx-sso-v1",
+     "fx-tax-v1"
+    ]
+   }
+  },
+  {
+   "id": "ITM-04",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "not SSO-eligible",
+   "input": {
+    "baseSatang": 5000000,
+    "adjustments": [],
+    "ssoEligible": false,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    },
+    "monthIndex": 1,
+    "prior": {
+     "incomeSatang": 0,
+     "whtSatang": 0,
+     "ssoSatang": 0
+    }
+   },
+   "want": {
+    "grossSatang": 5000000,
+    "whtIncomeSatang": 5000000,
+    "ssoWageSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "whtSatang": 179167,
+    "netSatang": 4820833,
+    "blocked": null,
+    "lawRowIds": [
+     "fx-ded-v1",
+     "fx-sso-v1",
+     "fx-tax-v1"
+    ]
+   }
+  },
+  {
+   "id": "ITM-05",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "net exactly 0 ⇒ not blocked",
+   "input": {
+    "baseSatang": 1000000,
+    "adjustments": [
+     {
+      "kind": "ADVANCE",
+      "amountSatang": 950000
+     }
+    ],
+    "ssoEligible": true,
+    "deductions": {
+     "spouse": false,
+     "children": 0
+    },
+    "monthIndex": 1,
+    "prior": {
+     "incomeSatang": 0,
+     "whtSatang": 0,
+     "ssoSatang": 0
+    }
+   },
+   "want": {
+    "grossSatang": 50000,
+    "whtIncomeSatang": 1000000,
+    "ssoWageSatang": 1000000,
+    "ssoBaseSatang": 1000000,
+    "ssoEmployeeSatang": 50000,
+    "ssoEmployerSatang": 50000,
+    "whtSatang": 0,
+    "netSatang": 0,
+    "blocked": null,
+    "lawRowIds": [
+     "fx-ded-v1",
+     "fx-sso-v1",
+     "fx-tax-v1"
+    ]
+   }
+  },
+  {
+   "id": "ITM-06",
+   "cite": [
+    "v1:SSO@1970-01-01",
+    "v1:TAX_BRACKET@1970-01-01",
+    "v1:DEDUCTION@1970-01-01"
+   ],
+   "src": "v2",
+   "note": "commission + deduction",
+   "input": {
+    "baseSatang": 15000000,
+    "adjustments": [
+     {
+      "kind": "COMMISSION",
+      "amountSatang": 2000000
+     },
+     {
+      "kind": "DEDUCTION",
+      "amountSatang": 300000
+     }
+    ],
+    "ssoEligible": true,
+    "deductions": {
+     "spouse": false,
+     "children": 2
+    },
+    "monthIndex": 3,
+    "prior": {
+     "incomeSatang": 30000000,
+     "whtSatang": 0,
+     "ssoSatang": 150000
+    }
+   },
+   "want": {
+    "grossSatang": 16700000,
+    "whtIncomeSatang": 17000000,
+    "ssoWageSatang": 17000000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 2627500,
+    "netSatang": 13997500,
+    "blocked": null,
+    "lawRowIds": [
+     "fx-ded-v1",
+     "fx-sso-v1",
+     "fx-tax-v1"
+    ]
+   }
+  }
+ ],
+ "ytdPrior": {
+  "rows": [
+   {
+    "runId": "r0",
+    "payDay": "2025-12-25",
+    "status": "PAID",
+    "whtIncomeSatang": 3000000,
+    "whtSatang": 17083,
+    "ssoEmployeeSatang": 75000
+   },
+   {
+    "runId": "r1",
+    "payDay": "2026-01-25",
+    "status": "PAID",
+    "whtIncomeSatang": 3001000,
+    "whtSatang": 17084,
+    "ssoEmployeeSatang": 75000
+   },
+   {
+    "runId": "r2",
+    "payDay": "2026-02-25",
+    "status": "APPROVED",
+    "whtIncomeSatang": 3002000,
+    "whtSatang": 17085,
+    "ssoEmployeeSatang": 75000
+   },
+   {
+    "runId": "r3",
+    "payDay": "2026-03-25",
+    "status": "REVERSED",
+    "whtIncomeSatang": 3003000,
+    "whtSatang": 17086,
+    "ssoEmployeeSatang": 75000
+   },
+   {
+    "runId": "r3b",
+    "payDay": "2026-03-26",
+    "status": "PAID",
+    "whtIncomeSatang": 3004000,
+    "whtSatang": 17087,
+    "ssoEmployeeSatang": 75000
+   },
+   {
+    "runId": "r4",
+    "payDay": "2026-04-25",
+    "status": "DRAFT",
+    "whtIncomeSatang": 3005000,
+    "whtSatang": 17088,
+    "ssoEmployeeSatang": 75000
+   },
+   {
+    "runId": "r5x",
+    "payDay": "2026-06-25",
+    "status": "PAID",
+    "whtIncomeSatang": 3006000,
+    "whtSatang": 17089,
+    "ssoEmployeeSatang": 75000
+   },
+   {
+    "runId": "r6",
+    "payDay": "2026-06-25",
+    "status": "DRAFT",
+    "whtIncomeSatang": 3007000,
+    "whtSatang": 17090,
+    "ssoEmployeeSatang": 75000
+   },
+   {
+    "runId": "r6b",
+    "payDay": "2026-06-25",
+    "status": "APPROVED",
+    "whtIncomeSatang": 3008000,
+    "whtSatang": 17091,
+    "ssoEmployeeSatang": 75000
+   },
+   {
+    "runId": "r7",
+    "payDay": "2026-07-25",
+    "status": "PAID",
+    "whtIncomeSatang": 3009000,
+    "whtSatang": 17092,
+    "ssoEmployeeSatang": 75000
+   }
+  ],
+  "cases": [
+   {
+    "id": "YP-01",
+    "onDay": "2026-06-25",
+    "runId": "r6",
+    "want": {
+     "incomeSatang": 15021000,
+     "whtSatang": 85436,
+     "ssoSatang": 375000
+    }
+   },
+   {
+    "id": "YP-02",
+    "onDay": "2026-01-25",
+    "runId": "r1",
+    "want": {
+     "incomeSatang": 0,
+     "whtSatang": 0,
+     "ssoSatang": 0
+    }
+   },
+   {
+    "id": "YP-03",
+    "onDay": "2027-01-25",
+    "runId": "rx",
+    "want": {
+     "incomeSatang": 0,
+     "whtSatang": 0,
+     "ssoSatang": 0
+    }
+   },
+   {
+    "id": "YP-04",
+    "onDay": "2026-06-25",
+    "runId": "r6b",
+    "want": {
+     "incomeSatang": 12013000,
+     "whtSatang": 68345,
+     "ssoSatang": 300000
+    }
+   }
+  ]
+ },
+ "pick": {
+  "rows": [
+   {
+    "id": "A",
+    "kind": "SSO",
+    "effectiveFrom": "2026-01-01",
+    "status": "ACTIVE"
+   },
+   {
+    "id": "B",
+    "kind": "SSO",
+    "effectiveFrom": "2026-07-01",
+    "status": "ACTIVE"
+   },
+   {
+    "id": "C",
+    "kind": "SSO",
+    "effectiveFrom": "2026-09-01",
+    "status": "DRAFT"
+   },
+   {
+    "id": "D",
+    "kind": "SSO",
+    "effectiveFrom": "2026-10-01",
+    "status": "RETIRED"
+   },
+   {
+    "id": "E",
+    "kind": "TAX_BRACKET",
+    "effectiveFrom": "2027-01-01",
+    "status": "ACTIVE"
+   }
+  ],
+  "note": "selection fixtures: ids/dates are synthetic, json is the v1 row of the same kind (values irrelevant to selection)",
+  "cases": [
+   {
+    "id": "PK-01",
+    "kind": "SSO",
+    "onDay": "2025-12-31",
+    "want": {
+     "code": "LAW_MISSING"
+    },
+    "why": "day before first row"
+   },
+   {
+    "id": "PK-02",
+    "kind": "SSO",
+    "onDay": "2026-01-01",
+    "want": {
+     "id": "A"
+    },
+    "why": "day of"
+   },
+   {
+    "id": "PK-03",
+    "kind": "SSO",
+    "onDay": "2026-06-30",
+    "want": {
+     "id": "A"
+    },
+    "why": "day before B"
+   },
+   {
+    "id": "PK-04",
+    "kind": "SSO",
+    "onDay": "2026-07-01",
+    "want": {
+     "id": "B"
+    },
+    "why": "day of B"
+   },
+   {
+    "id": "PK-05",
+    "kind": "SSO",
+    "onDay": "2026-09-15",
+    "want": {
+     "id": "B"
+    },
+    "why": "DRAFT C ignored"
+   },
+   {
+    "id": "PK-06",
+    "kind": "SSO",
+    "onDay": "2026-10-15",
+    "want": {
+     "id": "B"
+    },
+    "why": "RETIRED D ignored"
+   },
+   {
+    "id": "PK-07",
+    "kind": "TAX_BRACKET",
+    "onDay": "2026-12-31",
+    "want": {
+     "code": "LAW_MISSING"
+    },
+    "why": "gap: kind starts later"
+   },
+   {
+    "id": "PK-08",
+    "kind": "TAX_BRACKET",
+    "onDay": "2027-01-01",
+    "want": {
+     "id": "E"
+    },
+    "why": "day of"
+   },
+   {
+    "id": "PK-09",
+    "kind": "DEDUCTION",
+    "onDay": "2026-05-01",
+    "want": {
+     "code": "LAW_MISSING"
+    },
+    "why": "kind absent"
+   },
+   {
+    "id": "PK-10",
+    "kind": "SSO",
+    "onDay": "2026-02-30",
+    "want": {
+     "code": "LAW_BAD_DAY"
+    },
+    "why": "impossible date"
+   },
+   {
+    "id": "PK-11",
+    "kind": "SSO",
+    "onDay": "2026-1-5",
+    "want": {
+     "code": "LAW_BAD_DAY"
+    },
+    "why": "not YYYY-MM-DD"
+   }
+  ],
+  "tie": {
+   "extra": {
+    "id": "A2",
+    "kind": "SSO",
+    "effectiveFrom": "2026-01-01",
+    "status": "ACTIVE"
+   },
+   "cases": [
+    {
+     "id": "PK-12",
+     "kind": "SSO",
+     "onDay": "2026-03-01",
+     "want": {
+      "code": "LAW_AMBIGUOUS"
+     }
+    },
+    {
+     "id": "PK-13",
+     "kind": "SSO",
+     "onDay": "2026-07-01",
+     "want": {
+      "id": "B"
+     }
+    }
+   ]
+  }
+ },
+ "payDay": [
+  {
+   "id": "PD-01",
+   "payDate": "2026-06-30T16:59:59.999Z",
+   "want": "2026-06-30"
+  },
+  {
+   "id": "PD-02",
+   "payDate": "2026-06-30T17:00:00.000Z",
+   "want": "2026-07-01"
+  },
+  {
+   "id": "PD-03",
+   "payDate": "2026-12-31T17:00:00.000Z",
+   "want": "2027-01-01"
+  },
+  {
+   "id": "PD-04",
+   "payDate": "2026-01-24T23:00:00.000Z",
+   "want": "2026-01-25"
+  }
+ ],
+ "needsAccountant": [
+  {
+   "id": "NA-01",
+   "group": "SSO",
+   "q": "SSO wage ceiling 17,500 (and min base) from 1 Jan 2026? (HQ8 · review D15) — no seeded row",
+   "input": {
+    "wageSatang": 2000000,
+    "onDay": "2026-06-30"
+   },
+   "want": null
+  },
+  {
+   "id": "NA-02",
+   "group": "CLS",
+   "q": "Is ALLOWANCE (เบี้ยเลี้ยง/ค่าเดินทาง) SSO wage? Is it 40(1) taxable or an exempt reimbursement?",
+   "input": {
+    "baseSatang": 3000000,
+    "adjustments": [
+     {
+      "kind": "ALLOWANCE",
+      "amountSatang": 100000
+     }
+    ]
+   },
+   "want": null
+  },
+  {
+   "id": "NA-03",
+   "group": "YTD",
+   "q": "Mid-year one-off bonus: spread over remaining months (Q4 default) or withhold the bonus's own tax in the bonus month?",
+   "input": {
+    "monthIndex": 6,
+    "bonusSatang": 6000000,
+    "baseSatang": 3000000
+   },
+   "want": null
+  },
+  {
+   "id": "NA-04",
+   "group": "YTD",
+   "q": "Joiner with income from a previous employer in the same year (50 ทวิ): include in projection?",
+   "input": null,
+   "want": null
+  },
+  {
+   "id": "NA-05",
+   "group": "DED",
+   "q": "Allowances not in the seed (parents, disability, insurance, PVD, RMF/SSF/ThaiESG, mortgage interest, donations, spouse-with-income rules) — values + which apply to monthly WHT",
+   "input": null,
+   "want": null
+  },
+  {
+   "id": "NA-06",
+   "group": "SSO",
+   "q": "SSO special cases: employee hired at ≥60, foreign workers, exempt categories, employer rate ≠ employee rate (temporary rate cuts) — seed has one rate, employer = employee",
+   "input": null,
+   "want": null
+  },
+  {
+   "id": "NA-07",
+   "group": "CLS",
+   "q": "Does a late/absent DEDUCTION reduce SSO wage and 40(1) income (unpaid wage), or only net pay (v1)?",
+   "input": {
+    "baseSatang": 3000000,
+    "adjustments": [
+     {
+      "kind": "DEDUCTION",
+      "amountSatang": 200000
+     }
+    ]
+   },
+   "want": null
+  },
+  {
+   "id": "NA-08",
+   "group": "SSO",
+   "q": "A month with zero wage paid (whole month unpaid leave): contribution 0, or min base 1,650 (v1 gives 83 baht)?",
+   "input": {
+    "wageSatang": 0
+   },
+   "want": null
+  },
+  {
+   "id": "NA-09",
+   "group": "YTD",
+   "q": "Over-withheld year (prior WHT > annual tax): 0 this month and refund via ภ.ง.ด.91 (default), or employer refunds in December?",
+   "input": null,
+   "want": null
+  },
+  {
+   "id": "NA-10",
+   "group": "ALL",
+   "q": "Sign-off of every seeded value and rounding token (SSO BAHT_HALF_UP · tax SATANG_HALF_UP_ONCE · expense 50%/100k · 60k/60k/30k · SSO ≤9k) and of all v2 vectors in this file (HQ23)",
+   "input": null,
+   "want": null
+  }
+ ]
+}

@@ -90,6 +90,11 @@ export function tenantDb(ctx: Ctx) {
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
+          // HR H3.3 ▸ ตารางกฎหมายกลาง (HrLawTable) ร้านอ่านได้อย่างเดียว — ทุก operation ที่ไม่ใช่การอ่านโยนทันที (fail-closed · H1.3 review F1)
+          //   allowlist ของการอ่าน (operation ใหม่ของ Prisma = ถูกกันเอง) · เขียน/เปิดใช้แถวได้ทางเดียว = src/lib/platform/hr-law.ts ◂
+          if (model === "HrLawTable" && !["findMany", "findFirst", "findFirstOrThrow", "findUnique", "findUniqueOrThrow", "count", "aggregate", "groupBy"].includes(operation)) {
+            throw Object.assign(new Error(`[tenantDb] HrLawTable อ่านอย่างเดียว — "${operation}" ทำจากบริบทร้านไม่ได้`), { code: "LAW_READ_ONLY" });
+          }
           const d = scopeOf(model); // fail-closed: model ที่ไม่ได้ลงทะเบียน = โยนที่นี่
           if (d.axis !== "tenant" && d.axis !== "unit" && d.axis !== "system") return query(args);
 
