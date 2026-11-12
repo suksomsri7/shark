@@ -16,7 +16,7 @@
 // SKIP while hr/ot.ts is absent (exit 0) · QC_FORCE=1 / --force-run runs anyway · --list prints the ids.
 // Own tenants `qc-hr-h29-*`, July 2031 (Mon 7 … Sun 13), `opts.now` everywhere, swept in finally (Z1).
 // Run (lane DB): bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h2.9.mts
-import { type Any, type Def, rd, short, errText, stripComments, sha, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, changedVsBase, diffHunks, makeRegistry, qc4Env, fitnessNoEnv, jsonOf, loadOpt, modState, tagOf, makeFixtures, cleanupFx, residueOf, vOf, canon, testidsOf, inventoryParity, msgParity, dbDate, sleep, frozenControls, type Who } from "./qc-hr-lib.mjs";
+import { type Any, type Def, rd, short, errText, stripComments, sha, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, changedVsBase, diffHunks, makeRegistry, qc4Env, fitnessNoEnv, jsonOf, loadOpt, modState, tagOf, makeFixtures, cleanupFx, residueOf, vOf, canon, testidsOf, inventoryParity, msgParity, dbDate, sleep, frozenControls, type Who } from "./qc-hr-lib.mjs";
 
 const SUITE = "qc-hr-h2.9";
 const SLUG_PREFIX = "qc-hr-h29-";
@@ -145,7 +145,7 @@ const bk = (day: string, hm: string): Date => {
   return new Date(Date.UTC(y!, mo! - 1, d! + plus, h!, mi!, s ?? 0) - 7 * 3_600_000);
 };
 const missing: string[] = [];
-const base = process.env.QC_H29_BASE || (() => { try { return execFileSync("git", ["merge-base", "HEAD", "origin/session/hr"], { encoding: "utf8" }).trim(); } catch { return "39ea9782c"; } })(); // ORACLE-EDIT (controller, 12 Nov): merge-base default — H2.5 is in session/hr now; iso.sh drops env so a pin breaks control runs · // WO base (session/hr + H2.5); merge-base with session/hr would count H2.5 as changed
+const base = baseRef("QC_H29_BASE") || "39ea9782c"; // ORACLE-EDIT (controller, 12 Nov): merge-base default via qc-hr-lib baseRef — H2.5 is in session/hr now; iso.sh drops env so a pin breaks control runs
 const OR0 = await loadOpt(F.ot, "@/lib/modules/hr/ot");
 const RU0 = await loadOpt(F.rules, "@/lib/modules/hr/ot-rules");
 if (!OR0 && !FORCE) REG.skipExit([`${F.ot} absent — H2.9 not built (QC_FORCE=1 to run RED)`]);
