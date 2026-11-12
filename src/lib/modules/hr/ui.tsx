@@ -46,7 +46,7 @@ import type { OtItem } from "./ot-rules"; // HR H2.9 ◂
 import { OtRequestForm, OtRowActions } from "./ot-ui"; // HR H2.9 ◂
 import { formatBaht } from "@/lib/ui/money"; // HR H2.9 ◂
 import { HrTeamOverviewSection } from "./overview-ui"; // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) บนหน้า HrHub ◂
-import { listInbox, teamOverview } from "./inbox"; // HR H2.11 ◂
+import { teamOverviewWithPreview } from "./inbox"; // HR H2.11 ▸ r2: ภาพรวม + ตัวอย่างคำขอจากการอ่านครั้งเดียว ◂
 export { hrViewerOf } from "./privacy"; // HR H2.11 ▸ ผู้ดูของหน้า /hr/requests (หน้านั้น import ได้เฉพาะ facade + ui) ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
@@ -719,8 +719,7 @@ export async function HrHub({ systemId }: { systemId: string }) {
   // HR H1.2 ▸ R9 หน้าตั้งค่า (กะ · ประเภทการลา · วันหยุด) — OWNER หรือ hr.employee.create ◂
   const canSettings = canManageHrSettings(hv);
   // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) เหนือการ์ดเดิม เมื่อผู้ดูมีส่วนใดส่วนหนึ่ง · ตัวอย่างคำขอ 5 รายการแรก ◂
-  const overview = await teamOverview(ctx, hv);
-  const preview = overview?.inbox ? await listInbox(ctx, hv, { take: 5 }) : null;
+  const { overview, preview } = await teamOverviewWithPreview(ctx, hv); // HR H2.11 ◂
 
   return (
     <div className="flex flex-col gap-5">

@@ -619,15 +619,17 @@ async function periodCountOf(db: Tx, ctx: Ctx, employeeId: string, day: string |
   const to = addDays(dayOf(new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 1))), -1);
   return db.hrTimeCorrection.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, status: { in: ["PENDING", "APPROVED"] }, day: { gte: dbDate(from), lte: dbDate(to) } } });
 }
+const PERIOD_COUNT_CAP = 100_000; // HR H2.11 r2 ▸ เพดานของตัวนับแบบชุด ◂
 // HR H2.11 ▸ ตัวนับซ้ำแบบชุด: ผู้อ่านรายการนับครั้งเดียวทั้งชุด (คิวรีไม่ขึ้นกับจำนวนแถว) — ค่าเท่ากับ periodCountOf ทุกแถว (DTO เดิมทุกไบต์) ◂
-async function periodCountsOf(db: Tx, ctx: Ctx, rows: { employeeId: string; day: string | null }[]): Promise<Map<string, number>> {
+async function periodCountsOf(db: Tx, ctx: Ctx, rows: { employeeId: string; day: string | null }[]): Promise<Map<string, number> | null> { // HR H2.11 r2 ▸ null = อ่านชนเพดาน ⇒ ไม่รู้ตัวนับ (periodCount/repeat = null ไม่ใช่ค่าผิด) ◂
   const months = [...new Set(rows.filter((r) => r.day).map((r) => r.day!.slice(0, 7)))].sort();
   const out = new Map<string, number>();
   if (!months.length) return out;
   const from = `${months[0]}-01`;
   const last = months[months.length - 1]!;
   const to = addDays(dayOf(new Date(Date.UTC(Number(last.slice(0, 4)), Number(last.slice(5, 7)), 1))), -1);
-  const found = await db.hrTimeCorrection.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: [...new Set(rows.map((r) => r.employeeId))] }, status: { in: ["PENDING", "APPROVED"] }, day: { gte: dbDate(from), lte: dbDate(to) } }, select: { employeeId: true, day: true }, take: 100_000 });
+  const found = await db.hrTimeCorrection.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: [...new Set(rows.map((r) => r.employeeId))] }, status: { in: ["PENDING", "APPROVED"] }, day: { gte: dbDate(from), lte: dbDate(to) } }, select: { employeeId: true, day: true }, take: PERIOD_COUNT_CAP });
+  if (found.length >= PERIOD_COUNT_CAP) return null; // HR H2.11 r2 ◂
   for (const f of found) if (f.day) out.set(`${f.employeeId}|${dayOf(f.day).slice(0, 7)}`, (out.get(`${f.employeeId}|${dayOf(f.day).slice(0, 7)}`) ?? 0) + 1);
   return out;
 }
@@ -672,7 +674,7 @@ export async function correctionDetail(ctx: Ctx, viewer: CorrectionActor, id: st
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CANCELLED"] as const;
 /** รายการของผู้ดูแล (เจ้าของ · ผู้จัดการ · คีย์) — เฉพาะสาขาในขอบเขต · ใหม่สุดก่อน ไม่เกิน 200 */
-export async function listCorrections(ctx: Ctx, viewer: CorrectionActor, input: { status?: unknown; employeeId?: unknown } = {}, opts: { now?: Date; max?: number } = {} /* HR H2.11 ▸ max = เพดานของผู้เรียก (1–500 · ไม่ส่ง = 200 เดิม) ◂ */): Promise<{ ok: true; items: CorrectionItem[] } | Fail> {
+export async function listCorrections(ctx: Ctx, viewer: CorrectionActor, input: { status?: unknown; employeeId?: unknown } = {}, opts: { now?: Date; max?: number } = {} /* HR H2.11 ▸ max = เพดานของผู้เรียก (1–500 · ไม่ส่ง = 200 เดิม) ◂ */): Promise<{ ok: true; items: CorrectionItem[]; capped?: true } | Fail> { // HR H2.11 r2 ▸ capped = อ่านดิบชนเพดาน / ตัดตาม max ◂
   const max = Number.isInteger(opts?.max) && opts.max! >= 1 ? Math.min(opts.max!, 500) : LIST_MAX; // HR H2.11 ◂
   if (!isManagerReader(viewer) || !ctx?.tenantId || !ctx?.systemId) return refuse(T.detailNo);
   const db = dbOf(ctx);
@@ -692,11 +694,12 @@ export async function listCorrections(ctx: Ctx, viewer: CorrectionActor, input: 
     take: max * 2, // HR H2.11 ◂
   })) as CorrRow[];
   const emps = new Map((await db.hrEmployee.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: EMP_SELECT })).map((e) => [e.id, e as EmpRow]));
-  const shown = rows.filter((c) => { const emp = emps.get(c.employeeId); return !!emp && isManagerOf(viewer, unitOfDay(emp, c.day ? dayOf(c.day) : bkkDayKey(c.proposedAt))); }).slice(0, max); // HR H2.11 ▸ กรองก่อนแล้วนับซ้ำทั้งชุดครั้งเดียว ◂
+  const inUnit = rows.filter((c) => { const emp = emps.get(c.employeeId); return !!emp && isManagerOf(viewer, unitOfDay(emp, c.day ? dayOf(c.day) : bkkDayKey(c.proposedAt))); }); // HR H2.11 ▸ กรองก่อนแล้วนับซ้ำทั้งชุดครั้งเดียว ◂
+  const shown = inUnit.slice(0, max); // HR H2.11 ◂
   const counts = await periodCountsOf(db, ctx, shown.map((c) => ({ employeeId: c.employeeId, day: c.day ? dayOf(c.day) : null }))); // HR H2.11 ◂
   const items: CorrectionItem[] = [];
-  for (const c of shown) items.push(await itemOf(db, ctx, c, emps.get(c.employeeId)!, viewer, counts)); // HR H2.11 ◂
-  return { ok: true, items };
+  for (const c of shown) items.push(await itemOf(db, ctx, c, emps.get(c.employeeId)!, viewer, counts ?? false)); // HR H2.11 ◂
+  return { ok: true, items, ...(rows.length >= max * 2 || inUnit.length > max || counts === null ? { capped: true as const } : {}) }; // HR H2.11 r2 ◂
 }
 
 /** คำขอของตัวเอง (พนักงานที่ผูกบัญชีในระบบนี้ + ที่ผู้ใช้ยื่นเอง) — ไม่รับ id พนักงานจากผู้เรียก · ไม่มีตัวนับซ้ำ */

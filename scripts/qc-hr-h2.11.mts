@@ -52,10 +52,11 @@ const DETAIL_KEYS: Record<string, string> = {
 };
 const IMPACT_KEYS: Record<string, string> = { LEAVE: "balance,duty,othersOff", OT: "measuredMin,weekWarn", CORRECTION: "deltaMin,monthClosed", ADJUSTMENT: "targetPeriod" };
 const COUNT_KEYS = "ADJUSTMENT,CORRECTION,LEAVE,OT,SWAP,decidable,total";
+// ORACLE-EDIT (r2 items 3/4): + inboxPayrollPeriods (payroll.ts marked addition — one read for month-closed + stock target periods) ◂
 // ORACLE-EDIT (builder H2.11 · S1.2): + inboxSubjects (leave.ts, marked addition) — DTO ของ OT/แก้เวลา/สลับกะ ไม่มีสาขา/ผู้ยื่น/ของตัวเอง/สายอนุมัติ
 //   (ot.ts · swap.ts · service.ts · scope.ts แช่แข็ง) แต่ R4/R5 ต้องใช้ (unitId · own · FILED_BY_YOU · CHAIN) ⇒ ตัวอ่านข้อเท็จจริงแบบชุด 1 ตัว (คืนเฉพาะค่าเทียบผู้ดู)
 const ALLOWED_FROM_TYPES = new Set(
-  "inboxSubjects pendingLeaves leaveListScopeOf decideLeaveAs leaveDetailsMany teamLeaveBalances otRequestList decideOtRequest listSwapsForManager decideSwap listCorrections decideCorrection listAdjustments decideAdjustmentAs stockConsentByAdjustment stockChargeTargetPeriod listRuns leaveDutyHintsMany loadAttendanceBoard attendanceNeedsRecompute otDaySpans lifecycleDue rosterLeaveOverlay hrScopeOf unitsForScope hrAccessOf".split(" "),
+  "inboxSubjects inboxPayrollPeriods pendingLeaves leaveListScopeOf decideLeaveAs leaveDetailsMany teamLeaveBalances otRequestList decideOtRequest listSwapsForManager decideSwap listCorrections decideCorrection listAdjustments decideAdjustmentAs stockConsentByAdjustment stockChargeTargetPeriod listRuns leaveDutyHintsMany loadAttendanceBoard attendanceNeedsRecompute otDaySpans lifecycleDue rosterLeaveOverlay hrScopeOf unitsForScope hrAccessOf".split(" "),
 );
 const TYPE_MODULES = new Set(["service", "leave", "ot", "swap", "correction", "payroll", "stock-charge", "availability", "judge", "lifecycle", "roster-board", "scope", "privacy"]);
 const UI_IDS = ["hr-overview", "hr-overview-today", "hr-overview-inbox", "hr-overview-recompute", "hr-overview-due", "hr-inbox", "hr-inbox-filter-type", "hr-inbox-filter-unit", "hr-inbox-filter-age", "hr-inbox-batch", "hr-inbox-batch-approve", "hr-inbox-batch-reject", "hr-inbox-reject-reason", "hr-inbox-result", "hr-inbox-more", "hr-inbox-quota"];
@@ -145,6 +146,8 @@ const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") => 
 const BASE = baseRef("QC_H211_BASE");
 const git = (a: string[]) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 << 20 }).trim();
 const MARK_OTHER = /HR (H(?!2\.11\b)\d+\.\d+|SYNC|VIS)/;
+// ORACLE-EDIT (controller ruling r2 item 1): ot.ts may carry this WO's own marked `HR H2.11` hunk (branch scope in the query + raw-cap flag) ◂
+const OWN_FROZEN_OK = new Set([`${H}ot.ts`]);
 
 // ═════════════════════════ statics ═════════════════════════
 // ORACLE-EDIT (controller fix round r2 · 13 Nov): R2.1–R2.8 added (RED on 46ecf8387 except the R2.2 control) — hunter F1/F2/F3 + reviewer pins ◂
@@ -220,7 +223,7 @@ function runStatic(): void {
     for (const f of FROZEN) {
       const hs = diffHunks(BASE, f);
       if (hs === null) bad.push(`${f}:git`);
-      else if (hs.some((h) => !hunkOk(h))) bad.push(f);
+      else if (hs.some((h) => !hunkOk(h) && !(OWN_FROZEN_OK.has(f) && h.removed.length <= 3 && h.added.some((l) => /HR H2\.11/.test(l))))) bad.push(f);
     }
     let apr = "";
     let prisma = "";

@@ -37,7 +37,7 @@ import { leaveListScopeOf, pendingLeaves } from "./service";
 import { decideOtRequest, otRequestList } from "./ot";
 import { decideSwap, listSwapsForManager } from "./swap";
 import { decideCorrection, listCorrections } from "./correction";
-import { decideAdjustmentAs, listAdjustments, listRuns, stockChargeTargetPeriod } from "./payroll";
+import { decideAdjustmentAs, inboxPayrollPeriods, listAdjustments } from "./payroll";
 import { stockConsentByAdjustment } from "./stock-charge";
 import { leaveDutyHintsMany } from "./availability";
 import { attendanceNeedsRecompute, loadAttendanceBoard, otDaySpans } from "./judge";
@@ -111,7 +111,10 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
   const A = adjs ?? [];
   const seen = new Set<InboxType>([...(leaves ? ["LEAVE" as const] : []), ...(ots?.ok ? ["OT" as const] : []), ...(swaps?.ok ? ["SWAP" as const] : []), ...(corrs?.ok ? ["CORRECTION" as const] : []), ...(adjs ? ["ADJUSTMENT" as const] : [])]);
   if (!seen.size) return null;
-  const truncated = INBOX_TYPES.filter((t) => ({ LEAVE: L.length, OT: O.length, SWAP: S.length, CORRECTION: C.length, ADJUSTMENT: A.length })[t] >= INBOX_CAP);
+  // r2: OT/แก้เวลา = ตัวอ่านบอกเองว่าคิวรีดิบชนเพดาน (กรองสาขาในคิวรีแล้ว) · ชนิดอื่นกรองสาขาในคิวรีอยู่แล้ว ⇒ ความยาว ≥ เพดาน
+  const truncated = INBOX_TYPES.filter((t) =>
+    t === "OT" ? !!(ots && ots.ok && ots.capped) : t === "CORRECTION" ? !!(corrs && corrs.ok && corrs.capped) : ({ LEAVE: L.length, SWAP: S.length, ADJUSTMENT: A.length } as Record<string, number>)[t]! >= INBOX_CAP,
+  );
 
   // ── 2. ข้อเท็จจริงของผู้ดู (สาขา ณ วัน · ของตัวเอง · ผู้ยื่น · สายอนุมัติ) — 1 ชุด ──
   const subj = await inboxSubjects(ctx, v, {
@@ -124,6 +127,9 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
   const who = (id: string) => subj.employees.get(id);
   const own = (id: string) => !!who(id)?.own;
   const unitAt = (id: string, day: string | null) => who(id)?.unitAt(day) ?? null;
+  // r2: งวดเงินเดือนที่เกี่ยว (เดือนของคำขอแก้เวลา · งวดของรายการเงิน) — เฉพาะผู้ดูเงินเดือน · อ่านครั้งเดียว
+  const payrollViewer = canViewPayroll(m);
+  const periodInfo = payrollViewer ? await inboxPayrollPeriods(ctx, [...C.map((c) => (c.day ?? "").slice(0, 7)), ...A.map((a) => a.periodKey)]) : new Map<string, { closed: boolean; target: string | null }>();
   const block = (chain: boolean, filed: boolean, right: boolean): InboxBlocker => (chain ? "CHAIN" : filed ? "FILED_BY_YOU" : right ? null : "NO_RIGHT");
   const out: Raw[] = [];
   const push = (r: Omit<Raw, "ageDays" | "batchable" | "canDecide" | "createdAt" | "_at"> & { at: Date }) => {
@@ -251,7 +257,6 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
   // ── CORRECTION ──
   const corrMine = C.filter((c) => !own(c.employeeId));
   if (corrMine.length) {
-    const closed = new Set((await listRuns(ctx, 50)).filter((r) => r.status === "APPROVED" || r.status === "PAID").map((r) => r.periodKey));
     for (const c of corrMine) {
       const unit = unitAt(c.employeeId, c.day);
       const delta = c.action === "CHANGE" && c.originalAt && c.proposedAt ? Math.round((Date.parse(c.proposedAt) - Date.parse(c.originalAt)) / 60_000) : null;
@@ -263,7 +268,7 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
         unitId: unit,
         blocker: block(subj.chain.has(c.id), subj.correctionFiledByViewer.has(c.id), keyHolder),
         detail: { action: c.action, day: c.day, evidence: c.evidence, filedOnBehalf: c.filedOnBehalf, kind: c.kind, originalAt: c.originalAt, periodCount: c.periodCount, proposedAt: c.proposedAt, reason: c.reason, repeat: c.repeat },
-        impact: { deltaMin: delta, monthClosed: !!c.day && closed.has(c.day.slice(0, 7)) },
+        impact: { deltaMin: delta, monthClosed: payrollViewer ? !!c.day && !!periodInfo.get(c.day.slice(0, 7))?.closed : null },
         at: new Date(c.createdAt),
       });
     }
@@ -273,12 +278,7 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
   const adjMine = A.filter((a) => !own(a.employeeId));
   if (adjMine.length) {
     const stock = adjMine.filter((a) => a.sourceType === "INVENTORY_ISSUE").map((a) => a.id);
-    const periods = [...new Set(adjMine.map((a) => a.periodKey))];
-    const [consent, targets] = await Promise.all([
-      stock.length ? stockConsentByAdjustment(ctx, v, stock) : Promise.resolve(new Map<string, { ref: string; at: string; employeeEnded: boolean }>()),
-      Promise.all(periods.map((p) => stockChargeTargetPeriod(ctx, p))),
-    ]);
-    const targetOf = new Map(periods.map((p, i) => [p, targets[i] ?? null] as const));
+    const consent = stock.length ? await stockConsentByAdjustment(ctx, v, stock) : new Map<string, { ref: string; at: string; employeeEnded: boolean }>();
     for (const a of adjMine) {
       const src = sourceOf(a);
       const cs = src === "STOCK" ? consent.get(a.id) : undefined;
@@ -290,8 +290,8 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
         employeeName: who(a.employeeId)?.name ?? "",
         unitId: unit,
         blocker: block(false, !owner && !!uid && a.requestedById === uid, canAt("hr.payadjust.approve", unit) && canViewPayroll(m)),
-        detail: { amountSatang: a.amountSatang, consent: cs ? { at: cs.at, ref: cs.ref } : null, kind: String(a.kind), note: a.note ?? null, periodKey: a.periodKey, source: src },
-        impact: { targetPeriod: targetOf.get(a.periodKey) ?? null },
+        detail: { amountSatang: a.amountSatang, consent: cs ? { at: cs.at, employeeEnded: cs.employeeEnded, ref: cs.ref } : null, kind: String(a.kind), note: a.note ?? null, periodKey: a.periodKey, source: src },
+        impact: { targetPeriod: periodInfo.get(a.periodKey)?.target ?? null },
         at: a.createdAt,
       });
     }
@@ -351,6 +351,8 @@ export function assertInboxAccess(v: HrViewer): void {
 
 // ═══════════════════════════ ตัดสิน (R6 · R7 · R8) ═══════════════════════════
 const UNEXPECTED = "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง";
+/** r2 (hunter F3): เหตุผล = NFC · ตัดอักขระควบคุม/อักขระมองไม่เห็น (zero-width ฯลฯ) · ตัดช่องว่างหัวท้าย — แล้วจึงนับความยาว */
+const cleanReason = (v: unknown) => (typeof v === "string" ? v.normalize("NFC").replace(/\p{Cc}/gu, " ").replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").trim() : "");
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 async function decideOne(ctx: Ctx, v: HrViewer, it: { type: InboxType; id: string }, decision: "APPROVED" | "REJECTED", now: Date | undefined): Promise<{ ok: true; status: string } | { ok: false; reason: string }> {
   try {
@@ -374,6 +376,7 @@ export async function decideInbox(ctx: Ctx, v: HrViewer, input: InboxDecideInput
   if (!INBOX_KEY_RE.test(batchKey)) return { ok: false, reason: INBOX_TEXT.key };
   const raw = Array.isArray(input?.items) ? input.items : [];
   if (!raw.length) return { ok: false, reason: INBOX_TEXT.empty };
+  if (raw.length > INBOX_BATCH_MAX) return { ok: false, reason: INBOX_TEXT.tooMany }; // r2: เพดานก่อนตรวจรายการ
   const items: { type: InboxType; id: string }[] = [];
   const dup = new Set<string>();
   let bad = false;
@@ -391,7 +394,7 @@ export async function decideInbox(ctx: Ctx, v: HrViewer, input: InboxDecideInput
   if (items.length > INBOX_BATCH_MAX) return { ok: false, reason: INBOX_TEXT.tooMany };
   const decision = input?.decision === "APPROVED" || input?.decision === "REJECTED" ? input.decision : null;
   if (bad || !items.length || !decision) return { ok: false, reason: INBOX_TEXT.badItem };
-  const reason = decision === "REJECTED" ? str(input?.reason) : "";
+  const reason = decision === "REJECTED" ? cleanReason(input?.reason) : "";
   if (decision === "REJECTED" && (Array.from(reason).length < 3 || Array.from(reason).length > 200)) return { ok: false, reason: INBOX_TEXT.rejectReason };
 
   // ── R8 claim: ล็อกชุด → แถว hr.inbox.batch (ธุรกรรมสั้น · ปล่อยล็อกก่อนตัดสิน) ──
@@ -437,16 +440,21 @@ export type TeamOverview = {
   lifecycleDue: number | null;
   needsRecompute: number | null;
 };
-/** ภาพรวมทีม = ตัวอ่านเดิม 4 ตัว (ไม่มีการตัดสินใหม่) · null = ทุกส่วนเป็น null */
-export async function teamOverview(ctx: Ctx, v: HrViewer, input: { day?: unknown; unit?: unknown } = {}, opts: Opts = {}): Promise<TeamOverview | null> {
-  const [board, needs, due, inbox] = await Promise.all([
+/** ภาพรวมทีม + ตัวอย่างคำขอ n รายการแรก จากการอ่านกล่องครั้งเดียว (หน้า HrHub — r2 item 2) */
+export async function teamOverviewWithPreview(ctx: Ctx, v: HrViewer, input: { day?: unknown; unit?: unknown } = {}, opts: Opts = {}, previewTake = 5): Promise<{ overview: TeamOverview | null; preview: InboxList | null }> {
+  const [board, needs, due, list] = await Promise.all([
     loadAttendanceBoard(ctx, v, { day: input?.day, unit: input?.unit }, opts),
     attendanceNeedsRecompute(ctx, v, opts),
     lifecycleDue(ctx, v, opts),
-    inboxCounts(ctx, v, opts),
+    listInbox(ctx, v, { take: previewTake }, opts),
   ]);
-  const r: TeamOverview = { board: board ?? null, inbox: inbox ?? null, lifecycleDue: due ? due.items.length : null, needsRecompute: needs ? needs.count : null };
-  return r.board === null && r.inbox === null && r.lifecycleDue === null && r.needsRecompute === null ? null : r;
+  const r: TeamOverview = { board: board ?? null, inbox: list?.counts ?? null, lifecycleDue: due ? due.items.length : null, needsRecompute: needs ? needs.count : null };
+  const empty = r.board === null && r.inbox === null && r.lifecycleDue === null && r.needsRecompute === null;
+  return { overview: empty ? null : r, preview: list };
+}
+/** ภาพรวมทีม = ตัวอ่านเดิม 4 ตัว (ไม่มีการตัดสินใหม่) · null = ทุกส่วนเป็น null */
+export async function teamOverview(ctx: Ctx, v: HrViewer, input: { day?: unknown; unit?: unknown } = {}, opts: Opts = {}): Promise<TeamOverview | null> {
+  return (await teamOverviewWithPreview(ctx, v, input, opts, 1)).overview;
 }
 
 export type TeamLeaveQuota = {

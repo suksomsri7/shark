@@ -654,15 +654,19 @@ const LIST_TAKE = 500;
 const STATUSES = new Set(["PENDING", "APPROVED", "REJECTED", "CANCELLED"]);
 
 /** รายการคำขอ OT ของผู้ตัดสิน/ผู้ดูเงินเดือน (เฉพาะสาขาในขอบเขต) · เงินเฉพาะ OWNER/hr.payroll.read (Q11) · คนอื่น = listNo */
-export async function otRequestList(ctx: Ctx, viewer: OtViewer, input: { from?: unknown; to?: unknown; status?: unknown } = {}): Promise<{ ok: true; items: OtItem[] } | Fail> {
+export async function otRequestList(ctx: Ctx, viewer: OtViewer, input: { from?: unknown; to?: unknown; status?: unknown } = {}): Promise<{ ok: true; items: OtItem[]; capped?: true } | Fail> { // HR H2.11 ▸ capped = คิวรีดิบชนเพดาน LIST_TAKE ◂
   if (!viewer || !canList(viewer)) return refuse(T.listNo);
   const today = bkkDayKey(new Date());
   const from = isDay(input?.from) ? input.from : addDays(today, -35);
   const to = isDay(input?.to) ? input.to : addDays(today, 31);
   const status = typeof input?.status === "string" && STATUSES.has(input.status) ? (input.status as "PENDING") : undefined;
   const db = dbOf(ctx);
+  // HR H2.11 ▸ r2 (มติผู้คุม · hunter F1): ขอบเขตสาขาในคิวรีก่อนเพดาน — พนักงานที่สาขาประจำหรือแถวยืมตัวใดอยู่ในขอบเขต (ชุดที่ใหญ่กว่าเสมอ) ·
+  //   ตัวกรองสาขาของวันเดิมข้างล่างคงเดิม (ไม่ขยาย/ไม่แคบลง) · ทุกสาขา = ไม่กรอง · แถวไม่มีสาขา = ตกเหมือนเดิม ◂
+  const sc211 = scopeOf(viewer);
+  const unit211: Prisma.HrOtRequestWhereInput = sc211.unitIds === "*" ? {} : { employee: { OR: [{ unitId: { in: sc211.unitIds } }, { units: { some: { unitId: { in: sc211.unitIds } } } }] } };
   const rows = (await db.hrOtRequest.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, date: { gte: dbDate(from), lte: dbDate(to) }, ...(status ? { status } : {}) },
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, date: { gte: dbDate(from), lte: dbDate(to) }, ...(status ? { status } : {}), ...unit211 }, // HR H2.11 ◂
     include: { employee: { select: { name: true } } },
     orderBy: [{ date: "desc" }, { startAt: "desc" }, { id: "asc" }],
     take: LIST_TAKE,
@@ -673,7 +677,7 @@ export async function otRequestList(ctx: Ctx, viewer: OtViewer, input: { from?: 
     const e = emps.get(r.employeeId);
     return !!e && covers(scope, unitOfDay(e, dayOf(r.date)));
   });
-  return { ok: true, items: await toItems(db, ctx, mine, emps, seesMoney(viewer)) };
+  return { ok: true, items: await toItems(db, ctx, mine, emps, seesMoney(viewer)), ...(rows.length >= LIST_TAKE ? { capped: true as const } : {}) }; // HR H2.11 ◂
 }
 
 /** คำขอ OT ของตัวเอง (พนักงานจากบัญชีผู้ใช้เท่านั้น — ไม่รับ id) พร้อมยอดเงินของตัวเอง */

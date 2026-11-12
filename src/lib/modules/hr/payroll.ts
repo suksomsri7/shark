@@ -1911,6 +1911,8 @@ export async function decideAdjustmentAs(
   if (status !== "APPROVED" && status !== "REJECTED") return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
   const empId = typeof id === "string" && id ? await employeeIdOfAdjustment(ctx, id) : null;
   if (!empId) return { ok: false, reason: "ไม่พบรายการ" };
+  // r2 (hunter F2 · กันซ้อน): แถวจากคำขอ OT ตัดสินที่คำขอ OT เท่านั้น — ข้อความเดียวกับ cancelAdjustment/moveStrandedAdjustment (H2.9 r2.3)
+  if (await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id, sourceType: "OT_REQUEST" }, select: { id: true } })) return { ok: false, reason: OT_TEXT.otRow };
   const emp = await employeeUnitsOf(ctx, empId);
   if (emp) {
     const t = unitTargetOf(hrScopeOf(m), emp, new Date());
@@ -1933,5 +1935,20 @@ export async function decideAdjustmentAs(
     console.error("[hr.payadjust.decide]", e);
     return { ok: false, reason: "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง" };
   }
+}
+// ◂ HR H2.11
+
+// HR H2.11 r2 ▸ งวดของกล่องคำขอรวม (อ่านอย่างเดียว · คิวรีเดียวต่อชุด ไม่ขึ้นกับจำนวนงวด): ต่องวดที่ถาม —
+//   closed = มีรอบ APPROVED/PAID ของงวดนั้น (ตัวเดียวกับที่ correction.ts ปฏิเสธ "เดือนนี้อนุมัติเงินเดือนแล้ว") ·
+//   target = งวดปลายทางแบบ stockChargeTargetPeriod (งวดแรก ≥ งวดนั้นที่ยังไม่มีรอบที่มีผล) ◂
+export async function inboxPayrollPeriods(ctx: Ctx, periods: string[]): Promise<Map<string, { closed: boolean; target: string | null }>> {
+  const ps = [...new Set((Array.isArray(periods) ? periods : []).filter((p) => typeof p === "string" && PERIOD_RE.test(p)))].sort();
+  const out = new Map<string, { closed: boolean; target: string | null }>();
+  if (!ps.length) return out;
+  const runs = await tenantDb(ctx).hrPayrollRun.findMany({ where: { systemId: ctx.systemId, periodKey: { gte: ps[0]! } }, select: { periodKey: true, status: true }, take: 5_000 });
+  const live = new Set(runs.filter((r) => r.status !== "REVERSED").map((r) => r.periodKey));
+  const closed = new Set(runs.filter((r) => r.status === "APPROVED" || r.status === "PAID").map((r) => r.periodKey));
+  for (const p of ps) out.set(p, { closed: closed.has(p), target: live.has(p) ? nextRunlessPeriod(p, live) : p });
+  return out;
 }
 // ◂ HR H2.11

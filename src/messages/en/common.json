@@ -868,7 +868,8 @@
       "blocker": {
         "CHAIN": "In an approval chain — decide on the Approvals page",
         "FILED_BY_YOU": "You filed this request — another approver decides",
-        "NO_RIGHT": "View only — you cannot decide this kind of request"
+        "NO_RIGHT": "View only — you cannot decide this kind of request",
+        "NO_RIGHT_BRANCH": "The other shift is in a branch you do not manage — a manager of both branches decides"
       },
       "openApprovals": "Open Approvals",
       "approve": "Approve",
@@ -950,7 +951,8 @@
         "consent": "Consent",
         "note": "Note",
         "unit": "Branch",
-        "none": "—"
+        "none": "—",
+        "employeeEnded": "This employee's employment has ended — recover from the final pay or ask the accountant to write it off"
       },
       "impact": {
         "title": "Impact",

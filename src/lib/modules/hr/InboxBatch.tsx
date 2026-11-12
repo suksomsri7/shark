@@ -99,6 +99,11 @@ function Detail({ it }: { it: InboxItem }) {
       <Field label={t("f.period")}>{String(d.periodKey)}</Field>
       <Field label={t("f.source")}>{["MANUAL", "STOCK", "COMMISSION", "SYSTEM"].includes(src) ? t(`f.${src}` as "f.MANUAL") : src}</Field>
       {consent && <Field label={t("f.consent")}>{`${String(consent.ref)} · ${formatThaiDate(String(consent.at))}`}</Field>}
+      {consent?.employeeEnded === true && (
+        <p role="note" className="col-span-full text-sm text-[color:var(--color-danger)]">
+          {t("f.employeeEnded")}
+        </p>
+      )}
       {!!d.note && <Field label={t("f.note")}>{String(d.note)}</Field>}
     </div>
   );
@@ -121,7 +126,7 @@ function Impact({ it }: { it: InboxItem }) {
     rows.push([t("impact.title"), im.weekWarn ? t("impact.weekWarn") : t("impact.weekOk")]);
   } else if (it.type === "CORRECTION") {
     if (typeof im.deltaMin === "number") rows.push([t("impact.delta"), t("impact.deltaN", { n: String(im.deltaMin) })]);
-    rows.push([t("impact.title"), im.monthClosed ? t("impact.monthClosed") : t("impact.monthOpen")]);
+    if (typeof im.monthClosed === "boolean") rows.push([t("impact.title"), im.monthClosed ? t("impact.monthClosed") : t("impact.monthOpen")]); // ผู้ดูเงินเดือนเท่านั้น (r2)
   } else if (it.type === "ADJUSTMENT") {
     rows.push([t("impact.targetPeriod"), String(im.targetPeriod ?? t("f.none"))]);
   }
@@ -246,7 +251,7 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
             {!compact && <Impact it={it} />}
             {it.blocker && (
               <p className={`text-sm ${muted}`}>
-                {t(`blocker.${it.blocker}` as "blocker.CHAIN")}
+                {it.blocker === "NO_RIGHT" && it.type === "SWAP" && (it.detail as Any).shape === "SWAP" && (it.detail as Any).to === null ? t("blocker.NO_RIGHT_BRANCH") : t(`blocker.${it.blocker}` as "blocker.CHAIN")}
                 {it.blocker === "CHAIN" && (
                   <>
                     {" · "}

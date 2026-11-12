@@ -45,14 +45,14 @@ export type InboxDetail =
       reason: string;
       repeat: boolean | null;
     }
-  | { amountSatang: number; consent: { at: string; ref: string } | null; kind: string; note: string | null; periodKey: string; source: "MANUAL" | "STOCK" | "COMMISSION" | "SYSTEM" };
+  | { amountSatang: number; consent: { at: string; employeeEnded: boolean; ref: string } | null; kind: string; note: string | null; periodKey: string; source: "MANUAL" | "STOCK" | "COMMISSION" | "SYSTEM" };
 
 export type InboxLeaveImpact = {
   balance: { available: string | null; pending: string; used: string } | null;
   duty: unknown;
   othersOff: { fromDate: string; name: string; toDate: string }[];
 };
-export type InboxImpact = InboxLeaveImpact | { measuredMin: number | null; weekWarn: boolean } | { deltaMin: number | null; monthClosed: boolean } | { targetPeriod: string | null } | null;
+export type InboxImpact = InboxLeaveImpact | { measuredMin: number | null; weekWarn: boolean } | { deltaMin: number | null; monthClosed: boolean | null } | { targetPeriod: string | null } | null;
 
 export type InboxItem = {
   id: string;
