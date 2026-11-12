@@ -203,6 +203,12 @@ model HrEmployee {
   employmentStatus  HrEmploymentStatus?
   probationEndAt    DateTime?         @db.Date
   contractEndAt     DateTime?         @db.Date
+  // HR H4.4 ▸ ประวัติการสิ้นสุดการจ้างล่าสุด (เขียนที่ hr/lifecycle.ts#offboardEmployee เท่านั้น · กู้คืนแล้วคงไว้เป็นประวัติ · สิ้นสุดซ้ำ = เขียนทับ) ·
+  //   offboardNote ≤ 500 ตัวอักษร = CHECK ใน migration 20261231000000_hr_lifecycle · เหตุผล/หมายเหตุไม่ออกไป outbox/audit/การ์ด/AI ◂
+  offboardedAt      DateTime?
+  offboardReason    HrOffboardReason?
+  offboardNote      String?
+  offboardedById    String?
 
   attendances HrAttendance[]
   leaves      HrLeave[]
@@ -222,6 +228,8 @@ model HrEmployee {
   @@index([systemId, active])
   @@index([tenantId])
   @@index([partyId])
+  @@index([systemId, probationEndAt]) // HR H4.4 ▸ ตัวกวาดเตือนครบทดลองงาน ◂
+  @@index([systemId, contractEndAt]) // HR H4.4 ▸ ตัวกวาดเตือนสัญญาใกล้หมด ◂
   @@index([systemId, unitId])
   @@index([systemId, employmentStatus])
 }
@@ -566,6 +574,15 @@ model HrHoliday {
   @@index([systemId, date])
 }
 
+// HR H4.4 ▸ เหตุผลการสิ้นสุดการจ้าง (CREATE TYPE ใน migration 20261231000000_hr_lifecycle) ◂
+enum HrOffboardReason {
+  RESIGNED
+  CONTRACT_END
+  PROBATION_FAILED
+  TERMINATED
+  OTHER
+}
+
 // HR H1.3 ▸ บันทึก/ตักเตือน/ประเมินพนักงาน (ข้อมูล HR อ่อนไหว — body/score ห้ามออก DTO จนกว่า H4.4 มีกติกา) · H1.3 ยังไม่มีใครเขียน/อ่าน
 //   CHECK score 1..5 (หรือว่าง) อยู่ใน migration.sql ◂
 enum HrReviewNoteKind {
@@ -582,7 +599,8 @@ model HrReviewNote {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   employeeId        String
-  employee          HrEmployee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  // HR H4.4 ▸ Restrict (Q9): บันทึก/ใบเตือนต้องอยู่รอดการลบพนักงาน — ลบแถวพนักงานที่มีบันทึกไม่ได้ (กำหนดลบตามกฎหมาย = เจ้าของ · D5) ◂
+  employee          HrEmployee       @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   kind              HrReviewNoteKind
   title             String
   body              String

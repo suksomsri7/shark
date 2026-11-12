@@ -788,8 +788,11 @@ function runStatic(): void {
     ].filter((p) => existsSync(join(ROOT, p)))
       // ORACLE-EDIT (controller 12 Nov): H3.3 ships the law engine — these two files are the intended readers of HrLawTable/lawRowIds/ytdJson
       .filter((p) => p !== "src/lib/modules/hr/law.ts" && p !== "src/lib/modules/hr/payroll-rules-v2.ts");
-    const cnt = (s: string) => (stripComments(s).match(S61_RE) ?? []).length;
-    const hits = files.map((f) => [f, cnt(rd(f)) - cnt(atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
+    // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
+    //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
+    const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
+    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t))).length;
+    const hits = files.map((f) => [f, cntOf(f, rd(f)) - cntOf(f, atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
     chk("S6.1", files.length > 20 && hits.length === 0, "0 new reads", `${hits.join(",") || "0"} of ${files.length} files (base ${baseRef().slice(0, 8)})`);
   }
   // S6.2 static part
@@ -1192,10 +1195,12 @@ async function runDb(): Promise<void> {
       [...NEW_TABLES, "HrPayAdjustment"],
     )) as Any[];
     const badFk: string[] = [];
-    for (const t of ["HrWorkEntry", "HrReviewNote", "HrOnboardingTask"]) if (!fk.some((r) => r.t === t && r.c === "employeeId" && r.ref === "HrEmployee" && r.d === "c")) badFk.push(`${t}.employeeId:${fk.find((r) => r.t === t && r.c === "employeeId")?.d ?? "∅"}`);
+    // ORACLE-EDIT (H4.4 R1 · Q9/Q13 controller): HrReviewNote.employeeId is ON DELETE RESTRICT since 20261231000000_hr_lifecycle (notes outlive the row) · the other two stay CASCADE
+    const FK_DEL: Record<string, string> = { HrWorkEntry: "c", HrReviewNote: "r", HrOnboardingTask: "c" };
+    for (const t of ["HrWorkEntry", "HrReviewNote", "HrOnboardingTask"]) if (!fk.some((r) => r.t === t && r.c === "employeeId" && r.ref === "HrEmployee" && r.d === FK_DEL[t])) badFk.push(`${t}.employeeId:${fk.find((r) => r.t === t && r.c === "employeeId")?.d ?? "∅"}`);
     for (const r of fk) if (r.t === "HrWorkEntry" && WE_SOURCE_IDS.includes(r.c)) badFk.push(`HrWorkEntry.${r.c}→${r.ref}`);
     for (const r of fk) if (r.t === "HrPayAdjustment") badFk.push(`HrPayAdjustment.${r.c}→${r.ref}`);
-    chk("S1.12", badFk.length === 0, "3 CASCADE FKs · no source-id FK · no adjustment FK", badFk.join(" ") || "all");
+    chk("S1.12", badFk.length === 0, "2 CASCADE + note RESTRICT FKs · no source-id FK · no adjustment FK", badFk.join(" ") || "all");
     // S1.6 db part (rolled back)
     const s16 = staticNotes.s16 as Record<string, boolean>;
     const scoreBad = await rolledBack(async (tx) => {
@@ -1458,6 +1463,15 @@ async function runDb(): Promise<void> {
       const a = await tryInsert("HrWorkEntry", we({ employeeId: e4, date: "2031-05-01" }));
       const b = await tryInsert("HrReviewNote", { tenantId: T, systemId: sH, employeeId: e4, kind: "NOTE", title: "บันทึก", body: "ทดสอบ" });
       const c = await tryInsert("HrOnboardingTask", { tenantId: T, systemId: sH, employeeId: e4, kind: "ONBOARDING", title: "รับชุดยูนิฟอร์ม" });
+      // ORACLE-EDIT (H4.4 R1 · Q9/Q13 controller): the note now blocks the delete (RESTRICT → 23001/23503, note kept) · after the note is removed the delete cascades the other two
+      let refused = "ok";
+      try {
+        await P.hrEmployee.delete({ where: { id: e4 } });
+      } catch (e) {
+        refused = pgCode(e);
+      }
+      const kept = await rawCount("HrReviewNote", `"employeeId" = $1`, e4);
+      await P.$executeRawUnsafe(`DELETE FROM "HrReviewNote" WHERE "employeeId" = $1`, e4).catch(() => null);
       let del = "ok";
       try {
         await P.hrEmployee.delete({ where: { id: e4 } });
@@ -1465,7 +1479,8 @@ async function runDb(): Promise<void> {
         del = pgCode(e);
       }
       const left = [await rawCount("HrWorkEntry", `"employeeId" = $1`, e4), await rawCount("HrReviewNote", `"employeeId" = $1`, e4), await rawCount("HrOnboardingTask", `"employeeId" = $1`, e4)];
-      chk("S4.6", a === "ok" && b === "ok" && c === "ok" && del === "ok" && left.every((x) => x === 0), "3 rows → 0 after delete", `inserts=${a}/${b}/${c} delete=${del} left=${left.join("/")}`);
+      const blocked = (refused === "23001" || refused === "23503") && kept === 1;
+      chk("S4.6", a === "ok" && b === "ok" && c === "ok" && blocked && del === "ok" && left.every((x) => x === 0), "note blocks delete · then 3 rows → 0", `inserts=${a}/${b}/${c} first=${refused}/${kept} delete=${del} left=${left.join("/")}`);
     }
     {
       const r47 = await rounds(async (k) => {
@@ -1780,7 +1795,8 @@ async function runDb(): Promise<void> {
       const seed = stripComments(rd(SEED_FILE));
       const noWrite = !/(hrWorkEntry|hrReviewNote|hrOnboardingTask|hrLawTable)\.(create|createMany|upsert)\b|INSERT INTO "(HrWorkEntry|HrReviewNote|HrOnboardingTask|HrLawTable)"/.test(seed);
       const rows = q ? [await rawCount("HrWorkEntry", `"tenantId" = $1`, q), await rawCount("HrReviewNote", `"tenantId" = $1`, q), await rawCount("HrOnboardingTask", `"tenantId" = $1`, q)] : [-9, -9, -9];
-      chk("S7.3", noWrite && rows.every((x) => x === 0), "no seed write · 0/0/0 rows", `noWrite=${noWrite} rows=${rows.join("/")} (−1 = table absent · −9 = qc-hr-v2 not seeded)`);
+      // ORACLE-EDIT (builder H4.4 · seed ML1 companion — controller to confirm): H4.4 §6 seeds 1 note + 13 tasks through hr/lifecycle.ts (still no direct seed write) · work entries stay 0
+      chk("S7.3", noWrite && rows[0] === 0 && rows[1] === 1 && rows[2] === 13, "no seed write · 0/1/13 rows", `noWrite=${noWrite} rows=${rows.join("/")} (−1 = table absent · −9 = qc-hr-v2 not seeded)`);
     }
     {
       const v1 = (await lawRowsOf("v1")) ?? null;

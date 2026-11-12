@@ -94,7 +94,8 @@ function guarded(chk: HrChk, id: string, name: string, fn: () => void) {
 // ═══════════════════════════════════════════════════════════════
 // HR H1.2 ▸ Q5: + พิกัด/รูปของการลงเวลา (HrAttendance.lat/lng/photoKey — HQ27) + ใบรับรองแพทย์ (HrLeave.attachmentKey = ข้อมูลสุขภาพ) ◂
 // HR H1.3 ▸ Q12: + ยอดสะสมภาษี/ประกันสังคมทั้งปี (HrPayrollItem.ytdJson) + ไฟล์ยื่น/ไฟล์ธนาคาร (HrPayrollRun.filingJson/bankFileKey) ◂
-export const SENSITIVE_FIELDS = ["pinCode", "pinHash", "nationalId", "bankAccountNo", "ssoNumber", "houseRegAddress", "lat", "lng", "photoKey", "attachmentKey", "ytdJson", "filingJson", "bankFileKey"] as const;
+// HR H4.4 ▸ R14: + หมายเหตุการสิ้นสุดการจ้าง (HrEmployee.offboardNote — แสดงได้เฉพาะ DTO ของ hr/lifecycle.ts ในหน้า server) ◂
+export const SENSITIVE_FIELDS = ["pinCode", "pinHash", "nationalId", "bankAccountNo", "ssoNumber", "houseRegAddress", "lat", "lng", "photoKey", "attachmentKey", "ytdJson", "filingJson", "bankFileKey", "offboardNote"] as const;
 const SENSITIVE = new Set<string>(SENSITIVE_FIELDS);
 /** ไฟล์ DTO ที่อนุญาต (whitelist ของ HF-HR-0) — ช่องที่ DTO ในไฟล์นี้ประกาศ = อ่านได้ในไฟล์ client ที่ import DTO นั้น */
 export const PRIVACY_SHARED = "src/lib/modules/hr/privacy-shared.ts";
@@ -430,6 +431,7 @@ function hrMessages(ROOT: string, locale: string): { present: boolean; keys: Map
 // F16.5 — pinCode อ่านได้ที่ hr/pin.ts + สคริปต์ backfill เท่านั้น (เปิดเมื่อมี hr/pin.ts)
 // ═══════════════════════════════════════════════════════════════
 export const PIN_MODULE = "src/lib/modules/hr/pin.ts";
+// HR H4.4 ▸ R8: สิ้นสุดการจ้างล้าง PIN ผ่าน hr/pin.ts clearPinInTx (ธุรกรรมเดียวกัน) — hr/lifecycle.ts ไม่แตะคอลัมน์ PIN แล้ว (allowlist คืนสภาพ) ◂
 export const PIN_ALLOWED = new Set([PIN_MODULE, "scripts/hr-backfill-pin-hash.mts"]);
 /**
  * ขอบเขต: src/** + scripts/**.mts — ยกเว้น scripts/qc-*.mts (ข้อสอบต้องอ่านคอลัมน์เพื่อพิสูจน์ว่า "ไม่มี PIN ตัวเปล่าเหลือ" —

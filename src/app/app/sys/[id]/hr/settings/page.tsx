@@ -28,6 +28,7 @@ import { canManageClockSettings, CLOCK_SETTINGS_TEXT, getClockPolicy, listClockS
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { ModuleTabs } from "@/components/module-tabs";
+import { LifecycleMsg, LifecycleSettings } from "@/lib/modules/hr/lifecycle-ui"; // HR H4.4 ▸ ค่าตั้งวงจรพนักงาน (เตือน · บอร์ดงาน · แม่แบบรายการตรวจ) ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -52,7 +53,7 @@ function back(path: string, year: number, r: { ok: true; id: string } | { ok: fa
   redirect(`${path}?year=${year}&msg=${encodeURIComponent(code)}`);
 }
 
-export default async function HrSettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ year?: string; msg?: string }> }) {
+export default async function HrSettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ year?: string; msg?: string; life?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   const auth = await requireTenant();
@@ -454,6 +455,9 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
           </ul>
         </Section>
       )}
+      {/* HR H4.4 ▸ ค่าตั้งวงจรพนักงาน — ผู้ดูข้อมูลบันทึก (OWNER/คีย์ตรง) เท่านั้น · ผลการกด ?life= (allowlist) ◂ */}
+      <LifecycleMsg code={typeof sp.life === "string" ? sp.life : undefined} />
+      <LifecycleSettings systemId={id} />
     </div>
   );
 }

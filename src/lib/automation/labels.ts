@@ -63,6 +63,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // HR H2.3 ▸ ยิงจาก hr/swap.ts (ยื่นคำขอ · ใช้ผลอนุมัติ) · consumer no-op ใน outbox-consumers.ts · spread เข้า WEBHOOK_EVENTS แล้ว ◂
   { value: "hr.shift.swap_requested", label: "เมื่อพนักงานขอสลับกะ (HR)" },
   { value: "hr.shift.swap_approved", label: "เมื่ออนุมัติสลับกะ (HR)" },
+  // HR H4.4 ▸ ยิงจาก hr/lifecycle.ts (ตัวกวาดรายชั่วโมง · เริ่มรายการตรวจ · สิ้นสุดการจ้าง) · consumer + สะพานการ์ดใน outbox-consumers.ts · spread เข้า WEBHOOK_EVENTS แล้ว ◂
+  { value: "hr.employee.milestone_due", label: "เมื่อพนักงานใกล้ครบทดลองงาน/สัญญา (HR)" },
+  { value: "hr.employee.checklist_started", label: "เมื่อเริ่มรายการรับเข้า/ออกจากงาน (HR)" },
+  { value: "hr.employee.offboarded", label: "เมื่อพนักงานสิ้นสุดการจ้าง (HR)" },
   { value: "hr.leave.decided", label: "เมื่อตัดสินใบลา (HR)" }, // HR H2.7 ▸ อนุมัติ · ไม่อนุมัติ/ถอน · ยกเลิกใบที่อนุมัติแล้ว — consumer no-op · spread เข้า WEBHOOK_EVENTS แล้ว ◂
   // ── ธีมกิจการ (B1 · ledger/BRANDING-RUN.md) ────────────────────────────────
   // ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับการบันทึกแถว

@@ -1,0 +1,91 @@
+[env] qc-hr-h4.4 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h4.4] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️ QC_FORCE=1 — running although: src/lib/modules/hr/lifecycle.ts absent (H4.4 not built)
+[qc-hr-h4.4] lifecycle=∅ src/lib/modules/hr/lifecycle.ts · base=2e23c8164
+  ❌ [H4.4-S1.1] [static] migration last · enum 5 labels · no ALTER TYPE/DROP — expected folder last · enum · no ALTER TYPE/DROP | actual file,last,enum
+  ❌ [H4.4-S1.2] [static] 4 columns · CHECK note ≤ 500 · 2 indexes · note FK RESTRICT — expected columns · CHECK · indexes · FK RESTRICT | actual at,reason,note,by,check,idxP,idxC,fk
+  ❌ [H4.4-S1.3] [static] hr.prisma enum + fields · note Restrict · task Cascade — expected enum · 4 fields · Restrict/Cascade | actual enum,fields,restrict
+  ✅ [H4.4-S11.3] [static] no hrEmployee.delete in src
+  ❌ [H4.4-S12.1] [static] lifecycle-actions use server · 7 wrappers · no DB · no now: — expected 7 | actual useServer,names,eachDelegates  
+  ❌ [H4.4-S12.2] [static] remove + ENDED save → offboardEmployee — expected remove + ENDED → offboardEmployee | actual remove,ended,noFalse
+  ❌ [H4.4-S12.3] [static] emit/audit blocks free of sensitive keys — expected clean | actual file,events 0/0 
+  ❌ [H4.4-S12.4] [static] bridge via links only · clean — expected clean | actual file,links,gate
+  ❌ [H4.4-S12.5] [static] AI + client files clean — expected clean | actual ui  
+  ❌ [H4.4-S13.1] [static] testids 20 + 3 · tokens only · 44 px — expected ids · tokens · 44 px | actual file,ids,h44 hr-life-due,hr-life-banner,hr-life-pass,hr-life-checklist,hr-life-start-onboarding,hr-life-start-offboarding,hr-life-notes,hr-life-note-add,hr-life-offboard,hr-life-offboard-date,hr-life-offboard-reason,hr-life-offboard-note,hr-life-offboard-access,hr-life-offboard-confirm,hr-life-settings,hr-life-lead-probation,hr-life-lead-contract,hr-life-kanban,hr-life-template-onboarding,hr-life-template-offboarding,hr-life-due-*,hr-life-task-*,hr-life-note-*
+  ❌ [H4.4-S13.2] [static] inventory rows ⇄ testids — expected rows | actual some,codeRow rows=0
+  ❌ [H4.4-S13.3] [static] hr.life th = en — expected hr.life th=en | actual some th=0 en=0
+  ✅ [H4.4-S13.5] [static] no new tab (layout + hrTabs as base)
+  ❌ [H4.4-S13.6] [static] mounts: profile · settings · register — expected profile · settings · register mounts | actual profile,settings,register
+  ❌ [H4.4-S14.1] [static] marked hunks: consumers (3) · cron (now: new Date()) — expected hunks | actual block,hunk,cron,cronHunk 0/0
+  ❌ [H4.4-S14.2] [static] labels: 3 events once each — expected 1·1·1 | actual 0·0·0
+  ✅ [H4.4-S15.1] [static] payroll-rules sha · 8 HR files unchanged
+  ❌ [H4.4-S12.6] [static] fitness-hr lists · fitness ×2 no env — expected lists · exit 0 ×2 | actual sens,pin fitness exit=0 (JSON_SUMMARY {"total":53,"passed":53,"findings":[]}) · fitness-hr exit=0 (JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]})
+(node:3385020) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ❌ [H4.4-S2.1] policy defaults (14/30 · UNIT_MANAGER · kanban off · revoke ×2 · templates) — expected defaults | actual lead,assign,kanban,revoke,tpl
+  ❌ [H4.4-S2.2] owner save ⇒ read back · hrClock kept · audit — expected 20 | actual ok,read,audit "∅saveLifecyclePolicy (∅ src/lib/modules/hr/lifecyc"
+  ❌ [H4.4-S2.3] settings validation texts — expected texts | actual "∅saveLifecyclePolicy (∅ src/lib/modules/hr/lifecyc" "∅saveLifecyclePolicy (∅ src/lib/modules/hr/lifecyc" "∅saveLifecyclePolicy (∅ src/lib/modules/hr/lifecyc" "∅saveLifecyclePolicy (∅ src/lib/modules/hr/lifecyc"
+  ❌ [H4.4-S2.4] settings viewers (mgr-all ok · shopWide · noPermission) — expected viewers | actual all,shop,perm "∅saveLifecyclePolicy (∅ src/lib/modules/hr/lifecyc" "∅saveLifecyclePolicy (∅ src/lib/modules/hr/lifecyc" "∅saveLifecyclePolicy (∅ src/lib/modules/hr/lifecyc" "∅saveLifecyclePolicy (∅ src/lib/modules/hr/lifecyc"
+  ❌ [H4.4-S3.1] sweep now=2030 ⇒ 0 (no today) — expected ok · 0 | actual "∅sweepLifecycleAlerts (∅ src/lib/modules/hr/lifecy" n=0
+  ❌ [H4.4-S3.2] sweep ⇒ exactly P1/P4/C1 · key · payload ids only · systemId — expected C1:CONTRACT_END:2031-07-05,P1:PROBATION_END:2031-06-20,P4:PROBATION_END:2031-06-01 | actual ok,set "∅sweepLifecycleAlerts (∅ src/lib/modules/hr/lifecy" got=
+  ❌ [H4.4-S3.3] rerun ⇒ 0 + quiet (outbox/audit) · next day ⇒ 0 — expected 0 · quiet · 0 | actual a,b 0:0/0:0/0:0
+  ❌ [H4.4-S3.4] extension ⇒ one new alert — expected 06-20,06-23 | actual 
+  ❌ [H4.4-S3.5] bounded + fair: 60 ⇒ 50 then 60 · small system 3 in run 1 — expected 50+3 then 60 | actual 0+0 then 0
+  ❌ [H4.4-S4.1] lifecycleDue owner: exact keys · P1/P4/C1 · no ended — expected items | actual ok,keys,p1,p4,c1 "∅lifecycleDue (∅ src/lib/modules/hr/lifecycle.ts)" n=0
+  ❌ [H4.4-S4.2] lifecycleDue scope: mgr-u1 u1 only · others null — expected scope | actual mgr,deny
+  ❌ [H4.4-S4.3] confirmProbation · notProbation · noAccess — expected ok | actual a,b,c "∅confirmProbation (∅ src/lib/modules/hr/lifecycle." PROBATION "∅confirmProbation (∅ src/lib/modules/hr/lifecycle." "∅confirmProbation (∅ src/lib/modules/hr/lifecycle."
+  ❌ [H4.4-S5.1] offboard result: pinRevoked · cancelled 2/2/2 · spanning 1 — expected 2/2/2 · 1 | actual ok,pin,c,sp "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." {}
+  ❌ [H4.4-S5.2] row ENDED + offboard* · PIN null — expected row | actual a,d,at,why,pin ACTIVE ∅ pin=true
+  ❌ [H4.4-S5.3] leaves: future cancelled (+ approval) · spanning/past untouched — expected CCPA | actual l1,l2 PENDING/PENDING APPROVED PENDING APPROVED
+  ❌ [H4.4-S5.4] swaps closed · roster after end deleted · OT untouched — expected closed | actual open,peer,gone 2 4 PENDING
+  ❌ [H4.4-S5.5] 1 event {employeeId,endDate} · no note/reason in outbox/audit — expected 1 · ids only | actual one,keys n=0 keys=∅
+  ❌ [H4.4-S5.6] 6 offboarding tasks · pin_revoked + app_access done · access revoked — expected 6 · 2 done | actual tasks,pin,app,mem,link
+  ❌ [H4.4-S5.7] offboard validation texts · refusals write nothing — expected วันสิ้นส·วันสิ้นส·เลือกเหต·หมายเหตุ·บันทึกหร·พนักงานค | actual texts "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle."
+  ❌ [H4.4-S5.8] offboard gate: noAccess ×4 (same bytes) · mgr-role in branch ok — expected denied | actual deny,role "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle."
+  ❌ [H4.4-S5.9] autoRevokePin=false: hash kept · verifyPin refused — expected kept | actual ok,kept,vp "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." {"ok":true,"employeeId":"cmwcwsbnd003uwc
+  ❌ [H4.4-S5.10] loadLifecycleForViewer keys · owner/mgr-u1 only — expected contractEndAt,offboard,probationEndAt,startDate,status | actual owner,mgr,deny ∅
+  ❌ [H4.4-S6.1] after: verifyPin ×2 + kiosk refused · clock no row — expected refused | actual vp,ve,kiosk,clock [{"ok":true,"employeeId":"cmwcwsb7f0038wckz6gt7mdct","systemId":"cmwcwsa7l0004wckzsnwct4zf WROTE
+  ❌ [H4.4-S6.2] after: mobile · POS clockSelf/onShiftToday · kiosk list — expected refused | actual mobile,pos,shift,kiosk [{"ok":false,"reason":"สาขานี้ยังไม่เปิดให้ลงเวลาด้วยมือถือ — ลงเวลาที่เครื่องหน้าร้าน"},{
+  ❌ [H4.4-S6.3] restore two-step: PIN stays null · history kept — expected null | actual pin,old,hist {"ok":true,"name":"QC44 leaver pin=true
+  ❌ [H4.4-S6.4] re-offboard: 2 events · overwritten — expected 2 | actual ok,two,at "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." n=0
+  ❌ [H4.4-S7.1] notes: WRITTEN forced visible · REVIEW · NOTE hidden · ENDED ok — expected vis | actual ok,w,rv,nt "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)"
+  ❌ [H4.4-S7.2] note validation texts — expected 7 texts | actual "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)"
+  ❌ [H4.4-S7.3] note non-viewers ×7 same noAccess · self — expected noAccess ×7 · self | actual deny,self "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)" "∅addReviewNote (∅ src/lib/modules/hr/lifecycle.ts)"
+  ❌ [H4.4-S7.4] listReviewNotes keys · non-viewers null — expected acknowledgedAt,authorName,body,createdAt,id,kind,periodLabel,score,title,visibleToEmployee | actual owner,mgr,deny 0 ∅
+  ❌ [H4.4-S7.5] myReviewNotes: own visible only · keys · peers none — expected 2 own visible | actual own 0 ∅
+  ❌ [H4.4-S7.6] acknowledge once · hidden/peer noAccess — expected once | actual first,once,hidden,peer "∅acknowledgeReviewNote (∅ src/lib/modules/hr/lifec" "∅acknowledgeReviewNote (∅ src/lib/modules/hr/lifec" "∅acknowledgeReviewNote (∅ src/lib/modules/hr/lifec" "∅acknowledgeReviewNote (∅ src/lib/modules/hr/lifec"
+  ❌ [H4.4-S7.7] note audits clean · no outbox — expected clean | actual audit,outbox audit=0 ev=0
+  ❌ [H4.4-S8.1] startChecklist 7 · 1 event · idempotent · race — expected 7/1 · 7/1 · 7/1 | actual first,again,race "∅startChecklist (∅ src/lib/modules/hr/lifecycle.ts" 0/0 0/0 0/0
+  ❌ [H4.4-S8.2] listChecklist keys · setTaskDone on/off — expected doneAt,done,dueDate,hasCard,id,kind,sortOrder,title | actual keys,on,off ∅ "∅setTaskDone (∅ src/lib/modules/hr/lifecycle.ts)" "∅setTaskDone (∅ src/lib/modules/hr/lifecycle.ts)"
+  ❌ [H4.4-S8.3] checklist non-viewers — expected denied | actual start,list "∅startChecklist (∅ src/lib/modules/hr/lifecycle.ts" "∅startChecklist (∅ src/lib/modules/hr/lifecycle.ts" "∅startChecklist (∅ src/lib/modules/hr/lifecycle.ts" "∅startChecklist (∅ src/lib/modules/hr/lifecycle.ts"
+  ❌ [H4.4-S9.1] 3 consumers · kanban off ⇒ 0 cards — expected 3 · 0 | actual reg,off false -1
+  ❌ [H4.4-S9.2] milestone replay ×2 ⇒ 1 card (key · title) — expected 1 card | actual one,title 0 undefined
+  ❌ [H4.4-S9.3] checklist replay ×2 ⇒ 1 card per open task · linked — expected per open task | actual cards 0/0
+  ❌ [H4.4-S9.4] offboarded replay ×2 ⇒ open tasks once · no leak in cards — expected once | actual cards 0/0
+  ❌ [H4.4-S10.1] [race] offboard waits on hr:clock · IN kept · ENDED — expected waited · kept | actual waited,ok,ended false "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." 1 
+  ❌ [H4.4-S10.2] [race] offboard ×4 ⇒ 1 ok · 1 event/audit · 6 tasks — expected 1/1/6 | actual one,rest,ev,au,tk "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." 0/0/0
+  ❌ [H4.4-S10.3] [race] sweep ∥ sweep ⇒ once each — expected 4 · Σ 4 | actual n,sum n=0 undefined+undefined
+  ❌ [H4.4-S10.4] [race] offboard ∥ setPin ⇒ PIN null — expected null | actual off,pin,inactive "∅offboardEmployee (∅ src/lib/modules/hr/lifecycle." {"ok":true} pin=true
+  ❌ [H4.4-S11.1] [db] delete employee with note ⇒ 23503 · note kept — expected 23503 · note kept | actual deleted 0
+  ❌ [H4.4-S11.2] [db] FK actions r/c — expected r · c | actual {"HrReviewNote_employeeId_fkey":"c","HrOnboardingTask_employeeId_fkey":"c"}
+  ✅ [H4.4-S15.2] [db] setEmployeeActive(false) keeps hash
+  ❌ [H4.4-S1.4] [db] 4 columns on the lane DB — expected 4 columns | actual {}
+RESIDUE none (tenants=2 users=12)
+  ✅ [H4.4-Z1] no residue
+BASE-EXPECTATION 67/67 as registered (RED-by-design 62 · GREEN controls 5)
+
+===== qc-hr-h4.4 ===== passed 5/67 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h4.4","total":67,"passed":5,"failed":["H4.4-S1.1","H4.4-S1.2","H4.4-S1.3","H4.4-S12.1","H4.4-S12.2","H4.4-S12.3","H4.4-S12.4","H4.4-S12.5","H4.4-S13.1","H4.4-S13.2","H4.4-S13.3","H4.4-S13.6","H4.4-S14.1","H4.4-S14.2","H4.4-S12.6","H4.4-S2.1","H4.4-S2.2","H4.4-S2.3","H4.4-S2.4","H4.4-S3.1","H4.4-S3.2","H4.4-S3.3","H4.4-S3.4","H4.4-S3.5","H4.4-S4.1","H4.4-S4.2","H4.4-S4.3","H4.4-S5.1","H4.4-S5.2","H4.4-S5.3","H4.4-S5.4","H4.4-S5.5","H4.4-S5.6","H4.4-S5.7","H4.4-S5.8","H4.4-S5.9","H4.4-S5.10","H4.4-S6.1","H4.4-S6.2","H4.4-S6.3","H4.4-S6.4","H4.4-S7.1","H4.4-S7.2","H4.4-S7.3","H4.4-S7.4","H4.4-S7.5","H4.4-S7.6","H4.4-S7.7","H4.4-S8.1","H4.4-S8.2","H4.4-S8.3","H4.4-S9.1","H4.4-S9.2","H4.4-S9.3","H4.4-S9.4","H4.4-S10.1","H4.4-S10.2","H4.4-S10.3","H4.4-S10.4","H4.4-S11.1","H4.4-S11.2","H4.4-S1.4"],"findings":[{"id":"H4.4-S1.1","sev":"MAJOR"},{"id":"H4.4-S1.2","sev":"MAJOR"},{"id":"H4.4-S1.3","sev":"MAJOR"},{"id":"H4.4-S12.1","sev":"CRITICAL"},{"id":"H4.4-S12.2","sev":"CRITICAL"},{"id":"H4.4-S12.3","sev":"CRITICAL"},{"id":"H4.4-S12.4","sev":"CRITICAL"},{"id":"H4.4-S12.5","sev":"CRITICAL"},{"id":"H4.4-S13.1","sev":"MAJOR"},{"id":"H4.4-S13.2","sev":"MAJOR"},{"id":"H4.4-S13.3","sev":"MAJOR"},{"id":"H4.4-S13.6","sev":"MAJOR"},{"id":"H4.4-S14.1","sev":"MAJOR"},{"id":"H4.4-S14.2","sev":"MAJOR"},{"id":"H4.4-S12.6","sev":"MAJOR"},{"id":"H4.4-S2.1","sev":"MAJOR"},{"id":"H4.4-S2.2","sev":"MAJOR"},{"id":"H4.4-S2.3","sev":"MAJOR"},{"id":"H4.4-S2.4","sev":"CRITICAL"},{"id":"H4.4-S3.1","sev":"CRITICAL"},{"id":"H4.4-S3.2","sev":"CRITICAL"},{"id":"H4.4-S3.3","sev":"MAJOR"},{"id":"H4.4-S3.4","sev":"MAJOR"},{"id":"H4.4-S3.5","sev":"MAJOR"},{"id":"H4.4-S4.1","sev":"MAJOR"},{"id":"H4.4-S4.2","sev":"CRITICAL"},{"id":"H4.4-S4.3","sev":"MAJOR"},{"id":"H4.4-S5.1","sev":"CRITICAL"},{"id":"H4.4-S5.2","sev":"CRITICAL"},{"id":"H4.4-S5.3","sev":"MAJOR"},{"id":"H4.4-S5.4","sev":"MAJOR"},{"id":"H4.4-S5.5","sev":"CRITICAL"},{"id":"H4.4-S5.6","sev":"MAJOR"},{"id":"H4.4-S5.7","sev":"MAJOR"},{"id":"H4.4-S5.8","sev":"CRITICAL"},{"id":"H4.4-S5.9","sev":"MAJOR"},{"id":"H4.4-S5.10","sev":"CRITICAL"},{"id":"H4.4-S6.1","sev":"CRITICAL"},{"id":"H4.4-S6.2","sev":"CRITICAL"},{"id":"H4.4-S6.3","sev":"CRITICAL"},{"id":"H4.4-S6.4","sev":"MAJOR"},{"id":"H4.4-S7.1","sev":"MAJOR"},{"id":"H4.4-S7.2","sev":"MAJOR"},{"id":"H4.4-S7.3","sev":"CRITICAL"},{"id":"H4.4-S7.4","sev":"CRITICAL"},{"id":"H4.4-S7.5","sev":"CRITICAL"},{"id":"H4.4-S7.6","sev":"MAJOR"},{"id":"H4.4-S7.7","sev":"CRITICAL"},{"id":"H4.4-S8.1","sev":"MAJOR"},{"id":"H4.4-S8.2","sev":"MAJOR"},{"id":"H4.4-S8.3","sev":"CRITICAL"},{"id":"H4.4-S9.1","sev":"CRITICAL"},{"id":"H4.4-S9.2","sev":"CRITICAL"},{"id":"H4.4-S9.3","sev":"MAJOR"},{"id":"H4.4-S9.4","sev":"CRITICAL"},{"id":"H4.4-S10.1","sev":"CRITICAL"},{"id":"H4.4-S10.2","sev":"CRITICAL"},{"id":"H4.4-S10.3","sev":"CRITICAL"},{"id":"H4.4-S10.4","sev":"CRITICAL"},{"id":"H4.4-S11.1","sev":"CRITICAL"},{"id":"H4.4-S11.2","sev":"MAJOR"},{"id":"H4.4-S1.4","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":["src/lib/modules/hr/lifecycle.ts absent (H4.4 not built)"],"baseRed":62,"baseGreen":5,"offBase":[]}
+forced exit=1
+── unforced ──
+⏭️  SKIPPED — qc-hr-h4.4: not built
+   • src/lib/modules/hr/lifecycle.ts absent (H4.4 not built)
+JSON_SUMMARY {"suite":"qc-hr-h4.4","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["src/lib/modules/hr/lifecycle.ts absent (H4.4 not built)"],"registered":67}
+unforced exit=0

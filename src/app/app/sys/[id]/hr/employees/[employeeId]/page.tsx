@@ -14,6 +14,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { ModuleTabs } from "@/components/module-tabs";
+// HR H4.4 ▸ วงจรพนักงาน (แถบทดลองงาน · รายการรับเข้า/ออก · บันทึก · สิ้นสุดการจ้าง) — DTO ของ lifecycle.ts เท่านั้น ◂
+import { loadLifecycleForViewer } from "@/lib/modules/hr/lifecycle";
+import { LifecycleMsg, LifecycleProfile } from "@/lib/modules/hr/lifecycle-ui";
 
 // หน้าโปรไฟล์พนักงาน 1 คน (ข้อ 8) — ข้อมูลเต็มรูปแบบ + เอกสารแนบ
 // 🔒 ช่องอ่อนไหว (เลขบัตร/ประกันสังคม/ทะเบียนบ้าน/บัญชี) + เอกสาร = เห็นเฉพาะผู้มีสิทธิ์ดูเงินเดือน
@@ -29,10 +32,13 @@ const DOC_KIND_LABEL: Record<string, string> = {
 
 export default async function HrEmployeeProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; employeeId: string }>;
+  searchParams: Promise<{ life?: string }>; // HR H4.4 ▸ รหัสผลการกด (allowlist LIFE_MSG) ◂
 }) {
   const { id, employeeId } = await params;
+  const { life: lifeCode } = await searchParams;
   const auth = await requireTenant();
   const sys = await prisma.appSystem.findFirst({
     where: { id, tenantId: auth.active.tenantId, type: "HR" },
@@ -52,6 +58,8 @@ export default async function HrEmployeeProfilePage({
   const muted = "text-[color:var(--color-muted)]";
   const scope = hrScopeOf(hrViewerOf(auth));
   const units = await unitsForScope(auth.active.tenantId, scope);
+  // HR H4.4 ▸ null = ผู้ดูไม่เห็นข้อมูลบันทึก (ส่วนวงจรพนักงานซ่อนเอง · ปุ่มสิ้นสุดตามด่านปุ่มลบเดิม) ◂
+  const life = await loadLifecycleForViewer({ tenantId: auth.active.tenantId, systemId: id }, hrViewerOf(auth), employeeId);
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -61,6 +69,7 @@ export default async function HrEmployeeProfilePage({
         back={{ href: `/app/sys/${id}/hr/employees`, label: "พนักงานทั้งหมด" }}
       />
       <ModuleTabs items={hrTabs(id)} />
+      <LifecycleMsg code={typeof lifeCode === "string" ? lifeCode : undefined} />
       {!emp.active && (
         <p className="rounded-lg border px-3 py-2 text-xs text-[color:var(--color-danger)]">
           พนักงานคนนี้ถูกลบออกจากทะเบียนแล้ว (ข้อมูลและประวัติยังอยู่ · กู้คืนได้ที่หน้าพนักงานทั้งหมด)
@@ -88,6 +97,8 @@ export default async function HrEmployeeProfilePage({
           PIN ลงเวลา: {emp.hasPin ? "ตั้งแล้ว" : "ยังไม่ตั้ง"} (ตั้ง/เปลี่ยนได้ที่หน้าพนักงานทั้งหมด)
         </p>
       </Section>
+
+      <LifecycleProfile systemId={id} employeeId={emp.id} life={life} active={emp.active} />
 
       {sensitive ? (
         <Section title="🔒 เอกสารแนบ">

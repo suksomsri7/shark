@@ -211,6 +211,16 @@ export async function GET(req: Request) {
     });
   }
   // ◂ HR H2.4
+  // HR H4.4 ▸ R5: เตือนครบทดลองงาน/สัญญาใกล้หมด ทุกร้าน (≤ 50 ต่อระบบ · ≤ 500 ต่อรอบ · ครั้งเดียวต่อวันที่ · ไม่มีอะไรครบ = ไม่เขียนอะไร) ·
+  //   best-effort: ล้มห้ามทำให้รอบนี้แดง (ไม่เพิ่มช่องในผลลัพธ์ของ route) · event ถูกระบายใน drainAll ด้านล่าง
+  try {
+    await (await import("@/lib/modules/hr/lifecycle")).sweepLifecycleAlerts({ now: new Date() });
+  } catch (e) {
+    await logOps("WARN", "cron", "sweepLifecycleAlerts (เตือนครบทดลองงาน/สัญญา) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ HR H4.4
   // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
   //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
   let outboxDrained = -1;

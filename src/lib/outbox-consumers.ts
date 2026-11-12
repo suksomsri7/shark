@@ -1434,6 +1434,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hr.leave.decided": withAutomation(async () => {}),
   // ◂ HR H2.7
   // ◂ HR H2.3
+  // HR H4.4 ▸ วงจรพนักงาน (hr/lifecycle.ts — ยิงใน tx เดียวกับงานหลัก · payload id/วันที่ล้วน): ครบกำหนด `…#<พนักงาน>#<ชนิด>#<วันที่>` ·
+  //   เริ่มรายการตรวจ `…#<พนักงาน>#<ชนิด>#<ms ของแถวแรก>` · สิ้นสุดการจ้าง `…#<พนักงาน>#<ms ของ offboardedAt>` — งานหลักไม่มี (no-op) ·
+  //   ของแถม = การ์ดบอร์ดงาน (platform/hr-lifecycle-bridges · เปิดเองรายระบบ HR · sourceKey กันซ้ำ ⇒ replay กี่รอบก็ผลเดียว) · โหลดตอนใช้ (กันวงโหลด)
+  "hr.employee.milestone_due": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onMilestoneDue(evt))),
+  "hr.employee.checklist_started": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onChecklistStarted(evt))),
+  "hr.employee.offboarded": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onOffboarded(evt))),
+  // ◂ HR H4.4
   "crm.commission.created": crmFirst(crmCommissionBridge("onCommissionCreated"), withAutomation(async () => {})),
   "crm.commission.approved": crmFirst(crmCommissionBridge("onCommissionApproved"), withAutomation(async () => {})),
   "crm.commission.reversed": crmFirst(crmCommissionBridge("onCommissionReversed"), withAutomation(async () => {})),
