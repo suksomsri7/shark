@@ -44,3 +44,8 @@ qc-hr-h2.5 reds: S9.5 known (not mine); **S9.7 caused by this WO** — its inven
 - The decide/request services trust the actor/tenant pair handed in by the action layer (actions build ctx from the session).
 - r2 runs: h2.6 54/54 forced ×2 + unforced (residue none) · seed 32/32 ×2 · h2.5 79/79 · h2.4 66/66 · h0.1 67/67 · h1.2 73/73 · h1.3 63/63 · h4.1 47/47 · h4.4 82/83 · qc-payroll 19/19 · hf-hr-privacy exit 0 · fitness 53/53 + fitness-hr 9/9 both modes · typecheck 0.
 - **qc-hr-h4.4 S1.1 red (not edited — other WO's oracle):** it asserts `20261231000000_hr_lifecycle` is the last `_hr_` migration; any later HR migration (H2.6's 20270101000000/…01) breaks it. Already true in r1. Needs a controller ORACLE-EDIT (e.g. "no _hr_ migration between it and the next WO's").
+
+## r3 (VIS-1 merge + reviewer follow-ups)
+- Merged session/hr `9b423ec6a` (VIS-1): day table keeps VIS-1's scroll frame/sticky column; the row "แก้เวลา" sits in the actions cell inside the frame. Month: header "ขอแก้เวลา" + per-day entry in VIS-1's day list (390), none in calendar cells. Visual 2.6 + `corr-self-daylist`.
+- Neighbour dry-run now compares the stored row's recomputed result before vs after this correction; only a change caused by this correction refuses (a row already stale from a roster edit/leave/holiday no longer blocks). PERIOD has its own text (`CORRECTION_TEXT.period`). Oracle S11.3 + S2.1 period (RED 53/55 first: `hr-H2.6-r3-red.txt`).
+- Runs: h2.6 55/55 forced ×2 + unforced (residue none) · seed 33/33 ×2 identical · h2.5 79/79 · h2.4 68/68 · h4.4 86/86 · h4.1 47/47 · h1.2 73/73 · h2.2 60/60 · hf-hr-privacy exit 0 · fitness 53/53 + fitness-hr 9/9 both modes · typecheck 0.

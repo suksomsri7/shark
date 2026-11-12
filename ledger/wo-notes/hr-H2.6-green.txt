@@ -1,85 +1,18 @@
-# H2.6 r2 green — 2026-11-12T08:49:03Z · lane DB · QC_H26_BASE=39ea9782c
-h26-f1 exit=0 :: ===== qc-hr-h2.6 ===== passed 54/54 (QC_FORCE) :: RESIDUE none (tenants=3 users=18)
-h26-f2 exit=0 :: ===== qc-hr-h2.6 ===== passed 54/54 (QC_FORCE) :: RESIDUE none (tenants=3 users=18)
-h26-u exit=0 :: ===== qc-hr-h2.6 ===== passed 54/54 :: RESIDUE none (tenants=3 users=18)
-seed1 exit=0 :: ===== seed-hr-qc ===== ผ่าน 32/32 :: 
-seed2 exit=0 :: ===== seed-hr-qc ===== ผ่าน 32/32 :: 
+# H2.6 r3 green — 2026-11-12T10:12:59Z · lane DB
+h26-f1 exit=0 :: ===== qc-hr-h2.6 ===== passed 55/55 (QC_FORCE) :: RESIDUE none (tenants=3 users=18)
+h26-f2 exit=0 :: ===== qc-hr-h2.6 ===== passed 55/55 (QC_FORCE) :: RESIDUE none (tenants=3 users=18)
+h26-u exit=0 :: ===== qc-hr-h2.6 ===== passed 55/55 :: RESIDUE none (tenants=3 users=18)
+seed1 exit=0 :: ===== seed-hr-qc ===== ผ่าน 33/33 :: 
+seed2 exit=0 :: ===== seed-hr-qc ===== ผ่าน 33/33 :: 
 qc-hr-h2.5 exit=0 :: ===== qc-hr-h2.5 ===== passed 79/79 :: RESIDUE none (tenants=2 users=13)
-qc-hr-h2.4 exit=0 :: ===== qc-hr-h2.4 ===== passed 66/66 :: 
-qc-hr-h0.1 exit=0 :: ===== qc-hr-h0.1 ===== passed 67/67 :: 
-qc-hr-h1.2 exit=0 :: ===== qc-hr-h1.2 ===== passed 73/73 :: RESIDUE none (tenants=2 users=8)
-qc-hr-h1.3 exit=0 :: ===== qc-hr-h1.3 ===== passed 63/63 :: RESIDUE none (tenants=2 users=7)
+qc-hr-h2.4 exit=0 :: ===== qc-hr-h2.4 ===== passed 68/68 :: 
+qc-hr-h4.4 exit=0 :: ===== qc-hr-h4.4 ===== passed 86/86 :: RESIDUE none (tenants=2 users=20)
 qc-hr-h4.1 exit=0 :: ===== qc-hr-h4.1 ===== passed 47/47 :: RESIDUE none (tenants=3 users=12)
-qc-hr-h4.4 exit=1 :: ===== qc-hr-h4.4 ===== passed 82/83 :: RESIDUE none (tenants=2 users=19)
-qc-payroll exit=0 :: ===== QC Payroll ไทย ===== :: 
+qc-hr-h1.2 exit=0 :: ===== qc-hr-h1.2 ===== passed 73/73 :: RESIDUE none (tenants=2 users=8)
+qc-hr-h2.2 exit=0 :: ===== qc-hr-h2.2 ===== passed 60/60 :: RESIDUE none (tenants=3 users=16)
 qc-hf-hr-privacy exit=0 :: ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== :: 
 fitness-env exit=0 :: JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
 fitness-hr-env exit=0 :: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
 fitness-noenv exit=0 :: JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
 fitness-hr-noenv exit=0 :: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
 ALLDONE
-
-[env] qc-hr-h2.6 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
-[qc-hr-h2.6] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
-[qc-hr-h2.6] modules: correction-rules=loaded · correction=loaded · hr-pos-evidence=loaded
-  ✅ [H2.6-S1.1] [static] files · pure rules
-  ✅ [H2.6-S1.3] [static] readers filter voidedAt · no other reader · sole writer
-  ✅ [H2.6-S1.4] [static] approval wiring (effect · label · allowlist · self-check · facade)
-  ✅ [H2.6-S1.6] [static] actions · self has no employeeId · no now: · testids · inventory · messages
-  ✅ [H2.6-S1.7] [control] frozen files unchanged · shas
-  ✅ [H2.6-S1.8] [control] every hot-file hunk vs base marked HR H2.6
-  ✅ [H2.6-S2.1] [pure] rules + texts literal
-  ✅ [H2.6-S2.2] [pure] cleanCorrectionReason
-  ✅ [H2.6-S2.3] [pure] checkCorrection V1–V16
-  ✅ [H2.6-S2.4] [pure] sessionDayOf W1–W6
-
-
-  ✅ [H2.6-S3.4] [db] PENDING row literal · evidence · no write · no chain
-  ✅ [H2.6-S4.1] [db] ADD OUT applied · stored ON_TIME W490 v2
-  ✅ [H2.6-S7.3] [db] POS evidence literal · never decides
-  ✅ [H2.6-S4.2] [db] CHANGE IN: original voided intact · replacement ON_TIME · W482
-  ✅ [H2.6-S4.3] [db] VOID duplicate IN · W482
-  ✅ [H2.6-S4.5] [db] overnight OUT belongs to D
-  ✅ [H2.6-S4.6] [db] kiosk originals · timesOverridden W365
-  ✅ [H2.6-S4.7] [db] orphaned stored row · one row W490
-  ✅ [H2.6-S4.8] [db] reject ⇒ rows byte-identical
-  ✅ [H2.6-S4.10] [db] decider gates
-  ✅ [H2.6-S4.4] [db] readers exclude voided rows
-  ✅ [H2.6-S3.1] [db] request refusals · nothing written · 35-day boundary
-  ✅ [H2.6-S3.3] [db] on-behalf gate matrix · filedOnBehalf
-  ✅ [H2.6-S3.5] [db] dupPending ×2 · tooMany
-  ✅ [H2.6-S3.6] [db] ORDER · TOO_LONG · DUP · SAME at request
-  ✅ [H2.6-S4.9] [db] cancel: notOwn · filer · then stale
-  ✅ [H2.6-S3.2] [db] self: unlinked · inactive · foreign employee/row
-  ✅ [H2.6-S7.1] [db] detail keys · viewer matrix · values
-  ✅ [H2.6-S7.4] [db] periodCount/repeat · lists scoped
-  ✅ [H2.6-S5.1] [db] chain request in tx · inChain · reject
-  ✅ [H2.6-S5.2] [db] core self-decision refused
-  ✅ [H2.6-S5.3] [db] core approve + effect ×2 once
-  ✅ [H2.6-S5.4] [db] chain apply after target voided ⇒ CANCELLED TARGET
-  ✅ [H2.6-S5.5] [db] employee cancels chained request
-  ✅ [H2.6-S6.1] [db] owner-auto with a policy
-  ✅ [H2.6-S9.5] [race] effect ×3 ⇒ one apply
-  ✅ [H2.6-S9.1] [race] payroll APPROVED meanwhile ⇒ paid
-  ✅ [H2.6-S9.2] [race] two deciders ⇒ one apply
-  ✅ [H2.6-S9.3] [race] kiosk punch meanwhile ⇒ dup
-  ✅ [H2.6-S9.4] [race] 5 parallel requests ⇒ 1 PENDING
-  ✅ [H2.6-S10.1] [db] ENDED employee
-  ✅ [H2.6-X2.1] [db] other tenant/system raw ids
-  ✅ [H2.6-S8.1] [db] one event per apply · payload · replay
-  ✅ [H2.6-S8.2] [db] notification recipients/titles
-  ✅ [H2.6-S7.2] [db] reason never in audit/outbox/notifications
-  ✅ [H2.6-S1.2] [static+db] migration · schema · live columns/indexes · only migration
-  ✅ [H2.6-S1.5] [static+runtime] consumer · one label · not webhooks
-  ✅ [H2.6-S11.1] [db] paid by session-owning day: IN moved into a paid month ⇒ later OUT fix refused, Feb untouched
-  ✅ [H2.6-S11.2] [db] overnight OUT in a paid month for an open-month session ⇒ accepted, nothing written to April
-  ✅ [H2.6-S7.5] [db] evidence: only this user's open/close times · DTO branch-scoped
-  ✅ [H2.6-S7.6] [db] listCorrections complete for a narrow-scope manager (branch filter in the query)
-  ✅ [H2.6-S6.2] [db] owner self-filing applies at once · selfApplied on record + audit
-  ✅ [H2.6-X12.1] [control] fitness ± env
-RESIDUE none (tenants=3 users=18)
-  ✅ [H2.6-Z1] [control] residue none
-BASE-EXPECTATION 4/54 as registered (RED-by-design 50 · GREEN controls 4) · off: H2.6-S1.1(RED→pass) H2.6-S1.3(RED→pass) H2.6-S1.4(RED→pass) H2.6-S1.6(RED→pass) H2.6-S2.1(RED→pass) H2.6-S2.2(RED→pass) H2.6-S2.3(RED→pass) H2.6-S2.4(RED→pass) H2.6-S3.4(RED→pass) H2.6-S4.1(RED→pass) H2.6-S7.3(RED→pass) H2.6-S4.2(RED→pass) H2.6-S4.3(RED→pass) H2.6-S4.5(RED→pass) H2.6-S4.6(RED→pass) H2.6-S4.7(RED→pass) H2.6-S4.8(RED→pass) H2.6-S4.10(RED→pass) H2.6-S4.4(RED→pass) H2.6-S3.1(RED→pass) H2.6-S3.3(RED→pass) H2.6-S3.5(RED→pass) H2.6-S3.6(RED→pass) H2.6-S4.9(RED→pass) H2.6-S3.2(RED→pass) H2.6-S7.1(RED→pass) H2.6-S7.4(RED→pass) H2.6-S5.1(RED→pass) H2.6-S5.2(RED→pass) H2.6-S5.3(RED→pass) H2.6-S5.4(RED→pass) H2.6-S5.5(RED→pass) H2.6-S6.1(RED→pass) H2.6-S9.5(RED→pass) H2.6-S9.1(RED→pass) H2.6-S9.2(RED→pass) H2.6-S9.3(RED→pass) H2.6-S9.4(RED→pass) H2.6-S10.1(RED→pass) H2.6-X2.1(RED→pass) H2.6-S8.1(RED→pass) H2.6-S8.2(RED→pass) H2.6-S7.2(RED→pass) H2.6-S1.2(RED→pass) H2.6-S1.5(RED→pass) H2.6-S11.1(RED→pass) H2.6-S11.2(RED→pass) H2.6-S7.5(RED→pass) H2.6-S7.6(RED→pass) H2.6-S6.2(RED→pass)
-
-===== qc-hr-h2.6 ===== passed 54/54 (QC_FORCE)
-JSON_SUMMARY {"suite":"qc-hr-h2.6","total":54,"passed":54,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":50,"baseGreen":4,"offBase":["H2.6-S1.1(RED→pass)","H2.6-S1.3(RED→pass)","H2.6-S1.4(RED→pass)","H2.6-S1.6(RED→pass)","H2.6-S2.1(RED→pass)","H2.6-S2.2(RED→pass)","H2.6-S2.3(RED→pass)","H2.6-S2.4(RED→pass)","H2.6-S3.4(RED→pass)","H2.6-S4.1(RED→pass)","H2.6-S7.3(RED→pass)","H2.6-S4.2(RED→pass)","H2.6-S4.3(RED→pass)","H2.6-S4.5(RED→pass)","H2.6-S4.6(RED→pass)","H2.6-S4.7(RED→pass)","H2.6-S4.8(RED→pass)","H2.6-S4.10(RED→pass)","H2.6-S4.4(RED→pass)","H2.6-S3.1(RED→pass)","H2.6-S3.3(RED→pass)","H2.6-S3.5(RED→pass)","H2.6-S3.6(RED→pass)","H2.6-S4.9(RED→pass)","H2.6-S3.2(RED→pass)","H2.6-S7.1(RED→pass)","H2.6-S7.4(RED→pass)","H2.6-S5.1(RED→pass)","H2.6-S5.2(RED→pass)","H2.6-S5.3(RED→pass)","H2.6-S5.4(RED→pass)","H2.6-S5.5(RED→pass)","H2.6-S6.1(RED→pass)","H2.6-S9.5(RED→pass)","H2.6-S9.1(RED→pass)","H2.6-S9.2(RED→pass)","H2.6-S9.3(RED→pass)","H2.6-S9.4(RED→pass)","H2.6-S10.1(RED→pass)","H2.6-X2.1(RED→pass)","H2.6-S8.1(RED→pass)","H2.6-S8.2(RED→pass)","H2.6-S7.2(RED→pass)","H2.6-S1.2(RED→pass)","H2.6-S1.5(RED→pass)","H2.6-S11.1(RED→pass)","H2.6-S11.2(RED→pass)","H2.6-S7.5(RED→pass)","H2.6-S7.6(RED→pass)","H2.6-S6.2(RED→pass)"]}
