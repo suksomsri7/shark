@@ -56,3 +56,24 @@ Paid minutes = floorStep(min(request ∩ [from, OUT], measured otMin), otRoundMi
 | S2.6 policy default | {afterHours 24, maxAheadDays 31} | + `otRoundMin: 1` | otPolicyOf(null) · {otRoundMin 5} ⇒ default · {0, 90, 15} kept |
 | S9.2 | get = {24, 31} | get = {24, 31, otRoundMin 1} · + saveOtPolicy {otRoundMin 5} ⇒ `sRound` | new fixed text `หน่วยปัดนาที OT ที่จ่ายต้องเป็น 1, 15 หรือ 30 นาที` |
 All other DB literals unchanged at step 1 (every other flow is on whole quarter hours: F1 120 · F2 600 · F3 90 · RC1 60 · F6 105 · RC4 30 · P1 120 · P2 60 · P3 60→90).
+
+## §r2 — fix round literals (ORACLE-EDIT r2 · RED proof `hr-H2.9-r2-red.txt` on ed827c8d0 + merge 6e57e0d00: 47/57)
+Monthly ÷144e6 · hourly ÷600 000 · half-up once.
+| check | case | arithmetic | satang |
+|---|---|---|---|
+| S10.1 V20 | M 1 400 000 · workday 120 · law row 12 000 bp ⇒ raised to 15 000 | 1 400 000×120×15 000/144e6 | **17 500** (old 14 000) |
+| S10.1 V21 | M 2 000 000 + override 8 750 · workday 60 | legal 2 000 000×60×15 000/144e6 = 12 500 > own 8 750×60/60 = 8 750 | **12 500** (old 8 750) |
+| S10.1 V22 | M 1 400 000 + override 10 000 · workday 90 | own 15 000 > legal 13 125 | **15 000** (= V11) |
+| S10.1 L9 | ACTIVE row workday 12 000 · holidayOt 25 000 | each multiplier max(row, default) | law = OT_LAW_DEFAULT |
+| S10.1 worked | gap 20–21 · day-off break 12–13 · OUT 21:20 · 22:04 at step 30 | 60 · 180 · 80 · floor30(64)=60 | minutes |
+| S10.2 | q1 raise to 2 000 000 with stored 8 750 ⇒ `rateRecheck` · base 0 ⇒ `rateNoBase` · legacy row 8 750 settles 60 min | 2 000 000×60×15 000/144e6 | **12 500** |
+| S10.3 qa / qb | gap / break 20–21, OUT 22:00, req 20–22 ⇒ 60 min | 1 400 000×60×15 000/144e6 | **8 750** (old 17 500) |
+| S10.3 qc | day off, break 12–13, req 09–13 ⇒ 180 min HOLIDAY_WORK ×1.0 | 1 400 000×180×10 000/144e6 | **17 500** (old 23 333) |
+| S10.3 qd | H 5 000 · OUT 21:20 · req 20:00–21:20 ⇒ 80 | 5 000×80×15 000/600 000 | **10 000** (old 9 375 @ 75) |
+| S10.3 qe | M 1 400 000 · same ⇒ 80 | 1 680 000 000 000/144e6 = 11 666.67 | **11 667** (old 10 938 @ 75) |
+| S10.5 | ready qr D5 60 min | 1 400 000×60×15 000/144e6 | **8 750** within 2 runs |
+| S10.6 | NO_ATTENDANCE 0 → IN 09–OUT 12 on a shop holiday, no roster ⇒ 180 HOLIDAY_WORK ×1.0 | 1 400 000×180×10 000/144e6 | 0 → **17 500** |
+| S10.7 | req 21–23, OUT 22:04 ⇒ 64 at frozen step 1 | 1 400 000×64×15 000/144e6 = 9 333.33 | **9 333** kept (old: REJECTED + 8 750 @ step 30) |
+| S10.8 / S10.9 | leave after approval / work date after endDate | — | **0**, code LEAVE / ENDED, no row |
+| S4.5 | no profile ⇒ `noRate` at filing (was parked NO_RATE) | — | 0 rows |
+New fixed texts: noRate · leaveDay · rateRecheck · rateNoBase · otRow (ot-rules OT_TEXT).

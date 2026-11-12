@@ -17,3 +17,24 @@
 - D-H29-normal-hours (above).
 - D-H29-judge-step: measured `otMin` is still floored by the H2.5 attendance setting `otStepMin` (default 15, judge-rules frozen) ⇒ with otRoundMin 1 the cap can still drop up to 14 min unless the shop sets attendance step 1. Needs a ruling (default attendance step 1, or settle from raw OUT−shift end).
 - Brief D1–D6 unchanged.
+
+## r2 fix round (12 Nov · reviewer + hunt)
+1 override < floor: settlement pays max(override, legal) per OT_WORKDAY segment; every profile save re-checks the stored override — **refuse** (rateRecheck), never auto-clear; base 0 cannot hold one (rateNoBase).
+2 paid minutes = request ∩ worked intervals after shift end (breaks/gaps excluded, judge `otStepMin` not applied) — `otPayDaysInTx` returns `worked` + `leaveFull`; rounded only by `otRoundMin`. Closes D-H29-judge-step.
+3 cancelAdjustment / bound-DRAFT delete / moveStrandedAdjustment refuse OT_REQUEST rows (otRow).
+4 cron: re-settles first, then re-appeared zero settlements, then open requests by `updatedAt` asc; every wait writes settleCode (bumps updatedAt) ⇒ round-robin.
+5 law multipliers = max(row, default) (otLawOf + otAmount).
+6 NO_ATTENDANCE zero (dayId null, code null) re-settles when a day row for date/date−1 appears.
+7 basisJson = {otRoundMin, profile} frozen at first settlement (step even when 0 paid).
+8a full-day APPROVED leave: filing + approval refused (leaveDay); leave after approval ⇒ settled 0, settleCode LEAVE (stored; the list DTO keys are fixed by S7.1 ⇒ reason not shown in UI — debt **D-H29-reason-ui**). 8b no rate ⇒ noRate at filing. 8c work date after endDate ⇒ settled 0, settleCode ENDED (D4 closed). 8d reversal of a PAID run after a revoke pays again then the DEDUCTION claws back (net 0) — accepted behaviour.
+9 salary form is a plain server form (void action, no state channel) ⇒ rateBelowLaw/rateRecheck still throw — debt **D-H29-rate-inline**.
+10 cancel: oracle fixes "someone else ⇒ cancelNo"; unknown id stays notFound — left as is.
+
+## Accountant list (additions)
+- Normal hours fixed at 8 underpays a 7-hour shop (D-H29-normal-hours).
+- Public holiday on a daily worker's weekly day off: 1× or 2×?
+- Hourly staff on public holidays at 1× assumes H3.2 pays the holiday pay.
+- Late arrival + staying late is still paid 1.5× OT after shift end.
+- v1 manual OT (payAdjust hours) can double-pay the same hours (D6).
+- A revoke DEDUCTION for an ENDED employee strands (no later run includes them).
+- Daily/hourly OT rows are unpaid until H3.4 (runs refuse non-monthly).
