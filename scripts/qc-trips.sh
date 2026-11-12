@@ -25,5 +25,6 @@ for U in "$D" "$P"; do
   [ -z "${MARK:-}" ] || [ "$MARK" = "$M" ] || { echo "🔴 qc-trips: DATABASE_URL and DIRECT_URL point at different branches — stop" >&2; exit 4; }
   MARK=$M
 done
+# SVC_QC_HOST: lets the SVC regression suites (loadSvcQcEnv) accept this DB — allowlisted in scripts/svc-qc-hosts.mts (ORACLE-EDIT 12 Nov)
 # POS_QC_ALLOW_HOST: loadPosQcEnv accepts QC4 only unless told — TRIPS QC is intentional (prod is still refused first)
-exec env DATABASE_URL="$P" DIRECT_URL="$D" QC_ENV_FILE="$F" GATE_LOCK_FILE="/tmp/shark-gate-trips-$MARK.lock" TRIPS_QC_HOST="$MARK" QC_BRANCH=qc-trips POS_QC_ALLOW_HOST="$MARK" "$@"
+exec env DATABASE_URL="$P" DIRECT_URL="$D" QC_ENV_FILE="$F" GATE_LOCK_FILE="/tmp/shark-gate-trips-$MARK.lock" TRIPS_QC_HOST="$MARK" SVC_QC_HOST="$MARK" QC_BRANCH=qc-trips POS_QC_ALLOW_HOST="$MARK" "$@"
