@@ -789,6 +789,8 @@ async function runDb(): Promise<void> {
     const mem = (uid: string) => P.membership.findFirst({ where: { tenantId: TT, userId: uid } }) as Promise<Any>;
     const push = async (uid: string) => (await P.pushDevice.create({ data: { userId: uid, tenantId: TT, expoToken: `ExponentPushToken[qc44${tag}${uid.slice(-6)}]`, platform: "ios" } })).id as string;
     const pushIds: string[] = [];
+    // rows that name this employee (tenant-wide counters also move with async kanban/notify work of earlier groups)
+    const about = async (e: string) => `${(await fm("outboxEvent", { tenantId: TT })).filter((x) => JSON.stringify(x.payload).includes(e)).length}:${await cnt("auditLog", { tenantId: TT, targetId: e })}:${await cnt("hrOnboardingTask", { employeeId: e })}`;
     try {
       // S16.1 STAFF clerk (offboard key only) ⇒ STAFF target's access revoked in the same tx
       const clerk = await mk("clerk", "STAFF", [u1], K);
@@ -803,18 +805,18 @@ async function runDb(): Promise<void> {
       // S16.2 MANAGER-linked target: non-owner + revoke ⇒ refused, nothing written · owner ⇒ ok
       const uM = await mk("r2m", "MANAGER", [u1], {});
       const eMg = await emp(sA, "r2m", { linkedUserId: uM.id });
-      const c0 = await counts();
+      const c0 = await about(eMg);
       const r2a = await ob(V.mgrU1, eMg, { endDate: DAY, reason: "OTHER", revokeAccess: true });
-      const c1 = await counts();
+      const c1 = await about(eMg);
       const still = (await row(eMg))?.active === true && (await mem(uM.id))?.acceptedAt !== null;
       const r2b = await ob(V.owner, eMg, { endDate: DAY, reason: "OTHER", revokeAccess: true });
       ck("S16.2", { refused: !r2a.ok && r2a.text === T.revokeManager, quiet: c0 === c1 && still, owner: r2b.ok && r2b.value?.accessRevoked === true && (await mem(uM.id))?.acceptedAt === null }, "manager ⇒ owner only", `${shown(r2a)} ${shown(r2b)}`);
       // S16.3 OWNER-linked row: refused for everyone (with or without revoke)
       const uO = await mk("r2o", "OWNER", [], {});
       const eOw = await emp(sA, "r2o", { linkedUserId: uO.id });
-      const c2 = await counts();
+      const c2 = await about(eOw);
       const r3 = [await ob(V.mgrAll, eOw, { endDate: DAY, reason: "OTHER", revokeAccess: true }), await ob(V.owner, eOw, { endDate: DAY, reason: "OTHER", revokeAccess: true }), await ob(V.owner, eOw, { endDate: DAY, reason: "OTHER", revokeAccess: false })];
-      const c3 = await counts();
+      const c3 = await about(eOw);
       ck("S16.3", { refused: r3.every((x) => !x.ok && x.text === T.revokeOwner), quiet: c2 === c3 && (await row(eOw))?.active === true && (await mem(uO.id))?.acceptedAt !== null }, "owner row refused", r3.map(shown).join(" "));
       // S16.4 untick: non-owner refused while the policy revokes · owner may keep ⇒ accessKept
       const uK = await mk("r2k", "STAFF", [u1], {});

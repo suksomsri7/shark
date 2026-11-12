@@ -787,11 +787,12 @@ function runStatic(): void {
       CONSUMERS,
     ].filter((p) => existsSync(join(ROOT, p)))
       // ORACLE-EDIT (controller 12 Nov): H3.3 ships the law engine — these two files are the intended readers of HrLawTable/lawRowIds/ytdJson
-      .filter((p) => p !== "src/lib/modules/hr/law.ts" && p !== "src/lib/modules/hr/payroll-rules-v2.ts")
-      // ORACLE-EDIT (builder H4.4 · not in the Q13 list — controller to confirm): hr/lifecycle.ts is the one intended reader/writer of HrReviewNote/HrOnboardingTask (H4.4 R2)
-      .filter((p) => p !== "src/lib/modules/hr/lifecycle.ts");
-    const cnt = (s: string) => (stripComments(s).match(S61_RE) ?? []).length;
-    const hits = files.map((f) => [f, cnt(rd(f)) - cnt(atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
+      .filter((p) => p !== "src/lib/modules/hr/law.ts" && p !== "src/lib/modules/hr/payroll-rules-v2.ts");
+    // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
+    //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
+    const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
+    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t))).length;
+    const hits = files.map((f) => [f, cntOf(f, rd(f)) - cntOf(f, atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
     chk("S6.1", files.length > 20 && hits.length === 0, "0 new reads", `${hits.join(",") || "0"} of ${files.length} files (base ${baseRef().slice(0, 8)})`);
   }
   // S6.2 static part
