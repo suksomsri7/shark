@@ -30,6 +30,9 @@ import {
   attendanceDeltaPlan,
   attendanceDigest,
   attendancePayPolicyOf,
+  attendanceInForceOf,
+  attendanceInForceToggle,
+  attendancePeriodInForce,
   thaiPeriodLabel,
   type AttDayInput,
   type AttOut,
@@ -44,6 +47,12 @@ const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const PAGE = 50;
 const TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
 const SETTINGS_KEY = "hrAttendancePay";
+/** fix r2 (F2): ช่วงเดือนที่กฎมีผล — คีย์แยก (อ็อบเจกต์นโยบายเดิมอยู่ในลายนิ้วมือ ห้ามเพิ่มช่อง) · ไม่มี migration (JSON ของ AppSystem.settings) */
+const INFORCE_KEY = "hrAttendancePayInForce";
+/** fix r2 (F4): ล็อกนโยบาย — sync ถือฝั่ง shared ตลอด tx · บันทึกนโยบายถือฝั่ง exclusive (ไม่ถือล็อกงวดใด) */
+const policyLockKey = (ctx: Ctx) => `hr:attpay:policy:${ctx.systemId}`;
+const lockShared = (tx: Db, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended(${key}, 0))`;
+const bkkMonth = (d: Date) => new Date(d.getTime() + 7 * 3_600_000).toISOString().slice(0, 7);
 const lock = (tx: Db, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
 const payKey = (ctx: Ctx, p: string) => `hr:payroll:run:${ctx.systemId}:${p}`;
 const nowOf = (o: { now?: Date } | undefined) => (o?.now instanceof Date && Number.isFinite(o.now.getTime()) ? new Date(o.now.getTime()) : new Date());
@@ -115,19 +124,26 @@ export async function saveAttendancePayPolicy(ctx: Ctx, viewer: WorkEntryViewer,
     if (b === undefined) return { ok: false, reason: ATT_TEXT.failed };
     patch[k] = b;
   }
+  // fix r2 (F2): เปิด = เปิดช่วงที่งวดปัจจุบัน (งวดที่มีรอบอนุมัติ/จ่ายแล้ว ⇒ งวดถัดไป) · ปิด = ปิดช่วงที่งวดปัจจุบัน ·
+  //   อ่านรอบด้วย client ของระบบ (HrPayrollRun เป็นตาราง system-scoped — tx ด้านล่างเปิดระดับร้าน) ก่อนเข้า tx
+  let period = bkkMonth(nowOf(opts));
+  for (let k = 0; k < 240 && (await frozenRun(tenantDb(ctx) as unknown as Db, ctx, period)); k++) period = nextMonth(period);
+  const closeAt = bkkMonth(nowOf(opts));
   const res = await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
     const tx = t as unknown as Db;
     await lock(tx, `hr:clockpolicy:${ctx.systemId}`);
+    await lock(tx, policyLockKey(ctx)); // fix r2 (F4): รอ sync ที่กำลังทำอยู่ (ถือ shared) ให้จบก่อน — ไม่ถือล็อกงวดใด ⇒ ไม่มีวงรอ
     const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
     if (!sys) return null;
     const base = obj(sys.settings);
     const cur = attendancePayPolicyOf(base[SETTINGS_KEY]);
     const next: AttendancePayPolicy = { ...cur, ...patch };
-    const u = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: { ...base, [SETTINGS_KEY]: next } as Prisma.InputJsonValue } });
-    return u.count === 1 ? { cur, next } : null;
+    const inForce = attendanceInForceToggle(attendanceInForceOf(base[INFORCE_KEY]), next.enabled, next.enabled ? period : closeAt);
+    const u = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: { ...base, [SETTINGS_KEY]: next, [INFORCE_KEY]: inForce } as Prisma.InputJsonValue } });
+    return u.count === 1 ? { cur, next, inForce } : null;
   }, TX_OPTS);
   if (!res) return { ok: false, reason: ATT_TEXT.failed };
-  await writeAudit({ tenantId: ctx.tenantId, actorType: viewer.userId ? "USER" : "SYSTEM", actorId: viewer.userId ?? null, action: "hr.attpay.policy", targetType: "AppSystem", targetId: ctx.systemId, after: { systemId: ctx.systemId, ...res.next } });
+  await writeAudit({ tenantId: ctx.tenantId, actorType: viewer.userId ? "USER" : "SYSTEM", actorId: viewer.userId ?? null, action: "hr.attpay.policy", targetType: "AppSystem", targetId: ctx.systemId, after: { systemId: ctx.systemId, ...res.next, inForce: res.inForce } });
   if (!res.next.enabled) await withdrawPendingOnOff(ctx, nowOf(opts));
   return { ok: true, id: ctx.systemId };
 }
@@ -208,21 +224,25 @@ async function frozenRun(db: Db, ctx: Ctx, P: string): Promise<boolean> {
 }
 /** ฐานที่ใช้คิด (อยู่ในลายนิ้วมือ) */
 type Basis = { base: number; N: number; policy: AttendancePayPolicy };
-type Calc = { state: WorkEntryState | "NONE"; code: string | null; out: AttOut | null; basis: Basis };
-type CalcSet = { policy: AttendancePayPolicy; N: number; frozen: boolean; byEmp: Map<string, Calc> };
+/** skip: NOT_IN_FORCE = งวดอยู่นอกช่วงที่กฎมีผล (F2) · NO_SNAPSHOT = ต้องใช้ภาพนิ่งแต่ไม่มีหัวรายการ (งวดปิดแล้ว F1 · กฎปิดอยู่) — ไม่มียอดที่ต้องหัก */
+type Calc = { state: WorkEntryState | "NONE"; code: string | null; out: AttOut | null; res: AttOut | null; basis: Basis; skip: "NOT_IN_FORCE" | "NO_SNAPSHOT" | null };
+type CalcSet = { policy: AttendancePayPolicy; N: number; frozen: boolean; inForce: boolean; useCurrent: boolean; byEmp: Map<string, Calc> };
 /**
- * คิดรายการหักสดของพนักงานชุดหนึ่งในงวดงาน P — `policyOverride` = นโยบายที่ใช้คิด (ค่าปริยาย = ค่าตั้งปัจจุบัน) ·
- * fix r1 (R3 · hunter D3): งวดงานที่อนุมัติ/จ่ายแล้ว (FROZEN) คิดจากวันที่แช่แข็ง + ฐานที่เก็บในหัวรายการล่าสุดของพนักงานคนนั้นในงวด
- *   (เงินเดือน · N · นโยบาย ณ การคำนวณครั้งสุดท้ายก่อนแช่แข็ง — การขึ้นเงินเดือน/เปลี่ยนกฎทีหลังไม่ทำให้งวดที่ปิดแล้วเปลี่ยน) ·
- *   ไม่มีหัวรายการ (ข้อมูลเก่าที่ปิดงวดโดยไม่เคยคำนวณ) = ค่าปัจจุบัน (ไม่มีประวัติเงินเดือน/กฎให้ย้อน — บันทึกในโน้ต)
+ * คิดรายการหักสดของพนักงานชุดหนึ่งในงวดงาน P —
+ *   ใช้ค่าปัจจุบัน (เงินเดือน · N · นโยบาย) เฉพาะเมื่องวดยังไม่ปิด + อยู่ในช่วงที่กฎมีผล + กฎเปิดอยู่ ·
+ *   นอกนั้นใช้ภาพนิ่งในหัวรายการล่าสุดของพนักงานคนนั้นในงวด (fix r1 R3 งวดที่ปิดแล้ว · fix r2 F2 กฎปิดอยู่) ·
+ *   fix r2 (F1): งวดที่ปิดแล้ว/กฎปิดอยู่ แต่ไม่มีหัวรายการ ⇒ NO_SNAPSHOT (ไม่มีอะไรต้องหัก — ไม่ใช้เงินเดือน/กฎปัจจุบันย้อนหลังเด็ดขาด) ·
+ *   fix r2 (F2): งวดนอกช่วงที่กฎมีผล ⇒ NOT_IN_FORCE (ยอด 0 · ถ้ามีหัวรายการ คิดจากภาพนิ่งไว้ให้ด่านผูกรอบใช้)
  */
-async function calcSet(db: Db, ctx: Ctx, P: string, ids: string[], policyOverride?: AttendancePayPolicy): Promise<CalcSet> {
+async function calcSet(db: Db, ctx: Ctx, P: string, ids: string[]): Promise<CalcSet> {
   const s = await settingsIn(db, ctx);
-  const policy = policyOverride ?? attendancePayPolicyOf(s[SETTINGS_KEY]);
+  const policy = attendancePayPolicyOf(s[SETTINGS_KEY]);
   const N = normalMinutesOf(s);
+  const inForce = attendancePeriodInForce(attendanceInForceOf(s[INFORCE_KEY]), P);
   const byEmp = new Map<string, Calc>();
   const frozen = await frozenRun(db, ctx, P);
-  if (!ids.length) return { policy, N, frozen, byEmp };
+  const useCurrent = !frozen && inForce && policy.enabled;
+  if (!ids.length) return { policy, N, frozen, inForce, useCurrent, byEmp };
   const [states, profiles, days, snaps] = await Promise.all([
     workEntryStatesInTx(db, ctx, P, ids),
     db.hrSalaryProfile.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids } }, select: { employeeId: true, payType: true, baseSalarySatang: true } }),
@@ -232,7 +252,7 @@ async function calcSet(db: Db, ctx: Ctx, P: string, ids: string[], policyOverrid
       orderBy: { id: "asc" },
       take: 200_000,
     }),
-    frozen
+    !useCurrent
       ? db.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, workPeriodKey: P, employeeId: { in: ids } }, select: { employeeId: true, baseSalarySatang: true, normalDayMin: true, policyJson: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 20_000 })
       : Promise.resolve([] as { employeeId: string; baseSalarySatang: number; normalDayMin: number; policyJson: unknown }[]),
   ]);
@@ -248,25 +268,26 @@ async function calcSet(db: Db, ctx: Ctx, P: string, ids: string[], policyOverrid
   for (const id of ids) {
     const state = states.get(id) ?? "NONE";
     const p = prof.get(id);
-    const sb = snap.get(id);
-    const basis: Basis = sb ?? { base: p?.baseSalarySatang ?? 0, N, policy };
+    const sb = useCurrent ? undefined : snap.get(id);
+    const skip = !frozen && !inForce ? "NOT_IN_FORCE" : !useCurrent && !sb ? "NO_SNAPSHOT" : null;
+    const basis: Basis = useCurrent ? { base: p?.baseSalarySatang ?? 0, N, policy } : (sb ?? { base: 0, N, policy });
     if (state !== "CURRENT" && state !== "FROZEN") {
-      byEmp.set(id, { state, code: state === "NONE" ? "MISSING" : state, out: null, basis });
+      byEmp.set(id, { state, code: state === "NONE" ? "MISSING" : state, out: null, res: null, basis, skip });
       continue;
     }
-    if (!sb && !p) {
-      byEmp.set(id, { state, code: "NO_PROFILE", out: null, basis });
-      continue;
-    }
-    const out = attendanceDeductionOf({ policy: basis.policy, payType: sb ? "MONTHLY" : String(p!.payType), baseSalarySatang: basis.base, normalDayMin: basis.N, days: dayBy.get(id) ?? [] });
-    byEmp.set(id, { state, code: out.ok ? null : out.code, out: out.ok ? out : null, basis });
+    let res: AttOut | null;
+    if (useCurrent) res = p ? attendanceDeductionOf({ policy, payType: String(p.payType), baseSalarySatang: p.baseSalarySatang, normalDayMin: N, days: dayBy.get(id) ?? [] }) : ({ ok: false, code: "NO_PROFILE" } as unknown as AttOut);
+    else res = sb ? attendanceDeductionOf({ policy: sb.policy, payType: "MONTHLY", baseSalarySatang: sb.base, normalDayMin: sb.N, days: dayBy.get(id) ?? [] }) : null;
+    byEmp.set(id, { state, code: skip ?? (res && !res.ok ? res.code : null), out: res && res.ok ? res : null, res, basis, skip });
   }
-  return { policy, N, frozen, byEmp };
+  return { policy, N, frozen, inForce, useCurrent, byEmp };
 }
 const ruleTotal = (out: AttOut | null, rule: AttRule) => (out && out.ok ? (rule === "LATE_RULE" ? out.late : out.absent) : { days: 0, minutes: 0, amountSatang: 0 });
 const ruleLines = (out: AttOut | null, rule: AttRule) => (out && out.ok ? out.lines.filter((l) => l.rule === rule) : []);
 const signedOf = (r: { kind: string; amountSatang: number }) => (String(r.kind) === "ALLOWANCE" ? -r.amountSatang : r.amountSatang);
-const digestOf = (k: Calc, rule: AttRule) => (k.out ? attendanceDigest(k.out, k.basis, rule) : "");
+const digestOf = (k: Calc, rule: AttRule) => (k.res ? attendanceDigest(k.res, k.basis, rule) : "");
+/** fix r2 (F3b): ยอดที่ควรหักเป็น 0 เพราะโปรไฟล์ (ฐาน 0 · ไม่ใช่รายเดือน · ไม่มีโปรไฟล์) — การคำนวณยังต้องถอนรายการที่ค้าง (ระบบปฏิเสธ ไม่ใช่การสละสิทธิ์) */
+const ZERO_CODES = new Set(["NO_BASE", "PAY_TYPE", "NO_PROFILE"]);
 
 type Head = { adjustmentId: string; employeeId: string; workPeriodKey: string; rule: string; gen: number; kind: string; entitledSatang: number; amountSatang: number; digest: string; endCode: string | null; linesJson: unknown; policyJson: unknown; refundOfIds: string[] };
 const HEAD_SELECT = { adjustmentId: true, employeeId: true, workPeriodKey: true, rule: true, gen: true, kind: true, entitledSatang: true, amountSatang: true, digest: true, endCode: true, linesJson: true, policyJson: true, refundOfIds: true } as const;
@@ -332,7 +353,11 @@ export async function syncAttendanceDeductions(
   const P = typeof input?.periodKey === "string" ? input.periodKey.trim() : "";
   if (!PERIOD_RE.test(P)) return { ok: false, reason: ATT_TEXT.period };
   const db = tenantDb(ctx) as unknown as Db;
-  if (!attendancePayPolicyOf((await settingsIn(db, ctx))[SETTINGS_KEY]).enabled) return { ok: false, reason: ATT_TEXT.off };
+  {
+    // fix r2 (F2): กฎปิดอยู่ แต่งวดนี้อยู่ในช่วงที่กฎมีผล ⇒ ยังคำนวณได้ (ภาพนิ่ง · ถอน/คืนเท่านั้น ไม่สร้างรายการหักใหม่)
+    const s0 = await settingsIn(db, ctx);
+    if (!attendancePayPolicyOf(s0[SETTINGS_KEY]).enabled && !attendancePeriodInForce(attendanceInForceOf(s0[INFORCE_KEY]), P)) return { ok: false, reason: ATT_TEXT.off };
+  }
   const now = nowOf(opts);
   const scope = scopeOf(viewer);
   const only = Array.isArray(input?.employeeIds) ? new Set(input.employeeIds.filter((x): x is string => typeof x === "string")) : null;
@@ -353,23 +378,30 @@ export async function syncAttendanceDeductions(
       const r = await tenantDb(ctx).$transaction(async (t) => {
         const tx = t as unknown as Db;
         await lock(tx, payKey(ctx, P)); // ล็อกงวดงานก่อนทุกอย่าง
+        await lockShared(tx, policyLockKey(ctx)); // fix r2 (F4): บันทึกนโยบาย (exclusive) รอ tx นี้ · อ่านกฎ/ช่วงมีผลซ้ำใต้ล็อกนี้ (calcSet)
         const held = new Set<string>([P]);
         const target = await lockTarget(tx, ctx, P, held); // งวดที่ปิดแล้ว ⇒ เดือนหลังรอบล่าสุด (> P เสมอ)
         const ids = page.map((e) => e.id);
         const cs = await calcSet(tx, ctx, P, ids);
-        if (!cs.policy.enabled) throw new Refusal(ATT_TEXT.off);
+        if (!cs.policy.enabled && !cs.inForce) throw new Refusal(ATT_TEXT.off);
         const { heads, adj, runStatus } = await rowsOf(tx, ctx, P, ids);
         const c = { employees: page.length, created: 0, rejected: 0, kept: 0, refunds: 0, wait: [] as { employeeId: string; code: string }[], skipped: [] as { employeeId: string; code: string }[] };
         for (const e of page) {
           const k = cs.byEmp.get(e.id);
           if (!k || k.state === "NONE") continue;
+          if (k.skip) {
+            c.skipped.push({ employeeId: e.id, code: k.skip }); // fix r2 (F1 NO_SNAPSHOT · F2 NOT_IN_FORCE): ไม่เขียนอะไร (ไม่ต้องรอชั่วโมงทำงาน)
+            continue;
+          }
           if (k.state !== "CURRENT" && k.state !== "FROZEN") {
             c.wait.push({ employeeId: e.id, code: k.state });
             continue;
           }
+          const zero = !k.out && !!k.res && !k.res.ok && ZERO_CODES.has(k.res.code);
           if (!k.out) {
             c.skipped.push({ employeeId: e.id, code: k.code ?? "BAD_INPUT" });
-            continue;
+            // fix r2 (F3b): ยอดที่ควรหักกลายเป็น 0 (ฐาน 0 · ไม่ใช่รายเดือน) แต่ยังมีรายการค้าง ⇒ คิดต่อเพื่อถอน (SUPERSEDED)
+            if (!zero || !heads.some((h) => h.employeeId === e.id && adj.has(h.adjustmentId) && adj.get(h.adjustmentId)!.status !== "REJECTED")) continue;
           }
           // R2a: รายการหักที่ผูกรอบร่างแล้วแต่ข้อมูลเปลี่ยน ⇒ ห้ามคิดส่วนต่าง/คืนเงินจากมัน (ยังไม่ได้หักจริง) — ให้คำนวณรอบใหม่ก่อน (ปลดออก) แล้วค่อยคำนวณ
           if (draftStaleOf(heads, adj, runStatus, e.id, k)) {
@@ -387,7 +419,8 @@ export async function syncAttendanceDeductions(
             });
             const plan = attendanceDeltaPlan({ entitledSatang: E, digest, rows: planRows });
             // R8: คนปฏิเสธข้อมูลชุดนี้แล้ว ⇒ ไม่สร้างรายการหักใหม่ (การถอน/คืนเงินยังทำตามแผน)
-            const create0 = plan.create && plan.create.kind === "DEDUCTION" && waivedBy(heads, adj, e.id, rule, digest) ? null : plan.create;
+            // fix r2 (F2): กฎปิดอยู่ ⇒ ถอน/คืนเงินได้ แต่ไม่สร้างรายการหักใหม่ (Q12)
+            const create0 = plan.create && plan.create.kind === "DEDUCTION" && (waivedBy(heads, adj, e.id, rule, digest) || !cs.policy.enabled) ? null : plan.create;
             if (!plan.reject.length && !create0) {
               if (planRows.some((x) => x.status !== "REJECTED")) c.kept++;
               continue;
@@ -498,17 +531,12 @@ export async function attendanceStaleIdsInTx(tx: Db, ctx: Ctx, adjustmentIds: st
   }
   const live = heads.filter((h) => !stale.has(h.adjustmentId) && h.kind === "DEDUCTION");
   if (!live.length) return stale;
-  const cur = attendancePayPolicyOf((await settingsIn(tx, ctx))[SETTINGS_KEY]);
+  // fix r2: ฐานของงวดเลือกใน calcSet (ค่าปัจจุบันเมื่อกฎเปิด+มีผล+งวดยังไม่ปิด · นอกนั้นภาพนิ่งในหัวรายการ — A9)
   const groups = new Map<string, Head[]>();
-  for (const h of live) {
-    const pol = cur.enabled ? cur : attendancePayPolicyOf(h.policyJson);
-    const k = `${h.workPeriodKey}|${JSON.stringify(pol)}`;
-    groups.set(k, [...(groups.get(k) ?? []), h]);
-  }
+  for (const h of live) groups.set(h.workPeriodKey, [...(groups.get(h.workPeriodKey) ?? []), h]);
   for (const hs of groups.values()) {
     const P = hs[0]!.workPeriodKey;
-    const pol = cur.enabled ? cur : attendancePayPolicyOf(hs[0]!.policyJson);
-    const cs = await calcSet(tx, ctx, P, [...new Set(hs.map((h) => h.employeeId))], pol);
+    const cs = await calcSet(tx, ctx, P, [...new Set(hs.map((h) => h.employeeId))]);
     for (const h of hs) {
       const k = cs.byEmp.get(h.employeeId);
       const ok = !!k && (k.state === "CURRENT" || k.state === "FROZEN") && !!k.out && digestOf(k, h.rule as AttRule) === h.digest;
@@ -571,22 +599,29 @@ export async function attendanceRunGateInTx(tx: Db, ctx: Ctx, runId: string, run
   const bound = (await tx.hrPayAdjustment.findMany({ where: { ...scope, runId, sourceType: att }, select: { id: true } })).map((r) => r.id);
   if (!lockedOk(await attendanceWorkPeriodsOfInTx(tx, ctx, bound))) return "ATTENDANCE_LOCK";
   if ((await attendanceStaleIdsInTx(tx, ctx, bound)).size) return "ATTENDANCE_STALE";
-  if (!attendancePayPolicyOf((await settingsIn(tx, ctx))[SETTINGS_KEY]).enabled) return null;
   const emps = [...new Set((await tx.hrPayrollItem.findMany({ where: { ...scope, runId }, select: { employeeId: true } })).map((x) => x.employeeId))].sort();
   if (!emps.length) return null;
+  // fix r2 (F2): ด่าน "ต้องคำนวณก่อน" ใช้กับงวดที่อยู่ในช่วงที่กฎมีผลเท่านั้น (แม้วันนี้กฎปิด) · งวดนอกช่วง = ไม่มียอดต้องหัก ไม่ต้องคำนวณ
   const cs = await calcSet(tx, ctx, runPeriod, emps);
-  const { heads, adj } = await rowsOf(tx, ctx, runPeriod, emps);
-  for (const e of emps) {
-    const k = cs.byEmp.get(e);
-    if (!k || (k.state !== "CURRENT" && k.state !== "FROZEN")) return "ATTENDANCE_SYNC";
-    for (const rule of ATT_RULES) {
-      const E = ruleTotal(k.out, rule).amountSatang;
-      const live = heads
-        .filter((h) => h.employeeId === e && h.rule === rule)
-        .map((h) => adj.get(h.adjustmentId))
-        .filter((a): a is AdjRow => !!a && (a.status === "APPROVED" || a.status === "PENDING"))
-        .reduce((s2, a) => s2 + signedOf(a), 0);
-      if (live !== E && !waivedBy(heads, adj, e, rule, digestOf(k, rule))) return "ATTENDANCE_SYNC";
+  if (cs.inForce) {
+    const { heads, adj } = await rowsOf(tx, ctx, runPeriod, emps);
+    for (const e of emps) {
+      const k = cs.byEmp.get(e);
+      if (k?.skip) continue; // fix r2 (F1): ไม่มีภาพนิ่ง (งวดปิดแล้ว/กฎปิดอยู่โดยไม่เคยคำนวณ) ⇒ ไม่มียอดต้องหัก
+      const mine = heads.filter((h) => h.employeeId === e).map((h) => adj.get(h.adjustmentId)).filter((a): a is AdjRow => !!a && (a.status === "APPROVED" || a.status === "PENDING"));
+      // fix r2 (F3a): ไม่มีชั่วโมงทำงานในงวด (ไม่อยู่ในชุดของ work entries / ยังไม่ดึง) และไม่มีรายการหักที่ยังมีผล ⇒ ไม่มีอะไรต้องหัก
+      if (!k || k.state === "NONE" || k.state === "MISSING") {
+        if (mine.length) return "ATTENDANCE_SYNC";
+        continue;
+      }
+      if (k.state !== "CURRENT" && k.state !== "FROZEN") return "ATTENDANCE_SYNC";
+      for (const rule of ATT_RULES) {
+        const E = ruleTotal(k.out, rule).amountSatang;
+        const live = mine.filter((a) => heads.some((h) => h.adjustmentId === a.id && h.rule === rule)).reduce((s2, a) => s2 + signedOf(a), 0);
+        // กฎเปิด: ต้องเท่ากับยอดที่ควรหัก · กฎปิด (ภาพนิ่ง): ไม่สร้างรายการใหม่ ⇒ ต้องไม่เกินยอดที่ควรหัก
+        const ok = cs.policy.enabled ? live === E : live <= E;
+        if (!ok && !waivedBy(heads, adj, e, rule, digestOf(k, rule))) return "ATTENDANCE_SYNC";
+      }
     }
   }
   const hs = await tx.hrAttendanceDeduction.findMany({ where: { ...scope, employeeId: { in: emps }, workPeriodKey: { lte: runPeriod }, endCode: null, kind: "DEDUCTION" }, select: { adjustmentId: true, workPeriodKey: true }, take: 20_000 });
@@ -635,7 +670,7 @@ export async function attendanceDeductionPreview(ctx: Ctx, viewer: WorkEntryView
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : 1))
     .map((e) => {
       const k = cs.byEmp.get(e.id);
-      const out = cs.policy.enabled ? (k?.out ?? null) : null;
+      const out = k && !k.skip ? k.out : null; // fix r2: นอกช่วงมีผล / ไม่มีภาพนิ่ง = 0
       const late = ruleTotal(out, "LATE_RULE");
       const absent = ruleTotal(out, "ABSENT_RULE");
       const mine = heads.filter((h) => h.employeeId === e.id).map((h) => adj.get(h.adjustmentId)).filter((a): a is AdjRow => !!a && a.status !== "REJECTED");

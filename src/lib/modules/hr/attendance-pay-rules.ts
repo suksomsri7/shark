@@ -28,6 +28,9 @@ export const ATT_TEXT = {
   runSync: "รายการหักสาย/ขาดของงวดนี้ยังไม่ตรงกับข้อมูลเวลา — กด 'คำนวณใหม่' ที่รอบจ่ายก่อน แล้วกด 'คำนวณรายการหักสาย/ขาด' จากนั้นจึงอนุมัติ",
   // fix r1 (R4): ชุดงวดงานที่ล็อกไว้เปลี่ยนระหว่างทำรายการ (หายากมาก) — ไม่ทำอะไร ให้กดใหม่
   lockRetry: "รายการหักสาย/ขาดเปลี่ยนระหว่างทำรายการ — กรุณาลองอีกครั้ง",
+  // fix r2 (F1/F2): งวดที่กฎไม่เคยมีผล / งวดที่ปิดแล้วโดยไม่เคยคำนวณ — ไม่หักย้อนหลัง
+  notInForce: "งวดนี้อยู่นอกช่วงที่เปิดใช้กฎหักสาย/ขาด — ไม่มีรายการหัก",
+  noSnapshot: "งวดนี้ปิดไปแล้วโดยไม่เคยคำนวณรายการหักสาย/ขาด — ไม่หักย้อนหลัง",
   needSync: "ต้องคำนวณใหม่",
   saved: "บันทึกกฎหักสาย/ขาดแล้ว",
   failed: "บันทึกไม่สำเร็จ — กรุณาลองใหม่",
@@ -171,4 +174,34 @@ export function thaiPeriodLabel(periodKey: string): string {
 /** แทน {n} {m} ในข้อความคงที่ */
 export function attText(t: string, v: { n?: number; m?: string }): string {
   return t.replace("{n}", String(v.n ?? "")).replace("{m}", v.m ?? "");
+}
+
+// ═════════════ fix r2 (F2): ช่วงเดือนที่กฎมีผล (in-force) — เก็บใน settings.hrAttendancePayInForce [{from, to|null}] ═════════════
+export type AttInForce = { from: string; to: string | null };
+const PERIOD_RE_P = /^\d{4}-(0[1-9]|1[0-2])$/;
+/** ตัวอ่านแบบผ่อน — แถวที่รูปแบบผิดถูกทิ้ง · เรียงตาม from */
+export function attendanceInForceOf(raw: unknown): AttInForce[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AttInForce[] = [];
+  for (const x of raw) {
+    const o = obj(x);
+    const from = typeof o.from === "string" && PERIOD_RE_P.test(o.from) ? o.from : null;
+    const to = o.to === null || o.to === undefined ? null : typeof o.to === "string" && PERIOD_RE_P.test(o.to) ? o.to : "BAD";
+    if (from && to !== "BAD" && (to === null || to >= from)) out.push({ from, to });
+  }
+  return out.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+}
+/** งวดงาน P อยู่ในช่วงที่กฎมีผลไหม */
+export function attendancePeriodInForce(iv: readonly AttInForce[], P: string): boolean {
+  return iv.some((x) => x.from <= P && (x.to === null || P <= x.to));
+}
+/** เปิด ⇒ เปิดช่วงใหม่ที่ period (ถ้ายังไม่มีช่วงเปิดค้าง) · ปิด ⇒ ปิดช่วงที่เปิดค้างที่ period (ช่วงที่ยังไม่เริ่ม = ลบทิ้ง) */
+export function attendanceInForceToggle(iv: readonly AttInForce[], enabled: boolean, period: string): AttInForce[] {
+  const list = iv.map((x) => ({ ...x }));
+  const open = list.find((x) => x.to === null);
+  if (enabled) return open ? list : [...list, { from: period, to: null }].sort((a, b) => (a.from < b.from ? -1 : 1));
+  if (!open) return list;
+  if (period < open.from) return list.filter((x) => x !== open);
+  open.to = period;
+  return list;
 }
