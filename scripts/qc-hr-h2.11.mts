@@ -120,6 +120,14 @@ S12.2|UI|M|R|[static] testids present · inventory rows (wo H2.11) both ways
 S12.3|UI|m|R|[static] messages hr.inbox th=en · tokens only · visual spec "2.11"
 S13.1|frozen|C|G|[static] frozen files unchanged (other WOs' marked hunks tolerated) · payroll-rules sha · no prisma change
 S13.2|hunks|M|G|[static] leave.ts/payroll.ts: marked additions only · correction.ts/ui.tsx/layout.tsx: marked hunks only
+R2.1|r2|C|R|[db] OT branch cap (hunter F1): 3 pending OT in u1 + 520 in u2 (later dates) ⇒ MGR1 inbox OT 3 · not truncated · otRequestList(MGR1) 3 · OWNER OT 500 + truncated [OT]
+R2.2|r2|M|G|[db] correction branch cap: 2 pending in u1 + 1010 in u2 (newer) ⇒ MGR1 2 · not truncated · OWNER 500 + truncated [CORRECTION]
+R2.3|r2|M|R|[static] hub reads the inbox once: HrHub (ui.tsx) calls no listInbox/inboxCounts
+R2.4|r2|M|R|[db] listInbox query count independent of the number of distinct adjustment periods (1 → 4 periods ⇒ same count)
+R2.5|r2|C|R|[db] correction monthClosed only for payroll viewers (mgr1 C1 · key1 CP = null; owner CP true) · inbox.ts does not call listRuns
+R2.6|r2|C|R|[db] decideAdjustmentAs refuses an OT_REQUEST adjustment (OT_TEXT.otRow) · 51 invalid items ⇒ tooMany (cap before validation)
+R2.7|r2|M|R|[db] reject reason of 3 zero-width spaces ⇒ rejectReason (nothing decided)
+R2.8|r2|C|R|[static] decideLeaveAs / decideAdjustmentAs called only from hr/inbox.ts · decideInbox only from inbox-actions.ts with the actor from hrViewerOf(auth)
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -139,6 +147,7 @@ const git = (a: string[]) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8
 const MARK_OTHER = /HR (H(?!2\.11\b)\d+\.\d+|SYNC|VIS)/;
 
 // ═════════════════════════ statics ═════════════════════════
+// ORACLE-EDIT (controller fix round r2 · 13 Nov): R2.1–R2.8 added (RED on 46ecf8387 except the R2.2 control) — hunter F1/F2/F3 + reviewer pins ◂
 const namedImports = (src: string) =>
   [...src.matchAll(/^\s*import\s+(type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/gm)].map((m) => ({
     type: !!m[1],
@@ -230,6 +239,23 @@ function runStatic(): void {
     const addOnly = [F.leave, F.payroll].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => h.removed.length > 0 || !marked(h)).map(() => f));
     const markOnly = [F.corr, F.hrui, F.layout].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => !marked(h)).map(() => f));
     ck("S13.2", { addOnly: addOnly.length === 0, marked: markOnly.length === 0 }, "marked hunks", `${[...new Set([...addOnly, ...markOnly])].join(",") || "-"}`);
+  }
+  {
+    const hub = stripComments(rd(F.hrui));
+    const body = hub.slice(hub.indexOf("export async function HrHub("), hub.indexOf("\nexport ", hub.indexOf("export async function HrHub(") + 10));
+    chk("R2.3", !!body && !/\b(listInbox|inboxCounts)\(/.test(body), "no second inbox read", body ? (/\b(listInbox|inboxCounts)\(/.test(body) ? "HrHub calls listInbox/inboxCounts" : "ok") : "∅ HrHub");
+  }
+  {
+    const srcFiles = git(["ls-files", "src"]).split("\n").filter((f) => /\.(ts|tsx)$/.test(f));
+    const callsOf = (name: string) => srcFiles.filter((f) => new RegExp(`(?<!function )\\b${name}\\(`).test(stripComments(rd(f))));
+    const acts = stripComments(rd(F.acts));
+    const r = {
+      leaveAs: callsOf("decideLeaveAs").join() === F.inbox,
+      adjAs: callsOf("decideAdjustmentAs").join() === F.inbox,
+      inbox: callsOf("decideInbox").filter((f) => f !== F.inbox).join() === F.acts,
+      actor: /const\s+(\w+)\s*=\s*hrViewerOf\(auth\)/.test(acts) && new RegExp(`decideInbox\\((?:\\{[^}]*\\}|[^,{]+),\\s*${/const\s+(\w+)\s*=\s*hrViewerOf\(auth\)/.exec(acts)?.[1] ?? "∅"}\\s*,`).test(acts),
+    };
+    ck("R2.8", r, "inbox-only callers · actor from session", `leaveAs=${callsOf("decideLeaveAs").join(",")} adjAs=${callsOf("decideAdjustmentAs").join(",")} inbox=${callsOf("decideInbox").join(",")}`);
   }
 }
 
@@ -474,7 +500,7 @@ async function runDb(): Promise<void> {
   {
     const as = itemOf("owner", "AS")?.detail;
     const a1 = itemOf("owner", "A1")?.detail;
-    ck("S3.4", { as: as?.source === "STOCK" && canon(as?.consent) === canon({ at: "2031-06-20", ref: "ยินยอม-001" }) && as?.amountSatang === 50_000, a1: a1?.source === "MANUAL" && a1?.consent === null && a1?.amountSatang === 100_000 }, "STOCK consent · MANUAL null", short({ as, a1 }, 160));
+    ck("S3.4", { as: as?.source === "STOCK" && canon(as?.consent) === canon({ at: "2031-06-20", employeeEnded: false, ref: "ยินยอม-001" }) /* ORACLE-EDIT r2 item 5: + employeeEnded (H4.6 r4 warning) */ && as?.amountSatang === 50_000, a1: a1?.source === "MANUAL" && a1?.consent === null && a1?.amountSatang === 100_000 }, "STOCK consent · MANUAL null", short({ as, a1 }, 160));
   }
   {
     const bad = all.filter(({ i }) => i && i.batchable !== (i.canDecide === true && i.type !== "ADJUSTMENT")).length;
@@ -726,6 +752,65 @@ async function runDb(): Promise<void> {
     const q2 = await measure();
     if (fxErr.length > before) qerr.push(...fxErr.slice(before));
     ck("S11.1", { items: q1.items === 4 && q2.items === 20, same: !q1.err && q1.n === q2.n, cap: q1.n > 0 && q1.n <= 60, fixtures: qerr.length === 0 }, "same count ≤ 60", `${q1.err || ""} q=${q1.n}/${q2.n} items=${q1.items}/${q2.items} ${qerr.join(" | ").slice(0, 160)}`);
+    // R2.4 — 3 more adjustments in 3 new periods (sC) ⇒ the same query count
+    const eK = (await P.hrEmployee.findFirst({ where: { tenantId: T1, systemId: sC }, select: { id: true } }))?.id as string;
+    const m0 = await measure();
+    for (const pk of ["2031-07", "2031-08", "2031-09"]) await must(`R2.4 ${pk}`, () => pay.requestAdjustment(cC, { employeeId: eK, periodKey: pk, kind: "BONUS", amountSatang: 5_000, note: `งวด ${pk}`, requestedById: W.owner.id }));
+    const m1 = await measure();
+    ck("R2.4", { same: !m0.err && m0.n === m1.n, items: m1.items === m0.items + 3 }, "same count", `q=${m0.n}/${m1.n} items=${m0.items}/${m1.items}`);
+  }
+
+  // ── R2 (controller fix round r2) ──
+  {
+    const r25m = itemOf("mgr1", "C1")?.impact;
+    const r25k = itemOf("key1", "CP")?.impact;
+    const r25o = itemOf("owner", "CP")?.impact;
+    ck("R2.5", { mgr: !!r25m && r25m.monthClosed === null, key: !!r25k && r25k.monthClosed === null, owner: r25o?.monthClosed === true, noRuns: !/\blistRuns\(/.test(stripComments(rd(F.inbox))) }, "payroll viewers only", short({ r25m, r25k, r25o }, 140));
+  }
+  {
+    const r7 = await call("decideInbox", cA, vOf(W.owner), { batchKey: `qcZ${tag}`, decision: "REJECTED", reason: "\u200B\u200B\u200B", items: [{ type: "LEAVE", id: LO || "∅" }] }, { now: NOW });
+    chk("R2.7", !r7.err && r7.v?.ok === false && r7.v?.reason === X.rejectReason, X.rejectReason, r7.err || short(r7.v, 80));
+  }
+  {
+    const sD = (await sysSvc.createSystem(T1, "HR", `ทีมเพดาน ${tag}`)).id as string;
+    const cD = { tenantId: T1, systemId: sD };
+    const mk = async (n: string, unitId: string) => {
+      const e = await fx.mkEmp(T1, sD, `QC-H211 เพดาน${n} ${tag}`, { unitId, startDate: "2030-01-01" });
+      await P.hrSalaryProfile.create({ data: { tenantId: T1, systemId: sD, employeeId: e, baseSalarySatang: 1_500_000 } });
+      return e;
+    };
+    const d1 = await mk("1", u1);
+    const d2 = [await mk("2", u2), await mk("3", u2), await mk("4", u2)];
+    const before = fxErr.length;
+    for (const day of ["2031-06-22", "2031-06-23", "2031-06-24"]) await otReq(`R2 ot ${day}`, cD, W.owner, d1, day);
+    const base = bkk("2031-07-01", "18:00").getTime();
+    await P.hrOtRequest.createMany({
+      data: Array.from({ length: 520 }, (_, i) => {
+        const st = new Date(base + i * 3_600_000);
+        return { tenantId: T1, systemId: sD, employeeId: d2[i % 3]!, date: dbDate(st.toISOString().slice(0, 10)), startAt: st, endAt: new Date(st.getTime() + 3_600_000), minutes: 60, timing: "BEFORE", status: "PENDING", requestedByUserId: W.owner.id };
+      }),
+    });
+    for (const day of ["2031-06-17", "2031-06-18"]) {
+      await att(cD, d1, day);
+      await corr(`R2 corr ${day}`, cD, W.key1, day, d1);
+    }
+    await P.hrTimeCorrection.createMany({
+      data: Array.from({ length: 1010 }, (_, i) => {
+        const day = new Date(Date.parse("2031-01-01T00:00:00Z") + Math.floor(i / 3) * 86_400_000).toISOString().slice(0, 10);
+        return { tenantId: T1, systemId: sD, employeeId: d2[i % 3]!, action: "ADD", kind: "OUT", day: dbDate(day), proposedAt: bkk(day, "18:00"), reason: "ลืมลงเวลาออก", status: "PENDING", requestedByUserId: W.key1.id };
+      }),
+    });
+    const ferr = fxErr.slice(before);
+    const m = await call("listInbox", cD, vOf(W.mgr1), {});
+    const o = await call("listInbox", cD, vOf(W.owner), {});
+    const direct = await ot.otRequestList(cD, vOf(W.mgr1), { status: "PENDING", from: "2000-01-01", to: "2100-12-31" }).catch(() => null);
+    ck("R2.1", { fixtures: ferr.length === 0, mgr: m.v?.counts?.OT === 3, mgrFlag: Array.isArray(m.v?.truncated) && !m.v.truncated.includes("OT"), direct: direct?.ok === true && direct.items.length === 3, owner: o.v?.counts?.OT === 500 && Array.isArray(o.v?.truncated) && o.v.truncated.includes("OT") }, "3/3 · 500+", `${m.err || o.err} mgr=${m.v?.counts?.OT} owner=${o.v?.counts?.OT} trunc=${canon(o.v?.truncated)}/${canon(m.v?.truncated)} direct=${direct?.ok ? direct.items.length : "✗"} ${ferr.join(" | ").slice(0, 120)}`);
+    ck("R2.2", { mgr: m.v?.counts?.CORRECTION === 2, mgrFlag: Array.isArray(m.v?.truncated) && !m.v.truncated.includes("CORRECTION"), owner: o.v?.counts?.CORRECTION === 500 && Array.isArray(o.v?.truncated) && o.v.truncated.includes("CORRECTION") }, "2 · 500+", `mgr=${m.v?.counts?.CORRECTION} owner=${o.v?.counts?.CORRECTION}`);
+    const otRow = (await P.hrPayAdjustment.create({ data: { tenantId: T1, systemId: sD, employeeId: d1, periodKey: "2031-06", kind: "OT", amountSatang: 1_000, status: "PENDING", sourceType: "OT_REQUEST", sourceRef: `qc211${tag}:1` } })).id as string;
+    const r6a = await call("decideInbox", cD, vOf(W.owner), { batchKey: `qcO${tag}`, decision: "APPROVED", items: [{ type: "ADJUSTMENT", id: otRow }] }, { now: NOW });
+    const r6b = await call("decideInbox", cD, vOf(W.owner), { batchKey: `qcM${tag}`, decision: "APPROVED", items: Array.from({ length: 51 }, (_, i) => ({ type: "FOO", id: `x${i}` })) }, { now: NOW });
+    const st6 = (await P.hrPayAdjustment.findUnique({ where: { id: otRow }, select: { status: true } }))?.status;
+    ck("R2.6", { otRow: r6a.v?.ok === true && r6a.v.results?.[0]?.ok === false && r6a.v.results?.[0]?.reason === OT_T.otRow, pending: st6 === "PENDING", tooMany: r6b.v?.ok === false && r6b.v?.reason === X.tooMany }, "otRow · tooMany", `${res(r6a)} · ${st6} · ${short(r6b.v?.reason, 30)}`);
   }
 }
 

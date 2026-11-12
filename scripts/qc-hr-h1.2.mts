@@ -1837,7 +1837,7 @@ async function runDb(): Promise<void> {
       const diff = [...keys.filter((k) => Number(exp?.counts?.[k]) !== live[k]), ...zeros.filter(([k, v]) => Number(exp?.counts?.[k]) !== v).map(([k]) => k)];
       for (const [k, v] of zeros) live[k] = v;
       const nz = zeros.filter(([, v]) => v !== 1).map(([k, v]) => `${k}=${v}`); // ORACLE-EDIT H2.11 ◂
-      chk("S7.4", !!exp && diff.length === 0 && nz.length === 0 && live.HrShift === 4 && live.HrLeavePolicy === 4 && live.HrHoliday === 2, "every Hr* count = live · new 3 = 4/4/2 · request tables 0", `diff=${diff.map((k) => `${k}:${exp?.counts?.[k] ?? "∅"}≠${live[k]}`).join(" ") || "0"} nonZero=${nz.join(",") || "0"}`);
+      chk("S7.4", !!exp && diff.length === 0 && nz.length === 0 && live.HrShift === 4 && live.HrLeavePolicy === 4 && live.HrHoliday === 2, "every Hr* count = live · new 3 = 4/4/2 · request tables 1 (H2.11 seed)", `diff=${diff.map((k) => `${k}:${exp?.counts?.[k] ?? "∅"}≠${live[k]}`).join(" ") || "0"} nonZero=${nz.join(",") || "0"}`);
     }
   }
   const eXAfter = JSON.stringify(await P.hrEmployee.findUnique({ where: { id: E.eX } }));
