@@ -427,7 +427,7 @@ const CHECKS: readonly Def[] = [
   D("S6.6", "R1", M, "RED", "[static] kioskClockAction reads employeeId · kioskClock + kiosk:<user> · scope hrScopeOf · no hr-kiosk: · clock.ts kioskClock → pin.ts verifier · KioskClock.tsx name list + PIN + testids"),
   D("S6.7", "R2", C, "RED", "name list = kioskRoster(scope): [u1] ⇒ u1 names only · all-branch ⇒ every name · [static] HrKioskSection passes hrScopeOf"),
   D("S6.9", "R1", C, "RED", "kiosk shop bucket (controller 12 Nov ruling 1): 60 wrong across names ⇒ right PIN of another name limited · key from ctx only · refusal does not consume hr-verifypin:<t>"),
-  D("S6.8", "R1", C, "RED", "shop bucket stays: wrong PINs on different names add to hr-verifypin:<t> · H0.5 caller limit (10/10 min) is the per-name limit"),
+  D("S6.8", "R1", C, "RED", "shop bucket: wrong PINs on different names add to hr-kiosk-shop:<t>:<sys> (not hr-verifypin:<t>) · H0.5 caller limit (10/10 min) is the per-name limit"),
   D("S7.1", "R10", C, "RED", "first enable without acceptPdpaNotice ⇒ sNotice · with ⇒ ok · noticeAcceptedAt/ById · 1 audit hr.clock.notice_accepted"),
   D("S7.2", "R10", M, "RED", "validation: radius 10/3000 ⇒ sRadius · minAccuracy 5 ⇒ sAcc · gps enable without centre ⇒ sCenter · photoRequired ⇒ sPhoto"),
   D("S7.3", "R10", C, "RED", "viewer matrix listClockSites: owner/mgr-all all · mgr-u1 own + no u2 · mgr-role/staff-key/member/payroll/self ⇒ noPerm · other tenant ⇒ none"),
@@ -453,7 +453,7 @@ const CHECKS: readonly Def[] = [
   // ORACLE-EDIT r2 (controller 12 Nov): hunter probes P2 · P1 · P6 · P3 as checks
   D("S13.1", "R3", C, "RED", "[hunt P2] linked IN, entry moved to D+2 ⇒ next-day NEXT = IN · entry reassigned to B ⇒ rows on it belong to B only"),
   D("S13.2", "R2", C, "RED", "[hunt P1] multi-branch kiosk [u1,u2]: u3 name ⇒ wrong (counted) · 0 rows · u2 name ⇒ ok"),
-  D("S13.3", "R4", C, "RED", "[hunt P6] earlyInMin 0 · 16–24 entry: IN 15:59 ⇒ NEXT 00:30 = OUT · another IN 15:59 ⇒ NEXT 04:01 = IN (end + grace)"),
+  D("S13.3", "R4", C, "RED", "[hunt P6] earlyInMin 0 · 16–24 entry: IN 15:59 ⇒ NEXT 00:30 = OUT · another IN 15:59 ⇒ NEXT 04:01 = IN (end + grace) · stray IN 20:00 D + entry D+1 01:00 ⇒ NEXT 00:55 = IN (r3)"),
   D("S13.4", "R5", M, "RED", "[hunt P3] gpsRequired=false site ⇒ deviceId not stored · cron-mode purge (no tenantId) nulls deviceId with lat/lng, keeps distanceM"),
   D("Z1", "-", C, "GREEN", "residue: qc-hr-h24-* tenants, users, buckets, rows gone"),
 ];
@@ -922,14 +922,16 @@ async function runDb(): Promise<void> {
     ck("S6.7", { u1: s1.has(eK) && !s1.has(eU2) && !s1.has(eU3), all: sAll.has(eK) && sAll.has(eU2) && sAll.has(eU3), ui: !!NB.kioskSec }, "[u1] ⇒ u1 only · * ⇒ all · ui passes hrScopeOf", `u1=${s1.has(eK)}/${s1.has(eU2)}/${s1.has(eU3)} all=${sAll.size} ui=${NB.kioskSec}`);
   }
   {
-    const tk = `hr-verifypin:${TT}`;
+    const tk = `hr-kiosk-shop:${TT}:${sA.id}`; // ORACLE-EDIT r3 (controller ruling r3-2): kiosk shop bucket, never hr-verifypin:<t>
     const t0 = await bucket(tk);
+    const v0 = await bucket(`hr-verifypin:${TT}`);
     const names = [eK2, eU2, eU3];
     const rs: RO[] = [];
     for (const e of names) rs.push(await kc({ employeeId: e, pin: "000333", callerKey: `kiosk:qc-shop-${tag}`, scope: ALL }, at(d6, "11:00")));
     const t1 = await bucket(tk);
     const pinMod = (await import("@/lib/modules/hr/pin" as string).catch(() => null)) as Any;
-    ck("S6.8", { wrong: rs.every((r) => said(r, T.pinWrong)), shop: t1 - t0 === names.length, callerLimit: pinMod?.VERIFY_PIN_CALLER_LIMIT?.limit === 10 && pinMod?.VERIFY_PIN_LIMIT?.limit === 120 }, "3 wrong · shop bucket +3 · H0.5 limits 10/120", `shop ${t0}→${t1} ${rs.map(shown).join(" ")}`);
+    const v1 = await bucket(`hr-verifypin:${TT}`);
+    ck("S6.8", { wrong: rs.every((r) => said(r, T.pinWrong)), shop: t1 - t0 === names.length && v1 === v0, callerLimit: pinMod?.VERIFY_PIN_CALLER_LIMIT?.limit === 10 && pinMod?.VERIFY_PIN_LIMIT?.limit === 120 }, "3 wrong · kiosk shop bucket +3 · hr-verifypin unchanged · H0.5 limits 10/120", `kshop ${t0}→${t1} vp ${v0}→${v1} ${rs.map(shown).join(" ")}`);
   }
 
   // ORACLE-EDIT r2b (controller 12 Nov, pre-approved): S6.9 kiosk shop-wide bucket 60/60 s on the kiosk path only — own HR system so other groups are not tripped
@@ -943,14 +945,18 @@ async function runDb(): Promise<void> {
       names.push(e);
     }
     const ckS = `kiosk:qc-shop9-${tag}`;
+    const vpBefore = await bucket(`hr-verifypin:${TT}`); // ORACLE-EDIT r3 (pre-approved): kiosk wrongs never touch the verifyPin shop bucket
     const w: RO[] = [];
     for (let b = 0; b < 6; b++) w.push(...(await Promise.all(Array.from({ length: 10 }, (_, j) => kc({ employeeId: names[j % 6]!, pin: "000999", callerKey: `${ckS}${j}`, scope: ALL }, at(d6, "12:00"), ctxS)))));
     const vp0 = await bucket(`hr-verifypin:${TT}`);
+    const pinMod9 = (await import("@/lib/modules/hr/pin" as string).catch(() => null)) as Any;
+    const pos = pinMod9?.verifyPin ? await pinMod9.verifyPin({ tenantId: TT, pin: "317010", callerKey: `pos:qc-${tag}` }).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : { ok: false, reason: "∅verifyPin" };
+    const vpPos = await bucket(`hr-verifypin:${TT}`);
     const r = await kc({ employeeId: names[6]!, pin: "317016", callerKey: `kiosk:qc-fresh9-${tag}`, scope: ALL }, at(d6, "12:01"), ctxS);
     const vp1 = await bucket(`hr-verifypin:${TT}`);
     const keys = ((await P.chatRateBucket.findMany({ where: { key: { startsWith: "hr-kiosk-shop:" }, AND: [{ key: { contains: TT } }] }, select: { key: true, count: true } })) as Any[]);
     const own = keys.find((k) => k.key === `hr-kiosk-shop:${TT}:${sS.id}`);
-    ck("S6.9", { wrong60: w.length === 60 && w.every((x) => said(x, T.pinWrong)), limited: !r.ok && LIMITED_RE.test(r.text) && (await rowsOf(names[6]!)).length === 0, key: !!own && keys.filter((k) => k.key.includes(sS.id)).length === 1, verifyPinUntouched: vp1 === vp0 }, "60 wrong · 61st limited · 1 server key · hr-verifypin unchanged", `${shown(r)} keys=${keys.map((k) => `${k.key.split(":").length}:${k.count}`).join(",")} vp ${vp0}→${vp1}`);
+    ck("S6.9", { wrong60: w.length === 60 && w.every((x) => said(x, T.pinWrong)), limited: !r.ok && LIMITED_RE.test(r.text) && (await rowsOf(names[6]!)).length === 0, key: !!own && keys.filter((k) => k.key.includes(sS.id)).length === 1, verifyPinUntouched: vp1 === vp0 && vp0 === vpBefore, posFull: pos?.ok === true && vpPos === vp0 }, "60 wrong · 61st limited · 1 server key · hr-verifypin unchanged · POS verifyPin ok", `${shown(r)} keys=${keys.map((k) => `${k.key.split(":").length}:${k.count}`).join(",")} vp ${vpBefore}→${vp0}→${vp1} pos=${short(pos, 40)}:${vpPos}`);
   }
 
   // ═══ S8 retention ═══
@@ -1055,7 +1061,14 @@ async function runDb(): Promise<void> {
     const e2 = await mkE("สอง", "2031-09-11");
     await c6(e2, at("2031-09-11", "15:59"));
     const o2 = await c6(e2, at("2031-09-12", "04:01"));
-    ck("S13.3", { inUnlinked: v(i1, "kind") === "IN", out: v(o1, "kind") === "OUT", fresh: v(o2, "kind") === "IN" }, "IN · OUT at 00:30 · IN at 04:01", `${v(i1, "kind")}:${v(i1, "rosterEntryId") ?? "∅"} ${v(o1, "kind") ?? shown(o1)} ${v(o2, "kind") ?? shown(o2)}`);
+    // ORACLE-EDIT r3 (pre-approved, review MEDIUM-r2-1): stray IN 20:00 D must not adopt the D+1 01:00–09:00 entry
+    const e3 = await fx.mkEmp(TT, sP.id, `QC24 เข้าก่อน สาม ${tag}`, { unitId: u1 });
+    const shN = (await P.hrShift.create({ data: { tenantId: TT, systemId: sP.id, name: `ตีหนึ่ง ${tag}`, startMin: 60, endMin: 540, breakMin: 0, graceMin: 15, crossesMidnight: false } })).id as string;
+    const nE = (await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: sP.id, employeeId: e3, date: dbDate("2031-09-14"), shiftId: shN, unitId: u1, startMin: 60, endMin: 540, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date(), source: "MANUAL" } })).id as string;
+    await c6(e3, at("2031-09-13", "20:00"));
+    const a3 = await c6(e3, at("2031-09-14", "00:55"));
+    const r3 = (await P.hrAttendance.findMany({ where: { tenantId: TT, employeeId: e3 }, orderBy: { at: "asc" } })) as Any[];
+    ck("S13.3", { inUnlinked: v(i1, "kind") === "IN", out: v(o1, "kind") === "OUT", fresh: v(o2, "kind") === "IN", nextDay: v(a3, "kind") === "IN" && r3.every((x) => x.kind === "IN") && !r3.some((x) => x.kind === "OUT" && x.rosterEntryId === nE) }, "IN · OUT at 00:30 · IN at 04:01 · stray 20:00 + D+1 01:00 entry ⇒ 00:55 IN", `${v(i1, "kind")}:${v(i1, "rosterEntryId") ?? "∅"} ${v(o1, "kind") ?? shown(o1)} ${v(o2, "kind") ?? shown(o2)} 00:55=${v(a3, "kind") ?? shown(a3)} rows=${r3.map((x) => x.kind).join(",")}`);
   }
   {
     const r = await mob(U.Dd, { kind: "NEXT", ...IN35, accuracyM: 20, deviceId: "iPhone-of-D-serial" }, at("2031-07-01", "09:00"));

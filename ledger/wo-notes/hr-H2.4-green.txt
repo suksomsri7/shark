@@ -13,7 +13,7 @@
   ✅ [H2.4-S1.4] [pure] normalizeShiftTimes: 960/0/true ⇒ 960/1440/false · 22–06 and 07–15 unchanged
   ✅ [H2.4-S1.5] [pure] workedMinutesWithBreaks: 07–15 with 30-min break = 450 · OUT while on break = 300
   ✅ [H2.4-S1.6] [static] clock-rules.ts pure: no DB/service import, no argument-less new Date() · CLOCK_RULES = 120/240/30/90
-(node:3067095) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:3211174) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -62,7 +62,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [H2.4-S6.4] single-branch kiosk [u2] + u1 name ⇒ wrong (counted) · forged employeeId ⇒ wrong (counted) · other-tenant ⇒ wrong · 0 rows
   ✅ [H2.4-S6.5] kiosk BREAK_START after IN ⇒ BREAK_START · NEXT ⇒ BREAK_END
   ✅ [H2.4-S6.7] name list = kioskRoster(scope): [u1] ⇒ u1 names only · all-branch ⇒ every name · [static] HrKioskSection passes hrScopeOf
-  ✅ [H2.4-S6.8] shop bucket stays: wrong PINs on different names add to hr-verifypin:<t> · H0.5 caller limit (10/10 min) is the per-name limit
+  ✅ [H2.4-S6.8] shop bucket: wrong PINs on different names add to hr-kiosk-shop:<t>:<sys> (not hr-verifypin:<t>) · H0.5 caller limit (10/10 min) is the per-name limit
   ✅ [H2.4-S6.9] kiosk shop bucket (controller 12 Nov ruling 1): 60 wrong across names ⇒ right PIN of another name limited · key from ctx only · refusal does not consume hr-verifypin:<t>
 ── S8 retention ──
   ✅ [H2.4-S8.1] purgeClockPrivacy: >30 d ⇒ lat/lng/accuracyM null, distanceM/inRadius kept · >90 d ⇒ photoKey null · ≤30 d untouched
@@ -75,7 +75,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
 ── S13 hunt P2 · P1 · P6 · P3 ──
   ✅ [H2.4-S13.1] [hunt P2] linked IN, entry moved to D+2 ⇒ next-day NEXT = IN · entry reassigned to B ⇒ rows on it belong to B only
   ✅ [H2.4-S13.2] [hunt P1] multi-branch kiosk [u1,u2]: u3 name ⇒ wrong (counted) · 0 rows · u2 name ⇒ ok
-  ✅ [H2.4-S13.3] [hunt P6] earlyInMin 0 · 16–24 entry: IN 15:59 ⇒ NEXT 00:30 = OUT · another IN 15:59 ⇒ NEXT 04:01 = IN (end + grace)
+  ✅ [H2.4-S13.3] [hunt P6] earlyInMin 0 · 16–24 entry: IN 15:59 ⇒ NEXT 00:30 = OUT · another IN 15:59 ⇒ NEXT 04:01 = IN (end + grace) · stray IN 20:00 D + entry D+1 01:00 ⇒ NEXT 00:55 = IN (r3)
   ✅ [H2.4-S13.4] [hunt P3] gpsRequired=false site ⇒ deviceId not stored · cron-mode purge (no tenantId) nulls deviceId with lat/lng, keeps distanceM
 ── S10 migration ──
   ✅ [H2.4-S10.1] schema: timesOverridden · distanceM · inRadius · HrClockSite + 2 partial uniques · enum BREAK_START/BREAK_END

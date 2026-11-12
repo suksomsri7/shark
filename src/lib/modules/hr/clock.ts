@@ -112,7 +112,7 @@ const ADOPT_BEFORE_MIN = 360;
  *   1) แถวล่าสุด OUT/ไม่มี ⇒ ปิด · ไม่งั้นหา "เข้างานของรอบ" (แถวล่าสุดเอง ถ้าเป็น IN · ไม่งั้น IN ล่าสุดที่ไม่หลังแถวล่าสุด)
  *   2) แถวล่าสุดผูกกะ ⇒ ใช้กะนั้นเฉพาะเมื่อยังเป็นของพนักงานคนนี้ **และ** เข้างานของรอบอยู่ใน [start − earlyInMin, end + closeGraceMin]
  *      ของตำแหน่งกะปัจจุบัน (กะถูกย้ายวัน/ย้ายคน ⇒ ถือว่ารอบนี้ไม่ผูกกะ — hunt P2) · เปิดอยู่จนถึง end + closeGraceMin
- *   3) ไม่ผูก (หรือข้อ 2 ใช้ไม่ได้) ⇒ รับกะที่ครอบ (ADOPT_BEFORE_MIN) — เปิดอยู่ถ้า now < end + closeGraceMin **หรือ** กติกาวันไทยเดิมยังเปิด
+ *   3) ไม่ผูก (หรือข้อ 2 ใช้ไม่ได้) ⇒ รับกะที่ครอบ (ADOPT_BEFORE_MIN · r3: กะต้องเริ่มวันไทยเดียวกับเข้างาน) — เปิดอยู่ถ้า now < end + closeGraceMin **หรือ** กติกาวันไทยเดิมยังเปิด
  *      (รับกะไม่ทำให้รอบปิดเร็วกว่าเดิม) · ออกงาน/พักผูกกะที่รับมาเฉพาะตอนกติกากะยังเปิด
  *   4) ไม่มีกะให้รับ ⇒ กติกาวันไทยเดิม (คนที่ไม่มีตารางกะ — Q3 · qc-hr-h2.4 S2.7)
  */
@@ -140,7 +140,7 @@ async function sessionOf(db: Db, ctx: Ctx, employeeId: string, now: Date, policy
     }
   }
   const legacy = sessionState({ kind: last.kind, at: last.at, rosterEntryId: null }, null, now, opt);
-  const adopt = await rosterPick(db, ctx, employeeId, inAt, ADOPT_BEFORE_MIN);
+  const adopt = await rosterPick(db, ctx, employeeId, inAt, ADOPT_BEFORE_MIN, { startSameDay: true }); // HR H2.4 r3 ▸ กะที่เริ่มวันไทยเดียวกับเข้างานเท่านั้น ◂
   if (adopt) {
     const st = linkedState(adopt.entry, adopt.window);
     if (st !== "CLOSED") return { last, state: st, entry: adopt.entry, window: adopt.window };
@@ -149,7 +149,7 @@ async function sessionOf(db: Db, ctx: Ctx, employeeId: string, now: Date, policy
 }
 
 /** กะที่ประกาศแล้วของพนักงาน วัน D−1..D+1 (วันไทยของ at) ที่เข้างาน ณ at ผูกได้ (start − earlyMin ≤ at < end) */
-async function rosterPick(db: Db, ctx: Ctx, employeeId: string, at: Date, earlyMin: number): Promise<{ entry: EntryRow; window: Window } | null> {
+async function rosterPick(db: Db, ctx: Ctx, employeeId: string, at: Date, earlyMin: number, opt: { startSameDay?: boolean } = {}): Promise<{ entry: EntryRow; window: Window } | null> {
   const d = bkkDayKey(at);
   const rows = (await db.hrRosterEntry.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, publishedAt: { not: null }, date: { gte: dbDate(addDays(d, -1)), lte: dbDate(addDays(d, 1)) } },
@@ -159,7 +159,8 @@ async function rosterPick(db: Db, ctx: Ctx, employeeId: string, at: Date, earlyM
   })) as EntryRow[];
   const cands = rows.flatMap((e) => {
     const w = windowOf(e);
-    return w ? [{ id: e.id, start: w.start, end: w.end, e }] : [];
+    // HR H2.4 r3 ▸ review MEDIUM-r2-1: รับกะ (adopt) ได้เฉพาะกะที่ "เริ่ม" ในวันไทยเดียวกับเข้างาน — เข้างานหลงตอน 20:00 ไม่รับกะ 01:00 ของวันถัดไป ◂
+    return w && (!opt.startSameDay || bkkDayKey(w.start) === d) ? [{ id: e.id, start: w.start, end: w.end, e }] : [];
   });
   const p = pickRosterEntry("IN", at, cands, { earlyMin });
   return p ? { entry: p.e, window: { start: p.start, end: p.end } } : null;
