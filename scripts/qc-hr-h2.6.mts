@@ -41,6 +41,7 @@ const T = {
   stale: "คำขอนี้ถูกตัดสินหรือยกเลิกไปแล้ว — กรุณารีเฟรช", inChain: "คำขอนี้อยู่ในสายอนุมัติ — ตัดสินที่หน้าอนุมัติ", notOwn: "ยกเลิกได้เฉพาะคำขอที่คุณยื่นหรือคำขอของคุณเอง",
   detailNo: "ไม่พบคำขอแก้เวลานี้ หรือคุณไม่มีสิทธิ์ดู", recomputeReason: "แก้เวลาตามคำขอที่อนุมัติ", nPending: "คำขอแก้เวลารออนุมัติ", nApproved: "คำขอแก้เวลาได้รับอนุมัติ",
   nRejected: "คำขอแก้เวลาไม่ได้รับอนุมัติ", nCancelled: "คำขอแก้เวลาถูกยกเลิก — ข้อมูลการลงเวลาเปลี่ยนไป",
+  period: "การแก้เวลานี้กระทบงวดเงินเดือนที่ปิดแล้วหรือล็อกไม่ได้ — ติดต่อผู้ดูแลเงินเดือน", // r3 (controller): PERIOD has its own text
 };
 const X = { mNoEmp: "บัญชีของคุณยังไม่ได้ผูกกับรายชื่อพนักงาน — ลงเวลาที่เครื่องหน้าร้าน หรือขอให้ผู้ดูแลผูกบัญชี", mInactive: "สถานะพนักงานของคุณปิดอยู่ — ติดต่อผู้จัดการ", self: "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน", otherBranch: "พนักงานคนนี้อยู่สาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ" };
 const RULES = { BACK_DAYS: 35, MAX_PENDING: 5, REPEAT_AT: 3, REASON_MIN: 3, REASON_MAX: 200, DEDUPE_SEC: 60 };
@@ -104,6 +105,7 @@ const CHECKS: readonly Def[] = [
   d("S10.1", "R4", C, "[db] ENDED employee"),
   d("S11.1", "R8", C, "[db] paid by session-owning day: IN moved into a paid month ⇒ later OUT fix refused, Feb untouched"),
   d("S11.2", "R8", C, "[db] overnight OUT in a paid month for an open-month session ⇒ accepted, nothing written to April"),
+  d("S11.3", "R8", C, "[db] already-stale neighbour in a paid month does not block an unrelated next-day correction"),
   d("S7.5", "R11", C, "[db] evidence: only this user's open/close times · DTO branch-scoped"),
   d("S7.6", "R9", M, "[db] listCorrections complete for a narrow-scope manager (branch filter in the query)"),
   d("S6.2", "Q4", M, "[db] owner self-filing applies at once · selfApplied on record + audit"),
@@ -295,7 +297,7 @@ const DAYV: [string, Any[], string, string, string][] = [
 ];
 function runPure(): void {
   const texts = CR.CORRECTION_TEXT ?? {};
-  ck("S2.1", { rules: canon(CR.CORRECTION_RULES) === canon(RULES), texts: Object.entries(T).every(([k, v]) => texts[k] === v) }, "literals", `bad=${Object.keys(T).filter((k) => texts[k] !== (T as Any)[k]).slice(0, 4).join(",")}`);
+  ck("S2.1", { rules: canon(CR.CORRECTION_RULES) === canon(RULES), texts: Object.entries(T).every(([k, v]) => texts[k] === v), period: pure("applyCodeText", "PERIOD") === T.period }, "literals", `bad=${Object.keys(T).filter((k) => texts[k] !== (T as Any)[k]).slice(0, 4).join(",")}`);
   const big = "ก".repeat(200);
   const rv: [unknown, string | null][] = [["  ลืมกดออก  ", "ลืมกดออก"], ["ab", null], ["", null], [123, null], [big, big], [`${big}ก`, null], ["😀😀😀", "😀😀😀"], ["  a b ", "a b"]];
   const rbad = rv.filter(([i, o]) => pure("cleanCorrectionReason", i) !== o).map(([i]) => short(i, 8));
@@ -745,6 +747,24 @@ async function runDb(): Promise<void> {
     const rH = await rq(cHp, U.owner!, ADD(eH, "OUT", "2032-04-01", "06:00"), late);
     const d31 = (await dayOf(eH, "2032-03-31"))[0];
     ck("S11.2", { accepted: rH?.ok === true && rH.status === "APPROVED", march: !!d31 && d31.workedMin === 480 && d31.missingOut === false && d31.version === 2, april: canon(await rows(`SELECT * FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND "date" >= '2032-04-01'::date ORDER BY "id"`, eH)) === aprBefore }, "accepted · April untouched", `${shown(rH)} W${d31?.workedMin}/v${d31?.version}`);
+  });
+  // S11.3 (r3 · reviewer): March PAID · Mar 31 stored row already stale from a roster edit · ADD OUT for the Apr 1 session ⇒ accepted, Mar 31 untouched
+  await guard(["S11.3"], async () => {
+    const sQ = await sys2("HR Q");
+    const cQ = { tenantId: TT, systemId: sQ };
+    const eQ = await me(TT, sQ, `eQ ${tag}`, { unitId: u1 });
+    const shQ = (await P.hrShift.create({ data: { tenantId: TT, systemId: sQ, name: `กะ Q ${tag}`, startMin: 540, endMin: 1020, crossesMidnight: false, graceMin: 15 } })).id as string;
+    const xQ = (await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: sQ, employeeId: eQ, date: dbDate("2032-03-31"), shiftId: shQ, unitId: u1, startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false, published: true, publishedAt: PUB, source: "MANUAL" } })).id as string;
+    await att(eQ, "IN", bk("2032-03-31", "08:55"), xQ, ON, cQ);
+    await att(eQ, "OUT", bk("2032-03-31", "17:00"), xQ, {}, cQ);
+    await att(eQ, "IN", bk("2032-04-01", "09:00"), null, {}, cQ);
+    await mods.judge.runAttendanceJobs({ now: bk("2032-04-01", "12:00"), tenantId: TT });
+    await P.hrRosterEntry.update({ where: { id: xQ }, data: { startMin: 600 } }); // roster edit after finalising ⇒ the Mar 31 row is stale
+    await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sQ, periodKey: "2032-03", payDate: new Date("2032-03-31T00:00:00Z"), status: "PAID" } });
+    const m31 = canon(await dayOf(eQ, "2032-03-31"));
+    const rQ = await rq(cQ, U.owner!, ADD(eQ, "OUT", "2032-04-01", "17:00"), { now: bk("2032-04-03", "12:00") });
+    const d31 = await dayOf(eQ, "2032-03-31");
+    ck("S11.3", { stored: d31.length === 1, accepted: rQ?.ok === true && rQ.status === "APPROVED", untouched: canon(d31) === m31 }, "stale neighbour does not block", shown(rQ));
   });
   // S7.5: evidence shows only what THIS user did · DTO filtered to the viewer's branches
   await guard(["S7.5"], async () => {

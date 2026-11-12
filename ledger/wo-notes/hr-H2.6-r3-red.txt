@@ -1,0 +1,5 @@
+# H2.6 r3 RED proof — 2026-11-12T09:45:34Z · code 60d383af0 + r3 oracle
+  ❌ [H2.6-S2.1] [pure] rules + texts literal — expected literals | actual texts,period · bad=period
+  ❌ [H2.6-S11.3] [db] already-stale neighbour in a paid month does not block an unrelated next-day correction — expected stale neighbour does not block | actual accepted · "ไม่พบการลงเวลานี้ หรือถูกแก้ไปแล้ว — กรุ"
+RESIDUE none (tenants=3 users=18)
+===== qc-hr-h2.6 ===== passed 53/55 (QC_FORCE)
