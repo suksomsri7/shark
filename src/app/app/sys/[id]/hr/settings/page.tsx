@@ -36,6 +36,8 @@ import { WorkSettingsCard, WE_MSG } from "@/lib/modules/hr/work-entries-ui"; // 
 import { saveNormalMinutesAction } from "@/lib/modules/hr/work-entries-actions"; // HR H3.1 ◂
 import { AttendancePayPolicyCard, ATT_MSG } from "@/lib/modules/hr/attendance-pay-ui"; // HR H3.2 ◂ กฎหักสาย/ขาด (เจ้าของร้าน)
 import { saveAttendancePayPolicyAction } from "@/lib/modules/hr/attendance-pay-actions"; // HR H3.2 ◂
+import { PayrollEngineCard, RUN2_MSG, run2MsgCode } from "@/lib/modules/hr/payroll-run-ui"; // HR H3.4 ▸ การ์ดรุ่นเครื่องคิดเงินเดือน (เจ้าของร้าน) ◂
+import { setPayrollEngineAction } from "@/lib/modules/hr/payroll-actions"; // HR H3.4 ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -67,6 +69,10 @@ function back(path: string, year: number, r: { ok: true; id: string } | { ok: fa
 export default async function HrSettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ year?: string; msg?: string; life?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
+  const run2Code = typeof (sp as Record<string, unknown>).run2 === "string" ? String((sp as Record<string, unknown>).run2) : ""; // HR H3.4 ▸ ผลการกดการ์ดรุ่นเครื่อง ◂
+  const tRun2 = await getTranslations("hr.run2"); // HR H3.4 ◂
+  const run2Ok = run2Code === "ok" || run2Code === "okw"; // HR H3.4 ◂
+  const run2Flash = run2Code === "ok" ? tRun2("done") : run2Code === "okw" ? `${tRun2("done")} · ${RUN2_MSG["w.capRaised"]}` : run2Code ? (RUN2_MSG[run2Code] ?? tRun2("failed")) : ""; // HR H3.4 ◂
   const auth = await requireTenant();
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId: auth.active.tenantId, type: "HR" } });
   if (!sys) notFound();
@@ -150,6 +156,12 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     "use server"; // HR H3.2 ◂
     back(path, year, await saveAttendancePayPolicyAction(fd)); // HR H3.2 ◂
   }; // HR H3.2 ◂
+  // HR H3.4 ▸ รุ่นเครื่องคิดเงินเดือน — ผลการกด ?run2= (รหัสคงที่ · ok/okw = บันทึกแล้ว/บันทึกพร้อมคำเตือน ม.76) ◂
+  const onSaveEngine = async (fd: FormData) => {
+    "use server"; // HR H3.4 ◂
+    const r = await setPayrollEngineAction(fd); // HR H3.4 ◂
+    redirect(`${path}?year=${year}&run2=${r.ok ? (r.warnings?.length ? "okw" : "ok") : encodeURIComponent(run2MsgCode(r.reason))}#hr-run2-engine`); // HR H3.4 ◂
+  }; // HR H3.4 ◂
   // HR H2.9 ▸ R14 ◂
   const onSaveOtPolicy = async (fd: FormData) => {
     "use server";
@@ -572,6 +584,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <WorkSettingsCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveNormalMinutes : null} />
       {/* HR H3.2 ▸ กฎหักสาย/ขาด — ทุกผู้ตั้งค่าเห็น (ข้อความ ม.76 เสมอ) · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <AttendancePayPolicyCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveAttPay : null} />
+      {/* HR H3.4 ▸ รุ่นเครื่องคิดเงินเดือน + เพดานหัก ม.76 + ช่วงที่กฎหักสาย/ขาดมีผล — แก้ได้เฉพาะเจ้าของร้าน ◂ */}
+      <PayrollEngineCard systemId={id} flash={run2Flash} flashOk={run2Ok} onSave={auth.active.role === "OWNER" ? onSaveEngine : null} />
     </div>
   );
 }

@@ -12,6 +12,10 @@ import { WorkEntriesPanel, WE_MSG, weMsgCode } from "@/lib/modules/hr/work-entri
 import { buildWorkEntriesAction, finalizeWorkEntriesAction } from "@/lib/modules/hr/work-entries-actions";
 import { thaiDateKey } from "@/lib/ui/date";
 import { getTranslations } from "next-intl/server";
+// HR H3.4 ▸ รอบจ่ายรุ่น 2 (ภาพ 06) — ส่วน payroll-run-ui · ผลการกด ?r2= รหัสคงที่ (RUN2_MSG) · ?run= รอบที่เลือก ◂
+import { PayrollRunSection, RUN2_MSG, run2MsgCode } from "@/lib/modules/hr/payroll-run-ui";
+import { approveRunV2Action, confirmBranchHoursAction, createPayrollRunV2Action, markPaidAction, recomputeRunV2Action, reverseRunAction } from "@/lib/modules/hr/payroll-actions";
+import { syncAttendanceDeductionsAction } from "@/lib/modules/hr/attendance-pay-actions";
 
 // หน้าย่อย "เงินเดือน" ของระบบ HR — โปรไฟล์เงินเดือน + รอบจ่าย + สลิป
 // 🔒 PayrollSection มี canViewPayroll guard ในตัว (PDPA — เห็นเฉพาะ OWNER/ผู้มีสิทธิ์)
@@ -47,6 +51,71 @@ export default async function HrPayrollPage({
     const r = await buildWorkEntriesAction(fd);
     redirect(`/app/sys/${id}/hr/payroll?period=${period}&${r.ok ? (r.next ? `we=more&n=${r.written}&after=${encodeURIComponent(r.next)}` : `we=ok&n=${r.written}&r=${r.blocking}`) : `we=${encodeURIComponent(weMsgCode(r.reason))}`}`);
   };
+  // HR H3.4 ▸ ปุ่มของรอบจ่ายรุ่น 2 — ทุกปุ่ม redirect กลับพร้อมรหัสผล (ไม่มีข้อความอิสระบน URL) ◂
+  const tRun2 = await getTranslations("hr.run2");
+  const r2 = one(sp.r2) ?? "";
+  const r2Ok = ["created", "done", "approved", "synced"].includes(r2);
+  const r2Flash = r2Ok ? tRun2(r2) : r2 ? (RUN2_MSG[r2] ?? tRun2("failed")) : "";
+  const runSel = /^[A-Za-z0-9_-]{1,64}$/.test(one(sp.run) ?? "") ? one(sp.run)! : "";
+  const back2 = (code: string, run = runSel): never => redirect(`/app/sys/${id}/hr/payroll?period=${period}${run ? `&run=${encodeURIComponent(run)}` : ""}&r2=${encodeURIComponent(code)}#hr-run2`);
+  const run2Actions = {
+    create: async (fd: FormData) => {
+      "use server";
+      const r = await createPayrollRunV2Action(fd);
+      back2(r.ok ? "created" : run2MsgCode(r.reason), r.ok ? r.id : runSel);
+    },
+    rebuild: async (fd: FormData) => {
+      "use server";
+      const r = await recomputeRunV2Action(fd);
+      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+    },
+    approve: async (fd: FormData) => {
+      "use server";
+      const r = await approveRunV2Action(fd);
+      back2(r.ok ? "approved" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+    },
+    pay: async (fd: FormData) => {
+      "use server";
+      await markPaidAction(fd);
+      back2("done", String(fd.get("runId") ?? ""));
+    },
+    reverse: async (fd: FormData) => {
+      "use server";
+      await reverseRunAction(fd);
+      back2("done", String(fd.get("runId") ?? ""));
+    },
+    confirm: async (fd: FormData) => {
+      "use server";
+      const r = await confirmBranchHoursAction(fd);
+      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+    },
+    sync: async (fd: FormData) => {
+      "use server";
+      // ดึงชั่วโมงทำงานจนครบทุกหน้า → คำนวณรายการหักสาย/ขาดจนครบทุกหน้า (วน next — D-H32-ui-payroll)
+      for (let i = 0, after = ""; i < 100; i += 1) {
+        const f = new FormData();
+        f.set("systemId", id);
+        f.set("periodKey", period);
+        if (after) f.set("after", after);
+        const b = await buildWorkEntriesAction(f);
+        if (!b.ok) back2(run2MsgCode(b.reason));
+        if (!b.ok || !b.next) break;
+        after = b.next;
+      }
+      for (let i = 0, after = ""; i < 100; i += 1) {
+        const f = new FormData();
+        f.set("systemId", id);
+        f.set("periodKey", period);
+        if (after) f.set("after", after);
+        const s = await syncAttendanceDeductionsAction(f);
+        if (!s.ok) back2(run2MsgCode(s.reason));
+        if (!s.ok || !s.next) break;
+        after = s.next;
+      }
+      back2("synced");
+    },
+  };
+  // ◂ HR H3.4
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -55,6 +124,7 @@ export default async function HrPayrollPage({
       <ModuleTabs items={await hrTabsFor(id)} />
       <PayrollSection systemId={id} />
       <WorkEntriesPanel systemId={id} periodKey={period} flash={weFlash} onBuild={onBuild} after={weAfter} onFinalize={onFinalize} /> {/* HR H3.1 ◂ */}
+      <PayrollRunSection systemId={id} periodKey={period} runId={runSel} flash={r2Flash} flashOk={r2Ok} actions={run2Actions} /> {/* HR H3.4 ▸ รอบจ่ายรุ่น 2 (payroll-run-ui) ◂ */}
       {/* HR H4.6 ▸ ฟอร์ม = ผู้ถือคีย์ยื่นรายการ · รายการ/ยอด = ผู้ดูเงินเดือน (ด่านในตัว) ◂ */}
       <StockChargeSection systemId={id} msg={one(sp.stock)} q={one(sp.stockq)} inv={one(sp.stockinv)} />
     </div>

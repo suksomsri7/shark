@@ -9319,6 +9319,487 @@
    "wo": "H3.2",
    "oracle": "qc-hr-h3.2",
    "note": "รายการหักสาย/ขาดของฉัน (ยอด + บรรทัดรายวัน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "ร้านที่เปิดเครื่องรุ่น 2 เท่านั้น (seed = รุ่น 1 ⇒ ไม่แสดง)",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ส่วนรอบจ่ายรุ่น 2 (ภาพ 06) · ผู้จัดการเห็นนาทีเท่านั้น"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-flash",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีเมื่อกดปุ่มแล้ว (?r2=)",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ผลการกด (role=alert เมื่อถูกปฏิเสธ) — ข้อความคงที่ RUN2_MSG"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-row-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "ร้านที่เปิดเครื่องรุ่น 2 เท่านั้น (seed = รุ่น 1 ⇒ ไม่แสดง) · มีรอบรุ่น 2",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "?period=*&run=*"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "แถวรอบ (* = id รอบ) — เลือกรอบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-create",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "ร้านที่เปิดเครื่องรุ่น 2 เท่านั้น (seed = รุ่น 1 ⇒ ไม่แสดง)",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "createPayrollRunV2Action",
+    "db": "HrPayrollRun engineVersion 2 + items"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "สร้างรอบ (ดึงชั่วโมงจนครบก่อน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-sync",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "ร้านที่เปิดเครื่องรุ่น 2 เท่านั้น (seed = รุ่น 1 ⇒ ไม่แสดง)",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "buildWorkEntriesAction + syncAttendanceDeductionsAction (วน next)"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ดึงชั่วโมงทำงาน → คำนวณรายการหักสาย/ขาด (D-H32-ui-payroll)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-steps",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีรอบที่เลือก",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ขั้น ร่าง · ตรวจ · อนุมัติ · จ่าย · ลงบัญชี"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-tiles",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีรอบที่เลือก · ผู้ดูเงินเดือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ไทล์ยอดรวม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-table",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีรอบที่เลือก · ผู้ดูเงินเดือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ตารางต่อคน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-lines-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีรอบที่เลือก · ผู้ดูเงินเดือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "ที่มาของเงินต่อบรรทัด"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ที่มาต่อคน (* = id พนักงาน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-warn",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีธงที่ต้องเตือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "คำเตือน §5.1 (ไม่บล็อก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-review",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีรอบที่เลือก · ผู้ดูเงินเดือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "รายการต้องตรวจ (รวมลูกหนี้พนักงาน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-minutes",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "ผู้จัดการ (ไม่มีคีย์เงินเดือน)",
+   "roles": [
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "payroll"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "นาทีของสาขาตัวเอง — ไม่มี ฿"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-branch-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "รอบร่าง",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "confirmBranchHoursAction"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ยืนยันชั่วโมงของสาขา (* = id สาขา · ไม่บังคับ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-rebuild",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "รอบร่าง · ผู้ดูเงินเดือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "recomputeRunV2Action"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ดึงข้อมูลใหม่ (ผู้กดเป็นผู้สร้าง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-approve",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "รอบร่าง · ผู้ดูเงินเดือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "approveRunV2Action"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "อนุมัติ (ผู้สร้าง ≠ ผู้อนุมัติ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-pay",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "รอบอนุมัติแล้ว",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "markPaidAction"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "บันทึกจ่ายแล้ว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-reverse",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "รอบอนุมัติ/จ่ายแล้ว",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "reverseRunAction"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "กลับรายการ (CARRY_BOUND)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-run2-engine",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "ผู้ตั้งค่า HR",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "การ์ดรุ่นเครื่อง + เพดานหัก + ช่วงที่กฎหักสาย/ขาดมีผล"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-run2-engine-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "เจ้าของร้าน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "setPayrollEngineAction",
+    "db": "AppSystem.settings.hrPayroll"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "บันทึกรุ่นเครื่อง/เพดาน"
   }
  ]
 }
