@@ -42,6 +42,8 @@ export const VERIFY_PIN_LIMIT = { limit: 120, windowMs: 60_000 } as const;
 // HR H0.5 r3 ▸ R3.1 ถังต่อผู้เรียก (hr-verifypin:<tenantId>:<callerKey>) — ผิด 10 ครั้ง / 10 นาที = ล็อกผู้เรียกนั้น (hunt F1/F3)
 //   ทั้งสองถังนับ "เฉพาะครั้งที่ผิด" — ยืนยันถูกไม่กินโควตา (คนใส่ PIN ถูกทั้งวันไม่โดนล็อก · ขยะของเครื่องหนึ่งไม่ทำให้ PIN ถูกของทั้งร้านใช้ไม่ได้) ◂
 export const VERIFY_PIN_CALLER_LIMIT = { limit: 10, windowMs: 10 * 60_000 } as const;
+/** HR H2.4 r2b ▸ ถังทั้งร้านของจอ kiosk (hr-kiosk-shop:<tenantId>:<systemId>) — งบเดิมของ D7b 60 ผิด/60 s · ใช้ใน verifyPinOfEmployee เท่านั้น ◂ */
+export const KIOSK_SHOP_LIMIT = { limit: 60, windowMs: 60_000 } as const;
 // HR H0.5 r4 ▸ R4.2 รูปแบบ callerKey (หลัง trim) — ไม่ตรง = "PIN ไม่ถูกต้อง" ทันที ไม่แตะ DB (hunt G2: NUL ⇒ ถังล่ม fail-open · คีย์ยาวมากถูกเก็บทั้งก้อน) ◂
 const CALLER_KEY_RE = /^[A-Za-z0-9:_.-]{1,128}$/;
 
@@ -430,6 +432,18 @@ export async function verifyPinOfEmployee(input: VerifyEmployeePinInput): Promis
   if (!CALLER_KEY_RE.test(callerKey)) return wrong; // แบบ verifyPin R4.2 — ไม่นับ ไม่สร้างถัง
   const gate = await pinGate(tenantId, callerKey);
   if (!("release" in gate)) return gate;
+  // HR H2.4 r2b ▸ มติผู้คุม 12 พ.ย. (ข้อ 1): ถังทั้งร้านของจอ kiosk งบเดิมก่อน H2.4 (60 ผิด/60 s) — เฉพาะทาง kiosk ·
+  //   คีย์มาจาก ctx ของเซิร์ฟเวอร์เท่านั้น (tenantId + ระบบ HR) · นับก่อน (หลังถัง H0.5) · เกิน = คืนช่องตัวเอง + คืนช่อง H0.5 แล้วตอบ "ลองใหม่…"
+  //   (ไม่กินถัง hr-verifypin ของร้าน — สัญญา C-8 ของ POS คงที่ 120/60 s) · ถูก / ไม่มี pepper / throw = คืนช่อง · ผิด = ค้าง ◂
+  const shopKey = `hr-kiosk-shop:${tenantId}:${systemId}`;
+  const vK = await checkRateLimitDb(shopKey, KIOSK_SHOP_LIMIT);
+  if (!vK.ok) {
+    await Promise.all([refundRateLimitDb(shopKey, vK.windowStart), gate.release()]);
+    return { ok: false, reason: limitedText(vK.retryAfterSec) };
+  }
+  const releaseAll = async (): Promise<void> => {
+    await Promise.all([refundRateLimitDb(shopKey, vK.windowStart), gate.release()]);
+  };
   const ctx: PinCtx = { tenantId, systemId };
   try {
     const scope = input?.scope ?? null;
@@ -442,16 +456,16 @@ export async function verifyPinOfEmployee(input: VerifyEmployeePinInput): Promis
     }
     const v = await verifyPinForEmployee(ctx, employeeId, input?.pin ?? "");
     if (v.ok) {
-      await gate.release();
+      await releaseAll();
       return v;
     }
     if (v.reason === PIN_TEXT.notConfigured) {
-      await gate.release();
+      await releaseAll();
       return v;
     }
     return gate.failed(v.reason === PIN_TEXT.notFound ? PIN_TEXT.wrong : v.reason);
   } catch (e) {
-    await gate.release();
+    await releaseAll();
     throw e;
   }
 }

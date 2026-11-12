@@ -426,6 +426,7 @@ const CHECKS: readonly Def[] = [
   D("S6.5", "R9", M, "RED", "kiosk BREAK_START after IN ⇒ BREAK_START · NEXT ⇒ BREAK_END"),
   D("S6.6", "R1", M, "RED", "[static] kioskClockAction reads employeeId · kioskClock + kiosk:<user> · scope hrScopeOf · no hr-kiosk: · clock.ts kioskClock → pin.ts verifier · KioskClock.tsx name list + PIN + testids"),
   D("S6.7", "R2", C, "RED", "name list = kioskRoster(scope): [u1] ⇒ u1 names only · all-branch ⇒ every name · [static] HrKioskSection passes hrScopeOf"),
+  D("S6.9", "R1", C, "RED", "kiosk shop bucket (controller 12 Nov ruling 1): 60 wrong across names ⇒ right PIN of another name limited · key from ctx only · refusal does not consume hr-verifypin:<t>"),
   D("S6.8", "R1", C, "RED", "shop bucket stays: wrong PINs on different names add to hr-verifypin:<t> · H0.5 caller limit (10/10 min) is the per-name limit"),
   D("S7.1", "R10", C, "RED", "first enable without acceptPdpaNotice ⇒ sNotice · with ⇒ ok · noticeAcceptedAt/ById · 1 audit hr.clock.notice_accepted"),
   D("S7.2", "R10", M, "RED", "validation: radius 10/3000 ⇒ sRadius · minAccuracy 5 ⇒ sAcc · gps enable without centre ⇒ sCenter · photoRequired ⇒ sPhoto"),
@@ -931,6 +932,27 @@ async function runDb(): Promise<void> {
     ck("S6.8", { wrong: rs.every((r) => said(r, T.pinWrong)), shop: t1 - t0 === names.length, callerLimit: pinMod?.VERIFY_PIN_CALLER_LIMIT?.limit === 10 && pinMod?.VERIFY_PIN_LIMIT?.limit === 120 }, "3 wrong · shop bucket +3 · H0.5 limits 10/120", `shop ${t0}→${t1} ${rs.map(shown).join(" ")}`);
   }
 
+  // ORACLE-EDIT r2b (controller 12 Nov, pre-approved): S6.9 kiosk shop-wide bucket 60/60 s on the kiosk path only — own HR system so other groups are not tripped
+  {
+    const sS = await sysSvc.createSystem(TT, "HR", "ระบบถังร้าน");
+    const ctxS = { tenantId: TT, systemId: sS.id };
+    const names: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const e = await fx.mkEmp(TT, sS.id, `QC24 ถังร้าน ${i} ${tag}`, { unitId: u1 });
+      await hr.setPin(ctxS, e, `3170${10 + i}`).catch(() => null);
+      names.push(e);
+    }
+    const ckS = `kiosk:qc-shop9-${tag}`;
+    const w: RO[] = [];
+    for (let b = 0; b < 6; b++) w.push(...(await Promise.all(Array.from({ length: 10 }, (_, j) => kc({ employeeId: names[j % 6]!, pin: "000999", callerKey: `${ckS}${j}`, scope: ALL }, at(d6, "12:00"), ctxS)))));
+    const vp0 = await bucket(`hr-verifypin:${TT}`);
+    const r = await kc({ employeeId: names[6]!, pin: "317016", callerKey: `kiosk:qc-fresh9-${tag}`, scope: ALL }, at(d6, "12:01"), ctxS);
+    const vp1 = await bucket(`hr-verifypin:${TT}`);
+    const keys = ((await P.chatRateBucket.findMany({ where: { key: { startsWith: "hr-kiosk-shop:" }, AND: [{ key: { contains: TT } }] }, select: { key: true, count: true } })) as Any[]);
+    const own = keys.find((k) => k.key === `hr-kiosk-shop:${TT}:${sS.id}`);
+    ck("S6.9", { wrong60: w.length === 60 && w.every((x) => said(x, T.pinWrong)), limited: !r.ok && LIMITED_RE.test(r.text) && (await rowsOf(names[6]!)).length === 0, key: !!own && keys.filter((k) => k.key.includes(sS.id)).length === 1, verifyPinUntouched: vp1 === vp0 }, "60 wrong · 61st limited · 1 server key · hr-verifypin unchanged", `${shown(r)} keys=${keys.map((k) => `${k.key.split(":").length}:${k.count}`).join(",")} vp ${vp0}→${vp1}`);
+  }
+
   // ═══ S8 retention ═══
   console.log("── S8 retention ──");
   {
@@ -1140,7 +1162,7 @@ try {
   tenantsFx = [...fx.tenants];
   for (const tid of tenantsFx) {
     await P.$executeRawUnsafe(`DELETE FROM "HrClockSite" WHERE "tenantId" = $1`, tid).catch(() => null);
-    await P.chatRateBucket.deleteMany({ where: { OR: [{ key: { startsWith: `hr-verifypin:${tid}` } }, { key: { startsWith: `hr-kiosk:emp:${tid}` } }, { key: { startsWith: `hr-kiosk:sys:${tid}` } }] } }).catch(() => null);
+    await P.chatRateBucket.deleteMany({ where: { OR: [{ key: { startsWith: `hr-verifypin:${tid}` } }, { key: { startsWith: `hr-kiosk:emp:${tid}` } }, { key: { startsWith: `hr-kiosk:sys:${tid}` } }, { key: { startsWith: `hr-kiosk-shop:${tid}` } }] } }).catch(() => null);
   }
   await sweep(P, fx, SLUG);
   const left = await residueOf(P, fx, SLUG, SLUG_PREFIX);
