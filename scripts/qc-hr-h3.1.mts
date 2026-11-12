@@ -42,7 +42,7 @@ const T = {
   noEmp: "บัญชีของคุณยังไม่ได้ผูกกับพนักงาน — ติดต่อผู้จัดการ",
   approveBlocked: "ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ",
 };
-const BLOCKING = ["LEAVE_MISMATCH", "MISSING_OUT", "NOT_FINAL", "NOT_STORED", "ORPHAN", "PENDING_LEAVE", "STALE", "STRAY_IN", "WORKED_ON_LEAVE"];
+const BLOCKING = ["LEAVE_MISMATCH", "MISSING_OUT", "NOT_FINAL", "NOT_STORED", "ORPHAN", "OVER_1440", "PENDING_LEAVE", "STALE", "STRAY_IN", "WORKED_ON_LEAVE"]; // ORACLE-EDIT r2 (item 4d): + OVER_1440
 const MIN_KEYS = ["plannedMin", "workMin", "otWorkdayMin", "holidayWorkMin", "otHolidayMin", "holidayPaidMin", "paidLeaveMin", "unpaidLeaveMin", "absentMin", "lateMin", "earlyOutMin", "unplannedMin", "breakDeductMin"];
 const ABBR = ["p", "w", "ow", "hw", "oh", "hp", "pl", "ul", "ab", "la", "eo", "un", "bd"];
 const KIND_ORDER = ["WORK", "OT_WORKDAY", "HOLIDAY_WORK", "OT_HOLIDAY", "HOLIDAY_PAID", "LEAVE_PAID", "LEAVE_UNPAID", "ABSENT", "LATE", "EARLY_OUT"];
@@ -61,17 +61,18 @@ S1.5|R6|C|R|[static] payroll.ts: claimApproveExpected calls check + bind · WORK
 S1.6|R7|M|R|[static] judge.ts: exported workEntryDaysInTx in a marked pure-addition hunk (diff n/a once in base)
 S1.7|R9|M|R|[static] actions use server · no now: · requireTenant · UI testids · inventory wo H3.1 · hr.we th=en · tokens · page mounts
 S2.1|Q3|C|R|[pure] break rule: 7 literal vectors (planned break after 5 h · clocked first · CLOCKED_ONLY · threshold)
-S2.2|R3|C|R|[pure] workday basics: on time · late · OT · early arrival · absent (5 vectors)
-S2.3|R3|C|R|[pure] leave: full paid/unpaid · half AM/PM · split shifts · unequal split (8 vectors)
+S2.2|R3|C|R|[pure] workday basics: on time · late · OT · early arrival · absent · late capped by unclocked break (6 vectors)
+S2.3|R3|C|R|[pure] leave: full paid/unpaid · half AM/PM · split shifts · unequal split · worked into PM leave (9 vectors)
 S2.4|R3|C|R|[pure] overnight shift owns its start day/period · next day other period (2 vectors)
-S2.5|R3|C|R|[pure] day off · holiday · unscheduled · no-schedule work · leave on day off · normalDayMin (15 vectors)
+S2.5|R3|C|R|[pure] day off · holiday · unscheduled · no-schedule work · leave on day off · normalDayMin · no-schedule half leave · holiday leave (17 vectors)
 S2.6|R3|C|R|[pure] hourly leave offset late→early→absent · unused flag · unpaid (5 vectors)
-S2.7|R3|C|R|[pure] review codes: stale · orphan · not final · not stored · missing out · stray IN · pending leave · mismatch · worked on leave · legacy · dedupe/sort (13 vectors)
+S2.7|R3|C|R|[pure] review codes: stale · orphan · not final · not stored · missing out · stray IN · pending leave · mismatch · worked on leave · legacy · dedupe/sort · over 1440 (14 vectors)
 S2.8|R3|M|R|[pure] employment window ∩ period · days outside range ignored (3 vectors)
 S3.1|R3|C|R|[pure] digest: 64-hex · same input ⇒ same · slot order irrelevant · version change ⇒ differs
 S3.2|R3|M|R|[pure] purity: deep-frozen input untouched · Date.now/Math.random trapped · output keys exact
 S3.3|R3|C|R|[pure] entries mirror header (kind order H1.3 · zeros omitted) · every minute integer 0–1440 · review sorted unique
 S3.4|R3|M|R|[pure] WE_BLOCKING exact · WORK_RULES_DEFAULT · engine version 1
+S3.5|r2|C|R|[pure] ORACLE-EDIT r2 (new): minutes add up — late+early+absent ≤ max(0, planned − leave − regular) · planned-side ≤ planned · all vectors + 500 seeded random days
 S4.1|R2|C|R|[db] catalogue: HrWorkDay columns/types/defaults · enums · HrWorkEntry.workDayId
 S4.2|R4|C|R|[db] owner build July 2031: 6 employees · 165 days (31×5 + 10) · result counts
 S4.3|R3|C|R|[db] 17 day literals from real H2.5 rows (break · late · OT · absent · leave · day-off work · half day · split · overnight · holiday · hourly · unscheduled)
@@ -82,6 +83,7 @@ S5.1|R4|C|R|[db] rebuild unchanged ⇒ written 0 · ids/versions/updatedAt/kind 
 S6.1|R5|C|R|[db] recompute (OUT moved) ⇒ only eC OUTDATED · rebuild ⇒ OT 60 · version 2 · source version 2 · written 1
 S6.2|R5|C|R|[db] leave revoked ⇒ OUTDATED · rebuild ⇒ STALE review · state REVIEW
 S6.3|R5|C|R|[db] recompute after revoke ⇒ rebuild ⇒ ABSENT 480 · no review · CURRENT
+S6.5|r2|C|R|[db] ORACLE-EDIT r2 (new): shift grace 5 → 15 after build (LATE 10 row now stale, no version bump) ⇒ OUTDATED · v2 approve refused · rebuild ⇒ STALE review · still refused
 S6.4|R5|C|R|[db] ORACLE-EDIT (new, controller): H2.6 correction (OUT 15:00 → 17:00: original voided · corrected punch · stored day recomputed) ⇒ snapshot built before = OUTDATED · rebuild = corrected minutes (ow 120 · source version 2) · CURRENT
 S7.1|R3|C|R|[db] NOT_FINAL (day not over) ⇒ PENDING · ORPHAN after unpublish
 S7.2|R3|M|R|[db] NOT_STORED (final, finaliser not run) · after finaliser ⇒ clean literal
@@ -94,6 +96,7 @@ S8.6|R6|C|R|[db] rebuild clean ⇒ v2 approve ok · APPROVED · 31 days bound ·
 S9.1|R4|C|R|[race] build ∥ build ⇒ both ok · one row per day · no 23505/text leak
 S9.2|R4|C|R|[race] build waits on the period lock (hr:payroll:run:<sys>:<period>) then completes
 S9.3|R6|C|R|[race] build ∥ v1 approve ⇒ approve ok (blocking review ignored for v1) · no unbound row of the period
+S9.5|r2|C|R|[race] ORACLE-EDIT r2 (new): leave revoked between the builder's reads ⇒ never CURRENT with stale rows
 S9.4|R5|C|R|[race] build ∥ recompute ⇒ CURRENT only with the new version · else OUTDATED · rebuild converges
 S10.1|R8|C|R|[db] preview viewer matrix: owner 6 · payroll 6 · mgr u1 3 · writer u2 3 · member refused · other tenant sees none of ours
 S10.2|R8|C|R|[db] IDOR: out-of-branch · unknown id · member · other tenant ⇒ identical refusal bytes
@@ -121,10 +124,8 @@ if (skipReasons.length && !FORCE) skipExit(skipReasons);
 const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") => chk(id, Object.values(r).every(Boolean), exp, `${failedKeys(r)}${extra ? ` ${extra}` : ""}`);
 // ORACLE-EDIT (controller, H3.1 build): default base = merge-base HEAD origin/session/hr (env QC_H31_BASE still overrides —
 //   iso.sh drops env, a hard-coded pin breaks control runs) · base-diff checks n/a once H3.1 is in the base ·
-//   hunks carrying ANOTHER WO's marker (e.g. `HR H2.9`, `HR H2.6`) arriving through base merges are not this WO's to judge
 const BASE = baseRef("QC_H31_BASE") || "87d976773a53ab279b8e6f0660e0d7a72e5fdba4";
 const IN_BASE = pathInBase(F.we, BASE);
-const otherWo = (h: { added: string[]; removed: string[] }) => !h.added.some((l) => /HR H3\.1/.test(l)) && [...h.added, ...h.removed].some((l) => /HR H\d+\.\d+/.test(l)); // ORACLE-EDIT ◂
 const git = (a: string[]) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 << 20 }).trim();
 const gitGrep = (re: string, paths: string[]) => {
   try {
@@ -228,6 +229,56 @@ function runPure(R: Any): void {
     ck("S3.3", { some: all.length >= 54, mirror, ints, sorted }, "mirror · ints · sorted", `${all.length} days`);
   }
   {
+    // ORACLE-EDIT r2 (item 1, new check S3.5): minutes add up — over every vector + 500 seeded random days
+    let seed = 0x31c0ffee;
+    const rnd = () => ((seed = (seed + 0x6d2b79f5) | 0), (((seed ^ (seed >>> 15)) * (1 | seed)) >>> 0) / 4294967296);
+    const ri = (a: number, b: number) => a + Math.floor(rnd() * (b - a + 1));
+    const pick = <X,>(xs: X[]): X => xs[ri(0, xs.length - 1)]!;
+    const rand = (): Any => {
+      const slots: Any[] = [];
+      const n = ri(0, 3);
+      const lvs: Any[] = [];
+      if (rnd() < 0.4) lvs.push({ id: "LA", status: pick(["APPROVED", "APPROVED", "PENDING"]), halfDay: pick([null, "AM", "PM"]), hours: rnd() < 0.3 ? ri(1, 7) : null, paid: rnd() < 0.7, legacy: rnd() < 0.1 });
+      for (let i = 0; i < n; i++) {
+        if (rnd() < 0.2) {
+          slots.push({ dayId: "ad-DAY", version: 1, slotKey: "DAY", stored: true, final: true, stale: false, orphan: false, status: pick(["NO_SCHEDULE", "DAY_OFF"]), startMin: null, endMin: null, crossesMidnight: null, plannedBreakMin: 0, workedMin: ri(0, 700), breakMin: 0, lateMin: 0, earlyOutMin: 0, otMin: ri(0, 700), missingOut: false, leaveId: null, leaveFraction: null, rosterEntryId: null });
+          continue;
+        }
+        const st = ri(0, 46) * 30;
+        const len = ri(2, 24) * 30;
+        const cm = st + len > 1440;
+        const status = pick(["ON_TIME", "LATE", "EARLY_OUT", "ABSENT", "LEAVE"]);
+        const lv = lvs[0] && rnd() < 0.5 ? lvs[0] : null;
+        slots.push({
+          dayId: `ad-r${i}`, version: 1, slotKey: `r${i}`, stored: true, final: true, stale: false, orphan: false, status, startMin: st, endMin: cm ? st + len - 1440 : st + len, crossesMidnight: cm,
+          plannedBreakMin: pick([0, 0, 30, 60]), workedMin: status === "ABSENT" ? 0 : ri(0, len + 180), breakMin: pick([0, 0, 15, 30, 60]), lateMin: status === "LATE" ? ri(1, len) : 0, earlyOutMin: status === "EARLY_OUT" || rnd() < 0.2 ? ri(0, len) : 0,
+          otMin: ri(0, 1) ? ri(0, 240) : 0, missingOut: false, leaveId: lv ? lv.id : null, leaveFraction: lv ? (lv.hours ? "0.2" : lv.halfDay ? "0.5" : "1.0") : null, rosterEntryId: `re${i}`,
+        });
+      }
+      return { employeeId: "E1", startDate: null, endDate: null, from: "2031-07-15", to: "2031-07-15", rules: { normalDayMin: pick([420, 480, 540]) }, days: [{ day: "2031-07-15", unitId: "u1", holiday: rnd() < 0.15 ? { id: "H1" } : null, slots, leaves: lvs }] };
+    };
+    const inputs = [...VEC.map((v) => v.input), ...Array.from({ length: 500 }, rand)];
+    const bad: string[] = [];
+    let days = 0;
+    for (const [i, inp] of inputs.entries()) {
+      const out = exec(inp);
+      if (!Array.isArray(out)) {
+        bad.push(`#${i}:${short(out, 40)}`);
+        continue;
+      }
+      for (const d of out) {
+        days++;
+        const leave = d.paidLeaveMin + d.unpaidLeaveMin;
+        const reg = d.workMin + d.holidayWorkMin;
+        const short1 = d.lateMin + d.earlyOutMin + d.absentMin <= Math.max(0, d.plannedMin - leave - reg);
+        const side = d.plannedMin === 0 || d.dayClass !== "WORKDAY" || d.review.includes("STRAY_IN") || leave + d.absentMin + d.lateMin + d.earlyOutMin + d.workMin <= d.plannedMin || d.workMin > 0 && d.plannedMin === 0;
+        const ints = MIN_KEYS.every((k) => Number.isInteger(d[k]) && d[k] >= 0 && d[k] <= 1440);
+        if (!short1 || !side || !ints) bad.push(`#${i}:${hdr(d)}`);
+      }
+    }
+    ck("S3.5", { days: days >= 550, adds: bad.length === 0 }, "late+early+absent ≤ shortfall · planned-side ≤ planned", `${days} days · ${bad.length} off ${bad.slice(0, 2).join(" · ")}`);
+  }
+  {
     const ok = R && !R.__err;
     ck("S3.4", { blocking: ok && srt(R.WE_BLOCKING ?? []) === srt(BLOCKING), rules: ok && JSON.stringify(R.WORK_RULES_DEFAULT) === JSON.stringify({ normalDayMin: 480, breakRule: "PLANNED_AFTER_5H", breakAfterMin: 300 }), ver: ok && R.WORK_ENTRY_ENGINE_VERSION === 1 }, "exact", modState(R, F.rules));
   }
@@ -286,7 +337,7 @@ function runStatic(): void {
     const pay = stripComments(rd(F.payroll));
     const claim = block(pay, /async function claimApproveExpected/, 4500);
     const acts = stripComments(rd(F.payActs));
-    const hunks = IN_BASE ? [] : (diffHunks(BASE, F.payroll) ?? []).filter((h) => !otherWo(h));
+    const hunks = IN_BASE ? [] : (diffHunks(BASE, F.payroll) ?? []) /* ORACLE-EDIT r2 (item 8): no other-WO exemption — base = merge-base */;
     const marked = IN_BASE || (hunks.length > 0 && hunks.every((h) => h.added.some((l) => /HR H3\.1/.test(l)) && h.removed.every((l) => /ApproveFailCode/.test(l))));
     const r = {
       check: /workEntriesApproveCheckInTx\(\s*tx/.test(claim), bind: /bindWorkEntriesToRunInTx\(\s*tx/.test(claim) && claim.indexOf("bindWorkEntriesToRunInTx") > claim.indexOf("updateMany"),
@@ -296,7 +347,7 @@ function runStatic(): void {
   }
   {
     const j = rd(F.judge);
-    const hunks = IN_BASE ? [] : (diffHunks(BASE, F.judge) ?? []).filter((h) => !otherWo(h));
+    const hunks = IN_BASE ? [] : (diffHunks(BASE, F.judge) ?? []);
     const r = { fn: /export async function workEntryDaysInTx\(/.test(j), marked: IN_BASE || (hunks.length > 0 && hunks.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H3\.1/.test(l)))) };
     ck("S1.6", r, "export · marked additions", IN_BASE ? "diff n/a (in base)" : `${hunks.length} hunks`);
   }
@@ -623,6 +674,51 @@ async function runDb(): Promise<void> {
       lit: hdr(r1) === Hd(W, "WORKED", { p: 480, w: 480, ow: 120 }), ver: r1?.version === 2 && r1?.sourcesJson?.attendanceDays?.[0]?.version === 2, cur: (await st()) === "CURRENT",
     };
     ck("S6.4", r, "OUTDATED → corrected minutes · CURRENT", `${s0}→${s1} ${short(rq, 60)} ${hdr(r1)}`);
+  }
+  // ── S6.5 + S9.5 ORACLE-EDIT r2 (new checks, controller items 2 + 3): system E · Jan 2032 (week Mon 5 – Sun 11) ──
+  {
+    const sE = await sys("ทีม E");
+    const cE = { tenantId: TT, systemId: sE };
+    const eG = await me(sE, "จี", { unitId: u1 });
+    const eK = await me(sE, "เค", { unitId: u1 });
+    const morning = (await P.hrShift.create({ data: { tenantId: TT, systemId: sE, name: `Morning ${tag}`, startMin: 420, endMin: 900, crossesMidnight: false, graceMin: 5 } })).id as string;
+    const shE = { id: morning, a: 420, b: 900, cm: false };
+    const xg = await ent(sE, eG, "2032-01-05", shE, u1);
+    await io(sE, eG, xg, bk("2032-01-05", "07:10"), bk("2032-01-05", "15:00"));
+    const xk = await ent(sE, eK, "2032-01-07", shE, u1);
+    const lvK = (await P.hrLeave.create({ data: { tenantId: TT, systemId: sE, employeeId: eK, type: "SICK", fromDate: dbDate("2032-01-07"), toDate: dbDate("2032-01-07"), status: "APPROVED", reason: `ลับ ${tag}`, days: 1 } })).id as string;
+    void xk;
+    const NJ = bk("2032-01-13");
+    await job(bk("2032-01-06"));
+    await job(bk("2032-01-08"));
+    await job(NJ);
+    const PE = { periodKey: "2032-01" };
+    const stE = async (emp: string) => ((await W_("workEntryPreview", cE, V.owner, PE, { now: NJ })).value?.rows ?? []).find((r: Any) => r.employeeId === emp)?.state ?? "∅";
+    // S9.5 first (eK): the leave is revoked after the builder read its inputs, before it finished hashing them
+    const bK = await W_("buildWorkEntrySnapshot", cE, V.owner, { ...PE, employeeIds: [eK] }, { now: NJ, __afterRead: async () => void (await P.hrLeave.update({ where: { id: lvK }, data: { status: "REJECTED" } })) });
+    const sK = await stE(eK);
+    const rK = ((await wdRows(TT, sE)) ?? []).find((r) => r.employeeId === eK && dk(r.date) === "2032-01-07");
+    const consistent = !!rK && !reviewOf(rK.review).some((c) => c === "STALE" || c === "LEAVE_MISMATCH") && rK.paidLeaveMin === 480; // rows still say "leave" — only acceptable if the state is not CURRENT
+    ck("S9.5", { built: bK.ok, notCurrent: sK !== "CURRENT" || !consistent }, "never CURRENT with pre-revoke rows", `${shown(bK)} state=${sK} ${hdr(rK)}`);
+    // S6.5 (eG): grace 5 → 15 makes the stored LATE 10 row stale without any version bump
+    await pay.setSalaryProfile(cE, { employeeId: eG, baseSalarySatang: 1_000_000, ssoEligible: true });
+    const run = await pay.createPayrollRun(cE, { periodKey: "2032-01", payDate: new Date("2032-01-31T00:00:00Z") });
+    await P.hrPayrollRun.update({ where: { id: run.id }, data: { engineVersion: 2 } });
+    const bG = await W_("buildWorkEntrySnapshot", cE, V.owner, { ...PE, employeeIds: [eG] }, { now: NJ });
+    const g0 = ((await wdRows(TT, sE)) ?? []).find((r) => r.employeeId === eG && dk(r.date) === "2032-01-05");
+    const s0 = await stE(eG);
+    await P.hrShift.update({ where: { id: morning }, data: { graceMin: 15 } });
+    const s1 = await stE(eG);
+    const refused = (a0: Any) => a0?.ok === false && a0?.code === "WORK_ENTRIES" && a0?.note === T.approveBlocked;
+    const a1 = await pay.approveRun(cE, run.id);
+    await W_("buildWorkEntrySnapshot", cE, V.owner, { ...PE, employeeIds: [eG] }, { now: NJ });
+    const g1 = ((await wdRows(TT, sE)) ?? []).find((r) => r.employeeId === eG && dk(r.date) === "2032-01-05");
+    const a2 = await pay.approveRun(cE, run.id);
+    const status = (await P.hrPayrollRun.findUnique({ where: { id: run.id } }))?.status;
+    ck("S6.5", {
+      lit: bG.ok && hdr(g0) === Hd(W, "WORKED", { p: 480, w: 470, la: 10 }) && s0 === "CURRENT", outdated: s1 === "OUTDATED", refused: refused(a1),
+      stale: reviewOf(g1?.review).includes("STALE"), still: refused(a2) && status === "DRAFT",
+    }, "OUTDATED · refused · STALE · refused", `${s0}→${s1} ${hdr(g0)} | ${hdr(g1)} ${short(a1, 40)}`);
   }
   // ── S10 privacy (system A, July) ──
   {
