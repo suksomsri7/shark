@@ -795,13 +795,17 @@ function runStatic(): void {
     // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
     //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
     const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
+    // ORACLE-EDIT (controller, H3.1 build): hr/work-entries.ts (+ its pure rules file) is the intended only reader/writer of HrWorkEntry (H3.1 R1) —
+    //   only the HrWorkEntry/hrWorkEntry tokens are ignored there; every other S6.1 token still counts
+    const WE_FILES = new Set(["src/lib/modules/hr/work-entries.ts", "src/lib/modules/hr/work-entries-rules.ts"]);
+    const WE_OK = /^(HrWorkEntry|hrWorkEntry)$/;
     // ORACLE-EDIT (controller 12 Nov · H4.6 Q15 + H2.9, narrowed by the law.ts ruling): designed sourceRef writers — only that token is ignored there:
     //   hr/stock-charge.ts ("hrstock:<key>") · hr/ot.ts (OT_REQUEST; OT law rows go through hr/law.ts#loadOtLawRows, so HrLawTable stays ratcheted)
     const STOCK_OK = /^sourceRef$/;
     const OT_OK = /^sourceRef$/;
     const cntOf = (f: string, s: string) =>
       (stripComments(s).match(S61_RE) ?? []).filter(
-        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)),
+        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t)),
       ).length;
     // ORACLE-EDIT (controller 12 Nov · H2.9 + H4.6 r3, merged into one mechanism): hr/payroll.ts may carry exactly the declared number of S6.1 tokens inside
     //   lines/blocks marked per WO tag (block = from a `HR <tag> ▸` line without `◂` to the line with `◂ HR <tag>`; a one-line hunk carries the tag itself) ·

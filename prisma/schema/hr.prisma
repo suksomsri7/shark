@@ -227,6 +227,7 @@ model HrEmployee {
   leaveBalanceTxns HrLeaveBalanceTxn[]
   // HR H1.3 ▸ นาทีทำงาน (payroll.prisma) · บันทึก/ประเมิน · งานรับเข้า-ออก ◂
   workEntries      HrWorkEntry[]
+  workDays         HrWorkDay[] // HR H3.1 ◂
   reviewNotes      HrReviewNote[]
   onboardingTasks  HrOnboardingTask[]
   stockCharges     HrStockCharge[] // HR H4.6 ▸ เบิกของ/ค่าเสียหาย (payroll.prisma) — ขาสะท้อนของ FK Restrict ◂

@@ -32,6 +32,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { ModuleTabs } from "@/components/module-tabs";
 import { LifecycleMsg, LifecycleSettings } from "@/lib/modules/hr/lifecycle-ui"; // HR H4.4 ▸ ค่าตั้งวงจรพนักงาน (เตือน · บอร์ดงาน · แม่แบบรายการตรวจ) ◂
+import { WorkSettingsCard, WE_MSG } from "@/lib/modules/hr/work-entries-ui"; // HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน (เจ้าของร้าน) ◂
+import { saveNormalMinutesAction } from "@/lib/modules/hr/work-entries-actions"; // HR H3.1 ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -49,6 +51,7 @@ const MSG_TEXTS: Record<string, string> = {
   "l.presetNone": LEAVE_TEXT.presetNone, // HR H2.8 ◂
   ...Object.fromEntries(Object.entries(CLOCK_SETTINGS_TEXT).map(([k, v]) => [`c.${k}`, v])), // HR H2.4 ◂
   ...Object.fromEntries(Object.entries(ATTENDANCE_SETTINGS_TEXT).map(([k, v]) => [`a.${k}`, v])), // HR H2.5 ◂
+  ...WE_MSG, // HR H3.1 ◂
   ...Object.fromEntries((["sAfter", "sAhead", "sRound"] as const).map((k) => [`o.${k}`, OT_TEXT[k]])), // HR H2.9 ◂
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
@@ -133,6 +136,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const onSaveAttendancePolicy = async (fd: FormData) => {
     "use server";
     back(path, year, await saveAttendancePolicyAction(fd));
+  };
+  // HR H3.1 ▸ ◂
+  const onSaveNormalMinutes = async (fd: FormData) => {
+    "use server";
+    back(path, year, await saveNormalMinutesAction(fd));
   };
   // HR H2.9 ▸ R14 ◂
   const onSaveOtPolicy = async (fd: FormData) => {
@@ -551,6 +559,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       {/* HR H4.4 ▸ ค่าตั้งวงจรพนักงาน — ผู้ดูข้อมูลบันทึก (OWNER/คีย์ตรง) เท่านั้น · ผลการกด ?life= (allowlist) ◂ */}
       <LifecycleMsg code={typeof sp.life === "string" ? sp.life : undefined} />
       <LifecycleSettings systemId={id} />
+      {/* HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน — ทุกผู้ตั้งค่าเห็น · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
+      <WorkSettingsCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveNormalMinutes : null} />
     </div>
   );
 }
