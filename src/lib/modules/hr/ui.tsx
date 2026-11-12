@@ -6,17 +6,13 @@ import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { formatThaiDate, formatThaiDateTime } from "@/lib/ui/date";
+import { formatThaiDate } from "@/lib/ui/date";
 import {
-  listAttendance,
   listEmployees,
   listRemovedEmployees,
   getSchedule,
   pendingLeaves,
-  monthlyAttendance,
-  employeesWithSchedule,
   kioskRoster,
-  bkkParts,
   leaveListScopeOf, // HR H1.1 ◂
   type Ctx,
 } from "./service";
@@ -73,31 +69,6 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
   OTHER: "อื่นๆ",
 };
 
-const KIND_LABEL: Record<string, string> = { IN: "เข้างาน", OUT: "ออกงาน", BREAK_START: "เริ่มพัก", BREAK_END: "กลับจากพัก" }; // HR H2.4 ▸ R6 ◂
-
-// ผลตัดสินการเข้างาน — "ยังไม่ตั้งตาราง" ต้องอ่านออกว่าเป็นข้อมูลที่ร้านยังไม่ได้กรอก ไม่ใช่ความผิดพนักงาน
-const JUDGEMENT_LABEL: Record<string, string> = {
-  ON_TIME: "ตรงเวลา",
-  LATE: "สาย",
-  DAY_OFF: "วันหยุดของคนนี้",
-  NO_SCHEDULE: "ยังไม่ตั้งตาราง",
-  // HR H1.2 ▸ ค่าใหม่ของ enum (ยังไม่มีแถวใช้ — ผู้ตัดสิน = H2.5) ◂
-  ABSENT: "ขาดงาน",
-  EARLY_OUT: "ออกก่อนเวลา",
-};
-const judgementTone = (v: string): "muted" | "strong" | "danger" =>
-  v === "LATE" ? "danger" : v === "ON_TIME" ? "strong" : "muted";
-
-// ระยะเวลา (นาที) → "8 ชม. 30 น." (ตัด 0 ทิ้งให้อ่านง่าย) — คนละอย่างกับ hhmm ที่เป็น "เวลาบนหน้าปัด"
-const durHm = (min: number) => {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h === 0 ? `${m} น.` : m === 0 ? `${h} ชม.` : `${h} ชม. ${m} น.`;
-};
-
-const monthLabel = () =>
-  new Date().toLocaleDateString("th-TH", { month: "long", year: "numeric", timeZone: "Asia/Bangkok" });
-
 const dateRange = (from: Date, to: Date) =>
   from.getTime() === to.getTime()
     ? formatThaiDate(from)
@@ -121,6 +92,8 @@ export function hrTabs(systemId: string): { href: string; label: string }[] {
 }
 
 // ───────────── ลงเวลา (attendance) ─────────────
+// HR H2.5 ▸ หน้าลงเวลาเป็นทีมรายวัน/ปฏิทินรายคนแล้ว (attendance-ui.tsx · ตัดสินผลจาก judge.ts) — ส่วนนี้เหลือแค่รายการ "ลงเวลาแทน"
+//   (ปุ่มเข้า/ออกต่อคน) ที่แผง "ลงเวลาแทน" ของหน้า 04A เปิดใช้ · สรุปเดือนเดิม (monthlyAttendance) ไม่แสดงบนหน้านี้อีก ◂
 export async function HrAttendanceSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
@@ -133,124 +106,39 @@ export async function HrAttendanceSection({ systemId }: { systemId: string }) {
     },
     { module: "hr", action: "hr.employee.create" },
   );
-
   const scope = hrScopeOf(hrViewerOf(auth)); // HR H1.1 ▸ เฉพาะสาขาของผู้ดู (ทุกสาขา = เหมือนเดิม) ◂
-  const [employees, attendance, scheduled] = await Promise.all([
-    listEmployees(ctx, 200, scope),
-    listAttendance(ctx, 50, scope),
-    employeesWithSchedule(ctx),
-  ]);
-  // สรุปเดือนนี้ (เวลาไทย) รายคน — ต้องมีตารางก่อน ไม่งั้นไม่มีอะไรให้เทียบ
-  // ⚠️ เดือนต้องมาจากวันที่ไทย: ตี 3 ของวันที่ 1 ยังเป็นเดือนก่อนตาม UTC
-  const [yy, mm] = bkkParts(new Date()).dateStr.split("-").map(Number);
-  const monthStart = new Date(Date.UTC(yy!, mm! - 1, 1));
-  const summaries = await Promise.all(
-    employees.map(async (e) => ({ emp: e, sum: await monthlyAttendance(ctx, e.id, monthStart) })),
-  );
-
-  return (
-    <div className="flex flex-col gap-6">
-      {/* ลงเวลาเข้า/ออก */}
-      <Section title="ลงเวลาวันนี้">
-        {employees.length === 0 ? (
-          <p className={`text-xs ${muted}`}>เพิ่มพนักงานก่อน แล้วจึงลงเวลาเข้า/ออกได้</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {employees.map((e) => (
-              <div
-                key={e.id}
-                className="flex items-center justify-between rounded-lg border px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{e.name}</div>
-                  {e.position && <div className={`truncate text-xs ${muted}`}>{e.position}</div>}
-                </div>
-                {canClockForOthers ? (
-                  <div className="flex items-center gap-2">
-                    <form action={clockAction}>
-                      <input type="hidden" name="systemId" value={systemId} />
-                      <input type="hidden" name="employeeId" value={e.id} />
-                      <input type="hidden" name="kind" value="IN" />
-                      <SubmitButton variant="primary">เข้างาน</SubmitButton>
-                    </form>
-                    <form action={clockAction}>
-                      <input type="hidden" name="systemId" value={systemId} />
-                      <input type="hidden" name="employeeId" value={e.id} />
-                      <input type="hidden" name="kind" value="OUT" />
-                      <SubmitButton variant="ghost">ออกงาน</SubmitButton>
-                    </form>
-                  </div>
-                ) : (
-                  <span className={`shrink-0 text-xs ${muted}`}>ลงเวลาด้วย PIN ที่จอ kiosk</span>
-                )}
-              </div>
-            ))}
+  const employees = canClockForOthers ? await listEmployees(ctx, 200, scope) : [];
+  return canClockForOthers ? (
+    <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
+      {employees.length === 0 ? (
+        <p className={`text-xs ${muted}`}>เพิ่มพนักงานก่อน แล้วจึงลงเวลาเข้า/ออกได้</p>
+      ) : (
+        employees.map((e) => (
+          <div key={e.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">{e.name}</div>
+              {e.position && <div className={`truncate text-xs ${muted}`}>{e.position}</div>}
+            </div>
+            <div className="flex items-center gap-2">
+              <form action={clockAction}>
+                <input type="hidden" name="systemId" value={systemId} />
+                <input type="hidden" name="employeeId" value={e.id} />
+                <input type="hidden" name="kind" value="IN" />
+                <SubmitButton variant="primary">เข้างาน</SubmitButton>
+              </form>
+              <form action={clockAction}>
+                <input type="hidden" name="systemId" value={systemId} />
+                <input type="hidden" name="employeeId" value={e.id} />
+                <input type="hidden" name="kind" value="OUT" />
+                <SubmitButton variant="ghost">ออกงาน</SubmitButton>
+              </form>
+            </div>
           </div>
-        )}
-      </Section>
-
-      {/* สรุปเดือนนี้ — จุดที่ "ตารางเข้างาน" เริ่มตอบคำถามเจ้าของได้จริง */}
-      <Section title={`สรุปเดือน${monthLabel()}`}>
-        {employees.length === 0 ? (
-          <p className={`text-xs ${muted}`}>ยังไม่มีพนักงาน</p>
-        ) : (
-          // ⚠️ ไม่ใช้ DataList ที่นี่: secondary ของมันเป็น truncate บรรทัดเดียว → บนมือถือตัวเลข
-          //    "ขาดงาน/ลา" ถูกตัดหาย (เห็นจากภาพจริงบน prod) · ตัวเลขสรุปต้องอ่านครบทุกตัว
-          <div className="flex flex-col gap-2">
-            {summaries.map(({ emp, sum }) => (
-              <div key={emp.id} className="rounded-lg border px-3 py-2">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="truncate text-sm font-medium">{emp.name}</span>
-                  <span className={`shrink-0 text-xs ${muted}`}>
-                    ทำงาน {sum.workedMinutes > 0 ? durHm(sum.workedMinutes) : "—"}
-                  </span>
-                </div>
-                {scheduled.has(emp.id) ? (
-                  <div className={`mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs ${muted}`}>
-                    <span className={sum.lateCount > 0 ? "text-[color:var(--color-danger)]" : ""}>
-                      มาสาย {sum.lateCount} ครั้ง
-                      {sum.lateMinutes > 0 ? ` (${durHm(sum.lateMinutes)})` : ""}
-                    </span>
-                    <span className={sum.absentDays > 0 ? "text-[color:var(--color-danger)]" : ""}>
-                      ขาดงาน {sum.absentDays} วัน
-                    </span>
-                    <span>ลา {sum.leaveDays} วัน</span>
-                    <span>ต้องเข้า {sum.workDays} วัน</span>
-                  </div>
-                ) : (
-                  <p className={`mt-1 text-xs ${muted}`}>
-                    ยังไม่ตั้งตารางเข้างาน — ตั้งที่แท็บ “พนักงาน” แล้วระบบจะเริ่มนับสาย/ขาดให้
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {/* บันทึกลงเวลาล่าสุด */}
-      <Section title="บันทึกลงเวลาล่าสุด">
-        <DataList
-          items={attendance.map((a) => ({
-            key: a.id,
-            primary: `${a.employee.name} · ${KIND_LABEL[a.kind] ?? a.kind}`,
-            secondary:
-              a.kind === "IN" && a.judgement === "LATE" && a.dueMin != null
-                ? `ควรเข้า ${hhmm(a.dueMin)} · สาย ${durHm(a.lateMin ?? 0)}`
-                : undefined,
-            trailing: (
-              <>
-                {a.kind === "IN" && a.judgement != null && (
-                  <StatusChip value={a.judgement} map={JUDGEMENT_LABEL} toneOf={judgementTone} />
-                )}
-                <span className={`text-xs ${muted}`}>{formatThaiDateTime(a.at)}</span>
-              </>
-            ),
-          }))}
-          empty="ยังไม่มีการลงเวลา — กดเข้างาน/ออกงานด้านบนเพื่อเริ่มบันทึก"
-        />
-      </Section>
+        ))
+      )}
     </div>
+  ) : (
+    <p className={`text-xs ${muted}`}>ลงเวลาด้วย PIN ที่จอ kiosk</p>
   );
 }
 

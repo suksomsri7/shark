@@ -28,9 +28,9 @@
   "$note": "หน้า/ไฟล์ที่ตัวกด/ช่องกรอกยังไม่มี data-testid ณ H0.4 (นับ tag ที่ไม่มี data-testid/testId · ไม่นับ input hidden · นับด้วยสคริปต์ในบันทึก H0.4) — ห้ามเพิ่ม ลดได้อย่างเดียว · ใบที่เขียนหน้าใหม่ปิดหนี้",
   "/app/sys/[id]/hr/attendance": {
    "files": {
-    "src/lib/modules/hr/ui.tsx#HrAttendanceSection": 4
+    "src/lib/modules/hr/ui.tsx#HrAttendanceSection": 2
    },
-   "closesIn": "H2.5"
+   "closesIn": "H2.5 r? / H2.6 (แผงลงเวลาแทน — ปุ่มเข้า/ออกต่อคนยังไม่มี testid)"
   },
   "/app/sys/[id]/hr/leave": {
    "files": {
@@ -4218,6 +4218,525 @@
    "wo": "H3.3",
    "oracle": "qc-hr-h3.3",
    "note": "ทางเข้าแท็บตารางกฎหมาย (≥ 44 px)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-page",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/attendance/page.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "หน้าลงเวลา (ผู้อ่านตารางกะ = ทีมรายวัน/ปฏิทิน · พนักงานที่ผูกบัญชี = ปฏิทินของตัวเอง · อื่น ๆ 404)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-view-day",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/attendance?view=day"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "สลับไปทีมรายวัน (04A)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-view-month",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/attendance?view=month&employee=<id>"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "สลับไปปฏิทินรายคน (04B)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-day-prev",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/attendance?view=day&day=<วันก่อน>"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "วันก่อนหน้า"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-day-next",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/attendance?view=day&day=<วันถัดไป>"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "วันถัดไป"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-banner",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "conditional": "มีการเตือน NOT_IN/ABSENT ของวันที่ดู และยังไม่เข้างาน",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "แถบเตือนยังไม่ลงเวลาเข้า/ไม่มา (เฉพาะคนที่ยิงการเตือนแล้ว)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-clock-for",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "conditional": "board.canClockFor",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "แผงลงเวลาแทน (HrAttendanceSection — clockAction)"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "ลงเวลาแทน (ผู้มีคีย์ hr.employee.create)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "แถวพนักงาน · * = id พนักงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-slot-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "ช่องของกะ (* = id แถวตารางกะ หรือ DAY) — ทั้งบอร์ดรายวันและปฏิทิน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-status-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "ป้ายสถานะของช่อง (ปกติ/สาย n นาที/ออกก่อน/ขาด/ยังไม่มา/ยังไม่ถึงเวลา/ลา/หยุด/ไม่มีตาราง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-stale-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "conditional": "slot.stale",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "ข้อมูลเปลี่ยนหลังบันทึกผล (stale)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-cal",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "ปฏิทินเดือน (04B) — ผู้อ่าน + ปฏิทินของตัวเอง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-cal-day-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "ช่องวันในปฏิทิน · * = YYYY-MM-DD"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-summary",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "สรุปเดือน (ทำงาน · สาย · ขาด · OT · ลา · ลืมลงเวลาออก · ชั่วโมง) — ไม่มีเงิน (Q8)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-recompute-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "conditional": "ช่องที่บันทึกแล้ว (dayId) · ผู้มีสิทธิ์ (canManageHrSettings)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "ฟอร์มเหตุผลคิดผลใหม่"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "คิดผลใหม่ของแถวที่บันทึกแล้ว · * = id HrAttendanceDay"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-recompute-reason",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "conditional": "เปิดฟอร์มคิดผลใหม่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "เหตุผล 3–200 ตัวอักษร"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-recompute-submit",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "conditional": "เปิดฟอร์มคิดผลใหม่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:recomputeAttendanceDayAction",
+    "db": "HrAttendanceDay (+ AuditLog hr.attendance.day_recomputed)"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "ยืนยันคิดผลใหม่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-attendance-policy",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) · ผู้ดูแลทุกสาขาเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "การตัดสินผล/การเตือน (AppSystem.settings.hrAttendance · R12)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-attendance-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) · ผู้ดูแลทุกสาขาเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveAttendancePolicyAction",
+    "db": "AppSystem.settings.hrAttendance"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "บันทึกการตัดสินผล"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-needs-recompute",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "conditional": "มีวันที่มีแถวกำพร้า (กะถูกย้าย/ลบ/ถอนประกาศหลังปิดวัน) ในขอบเขตผู้ดู 35 วันล่าสุด",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "แถบ 'n วันต้องคิดผลใหม่' + ลิงก์ไปวันนั้น (มติ r3 5)"
   },
   {
    "page": "/app/sys/[id]/hr/employees",

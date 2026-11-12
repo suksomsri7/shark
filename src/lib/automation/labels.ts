@@ -63,6 +63,9 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // HR H2.3 ▸ ยิงจาก hr/swap.ts (ยื่นคำขอ · ใช้ผลอนุมัติ) · consumer no-op ใน outbox-consumers.ts · spread เข้า WEBHOOK_EVENTS แล้ว ◂
   { value: "hr.shift.swap_requested", label: "เมื่อพนักงานขอสลับกะ (HR)" },
   { value: "hr.shift.swap_approved", label: "เมื่ออนุมัติสลับกะ (HR)" },
+  // HR H2.5 ▸ การเตือนลงเวลา (hr/judge.ts — ยิงครั้งเดียวต่อกะ) ◂
+  { value: "hr.attendance.late", label: "เมื่อพนักงานยังไม่ลงเวลาเข้างานหลังเริ่มกะ (HR)" },
+  { value: "hr.attendance.absent", label: "เมื่อพนักงานไม่มาทำงานทั้งกะโดยไม่มีใบลา (HR)" },
   // HR H4.4 ▸ ยิงจาก hr/lifecycle.ts (ตัวกวาดรายชั่วโมง · เริ่มรายการตรวจ · สิ้นสุดการจ้าง) · consumer + สะพานการ์ดใน outbox-consumers.ts · spread เข้า WEBHOOK_EVENTS แล้ว ◂
   { value: "hr.employee.milestone_due", label: "เมื่อพนักงานใกล้ครบทดลองงาน/สัญญา (HR)" },
   { value: "hr.employee.checklist_started", label: "เมื่อเริ่มรายการรับเข้า/ออกจากงาน (HR)" },

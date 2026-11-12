@@ -24,7 +24,8 @@ import {
 } from "@/lib/modules/hr/settings-actions";
 import { applyHolidayPresetAction } from "@/lib/modules/hr/settings-actions"; // HR H2.8 ◂
 import { LEAVE_TEXT } from "@/lib/modules/hr/leave-rules"; // HR H2.8 ▸ presetNone ◂
-import { canManageClockSettings, CLOCK_SETTINGS_TEXT, getClockPolicy, listClockSites } from "@/lib/modules/hr/clock-settings"; // HR H2.4 ▸ R10 + Q1 ◂
+import { ATTENDANCE_SETTINGS_TEXT, canManageClockSettings, CLOCK_SETTINGS_TEXT, getAttendancePolicy, getClockPolicy, listClockSites } from "@/lib/modules/hr/clock-settings"; // HR H2.4 ▸ R10 + Q1 ◂ · HR H2.5 ▸ R12 ◂
+import { saveAttendancePolicyAction } from "@/lib/modules/hr/attendance-actions"; // HR H2.5 ▸ R12 ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -45,6 +46,7 @@ const MSG_TEXTS: Record<string, string> = {
   "u.notFound": HR_UNIT_NOT_FOUND_TEXT,
   "l.presetNone": LEAVE_TEXT.presetNone, // HR H2.8 ◂
   ...Object.fromEntries(Object.entries(CLOCK_SETTINGS_TEXT).map(([k, v]) => [`c.${k}`, v])), // HR H2.4 ◂
+  ...Object.fromEntries(Object.entries(ATTENDANCE_SETTINGS_TEXT).map(([k, v]) => [`a.${k}`, v])), // HR H2.5 ◂
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
 /** กลับหน้าเดิมพร้อมรหัสผลการกด (redirect โยนเพื่อจบ action) */
@@ -73,6 +75,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   // HR H2.4 ▸ ค่าตั้งการลงเวลา — เฉพาะ OWNER/คีย์ hr.employee.create ตรง ๆ (ผู้จัดการที่ไม่มีคีย์ไม่เห็นส่วนนี้) ◂
   const clockOk = canManageClockSettings(viewer);
   const [clockSites, clockPolicy] = clockOk ? await Promise.all([listClockSites(ctx, viewer), getClockPolicy(ctx)]) : [null, null];
+  const attPolicy = clockOk ? await getAttendancePolicy(ctx) : null; // HR H2.5 ▸ R12 ◂
   const siteOf = new Map((clockSites?.ok ? clockSites.items : []).map((x) => [x.unitId ?? "all", x]));
   const all = isAllBranches(scope);
   const where = (u: string | null) => (u ? (unitName.get(u) ?? t("unit")) : t("shopWide"));
@@ -120,6 +123,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const onSaveClockSite = async (fd: FormData) => {
     "use server";
     back(path, year, await saveClockSiteAction(fd));
+  };
+  // HR H2.5 ▸ R12 ◂
+  const onSaveAttendancePolicy = async (fd: FormData) => {
+    "use server";
+    back(path, year, await saveAttendancePolicyAction(fd));
   };
 
   const unitSelect = (testid: string) => (
@@ -398,6 +406,49 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               </label>
               <button type="submit" className={btn} data-testid="hr-settings-clock-policy-save">
                 {t("clock.savePolicy")}
+              </button>
+            </form>
+          )}
+          {/* HR H2.5 ▸ R12 การตัดสินผล/การเตือน (ทั้งร้าน — ผู้ดูแลทุกสาขาเท่านั้น · เวลาผ่อนผันสายมาจากแต่ละกะ Q10) ◂ */}
+          {all && attPolicy && (
+            <form action={onSaveAttendancePolicy} className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "var(--color-line)" }} data-testid="hr-settings-attendance-policy">
+              <input type="hidden" name="systemId" value={id} />
+              <h3 className="text-sm font-medium">{t("attendance.title")}</h3>
+              <p className="text-xs text-[color:var(--color-muted)]">{t("attendance.desc")}</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1 text-xs">
+                  {t("attendance.notInAlertMin")}
+                  <input name="notInAlertMin" type="number" min={0} max={240} step={1} defaultValue={attPolicy.notInAlertMin} className="input min-h-[44px] w-28" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  {t("attendance.absentAfterMin")}
+                  <input name="absentAfterMin" type="number" min={30} max={720} step={1} defaultValue={attPolicy.absentAfterMin ?? ""} className="input min-h-[44px] w-28" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  {t("attendance.earlyOutGraceMin")}
+                  <input name="earlyOutGraceMin" type="number" min={0} max={60} step={1} defaultValue={attPolicy.earlyOutGraceMin} className="input min-h-[44px] w-28" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  {t("attendance.otStepMin")}
+                  <select name="otStepMin" defaultValue={String(attPolicy.otStepMin)} className="input min-h-[44px] w-28">
+                    {[1, 5, 10, 15, 30].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                {(["flagEarlyOut", "alertsOn", "alertEmployee"] as const).map((k) => (
+                  <label key={k} className="flex min-h-[44px] items-center gap-2 text-xs">
+                    <input name={k} type="checkbox" defaultChecked={attPolicy[k]} />
+                    {t(`attendance.${k}`)}
+                  </label>
+                ))}
+              </div>
+              <button type="submit" className={`${btn} self-start`} data-testid="hr-settings-attendance-save">
+                {t("attendance.save")}
               </button>
             </form>
           )}

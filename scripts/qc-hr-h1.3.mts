@@ -113,7 +113,8 @@ const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833
 const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13";
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";
 /** sha256 of the `  // S8.4\n … \n  }\n` block of qc-hr-h0.6.mts on 13a0601b (the freeze check itself must not drift) */
-const H06_S84_BLOCK_SHA = "5f15f5f4a47844be3e1fb26e5337756aff603ea0ae9cf8467ac5692354049fc3";
+// ORACLE-EDIT (H2.5 r3 · controller-authorized): re-pinned after the h0.6 S8.4 block learned to strip the 3 marked markPaid lines (was 5f15f5f4a478…)
+const H06_S84_BLOCK_SHA = "d9eac3d578ea53be030bee714eb89fe93df38bc9508bd8bd2d391c4bc0058c4f";
 /** sha256 of payroll.prisma from "  // crm_v2_c (CRM C3.0/C3.3)" through "  crmCommissionId String?\n" on 13a0601b (R4 · S1.7) */
 const CRM_BLOCK_SHA = "119baf15b3a29a75460343dbd42bbc8285bd84872e9ec0ff0706b5e4654b3221";
 /** pg_indexes.indexdef on QC4 at the base (S1.10 · byte-equal) */
@@ -766,7 +767,10 @@ function runStatic(): void {
     const pay = rd(PAY_FILE);
     const r = sha(rd(RULES_FILE)) === RULES_SHA;
     const ci = sha(seg(pay, "function computeItem(", "\n}\n", true)) === COMPUTE_ITEM_SHA;
-    const mp = sha(seg(pay, "// ── จ่ายแล้ว (APPROVED→PAID) ──", "// ◂ CRM C3.3", true)) === MARKPAID_BLOCK_SHA;
+    // ORACLE-EDIT (H2.5 r3 · controller-authorized): strip only the 3 marked period-lock lines (`HR H2.5 r3`) added to markPaid, then hash = base
+    const mpBlk = seg(pay, "// ── จ่ายแล้ว (APPROVED→PAID) ──", "// ◂ CRM C3.3", true);
+    const mpMarked = mpBlk.split("\n").filter((l) => /\/\/ HR H2\.5 r3 [▸◂]/.test(l));
+    const mp = mpMarked.length === 3 && sha(mpBlk.split("\n").filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l)).join("\n")) === MARKPAID_BLOCK_SHA;
     const h06 = rd(H06_ORACLE);
     const i = h06.indexOf("  // S8.4\n");
     const blk = i >= 0 ? h06.slice(i, h06.indexOf("\n  }\n", i) + 4) : "";

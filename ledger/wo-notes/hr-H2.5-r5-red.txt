@@ -1,0 +1,4 @@
+# qc-hr-h2.5 S13.5 on 8927576b3+ (lane DB l1) · forced · 2026-11-12T05:14:41Z
+  ❌ [H2.5-S13.5] [db] leave-only changes flag stale: hourly 2 h cancelled after finalise · hourly approved after finalise · recompute clears — expected 0.2 stored · cancel ⇒ stale · approve after ⇒ stale · recompute clears | actual cancelled,approvedAfter r1=0.2 s1=false s2=false rc=ok/c=true s1b=false
+RESIDUE none (tenants=2 users=13)
+===== qc-hr-h2.5 ===== passed 78/79 (QC_FORCE)

@@ -1,0 +1,9 @@
+# qc-hr-h2.5 r3 oracle on code a08e2482c (lane DB l1) · forced · 2026-11-12T04:04:38Z
+  ❌ [H2.5-S12.1] [race] approve and markPaid wait on the period lock a recompute holds · then recompute ⇒ rPaid — expected approve waits · rPaid · markPaid waits | actual approveWaited,paidWaited approve=false/APPROVED rc="เดือนนี้อนุมัติเงินเดือนแล้ว — คิดผลการล" paid=false/PAID
+  ❌ [H2.5-S12.2] [db] open session cap: OUT 33 h after its IN is its own day · IN day = missingOut — expected D MO W0 · D+1 OUT alone | actual d,d1 d=DAY:NO_SCHEDULE|L0|E0|W1980|O0 d1=-
+  ❌ [H2.5-S12.3] [db] no-shift slot with an open session is not finalised before IN + cap · closed later ⇒ W480 — expected 04:30 none · 06:30 W480 | actual notYet,final early=1 late=NO_SCHEDULE/W0/true
+  ❌ [H2.5-S12.4] [db] PM leave on 10–14/17–21: morning row no leaveId/fraction · evening LEAVE 0.5 — expected morning no leave · evening LEAVE 0.5 | actual morning,evening a=ON_TIME/false/0.5 b=LEAVE/0
+  ❌ [H2.5-S12.5] [db] paged job: page size 2 alerts all 5 · maxPages 1 rotates pages so 3 runs finalise all 5 — expected 5 alerted · run1 ≤ 2 employees · run3 all 5 | actual firstPage alerted=5 late=5 counts=5,5,5
+  ❌ [H2.5-S12.6] [db+static] days needing recompute (orphaned) counted per viewer scope · board banner id · inventory — expected owner/mgrU1 see the day · writerU2 not · banner id · inventory · th/en | actual owner,mgr,scoped,id,inv,msgs o=∅attendanceNeedsRecompute/undefined m=undefined w2=∅attendanceNeedsRecompute
+RESIDUE none (tenants=2 users=13)
+===== qc-hr-h2.5 ===== passed 68/74 (QC_FORCE)

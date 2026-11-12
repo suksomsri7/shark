@@ -211,6 +211,16 @@ export async function GET(req: Request) {
     });
   }
   // ◂ HR H2.4
+  // HR H2.5 ▸ R8 ตาข่ายสำรองของงาน "hr.attendance" (ตัวหลัก = งานรายนาทีทุก 5 นาที · Q2): เตือนยังไม่เข้างาน/ไม่มา + ปิดผลการลงเวลา D−7…D ทุกร้าน ·
+  //   งบ 20 วิ · รันซ้ำได้ · best-effort: ล้มห้ามทำให้รอบนี้แดง (ไม่เพิ่มช่องในผลลัพธ์ของ route)
+  try {
+    await (await import("@/lib/modules/hr/judge")).runAttendanceJobs({ now: new Date(), deadline: new Date(Date.now() + 20_000) });
+  } catch (e) {
+    await logOps("WARN", "cron", "runAttendanceJobs (ตัดสินผล/เตือนการลงเวลา) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ HR H2.5
   // HR H4.4 ▸ R5: เตือนครบทดลองงาน/สัญญาใกล้หมด ทุกร้าน (≤ 50 ต่อระบบ · ≤ 500 ต่อรอบ · ครั้งเดียวต่อวันที่ · ไม่มีอะไรครบ = ไม่เขียนอะไร) ·
   //   best-effort: ล้มห้ามทำให้รอบนี้แดง (ไม่เพิ่มช่องในผลลัพธ์ของ route) · event ถูกระบายใน drainAll ด้านล่าง
   try {

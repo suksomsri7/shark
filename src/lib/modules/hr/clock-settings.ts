@@ -15,6 +15,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { HR_UNIT_NOT_FOUND_TEXT, hrScopeOf, type HrScope } from "./scope";
 import { SETTINGS_TEXT, type SettingsViewer } from "./settings";
 import { CLOCK_POLICY_RANGE, clockPolicyOf, type ClockPolicy } from "./clock-rules";
+import { ATTENDANCE_POLICY_RANGE, attendancePolicyOf, type AttendancePolicy } from "./judge-rules"; // HR H2.5 ▸ R12 ◂
 
 type Ctx = { tenantId: string; systemId: string };
 type Tx = Prisma.TransactionClient;
@@ -256,3 +257,86 @@ export async function saveClockPolicy(
     return refuse(reasonOf(e));
   }
 }
+
+// ═══════════════════════════ HR H2.5 ▸ R12 นโยบายตัดสินผล/การเตือน (AppSystem.settings.hrAttendance) ═══════════════════════════
+//   ด่าน · กติกาทั้งร้าน · ล็อก · spread ค่าตั้งเดิม = แบบเดียวกับ saveClockPolicy (hrClock ↔ hrAttendance ไม่ทับกัน — ใช้ล็อกเดียวกัน) ◂
+export const ATTENDANCE_SETTINGS_TEXT = {
+  sAlert: "เวลาเตือนต้องอยู่ระหว่าง 0 ถึง 240 นาทีหลังเริ่มกะ",
+  sAbsent: "เวลาที่นับว่าไม่มาต้องอยู่ระหว่าง 30 ถึง 720 นาทีหลังเริ่มกะ",
+  sEarly: "เวลาผ่อนผันออกก่อนต้องอยู่ระหว่าง 0 ถึง 60 นาที",
+  sOtStep: "หน่วยปัด OT ต้องเป็น 1, 5, 10, 15 หรือ 30 นาที",
+} as const;
+export type AttendancePolicyInput = {
+  notInAlertMin?: number | string;
+  absentAfterMin?: number | string | null;
+  earlyOutGraceMin?: number | string;
+  otStepMin?: number | string;
+  flagEarlyOut?: boolean;
+  alertsOn?: boolean;
+  alertEmployee?: boolean;
+};
+const attendanceOfSettings = (settings: unknown): AttendancePolicy => attendancePolicyOf(settings && typeof settings === "object" ? (settings as Record<string, unknown>).hrAttendance : null);
+
+/** นโยบายตัดสินผล/การเตือนที่ใช้อยู่ (ค่าตั้งต้นเมื่อยังไม่ตั้ง) */
+export async function getAttendancePolicy(ctx: Ctx): Promise<AttendancePolicy> {
+  const s = await tenantDb({ tenantId: ctx.tenantId }).appSystem.findFirst({ where: { id: ctx.systemId, type: "HR" }, select: { settings: true } });
+  return attendanceOfSettings(s?.settings);
+}
+
+/** ตั้งนโยบายตัดสินผล/การเตือนของระบบ HR (ค่าทั้งร้าน ⇒ ผู้ดูแลทุกสาขาเท่านั้น) — ช่องที่ไม่ส่ง = คงค่าเดิม · absentAfterMin null/"" = ถึงเวลาเลิกกะ */
+export async function saveAttendancePolicy(ctx: Ctx, viewer: ClockSiteViewer, input: AttendancePolicyInput): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+  if (!canManageClockSettings(viewer)) return refuse(SETTINGS_TEXT.noPermission);
+  const sr = scopeRefusal(scopeOfViewer(viewer), null);
+  if (sr) return refuse(sr);
+  try {
+    const i = (input ?? {}) as AttendancePolicyInput;
+    const R = ATTENDANCE_POLICY_RANGE;
+    const T = ATTENDANCE_SETTINGS_TEXT;
+    const notIn = has(i, "notInAlertMin") ? intIn(i.notInAlertMin, R.notInAlertMin, T.sAlert) : undefined;
+    const absent = !Object.prototype.hasOwnProperty.call(i, "absentAfterMin") || i.absentAfterMin === undefined ? undefined : i.absentAfterMin === null || i.absentAfterMin === "" ? null : intIn(i.absentAfterMin, R.absentAfterMin, T.sAbsent);
+    const early = has(i, "earlyOutGraceMin") ? intIn(i.earlyOutGraceMin, R.earlyOutGraceMin, T.sEarly) : undefined;
+    let step: number | undefined;
+    if (has(i, "otStepMin")) {
+      const n = num(i.otStepMin);
+      if (n === null || !R.otStepMin.includes(n)) throw new ClockSettingsRefusal(T.sOtStep);
+      step = n;
+    }
+    const bool = (k: "flagEarlyOut" | "alertsOn" | "alertEmployee") => (typeof i[k] === "boolean" ? i[k] : undefined);
+    const out = await tenantDb({ tenantId: ctx.tenantId }).$transaction(
+      async (t) => {
+        const tx = t as unknown as Tx;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0))`;
+        const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
+        if (!sys) throw new ClockSettingsRefusal(SETTINGS_TEXT.notFound);
+        const base = sys.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? (sys.settings as Record<string, unknown>) : {};
+        const cur = attendanceOfSettings(base);
+        const next: AttendancePolicy = {
+          notInAlertMin: notIn ?? cur.notInAlertMin,
+          absentAfterMin: absent === undefined ? cur.absentAfterMin : absent,
+          earlyOutGraceMin: early ?? cur.earlyOutGraceMin,
+          flagEarlyOut: bool("flagEarlyOut") ?? cur.flagEarlyOut,
+          otStepMin: step ?? cur.otStepMin,
+          alertsOn: bool("alertsOn") ?? cur.alertsOn,
+          alertEmployee: bool("alertEmployee") ?? cur.alertEmployee,
+        };
+        const r = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: { ...base, hrAttendance: next } as Prisma.InputJsonValue } });
+        if (r.count !== 1) throw new ClockSettingsRefusal(SETTINGS_TEXT.notFound);
+        return next;
+      },
+      { maxWait: 15_000, timeout: 20_000 },
+    );
+    await writeAudit({
+      tenantId: ctx.tenantId,
+      actorType: viewer.userId ? "USER" : "SYSTEM",
+      actorId: viewer.userId ?? null,
+      action: "hr.settings.attendance-policy.update",
+      targetType: "AppSystem",
+      targetId: ctx.systemId,
+      after: { systemId: ctx.systemId, ...out },
+    });
+    return { ok: true, id: ctx.systemId };
+  } catch (e) {
+    return refuse(reasonOf(e));
+  }
+}
+// ◂ HR H2.5

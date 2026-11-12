@@ -1441,6 +1441,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   }),
   // ◂ HR H2.7
   // ◂ HR H2.3
+  // HR H2.5 ▸ การเตือนลงเวลา (hr/judge.ts#runAttendanceJobs — ยิงใน tx เดียวกับแถว HrAttendanceAlert · key `<type>#<alertId>` · payload id ล้วน)
+  //   ตัวรับ = notifyAttendanceAlert (ล็อกการเตือน · notifiedAt ⇒ ส่งซ้ำไม่เพิ่มแจ้งเตือน) แล้วจึง automation/เว็บฮุค
+  "hr.attendance.late": withAutomation(async (evt) => (await import("@/lib/modules/hr/judge")).notifyAttendanceAlert(evt)),
+  "hr.attendance.absent": withAutomation(async (evt) => (await import("@/lib/modules/hr/judge")).notifyAttendanceAlert(evt)),
+  // ◂ HR H2.5
   // HR H4.4 ▸ วงจรพนักงาน (hr/lifecycle.ts — ยิงใน tx เดียวกับงานหลัก · payload id/วันที่ล้วน): ครบกำหนด `…#<พนักงาน>#<ชนิด>#<วันที่>` ·
   //   เริ่มรายการตรวจ `…#<พนักงาน>#<ชนิด>#<ms ของแถวแรก>` · สิ้นสุดการจ้าง `…#<พนักงาน>#<ms ของ offboardedAt>` — งานหลักไม่มี (no-op) ·
   //   ของแถม = การ์ดบอร์ดงาน (platform/hr-lifecycle-bridges · เปิดเองรายระบบ HR · sourceKey กันซ้ำ ⇒ replay กี่รอบก็ผลเดียว) · โหลดตอนใช้ (กันวงโหลด)

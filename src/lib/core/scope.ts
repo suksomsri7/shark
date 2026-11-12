@@ -185,6 +185,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrShift: sys(),
   HrRosterEntry: sys(),
   HrClockSite: sys(), // HR H2.4 ▸ จุดลงเวลาด้วยมือถือต่อสาขา ◂
+  HrAttendanceDay: sys(), // HR H2.5 ▸ ผลตัดสินรายวัน (snapshot) ◂
+  HrAttendanceAlert: sys(), // HR H2.5 ▸ การเตือนยังไม่เข้างาน/ไม่มา ◂
   HrShiftSwapRequest: sys(),
   HrTimeCorrection: sys(),
   HrOtRequest: sys(),

@@ -416,7 +416,10 @@ function runStatic(): void {
   {
     const r = sha(rd(RULES_FILE)) === RULES_SHA;
     const ci = sha(seg(pay, "function computeItem(", "\n}\n", true)) === COMPUTE_ITEM_SHA;
-    const mp = sha(seg(pay, "// ── จ่ายแล้ว (APPROVED→PAID) ──", "// ◂ CRM C3.3", true)) === MARKPAID_BLOCK_SHA;
+    // ORACLE-EDIT (H2.5 r3 · controller-authorized): strip only the 3 marked period-lock lines (`HR H2.5 r3`) added to markPaid, then hash = base
+    const mpBlk = seg(pay, "// ── จ่ายแล้ว (APPROVED→PAID) ──", "// ◂ CRM C3.3", true);
+    const mpMarked = mpBlk.split("\n").filter((l) => /\/\/ HR H2\.5 r3 [▸◂]/.test(l));
+    const mp = mpMarked.length === 3 && sha(mpBlk.split("\n").filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l)).join("\n")) === MARKPAID_BLOCK_SHA;
     chk("S8.4", r && ci && mp, "3 hashes = base", `rules=${r} computeItem=${ci} markPaid=${mp}`);
   }
   // S8.5

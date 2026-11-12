@@ -113,6 +113,8 @@ const ENUMS: Record<string, readonly string[]> = {
   HrHalfDay: ["AM", "PM"],
 };
 const JUDGEMENT_6 = ["ON_TIME", "LATE", "DAY_OFF", "NO_SCHEDULE", "ABSENT", "EARLY_OUT"];
+// ORACLE-EDIT (HR H2.5 r2 · controller ruling J): H2.5 appends LEAVE (migration 20261230000001_hr_judgement_leave) — the H1.2 six stay first, in order
+const JUDGEMENT_NOW = [...JUDGEMENT_6, "LEAVE"];
 const BASE_COLS: readonly Col[] = [["id", "text", false], ["tenantId", "text", false], ["systemId", "text", false], ["createdAt", "ts", false, "CURRENT_TIMESTAMP"]];
 const UPD: Col = ["updatedAt", "ts", false];
 const TABLES: Record<string, readonly Col[]> = {
@@ -496,7 +498,7 @@ function runStatic(): void {
   for (const c of LEAVE_NEW) if (!fieldOk(leaveModel, c)) badSch.push(`HrLeave.${c[0]}`);
   const enumBody = (name: string) => block(sch, `enum ${name} {`).replace(/\/\/.*$/gm, "").replace(/\s+/g, " ").trim();
   for (const [n, vals] of Object.entries(ENUMS)) if (enumBody(n) !== `enum ${n} { ${vals.join(" ")} }`) badSch.push(`enum ${n}`);
-  if (enumBody("HrAttendanceJudgement") !== `enum HrAttendanceJudgement { ${JUDGEMENT_6.join(" ")} }`) badSch.push("enum HrAttendanceJudgement");
+  if (enumBody("HrAttendanceJudgement") !== `enum HrAttendanceJudgement { ${JUDGEMENT_NOW.join(" ")} }`) badSch.push("enum HrAttendanceJudgement"); // ORACLE-EDIT (H2.5 r2 J)
   if (!/^\s*type\s+HrLeaveType\s/m.test(leaveModel)) badSch.push("HrLeave.type");
   const ws = block(hrSch, "model HrWorkSchedule {");
   const wsSha = createHash("sha256").update(ws).digest("hex");
@@ -592,12 +594,18 @@ function runStatic(): void {
 
   // S7.1 seed
   const seed = stripComments(rd(SEED_FILE));
+  // ORACLE-EDIT (HR H2.5 r2 · controller ruling J): the H2.5 Q9 block writes past roster rows directly for the 7 judged days only
+  //   (the roster engine refuses past dates) — exactly one hrRosterEntry.create inside `for (let off = -AR.days; off <= -1; off++)`;
+  //   every other part of the seed keeps the prohibition
+  const s25 = /const AR = HQC\.attendanceRoster;[\s\S]*?"AJ1"/.exec(seed)?.[0] ?? "";
+  const s25ok = !s25 || ((s25.match(/\.(create|createMany|upsert)\(/g) ?? []).length === 1 && /hrRosterEntry\.create\(/.test(s25) && /for \(let off = -AR\.days; off <= -1; off\+\+\)/.test(s25));
+  const seedRest = s25 ? seed.replace(s25, "") : seed;
   const s71 = {
     shift: /hrShift\b|"HrShift"/.test(seed),
     night: /crossesMidnight:\s*true/.test(seed),
     policy: /hrLeavePolicy\b|"HrLeavePolicy"/.test(seed) && rd(SEED_FILE).includes("รอเจ้าของยืนยัน"),
     holiday: /hrHoliday\b|"HrHoliday"/.test(seed) && /presetYear/.test(seed),
-    noRequests: !/(hrRosterEntry|hrLeaveBalanceTxn|hrShiftSwapRequest|hrTimeCorrection|hrOtRequest)\.(create|createMany|upsert)\b|INSERT INTO "(HrRosterEntry|HrLeaveBalanceTxn|HrShiftSwapRequest|HrTimeCorrection|HrOtRequest)"/.test(seed),
+    noRequests: s25ok && !/(hrRosterEntry|hrLeaveBalanceTxn|hrShiftSwapRequest|hrTimeCorrection|hrOtRequest)\.(create|createMany|upsert)\b|INSERT INTO "(HrRosterEntry|HrLeaveBalanceTxn|HrShiftSwapRequest|HrTimeCorrection|HrOtRequest)"/.test(seedRest),
   };
   chk("S7.1", Object.values(s71).every(Boolean), "shifts (night) · policies (รอเจ้าของยืนยัน) · holidays · no request rows", failedKeys(s71));
 
@@ -1156,7 +1164,8 @@ async function runDb(): Promise<void> {
     const j = await enumOf("HrAttendanceJudgement");
     const badEnums: string[] = [];
     for (const [n, vals] of Object.entries(ENUMS)) if ((await enumOf(n)) !== vals.join(",")) badEnums.push(n);
-    chk("S1.10", j === JUDGEMENT_6.join(",") && badEnums.length === 0, JUDGEMENT_6.join(","), `judgement=${j} · enums wrong/missing=${badEnums.join(",") || "0"}`);
+    chk("S1.10", j === JUDGEMENT_NOW.join(",") && badEnums.length === 0, JUDGEMENT_NOW.join(","), // ORACLE-EDIT (H2.5 r2 J)
+      `judgement=${j} · enums wrong/missing=${badEnums.join(",") || "0"}`);
     const has = (t: string, c: string) => info.some((x) => x.t === t && x.c === c);
     const miss = [...ATT_BASE.filter((c) => !has("HrAttendance", c)).map((c) => `HrAttendance.${c}`), ...LEAVE_BASE.filter((c) => !has("HrLeave", c)).map((c) => `HrLeave.${c}`)];
     chk("S1.11", miss.length === 0, "0 missing", miss.join(",") || "0 missing");
