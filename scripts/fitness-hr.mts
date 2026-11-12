@@ -295,6 +295,10 @@ export const GUARD_MODULES = ["@/lib/modules/hr/privacy", "@/lib/modules/hr/scop
 export const PAGE_NOT_HR = new Set(["src/app/(store)/bq/kiosk/[token]/page.tsx"]);
 const PRIVACY_FILE = "src/lib/modules/hr/privacy.ts";
 const SCOPE_FILE = "src/lib/modules/hr/scope.ts";
+// HR H2.10 ▸ หน้า "ของฉัน" (/app/me/hr/**) กันด้วย facade บริการตัวเอง: ตัวอ่าน my* ของ hr/self.ts หาพนักงานจากเซสชันเอง (resolveSelf → employeeOfUser)
+//   ไม่ผูก = noEmployee (หน้าว่าง) — นับเป็นตัวกันเฉพาะชื่อ my* ที่ import และเรียกจริง (selfActorOf / ตัวเขียน self* ไม่นับ) ◂
+const SELF_GUARD_MODULE = "@/lib/modules/hr/self";
+const SELF_FILE = "src/lib/modules/hr/self.ts";
 /**
  * ตัวกันที่นับได้ (FIX E · H0.4 r2) — hr/privacy: `load*ForViewer` · `leaveItemsForViewer` · ชื่อขึ้นต้น `require` / `assert`
  * hr/scope: ทุก export (อ่านจากไฟล์จริงเมื่อมี) · 🔴 `hrViewerOf` / `hrAccessOf` / ตัวช่วยอื่นของ privacy ไม่นับ
@@ -333,17 +337,18 @@ const F163_ANCHORS = ["src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx",
 
 export function pageGuard(ROOT: string, abs: string, scope = scopeExports(ROOT)): { guarded: boolean; detail: string } {
   const sf = parse(abs);
-  const locals = new Map<string, "privacy" | "scope">(); // ชื่อตัวกันในไฟล์ → module
-  const namespaces = new Map<string, "privacy" | "scope">(); // import * as X
+  const locals = new Map<string, "privacy" | "scope" | "self">(); // ชื่อตัวกันในไฟล์ → module · HR H2.10 ▸ + self ◂
+  const namespaces = new Map<string, "privacy" | "scope" | "self">(); // import * as X · HR H2.10 ▸ + self ◂
   const ignored: string[] = []; // import จาก module ตัวกันแต่ไม่ใช่ตัวกัน (เช่น hrViewerOf)
-  const isGuard = (mod: "privacy" | "scope", name: string) => (mod === "privacy" ? isPrivacyGuardName(name) : scope.has(name));
+  const isGuard = (mod: "privacy" | "scope" | "self", name: string) => (mod === "privacy" ? isPrivacyGuardName(name) : mod === "self" ? /^my[A-Z]\w*$/.test(name) : scope.has(name)); // HR H2.10 ▸ self = my* ◂
   for (const st of sf.statements) {
     if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
     const spec = st.moduleSpecifier.text;
     const target = resolveLocal(ROOT, abs, spec);
     const targetRel = target ? posix(relative(ROOT, target)) : "";
-    const mod: "privacy" | "scope" | null =
-      spec === GUARD_MODULES[0] || spec === `${GUARD_MODULES[0]}.ts` || targetRel === PRIVACY_FILE ? "privacy" : spec === GUARD_MODULES[1] || spec === `${GUARD_MODULES[1]}.ts` || targetRel === SCOPE_FILE ? "scope" : null;
+    const mod: "privacy" | "scope" | "self" | null =
+      spec === GUARD_MODULES[0] || spec === `${GUARD_MODULES[0]}.ts` || targetRel === PRIVACY_FILE ? "privacy" : spec === GUARD_MODULES[1] || spec === `${GUARD_MODULES[1]}.ts` || targetRel === SCOPE_FILE ? "scope"
+      : spec === SELF_GUARD_MODULE || targetRel === SELF_FILE ? "self" : null; // HR H2.10 ▸ ◂
     if (!mod) continue;
     const cl = st.importClause;
     if (!cl || cl.isTypeOnly) continue;

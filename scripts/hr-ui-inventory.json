@@ -6137,6 +6137,1169 @@
    "wo": "H2.6",
    "oracle": "qc-hr-h2.6",
    "note": "ป้าย \"แก้โดยเจ้าของเอง\" · * = id HrTimeCorrection"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-page",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf",
+    "member",
+    "owner"
+   ],
+   "hiddenFor": [],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "กรอบหน้า \"ของฉัน\" (layout ของ /app/me/hr)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-tabbar",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "บัญชีที่ผูกกับพนักงาน",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "แถบแท็บ 5 ช่อง — ล่างจอ < lg · บนสุด ≥ lg"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-tab-today",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "บัญชีที่ผูกกับพนักงาน",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "แท็บ วันนี้"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-tab-week",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "บัญชีที่ผูกกับพนักงาน",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/week"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "แท็บ ตาราง"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-tab-requests",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "บัญชีที่ผูกกับพนักงาน",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/requests"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "แท็บ คำขอ"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-tab-pay",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "บัญชีที่ผูกกับพนักงาน",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/pay"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "แท็บ เงินเดือน"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-tab-profile",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "บัญชีที่ผูกกับพนักงาน",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/profile"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "แท็บ ฉัน"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-empty",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "บัญชีที่ไม่ผูกกับพนักงาน / ร้านไม่มีระบบ HR",
+   "roles": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "สถานะว่าง (หน้า 200 · ไม่มีแท็บ)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-ended",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "พนักงานที่ผูกแต่สิ้นสุดการจ้าง (ENDED)",
+   "roles": [],
+   "hiddenFor": [
+    "staff",
+    "payrollSelf",
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "แถบแจ้ง: ดูประวัติได้ ยื่นใหม่ไม่ได้"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-shift",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "การ์ดกะวันนี้ (ชื่อกะ · เวลา · พัก · สาขา)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-clock",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ส่วนลงเวลา (สถานะ · ข้อความปฏิเสธ)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-clock-btn",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "selfClockAction NEXT"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ปุ่มหลัก ลงเวลาเข้า/ออก/กลับจากพัก (ติดเหนือแถบแท็บ)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-break-btn",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "รอบเปิดอยู่ (canBreak)",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "selfClockAction BREAK_START"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ปุ่ม เริ่มพัก"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-gps",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "บรรทัด GPS — ระยะห่าง/รัศมีจากผลลงเวลาเท่านั้น (ไม่มีพิกัด)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-colleagues",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "เพื่อนร่วมกะ: ชื่อ · ตำแหน่ง · กะ (Q6)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-week",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "แถบสัปดาห์ (หน้าวันนี้) / รายการรายสัปดาห์ (หน้าตาราง)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-day-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "* = วันที่ YYYY-MM-DD · กะ/ลา/วันหยุดของวันนั้น"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-actions",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ทางลัดคำขอ (หน้าวันนี้ + หน้าคำขอ)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-act-leave",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "ยังทำงานอยู่",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/requests?form=leave"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ยื่นลา"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-act-ot",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "ยังทำงานอยู่",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/requests?form=ot"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ขอ OT"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-act-swap",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "ยังทำงานอยู่",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/requests?form=swap"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ขอเปลี่ยนกะ"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-act-correction",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "ยังทำงานอยู่",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/requests?form=correction"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "แก้เวลา"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-act-advance",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "ยังทำงานอยู่",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/requests?form=advance"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "เบิกล่วงหน้า (หน้าวันนี้/คำขอ/เงินเดือน)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-act-slip",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/me/hr/pay"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "สลิป"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-balances",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "วันลาคงเหลือ (myLeaveBalances)"
+  },
+  {
+   "page": "/app/me/hr",
+   "testid": "hr-self-bal-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "* = id ประเภทการลา · คงเหลือ/ใช้แล้ว/รออนุมัติ"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-req-list",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "คำขอของฉัน 5 ชนิด"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-req-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "* = <leave|ot|swap|correction|advance>-<id> · ทุกค่ามีป้าย · anchor #req-<ชนิด>-<id>"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-req-cancel-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "รายการที่ยกเลิกได้ (canCancel)",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "selfCancel*Action"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "* = <ชนิด>-<id>"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-req-accept-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "คำขอสลับกะที่ส่งถึงฉัน (canRespond)",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "selfRespondSwapAction accept"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "* = id คำขอสลับกะ · รับกะ"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-req-decline-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "คำขอสลับกะที่ส่งถึงฉัน (canRespond)",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "selfRespondSwapAction decline"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "* = id คำขอสลับกะ · ไม่รับ"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-form-leave",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "?form=leave",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ฟอร์มยื่นลา (07b) — ประเภท · วันที่ พ.ศ. · ครึ่งวัน/ชั่วโมง · เหตุผล"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-leave-impact",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "?form=leave",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "จำนวนวัน · กระทบกะของตัวเอง · คงเหลือหลังลา (ไม่ใช่ผลกระทบการจอง H4.1)"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-form-ot",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "?form=ot",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ฟอร์มขอ OT"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-form-swap",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "?form=swap",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ฟอร์มขอเปลี่ยนกะ (เพื่อน = mySwapTargets)"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-form-correction",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "?form=correction",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ฟอร์มขอแก้เวลา"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-form-advance",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "?form=advance",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ฟอร์มเบิกล่วงหน้า (บาทเต็ม 1–50,000)"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-submit",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "มีฟอร์มเปิดอยู่",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "selfRequest*Action"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ปุ่มส่งคำขอ (ติดเหนือแถบแท็บ)"
+  },
+  {
+   "page": "/app/me/hr/requests",
+   "testid": "hr-self-myreq-slot",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ช่อง H4.6 (คำขอของฉันรวมทุกระบบ) — ว่าง"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-self-payslips",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "สลิปของตัวเอง (รอบ APPROVED/PAID)"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-self-slip-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/payroll/[runId]/slip/[employeeId]"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "* = id รอบจ่าย · งวด · สถานะ · รับสุทธิ"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-self-cert-slot",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "ช่อง H3.8 (หนังสือรับรองเงินเดือน)"
+  },
+  {
+   "page": "/app/me/hr/profile",
+   "testid": "hr-self-notes",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "บันทึกที่เปิดให้พนักงานเห็น (H4.4)"
+  },
+  {
+   "page": "/app/me/hr/profile",
+   "testid": "hr-self-note-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "* = id บันทึก"
+  },
+  {
+   "page": "/app/me/hr/profile",
+   "testid": "hr-self-note-ack-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/self-ui.tsx",
+   "conditional": "ยังไม่รับทราบ · ยังทำงานอยู่",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "member",
+    "owner",
+    "manager",
+    "payroll",
+    "kiosk",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "selfAcknowledgeNoteAction"
+   },
+   "wo": "H2.10",
+   "oracle": "qc-hr-h2.10",
+   "note": "* = id บันทึก · รับทราบ"
   }
  ]
 }
