@@ -816,8 +816,8 @@ async function runDb(): Promise<void> {
     const st6 = (await P.hrPayAdjustment.findUnique({ where: { id: otRow }, select: { status: true } }))?.status;
     // R2.9 (controller r3 · H2.10 in base): decideAdjustmentAs only delegates ⇒ inherits the single-open-advance rule
     const adv1 = (await must("R2.9 adv1", () => pay.requestAdjustment(cD, { employeeId: d1, periodKey: "2031-06", kind: "ADVANCE", amountSatang: 10_000, note: "เบิก 1", requestedById: W.pay.id })) as Any)?.id ?? "";
-    const adv2 = (await must("R2.9 adv2", () => pay.requestAdjustment(cD, { employeeId: d1, periodKey: "2031-06", kind: "ADVANCE", amountSatang: 20_000, note: "เบิก 2", requestedById: W.pay.id })) as Any)?.id ?? "";
     const a9a = await call("decideInbox", cD, vOf(W.owner), { batchKey: `qcV1${tag}`, decision: "APPROVED", items: [{ type: "ADJUSTMENT", id: adv1 }] }, { now: NOW });
+    const adv2 = (await must("R2.9 adv2", () => pay.requestAdjustment(cD, { employeeId: d1, periodKey: "2031-06", kind: "ADVANCE", amountSatang: 20_000, note: "เบิก 2", requestedById: W.pay.id })) as Any)?.id ?? "";
     const a9b = await call("decideInbox", cD, vOf(W.owner), { batchKey: `qcV2${tag}`, decision: "APPROVED", items: [{ type: "ADJUSTMENT", id: adv2 }] }, { now: NOW });
     const ADV_OPEN = "พนักงานคนนี้มีเบิกล่วงหน้าอีกรายการที่ยังเปิดอยู่ (รออนุมัติ หรืออนุมัติแล้วแต่ยังไม่จ่าย) — ปฏิเสธรายการที่ซ้ำก่อน";
     ck("R2.9", { first: a9a.v?.results?.[0]?.ok === true, second: a9b.v?.results?.[0]?.ok === false && a9b.v?.results?.[0]?.reason === ADV_OPEN, pending: (await P.hrPayAdjustment.findUnique({ where: { id: adv2 || "∅" }, select: { status: true } }))?.status === "PENDING" }, "APPROVED · same refusal", `${res(a9a)} ‖ ${res(a9b)}`);

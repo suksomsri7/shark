@@ -198,15 +198,18 @@ async function runStatic(): Promise<void> {
   // ── nav (static) ──
   {
     const L = rd(F.layout);
-    const cur = block(L, 'case "HR":');
-    const base = block(fileAt(BASE, F.layout) ?? "", 'case "HR":');
+    // ORACLE-EDIT (H2.11 lands second · controller r3): the marked `HR H2.11` tab line ("คำขอ" — gated by hrNavFilter) is not part of H2.10's label set ◂
+    const no211 = (x: string) => x.split("\n").filter((l) => !/HR H2\.11\b/.test(l)).join("\n");
+    const cur = no211(block(L, 'case "HR":'));
+    const base = no211(block(fileAt(BASE, F.layout) ?? "", 'case "HR":'));
     const hunks = IN_BASE ? null : diffHunks(BASE, F.layout);
     const mine = (hunks ?? []).filter((h) => /HR H2\.10 ▸/.test(h.added.join("\n")));
     const foreign = (hunks ?? []).filter((h) => !/▸/.test(h.added.join("\n")));
     ck("S7.2", { wrap: /hrNavFilter\(/.test(cur), labels: srt(labels(cur)) === srt(labels(base)) && labels(cur).length > 0, marked: IN_BASE || (mine.length >= 1 && !foreign.length), drawer: /\/app\/me\/hr/.test(L) }, "wrap · labels · hunk", IN_BASE ? "in base" : `${hunks?.length}/${mine.length}`);
   }
   {
-    const tabs = (src: string) => block(src, "export function hrTabs(");
+    // ORACLE-EDIT (H2.11 lands second · controller r3): hrTabs = base except the one marked `HR H2.11` line ◂
+    const tabs = (src: string) => block(src, "export function hrTabs(").split("\n").filter((l) => !/HR H2\.11\b/.test(l)).join("\n");
     const cur = rd(F.hrUi);
     const pages = files("src/app/app/sys/[id]/hr").filter((f) => /hrTabs\(/.test(stripComments(rd(f))));
     ck("S7.3", { same: tabs(cur) === tabs(fileAt(BASE, F.hrUi) ?? "") && tabs(cur).length > 0, forFn: /export\s+(async\s+)?function\s+hrTabsFor\(/.test(cur), pages: !pages.length, hub: !/<ModuleTabs items=\{hrTabs\(/.test(cur) }, "hrTabs kept · hrTabsFor used", pages.join(","));
