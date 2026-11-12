@@ -2,7 +2,7 @@
 //   ยื่นแทนคนอื่นจากหน้านี้ไม่ได้ (Q13) · พ้นสภาพ = ดูอย่างเดียว ◂
 import { requireTenant } from "@/lib/core/context";
 import { thaiDateKey } from "@/lib/ui/date";
-import { myCorrectablePunches, myLeaveForm, myRequests, mySelf, myShiftsAhead, selfActorOf } from "@/lib/modules/hr/self";
+import { myCorrectablePunches, myLeaveForm, myRequests, mySelf, myShiftsAhead, myStockRequests, selfActorOf } from "@/lib/modules/hr/self";
 import { SelfEmpty, SelfRequests } from "@/lib/modules/hr/self-ui";
 
 const FORMS = ["leave", "ot", "swap", "correction", "advance"] as const;
@@ -12,7 +12,7 @@ export default async function MeHrRequestsPage({ searchParams }: { searchParams:
   const { form: asked } = await searchParams;
   const auth = await requireTenant();
   const a = selfActorOf(auth);
-  const [self, requests, leaveForm, shifts, punches] = await Promise.all([mySelf(a), myRequests(a), myLeaveForm(a), myShiftsAhead(a), myCorrectablePunches(a, {})]);
+  const [self, requests, leaveForm, shifts, punches, stock] = await Promise.all([mySelf(a), myRequests(a), myLeaveForm(a), myShiftsAhead(a), myCorrectablePunches(a, {}), myStockRequests(a)]);
   if (!self.ok || !requests.ok) return <SelfEmpty />;
   const form = FORMS.find((f) => f === asked) ?? null;
   return (
@@ -26,6 +26,7 @@ export default async function MeHrRequestsPage({ searchParams }: { searchParams:
         shifts: shifts.ok ? shifts.items : [],
         punches: punches.ok ? punches.items : [],
         today: thaiDateKey(),
+        stock: stock.ok ? stock.items : [],
       }}
     />
   );

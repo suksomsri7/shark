@@ -229,6 +229,7 @@ model HrEmployee {
   workEntries      HrWorkEntry[]
   reviewNotes      HrReviewNote[]
   onboardingTasks  HrOnboardingTask[]
+  stockCharges     HrStockCharge[] // HR H4.6 ▸ เบิกของ/ค่าเสียหาย (payroll.prisma) — ขาสะท้อนของ FK Restrict ◂
 
   @@index([systemId, active])
   @@index([tenantId])

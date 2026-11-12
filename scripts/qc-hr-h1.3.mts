@@ -795,33 +795,47 @@ function runStatic(): void {
     // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
     //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
     const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
-    // ORACLE-EDIT (controller 12 Nov · H2.9, narrowed by the law.ts ruling): hr/ot.ts is the designed OT_REQUEST writer — only sourceRef ignored there
-    //   (the OT law rows are read through hr/law.ts#loadOtLawRows, so HrLawTable stays ratcheted everywhere)
+    // ORACLE-EDIT (controller 12 Nov · H4.6 Q15 + H2.9, narrowed by the law.ts ruling): designed sourceRef writers — only that token is ignored there:
+    //   hr/stock-charge.ts ("hrstock:<key>") · hr/ot.ts (OT_REQUEST; OT law rows go through hr/law.ts#loadOtLawRows, so HrLawTable stays ratcheted)
+    const STOCK_OK = /^sourceRef$/;
     const OT_OK = /^sourceRef$/;
-    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t))).length;
-    // ORACLE-EDIT (controller 12 Nov · H2.9 extension, narrowed by the law.ts ruling): hr/payroll.ts may carry exactly 2 new reads inside lines/blocks
-    //   marked `HR H2.9` (2× sourceRef in writeOtAdjustmentInTx) — reads outside marked lines are ratcheted vs base as before,
-    //   and the marked count must be exactly 2 (a 3rd marked read, e.g. HrLawTable, fails too)
+    const cntOf = (f: string, s: string) =>
+      (stripComments(s).match(S61_RE) ?? []).filter(
+        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)),
+      ).length;
+    // ORACLE-EDIT (controller 12 Nov · H2.9 + H4.6 r3, merged into one mechanism): hr/payroll.ts may carry exactly the declared number of S6.1 tokens inside
+    //   lines/blocks marked per WO tag (block = from a `HR <tag> ▸` line without `◂` to the line with `◂ HR <tag>`; a one-line hunk carries the tag itself) ·
+    //   tokens outside marked lines are ratcheted vs base (base split the same way) · a tag whose marked count ≠ declared counts all its tokens
+    //   H2.9 = 2 (2× sourceRef in writeOtAdjustmentInTx) · H4.6 = 3 (sourceRef: destructure · findFirst where · create data in writeStockChargeAdjustmentInTx)
     const PAY_FILE = "src/lib/modules/hr/payroll.ts";
-    const PAY_H29_READS = 2;
-    const splitH29 = (src: string) => {
-      const inside: string[] = [];
+    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3 };
+    const splitMarked = (src: string) => {
+      const inside: Record<string, string[]> = Object.fromEntries(Object.keys(PAY_MARKED).map((t) => [t, []]));
       const outside: string[] = [];
-      let open = false;
+      let open: string | null = null;
       for (const line of src.split("\n")) {
         if (open) {
-          inside.push(line);
-          if (line.includes("◂ HR H2.9")) open = false;
-        } else if (line.includes("HR H2.9")) {
-          inside.push(line);
-          if (line.includes("HR H2.9 ▸") && !line.includes("◂")) open = true;
-        } else outside.push(line);
+          inside[open]!.push(line);
+          if (line.includes(`◂ ${open}`)) open = null;
+          continue;
+        }
+        const tag = Object.keys(PAY_MARKED).find((t) => line.includes(t));
+        if (!tag) {
+          outside.push(line);
+          continue;
+        }
+        inside[tag]!.push(line);
+        if (line.includes(`${tag} ▸`) && !line.includes("◂")) open = tag;
       }
-      return { inside: inside.join("\n"), outside: outside.join("\n") };
+      return { inside: Object.fromEntries(Object.entries(inside).map(([t, ls]) => [t, ls.join("\n")])), outside: outside.join("\n") };
     };
-    const payH29 = splitH29(rd(PAY_FILE));
-    const payMarked = (stripComments(payH29.inside).match(S61_RE) ?? []).length;
-    const newOf = (f: string) => (f === PAY_FILE ? cntOf(f, payH29.outside) - cntOf(f, atBase(f)) + (payMarked === PAY_H29_READS ? 0 : payMarked) : cntOf(f, rd(f)) - cntOf(f, atBase(f)));
+    const payNow = splitMarked(rd(PAY_FILE));
+    const payBase = splitMarked(atBase(PAY_FILE));
+    const payExtra = Object.entries(PAY_MARKED).reduce((n, [tag, want]) => {
+      const got = (stripComments(payNow.inside[tag] ?? "").match(S61_RE) ?? []).length;
+      return n + (got === want ? 0 : got);
+    }, 0);
+    const newOf = (f: string) => (f === PAY_FILE ? cntOf(f, payNow.outside) - cntOf(f, payBase.outside) + payExtra : cntOf(f, rd(f)) - cntOf(f, atBase(f)));
     const hits = files.map((f) => [f, newOf(f)] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
     chk("S6.1", files.length > 20 && hits.length === 0, "0 new reads", `${hits.join(",") || "0"} of ${files.length} files (base ${baseRef().slice(0, 8)})`);
   }

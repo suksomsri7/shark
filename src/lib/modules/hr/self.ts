@@ -24,6 +24,7 @@ import { CORRECTION_RULES } from "./correction-rules";
 import { acknowledgeReviewNote, myReviewNotes, type MyReviewNoteItem } from "./lifecycle";
 import { cancelSelfAdvance, requestSelfAdvance, selfAdvanceCancelOpen, SELF_ADVANCE_NOTE_MAX } from "./payroll";
 import { rosterOnDay } from "./roster";
+import { myStockCharges, type MyStockCharge } from "./stock-charge";
 import { holidaysBetween } from "./holidays";
 import { unitNamesOf } from "./scope";
 import { addDays, bkkDayKey, shiftWindow, TimeRuleError } from "./time-rules";
@@ -522,6 +523,13 @@ export async function myDocuments(actor: SelfActor): Promise<MyDocuments | Fail>
     certificate: null, // H3.8 (หนังสือรับรอง)
     myRequestsSlot: null, // H4.6 (คำขอของฉันรวมทุกระบบ)
   };
+}
+
+/** H4.6 ▸ ช่อง "คำขอของฉัน" (Q14): รายการเบิกของ/ค่าเสียหายของตัวเอง — ตัวอ่านเดิมของ H4.6 (myStockCharges) ตรงตัว · ไม่ผูก = noEmployee */
+export async function myStockRequests(actor: SelfActor): Promise<{ ok: true; items: MyStockCharge[] } | Fail> {
+  const me = await resolveSelf(actor);
+  if (!me) return no(SELF_TEXT.noEmployee);
+  return { ok: true, items: await myStockCharges({ tenantId: me.tenantId, userId: me.userId }) };
 }
 
 // ═══════════════════════════ ตัวเขียน (R5 — service เดิม · ข้อความเดิม) ═══════════════════════════

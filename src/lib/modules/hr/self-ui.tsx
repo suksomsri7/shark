@@ -27,6 +27,7 @@ import {
 } from "./self-actions";
 import type { MyDocuments, MyLeavePolicy, MyRequests, MySelf, MySwapTarget, MyToday, MyWeek } from "./self";
 import type { LeaveBalanceItem } from "./leave";
+import type { MyStockCharge } from "./stock-charge";
 
 type Res = { ok: boolean; reason?: string };
 const ME = "/app/me/hr";
@@ -433,6 +434,7 @@ export type SelfRequestsData = {
   shifts: { entryId: string; date: string; shiftName: string; startMin: number; endMin: number }[];
   punches: { id: string; kind: string; at: string }[];
   today: string;
+  stock: MyStockCharge[];
 };
 export function SelfRequests({ data, form, canWrite }: { data: SelfRequestsData; form: FormKind | null; canWrite: boolean }) {
   const t = useTranslations("hr.self");
@@ -466,9 +468,38 @@ export function SelfRequests({ data, form, canWrite }: { data: SelfRequestsData;
       {canWrite && form === "correction" && <CorrectionForm punches={data.punches} today={data.today} />}
       {canWrite && form === "advance" && <AdvanceForm />}
       <RequestList r={data.requests} canWrite={canWrite} />
-      {/* H4.6 ▸ ช่อง "คำขอของฉัน" รวมทุกระบบ (ยังว่าง) */}
-      <div data-testid="hr-self-myreq-slot" hidden />
+      {/* H4.6 ▸ ช่อง "คำขอของฉัน" (Q14): เบิกของ/ค่าเสียหายของตัวเอง — ตัวอ่าน myStockCharges ของ H4.6 ตรงตัว */}
+      <StockSlot items={data.stock} />
     </>
+  );
+}
+
+function StockSlot({ items }: { items: MyStockCharge[] }) {
+  const t = useTranslations("hr.self");
+  const ts = useTranslations("hr.stock");
+  return (
+    <section data-testid="hr-self-myreq-slot" className="flex flex-col gap-2">
+      <Title>{t("stockTitle")}</Title>
+      {items.length === 0 ? (
+        <p className={`${BOX} p-4 text-sm ${MUTED}`}>{t("stockEmpty")}</p>
+      ) : (
+        items.map((c) => (
+          <article key={c.id} className="flex flex-col gap-1 rounded-xl border border-[color:var(--color-line)] px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-medium">
+                {ts(`kind.${c.kind}`)}
+                {c.itemName ? ` · ${c.itemName}` : ""}
+              </span>
+              <Chip strong={c.status === "APPROVED" || c.status === "PAID"}>{ts(`status.${c.status}`)}</Chip>
+            </div>
+            {c.qty !== null ? <Field label={ts("qtyLabel")}>{c.qty}</Field> : null}
+            <Field label={t("fAmount")}>{formatBaht(c.amountSatang)}</Field>
+            <Field label={t("fPeriod")}>{c.periodKey ? periodLabel(c.periodKey, t) : "—"}</Field>
+            <Field label={t("fFiled")}>{beDate(bkkYmd(c.createdAt))}</Field>
+          </article>
+        ))
+      )}
+    </section>
   );
 }
 
