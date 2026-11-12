@@ -57,6 +57,12 @@ const T = {
   rateBelowLaw: "อัตรา OT ต่อชั่วโมงต้องไม่ต่ำกว่า 1.5 เท่าของค่าจ้างต่อชั่วโมงตามกฎหมาย",
   sAfter: "ระยะยื่นหลังทำต้องอยู่ระหว่าง 0 ถึง 72 ชั่วโมง",
   sRound: "หน่วยปัดนาที OT ที่จ่ายต้องเป็น 1, 15 หรือ 30 นาที", // ORACLE-EDIT H2.9 Q7
+  // ORACLE-EDIT r2 — fixed texts
+  noRate: "ยังไม่ได้ตั้งค่าจ้างของพนักงานคนนี้ — ตั้งค่าจ้างก่อนจึงขอ OT ได้",
+  leaveDay: "วันนี้มีใบลาเต็มวันที่อนุมัติแล้ว — ยกเลิกใบลาก่อนจึงขอ OT ได้",
+  rateRecheck: "อัตรา OT ที่ตั้งไว้ต่ำกว่าเกณฑ์ตามกฎหมายของค่าจ้างใหม่ — แก้อัตรา OT ให้สูงขึ้นหรือล้างค่าก่อนบันทึก",
+  rateNoBase: "ค่าจ้างฐานเป็น 0 — ตั้งอัตรา OT เองไม่ได้ ล้างอัตรา OT ก่อนบันทึก",
+  otRow: "รายการนี้มาจากคำขอ OT — แก้ที่คำขอ OT (ยกเลิก OT ที่อนุมัติแล้ว) แล้วระบบจะปรับยอดให้เอง",
   nTitleA: "คำขอ OT ได้รับอนุมัติ",
 };
 const BASE_KEYS = "date,dayClass,employeeId,employeeName,endAt,id,multiplierBp,paidMin,reason,requestedMin,settled,startAt,status,timing,warnWeek";
@@ -88,7 +94,7 @@ const CHECKS: Def[] = [
   D("S4.2", "R6", C, "RED", "[db] settle F1 ⇒ one row 17500 · <id>:1 · 2031-07 · request columns"),
   D("S4.3", "R3", C, "RED", "[db] F2 day off 110000 · F3 holiday 26250 · F4 hourly exact 70 min 8750"), // ORACLE-EDIT H2.9 Q7 (default otRoundMin 1)
   D("S4.4", "R9", C, "RED", "[db] self · fourEyes · notFound ×3"),
-  D("S4.5", "Q8", C, "RED", "[db] never worked ⇒ 0 · no profile ⇒ NO_RATE"),
+  D("S4.5", "Q8", C, "RED", "[db] never worked ⇒ 0 · no profile ⇒ refused at filing (r2 ruling 8b)"), // ORACLE-EDIT r2
   D("S4.6", "R6", C, "RED", "[db] STALE wait · recompute ⇒ 13502"),
   D("S4.7", "R6", C, "RED", "[db] idempotent settle/decide"),
   D("S5.1", "R7", C, "RED", "[db] createPayrollRun binds 20000 + 10000"),
@@ -107,6 +113,16 @@ const CHECKS: Def[] = [
   D("S8.2", "R12", M, "RED", "[db] replay ⇒ 1 notification, no money"),
   D("S9.1", "R13", C, "RED", "[db] writer #18 save/below/bad/keep/clear"),
   D("S9.2", "R14", M, "RED", "[db] OT policy 0 ⇒ late0 · 73 ⇒ sAfter · round 5 ⇒ sRound"), // ORACLE-EDIT H2.9 Q7
+  // ORACLE-EDIT r2 (controller fix round 12 Nov · reviewer + hunt hr-H2.9-hunt.md) — literal satang worked in hr-H2.9-oracle.md §r2
+  D("S10.1", "r2.1/5", C, "RED", "[pure] law row can only raise (12000 ⇒ 15000) · override below floor pays the floor · worked-interval minutes"),
+  D("S10.2", "r2.1", C, "RED", "[db] profile save re-checks stored override (raise ⇒ rateRecheck · base 0 ⇒ rateNoBase) · legacy low override settles 12500"),
+  D("S10.3", "r2.2", C, "RED", "[db] worked minutes only: gap 8750 · break 8750 · day-off break 17500 · hourly 80 min 10000 · monthly 80 min 11667"),
+  D("S10.4", "r2.3", C, "RED", "[db] cancelAdjustment / moveStrandedAdjustment refuse OT_REQUEST rows"),
+  D("S10.5", "r2.4", C, "RED", "[db] cron: 3 waiting + 1 ready at maxTx 3 ⇒ ready settles within 2 runs"),
+  D("S10.6", "r2.6", C, "RED", "[db] NO_ATTENDANCE 0 re-settles when the day row appears ⇒ 17500"),
+  D("S10.7", "r2.7", C, "RED", "[db] otRoundMin frozen at first settlement: 64 min 9333 stays after step 30 + version bump"),
+  D("S10.8", "r2.8a", C, "RED", "[db] full-day leave: filing + approval refused · leave after approval ⇒ settled 0 LEAVE"),
+  D("S10.9", "r2.8c", C, "RED", "[db] work date after endDate ⇒ settled 0 ENDED, no row"),
   D("X1", "frozen", C, "GREEN", "[db] frozen digests + MONTHLY"),
   D("X2", "frozen", C, "GREEN", "[db] frozen clock"),
   D("X3", "frozen", C, "GREEN", "[db] frozen privacy matrix"),
@@ -344,6 +360,31 @@ for (const [g, a, b] of [["S2.1", 0, 8], ["S2.2", 8, 19]] as const) {
   chk("S2.6", Object.values(r).every(Boolean), "floors 8750/7716/7500/6500/null · policy · pure", short(r));
 }
 
+// ORACLE-EDIT r2 · S10.1 pure: r2.5 a law row can only raise · r2.1a override below the legal floor pays the floor · r2.2 worked-interval minutes
+{
+  const v20 = amtStr(pure("otAmount", { law: { ...LAW, workdayOtBp: 12000 }, ...mo(1_400_000), ...W(120) })); // 1 400 000×120×15 000/144e6 = 17 500 (12 000 ignored)
+  const v21 = amtStr(pure("otAmount", { law: LAW, ...mo(2_000_000, { otHourlyRateSatang: 8_750 }), ...W(60) })); // floor 12 500/h > 8 750 ⇒ 2 000 000×60×15 000/144e6 = 12 500
+  const v22 = amtStr(pure("otAmount", { law: LAW, ...mo(1_400_000, { otHourlyRateSatang: 10_000 }), ...W(90) })); // override 10 000 ≥ floor 8 750 ⇒ 10 000×90/60 = 15 000 (V11 kept)
+  const l9 = canon(pure("otLawOf", [{ id: "r9", kind: "OT", effectiveFrom: "2031-01-01", status: "ACTIVE", json: { workdayMultiplierBp: 12000, holidayOtBp: 25000, daysPerMonth: 30, hoursPerDay: 8 } }], "2031-07-07"));
+  const t = (d: string, hm: string) => bk("2031-07-07", hm.replace("D2 ", "+1 "));
+  const wk = (req: [string, string], from: string | null, worked: [string, string][], step: number) =>
+    pure("otWorkedPaidMinutes", { reqStart: t("", req[0]), reqEnd: t("", req[1]), from: from ? t("", from) : null, worked: worked.map(([a, b]) => ({ start: t("", a), end: t("", b) })), stepMin: step });
+  const w = [
+    wk(["20:00", "22:00"], "20:00", [["09:55", "20:00"], ["21:00", "22:00"]], 1), // gap 20–21 ⇒ 60
+    wk(["09:00", "13:00"], null, [["09:00", "12:00"], ["13:00", "19:00"]], 1), // day off, break 12–13 ⇒ 180
+    wk(["20:00", "21:20"], "20:00", [["09:55", "21:20"]], 1), // 80 (not floored by attendance step 15)
+    wk(["21:00", "23:00"], "20:00", [["10:00", "22:04"]], 30), // 64 ⇒ step 30 ⇒ 60
+  ];
+  const r = {
+    v20: v20 === "OT_WORKDAY:120:15000:17500=17500",
+    v21: v21 === "OT_WORKDAY:60:15000:12500=12500",
+    v22: v22 === "OT_WORKDAY:90:15000:15000=15000",
+    l9: l9 === canon({ ok: true, law: { workdayOtBp: 15000, holidayWorkPaidBp: 10000, holidayWorkUnpaidBp: 20000, holidayOtBp: 30000, daysPerMonth: 30, hoursPerDay: 8 }, lawRowId: "r9" }),
+    worked: w.join(",") === "60,180,80,60",
+  };
+  chk("S10.1", Object.values(r).every(Boolean), "17500 · 12500 · 15000 · law max · 60,180,80,60", `${short(r)} v20=${v20} v21=${v21} l9=${short(l9, 60)} w=${w.join(",")}`);
+}
+
 // ═════════════════════════ DB ═════════════════════════
 const { P, coreHash } = await qc4Env(SUITE);
 const stamp = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
@@ -420,6 +461,7 @@ try {
   await prof(cA, E.e3, { payType: "HOURLY", hourlyRateSatang: 5_000 });
   await prof(cA, E.eM, { baseSalarySatang: 1_234_500, payType: "MONTHLY" });
   await prof(cA, E.eE, { baseSalarySatang: 1_600_000, payType: "MONTHLY" });
+  await prof(cA, E.eW, { baseSalarySatang: 1_400_000, payType: "MONTHLY" }); // ORACLE-EDIT r2 (8b: no rate ⇒ refused at filing)
   await prof(cP, E.eP, { baseSalarySatang: 1_600_000, payType: "MONTHLY" });
   const D1 = "2031-07-07", D2 = "2031-07-08", D3 = "2031-07-09", D4 = "2031-07-10", D5 = "2031-07-11", D6 = "2031-07-12";
   const shA = (await P.hrShift.create({ data: { tenantId: TA, systemId: sA, name: `กะ ${tag}`, startMin: 600, endMin: 1200, crossesMidnight: false, graceMin: 15 } })).id as string;
@@ -503,7 +545,7 @@ try {
   const RC1 = idOf(await req(cA, "self", { date: D5, start: "20:00", end: "21:00" }, bk(D5, "09:00")));
   const F6 = idOf(await req(cA, "selfM", { date: D1, start: "20:00", end: "21:45" }, bk(D1, "12:00")));
   const RC4 = idOf(await req(cA, "owner", { employeeId: E.eM, date: D2, start: "20:00", end: "21:30" }, bk(D2, "09:00")));
-  const FN = idOf(await req(cA, "owner", { employeeId: E.eN, date: D1, start: "20:00", end: "21:00" }, bk(D1, "09:00")));
+  const FNr = await req(cA, "owner", { employeeId: E.eN, date: D1, start: "20:00", end: "21:00" }, bk(D1, "09:00")); // ORACLE-EDIT r2 8b: refused at filing
   const P1 = idOf(await req(cP, "owner", { employeeId: E.eP, date: D1, start: "20:00", end: "22:00" }, bk(D1, "09:00")));
   const P2 = idOf(await req(cP, "owner", { employeeId: E.eP, date: D2, start: "20:00", end: "21:00" }, bk(D2, "09:00")));
   const P3 = idOf(await req(cP, "owner", { employeeId: E.eP, date: D3, start: "20:00", end: "22:00" }, bk(D3, "09:00")));
@@ -567,10 +609,10 @@ try {
   }
   {
     const d5 = await dec(cA, "owner", F5, "APPROVED");
-    const dn = await dec(cA, "apprU1", FN, "APPROVED");
-    const [r5, rn] = [await ot(F5), await ot(FN)];
-    const ok = d5?.settled === true && r5?.paidMinutes === 0 && r5?.amountSatang === 0 && !!r5?.settledAt && (await adj(F5)).length === 0 && dn?.ok === true && dn.settled === false && rn?.settleCode === "NO_RATE" && !rn?.settledAt && (await adj(FN)).length === 0;
-    chk("S4.5", ok, "F5 paid 0 · FN NO_RATE", `F5=${sh(d5)} paid=${r5?.paidMinutes} FN=${sh(dn)} code=${rn?.settleCode}`);
+    const r5 = await ot(F5);
+    const nN = (await fx.rawRows(`SELECT count(*)::int AS n FROM "HrOtRequest" WHERE "employeeId" = $1`, E.eN))?.[0]?.n ?? -1;
+    const ok = d5?.settled === true && r5?.paidMinutes === 0 && r5?.amountSatang === 0 && !!r5?.settledAt && (await adj(F5)).length === 0 && said(FNr, T.noRate) && nN === 0;
+    chk("S4.5", ok, "F5 paid 0 · FN noRate at filing · 0 rows", `F5=${sh(d5)} paid=${r5?.paidMinutes} FN=${sh(FNr)} rows=${nN}`);
   }
   {
     const d6 = await dec(cA, "owner", F6, "APPROVED");
@@ -721,6 +763,138 @@ try {
     const s1 = await call("saveOtPolicy", cA, v("owner"), { afterHours: 24, maxAheadDays: 31 });
     const g = await call("getOtPolicy", cA);
     chk("S9.2", s0?.ok === true && said(late, T.late0) && said(bad, T.sAfter) && said(badR, T.sRound) && s1?.ok === true && canon(g) === canon({ afterHours: 24, maxAheadDays: 31, otRoundMin: 1 }), "late0 · sAfter · sRound · restored", `${sh(s0)} late=${sh(late)} bad=${sh(bad)} round=${sh(badR)} get=${short(g, 50)}`);
+  }
+
+  // ═══ ORACLE-EDIT r2 · S10 fix round (own system sQ in tenant A · July 2031) ═══
+  console.log("── S10 r2 ──");
+  {
+    const sQ = await sys(TA, "HR Q");
+    const cQ = { tenantId: TA, systemId: sQ };
+    const shQ = (await P.hrShift.create({ data: { tenantId: TA, systemId: sQ, name: `กะคิว ${tag}`, startMin: 600, endMin: 1200, crossesMidnight: false, graceMin: 15 } })).id as string;
+    const entQ = async (emp: string, day: string) => (ENT[`${emp}:${day}`] = (await P.hrRosterEntry.create({ data: { tenantId: TA, systemId: sQ, employeeId: emp, date: dbDate(day), shiftId: shQ, unitId: u1, startMin: 600, endMin: 1200, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-06-01T00:00:00Z"), source: "MANUAL" } })).id as string);
+    const evQ = async (emp: string, day: string, list: [string, string][]) => { for (const [k, hm] of list) await att(sQ, emp, k, day, hm); };
+    const M14 = { baseSalarySatang: 1_400_000, payType: "MONTHLY" };
+    const mk = async (n: string, profile: Record<string, unknown> | null) => {
+      const id = await me(sQ, n);
+      if (profile) await prof(cQ, id, profile);
+      return id;
+    };
+    const rq = (emp: string, day: string, a: string, b: string, at: Date) => call("requestOt", cQ, v("owner"), { employeeId: emp, date: day, start: a, end: b }, { now: at });
+    const dq = (id: string, at: Date) => call("decideOtRequest", cQ, v("mgrAll"), id, "APPROVED", { now: at });
+    const setP = async (emp: string, x: Record<string, unknown>) => { try { await PAY.setSalaryProfile(cQ, { employeeId: emp, ...x }); return "ok"; } catch (e) { return e instanceof Error ? e.message : String(e); } };
+    const T14 = bk("2031-07-14", "13:00");
+    // fixtures
+    const q1 = await mk("คิวหนึ่ง", null);
+    const [qa, qb, qc, qd, qe, qg] = [await mk("คิวช่อง", M14), await mk("คิวพัก", M14), await mk("คิวหยุด", M14), await mk("คิวชั่วโมง", { payType: "HOURLY", hourlyRateSatang: 5_000 }), await mk("คิวแปดสิบ", M14), await mk("คิวปัด", M14)];
+    const [qL1, qL2, qL3, qE] = [await mk("คิวลาหนึ่ง", M14), await mk("คิวลาสอง", M14), await mk("คิวลาสาม", M14), await mk("คิวออก", M14)];
+    for (const e of [q1, qa, qb, qc, qd, qe, qE]) await entQ(e, D1);
+    for (const e of [qg]) await entQ(e, D2);
+    for (const e of [qL1, qL2, qL3]) await entQ(e, D3);
+    await evQ(q1, D1, [["IN", "09:55"], ["OUT", "21:00"]]);
+    await evQ(qa, D1, [["IN", "09:55"], ["OUT", "20:00"], ["IN", "21:00"], ["OUT", "22:00"]]);
+    await evQ(qb, D1, [["IN", "09:55"], ["BREAK_START", "20:00"], ["BREAK_END", "21:00"], ["OUT", "22:00"]]);
+    await evQ(qc, D6, [["IN", "09:00"], ["BREAK_START", "12:00"], ["BREAK_END", "13:00"], ["OUT", "19:00"]]);
+    await evQ(qd, D1, [["IN", "09:55"], ["OUT", "21:20"]]);
+    await evQ(qe, D1, [["IN", "09:55"], ["OUT", "21:20"]]);
+    const qgEv = { in: await att(sQ, qg, "IN", D2, "10:00"), out: await att(sQ, qg, "OUT", D2, "22:04") };
+    await evQ(qL3, D3, [["IN", "09:55"], ["OUT", "21:00"]]);
+    await evQ(qE, D1, [["IN", "09:55"], ["OUT", "21:00"]]);
+    const leave = (emp: string, day: string) => P.hrLeave.create({ data: { tenantId: TA, systemId: sQ, employeeId: emp, type: "PERSONAL", fromDate: dbDate(day), toDate: dbDate(day), status: "APPROVED", days: 1 } });
+    // r2.1b: profile save re-checks the stored override
+    const s1 = await setP(q1, { ...M14, otHourlyRateSatang: 8_750 });
+    const s2 = await setP(q1, { baseSalarySatang: 2_000_000, payType: "MONTHLY" });
+    const s3 = await setP(q1, { baseSalarySatang: 0, payType: "MONTHLY" });
+    const kept = (await P.hrSalaryProfile.findFirst({ where: { employeeId: q1 } })) as Any;
+    const s4 = await setP(q1, { baseSalarySatang: 2_000_000, payType: "MONTHLY", otHourlyRateSatang: null });
+    await P.$executeRawUnsafe(`UPDATE "HrSalaryProfile" SET "otHourlyRateSatang" = 8750 WHERE "employeeId" = $1`, q1); // legacy row: override below the 12 500 floor
+    // requests (filed before the work)
+    const R: Record<string, string> = {};
+    for (const [k, e, d, a, b] of [["q1", q1, D1, "20:00", "21:00"], ["qa", qa, D1, "20:00", "22:00"], ["qb", qb, D1, "20:00", "22:00"], ["qd", qd, D1, "20:00", "21:20"], ["qe", qe, D1, "20:00", "21:20"], ["qE", qE, D1, "20:00", "21:00"], ["qg", qg, D2, "21:00", "23:00"], ["qL2", qL2, D3, "20:00", "21:00"], ["qL3", qL3, D3, "20:00", "21:00"]] as const) R[k] = idOf(await rq(e, d, a, b, bk(D1, "08:00")));
+    R.qc = idOf(await rq(qc, D6, "09:00", "13:00", bk(D1, "08:00")));
+    // 8a(i) filing refused on a full-day leave · (ii) approval refused after the leave · (iii) leave after approval ⇒ 0 LEAVE
+    await leave(qL1, D3);
+    const l1 = await rq(qL1, D3, "20:00", "21:00", bk(D1, "08:00"));
+    await leave(qL2, D3);
+    const l2 = await dq(R.qL2!, bk(D1, "09:00"));
+    const l3a = await dq(R.qL3!, bk(D1, "09:00"));
+    await leave(qL3, D3);
+    // 8c: approved, then endDate before the work date
+    const e0 = await dq(R.qE!, bk(D1, "09:00"));
+    await P.hrEmployee.update({ where: { id: qE }, data: { endDate: dbDate("2031-07-06") } });
+    await JG.runAttendanceJobs({ now: bk("2031-07-14", "12:00"), tenantId: TA }).catch(() => 0);
+    // approvals after the days are final
+    const dd: Record<string, Any> = {};
+    for (const k of ["q1", "qa", "qb", "qc", "qd", "qe", "qg"]) dd[k] = await dq(R[k]!, T14);
+    {
+      const r = { s1: s1 === "ok", s2: s2 === T.rateRecheck, s3: s3 === T.rateNoBase, kept: kept?.baseSalarySatang === 1_400_000 && kept?.otHourlyRateSatang === 8_750, s4: s4 === "ok", pay: adjStr(await adj(R.q1!)) === "1/OT/APPROVED/12500/2031-07/free" };
+      chk("S10.2", Object.values(r).every(Boolean), "recheck · nobase · kept · 12500", `${short(r)} s2=${short(s2, 40)} s3=${short(s3, 40)} q1=${adjStr(await adj(R.q1!))}`);
+    }
+    {
+      const got = await Promise.all(["qa", "qb", "qc", "qd", "qe"].map(async (k) => `${k}=${adjStr(await adj(R[k]!))}|${(await ot(R[k]!))?.paidMinutes}`));
+      const want = ["qa=1/OT/APPROVED/8750/2031-07/free|60", "qb=1/OT/APPROVED/8750/2031-07/free|60", "qc=1/OT/APPROVED/17500/2031-07/free|180", "qd=1/OT/APPROVED/10000/2031-07/free|80", "qe=1/OT/APPROVED/11667/2031-07/free|80"];
+      chk("S10.3", got.join(" ") === want.join(" "), want.join(" "), got.join(" "));
+    }
+    {
+      const row = (await adj(R.qa!))[0] ?? {};
+      const c = await PAY.cancelAdjustment(cQ, String(row.id ?? "∅"), { userId: U.owner!.id, isOwner: true }).catch((e: unknown) => ({ ok: false, reason: `THROW ${errText(e)}` }));
+      const m = await PAY.moveStrandedAdjustment(cQ, String(row.id ?? "∅"), { userId: U.owner!.id, isOwner: true }).catch((e: unknown) => ({ ok: false, reason: `THROW ${errText(e)}` }));
+      const after = (await adj(R.qa!))[0] ?? {};
+      chk("S10.4", said(c, T.otRow) && said(m, T.otRow) && after.status === "APPROVED" && after.amountSatang === 8750, "otRow ×2 · row kept", `cancel=${sh(c)} move=${sh(m)} row=${after.status}/${after.amountSatang}`);
+    }
+    {
+      // 3 waiting (no profile ⇒ NO_RATE, rows written directly — filing would refuse them) + 1 ready, maxTx 3
+      const waiters: string[] = [];
+      for (const n of ["คิวรอหนึ่ง", "คิวรอสอง", "คิวรอสาม"]) {
+        const e = await mk(n, null);
+        await entQ(e, D4);
+        await evQ(e, D4, [["IN", "09:55"], ["OUT", "21:00"]]);
+        waiters.push(e);
+      }
+      const qr = await mk("คิวพร้อม", M14);
+      await entQ(qr, D5);
+      await evQ(qr, D5, [["IN", "09:55"], ["OUT", "21:00"]]);
+      await JG.runAttendanceJobs({ now: bk("2031-07-14", "12:00"), tenantId: TA }).catch(() => 0);
+      const mkReq = (e: string, day: string) => P.hrOtRequest.create({ data: { tenantId: TA, systemId: sQ, employeeId: e, date: dbDate(day), startAt: bk(day, "20:00"), endAt: bk(day, "21:00"), minutes: 60, timing: "BEFORE", status: "APPROVED", requestedByUserId: U.owner!.id, decidedById: U.mgrAll!.id, decidedAt: bk(day, "09:00") } });
+      for (const e of waiters) await mkReq(e, D4);
+      await sleep(50);
+      const ready = (await mkReq(qr, D5)).id as string;
+      const s1r = await call("settleOtRequests", { tenantId: TA, systemId: sQ, now: bk("2031-07-14", "13:30"), maxTx: 3 });
+      const s2r = await call("settleOtRequests", { tenantId: TA, systemId: sQ, now: bk("2031-07-14", "14:30"), maxTx: 3 });
+      chk("S10.5", adjStr(await adj(ready)) === "1/OT/APPROVED/8750/2031-07/free", "ready 8750 within 2 runs", `${short(s1r, 60)} · ${short(s2r, 60)} · ready=${adjStr(await adj(ready))}`);
+    }
+    {
+      // NO_ATTENDANCE 0, then the day row appears (late punch on a shop holiday, no roster) ⇒ re-settle 180 min × 1.0 = 17 500
+      await P.hrHoliday.create({ data: { tenantId: TA, systemId: sQ, unitId: null, date: dbDate(D4), name: `วันหยุดคิว ${tag}`, kind: "SHOP", shopOpen: true } });
+      const qz = await mk("คิวมาทีหลัง", M14);
+      const z = idOf(await rq(qz, D4, "09:00", "12:00", bk(D4, "08:00")));
+      const z1 = await dq(z, bk("2031-07-20", "12:00"));
+      const zr = await ot(z);
+      await evQ(qz, D4, [["IN", "09:00"], ["OUT", "12:00"]]);
+      await JG.runAttendanceJobs({ now: bk("2031-07-11", "12:00"), tenantId: TA }).catch(() => 0);
+      await call("settleOtRequests", { tenantId: TA, systemId: sQ, now: bk("2031-07-20", "13:00") });
+      chk("S10.6", z1?.settled === true && zr?.paidMinutes === 0 && adjStr(await adj(z)) === "1/OT/APPROVED/17500/2031-07/free" && (await ot(z))?.paidMinutes === 180, "0 → 17500", `first=${sh(z1)} paid0=${zr?.paidMinutes} now=${adjStr(await adj(z))}`);
+    }
+    {
+      // r2.7: 64 min at step 1 = 9 333 · shop switches to 30 · IN 10:00 → 09:50 + recompute (version 2) ⇒ still 64, no new row
+      const g0 = adjStr(await adj(R.qg!));
+      const sp = await call("saveOtPolicy", cQ, v("owner"), { otRoundMin: 30 });
+      await P.hrAttendance.delete({ where: { id: qgEv.in } });
+      await att(sQ, qg, "IN", D2, "09:50");
+      const day = (await fx.rawRows(`SELECT "id" FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND "date" = $2::date`, qg, D2))?.[0];
+      const rc = await JG.recomputeAttendanceDay(cQ, v("owner"), { dayId: day?.id, reason: "แก้เวลาเข้า" }, { now: bk("2031-07-15", "10:00") }).catch((e: unknown) => ({ __err: errText(e) }));
+      await call("settleOtRequests", { tenantId: TA, systemId: sQ, now: bk("2031-07-15", "11:00") });
+      const g1 = adjStr(await adj(R.qg!));
+      await call("saveOtPolicy", cQ, v("owner"), { otRoundMin: 1 });
+      chk("S10.7", g0 === "1/OT/APPROVED/9333/2031-07/free" && sp?.ok === true && rc?.ok === true && rc?.changed === true && g1 === g0 && (await ot(R.qg!))?.paidMinutes === 64, "9333 kept", `before=${g0} rc=${short(rc, 50)} after=${g1}`);
+    }
+    {
+      const s3 = await call("settleOtRequests", { tenantId: TA, systemId: sQ, now: bk("2031-07-14", "15:00") });
+      const r3 = await ot(R.qL3!);
+      const st2 = (await ot(R.qL2!))?.status;
+      chk("S10.8", said(l1, T.leaveDay) && said(l2, T.leaveDay) && st2 === "PENDING" && l3a?.ok === true && !!r3?.settledAt && r3?.paidMinutes === 0 && r3?.settleCode === "LEAVE" && (await adj(R.qL3!)).length === 0, "leaveDay ×2 · LEAVE 0", `l1=${sh(l1)} l2=${sh(l2)} st2=${st2} l3=${sh(l3a)} code=${r3?.settleCode} paid=${r3?.paidMinutes} ${short(s3, 40)}`);
+      const rE = await ot(R.qE!);
+      chk("S10.9", e0?.ok === true && !!rE?.settledAt && rE?.paidMinutes === 0 && rE?.settleCode === "ENDED" && (await adj(R.qE!)).length === 0, "ENDED 0 · no row", `e0=${sh(e0)} code=${rE?.settleCode} paid=${rE?.paidMinutes} rows=${(await adj(R.qE!)).length}`);
+    }
   }
 
   // ═══ X frozen controls ═══
