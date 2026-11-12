@@ -42,7 +42,7 @@ const T = {
   noEmp: "บัญชีของคุณยังไม่ได้ผูกกับพนักงาน — ติดต่อผู้จัดการ",
   approveBlocked: "ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ",
 };
-const BLOCKING = ["LEAVE_MISMATCH", "MISSING_OUT", "NOT_FINAL", "NOT_STORED", "ORPHAN", "OVER_1440", "PENDING_LEAVE", "STALE", "STRAY_IN", "WORKED_ON_LEAVE"]; // ORACLE-EDIT r2 (item 4d): + OVER_1440
+const BLOCKING = ["LEAVE_MISMATCH", "MISSING_OUT", "NOT_FINAL", "NOT_STORED", "ORPHAN", "OVER_1440", "PENDING_LEAVE", "STALE", "STRAY_IN"]; // ORACLE-EDIT r2 (item 4d): + OVER_1440 · ORACLE-EDIT r4 (hunter F2): WORKED_ON_LEAVE is review-info, not blocking
 const MIN_KEYS = ["plannedMin", "workMin", "otWorkdayMin", "holidayWorkMin", "otHolidayMin", "holidayPaidMin", "paidLeaveMin", "unpaidLeaveMin", "absentMin", "lateMin", "earlyOutMin", "unplannedMin", "breakDeductMin"];
 const ABBR = ["p", "w", "ow", "hw", "oh", "hp", "pl", "ul", "ab", "la", "eo", "un", "bd"];
 const KIND_ORDER = ["WORK", "OT_WORKDAY", "HOLIDAY_WORK", "OT_HOLIDAY", "HOLIDAY_PAID", "LEAVE_PAID", "LEAVE_UNPAID", "ABSENT", "LATE", "EARLY_OUT"];
@@ -62,9 +62,9 @@ S1.6|R7|M|R|[static] judge.ts: exported workEntryDaysInTx in a marked pure-addit
 S1.7|R9|M|R|[static] actions use server · no now: · requireTenant · UI testids · inventory wo H3.1 · hr.we th=en · tokens · page mounts
 S2.1|Q3|C|R|[pure] break rule: 7 literal vectors (planned break after 5 h · clocked first · CLOCKED_ONLY · threshold)
 S2.2|R3|C|R|[pure] workday basics: on time · late · OT · early arrival · absent · late capped by unclocked break (6 vectors)
-S2.3|R3|C|R|[pure] leave: full paid/unpaid · half AM/PM · split shifts · unequal split · worked into PM leave (9 vectors)
+S2.3|R3|C|R|[pure] leave: full paid/unpaid · half AM/PM · split shifts · unequal split · worked into PM leave · split AM leave + evening 300 (10 vectors)
 S2.4|R3|C|R|[pure] overnight shift owns its start day/period · next day other period (2 vectors)
-S2.5|R3|C|R|[pure] day off · holiday · unscheduled · no-schedule work · leave on day off · normalDayMin · no-schedule half leave · holiday leave (17 vectors)
+S2.5|R3|C|R|[pure] day off · holiday · unscheduled · no-schedule work · leave on day off · normalDayMin · no-schedule half leave · holiday leave · unrostered leave + clock ×3 (20 vectors)
 S2.6|R3|C|R|[pure] hourly leave offset late→early→absent · unused flag · unpaid (5 vectors)
 S2.7|R3|C|R|[pure] review codes: stale · orphan · not final · not stored · missing out · stray IN · pending leave · mismatch · worked on leave · legacy · dedupe/sort · over 1440 (14 vectors)
 S2.8|R3|M|R|[pure] employment window ∩ period · days outside range ignored (3 vectors)
@@ -88,6 +88,7 @@ S6.5|r2|C|R|[db] ORACLE-EDIT r2 (new): shift grace 5 → 15 after build (LATE 10
 S6.4|R5|C|R|[db] ORACLE-EDIT (new, controller): H2.6 correction (OUT 15:00 → 17:00: original voided · corrected punch · stored day recomputed) ⇒ snapshot built before = OUTDATED · rebuild = corrected minutes (ow 120 · source version 2) · CURRENT
 S7.1|R3|C|R|[db] NOT_FINAL (day not over) ⇒ PENDING · ORPHAN after unpublish
 S7.2|R3|M|R|[db] NOT_STORED (final, finaliser not run) · after finaliser ⇒ clean literal
+S7.3|r4|C|R|[db] ORACLE-EDIT r4 (hunter LOW, new): a day 20 days back never stored by the 7-day job ⇒ NOT_STORED blocks v2 approve · finaliseWorkEntryDays (H2.5 finaliser) stores it (version 1) · build CURRENT · approve ok
 S8.1|R6|C|R|[db] v1 approve binds 165 days + 27 kind rows to the run
 S8.2|R6|C|R|[db] build after approve ⇒ frozen text · 0 writes · state FROZEN
 S8.3|R6|C|R|[db] v2 run, no snapshot ⇒ approve refused WORK_ENTRIES + text · run DRAFT
@@ -274,14 +275,17 @@ function runPure(R: Any): void {
         const short1 = d.lateMin + d.earlyOutMin + d.absentMin <= Math.max(0, d.plannedMin - leave - reg);
         const side = d.plannedMin === 0 || d.dayClass !== "WORKDAY" || d.review.includes("STRAY_IN") || leave + d.absentMin + d.lateMin + d.earlyOutMin + d.workMin <= d.plannedMin || d.workMin > 0 && d.plannedMin === 0;
         const ints = MIN_KEYS.every((k) => Number.isInteger(d[k]) && d[k] >= 0 && d[k] <= 1440);
-        if (!short1 || !side || !ints) bad.push(`#${i}:${hdr(d)}`);
+        // ORACLE-EDIT r4 (hunter F1): unrostered days too — regular work + leave ≤ basis (normalMinutesPerDay)
+        const N = Number(inp?.rules?.normalDayMin ?? 480);
+        const unr = d.plannedMin > 0 || !(d.dayClass === "WORKDAY" || d.dayClass === "UNSCHEDULED") || d.review.includes("STRAY_IN") || d.workMin + leave <= N;
+        if (!short1 || !side || !ints || !unr) bad.push(`#${i}:${hdr(d)}`);
       }
     }
     ck("S3.5", { days: days >= 550, adds: bad.length === 0 }, "late+early+absent ≤ shortfall · planned-side ≤ planned", `${days} days · ${bad.length} off ${bad.slice(0, 2).join(" · ")}`);
   }
   {
     const ok = R && !R.__err;
-    ck("S3.4", { blocking: ok && srt(R.WE_BLOCKING ?? []) === srt(BLOCKING), rules: ok && JSON.stringify(R.WORK_RULES_DEFAULT) === JSON.stringify({ normalDayMin: 480, breakRule: "PLANNED_AFTER_5H", breakAfterMin: 300 }), ver: ok && R.WORK_ENTRY_ENGINE_VERSION === 1 }, "exact", modState(R, F.rules));
+    ck("S3.4", { info: ok && typeof R.isBlocking === "function" && R.isBlocking(["WORKED_ON_LEAVE", "OT_VIA_ADJUSTMENT", "HOLIDAY_LEAVE"]) === false && R.isBlocking(["STALE"]) === true, blocking: ok && srt(R.WE_BLOCKING ?? []) === srt(BLOCKING), rules: ok && JSON.stringify(R.WORK_RULES_DEFAULT) === JSON.stringify({ normalDayMin: 480, breakRule: "PLANNED_AFTER_5H", breakAfterMin: 300 }), ver: ok && R.WORK_ENTRY_ENGINE_VERSION === 1 }, "exact", modState(R, F.rules));
   }
 }
 
@@ -741,6 +745,35 @@ async function runDb(): Promise<void> {
       lit: bG.ok && hdr(g0) === Hd(W, "WORKED", { p: 480, w: 470, la: 10 }) && s0 === "CURRENT", outdated: s1 === "OUTDATED", refused: refused(a1),
       stale: reviewOf(g1?.review).includes("STALE"), still: refused(a2) && status === "DRAFT",
     }, "OUTDATED · refused · STALE · refused", `${s0}→${s1} ${hdr(g0)} | ${hdr(g1)} ${short(a1, 40)}`);
+  }
+  // ── S7.3 ORACLE-EDIT r4 (new): system G · Feb 2032 — punches on Mon 2 Feb, nothing stored (the H2.5 job never ran), now = 22 Feb ──
+  {
+    const sG = await sys("ทีม G");
+    const cG = { tenantId: TT, systemId: sG };
+    const eV = await me(sG, "วี", { unitId: u1 });
+    const shG = await shiftOf(sG, "เช้าจี", 420, 900);
+    const xv = await ent(sG, eV, "2032-02-02", shG, u1);
+    await io(sG, eV, xv, bk("2032-02-02", "07:00"), bk("2032-02-02", "15:00"));
+    const NG = bk("2032-02-22");
+    const PG = { periodKey: "2032-02" };
+    await pay.setSalaryProfile(cG, { employeeId: eV, baseSalarySatang: 1_000_000, ssoEligible: true });
+    const run = await pay.createPayrollRun(cG, { periodKey: "2032-02", payDate: new Date("2032-02-29T00:00:00Z") });
+    await P.hrPayrollRun.update({ where: { id: run.id }, data: { engineVersion: 2 } });
+    const refused = (a0: Any) => a0?.ok === false && a0?.code === "WORK_ENTRIES";
+    await build(cG, V.owner, NG, PG);
+    const r0 = ((await wdRows(TT, sG)) ?? []).find((x) => x.employeeId === eV && dk(x.date) === "2032-02-02");
+    const a0 = await pay.approveRun(cG, run.id);
+    const fin = await W_("finalizeWorkEntryDays", cG, V.owner, PG, { now: NG });
+    const finNo = await W_("finalizeWorkEntryDays", cG, V.mgrU1, PG, { now: NG });
+    const ad = await P.hrAttendanceDay.findFirst({ where: { tenantId: TT, systemId: sG, employeeId: eV, date: dbDate("2032-02-02") }, select: { version: true } });
+    await build(cG, V.owner, NG, PG);
+    const r1 = ((await wdRows(TT, sG)) ?? []).find((x) => x.employeeId === eV && dk(x.date) === "2032-02-02");
+    const st = ((await W_("workEntryPreview", cG, V.owner, PG, { now: NG })).value?.rows ?? []).find((x: Any) => x.employeeId === eV)?.state;
+    const a1 = await pay.approveRun(cG, run.id);
+    ck("S7.3", {
+      ns: reviewOf(r0?.review).includes("NOT_STORED") && refused(a0), fin: fin.ok && Number(fin.value?.finalized) >= 1, perm: !finNo.ok && finNo.text === T.buildNo, stored: ad?.version === 1,
+      lit: hdr(r1) === Hd(W, "WORKED", { p: 480, w: 480 }), cur: st === "CURRENT", ok: a1?.ok === true,
+    }, "NOT_STORED → finalised · CURRENT · approved", `${hdr(r0)} ${shown(fin)} v=${ad?.version} ${st} ${short(a1, 50)}`);
   }
   // ── S10 privacy (system A, July) ──
   {
