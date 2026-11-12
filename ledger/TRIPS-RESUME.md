@@ -1,6 +1,12 @@
 # TRIPS-RESUME — จุดต่องาน (บล็อกใหม่อยู่บนสุด)
 
-## ▶️ 12 พ.ย. 2569 ~07:1xZ — **0/72 (0%)** · ขั้นเตรียม P0 · `session/trips` (ฐาน release/svc-to-main fda23269c)
+## ▶️ 12 พ.ย. 2569 ~07:4xZ — **1/72 (1%)** · P0.1 ✅ · `session/trips` a37370401+
+- ✅ P0.1 รับแล้ว (ข้อสอบ 56/56 บนฐานหลัก) · ฐาน l2 ยังไม่ได้ seed (`seed-trips-qc.mts` ก่อนใช้)
+- 🧪 P0.2 `ledger/TRIPS-DEFAULTS.md` + P0.3 `ledger/TRIPS-CORE-CONTRACT.md` (ร่าง · มีหัว L = คำถามเปิด 49 ข้อ) → **ผู้ตรวจอิสระกำลังรัน** ผลที่ `scratchpad/p0.3-review/REVIEW.md` → ผู้คุมตัดสิน L-1…L-49 + แก้ไฟล์ → รับ P0.2/P0.3 (3/72)
+- ภาพ 16–20 วาดและ commit แล้ว (e6b3a7a9f) · คำถามเจ้าของ OQ1–OQ11 ใน `TRIPS-OWNER-QUESTIONS.md` (ทำต่อด้วยค่าปลอดภัย)
+- ถัดไป: ใบสั่ง + ข้อสอบ T0.1 (ยังไม่สร้างจน ON_MAIN) · ตรวจ ON_MAIN ทุกครั้งที่กลับมา
+
+## (เก่า) 12 พ.ย. 2569 ~07:1xZ — **0/72 (0%)** · ขั้นเตรียม P0 · `session/trips` (ฐาน release/svc-to-main fda23269c)
 - **ยังห้าม T0.1** (migration) จนกว่า `ON_MAIN` + production ปกติ — ตรวจด้วยคำสั่งใน TRIPS-RUN §1 ข้อ 1 · เมื่อ ON_MAIN: merge origin/main เข้า session/trips หนึ่งครั้ง
 - ✅ P0.1 ส่วนโครง: ทรี `shark-trips` + เลน `-l1` `-l2` · Neon `wo-trips-qc` / `-l1` / `-l2` (198 migrations up to date) · `scripts/qc-trips.sh` · `trips-qc-hosts.mts` · `trips-qc-env.mts` · node_modules แยกต่อทรี — ตาราง host อยู่ใน TRIPS-RUN §1 ข้อ 4
 - 🔄 ตัวแทนที่เปิดอยู่ (ถ้า session ตาย ให้เปิดใหม่ "ทำต่อจากทรี"):
