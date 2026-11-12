@@ -134,6 +134,9 @@ const MOD_FILES: Record<string, string> = {
   booking: "src/lib/modules/booking/service.ts",
   shop: "src/lib/modules/shop/service.ts",
 };
+// ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): S4.2 — the V2 hotel checkout (SVC H.5) emits `hotel.checked_out` from hotel/checkout.ts; service.ts only delegates.
+//   Only the EMIT check (S*.2) reads this map — S9.2 (party link) still reads MOD_FILES, where hotel/service.ts owns linkPartyAfterCommit.
+const EMIT_FILES: Record<string, string> = { ...MOD_FILES, hotel: "src/lib/modules/hotel/checkout.ts" };
 
 const ARGV = process.argv.slice(2);
 const FORCE = ARGV.includes("--force-run");
@@ -303,7 +306,13 @@ try {
       JSON.stringify(obj), sysId);
   const mkUnit = async (tid: string, name: string, systemIds: string[]) => {
     // one unit carries every module of this run: the module services scope by (tenantId, unitId) only, never by UnitType
-    const u = (await P.businessUnit.create({ data: { tenantId: tid, type: "SHOP", name: `${name} ${TAG}`, slug: `${TAG}-${nx()}`, status: "ACTIVE" } })) as Any;
+    // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): S4.x/S9.1/S10.1/X4.1 — SVC H.0 gates every hotel
+    //   service on BusinessUnit.type "HOTEL" (booking/checkin/checkout findFirst {type:"HOTEL"}); the other 7 module services used here
+    //   (ticket/rental/school/clinic/queue/booking/shop service.ts) do not read UnitType, so the shared unit is typed HOTEL instead of SHOP.
+    const u = (await P.businessUnit.create({ data: { tenantId: tid, type: "HOTEL", name: `${name} ${TAG}`, slug: `${TAG}-${nx()}`, status: "ACTIVE" } })) as Any;
+    // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): H.4/H.5 legacy path — checkIn without a registered guest + checkOut without a payment method (as qc-hotel-refund L23–24 · qc-pos-p5.1 L739–740)
+    await P.settingValue.create({ data: { tenantId: tid, key: "rooms.hotel.checkout.allowLegacyCash", scope: "UNIT", scopeId: u.id, value: true } });
+    await P.settingValue.create({ data: { tenantId: tid, key: "rooms.hotel.guest.requireRegistration", scope: "UNIT", scopeId: u.id, value: false } });
     for (const s of systemIds) await P.appSystemUnit.create({ data: { tenantId: tid, systemId: s, unitId: u.id } }).catch(() => null);
     return u.id as string;
   };
@@ -577,9 +586,9 @@ END $qc$ LANGUAGE plpgsql`);
     const webhookValues = ((WH.WEBHOOK_EVENTS ?? []) as Any[]).map((e) => String(e?.value ?? e));
     const count = ((LAB.AUTOMATION_EVENTS ?? []) as Any[]).filter((e) => String(e?.value) === s.type).length;
     const hasCons = typeof CONS?.[s.type] === "function";
-    const modSrc = read(MOD_FILES[s.name] ?? "");
+    const modSrc = read(EMIT_FILES[s.name] ?? ""); // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): S4.2 emit file per module (hotel → checkout.ts)
     const inTxStatic = new RegExp(`emitOutbox\\(\\s*tx\\s*,[\\s\\S]{0,400}${s.type.replace(/\./g, "\\.")}`).test(modSrc) || new RegExp(`${s.type.replace(/\./g, "\\.")}[\\s\\S]{0,400}emitOutbox\\(\\s*tx`).test(modSrc);
-    chk(`C2.9-${s.id}.2`, `${s.name}: \`${s.type}\` is in all 3 registries — declared once in AUTOMATION_EVENTS with a Thai label, present in WEBHOOK_EVENTS (through the spread), a consumer registered — and the emit in ${MOD_FILES[s.name] ?? "?"} is written as \`emitOutbox(tx, …)\` inside that module's \`$transaction\` (never emitOutboxOutsideTx) [static + runtime]`,
+    chk(`C2.9-${s.id}.2`, `${s.name}: \`${s.type}\` is in all 3 registries — declared once in AUTOMATION_EVENTS with a Thai label, present in WEBHOOK_EVENTS (through the spread), a consumer registered — and the emit in ${EMIT_FILES[s.name] ?? "?"} is written as \`emitOutbox(tx, …)\` inside that module's \`$transaction\` (never emitOutboxOutsideTx) [static + runtime]`,
       count === 1 && thai(labels.get(s.type)) && webhookValues.includes(s.type) && hasCons && inTxStatic && !new RegExp(`emitOutboxOutsideTx[\\s\\S]{0,200}${s.type.replace(/\./g, "\\.")}`).test(modSrc),
       "1 label · webhook · consumer · emitOutbox(tx", `labels=${count} thai=${thai(labels.get(s.type))} webhook=${webhookValues.includes(s.type)} consumer=${hasCons} emitInTx=${inTxStatic}${ABSENT}`);
     // the CRM effect: deliver once, again, and 3× in parallel ⇒ exactly ONE activity + lifecycle CUSTOMER

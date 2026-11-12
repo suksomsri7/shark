@@ -94,6 +94,14 @@ const changedFiles = (paths: string[]): string[] => {
   return [...new Set([...a, ...b])];
 };
 /** บรรทัด +/- (ไม่นับคอมเมนต์ // และบรรทัดว่าง) ของไฟล์เดียวเทียบ BASE */
+// ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): the release merge b7ccbc054 brought main's SEC (secretary) work into this tree. Forgiven ONLY when the
+//   path is on this explicit list AND no commit outside main touched it (git log REL_MAIN_AT..HEAD -- path is empty ⇒ the change came from main);
+//   on a tree without REL_MAIN_AT as ancestor nothing is forgiven (the checks stay as strict as before).
+const REL_MAIN_AT = "a242405dd"; // main tip merged by b7ccbc054 (merge: session/svc into main)
+const SEC_MIGS = ["20261227000000_secretary_a", "20261227100000_secretary_b"];
+const SEC_SCHEMA = ["ai.prisma", "ai_credit.prisma", "chat.prisma", "core.prisma", "secretary.prisma", "support.prisma"];
+const fromMainOnly = (rel: string): boolean => { try { git(["merge-base", "--is-ancestor", REL_MAIN_AT, "HEAD"]); return git(["log", "--format=%h", `${REL_MAIN_AT}..HEAD`, "--", rel]).trim() === ""; } catch { return false; } };
+const secMig = (d: string) => SEC_MIGS.includes(d) && fromMainOnly(`prisma/migrations/${d}`);
 const diffLines = (file: string, sign: "+" | "-"): string[] =>
   git(["diff", "-w", "--ignore-blank-lines", "-U0", BASE_SHA, "--", file]).split("\n")
     .filter((l) => l.startsWith(sign) && !l.startsWith(sign.repeat(3)))
@@ -309,7 +317,7 @@ await st("PC-7", "git: ฐานเทียบ a9aad92d8 อ่านได้�
   git(["merge-base", "--is-ancestor", BASE_SHA, "HEAD"]);
   const migs = readdirSync(join(ROOT, "prisma", "migrations")).filter((d) => /^\d{14}_/.test(d)).sort();
   ok(migs.includes(PREV_MIG), `ไม่พบ ${PREV_MIG}`);
-  const alien = migs.filter((d) => d > PREV_MIG && !/_svc_[a-z0-9]+$/.test(d));
+  const alien = migs.filter((d) => d > PREV_MIG && !/_svc_[a-z0-9]+$/.test(d) && !secMig(d)); // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): SEC migrations from main (secMig)
   ok(alien.length === 0, `migration ที่ไม่ใช่ SVC หลัง svc_b17: ${alien.join(", ")}`);
 });
 
@@ -383,7 +391,7 @@ await needMig("M-6", "migration svc_h ลงฐาน QC แล้ว (migrate d
   const m = await q<{ finished_at: Date | null; rolled_back_at: Date | null }>(`SELECT finished_at, rolled_back_at FROM "_prisma_migrations" WHERE migration_name = $1`, [migName]);
   ok(m.length === 1 && m[0].finished_at !== null && m[0].rolled_back_at === null, `แถว _prisma_migrations ${m.length} (ยังไม่ migrate deploy?)`);
   migAt = m[0].finished_at;
-  const later = migs.slice(migs.indexOf(migName) + 1).filter((d) => !/_svc_[a-z0-9]+$/.test(d));
+  const later = migs.slice(migs.indexOf(migName) + 1).filter((d) => !/_svc_[a-z0-9]+$/.test(d) && !secMig(d)); // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): SEC migrations from main (secMig)
   ok(later.length === 0, `migration ที่ไม่ใช่ SVC หลัง svc_h: ${later.join(", ")}`);
 });
 await needMig("M-7", "prisma migrate diff --from-schema prisma/schema --to-url <ฐาน QC> --script: ไม่มี statement ใดแตะตาราง/ดัชนี/CHECK ของใบ (Hotel*/Channel*/HotelReservationStatus) — โดยเฉพาะไม่เสนอ DROP ดัชนี/constraint มือ (drift HR เดิมของฐานรายงานเป็นข้อมูล)", () => {
@@ -398,7 +406,7 @@ await needMig("M-7", "prisma migrate diff --from-schema prisma/schema --to-url <
 await st("M-8", "schema แตะเฉพาะ hotel.prisma (+ integration.prisma คอมเมนต์อย่างเดียว) · hotel.prisma ไม่ลบ/แก้บรรทัดเดิม (ไม่ prisma format ทั้งชุด)", () => {
   const ch = changedFiles(["prisma/schema"]).map((p) => p.split("/").pop() ?? p);
   ok(ch.includes("hotel.prisma"), "hotel.prisma ยังไม่เปลี่ยน (ยังไม่มีงาน)");
-  const outside = ch.filter((f) => !["hotel.prisma", "integration.prisma"].includes(f));
+  const outside = ch.filter((f) => !["hotel.prisma", "integration.prisma"].includes(f) && !(SEC_SCHEMA.includes(f) && fromMainOnly(`prisma/schema/${f}`))); // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): SEC schema files from main
   ok(outside.length === 0, `ไฟล์นอกใบ: ${outside.join(", ")}`);
   const delH = diffLines(F.hotelPrisma, "-");
   ok(delH.length === 0, `hotel.prisma ลบ/แก้บรรทัดเดิม: ${delH.slice(0, 3).map((l) => l.slice(0, 60)).join(" | ")}`);
@@ -866,7 +874,11 @@ try {
     ok(del.length === 0, `ลบ/แก้บรรทัดเดิม: ${del.slice(0, 3).join(" | ")}`);
     const plus = diffLines(F.scope, "+");
     ok(plus.length > 0, "scope.ts ยังไม่เปลี่ยน");
-    const bad = plus.filter((l) => !/^(\w+):\s*unit,?$/.test(l) || !(NEW_MODELS as readonly string[]).includes(l.split(":")[0]));
+    // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): SEC lines (Ai*/StaffInvite/Chat*/UserPhone/PhoneOtp … `: tenant` / `: g(…)`) that exist verbatim
+    //   at REL_MAIN_AT (main) and are not a Hotel*/Channel* model ⇒ came with main, not this WO
+    const mainScope = (() => { try { return git(["show", `${REL_MAIN_AT}:${F.scope}`]).split("\n").map((l) => l.replace(/\/\/.*$/, "").trim()); } catch { return [] as string[]; } })();
+    const bad = plus.filter((l) => !/^(\w+):\s*unit,?$/.test(l) || !(NEW_MODELS as readonly string[]).includes(l.split(":")[0]))
+      .filter((l) => !(mainScope.includes(l) && !/^(Hotel|Channel)\w*\s*:/.test(l)));
     ok(bad.length === 0, `บรรทัดเพิ่มนอกใบ: ${bad.slice(0, 3).join(" | ")}`);
   }, "MAJOR");
   await st("S-3", "fitness (โหมดมี env): exit 0 และไม่มี finding F1.* (ทุก model ลงทะเบียน · ไม่มีตกค้าง)", () => {
