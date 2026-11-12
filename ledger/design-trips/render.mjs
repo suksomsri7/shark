@@ -1,7 +1,7 @@
 // เรนเดอร์ทุกจอแบบ full-page (ความสูงตามเนื้อหา) — node render.mjs [NN ...]
 import puppeteer from "/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js";
 import { readdirSync, rmSync } from "node:fs";
-const dir = "/root/projects/shark-svc/ledger/design-trips";
+const dir = import.meta.dirname; // โฟลเดอร์ของสคริปต์เอง (เดิมชี้ทรี shark-svc ตายตัว)
 const only = process.argv.slice(2);
 const files = readdirSync(dir).filter(f => /^\d\d-.*\.html$/.test(f) && !f.endsWith(".body.html") && (only.length === 0 || only.some(p => f.startsWith(p))));
 const udd = `/root/snap/chromium/common/trips-r-${process.pid}`;

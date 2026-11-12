@@ -1,0 +1,137 @@
+<style>
+/* ชุด 16–20 (ใช้โทเคนเดิม ไม่เพิ่มสี) */
+.site{display:flex;flex-direction:column;background:var(--sf)}
+.snav2{display:flex;align-items:center;gap:26px;padding:20px 40px;border-bottom:1px solid var(--line);font-size:15px;color:var(--ink2)}
+.snav2 .logo{font-weight:800;letter-spacing:.08em;font-size:17px;color:var(--ink);margin-right:auto}
+.emb{border:2px dashed var(--acc);border-radius:18px;position:relative;padding:18px;background:var(--sf)}
+.emb .tagx{position:absolute;top:-14px;left:16px;background:var(--acc-bg);color:var(--acc);font-size:12.5px;font-weight:700;padding:3px 10px;border-radius:7px;font-family:ui-monospace,Menlo,monospace}
+.ecal{width:100%;border-collapse:separate;border-spacing:4px;table-layout:fixed}
+.ecal th{font-size:14px;color:var(--mut);font-weight:600;text-align:center}
+.ecal td{border:1px solid var(--line);border-radius:10px;height:58px;padding:5px 6px;vertical-align:top;font-size:14px;line-height:1.25;color:var(--mut)}
+.ecal td b{display:block;font-size:15px;color:var(--ink)}
+.ecal td.e{border:0}
+.ecal td.past{background:var(--sf2)}.ecal td.past b{color:var(--mut2)}
+.ecal td.on{border-color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--ink);color:var(--ink)}
+.ecal td.low{border-style:dashed;border-color:var(--dg);color:var(--dg);font-weight:700}
+.ecal td.cx{background:repeating-linear-gradient(45deg,var(--sf2),var(--sf2) 5px,var(--line) 5px,var(--line) 6px)}.ecal td.cx b{color:var(--mut);text-decoration:line-through}
+.strip{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.strip div{border:1px solid var(--line);border-radius:12px;padding:7px 2px;text-align:center;font-size:14px;color:var(--mut);line-height:1.3}
+.strip div b{display:block;font-size:16px;color:var(--ink)}
+.strip div.on{border-color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--ink);color:var(--ink)}
+.strip div.low{border-style:dashed;border-color:var(--dg);color:var(--dg);font-weight:700}
+.strip div.cx{background:repeating-linear-gradient(45deg,var(--sf2),var(--sf2) 5px,var(--line) 5px,var(--line) 6px)}.strip div.cx b{text-decoration:line-through;color:var(--mut)}
+.strip div.past{background:var(--sf2);color:var(--mut2)}.strip div.past b{color:var(--mut2)}
+.fbtn2{position:absolute;right:28px;bottom:28px;height:54px;padding:0 24px;border-radius:27px;background:var(--ink);color:var(--sf);display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;box-shadow:0 10px 26px rgba(10,10,10,.25)}
+.ph320{width:320px!important}
+.ph320 .mb{padding:0 14px!important}
+.ovl{position:absolute;inset:94px 0 0 0;background:var(--sf);border-radius:20px 20px 0 0;box-shadow:0 -10px 30px rgba(10,10,10,.22);display:flex;flex-direction:column;z-index:5}
+.scr{position:absolute;inset:44px 0 0 0;background:rgba(10,10,10,.35);z-index:4}
+.calc{width:100%;border-collapse:collapse;font-size:14px}
+.calc th{font-size:13px;color:var(--mut);text-align:right;font-weight:600;padding:8px 6px;border-bottom:1px solid var(--line)}
+.calc th:first-child,.calc td:first-child{text-align:left}
+.calc td{padding:10px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+.calc tr:last-child td{border-bottom:0}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">20 · ปฏิทินที่ว่างแบบฝัง + ปุ่ม "จองเลย" บนเว็บของร้าน <span>— ร้านวาง embed.js บรรทัดเดียว (จอ 06) · กว้างขั้นต่ำ 320 สูงปรับตามเนื้อหา · ตัวเลข "ว่าง N / เหลือ N" = ที่ว่างจริงตามกติกา R2 ห้ามปั้น · กดวันหรือปุ่ม = เปิดหน้าจองซ้อนบนเว็บเดิม (จอ 01) · ดู ณ 12 พ.ย. 2569 18:00</span></p>
+
+<div>
+<p class="cap">ก · เว็บร้าน andamandive.com บนจอใหญ่ — data-mode="calendar" ฝังในหน้าทริป + data-mode="button" ลอยมุมขวาล่าง</p>
+<div class="frame" style="width:1428px">
+ <div class="web" style="padding:12px 24px;font-size:14px"><svg class="i sm"><use href="#i-lock"/></svg><span>andamandive.com/racha-day-trip</span></div>
+ <div class="site" style="position:relative">
+  <div class="snav2"><span class="logo">ANDAMAN DIVE</span><span>หน้าแรก</span><b>เดย์ทริป</b><span>คอร์สดำน้ำ</span><span>Liveaboard</span><span>ติดต่อ</span></div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 500px;gap:44px;padding:36px 40px 110px">
+   <div class="col" style="gap:18px">
+    <div class="hero" style="height:300px;border-radius:20px;font-size:14px">ภาพและบทความของร้านเอง (ไม่ใช่ของ SHARK)</div>
+    <b style="font-size:30px;line-height:1.3">เกาะราชาใหญ่ เดย์ทริป ดำน้ำตื้น + ชมปะการัง</b>
+    <div style="font-size:16px;line-height:1.8;color:var(--ink2)">ออกจากท่าเรืออ่าวฉลอง 08:00 กลับถึง 16:30 · ดำน้ำตื้น 2 จุด อ่าวสยามและอ่าวบ้านในเรือ · รวมรถรับส่งโรงแรมในโซน อาหารกลางวัน อุปกรณ์ดำน้ำตื้น · เด็กอายุ 4–11 ปีราคาพิเศษ</div>
+    <div class="pv" style="font-size:14px">โค้ดที่ร้านวาง: <span style="font-family:ui-monospace,Menlo,monospace">&lt;script src="https://shark.in.th/embed.js" data-shop="andaman-dive" data-product="raya-daytrip" data-mode="calendar"&gt;</span> · ฝังได้เฉพาะโดเมนที่ร้านอนุญาต</div>
+   </div>
+   <div class="emb">
+    <span class="tagx">embed.js · ปฏิทินที่ว่าง</span>
+    <div style="display:flex;align-items:center;gap:10px;margin:4px 0 10px"><b style="font-size:17px">เลือกวันเดินทาง</b><span style="flex:1"></span><span class="btn gh sm" style="width:40px;padding:0!important"><svg class="i sm"><use href="#i-back"/></svg></span><b style="font-size:15px">พ.ย. 2569</b><span class="btn gh sm" style="width:40px;padding:0!important"><svg class="i sm"><use href="#i-ar"/></svg></span></div>
+    <table class="ecal">
+     <tr><th>อา.</th><th>จ.</th><th>อ.</th><th>พ.</th><th>พฤ.</th><th>ศ.</th><th>ส.</th></tr>
+     <tr><td class="past"><b>8</b></td><td class="past"><b>9</b></td><td class="past"><b>10</b></td><td class="past"><b>11</b></td><td class="past"><b>12</b>ปิดรับ</td><td class="cx"><b>13</b>งดออก</td><td class="on"><b>14</b>ว่าง 9</td></tr>
+     <tr><td class="low"><b>15</b>เหลือ 3</td><td><b>16</b>ว่าง 10</td><td><b>17</b>ว่าง 14</td><td><b>18</b>ว่าง 14</td><td><b>19</b>ว่าง 11</td><td><b>20</b>ว่าง 14</td><td><b>21</b>ว่าง 12</td></tr>
+     <tr><td><b>22</b>ว่าง 14</td><td><b>23</b>ว่าง 14</td><td><b>24</b>ว่าง 14</td><td><b>25</b>ว่าง 14</td><td><b>26</b>ว่าง 14</td><td><b>27</b>ว่าง 14</td><td><b>28</b>ว่าง 8</td></tr>
+     <tr><td><b>29</b>ว่าง 13</td><td><b>30</b>ว่าง 14</td><td class="e"></td><td class="e"></td><td class="e"></td><td class="e"></td><td class="e"></td></tr>
+    </table>
+    <div class="lgd" style="font-size:14px;gap:6px 14px;margin:10px 0 14px"><span><i style="border-style:dashed;border-color:var(--dg)"></i>เหลือไม่เกิน 5</span><span><i class="s"></i>งดออก</span><span>เลขจริง อัปเดตสด</span></div>
+    <div class="tot"><div class="a"><small>ส. 14 พ.ย. · ราคาต่อผู้ใหญ่</small><b>฿3,500</b></div><div class="inbtn" style="flex:none;padding:0 24px;height:52px;font-size:17px">จองวันนี้</div></div>
+    <div class="mu2" style="margin-top:10px">+ ค่าอุทยาน ฿600 / ฿300 แยกบรรทัด · ภาษา: ตามเว็บ (ไทย) · ระบบโดย SHARK</div>
+   </div>
+  </div>
+  <div class="fbtn2"><svg class="i"><use href="#i-cal"/></svg>จองเลย · เริ่ม ฿3,500</div>
+ </div>
+</div>
+</div>
+
+<div style="display:flex;gap:44px;align-items:flex-start">
+ <div>
+ <p class="cap">ข · เว็บเดียวกันบนมือถือกว้าง 320 — ปฏิทินยุบเป็นแถบ 4 วัน</p>
+ <div class="mob ph320">
+  <div class="sb"><span>18:00</span><span class="ic">4G<span class="bat"></span></span></div>
+  <div class="web" style="padding:6px 14px 10px"><svg class="i sm"><use href="#i-lock"/></svg><span>andamandive.com</span></div>
+  <div class="mb">
+   <div class="snav2" style="padding:6px 0 12px;margin:0;font-size:14px"><span class="logo" style="font-size:15px">ANDAMAN DIVE</span><svg class="i"><use href="#i-menu"/></svg></div>
+   <div class="hero" style="height:120px">ภาพของร้าน</div>
+   <b style="font-size:18px;line-height:1.35">เกาะราชาใหญ่ เดย์ทริป</b>
+   <div class="emb" style="padding:16px 10px 12px">
+    <span class="tagx" style="font-size:12.5px">embed.js</span>
+    <div style="display:flex;align-items:center;gap:6px;margin:2px 0 10px"><b style="font-size:15px">เลือกวัน</b><span style="flex:1"></span><span class="btn gh sm" style="width:44px;padding:0!important"><svg class="i sm"><use href="#i-back"/></svg></span><span class="btn gh sm" style="width:44px;padding:0!important"><svg class="i sm"><use href="#i-ar"/></svg></span></div>
+    <div class="strip">
+     <div class="cx">ศ.<b>13</b>งดออก</div><div class="on">ส.<b>14</b>ว่าง 9</div><div class="low">อา.<b>15</b>เหลือ 3</div><div>จ.<b>16</b>ว่าง 10</div>
+     <div>อ.<b>17</b>ว่าง 14</div><div>พ.<b>18</b>ว่าง 14</div><div>พฤ.<b>19</b>ว่าง 11</div><div>ศ.<b>20</b>ว่าง 14</div>
+    </div>
+    <div class="inbtn" style="height:48px;font-size:16px;margin-top:12px">จอง ส. 14 พ.ย.</div>
+    <div class="mu2" style="margin-top:8px;text-align:center">เริ่ม ฿3,500 + ค่าอุทยาน</div>
+   </div>
+  </div>
+ </div>
+ </div>
+
+ <div>
+ <p class="cap">ค · กด "จอง" = หน้าจองเปิดซ้อนบนเว็บร้าน (ไม่ออกจากหน้า)</p>
+ <div class="mob ph320" style="position:relative">
+  <div class="sb"><span>18:01</span><span class="ic">4G<span class="bat"></span></span></div>
+  <div class="web" style="padding:6px 14px 10px"><svg class="i sm"><use href="#i-lock"/></svg><span>andamandive.com</span></div>
+  <div class="mb"><div class="hero" style="height:120px;margin-top:40px">ภาพของร้าน</div></div>
+  <div class="scr"></div>
+  <div class="ovl">
+   <div style="display:flex;align-items:center;gap:10px;padding:14px 14px 8px"><span class="lg" style="width:30px;height:30px;border-radius:8px;background:var(--ink);color:var(--sf);display:grid;place-items:center;font-size:12px;font-weight:700">AD</span><b style="font-size:15px">อันดามันไดฟ์</b><span style="flex:1"></span><span class="btn gh sm" style="width:44px;padding:0!important"><svg class="i"><use href="#i-x"/></svg></span></div>
+   <div class="sbar" style="padding:0 14px 10px"><span class="on"></span><span class="on"></span><span></span><span></span></div>
+   <div style="padding:0 14px;display:flex;flex-direction:column;gap:6px;flex:1">
+    <b style="font-size:16px">ส. 14 พ.ย. · เกาะราชา</b>
+    <div class="stp"><div class="nm">ผู้ใหญ่<small>12 ปีขึ้นไป</small></div><span class="cnt"><span>−</span><b>2</b><span>+</span></span></div>
+    <div class="stp"><div class="nm">เด็ก<small>4–11 ปี</small></div><span class="cnt"><span>−</span><b>1</b><span>+</span></span></div>
+    <div class="optr on" style="padding:8px 10px"><span class="rd"></span><span>รับที่โรงแรม<small>ในโซน</small></span><span class="sp"></span><b>ฟรี</b></div>
+    <div class="optr on" style="padding:8px 10px"><span class="ck"></span><span>เช่ากล้องกันน้ำ</span><span class="sp"></span><b>+฿500</b></div>
+   </div>
+   <div style="border-top:1px solid var(--line);padding:12px 14px 22px"><div class="tot" style="padding:0!important"><div class="a"><small>3 คน · รวมค่าอุทยาน ฿1,500</small><b>฿11,450</b></div><div class="inbtn" style="flex:none;padding:0 18px;height:50px;font-size:16px">ต่อไป</div></div></div>
+  </div>
+ </div>
+ </div>
+
+ <div class="card col" style="width:640px;gap:14px">
+  <div class="ch" style="margin:0"><span>ตัวเลขในปฏิทินมาจากไหน (กติกา R2)</span></div>
+  <div class="mu2" style="font-size:14px;line-height:1.6">ว่าง = ความจุ − ขายแล้ว − ถืออยู่ − โควตาเอเจนซี่ที่ยังไม่คืน · โควตา PTD 10 ที่/รอบ คืน 2 วันก่อนเดินทาง · ห้ามปั้นตัวเลขเพื่อเร่งขาย</div>
+  <table class="calc">
+   <tr><th>รอบ</th><th>ความจุ</th><th>ขายแล้ว</th><th>ถือ</th><th>โควตาค้าง</th><th>ลูกค้าเห็น</th></tr>
+   <tr><td><b>ส. 14</b></td><td>24</td><td>15</td><td>0</td><td>0 คืนแล้ว</td><td><b>ว่าง 9</b></td></tr>
+   <tr><td><b>อา. 15</b></td><td>24</td><td>21</td><td>0</td><td>0 PTD ใช้ครบ</td><td><b>เหลือ 3</b></td></tr>
+   <tr><td><b>จ. 16</b></td><td>24</td><td>4</td><td>0</td><td>10</td><td><b>ว่าง 10</b></td></tr>
+   <tr><td><b>พฤ. 19</b></td><td>24</td><td>3 หน้าร้าน (จอ 18)</td><td>0</td><td>10</td><td><b>ว่าง 11</b></td></tr>
+  </table>
+  <div class="ln"><span class="k">"เหลือ N" + กรอบเส้นประแดง</span><span class="sp"></span><span class="v">เมื่อเหลือไม่เกิน 5</span></div>
+  <div class="ln"><span class="k">วันที่ผ่านแล้ว / ปิดรับแล้ว</span><span class="sp"></span><span class="v">พื้นเทา กดไม่ได้</span></div>
+  <div class="ln"><span class="k">ร้านยกเลิกรอบ (คลื่นลม)</span><span class="sp"></span><span class="v">ลายขีด "งดออก"</span></div>
+  <div class="ln"><span class="k">เต็ม</span><span class="sp"></span><span class="v">"เต็ม · ฝากชื่อรอ" (จอ 07)</span></div>
+  <div class="ln"><span class="k">กว้างน้อยกว่า 480</span><span class="sp"></span><span class="v">แถบ 4 วัน เลื่อนซ้ายขวา</span></div>
+  <div class="ln"><span class="k">ความสูง</span><span class="sp"></span><span class="v">ปรับตามเนื้อหาอัตโนมัติ</span></div>
+  <div class="ln"><span class="k">ภาษาในกรอบฝัง</span><span class="sp"></span><span class="v">ตามเว็บร้าน · ไทย พ.ศ. / EN ค.ศ.</span></div>
+  <div class="ln"><span class="k">ลิงก์เอเจนซี่</span><span class="sp"></span><span class="v">data-agent="PTD" = โควตา PTD + ที่ว่างสาธารณะ</span></div>
+ </div>
+</div>
+</div>

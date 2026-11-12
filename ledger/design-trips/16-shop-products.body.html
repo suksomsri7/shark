@@ -1,0 +1,168 @@
+<style>
+/* ชุด 16–20 (ใช้โทเคนเดิม ไม่เพิ่มสี) */
+.g16{display:grid;grid-template-columns:288px minmax(0,1fr) 340px;gap:24px;align-items:start}
+.pli{display:flex;flex-direction:column;gap:6px;padding:14px 18px;border-top:1px solid var(--line);font-size:14px}
+.pli b{font-size:15px}.pli .r{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--mut);font-size:13px}
+.pli.on{background:var(--sf2);box-shadow:inset 3px 0 0 var(--acc)}
+.chip.dash{border-style:dashed;color:var(--ink2)}
+.lgl{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:8px;border:1px dashed var(--ink2);background:var(--sf2);color:var(--ink2);font-size:12.5px;font-weight:600;white-space:nowrap}
+.fx{width:24px;height:24px;border-radius:7px;border:1.5px solid var(--line2);display:inline-grid;place-items:center;color:var(--sf);vertical-align:middle}
+.fx.on{background:var(--ink);border-color:var(--ink)}
+.fx.pt{width:auto;padding:0 6px;border-style:dashed;border-color:var(--ink2);color:var(--ink2);font-size:12.5px;font-weight:700}
+.xt.c td,.xt.c th{text-align:center}.xt.c td:first-child,.xt.c th:first-child{text-align:left}
+.xt td .inp,.fr .inp{height:40px!important;font-size:14px!important;padding:0 12px!important}
+.ckl{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--line);font-size:14px;line-height:1.45}
+.ckl:first-of-type{border-top:0}.ckl small{display:block;color:var(--mut);font-size:13px}
+.ckl .st{width:22px;height:22px;border-radius:50%;flex:none;display:grid;place-items:center;margin-top:1px;border:1.5px solid var(--ink);background:var(--ink);color:var(--sf)}
+.ckl .st.no{background:var(--sf);border:1.5px dashed var(--mut2);color:var(--mut2)}
+.ckl.no b{color:var(--ink2)}
+.age{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--mut)}
+.age .inp{width:58px;justify-content:center}
+.secn{display:flex;gap:6px;flex-wrap:wrap}
+.secn span{height:36px;display:inline-flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid var(--line);font-size:14px;color:var(--mut);background:var(--sf)}
+.xt.c td:first-child{white-space:normal!important;min-width:0!important}.xt.c td:nth-child(2){min-width:0!important}.xt.c td:not(:first-child){white-space:nowrap!important}
+.ln .v .dft{margin-left:6px}
+.card.p0{overflow:hidden}
+.secn span.on{border-color:var(--ink);color:var(--ink);font-weight:700}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">16 · สินค้าทัวร์ (ฝั่งร้าน) 1440 <span>— รายการสินค้า + ตัวแก้สินค้าในหน้าเดียว · ตัวเลือก · ประเภทคน (ช่วงอายุปรับได้) · ราคาฤดูกาลและรายรอบ · รายการเสริม 3 ธง · โซนรับส่ง · เนื้อหาไทย/อังกฤษ · ความครบเอกสารชี้ชวน 9 ข้อ (แสดงให้ร้านเห็นเท่านั้น ไม่บังคับ ไม่ปิดการขาย)</span></p>
+<div class="frame">
+ <div class="dh"><span class="lg">AD</span><b>อันดามันไดฟ์</b><nav><span class="on">สินค้า</span><span>รอบและที่ว่าง</span><span>การจอง</span><span>เอเจนซี่</span><span>หน้าจองและช่องทาง</span><span>ตั้งค่า</span></nav><span class="sp"></span><div class="btn gh"><svg class="i sm"><use href="#i-eye"/></svg>ดูหน้าจอง</div><div class="btn pri">บันทึก</div></div>
+ <div class="pg" style="padding-top:26px!important">
+  <div class="g16">
+   <!-- รายการสินค้า -->
+   <div class="card p0">
+    <div style="padding:18px 18px 12px;display:flex;flex-direction:column;gap:12px">
+     <div style="display:flex;align-items:center;gap:10px"><b style="font-size:16px">สินค้า 4</b><span class="sp" style="flex:1"></span><div class="btn gh sm"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่ม</div></div>
+     <div class="inp" style="width:100%"><svg class="i sm"><use href="#i-search"/></svg>ค้นชื่อสินค้า</div>
+     <div class="secn"><span class="on">ทั้งหมด 4</span><span>ทัวร์ 3</span><span>Liveaboard 1</span></div>
+    </div>
+    <div class="pli on"><b>เกาะราชาใหญ่ เดย์ทริป</b><div class="r"><span class="chip ink">เปิดขาย</span><span>ร่วมกลุ่ม · 24 ที่</span></div><div class="r"><span>ชี้ชวนครบ 7/9</span><span>·</span><span>EN ยังไม่แปล 2 ส่วน</span></div></div>
+    <div class="pli"><b>เกาะพีพี + เกาะไข่</b><div class="r"><span class="chip ink">เปิดขาย</span><span>สปีดโบ๊ต 2 ลำ · 30 ที่</span></div><div class="r"><span>ชี้ชวนครบ 6/9</span><span>·</span><span>EN ครบ</span></div></div>
+    <div class="pli"><b>ดำน้ำลึก 3 ไดฟ์ ราชาน้อย</b><div class="r"><span class="chip ink">เปิดขาย</span><span>เรือดำน้ำ 1 · 12 ที่</span></div><div class="r"><span>ชี้ชวนครบ 8/9</span><span>·</span><span>EN ครบ</span></div></div>
+    <div class="pli"><b>Liveaboard สิมิลัน 4 คืน</b><div class="r"><span class="chip ink">เปิดขาย</span><span>MV อันดามัน เอ็กซ์พลอเรอร์</span></div><div class="r"><span>ชี้ชวนครบ 9/9</span><span>·</span><span>EN ครบ</span></div></div>
+    <div class="pli" style="color:var(--mut)"><div class="r" style="font-size:13.5px">ร่าง (ยังไม่เปิดขาย) = ป้ายเส้นประ <span class="chip dash">ร่าง</span> · ปิดขาย = <span class="chip">ปิดขาย</span></div></div>
+   </div>
+
+   <!-- ตัวแก้สินค้า -->
+   <div class="col" style="gap:22px;min-width:0">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+     <div><div class="mu2">สินค้า › ทัวร์</div><b style="font-size:21px">เกาะราชาใหญ่ เดย์ทริป ดำน้ำตื้น + ชมปะการัง</b></div>
+     <span class="chip ink">เปิดขาย</span>
+    </div>
+    <div class="secn"><span class="on">ตัวเลือกและราคา</span><span>รายการเสริม</span><span>รับส่ง</span><span>เนื้อหา ไทย/อังกฤษ</span><span>ผู้เดินทาง</span><span>เงื่อนไข</span><span>ต้นทุนรอบ</span></div>
+
+    <div class="card p0">
+     <div class="ch" style="padding:22px 22px 0"><span>ตัวเลือก</span><span class="sp"></span><div class="btn gh sm"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มตัวเลือก</div></div>
+     <table class="xt">
+      <tr><th>ตัวเลือก</th><th>ทรัพยากร</th><th class="n">ความจุ/รอบ</th><th>ขายที่ไหน</th><th>สถานะ</th></tr>
+      <tr><td><b>ร่วมกลุ่ม</b><small>เวลา 08:00–16:30 · ไกด์ 2 คน</small></td><td>เรือราชา 1 · รถตู้ 3 คัน</td><td class="n">24</td><td>ทุกช่องทาง</td><td><span class="chip ink">เปิดขาย</span></td></tr>
+      <tr><td><b>เหมาเรือส่วนตัว</b><small>ลูกค้าส่งคำขอ ร้านเสนอราคา</small></td><td>เรือราชา 2</td><td class="n">12</td><td>ขอราคาเท่านั้น</td><td><span class="chip dash">ร่าง</span></td></tr>
+     </table>
+    </div>
+
+    <div class="card">
+     <div class="ch"><span>ประเภทคนและช่วงอายุ</span><span class="sp"></span><span class="dft" style="font-size:12.5px">ช่วงอายุ: ค่าจากแม่แบบ "ร้านดำน้ำ"</span></div>
+     <table class="xt">
+      <tr><th>ประเภท</th><th>ช่วงอายุ (ปรับได้)</th><th>ใช้ที่นั่ง</th><th class="n">ราคาฤดูกาลหลัก</th><th>ราคาคิดจาก</th></tr>
+      <tr><td><b>ผู้ใหญ่</b></td><td><span class="age"><span class="inp">12</span> ปีขึ้นไป</span></td><td>ใช่</td><td class="n"><b>฿3,500</b></td><td>ตั้งเอง</td></tr>
+      <tr><td><b>เด็ก</b></td><td><span class="age"><span class="inp">4</span>–<span class="inp">11</span> ปี</span></td><td>ใช่</td><td class="n"><b>฿2,450</b></td><td>70% ของผู้ใหญ่ <span class="dft" style="font-size:12.5px">ค่าเริ่มต้น</span></td></tr>
+      <tr><td><b>ทารก</b></td><td><span class="age">ต่ำกว่า <span class="inp">4</span> ปี</span></td><td>ไม่ใช้</td><td class="n"><b>ฟรี</b></td><td>ตั้งเอง</td></tr>
+     </table>
+     <div class="mu2" style="margin-top:10px">ระบบไม่ตรวจอายุ · วอเชอร์พิมพ์ประเภทคนชัด + "แสดงหลักฐานที่จุดบริการ" · ไกด์เก็บส่วนต่างลง POS ได้</div>
+    </div>
+
+    <div class="card p0">
+     <div class="ch" style="padding:22px 22px 0"><span>ราคาตามฤดูกาลและรายรอบ</span><span class="sp"></span><span class="mu2" style="font-weight:400">ราคารวม VAT · ลำดับ: ราคารอบ › ฤดูกาล › ราคาฐาน</span><div class="btn gh sm"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มฤดูกาล</div></div>
+     <table class="xt">
+      <tr><th>ช่วง</th><th>วันที่มีผล</th><th class="n">ผู้ใหญ่</th><th class="n">เด็ก</th><th>หมายเหตุ</th></tr>
+      <tr style="background:var(--sf2)"><td><b>ฤดูกาลหลัก</b> <span class="chip ink">ใช้อยู่</span></td><td>1 พ.ย. 2569 – 30 เม.ย. 2570</td><td class="n">3,500</td><td class="n">2,450</td><td>ราคาฐานของสินค้า</td></tr>
+      <tr><td><b>ปีใหม่</b></td><td>20 ธ.ค. 2569 – 5 ม.ค. 2570</td><td class="n">3,900</td><td class="n">2,730</td><td>ทับฤดูกาลหลัก</td></tr>
+      <tr><td><b>นอกฤดู</b></td><td>1 พ.ค. – 31 ต.ค. 2570</td><td class="n">2,900</td><td class="n">2,030</td><td>คลื่นลมแรง ออกเฉพาะวันอากาศดี</td></tr>
+     </table>
+     <div class="grp" style="border-top:1px solid var(--line)"><span style="font-weight:700;color:var(--ink2)">ราคาเฉพาะรอบ</span><span>ตั้งจากปฏิทินรอบ (จอ 11) หรือที่นี่</span><span class="sp"></span><div class="btn gh sm">เพิ่มราคาเฉพาะรอบ</div></div>
+     <table class="xt">
+      <tr><th>รอบ</th><th class="n">ขายแล้ว</th><th class="n">ผู้ใหญ่</th><th class="n">เด็ก</th><th>ที่มาของราคา</th></tr>
+      <tr><td><b>ส. 14 พ.ย. 2569</b></td><td class="n">15/24</td><td class="n">3,500</td><td class="n">2,450</td><td><span class="dft" style="font-size:12.5px">ฤดูกาลหลัก</span></td></tr>
+      <tr><td><b>อา. 15 พ.ย. 2569</b></td><td class="n">21/24</td><td class="n">3,500</td><td class="n">2,450</td><td><span class="dft" style="font-size:12.5px">ฤดูกาลหลัก</span></td></tr>
+      <tr><td><b>พฤ. 31 ธ.ค. 2569</b><small>ทริปเคาท์ดาวน์</small></td><td class="n">0/24</td><td class="n">4,500</td><td class="n">3,150</td><td><span class="dft ch" style="font-size:12.5px">ราคาเฉพาะรอบ</span> <span class="mu2">ทับ "ปีใหม่"</span></td></tr>
+     </table>
+    </div>
+
+    <div class="card p0">
+     <div class="ch" style="padding:22px 22px 0"><span>รายการเสริม</span><span class="sp"></span><div class="btn gh sm"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มรายการ</div></div>
+     <table class="xt c">
+      <tr><th>รายการ</th><th>คิดต่อ</th><th>บังคับ</th><th class="n" style="text-align:right">ราคา</th><th>คิด<br>คอมฯ</th><th>ลด<br>ราคาได้</th><th>เก็บแทน<br>นอก VAT</th></tr>
+      <tr><td><b>ค่าอุทยาน</b><small>"อัตราของร้าน" ในตารางค่าอุทยาน (จอ 17)</small></td><td>คน</td><td>บังคับ</td><td class="n">600 / 300</td><td><span class="fx"></span></td><td><span class="fx"></span></td><td><span class="fx on"><svg class="i xs"><use href="#i-check"/></svg></span></td></tr>
+      <tr><td><b>เช่ากล้องกันน้ำ</b><small>พร้อมการ์ด 32 GB · มี 6 ตัว ตัดสต็อกต่อรอบ</small></td><td>การจอง</td><td>เลือกได้</td><td class="n">500</td><td><span class="fx pt">50%</span></td><td><span class="fx on"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="fx"></span></td></tr>
+      <tr><td><b>ทดลองดำน้ำลึก 1 ไดฟ์</b><small>อายุ 10 ปีขึ้นไป · ครูฝึก 1:2</small></td><td>คน</td><td>เลือกได้</td><td class="n">1,900</td><td><span class="fx on"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="fx on"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="fx"></span></td></tr>
+     </table>
+     <div class="grp" style="border-top:1px solid var(--line);align-items:flex-start;flex-wrap:wrap"><span class="lgl"><svg class="i xs"><use href="#i-doc"/></svg>ตรวจกับนักบัญชีของร้าน</span><span style="flex:1;min-width:300px;color:var(--ink2);font-weight:400">เงินเก็บแทนอยู่นอกฐาน VAT ได้เมื่อ ① แยกบรรทัดบนเอกสาร ② เก็บเท่าที่จ่ายจริง ③ มีหลักฐานจ่ายในนามลูกค้า ④ ส่วนลดที่ได้ต้องคืนลูกค้า — ไม่ครบ = คำเตือน W05/W06 ไม่ปิดการขาย</span></div>
+    </div>
+
+    <div class="card p0">
+     <div class="ch" style="padding:22px 22px 0"><span>รับส่ง</span><span class="sp"></span><span class="mu2" style="font-weight:400">แจ้งเวลารับจริงให้ลูกค้า 18:00 วันก่อนเดินทาง (หลังจัดรถ)</span><div class="btn gh sm"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มโซน</div></div>
+     <table class="xt">
+      <tr><th>โซน</th><th>พื้นที่</th><th>ช่วงเวลารับ</th><th class="n">ค่าบวกเพิ่ม</th><th>คิดต่อ</th></tr>
+      <tr><td><b>ในโซน</b></td><td>กะตะ · กะรน · ป่าตอง · ฉลอง</td><td>06:45–07:35</td><td class="n">ฟรี</td><td>—</td></tr>
+      <tr><td><b>นอกโซน</b></td><td>กมลา · บางเทา</td><td>06:15–06:40</td><td class="n">+600</td><td>คัน ไป-กลับ</td></tr>
+      <tr><td><b>มาเอง</b></td><td>ท่าเรืออ่าวฉลอง · เคาน์เตอร์อันดามันไดฟ์</td><td>พบ 08:00</td><td class="n">ฟรี</td><td>—</td></tr>
+     </table>
+    </div>
+
+    <div class="card p0">
+     <div class="ch" style="padding:22px 22px 0"><span>เนื้อหา ไทย / English</span><span class="sp"></span><div class="btn gh sm"><svg class="i sm"><use href="#i-spark"/></svg>ร่างคำแปลที่ขาด (ร้านตรวจก่อนเผยแพร่)</div></div>
+     <table class="xt">
+      <tr><th>ส่วน</th><th>ไทย (ภาษาหลัก)</th><th>English</th><th>หน้าภาษาอังกฤษแสดง</th></tr>
+      <tr><td><b>ชื่อทริป</b></td><td><span class="chip ink">มี</span></td><td><span class="chip ink">แปลแล้ว</span></td><td>Racha Yai Island Day Trip</td></tr>
+      <tr><td><b>คำบรรยายสั้น + รูป 8</b></td><td><span class="chip ink">มี</span></td><td><span class="chip ink">แปลแล้ว</span></td><td>ภาษาอังกฤษ</td></tr>
+      <tr><td><b>กำหนดการ 4 จุด</b></td><td><span class="chip ink">มี</span></td><td><span class="chip dash">ยังไม่แปล</span></td><td>ไทย + ป้าย "Not yet translated"</td></tr>
+      <tr><td><b>รวม / ไม่รวม</b></td><td><span class="chip ink">มี</span></td><td><span class="chip ink">แปลแล้ว</span></td><td>ภาษาอังกฤษ</td></tr>
+      <tr><td><b>จุดนัดพบ + สิ่งที่ต้องเตรียม</b></td><td><span class="chip ink">มี</span></td><td><span class="chip dash">ยังไม่แปล</span></td><td>ไทย + ป้าย "Not yet translated"</td></tr>
+      <tr><td><b>เงื่อนไขยกเลิก · ค่าอุทยาน</b></td><td><span class="chip ink">อัตโนมัติ</span></td><td><span class="chip ink">อัตโนมัติ</span></td><td>สร้างจากค่าตั้ง ทั้ง 2 ภาษา</td></tr>
+     </table>
+     <div class="grp" style="border-top:1px solid var(--line)"><span>ภาษาที่เปิดบนหน้าจอง: ไทย · English (มติ Q11 — จีนตามมาภายหลัง ปุ่มจีนไม่แสดงจนร้านเปิด)</span></div>
+    </div>
+   </div>
+
+   <!-- ขวา -->
+   <div class="col" style="gap:22px">
+    <div class="card">
+     <div class="ch" style="margin-bottom:8px"><span>ข้อมูลที่เอกสารชี้ชวนควรมี</span></div>
+     <div style="display:flex;align-items:baseline;gap:10px"><b style="font-size:30px;font-variant-numeric:tabular-nums">78%</b><span class="mu2">ครบ 7 จาก 9 ข้อ</span></div>
+     <div class="pbar" style="margin:10px 0 6px"><i style="width:78%"></i></div>
+     <div class="mu2" style="margin-bottom:8px">แสดงให้ร้านเห็นเท่านั้น · ไม่บังคับ ไม่ปิดการขาย</div>
+     <div class="ckl no"><span class="st no"></span><span><b>ชื่อร้าน สถานที่ เลขใบอนุญาตนำเที่ยว</b><small>ยังไม่กรอกเลขใบอนุญาต (ไม่บังคับ) · ถ้ากรอกจะแสดงบนหน้าจองและวอเชอร์</small></span></div>
+     <div class="ckl"><span class="st"><svg class="i xs"><use href="#i-check"/></svg></span><span><b>ระยะเวลานำเที่ยว</b><small>08:00–16:30</small></span></div>
+     <div class="ckl"><span class="st"><svg class="i xs"><use href="#i-check"/></svg></span><span><b>ค่าบริการและวิธีชำระ</b><small>ราคาต่อประเภทคน · ค่าอุทยานแยกบรรทัด · พร้อมเพย์/บัตร</small></span></div>
+     <div class="ckl"><span class="st"><svg class="i xs"><use href="#i-check"/></svg></span><span><b>ยานพาหนะ</b><small>เรือราชา 1 · รถตู้รับส่ง</small></span></div>
+     <div class="ckl"><span class="st"><svg class="i xs"><use href="#i-check"/></svg></span><span><b>จุดหมาย ที่แวะพัก</b><small>กำหนดการ 4 จุด</small></span></div>
+     <div class="ckl"><span class="st"><svg class="i xs"><use href="#i-check"/></svg></span><span><b>ที่พัก + จำนวนมื้ออาหาร</b><small>ไม่ค้างคืน · อาหารกลางวัน 1 มื้อ</small></span></div>
+     <div class="ckl"><span class="st"><svg class="i xs"><use href="#i-check"/></svg></span><span><b>มัคคุเทศก์ / ผู้นำเที่ยว</b><small>ไกด์ 2 คนต่อรอบ</small></span></div>
+     <div class="ckl"><span class="st"><svg class="i xs"><use href="#i-check"/></svg></span><span><b>จำนวนขั้นต่ำออกเดินทาง</b><small>8 คน · ไม่ถึงร้านตัดสินที่เวลาปิดรับจอง</small></span></div>
+     <div class="ckl no"><span class="st no"></span><span><b>ประกันอุบัติเหตุ</b><small>ยังไม่ระบุ · ใส่เลขกรมธรรม์ได้ในค่าตั้ง › เอกสาร</small></span></div>
+    </div>
+    <div class="card">
+     <div class="ch" style="margin-bottom:8px"><span>ค่าที่ใช้กับสินค้านี้</span><span class="sp"></span><span class="mu2" style="font-weight:400">แก้ที่ค่าตั้ง</span></div>
+     <div class="ln"><span class="k">ถือที่ระหว่างจ่าย</span><span class="sp"></span><span class="v">15 นาที</span></div>
+     <div class="ln"><span class="k">ปิดรับจอง</span><span class="sp"></span><span class="v">18:00 วันก่อน</span></div>
+     <div class="ln"><span class="k">ขั้นต่ำออกเดินทาง</span><span class="sp"></span><span class="v"><span class="dft ch">ตั้งที่สินค้า</span> 8 คน</span></div>
+     <div class="ln"><span class="k">ยกเลิกโดยลูกค้า</span><span class="sp"></span><span class="v">100 / 50 / 0%</span></div>
+     <div class="ln"><span class="k">จ่ายตอนจอง</span><span class="sp"></span><span class="v">เต็มจำนวน</span></div>
+     <div class="mu2" style="margin-top:10px">ป้ายน้ำเงิน = ตั้งเฉพาะสินค้านี้ · ที่เหลือตามทั้งร้าน › แม่แบบ "ร้านดำน้ำ" (จอ 17)</div>
+    </div>
+    <div class="card">
+     <div class="ch" style="margin-bottom:8px"><span>ลูกค้าจะเห็น</span></div>
+     <div class="ln"><span class="k">ผู้ใหญ่ 2 × 3,500</span><span class="sp"></span><span class="v">7,000.00</span></div>
+     <div class="ln"><span class="k">เด็ก 1 × 2,450</span><span class="sp"></span><span class="v">2,450.00</span></div>
+     <div class="ln"><span class="k">ค่าอุทยาน 2 + 1</span><span class="sp"></span><span class="v">1,500.00</span></div>
+     <div class="ln"><span class="k">เช่ากล้องกันน้ำ</span><span class="sp"></span><span class="v">500.00</span></div>
+     <div class="ln tt"><span class="k">รวม</span><span class="sp"></span><span class="v">฿11,450.00</span></div>
+     <div class="mu2" style="margin-top:8px">ตัวอย่างคิดด้วยราคาวันที่ 14 พ.ย. (ฤดูกาลหลัก) = จอ 01</div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>

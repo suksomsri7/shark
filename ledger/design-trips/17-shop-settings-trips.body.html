@@ -1,0 +1,211 @@
+<style>
+/* ชุด 16–20 (ใช้โทเคนเดิม ไม่เพิ่มสี) */
+.card.p0{overflow:hidden}
+.chip.dash{border-style:dashed;color:var(--ink2)}
+.lgl{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:8px;border:1px dashed var(--ink2);background:var(--sf2);color:var(--ink2);font-size:12.5px;font-weight:600;white-space:nowrap}
+.b17{display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:8px;border:1px solid var(--line2);color:var(--mut);font-size:12.5px;white-space:nowrap;background:var(--sf)}
+.b17.ch{border-color:var(--acc);color:var(--acc);background:var(--acc-bg);font-weight:700}
+.b17.wn{border-color:var(--dg);color:var(--dg);font-weight:700;gap:5px}
+.g17{display:grid;grid-template-columns:250px minmax(0,1fr);gap:26px;align-items:start}
+.snav{display:flex;flex-direction:column;gap:2px;font-size:14px}
+.snav .h{font-size:12.5px;font-weight:700;color:var(--mut);padding:14px 12px 6px}
+.snav a{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 12px;border-radius:10px;color:var(--ink2);text-decoration:none}
+.snav a.on{background:var(--sf2);border:1px solid var(--line);font-weight:700;color:var(--ink)}
+.snav a.sub{padding-left:26px;color:var(--mut);min-height:36px;font-size:13.5px}
+.snav a .n{margin-left:auto;font-size:12.5px;color:var(--acc);font-weight:700}
+.gcols{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+.f17{display:flex;flex-direction:column;gap:9px;padding:15px 0;border-top:1px solid var(--line)}
+.f17:first-of-type{border-top:0;padding-top:4px}
+.f17 .h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14.5px}
+.f17 .h b{margin-right:auto}
+.f17 .w{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}
+.f17 .w .inp{height:42px!important;font-size:14.5px!important}
+.f17 .src{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:13px;color:var(--mut)}
+.f17 .src b{color:var(--ink2);font-weight:600}
+.f17 .act{display:flex;gap:10px;align-items:center;font-size:13.5px;color:var(--ink2)}
+.pill2{display:inline-flex;align-items:center;height:40px;padding:0 14px;border-radius:11px;border:1px solid var(--line);font-size:14px;color:var(--mut);background:var(--sf)}
+.pill2.on{border-color:var(--ink);color:var(--ink);font-weight:700;box-shadow:inset 0 0 0 1px var(--ink)}
+.chain{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+.chain div{border:1px solid var(--line);padding:10px 14px;font-size:13.5px;color:var(--mut);line-height:1.4;background:var(--sf)}
+.chain div b{display:block;color:var(--ink);font-size:14.5px}
+.chain div{border-radius:12px}.chain{gap:4px}
+.chain div.on{background:var(--sf2);box-shadow:inset 0 -3px 0 var(--acc)}
+.chain .ar{border:0!important;background:none!important;padding:0 2px!important;display:grid;place-items:center}
+.lad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%}
+.lad div{border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-size:13px;color:var(--mut)}
+.lad div b{display:block;font-size:17px;color:var(--ink)}
+.lad.wn div.x{border:1.5px dashed var(--dg)}.lad.wn div.x b{color:var(--dg)}
+.wbox{border:1.5px solid var(--dg);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;font-size:14px;background:var(--sf)}
+.wbox .t{display:flex;gap:8px;align-items:flex-start;color:var(--dg);font-weight:700}
+.wbox .ck{display:flex;gap:10px;align-items:flex-start;color:var(--ink2);min-height:44px}
+.wbox .ck i{width:22px;height:22px;border-radius:6px;background:var(--ink);flex:none;display:grid;place-items:center;color:var(--sf);margin-top:1px}
+.mtbl{width:100%;border-collapse:collapse;font-size:14px}
+.mtbl th{font-size:12.5px;color:var(--mut);font-weight:600;text-align:left;padding:8px 8px;border-bottom:1px solid var(--line)}
+.mtbl td{padding:10px 8px;border-bottom:1px solid var(--line)}
+.mtbl tr:last-child td{border-bottom:0}
+.mtbl .n{text-align:right;font-variant-numeric:tabular-nums}
+.ovr{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:12px;width:100%}
+.ovr div{display:flex;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);font-size:14px}
+.ovr div:first-child{border-top:0}.ovr div .sp{flex:1}
+</style>
+<style>.key{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--mut2)}.ch .key{font-weight:400;margin-left:2px}</style>
+<div class="wrap">
+<p class="cap" style="margin:0">17 · ค่าตั้งโดเมน «trips» (สร้างจากทะเบียนค่าตั้ง · ชื่อและกลุ่มตาม TRIPS-DEFAULTS.md) 1440 <span>— ทุกค่าบอก 3 อย่าง: ป้าย ค่าเริ่มต้น / ปรับแล้ว · มาจากชั้นไหน (แม่แบบ "ร้านดำน้ำ" → ทั้งร้าน → สินค้า) · ค่าแม่แบบเดิมเมื่อปรับ · ป้าย "ตรวจกับนักบัญชีของร้าน" เฉพาะค่าที่ TRIPS-DEFAULTS ติดป้ายนักบัญชี · เรื่องนอกภาษีที่ยังไม่ยืนยัน = ข้อความ "ยังไม่ยืนยันกับ…" · ตั้งเข้มกว่าเกณฑ์ = คำเตือน (W##) บันทึกได้เสมอ ไม่มีการบล็อก</span></p>
+<div class="frame">
+ <div class="dh"><span class="lg">AD</span><b>อันดามันไดฟ์</b><nav><span>สินค้า</span><span>รอบและที่ว่าง</span><span>การจอง</span><span>เอเจนซี่</span><span>หน้าจองและช่องทาง</span><span class="on">ตั้งค่า</span></nav><span class="sp"></span><div class="btn gh">ยกเลิกที่แก้</div><div class="btn pri">บันทึก 1 ข้อ</div></div>
+ <div class="pg" style="padding-top:26px!important">
+  <div class="g17">
+   <div class="card" style="padding:12px!important">
+    <div class="snav">
+     <div class="h">ค่าตั้งของร้าน</div>
+     <a>ร้านและสาขา</a><a>รับเงิน</a><a>ข้อความถึงลูกค้า</a>
+     <a class="on">การจองทริป<span class="n">3</span></a>
+     <a class="sub">ทั่วไปและการขาย</a><a class="sub">เงินและงวดจ่าย</a><a class="sub">ยกเลิกและคืนเงิน</a><a class="sub">ผู้เดินทาง</a><a class="sub">ภาษีและเอกสารเงิน</a><a class="sub">บรรทัดเก็บแทนและค่าอุทยาน</a><a class="sub">ดำน้ำ เรือ ประกัน ใบอนุญาต</a><a class="sub">ข้อมูลส่วนบุคคลและเอกสารลงนาม</a><a class="sub">ข้อความแจ้งเตือน</a>
+     <a>เอเจนซี่</a><a>ตั๋ว</a><a>เชื่อมต่อ</a>
+    </div>
+   </div>
+
+   <div class="col" style="gap:22px;min-width:0">
+    <div class="card col" style="gap:16px">
+     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <b style="font-size:21px;margin-right:auto">การจองทริป</b>
+      <span style="font-size:14.5px">แม่แบบที่ใช้: <b>ร้านดำน้ำ</b> · <b>ปรับจากแม่แบบ 3 ข้อ</b> · ตั้งรายสินค้า 6 ค่า</span>
+      <span class="pill2"><span class="cbx" style="margin-right:8px"></span>ดูเฉพาะที่ปรับ</span><span class="pill2">ประวัติ</span>
+     </div>
+     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <span class="mu2">ค่าที่ใช้จริง = ชั้นล่างสุดที่ตั้งไว้</span>
+      <div class="chain">
+       <div><b>แม่แบบ "ร้านดำน้ำ"</b>ค่าเริ่มต้นของประเภทกิจการ</div><div class="ar"><svg class="i sm"><use href="#i-ar"/></svg></div>
+       <div class="on"><b>ทั้งร้าน</b>กำลังดูชั้นนี้</div><div class="ar"><svg class="i sm"><use href="#i-ar"/></svg></div>
+       <div><b>สินค้า</b>ตั้งเฉพาะสินค้า ทับทั้งร้าน</div><div class="ar"><svg class="i sm"><use href="#i-ar"/></svg></div>
+       <div><b>การจอง</b>จดค่า ณ วันจอง ไม่เปลี่ยนตาม</div>
+      </div>
+      <span class="inp" style="margin-left:auto">ดูชั้น: <b>ทั้งร้าน</b><svg class="i sm cv"><use href="#i-cv"/></svg></span>
+     </div>
+     <div class="mu2" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center"><span><span class="b17">ค่าเริ่มต้น</span> = ตามแม่แบบ</span><span><span class="b17 ch">ปรับแล้ว</span> = ร้านตั้งเอง (คืนค่าได้)</span><span><span class="lgl"><svg class="i xs"><use href="#i-doc"/></svg>ตรวจกับนักบัญชีของร้าน</span> = ภาษีที่ยังไม่ยืนยัน</span><span><span class="b17 wn"><svg class="i xs"><use href="#i-warn"/></svg>W01</span> = คำเตือน บันทึกได้</span></div>
+    </div>
+
+    <div class="gcols">
+     <div class="col" style="gap:22px">
+      <div class="card">
+       <div class="ch" style="margin-bottom:6px"><span>ทั่วไปและการขาย</span><span class="key">trips.sell.*</span></div>
+       <div class="f17"><div class="h"><b>ถือที่ระหว่างลูกค้าจ่ายเงิน</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w"><span class="inp">15</span>นาที</div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · Liveaboard ใช้ 30 นาทีจากแม่แบบเรือ<span class="key">holdMinutes</span></div></div>
+       <div class="f17"><div class="h"><b>ปิดรับจอง · เว็บ · เอเจนซี่</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w"><span class="inp">1</span>วันก่อน <span class="inp">18:00</span></div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ"<span class="key">cutoff</span></div></div>
+       <div class="f17"><div class="h"><b>ปิดรับจอง · หน้าร้าน</b><span class="b17 ch">ปรับแล้ว</span></div><div class="w"><span class="inp">0</span>วันก่อน <span class="inp">07:00</span> (เช้าวันเดินทาง)</div><div class="src"><b>ตั้งไว้ทั้งร้าน</b><span>ค่าแม่แบบ: 1 วันก่อน 18:00 ทุกช่องทาง</span><span class="key">cutoff.perChannel</span></div><div class="act"><span class="btn gh sm">คืนค่า</span><span class="cbx"></span>ตามชั้นบน</div></div>
+       <div class="f17"><div class="h"><b>ขั้นต่ำออกเดินทาง + เวลาตัดสิน</b><span class="b17">ค่าเริ่มต้น</span><span class="b17">ตั้งรายสินค้า 3</span></div><div class="w"><span class="pill2 on">ไม่กำหนด</span><span class="pill2">กำหนด N คน</span></div>
+        <div class="ovr"><div><b>เกาะราชาใหญ่ เดย์ทริป</b><span class="sp"></span>8 คน · ตัดสิน 1 วันก่อน 18:00<span class="b17 ch">สินค้า</span></div><div><b>เกาะพีพี + เกาะไข่</b><span class="sp"></span>10 คน · 1 วันก่อน 18:00<span class="b17 ch">สินค้า</span></div><div><b>ดำน้ำลึก 3 ไดฟ์ ราชาน้อย</b><span class="sp"></span>4 คน · 1 วันก่อน 18:00<span class="b17 ch">สินค้า</span></div></div>
+        <div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · ไม่ถึง = แจ้งร้านเลือก รวมรอบ/เลื่อน/คืนเงิน · ถ้ากำหนด ต้องแสดงในหน้าสินค้า (ม.26(8))<span class="key">minToDepart</span></div></div>
+       <div class="f17"><div class="h"><b>เริ่มจองแล้วไม่จ่าย → เตือน LINE ครั้งเดียว</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w"><span class="sw"></span>เปิด · <span class="inp">60</span>นาทีหลังถือที่หมดเวลา</div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ"<span class="key">abandonedReminder</span></div></div>
+      </div>
+
+      <div class="card">
+       <div class="ch" style="margin-bottom:6px"><span>เงินและงวดจ่าย</span><span class="key">trips.pay.*</span></div>
+       <div class="f17"><div class="h"><b>มัดจำตอนจอง (% ของค่าทริป)</b><span class="b17">ค่าเริ่มต้น</span><span class="b17">ตั้งรายสินค้า 1</span></div><div class="w"><span class="inp">100</span>% = จ่ายเต็มตอนจอง · ฐาน: ค่าทริปเท่านั้น (ไม่รวมบรรทัดเก็บแทน)</div>
+        <div class="ovr"><div><b>Liveaboard สิมิลัน 4 คืน</b><span class="sp"></span>มัดจำ 30% · ที่เหลือ 60 วันก่อน · เตือน 7, 1 วัน<span class="b17 ch">สินค้า</span></div></div>
+        <div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ"<span class="key">depositPct · depositBase · balanceDueDaysBefore · reminderDaysBefore</span></div></div>
+       <div class="f17"><div class="h"><b>งวดเลยกำหนด</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w"><span class="pill2 on">แจ้งร้าน</span><span class="pill2">ปล่อยที่อัตโนมัติ</span></div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · ปล่อยเอง = ร้านยกเลิกการจองที่จ่ายแล้ว ต้องตัดสินเรื่องคืนเงินก่อน<span class="key">overdueAction</span></div></div>
+      </div>
+
+      <div class="card">
+       <div class="ch" style="margin-bottom:6px"><span>ผู้เดินทาง</span><span class="key">trips.pax.*</span></div>
+       <div class="f17"><div class="h"><b>ช่วงอายุราคาเด็ก</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w">ทารก ต่ำกว่า <span class="inp">4</span> · เด็ก <span class="inp">4</span>–<span class="inp">11</span> ปี</div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · คนละชุดกับช่วงอายุค่าอุทยาน<span class="key">childAgeBand</span></div></div>
+       <div class="f17"><div class="h"><b>ช่องข้อมูลผู้เดินทาง</b><span class="b17">ค่าเริ่มต้น</span></div>
+        <table class="mtbl">
+         <tr><th>ช่อง</th><th>ทั้งร้าน</th><th>ใช้กับ</th></tr>
+         <tr><td><b>ชื่อ-นามสกุล</b></td><td><span class="chip ink">บังคับ</span></td><td>ใบรายชื่อ</td></tr>
+         <tr><td><b>ไซซ์ตีนกบ · อาหารที่แพ้</b></td><td><span class="chip ink">บังคับ</span></td><td>เตรียมของ</td></tr>
+         <tr><td><b>ระดับบัตรดำน้ำ + จำนวนไดฟ์</b></td><td><span class="chip ink">บังคับ</span></td><td>จัดกลุ่ม · เกณฑ์กล้อง</td></tr>
+         <tr><td><b>สัญชาติ</b></td><td><span class="chip">ไม่บังคับ</span></td><td>ค่าอุทยาน · ประกัน</td></tr>
+         <tr><td><b>วันเกิด</b></td><td><span class="chip">ไม่บังคับ</span></td><td>อายุค่าอุทยาน · ประกัน</td></tr>
+         <tr><td><b>เลขเอกสาร (พาสปอร์ต/บัตร)</b></td><td><span class="chip">ไม่บังคับ</span></td><td>e-ticket อุทยาน · รายชื่อเรือ</td></tr>
+         <tr><td><b>เบอร์โทร</b></td><td><span class="chip">ไม่บังคับ</span></td><td>ติดต่อวันเดินทาง</td></tr>
+         <tr><td><b>สถานที่เกิด</b></td><td><span class="chip dash">ปิด</span></td><td>เฉพาะทริปออกนอกประเทศ</td></tr>
+        </table>
+        <div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · เปิด/ปิดได้ทีละช่องต่อสินค้า (ปิด · ไม่บังคับ · บังคับ)<span class="key">fields</span></div></div>
+      </div>
+
+      <div class="card">
+       <div class="ch" style="margin-bottom:6px"><span>ข้อมูลส่วนบุคคลและเอกสารลงนาม</span><span class="key">trips.pdpa.retention</span></div>
+       <div class="f17"><div class="h"><b>ลบไฟล์อัตโนมัติเมื่อพ้นกำหนด (นับจากวันจบทริป)</b><span class="b17">ค่าเริ่มต้น</span></div>
+        <div style="width:100%">
+         <div class="ln"><span class="k">รูปพาสปอร์ต/บัตร</span><span class="sp"></span><span class="v">30 วัน</span></div>
+         <div class="ln"><span class="k">แบบฟอร์มแพทย์ + คำตอบสุขภาพ</span><span class="sp"></span><span class="v">1 ปี</span></div>
+         <div class="ln"><span class="k">รับทราบความเสี่ยงและแถลงข้อมูลสุขภาพ</span><span class="sp"></span><span class="v">3 ปี</span></div>
+         <div class="ln"><span class="k">บันทึกความยินยอม / การเปิดดู</span><span class="sp"></span><span class="v">3 ปี</span></div>
+         <div class="ln"><span class="k">ใบรายชื่อ (manifest)</span><span class="sp"></span><span class="v">1 ปี</span></div>
+         <div class="ln"><span class="k">การจอง · ใบกำกับ · 50 ทวิ</span><span class="sp"></span><span class="v">5 ปี</span></div>
+        </div>
+        <div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · เอกสารภาษี 5 ปีตามประมวลรัษฎากร · ที่เหลือเป็นข้อเสนอ ไม่ใช่ตัวเลขจากกฎหมาย · แถวแบบฟอร์มแพทย์: ยังไม่ยืนยันกับทนาย · ตั้ง "ไม่ลบ" ได้ (มีคำเตือน)</div></div>
+      </div>
+
+      <div class="card">
+       <div class="ch" style="margin-bottom:6px"><span>ข้อความแจ้งเตือน</span><span class="key">trips.msg.*</span></div>
+       <div class="f17"><div class="h"><b>ข้อความที่ส่ง</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w"><span class="pill2 on">ยืนยันการจอง</span><span class="pill2 on">เตือน 1 วันก่อน</span><span class="pill2 on">เวลารับ/จุดนัด</span><span class="pill2 on">รอบเปลี่ยน</span><span class="pill2 on">จองค้าง (ครั้งเดียว)</span><span class="pill2 on">คืนเงินแล้ว</span><span class="pill2 on">ขอรีวิว</span></div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · ลำดับช่องทาง LINE → SMS/อีเมล ตามค่าตั้งข้อความเดิม<span class="key">enabled</span></div></div>
+       <div class="f17"><div class="h"><b>ข้อความยืนยันการจอง</b><span class="b17 ch">ปรับแล้ว</span></div><div class="w" style="display:block"><div class="url" style="font-family:inherit;font-size:14px">{ร้าน} ยืนยันการจอง {รหัสจอง} · {สินค้า} วันที่ {วันเดินทาง} · รถรับ {เวลารับ} ที่ {จุดนัด} · ทีมงานรอพบนะคะ</div></div><div class="src"><b>ตั้งไว้ทั้งร้าน</b><span>ไทย + English</span><span>ค่าแม่แบบ: ข้อความกลางของระบบ</span><span class="key">confirm</span></div><div class="act"><span class="btn gh sm">คืนค่า</span><span class="cbx"></span>ตามชั้นบน</div></div>
+      </div>
+     </div>
+
+     <div class="col" style="gap:22px">
+      <div class="card">
+       <div class="ch" style="margin-bottom:6px"><span>ยกเลิกและคืนเงิน</span><span class="key">trips.cancel.*</span></div>
+       <div class="f17"><div class="h"><b>ลูกค้ายกเลิก · ทั้งร้าน</b><span class="b17">ค่าเริ่มต้น</span></div>
+        <div class="lad"><div><b>100%</b>30 วันขึ้นไป</div><div><b>50%</b>15–29 วัน</div><div><b>0%</b>น้อยกว่า 15 วัน</div></div>
+        <div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" = ขั้นต่ำตามประกาศคืนเงินธุรกิจนำเที่ยว พ.ศ. 2563 · ตั้งผ่อนกว่านี้ได้เสมอ<span class="key">ladder</span></div></div>
+       <div class="f17"><div class="h"><b>ลูกค้ายกเลิก · Liveaboard สิมิลัน 4 คืน</b><span class="b17 ch">กำลังแก้ · สินค้า</span><span class="b17 wn"><svg class="i xs"><use href="#i-warn"/></svg>W01 · W03</span></div>
+        <div class="lad wn"><div class="x"><b>คืนมัดจำ 50%</b>60 วันขึ้นไป</div><div class="x"><b>30%</b>31–59 วัน</div><div class="x"><b>0%</b>น้อยกว่า 31 วัน</div></div>
+        <div class="wbox">
+         <div class="t"><svg class="i sm" style="margin-top:2px"><use href="#i-warn"/></svg><span>คำเตือน · บันทึกได้ ระบบแค่ขอให้ยืนยัน</span></div>
+         <div style="color:var(--ink2)">ตารางนี้คืนเงินน้อยกว่าอัตราขั้นต่ำตามประกาศคณะกรรมการธุรกิจนำเที่ยวและมัคคุเทศก์ พ.ศ. 2563 (ม.28) ในช่วง 30 วันขึ้นไป และ 15–29 วัน — ถ้าต้องหักเพิ่ม หักได้เฉพาะค่าใช้จ่ายที่จ่ายจริงและมีหลักฐาน</div>
+         <div style="color:var(--ink2)">มัดจำที่ริบได้สูงเกินส่วน ศาลลดให้เหลือเท่าความเสียหายจริงได้ (พ.ร.บ.ข้อสัญญาที่ไม่เป็นธรรม ม.7)</div>
+         <div class="ck"><i><svg class="i xs"><use href="#i-check"/></svg></i><span>ฉันรับทราบคำเตือนข้างต้น และขอบันทึกต่อด้วยความรับผิดชอบของร้าน</span></div>
+         <div class="fld2"><span>เหตุผล (ไม่บังคับ · เก็บในประวัติ)</span><b>เรือเหมาลำ ต้นทุนจ่ายล่วงหน้า ตกลงกับลูกค้าในสัญญาแล้ว</b></div>
+         <div style="display:flex;gap:10px"><span class="btn pri">ยืนยันและบันทึก</span><span class="btn gh">กลับไปแก้</span></div>
+        </div>
+       </div>
+       <div class="f17"><div class="h"><b>ยกเลิกด้วยเหตุที่ไม่ใช่ลูกค้า</b><span class="b17">ค่าเริ่มต้น</span></div>
+        <table class="mtbl">
+         <tr><th>เหตุ</th><th class="n">คืน</th></tr>
+         <tr><td>ลูกค้ายกเลิก</td><td class="n">ตามตารางด้านบน</td></tr>
+         <tr><td>ร้านยกเลิกเหตุภายนอก (คลื่นลม)</td><td class="n"><b>100%</b></td></tr>
+         <tr><td>คนไม่ครบขั้นต่ำ</td><td class="n"><b>100%</b></td></tr>
+         <tr><td>ความผิดของร้าน</td><td class="n"><b>100%</b></td></tr>
+        </table>
+        <div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · ตั้งต่ำกว่า 100% = คำเตือน W02<span class="key">shopCancelRefund</span></div></div>
+       <div class="f17"><div class="h"><b>ร้านยกเลิกรอบ: ตัวเลือกที่ส่งให้ลูกค้า/เอเจนซี่</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w"><span class="pill2 on">ย้ายวัน</span><span class="pill2 on">เครดิต</span><span class="pill2 on">คืน 100%</span></div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · ไม่เลือกภายใน <b>2 วัน</b> = คืน 100% อัตโนมัติ<span class="key">shopCancelOptions</span></div></div>
+       <div class="f17"><div class="h"><b>รูปแบบคืน · ค่าใช้จ่ายจริงที่หักได้</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w"><span class="pill2 on">ลูกค้าเลือกเงินหรือเครดิต</span><span class="pill2 on">หักได้เมื่อแนบหลักฐาน</span></div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · หมวด: วีซ่า · มัดจำตั๋ว · จำเป็นอื่น ๆ — ขอบเขต "จำเป็นอื่น ๆ" ยังไม่ยืนยันกับกรมการท่องเที่ยว<span class="key">refundForm · deductions</span></div></div>
+      </div>
+
+      <div class="card">
+       <div class="ch" style="margin-bottom:6px"><span>ภาษีและเอกสารเงิน</span><span class="key">trips.tax.*</span></div>
+       <div class="f17"><div class="h"><b>ออกเอกสารรับเงิน/ใบกำกับทุกงวด รวมมัดจำ</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w"><span class="sw"></span>เปิด</div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · ปิด = คำเตือน W16 · คืนเงิน = ใบลดหนี้อ้างใบเดิม<span class="key">invoiceOnEachPayment</span></div></div>
+       <div class="f17"><div class="h"><b>รูปใบกำกับ</b><span class="b17">ค่าเริ่มต้น</span><span class="lgl"><svg class="i xs"><use href="#i-doc"/></svg>ตรวจกับนักบัญชีของร้าน</span></div><div class="w"><span class="pill2 on">อย่างย่อ ขอเต็มรูปได้</span><span class="pill2">เต็มรูปเท่านั้น</span></div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · ขายผ่านเอเจนซี่ในนามร้าน = เต็มรูปเสมอ<span class="key">invoiceForm</span></div></div>
+       <div class="f17"><div class="h"><b>เงินที่ริบ/ค่าปรับยกเลิก</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w"><span class="pill2 on">ค่าเสียหาย ไม่มี VAT ไม่หัก ณ ที่จ่าย</span><span class="pill2">ค่าบริการมี VAT</span></div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · ออก "ใบรับเงินค่าเสียหาย"<span class="key">cancelFeeVat</span></div></div>
+       <div class="f17"><div class="h"><b>ริบมัดจำที่ออกใบกำกับไปแล้ว</b><span class="b17">ค่าเริ่มต้น</span><span class="lgl"><svg class="i xs"><use href="#i-doc"/></svg>ตรวจกับนักบัญชีของร้าน</span></div><div class="w"><span class="pill2 on">ไม่ออกใบลดหนี้อัตโนมัติ</span><span class="pill2">ใบลดหนี้ + ใบรับเงินค่าเสียหาย</span></div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ"<span class="key">forfeitAfterInvoice</span></div></div>
+       <div class="f17"><div class="h"><b>หัก ณ ที่จ่ายค่าคอมมิชชัน</b></div><div class="src">อยู่ในค่าตั้ง «เอเจนซี่» › หัก ณ ที่จ่าย (นิติบุคคลไทย 3% · บุคคลธรรมดา = อัตราก้าวหน้า · ต่างประเทศ = ไม่หัก)</div></div>
+      </div>
+
+      <div class="card">
+       <div class="ch" style="margin-bottom:6px"><span>บรรทัดเก็บแทนและค่าอุทยาน</span><span class="key">trips.line.* · trips.parkFee.*</span></div>
+       <div class="f17"><div class="h"><b>ค่าอุทยาน = เงินเก็บแทน นอกฐาน VAT</b><span class="b17">ค่าเริ่มต้น</span><span class="lgl"><svg class="i xs"><use href="#i-doc"/></svg>ตรวจกับนักบัญชีของร้าน</span></div><div class="w"><span class="sw"></span>เปิด · คิดคอมฯ 0 · ลดราคาไม่ได้</div>
+        <div class="src" style="display:block;line-height:1.6">เงื่อนไข 4 ข้อ: ① แยกบรรทัดบนเอกสาร ② เก็บเท่าที่จ่ายจริง ③ มีหลักฐานจ่ายในนามลูกค้า ④ ส่วนลดที่ได้ต้องคืนลูกค้า — ไม่ครบ = คำเตือน W05/W06 · ค่าจากแม่แบบ "ร้านดำน้ำ" <span class="key">line.defaults</span></div></div>
+       <div class="f17"><div class="h"><b>ตารางค่าอุทยาน (บาท/คน) · มีวันที่มีผล</b><span class="b17 ch">ปรับแล้ว</span></div>
+        <table class="mtbl">
+         <tr><th>แถว</th><th class="n">ไทย เด็ก/ผู้ใหญ่</th><th class="n">ต่างชาติ เด็ก/ผู้ใหญ่</th></tr>
+         <tr><td>กลุ่ม 1</td><td class="n">10 / 20</td><td class="n">50 / 100</td></tr>
+         <tr><td>กลุ่ม 2</td><td class="n">20 / 40</td><td class="n">100 / 200</td></tr>
+         <tr><td>กลุ่ม 3</td><td class="n">30 / 60</td><td class="n">150 / 300</td></tr>
+         <tr><td>กลุ่ม 4 · สิมิลัน · สุรินทร์</td><td class="n">50 / 100</td><td class="n">250 / 500</td></tr>
+         <tr><td>ดำน้ำลึก (ทุกสัญชาติ/อายุ)</td><td colspan="2" class="n">200 ต่อคนต่อวัน</td></tr>
+         <tr style="background:var(--sf2)"><td><b>เกาะราชา</b> <span class="chip">อัตราของร้าน</span></td><td colspan="2" class="n"><b>300 / 600 ทุกสัญชาติ</b></td></tr>
+         <tr style="background:var(--sf2)"><td><b>สิมิลัน 4 คืน</b> <span class="chip">อัตราของร้าน</span></td><td colspan="2" class="n"><b>ผู้ใหญ่ 1,800 รวมทั้งทริป</b></td></tr>
+        </table>
+        <div class="src" style="display:block;line-height:1.6"><b>ตั้งไว้ทั้งร้าน</b> · ค่าแม่แบบ: 5 แถวทางการ (ระเบียบกรมอุทยานฯ 2564) · ร้านเพิ่ม 2 แถว "อัตราของร้าน" ไม่ตรงแถวทางการ → บรรทัดเก็บแทนจะขอหลักฐานการจ่าย (W05) · นับต่อครั้งที่เข้า/รายวัน และ e-ticket ยังไม่ยืนยันกับกรมอุทยานฯ <span class="key">parkFee.table</span></div><div class="act"><span class="btn gh sm">คืนค่า</span><span class="cbx"></span>ตามชั้นบน</div></div>
+       <div class="f17"><div class="h"><b>ช่วงอายุค่าอุทยาน</b><span class="b17">ค่าเริ่มต้น</span></div><div class="w">ฟรีต่ำกว่า <span class="inp">3</span> · เด็ก <span class="inp">3</span>–<span class="inp">14</span> ปี หรือสูงไม่เกิน <span class="inp">140</span> ซม. · คนไทย <span class="inp">60</span>+ ฟรี</div><div class="src">ค่าจากแม่แบบ "ร้านดำน้ำ" · ต่างชาติ 60+ = ผู้ใหญ่ · คนละชุดกับช่วงอายุราคาเด็กของร้าน<span class="key">parkFee.ageBands</span></div></div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
