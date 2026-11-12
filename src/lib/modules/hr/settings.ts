@@ -500,6 +500,8 @@ export async function updateLeavePolicy(ctx: Ctx, v: SettingsViewer, id: string,
     const scope = scopeOfViewer(v);
     const out = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Prisma.TransactionClient;
+      // HR H2.7 ▸ r4 มติ 2: ล็อกแถวประเภทการลา FOR UPDATE ก่อนอ่าน — การยื่น/อนุมัติอ่านแถวนี้ FOR SHARE (หลังล็อก advisory ของมัน) · ที่นี่ไม่ถือ advisory lock ⇒ ไม่มีวงล็อก ◂
+      if (typeof id === "string" && id) await tx.$queryRaw`SELECT id FROM "HrLeavePolicy" WHERE id = ${id} AND "tenantId" = ${ctx.tenantId} FOR UPDATE`;
       const row = typeof id === "string" && id ? await tx.hrLeavePolicy.findFirst({ where: { id }, select: POLICY_SELECT }) : null;
       if (!row) throw new SettingsRefusal(SETTINGS_TEXT.notFound);
       const own = scopeRefusal(scope, row.unitId);

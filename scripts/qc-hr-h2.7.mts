@@ -373,6 +373,7 @@ const TR2 = {
   attachOff: "ระบบยังไม่รับไฟล์แนบใบลา — ส่งเอกสาร (เช่น ใบรับรองแพทย์) ให้หัวหน้าโดยตรง",
   zeroDaysDecide: "วันลาในใบนี้เป็นวันหยุดทั้งหมดแล้ว — ระบบยกเลิกใบลานี้ให้ ไม่หักวันลา",
   ysmLocked: "เปลี่ยนเดือนเริ่มปีการลาไม่ได้ เพราะประเภทการลานี้มีการบันทึกวันลาแล้ว — สร้างประเภทการลาใหม่แทน",
+  outOfEmploymentDecide: "ใบลานี้มีวันลานอกช่วงการจ้างงานของพนักงาน — อนุมัติไม่ได้",
   quotaBelowUsed: "ตั้งโควตานี้ไม่ได้ เพราะจะทำให้วันลาคงเหลือของพนักงานบางคนติดลบในปีที่ลาไปแล้ว — ตั้งโควตาให้ไม่น้อยกว่าวันที่ใช้ไปแล้ว",
 } as const;
 
@@ -458,6 +459,10 @@ const CHECKS: readonly Def[] = [
   D("S12.12", "R2-M1", C, "RED", "carry consumed is derived (leave approved before the carry row) ⇒ 5.0"),
   D("S12.13", "R2-M2", C, "RED", "revoke Y−1 after carry ⇒ top-up transfer once · not after expiry"),
   D("S12.14", "r3", M, "RED", "a failing employee does not block the rest of the system"),
+  D("S12.15", "r4-1", C, "RED", "pre-expiry leave filed after expiry ⇒ normal balance only (full + half day)"),
+  D("S12.16", "r4-3a", C, "RED", "pending leave after the end date ⇒ refused at approval"),
+  D("S12.17", "r4-3b", M, "RED", "job skips employees ended before the leave year"),
+  D("S12.18", "r4-2", C, "RED", "quota change ∥ approval ⇒ approval waits for the policy row"),
   D("X1.1", "X1", C, "RED", "5 identical parallel requests ⇒ 1 row"),
   D("X2.1", "X2", C, "RED", "other tenant ⇒ refused · unchanged"),
   D("X12.1", "X12", M, "GREEN", "fitness + fitness-hr ± env"),
@@ -658,6 +663,11 @@ const d1 = (v: unknown) => (v === null || v === undefined ? null : Number(String
 const fileIds: string[] = [];
 
 async function runDb(): Promise<void> {
+  // r4 hygiene: drop any forced-failure trigger a crashed earlier run left on the lane DB
+  for (const t of (await rawRows(P, `SELECT tgname AS n FROM pg_trigger WHERE tgname LIKE 'qc27_fail_%'`)) ?? []) {
+    await P.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${t.n}" ON "HrLeaveBalanceTxn"`).catch(() => {});
+    await P.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${t.n}"()`).catch(() => {});
+  }
   const TT = await fx.newTenant("", "QC HR H2.7 การลา");
   const T2 = await fx.newTenant("-other", "QC HR H2.7 ร้านอื่น");
   const u1 = await fx.newUnit(TT, `u1 ${tag}`, "u1");
@@ -1288,6 +1298,72 @@ async function runDb(): Promise<void> {
     ck("S12.14", { made, ran: r1.ok && r1.value?.failed === 1, good: g1 === 1, badNone: b1 === 0, retry: r2.ok && r2.value?.failed === 0 && b2 === 1 }, "1 failed · other granted · retry ok", `r1=${short(r1.value ?? r1.text, 90)} g=${g1} b=${b1}/${b2}`);
   }
 
+  // ═══ S12.15–S12.18 r4 rulings (own HR system s7 · literal balances) ═══
+  {
+    const s7 = await sysSvc.createSystem(TT, "HR", "HR G");
+    const ctx7 = { tenantId: TT, systemId: s7.id };
+    const P7 = await pol(ctx7, "VACATION", "QC27 r4 สะสม", 10, { carryMaxDays: 5, carryExpiresMonthDay: "03-31", sortOrder: 1 });
+    const PW = await pol(ctx7, "OTHER", "QC27 r4 ไม่จำกัด", null, { sortOrder: 2 });
+    const e7 = (n: string, start = "2025-01-01") => emp(n, { unitId: u1 }, start, s7.id);
+    const job7 = (asOf: string) => lv("runLeaveYearJob", { tenantId: TT, systemId: s7.id, asOf });
+    const q7 = (e: string, from: string, to: string, o: Any = {}) => rq(U.mgrAll, e, from, to, { policyId: P7, type: "VACATION", ...o }, ctx7);
+    const ap7 = (r: RO | string, st = "APPROVED", from?: string) => decide(typeof r === "string" ? r : idv(r), st, U.mgrAll, from, ctx7);
+    const sy7 = async (e: string, y: number, p = P7) => sum(await txOf({ employeeId: e, policyId: p, leaveYear: y }));
+    const filedOn = (id: string, day: string) => P.hrLeave.update({ where: { id }, data: { createdAt: new Date(`${day}T05:00:00Z`) } }); // simulated filing day (Bangkok noon)
+    const X7 = { L: await e7("7L"), H: await e7("7H"), Q: await e7("7Q"), End: await e7("7End"), Gone: await e7("7Gone") };
+    await P.hrEmployee.update({ where: { id: X7.Gone }, data: { endDate: dbDate("2030-12-31") } }); // still active, ended before 2031
+    await job7("2030-06-01");
+    await job7("2031-01-02");
+    await job7("2031-04-01"); // L / H: carry 5 unused ⇒ EXPIRE −5 ⇒ Σ2031 10.0
+    const l0 = await sy7(X7.L, 2031);
+    const lf = await q7(X7.L, "2031-03-10", "2031-03-12"); // dated before expiry, filed after it
+    await filedOn(idv(lf), "2031-04-05");
+    const lfa = await ap7(lf);
+    const l1 = await sy7(X7.L, 2031);
+    const lr = await ap7(lf, "REJECTED", "APPROVED");
+    const l2 = await sy7(X7.L, 2031);
+    const hf = await q7(X7.H, "2031-03-17", "2031-03-17", { halfDay: "AM" });
+    await filedOn(idv(hf), "2031-04-05");
+    const hfa = await ap7(hf);
+    const h1 = await sy7(X7.H, 2031);
+    const hr2 = await ap7(hf, "REJECTED", "APPROVED");
+    const h2 = await sy7(X7.H, 2031);
+    const corr = await txOf({ sourceKey: { in: [idv(lf), idv(hf)].flatMap((id) => [`expire-use:${id}`, `expire-late:${id}`]) } });
+    ck("S12.15", { l0: l0 === "10.0", l: lfa.ok && l1 === "7.0", lBack: lr.ok && l2 === "10.0", h: hfa.ok && h1 === "9.5", hBack: hr2.ok && h2 === "10.0", noCarryBack: corr.length === 0 }, "10.0 → 7.0 → 10.0 · half 9.5 → 10.0 · no EXPIRE corrections", `${l0}→${l1}→${l2} · ${h1}→${h2} corr=${corr.length}`);
+    // S12.16 (3a): pending leave after the employee's end date ⇒ refused at approval, no USE
+    const pe = await q7(X7.End, "2031-07-07", "2031-07-08");
+    await P.hrEmployee.update({ where: { id: X7.End }, data: { endDate: dbDate("2031-06-30") } });
+    const pea = await ap7(pe);
+    ck("S12.16", { filed: pe.ok, refused: said(pea, TR2.outOfEmploymentDecide), pending: (await leave(idv(pe)))?.status === "PENDING", noUse: (await txOf({ leaveId: idv(pe) || "∅" })).length === 0 }, "outOfEmploymentDecide · PENDING · no USE", `${shown(pe)} ${shown(pea)}`);
+    // S12.17 (3b): ended before the leave year ⇒ the job writes nothing for that year
+    const gone31 = await txOf({ employeeId: X7.Gone, leaveYear: 2031 });
+    ck("S12.17", { none: gone31.length === 0, had2030: (await txOf({ employeeId: X7.Gone, leaveYear: 2030, kind: "GRANT" })).length >= 1 }, "no 2031 rows · 2030 grant kept", `2031=${gone31.length}`);
+    // S12.18 (2): quota change ∥ approval — the approval waits for the policy row and then sees the new quota
+    const pq = await q7(X7.Q, "2031-08-04", "2031-08-07", { policyId: PW, type: "OTHER" });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let held: () => void = () => {};
+    const heldP = new Promise<void>((r) => (held = r));
+    const holder = P.$transaction(async (tx: Any) => {
+      await tx.$queryRawUnsafe(`SELECT id FROM "HrLeavePolicy" WHERE id = $1 FOR UPDATE`, PW);
+      held();
+      await gate;
+      await tx.$executeRawUnsafe(`UPDATE "HrLeavePolicy" SET "quotaDays" = 3 WHERE id = $1`, PW);
+    }, { maxWait: 10_000, timeout: 60_000 }).catch(() => held());
+    await heldP;
+    const dp = ap7(pq);
+    let seen = 0;
+    for (let i = 0; i < 40 && !seen; i++) {
+      await sleep(100);
+      const w = await rawRows(P, `SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event <> 'advisory'`);
+      seen = Number(w?.[0]?.n ?? 0);
+    }
+    release();
+    await holder;
+    const dr = await dp;
+    ck("S12.18", { waited: seen >= 1, refused: said(dr, T.balanceDecide), noUse: (await txOf({ leaveId: idv(pq) || "∅", kind: "USE" })).length === 0, q31: (await sy7(X7.Q, 2031, PW)) === "0.0" }, "waits · balanceDecide (4 > 3) · nothing written (0.0)", `seen=${seen} ${shown(dr)} q31=${await sy7(X7.Q, 2031, PW)}`);
+  }
+
   // ── L6 property (own system s4): generated request/approve/revoke/job sequences never make a year negative
   {
     const s4 = await sysSvc.createSystem(TT, "HR", "HR D");
@@ -1308,7 +1384,7 @@ async function runDb(): Promise<void> {
       for (const r of g) if (Number(String(r._sum.days)) < 0 && neg.length < 3) neg.push(`${label}:${r.leaveYear}=${Number(String(r._sum.days)).toFixed(1)}`);
       // r3: once expire:<…>:<Y> exists, Σ EXPIRE(Y) = carried-in − min(carried-in, days of APPROVED leaves of Y ending ≤ expiry)
       const rows = (await P.hrLeaveBalanceTxn.findMany({ where: { tenantId: TT, systemId: s4.id } })) as Any[];
-      const appr = (await P.hrLeave.findMany({ where: { tenantId: TT, systemId: s4.id, status: "APPROVED" }, select: { employeeId: true, fromDate: true, toDate: true, days: true } })) as Any[];
+      const appr = (await P.hrLeave.findMany({ where: { tenantId: TT, systemId: s4.id, status: "APPROVED" }, select: { employeeId: true, fromDate: true, toDate: true, days: true, createdAt: true } })) as Any[];
       const t10 = (v: unknown) => Math.round(Number(String(v)) * 10);
       for (const c of rows.filter((r) => String(r.sourceKey).startsWith("carry:"))) {
         const [, e, , y] = String(c.sourceKey).split(":");
@@ -1316,7 +1392,9 @@ async function runDb(): Promise<void> {
         if (!exp || !rows.some((r) => r.sourceKey === `expire:${e}:${P4}:${y}`)) continue;
         const yr = rows.filter((r) => r.employeeId === e && r.leaveYear === Number(y));
         const cin = yr.filter((r) => r.kind === "CARRY" && t10(r.days) > 0).reduce((a, r) => a + t10(r.days), 0);
-        const pre = appr.filter((l) => l.employeeId === e && dk(l.fromDate).startsWith(`${y}-`) && dk(l.toDate) <= exp).reduce((a, l) => a + t10(l.days), 0);
+        // r4: only leaves FILED on/before the expiry day count (Bangkok day of createdAt)
+        const filed = (d: Date) => new Date(d.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+        const pre = appr.filter((l) => l.employeeId === e && dk(l.fromDate).startsWith(`${y}-`) && dk(l.toDate) <= exp && filed(l.createdAt) <= exp).reduce((a, l) => a + t10(l.days), 0);
         const xs = -yr.filter((r) => r.kind === "EXPIRE").reduce((a, r) => a + t10(r.days), 0);
         if (xs !== cin - Math.min(cin, pre) && badX.length < 3) badX.push(`${label}:${y} x=${xs / 10} want=${(cin - Math.min(cin, pre)) / 10}`);
       }
@@ -1340,7 +1418,8 @@ async function runDb(): Promise<void> {
       if (op < 4) {
         const y = 2030 + rnd(3);
         const from = `${y}-${String(1 + (rnd(2) ? rnd(3) : rnd(12))).padStart(2, "0")}-${String(1 + rnd(24)).padStart(2, "0")}`; // r3: half the requests in Jan–Mar (before/after the carry + expiry jobs)
-        await q4(e, from, addDay(from, rnd(4)));
+        const nr = await q4(e, from, addDay(from, rnd(4)));
+        if (nr.ok) await P.hrLeave.update({ where: { id: idv(nr) }, data: { createdAt: new Date(`${asOf}T05:00:00Z`) } }); // r4: filed on the simulated day
       } else if (op < 7) {
         const p = (await P.hrLeave.findMany({ where: { tenantId: TT, systemId: s4.id, employeeId: e, status: "PENDING" }, select: { id: true } })) as Any[];
         if (p.length) await dec4(p[rnd(p.length)]!.id, "APPROVED");
@@ -1354,7 +1433,7 @@ async function runDb(): Promise<void> {
       }
       await checkAll(`op${i}`);
     }
-    ck("S12.6", { prefixBack: !bk.ok, prefixOct: !oct.ok, never: neg.length === 0, expire: badX.length === 0 }, "0 negative years · Σ EXPIRE = carry − min(carry, pre-expiry approved)", `ops=${ops} ${neg.join(" ") || "none"} ${badX.join(" ")} back=${shown(bk)} oct=${shown(oct)}`);
+    ck("S12.6", { prefixBack: !bk.ok, prefixOct: !oct.ok, never: neg.length === 0, expire: badX.length === 0 }, "0 negative years · Σ EXPIRE = carry − min(carry, pre-expiry approved filed ≤ expiry)", `ops=${ops} ${neg.join(" ") || "none"} ${badX.join(" ")} back=${shown(bk)} oct=${shown(oct)}`);
   }
 
   // ═══ S11 controls · X ═══

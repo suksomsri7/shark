@@ -708,6 +708,7 @@ export async function decideLeave(
   if (status === "APPROVED") {
     const chk = await leaveApprovalCheckInTx(tx, ctx, lx);
     if (!chk.ok && chk.code === "BALANCE") throw new HrLeaveDecisionError(LEAVE_TEXT.balanceDecide);
+    if (!chk.ok && chk.code === "OUT_OF_EMPLOYMENT") throw new HrLeaveDecisionError(LEAVE_TEXT.outOfEmploymentDecide); // r4 มติ 3a: ไม่เขียนอะไร
     if (!chk.ok) {
       const z = await tx.hrLeave.updateMany({ where: { id: leaveId, status: "PENDING" }, data: { status: "CANCELLED" } });
       if (z.count === 0) throw new HrLeaveDecisionError(LEAVE_STALE);
