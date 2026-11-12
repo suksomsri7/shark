@@ -4,8 +4,10 @@
 
 ## 0. ตรวจก่อนอย่างอื่น
 1. `nproc` (ควร 8) · `free -g` · `uptime` · `swapon --show` — เครื่องใช้ร่วมกับ RUN HR V2 (ทรี `shark-hr*` · 3–4 เลน) ดูสถานะที่ท้าย `/root/projects/shark-hr-c/ledger/HR-RESUME.md`
-2. เงื่อนไข E1 ใน `ledger/TRIPS-MASTER-PLAN.md` §1: `git -C /root/projects/shark-svc log origin/main --oneline -1` ต้องมีงาน `session/svc` (RUN HOTEL) แล้ว · **ถ้ายังไม่มี = หยุด ถามเจ้าของ** (ห้าม push main เอง)
-3. เจ้าของต้องสั่ง "เริ่ม RUN TRIPS" + จำนวนเลน (ข้อเสนอ 2 เลนขณะ HR รัน) ก่อนสร้างทรี
+2. **สถานะงานโรงแรม → main (12 พ.ย. 2569)**: ยังไม่ push · branch `release/svc-to-main` (เลน `/root/projects/shark-svc-l1`) = main + `session/svc` + แก้ autoClose · session อื่น (ผู้ทำ release) กำลังรันด่าน (`/root/svc-runs/rel-main/`) แล้วจะ push ช่วงเงียบ · ตรวจว่าขึ้นแล้วหรือยัง: `git -C /root/projects/shark-svc fetch -q origin main && git -C /root/projects/shark-svc merge-base --is-ancestor origin/session/svc origin/main && echo ON_MAIN`
+3. **เจ้าของอนุญาตให้เริ่ม "ขั้นเตรียม" (P0) คู่ขนานได้ 12 พ.ย.** ระหว่างรอ push: ทรี/เลน/ฐาน QC · P0.2 · P0.3 · วาดจอที่เหลือ (แบบ §12.3 ชุด 4–10) · ใบสั่ง + ข้อสอบของ T0 — **ยังห้ามเริ่มใบที่มี migration (T0.1) จนกว่า `ON_MAIN` และ production ปกติ** · 2 เลน (HR ใช้ 3 เลน · เครื่อง 8 vCPU / 31 GB)
+4. แตกทรีจาก **`origin/release/svc-to-main`** ถ้า main ยังไม่มีงานโรงแรม (ผู้ทำ release จะ push branch นี้ขึ้น origin ให้) — เมื่อ ON_MAIN แล้ว `git merge origin/main` เข้า `session/trips` หนึ่งครั้ง (ควรเป็น fast-forward หรือไม่มีชน) · **ห้ามใช้เลน `shark-svc-l1/l2/l3`** (ด่าน release ใช้อยู่) และห้ามใช้ฐาน QC ของ SVC — สร้างทรี `shark-trips*` + ฐาน QC ของตัวเอง
+5. ห้าม push main เอง · ห้ามแตะ branch `release/svc-to-main`
 
 ## 1. อ่านตามลำดับ (ครั้งเดียวต่อ session)
 1. `ledger/TRIPS-MASTER-PLAN.md` ทั้งไฟล์ (§2 มติเทคนิค 14 ข้อ · §3 ใบงาน 72 ใบ · §4 ลำดับ/หมุด · §7 ของที่รอเจ้าของ)
