@@ -373,6 +373,7 @@ const TR2 = {
   attachOff: "ระบบยังไม่รับไฟล์แนบใบลา — ส่งเอกสาร (เช่น ใบรับรองแพทย์) ให้หัวหน้าโดยตรง",
   zeroDaysDecide: "วันลาในใบนี้เป็นวันหยุดทั้งหมดแล้ว — ระบบยกเลิกใบลานี้ให้ ไม่หักวันลา",
   ysmLocked: "เปลี่ยนเดือนเริ่มปีการลาไม่ได้ เพราะประเภทการลานี้มีการบันทึกวันลาแล้ว — สร้างประเภทการลาใหม่แทน",
+  quotaBelowUsed: "ตั้งโควตานี้ไม่ได้ เพราะจะทำให้วันลาคงเหลือของพนักงานบางคนติดลบในปีที่ลาไปแล้ว — ตั้งโควตาให้ไม่น้อยกว่าวันที่ใช้ไปแล้ว",
 } as const;
 
 const D = (id: string, g: string, sev: Sev, base: Base, title: string): Def => [`H2.7-${id}`, g, sev, base, title] as const;
@@ -453,6 +454,7 @@ const CHECKS: readonly Def[] = [
   D("S12.8", "D1", C, "RED", "days recounted at approval (holiday added/removed)"),
   D("S12.9", "D5", C, "RED", "holiday on a published roster day counts"),
   D("S12.10", "D3", C, "RED", "attachments off: refused · nothing written · no link"),
+  D("S12.11", "r2b", C, "RED", "unlimited→quota / lower quota refused when a used year would go negative"),
   D("X1.1", "X1", C, "RED", "5 identical parallel requests ⇒ 1 row"),
   D("X2.1", "X2", C, "RED", "other tenant ⇒ refused · unchanged"),
   D("X12.1", "X12", M, "GREEN", "fitness + fitness-hr ± env"),
@@ -1194,6 +1196,26 @@ async function runDb(): Promise<void> {
         bounded: bounded.value?.txs === 1 && bounded.value?.more === true, full: full.ok && full.value?.more === false,
         quiet: quiet.value?.txs === 0 && quiet2.value?.txs === 0, same: s0 === (await snap()), ineligible: !neGrant,
       }, "1+more · 0 tx ×2 · unchanged · NE skipped", `b=${short(bounded.value, 80)} q=${short(quiet.value, 80)}`);
+    }
+    // ── r2b (controller ruling 3 · D-H27-r2-unlimited): K used 4 under an unlimited policy in 2031
+    {
+      const PV = await pol(ctx3, "OTHER", "QC27 เปลี่ยนโควตา", null, { sortOrder: 8 });
+      const K = await e3("3K");
+      const up = (quotaDays: number | null) => settings.updateLeavePolicy(ctx3, ov, PV, { quotaDays });
+      const quota = async () => d1((await P.hrLeavePolicy.findUnique({ where: { id: PV } }))?.quotaDays);
+      await ap(await q(K, "2031-08-04", "2031-08-07", { policyId: PV, type: "OTHER" }));
+      const a = await up(3);
+      const qa = await quota();
+      const b = await up(5);
+      const c = await up(3);
+      const one = await q(K, "2031-09-01", "2031-09-01", { policyId: PV, type: "OTHER" });
+      await ap(one);
+      const e = await up(3);
+      const k31 = await sy(K, 2031, PV);
+      ck("S12.11", {
+        a: a?.ok === false && a?.reason === TR2.quotaBelowUsed && qa === null, b: b?.ok === true, c: c?.ok === false && c?.reason === TR2.quotaBelowUsed,
+        one: one.ok, e: e?.ok === true && (await quota()) === "3.0", k31: k31 === "0.0",
+      }, "3 refused · 5 ok · 3 refused · +1 · 3 ok (GRANT 5 fixed) · 0.0", `${short(a, 60)} q=${qa} ${short(c, 40)} ${shown(one)} ${short(e, 40)} k31=${k31}`);
     }
   }
   // ── L6 property (own system s4): generated request/approve/revoke/job sequences never make a year negative

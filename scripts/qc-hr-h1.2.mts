@@ -1814,9 +1814,10 @@ async function runDb(): Promise<void> {
       chk("S7.3", total === 120 && Number(exp?.attendanceRows) === 120 && Number(exp?.counts?.HrAttendance) === 120 && d === FROZEN_S73, `120 = expected · ${FROZEN_S73}`, `${d} · expected.attendanceRows=${exp?.attendanceRows ?? "∅"}`);
       const live: Record<string, number> = {};
       // ORACLE-EDIT H2.7 r2 (controller, 12 Nov): the full seed writes ledger rows (H2.7 GRANT/USE) — HrLeaveBalanceTxn = hr-expected.json count, no longer 0
-      const keys = ["HrEmployee", "HrAttendance", "HrLeave", "HrWorkSchedule", "HrSalaryProfile", "HrPayAdjustment", "HrPayrollRun", "HrPayrollItem", "HrShift", "HrLeavePolicy", "HrHoliday", "HrLeaveBalanceTxn"];
+      // ORACLE-EDIT H2.7 r2b (controller ruling 1, 12 Nov): the H2.2 seed writes roster rows by design — HrRosterEntry = hr-expected.json count, no longer 0
+      const keys = ["HrEmployee", "HrAttendance", "HrLeave", "HrWorkSchedule", "HrSalaryProfile", "HrPayAdjustment", "HrPayrollRun", "HrPayrollItem", "HrShift", "HrLeavePolicy", "HrHoliday", "HrLeaveBalanceTxn", "HrRosterEntry"];
       for (const k of keys) live[k] = await rawCount(k, `"tenantId" = $1`, q);
-      const zero = ["HrRosterEntry", "HrShiftSwapRequest", "HrTimeCorrection", "HrOtRequest"];
+      const zero = ["HrShiftSwapRequest", "HrTimeCorrection", "HrOtRequest"];
       const zeros = await Promise.all(zero.map(async (k) => [k, await rawCount(k, `"tenantId" = $1`, q)] as const));
       const diff = keys.filter((k) => Number(exp?.counts?.[k]) !== live[k]);
       const nz = zeros.filter(([, v]) => v !== 0).map(([k, v]) => `${k}=${v}`);

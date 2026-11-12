@@ -222,3 +222,9 @@ SELECT e."systemId", count(DISTINCT e.id) AS emps FROM "HrEmployee" e WHERE e.ac
 - seed-hr-qc ×2: `ผ่าน 30/30` ×2, counts identical (HrLeaveBalanceTxn 1 · HrLeave 3 · HrRosterEntry 48)
 - forced ×1: qc-hr-h1.2 **72/73** (S7.4 red only `nonZero=HrRosterEntry=48` — H2.2 roster rows, needs a ruling; ledger part green) · qc-hf-hr-privacy 194/194 · qc-hr-h0.7 74/74 · qc-hr-h2.1 90/90 · qc-hr-h2.2 60/60 · qc-hr-h2.3 79/79 · qc-hr-leave-booking 14/14 · qc-booking-hours-hr 13/13 · qc-approval 16/16 · qc-approval-wiring 7/7 · qc-calendar 9/9 · qc-ai-tools 18/18 · qc-nav-functions red only S5 BOOKING (known; HR 8/8)
 - fitness 53/53 ×2 (± env) · fitness-hr 9/9 ×2 · typecheck exit 0, 0 errors
+
+## r2b (12 Nov)
+- Rulings: (1) h1.2 S7.4 compares `HrRosterEntry` with hr-expected.json (ORACLE-EDIT) · (2) oracle size accepted · (3) D-H27-r2-unlimited fixed now · (4) stricter ysm lock, owner-auto roster lock, cron rotation accepted.
+- `settings.updateLeavePolicy`: when the new quota is not null and quota/minServiceDays/firstYearProrata change, every (employee, leave year) of that policy that has USE rows but no GRANT row is projected with the GRANT the new settings would write (pure `grantDays`); any projected Σ < 0 ⇒ `SETTINGS_TEXT.quotaBelowUsed`, nothing written. Years that already have a GRANT row are unchanged by a quota edit (rows are append-only), so lowering a quota there is allowed.
+- S12.11 (new): K uses 4 under an unlimited policy · quota 3 refused (quota stays null) · 5 ok · 3 refused (no GRANT yet) · +1 day (lazy GRANT 5) · 3 ok · Σ2031 0.0. RED vs cb1ff1f10: `ledger/wo-notes/hr-H2.7-r2b-red.txt` (`passed 78/79`, a/c accepted).
+- Verify: oracle forced `79/79` · unforced `79/79` · RESIDUE none ×2 · qc-hr-h1.2 `73/73` · qc-hf-hr-privacy 194/194 · fitness-hr 9/9 (no env). Typecheck not re-run: no exported signature changed (one new `SETTINGS_TEXT` key, internal check only).
