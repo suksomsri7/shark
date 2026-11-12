@@ -83,6 +83,12 @@ const CHECKS: Def[] = [
   D("X1.3", "R10", C, "RED", "[race] 2 consumers ∥ direct leaveDutyNotify on one leave ⇒ 4 notifications · 1 audit"),
   D("X12.1", "X12", M, "GREEN", "[run] fitness + fitness-hr without env ⇒ exit 0"),
   D("Z1", "-", C, "GREEN", "residue: qc-hr-h41-* tenants, users, every tenantId table = 0"),
+  // ── fix round r2 (controller, reviewer FIX FIRST) — RED on 3303a6421 ──
+  D("R2.1", "R11", C, "RED", "[db] hint scope = the ENTRY's unit: E30 home u1 borrowed to u2 (บ่าย u2 12th, leave approved) ⇒ manager[u1] sees no u2 item/candidate · manager[u2] gets the item with candidate E31"),
+  D("R2.2", "R10", C, "RED", "[db] notify for E30's leave goes to exactly owner, mgrAll, mgrU2 (not mgrU1/dec1 — their scope does not cover u2) · 1 audit"),
+  D("R2.3", "R9", M, "RED", "[db] leaveDutyHintsMany: 4 leaves cost ≤ 1 leave + 1 queries · each result = leaveDutyHints of that leave · UI calls leaveDutyHintsMany (no per-leave leaveDutyHints)"),
+  D("R2.4", "R8", M, "RED", "[db] unit-null entry belongs to the employee's unit-of-day: E21 (home u3) ⇒ row [] under u2 (no double booking across units)"),
+  D("R2.5", "R9", M, "RED", "[static] availability.ts: every capped query (take:) has an orderBy · result carries `incomplete` when a cap is hit"),
 ];
 const REG = makeRegistry(SUITE, "H4.1-", CHECKS);
 const chk = REG.chk;
@@ -166,6 +172,14 @@ chk("S1.5", sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, PAYROLL_RULES_SHA
   const tk = tokensOnly(stripComments(src));
   const r = { ids: ids.has("hr-leave-impact") && [...ids].some((i) => i.startsWith("hr-leave-impact-candidate")), inv: inv.rows > 0 && inv.codeNoRow.length === 0 && inv.meta, ...mp, tokens: Object.values(tk).every(Boolean) };
   chk("S1.7", Object.values(r).every(Boolean), "testids · inventory · messages · tokens", `failed: ${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "-"} ids=${[...ids].join(",") || "∅"}`);
+}
+
+{
+  // R2.5 — take: ⇒ orderBy in the same call (per call text between `findMany({` and its `take:`) · incomplete flag exists
+  const s = code(F.av);
+  const calls = [...s.matchAll(/findMany\(\{([\s\S]*?)take:/g)].map((m) => m[1]);
+  const noOrder = calls.filter((c) => !/orderBy\s*:/.test(c)).length;
+  chk("R2.5", !!s && calls.length > 0 && noOrder === 0 && /\bincomplete\b/.test(s), "capped calls ordered · incomplete", `capped=${calls.length} withoutOrderBy=${noOrder} incomplete=${/\bincomplete\b/.test(s)}`);
 }
 
 // ═════════════════════════ S2 pure vectors (literal) ═════════════════════════
@@ -304,9 +318,12 @@ try {
   E.e14 = await emp("เอ็น", u3, { linkedUserId: U.u14.id });
   E.e17 = await emp("คิว", u3, { status: "ENDED" });
   E.e18 = await emp("อาร์", u3, { active: false });
+  E.e30 = await emp("วี", u1); // r2: home u1 · borrowed to u2 for the whole week
+  E.e31 = await emp("ดับบลิว", u2); // r2: free in u2
   const eB = await fx.mkEmp(TB, sB, "ร้านบี", { startDate: "2029-01-01" });
   const eC = await fx.mkEmp(TC, sC, "ร้านซี", { startDate: "2029-01-01" });
   await P.hrEmployeeUnit.create({ data: { tenantId: TA, systemId: sA, employeeId: E.e7, unitId: u1, fromDate: dbDate("2031-03-01"), toDate: dbDate("2031-03-31") } });
+  await P.hrEmployeeUnit.create({ data: { tenantId: TA, systemId: sA, employeeId: E.e30, unitId: u2, fromDate: dbDate("2031-03-10"), toDate: dbDate("2031-03-16") } });
   // ── shifts + published entries ──
   const shift = async (sys: string, tid: string, name: string, s: number, e: number, br: number, x = false) => (await P.hrShift.create({ data: { tenantId: tid, systemId: sys, name, startMin: s, endMin: e, breakMin: br, crossesMidnight: x } })).id as string;
   const S = { m: await shift(sA, TA, "เช้า", 540, 1080, 60), n: await shift(sA, TA, "ดึก", 1320, 360, 0, true), s1: await shift(sA, TA, "แยกเช้า", 540, 720, 0), s2: await shift(sA, TA, "แยกเย็น", 1020, 1260, 0), a: await shift(sA, TA, "บ่าย", 780, 1260, 0) };
@@ -340,6 +357,7 @@ try {
   await entry("e20d10", TA, sA, E.e20, D10, S.m, u3, TM);
   await entry("e20d12", TA, sA, E.e20, D12, S.m, u2, TM);
   await entry("e21d12", TA, sA, E.e21, D12, S.m, null, TM);
+  await entry("e30d12", TA, sA, E.e30, D12, S.a, u2, [780, 1260, 0, false]);
   const shB = await shift(sB, TB, "เช้า", 540, 1080, 60);
   const shC = await shift(sC, TC, "เช้า", 540, 1080, 60);
   await entry("eB", TB, sB, eB, D12, shB, null, TM);
@@ -395,6 +413,7 @@ try {
   eq("S3.8", await sw(u3, D12, [E.e10]), [row(E.e10, [[540, 720], [1020, 1260]])]);
   eq("S3.9", await sw(u3, D12, [E.e17, E.e18]), [row(E.e17, []), row(E.e18, [])]);
   multi("S3.10", [["u3", await sw(u3, D12, [E.e20]), [row(E.e20, [])]], ["u2", await sw(u2, D12, [E.e20]), [row(E.e20, [[540, 1080]])]], ["null unit", await sw(u3, D12, [E.e21]), [row(E.e21, [[540, 1080]])]]]);
+  eq("R2.4", await sw(u2, D12, [E.e21]), [row(E.e21, [])]);
   multi("S3.11", [
     ["TA ids in TB", await swOf(TB, u3, D12, [E.e10]), []],
     ["TB ids in TA", await sw(u3, D12, [eB]), []],
@@ -458,6 +477,33 @@ try {
     const txt = JSON.stringify(hPend ?? {});
     const leak = ["งานแต่ง", "PERSONAL", "ลากิจทดสอบ"].filter((s) => txt.includes(s));
     chk("S6.4", hPend?.ok === true && extra.length === 0 && leak.length === 0, "exact keys · no reason/type/policy", `ok=${hPend?.ok} extra=${extra.join(",") || "-"} leak=${leak.join(",") || "-"} ${short(hPend, 60)}`);
+  }
+
+  // ═══ R2.3 batched hints: query count for 1 vs 4 leaves (counting extension wrapped around prisma.$extends during the call) ═══
+  {
+    const coreDb: Any = await import("@/lib/core/db");
+    const many = typeof AV.leaveDutyHintsMany === "function" ? AV.leaveDutyHintsMany : null;
+    const counted = async (f: () => Promise<unknown>) => {
+      let n = 0;
+      const orig = coreDb.prisma.$extends;
+      coreDb.prisma.$extends = function (this: Any, ...a: Any[]) {
+        return orig.apply(this, a).$extends({ query: { $allModels: { async $allOperations({ args, query }: Any) { n++; return query(args); } } } });
+      };
+      try {
+        const r = await f();
+        return { n, r };
+      } finally {
+        coreDb.prisma.$extends = orig;
+      }
+    };
+    const ids4 = [L1, L4, L11, L12];
+    const one = many ? await counted(() => many(ctxA, vOf(U.owner), { leaveIds: [L1] })) : null;
+    const four = many ? await counted(() => many(ctxA, vOf(U.owner), { leaveIds: ids4 })) : null;
+    const asMap = (r: Any) => (r instanceof Map ? r : new Map(Object.entries(r ?? {})));
+    const sameAsSingle = four ? (await Promise.all(ids4.map(async (id) => canon(asMap(four.r).get(id)) === canon(await hint(U.owner, id))))).every(Boolean) : false;
+    const ui = code(F.ui);
+    const uiOk = /leaveDutyHintsMany\(/.test(ui) && !/leaveDutyHints\(/.test(ui);
+    chk("R2.3", !!one && !!four && four.n <= one.n + 1 && one.n > 0 && sameAsSingle && uiOk, "queries(4) ≤ queries(1)+1 · same results · UI batched", `q1=${one?.n ?? "∅"} q4=${four?.n ?? "∅"} same=${sameAsSingle} ui=${uiOk}`);
   }
 
   // ═══ X1 race: approve L1 waits on the roster key while a booking is made ═══
@@ -527,6 +573,24 @@ try {
   {
     const all = await P.appointment.findMany({ where: { tenantId: TA }, select: { id: true, status: true } });
     chk("S7.3", all.length === 1 && all.every((a: Any) => a.status === "CONFIRMED"), "1 appointment · CONFIRMED", short(all, 120));
+  }
+  // ═══ r2: borrowed employee — hint/notify scope follows the entry's unit (u2), not the home unit (u1) ═══
+  {
+    const before = new Set((await P.appNotification.findMany({ where: { tenantId: TA, title: N_TITLE }, select: { id: true } })).map((n: Any) => n.id));
+    const L30 = await reqLeave(E.e30, D12, D12);
+    await hr.decideLeave(ctxA, L30, "APPROVED", U.owner.id);
+    const h1 = await hint(U.mgrU1, L30);
+    const h2 = await hint(U.mgrU2, L30);
+    const leakU1 = JSON.stringify(h1 ?? {}).includes(u2) || JSON.stringify(h1 ?? {}).includes(E.e31);
+    const want2 = { ok: true, items: [{ entryId: ENT.e30d12, date: D12, unitId: u2, startMin: 780, endMin: 1260, crossesMidnight: false, part: "FULL", others: 0, candidates: [{ employeeId: E.e31, name: "ดับบลิว", weekMin: 0, weekMinAfter: 480 }] }] };
+    const okU1 = !leakU1 && (h1?.ok === false ? h1.reason === HINT_NO : h1?.ok === true);
+    chk("R2.1", okU1 && canon(h2) === canon(want2), "mgrU1: no u2 item/candidate · mgrU2: literal item + E31", `mgrU1=${short(h1, 120)} leak=${leakU1} · mgrU2=${short(h2, 200)}`);
+    await consume(await evOf(L30, "APPROVED"));
+    await consume(await evOf(L30, "APPROVED"));
+    const fresh = (await P.appNotification.findMany({ where: { tenantId: TA, title: N_TITLE }, select: { id: true, recipientUserId: true, body: true } })).filter((n: Any) => !before.has(n.id));
+    const rc = fresh.map((n: Any) => n.recipientUserId).sort().join(",");
+    const want = [U.owner.id, U.mgrAll.id, U.mgrU2.id].sort().join(",");
+    chk("R2.2", rc === want && fresh.every((n: Any) => n.body === N_BODY_1) && (await audits(L30)) === 1, "owner, mgrAll, mgrU2 · body n=1 · 1 audit", `n=${fresh.length} recipientsOk=${rc === want} audits=${await audits(L30)}`);
   }
 } catch (e) {
   crashed = errText(e);
