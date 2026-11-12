@@ -1,0 +1,66 @@
+# qc-hr-h3.1 GREEN — wip/hr-h3.1 · lane DB wo-hr-qc-l1 (scripts/qc-hr.sh)
+## forced 1
+  ✅ [H3.1-S1.1] [static] migration 20270103000000_hr_work_days: last _hr_ folder · 2 enums exact · additive (no DROP/RENAME/ALTER TYPE)
+  ✅ [H3.1-S1.2] [static] migration: HrWorkDay table · unique (employeeId,date) · employee FK CASCADE · CHECK minutes 0–1440 + leaveDays 0–1 · HrWorkEntry.workDayId FK CASCADE
+  ✅ [H3.1-S1.3] [static] payroll.prisma models/enums · scope.ts HrWorkDay sys() · hr-qc-env hrWorkDay row
+  ✅ [H3.1-S1.4] [static] only work-entries.ts writes HrWorkDay/HrWorkEntry · no emitOutbox there · rules file pure (no db/clock/random)
+  ✅ [H3.1-S1.5] [static] payroll.ts: claimApproveExpected calls check + bind · WORK_ENTRIES code · payroll-actions maps it · hunks marked HR H3.1 (diff n/a once in base)
+  ✅ [H3.1-S1.6] [static] judge.ts: exported workEntryDaysInTx in a marked pure-addition hunk (diff n/a once in base)
+  ✅ [H3.1-S1.7] [static] actions use server · no now: · requireTenant · UI testids · inventory wo H3.1 · hr.we th=en · tokens · page mounts
+  ✅ [H3.1-S11.1] [static] payroll-rules sha · frozen files unchanged vs base (n/a once in base)
+  ✅ [H3.1-S2.1] [pure] break rule: 7 literal vectors (planned break after 5 h · clocked first · CLOCKED_ONLY · threshold)
+  ✅ [H3.1-S2.2] [pure] workday basics: on time · late · OT · early arrival · absent (5 vectors)
+  ✅ [H3.1-S2.3] [pure] leave: full paid/unpaid · half AM/PM · split shifts · unequal split (8 vectors)
+  ✅ [H3.1-S2.4] [pure] overnight shift owns its start day/period · next day other period (2 vectors)
+  ✅ [H3.1-S2.5] [pure] day off · holiday · unscheduled · no-schedule work · leave on day off · normalDayMin (15 vectors)
+  ✅ [H3.1-S2.6] [pure] hourly leave offset late→early→absent · unused flag · unpaid (5 vectors)
+  ✅ [H3.1-S2.7] [pure] review codes: stale · orphan · not final · not stored · missing out · stray IN · pending leave · mismatch · worked on leave · legacy · dedupe/sort (13 vectors)
+  ✅ [H3.1-S2.8] [pure] employment window ∩ period · days outside range ignored (3 vectors)
+  ✅ [H3.1-S3.1] [pure] digest: 64-hex · same input ⇒ same · slot order irrelevant · version change ⇒ differs
+  ✅ [H3.1-S3.2] [pure] purity: deep-frozen input untouched · Date.now/Math.random trapped · output keys exact
+  ✅ [H3.1-S3.3] [pure] entries mirror header (kind order H1.3 · zeros omitted) · every minute integer 0–1440 · review sorted unique
+  ✅ [H3.1-S3.4] [pure] WE_BLOCKING exact · WORK_RULES_DEFAULT · engine version 1
+  ✅ [H3.1-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+  ✅ [H3.1-S11.2] [db] fixture sanity: H2.5 stored rows = the inputs the literals assume
+  ✅ [H3.1-S4.1] [db] catalogue: HrWorkDay columns/types/defaults · enums · HrWorkEntry.workDayId
+  ✅ [H3.1-S4.2] [db] owner build July 2031: 6 employees · 165 days (31×5 + 10) · result counts
+  ✅ [H3.1-S4.3] [db] 17 day literals from real H2.5 rows (break · late · OT · absent · leave · day-off work · half day · split · overnight · holiday · hourly · unscheduled)
+  ✅ [H3.1-S4.4] [db] preview summaries eA/eB literal (counts · minutes · leaveDays)
+  ✅ [H3.1-S4.5] [db] 27 kind rows · Σ per kind literal · source columns (roster · leave · holiday · workDayId · periodKey)
+  ✅ [H3.1-S4.6] [db] sourcesJson attendance ids+versions · 64-hex hashes · version 1 · runId null · state CURRENT
+  ✅ [H3.1-S5.1] [db] rebuild unchanged ⇒ written 0 · ids/versions/updatedAt/kind rows identical
+  ✅ [H3.1-S6.1] [db] recompute (OUT moved) ⇒ only eC OUTDATED · rebuild ⇒ OT 60 · version 2 · source version 2 · written 1
+  ✅ [H3.1-S6.2] [db] leave revoked ⇒ OUTDATED · rebuild ⇒ STALE review · state REVIEW
+  ✅ [H3.1-S6.3] [db] recompute after revoke ⇒ rebuild ⇒ ABSENT 480 · no review · CURRENT
+  ✅ [H3.1-S9.4] [race] build ∥ recompute ⇒ CURRENT only with the new version · else OUTDATED · rebuild converges
+  ✅ [H3.1-S10.1] [db] preview viewer matrix: owner 6 · payroll 6 · mgr u1 3 · writer u2 3 · member refused · other tenant sees none of ours
+  ✅ [H3.1-S10.2] [db] IDOR: out-of-branch · unknown id · member · other tenant ⇒ identical refusal bytes
+  ✅ [H3.1-S10.3] [db] self: own days only (employeeId ignored) · unlinked ⇒ noEmp
+  ✅ [H3.1-S10.4] [db] DTO keys exact (preview · summary · days · sources) · no forbidden/money keys
+  ✅ [H3.1-S10.5] [db] leaveLabel: policy name for leave readers · ลา for writer · null without leave
+  ✅ [H3.1-S10.6] [db] build refused for manager/member (buildNo) · bad period · nothing written
+  ✅ [H3.1-S11.3] [db] v1 run of the fixture: gross 1,500,000 · approve ok · APPROVED
+  ✅ [H3.1-S8.1] [db] v1 approve binds 165 days + 27 kind rows to the run
+  ✅ [H3.1-S8.2] [db] build after approve ⇒ frozen text · 0 writes · state FROZEN
+  ✅ [H3.1-S7.1] [db] NOT_FINAL (day not over) ⇒ PENDING · ORPHAN after unpublish
+  ✅ [H3.1-S7.2] [db] NOT_STORED (final, finaliser not run) · after finaliser ⇒ clean literal
+  ✅ [H3.1-S9.3] [race] build ∥ v1 approve ⇒ approve ok (blocking review ignored for v1) · no unbound row of the period
+  ✅ [H3.1-S8.3] [db] v2 run, no snapshot ⇒ approve refused WORK_ENTRIES + text · run DRAFT
+  ✅ [H3.1-S9.1] [race] build ∥ build ⇒ both ok · one row per day · no 23505/text leak
+  ✅ [H3.1-S8.4] [db] v2 run, MISSING_OUT review ⇒ refused
+  ✅ [H3.1-S8.5] [db] v2 run, recompute after build ⇒ OUTDATED ⇒ refused
+  ✅ [H3.1-S9.2] [race] build waits on the period lock (hr:payroll:run:<sys>:<period>) then completes
+  ✅ [H3.1-S8.6] [db] rebuild clean ⇒ v2 approve ok · APPROVED · 31 days bound · literal day
+RESIDUE none (tenants=2 users=7)
+  ✅ [H3.1-Z1] no residue (tenants · users · HrWorkDay · HrWorkEntry · HrAttendanceDay)
+===== qc-hr-h3.1 ===== passed 52/52 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.1","total":52,"passed":52,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":47,"baseGreen":5,"offBase":["H3.1-S1.1(RED→pass)","H3.1-S1.2(RED→pass)","H3.1-S1.3(RED→pass)","H3.1-S1.4(RED→pass)","H3.1-S1.5(RED→pass)","H3.1-S1.6(RED→pass)","H3.1-S1.7(RED→pass)","H3.1-S2.1(RED→pass)","H3.1-S2.2(RED→pass)","H3.1-S2.3(RED→pass)","H3.1-S2.4(RED→pass)","H3.1-S2.5(RED→pass)","H3.1-S2.6(RED→pass)","H3.1-S2.7(RED→pass)","H3.1-S2.8(RED→pass)","H3.1-S3.1(RED→pass)","H3.1-S3.2(RED→pass)","H3.1-S3.3(RED→pass)","H3.1-S3.4(RED→pass)","H3.1-S4.1(RED→pass)","H3.1-S4.2(RED→pass)","H3.1-S4.3(RED→pass)","H3.1-S4.4(RED→pass)","H3.1-S4.5(RED→pass)","H3.1-S4.6(RED→pass)","H3.1-S5.1(RED→pass)","H3.1-S6.1(RED→pass)","H3.1-S6.2(RED→pass)","H3.1-S6.3(RED→pass)","H3.1-S9.4(RED→pass)","H3.1-S10.1(RED→pass)","H3.1-S10.2(RED→pass)","H3.1-S10.3(RED→pass)","H3.1-S10.4(RED→pass)","H3.1-S10.5(RED→pass)","H3.1-S10.6(RED→pass)","H3.1-S8.1(RED→pass)","H3.1-S8.2(RED→pass)","H3.1-S7.1(RED→pass)","H3.1-S7.2(RED→pass)","H3.1-S9.3(RED→pass)","H3.1-S8.3(RED→pass)","H3.1-S9.1(RED→pass)","H3.1-S8.4(RED→pass)","H3.1-S8.5(RED→pass)","H3.1-S9.2(RED→pass)","H3.1-S8.6(RED→pass)"]}
+## forced 2
+RESIDUE none (tenants=2 users=7)
+===== qc-hr-h3.1 ===== passed 52/52 (QC_FORCE)
+## unforced
+RESIDUE none (tenants=2 users=7)
+===== qc-hr-h3.1 ===== passed 52/52
+## forced 3 (after h0.1/h2.5/h4.4 ORACLE-EDITs)
+RESIDUE none (tenants=2 users=7)
+===== qc-hr-h3.1 ===== passed 52/52 (QC_FORCE)
