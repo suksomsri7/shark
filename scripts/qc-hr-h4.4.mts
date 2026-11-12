@@ -269,7 +269,12 @@ function runStatic(): void {
   }
   {
     const tabs = (src: string) => block(src, /export function hrTabs/, 1600).split("\n}\n")[0];
-    const r = { layout: changedVsBase(BASE, [F.layout]) === "unchanged", tabs: tabs(rd(F.hrUi)) === tabs(atBase(F.hrUi)) && tabs(rd(F.hrUi)).length > 0 };
+    // ORACLE-EDIT H2.10 (controller ruling 12 Nov · R7 nav filter): the layout may differ from base only by hunks marked `HR H2.10 ▸` (hrNavFilter wrap +
+    //   "ของฉัน" drawer item) — any unmarked hunk still fails · hrTabs body stays pinned below · n/a once H2.10 is in the base (layout = base again) ◂
+    const h210InBase = pathInBase("src/lib/modules/hr/self.ts", BASE);
+    const lh = h210InBase ? null : diffHunks(BASE, F.layout);
+    const layoutOk = changedVsBase(BASE, [F.layout]) === "unchanged" || (lh !== null && lh.length > 0 && lh.every((h) => h.added.some((l) => /HR H2\.10 ▸/.test(l))));
+    const r = { layout: layoutOk, tabs: tabs(rd(F.hrUi)) === tabs(atBase(F.hrUi)) && tabs(rd(F.hrUi)).length > 0 };
     ck("S13.5", r, "layout + hrTabs as base", BASE.slice(0, 9));
   }
   {

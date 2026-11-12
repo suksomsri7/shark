@@ -24,6 +24,9 @@ import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
 // POS P1.3 B2.1 ▸ ตัวอ่านธงหน้าขายใหม่ (บริสุทธิ์ · ตัวเดียวกับ register/page.tsx) ◂
 import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
 import { getTranslations } from "next-intl/server"; // POS P1.18 ▸ R13c ◂
+// HR H2.10 ▸ เมนู HR ตามผู้ดู (แท็บที่ผู้ดูเปิดไม่ได้ไม่แสดง) + "ของฉัน" สำหรับบัญชีที่ผูกกับพนักงาน (employeeOfUser ครั้งเดียว) ◂
+import { HR_SELF_HREF, hrNavFilter } from "@/lib/modules/hr/nav";
+import { selfLinkedSystemOf } from "@/lib/modules/hr/self";
 
 // ฟังก์ชันย่อยของ "ระบบหน้า fixed" (เช่น KB /app/kb) → กาง accordion เหมือนระบบอื่น
 // ⚠️ ทุก href ต้องมี page.tsx จริง — ตรวจโดย scripts/qc-nav-functions.mts (บล็อก KB)
@@ -57,6 +60,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getBrandingTokens(tenantId),
     getUserPreferences(auth.user.id),
   ]);
+
+  // HR H2.10 ▸ ผู้ดูของเมนู HR (ค่าเดียวกับที่หน้า HR ใช้ตัดสิน 404) + บัญชีนี้ผูกกับพนักงานไหม (เฉพาะร้านที่มีระบบ HR) ◂
+  const hrViewer = { role: auth.active.role, unitAccess: auth.active.unitAccess, permissions: auth.active.permissions, userId: auth.user.id };
+  const hrLinkedSystem = appSystems.some((x) => x.type === "HR") ? await selfLinkedSystemOf(tenantId, auth.user.id) : null; // ระบบ HR ที่ผูก (ผลเดียวกับหน้า "ของฉัน" ในคำขอเดียวกัน)
 
   // CRM uiVersion gate ▸ ระบบ CRM ที่เปิดหน้าจอ v2 แล้ว (settings.crm.uiVersion = 2) — อ่านจากแถวที่โหลดข้างบน ไม่มี query เพิ่ม ◂
   const crmV2 = new Set(appSystems.filter((x) => x.type === "CRM" && parseCrmSettings(x.settings).uiVersion === 2).map((x) => x.id));
@@ -143,8 +150,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       case "ACCOUNT":
         // เจ้าของสั่ง 6 ก.ย. 2569: ไม่เอาเมนูย่อยของบัญชีในแถบเมนู — หมวดทั้ง 9 อยู่ในหน้าหลักของระบบบัญชีแล้ว
         return undefined;
-      case "HR":
-        return [
+      case "HR": {
+        const hrNav = (list: { href: string; label: string }[]) => hrNavFilter(list, hrViewer, { linked: hrLinkedSystem === slugOrId }).filter((x) => x.href !== HR_SELF_HREF); // HR H2.10 ▸ กรองตามผู้ดูต่อระบบ · "ของฉัน" อยู่ที่รายการบนสุดที่เดียว ◂
+        const hrItems = [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/hr/attendance`, label: "ลงเวลา" },
           { href: `${s}/hr/roster`, label: "ตารางกะ" }, // HR H2.2 ▸ บอร์ดตารางกะรายสัปดาห์ (หน้ากันสิทธิ์เอง — 404 ถ้าไม่ใช่ OWNER/MANAGER/hr.employee.create) ◂
@@ -155,6 +163,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/hr/settings`, label: "ตั้งค่า" }, // HR H1.2 R13 ▸ หน้าตั้งค่า (หน้ากันสิทธิ์เอง — 404 ถ้าไม่ใช่ OWNER/hr.employee.create) ◂
           { href: `${s}/hr/settings/law`, label: "ตารางกฎหมาย" }, // HR H3.3 ▸ อ่านอย่างเดียว (หน้ากันสิทธิ์เอง — เท่ากับหน้าตั้งค่า) ◂
         ];
+        return hrNav(hrItems); // HR H2.10 ▸ ◂
+      }
       case "INVENTORY":
         return [
           { href: s, label: "ภาพรวม" },
@@ -338,6 +348,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // ระบบทั้งหมด (business + feature) เป็นรายการเดียว
   const items: NavItem[] = [
+    ...(hrLinkedSystem ? [{ key: "me-hr", href: "/app/me/hr", icon: "🙋", label: "ของฉัน" }] : []), // HR H2.10 ▸ หน้าบริการตัวเองของพนักงาน (เฉพาะบัญชีที่ผูก) ◂
     ...units.map((u) => {
       const children = childrenFor(u.type, u.slug, "business");
       return {

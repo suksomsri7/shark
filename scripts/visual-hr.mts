@@ -143,6 +143,20 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "leave-settings", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner"], expect: { owner: 200 }, why: "การ์ดประเภทการลา (ครึ่งวัน/รายชั่วโมง/แนบไฟล์) + วันหยุด + preset (H2.7/H2.8)" },
   ],
   // HR VISUAL batch1 ▸ H4.1 บรรทัดผลกระทบบนการ์ดใบลา hr-leave-impact* (mockup 05) — staff ต้องไม่เห็น ◂
+  // HR H2.10 ▸ "ของฉัน" (mockup 07a/07b · มือถือก่อน): staff (น้ำฝน) = 5 แท็บ + ฟอร์มยื่นลา · payrollSelf (ก้อย ผูกบัญชี) = หน้าเดียวกันของตัวเอง ·
+  //   "member" (ไม่ผูก) + "owner" (seed ไม่ผูกเจ้าของกับพนักงาน — เจ้าของที่ผูกเห็นหน้าเดียวกับ staff · ข้อสอบ S5.2) = hr-self-empty (200) ·
+  //   แท็บ HR ของ staff ไม่มี ตารางกะ/จอลงเวลา/ตั้งค่า/ตารางกฎหมาย · staff เปิดโปรไฟล์ตัวเอง ⇒ redirect /app/me/hr/profile ◂
+  "2.10": [
+    { key: "self-today", path: () => `/app/me/hr`, users: ["staff", "payrollSelf", "member", "owner"], expect: { staff: 200, payrollSelf: 200, member: 200, owner: 200 }, why: "วันนี้: กะ · ลงเวลา + GPS · เพื่อนร่วมกะ · สัปดาห์ · ทางลัด 6 · วันลาคงเหลือ / ไม่ผูก = hr-self-empty (H2.10)" },
+    { key: "self-week", path: () => `/app/me/hr/week`, users: ["staff"], expect: { staff: 200 }, why: "ตารางรายสัปดาห์ของตัวเอง (H2.10)" },
+    { key: "self-requests", path: () => `/app/me/hr/requests`, users: ["staff", "member"], expect: { staff: 200, member: 200 }, why: "คำขอของฉัน + ทางลัดฟอร์ม (H2.10)" },
+    { key: "self-leave-form", path: () => `/app/me/hr/requests?form=leave`, users: ["staff"], expect: { staff: 200 }, why: "ฟอร์มยื่นลา 07b: ประเภท · วันที่ พ.ศ. · กระทบกะ · คงเหลือหลังลา · ปุ่มส่งติดล่าง (H2.10)" },
+    { key: "self-advance-form", path: () => `/app/me/hr/requests?form=advance`, users: ["staff"], expect: { staff: 200 }, why: "ฟอร์มเบิกล่วงหน้า (H2.10 R6)" },
+    { key: "self-pay", path: () => `/app/me/hr/pay`, users: ["staff"], expect: { staff: 200 }, why: "สลิปของตัวเอง (รอบที่จ่ายแล้ว) + ช่องหนังสือรับรอง (H2.10)" },
+    { key: "self-profile", path: () => `/app/me/hr/profile`, users: ["staff", "owner"], expect: { staff: 200, owner: 200 }, why: "ฉัน: ข้อมูล · วันลา · บันทึก + รับทราบ (H2.10)" },
+    { key: "self-hr-tabs", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["staff"], expect: { staff: 200 }, why: "แท็บ HR ของ staff ไม่มีหน้าที่ 404 + มี \"ของฉัน\" (H2.10 R7)" },
+    { key: "self-own-profile", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.namfon}`, users: ["staff"], expect: { staff: 200 }, why: "staff เปิดโปรไฟล์ตัวเอง ⇒ redirect /app/me/hr/profile (H2.10 R7)" },
+  ],
   "4.1": [{ key: "leave-impact", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager-branch", "staff"], why: "กระทบ: กะ วัน เวลา — ยังมี n คน / ขาด 1 คน → ระบบเสนอ … (H4.1 R12)" }],
 };
 const VIEWPORTS = [
