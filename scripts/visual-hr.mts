@@ -88,6 +88,13 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "we-month", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, users: ["owner", "manager-branch"], why: "ปฏิทินรายคน + สรุป/รายวันที่ดึงเข้าเงินเดือน (มีเมื่อดึงแล้ว) (H3.1 04B)" },
     { key: "we-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-we-normal`, users: ["owner", "manager-branch"], why: "การ์ดชั่วโมงทำงานปกติต่อวัน (เจ้าของแก้ · ผู้จัดการอ่าน) (H3.1 Q10)" },
   ],
+  // HR H3.2 ▸ กฎหักสาย/ขาด — การ์ดกฎ (ตั้งค่า · เจ้าของแก้ · ข้อความ ม.76 เสมอ) · แผง "สรุปส่งเข้าเงินเดือน" บนปฏิทินรายคน (ภาพ 04B) ·
+  //   รายการของฉัน (พนักงาน — มีเมื่อคำนวณแล้ว) · seed ปิดกฎ ⇒ แผงบอก "ยังไม่ได้เปิด" เว้นแต่ผู้ควบคุมเปิด + คำนวณก่อนถ่าย ◂
+  "3.2": [
+    { key: "attpay-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-attpay-policy`, users: ["owner", "manager-branch"], why: "การ์ดกฎหักสาย/ออกก่อน/ขาดงาน + ข้อความ ม.76 (เจ้าของแก้ · ผู้จัดการอ่าน) (H3.2 R2 R11)" },
+    { key: "attpay-panel", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, users: ["owner", "manager-branch"], why: "แผงสรุปส่งเข้าเงินเดือน: นาที · เงิน (เจ้าของ) · ปุ่มคำนวณ (H3.2 04B)" },
+    { key: "attpay-mine", path: (i) => `/app/sys/${i.hr}/hr/attendance`, users: ["staff"], why: "รายการหักสาย/ขาดของฉัน (มีเมื่อคำนวณแล้ว) (H3.2 Q9)" },
+  ],
   // HR H2.9 ▸ คำขอ OT (mockup 05 การ์ด OT · 07a ขอ OT) — หน้าใบลา: ฟอร์ม + รายการ (เจ้าของ ฿ · ผู้จัดการไม่เห็น ฿ — Q11) · ตั้งค่า: กฎ OT · เงินเดือน: อัตรา OT #18 ◂
   "2.9": [
     { key: "ot-leave", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager", "staff"], why: "ส่วนคำขอ OT: ฟอร์ม hr-ot-form · รายการ hr-ot-list · ปุ่มอนุมัติ/ไม่อนุมัติ/ยกเลิก (H2.9)" },
