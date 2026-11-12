@@ -178,8 +178,12 @@ console.log("── S1 statics ──");
   chk("S1.3", Object.values(r).every(Boolean), "marked hunks only", `${short(r, 160)} hunks=${hunks.length} unmarked=${unmarked.length} removed=${removed.length}`);
 }
 {
-  const ch = changedVsBase(base, FROZEN);
-  chk("S1.4", ch === "unchanged", "unchanged", ch);
+  // ORACLE-EDIT (controller ruling 12 Nov on qc-hr-h3.3 S1.3): law.ts takes exactly one marked HR H2.9 hunk (loadOtLawRows · 0 removed) — rest stays frozen
+  const LAW = H + "law.ts";
+  const ch = changedVsBase(base, FROZEN.filter((f) => f !== LAW));
+  const lh = diffHunks(base, LAW) ?? [];
+  const lawOk = lh.length === 1 && lh[0]!.removed.length === 0 && lh[0]!.added.some((l) => /HR H2\.9/.test(l)) && lh[0]!.added.some((l) => /export async function loadOtLawRows\(/.test(l));
+  chk("S1.4", ch === "unchanged" && lawOk, "unchanged · law.ts = 1 marked H2.9 hunk", `${ch} · law hunks=${lh.length} ok=${lawOk}`);
   const s = sha(rd(PAYROLL_RULES_FILE));
   chk("S1.5", s === PAYROLL_RULES_SHA, PAYROLL_RULES_SHA.slice(0, 12), s.slice(0, 12));
 }

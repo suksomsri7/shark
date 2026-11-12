@@ -795,14 +795,15 @@ function runStatic(): void {
     // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
     //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
     const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
-    // ORACLE-EDIT (controller 12 Nov · H2.9): hr/ot.ts is the designed OT_REQUEST writer / OT law-table reader — only sourceRef + HrLawTable ignored there
-    const OT_OK = /^(sourceRef|HrLawTable|hrLawTable)$/;
+    // ORACLE-EDIT (controller 12 Nov · H2.9, narrowed by the law.ts ruling): hr/ot.ts is the designed OT_REQUEST writer — only sourceRef ignored there
+    //   (the OT law rows are read through hr/law.ts#loadOtLawRows, so HrLawTable stays ratcheted everywhere)
+    const OT_OK = /^sourceRef$/;
     const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t))).length;
-    // ORACLE-EDIT (controller 12 Nov · H2.9 extension): hr/payroll.ts may carry exactly 3 new reads inside lines/blocks marked `HR H2.9`
-    //   (1× hrLawTable in the #18 legal-floor check · 2× sourceRef in writeOtAdjustmentInTx) — reads outside marked lines are ratcheted vs base as before,
-    //   and the marked count must be exactly 3 (a 4th marked read fails too)
+    // ORACLE-EDIT (controller 12 Nov · H2.9 extension, narrowed by the law.ts ruling): hr/payroll.ts may carry exactly 2 new reads inside lines/blocks
+    //   marked `HR H2.9` (2× sourceRef in writeOtAdjustmentInTx) — reads outside marked lines are ratcheted vs base as before,
+    //   and the marked count must be exactly 2 (a 3rd marked read, e.g. HrLawTable, fails too)
     const PAY_FILE = "src/lib/modules/hr/payroll.ts";
-    const PAY_H29_READS = 3;
+    const PAY_H29_READS = 2;
     const splitH29 = (src: string) => {
       const inside: string[] = [];
       const outside: string[] = [];
