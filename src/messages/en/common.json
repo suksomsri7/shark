@@ -634,6 +634,67 @@
         "tplHelp": "One per line: key | title | due days (from start/end date) · up to 20",
         "save": "Save settings"
       }
+    },
+    "we": {
+      "title": "Work hours of the period",
+      "desc": "From the roster, stored attendance, leave and holidays — minutes only, no money yet",
+      "period": "Period {period}",
+      "build": "Pull work hours",
+      "built": "Work hours pulled — {n} days changed · {review} days need review",
+      "empty": "No employees in this period yet",
+      "days": "{n} days",
+      "late": "{n} times · {min} min",
+      "reviewCount": "{n} days to review",
+      "otNote": "OT shown is measured minutes only — OT is paid only through approved OT items",
+      "monthTitle": "Work hours pulled into payroll",
+      "workShort": "Worked {hm}",
+      "otShort": "OT {hm}",
+      "srcAttendance": "Attendance",
+      "srcLeave": "Leave",
+      "normalTitle": "Normal working minutes per day",
+      "normalDesc": "Used for holiday pay, full-day leave without a roster and work on days off — after a change, pull work hours again for unapproved periods",
+      "normalLabel": "Minutes per day (60–720)",
+      "normalValue": "{n} min ({hm} h) — only the owner can change this",
+      "save": "Save",
+      "state": {
+        "FROZEN": "Approved (locked)",
+        "MISSING": "Not pulled yet",
+        "OUTDATED": "Inputs changed — rebuild",
+        "REVIEW": "Needs review",
+        "CURRENT": "Current"
+      },
+      "col": {
+        "name": "Employee",
+        "worked": "Days worked",
+        "work": "Work hours",
+        "ot": "OT (measured)",
+        "leave": "Leave days",
+        "absent": "Absent",
+        "late": "Late",
+        "state": "State"
+      },
+      "status": {
+        "WORKED": "Worked",
+        "LEAVE": "Leave",
+        "ABSENT": "Absent",
+        "DAY_OFF": "Day off",
+        "HOLIDAY": "Holiday",
+        "UNSCHEDULED": "No schedule",
+        "PENDING": "Day not closed"
+      },
+      "review": {
+        "LEAVE_MISMATCH": "Leave does not match attendance",
+        "MISSING_OUT": "No clock-out",
+        "NOT_FINAL": "Day not over",
+        "NOT_STORED": "Result not stored yet",
+        "ORPHAN": "Shift moved/removed — recompute",
+        "PENDING_LEAVE": "Leave pending",
+        "STALE": "Changed after storing — recompute",
+        "STRAY_IN": "Clock-in outside shift",
+        "WORKED_ON_LEAVE": "Worked on a leave day",
+        "HOURLY_LEAVE_UNUSED": "Hourly leave exceeds missed time",
+        "LEGACY_LEAVE": "Leave without a type (counted as paid)"
+      }
     }
   }
 }

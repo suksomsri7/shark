@@ -81,6 +81,13 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "att-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
     { key: "settings-attendance", path: (i) => `/app/sys/${i.hr}/hr/settings`, why: "การ์ดตัดสินผล/การเตือน hr-settings-attendance-policy (R12)", expect: { owner: 200 }, users: ["owner"] },
   ],
+  // HR H3.1 ▸ ชั่วโมงทำงาน (mockup 06 แผง · 04B สรุป/รายวัน) — seed ไม่สร้าง snapshot (seed คงเดิม) ⇒ แผงแสดง "ยังไม่ได้ดึง" จนเจ้าของกดดึง ·
+  //   การ์ดชั่วโมงทำงานปกติต่อวันบนหน้าตั้งค่า (เจ้าของแก้ได้ · ผู้จัดการสาขาอ่านอย่างเดียว) ◂
+  "3.1": [
+    { key: "we-panel", path: (i) => `/app/sys/${i.hr}/hr/payroll?period=${i.today.slice(0, 7)}`, users: ["owner", "payroll", "manager-branch"], why: "แผงชั่วโมงทำงานของงวด: สถานะ · ปุ่มดึง (ผู้ดึง) · แถวต่อคน (H3.1 06)" },
+    { key: "we-month", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, users: ["owner", "manager-branch"], why: "ปฏิทินรายคน + สรุป/รายวันที่ดึงเข้าเงินเดือน (มีเมื่อดึงแล้ว) (H3.1 04B)" },
+    { key: "we-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-we-normal`, users: ["owner", "manager-branch"], why: "การ์ดชั่วโมงทำงานปกติต่อวัน (เจ้าของแก้ · ผู้จัดการอ่าน) (H3.1 Q10)" },
+  ],
   // HR H4.4 ▸ brief §5 (mockup 02) — ข้อมูลจาก seed (HQC.lifecycle: โบว์ ทดลองงาน + รายการรับเข้า 5/7 · เจ สัญญาถึงสิ้นเดือน · นัท ตักเตือนด้วยวาจา · ฝ้าย ผู้ลาออก) ◂
   "4.4": [
     { key: "life-due", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["owner", "manager-branch", "staff"], why: "ทะเบียน: แผง \"ต้องจัดการ\" 4 ช่อง (ทดลองงาน · สัญญา · รับเข้าค้าง · ออกจากงานค้าง) — staff ไม่เห็นแผง (H4.4)" },

@@ -5405,6 +5405,269 @@
    "wo": "H4.4",
    "oracle": "qc-hr-h4.4",
    "note": "แม่แบบออกจากงาน: รหัส | หัวข้อ | วัน (≤ 20 ข้อ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-we-panel",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "ผู้อ่านชั่วโมงทำงาน (OWNER · hr.payroll.read · MANAGER/hr.employee.create ในสาขาของตัวเอง)",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "แผงชั่วโมงทำงานของงวด (ภาพ 06) · ?period= · นาทีเท่านั้น"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-we-state",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "ผู้อ่านชั่วโมงทำงาน",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "สถานะงวด FROZEN/MISSING/OUTDATED/REVIEW/CURRENT (data-state)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-we-build",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "ผู้ดึง = OWNER · hr.payroll.read · งวดยังไม่อนุมัติ",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "buildWorkEntriesAction"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "ดึงชั่วโมงทำงาน → ?we=ok&n=&r= | ?we=<รหัส WE_MSG>"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-we-row-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "ผู้อ่านชั่วโมงทำงาน (แถวในขอบเขตสาขา)",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/attendance?view=month&employee=[employeeId]"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "* = <employeeId> · ชื่อลิงก์ไปปฏิทินรายคน (ที่มา)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-we-review",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "แถวที่มีวันต้องตรวจ",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "ต้องตรวจ N วัน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-we-summary",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ (สาขาของตัวเอง) หรือพนักงานเอง · มี snapshot ของเดือนนั้น",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "สรุปนาทีของเดือน (ภาพ 04B)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-we-day-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "เหมือน hr-we-summary · วันที่ไม่ใช่ UNSCHEDULED หรือมีรายการต้องตรวจ",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "* = YYYY-MM-DD · ลิงก์ที่มา: ผลลงเวลารายวัน · ใบลา (ไม่แสดงให้พนักงานเอง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-we-normal",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "ผู้ตั้งค่า HR",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "ชั่วโมงทำงานปกติต่อวัน (มติ Q10) · ผู้ไม่ใช่เจ้าของเห็นค่าอย่างเดียว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-we-normal-input",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "นาที 60–720 (ค่าปริยาย 480)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-we-normal-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/work-entries-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "saveNormalMinutesAction"
+   },
+   "wo": "H3.1",
+   "oracle": "qc-hr-h3.1",
+   "note": "บันทึก → ?msg=ok | รหัส we.*"
   }
  ]
 }
