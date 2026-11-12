@@ -1,0 +1,90 @@
+# H4.6 GREEN — lane DB l2 (qc-hr.sh) · 2026-11-12T11:50:34Z
+## run list (exit · summary)
+h46f1 exit=0 ===== qc-hr-h4.6 ===== passed 56/56 (QC_FORCE) RESIDUE none (tenants=2 users=11)
+h46f2 exit=0 ===== qc-hr-h4.6 ===== passed 56/56 (QC_FORCE) RESIDUE none (tenants=2 users=11)
+h46u exit=0 ===== qc-hr-h4.6 ===== passed 56/56 RESIDUE none (tenants=2 users=11)
+seed1 exit=0 ===== seed-hr-qc ===== ผ่าน 33/33 
+seed2 exit=0 ===== seed-hr-qc ===== ผ่าน 33/33 
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 RESIDUE none (tenants=2 users=7)
+qc-hr-h0.1 exit=1 66/67 (S4.2 schema sha) → after ORACLE-EDIT 9956fa536: exit=0 67/67
+qc-hr-h0.2 exit=0 ===== qc-hr-h0.2 ===== ผ่าน 58/58 
+qc-hr-h0.6 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 RESIDUE tenants=0 rows=0 audit=0 outbox=0
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ ===== 
+qc-payroll exit=0 ===== QC Payroll ไทย ===== 
+qc-payroll-reverse exit=0  
+qc-bulk-ops exit=0 ===== QC Bulk Operations ===== 
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== 
+qc-pos-p2.3 exit=4  
+qc-inventory exit=0 ===== QC Inventory ===== 
+qc-inventory-item exit=0 ===== QC Inventory Item (CRUD) ===== 
+qc-hf-inventory-atomic exit=0 ===== QC HF-INV-1 inventory atomic ===== 
+qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-bulk-ops 13/13 · qc-hf-hr-privacy 192/194 (S-20 · F1-10 — ORACLE-EDIT requested) · qc-inventory 12/12 · qc-inventory-item 11/11 · qc-hf-inventory-atomic 143/143 · qc-pos-p2.3 refuses lane DB (QC4 only)
+fitness 53/53 + fitness-hr 9/9, with and without env · typecheck exit 0 (0 errors)
+
+## qc-hr-h4.6 forced #1
+[env] qc-hr-h4.6 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h4.6] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h4.6] stock-charge=loaded · base=9adc3be3c
+  ✅ [H4.6-S1.1] [static] migration 20270104000000_hr_stock_charge: CREATE TYPE HrStockChargeKind (ISSUE,DAMAGE) · CREATE TABLE · no ALTER TYPE/DROP
+  ✅ [H4.6-S1.2] [static] CHECKs amount 1..5000000 · qty 1..999 · consentRef 1..80 · description ≤ 120 · uniques requestKey/adjustmentId/partial movementId · employee FK RESTRICT
+  ✅ [H4.6-S1.3] [static] payroll.prisma model + enum · core/scope.ts HrStockCharge: sys()
+  ✅ [H4.6-S12.1] [static] stock-charge imports inventory only via "@/lib/modules/inventory" · no raw prisma · tx client
+  ✅ [H4.6-S12.2] [static] fitness ALLOWED_EDGES "hr→inventory" in one marked hunk
+  ✅ [H4.6-S12.3] [static] outbox-consumers: one marked hunk · labels one hunk
+  ✅ [H4.6-S10.2] [static] labels: event once · consumer hunk marked
+  ✅ [H4.6-S13.1] [static] actions "use server": 2 wrappers · requireTenant · no now
+  ✅ [H4.6-S13.2] [static] ui testids · tokens · 44 px · payroll page mounts · source chip
+  ✅ [H4.6-S13.3] [static] inventory rows · hr.stock th=en
+  ✅ [H4.6-S14.1] [static] payroll-rules sha · payroll.ts/privacy.ts/inventory/**/inventory.prisma unchanged vs base
+
+
+  ✅ [H4.6-S1.4] [db] HrStockCharge table + columns on the lane DB
+  ✅ [H4.6-S2.1] valid vectors: 25000 · 37035 · 4999995 · override 15050 (unit 12345) · manual 8900 · override 5000000 · no-take 50000
+  ✅ [H4.6-S2.2] adjustment rows: DEDUCTION · PENDING · INVENTORY_ISSUE · sourceRef hrstock:<key> · 2031-06 · requestedById · runId null · charge row amount = adjustment amount
+  ✅ [H4.6-S2.3] amount refusals (7×10^5×7 · override 0/12.5/5000001/-100 · manual w/o override) ⇒ amount text · cost 0 ⇒ noCost
+  ✅ [H4.6-S2.4] qty refusals 0/-1/1.5/1000 ⇒ qty text
+  ✅ [H4.6-S2.5] item/desc/kind/key refusals (service · other-tenant item · no item+no desc · desc 121 · kind LOAN · key "short")
+  ✅ [H4.6-S2.6] refusals write nothing (adjustments · charges · movements · stock unchanged)
+  ✅ [H4.6-S2.7] stock literals after S2: B 49 · A 15 · D 1001 · Z 4 · C 10 · 5 HR movements (OUT, qty literal)
+  ✅ [H4.6-S2.8] Σ E1 PENDING INVENTORY_ISSUE deductions = 10135980
+  ✅ [H4.6-S3.1] allowed: owner · manager-u1 (u1 emp) · STAFF request+consume · STAFF request-only with takeStock=false
+  ✅ [H4.6-S3.2] STAFF request-only + takeStock ⇒ invAccess (no row, no stock)
+  ✅ [H4.6-S3.3] noAccess identical bytes: mgr-u1→u2 emp · inventory-only · member · payroll-only · other tenant · unknown id · other-tenant inv system · non-INVENTORY system
+  ✅ [H4.6-S3.4] own row ⇒ self (payroll staff linked to E3)
+  ✅ [H4.6-S3.5] gate refusals write nothing · item B = 47 after gates
+  ✅ [H4.6-S4.1] same key twice ⇒ same chargeId · replayed · 1 adjustment · 1 movement · stock once
+  ✅ [H4.6-S4.2] same key, other qty ⇒ replayDiff · nothing changed
+  ✅ [H4.6-S4.3] [race] 5 lanes same key ⇒ one charge/adjustment/movement · stock once
+  ✅ [H4.6-S4.4] resume: inventory movement already written for the key ⇒ charge reuses it · stock once
+  ✅ [H4.6-S4.5] two keys same input ⇒ two charges
+  ✅ [H4.6-S5.1] Bangkok month: 2031-07-01 00:30 +07 ⇒ 2031-07
+  ✅ [H4.6-S5.2] live runs skip: Aug APPROVED + Sep PAID ⇒ 2031-10 · Nov REVERSED ⇒ 2031-11 · Dec DRAFT ⇒ 2032-01
+  ✅ [H4.6-S5.3] no INVENTORY_ISSUE row bound to a run · fake runs untouched
+  ✅ [H4.6-S7.1] nothing APPROVED without a decision (all charge rows PENDING after S2–S5)
+  ✅ [H4.6-S7.2] decideAdjustment: requester ⇒ own-request text · linked employee ⇒ own-row text · payroll approver ⇒ APPROVED
+  ✅ [H4.6-S8.1] list viewers: owner/payroll obj · manager w/o payroll · request staff · member · employee ⇒ null · other tenant sees none of T
+  ✅ [H4.6-S8.2] list keys exactly (18) · status/period literal
+  ✅ [H4.6-S8.3] branch scope: payroll viewer [u1] sees E1 charges, none of E2
+  ✅ [H4.6-S8.4] myStockCharges: own rows only · keys exactly (10) · member ⇒ none
+  ✅ [H4.6-S8.5] inventory movement: sourceModule HR · refType HrStockCharge · refId key · note null · no employee/amount
+  ✅ [H4.6-S8.6] outbox: 1 event per charge · payload exactly {chargeId, employeeId} · key …#chargeId · systemId HR
+  ✅ [H4.6-S8.7] audit hr.stock_charge.request: ids only (no amount, no consent ref)
+  ✅ [H4.6-S8.8] overCap: 150000 false · 150001 true · 4999995 true · no profile null
+  ✅ [H4.6-S9.1] ENDED / inactive employee ⇒ ended text · nothing written
+  ✅ [H4.6-S9.2] PENDING charge stays PENDING after the employee ends
+  ✅ [H4.6-S11.1] consent refusals (missing · unconfirmed · empty ref · 81 chars · tomorrow · bad date) ⇒ consent text · nothing written
+  ✅ [H4.6-S11.2] consent recorded: ref · date · recordedBy = requester · 80-char ref accepted
+  ✅ [H4.6-S10.1] consumer registered · replay ×2 ⇒ 1 notification to the linked user · title notify · no amount/item
+  ✅ [H4.6-S6.1] withdraw PENDING ⇒ REJECTED (decidedById) · withdrawnAt/ById · status WITHDRAWN · second ⇒ withdrawn text
+  ✅ [H4.6-S6.2] withdraw APPROVED (a) unbound ⇒ CANCELLED in place (REJECTED · Σ approved 0) · (b) DRAFT-bound ⇒ CANCELLED via cancelAdjustment (row gone · Σ 0) · no ALLOWANCE row
+  ✅ [H4.6-S6.3] withdraw APPROVED bound to APPROVED run ⇒ REFUND_OWED 5000000 · payroll rows/run untouched · mark repaid: perm · ref · ok · idempotent
+  ✅ [H4.6-S6.4] withdraw rights: requester own PENDING ok · requester other's ⇒ withdrawPerm · manager w/o payroll ⇒ withdrawPerm · linked employee ⇒ self · member ⇒ noAccess
+  ✅ [H4.6-S6.5] adjustment deleted on payroll page ⇒ status REMOVED · withdraw ⇒ NOOP
+  ✅ [H4.6-S6.6] [race] 3 parallel withdraws of an APPROVED charge ⇒ exactly 1 CANCELLED · no refund row
+  ✅ [H4.6-S14.2] [db] manual requestAdjustment ⇒ sourceType/sourceRef null · consumeBatch same key ⇒ same movement
+RESIDUE none (tenants=2 users=11)
+  ✅ [H4.6-Z1] no residue
+BASE-EXPECTATION 3/56 as registered (RED-by-design 53 · GREEN controls 3) · off: H4.6-S1.1(RED→pass) H4.6-S1.2(RED→pass) H4.6-S1.3(RED→pass) H4.6-S12.1(RED→pass) H4.6-S12.2(RED→pass) H4.6-S12.3(RED→pass) H4.6-S10.2(RED→pass) H4.6-S13.1(RED→pass) H4.6-S13.2(RED→pass) H4.6-S13.3(RED→pass) H4.6-S1.4(RED→pass) H4.6-S2.1(RED→pass) H4.6-S2.2(RED→pass) H4.6-S2.3(RED→pass) H4.6-S2.4(RED→pass) H4.6-S2.5(RED→pass) H4.6-S2.6(RED→pass) H4.6-S2.7(RED→pass) H4.6-S2.8(RED→pass) H4.6-S3.1(RED→pass) H4.6-S3.2(RED→pass) H4.6-S3.3(RED→pass) H4.6-S3.4(RED→pass) H4.6-S3.5(RED→pass) H4.6-S4.1(RED→pass) H4.6-S4.2(RED→pass) H4.6-S4.3(RED→pass) H4.6-S4.4(RED→pass) H4.6-S4.5(RED→pass) H4.6-S5.1(RED→pass) H4.6-S5.2(RED→pass) H4.6-S5.3(RED→pass) H4.6-S7.1(RED→pass) H4.6-S7.2(RED→pass) H4.6-S8.1(RED→pass) H4.6-S8.2(RED→pass) H4.6-S8.3(RED→pass) H4.6-S8.4(RED→pass) H4.6-S8.5(RED→pass) H4.6-S8.6(RED→pass) H4.6-S8.7(RED→pass) H4.6-S8.8(RED→pass) H4.6-S9.1(RED→pass) H4.6-S9.2(RED→pass) H4.6-S11.1(RED→pass) H4.6-S11.2(RED→pass) H4.6-S10.1(RED→pass) H4.6-S6.1(RED→pass) H4.6-S6.2(RED→pass) H4.6-S6.3(RED→pass) H4.6-S6.4(RED→pass) H4.6-S6.5(RED→pass) H4.6-S6.6(RED→pass)
+
+===== qc-hr-h4.6 ===== passed 56/56 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h4.6","total":56,"passed":56,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":53,"baseGreen":3,"offBase":["H4.6-S1.1(RED→pass)","H4.6-S1.2(RED→pass)","H4.6-S1.3(RED→pass)","H4.6-S12.1(RED→pass)","H4.6-S12.2(RED→pass)","H4.6-S12.3(RED→pass)","H4.6-S10.2(RED→pass)","H4.6-S13.1(RED→pass)","H4.6-S13.2(RED→pass)","H4.6-S13.3(RED→pass)","H4.6-S1.4(RED→pass)","H4.6-S2.1(RED→pass)","H4.6-S2.2(RED→pass)","H4.6-S2.3(RED→pass)","H4.6-S2.4(RED→pass)","H4.6-S2.5(RED→pass)","H4.6-S2.6(RED→pass)","H4.6-S2.7(RED→pass)","H4.6-S2.8(RED→pass)","H4.6-S3.1(RED→pass)","H4.6-S3.2(RED→pass)","H4.6-S3.3(RED→pass)","H4.6-S3.4(RED→pass)","H4.6-S3.5(RED→pass)","H4.6-S4.1(RED→pass)","H4.6-S4.2(RED→pass)","H4.6-S4.3(RED→pass)","H4.6-S4.4(RED→pass)","H4.6-S4.5(RED→pass)","H4.6-S5.1(RED→pass)","H4.6-S5.2(RED→pass)","H4.6-S5.3(RED→pass)","H4.6-S7.1(RED→pass)","H4.6-S7.2(RED→pass)","H4.6-S8.1(RED→pass)","H4.6-S8.2(RED→pass)","H4.6-S8.3(RED→pass)","H4.6-S8.4(RED→pass)","H4.6-S8.5(RED→pass)","H4.6-S8.6(RED→pass)","H4.6-S8.7(RED→pass)","H4.6-S8.8(RED→pass)","H4.6-S9.1(RED→pass)","H4.6-S9.2(RED→pass)","H4.6-S11.1(RED→pass)","H4.6-S11.2(RED→pass)","H4.6-S10.1(RED→pass)","H4.6-S6.1(RED→pass)","H4.6-S6.2(RED→pass)","H4.6-S6.3(RED→pass)","H4.6-S6.4(RED→pass)","H4.6-S6.5(RED→pass)","H4.6-S6.6(RED→pass)"]}
