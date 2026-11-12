@@ -13,7 +13,7 @@
 // SKIP while hr/availability.ts is absent (exit 0) · QC_FORCE=1 / --force-run runs anyway · --list prints the ids.
 // Own tenants `qc-hr-h41-<tag>-*`, dates 2031-03 (Mon 10 … Sun 16), rows by id, swept in finally (Z1). No "today".
 // Run (lane DB): bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h4.1.mts
-import { type Any, type Def, rd, short, errText, stripComments, sha, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, changedVsBase, diffHunks, makeRegistry, qc4Env, fitnessNoEnv, importsOf, flat, jsonOf, loadOpt, modState, tagOf, makeFixtures, cleanupFx, residueOf, underRosterLock, vOf, canon, keysDeep, testidsOf, inventoryParity, msgParity, tokensOnly, dbDate, type Who } from "./qc-hr-lib.mjs";
+import { type Any, type Def, rd, short, errText, stripComments, sha, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, makeRegistry, qc4Env, fitnessNoEnv, importsOf, flat, jsonOf, loadOpt, modState, tagOf, makeFixtures, cleanupFx, residueOf, underRosterLock, vOf, canon, keysDeep, testidsOf, inventoryParity, msgParity, tokensOnly, dbDate, type Who } from "./qc-hr-lib.mjs";
 
 const SUITE = "qc-hr-h4.1";
 const ARGV = process.argv.slice(2);
@@ -147,7 +147,9 @@ console.log("── S1 statics ──");
   const r = { file: !!s, noOtherModule: other.length === 0, writesOnlyNotify: writes.every((x) => x === ".createMany(") && /appNotification\.createMany\(/.test(s), lock: /hr-leave-hint:/.test(s), noRaw: !/\$executeRaw/.test(s) };
   chk("S1.3", Object.values(r).every(Boolean), "boundary · writes · lock", `failed: ${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "-"} ${other.join(",")} ${writes.join(",")}`);
 }
-chk("S1.4", changedVsBase(base, FROZEN) === "unchanged", "unchanged", `${changedVsBase(base, FROZEN)} (base ${base.slice(0, 9)})`);
+// ORACLE-EDIT (controller, 12 Nov): เมื่อ H4.1 อยู่ในฐานแล้ว การเทียบไฟล์ frozen กับฐานเป็นของใบอื่น ⇒ n/a (แบบเดียวกับ qc-hr-h4.4 S15.1 · qc-hr-h2.7)
+const H41_IN_BASE = pathInBase("src/lib/modules/hr/availability.ts", base);
+chk("S1.4", H41_IN_BASE || changedVsBase(base, FROZEN) === "unchanged", "unchanged", H41_IN_BASE ? "n/a · H4.1 in base" : `${changedVsBase(base, FROZEN)} (base ${base.slice(0, 9)})`);
 chk("S1.5", sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, PAYROLL_RULES_SHA.slice(0, 12), sha(rd(PAYROLL_RULES_FILE)).slice(0, 12));
 {
   const s = code(F.cons);

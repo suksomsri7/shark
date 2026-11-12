@@ -33,6 +33,8 @@ const F = {
 const FROZEN = ["clock.ts", "clock-rules.ts", "time-rules.ts", "roster.ts", "swap.ts", "service.ts", "payroll.ts", "pin.ts", "privacy.ts", "privacy-shared.ts", "pos-seam.ts", "rules.ts"].map((f) => H + f);
 const BRAIN_SHA = "edbeb819c3e3fc7d3da28ca7513c71f3168e9d53bae29eabbbe1cd96f36a1fa8"; // rules.ts FREEZE
 const SEAM_SHA = "e7822846d2f4d37ba732237a8cd9286d836a6ad5f3c524ef19730e2869a2f508"; // pos-seam.ts
+// ORACLE-EDIT (H2.5 after the H4.4 merge · controller-authorized): pos-seam.ts may carry exactly the one marked H4.4 hunk (clockSelf requireActive) — same pin as qc-hr-h2.4 S12.3
+const SEAM_SHA_H44 = "9e7bc4ef89815aecd21c980bc262c7bbb4618b68d903d950ab2f25d2f2c575b8";
 const T = {
   rNoPerm: "คุณไม่มีสิทธิ์คิดผลการลงเวลาใหม่",
   rNotFound: "ไม่พบผลการลงเวลาของวันนี้ — กรุณารีเฟรช",
@@ -305,7 +307,7 @@ function runStatic(): void {
     const diff = diff0 === "unchanged" && payOk ? "unchanged" : `${diff0}${payOk ? "" : " · payroll.ts unmarked hunk"}`;
     const n = hrNavLabels();
     const nav = canon(["ภาพรวม", "ลงเวลา", "ตารางกะ", "จอลงเวลา", "ใบลา", "พนักงาน", "เงินเดือน", "ตั้งค่า", "ตารางกฎหมาย"]);
-    const r = { payroll: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, brain: sha(rd(`${H}rules.ts`)) === BRAIN_SHA, seam: sha(rd(`${H}pos-seam.ts`)) === SEAM_SHA, frozen: diff === "unchanged", nav: canon(n.T) === nav && canon(n.L) === nav };
+    const r = { payroll: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, brain: sha(rd(`${H}rules.ts`)) === BRAIN_SHA, seam: [SEAM_SHA, SEAM_SHA_H44].includes(sha(rd(`${H}pos-seam.ts`))), frozen: diff === "unchanged", nav: canon(n.T) === nav && canon(n.L) === nav };
     ck("S9.5", r, `shas · ${FROZEN.length} unchanged · nav`, `${IN_BASE ? "n/a · H2.5 in base" : diff} (base ${BASE_REF.slice(0, 9) || "?"})`);
   }
   {
