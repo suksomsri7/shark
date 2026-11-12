@@ -211,7 +211,7 @@ model TripResource {
   @@index([tenantId, unitId, kind])
 }
 
-// SQL มือ: TripResourceUse_times_check (endsAt > startsAt — ช่วงว่าง [s,s) เลี่ยง EXCLUDE ได้) · "TripResourceUse_no_overlap" EXCLUDE USING gist ("resourceId" WITH =, tsrange("startsAt","endsAt",'[)') WITH &&) WHERE (active)
+// SQL มือ: TripResourceUse_times_check (endsAt > startsAt — ช่วงว่าง [s,s) เลี่ยง EXCLUDE ได้) · "TripResourceUse_no_overlap" EXCLUDE USING gist ("tenantId" WITH =, "resourceId" WITH =, tsrange("startsAt","endsAt",'[)') WITH &&) WHERE (active)
 //   (tsrange — DateTime ของ Prisma = timestamp ไม่มีเขตเวลา เก็บ UTC · มติผู้คุม 12 พ.ย.)
 model TripResourceUse {
   id          String   @id @default(cuid())

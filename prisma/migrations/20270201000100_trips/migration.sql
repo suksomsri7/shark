@@ -1066,5 +1066,5 @@ CREATE INDEX "TripHold_capKeyHash_active_idx" ON "TripHold"("capKeyHash") WHERE 
 CREATE UNIQUE INDEX "TripWaitlist_departureId_partyId_open_key" ON "TripWaitlist"("departureId", "partyId") WHERE "status" IN ('WAITING', 'OFFERED');
 CREATE UNIQUE INDEX "TripPriceRule_unitId_code_active_key" ON "TripPriceRule"("unitId", lower("code")) WHERE "code" IS NOT NULL AND "active";
 
--- กันทรัพยากรซ้อนเวลา (btree_gist มีแล้วจาก svc_r0) · tsrange: คอลัมน์ Prisma DateTime = timestamp ไม่มีเขตเวลา (เก็บ UTC) · มติผู้คุม 12 พ.ย.
-ALTER TABLE "TripResourceUse" ADD CONSTRAINT "TripResourceUse_no_overlap" EXCLUDE USING gist ("resourceId" WITH =, tsrange("startsAt", "endsAt", '[)') WITH &&) WHERE ("active");
+-- กันทรัพยากรซ้อนเวลา ต่อร้าน (tenantId + resourceId · r3 R2-6) (btree_gist มีแล้วจาก svc_r0) · tsrange: คอลัมน์ Prisma DateTime = timestamp ไม่มีเขตเวลา (เก็บ UTC) · มติผู้คุม 12 พ.ย.
+ALTER TABLE "TripResourceUse" ADD CONSTRAINT "TripResourceUse_no_overlap" EXCLUDE USING gist ("tenantId" WITH =, "resourceId" WITH =, tsrange("startsAt", "endsAt", '[)') WITH &&) WHERE ("active");

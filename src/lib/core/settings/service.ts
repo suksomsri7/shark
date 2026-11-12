@@ -533,6 +533,32 @@ export async function refsFor(ctx: SettingsCtx, scope: string, id: string): Prom
 }
 
 /** แถวที่ปรับจากแม่แบบของสาขา (UNIT + ชั้นลึกกว่าในสาขานี้ · + TENANT สำหรับผู้เห็นทั้งร้าน) */
+const DIFF_SELECT = { key: true, scope: true, scopeId: true, value: true, effectiveFrom: true } as const;
+const DIFF_ORDER: Prisma.SettingValueOrderByWithRelationInput[] = [{ key: "asc" }, { scope: "asc" }, { effectiveFrom: "asc" }];
+const DIFF_PAIR_BATCH = 2_000;
+/**
+ * r3 (R2-1) ▸ แถวของ settingsDiff — ชุดเดียว (ทุกโดเมนเดิมในการใช้งานจริง) = คิวรีเดิมตรงตัว (orderBy ของฐาน)
+ * หลายชุด (คู่ชั้นเกิน DIFF_PAIR_BATCH) = แต่ละชุดใช้ orderBy เดียวกัน แล้วรวมด้วยลำดับ key/scope ที่ "ฐาน" เรียงให้ (collation เดียวกับคิวรีเดียว)
+ * + effectiveFrom · แถวที่ key/scope/effectiveFrom เท่ากันคงลำดับชุด (คิวรีเดิมก็ไม่กำหนดลำดับของกรณีนี้) ◂
+ */
+async function settingsDiffRows(tenantId: string, domain: string, pairs: readonly { scope: string; scopeId: string }[]) {
+  const where = { tenantId, key: { startsWith: `${domain}.` } };
+  if (pairs.length <= DIFF_PAIR_BATCH) return prisma.settingValue.findMany({ where: { ...where, OR: [...pairs] }, select: DIFF_SELECT, orderBy: DIFF_ORDER });
+  const batches = [];
+  for (const part of chunks(pairs, DIFF_PAIR_BATCH)) batches.push(await prisma.settingValue.findMany({ where: { ...where, OR: part }, select: DIFF_SELECT, orderBy: DIFF_ORDER }));
+  const all = batches.flat();
+  if (batches.filter((b) => b.length > 0).length <= 1) return all;
+  const rankOf = async (vals: string[]): Promise<Map<string, number>> => {
+    const sorted = await prisma.$queryRaw<{ v: string }[]>`SELECT v FROM unnest(${vals}::text[]) AS u(v) ORDER BY v`;
+    return new Map(sorted.map((r, i) => [r.v, i]));
+  };
+  const [kr, sr] = await Promise.all([rankOf([...new Set(all.map((r) => r.key))]), rankOf([...new Set(all.map((r) => r.scope))])]);
+  return all
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => (kr.get(a.r.key) ?? 0) - (kr.get(b.r.key) ?? 0) || (sr.get(a.r.scope) ?? 0) - (sr.get(b.r.scope) ?? 0) || a.r.effectiveFrom.getTime() - b.r.effectiveFrom.getTime() || a.i - b.i)
+    .map((x) => x.r);
+}
+
 export async function settingsDiff(ctx: SettingsCtx, q: { unitId: string; domain: string; actor?: SettingsActor }): Promise<SettingsDiffRow[]> {
   const restricted = !!q.actor && !isUnrestricted(q.actor);
   if (q.actor && !canAccessUnit(q.actor, q.unitId)) return [];
@@ -540,12 +566,10 @@ export async function settingsDiff(ctx: SettingsCtx, q: { unitId: string; domain
   if (!unit) return [];
   const ents = await entitiesOfUnit(prisma, ctx.tenantId, q.unitId);
   const pairs = [{ scope: "UNIT", scopeId: q.unitId }, ...ents, ...(restricted ? [] : [{ scope: "TENANT", scopeId: ctx.tenantId }])];
-  const [rows0, profiles] = await Promise.all([
-    settingRowsForPairs(prisma, { tenantId: ctx.tenantId, key: { startsWith: `${q.domain}.` } }, pairs, { key: true, scope: true, scopeId: true, value: true, effectiveFrom: true }),
+  const [rows, profiles] = await Promise.all([
+    settingsDiffRows(ctx.tenantId, q.domain, pairs),
     loadProfilesFor(prisma, ctx.tenantId, [q.unitId], [q.domain]),
   ]);
-  // เรียงเหมือนเดิม (key → scope → effectiveFrom) หลังรวมผลหลายชุด
-  const rows = [...rows0].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.scope < b.scope ? -1 : a.scope > b.scope ? 1 : a.effectiveFrom.getTime() - b.effectiveFrom.getTime()));
   const tk = profiles.get(profKey(q.unitId, q.domain))?.templateKey ?? null;
   const out: SettingsDiffRow[] = [];
   for (const r of rows) {
@@ -755,7 +779,10 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     deepClauses.push({ key: { in: listDefs(p.def.domain, p.def.group).map((d) => d.key) }, scope: { in: [...deeper] } });
   }
   // TRIPS T0.1 r2 ▸ คำเตือนทัวร์ข้ามคีย์ (เช่น W03 = มัดจำ T13 + ตาราง T20): แก้คีย์ต้นทางที่ชั้นบน ⇒ ตรวจ def ปลายทางที่ชั้นลึกกว่าที่มีแถวของตัวเองด้วย
-  //   (ผลล่า MINOR-2 · เฉพาะ def โดเมน trips/agency/ticket — ทางของหอเหมือนเดิม) ◂
+  //   (ผลล่า MINOR-2 · เฉพาะ def โดเมน trips/agency/ticket — ทางของหอเหมือนเดิม)
+  //   r3 (R2-4) ▸ แยกจาก deepClauses/deepCtx ของกฎข้ามค่า — กฎกลุ่มของโดเมนเดิมเห็นบริบทเท่าเดิมทุกไบต์ ◂
+  const tourDeepClauses: Prisma.SettingValueWhereInput[] = [];
+  const tourDomains = new Set<string>();
   for (const p of preps) {
     for (const d of dependents.get(p.key) ?? []) {
       if (!isTourLegalDomain(d.domain) || !d.chain.includes(p.scope)) continue;
@@ -763,7 +790,8 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
       const sig = `dep|${d.key}|${deeper.join(",")}`;
       if (!deeper.length || deepSeen.has(sig)) continue;
       deepSeen.add(sig);
-      deepClauses.push({ key: d.key, scope: { in: [...deeper] } });
+      tourDeepClauses.push({ key: d.key, scope: { in: [...deeper] } });
+      tourDomains.add(d.domain);
     }
   }
   const [rows0, profAll] = await Promise.all([
@@ -795,6 +823,31 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
     for (const k of deepCtx.values()) for (const x of pairsOf(k)) if (!pairMap.has(pairSig(x))) extra.set(pairSig(x), x);
     if (extra.size) {
       const more = (await settingRowsForPairs(tx, { tenantId, key: { in: domainKeys } }, [...extra.values()], ROW_SELECT)) as Row[];
+      const ids = new Set(rows.map((r) => r.id));
+      rows = [...rows, ...more.filter((r) => !ids.has(r.id))];
+    }
+  }
+
+  // r3 (R2-4) ▸ บริบทชั้นลึกของปลายทางทัวร์ (แผนที่แยก · ใช้เฉพาะวงตรวจปลายทางทัวร์) — แถวเพิ่มอ่านเฉพาะคีย์ของโดเมนทัวร์ ◂
+  const tourDeepCtx = new Map<string, Known>(); // pairSig → known
+  if (tourDeepClauses.length) {
+    const tRows = (await tx.settingValue.findMany({ where: { tenantId, OR: tourDeepClauses }, select: ROW_SELECT })) as Row[];
+    const need: { scope: string; scopeId: string }[] = [];
+    for (const r of tRows) {
+      const ps = pairSig(r);
+      if (tourDeepCtx.has(ps)) continue;
+      if (r.scope === "UNIT") tourDeepCtx.set(ps, { TENANT: tenantId, UNIT: r.scopeId });
+      else if (r.scope !== "TENANT") need.push({ scope: r.scope, scopeId: r.scopeId });
+    }
+    if (need.length) {
+      const l3 = await locateMany(tx, tenantId, need);
+      for (const [ps, loc] of l3) if (loc) tourDeepCtx.set(ps, loc.known);
+    }
+    const tourKeys = [...tourDomains].flatMap((dm) => listDefs(dm).map((d) => d.key));
+    const tPairs = new Map<string, { scope: string; scopeId: string }>();
+    for (const k of tourDeepCtx.values()) for (const x of pairsOf(k)) tPairs.set(pairSig(x), x);
+    if (tPairs.size && tourKeys.length) {
+      const more = (await settingRowsForPairs(tx, { tenantId, key: { in: tourKeys } }, [...tPairs.values()], ROW_SELECT)) as Row[];
       const ids = new Set(rows.map((r) => r.id));
       rows = [...rows, ...more.filter((r) => !ids.has(r.id))];
     }
@@ -938,7 +991,7 @@ async function checkBatch(tx: Tx, actor: SettingsActor, tenantId: string, drafts
       // ปลายทางแก้ในชุดเดียวกันที่บริบทเดียวกัน = ตรวจตรงแล้ว (ไม่ตรวจบริบทนั้นซ้ำ · ชั้นลึกกว่ายังตรวจ)
       const sameCtx = preKeys.has(d.key) && preps.some((x) => x.key === d.key && x.scope === p.scope && x.scopeId === p.scopeId);
       const ctxs: Known[] = sameCtx ? [] : [p.known];
-      for (const k of deepCtx.values()) if (k[p.scope] === p.scopeId && knownSig(k) !== knownSig(p.known) && !ctxs.some((c) => knownSig(c) === knownSig(k))) ctxs.push(k);
+      for (const k of tourDeepCtx.values()) if (k[p.scope] === p.scopeId && knownSig(k) !== knownSig(p.known) && !ctxs.some((c) => knownSig(c) === knownSig(k))) ctxs.push(k);
       for (const known of ctxs) {
         const sig = `dep|${d.key}|${knownSig(known)}`;
         if (evaluated.has(sig)) continue;
