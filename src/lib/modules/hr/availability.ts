@@ -21,7 +21,8 @@ import { weekStartOf } from "./roster-rules";
 import { hrScopeOf } from "./scope";
 
 type Ctx = { tenantId: string; systemId: string };
-type Db = Prisma.TransactionClient | ReturnType<typeof tenantDb>;
+// ตัวอ่านที่ใช้ร่วมกันระหว่าง tenantDb(ctx) กับ tx ของมัน (เฉพาะ delegate ที่ใช้)
+type Db = Pick<ReturnType<typeof tenantDb>, "hrRosterEntry" | "hrEmployee" | "hrLeave">;
 
 // SVC B.1 — field lists byte-identical (re-export จาก hr/index.ts)
 export type StaffWindowsInput = { tenantId: string; unitId: string; date: string; employeeIds: string[] };
