@@ -792,6 +792,10 @@ function runStatic(): void {
     ].filter((p) => existsSync(join(ROOT, p)))
       // ORACLE-EDIT (controller 12 Nov): H3.3 ships the law engine — these two files are the intended readers of HrLawTable/lawRowIds/ytdJson
       .filter((p) => p !== "src/lib/modules/hr/law.ts" && p !== "src/lib/modules/hr/payroll-rules-v2.ts");
+    // ORACLE-EDIT (H3.4 builder, wip/hr-h3.4): hr/payroll-run-rules.ts (pure v2 run calculator, brief H3.4 R2) returns lawRowIds/ytdJson for payroll.ts
+    //   to store on HrPayrollItem (R4) — only those two tokens are ignored there; every other S6.1 token still counts
+    const RUN_RULES_FILE = "src/lib/modules/hr/payroll-run-rules.ts";
+    const RUN_RULES_OK = /^(lawRowIds|ytdJson)$/;
     // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
     //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
     const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
@@ -805,7 +809,7 @@ function runStatic(): void {
     const OT_OK = /^sourceRef$/;
     const cntOf = (f: string, s: string) =>
       (stripComments(s).match(S61_RE) ?? []).filter(
-        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t)),
+        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t)) && !(f === RUN_RULES_FILE && RUN_RULES_OK.test(t)),
       ).length;
     // ORACLE-EDIT (controller 12 Nov · H2.9 + H4.6 r3, merged into one mechanism): hr/payroll.ts may carry exactly the declared number of S6.1 tokens inside
     //   lines/blocks marked per WO tag (block = from a `HR <tag> ▸` line without `◂` to the line with `◂ HR <tag>`; a one-line hunk carries the tag itself) ·
@@ -1211,7 +1215,10 @@ async function runDb(): Promise<void> {
     for (const [t, cols] of [["HrPayrollRun", RUN_NEW], ["HrPayrollItem", ITEM_NEW], ["HrPayAdjustment", ADJ_NEW]] as const) for (const c of cols) if (!okDb(t, c)) bad.push(`${t}.${c[0]}`);
     for (const c of ADJ_NEW) if (info.some((x) => x.t === "HrPayAdjustment" && x.c === c[0] && x.d !== null)) bad.push(`HrPayAdjustment.${c[0]}:has DEFAULT`);
     const enumOf = async (name: string) => ((await P.$queryRawUnsafe(`SELECT e.enumlabel AS l FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid WHERE t.typname = $1 ORDER BY e.enumsortorder`, name)) as Any[]).map((r) => r.l as string).join(",");
-    for (const [n, vals] of Object.entries(ENUMS)) if ((await enumOf(n)) !== vals.join(",")) bad.push(`enum ${n}`);
+    // ORACLE-EDIT (H3.4 builder, wip/hr-h3.4): migration 20270106000000_hr_payroll_v2_kinds appends 'CARRY_FORWARD' to "HrPaySource" (brief H3.4 §6) —
+    //   the H1.3 labels must still be exact and first, in order; only that one trailing label is tolerated
+    const H34_APPENDED: Record<string, string> = { HrPaySource: "CARRY_FORWARD" };
+    for (const [n, vals] of Object.entries(ENUMS)) { const got = await enumOf(n); if (got !== vals.join(",") && !(H34_APPENDED[n] && got === [...vals, H34_APPENDED[n]].join(","))) bad.push(`enum ${n}`); }
     chk("S1.9", bad.length === 0, "4 tables + 11 columns + 6 enums exact", bad.slice(0, 14).join(" ") + (bad.length > 14 ? ` … +${bad.length - 14}` : ""));
     const idx = async (name: string) => String(((await P.$queryRawUnsafe(`SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname = $1`, name)) as Any[])[0]?.indexdef ?? "∅");
     const iCrm = await idx("HrPayAdjustment_crmCommissionId_key");

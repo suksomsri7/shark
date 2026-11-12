@@ -327,7 +327,8 @@ export async function decideAdjustmentAction(formData: FormData): Promise<{ ok: 
   // อนุมัติ = สิทธิ์แตะเงินเดือน (ผ่านด่าน PDPA เหมือน action เงินเดือนอื่น)
   // ทุกสาขา: ด่านคีย์ระดับระบบ HR — สาขาของเจ้าของรายการตรวจด้วย payTarget ด้านล่าง
   const decision = String(formData.get("status") ?? ""); // HR H3.4 ▸ R8: ปฏิเสธ = hr.payadjust.reject · อนุมัติ = hr.payadjust.approve ◂
-  assertHrCan(auth, decision === "REJECTED" ? "hr.payadjust.reject" : "hr.payadjust.approve"); // HR H3.4 ◂
+  if (decision === "REJECTED") assertHrCan(auth, "hr.payadjust.reject"); // HR H3.4 ◂
+  else assertHrCan(auth, "hr.payadjust.approve"); // HR H3.4 ◂
   const systemId = String(formData.get("systemId") ?? "");
   const id = String(formData.get("id") ?? "");
   const status = decision; // HR H3.4 ◂
