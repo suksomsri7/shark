@@ -120,6 +120,11 @@ S15.5|r2-m5|M|R|stockFormOptions: no inventory read ⇒ no inventories · reader
 S15.6|r2-m7|C|R|insufficient stock ⇒ stock text · nothing written · inventory system linked to another branch ⇒ invAccess for a branch requester
 S15.7|r2-m8|M|R|stockConsentByAdjustment: payroll viewer gets ref + date · non-viewer empty · payroll-ui chip uses it
 S15.8|r2-race|C|R|[race] (b) 2 parallel withdraws of a DRAFT-bound charge ⇒ 1 CANCELLED + 1 withdrawn · 1 delete audit · (c) 3 parallel ⇒ 1 REFUND_OWED · 3 parallel mark-repaid ⇒ 1 audit row
+S16.1|r4-F1|C|R|retry after HR-step failure at low stock: stock 3 · cost 1000 · qty 2 · insert fails ⇒ {ok:false, code} · 1 movement · stock 1 · retry ⇒ ok · 1 deduction 2000 · still 1 movement · stock 1 · (F2) stock 2 qty 2 ok ⇒ same key again replayed (not stock text)
+S16.2|r4-D1|C|R|[race] last unit: stock 1 · 5 parallel distinct keys qty 1 ⇒ 1 ok · 4 stock text · stock 0 · 1 movement · 1 pending charge
+S16.3|r4-F3|C|R|stuck reservation: other user retries ⇒ retryOther · OWNER retries ⇒ completes with requester = original filer · filer cannot approve it
+S16.4|r4-F4|M|R|HR-step DB failure returns {ok:false, code HR_STEP_FAILED} with the fixed text (no throw) · actions wrap service calls
+S16.5|r4-F5|C|R|ENDED: pending charge of an ended employee ⇒ ENDED_PENDING · approved charge never boundable ⇒ ENDED_UNBOUNDABLE in stockAttention (payroll viewers; member null) · approver sees employeeEnded
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -675,7 +680,7 @@ async function runDb(): Promise<void> {
   {
     const T15 = {
       stock: "สต็อกไม่พอ — ตัดสต็อกได้ไม่เกินยอดคงเหลือ (หรือยื่นแบบไม่ตัดสต็อก)",
-      draftRefused: "ยกเลิกรายการในรอบร่างไม่สำเร็จ — รายการกลับเป็นสถานะเดิม ให้ผู้ดูแลตรวจรอบร่างแล้วลองอีกครั้ง",
+      draftRefused: "รอบร่างเปลี่ยนระหว่างถอนรายการ — รายการกลับเป็นสถานะเดิม กรุณาลองอีกครั้ง", // r4 (hunt I4): ข้อความบอกให้ลองอีกครั้ง
       locked: "รายการนี้มาจากการหักค่าของที่บันทึกคืนเงินพนักงานแล้ว — ลบหรือย้ายจากหน้าเงินเดือนไม่ได้ ดูที่ส่วน “หักค่าของ”",
     };
     const itemOf = async (id: unknown) => ((await list(W.owner)).value?.items ?? []).find((x: Any) => x.id === id) as Any;
@@ -804,6 +809,70 @@ async function runDb(): Promise<void> {
         c: wc.filter((x) => x.ok && x.value?.outcome === "REFUND_OWED").length === 1 && wc.filter((x) => is(x, T.withdrawn)).length === 2,
         repaid: mc.every((x) => x.ok) && mc.filter((x) => x.value?.replayed === false).length === 1 && repAudit === 1,
       }, "1 delete · 1 refund · 1 repaid audit", `${wb.map(shown).join(" ")} del=${delAudit} | ${wc.map(shown).join(" ")} | audit=${repAudit}`);
+    }
+  }
+
+  // ── S16 r4 (hunter F1–F5) ──
+  {
+    const mark = `trg${tag}`;
+    const fn = `qc46_fail_${tag}`.replace(/[^a-z0-9_]/gi, "_");
+    const arm = () => P.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION "${fn}"() RETURNS trigger AS $f$ BEGIN IF NEW."note" LIKE '%${mark}%' THEN RAISE EXCEPTION 'qc46 injected'; END IF; RETURN NEW; END $f$ LANGUAGE plpgsql; CREATE TRIGGER "${fn}" BEFORE INSERT ON "HrPayAdjustment" FOR EACH ROW EXECUTE FUNCTION "${fn}"();`);
+    const disarm = () => P.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${fn}" ON "HrPayAdjustment"; DROP FUNCTION IF EXISTS "${fn}"();`);
+    try {
+      // S16.1 + S16.4
+      const G = await mkItem(T1, sI, "G", `ของพัง ${mark}`, 1_000, 3);
+      const kg = input({ employeeId: E2, itemId: G, qty: 2 });
+      await arm();
+      const f1 = await req(W.owner, kg);
+      await disarm();
+      const mv1 = (await hrMoves({ refId: kg.requestKey })).length;
+      const st1 = await onHand(G);
+      const f2 = await req(W.owner, kg);
+      const adjG = await adjs({ sourceRef: `hrstock:${kg.requestKey}` });
+      const H = await mkItem(T1, sI, "H", "ของหมด", 1_000, 2);
+      const kh = input({ employeeId: E2, itemId: H, qty: 2 });
+      const h1 = await req(W.owner, kh);
+      const h2 = await req(W.owner, kh);
+      ck("S16.1", {
+        fail: !f1.ok && f1.text === T.failed && mv1 === 1 && st1 === 1,
+        retry: f2.ok && f2.value?.amountSatang === 2_000 && adjG.length === 1 && Number(adjG[0]?.amountSatang) === 2_000 && (await hrMoves({ refId: kg.requestKey })).length === 1 && (await onHand(G)) === 1,
+        replay: h1.ok && h2.ok && h2.value?.replayed === true && h2.value?.chargeId === h1.value?.chargeId && (await onHand(H)) === 0,
+      }, "fail · retry ok 2000 · replay at 0", `${shown(f1)} mv=${mv1} st=${st1} ${shown(f2)} ${shown(h2)}`);
+      ck("S16.4", { code: !f1.ok && !f1.text.startsWith("THROW") && /HR_STEP_FAILED/.test(JSON.stringify(await (async () => { await arm(); try { const k2 = input({ employeeId: E2, kind: "DAMAGE", description: `รหัส ${mark}`, amountSatang: 100 }); const x = await SC.requestStockCharge(cH, vOf(W.owner), k2, { now: NOW }).catch((e: unknown) => ({ thrown: errText(e) })); return x; } finally { await disarm(); } })())), acts: /catch \(e\)/.test(rd(F.acts)) && /\bsafe\(/.test(rd(F.acts)) }, "code · no throw · actions catch");
+      // S16.2 last unit
+      const L = await mkItem(T1, sI, "L", "ชิ้นสุดท้าย", 1_000, 1);
+      const rs = await Promise.all(Array.from({ length: 5 }, () => req(W.owner, input({ employeeId: E2, itemId: L, qty: 1 }))));
+      const nL = ((await fx.rawRows(`SELECT count(*)::int AS n FROM "HrStockCharge" WHERE "tenantId" = $1 AND "itemId" = $2`, T1, L)) ?? [])[0]?.n;
+      ck("S16.2", { one: rs.filter((x) => x.ok).length === 1, rest: rs.filter((x) => is(x, "สต็อกไม่พอ — ตัดสต็อกได้ไม่เกินยอดคงเหลือ (หรือยื่นแบบไม่ตัดสต็อก)")).length === 4, stock: (await onHand(L)) === 0, mv: (await hrMoves({ itemId: L })).length === 1, charge: Number(nL) === 1 }, "1 ok · 4 stock · 0 · 1 · 1", `${rs.map(shown).join(" ")} onHand=${await onHand(L)}`);
+      // S16.3 retry identity
+      const kr = input({ employeeId: E1, kind: "DAMAGE", description: `ค้าง ${mark}`, amountSatang: 1_234 });
+      await arm();
+      const a1 = await req(W.paySelf, kr);
+      await disarm();
+      const b1 = await req(W.reqBoth, kr);
+      const o1 = await req(W.owner, kr);
+      const adjR = (await adjs({ sourceRef: `hrstock:${kr.requestKey}` }))[0];
+      const selfDec = adjR ? await dec(adjR.id, W.paySelf) : null;
+      ck("S16.3", { stuck: !a1.ok, other: is(b1, "คำขอนี้ยื่นโดยผู้ใช้อื่น — ให้ผู้ยื่นเดิมหรือเจ้าของร้านดำเนินการต่อ"), owner: o1.ok && adjR?.requestedById === W.paySelf.id, selfDec: selfDec?.reason === DECIDE_OWN_REQ }, "retryOther · owner completes as filer · filer cannot approve", `${shown(a1)} ${shown(b1)} ${shown(o1)} ${adjR?.requestedById === W.paySelf.id}`);
+    } finally {
+      await disarm().catch(() => null);
+    }
+    // S16.5 ENDED
+    {
+      const E5 = await fx.mkEmp(T1, sH, `QC-H46 ห้า ${tag}`, { unitId: u1, startDate: "2030-01-01" });
+      const c5 = await req(W.owner, input({ employeeId: E5, kind: "DAMAGE", description: "ออกก่อนงวด", amountSatang: 555 }), bkk("2034-07-10"));
+      const d5 = await dec(adjOf(c5), W.payAll);
+      await P.hrEmployee.update({ where: { id: E5 }, data: { active: false, employmentStatus: "ENDED", endDate: dbDate("2034-06-30") } });
+      const at = await callMod(SC, "stockAttention", [cH, vOf(W.payAll)]);
+      const atM = await callMod(SC, "stockAttention", [cH, vOf(W.member)]);
+      const items = (at.value ?? []) as Any[];
+      const yId = (await charges()).find((x) => x.employeeId === E4)?.id;
+      const cm = await callMod(SC, "stockConsentByAdjustment", [cH, vOf(W.payAll), [(await charges()).find((x) => x.employeeId === E4)?.adjustmentId]]);
+      const cmv = cm.value instanceof Map ? [...cm.value.values()][0] : undefined;
+      ck("S16.5", {
+        setup: c5.ok && d5?.ok === true, pending: items.some((x) => x.id === yId && x.reason === "ENDED_PENDING"),
+        unbound: items.some((x) => x.id === c5.value?.chargeId && x.reason === "ENDED_UNBOUNDABLE"), member: atM.value === null, warn: cmv?.employeeEnded === true,
+      }, "ENDED_PENDING · ENDED_UNBOUNDABLE · member null · warning", short(items.map((x) => x.reason), 80));
     }
   }
 
