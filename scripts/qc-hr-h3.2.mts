@@ -116,6 +116,10 @@ S8.11|fix1|C|R|[db] ORACLE-EDIT (fix r1 R3): raise / policy change after Aug fre
 S8.12|fix1|C|R|[pure] ORACLE-EDIT (fix r1 R5): period cap Σ ≤ base salary (31 absent days · 30 absent + late)
 S8.13|fix1|C|R|[db] ORACLE-EDIT (fix r1 R6): other-tenant viewer on this shop's ctx ⇒ sync/save/preview/lines refused · nothing written
 S8.14|fix1|C|R|[db] ORACLE-EDIT (fix r1 R8): human reject of 3,125 sticks on re-sync · new time data ⇒ new PENDING 1,041
+S8.15|fix2|C|R|[db] ORACLE-EDIT (fix r2 F1): Aug frozen with the rule never on · raise to 3,000,000 · rule on in Nov ⇒ sync Aug writes nothing (NO_SNAPSHOT)
+S8.16|fix2|C|R|[db] ORACLE-EDIT (fix r2 F2): in-force interval opens at the current period · July (before) approves without sync · OFF ⇒ stale approved Aug row still blocks · sync while OFF clears it
+S8.17|fix2|C|R|[db] ORACLE-EDIT (fix r2 F3): run member without work hours passes the gate (a) · base → 0 ⇒ sync supersedes the approved row and the gate clears (b)
+S8.18|fix2|C|R|[db] ORACLE-EDIT (fix r2 F4): sync ∥ OFF ×4 ⇒ no PENDING and no live header (behavioural)
 S9.1|R10|C|R|[db] preview viewer matrix (money keys payroll only)
 S9.2|R10|C|R|[db] preview literals (eL · eF · eH)
 S9.3|R10|C|R|[db] lines reader: payroll literal · others identical bytes
@@ -466,6 +470,11 @@ async function runDb(): Promise<void> {
     return { s, c, emp, inId: w.i as string };
   };
   const SC = { G: await mkScen("G"), F: await mkScen("F"), H: await mkScen("H"), I: await mkScen("I"), J: await mkScen("J"), K: await mkScen("K") };
+  // ORACLE-EDIT (fix r2) ▸ scenarios S8.15–S8.18 (rule NOT switched on in the S8.8 loop) · P1 has a 2nd employee with a salary but no roster/time ◂
+  const SC2 = { N: await mkScen("N"), O: await mkScen("O"), P1: await mkScen("P1"), P2: await mkScen("P2"), Q0: await mkScen("Q0"), Q1: await mkScen("Q1"), Q2: await mkScen("Q2"), Q3: await mkScen("Q3") };
+  const eP1b = await me(SC2.P1.s, "พนักงาน P1b", { unitId: u1 });
+  nameOf[eP1b] = "eP1b";
+  await prof(SC2.P1.c, eP1b, 1_500_000);
   const ask = await OT.requestOt(cA, Vw.owner, { employeeId: E.eL, date: "2031-08-07", start: "17:00", end: "19:00", reason: "QC" }, { now: bk("2031-08-07", "10:00") }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
   const dec = ask?.ok ? await OT.decideOtRequest(cA, Vw.owner, ask.id, "APPROVED", { now: bk("2031-08-07", "10:05") }).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : ask;
   const job = (now: Date) => JG.runAttendanceJobs({ now, tenantId: TT });
@@ -900,6 +909,95 @@ async function runDb(): Promise<void> {
       const q = await pendOf(x.s);
       ck("S8.14", { s0: s0.ok && s0.value?.created === 1 && d0?.amountSatang === 3125, rj: rj?.ok === true, stick: s1.ok && s1.value?.created === 0 && live1 === "", renew: s2.ok && s2.value?.created === 1 && q?.amountSatang === 1041 },
         "reject sticks · new data re-creates", `${short(rj, 30)} ${shown(s1)} live=${live1} ${shown(s2)} q=${q?.amountSatang}`);
+    }
+
+    // ── ORACLE-EDIT (fix r2 · controller F1–F4) ──
+    const savePolAt = (c: Any, raw: Any, at: string) => A_("saveAttendancePayPolicy", c, Vw.owner, raw, { now: bk(at) });
+    const inForceOf = async (s: string) => ((await P.appSystem.findUnique({ where: { id: s }, select: { settings: true } }))?.settings as Any)?.hrAttendancePayInForce;
+    const codes = (r: RO, k: "wait" | "skipped") => ((r.value?.[k] ?? []) as Any[]).map((w) => w.code).join(",");
+    // S8.15 — F1: Aug frozen at ฿15,000 with the rule never on · raise to ฿30,000 in Oct · rule on in Nov ⇒ sync Aug must not deduct
+    //   (without the fix: current values ⇒ 3,000,000 × 30 / 14,400 = 6,250 PENDING)
+    {
+      const x = SC2.N;
+      await build(x.c);
+      const aug = await runOf(x.c, PER);
+      const apA = await apRun(x.c, aug?.id);
+      const raise = await pay.setSalaryProfile(x.c, { employeeId: x.emp, baseSalarySatang: 3_000_000, ssoEligible: true }).then(() => true).catch(() => false);
+      const en = await savePolAt(x.c, { enabled: true }, "2031-11-10");
+      const s1 = await sync(x.c, Vw.owner);
+      const n = (await rows(x.s)).length;
+      ck("S8.15", { apA: apA?.ok === true, raise, en: en.ok, sync: s1.ok && s1.value?.created === 0 && codes(s1, "skipped") === "NO_SNAPSHOT", none: n === 0 }, "no retroactive deduction", `${short(apA, 30)} ${shown(s1)} skipped=${codes(s1, "skipped")} rows=${n} ${await liveS(x.s)}`);
+    }
+    // S8.16 — F2: interval opens at the current period (Aug) · July run approves with no sync · OFF on 20 Aug closes it at Aug ·
+    //   approved 3,125 goes stale (correction 09:10 ⇒ 1,041) ⇒ approve(Aug) refused runSync even though OFF · sync while OFF rejects it (no new deduction while OFF) ⇒ approve ok · settled 0
+    {
+      const x = SC2.O;
+      const en = await savePolAt(x.c, { enabled: true }, "2031-08-01");
+      const iv1 = canon(await inForceOf(x.s));
+      const sJ = await sync(x.c, Vw.owner, "2031-07"); // July still open ⇒ NOT_IN_FORCE (a frozen month without a snapshot reports NO_SNAPSHOT — S8.15)
+      const jul = await runOf(x.c, "2031-07");
+      const apJ = await apRun(x.c, jul?.id);
+      await build(x.c);
+      await sync(x.c, Vw.owner);
+      const d0 = await firstDed(x.s);
+      await decideAs(x.c, d0?.id, "APPROVED");
+      await corr(x, "09:10");
+      await build(x.c);
+      const off = await savePolAt(x.c, { enabled: false }, "2031-08-20");
+      const iv2 = canon(await inForceOf(x.s));
+      const aug = await runOf(x.c, PER);
+      const held = (await P.hrPayAdjustment.findUnique({ where: { id: d0?.id ?? "∅" } }))?.runId === null;
+      const ap1 = await apRun(x.c, aug?.id);
+      const s1 = await sync(x.c, Vw.owner);
+      const ap2 = await apRun(x.c, aug?.id);
+      const set = await settled(x.s);
+      ck("S8.16", {
+        en: en.ok && iv1 === canon([{ from: "2031-08", to: null }]), jul: apJ?.ok === true && sJ.ok && sJ.value?.created === 0 && codes(sJ, "skipped") === "NOT_IN_FORCE",
+        off: off.ok && iv2 === canon([{ from: "2031-08", to: "2031-08" }]) && held, block: ap1?.ok === false && ap1?.note === T.runSync,
+        clear: s1.ok && s1.value?.rejected === 1 && s1.value?.created === 0 && ap2?.ok === true && (await liveS(x.s)) === "" && set === 0,
+      }, "in-force months only · OFF still gated", `iv1=${iv1} ${short(apJ, 30)} ${shown(sJ)}/${codes(sJ, "skipped")} iv2=${iv2} ${short(ap1, 40)} ${shown(s1)} ${short(ap2, 30)} settled=${set}`);
+    }
+    // S8.17 — F3 dead ends: (a) employee in the run with no work hours (never pulled) and no rows ⇒ nothing owed ·
+    //   (b) base salary → 0 with an APPROVED unbound 3,125 ⇒ entitlement 0 ⇒ sync supersedes it (system) ⇒ gate clears · settled 0
+    {
+      const a = SC2.P1;
+      await savePol(a.c, Vw.owner, { enabled: true });
+      await WE.buildWorkEntrySnapshot(a.c, Vw.owner, { periodKey: PER, employeeIds: [a.emp] }, { now: NB }).catch(() => null);
+      const sa = await sync(a.c, Vw.owner);
+      const da = await firstDed(a.s);
+      await decideAs(a.c, da?.id, "APPROVED");
+      const augA = await runOf(a.c, PER);
+      const apA = await apRun(a.c, augA?.id);
+      const b = SC2.P2;
+      await savePol(b.c, Vw.owner, { enabled: true });
+      await build(b.c);
+      await sync(b.c, Vw.owner);
+      const db0 = await firstDed(b.s);
+      await decideAs(b.c, db0?.id, "APPROVED");
+      const zero = await pay.setSalaryProfile(b.c, { employeeId: b.emp, baseSalarySatang: 0, ssoEligible: false }).then(() => true).catch(() => false);
+      const sb = await sync(b.c, Vw.owner);
+      const hb = (await hdrs(b.s)).find((h) => h.adjustmentId === db0?.id);
+      const augB = await runOf(b.c, PER);
+      const apB = await apRun(b.c, augB?.id);
+      ck("S8.17", {
+        a: sa.ok && codes(sa, "wait") === "MISSING" && da?.amountSatang === 3125 && apA?.ok === true && (await settled(a.s)) === 3125,
+        b: zero && sb.ok && sb.value?.rejected === 1 && sb.value?.created === 0 && codes(sb, "skipped") === "NO_BASE" && hb?.endCode === "SUPERSEDED" && apB?.ok === true && (await settled(b.s)) === 0,
+      }, "dead ends clear", `a: ${shown(sa)} wait=${codes(sa, "wait")} ${short(apA, 40)} · b: ${shown(sb)} ${hb?.endCode} ${short(apB, 40)}`);
+    }
+    // S8.18 — F4: sync ∥ OFF on four systems ⇒ after both: no PENDING row and no live (endCode null) header
+    {
+      const res: string[] = [];
+      let ok = true;
+      for (const x of [SC2.Q0, SC2.Q1, SC2.Q2, SC2.Q3]) {
+        await savePol(x.c, Vw.owner, { enabled: true });
+        await build(x.c);
+        const [r1, r2] = await Promise.all([sync(x.c, Vw.owner), savePol(x.c, Vw.owner, { enabled: false })]);
+        const pend = (await rows(x.s)).filter((r) => r.status === "PENDING").length;
+        const liveH = (await hdrs(x.s)).filter((h) => h.endCode === null).length;
+        ok = ok && r2.ok && pend === 0 && liveH === 0;
+        res.push(`${r1.ok ? `c${r1.value?.created}` : "off"}/${r2.ok}:p${pend}h${liveH}`);
+      }
+      ck("S8.18", { none: ok }, "no PENDING · no live header", res.join(" "));
     }
   }
 }
