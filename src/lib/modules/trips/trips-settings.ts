@@ -64,6 +64,8 @@ export async function saveTripsSettings(ctx: TripsScreenCtx, input: unknown): Pr
     if (!sc) return failSet("NOT_FOUND", "ไม่พบหน่วยหรือสินค้าที่จะตั้งค่าในหน่วยทัวร์นี้", String(c.key));
     const eff = c.effectiveFrom === undefined || c.effectiveFrom === null ? null : dateOf(c.effectiveFrom);
     if (c.effectiveFrom !== undefined && c.effectiveFrom !== null && !eff) return failSet("VALIDATION", "วันที่มีผลอ่านไม่ได้", String(c.key));
+    // วันที่มีผลรับเฉพาะคีย์ที่ทะเบียนประกาศ effectiveDated (อื่น ⇒ ปฏิเสธทั้งชุด ไม่ส่งต่อให้เครื่องยนต์ตีความ)
+    if (eff && getDef(String(c.key))?.effectiveDated !== true) return failSet("VALIDATION", "ค่าตั้งนี้ไม่มีวันที่มีผล — บันทึกโดยไม่ระบุวันที่", String(c.key));
     list.push({
       key: String(c.key),
       scope: sc.scope,

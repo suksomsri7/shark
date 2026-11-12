@@ -4,12 +4,38 @@
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { ProductEditorVM } from "@/lib/modules/trips";
-import { PROSPECTUS_TH, formatBaht, formatBahtShort, thDate } from "./trips-shared";
-import { CARD, INPUT, Pill } from "./ProductsScreenParts";
+import { formatBaht, formatBahtShort } from "./trips-shared";
+import { CARD, INPUT, Pill, useYmd } from "./ProductsScreenParts";
+
+type T = ReturnType<typeof useTranslations>;
+type AppliedView = ProductEditorVM["applied"][number]["view"];
+/** ค่าที่ใช้กับสินค้านี้ → ข้อความตามภาษา (ตัวโหลดส่งรูปข้อมูล ไม่ส่งข้อความไทย) */
+function appliedText(t: T, v: AppliedView): string {
+  switch (v.code) {
+    case "MINUTES":
+      return t("applied.view.minutes", { n: v.n });
+    case "CUTOFF":
+      return v.days === 0 ? t("applied.view.cutoffSameDay", { hm: v.hm }) : t("applied.view.cutoff", { hm: v.hm, days: v.days });
+    case "MIN_PAX":
+      return t("applied.view.minPax", { n: v.n });
+    case "NO_MIN":
+      return t("applied.view.noMin");
+    case "LADDER":
+      return `${v.pcts.join(" / ")}%`;
+    case "FULL":
+      return t("applied.view.full");
+    case "PCT":
+      return `${v.n}%`;
+    default:
+      return "—";
+  }
+}
 
 export default function ProductsScreenPanels({ unitSlug, vm, exampleHref }: { unitSlug: string; vm: ProductEditorVM; exampleHref: (ex: string) => string }) {
   const t = useTranslations("trips");
   const router = useRouter();
+  const ymd = useYmd();
+  const paxLabel = (code: string | null, fallback: string) => (code === "ADULT" || code === "CHILD" || code === "INFANT" ? t(`pax.codes.${code}`) : fallback);
   const b = vm.brochure;
   const ex = vm.example;
   const settingsHref = `/app/u/${unitSlug}/trips/settings?scope=PRODUCT&id=${encodeURIComponent(vm.product.id)}`;
@@ -35,7 +61,7 @@ export default function ProductsScreenPanels({ unitSlug, vm, exampleHref }: { un
                     {it.done ? "✓" : ""}
                   </span>
                   <span className={it.done ? "font-medium" : "text-[color:var(--color-ink-soft)]"}>
-                    {PROSPECTUS_TH[it.code] ?? it.code}
+                    {t(`brochure.items.${it.code}`)}
                     <span className="sr-only">{it.done ? t("brochure.done") : t("brochure.missing")}</span>
                   </span>
                 </li>
@@ -62,7 +88,7 @@ export default function ProductsScreenPanels({ unitSlug, vm, exampleHref }: { un
             <div key={a.key} data-key={a.key} className="flex min-w-0 items-start justify-between gap-2 text-sm">
               <dt className="text-[color:var(--color-ink-soft)]">{t(`applied.keys.${a.key.replace(/\./g, "_")}`)}</dt>
               <dd className="flex flex-col items-end gap-1 text-right font-bold">
-                {a.valueTh}
+                {appliedText(t, a.view)}
                 {a.atProduct ? <Pill shape="solid">{t("applied.atProduct")}</Pill> : null}
               </dd>
             </div>
@@ -80,7 +106,7 @@ export default function ProductsScreenPanels({ unitSlug, vm, exampleHref }: { un
             <select data-testid="trips-example-departure" className={INPUT} value={ex.departureId ?? ""} onChange={(e) => router.push(exampleHref(e.target.value))}>
               {ex.choices.map((c) => (
                 <option key={c.departureId} value={c.departureId}>
-                  {thDate(c.localDate)}
+                  {ymd(c.localDate)}
                 </option>
               ))}
             </select>
@@ -88,14 +114,16 @@ export default function ProductsScreenPanels({ unitSlug, vm, exampleHref }: { un
         ) : null}
         {ex.error ? (
           <p role="status" className="rounded-lg border border-dashed border-[color:var(--color-line)] px-3 py-2 text-sm text-[color:var(--color-ink-soft)]">
-            {ex.error}
+            {ex.error === "PRICING" ? t("example.errorPricing", { detail: ex.errorDetailTh ?? "" }) : ex.error === "NO_PAX" ? t("example.errorNoPax") : t("example.errorNoDeparture")}
           </p>
         ) : (
           <>
             <dl className="flex flex-col gap-2">
               {ex.lines.map((l, i) => (
                 <div key={`${l.labelTh}-${i}`} className="flex min-w-0 items-start justify-between gap-2 border-b border-dashed border-[color:var(--color-line)] pb-2 text-sm">
-                  <dt className="text-[color:var(--color-ink-soft)]">{l.unitSatang !== null ? `${l.labelTh} ${l.qty} × ${formatBahtShort(l.unitSatang)}` : l.labelTh}</dt>
+                  <dt className="text-[color:var(--color-ink-soft)]">
+                    {l.unitSatang !== null ? `${paxLabel(l.paxCode, l.labelTh)} ${l.qty} × ${formatBahtShort(l.unitSatang)}` : `${paxLabel(l.paxCode, l.labelTh)} ${l.qtys.join(" + ")}`}
+                  </dt>
                   <dd className="font-medium">{formatBaht(l.amountSatang)}</dd>
                 </div>
               ))}
@@ -104,7 +132,7 @@ export default function ProductsScreenPanels({ unitSlug, vm, exampleHref }: { un
               <span className="text-base font-bold">{t("example.total")}</span>
               <span data-testid="trips-example-total" className="text-lg font-bold">{`฿${ex.totalText ?? "—"}`}</span>
             </p>
-            {ex.localDate ? <p className="text-sm text-[color:var(--color-muted)]">{t("example.note", { date: thDate(ex.localDate, false), season: ex.seasonName ?? "—" })}</p> : null}
+            {ex.localDate ? <p className="text-sm text-[color:var(--color-muted)]">{t("example.note", { date: ymd(ex.localDate, false), season: ex.priceSource === "DEPARTURE" ? t("seasons.srcDeparture") : (ex.seasonName ?? (ex.priceSource === "RETAIL" ? t("seasons.srcRetail") : "—")) })}</p> : null}
           </>
         )}
       </section>

@@ -1,8 +1,10 @@
 "use client";
 // TRIPS T1.1 ▸ ชิ้นส่วนร่วมของจอสินค้า (ภาพ 16): ปุ่ม · กล่องโต้ตอบ · ป้ายสถานะแยกรูปทรง · ตัวช่วยเรียก action
 //   🔴 แสดงผลเท่านั้น — ไม่มีตรรกะธุรกิจ (ราคา/สิทธิ์/"เต็ม" มาจากตัวโหลด) · ตัวอักษร ≥ 14 px · ปุ่ม ≥ 44 px · สีจากโทเคนของแอปเท่านั้น
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { formatYmd } from "./trips-shared";
 
 export const BTN = "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-ink)] hover:bg-[color:var(--color-surface-2)] disabled:cursor-not-allowed disabled:text-[color:var(--color-muted)]";
 export const BTN_PRIMARY = "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-[color:var(--color-ink)] px-4 py-2 text-sm font-bold text-[color:var(--color-surface)] disabled:cursor-not-allowed disabled:opacity-60";
@@ -29,11 +31,50 @@ export function Pill({ shape, children, testid, status }: { shape: "solid" | "da
 }
 export const statusShape = (status: string): "solid" | "dashed" | "muted" => (status === "ACTIVE" ? "solid" : status === "DRAFT" ? "dashed" : "muted");
 
-/** กล่องโต้ตอบเต็มจอ (ปิดด้วยปุ่ม) */
-export function Dialog({ title, onClose, children, closeLabel }: { title: string; onClose: () => void; children: ReactNode; closeLabel: string }) {
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+/**
+ * กล่องโต้ตอบเต็มจอ: Escape ปิด · เปิดแล้วโฟกัสช่องแรก · Tab วนอยู่ในกล่อง · ปิดแล้วคืนโฟกัสให้ปุ่มที่เปิด
+ */
+export function Dialog({ title, onClose, children, closeLabel, wide }: { title: string; onClose: () => void; children: ReactNode; closeLabel: string; wide?: boolean }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const box = boxRef.current;
+    const items = (): HTMLElement[] => (box ? Array.from(box.querySelectorAll<HTMLElement>(FOCUSABLE)) : []);
+    const firstField = box?.querySelector<HTMLElement>("input:not([disabled]),select:not([disabled]),textarea:not([disabled])");
+    (firstField ?? items()[0])?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const list = items();
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (opener && document.contains(opener)) opener.focus();
+    };
+  }, []);
   return (
     <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
-      <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-[color:var(--color-surface)] sm:rounded-2xl">
+      <div ref={boxRef} className={`flex max-h-[92vh] w-full ${wide ? "max-w-2xl" : "max-w-xl"} flex-col overflow-hidden rounded-t-2xl bg-[color:var(--color-surface)] sm:rounded-2xl`}>
         <div className="flex items-center justify-between gap-2 border-b border-[color:var(--color-line)] px-5 py-3">
           <h2 className="text-base font-bold text-[color:var(--color-ink)]">{title}</h2>
           <button type="button" onClick={onClose} className={BTN}>
@@ -44,6 +85,17 @@ export function Dialog({ title, onClose, children, closeLabel }: { title: string
       </div>
     </div>
   );
+}
+
+/** ตัวจัดวันที่ตามภาษาของผู้ใช้ (ชื่อวัน/เดือน/ปีจาก messages trips.dates.*) */
+export function useYmd(): (ymd: string, withWeekday?: boolean) => string {
+  const t = useTranslations("trips");
+  const names = {
+    weekdays: [0, 1, 2, 3, 4, 5, 6].map((i) => t(`dates.wd${i}`)),
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => t(`dates.mon${i}`)),
+    yearOffset: Number(t("dates.yearOffset")) || 0,
+  };
+  return (ymd: string, withWeekday = true) => formatYmd(ymd, names, withWeekday);
 }
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {

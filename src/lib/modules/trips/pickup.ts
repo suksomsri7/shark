@@ -6,6 +6,7 @@
 // 🔴 สิทธิ์: อ่าน ⇔ trips.product.view|edit|publish · เขียน ⇔ trips.product.edit · ตั้ง/เปลี่ยนค่าบวกเพิ่ม (≠ 0) ต้องมี trips.price.edit เพิ่ม (มติ Q3)
 // ⚠️ หนี้ (ใบ W1.2/T0.6): pricing.ts อ่านโซนโดยไม่กรอง active — ตอนจองต้องปฏิเสธโซนที่ปิด
 // ─────────────────────────────────────────────────────────────
+import { cache } from "react";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
@@ -61,13 +62,20 @@ export type TripsUnitGate = {
   can(action: string): boolean;
   canAny(actions: readonly string[]): boolean;
 };
+type GateResult = TripsUnitGate | TripsFail<"NOT_FOUND" | "UNIT_NOT_TRIPS" | "INVALID_INPUT">;
 /** สมาชิกภาพสด → หน่วยของร้านที่เข้าได้ (ไม่ได้ ⇒ NOT_FOUND) → ชนิด TRIPS (⇒ UNIT_NOT_TRIPS) — ไม่ตัดสินสิทธิ์ (ผู้เรียกตัดสิน) */
-export async function tripsUnitGate(ctx: unknown, input: unknown): Promise<TripsUnitGate | TripsFail<"NOT_FOUND" | "UNIT_NOT_TRIPS" | "INVALID_INPUT">> {
+export async function tripsUnitGate(ctx: unknown, input: unknown): Promise<GateResult> {
   const c = CTX.safeParse(ctx);
   if (!c.success) return tripsFail("NOT_FOUND");
   const u = UNIT_REF.safeParse(input);
   if (!u.success) return tripsFail("INVALID_INPUT");
-  const { tenantId, actorUserId } = c.data;
+  return gateOnce(c.data.tenantId, c.data.actorUserId, u.data.unitId);
+}
+/**
+ * React.cache: ใน 1 คำขอของหน้า (layout + page + ตัวโหลดหลายตัว) อ่านสมาชิกภาพ/หน่วยครั้งเดียวต่อ (ร้าน, ผู้ใช้, หน่วย)
+ * คีย์เป็นค่าดั้งเดิม (cache เทียบอาร์กิวเมนต์ตามตัวอ้างอิง) · นอกคำขอ React (สคริปต์/ข้อสอบ/server action) = เรียกจริงทุกครั้ง
+ */
+const gateOnce = cache(async (tenantId: string, actorUserId: string, unitId: string): Promise<GateResult> => {
   const tdb = tenantDb({ tenantId });
   const mem = await tdb.membership.findFirst({ where: { tenantId, userId: actorUserId, acceptedAt: { not: null } }, select: { role: true, unitAccess: true, permissions: true } });
   if (!mem) return tripsFail("NOT_FOUND");
@@ -76,7 +84,7 @@ export async function tripsUnitGate(ctx: unknown, input: unknown): Promise<Trips
     unitAccess: Array.isArray(mem.unitAccess) ? mem.unitAccess.filter((x): x is string => typeof x === "string") : [],
     permissions: isRec(mem.permissions) ? mem.permissions : {},
   };
-  const unit = await tdb.businessUnit.findFirst({ where: { id: u.data.unitId, tenantId, status: "ACTIVE" }, select: { id: true, type: true, slug: true, name: true } });
+  const unit = await tdb.businessUnit.findFirst({ where: { id: unitId, tenantId, status: "ACTIVE" }, select: { id: true, type: true, slug: true, name: true } });
   if (!unit || !canAccessUnit(member, unit.id)) return tripsFail("NOT_FOUND");
   if (unit.type !== "TRIPS") return tripsFail("UNIT_NOT_TRIPS");
   const can = (action: string) => evaluate(member, { module: "trips", action, unitId: unit.id });
@@ -91,7 +99,7 @@ export async function tripsUnitGate(ctx: unknown, input: unknown): Promise<Trips
     can,
     canAny: (actions) => actions.some(can),
   };
-}
+});
 
 export const TRIPS_PRODUCT_VIEW_ANY = ["trips.product.view", "trips.product.edit", "trips.product.publish"] as const;
 
@@ -249,7 +257,7 @@ export async function updatePickupZone(ctx: TripsScreenCtx, input: unknown): Pro
       data: { name: next.name.th, pickupOffsetMin: next.pickupOffsetMin, surchargeSatang: next.surchargeSatang, polygon: pickupPolygonOf(next) as Prisma.InputJsonValue },
     });
     if (n.count !== 1) abort("NOT_FOUND");
-    await audit(tx, g, "trips.pickup.update", cur.id, auditView(cur), auditView(next));
+    await audit(tx, g, "trips.pickup.update", cur.id, { ...auditView(cur), ...(cur.corrupt ? { corrupt: true } : {}) }, auditView(next));
     return { ok: true as const, id: cur.id };
   });
 }
@@ -263,7 +271,9 @@ export async function setPickupZoneActive(ctx: TripsScreenCtx, input: unknown): 
     const zones = await zonesOf(tx, g);
     const cur = zones.find((z1) => z1.id === p.zoneId);
     if (!cur) return abort("NOT_FOUND");
-    if (cur.active === p.active) return { ok: true as const, id: cur.id };
+    if (cur.active === p.active && !cur.corrupt) return { ok: true as const, id: cur.id };
+    // ข้อมูลโซนเสีย: เปิดใช้ไม่ได้จนกว่าจะแก้ทั้งโซนผ่าน updatePickupZone (ซึ่งเขียน JSON v1 ใหม่) — ปิดไว้ = ไม่ต้องเขียน
+    if (cur.corrupt) return p.active ? abort("INVALID_INPUT") : { ok: true as const, id: cur.id };
     if (p.active) {
       const open = zones.filter((z1) => z1.active);
       if (open.some((z1) => nameKey(z1.name.th) === nameKey(cur.name.th))) abort("NAME_TAKEN");

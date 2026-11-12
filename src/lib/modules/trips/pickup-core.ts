@@ -42,6 +42,7 @@ type Shape = { kind: PickupZoneKind; pickupOffsetMin: number; windowMin: number;
 /** กติกาข้ามช่อง: ช่วงรับไม่เกินเวลาล่วงหน้า · มาเอง = ไม่มีช่วงเวลาและไม่มีค่าบวกเพิ่ม */
 export function pickupShapeIssue(v: Shape): string | null {
   if (v.windowMin > v.pickupOffsetMin) return "ช่วงเวลารับต้องไม่ยาวกว่าเวลาที่รับล่วงหน้า";
+  if (v.kind === "ZONE" && v.windowMin < 1) return "โซนรับส่งต้องมีช่วงเวลารับอย่างน้อย 1 นาที";
   if (v.kind === "SELF" && (v.windowMin !== 0 || v.surchargeSatang !== 0)) return "จุดนัด (มาเอง) ไม่มีช่วงเวลารับและไม่มีค่าบวกเพิ่ม";
   return null;
 }
@@ -94,6 +95,8 @@ export type PickupZoneDTO = {
   basis: typeof PICKUP_BASIS;
   active: boolean;
   sortOrder: number;
+  /** polygon อ่านไม่ได้ (ข้อมูลเสีย) ⇒ ถือว่าปิดใช้ · เปิดใช้ไม่ได้จนกว่าจะแก้ใหม่ผ่าน updatePickupZone */
+  corrupt: boolean;
 };
 
 const textOrNull = (v: string | null | undefined): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
@@ -104,10 +107,10 @@ export function cleanAreas(a: { th?: string | null; en?: string | null } | null 
   return th === null && en === null ? null : { th, en };
 }
 
-/** แถวฐาน → DTO (polygon อ่านไม่ได้ ⇒ ค่าปลอดภัย: ZONE · ไม่มีช่วงเวลา · เปิด) */
+/** แถวฐาน → DTO (polygon อ่านไม่ได้ ⇒ ปิดไว้ก่อน: ZONE · ไม่มีช่วงเวลา · ปิดใช้ · corrupt = true) */
 export function pickupZoneFromRow(row: { id: string; unitId: string; name: string; pickupOffsetMin: number; surchargeSatang: number; polygon: unknown; sortOrder: number }): PickupZoneDTO {
   const p = pickupPolygonV1Schema.safeParse(row.polygon);
-  const poly: PickupPolygonV1 = p.success ? p.data : { v: 1, kind: "ZONE", nameEn: null, areas: null, windowMin: 0, active: true, basis: PICKUP_BASIS };
+  const poly: PickupPolygonV1 = p.success ? p.data : { v: 1, kind: "ZONE", nameEn: null, areas: null, windowMin: 0, active: false, basis: PICKUP_BASIS };
   return {
     id: row.id,
     unitId: row.unitId,
@@ -120,6 +123,7 @@ export function pickupZoneFromRow(row: { id: string; unitId: string; name: strin
     basis: PICKUP_BASIS,
     active: poly.active,
     sortOrder: row.sortOrder,
+    corrupt: !p.success,
   };
 }
 

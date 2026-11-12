@@ -19,15 +19,26 @@ import {
 } from "@/lib/modules/trips/product-actions";
 import { saveSeasonAction, setPriceAction } from "@/lib/modules/trips/pricing-actions";
 import { createPickupZoneAction, listPickupZonesAction, reorderPickupZonesAction, setPickupZoneActiveAction, updatePickupZoneAction } from "@/lib/modules/trips/pickup-actions";
-import { CONTENT_SECTION_TH, EXTRA_BASIS_TH, formatBahtShort, thDate } from "./trips-shared";
-import { BTN, BTN_PRIMARY, CARD, Dialog, ErrorLine, Field, INPUT, Pill, TD, TH, bahtToSatang, intOrNull, statusShape, useRunner } from "./ProductsScreenParts";
+import { EXTRA_BASIS_CODES, EXTRA_KIND_CODES, formatBahtShort } from "./trips-shared";
+import { BTN, BTN_PRIMARY, CARD, Dialog, ErrorLine, Field, INPUT, Pill, TD, TH, bahtToSatang, intOrNull, statusShape, useRunner, useYmd } from "./ProductsScreenParts";
 
 type VM = ProductEditorVM;
+type T = ReturnType<typeof useTranslations>;
+const DEFAULT_PAX = ["ADULT", "CHILD", "INFANT"];
+/** ป้ายประเภทคน: รหัสมาตรฐานใช้ messages · รหัสที่ร้านตั้งเองใช้ชื่อของร้าน */
+const paxLabel = (t: T, code: string, labelTh: string) => (DEFAULT_PAX.includes(code) ? t(`pax.codes.${code}`) : labelTh);
+/** ทรัพยากรของกฎรอบ → ข้อความตามภาษา */
+function resourcesText(t: T, r: VM["options"][number]["resources"]): string {
+  if (!r) return "—";
+  const parts = [...r.boats, ...(r.vans ? [t("options.vans", { n: r.vans })] : []), ...(r.guides ? [t("options.guides", { n: r.guides })] : []), ...r.others];
+  return parts.length ? parts.join(" · ") : "—";
+}
 const money = (s: number | null | undefined) => (typeof s === "number" ? formatBahtShort(s) : "—");
 const hm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 
 export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: string; vm: VM }) {
   const t = useTranslations("trips");
+  const ymd = useYmd();
   const { busy, error, run } = useRunner(t("common.failed"));
   const p = vm.product;
   const f = vm.flags;
@@ -158,7 +169,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
                       {o.departTimeMin !== null && o.durationMin ? `${t("options.time")} ${hm(o.departTimeMin)}–${hm((o.departTimeMin + o.durationMin) % 1440)}` : o.nights ? t("options.nights", { n: o.nights }) : t("options.noSchedule")}
                     </span>
                   </td>
-                  <td className={TD}>{o.resourcesTh || "—"}</td>
+                  <td className={TD}>{resourcesText(t, o.resources)}</td>
                   <td className={`${TD} text-right`}>{o.capacity ?? "—"}</td>
                   <td className={TD}>{o.active ? t("options.everywhere") : "—"}</td>
                   <td className={TD}>
@@ -186,7 +197,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
       <section className={CARD}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-base font-bold">{t("pax.title")}</h3>
-          <span className="rounded-md border border-[color:var(--color-line)] px-2 py-0.5 text-sm text-[color:var(--color-ink-soft)]">{t("pax.source")}</span>
+          <span className="rounded-md border border-[color:var(--color-line)] px-2 py-0.5 text-sm text-[color:var(--color-ink-soft)]">{vm.ageSource === "COPIED_FROM_SETTING" ? t("pax.sourceCopied") : t("pax.sourceCustom")}</span>
         </div>
         <div className="min-w-0 overflow-x-auto">
           <table className="w-full min-w-0 border-collapse">
@@ -195,29 +206,29 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
                 <th className={TH}>{t("pax.colType")}</th>
                 <th className={TH}>{t("pax.colAge")}</th>
                 <th className={TH}>{t("pax.colSeat")}</th>
-                <th className={`${TH} text-right`}>{t("pax.colPrice")}</th>
+                <th className={`${TH} text-right`}>{vm.paxPrice.seasonName ? t("pax.colPriceSeason", { name: vm.paxPrice.seasonName }) : t("pax.colPriceToday")}</th>
                 <th className={TH}>{t("pax.colBasis")}</th>
               </tr>
             </thead>
             <tbody>
               {vm.paxRows.map((r) => (
                 <tr key={r.paxTypeId} data-testid={`trips-pax-row-${r.code}`} className="border-b border-[color:var(--color-line)] last:border-b-0">
-                  <td className={`${TD} font-bold`}>{r.labelTh}</td>
+                  <td className={`${TD} font-bold`}>{paxLabel(t, r.code, r.labelTh)}</td>
                   <td className={TD}>
                     <span className="flex flex-wrap items-center gap-2">
                       {r.code === "INFANT" ? (
                         <>
                           {t("pax.under")}
-                          <input data-testid={`trips-pax-age-to-${r.code}`} aria-label={t("pax.ageTo", { name: r.labelTh })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-16 text-sm" value={ageVal(r.code, "to", r.ageTo === null ? null : r.ageTo + 1)} onChange={(e) => setAge(r.code, "to", e.target.value, r)} />
+                          <input data-testid={`trips-pax-age-to-${r.code}`} aria-label={t("pax.ageTo", { name: paxLabel(t, r.code, r.labelTh) })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-16 text-sm" value={ageVal(r.code, "to", r.ageTo === null ? null : r.ageTo + 1)} onChange={(e) => setAge(r.code, "to", e.target.value, r)} />
                         </>
                       ) : (
-                        <input data-testid={`trips-pax-age-from-${r.code}`} aria-label={t("pax.ageFrom", { name: r.labelTh })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-16 text-sm" value={ageVal(r.code, "from", r.ageFrom)} onChange={(e) => setAge(r.code, "from", e.target.value, r)} />
+                        <input data-testid={`trips-pax-age-from-${r.code}`} aria-label={t("pax.ageFrom", { name: paxLabel(t, r.code, r.labelTh) })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-16 text-sm" value={ageVal(r.code, "from", r.ageFrom)} onChange={(e) => setAge(r.code, "from", e.target.value, r)} />
                       )}
                       {r.code === "ADULT" ? t("pax.andUp") : null}
                       {r.code !== "ADULT" && r.code !== "INFANT" ? (
                         <>
                           –
-                          <input data-testid={`trips-pax-age-to-${r.code}`} aria-label={t("pax.ageTo", { name: r.labelTh })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-16 text-sm" value={ageVal(r.code, "to", r.ageTo)} onChange={(e) => setAge(r.code, "to", e.target.value, r)} />
+                          <input data-testid={`trips-pax-age-to-${r.code}`} aria-label={t("pax.ageTo", { name: paxLabel(t, r.code, r.labelTh) })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-16 text-sm" value={ageVal(r.code, "to", r.ageTo)} onChange={(e) => setAge(r.code, "to", e.target.value, r)} />
                         </>
                       ) : null}
                       {t("pax.years")}
@@ -284,7 +295,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
                       {s.inEffect ? <Pill shape="solid">{t("seasons.inEffect")}</Pill> : null}
                     </span>
                   </td>
-                  <td className={TD}>{`${thDate(s.dateStart, false)} – ${thDate(s.dateEnd, false)}`}</td>
+                  <td className={TD}>{`${ymd(s.dateStart, false)} – ${ymd(s.dateEnd, false)}`}</td>
                   <td className={`${TD} text-right`}>{money(s.adultSatang)}</td>
                   <td className={`${TD} text-right`}>{money(s.childSatang)}</td>
                 </tr>
@@ -316,7 +327,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
             <tbody>
               {vm.departures.map((d) => (
                 <tr key={d.departureId} data-testid={`trips-departure-price-row-${d.departureId}`} data-full={d.full ? "true" : "false"} className="border-b border-[color:var(--color-line)] last:border-b-0">
-                  <td className={`${TD} font-bold`}>{thDate(d.localDate)}</td>
+                  <td className={`${TD} font-bold`}>{ymd(d.localDate)}</td>
                   <td className={`${TD} text-right`}>{d.full ? <Pill shape="thick">{`${t("seasons.full")} ${d.sold ?? "—"}/${d.capacity}`}</Pill> : `${d.sold ?? "—"}/${d.capacity}`}</td>
                   <td className={`${TD} text-right`}>{money(d.adultSatang)}</td>
                   <td className={`${TD} text-right`}>{money(d.childSatang)}</td>
@@ -339,6 +350,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
             </tbody>
           </table>
         </div>
+        {vm.departuresTruncated ? <p role="status" className="text-sm text-[color:var(--color-ink-soft)]">{t("seasons.depTruncated", { n: vm.departures.length })}</p> : null}
       </section>
 
       {/* ── รายการเสริม ── */}
@@ -354,7 +366,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
         {vm.extraWarnings.length ? (
           <div data-testid="trips-extra-warning" role="note" className="flex flex-col gap-1 rounded-lg border border-dashed border-[color:var(--color-note-line)] bg-[color:var(--color-note)] px-3 py-2 text-sm text-[color:var(--color-note-ink)]">
             {vm.extraWarnings.map((w) => (
-              <p key={`${w.unitExtraId}:${w.productExtraId}`}>{w.messageTh}</p>
+              <p key={`${w.unitExtraId}:${w.productExtraId}`}>{t(w.productOptional ? "extras.suppressedOptional" : "extras.suppressed", { unit: w.unitExtraName, product: w.productExtraName })}</p>
             ))}
           </div>
         ) : null}
@@ -409,7 +421,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
             <tbody>
               {vm.content.rows.map((r) => (
                 <tr key={r.section} data-section={r.section} className="border-b border-[color:var(--color-line)] last:border-b-0">
-                  <td className={`${TD} font-bold`}>{r.section === "summary" ? `${CONTENT_SECTION_TH.summary} ${vm.photos.count}` : (CONTENT_SECTION_TH[r.section] ?? r.section)}</td>
+                  <td className={`${TD} font-bold`}>{r.section === "summary" ? t("content.sections.summaryPhotos", { n: vm.photos.count }) : t(`content.sections.${r.section}`)}</td>
                   <td className={TD}>
                     <Pill shape={r.th === "MISSING" ? "dashed" : "solid"}>{r.th === "HAS" ? t("content.has") : r.th === "AUTO" ? t("content.auto") : t("content.missing")}</Pill>
                   </td>
@@ -439,14 +451,13 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
       {dialog?.kind === "option" ? <OptionDialog unitSlug={unitSlug} productId={p.id} onClose={close} /> : null}
       {dialog?.kind === "season" && adult ? <SeasonDialog unitSlug={unitSlug} productId={p.id} currency={p.currency} adultPaxTypeId={adult.paxTypeId} onClose={close} /> : null}
       {dialog?.kind === "depPrice" && adult ? <DepPriceDialog unitSlug={unitSlug} vm={vm} adultPaxTypeId={adult.paxTypeId} onClose={close} /> : null}
-      {dialog?.kind === "extra" ? <ExtraDialog unitSlug={unitSlug} productId={p.id} canPrice onClose={close} /> : null}
+      {dialog?.kind === "extra" ? <ExtraDialog unitSlug={unitSlug} productId={p.id} onClose={close} /> : null}
       {dialog?.kind === "pickup" ? <PickupDialog unitSlug={unitSlug} zone={dialog.zone} canPrice={f.canEditPrices} onClose={close} /> : null}
       {dialog?.kind === "content" ? <ContentDialog unitSlug={unitSlug} productId={p.id} section={dialog.section} cur={vm.content.texts[dialog.section] ?? { th: "", en: "" }} onClose={close} /> : null}
     </div>
   );
 }
 
-type T = ReturnType<typeof useTranslations>;
 const Check = ({ on, label }: { on: boolean; label: string }) => (
   <span role="img" aria-label={label} className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-sm ${on ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface)]" : "border border-[color:var(--color-line)]"}`}>
     {on ? "✓" : ""}
@@ -464,7 +475,7 @@ function ExtraRow({ e, t, disabled, onToggle }: { e: ExtraRowVM; t: T; disabled:
           {e.active ? t("extras.toggleOff") : t("extras.toggleOn")}
         </button>
       </td>
-      <td className={TD}>{EXTRA_BASIS_TH[e.basis] ?? e.basis}</td>
+      <td className={TD}>{t(`extras.basis.${e.basis}`)}</td>
       <td className={TD}>{e.mandatory ? t("extras.required") : t("extras.optional")}</td>
       <td className={`${TD} text-right`}>{price}</td>
       <td className={`${TD} text-center`}>
@@ -577,17 +588,26 @@ function PickupSection({ unitSlug, vm, onEdit }: { unitSlug: string; vm: VM; onE
           ) : (
             <ul className="flex flex-col gap-2">
               {inactive.map((z1) => (
-                <li key={z1.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-[color:var(--color-line)] px-3 py-2 text-sm text-[color:var(--color-ink-soft)]">
-                  {z1.name.th}
-                  <button
-                    type="button"
-                    data-testid={`trips-pickup-toggle-${z1.id}`}
-                    className={BTN}
-                    disabled={busy}
-                    onClick={() => void run(() => setPickupZoneActiveAction(unitSlug, { zoneId: z1.id, active: true }), () => setInactive(null))}
-                  >
-                    {t("pickup.toggleOn")}
-                  </button>
+                <li key={z1.id} data-corrupt={z1.corrupt ? "true" : "false"} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-[color:var(--color-line)] px-3 py-2 text-sm text-[color:var(--color-ink-soft)]">
+                  <span>
+                    {z1.name.th}
+                    {z1.corrupt ? <span className="block font-medium text-[color:var(--color-danger)]">{t("pickup.corrupt")}</span> : null}
+                  </span>
+                  {z1.corrupt ? (
+                    <button type="button" data-testid={`trips-pickup-edit-${z1.id}`} className={BTN} onClick={() => onEdit(z1)}>
+                      {t("common.edit")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid={`trips-pickup-toggle-${z1.id}`}
+                      className={BTN}
+                      disabled={busy}
+                      onClick={() => void run(() => setPickupZoneActiveAction(unitSlug, { zoneId: z1.id, active: true }), () => setInactive(null))}
+                    >
+                      {t("pickup.toggleOn")}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -705,6 +725,7 @@ function SeasonDialog({ unitSlug, productId, currency, adultPaxTypeId, onClose }
 
 function DepPriceDialog({ unitSlug, vm, adultPaxTypeId, onClose }: { unitSlug: string; vm: VM; adultPaxTypeId: string; onClose: () => void }) {
   const t = useTranslations("trips");
+  const ymd = useYmd();
   const { busy, error, run } = useRunner(t("common.failed"));
   const [dep, setDep] = useState(vm.departures[0]?.departureId ?? "");
   const [price, setPrice] = useState("");
@@ -715,7 +736,7 @@ function DepPriceDialog({ unitSlug, vm, adultPaxTypeId, onClose }: { unitSlug: s
         <select className={INPUT} value={dep} onChange={(e) => setDep(e.target.value)}>
           {vm.departures.map((d) => (
             <option key={d.departureId} value={d.departureId}>
-              {thDate(d.localDate)}
+              {ymd(d.localDate)}
             </option>
           ))}
         </select>
@@ -735,8 +756,7 @@ function DepPriceDialog({ unitSlug, vm, adultPaxTypeId, onClose }: { unitSlug: s
   );
 }
 
-const EXTRA_KIND_OPTIONS = ["PARK_FEE", "PORT_FEE", "FUEL", "EQUIPMENT", "NITROX", "TRANSFER", "COURSE", "INSURANCE", "OTHER"] as const;
-function ExtraDialog({ unitSlug, productId, onClose }: { unitSlug: string; productId: string; canPrice: boolean; onClose: () => void }) {
+function ExtraDialog({ unitSlug, productId, onClose }: { unitSlug: string; productId: string; onClose: () => void }) {
   const t = useTranslations("trips");
   const { busy, error, run } = useRunner(t("common.failed"));
   const [kind, setKind] = useState<string>("EQUIPMENT");
@@ -753,7 +773,7 @@ function ExtraDialog({ unitSlug, productId, onClose }: { unitSlug: string; produ
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label={t("extras.kind")}>
           <select className={INPUT} value={kind} onChange={(e) => setKind(e.target.value)}>
-            {EXTRA_KIND_OPTIONS.map((k) => (
+            {EXTRA_KIND_CODES.map((k) => (
               <option key={k} value={k}>
                 {t(`extras.kinds.${k}`)}
               </option>
@@ -762,9 +782,9 @@ function ExtraDialog({ unitSlug, productId, onClose }: { unitSlug: string; produ
         </Field>
         <Field label={t("extras.colBasis")}>
           <select className={INPUT} value={basis} onChange={(e) => setBasis(e.target.value)}>
-            {Object.entries(EXTRA_BASIS_TH).map(([k, v]) => (
+            {EXTRA_BASIS_CODES.map((k) => (
               <option key={k} value={k}>
-                {v}
+                {t(`extras.basis.${k}`)}
               </option>
             ))}
           </select>
@@ -797,6 +817,7 @@ function PickupDialog({ unitSlug, zone, canPrice, onClose }: { unitSlug: string;
   const [th, setTh] = useState(zone?.name.th ?? "");
   const [en, setEn] = useState(zone?.name.en ?? "");
   const [areas, setAreas] = useState(zone?.areas?.th ?? "");
+  const [areasEn, setAreasEn] = useState(zone?.areas?.en ?? "");
   const [offset, setOffset] = useState(String(zone?.pickupOffsetMin ?? 60));
   const [win, setWin] = useState(String(zone?.windowMin ?? 30));
   const [sur, setSur] = useState(zone ? formatBahtShort(zone.surchargeSatang).replace(/,/g, "") : "0");
@@ -804,7 +825,7 @@ function PickupDialog({ unitSlug, zone, canPrice, onClose }: { unitSlug: string;
   const body = {
     kind,
     name: { th: th.trim(), ...(en.trim() ? { en: en.trim() } : { en: null }) },
-    areas: areas.trim() ? { th: areas.trim() } : null,
+    areas: areas.trim() || areasEn.trim() ? { th: areas.trim() || null, en: areasEn.trim() || null } : null,
     pickupOffsetMin: intOrNull(offset) ?? -1,
     windowMin: self ? 0 : (intOrNull(win) ?? -1),
     surchargeSatang: self ? 0 : (bahtToSatang(sur) ?? -1),
@@ -826,6 +847,9 @@ function PickupDialog({ unitSlug, zone, canPrice, onClose }: { unitSlug: string;
       </Field>
       <Field label={t("pickup.colAreas")}>
         <input className={INPUT} value={areas} onChange={(e) => setAreas(e.target.value)} />
+      </Field>
+      <Field label={t("pickup.areasEn")}>
+        <input className={INPUT} value={areasEn} onChange={(e) => setAreasEn(e.target.value)} />
       </Field>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label={t("pickup.offset")}>
@@ -863,7 +887,7 @@ function ContentDialog({ unitSlug, productId, section, cur, onClose }: { unitSlu
       return out.length ? out : [{ ok: true }];
     }, onClose);
   return (
-    <Dialog title={t("content.editTitle", { name: CONTENT_SECTION_TH[section] ?? section })} onClose={onClose} closeLabel={t("common.close")}>
+    <Dialog title={t("content.editTitle", { name: t(`content.sections.${section}`) })} onClose={onClose} closeLabel={t("common.close")}>
       <Field label={t("content.colTh")}>
         <textarea rows={section === "title" ? 2 : 5} className={`${INPUT} py-2`} value={th} onChange={(e) => setTh(e.target.value)} />
       </Field>

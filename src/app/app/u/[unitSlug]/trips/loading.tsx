@@ -1,5 +1,8 @@
+import { getTranslations } from "next-intl/server";
+
 // TRIPS T1.1 ▸ โครงการ์ดระหว่างโหลดจอทัวร์ (Suspense fallback ของ segment /trips) — ไม่มีข้อมูล ไม่มีสถานะที่ทำให้เข้าใจผิด
-export default function TripsLoading() {
+export default async function TripsLoading() {
+  const t = await getTranslations("trips");
   return (
     <div data-testid="trips-loading" aria-busy="true" aria-live="polite" className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
       {[0, 1, 2].map((i) => (
@@ -10,7 +13,7 @@ export default function TripsLoading() {
           <div className="h-4 w-2/3 animate-pulse rounded bg-[color:var(--color-surface-2)]" />
         </div>
       ))}
-      <span className="sr-only">กำลังโหลด…</span>
+      <span className="sr-only">{t("loading")}</span>
     </div>
   );
 }

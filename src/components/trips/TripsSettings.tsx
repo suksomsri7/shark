@@ -11,6 +11,7 @@ import type { TripsSettingsVM } from "@/lib/modules/trips";
 import SettingsForm from "@/components/settings/SettingsForm";
 import { formatFieldValue, reviewHintTh, type SettingsField } from "@/components/settings/settings-shared";
 import type { TripsSettingsSectionKey } from "./trips-shared";
+import { Dialog } from "./ProductsScreenParts";
 
 type Actions = {
   save(changes: unknown, opts?: { ackLegalWarn?: boolean }): Promise<SetResult>;
@@ -58,12 +59,31 @@ export default function TripsSettings({ vm, unitSlug, actions }: Props) {
           {t("settings.title")}
           {vm.header.differsCount ? <span className="text-sm text-[color:var(--color-accent)]">{vm.header.differsCount}</span> : null}
         </span>
-        {vm.sections.map((s) => (
-          <a key={s.key} href={`#sec-${s.key}`} data-testid={`trips-settings-section-${s.key}`} className="flex min-h-11 items-center justify-between gap-2 rounded-xl px-5 text-sm text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]">
-            {t(`settings.sections.${s.key}`)}
-            {s.warningCount ? <span className={`${CHIP} border border-dashed border-[color:var(--color-danger)] text-[color:var(--color-danger)]`}>{s.warningCount}</span> : null}
-          </a>
-        ))}
+        {vm.sections.map((s) =>
+          s.fieldCount === 0 ? (
+            // หมวดที่ชั้นนี้ไม่มีช่อง (ไม่มีการ์ดให้ไป) — ไม่ใช่ลิงก์ ไม่มี anchor ตาย
+            <span key={s.key} data-testid={`trips-settings-section-${s.key}`} aria-disabled="true" className="flex min-h-11 items-center rounded-xl px-5 text-sm text-[color:var(--color-muted)]">
+              {t(`settings.sections.${s.key}`)}
+            </span>
+          ) : (
+            <a
+              key={s.key}
+              href={`#sec-${s.key}`}
+              data-testid={`trips-settings-section-${s.key}`}
+              onClick={(e) => {
+                // "ดูเฉพาะที่ปรับ" อาจซ่อนการ์ดนี้อยู่ ⇒ ปิดตัวกรองก่อน แล้วเลื่อนไปการ์ดหลังวาดใหม่
+                if (!onlyChanged) return;
+                e.preventDefault();
+                setOnlyChanged(false);
+                requestAnimationFrame(() => document.getElementById(`sec-${s.key}`)?.scrollIntoView());
+              }}
+              className="flex min-h-11 items-center justify-between gap-2 rounded-xl px-5 text-sm text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]"
+            >
+              {t(`settings.sections.${s.key}`)}
+              {s.warningCount ? <span className={`${CHIP} border border-dashed border-[color:var(--color-danger)] text-[color:var(--color-danger)]`}>{s.warningCount}</span> : null}
+            </a>
+          ),
+        )}
         <p className="px-3 pt-2 text-sm text-[color:var(--color-muted)]">{t("settings.otherDomains")}</p>
       </nav>
 
@@ -188,19 +208,9 @@ export default function TripsSettings({ vm, unitSlug, actions }: Props) {
       </div>
 
       {editing && editModel ? (
-        <div role="dialog" aria-modal="true" aria-label={t("settings.editTitle", { name: editingLabel })} className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
-          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-[color:var(--color-surface)] sm:rounded-2xl">
-            <div className="flex items-center justify-between gap-2 border-b border-[color:var(--color-line)] px-5 py-3">
-              <h2 className="text-base font-bold text-[color:var(--color-ink)]">{t("settings.editTitle", { name: editingLabel })}</h2>
-              <button type="button" onClick={() => setEditing(null)} className={BTN}>
-                {t("common.close")}
-              </button>
-            </div>
-            <div className="min-h-0 overflow-y-auto p-5">
-              <SettingsForm model={editModel} actions={{ save: actions.save, reset: actions.reset }} />
-            </div>
-          </div>
-        </div>
+        <Dialog title={t("settings.editTitle", { name: editingLabel })} onClose={() => setEditing(null)} closeLabel={t("common.close")} wide>
+          <SettingsForm model={editModel} actions={{ save: actions.save, reset: actions.reset }} />
+        </Dialog>
       ) : null}
     </div>
   );
@@ -237,7 +247,7 @@ function FieldRow({ f, vm, t }: { f: SettingsField; vm: TripsSettingsVM; t: T })
           {perProduct.map((o) => (
             <li key={o.productId} className="flex min-w-0 items-start justify-between gap-2">
               <span>{o.titleTh}</span>
-              <span className="text-right font-medium">{formatFieldValue(f, o.value)}</span>
+              <span className="text-right font-medium">{f.masked || o.masked ? t("settings.hidden") : formatFieldValue(f, o.value)}</span>
             </li>
           ))}
         </ul>

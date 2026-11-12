@@ -761,7 +761,7 @@ try {
     const by = (c: string) => p.find((x) => x.code === c) ?? {};
     const A = by("ADULT"), C = by("CHILD"), I = by("INFANT");
     eq([A.priceSatang, A.priceBasis, A.ageFrom], [R.adultSatang, "SET", R.childAge.max + 1], "ผู้ใหญ่");
-    eq([C.priceSatang, C.priceBasis, C.derivedPct, C.ageFrom, C.ageTo, C.bandSource], [R.childSatang, "DERIVED_PCT", 70, R.childAge.min, R.childAge.max, "SETTING"], "เด็ก");
+    eq([C.priceSatang, C.priceBasis, C.derivedPct, C.ageFrom, C.ageTo, C.bandSource, C.equalsSetting], [R.childSatang, "DERIVED_PCT", 70, R.childAge.min, R.childAge.max, "PRODUCT", true], "เด็ก"); // ORACLE-EDIT EV-3 (ผู้คุม 12 พ.ย.): ช่วงอายุถูกคัดลงสินค้าตอนสร้าง (มติ T0.2 §11 ข้อ 5) ⇒ แหล่ง = PRODUCT + equalsSetting
     eq([I.priceSatang, I.priceBasis, I.countsCapacity, I.ageTo], [0, "FREE", false, R.childAge.min - 1], "ทารก");
   });
   await st("EV-4", "ฤดูกาล 3 แถว: หลัก 3,500/2,450 · ปีใหม่ 3,900/2,730 · นอกฤดู 2,900/2,030 · เด็กคิด 70% · มีผลตอนนี้ = ฤดูกาลหลัก", async () => {

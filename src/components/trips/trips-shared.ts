@@ -97,35 +97,21 @@ export function productUpdatePayload(current: ProductLike, edits: ProductEdits):
 }
 
 // ═══════════════ ป้ายจอสินค้า ═══════════════
-export const EXTRA_BASIS_TH: Readonly<Record<string, string>> = { PER_PAX: "คน", PER_BOOKING: "การจอง", PER_DAY: "วัน", PER_PAX_DAY: "คน·วัน", PER_BOAT_NIGHT: "ลำ·คืน" };
-export const CONTENT_SECTION_TH: Readonly<Record<string, string>> = {
-  title: "ชื่อทริป",
-  summary: "คำบรรยายสั้น + รูป",
-  itinerary: "กำหนดการ",
-  includes: "รวม / ไม่รวม",
-  meeting: "จุดนัดพบ + สิ่งที่ต้องเตรียม",
-  policy: "เงื่อนไขยกเลิก · ค่าอุทยาน",
-};
-export const PROSPECTUS_TH: Readonly<Record<string, string>> = {
-  OPERATOR_LICENSE: "ชื่อร้าน สถานที่ เลขใบอนุญาตนำเที่ยว",
-  DURATION: "ระยะเวลานำเที่ยว",
-  PRICE_PAYMENT: "ค่าบริการและวิธีชำระ",
-  VEHICLE: "ยานพาหนะ",
-  ITINERARY: "จุดหมาย ที่แวะพัก",
-  ACCOMMODATION_MEALS: "ที่พัก + จำนวนมื้ออาหาร",
-  GUIDE: "มัคคุเทศก์ / ผู้นำเที่ยว",
-  MIN_PAX: "จำนวนขั้นต่ำออกเดินทาง",
-  INSURANCE: "ประกันอุบัติเหตุ",
-};
-/** วันที่ YYYY-MM-DD → "ส. 14 พ.ย. 2569" (พ.ศ. · ปฏิทินเกรกอเรียน · ไม่ใช้ getDay ดิบ — คำนวณจาก UTC ของวันที่ล้วน) */
-const WD_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
-const MON_TH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-export function thDate(ymd: string, withWeekday = true): string {
+// ป้ายทุกตัวอยู่ใน messages trips.json (ไทย/อังกฤษ) — ไฟล์นี้มีแค่รายการรหัส
+export const EXTRA_BASIS_CODES = ["PER_PAX", "PER_BOOKING", "PER_DAY", "PER_PAX_DAY", "PER_BOAT_NIGHT"] as const;
+export const EXTRA_KIND_CODES = ["PARK_FEE", "PORT_FEE", "FUEL", "EQUIPMENT", "NITROX", "TRANSFER", "COURSE", "INSURANCE", "OTHER"] as const;
+
+export type DateNames = { weekdays: readonly string[]; months: readonly string[]; yearOffset: number };
+/**
+ * วันที่ YYYY-MM-DD → "ส. 14 พ.ย. 2569" / "Sat 14 Nov 2026" ตามชื่อจาก messages (ปีบวก yearOffset)
+ * วันในสัปดาห์คิดจาก UTC ของวันที่ล้วน (ไม่ใช้ getDay ดิบของเวลาเครื่อง)
+ */
+export function formatYmd(ymd: string, names: DateNames, withWeekday = true): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
   if (!m) return ymd;
   const y = Number(m[1]);
   const mo = Number(m[2]);
   const d = Number(m[3]);
   const wd = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
-  return `${withWeekday ? `${WD_TH[wd]} ` : ""}${d} ${MON_TH[mo - 1]} ${y + 543}`;
+  return `${withWeekday ? `${names.weekdays[wd] ?? ""} ` : ""}${d} ${names.months[mo - 1] ?? mo} ${y + names.yearOffset}`;
 }

@@ -84,7 +84,13 @@ export default function ProductsScreen({ unitSlug, list, editor, filters }: { un
                       <Pill shape={statusShape(it.status)} status={it.status}>
                         {statusTh(it.status)}
                       </Pill>
-                      {it.optionSummary}
+                      {[
+                        it.summary.optionName ?? (it.summary.boats.length ? it.summary.boats.join(" · ") : null),
+                        it.summary.capacity !== null ? t("products.seats", { n: it.summary.capacity }) : null,
+                        it.summary.activeOptions > 1 ? t("products.optionsN", { n: it.summary.activeOptions }) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                     <span className="text-sm text-[color:var(--color-muted)]">
                       {[it.prospectus ? t("products.prospectus", { done: it.prospectus.done, total: it.prospectus.total }) : null, it.enMissing > 0 ? t("products.enMissing", { n: it.enMissing }) : t("products.enDone")].filter(Boolean).join(" · ")}
@@ -95,6 +101,11 @@ export default function ProductsScreen({ unitSlug, list, editor, filters }: { un
             })}
           </ul>
         )}
+        {list.matched > list.shown ? (
+          <p role="status" className="border-t border-dashed border-[color:var(--color-line)] p-4 text-sm text-[color:var(--color-ink-soft)]">
+            {t("products.capped", { shown: list.shown, matched: list.matched })}
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--color-line)] p-4 text-sm text-[color:var(--color-muted)]">
           {t("products.legendDraft")} <Pill shape="dashed">{t("products.statusDraft")}</Pill> · {t("products.legendActive")} <Pill shape="solid">{t("products.statusActive")}</Pill>
         </div>

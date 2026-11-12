@@ -3,8 +3,8 @@
 // trips/pickup-actions.ts — server action ของโซนรับส่ง (RUN TRIPS T1.1 §5 · แบบ product-actions.ts)
 // ทุกตัว: requireUnit (หน่วยของร้านที่เข้าได้ ไม่งั้น 404) → assertCan (trips.product.* ตามระดับ) → บริการด้วย {tenantId, actorUserId} (ตรวจซ้ำทุกด่าน)
 // 🔴 "use server" ⇒ ส่งออกเฉพาะ async function · unitId มาจาก slug ของหน้าเสมอ (ทับค่าที่ฟอร์มส่งมา) · ค่าบวกเพิ่ม ⇒ บริการตรวจ trips.price.edit เอง
+// 🔴 ไม่ refresh() ที่นี่ — จอเรียก router.refresh() ครั้งเดียวหลังสำเร็จ (แบบ product-actions)
 // ─────────────────────────────────────────────────────────────
-import { refresh } from "next/cache";
 import { requireUnit } from "@/lib/core/context";
 import { ForbiddenError, assertCan, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import * as svc from "./pickup";
@@ -34,10 +34,6 @@ async function guard(unitSlug: string, level: "view" | "edit"): Promise<{ ctx: s
 const isFail = (x: unknown): x is Fail => typeof x === "object" && x !== null && (x as { ok?: unknown }).ok === false;
 const withUnit = (input: unknown, unitId: string): unknown =>
   typeof input === "object" && input !== null && !Array.isArray(input) ? { ...(input as Record<string, unknown>), unitId } : input;
-const after = <T extends { ok: boolean }>(r: T): T => {
-  if (r.ok) refresh();
-  return r;
-};
 
 export async function listPickupZonesAction(unitSlug: string, input: unknown) {
   const g = await guard(unitSlug, "view");
@@ -45,17 +41,17 @@ export async function listPickupZonesAction(unitSlug: string, input: unknown) {
 }
 export async function createPickupZoneAction(unitSlug: string, input: unknown) {
   const g = await guard(unitSlug, "edit");
-  return isFail(g) ? g : after(await svc.createPickupZone(g.ctx, withUnit(input, g.unitId)));
+  return isFail(g) ? g : svc.createPickupZone(g.ctx, withUnit(input, g.unitId));
 }
 export async function updatePickupZoneAction(unitSlug: string, input: unknown) {
   const g = await guard(unitSlug, "edit");
-  return isFail(g) ? g : after(await svc.updatePickupZone(g.ctx, withUnit(input, g.unitId)));
+  return isFail(g) ? g : svc.updatePickupZone(g.ctx, withUnit(input, g.unitId));
 }
 export async function setPickupZoneActiveAction(unitSlug: string, input: unknown) {
   const g = await guard(unitSlug, "edit");
-  return isFail(g) ? g : after(await svc.setPickupZoneActive(g.ctx, withUnit(input, g.unitId)));
+  return isFail(g) ? g : svc.setPickupZoneActive(g.ctx, withUnit(input, g.unitId));
 }
 export async function reorderPickupZonesAction(unitSlug: string, input: unknown) {
   const g = await guard(unitSlug, "edit");
-  return isFail(g) ? g : after(await svc.reorderPickupZones(g.ctx, withUnit(input, g.unitId)));
+  return isFail(g) ? g : svc.reorderPickupZones(g.ctx, withUnit(input, g.unitId));
 }

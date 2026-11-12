@@ -5,6 +5,8 @@
 //   bash scripts/iso.sh bash scripts/qc-trips.sh pnpm exec tsx scripts/visual-trips.mts t1.1 --base http://127.0.0.1:<port>
 //   … t1.1 --list                       # พิมพ์สเปกของใบ (ไม่ต่อ server · ไม่ mint session)
 //   … t1.1 --only settings-unit         # ถ่ายฉากเดียว
+//   … t1.1 --ex-date 2026-12-31         # ปักรอบตัวอย่างของราชา (ปริยาย = รอบ ส. 14 พ.ย. ของฟิกซ์เจอร์ · ไม่ขึ้นกับวันนี้)
+// ⚠️ ตัวโหลดใช้นาฬิกาจริง (ตั้งใจ — production): รอบตัวอย่าง/ลูกค้าจะเห็น ปักผ่าน ?ex= ได้เสมอ แต่ "2 รอบถัดไป" และป้าย "ใช้อยู่" ของฤดูกาลขึ้นกับวันที่ถ่าย
 //   หรือส่ง base ทาง env: QC_BASE=http://127.0.0.1:<port>
 // ภาพคู่: bash scripts/parity-trips.sh <16|17> .qc-shots/trips/t1.1/<ฉาก>-desktop.png .qc-shots/trips/t1.1/<ฉาก>-PARITY.png
 //
@@ -34,7 +36,7 @@ type Spec = { name: string; mockup: "16" | "17"; path: (ids: Ids) => string; act
 const LADDER_INPUTS = '[role="dialog"] [data-setting-key="trips.cancel.ladder"] input[type="number"]';
 export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
   "t1.1": [
-    // ภาพ 16 — ตัวแก้ราชา · รอบตัวอย่าง ส. 14 พ.ย. (ลูกค้าจะเห็น 11,450.00)
+    // ภาพ 16 — ตัวแก้ราชา · รอบตัวอย่างปัก ?ex= (ปริยาย ส. 14 พ.ย. ⇒ ลูกค้าจะเห็น 11,450.00 · --ex-date เปลี่ยนได้)
     { name: "products-racha", mockup: "16", path: (i) => `/app/u/${i.unitSlug}/trips/products?p=${i.racha}&ex=${i.racha1114}` },
     // ภาพ 17 — ค่าตั้งชั้นหน่วย (ต่างจากแม่แบบ 3 · ตั้งรายสินค้า 6)
     { name: "settings-unit", mockup: "17", path: (i) => `/app/u/${i.unitSlug}/trips/settings` },
@@ -69,13 +71,18 @@ if (!WO || !allSpecs) {
   process.exit(2);
 }
 const only = argOf("--only");
+const EX_DATE = argOf("--ex-date") ?? DEPARTURE_RACHA_1114.date;
+if (!/^\d{4}-\d{2}-\d{2}$/.test(EX_DATE)) {
+  console.error(`❌ --ex-date ต้องเป็น YYYY-MM-DD: ${EX_DATE}`);
+  process.exit(2);
+}
 const specs = only ? allSpecs.filter((s) => s.name === only) : allSpecs;
 if (!specs.length) {
   console.error(`❌ --only ${only} ไม่มีในสเปก ${WO}: ${allSpecs.map((s) => s.name).join(" · ")}`);
   process.exit(2);
 }
 if (argv.includes("--list")) {
-  console.log(`VISUAL_SPECS ${JSON.stringify(specs.map((s) => ({ name: s.name, mockup: s.mockup, actions: s.actions?.length ?? 0, viewport: VIEWPORT })))}`);
+  console.log(`VISUAL_SPECS ${JSON.stringify(specs.map((s) => ({ name: s.name, mockup: s.mockup, actions: s.actions?.length ?? 0, viewport: VIEWPORT })))} · exDate ${EX_DATE}`);
   process.exit(0);
 }
 const BASE = (argOf("--base") ?? process.env.QC_BASE ?? "").replace(/\/+$/, "");
@@ -135,8 +142,8 @@ async function idsFromSeed(): Promise<Ids> {
   };
   const racha = await prod("racha-yai-day-trip");
   const similan = await prod("similan-4-nights");
-  const dep = await prisma.tripDeparture.findFirst({ where: { tenantId, unitId: unit.id, productId: racha, localDate: new Date(`${DEPARTURE_RACHA_1114.date}T00:00:00.000Z`), status: { not: "CANCELLED" } }, select: { id: true } });
-  if (!dep) throw new Fatal(`ไม่พบรอบราชา ${DEPARTURE_RACHA_1114.date} — รัน seed ก่อน`);
+  const dep = await prisma.tripDeparture.findFirst({ where: { tenantId, unitId: unit.id, productId: racha, localDate: new Date(`${EX_DATE}T00:00:00.000Z`), status: { not: "CANCELLED" } }, select: { id: true } });
+  if (!dep) throw new Fatal(`ไม่พบรอบราชา ${EX_DATE} (ที่ไม่ยกเลิก) — รัน seed ก่อน หรือส่ง --ex-date ของรอบที่มีจริง`);
   return { unitSlug: unit.slug, racha, similan, racha1114: dep.id };
 }
 

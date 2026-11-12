@@ -50,7 +50,10 @@
     "enDone": "EN complete",
     "legendDraft": "Draft (not on sale) = dashed tag",
     "legendActive": "On sale =",
-    "noProduct": "Pick a product on the left or create a new one."
+    "noProduct": "Pick a product on the left or create a new one.",
+    "seats": "{n} seats",
+    "optionsN": "{n} options",
+    "capped": "Showing the first {shown} of {matched} — search or filter to see the rest"
   },
   "create": {
     "title": "Add product",
@@ -106,15 +109,15 @@
     "time": "Time",
     "nights": "{n} nights",
     "noSchedule": "No schedule yet",
-    "duration": "Duration (minutes)"
+    "duration": "Duration (minutes)",
+    "vans": "{n} vans",
+    "guides": "{n} guides"
   },
   "pax": {
     "title": "Traveller types & ages",
-    "source": "Age ranges: from the template (adjustable)",
     "colType": "Type",
     "colAge": "Age range (adjustable)",
     "colSeat": "Uses a seat",
-    "colPrice": "Main season price",
     "colBasis": "Price from",
     "yes": "Yes",
     "no": "No",
@@ -129,7 +132,16 @@
     "years": "years",
     "ageFrom": "Minimum age of {name}",
     "ageTo": "Maximum age of {name}",
-    "note": "Ages are not verified by the system; vouchers show the traveller type and “show proof at check-in”. Guides can collect differences at the POS."
+    "note": "Ages are not verified by the system; vouchers show the traveller type and “show proof at check-in”. Guides can collect differences at the POS.",
+    "sourceCopied": "Age ranges: same as the shop setting (copied when the product was created · adjustable here)",
+    "sourceCustom": "Age ranges: set on this product (differs from the shop setting)",
+    "codes": {
+      "ADULT": "Adult",
+      "CHILD": "Child",
+      "INFANT": "Infant"
+    },
+    "colPriceSeason": "Price ({name})",
+    "colPriceToday": "Price today"
   },
   "seasons": {
     "title": "Seasonal & per-departure prices",
@@ -155,7 +167,8 @@
     "from": "From",
     "to": "To",
     "adultPrice": "Adult price (THB)",
-    "childHint": "The child price follows the “default child price” setting automatically"
+    "childHint": "The child price follows the “default child price” setting automatically",
+    "depTruncated": "Showing the next {n} departures with their own price — see the departures calendar (T1.2) for the rest"
   },
   "extras": {
     "title": "Extras",
@@ -186,6 +199,15 @@
       "COURSE": "Course",
       "INSURANCE": "Insurance",
       "OTHER": "Other"
+    },
+    "suppressed": "The shop’s required extra «{unit}» is not charged on this product because it already has «{product}» of the same kind",
+    "suppressedOptional": "The shop’s required extra «{unit}» is not charged on this product because it already has «{product}» of the same kind (the product’s one is optional)",
+    "basis": {
+      "PER_PAX": "Person",
+      "PER_BOOKING": "Booking",
+      "PER_DAY": "Day",
+      "PER_PAX_DAY": "Person·day",
+      "PER_BOAT_NIGHT": "Boat·night"
     }
   },
   "pickup": {
@@ -214,7 +236,9 @@
     "kindSelf": "Own way (meeting point)",
     "offset": "Minutes before departure",
     "window": "Window (minutes)",
-    "priceLocked": "Surcharges are prices — needs the pricing permission"
+    "priceLocked": "Surcharges are prices — needs the pricing permission",
+    "corrupt": "Zone data is damaged — edit and save it before turning it on",
+    "areasEn": "Areas (English)"
   },
   "content": {
     "title": "Content Thai / English",
@@ -233,7 +257,16 @@
     "shownFallback": "Thai + “Not yet translated” label",
     "shownAuto": "Generated from settings in both languages",
     "langs": "Languages on the booking page: Thai · English",
-    "editTitle": "Edit {name}"
+    "editTitle": "Edit {name}",
+    "sections": {
+      "title": "Trip name",
+      "summary": "Short description + photos",
+      "summaryPhotos": "Short description + {n} photos",
+      "itinerary": "Itinerary",
+      "includes": "Included / not included",
+      "meeting": "Meeting point + what to bring",
+      "policy": "Cancellation terms · park fees"
+    }
   },
   "brochure": {
     "title": "What the tour prospectus should include",
@@ -241,7 +274,18 @@
     "note": "For the shop only · not required · does not block sales",
     "disabled": "Turned off in this product’s settings",
     "done": "done",
-    "missing": "missing"
+    "missing": "missing",
+    "items": {
+      "OPERATOR_LICENSE": "Shop name, address, tour licence number",
+      "DURATION": "Tour duration",
+      "PRICE_PAYMENT": "Price and payment method",
+      "VEHICLE": "Vehicles",
+      "ITINERARY": "Destinations and stops",
+      "ACCOMMODATION_MEALS": "Accommodation + number of meals",
+      "GUIDE": "Guides / tour leaders",
+      "MIN_PAX": "Minimum group size",
+      "INSURANCE": "Accident insurance"
+    }
   },
   "applied": {
     "title": "Settings used by this product",
@@ -254,13 +298,24 @@
       "trips_sell_minToDepart": "Minimum to depart",
       "trips_cancel_ladder": "Customer cancellation",
       "trips_pay_depositPct": "Paid at booking"
+    },
+    "view": {
+      "minutes": "{n} minutes",
+      "cutoff": "{hm}, {days} days before",
+      "cutoffSameDay": "Travel day {hm}",
+      "minPax": "{n} people",
+      "noMin": "Not set",
+      "full": "Full amount"
     }
   },
   "example": {
     "title": "The customer will see",
     "departure": "Example departure",
     "total": "Total",
-    "note": "Priced by the real pricing engine for {date} ({season}) = screen 01"
+    "note": "Priced by the real pricing engine for {date} ({season}) = screen 01",
+    "errorNoDeparture": "No departure to use as an example yet — create one and the price example appears here",
+    "errorNoPax": "This product has no adult/child types yet, so the example cannot be priced",
+    "errorPricing": "The example could not be priced: {detail}"
   },
   "settings": {
     "title": "Trip bookings",
@@ -312,5 +367,28 @@
     "templateValue": "Template {v}",
     "readOnly": "Read-only",
     "editTitle": "Edit {name}"
+  },
+  "loading": "Loading…",
+  "dates": {
+    "wd0": "Sun",
+    "wd1": "Mon",
+    "wd2": "Tue",
+    "wd3": "Wed",
+    "wd4": "Thu",
+    "wd5": "Fri",
+    "wd6": "Sat",
+    "mon1": "Jan",
+    "mon2": "Feb",
+    "mon3": "Mar",
+    "mon4": "Apr",
+    "mon5": "May",
+    "mon6": "Jun",
+    "mon7": "Jul",
+    "mon8": "Aug",
+    "mon9": "Sep",
+    "mon10": "Oct",
+    "mon11": "Nov",
+    "mon12": "Dec",
+    "yearOffset": "0"
   }
 }
