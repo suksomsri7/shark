@@ -319,24 +319,28 @@ export function SelfWeekStrip({ week }: { week: MyWeek }) {
 export function SelfActions({ canWrite }: { canWrite: boolean }) {
   const t = useTranslations("hr.self");
   const cell = "flex min-h-14 min-w-0 flex-col items-center justify-center rounded-xl border border-[color:var(--color-line)] px-1 text-center text-sm font-medium";
-  const off = canWrite ? "" : " pointer-events-none opacity-50";
+  // พ้นสภาพ (ENDED) ⇒ ไม่มีลิงก์ยื่นคำขอเลย (เหลือแค่สลิป — อ่านประวัติได้)
   return (
     <nav data-testid="hr-self-actions" aria-label={t("actions")} className="grid grid-cols-3 gap-2">
-      <Link href={`${ME}/requests?form=leave`} data-testid="hr-self-act-leave" className={cell + off} aria-disabled={!canWrite}>
-        {t("actLeave")}
-      </Link>
-      <Link href={`${ME}/requests?form=ot`} data-testid="hr-self-act-ot" className={cell + off} aria-disabled={!canWrite}>
-        {t("actOt")}
-      </Link>
-      <Link href={`${ME}/requests?form=swap`} data-testid="hr-self-act-swap" className={cell + off} aria-disabled={!canWrite}>
-        {t("actSwap")}
-      </Link>
-      <Link href={`${ME}/requests?form=correction`} data-testid="hr-self-act-correction" className={cell + off} aria-disabled={!canWrite}>
-        {t("actCorrection")}
-      </Link>
-      <Link href={`${ME}/requests?form=advance`} data-testid="hr-self-act-advance" className={cell + off} aria-disabled={!canWrite}>
-        {t("actAdvance")}
-      </Link>
+      {canWrite ? (
+        <>
+          <Link href={`${ME}/requests?form=leave`} data-testid="hr-self-act-leave" className={cell}>
+            {t("actLeave")}
+          </Link>
+          <Link href={`${ME}/requests?form=ot`} data-testid="hr-self-act-ot" className={cell}>
+            {t("actOt")}
+          </Link>
+          <Link href={`${ME}/requests?form=swap`} data-testid="hr-self-act-swap" className={cell}>
+            {t("actSwap")}
+          </Link>
+          <Link href={`${ME}/requests?form=correction`} data-testid="hr-self-act-correction" className={cell}>
+            {t("actCorrection")}
+          </Link>
+          <Link href={`${ME}/requests?form=advance`} data-testid="hr-self-act-advance" className={cell}>
+            {t("actAdvance")}
+          </Link>
+        </>
+      ) : null}
       <Link href={`${ME}/pay`} data-testid="hr-self-act-slip" className={cell}>
         {t("actSlip")}
       </Link>
@@ -606,7 +610,7 @@ function LeaveForm({ policies, balances, today }: { policies: MyLeavePolicy[]; b
       )}
       <label className="flex flex-col gap-1">
         <span className={`text-xs ${MUTED}`}>{t("lfReason")}</span>
-        <textarea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={2} className="input" />
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="input" />
       </label>
       <div data-testid="hr-self-leave-impact" aria-live="polite" className="flex flex-col gap-1 rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-4 py-3 text-sm">
         {!pv ? (
@@ -976,7 +980,7 @@ function periodLabel(p: string, t: (k: string) => string): string {
 }
 
 // ═══════════════════════════ เงินเดือน ═══════════════════════════
-export function SelfPay({ docs }: { docs: MyDocuments }) {
+export function SelfPay({ docs, canWrite }: { docs: MyDocuments; canWrite: boolean }) {
   const t = useTranslations("hr.self");
   return (
     <>
@@ -1000,9 +1004,11 @@ export function SelfPay({ docs }: { docs: MyDocuments }) {
           ))
         )}
       </section>
-      <Link href={`${ME}/requests?form=advance`} data-testid="hr-self-act-advance" className="btn btn-ghost min-h-11 text-sm">
-        {t("actAdvance")}
-      </Link>
+      {canWrite ? (
+        <Link href={`${ME}/requests?form=advance`} data-testid="hr-self-act-advance" className="btn btn-ghost min-h-11 text-sm">
+          {t("actAdvance")}
+        </Link>
+      ) : null}
       <section data-testid="hr-self-cert-slot" className={`${BOX} flex flex-col gap-1 p-4`}>
         <Title>{t("certTitle")}</Title>
         <p className={`text-sm ${MUTED}`}>{t("certSoon")}</p>

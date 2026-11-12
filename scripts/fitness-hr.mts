@@ -299,6 +299,8 @@ const SCOPE_FILE = "src/lib/modules/hr/scope.ts";
 //   ไม่ผูก = noEmployee (หน้าว่าง) — นับเป็นตัวกันเฉพาะชื่อ my* ที่ import และเรียกจริง (selfActorOf / ตัวเขียน self* ไม่นับ) ◂
 const SELF_GUARD_MODULE = "@/lib/modules/hr/self";
 const SELF_FILE = "src/lib/modules/hr/self.ts";
+/** HR H2.10 r2 ▸ ข้อยกเว้น my* ใช้ได้เฉพาะหน้าใต้โฟลเดอร์นี้ — หน้า HR/payroll อื่นต้องมีตัวกันเดิม (privacy/scope) ◂ */
+const SELF_PAGES_DIR = "src/app/app/me/hr/";
 /**
  * ตัวกันที่นับได้ (FIX E · H0.4 r2) — hr/privacy: `load*ForViewer` · `leaveItemsForViewer` · ชื่อขึ้นต้น `require` / `assert`
  * hr/scope: ทุก export (อ่านจากไฟล์จริงเมื่อมี) · 🔴 `hrViewerOf` / `hrAccessOf` / ตัวช่วยอื่นของ privacy ไม่นับ
@@ -340,6 +342,7 @@ export function pageGuard(ROOT: string, abs: string, scope = scopeExports(ROOT))
   const locals = new Map<string, "privacy" | "scope" | "self">(); // ชื่อตัวกันในไฟล์ → module · HR H2.10 ▸ + self ◂
   const namespaces = new Map<string, "privacy" | "scope" | "self">(); // import * as X · HR H2.10 ▸ + self ◂
   const ignored: string[] = []; // import จาก module ตัวกันแต่ไม่ใช่ตัวกัน (เช่น hrViewerOf)
+  const selfScoped = posix(relative(ROOT, abs)).startsWith(SELF_PAGES_DIR); // HR H2.10 ▸ หน้า "ของฉัน" เท่านั้น ◂
   const isGuard = (mod: "privacy" | "scope" | "self", name: string) => (mod === "privacy" ? isPrivacyGuardName(name) : mod === "self" ? /^my[A-Z]\w*$/.test(name) : scope.has(name)); // HR H2.10 ▸ self = my* ◂
   for (const st of sf.statements) {
     if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
@@ -348,7 +351,7 @@ export function pageGuard(ROOT: string, abs: string, scope = scopeExports(ROOT))
     const targetRel = target ? posix(relative(ROOT, target)) : "";
     const mod: "privacy" | "scope" | "self" | null =
       spec === GUARD_MODULES[0] || spec === `${GUARD_MODULES[0]}.ts` || targetRel === PRIVACY_FILE ? "privacy" : spec === GUARD_MODULES[1] || spec === `${GUARD_MODULES[1]}.ts` || targetRel === SCOPE_FILE ? "scope"
-      : spec === SELF_GUARD_MODULE || targetRel === SELF_FILE ? "self" : null; // HR H2.10 ▸ ◂
+      : (spec === SELF_GUARD_MODULE || targetRel === SELF_FILE) && selfScoped ? "self" : null; // HR H2.10 ▸ เฉพาะหน้าใต้ src/app/app/me/hr/ (มติ r2 M1) ◂
     if (!mod) continue;
     const cl = st.importClause;
     if (!cl || cl.isTypeOnly) continue;

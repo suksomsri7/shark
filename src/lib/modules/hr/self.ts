@@ -9,19 +9,21 @@
 // กติกาธุรกิจไม่อยู่ที่นี่: ทุกตัวเขียนเรียก service เดิม (H2.3 สลับกะ · H2.4 ลงเวลา · H2.6 แก้เวลา · H2.7 ใบลา · H2.9 OT · H4.4 บันทึก ·
 //   payroll.requestAdjustment) — ข้อความปฏิเสธ = ของ service ตรงตัว · ช่องว่างเดียวที่ปิดที่นี่ = เบิกล่วงหน้าแบบเล็กที่สุด (R6) ·
 //   ไฟล์ server ล้วน (ไม่ใช่ "use server") — หน้า/ปุ่มเรียกผ่าน self-actions.ts · `opts.now` ใช้ในข้อสอบเท่านั้น ◂
-import type { HrLeaveType, Prisma } from "@prisma/client";
+import { cache } from "react";
+import type { HrLeaveType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
-import { writeAudit } from "@/lib/core/audit";
-import { employeeOfUser, requestLeave, cancelLeave, HrLeaveRequestError, type Ctx } from "./service";
+import { employeeOfUser, requestLeave, cancelLeave, HrLeaveRequestError, leaveCancelOpen, type Ctx } from "./service";
 import { CLOCK_TEXT, mobileClock, myClockState, type MobileClockKind } from "./clock";
 import { activeLeavePolicies, leaveRefusalText, myLeaveBalances, type LeaveBalanceItem } from "./leave";
 import { countLeaveDays, fmtTenths, tenthsOf } from "./leave-rules";
-import { cancelOtRequest, myOtRequests, requestOt } from "./ot";
-import { cancelSwap, listMySwaps, requestSwap, respondSwap } from "./swap";
-import { cancelCorrection, correctablePunches, myCorrections, requestCorrection } from "./correction";
+import { leaveDaysBetween } from "./time-rules";
+import { cancelOtRequest, myOtRequests, otCancelOpen, requestOt } from "./ot";
+import { cancelSwap, listMySwaps, requestSwap, respondSwap, swapCandidatesAccepted, SWAP_REFUSAL } from "./swap";
+import { cancelCorrection, correctablePunches, correctionCancelOpen, myCorrections, requestCorrection } from "./correction";
+import { CORRECTION_RULES } from "./correction-rules";
 import { acknowledgeReviewNote, myReviewNotes, type MyReviewNoteItem } from "./lifecycle";
-import { payrollRunPeriods, requestAdjustment } from "./payroll";
-import { rosterOnDay, unitOfDay } from "./roster";
+import { cancelSelfAdvance, requestSelfAdvance, selfAdvanceCancelOpen, SELF_ADVANCE_NOTE_MAX } from "./payroll";
+import { rosterOnDay } from "./roster";
 import { holidaysBetween } from "./holidays";
 import { unitNamesOf } from "./scope";
 import { addDays, bkkDayKey, shiftWindow, TimeRuleError } from "./time-rules";
@@ -38,6 +40,9 @@ export const SELF_TEXT = {
 } as const;
 /** ข้อความกลางเมื่อ service ล้มด้วยเหตุที่ไม่ใช่การปฏิเสธ (ไม่ส่งข้อความระบบออกไป) */
 const FAILED_TEXT = "ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง";
+const PICK_DATES_TEXT = "เลือกวันที่เริ่มและวันที่สิ้นสุดการลา";
+/** แทน SWAP_REFUSAL.leavePeer สำหรับผู้ขอ (มติ r2 — ไม่บอกว่าเพื่อนคนที่เลือกลา) */
+const SWAP_PEER_UNAVAILABLE = "เพื่อนร่วมงานคนนี้รับกะวันนั้นไม่ได้ — เลือกคนอื่น";
 /** H2.7 D4 / H2.6 D6 ▸ ข้อความสถานะใบลาสำหรับเจ้าของใบ (รวมใบที่ระบบยกเลิกให้เพราะวันลาไม่พอ/เป็นวันหยุดทั้งหมด) ◂ */
 const LEAVE_STATUS_TEXT: Record<string, string> = {
   PENDING: "รออนุมัติ",
@@ -89,14 +94,9 @@ export async function resolveSelf(actor: SelfActor | null | undefined): Promise<
   const tenantId = str(actor?.tenantId);
   const userId = str(actor?.userId);
   if (!tenantId || !userId) return null;
-  const link = await employeeOfUser(tenantId, userId);
-  if (!link) return null;
-  const ctx: Ctx = { tenantId, systemId: link.systemId };
-  const e = await tenantDb(ctx).hrEmployee.findFirst({
-    where: { id: link.employeeId, tenantId, systemId: link.systemId, linkedUserId: userId },
-    select: { id: true, name: true, position: true, active: true, employmentStatus: true, unitId: true, units: { select: { id: true, unitId: true, fromDate: true, toDate: true }, take: 200 } },
-  });
-  if (!e) return null;
+  const row = await selfRowOf(tenantId, userId);
+  if (!row) return null;
+  const { ctx, e } = row;
   const p = actor?.permissions;
   return {
     tenantId,
@@ -112,6 +112,21 @@ export async function resolveSelf(actor: SelfActor | null | undefined): Promise<
     homeUnitId: e.unitId,
     units: e.units,
   };
+}
+/** แถวพนักงานของ (ร้าน, ผู้ใช้) — ครั้งเดียวต่อคำขอ (React cache: layout + หน้า + ตัวอ่านทุกตัวใช้ผลเดียวกัน · นอก RSC = เรียกตรง) */
+const selfRowOf = cache(async (tenantId: string, userId: string) => {
+  const link = await employeeOfUser(tenantId, userId);
+  if (!link) return null;
+  const ctx: Ctx = { tenantId, systemId: link.systemId };
+  const e = await tenantDb(ctx).hrEmployee.findFirst({
+    where: { id: link.employeeId, tenantId, systemId: link.systemId, linkedUserId: userId },
+    select: { id: true, name: true, position: true, active: true, employmentStatus: true, unitId: true, units: { select: { id: true, unitId: true, fromDate: true, toDate: true }, take: 200 } },
+  });
+  return e ? { ctx, e } : null;
+});
+/** ระบบ HR ที่บัญชีนี้ผูกอยู่ (null = ไม่ผูก) — เมนู/แท็บ HR ใช้ตัดสิน "ของฉัน" ต่อระบบ (ผลเดียวกับ resolveSelf ในคำขอเดียวกัน) */
+export async function selfLinkedSystemOf(tenantId: string, userId: string): Promise<string | null> {
+  return (await selfRowOf(str(tenantId), str(userId)))?.ctx.systemId ?? null;
 }
 /** ผู้ดูที่ส่งให้ service เดิม (บทบาท/คีย์จากเซสชัน — role ยังมีผลตาม service: เจ้าของร้านยื่นลา = อนุมัติทันที ฯลฯ) */
 const viewerOf = (me: Me) => ({ userId: me.userId, role: me.role as "STAFF", unitAccess: me.unitAccess, permissions: me.permissions });
@@ -304,7 +319,7 @@ export async function myRequests(actor: SelfActor, opts: Opts = {}): Promise<MyR
     status: l.status,
     statusText: (l.status === "CANCELLED" ? LEAVE_STATUS_TEXT[codeOf.get(l.id) ?? ""] : undefined) ?? LEAVE_STATUS_TEXT[l.status] ?? l.status,
     // ใบรออนุมัติ · ใบของเจ้าของร้านที่อนุมัติทันทีและยังไม่ถึงวันลา (H0.7 R5 — service ตัดสินซ้ำตอนกด)
-    canCancel: l.status === "PENDING" || (owner && l.status === "APPROVED" && l.decidedById === null && dayOf(l.fromDate) > today),
+    canCancel: leaveCancelOpen({ status: l.status, decidedById: l.decidedById, fromDate: dayOf(l.fromDate) }, { isOwner: owner, today }),
     createdAt: l.createdAt.toISOString(),
   }));
   const otItems: MyOtItem[] = (ot.ok ? ot.items : []).map((o) => ({
@@ -316,7 +331,7 @@ export async function myRequests(actor: SelfActor, opts: Opts = {}): Promise<MyR
     status: o.status,
     timing: o.timing,
     amountSatang: "amountSatang" in o ? o.amountSatang : null,
-    canCancel: o.status === "PENDING",
+    canCancel: otCancelOpen(o.status),
   }));
   const swaps: MySwapItem[] = (sw.ok ? sw.items : []).map((s) => {
     const mine = s.requester.employeeId === me.employeeId;
@@ -335,13 +350,13 @@ export async function myRequests(actor: SelfActor, opts: Opts = {}): Promise<MyR
   });
   const corrections: MyCorrectionItem[] = (co.ok ? co.items : [])
     .filter((c) => c.employeeId === me.employeeId)
-    .map((c) => ({ id: c.id, action: c.action, kind: c.kind, day: c.day, proposedAt: c.proposedAt, status: c.status, canCancel: c.status === "PENDING" }));
+    .map((c) => ({ id: c.id, action: c.action, kind: c.kind, day: c.day, proposedAt: c.proposedAt, status: c.status, canCancel: correctionCancelOpen(c.status) }));
   const advances: MyAdvanceItem[] = adv.map((a) => ({
     id: a.id,
     periodKey: a.periodKey,
     amountSatang: a.amountSatang,
     status: a.status,
-    canCancel: a.status === "PENDING" && a.runId === null && a.requestedById === me.userId,
+    canCancel: selfAdvanceCancelOpen(a, me.userId),
     createdAt: a.createdAt.toISOString(),
   }));
   return { ok: true, leaves, ot: otItems, swaps, corrections, advances };
@@ -377,7 +392,13 @@ export async function myLeavePreview(
   if (!me) return no(SELF_TEXT.noEmployee);
   const from = input?.fromDate;
   const to = input?.toDate;
-  if (!isDay(from) || !isDay(to) || to < from || addDays(from, 62) < to) return no("เลือกวันที่เริ่มและวันที่สิ้นสุดการลา (ไม่เกิน 62 วัน)");
+  if (!isDay(from) || !isDay(to)) return no(PICK_DATES_TEXT);
+  try {
+    leaveDaysBetween(from, to); // ช่วงวันกลับหัว / ยาวเกินกำหนด = ข้อความของ service (ก่อนอ่านอะไร)
+  } catch (e) {
+    const t = leaveRefusalText(e);
+    return t ? no(t) : failed(e);
+  }
   const half = input?.halfDay === "AM" || input?.halfDay === "PM" ? input.halfDay : null;
   const hours = typeof input?.hours === "number" ? input.hours : null;
   const [entries, hols, bal] = await Promise.all([
@@ -410,34 +431,56 @@ async function ownFutureEntry(me: Me, entryId: unknown, now: Date): Promise<Entr
   })) as EntryRow | null;
   return e;
 }
-async function swapTargetsOf(me: Me, from: EntryRow): Promise<MySwapTarget[]> {
+/**
+ * เพื่อนที่ service สลับกะ "ยอมรับ" สำหรับกะต้นทางนี้ (มติ r2): ผู้สมัคร = พนักงานในระบบเดียวกันที่ผูกบัญชี · ยังทำงาน · สาขาประจำหรือยืมตัวเข้าสาขาของกะในวันนั้น
+ * (query ตรงเงื่อนไข ไม่ตัดจำนวน) → ถามตัวตรวจของ swap.ts (swapCandidatesAccepted — กติกาเดียวกับ requestSwap) ว่า "ยกกะให้" ได้ไหม ·
+ * entryId = กะของเขาวันนั้นที่ "แลก" ได้ด้วย (ไม่มี = ยกกะให้เท่านั้น) · ผลไม่บอกเหตุผลรายคน (ไม่เปิดว่าใครลา)
+ */
+async function swapTargetsOf(me: Me, from: EntryRow, now: Date): Promise<MySwapTarget[]> {
   const day = dayOf(from.date);
+  if (!from.unitId) return [];
   const db = tenantDb(me.ctx);
-  const emps = await db.hrEmployee.findMany({
-    where: { tenantId: me.tenantId, systemId: me.ctx.systemId, active: true, NOT: [{ id: me.employeeId }, { employmentStatus: "ENDED" }] },
-    select: { id: true, name: true, position: true, unitId: true, units: { select: { id: true, unitId: true, fromDate: true, toDate: true }, take: 200 } },
+  const d = dbDate(day);
+  const peers = await db.hrEmployee.findMany({
+    where: {
+      tenantId: me.tenantId,
+      systemId: me.ctx.systemId,
+      active: true,
+      linkedUserId: { not: null },
+      NOT: [{ id: me.employeeId }, { employmentStatus: "ENDED" }],
+      OR: [{ unitId: from.unitId }, { units: { some: { unitId: from.unitId, fromDate: { lte: d }, OR: [{ toDate: null }, { toDate: { gte: d } }] } } }],
+    },
+    select: { id: true, name: true, position: true },
     orderBy: [{ name: "asc" }, { id: "asc" }],
-    take: 500,
   });
-  const peers = emps.filter((e) => from.unitId !== null && unitOfDay(e, day) === from.unitId).slice(0, 50);
   if (!peers.length) return [];
   const theirs = (await db.hrRosterEntry.findMany({
-    where: { tenantId: me.tenantId, systemId: me.ctx.systemId, employeeId: { in: peers.map((p) => p.id) }, publishedAt: { not: null }, date: dbDate(day) },
+    where: { tenantId: me.tenantId, systemId: me.ctx.systemId, employeeId: { in: peers.map((p) => p.id) }, publishedAt: { not: null }, date: d },
     select: { ...ENTRY_SELECT, employeeId: true },
     orderBy: [{ startMin: "asc" }, { id: "asc" }],
   })) as (EntryRow & { employeeId: string })[];
-  return peers.map((p) => {
-    const e = theirs.find((x) => x.employeeId === p.id) ?? null;
-    return { employeeId: p.id, name: p.name, position: p.position, entryId: e?.id ?? null, shiftName: e?.shift.name ?? null };
-  });
+  const today = bkkDayKey(now);
+  const give = await swapCandidatesAccepted(me.ctx, me.userId, from.id, peers.map((p) => ({ employeeId: p.id, toEntryId: null })), today);
+  const out: MySwapTarget[] = [];
+  for (let i = 0; i < peers.length; i++) {
+    if (!give[i]) continue;
+    const p = peers[i]!;
+    const mine = theirs.filter((x) => x.employeeId === p.id);
+    const trade = mine.length ? await swapCandidatesAccepted(me.ctx, me.userId, from.id, mine.map((x) => ({ employeeId: p.id, toEntryId: x.id })), today) : [];
+    const e = mine.find((_, k) => trade[k]) ?? null;
+    out.push({ employeeId: p.id, name: p.name, position: p.position, entryId: e?.id ?? null, shiftName: e?.shift.name ?? null });
+  }
+  return out;
 }
-/** เพื่อนที่รับ/แลกกะได้ (R9): สาขาเดียวกันในวันของกะต้นทาง · ยังทำงาน · entryId = กะของเขาวันนั้น (ไม่มี = ยกกะให้) · กะต้นทางต้องเป็นของตัวเองที่ยังมาไม่ถึง */
+/** เพื่อนที่รับ/แลกกะได้ (R9): เฉพาะคนที่ service สลับกะยอมรับ · กะต้นทางต้องเป็นของตัวเองที่ยังมาไม่ถึง · พ้นสภาพ = inactive */
 export async function mySwapTargets(actor: SelfActor, input: { fromEntryId?: unknown }, opts: Opts = {}): Promise<{ ok: true; items: MySwapTarget[] } | Fail> {
   const me = await resolveSelf(actor);
   if (!me) return no(SELF_TEXT.noEmployee);
-  const from = await ownFutureEntry(me, input?.fromEntryId, nowOf(opts));
+  if (!me.active) return no(SELF_TEXT.inactive);
+  const now = nowOf(opts);
+  const from = await ownFutureEntry(me, input?.fromEntryId, now);
   if (!from) return no(SELF_TEXT.notFound);
-  return { ok: true, items: await swapTargetsOf(me, from) };
+  return { ok: true, items: await swapTargetsOf(me, from, now) };
 }
 
 /** กะของตัวเองที่ยังมาไม่ถึง (28 วัน) — ตัวเลือก "กะที่จะขอเปลี่ยน" ของฟอร์มสลับกะ */
@@ -454,7 +497,7 @@ export async function myCorrectablePunches(actor: SelfActor, input: { from?: unk
   const me = await resolveSelf(actor);
   if (!me) return no(SELF_TEXT.noEmployee);
   const today = bkkDayKey(nowOf(opts));
-  const from = isDay(input?.from) ? input.from : addDays(today, -35);
+  const from = isDay(input?.from) ? input.from : addDays(today, -CORRECTION_RULES.BACK_DAYS);
   const to = isDay(input?.to) ? input.to : today;
   const rows = await correctablePunches(me.ctx, viewerOf(me), { from, to });
   return { ok: true, items: rows.map((r) => ({ id: r.id, kind: r.kind, at: r.at })) };
@@ -515,7 +558,7 @@ export async function selfRequestLeave(
       toDate: str(input?.toDate),
       halfDay: input?.halfDay === "AM" || input?.halfDay === "PM" ? input.halfDay : null,
       hours: typeof input?.hours === "number" || typeof input?.hours === "string" ? input.hours : null,
-      reason: typeof input?.reason === "string" ? input.reason.slice(0, 500) : null,
+      reason: typeof input?.reason === "string" ? input.reason : null, // ไม่ตัดเอง — service เป็นผู้ตัดสิน
     });
     return { ok: true, id: r.id };
   } catch (e) {
@@ -563,11 +606,13 @@ export async function selfRequestSwap(
   const from = await ownFutureEntry(me, input?.fromEntryId, nowOf(opts));
   if (!from) return no(SELF_TEXT.notFound);
   // เพื่อน = id ต่างชาติตัวเดียวที่รับ (R9) — ต้องอยู่ในรายชื่อของกะต้นทางนี้ · กะปลายทาง (ถ้าส่ง) = กะของเพื่อนในรายชื่อเท่านั้น
-  const peer = (await swapTargetsOf(me, from)).find((t) => t.employeeId === str(input?.targetEmployeeId));
+  const peer = (await swapTargetsOf(me, from, nowOf(opts))).find((t) => t.employeeId === str(input?.targetEmployeeId));
   if (!peer) return no(SELF_TEXT.notFound);
   const toEntryId = str(input?.toEntryId) || null;
   if (toEntryId && toEntryId !== peer.entryId) return no(SELF_TEXT.notFound);
-  return requestSwap(me.ctx, viewerOf(me), { fromEntryId: from.id, targetEmployeeId: peer.employeeId, toEntryId, reason: typeof input?.reason === "string" ? input.reason : null });
+  const r = await requestSwap(me.ctx, viewerOf(me), { fromEntryId: from.id, targetEmployeeId: peer.employeeId, toEntryId, reason: typeof input?.reason === "string" ? input.reason : null });
+  // ข้อความ "เพื่อนร่วมงาน ลาอนุมัติแล้ว" ไม่ส่งถึงผู้ขอ (ไม่เปิดว่าเพื่อนที่เลือกลา) ⇒ ข้อความกลาง
+  return !r.ok && r.reason === SWAP_REFUSAL.leavePeer ? no(SWAP_PEER_UNAVAILABLE) : r;
 }
 
 export async function selfRespondSwap(actor: SelfActor, swapId: unknown, accept: unknown) {
@@ -612,21 +657,12 @@ export async function selfCancelCorrection(actor: SelfActor, correctionId: unkno
   return cancelCorrection(me.ctx, viewerOf(me), own.id);
 }
 
-// ── เบิกล่วงหน้า (R6 — ทางเล็กที่สุด · ผ่อนหลายงวด/เพดานของร้าน = H3.4) ──
+// ── เบิกล่วงหน้า (R6 + มติ r2: ธุรกรรมเดียวใต้ล็อกใน payroll.ts · ผ่อนหลายงวด/เพดานของร้าน = H3.4) ──
 const ADV_MAX_BAHT = 50_000;
-const ADV_NOTE_MAX = 200;
-const advWhere = (me: Me) => ({ tenantId: me.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, kind: "ADVANCE" as const, status: "PENDING" as const, runId: null });
-const monthAfter = (p: string): string => {
-  const y = Number(p.slice(0, 4));
-  const m = Number(p.slice(5, 7));
-  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
-};
-const ADV_TX_OPTS = { maxWait: 20_000, timeout: 30_000 } as const;
 /**
- * ยื่นเบิกล่วงหน้าของตัวเอง: บาทเต็ม 1–50,000 · หมายเหตุ ≤ 200 · ค้างได้ทีละ 1 ใบ · งวด = เดือนนี้ (ไทย) ถ้ายังไม่มีรอบจ่าย ไม่งั้นเดือนหน้า ไม่งั้นปิด ·
- * แถวเขียนโดย payroll.requestAdjustment (ผู้เขียนแถวรายการเงินตัวเดียว — qc-hf-hr-privacy S-20) · ไม่เคยอนุมัติตัวเอง: ผู้อนุมัติ = หน้าเงินเดือนเดิม (decideAdjustment) ·
- * กันยื่นซ้อนพร้อมกัน: หลังเขียนแล้วตรวจใต้ล็อก hr:advance:<พนักงาน> (คำสั่งในธุรกรรมใช้ tx เดียว) — มีใบเปิดอื่นอยู่แล้ว ⇒ ถอนใบที่เพิ่งเขียน = advOpen
- * (ผู้ตรวจทีหลังเห็นใบที่ commit แล้วทุกใบ ⇒ เหลือใบเดียวเสมอ)
+ * ยื่นเบิกล่วงหน้าของตัวเอง: บาทเต็ม 1–50,000 · หมายเหตุ ≤ 200 · เปิดได้ทีละ 1 ใบ (รออนุมัติ หรืออนุมัติแล้วแต่ยังไม่จ่าย) ·
+ * งวด = เดือนนี้ (ไทย) ถ้ายังไม่มีรอบจ่าย ไม่งั้นเดือนหน้า ไม่งั้นปิด — ตรวจ+เขียนในธุรกรรมเดียวใต้ล็อก hr:advance (payroll.requestSelfAdvance) ·
+ * ไม่เคยอนุมัติตัวเอง: ผู้อนุมัติ = หน้าเงินเดือนเดิม (decideAdjustment · ล็อกเดียวกัน)
  */
 export async function selfRequestAdvance(actor: SelfActor, input: { amountBaht?: unknown; note?: unknown }, opts: Opts = {}): Promise<{ ok: true; id: string; periodKey: string } | Fail> {
   const me = await resolveSelf(actor);
@@ -635,53 +671,21 @@ export async function selfRequestAdvance(actor: SelfActor, input: { amountBaht?:
   const baht = input?.amountBaht;
   if (typeof baht !== "number" || !Number.isInteger(baht) || baht < 1 || baht > ADV_MAX_BAHT) return no(SELF_TEXT.advAmount);
   const note = typeof input?.note === "string" ? input.note.trim() : "";
-  if ([...note].length > ADV_NOTE_MAX) return no(SELF_TEXT.advNote);
-  const db = tenantDb(me.ctx);
-  if ((await db.hrPayAdjustment.count({ where: advWhere(me) })) > 0) return no(SELF_TEXT.advOpen);
-  const live = new Set(await payrollRunPeriods(me.ctx));
-  const thisMonth = bkkDayKey(nowOf(opts)).slice(0, 7);
-  const periodKey = !live.has(thisMonth) ? thisMonth : !live.has(monthAfter(thisMonth)) ? monthAfter(thisMonth) : null;
-  if (!periodKey) return no(SELF_TEXT.advClosed);
-  const r = await requestAdjustment(me.ctx, { employeeId: me.employeeId, periodKey, kind: "ADVANCE", amountSatang: baht * 100, note: note || null, requestedById: me.userId });
-  if (!r.ok || !r.id) return r.code === "PERIOD_CLOSED" ? no(SELF_TEXT.advClosed) : no(r.reason ?? FAILED_TEXT);
-  const madeId = r.id;
-  const kept = await db.$transaction(async (t) => {
-    const tx = t as unknown as Prisma.TransactionClient;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:advance:${me.employeeId}`}, 0))`;
-    const others = await tx.hrPayAdjustment.count({ where: { ...advWhere(me), NOT: { id: madeId } } });
-    if (others === 0) return true;
-    await tx.hrPayAdjustment.deleteMany({ where: { id: madeId, ...advWhere(me), requestedById: me.userId } });
-    return false;
-  }, ADV_TX_OPTS);
-  if (!kept) return no(SELF_TEXT.advOpen);
-  // audit หลัง commit — ไม่มียอดเงิน/หมายเหตุ (R6)
-  await writeAudit({
-    tenantId: me.tenantId,
-    actorType: "USER",
-    actorId: me.userId,
-    action: "hr.payadjust.request",
-    targetType: "HrPayAdjustment",
-    targetId: madeId,
-    after: { adjustmentId: madeId, employeeId: me.employeeId, kind: "ADVANCE", periodKey },
-  });
-  return { ok: true, id: madeId, periodKey };
+  if ([...note].length > SELF_ADVANCE_NOTE_MAX) return no(SELF_TEXT.advNote);
+  const r = await requestSelfAdvance(me.ctx, { employeeId: me.employeeId, requestedById: me.userId, amountSatang: baht * 100, note: note || null }, { now: opts?.now });
+  if (r.ok) return r;
+  return no(r.code === "OPEN" ? SELF_TEXT.advOpen : r.code === "CLOSED" ? SELF_TEXT.advClosed : r.code === "NOTE" ? SELF_TEXT.advNote : SELF_TEXT.advAmount);
 }
 
-/** ยกเลิกเบิกล่วงหน้าของตัวเองที่ยังรออนุมัติ (ยังไม่เข้ารอบจ่าย · ยื่นเอง) — ไม่ใช่ = notFound */
+/** ยกเลิกเบิกล่วงหน้าของตัวเองที่ยังรออนุมัติ (ยังไม่เข้ารอบจ่าย · ยื่นเอง) — payroll.cancelSelfAdvance ใต้ล็อกเดียวกัน · ไม่ใช่ = notFound */
 export async function selfCancelAdvance(actor: SelfActor, advanceId: unknown): Promise<{ ok: true } | Fail> {
   const me = await resolveSelf(actor);
   if (!me) return no(SELF_TEXT.noEmployee);
   if (!me.active) return no(SELF_TEXT.inactive);
   const id = str(advanceId);
   if (!id) return no(SELF_TEXT.notFound);
-  const where = { id, ...advWhere(me), requestedById: me.userId };
-  const db = tenantDb(me.ctx);
-  const row = await db.hrPayAdjustment.findFirst({ where, select: { employeeId: true, kind: true, amountSatang: true, status: true, periodKey: true, requestedById: true, decidedById: true } });
-  if (!row) return no(SELF_TEXT.notFound);
-  const del = await db.hrPayAdjustment.deleteMany({ where });
-  if (del.count !== 1) return no(SELF_TEXT.notFound);
-  await writeAudit({ tenantId: me.tenantId, actorType: "USER", actorId: me.userId, action: "hr.payadjust.delete", targetType: "HrPayAdjustment", targetId: id, before: row });
-  return { ok: true };
+  const r = await cancelSelfAdvance(me.ctx, { id, employeeId: me.employeeId, requestedById: me.userId });
+  return r.ok ? r : no(SELF_TEXT.notFound);
 }
 
 export async function selfAcknowledgeNote(actor: SelfActor, noteId: unknown, opts: Opts = {}) {

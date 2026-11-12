@@ -105,7 +105,7 @@ export async function hrTabsFor(systemId: string, viewer?: HrNavViewer, linked?:
   if (!v || l === undefined) {
     const auth = await requireTenant();
     v ??= { role: auth.active.role, unitAccess: auth.active.unitAccess, permissions: auth.active.permissions, userId: auth.user.id };
-    l ??= (await employeeOfUser(auth.active.tenantId, auth.user.id)) !== null;
+    l ??= (await employeeOfUser(auth.active.tenantId, auth.user.id))?.systemId === systemId; // ผูกกับระบบ HR นี้เท่านั้น
   }
   return hrNavFilter(hrTabs(systemId), v, { linked: l });
 }
