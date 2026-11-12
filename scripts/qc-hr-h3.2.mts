@@ -50,7 +50,8 @@ const T = {
   // ORACLE-EDIT (fix r1 R2c): order of steps reversed — recompute the run first, then compute deductions, then approve
   runStale: "มีรายการหักสาย/ขาดในรอบนี้ที่ข้อมูลเวลาเปลี่ยนแล้ว — กด 'คำนวณใหม่' ที่รอบจ่ายก่อน แล้วกด 'คำนวณรายการหักสาย/ขาด' จากนั้นจึงอนุมัติ",
   // ORACLE-EDIT (fix r1 R1): approve gate "deductions of the work period must match the time data"
-  runSync: "รายการหักสาย/ขาดของงวดนี้ยังไม่ตรงกับข้อมูลเวลา — กด 'คำนวณใหม่' ที่รอบจ่ายก่อน แล้วกด 'คำนวณรายการหักสาย/ขาด' จากนั้นจึงอนุมัติ",
+  // ORACLE-EDIT (fix r3 N1): the refusal now also names the pull step ("ดึงชั่วโมงทำงาน")
+  runSync: "รายการหักสาย/ขาดของงวดนี้ยังไม่ตรงกับข้อมูลเวลา — กด 'คำนวณใหม่' ที่รอบจ่ายก่อน แล้วกด 'ดึงชั่วโมงทำงาน' และ 'คำนวณรายการหักสาย/ขาด' จากนั้นจึงอนุมัติ",
 };
 // H1.3 texts (decideAdjustment, unchanged)
 const OWN_REQ = "อนุมัติรายการที่ตัวเองยื่นไม่ได้ — ให้เจ้าของหรือผู้มีสิทธิ์อนุมัติแทน";
@@ -120,6 +121,7 @@ S8.15|fix2|C|R|[db] ORACLE-EDIT (fix r2 F1): Aug frozen with the rule never on �
 S8.16|fix2|C|R|[db] ORACLE-EDIT (fix r2 F2): in-force interval opens at the current period · July (before) approves without sync · OFF ⇒ stale approved Aug row still blocks · sync while OFF clears it
 S8.17|fix2|C|R|[db] ORACLE-EDIT (fix r2 F3): run member without work hours passes the gate (a) · base → 0 ⇒ sync supersedes the approved row and the gate clears (b)
 S8.18|fix2|C|R|[db] ORACLE-EDIT (fix r2 F4): sync ∥ OFF ×4 ⇒ no PENDING and no live header (behavioural)
+S8.19|fix3|C|R|[db] ORACLE-EDIT (fix r3 N1): rule on · late 30 never pulled ⇒ approve(Aug) refused · pull + sync + approve ⇒ settled 3,125 (also with sync before pull)
 S9.1|R10|C|R|[db] preview viewer matrix (money keys payroll only)
 S9.2|R10|C|R|[db] preview literals (eL · eF · eH)
 S9.3|R10|C|R|[db] lines reader: payroll literal · others identical bytes
@@ -471,6 +473,7 @@ async function runDb(): Promise<void> {
   };
   const SC = { G: await mkScen("G"), F: await mkScen("F"), H: await mkScen("H"), I: await mkScen("I"), J: await mkScen("J"), K: await mkScen("K") };
   // ORACLE-EDIT (fix r2) ▸ scenarios S8.15–S8.18 (rule NOT switched on in the S8.8 loop) · P1 has a 2nd employee with a salary but no roster/time ◂
+  const SC3 = { R: await mkScen("R"), S: await mkScen("S") }; // ORACLE-EDIT (fix r3) ◂ S8.19
   const SC2 = { N: await mkScen("N"), O: await mkScen("O"), P1: await mkScen("P1"), P2: await mkScen("P2"), Q0: await mkScen("Q0"), Q1: await mkScen("Q1"), Q2: await mkScen("Q2"), Q3: await mkScen("Q3") };
   const eP1b = await me(SC2.P1.s, "พนักงาน P1b", { unitId: u1 });
   nameOf[eP1b] = "eP1b";
@@ -998,6 +1001,32 @@ async function runDb(): Promise<void> {
         res.push(`${r1.ok ? `c${r1.value?.created}` : "off"}/${r2.ok}:p${pend}h${liveH}`);
       }
       ck("S8.18", { none: ok }, "no PENDING · no live header", res.join(" "));
+    }
+    // S8.19 — fix r3 (N1): rule ON, Aug in force, late 30 on 4 Aug, work hours never pulled ⇒ approve(Aug) must not pass as "nothing owed"
+    //   R: run → approve refused → pull + sync (target Sept: Aug has a draft) → approve deduction → approve Aug (live 3,125 = E) → Sept run ⇒ settled 3,125
+    //   S: same, but a sync before the pull (waits MISSING, writes nothing) — approve still refused
+    {
+      const res: string[] = [];
+      let all = true;
+      for (const [key, x] of [["R", SC3.R], ["S", SC3.S]] as const) {
+        await savePol(x.c, Vw.owner, { enabled: true });
+        const s0 = key === "S" ? await sync(x.c, Vw.owner) : null;
+        const aug = await runOf(x.c, PER);
+        const ap1 = await apRun(x.c, aug?.id);
+        await build(x.c);
+        const s1 = await sync(x.c, Vw.owner);
+        const d0 = await firstDed(x.s);
+        await decideAs(x.c, d0?.id, "APPROVED");
+        const ap2 = await apRun(x.c, aug?.id);
+        await prepMonth(x, "2031-09");
+        const sep = await runOf(x.c, "2031-09");
+        const ap3 = await apRun(x.c, sep?.id);
+        const set = await settled(x.s);
+        const ok = (!s0 || (s0.ok && s0.value?.created === 0 && codes(s0, "wait") === "MISSING")) && ap1?.ok === false && ap1?.note === T.runSync && s1.ok && s1.value?.created === 1 && d0?.amountSatang === 3125 && ap2?.ok === true && ap3?.ok === true && set === 3125;
+        all = all && ok;
+        res.push(`${key}:${s0 ? `${shown(s0)}/${codes(s0, "wait")} ` : ""}${short(ap1, 40)} ${shown(s1)} ${short(ap2, 20)} ${short(ap3, 20)} settled=${set}`);
+      }
+      ck("S8.19", { both: all }, "never-pulled month refused · settled 3,125", res.join(" | "));
     }
   }
 }
