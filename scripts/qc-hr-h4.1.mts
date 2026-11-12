@@ -154,8 +154,12 @@ chk("S1.5", sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, PAYROLL_RULES_SHA
 }
 {
   const src = `${rd(F.ui)}\n${rd(F.page)}`;
-  const ids = testidsOf(src, "hr-leave-impact");
-  const inv = inventoryParity("/hr/leave", new Set([...ids].filter((i) => i.startsWith("hr-leave-impact"))), "H4.1", SUITE);
+  // ORACLE-EDIT (builder H4.1): testidsOf ต้องมีอักษรต่อท้าย prefix ≥ 1 ตัว ⇒ "hr-leave-impact" ตรงตัวไม่มีวันเจอ → สแกนด้วย "hr-leave-" แล้วกรอง ·
+  //   inventoryParity.meta ตรวจทุกแถวของหน้า /hr/leave (แถว H2.7 เดิม ⇒ เท็จเสมอ) → ตรวจ wo/oracle เฉพาะแถว hr-leave-impact*
+  const ids = new Set([...testidsOf(src, "hr-leave-")].filter((i) => i.startsWith("hr-leave-impact")));
+  const inv0 = inventoryParity("/hr/leave", ids, "H4.1", SUITE);
+  const impRows = ((jsonOf("scripts/hr-ui-inventory.json")?.rows ?? []) as Any[]).filter((r) => String(r.page ?? "").endsWith("/hr/leave") && String(r.testid ?? "").startsWith("hr-leave-impact"));
+  const inv = { ...inv0, rows: impRows.length, meta: impRows.length > 0 && impRows.every((r) => r.wo === "H4.1" && r.oracle === SUITE) };
   const th = flat(jsonOf(F.th)?.hr?.leaveImpact ?? {});
   const en = flat(jsonOf(F.en)?.hr?.leaveImpact ?? {});
   const mp = msgParity(th, en, ["title", "uncovered", "covered", "candidate", "noCandidate"]);
