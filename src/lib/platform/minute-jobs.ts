@@ -777,6 +777,22 @@ registerMinuteJob({
   run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runMinPaxCheck(now, { signal: ctrl.signal }),
 });
 // ◂ TRIPS T0.3
+// ── T0.4 capacity ── TRIPS T0.4 ▸ ที่นั่งทัวร์ (ใบสั่ง T0.4 §6) — ข้ามร้าน (ทางเข้า `trips/jobs.ts`) · โหลด facade trips ตอนรัน · เคารพ signal + deadline
+//   expireHolds: hold ครบกำหนด ⇒ EXPIRED (CAS) + คืนตัวนับ + การจอง HOLD/PENDING ⇒ EXPIRED + เสนอรายการรอ · ซ้อนกัน = ผลเดียว (X5)
+//   waitlistOffers: รอบที่มีคนรอ ⇒ เสนอที่ (ตัวสำรองของการเสนอทันที) · ปิดรับเว็บแล้ว ⇒ WAITING → EXPIRED
+registerMinuteJob({
+  name: "trips.expireHolds",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runExpireHolds(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+registerMinuteJob({
+  name: "trips.waitlistOffers",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runWaitlistOffers(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+// ── /T0.4 capacity ──
 
 function errorText(e: unknown): string {
   let s: string;

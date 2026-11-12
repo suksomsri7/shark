@@ -222,7 +222,7 @@ try {
     try { const r = await tr.call(db, body, { timeout: 60_000, maxWait: 60_000 }); return asRec(r) ?? { ok: true }; }
     catch (e) { const c = (e as { code?: unknown }).code; return typeof c === "string" && SELL_CODES.includes(c) ? { ok: false, code: c, thrown: true } : { ok: "THROW", e: errMsg(e), pg: String(c ?? "") }; }
   };
-  const fnTx = (name: string) => (tx: unknown, ctx: Rec, input: unknown) => (fn(name) as (...a: unknown[]) => Promise<unknown>)(tx, ctx, input);
+  const fnTx = (name: string) => (tx: unknown, ctx: Rec, input: unknown, ...rest: unknown[]) => (fn(name) as (...a: unknown[]) => Promise<unknown>)(tx, ctx, input, ...rest); // ORACLE-EDIT (ผู้คุม 12 พ.ย.): ส่ง policies (อาร์กิวเมนต์ที่ 4) ต่อให้จริง
   const par = async (n: number, f: (i: number) => Promise<Rec>): Promise<Rec[]> => Promise.all(Array.from({ length: n }, (_, i) => f(i).catch((e) => ({ ok: "THROW", e: errMsg(e) }) as Rec)));
 
   // ═══════════════ PC. ตัวควบคุมบวก ═══════════════
@@ -458,7 +458,7 @@ try {
   await st("S-14", "ไม่แตะไฟล์ต้องห้ามเทียบ session/trips: prisma/ · core/settings/ · ไฟล์ของ T0.2/T0.3 · โมดูลเดิม · ข้อสอบ p0.1/t0.1–t0.4", () => {
     const base = git(["merge-base", "HEAD", "session/trips"]).trim();
     ok(base, "หา merge-base กับ session/trips ไม่ได้");
-    const paths = ["prisma", "src/lib/core/settings", "src/lib/modules/trips/departures.ts", "src/lib/modules/trips/departures-core.ts", "src/lib/modules/trips/resources.ts", "src/lib/modules/trips/products.ts",
+    const paths = ["prisma", "src/lib/core/settings", /* ORACLE-EDIT S-14 (ผู้คุม 12 พ.ย.): departures.ts ออกจากรายการ — มติข้อ 13 ให้แก้ doc comment ของสูตรสถานะ */ "src/lib/modules/trips/departures-core.ts", "src/lib/modules/trips/resources.ts", "src/lib/modules/trips/products.ts",
       "src/lib/modules/pos", "src/lib/modules/rooms", "src/lib/modules/hotel", "src/lib/modules/booking", "src/lib/modules/ticket",
       "scripts/qc-trips-p0.1.mts", "scripts/qc-trips-t0.1.mts", "scripts/qc-trips-t0.2.mts", "scripts/qc-trips-t0.3.mts"];
     const changed = [...new Set([...git(["diff", "--name-only", base, "--", ...paths]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...paths]).split("\n")].filter(Boolean))];
@@ -1071,7 +1071,7 @@ try {
     const stop = sampler("TripDeparture", [id]);
     const rs = await withTimer(Promise.all([
       ...hs.map((h) => call("releaseHold", C(), { holdId: h, reason: "x" })),
-      ...wl.slice(5).map((w) => call("leaveWaitlist", PUB(), { waitlistId: w })),
+      ...wl.slice(5).map((w) => call("leaveWaitlist", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติข้อ 9 */, { waitlistId: w })),
       sweep(NOW0).then(() => ({ ok: true }) as Rec),
     ]), 120_000, "DL-4");
     const s = await stop(); noThrow(rs, "DL-4", ["STATE_CONFLICT", "BUSY"]);
@@ -1184,15 +1184,17 @@ try {
   await st("CAP-5", "ตรวจซ้ำด้วยผู้ติดต่อตอน confirm (rekeyHoldsToContactInTx): ผู้ติดต่อมี 3 แถว ACTIVE ⇒ basket ใหม่ HOLD_LIMIT ไม่แก้ capKeyHash · แถวหมดเวลาไม่นับ", async () => {
     await needDb();
     const id = await mkDep({ key: "C" }); const contact = `contact:${hex(5)}`; const ctx = SYS(NOW0, uC);
+    // ORACLE-EDIT CAP-5 (ผู้คุม 12 พ.ย.): มติ r3 N1 — rekey ต้องได้ policies ที่โหลดก่อนเปิด tx (ลำดับการเรียกของ T0.6) · เดิมผ่านเพราะ placeHold เติมแคช
+    const pol = V(await call("loadCapacityPolicies", ctx, { departureIds: [id] }), "โหลด policies");
     const mine: string[] = [];
-    for (let i = 0; i < 3; i++) { const h = hid(await pubHold(id, 1, { ctx: pubC(), capKey: basket() })); mine.push(h); V(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, ctx, { holdIds: [h], contactKey: contact }) as Promise<unknown>), `rekey ${i + 1}`); }
+    for (let i = 0; i < 3; i++) { const h = hid(await pubHold(id, 1, { ctx: pubC(), capKey: basket() })); mine.push(h); V(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, ctx, { holdIds: [h], contactKey: contact }, pol) as Promise<unknown>), `rekey ${i + 1}`); }
     const extra = hid(await pubHold(id, 1, { ctx: pubC(), capKey: basket() }));
     const before = (await hold(extra))?.capKeyHash;
-    codeR(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, ctx, { holdIds: [extra], contactKey: contact }) as Promise<unknown>), "HOLD_LIMIT", "ครั้งที่ 4");
+    codeR(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, ctx, { holdIds: [extra], contactKey: contact }, pol) as Promise<unknown>), "HOLD_LIMIT", "ครั้งที่ 4");
     eq((await hold(extra))?.capKeyHash, before, "capKeyHash ไม่เปลี่ยน");
     const later = SYS(addMin(NOW0, 16), uC);
     const fresh = hid(await pubHold(id, 1, { ctx: pubC(addMin(NOW0, 16)), capKey: basket() }));
-    V(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, later, { holdIds: [fresh], contactKey: contact }) as Promise<unknown>), "หลังของเดิมหมดเวลา");
+    V(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, later, { holdIds: [fresh], contactKey: contact }, pol) as Promise<unknown>), "หลังของเดิมหมดเวลา");
     eq((await hold(mine[0]))?.capKeyHash, (await hold(fresh))?.capKeyHash, "แฮชผู้ติดต่อเดียวกัน");
   });
   await st("CAP-6", "เส้นทางไม่นับ: พนักงานหน้าร้านถือ 5 ครั้ง (ไม่ติด X10) · ข้อเสนอรายการรอไม่ถูกนับในเพดานของใคร", async () => {
@@ -1318,7 +1320,7 @@ try {
     for (const h of hs.slice(0, 2)) V(await call("releaseHold", C(), { holdId: h, reason: "x" }), "ปล่อย");
     const offers = async () => q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripHold" WHERE "departureId" = $1 AND purpose = 'WAITLIST_OFFER'`, [id]);
     eq([(await offers())[0]?.n, (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripWaitlist" WHERE "departureId" = $1 AND "partyId" = $2`, [id, PARTY.a13]))[0]?.n], [1, 1], "ข้อเสนอ/แถว");
-    V(await call("declineWaitlistOffer", PUB(), { waitlistId: w }), "ปฏิเสธ");
+    V(await call("declineWaitlistOffer", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติรอบแก้ข้อ 9 — PUBLIC ถูกปฏิเสธจนกว่าจะมี token ของรายการรอ (T1/W1) */, { waitlistId: w }), "ปฏิเสธ");
     V(await call("releaseHold", C(), { holdId: hs[2], reason: "x" }), "ปล่อยอีก");
     await fn("runWaitlistOffers")(Z(NOW0), { tenantIds: [tA] });
     eq([(await wl(w))?.status, (await offers())[0]?.n], ["DECLINED", 1], "ไม่เสนอซ้ำ");
@@ -1328,10 +1330,10 @@ try {
     const { id, h } = await fullDep(5, 1);
     const w1 = wlId(await joinWl(id, "a1")), w2 = wlId(await joinWl(id, "a2")), w3 = wlId(await joinWl(id, "a3"));
     V(await call("releaseHold", C(), { holdId: h, reason: "x" }), "ปล่อย");
-    codeR(await call("declineWaitlistOffer", PUB(), { waitlistId: w3 }), "STATE_CONFLICT", "ปฏิเสธแถว WAITING");
+    codeR(await call("declineWaitlistOffer", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติรอบแก้ข้อ 9 — PUBLIC ถูกปฏิเสธจนกว่าจะมี token ของรายการรอ (T1/W1) */, { waitlistId: w3 }), "STATE_CONFLICT", "ปฏิเสธแถว WAITING");
     const o1 = String((await wl(w1))?.offerHoldId);
-    V(await call("declineWaitlistOffer", PUB(), { waitlistId: w1 }), "ปฏิเสธ");
-    V(await call("leaveWaitlist", PUB(), { waitlistId: w3 }), "ออก");
+    V(await call("declineWaitlistOffer", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติรอบแก้ข้อ 9 — PUBLIC ถูกปฏิเสธจนกว่าจะมี token ของรายการรอ (T1/W1) */, { waitlistId: w1 }), "ปฏิเสธ");
+    V(await call("leaveWaitlist", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติข้อ 9 */, { waitlistId: w3 }), "ออก");
     eq([(await wl(w1))?.status, (await hold(o1))?.status, (await wl(w2))?.status, (await wl(w3))?.status, (await inv(id)).held], ["DECLINED", "RELEASED", "OFFERED", "CANCELLED", 1], "ผล");
   });
   await st("WL-11", "X4: onWaitlistTrigger ด้วย event เดียวกันซ้ำ 3 ครั้ง (2 พร้อมกัน + 1 ตามหลัง) ⇒ ข้อเสนอ 1 · event waitlist.offered 1", async () => {
@@ -1445,7 +1447,7 @@ try {
     const evs = await q<{ type: string; payload: Rec }>(`SELECT type, payload FROM "OutboxEvent" WHERE "tenantId" = $1 AND type LIKE 'trips.%'`, [tA]);
     ok(evs.length > 0, "ไม่มี event ให้ตรวจ");
     const partyIds = Object.values(PARTY);
-    const bad = evs.filter((e) => { const s = JSON.stringify(e.payload); return /สมหญิง|@|08\d{8}|basket:|contact:/.test(s) || partyIds.some((p) => s.includes(p)); });
+    const bad = evs.filter((e) => { const s = JSON.stringify(e.payload); return /สมหญิง|@|(?<![0-9A-Za-z_])0[689]\d{8}(?![0-9A-Za-z])|basket:|contact:/.test(s) /* ORACLE-EDIT EV-3 (ผู้คุม 12 พ.ย.): เดิม /08\d{8}/ ชนเลขสุ่มใน holdId (th_…0840239416…) = ผลลวง — จับเฉพาะเบอร์ที่เป็นคำเดี่ยว */ || partyIds.some((p) => s.includes(p)); });
     ok(bad.length === 0, `มีข้อมูลบุคคล: ${fmt(bad.slice(0, 2))}`);
   });
   await st("EV-4", "แถว TripHold/TripWaitlist ไม่เก็บ capKey/ผู้ติดต่อดิบ (capKeyHash = hex 64 ทุกแถวของร้านทดสอบ)", async () => {

@@ -154,14 +154,14 @@ async function departurePolicies(g: Gate, rows: readonly { id: string; productId
 export type DepartureCountersAfterSql = {
   /** ความจุใหม่ เช่น ${n} หรือ "capacity" (ไม่เปลี่ยน) */
   capacity: Prisma.Sql;
-  /** ยอดใช้ใหม่ = sold + held + reserved หลังเปลี่ยน เช่น ("sold" + "held" + ${n} + "reserved") */
+  /** ยอดใช้ใหม่ = sold + held หลังเปลี่ยน (ไม่รวม reserved · มติผู้คุม T0.4 r2 ข้อ 13) เช่น ("sold" + "held" + ${n}) — FULL = ไม่เหลือที่นอกโควตา; "ขายหมด" ของหน้าสาธารณะดูจาก capacity − sold − held − reserved ไม่ใช่จากสถานะ */
   used: Prisma.Sql;
   /** sold ใหม่ เช่น ("sold" + ${n}) หรือ "sold" (ไม่เปลี่ยน) */
   sold: Prisma.Sql;
 };
 /** ค่าคงเดิม (ใบ T0.3: แก้ความจุอย่างเดียว ตัวนับไม่เปลี่ยน) */
 export function departureCountersUnchangedSql(capacity: Prisma.Sql): DepartureCountersAfterSql {
-  return { capacity, used: Prisma.sql`("sold" + "held" + "reserved")`, sold: Prisma.sql`"sold"` };
+  return { capacity, used: Prisma.sql`("sold" + "held")`, sold: Prisma.sql`"sold"` };
 }
 /**
  * นิพจน์ SQL เดียวของ "สถานะหลังตัวนับหรือความจุเปลี่ยน" — T0.4 ใช้ตัวนี้ตรงตัว (มติผู้คุม G · REVIEW M2 · r3 N1)
@@ -170,11 +170,11 @@ export function departureCountersUnchangedSql(capacity: Prisma.Sql): DepartureCo
  *   setFull (T0.4 เท่านั้น): สถานะเดิม OPEN/GUARANTEED และยอดใช้ใหม่ ≥ ความจุใหม่ ⇒ FULL · ใบ T0.3 ส่ง false (ใบนี้ไม่ตั้ง FULL)
  * 🔴 ใน SET ของ Postgres ทุกนิพจน์เห็น "แถวเก่า" ⇒ ผู้เรียกต้องส่งค่าหลังเปลี่ยนเป็นพารามิเตอร์ (ห้ามอ้าง "held" ที่กำลังถูกแก้ใน SET เดียวกันแล้วหวังค่าใหม่)
  * วิธีเรียกของ T0.4 (ถือที่ n ที่):
- *   const c = { capacity: Prisma.sql`"capacity"`, used: Prisma.sql`("sold" + "held" + ${n} + "reserved")`, sold: Prisma.sql`"sold"` };
+ *   const c = { capacity: Prisma.sql`"capacity"`, used: Prisma.sql`("sold" + "held" + ${n})`, sold: Prisma.sql`"sold"` };   // used ไม่รวม reserved (T0.4 r2 ข้อ 13)
  *   UPDATE "TripDeparture" SET "held" = "held" + ${n}, "status" = ${departureStatusAfterCountersSql(c, { setFull: true })},
  *     "guaranteedAt" = ${departureGuaranteedAtAfterCountersSql(c, { setFull: true, nowIso })}, "version" = "version" + 1
  *   WHERE … AND "sold" + "held" + "reserved" + ${n} <= "capacity"
- *   (คืนที่: used = ("sold" + "held" - ${n} + "reserved") · ขายจากที่ถือ: used ไม่เปลี่ยน sold = ("sold" + ${n}))
+ *   (คืนที่: used = ("sold" + "held" - ${n}) · ขายจากที่ถือ: used ไม่เปลี่ยน sold = ("sold" + ${n}))
  */
 export function departureStatusAfterCountersSql(c: DepartureCountersAfterSql, opts: { setFull: boolean }): Prisma.Sql {
   const full = opts.setFull ? Prisma.sql`WHEN "status" IN ('OPEN', 'GUARANTEED') AND ${c.used} >= ${c.capacity} THEN 'FULL'` : Prisma.empty;
