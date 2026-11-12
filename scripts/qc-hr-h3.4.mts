@@ -1,17 +1,15 @@
 // QC — HR V2 · H3.4 payroll run v2 (engineVersion 2): pay types · proration (HQ6) · holiday pay/work · carry-forward (HQ7) · maker-checker (HQ17) ·
 //      branch preview · key wiring · REFUND kind · H2.9 normal-day divisor · brief ledger/hr-briefs/hr-brief-H3.4.md + wo-notes/hr-H3.4-design.md (DRAFT)
-// ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
+// ⚠️ Oracle under change control — ORACLE-EDIT only.
 // 🔴 Every expected number is a LITERAL (scripts/fixtures/hr-h3.4-vectors.json + constants below) worked by hand in ledger/wo-notes/hr-H3.4-oracle.md.
 // CONTRACT (brief R2–R16):
-//   payroll-run-rules.ts (pure): computeRunItemV2(input, lawSet) → {ok, lines[{code, ref, day, minutes, amountSatang, requestedSatang?}], …, carry[{cls, amountSatang}], flags, blocked} | {ok:false, code} ·
-//     RUN_V2_DEFAULTS {normalDayMin 480, claimCapBp 2000}
-//   payroll.ts: getPayrollEngine(ctx) · setPayrollEngine(ctx, viewer, {engineVersion, claimCapBp?}, {now?}) · createPayrollRunV2(ctx, viewer, {periodKey, payDate}, {now?, actor?}) ·
+//   payroll-run-rules.ts (pure): computeRunItemV2(input, lawSet) → {ok, lines[…], …, carry[{cls, amountSatang}], receivable[…], flags, blocked} | {ok:false, code} ·
+//     RUN_V2_DEFAULTS {normalDayMin 480, catCapBp 1000, totalCapBp 2000} · r2 = controller rulings L1–L9 (13 Nov) — vectors tagged rev r2-* re-verify on a lane DB
+//   payroll.ts: getPayrollEngine(ctx) · setPayrollEngine(ctx, viewer, {engineVersion, catCapBp?, totalCapBp?}, {now?}) · createPayrollRunV2(ctx, viewer, {periodKey, payDate}, {now?, actor?}) ·
 //     recomputeDraftRun(ctx, runId, actor, {viewer?, now?}) · approveRun(ctx, runId, expect?, actor?) · reverseRun(…) (CARRY_BOUND) · previewPayrollRunV2(ctx, viewer, {runId}) ·
 //     confirmBranchHours(ctx, viewer, {runId, unitId}, {now?}) · holidayWorkPricedInTx · RUN2_TEXT · V2_VARIABLE_PAY
 //   ot-rules.ts otAmount({…, normalDayMin?}) · payroll-rules-v2.ts classifyIncomeV2 accepts REFUND
-// Tenants qc-hr-h34-<stamp> · Sept/Oct 2031 · opts.now injected · QC-only law rows sourceKey qc-h34-<tag>-* (v1 values, ACTIVE, from 2031-01-01) deleted at the end ·
-// SKIP while hr/payroll-run-rules.ts is absent (QC_FORCE=1 runs) · --list · H3.2-dependent checks (S7.*) = n/a while hr/attendance-pay.ts is absent.
-// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.4.mts
+// Tenants qc-hr-h34-<stamp> · Sept/Oct 2031 · opts.now · QC-only law rows qc-h34-<tag>-* deleted at the end · SKIP while payroll-run-rules.ts absent · S7.* n/a without H3.2.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -47,15 +45,15 @@ const TESTIDS = ["hr-run2-create", "hr-run2-steps", "hr-run2-tiles", "hr-run2-ta
 const SEV: Record<string, Sev> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
 const CHECKS = `
 S1.1|R1|C|R|[static] new files · rules pure (imports ./payroll-rules-v2 ./ot-rules only)
-S1.2|R12|C|R|[static] migrations: _kinds = 2 ADD VALUE only · _v2 additive (stepsJson · inputDigest) · schema
+S1.2|R12|C|R|[static] migrations: _kinds = 2 ADD VALUE only · _v2 additive (stepsJson · inputDigest · HrPayAdjustment.consentAt) · schema
 S1.3|R1|C|R|[static] single writer of HrPayrollRun/Item/HrPayAdjustment = payroll.ts (base writers tolerated)
 S1.4|R1|C|R|[static] law.ts only reader of HrLawTable · payroll.ts uses loadLawSet
 S1.5|R16|M|R|[static] no GPS/photo field in new code
 S1.6|R1|C|G|[static] payroll-rules.ts sha · frozen files unchanged vs base
-S1.7|R1|C|R|[static] marked hunks (v2 ≤ 2 · ot-rules · ot · actions · index) · V2_VARIABLE_PAY = false
+S1.7|R1|C|R|[static] marked hunks · V2_VARIABLE_PAY = false
 S1.8|R8|C|R|[static] keys hr.payroll.reverse · hr.payadjust.reject wired
 S1.9|R15|M|R|[static] UI testids · inventory · hr.run2 th=en · tokens · page · engine card
-S1.10|R2|C|R|[static] otWorkdayMin/otHolidayMin never read · ot.ts subtracts run-priced minutes
+S1.10|R2|C|R|[static] measured OT never priced · ot.ts subtracts run minutes
 S2.1|R2|C|R|[pure] monthly V01–V07
 S2.2|HQ6|C|R|[pure] proration V08–V11
 S2.3|R2|C|R|[pure] unpaid leave V12–V14
@@ -63,40 +61,41 @@ S2.4|R2|C|R|[pure] daily V15–V24
 S2.5|R2|C|R|[pure] hourly V25–V28
 S2.6|R2|C|R|[pure] monthly holiday work V29–V32
 S2.7|R2|C|R|[pure] adjustments V33–V36
-S2.8|HQ7|C|R|[pure] cap + carry V37–V44 + V51
+S2.8|L1|C|R|[pure] r2 caps per category 10 % + total 20 % · consent (s.77) · carry · receivable V37–V44 V51 V61–V63 V65–V67
 S2.9|R2|C|R|[pure] refusals V45–V49
+S2.13|L2|C|R|[pure] r2 ÷30 proration (Feb/31-day) · s.56 SHOP vs PUBLIC · dated SSO row · SSO rounding · lateness refund V52–V60 V64
 S2.10|NA-11|M|R|[pure] V50 daily + commission: regular month = earned (placeholder)
 S2.11|R11|C|R|[pure] otAmount normalDayMin OTN-01…05
 S2.12|R12|C|R|[pure] classifyIncomeV2 REFUND outside 40(1)/SSO · TIP still BAD_KIND
-S3.1|R2|C|R|[pure] gross = net + SSO + WHT = Σ lines · net ≥ 0 · carry = requested − applied
+S3.1|R2|C|R|[pure] identities (gross · Σ lines · net ≥ 0 · carry)
 S3.2|R2|M|R|[pure] purity · RUN_V2_DEFAULTS
-S3.3|HQ7|C|R|[pure] two periods: V38 carry applied next period · Σ = 2,000,000
+S3.3|HQ7|C|R|[pure] two periods V38 · Σ 2,000,000
 S3.4|R14|M|R|[pure] perf: 300 employees × 31 days < 2,000 ms
-S4.1|R3|C|R|[db] engine: default 1 · owner only · cap range · LAW_MISSING · 2 · audit
-S4.2|R3|C|R|[db] v1 create in engine-2 shop ⇒ engineV2 · v2 create in engine-1 shop ⇒ ENGINE_V1
+S4.1|R3|C|R|[db] engine setting rules
+S4.2|R3|C|R|[db] engine mismatch refusals
 S4.3|Q2|C|R|[db] no ACTIVE law ⇒ LAW_MISSING · nothing written
 S4.4|R4|C|R|[db] PENDING OT request ⇒ OT_OPEN
-S4.5|R4|C|R|[db] create Sept: 3 items + totals literal · lawRowIds · ytd · 5 bound
-S4.6|R2|C|R|[db] lines literal · refs real days · no double pay · workDays 30/30/15
+S4.5|R4|C|R|[db] create Sept: 3 items + totals literal (r2: SSO 875 · caps 10/20) · lawRowIds · ytd · 5 bound
+S4.6|R2|C|R|[db] lines literal · refs · no double pay · workDays
 S4.7|HQ17|C|R|[db] maker-checker SAME_PERSON · OWN_PAY · NO_ACTOR
 S4.8|R6|C|R|[db] inputs changed ⇒ INPUTS_CHANGED
 S4.9|R5|C|R|[db] rebuild makes pay3 the maker
-S4.10|R6|C|R|[db] 3 ∥ approve ⇒ 1 ok · JV 12,156,667 · days bound · carry rows literal
+S4.10|R6|C|R|[db] 3 ∥ approve ⇒ 1 ok · JV 12,509,167 · days bound · carry rows literal
 S4.11|R7|M|R|[db] 2 ∥ markPaid ⇒ 1 ok · PAID
 S4.12|R11|C|R|[db] late OT request ⇒ 200,000 (run-priced minutes subtracted)
-S4.13|HQ7|C|R|[db] Oct literal · Σ two periods 900,000 / 700,000
+S4.13|HQ7|C|R|[db] Oct literal (2572 SSO row ⇒ 1,000 ฿) · Σ advance 900,000 · claim 627,500 + carry 72,500
 S4.14|R7|C|R|[db] reverse Sept while carry bound ⇒ CARRY_BOUND
-S4.15|R7|C|R|[db] reverse Oct then Sept ⇒ carry REJECTED · rows restored · JV reversed
+S4.15|R7|C|R|[db] reverse Oct then Sept ⇒ 3 carry rows REJECTED · rows restored · JV reversed
 S4.16|R4|C|R|[db] stale ⇒ WORK_ENTRIES at create and approve
 S4.17|R12|M|R|[db] REFUND request only in engine-2 shops
 S5.1|R13|C|R|[race] 3 ∥ create ⇒ 1 ok · 2 dup
 S5.2|R13|C|R|[race] create waits on the period lock
 S5.3|R13|C|R|[race] approve-adjustment ∥ create ⇒ bound XOR moved
 S5.4|R13|C|R|[race] cancel ∥ create ⇒ gone XOR bound
-S6.1|R9|C|R|[db] preview matrix: owner/payroll 3 rows · manager minutes only · others no
+S6.1|R9|C|R|[db] preview viewer matrix (manager: minutes only)
 S6.2|R9|C|R|[db] IDOR ⇒ identical no
 S6.3|R10|M|R|[db] confirmBranchHours rules
-S7.1|H3.2|C|G|[db] (H3.2-guarded) LATE_RULE −2,777 reduces taxable wage
+S7.1|H3.2|C|G|[db] (H3.2-guarded) LATE_RULE −2,777 reduces taxable + SSO wage · net 1,909,723
 S7.2|H3.2|C|G|[db] (H3.2-guarded) stale approved row ⇒ create refused
 S8.1|frozen|C|G|[db] v1 golden: frozen MONTHLY digest/totals unchanged
 S8.2|frozen|C|G|[db] v1 shop cycle unchanged
@@ -153,7 +152,7 @@ function runStatic(): void {
     const enumBody = (n: string) => (sch.match(new RegExp(`enum ${n} \\{([^}]*)\\}`))?.[1] ?? "");
     const r = {
       kinds: stmts.length === 2 && stmts.some((s) => /^ALTER TYPE "HrPayItemKind" ADD VALUE 'REFUND'$/i.test(s)) && stmts.some((s) => /^ALTER TYPE "HrPaySource" ADD VALUE 'CARRY_FORWARD'$/i.test(s)),
-      cols: /ADD COLUMN\s+"stepsJson"\s+JSONB/i.test(c) && /ADD COLUMN\s+"inputDigest"\s+TEXT/i.test(c),
+      cols: /ADD COLUMN\s+"stepsJson"\s+JSONB/i.test(c) && /ADD COLUMN\s+"inputDigest"\s+TEXT/i.test(c) && /ADD COLUMN\s+"consentAt"\s+TIMESTAMP/i.test(c),
       additive: c.length > 0 && !/\bDROP\b|\bRENAME\b|ALTER\s+TYPE/i.test(c),
       schema: /\bREFUND\b/.test(enumBody("HrPayItemKind")) && /\bCARRY_FORWARD\b/.test(enumBody("HrPaySource")) && /stepsJson\s+Json\?/.test(sch) && /inputDigest\s+String\?/.test(sch),
     };
@@ -235,13 +234,13 @@ const projOf = (o: Any, ref?: (x: string) => string) => {
   return {
     ok: true, lines: (o.lines ?? []).map((l: Any) => lineStr(l, ref)), whtIncomeSatang: o.whtIncomeSatang, ssoWageSatang: o.ssoWageSatang, ssoBaseSatang: o.ssoBaseSatang,
     ssoEmployeeSatang: o.ssoEmployeeSatang, ssoEmployerSatang: o.ssoEmployerSatang, whtSatang: o.whtSatang, availableSatang: o.availableSatang, advanceAppliedSatang: o.advanceAppliedSatang,
-    claimAppliedSatang: o.claimAppliedSatang, claimCapSatang: o.claimCapSatang, carry: (o.carry ?? []).map((c: Any) => `${c.cls}:${c.amountSatang}`), addSatang: o.addSatang,
+    claimAppliedSatang: o.claimAppliedSatang, catCapSatang: o.catCapSatang, totalCapSatang: o.totalCapSatang, carry: (o.carry ?? []).map((c: Any) => `${c.cls}:${c.amountSatang}`), receivable: (o.receivable ?? []).map((c: Any) => `${c.cls}:${c.amountSatang}`), addSatang: o.addSatang,
     deductSatang: o.deductSatang, grossSatang: o.grossSatang, netSatang: o.netSatang, blocked: o.blocked ?? null, flags: [...(o.flags ?? [])].sort(),
   };
 };
 const inputOf = (v: Any) => {
   const { law, ...rest } = v.input;
-  return { input: { ...FX._meta.defaults, ...rest }, lawSet: law === "NO_SSO" ? { TAX_BRACKET: LAWSET!.TAX_BRACKET, DEDUCTION: LAWSET!.DEDUCTION } : LAWSET };
+  return { input: { ...FX._meta.defaults, ...rest }, lawSet: law === "NO_SSO" ? { TAX_BRACKET: LAWSET!.TAX_BRACKET, DEDUCTION: LAWSET!.DEDUCTION } : law === "SSO_2572" ? { ...LAWSET!, SSO: { id: "fx-sso-2572", json: FX.law?.SSO_2572 } } : LAWSET };
 };
 function runPure(R: Any, OR: Any, V2: Any): void {
   const fn = R && !R.__err && typeof R.computeRunItemV2 === "function" ? R.computeRunItemV2 : null;
@@ -271,7 +270,8 @@ function runPure(R: Any, OR: Any, V2: Any): void {
   group("S2.5", 25, 28);
   group("S2.6", 29, 32);
   group("S2.7", 33, 36);
-  group("S2.8", 37, 44, ["V51"]);
+  group("S2.8", 37, 44, ["V51", "V61", "V62", "V63", "V65", "V66", "V67"]);
+  group("S2.13", 52, 60, ["V64"]);
   group("S2.9", 45, 49);
   group("S2.10", 50, 50);
   {
@@ -312,7 +312,7 @@ function runPure(R: Any, OR: Any, V2: Any): void {
       n++;
       const sumLines = (o?.lines ?? []).reduce((s: number, l: Any) => s + Number(l.amountSatang), 0);
       const req = (o?.lines ?? []).filter((l: Any) => ["ADVANCE", "DEDUCTION"].includes(l.code)).reduce((s: number, l: Any) => s + Number(l.requestedSatang) + Number(l.amountSatang), 0);
-      const carry = (o?.carry ?? []).reduce((s: number, c: Any) => s + Number(c.amountSatang), 0);
+      const carry = [...(o?.carry ?? []), ...(o?.receivable ?? [])].reduce((s: number, c: Any) => s + Number(c.amountSatang), 0);
       const ok = o?.ok && o.grossSatang === o.netSatang + o.ssoEmployeeSatang + o.whtSatang && sumLines === o.grossSatang && (o.blocked || o.netSatang >= 0) && (o.blocked || req === carry);
       if (!ok) bad.push(v.id);
     }
@@ -336,7 +336,7 @@ function runPure(R: Any, OR: Any, V2: Any): void {
       Date.now = dn;
       Math.random = mr;
     }
-    const r = { ok: a?.ok === true, same: canon(a) === canon(b), untouched: canon(fz) === before, noClock: !trapped, defaults: canon(R?.RUN_V2_DEFAULTS ?? null) === canon({ normalDayMin: 480, claimCapBp: 2000 }) };
+    const r = { ok: a?.ok === true, same: canon(a) === canon(b), untouched: canon(fz) === before, noClock: !trapped, defaults: canon(R?.RUN_V2_DEFAULTS ?? null) === canon({ normalDayMin: 480, catCapBp: 1000, totalCapBp: 2000 }) };
     ck("S3.2", r, "pure + defaults", short(a, 80));
   }
   {
@@ -406,9 +406,10 @@ const lawStatus = (s: string) => P.$executeRawUnsafe(`UPDATE "HrLawTable" SET st
 
 async function runDb(): Promise<void> {
   actBefore = Number((await rows(`SELECT count(*)::int AS n FROM "HrLawTable" WHERE status = 'ACTIVE'`))[0]?.n ?? -1);
-  for (const [k, kind] of [["sso", "SSO"], ["tax", "TAX_BRACKET"], ["ded", "DEDUCTION"]] as const) {
+  // r2 (L5): SSO rows are dated — 2569–2571 values (max 17,500 ⇒ 875 ฿) from 2031-01-01 and the 2572 step (max 20,000 ⇒ 1,000 ฿) from 2031-10-01 (QC dates; same json as the law rows)
+  for (const [k, kind, from, j] of [["sso", "SSO", "2031-01-01", "SSO"], ["sso2", "SSO", "2031-10-01", "SSO_2572"], ["tax", "TAX_BRACKET", "2031-01-01", "TAX_BRACKET"], ["ded", "DEDUCTION", "2031-01-01", "DEDUCTION"]] as const) {
     const id = `${LAW_KEY}-${k}`;
-    await P.$executeRawUnsafe(`INSERT INTO "HrLawTable" (id, kind, "effectiveFrom", json, status, "sourceKey", note, "approvedByName", "approvedAt") VALUES ($1, $2::"HrLawKind", '2031-01-01'::date, $3::jsonb, 'DRAFT'::"HrLawStatus", $1, 'qc h3.4 fixture', 'QC', now())`, id, kind, JSON.stringify(FX?.law?.[kind] ?? {}));
+    await P.$executeRawUnsafe(`INSERT INTO "HrLawTable" (id, kind, "effectiveFrom", json, status, "sourceKey", note, "approvedByName", "approvedAt") VALUES ($1, $2::"HrLawKind", $3::date, $4::jsonb, 'DRAFT'::"HrLawStatus", $1, 'qc h3.4 fixture', 'QC', now())`, id, kind, from, JSON.stringify(FX?.law?.[j] ?? {}));
     lawIds.push(id);
   }
   const TT = await fx.newTenant("", "QC HR H3.4 เงินเดือนรุ่น 2");
@@ -465,7 +466,7 @@ async function runDb(): Promise<void> {
   await OT.decideOtRequest(cA, V.owner, reqA?.id ?? "∅", "APPROVED", { now: N_SEP8 }).catch(() => null);
   const otRow = (await rows(`SELECT id, "amountSatang" AS a, "periodKey" AS p FROM "HrPayAdjustment" WHERE "tenantId" = $1 AND "employeeId" = $2 AND "sourceType"::text = 'OT_REQUEST'`, TT, E.mA))[0];
   if (otRow) ADJ.aOT = otRow.id;
-  console.log(`  ℹ fixture: OT_REQUEST row mA = ${otRow ? `${otRow.a} @${otRow.p}` : "∅"} (want 175000 @2031-09) · REFUND enum ${hasRefund ? "present" : "absent"}`);
+  console.log(`  ℹ fixture OT_REQUEST mA = ${otRow ? `${otRow.a} @${otRow.p}` : "∅"} (want 175000 @2031-09) · REFUND ${hasRefund}`);
   const nameOfAdj = Object.fromEntries(Object.entries(ADJ).map(([k, v]) => [v, k]));
   const wdIds = new Map((await rows(`SELECT id FROM "HrWorkDay" WHERE "tenantId" = $1`, TT)).map((r: Any) => [r.id, "wd"]));
   const refName = (x: string) => nameOfAdj[x] ?? (wdIds.has(x) ? "wd" : x);
@@ -475,7 +476,7 @@ async function runDb(): Promise<void> {
   {
     const g0 = await PY("getPayrollEngine", cA);
     const nOwner = await PY("setPayrollEngine", cA, V.pay1, { engineVersion: 2 }, { now: N_OCT1 });
-    const cap = await PY("setPayrollEngine", cA, V.owner, { engineVersion: 2, claimCapBp: 10001 }, { now: N_OCT1 });
+    const cap = await PY("setPayrollEngine", cA, V.owner, { engineVersion: 2, catCapBp: 10001 }, { now: N_OCT1 });
     const noLaw = await PY("setPayrollEngine", cA, V.owner, { engineVersion: 2 }, { now: N_OCT1 });
     await lawStatus("ACTIVE");
     const ok = await PY("setPayrollEngine", cA, V.owner, { engineVersion: 2 }, { now: N_OCT1 });
@@ -483,7 +484,7 @@ async function runDb(): Promise<void> {
     const g1 = await PY("getPayrollEngine", cA);
     const aud = await P.auditLog.count({ where: { tenantId: TT, action: "hr.payroll.engine" } }).catch(() => -1);
     const r = {
-      def: g0.value?.engineVersion === 1 && g0.value?.claimCapBp === 2000, owner: !nOwner.ok && nOwner.text === T.engineOwner, cap: !cap.ok && cap.text === T.capRange,
+      def: g0.value?.engineVersion === 1 && g0.value?.catCapBp === 1000 && g0.value?.totalCapBp === 2000, owner: !nOwner.ok && nOwner.text === T.engineOwner, cap: !cap.ok && cap.text === T.capRange,
       law: !noLaw.ok && noLaw.text === T.lawMissing, ok: ok.ok && g1.value?.engineVersion === 2, audit: aud >= 2,
     };
     ck("S4.1", r, "engine rules", `${shown(g0)} ${shown(nOwner)} ${shown(noLaw)} ${shown(ok)} audit=${aud}`);
@@ -528,16 +529,16 @@ async function runDb(): Promise<void> {
     const bound = await rows(`SELECT id FROM "HrPayAdjustment" WHERE "runId" = $1`, RS ?? "∅");
     const r = {
       ok: c1.ok, run: run?.engineVersion === 2 && run?.createdById === U.pay1.id && run?.status === "DRAFT",
-      mA: money(iA) === "2620000/75000/75000/0/2545000/175000/655000", mB: money(iB) === "9316667/75000/75000/24583/9217084/1050000/0", eC: money(iC) === "35000/35000/35000/0/0/0/665000",
-      totals: run && `${run.g}/${run.se}/${run.sr}/${run.w}/${run.n}/${run.a}/${run.d}` === "11971667/185000/185000/24583/11762084/1225000/1320000",
-      law: canon(iA?.lawRowIds) === canon([...lawIds].sort()), ytd: iA?.ytdJson?.monthIndex === 9, bound: bound.length === 5,
+      mA: money(iA) === "2947500/87500/87500/0/2860000/175000/327500", mB: money(iB) === "9316667/87500/87500/23958/9205209/1050000/0", eC: money(iC) === "35000/35000/35000/0/0/0/665000",
+      totals: run && `${run.g}/${run.se}/${run.sr}/${run.w}/${run.n}/${run.a}/${run.d}` === "12299167/210000/210000/23958/12065209/1225000/992500",
+      law: canon(iA?.lawRowIds) === canon(lawIds.filter((x) => !x.endsWith("-sso2")).sort()), ytd: iA?.ytdJson?.monthIndex === 9, bound: bound.length === 5,
     };
     ck("S4.5", r, "Sept literal", `${shown(c1)} A=${money(iA)} B=${money(iB)} C=${money(iC)} bound=${bound.length}`);
   }
   {
     const L = async (emp: string) => ((await itemBy(RS, emp))?.snapshotJson?.lines ?? []).map((l: Any) => lineStr(l, refName)).sort();
     const want = {
-      mA: ["BASE:profile:-:-:3000000", "HOLIDAY_WORK:wd:2031-09-17:480:100000", "OT:aOT:-:-:175000", "DEDUCTION:aDed:-:-:-655000/700000"].sort(),
+      mA: ["BASE:profile:-:-:3000000", "HOLIDAY_WORK:wd:2031-09-17:480:100000", "OT:aOT:-:-:175000", "DEDUCTION:aDed:-:-:-327500/700000"].sort(),
       mB: ["BASE:profile:-:-:8000000", "HOLIDAY_WORK:wd:2031-09-06:480:266667", "BONUS:b1:-:-:1000000", "REFUND:b2:-:-:50000"].sort(),
       eC: ["BASE:profile:-:-:1500000", "PRORATION:employment:-:15:-750000", "UNPAID_LEAVE:wd:2031-09-18:480:-50000", "ADVANCE:c1:-:-:-665000/900000"].sort(),
     };
@@ -593,7 +594,7 @@ async function runDb(): Promise<void> {
     const rb = await PY("recomputeDraftRun", cA, RS ?? "∅", A.pay3, { viewer: V.pay3, now: N_OCT1 });
     const run = await runRow(RS);
     const same = await approve(cA, RS, A.pay3);
-    const r = { ok: rb.ok, maker: run?.createdById === U.pay3.id, steps: (await stepsOf(RS)) === null, totals: Number(run?.n) === 11762084, same: !same.ok && codeOf(same) === "SAME_PERSON" };
+    const r = { ok: rb.ok, maker: run?.createdById === U.pay3.id, steps: (await stepsOf(RS)) === null, totals: Number(run?.n) === 12065209, same: !same.ok && codeOf(same) === "SAME_PERSON" };
     ck("S4.9", r, "rebuilder is the maker", `${shown(rb)} maker=${run?.createdById === U.pay3.id} ${shown(same)}`);
   }
   // ── S4.10 approve ──
@@ -607,8 +608,8 @@ async function runDb(): Promise<void> {
     const carry = (await rows(`SELECT kind::text AS k, "amountSatang" AS a, "periodKey" AS p, status::text AS s, "employeeId" AS e, "sourceRef" AS r FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD' ORDER BY "amountSatang"`, sA))
       .map((c: Any) => `${c.e === E.mA ? "mA" : c.e === E.eC ? "eC" : "?"}:${c.k}:${c.a}:${c.p}:${c.s}:${String(c.r).startsWith(`cf:${RS}:`)}`);
     const r = {
-      one: res.filter((x) => x.ok).length === 1, run: run?.status === "APPROVED" && run?.approvedById === U.pay1.id, jv: dr === 12156667 && cr === 12156667,
-      days: Number(unbound[0]?.n ?? -1) === 0, carry: canon(carry) === canon(["mA:DEDUCTION:45000:2031-10:APPROVED:true", "eC:ADVANCE:235000:2031-10:APPROVED:true"]),
+      one: res.filter((x) => x.ok).length === 1, run: run?.status === "APPROVED" && run?.approvedById === U.pay1.id, jv: dr === 12509167 && cr === 12509167,
+      days: Number(unbound[0]?.n ?? -1) === 0, carry: canon(carry) === canon(["eC:ADVANCE:235000:2031-10:APPROVED:true", "mA:DEDUCTION:372500:2031-10:APPROVED:true"]),
     };
     ck("S4.10", r, "1 ok · JV · carry", `${res.map(shown).join(" ")} dr=${dr} carry=${carry.join(",")}`);
   }
@@ -633,8 +634,8 @@ async function runDb(): Promise<void> {
       return s;
     };
     const r = {
-      ok: c2.ok, mA: money(iA) === "2955000/75000/75000/0/2880000/0/45000", mB: money(iB) === "8200000/75000/75000/27917/8097083/200000/0", eC: money(iC) === "1265000/75000/75000/0/1190000/0/235000",
-      adv: (await applied(E.eC, "ADVANCE")) === 900000, claim: (await applied(E.mA, "DEDUCTION")) === 700000,
+      ok: c2.ok, mA: money(iA) === "2700000/100000/100000/0/2600000/0/300000", mB: money(iB) === "8200000/100000/100000/26667/8073333/200000/0", eC: money(iC) === "1265000/75000/75000/0/1190000/0/235000",
+      adv: (await applied(E.eC, "ADVANCE")) === 900000, claim: (await applied(E.mA, "DEDUCTION")) === 627500, sso2: canon(iA?.lawRowIds) === canon(lawIds.filter((x) => !x.endsWith("-sso")).sort()),
     };
     ck("S4.13", r, "Oct literal · Σ two periods", `${shown(c2)} A=${money(iA)} B=${money(iB)} C=${money(iC)}`);
   }
@@ -654,7 +655,7 @@ async function runDb(): Promise<void> {
     const fixtureRows = fixtureIds.length ? await rows(`SELECT status::text AS s, "runId" FROM "HrPayAdjustment" WHERE id = ANY($1::text[])`, fixtureIds) : [];
     const rev = async (je: string | null | undefined) => (je ? await P.accountJournalEntry.count({ where: { reversalOfId: je } }).catch(() => -1) : -1);
     const r = {
-      chain: ap.ok && pd.ok && r1.ok && r2.ok, both: s1?.status === "REVERSED" && s2?.status === "REVERSED", carry: carry.length === 2 && carry.every((s) => s === "REJECTED"),
+      chain: ap.ok && pd.ok && r1.ok && r2.ok, both: s1?.status === "REVERSED" && s2?.status === "REVERSED", carry: carry.length === 3 && carry.every((s) => s === "REJECTED"),
       rows: fixtureRows.length === fixtureIds.length && fixtureRows.every((x: Any) => x.s === "APPROVED" && x.runId === null), jv: (await rev(s1?.journalEntryId)) === 1 && (await rev(s2?.journalEntryId)) === 1,
     };
     ck("S4.15", r, "reverse both · restored", `${shown(ap)} ${shown(r1)} ${shown(r2)} carry=${carry.join(",")}`);
@@ -674,7 +675,7 @@ async function runDb(): Promise<void> {
     await recB();
     const a = await approve(cB, RB, A.pay3);
     const r = {
-      blocked: !r0.ok && codeOf(r0) === "WORK_ENTRIES" && r0.text === T.weBlocked, ok: r1.ok && money(iS) === "2000000/75000/75000/0/1925000/0/0",
+      blocked: !r0.ok && codeOf(r0) === "WORK_ENTRIES" && r0.text === T.weBlocked, ok: r1.ok && money(iS) === "2000000/87500/87500/0/1912500/0/0",
       approve: !a.ok && codeOf(a) === "WORK_ENTRIES" && (await runRow(RB))?.status === "DRAFT",
     };
     ck("S4.16", r, "WORK_ENTRIES ×2 · ok between", `${shown(r0)} ${shown(r1)} ${money(iS)} ${shown(a)}`);
@@ -733,7 +734,7 @@ async function runDb(): Promise<void> {
     const cr = await createV2(cB, V.pay1, SEP, PAY_SEP, A.pay1);
     const i = await itemBy(cr.value?.id, E.eS);
     const ln = (i?.snapshotJson?.lines ?? []).find((l: Any) => l.code === "LATE_RULE");
-    ck("S7.1", { ok: cr.ok, line: ln?.amountSatang === -2777, wht: i?.snapshotJson?.whtIncomeSatang === 1997223, net: Number(i?.netSatang) === 1922223 }, "LATE_RULE −2,777", `${shown(cr)} ${short(ln, 80)} net=${i?.netSatang}`);
+    ck("S7.1", { ok: cr.ok, line: ln?.amountSatang === -2777, wht: i?.snapshotJson?.whtIncomeSatang === 1997223, net: Number(i?.netSatang) === 1909723 }, "LATE_RULE −2,777", `${shown(cr)} ${short(ln, 80)} net=${i?.netSatang}`);
     await del();
     await P.hrAttendance.updateMany({ where: { id: eSin }, data: { at: bk("2031-09-01", "07:30") } });
     await recB();
