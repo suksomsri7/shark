@@ -1,0 +1,110 @@
+# ใบสั่ง H.4 — เช็กอิน V2 · ทะเบียนแขก (`HotelGuestRecord`) · สแกนบัตร/พาสปอร์ต (AI เสนอ คนยืนยัน · สวิตช์ปิดเป็นค่าเริ่ม) · ร.ร.3 ลงชื่อบนจอ → ร.ร.4 PDF · คิว ตม.30 (24 ชม. · ไฟล์อัปโหลด · เลขรับแจ้ง) · เงินประกันห้อง · ผูกสมาชิก opt-in · จอหน้าเคาน์เตอร์ (ภาพ 09 ซ้าย) · ตรวจ **เข้ม (กฎหมาย · PDPA)** · ผู้ตรวจ 2 รอบ + ที่ปรึกษากฎหมายดูแบบฟอร์ม (J3)
+
+> ร่างโดยผู้คุม 7 พ.ย. 2569 — **เปิดเลนได้เมื่อ H.5 merge** (ใช้ `takeSecurityDeposit` · folio เปิดอยู่) และผู้คุมใส่ฟิกซ์เจอร์บล็อก "SVC H.4" (`SQC_HOTEL_GUEST_SCENE` · `SQC_VISUAL_SPECS["h.4"]` · frontdesk +`hotel.guest.register` · ผู้มี `hotel.guest.viewId` ในฉาก = owner เท่านั้น (manager ไม่มีสิทธิ์หน่วย hotel)) ก่อน
+> แหล่งความจริง: `SVC-HOTEL-PLAN.md` §2 ข้อ 13 · §5.1 Q3–Q6 (ประกัน · ตม.30 ไฟล์+PDF ร.ร.3/4 · AI ปิดเป็นค่าเริ่ม · PDPA 2 ปี + masking + ที่ปรึกษากฎหมาย) · สเปก S §3.5 (S:128–137) §7.4 (S:883–899) §8.6 member (S:1024–1026) §9 สิทธิ์ (S:1053–1083) §11 ข้อ 15 PDPA · ใบ H.0 §2.12 (`HotelGuestRecord` คอลัมน์ · `idNumberEnc` ต้องเข้ารหัส · `retainUntil`) · ใบ H.1 §6.1 คีย์ `rooms.hotel.guest.*`/`securityDeposit.*` (ตั้งไว้แล้วใน registry) · ใบ H.3 (`assignRoom` · `checkIn` เดิมที่ H.3 คงไว้ · nights.roomId) · ใบ H.5 (`takeSecurityDeposit` · folio) · DH §7 "เช็กอิน" (DH:264) · ภาพ `ledger/design-dorm/09-hotel-checkin-folio.png` **ครึ่งซ้าย** (+ `.body.html`) · กฎหมาย: พ.ร.บ.โรงแรม 2547 ม.35 (ร.ร.3 ทันทีที่เข้าพัก · เก็บ ร.ร.3/ร.ร.4 ≥ 1 ปี) + ประกาศกระทรวงมหาดไทยเรื่องแบบ ร.ร.3/ร.ร.4 ฉบับปัจจุบัน (ทำแบบอิเล็กทรอนิกส์ได้) · พ.ร.บ.คนเข้าเมือง 2522 ม.38 (ตม.30 ภายใน 24 ชม.)
+> ของกลางที่ต้องใช้ (ห้ามสร้างซ้ำ): เข้ารหัส `sealIntegrationSecret/openIntegrationSecret` (`src/lib/core/integrations/secret-box.ts` · AAD = guestRecordId) · ไฟล์ส่วนตัว `uploadFile({visibility:"private"})` + `privateFileUrl` (`src/lib/storage/service.ts` · แบบ `dorm/lease.ts` ลายเซ็น/ไฟล์สัญญา) · AI `resolveProvider("smart")` + `canSpend/chargeUsage` (`src/lib/ai/*` · แบบ `dorm/meter-ai.ts` — รูปไม่ออกนอกระบบนอกจาก provider ของระบบ) · สมาชิก `member.findOrCreate` (source STAFF · consents) · วันไทย `bkkYmd/bkkParts` · PDF/พิมพ์ = หน้า print HTML แบบ `dorm/tenants/[leaseId]/print` (ไม่เพิ่มไลบรารี PDF)
+> ข้อสอบ (ห้ามแก้): «scripts/qc-svc-h.4.mts» · probe ผู้ตรวจ `probe-h4-b.mts` · ภาพ `SQC_VISUAL_SPECS["h.4"]`
+> builder: **ห้าม build/next · ห้าม commit/push session/svc · ห้าม pnpm install · ห้าม prisma/** · ห้ามเก็บเลขบัตร/พาสปอร์ตดิบที่ไหนก็ตาม (รวม log/AuditLog/outbox/ชื่อไฟล์)** · temp `svc-h4-`
+
+## 0. หลักของใบ
+- **เช็กอิน V2** (S §7.4) = tx เดียว: CONFIRMED + checkInDate ≤ วันนี้ไทย (ก่อนวัน = `hotel.booking.manage` override + log) → ทุกแถว (กลุ่มเช็กอินทีละห้องได้) ต้องมีห้อง: `assignRoom` (H.3) · รายการห้องว่างจริงตลอดช่วง · ค่าเริ่มเฉพาะ CLEAN (หรือ INSPECTED เมื่อ `inspectionRequired`) · เลือก DIRTY/ไม่ผ่านตรวจ = `force:true` + เหตุผล + AuditLog + HousekeepingLog → มัดจำ walk-in ยังไม่จ่าย ⇒ จอบังคับรับก่อน (`takeBookingDeposit` H.3) หรือ MANAGER ข้ามพร้อมเหตุผล → เงินประกันตามค่าตั้ง (`securityDeposit.enabled`/`appliesTo` ALL|WALK_IN) ⇒ `takeSecurityDeposit` (H.5) → **ทะเบียนแขก ≥ 1 คน** (ผู้พักหลักบังคับ · ผู้พักร่วมเพิ่มได้) → status CHECKED_IN · checkedInAt · occupancy HOLD→STAY (`claimRoom`/เปลี่ยน kind ผ่าน facade rooms ที่มี) · ห้อง `status` P1 OCCUPIED คง · outbox `hotel.checked_in` · member opt-in
+- **ทะเบียนแขก = ร.ร.3 อิเล็กทรอนิกส์**: 1 แถว `HotelGuestRecord` ต่อผู้พัก 1 คน · ฟิลด์ตามแบบ ร.ร.3 ของประกาศกระทรวงมหาดไทยฉบับปัจจุบัน (builder ดึงแบบท้ายประกาศจริงมาใส่ `RR3_FIELDS` เป็นค่าคงที่พร้อมอ้างอิงเลขหน้า/วันที่ประกาศในคอมเมนต์ · **ผู้คุม + ที่ปรึกษากฎหมาย (J3) ตรวจก่อนรับใบ**) อย่างน้อย: ชื่อโรงแรม/เลขที่ใบอนุญาต (ค่าตั้ง `rooms.hotel.license.*` — เพิ่มคีย์) · เลขบัตร ร.ร.3 running ต่อหน่วย · วันเวลาเข้า/ออก · เลขห้อง · ชื่อ-สกุล · สัญชาติ (ISO-3 + ชื่อไทย) · วันเกิด · อาชีพ · ชนิด+เลขเอกสาร (เข้ารหัส · แสดง last4) · ที่อยู่ · มาจาก · จะไปที่ · จำนวนผู้พักร่วม · ลายมือชื่อ (ผู้พักคนใดคนหนึ่งลงชื่อแทนห้องได้ตามกฎ) · ผู้บันทึก · **ร.ร.4 = มุมมองรวมแถว ร.ร.3 ตามลำดับเลขบัตร** (หน้า print ต่อช่วงวัน · ส่งสำเนานายทะเบียนตามรอบที่กฎหมายกำหนด — ระบบเตือน ไม่ส่งเอง)
+- **PDPA (Q6)**: `idNumberEnc` = `sealIntegrationSecret({id}, aad=recordId)` · `idNumberLast4` เท่านั้นที่อ่านได้ทั่วไป · `hotel.guest.viewId` ⇒ เปิดเลขเต็มทีละครั้ง (`revealGuestId` · AuditLog ทุกครั้ง · ไม่ cache ใน DTO) · `maskIdForStaff` ค่าตั้ง · รูปเอกสาร/ลายเซ็น = ไฟล์ **private** (ลิงก์ผ่าน `privateFileUrl` ตรวจสิทธิ์+หมดอายุ · ห้าม cdnUrl สาธารณะ) · `retainUntil` = วันออก + `rooms.hotel.guest.retainYears` (2) → งานรายวัน `purgeExpiredGuestRecords` ลบ `idNumberEnc`/ไฟล์/ลายเซ็น (คงชื่อ+last4+สัญชาติ+วันเข้าออกไว้เป็น ร.ร.4 ย้อนหลังที่ไม่มีข้อมูลอ่อนไหว) + AuditLog ระบบ · ไม่มี PII ใน outbox/log/ชื่อไฟล์ (X8/X10) · เลขบัตรไม่เข้า search index
+- **AI อ่านพาสปอร์ต (Q5 · ค่าเริ่ม "ปิด")**: `rooms.hotel.guest.aiIdReader` ปิด ⇒ ปุ่มไม่แสดง · เปิด ⇒ `readIdDocument({image})` → provider ระบบ (`resolveProvider("smart")` vision · prompt ขอ JSON {fullName, nationality, idNumber, dob, docType, expiry, sex}) → **เสนอค่าใส่ฟอร์ม พนักงานต้องยืนยันทุกช่องก่อนบันทึก** (`aiProposed:true` ในฟอร์ม · บันทึกด้วย confirmed:true) · หักเครดิต AI (`canSpend/chargeUsage` action `hotel.guest.idReader`) · รูปที่ส่ง AI ไม่เก็บถ้าแขกไม่ยินยอมเก็บสำเนา (`keepIdImage` ติ๊กต่อครั้ง · ค่าเริ่มเก็บ เพราะ ร.ร.3 ต้องตรวจสอบได้) · provider ล้ม/ไม่มีคีย์ ⇒ กรอกมือ ไม่บล็อก
+- **ตม.30 (Q4)**: แขก `isForeigner` (สัญชาติ ≠ THA) ⇒ `tm30Status PENDING` · `tm30DueAt` = checkedInAt + 24 ชม. · คิว "ต้องแจ้ง ตม.30" บนหน้าเคาน์เตอร์ + เตือนตาม `tm30ReminderHours` (outbox `hotel.tm30.due` · ไม่ส่งเอง DH:148) · ปุ่ม "ไฟล์สำหรับอัปโหลด" = ส่งออกตามแม่แบบของระบบแจ้งที่พักออนไลน์ของสำนักงานตรวจคนเข้าเมือง: คอลัมน์/ลำดับเก็บเป็นค่าตั้ง `rooms.hotel.tm30.exportColumns` (JSON · ค่าเริ่ม = ชุดฟิลด์แบบ ตม.30 กระดาษ: ชื่อ-สกุล · เพศ · สัญชาติ · เลขหนังสือเดินทาง · วันเกิด · ประเภท/เลขที่ตรวจลงตรา · วันเดินทางเข้า · ด่าน · เลข ตม.6 · วันเข้าพัก · วันออกคาด · เลขห้อง) **ดู SVC-OWNER-QUESTIONS Q-H4-1: แม่แบบ Excel ของจริงต้องล็อกอินผู้ประกอบการจึงดาวน์โหลดได้ — ผู้คุมปรับค่าเริ่มเมื่อเจ้าของส่งแม่แบบ** · ไฟล์ CSV/XLSX (ใช้ `xlsx` ถ้ามีใน deps · ไม่มี = CSV UTF-8 BOM) · พนักงานกรอก `tm30Ref` + กด "แจ้งแล้ว" ⇒ FILED (+ไฟล์หลักฐานถ้ามี) · เกิน 24 ชม. ยังไม่แจ้ง ⇒ LATE (ป้ายแดง · นับในรายงาน) · แขกไทย = NOT_REQUIRED
+- **สมาชิก (S §8.6 · opt-in)**: จอเช็กอินเสนอ "ผูกสมาชิกจากเบอร์/อีเมล" → `member.findOrCreate({source:"STAFF", consents})` เฉพาะเมื่อแขกยินยอม (ติ๊ก + บันทึก consent) → `reservation.customerId` · ไม่ติ๊ก = ไม่สร้าง ไม่ค้นหา
+- **ไม่ทำในใบนี้**: เช็กเอาต์/folio (H.5) · แม่บ้าน state machine (H.6 — ใบนี้แค่เขียน HousekeepingLog ตอน force) · ส่ง ตม.30 อัตโนมัติ · OCR/AI ของตัวเอง · e-signature ตามกฎหมายลายมือชื่ออิเล็กทรอนิกส์ขั้นสูง (ใช้ลายเซ็นบนจอเหมือนสัญญาหอ)
+
+## 1. ไฟล์ที่ใบนี้เป็นเจ้าของ
+| ไฟล์ | | เนื้อหา |
+|---|---|---|
+| «src/lib/modules/hotel/checkin.ts» | ใหม่ (server) | `assignableRooms` (ย้ายจาก P1 + เงื่อนไข hk) · `checkInV2` · `undoCheckIn` (MANAGER · ภายในวัน · ยังไม่มีรายการ folio นอกค่าห้อง) §3.1 |
+| «src/lib/modules/hotel/guest.ts» | ใหม่ (server) | `upsertGuestRecord` `listGuests` `revealGuestId` `signRr3` `rr3Card` `rr4Register` `purgeExpiredGuestRecords` §3.2 · `RR3_FIELDS` · `maskId` pure |
+| «src/lib/modules/hotel/guest-id-ai.ts» | ใหม่ (server) | `readIdDocument` (แบบ meter-ai) §3.3 |
+| «src/lib/modules/hotel/tm30.ts» | ใหม่ (server) | `tm30Queue` `tm30Export` `markTm30Filed` `tm30Sweep` (PENDING→LATE · เตือน) §3.4 · `TM30_DEFAULT_COLUMNS` |
+| «src/lib/modules/hotel/guest-shared.ts» | ใหม่ (pure) | ชนิด · `nationalityTh(iso3)` · `isForeigner` · ตรวจรูปแบบเลขเอกสาร (ไทย 13 หลัก checksum · พาสปอร์ต 6–9 ตัว) |
+| `src/lib/modules/hotel/service.ts` | **แก้เฉพาะ** | `checkIn` เดิม → ห่อ `checkInV2` (คง signature · ไม่มี guest ⇒ `GUEST_REQUIRED` เว้นแต่ `rooms.hotel.guest.requireRegistration` ปิด — ค่าเริ่มเปิด) |
+| `src/lib/modules/hotel/index.ts` · `actions.ts` | เพิ่ม | facade + actions §3.5 (`// SVC H.4 ▸ … ◂`) |
+| `src/lib/core/settings/defs/rooms.ts` | **เพิ่มคีย์อย่างเดียว** | `rooms.hotel.license.no` `license.name` (ชื่อโรงแรมตามใบอนุญาต) `license.registrarOffice` · `rooms.hotel.guest.requireRegistration` (bool เริ่ม true) · `rooms.hotel.guest.keepIdImageDefault` (bool เริ่ม true) · `rooms.hotel.tm30.exportColumns` (json) · `rooms.hotel.tm30.enabled` (bool เริ่ม true) — คีย์ `guest.retainYears` `guest.maskIdForStaff` `guest.aiIdReader` `guest.rr3OnScreen` `guest.tm30ReminderHours` มีแล้ว (H.0/H.1) · unitTypes HOTEL · enumLabelsTh · r0.4/d.13 เขียว |
+| `src/lib/platform/minute-jobs.ts` | เพิ่ม | `tm30Sweep` ทุก 15 นาที · `purgeExpiredGuestRecords` วันละครั้ง 04:00 ไทย (idempotent · ≤ 200 แถว/รอบ) |
+| `src/lib/outbox-consumers.ts` · `automation/labels.ts` · `webhooks/labels.ts` | เพิ่ม | event §5 |
+| `src/lib/core/permissions.ts` | ย้าย `hotel.guest.register` `hotel.guest.viewId` จาก planned → ใช้จริง |
+| «src/components/hotel/{CheckinPanel,RoomPicker,GuestForm,IdScanButton,SignaturePad,Rr3Card,Tm30Queue,Tm30FileDialog,SecurityDepositStep}.tsx» + `checkin-shared.ts` | ใหม่ | จอ §4 (ภาพ 09 ซ้าย) · SignaturePad = canvas pointer events ไม่มีไลบรารี (แบบหอ) |
+| `src/app/app/u/[unitSlug]/hotel/reservations/[id]/page.tsx` | แก้ | แท็บ "แขก" (H.3) → GuestForm/Rr3 · ปุ่ม "เช็กอิน" → CheckinPanel |
+| «src/app/app/u/[unitSlug]/hotel/guests/page.tsx» · «…/guests/rr4/print/page.tsx» · «…/guests/[guestId]/rr3/print/page.tsx» · «…/tm30/page.tsx» | ใหม่ | ทะเบียนผู้พัก (ค้น/กรองช่วงวัน) · ร.ร.4 พิมพ์ · ร.ร.3 พิมพ์ · คิว ตม.30 |
+| `src/app/app/u/[unitSlug]/hotel/page.tsx` | เพิ่ม | การ์ด "ตม.30 ค้าง N" + ลิงก์ (ต่อจาก hotelToday ของ H.2) |
+| «scripts/svc-qc-hotel-guest-scene.mts» | ใหม่ | ฉาก §6 |
+| `docs/sds/modules/hotel.md` | เพิ่ม §เช็กอิน/ทะเบียนแขก/PDPA | retention · masking · ตม.30 flow · แบบ ร.ร.3 อ้างประกาศ |
+
+ห้ามแตะ: `prisma/**` · `booking.ts`/`availability.ts`/`tape.ts`/`folio.ts`/`checkout.ts` (ขอผู้คุม) · `rooms/**` · `member/**` · `ai/**` (ใช้ provider ที่มี) · `storage/**` · oracle
+
+## 2. มติของใบนี้
+1. **GUEST_REQUIRED**: เช็กอินต้องมีผู้พักหลัก 1 คนที่กรอก ชื่อ · สัญชาติ · ชนิด+เลขเอกสาร ครบ (requireRegistration เปิด) · ผู้พักร่วมเพิ่มภายหลังได้ (ระหว่างพัก) · จำนวนผู้พักรวม ≤ maxOccupancy (+ extraBed) ไม่งั้น `OVER_OCCUPANCY` (MANAGER override + log)
+2. **ลายมือชื่อ**: `signRr3({guestId, signaturePng})` → ไฟล์ private + `rr3SignedAt` · ห้องเดียวหลายคนลงชื่อคนเดียวได้ (ธง `signedByGuestId` บนคนอื่น) · `rr3OnScreen` ปิด ⇒ พิมพ์กระดาษให้ลงชื่อ แล้วติ๊ก "ลงชื่อบนกระดาษแล้ว" (`rr3SignedAt` + `signatureFileId` null + note)
+3. **เลขบัตร ร.ร.3** running ต่อหน่วยต่อปี ไทย (`RR3-<ปี พ.ศ.>-000001` · gen ใน tx · retry ชน unique) — เก็บใน `HotelGuestRecord` (ไม่มีคอลัมน์ ⇒ ใช้ `partyId`? **ไม่** — ใช้คอลัมน์ `tm30Ref`? **ไม่**) ⇒ **มติ: เก็บเลขบัตรใน AuditLog + derive ลำดับจาก `createdAt` ต่อหน่วย/ปีตอนพิมพ์** (ไม่ขอคอลัมน์ใหม่ · หนี้: ถ้าที่ปรึกษากฎหมายต้องการเลขถาวร ⇒ migration ใบย่อย)
+4. **แก้ไขทะเบียน**: แก้ได้จนเช็กเอาต์ · หลังเช็กเอาต์ MANAGER เท่านั้น · ทุกครั้ง AuditLog before/after **แบบ mask** (last4) · ลบแถว = ไม่ได้ (เก็บตามกฎ ≥ 1 ปี) ยกเว้นสร้างผิดภายใน 10 นาทีโดยคนเดิม
+5. **ตม.30 ส่งออก**: เฉพาะแถว PENDING/LATE ที่เลือก · 1 ไฟล์ต่อครั้ง · บันทึก `tm30FiledAt/tm30Ref` ต่อคนเมื่อกด "แจ้งแล้ว" (ใส่เลขรับแจ้ง 1 เลขให้หลายคนได้) · วันคาดออก = checkOutDate · ที่อยู่ที่พัก = ค่าตั้ง `rooms.hotel.license.*` + ที่อยู่หน่วย
+6. **ประกันห้อง**: ตามค่าตั้ง · `appliesTo WALK_IN` ⇒ source WALK_IN เท่านั้น · รับผ่าน `takeSecurityDeposit` (H.5) ใน flow เดียวกับเช็กอิน แต่ **เป็นขั้นแยกหลัง CHECKED_IN** (เงินล้มไม่ย้อนเช็กอิน · จอค้างเตือน "ยังไม่รับประกัน") 
+7. **undoCheckIn** (MANAGER · วันเดียวกันไทย · folio ยังไม่มี item นอก ROOM/DEPOSIT/SECURITY_DEPOSIT): CHECKED_IN→CONFIRMED · occupancy STAY→HOLD/คง claim · ห้อง `status` กลับ · ทะเบียนแขกคง (ธง `checkInUndone`) · AuditLog
+8. **ข้ามร้าน/หน่วย** NOT_FOUND · แขกของหน่วยหนึ่งไม่โผล่ในทะเบียนหน่วยอื่น · ลิงก์ไฟล์ private ตรวจสิทธิ์หน่วย
+9. **มือถือ 390**: GuestForm/SignaturePad ใช้ได้ (แท็บเล็ตหน้าเคาน์เตอร์ตามภาพ) · `data-scroll-hint` ตารางทะเบียน
+
+## 3. สัญญาโค้ด (ย่อ)
+3.1 `assignableRooms(ctx, {reservationId}) → [{roomId, number, hkStatus, sellable: boolean, reason?}]` · `checkInV2(actor, ctx, {reservationId, roomId, force?: {reason}, earlyOverride?: {reason}, occupancyOverride?: {reason} (MANAGER · มติ 7 พ.ย. ข้อ 11), guests: GuestInput[], memberOptIn?: {phone?, email?, consents: string[]}, at?}) → {ok, checkedInAt, guestIds, needsDeposit: boolean, needsSecurityDeposit: boolean, tm30DueAt?} | {ok:false, code: "NOT_CONFIRMED"|"TOO_EARLY"|"ROOM_TAKEN"|"ROOM_DIRTY"|"ROOM_INACTIVE"|"GUEST_REQUIRED"|"OVER_OCCUPANCY"|"INVALID_ID"|"NOT_FOUND"|"FORBIDDEN"}` (`at` ตามมติ h.3 ข้อ 13)
+3.2 `GuestInput = {fullName, nationality (ISO-3), idType, idNumber (ดิบเฉพาะขาเข้า · ไม่คืนกลับ), dob?, sex?, occupation?, address?, arrivedFrom?, nextDestination?, idImage?: {data, contentType}, keepIdImage?: boolean, aiProposed?: boolean}` · `upsertGuestRecord` · `listGuests(actor, ctx, {unitId, from, to, q?, tm30?}) → GuestDto[]` (idNumberLast4 · ไม่มีเลขเต็ม) · `revealGuestId(actor, ctx, {guestId}) → {idNumber}` (viewId · AuditLog) · `signRr3` · `rr3Card(ctx,{guestId}) → Rr3View` · `rr4Register(ctx,{unitId, from, to}) → Rr4Row[]` · `purgeExpiredGuestRecords({now?, limit?}) → {purged}`
+3.3 `readIdDocument(actor, ctx, {unitId, image}) → {ok, proposal: {...}, confidence, creditCharged} | {ok:false, code: "AI_DISABLED"|"NO_PROVIDER"|"NO_CREDIT"|"UNREADABLE"}`
+3.4 `tm30Queue(ctx,{unitId}) → {pending, late, items}` · `tm30Export(actor, ctx, {unitId, guestIds, format: "csv"|"xlsx"}) → {ok, file: {name, contentType, bytes}}` · `markTm30Filed(actor, ctx, {guestIds, tm30Ref, filedAt?, evidence?})` · `tm30Sweep({now?})`
+3.5 actions: `checkInV2Action` `undoCheckInAction` `upsertGuestAction` `revealGuestIdAction` `signRr3Action` `readIdDocumentAction` `tm30ExportAction` `markTm30FiledAction` — `assertHotelCan` + ด่าน HOTEL · สิทธิ์: เช็กอิน = `hotel.reservation.checkIn` · ทะเบียน = `hotel.guest.register` · เลขเต็ม = `hotel.guest.viewId` · override/undo = `hotel.booking.manage`
+
+## 4. จอ (ภาพ 09 ครึ่งซ้าย · PARITY ผู้คุม · ไทย)
+หัวการจอง "B202 · Daniel Weber · พักอยู่ · ออกวันนี้ · Booking.com · จ่ายที่โรงแรม · 2 ผู้ใหญ่" + ปุ่ม ย้ายห้อง/ต่อคืน (H.3/H.2) · การ์ด **เช็กอิน · <วันเวลา> · <ผู้บันทึก> · เสร็จ N นาที** · ขั้น ✓ **สแกนพาสปอร์ต** (ปุ่มเมื่อ aiIdReader เปิด · ผลเสนอใส่ฟอร์ม · ช่อง ชื่อ/สัญชาติ/พาสปอร์ต `C01X··· 4KJ`(mask)/หมดอายุ/มาจาก→ไปต่อ/ผู้พักร่วม) · ✓ **บัตรทะเบียนผู้พัก (ร.ร.3)** "กรอกจากพาสปอร์ตให้ · แขกลงชื่อบนแท็บเล็ต · เก็บเข้าทะเบียนผู้พัก (ร.ร.4)" + SignaturePad · ✓ **แจ้งที่พักคนต่างด้าว (ตม.30) — ภายใน 24 ชม.** "ระบบเตรียมข้อมูล 2 คน · ส่งเข้าเว็บ ตม. เมื่อ … โดย … · เลขรับแจ้งแนบแล้ว" (ปุ่มดาวน์โหลดไฟล์ · ช่องเลขรับแจ้ง) · ✓ **เงินประกันห้อง ฿1,000 เงินสด · คืนตอนเช็กเอาต์ (บันทึกเป็นเงินรับฝาก ไม่ใช่รายได้)** · ✓ ห้อง · แม่บ้าน "ตรวจแล้ว" · บรรทัด "ส่งรหัส Wi-Fi + เวลาอาหารเช้าทาง LINE/อีเมลแล้ว" (ข้อความแจ้งแขก = H.8/notify · ใบนี้แสดงสถานะจาก outbox ถ้ามี ไม่งั้นซ่อน) · หน้าทะเบียน `/hotel/guests` ตาราง + กรองช่วงวัน + พิมพ์ ร.ร.4 · หน้า `/hotel/tm30` คิว · read-only ไม่มีปุ่ม
+
+## 5. event (3 ทะเบียน · ไม่มี PII — payload = id/จำนวน/สถานะ)
+`hotel.checked_in` {reservationId, roomId, guests: n, foreigners: n} · `hotel.guest.registered` · `hotel.guest.id_revealed` {guestId, byUserId} · `hotel.tm30.due` {unitId, pending, late} · `hotel.tm30.filed` · `hotel.guest.purged` {count}
+
+## 6. ฉาก «svc-qc-hotel-guest-scene.mts» (builder · ต่อยอดฉาก h.3)
+แหล่งความจริง = `SQC_HOTEL_GUEST_SCENE` (ผู้คุมใส่ก่อนเปิดเลน) — คาดว่า: `inhouse-web` (John Carter DEU + ผู้พักร่วม Anna · ร.ร.3 ลงชื่อแล้ว · ตม.30 FILED เลขรับแจ้ง) · `inhouse-ota` (Yuki Tanaka JPN · ตม.30 PENDING ครบ 24 ชม. ⇒ LATE หลัง sweep) · `today-walkin` เช็กอินด้วย V2 ในฉาก (ไทย · บัตร 13 หลักฉากปลอม checksum ถูก · ประกัน 1,000 เงินสด เมื่อเปิด enabled ในฉาก) · 1 แถว retainUntil ผ่านแล้ว (ให้ purge ลบ enc/ไฟล์) · รูป/ลายเซ็น = PNG เล็กที่ฉากสร้างเอง · `--clear`
+
+## 7. เกณฑ์รับ · regression · X · ผู้ตรวจ
+- «qc-svc-h.4.mts» ผ่าน · probe-h4-b breach 0 · tsc 0 · fitness 2 โหมด · ภาพ h.4 (check-in panel · guests · rr3 print · rr4 print · tm30) owner/frontdesk · PARITY ภาพ 09 ซ้าย · **ที่ปรึกษากฎหมาย/เจ้าของเห็นแบบ ร.ร.3/ร.ร.4 ที่พิมพ์แล้ว** (ส่ง TG เป็นภาพ · จดใน wo-notes)
+- ข้อสอบ PDPA (X8/X10 เข้ม): ไม่มีเลขเอกสารดิบใน DB (ทุกแถว idNumberEnc เปิดได้ด้วย secret-box · idNumberLast4 ตรง) · ไม่มีใน AuditLog/outbox/log/ชื่อไฟล์ · DTO ทุกตัวไม่มีเลขเต็ม · reveal ต้องสิทธิ์ + log · ไฟล์เอกสารเป็น private (cdnUrl ไม่ตอบ 200 โดยไม่มี token) · purge ลบจริง · ไม่มี provider ⇒ AI ไม่ยิงออก
+- G: qc-svc-h.3 · h.5 · h.1 · h.0 · r0.4 · r0.8 · d.13 · smoke · b.0
+- X1 ข้ามร้าน/หน่วย · X3 เช็กอินซ้ำ/พร้อมกัน 2 ทาง ห้องเดียว = 1 · X9 สิทธิ์ 4 ระดับ (owner/manager/frontdesk/maid ⇒ FORBIDDEN ทุกตัว) · X6 ไฟล์รูป mime/ขนาด ≤ 8 MB · X5 sweep/purge 2 รอบซ้อน = ครั้งเดียว
+- ผู้ตรวจ 2 รอบ: รอบ 1 = PDPA/ไฟล์/เข้ารหัส/log · รอบ 2 = กฎหมาย (ฟิลด์ ร.ร.3 ครบตามประกาศ · ตม.30 ครบ 24 ชม. · retention ≥ 1 ปี) + เช็กอิน race
+
+## 8. ส่งต่อ
+H.6: แม่บ้านเห็น "แขกเข้าแล้ว/ออกวันนี้" จาก checkedInAt · H.7: no-show อัตโนมัติ (คนที่ไม่เช็กอินถึง audit) · รายงาน ตม.30/ร.ร.4 ย้อนหลัง · H.8: แขกจองเว็บกรอกข้อมูลล่วงหน้า (pre-check-in) = หนี้ 🔜
+
+## 9. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 106 ข้อ @05e472cce)
+1. `INTEGRATIONS_CREDENTIALS_KEY` เพิ่มใน `.env.qc-svc` ทุกทรี (ทรีหลัก l1 l2 l3 · คีย์สุ่ม ≥32 · gitignored) แล้ว · prod มีอยู่แล้ว (R0.6) · ลบบรรทัด `STORAGE_PROVIDER=` ซ้ำ
+2. เลขบัตร ร.ร.3 = `RR3-<พ.ศ.>-NNNNNN` derive จาก createdAt ต่อหน่วย/ปี เริ่ม 000001 · โผล่ใน rr3Card/rr4Register คีย์ `cardNo`
+3. `RR3_FIELDS` ≥ 16 กลุ่มตาม §0 + คอมเมนต์อ้างประกาศ · แบบจริง = ที่ปรึกษากฎหมาย J3 ตรวจก่อนรับใบ (ส่งภาพ TG)
+4. `tm30Export` สิทธิ์ `hotel.guest.register` + AuditLog `hotel.tm30.exported` {guestIds, byUserId} (ไฟล์มีเลขพาสปอร์ตเต็มตามแบบ ตม. · ไม่เก็บไฟล์) · xlsx ไม่มีใน deps ⇒ CSV UTF-8 BOM เสมอ (ป้าย "เปิดด้วย Excel ได้") · คอลัมน์ค่าเริ่ม 12 ตาม §0 (`TM30_DEFAULT_COLUMNS`)
+5. มัดจำค้าง: เช็กอินผ่าน + `needsDeposit:true` (จอบังคับรับ · ไม่บล็อก)
+6. ลงชื่อแทนห้อง: ไม่มีคอลัมน์ ⇒ rr3Card ผู้พักร่วมอ้าง `signatureFileId` ของผู้พักหลัก · `rr3SignedAt` ตั้งทุกคน
+7. mask บนจอ = เห็น **4 ตัวท้ายเท่านั้น** (ภาพ 09 "C01X··· 4KJ" ไม่ยึด) · `maskIdForStaff=false` ⇒ STAFF ที่มี `guest.register` เห็นเต็มโดยไม่ต้อง viewId (ค่าเริ่ม true)
+8. ลบภายใน 10 นาที = `deleteGuestRecord({guestId})` (คนเดิม · ยังไม่ลงชื่อ/ยังไม่แจ้ง ตม.)
+9. `signRr3({guestId, signaturePng?} | {guestId, method:"PAPER", note})`
+10. `tm30.enabled` ปิด ⇒ ทุกคน `NOT_REQUIRED` (isForeigner ยังจริง)
+11. `occupancyOverride?: {reason}` (MANAGER) เพิ่มใน §3.1
+12. แม่แบบ Excel ตม. จริง รอเจ้าของ (Q-H4-1) · ฟิกซ์เจอร์: ผู้มี viewId ในฉาก = owner เท่านั้น (ไม่เพิ่ม manager เข้าหน่วย hotel)
+
+## 10. มติผู้คุมหลัง builder รอบ 1 (7 พ.ย. · 641bb86b0)
+1. ข้อสอบ: roomPlan +DLX9..DLX30 (D1) · TM-3 ข้ามแถวที่เลขซ้ำกับแถวที่เลือก (D2) — ORACLE-EDIT f4784df8b
+2. **CI-17 = ตามใบ §1**: `checkIn` เดิมไม่มีผู้พัก ⇒ GUEST_REQUIRED เมื่อ `rooms.hotel.guest.requireRegistration` เปิด (ค่าเริ่ม) — ไม่มีสวิตช์ยกเว้นทางเดิม · ปุ่มเช็กอินเดิมบน /hotel แสดงเหตุผล + ลิงก์แผงเช็กอิน · ผู้เรียกทางเดิมใน QC ปิดค่าตั้งที่หน่วยทดสอบ (r0.8 · h.5) · ฉาก h.3/h.2 ปิดที่ svcqc ก่อนเช็กอิน และฉาก h.4 เปิดกลับตอนเริ่ม (ลำดับ seed → h.1 → h.3 → h.4 ⇒ สถานะสุดท้ายเปิด)
+3. fitness ALLOWED_EDGES +`hotel→member` (ผูกสมาชิกแบบยินยอม)
+4. รับมติ builder: ลงชื่อแทนห้องครอบเฉพาะผู้พักที่มีอยู่ตอนลงชื่อ · undoCheckIn = OWNER/MANAGER + hotel.booking.manage · ข้อมูลอ่อนไหวไม่มีคอลัมน์ (เพศ·อาชีพ·ที่อยู่·ตรวจลงตรา·ตม.6) เก็บในกล่องลับเดียวกับเลขเอกสาร
+5. SD-1/Q-* รอ H.5 merge · ผู้คุม merge H.5 เข้า wip/svc-h4 ก่อน chain · conflict `[id]/page.tsx` ผู้คุมแก้
+
+## 11. มติผู้คุมหลังผู้ตรวจรอบ 2 กฎหมาย (7 พ.ย. · 09d7ae597)
+1. วันเข้าพักในไฟล์ ตม.30 = วันไทย/timezone ร้าน (ไม่ใช่ UTC)
+2. ทะเบียน ร.ร.4 · คิว/ไฟล์ ตม.30 · ลำดับเลขบัตร ร.ร.3 นับเฉพาะผู้พักจริง (การจอง CHECKED_IN/CHECKED_OUT) · แถวลงทะเบียนล่วงหน้าที่การจอง CANCELLED/NO_SHOW เก็บไว้ (purge ตาม PDPA) แต่ไม่อยู่ในทะเบียนกฎหมาย · `Rr4Row.reservationStatus`
+3. ร.ร.4 เพิ่ม อายุ/วันเกิด · อาชีพ · ที่อยู่ · เลขเอกสาร: ค่าเริ่ม last4 · โหมด "สำเนานายทะเบียน" (`?registrar=1`) เฉพาะ `hotel.guest.viewId` ⇒ เลขเต็ม + AuditLog revealed ต่อแขก — **ค่าปลอดภัยระหว่างรอ J3** (Q-H4-4)
+4. purge ลบเฉพาะเมื่อ `retainUntil ≤ now` และ `checkOutDate + retainYears ≤ now` (ไม่แตะ booking/checkout ของใบอื่น)
+5. minor: เช็กอินอ่าน rv หลัง lock + CAS ตรวจวัน · upsert เกิน maxOccupancy ⇒ OVER_OCCUPANCY เว้น MANAGER override+log · ต่างด้าวเพิ่มหลังเช็กเอาต์ใช้ checkedInAt · cardNo ลง AuditLog registered · คอลัมน์ cardNo ถาวร = หนี้ H.9 · ทางเดิม actor SYSTEM = จด
+
+
+## 12. มติผู้คุมหลัง builder รอบ 5 (7 พ.ย. · 391bb8c69)
+1. ORACLE-EDIT: PD-7/PD-8 ย้ายการจองไปอดีต > 2 ปี (purge ดูวันออกจริง+retainYears ตาม §11.4) · RR-5 กรองผู้พักจริง (2ac36cd06) · ข้อใหม่ PD-11/RR-7/TM-10
+2. **§11.5 "upsert เกิน maxOccupancy ⇒ OVER_OCCUPANCY" ยกเลิกสำหรับ v1** — ด่านเข้าพักเกินมีที่ checkInV2 (CI-12) แล้ว · การเพิ่มผู้พักระหว่างพักเป็นงานพนักงาน (GR-5/7/8 ตั้งใจเพิ่มเกิน) ⇒ หนี้ H.9: ป้ายเตือน "เกินจำนวนผู้เข้าพักที่กำหนด" บนแผงแขก (ไม่บล็อก)
+3. probe ผู้ตรวจรอบ 2 (`/root/svc-runs/h4/review/probe-h4-b.mts`, `-c.mts`) ย้ายเข้าทรีตอนรับงานโดยผู้คุม: ตัด/แก้ข้อล้าสมัย (b: E3.3 CDN = Q-H4-3 นอกใบ · E3.6 · E5.3/E5.5/E5.7 ตั้งวันออกอดีต · c: L3.1 = หนี้ H.9 เลขบัตรถาวร · L5.1 retainUntil ไม่ขยับ = ถูกต้องตาม §11.4 · L6.2 dueAt ต้องมี · R3.2 CAS ผูกวัน · R5.1 ยกเลิกตามข้อ 2 · R7.2 คิวตัดแขกย้อนเช็กอิน)

@@ -51,7 +51,7 @@ const RULES_FILE = "src/lib/modules/hr/payroll-rules.ts";
 const SCHEMA_FILE = "prisma/schema/payroll.prisma";
 // hashes taken on the base (f85f5455; SCHEMA_SHA + CRM_BLOCK_SHA re-taken after H0.6, ruled ORACLE-EDITs) — FREEZE (hr-brief-COMMON §C.4/C.5 · H0.1 §4)
 const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7";
-const SCHEMA_SHA = "3ff49315372965a4e4fac4cf17feb8eb67026f855f08fb7b821bafa4413f8c23"; // ORACLE-EDIT (H3.4 builder, wip/hr-h3.4): re-taken after H3.4 additive schema (REFUND · CARRY_FORWARD · run stepsJson/inputDigest · adjustment consentAt/consentById; previous pin 97a2390d…) · ORACLE-EDIT (H3.1 merge 847d37bf3): re-taken for the merged payroll.prisma = H4.6 HrStockCharge (pin 22fc665b…) + H3.1 HrWorkDay/workDayId (pin b4456ccd…) — both additive
+const SCHEMA_SHA = "862d8725ee0c6d2f148679d0f9fb7289d5b8bcbc214143bc35177dadf3611115"; // ORACLE-EDIT (H3.4 builder, merge of H3.2 ac8de9d27 into wip/hr-h3.4): re-taken for the merged payroll.prisma = H3.2 HrAttendanceDeduction (pin ba34dee6…) + H3.4 additive (REFUND · CARRY_FORWARD · run stepsJson/inputDigest · adjustment consent; phase-A pin 3ff49315…) · ORACLE-EDIT (H3.2 · Mig WO, controller-authorized): re-taken 97a2390d… → ba34dee6… for payroll.prisma + model HrAttendanceDeduction (pure append at EOF — additive) · was (H3.1 merge 847d37bf3): H4.6 HrStockCharge (pin 22fc665b…) + H3.1 HrWorkDay/workDayId (pin b4456ccd…) — both additive
 const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13";
 const CRM_BLOCK_SHA = "33ec8e46af7dd084ac1b1460167736a662bcc80bddc97db6ca1a22fb4c403869";
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";

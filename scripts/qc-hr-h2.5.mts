@@ -307,7 +307,7 @@ function runStatic(): void {
     const diff = diff0 === "unchanged" && payOk ? "unchanged" : `${diff0}${payOk ? "" : " · payroll.ts unmarked hunk"}`;
     const n = hrNavLabels();
     const nav = canon(["ภาพรวม", "ลงเวลา", "ตารางกะ", "จอลงเวลา", "ใบลา", "พนักงาน", "เงินเดือน", "ตั้งค่า", "ตารางกฎหมาย"]);
-    const r = { payroll: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, brain: sha(rd(`${H}rules.ts`)) === BRAIN_SHA, seam: [SEAM_SHA, SEAM_SHA_H44].includes(sha(rd(`${H}pos-seam.ts`))), frozen: diff === "unchanged", nav: canon(n.T) === nav && canon(n.L) === nav };
+    const r = { payroll: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, brain: sha(rd(`${H}rules.ts`)) === BRAIN_SHA, seam: [SEAM_SHA, SEAM_SHA_H44].includes(sha(rd(`${H}pos-seam.ts`))), frozen: diff === "unchanged", nav: canon(n.T.filter((x) => x !== "คำขอ")) === nav && canon(n.L.filter((x) => x !== "คำขอ")) === nav }; // ORACLE-EDIT (controller · H2.11 control1): the manager inbox tab "คำขอ" added by H2.11 is allowed; every other label is still pinned
     ck("S9.5", r, `shas · ${FROZEN.length} unchanged · nav`, `${IN_BASE ? "n/a · H2.5 in base" : diff} (base ${BASE_REF.slice(0, 9) || "?"})`);
   }
   {

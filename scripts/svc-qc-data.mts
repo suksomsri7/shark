@@ -28,6 +28,8 @@ export const SQC_SYSTEMS = {
   POS: { id: "svcqc-sys-pos", type: "POS", name: "ขายหน้าร้าน (SVC QC)" },
 } as const;
 export const SQC_SYSTEM_UNITS: SqcUnitKey[] = ["barber", "massage"];
+/** SVC H.3 ▸ หน่วยที่ผูก "เฉพาะระบบ POS" เพิ่ม (มัดจำ/บิลโรงแรมผ่าน POS · ไม่ผูก INVENTORY) ◂ */
+export const SQC_POS_EXTRA_UNITS: SqcUnitKey[] = ["hotel"];
 
 // ═══════════════ บาร์เบอร์ ═══════════════
 /** เวลาทำการร้าน: จ. (1) ปิด · วันอื่น 10:00–20:00 */
@@ -84,6 +86,11 @@ export type SqcRoomType = {
   baseRateSatang: number;
   monthlyRateSatang: number | null;
   areaSqm: number | null;
+  /** SVC H.3 ▸ ความจุ (มติ 7 พ.ย. ข้อ 3 · ไม่ใส่ = ค่าเริ่มของตาราง capacity 2 · baseOccupancy 2 · maxOccupancy null · extraBed false) ◂ */
+  capacity?: number;
+  baseOccupancy?: number;
+  maxOccupancy?: number | null;
+  extraBedAllowed?: boolean;
 };
 export const SQC_DORM_BUILDING = { id: "svcqc-bld-a", name: "อาคาร A", floors: 3, sortOrder: 1 } as const;
 export const SQC_DORM_TYPES = {
@@ -109,9 +116,9 @@ export const SQC_DORM_ROOMS: SqcRoom[] = [1, 2, 3].flatMap((floorNo) =>
 // ═══════════════ โรงแรม (บ้านสวน โฮเทล · อาคาร B) ═══════════════
 export const SQC_HOTEL_BUILDING = { id: "svcqc-bld-b", name: "อาคาร B", floors: 2, sortOrder: 1 } as const;
 export const SQC_HOTEL_TYPES = {
-  superior: { id: "svcqc-rt-hotel-superior", name: "ซูพีเรีย", rentMode: "NIGHTLY", baseRateSatang: 99000, monthlyRateSatang: null, areaSqm: null },
-  deluxe: { id: "svcqc-rt-hotel-deluxe", name: "ดีลักซ์", rentMode: "NIGHTLY", baseRateSatang: 129000, monthlyRateSatang: null, areaSqm: null },
-  family: { id: "svcqc-rt-hotel-family", name: "แฟมิลี", rentMode: "NIGHTLY", baseRateSatang: 189000, monthlyRateSatang: null, areaSqm: null },
+  superior: { id: "svcqc-rt-hotel-superior", name: "ซูพีเรีย", rentMode: "NIGHTLY", baseRateSatang: 99000, monthlyRateSatang: null, areaSqm: null, capacity: 2, baseOccupancy: 2, maxOccupancy: 2, extraBedAllowed: false },
+  deluxe: { id: "svcqc-rt-hotel-deluxe", name: "ดีลักซ์", rentMode: "NIGHTLY", baseRateSatang: 129000, monthlyRateSatang: null, areaSqm: null, capacity: 2, baseOccupancy: 2, maxOccupancy: 3, extraBedAllowed: false },
+  family: { id: "svcqc-rt-hotel-family", name: "แฟมิลี", rentMode: "NIGHTLY", baseRateSatang: 189000, monthlyRateSatang: null, areaSqm: null, capacity: 4, baseOccupancy: 2, maxOccupancy: 5, extraBedAllowed: true },
 } as const satisfies Record<string, SqcRoomType>;
 const hotelRoom = (number: string, typeId: string, rentMode: "MONTHLY" | null = null): SqcRoom => ({ number, floorNo: Number(number[1]), typeId, rentMode });
 /** 14 ห้อง · B205 = เช่ารายเดือนผ่านหอ (HotelRoom.rentMode MONTHLY) · ห้องอื่น null = ตามประเภท */
@@ -123,7 +130,7 @@ export const SQC_HOTEL_ROOMS: SqcRoom[] = [
 ];
 
 // ═══════════════ ผู้ใช้ร้าน A ═══════════════
-export type SqcUserKey = "owner" | "manager" | "ek" | "cashier" | "fai" | "meter" | "accountant" | "frontdesk";
+export type SqcUserKey = "owner" | "manager" | "ek" | "cashier" | "fai" | "meter" | "accountant" | "frontdesk" | "maid" | "hk-lead";
 export type SqcUser = {
   key: SqcUserKey;
   userId: string;
@@ -148,7 +155,8 @@ const user = (key: SqcUserKey, name: string, role: SqcUser["role"], unitAccess: 
 /** สิทธิ์ = ขั้นต่ำตามใบสั่ง §3.2 (ใบหลังเติมเอง เช่น dorm.meter.read ใน D.6) */
 export const SQC_USERS: SqcUser[] = [
   user("owner", "เจ้าของ (SVC QC)", "OWNER", ["*"]),
-  user("manager", "ผู้จัดการร้าน (SVC QC)", "MANAGER", [SQC_UNITS.barber.id, SQC_UNITS.massage.id]),
+  // SVC H.7 ▸ manager + หน่วยโรงแรม + hotel.audit.run · hotel.reports.read (ปิดวัน/รายงาน · ใบสั่ง h.7) ◂
+  user("manager", "ผู้จัดการร้าน (SVC QC)", "MANAGER", [SQC_UNITS.barber.id, SQC_UNITS.massage.id, SQC_UNITS.hotel.id], ["hotel.audit.run", "hotel.reports.read", "hotel.booking.manage"]),
   // SVC B.5 ▸ ek = ช่าง (เรียก/เริ่ม/เสร็จงานของตัวเอง · booking.job.run = PROVIDER ของ B.11) · cashier = หน้าเคาน์เตอร์ (เช็กอิน · รับ walk-in = แถว counter ของ B.11 · ไม่มีเรียก/เริ่ม/เสร็จ) ◂
   user("ek", "ช่างเอก", "STAFF", [SQC_UNITS.barber.id], ["booking.appointment.setStatus", "booking.job.run"]),
   user("cashier", "แคชเชียร์ (SVC QC)", "STAFF", [SQC_UNITS.barber.id, SQC_UNITS.massage.id], ["pos.sale.create", "booking.checkin", "booking.walkin.create"]),
@@ -157,7 +165,14 @@ export const SQC_USERS: SqcUser[] = [
   user("fai", "พี่ฝ้าย (ผู้ดูแลหอ)", "STAFF", [SQC_UNITS.dorm.id], ["hotel.room.setStatus", "dorm.view", "dorm.lease.manage", "dorm.slip.review"]),
   user("meter", "คนจดมิเตอร์ (SVC QC)", "STAFF", [SQC_UNITS.dorm.id], ["dorm.meter.read"]),
   user("accountant", "ฝ่ายบัญชี (SVC QC)", "STAFF", ALL4, ["account.report.view"]),
-  user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn"]),
+  // SVC H.1 ▸ frontdesk + hotel.rates.read (ดูราคาอย่างเดียว · ไม่มี rates.write/settings.edit — ภาพ 15 read-only) ◂
+  // SVC H.3 ▸ frontdesk + hotel.booking.manage · hotel.reservation.create/cancel (จอง/ยกเลิก/ย้าย/ต่อ/ไม่มา จากหน้าเคาน์เตอร์ · ยังไม่มี rates.write/settings.edit) ◂
+  // SVC H.5 ▸ frontdesk + hotel.folio.post · hotel.reservation.checkOut (ลงรายการ/ปิดบิล · **ไม่มี** hotel.folio.void — S §12 "Front desk void folio ไม่ได้") ◂
+  user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn", "hotel.rates.read", "hotel.booking.manage", "hotel.reservation.create", "hotel.reservation.cancel", "hotel.folio.post", "hotel.reservation.checkOut", "hotel.guest.register"]), // SVC H.4 ▸ +guest.register (ไม่มี guest.viewId ⇒ เห็นเลขปิดบางส่วน) ◂
+  // SVC H.2 ▸ maid = แม่บ้าน (hotel.housekeeping อย่างเดียว) — เห็นปฏิทินห้องแบบอ่านอย่างเดียว ไม่มี handle ลาก (ใบ h.2 §2 ข้อ 7) · H.6 ใช้ต่อ ◂
+  user("maid", "ป้าแจ๋ว (แม่บ้าน)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.housekeeping"]),
+  // SVC H.6 ▸ hk-lead = หัวหน้าแม่บ้าน (housekeeping + inspect) — ตรวจห้อง CLEAN→INSPECTED เมื่อ inspectionRequired ◂
+  user("hk-lead", "พี่นิด (หัวหน้าแม่บ้าน)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.housekeeping", "hotel.housekeeping.inspect"]),
 ];
 /** acceptedAt ตายตัว (รันซ้ำไม่ขยับ) */
 export const SQC_ACCEPTED_AT = "2026-10-01T00:00:00+07:00";
@@ -172,7 +187,7 @@ export const SQC_OTHER = {
   staff: { id: "svcqc-other-staff-ek", name: "ช่างเอก", sortOrder: 1 },
   /** legacy (itemId null) — ร้าน B ไม่มีระบบสินค้า/บริการ */
   service: { id: "svcqc-other-svc-haircut", name: "ตัดผมชาย", durationMin: 45, priceSatang: 25000, depositSatang: 0, bufferMin: 0 },
-  roomType: { id: "svcqc-other-rt-deluxe", name: "ดีลักซ์", rentMode: "NIGHTLY", baseRateSatang: 129000, monthlyRateSatang: null, areaSqm: null } as SqcRoomType,
+  roomType: { id: "svcqc-other-rt-deluxe", name: "ดีลักซ์", rentMode: "NIGHTLY", baseRateSatang: 129000, monthlyRateSatang: null, areaSqm: null, capacity: 2, baseOccupancy: 2, maxOccupancy: 3, extraBedAllowed: false } as SqcRoomType,
   room: { number: "B205", floorNo: 2, typeId: "svcqc-other-rt-deluxe", rentMode: null } as SqcRoom,
   owner: {
     key: "other-owner",
@@ -433,6 +448,7 @@ export const SQC = {
   units: SQC_UNITS,
   systems: SQC_SYSTEMS,
   systemUnits: SQC_SYSTEM_UNITS,
+  posExtraUnits: SQC_POS_EXTRA_UNITS,
   barber: { hours: SQC_BARBER_HOURS, staff: SQC_BARBER_STAFF, services: SQC_BARBER_SERVICES },
   massage: { staff: SQC_MASSAGE_STAFF, services: SQC_MASSAGE_SERVICES },
   dorm: { building: SQC_DORM_BUILDING, types: SQC_DORM_TYPES, rooms: SQC_DORM_ROOMS },
@@ -1359,3 +1375,503 @@ SQC_VISUAL_SPECS["b.14"] = [
   },
 ];
 // ◂ SVC B.14
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC H.0 / H.1 ▸ บล็อกของเฟส H (โรงแรม V2) — ผู้คุมตั้ง · builder/เลนอื่นห้ามแตะ
+//   แผน ledger/SVC-HOTEL-PLAN.md · ใบสั่ง ledger/svc-briefs/svc-brief-h.0.md (ตาราง) · svc-brief-h.1.md §3 (ตัวเลขฉาก) §8 (ฉาก)
+//   🔴 ค่าคงที่อย่างเดียว — seed ไม่เขียนตาราง Hotel* ใหม่ (ยังไม่มีจน migration svc_h ลง) · ฉาก H.1 (svc-qc-hotel-rates-scene.mts) เป็นผู้เขียน
+//   🔴 วันที่ของฉากสัมพัทธ์กับวันนี้ไทย (ฤดูยึดปีถัดไปถ้าช่วงผ่านไปแล้ว · override = วันที่ 14 ของเดือนนี้ ถ้าวันนี้ > 14 ⇒ เดือนหน้า)
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcRatePlanKey = "standard" | "breakfast" | "nonref";
+export type SqcRatePlan = { key: SqcRatePlanKey; code: string; name: string; isDefault: boolean; includeBreakfast: boolean; depositKind: "NONE" | "FIRST_NIGHT" | "FULL" | "PERCENT" | "FIXED_AMOUNT"; depositValue: number; cancelRules: { daysBefore: number; refundBp: number }[]; visibility: string[]; minNights: number | null };
+export type SqcSeason = { key: string; name: string; start: string; end: string; priority: number; adjustBp: number | null; fixed?: Record<string, { weekday: number; weekend: number; holiday: number | null }>; minNights?: number };
+/** ราคาต่อประเภท (สตางค์) ตามภาพ 15: ซูพีเรีย 990 ทุกวัน · ดีลักซ์ 1,290/1,490 · แฟมิลี 1,890/2,190 (holiday = ราคาเสาร์อาทิตย์) */
+export const SQC_HOTEL_RATES = {
+  mark: "SvcQcScene:h1",
+  unit: "hotel" as SqcUnitKey,
+  weekendDays: [5, 6],
+  plans: [
+    { key: "standard", code: "STANDARD", name: "ราคามาตรฐาน", isDefault: true, includeBreakfast: false, depositKind: "FIRST_NIGHT", depositValue: 0, cancelRules: [{ daysBefore: 3, refundBp: 10_000 }, { daysBefore: 0, refundBp: 0 }], visibility: ["WEB", "LINE", "COUNTER", "OTA"], minNights: null },
+    { key: "breakfast", code: "BREAKFAST", name: "รวมอาหารเช้า", isDefault: false, includeBreakfast: true, depositKind: "FIRST_NIGHT", depositValue: 0, cancelRules: [{ daysBefore: 3, refundBp: 10_000 }, { daysBefore: 0, refundBp: 0 }], visibility: ["WEB", "LINE"], minNights: null },
+    { key: "nonref", code: "NONREF", name: "จ่ายก่อน ไม่คืนเงิน", isDefault: false, includeBreakfast: false, depositKind: "FULL", depositValue: 0, cancelRules: [{ daysBefore: 0, refundBp: 0 }], visibility: ["WEB"], minNights: null },
+  ] as SqcRatePlan[],
+  /** matrix แถว seasonId=null ต่อแผน (ชื่อประเภท → สตางค์) · BREAKFAST = มาตรฐาน + 20,000 × baseOccupancy(2) · NONREF = มาตรฐาน −10% ปัดลงเป็นบาท */
+  base: {
+    "ซูพีเรีย": { weekday: 99_000, weekend: 99_000, holiday: null },
+    "ดีลักซ์": { weekday: 129_000, weekend: 149_000, holiday: 149_000 },
+    "แฟมิลี": { weekday: 189_000, weekend: 219_000, holiday: 219_000 },
+  } as Record<string, { weekday: number; weekend: number; holiday: number | null }>,
+  breakfastPerPersonSatang: 20_000,
+  nonrefDiscountBp: 1_000,
+  seasons: [
+    { key: "high", name: "ไฮซีซัน", start: "12-01", end: "02-28", priority: 10, adjustBp: 2_000 },
+    { key: "newyear", name: "ปีใหม่", start: "12-29", end: "01-02", priority: 20, adjustBp: null, minNights: 2, fixed: { "ซูพีเรีย": { weekday: 149_000, weekend: 149_000, holiday: null }, "ดีลักซ์": { weekday: 199_000, weekend: 199_000, holiday: null }, "แฟมิลี": { weekday: 299_000, weekend: 299_000, holiday: null } } },
+  ] as SqcSeason[],
+  /** วันหยุด (MM-DD · ปีตามฉาก) — 5 ธ.ค. อยู่ในไฮซีซัน (ข้อสอบ S:1133 "วันหยุดในฤดู") · 13 เม.ย. นอกฤดู */
+  holidays: [{ date: "12-05", name: "วันพ่อแห่งชาติ" }, { date: "04-13", name: "สงกรานต์" }],
+  /** แก้มือ (ภาพ 15 ช่อง "1,690 แก้มือ") — ดีลักซ์ ทุกแผน วันที่ 14 ของเดือนฉาก */
+  override: { roomType: "ดีลักซ์", dayOfMonth: 14, priceSatang: 169_000, reason: "งานวิ่งในเมือง" },
+  /** ค่าตั้งที่ฉากคาดบนหน่วย (ค่าเริ่มจาก registry · ฉากไม่เขียนทับ — ข้อสอบ Q เทียบก่อน/หลัง) */
+  expectSettings: { taxMode: "INCLUSIVE", vatBp: 700, serviceChargeBp: 0, holdMinutesOnline: 15, checkInTime: "14:00", checkOutTime: "12:00" },
+  /** ตัวเลขอ้างอิง (README ข้อสอบ): ดีลักซ์ ศ.+ส. 2 คืน มาตรฐาน = 149,000+149,000 = 298,000 · มัดจำคืนแรก 149,000 · ยกเลิกก่อน 3 วัน คืน 100% · NONREF 2 คืนเดียวกัน = 268,200 · ไฮซีซัน ดีลักซ์ธรรมดา = 154,800 · ปีใหม่ 31 ธ.ค. ดีลักซ์ = 199,000 (priority 20 ชนะ) · override 14 = 169,000 ทุกแผน */
+  expect: { deluxeFriSatStandard: 298_000, deluxeFirstNightDeposit: 149_000, deluxeFriSatNonref: 268_200, deluxeHighWeekday: 154_800, deluxeNewYear: 199_000, deluxeOverride: 169_000, superiorHoliday: 99_000 },
+} as const;
+/** ภาพ จอง/โรงแรม 15 (ราคา) + จอตั้งค่าโรงแรม — ก่อนถ่าย: seed → ฉาก H.1 · ถ่าย --user owner และ --user frontdesk (read-only) */
+SQC_VISUAL_SPECS["h.1"] = [
+  { name: "hotel-rates-calendar", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/rates` },
+  { name: "hotel-rates-plans", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/rates?tab=plans` },
+  { name: "hotel-rates-seasons", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/rates?tab=seasons` },
+  { name: "hotel-settings", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/settings` },
+];
+// ◂ SVC H.0 / H.1
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC H.3 / H.2 ▸ บล็อกจอง V2 (H.3) + ปฏิทินห้อง (H.2) — ผู้คุมตั้ง 7 พ.ย. 2569 · builder/เลนอื่นห้ามแตะ
+//   ใบสั่ง ledger/svc-briefs/svc-brief-h.3.md §2 ข้อ 13 (นาฬิกาฉาก) §4 (วิซาร์ด query) §6 (ฉากจอง) · svc-brief-h.2.md §5 (ฉากปฏิทิน ภาพ 08) §6
+//   🔴 ค่าคงที่อย่างเดียว · วันทุกตัวสัมพัทธ์ "วันนี้ไทย" เป็น offset วัน (ลบ = อดีต) · ราคา/มัดจำไม่ใส่ตัวเลขตาย (ขึ้นกับวันในสัปดาห์ — ข้อสอบคำนวณจาก SQC_HOTEL_RATES ด้วย pricing ref)
+//   🔴 ฉากเขียนผ่าน API ของใบเท่านั้น: createBooking · takeBookingDeposit · assignRoom · markNoShow · cancelBooking · checkIn (เดิม) · blockRoom (h.2) — ห้าม insert/update ตาราง Hotel* ตรง
+//      การจองอดีต/HOLD หมดอายุ = ส่ง `at` (ISO) ให้ฟังก์ชันของ booking.ts ซึ่งรับเฉพาะเมื่อ `SVC_QC_CLOCK=1` (ใบ h.3 §2 ข้อ 13 · เหมือน ?at= ของจอคิว) — ไม่มีการแก้ holdExpiresAt ด้วยมือ
+//   🔴 ฉาก h.3 กับ h.2 แยกกัน (mark ต่างกัน · ใช้ห้องชุดเดียวกัน ⇒ ห้องชน) — ก่อนรันฉากหนึ่ง ให้ `--clear` อีกฉากก่อน · ทั้งคู่ idempotent + `--clear` ลบเฉพาะแถวที่ `note` มี mark
+// ═════════════════════════════════════════════════════════════════════════════
+/** วันนี้ไทย (YYYY-MM-DD) ณ ตอนโหลดไฟล์ — ฉากและภาพต้องรันวันเดียวกัน (เหมือน SQC_LINE_SCENE_DAY) */
+export const SQC_TODAY_BKK = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+/** pure: เลื่อนวันปฏิทิน (ไม่ใช้นาฬิกาเครื่อง · ไม่ใช้ getDay) */
+export function sqcAddDays(ymd: string, n: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+export type SqcBookingSource = "WEB" | "WALK_IN" | "PHONE" | "LINE" | "OTA";
+export type SqcBookingStatus = "HOLD" | "CONFIRMED" | "CHECKED_IN" | "NO_SHOW" | "CANCELLED";
+/**
+ * 1 รายการ = 1 คำสั่ง createBooking (rooms > 1 = กลุ่ม groupId เดียว · roomType เดียวทั้งกลุ่ม)
+ * - checkInOffset: วันเข้าเทียบวันนี้ไทย · nights: จำนวนคืน (checkOut = checkIn + nights)
+ * - deposit PAID = takeBookingDeposit(payType = depositPayType) ทันทีหลังสร้าง (HOLD → CONFIRMED) · UNPAID = ไม่รับมัดจำ
+ * - hold: ONLINE (source WEB/LINE ใช้ holdMinutesOnline 15) · COUNTER ("รอโอน" หน้าเคาน์เตอร์ · holdMinutesCounter 1440) · ไม่ใส่ = ตาม bookingMode/ช่องทาง
+ * - holdAgeMinutes: สร้างย้อนหลังกี่นาที (ส่ง at = now − นาที) — ใช้ทำ HOLD หมดอายุ (15 นาทีออนไลน์ ⇒ 40 นาที = หมดอายุไป 25 นาที)
+ * - สถานะปลาย: CHECKED_IN = เรียก checkIn เดิม (at = วันเข้า 14:00 ไทย) · NO_SHOW = markNoShow (at = วันนี้) · CANCELLED = cancelBooking (at = วันนี้ · เหตุผล "ลูกค้าขอยกเลิก")
+ * - pinRooms (h.2): assignRoom ตามลำดับหลังสร้าง (กลุ่ม = ทีละแถว) · ไม่ใส่ = ให้ระบบเลือก (best-fit ของ P1)
+ * - channelRef: เฉพาะ source OTA (H.10 ผูกจริง · ตอนนี้คีย์เอง)
+ */
+export type SqcSceneBooking = {
+  key: string;
+  status: SqcBookingStatus;
+  source: SqcBookingSource;
+  channelRef?: string;
+  roomType: string;
+  rooms: number;
+  checkInOffset: number;
+  nights: number;
+  plan: SqcRatePlanKey;
+  guest: string;
+  adults: number;
+  deposit: "PAID" | "UNPAID";
+  hold?: "ONLINE" | "COUNTER";
+  holdAgeMinutes?: number;
+  pinRooms?: string[];
+};
+
+/**
+ * ฉากจอง V2 (ใบ H.3 §6 · บนฟิกซ์เจอร์ราคา H.1 = แผน STANDARD/BREAKFAST/NONREF ต้องมีอยู่ก่อน — รันฉาก h.1 ก่อน)
+ * นับผล: HOLD 2 (สด 1 · หมดอายุ 1 → sweepExpiredHolds เก็บเป็น CANCELLED HOLD_EXPIRED) · CONFIRMED 6 แถว/4 การจอง (วันนี้ 2 · พรุ่งนี้ 1 · กลุ่ม 3 ห้อง +7) · CHECKED_IN 2 · NO_SHOW 1 · CANCELLED 1 (+1 หลัง sweep)
+ * เงิน (ทุกบาทผ่าน POS): มัดจำ = FIRST_NIGHT ของแผน (กลุ่ม = รวมคืนแรกทุกห้อง) · noshow = FORFEIT_RELEASE_AFTER_AUDIT (ค่าเริ่ม registry) ⇒ ริบมัดจำ + ปล่อยห้อง/nights
+ *   cancelled = STANDARD ยกเลิก 5 วันก่อนเข้า ⇒ ขั้น daysBefore 3 คืน 100% ⇒ moduleRefundDeposit เต็มจำนวน (ข้อสอบทดสอบ 50%/0% บนร้านชั่วคราวของตัวเองด้วยกฎของมันเอง)
+ * ห้องดีลักซ์ nightly 7 ห้อง (B105–B107 · B201–B204) · ซูพีเรีย 4 · แฟมิลี 2 — ฉากไม่เกินจำนวนในวันใด (วันนี้: ดีลักซ์ใช้ today-walkin + inhouse-web = 2 · ซูพีเรีย today-phone + inhouse-ota = 2)
+ */
+export const SQC_HOTEL_BOOKING_SCENE = {
+  mark: "SvcQcScene:h3",
+  unit: "hotel" as SqcUnitKey,
+  depositPayType: "PROMPTPAY",
+  cancelReason: "ลูกค้าขอยกเลิก",
+  bookings: [
+    { key: "hold-web", status: "HOLD", source: "WEB", roomType: "ดีลักซ์", rooms: 1, checkInOffset: 2, nights: 2, plan: "standard", guest: "คุณน้ำ (จองเว็บ)", adults: 2, deposit: "UNPAID", hold: "ONLINE" },
+    { key: "hold-expired", status: "HOLD", source: "LINE", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: 3, nights: 1, plan: "standard", guest: "คุณบอส (LINE)", adults: 1, deposit: "UNPAID", hold: "ONLINE", holdAgeMinutes: 40 },
+    { key: "today-walkin", status: "CONFIRMED", source: "WALK_IN", roomType: "ดีลักซ์", rooms: 1, checkInOffset: 0, nights: 2, plan: "standard", guest: "คุณสมชาย ใจดี", adults: 2, deposit: "PAID" },
+    { key: "today-phone", status: "CONFIRMED", source: "PHONE", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: 0, nights: 1, plan: "breakfast", guest: "คุณแอน", adults: 2, deposit: "PAID" },
+    { key: "tomorrow-web", status: "CONFIRMED", source: "WEB", roomType: "แฟมิลี", rooms: 1, checkInOffset: 1, nights: 3, plan: "standard", guest: "ครอบครัวพงษ์", adults: 4, deposit: "PAID", hold: "ONLINE" },
+    { key: "group-wedding", status: "CONFIRMED", source: "PHONE", roomType: "ดีลักซ์", rooms: 3, checkInOffset: 7, nights: 2, plan: "standard", guest: "งานแต่งคุณเมย์", adults: 2, deposit: "PAID" },
+    { key: "inhouse-web", status: "CHECKED_IN", source: "WEB", roomType: "ดีลักซ์", rooms: 1, checkInOffset: -1, nights: 3, plan: "standard", guest: "Mr. John Carter", adults: 2, deposit: "PAID" },
+    { key: "inhouse-ota", status: "CHECKED_IN", source: "OTA", channelRef: "AGD-7781", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: -2, nights: 3, plan: "standard", guest: "Ms. Yuki Tanaka", adults: 1, deposit: "PAID" },
+    { key: "noshow", status: "NO_SHOW", source: "PHONE", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: -1, nights: 1, plan: "standard", guest: "คุณต้น", adults: 1, deposit: "PAID" },
+    { key: "cancelled", status: "CANCELLED", source: "WEB", roomType: "แฟมิลี", rooms: 1, checkInOffset: 5, nights: 2, plan: "standard", guest: "คุณพลอย", adults: 3, deposit: "PAID", hold: "ONLINE" },
+  ] as SqcSceneBooking[],
+  /** ผลที่ต้องได้หลังรันฉาก (ก่อน sweep) — ข้อสอบ Q ตรวจ · นับเป็น "แถว HotelReservation" */
+  expect: {
+    rowsByStatus: { HOLD: 2, CONFIRMED: 6, CHECKED_IN: 2, NO_SHOW: 1, CANCELLED: 1 } as Record<SqcBookingStatus, number>,
+    groups: 1,
+    groupRows: 3,
+    afterSweep: { HOLD: 1, CANCELLED: 2, holdExpiredReason: "HOLD_EXPIRED" },
+    /** nights.counted=true: ก่อน sweep = 21 (hold-web 2 + hold-expired 1 + CONFIRMED 2+1+3+3×2 + CHECKED_IN 3+3) · หลัง sweep = 20 (hold-expired ถูกปลด) · NO_SHOW/CANCELLED = counted false ตั้งแต่ทำรายการ */
+    countedNightsBeforeSweep: 21,
+    countedNightsAfterSweep: 20,
+    noShowPolicy: "FORFEIT_RELEASE_AFTER_AUDIT",
+    cancelledRefundBp: 10_000,
+    sources: ["WEB", "WALK_IN", "PHONE", "LINE", "OTA"] as SqcBookingSource[],
+  },
+} as const;
+/**
+ * ภาพ h.3 (ใบ §4 · ไม่มีภาพแบบของจอนี้ — ผู้คุมตรวจโครง/ไทย/read-only): รายการ · รายการกรอง HOLD · รายละเอียดกลุ่ม · วิซาร์ดขั้น 1 และ 3
+ * ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.3 · ถ่าย --user owner และ --user frontdesk (มี booking.manage ⇒ เห็นปุ่ม) · รายละเอียดกลุ่ม: ส่ง env SVC_VIS_H3_GROUP_ID=<id แถวหัวกลุ่ม งานแต่งคุณเมย์> (ฉากพิมพ์ใน SCENE_SUMMARY)
+ * วิซาร์ดขั้น 3 เปิดด้วย query prefill (ใบ h.3 §4: checkIn · checkOut · roomTypeId · rooms · step — อ่านเพื่อเติมฟอร์มเท่านั้น · ตรวจซ้ำฝั่ง server เสมอ)
+ */
+SQC_VISUAL_SPECS["h.3"] = [
+  { name: "hotel-bookings", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations` },
+  { name: "hotel-bookings-hold", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations?status=HOLD` },
+  ...(process.env.SVC_VIS_H3_GROUP_ID ? [{ name: "hotel-booking-group", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/${process.env.SVC_VIS_H3_GROUP_ID}` }] : []),
+  { name: "hotel-booking-new-1", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/new` },
+  {
+    name: "hotel-booking-new-3",
+    path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/new?checkIn=${sqcAddDays(SQC_TODAY_BKK, 2)}&checkOut=${sqcAddDays(SQC_TODAY_BKK, 4)}&roomTypeId=${SQC_HOTEL_TYPES.deluxe.id}&rooms=1&step=3`,
+  },
+];
+
+/**
+ * ฉากปฏิทินห้อง (ใบ H.2 §5 · ภาพ 08 ในสัปดาห์ที่เริ่มวันนี้) — ฉากเดี่ยว: `--clear` ฉาก h.3 ก่อน · สร้างทุกอย่างเองผ่าน createBooking/assignRoom(pinRooms)/blockRoom
+ * ต่างจากภาพโดยตั้งใจ: วันยึด offset จากวันนี้ (ไม่ยึด ศ./ส.) เพื่อให้ตัวเลขคาดคงที่ทุกวัน · B203 HOLD = "รอโอน" หน้าเคาน์เตอร์ (holdMinutesCounter 1440 · ภาพเขียน "ถึง 18:00")
+ * B205 (rentMode MONTHLY) = ของหอ · **ไม่มีแถวในปฏิทินโรงแรม** (มติ h.2 ข้อ 4 · ต่างจากภาพ 08 โดยตั้งใจ) · ห้อง BOTH ที่มีสัญญาหอจึงเห็นแถบ LEASE เทา · ฉากไม่สร้าง LEASE
+ * ห้องจริงตามภาพ 08: B101 พักอยู่ออกพรุ่งนี้ · B102 walk-in วันนี้ · B103 ปิดซ่อม 3 วัน · B104 Agoda 3 คืน · B105 พักอยู่ · B106–B201 กลุ่มงานแต่ง 3 ห้อง 2 คืน · B202 Booking.com 3 คืน ·
+ *   B203 ออกวันนี้ + HOLD รอมัดจำคืนนี้ · B204 LINE มาถึงวันนี้ · B206 ครอบครัว 1 คืน · B207 หน้าเว็บ 2 คืน
+ */
+export const SQC_HOTEL_TAPE_SCENE = {
+  mark: "SvcQcScene:h2",
+  unit: "hotel" as SqcUnitKey,
+  depositPayType: "PROMPTPAY",
+  bookings: [
+    { key: "B101", status: "CHECKED_IN", source: "WALK_IN", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: -2, nights: 3, plan: "standard", guest: "คุณวิชัย", adults: 2, deposit: "PAID", pinRooms: ["B101"] },
+    { key: "B102", status: "CONFIRMED", source: "WALK_IN", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: 0, nights: 1, plan: "standard", guest: "คุณกิ่ง (walk-in)", adults: 1, deposit: "PAID", pinRooms: ["B102"] },
+    { key: "B104", status: "CONFIRMED", source: "OTA", channelRef: "AGODA-5521", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: 1, nights: 3, plan: "standard", guest: "Agoda · Mr. Lee", adults: 2, deposit: "PAID", pinRooms: ["B104"] },
+    { key: "B105", status: "CHECKED_IN", source: "WEB", roomType: "ดีลักซ์", rooms: 1, checkInOffset: -1, nights: 3, plan: "standard", guest: "คุณนภา", adults: 2, deposit: "PAID", pinRooms: ["B105"] },
+    { key: "WEDDING", status: "CONFIRMED", source: "PHONE", roomType: "ดีลักซ์", rooms: 3, checkInOffset: 4, nights: 2, plan: "standard", guest: "งานแต่งคุณเมย์", adults: 2, deposit: "PAID", pinRooms: ["B106", "B107", "B201"] },
+    { key: "B202", status: "CONFIRMED", source: "OTA", channelRef: "BDC-88213", roomType: "ดีลักซ์", rooms: 1, checkInOffset: 2, nights: 3, plan: "standard", guest: "Booking.com · Ms. Park", adults: 2, deposit: "PAID", pinRooms: ["B202"] },
+    { key: "B203-out", status: "CHECKED_IN", source: "PHONE", roomType: "ดีลักซ์", rooms: 1, checkInOffset: -2, nights: 2, plan: "standard", guest: "คุณเอก", adults: 1, deposit: "PAID", pinRooms: ["B203"] },
+    { key: "B203-hold", status: "HOLD", source: "PHONE", roomType: "ดีลักซ์", rooms: 1, checkInOffset: 0, nights: 1, plan: "standard", guest: "คุณฟ้า (รอโอน)", adults: 2, deposit: "UNPAID", hold: "COUNTER", pinRooms: ["B203"] },
+    { key: "B204", status: "CONFIRMED", source: "LINE", roomType: "ดีลักซ์", rooms: 1, checkInOffset: 0, nights: 2, plan: "standard", guest: "คุณมิ้นต์ (LINE)", adults: 2, deposit: "PAID", pinRooms: ["B204"] },
+    { key: "B206", status: "CONFIRMED", source: "PHONE", roomType: "แฟมิลี", rooms: 1, checkInOffset: 4, nights: 1, plan: "standard", guest: "ครอบครัวสุขใจ", adults: 4, deposit: "PAID", pinRooms: ["B206"] },
+    { key: "B207", status: "CONFIRMED", source: "WEB", roomType: "แฟมิลี", rooms: 1, checkInOffset: 2, nights: 2, plan: "standard", guest: "ครอบครัว Smith", adults: 3, deposit: "PAID", pinRooms: ["B207"] },
+  ] as SqcSceneBooking[],
+  /** ปิดห้อง (blockRoom · kind BLOCK · reason ลง AuditLog + HousekeepingLog · hkStatus OUT_OF_ORDER เมื่อครอบวันนี้) */
+  blocks: [{ key: "B103", room: "B103", fromOffset: 0, nights: 3, reason: "แอร์เสีย รอช่าง" }],
+  /** ตัวเลขคืนนี้ (offset 0) ที่ hotelToday/แถวอัตราเข้าพักต้องให้ (ใบ h.2 §2 ข้อ 4–5)
+   *  sellable = ห้อง NIGHTLY/BOTH active 13 (B205 MONTHLY ไม่นับ) − BLOCK 1 (B103) = 12 · occupiedBar รวม HOLD ที่ counted (B203-hold) · inHouse = CHECKED_IN/CONFIRMED ที่ครอบคืนนี้ ไม่รวม HOLD */
+  expectToday: { arrivals: 2, departures: 1, inHouseTonight: 4, occupiedBarTonight: 5, blocked: 1, sellable: 12, arrivalNames: ["คุณกิ่ง (walk-in)", "คุณมิ้นต์ (LINE)"], departureNames: ["คุณเอก"] },
+  /** แถบในกริด 7 วันจากวันนี้ (ภาพ 08 คำอธิบาย 6 แบบ): STAY 3 (B101 B105 B203-out) · CONFIRMED 7 (B102 B106 B107 B201 B204 B206 B207) · OTA 2 (B104 B202) · HOLD 1 (B203) · BLOCK 1 (B103) · LEASE 0–1 (B205 ตามฐาน · ไม่ตรวจ) */
+  expectBars7d: { STAY: 3, CONFIRMED: 7, OTA: 2, HOLD: 1, BLOCK: 1 },
+} as const;
+/** ภาพ 08 (ปฏิทินห้อง) + หน้าเคาน์เตอร์ (KPI แถบบน) — ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.3 --clear → ฉาก h.2 · ถ่าย --user owner · frontdesk (ลากได้) · maid (อ่านอย่างเดียว ไม่มี handle) */
+SQC_VISUAL_SPECS["h.2"] = [
+  { name: "hotel-calendar-week", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/calendar` },
+  { name: "hotel-calendar-2w", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/calendar?view=2w` },
+  { name: "hotel-calendar-month", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/calendar?view=month` },
+  { name: "hotel-today", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel` },
+];
+// ◂ SVC H.3 / H.2
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC H.5 ▸ บล็อก folio/เช็กเอาต์ — ผู้คุมตั้ง 7 พ.ย. 2569 · builder/เลนอื่นห้ามแตะ · ใบสั่ง svc-brief-h.5.md §6
+//   🔴 ฉาก h.5 ต่อยอดฉาก h.3 (ต้องรัน svc-qc-hotel-booking-scene.mts ก่อน) · เขียนผ่าน API ของ H.5 เท่านั้น (postFolioItem · voidFolioItem · postRoomNights · takeSecurityDeposit · chargeToRoom ผ่านบิล POS จริง)
+//   🔴 ราคาคืนไม่ใส่ตัวเลขตาย (ขึ้นกับวันในสัปดาห์) — ข้อสอบคำนวณจาก SQC_HOTEL_RATES ด้วย pricing ref
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcFolioLine = { type: "SERVICE" | "MINIBAR" | "DISCOUNT" | "PENALTY"; description: string; qty: number; unitAmountSatang: number; voidReason?: string };
+export const SQC_HOTEL_FOLIO_SCENE = {
+  mark: "SvcQcScene:h5",
+  unit: "hotel" as SqcUnitKey,
+  /** การจองจากฉาก h.3 ที่ใช้ (key ของ SQC_HOTEL_BOOKING_SCENE) */
+  target: { key: "inhouse-web", guest: "Mr. John Carter" },
+  /** ค่าห้องที่ post แล้ว = คืนที่ผ่านไป (checkInOffset −1 ⇒ คืน −1 และคืน 0 หลัง audit ของคืนนี้ยังไม่มา ⇒ ฉาก post เฉพาะคืน −1 · postRoomNights(upToDate = วันนี้)) */
+  roomNightsPosted: 1,
+  /**
+   * บิลร้านอาหารจ่ายแบบ ROOM_CHARGE บน POS ของร้าน svcqc (ระบบ POS ผูกหน่วย hotel แล้ว · SQC_POS_EXTRA_UNITS) · reference = เลขห้องของ inhouse-web ณ เวลารันฉาก
+   * ⇒ consumer pos.sale.paid โพสต์ POS_CHARGE itemized 2 บรรทัด (ต้มยำกุ้ง 320 + ข้าวผัดปู 320 = 640.00 ตามภาพ 09)
+   */
+  roomChargeSale: { lines: [{ name: "ต้มยำกุ้ง", qty: 1, unitPriceSatang: 32_000 }, { name: "ข้าวผัดปู", qty: 1, unitPriceSatang: 32_000 }], note: "ห้องอาหาร · โต๊ะ 4" },
+  /** รายการ manual (ตามภาพ 09: มินิบาร์ 120 · ซักรีด 180) + ส่วนลด 100 + ซักรีดซ้ำ 1 แถวแล้ว void (reversal) */
+  manual: [
+    { type: "MINIBAR", description: "มินิบาร์ · น้ำอัดลม 2 · มันฝรั่ง 1", qty: 1, unitAmountSatang: 12_000 },
+    { type: "SERVICE", description: "ซักรีด", qty: 1, unitAmountSatang: 18_000 },
+    { type: "SERVICE", description: "ซักรีด (บันทึกซ้ำ)", qty: 1, unitAmountSatang: 18_000, voidReason: "บันทึกซ้ำ" },
+    { type: "DISCOUNT", description: "ส่วนลดแขกประจำ", qty: 1, unitAmountSatang: -10_000 },
+  ] as SqcFolioLine[],
+  /** เงินประกันห้อง ฿1,000 เงินสด (เปิดค่าตั้ง securityDeposit.enabled ในฉากเฉพาะหน่วย svcqc · appliesTo ALL · คืนตอนเช็กเอาต์) */
+  securityDeposit: { amountSatang: 100_000, payType: "CASH" },
+  /** บิลลงห้องที่ reference ผิด ⇒ อยู่คิว unmatched (ไม่โพสต์) */
+  unmatchedSale: { reference: "B999", lines: [{ name: "กาแฟ", qty: 2, unitPriceSatang: 8_000 }] },
+  /** ผลที่ต้องได้บน folio ของ inhouse-web (ข้อสอบ Q · นับแถว HotelFolioItem ตาม type · ยอด = Σ amount) */
+  expect: {
+    itemsByType: { ROOM: 1, POS_CHARGE: 2, MINIBAR: 1, SERVICE: 2, VOID_REVERSAL: 1, DISCOUNT: 1, DEPOSIT: 1, SECURITY_DEPOSIT: 1 } as Record<string, number>,
+    /** balance = ราคาคืน −1 (จาก pricing ref) + 64_000 + 12_000 + 18_000 − 10_000 − มัดจำคืนแรก (ราคาคืน −1 เท่ากัน) ⇒ = 84_000 สตางค์ เสมอ (ค่าห้องหักล้างกับมัดจำ FIRST_NIGHT) */
+    balanceSatang: 84_000,
+    securityHeldSatang: 100_000,
+    unmatched: 1,
+    folioStatus: "OPEN",
+    /** มติ 7 พ.ย. (ข้อเสนอผู้เขียนข้อสอบ): POS_CHARGE รวม 64,000 · reversal คู่กับ SERVICE ที่ void */
+    posChargeTotalSatang: 64_000,
+    voidReversalOf: "SERVICE",
+  },
+} as const;
+/**
+ * ภาพ h.5 (ภาพ 09 ครึ่งขวา · PARITY ผู้คุม): folio ในแท็บเงิน · ไดอะล็อกเช็กเอาต์ · คิว unmatched · หน้า print
+ * ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.3 → ฉาก h.5 · ส่ง env SVC_VIS_H5_RES_ID=<id ของ inhouse-web> (ฉากพิมพ์ใน SCENE_SUMMARY) · ถ่าย --user owner และ --user frontdesk (มี folio.post + checkOut · ไม่มี folio.void ⇒ ไม่เห็นปุ่ม void)
+ * query ที่หน้า H.5 ต้องรับ: `?tab=money` (เปิดแท็บเงิน) · `&checkout=1` (เปิดไดอะล็อกเช็กเอาต์)
+ */
+SQC_VISUAL_SPECS["h.5"] = [
+  ...(process.env.SVC_VIS_H5_RES_ID
+    ? [
+        { name: "hotel-folio", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/${process.env.SVC_VIS_H5_RES_ID}?tab=money` },
+        { name: "hotel-checkout", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/${process.env.SVC_VIS_H5_RES_ID}?tab=money&checkout=1` },
+        { name: "hotel-folio-print", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/${process.env.SVC_VIS_H5_RES_ID}/folio/print` },
+      ]
+    : []),
+  { name: "hotel-folio-unmatched", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/folio/unmatched` },
+];
+// ◂ SVC H.5
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC H.4 ▸ บล็อกเช็กอิน V2 / ทะเบียนแขก / ตม.30 — ผู้คุมตั้ง 7 พ.ย. 2569 · ใบสั่ง svc-brief-h.4.md §6 · builder/เลนอื่นห้ามแตะ
+//   🔴 ฉาก h.4 ต่อยอดฉาก h.3 (รัน svc-qc-hotel-booking-scene.mts ก่อน) · เขียนผ่าน API ของ H.4 เท่านั้น (upsertGuestRecord · signRr3 · markTm30Filed · checkInV2 · takeSecurityDeposit ของ H.5 · tm30Sweep)
+//   🔴 เลขเอกสารในฉากเป็นเลขปลอมที่รูปแบบถูก (บัตรไทย checksum ผ่าน · พาสปอร์ตรูปแบบ) · ห้ามเก็บดิบ — ข้อสอบตรวจว่าในฐานมีแต่ idNumberEnc + last4
+//   🔴 ตม.30: inhouse-ota เข้าพัก −2 วัน ยังไม่แจ้ง ⇒ หลัง tm30Sweep ต้องเป็น LATE · inhouse-web แจ้งแล้ว (FILED + เลขรับแจ้ง) · คนไทย NOT_REQUIRED
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcGuest = { reservationKey: string; fullName: string; nationality: string; idType: "PASSPORT" | "THAI_ID"; idNumber: string; dob: string; sex?: "M" | "F"; occupation?: string; arrivedFrom?: string; nextDestination?: string; primary: boolean; signed: boolean };
+export const SQC_HOTEL_GUEST_SCENE = {
+  mark: "SvcQcScene:h4",
+  unit: "hotel" as SqcUnitKey,
+  /** ค่าตั้งที่ฉากเปิดบนหน่วย svcqc ก่อนเช็กอิน (ชั้น UNIT · ผ่านเครื่องยนต์ค่าตั้ง · --clear คืนค่า) */
+  settings: { "rooms.hotel.securityDeposit.enabled": true, "rooms.hotel.securityDeposit": 100_000, "rooms.hotel.securityDeposit.appliesTo": "ALL", "rooms.hotel.guest.aiIdReader": false },
+  guests: [
+    { reservationKey: "inhouse-web", fullName: "WEBER, DANIEL", nationality: "DEU", idType: "PASSPORT", idNumber: "C01X4KJ77", dob: "1986-03-12", sex: "M", occupation: "Engineer", arrivedFrom: "เชียงใหม่", nextDestination: "หลวงพระบาง", primary: true, signed: true },
+    { reservationKey: "inhouse-web", fullName: "WEBER, ANNA", nationality: "DEU", idType: "PASSPORT", idNumber: "C02Y5LM88", dob: "1988-07-30", sex: "F", primary: false, signed: false },
+    { reservationKey: "inhouse-ota", fullName: "TANAKA, YUKI", nationality: "JPN", idType: "PASSPORT", idNumber: "TK9876543", dob: "1992-11-02", sex: "F", occupation: "Designer", arrivedFrom: "โตเกียว", nextDestination: "ภูเก็ต", primary: true, signed: true },
+    { reservationKey: "today-walkin", fullName: "สมชาย ใจดี", nationality: "THA", idType: "THAI_ID", idNumber: "1101700000010", dob: "1979-05-20", sex: "M", occupation: "ค้าขาย", arrivedFrom: "กรุงเทพฯ", nextDestination: "กรุงเทพฯ", primary: true, signed: true },
+  ] as SqcGuest[],
+  /** today-walkin เช็กอินในฉากด้วย checkInV2 (ห้องว่าง CLEAN ของดีลักซ์ · ไม่ force) + เงินประกัน 1,000 เงินสด */
+  checkInV2: { reservationKey: "today-walkin", securityDeposit: { amountSatang: 100_000, payType: "CASH" } },
+  /** ตม.30 ของ inhouse-web แจ้งแล้ว (2 คน · เลขรับแจ้งเดียว) · inhouse-ota ยังไม่แจ้ง (เกิน 24 ชม. ⇒ LATE หลัง sweep) */
+  tm30: { filed: { reservationKey: "inhouse-web", ref: "TM30-2569-001234" }, lateAfterSweep: ["inhouse-ota"] },
+  /** เลขบัตรไทยปลอมสำรองสำหรับข้อสอบ (checksum ถูก) */
+  spareThaiId: "3509900000021",
+  expect: {
+    guestRows: 4,
+    byTm30: { FILED: 2, LATE: 1, NOT_REQUIRED: 1 } as Record<string, number>,
+    foreigners: 3,
+    signedRr3: 3,
+    walkinStatus: "CHECKED_IN",
+    securityHeldSatang: 100_000,
+    /** ทุกแถว: idNumberEnc ไม่ว่าง · ไม่มีเลขเต็มดิบในคอลัมน์ใด · idNumberLast4 = 4 ตัวท้าย */
+    last4: ["KJ77", "LM88", "6543", "0010"],
+  },
+} as const;
+/**
+ * ภาพ h.4 (ภาพ 09 ครึ่งซ้าย · PARITY ผู้คุม): แท็บแขก/เช็กอินของการจอง · ทะเบียนผู้พัก · ร.ร.3 พิมพ์ · ร.ร.4 พิมพ์ · คิว ตม.30
+ * ก่อนถ่าย: seed → ฉาก h.1 → h.3 → h.4 · env SVC_VIS_H4_RES_ID=<id inhouse-web> · SVC_VIS_H4_GUEST_ID=<guestId WEBER, DANIEL> (ฉากพิมพ์ใน SCENE_SUMMARY) · ถ่าย --user owner · frontdesk (guest.register · ไม่มี viewId ⇒ เลขปิดบางส่วน)
+ * query ที่หน้า H.4 ต้องรับ: `?tab=guests` (เปิดแท็บแขก/เช็กอิน)
+ */
+SQC_VISUAL_SPECS["h.4"] = [
+  ...(process.env.SVC_VIS_H4_RES_ID ? [{ name: "hotel-checkin", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/${process.env.SVC_VIS_H4_RES_ID}?tab=guests` }] : []),
+  ...(process.env.SVC_VIS_H4_GUEST_ID ? [{ name: "hotel-rr3-print", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/guests/${process.env.SVC_VIS_H4_GUEST_ID}/rr3/print` }] : []),
+  { name: "hotel-guests", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/guests` },
+  { name: "hotel-rr4-print", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/guests/rr4/print?from=${sqcAddDays(SQC_TODAY_BKK, -3)}&to=${SQC_TODAY_BKK}` },
+  { name: "hotel-tm30", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/tm30` },
+];
+// ◂ SVC H.4
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC H.6 ▸ บล็อกแม่บ้านมือถือ — ผู้คุมตั้ง 7 พ.ย. 2569 · ใบสั่ง svc-brief-h.6.md §6 · ภาพ 13 ก/ข · builder/เลนอื่นห้ามแตะ
+//   🔴 ฉาก h.6 ต่อยอดฉาก h.2 (ห้องชุดเดียวกับภาพ 08 · ต้อง --clear ฉาก h.3 แล้วรันฉาก h.2 ก่อน) · เขียนผ่าน API ของ H.6/H.5 เท่านั้น (hkSetStatus · hkStart · postMinibar · settleAndCheckOut สำหรับ B203-out · hkNote ผ่าน hkStart/คำขอแขก)
+//   🔴 "วันนี้" ของฉาก = วันนี้ไทย ณ เวลารัน · เวลาเริ่มทำ B203 = now − 18 นาที (startedAt ผ่าน `at` ใต้ SVC_QC_CLOCK=1)
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcHkRoom = { room: string; hkStatus: "DIRTY" | "CLEAN" | "INSPECTED" | "OUT_OF_ORDER"; context: "DEPARTED" | "DEPARTING" | "ARRIVING" | "STAYOVER" | "VACANT" | "OOO"; mine?: boolean; guestRequest?: string; note?: string; startedMinutesAgo?: number; done?: boolean; /** มีจอง CONFIRMED เข้าภายใน 7 วัน (มติ h.6 ข้อ 4 · นับใน total · hkBoard ส่ง `upcoming`) */ upcoming?: boolean };
+export const SQC_HOTEL_HK_SCENE = {
+  mark: "SvcQcScene:h6",
+  unit: "hotel" as SqcUnitKey,
+  maidKey: "maid" as SqcUserKey,
+  leadKey: "hk-lead" as SqcUserKey,
+  /** เช็กเอาต์ B203-out ด้วย H.5 (จ่าย CASH · ประกันไม่มี) ⇒ B203 DIRTY "ออกแล้ว" */
+  checkoutKeys: ["B203-out"],
+  rooms: [
+    { room: "B203", hkStatus: "DIRTY", context: "DEPARTED", mine: true, startedMinutesAgo: 18 }, // ภาพ ข: กำลังทำ 18 นาที · ขายได้หลังตรวจ (inspectionRequired เปิดในฉาก)
+    { room: "B102", hkStatus: "DIRTY", context: "ARRIVING", mine: true, note: "walk-in · ตรวจห้อง" },
+    { room: "B204", hkStatus: "INSPECTED", context: "ARRIVING", mine: true, guestRequest: "ขอหมอนเพิ่ม 1" },
+    { room: "B101", hkStatus: "DIRTY", context: "STAYOVER", mine: true, guestRequest: "แขกขอทำหลัง 13:00" },
+    { room: "B105", hkStatus: "DIRTY", context: "STAYOVER", mine: true, note: "เปลี่ยนผ้าเช็ดตัว · ป้าย 'ไม่ต้องทำ' เมื่อวาน" },
+    { room: "B202", hkStatus: "INSPECTED", context: "VACANT", done: true, upcoming: true }, // ✓ พร้อมรับ (Booking.com เข้า +2 ⇒ บริบทวันนี้ = VACANT · ป้าย "พร้อมรับ <ชื่อ>" เมื่อ INSPECTED และมีจองใน 7 วัน — มติ h.6 ข้อ 3)
+    { room: "B103", hkStatus: "OUT_OF_ORDER", context: "OOO" }, // BLOCK ของฉาก h.2
+  ] as SqcHkRoom[],
+  /** ค่าตั้งที่ฉากเปิดบนหน่วย svcqc (คืนค่าตอน --clear) */
+  settings: { "rooms.hotel.inspectionRequired": true, "rooms.hotel.dailyHousekeeping": true, "rooms.hotel.hk.canBlock": true },
+  /** เช็กลิสต์ดีลักซ์ (ค่าตั้ง rooms.hotel.housekeepingChecklist ชั้น ROOM_TYPE) ตามภาพ ข */
+  checklistDeluxe: ["เปลี่ยนผ้าปู · ปลอกหมอน", "ห้องน้ำ · ผ้าเช็ดตัว 2 ชุด", "เติมน้ำดื่ม · กาแฟ · สบู่", "ดูดฝุ่น · ถูพื้น", "ตรวจแอร์ · รีโมต · ทีวี"],
+  /** มินิบาร์ (ค่าตั้ง rooms.hotel.minibar) + รายการที่โพสต์แล้วบน B105 (folio OPEN ของ B105 แขกพักอยู่) */
+  minibar: { items: [{ key: "soda", name: "น้ำอัดลม", priceSatang: 4_000 }, { key: "chips", name: "มันฝรั่ง", priceSatang: 4_000 }, { key: "water", name: "น้ำดื่ม", priceSatang: 2_000 }], posted: { room: "B105", lines: [{ key: "soda", qty: 2 }] } },
+  /** นิยาม counts (มติ h.6 ข้อ 4): total = ห้องที่มีบริบท (ไม่ VACANT) + ห้องว่าง DIRTY · ไม่รวม OOO · done = ใน total ที่ CLEAN/INSPECTED และไม่มี guestRequest ค้าง (B204 มีคำขอ ⇒ ไม่ done) · mine = assignedTo = ฉัน · B202 VACANT+INSPECTED นับ done ผ่านป้าย "พร้อมรับ" (อยู่ใน total เพราะมีจองใน 7 วัน) */
+  expect: {
+    counts: { mine: 5, total: 6, done: 1 },
+    /** ลำดับการ์ดด่วน (hkPriority): ออกแล้ว+มีแขกเข้า → แขกเข้าวันนี้ → ออกแล้ว → ค้างต่อ → ... */
+    orderFirst3: ["B203", "B102", "B204"],
+    byStatus: { DIRTY: ["B101", "B102", "B105", "B203"], INSPECTED: ["B202", "B204"], OUT_OF_ORDER: ["B103"] } as Record<string, string[]>,
+    minibarFolioItems: 1,
+    minibarAmountSatang: 8_000,
+    startedRoom: "B203",
+  },
+} as const;
+/** ภาพ 13 ก/ข (มือถือ 390 หลัก) — ก่อนถ่าย: seed → h.1 → h.3 --clear → h.2 → h.6 · ถ่าย --user maid (ของฉัน · ทำห้อง) · hk-lead (ตรวจ) · owner · env SVC_VIS_H6_ROOM_ID=<roomId B203> */
+SQC_VISUAL_SPECS["h.6"] = [
+  { name: "hotel-hk-board", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/housekeeping` },
+  ...(process.env.SVC_VIS_H6_ROOM_ID ? [{ name: "hotel-hk-room", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/housekeeping/${process.env.SVC_VIS_H6_ROOM_ID}` }] : []),
+  { name: "hotel-hk-logs", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/housekeeping/logs` },
+];
+// ◂ SVC H.6
+
+// ══════════════════════════════════════════════════════════════════════
+// SVC H.7 ▸ บล็อก night audit + รายงาน — ผู้คุมตั้ง 7 พ.ย. 2569 · builder/เลนอื่นห้ามแตะ · ใบสั่ง svc-brief-h.7.md §6
+//   🔴 ฉาก h.7 ยืนบนฉาก h.3 เท่านั้น (ไม่รันฉาก h.2/h.5/h.6 ก่อน) ⇒ ไม่มี BLOCK · available = ห้อง NIGHTLY/BOTH active = 13 (B205 MONTHLY ไม่นับ)
+//   🔴 ฉาก h.3 ทำ noshow ไปแล้ว (status NO_SHOW) ⇒ ฉาก h.7 เพิ่มการจอง `audit-noshow` (CONFIRMED · เข้าเมื่อวาน · มัดจำจ่ายแล้ว · ไม่เช็กอิน) ให้ขั้น 1 ของ audit จัดการ
+//   🔴 ราคาคืนไม่ใส่ตัวเลขตาย (ขึ้นกับวันในสัปดาห์) — ข้อสอบคำนวณ revenue/ADR/RevPAR จาก SQC_HOTEL_RATES ด้วย pricing ของ H.1
+// ══════════════════════════════════════════════════════════════════════
+export const SQC_HOTEL_AUDIT_SCENE = {
+  mark: "SvcQcScene:h7",
+  unit: "hotel" as SqcUnitKey,
+  /** businessDate ที่ปิด = วันนี้ไทย − 1 (ฉาก h.3: inhouse-web คืน −1..+1 · inhouse-ota คืน −2..0 · noshow เมื่อวาน = NO_SHOW แล้ว) */
+  businessDateOffset: -1,
+  /** การจองเพิ่มของฉากนี้ (สร้างผ่าน createBooking + takeBookingDeposit ด้วย `at` ใต้ SVC_QC_CLOCK=1 · ไม่เช็กอิน) ⇒ audit ขั้น 1 ต้อง markNoShow + ริบมัดจำผ่าน POS + PENALTY */
+  extraBookings: [
+    { key: "audit-noshow", status: "CONFIRMED", source: "PHONE", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: -1, nights: 1, plan: "standard", guest: "คุณกิตติ (ไม่มา·รอปิดวัน)", adults: 1, deposit: "PAID" },
+  ] as SqcSceneBooking[],
+  /** ค่าตั้งที่ฉากตั้งให้หน่วย svcqc (ชั้น UNIT · ตั้งก่อนปิดวัน) */
+  settings: { "rooms.hotel.noShow": "FORFEIT_RELEASE_AFTER_AUDIT", "rooms.hotel.dailyHousekeeping": true, "rooms.hotel.nightAuditTime": "03:00", "rooms.hotel.audit.autoClose": true } as Record<string, unknown>, // มติ 7 พ.ย. (คำถาม oracle ข้อ 7): ใช้คีย์เดิม rooms.hotel.nightAuditTime (#76) ไม่เพิ่ม auditAutoTime
+  /** ผลที่ต้องได้หลัง closeNightAudit(businessDate = −1) · ข้อสอบ Q เทียบจาก HotelNightAudit + FolioItem + nights */
+  expect: {
+    noShows: 1,                 // audit-noshow ⇒ NO_SHOW · มัดจำริบผ่าน POS (บิลริบ PAID · GL) · folio VOID ตาม H.3 releaseStayTx (มติ 7 พ.ย. คำถาม oracle ข้อ 1 — ไม่แทรก PENALTY/ไม่แตะ booking.ts)
+    roomNightsPosted: 2,        // inhouse-web คืน −1 · inhouse-ota คืน −1 (ROOM item businessDate −1 · ไม่โพสต์ซ้ำเมื่อปิดใหม่)
+    roomsTotal: 13,             // ห้อง NIGHTLY/BOTH active (B205 MONTHLY ไม่นับ)
+    roomsOOO: 0,                // ไม่มี BLOCK ในฉาก h.3
+    roomsAvailable: 13,
+    roomsOccupied: 2,           // CHECKED_IN ที่มีคืน −1 นับ: inhouse-web · inhouse-ota (noshow/audit-noshow ไม่นับ)
+    occupancyBps: 1538,         // 2 × 10000 ÷ 13 (ปัดลง)
+    /** revenue = ราคาคืน −1 ของดีลักซ์ (inhouse-web · standard) + ราคาคืน −1 ของซูพีเรีย (inhouse-ota · standard) ตาม SQC_HOTEL_RATES/pricing · ADR = revenue ÷ 2 · RevPAR = revenue ÷ 13 (ปัดตาม rooms.money.rounding) */
+    stayoversDirty: 2,          // H.6 markStayoversDirty: inhouse-web · inhouse-ota ยังพักต่อข้ามคืน −1 ⇒ DIRTY (ถ้า H.6 ยังไม่ merge ⇒ ข้อสอบ SKIP)
+    closeTwice: "ALREADY_CLOSED",
+    closeToday: "TOO_EARLY",
+    reopenThenClose: { auditStatus: "CLOSED", roomNightsPostedAfter: 2 }, // ปิดใหม่ไม่โพสต์ซ้ำ
+    history: 1,
+  },
+} as const;
+/**
+ * ภาพ h.7 (ไม่มีภาพแบบเฉพาะ · PARITY โครงกับหน้ารายงานหอ): หน้ารายงาน + หน้าปิดวัน · ถ่าย --user owner · manager (hotel.audit.run+reports.read) · frontdesk (ไม่มีสิทธิ์ ⇒ ไม่เห็นแท็บ/404)
+ * ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.3 → ฉาก h.7 (ยังไม่ปิดวัน ⇒ หน้า audit แสดง preview เมื่อวาน · หน้า reports คำนวณสด)
+ */
+SQC_VISUAL_SPECS["h.7"] = [
+  { name: "hotel-reports", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reports` },
+  { name: "hotel-reports-revenue", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reports?tab=revenue&groupBy=source` },
+  { name: "hotel-audit", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reports/audit` },
+];
+// ◂ SVC H.7
+
+// ══════════════════════════════════════════════════════════════════════
+// SVC H.8 ▸ บล็อกจองออนไลน์ V2 — ผู้คุมตั้ง 7 พ.ย. 2569 · builder/เลนอื่นห้ามแตะ · ใบสั่ง svc-brief-h.8.md §6 + §9
+//   🔴 ฉาก h.8 ยืนบนฉาก h.1 เท่านั้น (ไม่รันฉาก h.3) ⇒ ห้องว่างเริ่ม: ซูพีเรีย 4 · ดีลักซ์ nightly 7 · แฟมิลี 2
+//   🔴 วันฉาก = ศุกร์ถัดไป (ไทย · ถ้าวันนี้ศุกร์ = ศุกร์หน้า) + 2 คืน (ศ.+ส.) — ฉาก/ข้อสอบคำนวณจาก "วันนี้ไทย" · ห้ามใส่วันตาย
+//   🔴 ราคาอ้าง SQC_HOTEL_RATES: ดีลักซ์ ศ. (weekend) 149,000 · ส. override ฉาก 169,000 (mark h8 · เฉพาะวันฉาก) ⇒ ภาพ 16 ก "ศ. ฿1,490 + ส. ฿1,690 = ฿3,180" · ซูพีเรีย 99,000×2 = 198,000 · BREAKFAST = +20,000×2 คน×2 คืน = 398,000 · NONREF = 318,000×0.9 = 286,200
+//   🔴 ห้องที่เหลือตอนค้นหา (หลังฉาก): ดีลักซ์ 7 − เคาน์เตอร์ 3 − HOLD เว็บ 1 − CONFIRMED เว็บ 1 = 2 · ซูพีเรีย 4 − 3 = 1 · แฟมิลี: ศ. 2 ว่าง · ส. เต็ม (เคาน์เตอร์ 2 ห้องคืนเสาร์)
+// ══════════════════════════════════════════════════════════════════════
+export const SQC_HOTEL_WEB_SCENE = {
+  mark: "SvcQcScene:h8",
+  unit: "hotel" as SqcUnitKey,
+  /** ที่อยู่สาธารณะ (Q11: ลิงก์ SHARK ก่อน) */
+  publicBase: `/s/${SQC_TENANT.slug}/${SQC_UNITS.hotel.slug}/hotel`,
+  /** วันฉาก: anchor = ศุกร์ถัดไปเวลาไทย · nights 2 (ศ.→อา.) */
+  anchor: "NEXT_FRIDAY" as const,
+  nights: 2,
+  /** override ราคาเฉพาะวันฉาก (วันเสาร์ของ anchor) · mark h8 · --clear ลบ */
+  override: { roomType: "ดีลักซ์", anchorDayOffset: 1, priceSatang: 169_000, reason: "ฉาก h.8 (งานในเมือง)" },
+  /** การจองผ่านเคาน์เตอร์เพื่อทำให้เหลือน้อย (createBooking source WALK_IN · CONFIRMED · มัดจำจ่ายแล้ว) · anchorDayOffset = วันเข้าเทียบ anchor */
+  counterBookings: [
+    { key: "cnt-dlx", roomType: "ดีลักซ์", rooms: 3, anchorDayOffset: 0, nights: 2, plan: "standard" as SqcRatePlanKey, guest: "กรุ๊ปสัมมนา (เคาน์เตอร์)", adults: 2 },
+    { key: "cnt-sup", roomType: "ซูพีเรีย", rooms: 3, anchorDayOffset: 0, nights: 2, plan: "standard" as SqcRatePlanKey, guest: "คุณบุญมี (โทร)", adults: 2 },
+    { key: "cnt-fam-sat", roomType: "แฟมิลี", rooms: 2, anchorDayOffset: 1, nights: 1, plan: "standard" as SqcRatePlanKey, guest: "ครอบครัวสุขใจ (เสาร์)", adults: 4 },
+  ],
+  /** การจองจากเว็บ (ผ่าน publicCreateHold ของ H.8 · locale th) */
+  webBookings: [
+    { key: "web-hold", status: "HOLD", roomType: "ดีลักซ์", rooms: 1, anchorDayOffset: 0, nights: 2, plan: "standard" as SqcRatePlanKey, guest: { name: "ภัทรา สายใจ", phone: "0891111180", email: "patra.h8@example.com" }, adults: 2, deposit: "PENDING", slip: null },
+    { key: "web-confirmed", status: "CONFIRMED", roomType: "ดีลักซ์", rooms: 1, anchorDayOffset: 0, nights: 2, plan: "standard" as SqcRatePlanKey, guest: { name: "สมชาย ออนไลน์", phone: "0892222180", email: "somchai.h8@example.com" }, adults: 2, deposit: "PAID", slip: "APPROVED" },
+  ],
+  /** ค่าตั้งที่ฉากคาด (ค่าเริ่มจาก registry · ฉากไม่เขียนทับ ยกเว้น badge) */
+  settings: { "rooms.hotel.storefront.badgeTh": "จองตรงถูกกว่า", "rooms.hotel.storefront.badgeEn": "Best rate direct" } as Record<string, unknown>,
+  expectSettings: { bookingMode: "DEPOSIT_REQUIRED", holdMinutesOnline: 15, maxAdvanceBookingDays: 365, storefrontEnabled: true, selfCancel: true, maxRooms: 5 },
+  /** ผลที่ข้อสอบตรวจบน publicSearch(anchor, +2 คืน, 2 ผู้ใหญ่, 1 ห้อง) หลังฉาก */
+  expect: {
+    deluxe: { remaining: 2, standardTotal: 318_000, nightPrices: [149_000, 169_000], breakfastTotal: 398_000, nonrefTotal: 286_200, depositStandard: 149_000, payAtHotelStandard: 169_000 },
+    superior: { remaining: 1, standardTotal: 198_000 },
+    family: { remaining: 0, soldOutAnchorDayOffsets: [1] },
+    holdDepositSatang: 149_000,
+    confirmedDepositSatang: 149_000,
+    webHoldCountActive: 1,
+    webConfirmedCount: 1,
+  },
+} as const;
+/**
+ * ภาพ h.8 (ภาพ 16 ก/ข/ค · มือถือ 390 · TH/EN) — หน้าสาธารณะ ไม่ต้องล็อกอิน (visual-svc --user none หรือ owner ก็ได้ · cookie lang)
+ * ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.8 · chain ตั้ง env จาก SCENE_SUMMARY: SVC_VIS_H8_QS (checkIn=&checkOut=&adults=2&rooms=1) · SVC_VIS_H8_HOLD_TOKEN · SVC_VIS_H8_CONF_TOKEN
+ */
+{
+  const base = SQC_HOTEL_WEB_SCENE.publicBase;
+  const qs = process.env.SVC_VIS_H8_QS ? `?${process.env.SVC_VIS_H8_QS}` : "";
+  const hold = process.env.SVC_VIS_H8_HOLD_TOKEN ?? "TOKEN";
+  const conf = process.env.SVC_VIS_H8_CONF_TOKEN ?? "TOKEN";
+  SQC_VISUAL_SPECS["h.8"] = [
+    { name: "hotel-web-search", path: `${base}${qs}` },
+    { name: "hotel-web-search-en", path: `${base}${qs}${qs ? "&" : "?"}lang=en` },
+    { name: "hotel-web-pay", path: `${base}/pay/${hold}` },
+    { name: "hotel-web-status", path: `${base}/r/${conf}` },
+    { name: "hotel-web-status-en", path: `${base}/r/${conf}?lang=en` },
+    { name: "hotel-web-my", path: `${base}/my` },
+  ];
+}
+// ◂ SVC H.8
+
+// ══════════════════════════════════════════════════════════════════════
+// SVC H.10 ▸ บล็อกโครง OTA (channel manager · ตัวต่อ FAKE) — ผู้คุมตั้ง 7 พ.ย. 2569 · builder/เลนอื่นห้ามแตะ · ใบสั่ง svc-brief-h.10.md §6 + §9
+//   🔴 ฉาก h.10 ยืนบนฉาก h.1 (ราคา/แผน) เท่านั้น · ตัวต่อ = TenantIntegration kind CHANNEL_MANAGER provider FAKE (ต้อง INTEGRATIONS_FAKE=1 ใต้ qc-svc.sh)
+//   🔴 ราคาส่งช่องทาง = ราคาแผน STANDARD × (1 + markupBp/10000) ปัดตาม rooms.money.rounding · available ส่งช่องทาง = available จริง − buffer (ไม่ต่ำกว่า 0)
+//   🔴 NEEDS_ROOM: ซูพีเรียเต็มวัน +5 (เคาน์เตอร์จอง 4 ห้อง 1 คืน) ⇒ inbound ซูพีเรียวันนั้นเข้าคิวต้องจัดห้อง (ไม่สร้างการจอง · ไม่ทับใคร)
+//   🔴 MODIFIED v2 ของ OTA-1001: เลื่อนเข้า +1 วัน (คืน +4..+5) ⇒ การจองเดิม CANCELLED (ไม่ refund · prepaid) + การจองใหม่ CONFIRMED ใน tx เดียว · channelRef เดิม
+// ══════════════════════════════════════════════════════════════════════
+export const SQC_HOTEL_OTA_SCENE = {
+  mark: "SvcQcScene:h10",
+  unit: "hotel" as SqcUnitKey,
+  connector: { id: "svcqc-int-ota-fake", kind: "CHANNEL_MANAGER", provider: "FAKE", label: "OTA ทดสอบ (FAKE)", fields: { accountId: "svcqc-ota", mode: "OK", quotaLimit: "1000", quotaRemaining: "1000" } },
+  roomMaps: [
+    { roomType: "ดีลักซ์", externalRoomId: "DLX" },
+    { roomType: "ซูพีเรีย", externalRoomId: "SUP" },
+    // แฟมิลี ไม่แม็ป ⇒ inbound "FAM" = REJECTED UNMAPPED_ROOM
+  ],
+  rateMaps: [{ plan: "standard" as SqcRatePlanKey, externalRateId: "STD", markupBp: 1_500 }],
+  buffers: [{ roomType: "ดีลักซ์", rooms: 1 }],
+  /** การจองเคาน์เตอร์เพื่อทำให้ซูพีเรียเต็มวัน +5 (4 ห้อง · 1 คืน · CONFIRMED · มัดจำจ่ายแล้ว) */
+  counterBookings: [{ key: "ota-cnt-sup-full", roomType: "ซูพีเรีย", rooms: 4, checkInOffset: 5, nights: 1, plan: "standard" as SqcRatePlanKey, guest: "ทัวร์เต็มซูพีเรีย", adults: 2 }],
+  /** แถว inbound ที่ป้อนผ่านคิวทดสอบของ FAKE (ลำดับตามนี้ · pull รอบเดียวได้ทั้ง 4) · gross = ราคาช่องทางรวมทุกคืน · commission 15% ของ gross · net = gross − commission */
+  inbound: [
+    { externalId: "OTA-1001", version: 1, status: "NEW", externalRoomId: "DLX", externalRateId: "STD", checkInOffset: 3, nights: 2, guest: { name: "SMITH, JOHN", email: "john.h10@example.com", phone: null }, adults: 2, prepaid: true, commissionBp: 1_500, expect: "APPLIED" },
+    { externalId: "OTA-1002", version: 1, status: "NEW", externalRoomId: "FAM", externalRateId: "STD", checkInOffset: 3, nights: 1, guest: { name: "LEE, MINA", email: "mina.h10@example.com", phone: null }, adults: 3, prepaid: true, commissionBp: 1_500, expect: "REJECTED", reject: "UNMAPPED_ROOM" },
+    { externalId: "OTA-1003", version: 1, status: "NEW", externalRoomId: "SUP", externalRateId: "STD", checkInOffset: 5, nights: 1, guest: { name: "TANAKA, YUI", email: "yui.h10@example.com", phone: null }, adults: 2, prepaid: false, commissionBp: 1_500, expect: "NEEDS_ROOM" },
+    { externalId: "OTA-1001", version: 2, status: "MODIFIED", externalRoomId: "DLX", externalRateId: "STD", checkInOffset: 4, nights: 2, guest: { name: "SMITH, JOHN", email: "john.h10@example.com", phone: null }, adults: 2, prepaid: true, commissionBp: 1_500, expect: "APPLIED" },
+  ],
+  /** ARI ชุดแรก: วันนี้ → +6 (7 วัน) · ข้อสอบตรวจ payload ต่อวัน/ประเภทที่แม็ป */
+  ari: { days: 7, expectJobs: 1, mappedTypes: ["DLX", "SUP"] },
+  settings: { "rooms.hotel.ota.enabled": true, "rooms.hotel.ota.roomScope": "SELECTED", "rooms.hotel.ota.ariHorizonDays": 365 } as Record<string, unknown>,
+  expect: {
+    inboxApplied: 2, inboxRejected: 1, inboxNeedsRoom: 1,
+    reservationsFromOta: 2,          // OTA-1001 v1 (CANCELLED หลัง v2) + v2 (CONFIRMED)
+    activeOtaReservations: 1,        // v2 CONFIRMED · channelRef OTA-1001 · prepaidByChannel true · gross/commission/net ครบ
+    superiorFullOffset: 5,
+    deluxeAriAvailableOffset0: 7 - 1, // ดีลักซ์ nightly 7 − buffer 1 (ไม่มีการจองวัน 0)
+  },
+} as const;
+/**
+ * ภาพ h.10 (ภาพ 11 การ์ด OTA + หน้าแม็ป/คิวใหม่ · ไทย) — ถ่าย --user owner · manager · ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.10
+ */
+SQC_VISUAL_SPECS["h.10"] = [
+  { name: "hotel-channels", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/channels` },
+  { name: "hotel-channels-inbox", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/channels/inbox` },
+  { name: "integrations-ota", path: "/app/settings/integrations" },
+];
+// ◂ SVC H.10

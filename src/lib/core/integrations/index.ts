@@ -29,3 +29,4 @@ export {
   INTEGRATION_QUOTA_CHECK_MINUTES,
 } from "./health";
 export type * from "./types";
+export { integrationHandleForRow } from "./service"; // SVC H.10 ▸ handle ของแถวที่ระบุ (หน่วยมีตัวต่อหลายตัว · ใบสั่ง h.10 §9.9) ◂

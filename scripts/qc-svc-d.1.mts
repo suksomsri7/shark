@@ -1357,7 +1357,8 @@ if (!existsSync(resolve(ROOT, REGISTRY_PATH))) {
   check(DEF_CHECKS[4][0], DEF_CHECKS[4][1], () => {
     const h = R().listDefs("rooms").filter((d) => d.key.startsWith("rooms.hotel."));
     ok(h.length >= 1, "ต้องมีค่าโรงแรมอย่างน้อย 1");
-    for (const d of h) eq(d.hiddenUntil, "PHASE_H", d.key);
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · d1-unitTypes): เฟส H.1 ซ่อนคีย์โรงแรมจากหอด้วย `unitTypes:["HOTEL"]` แทน PHASE_H (ใบ h.1 §6.1) — รับได้ทั้งสองแบบ
+    for (const d of h) ok(d.hiddenUntil === "PHASE_H" || (Array.isArray((d as { unitTypes?: unknown }).unitTypes) && ((d as { unitTypes?: string[] }).unitTypes ?? []).includes("HOTEL") && !((d as { unitTypes?: string[] }).unitTypes ?? []).includes("DORM")), `${d.key}: ไม่ซ่อนจากหอ`);
   });
   check(DEF_CHECKS[5][0], DEF_CHECKS[5][1], () => {
     const S = R().SNAPSHOT_KEYS;

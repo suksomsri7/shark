@@ -273,6 +273,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrPayrollItem: sys(),
   HrPayAdjustment: sys(),
   HrStockCharge: sys(), // HR H4.6 ▸ เบิกของ/ค่าเสียหาย → รายการหักที่รออนุมัติ ◂
+  HrAttendanceDeduction: sys(), // HR H3.2 ▸ หัวรายการหักสาย/ขาดงาน (ภาพนิ่งที่มา) ◂
   // HR H1.3 ▸ ตารางกฎหมายเงินเดือนกลางของทั้ง SHARK (ไม่มี tenantId/systemId) ◂
   HrLawTable: g("กฎหมายแรงงาน/ภาษีระดับประเทศ — SHARK ดูแล ร้านอ่านอย่างเดียว · เขียนผ่านสคริปต์/หลังบ้านเท่านั้น"),
   // Subscription (WO-0027) + Procurement (WO-0028)
@@ -523,6 +524,25 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HotelRoomType: unit,
   HotelRoom: unit,
   HotelReservation: unit,
+  // SVC H.0 ▸ โรงแรม V2 (ใบสั่ง h.0 §5) — tenantId + unitId บังคับ · Channel* = ช่องทาง OTA (connectionId = TenantIntegration.id หลวม)
+  HotelRatePlan: unit,
+  HotelSeason: unit,
+  HotelHoliday: unit,
+  HotelRate: unit,
+  HotelRateOverride: unit,
+  HotelCancelRule: unit,
+  HotelBookingNight: unit,
+  HotelFolio: unit,
+  HotelFolioItem: unit,
+  HotelGuestRecord: unit,
+  HotelHousekeepingLog: unit,
+  HotelNightAudit: unit,
+  ChannelRoomMap: unit,
+  ChannelRateMap: unit,
+  ChannelAriJob: unit,
+  ChannelReservationInbox: unit,
+  ChannelInventoryBuffer: unit,
+  // ◂ SVC H.0
   // SVC R0.1 ▸ แกนห้อง (CC §5.2) — tenantId + unitId บังคับ
   RoomBuilding: unit,
   RoomOccupancy: unit,

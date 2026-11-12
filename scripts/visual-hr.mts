@@ -88,6 +88,13 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "we-month", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, users: ["owner", "manager-branch"], why: "ปฏิทินรายคน + สรุป/รายวันที่ดึงเข้าเงินเดือน (มีเมื่อดึงแล้ว) (H3.1 04B)" },
     { key: "we-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-we-normal`, users: ["owner", "manager-branch"], why: "การ์ดชั่วโมงทำงานปกติต่อวัน (เจ้าของแก้ · ผู้จัดการอ่าน) (H3.1 Q10)" },
   ],
+  // HR H3.2 ▸ กฎหักสาย/ขาด — การ์ดกฎ (ตั้งค่า · เจ้าของแก้ · ข้อความ ม.76 เสมอ) · แผง "สรุปส่งเข้าเงินเดือน" บนปฏิทินรายคน (ภาพ 04B) ·
+  //   รายการของฉัน (พนักงาน — มีเมื่อคำนวณแล้ว) · seed ปิดกฎ ⇒ แผงบอก "ยังไม่ได้เปิด" เว้นแต่ผู้ควบคุมเปิด + คำนวณก่อนถ่าย ◂
+  "3.2": [
+    { key: "attpay-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-attpay-policy`, users: ["owner", "manager-branch"], why: "การ์ดกฎหักสาย/ออกก่อน/ขาดงาน + ข้อความ ม.76 (เจ้าของแก้ · ผู้จัดการอ่าน) (H3.2 R2 R11)" },
+    { key: "attpay-panel", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, users: ["owner", "manager-branch"], why: "แผงสรุปส่งเข้าเงินเดือน: นาที · เงิน (เจ้าของ) · ปุ่มคำนวณ (H3.2 04B)" },
+    { key: "attpay-mine", path: (i) => `/app/sys/${i.hr}/hr/attendance`, users: ["staff"], why: "รายการหักสาย/ขาดของฉัน (มีเมื่อคำนวณแล้ว) (H3.2 Q9)" },
+  ],
   // HR H2.9 ▸ คำขอ OT (mockup 05 การ์ด OT · 07a ขอ OT) — หน้าใบลา: ฟอร์ม + รายการ (เจ้าของ ฿ · ผู้จัดการไม่เห็น ฿ — Q11) · ตั้งค่า: กฎ OT · เงินเดือน: อัตรา OT #18 ◂
   "2.9": [
     { key: "ot-leave", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager", "staff"], why: "ส่วนคำขอ OT: ฟอร์ม hr-ot-form · รายการ hr-ot-list · ปุ่มอนุมัติ/ไม่อนุมัติ/ยกเลิก (H2.9)" },
@@ -104,6 +111,16 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "corr-self-daylist", path: (i) => `/app/sys/${i.hr}/hr/attendance`, click: '[data-testid^="hr-att-dayrow-"]', why: "พนักงาน 390: แถวรายวัน (VIS-1 A3) มีปุ่ม \"ขอแก้เวลา\" ของวันนั้น (H2.6)", expect: { staff: 200 }, users: ["staff"] },
     { key: "corr-self-list", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "คำขอแก้เวลาของฉัน + ยกเลิก (H2.6)", expect: { staff: 200 }, users: ["staff"] },
     { key: "corr-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404 (H2.6)", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
+  ],
+  // HR H2.11 ▸ brief §5 (mockup 01 + 05): ภาพรวมทีมบน HrHub · กล่องคำขอรวม (ทุกชนิด · type=OT · ผลชุด · โควตา) · ผู้ไม่เห็นคำขอชนิดใด = 404 ·
+  //   seed มีคำขอรอครบ 5 ชนิด (ลา · OT · สลับกะ · แก้เวลา · เบิกล่วงหน้า + หักค่าของ) · HQC ไม่มีผู้ถือคีย์ hr.employee.create ⇒ "key-holder" = manager (ทุกสาขา) ◂
+  "2.11": [
+    { key: "hub-overview", path: (i) => `/app/sys/${i.hr}`, users: ["owner", "manager-branch", "manager", "payroll", "staff"], why: "ภาพรวมทีม 01: อยู่กะวันนี้ · คำขอที่ตัดสินได้ · วันที่ต้องคิดผลใหม่ · ใกล้ครบกำหนด + ตัวอย่างคำขอ 5 รายการ (staff = ไม่มีส่วนนี้) (H2.11)" },
+    { key: "inbox", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["owner", "manager-branch", "manager", "payroll"], expect: { owner: 200, "manager-branch": 200, manager: 200, payroll: 200 }, why: "กล่องคำขอรวม 05: ชิปชนิด+ตัวนับ · การ์ดมีป้าย · ผลกระทบ · แถบเลือกติดล่าง · ตารางโควตา (payroll = OT/เงิน อ่านอย่างเดียว ไม่มีโควตา) (H2.11)" },
+    { key: "inbox-ot", path: (i) => `/app/sys/${i.hr}/hr/requests?type=OT`, users: ["owner", "manager-branch"], why: "type=OT: นาที × อัตรา ไม่มี ฿ ถึงผู้จัดการ · ตัวนับไม่เปลี่ยน (H2.11)" },
+    { key: "inbox-adj", path: (i) => `/app/sys/${i.hr}/hr/requests?type=ADJUSTMENT`, users: ["owner", "payroll"], why: "เพิ่ม/หักเงิน: ยอด · ที่มา · หนังสือยินยอมของหักค่าของ · ตัดสินทีละรายการ (H2.11)" },
+    { key: "inbox-batch-result", path: (i) => `/app/sys/${i.hr}/hr/requests?type=SWAP`, click: '[data-testid^="hr-inbox-approve-"]', users: ["owner"], why: "ผลการตัดสิน (hr-inbox-result) ต่อรายการ — ⚠ กดจริง: ถ่ายหลังภาพอื่น แล้ว seed ใหม่ (H2.11)" },
+    { key: "inbox-refused", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["staff", "member", "kiosk"], expect: { staff: 404, member: 404, kiosk: 404 }, why: "ไม่เห็นคำขอชนิดใดเลย = 404 (H2.11)" },
   ],
   // HR H4.6 ▸ brief §5 (ไม่มี mockup — ตามฟอร์มรายการเพิ่ม/หักของหน้าเงินเดือน): ส่วน "หักค่าของ" #hr-stock · ฟอร์ม (ผู้ถือคีย์ยื่น) · รายการ/ยอด/หนังสือยินยอม/ธงเพดาน
   //   (ผู้ดูเงินเดือน) · seed ไม่มีรายการ ⇒ ว่าง เว้นแต่ผู้ควบคุมยื่นก่อนถ่าย · staff/member ไม่มีส่วนนี้ ◂

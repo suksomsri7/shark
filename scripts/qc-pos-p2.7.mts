@@ -895,6 +895,9 @@ async function runStatic(): Promise<void> {
       if (r) p.push(r);
     }
     // ทะเบียนผู้เรียก createSale = ฐาน
+    // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): RUN HOTEL sites (= qc-pos-p1.6 U4 · 25/19): only these 4 hotel files are compared to a fixed count instead of the base —
+    //   service.ts 1 (checkOut → checkout.ts · H.5) · booking-sale.ts 3 (H.3 sites moved out of booking.ts · POS CD2) · checkout.ts 3 (H.5) · deposit-intent.ts 1 (H.8)
+    const HOTEL_REL: Record<string, number> = { "src/lib/modules/hotel/service.ts": 1, "src/lib/modules/hotel/booking-sale.ts": 3, "src/lib/modules/hotel/checkout.ts": 3, "src/lib/modules/hotel/deposit-intent.ts": 1 };
     const found = new Map<string, number>();
     for (const f of walk("src")) {
       if (f.endsWith("src/lib/modules/pos/service.ts") || f.endsWith("src/lib/contracts.ts")) continue;
@@ -913,7 +916,7 @@ async function runStatic(): Promise<void> {
         if (n) base.set(f, n);
       }
       const keys = new Set([...base.keys(), ...found.keys()]);
-      return [...keys].every((k) => (base.get(k) ?? 0) === (found.get(k) ?? 0));
+      return [...keys].every((k) => (k in HOTEL_REL ? HOTEL_REL[k] : (base.get(k) ?? 0)) === (found.get(k) ?? 0));
     });
     if (!regOkAt) p.push(`ทะเบียนผู้เรียก createSale ต่างจากฐาน (${[...found.entries()].map(([f, n]) => `${f.split("/").pop()}:${n}`).join(" ").slice(0, 160)})`);
     // ลายเซ็น export ร้านอาหาร (ฐาน P2.4 L3) — เทียบกับฐาน git (ชุดเดียวกับ SIGS_BASE ของ p2.4 ณ ฐาน)

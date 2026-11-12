@@ -32,6 +32,7 @@ export {
   TYPING_PING_MS,
   type Signal,
 } from "./events";
+export { EV_HOTEL_HK, hotelHkChannel } from "./events"; // SVC H.6
 
 export type RealtimeMode = "polling" | "realtime";
 

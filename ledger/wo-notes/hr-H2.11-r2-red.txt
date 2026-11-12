@@ -1,0 +1,17 @@
+# H2.11 r2 oracle RED on 46ecf8387 (code unchanged) — 2026-11-12T16:51:52Z
+[env] qc-hr-h2.11 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.11] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.11] inbox=loaded · base=6d9ea29df
+  ❌ [H2.11-R2.3] [static] hub reads the inbox once: HrHub (ui.tsx) calls no listInbox/inboxCounts — expected no second inbox read | actual HrHub calls listInbox/inboxCounts
+
+
+  ❌ [H2.11-S3.4] [db] ADJUSTMENT: AS source STOCK + consent {at,ref} · A1 MANUAL + consent null — expected STOCK consent · MANUAL null | actual as {"as":{"amountSatang":50000,"consent":{"at":"2031-06-20","ref":"ยินยอม-001"},"kind":"DEDUCTION","note":"ค่าเสียหาย: แก้วแตก","periodKey":"2031-06","source":"STO
+  ❌ [H2.11-R2.4] [db] listInbox query count independent of the number of distinct adjustment periods (1 → 4 periods ⇒ same count) — expected same count | actual same q=40/43 items=20/23
+  ❌ [H2.11-R2.5] [db] correction monthClosed only for payroll viewers (mgr1 C1 · key1 CP = null; owner CP true) · inbox.ts does not call listRuns — expected payroll viewers only | actual mgr,key,noRuns {"r25m":{"deltaMin":null,"monthClosed":false},"r25k":{"deltaMin":null,"monthClosed":true},"r25o":{"deltaMin":null,"monthClosed":true}}
+  ❌ [H2.11-R2.7] [db] reject reason of 3 zero-width spaces ⇒ rejectReason (nothing decided) — expected กรุณาใส่เหตุผลที่ไม่อนุมัติ (3–200 ตัวอักษร) | actual {"ok":true,"batchKey":"qcZaezmfgzegbq","replayed":false,"results":[{"id":"cmwdsb
+  ❌ [H2.11-R2.1] [db] OT branch cap (hunter F1): 3 pending OT in u1 + 520 in u2 (later dates) ⇒ MGR1 inbox OT 3 · not truncated · otRequestList(MGR1) 3 · OWNER OT 500 + truncated [OT] — expected 3/3 · 500+ | actual mgr,direct  mgr=0 owner=500 trunc=["OT","CORRECTION"]/[] direct=0 
+  ❌ [H2.11-R2.6] [db] decideAdjustmentAs refuses an OT_REQUEST adjustment (OT_TEXT.otRow) · 51 invalid items ⇒ tooMany (cap before validation) — expected otRow · tooMany | actual otRow,pending,tooMany ?=APPROVED · APPROVED · รายการที่เลือกไม่ถูกต้อง — กรุ
+RESIDUE none (tenants=2 users=13)
+BASE-EXPECTATION 13/65 as registered (RED-by-design 59 · GREEN controls 6) · off: H2.11-S1.1(RED→pass) H2.11-S1.2(RED→pass) H2.11-S1.3(RED→pass) H2.11-S1.4(RED→pass) H2.11-S1.5(RED→pass) H2.11-S1.6(RED→pass) H2.11-S1.7(RED→pass) H2.11-S12.1(RED→pass) H2.11-S12.2(RED→pass) H2.11-S12.3(RED→pass) H2.11-R2.8(RED→pass) H2.11-S2.1(RED→pass) H2.11-S2.2(RED→pass) H2.11-S2.3(RED→pass) H2.11-S2.4(RED→pass) H2.11-S2.5(RED→pass) H2.11-S2.6(RED→pass) H2.11-S2.7(RED→pass) H2.11-S3.1(RED→pass) H2.11-S3.2(RED→pass) H2.11-S3.3(RED→pass) H2.11-S3.5(RED→pass) H2.11-S4.1(RED→pass) H2.11-S4.2(RED→pass) H2.11-S4.3(RED→pass) H2.11-S4.4(RED→pass) H2.11-S4.5(RED→pass) H2.11-S5.1(RED→pass) H2.11-S5.2(RED→pass) H2.11-S5.3(RED→pass) H2.11-S5.4(RED→pass) H2.11-S9.1(RED→pass) H2.11-S9.2(RED→pass) H2.11-S10.1(RED→pass) H2.11-S10.2(RED→pass) H2.11-S6.1(RED→pass) H2.11-S6.2(RED→pass) H2.11-S6.3(RED→pass) H2.11-S6.4(RED→pass) H2.11-S6.5(RED→pass) H2.11-S7.1(RED→pass) H2.11-S7.2(RED→pass) H2.11-S7.3(RED→pass) H2.11-S7.4(RED→pass) H2.11-S8.1(RED→pass) H2.11-S8.2(RED→pass) H2.11-S8.3(RED→pass) H2.11-S8.4(RED→pass) H2.11-S8.5(RED→pass) H2.11-S8.6(RED→pass) H2.11-S8.7(RED→pass) H2.11-S11.1(RED→pass)
+
+===== qc-hr-h2.11 ===== passed 58/65 (QC_FORCE)

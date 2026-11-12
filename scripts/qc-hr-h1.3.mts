@@ -816,7 +816,9 @@ function runStatic(): void {
     //   tokens outside marked lines are ratcheted vs base (base split the same way) · a tag whose marked count ≠ declared counts all its tokens
     //   H2.9 = 2 (2× sourceRef in writeOtAdjustmentInTx) · H4.6 = 3 (sourceRef: destructure · findFirst where · create data in writeStockChargeAdjustmentInTx)
     const PAY_FILE = "src/lib/modules/hr/payroll.ts";
-    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3 };
+    //   ORACLE-EDIT (controller 12 Nov · H3.2, authorized per-tag declaration): H3.2 = 6 (sourceRef in writeAttendanceDeductionInTx: findMany where ·
+    //   select · gen parse · create data; attendanceApproveLockInTx: param type · parse "att:<P>:" of the row being approved)
+    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6 };
     const splitMarked = (src: string) => {
       const inside: Record<string, string[]> = Object.fromEntries(Object.keys(PAY_MARKED).map((t) => [t, []]));
       const outside: string[] = [];
@@ -872,7 +874,10 @@ function runStatic(): void {
         return new RegExp(`\\b${name}\\(`).test(src) && importsHr(src, name === "loadPayslipForViewer" ? "privacy" : "payroll");
       });
     const isClient = (f: string) => /^\s*["']use (client|server)["']/m.test(rd(f).slice(0, 400));
-    const allowed: Record<string, string[]> = { listRuns: [PAY_UI], listAdjustments: [PAY_UI], payslipData: [PRIVACY], loadPayslipForViewer: [SLIP_PAGE] };
+    // ORACLE-EDIT (builder H2.11 · brief H2.11 R3 names listAdjustments(pendingUnbound) + listRuns as the inbox readers): hr/inbox.ts (server-only,
+    //   no directive) maps named fields only (adjustment DTO · run periodKey/status) — still no spread / stringify / client prop ◂
+    const INBOX = "src/lib/modules/hr/inbox.ts";
+    const allowed: Record<string, string[]> = { listRuns: [PAY_UI, INBOX], listAdjustments: [PAY_UI, INBOX], payslipData: [PRIVACY], loadPayslipForViewer: [SLIP_PAGE] };
     for (const [name, ok] of Object.entries(allowed)) {
       const cs = callers(name).filter((f) => !f.endsWith("/hr/index.ts"));
       const extra = cs.filter((f) => !ok.includes(f));
@@ -1840,11 +1845,12 @@ async function runDb(): Promise<void> {
       chk("S7.1", ev === 1 && lv === 4 && live === "1", "expected engineVersion 1 · HrLawTable.v1 4 · live 1", `expected engineVersion=${ev ?? "∅"} HrLawTable.v1=${lv ?? "∅"} · live=${q ? live : "qc-hr-v2 not seeded"}`);
     }
     {
-      const want = { hrPayAdjustment: 5, hrPayrollItem: 11, hrPayrollRun: 1 };
+      // ORACLE-EDIT (builder H2.11 · seed ruling): + 2 pending adjustments the H2.11 seed files (เบิกล่วงหน้า · หักค่าของ) ⇒ HrPayAdjustment 7 (was 5)
+      const want = { hrPayAdjustment: 7, hrPayrollItem: 11, hrPayrollRun: 1 };
       const live = { hrPayAdjustment: await liveN("hrPayAdjustment"), hrPayrollItem: await liveN("hrPayrollItem"), hrPayrollRun: await liveN("hrPayrollRun") };
       const e = exp?.counts ?? {};
-      const ok = Object.entries(want).every(([k, v]) => (live as Any)[k] === v) && e.HrPayAdjustment === 5 && e.HrPayrollItem === 11 && e.HrPayrollRun === 1;
-      chk("S7.2", ok, "5 / 11 / 1 live = expected", `live=${short(live)} expected=${e.HrPayAdjustment}/${e.HrPayrollItem}/${e.HrPayrollRun}`);
+      const ok = Object.entries(want).every(([k, v]) => (live as Any)[k] === v) && e.HrPayAdjustment === 7 && e.HrPayrollItem === 11 && e.HrPayrollRun === 1;
+      chk("S7.2", ok, "7 / 11 / 1 live = expected", `live=${short(live)} expected=${e.HrPayAdjustment}/${e.HrPayrollItem}/${e.HrPayrollRun}`);
     }
     {
       const seed = stripComments(rd(SEED_FILE));

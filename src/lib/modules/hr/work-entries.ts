@@ -695,3 +695,37 @@ export async function myWorkEntryDays(ctx: Ctx, actor: { userId?: unknown }, inp
   if (!e) return no();
   return daysDto(db, own, e, periodKey, true);
 }
+
+// ═══════════════════════════ HR H3.2 ▸ สถานะต่อพนักงานของงวด (ผู้อ่าน: hr/attendance-pay.ts — หักสาย/ขาด) ═══════════════════════════
+/** สถานะของงวดต่อพนักงาน (ตัวเดียวกับแผง: statesOf + FROZEN เมื่องวดมีรอบอนุมัติ/จ่ายแล้ว) — อ่านอย่างเดียว ไม่ถือล็อก · คนที่ไม่ได้ทำงานในงวด = ไม่มีในผล */
+export async function workEntryStatesInTx(tx: Db, ctx: Ctx, periodKey: string, employeeIds: string[]): Promise<Map<string, WorkEntryState>> {
+  if (!PERIOD_RE.test(periodKey) || !employeeIds.length) return new Map();
+  const emps = await periodEmployees(tx, ctx, periodKey, { id: { in: employeeIds } });
+  return (await periodState(tx, ctx, emps, periodKey)).state;
+}
+// ◂ HR H3.2
+
+// ═══════════════════════════ HR H3.2 ▸ fix r3 (N1): มีข้อมูลต้นทางของงวดไหม (ผู้อ่าน: hr/attendance-pay.ts ด่านอนุมัติรอบ) ═══════════════════════════
+/**
+ * พนักงาน (ที่ทำงานในงวด) ที่มีข้อมูลต้นทางอย่างน้อย 1 อย่างในงวด: ผลลงเวลารายวัน (HrAttendanceDay) · ตารางกะ · ตารางประจำที่ไม่ใช่วันหยุด ·
+ * แถวลงเวลาที่ยังมีผล (อ่านผ่าน judge.ts#workEntryPunchesInTx เท่านั้น) — มีข้อมูลแต่ยังไม่ดึงชั่วโมงทำงาน = อาจมีสาย/ขาดที่ยังไม่ได้คิด ·
+ * คนที่ไม่ได้ทำงานในงวด (ออกก่อน/เริ่มหลัง/ไม่มีแถวพนักงาน) ไม่อยู่ในผล · อ่านอย่างเดียว ไม่ถือล็อก
+ */
+export async function workEntrySourceEmployeesInTx(tx: Db, ctx: Ctx, periodKey: string, employeeIds: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (!PERIOD_RE.test(periodKey) || !employeeIds.length) return out;
+  const ids = (await periodEmployees(tx, ctx, periodKey, { id: { in: employeeIds } })).map((e) => e.id);
+  if (!ids.length) return out;
+  const b = bounds(periodKey);
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids } };
+  const range = { gte: dbDate(b.first), lte: dbDate(b.last) };
+  const [att, ros, sched, punches] = await Promise.all([
+    tx.hrAttendanceDay.findMany({ where: { ...scope, date: range }, select: { employeeId: true }, distinct: ["employeeId"] }),
+    tx.hrRosterEntry.findMany({ where: { ...scope, date: range }, select: { employeeId: true }, distinct: ["employeeId"] }),
+    tx.hrWorkSchedule.findMany({ where: { ...scope, dayOff: false }, select: { employeeId: true }, distinct: ["employeeId"] }),
+    workEntryPunchesInTx(tx, ctx, ids, new Date(dbDate(b.first).getTime() - BKK_MS), new Date(dbDate(addDays(b.last, 1)).getTime() - BKK_MS), null, TAKE),
+  ]);
+  for (const r of [...att, ...ros, ...sched, ...punches]) out.add(r.employeeId);
+  return out;
+}
+// ◂ HR H3.2

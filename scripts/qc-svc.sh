@@ -22,6 +22,8 @@ for U in "$D" "$P"; do
     ep-royal-lake-aonedfp0*) M=ep-royal-lake-aonedfp0 ;;
     ep-weathered-mode-ao3zx4hs*) M=ep-weathered-mode-ao3zx4hs ;;
     ep-royal-bar-aoyw8uh0*) M=ep-royal-bar-aoyw8uh0 ;;
+    ep-square-heart-aopwli9l*) M=ep-square-heart-aopwli9l ;;
+    ep-late-union-aowqfe5o*) M=ep-late-union-aowqfe5o ;;
     *) echo "🔴 qc-svc: host $H is not SVC QC (ep-mute-scene / lane branch) — stop" >&2; exit 4 ;;
   esac
   [ -z "${MARK:-}" ] || [ "$MARK" = "$M" ] || { echo "🔴 qc-svc: DATABASE_URL and DIRECT_URL point at different branches — stop" >&2; exit 4; }

@@ -24,6 +24,8 @@ import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { lockRosterKeysInTx, unitOfDay } from "./roster";
 import { weekdayOfDay, weekStartOf } from "./roster-rules";
 import { hrScopeOf, unitTargetOf } from "./scope";
+import { employeeUnitsOf, leaveTargetOf } from "./scope"; // HR H2.11 ▸ ด่านสาขาของ decideLeaveAs (ตัวเดียวกับ decideLeaveAction) ◂
+import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ▸ ข้อความ "ไม่มีสิทธิ์ตัดสิน" ของกล่องคำขอรวม ◂
 import { addDays, leaveDaysBetween, TIME_RULE_TEXT, TimeRuleError } from "./time-rules";
 import { holidayOfDay, holidayRowsInRange } from "./holidays";
 import { thaiDateKey } from "@/lib/ui/date"; // r4: วันที่ยื่นใบลา (ตามปฏิทินไทย)
@@ -910,3 +912,209 @@ export function leaveRefusalText(e: unknown): string | null {
   return e instanceof LeaveRuleError || e instanceof TimeRuleError ? e.message : null;
 }
 // ◂ HR H2.7
+
+// ═══════════════════════════ HR H2.11 ▸ กล่องคำขอรวม (ภาพ 05) — ตัวห่อและตัวอ่านแบบชุด (เพิ่มอย่างเดียว · กติกาเดิมไม่แตะ) ═══════════════════════════
+//   • decideLeaveAs = ทางต่อใบของ bulkDecideLeaveAction (คีย์ hr.leave.decide → สาขาของพนักงาน ณ วันเริ่มลา → decideLeave from PENDING) — ด่านเดียว ไม่มีกติกาใหม่
+//   • leaveDetailsMany = leaveDetail ทีละหลายใบ (คีย์/ผู้ดูเดียวกันทุกไบต์ · อ่านครั้งเดียว)
+//   • teamLeaveBalances = leaveBalances ของพนักงานในขอบเขตทั้งทีม (ด่านเดียวกัน · คิวรีคงที่ไม่ขึ้นกับจำนวนคน)
+//   • inboxSubjects = ข้อเท็จจริงที่ DTO ของแต่ละชนิดตั้งใจไม่ส่ง แต่กล่องต้องใช้ซ่อน/ล็อกรายการ: สาขาของพนักงาน ณ วันของคำขอ · "เป็นของผู้ดูเอง" ·
+//     "ผู้ดูเป็นผู้ยื่น" (OT · แก้เวลา) · "อยู่ในสายอนุมัติ" — คืนเฉพาะค่าที่เทียบกับผู้ดู (boolean/สาขา) ไม่ส่งบัญชีที่ผูก/ผู้ยื่นออกไป
+type LeaveDecideAsResult = { ok: true; status: "APPROVED" | "REJECTED" } | { ok: false; reason: string };
+const LEAVE_NOT_FOUND_TEXT = "ไม่พบใบลา หรืออยู่นอกร้านนี้";
+/** ตัดสินใบลา 1 ใบในนามผู้ดู — ด่านของ (bulk)decideLeaveAction ต่อใบ แล้ว decideLeave(from PENDING) · ปฏิเสธ = ข้อความของงานลาเองทุกไบต์ */
+export async function decideLeaveAs(ctx: Ctx, v: LeaveViewer, leaveId: string, status: "APPROVED" | "REJECTED"): Promise<LeaveDecideAsResult> {
+  const m = memberOf(v);
+  const uid = str(v?.userId);
+  const id = str(leaveId);
+  if (!uid || !can(m, "hr.leave.decide")) return { ok: false, reason: INBOX_TEXT.noRight };
+  if (status !== "APPROVED" && status !== "REJECTED") return { ok: false, reason: LEAVE_NOT_FOUND_TEXT };
+  const lt = id ? await leaveTargetOf(ctx, id) : null;
+  if (lt) {
+    const emp = await employeeUnitsOf(ctx, lt.employeeId);
+    if (emp) {
+      const t = unitTargetOf(hrScopeOf(m), emp, lt.fromDate);
+      if (!t.ok) return { ok: false, reason: t.reason };
+      if (!evaluate(m, { module: "hr", action: "hr.leave.decide", ...(t.unitId ? { unitId: t.unitId } : {}) })) return { ok: false, reason: INBOX_TEXT.noRight };
+    }
+  }
+  const { decideLeave, HrLeaveDecisionError } = await import("./service"); // นำเข้าตอนเรียก (service.ts นำเข้าไฟล์นี้)
+  try {
+    await decideLeave(ctx, id, status, uid, { from: "PENDING" });
+    return { ok: true, status };
+  } catch (e) {
+    return { ok: false, reason: e instanceof HrLeaveDecisionError ? e.message : LEAVE_NOT_FOUND_TEXT };
+  }
+}
+
+/** leaveDetail หลายใบ — อ่านครั้งเดียว · ผลต่อ id เท่ากับ leaveDetail ทุกไบต์ (ไม่พบ/ไม่มีสิทธิ์ = detailNo) */
+export async function leaveDetailsMany(ctx: Ctx, viewer: LeaveViewer, leaveIds: string[]): Promise<Map<string, { ok: true; item: LeaveDetailItem } | { ok: false; reason: string }>> {
+  const ids = [...new Set((Array.isArray(leaveIds) ? leaveIds : []).map(str).filter(Boolean))].slice(0, 1000);
+  const out = new Map<string, { ok: true; item: LeaveDetailItem } | { ok: false; reason: string }>(ids.map((id) => [id, { ok: false, reason: LEAVE_TEXT.detailNo }]));
+  if (!ids.length) return out;
+  const rows = await tenantDb(ctx).hrLeave.findMany({ where: { id: { in: ids } }, select: DETAIL_SELECT, take: ids.length });
+  for (const l of rows) {
+    const view = leaveViewOf(viewer, l);
+    if (!view) continue;
+    const days = l.days === null ? null : fmtTenths(tenthsOf(l.days));
+    const after = l.policy?.attachmentAfterDays ?? null;
+    const item: LeaveDetailItem = {
+      id: l.id,
+      employeeId: l.employeeId,
+      employeeName: l.employee.name,
+      policyId: l.policy?.id ?? null,
+      policyName: l.policy?.name ?? null,
+      category: l.policy?.category ?? l.type,
+      fromDate: dayOf(l.fromDate),
+      toDate: dayOf(l.toDate),
+      days,
+      halfDay: l.halfDay,
+      hours: l.hours === null ? null : fmtTenths(tenthsOf(l.hours)),
+      status: l.status,
+      hasAttachment: false,
+      needsAttachment: after !== null && days !== null && tenthsOf(days) >= after * 10,
+    };
+    if (view === "reason") item.reason = l.reason;
+    out.set(l.id, { ok: true, item });
+  }
+  return out;
+}
+
+/** ยอดของประเภทการลา 1 แบบ ของพนักงาน 1 คน ในปี y — สูตรเดียวกับ balanceItems (ข้อมูลที่อ่านมาแล้ว) */
+function balanceItemOf(
+  p: PolicyRow,
+  emp: { startDate: Date | null },
+  y: number,
+  txns: { policyId: string; kind: string; days: unknown; leaveYear: number; sourceKey: string }[],
+  pend: { policyId: string | null; fromDate: Date; days: unknown }[],
+): LeaveBalanceItem {
+  const b = leaveYearBounds(y, ysmOf(p));
+  const rows = txns.filter((r) => r.policyId === p.id && r.leaveYear === y);
+  const sum = (f: (r: (typeof rows)[number]) => boolean) => rows.filter(f).reduce((s, r) => s + tenthsOf(r.days), 0);
+  let granted = sum((r) => r.kind === "GRANT");
+  if (!isUnlimited(p) && !rows.some((r) => r.kind === "GRANT")) {
+    const g = grantDays(p, emp.startDate, y, ysmOf(p));
+    if (g.eligible && g.days !== null) granted += tenthsOf(g.days);
+  }
+  const carried = sum((r) => r.kind === "CARRY");
+  const usedNet = -sum((r) => r.kind === "USE" || (r.kind === "ADJUST" && r.sourceKey.startsWith("use-revert:")));
+  const adjusted = sum((r) => r.kind === "ADJUST" && !r.sourceKey.startsWith("use-revert:"));
+  const expired = -sum((r) => r.kind === "EXPIRE");
+  const balance = granted + carried - usedNet + adjusted - expired;
+  const pending = pend.filter((l) => l.policyId === p.id && dayOf(l.fromDate) >= b.from && dayOf(l.fromDate) <= b.to).reduce((s, l) => s + tenthsOf(l.days), 0);
+  return {
+    policyId: p.id,
+    name: p.name,
+    category: p.category,
+    unlimited: isUnlimited(p),
+    granted: fmtTenths(granted),
+    carried: fmtTenths(carried),
+    used: fmtTenths(usedNet),
+    adjusted: fmtTenths(adjusted),
+    expired: fmtTenths(expired),
+    balance: fmtTenths(balance),
+    pending: fmtTenths(pending),
+    available: isUnlimited(p) ? null : fmtTenths(balance - pending),
+  };
+}
+export type TeamLeaveBalances = {
+  year: number;
+  rows: { employeeId: string; name: string; unitId: string | null; items: LeaveBalanceItem[] }[];
+};
+const TEAM_MAX = 1000;
+/**
+ * ยอดวันลาของทั้งทีม (ปีเดียว) — ด่านเดียวกับ leaveBalances (เจ้าของ · ผู้จัดการ · hr.leave.read · hr.leave.decide) · แถว = พนักงานที่ยังทำงาน
+ * ที่สาขาประจำอยู่ในขอบเขต (unitTargetOf แบบเดียวกับ leaveBalances) · ค่าต่อคน = leaveBalances({ employeeId, year }) ทุกไบต์ · null = ไม่ผ่านด่าน
+ */
+export async function teamLeaveBalances(ctx: Ctx, viewer: LeaveViewer, input: { year: number; unitId?: string | null }): Promise<TeamLeaveBalances | null> {
+  if (!viewer) return null;
+  const m = memberOf(viewer);
+  if (!(m.role === "OWNER" || m.role === "MANAGER" || can(m, "hr.leave.read") || can(m, "hr.leave.decide"))) return null;
+  const year = Number.isInteger(input?.year) ? input.year : Number(thaiDateKey(new Date()).slice(0, 4));
+  const scope = hrScopeOf(m);
+  const unitId = str(input?.unitId);
+  if (unitId && scope.unitIds !== "*" && !scope.unitIds.includes(unitId)) return { year, rows: [] };
+  const db = tenantDb(ctx);
+  const emps = (
+    await db.hrEmployee.findMany({
+      where: { active: true, ...(unitId ? { unitId } : {}) },
+      select: { id: true, name: true, unitId: true, startDate: true, units: EMP_SELECT.units },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: TEAM_MAX,
+    })
+  ).filter((e) => unitTargetOf(scope, { unitId: e.unitId, borrowings: e.units }).ok);
+  if (!emps.length) return { year, rows: [] };
+  const ids = emps.map((e) => e.id);
+  const policies = await db.hrLeavePolicy.findMany({ where: { active: true }, select: POLICY_SELECT, take: 500 });
+  const polIds = policies.map((p) => p.id);
+  const [txns, pend] = polIds.length
+    ? await Promise.all([
+        db.hrLeaveBalanceTxn.findMany({ where: { employeeId: { in: ids }, policyId: { in: polIds }, leaveYear: year }, select: { employeeId: true, policyId: true, kind: true, days: true, leaveYear: true, sourceKey: true }, take: 100_000 }),
+        db.hrLeave.findMany({ where: { employeeId: { in: ids }, status: "PENDING", policyId: { in: polIds } }, select: { employeeId: true, policyId: true, fromDate: true, days: true }, take: 50_000 }),
+      ])
+    : [[], []];
+  return {
+    year,
+    rows: emps.map((e) => {
+      const mine = policies.filter((p) => p.unitId === null || (!!e.unitId && p.unitId === e.unitId)).sort(policyOrder(e.unitId)).slice(0, 100);
+      const t = txns.filter((r) => r.employeeId === e.id);
+      const pd = pend.filter((r) => r.employeeId === e.id);
+      return { employeeId: e.id, name: e.name, unitId: e.unitId, items: mine.map((p) => balanceItemOf(p, e, year, t, pd)) };
+    }),
+  };
+}
+
+export type InboxSubject = { name: string; unitId: string | null; own: boolean; unitAt: (day: string | null) => string | null };
+export type InboxSubjects = {
+  employees: Map<string, InboxSubject>;
+  /** OT: เวลาที่ยื่น + ผู้ดูเป็นผู้ยื่นไหม (กติกา 4 ตาของ decideOtRequest) */
+  ot: Map<string, { createdAt: Date; filedByViewer: boolean }>;
+  /** คำขอแก้เวลาที่ผู้ดูเป็นผู้ยื่น (decideCorrection ปฏิเสธผู้ยื่น) */
+  correctionFiledByViewer: Set<string>;
+  /** ใบลา/สลับกะ/แก้เวลาที่มีคำขอในสายอนุมัติ (ไม่ใช่ยกเลิก) — สายเป็นเจ้าของการตัดสิน */
+  chain: Set<string>;
+};
+const INBOX_READER_KEYS = ["hr.leave.read", "hr.leave.decide", "hr.employee.create", "hr.payadjust.approve", "hr.payroll.read", "hr.*"];
+/**
+ * ข้อเท็จจริงของกล่องคำขอรวม (อ่านอย่างเดียว · 4 คิวรีไม่ขึ้นกับจำนวนรายการ) — ผู้ดูที่มีบทบาท/คีย์อ่าน HR ใดก็ได้ · อื่น ๆ = null ·
+ * พนักงานนอกขอบเขตสาขาของผู้ดูไม่อยู่ในผล (สาขาประจำหรือยืมตัวในขอบเขต) · ไม่คืน linkedUserId/requestedBy — คืนแค่ own/filedByViewer
+ */
+export async function inboxSubjects(
+  ctx: Ctx,
+  viewer: LeaveViewer,
+  input: { employeeIds: string[]; otIds: string[]; correctionIds: string[]; chainIds: { leave: string[]; swap: string[]; correction: string[] } },
+): Promise<InboxSubjects | null> {
+  if (!viewer) return null;
+  const m = memberOf(viewer);
+  const perms = m.permissions as Record<string, unknown>;
+  if (!(m.role === "OWNER" || m.role === "MANAGER" || INBOX_READER_KEYS.some((k) => perms[k] === true))) return null;
+  const uid = str(viewer.userId);
+  const scope = hrScopeOf(m);
+  const uniq = (xs: unknown) => [...new Set((Array.isArray(xs) ? xs : []).map(str).filter(Boolean))].slice(0, 5000);
+  const empIds = uniq(input?.employeeIds);
+  const otIds = uniq(input?.otIds);
+  const corrIds = uniq(input?.correctionIds);
+  const chainIds = { HrLeave: uniq(input?.chainIds?.leave), HrShiftSwapRequest: uniq(input?.chainIds?.swap), HrTimeCorrection: uniq(input?.chainIds?.correction) };
+  const db = tenantDb(ctx);
+  const [emps, ots, corrs, chains] = await Promise.all([
+    empIds.length ? db.hrEmployee.findMany({ where: { id: { in: empIds } }, select: { id: true, name: true, unitId: true, linkedUserId: true, units: EMP_SELECT.units }, take: empIds.length }) : Promise.resolve([]),
+    otIds.length ? db.hrOtRequest.findMany({ where: { id: { in: otIds } }, select: { id: true, createdAt: true, requestedByUserId: true }, take: otIds.length }) : Promise.resolve([]),
+    corrIds.length ? db.hrTimeCorrection.findMany({ where: { id: { in: corrIds } }, select: { id: true, requestedByUserId: true }, take: corrIds.length }) : Promise.resolve([]),
+    Object.values(chainIds).some((x) => x.length)
+      ? tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findMany({
+          where: { status: { not: "CANCELLED" }, OR: Object.entries(chainIds).filter(([, ids]) => ids.length).map(([entityType, ids]) => ({ entityType, entityId: { in: ids } })) },
+          select: { entityId: true },
+          take: 20_000,
+        })
+      : Promise.resolve([]),
+  ]);
+  const inScope = (e: { unitId: string | null; units: { unitId: string }[] }) => scope.unitIds === "*" || (!!e.unitId && scope.unitIds.includes(e.unitId)) || e.units.some((b) => (scope.unitIds as string[]).includes(b.unitId));
+  return {
+    employees: new Map(
+      emps.filter(inScope).map((e) => [e.id, { name: e.name, unitId: e.unitId, own: !!uid && e.linkedUserId === uid, unitAt: (day: string | null) => (day ? unitOfDay(e, day) : e.unitId) }] as const),
+    ),
+    ot: new Map(ots.map((o) => [o.id, { createdAt: o.createdAt, filedByViewer: !!uid && o.requestedByUserId === uid }] as const)),
+    correctionFiledByViewer: new Set(corrs.filter((c) => !!uid && c.requestedByUserId === uid).map((c) => c.id)),
+    chain: new Set(chains.map((c) => c.entityId)),
+  };
+}
+// ◂ HR H2.11
