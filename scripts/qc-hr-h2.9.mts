@@ -145,7 +145,7 @@ const bk = (day: string, hm: string): Date => {
   return new Date(Date.UTC(y!, mo! - 1, d! + plus, h!, mi!, s ?? 0) - 7 * 3_600_000);
 };
 const missing: string[] = [];
-const base = process.env.QC_H29_BASE || "39ea9782c"; // WO base (session/hr + H2.5); merge-base with session/hr would count H2.5 as changed
+const base = process.env.QC_H29_BASE || (() => { try { return execFileSync("git", ["merge-base", "HEAD", "origin/session/hr"], { encoding: "utf8" }).trim(); } catch { return "39ea9782c"; } })(); // ORACLE-EDIT (controller, 12 Nov): merge-base default — H2.5 is in session/hr now; iso.sh drops env so a pin breaks control runs · // WO base (session/hr + H2.5); merge-base with session/hr would count H2.5 as changed
 const OR0 = await loadOpt(F.ot, "@/lib/modules/hr/ot");
 const RU0 = await loadOpt(F.rules, "@/lib/modules/hr/ot-rules");
 if (!OR0 && !FORCE) REG.skipExit([`${F.ot} absent — H2.9 not built (QC_FORCE=1 to run RED)`]);
