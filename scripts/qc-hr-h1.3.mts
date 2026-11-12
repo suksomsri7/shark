@@ -1829,11 +1829,12 @@ async function runDb(): Promise<void> {
       chk("S7.1", ev === 1 && lv === 4 && live === "1", "expected engineVersion 1 · HrLawTable.v1 4 · live 1", `expected engineVersion=${ev ?? "∅"} HrLawTable.v1=${lv ?? "∅"} · live=${q ? live : "qc-hr-v2 not seeded"}`);
     }
     {
-      const want = { hrPayAdjustment: 5, hrPayrollItem: 11, hrPayrollRun: 1 };
+      // ORACLE-EDIT (builder H2.11 · seed ruling): + 2 pending adjustments the H2.11 seed files (เบิกล่วงหน้า · หักค่าของ) ⇒ HrPayAdjustment 7 (was 5)
+      const want = { hrPayAdjustment: 7, hrPayrollItem: 11, hrPayrollRun: 1 };
       const live = { hrPayAdjustment: await liveN("hrPayAdjustment"), hrPayrollItem: await liveN("hrPayrollItem"), hrPayrollRun: await liveN("hrPayrollRun") };
       const e = exp?.counts ?? {};
-      const ok = Object.entries(want).every(([k, v]) => (live as Any)[k] === v) && e.HrPayAdjustment === 5 && e.HrPayrollItem === 11 && e.HrPayrollRun === 1;
-      chk("S7.2", ok, "5 / 11 / 1 live = expected", `live=${short(live)} expected=${e.HrPayAdjustment}/${e.HrPayrollItem}/${e.HrPayrollRun}`);
+      const ok = Object.entries(want).every(([k, v]) => (live as Any)[k] === v) && e.HrPayAdjustment === 7 && e.HrPayrollItem === 11 && e.HrPayrollRun === 1;
+      chk("S7.2", ok, "7 / 11 / 1 live = expected", `live=${short(live)} expected=${e.HrPayAdjustment}/${e.HrPayrollItem}/${e.HrPayrollRun}`);
     }
     {
       const seed = stripComments(rd(SEED_FILE));
