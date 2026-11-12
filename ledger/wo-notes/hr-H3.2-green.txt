@@ -1,17 +1,11 @@
-# qc-hr-h3.2 fix r1 · RED on fdfb98e14 (new oracle, base code):
-  ❌ [H3.2-S2.1] [pure] policy default + 6 lenient vectors · ATT_TEXT byte-exact — expected policy · texts | actual text  runStale,runSync
-  ❌ [H3.2-S8.2] [db] approved + bound to the APPROVED Sept run · sync Sept (frozen) allowed, writes nothing (ORACLE-EDIT fix r1 R3) — expected bound · frozen sync no-op | actual frozen {"ok":tru
-  ❌ [H3.2-S8.7] [db] ORACLE-EDIT (controller · D1 closed): leave after binding ⇒ approveRun refused runStale · recompute leaves it unbound — expected approve refused · recompute unbinds | act
-  ❌ [H3.2-S8.8] [db] ORACLE-EDIT (fix r1 R2): bound-in-draft 3,125 goes stale ⇒ sync waits RUN_STALE, writes nothing · recompute + sync ⇒ 1,041 · settled Aug+Sep 1,041 · no refund — expecte
-  ❌ [H3.2-S8.9] [db] ORACLE-EDIT (fix r1 R1): approved 3,125 stale before binding ⇒ approve(Aug) refused runSync ⇒ recompute + sync ⇒ 1,041 ⇒ settled 1,041 — expected approve refused until
-  ❌ [H3.2-S8.10] [db] ORACLE-EDIT (fix r1 R3): Aug frozen without sync (legacy) ⇒ sync(Aug) allowed ⇒ refund 2,084 binds in Oct ⇒ settled 1,041 — expected frozen sync ⇒ refund 2,084 in Oct
-  ❌ [H3.2-S8.11] [db] ORACLE-EDIT (fix r1 R3): raise / policy change after Aug freeze ⇒ row not stale, binds in Sept ⇒ settled 3,125 (×2) — expected settled 3,125 ×2 | actual both C:{"ok":tr
-  ❌ [H3.2-S8.12] [pure] ORACLE-EDIT (fix r1 R5): period cap Σ ≤ base salary (31 absent days · 30 absent + late) — expected Σ ≤ base | actual a,b 1550000/50000 1500000+3125
-  ❌ [H3.2-S8.13] [db] ORACLE-EDIT (fix r1 R6): other-tenant viewer on this shop's ctx ⇒ sync/save/preview/lines refused · nothing written — expected refused · nothing written | actual sync,sav
-  ❌ [H3.2-S8.14] [db] ORACLE-EDIT (fix r1 R8): human reject of 3,125 sticks on re-sync · new time data ⇒ new PENDING 1,041 — expected reject sticks · new data re-creates | actual stick {"ok":t
-===== qc-hr-h3.2 ===== passed 48/58 (QC_FORCE)
+# fix r2 · RED on 970de0552 (final oracle, base code):
+  ❌ [H3.2-S8.15] [db] ORACLE-EDIT (fix r2 F1): Aug frozen with the rule never on · raise to 3,000,000 · rule on in Nov ⇒ sync Aug writes nothing (NO_SNAPSHOT) — expected no retroactive deducti
+  ❌ [H3.2-S8.16] [db] ORACLE-EDIT (fix r2 F2): in-force interval opens at the current period · July (before) approves without sync · OFF ⇒ stale approved Aug row still blocks · sync while OFF c
+  ❌ [H3.2-S8.17] [db] ORACLE-EDIT (fix r2 F3): run member without work hours passes the gate (a) · base → 0 ⇒ sync supersedes the approved row and the gate clears (b) — expected dead ends cle
+  ❌ [H3.2-S8.18] [db] ORACLE-EDIT (fix r2 F4): sync ∥ OFF ×4 ⇒ no PENDING and no live header (behavioural) — expected no PENDING · no live header | actual none c1/true:p1h1 off/true:p0h0 off
+===== qc-hr-h3.2 ===== passed 58/62 (QC_FORCE)
 
-# GREEN on fix r1 head:
+# GREEN fix r2:
   ✅ [H3.2-S1.1] [static] attendance-pay*.ts never write HrPayAdjustment · no emitOutbox
   ✅ [H3.2-S1.2] [static] no OT pricing tokens in attendance-pay*.ts + payroll.ts H3.2 block (no kind OT)
   ✅ [H3.2-S1.3] [static] rules file pure (imports ⊆ node:crypto · no clock/random/db)
@@ -69,32 +63,33 @@
   ✅ [H3.2-S8.12] [pure] ORACLE-EDIT (fix r1 R5): period cap Σ ≤ base salary (31 absent days · 30 absent + late)
   ✅ [H3.2-S8.13] [db] ORACLE-EDIT (fix r1 R6): other-tenant viewer on this shop's ctx ⇒ sync/save/preview/lines refused · nothing written
   ✅ [H3.2-S8.14] [db] ORACLE-EDIT (fix r1 R8): human reject of 3,125 sticks on re-sync · new time data ⇒ new PENDING 1,041
+  ✅ [H3.2-S8.15] [db] ORACLE-EDIT (fix r2 F1): Aug frozen with the rule never on · raise to 3,000,000 · rule on in Nov ⇒ sync Aug writes nothing (NO_SNAPSHOT)
+  ✅ [H3.2-S8.16] [db] ORACLE-EDIT (fix r2 F2): in-force interval opens at the current period · July (before) approves without sync · OFF ⇒ stale approved Aug row still blocks · sync while OFF clears it
+  ✅ [H3.2-S8.17] [db] ORACLE-EDIT (fix r2 F3): run member without work hours passes the gate (a) · base → 0 ⇒ sync supersedes the approved row and the gate clears (b)
+  ✅ [H3.2-S8.18] [db] ORACLE-EDIT (fix r2 F4): sync ∥ OFF ×4 ⇒ no PENDING and no live header (behavioural)
 RESIDUE none (tenants=2 users=6)
   ✅ [H3.2-Z1] no residue
-===== qc-hr-h3.2 ===== passed 58/58 (QC_FORCE)
+===== qc-hr-h3.2 ===== passed 62/62 (QC_FORCE)
 
-h32-forced1 rc=0 94s :: RESIDUE none (tenants=2 users=6) ===== qc-hr-h3.2 ===== passed 58/58 (QC_FORCE) 
-h32-forced2 rc=0 101s :: RESIDUE none (tenants=2 users=6) ===== qc-hr-h3.2 ===== passed 58/58 (QC_FORCE) 
-h32-unforced rc=0 100s :: RESIDUE none (tenants=2 users=6) ===== qc-hr-h3.2 ===== passed 58/58 
-seed1 rc=0 43s :: ===== seed-hr-qc ===== ผ่าน 33/33 
-qc-hr-h3.1 rc=0 69s :: RESIDUE none (tenants=2 users=7) ===== qc-hr-h3.1 ===== passed 58/58 
-qc-hr-h2.9 rc=0 125s :: RESIDUE none (tenants=3 users=19) ===== qc-hr-h2.9 ===== passed 58/58 
+h32-forced1 rc=0 115s :: RESIDUE none (tenants=2 users=6) ===== qc-hr-h3.2 ===== passed 62/62 (QC_FORCE) 
+h32-forced2 rc=0 117s :: RESIDUE none (tenants=2 users=6) ===== qc-hr-h3.2 ===== passed 62/62 (QC_FORCE) 
+h32-unforced rc=0 122s :: RESIDUE none (tenants=2 users=6) ===== qc-hr-h3.2 ===== passed 62/62 
+seed1 rc=0 38s :: ===== seed-hr-qc ===== ผ่าน 33/33 
+qc-hr-h3.1 rc=0 62s :: RESIDUE none (tenants=2 users=7) ===== qc-hr-h3.1 ===== passed 58/58 
+qc-hr-h2.9 rc=0 144s :: RESIDUE none (tenants=3 users=19) ===== qc-hr-h2.9 ===== passed 58/58 
 qc-hr-h2.6 rc=0 89s :: RESIDUE none (tenants=3 users=18) ===== qc-hr-h2.6 ===== passed 55/55 
 qc-hr-h4.6 rc=0 27s :: RESIDUE none (tenants=2 users=11) ===== qc-hr-h4.6 ===== passed 69/69 
-qc-hr-h1.2 rc=0 26s :: RESIDUE none (tenants=2 users=8) ===== qc-hr-h1.2 ===== passed 73/73 
-qc-hr-h1.3 rc=0 63s :: RESIDUE none (tenants=2 users=7) ===== qc-hr-h1.3 ===== passed 63/63 
+qc-hr-h1.2 rc=0 22s :: RESIDUE none (tenants=2 users=8) ===== qc-hr-h1.2 ===== passed 73/73 
+qc-hr-h1.3 rc=0 59s :: RESIDUE none (tenants=2 users=7) ===== qc-hr-h1.3 ===== passed 63/63 
 qc-hr-h3.3 rc=0 34s :: ===== qc-hr-h3.3 ===== passed 51/51 
 qc-hr-h0.1 rc=0 201s :: ===== qc-hr-h0.1 ===== passed 67/67 
 qc-payroll rc=0 4s :: ===== QC Payroll ไทย ===== 
 qc-payroll-reverse rc=0 4s :: 
 qc-hr-payadjust rc=0 4s :: ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ ===== 
 qc-bulk-ops rc=0 6s :: ===== QC Bulk Operations ===== 
-qc-hf-hr-privacy rc=0 155s :: ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== 
+qc-hf-hr-privacy rc=0 156s :: ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== 
 fitness-env rc=0 :: JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
 fitness-noenv rc=0 :: JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
 fitness-hr-env rc=0 :: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
 fitness-hr-noenv rc=0 :: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
-hunt-h3.2-money rc=0 31s :: RESIDUE none (tenants=1 users=1) 
-hunt-h3.2-race rc=0 71s :: RESIDUE none (tenants=2 users=6) 
-hunt-arith rc=0
 DONE
