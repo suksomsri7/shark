@@ -112,6 +112,14 @@ S13.2|UI|M|R|[static] ui testids · tokens · 44 px · payroll page mounts · so
 S13.3|UI|m|R|[static] inventory rows · hr.stock th=en
 S14.1|frozen|C|G|[static] payroll-rules sha · privacy.ts/inventory/**/inventory.prisma unchanged vs base · payroll.ts only marked HR H4.6 additions
 S14.2|frozen|C|G|[db] manual requestAdjustment ⇒ sourceType/sourceRef null · consumeBatch same key ⇒ same movement
+S15.1|r2-M1|C|R|reversal + re-run (37035): run1 bound · withdraw ⇒ REFUND_OWED 37035 · repaid · reverse · re-run deducts 37035 once · charge REPAID + returnedAfterReversal · generic delete/move refused · 2nd withdraw refused
+S15.2|r2-m2|C|R|same requestKey from a second HR system of the tenant ⇒ replayDiff · no stock moved
+S15.3|r2-m3|C|R|period check precedes consumeBatch (static) · same key, takeStock true ∥ false ⇒ one winner · movements = winner's (no orphan)
+S15.4|r2-m4|C|R|stale CANCELLING whose draft cancel is refused (not run state) ⇒ draftRefused · charge back to pre-withdraw · next withdraw ⇒ CANCELLED
+S15.5|r2-m5|M|R|stockFormOptions: no inventory read ⇒ no inventories · reader ⇒ only chosen system's items (name/SKU, no cost) · unit-linked system outside scope hidden
+S15.6|r2-m7|C|R|insufficient stock ⇒ stock text · nothing written · inventory system linked to another branch ⇒ invAccess for a branch requester
+S15.7|r2-m8|M|R|stockConsentByAdjustment: payroll viewer gets ref + date · non-viewer empty · payroll-ui chip uses it
+S15.8|r2-race|C|R|[race] (b) 2 parallel withdraws of a DRAFT-bound charge ⇒ 1 CANCELLED + 1 withdrawn · 1 delete audit · (c) 3 parallel ⇒ 1 REFUND_OWED · 3 parallel mark-repaid ⇒ 1 audit row
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -661,6 +669,142 @@ async function runDb(): Promise<void> {
     const a4 = (await adjs({ id: adjOf(v.v4) }))[0];
     // ORACLE-EDIT (Q8 option 2): exactly one CANCELLED (in place) · no refund row · no ALLOWANCE
     ck("S6.6", { dec: d4?.ok === true, one: ws.filter((x) => x.ok && x.value?.outcome === "CANCELLED").length === 1, rest: ws.filter((x) => is(x, T.withdrawn)).length === 2, rows: n4 === 0, adj: a4?.status === "REJECTED", noAllowance: (await P.hrPayAdjustment.count({ where: { tenantId: T1, kind: "ALLOWANCE" } })) === 0 }, "1 CANCELLED · 0 refund rows", `${ws.map(shown).join(" ")} rows=${n4} adj=${a4?.status}`);
+  }
+
+  // ── S15 r2 (controller fix round r2 · reviewer M1/m2–m8) ──
+  {
+    const T15 = {
+      stock: "สต็อกไม่พอ — ตัดสต็อกได้ไม่เกินยอดคงเหลือ (หรือยื่นแบบไม่ตัดสต็อก)",
+      draftRefused: "ยกเลิกรายการในรอบร่างไม่สำเร็จ — รายการกลับเป็นสถานะเดิม ให้ผู้ดูแลตรวจรอบร่างแล้วลองอีกครั้ง",
+      locked: "รายการนี้มาจากการหักค่าของที่บันทึกคืนเงินพนักงานแล้ว — ลบหรือย้ายจากหน้าเงินเดือนไม่ได้ ดูที่ส่วน “หักค่าของ”",
+    };
+    const itemOf = async (id: unknown) => ((await list(W.owner)).value?.items ?? []).find((x: Any) => x.id === id) as Any;
+    const mr15 = (w: Who, id: unknown, ref: string, now: Date) => callMod(SC, "markStockRefundRepaid", [cH, vOf(w), id, { ref }, { now }]);
+    // S15.1 M1
+    {
+      const k = input({ kind: "DAMAGE", description: "ย้อนรอบ", amountSatang: 37_035 });
+      const c = await req(W.owner, k, bkk("2034-05-10"));
+      const d1 = await dec(adjOf(c), W.payAll);
+      let run1 = "";
+      try {
+        run1 = (await pay.createPayrollRun(cH, { periodKey: "2034-05", payDate: new Date("2034-05-28T00:00:00Z") })).id;
+      } catch (e) {
+        run1 = `✗${errText(e)}`;
+      }
+      await P.hrPayrollRun.updateMany({ where: { id: run1, tenantId: T1 }, data: { status: "APPROVED" } });
+      const bound1 = (await adjs({ id: adjOf(c) }))[0]?.runId === run1;
+      const w = await wd(W.payAll, c.value?.chargeId, bkk("2034-05-29"));
+      const m1 = await mr15(W.payAll, c.value?.chargeId, "โอนคืน-ย้อน", bkk("2034-05-30"));
+      // ย้อนรอบ (ผลเดียวกับ reverseRun: สถานะ REVERSED + ปลดรายการ) แล้วสร้างรอบใหม่ของงวดเดิม
+      await P.hrPayrollRun.updateMany({ where: { id: run1, tenantId: T1 }, data: { status: "REVERSED" } });
+      await P.hrPayAdjustment.updateMany({ where: { tenantId: T1, runId: run1 }, data: { runId: null } });
+      let run2 = "";
+      try {
+        run2 = (await pay.createPayrollRun(cH, { periodKey: "2034-05", payDate: new Date("2034-05-31T00:00:00Z") })).id;
+      } catch (e) {
+        run2 = `✗${errText(e)}`;
+      }
+      const item2 = (await P.hrPayrollItem.findMany({ where: { tenantId: T1, runId: run2, employeeId: E1 } })) as Any[];
+      const adj2 = (await adjs({ id: adjOf(c) }))[0];
+      const li = await itemOf(c.value?.chargeId);
+      let del: Any = null;
+      try {
+        del = await pay.cancelAdjustment(cH, adjOf(c), { userId: W.owner.id, isOwner: true });
+      } catch (e) {
+        del = { ok: false, reason: errText(e) };
+      }
+      const w2 = await wd(W.payAll, c.value?.chargeId, bkk("2034-06-01"));
+      ck("S15.1", {
+        setup: c.ok && d1?.ok === true && bound1, refund: w.ok && w.value?.outcome === "REFUND_OWED" && w.value?.refundOwedSatang === 37_035, repaid: m1.ok,
+        rerun: adj2?.runId === run2 && adj2?.status === "APPROVED" && item2.length === 1 && Number(item2[0]?.deductSatang) === 37_035 && Number(item2[0]?.grossSatang) === 1_462_965,
+        charge: li?.status === "REPAID" && li?.refund?.returnedAfterReversal === true && li?.refund?.adjustment?.bound === true && li?.refund?.adjustment?.runPeriodKey === "2034-05",
+        delRefused: del?.ok === false && del?.reason === T15.locked && (await adjs({ id: adjOf(c) })).length === 1, again: is(w2, T.withdrawn),
+      }, "deducted once in re-run · REPAID + flag · delete refused", `${shown(w)} ${short(item2.map((x) => x.deductSatang), 40)} ${li?.status} ${short(del, 60)}`);
+    }
+    // S15.2 m2 — second HR system of the same tenant
+    {
+      const sHb = (await sysSvc.createSystem(T1, "HR", `ทีมสอง ${tag}`)).id as string;
+      const Eb = await fx.mkEmp(T1, sHb, `QC-H46 ระบบสอง ${tag}`, { unitId: u1, startDate: "2030-01-01" });
+      const B0 = await onHand(I.B);
+      const mv0 = (await hrMoves({ refId: vIn.v3.requestKey })).length;
+      const r = await req(W.owner, { ...vIn.v3, employeeId: Eb, itemId: I.B, qty: 1 }, NOW, { tenantId: T1, systemId: sHb });
+      ck("S15.2", { text: is(r, T.replayDiff), stock: (await onHand(I.B)) === B0, mv: (await hrMoves({ refId: vIn.v3.requestKey })).length === mv0 }, "replayDiff · no stock", shown(r));
+    }
+    // S15.3 m3
+    {
+      const src = stripComments(rd(F.sc));
+      const pAt = src.indexOf("stockChargeTargetPeriod(");
+      const cAt = src.indexOf("consumeBatch(", src.indexOf("export async function requestStockCharge"));
+      const k = newKey();
+      const A0 = await onHand(I.A);
+      const both = await Promise.all([req(W.owner, input({ requestKey: k, employeeId: E2, itemId: I.A, qty: 1 })), req(W.owner, input({ requestKey: k, employeeId: E2, itemId: I.A, qty: 1, takeStock: false }))]);
+      const wins = both.filter((x) => x.ok);
+      const loses = both.filter((x) => is(x, T.replayDiff));
+      const mvN = (await hrMoves({ refId: k })).length;
+      const winnerTook = both[0].ok;
+      ck("S15.3", { order: pAt > 0 && cAt > pAt, one: wins.length === 1 && loses.length === 1, noOrphan: mvN === (winnerTook ? 1 : 0) && (await onHand(I.A)) === A0 - (winnerTook ? 1 : 0) }, "period before stock · 1 winner · no orphan", `${both.map(shown).join(" ")} mv=${mvN}`);
+    }
+    // S15.4 m4 — stale CANCELLING whose draft cancel is refused for a non-run reason
+    {
+      const c = await req(W.owner, input({ employeeId: E2, kind: "DAMAGE", description: "ค้างยกเลิก", amountSatang: 4_444 }), bkk("2033-05-10"));
+      const d = await dec(adjOf(c), W.payAll);
+      await P.$executeRawUnsafe(`UPDATE "HrStockCharge" SET "withdrawOutcome" = 'CANCELLING', "withdrawnAt" = $2, "withdrawnById" = $3 WHERE "id" = $1`, c.value?.chargeId, bkk("2033-05-15", "00:00"), W.payAll.id);
+      const w1 = await wd(W.payAll, c.value?.chargeId, bkk("2033-05-15"));
+      const row = (await charges()).find((x) => x.id === c.value?.chargeId);
+      const w2 = await wd(W.payAll, c.value?.chargeId, bkk("2033-05-16"));
+      ck("S15.4", { setup: c.ok && d?.ok === true, refused: is(w1, T15.draftRefused), reset: row?.withdrawOutcome === null && row?.withdrawnAt === null, again: w2.ok && w2.value?.outcome === "CANCELLED" }, "draftRefused · reset · CANCELLED", `${shown(w1)} ${row?.withdrawOutcome} ${shown(w2)}`);
+    }
+    // S15.6 m7 (fixtures shared with S15.5)
+    const sIu2 = (await sysSvc.createSystem(T1, "INVENTORY", `คลังใต้ ${tag}`)).id as string;
+    await P.appSystemUnit.create({ data: { tenantId: T1, systemId: sIu2, unitId: u2, type: "INVENTORY" } });
+    const Wi = await mkItem(T1, sIu2, "W", "ถุงมือ", 1_000, 5);
+    {
+      const before = await snap();
+      const short1 = await req(W.owner, input({ employeeId: E2, itemId: I.C, qty: 11, amountSatang: 100 }));
+      const same = (await snap()) === before;
+      const br = await req(W.reqBoth, input({ inventorySystemId: sIu2, itemId: Wi, qty: 1 }));
+      ck("S15.6", { stock: is(short1, T15.stock), same, branch: is(br, T.invAccess), wStock: (await onHand(Wi)) === 5 }, "stock text · nothing · invAccess", `${shown(short1)} ${shown(br)}`);
+    }
+    // S15.5 m5/m6
+    {
+      const noRead = await callMod(SC, "stockFormOptions", [cH, vOf(W.reqHr), {}]);
+      const rd1 = await callMod(SC, "stockFormOptions", [cH, vOf(W.reqBoth), { inventorySystemId: sI }]);
+      const items = (rd1.value?.selected?.items ?? []) as Any[];
+      const invIds = ((rd1.value?.inventories ?? []) as Any[]).map((x) => x.id);
+      ck("S15.5", {
+        noRead: noRead.ok && (noRead.value?.inventories ?? [1]).length === 0 && noRead.value?.selected === null,
+        chosen: rd1.value?.selected?.id === sI && items.some((x) => x.id === I.A) && !items.some((x) => x.id === I.X || x.id === Wi) && items.every((x) => keysOf(x) === "id,name,sku"),
+        scope: invIds.includes(sI) && !invIds.includes(sIu2),
+      }, "no read ⇒ none · chosen only · branch-linked hidden", `${short(noRead.value?.inventories, 40)} ${items.length} ${short(invIds, 60)}`);
+    }
+    // S15.7 m8
+    {
+      const a = await callMod(SC, "stockConsentByAdjustment", [cH, vOf(W.payAll), [adjOf(v.v3)]]);
+      const b = await callMod(SC, "stockConsentByAdjustment", [cH, vOf(W.mgrU1), [adjOf(v.v3)]]);
+      const got = a.value instanceof Map ? a.value.get(adjOf(v.v3)) : undefined;
+      ck("S15.7", { viewer: got?.ref === CONSENT.ref && got?.at === DAY, other: b.value instanceof Map && b.value.size === 0, ui: rd(F.payUi).includes("stockConsentByAdjustment(") }, "ref + date · empty · chip", short(got, 60));
+    }
+    // S15.8 races
+    {
+      const cb = await req(W.owner, input({ employeeId: E2, kind: "DAMAGE", description: "แข่งร่าง", amountSatang: 2_222 }), bkk("2033-03-10"));
+      await dec(adjOf(cb), W.payAll);
+      const rD = await run("2033-03", "DRAFT");
+      await P.hrPayAdjustment.updateMany({ where: { id: adjOf(cb), tenantId: T1 }, data: { runId: rD } });
+      const wb = await Promise.all([0, 1].map(() => wd(W.payAll, cb.value?.chargeId, bkk("2033-03-15"))));
+      const delAudit = await P.auditLog.count({ where: { tenantId: T1, action: "hr.payadjust.delete", targetId: adjOf(cb) } });
+      const cc = await req(W.owner, input({ employeeId: E2, kind: "DAMAGE", description: "แข่งค้างคืน", amountSatang: 3_333 }), bkk("2033-04-10"));
+      await dec(adjOf(cc), W.payAll);
+      const rA = await run("2033-04", "APPROVED");
+      await P.hrPayAdjustment.updateMany({ where: { id: adjOf(cc), tenantId: T1 }, data: { runId: rA } });
+      const wc = await Promise.all([0, 1, 2].map(() => wd(W.payAll, cc.value?.chargeId, bkk("2033-04-15"))));
+      const mc = await Promise.all([0, 1, 2].map(() => mr15(W.payAll, cc.value?.chargeId, "โอนคืน-แข่ง", bkk("2033-04-20"))));
+      const repAudit = await P.auditLog.count({ where: { tenantId: T1, action: "hr.stock_charge.repaid", targetId: cc.value?.chargeId } });
+      ck("S15.8", {
+        b: wb.filter((x) => x.ok && x.value?.outcome === "CANCELLED").length === 1 && wb.filter((x) => is(x, T.withdrawn)).length === 1 && delAudit === 1 && (await adjs({ id: adjOf(cb) })).length === 0,
+        c: wc.filter((x) => x.ok && x.value?.outcome === "REFUND_OWED").length === 1 && wc.filter((x) => is(x, T.withdrawn)).length === 2,
+        repaid: mc.every((x) => x.ok) && mc.filter((x) => x.value?.replayed === false).length === 1 && repAudit === 1,
+      }, "1 delete · 1 refund · 1 repaid audit", `${wb.map(shown).join(" ")} del=${delAudit} | ${wc.map(shown).join(" ")} | audit=${repAudit}`);
+    }
   }
 
   // ── S14.2 controls (base behaviour) ──
