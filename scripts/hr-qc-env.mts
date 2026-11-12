@@ -338,6 +338,10 @@ export const HQC = {
   attendanceRoster: {
     days: 7,
     shiftNames: { morning: "กะเช้า", afternoon: "กะบ่าย", closing: "กะปิดร้าน" } as Record<HqcShift, string>,
+    /** VIS-1 A4: ตารางกะของ "วันนี้" (ประกาศแล้ว · ไม่มีการลงเวลา — S7.3 ของ H1.2 นับลงเวลา 120 แถวคงที่) ⇒ จอทีมรายวันของวันนี้เห็นสถานะสด ·
+     *  กะเช้า 2 คนยิงการเตือน "ยังไม่ลงเวลาเข้า" ตอน 07:30 (เวลาคงที่ ไม่ขึ้นกับเวลาที่รัน seed) ⇒ แถบเตือน · ที่เหลือกะบ่าย/ปิดร้าน = ยังไม่ถึงเวลา/ยังไม่มา ตามเวลาที่เปิดดู */
+    today: { keng: "morning", namfon: "morning", prae: "afternoon", ton: "afternoon", por: "afternoon", nat: "afternoon", jay: "afternoon", mint: "closing", bow: "closing" } as Record<string, HqcShift>,
+    todayAlertAtMin: 7 * 60 + 30,
   },
   // HR H4.4 ▸ วงจรพนักงาน (ภาพ 02 — ผ่าน hr/lifecycle.ts ในนามเจ้าของ): ทดลองงานครบ today+14 (โบว์) · สัญญาพาร์ทไทม์ถึงสิ้นเดือน (เจ) ·
   //   รายการรับพนักงานใหม่ของโบว์ 5/7 · ตักเตือนด้วยวาจา 1 ใบที่พนักงานเห็น (นัท · ยังทำงาน) · ผู้ลาออก (ฝ้าย) สิ้นสุดผ่าน offboardEmployee (RESIGNED · leaverEnd)

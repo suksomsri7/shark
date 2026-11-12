@@ -157,7 +157,8 @@ chk("S1.5", sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, PAYROLL_RULES_SHA
   const hunks = diffHunks(base, F.cons) ?? [];
   const removed = hunks.reduce((n, h) => n + h.removed.length, 0);
   const marked = rd(F.cons).includes("HR H4.1");
-  const r = { handler: !!m && /leaveDutyNotify/.test(m[1]), marked, removedLe1: removed <= 1, changed: hunks.length > 0 };
+  // ORACLE-EDIT (controller, 12 Nov): diff-vs-base parts (removed ≤1 · changed) are n/a once H4.1 is in the base — handler + marker stay checked
+  const r = { handler: !!m && /leaveDutyNotify/.test(m[1]), marked, removedLe1: H41_IN_BASE || removed <= 1, changed: H41_IN_BASE || hunks.length > 0 };
   chk("S1.6", Object.values(r).every(Boolean), "consumer → leaveDutyNotify · marked hunk", `failed: ${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "-"} removed=${removed}`);
 }
 {

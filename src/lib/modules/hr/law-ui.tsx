@@ -2,7 +2,7 @@
 //   ต่างจากภาพโดยตั้งใจ (Q8): ไม่มี "เพิ่มช่วงมีผลใหม่"/"ร้านยืนยัน" (เขียนได้เฉพาะหลังบ้าน) · ไม่มีคอลัมน์ "ในร้านตอนนี้" (มาจากเงินเดือนรายคน)
 import { getTranslations } from "next-intl/server";
 import { formatBaht } from "@/lib/ui/money";
-import { formatDateTh } from "@/lib/ui/date";
+import { formatThaiDate } from "@/lib/ui/date";
 import { annualTaxV2, parseDeductionJson, parseSsoJson, parseTaxJson, ssoV2 } from "./payroll-rules-v2";
 import type { LawView, LawViewRow } from "./law";
 
@@ -161,13 +161,13 @@ export async function LawTableView({ view }: { view: LawView }) {
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span>
                     <span className={muted}>{t("effectiveFrom")} </span>
-                    <b>{r.effectiveFrom === "1970-01-01" ? t("defaultSet") : formatDateTh(`${r.effectiveFrom}T00:00:00+07:00`)}</b>
+                    <b>{r.effectiveFrom === "1970-01-01" ? t("defaultSet") : formatThaiDate(`${r.effectiveFrom}T00:00:00+07:00`)}</b>
                   </span>
                   <span className={`rounded-full border px-3 py-1 text-xs ${r.inForce ? "border-[color:var(--color-accent)] text-[color:var(--color-accent)]" : muted}`}>{statusText(t, r, view.onDay)}</span>
                 </div>
                 <RowValues t={t} kind={g.kind} values={r.values} />
                 {r.approvedByName && r.approvedAt && (
-                  <p className={`text-xs ${muted}`}>{t("approvedBy", { name: r.approvedByName, date: formatDateTh(r.approvedAt) })}</p>
+                  <p className={`text-xs ${muted}`}>{t("approvedBy", { name: r.approvedByName, date: formatThaiDate(r.approvedAt) })}</p>
                 )}
               </div>
             ))

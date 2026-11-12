@@ -12,6 +12,7 @@ import { canManageHrSettings } from "@/lib/modules/hr/settings";
 import { attendanceNeedsRecompute, JUDGE_TEXT, loadAttendanceBoard, loadAttendanceMonth, myAttendanceMonth } from "@/lib/modules/hr/judge";
 import { recomputeAttendanceDayAction } from "@/lib/modules/hr/attendance-actions";
 import { AttendanceDayView, AttendanceFlash, AttendanceMonthView, AttendanceViewTabs } from "@/lib/modules/hr/attendance-ui";
+import { thaiDateKey } from "@/lib/ui/date";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 
@@ -63,7 +64,7 @@ export default async function HrAttendancePage({ params, searchParams }: { param
     return (
       <div data-testid="hr-att-page" className="flex flex-col gap-5">
         {header(t("selfTitle"))}
-        <AttendanceMonthView month={mine} base={base} systemId={id} people={[]} onRecompute={null} self />
+        <AttendanceMonthView month={mine} base={base} systemId={id} people={[]} onRecompute={null} self todayKey={thaiDateKey()} />
       </div>
     );
   }
@@ -81,7 +82,7 @@ export default async function HrAttendancePage({ params, searchParams }: { param
           <AttendanceViewTabs base={base} view="month" employeeId={month?.employee.id ?? null} />
         </div>
         <AttendanceFlash text={flash} ok={code === "ok" || code === "same"} />
-        {month ? <AttendanceMonthView month={month} base={base} systemId={id} people={people} onRecompute={canRecompute ? onRecompute : null} self={false} /> : <p className="text-sm text-[color:var(--color-muted)]">{t("empty")}</p>}
+        {month ? <AttendanceMonthView month={month} base={base} systemId={id} people={people} onRecompute={canRecompute ? onRecompute : null} self={false} todayKey={thaiDateKey()} /> : <p className="text-sm text-[color:var(--color-muted)]">{t("empty")}</p>}
       </div>
     );
   }

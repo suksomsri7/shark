@@ -146,6 +146,51 @@ export async function HrAttendanceSection({ systemId }: { systemId: string }) {
   );
 }
 
+// HR H4.1 ▸ R12 (ภาพ 05): "กระทบ: กะเช้า 08:00–16:00 · 19 พ.ย. 69 — ยังมี n คน · ไม่ต้องหาคนแทน" หรือ "— ขาด 1 คน → ระบบเสนอ <คนแรก>" ·
+//   VIS-1 E: ชื่อกะ + เวลา + วันที่ · ใช้ทั้งบนการ์ดใบรออนุมัติ (withTitle=false) และส่วน "ผลกระทบต่อกะ" ของใบที่อนุมัติแล้ว ◂
+function LeaveImpact({
+  card: c,
+  ti,
+  shiftNameOf,
+  withTitle,
+}: {
+  card: { id: string; title: string; items: DutyHintItem[]; incomplete: boolean };
+  ti: Awaited<ReturnType<typeof getTranslations>>;
+  shiftNameOf: Map<string, string>;
+  withTitle: boolean;
+}) {
+  return (
+    <div className={withTitle ? "rounded-xl border border-[color:var(--color-line)] p-3" : "mt-1 border-t border-[color:var(--color-line)] pt-1"} data-testid="hr-leave-impact">
+      {withTitle && <p className="text-sm font-medium">{c.title}</p>}
+      {c.incomplete && <p className={`text-xs ${muted}`}>{ti("incomplete")}</p>}
+      <ul className="mt-1 flex flex-col gap-1">
+        {c.items.map((it) => {
+          const when = { shift: shiftNameOf.get(it.entryId) ?? ti("shiftFallback"), date: formatThaiDate(new Date(`${it.date}T00:00:00Z`)), time: `${hhmm(it.startMin)}–${hhmm(it.endMin)}` };
+          const first = it.candidates[0];
+          return (
+            <li key={it.entryId} className={`whitespace-normal break-words text-sm ${it.others > 0 ? muted : "text-[color:var(--color-accent)]"}`}>
+              {it.others > 0 && c.incomplete ? (
+                ti("checkManually", when)
+              ) : it.others > 0 ? (
+                ti("covered", { ...when, n: it.others })
+              ) : (
+                <>
+                  {ti("uncovered", when)}{" "}
+                  {first ? (
+                    <b data-testid={`hr-leave-impact-candidate-${first.employeeId}`}>{ti("candidate", { name: first.name, from: hoursOf(first.weekMin), to: hoursOf(first.weekMinAfter) })}</b>
+                  ) : (
+                    ti("noCandidate")
+                  )}
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 // ───────────── ใบลา (leave) ─────────────
 export async function HrLeaveSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
@@ -188,6 +233,16 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
     const h = hints.get(l.id);
     if (h?.ok && h.items.length) impactCards.push({ id: l.id, title: `${l.employeeName} · ${dateRange(l.fromDate, l.toDate)}`, items: h.items, incomplete: h.incomplete === true });
   }
+  // VIS-1 E ▸ ชื่อกะของแต่ละบรรทัด — อ่านเฉพาะกะที่คำใบ้ส่งมาแล้ว (ผ่านด่านผู้ดูคำใบ้ของ availability.ts) · ชื่อกะอย่างเดียว ◂
+  const impactEntryIds = [...new Set(impactCards.flatMap((c) => c.items.map((it) => it.entryId)))];
+  const shiftNameOf = new Map(
+    impactEntryIds.length
+      ? (await tenantDb(ctx).hrRosterEntry.findMany({ where: { id: { in: impactEntryIds } }, select: { id: true, shift: { select: { name: true } } }, take: 500 })).map((r) => [r.id, r.shift.name])
+      : [],
+  );
+  const impactOf = (c: (typeof impactCards)[number]) => <LeaveImpact key={c.id} card={c} ti={ti} shiftNameOf={shiftNameOf} withTitle={false} />;
+  const pendingImpact = new Map(impactCards.filter((c) => pending.some((p) => p.id === c.id)).map((c) => [c.id, c]));
+  const otherImpact = impactCards.filter((c) => !pendingImpact.has(c.id));
   // ◂ HR H4.1
 
   return (
@@ -203,6 +258,8 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
               id: it.id,
               label: `${it.employeeName} · ${LEAVE_TYPE_LABEL[it.type] ?? it.type}`,
               meta: [dateRange(it.fromDate, it.toDate), pendingMeta.get(it.id) /* HR H2.7 ◂ */, it.reason].filter(Boolean).join(" · "),
+              // VIS-1 E ▸ บรรทัดผลกระทบอยู่บนการ์ดใบลาของตัวเอง ◂
+              ...(pendingImpact.has(it.id) ? { extra: impactOf(pendingImpact.get(it.id)!) } : {}),
             }))}
           />
         )}
@@ -223,25 +280,29 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
                 ))}
               </select>
             </label>
-            <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-              ประเภท
-              <select name="type" className="input" defaultValue="PERSONAL">
-                {Object.entries(LEAVE_TYPE_LABEL).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {/* HR H2.7 ▸ ประเภทการลา (ว่าง = ตามหมวด) · ครึ่งวัน · ชั่วโมง (เฉพาะเมื่อมีประเภทที่เปิด — ร้านยังเปิดเองไม่ได้) */}
-            {policies.length > 0 && (
+            {/* HR H2.7 ▸ ประเภทการลา · ครึ่งวัน · ชั่วโมง (เฉพาะเมื่อมีประเภทที่เปิด — ร้านยังเปิดเองไม่ได้) ·
+                VIS-1 D3: ช่องประเภทเหลือช่องเดียว — มีประเภทการลาที่เปิด = เลือกประเภท (หมวดตามประเภท · requestLeaveAction) · ไม่มี = หมวดเดิม */}
+            {policies.length > 0 ? (
               <label className={`flex flex-col gap-1 text-xs ${muted}`}>
                 {tl("policy")}
-                <select name="policyId" className="input min-h-[44px]" defaultValue="" data-testid="hr-leave-policy">
-                  <option value="">{tl("policyAuto")}</option>
+                <select name="policyId" required className="input min-h-[44px]" defaultValue="" data-testid="hr-leave-policy">
+                  <option value="" disabled>
+                    {tl("policyChoose")}
+                  </option>
                   {policies.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                {tl("policy")}
+                <select name="type" className="input min-h-[44px]" defaultValue="PERSONAL">
+                  {Object.entries(LEAVE_TYPE_LABEL).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
                     </option>
                   ))}
                 </select>
@@ -286,40 +347,11 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
       </Section>
 
       {/* HR H4.1 ▸ R12 (ภาพ 05): "กระทบ: กะ … — ยังมี n คน · ไม่ต้องหาคนแทน" หรือ "— ขาด 1 คน → ระบบเสนอ <คนแรก>" */}
-      {impactCards.length > 0 && (
+      {otherImpact.length > 0 && (
         <Section title={ti("title")}>
           <div className="flex flex-col gap-3">
-            {impactCards.map((c) => (
-              <div key={c.id} className="rounded-xl border border-[color:var(--color-line)] p-3" data-testid="hr-leave-impact">
-                <p className="text-sm font-medium">{c.title}</p>
-                {c.incomplete && <p className={`text-xs ${muted}`}>{ti("incomplete")}</p>}
-                <ul className="mt-1 flex flex-col gap-1">
-                  {c.items.map((it) => {
-                    const when = { date: formatThaiDate(new Date(`${it.date}T00:00:00Z`)), time: `${hhmm(it.startMin)}–${hhmm(it.endMin)}` };
-                    const first = it.candidates[0];
-                    return (
-                      <li key={it.entryId} className={`text-sm ${it.others > 0 ? muted : "text-[color:var(--color-accent)]"}`}>
-                        {it.others > 0 && c.incomplete ? (
-                          ti("checkManually", when)
-                        ) : it.others > 0 ? (
-                          ti("covered", { ...when, n: it.others })
-                        ) : (
-                          <>
-                            {ti("uncovered", when)}{" "}
-                            {first ? (
-                              <b data-testid={`hr-leave-impact-candidate-${first.employeeId}`}>
-                                {ti("candidate", { name: first.name, from: hoursOf(first.weekMin), to: hoursOf(first.weekMinAfter) })}
-                              </b>
-                            ) : (
-                              ti("noCandidate")
-                            )}
-                          </>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+            {otherImpact.map((c) => (
+              <LeaveImpact key={c.id} card={c} ti={ti} shiftNameOf={shiftNameOf} withTitle />
             ))}
           </div>
         </Section>

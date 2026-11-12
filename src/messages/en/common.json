@@ -325,16 +325,18 @@
       "colType": "Type",
       "colEntitled": "Entitled (days)",
       "colUsed": "Used",
-      "colLeft": "Left"
+      "colLeft": "Left",
+      "policyChoose": "Choose a leave type"
     },
     "leaveImpact": {
       "title": "Shift impact",
-      "uncovered": "Affects: shift {date} ({time}) — 1 person short → suggested",
-      "covered": "Affects: shift {date} ({time}) — {n} still on shift · no cover needed",
+      "uncovered": "Affects: {shift} {time} · {date} — 1 person short → suggested",
+      "covered": "Affects: {shift} {time} · {date} — {n} still on shift · no cover needed",
       "candidate": "{name} (week hours {from} → {to} h)",
       "noCandidate": "nobody free in this branch yet",
       "incomplete": "Too many shifts to check fully — please review the roster before approving",
-      "checkManually": "Affects: shift {date} ({time}) — please check cover in the roster"
+      "checkManually": "Affects: {shift} {time} · {date} — please check cover in the roster",
+      "shiftFallback": "shift"
     },
     "law": {
       "title": "Law tables",
@@ -521,7 +523,10 @@
         "m11": "Nov",
         "m12": "Dec"
       },
-      "needsRecompute": "{n} days need a recompute — the roster changed after the result was saved (hours still count from the saved result)"
+      "needsRecompute": "{n} days need a recompute — the roster changed after the result was saved (hours still count from the saved result)",
+      "scrollHint": "Scroll the table sideways to see every column (hours · OT · actions) →",
+      "countsTitleDay": "Summary for {day}",
+      "dayListTitle": "Per day — tap a day to see its times"
     },
     "life": {
       "saved": "Saved",

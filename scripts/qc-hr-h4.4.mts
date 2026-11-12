@@ -129,6 +129,9 @@ S16.13|r3-1|C|R|r3 leave ledger: APPROVED 3d + PENDING 2d after end ⇒ year Σ 
 S16.14|r3-1|C|R|r3 a PENDING leave left on an ENDED employee cannot be approved (no USE row)
 S16.15|r3-3|M|R|r3 due panel never lists the viewer's own row
 S16.16|r3-2|M|R|[static] r3 remove + ENDED save show the "account kept" message
+S17.1|VIS-1 B1|C|R|vis1 manager-by-role in branch: due panel (own branch only) · banner data · checklist read + tick
+S17.2|VIS-1 B1|C|R|vis1 manager-by-role in branch: notes still null/refused · settings refused · start refused
+S17.3|VIS-1 B1|C|R|vis1 manager-by-role of another branch: no panel rows · banner/checklist null · tick refused
 S11.1|R1|C|R|[db] delete employee with note ⇒ 23503 · note kept
 S11.2|R1|M|R|[db] FK actions r/c
 S11.3|R1|M|G|[static] no hrEmployee.delete in src
@@ -525,7 +528,8 @@ async function runDb(): Promise<void> {
     const has = (id: string, k: string) => items.some((i) => i.employeeId === id && i.kind === k);
     ck("S4.1", { ok: o.ok, keys: items.length > 0 && items.every((i) => keysOf(i) === DUE_KEYS), p1: has(E.P1, "PROBATION_END"), p4: has(E.P4, "PROBATION_END"), c1: has(E.C1, "CONTRACT_END"), x: !items.some((i) => i.employeeId === E.X) }, "items", `${shown(o)} n=${items.length}`);
     const mg = await due(V.mgrU1);
-    const deny = await three((v) => due(v));
+    // ORACLE-EDIT (VIS-1 B1 controller ruling): a manager by role who may offboard in the branch now sees the due panel ⇒ mgrRole leaves the deny list (checked in S17.1)
+    const deny = await Promise.all([V.pay, V.member].map((v) => due(v)));
     const mi = (mg.value?.items ?? []) as Any[];
     ck("S4.2", { mgr: mg.ok && mi.some((i) => i.employeeId === E.P1) && !mi.some((i) => i.employeeId === E.C1), deny: deny.every((d) => d.value === null) }, "scope", "");
   }
@@ -612,7 +616,8 @@ async function runDb(): Promise<void> {
   {
     const lo = await L_("loadLifecycleForViewer", cA, V.owner, eO);
     const lm = await L_("loadLifecycleForViewer", cA, V.mgrU1, eO);
-    const deny = await three((v) => L_("loadLifecycleForViewer", cA, v, eO));
+    // ORACLE-EDIT (VIS-1 B1 controller ruling): mgrRole (manager by role, branch u1) now reads the banner data of u1 rows ⇒ out of the deny list (S17.1)
+    const deny = await Promise.all([V.pay, V.member].map((v) => L_("loadLifecycleForViewer", cA, v, eO)));
     const K5 = "contractEndAt,offboard,probationEndAt,startDate,status";
     const good = (x: RO) => x.ok && keysOf(x.value) === K5 && keysOf(x.value?.offboard) === "at,endDate,note,reason" && x.value.offboard.note === NOTE;
     ck("S5.10", { owner: good(lo), mgr: good(lm), deny: deny.every((d) => d.value === null) }, K5, keysOf(lo.value));
@@ -722,7 +727,8 @@ async function runDb(): Promise<void> {
     ck("S8.2", { keys: on.length === 7 && on.every((x) => keysOf(x) === TASK_KEYS), on: d1.ok && !!r1?.doneAt && r1?.doneById === U.owner.id, off: d0.ok && r0?.doneAt === null }, TASK_KEYS, `${keysOf(on[0])} ${shown(d1)} ${shown(d0)}`);
     const eU = await emp(sA, "s2new", { unitId: u2, status: "PROBATION" });
     const st = [...(await three((v) => stc(v, eK2, "OFFBOARDING"))), await stc(V.mgrU1, eU, "ONBOARDING")];
-    const ls = [...(await three((v) => lsc(v, eK))), await lsc(V.mgrU1, eU)];
+    // ORACLE-EDIT (VIS-1 B1 controller ruling): mgrRole now reads the checklist of u1 rows ⇒ out of the list-deny set (S17.1) · start stays refused
+    const ls = [...(await Promise.all([V.pay, V.member].map((v) => lsc(v, eK)))), await lsc(V.mgrU1, eU)];
     ck("S8.3", { start: st.every((x) => !x.ok && x.text === T.noAccess), list: ls.every((x) => x.value === null), none: (await cnt("hrOnboardingTask", { employeeId: eU })) === 0 }, "denied", st.map(shown).join(" "));
   }
 
@@ -957,6 +963,77 @@ async function runDb(): Promise<void> {
     } finally {
       await P.pushDevice.deleteMany({ where: { id: { in: pushIds } } }).catch(() => null);
     }
+  }
+
+  // ═════════════ VIS-1 B1 (controller ruling 12 Nov): manager by role in the branch sees panel · banners · checklist (read + tick) — notes/settings stay key-only ═════════════
+  {
+    const sV = await sys("ทีม VIS1");
+    const cV = { tenantId: TT, systemId: sV };
+    const mgrRoleU2 = vOf(await mk("mgrroleu2", "MANAGER", [u2], {}));
+    const vemp = async (n: string, o: Any, x: Any) => {
+      const id = await fx.mkEmp(TT, sV, `QC44 ${n} ${tag}`, { unitId: u1, startDate: "2031-01-05", status: "ACTIVE", ...o });
+      await P.hrEmployee.update({ where: { id }, data: x });
+      return id;
+    };
+    const vP = await vemp("vprob", { status: "PROBATION" }, { probationEndAt: dbDate("2031-06-20") });
+    const vC = await vemp("vcon", {}, { contractEndAt: dbDate("2031-07-01") });
+    const vS = await vemp("vsouth", { unitId: u2, status: "PROBATION" }, { probationEndAt: dbDate("2031-06-18") });
+    const st0 = await L_("startChecklist", cV, V.owner, vP, "ONBOARDING");
+    const stS = await L_("startChecklist", cV, V.owner, vS, "ONBOARDING");
+    const dueV = (v: Any) => L_("lifecycleDue", cV, v, { now: NOW });
+    const lscV = (v: Any, e: string) => L_("listChecklist", cV, v, e);
+    // S17.1 — mgrRole (MANAGER · u1 · no key) in its branch
+    const d = await dueV(V.mgrRole);
+    const di = (d.value?.items ?? []) as Any[];
+    const lf = await L_("loadLifecycleForViewer", cV, V.mgrRole, vP);
+    const lfC = await L_("loadLifecycleForViewer", cV, V.mgrRole, vC);
+    const cl = await lscV(V.mgrRole, vP);
+    const tId = String(((cl.value?.onboarding ?? []) as Any[])[0]?.id ?? "∅");
+    const tk = await L_("setTaskDone", cV, V.mgrRole, tId, true);
+    const tr = await fu("hrOnboardingTask", tId);
+    ck(
+      "S17.1",
+      {
+        setup: st0.ok && stS.ok,
+        due: d.ok && di.length > 0 && di.every((i) => keysOf(i) === DUE_KEYS) && di.some((i) => i.employeeId === vP && i.kind === "PROBATION_END") && di.some((i) => i.employeeId === vC && i.kind === "CONTRACT_END") && !di.some((i) => i.employeeId === vS),
+        banner: lf.ok && lf.value?.status === "PROBATION" && lf.value?.probationEndAt === "2031-06-20" && lfC.value?.contractEndAt === "2031-07-01",
+        list: ((cl.value?.onboarding ?? []) as Any[]).length === 7 && ((cl.value?.onboarding ?? []) as Any[]).every((x) => keysOf(x) === TASK_KEYS),
+        tick: tk.ok && !!tr?.doneAt && tr?.doneById === U.mgrRole.id,
+      },
+      "panel · banner · checklist · tick",
+      `${shown(d)} n=${di.length} ${shown(lf)} ${shown(cl)} ${shown(tk)}`,
+    );
+    // S17.2 — the same viewer: notes stay key-only (null / refused · nothing written) · settings + start refused
+    const n0 = await cnt("hrReviewNote", { employeeId: vP });
+    const ln = await L_("listReviewNotes", cV, V.mgrRole, vP);
+    const an = await L_("addReviewNote", cV, V.mgrRole, { employeeId: vP, kind: "NOTE", title: "qc", body: "qc" });
+    const svR = await sv(cV, V.mgrRole, { probationLeadDays: 5 });
+    const stR = await L_("startChecklist", cV, V.mgrRole, vC, "ONBOARDING");
+    ck(
+      "S17.2",
+      { notes: ln.value === null && !/^(∅|THROW)/.test(ln.text), add: !an.ok && an.text === T.noAccess && (await cnt("hrReviewNote", { employeeId: vP })) === n0, settings: !svR.ok && svR.text === NO_PERM, start: !stR.ok && stR.text === T.noAccess && (await cnt("hrOnboardingTask", { employeeId: vC })) === 0 },
+      "notes null · settings/start refused",
+      `${shown(ln)} ${shown(an)} ${shown(svR)} ${shown(stR)}`,
+    );
+    // S17.3 — MANAGER of u2 (no key) sees nothing of u1 rows
+    const d2 = await dueV(mgrRoleU2);
+    const d2i = (d2.value?.items ?? []) as Any[];
+    const lf2 = await L_("loadLifecycleForViewer", cV, mgrRoleU2, vP);
+    const cl2 = await lscV(mgrRoleU2, vP);
+    const tId2 = String(((cl.value?.onboarding ?? []) as Any[])[1]?.id ?? "∅");
+    const tk2 = await L_("setTaskDone", cV, mgrRoleU2, tId2, true);
+    const ln2 = await L_("listReviewNotes", cV, mgrRoleU2, vS);
+    ck(
+      "S17.3",
+      {
+        due: !d2i.some((i) => i.employeeId === vP || i.employeeId === vC) && d2i.some((i) => i.employeeId === vS),
+        banner: lf2.value === null, list: cl2.value === null,
+        tick: !tk2.ok && tk2.text === T.noAccess && !(await fu("hrOnboardingTask", tId2))?.doneAt,
+        notes: ln2.value === null,
+      },
+      "other branch: nothing",
+      `${shown(d2)} ${shown(lf2)} ${shown(cl2)} ${shown(tk2)}`,
+    );
   }
 
   {

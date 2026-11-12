@@ -100,6 +100,14 @@ export function canSeeLifecycle(v: LifeViewer | null | undefined): boolean {
 export function canOffboard(v: LifeViewer | null | undefined): boolean {
   return !!v && evaluate(membershipOf(v), { module: "hr", action: "hr.employee.create" });
 }
+/**
+ * VIS-1 B1 (มติผู้คุม 12 พ.ย.) ▸ ผู้ที่สิ้นสุดการจ้างได้ (เช่น ผู้จัดการตามบทบาท) เห็นงานประจำของสาขาตัวเองด้วย: แผง "ต้องจัดการ" · แถบทดลองงาน/สัญญา ·
+ *   รายการรับเข้า/ออก (อ่าน + ติ๊ก) — ขอบเขตสาขาตรวจจากแถวจริงทุกครั้ง (scopedWhere/unitWhere) · บันทึก/ประเมิน · ค่าตั้ง · เริ่มรายการ · ผ่านทดลองงาน
+ *   ยังเป็นของ canSeeLifecycle (OWNER/คีย์ตรง) เท่านั้น ◂
+ */
+export function canSeeLifecycleOps(v: LifeViewer | null | undefined): boolean {
+  return canSeeLifecycle(v) || canOffboard(v);
+}
 const scopeOf = (v: LifeViewer): HrScope => hrScopeOf({ role: v.role, unitAccess: v.unitAccess });
 const scopedWhere = (scope: HrScope, id: string, at: Date): Prisma.HrEmployeeWhereInput => ({ AND: [{ id }, unitWhere(scope, at)] });
 
@@ -360,7 +368,7 @@ export type LifeDueItem = { employeeId: string; name: string; kind: LifeDueKind;
 
 /** รายการที่ต้องจัดการของผู้ดู (ตามขอบเขตสาขา) — ไม่มีสิทธิ์ = null */
 export async function lifecycleDue(ctx: Ctx, viewer: LifeViewer, opts: { now?: Date } = {}): Promise<{ items: LifeDueItem[] } | null> {
-  if (!canSeeLifecycle(viewer)) return null;
+  if (!canSeeLifecycleOps(viewer)) return null;
   const now = nowOf(opts);
   const scope = scopeOf(viewer);
   const db = tenantDb(ctx) as unknown as Tx;
@@ -581,7 +589,7 @@ export async function loadLifecycleForViewer(
   employeeId: string,
   opts: { now?: Date } = {},
 ): Promise<{ status: string | null; startDate: string | null; probationEndAt: string | null; contractEndAt: string | null; offboard: { at: Date; endDate: string | null; reason: HrOffboardReason | null; note: string | null } | null } | null> {
-  if (!canSeeLifecycle(viewer)) return null;
+  if (!canSeeLifecycleOps(viewer)) return null;
   const id = str(employeeId);
   if (!id) return null;
   const r = await tenantDb(ctx).hrEmployee.findFirst({
@@ -589,7 +597,8 @@ export async function loadLifecycleForViewer(
     select: { employmentStatus: true, startDate: true, probationEndAt: true, contractEndAt: true, endDate: true, offboardedAt: true, offboardReason: true, offboardNote: true, linkedUserId: true },
   });
   if (!r) return null;
-  const own = !!r.linkedUserId && r.linkedUserId === viewer.userId;
+  // r2-2: แถวของตัวเอง = ไม่มีเหตุผล/หมายเหตุ · VIS-1 B1: ผู้เห็นเฉพาะงานประจำ (สิ้นสุดได้แต่ไม่มีคีย์บันทึก) = ไม่มีเหตุผล/หมายเหตุเช่นกัน
+  const own = (!!r.linkedUserId && r.linkedUserId === viewer.userId) || !canSeeLifecycle(viewer);
   return {
     status: r.employmentStatus ?? null,
     startDate: dayOf(r.startDate),
@@ -711,7 +720,7 @@ export async function startChecklist(ctx: Ctx, viewer: LifeViewer, employeeId: s
 export type ChecklistItem = { id: string; kind: HrOnboardingKind; title: string; sortOrder: number; dueDate: string | null; done: boolean; doneAt: Date | null; hasCard: boolean };
 /** รายการตรวจของพนักงาน 1 คน (ผู้ดูข้อมูลบันทึกในขอบเขตเท่านั้น) */
 export async function listChecklist(ctx: Ctx, viewer: LifeViewer, employeeId: string, opts: { now?: Date } = {}): Promise<{ onboarding: ChecklistItem[]; offboarding: ChecklistItem[] } | null> {
-  if (!canSeeLifecycle(viewer)) return null;
+  if (!canSeeLifecycleOps(viewer)) return null;
   const id = str(employeeId);
   const db = tenantDb(ctx);
   const row = id ? await db.hrEmployee.findFirst({ where: scopedWhere(scopeOf(viewer), id, nowOf(opts)), select: { id: true, linkedUserId: true } }) : null;
@@ -724,7 +733,7 @@ export async function listChecklist(ctx: Ctx, viewer: LifeViewer, employeeId: st
 
 /** ติ๊ก/เลิกติ๊กรายการตรวจ */
 export async function setTaskDone(ctx: Ctx, viewer: LifeViewer, taskId: string, done: boolean, opts: { now?: Date } = {}): Promise<{ ok: true; employeeId: string } | Fail> {
-  if (!canSeeLifecycle(viewer)) return refuse(T.noAccess);
+  if (!canSeeLifecycleOps(viewer)) return refuse(T.noAccess);
   const id = str(taskId);
   const db = tenantDb(ctx);
   const task = id ? await db.hrOnboardingTask.findFirst({ where: { id }, select: { id: true, employeeId: true } }) : null;
