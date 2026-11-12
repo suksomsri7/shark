@@ -141,6 +141,11 @@ const CHECKS: readonly Def[] = [
   d("S12.4", "r3-3", M, "[db] PM leave on 10–14/17–21: morning row no leaveId/fraction · evening LEAVE 0.5"),
   d("S12.5", "r3-4", C, "[db] paged job: page size 2 alerts all 5 · maxPages 1 rotates pages so 3 runs finalise all 5"),
   d("S12.6", "r3-5", M, "[db+static] days needing recompute (orphaned) counted per viewer scope · board banner id · inventory"),
+  // ── r4 (after the H2.7+H2.8 merge · ORACLE-EDIT r4, builder) ──
+  d("S13.1", "H2.7", C, "[db] revoked (CANCELLED) leave never counts · revoked after finalising ⇒ stored+stale · recompute ⇒ ABSENT without leave"),
+  d("S13.2", "H2.7", M, "[db] half-day AM through the H2.7 service (policy · requestLeave · decideLeave) ⇒ ABSENT · AM · 0.5"),
+  d("S13.3", "H2.7", C, "[db] hourly leave (H2.7 hours, no clock times) ⇒ slot judged normally · leaveId · fraction = hours/8 (0.3) · no leaveHalf"),
+  d("S13.4", "H2.8", M, "[db] holiday from the H2.8 preset table ⇒ holidayId on the row · branch row wins over shop-wide"),
   D("Z1", "-", C, "GREEN", "residue: qc-hr-h25-* tenants/rows/users/sessions/new tables gone"),
 ];
 const REG = makeRegistry(SUITE, "H2.5-", CHECKS);
@@ -1149,7 +1154,72 @@ async function runDb(): Promise<void> {
     const r = { owner: has(o) && Number(o?.count) >= 1, mgr: has(m), scoped: !!w2 && !w2.__err && !has(w2), id: ids.has("hr-att-needs-recompute"), inv, msgs: msg(jsonOf(F.th)) && msg(jsonOf(F.en)) };
     ck("S12.6", r, "owner/mgrU1 see the day · writerU2 not · banner id · inventory · th/en", `o=${shown(o)}/${o?.count} m=${m?.count} w2=${w2?.count ?? shown(w2)}`);
   }
+
+  // ── r4 (H2.7 leave · H2.8 holidays) ──
+  const svc = (await import("@/lib/modules/hr/service")) as Any;
+  const setMod = (await import("@/lib/modules/hr/settings")) as Any;
+  const holMod = (await import("@/lib/modules/hr/holidays")) as Any;
+  const ownerV = vOf(U.owner!);
+  {
+    // revoked leave
+    const [v1, v2] = [await meD("ถอนลาหลังปิด"), await meD("ถอนลาก่อนปิด")];
+    const [x1, x2] = [await entX(sD, v1, "2031-07-02", shD), await entX(sD, v2, "2031-07-02", shD)];
+    const l1 = await lvX(sD, v1, "2031-07-02");
+    const l2 = await lvX(sD, v2, "2031-07-02");
+    await P.hrLeave.update({ where: { id: l2 }, data: { status: "CANCELLED" } });
+    await job(bk("2031-07-03", "12:00"));
+    const r1a = (await rowsX(v1)).find((r) => r.slotKey === x1);
+    const r2a = (await rowsX(v2)).find((r) => r.slotKey === x2);
+    await P.hrLeave.update({ where: { id: l1 }, data: { status: "CANCELLED" } });
+    const s1 = slotsOf(await monthX(cD, U.owner!, v1, "2031-07", bk("2031-07-04", "12:00")), "2031-07-02")[0];
+    const rc = await rcX(cD, U.owner!, r1a?.id ?? "∅", bk("2031-07-04", "12:00"));
+    const r1b = (await rowsX(v1)).find((r) => r.slotKey === x1);
+    const r = {
+      before: r2a?.status === "ABSENT" && r2a?.leaveId === null, finalLeave: r1a?.status === "LEAVE" && r1a?.leaveId === l1,
+      stale: s1?.stored === true && s1?.stale === true && s1?.status === "LEAVE", recompute: rc?.ok === true && rc?.changed === true && r1b?.status === "ABSENT" && r1b?.leaveId === null && r1b?.leaveFraction === null,
+    };
+    ck("S13.1", r, "cancelled ⇒ ABSENT · revoked after ⇒ stale · recompute ABSENT", `r2=${r2a?.status} r1=${r1a?.status} s1=${s1?.status}/${s1?.stale} rc=${shown(rc)} r1b=${r1b?.status}/${r1b?.leaveId}`);
+  }
+  {
+    // half-day + hourly through the H2.7 service (policy OTHER · no quota · hours allowed)
+    const pol = await call(setMod, "createLeavePolicy", cD, ownerV, { unitId: null, category: "OTHER", name: `ลาทดสอบ ${tag}`, paid: false, quotaDays: null, allowHalfDay: true, allowHours: true, sortOrder: 9 });
+    const [h1, h2] = [await meD("ครึ่งวันบริการ"), await meD("รายชั่วโมง")];
+    const xh = await entX(sD, h1, "2031-07-09", shD);
+    const xq = await entX(sD, h2, "2031-07-09", shD);
+    await attX(sD, h2, "IN", bk("2031-07-09", "09:00"), xq);
+    await attX(sD, h2, "OUT", bk("2031-07-09", "17:00"), xq);
+    const a = await call(svc, "requestLeave", cD, { employeeId: h1, type: "OTHER", policyId: pol?.id, fromDate: "2031-07-09", toDate: "2031-07-09", halfDay: "AM" });
+    const b = await call(svc, "requestLeave", cD, { employeeId: h2, type: "OTHER", policyId: pol?.id, fromDate: "2031-07-09", toDate: "2031-07-09", hours: 3 });
+    const da = a?.id ? await call(svc, "decideLeave", cD, a.id, "APPROVED") : a;
+    const db = b?.id ? await call(svc, "decideLeave", cD, b.id, "APPROVED") : b;
+    await job(bk("2031-07-10", "12:00"));
+    const rh = (await rowsX(h1)).find((r) => r.slotKey === xh);
+    const rq = (await rowsX(h2)).find((r) => r.slotKey === xq);
+    const lvb = b?.id ? ((await P.hrLeave.findFirst({ where: { id: b.id } })) as Any) : null;
+    ck("S13.2", { svc: !!a?.id && !da?.__err && pol?.ok === true, row: rh?.status === "ABSENT" && rh?.leaveHalf === "AM" && Number(rh?.leaveFraction) === 0.5 && rh?.leaveId === a?.id }, "ABSENT · AM · 0.5", `pol=${shown(pol)} a=${shown(a)} row=${rh?.status}/${rh?.leaveHalf}/${rh?.leaveFraction}`);
+    ck("S13.3", { svc: !!b?.id && !db?.__err && lvb?.status === "APPROVED" && Number(lvb?.hours) === 3, row: rq?.status === "ON_TIME" && rq?.workedMin === 480 && rq?.leaveId === b?.id && Number(rq?.leaveFraction) === 0.3 && rq?.leaveHalf === null }, "ON_TIME W480 · leaveId · 0.3 · no half", `b=${shown(b)} lv=${lvb?.status}/${lvb?.hours} row=${rq?.status}/W${rq?.workedMin}/${rq?.leaveId === b?.id}/${rq?.leaveFraction}/${rq?.leaveHalf}`);
+  }
+  {
+    // H2.8 preset holiday (2027) + branch row wins
+    const pr = await call(holMod, "applyHolidayPreset", cD, ownerV, { year: 2027 });
+    const d0 = (holMod.holidayPreset?.(2027)?.days ?? [])[0]?.date as string | undefined;
+    const shopRow = d0 ? ((await P.hrHoliday.findFirst({ where: { tenantId: TT, systemId: sD, date: dbDate(d0), unitId: null } })) as Any) : null;
+    const d1 = (holMod.holidayPreset?.(2027)?.days ?? [])[1]?.date as string | undefined;
+    const unitRow = d1 ? ((await P.hrHoliday.create({ data: { tenantId: TT, systemId: sD, unitId: u1, date: dbDate(d1), name: `หยุดสาขา ${tag}`, kind: "SHOP" } })) as Any) : null;
+    const [k1, k2] = [await meD("วันหยุดราชการ", { startDate: "2026-01-01" }), await meD("วันหยุดสาขา", { startDate: "2026-01-01" })];
+    const rowsFor = async (emp: string, dd: string | undefined) => {
+      if (!dd) return null;
+      const x = await entX(sD, emp, dd, shD);
+      await attX(sD, emp, "IN", bk(dd, "09:00"), x);
+      await attX(sD, emp, "OUT", bk(dd, "17:00"), x);
+      await job(bk(addDaysX(dd, 1), "12:00"));
+      return (await rowsX(emp)).find((r) => r.slotKey === x);
+    };
+    const [q1, q2] = [await rowsFor(k1, d0), await rowsFor(k2, d1)];
+    ck("S13.4", { preset: pr?.ok === true && !!shopRow, shop: !!q1 && q1.holidayId === shopRow?.id, branch: !!q2 && q2.holidayId === unitRow?.id }, "preset row id · branch row id", `pr=${shown(pr)} d0=${d0} q1=${q1?.holidayId === shopRow?.id} q2=${q2?.holidayId === unitRow?.id}`);
+  }
 }
+const addDaysX = (d0: string, n: number) => new Date(Date.parse(`${d0}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 // == main ==
 let crashed = "";
