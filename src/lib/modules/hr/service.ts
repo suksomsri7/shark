@@ -4,7 +4,7 @@ import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัต
 import { lockRosterKeysInTx } from "./roster"; // HR H2.7 ▸ R8 ลำดับล็อก hr-leave → พนักงาน → ตารางกะ ◂
 // HR H2.7 ▸ เครื่องยนต์การลา (ประเภทการลา · สมุดวันลา · นับวัน · event hr.leave.decided) — ตัวงาน request/decide/cancel ยังอยู่ไฟล์นี้ (Q2) ◂
 import { LEAVE_TEXT, leaveApprovalCheckInTx, leaveDecidedEvent, leaveLedgerInTx, leaveRefusalText, leaveRosterKeys, leaveRowInTx, lockLeaveEmployeeInTx, planLeaveRequest, reserveLeaveInTx, type LeaveRequestFields } from "./leave"; // HR H2.7 ◂
-import type { HrAttendanceJudgement, HrAttendanceKind, HrLeaveType, Prisma } from "@prisma/client";
+import type { HrAttendanceJudgement, HrLeaveType, Prisma } from "@prisma/client"; // HR H2.4 ▸ HrAttendanceKind ใช้ที่ clock.ts ◂
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂
@@ -13,7 +13,7 @@ import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
 // เรียกผ่าน facade เท่านั้น (F2.2)
 import * as party from "@/lib/modules/party";
 // HR H0.5 ▸ PIN (hash · ไม่ซ้ำทั้งร้าน · ทางเก่า) อยู่ที่ pin.ts ที่เดียว — ไฟล์นี้ไม่แตะคอลัมน์ PIN เอง (F16.5) ◂
-import { activateEmployeeKeepingPinUnique, hasPin, PIN_SELECT, pinOfInput, setPin, verifyPinForEmployee, type PinInput } from "./pin";
+import { activateEmployeeKeepingPinUnique, hasPin, PIN_SELECT, pinOfInput, setPin, type PinInput } from "./pin"; // HR H2.4 ▸ verifyPinForEmployee ย้ายตาม clockWithPin ไป clock.ts ◂
 // HR H1.1 ▸ ขอบเขตสาขา (ตัวกรองของตัวอ่าน — ไม่ส่ง scope = พฤติกรรมเดิม) ◂
 import {
   employeeUnitsOf,
@@ -395,154 +395,11 @@ export async function endEmployeeBorrowing(ctx: Ctx, borrowingId: string, toDate
 }
 // ◂ HR H1.1
 
-// HR H0.3 ▸ หน้าต่างกันแตะซ้ำ (วินาที) ต่อพนักงาน — ดู clock() ◂
-export const CLOCK_DEDUPE_SEC = 60;
-
-/** ปฏิเสธการลงเวลา — ข้อความไทยคงที่ (action ส่งต่อให้ผู้ใช้ได้โดยไม่ต้องอ่าน e.message ของระบบอื่น) */
-export class ClockRefusedError extends Error {
-  constructor(readonly reason: "ไม่พบพนักงาน") {
-    super(reason);
-    this.name = "ClockRefusedError";
-  }
-}
-
-export type ClockOutcome = {
-  id: string;
-  kind: HrAttendanceKind;
-  at: Date;
-  judgement: AttendanceJudgement | null;
-  lateMin: number | null;
-  /** true = แตะซ้ำภายใน CLOCK_DEDUPE_SEC ⇒ ไม่เพิ่มแถว · id/kind/at คือของแถวล่าสุดที่มีอยู่แล้ว */
-  deduped: boolean;
-  employeeName: string;
-};
-
-// ── ลงเวลา (IN/OUT) ──
-// เข้างาน = ตัดสินทันทีเทียบกับตารางของวันนั้น แล้ว **เก็บคำตัดสินติดแถวไว้** (snapshot)
-//   ทำไมไม่คิดสดตอนอ่าน: ร้านแก้ตารางเดือนหน้า ไม่ควรย้อนไปเปลี่ยนว่าเมื่อวานใครสาย
-//   (บทเรียนเดียวกับ Appointment.priceSatang — ประวัติต้องนิ่ง)
-// ออกงาน = ไม่ตัดสิน (judgement null) — "ออกก่อนเวลา" ยังไม่ใช่สัญญาที่เจ้าของสั่ง
-//
-// HR H0.3 ▸ แตะครั้งเดียว = แถวเดียว (D13a) + พนักงานต้องเป็นของระบบ HR นี้ (X2)
-//   ทั้งฟังก์ชันอยู่ในธุรกรรมเดียวของ tenantDb · ล็อกต่อพนักงานด้วย pg_advisory_xact_lock('hr:clock:<employeeId>') ⇒ แตะพร้อมกัน
-//   (ข้าม instance ได้ เพราะล็อกอยู่ที่ฐาน) ต่อคิวกัน แล้วอ่านแถวล่าสุดของคนนี้ "ใต้ล็อก" ก่อนตัดสินใจ:
-//   · kind "NEXT" (kiosk/PIN): แถวล่าสุดอายุ < CLOCK_DEDUPE_SEC (ชนิดใดก็ได้) = ไม่เพิ่มแถว คืนแถวนั้น (deduped) ⇒ แตะเบิ้ลไม่กลายเป็นออกงาน
-//     ไม่งั้นเลือกเข้า/ออกจากแถวล่าสุดตั้งแต่ 00:00 เวลาไทย (กติกาเดียวกับ nextClockKind — ตัดสินใต้ล็อกเดียวกัน)
-//   · kind IN/OUT (ทางตรง): ชนิดเดียวกันอายุ < CLOCK_DEDUPE_SEC = ไม่เพิ่มแถว · ชนิดตรงข้ามบันทึกได้ (ผู้จัดการแก้)
-//   🔴 ทุกคำสั่งในธุรกรรมใช้ tx (บทเรียน HF-HR-0 รอบ 5d: connection ที่สองระหว่างถือล็อก = pool ตัน) — ตารางงานจึงอ่านผ่าน tx ไม่ใช่ getSchedule
-//   ปฏิเสธ (ไม่พบพนักงานในระบบนี้ / พ้นสภาพเมื่อ requireActive) = throw ClockRefusedError ข้อความไทยคงที่ ⇒ ไม่มีแถว ◂
-export async function clock(
-  ctx: Ctx,
-  input: { employeeId: string; kind: HrAttendanceKind | "NEXT"; note?: string | null; requireActive?: boolean },
-  opts: { tx?: HrTx } = {}, // POS P3.5 ▸ fix2 F4: tx ของผู้เรียก (ลงเวลาใต้ล็อกของ POS — ไม่เปิด connection ที่สอง) · ไม่ส่ง = ธุรกรรมของ HR เอง ◂
-): Promise<ClockOutcome> {
-  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  // HR SYNC ▸ รวม H0.3 (ล็อกต่อพนักงาน + NEXT + กันแตะซ้ำ) กับ POS P3.5 fix2 F4 (tx ของผู้เรียก): ตัวงานเดียว รันใน tx ที่ได้มา —
-  //   ทุกคำสั่งระบุ tenantId/systemId เอง (tx ของผู้เรียกไม่มีตัวฉีดของ tenantDb) ◂
-  const run = async (tx: Prisma.TransactionClient): Promise<ClockOutcome> => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clock:${input.employeeId}`}, 0))`;
-    const emp = await tx.hrEmployee.findFirst({
-      where: { ...scope, id: input.employeeId, ...(input.requireActive ? { active: true } : {}) },
-      select: { id: true, name: true },
-    });
-    if (!emp) throw new ClockRefusedError("ไม่พบพนักงาน");
-    const at = new Date();
-    const last = await tx.hrAttendance.findFirst({
-      where: { ...scope, employeeId: emp.id },
-      orderBy: { at: "desc" },
-      select: { id: true, kind: true, at: true, judgement: true, lateMin: true },
-    });
-    const fresh = !!last && at.getTime() - last.at.getTime() < CLOCK_DEDUPE_SEC * 1000;
-    if (last && fresh && (input.kind === "NEXT" || input.kind === last.kind)) {
-      return { id: last.id, kind: last.kind, at: last.at, judgement: last.judgement, lateMin: last.lateMin, deduped: true, employeeName: emp.name };
-    }
-    const kind: HrAttendanceKind = input.kind === "NEXT" ? kindAfter(last, at) : input.kind;
-    let detail: ClockInDetail | null = null;
-    if (kind === "IN") {
-      const w = bkkParts(at).weekday;
-      const r = await tx.hrWorkSchedule.findFirst({
-        where: { ...scope, employeeId: emp.id, weekday: w },
-        select: { weekday: true, dayOff: true, startMin: true, endMin: true, graceMin: true },
-      });
-      detail = clockInDetail(at, r ?? null);
-    }
-    const a = await tx.hrAttendance.create({
-      data: {
-        ...scope,
-        employeeId: emp.id,
-        kind,
-        at,
-        note: input.note?.trim() || null,
-        judgement: detail?.judgement ?? null,
-        dueMin: detail?.dueMin ?? null,
-        lateMin: detail?.lateMin ?? null,
-      },
-      select: { id: true },
-    });
-    return { id: a.id, kind, at, judgement: detail?.judgement ?? null, lateMin: detail?.lateMin ?? null, deduped: false, employeeName: emp.name };
-  };
-  if (opts.tx) return run(opts.tx);
-  return tenantDb(ctx).$transaction((t) => run(t as unknown as Prisma.TransactionClient), { maxWait: 5_000, timeout: 10_000 });
-}
-
-/** ครั้งถัดไปควรเป็นเข้าหรือออก จากแถวล่าสุด — มีแถว IN ตั้งแต่ 00:00 เวลาไทยของวันนี้ = ออก · นอกนั้น = เข้า */
-function kindAfter(last: { kind: HrAttendanceKind; at: Date } | null, now: Date): HrAttendanceKind {
-  const dayStart = new Date(`${bkkParts(now).dateStr}T00:00:00+07:00`);
-  return last && last.at >= dayStart && last.kind === "IN" ? "OUT" : "IN";
-}
-
-// ─────────────────── kiosk: พนักงานกดลงเวลาเองด้วย PIN (13 ส.ค. 2026) ───────────────────
-// เดิมมีแต่หน้าที่เจ้าของกดลงเวลา "แทน" พนักงาน (ใครกดก็ได้ ไม่มีการยืนยันตัวตน)
-// kiosk = เปิดหน้านี้ค้างไว้บนแท็บเล็ตหน้าร้าน · พนักงานเลือกชื่อ + ใส่ PIN ของตัวเอง
-// PIN = รหัสหน้าประตู 4-6 หลัก (ไม่ใช่รหัสผ่านบัญชี) · กันเดาด้วย rate limit ที่ชั้น action (ห้ามยิงรัว)
-// HR H0.5 ▸ เดิมเก็บเป็นข้อความ (เจ้าของดูได้) — ตอนนี้เก็บเป็น hash ไม่มีใครดูได้ (ลืม = ตั้งใหม่) · ไม่ซ้ำทั้งร้าน ◂
-
-// HR H0.5 ▸ setPin (ตั้ง/ล้าง PIN) ย้ายไป pin.ts — เก็บเป็น hash · ไม่ซ้ำทั้งร้าน (partial unique) · re-export ที่หัวไฟล์ ◂
-
-/** ครั้งถัดไปของวันนี้ (เวลาไทย) ควรเป็นเข้าหรือออก — พนักงานไม่ต้องเลือกเอง
- *  HR H0.3 ▸ ใช้แสดงผลเท่านั้น · การลงเวลาจริงตัดสินซ้ำใต้ล็อกใน clock(kind "NEXT") ด้วย kindAfter ตัวเดียวกัน ◂ */
-export async function nextClockKind(ctx: Ctx, employeeId: string, opts: { tx?: HrTx } = {} /* POS P3.5 ▸ fix2 F4 ◂ */): Promise<HrAttendanceKind> {
-  const now = new Date();
-  const db = (opts.tx ?? tenantDb(ctx)) as unknown as Prisma.TransactionClient; // HR SYNC ▸ ชนิดเดียว (union ของสอง client ลึกเกิน TS2589) ◂
-  const last = await db.hrAttendance.findFirst({
-    where: { employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, // POS P3.5 ▸ fix2 F4: ขอบเขตตรง (ทาง tx ไม่มีตัวฉีดของ tenantDb) ◂
-    orderBy: { at: "desc" },
-    select: { kind: true, at: true },
-  });
-  return kindAfter(last, now);
-}
-
-export type KioskClockResult =
-  | {
-      ok: true;
-      employeeName: string;
-      kind: HrAttendanceKind;
-      at: Date;
-      judgement: AttendanceJudgement | null;
-      lateMin: number | null;
-      /** HR H0.3 ▸ แตะซ้ำภายใน CLOCK_DEDUPE_SEC — ไม่มีแถวใหม่ kind/at = ของแถวที่ลงไว้แล้ว ◂ */
-      deduped: boolean;
-    }
-  | { ok: false; reason: string };
-
-/**
- * พนักงานลงเวลาเองด้วย PIN — ไม่บอกว่า "PIN ผิด" หรือ "คนนี้ไม่มี PIN" แยกกันเวลาเดาไม่ได้อยู่แล้ว
- * เพราะเลือกชื่อจากรายชื่อบนจอ (ไม่ใช่ระบบล็อกอิน) แต่ยังบอกให้ชัดว่าเกิดอะไรขึ้นเพื่อไม่ให้คนงง
- */
-export async function clockWithPin(ctx: Ctx, employeeId: string, pin: string): Promise<KioskClockResult> {
-  // HR H0.5 ▸ เทียบ PIN ที่ pin.ts (hash · เวลาคงที่ · ทางเก่าอัปเกรดเอง) — ข้อความเดิม: ไม่พบ / "<ชื่อ> ยังไม่มี PIN — …" / "PIN ไม่ถูกต้อง" ◂
-  const emp = await verifyPinForEmployee(ctx, employeeId, pin);
-  if (!emp.ok) return { ok: false, reason: emp.reason };
-  // HR H0.3 ▸ เลือกเข้า/ออก + กันแตะซ้ำ ใต้ล็อกเดียวกันใน clock (เดิมอ่าน nextClockKind แล้วค่อยเขียน ⇒ แตะเบิ้ล = เข้า+ออก) ◂
-  let res: ClockOutcome;
-  try {
-    res = await clock(ctx, { employeeId: emp.employeeId, kind: "NEXT", requireActive: true });
-  } catch (e) {
-    if (e instanceof ClockRefusedError) return { ok: false, reason: "ไม่พบพนักงาน" };
-    throw e;
-  }
-  return { ok: true, employeeName: emp.name, kind: res.kind, at: res.at, judgement: res.judgement, lateMin: res.lateMin, deduped: res.deduped };
-}
+// HR H2.4 ▸ ตัวลงเวลา (clock · nextClockKind · clockWithPin · ClockOutcome · ClockRefusedError · CLOCK_DEDUPE_SEC) ย้ายไป hr/clock.ts —
+//   re-export ชื่อเดิมที่นี่ (ฟังก์ชันตัวเดียวกัน: service.clock === clock.clock) ⇒ pos-seam.ts · actions.ts · ข้อสอบ import จากที่นี่ได้ตามเดิม
+//   kiosk v2 (PIN อย่างเดียว) = clock.kioskClock · มือถือ = clock.mobileClock · กติการอบ/ผูกกะ = clock-rules.ts ◂
+export { clock, nextClockKind, clockWithPin, ClockRefusedError, CLOCK_DEDUPE_SEC } from "./clock";
+export type { ClockOutcome, KioskClockResult } from "./clock";
 
 /** รายชื่อสำหรับจอ kiosk — บอกด้วยว่าใครยังไม่ได้ตั้ง PIN (เจ้าของจะรู้ว่าต้องไปตั้ง) */
 export async function kioskRoster(ctx: Ctx, scope?: HrScope) {

@@ -18,9 +18,12 @@ import {
   createShiftAction,
   deleteHolidayAction,
   upsertHolidayAction,
+  saveClockPolicyAction, // HR H2.4 ◂
+  saveClockSiteAction, // HR H2.4 ◂
 } from "@/lib/modules/hr/settings-actions";
 import { applyHolidayPresetAction } from "@/lib/modules/hr/settings-actions"; // HR H2.8 ◂
 import { LEAVE_TEXT } from "@/lib/modules/hr/leave-rules"; // HR H2.8 ▸ presetNone ◂
+import { canManageClockSettings, CLOCK_SETTINGS_TEXT, getClockPolicy, listClockSites } from "@/lib/modules/hr/clock-settings"; // HR H2.4 ▸ R10 + Q1 ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -39,6 +42,7 @@ const MSG_TEXTS: Record<string, string> = {
   ...Object.fromEntries(Object.entries(TIME_RULE_TEXT).map(([k, v]) => [`t.${k}`, v])),
   "u.notFound": HR_UNIT_NOT_FOUND_TEXT,
   "l.presetNone": LEAVE_TEXT.presetNone, // HR H2.8 ◂
+  ...Object.fromEntries(Object.entries(CLOCK_SETTINGS_TEXT).map(([k, v]) => [`c.${k}`, v])), // HR H2.4 ◂
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
 /** กลับหน้าเดิมพร้อมรหัสผลการกด (redirect โยนเพื่อจบ action) */
@@ -63,6 +67,10 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const year = /^\d{4}$/.test(sp.year ?? "") ? Number(sp.year) : thisYear;
   const [shifts, policies, holidays, units] = await Promise.all([listShifts(ctx, { scope }), listLeavePolicies(ctx, { scope }), listHolidays(ctx, { year, scope }), unitsForScope(ctx.tenantId, scope)]);
   const unitName = new Map(units.map((u) => [u.id, u.name]));
+  // HR H2.4 ▸ ค่าตั้งการลงเวลา — เฉพาะ OWNER/คีย์ hr.employee.create ตรง ๆ (ผู้จัดการที่ไม่มีคีย์ไม่เห็นส่วนนี้) ◂
+  const clockOk = canManageClockSettings(viewer);
+  const [clockSites, clockPolicy] = clockOk ? await Promise.all([listClockSites(ctx, viewer), getClockPolicy(ctx)]) : [null, null];
+  const siteOf = new Map((clockSites?.ok ? clockSites.items : []).map((x) => [x.unitId ?? "all", x]));
   const all = isAllBranches(scope);
   const where = (u: string | null) => (u ? (unitName.get(u) ?? t("unit")) : t("shopWide"));
   const path = `/app/sys/${id}/hr/settings`;
@@ -101,6 +109,15 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     redirect(`${path}?year=${year}&msg=${encodeURIComponent(r.ok ? "p.ok" : (MSG_CODE_OF.get(r.reason) ?? "s.failed"))}`);
   };
   // ◂ HR H2.8
+  // HR H2.4 ▸ ◂
+  const onSaveClockPolicy = async (fd: FormData) => {
+    "use server";
+    back(path, year, await saveClockPolicyAction(fd));
+  };
+  const onSaveClockSite = async (fd: FormData) => {
+    "use server";
+    back(path, year, await saveClockSiteAction(fd));
+  };
 
   const unitSelect = (testid: string) => (
     <select name="unitId" className="input min-h-[44px]" defaultValue={all ? "" : (units[0]?.id ?? "")} data-testid={testid}>
@@ -355,6 +372,81 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
           </button>
         </form>
       </Section>
+
+      {/* HR H2.4 ▸ R10 จุดลงเวลาด้วยมือถือต่อสาขา + มติ Q1 รอบลงเวลา (ค่าตั้งของร้าน) ◂ */}
+      {clockOk && clockPolicy && (
+        <Section title={t("clock.title")} card>
+          <p className="text-xs text-[color:var(--color-muted)]">{t("clock.desc")}</p>
+          {all && (
+            <form action={onSaveClockPolicy} className="flex flex-wrap items-end gap-2" data-testid="hr-settings-clock-policy">
+              <input type="hidden" name="systemId" value={id} />
+              <label className="flex flex-col gap-1 text-xs">
+                {t("clock.earlyInMin")}
+                <input name="earlyInMin" type="number" min={0} max={240} step={1} defaultValue={clockPolicy.earlyInMin} className="input min-h-[44px] w-28" data-testid="hr-settings-clock-early" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                {t("clock.closeGraceMin")}
+                <input name="closeGraceMin" type="number" min={30} max={720} step={1} defaultValue={clockPolicy.closeGraceMin} className="input min-h-[44px] w-28" data-testid="hr-settings-clock-grace" />
+              </label>
+              <button type="submit" className={btn} data-testid="hr-settings-clock-policy-save">
+                {t("clock.savePolicy")}
+              </button>
+            </form>
+          )}
+          <h3 className="text-sm font-medium">{t("clock.sitesTitle")}</h3>
+          <ul className="flex flex-col gap-3">
+            {[...(all ? [{ id: "all", name: t("shopWide") }] : []), ...units].map((u) => {
+              const key = u.id;
+              const cur = siteOf.get(key);
+              return (
+                <li key={key} className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "var(--color-line)" }} data-testid={`hr-clock-site-${key}`}>
+                  <span className="text-sm font-medium">
+                    {u.name} · {cur?.mobileEnabled ? t("clock.on") : t("clock.off")}
+                    {cur?.noticeAcceptedAt ? ` · ${t("clock.noticeAccepted")}` : ""}
+                  </span>
+                  <form action={onSaveClockSite} className="flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="systemId" value={id} />
+                    <input type="hidden" name="unitId" value={key === "all" ? "" : key} />
+                    <label className="flex min-h-[44px] items-center gap-2 text-xs">
+                      <input name="mobileEnabled" type="checkbox" defaultChecked={cur?.mobileEnabled ?? false} data-testid={`hr-clock-site-${key}-enabled`} />
+                      {t("clock.mobileEnabled")}
+                    </label>
+                    <label className="flex min-h-[44px] items-center gap-2 text-xs">
+                      <input name="gpsRequired" type="checkbox" defaultChecked={cur?.gpsRequired ?? true} data-testid={`hr-clock-site-${key}-gps`} />
+                      {t("clock.gpsRequired")}
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      {t("clock.centerLat")}
+                      <input name="centerLat" inputMode="decimal" defaultValue={cur?.centerLat ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-latitude`} />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      {t("clock.centerLng")}
+                      <input name="centerLng" inputMode="decimal" defaultValue={cur?.centerLng ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-longitude`} />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      {t("clock.radiusM")}
+                      <input name="radiusM" type="number" min={30} max={2000} defaultValue={cur?.radiusM ?? 150} className="input min-h-[44px] w-24" data-testid={`hr-clock-site-${key}-radius`} />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      {t("clock.minAccuracyM")}
+                      <input name="minAccuracyM" type="number" min={10} max={500} defaultValue={cur?.minAccuracyM ?? 100} className="input min-h-[44px] w-24" data-testid={`hr-clock-site-${key}-accuracy`} />
+                    </label>
+                    {!cur?.noticeAcceptedAt && (
+                      <label className="flex min-h-[44px] items-center gap-2 text-xs">
+                        <input name="acceptPdpaNotice" type="checkbox" data-testid={`hr-clock-site-${key}-notice`} />
+                        {t("clock.acceptPdpaNotice")}
+                      </label>
+                    )}
+                    <button type="submit" className={btn} data-testid={`hr-clock-site-${key}-save`}>
+                      {t("clock.saveSite")}
+                    </button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
+      )}
     </div>
   );
 }

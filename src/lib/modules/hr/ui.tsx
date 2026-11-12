@@ -35,6 +35,7 @@ import BulkLeaveApprovals from "./BulkLeaveApprovals";
 import { hrViewerOf, leaveItemsForViewer } from "./privacy"; // HF-HR-0 (D9) ▸ เหตุผลการลาเฉพาะ hr.leave.read ◂
 import PinField from "./PinField";
 import KioskClock from "./KioskClock";
+import { getTranslations } from "next-intl/server"; // HR H2.4 ▸ ข้อความจอ kiosk ◂
 import { evaluate } from "@/lib/core/rbac";
 // HR H1.1 ▸ R4/R8 ขอบเขตสาขาของผู้ดู (ทะเบียน · ลงเวลา · ใบลา · kiosk · หน้าภาพรวม) ◂
 import { hrScopeOf, isAllBranches, unitsForScope } from "./scope";
@@ -71,7 +72,7 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
   OTHER: "อื่นๆ",
 };
 
-const KIND_LABEL: Record<string, string> = { IN: "เข้างาน", OUT: "ออกงาน" };
+const KIND_LABEL: Record<string, string> = { IN: "เข้างาน", OUT: "ออกงาน", BREAK_START: "เริ่มพัก", BREAK_END: "กลับจากพัก" }; // HR H2.4 ▸ R6 ◂
 
 // ผลตัดสินการเข้างาน — "ยังไม่ตั้งตาราง" ต้องอ่านออกว่าเป็นข้อมูลที่ร้านยังไม่ได้กรอก ไม่ใช่ความผิดพนักงาน
 const JUDGEMENT_LABEL: Record<string, string> = {
@@ -681,11 +682,17 @@ export async function HrKioskSection({ systemId }: { systemId: string }) {
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   const people = await kioskRoster(ctx, hrScopeOf(hrViewerOf(auth))); // HR H1.1 ▸ จอของบัญชีที่จำกัดสาขา = เฉพาะคนในสาขา ◂
   const noPin = people.filter((p) => !p.hasPin);
+  // HR H2.4 ▸ R9 ข้อความจาก hr.kiosk · r2 ▸ R1/R2 จอ = เลือกชื่อ + PIN · รายชื่อ = ขอบเขตสาขาของบัญชีจอ (ชุดเดียวกับที่ kioskClockAction ตรวจ) ◂
+  const tk = await getTranslations("hr.kiosk");
+  const kioskLabels = {
+    prompt: tk("prompt"), clear: tk("clear"), back: tk("back"), submit: tk("submit"), breakStart: tk("breakStart"), saving: tk("saving"), entered: tk("entered"),
+    pick: tk("pick"), change: tk("change"), noPin: tk("noPin"), tap: tk("tap"), empty: tk("empty"),
+  };
 
   return (
     <div className="flex flex-col gap-6">
       <Section title="ลงเวลาเอง">
-        <KioskClock systemId={systemId} people={people} />
+        <KioskClock systemId={systemId} people={people} labels={kioskLabels} />
       </Section>
       {noPin.length > 0 && (
         <Section title="ยังไม่มี PIN">

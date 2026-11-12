@@ -16,6 +16,7 @@ import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { HR_UNIT_NOT_FOUND_TEXT, hrScopeOf, type HrScope } from "./scope";
 import { addDays, shiftWindow, TimeRuleError } from "./time-rules";
 import { grantDays, tenthsOf } from "./leave-rules"; // HR H2.7 ▸ r2b: โควตาใหม่ต้องไม่ทำให้ปีที่ใช้ไปแล้วติดลบ (ตัวช่วยบริสุทธิ์) ◂
+import { normalizeShiftTimes } from "./clock-rules"; // HR H2.4 ▸ R14 ◂
 
 type Ctx = { tenantId: string; systemId: string };
 /** ผู้กด — รูปเดียวกับ HrViewer ของ hr/privacy (role · unitAccess · permissions · userId) */
@@ -263,6 +264,8 @@ function shiftData(input: ShiftInput, base?: ShiftData): ShiftData {
     }, 0),
   };
   if (!out.name) throw new SettingsRefusal(SETTINGS_TEXT.name);
+  // HR H2.4 ▸ R14 เที่ยงคืนรูปเดียว: 16:00–00:00 ที่ติ๊กข้ามคืน (0/true) เก็บเป็น 1440/false (รูปเดียวกับ migration 20261228000000) ◂
+  Object.assign(out, normalizeShiftTimes({ startMin: out.startMin, endMin: out.endMin, crossesMidnight: out.crossesMidnight }));
   // กติกาเวลากะชุดเดียวของทั้งระบบ (เริ่ม ≠ เลิก · 0..1439/1440 · ธงข้ามเที่ยงคืนตรงกับเวลา) — ผิด = TimeRuleError ข้อความไทย
   shiftWindow(CHECK_DAY, { startMin: out.startMin, endMin: out.endMin, crossesMidnight: out.crossesMidnight });
   return out;

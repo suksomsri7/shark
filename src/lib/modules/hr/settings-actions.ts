@@ -26,6 +26,7 @@ import {
   type SettingsResult,
   type ShiftInput,
 } from "./settings";
+import { saveClockPolicy, saveClockSite, type ClockSiteInput } from "./clock-settings"; // HR H2.4 ▸ R10 + Q1 ◂
 
 type Auth = Awaited<ReturnType<typeof requireTenant>>;
 type Ctx = { tenantId: string; systemId: string };
@@ -259,3 +260,30 @@ export async function applyHolidayPresetAction(formData: FormData): Promise<Pres
   return r;
 }
 // ◂ HR H2.8
+// HR H2.4 ▸ ค่าตั้งการลงเวลา — จุดลงเวลาด้วยมือถือต่อสาขา (R10) + รอบลงเวลาของระบบ (มติผู้คุม Q1)
+//   ด่านคีย์เดียวกับหน้าตั้งค่า (gate) · service ตรวจซ้ำ: OWNER หรือคีย์ hr.employee.create ตรง ๆ + ขอบเขตสาขา ·
+//   ตำแหน่งร้าน = ตำแหน่งของร้าน (ไม่ใช่ของพนักงาน) · ฟอร์มส่งตัวเลขเป็นข้อความ (service ตรวจช่วงเอง) ◂
+export async function saveClockSiteAction(formData: FormData): Promise<SettingsResult> {
+  const auth = await requireTenant();
+  const g = await newGate(auth, formData);
+  if (!("ctx" in g)) return g;
+  const input: ClockSiteInput = { unitId: unitOfForm(formData), mobileEnabled: flag(formData, "mobileEnabled") === true, gpsRequired: flag(formData, "gpsRequired") === true };
+  assign(input, "centerLat", str(formData, "centerLat"));
+  assign(input, "centerLng", str(formData, "centerLng"));
+  assign(input, "radiusM", str(formData, "radiusM"));
+  assign(input, "minAccuracyM", str(formData, "minAccuracyM"));
+  assign(input, "acceptPdpaNotice", flag(formData, "acceptPdpaNotice"));
+  return done(g.ctx, await saveClockSite(g.ctx, hrViewerOf(auth), input));
+}
+export async function saveClockPolicyAction(formData: FormData): Promise<SettingsResult> {
+  const auth = await requireTenant();
+  const ctx = await ctxOf(auth, formData);
+  if (!ctx) return { ok: false, reason: NO_SYSTEM_TEXT };
+  const keyOnly = gate(auth, null);
+  if (keyOnly) return { ok: false, reason: keyOnly };
+  const input: { earlyInMin?: string; closeGraceMin?: string } = {};
+  assign(input, "earlyInMin", str(formData, "earlyInMin"));
+  assign(input, "closeGraceMin", str(formData, "closeGraceMin"));
+  return done(ctx, await saveClockPolicy(ctx, hrViewerOf(auth), input));
+}
+// ◂ HR H2.4
