@@ -1184,15 +1184,17 @@ try {
   await st("CAP-5", "ตรวจซ้ำด้วยผู้ติดต่อตอน confirm (rekeyHoldsToContactInTx): ผู้ติดต่อมี 3 แถว ACTIVE ⇒ basket ใหม่ HOLD_LIMIT ไม่แก้ capKeyHash · แถวหมดเวลาไม่นับ", async () => {
     await needDb();
     const id = await mkDep({ key: "C" }); const contact = `contact:${hex(5)}`; const ctx = SYS(NOW0, uC);
+    // ORACLE-EDIT CAP-5 (ผู้คุม 12 พ.ย.): มติ r3 N1 — rekey ต้องได้ policies ที่โหลดก่อนเปิด tx (ลำดับการเรียกของ T0.6) · เดิมผ่านเพราะ placeHold เติมแคช
+    const pol = V(await call("loadCapacityPolicies", ctx, { departureIds: [id] }), "โหลด policies");
     const mine: string[] = [];
-    for (let i = 0; i < 3; i++) { const h = hid(await pubHold(id, 1, { ctx: pubC(), capKey: basket() })); mine.push(h); V(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, ctx, { holdIds: [h], contactKey: contact }) as Promise<unknown>), `rekey ${i + 1}`); }
+    for (let i = 0; i < 3; i++) { const h = hid(await pubHold(id, 1, { ctx: pubC(), capKey: basket() })); mine.push(h); V(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, ctx, { holdIds: [h], contactKey: contact }, pol) as Promise<unknown>), `rekey ${i + 1}`); }
     const extra = hid(await pubHold(id, 1, { ctx: pubC(), capKey: basket() }));
     const before = (await hold(extra))?.capKeyHash;
-    codeR(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, ctx, { holdIds: [extra], contactKey: contact }) as Promise<unknown>), "HOLD_LIMIT", "ครั้งที่ 4");
+    codeR(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, ctx, { holdIds: [extra], contactKey: contact }, pol) as Promise<unknown>), "HOLD_LIMIT", "ครั้งที่ 4");
     eq((await hold(extra))?.capKeyHash, before, "capKeyHash ไม่เปลี่ยน");
     const later = SYS(addMin(NOW0, 16), uC);
     const fresh = hid(await pubHold(id, 1, { ctx: pubC(addMin(NOW0, 16)), capKey: basket() }));
-    V(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, later, { holdIds: [fresh], contactKey: contact }) as Promise<unknown>), "หลังของเดิมหมดเวลา");
+    V(await inTx(tA, uC, (tx) => fnTx("rekeyHoldsToContactInTx")(tx, later, { holdIds: [fresh], contactKey: contact }, pol) as Promise<unknown>), "หลังของเดิมหมดเวลา");
     eq((await hold(mine[0]))?.capKeyHash, (await hold(fresh))?.capKeyHash, "แฮชผู้ติดต่อเดียวกัน");
   });
   await st("CAP-6", "เส้นทางไม่นับ: พนักงานหน้าร้านถือ 5 ครั้ง (ไม่ติด X10) · ข้อเสนอรายการรอไม่ถูกนับในเพดานของใคร", async () => {

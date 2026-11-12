@@ -161,7 +161,7 @@ export type DepartureCountersAfterSql = {
 };
 /** ค่าคงเดิม (ใบ T0.3: แก้ความจุอย่างเดียว ตัวนับไม่เปลี่ยน) */
 export function departureCountersUnchangedSql(capacity: Prisma.Sql): DepartureCountersAfterSql {
-  return { capacity, used: Prisma.sql`("sold" + "held" + "reserved")`, sold: Prisma.sql`"sold"` };
+  return { capacity, used: Prisma.sql`("sold" + "held")`, sold: Prisma.sql`"sold"` };
 }
 /**
  * นิพจน์ SQL เดียวของ "สถานะหลังตัวนับหรือความจุเปลี่ยน" — T0.4 ใช้ตัวนี้ตรงตัว (มติผู้คุม G · REVIEW M2 · r3 N1)

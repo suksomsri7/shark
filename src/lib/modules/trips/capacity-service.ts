@@ -50,6 +50,7 @@ import {
   type DeparturePolicy,
   type Failure,
   type Gate,
+  type OfferFailure,
   type HoldRow,
   type MoveValue,
   type PlaceHoldValue,
@@ -83,7 +84,7 @@ const K = {
   SD: "trips.supplier.shopDecisionHours",
   SA: "trips.supplier.autoCancelOnTimeout",
 } as const;
-const DEP_KEYS = [K.T5, K.T6, K.T9, K.X2, K.X6, K.X10, K.SR, K.SD, K.SA];
+const DEP_KEYS = [K.T5, K.T6, K.T9, K.X2, K.X6, K.SR, K.SD, K.SA];
 const INT = z.number().int().min(0);
 const POS = z.number().int().min(1);
 const SPEC = z.object({ daysBefore: INT, atMin: INT });
@@ -114,26 +115,33 @@ function departurePolicyFrom(d: { id: string; productId: string }, r: Resolved):
   };
   return { departureId: d.id, productId: d.productId, t6: settingOf(T6S, K.T6, r[K.T6]?.value) as T6Value, durations, showLeftAtOrBelow: settingOf(INT, K.X6, r[K.X6]?.value) };
 }
-/** ค่าตั้งของรอบชุดหนึ่ง (ชุดละ 200 refs) + เพดานถือของหน่วย — โยน CapacitySettingsInvalid เมื่อค่าตั้งเสีย · เติมแคชของกระบวนการ */
-export async function policiesFor(g: Gate, deps: readonly { id: string; productId: string }[], now: Date): Promise<CapacityPolicies> {
+/**
+ * ค่าตั้งของรอบชุดหนึ่ง (ชุดละ 200 refs) + เพดานถือ X10 ที่ชั้นหน่วย (ค่าเดียวต่อหน่วย · ไม่ขึ้นกับรอบที่โหลดก่อน — X10 มี chain U
+ * ใน TRIPS-DEFAULTS จึงไม่มีการทับชั้นสินค้า/รอบ · r3 N1) — โยน CapacitySettingsInvalid เมื่อค่าตั้งเสีย
+ * `remember` = เติมแคชสำรองของกระบวนการ (loadCapacityPolicies · capacityRowsOf เท่านั้น)
+ */
+export async function policiesFor(g: Gate, deps: readonly { id: string; productId: string }[], now: Date, opts: { remember: boolean } = { remember: false }): Promise<CapacityPolicies> {
   const departures: Record<string, DeparturePolicy> = {};
-  let holdCap: number | null = null;
   for (let i = 0; i < deps.length; i += 200) {
     const part = deps.slice(i, i + 200);
     const rs = await resolveSettingsMany({ tenantId: g.tenantId }, DEP_KEYS, part.map((d) => ({ unitId: g.unitId, productId: d.productId, departureId: d.id })), now);
     part.forEach((d, j) => {
       departures[d.id] = departurePolicyFrom(d, rs[j]);
-      holdCap ??= settingOf(POS, K.X10, rs[j][K.X10]?.value);
     });
   }
-  if (holdCap === null) {
-    const r = await resolveSettings({ tenantId: g.tenantId }, [K.X10], { unitId: g.unitId }, now);
-    holdCap = settingOf(POS, K.X10, r[K.X10]?.value);
-  }
-  const p: CapacityPolicies = { tenantId: g.tenantId, unitId: g.unitId, holdCap, departures };
-  rememberPolicies(p);
+  const u = await resolveSettings({ tenantId: g.tenantId }, [K.X10], { unitId: g.unitId }, now);
+  const p: CapacityPolicies = { tenantId: g.tenantId, unitId: g.unitId, holdCap: settingOf(POS, K.X10, u[K.X10]?.value), departures };
+  if (opts.remember) rememberPolicies(p);
   return p;
 }
+
+/** r3 N3: ตัวที่เปิด connection เอง — ส่ง tx client เข้ามา (มี $queryRaw แต่ไม่มี $transaction) ⇒ ปฏิเสธ VALIDATION reason IN_TRANSACTION */
+function looksLikeTx(v: unknown): boolean {
+  if (v === null || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.$queryRaw === "function" && typeof o.$transaction !== "function";
+}
+const inTransactionArg = (...args: unknown[]) => args.some(looksLikeTx);
 
 async function depRefs(g: Gate, ids: readonly string[]): Promise<{ id: string; productId: string }[]> {
   if (!ids.length) return [];
@@ -142,11 +150,13 @@ async function depRefs(g: Gate, ids: readonly string[]): Promise<{ id: string; p
 }
 const loadInput = z.strictObject({ departureIds: z.array(ID).max(200) });
 /**
+ * 🔴 ห้ามเรียกในธุรกรรม — ใช้ connection ของตัวเอง (เรียกก่อนเปิด tx เสมอ · ส่ง tx client มา ⇒ VALIDATION reason IN_TRANSACTION · r3 N3)
  * ตัวโหลดค่าตั้งของเครื่องยนต์ความจุ — ผู้เรียก *InTx (T0.6 ตะกร้า/ยืนยัน · T0.7 ยกเลิก · A1.4) รัน "ก่อน" เปิดธุรกรรม แล้วส่งผลให้
  * releaseHoldInTx · returnSoldInTx · moveSoldInTx · rekeyHoldsToContactInTx · reserveInTx · insertHoldInTx (ใน tx ห้ามอ่านค่าตั้งเอง · r2 ข้อ 1)
  * รอบที่ไม่พบ/ไม่ใช่ของหน่วย = ไม่อยู่ใน `departures` (InTx ตัดสิน NOT_FOUND ตอนล็อก) · ค่าตั้งเสีย ⇒ VALIDATION reason SETTINGS_INVALID
  */
 export async function loadCapacityPolicies(ctx: unknown, input: unknown): Promise<SellResult<CapacityPolicies>> {
+  if (inTransactionArg(ctx, input)) return sellFail("VALIDATION", { reason: "IN_TRANSACTION" });
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
   const p = loadInput.safeParse(input);
@@ -154,16 +164,16 @@ export async function loadCapacityPolicies(ctx: unknown, input: unknown): Promis
   const g = await gateOf(pc.c);
   if (!g) return sellFail("NOT_FOUND");
   try {
-    return { ok: true, value: await policiesFor(g, await depRefs(g, p.data.departureIds), pc.c.clock.now) };
+    return { ok: true, value: await policiesFor(g, await depRefs(g, p.data.departureIds), pc.c.clock.now, { remember: true }) };
   } catch (e) {
     if (e instanceof CapacitySettingsInvalid) return settingsInvalid(e);
     throw e;
   }
 }
 /** ค่าตั้งแบบไม่ล้ม (ใช้เฉพาะการเสนอรายการรอ — ค่าตั้งเสีย ⇒ undefined ⇒ ไม่เสนอ แต่ปล่อยที่ได้) */
-async function optionalPolicies(g: Gate, deps: readonly { id: string; productId: string }[], now: Date): Promise<CapacityPolicies | undefined> {
+async function optionalPolicies(g: Gate, deps: readonly { id: string; productId: string }[], now: Date, remember = false): Promise<CapacityPolicies | undefined> {
   try {
-    return await policiesFor(g, deps, now);
+    return await policiesFor(g, deps, now, { remember });
   } catch (e) {
     if (e instanceof CapacitySettingsInvalid) return undefined;
     throw e;
@@ -211,6 +221,27 @@ export async function reportCapacityIncident(e: unknown, where: { tenantId: stri
   }).catch(() => undefined);
   return true;
 }
+/**
+ * บันทึกข้อเสนอรายการรอที่ล้ม (ย้อนเฉพาะ savepoint · การปล่อยที่ commit แล้ว) — เรียกหลังธุรกรรม · incident ⇒ ERROR · อื่น (รวม 40P01/40001) ⇒ WARN
+ * ผู้เรียก *InTx (T0.6) ส่ง value.offerFailures ของ releaseHoldInTx/returnSoldInTx/moveSoldInTx มาที่นี่หลัง commit · ไม่มีข้อมูลบุคคล (id + รหัสเท่านั้น)
+ */
+export async function reportOfferFailures(failures: readonly OfferFailure[] | undefined, where: { tenantId: string; unitId?: string }): Promise<void> {
+  if (!failures?.length) return;
+  const incidents = failures.filter((f) => f.incident);
+  const others = failures.filter((f) => !f.incident);
+  if (incidents.length) {
+    await logOps("ERROR", "trips.waitlist", `เสนอที่รายการรอล้มเพราะข้อมูลตัวนับผิดปกติ ${incidents.length} รายการ`, {
+      tenantId: where.tenantId,
+      detail: JSON.stringify({ unitId: where.unitId ?? null, failures: incidents.slice(0, 50) }),
+    }).catch(() => undefined);
+  }
+  if (others.length) {
+    await logOps("WARN", "trips.waitlist", `เสนอที่รายการรอไม่สำเร็จ ${others.length} รายการ (การปล่อยที่สำเร็จแล้ว)`, {
+      tenantId: where.tenantId,
+      detail: JSON.stringify({ unitId: where.unitId ?? null, failures: others.slice(0, 50) }),
+    }).catch(() => undefined);
+  }
+}
 const TX_OPTS = { maxWait: 30_000, timeout: 60_000 } as const;
 /** ธุรกรรมของหน่วย · 40P01/55P03/40001 ⇒ ลองใหม่สูงสุด LOCK_RETRIES ครั้งแล้ว BUSY · CapacityAbort ⇒ SellResult (rollback แล้ว) */
 export async function runTx<T>(g: Gate, fn: (tx: Tx) => Promise<T>): Promise<SellResult<T>> {
@@ -236,6 +267,16 @@ export async function runTx<T>(g: Gate, fn: (tx: Tx) => Promise<T>): Promise<Sel
       throw e;
     }
   }
+}
+
+/** runTx ที่ล้างข้อเสนอที่ล้มทุกครั้งที่ลองใหม่ แล้วบันทึกหลัง commit (r3 N4) */
+export async function runTxC<T>(g: Gate, c: Ctx, fn: (tx: Tx) => Promise<T>): Promise<SellResult<T>> {
+  const r = await runTx(g, (tx) => {
+    c.offerFailures.length = 0;
+    return fn(tx);
+  });
+  if (r.ok) await reportOfferFailures(c.offerFailures, g);
+  return r;
 }
 
 // ═══════════════════════ ที่ว่าง (R2 · ใบสั่ง §3.2 · r2 ข้อ 4) ═══════════════════════
@@ -443,7 +484,7 @@ export async function releaseHold(ctx: unknown, input: unknown): Promise<SellRes
   if (!g) return sellFail("HOLD_NOT_FOUND");
   const hp = await holdAndPolicies(g, p.data.holdId, pc.c.clock.now, false);
   if ("ok" in hp) return hp;
-  return runTx(g, (tx) => releaseCoreTx(tx, g, pc.c, p.data, hp.policies));
+  return runTxC(g, pc.c, (tx) => releaseCoreTx(tx, g, pc.c, p.data, hp.policies));
 }
 
 // ═══════════════════════ คืน · ย้าย (งานของร้าน) ═══════════════════════
@@ -459,7 +500,7 @@ export async function returnSold(ctx: unknown, input: unknown): Promise<SellResu
   const deps = await depRefs(g, [p.data.departureId]);
   if (!deps.length) return sellFail("NOT_FOUND");
   const policies = await optionalPolicies(g, deps, pc.c.clock.now);
-  return runTx(g, (tx) => returnCoreTx(tx, g, pc.c, p.data, policies));
+  return runTxC(g, pc.c, (tx) => returnCoreTx(tx, g, pc.c, p.data, policies));
 }
 export async function moveSold(ctx: unknown, input: unknown): Promise<SellResult<MoveValue>> {
   const pc = parseCtx(ctx);
@@ -479,15 +520,17 @@ export async function moveSold(ctx: unknown, input: unknown): Promise<SellResult
     if (e instanceof CapacitySettingsInvalid) return settingsInvalid(e);
     throw e;
   }
-  return runTx(g, (tx) => moveCoreTx(tx, g, pc.c, p.data, policies));
+  return runTxC(g, pc.c, (tx) => moveCoreTx(tx, g, pc.c, p.data, policies));
 }
 
 // ═══════════════════════ Sellable เฟส 1: capacityRowsOf (CC :337) ═══════════════════════
 /**
+ * 🔴 ห้ามเรียกในธุรกรรม — ใช้ connection ของตัวเอง (เรียกก่อนเปิด tx ของตะกร้า · ส่ง tx client มา ⇒ [] · r3 N3)
  * อ่านไม่ล็อก: แถวเฟส 1 ของบรรทัด/ของ hold · ไม่พบ/ctx ผิด/สาธารณะกับสินค้าที่ไม่เปิดขาย = [] (ผู้เรียกถือเป็น NOT_FOUND)
  * โหลดค่าตั้งของรอบนั้นไว้ในแคชของกระบวนการ (ไม่ล้ม) ⇒ reserveInTx 4 อาร์กิวเมนต์ตามหน้าสัมผัส Sellable ใช้ได้โดยไม่อ่านค่าตั้งใน tx
  */
 export async function capacityRowsOf(ctx: unknown, line: LineRequest | { holdId: string }): Promise<CapacityRowRef[]> {
+  if (inTransactionArg(ctx, line)) throw new CapacityAbort("VALIDATION", { reason: "IN_TRANSACTION" });
   const pc = parseCtx(ctx);
   if (!pc.ok) return [];
   const g = await gateOf(pc.c);
@@ -496,7 +539,7 @@ export async function capacityRowsOf(ctx: unknown, line: LineRequest | { holdId:
     if (typeof line.holdId !== "string" || !line.holdId) return [];
     const h = await readHold(unitClient(g), g, line.holdId);
     if (!h) return [];
-    await optionalPolicies(g, await depRefs(g, [h.departureId]), pc.c.clock.now);
+    await optionalPolicies(g, await depRefs(g, [h.departureId]), pc.c.clock.now, true);
     const rows: CapacityRowRef[] = [{ layer: "1a", table: "TripDeparture", id: h.departureId, sortKey: h.departureId }];
     if (h.allotmentId) rows.push({ layer: "1b", table: "AgentAllotment", id: h.allotmentId, sortKey: h.allotmentId });
     return rows;
@@ -508,7 +551,7 @@ export async function capacityRowsOf(ctx: unknown, line: LineRequest | { holdId:
   const d = rows[0];
   if (!d || (typeof line.productId === "string" && line.productId && line.productId !== d.productId)) return [];
   if (isPublic(pc.c) && !publicVisible(d)) return [];
-  await optionalPolicies(g, [d], pc.c.clock.now);
+  await optionalPolicies(g, [d], pc.c.clock.now, true);
   return [{ layer: "1a", table: "TripDeparture", id: d.id, sortKey: d.id }];
 }
 
@@ -537,7 +580,9 @@ export type SweepBatchResult = { expired: number; offered: number; departures: n
 export async function expireHoldsBatch(g: Gate, groups: readonly SweepGroup[], policies: CapacityPolicies | undefined, now: Date): Promise<SweepBatchResult> {
   const clock: Clock = { now, iso: now.toISOString() };
   const out: SweepBatchResult = { expired: 0, offered: 0, departures: 0, failed: [], done: [] };
-  const apply = (r: { expired: number; offered: number; departures: number; missing: string[] }, ds: readonly SweepGroup[]) => {
+  const offerFails: OfferFailure[] = [];
+  const apply = (r: { expired: number; offered: number; departures: number; missing: string[]; offerFailures: OfferFailure[] }, ds: readonly SweepGroup[]) => {
+    offerFails.push(...r.offerFailures);
     out.expired += r.expired;
     out.offered += r.offered;
     out.departures += r.departures;
@@ -548,6 +593,7 @@ export async function expireHoldsBatch(g: Gate, groups: readonly SweepGroup[], p
   if (batch.ok) {
     apply(batch.value, groups);
     out.done.push(...batch.value.missing);
+    await reportOfferFailures(offerFails, g);
     return out;
   }
   for (const grp of groups) {
@@ -560,6 +606,7 @@ export async function expireHoldsBatch(g: Gate, groups: readonly SweepGroup[], p
       out.done.push(grp.departureId);
     }
   }
+  await reportOfferFailures(offerFails, g);
   return out;
 }
 // ── /T0.4 capacity ──

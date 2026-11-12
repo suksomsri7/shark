@@ -11,6 +11,7 @@ const notYet = async () => sellFail("KIND_NOT_SUPPORTED", { reason: "NOT_IMPLEME
 
 export const tripSellable: Sellable = {
   kind: "TRIP",
+  // 🔴 quote / availability / capacityRowsOf ใช้ connection ของตัวเอง — ห้ามเรียกในธุรกรรม (เรียกก่อนเปิด tx ของตะกร้า · r3 N3)
   quote: (ctx, req) => quoteTrips(ctx, req), // ── T0.5 pricing ──
   // ── T0.4 capacity ──
   availability: (ctx, q) => listAvailability(ctx, q),

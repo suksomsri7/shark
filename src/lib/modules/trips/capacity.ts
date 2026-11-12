@@ -53,7 +53,9 @@ export type Tx = Prisma.TransactionClient;
 export type Gate = { tenantId: string; unitId: string; tz: string };
 /** นาฬิกาของคำขอ (Date + ISO สำหรับ ::timestamp) */
 export type Clock = { now: Date; iso: string };
-export type Ctx = { tenantId: string; unitId: string; channel: SellChannel; actor: SellActor; clock: Clock };
+/** ข้อเสนอรายการรอที่ล้ม (ย้อนเฉพาะ SAVEPOINT ของข้อเสนอนั้น · การปล่อยที่ยัง commit) — ตัวห่อบันทึก ops หลังธุรกรรม (r3 N4) · ไม่มีข้อมูลบุคคล */
+export type OfferFailure = { departureId: string; waitlistId: string; code: string; incident?: string };
+export type Ctx = { tenantId: string; unitId: string; channel: SellChannel; actor: SellActor; clock: Clock; offerFailures: OfferFailure[] };
 
 // ═══════════════════════ ผลพลาด ═══════════════════════
 const MESSAGES: Record<SellErrorCode, string> = {
@@ -128,8 +130,12 @@ function abortOf(f: Failure): never {
  * core/signed-link · core/phone-auth: อ่าน env ตอนเรียก · ไม่มีกุญแจ (สคริปต์ที่ env ไม่ครบ) ⇒ sha256 ติดป้าย) — เบอร์โทรไล่เดาจากฐานไม่ได้ (X8)
  */
 export function holdCapKeyHash(capKey: string): string {
-  const secret = String(process.env.SESSION_SECRET ?? "");
-  return secret ? createHmac("sha256", `trips-holdcap:v1:${secret}`).update(capKey).digest("hex") : sha256(`trips-holdcap:${capKey}`);
+  // r3 N2: การทดสอบกุญแจแบบเดียวกับ core/signed-link (SESSION_SECRET เป็นสตริงยาว ≥ 32) · production ไม่มีกุญแจ ⇒ ปิดแบบล้ม (throw)
+  //   sha256 ติดป้ายเหลือไว้เฉพาะนอก production (QC/dev ให้ข้อสอบรันได้) · หมุนกุญแจ = hold สาธารณะที่ค้างอยู่หาเจ้าของไม่เจอไม่เกินอายุถือ (T5)
+  const secret = process.env.SESSION_SECRET;
+  if (typeof secret === "string" && secret.length >= 32) return createHmac("sha256", `trips-holdcap:v1:${secret}`).update(capKey).digest("hex");
+  if (process.env.NODE_ENV === "production") throw new Error("[trips/capacity] ไม่ได้ตั้งค่า SESSION_SECRET — คำนวณแฮชเพดานถือไม่ได้");
+  return sha256(`trips-holdcap:${capKey}`);
 }
 function canonical(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(canonical);
@@ -174,7 +180,7 @@ export function parseCtx(raw: unknown): { ok: true; c: Ctx } | Failure {
   if (!Number.isFinite(now.getTime())) return sellFail("VALIDATION");
   if (v.actor.kind === "AGENT") return sellFail("FORBIDDEN", { reason: "AGENCY_NOT_ENABLED" });
   if (v.actor.kind === "PUBLIC" && !PUBLIC_CHANNELS.includes(v.channel)) return sellFail("VALIDATION", { field: "channel" });
-  return { ok: true, c: { tenantId: v.tenantId, unitId: v.unitId, channel: v.channel, actor: v.actor, clock: { now, iso: now.toISOString() } } };
+  return { ok: true, c: { tenantId: v.tenantId, unitId: v.unitId, channel: v.channel, actor: v.actor, clock: { now, iso: now.toISOString() }, offerFailures: [] } };
 }
 export function invalidInput(e: z.ZodError): Failure {
   return sellFail("VALIDATION", { fields: [...new Set(e.issues.map((i) => i.path.join(".") || "(root)"))].slice(0, 10) });
@@ -205,24 +211,33 @@ export type DeparturePolicy = { departureId: string; productId: string; t6: T6Va
 export type CapacityPolicies = { tenantId: string; unitId: string; holdCap: number; departures: Readonly<Record<string, DeparturePolicy>> };
 
 /**
- * แคชของกระบวนการ (เติมโดย loadCapacityPolicies เท่านั้น) — ให้ `reserveInTx` ตามหน้าสัมผัส Sellable (4 อาร์กิวเมนต์ · CC :338) ใช้ค่าที่
- * capacityRowsOf โหลดไว้ก่อนเปิด tx ได้ · อายุสั้น (ค่าตั้งเปลี่ยนมีผลในธุรกรรมไม่เกินอายุแคช) · ค่าที่ส่งเป็นอาร์กิวเมนต์ชนะแคชเสมอ
+ * แคชของกระบวนการ = ตัวสำรองเท่านั้น (r3 N1) — เติมโดย loadCapacityPolicies และ capacityRowsOf เท่านั้น (ที่ว่าง/ตัวห่ออื่นไม่เติม)
+ * ลำดับที่ใช้: intent.policies (reserveInTx) → อาร์กิวเมนต์ policies → แคช → ไม่มี ⇒ VALIDATION POLICIES_REQUIRED (details.retryable)
+ * อายุ 60 วิ (ค่าตั้งที่ร้านเพิ่งแก้มีผลกับเส้นทางที่ใช้แคชภายใน 60 วิ) · ล้นเพดาน ⇒ ทิ้งตัวหมดอายุก่อน แล้วตัวเก่าสุด (ลำดับใส่ของ Map) · ไม่ล้างทั้งก้อน
  */
 const POLICY_CACHE_MS = 60_000;
 const POLICY_CACHE_MAX = 5_000;
-const depCache = new Map<string, { p: DeparturePolicy; holdCap: number; at: number }>();
-const unitCache = new Map<string, { holdCap: number; at: number }>();
+let depCache = new Map<string, { p: DeparturePolicy; at: number }>();
+let unitCache = new Map<string, { holdCap: number; at: number }>();
+/** ทำที่ให้ `room` แถว: ทิ้งตัวหมดอายุก่อน แล้วตัวที่ใส่นานสุด (ตาม at) · คืน Map ใหม่ (ไม่ล้างทั้งก้อน) */
+function evicted<V extends { at: number }>(m: Map<string, V>, room: number, now: number): Map<string, V> {
+  if (m.size + room <= POLICY_CACHE_MAX) return m;
+  const live = [...m.entries()].filter(([, v]) => now - v.at <= POLICY_CACHE_MS);
+  const keep = Math.max(0, POLICY_CACHE_MAX - room);
+  return new Map(live.length > keep ? live.sort((a, b) => a[1].at - b[1].at).slice(live.length - keep) : live);
+}
 export function rememberPolicies(p: CapacityPolicies): void {
   const at = Date.now();
-  if (depCache.size > POLICY_CACHE_MAX) depCache.clear();
-  if (unitCache.size > POLICY_CACHE_MAX) unitCache.clear();
+  const deps = Object.values(p.departures);
+  unitCache = evicted(unitCache, 1, at);
+  depCache = evicted(depCache, deps.length, at);
   unitCache.set(`${p.tenantId}|${p.unitId}`, { holdCap: p.holdCap, at });
-  for (const d of Object.values(p.departures)) depCache.set(`${p.tenantId}|${p.unitId}|${d.departureId}`, { p: d, holdCap: p.holdCap, at });
+  for (const d of deps) depCache.set(`${p.tenantId}|${p.unitId}|${d.departureId}`, { p: d, at });
 }
 const fresh = (at: number) => Date.now() - at <= POLICY_CACHE_MS;
 function explicitOf(policies: CapacityPolicies | undefined, g: Gate): CapacityPolicies | null {
   if (!policies || typeof policies !== "object") return null;
-  if (policies.tenantId !== g.tenantId || policies.unitId !== g.unitId) throw new CapacityAbort("VALIDATION", { reason: "POLICIES_REQUIRED", detail: "policies ของหน่วยอื่น" });
+  if (policies.tenantId !== g.tenantId || policies.unitId !== g.unitId) throw new CapacityAbort("VALIDATION", { reason: "POLICIES_REQUIRED", retryable: true, detail: "policies ของหน่วยอื่น" });
   return policies;
 }
 /** ค่าตั้งของรอบ: อาร์กิวเมนต์ → แคช → null */
@@ -239,14 +254,15 @@ export function holdCapOf(policies: CapacityPolicies | undefined, g: Gate): numb
   const c = unitCache.get(`${g.tenantId}|${g.unitId}`);
   return c && fresh(c.at) ? c.holdCap : null;
 }
+/** ไม่มีค่าตั้ง ⇒ ปิดแบบล้ม · details.retryable = true (ผู้เรียกโหลด loadCapacityPolicies ใหม่แล้วลองซ้ำได้ · r3 N1) */
 function requirePolicy(policies: CapacityPolicies | undefined, g: Gate, departureId: string): DeparturePolicy {
   const p = departurePolicyOf(policies, g, departureId);
-  if (!p) throw new CapacityAbort("VALIDATION", { reason: "POLICIES_REQUIRED", departureId });
+  if (!p) throw new CapacityAbort("VALIDATION", { reason: "POLICIES_REQUIRED", retryable: true, departureId });
   return p;
 }
 function requireHoldCap(policies: CapacityPolicies | undefined, g: Gate): number {
   const n = holdCapOf(policies, g);
-  if (n === null) throw new CapacityAbort("VALIDATION", { reason: "POLICIES_REQUIRED" });
+  if (n === null) throw new CapacityAbort("VALIDATION", { reason: "POLICIES_REQUIRED", retryable: true });
   return n;
 }
 
@@ -311,6 +327,23 @@ async function counterSql(tx: Tx, sql: Prisma.Sql, code: SellErrorCode): Promise
     if (isCheckViolation(e)) throw new CapacityAbort(code, { reason: "INTEGRITY" }, "CHECK_23514");
     throw e;
   }
+}
+/** SQLSTATE ตัวแรกที่พบในสาย error (Prisma → adapter → pg) · ไม่พบ ⇒ null */
+function sqlStateOf(e: unknown): string | null {
+  const seen = new Set<unknown>();
+  const stack: unknown[] = [e];
+  let depth = 0;
+  while (stack.length && depth++ < 32) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object" || seen.has(cur)) continue;
+    seen.add(cur);
+    const o = cur as Record<string, unknown>;
+    for (const k of ["originalCode", "code", "sqlState"]) if (typeof o[k] === "string" && /^[0-9A-Z]{5}$/.test(o[k] as string)) return o[k] as string;
+    if (typeof o.message === "string" && /deadlock detected/i.test(o.message)) return "40P01";
+    if (o.cause) stack.push(o.cause);
+    if (o.meta && typeof o.meta === "object") stack.push(o.meta);
+  }
+  return null;
 }
 function isCheckViolation(e: unknown): boolean {
   const seen = new Set<unknown>();
@@ -689,6 +722,7 @@ export async function placeHoldTx(tx: Tx, g: Gate, c: Ctx, v: HoldInput, policy:
 
 /**
  * เฟส 2a ของตะกร้า (T0.6 finalizeInTx): INSERT แถว hold ของบรรทัดที่ reserveInTx ปรับตัวนับไว้แล้ว — ไม่แตะตัวนับ · ไม่นับเพดาน (ชั้น 0 ทำแล้ว)
+ * 🔴 เรียกได้เฉพาะหลัง reserveInTx(HOLD) สำเร็จ สำหรับรอบและจำนวนเดียวกันในธุรกรรมเดียวกัน — ไม่งั้น held ≠ Σ hold ACTIVE
  * ต้องมี `policies` (loadCapacityPolicies ก่อน tx) · คีย์ชน ⇒ โยน IDEMPOTENCY_CONFLICT (details.sameRequest) ให้ผู้เรียก rollback แล้วอ่านผลเดิม
  */
 export async function insertHoldInTx(tx: unknown, ctx: unknown, input: unknown, policies: CapacityPolicies): Promise<SellResult<{ holdId: string; departureId: string; qty: number; purpose: string; expiresAt: string }>> {
@@ -714,7 +748,7 @@ export async function insertHoldInTx(tx: unknown, ctx: unknown, input: unknown, 
  * คีย์ wl:<id> ซ้ำ = ไม่มีข้อเสนอที่สอง) → CAS WAITING → OFFERED (2a′) → event · ไม่นับเพดาน (capKey = waitlist:<id> ไม่ปนกับ basket ใด ·
  * ไม่ขอ advisory หลัง 1a — คีย์ไม่ซ้ำกับใคร จึงไม่มีอะไรให้เรียงลำดับ)
  */
-export async function offerNextInTx(tx: Tx, g: Gate, d: DepRow, pol: DeparturePolicy | null, clock: Clock): Promise<{ offered: string[]; dep: DepRow }> {
+export async function offerNextInTx(tx: Tx, g: Gate, d: DepRow, pol: DeparturePolicy | null, clock: Clock, sink: OfferFailure[]): Promise<{ offered: string[]; dep: DepRow }> {
   const offered: string[] = [];
   if (!pol || (d.status !== "OPEN" && d.status !== "GUARANTEED")) return { offered, dep: d };
   if (d.cutoffAt && d.cutoffAt.getTime() <= clock.now.getTime()) return { offered, dep: d };
@@ -758,9 +792,11 @@ export async function offerNextInTx(tx: Tx, g: Gate, d: DepRow, pol: DeparturePo
       await tx.$executeRaw`RELEASE SAVEPOINT trips_t04_offer`;
       cur = withCounters(cur, counters);
       offered.push(w.id);
-    } catch {
+    } catch (e) {
       await tx.$executeRaw`ROLLBACK TO SAVEPOINT trips_t04_offer`;
       await tx.$executeRaw`RELEASE SAVEPOINT trips_t04_offer`;
+      // r3 N4: ไม่กลืนเงียบ — จดรหัส (CapacityAbort / SQLSTATE เช่น 40P01 23514) ให้ตัวห่อบันทึก ops หลังธุรกรรม · การปล่อยที่ยัง commit
+      sink.push({ departureId: d.id, waitlistId: w.id, code: e instanceof CapacityAbort ? e.code : (sqlStateOf(e) ?? "ERROR"), ...(e instanceof CapacityAbort && e.incident ? { incident: e.incident } : {}) });
       break;
     }
   }
@@ -776,6 +812,8 @@ async function settleOfferRows(tx: Tx, g: Gate, holdIds: readonly string[], to: 
     RETURNING "id"`;
   return rows.length;
 }
+
+const withOfferFailures = <T extends object>(v: T, c: Ctx): T & { offerFailures?: OfferFailure[] } => (c.offerFailures.length ? { ...v, offerFailures: [...c.offerFailures] } : v);
 
 // ═══════════════════════ แปลง (D.1(3) · M-3) ═══════════════════════
 export const holdRefInput = z.strictObject({ holdId: ID, capKey: CAP_KEY.optional() });
@@ -806,7 +844,8 @@ export async function convertCoreTx(tx: Tx, g: Gate, c: Ctx, holdId: string, cap
 }
 /**
  * แปลงในธุรกรรมของผู้เรียก (T0.6 confirm) — ไม่ใช้ค่าตั้ง · ปฏิเสธ ⇒ โยน CapacityAbort
- * ลำดับของผู้เรียก: เรียกก่อนล็อกการจอง (2b) · ไม่ถือล็อกรอบอื่นที่ id มากกว่าไว้ก่อน
+ * ลำดับของผู้เรียก (T0.6): rekeyHoldsToContactInTx ก่อน (rekey ทำได้เฉพาะ hold ACTIVE · เป็นชั้น 0) → แปลงทีละ hold เรียงรอบตาม id → การจอง (2b) → โค้ดส่วนลด → outbox
+ * ไม่ถือล็อกรอบอื่นที่ id มากกว่าไว้ก่อน · ผู้กระทำสาธารณะส่ง capKey ของตะกร้า · ยกเลิก (T0.7): คืน/ปล่อยที่ (returnSoldInTx/releaseHoldInTx) ก่อนปล่อยโค้ดส่วนลด
  */
 export async function convertHoldInTx(tx: unknown, ctx: unknown, input: unknown): Promise<SellResult<ConvertValue>> {
   const t = asTx(tx);
@@ -820,7 +859,8 @@ export async function convertHoldInTx(tx: unknown, ctx: unknown, input: unknown)
 }
 
 // ═══════════════════════ ปล่อย (D.1(4)) ═══════════════════════
-export type ReleaseValue = { holdId: string; status: "RELEASED"; duplicated: boolean };
+/** offerFailures: ข้อเสนอรายการรอที่ล้มใน tx นี้ (เฉพาะ *InTx — ผู้เรียกส่งให้ reportOfferFailures หลัง commit) */
+export type ReleaseValue = { holdId: string; status: "RELEASED"; duplicated: boolean; offerFailures?: OfferFailure[] };
 export const releaseInput = z.strictObject({ holdId: ID, reason: z.string().trim().min(1).max(200), capKey: CAP_KEY.optional() });
 
 /** ปล่อย hold ที่ CAS ได้ใต้ล็อกรอบ (ผู้เรียกล็อกรอบแล้ว) — คืนตัวนับ · ข้อเสนอที่ถืออยู่ ⇒ แถวรายการรอ (offerTo) · คืนแถวรอบล่าสุด */
@@ -855,7 +895,7 @@ export async function releaseCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof r
     if (r.current === "RELEASED") return { holdId: v.holdId, status: "RELEASED", duplicated: true };
     throw new CapacityAbort(r.current === "CONVERTED" ? "STATE_CONFLICT" : r.current === null ? "HOLD_NOT_FOUND" : "HOLD_EXPIRED");
   }
-  await offerNextInTx(tx, g, r.dep, pol, c.clock);
+  await offerNextInTx(tx, g, r.dep, pol, c.clock, c.offerFailures);
   await audit(tx, g, c, "trips.hold.release", "TripHold", v.holdId, { departureId: d.id });
   return { holdId: v.holdId, status: "RELEASED", duplicated: false };
 }
@@ -870,7 +910,7 @@ export async function releaseHoldInTx(tx: unknown, ctx: unknown, input: unknown,
   if (!p.success) abortOf(invalidInput(p.error));
   const g = await gateOfTx(t, pc.c);
   if (!g) throw new CapacityAbort("HOLD_NOT_FOUND");
-  return { ok: true, value: await releaseCoreTx(t, g, pc.c, p.data, policies) };
+  return { ok: true, value: withOfferFailures(await releaseCoreTx(t, g, pc.c, p.data, policies), pc.c) };
 }
 
 // ═══════════════════════ ต่ออายุ (r2 m13) ═══════════════════════
@@ -899,7 +939,7 @@ export async function extendCoreTx(tx: Tx, g: Gate, c: Ctx, holdId: string, capK
 }
 
 // ═══════════════════════ คืน · ย้าย (ใบสั่ง §3.4) ═══════════════════════
-export type CountersValue = { departureId: string; capacity: number; sold: number; held: number; reserved: number; status: string };
+export type CountersValue = { departureId: string; capacity: number; sold: number; held: number; reserved: number; status: string; offerFailures?: OfferFailure[] };
 const cv = (id: string, k: Counters): CountersValue => ({ departureId: id, capacity: k.capacity, sold: k.sold, held: k.held, reserved: k.reserved, status: k.status });
 export const returnInput = z.strictObject({ departureId: ID, qty: QTY, toReserved: z.boolean().optional() });
 
@@ -908,7 +948,7 @@ export async function returnCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof re
   const d = await lockDeparture(tx, g, v.departureId);
   if (!d) throw new CapacityAbort("NOT_FOUND");
   const k = v.toReserved ? await returnSoldToReservedSql(tx, g, d.id, v.qty, c.clock) : await returnSoldSql(tx, g, d.id, v.qty, c.clock);
-  const o = await offerNextInTx(tx, g, withCounters(d, k), pol, c.clock);
+  const o = await offerNextInTx(tx, g, withCounters(d, k), pol, c.clock, c.offerFailures);
   await audit(tx, g, c, "trips.seat.return", "TripDeparture", d.id, { qty: v.qty, toReserved: v.toReserved === true });
   return cv(d.id, o.dep);
 }
@@ -923,11 +963,11 @@ export async function returnSoldInTx(tx: unknown, ctx: unknown, input: unknown, 
   if (!p.success) abortOf(invalidInput(p.error));
   const g = await gateOfTx(t, pc.c);
   if (!g) throw new CapacityAbort("NOT_FOUND");
-  return { ok: true, value: await returnCoreTx(t, g, pc.c, p.data, policies) };
+  return { ok: true, value: withOfferFailures(await returnCoreTx(t, g, pc.c, p.data, policies), pc.c) };
 }
 
 export const moveInput = z.strictObject({ fromDepartureId: ID, toDepartureId: ID, qty: QTY }).refine((v) => v.fromDepartureId !== v.toDepartureId, { message: "รอบต้นทางและปลายทางต้องต่างกัน" });
-export type MoveValue = { from: CountersValue; to: CountersValue; qty: number };
+export type MoveValue = { from: CountersValue; to: CountersValue; qty: number; offerFailures?: OfferFailure[] };
 /**
  * สินค้าปลายทาง FOR SHARE → ล็อกทั้งสองรอบเรียง id (1a) → ปลายทางตรวจปิดรับของ ctx.channel → ต้นทาง sold − n → ปลายทาง sold + n →
  * เสนอรายการรอของต้นทาง · ผลรวม sold คงที่ · ไม่นับเพดาน (CC :502)
@@ -951,7 +991,7 @@ export async function moveCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof move
   if (b) throw blockAbort(to, b);
   const kFrom = await returnSoldSql(tx, g, from.id, v.qty, c.clock);
   const kTo = await moveInSql(tx, g, to.id, v.qty, c.clock);
-  const o = await offerNextInTx(tx, g, withCounters(from, kFrom), polFrom, c.clock);
+  const o = await offerNextInTx(tx, g, withCounters(from, kFrom), polFrom, c.clock, c.offerFailures);
   await audit(tx, g, c, "trips.seat.move", "TripDeparture", from.id, { toDepartureId: to.id, qty: v.qty });
   return { from: cv(from.id, o.dep), to: cv(to.id, kTo), qty: v.qty };
 }
@@ -968,7 +1008,7 @@ export async function moveSoldInTx(tx: unknown, ctx: unknown, input: unknown, po
   if (!p.success) abortOf(invalidInput(p.error));
   const g = await gateOfTx(t, pc.c);
   if (!g) throw new CapacityAbort("NOT_FOUND");
-  return { ok: true, value: await moveCoreTx(t, g, pc.c, p.data, policies) };
+  return { ok: true, value: withOfferFailures(await moveCoreTx(t, g, pc.c, p.data, policies), pc.c) };
 }
 
 // ═══════════════════════ ครึ่งฝั่งรอบของโควตา (A1.4 เรียก · ใบสั่ง §3.4) ═══════════════════════
@@ -1015,16 +1055,30 @@ const INTENT = z.object({
   capKey: CAP_KEY.optional(),
 });
 const ROW = z.object({ layer: z.enum(["1a", "1b", "1c"]), table: z.string().min(1).max(64), id: ID, sortKey: z.string().max(256) });
-/** intent ของ trips: ReserveIntent + capKey ของตะกร้า (บังคับเมื่อผู้กระทำสาธารณะ — เพดานถือ) */
-export type TripReserveIntent = ReserveIntent & { capKey?: string };
+/**
+ * intent ของ trips: ReserveIntent + capKey ของตะกร้า (บังคับเมื่อผู้กระทำสาธารณะ — เพดานถือ) + policies (ผล loadCapacityPolicies — ส่งผ่านเรียก Sellable
+ * 4 อาร์กิวเมนต์ได้แน่นอน ไม่พึ่งแคช · r3 N1)
+ */
+export type TripReserveIntent = ReserveIntent & { capKey?: string; policies?: CapacityPolicies };
+function intentPolicies(intent: unknown): CapacityPolicies | undefined {
+  const p = intent !== null && typeof intent === "object" ? (intent as { policies?: unknown }).policies : undefined;
+  if (p === undefined) return undefined;
+  const ok = p !== null && typeof p === "object" && typeof (p as CapacityPolicies).tenantId === "string" && typeof (p as CapacityPolicies).unitId === "string"
+    && typeof (p as CapacityPolicies).holdCap === "number" && (p as CapacityPolicies).departures !== null && typeof (p as CapacityPolicies).departures === "object";
+  if (!ok) throw new CapacityAbort("VALIDATION", { fields: ["intent.policies"] });
+  return p as CapacityPolicies;
+}
 /**
  * เฟส 1 ทีละแถว (ตะกร้าเรียกตามลำดับ sortCapacityRows หลังชั้น 0 = SellBasket + acquireHoldCapInTx) —
  * HOLD = ตรวจเดียวกับ placeHold (phase1HoldInTx: สินค้า/ตัวเลือก · ปิดรับ/หยุดขาย/สถานะของ ctx.channel · เพดานของ capKey แบบไม่รอ) แล้ว D.1(1) ด้วย qtyPublic
  * qtyAllot > 0 ⇒ FORBIDDEN AGENCY_NOT_ENABLED (จน A1.4 มีแถวโควตา) · CONVERT/RELEASE/MOVE = SELECT … FOR UPDATE อย่างเดียว
- * ค่าตั้ง: `policies` (ตัวที่ 5) หรือแคชที่ capacityRowsOf/loadCapacityPolicies เติมไว้ก่อน tx — ไม่มี ⇒ VALIDATION POLICIES_REQUIRED · ปฏิเสธ ⇒ โยน CapacityAbort
+ * ค่าตั้ง: intent.policies → `policies` (ตัวที่ 5) → แคชที่ capacityRowsOf/loadCapacityPolicies เติมไว้ก่อน tx — ไม่มี ⇒ VALIDATION POLICIES_REQUIRED (retryable)
+ * ตะกร้าหลายสินค้า (T0.6): หลังชั้น 0 ให้ล็อกสินค้าทุกตัวของตะกร้าด้วย assertProductSellableInTx เรียง id ก่อนเฟส 1 (การขอ SHARE ซ้ำในแถวที่ถืออยู่ไม่รอ)
+ * ปฏิเสธ ⇒ โยน CapacityAbort
  */
 export async function reserveInTx(tx: unknown, ctx: unknown, rows: unknown, intent: unknown, policies?: CapacityPolicies): Promise<SellResult<Reservation>> {
   const t = asTx(tx);
+  policies = intentPolicies(intent) ?? policies;
   const pc = parseCtx(ctx);
   if (!pc.ok) abortOf(pc);
   const c = pc.c;
@@ -1079,7 +1133,7 @@ export async function acquireHoldCapInTx(tx: unknown, ctx: unknown, input: unkno
 
 const rekeyInput = z.strictObject({ holdIds: z.array(ID).min(1).max(QTY_MAX), contactKey: CAP_KEY });
 /**
- * ตรวจเพดานซ้ำด้วยผู้ติดต่อตอน confirm (D.6 :500 · T0.6 เรียก "ก่อน" ล็อกอื่นของ tx — เป็นชั้น 0):
+ * ตรวจเพดานซ้ำด้วยผู้ติดต่อตอน confirm (D.6 :500 · T0.6 เรียก "ก่อน" ล็อกอื่นของ tx — เป็นชั้น 0 · ก่อน convertHoldInTx เสมอ: หลังแปลงแล้ว hold ไม่ ACTIVE จึง rekey ไม่ได้):
  * เฉพาะ hold สาธารณะ (purpose PAYMENT ช่องทางสาธารณะ) ของหน่วยนี้ · อื่น/หน่วยอื่น ⇒ HOLD_NOT_FOUND (r2 ข้อ 8)
  * นับของ contact (ไม่รวม holdIds) + |holdIds| > X10 ⇒ HOLD_LIMIT ไม่แก้อะไร · X10 จาก `policies` (หรือแคช) — ไม่มี ⇒ VALIDATION POLICIES_REQUIRED
  */
@@ -1122,7 +1176,8 @@ export type SweepGroup = { departureId: string; holdIds: readonly string[] };
  * 2a′ ข้อเสนอของ hold เหล่านั้น ⇒ EXPIRED → เสนอคนถัดไป (2a/2a′ · เฉพาะรอบที่มีค่าตั้ง · ไม่มีวันทำให้ tx ล้ม) →
  * 2b การจอง HOLD|PENDING ⇒ EXPIRED (CAS · เรียง id) → 2h outbox + audit · ซ้อนกัน = ผลเดียว (X5) · รอบที่ไม่พบ = `missing`
  */
-export async function sweepDeparturesTx(tx: Tx, g: Gate, groups: readonly SweepGroup[], policies: CapacityPolicies | undefined, clock: Clock): Promise<{ expired: number; offered: number; departures: number; missing: string[] }> {
+export async function sweepDeparturesTx(tx: Tx, g: Gate, groups: readonly SweepGroup[], policies: CapacityPolicies | undefined, clock: Clock): Promise<{ expired: number; offered: number; departures: number; missing: string[]; offerFailures: OfferFailure[] }> {
+  const offerFailures: OfferFailure[] = [];
   const depIds = [...new Set(groups.map((x) => x.departureId))].sort();
   const locked = await tx.$queryRaw<DepRow[]>`
     SELECT ${DEP_COLS}
@@ -1130,13 +1185,13 @@ export async function sweepDeparturesTx(tx: Tx, g: Gate, groups: readonly SweepG
   const byId = new Map(locked.map((d) => [d.id, d]));
   const missing = depIds.filter((id) => !byId.has(id));
   const ids = [...new Set(groups.filter((x) => byId.has(x.departureId)).flatMap((x) => x.holdIds))].sort();
-  if (!ids.length) return { expired: 0, offered: 0, departures: 0, missing };
+  if (!ids.length) return { expired: 0, offered: 0, departures: 0, missing, offerFailures };
   const cas = await tx.$queryRaw<ExpiredHold[]>`
     UPDATE "TripHold" SET "status" = 'EXPIRED', "updatedAt" = now()
     WHERE "id" = ANY(${ids}::text[]) AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "departureId" = ANY(${[...byId.keys()]}::text[])
       AND "status" = 'ACTIVE' AND "expiresAt" <= ${clock.iso}::timestamp
     RETURNING "id", "departureId", "qtyPublic", "qtyAllot", "bookingId", "channel", "purpose"`;
-  if (!cas.length) return { expired: 0, offered: 0, departures: 0, missing };
+  if (!cas.length) return { expired: 0, offered: 0, departures: 0, missing, offerFailures };
   const totals = new Map<string, number>();
   for (const h of cas) totals.set(h.departureId, (totals.get(h.departureId) ?? 0) + h.qtyPublic + h.qtyAllot);
   const after = new Map<string, DepRow>();
@@ -1148,7 +1203,7 @@ export async function sweepDeparturesTx(tx: Tx, g: Gate, groups: readonly SweepG
   await settleOfferRows(tx, g, cas.filter((h) => h.purpose === "WAITLIST_OFFER").map((h) => h.id), "EXPIRED");
   let offered = 0;
   for (const [id, d] of [...after.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
-    offered += (await offerNextInTx(tx, g, d, departurePolicyOf(policies, g, id), clock)).offered.length;
+    offered += (await offerNextInTx(tx, g, d, departurePolicyOf(policies, g, id), clock, offerFailures)).offered.length;
   }
   const evts: Evt[] = cas.map((h) => holdEvt("trips.hold.expired", { id: h.id, departureId: h.departureId, qty: h.qtyPublic + h.qtyAllot, channel: h.channel }));
   const depOfBooking = new Map(cas.filter((h) => h.bookingId).map((h) => [h.bookingId as string, h.departureId]));
@@ -1183,7 +1238,7 @@ export async function sweepDeparturesTx(tx: Tx, g: Gate, groups: readonly SweepG
       after: { expired: cas.filter((h) => h.departureId === id).length, qty },
     })),
   });
-  return { expired: cas.length, offered, departures: totals.size, missing };
+  return { expired: cas.length, offered, departures: totals.size, missing, offerFailures };
 }
 
 // ═══════════════════════ รายการรอ (ส่วนในธุรกรรม · wrapper อยู่ waitlist.ts) ═══════════════════════
@@ -1277,7 +1332,7 @@ export async function exitWaitlistTx(tx: Tx, g: Gate, c: Ctx, waitlistId: string
       RETURNING "id"`;
     expectRows(upd, "STATE_CONFLICT");
   }
-  const o = await offerNextInTx(tx, g, dep, pol, c.clock);
+  const o = await offerNextInTx(tx, g, dep, pol, c.clock, c.offerFailures);
   await audit(tx, g, c, "trips.waitlist.leave", "TripWaitlist", w.id, { departureId: d.id, status: to });
   return { waitlistId: w.id, status: to, offered: o.offered };
 }
@@ -1296,7 +1351,7 @@ export async function offerWaitlistTx(tx: Tx, g: Gate, c: Ctx, departureId: stri
       RETURNING "id"`;
     return { offered: [], expired: ex.length };
   }
-  const o = await offerNextInTx(tx, g, d, pol, c.clock);
+  const o = await offerNextInTx(tx, g, d, pol, c.clock, c.offerFailures);
   if (o.offered.length) await audit(tx, g, c, "trips.waitlist.offer", "TripDeparture", d.id, { offered: o.offered.length });
   return { offered: o.offered, expired: 0 };
 }

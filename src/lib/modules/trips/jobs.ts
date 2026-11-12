@@ -202,9 +202,12 @@ export async function runExpireHolds(
 }
 
 type WaitDep = { tenantId: string; unitId: string; departureId: string };
+/** หน้าต่างหมุนจุดเริ่มของงานรายการรอ (ช่วงเดียวกับรอบงาน 5 นาที — ค่าทางเทคนิค ไม่ใช่ตัวเลขธุรกิจ) */
+const WAITLIST_ROTATE_MS = 300_000;
 /**
- * รอบที่มี WAITING และ "ทำอะไรได้" เท่านั้น (r2 ข้อ 12): มีที่ว่างสาธารณะ + เปิดขาย + ยังไม่เลยปิดรับ/เริ่ม ⇒ เสนอ (FIFO เคร่ง ใต้ล็อกรอบ) ·
- * เริ่มแล้ว (ทุกสถานะ)/ยกเลิก/เลยปิดรับ ⇒ WAITING → EXPIRED · จำกัดหน้าละ 200 รอบต่อรอบงาน (ที่เหลือรอบงานถัดไป)
+ * รอบที่มี WAITING และ "ทำอะไรได้" เท่านั้น (r2 ข้อ 12 · r3 N5): หัวคิว (createdAt, id) ต้องการไม่เกินที่ว่างสาธารณะ + เปิดขาย + ยังไม่เลยปิดรับ/เริ่ม ⇒ เสนอ
+ * (FIFO เคร่ง ใต้ล็อกรอบ) · เริ่มแล้ว (ทุกสถานะ)/ยกเลิก/เลยปิดรับ ⇒ WAITING → EXPIRED · รอบที่หัวคิวไม่พอดีไม่ถูกเลือก (ไม่กินหน้า)
+ * จำกัดหน้าละ 200 รอบต่อรอบงาน · ลำดับหมุนตามช่วงเวลา (md5(id ‖ ช่วง)) ⇒ ทุกรอบถึงคิวแม้มีรอบที่ล้มซ้ำค้างอยู่
  */
 export async function runWaitlistOffers(
   now: Date,
@@ -213,15 +216,21 @@ export async function runWaitlistOffers(
   const out = { departures: 0, offered: 0, expired: 0 };
   const tally = new FailureTally();
   const iso = now.toISOString();
-  const tenantFilter = opts?.tenantIds ? Prisma.sql`AND w."tenantId" = ANY(${opts.tenantIds}::text[])` : Prisma.empty;
+  const bucket = String(Math.floor(now.getTime() / WAITLIST_ROTATE_MS));
+  const tenantFilter = opts?.tenantIds ? Prisma.sql`AND d."tenantId" = ANY(${opts.tenantIds}::text[])` : Prisma.empty;
   const deps = await prisma.$queryRaw<WaitDep[]>`
-    SELECT DISTINCT w."tenantId", w."unitId", w."departureId"
-    FROM "TripWaitlist" w JOIN "TripDeparture" d ON d."id" = w."departureId" AND d."tenantId" = w."tenantId"
-    WHERE w."status" = 'WAITING' ${tenantFilter}
-      AND ( (d."capacity" - d."sold" - d."held" - d."reserved" > 0 AND d."status" IN ('OPEN', 'GUARANTEED')
+    SELECT d."tenantId", d."unitId", d."id" AS "departureId"
+    FROM "TripDeparture" d
+    JOIN LATERAL (
+      SELECT w."qty" FROM "TripWaitlist" w
+      WHERE w."departureId" = d."id" AND w."tenantId" = d."tenantId" AND w."status" = 'WAITING'
+      ORDER BY w."createdAt", w."id" LIMIT 1
+    ) head ON true
+    WHERE true ${tenantFilter}
+      AND ( (d."capacity" - d."sold" - d."held" - d."reserved" >= head."qty" AND d."status" IN ('OPEN', 'GUARANTEED')
              AND d."startsAt" > ${iso}::timestamp AND (d."cutoffAt" IS NULL OR d."cutoffAt" > ${iso}::timestamp))
          OR d."startsAt" <= ${iso}::timestamp OR d."status" = 'CANCELLED' OR (d."cutoffAt" IS NOT NULL AND d."cutoffAt" <= ${iso}::timestamp) )
-    ORDER BY w."departureId" LIMIT ${SWEEP_PAGE_SIZE}`;
+    ORDER BY md5(d."id" || ${bucket}) LIMIT ${SWEEP_PAGE_SIZE}`;
   for (const d of deps) {
     if (stopped(opts)) break;
     try {

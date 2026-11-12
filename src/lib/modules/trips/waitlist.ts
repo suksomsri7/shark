@@ -31,7 +31,7 @@ import {
   type OfferResult,
   type WaitRow,
 } from "./capacity";
-import { CapacitySettingsInvalid, gateOf, policiesFor, runTx, unitClient } from "./capacity-service";
+import { CapacitySettingsInvalid, gateOf, policiesFor, runTx, runTxC, unitClient } from "./capacity-service";
 
 // ── T0.4 capacity ──
 /** ลำดับคิวของแถว WAITING (1 = หัวคิว) · แถวที่ไม่ WAITING = 0 */
@@ -99,7 +99,7 @@ async function exitWaitlist(ctx: unknown, input: unknown, mode: "LEAVE" | "DECLI
   const pol = await depPolicies(g, w.departureId, pc.c.clock.now, false); // ค่าตั้งเสีย ⇒ ออกได้ แต่ไม่เสนอคนถัดไป
   if (pol === "NOT_FOUND") return sellFail("NOT_FOUND");
   const policy = pol instanceof CapacitySettingsInvalid ? null : (pol?.departures[w.departureId] ?? null);
-  return runTx(g, (tx) => exitWaitlistTx(tx, g, pc.c, p.data.waitlistId, mode, policy));
+  return runTxC(g, pc.c, (tx) => exitWaitlistTx(tx, g, pc.c, p.data.waitlistId, mode, policy));
 }
 /** WAITING/OFFERED → CANCELLED (มีข้อเสนอ ⇒ ปล่อย hold + เสนอคนถัดไป) */
 export async function leaveWaitlist(ctx: unknown, input: unknown): Promise<SellResult<ExitValue>> {
@@ -116,7 +116,7 @@ async function offerCore(g: Gate, c: Ctx, departureId: string): Promise<SellResu
   const pol = await depPolicies(g, departureId, c.clock.now, false); // ค่าตั้งเสีย ⇒ หมดอายุแถวของรอบที่เริ่ม/ยกเลิกได้ แต่ไม่เสนอ
   if (pol === "NOT_FOUND") return sellFail("NOT_FOUND");
   const policy = pol instanceof CapacitySettingsInvalid ? null : (pol?.departures[departureId] ?? null);
-  return runTx(g, (tx) => offerWaitlistTx(tx, g, c, departureId, policy));
+  return runTxC(g, c, (tx) => offerWaitlistTx(tx, g, c, departureId, policy));
 }
 export async function offerWaitlist(ctx: unknown, input: unknown): Promise<SellResult<{ offered: string[] }>> {
   const pc = parseCtx(ctx);
@@ -135,7 +135,7 @@ export async function offerWaitlist(ctx: unknown, input: unknown): Promise<SellR
 export async function offerWaitlistForDeparture(tenantId: string, unitId: string, departureId: string, now: Date, job: string): Promise<OfferResult> {
   const g = await gateOf({ tenantId, unitId });
   if (!g) throw new CapacityAbort("NOT_FOUND");
-  const r = await offerCore(g, { tenantId, unitId: g.unitId, channel: WAITLIST_CHANNEL, actor: { kind: "SYSTEM", job }, clock: { now, iso: now.toISOString() } }, departureId);
+  const r = await offerCore(g, { tenantId, unitId: g.unitId, channel: WAITLIST_CHANNEL, actor: { kind: "SYSTEM", job }, clock: { now, iso: now.toISOString() }, offerFailures: [] }, departureId);
   if (!r.ok) throw new CapacityAbort(r.code, r.details);
   return r.value;
 }

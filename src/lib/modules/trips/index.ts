@@ -243,11 +243,12 @@ export {
   acquireHoldCapInTx,
   rekeyHoldsToContactInTx,
 } from "./capacity";
-export type { CapacityPolicies, DeparturePolicy, PlaceHoldValue, ConvertValue, ReleaseValue, CountersValue, MoveValue, TripReserveIntent, ExitValue } from "./capacity";
+export type { CapacityPolicies, DeparturePolicy, PlaceHoldValue, ConvertValue, ReleaseValue, CountersValue, MoveValue, TripReserveIntent, ExitValue, OfferFailure } from "./capacity";
 // ชั้นเปิดธุรกรรมเอง (capacity-service.ts) — ตัวโหลดค่าตั้งรันก่อนเปิด tx แล้วส่งผลให้ *InTx
 export {
   loadCapacityPolicies,
   reportCapacityIncident,
+  reportOfferFailures,
   getAvailability,
   listAvailability,
   placeHold,
