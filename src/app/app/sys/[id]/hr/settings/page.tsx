@@ -34,6 +34,8 @@ import { ModuleTabs } from "@/components/module-tabs";
 import { LifecycleMsg, LifecycleSettings } from "@/lib/modules/hr/lifecycle-ui"; // HR H4.4 ▸ ค่าตั้งวงจรพนักงาน (เตือน · บอร์ดงาน · แม่แบบรายการตรวจ) ◂
 import { WorkSettingsCard, WE_MSG } from "@/lib/modules/hr/work-entries-ui"; // HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน (เจ้าของร้าน) ◂
 import { saveNormalMinutesAction } from "@/lib/modules/hr/work-entries-actions"; // HR H3.1 ◂
+import { AttendancePayPolicyCard, ATT_MSG } from "@/lib/modules/hr/attendance-pay-ui"; // HR H3.2 ◂ กฎหักสาย/ขาด (เจ้าของร้าน)
+import { saveAttendancePayPolicyAction } from "@/lib/modules/hr/attendance-pay-actions"; // HR H3.2 ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -52,6 +54,7 @@ const MSG_TEXTS: Record<string, string> = {
   ...Object.fromEntries(Object.entries(CLOCK_SETTINGS_TEXT).map(([k, v]) => [`c.${k}`, v])), // HR H2.4 ◂
   ...Object.fromEntries(Object.entries(ATTENDANCE_SETTINGS_TEXT).map(([k, v]) => [`a.${k}`, v])), // HR H2.5 ◂
   ...WE_MSG, // HR H3.1 ◂
+  ...ATT_MSG, // HR H3.2 ◂
   ...Object.fromEntries((["sAfter", "sAhead", "sRound"] as const).map((k) => [`o.${k}`, OT_TEXT[k]])), // HR H2.9 ◂
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
@@ -142,6 +145,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     "use server";
     back(path, year, await saveNormalMinutesAction(fd));
   };
+  // HR H3.2 ▸ ◂
+  const onSaveAttPay = async (fd: FormData) => {
+    "use server"; // HR H3.2 ◂
+    back(path, year, await saveAttendancePayPolicyAction(fd)); // HR H3.2 ◂
+  }; // HR H3.2 ◂
   // HR H2.9 ▸ R14 ◂
   const onSaveOtPolicy = async (fd: FormData) => {
     "use server";
@@ -561,6 +569,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <LifecycleSettings systemId={id} />
       {/* HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน — ทุกผู้ตั้งค่าเห็น · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <WorkSettingsCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveNormalMinutes : null} />
+      {/* HR H3.2 ▸ กฎหักสาย/ขาด — ทุกผู้ตั้งค่าเห็น (ข้อความ ม.76 เสมอ) · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
+      <AttendancePayPolicyCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveAttPay : null} />
     </div>
   );
 }

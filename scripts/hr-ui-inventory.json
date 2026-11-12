@@ -7180,6 +7180,372 @@
    "wo": "H3.1",
    "oracle": "qc-hr-h3.1",
    "note": "ปิดผลวันที่ค้าง (ตัวปิดวันของ H2.5) → ?we=fin&n="
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-attpay-policy",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "ผู้ตั้งค่า HR",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "การ์ดกฎหักสาย/ออกก่อน/ขาดงาน (ค่าตั้งต้นปิด · HQ11) · ผู้ไม่ใช่เจ้าของเห็นสรุปอย่างเดียว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-attpay-warn",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "เหมือน hr-attpay-policy (แสดงเสมอ)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "ข้อความกฎหมายคงที่ ม.76 (th/en) — ไม่มีค่าปรับ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-attpay-enabled",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "checkbox เปิดใช้กฎ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-attpay-late",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "checkbox หักเวลามาสาย"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-attpay-early",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "checkbox หักเวลาออกก่อน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-attpay-absent",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "checkbox หักวันขาดงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-attpay-free",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "นาทีที่ไม่หักต่อวัน 0–60 (เกินช่วง = sFree)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-attpay-step",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "ปัดนาทีลง 1/5/10/15 (อื่น = sStep)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-attpay-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "saveAttendancePayPolicyAction"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "บันทึก → ?msg=ok | รหัส ap.* · ปิดกฎ = ถอนรายการ PENDING (POLICY_OFF)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-attpay-panel",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "ปฏิทินรายคน (?view=month) · ผู้อ่านชั่วโมงทำงาน",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "สรุปส่งเข้าเงินเดือน (ภาพ 04B) · ผลการกด ?ap= (allowlist)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-attpay-sync",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "OWNER หรือ hr.payroll.read + hr.payadjust.request · กฎเปิดอยู่",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "syncAttendanceDeductionsAction"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "คำนวณรายการหักสาย/ขาด (Q4 — ทางเดียวที่สร้างรายการ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-attpay-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "เหมือน hr-attpay-panel · พนักงานที่ดูอยู่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "* = employeeId · นาทีทุกผู้อ่าน · เงินเฉพาะ OWNER/hr.payroll.read (Q9) · ชิป ต้องคำนวณใหม่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-attpay-lines-*",
+   "kind": "display",
+   "interactive": true,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือน · รายการที่ยังมีผล",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "* = adjustmentId · บรรทัดรายวัน (วัน · นาที · สตางค์)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-attpay-mine",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-pay-ui.tsx",
+   "conditional": "พนักงานที่ผูกบัญชี · มีรายการในงวด",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "payroll"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.2",
+   "oracle": "qc-hr-h3.2",
+   "note": "รายการหักสาย/ขาดของฉัน (ยอด + บรรทัดรายวัน)"
   }
  ]
 }

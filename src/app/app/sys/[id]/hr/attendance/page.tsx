@@ -14,6 +14,8 @@ import { recomputeAttendanceDayAction } from "@/lib/modules/hr/attendance-action
 import { AttendanceDayView, AttendanceFlash, AttendanceMonthView, AttendanceViewTabs } from "@/lib/modules/hr/attendance-ui";
 import { thaiDateKey } from "@/lib/ui/date";
 import { WorkEntriesMonth } from "@/lib/modules/hr/work-entries-ui"; // HR H3.1 ▸ สรุป + รายวันที่ดึงเข้าเงินเดือน (ภาพ 04B) ◂
+import { AttendancePayMine, AttendancePayPanel, attMsgCode } from "@/lib/modules/hr/attendance-pay-ui"; // HR H3.2 ◂ สรุปส่งเข้าเงินเดือน: หักสาย/ขาด (ภาพ 04B)
+import { syncAttendanceDeductionsAction } from "@/lib/modules/hr/attendance-pay-actions"; // HR H3.2 ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 // HR H2.6 ▸ คำขอแก้เวลา: ฟอร์มยื่น (04A แถว · 04B) + ?view=corrections การ์ด mockup 05 · ผลส่งทาง URL เป็นรหัสสั้น (allowlist) ◂
 import { addDays as addDaysKey } from "@/lib/modules/hr/time-rules";
@@ -65,6 +67,13 @@ export default async function HrAttendancePage({ params, searchParams }: { param
   const flashOk = code === "ok" || code === "same" || code in CORR_OK; // HR H2.6 ◂
 
   const canRecompute = canManageHrSettings(viewer);
+  // HR H3.2 ▸ ปุ่ม "คำนวณรายการหักสาย/ขาด" — ผลส่งทาง URL เป็นรหัสสั้น ?ap= (allowlist ATT_MSG ของ attendance-pay-ui) ◂
+  const apCode = typeof (sp as Record<string, unknown>).ap === "string" ? String((sp as Record<string, unknown>).ap) : ""; // HR H3.2 ◂
+  const onAttSync = async (fd: FormData) => {
+    "use server"; // HR H3.2 ◂
+    const r = await syncAttendanceDeductionsAction(fd); // HR H3.2 ◂
+    redirect(`${back}&ap=${encodeURIComponent(attMsgCode(r))}`); // HR H3.2 ◂
+  }; // HR H3.2 ◂
   const onRecompute = async (fd: FormData) => {
     "use server";
     const r = await recomputeAttendanceDayAction(fd);
@@ -162,6 +171,7 @@ export default async function HrAttendancePage({ params, searchParams }: { param
           corrFor={(day: string) => <CorrectionForm systemId={id} employeeId={null} day={day} punches={myPunches.filter((p) => near(p.at, day))} onSubmit={onRequestMine} self />}
         />
         <WorkEntriesMonth systemId={id} employeeId={mine.employee.id} month={mine.month} self /> {/* HR H3.1 ◂ */}
+        <AttendancePayMine systemId={id} periodKey={mine.month} /> {/* HR H3.2 ◂ */}
       </div>
     );
   }
@@ -226,6 +236,7 @@ export default async function HrAttendancePage({ params, searchParams }: { param
           <p className="text-sm text-[color:var(--color-muted)]">{t("empty")}</p>
         )}
         {month && <WorkEntriesMonth systemId={id} employeeId={month.employee.id} month={month.month} self={false} />} {/* HR H3.1 ◂ */}
+        {month && <AttendancePayPanel systemId={id} employeeId={month.employee.id} periodKey={month.month} code={apCode} onSync={onAttSync} />} {/* HR H3.2 ◂ */}
       </div>
     );
   }
