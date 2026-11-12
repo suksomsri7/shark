@@ -1112,6 +1112,30 @@
       "finalize": "Close pending days",
       "finalizeHint": "Days whose attendance result was never stored (e.g. older than 7 days)?",
       "finalized": "Closed {n} pending slots — press 'Pull work hours' again"
+    },
+    "run2": {
+      "title": "Payroll run (new engine)",
+      "engineTitle": "Payroll engine version",
+      "engineV1": "Classic (1)",
+      "engineV2": "New (2) — law tables and work hours",
+      "engineSave": "Save engine",
+      "catCap": "Cap per deduction category (% of period wage)",
+      "totalCap": "Total deduction cap (% of period wage)",
+      "stepDraft": "Draft",
+      "stepReview": "Review",
+      "stepApprove": "Approve",
+      "stepPay": "Pay",
+      "stepPost": "Posted",
+      "warnCapRaised": "A deduction cap above 10% per category or 20% in total of the period wage — Labour Protection Act s.76 allows more only with the employee's written consent (s.77)",
+      "warnCapNeedsConsent": "No written consent from the employee for this item, so it is deducted only up to the legal cap (10% per category · 20% in total) — the rest carries to the next period",
+      "warnAdvance": "Wage advances are recovered from this period's wage up to the net pay — please check with your accountant/labour adviser",
+      "warnSsoMin": "This period's wage is below the social security minimum base, so contributions use the minimum base set by ministerial regulation",
+      "warnShopHoliday": "A shop closure day is not one of the shop's announced traditional holidays, so daily/hourly staff get no holiday pay — please check with a labour adviser",
+      "warnDivisor30": "Pro-rated pay divides by 30 — the law sets no divisor, please check with your accountant",
+      "warnReceivable": "Uncollected deductions of an employee who leaves this period are not taken from the final wage beyond the cap and are recorded as an employee receivable",
+      "warnConsentHelp": "Tick when the employee has signed a written consent to this deduction (s.77) · damages under s.76(4) apply to wilful or grossly negligent damage — please check with a labour adviser",
+      "warnSsoCommission": "Commission counts towards the social security wage per the law table — please check with the Social Security Office/your accountant",
+      "warnHourlyHoliday": "Holiday pay of hourly staff uses the shop's normal working hours — please check with a labour adviser"
     }
   }
 }

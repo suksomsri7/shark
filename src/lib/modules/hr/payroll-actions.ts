@@ -215,7 +215,7 @@ export async function approvePayrollRunAction(formData: FormData): Promise<{ ok:
 export async function reverseRunAction(formData: FormData) {
   const auth = await requireTenant();
   // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
-  assertHrCan(auth, "hr.payroll.approve");
+  assertHrCan(auth, "hr.payroll.reverse"); // HR H3.4 ▸ R8: กลับรายการ = คีย์ของตัวเอง (เดิมใช้คีย์อนุมัติ) ◂
   assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
@@ -326,15 +326,16 @@ export async function decideAdjustmentAction(formData: FormData): Promise<{ ok: 
   const auth = await requireTenant();
   // อนุมัติ = สิทธิ์แตะเงินเดือน (ผ่านด่าน PDPA เหมือน action เงินเดือนอื่น)
   // ทุกสาขา: ด่านคีย์ระดับระบบ HR — สาขาของเจ้าของรายการตรวจด้วย payTarget ด้านล่าง
-  assertHrCan(auth, "hr.payadjust.approve");
+  const decision = String(formData.get("status") ?? ""); // HR H3.4 ▸ R8: ปฏิเสธ = hr.payadjust.reject · อนุมัติ = hr.payadjust.approve ◂
+  assertHrCan(auth, decision === "REJECTED" ? "hr.payadjust.reject" : "hr.payadjust.approve"); // HR H3.4 ◂
   const systemId = String(formData.get("systemId") ?? "");
   const id = String(formData.get("id") ?? "");
-  const status = String(formData.get("status") ?? "");
+  const status = decision; // HR H3.4 ◂
   if (!systemId || !id || (status !== "APPROVED" && status !== "REJECTED")) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
   try {
     const ctx0: Ctx = { tenantId: auth.active.tenantId, systemId };
     const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
-    assertHrCan(auth, "hr.payadjust.approve", t.unitId);
+    assertHrCan(auth, decision === "REJECTED" ? "hr.payadjust.reject" : "hr.payadjust.approve", t.unitId); // HR H3.4 ◂
   } catch (e) {
     if (branchText(e)) return { ok: false, reason: branchText(e)! };
     throw e;

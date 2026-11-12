@@ -22,6 +22,8 @@ import {
 } from "./payroll-rules";
 import { OT_LAW_DEFAULT, OT_TEXT, otLawOf, otLegalRateFloor, otText } from "./ot-rules"; // HR H2.9 ▸ #18 ด่านอัตรา OT ที่ตั้งเอง + ข้อความรายการปรับเงินจากคำขอ OT ◂
 import { loadOtLawRows } from "./law"; // HR H2.9 ▸ #18 แถวกฎหมาย OT (law.ts = ผู้อ่านตารางเดียว) ◂
+import { LAW_MSG, lawDayOf, loadLawSet } from "./law"; // HR H3.4 ▸ ชุดกฎหมายของเครื่องรุ่น 2 (law.ts = ผู้อ่านตารางเดียว) ◂
+import { RUN_V2_DEFAULTS } from "./payroll-run-rules"; // HR H3.4 ▸ ค่าตั้งต้นเพดานหัก ม.76 ◂
 
 // Payroll ไทย — service ชั้นประกอบ (system-scoped HR) · WO-0036
 // สเปคเต็ม docs/sds/modules/future-payroll-tax.md §A · v1 = MONTHLY เท่านั้น
@@ -157,7 +159,7 @@ export function listSalaryProfiles(ctx: Ctx) {
 
 // ─────────── รายการเพิ่ม/หักในงวด: OT · คอมมิชชั่น · โบนัส · เบี้ยเลี้ยง · หักเงิน · เบิกล่วงหน้า ───────────
 // (13 ส.ค. 2026 · เจ้าของสั่งข้อ 5+7) — 🔴 คนยื่น ≠ คนอนุมัติ (ยื่นแล้วรออนุมัติเสมอ ไม่เข้าเงินเดือนเอง)
-export type AdjustKind = "OT" | "COMMISSION" | "BONUS" | "ALLOWANCE" | "DEDUCTION" | "ADVANCE";
+export type AdjustKind = "OT" | "COMMISSION" | "BONUS" | "ALLOWANCE" | "DEDUCTION" | "ADVANCE" | "REFUND"; // HR H3.4 ▸ R12 + REFUND (เฉพาะร้านที่เปิดเครื่องรุ่น 2) ◂
 const ADJUST_KINDS: AdjustKind[] = ["OT", "COMMISSION", "BONUS", "ALLOWANCE", "DEDUCTION", "ADVANCE"];
 // H0.2 ▸ R4 (D12): ตัวเดียวกันทั้ง service (createPayrollRun · requestAdjustment) และ action (createPayrollRunAction) — เดือน 01–12 เท่านั้น ◂
 export const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -192,7 +194,9 @@ export async function requestAdjustment(
   // CRM C3.3 ▸ `tx` = ผู้เรียก (คอมมิชชัน CRM) ถือล็อกแถวคอมมิชชันอยู่ ⇒ เขียนใน tx เดียวกัน (ห้ามเปิด connection ที่สองใต้ล็อก) ◂
   opts: { tx?: Prisma.TransactionClient } = {},
 ): Promise<{ ok: boolean; reason?: string; id?: string; amountSatang?: number; code?: string }> {
-  if (!ADJUST_KINDS.includes(input.kind)) return { ok: false, reason: "ชนิดรายการไม่ถูกต้อง" };
+  // HR H3.4 ▸ R12: REFUND (คืนเงินรายการหัก — ไม่ใช่เงินได้ 40(1)/ค่าจ้าง ปสส.) รับเฉพาะร้านที่เปิดเครื่องรุ่น 2 · รุ่น 1 = refundV1 ◂
+  if (input.kind === "REFUND" ? (await getPayrollEngine(ctx)).engineVersion !== 2 : !ADJUST_KINDS.includes(input.kind)) // HR H3.4 ◂
+    return input.kind === "REFUND" ? { ok: false, code: "REFUND_V1", reason: RUN2_TEXT.refundV1 } : { ok: false, reason: "ชนิดรายการไม่ถูกต้อง" }; // HR H3.4 ◂
   if (!PERIOD_RE.test(input.periodKey.trim())) return { ok: false, reason: "งวดต้องเป็นรูปแบบ YYYY-MM" };
   // CRM C3.3 ▸ รายการจากคอมมิชชัน CRM — ทางแยกของตัวเอง (ทางเดิมข้างล่างไม่เปลี่ยนแม้แต่บรรทัดเดียว)
   const crmCommissionId = typeof input.crmCommissionId === "string" && input.crmCommissionId.trim() ? input.crmCommissionId.trim() : null;
@@ -587,6 +591,7 @@ async function buildRunRows(
     SELECT "id" FROM "HrPayAdjustment"
     WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "periodKey" = ${periodKey}
       AND "status"::text = 'APPROVED' AND "runId" IS NULL
+      AND "kind"::text <> 'REFUND' -- HR H3.4 ▸ รุ่น 1 ไม่รู้จัก REFUND (ปล่อยไว้ไม่ผูก = รายการค้าง) ◂
     ORDER BY "id" FOR UPDATE`;
   const lockedIds = locked.map((r) => r.id).filter(Boolean);
   const adjustments = lockedIds.length
@@ -706,6 +711,7 @@ export async function createPayrollRun(
     const tx = t as unknown as Prisma.TransactionClient;
     // สองการสร้างรอบของงวดเดียวกันต่อคิวกัน (partial unique (systemId, periodKey) ของรอบที่ยังไม่ REVERSED เป็นด่านสุดท้าย — H0.6 · ล็อกนี้ทำให้ได้ข้อความไทยแทน error ของฐาน)
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:payroll:run:${ctx.systemId}:${periodKey}`}, 0))`;
+    if ((await payrollEngineIn(tx, ctx)).engineVersion === 2) throw new PayrollInputError(RUN2_TEXT.engineV2); // HR H3.4 ▸ R3: ร้านรุ่น 2 สร้างรอบรุ่น 1 ไม่ได้ ◂
     // HR H0.6 ▸ R3 (D2b): รอบที่กลับรายการแล้ว (REVERSED) ไม่นับเป็นรอบซ้ำ ⇒ งวดที่กลับรายการแล้วสร้างรอบใหม่ได้ (ข้อความเดิมทุกตัวอักษร) ◂
     const dup = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey, ...liveRunWhere() }, select: { id: true } });
     if (dup) throw new PayrollInputError(`มีรอบจ่ายงวด ${periodKey} อยู่แล้ว — ลบหรือเลือกงวดอื่น`);
@@ -1985,3 +1991,120 @@ export async function cancelSelfAdvance(ctx: Ctx, input: { id: string; employeeI
   return { ok: true };
 }
 // ◂ HR H2.10
+
+// ─────────── HR H3.4 ▸ เครื่องคิดเงินเดือนรุ่น 2 (engineVersion 2) — phase A: ข้อความคงที่ · ค่าตั้งรุ่นเครื่องต่อร้าน ───────────
+// brief ledger/hr-briefs/hr-brief-H3.4.md R3 · design §2 · ทุกร้านอยู่รุ่น 1 จนกว่าเจ้าของร้านเปิดรุ่น 2 และแพลตฟอร์มมีแถวกฎหมาย ACTIVE (HQ23)
+/** NA-11: รายวัน/รายชั่วโมง/คอมฯ อย่างเดียว ยังไม่เปิดในรอบรุ่น 2 (ค่าคงที่ตัวเดียวพลิกหลังนักบัญชียืนยัน) */
+export const V2_VARIABLE_PAY = false;
+/** ข้อความคงที่ (ไทยทุกไบต์ — brief §3 / design §5) */
+export const RUN2_TEXT = {
+  no: "ไม่พบรอบจ่ายนี้ หรือคุณไม่มีสิทธิ์ดู",
+  engineOwner: "เฉพาะเจ้าของร้านเปลี่ยนรุ่นเครื่องคิดเงินเดือนได้",
+  capRange: "เพดานรายการหักต้องอยู่ระหว่าง 0–100%",
+  engineV1: "ร้านนี้ยังใช้เครื่องคิดเงินเดือนรุ่นเดิม — เจ้าของร้านเปิดรุ่นใหม่ได้ที่หน้าตั้งค่า HR",
+  engineV2: "ร้านนี้ใช้เครื่องคิดเงินเดือนรุ่นใหม่แล้ว — สร้างรอบจ่ายจากหน้าเงินเดือน",
+  variablePay: "ร้านนี้มีพนักงานรายวัน/รายชั่วโมง หรือรับค่าคอมฯ อย่างเดียว — เครื่องรุ่นใหม่ยังไม่รองรับจนกว่านักบัญชียืนยันวิธีหักภาษี",
+  otOpen: "มีคำขอ OT ของงวดนี้ที่ยังรออนุมัติหรือยังคิดเงินไม่เสร็จ — ตัดสินคำขอ OT ก่อนสร้างหรืออนุมัติรอบ",
+  ytdDraft: "มีรอบจ่ายร่างของปีภาษีเดียวกันที่จ่ายก่อนหรือวันเดียวกัน — อนุมัติหรือลบรอบนั้นก่อน",
+  samePerson: "คนสร้างรอบอนุมัติรอบเดียวกันไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านอนุมัติ",
+  ownPay: "รอบนี้มีเงินเดือนของคุณเอง — ให้เจ้าของร้านอนุมัติ",
+  noActor: "ระบุผู้อนุมัติไม่ได้ — กรุณาเข้าสู่ระบบใหม่",
+  inputsChanged: "ข้อมูลเงินเดือนเปลี่ยนหลังสร้างร่าง — กด 'ดึงข้อมูลใหม่' แล้วตรวจอีกครั้ง",
+  carryBound: "ยอดหักที่ยกไปงวดถัดไปถูกดึงเข้ารอบจ่ายงวดถัดไปแล้ว — กลับรายการรอบงวดถัดไปก่อน",
+  noRate: "พนักงานบางคนยังไม่มีอัตราค่าจ้าง — ตั้งเงินเดือนก่อนสร้างรอบ",
+  refundV1: "รายการคืนเงิน (ไม่คิดภาษี) ใช้ได้เฉพาะร้านที่เปิดเครื่องคิดเงินเดือนรุ่นใหม่",
+  confirmNo: "คุณไม่มีสิทธิ์ยืนยันชั่วโมงทำงานของสาขานี้",
+  carryNote: "ยกยอดหักจากงวด {p}",
+} as const;
+/** คำเตือน (r2 L9 — เตือนเท่านั้น ไม่บล็อก · [U] = โปรดตรวจกับผู้เชี่ยวชาญ) — ข้อความเดียวกับ hr.run2.warn* ในไฟล์ข้อความ */
+export const RUN2_WARN = {
+  capRaised: "เพดานหักค่าเสียหายเกิน 10% ต่อประเภท หรือรวมเกิน 20% ของค่าจ้างงวดนั้น — ม.76 พ.ร.บ.คุ้มครองแรงงาน ให้เกินได้เฉพาะเมื่อลูกจ้างยินยอมเป็นหนังสือ (ม.77)",
+  capNeedsConsent: "รายการนี้ยังไม่มีหนังสือยินยอมของลูกจ้าง จึงหักได้ไม่เกินเพดานตามกฎหมาย (10% ต่อประเภท · 20% รวม) — ส่วนที่เหลือยกไปงวดถัดไป",
+  advance: "เงินเบิกค่าจ้างล่วงหน้าหักคืนจากค่าจ้างงวดนี้ได้ไม่เกินยอดสุทธิ — โปรดตรวจกับนักบัญชี/ที่ปรึกษาแรงงาน",
+  ssoMin: "ค่าจ้างงวดนี้ต่ำกว่าฐานขั้นต่ำประกันสังคม ระบบจึงคิดเงินสมทบจากฐานขั้นต่ำตามกฎกระทรวง",
+  shopHoliday: "วันปิดร้านไม่ใช่วันหยุดตามประเพณีที่ร้านประกาศ ลูกจ้างรายวัน/รายชั่วโมงจึงไม่ได้ค่าจ้างวันหยุด — โปรดตรวจกับที่ปรึกษาแรงงาน",
+  divisor30: "ระบบคิดค่าจ้างตามสัดส่วนด้วยการหาร 30 — กฎหมายไม่ได้กำหนดตัวหารไว้ โปรดตรวจกับนักบัญชี",
+  receivable: "ยอดหักที่ยังเก็บไม่ได้ของพนักงานที่ออกงวดนี้ ระบบไม่หักจากค่าจ้างงวดสุดท้ายเกินเพดาน และบันทึกเป็นลูกหนี้พนักงาน",
+  consentHelp: "ทำเครื่องหมายเมื่อมีหนังสือยินยอมให้หักรายการนี้ที่ลูกจ้างลงชื่อแล้ว (ม.77) · การหักค่าเสียหายตาม ม.76(4) ใช้กับความเสียหายที่ลูกจ้างทำโดยจงใจหรือประมาทเลินเล่ออย่างร้ายแรง — โปรดตรวจกับที่ปรึกษาแรงงาน",
+  ssoCommission: "ระบบนับค่าคอมมิชชันเป็นค่าจ้างฐานประกันสังคมตามตารางกฎหมาย — โปรดตรวจกับสำนักงานประกันสังคม/นักบัญชี",
+  hourlyHoliday: "ค่าจ้างวันหยุดของลูกจ้างรายชั่วโมงคิดตามชั่วโมงทำงานปกติของร้าน — โปรดตรวจกับที่ปรึกษาแรงงาน",
+} as const;
+const ENGINE_VERSION_TH = "รุ่นเครื่องคิดเงินเดือนต้องเป็น 1 หรือ 2";
+const ENGINE_FAILED_TH = "บันทึกรุ่นเครื่องคิดเงินเดือนไม่สำเร็จ — กรุณาลองอีกครั้ง";
+const PAYROLL_SETTINGS_KEY = "hrPayroll";
+const ENGINE_TX_OPTS = { maxWait: 20_000, timeout: 30_000 } as const;
+
+/** ค่าตั้งรุ่นเครื่องของร้าน (AppSystem.settings.hrPayroll) — คีย์หาย/ผิดรูป/ผิดช่วง = ค่าตั้งต้นของคีย์นั้น (รุ่น 1 · 10 % · 20 %) */
+export type PayrollEngine = { engineVersion: 1 | 2; catCapBp: number; totalCapBp: number };
+const objOf = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? { ...(v as Record<string, unknown>) } : {});
+const capBpOk = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= 10_000;
+export function payrollEngineOf(settings: unknown): PayrollEngine {
+  const o = objOf(objOf(settings)[PAYROLL_SETTINGS_KEY]);
+  return {
+    engineVersion: o.engineVersion === 2 ? 2 : 1,
+    catCapBp: capBpOk(o.catCapBp) ? o.catCapBp : RUN_V2_DEFAULTS.catCapBp,
+    totalCapBp: capBpOk(o.totalCapBp) ? o.totalCapBp : RUN_V2_DEFAULTS.totalCapBp,
+  };
+}
+async function payrollEngineIn(db: Pick<Prisma.TransactionClient, "appSystem">, ctx: Ctx): Promise<PayrollEngine> {
+  const sys = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
+  return payrollEngineOf(sys?.settings);
+}
+export async function getPayrollEngine(ctx: Ctx): Promise<PayrollEngine> {
+  return payrollEngineIn(tenantDb({ tenantId: ctx.tenantId }) as unknown as Pick<Prisma.TransactionClient, "appSystem">, ctx);
+}
+
+export type PayrollEngineViewer = { role: string; userId?: string | null };
+export type SetPayrollEngineResult = { ok: true; engine: PayrollEngine; warnings: string[] } | { ok: false; code: "ENGINE_OWNER" | "BAD_VERSION" | "CAP_RANGE" | "LAW_MISSING" | "LAW_AMBIGUOUS" | "LAW_BAD_DAY" | "FAILED"; reason: string };
+/**
+ * R3: เปลี่ยนรุ่นเครื่อง/เพดานหักของร้าน — เจ้าของร้านเท่านั้น · เพดานจำนวนเต็ม 0–10000 bp (เกิน 10 %/20 % บันทึกได้ + คำเตือน ม.76/77) ·
+ * รุ่น 2 ต้องมีชุดกฎหมาย ACTIVE ครบ ณ วันนี้ (เวลาไทย) ไม่งั้น LAW_MSG · ล็อก hr:clockpolicy:<ระบบ> (ไม่ทับค่าตั้งอื่น) · ประวัติ hr.payroll.engine ·
+ * รอบที่สร้างแล้วคงรุ่นของตัวเองตลอดไป (engineVersion บนแถวรอบ)
+ */
+export async function setPayrollEngine(
+  ctx: Ctx,
+  viewer: PayrollEngineViewer,
+  input: { engineVersion: unknown; catCapBp?: unknown; totalCapBp?: unknown },
+  opts: { now?: Date } = {},
+): Promise<SetPayrollEngineResult> {
+  if (!viewer || viewer.role !== "OWNER") return { ok: false, code: "ENGINE_OWNER", reason: RUN2_TEXT.engineOwner };
+  const version = input?.engineVersion;
+  if (version !== 1 && version !== 2) return { ok: false, code: "BAD_VERSION", reason: ENGINE_VERSION_TH };
+  for (const c of [input.catCapBp, input.totalCapBp]) if (c !== undefined && !capBpOk(c)) return { ok: false, code: "CAP_RANGE", reason: RUN2_TEXT.capRange };
+  const now = opts.now ?? new Date();
+  const out = await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0))`;
+    const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
+    if (!sys) return { ok: false as const, code: "FAILED" as const, reason: ENGINE_FAILED_TH };
+    if (version === 2) {
+      const law = await loadLawSet(lawDayOf(now), tx);
+      if (!law.ok) return { ok: false as const, code: law.code, reason: LAW_MSG[law.code] };
+    }
+    const before = payrollEngineOf(sys.settings);
+    const after: PayrollEngine = {
+      engineVersion: version,
+      catCapBp: (input.catCapBp as number | undefined) ?? before.catCapBp,
+      totalCapBp: (input.totalCapBp as number | undefined) ?? before.totalCapBp,
+    };
+    const base = objOf(sys.settings);
+    base[PAYROLL_SETTINGS_KEY] = { ...objOf(base[PAYROLL_SETTINGS_KEY]), ...after };
+    const r = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: base as Prisma.InputJsonValue } });
+    if (r.count !== 1) return { ok: false as const, code: "FAILED" as const, reason: ENGINE_FAILED_TH };
+    return { ok: true as const, before, after };
+  }, ENGINE_TX_OPTS);
+  if (!out.ok) return out;
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: viewer.userId ? "USER" : "SYSTEM",
+    actorId: viewer.userId ?? null,
+    action: "hr.payroll.engine",
+    targetType: "AppSystem",
+    targetId: ctx.systemId,
+    before: out.before,
+    after: out.after,
+  });
+  const warnings = out.after.catCapBp > RUN_V2_DEFAULTS.catCapBp || out.after.totalCapBp > RUN_V2_DEFAULTS.totalCapBp ? [RUN2_WARN.capRaised] : [];
+  return { ok: true, engine: out.after, warnings };
+}
+// ◂ HR H3.4
