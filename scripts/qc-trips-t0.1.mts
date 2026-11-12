@@ -840,7 +840,7 @@ try {
     eq([is("W01"), is("W46"), is("W47"), is("DEPOSIT_RETURN_DAYS")], [true, true, false, false], "isTourRuleId");
   });
   await st("S-12", "ไม่แตะ POS · โรงแรม · หอ · จองคิว · defs/rooms · defs/booking · legal/th-rental-2568 · seed/ฟิกซ์เจอร์ P0.1", () => {
-    const ch = changedFiles(["src/lib/modules/pos", "src/lib/modules/hotel", "src/lib/modules/dorm", "src/lib/modules/booking", "src/lib/core/settings/defs/rooms.ts", "src/lib/core/settings/defs/booking.ts", "src/lib/core/settings/legal/th-rental-2568.ts", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts"]); // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย.): เอา qc-trips-p0.1.mts ออก — ผู้คุมแก้ไฟล์นั้นเอง (cast env)
+    const ch = changedFiles(["src/lib/modules/pos", "src/lib/modules/hotel", "src/lib/modules/dorm", "src/lib/modules/booking", "src/lib/core/settings/defs/rooms.ts", "src/lib/core/settings/defs/booking.ts", "src/lib/core/settings/legal/th-rental-2568.ts"]); // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย. รอบ 2): seed/ฟิกซ์เจอร์ถูกขยายโดย T0.2+ ตามใบสั่ง — เอาออกจากรายการ · เดิม: ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย.): เอา qc-trips-p0.1.mts ออก — ผู้คุมแก้ไฟล์นั้นเอง (cast env)
     ok(ch.length === 0, `แตะ: ${ch.join(", ")}`);
   });
 

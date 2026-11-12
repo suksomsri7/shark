@@ -146,6 +146,7 @@ const A = FX.SHOP_AQUARIUM;
   eqv("C-2", "หน่วย: อันดามันไดฟ์ BOOKING · อควาเรียม TICKET (ร้านละ 1)", units.map((u) => [u.tenantId, u.type, u.slug]), [
     [A.tenant.id, "TICKET", "andaman-aquarium"],
     [D.tenant.id, "BOOKING", "andaman-dive"],
+    [D.tenant.id, "TRIPS", "andaman-dive-trips"], // ORACLE-EDIT C-2 (ผู้คุม 12 พ.ย.): หน่วย TRIPS จาก seed ของ T0.2
   ]);
   const ms = await prisma.membership.findMany({ where: { tenantId: { in: [D.tenant.id, A.tenant.id] } }, orderBy: { id: "asc" }, select: { userId: true, tenantId: true, role: true, permissions: true, acceptedAt: true } });
   eqv("C-3", "ผู้ใช้ร้านละ 2 (เจ้าของ OWNER + พนักงาน STAFF) · ยอมรับแล้ว", ms.map((m) => [m.userId, m.role, !!m.acceptedAt]), [...A.users, ...D.users].sort((x, y) => x.membershipId.localeCompare(y.membershipId)).map((u) => [u.userId, u.role, true]));

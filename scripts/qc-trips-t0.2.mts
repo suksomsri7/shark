@@ -528,7 +528,7 @@ try {
     const c = await g();
     eq([b.paxPrices, c.paxPrices, c.passThrough], [{ ADULT: 65_000, CHILD: 30_000, INFANT: 0 }, null, true], "แก้/null");
     const cam = asArr((await getP(P1)).extras).find((x) => x.kind === "EQUIPMENT");
-    eq(cam?.paxPrices ?? "ไม่มีช่อง", null, "กล้อง paxPrices");
+    eq(cam ? cam.paxPrices : "ไม่มีช่อง", null, "กล้อง paxPrices"); // ORACLE-EDIT P-11 (ผู้คุม 12 พ.ย.): `null ?? "…"` ไม่มีทางได้ null
   });
 
   // ═══════════════ I. ค่าคงที่ ═══════════════

@@ -856,6 +856,10 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     actions: {
       "trips.settings.edit": "ตั้งค่าทัวร์",
       "trips.settings.money": "ตั้งค่าทัวร์เรื่องเงิน",
+      // TRIPS T0.2 ▸ สินค้า · ตัวเลือก · ประเภทคน · รายการเสริม · เนื้อหา ◂
+      "trips.product.view": "ดูสินค้าทัวร์",
+      "trips.product.edit": "แก้สินค้าทัวร์",
+      "trips.product.publish": "เปิด/ปิดขายและเก็บสินค้าทัวร์",
     },
   },
 ] as const;

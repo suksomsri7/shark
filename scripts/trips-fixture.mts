@@ -20,7 +20,7 @@ export type TripsTemplate = (typeof TRIPS_TEMPLATES)[number];
 export type Bp = number; // basis point
 export type Satang = number;
 export type MoneyLine = { label: string; qty: number; unitSatang: Satang; totalSatang: Satang };
-export type FixtureUnit = { id: string; type: "BOOKING" | "TICKET"; slug: string; name: string };
+export type FixtureUnit = { id: string; type: "BOOKING" | "TICKET" | "TRIPS"; slug: string; name: string };
 export type FixtureUser = { key: string; userId: string; membershipId: string; email: string; name: string; role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, boolean> };
 export type FixtureParty = { id: string; kind: "PERSON" | "COMPANY"; name: string; note: string };
 
@@ -40,13 +40,15 @@ export const TRIPS_ACCEPTED_AT = "2026-11-01T00:00:00+07:00";
 // ═══════════════ ร้าน 1: อันดามันไดฟ์ (ทัวร์ + Liveaboard) ═══════════════
 // slug "andaman-dive" = จอ 04ง/06 (shark.in.th/b/andaman-dive) · หน่วย BOOKING = ใกล้ที่สุดที่มีวันนี้ (ชนิดหน่วยทัวร์จริงมาใน T0.1)
 const DIVE_UNIT: FixtureUnit = { id: "tripsqc-unit-dive", type: "BOOKING", slug: "andaman-dive", name: "อันดามันไดฟ์" };
+// TRIPS T0.2 ▸ หน่วยที่สองของอันดามันไดฟ์ ชนิด TRIPS (ใบสั่ง T0.2 §7 · มติ §11 ข้อ 6) — หน่วย BOOKING เดิมคงไว้ · seed ไม่ลบ ◂
+const DIVE_TRIPS_UNIT: FixtureUnit = { id: "tripsqc-unit-dive-trips", type: "TRIPS", slug: "andaman-dive-trips", name: "อันดามันไดฟ์ ทัวร์" };
 export const SHOP_DIVE = {
   key: "dive",
   tenant: { id: "tripsqc-tenant-dive", slug: "andaman-dive", name: "อันดามันไดฟ์" },
   legalName: "บจก. อันดามันไดฟ์", // จอ 13ค
   template: "DIVE_SHOP" as TripsTemplate, // จอ 10/14 "แม่แบบ ร้านดำน้ำ"
   sells: ["TOUR", "LIVEABOARD"] as const,
-  units: { main: DIVE_UNIT },
+  units: { main: DIVE_UNIT, trips: DIVE_TRIPS_UNIT },
   lineOa: "@andamandive", // จอ 06/13
   embedAllowedDomain: "andamandive.com", // จอ 06
   customDomain: "book.andamandive.com", // จอ 06
@@ -570,6 +572,142 @@ export const TRIPS_FIXTURE_DISCREPANCIES = [
   "ตั๋วอควาเรียม: README ว่าเป็นร้านแยก แต่จอ 05/10 มี 'อควาเรียม ชุดตั๋ว' อยู่ในสัญญา PTD ของอันดามันไดฟ์ (TK-6911-0290) และจอ 15 (ร้านอันดามันไดฟ์) มีคำขอคืนตั๋ว TK-6911-0301",
   "ยกเลิก/คืน '2 การจอง' ในใบแจ้งยอดทั้งสองชุด = ยอดส่งร้านของการจอง 2 ผู้ใหญ่ 1 รายการพอดี (7,150 / 7,181.50)",
 ] as const;
+
+// ═══════════════ TRIPS T0.2 ▸ สินค้า 4 ตัวของจอ 16 (seed ผ่าน facade trips) ═══════════════
+// ข้อมูลล้วน · ตัวเลขอ้างจาก PRODUCT_RACHA / PRODUCT_PHIPHI / PRODUCT_DEEP3 / TRIP_SIMILAN (ไม่พิมพ์ซ้ำ)
+// ราชา: EN ยังไม่แปล 2 ส่วน (กำหนดการ · จุดนัดพบ) · ตัวเลือก "เหมาเรือส่วนตัว" = ขอราคาเท่านั้น ⇒ active=false (มติ §11 ข้อ 7)
+// ค่าอุทยาน: priceMinor = ผู้ใหญ่ + paxPrices ผู้ใหญ่/เด็ก (มติ §11 ข้อ 4) · ธงจาก T44 (ไม่ส่ง) · ทุกตัว ACTIVE
+export type SeedI18n = { th: string; en?: string };
+export type SeedExtra = {
+  kind: "PARK_FEE" | "EQUIPMENT" | "COURSE";
+  basis: "PER_PAX" | "PER_BOOKING";
+  mandatory: boolean;
+  priceMinor: Satang;
+  paxPrices: Record<string, Satang> | null;
+  name: SeedI18n;
+  note: SeedI18n | null;
+};
+export type SeedOption = { name: SeedI18n; durationMin: number | null; nights: number | null; active: boolean };
+export type SeedProduct = {
+  key: "racha" | "phiphi" | "deep3" | "similan";
+  slug: string;
+  productType: "TOUR" | "LIVEABOARD";
+  currency: "THB";
+  deepDive: boolean;
+  title: SeedI18n;
+  body: { summary: SeedI18n; itinerary: SeedI18n; includes: SeedI18n };
+  meeting: SeedI18n;
+  disclosure: { accommodationMeals: SeedI18n; guides: SeedI18n };
+  options: SeedOption[];
+  extras: SeedExtra[];
+};
+const hhmm = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const PARK_NAME: SeedI18n = { th: "ค่าอุทยาน", en: "Marine park fee" };
+// ⚠️ เวลาออก/กลับของพีพี และดำน้ำลึก 3 ไดฟ์ = **ค่าฟิกซ์เจอร์ที่ผู้คุมรับรอง 12 พ.ย. (r2 ข้อ 10)** — ภาพจอ 16 ไม่ได้ระบุ
+//   พีพี 08:30 · 510 นาที (ถึง 17:00) · ดำน้ำลึก 3 ไดฟ์ 07:30 · 480 นาที (ถึง 15:30) · ราชา 08:00–16:30 = 510 มาจาก PRODUCT_RACHA.time (จอ 16)
+//   seed ของ T0.3 อ่านระยะเวลาจากตัวเลือกที่ seed นี้สร้าง (ไม่ต้องแก้ทับ)
+export const TRIPS_SEED_OPTION_TIMES = {
+  phiphi: { start: "08:30", end: "17:00" },
+  deep3: { start: "07:30", end: "15:30" },
+} as const;
+export const TRIPS_SEED_PRODUCTS: readonly SeedProduct[] = [
+  {
+    key: "racha",
+    slug: "racha-yai-day-trip",
+    productType: "TOUR",
+    currency: "THB",
+    deepDive: false,
+    title: { th: PRODUCT_RACHA.name, en: "Racha Yai Island Day Trip" },
+    body: {
+      summary: { th: "ดำน้ำตื้นชมปะการังเกาะราชาใหญ่ 3 จุด พร้อมอาหารกลางวันบนเกาะ", en: "Snorkel three reef spots around Racha Yai with lunch on the island" },
+      itinerary: { th: `${PRODUCT_RACHA.time.start} รับที่โรงแรม · ออกจาก${SHOP_DIVE.pier} · ดำน้ำตื้น 3 จุด · อาหารกลางวัน · ${PRODUCT_RACHA.time.end} กลับถึงท่า` },
+      includes: { th: "รถรับส่ง · เรือ · อุปกรณ์ดำน้ำตื้น · อาหารกลางวัน · ประกันอุบัติเหตุ", en: "Transfer · boat · snorkel gear · lunch · accident insurance" },
+    },
+    meeting: { th: `${SHOP_DIVE.pier} หรือรับที่โรงแรมในโซน · เตรียมชุดว่ายน้ำ ครีมกันแดด ผ้าเช็ดตัว` },
+    disclosure: { accommodationMeals: { th: "ไม่ค้างคืน · อาหารกลางวัน 1 มื้อ" }, guides: { th: "ไกด์ 2 คนต่อรอบ" } },
+    options: [
+      { name: { th: "ร่วมกลุ่ม", en: "Join-in group" }, durationMin: hhmm(PRODUCT_RACHA.time.end) - hhmm(PRODUCT_RACHA.time.start), nights: null, active: true },
+      { name: { th: "เหมาเรือส่วนตัว", en: "Private charter" }, durationMin: null, nights: null, active: false },
+    ],
+    extras: [
+      {
+        kind: "PARK_FEE",
+        basis: "PER_PAX",
+        mandatory: true,
+        priceMinor: PRODUCT_RACHA.parkAdultSatang,
+        paxPrices: { ADULT: PRODUCT_RACHA.parkAdultSatang, CHILD: PRODUCT_RACHA.parkChildSatang },
+        name: PARK_NAME,
+        note: null,
+      },
+      { kind: "EQUIPMENT", basis: "PER_BOOKING", mandatory: false, priceMinor: PRODUCT_RACHA.extras.camera.satang, paxPrices: null, name: { th: PRODUCT_RACHA.extras.camera.name, en: "Underwater camera rental" }, note: null },
+      {
+        kind: "COURSE",
+        basis: "PER_PAX",
+        mandatory: false,
+        priceMinor: PRODUCT_RACHA.extras.introDive.satang,
+        paxPrices: null,
+        name: { th: PRODUCT_RACHA.extras.introDive.name, en: "Discover scuba diving (1 dive)" },
+        note: { th: `อายุ ${PRODUCT_RACHA.extras.introDive.minAge} ปีขึ้นไป · ครูฝึก 1:2` },
+      },
+    ],
+  },
+  {
+    key: "phiphi",
+    slug: "phiphi-khai-speedboat",
+    productType: "TOUR",
+    currency: "THB",
+    deepDive: false,
+    title: { th: PRODUCT_PHIPHI.name, en: "Phi Phi + Khai Islands by Speedboat" },
+    body: {
+      summary: { th: "สปีดโบ๊ตเที่ยวเกาะพีพีและเกาะไข่ ดำน้ำตื้นและแวะชายหาด", en: "Speedboat to Phi Phi and Khai islands with snorkeling and beach stops" },
+      itinerary: { th: "ออกจากท่าเรือ · อ่าวมาหยา · ดำน้ำตื้น · อาหารกลางวัน · เกาะไข่ · กลับท่า", en: "Depart pier · Maya Bay · snorkeling · lunch · Khai Island · return" },
+      includes: { th: "รถรับส่ง · สปีดโบ๊ต · อุปกรณ์ดำน้ำตื้น · อาหารกลางวัน", en: "Transfer · speedboat · snorkel gear · lunch" },
+    },
+    meeting: { th: `${SHOP_DIVE.pier} หรือรับที่โรงแรมในโซน`, en: "Chalong Pier or hotel pickup within the zone" },
+    disclosure: { accommodationMeals: { th: "ไม่ค้างคืน · อาหารกลางวัน 1 มื้อ", en: "No overnight · 1 lunch" }, guides: { th: "ไกด์ประจำเรือ", en: "Boat guide" } },
+    options: [
+      { name: { th: "ร่วมกลุ่ม", en: "Join-in group" }, durationMin: hhmm(TRIPS_SEED_OPTION_TIMES.phiphi.end) - hhmm(TRIPS_SEED_OPTION_TIMES.phiphi.start), nights: null, active: true },
+    ],
+    extras: [],
+  },
+  {
+    key: "deep3",
+    slug: "racha-noi-3-dives",
+    productType: "TOUR",
+    currency: "THB",
+    deepDive: true,
+    title: { th: PRODUCT_DEEP3.name, en: "3 Dives at Racha Noi" },
+    body: {
+      summary: { th: "ดำน้ำลึก 3 ไดฟ์ที่เกาะราชาน้อย สำหรับนักดำน้ำที่มีบัตร", en: "Three dives at Racha Noi for certified divers" },
+      itinerary: { th: "ออกจากท่า · ไดฟ์ 1 · ไดฟ์ 2 · อาหารกลางวัน · ไดฟ์ 3 · กลับท่า", en: "Depart · dive 1 · dive 2 · lunch · dive 3 · return" },
+      includes: { th: "ถังและน้ำหนัก · ไกด์ดำน้ำ · อาหารกลางวัน", en: "Tanks and weights · dive guide · lunch" },
+    },
+    meeting: { th: `${SHOP_DIVE.pier} · นำบัตรนักดำน้ำมาด้วย`, en: "Chalong Pier · bring your dive certification card" },
+    disclosure: { accommodationMeals: { th: "ไม่ค้างคืน · อาหารกลางวัน 1 มื้อ", en: "No overnight · 1 lunch" }, guides: { th: `ไกด์ดำน้ำ 1:${PRODUCT_DEEP3.guideRatio}`, en: `Dive guide 1:${PRODUCT_DEEP3.guideRatio}` } },
+    options: [
+      { name: { th: "ร่วมกลุ่ม", en: "Join-in group" }, durationMin: hhmm(TRIPS_SEED_OPTION_TIMES.deep3.end) - hhmm(TRIPS_SEED_OPTION_TIMES.deep3.start), nights: null, active: true },
+    ],
+    extras: [],
+  },
+  {
+    key: "similan",
+    slug: "similan-4-nights",
+    productType: "LIVEABOARD",
+    currency: "THB",
+    deepDive: true,
+    title: { th: TRIP_SIMILAN.name, en: `Similan Liveaboard ${TRIP_SIMILAN.nights} Nights` },
+    body: {
+      summary: { th: `ล่องเรือดำน้ำ ${TRIP_SIMILAN.route} ${TRIP_SIMILAN.dives} ไดฟ์`, en: `Liveaboard to Similan · Koh Bon · Richelieu, ${TRIP_SIMILAN.dives} dives` },
+      itinerary: { th: `ขึ้นเรือ${TRIP_SIMILAN.embark.pier} ${TRIP_SIMILAN.embark.time} · ดำน้ำวันละ 3–4 ไดฟ์ · กลับเข้าฝั่งวันสุดท้าย`, en: `Board at Thap Lamu ${TRIP_SIMILAN.embark.time} · 3–4 dives a day · return on the last day` },
+      includes: { th: "ห้องพักบนเรือ · อาหารทุกมื้อ · ถังและน้ำหนัก · ไกด์ดำน้ำ", en: "Cabin · all meals · tanks and weights · dive guides" },
+    },
+    meeting: { th: `${TRIP_SIMILAN.embark.pier} เวลา ${TRIP_SIMILAN.embark.time}`, en: `Thap Lamu Pier at ${TRIP_SIMILAN.embark.time}` },
+    disclosure: { accommodationMeals: { th: `ค้างบนเรือ ${TRIP_SIMILAN.nights} คืน · อาหารทุกมื้อ`, en: `${TRIP_SIMILAN.nights} nights on board · all meals` }, guides: { th: "ไกด์ดำน้ำประจำเรือ", en: "Onboard dive guides" } },
+    options: [{ name: { th: `${TRIP_SIMILAN.nights} คืน`, en: `${TRIP_SIMILAN.nights} nights` }, durationMin: null, nights: TRIP_SIMILAN.nights, active: true }],
+    extras: [{ kind: "PARK_FEE", basis: "PER_PAX", mandatory: true, priceMinor: TRIP_SIMILAN.parkPerPersonSatang, paxPrices: null, name: PARK_NAME, note: null }],
+  },
+];
+// ◂ TRIPS T0.2
 
 // ═══════════════ รวม ═══════════════
 export const TRIPS_FIXTURE = {
