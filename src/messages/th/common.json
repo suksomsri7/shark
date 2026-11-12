@@ -784,7 +784,9 @@
       "markRepaid": "คืนแล้ว",
       "reasonLabel": "เหตุผล (ไม่บังคับ)",
       "withdraw": "ถอนรายการ",
-      "withdrawApproved": "ถอน/คืนเงิน"
+      "withdrawApproved": "ถอน/คืนเงิน",
+      "mineTitle": "คำขอของฉัน (รออนุมัติ)",
+      "mineEmpty": "ไม่มีคำขอที่รออนุมัติ"
     }
   }
 }

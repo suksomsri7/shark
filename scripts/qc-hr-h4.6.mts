@@ -110,7 +110,7 @@ S12.3|R2|M|R|[static] outbox-consumers: one marked hunk · labels one hunk
 S13.1|R11|M|R|[static] actions "use server": 2 wrappers · requireTenant · no now
 S13.2|UI|M|R|[static] ui testids · tokens · 44 px · payroll page mounts · source chip
 S13.3|UI|m|R|[static] inventory rows · hr.stock th=en
-S14.1|frozen|C|G|[static] payroll-rules sha · payroll.ts/privacy.ts/inventory/**/inventory.prisma unchanged vs base
+S14.1|frozen|C|G|[static] payroll-rules sha · privacy.ts/inventory/**/inventory.prisma unchanged vs base · payroll.ts only marked HR H4.6 additions
 S14.2|frozen|C|G|[db] manual requestAdjustment ⇒ sourceType/sourceRef null · consumeBatch same key ⇒ same movement
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
@@ -227,10 +227,14 @@ function runStatic(): void {
     ck("S13.3", { rows: [...UI_IDS, ...UI_DYN, "hr-pay-src-stock"].every((t) => rowIds.has(t)), meta: rows.length > 0 && rows.every((x) => x.wo === "H4.6" && x.oracle === "qc-hr-h4.6"), ...msgParity(th, en, []) }, "rows · th=en", `rows=${rows.length} th=${Object.keys(th).length}`);
   }
   {
-    const files = [F.payroll, F.privacy, F.invSchema, "src/lib/modules/inventory"];
+    // ORACLE-EDIT (controller 12 Nov · S-20/F1-10 ruling): payroll.ts may change only by marked `HR H4.6` pure-addition hunks (the single writer of
+    //   HrPayAdjustment stays payroll.ts) — every other frozen file must stay unchanged · n/a once H4.6 is in the base
+    const files = [F.privacy, F.invSchema, "src/lib/modules/inventory"];
     const d = IN_BASE ? "n/a · H4.6 in base" : changedVsBase(BASE, files);
+    const ph = IN_BASE ? [] : diffHunks(BASE, F.payroll) ?? [];
+    const payOk = IN_BASE || ph.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H4\.6/.test(l)));
     const rules = sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA;
-    ck("S14.1", { rules, unchanged: IN_BASE || d === "unchanged" }, "sha · unchanged", `${rules ? "sha ok" : "sha ✗"} · ${d}`);
+    ck("S14.1", { rules, unchanged: IN_BASE || d === "unchanged", payrollAddOnly: payOk }, "sha · unchanged · payroll.ts marked additions only", `${rules ? "sha ok" : "sha ✗"} · ${d} · payroll.ts hunks=${ph.length}`);
   }
 }
 

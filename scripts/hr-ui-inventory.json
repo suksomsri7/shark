@@ -6549,6 +6549,56 @@
    "wo": "H4.6",
    "oracle": "qc-hr-h4.6",
    "note": "ชิปแหล่งที่มา + ต้องมีหนังสือยินยอม (ม.76/77)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request ที่ไม่ใช่ผู้ดูเงินเดือน — เฉพาะรายการที่ตัวเองยื่นซึ่งยังรออนุมัติ (ไม่มียอดเงิน)",
+   "roles": [
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "owner",
+    "payroll"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "testid": "hr-stock-mine",
+   "note": "คำขอของฉัน (รออนุมัติ) · ถอนได้ด้วย hr-stock-withdraw-*"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request ที่ไม่ใช่ผู้ดูเงินเดือน — เฉพาะรายการที่ตัวเองยื่นซึ่งยังรออนุมัติ (ไม่มียอดเงิน)",
+   "roles": [
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "owner",
+    "payroll"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "testid": "hr-stock-mine-row-*",
+   "note": "* = chargeId · ชื่อพนักงาน · ชนิด · ของ/รายละเอียด · งวด — ไม่มียอด"
   }
  ]
 }

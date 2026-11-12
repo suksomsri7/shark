@@ -11,7 +11,7 @@
 //     ล้มระหว่างสองขั้น = ลองใหม่ด้วยคีย์เดิมแล้วจบฝั่ง HR (movement เดิม · ไม่ตัดซ้ำ) · ที่ไม่มีใครลองใหม่ = หนี้ D1 (ตัวกวาด)
 //   • คลังไม่เห็นข้อมูลเงิน: movement = sourceModule "HR" · refType "HrStockCharge" · refId = requestKey · ไม่มีพนักงาน/ยอด
 //   • ถอน/คืนเงิน (มติผู้คุม Q8 ทาง 2 — ไม่มีแถวเงินได้ ไม่แตะไฟล์แช่แข็ง): รออนุมัติ = ไม่อนุมัติ (REJECTED) · อนุมัติแล้วยังไม่เข้ารอบ =
-//     ยกเลิกในที่ (APPROVED→REJECTED ใต้ล็อกงวด) · เข้ารอบร่าง = ทางลบเดิม cancelAdjustment (คำนวณรอบร่างใหม่) · เข้ารอบอนุมัติ/จ่ายแล้ว =
+//     ยกเลิกในที่ (APPROVED→REJECTED ใต้ล็อกงวด) · เข้ารอบร่าง = ทางลบเดิมของรอบร่าง (คำนวณรอบร่างใหม่) · เข้ารอบอนุมัติ/จ่ายแล้ว =
 //     ไม่แตะเงินเดือน บันทึก "ค้างคืน" (refundOwedSatang) ให้คืนนอกเงินเดือน แล้วกด "คืนแล้ว" (เจ้าของ/ผู้อนุมัติเงินเดือน) · ไม่คืนของเข้าคลัง (Q9)
 //   • เงิน = สตางค์จำนวนเต็ม ไม่ปัดที่ใด · ประวัติ (audit) = id ล้วน ไม่มียอด/เลขหนังสือยินยอม · outbox payload = { chargeId, employeeId }
 //   • opts.now ใช้ได้เฉพาะข้อสอบ — action/หน้าไม่ส่ง ◂
@@ -22,7 +22,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { thaiDateKey } from "@/lib/ui/date";
 import { consumeBatch, getItem, listItems, searchItems } from "@/lib/modules/inventory";
-import { cancelAdjustment } from "./payroll";
+import { cancelStockChargeAdjustmentInTx, cancelStockChargeDraftAdjustment, writeStockChargeAdjustmentInTx } from "./payroll"; // ทางเขียนเดียวของ HrPayAdjustment อยู่ที่ payroll.ts
 import { employeeOfUser } from "./service";
 import { hrScopeOf, unitWhere } from "./scope";
 
@@ -31,6 +31,8 @@ type Tx = Prisma.TransactionClient;
 /** ผู้ดู = HrViewer ของ hr/privacy (role · unitAccess · permissions · userId) */
 export type StockViewer = { role: MembershipCtx["role"]; unitAccess: unknown; permissions: unknown; userId?: string | null };
 export type StockChargeKind = "ISSUE" | "DAMAGE";
+/** แหล่งที่มาของรายการหัก (payroll.ts เขียนลงแถว HrPayAdjustment ตามนี้ทั้งก้อน) */
+export type StockAdjustmentSource = { sourceType: "INVENTORY_ISSUE"; sourceRef: string };
 export type StockChargeInput = {
   requestKey?: unknown;
   employeeId?: unknown;
@@ -112,10 +114,6 @@ const uidOf = (v: StockViewer | null | undefined): string => (v && typeof v.user
 const lock = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
 const unitQ = (unitId: string | null) => (unitId ? { unitId } : {});
 const monthOf = (now: Date): string => thaiDateKey(now).slice(0, 7);
-function nextMonth(k: string): string {
-  const [y, m] = k.split("-").map(Number) as [number, number];
-  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
-}
 /** ผู้อนุมัติรายการเงินเดือน = OWNER หรือ (hr.payadjust.approve ในสาขาของพนักงาน ∧ ผู้ดูเงินเดือน) */
 function isPayApprover(m: MembershipCtx, unitId: string | null): boolean {
   return m.role === "OWNER" || (evaluate(m, { module: "hr", action: "hr.payadjust.approve", ...unitQ(unitId) }) && canViewPayroll(m));
@@ -300,15 +298,14 @@ export async function requestStockCharge(ctx: Ctx, viewer: StockViewer, input: S
         const a = await tx.hrPayAdjustment.findFirst({ where: { id: ex.adjustmentId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
         return { chargeId: ex.id, adjustmentId: ex.adjustmentId, periodKey: a?.periodKey ?? "", replayed: true };
       }
-      const periodKey = await targetPeriodInTx(tx, ctx, monthOf(now));
       const note = `${kind === "ISSUE" ? "เบิกของ" : "ค่าเสียหาย"}: ${n.itemName ?? n.description ?? ""}${qty !== null ? ` ×${qty}` : ""}`;
-      const adj = await tx.hrPayAdjustment.create({
-        data: {
-          tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, periodKey, kind: "DEDUCTION", amountSatang: amount, note,
-          requestedById: uid, sourceType: "INVENTORY_ISSUE", sourceRef: `hrstock:${key}`,
-        },
-        select: { id: true },
+      const w = await writeStockChargeAdjustmentInTx(tx, ctx, {
+        employeeId: emp.id, amountSatang: amount, note, requestedById: uid, fromPeriod: monthOf(now),
+        source: { sourceType: "INVENTORY_ISSUE", sourceRef: `hrstock:${key}` },
       });
+      if (!w.ok) throw new StockRefusal(w.code === "EMPLOYEE" ? T.ended : w.code === "DUPLICATE" ? T.replayDiff : w.code === "NO_PERIOD" ? T.noPeriod : T.amount);
+      const adj = { id: w.id };
+      const periodKey = w.periodKey;
       const ch = await tx.hrStockCharge.create({
         data: {
           tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, kind, requestKey: key, adjustmentId: adj.id,
@@ -337,20 +334,6 @@ export async function requestStockCharge(ctx: Ctx, viewer: StockViewer, input: S
 async function replayOf(ctx: Ctx, c: ChargeRow): Promise<RequestStockChargeResult> {
   const a = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id: c.adjustmentId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
   return { ok: true, chargeId: c.id, adjustmentId: c.adjustmentId, movementId: c.movementId, periodKey: a?.periodKey ?? "", amountSatang: c.amountSatang, replayed: true };
-}
-
-/** เดือนแรก ≥ `from` ที่ยังไม่มีรอบจ่ายที่มีผล (REVERSED ไม่จอง) — ล็อกงวดด้วยคีย์เดียวกับ payroll.ts แล้วตรวจซ้ำ · ไม่พบใน 240 เดือน = noPeriod */
-async function targetPeriodInTx(tx: Tx, ctx: Ctx, from: string): Promise<string> {
-  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, status: { not: "REVERSED" } }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
-  let k = from;
-  for (let i = 0; i < 240; i += 1, k = nextMonth(k)) {
-    if (runs.has(k)) continue;
-    await lock(tx, `hr:payroll:run:${ctx.systemId}:${k}`);
-    const taken = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: k, status: { not: "REVERSED" } }, select: { id: true } });
-    if (!taken) return k;
-  }
-  throw new StockRefusal(T.noPeriod);
 }
 
 // ═══════════════════════════ ถอน / คืนเงิน (R7 · มติผู้คุม Q8 ทาง 2) ═══════════════════════════
@@ -388,7 +371,7 @@ export async function withdrawStockCharge(ctx: Ctx, viewer: StockViewer, chargeI
   const { charge, emp, m, uid } = g;
   const approver = isPayApprover(m, emp.unitId);
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  type Step = { outcome: WithdrawOutcome | "CANCELLING"; refund?: number; runId?: string };
+  type Step = { outcome: WithdrawOutcome | "CANCELLING"; refund?: number };
   let step: Step;
   try {
     step = await tenantDb(ctx).$transaction(async (t) => {
@@ -408,31 +391,27 @@ export async function withdrawStockCharge(ctx: Ctx, viewer: StockViewer, chargeI
         });
         if (n.count !== 1) throw new StockRefusal(T.withdrawn);
       };
-      if (resuming) return { outcome: "CANCELLING" as const, runId: adj?.runId ?? undefined };
-      if (!adj || adj.status === "REJECTED") {
-        await mark("NOOP");
-        return { outcome: "NOOP" as const };
+      if (resuming) return { outcome: "CANCELLING" as const };
+      // ทางเขียนของ payroll.ts: ยังไม่เข้ารอบ = ไม่อนุมัติ/ยกเลิกในที่ · รอบร่าง = ทางลบเดิมหลัง commit · รอบอนุมัติ/จ่าย = ไม่แตะเงินเดือน
+      const r = await cancelStockChargeAdjustmentInTx(tx, ctx, cur.adjustmentId, { userId: uid, onlyPending: !approver }, now);
+      switch (r.outcome) {
+        case "NONE":
+          await mark("NOOP");
+          return { outcome: "NOOP" as const };
+        case "REJECTED":
+        case "CANCELLED":
+          await mark(r.outcome);
+          return { outcome: r.outcome };
+        case "DRAFT_BOUND":
+          await mark("CANCELLING");
+          return { outcome: "CANCELLING" as const };
+        case "RUN_LOCKED":
+          // รอบอนุมัติ/จ่าย (หรือกลับรายการ) แล้ว — ค้างคืนนอกเงินเดือน = ยอดที่หักไป
+          await mark("REFUND_OWED", { refundOwedSatang: cur.amountSatang });
+          return { outcome: "REFUND_OWED" as const, refund: cur.amountSatang };
+        default:
+          throw new StockRefusal(T.changed);
       }
-      if (!adj.runId) {
-        // รอ/อนุมัติแล้วแต่ยังไม่เข้ารอบ — ยกเลิกในที่ (guard สถานะ · ยังไม่เข้ารอบ · งวดเดิม) ใต้ล็อกงวด (สร้างรอบของงวดเดียวกันต่อคิว)
-        if (adj.status === "APPROVED") await lock(tx, `hr:payroll:run:${ctx.systemId}:${adj.periodKey}`);
-        const n = await tx.hrPayAdjustment.updateMany({
-          where: { ...scope, id: adj.id, status: adj.status, runId: null, periodKey: adj.periodKey },
-          data: { status: "REJECTED", decidedById: uid, decidedAt: now },
-        });
-        if (n.count !== 1) throw new StockRefusal(T.changed);
-        const outcome = adj.status === "PENDING" ? ("REJECTED" as const) : ("CANCELLED" as const);
-        await mark(outcome);
-        return { outcome };
-      }
-      const run = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: adj.runId }, select: { status: true, journalEntryId: true } });
-      if (run && run.status === "DRAFT" && !run.journalEntryId) {
-        await mark("CANCELLING");
-        return { outcome: "CANCELLING" as const, runId: adj.runId };
-      }
-      // รอบอนุมัติ/จ่าย (หรือกลับรายการ) แล้ว — ไม่แตะเงินเดือน: ค้างคืนนอกเงินเดือน = ยอดที่หักไป
-      await mark("REFUND_OWED", { refundOwedSatang: cur.amountSatang });
-      return { outcome: "REFUND_OWED" as const, refund: cur.amountSatang };
     }, TX_OPTS);
   } catch (e) {
     if (e instanceof StockRefusal) return refuse(e.message);
@@ -451,10 +430,10 @@ export async function withdrawStockCharge(ctx: Ctx, viewer: StockViewer, chargeI
   return outcome === "REFUND_OWED" ? { ok: true, outcome, refundOwedSatang: step.refund ?? 0 } : { ok: true, outcome };
 }
 
-/** รอบร่าง: ลบรายการด้วยทางเดิม (cancelAdjustment → คำนวณรอบร่างใหม่) แล้วปิดสถานะ · รอบเพิ่งอนุมัติระหว่างนั้น = ค้างคืนแทน · ล้ม = คง CANCELLING ให้ลองใหม่ */
+/** รอบร่าง: ลบรายการด้วยทางเดิมของรอบร่าง (payroll.ts → คำนวณรอบร่างใหม่) แล้วปิดสถานะ · รอบเพิ่งอนุมัติระหว่างนั้น = ค้างคืนแทน · ล้ม = คง CANCELLING ให้ลองใหม่ */
 async function finishDraftCancel(ctx: Ctx, chargeId: string, adjustmentId: string, uid: string, isOwner: boolean, now: Date): Promise<{ ok: true; step: { outcome: WithdrawOutcome; refund?: number } } | Fail> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  const del = await cancelAdjustment(ctx, adjustmentId, { userId: uid, isOwner });
+  const del = await cancelStockChargeDraftAdjustment(ctx, adjustmentId, { userId: uid, isOwner });
   return tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Tx;
     await lock(tx, `hr:stock:${ctx.systemId}:${chargeId}`);
@@ -463,13 +442,11 @@ async function finishDraftCancel(ctx: Ctx, chargeId: string, adjustmentId: strin
     if (cur.withdrawOutcome === "CANCELLED") return { ok: true as const, step: { outcome: "CANCELLED" as const } };
     if (cur.withdrawOutcome === "REFUND_OWED") return { ok: true as const, step: { outcome: "REFUND_OWED" as const, refund: cur.refundOwedSatang ?? cur.amountSatang } };
     if (cur.withdrawOutcome !== "CANCELLING") return refuse(T.withdrawn);
-    const adj = await tx.hrPayAdjustment.findFirst({ where: { ...scope, id: adjustmentId }, select: { runId: true, status: true } });
-    if (del.ok || !adj) {
+    if (del.ok) {
       await tx.hrStockCharge.updateMany({ where: { ...scope, id: chargeId, withdrawOutcome: "CANCELLING" }, data: { withdrawOutcome: "CANCELLED", withdrawnAt: now } });
       return { ok: true as const, step: { outcome: "CANCELLED" as const } };
     }
-    const run = adj.runId ? await tx.hrPayrollRun.findFirst({ where: { ...scope, id: adj.runId }, select: { status: true, journalEntryId: true } }) : null;
-    if (adj.status === "APPROVED" && run && (run.status !== "DRAFT" || run.journalEntryId)) {
+    if (del.runLocked) {
       await tx.hrStockCharge.updateMany({ where: { ...scope, id: chargeId, withdrawOutcome: "CANCELLING" }, data: { withdrawOutcome: "REFUND_OWED", refundOwedSatang: cur.amountSatang, withdrawnAt: now } });
       return { ok: true as const, step: { outcome: "REFUND_OWED" as const, refund: cur.amountSatang } };
     }
@@ -693,6 +670,34 @@ export async function myStockCharges(who: { tenantId: string; userId: string }):
       createdAt: r.createdAt.toISOString(),
     };
   });
+}
+
+// ═══════════════════════════ คำขอของฉัน (ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือน) ═══════════════════════════
+export type MyFiledStockCharge = { id: string; kind: StockChargeKind; employeeName: string; itemName: string | null; description: string | null; qty: number | null; periodKey: string; createdAt: string };
+/** รายการที่ "ฉันยื่น" ซึ่งยังรออนุมัติ (ถอนได้) — ผู้ถือคีย์ยื่นเท่านั้น (อื่น = null) · ขอบเขตสาขา · ไม่มียอดเงิน/ต้นทุน/เงินเดือน */
+export async function myFiledStockCharges(ctx: Ctx, viewer: StockViewer): Promise<MyFiledStockCharge[] | null> {
+  const uid = uidOf(viewer);
+  if (!uid || !canRequestStockCharge(viewer)) return null;
+  const scope = hrScopeOf({ role: viewer.role, unitAccess: viewer.unitAccess });
+  const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const db = tenantDb(ctx);
+  const rows = await db.hrStockCharge.findMany({
+    where: { ...sc, requestedById: uid, withdrawnAt: null, employee: { is: unitWhere(scope) } },
+    select: { id: true, kind: true, employeeId: true, adjustmentId: true, itemName: true, description: true, qty: true, createdAt: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 100,
+  });
+  if (rows.length === 0) return [];
+  const pending = new Map(
+    (await db.hrPayAdjustment.findMany({ where: { ...sc, id: { in: rows.map((r) => r.adjustmentId) }, status: "PENDING", runId: null }, select: { id: true, periodKey: true } })).map((a) => [a.id, a.periodKey]),
+  );
+  const names = new Map((await db.hrEmployee.findMany({ where: { ...sc, id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, name: true } })).map((e) => [e.id, e.name]));
+  return rows
+    .filter((r) => pending.has(r.adjustmentId))
+    .map((r) => ({
+      id: r.id, kind: r.kind as StockChargeKind, employeeName: names.get(r.employeeId) ?? "", itemName: r.itemName, description: r.description, qty: r.qty,
+      periodKey: pending.get(r.adjustmentId) ?? "", createdAt: r.createdAt.toISOString(),
+    }));
 }
 
 // ═══════════════════════════ ตัวเลือกของฟอร์ม (ชื่อเท่านั้น — ไม่มีต้นทุน/เงินเดือน) ═══════════════════════════

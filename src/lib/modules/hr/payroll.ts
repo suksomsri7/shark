@@ -8,6 +8,7 @@ import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1):
 import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจากตัวช่วยกลางของ HR (ไม่บวก +7 เองซ้ำ) ◂
 import { payrollItemsDigest, PAYROLL_DIGEST_SELECT } from "./payroll-digest";
 import { scopedEmployeeIds, type HrScope } from "./scope"; // HR H1.1 ▸ ขอบเขตสาขาของตัวอ่านรายการเพิ่ม/หัก ◂ // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
+import type { StockAdjustmentSource } from "./stock-charge"; // HR H4.6 ▸ ชนิดของแหล่งที่มา (type ล้วน — ไม่มีวงโหลด) ◂
 import {
   ssoContribution,
   monthlyWhtSatang,
@@ -1685,3 +1686,72 @@ export async function adjustmentsByIds(ctx: Ctx, ids: string[], opts: { tx?: unk
   return rows;
 }
 // ◂ HR H0.6
+
+// HR H4.6 ▸ ทางเขียนเดียวของรายการหักจากการเบิกของ/ค่าเสียหาย (ผู้เรียก: hr/stock-charge.ts เท่านั้น) — ส่วนเพิ่มล้วน ไม่แก้บรรทัดเดิมของไฟล์นี้
+//   ไฟล์นี้ยังเป็นที่เดียวที่เขียนแถว HrPayAdjustment (qc-hf-hr-privacy S-20 · F1-10) · ระบบไม่หักเอง: แถวเกิดเป็น PENDING เสมอ อนุมัติด้วย decideAdjustment เดิม
+//   (1) writeStockChargeAdjustmentInTx — ใน tx ของผู้เรียก (ถือล็อก hr:stock:<ระบบ>:<คีย์>): สตางค์จำนวนเต็ม > 0 · พนักงานยังทำงาน · แหล่งที่มาไม่ซ้ำ ·
+//       งวด = เดือนแรก ≥ fromPeriod ที่ยังไม่มีรอบที่มีผล (ล็อกงวดคีย์เดียวกับ createPayrollRun แล้วตรวจซ้ำ)
+//   (2) cancelStockChargeAdjustmentInTx — ยังไม่เข้ารอบ: ไม่อนุมัติ/ยกเลิกในที่ (guard สถานะ · runId IS NULL · งวดเดิม · ล็อกงวดเมื่ออนุมัติแล้ว) ·
+//       ผูกรอบร่าง = แจ้งให้ผู้เรียกใช้ (3) หลัง commit · ผูกรอบอนุมัติ/จ่าย/กลับรายการ = ปฏิเสธ (RUN_LOCKED — ผู้เรียกบันทึกค้างคืนนอกเงินเดือน)
+//   (3) cancelStockChargeDraftAdjustment — ผูกรอบร่าง: ส่งต่อทางลบเดิม cancelBoundDraftAdjustment (ลบ + คำนวณรอบร่างใหม่ใน tx ของมันเอง) ◂
+export type StockAdjustmentWrite = { employeeId: string; amountSatang: number; note: string; requestedById: string; fromPeriod: string; source: StockAdjustmentSource };
+export type StockAdjustmentWriteResult = { ok: true; id: string; periodKey: string } | { ok: false; code: "INVALID" | "EMPLOYEE" | "DUPLICATE" | "NO_PERIOD" };
+export async function writeStockChargeAdjustmentInTx(tx: Prisma.TransactionClient, ctx: Ctx, input: StockAdjustmentWrite): Promise<StockAdjustmentWriteResult> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  if (!Number.isSafeInteger(input.amountSatang) || input.amountSatang <= 0 || !PERIOD_RE.test(input.fromPeriod) || !input.requestedById) return { ok: false, code: "INVALID" };
+  const emp = await tx.hrEmployee.findFirst({ where: { ...scope, id: input.employeeId }, select: { active: true, employmentStatus: true } });
+  if (!emp || !emp.active || emp.employmentStatus === "ENDED") return { ok: false, code: "EMPLOYEE" };
+  const dup = await tx.hrPayAdjustment.findFirst({ where: { tenantId: ctx.tenantId, ...input.source }, select: { id: true } });
+  if (dup) return { ok: false, code: "DUPLICATE" };
+  const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+  let periodKey: string | null = runs.has(input.fromPeriod) ? nextRunlessPeriod(input.fromPeriod, runs) : input.fromPeriod;
+  for (let i = 0; periodKey && i < 240; i += 1) {
+    await lockRunPeriod(tx, ctx, periodKey);
+    const taken = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey, ...liveRunWhere() }, select: { id: true } });
+    if (!taken) break;
+    runs.add(periodKey);
+    periodKey = nextRunlessPeriod(periodKey, runs);
+  }
+  if (!periodKey || runs.has(periodKey)) return { ok: false, code: "NO_PERIOD" };
+  const row = await tx.hrPayAdjustment.create({
+    data: { ...scope, employeeId: input.employeeId, periodKey, kind: "DEDUCTION", amountSatang: input.amountSatang, note: input.note, requestedById: input.requestedById, ...input.source },
+    select: { id: true },
+  });
+  return { ok: true, id: row.id, periodKey };
+}
+export type StockCancelOutcome = "NONE" | "REJECTED" | "CANCELLED" | "DRAFT_BOUND" | "RUN_LOCKED" | "CHANGED";
+export async function cancelStockChargeAdjustmentInTx(
+  tx: Prisma.TransactionClient,
+  ctx: Ctx,
+  id: string,
+  actor: { userId: string; onlyPending?: boolean },
+  now: Date,
+): Promise<{ outcome: StockCancelOutcome }> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const row = await tx.hrPayAdjustment.findFirst({ where: { ...scope, id, sourceType: "INVENTORY_ISSUE" }, select: { id: true, status: true, runId: true, periodKey: true } });
+  if (!row || row.status === "REJECTED") return { outcome: "NONE" };
+  if (actor.onlyPending && row.status !== "PENDING") return { outcome: "CHANGED" };
+  if (!row.runId) {
+    if (row.status === "APPROVED") await lockRunPeriod(tx, ctx, row.periodKey);
+    const n = await tx.hrPayAdjustment.updateMany({
+      where: { ...scope, id: row.id, status: row.status, runId: null, periodKey: row.periodKey },
+      data: { status: "REJECTED", decidedById: actor.userId, decidedAt: now },
+    });
+    if (n.count !== 1) return { outcome: "CHANGED" };
+    return { outcome: row.status === "PENDING" ? "REJECTED" : "CANCELLED" };
+  }
+  const run = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: row.runId }, select: { status: true, journalEntryId: true } });
+  return { outcome: run && run.status === "DRAFT" && !run.journalEntryId ? "DRAFT_BOUND" : "RUN_LOCKED" };
+}
+export async function cancelStockChargeDraftAdjustment(ctx: Ctx, id: string, actor: PayrollActor): Promise<{ ok: boolean; reason?: string; runLocked?: boolean }> {
+  const row = await tenantDb(ctx).hrPayAdjustment.findFirst({
+    where: { id, sourceType: "INVENTORY_ISSUE" },
+    select: { id: true, employeeId: true, kind: true, amountSatang: true, status: true, periodKey: true, requestedById: true, decidedById: true, runId: true },
+  });
+  if (!row) return { ok: true }; // ถูกลบไปแล้ว (ทางลบเดิม/ลองซ้ำ)
+  if (!row.runId) return { ok: false, reason: RUN_CHANGED };
+  const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { systemId: ctx.systemId, id: row.runId }, select: { id: true, periodKey: true, status: true, journalEntryId: true } });
+  if (!run || run.status !== "DRAFT" || run.journalEntryId) return { ok: false, runLocked: true, reason: CANCEL_BOUND_APPROVED };
+  return cancelBoundDraftAdjustment(ctx, { ...row, kind: String(row.kind), status: String(row.status) }, { id: run.id, periodKey: run.periodKey }, actor);
+}
+// ◂ HR H4.6

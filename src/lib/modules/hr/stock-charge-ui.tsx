@@ -8,7 +8,7 @@ import { requireTenant } from "@/lib/core/context";
 import { formatBaht } from "@/lib/ui/money";
 import { thaiDateKey } from "@/lib/ui/date";
 import { hrViewerOf } from "./privacy";
-import { STOCK_MSG, canSeeStockCharges, canTakeStock, listStockCharges, stockFormOptions, stockPeriodCapFlags, type StockChargeItem } from "./stock-charge";
+import { STOCK_MSG, canSeeStockCharges, canTakeStock, listStockCharges, myFiledStockCharges, stockFormOptions, stockPeriodCapFlags, type StockChargeItem } from "./stock-charge";
 import { markStockRefundRepaidAction, requestStockChargeAction, withdrawStockChargeAction } from "./stock-charge-actions";
 
 const muted = "text-[color:var(--color-muted)]";
@@ -31,6 +31,8 @@ export async function StockChargeSection({ systemId, msg, q }: { systemId: strin
   const today = thaiDateKey(new Date());
   const take = canTakeStock(viewer);
   const payrollViewer = canSeeStockCharges(viewer);
+  // ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือน: เห็นเฉพาะคำขอที่ตัวเองยื่นซึ่งยังรออนุมัติ (ไม่มียอดเงิน) + ถอนได้
+  const mine = !payrollViewer && opts ? await myFiledStockCharges(ctx, viewer) : null;
 
   return (
     <section id="hr-stock" data-testid="hr-stock" className="flex flex-col gap-3 rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
@@ -148,6 +150,35 @@ export async function StockChargeSection({ systemId, msg, q }: { systemId: strin
             </div>
           </form>
         </>
+      )}
+
+      {mine && (
+        <div className="flex flex-col gap-2 border-t border-[color:var(--color-line)] pt-3" data-testid="hr-stock-mine">
+          <h3 className="text-sm font-semibold">{t("mineTitle")}</h3>
+          {mine.length === 0 ? (
+            <p className={`text-xs ${muted}`}>{t("mineEmpty")}</p>
+          ) : (
+            mine.map((c) => (
+              <div key={c.id} data-testid={`hr-stock-mine-row-${c.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--color-line)] px-3 py-2">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm">
+                    {c.employeeName} · {t(`kind.${c.kind}`)} · {`${c.itemName ?? c.description ?? ""}${c.qty !== null ? ` ×${c.qty}` : ""}`}
+                  </span>
+                  <span className={`block text-xs ${muted}`}>
+                    {t("period", { period: c.periodKey })} · {t("status.PENDING")}
+                  </span>
+                </span>
+                <form action={withdrawStockChargeAction} className="flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="systemId" value={systemId} />
+                  <input type="hidden" name="chargeId" value={c.id} />
+                  <button type="submit" className={ghost} data-testid={`hr-stock-withdraw-${c.id}`}>
+                    {t("withdraw")}
+                  </button>
+                </form>
+              </div>
+            ))
+          )}
+        </div>
       )}
 
       {list && (
