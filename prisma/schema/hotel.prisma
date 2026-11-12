@@ -20,6 +20,11 @@ enum HotelReservationStatus {
   CHECKED_OUT // ออกแล้ว
   CANCELLED // ยกเลิก
   REFUNDED // คืนเงินหลังเช็คเอาท์ (POS bill ถูก void — ห้ามลบ การเงินแก้ด้วย reversal)
+  // SVC H.0 ▸ ต่อท้ายเท่านั้น (migration svc_h · ALTER TYPE ADD VALUE แยก statement) · BOOKED คงไว้ (backfill แปลงเป็น CONFIRMED · H.3 เลิกเขียน BOOKED)
+  HOLD // ถือห้องรอมัดจำ (คู่ holdExpiresAt)
+  CONFIRMED // ยืนยันแล้ว รอเข้าพัก (แทน BOOKED)
+  NO_SHOW // ไม่มาเข้าพัก (คู่ noShowAt)
+  // ◂ SVC H.0
 }
 
 // ─────────────────────── INVENTORY ───────────────────────
@@ -42,11 +47,26 @@ model HotelRoomType {
   rentMode          String   @default("NIGHTLY") // "NIGHTLY" | "MONTHLY" | "BOTH"
   amenities         Json?
   // ◂ SVC R0.1
+  // SVC H.0 ▸ ความจุ/เตียงเสริม/รูป (ใบสั่ง h.0 §2.2 · archive = active=false + archivedAt)
+  baseOccupancy       Int       @default(2)
+  maxOccupancy        Int? // null = capacity
+  extraBedAllowed     Boolean   @default(false)
+  extraBedPriceSatang Int       @default(0)
+  bedType             String?
+  images              Json?
+  archivedAt          DateTime?
+  // ◂ SVC H.0
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   rooms        HotelRoom[]
   reservations HotelReservation[]
+  // SVC H.0 ▸ FK Restrict ทุกตัว (ลบประเภทห้องที่มีราคา/แผนที่ช่องทาง = 23001)
+  rates            HotelRate[]
+  rateOverrides    HotelRateOverride[]
+  channelRoomMaps  ChannelRoomMap[]
+  inventoryBuffers ChannelInventoryBuffer[]
+  // ◂ SVC H.0
 
   @@unique([unitId, name])
   @@index([tenantId, unitId])
@@ -71,6 +91,10 @@ model HotelRoom {
   rentMode   String? // null = ตามประเภทห้อง
   hkStatus   String          @default("CLEAN") // "CLEAN" | "DIRTY" | "INSPECTED" | "OUT_OF_ORDER"
   // ◂ SVC R0.1
+  // SVC H.0 ▸ แม่บ้าน (ใบสั่ง h.0 §2.3 · hkStatus คง String · H.6 ใช้ OUT_OF_ORDER แทน OOO ของสเปก)
+  hkNote      String?
+  hkUpdatedAt DateTime?
+  // ◂ SVC H.0
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
 
@@ -78,6 +102,7 @@ model HotelRoom {
   occupancies  RoomOccupancy[] // SVC R0.1
   dormLeases   DormLease[] // SVC D.0 (FK Restrict)
   dormMeters   DormMeter[] // SVC D.0 (FK Restrict)
+  hkLogs       HotelHousekeepingLog[] // SVC H.0 (FK Restrict)
 
   @@unique([unitId, number])
   @@index([tenantId, unitId])
@@ -127,6 +152,28 @@ model HotelReservation {
   createdById        String? // User.id พนักงาน (null = ระบบ/ลูกค้า)
   // WO 3.1 — Party (INTEGRATION-MAP §F.1): คอลัมน์เพิ่มเฉย ๆ — ยังไม่มีโค้ด hotel เขียนค่านี้ (นอกขอบเขต WO นี้)
   partyId            String?
+  // SVC H.0 ▸ โรงแรม V2 (ใบสั่ง h.0 §2.1 · nullable/default ทั้งหมด · แถวเดิมไม่ต้องแก้)
+  // SQL มือ: HotelReservation_source_check IN ('WEB','WALK_IN','PHONE','LINE','OTA')
+  source                String         @default("WALK_IN")
+  channelRef            String? // เลขการจองของช่องทาง (H.10)
+  channelConnectionId   String? // TenantIntegration.id (kind CHANNEL_MANAGER) · หลวม ไม่มี FK
+  ratePlanId            String? // null = การจองเดิม/ไม่มีแผน
+  ratePlan              HotelRatePlan? @relation(fields: [ratePlanId], references: [id], onDelete: SetNull)
+  groupId               String? // กลุ่ม = หลายแถว groupId เดียว
+  holdExpiresAt         DateTime? // คู่ status HOLD
+  policySnapshot        Json? // SNAPSHOTS.reservation (H.3 จดตอนจอง/ยืนยัน)
+  taxSnapshot           Json? // {mode, vatBp, serviceChargeBp} ณ ตอนจอง
+  grossSatang           Int? // ยอดที่ช่องทางแจ้ง (H.10)
+  commissionSatang      Int?
+  netSatang             Int?
+  prepaidByChannel      Boolean        @default(false)
+  noShowAt              DateTime? // คู่ status NO_SHOW
+  securityDepositSatang Int            @default(0) // เงินประกันห้อง (ค่าเริ่มไม่เก็บ)
+  securityDepositSaleId String?
+  bookingNights         HotelBookingNight[]
+  folio                 HotelFolio?
+  guests                HotelGuestRecord[]
+  // ◂ SVC H.0
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
@@ -137,6 +184,8 @@ model HotelReservation {
   @@index([unitId, roomId, checkInDate, checkOutDate]) // กันห้องจริงถูก assign ซ้อน
   @@index([unitId, guestPhone])
   @@index([partyId])
+  @@index([unitId, groupId]) // SVC H.0
+  @@index([status, holdExpiresAt]) // SVC H.0 ▸ sweeper HOLD ข้ามร้าน
 }
 
 // ─────────────────────── SVC R0.1 ▸ แกนห้อง (CC §5.2 · เจ้าของโค้ด R0.8/R0.9) ───────────────────────
@@ -182,3 +231,375 @@ model RoomOccupancy {
   //    UNIQUE "RoomOccupancy_refType_refId_stay_key" ON ("refType","refId") WHERE "active" AND "kind" = 'STAY'  — การจองโรงแรมถือห้องจริง 1 แถว active
 }
 // ◂ SVC R0.1
+
+// ─────────────────────── SVC H.0 ▸ โรงแรม V2 (ใบสั่ง ledger/svc-briefs/svc-brief-h.0.md §2.4–2.14 · migration svc_h) ───────────────────────
+// กติการ่วม: scope=unit (tenantId+unitId ทุกตาราง) · เงิน = Int สตางค์ · วัน = @db.Date (วันไทย) · id ข้ามโมดูล = String หลวม ไม่มี FK
+// 🔴 CHECK ทุกตัว + partial unique (แผนเริ่มต้น) เป็น SQL มือท้าย migration svc_h (Prisma ประกาศไม่ได้ · migrate diff ไม่เสนอ DROP)
+//    unique NULLS NOT DISTINCT ของ HotelRate / HotelRateOverride = @@unique ด้านล่าง แต่ migration แก้ CREATE UNIQUE INDEX เติม NULLS NOT DISTINCT (ชื่อเดียวกัน)
+// ⚠️ ลบ QC: Cascade ช่วยส่วนใหญ่ · Restrict ที่ Rate/Override/HousekeepingLog/ChannelMap/Buffer ต้องลบลูกก่อนประเภทห้อง/ห้อง/แผน
+
+// แผนราคา (S:361)
+// SQL มือ: HotelRatePlan_depositKind_check IN ('NONE','FIRST_NIGHT','FULL','PERCENT','FIXED_AMOUNT') · HotelRatePlan_status_check IN ('ACTIVE','ARCHIVED')
+//          UNIQUE "HotelRatePlan_unitId_default_key" ON ("unitId") WHERE "isDefault" AND "status" = 'ACTIVE'  — แผนเริ่มต้น 1 แผนต่อหน่วย
+model HotelRatePlan {
+  id               String   @id @default(cuid())
+  tenantId         String
+  unitId           String
+  name             String
+  code             String
+  includeBreakfast Boolean  @default(false)
+  minNights        Int?
+  maxNights        Int?
+  depositKind      String   @default("FIRST_NIGHT") // "NONE" | "FIRST_NIGHT" | "FULL" | "PERCENT" | "FIXED_AMOUNT"
+  depositValue     Int      @default(0) // bp (PERCENT) หรือสตางค์ (FIXED_AMOUNT)
+  isDefault        Boolean  @default(false)
+  visibility       Json? // ช่องทาง ["WEB","LINE","COUNTER","OTA"]
+  status           String   @default("ACTIVE") // "ACTIVE" | "ARCHIVED"
+  sortOrder        Int      @default(0)
+  description      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  rates        HotelRate[]
+  cancelRules  HotelCancelRule[]
+  reservations HotelReservation[]
+  channelMaps  ChannelRateMap[]
+
+  @@unique([unitId, code])
+  @@index([tenantId, unitId, status])
+}
+
+// ฤดูราคา (S:329 · dateEnd รวมวันจบ)
+// SQL มือ: HotelSeason_status_check IN ('ACTIVE','ARCHIVED') · HotelSeason_dates_check ("dateEnd" >= "dateStart") · HotelSeason_minNights_check (IS NULL OR >= 1)
+model HotelSeason {
+  id        String   @id @default(cuid())
+  tenantId  String
+  unitId    String
+  name      String
+  dateStart DateTime @db.Date
+  dateEnd   DateTime @db.Date // รวมวันจบ
+  priority  Int      @default(0)
+  minNights Int? // ขั้นต่ำคืนของฤดู (มติผู้คุม 7 พ.ย.)
+  status    String   @default("ACTIVE") // "ACTIVE" | "ARCHIVED"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rates HotelRate[]
+
+  @@index([tenantId, unitId, dateStart, dateEnd])
+}
+
+// วันหยุด (S:348)
+model HotelHoliday {
+  id        String   @id @default(cuid())
+  tenantId  String
+  unitId    String
+  date      DateTime @db.Date
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([unitId, date])
+}
+
+// ราคาต่อแผน×ประเภทห้อง×ฤดู (S:406 · seasonId null = ราคาปกติ 1 แถว)
+// SQL มือ: HotelRate_price{Weekday,Weekend,Holiday}Satang_check (>= 0 · holiday IS NULL ผ่าน)
+//          @@unique ด้านล่าง = NULLS NOT DISTINCT (แก้ใน migration svc_h)
+model HotelRate {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  unitId             String
+  ratePlanId         String
+  ratePlan           HotelRatePlan @relation(fields: [ratePlanId], references: [id], onDelete: Restrict)
+  roomTypeId         String
+  roomType           HotelRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  seasonId           String?
+  season             HotelSeason?  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  priceWeekdaySatang Int
+  priceWeekendSatang Int
+  priceHolidaySatang Int?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@unique([ratePlanId, roomTypeId, seasonId])
+  @@index([tenantId, unitId])
+}
+
+// แก้ราคามือรายวัน (ratePlanId null = ทุกแผน · หลวม ไม่มี FK)
+// SQL มือ: HotelRateOverride_priceSatang_check (>= 0) · @@unique ด้านล่าง = NULLS NOT DISTINCT (แก้ใน migration svc_h)
+model HotelRateOverride {
+  id          String        @id @default(cuid())
+  tenantId    String
+  unitId      String
+  roomTypeId  String
+  roomType    HotelRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  ratePlanId  String?
+  date        DateTime      @db.Date
+  priceSatang Int
+  reason      String?
+  setById     String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([roomTypeId, ratePlanId, date])
+  @@index([tenantId, unitId, date])
+}
+
+// ขั้นบันไดคืนเงินของแผน (S:389 · ชุดกฎเป็นของแผน ⇒ Cascade)
+// SQL มือ: HotelCancelRule_daysBefore_check (0..365) · HotelCancelRule_refundBp_check (0..10000)
+model HotelCancelRule {
+  id         String        @id @default(cuid())
+  tenantId   String
+  unitId     String
+  ratePlanId String
+  ratePlan   HotelRatePlan @relation(fields: [ratePlanId], references: [id], onDelete: Cascade)
+  daysBefore Int
+  refundBp   Int
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@unique([ratePlanId, daysBefore])
+}
+
+// คืนรายแถวของการจอง (S:503 · ชั้นประเภทห้อง) · roomTypeId/roomId/ratePlanId = หลวม ไม่มี FK
+// 🔴 ไม่มี unique (roomId, date) — EXCLUDE ของ RoomOccupancy ตัดสินห้องจริง (มติ §2 ข้อ 2)
+// SQL มือ: HotelBookingNight_priceSatang_check (>= 0) · HotelBookingNight_priceSource_check IN ('RATE','OVERRIDE','FALLBACK','MANUAL')
+model HotelBookingNight {
+  id            String           @id @default(cuid())
+  tenantId      String
+  unitId        String
+  reservationId String
+  reservation   HotelReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  roomTypeId    String // denorm
+  roomId        String? // ห้องจริงของคืนนั้น (ย้ายห้องเปลี่ยนได้)
+  date          DateTime         @db.Date
+  priceSatang   Int // snapshot
+  ratePlanId    String?
+  priceSource   String           @default("RATE") // "RATE" | "OVERRIDE" | "FALLBACK" | "MANUAL"
+  counted       Boolean          @default(true) // false = ประวัติ (ไม่นับห้องว่าง)
+  postedAuditId String?
+  folioItemId   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([reservationId, date])
+  @@index([unitId, roomTypeId, date, counted]) // availability (S:521)
+  @@index([unitId, roomId, date])
+}
+
+// บิลห้อง (S:532) · balanceSatang = cache
+// SQL มือ: HotelFolio_status_check IN ('OPEN','SETTLED','VOID')
+model HotelFolio {
+  id            String           @id @default(cuid())
+  tenantId      String
+  unitId        String
+  reservationId String           @unique
+  reservation   HotelReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  status        String           @default("OPEN") // "OPEN" | "SETTLED" | "VOID"
+  balanceSatang Int              @default(0)
+  settledSaleId String?
+  settledAt     DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  items HotelFolioItem[]
+
+  @@index([tenantId, unitId, status])
+}
+
+// รายการบิลห้อง (S:552 · ค่าใช้จ่ายบวก · จ่าย/คืนลบ) · reversalOfId = self-ref หลวม
+// SQL มือ: HotelFolioItem_type_check IN (14 ชนิด ตามคอมเมนต์ type)
+model HotelFolioItem {
+  id               String     @id @default(cuid())
+  tenantId         String
+  unitId           String
+  folioId          String
+  folio            HotelFolio @relation(fields: [folioId], references: [id], onDelete: Cascade)
+  type             String // ROOM SERVICE POS_CHARGE MINIBAR DISCOUNT TAX SERVICE_CHARGE DEPOSIT PAYMENT REFUND PENALTY SECURITY_DEPOSIT SECURITY_REFUND VOID_REVERSAL
+  description      String
+  qty              Int        @default(1)
+  unitAmountSatang Int
+  amountSatang     Int
+  businessDate     DateTime   @db.Date
+  refType          String?
+  refId            String?
+  postedById       String?
+  voidedAt         DateTime?
+  voidReason       String?
+  reversalOfId     String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([folioId, businessDate])
+  @@index([tenantId, unitId, refType, refId])
+}
+
+// ทะเบียนผู้เข้าพัก (DH:329 · ร.ร.3/4 · ตม.30) · idNumberEnc = secret-box (H.4 · ห้ามเก็บดิบ)
+// SQL มือ: HotelGuestRecord_idType_check (IS NULL OR IN ('PASSPORT','THAI_ID','OTHER')) · HotelGuestRecord_tm30Status_check IN ('NOT_REQUIRED','PENDING','FILED','LATE')
+model HotelGuestRecord {
+  id              String           @id @default(cuid())
+  tenantId        String
+  unitId          String
+  reservationId   String
+  reservation     HotelReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  partyId         String?
+  fullName        String
+  nationality     String? // ISO-3
+  idType          String? // "PASSPORT" | "THAI_ID" | "OTHER"
+  idNumberEnc     String?
+  idNumberLast4   String?
+  dob             DateTime?        @db.Date
+  arrivedFrom     String?
+  nextDestination String?
+  idImageFileId   String?
+  signatureFileId String?
+  isForeigner     Boolean          @default(false)
+  tm30Status      String           @default("NOT_REQUIRED") // "NOT_REQUIRED" | "PENDING" | "FILED" | "LATE"
+  tm30DueAt       DateTime?
+  tm30Ref         String?
+  tm30FiledAt     DateTime?
+  rr3SignedAt     DateTime?
+  retainUntil     DateTime?        @db.Date // ลบเมื่อพ้น (ค่าตั้ง rooms.hotel.guest.retainYears)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([reservationId])
+  @@index([tenantId, unitId, tm30Status, tm30DueAt])
+  @@index([retainUntil])
+}
+
+// ประวัติสถานะแม่บ้าน (S:580) · byUserId null = ระบบ
+model HotelHousekeepingLog {
+  id            String    @id @default(cuid())
+  tenantId      String
+  unitId        String
+  roomId        String
+  room          HotelRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  fromStatus    String
+  toStatus      String
+  byUserId      String?
+  reservationId String?
+  note          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, unitId, createdAt])
+  @@index([roomId, createdAt])
+}
+
+// ปิดวัน (S:599)
+// SQL มือ: HotelNightAudit_status_check IN ('CLOSED','REOPENED')
+model HotelNightAudit {
+  id                String    @id @default(cuid())
+  tenantId          String
+  unitId            String
+  businessDate      DateTime  @db.Date
+  status            String    @default("CLOSED") // "CLOSED" | "REOPENED"
+  roomsTotal        Int
+  roomsOOO          Int
+  roomsAvailable    Int
+  roomsOccupied     Int
+  occupancyBps      Int
+  roomRevenueSatang Int
+  adrSatang         Int
+  revparSatang      Int
+  arrivals          Int       @default(0)
+  departures        Int       @default(0)
+  noShowCount       Int       @default(0)
+  cancelledCount    Int       @default(0)
+  snapshot          Json?
+  closedById        String?
+  reopenedAt        DateTime?
+  reopenedById      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([unitId, businessDate])
+}
+
+// ─────────────── ช่องทาง OTA (DH §10 · H.10) — connectionId = TenantIntegration.id (kind CHANNEL_MANAGER) หลวม ไม่มี FK · ไม่มี HotelChannelConnection ───────────────
+
+model ChannelRoomMap {
+  id             String        @id @default(cuid())
+  tenantId       String
+  unitId         String
+  connectionId   String
+  roomTypeId     String
+  roomType       HotelRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  externalRoomId String
+  active         Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([connectionId, roomTypeId])
+  @@unique([connectionId, externalRoomId])
+}
+
+model ChannelRateMap {
+  id             String        @id @default(cuid())
+  tenantId       String
+  unitId         String
+  connectionId   String
+  ratePlanId     String
+  ratePlan       HotelRatePlan @relation(fields: [ratePlanId], references: [id], onDelete: Restrict)
+  externalRateId String
+  formula        Json? // {markupBp}
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([connectionId, ratePlanId])
+}
+
+// SQL มือ: ChannelAriJob_status_check IN ('PENDING','SENT','FAILED','SUPERSEDED')
+model ChannelAriJob {
+  id           String    @id @default(cuid())
+  tenantId     String
+  unitId       String
+  connectionId String
+  dateFrom     DateTime  @db.Date
+  dateTo       DateTime  @db.Date
+  payloadHash  String
+  status       String    @default("PENDING") // "PENDING" | "SENT" | "FAILED" | "SUPERSEDED"
+  attempts     Int       @default(0)
+  lastError    String?
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([connectionId, status, createdAt])
+}
+
+// SQL มือ: ChannelReservationInbox_status_check IN ('RECEIVED','APPLIED','NEEDS_ROOM','REJECTED')
+model ChannelReservationInbox {
+  id            String   @id @default(cuid())
+  tenantId      String
+  unitId        String
+  connectionId  String
+  externalId    String
+  version       Int
+  raw           Json
+  status        String   @default("RECEIVED") // "RECEIVED" | "APPLIED" | "NEEDS_ROOM" | "REJECTED"
+  reservationId String?
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([connectionId, externalId, version])
+  @@index([tenantId, unitId, status])
+}
+
+// SQL มือ: ChannelInventoryBuffer_rooms_check (>= 0)
+model ChannelInventoryBuffer {
+  id           String        @id @default(cuid())
+  tenantId     String
+  unitId       String
+  connectionId String
+  roomTypeId   String
+  roomType     HotelRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  rooms        Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([connectionId, roomTypeId])
+}
+// ◂ SVC H.0

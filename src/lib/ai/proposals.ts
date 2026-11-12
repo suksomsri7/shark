@@ -946,6 +946,7 @@ async function dispatch(
       guestPhone: p.guestPhone ? String(p.guestPhone).trim() : undefined,
       checkInDate: String(p.checkInDate ?? ""),
       checkOutDate: String(p.checkOutDate ?? ""),
+      source: "PHONE", // SVC H.3 ▸ ผู้ช่วย AI จองแทนลูกค้า (หน้าเคาน์เตอร์/โทร) ◂
     });
     if (!res.ok) throw new Error(res.reason);
     return `จองห้อง "${rt.name}" ให้ ${String(p.guestName ?? "").trim() || "ผู้เข้าพัก"} เรียบร้อยแล้ว (รหัสจอง ${res.code})`;

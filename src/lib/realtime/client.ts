@@ -15,6 +15,7 @@
 
 import type { Realtime as AblyRealtime } from "ably";
 import { EV_CHAT_NEW, EV_CHAT_READ, EV_CHAT_TYPING, EV_KANBAN_BOARD } from "./events";
+import { EV_HOTEL_HK } from "./events"; // SVC H.6
 
 /** สัญญาณที่ส่งต่อให้หน้าจอ — มีแต่ "ตัวชี้" ไม่มีเนื้อความ (ดู events.ts) */
 export type ChatSignal = {
@@ -195,3 +196,26 @@ export function subscribeBoard(
     onSignal,
   );
 }
+
+// SVC H.6 ▸ บอร์ดแม่บ้านโรงแรม (หน่วยเดียว) — สัญญาณ "ห้องนี้เปลี่ยนสถานะ" {roomId, hkStatus, at} ล้วน · จอได้แล้ว refresh เอง
+export type HotelHkSignal = { event: string; roomId?: string; hkStatus?: string; at?: number };
+
+/**
+ * ฟังบอร์ดแม่บ้านของหน่วยโรงแรม · คืนฟังก์ชันเลิกฟัง · โหมด polling (ไม่มีกุญแจ) จบเงียบตั้งแต่คำขอแรก (mode !== "realtime")
+ * 🔴 ส่งแค่ unitId — เซิร์ฟเวอร์ตรวจสิทธิ์แม่บ้านของหน่วยแล้วประกอบชื่อช่อง (มี tenantId) กลับมาเอง
+ */
+export function subscribeHotelHk(unitId: string, onSignal: (signal: HotelHkSignal) => void): () => void {
+  if (!unitId) return () => {};
+  return subscribeVia(
+    `/api/realtime/hotel-hk-token?unitId=${encodeURIComponent(unitId)}`,
+    [EV_HOTEL_HK],
+    (name, d): HotelHkSignal => ({
+      event: name,
+      roomId: typeof d.roomId === "string" ? d.roomId : undefined,
+      hkStatus: typeof d.hkStatus === "string" ? d.hkStatus : undefined,
+      at: typeof d.at === "number" ? d.at : undefined,
+    }),
+    onSignal,
+  );
+}
+// ◂ SVC H.6

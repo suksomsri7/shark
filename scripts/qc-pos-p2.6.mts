@@ -427,7 +427,10 @@ const SIGS_BASE: Record<string, Record<string, string>> = {
 // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) มติ 1: POST /sales ผ่าน submitRegisterSale ⇒ ไฟล์ pos/api/ops/sales.ts ไม่เรียก createSale แล้ว (1 → 0 · ถอดแถว)
 const CALL_SITES: Record<string, number> = {
   "src/lib/actions/booking.ts": 1, "src/lib/actions/pos.ts": 1, "src/lib/ai/proposals.ts": 1, "src/lib/modules/booking/service.ts": 1,
-  "src/lib/modules/clinic/service.ts": 1, "src/lib/modules/giftcard/service.ts": 2, "src/lib/modules/hotel/service.ts": 2,
+  "src/lib/modules/clinic/service.ts": 1, "src/lib/modules/giftcard/service.ts": 2, "src/lib/modules/hotel/service.ts": 1,
+  // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): RUN HOTEL (SVC H.3/H.5/H.8 + POS CD2) — hotel/service.ts 2→1 (checkOut → checkout.ts) · booking-sale.ts 3 (H.3 deposit/forfeit/cancel fee, moved out of booking.ts) ·
+  //   checkout.ts 3 (H.5 checkout bill/deposit receipt/forfeit) · deposit-intent.ts 1 (H.8 slip deposit) — all systemForUnit + idempotency key + callerTx, no channelId (= qc-pos-p1.6 U4: 25 sites / 19 files)
+  "src/lib/modules/hotel/booking-sale.ts": 3, "src/lib/modules/hotel/checkout.ts": 3, "src/lib/modules/hotel/deposit-intent.ts": 1,
   "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/register.ts": 1,
   "src/lib/modules/rental/service.ts": 2, "src/lib/modules/restaurant/order.ts": 1, "src/lib/modules/school/service.ts": 1,
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,

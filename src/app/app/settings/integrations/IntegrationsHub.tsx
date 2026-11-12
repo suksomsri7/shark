@@ -20,6 +20,8 @@ type Props = {
   defaultUnitIds: string[];
   posLinks: { id: string; name: string; href: string }[];
   bankLinks: { id: string; name: string; href: string }[];
+  /** SVC H.10 ▸ ลิงก์ "ตั้งค่าแม็ปห้อง/ราคา →" ของการ์ด OTA (ต่อหน่วยโรงแรม · /app/u/<slug>/hotel/channels) ◂ */
+  hotelChannelLinks?: { id: string; name: string; href: string }[];
   testTimes: Record<string, string>;
   /** SVC C.3 ▸ สุขภาพของแถวเก็บ (ไม่มีค่าลับ) + เกณฑ์เตือนโควตา #83 ของร้าน ◂ */
   health?: IntegrationHealthView[];
@@ -73,6 +75,7 @@ function Card({
   onClick,
   href,
   testId,
+  links,
 }: {
   short: string;
   title: string;
@@ -84,12 +87,13 @@ function Card({
   onClick?: () => void;
   href?: string;
   testId?: string;
+  /** SVC H.10 r5 ▸ ลิงก์ท้ายการ์ด (นอกปุ่มของการ์ด — ไม่ซ้อนลิงก์ในปุ่ม) เช่น "ตั้งค่าแม็ปห้อง/ราคา →" ของตัวต่อ OTA ◂ */
+  links?: { href: string; label: string }[];
 }) {
   const cls = `flex w-full flex-col gap-3 rounded-2xl border bg-white p-4 text-left transition ${active ? "border-2 border-blue-700" : dim ? "border-gray-200 bg-gray-50" : "border-[color:var(--color-ink)]/70"} ${
     onClick || href ? "hover:shadow-sm" : ""
   }`;
-  const body = (
-    <>
+  const head = (
       <div className="flex items-start gap-3">
         <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border text-xs font-semibold ${dim ? "text-[color:var(--color-muted)]" : ""}`}>{short}</span>
         <div className="min-w-0 flex-1">
@@ -98,9 +102,36 @@ function Card({
         </div>
         {right}
       </div>
+  );
+  const body = (
+    <>
+      {head}
       {footer && <div className="flex items-center justify-between gap-2 text-xs text-[color:var(--color-muted)]">{footer}</div>}
     </>
   );
+  // SVC H.10 r5 ▸ การ์ดที่มีลิงก์ท้าย: ส่วนหัวเป็นปุ่ม (เปิดแผงข้าง) · ท้ายการ์ด = สถานะ + ลิงก์ (ไม่ซ้อน interactive) ◂
+  if (links?.length)
+    return (
+      <div className={cls} data-testid={testId}>
+        {onClick ? (
+          <button type="button" onClick={onClick} className="w-full text-left">
+            {head}
+          </button>
+        ) : (
+          head
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[color:var(--color-muted)]">
+          <span className="inline-flex flex-wrap items-center gap-2">{footer}</span>
+          <span className="inline-flex flex-wrap items-center gap-3">
+            {links.map((l) => (
+              <Link key={l.href} href={l.href} className="font-medium text-blue-700 hover:underline" data-testid="integration-card-ota-map-link">
+                {l.label}
+              </Link>
+            ))}
+          </span>
+        </div>
+      </div>
+    );
   if (href)
     return (
       <Link href={href} className={cls} data-testid={testId}>
@@ -120,7 +151,7 @@ function Card({
   );
 }
 
-export function IntegrationsHub({ items, catalog, keyConfigured, canManage, units, defaultUnitIds, posLinks, bankLinks, testTimes, health = [], thresholdPercent = 10 }: Props) {
+export function IntegrationsHub({ items, catalog, keyConfigured, canManage, units, defaultUnitIds, posLinks, bankLinks, hotelChannelLinks = [], testTimes, health = [], thresholdPercent = 10 }: Props) {
   const healthById = useMemo(() => new Map(health.map((h) => [h.id, h])), [health]); // SVC C.3
   const [tab, setTab] = useState<Tab>("ALL");
   const [sel, setSel] = useState<Selection>(null);
@@ -172,8 +203,15 @@ export function IntegrationsHub({ items, catalog, keyConfigured, canManage, unit
       ));
     }
     const rs = rows as IntegrationView[];
+    // SVC H.10 r5 ▸ ตัวต่อ OTA: การ์ดเดียวต่อแถว + ลิงก์แม็ปของหน่วยโรงแรมที่ตัวต่อครอบ (ไม่มีการ์ดโรงแรมซ้ำ · ภาพ 11) ◂
+    const isOta = entry.kind === "CHANNEL_MANAGER";
+    const otaLinks = (r: IntegrationView) => {
+      const covered = hotelChannelLinks.filter((h) => !r.unitIds.length || r.unitIds.includes(h.id));
+      return covered.map((h) => ({ href: h.href, label: covered.length > 1 ? `ตั้งค่าแม็ป · ${h.name} →` : "ตั้งค่าแม็ปห้อง/ราคา →" }));
+    };
     const cards = rs.map((r) => (
       <Card
+        links={isOta ? otaLinks(r) : undefined}
         key={r.id}
         short={meta.short}
         title={`${meta.label} · ${r.label}`}
@@ -191,13 +229,23 @@ export function IntegrationsHub({ items, catalog, keyConfigured, canManage, unit
                 {healthById.get(r.id)?.quota?.percent !== null ? "%" : ""}
               </span>
             )}
-            <span>ตั้งค่า ›</span>
+            {!(isOta && otaLinks(r).length) && <span>ตั้งค่า ›</span>}
           </>
         }
       />
     ));
     if (!entry.ready && !rs.length) {
-      cards.push(<Card key={`${entry.kind}-soon`} short={meta.short} title={meta.label} sub={meta.desc} dim right={<Badge muted>เร็ว ๆ นี้</Badge>} />);
+      cards.push(
+        <Card
+          key={`${entry.kind}-soon`}
+          short={meta.short}
+          title={meta.label}
+          sub={meta.desc}
+          dim
+          right={<Badge muted>เร็ว ๆ นี้</Badge>}
+          footer={isOta ? <><StatusDot status="NOT_CONNECTED" /><span>ตัวต่อเจ้าแรก เฟส H2</span></> : undefined}
+        />,
+      );
     } else if (entry.ready && (!rs.length || canManage)) {
       const canAdd = canManage && entry.providers.length > 0;
       cards.push(
@@ -209,7 +257,16 @@ export function IntegrationsHub({ items, catalog, keyConfigured, canManage, unit
           active={sel?.mode === "new" && sel.kind === entry.kind}
           onClick={canAdd ? () => setSel({ mode: "new", kind: entry.kind }) : undefined}
           right={canAdd ? <Badge>เชื่อม</Badge> : <Badge muted>{entry.providers.length ? "เจ้าของร้านเชื่อม" : "เร็ว ๆ นี้"}</Badge>}
-          footer={<StatusDot status="NOT_CONNECTED" />}
+          footer={
+            isOta && !rs.length ? (
+              <>
+                <StatusDot status="NOT_CONNECTED" />
+                <span>ตัวต่อเจ้าแรก เฟส H2</span>
+              </>
+            ) : (
+              <StatusDot status="NOT_CONNECTED" />
+            )
+          }
         />,
       );
     }

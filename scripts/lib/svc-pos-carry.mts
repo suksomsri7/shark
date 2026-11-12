@@ -54,6 +54,10 @@ export const SVC_POS_CARRY: readonly Carry[] = [
 ];
 
 const SVC_SUBJECT = /^[a-z]+\(svc\):/;
+// ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): the release fix 1e27b67b7 "fix(hotel): register night-audit and OTA channel consumers in the main
+//   consumer registry" moved the SVC H.7/H.10 consumer blocks of outbox-consumers.ts into the baseConsumers object (SVC work, non-svc subject).
+//   Only this exact commit counts as SVC in addition to SVC_SUBJECT — any other non-svc commit still voids the carry.
+const SVC_RELEASE_FIX = ["1e27b67b7"];
 
 function git(root: string, args: string[]): string {
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 * 1024 * 1024 });
@@ -79,7 +83,8 @@ export function svcCarry(root: string, file: string): string | null {
         try { git(root, ["merge-base", "--is-ancestor", SVC_BASE, "HEAD"]); baseOk = true; } catch { baseOk = false; }
       }
       if (baseOk) {
-        const subs = git(root, ["log", "--no-merges", "--format=%s", `${SVC_BASE}..HEAD`, "--", file]).split("\n").filter(Boolean);
+        const subs = git(root, ["log", "--no-merges", "--format=%H %s", `${SVC_BASE}..HEAD`, "--", file]).split("\n").filter(Boolean)
+          .filter((l) => !SVC_RELEASE_FIX.some((h) => l.startsWith(h))).map((l) => l.slice(l.indexOf(" ") + 1)); // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): SVC_RELEASE_FIX
         const dirty = git(root, ["status", "--porcelain", "--", file]).trim();
         if (subs.every((s) => SVC_SUBJECT.test(s)) && (!dirty || e.uncommittedOk)) out = `SVC ${e.wo}`;
       }

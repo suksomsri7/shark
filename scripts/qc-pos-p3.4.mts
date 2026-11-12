@@ -576,7 +576,11 @@ async function runStatic(): Promise<void> {
     }
     const cb = createSaleCallers(BASE_REV);
     const ch = createSaleCallers(null);
-    const cd = [...new Set([...Object.keys(cb), ...Object.keys(ch)])].filter((f) => (cb[f] ?? 0) !== (ch[f] ?? 0)).map((f) => `${f.replace("src/lib/", "")}:${cb[f] ?? 0}→${ch[f] ?? 0}`);
+    // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): RUN HOTEL sites (= qc-pos-p1.6 U4 · 25/19) — only these 4 hotel files use a fixed count instead of the base:
+    //   service.ts 1 (checkOut → checkout.ts · H.5) · booking-sale.ts 3 (H.3 moved out of booking.ts · POS CD2) · checkout.ts 3 (H.5) · deposit-intent.ts 1 (H.8)
+    const HOTEL_REL: Record<string, number> = { "src/lib/modules/hotel/service.ts": 1, "src/lib/modules/hotel/booking-sale.ts": 3, "src/lib/modules/hotel/checkout.ts": 3, "src/lib/modules/hotel/deposit-intent.ts": 1 };
+    const cbx: Record<string, number> = { ...cb, ...HOTEL_REL };
+    const cd = [...new Set([...Object.keys(cbx), ...Object.keys(ch)])].filter((f) => (cbx[f] ?? 0) !== (ch[f] ?? 0)).map((f) => `${f.replace("src/lib/", "")}:${cbx[f] ?? 0}→${ch[f] ?? 0}`);
     if (!Object.keys(cb).length) p.push("นับผู้เรียกที่ฐานไม่ได้");
     if (cd.length) p.push(`ผู้เรียก createSale ต่าง: ${cd.join(", ")}`);
     // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.4 ST2): ไฟล์ร้อนผ่านเมื่อตรงเงื่อนไขเดิมเทียบ BASE_REV หรือเทียบ SIB_REV (merge P3.5 S) — กฎเดิมทุกข้อ (outbox ตรงไบต์ · staff-pin บล็อก P3.4 เดียว + at · ไม่แก้นอกบล็อก · verifyStaffPin ไม่ถูกแตะ "นอกจากของ P3.5") ใช้ทั้งคู่ · ไม่ผ่านทั้งคู่ = รายงานปัญหาเทียบ BASE_REV

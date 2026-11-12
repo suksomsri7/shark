@@ -97,6 +97,7 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   { value: "crm.commission.removed", label: "เมื่อลบคอมมิชชันที่ยังไม่อนุมัติ เพราะเงินถูกยกเลิกหรือดีลถูกเปิดใหม่ (CRM)" },
   // ◂ CRM C3.3
   // CRM C3.2 ▸ `crm.quota.reached` ประกาศที่ `AUTOMATION_EVENTS` (บล็อก C3.2 · spread ข้างบน) — ร้านสมัครเว็บฮุคได้ทันที · ห้ามประกาศซ้ำที่นี่ ◂
+  // SVC H.10 ▸ `channel.ari.*` / `channel.reservation.*` (ช่องทาง OTA) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC R0.5 ▸ "integration.connected" / "integration.failed" (ศูนย์เชื่อมต่อ) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) ·
   //   ห้ามประกาศซ้ำที่นี่ (ช่องติ๊ก 2 แถวต่อ event) — consumer no-op อยู่ใน outbox-consumers.ts ◂
   // SVC R0.6 ▸ "payment.slip.submitted" / "payment.slip.approved" / "payment.slip.rejected" (ตรวจสลิปกลาง) ประกาศที่ `AUTOMATION_EVENTS`
@@ -123,6 +124,11 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // 🔴 ตัวนี้เกิดตอน "ระบบภายนอกส่งคำตอบของทีมเข้ามาเอง" ผ่าน /api/v1/chat/replies
   // ⇒ ระบบที่เป็นคนส่งเข้ามาเอง **ห้ามสมัครรับตัวนี้** ไม่งั้นมันจะได้ยินเสียงตัวเองแล้วแจ้งซ้ำ
   { value: "chat.message.mirrored", label: "เมื่อคัดลอกคำตอบจากระบบอื่นเข้ามา (อย่าเลือกถ้าคุณเป็นระบบนั้น)" },
+  // SVC H.3 ▸ เหตุการณ์จองโรงแรม V2 7 ชนิด (hotel.booking.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
+  // SVC H.4 ▸ เช็กอิน/ทะเบียนผู้พัก/ตม.30 6 ชนิด (hotel.checked_in · hotel.guest.* · hotel.tm30.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
+  // SVC H.5 ▸ เหตุการณ์ folio/เงินประกันโรงแรม 8 ชนิด (hotel.folio.* · hotel.security_deposit.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
+  // SVC H.6 ▸ เหตุการณ์แม่บ้าน 4 ชนิด (hotel.hk.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
+  // SVC H.7 ▸ เหตุการณ์ปิดวันโรงแรม 2 ชนิด (hotel.audit.closed · hotel.audit.reopened) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC R0.3 ▸ "settings.changed" (ค่าตั้งแบบชั้นเปลี่ยน) มาจาก spread ข้างบน (ประกาศที่ automation/labels.ts ที่เดียว —
   //   ห้ามประกาศซ้ำที่นี่ · ช่องติ๊ก 2 แถวต่อ event · G1-A1 ผู้คุม 31 ต.ค.) ◂
 ];
