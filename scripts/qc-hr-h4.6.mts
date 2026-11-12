@@ -834,7 +834,7 @@ async function runDb(): Promise<void> {
       const h1 = await req(W.owner, kh);
       const h2 = await req(W.owner, kh);
       ck("S16.1", {
-        fail: !f1.ok && f1.text === T.failed && mv1 === 1 && st1 === 1,
+        fail: !f1.ok && f1.text === "บันทึกไม่สำเร็จ — กรุณาลองอีกครั้ง" && mv1 === 1 && st1 === 1,
         retry: f2.ok && f2.value?.amountSatang === 2_000 && adjG.length === 1 && Number(adjG[0]?.amountSatang) === 2_000 && (await hrMoves({ refId: kg.requestKey })).length === 1 && (await onHand(G)) === 1,
         replay: h1.ok && h2.ok && h2.value?.replayed === true && h2.value?.chargeId === h1.value?.chargeId && (await onHand(H)) === 0,
       }, "fail · retry ok 2000 · replay at 0", `${shown(f1)} mv=${mv1} st=${st1} ${shown(f2)} ${shown(h2)}`);
