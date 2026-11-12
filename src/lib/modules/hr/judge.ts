@@ -24,6 +24,8 @@ import { canManageHrSettings, type SettingsViewer } from "./settings";
 import { canReadRoster } from "./roster-board";
 import { unitOfDay } from "./roster";
 import { addDays, bkkDayKey, shiftWindow } from "./time-rules";
+import { holidayOfDay } from "./holidays"; // HR H2.8 ◂
+import { hourlyLeaveDays } from "./leave-rules"; // HR H2.7 ◂
 import type { MembershipCtx } from "@/lib/core/rbac";
 import {
   OPEN_SESSION_CAP_MIN,
@@ -79,30 +81,35 @@ const THAI_LEADING_VOWELS = new Set(["เ", "แ", "โ", "ใ", "ไ"]);
 const lock = (tx: Db, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
 const TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
 
-// ═══════════════════════════ ตะเข็บใบลา (seam เดียว — H2.7 แก้ที่นี่ที่เดียว) ═══════════════════════════
-export type JudgeLeave = { id: string; employeeId: string; from: string; to: string; status: "APPROVED" | "PENDING"; halfDay: "AM" | "PM" | null; type: string; policyName: string | null };
+// ═══════════════════════════ ตะเข็บใบลา (seam เดียว — ตามแบบ H2.7) ═══════════════════════════
+export type JudgeLeave = { id: string; employeeId: string; from: string; to: string; status: "APPROVED" | "PENDING"; halfDay: "AM" | "PM" | null; hours: number | null; type: string; policyName: string | null };
 /**
- * ใบลาที่ตัดสินผลต้องรู้: APPROVED (มีผลต่อคำตัดสิน) + PENDING (แสดงเท่านั้น) ที่ทับช่วงวัน · ใบลาครึ่งวัน = halfDay ·
- * วันนี้ใช้ HrLeave ตรง ๆ (H2.7 ยังไม่ merge — สมุดวันลา/ชั่วโมงลามาเปลี่ยนที่ฟังก์ชันนี้ที่เดียว)
+ * ใบลาที่ตัดสินผลต้องรู้ (แบบ H2.7 — hr/leave.ts · leave-rules.ts): APPROVED (มีผลต่อคำตัดสิน) + PENDING (แสดงเท่านั้น) ที่ทับช่วงวัน ·
+ * REJECTED/CANCELLED (ไม่อนุมัติ · ถอน · ยกเลิกใบที่อนุมัติแล้ว) ไม่นับเลย — ถอนหลังปิดวัน ⇒ ค่าสดเปลี่ยน ⇒ แถวที่บันทึกขึ้น stale ·
+ * ครึ่งวัน = halfDay AM/PM · ลาเป็นชั่วโมง = hours (1–7 · H2.7 ไม่เก็บเวลาเริ่ม/จบ)
  */
 export async function leavesForJudge(db: Db, ctx: Ctx, employeeIds: string[], from: string, to: string): Promise<JudgeLeave[]> {
   if (!employeeIds.length) return [];
   const rows = await db.hrLeave.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: employeeIds }, status: { in: ["APPROVED", "PENDING"] }, fromDate: { lte: dbDate(to) }, toDate: { gte: dbDate(from) } },
-    select: { id: true, employeeId: true, fromDate: true, toDate: true, status: true, halfDay: true, type: true, policy: { select: { name: true } } },
+    select: { id: true, employeeId: true, fromDate: true, toDate: true, status: true, halfDay: true, hours: true, type: true, policy: { select: { name: true } } },
     orderBy: [{ fromDate: "asc" }, { id: "asc" }],
     take: LEAVE_TAKE,
   });
-  return rows.map((r) => ({
-    id: r.id,
-    employeeId: r.employeeId,
-    from: dayOf(r.fromDate),
-    to: dayOf(r.toDate),
-    status: r.status === "APPROVED" ? "APPROVED" : "PENDING",
-    halfDay: r.halfDay === "AM" || r.halfDay === "PM" ? r.halfDay : null,
-    type: r.type,
-    policyName: r.policy?.name?.trim() || null,
-  }));
+  return rows.map((r) => {
+    const h = r.hours === null ? null : Number(r.hours);
+    return {
+      id: r.id,
+      employeeId: r.employeeId,
+      from: dayOf(r.fromDate),
+      to: dayOf(r.toDate),
+      status: r.status === "APPROVED" ? "APPROVED" : "PENDING",
+      halfDay: r.halfDay === "AM" || r.halfDay === "PM" ? r.halfDay : null,
+      hours: h !== null && Number.isFinite(h) && h > 0 ? h : null,
+      type: r.type,
+      policyName: r.policy?.name?.trim() || null,
+    };
+  });
 }
 
 // ═══════════════════════════ โหลดข้อมูลของช่วงวัน ═══════════════════════════
@@ -121,7 +128,7 @@ const ENTRY_SELECT = { id: true, employeeId: true, date: true, unitId: true, sta
 type EntryRow = { id: string; employeeId: string; date: Date; unitId: string | null; startMin: number; endMin: number; crossesMidnight: boolean; shift: { name: string; graceMin: number } };
 type EventRow = { id: string; employeeId: string; kind: string; at: Date; rosterEntryId: string | null; source: string | null };
 type SchedRow = { employeeId: string; weekday: number; dayOff: boolean; startMin: number; endMin: number; graceMin: number; createdAt: Date };
-type HolRow = { id: string; unitId: string | null; date: Date };
+type HolRow = Parameters<typeof holidayOfDay>[0][number];
 type Policies = { att: AttendancePolicy; clock: ClockPolicy };
 type Data = { entries: EntryRow[]; events: EventRow[]; leaves: JudgeLeave[]; sched: SchedRow[]; hols: HolRow[]; pol: Policies; truncated: boolean };
 const LEAVE_TAKE = 5000;
@@ -157,7 +164,8 @@ async function loadData(db: Db, ctx: Ctx, empIds: string[], from: string, to: st
     }) as Promise<EventRow[]>,
     leavesForJudge(db, ctx, empIds, from, to),
     db.hrWorkSchedule.findMany({ where: { ...scope, employeeId: { in: empIds } }, select: { employeeId: true, weekday: true, dayOff: true, startMin: true, endMin: true, graceMin: true, createdAt: true } }) as Promise<SchedRow[]>,
-    db.hrHoliday.findMany({ where: { ...scope, date: { gte: dbDate(from), lte: dbDate(to) } }, select: { id: true, unitId: true, date: true }, orderBy: { id: "asc" } }) as Promise<HolRow[]>,
+    // HR H2.8 ▸ แถววันหยุดทุกสาขา + ทั้งร้านของช่วงวัน (คอลัมน์เดียวกับ holidays.ts#holidayRowsInRange) · เลือกต่อวันด้วย holidays.ts#holidayOfDay ◂
+    db.hrHoliday.findMany({ where: { ...scope, date: { gte: dbDate(from), lte: dbDate(to) } }, select: { id: true, unitId: true, date: true, name: true, kind: true, shopOpen: true }, orderBy: [{ date: "asc" }, { id: "asc" }], take: 2000 }) as Promise<HolRow[]>,
   ]);
   // มติ r2 I: ถึงเพดาน take = ข้อมูลอาจขาด — ตัวงานตามเวลาไม่เตือน/ไม่ปิดวันบนข้อมูลที่ขาด
   const truncated = entries.length >= ENTRY_TAKE || events.length >= EVENT_TAKE || leaves.length >= LEAVE_TAKE;
@@ -218,7 +226,7 @@ function restByOpeningDay(events: readonly EventRow[], rest: ReadonlySet<string>
  * ช่องที่อยู่ในครึ่งที่ลาทั้งช่อง = ลาเต็มช่อง · นอกครึ่งที่ลา = ไม่มีลา · คร่อม M = กติกาครึ่งวัน (ควรเข้า/เลิก = M) · ลาทั้งวัน = ทุกช่อง
  */
 function slotLeaves(windows: readonly { start: Date; end: Date }[], lv: JudgeLeave | null): (SlotLeave | null)[] {
-  if (!lv) return windows.map(() => null);
+  if (!lv || lv.hours !== null) return windows.map(() => null); // ลาเป็นชั่วโมง: H2.7 ไม่มีเวลาเริ่ม/จบ ⇒ ไม่ครอบช่องใด (ตัดสินตามเวลาจริง) — บันทึกส่วนวันลาแยก
   if (!lv.halfDay) return windows.map(() => ({ halfDay: null }));
   const s0 = Math.min(...windows.map((w) => w.start.getTime()));
   const e0 = Math.max(...windows.map((w) => w.end.getTime()));
@@ -253,7 +261,7 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
     const onDay = leaves.filter((l) => l.from <= day && day <= l.to);
     const approved = onDay.find((l) => l.status === "APPROVED") ?? null;
     const shown = approved ?? onDay[0] ?? null;
-    const hol = data.hols.find((h) => dayOf(h.date) === day && h.unitId !== null && h.unitId === unitOf) ?? data.hols.find((h) => dayOf(h.date) === day && h.unitId === null) ?? null;
+    const hol = holidayOfDay(data.hols, unitOf, day); // HR H2.8 ▸ แถวสาขาชนะแถวทั้งร้าน ◂
     const list: LiveSlot[] = [];
     const dayEntries = entries
       .filter((e) => dayOf(e.date) === day)
@@ -304,6 +312,16 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
     // ส่วนวันลาเก็บครั้งเดียวต่อวัน — ช่องแรกที่ใบลาครอบจริง (มติ r3 3) · ช่องอื่นที่ครอบ 0 · ช่องที่ไม่ครอบไม่มีใบลา
     const withLeave = list.filter((x) => x.slotLeave);
     for (const [i, x] of withLeave.entries()) x.leaveFraction = i === 0 ? (x.leave!.halfDay ? "0.5" : "1.0") : "0.0";
+    // HR H2.7 ▸ ลาเป็นชั่วโมง: ไม่มีเวลา ⇒ ไม่ครอบช่อง แต่บันทึกใบลา + ส่วนวัน (hourlyLeaveDays = floor(ชม./8, 0.1)) ที่ช่องแรกของวันที่เป็นกะ/ตาราง ◂
+    const hourly = approved && approved.hours !== null ? (list.find((x) => x.shift) ?? null) : null;
+    if (hourly && approved) {
+      hourly.leave = approved;
+      try {
+        hourly.leaveFraction = hourlyLeaveDays(approved.hours);
+      } catch {
+        hourly.leaveFraction = (Math.floor((approved.hours! * 10) / 8) / 10).toFixed(1);
+      }
+    }
     if (list.length) out.set(day, list);
   }
   return out;
