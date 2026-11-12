@@ -16,7 +16,7 @@ import { canViewPayroll, type MembershipCtx } from "@/lib/core/rbac";
 import { employeeOfUser, leaveRowScopeOf } from "./service";
 import { hrScopeOf, type HrScope } from "./scope";
 import { canManageHrSettings } from "./settings";
-import { workEntryDaysInTx, type JudgeViewer } from "./judge";
+import { workEntryDaysInTx, workEntryPunchesInTx, type JudgeViewer } from "./judge";
 import { attendancePolicyOf } from "./judge-rules";
 import { clockPolicyOf } from "./clock-rules";
 import { unitOfDay } from "./roster";
@@ -177,7 +177,7 @@ const push = <V,>(m: Map<string, V[]>, k: string, v: V) => {
 /**
  * inputHash ต่อวัน (r2 2 — ครอบทุกอย่างที่ตัวตัดสิน H2.5 อ่าน ⇒ แถวที่ stale โดยไม่มีการเพิ่ม version ก็ทำให้วันนั้น OUTDATED) = sha256 ของ
  * {รุ่นเครื่อง · กติกา (normalDayMin) · นโยบาย hrAttendance + hrClock · วันเริ่ม/สิ้นสุด/ช่วงยืมตัว/สาขาของวัน · แถว HrAttendanceDay (id, version, slotKey) ·
- *  แถวลงเวลา วัน−1…วัน+1 (id, kind, at, rosterEntryId, voidedAt) · ตารางกะของสัปดาห์ (id, วัน, updatedAt, publishedAt, breakMin, shiftId) + กะต้นแบบ (graceMin) ·
+ *  แถวลงเวลาที่ยังมีผล วัน−1…วัน+1 (id, kind, at, rosterEntryId — แถวที่ H2.6 ยกเลิกหลุดออก) · ตารางกะของสัปดาห์ (id, วัน, updatedAt, publishedAt, breakMin, shiftId) + กะต้นแบบ (graceMin) ·
  *  ตารางประจำของวันในสัปดาห์ (ค่าทั้งแถว + createdAt) · ใบลาที่ครอบวัน (id, status, halfDay, hours, policyId, paid) · วันหยุดของวัน (id, updatedAt, shopOpen)}
  * อ่านเป็นหน้า + จัดดัชนีครั้งเดียว (Map ต่อพนักงาน/วัน) — ไม่มีการกรองซ้ำ O(คน × วัน × แถว)
  */
@@ -204,7 +204,7 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
       }),
     ),
     db.hrHoliday.findMany({ where: { ...scope, date: { gte: dbDate(b.first), lte: dbDate(b.last) } }, select: { id: true, unitId: true, date: true, name: true, kind: true, shopOpen: true, updatedAt: true }, take: 5000 }),
-    allRows((a) => db.hrAttendance.findMany({ where: { ...scope, employeeId: { in: ids }, at: { gte: pFrom, lt: pTo } }, select: { id: true, employeeId: true, kind: true, at: true, rosterEntryId: true, voidedAt: true }, ...pageArgs(a) })),
+    allRows((a) => workEntryPunchesInTx(db, ctx, ids, pFrom, pTo, a, TAKE)), // แถวลงเวลาที่ยังมีผล (H2.6 — ยกเลิกแล้วไม่นับ · อ่านผ่าน judge.ts)
   ]);
   const leaves: HashLeave[] = lv.map((l) => ({
     id: l.id,
@@ -245,7 +245,7 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
           clock,
           emp: { start: e.startDate ? dayOf(e.startDate) : null, end: e.endDate ? dayOf(e.endDate) : null, unitId, units },
           att: (attBy.get(`${e.id}|${day}`) ?? []).map((r) => [r.id, r.version, r.slotKey]).sort(),
-          punches: [addDays(day, -1), day, addDays(day, 1)].flatMap((d) => (punchBy.get(`${e.id}|${d}`) ?? []).map((r) => [r.id, r.kind, ts(r.at), r.rosterEntryId, ts(r.voidedAt)])).sort(),
+          punches: [addDays(day, -1), day, addDays(day, 1)].flatMap((d) => (punchBy.get(`${e.id}|${d}`) ?? []).map((r) => [r.id, r.kind, ts(r.at), r.rosterEntryId])).sort(),
           roster: (entBy.get(`${e.id}|${mondayOf(day)}`) ?? []).map((r) => [r.id, dayOf(r.date), ts(r.updatedAt), ts(r.publishedAt), r.breakMin, r.shiftId, grace.get(r.shiftId) ?? null]).sort(),
           sched: (schedBy.get(`${e.id}|${wd}`) ?? []).map((r) => [r.dayOff, r.startMin, r.endMin, r.graceMin, ts(r.createdAt), ts(r.updatedAt)]).sort(),
           leaves: (leaveBy.get(e.id) ?? []).filter((l) => l.from <= day && day <= l.to).map((l) => [l.id, l.status, l.halfDay, l.hours, l.policyId, l.paid]).sort(),

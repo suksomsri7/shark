@@ -1135,4 +1135,14 @@ export async function workEntryDaysInTx(
     truncated: data.truncated || rows.length >= ENTRY_TAKE,
   };
 }
+/** HR H3.1 r2 ▸ แถวลงเวลาที่ยังมีผล (ตัวกรองเดียวกับ loadData — แถวที่ถูกยกเลิกไม่นับ) สำหรับ inputHash ของชั่วโมงทำงาน · อ่านเป็นหน้า ๆ ตาม id */
+export async function workEntryPunchesInTx(tx: Db, ctx: Ctx, employeeIds: string[], from: Date, to: Date, after: string | null, take: number) {
+  return tx.hrAttendance.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: employeeIds }, voidedAt: null, at: { gte: from, lt: to } },
+    select: { id: true, employeeId: true, kind: true, at: true, rosterEntryId: true },
+    orderBy: { id: "asc" },
+    take,
+    ...(after ? { cursor: { id: after }, skip: 1 } : {}),
+  });
+}
 // ◂ HR H3.1
