@@ -17,7 +17,7 @@ import {
   PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, fileAt, srcFiles, makeRegistry, qc4Env, makeFixtures, cleanupFx,
   vOf, fitnessNoEnv, importsOf, jsonOf, testidsOf, loadOpt, modState, msgParity, tokensOnly, holdAdvisory, frozenControls,
 } from "./qc-hr-lib.mjs";
-import { FIX_CHECKS, fnBody, lineStr, runFixRound1, runPureH34, runStaticH34 } from "./qc-hr-h3.4-lib.mts"; // ORACLE-EDIT (H3.4 fix round 1): controller F1–F10 + coverage list — checks live in the lib (file size)
+import { FIX_CHECKS, fnBody, lineStr, runFixRound1, runPureH34, runStaticH34 } from "./qc-hr-h3.4-lib.mjs"; // ORACLE-EDIT (H3.4 fix round 1): controller F1–F10 + coverage list — checks live in the lib (file size)
 
 const SUITE = "qc-hr-h3.4";
 const ARGV = process.argv.slice(2);
