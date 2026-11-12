@@ -40,10 +40,43 @@
 ## 5. Debts / H3.4 must / accountant
 - D-H32-refund-kind (next to D-H46-refund-kind): the refund of an over-deduction is an APPROVED ALLOWANCE today (Q8, accountant A6); H3.4 should give it a non-taxable reversal kind when it opens the engine. The refund header carries `refundOfIds` (bound DEDUCTION ids) and bound − refund = corrected entitlement exactly; idempotent (S8.4).
 - D-H32-ui-payroll: the sync button lives on the attendance month view (roster readers); a payroll-only viewer (hr.payroll.read, no roster) cannot reach it — H3.4 payroll page should host it.
-- D-H32-unlocked-read: bind/approve gates read work-period state without locking P (lock-order reason); a build committing between gate and bind could slip one stale row in — the next sync refunds/re-deducts the difference.
+- ~~D-H32-unlocked-read~~ closed by fix r1 R4 (work-period locks before the run-period lock).
 - Brief D2–D4 stand (ENDED staff strand; no notification; unpaid leave of monthly staff not deducted here).
 - H3.4 must (additions): keep the H3.2 gate in run v2 creation/approve; loop `next` of sync; never price OT/holiday minutes from attendance rows; refund kind (above); deduct unpaidLeaveMin by the same ÷30÷N rule.
 - Accountant (additions): A8 an approved deduction is held out of payroll while its time data changed (re-approval needed — delay, never over-deduction); A9 policy OFF keeps approved rows bindable on their own snapshot policy.
 
 ## 6. Runs (lane DB wo-hr-qc-l1)
 qc-hr-h3.2 forced 51/51 ×2 + unforced 51/51 (residue none) · seed-hr-qc 33/33 ×2 (identical counts) · h3.1 58/58 · h2.9 58/58 · h2.6 55/55 · h4.6 69/69 · h1.2 73/73 · h1.3 63/63 · h3.3 51/51 · h0.1 67/67 · h0.2 58/58 · h0.6 55/55 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-bulk-ops 13/13 · qc-hf-hr-privacy 194/194 · fitness 53/53 + fitness-hr 9/9 with and without env · clean typecheck 0 errors (737 s; first run caught 1 TS7006, fixed 99e1fe55f).
+
+## 7. Fix round 1 (controller rulings after reviewer + hunter · base fdfb98e14)
+- **R1 approve gate** (`attendance-pay.ts#attendanceRunGateInTx`, called from `payroll.ts` claimApproveExpected): with the rule ON, every employee of the run must have work period = run period CURRENT/FROZEN and Σ signed live rows (APPROVED+PENDING) = E per rule (a human-waived digest counts as matched, R8), and no APPROVED unbound stale deduction with work period ≤ run period ⇒ else `ATTENDANCE_SYNC` (`ATT_TEXT.runSync`). Consequence: with the rule ON a month can only be approved after its work hours were pulled and deductions computed (also months with no late/absence).
+- **R2** (a) sync: an employee with an APPROVED deduction bound to a DRAFT run whose digest ≠ current ⇒ `wait RUN_STALE`, nothing written; (b) a refund (ALLOWANCE) binds only when every `refundOfIds` row is bound to an APPROVED/PAID run, else held and reconciled by the next sync; (c) `runStale` text = recompute run → compute deductions → approve.
+- **R3** sync is allowed for a frozen P (writes only to the month after the latest live run, > P). For a frozen P the calc uses the frozen HrWorkDay + the base/N/policy of the latest header of that employee in P (snapshot); no header (legacy freeze without a sync) ⇒ current values (no salary/policy history exists). **Confirmed:** once P has an APPROVED/PAID run, time corrections are refused (`correction.ts#ownerGate` ⇒ PAID) and work-entry rebuilds are refused (`work-entries.ts` frozen); a leave approved later does not change the frozen HrWorkDay (state FROZEN reads stored days).
+- **R4** create / recompute / delete-in-draft / approve take the work-period locks of the related attendance rows that are < the run period, ascending, before the run-period lock (`attendancePreLockInTx`), and the bind/approve gates refuse (`lockRetry`, nothing written) if a needed earlier period is not held. Deviation: no automatic retry inside the transaction (a retry would need restructuring frozen run-creation code beyond marked hunks); the pre-read includes PENDING rows of the run period so a mismatch needs a brand-new sync row to appear between pre-read and the run lock — the user presses again.
+- **R5** period cap in `attendanceDeductionOf`: Σ all lines of one employee·period ≤ base; lines in day order (absent before late within a day), the crossing line truncated, later lines 0 satang (minutes kept) — part of the digest.
+- **R6** service entry points (save · sync · preview · lines) require the viewer's userId to hold an accepted membership of ctx.tenantId with the same role (and `viewer.tenantId`, when given, = ctx.tenantId).
+- **R7** OFF withdraw re-lists pending periods after each pass until none remain (≤ 5 passes; stops if the rule is switched on again).
+- **R8 (owner-visible behaviour)** a deduction REJECTED by a person is a waiver for that exact data (same employee, rule, day set and digest): sync does not re-create it and the approve gate treats it as settled; when the time data changes (new digest) a new PENDING appears. System rejections (SUPERSEDED / POLICY_OFF) are not waivers.
+- N4 done (panel previews one employee) · N5 done (refund rows in "my deductions" carry no minutes/lines).
+
+### Lock order (global rule: every holder of period locks takes them ascending, the run/work period chain first)
+- sync: P → target(s) (> latest live run ≥ P) → `hr:attpay:<sys>:<emp>:<P>`.
+- createPayrollRun / recomputeDraftRun / cancelBoundDraftAdjustment / claimApproveExpected: related work periods < R (ascending) → R → run row FOR UPDATE.
+- decideAdjustment APPROVED: P (< row period) → row period → moveTo.
+- OFF: `hr:clockpolicy` (own tx) → per P: P → row periods.
+- build P only · correction: months sorted → hr-corr → hr:clock → hr:judge · OT: pPrev, P0 → target → hr:ot → hr:judge · stock: hr:stock → periods · markPaid / deleteDraft / reverse: R only. No holder waits on a smaller period than one it holds ⇒ no cycle.
+
+### Accountant (corrected)
+- A8 (replaces the earlier wording): an approved deduction whose time data changed is held out of payroll and the month cannot be approved until it is recomputed; the recompute rejects it and creates the corrected amount as a new PENDING row that needs approval again — the corrected deduction can therefore land in a later pay month than the work month (not only a delay of the same amount).
+- A9: policy OFF keeps approved rows bindable on their own snapshot policy; A10: a frozen month is always settled on its snapshot (salary/N/policy at the last calculation) — a later raise never changes a closed month; A11: monthly cap = base salary per work month; A12: a human reject waives that exact data.
+
+### H3.4 must (updated)
+- keep the H3.2 gates (R1 sync-current, bound-stale, refund-held, work-period locks) in run v2 creation and approve; loop `next` of sync;
+- refund kind D-H32-refund-kind (non-taxable reversal) and include refunds in v2 totals only when their deductions were taken;
+- price unpaidLeaveMin of monthly staff by the same ÷30÷N rule and include it in the R5 cap; never price OT/holiday minutes from attendance rows;
+- store pay type in the header snapshot (today a frozen header implies MONTHLY);
+- host the sync button on the payroll page (D-H32-ui-payroll); consider automatic retry for `lockRetry`.
+
+### Fix r1 runs (lane DB wo-hr-qc-l1)
+qc-hr-h3.2 forced 58/58 ×2 + unforced 58/58 (residue none; new checks RED on fdfb98e14: S2.1 S8.2 S8.7 S8.8–S8.14) · seed 33/33 · h3.1 58/58 · h2.9 58/58 · h2.6 55/55 · h4.6 69/69 · h1.2 73/73 · h1.3 63/63 · h3.3 51/51 · h0.1 67/67 · qc-payroll 19/19 · payroll-reverse 14/14 · payadjust 27/27 · bulk-ops 13/13 · hf-hr-privacy 194/194 · fitness 53/53 + fitness-hr 9/9 ±env · clean typecheck 0 errors (571 s).
+Hunter probes (unchanged scripts): money A/B/B2/C/C2 never over-deduct (settled 0, no refund rows; B/B2 end with REJECTED 3,125 + PENDING 1,041) but stop at the R1 gate because the probes never pull/compute September — the same sequences with that step are S8.8–S8.11 (1,041 · 1,041 · 1,041 · 3,125 ×2). Race: 4×sync 1 row · approve∥reject one wins · sync∥create/approve no stranded row · sync∥correction → PENDING 1,041 · sync∥OFF none · cross-tenant sync refused (requestedBy none). Arith: 31 absent days = 1,500,000 (cap); "two rows same day" is impossible in DB (HrWorkDay unique employeeId+date).
