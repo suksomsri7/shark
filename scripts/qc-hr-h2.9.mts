@@ -56,6 +56,7 @@ const T = {
   rateBad: "อัตรา OT ต่อชั่วโมงต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0",
   rateBelowLaw: "อัตรา OT ต่อชั่วโมงต้องไม่ต่ำกว่า 1.5 เท่าของค่าจ้างต่อชั่วโมงตามกฎหมาย",
   sAfter: "ระยะยื่นหลังทำต้องอยู่ระหว่าง 0 ถึง 72 ชั่วโมง",
+  sRound: "หน่วยปัดนาที OT ที่จ่ายต้องเป็น 1, 15 หรือ 30 นาที", // ORACLE-EDIT H2.9 Q7
   nTitleA: "คำขอ OT ได้รับอนุมัติ",
 };
 const BASE_KEYS = "date,dayClass,employeeId,employeeName,endAt,id,multiplierBp,paidMin,reason,requestedMin,settled,startAt,status,timing,warnWeek";
@@ -76,7 +77,7 @@ const CHECKS: Def[] = [
   D("S2.1", "R4", C, "RED", "[pure] otAmount V1–V8 literal satang"),
   D("S2.2", "R4", C, "RED", "[pure] otAmount V9–V19 literal satang"),
   D("S2.3", "R2", C, "RED", "[pure] otLawOf L1–L8 + OT_LAW_DEFAULT"),
-  D("S2.4", "R2", C, "RED", "[pure] otPaidMinutes M1–M10"),
+  D("S2.4", "R2", C, "RED", "[pure] otPaidMinutes M1–M11"), // ORACLE-EDIT H2.9 Q7 (+M11 step 1)
   D("S2.5", "R2", C, "RED", "[pure] otWindow W1–W12"),
   D("S2.6", "R13", M, "RED", "[pure] otLegalRateFloor · otPolicyOf · purity"),
   D("S3.1", "R5", C, "RED", "[db] requestOt self BEFORE + on-behalf AFTER rows"),
@@ -85,7 +86,7 @@ const CHECKS: Def[] = [
   D("S3.4", "Q9", M, "RED", "[db] warnWeek false/false/true (2220 > 2160)"),
   D("S4.1", "R9", C, "RED", "[db] decide before final ⇒ APPROVED, unsettled, no row"),
   D("S4.2", "R6", C, "RED", "[db] settle F1 ⇒ one row 17500 · <id>:1 · 2031-07 · request columns"),
-  D("S4.3", "R3", C, "RED", "[db] F2 day off 110000 · F3 holiday 26250 · F4 hourly 9375"),
+  D("S4.3", "R3", C, "RED", "[db] F2 day off 110000 · F3 holiday 26250 · F4 hourly exact 70 min 8750"), // ORACLE-EDIT H2.9 Q7 (default otRoundMin 1)
   D("S4.4", "R9", C, "RED", "[db] self · fourEyes · notFound ×3"),
   D("S4.5", "Q8", C, "RED", "[db] never worked ⇒ 0 · no profile ⇒ NO_RATE"),
   D("S4.6", "R6", C, "RED", "[db] STALE wait · recompute ⇒ 13502"),
@@ -105,7 +106,7 @@ const CHECKS: Def[] = [
   D("S8.1", "R12", C, "RED", "[db] hr.ot.decided key + 4-key payload"),
   D("S8.2", "R12", M, "RED", "[db] replay ⇒ 1 notification, no money"),
   D("S9.1", "R13", C, "RED", "[db] writer #18 save/below/bad/keep/clear"),
-  D("S9.2", "R14", M, "RED", "[db] OT policy 0 ⇒ late0 · 73 ⇒ sAfter"),
+  D("S9.2", "R14", M, "RED", "[db] OT policy 0 ⇒ late0 · 73 ⇒ sAfter · round 5 ⇒ sRound"), // ORACLE-EDIT H2.9 Q7
   D("X1", "frozen", C, "GREEN", "[db] frozen digests + MONTHLY"),
   D("X2", "frozen", C, "GREEN", "[db] frozen clock"),
   D("X3", "frozen", C, "GREEN", "[db] frozen privacy matrix"),
@@ -306,9 +307,10 @@ for (const [g, a, b] of [["S2.1", 0, 8], ["S2.2", 8, 19]] as const) {
     ["M4", "20:00", "21:00", "20:00", "20:59", 30, 30, 30], ["M5", "20:00", "22:00", "20:00", null, 0, 15, 0], ["M6", "19:00", "21:00", "20:00", "21:10", 60, 15, 60],
     ["M7", "20:00", "20:37", "20:00", "20:50", 50, 1, 37], ["M8", "09:00", "19:00", "09:00", "19:30", 600, 15, 600], ["M9", "23:30", "+1 01:00", "22:00", "+1 00:40", 150, 15, 60],
     ["M10", "23:00", "23:30", "20:00", "22:04", 120, 15, 0],
+    ["M11", "21:00", "23:00", "20:00", "22:04", 120, 1, 64], // ORACLE-EDIT H2.9 Q7: M2 at the default step 1 = exact 64 (21:00–22:04)
   ];
   const bad = M.filter(([, a, b, f, o, ot, st, want]) => pure("otPaidMinutes", { reqStart: bk(d, a), reqEnd: bk(d, b), from: bk(d, f), outAt: o ? bk(d, o) : null, otMin: ot, stepMin: st }) !== want).map(([id, a, b, f, o, ot, st]) => `${id}=${short(pure("otPaidMinutes", { reqStart: bk(d, a), reqEnd: bk(d, b), from: bk(d, f), outAt: o ? bk(d, o) : null, otMin: ot, stepMin: st }), 30)}`);
-  chk("S2.4", !bad.length, "10 vectors", bad.slice(0, 4).join(" · ") || "all");
+  chk("S2.4", !bad.length, "11 vectors", bad.slice(0, 4).join(" · ") || "all");
 }
 {
   const s = bk("2031-07-07", "20:00"), e = bk("2031-07-07", "22:00");
@@ -327,12 +329,12 @@ for (const [g, a, b] of [["S2.1", 0, 8], ["S2.2", 8, 19]] as const) {
 {
   const fl = (p: Record<string, unknown>) => pure("otLegalRateFloor", { ...P0, ...p }, LAW);
   const pol = (x: unknown) => canon(pure("otPolicyOf", x));
-  const PD = canon({ afterHours: 24, maxAheadDays: 31 });
+  const PD = canon({ afterHours: 24, maxAheadDays: 31, otRoundMin: 1 }); // ORACLE-EDIT H2.9 Q7: + otRoundMin (1 · 15 · 30, default 1)
   const inp = { law: LAW, ...mo(1_234_500), ...W(105) };
   const before = canon(inp);
   const r = {
     floor: fl({ payType: "MONTHLY", baseSalarySatang: 1_400_000 }) === 8750 && fl({ payType: "MONTHLY", baseSalarySatang: 1_234_500 }) === 7716 && fl({ payType: "DAILY", dailyRateSatang: 40_000 }) === 7500 && fl({ payType: "HOURLY", hourlyRateSatang: 4_333 }) === 6500 && fl({ payType: "MONTHLY", baseSalarySatang: 0 }) === null,
-    policy: pol(null) === PD && pol("x") === PD && pol({ afterHours: 0, maxAheadDays: 90 }) === canon({ afterHours: 0, maxAheadDays: 90 }) && pol({ afterHours: 73 }) === PD && pol({ afterHours: 1.5 }) === PD && pol({ maxAheadDays: 0 }) === PD,
+    policy: pol(null) === PD && pol("x") === PD && pol({ afterHours: 0, maxAheadDays: 90, otRoundMin: 15 }) === canon({ afterHours: 0, maxAheadDays: 90, otRoundMin: 15 }) && pol({ otRoundMin: 5 }) === PD && pol({ afterHours: 73 }) === PD && pol({ afterHours: 1.5 }) === PD && pol({ maxAheadDays: 0 }) === PD,
     pure: canon(pure("otAmount", inp)) === canon(pure("otAmount", inp)) && canon(inp) === before,
   };
   chk("S2.6", Object.values(r).every(Boolean), "floors 8750/7716/7500/6500/null · policy · pure", short(r));
@@ -492,7 +494,7 @@ try {
   // ═══ more requests (all filed before the work or ≤ 24 h after) ═══
   const idOf = (r: Any) => String(r?.id ?? "∅");
   const F3 = idOf(await req(cA, "self", { date: D3, start: "20:00", end: "21:30" }, bk(D3, "10:00")));
-  const F4 = idOf(await req(cA, "owner", { employeeId: E.e3, date: D2, start: "20:00", end: "21:15" }, bk(D2, "21:30")));
+  const F4 = idOf(await req(cA, "owner", { employeeId: E.e3, date: D2, start: "20:00", end: "21:10" }, bk(D2, "21:30"))); // ORACLE-EDIT H2.9 Q7: was 21:15 (75 min) — 70 ∩ otMin 75 at step 1 = 70
   const F5 = idOf(await req(cA, "self", { date: D4, start: "20:00", end: "22:00" }, bk(D4, "09:00")));
   const RC1 = idOf(await req(cA, "self", { date: D5, start: "20:00", end: "21:00" }, bk(D5, "09:00")));
   const F6 = idOf(await req(cA, "selfM", { date: D1, start: "20:00", end: "21:45" }, bk(D1, "12:00")));
@@ -551,9 +553,9 @@ try {
     const r = {
       f2: d2?.settled === true && adjStr(a2) === "1/OT/APPROVED/110000/2031-07/free" && canon((await ot(F2))?.segmentsJson) === canon([{ cls: "HOLIDAY_WORK", minutes: 480, multiplierBp: 20000, amountSatang: 80000 }, { cls: "OT_HOLIDAY", minutes: 120, multiplierBp: 30000, amountSatang: 30000 }]),
       f3: d3?.settled === true && adjStr(a3) === "1/OT/APPROVED/26250/2031-07/free" && (await ot(F3))?.multiplierBp === 30000,
-      f4: d4?.settled === true && adjStr(a4) === "1/OT/APPROVED/9375/2031-07/free" && (await ot(F4))?.paidMinutes === 75,
+      f4: d4?.settled === true && adjStr(a4) === "1/OT/APPROVED/8750/2031-07/free" && (await ot(F4))?.paidMinutes === 70, // ORACLE-EDIT H2.9 Q7: 5 000×70×15 000/600 000 = 8 750 (was 9 375 @ 75)
     };
-    chk("S4.3", Object.values(r).every(Boolean), "110000 · 26250 · 9375", `${short(r)} F2=${adjStr(a2)} F3=${adjStr(a3)} F4=${adjStr(a4)}`);
+    chk("S4.3", Object.values(r).every(Boolean), "110000 · 26250 · 8750", `${short(r)} F2=${adjStr(a2)} F3=${adjStr(a3)} F4=${adjStr(a4)}`);
     const pay = await dec(cA, "pay", RC1, "APPROVED");
     const pl = await dec(cA, "plain", RC1, "APPROVED");
     const ok = said(selfDec, T.self) && said(fe, T.fourEyes) && said(nf, T.notFound) && said(pay, T.notFound) && said(pl, T.notFound) && (await ot(RC1))?.status === "PENDING";
@@ -711,9 +713,10 @@ try {
     const s0 = await call("saveOtPolicy", cA, v("owner"), { afterHours: 0, maxAheadDays: 31 });
     const late = await req(cA, "self", { date: D5, start: "06:00", end: "07:00" }, bk(D5, "07:01"));
     const bad = await call("saveOtPolicy", cA, v("owner"), { afterHours: 73, maxAheadDays: 31 });
+    const badR = await call("saveOtPolicy", cA, v("owner"), { otRoundMin: 5 }); // ORACLE-EDIT H2.9 Q7: only 1 · 15 · 30
     const s1 = await call("saveOtPolicy", cA, v("owner"), { afterHours: 24, maxAheadDays: 31 });
     const g = await call("getOtPolicy", cA);
-    chk("S9.2", s0?.ok === true && said(late, T.late0) && said(bad, T.sAfter) && s1?.ok === true && canon(g) === canon({ afterHours: 24, maxAheadDays: 31 }), "late0 · sAfter · restored", `${sh(s0)} late=${sh(late)} bad=${sh(bad)} get=${short(g, 50)}`);
+    chk("S9.2", s0?.ok === true && said(late, T.late0) && said(bad, T.sAfter) && said(badR, T.sRound) && s1?.ok === true && canon(g) === canon({ afterHours: 24, maxAheadDays: 31, otRoundMin: 1 }), "late0 · sAfter · sRound · restored", `${sh(s0)} late=${sh(late)} bad=${sh(bad)} round=${sh(badR)} get=${short(g, 50)}`);
   }
 
   // ═══ X frozen controls ═══

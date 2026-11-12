@@ -44,3 +44,15 @@ W1–W12 (afterHours 24, ahead 31 d unless noted): BEFORE · AFTER at end+24 h �
 - UI testids required (not listed in the brief for size): `hr-ot-form hr-ot-submit hr-ot-list hr-ot-approve hr-ot-reject hr-ot-revoke hr-settings-ot-policy hr-salary-ot-rate`, inventory rows `wo: "H2.9"`.
 - The RC4 holder simulates a recompute in-tx (moves OUT 21:30→20:30, sets otMin 30 / workedMin 630 / version+1) so the stored row equals the live judgement.
 - Pure L-cases: day of the work = `2031-07-07`; an ACTIVE row missing the three holiday keys takes them from the default.
+
+## ORACLE-EDIT (builder · controller ruling Q7, 12 Nov 2026 — default = exact minutes, setting `otRoundMin` ∈ {1, 15, 30})
+Paid minutes = floorStep(min(request ∩ [from, OUT], measured otMin), otRoundMin) · default otRoundMin 1. Pure M1–M10 pass `stepMin` explicitly ⇒ unchanged (the 15/30 vectors stay as the 15-minute-setting proof).
+| check | old | new | arithmetic |
+|---|---|---|---|
+| F4 fixture (S4.3) | e3 req 20:00–21:15 | req 20:00–21:10 | OUT 21:20 ⇒ judge otMin = floor15(80) = 75 · overlap 20:00–21:10 = 70 · min(70, 75) = 70 at step 1 (step 15 would give 60) |
+| S4.3 F4 amount | 9 375 | **8 750** | HOURLY 5 000 × 70 × 15 000 / 600 000 = 5 250 000 000 / 600 000 = 8 750 (exact, no rounding) |
+| S4.3 F4 paidMinutes | 75 | **70** | as above |
+| S2.4 + M11 | — | 21:00–23:00 vs [20:00, 22:04], otMin 120, step 1 ⇒ **64** | overlap 21:00–22:04 = 64 · min(64,120) = 64 (M2 = same at step 15 ⇒ 60) |
+| S2.6 policy default | {afterHours 24, maxAheadDays 31} | + `otRoundMin: 1` | otPolicyOf(null) · {otRoundMin 5} ⇒ default · {0, 90, 15} kept |
+| S9.2 | get = {24, 31} | get = {24, 31, otRoundMin 1} · + saveOtPolicy {otRoundMin 5} ⇒ `sRound` | new fixed text `หน่วยปัดนาที OT ที่จ่ายต้องเป็น 1, 15 หรือ 30 นาที` |
+All other DB literals unchanged at step 1 (every other flow is on whole quarter hours: F1 120 · F2 600 · F3 90 · RC1 60 · F6 105 · RC4 30 · P1 120 · P2 60 · P3 60→90).
