@@ -186,7 +186,7 @@ function runStatic(): void {
     const dirs = readdirSync(join(ROOT, "prisma/migrations")).filter((d) => /^\d{14}_/.test(d)).sort();
     const r = {
       file: !!mig,
-      last: dirs.includes("20261231000000_hr_lifecycle") && !dirs.some((d) => d > "20261231000000_hr_lifecycle" && /_hr_/.test(d)) && dirs.filter((d) => /_hr_/.test(d) && d < "20261231000000").length > 0,
+      last: dirs.includes("20261231000000_hr_lifecycle") && (IN_BASE || !dirs.some((d) => d > "20261231000000_hr_lifecycle" && /_hr_/.test(d))) && dirs.filter((d) => /_hr_/.test(d) && d < "20261231000000").length > 0, // ORACLE-EDIT (H3.1 build): ordering n/a once H4.4 is in the base (later HR migrations, e.g. 20270103 H3.1)
       enum: /CREATE TYPE "HrOffboardReason" AS ENUM \('RESIGNED',\s*'CONTRACT_END',\s*'PROBATION_FAILED',\s*'TERMINATED',\s*'OTHER'\)/.test(mig),
       noAlter: !/ALTER TYPE|DROP TABLE|DROP COLUMN|DROP TYPE/i.test(mig),
     };

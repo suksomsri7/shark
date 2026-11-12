@@ -716,8 +716,9 @@ export function clientImports(src: string, allowed: (spec: string) => boolean, b
   return { useClient: /^\s*["']use client["']/.test(src), n: imp.length, bad: imp.filter((i) => !i.type && !allowed(i.spec)).map((i) => i.spec), dbReach: imp.filter((i) => !i.type && reach(i.spec)).map((i) => i.spec) };
 }
 /** แถว inventory ของหน้า ↔ testid ในโค้ด สองทาง (`via` + ส่วนท้าย -trigger/-sheet ของ ConfirmDialog) */
-export function inventoryParity(pageSuffix: string, ids: Set<string>, wo: string, oracle: string, inv = "scripts/hr-ui-inventory.json") {
-  const rows = ((jsonOf(inv)?.rows ?? []) as Any[]).filter((r) => String(r.page ?? "").endsWith(pageSuffix));
+// ORACLE-EDIT (H3.1 build): `ownRowsOnly` = judge only this WO's rows of a page another WO also mounts on (H3.1 hr-we-* on /hr/attendance) — default unchanged
+export function inventoryParity(pageSuffix: string, ids: Set<string>, wo: string, oracle: string, inv = "scripts/hr-ui-inventory.json", ownRowsOnly = false) {
+  const rows = ((jsonOf(inv)?.rows ?? []) as Any[]).filter((r) => String(r.page ?? "").endsWith(pageSuffix) && (!ownRowsOnly || r.wo === wo));
   const rowIds = rows.flatMap((r) => [String(r.testid), ...(r.via ? [String(r.via)] : [])]);
   const strip = (s: string) => s.replace(/-(trigger|sheet)$/, "");
   return {

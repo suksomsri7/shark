@@ -321,7 +321,7 @@ function runStatic(): void {
   {
     const ids = testidsOf(rd(F.ui) + rd(F.page), "hr-att-");
     const miss = TESTIDS.filter((t) => ![...ids].some((i) => (t.endsWith("-") ? i.startsWith(t) : i === t)));
-    const p = inventoryParity("/hr/attendance", ids, "H2.5", SUITE);
+    const p = inventoryParity("/hr/attendance", ids, "H2.5", SUITE, undefined, true); // ORACLE-EDIT (H3.1 build): H3.1 mounts hr-we-* rows on this page — judge H2.5 rows only
     const ui = code(F.ui);
     const [btn, tall] = [(ui.match(/<button\b/g) ?? []).length, (ui.match(/min-h-\[44px\]|min-h-11\b/g) ?? []).length];
     const v = rd(F.visual);
