@@ -327,6 +327,17 @@ export const HQC = {
     // HR H2.2 r2 ▸ Q14 แพร ลาพักร้อน ส.–อา. ของสัปดาห์ภาพ 03 รออนุมัติ (ชิปลาเส้นประ + "รออนุมัติ" ในภาพ · วันหยุดของแพรอยู่แล้ว) ◂
     pendingLeave: { employee: "prae", type: "VACATION", fromDow: 5, toDow: 6, reason: "ไปงานแต่งเพื่อนต่างจังหวัด" },
   },
+  // HR H4.4 ▸ วงจรพนักงาน (ภาพ 02 — ผ่าน hr/lifecycle.ts ในนามเจ้าของ): ทดลองงานครบ today+14 (โบว์) · สัญญาพาร์ทไทม์ถึงสิ้นเดือน (เจ) ·
+  //   รายการรับพนักงานใหม่ของโบว์ 5/7 · ตักเตือนด้วยวาจา 1 ใบที่พนักงานเห็น (นัท · ยังทำงาน) · ผู้ลาออก (ฝ้าย) สิ้นสุดผ่าน offboardEmployee (RESIGNED · leaverEnd)
+  //   ⇒ แถวที่คาด: งาน 7 + 6 = 13 · บันทึก 1 (ML1 ของ seed) · บอร์ดงานปิด (ค่าปริยาย) ⇒ ไม่มีการ์ด ◂
+  lifecycle: {
+    probation: { employee: "bow", endsInDays: 14 },
+    contract: { employee: "jay" },
+    onboarding: { employee: "bow", done: ["id_card", "sso", "bank", "pin", "roster"] },
+    warning: { employee: "nat", kind: "VERBAL_WARNING", title: "มาสายเกิน 3 ครั้งในเดือนนี้", body: "แจ้งด้วยวาจาแล้ว ให้เข้างานตรงเวลาตั้งแต่สัปดาห์หน้า" },
+    leaver: { employee: "fai", reason: "RESIGNED" },
+    expect: { tasks: 13, notes: 1, onboardingDone: 5, offboardingTasks: 6 },
+  },
 } as const;
 
 export type HqcEmployeeKey = (typeof HQC.employees)[number]["key"];
