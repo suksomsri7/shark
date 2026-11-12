@@ -138,3 +138,7 @@ RED proof on dc98d4f37 product code (forced): `===== qc-hr-h3.3 ===== passed 46/
 | fitness-hr no-env | 9/9 | 0 |
 | typecheck (once, 12288/14000M) | 0 errors | 0 |
 Not run in r2: fitness/fitness-hr with env, the other r1 suites (payadjust, reverse, crm-c3.3, account-cpa, nav, h0.6) — r2 touched only the v2 engine, law.ts lawDayOf, platform/hr-law.ts and the oracle.
+
+## r3 (12 Nov)
+Controller FULL run on f7d64c0c6: qc-hr-roster NM-3 + qc-hr-h2.2 S1.3 red — the sidebar law line in `layout.tsx` was not mirrored in `hrTabs`. Fix: `src/lib/modules/hr/ui.tsx` hrTabs gets `{ href: `${s}/hr/settings/law`, label: "ตารางกฎหมาย" }` right after "ตั้งค่า" (same position as the sidebar; hrTabs uses literal labels, no message keys). No type change ⇒ no typecheck. No ORACLE-EDIT needed.
+Verify (lane DB, forced ×1): qc-hr-roster 24/24 exit 0 · qc-hr-h2.2 60/60 exit 0 · qc-nav-functions 10/11 exit 1 (S5 = BOOKING /booking/calendar,/booking/day only; HR complete) · qc-hr-h3.3 51/51 exit 0 · fitness-hr no-env 9/9 exit 0.
