@@ -18,7 +18,8 @@ const SUITE = "qc-hr-h2.6";
 const ARGV = process.argv.slice(2);
 const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
 const SLUG_PREFIX = "qc-hr-h26-";
-const BASE = process.env.QC_H26_BASE || "e209390e78bdd6ac5ec4b53251dd8c3786641b1d";
+// ORACLE-EDIT (controller, 12 Nov): default base = merge-base with origin/session/hr (iso.sh drops env, so the control run cannot pass QC_H26_BASE; the hard-coded pre-H4.1 SHA counted H4.1's hunks as unmarked)
+const BASE = process.env.QC_H26_BASE || (() => { try { return execFileSync("git", ["merge-base", "HEAD", "origin/session/hr"], { cwd: ROOT, encoding: "utf8" }).trim(); } catch { return "e209390e78bdd6ac5ec4b53251dd8c3786641b1d"; } })();
 const H = "src/lib/modules/hr/";
 const F = {
   rules: `${H}correction-rules.ts`, corr: `${H}correction.ts`, acts: `${H}correction-actions.ts`, ui: `${H}correction-ui.tsx`, ev: "src/lib/hr-pos-evidence.ts",
