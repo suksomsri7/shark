@@ -8,7 +8,9 @@
 //   คำนวณ (sync)      : hr:payroll:run:<ระบบ>:<P> → งวดปลายทาง (> รอบล่าสุด ≥ P · มากขึ้นเท่านั้น) → hr:attpay:<ระบบ>:<พนักงาน>:<P> (เรียง id)
 //   ปิดกฎ (OFF)        : hr:clockpolicy:<ระบบ> (tx บันทึกค่าตั้ง · ปล่อยแล้ว) → tx ใหม่: P → งวดของแถว (เรียง)
 //   อนุมัติรายการ       : P → งวดของแถว → งวดที่ย้ายไป (payroll.ts#decideAdjustment)
-//   ดึงชั่วโมงทำงาน      : P อย่างเดียว (work-entries.ts) · สร้าง/คำนวณใหม่/อนุมัติ/จ่ายรอบ: งวดของรอบก่อน (อ่านสถานะงวดงานโดยไม่ล็อก)
+//   ดึงชั่วโมงทำงาน      : P อย่างเดียว (work-entries.ts)
+//   สร้าง/คำนวณใหม่/อนุมัติรอบ (fix r1 R4): งวดงาน < งวดของรอบ ที่รายการหักสาย/ขาดเกี่ยวข้อง (เรียงน้อย → มาก) → งวดของรอบ → แถวรอบ ·
+//     อ่านชุดซ้ำใต้ล็อก — มีงวดที่ไม่ได้ล็อก ⇒ ปฏิเสธ (lockRetry) · markPaid/ลบร่าง/กลับรายการ: งวดของรอบเท่านั้น
 //   แก้เวลา (H2.6)      : งวด (เรียง) → hr-corr → hr:clock → hr:judge · จ่าย OT (H2.9): งวด → ปลายทาง → hr:ot → hr:judge · หักค่าของ (H4.6): hr:stock → งวด
 //   ⇒ ไม่มีใครถือล็อกงวดแล้วรอ hr:clockpolicy / ล็อกงวดที่น้อยกว่า ◂
 import type { Prisma } from "@prisma/client";
@@ -65,6 +67,19 @@ export const canSyncAttendancePay = (v: WorkEntryViewer | null | undefined): boo
 const seesMoney = (v: WorkEntryViewer | null | undefined): boolean => canBuildWorkEntries(v);
 class Refusal extends Error {}
 
+/**
+ * fix r1 (R6 · hunter D5): ผู้เรียกต้องเป็นสมาชิกของร้านใน ctx จริง (ไม่พึ่งชั้น action) — ผู้ใช้ + สมาชิกภาพที่ตอบรับแล้ว + บทบาทตรงกับที่ผู้เรียกส่งมา ·
+ * ผู้ดูที่ระบุร้านมา (tenantId) ต้องเป็นร้านเดียวกัน · ไม่ผ่าน = คำปฏิเสธของจุดนั้น (ไม่บอกเหตุผล)
+ */
+async function inTenant(ctx: Ctx, viewer: WorkEntryViewer | null | undefined): Promise<boolean> {
+  const v = (viewer ?? {}) as { tenantId?: unknown; userId?: unknown; role?: unknown };
+  if (typeof v.tenantId === "string" && v.tenantId !== ctx.tenantId) return false;
+  const uid = typeof v.userId === "string" ? v.userId : "";
+  if (!uid || !ctx?.tenantId) return false;
+  const m = await tenantDb({ tenantId: ctx.tenantId }).membership.findFirst({ where: { tenantId: ctx.tenantId, userId: uid, acceptedAt: { not: null } }, select: { role: true } });
+  return !!m && String(m.role) === String(v.role);
+}
+
 // ═════════════ นโยบาย (R2 · settings.hrAttendancePay ต่อร้าน) ═════════════
 async function settingsIn(db: Db, ctx: Ctx): Promise<Record<string, unknown>> {
   return obj((await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } }))?.settings);
@@ -80,7 +95,7 @@ const numOf = (v: unknown): number | null => (typeof v === "number" ? v : typeof
  * ไม่มีตัวเลือกค่าปรับ/ตัวคูณ/ปัดขึ้น · ปิดกฎ (เปิด → ปิด) ⇒ ถอนรายการ PENDING ที่ยังไม่เข้ารอบทุกแถว (POLICY_OFF) · APPROVED คงไว้ (Q12)
  */
 export async function saveAttendancePayPolicy(ctx: Ctx, viewer: WorkEntryViewer, raw: unknown, opts: { now?: Date } = {}): Promise<{ ok: true; id: string } | Fail> {
-  if (!viewer || viewer.role !== "OWNER") return { ok: false, reason: ATT_TEXT.policyNo };
+  if (!viewer || viewer.role !== "OWNER" || !(await inTenant(ctx, viewer))) return { ok: false, reason: ATT_TEXT.policyNo };
   const i = obj(raw);
   const has = (k: string) => Object.prototype.hasOwnProperty.call(i, k) && i[k] !== undefined;
   const patch: Partial<AttendancePayPolicy> = {};
@@ -117,41 +132,56 @@ export async function saveAttendancePayPolicy(ctx: Ctx, viewer: WorkEntryViewer,
   return { ok: true, id: ctx.systemId };
 }
 
-/** ปิดกฎ ⇒ ถอน PENDING ที่ยังไม่เข้ารอบ (ทีละงวดงาน · ล็อก P → งวดของแถว เรียง) · ตรวจซ้ำใต้ล็อกว่ากฎยังปิด */
-async function withdrawPendingOnOff(ctx: Ctx, now: Date): Promise<number> {
+/** งวดงานที่ยังมีรายการ PENDING ไม่เข้ารอบ (หัวรายการยังไม่ปิด) — เรียง */
+async function pendingPeriods(ctx: Ctx): Promise<string[]> {
   const db = tenantDb(ctx) as unknown as Db;
   const heads = await db.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, endCode: null }, select: { adjustmentId: true, workPeriodKey: true }, take: 20_000 });
-  if (!heads.length) return 0;
+  if (!heads.length) return [];
   const pend = await db.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: heads.map((h) => h.adjustmentId) }, status: "PENDING", runId: null }, select: { id: true }, take: 20_000 });
   const pendIds = new Set(pend.map((p) => p.id));
-  const periods = [...new Set(heads.filter((h) => pendIds.has(h.adjustmentId)).map((h) => h.workPeriodKey))].sort();
+  return [...new Set(heads.filter((h) => pendIds.has(h.adjustmentId)).map((h) => h.workPeriodKey))].sort();
+}
+/**
+ * ปิดกฎ ⇒ ถอน PENDING ที่ยังไม่เข้ารอบ (ทีละงวดงาน · ล็อก P → งวดของแถว เรียง) · ตรวจซ้ำใต้ล็อกว่ากฎยังปิด ·
+ * fix r1 (R7): ไล่รายการงวดใหม่หลังแต่ละรอบจนไม่เหลือ PENDING (sync ที่อ่านกฎก่อนปิดแล้วเขียนทีหลังจะถูกเก็บในรอบถัดไป) — สูงสุด 5 รอบ
+ */
+async function withdrawPendingOnOff(ctx: Ctx, now: Date): Promise<number> {
   let n = 0;
-  for (const P of periods) {
-    n += await tenantDb(ctx).$transaction(async (t) => {
-      const tx = t as unknown as Db;
-      await lock(tx, payKey(ctx, P));
-      if (attendancePayPolicyOf((await settingsIn(tx, ctx))[SETTINGS_KEY]).enabled) return 0;
-      const hs = await tx.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, workPeriodKey: P, endCode: null }, select: { adjustmentId: true, employeeId: true, rule: true }, take: 20_000 });
-      const rows = await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: hs.map((h) => h.adjustmentId) }, status: "PENDING", runId: null }, select: { id: true, periodKey: true }, orderBy: { id: "asc" } });
-      if (!rows.length) return 0;
-      for (const p of [...new Set(rows.map((r) => r.periodKey))].filter((p) => p > P).sort()) await lock(tx, payKey(ctx, p));
-      const byId = new Map(hs.map((h) => [h.adjustmentId, h]));
-      const groups = new Map<string, { employeeId: string; rule: AttRule; ids: string[] }>();
-      for (const r of rows) {
-        const h = byId.get(r.id);
-        if (!h || !isAtt(h.rule)) continue;
-        const k = `${h.employeeId}|${h.rule}`;
-        const g = groups.get(k) ?? { employeeId: h.employeeId, rule: h.rule, ids: [] };
-        g.ids.push(r.id);
-        groups.set(k, g);
-      }
-      let c = 0;
-      for (const g of groups.values()) {
-        const w = await writeAttendanceDeductionInTx(tx, ctx, { employeeId: g.employeeId, workPeriodKey: P, rule: g.rule, reject: g.ids.map((id) => ({ id, status: "PENDING" as const })), create: null, requestedById: null, now });
-        c += (await tx.hrAttendanceDeduction.updateMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, adjustmentId: { in: w.rejected }, endCode: null }, data: { endCode: "POLICY_OFF", endedAt: now } })).count;
-      }
-      return c;
-    }, TX_OPTS);
+  for (let pass = 0; pass < 5; pass++) {
+    const periods = await pendingPeriods(ctx);
+    if (!periods.length) break;
+    let moved = 0;
+    for (const P of periods) {
+      const c = await tenantDb(ctx).$transaction(async (t) => {
+        const tx = t as unknown as Db;
+        await lock(tx, payKey(ctx, P));
+        if (attendancePayPolicyOf((await settingsIn(tx, ctx))[SETTINGS_KEY]).enabled) return -1;
+        const hs = await tx.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, workPeriodKey: P, endCode: null }, select: { adjustmentId: true, employeeId: true, rule: true }, take: 20_000 });
+        const rows = await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: hs.map((h) => h.adjustmentId) }, status: "PENDING", runId: null }, select: { id: true, periodKey: true }, orderBy: { id: "asc" } });
+        if (!rows.length) return 0;
+        for (const p of [...new Set(rows.map((r) => r.periodKey))].filter((p) => p > P).sort()) await lock(tx, payKey(ctx, p));
+        const byId = new Map(hs.map((h) => [h.adjustmentId, h]));
+        const groups = new Map<string, { employeeId: string; rule: AttRule; ids: string[] }>();
+        for (const r of rows) {
+          const h = byId.get(r.id);
+          if (!h || !isAtt(h.rule)) continue;
+          const k = `${h.employeeId}|${h.rule}`;
+          const g = groups.get(k) ?? { employeeId: h.employeeId, rule: h.rule, ids: [] };
+          g.ids.push(r.id);
+          groups.set(k, g);
+        }
+        let cc = 0;
+        for (const g of groups.values()) {
+          const w = await writeAttendanceDeductionInTx(tx, ctx, { employeeId: g.employeeId, workPeriodKey: P, rule: g.rule, reject: g.ids.map((id) => ({ id, status: "PENDING" as const })), create: null, requestedById: null, now });
+          cc += (await tx.hrAttendanceDeduction.updateMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, adjustmentId: { in: w.rejected }, endCode: null }, data: { endCode: "POLICY_OFF", endedAt: now } })).count;
+        }
+        return cc;
+      }, TX_OPTS);
+      if (c < 0) return n; // กฎถูกเปิดกลับแล้ว — หยุด
+      n += c;
+      moved += c;
+    }
+    if (!moved) break;
   }
   return n;
 }
@@ -173,16 +203,27 @@ async function periodEmps(db: Db, ctx: Ctx, P: string, where: Prisma.HrEmployeeW
     take: 5000,
   })) as Emp[];
 }
-type Calc = { state: WorkEntryState | "NONE"; code: string | null; out: AttOut | null; base: number };
-type CalcSet = { policy: AttendancePayPolicy; N: number; byEmp: Map<string, Calc> };
-/** คิดรายการหักสดของพนักงานชุดหนึ่งในงวดงาน P — `policyFor` = นโยบายที่ใช้คิด (ค่าปริยาย = ค่าตั้งปัจจุบัน) */
+async function frozenRun(db: Db, ctx: Ctx, P: string): Promise<boolean> {
+  return !!(await db.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: P, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } }));
+}
+/** ฐานที่ใช้คิด (อยู่ในลายนิ้วมือ) */
+type Basis = { base: number; N: number; policy: AttendancePayPolicy };
+type Calc = { state: WorkEntryState | "NONE"; code: string | null; out: AttOut | null; basis: Basis };
+type CalcSet = { policy: AttendancePayPolicy; N: number; frozen: boolean; byEmp: Map<string, Calc> };
+/**
+ * คิดรายการหักสดของพนักงานชุดหนึ่งในงวดงาน P — `policyOverride` = นโยบายที่ใช้คิด (ค่าปริยาย = ค่าตั้งปัจจุบัน) ·
+ * fix r1 (R3 · hunter D3): งวดงานที่อนุมัติ/จ่ายแล้ว (FROZEN) คิดจากวันที่แช่แข็ง + ฐานที่เก็บในหัวรายการล่าสุดของพนักงานคนนั้นในงวด
+ *   (เงินเดือน · N · นโยบาย ณ การคำนวณครั้งสุดท้ายก่อนแช่แข็ง — การขึ้นเงินเดือน/เปลี่ยนกฎทีหลังไม่ทำให้งวดที่ปิดแล้วเปลี่ยน) ·
+ *   ไม่มีหัวรายการ (ข้อมูลเก่าที่ปิดงวดโดยไม่เคยคำนวณ) = ค่าปัจจุบัน (ไม่มีประวัติเงินเดือน/กฎให้ย้อน — บันทึกในโน้ต)
+ */
 async function calcSet(db: Db, ctx: Ctx, P: string, ids: string[], policyOverride?: AttendancePayPolicy): Promise<CalcSet> {
   const s = await settingsIn(db, ctx);
   const policy = policyOverride ?? attendancePayPolicyOf(s[SETTINGS_KEY]);
   const N = normalMinutesOf(s);
   const byEmp = new Map<string, Calc>();
-  if (!ids.length) return { policy, N, byEmp };
-  const [states, profiles, days] = await Promise.all([
+  const frozen = await frozenRun(db, ctx, P);
+  if (!ids.length) return { policy, N, frozen, byEmp };
+  const [states, profiles, days, snaps] = await Promise.all([
     workEntryStatesInTx(db, ctx, P, ids),
     db.hrSalaryProfile.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids } }, select: { employeeId: true, payType: true, baseSalarySatang: true } }),
     db.hrWorkDay.findMany({
@@ -191,8 +232,13 @@ async function calcSet(db: Db, ctx: Ctx, P: string, ids: string[], policyOverrid
       orderBy: { id: "asc" },
       take: 200_000,
     }),
+    frozen
+      ? db.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, workPeriodKey: P, employeeId: { in: ids } }, select: { employeeId: true, baseSalarySatang: true, normalDayMin: true, policyJson: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 20_000 })
+      : Promise.resolve([] as { employeeId: string; baseSalarySatang: number; normalDayMin: number; policyJson: unknown }[]),
   ]);
   const prof = new Map(profiles.map((p) => [p.employeeId, p]));
+  const snap = new Map<string, Basis>();
+  for (const h of snaps) if (!snap.has(h.employeeId)) snap.set(h.employeeId, { base: h.baseSalarySatang, N: h.normalDayMin, policy: attendancePayPolicyOf(h.policyJson) });
   const dayBy = new Map<string, AttDayInput[]>();
   for (const d of days) {
     const a = dayBy.get(d.employeeId) ?? [];
@@ -202,36 +248,50 @@ async function calcSet(db: Db, ctx: Ctx, P: string, ids: string[], policyOverrid
   for (const id of ids) {
     const state = states.get(id) ?? "NONE";
     const p = prof.get(id);
+    const sb = snap.get(id);
+    const basis: Basis = sb ?? { base: p?.baseSalarySatang ?? 0, N, policy };
     if (state !== "CURRENT" && state !== "FROZEN") {
-      byEmp.set(id, { state, code: state === "NONE" ? "MISSING" : state, out: null, base: p?.baseSalarySatang ?? 0 });
+      byEmp.set(id, { state, code: state === "NONE" ? "MISSING" : state, out: null, basis });
       continue;
     }
-    if (!p) {
-      byEmp.set(id, { state, code: "NO_PROFILE", out: null, base: 0 });
+    if (!sb && !p) {
+      byEmp.set(id, { state, code: "NO_PROFILE", out: null, basis });
       continue;
     }
-    const out = attendanceDeductionOf({ policy, payType: String(p.payType), baseSalarySatang: p.baseSalarySatang, normalDayMin: N, days: dayBy.get(id) ?? [] });
-    byEmp.set(id, { state, code: out.ok ? null : out.code, out: out.ok ? out : null, base: p.baseSalarySatang });
+    const out = attendanceDeductionOf({ policy: basis.policy, payType: sb ? "MONTHLY" : String(p!.payType), baseSalarySatang: basis.base, normalDayMin: basis.N, days: dayBy.get(id) ?? [] });
+    byEmp.set(id, { state, code: out.ok ? null : out.code, out: out.ok ? out : null, basis });
   }
-  return { policy, N, byEmp };
+  return { policy, N, frozen, byEmp };
 }
 const ruleTotal = (out: AttOut | null, rule: AttRule) => (out && out.ok ? (rule === "LATE_RULE" ? out.late : out.absent) : { days: 0, minutes: 0, amountSatang: 0 });
 const ruleLines = (out: AttOut | null, rule: AttRule) => (out && out.ok ? out.lines.filter((l) => l.rule === rule) : []);
 const signedOf = (r: { kind: string; amountSatang: number }) => (String(r.kind) === "ALLOWANCE" ? -r.amountSatang : r.amountSatang);
+const digestOf = (k: Calc, rule: AttRule) => (k.out ? attendanceDigest(k.out, k.basis, rule) : "");
 
-type Head = { adjustmentId: string; employeeId: string; workPeriodKey: string; rule: string; gen: number; kind: string; entitledSatang: number; amountSatang: number; digest: string; endCode: string | null; linesJson: unknown; policyJson: unknown };
-const HEAD_SELECT = { adjustmentId: true, employeeId: true, workPeriodKey: true, rule: true, gen: true, kind: true, entitledSatang: true, amountSatang: true, digest: true, endCode: true, linesJson: true, policyJson: true } as const;
+type Head = { adjustmentId: string; employeeId: string; workPeriodKey: string; rule: string; gen: number; kind: string; entitledSatang: number; amountSatang: number; digest: string; endCode: string | null; linesJson: unknown; policyJson: unknown; refundOfIds: string[] };
+const HEAD_SELECT = { adjustmentId: true, employeeId: true, workPeriodKey: true, rule: true, gen: true, kind: true, entitledSatang: true, amountSatang: true, digest: true, endCode: true, linesJson: true, policyJson: true, refundOfIds: true } as const;
 type AdjRow = { id: string; employeeId: string; kind: string; status: string; amountSatang: number; runId: string | null; periodKey: string };
 const ADJ_SELECT = { id: true, employeeId: true, kind: true, status: true, amountSatang: true, runId: true, periodKey: true } as const;
-/** หัวรายการ + แถวเงินของพนักงานชุดหนึ่งในงวดงาน P */
-async function rowsOf(db: Db, ctx: Ctx, P: string, ids: string[]): Promise<{ heads: Head[]; adj: Map<string, AdjRow> }> {
-  if (!ids.length) return { heads: [], adj: new Map() };
+/** หัวรายการ + แถวเงินของพนักงานชุดหนึ่งในงวดงาน P (+ สถานะรอบของแถวที่เข้ารอบแล้ว) */
+async function rowsOf(db: Db, ctx: Ctx, P: string, ids: string[]): Promise<{ heads: Head[]; adj: Map<string, AdjRow>; runStatus: Map<string, string> }> {
+  if (!ids.length) return { heads: [], adj: new Map(), runStatus: new Map() };
   const heads = (await db.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, workPeriodKey: P, employeeId: { in: ids } }, select: HEAD_SELECT, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 20_000 })) as unknown as Head[];
   const adj = heads.length
     ? ((await db.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: heads.map((h) => h.adjustmentId) } }, select: ADJ_SELECT, take: 20_000 })) as unknown as AdjRow[])
     : [];
-  return { heads, adj: new Map(adj.map((a) => [a.id, { ...a, kind: String(a.kind), status: String(a.status) }])) };
+  const runIds = [...new Set(adj.map((a) => a.runId).filter((x): x is string => !!x))];
+  const runs = runIds.length ? await db.hrPayrollRun.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: runIds } }, select: { id: true, status: true } }) : [];
+  return { heads, adj: new Map(adj.map((a) => [a.id, { ...a, kind: String(a.kind), status: String(a.status) }])), runStatus: new Map(runs.map((r) => [r.id, String(r.status)])) };
 }
+/** fix r1 (R2a): มีรายการหักที่ผูกรอบร่างอยู่ แต่ลายนิ้วมือไม่ตรงข้อมูลปัจจุบัน (ยังไม่ได้หักจริง — ห้ามคิดส่วนต่าง/คืนเงินจากมัน) */
+const draftStaleOf = (heads: Head[], adj: Map<string, AdjRow>, runStatus: Map<string, string>, employeeId: string, k: Calc) =>
+  heads.some((h) => {
+    const a = adj.get(h.adjustmentId);
+    return h.employeeId === employeeId && isAtt(h.rule) && h.kind === "DEDUCTION" && !!a && a.status === "APPROVED" && !!a.runId && runStatus.get(a.runId) === "DRAFT" && h.digest !== digestOf(k, h.rule);
+  });
+/** fix r1 (R8): หัวรายการที่ "คนปฏิเสธ" (แถว REJECTED · หัวยังไม่ถูกระบบปิด) ด้วยลายนิ้วมือเดียวกัน = สละสิทธิ์หักสำหรับข้อมูลชุดนั้น */
+const waivedBy = (heads: Head[], adj: Map<string, AdjRow>, employeeId: string, rule: AttRule, digest: string) =>
+  !!digest && heads.some((h) => h.employeeId === employeeId && h.rule === rule && h.kind === "DEDUCTION" && !h.endCode && h.digest === digest && adj.get(h.adjustmentId)?.status === "REJECTED");
 
 // ═════════════ คำนวณ (R4–R7) ═════════════
 export type SyncResult =
@@ -253,14 +313,14 @@ async function lockTarget(tx: Db, ctx: Ctx, P: string, held: Set<string>): Promi
   }
   throw new Refusal(ATT_TEXT.failed);
 }
-async function frozenRun(db: Db, ctx: Ctx, P: string): Promise<boolean> {
-  return !!(await db.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: P, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } }));
-}
 
 /**
  * ปุ่ม "คำนวณรายการหักสาย/ขาด" (Q4 — ทางเดียวที่สร้างรายการ) · ทีละหน้า ≤ 50 คน / ~20 วิ (next) · หน้าละ 1 tx ตามลำดับล็อกในหัวไฟล์ ·
- * สถานะ ≠ CURRENT ⇒ wait (ไม่เขียน) · ไม่มีโปรไฟล์/ไม่ใช่รายเดือน/ฐาน 0 ⇒ skipped · ต่อกฎ: แผนส่วนต่าง (R6) → ตัวเขียนใน payroll.ts (R7) + หัวรายการ ·
+ * สถานะ ∉ {CURRENT, FROZEN} ⇒ wait (ไม่เขียน) · ไม่มีโปรไฟล์/ไม่ใช่รายเดือน/ฐาน 0 ⇒ skipped · ต่อกฎ: แผนส่วนต่าง (R6) → ตัวเขียนใน payroll.ts (R7) + หัวรายการ ·
  * ทำซ้ำ/ขนานกัน = ผลเดียวกัน (ล็อกงวด P + แผนที่ไม่เปลี่ยนเมื่อยอด/ลายนิ้วมือเท่าเดิม)
+ * fix r1: (R3) งวดงานที่อนุมัติ/จ่ายแล้วคำนวณได้ — เขียนเฉพาะงวดปลายทาง (> รอบล่าสุด) ไม่เคยเขียนเข้ารอบ P · ฐานของงวดที่ปิด = ภาพนิ่งในหัวรายการ ·
+ *   (R2a) พนักงานที่มีรายการหักผูกรอบร่างแต่ลายนิ้วมือไม่ตรงแล้ว ⇒ ไม่เขียนอะไรเลย · wait RUN_STALE ("คำนวณรอบใหม่ก่อน") ·
+ *   (R8) ไม่สร้าง PENDING ซ้ำให้ข้อมูลชุดที่คนปฏิเสธแล้ว (ลายนิ้วมือเดียวกัน) · (R6) ผู้เรียกต้องเป็นสมาชิกร้านใน ctx
  */
 export async function syncAttendanceDeductions(
   ctx: Ctx,
@@ -268,12 +328,11 @@ export async function syncAttendanceDeductions(
   input: { periodKey?: unknown; employeeIds?: unknown; after?: unknown },
   opts: { now?: Date } = {},
 ): Promise<SyncResult> {
-  if (!canSyncAttendancePay(viewer)) return { ok: false, reason: ATT_TEXT.syncNo };
+  if (!canSyncAttendancePay(viewer) || !(await inTenant(ctx, viewer))) return { ok: false, reason: ATT_TEXT.syncNo };
   const P = typeof input?.periodKey === "string" ? input.periodKey.trim() : "";
   if (!PERIOD_RE.test(P)) return { ok: false, reason: ATT_TEXT.period };
   const db = tenantDb(ctx) as unknown as Db;
   if (!attendancePayPolicyOf((await settingsIn(db, ctx))[SETTINGS_KEY]).enabled) return { ok: false, reason: ATT_TEXT.off };
-  if (await frozenRun(db, ctx, P)) return { ok: false, reason: ATT_TEXT.frozen };
   const now = nowOf(opts);
   const scope = scopeOf(viewer);
   const only = Array.isArray(input?.employeeIds) ? new Set(input.employeeIds.filter((x): x is string => typeof x === "string")) : null;
@@ -294,19 +353,17 @@ export async function syncAttendanceDeductions(
       const r = await tenantDb(ctx).$transaction(async (t) => {
         const tx = t as unknown as Db;
         await lock(tx, payKey(ctx, P)); // ล็อกงวดงานก่อนทุกอย่าง
-        if (await frozenRun(tx, ctx, P)) throw new Refusal(ATT_TEXT.frozen);
         const held = new Set<string>([P]);
-        const target = await lockTarget(tx, ctx, P, held);
+        const target = await lockTarget(tx, ctx, P, held); // งวดที่ปิดแล้ว ⇒ เดือนหลังรอบล่าสุด (> P เสมอ)
         const ids = page.map((e) => e.id);
         const cs = await calcSet(tx, ctx, P, ids);
         if (!cs.policy.enabled) throw new Refusal(ATT_TEXT.off);
-        const { heads, adj } = await rowsOf(tx, ctx, P, ids);
+        const { heads, adj, runStatus } = await rowsOf(tx, ctx, P, ids);
         const c = { employees: page.length, created: 0, rejected: 0, kept: 0, refunds: 0, wait: [] as { employeeId: string; code: string }[], skipped: [] as { employeeId: string; code: string }[] };
-        const basisPolicy = cs.policy;
         for (const e of page) {
           const k = cs.byEmp.get(e.id);
           if (!k || k.state === "NONE") continue;
-          if (k.state !== "CURRENT") {
+          if (k.state !== "CURRENT" && k.state !== "FROZEN") {
             c.wait.push({ employeeId: e.id, code: k.state });
             continue;
           }
@@ -314,29 +371,36 @@ export async function syncAttendanceDeductions(
             c.skipped.push({ employeeId: e.id, code: k.code ?? "BAD_INPUT" });
             continue;
           }
+          // R2a: รายการหักที่ผูกรอบร่างแล้วแต่ข้อมูลเปลี่ยน ⇒ ห้ามคิดส่วนต่าง/คืนเงินจากมัน (ยังไม่ได้หักจริง) — ให้คำนวณรอบใหม่ก่อน (ปลดออก) แล้วค่อยคำนวณ
+          if (draftStaleOf(heads, adj, runStatus, e.id, k)) {
+            c.wait.push({ employeeId: e.id, code: "RUN_STALE" });
+            continue;
+          }
           await lock(tx, `hr:attpay:${ctx.systemId}:${e.id}:${P}`);
           for (const rule of ATT_RULES) {
             const E = ruleTotal(k.out, rule).amountSatang;
-            const digest = attendanceDigest(k.out, { base: k.base, N: cs.N, policy: basisPolicy }, rule);
+            const digest = digestOf(k, rule);
             const mine = heads.filter((h) => h.employeeId === e.id && h.rule === rule && adj.has(h.adjustmentId));
             const planRows = mine.map((h) => {
               const a = adj.get(h.adjustmentId)!;
               return { id: a.id, kind: a.kind, status: a.status, amountSatang: a.amountSatang, bound: a.runId !== null, digest: h.digest };
             });
             const plan = attendanceDeltaPlan({ entitledSatang: E, digest, rows: planRows });
-            if (!plan.reject.length && !plan.create) {
+            // R8: คนปฏิเสธข้อมูลชุดนี้แล้ว ⇒ ไม่สร้างรายการหักใหม่ (การถอน/คืนเงินยังทำตามแผน)
+            const create0 = plan.create && plan.create.kind === "DEDUCTION" && waivedBy(heads, adj, e.id, rule, digest) ? null : plan.create;
+            if (!plan.reject.length && !create0) {
               if (planRows.some((x) => x.status !== "REJECTED")) c.kept++;
               continue;
             }
             const lines = ruleLines(k.out, rule);
-            const minutes = lines.reduce((s, l) => s + l.minutes, 0);
+            const minutes = lines.reduce((s2, l) => s2 + l.minutes, 0);
             const m = thaiPeriodLabel(P);
-            const create = plan.create
+            const create = create0
               ? {
-                  kind: plan.create.kind,
-                  amountSatang: plan.create.amountSatang,
+                  kind: create0.kind,
+                  amountSatang: create0.amountSatang,
                   periodKey: target,
-                  note: plan.create.kind === "ALLOWANCE" ? attText(ATT_TEXT.refund, { m }) : attText(rule === "LATE_RULE" ? ATT_TEXT.adjLate : ATT_TEXT.adjAbsent, { n: minutes, m }),
+                  note: create0.kind === "ALLOWANCE" ? attText(ATT_TEXT.refund, { m }) : attText(rule === "LATE_RULE" ? ATT_TEXT.adjLate : ATT_TEXT.adjAbsent, { n: minutes, m }),
                 }
               : null;
             const statusOf = new Map(planRows.map((x) => [x.id, x.status]));
@@ -367,9 +431,9 @@ export async function syncAttendanceDeductions(
                   kind: create.kind,
                   entitledSatang: E,
                   amountSatang: create.amountSatang,
-                  baseSalarySatang: k.base,
-                  normalDayMin: cs.N,
-                  policyJson: basisPolicy as unknown as Prisma.InputJsonValue,
+                  baseSalarySatang: k.basis.base,
+                  normalDayMin: k.basis.N,
+                  policyJson: k.basis.policy as unknown as Prisma.InputJsonValue,
                   linesJson: lines.map((l) => ({ day: l.day, workDayId: l.workDayId, version: l.version, minutes: l.minutes, amountSatang: l.amountSatang })) as unknown as Prisma.InputJsonValue,
                   digest,
                   refundOfIds: refundOf,
@@ -405,10 +469,13 @@ export async function syncAttendanceDeductions(
   return { ok: true, periodKey: P, ...total, wait, skipped, next };
 }
 
-// ═════════════ ด่าน "ต้องคำนวณใหม่" (R8 + มติผู้คุมปิด D1) — อ่านอย่างเดียว ═════════════
+// ═════════════ ด่าน "ต้องคำนวณใหม่" (R8 + มติผู้คุมปิด D1 + fix r1) — อ่านอย่างเดียว ═════════════
 /**
- * รายการหัก (DEDUCTION ของ LATE_RULE/ABSENT_RULE) ที่ไม่ตรงข้อมูลเวลาปัจจุบัน: ไม่มีหัว · หัวถูกปิด · งวดงานไม่ CURRENT/FROZEN ·
- * คิดใหม่ (วันปัจจุบัน + โปรไฟล์ปัจจุบัน + N + นโยบาย) แล้วลายนิ้วมือไม่ตรง — นโยบาย = ค่าตั้งปัจจุบัน (ปิดอยู่ ⇒ นโยบายในหัวรายการ: APPROVED ที่คงไว้ตอนปิดกฎยังผูกได้ Q12)
+ * รายการที่ผูกเข้ารอบไม่ได้ (หรืออนุมัติไม่ได้):
+ *   DEDUCTION ของ LATE_RULE/ABSENT_RULE — ไม่มีหัว · หัวถูกปิด · งวดงานไม่ CURRENT/FROZEN · คิดใหม่แล้วลายนิ้วมือไม่ตรง
+ *     (นโยบาย = ค่าตั้งปัจจุบัน · ปิดอยู่ ⇒ นโยบายในหัวรายการ (Q12) · งวดงานที่ปิดแล้ว ⇒ ภาพนิ่งในหัวรายการทั้งหมด — R3)
+ *   ALLOWANCE (คืนเงินหักเกิน) — fix r1 (R2b): ผูกได้เมื่อทุกแถวใน refundOfIds อยู่ในรอบที่อนุมัติ/จ่ายแล้วเท่านั้น (หักจริงแล้ว) · ไม่งั้นค้างไว้
+ *     ให้การคำนวณครั้งถัดไปจัดการ (แถวหักถูกปลดจากรอบ ⇒ ปฏิเสธทั้งคู่แล้วคิดใหม่จาก B)
  */
 export async function attendanceStaleIdsInTx(tx: Db, ctx: Ctx, adjustmentIds: string[]): Promise<Set<string>> {
   const stale = new Set<string>();
@@ -419,7 +486,18 @@ export async function attendanceStaleIdsInTx(tx: Db, ctx: Ctx, adjustmentIds: st
     const h = byAdj.get(id);
     if (!h || h.endCode || !isAtt(h.rule)) stale.add(id);
   }
-  const live = heads.filter((h) => !stale.has(h.adjustmentId));
+  // R2b: คืนเงินผูกได้เมื่อแถวหักที่อ้างถึงอยู่ในรอบอนุมัติ/จ่ายแล้วทุกแถว
+  const refunds = heads.filter((h) => !stale.has(h.adjustmentId) && h.kind === "ALLOWANCE");
+  if (refunds.length) {
+    const refIds = [...new Set(refunds.flatMap((h) => h.refundOfIds ?? []))];
+    const refRows = refIds.length ? await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: refIds } }, select: { id: true, status: true, runId: true } }) : [];
+    const runIds = [...new Set(refRows.map((r) => r.runId).filter((x): x is string => !!x))];
+    const taken = new Set((runIds.length ? await tx.hrPayrollRun.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: runIds }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } }) : []).map((r) => r.id));
+    const ok = new Set(refRows.filter((r) => String(r.status) === "APPROVED" && !!r.runId && taken.has(r.runId)).map((r) => r.id));
+    for (const h of refunds) if (!(h.refundOfIds ?? []).length || (h.refundOfIds ?? []).some((x) => !ok.has(x))) stale.add(h.adjustmentId);
+  }
+  const live = heads.filter((h) => !stale.has(h.adjustmentId) && h.kind === "DEDUCTION");
+  if (!live.length) return stale;
   const cur = attendancePayPolicyOf((await settingsIn(tx, ctx))[SETTINGS_KEY]);
   const groups = new Map<string, Head[]>();
   for (const h of live) {
@@ -433,7 +511,7 @@ export async function attendanceStaleIdsInTx(tx: Db, ctx: Ctx, adjustmentIds: st
     const cs = await calcSet(tx, ctx, P, [...new Set(hs.map((h) => h.employeeId))], pol);
     for (const h of hs) {
       const k = cs.byEmp.get(h.employeeId);
-      const ok = !!k && (k.state === "CURRENT" || k.state === "FROZEN") && !!k.out && attendanceDigest(k.out, { base: k.base, N: cs.N, policy: cs.policy }, h.rule as AttRule) === h.digest;
+      const ok = !!k && (k.state === "CURRENT" || k.state === "FROZEN") && !!k.out && digestOf(k, h.rule as AttRule) === h.digest;
       if (!ok) stale.add(h.adjustmentId);
     }
   }
@@ -444,6 +522,78 @@ export async function attendanceAdjustmentApproveCheckInTx(tx: Db, ctx: Ctx, adj
   const a = await tx.hrPayAdjustment.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: adjustmentId }, select: { sourceType: true, kind: true } });
   if (!a || !isAtt(a.sourceType) || String(a.kind) !== "DEDUCTION") return { ok: true };
   return (await attendanceStaleIdsInTx(tx, ctx, [adjustmentId])).size ? { ok: false, reason: ATT_TEXT.stale } : { ok: true };
+}
+
+/**
+ * fix r1 (R4): งวดงาน (< งวดของรอบ) ของรายการหักสาย/ขาดที่รอบนี้อาจผูก/ตรวจ — ผู้เรียก (payroll.ts) ล็อกเรียงจากน้อยไปมากก่อนล็อกงวดของรอบ:
+ *   รายการ PENDING/APPROVED ที่ยังไม่เข้ารอบของงวดของรอบ (ตัวที่ PENDING อาจถูกอนุมัติก่อนเราได้ล็อก) + รายการที่ผูกรอบนี้อยู่ +
+ *   (อนุมัติรอบ) รายการ APPROVED ยังไม่เข้ารอบของพนักงานในรอบที่งวดงาน < งวดของรอบ (ด่าน R1)
+ */
+export async function attendanceWorkPeriodsInTx(tx: Db, ctx: Ctx, runPeriod: string, runId: string | null, approve: boolean): Promise<string[]> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const att = { in: ["LATE_RULE", "ABSENT_RULE"] as AttRule[] };
+  const rows = await tx.hrPayAdjustment.findMany({
+    where: { ...scope, sourceType: att, OR: [{ periodKey: runPeriod, runId: null, status: { in: ["PENDING", "APPROVED"] } }, ...(runId ? [{ runId }] : [])] },
+    select: { id: true },
+    take: 20_000,
+  });
+  const ps = new Set<string>();
+  if (rows.length) for (const h of await tx.hrAttendanceDeduction.findMany({ where: { ...scope, adjustmentId: { in: rows.map((r) => r.id) } }, select: { workPeriodKey: true } })) ps.add(h.workPeriodKey);
+  if (approve && runId) {
+    const emps = [...new Set((await tx.hrPayrollItem.findMany({ where: { ...scope, runId }, select: { employeeId: true } })).map((x) => x.employeeId))];
+    if (emps.length) {
+      const hs = await tx.hrAttendanceDeduction.findMany({ where: { ...scope, employeeId: { in: emps }, workPeriodKey: { lt: runPeriod }, endCode: null, kind: "DEDUCTION" }, select: { adjustmentId: true, workPeriodKey: true }, take: 20_000 });
+      const free = hs.length ? new Set((await tx.hrPayAdjustment.findMany({ where: { ...scope, id: { in: hs.map((h) => h.adjustmentId) }, status: "APPROVED", runId: null }, select: { id: true } })).map((r) => r.id)) : new Set<string>();
+      for (const h of hs) if (free.has(h.adjustmentId)) ps.add(h.workPeriodKey);
+    }
+  }
+  return [...ps].filter((p) => p < runPeriod).sort();
+}
+/** งวดงานของชุดรายการ (ใช้ตรวจว่าผู้เรียกล็อกครบ) */
+export async function attendanceWorkPeriodsOfInTx(tx: Db, ctx: Ctx, adjustmentIds: string[]): Promise<string[]> {
+  if (!adjustmentIds.length) return [];
+  const hs = await tx.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, adjustmentId: { in: adjustmentIds } }, select: { workPeriodKey: true } });
+  return [...new Set(hs.map((h) => h.workPeriodKey))].sort();
+}
+
+export type AttendanceRunGate = null | "ATTENDANCE_STALE" | "ATTENDANCE_SYNC" | "ATTENDANCE_LOCK";
+/**
+ * ด่านอนุมัติรอบ (claimApproveExpected · ใต้ล็อกงวดงานที่ attendanceWorkPeriodsInTx ให้ → ล็อกงวดของรอบ → ล็อกแถวรอบ) — รุ่น 1 และ 2:
+ *   ATTENDANCE_LOCK  = มีงวดงาน < งวดของรอบที่ต้องอ่านแต่ไม่ได้ล็อก (ชุดเปลี่ยนระหว่างทาง)
+ *   ATTENDANCE_STALE = รอบผูกรายการหัก/คืนเงินที่ผูกไม่ได้แล้ว (ข้อมูลเปลี่ยน · คืนเงินที่แถวหักยังไม่ถูกหักจริง)
+ *   ATTENDANCE_SYNC  = fix r1 (R1): กฎเปิดอยู่ และสำหรับพนักงานในรอบ งวดงาน = งวดของรอบ: สถานะไม่ CURRENT/FROZEN · หรือ Σ signed (APPROVED+PENDING)
+ *                      ≠ ยอดที่ควรหัก E (เว้นข้อมูลชุดที่คนปฏิเสธไว้ — R8) · หรือมี APPROVED ยังไม่เข้ารอบที่ต้องคำนวณใหม่ของงวดงาน ≤ งวดของรอบ
+ */
+export async function attendanceRunGateInTx(tx: Db, ctx: Ctx, runId: string, runPeriod: string, held: ReadonlySet<string>): Promise<AttendanceRunGate> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const att = { in: ["LATE_RULE", "ABSENT_RULE"] as AttRule[] };
+  const lockedOk = (ps: string[]) => ps.every((p) => p >= runPeriod || held.has(p));
+  const bound = (await tx.hrPayAdjustment.findMany({ where: { ...scope, runId, sourceType: att }, select: { id: true } })).map((r) => r.id);
+  if (!lockedOk(await attendanceWorkPeriodsOfInTx(tx, ctx, bound))) return "ATTENDANCE_LOCK";
+  if ((await attendanceStaleIdsInTx(tx, ctx, bound)).size) return "ATTENDANCE_STALE";
+  if (!attendancePayPolicyOf((await settingsIn(tx, ctx))[SETTINGS_KEY]).enabled) return null;
+  const emps = [...new Set((await tx.hrPayrollItem.findMany({ where: { ...scope, runId }, select: { employeeId: true } })).map((x) => x.employeeId))].sort();
+  if (!emps.length) return null;
+  const cs = await calcSet(tx, ctx, runPeriod, emps);
+  const { heads, adj } = await rowsOf(tx, ctx, runPeriod, emps);
+  for (const e of emps) {
+    const k = cs.byEmp.get(e);
+    if (!k || (k.state !== "CURRENT" && k.state !== "FROZEN")) return "ATTENDANCE_SYNC";
+    for (const rule of ATT_RULES) {
+      const E = ruleTotal(k.out, rule).amountSatang;
+      const live = heads
+        .filter((h) => h.employeeId === e && h.rule === rule)
+        .map((h) => adj.get(h.adjustmentId))
+        .filter((a): a is AdjRow => !!a && (a.status === "APPROVED" || a.status === "PENDING"))
+        .reduce((s2, a) => s2 + signedOf(a), 0);
+      if (live !== E && !waivedBy(heads, adj, e, rule, digestOf(k, rule))) return "ATTENDANCE_SYNC";
+    }
+  }
+  const hs = await tx.hrAttendanceDeduction.findMany({ where: { ...scope, employeeId: { in: emps }, workPeriodKey: { lte: runPeriod }, endCode: null, kind: "DEDUCTION" }, select: { adjustmentId: true, workPeriodKey: true }, take: 20_000 });
+  const free = hs.length ? (await tx.hrPayAdjustment.findMany({ where: { ...scope, id: { in: hs.map((h) => h.adjustmentId) }, status: "APPROVED", runId: null }, select: { id: true } })).map((r) => r.id) : [];
+  if (!lockedOk(await attendanceWorkPeriodsOfInTx(tx, ctx, free))) return "ATTENDANCE_LOCK";
+  if ((await attendanceStaleIdsInTx(tx, ctx, free)).size) return "ATTENDANCE_SYNC";
+  return null;
 }
 
 // ═════════════ ตัวอ่าน (R10) ═════════════
@@ -463,19 +613,23 @@ export type AttPreviewRow = {
 export type AttPreview = { ok: true; periodKey: string; enabled: boolean; rows: AttPreviewRow[]; staleIds: string[] };
 const NO: Fail = { ok: false, reason: ATT_TEXT.no };
 const no = (): Fail => ({ ...NO });
-/** ภาพรวมของงวดงาน (ผู้อ่านชั่วโมงทำงาน · สาขาของผู้ดู) — นาทีทุกคน · เงินเฉพาะ OWNER/hr.payroll.read (Q9) · staleIds = APPROVED ที่ "ต้องคำนวณใหม่" */
-export async function attendanceDeductionPreview(ctx: Ctx, viewer: WorkEntryViewer, input: { periodKey?: unknown }): Promise<AttPreview | Fail> {
-  if (!canReadWorkEntries(viewer)) return no();
+/**
+ * ภาพรวมของงวดงาน (ผู้อ่านชั่วโมงทำงาน · สาขาของผู้ดู) — นาทีทุกคน · เงินเฉพาะ OWNER/hr.payroll.read (Q9) · staleIds = APPROVED ที่ "ต้องคำนวณใหม่" ·
+ * fix r1 (N4): employeeIds (ไม่บังคับ) = จำกัดคนที่คิด (แผงรายคนส่งคนเดียว)
+ */
+export async function attendanceDeductionPreview(ctx: Ctx, viewer: WorkEntryViewer, input: { periodKey?: unknown; employeeIds?: unknown }): Promise<AttPreview | Fail> {
+  if (!canReadWorkEntries(viewer) || !(await inTenant(ctx, viewer))) return no();
   const P = typeof input?.periodKey === "string" ? input.periodKey.trim() : "";
   if (!PERIOD_RE.test(P)) return no();
+  const only = Array.isArray(input?.employeeIds) ? new Set(input.employeeIds.filter((x): x is string => typeof x === "string")) : null;
   const db = tenantDb(ctx) as unknown as Db;
   const scope = scopeOf(viewer);
-  const emps = (await periodEmps(db, ctx, P)).filter((e) => covers(scope, e.unitId));
+  const emps = (await periodEmps(db, ctx, P)).filter((e) => covers(scope, e.unitId) && (!only || only.has(e.id)));
   const ids = emps.map((e) => e.id);
   const cs = await calcSet(db, ctx, P, ids);
-  const { heads, adj } = await rowsOf(db, ctx, P, ids);
+  const { heads, adj, runStatus } = await rowsOf(db, ctx, P, ids);
   const money = seesMoney(viewer);
-  const approvedFree = heads.map((h) => adj.get(h.adjustmentId)).filter((a): a is AdjRow => !!a && a.status === "APPROVED" && a.runId === null && a.kind === "DEDUCTION").map((a) => a.id);
+  const approvedFree = heads.map((h) => adj.get(h.adjustmentId)).filter((a): a is AdjRow => !!a && a.status === "APPROVED" && a.runId === null).map((a) => a.id);
   const staleIds = [...(await attendanceStaleIdsInTx(db, ctx, approvedFree))].sort();
   const rows: AttPreviewRow[] = [...emps]
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : 1))
@@ -488,7 +642,7 @@ export async function attendanceDeductionPreview(ctx: Ctx, viewer: WorkEntryView
       const base: AttPreviewRow = {
         employeeId: e.id,
         name: e.name,
-        code: k?.code ?? (k?.state === "NONE" ? "MISSING" : null),
+        code: k?.code ?? (k?.state === "NONE" ? "MISSING" : k && draftStaleOf(heads, adj, runStatus, e.id, k) ? "RUN_STALE" : null),
         lateMin: late.minutes,
         absentMin: absent.minutes,
         days: new Set(out && out.ok ? out.lines.map((l) => l.day) : []).size,
@@ -499,8 +653,8 @@ export async function attendanceDeductionPreview(ctx: Ctx, viewer: WorkEntryView
         ...base,
         lateSatang: late.amountSatang,
         absentSatang: absent.amountSatang,
-        pendingSatang: mine.filter((a) => a.status === "PENDING").reduce((s, a) => s + signedOf(a), 0),
-        approvedSatang: mine.filter((a) => a.status === "APPROVED").reduce((s, a) => s + signedOf(a), 0),
+        pendingSatang: mine.filter((a) => a.status === "PENDING").reduce((s2, a) => s2 + signedOf(a), 0),
+        approvedSatang: mine.filter((a) => a.status === "APPROVED").reduce((s2, a) => s2 + signedOf(a), 0),
       };
     });
   return { ok: true, periodKey: P, enabled: cs.policy.enabled, rows, staleIds };
@@ -514,7 +668,7 @@ const linesOf = (raw: unknown): LineDto[] =>
   });
 /** บรรทัดรายวันของรายการหนึ่ง — ผู้ดูเงินเดือน (OWNER · hr.payroll.read) ในสาขาของตัวเองเท่านั้น · อื่น/ไม่พบ/ร้านอื่น = คำปฏิเสธเดียวกันทุกไบต์ */
 export async function attendanceDeductionLines(ctx: Ctx, viewer: WorkEntryViewer, input: { adjustmentId?: unknown }) {
-  if (!seesMoney(viewer)) return no();
+  if (!seesMoney(viewer) || !(await inTenant(ctx, viewer))) return no();
   const id = typeof input?.adjustmentId === "string" ? input.adjustmentId.trim() : "";
   if (!id) return no();
   const db = tenantDb(ctx) as unknown as Db;
@@ -535,7 +689,10 @@ export async function attendanceDeductionLines(ctx: Ctx, viewer: WorkEntryViewer
   };
 }
 
-/** รายการหักของตัวเอง (พนักงานจากบัญชีผู้ใช้ — ไม่รับ employeeId จากผู้เรียก §C.7) · แถวที่ยังมีผล (ไม่ใช่ REJECTED) ของงวดงาน */
+/**
+ * รายการหักของตัวเอง (พนักงานจากบัญชีผู้ใช้ — ไม่รับ employeeId จากผู้เรียก §C.7) · แถวที่ยังมีผล (ไม่ใช่ REJECTED) ของงวดงาน ·
+ * fix r1 (N5): คืนเงิน (ALLOWANCE) ไม่แสดงนาที/บรรทัด (บรรทัดในหัวคือข้อมูลหลังแก้ ไม่ใช่สิ่งที่คืน)
+ */
 export async function myAttendanceDeductions(ctx: Ctx, actor: { userId?: unknown }, input: { periodKey?: unknown }) {
   const userId = typeof actor?.userId === "string" ? actor.userId : "";
   const link = await employeeOfUser(ctx?.tenantId ?? "", userId);
@@ -548,7 +705,7 @@ export async function myAttendanceDeductions(ctx: Ctx, actor: { userId?: unknown
     .map((h) => ({ h, a: adj.get(h.adjustmentId) }))
     .filter((x): x is { h: Head; a: AdjRow } => !!x.a && x.a.status !== "REJECTED")
     .map(({ h, a }) => {
-      const lines = linesOf(h.linesJson);
+      const lines = a.kind === "ALLOWANCE" ? [] : linesOf(h.linesJson);
       return {
         adjustmentId: a.id,
         status: a.status,
@@ -556,11 +713,10 @@ export async function myAttendanceDeductions(ctx: Ctx, actor: { userId?: unknown
         periodKey: a.periodKey,
         workPeriodKey: h.workPeriodKey,
         rule: h.rule,
-        minutes: lines.reduce((s, l) => s + l.minutes, 0),
+        minutes: lines.reduce((s2, l) => s2 + l.minutes, 0),
         amountSatang: a.amountSatang,
         lines: lines.map((l) => ({ day: l.day, minutes: l.minutes, amountSatang: l.amountSatang })),
       };
     });
   return { ok: true as const, periodKey: P, items };
 }
-

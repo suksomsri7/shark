@@ -591,7 +591,7 @@ async function buildRunRows(
       AND "status"::text = 'APPROVED' AND "runId" IS NULL
     ORDER BY "id" FOR UPDATE`;
   const lockedIds = locked.map((r) => r.id).filter(Boolean);
-  { const held = await attendanceUnbindableInTx(tx, ctx, lockedIds); if (held.size) lockedIds.splice(0, lockedIds.length, ...lockedIds.filter((x) => !held.has(x))); } // HR H3.2 ◂ รายการหักสาย/ขาดที่ต้องคำนวณใหม่ ไม่ผูกเข้ารอบ (ค้างไว้ · แถวคง APPROVED)
+  { const held = await attendanceUnbindableInTx(tx, ctx, lockedIds, periodKey); if (held.size) lockedIds.splice(0, lockedIds.length, ...lockedIds.filter((x) => !held.has(x))); } // HR H3.2 ◂ รายการหักสาย/ขาดที่ต้องคำนวณใหม่ ไม่ผูกเข้ารอบ (ค้างไว้ · แถวคง APPROVED)
   const adjustments = lockedIds.length
     ? (await tx.hrPayAdjustment.findMany({
         where: { ...scope, id: { in: lockedIds } },
@@ -707,6 +707,7 @@ export async function createPayrollRun(
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   return tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
+    await attendancePreLockInTx(tx, ctx, periodKey, null); // HR H3.2 ◂ fix r1 R4: ล็อกงวดงาน (< งวดนี้) ของรายการหักสาย/ขาดก่อน เรียงน้อย → มาก
     // สองการสร้างรอบของงวดเดียวกันต่อคิวกัน (partial unique (systemId, periodKey) ของรอบที่ยังไม่ REVERSED เป็นด่านสุดท้าย — H0.6 · ล็อกนี้ทำให้ได้ข้อความไทยแทน error ของฐาน)
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:payroll:run:${ctx.systemId}:${periodKey}`}, 0))`;
     // HR H0.6 ▸ R3 (D2b): รอบที่กลับรายการแล้ว (REVERSED) ไม่นับเป็นรอบซ้ำ ⇒ งวดที่กลับรายการแล้วสร้างรอบใหม่ได้ (ข้อความเดิมทุกตัวอักษร) ◂
@@ -936,6 +937,7 @@ async function cancelBoundDraftAdjustment(
   try {
     res = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Prisma.TransactionClient;
+      await attendancePreLockInTx(tx, ctx, run.periodKey, run.id); // HR H3.2 ◂ fix r1 R4
       await lockRunPeriod(tx, ctx, run.periodKey);
       const cur = await lockRunRow(tx, ctx, run.id);
       if (!cur || cur.periodKey !== run.periodKey) throw new RunRefusal(RUN_CHANGED);
@@ -990,6 +992,7 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
       const tx = t as unknown as Prisma.TransactionClient;
       const pre = await tx.hrPayrollRun.findFirst({ where: { ...scope, id }, select: { periodKey: true } });
       if (!pre) return { ok: false as const, reason: RUN_NOT_FOUND };
+      await attendancePreLockInTx(tx, ctx, pre.periodKey, id); // HR H3.2 ◂ fix r1 R4
       await lockRunPeriod(tx, ctx, pre.periodKey);
       const cur = await lockRunRow(tx, ctx, id);
       if (!cur || cur.periodKey !== pre.periodKey) return { ok: false as const, reason: RUN_CHANGED };
@@ -1026,7 +1029,7 @@ const APPROVE_NOT_DRAFT = "รอบนี้อนุมัติหรือ�
 const APPROVE_DRAFT_HAS_JV = "รอบนี้มีเอกสารบัญชีค้างอยู่ ต้องให้ผู้ดูแลตรวจสอบก่อน"; // H0.1 ▸ CR17 ◂
 /** H0.1 ▸ CR12: เหตุที่อนุมัติไม่สำเร็จ (ให้ approvePayrollRunAction เลือกข้อความคงที่ — POST_FAILED = ลงบัญชีล้ม รอบกลับเป็นร่าง) ◂
  *  H0.1 ▸ CR17: DRAFT_HAS_JV = ร่างที่มี journalEntryId ค้าง (ลงบัญชีไปแล้วแต่สถานะถูกคืนเป็นร่าง) ⇒ ไม่ลงบัญชีซ้ำ ◂ */
-export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV" | "NEGATIVE_NET" | "WORK_ENTRIES"; // HR H3.1 ▸ + WORK_ENTRIES (รอบรุ่น ≥ 2 ที่ชั่วโมงทำงานยังไม่พร้อม) ◂
+export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV" | "NEGATIVE_NET" | "WORK_ENTRIES" | AttendanceApproveFailCode; // HR H3.1 ▸ + WORK_ENTRIES (รอบรุ่น ≥ 2 ที่ชั่วโมงทำงานยังไม่พร้อม) ◂ · HR H3.2 ◂ + ATTENDANCE_* (รายการหักสาย/ขาด)
 // H0.2 ▸ R3 (D6): ข้อความคงที่ (N = จำนวนแถวที่สุทธิติดลบ) — action ส่งต่อถึงจอได้ (ไม่มีข้อความดิบของ error) ◂
 export const approveNegativeNetText = (n: number) => `มีพนักงาน ${n} คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'`;
 
@@ -1050,6 +1053,7 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpe
     const tx = t as unknown as Prisma.TransactionClient;
     // HR H2.5 r3 ▸ ล็อกงวดก่อนล็อกแถว (คีย์เดียวกับสร้างรอบ/คิดผลการลงเวลาใหม่ — judge.ts#recomputeAttendanceDay) ⇒ คิดผลใหม่ ∥ อนุมัติ ต่อคิวกัน ◂
     const per = await tx.hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } }); // HR H2.5 r3 ◂
+    if (per) await attendancePreLockInTx(tx, ctx, per.periodKey, runId, true); // HR H3.2 ◂ fix r1 R4: งวดงานก่อนงวดของรอบ (เรียงน้อย → มาก)
     if (per) await lockRunPeriod(tx, ctx, per.periodKey); // HR H2.5 r3 ◂
     const cur = await lockRunRow(tx, ctx, runId);
     if (!cur) return { code: "NOT_FOUND" };
@@ -1081,7 +1085,7 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpe
     //   ตรวจใต้ล็อกงวด + ล็อกแถวรอบ ก่อน UPDATE · รุ่น 1 ไม่ถูกปฏิเสธ (มติ Q5) ◂
     const weCheck = await workEntriesApproveCheckInTx(tx, ctx, { runId, periodKey: cur.periodKey }); // HR H3.1 ◂
     if (!weCheck.ok) return { code: "WORK_ENTRIES", actual: await runActual(tx, ctx, cur) } as unknown as ClaimResult; // HR H3.1 ◂
-    if (await attendanceRunHeldInTx(tx, ctx, runId)) return { code: "ATTENDANCE_PAY", actual: await runActual(tx, ctx, cur) } as unknown as ClaimResult; // HR H3.2 ◂ รอบผูกรายการหักสาย/ขาดที่ต้องคำนวณใหม่ ⇒ ไม่อนุมัติ
+    { const att = await attendanceRunGateInTx(tx, ctx, runId, cur.periodKey); if (att) return { code: att, actual: await runActual(tx, ctx, cur) } as unknown as ClaimResult; } // HR H3.2 ◂ รอบผูกรายการที่ต้องคำนวณใหม่ (STALE) · รายการหักของงวดยังไม่ตรงข้อมูลเวลา (SYNC · fix r1 R1) · ชุดล็อกเปลี่ยน (LOCK)
     const claim = await tx.hrPayrollRun.updateMany({
       where: { ...scope, id: runId, status: "DRAFT", journalEntryId: null, ...guard, items: { none: { netSatang: { lt: 0 } } } },
       data: { status: "APPROVED" },
@@ -1120,7 +1124,7 @@ export async function approveRun(
           };
     await auditRefusal(ctx, actor, "hr.payroll.approve.refused", runId, claimed, seen); // CR19
     if ((claimed.code as string) === "WORK_ENTRIES") return { ok: false, note: WE_TEXT.approveBlocked, code: "WORK_ENTRIES" }; // HR H3.1 ◂
-    if ((claimed.code as string) === "ATTENDANCE_PAY") return { ok: false, note: ATT_TEXT.runStale, code: "WORK_ENTRIES" }; // HR H3.2 ◂ (รหัส WORK_ENTRIES ⇒ action แสดงข้อความคงที่ของ service)
+    { const att = ATT_APPROVE_TEXT[claimed.code as string]; if (att) return { ok: false, note: att, code: claimed.code as unknown as ApproveFailCode }; } // HR H3.2 ◂ ข้อความคงที่ของด่านหักสาย/ขาด (action แสดง note)
     if (claimed.code === "STALE") return { ok: false, note: APPROVE_STALE, code: "STALE" };
     if (claimed.code === "DRAFT_HAS_JV") return { ok: false, note: APPROVE_DRAFT_HAS_JV, code: "DRAFT_HAS_JV" };
     if (claimed.code === "NEGATIVE_NET") return { ok: false, note: approveNegativeNetText(claimed.negative ?? 0), code: "NEGATIVE_NET" };
@@ -1986,16 +1990,36 @@ async function attendanceApproveLockInTx(tx: Prisma.TransactionClient, ctx: Ctx,
   const p = ATT_REF_RE.exec(String(row.sourceRef ?? ""))?.[1];
   if (p && p < row.periodKey) await lockRunPeriod(tx, ctx, p);
 }
-/** (3) id ที่ "ต้องคำนวณใหม่" ในชุดรายการ APPROVED (เฉพาะ DEDUCTION ของกฎหักสาย/ขาด — คืนเงิน ALLOWANCE ผูกได้เสมอ) */
-async function attendanceUnbindableInTx(tx: Prisma.TransactionClient, ctx: Ctx, ids: string[]): Promise<Set<string>> {
+/** fix r1 (R4): งวดงานที่ tx นี้ล็อกไว้แล้ว (ผู้เรียก: create · recompute · ลบรายการในร่าง · อนุมัติรอบ) — ใช้ตรวจว่าอ่านใต้ล็อกครบ */
+const ATT_HELD = new WeakMap<object, Set<string>>();
+/** fix r1 (R4): ก่อนล็อกงวดของรอบ — อ่านงวดงานของรายการหักสาย/ขาดที่เกี่ยวข้อง (< งวดของรอบ) แล้วล็อกเรียงน้อย → มาก (กติกาเดียวกับทุกผู้ถือล็อกงวด) */
+async function attendancePreLockInTx(tx: Prisma.TransactionClient, ctx: Ctx, runPeriod: string, runId: string | null, approve = false): Promise<void> {
+  if (!PERIOD_RE.test(runPeriod)) return;
+  const ps = await (await import("./attendance-pay")).attendanceWorkPeriodsInTx(tx, ctx, runPeriod, runId, approve);
+  const held = ATT_HELD.get(tx) ?? new Set<string>();
+  for (const p of ps) {
+    if (held.has(p)) continue;
+    await lockRunPeriod(tx, ctx, p);
+    held.add(p);
+  }
+  held.add(runPeriod);
+  ATT_HELD.set(tx, held);
+}
+/** (3) id ที่ผูกเข้ารอบไม่ได้ในชุดรายการ APPROVED — DEDUCTION ที่ต้องคำนวณใหม่ · ALLOWANCE ที่แถวหักยังไม่ถูกหักจริง (fix r1 R2b) ·
+ *  fix r1 (R4): งวดงาน < งวดของรอบ ที่ไม่ได้ล็อกไว้ก่อน ⇒ ปฏิเสธทั้งคำสั่ง (lockRetry · ไม่มีอะไรถูกเขียน) */
+async function attendanceUnbindableInTx(tx: Prisma.TransactionClient, ctx: Ctx, ids: string[], runPeriod: string): Promise<Set<string>> {
   if (!ids.length) return new Set();
-  const att = await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: ids }, sourceType: { in: [...ATT_SOURCES] }, kind: "DEDUCTION" }, select: { id: true } });
+  const att = await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: ids }, sourceType: { in: [...ATT_SOURCES] } }, select: { id: true } });
   if (!att.length) return new Set();
-  return (await import("./attendance-pay")).attendanceStaleIdsInTx(tx, ctx, att.map((r) => r.id));
+  const AP = await import("./attendance-pay");
+  const held = ATT_HELD.get(tx) ?? new Set<string>();
+  if ((await AP.attendanceWorkPeriodsOfInTx(tx, ctx, att.map((r) => r.id))).some((p) => p < runPeriod && !held.has(p))) throw new PayrollInputError(ATT_TEXT.lockRetry);
+  return AP.attendanceStaleIdsInTx(tx, ctx, att.map((r) => r.id));
 }
-/** (3) รอบนี้ผูกรายการหักสาย/ขาดที่ต้องคำนวณใหม่อยู่ไหม (ด่านอนุมัติรอบ) */
-async function attendanceRunHeldInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: string): Promise<boolean> {
-  const bound = await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, runId, sourceType: { in: [...ATT_SOURCES] }, kind: "DEDUCTION" }, select: { id: true } });
-  return bound.length > 0 && (await attendanceUnbindableInTx(tx, ctx, bound.map((r) => r.id))).size > 0;
+/** ด่านอนุมัติรอบ (ใต้ล็อกจาก attendancePreLockInTx → งวดของรอบ → แถวรอบ) — null = ผ่าน */
+async function attendanceRunGateInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: string, runPeriod: string): Promise<AttendanceApproveFailCode | null> {
+  return (await import("./attendance-pay")).attendanceRunGateInTx(tx, ctx, runId, runPeriod, ATT_HELD.get(tx) ?? new Set<string>([runPeriod]));
 }
+export type AttendanceApproveFailCode = "ATTENDANCE_STALE" | "ATTENDANCE_SYNC" | "ATTENDANCE_LOCK";
+const ATT_APPROVE_TEXT: Record<string, string> = { ATTENDANCE_STALE: ATT_TEXT.runStale, ATTENDANCE_SYNC: ATT_TEXT.runSync, ATTENDANCE_LOCK: ATT_TEXT.lockRetry };
 // ◂ HR H3.2
