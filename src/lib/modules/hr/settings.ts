@@ -15,6 +15,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { HR_UNIT_NOT_FOUND_TEXT, hrScopeOf, type HrScope } from "./scope";
 import { addDays, shiftWindow, TimeRuleError } from "./time-rules";
+import { grantDays, tenthsOf } from "./leave-rules"; // HR H2.7 ▸ r2b: โควตาใหม่ต้องไม่ทำให้ปีที่ใช้ไปแล้วติดลบ (ตัวช่วยบริสุทธิ์) ◂
 import { normalizeShiftTimes } from "./clock-rules"; // HR H2.4 ▸ R14 ◂
 
 type Ctx = { tenantId: string; systemId: string };
@@ -50,6 +51,9 @@ export const SETTINGS_TEXT = {
   presetYear: "ปีของชุดวันหยุดไม่ถูกต้อง",
   note: "หมายเหตุยาวเกินไป (ไม่เกิน 200 ตัวอักษร)",
   failed: "บันทึกไม่สำเร็จ — กรุณาลองใหม่",
+  // HR H2.7 ▸ r2 มติ L5: ปีการลาของแถวสมุดที่เขียนแล้วต้องไม่เปลี่ยนความหมาย ◂
+  yearStartLocked: "เปลี่ยนเดือนเริ่มปีการลาไม่ได้ เพราะประเภทการลานี้มีการบันทึกวันลาแล้ว — สร้างประเภทการลาใหม่แทน",
+  quotaBelowUsed: "ตั้งโควตานี้ไม่ได้ เพราะจะทำให้วันลาคงเหลือของพนักงานบางคนติดลบในปีที่ลาไปแล้ว — ตั้งโควตาให้ไม่น้อยกว่าวันที่ใช้ไปแล้ว",
 } as const;
 
 const LEAVE_CATEGORIES = new Set<HrLeaveType>(["SICK", "PERSONAL", "VACATION", "OTHER"]);
@@ -496,6 +500,8 @@ export async function updateLeavePolicy(ctx: Ctx, v: SettingsViewer, id: string,
     const scope = scopeOfViewer(v);
     const out = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Prisma.TransactionClient;
+      // HR H2.7 ▸ r4 มติ 2: ล็อกแถวประเภทการลา FOR UPDATE ก่อนอ่าน — การยื่น/อนุมัติอ่านแถวนี้ FOR SHARE (หลังล็อก advisory ของมัน) · ที่นี่ไม่ถือ advisory lock ⇒ ไม่มีวงล็อก ◂
+      if (typeof id === "string" && id) await tx.$queryRaw`SELECT id FROM "HrLeavePolicy" WHERE id = ${id} AND "tenantId" = ${ctx.tenantId} FOR UPDATE`;
       const row = typeof id === "string" && id ? await tx.hrLeavePolicy.findFirst({ where: { id }, select: POLICY_SELECT }) : null;
       if (!row) throw new SettingsRefusal(SETTINGS_TEXT.notFound);
       const own = scopeRefusal(scope, row.unitId);
@@ -506,6 +512,36 @@ export async function updateLeavePolicy(ctx: Ctx, v: SettingsViewer, id: string,
         if (ur) throw new SettingsRefusal(ur);
       }
       const data = policyData(patch ?? {}, policyBase(row));
+      // HR H2.7 ▸ r2 มติ L5: เปลี่ยนเดือนเริ่มปีการลา ไม่ได้ เมื่อมีแถวสมุดวันลา (หรือใบลารอ/อนุมัติ) ของประเภทนี้แล้ว — ข้อความคงที่
+      if (data.yearStartMonth !== row.yearStartMonth) {
+        const used = (await tx.hrLeaveBalanceTxn.count({ where: { policyId: row.id } })) + (await tx.hrLeave.count({ where: { policyId: row.id, status: { in: ["PENDING", "APPROVED"] } } }));
+        if (used > 0) throw new SettingsRefusal(SETTINGS_TEXT.yearStartLocked);
+      }
+      // r2b (มติผู้คุม 3): ไม่จำกัด → มีโควตา / ลดโควตา / เปลี่ยนเงื่อนไขสิทธิ์ — ปีการลาที่มีแถว USE แล้วแต่ยังไม่มี GRANT จะได้ GRANT ตามค่าใหม่ ⇒
+      //   ถ้า Σ ของปีนั้น + GRANT ใหม่ < 0 สำหรับพนักงานคนใด = ปฏิเสธ ไม่เขียนอะไร (ปีที่มี GRANT แล้วไม่เปลี่ยน — แถวสมุดเพิ่มอย่างเดียว)
+      if (data.quotaDays !== null && (data.quotaDays !== policyBase(row).quotaDays || data.minServiceDays !== row.minServiceDays || data.firstYearProrata !== row.firstYearProrata)) {
+        const txns = await tx.hrLeaveBalanceTxn.findMany({ where: { policyId: row.id }, select: { employeeId: true, leaveYear: true, kind: true, days: true }, take: 50_000 });
+        const years = new Map<string, { employeeId: string; year: number; sum: number; grant: boolean; use: boolean }>();
+        for (const t of txns) {
+          const k = `${t.employeeId}:${t.leaveYear}`;
+          const y = years.get(k) ?? { employeeId: t.employeeId, year: t.leaveYear, sum: 0, grant: false, use: false };
+          y.sum += tenthsOf(t.days);
+          if (t.kind === "GRANT") y.grant = true;
+          if (t.kind === "USE") y.use = true;
+          years.set(k, y);
+        }
+        const open = [...years.values()].filter((y) => y.use && !y.grant);
+        if (open.length) {
+          const emps = await tx.hrEmployee.findMany({ where: { id: { in: [...new Set(open.map((y) => y.employeeId))] } }, select: { id: true, startDate: true } });
+          const startOf = new Map(emps.map((e) => [e.id, e.startDate]));
+          const short = open.some((y) => {
+            const g = grantDays(data, startOf.get(y.employeeId) ?? null, y.year, data.yearStartMonth);
+            return y.sum + (g.eligible && g.days !== null ? tenthsOf(g.days) : 0) < 0;
+          });
+          if (short) throw new SettingsRefusal(SETTINGS_TEXT.quotaBelowUsed);
+        }
+      }
+      // ◂ HR H2.7
       const res = await tx.hrLeavePolicy.updateMany({ where: { id: row.id }, data: { unitId, ...data } });
       if (res.count !== 1) throw new SettingsRefusal(SETTINGS_TEXT.notFound);
       return { id: row.id, unitId };

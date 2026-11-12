@@ -173,6 +173,33 @@ export async function GET(req: Request) {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
   }
+  // HR H2.7 ▸ R9 (Q9): งานรายปีของวันลา (GRANT ปีนี้เมื่อถึงวันมีสิทธิ์ · CARRY วันลาสะสม · EXPIRE หลังวันหมดอายุ) ทุกระบบ HR —
+  //   asOf = วันนี้ตามปฏิทินไทย · แถวแรกชนะ (รันซ้ำ = ไม่เปลี่ยน) · งบ 20 วิ (ระบบที่ไม่ทัน = รอบถัดไป) · พังรายระบบ = ops WARN ·
+  //   best-effort: ล้มห้ามทำให้รอบนี้แดง
+  try {
+    const { prisma } = await import("@/lib/core/db");
+    const { thaiDateKey } = await import("@/lib/ui/date");
+    const hrFacade = await import("@/lib/modules/hr");
+    const asOf = thaiDateKey(new Date());
+    const leaveDeadline = Date.now() + 20_000;
+    const hrSystems = await prisma.appSystem.findMany({ where: { type: "HR" }, select: { id: true, tenantId: true }, orderBy: { id: "asc" }, take: 2000 });
+    // r2 มติ L7: เริ่มคนละระบบทุกชั่วโมง (หมุนตามชั่วโมง) + เพดานธุรกรรมต่อระบบ ⇒ ระบบท้าย ๆ ไม่ถูกรอตลอดไป · งานที่ครบแล้วไม่เปิดธุรกรรม
+    const start = hrSystems.length ? Math.floor(Date.now() / 3_600_000) % hrSystems.length : 0;
+    for (const s of [...hrSystems.slice(start), ...hrSystems.slice(0, start)]) {
+      if (Date.now() > leaveDeadline) break;
+      try {
+        const lr = await hrFacade.runLeaveYearJob({ tenantId: s.tenantId, systemId: s.id, asOf, maxTx: 50 });
+        if (lr.failed > 0) await logOps("WARN", "cron", "runLeaveYearJob: พนักงานบางคนทำไม่สำเร็จ (ข้ามไปก่อน รอบหน้าลองใหม่)", { tenantId: s.tenantId, detail: `${lr.failed} · ${lr.failedError ?? ""}` });
+      } catch (e) {
+        await logOps("WARN", "cron", "runLeaveYearJob (งานรายปีของวันลา) ล้มในระบบหนึ่ง", { tenantId: s.tenantId, detail: e instanceof Error ? e.message : String(e) });
+      }
+    }
+  } catch (e) {
+    await logOps("WARN", "cron", "runLeaveYearJob (งานรายปีของวันลา) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ HR H2.7
   // ◂ POS P3.6
   // HR H2.4 ▸ R11 (HQ27 · Q6): ล้างพิกัดการลงเวลาที่เก่ากว่า 30 วัน + รูปที่เก่ากว่า 90 วัน ทุกร้าน (ครั้งละ ≤ 1 000 แถว · รันซ้ำได้) ·
   //   best-effort: ล้มห้ามทำให้รอบนี้แดง (ไม่เพิ่มช่องในผลลัพธ์ของ route)

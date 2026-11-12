@@ -324,8 +324,9 @@ export const HQC = {
       { employee: "nat", dow: 5, op: "change", shift: "c" },
       { employee: "keng", dow: 6, op: "add", shift: "m" },
     ],
-    // HR H2.2 r2 ▸ Q14 แพร ลาพักร้อน ส.–อา. ของสัปดาห์ภาพ 03 รออนุมัติ (ชิปลาเส้นประ + "รออนุมัติ" ในภาพ · วันหยุดของแพรอยู่แล้ว) ◂
-    pendingLeave: { employee: "prae", type: "VACATION", fromDow: 5, toDow: 6, reason: "ไปงานแต่งเพื่อนต่างจังหวัด" },
+    // HR H2.2 r2 ▸ Q14 แพร ลาพักร้อนรออนุมัติในสัปดาห์ภาพ 03 (ชิปลาเส้นประ + "รออนุมัติ" ในภาพ) ◂
+    // HR H2.7 r2 ▸ ย้ายไปวันศุกร์ที่แพรมีกะ (dow 4 · 1.0 วัน — มติผู้คุม) · เดิม ส.–อา. = วันหยุดของแพรในสัปดาห์ที่ประกาศแล้ว ⇒ 0 วัน ⇒ zeroDays ◂
+    pendingLeave: { employee: "prae", type: "VACATION", fromDow: 4, toDow: 4, reason: "ไปงานแต่งเพื่อนต่างจังหวัด" },
   },
 } as const;
 

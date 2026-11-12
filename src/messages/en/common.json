@@ -185,7 +185,7 @@
     "settings": {
       "title": "Time and leave settings",
       "desc": "Shifts · leave types · holidays (interim page — the full page comes in a later work order)",
-      "stubNote": "This is a basic settings page. Rosters, leave balances and the public-holiday preset come in later work orders.",
+      "stubNote": "This is a basic settings page — rosters and the full settings page come in later work orders.",
       "saved": "Saved",
       "shopWide": "Whole shop",
       "unit": "Branch",
@@ -212,7 +212,15 @@
         "paid": "Paid",
         "unpaid": "Unpaid",
         "add": "Add leave type",
-        "archive": "Archive"
+        "archive": "Archive",
+        "minServiceDays": "Minimum service (days)",
+        "carryMaxDays": "Max carry-over (days)",
+        "carryExpires": "Carry-over expires (MM-DD)",
+        "attachmentAfterDays": "Document needed from (days)",
+        "yearStartMonth": "Leave year starts (month)",
+        "allowHalfDay": "Half-day allowed",
+        "firstYearProrata": "Pro-rata in first year",
+        "noHalfDay": "No half-day"
       },
       "holidays": {
         "title": "Holidays",
@@ -223,7 +231,10 @@
         "kind": "Kind",
         "add": "Add holiday",
         "delete": "Delete",
-        "shopOpen": "Shop open"
+        "shopOpen": "Shop open",
+        "presetApply": "Add public holidays for {year}",
+        "presetDone": "Missing public holidays added",
+        "presetNote": "The public-holiday set holds only the 15 fixed-date holidays — lunar holidays (Makha Bucha, Visakha Bucha, Asalha Bucha, Khao Phansa), substitution days and special days must be added by the shop until the official list is confirmed"
       },
       "kinds": {
         "PUBLIC": "Public holiday",
@@ -283,6 +294,26 @@
       "notice": "The shop records your location when you clock to check you are within the shop radius, and deletes the coordinates after 30 days",
       "noGps": "Turn on your phone's location (GPS), then try again",
       "distance": "distance from shop (m)"
+    },
+    "leave": {
+      "policy": "Leave type",
+      "policyAuto": "By category (automatic)",
+      "halfDay": "Part of day",
+      "fullDay": "Full day",
+      "am": "Morning half",
+      "pm": "Afternoon half",
+      "hours": "Hours (1–7)",
+      "days": "{n} days",
+      "unlimited": "Unlimited",
+      "left": "{n} days left",
+      "pendingPlus": "+{n} pending",
+      "needsAttachment": "Supporting document required",
+      "attachNote": "Some leave types need a supporting document (such as a medical certificate) from the number of days the shop set — hand it to your manager for now; the system does not accept attachments yet",
+      "myBalance": "My leave balance",
+      "colType": "Type",
+      "colEntitled": "Entitled (days)",
+      "colUsed": "Used",
+      "colLeft": "Left"
     },
     "law": {
       "title": "Law tables",

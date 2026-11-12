@@ -1,0 +1,5 @@
+  ❌ [H2.7-S12.12] carry consumed is derived (leave approved before the carry row) ⇒ 5.0 — expected 5.0 · 5.0/10.0 · 5.0 · EXPIRE 0.0 · 5.0 | actual expiry,x 5.0 5.0/10.0 ok 5.0 0.0
+  ❌ [H2.7-S12.13] revoke Y−1 after carry ⇒ top-up transfer once · not after expiry — expected T1 0.0/7.0 → 0.0/12.0 (top-up 5) · T2 expired first → 5.0/6.0, no top-up | actual t1after,top t1=0.0/7.0→5.0/7.0 top=0 t2=5.0/6.0
+  ❌ [H2.7-S12.14] a failing employee does not block the rest of the system — expected 1 failed · other granted · retry ok | actual ran,good,retry r1=THROW DriverAdapterError: qc27 forced failure g=0 b=0/1
+  ❌ [H2.7-S12.6] property: no op sequence makes a year negative — expected 0 negative years · Σ EXPIRE = carry − min(carry, pre-expiry approved) | actual expire ops=63 none op37:2031 x=4 want=2 op38:2031 x=4 want=2 op39:2031 x=4 want=2 back="วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น" oct="วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น"
+===== qc-hr-h2.7 ===== passed 77/82 (QC_FORCE)
