@@ -1308,7 +1308,9 @@ async function runDb(): Promise<void> {
     }
     if (!missL.length) {
       const r = (await rawRows(`SELECT * FROM "HrLeave" WHERE id = ANY($1::text[])`, [...leaveIds, newLeave].filter(Boolean))) ?? [];
-      for (const row of r) for (const c of LEAVE_NEW) if (row[c[0]] !== null) nonNull++;
+      // ORACLE-EDIT H2.7 r2 (controller, 12 Nov): H2.7 R3/Q18 stores HrLeave.days on every new leave by contract — exclude only `days`;
+      //   policyId/halfDay/hours/attachmentKey and every HrAttendance column must still be null in this policy-less fixture
+      for (const row of r) for (const c of LEAVE_NEW) if (c[0] !== "days" && row[c[0]] !== null) nonNull++;
     }
     chk("S5.7", !missA.length && !missL.length && nonNull === 0 && !!newAtt && !!newLeave, "12 columns present · 0 non-null", `missing=${[...missA.map((c) => `HrAttendance.${c}`), ...missL.map((c) => `HrLeave.${c}`)].join(",") || "0"} nonNull=${nonNull} rows=${attIds.length + 1}+${leaveIds.length + 1}`);
   }
@@ -1811,9 +1813,10 @@ async function runDb(): Promise<void> {
       console.log(`  ℹ S7.3 qc-hr-v2 attendance = ${d}`);
       chk("S7.3", total === 120 && Number(exp?.attendanceRows) === 120 && Number(exp?.counts?.HrAttendance) === 120 && d === FROZEN_S73, `120 = expected · ${FROZEN_S73}`, `${d} · expected.attendanceRows=${exp?.attendanceRows ?? "∅"}`);
       const live: Record<string, number> = {};
-      const keys = ["HrEmployee", "HrAttendance", "HrLeave", "HrWorkSchedule", "HrSalaryProfile", "HrPayAdjustment", "HrPayrollRun", "HrPayrollItem", "HrShift", "HrLeavePolicy", "HrHoliday"];
+      // ORACLE-EDIT H2.7 r2 (controller, 12 Nov): the full seed writes ledger rows (H2.7 GRANT/USE) — HrLeaveBalanceTxn = hr-expected.json count, no longer 0
+      const keys = ["HrEmployee", "HrAttendance", "HrLeave", "HrWorkSchedule", "HrSalaryProfile", "HrPayAdjustment", "HrPayrollRun", "HrPayrollItem", "HrShift", "HrLeavePolicy", "HrHoliday", "HrLeaveBalanceTxn"];
       for (const k of keys) live[k] = await rawCount(k, `"tenantId" = $1`, q);
-      const zero = ["HrRosterEntry", "HrShiftSwapRequest", "HrTimeCorrection", "HrOtRequest", "HrLeaveBalanceTxn"];
+      const zero = ["HrRosterEntry", "HrShiftSwapRequest", "HrTimeCorrection", "HrOtRequest"];
       const zeros = await Promise.all(zero.map(async (k) => [k, await rawCount(k, `"tenantId" = $1`, q)] as const));
       const diff = keys.filter((k) => Number(exp?.counts?.[k]) !== live[k]);
       const nz = zeros.filter(([, v]) => v !== 0).map(([k, v]) => `${k}=${v}`);

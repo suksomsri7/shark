@@ -430,19 +430,14 @@ export async function requestLeaveAction(formData: FormData) {
   revalidate(systemId);
 }
 
-// HR H2.7 ▸ R10 (Q10): ไฟล์แนบใบลา — แนบไฟล์ที่อัปโหลดแล้ว (private) ได้เฉพาะตัวพนักงานเอง/ผู้ยื่นแทน (ตรวจใน attachLeaveFile ใต้ล็อกใบลา) ·
-//   ลิงก์เปิดไฟล์ = ผู้เห็นเหตุผลการลาเท่านั้น (ผูกบัญชีผู้กด · ≤ 15 นาที) · ร้าน = ร้านที่ล็อกอินอยู่ · ผลลัพธ์ = ข้อความไทยคงที่ ·
-//   ยังไม่มีช่องอัปโหลดบนหน้าจอในใบนี้ (มติผู้คุม Q10 — หนี้ D-H27-attach) ◂
+// HR H2.7 ▸ R10 (Q10) · r2 มติ D3: ไฟล์แนบใบลาปิดในใบนี้ — สองทางนี้ปฏิเสธทุกครั้งด้วยข้อความไทยคงที่ ไม่รับรหัสไฟล์ ไม่เขียนอะไร ไม่สร้างลิงก์ ·
+//   เปิดได้เมื่อมีที่อัปโหลดของ HR เอง + กันใช้ไฟล์ซ้ำทั้งร้าน (หนี้ D-H27-attach) ◂
 export type LeaveFileResult = { ok: true } | { ok: false; reason: string };
 export async function attachLeaveFileAction(formData: FormData): Promise<LeaveFileResult> {
   const auth = await requireTenant();
   const systemId = String(formData.get("systemId") ?? "").trim();
   const leaveId = String(formData.get("leaveId") ?? "").trim();
-  const fileId = String(formData.get("fileId") ?? "").trim();
-  if (!systemId || !leaveId) return { ok: false, reason: CANCEL_FORM_INVALID };
-  const r = await attachLeaveFile({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), leaveId, { fileId });
-  if (r.ok) revalidate(systemId);
-  return r;
+  return attachLeaveFile({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), leaveId, { fileId: "" });
 }
 export type LeaveLinkResult = { ok: true; url: string } | { ok: false; reason: string };
 export async function leaveAttachmentLinkAction(formData: FormData): Promise<LeaveLinkResult> {

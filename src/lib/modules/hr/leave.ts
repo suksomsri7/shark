@@ -3,10 +3,13 @@
 //
 // กติกา:
 //   • ยอดคงเหลือ = Σ แถวสมุด (HrLeaveBalanceTxn) — ไม่มีตัวนับ · เพิ่มแถวอย่างเดียว (ไม่ update/delete) · กันซ้ำด้วย unique (systemId, sourceKey)
-//     grant:<emp>:<pol>:<ปี> · use:<leaveId> (−วัน) · use-revert:<leaveId> (ADJUST +วัน ครั้งเดียว เฉพาะที่มี USE) · carry:<emp>:<pol>:<ปี> · expire:<emp>:<pol>:<ปี>
+//     grant:<emp>:<pol>:<ปี> · use:<leaveId> (−วัน · note "carry:N.N" = ส่วนที่ใช้วันสะสม) · use-revert:<leaveId> (ADJUST +วัน ครั้งเดียว · ปี/ประเภทของแถว USE) ·
+//     ยกวันสะสม = โอนในธุรกรรมเดียว (r2 มติ L2): carry-out:<emp>:<pol>:<ปีY> (CARRY −c ในปี Y−1) + carry:<emp>:<pol>:<ปีY> (CARRY +c ในปี Y · note "expires:YYYY-MM-DD") ·
+//     expire:<emp>:<pol>:<ปี> (EXPIRE −สะสมที่ไม่ได้ใช้ · 0.0 ก็เขียน = ประเมินแล้ว) · expire-late:<leaveId> (EXPIRE −ส่วนสะสมของใบที่ถูกถอนหลังวันหมดอายุ)
+//   • วันสะสมใช้ได้เฉพาะใบลาที่ "วันสุดท้าย ≤ วันหมดอายุ" และใช้ก่อนวันปกติ (L3) · ยอดของปีไม่ติดลบ (L6) · ไฟล์แนบปิดทั้งหมด (D3)
 //   • ลำดับล็อก (R8): hr-leave:<id> → hr-leave-emp:<sys>:<emp> → กุญแจตารางกะ (พนักงาน × วันลา เรียงจากน้อยไปมาก) · ยื่น/งานรายปี = กุญแจพนักงานอย่างเดียว ·
 //     สลับกะ = hr-swap:<id> → กุญแจตารางกะ (ไม่แตะกุญแจใบลา) ⇒ ไม่มีวงล็อก · ใต้ล็อกใช้ tx ของผู้เรียกเท่านั้น (§C.8)
-//   • นับวัน (R4): วันหยุดของสาขาในวันนั้น (แถวสาขา/ทั้งร้าน · แม้ร้านเปิด — Q5) ⇒ ไม่นับ · มีกะที่ประกาศแล้ววันนั้น ⇒ นับ ·
+//   • นับวัน (R4 · r2 มติ D5): มีกะที่ประกาศแล้ววันนั้น ⇒ นับ (แม้เป็นวันหยุด) · วันหยุดของสาขาในวันนั้น (แถวสาขา/ทั้งร้าน) ⇒ ไม่นับ ·
 //     สัปดาห์นั้นมีกะประกาศแล้ววันอื่น ⇒ ไม่นับ · ตารางงานประจำบอกหยุด ⇒ ไม่นับ · นอกนั้นนับ
 //   • ผู้อ่าน (R11): เหตุผลการลา/ไฟล์แนบ = เจ้าของร้าน · ผู้จัดการในสาขา · hr.leave.read ในสาขา · ตัวพนักงานเอง · ผู้ยื่นแทน ·
 //     hr.leave.decide ในสาขา = แถวไม่มีเหตุผล · คนอื่น = ข้อความเดียวกันทุกไบต์ · ไม่ส่ง attachmentKey/ที่อยู่ไฟล์ออกไป
@@ -16,7 +19,6 @@ import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
 import { emitOutbox } from "@/lib/core/outbox";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
-import { privateFileUrl } from "@/lib/storage/private-links";
 import { lockRosterKeysInTx, unitOfDay } from "./roster";
 import { weekdayOfDay, weekStartOf } from "./roster-rules";
 import { hrScopeOf, unitTargetOf } from "./scope";
@@ -27,7 +29,6 @@ import {
   carryExpiryOf,
   countLeaveDays,
   dayKey,
-  expireDays,
   fmtTenths,
   grantDays,
   hourlyLeaveDays,
@@ -127,7 +128,6 @@ export type LeaveRequestPlan = {
   halfDay: HrHalfDay | null;
   hours: number | null;
   leaveYear: number | null;
-  attachmentFileId: string | null;
 };
 
 /**
@@ -152,6 +152,7 @@ export async function planLeaveRequest(ctx: Ctx, input: LeaveRequestFields): Pro
     const ps = await db.hrLeavePolicy.findMany({ where: { category: input.type, active: true, OR: [{ unitId: null }, ...(unit ? [{ unitId: unit }] : [])] }, select: POLICY_SELECT, take: 100 });
     policy = ps.sort(policyOrder(unit))[0] ?? null;
   }
+  if (str(input.attachmentFileId)) throw new LeaveRuleError(LEAVE_TEXT.attachOff); // r2 มติ D3: ไม่รับรหัสไฟล์ใด ๆ
   const half: HrHalfDay | null = input.halfDay === "AM" || input.halfDay === "PM" ? input.halfDay : null;
   const rawHours = input.hours === null || input.hours === undefined || input.hours === "" ? null : Number(input.hours);
   if (half && rawHours !== null) throw new LeaveRuleError(LEAVE_TEXT.halfAndHours);
@@ -184,7 +185,6 @@ export async function planLeaveRequest(ctx: Ctx, input: LeaveRequestFields): Pro
     halfDay: half,
     hours: rawHours,
     leaveYear,
-    attachmentFileId: str(input.attachmentFileId) || null,
   };
 }
 
@@ -204,6 +204,7 @@ async function leaveDaysInTx(tx: Tx, emp: Pick<EmpRow, "id" | "unitId" | "units"
   });
   const rostered = new Set(entries.map((e) => dayOf(e.date)));
   const rosterWeeks = new Set([...rostered].map((d) => weekStartOf(d)));
+  for (const d of rostered) holidays.delete(d); // r2 มติ D5: มีกะที่ประกาศแล้ววันนั้น = ถูกจัดให้ทำงาน ⇒ นับเป็นวันลา (HQ23 ยืนยันกับที่ปรึกษาแรงงาน)
   const sched = await tx.hrWorkSchedule.findMany({ where: { employeeId: emp.id }, select: { weekday: true, dayOff: true } });
   const offWd = new Set(sched.filter((s) => s.dayOff).map((s) => s.weekday));
   const daysOff = new Set(days.filter((d) => !holidays.has(d) && !rostered.has(d) && (rosterWeeks.has(weekStartOf(d)) || offWd.has(weekdayOfDay(d)))));
@@ -211,14 +212,11 @@ async function leaveDaysInTx(tx: Tx, emp: Pick<EmpRow, "id" | "unitId" | "units"
 }
 
 // ═══════════════════════════ สมุดวันลา ═══════════════════════════
-async function sumTxn(tx: Tx, where: Prisma.HrLeaveBalanceTxnWhereInput): Promise<number> {
-  const r = await tx.hrLeaveBalanceTxn.aggregate({ _sum: { days: true }, where });
-  return tenthsOf(r._sum.days);
-}
+type TxnKind = "GRANT" | "USE" | "CARRY" | "EXPIRE" | "ADJUST";
 async function insertTxn(
   tx: Tx,
   ctx: Ctx,
-  row: { employeeId: string; policyId: string; kind: "GRANT" | "USE" | "CARRY" | "EXPIRE" | "ADJUST"; tenths: number; leaveYear: number; effectiveDate: string; sourceKey: string; leaveId?: string | null },
+  row: { employeeId: string; policyId: string; kind: TxnKind; tenths: number; leaveYear: number; effectiveDate: string; sourceKey: string; leaveId?: string | null; note?: string | null },
 ): Promise<number> {
   const r = await tx.hrLeaveBalanceTxn.createMany({
     data: [
@@ -233,6 +231,7 @@ async function insertTxn(
         effectiveDate: dbDate(row.effectiveDate),
         sourceKey: row.sourceKey,
         leaveId: row.leaveId ?? null,
+        note: row.note ?? null,
       },
     ],
     skipDuplicates: true, // แถวแรกชนะ (unique systemId+sourceKey) — ส่งซ้ำ/พร้อมกัน = ไม่เพิ่ม
@@ -247,34 +246,67 @@ async function ensureGrantInTx(tx: Tx, ctx: Ctx, emp: Pick<EmpRow, "id" | "start
   if (onlyIfEffectiveBy && g.effectiveDate > onlyIfEffectiveBy) return 0;
   return insertTxn(tx, ctx, { employeeId: emp.id, policyId: policy.id, kind: "GRANT", tenths: tenthsOf(g.days), leaveYear: year, effectiveDate: g.effectiveDate, sourceKey: `grant:${emp.id}:${policy.id}:${year}` });
 }
-async function pendingTenths(tx: Tx, employeeId: string, policyId: string, year: number, ysm: number, exceptId?: string): Promise<number> {
-  const b = leaveYearBounds(year, ysm);
-  const r = await tx.hrLeave.aggregate({
-    _sum: { days: true },
-    where: { employeeId, policyId, status: "PENDING", fromDate: { gte: dbDate(b.from), lte: dbDate(b.to) }, ...(exceptId ? { id: { not: exceptId } } : {}) },
-  });
-  return tenthsOf(r._sum.days);
-}
 
-/** ไฟล์แนบใช้ได้ไหม: ของร้านนี้ · ATTACHMENT · โฟลเดอร์ private · รูปหรือ PDF · ยังไม่ผูกกับใบลาอื่น */
-async function fileUsableInTx(tx: Tx, tenantId: string, fileId: string, leaveId: string | null): Promise<boolean> {
-  if (!/^[a-z0-9]{16,40}$/i.test(fileId)) return false;
-  const f = await tx.fileAsset.findFirst({ where: { id: fileId }, select: { kind: true, path: true, contentType: true } });
-  if (!f || f.kind !== "ATTACHMENT" || !f.path.startsWith(`t/${tenantId}/private/`)) return false;
-  if (!(/^image\/[a-z0-9.+-]+$/i.test(f.contentType) || f.contentType === "application/pdf")) return false;
-  const used = await tx.hrLeave.count({ where: { attachmentKey: fileId, ...(leaveId ? { id: { not: leaveId } } : {}) } });
-  return used === 0;
+// note ของแถว: USE "carry:N.N" = ส่วนที่ใช้วันสะสม · CARRY เข้า "expires:YYYY-MM-DD" = วันหมดอายุที่ตรึงไว้ตอนยก (ไม่มี = ไม่หมดอายุ)
+const CARRY_NOTE = /^carry:(\d+(?:\.\d)?)$/;
+const EXPIRES_NOTE = /^expires:(\d{4}-\d{2}-\d{2})$/;
+/** สถานะของปีการลา 1 ปี (พนักงาน × ประเภท) จาก Σ แถว — ไม่มีตัวนับ */
+export type LeaveYearState = {
+  /** Σ ทุกแถวของปีนั้น (สิบส่วน) */
+  sum: number;
+  /** มีแถว carry:<…>:<ปี> แล้ว (ยกเข้าแล้ว · 0.0 ก็นับ) */
+  carried: boolean;
+  carryIn: number;
+  /** วันหมดอายุของวันสะสมที่ยกเข้า (null = ไม่หมดอายุ / ไม่มีวันสะสม) */
+  expiry: string | null;
+  /** มีแถว expire:<…>:<ปี> แล้ว */
+  expiredDone: boolean;
+  /** วันสะสมที่ยังใช้ได้ = max(0, ยกเข้า − ใช้ไป (หักที่ถูกถอน) − หมดอายุแล้ว) */
+  carryLeft: number;
+  /** วันปกติ (ไม่ใช่วันสะสม) = Σ − carryLeft */
+  nonCarry: number;
+};
+export async function leaveYearStateInTx(tx: Tx, employeeId: string, policyId: string, year: number): Promise<LeaveYearState> {
+  const rows = await tx.hrLeaveBalanceTxn.findMany({ where: { employeeId, policyId, leaveYear: year }, select: { kind: true, days: true, sourceKey: true, note: true }, take: 5000 });
+  const reverted = new Set(rows.filter((r) => r.sourceKey.startsWith("use-revert:")).map((r) => r.sourceKey.slice("use-revert:".length)));
+  let sum = 0;
+  let carryIn = 0;
+  let carried = false;
+  let expiry: string | null = null;
+  let expiredDone = false;
+  let usedCarry = 0;
+  let expired = 0;
+  const inKey = `carry:${employeeId}:${policyId}:${year}`;
+  for (const r of rows) {
+    const t = tenthsOf(r.days);
+    sum += t;
+    if (r.sourceKey === inKey) {
+      carried = true;
+      carryIn = t;
+      expiry = EXPIRES_NOTE.exec(r.note ?? "")?.[1] ?? null;
+    } else if (r.kind === "USE" && r.sourceKey.startsWith("use:") && !reverted.has(r.sourceKey.slice(4))) {
+      usedCarry += tenthsOf(CARRY_NOTE.exec(r.note ?? "")?.[1] ?? 0);
+    } else if (r.kind === "EXPIRE") {
+      expired += -t;
+      if (r.sourceKey === `expire:${employeeId}:${policyId}:${year}`) expiredDone = true;
+    }
+  }
+  const carryLeft = Math.max(0, carryIn - usedCarry - expired);
+  return { sum, carried, carryIn, expiry, expiredDone, carryLeft, nonCarry: sum - carryLeft };
 }
+/** ใบลาที่จบภายในวันหมดอายุ ⇒ ใช้วันสะสมได้ (L3) */
+const carryEligible = (toDate: string, st: Pick<LeaveYearState, "expiry">) => st.expiry === null || toDate <= st.expiry;
 
 /**
  * R3 ขั้นในธุรกรรม (ผู้เรียกถือ hr-leave-emp:<sys>:<emp> แล้ว): ซ้อนใบเดิม (Q13 — ครึ่งเช้า+ครึ่งบ่ายวันเดียวกันได้) → จำนวนวัน > 0 →
- * GRANT (ถ้ายังไม่มี) → คงเหลือ − ใบรออนุมัติอื่น ≥ วันลา (Q3 · ไม่จำกัด = ข้าม) → ไฟล์แนบ · คืน { days, fields = คอลัมน์ H1.2 ของแถวใหม่ }
+ * GRANT (ถ้ายังไม่มี) → จองยอด (Q3 · ไม่จำกัด = ข้าม): Σ ใบรออนุมัติ + ใบนี้ ≤ Σ ปีนั้น และ ส่วนที่ใช้วันสะสมไม่ได้ (จบหลังวันหมดอายุ) ≤ วันปกติ (L3) ·
+ * คืน { days, fields = คอลัมน์ H1.2 ของแถวใหม่ } (ไฟล์แนบปิด — D3)
  */
 export async function reserveLeaveInTx(
   tx: Tx,
   ctx: Ctx,
   plan: LeaveRequestPlan,
-): Promise<{ days: string; fields: { policyId: string | null; days: string; halfDay: HrHalfDay | null; hours: number | null; attachmentKey: string | null } }> {
+): Promise<{ days: string; fields: { policyId: string | null; days: string; halfDay: HrHalfDay | null; hours: number | null } }> {
   const others = await tx.hrLeave.findMany({
     where: { employeeId: plan.employeeId, status: { in: ["PENDING", "APPROVED"] }, fromDate: { lte: dbDate(plan.to) }, toDate: { gte: dbDate(plan.from) } },
     select: { fromDate: true, toDate: true, halfDay: true },
@@ -288,13 +320,23 @@ export async function reserveLeaveInTx(
   if (plan.policy && plan.leaveYear !== null) {
     await ensureGrantInTx(tx, ctx, plan.emp, plan.policy, plan.leaveYear);
     if (!isUnlimited(plan.policy)) {
-      const bal = await sumTxn(tx, { employeeId: plan.employeeId, policyId: plan.policy.id, leaveYear: plan.leaveYear });
-      const pend = await pendingTenths(tx, plan.employeeId, plan.policy.id, plan.leaveYear, ysmOf(plan.policy));
-      if (bal - pend < tenthsOf(days)) throw new LeaveRuleError(LEAVE_TEXT.balance);
+      const st = await leaveYearStateInTx(tx, plan.employeeId, plan.policy.id, plan.leaveYear);
+      const b = leaveYearBounds(plan.leaveYear, ysmOf(plan.policy));
+      const pend = await tx.hrLeave.findMany({
+        where: { employeeId: plan.employeeId, policyId: plan.policy.id, status: "PENDING", fromDate: { gte: dbDate(b.from), lte: dbDate(b.to) } },
+        select: { toDate: true, days: true },
+        take: 1000,
+      });
+      let all = tenthsOf(days);
+      let late = carryEligible(plan.to, st) ? 0 : tenthsOf(days);
+      for (const p of pend) {
+        all += tenthsOf(p.days);
+        if (!carryEligible(dayOf(p.toDate), st)) late += tenthsOf(p.days);
+      }
+      if (all > st.sum || late > st.nonCarry) throw new LeaveRuleError(LEAVE_TEXT.balance);
     }
   }
-  if (plan.attachmentFileId && !(await fileUsableInTx(tx, ctx.tenantId, plan.attachmentFileId, null))) throw new LeaveRuleError(LEAVE_TEXT.fileBad);
-  return { days, fields: { policyId: plan.policy?.id ?? null, days, halfDay: plan.halfDay, hours: plan.hours, attachmentKey: plan.attachmentFileId } };
+  return { days, fields: { policyId: plan.policy?.id ?? null, days, halfDay: plan.halfDay, hours: plan.hours } };
 }
 
 // ═══════════════════════════ ตัดสิน: ตัวช่วยในธุรกรรมของผู้เรียก ═══════════════════════════
@@ -305,14 +347,28 @@ export type LeaveLedgerRow = {
   fromDate: string;
   toDate: string;
   days: string | null;
+  halfDay: HrHalfDay | null;
+  hours: number | null;
   policy: PolicyRow | null;
   startDate: Date | null;
+  emp: Pick<EmpRow, "id" | "unitId" | "units">;
 };
 /** ใบลา (ใน tx) สำหรับสมุด/ล็อก/event — null = ไม่พบในระบบนี้ */
 export async function leaveRowInTx(tx: Tx, leaveId: string): Promise<LeaveLedgerRow | null> {
   const l = await tx.hrLeave.findFirst({
     where: { id: leaveId },
-    select: { id: true, employeeId: true, status: true, fromDate: true, toDate: true, days: true, policy: { select: POLICY_SELECT }, employee: { select: { startDate: true } } },
+    select: {
+      id: true,
+      employeeId: true,
+      status: true,
+      fromDate: true,
+      toDate: true,
+      days: true,
+      halfDay: true,
+      hours: true,
+      policy: { select: POLICY_SELECT },
+      employee: { select: { startDate: true, unitId: true, units: EMP_SELECT.units } },
+    },
   });
   if (!l) return null;
   return {
@@ -322,29 +378,67 @@ export async function leaveRowInTx(tx: Tx, leaveId: string): Promise<LeaveLedger
     fromDate: dayOf(l.fromDate),
     toDate: dayOf(l.toDate),
     days: l.days === null ? null : fmtTenths(tenthsOf(l.days)),
+    halfDay: l.halfDay,
+    hours: l.hours === null ? null : Number(String(l.hours)),
     policy: l.policy,
     startDate: l.employee.startDate,
+    emp: { id: l.employeeId, unitId: l.employee.unitId, units: l.employee.units },
   };
 }
-/** อนุมัติได้ไหม (R6): ใบรุ่นเก่า/ไม่จำกัด = ได้ · อื่น ๆ = GRANT (ถ้ายังไม่มี) แล้ว Σ สมุดของปีนั้น ≥ วันลา */
-export async function leaveBalanceCoversInTx(tx: Tx, ctx: Ctx, row: LeaveLedgerRow): Promise<boolean> {
-  if (!row.policy || row.days === null || isUnlimited(row.policy)) return true;
-  const year = leaveYearOf(row.fromDate, ysmOf(row.policy));
-  await ensureGrantInTx(tx, ctx, { id: row.employeeId, startDate: row.startDate }, row.policy, year);
-  return (await sumTxn(tx, { employeeId: row.employeeId, policyId: row.policy.id, leaveYear: year })) >= tenthsOf(row.days);
+export type LeaveApprovalCheck = { ok: true; row: LeaveLedgerRow } | { ok: false; code: "BALANCE" | "ZERO_DAYS" };
+/**
+ * อนุมัติได้ไหม (R6 · r2 มติ D1): ผู้เรียกถือ hr-leave → emp → กุญแจตารางกะแล้ว ⇒ นับวันใหม่ (วันหยุด/ตารางกะที่เพิ่มหลังยื่น) ·
+ * 0 วัน = ZERO_DAYS · ใบรุ่นเก่า/ไม่จำกัด = ได้ · อื่น ๆ = GRANT (ถ้ายังไม่มี) แล้ว: จบภายในวันหมดอายุ ⇒ วัน ≤ Σ · จบหลังวันหมดอายุ ⇒ วัน ≤ วันปกติ (L3) ·
+ * คืนแถวที่มีจำนวนวันใหม่ — ผู้เรียกเขียน days ลงใบลาในคำสั่งเปลี่ยนสถานะ และ USE ใช้ค่านี้
+ */
+export async function leaveApprovalCheckInTx(tx: Tx, ctx: Ctx, row: LeaveLedgerRow): Promise<LeaveApprovalCheck> {
+  let r = row;
+  if (row.days !== null) {
+    const days = await leaveDaysInTx(tx, row.emp, row.fromDate, row.toDate, row.halfDay, row.hours);
+    if (tenthsOf(days) <= 0) return { ok: false, code: "ZERO_DAYS" };
+    r = { ...row, days };
+  }
+  if (!r.policy || r.days === null || isUnlimited(r.policy)) return { ok: true, row: r };
+  const year = leaveYearOf(r.fromDate, ysmOf(r.policy));
+  await ensureGrantInTx(tx, ctx, { id: r.employeeId, startDate: r.startDate }, r.policy, year);
+  const st = await leaveYearStateInTx(tx, r.employeeId, r.policy.id, year);
+  const need = tenthsOf(r.days);
+  return (carryEligible(r.toDate, st) ? need <= st.sum : need <= st.nonCarry) ? { ok: true, row: r } : { ok: false, code: "BALANCE" };
 }
-/** สมุดตามการเปลี่ยนสถานะ: →APPROVED = USE · APPROVED→(REJECTED|CANCELLED) = คืนครั้งเดียว (เฉพาะที่มี USE) · อื่น ๆ = ไม่เขียน */
+/**
+ * สมุดตามการเปลี่ยนสถานะ: →APPROVED = USE (ใช้วันสะสมก่อน ถ้าใบจบภายในวันหมดอายุ · ส่วนนั้นจดใน note) ·
+ * APPROVED→(REJECTED|CANCELLED) = คืนครั้งเดียว เข้าปี/ประเภทของแถว USE เสมอ (L5) + ถ้าวันสะสมของปีนั้นหมดอายุไปแล้ว (มี expire:) และใบนี้ใช้วันสะสม ⇒
+ * expire-late:<leaveId> = −ส่วนสะสมนั้น ใน tx เดียวกัน (L4 — ไม่ได้วันสะสมที่หมดอายุคืน) · อื่น ๆ = ไม่เขียน
+ */
 export async function leaveLedgerInTx(tx: Tx, ctx: Ctx, row: LeaveLedgerRow, from: string, to: string): Promise<void> {
-  if (!row.policy || row.days === null) return; // ใบรุ่นเก่า (Q18)
-  const year = leaveYearOf(row.fromDate, ysmOf(row.policy));
-  const base = { employeeId: row.employeeId, policyId: row.policy.id, leaveYear: year, effectiveDate: row.fromDate, leaveId: row.id };
   if (to === "APPROVED" && from !== "APPROVED") {
-    await insertTxn(tx, ctx, { ...base, kind: "USE", tenths: -tenthsOf(row.days), sourceKey: `use:${row.id}` });
+    if (!row.policy || row.days === null) return; // ใบรุ่นเก่า (Q18)
+    const year = leaveYearOf(row.fromDate, ysmOf(row.policy));
+    const days = tenthsOf(row.days);
+    const st = isUnlimited(row.policy) ? null : await leaveYearStateInTx(tx, row.employeeId, row.policy.id, year);
+    const fromCarry = st && carryEligible(row.toDate, st) ? Math.min(days, st.carryLeft) : 0;
+    await insertTxn(tx, ctx, {
+      employeeId: row.employeeId,
+      policyId: row.policy.id,
+      leaveYear: year,
+      effectiveDate: row.fromDate,
+      leaveId: row.id,
+      kind: "USE",
+      tenths: -days,
+      sourceKey: `use:${row.id}`,
+      note: fromCarry > 0 ? `carry:${fmtTenths(fromCarry)}` : null,
+    });
     return;
   }
   if (from === "APPROVED" && (to === "REJECTED" || to === "CANCELLED")) {
-    const use = await tx.hrLeaveBalanceTxn.findFirst({ where: { sourceKey: `use:${row.id}` }, select: { days: true } });
-    if (use) await insertTxn(tx, ctx, { ...base, kind: "ADJUST", tenths: -tenthsOf(use.days), sourceKey: `use-revert:${row.id}` });
+    const use = await tx.hrLeaveBalanceTxn.findFirst({ where: { sourceKey: `use:${row.id}` }, select: { days: true, leaveYear: true, policyId: true, employeeId: true, note: true } });
+    if (!use) return;
+    const base = { employeeId: use.employeeId, policyId: use.policyId, leaveYear: use.leaveYear, effectiveDate: row.fromDate, leaveId: row.id };
+    const n = await insertTxn(tx, ctx, { ...base, kind: "ADJUST", tenths: -tenthsOf(use.days), sourceKey: `use-revert:${row.id}` });
+    const fromCarry = tenthsOf(CARRY_NOTE.exec(use.note ?? "")?.[1] ?? 0);
+    if (n !== 1 || fromCarry <= 0) return;
+    const exp = await tx.hrLeaveBalanceTxn.findFirst({ where: { sourceKey: `expire:${use.employeeId}:${use.policyId}:${use.leaveYear}` }, select: { effectiveDate: true } });
+    if (exp) await insertTxn(tx, ctx, { ...base, effectiveDate: dayOf(exp.effectiveDate), kind: "EXPIRE", tenths: -fromCarry, sourceKey: `expire-late:${row.id}` });
   }
 }
 /** event hr.leave.decided (R12) — payload id/วัน/สถานะเท่านั้น · 1 ใบ × 1 สถานะ = 1 แถวตลอดกาล */
@@ -361,38 +455,43 @@ export function leaveDecidedEvent(ctx: Ctx, row: Pick<LeaveLedgerRow, "id" | "em
 // ═══════════════════════════ ผลของสายอนุมัติ (R7) ═══════════════════════════
 /**
  * ใช้ผลคำขออนุมัติชนิด HrLeave — ธุรกรรมเดียว ลำดับล็อกเดียวกับ decideLeave · ใบไม่ใช่ PENDING / คำขอไม่ตรงผล = ไม่ทำอะไร (ส่งซ้ำปลอดภัย) ·
- * อนุมัติแต่วันลาไม่พอ = ใบลา CANCELLED + audit รหัส BALANCE (ไม่ throw — Q4) · ข้อผิดพลาดของฐานข้อมูล = throw ⇒ event retry
+ * อนุมัติแต่วันลาไม่พอ = ใบลา CANCELLED + audit รหัส BALANCE · นับวันใหม่ได้ 0 = CANCELLED + audit รหัส ZERO_DAYS (ไม่ throw — Q4 · D1) ·
+ * ข้อผิดพลาดของฐานข้อมูล = throw ⇒ event retry
  */
-export async function applyLeaveDecision(input: { tenantId: string; systemId: string; leaveId: string; requestId: string; approved: boolean }): Promise<{ applied: boolean; code?: "BALANCE" }> {
+export async function applyLeaveDecision(input: { tenantId: string; systemId: string; leaveId: string; requestId: string; approved: boolean }): Promise<{ applied: boolean; code?: "BALANCE" | "ZERO_DAYS" }> {
   const ctx: Ctx = { tenantId: str(input?.tenantId), systemId: str(input?.systemId) };
   const id = str(input?.leaveId);
   const requestId = str(input?.requestId);
   if (!ctx.tenantId || !ctx.systemId || !id || !requestId) return { applied: false };
   const approved = input.approved === true;
-  type Out = { kind: "noop" } | { kind: "refused" } | { kind: "done"; status: string };
+  type Out = { kind: "noop" } | { kind: "refused"; code: "BALANCE" | "ZERO_DAYS" } | { kind: "done"; status: string };
   const out: Out = await tenantDb(ctx).$transaction(async (t): Promise<Out> => {
     const tx = t as unknown as Tx;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr-leave:${id}`}, 0))`;
-    const row = await leaveRowInTx(tx, id);
+    let row = await leaveRowInTx(tx, id);
     if (!row || row.status !== "PENDING") return { kind: "noop" };
     const req = await tx.approvalRequest.findFirst({ where: { id: requestId, tenantId: ctx.tenantId, entityType: "HrLeave", entityId: id }, select: { status: true } });
     if (!req || req.status !== (approved ? "APPROVED" : "REJECTED")) return { kind: "noop" };
     await lockLeaveEmployeeInTx(tx, ctx.systemId, row.employeeId);
     await lockRosterKeysInTx(tx, ctx.systemId, leaveRosterKeys(row));
-    if (approved && !(await leaveBalanceCoversInTx(tx, ctx, row))) {
-      const c = await tx.hrLeave.updateMany({ where: { id, status: "PENDING" }, data: { status: "CANCELLED" } });
-      return c.count === 1 ? { kind: "refused" } : { kind: "noop" };
+    if (approved) {
+      const chk = await leaveApprovalCheckInTx(tx, ctx, row);
+      if (!chk.ok) {
+        const c = await tx.hrLeave.updateMany({ where: { id, status: "PENDING" }, data: { status: "CANCELLED" } });
+        return c.count === 1 ? { kind: "refused", code: chk.code } : { kind: "noop" };
+      }
+      row = chk.row;
     }
     const status = approved ? "APPROVED" : "REJECTED";
-    const u = await tx.hrLeave.updateMany({ where: { id, status: "PENDING" }, data: { status, decidedById: ENGINE } });
+    const u = await tx.hrLeave.updateMany({ where: { id, status: "PENDING" }, data: { status, decidedById: ENGINE, ...(approved && row.days !== null ? { days: row.days } : {}) } });
     if (u.count !== 1) return { kind: "noop" };
     await leaveLedgerInTx(tx, ctx, row, "PENDING", status);
     await emitOutbox(tx, leaveDecidedEvent(ctx, row, status, "PENDING"));
     return { kind: "done", status };
   }, LEAVE_TX_OPTS);
   if (out.kind === "refused") {
-    await writeAudit({ tenantId: ctx.tenantId, actorType: "SYSTEM", actorId: null, action: "hr.leave.apply_refused", targetType: "HrLeave", targetId: id, after: { leaveId: id, requestId, code: "BALANCE" } });
-    return { applied: false, code: "BALANCE" };
+    await writeAudit({ tenantId: ctx.tenantId, actorType: "SYSTEM", actorId: null, action: "hr.leave.apply_refused", targetType: "HrLeave", targetId: id, after: { leaveId: id, requestId, code: out.code } });
+    return { applied: false, code: out.code };
   }
   if (out.kind === "done") {
     await writeAudit({ tenantId: ctx.tenantId, actorType: "SYSTEM", actorId: null, action: "hr.leave.decide", targetType: "HrLeave", targetId: id, before: { status: "PENDING" }, after: { status: out.status, decidedById: ENGINE, requestId } });
@@ -401,73 +500,135 @@ export async function applyLeaveDecision(input: { tenantId: string; systemId: st
   return { applied: false };
 }
 
-// ═══════════════════════════ งานรายปี (R9) ═══════════════════════════
-export type LeaveYearJobResult = { granted: number; carried: number; expired: number };
+// ═══════════════════════════ งานรายปี (R9 · r2 มติ L2/L4/L7) ═══════════════════════════
+export type LeaveYearJobResult = { granted: number; carried: number; expired: number; txs: number; waited: number; more: boolean };
+/** เพดานธุรกรรมต่อรอบต่อระบบ (L7) — ที่เหลือทำรอบถัดไป */
+export const LEAVE_JOB_MAX_TX = 100;
+type JobPolicy = PolicyRow;
+type PendRow = { employeeId: string; policyId: string | null; fromDate: Date; toDate: Date };
 /**
- * GRANT ของปีการลาปัจจุบัน (เมื่อถึงวันมีสิทธิ์) · CARRY เข้าปีนี้ = carryDays(คงเหลือปีก่อน) เมื่อเพดาน > 0 ·
- * หลังวันหมดอายุ: EXPIRE = expireDays(สะสม, ใช้ไปถึงวันหมดอายุ) · ธุรกรรมละ 1 พนักงานใต้กุญแจพนักงาน · แถวแรกชนะ ⇒ รันซ้ำ = ไม่เปลี่ยน
+ * ต่อ (พนักงาน × ประเภท) ของปีการลา Y = leaveYearOf(asOf):
+ *   GRANT(Y) เมื่อถึงวันมีสิทธิ์ ·
+ *   ยกวันสะสม (เพดาน > 0) = โอนในธุรกรรมเดียว carry-out −c (ปี Y−1) + carry +c (ปี Y · ตรึงวันหมดอายุ) · c = min(เพดาน, Σ ปี Y−1 หลังปิดวันหมดอายุของปี Y−1) ·
+ *     รอ (ข้าม) ขณะพนักงานมีใบ PENDING ของประเภทนั้นในปี Y−1 (L2) ·
+ *   หลังวันหมดอายุ: EXPIRE = วันสะสมที่ยังไม่ได้ใช้ (0.0 ก็เขียน) · รอขณะมีใบ PENDING ที่จบภายในวันหมดอายุ (L4) ·
+ * เงียบ (L7): คิดจากแถวที่มีอยู่ก่อนเปิดธุรกรรม — พนักงานที่ครบแล้ว/ยังไม่ถึงสิทธิ์/กำลังรอ = ไม่เปิดธุรกรรม · ≤ maxTx ธุรกรรมต่อรอบ (more = ยังมีงานค้าง) ·
+ * ใต้กุญแจพนักงานตรวจซ้ำทุกเงื่อนไข · แถวแรกชนะ ⇒ รันซ้ำ = ไม่เปลี่ยน
  */
-export async function runLeaveYearJob(input: { tenantId: string; systemId: string; asOf: string | Date }): Promise<LeaveYearJobResult> {
+export async function runLeaveYearJob(input: { tenantId: string; systemId: string; asOf: string | Date; maxTx?: number }): Promise<LeaveYearJobResult> {
   const ctx: Ctx = { tenantId: str(input?.tenantId), systemId: str(input?.systemId) };
   const asOf = dayKey(input.asOf);
-  const res: LeaveYearJobResult = { granted: 0, carried: 0, expired: 0 };
+  const maxTx = Number.isInteger(input?.maxTx) && (input.maxTx as number) > 0 ? (input.maxTx as number) : LEAVE_JOB_MAX_TX;
+  const res: LeaveYearJobResult = { granted: 0, carried: 0, expired: 0, txs: 0, waited: 0, more: false };
   if (!ctx.tenantId || !ctx.systemId) return res;
   const db = tenantDb(ctx);
   const policies = await db.hrLeavePolicy.findMany({ where: { active: true }, select: POLICY_SELECT, take: 200 });
   if (policies.length === 0) return res;
-  const emps = await db.hrEmployee.findMany({ where: { active: true, OR: [{ employmentStatus: null }, { employmentStatus: { not: "ENDED" } }] }, select: { id: true, unitId: true, startDate: true }, take: 5000 });
-  // คีย์ที่ควรมี — ข้ามพนักงานที่มีครบแล้ว (ไม่เปิดธุรกรรม)
-  const keysOf = (empId: string, p: PolicyRow) => {
-    const y = leaveYearOf(asOf, ysmOf(p));
-    const exp = carryExpiryOf(y, ysmOf(p), p.carryExpiresMonthDay);
-    const carry = tenthsOf(p.carryMaxDays) > 0;
-    return [
-      ...(isUnlimited(p) ? [] : [`grant:${empId}:${p.id}:${y}`]),
-      ...(carry ? [`carry:${empId}:${p.id}:${y}`] : []),
-      ...(carry && exp && asOf > exp ? [`expire:${empId}:${p.id}:${y}`] : []),
-    ];
-  };
+  const emps = await db.hrEmployee.findMany({
+    where: { active: true, OR: [{ employmentStatus: null }, { employmentStatus: { not: "ENDED" } }] },
+    select: { id: true, unitId: true, startDate: true },
+    orderBy: { id: "asc" },
+    take: 5000,
+  });
   const forEmp = (e: { unitId: string | null }) => policies.filter((p) => p.unitId === null || p.unitId === e.unitId);
-  const want = emps.map((e) => ({ e, keys: forEmp(e).flatMap((p) => keysOf(e.id, p)) }));
-  const have = new Set(
-    (await db.hrLeaveBalanceTxn.findMany({ where: { sourceKey: { in: want.flatMap((w) => w.keys) } }, select: { sourceKey: true }, take: 50_000 })).map((r) => r.sourceKey),
+  const carryCap = (p: JobPolicy) => tenthsOf(p.carryMaxDays);
+  const yearOf = (p: JobPolicy) => leaveYearOf(asOf, ysmOf(p));
+  const grantKey = (e: { id: string; startDate: Date | null }, p: JobPolicy) => {
+    if (isUnlimited(p)) return null;
+    const g = grantDays(p, e.startDate, yearOf(p), ysmOf(p));
+    return g.eligible && g.days !== null && g.effectiveDate <= asOf ? `grant:${e.id}:${p.id}:${yearOf(p)}` : null; // ยังไม่ถึงสิทธิ์ = ไม่ต้องการแถว (ไม่เปิดธุรกรรม)
+  };
+  const keys = emps.flatMap((e) =>
+    forEmp(e).flatMap((p) => [grantKey(e, p), ...(carryCap(p) > 0 ? [`carry:${e.id}:${p.id}:${yearOf(p)}`, `expire:${e.id}:${p.id}:${yearOf(p)}`] : [])].filter((k): k is string => !!k)),
   );
-  for (const { e, keys } of want) {
-    if (keys.every((k) => have.has(k))) continue;
+  const have = new Map<string, string | null>();
+  for (let i = 0; i < keys.length; i += 5000) {
+    const rows = await db.hrLeaveBalanceTxn.findMany({ where: { sourceKey: { in: keys.slice(i, i + 5000) } }, select: { sourceKey: true, note: true }, take: 5000 });
+    for (const r of rows) have.set(r.sourceKey, r.note);
+  }
+  const pending: PendRow[] = await db.hrLeave.findMany({ where: { status: "PENDING", policyId: { not: null } }, select: { employeeId: true, policyId: true, fromDate: true, toDate: true }, take: 20_000 });
+  const pendOf = (empId: string, p: JobPolicy, year: number, toBy?: string) => {
+    const b = leaveYearBounds(year, ysmOf(p));
+    return pending.some((l) => l.employeeId === empId && l.policyId === p.id && dayOf(l.fromDate) >= b.from && dayOf(l.fromDate) <= b.to && (!toBy || dayOf(l.toDate) <= toBy));
+  };
+  /** งานที่ยังต้องทำของ (พนักงาน × ประเภท): "work" = เปิดธุรกรรม · "wait" = รอใบ PENDING · "none" = ครบ/ไม่ต้องทำ */
+  const need = (e: { id: string; startDate: Date | null }, p: JobPolicy): "work" | "wait" | "none" => {
+    const gk = grantKey(e, p);
+    const y = yearOf(p);
+    let work = !!gk && !have.has(gk);
+    let wait = false;
+    if (carryCap(p) > 0) {
+      const ck = `carry:${e.id}:${p.id}:${y}`;
+      if (!have.has(ck)) {
+        if (pendOf(e.id, p, y - 1)) wait = true;
+        else work = true;
+      } else {
+        const exp = EXPIRES_NOTE.exec(have.get(ck) ?? "")?.[1] ?? null;
+        if (exp && asOf > exp && !have.has(`expire:${e.id}:${p.id}:${y}`)) {
+          if (pendOf(e.id, p, y, exp)) wait = true;
+          else work = true;
+        }
+      }
+    }
+    return work ? "work" : wait ? "wait" : "none";
+  };
+  for (const e of emps) {
+    const states = forEmp(e).map((p) => need(e, p));
+    if (!states.includes("work")) {
+      if (states.includes("wait")) res.waited++;
+      continue;
+    }
+    if (res.txs >= maxTx) {
+      res.more = true;
+      break;
+    }
+    res.txs++;
     const r = await db.$transaction(async (t) => {
       const tx = t as unknown as Tx;
       await lockLeaveEmployeeInTx(tx, ctx.systemId, e.id);
-      const one: LeaveYearJobResult = { granted: 0, carried: 0, expired: 0 };
+      const one = { granted: 0, carried: 0, expired: 0, waited: 0 };
       for (const p of forEmp(e)) {
         const ysm = ysmOf(p);
         const y = leaveYearOf(asOf, ysm);
         one.granted += await ensureGrantInTx(tx, ctx, e, p, y, asOf);
-        if (tenthsOf(p.carryMaxDays) <= 0) continue;
-        const ck = `carry:${e.id}:${p.id}:${y}`;
-        if (!(await tx.hrLeaveBalanceTxn.findFirst({ where: { sourceKey: ck }, select: { id: true } }))) {
-          const prev = await sumTxn(tx, { employeeId: e.id, policyId: p.id, leaveYear: y - 1 });
-          const c = tenthsOf(carryDays(fmtTenths(prev), p.carryMaxDays));
-          one.carried += await insertTxn(tx, ctx, { employeeId: e.id, policyId: p.id, kind: "CARRY", tenths: c, leaveYear: y, effectiveDate: leaveYearBounds(y, ysm).from, sourceKey: ck });
+        if (carryCap(p) <= 0) continue;
+        const pendIn = (year: number, toBy?: string) => {
+          const b = leaveYearBounds(year, ysm);
+          return tx.hrLeave.count({ where: { employeeId: e.id, policyId: p.id, status: "PENDING", fromDate: { gte: dbDate(b.from), lte: dbDate(b.to) }, ...(toBy ? { toDate: { lte: dbDate(toBy) } } : {}) } });
+        };
+        let cur = await leaveYearStateInTx(tx, e.id, p.id, y);
+        if (!cur.carried) {
+          if ((await pendIn(y - 1)) > 0) {
+            one.waited = 1; // L2: รอใบปี Y−1 ตัดสินก่อน
+            continue;
+          }
+          // ปิดวันหมดอายุของปี Y−1 ก่อน (ถ้ายังค้าง) แล้วค่อยโอน — ไม่ยกวันสะสมที่หมดอายุแล้วซ้ำ
+          const prev = await leaveYearStateInTx(tx, e.id, p.id, y - 1);
+          let prevSum = prev.sum;
+          if (prev.carried && !prev.expiredDone && prev.expiry && asOf > prev.expiry) {
+            one.expired += await insertTxn(tx, ctx, { employeeId: e.id, policyId: p.id, kind: "EXPIRE", tenths: -prev.carryLeft, leaveYear: y - 1, effectiveDate: addDays(prev.expiry, 1), sourceKey: `expire:${e.id}:${p.id}:${y - 1}` });
+            prevSum -= prev.carryLeft;
+          }
+          const c = tenthsOf(carryDays(fmtTenths(prevSum), p.carryMaxDays));
+          const exp = carryExpiryOf(y, ysm, p.carryExpiresMonthDay);
+          const b = leaveYearBounds(y, ysm);
+          await insertTxn(tx, ctx, { employeeId: e.id, policyId: p.id, kind: "CARRY", tenths: -c, leaveYear: y - 1, effectiveDate: addDays(b.from, -1), sourceKey: `carry-out:${e.id}:${p.id}:${y}` });
+          one.carried += await insertTxn(tx, ctx, { employeeId: e.id, policyId: p.id, kind: "CARRY", tenths: c, leaveYear: y, effectiveDate: b.from, sourceKey: `carry:${e.id}:${p.id}:${y}`, note: exp ? `expires:${exp}` : null });
+          cur = await leaveYearStateInTx(tx, e.id, p.id, y);
         }
-        const exp = carryExpiryOf(y, ysm, p.carryExpiresMonthDay);
-        if (!exp || !(asOf > exp)) continue;
-        const carried = await sumTxn(tx, { employeeId: e.id, policyId: p.id, leaveYear: y, kind: "CARRY" });
-        if (carried <= 0) continue;
-        const used = -(await sumTxn(tx, {
-          employeeId: e.id,
-          policyId: p.id,
-          leaveYear: y,
-          effectiveDate: { lte: dbDate(exp) },
-          OR: [{ kind: "USE" }, { kind: "ADJUST", sourceKey: { startsWith: "use-revert:" } }],
-        }));
-        const x = tenthsOf(expireDays(fmtTenths(carried), fmtTenths(used)));
-        one.expired += await insertTxn(tx, ctx, { employeeId: e.id, policyId: p.id, kind: "EXPIRE", tenths: -x, leaveYear: y, effectiveDate: addDays(exp, 1), sourceKey: `expire:${e.id}:${p.id}:${y}` });
+        if (!cur.expiry || !(asOf > cur.expiry) || cur.expiredDone) continue;
+        if ((await pendIn(y, cur.expiry)) > 0) {
+          one.waited = 1; // L4: รอใบที่จบภายในวันหมดอายุตัดสินก่อน
+          continue;
+        }
+        one.expired += await insertTxn(tx, ctx, { employeeId: e.id, policyId: p.id, kind: "EXPIRE", tenths: -cur.carryLeft, leaveYear: y, effectiveDate: addDays(cur.expiry, 1), sourceKey: `expire:${e.id}:${p.id}:${y}` });
       }
       return one;
     }, LEAVE_TX_OPTS);
     res.granted += r.granted;
     res.carried += r.carried;
     res.expired += r.expired;
+    res.waited += r.waited;
   }
   return res;
 }
@@ -497,7 +658,6 @@ const DETAIL_SELECT = {
   status: true,
   reason: true,
   filedById: true,
-  attachmentKey: true,
   policy: { select: { id: true, name: true, category: true, attachmentAfterDays: true } },
   employee: { select: { name: true, linkedUserId: true, unitId: true, units: { select: { id: true, unitId: true, fromDate: true, toDate: true }, take: 200 } } },
 } as const satisfies Prisma.HrLeaveSelect;
@@ -540,47 +700,24 @@ export async function leaveDetail(ctx: Ctx, viewer: LeaveViewer, leaveId: string
     halfDay: l.halfDay,
     hours: l.hours === null ? null : fmtTenths(tenthsOf(l.hours)),
     status: l.status,
-    hasAttachment: !!l.attachmentKey,
+    hasAttachment: false, // r2 มติ D3: ไฟล์แนบปิด — ไม่อ่านคอลัมน์ไฟล์เลย (ธง needsAttachment คงไว้)
     needsAttachment: after !== null && days !== null && tenthsOf(days) >= after * 10, // Q10: ธงอย่างเดียว ไม่บล็อกการอนุมัติ
   };
   if (view === "reason") item.reason = l.reason;
   return { ok: true, item };
 }
 
-/** ลิงก์เปิดไฟล์แนบ (ผูกผู้ดู · ≤ 15 นาที) — เฉพาะผู้เห็นเหตุผล · กรณีอื่นทุกกรณี = ข้อความเดียวกัน */
-export async function leaveAttachmentLink(ctx: Ctx, viewer: LeaveViewer, leaveId: string): Promise<{ ok: true; url: string } | { ok: false; reason: string }> {
-  const no = { ok: false as const, reason: LEAVE_TEXT.linkNo };
-  const id = str(leaveId);
-  const uid = str(viewer?.userId);
-  if (!id || !uid) return no;
-  const db = tenantDb(ctx);
-  const l = await db.hrLeave.findFirst({ where: { id }, select: { fromDate: true, filedById: true, attachmentKey: true, employee: DETAIL_SELECT.employee } });
-  if (!l || !l.attachmentKey || leaveViewOf(viewer, l) !== "reason") return no;
-  const f = await tenantDb({ tenantId: ctx.tenantId }).fileAsset.findFirst({ where: { id: l.attachmentKey }, select: { id: true, path: true } });
-  if (!f || !f.path.startsWith(`t/${ctx.tenantId}/private/`)) return no;
-  try {
-    return { ok: true, url: privateFileUrl(f.id, { kind: "STAFF", id: uid }, 900) };
-  } catch {
-    return no;
-  }
+/**
+ * ลิงก์เปิดไฟล์แนบ — r2 มติ D3: ไฟล์แนบปิดในใบนี้ (หนี้ D-H27-attach: ต้องมีที่อัปโหลดของ HR เอง + กันใช้ซ้ำทั้งร้าน) ⇒
+ * ไม่สร้างลิงก์ให้ใครเลย ทุกกรณีได้ข้อความเดียวกัน · ไม่อ่านฐานข้อมูล
+ */
+export async function leaveAttachmentLink(_ctx: Ctx, _viewer: LeaveViewer, _leaveId: string): Promise<{ ok: true; url: string } | { ok: false; reason: string }> {
+  return { ok: false, reason: LEAVE_TEXT.linkNo };
 }
 
-/** แนบไฟล์ (อัปโหลดแล้ว · private) ให้ใบลา — ผู้กด = ตัวพนักงานเอง หรือผู้ยื่นแทน · ใบที่ยังเปิด (รอ/อนุมัติ) */
-export async function attachLeaveFile(ctx: Ctx, actor: LeaveViewer, leaveId: string, input: { fileId: string }): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const id = str(leaveId);
-  const uid = str(actor?.userId);
-  const fileId = str(input?.fileId);
-  if (!id || !uid) return { ok: false, reason: LEAVE_TEXT.attachNotYours };
-  return tenantDb(ctx).$transaction(async (t) => {
-    const tx = t as unknown as Tx;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr-leave:${id}`}, 0))`;
-    const l = await tx.hrLeave.findFirst({ where: { id }, select: { status: true, filedById: true, employee: { select: { linkedUserId: true } } } });
-    if (!l || !(l.employee.linkedUserId === uid || l.filedById === uid)) return { ok: false as const, reason: LEAVE_TEXT.attachNotYours };
-    if (l.status !== "PENDING" && l.status !== "APPROVED") return { ok: false as const, reason: LEAVE_TEXT.attachClosed };
-    if (!(await fileUsableInTx(tx, ctx.tenantId, fileId, id))) return { ok: false as const, reason: LEAVE_TEXT.fileBad };
-    const u = await tx.hrLeave.updateMany({ where: { id, status: { in: ["PENDING", "APPROVED"] } }, data: { attachmentKey: fileId } });
-    return u.count === 1 ? { ok: true as const } : { ok: false as const, reason: LEAVE_TEXT.attachClosed };
-  }, LEAVE_TX_OPTS);
+/** แนบไฟล์ให้ใบลา — r2 มติ D3: ปิด ⇒ ปฏิเสธทุกครั้งด้วยข้อความเดียว ไม่รับรหัสไฟล์ใด ๆ ไม่เขียนอะไร */
+export async function attachLeaveFile(_ctx: Ctx, _actor: LeaveViewer, _leaveId: string, _input: { fileId: string }): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return { ok: false, reason: LEAVE_TEXT.attachOff };
 }
 
 export type LeaveBalanceItem = {

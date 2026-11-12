@@ -96,3 +96,129 @@ No migration. Deploy code (consumer + label ship together). Old leaves keep `day
 - [n/a] F8 no rate-limited surface added
 - [x] F9 `hr.leave.decided`: consumer + one label + replay ×4 (S8.3) · emitted inside the state-changing tx
 - [~] F10 files ⊆ brief list + settings page (needed for the preset button/Q14 note) + messages + inventory; hot files one marked hunk each
+
+## r2 (12 Nov)
+> Builder r2 · same tree/branch · inputs: review `hr-H2.7-review.md` (M1–M3, D1–D5) + hunt `hr-H2.7-hunt.md` (P1, P2, P3a, P5) + controller rulings L1–L7, D1, D3, D5, seed, ORACLE-EDITs.
+> Merge `origin/session/hr` @c3580a938: no conflicts (only `ledger/hr-ctl/ctl-lane.sh` arrived). **No migration** (`prisma/` untouched): the existing kinds + `sourceKey` prefix + `note` express every row kind unambiguously (below).
+> RED proof (new/rewritten checks vs 7fdecbba7 code): `ledger/wo-notes/hr-H2.7-r2-red.txt` — `passed 65/78 (QC_FORCE)` · failed S7.1 S7.2 S7.3 S12.1–S12.10.
+
+### r2.1 Ledger model as built (`hr/leave.ts`)
+| ruling row | kind | days | leaveYear | sourceKey (unique per HR system ⇒ exactly once) | note |
+|---|---|---|---|---|---|
+| GRANT | GRANT | +quota/prorata (0.0 also written) | Y | `grant:<emp>:<pol>:<Y>` | – |
+| USE | USE | −days (recounted at approval) | leaveYearOf(fromDate) | `use:<leaveId>` | `carry:N.N` = part paid from carried days (absent = 0) |
+| REVERT | ADJUST | +USE days | **USE row's** leaveYear + policyId | `use-revert:<leaveId>` | – |
+| CARRY_OUT | CARRY | −c | Y−1 | `carry-out:<emp>:<pol>:<Y>` | – |
+| CARRY_IN | CARRY | +c (0.0 also written) | Y | `carry:<emp>:<pol>:<Y>` | `expires:YYYY-MM-DD` (frozen from policy at carry time; none = never expires) |
+| EXPIRE | EXPIRE | −(carried-in − carry consumed net of reverts), 0.0 also written | Y | `expire:<emp>:<pol>:<Y>` | – |
+| late EXPIRE | EXPIRE | −carry part of the reverted leave | USE row's year | `expire-late:<leaveId>` | – |
+| ADJUST (other) | ADJUST | ± | Y | any other key | – |
+- CARRY_OUT/CARRY_IN are distinguished by key prefix (and sign/year); `leaveYearStateInTx` reads one year's rows: Σ, carryIn + expiry (from `carry:` note), carry consumed = Σ `carry:` notes of USE rows without a `use-revert:`, expired = −Σ EXPIRE; carryLeft = max(0, carryIn − consumed − expired); nonCarry = Σ − carryLeft.
+- Request (`reserveLeaveInTx`): Σ pending(Y) + this ≤ Σ(Y) **and** the part ending after expiry (pending + this) ≤ nonCarry. Approve (`leaveApprovalCheckInTx`): recount days (D1) → 0 ⇒ ZERO_DAYS; end ≤ expiry ⇒ days ≤ Σ(Y); else days ≤ nonCarry. USE takes carry first: carry part = min(days, carryLeft) for eligible leaves.
+- Job (`runLeaveYearJob`, per (emp, policy), Y = leaveYearOf(asOf)): GRANT when effective · if no `carry:` row: wait while a PENDING leave of that policy is dated in Y−1; else close Y−1's EXPIRE if still open and past, then CARRY_OUT + CARRY_IN in the same tx · after expiry: wait while a PENDING leave of Y ends ≤ expiry; else EXPIRE. Pre-tx plan from one key read + one pending read; only employees with due, non-blocked work get a tx; ≤ `maxTx`; result `{granted, carried, expired, txs, waited, more}`. Every write re-checked under `hr-leave-emp`.
+- `updateLeavePolicy` refuses a `yearStartMonth` change (`SETTINGS_TEXT.yearStartLocked`) when the policy has ledger rows or PENDING/APPROVED leaves (slightly stricter than L5: also open leaves of unlimited policies, which have no GRANT row yet).
+- Cron (`api/cron/hourly`, marked block): systems rotated by hour-of-epoch, `maxTx: 50` per system, 20 s budget kept.
+
+### r2.2 Worked scenarios (oracle S12, literal expectations; all quota 10 · cap 5 · expiry 03-31 unless noted)
+**S12.1 L2 — hunt P1 A (carry is a transfer)** — A uses 5 in 2030, job 2031-01-05, then back-dated 2030 leave 5 d.
+| step | 2030 rows | Σ2030 | 2031 rows | Σ2031 |
+|---|---|---|---|---|
+| after 2030 use | GRANT +10, USE −5 | 5.0 | – | – |
+| job 2031-01-05 | + CARRY_OUT −5 | 0.0 | GRANT +10, CARRY_IN +5 | 15.0 |
+| back-dated 23–27 Dec 2030 | refused `balance` (Σ2030 0 < 5) | 0.0 | | 15.0 |
+First build: Σ2030 stayed 5.0 ⇒ the same 5 days spendable twice (used 25 of 20).
+
+**S12.1 L2 — hunt P1 B / review M2c (Y−1 pending at job time)** — B uses 4 + 3 PENDING (4–6 Nov 2030).
+| step | 2030 | Σ2030 | 2031 | Σ2031 |
+|---|---|---|---|---|
+| job 2031-01-05 | (B skipped: waits) | 6.0 | GRANT +10 only | 10.0 |
+| approve pending | + USE −3 | 3.0 | | 10.0 |
+| job 2031-01-06 | + CARRY_OUT −3 | 0.0 | + CARRY_IN +3 | 13.0 |
+First build: CARRY 5 at the first run ⇒ 15.0 (2 days gained).
+
+**S12.2 L3 — review M1 / hunt P2a** — C: 2031 = GRANT 10 + CARRY_IN 5 (expires 03-31).
+| step | result | Σ2031 |
+|---|---|---|
+| request 1–15 Oct (15 d) | refused `balance` (late part 15 > nonCarry 10) | 15.0 |
+| 1–10 Oct (10 d) approve | USE −10 (no carry note) | 5.0 |
+| 2–6 Mar (5 d) approve | USE −5 note carry:5.0 | 0.0 |
+| job 2031-04-01 | EXPIRE 0.0 | 0.0 |
+First build: 15-d leave accepted, then EXPIRE −5 ⇒ −5.0.
+
+**S12.3 L4a — review M2a** — D: 25–27 Mar PENDING on 1 Apr.
+| step | rows | Σ2031 |
+|---|---|---|
+| start | GRANT +10, CARRY_IN +5 | 15.0 |
+| job 04-01 | (D waits: PENDING ends ≤ expiry) | 15.0 |
+| approve 25–27 Mar | USE −3 note carry:3.0 | 12.0 |
+| job 04-02 | EXPIRE −2 | **10.0** |
+First build: EXPIRE −5 then USE −3 ⇒ 7.0 (3 days lost).
+
+**S12.4 L4b — review M2b / hunt P2b** — E: 3–7 Feb approved (carry 5), job 04-01, then revoked.
+| step | rows | Σ2031 |
+|---|---|---|
+| approve | GRANT +10, CARRY_IN +5, USE −5 (carry:5.0) | 10.0 |
+| job 04-01 | EXPIRE 0.0 | 10.0 |
+| revoke | ADJUST `use-revert` +5, EXPIRE `expire-late:<id>` −5 (same tx) | **10.0** |
+| revoke again | refused (stale) — no row | 10.0 |
+First build: 15.0 (expired carry came back).
+
+**S12.5 L5 — review M3 / hunt P3a** — policy PERSONAL quota 3, ysm 1; 10–11 Feb 2031 approved (USE −2, leaveYear 2031); ysm forced to 4 straight in the DB (simulates a pre-ruling edit); revoke ⇒ `use-revert` +2 in **2031** (Σ2031 3.0, Σ2030 3.0 = its own GRANT only). Settings `updateLeavePolicy({yearStartMonth:4})` on that policy ⇒ `yearStartLocked`; on a policy with no rows ⇒ ok. First build: revert into 2030 (Σ2031 1.0, Σ2030 5.0).
+
+**S12.8 D1 — review D1** — G (after expiry, nonCarry 10):
+| step | result |
+|---|---|
+| 2–6 Jun requested (5.0), then holiday 06-04 added, approve | leave `days` 4.0 · USE −4.0 |
+| 9 Jun requested (1.0), then holiday 06-09 added, approve | leave CANCELLED, no USE, approver gets `zeroDaysDecide` |
+| 1–7 Jul requested with holiday 07-03 (6.0 ≤ 6), holiday deleted, approve | recount 7.0 > 6 ⇒ `balanceDecide`, leave stays PENDING with days 6.0 |
+| Σ2031 | 6.0 (= 10 + 5 − 5 expired − 4) |
+What people see: the **employee** sees the leave with the recounted days once approved; a zero-day leave shows as "ยกเลิกแล้ว" in their list (no event; audit `hr.leave.decide` after `{status: CANCELLED, code: ZERO_DAYS}`). The **direct approver** gets `วันลาในใบนี้เป็นวันหยุดทั้งหมดแล้ว — ระบบยกเลิกใบลานี้ให้ ไม่หักวันลา` (zero) or the existing `balanceDecide` (short, nothing written, the approver can reject or wait). **Chain**: short ⇒ CANCELLED + audit `hr.leave.apply_refused {code: BALANCE}` (unchanged); zero ⇒ CANCELLED + `{code: ZERO_DAYS}`; requester text for those is still debt D4 (H2.10).
+
+**S12.9 D5 — review D5** — I has a published entry on 16 Jun 2031 (shop holiday, shopOpen) ⇒ SICK 16 Jun = 1.0 day; J (no entry) same day ⇒ `zeroDays`.
+
+**S12.10 D3 — review D3 / hunt P5** — attach with a valid private pdf ⇒ `attachOff`, `attachmentKey` stays null; link ⇒ `linkNo`, no url; request with `attachmentFileId` ⇒ `attachOff`, 0 rows; `leave.ts` has no `fileAsset`/`privateFileUrl(` (the file-usability path is deleted, `hasAttachment` is constant false, the column is never read).
+
+**S12.6 L6 property** — own HR system, policy quota 6 · cap 4 · expiry 03-31, 3 employees: a fixed prefix (hunt P1 A + review M1, both now refused) + 60 seeded-random ops (request in 2030–2032 / approve / revoke / job with advancing asOf up to 2032-12-20); after every op one `groupBy (employee, leaveYear)` must show no Σ < 0. First build: `prefix:2031=-3.0`.
+
+**S12.7 L7** — `maxTx: 1` ⇒ `txs 1, more true`; full run ⇒ `more false`; two more runs at the same asOf ⇒ `txs 0` each and the system's ledger unchanged; an employee not yet eligible for a 365-day-service policy gets no GRANT row and no tx.
+
+### r2.3 Oracle edits
+- `qc-hr-h2.7.mts` new S12.1–S12.10 (above). Rewritten: **S7.1** (was: attach refusals + one success ⇒ now every call `attachOff`, no `attachmentKey` in the tenant — D3) · **S7.2** (was: 5 viewer-bound links ⇒ now every viewer `linkNo`, no url — D3) · **S7.3** (only `hasAttachment === true` → `false` — D3; keys/reason matrix unchanged). Removed the now-unused `private-links` import. S2.6/S6.x/S4.x untouched (the old carry/expire vectors and S6.1/S6.2 numbers still hold under the transfer model). Oracle is 94 KB (> 60 KB §G; it was 79 KB) — controller may want S12 moved into `qc-hr-lib`.
+- `qc-hr-h1.2.mts` **S5.7**: excludes only `HrLeave.days` from the null count · **S7.4**: `HrLeaveBalanceTxn` compared with hr-expected.json (seed writes 1 row: prae's lazy VACATION GRANT at RS2) instead of 0 · **S6.4**: no edit (after D3 `hr/leave.ts` no longer names `attachmentKey` outside comments).
+- Seed: `hr-qc-env.mts` `pendingLeave` → `fromDow 4, toDow 4` (Friday, prae rostered `m`, 1.0 day) · `seed-hr-qc.mts` lvA shifted back one day whenever its two days would straddle 1 Jan (m7). Seed ×2: `ผ่าน 30/30` both, counts identical.
+
+### r2.4 Other code
+- `service.ts` (marked hunks): owner-auto request also takes the roster keys (review m1); decideLeave uses `leaveApprovalCheckInTx` (recount + L3), writes recounted `days`, zero ⇒ CANCELLED + audit + `zeroDaysDecide` after commit.
+- `leave-rules.ts`: `LEAVE_TEXT.zeroDaysDecide`, `LEAVE_TEXT.attachOff`. `settings.ts`: `yearStartLocked` + the check. `actions.ts`: attach action no longer reads `fileId`.
+- Dead code left as ruled (commented old `requestLeave`, unreachable HrLeave branch in approval-effects).
+
+### r2.5 Debts (new/changed)
+- D-H27-attach (unchanged scope, now with the ruling's spec: HR-scoped upload + tenant-wide uniqueness; attach/link refuse until then).
+- D-H27-carry-late — **closed** (L2 wait + transfer).
+- D-H27-cron — mitigated (rotation + maxTx); still best-effort within 20 s.
+- D-H27-r2-unlimited — a policy switched from unlimited to limited after USE rows exist can start a year below 0 (hunt P3d shape); owner action, not reachable by employee/manager operations. Suggest: refuse quota null→number once USE rows exist (controller).
+- D-H27-r2-display — `leaveBalances.carried` is net per year (Y−1 shows −c after carry-out); UI wording in H2.10.
+- HQ23 — D5 (rostered holiday counts) to be confirmed with the labour consultant.
+
+### r2.6 Runbook
+- No migration; deploy code only. The first build was never deployed, so prod has **no** H2.7 ledger rows; nothing to convert.
+- First job run on a shop with existing leave data: old leaves (`days` null / no policy) are ignored; for each active employee × active policy it writes GRANT of the current leave year (if eligible), a 0.0 (or real) CARRY_OUT/CARRY_IN pair from the previous year's ledger (empty ⇒ 0.0 markers), and after the expiry date an EXPIRE row; at most 50 tx per system per hour, rotating systems, so a big shop completes over a few hours. Employees with PENDING leaves of the previous year wait until those are decided.
+- Pre-check SQL (run read-only before deploy; expect 0 rows each):
+```sql
+-- 1. ledger rows from the first build's model (CARRY without a carry-out partner) — must be 0 in prod
+SELECT count(*) FROM "HrLeaveBalanceTxn" t WHERE t."sourceKey" LIKE 'carry:%'
+  AND NOT EXISTS (SELECT 1 FROM "HrLeaveBalanceTxn" o WHERE o."systemId" = t."systemId" AND o."sourceKey" = 'carry-out:' || substr(t."sourceKey", 7));
+-- 2. any negative year (limited policies) — must be 0
+SELECT t."systemId", t."employeeId", t."policyId", t."leaveYear", sum(t.days) FROM "HrLeaveBalanceTxn" t
+  JOIN "HrLeavePolicy" p ON p.id = t."policyId" WHERE p."quotaDays" IS NOT NULL
+  GROUP BY 1,2,3,4 HAVING sum(t.days) < 0;
+-- 3. size of the first run (employees × active policies per HR system)
+SELECT e."systemId", count(DISTINCT e.id) AS emps FROM "HrEmployee" e WHERE e.active GROUP BY 1 ORDER BY 2 DESC LIMIT 20;
+```
+- Rollback: revert code; ledger rows are inert; mark pending `hr.leave.decided` outbox rows DONE.
+
+### r2.7 Verification (full output of the last forced oracle run: `hr-H2.7-r2-green.txt`)
+- oracle qc-hr-h2.7: unforced `passed 78/78` exit 0 · forced `78/78` ×2 · RESIDUE none ×3
+- seed-hr-qc ×2: `ผ่าน 30/30` ×2, counts identical (HrLeaveBalanceTxn 1 · HrLeave 3 · HrRosterEntry 48)
+- forced ×1: qc-hr-h1.2 **72/73** (S7.4 red only `nonZero=HrRosterEntry=48` — H2.2 roster rows, needs a ruling; ledger part green) · qc-hf-hr-privacy 194/194 · qc-hr-h0.7 74/74 · qc-hr-h2.1 90/90 · qc-hr-h2.2 60/60 · qc-hr-h2.3 79/79 · qc-hr-leave-booking 14/14 · qc-booking-hours-hr 13/13 · qc-approval 16/16 · qc-approval-wiring 7/7 · qc-calendar 9/9 · qc-ai-tools 18/18 · qc-nav-functions red only S5 BOOKING (known; HR 8/8)
+- fitness 53/53 ×2 (± env) · fitness-hr 9/9 ×2 · typecheck exit 0, 0 errors

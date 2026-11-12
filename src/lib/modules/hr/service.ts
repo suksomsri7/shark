@@ -3,7 +3,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัติการตัดสินใบลา ◂
 import { lockRosterKeysInTx } from "./roster"; // HR H2.7 ▸ R8 ลำดับล็อก hr-leave → พนักงาน → ตารางกะ ◂
 // HR H2.7 ▸ เครื่องยนต์การลา (ประเภทการลา · สมุดวันลา · นับวัน · event hr.leave.decided) — ตัวงาน request/decide/cancel ยังอยู่ไฟล์นี้ (Q2) ◂
-import { LEAVE_TEXT, leaveBalanceCoversInTx, leaveDecidedEvent, leaveLedgerInTx, leaveRefusalText, leaveRosterKeys, leaveRowInTx, lockLeaveEmployeeInTx, planLeaveRequest, reserveLeaveInTx, type LeaveRequestFields } from "./leave"; // HR H2.7 ◂
+import { LEAVE_TEXT, leaveApprovalCheckInTx, leaveDecidedEvent, leaveLedgerInTx, leaveRefusalText, leaveRosterKeys, leaveRowInTx, lockLeaveEmployeeInTx, planLeaveRequest, reserveLeaveInTx, type LeaveRequestFields } from "./leave"; // HR H2.7 ◂
 import type { HrAttendanceJudgement, HrAttendanceKind, HrLeaveType, Prisma } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
@@ -626,6 +626,8 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
     const madeId = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Prisma.TransactionClient;
       await lockLeaveEmployeeInTx(tx, ctx.systemId, emp.id);
+      // r2 (review m1 · มติ D1): ใบของเจ้าของร้านอนุมัติทันที ⇒ นับวันใต้กุญแจตารางกะเหมือนทางอนุมัติ (ลำดับ emp → roster)
+      if (ownerAuto) await lockRosterKeysInTx(tx, ctx.systemId, leaveRosterKeys({ employeeId: emp.id, fromDate: plan.from, toDate: plan.to }));
       const r = await reserveLeaveInTx(tx, ctx, plan);
       const l = await tx.hrLeave.create({
         data: {
@@ -799,6 +801,7 @@ export async function decideLeave(
     throw new HrLeaveDecisionError("ระบบไม่ทราบผู้ตัดสินใบลานี้ จึงยังบันทึกผลไม่ได้ — กรุณาอนุมัติใบลาในหน้าระบบพนักงาน");
   }
   const db = tenantDb(ctx);
+  let zeroCancelled = false; // HR H2.7 ▸ r2 มติ D1: นับวันใหม่ตอนอนุมัติได้ 0 ⇒ ใบถูกยกเลิกใน tx แล้วบอกผู้อนุมัติหลัง commit ◂
   // HR H0.7 R11 ▸ R11.2: อ่าน-ตรวจ-เขียน ใต้ล็อกต่อใบลา (คีย์เดียวกับ cancelLeave) ในธุรกรรมเดียว ⇒ ตัดสินแข่งกับยกเลิกไม่ได้ผลครึ่ง ๆ
   //   (ใบที่ยกเลิกแล้ว = อ่านซ้ำหลังล็อกเห็น CANCELLED ⇒ ปฏิเสธไทย) · ทุกคำสั่งใน tx ใช้ tx · audit หลัง commit เหมือนเดิม ◂
   const { leave, from } = await db.$transaction(async (t) => {
@@ -842,20 +845,41 @@ export async function decideLeave(
   if (chains.length > 0) {
     throw new HrLeaveDecisionError("ใบลานี้ตัดสินผ่านสายอนุมัติแล้ว — ผลของใบลามาจากหน้า “อนุมัติ” เท่านั้น (ตัดสินซ้ำทางนี้ไม่ได้) หากต้องเปลี่ยนผล กรุณาติดต่อเจ้าของกิจการ");
   }
-  // HR H2.7 ▸ R6: อนุมัติ = GRANT (ถ้ายังไม่มี) แล้ว Σ สมุด ≥ วันลา — ไม่พอ = ข้อความถึงผู้อนุมัติ ธุรกรรมไม่เขียนอะไร ◂
-  if (status === "APPROVED" && !(await leaveBalanceCoversInTx(tx, ctx, lx))) throw new HrLeaveDecisionError(LEAVE_TEXT.balanceDecide); // HR H2.7 ◂
+  // HR H2.7 ▸ R6 + r2 มติ D1/L3: อนุมัติ = นับวันใหม่ใต้กุญแจตารางกะ (วันหยุด/กะที่ประกาศหลังยื่น) → GRANT → ยอดพอ (วันสะสมใช้ได้เฉพาะใบที่จบภายในวันหมดอายุ) ·
+  //   ไม่พอ = ข้อความถึงผู้อนุมัติ ธุรกรรมไม่เขียนอะไร · นับใหม่ได้ 0 วัน = ใบนี้ CANCELLED (ไม่หักวันลา · ไม่มี event) แล้วแจ้งผู้อนุมัติหลัง commit
+  let lxd = lx;
+  if (status === "APPROVED") {
+    const chk = await leaveApprovalCheckInTx(tx, ctx, lx);
+    if (!chk.ok && chk.code === "BALANCE") throw new HrLeaveDecisionError(LEAVE_TEXT.balanceDecide);
+    if (!chk.ok) {
+      const z = await tx.hrLeave.updateMany({ where: { id: leaveId, status: "PENDING" }, data: { status: "CANCELLED" } });
+      if (z.count === 0) throw new HrLeaveDecisionError(LEAVE_STALE);
+      zeroCancelled = true;
+      return { leave, from };
+    }
+    lxd = chk.row;
+  }
+  // ◂ HR H2.7
   // เงื่อนไข "สถานะต้นทางที่คาดไว้" ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
   const res = await tx.hrLeave.updateMany({
     where: { id: leaveId, status: from },
     data: { status, decidedById: decidedById ?? null },
   });
   if (res.count === 0) throw new HrLeaveDecisionError(LEAVE_STALE);
-  // HR H2.7 ▸ R5/R6/R12: สมุดวันลา (อนุมัติ = USE · ถอนอนุมัติ = คืนครั้งเดียว · ไม่อนุมัติใบรอ = ไม่เขียน) + hr.leave.decided ใน tx เดียวกับสถานะ
-  await leaveLedgerInTx(tx, ctx, lx, from, status);
-  await emitOutbox(tx, leaveDecidedEvent(ctx, lx, status, from));
+  // HR H2.7 ▸ R5/R6/R12: สมุดวันลา (อนุมัติ = USE · ถอนอนุมัติ = คืนครั้งเดียว · ไม่อนุมัติใบรอ = ไม่เขียน) + hr.leave.decided ใน tx เดียวกับสถานะ ·
+  //   r2 มติ D1: จำนวนวันที่นับใหม่ลงใบลา (ใบเดียวกัน · ใต้ล็อก) และ USE/event ใช้ค่านี้
+  if (lxd.days !== lx.days) await tx.hrLeave.updateMany({ where: { id: leaveId, status }, data: { days: lxd.days } });
+  await leaveLedgerInTx(tx, ctx, lxd, from, status);
+  await emitOutbox(tx, leaveDecidedEvent(ctx, lxd, status, from));
   // ◂ HR H2.7
   return { leave, from };
   }, LEAVE_LOCK_TX_OPTS);
+  // HR H2.7 ▸ r2 มติ D1: ใบที่นับใหม่ได้ 0 วัน — audit ยกเลิก (รหัส ZERO_DAYS) แล้วบอกผู้อนุมัติด้วยข้อความคงที่ (พนักงานเห็นใบเป็น "ยกเลิกแล้ว")
+  if (zeroCancelled) {
+    await writeAudit({ tenantId: ctx.tenantId, actorType: decidedById ? "USER" : "SYSTEM", actorId: decidedById ?? null, action: "hr.leave.decide", targetType: "HrLeave", targetId: leaveId, before: { status: from, decidedById: leave.decidedById }, after: { status: "CANCELLED", code: "ZERO_DAYS" } });
+    throw new HrLeaveDecisionError(LEAVE_TEXT.zeroDaysDecide);
+  }
+  // ◂ HR H2.7
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: decidedById ? "USER" : "SYSTEM",

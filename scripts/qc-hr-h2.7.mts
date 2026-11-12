@@ -368,6 +368,12 @@ const T = {
   presetNone: "ยังไม่มีชุดวันหยุดราชการของปีนี้ — เพิ่มวันหยุดเองได้",
 } as const;
 const SELF_TEXT = "ใบลานี้เป็นของบัญชีผู้ตัดสินเอง — ให้หัวหน้าหรือเจ้าของกิจการเป็นผู้ตัดสิน"; // hotfix R4.1a
+// r2 rulings (D3 · D1 · L5) — fixed texts
+const TR2 = {
+  attachOff: "ระบบยังไม่รับไฟล์แนบใบลา — ส่งเอกสาร (เช่น ใบรับรองแพทย์) ให้หัวหน้าโดยตรง",
+  zeroDaysDecide: "วันลาในใบนี้เป็นวันหยุดทั้งหมดแล้ว — ระบบยกเลิกใบลานี้ให้ ไม่หักวันลา",
+  ysmLocked: "เปลี่ยนเดือนเริ่มปีการลาไม่ได้ เพราะประเภทการลานี้มีการบันทึกวันลาแล้ว — สร้างประเภทการลาใหม่แทน",
+} as const;
 
 const D = (id: string, g: string, sev: Sev, base: Base, title: string): Def => [`H2.7-${id}`, g, sev, base, title] as const;
 const C = "CRITICAL", M = "MAJOR"; // prettier-ignore
@@ -436,6 +442,17 @@ const CHECKS: readonly Def[] = [
   D("S11.3", "R1", C, "GREEN", "hot files = base + hunks (n/a in base)"),
   D("S11.4", "Q11", C, "GREEN", "half-day blocks whole day"),
   D("S11.5", "C.6", C, "GREEN", "self-decision refused (hotfix text)"),
+  // r2 (12 Nov) controller rulings L2–L7 · D1 · D3 · D5 — expected balances are literals (scenarios: review M1–M3/D1/D5 · hunt P1/P2/P3/P5)
+  D("S12.1", "L2", C, "RED", "carry = transfer · Y−1 pending ⇒ job waits · back-dated Y−1 refused"),
+  D("S12.2", "L3", C, "RED", "carry only for leaves ending ≤ expiry"),
+  D("S12.3", "L4", C, "RED", "expiry waits for pending ≤ expiry ⇒ EXPIRE −2 · 10.0"),
+  D("S12.4", "L4", C, "RED", "revoke after EXPIRE ⇒ expire-late once · 10.0"),
+  D("S12.5", "L5", C, "RED", "revert = USE row's year · ysm change refused"),
+  D("S12.6", "L6", C, "RED", "property: no op sequence makes a year negative"),
+  D("S12.7", "L7", C, "RED", "job quiet: 2nd run 0 tx · bounded · ineligible skipped"),
+  D("S12.8", "D1", C, "RED", "days recounted at approval (holiday added/removed)"),
+  D("S12.9", "D5", C, "RED", "holiday on a published roster day counts"),
+  D("S12.10", "D3", C, "RED", "attachments off: refused · nothing written · no link"),
   D("X1.1", "X1", C, "RED", "5 identical parallel requests ⇒ 1 row"),
   D("X2.1", "X2", C, "RED", "other tenant ⇒ refused · unchanged"),
   D("X12.1", "X12", M, "GREEN", "fitness + fitness-hr ± env"),
@@ -603,9 +620,8 @@ const coreHash = await imp("@/lib/core/hash");
 const coreOutbox = await imp("@/lib/core/outbox");
 const approval = await imp("@/lib/modules/approval/service");
 const seq = await imp("@/lib/modules/crm/sequences-shared");
-const links = await imp("@/lib/storage/private-links");
 const X: Record<string, string> = { ...((await imp("@/lib/modules/hr/time-rules"))?.TIME_RULE_TEXT ?? {}), otherBranch: (await imp("@/lib/modules/hr/scope"))?.HR_OTHER_BRANCH_TEXT, ...(settings?.SETTINGS_TEXT ?? {}) };
-const FIXED = new Set<string>([...Object.values(T), ...Object.values(X), SELF_TEXT]);
+const FIXED = new Set<string>([...Object.values(T), ...Object.values(X), ...Object.values(TR2), SELF_TEXT]);
 const lvMod = await loadOpt(LEAVE, "@/lib/modules/hr/leave");
 const lrMod = await loadOpt(RULES, "@/lib/modules/hr/leave-rules");
 const hoMod = await loadOpt(HOL, "@/lib/modules/hr/holidays");
@@ -901,14 +917,13 @@ async function runDb(): Promise<void> {
   const L7 = idv(await rq(U.A, E.A, "2031-10-13", "2031-10-15", { ...SK, reason: REASON }));
   const s75 = await rq(U.B, E.B, "2031-10-13", "2031-10-15", SK);
   {
+    // r2 rewrite (ruling D3): attachments are OFF — every call refused with one fixed text, nothing written
     const at = (who: Who, id: string, fileId: string) => lv("attachLeaveFile", ctx, vOf(who), id, { fileId });
+    const rs = [await at(U.B, L7, F.priv), await at(U.A, L7, F.pub), await at(U.A, L7, F.other), await at(U.A, L7, F.txt), await at(U.A, L7, F.priv), await at(U.Cc, NB.cHalf, F.priv), await at(U.A, aId, F.priv)];
     ck("S7.1", {
-      notYours: said(await at(U.B, L7, F.priv), T.attachNotYours),
-      pub: said(await at(U.A, L7, F.pub), T.fileBad), other: said(await at(U.A, L7, F.other), T.fileBad), txt: said(await at(U.A, L7, F.txt), T.fileBad),
-      ok: (await at(U.A, L7, F.priv)).ok && (await leave(L7))?.attachmentKey === F.priv,
-      reused: said(await at(U.Cc, NB.cHalf, F.priv), T.fileBad),
-      closed: said(await at(U.A, aId, F.priv), T.attachClosed),
-    }, "texts · ok");
+      off: rs.every((r) => said(r, TR2.attachOff)),
+      none: (await P.hrLeave.count({ where: { tenantId: TT, attachmentKey: { not: null } } })) === 0,
+    }, "attachOff ×7 · 0 keys", rs.map(shown).join(" "));
   }
   const VIEW: Record<string, Who> = { owner: U.owner, mgrU1: U.mgrU1, mgrAll: U.mgrAll, read: U.read, self: U.A, dec: U.dec, mgrU2: U.mgrU2, pay: U.pay, key: U.key, member: U.member, B: U.B };
   const RV = ["owner", "mgrU1", "mgrAll", "read", "self"]; // reason viewers
@@ -918,12 +933,13 @@ async function runDb(): Promise<void> {
     for (const [n, w] of Object.entries(VIEW)) {
       const r = await lv("leaveAttachmentLink", ctx, vOf(w), L7);
       const m = String(r.value?.url ?? "").match(/^\/api\/files\/([a-z0-9]+)\?exp=(\d+)&sig=([0-9a-f]{64})$/);
-      if (RV.includes(n) && m && process.env.SESSION_SECRET && links?.privateFileSignatureOk) bound &&= m[1] === F.priv && links.privateFileSignatureOk(m[1], m[2], m[3], { kind: "STAFF", id: w.id }) && !links.privateFileSignatureOk(m[1], m[2], m[3], { kind: "STAFF", id: U.B.id });
-      if (RV.includes(n) ? !(r.ok && m) : !said(r, T.linkNo)) out.push(`${n}:${shown(r)}`);
+      // r2 rewrite (ruling D3): no download link is ever produced — every viewer gets linkNo
+      if (m || r.value?.url) bound = false;
+      if (!said(r, T.linkNo)) out.push(`${n}:${shown(r)}`);
     }
     const o = await lv("leaveAttachmentLink", ctxO, vOf(U.other), L7);
     if (!said(o, T.linkNo)) out.push(`other:${shown(o)}`);
-    chk("S7.2", !out.length && bound, "5 links · 7 linkNo · bound", out.join(" ") || (bound ? "ok" : "not viewer-bound"));
+    chk("S7.2", !out.length && bound, "12 linkNo · no url", out.join(" ") || (bound ? "ok" : "url minted"));
   }
   {
     const out: string[] = [];
@@ -938,7 +954,7 @@ async function runDb(): Promise<void> {
       const hasR = !!it && "reason" in it;
       const js = JSON.stringify(it ?? {});
       const leak = /attachmentKey|private/.test(js) || js.includes(F.priv);
-      if (!(r.ok && keys === DETAIL_KEYS && hasR === RV.includes(n) && (!hasR || it.reason === REASON) && it?.hasAttachment === true && it?.days === "3.0" && !leak)) out.push(`${n}:${r.ok ? `keys=${keys === DETAIL_KEYS || keys} reason=${hasR} leak=${leak}` : shown(r)}`);
+      if (!(r.ok && keys === DETAIL_KEYS && hasR === RV.includes(n) && (!hasR || it.reason === REASON) && it?.hasAttachment === false && it?.days === "3.0" && !leak)) out.push(`${n}:${r.ok ? `keys=${keys === DETAIL_KEYS || keys} reason=${hasR} leak=${leak}` : shown(r)}`);
     }
     const o = await lv("leaveDetail", ctxO, vOf(U.other), L7);
     if (!said(o, T.detailNo)) out.push(`other:${shown(o)}`);
@@ -1059,6 +1075,179 @@ async function runDb(): Promise<void> {
       workday: c4?.dayClass === "WORKDAY" && c4?.holidayId === null,
       between: seen === "2031-04-14:pub:false,2031-04-16:open:true",
     }, "unit row wins · shopOpen", seen);
+  }
+
+  // ═══ S12 r2 rulings (own HR systems s3/s4 · every expected balance is a literal) ═══
+  {
+    const s3 = await sysSvc.createSystem(TT, "HR", "HR C");
+    const ctx3 = { tenantId: TT, systemId: s3.id };
+    const e3 = (n: string, start = "2025-01-01") => emp(n, { unitId: u1 }, start, s3.id);
+    const PQ = await pol(ctx3, "VACATION", "QC27 สะสม", 10, { carryMaxDays: 5, carryExpiresMonthDay: "03-31", sortOrder: 1 });
+    const PY = await pol(ctx3, "PERSONAL", "QC27 กิจปี", 3, { sortOrder: 2 });
+    const PU = await pol(ctx3, "SICK", "QC27 ป่วยไม่จำกัด", null, { sortOrder: 3 });
+    const PN = await pol(ctx3, "OTHER", "QC27 อายุงาน", 6, { minServiceDays: 365, sortOrder: 4 });
+    const job3 = (asOf: string, o: Any = {}) => lv("runLeaveYearJob", { tenantId: TT, systemId: s3.id, asOf, ...o });
+    const q = (e: string, from: string, to: string, o: Any = {}) => rq(U.mgrAll, e, from, to, { policyId: PQ, type: "VACATION", ...o }, ctx3);
+    const ap = (r: RO | string, st = "APPROVED", from?: string) => decide(typeof r === "string" ? r : idv(r), st, U.mgrAll, from, ctx3);
+    const sy = async (e: string, y: number, p = PQ) => sum(await txOf({ employeeId: e, policyId: p, leaveYear: y }));
+    const key = async (k: string) => (await txOf({ sourceKey: k }))[0] as Any;
+    const hol3 = async (date: string, kind = "PUBLIC", shopOpen = false) => {
+      const r = await settings.upsertHoliday(ctx3, ov, { unitId: null, date, name: `QC27 s3 ${date}`, kind, shopOpen });
+      if (!r?.ok) throw new Error(`fixture holiday3 ${date}: ${r?.reason}`);
+      return r.id as string;
+    };
+    const E3 = { A: await e3("3A"), B: await e3("3B"), C: await e3("3C"), D: await e3("3D"), E: await e3("3E"), F: await e3("3F"), G: await e3("3G"), I: await e3("3I"), J: await e3("3J"), NE: await e3("3NE", "2031-03-01") };
+    await job3("2030-06-01"); // GRANT 2030 for everyone
+    // ── L2 (hunt P1 A/B · review M2c): A uses 5 · B uses 4 + 3 PENDING at job time
+    await ap(await q(E3.A, "2030-06-03", "2030-06-07"));
+    await ap(await q(E3.B, "2030-06-03", "2030-06-06"));
+    const bPend = await q(E3.B, "2030-11-04", "2030-11-06");
+    await job3("2031-01-05");
+    const aOut = await key(`carry-out:${E3.A}:${PQ}:2031`);
+    const aIn = await key(`carry:${E3.A}:${PQ}:2031`);
+    const bWait = !(await key(`carry:${E3.B}:${PQ}:2031`));
+    const back = await q(E3.A, "2030-12-23", "2030-12-27");
+    await ap(bPend);
+    await job3("2031-01-06");
+    ck("S12.1", {
+      out: d1(aOut?.days) === "-5.0" && aOut?.leaveYear === 2030 && aOut?.kind === "CARRY", in: d1(aIn?.days) === "5.0" && aIn?.leaveYear === 2031,
+      a30: (await sy(E3.A, 2030)) === "0.0", a31: (await sy(E3.A, 2031)) === "15.0", backRefused: said(back, T.balance),
+      bWait, b30: (await sy(E3.B, 2030)) === "0.0", bIn: d1((await key(`carry:${E3.B}:${PQ}:2031`))?.days) === "3.0", b31: (await sy(E3.B, 2031)) === "13.0",
+    }, "A 0.0/15.0 · back refused · B waits → carry 3.0 · 13.0", `a=${await sy(E3.A, 2030)}/${await sy(E3.A, 2031)} back=${shown(back)} b=${await sy(E3.B, 2030)}/${await sy(E3.B, 2031)} wait=${bWait}`);
+    // ── L3 (review M1 · hunt P2a): C has 10 + 5 carry; a 15-day October leave may use only the 10
+    const c15 = await q(E3.C, "2031-10-01", "2031-10-15");
+    const c10 = await q(E3.C, "2031-10-01", "2031-10-10");
+    await ap(c10);
+    const c5 = await q(E3.C, "2031-03-02", "2031-03-06");
+    await ap(c5);
+    // ── L4a (review M2a): D 25–27 Mar PENDING when the expiry job runs
+    const dPend = await q(E3.D, "2031-03-25", "2031-03-27");
+    // ── L4b (review M2b · hunt P2b): E uses 5 carried days in Feb
+    const eFeb = await q(E3.E, "2031-02-03", "2031-02-07");
+    await ap(eFeb);
+    await job3("2031-04-01");
+    const dWait = !(await key(`expire:${E3.D}:${PQ}:2031`));
+    ck("S12.2", { c15: said(c15, T.balance), c10: c10.ok, c5: c5.ok, x: d1((await key(`expire:${E3.C}:${PQ}:2031`))?.days) === "0.0", c31: (await sy(E3.C, 2031)) === "0.0" }, "15 d refused · EXPIRE 0.0 · 0.0", `${shown(c15)} ${shown(c5)} c31=${await sy(E3.C, 2031)}`);
+    await ap(dPend);
+    await job3("2031-04-02");
+    ck("S12.3", { dWait, x: d1((await key(`expire:${E3.D}:${PQ}:2031`))?.days) === "-2.0", d31: (await sy(E3.D, 2031)) === "10.0" }, "waits · EXPIRE −2.0 · 10.0", `wait=${dWait} d31=${await sy(E3.D, 2031)}`);
+    const eRev = await ap(eFeb, "REJECTED", "APPROVED");
+    const eRev2 = await ap(eFeb, "REJECTED", "APPROVED");
+    const late = await txOf({ sourceKey: { startsWith: "expire-late:" }, employeeId: E3.E });
+    ck("S12.4", { rev: eRev.ok, again: !eRev2.ok, late: late.length === 1 && d1(late[0]?.days) === "-5.0" && late[0]?.sourceKey === `expire-late:${idv(eFeb)}`, e31: (await sy(E3.E, 2031)) === "10.0" }, "expire-late −5.0 once · 10.0", `late=${late.length}/${sum(late)} e31=${await sy(E3.E, 2031)}`);
+    // ── L5 (review M3 · hunt P3a): revert goes to the USE row's year; changing yearStartMonth is refused once rows exist
+    const f = await q(E3.F, "2031-02-10", "2031-02-11", { policyId: PY, type: "PERSONAL" });
+    await ap(f);
+    await P.hrLeavePolicy.update({ where: { id: PY }, data: { yearStartMonth: 4 } }); // a pre-ruling edit, straight in the DB
+    const fRev = await ap(f, "REJECTED", "APPROVED");
+    await P.hrLeavePolicy.update({ where: { id: PY }, data: { yearStartMonth: 1 } });
+    const rv = await key(`use-revert:${idv(f)}`);
+    const locked = await settings.updateLeavePolicy(ctx3, ov, PY, { yearStartMonth: 4 });
+    const PZ = await pol(ctx3, "OTHER", "QC27 ไม่มีแถว", 2, { sortOrder: 9 });
+    const free = await settings.updateLeavePolicy(ctx3, ov, PZ, { yearStartMonth: 4 });
+    ck("S12.5", { rev: fRev.ok, year: rv?.leaveYear === 2031 && rv?.policyId === PY, f31: (await sy(E3.F, 2031, PY)) === "3.0", f30: (await sy(E3.F, 2030, PY)) === "3.0", locked: locked?.ok === false && locked?.reason === TR2.ysmLocked, free: free?.ok === true, ysm: (await P.hrLeavePolicy.findUnique({ where: { id: PY } }))?.yearStartMonth === 1 }, "revert 2031 · 3.0 · refused · free ok", `rv=${rv?.leaveYear} ${short(locked, 80)}`);
+    await settings.archiveLeavePolicy(ctx3, ov, PZ);
+    // ── D1 (review D1): days recounted at approval
+    const g5 = await q(E3.G, "2031-06-02", "2031-06-06");
+    await hol3("2031-06-04");
+    const g5d = await ap(g5);
+    const g1 = await q(E3.G, "2031-06-09", "2031-06-09");
+    await hol3("2031-06-09");
+    const g1d = await ap(g1);
+    const h703 = await hol3("2031-07-03");
+    const g6 = await q(E3.G, "2031-07-01", "2031-07-07");
+    await settings.deleteHoliday(ctx3, ov, h703);
+    const g6d = await ap(g6);
+    const [l5, l1, l6] = [await leave(idv(g5)), await leave(idv(g1)), await leave(idv(g6))];
+    ck("S12.8", {
+      recount: g5d.ok && d1(l5?.days) === "4.0" && d1((await key(`use:${idv(g5)}`))?.days) === "-4.0",
+      zero: said(g1d, TR2.zeroDaysDecide) && l1?.status === "CANCELLED" && !(await key(`use:${idv(g1)}`)),
+      short: g6.ok && said(g6d, T.balanceDecide) && l6?.status === "PENDING" && d1(l6?.days) === "6.0",
+      g31: (await sy(E3.G, 2031)) === "6.0",
+    }, "4.0 · zero ⇒ CANCELLED · 7 > 6 ⇒ balanceDecide · 6.0", `${d1(l5?.days)} ${shown(g1d)} ${l1?.status} ${shown(g6d)} g31=${await sy(E3.G, 2031)}`);
+    // ── D5 (review D5): a holiday on which the employee has a PUBLISHED roster entry counts
+    const sh3 = (await P.hrShift.create({ data: { tenantId: TT, systemId: s3.id, name: "เช้า3", startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false } })).id as string;
+    const add = await ro("addEntry", ctx3, ov, { employeeId: E3.I, date: "2031-06-16", shiftId: sh3 });
+    const pub = await ro("publishRoster", ctx3, ov, { from: "2031-06-16", to: "2031-06-16" });
+    await hol3("2031-06-16", "SHOP", true);
+    const iS = await q(E3.I, "2031-06-16", "2031-06-16", { policyId: PU, type: "SICK" });
+    const jS = await q(E3.J, "2031-06-16", "2031-06-16", { policyId: PU, type: "SICK" });
+    ck("S12.9", { setup: add.ok && pub.ok, rostered: iS.ok && (await daysOf(iS)) === "1.0", notRostered: said(jS, T.zeroDays) }, "1.0 · zeroDays", `${shown(iS)} ${await daysOf(iS)} ${shown(jS)}`);
+    // ── D3 (review D3 · hunt P5): attachments off
+    {
+      const a = await lv("attachLeaveFile", ctx3, vOf(U.mgrAll), idv(iS), { fileId: F.priv });
+      const k = await lv("leaveAttachmentLink", ctx3, ov, idv(iS));
+      const r = await q(E3.J, "2031-06-17", "2031-06-17", { policyId: PU, type: "SICK", attachmentFileId: F.priv });
+      const src = stripComments(rd(LEAVE));
+      ck("S12.10", { attach: said(a, TR2.attachOff), key: (await leave(idv(iS)))?.attachmentKey === null, link: said(k, T.linkNo) && !k.value?.url, request: said(r, TR2.attachOff) && (await nL(E3.J, "2031-06-17")) === 0, code: !/fileAsset|privateFileUrl\(/.test(src) }, "refused · 0 written · no link · path gone", `${shown(a)} ${shown(k)} ${shown(r)}`);
+    }
+    // ── L7 (review D2): quiet + bounded + ineligible skipped
+    {
+      const snap = async () => { const r = await txOf({ systemId: s3.id }); return `${r.length}:${sum(r)}`; }; // prettier-ignore
+      const bounded = await job3("2032-01-04", { maxTx: 1 });
+      const full = await job3("2032-01-04");
+      const s0 = await snap();
+      const quiet = await job3("2032-01-04");
+      const quiet2 = await job3("2032-01-04");
+      const neGrant = await key(`grant:${E3.NE}:${PN}:2032`);
+      ck("S12.7", {
+        bounded: bounded.value?.txs === 1 && bounded.value?.more === true, full: full.ok && full.value?.more === false,
+        quiet: quiet.value?.txs === 0 && quiet2.value?.txs === 0, same: s0 === (await snap()), ineligible: !neGrant,
+      }, "1+more · 0 tx ×2 · unchanged · NE skipped", `b=${short(bounded.value, 80)} q=${short(quiet.value, 80)}`);
+    }
+  }
+  // ── L6 property (own system s4): generated request/approve/revoke/job sequences never make a year negative
+  {
+    const s4 = await sysSvc.createSystem(TT, "HR", "HR D");
+    const ctx4 = { tenantId: TT, systemId: s4.id };
+    const P4 = await pol(ctx4, "VACATION", "QC27 สุ่ม", 6, { carryMaxDays: 4, carryExpiresMonthDay: "03-31", sortOrder: 1 });
+    const es = [await emp("4a", { unitId: u1 }, "2025-01-01", s4.id), await emp("4b", { unitId: u1 }, "2025-01-01", s4.id), await emp("4c", { unitId: u1 }, "2025-01-01", s4.id)];
+    const job4 = (asOf: string) => lv("runLeaveYearJob", { tenantId: TT, systemId: s4.id, asOf });
+    const q4 = (e: string, from: string, to: string) => rq(U.mgrAll, e, from, to, { policyId: P4, type: "VACATION" }, ctx4);
+    const dec4 = (id: string, st: string, from?: string) => decide(id, st, U.mgrAll, from, ctx4);
+    let seed = 27;
+    const rnd = (n: number) => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return Math.floor((seed / 4294967296) * n); }; // prettier-ignore
+    const neg: string[] = [];
+    let ops = 0;
+    const checkAll = async (label: string) => {
+      ops++;
+      const g = (await P.hrLeaveBalanceTxn.groupBy({ by: ["employeeId", "leaveYear"], where: { tenantId: TT, systemId: s4.id }, _sum: { days: true } })) as Any[];
+      for (const r of g) if (Number(String(r._sum.days)) < 0 && neg.length < 3) neg.push(`${label}:${r.leaveYear}=${Number(String(r._sum.days)).toFixed(1)}`);
+    };
+    // fixed prefix = hunt P1 A + review M1 (RED on the first build)
+    await job4("2030-01-02");
+    await checkAll("j0");
+    await dec4(idv(await q4(es[0]!, "2030-03-03", "2030-03-05")), "APPROVED");
+    await job4("2031-01-03");
+    const bk = await q4(es[0]!, "2030-12-01", "2030-12-03");
+    if (bk.ok) await dec4(idv(bk), "APPROVED");
+    await checkAll("back");
+    const oct = await q4(es[0]!, "2031-10-01", "2031-10-09");
+    if (oct.ok) await dec4(idv(oct), "APPROVED");
+    await job4("2031-04-01");
+    await checkAll("prefix");
+    let asOf = "2031-04-01";
+    for (let i = 0; i < 60; i++) {
+      const e = es[rnd(3)]!;
+      const op = rnd(10);
+      if (op < 4) {
+        const y = 2030 + rnd(3);
+        const from = `${y}-${String(1 + rnd(12)).padStart(2, "0")}-${String(1 + rnd(24)).padStart(2, "0")}`;
+        await q4(e, from, addDay(from, rnd(4)));
+      } else if (op < 7) {
+        const p = (await P.hrLeave.findMany({ where: { tenantId: TT, systemId: s4.id, employeeId: e, status: "PENDING" }, select: { id: true } })) as Any[];
+        if (p.length) await dec4(p[rnd(p.length)]!.id, "APPROVED");
+      } else if (op < 9) {
+        const a = (await P.hrLeave.findMany({ where: { tenantId: TT, systemId: s4.id, employeeId: e, status: "APPROVED" }, select: { id: true } })) as Any[];
+        if (a.length) await dec4(a[rnd(a.length)]!.id, "REJECTED", "APPROVED");
+      } else {
+        asOf = addDay(asOf, 20 + rnd(60));
+        if (asOf > "2032-12-20") asOf = "2032-12-20";
+        await job4(asOf);
+      }
+      await checkAll(`op${i}`);
+    }
+    ck("S12.6", { prefixBack: !bk.ok, prefixOct: !oct.ok, never: neg.length === 0 }, "0 negative years", `ops=${ops} ${neg.join(" ") || "none"} back=${shown(bk)} oct=${shown(oct)}`);
   }
 
   // ═══ S11 controls · X ═══

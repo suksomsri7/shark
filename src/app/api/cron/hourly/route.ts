@@ -183,10 +183,12 @@ export async function GET(req: Request) {
     const asOf = thaiDateKey(new Date());
     const leaveDeadline = Date.now() + 20_000;
     const hrSystems = await prisma.appSystem.findMany({ where: { type: "HR" }, select: { id: true, tenantId: true }, orderBy: { id: "asc" }, take: 2000 });
-    for (const s of hrSystems) {
+    // r2 มติ L7: เริ่มคนละระบบทุกชั่วโมง (หมุนตามชั่วโมง) + เพดานธุรกรรมต่อระบบ ⇒ ระบบท้าย ๆ ไม่ถูกรอตลอดไป · งานที่ครบแล้วไม่เปิดธุรกรรม
+    const start = hrSystems.length ? Math.floor(Date.now() / 3_600_000) % hrSystems.length : 0;
+    for (const s of [...hrSystems.slice(start), ...hrSystems.slice(0, start)]) {
       if (Date.now() > leaveDeadline) break;
       try {
-        await hrFacade.runLeaveYearJob({ tenantId: s.tenantId, systemId: s.id, asOf });
+        await hrFacade.runLeaveYearJob({ tenantId: s.tenantId, systemId: s.id, asOf, maxTx: 50 });
       } catch (e) {
         await logOps("WARN", "cron", "runLeaveYearJob (งานรายปีของวันลา) ล้มในระบบหนึ่ง", { tenantId: s.tenantId, detail: e instanceof Error ? e.message : String(e) });
       }

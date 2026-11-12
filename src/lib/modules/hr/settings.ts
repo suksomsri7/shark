@@ -49,6 +49,8 @@ export const SETTINGS_TEXT = {
   presetYear: "ปีของชุดวันหยุดไม่ถูกต้อง",
   note: "หมายเหตุยาวเกินไป (ไม่เกิน 200 ตัวอักษร)",
   failed: "บันทึกไม่สำเร็จ — กรุณาลองใหม่",
+  // HR H2.7 ▸ r2 มติ L5: ปีการลาของแถวสมุดที่เขียนแล้วต้องไม่เปลี่ยนความหมาย ◂
+  yearStartLocked: "เปลี่ยนเดือนเริ่มปีการลาไม่ได้ เพราะประเภทการลานี้มีการบันทึกวันลาแล้ว — สร้างประเภทการลาใหม่แทน",
 } as const;
 
 const LEAVE_CATEGORIES = new Set<HrLeaveType>(["SICK", "PERSONAL", "VACATION", "OTHER"]);
@@ -503,6 +505,12 @@ export async function updateLeavePolicy(ctx: Ctx, v: SettingsViewer, id: string,
         if (ur) throw new SettingsRefusal(ur);
       }
       const data = policyData(patch ?? {}, policyBase(row));
+      // HR H2.7 ▸ r2 มติ L5: เปลี่ยนเดือนเริ่มปีการลา ไม่ได้ เมื่อมีแถวสมุดวันลา (หรือใบลารอ/อนุมัติ) ของประเภทนี้แล้ว — ข้อความคงที่
+      if (data.yearStartMonth !== row.yearStartMonth) {
+        const used = (await tx.hrLeaveBalanceTxn.count({ where: { policyId: row.id } })) + (await tx.hrLeave.count({ where: { policyId: row.id, status: { in: ["PENDING", "APPROVED"] } } }));
+        if (used > 0) throw new SettingsRefusal(SETTINGS_TEXT.yearStartLocked);
+      }
+      // ◂ HR H2.7
       const res = await tx.hrLeavePolicy.updateMany({ where: { id: row.id }, data: { unitId, ...data } });
       if (res.count !== 1) throw new SettingsRefusal(SETTINGS_TEXT.notFound);
       return { id: row.id, unitId };
