@@ -305,7 +305,20 @@ assert("A2.2 approveDocAction: next=pay → หน้าเอกสาร ?pay=
 assert("A2.3 approveDocAction ไม่ต่อ ?next= ท้าย URL อีก (ไม่มีผู้อ่าน)", !approveBody.includes("?next="));
 assert("A2.4 ไม่มีตัวเลือก 'อนุมัติและส่งอีเมล' (ยังไม่มีระบบส่งเอกสารทางอีเมล)", !editorSrc.includes("อนุมัติและส่งอีเมล") && !/approve\("email"\)/.test(editorSrc));
 assert("A2.5 ทางใบเสร็จ (approveReceiptWithPaymentsAction) ไม่ทิ้ง next=print", /next === "print" \? `\$\{props\.basePath\}\/print\//.test(editorSrc));
-assert("A2.6 ตัวเลือกอนุมัติไม่มี emoji (ใช้ AccountIcon)", !/[\u{1F300}-\u{1FAFF}]/u.test(editorSrc.slice(editorSrc.indexOf("approveFollowUps"))));
+{
+  // T0.3b: เดิมตัด editorSrc ตั้งแต่ "approveFollowUps" ถึงท้ายไฟล์ ⇒ ไปโดน emoji นอกเมนูอนุมัติ (ป้ายผู้ติดต่อ + คอมเมนต์)
+  //         ⇒ ตรวจเฉพาะ 2 ก้อนที่เป็นเมนูอนุมัติจริง: รายการตัวเลือก + เมนูเดสก์ท็อปที่วาดไอคอน
+  const declStart = editorSrc.indexOf("const approveFollowUps");
+  const decl = declStart >= 0 ? editorSrc.slice(declStart, editorSrc.indexOf("];", declStart) + 2) : "";
+  const menuStart = editorSrc.indexOf('data-testid="approve-menu"');
+  const menu = menuStart >= 0 ? editorSrc.slice(menuStart, editorSrc.indexOf("))}", menuStart) + 3) : "";
+  const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+  assert("A2.6 ตัวเลือกอนุมัติไม่มี emoji (ใช้ AccountIcon)", decl.length > 0 && menu.length > 0 && !EMOJI.test(decl) && !EMOJI.test(menu), `decl=${decl.length} menu=${menu.length}`);
+  assert("A2.6b เมนูอนุมัติวาดไอคอนด้วย <AccountIcon name={o.icon}>", menu.includes("<AccountIcon name={o.icon}"));
+  const iconNames = [...decl.matchAll(/icon: "([a-z-]+)"/g)].map((m) => m[1]).concat([...menu.matchAll(/icon: "([a-z-]+)"/g)].map((m) => m[1]));
+  const iconSrc = readFileSync(join(ROOT, "src/components/account-v2/AccountIcon.tsx"), "utf8");
+  assert("A2.6c ไอคอนทุกตัวของเมนูอนุมัติมีอยู่จริงใน AccountIcon", iconNames.length >= 3 && iconNames.every((n) => new RegExp(`\\b${n}: '`).test(iconSrc)), iconNames.join(","));
+}
 const paySrcA2 = readFileSync(join(ROOT, "src/components/account-v2/PaymentPanel.tsx"), "utf8");
 assert("A2.7 PaymentPanel เปิดเองเมื่อ ?pay=1 (autoOpenOnQuery)", paySrcA2.includes("autoOpenOnQuery") && paySrcA2.includes('searchParams.get("pay") === "1"'));
 const detailSrcA2 = readFileSync(join(ROOT, "src/components/account-v2/DocDetailPage.tsx"), "utf8");
