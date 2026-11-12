@@ -124,6 +124,17 @@ console.log("P0 สายไฟ+ป้าย DocDetailPage.tsx (ตรงตา�
     assert(`A1.4 ${name}: ปุ่มส่งฟอร์มในเมนูไม่ปิดเมนูก่อนฟอร์มถูกส่ง (closeAfterSubmit)`,
       m.includes("onClick={closeAfterSubmit}") && m.includes("setTimeout(() => setOpen(false), 0)"));
   }
+  // ── ACCOUNT-FIX A3: คืนมัดจำกลับหน้าใบเดิมทั้งฝั่งรับ/ฝั่งจ่าย (ใช้ตัวสร้าง path กลาง) ──
+  {
+    const paySrc = readFileSync(join(ROOT, "src/lib/modules/account/payment-actions.ts"), "utf8");
+    const i = paySrc.indexOf("export async function refundDepositFormAction(");
+    const body = paySrc.slice(i, paySrc.indexOf("\nexport ", i + 10));
+    assert("A3.1 refundDepositFormAction ใช้ editorDetailPath (ไม่ต่อสตริง docs/<docType>)",
+      body.includes("editorDetailPath(") && !body.includes("/account/docs/"));
+    const cfgA3 = await import("@/lib/modules/account/doc-editor-config");
+    eq("A3.2 path คืนมัดจำฝั่งจ่าย = deposit-payment/<id>", cfgA3.editorDetailPath("/b", "DEPOSIT_PAYMENT", "d1"), "/b/deposit-payment/d1");
+    eq("A3.3 path คืนมัดจำฝั่งรับ = docs/DEPOSIT_RECEIPT/<id>", cfgA3.editorDetailPath("/b", "DEPOSIT_RECEIPT", "d1"), "/b/docs/DEPOSIT_RECEIPT/d1");
+  }
 
   const detailSrc = readFileSync(join(ROOT, "src/lib/modules/account/doc-detail.ts"), "utf8");
   assert("P0.7 doc-detail.ts export getDocDetailData", detailSrc.includes("export async function getDocDetailData"));

@@ -203,7 +203,10 @@ export async function refundDepositFormAction(formData: FormData) {
   const systemId = trim(formData.get("systemId"), 40);
   const docId = trim(formData.get("id"), 40);
   const res = await refundDepositAction(systemId, docId, trim(formData.get("reason"), 200));
-  const path = `/app/sys/${systemId}/account/docs/${trim(formData.get("docType"), 40)}/${docId}`;
+  // ACCOUNT-FIX A3: เดิมต่อสตริง `docs/<docType>/<id>` ⇒ ใบมัดจำจ่าย (DEPOSIT_PAYMENT) ไป 404 (route จริง = `deposit-payment/<id>`)
+  //   ⇒ ใช้ตัวสร้าง path กลางตามชนิดเอกสาร (ฝั่งรับ `docs/DEPOSIT_RECEIPT/<id>` · ฝั่งจ่าย `deposit-payment/<id>`)
+  const docType = trim(formData.get("docType"), 40) as AccountDocType;
+  const path = editorDetailPath(`/app/sys/${systemId}/account`, docType, docId);
   redirect(res.ok ? path : `${path}?err=${encodeURIComponent(res.reason)}`);
 }
 
