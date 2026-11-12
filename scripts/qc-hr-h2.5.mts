@@ -56,7 +56,7 @@ const TESTIDS = ["page", "view-day", "view-month", "day-prev", "day-next", "bann
 const PDEF = { notInAlertMin: 10, absentAfterMin: null, earlyOutGraceMin: 0, flagEarlyOut: true, otStepMin: 15, alertsOn: true, alertEmployee: false };
 const OUT_KEYS = "absentAt,alertAt,breakMin,earlyOutMin,final,lateMin,missingOut,otMin,phase,status,workedMin";
 const TOP_KEYS = "alerts,canClockFor,day,nextDay,prevDay,rows,todayKey,totals,unitSel,units";
-const SLOT_KEYS = "breaks,dayId,earlyOutMin,final,inAt,leave,lateMin,method,missingOut,otMin,outAt,phase,shift,slotKey,stale,status,stored,workedMin";
+const SLOT_KEYS = "breaks,dayId,earlyOutMin,final,inAt,lateMin,leave,method,missingOut,otMin,outAt,phase,shift,slotKey,stale,status,stored,workedMin"; // ORACLE-EDIT (builder H2.5): sorted order — Array.sort puts lateMin before leave
 const SUM_KEYS = "absentDays,dayOffDays,earlyOutCount,lateCount,lateMin,leaveDays,missingOut,onTime,otMin,pendingDays,workDays,workedMin";
 const FORBID = ["lat", "lng", "accuracyM", "photoKey", "deviceId", "distanceM", "inRadius", "note", "reason", "pinCode", "pinHash", "baseSalarySatang", "dailyRateSatang", "hourlyRateSatang", "nationalId", "bankAccountNo"];
 const EV = ["hr.attendance.late", "hr.attendance.absent"];
@@ -588,7 +588,7 @@ async function runDb(): Promise<void> {
     await job(N1, T2);
     const o1 = await dayRows(T2);
     const h = rowOf(rows1, E.e1, W.sun);
-    ck("S3.3", { today: !!rows1 && !rowOf(rows1, E.e2, "2031-03-10"), old: !!rows1 && !rowOf(rows1, E.e1, "2031-02-19"), holiday: h?.holidayId === hol && h?.status === "DAY_OFF", tenant: o0?.length === 0 && o1?.length === 1 && o1[0].status === "ABSENT" }, "today/old none · holidayId · T2 own run", `T2 ${o0?.length ?? "∅"}→${o1?.length ?? "∅"}`);
+    ck("S3.3", { today: !!rows1 && !rowOf(rows1, E.e2, "2031-03-10"), old: !!rows1 && !rowOf(rows1, E.e1, "2031-02-19"), holiday: h?.holidayId === hol && h?.status === "DAY_OFF", tenant: o0?.length === 0 && o1?.length === 7 && o1.filter((r: Any) => r.status === "ABSENT").length === 1 && o1.filter((r: Any) => r.status === "DAY_OFF").length === 6 /* ORACLE-EDIT (builder H2.5): eO Wed entry ⇒ R2 roster-in-use week ⇒ 6 DAY_OFF days in D−7…D (as e1/e3 in S2.7/S2.5 · counted in S3.1’s 25) */ }, "today/old none · holidayId · T2 own run", `T2 ${o0?.length ?? "∅"}→${o1?.length ?? "∅"}`);
   }
   {
     await P.hrRosterEntry.update({ where: { id: x2w }, data: { startMin: 480 } });
