@@ -18,9 +18,9 @@ export const WORK_RULES_DEFAULT: WorkRules = { normalDayMin: 480, breakRule: "PL
 export const NORMAL_DAY_RANGE = { min: 60, max: 720 } as const;
 
 /** รายการที่ต้องตรวจก่อนอนุมัติรอบรุ่น 2 (บล็อก) */
-export const WE_BLOCKING = ["LEAVE_MISMATCH", "MISSING_OUT", "NOT_FINAL", "NOT_STORED", "ORPHAN", "PENDING_LEAVE", "STALE", "STRAY_IN", "WORKED_ON_LEAVE"] as const;
+export const WE_BLOCKING = ["LEAVE_MISMATCH", "MISSING_OUT", "NOT_FINAL", "NOT_STORED", "ORPHAN", "OVER_1440", "PENDING_LEAVE", "STALE", "STRAY_IN", "WORKED_ON_LEAVE"] as const;
 /** แจ้งให้รู้เท่านั้น */
-export const WE_INFO = ["HOURLY_LEAVE_UNUSED", "LEGACY_LEAVE"] as const;
+export const WE_INFO = ["HOLIDAY_LEAVE", "HOURLY_LEAVE_UNUSED", "LEGACY_LEAVE"] as const;
 export type WorkReview = (typeof WE_BLOCKING)[number] | (typeof WE_INFO)[number];
 
 export type WorkDayClass = "WORKDAY" | "DAY_OFF" | "HOLIDAY" | "UNSCHEDULED";
@@ -196,6 +196,11 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
   const m: Record<WorkMinKey, number> = Object.fromEntries(WORK_MIN_KEYS.map((k) => [k, 0])) as Record<WorkMinKey, number>;
   const plannedOf = (s: WorkSlot) => Math.max(0, windowMin(s) - nat(s.plannedBreakMin));
   m.plannedMin = shiftSlots.reduce((a, s) => a + plannedOf(s), 0);
+  // r2 (4d): กะซ้อนกันจนเวลาตามแผนเกิน 1 วัน ⇒ แจ้ง OVER_1440 (บล็อก) และคิดต่อบนเพดาน 1 440 (ขาด/สาย/ลาไม่เกินเพดานเดียวกัน)
+  if (m.plannedMin > 1440) {
+    review.add("OVER_1440");
+    m.plannedMin = 1440;
+  }
 
   // ── ใบลา (ไม่รวมลาเป็นชั่วโมง) ──
   const hourlyIds = new Set(leaves.filter((l) => l.hours !== null && l.hours !== undefined).map((l) => l.id));
@@ -213,7 +218,8 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
   const fullOf = (l: WorkLeave) => (l.halfDay ? 5 : 10);
   const dayLeaves = [...approved.values()].filter((l) => !hourlyIds.has(l.id));
   const leaveDay = dayClass === "WORKDAY" || dayClass === "UNSCHEDULED" || (dayClass === "HOLIDAY" && shiftSlots.length > 0);
-  if (dayClass === "UNSCHEDULED" && !slots.length) {
+  // r2 (4a): วันไม่มีกะ (ไม่มีตาราง/ไม่มีช่อง) ที่มีใบลาอนุมัติ ⇒ บันทึกการลาจากใบลา (ฐาน = นาทีปกติต่อวัน) — ไม่ทิ้งเงียบ ๆ
+  if (!hasShiftAny && (dayClass === "UNSCHEDULED" || dayClass === "WORKDAY")) {
     fracBy.clear();
     for (const l of dayLeaves) fracBy.set(l.id, fullOf(l));
   } else if (!shiftSlots.length) fracBy.clear(); // วันหยุด/วันพักที่ไม่มีกะ ไม่มีนาทีลา (H2.7 R4)
@@ -242,7 +248,10 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
   const leaveMin = m.paidLeaveMin + m.unpaidLeaveMin;
 
   // ── นาทีทำงาน ──
-  let pool = 0;
+  let worked = 0;
+  let plannedBreak = 0;
+  let clockedBreak = 0;
+  let beforeOt = 0;
   let otShift = 0;
   let attendedPlanned = 0;
   let absentPlanned = 0;
@@ -252,18 +261,37 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
     if (ATTENDED.has(s.status)) attendedPlanned += plannedOf(s);
     if (s.status === "ABSENT") absentPlanned += plannedOf(s);
     if (s.status === "LEAVE") continue; // นาทีของช่องที่ลาไม่นับ (WORKED_ON_LEAVE)
-    const dd = breakDeduction(s.workedMin, s.plannedBreakMin, s.breakMin, rules);
-    m.breakDeductMin += dd;
-    const net = nat(s.workedMin) - dd;
-    const ot = Math.min(nat(s.otMin), net);
-    pool += Math.max(0, net - ot);
+    const w = nat(s.workedMin);
+    const ot = Math.min(nat(s.otMin), w);
+    worked += w;
+    plannedBreak += nat(s.plannedBreakMin);
+    clockedBreak += nat(s.breakMin);
+    beforeOt += w - ot;
     otShift += ot;
     late += nat(s.lateMin);
     early += nat(s.earlyOutMin);
   }
+  // r2 (5): กติกาพัก (Q3) ทั้งวันครั้งเดียว — ชั่วโมงทำงานรวม · พักตามตารางรวม · พักที่ลงเวลารวม
+  const dd = Math.min(breakDeduction(worked, plannedBreak, clockedBreak, rules), beforeOt);
+  m.breakDeductMin = dd;
+  const pool = beforeOt - dd;
   const reg = Math.min(pool, Math.max(0, m.plannedMin - leaveMin));
   m.unplannedMin = pool - reg;
-  let absent = Math.max(0, Math.min(absentPlanned, m.plannedMin - leaveMin - attendedPlanned));
+  // r2 (4b): วันลาครึ่งวัน/บางส่วนที่ทำงานเกินส่วนที่ต้องมา ⇒ WORKED_ON_LEAVE · นาทีที่ทับเวลาลาไม่เป็น OT (ย้ายไป unplanned) — ไม่จ่ายซ้ำกับค่าลา
+  if (leaveMin > 0) {
+    const overlap = pool + otShift - Math.max(0, m.plannedMin - leaveMin);
+    if (overlap > 0 && shiftSlots.some((s) => s.status !== "LEAVE" && nat(s.workedMin) > 0)) {
+      review.add("WORKED_ON_LEAVE");
+      const cut = Math.min(otShift, overlap, leaveMin);
+      otShift -= cut;
+      m.unplannedMin += cut;
+    }
+  }
+  // r2 (1): ขาด/สาย/ออกก่อน ไม่เกินเวลาที่ขาดจริง = max(0, เวลาตามแผน − ลา − ทำงานตามแผน) (ขาด → สาย → ออกก่อน)
+  const shortfall = Math.max(0, m.plannedMin - leaveMin - reg);
+  let absent = Math.min(Math.max(0, Math.min(absentPlanned, m.plannedMin - leaveMin - attendedPlanned)), shortfall);
+  late = Math.min(late, shortfall - absent);
+  early = Math.min(early, shortfall - absent - late);
 
   // ── ลาเป็นชั่วโมง: หักสาย → ออกก่อน → ขาด ไม่เกิน ชม.×60 ──
   let hourlyTenths = 0;
@@ -308,6 +336,9 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
       m.otHolidayMin += Math.max(0, Math.min(nat(s.otMin), net) - N);
     } else m.workMin += net;
   }
+  if (dayClass === "HOLIDAY" && m.paidLeaveMin + m.unpaidLeaveMin > 0) review.add("HOLIDAY_LEAVE"); // r2 (4c): มติ Q16 คงเดิม — แจ้งให้ H3.4/ผู้ทำบัญชีเห็น
+  // r2 (4d): กะซ้อนกันจนเกิน 1 วัน — ไม่ตัดเงียบ ๆ
+  if (WORK_MIN_KEYS.some((k) => m[k] > 1440)) review.add("OVER_1440");
   for (const k of WORK_MIN_KEYS) m[k] = Math.min(1440, Math.max(0, m[k]));
 
   const leaveTenths = Math.min(10, f * (leaveDay ? 1 : 0) + hourlyTenths * (leaveDay ? 1 : 0));

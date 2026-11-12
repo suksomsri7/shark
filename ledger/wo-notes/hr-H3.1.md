@@ -53,3 +53,30 @@ qc-hr-h3.1 forced 52/52 ×3 + unforced 52/52 (residue none) · seed-hr-qc 33/33 
 - A4 changed: minutes are raw, floored to the minute only (no OT step).
 - A8 normal day is a shop setting (60–720 min, default 480) — drives HOLIDAY_PAID, day-off work cap and full-day leave without roster.
 - A9 a day with a stale/orphan/missing-out/not-final/pending-leave row blocks v2 approval until fixed (never silently excluded).
+
+## r2 (reviewer FIX FIRST — head after merge 5c6c261c2)
+- Minutes add up: absent → late → early capped at max(0, planned − leave − regular); planned capped at 1 440 with `OVER_1440` (blocking). Break rule applied once per DAY (Σ worked, Σ planned break, Σ clocked break). Worked into a half-day leave ⇒ `WORKED_ON_LEAVE`, overlapping OT moved to unplanned (never both leave pay and OT). No-schedule day + approved leave ⇒ leave recorded on normalMinutesPerDay. Holiday + leave ⇒ `HOLIDAY_LEAVE` (info).
+- inputHash now covers every input the H2.5 judge reads: engine · rules · hrAttendance + hrClock policies · employee start/end/borrow units/unit-of-day · HrAttendanceDay (id, version, slotKey) · punches day−1…day+1 (id, kind, at, rosterEntryId, voidedAt) · week roster (id, date, updatedAt, publishedAt, breakMin, shiftId) + shift template graceMin · weekday schedule (all fields + createdAt/updatedAt) · leaves (id, status, halfDay, hours, policyId, paid) · holiday (id, updatedAt, shopOpen). Any stale-making change ⇒ OUTDATED ⇒ v2 approve refused (S6.5). Same digest + new hash ⇒ hash refreshed only (no version bump).
+- Same-read guard: hash read before and after the reader in the page tx; differ ⇒ unmatchable hash ⇒ OUTDATED (S9.5).
+- Paging: every hash/state read pages by id (20 000) — no truncation; indexed once by employee/day. Approve check for 2 000 × 31 ≈ 25 queries.
+- Action surfaces `next` (“continue pulling (n days)” + hidden `after`).
+
+## Accountant A10–A14 (reviewer)
+- A10 deductions capped at the actual shortfall (late/early/absent never exceed planned − leave − worked).
+- A11 HOLIDAY_WORK priced by dayClass and pay type (s.62/63).
+- A12 never holiday pay and leave pay for the same day (H3.4 decides; flagged HOLIDAY_LEAVE).
+- A13 HOLIDAY_PAID to daily-paid staff = one day's wage (s.56).
+- A14 overnight shift into a holiday is classed by its start day (underpay risk — accountant).
+
+## H3.2/H3.4 must
+- never price otWorkdayMin/otHolidayMin (approved OT = H2.9 HrPayAdjustment only)
+- never holiday pay and leave pay for the same day
+- loop on `next`
+- re-check staleness (state CURRENT) at run creation and at approve
+- adopt normalMinutesPerDay (D-H29-normal-hours)
+- decide `unplannedMin` on holidays
+- deductions capped at actual shortfall; HOLIDAY_WORK by dayClass and pay type; HOLIDAY_PAID daily-paid = one day's wage
+
+## r2 debts (LOW, not done)
+- Rebuild after a REVERSED run overwrites rows in place (runId → null on changed rows); the reversed run keeps no copy of the hashes it used — H3.4 should snapshot row ids/digests on the run.
+- plannedMin uses the stored row's start/end with the LIVE roster `breakMin` (an edited break changes the hash ⇒ OUTDATED, but the stored row is not recomputed by H2.5).

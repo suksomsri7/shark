@@ -31,15 +31,16 @@ function keyGate(auth: Auth, action: "hr.payroll.read" | "hr.employee.create"): 
 }
 
 /** ดึงชั่วโมงทำงานของงวด (OWNER · hr.payroll.read) — ผล = จำนวนเท่านั้น */
-export async function buildWorkEntriesAction(formData: FormData): Promise<{ ok: true; written: number; blocking: number } | { ok: false; reason: string }> {
+export async function buildWorkEntriesAction(formData: FormData): Promise<{ ok: true; written: number; blocking: number; next: string | null } | { ok: false; reason: string }> {
   const auth = await requireTenant();
   if (auth.active.role !== "OWNER" && !keyGate(auth, "hr.payroll.read")) return { ok: false, reason: WE_TEXT.buildNo };
   const systemId = await systemOf(auth.active.tenantId, formData);
   if (!systemId) return { ok: false, reason: WE_TEXT.buildNo };
   const periodKey = String(formData.get("periodKey") ?? "");
-  const r = await buildWorkEntrySnapshot({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { periodKey });
+  const after = String(formData.get("after") ?? "").trim(); // ดึงต่อจากหน้าที่ค้าง (r2 7)
+  const r = await buildWorkEntrySnapshot({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { periodKey, ...(after ? { after } : {}) });
   revalidatePath(`/app/sys/${systemId}/hr/payroll`);
-  return r.ok ? { ok: true, written: r.written, blocking: r.blocking } : { ok: false, reason: r.reason };
+  return r.ok ? { ok: true, written: r.written, blocking: r.blocking, next: r.next } : { ok: false, reason: r.reason };
 }
 
 /** ชั่วโมงทำงานปกติต่อวัน (นาที 60–720) — เจ้าของร้านเท่านั้น */

@@ -14,7 +14,7 @@ import { getTranslations } from "next-intl/server";
 
 // หน้าย่อย "เงินเดือน" ของระบบ HR — โปรไฟล์เงินเดือน + รอบจ่าย + สลิป
 // 🔒 PayrollSection มี canViewPayroll guard ในตัว (PDPA — เห็นเฉพาะ OWNER/ผู้มีสิทธิ์)
-export default async function HrPayrollPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ period?: string; we?: string; n?: string; r?: string }> }) {
+export default async function HrPayrollPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ period?: string; we?: string; n?: string; r?: string; after?: string }> }) {
   const { id } = await params;
   const sp = await searchParams; // HR H3.1 ◂
   const auth = await requireTenant();
@@ -25,11 +25,12 @@ export default async function HrPayrollPage({ params, searchParams }: { params: 
   const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.period ?? "") ? sp.period! : thaiDateKey().slice(0, 7);
   const tWe = await getTranslations("hr.we");
   const num = (v: unknown) => (typeof v === "string" && /^\d{1,6}$/.test(v) ? Number(v) : 0);
-  const weFlash = sp.we === "ok" ? tWe("built", { n: num(sp.n), review: num(sp.r) }) : typeof sp.we === "string" && Object.prototype.hasOwnProperty.call(WE_MSG, sp.we) ? WE_MSG[sp.we]! : "";
+  const weAfter = sp.we === "more" && typeof sp.after === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(sp.after) ? sp.after : ""; // ดึงยังไม่ครบ (r2 7)
+  const weFlash = sp.we === "more" ? tWe("more", { n: num(sp.n) }) : sp.we === "ok" ? tWe("built", { n: num(sp.n), review: num(sp.r) }) : typeof sp.we === "string" && Object.prototype.hasOwnProperty.call(WE_MSG, sp.we) ? WE_MSG[sp.we]! : "";
   const onBuild = async (fd: FormData) => {
     "use server";
     const r = await buildWorkEntriesAction(fd);
-    redirect(`/app/sys/${id}/hr/payroll?period=${period}&${r.ok ? `we=ok&n=${r.written}&r=${r.blocking}` : `we=${encodeURIComponent(weMsgCode(r.reason))}`}`);
+    redirect(`/app/sys/${id}/hr/payroll?period=${period}&${r.ok ? (r.next ? `we=more&n=${r.written}&after=${encodeURIComponent(r.next)}` : `we=ok&n=${r.written}&r=${r.blocking}`) : `we=${encodeURIComponent(weMsgCode(r.reason))}`}`);
   };
 
   return (
@@ -37,7 +38,7 @@ export default async function HrPayrollPage({ params, searchParams }: { params: 
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="เงินเดือน — โปรไฟล์ + รอบจ่าย + สลิป" />
       <ModuleTabs items={hrTabs(id)} />
       <PayrollSection systemId={id} />
-      <WorkEntriesPanel systemId={id} periodKey={period} flash={weFlash} onBuild={onBuild} /> {/* HR H3.1 ◂ */}
+      <WorkEntriesPanel systemId={id} periodKey={period} flash={weFlash} onBuild={onBuild} after={weAfter} /> {/* HR H3.1 ◂ */}
     </div>
   );
 }

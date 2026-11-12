@@ -17,7 +17,7 @@ export const WE_MSG: Record<string, string> = Object.fromEntries(Object.entries(
 export const weMsgCode = (reason: string) => Object.entries(WE_MSG).find(([, v]) => v === reason)?.[0] ?? "we.failed";
 
 /** แผงชั่วโมงทำงานของงวด (ภาพ 06) — ผู้อ่าน: OWNER · hr.payroll.read · MANAGER/hr.employee.create (สาขาของตัวเอง) · ปุ่มดึง = ผู้ดึงเท่านั้น */
-export async function WorkEntriesPanel({ systemId, periodKey, flash, onBuild }: { systemId: string; periodKey: string; flash: string; onBuild: ((fd: FormData) => Promise<void>) | null }) {
+export async function WorkEntriesPanel({ systemId, periodKey, flash, onBuild, after = "" }: { systemId: string; periodKey: string; flash: string; onBuild: ((fd: FormData) => Promise<void>) | null; after?: string }) {
   const auth = await requireTenant();
   const viewer = hrViewerOf(auth);
   if (!canReadWorkEntries(viewer)) return null;
@@ -40,8 +40,9 @@ export async function WorkEntriesPanel({ systemId, periodKey, flash, onBuild }: 
           <form action={onBuild!} className="ml-auto">
             <input type="hidden" name="systemId" value={systemId} />
             <input type="hidden" name="periodKey" value={periodKey} />
+            {after && <input type="hidden" name="after" value={after} />}
             <button type="submit" className={btn} data-testid="hr-we-build">
-              {t("build")}
+              {after ? t("buildMore") : t("build")}
             </button>
           </form>
         )}

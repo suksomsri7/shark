@@ -18,6 +18,7 @@ import { hrScopeOf, type HrScope } from "./scope";
 import { canManageHrSettings } from "./settings";
 import { workEntryDaysInTx, type JudgeViewer } from "./judge";
 import { attendancePolicyOf } from "./judge-rules";
+import { clockPolicyOf } from "./clock-rules";
 import { unitOfDay } from "./roster";
 import { holidayOfDay } from "./holidays";
 import { addDays } from "./time-rules";
@@ -93,10 +94,10 @@ export function normalMinutesOf(settings: unknown): number {
   const v = w.normalMinutesPerDay;
   return typeof v === "number" && Number.isInteger(v) && v >= NORMAL_DAY_RANGE.min && v <= NORMAL_DAY_RANGE.max ? v : 480;
 }
-async function settingsOf(db: Db, ctx: Ctx): Promise<{ rules: WorkRules; policy: ReturnType<typeof attendancePolicyOf> }> {
+async function settingsOf(db: Db, ctx: Ctx): Promise<{ rules: WorkRules; policy: ReturnType<typeof attendancePolicyOf>; clock: ReturnType<typeof clockPolicyOf> }> {
   const s = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
   const o = settingsObj(s?.settings);
-  return { rules: workRulesOf({ normalDayMin: normalMinutesOf(o) }), policy: attendancePolicyOf(o.hrAttendance) };
+  return { rules: workRulesOf({ normalDayMin: normalMinutesOf(o) }), policy: attendancePolicyOf(o.hrAttendance), clock: clockPolicyOf(o.hrClock) };
 }
 export async function getNormalMinutesPerDay(ctx: Ctx): Promise<number> {
   const s = await tenantDb(ctx).appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
@@ -154,10 +155,31 @@ function employedDays(e: Pick<Emp, "startDate" | "endDate">, periodKey: string):
 type HashLeave = { id: string; employeeId: string; from: string; to: string; status: string; halfDay: string | null; hours: string | null; policyId: string | null; paid: boolean | null };
 type HashData = { hashes: Map<string, string>; leaves: HashLeave[] };
 const mondayOf = (day: string) => addDays(day, -((new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7));
+const BKK_MS = 7 * 3_600_000;
+const bkkDay = (d: Date) => new Date(d.getTime() + BKK_MS).toISOString().slice(0, 10);
+/** อ่านทุกแถว (เป็นหน้า ๆ ละ TAKE ตาม id) — ไม่ตัดทิ้งเงียบ ๆ (r2 6) */
+async function allRows<T extends { id: string }>(q: (after: string | null) => Promise<T[]>): Promise<T[]> {
+  const out: T[] = [];
+  let after: string | null = null;
+  for (;;) {
+    const page = await q(after);
+    out.push(...page);
+    if (page.length < TAKE) return out;
+    after = page[page.length - 1]!.id;
+  }
+}
+const pageArgs = (after: string | null) => ({ orderBy: { id: "asc" as const }, take: TAKE, ...(after ? { cursor: { id: after }, skip: 1 } : {}) });
+const push = <V,>(m: Map<string, V[]>, k: string, v: V) => {
+  const a = m.get(k);
+  if (a) a.push(v);
+  else m.set(k, [v]);
+};
 /**
- * inputHash ต่อวัน = sha256 ของ {รุ่นเครื่อง · กติกา · นโยบายลงเวลา · วันเริ่ม/สิ้นสุด/สาขาของวัน · แถว HrAttendanceDay (id, version, slotKey) ·
- * ตารางกะของสัปดาห์ (id, updatedAt, publishedAt, breakMin — สัปดาห์ที่ใช้ตารางกะทำให้วันว่างเป็นวันหยุด) · ตารางประจำของวันในสัปดาห์ (updatedAt) ·
- * ใบลาที่ครอบวัน (id, status, halfDay, hours, policyId, paid) · วันหยุด (id, updatedAt)} · เวลาลงงานไม่อยู่ในนี้ (ถึง snapshot ผ่านแถวที่บันทึกเท่านั้น — D6)
+ * inputHash ต่อวัน (r2 2 — ครอบทุกอย่างที่ตัวตัดสิน H2.5 อ่าน ⇒ แถวที่ stale โดยไม่มีการเพิ่ม version ก็ทำให้วันนั้น OUTDATED) = sha256 ของ
+ * {รุ่นเครื่อง · กติกา (normalDayMin) · นโยบาย hrAttendance + hrClock · วันเริ่ม/สิ้นสุด/ช่วงยืมตัว/สาขาของวัน · แถว HrAttendanceDay (id, version, slotKey) ·
+ *  แถวลงเวลา วัน−1…วัน+1 (id, kind, at, rosterEntryId, voidedAt) · ตารางกะของสัปดาห์ (id, วัน, updatedAt, publishedAt, breakMin, shiftId) + กะต้นแบบ (graceMin) ·
+ *  ตารางประจำของวันในสัปดาห์ (ค่าทั้งแถว + createdAt) · ใบลาที่ครอบวัน (id, status, halfDay, hours, policyId, paid) · วันหยุดของวัน (id, updatedAt, shopOpen)}
+ * อ่านเป็นหน้า + จัดดัชนีครั้งเดียว (Map ต่อพนักงาน/วัน) — ไม่มีการกรองซ้ำ O(คน × วัน × แถว)
  */
 async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Promise<HashData> {
   const b = bounds(periodKey);
@@ -166,17 +188,23 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
   if (!ids.length) return { hashes: new Map(), leaves: [] };
   const wFrom = mondayOf(b.first);
   const wTo = addDays(mondayOf(b.last), 6);
-  const [{ rules, policy }, att, entries, sched, lv, hols] = await Promise.all([
+  const pFrom = new Date(dbDate(addDays(b.first, -1)).getTime() - BKK_MS);
+  const pTo = new Date(dbDate(addDays(b.last, 2)).getTime() - BKK_MS);
+  const [{ rules, policy, clock }, att, entries, shifts, sched, lv, hols, punches] = await Promise.all([
     settingsOf(db, ctx),
-    db.hrAttendanceDay.findMany({ where: { ...scope, employeeId: { in: ids }, date: { gte: dbDate(b.first), lte: dbDate(b.last) } }, select: { id: true, employeeId: true, date: true, version: true, slotKey: true }, take: TAKE }),
-    db.hrRosterEntry.findMany({ where: { ...scope, employeeId: { in: ids }, date: { gte: dbDate(wFrom), lte: dbDate(wTo) } }, select: { id: true, employeeId: true, date: true, updatedAt: true, publishedAt: true, breakMin: true }, take: TAKE }),
-    db.hrWorkSchedule.findMany({ where: { ...scope, employeeId: { in: ids } }, select: { employeeId: true, weekday: true, updatedAt: true } }),
-    db.hrLeave.findMany({
-      where: { ...scope, employeeId: { in: ids }, fromDate: { lte: dbDate(b.last) }, toDate: { gte: dbDate(b.first) } },
-      select: { id: true, employeeId: true, fromDate: true, toDate: true, status: true, halfDay: true, hours: true, policyId: true, policy: { select: { paid: true } } },
-      take: TAKE,
-    }),
-    db.hrHoliday.findMany({ where: { ...scope, date: { gte: dbDate(b.first), lte: dbDate(b.last) } }, select: { id: true, unitId: true, date: true, name: true, kind: true, shopOpen: true, updatedAt: true }, take: 2000 }),
+    allRows((a) => db.hrAttendanceDay.findMany({ where: { ...scope, employeeId: { in: ids }, date: { gte: dbDate(b.first), lte: dbDate(b.last) } }, select: { id: true, employeeId: true, date: true, version: true, slotKey: true }, ...pageArgs(a) })),
+    allRows((a) => db.hrRosterEntry.findMany({ where: { ...scope, employeeId: { in: ids }, date: { gte: dbDate(wFrom), lte: dbDate(wTo) } }, select: { id: true, employeeId: true, date: true, updatedAt: true, publishedAt: true, breakMin: true, shiftId: true }, ...pageArgs(a) })),
+    db.hrShift.findMany({ where: scope, select: { id: true, graceMin: true }, take: 5000 }),
+    db.hrWorkSchedule.findMany({ where: { ...scope, employeeId: { in: ids } }, select: { employeeId: true, weekday: true, dayOff: true, startMin: true, endMin: true, graceMin: true, createdAt: true, updatedAt: true } }),
+    allRows((a) =>
+      db.hrLeave.findMany({
+        where: { ...scope, employeeId: { in: ids }, fromDate: { lte: dbDate(b.last) }, toDate: { gte: dbDate(b.first) } },
+        select: { id: true, employeeId: true, fromDate: true, toDate: true, status: true, halfDay: true, hours: true, policyId: true, policy: { select: { paid: true } } },
+        ...pageArgs(a),
+      }),
+    ),
+    db.hrHoliday.findMany({ where: { ...scope, date: { gte: dbDate(b.first), lte: dbDate(b.last) } }, select: { id: true, unitId: true, date: true, name: true, kind: true, shopOpen: true, updatedAt: true }, take: 5000 }),
+    allRows((a) => db.hrAttendance.findMany({ where: { ...scope, employeeId: { in: ids }, at: { gte: pFrom, lt: pTo } }, select: { id: true, employeeId: true, kind: true, at: true, rosterEntryId: true, voidedAt: true }, ...pageArgs(a) })),
   ]);
   const leaves: HashLeave[] = lv.map((l) => ({
     id: l.id,
@@ -189,15 +217,24 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
     policyId: l.policyId,
     paid: l.policy ? l.policy.paid : null,
   }));
+  const ts = (d: Date | null | undefined) => (d ? d.toISOString() : null);
+  const grace = new Map(shifts.map((x) => [x.id, x.graceMin]));
+  const attBy = new Map<string, (typeof att)[number][]>();
+  for (const r of att) push(attBy, `${r.employeeId}|${dayOf(r.date)}`, r);
+  const entBy = new Map<string, (typeof entries)[number][]>(); // ต่อพนักงาน|วันจันทร์ของสัปดาห์
+  for (const r of entries) push(entBy, `${r.employeeId}|${mondayOf(dayOf(r.date))}`, r);
+  const punchBy = new Map<string, (typeof punches)[number][]>();
+  for (const r of punches) push(punchBy, `${r.employeeId}|${bkkDay(r.at)}`, r);
+  const schedBy = new Map<string, (typeof sched)[number][]>();
+  for (const r of sched) push(schedBy, `${r.employeeId}|${r.weekday}`, r);
+  const leaveBy = new Map<string, HashLeave[]>();
+  for (const l of leaves) push(leaveBy, l.employeeId, l);
   const hashes = new Map<string, string>();
-  const ts = (d: Date | null) => (d ? d.toISOString() : null);
   for (const e of emps) {
-    const days = employedDays(e, periodKey);
-    for (const day of days) {
+    const units = (e.units ?? []).map((u) => [u.id, u.unitId, dayOf(u.fromDate), u.toDate ? dayOf(u.toDate) : null]).sort();
+    for (const day of employedDays(e, periodKey)) {
       const unitId = unitOfDay(e, day);
-      const hol = holidayOfDay(hols, unitId, day);
-      const mon = mondayOf(day);
-      const sun = addDays(mon, 6);
+      const hol = holidayOfDay(hols, unitId, day) as (typeof hols)[number] | null;
       const wd = new Date(`${day}T00:00:00Z`).getUTCDay();
       hashes.set(
         `${e.id}|${day}`,
@@ -205,24 +242,14 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
           engine: WORK_ENTRY_ENGINE_VERSION,
           rules,
           policy,
-          emp: { start: e.startDate ? dayOf(e.startDate) : null, end: e.endDate ? dayOf(e.endDate) : null, unitId },
-          att: att
-            .filter((r) => r.employeeId === e.id && dayOf(r.date) === day)
-            .map((r) => [r.id, r.version, r.slotKey])
-            .sort(),
-          roster: entries
-            .filter((r) => r.employeeId === e.id && dayOf(r.date) >= mon && dayOf(r.date) <= sun)
-            .map((r) => [r.id, dayOf(r.date), ts(r.updatedAt), ts(r.publishedAt), r.breakMin])
-            .sort(),
-          sched: sched
-            .filter((r) => r.employeeId === e.id && r.weekday === wd)
-            .map((r) => ts(r.updatedAt))
-            .sort(),
-          leaves: leaves
-            .filter((l) => l.employeeId === e.id && l.from <= day && day <= l.to)
-            .map((l) => [l.id, l.status, l.halfDay, l.hours, l.policyId, l.paid])
-            .sort(),
-          holiday: hol ? [hol.id, ts((hol as { updatedAt?: Date }).updatedAt ?? null)] : null,
+          clock,
+          emp: { start: e.startDate ? dayOf(e.startDate) : null, end: e.endDate ? dayOf(e.endDate) : null, unitId, units },
+          att: (attBy.get(`${e.id}|${day}`) ?? []).map((r) => [r.id, r.version, r.slotKey]).sort(),
+          punches: [addDays(day, -1), day, addDays(day, 1)].flatMap((d) => (punchBy.get(`${e.id}|${d}`) ?? []).map((r) => [r.id, r.kind, ts(r.at), r.rosterEntryId, ts(r.voidedAt)])).sort(),
+          roster: (entBy.get(`${e.id}|${mondayOf(day)}`) ?? []).map((r) => [r.id, dayOf(r.date), ts(r.updatedAt), ts(r.publishedAt), r.breakMin, r.shiftId, grace.get(r.shiftId) ?? null]).sort(),
+          sched: (schedBy.get(`${e.id}|${wd}`) ?? []).map((r) => [r.dayOff, r.startMin, r.endMin, r.graceMin, ts(r.createdAt), ts(r.updatedAt)]).sort(),
+          leaves: (leaveBy.get(e.id) ?? []).filter((l) => l.from <= day && day <= l.to).map((l) => [l.id, l.status, l.halfDay, l.hours, l.policyId, l.paid]).sort(),
+          holiday: hol ? [hol.id, ts(hol.updatedAt), hol.shopOpen] : null,
         }),
       );
     }
@@ -234,25 +261,29 @@ type StoredDay = { id: string; employeeId: string; date: Date; inputHash: string
 async function frozenRun(db: Db, ctx: Ctx, periodKey: string): Promise<boolean> {
   return !!(await db.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } }));
 }
-/** สถานะต่อพนักงาน (ไม่ดูรอบที่แช่แข็ง — ผู้เรียกตัดสิน FROZEN เอง) */
+/**
+ * สถานะต่อพนักงาน (ไม่ดูรอบที่แช่แข็ง — ผู้เรียกตัดสิน FROZEN เอง) · คำสั่ง: hashDataOf (~8 + แถว/20 000) + หัววัน (แถว/20 000) ·
+ * 2 000 คน × 31 วัน ≈ 62 000 หัววัน ⇒ ราว 20–30 คำสั่ง · ไม่มีคำสั่งต่อคน/ต่อวัน
+ */
 async function statesOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Promise<{ state: Map<string, WorkEntryState>; rows: StoredDay[] }> {
   const state = new Map<string, WorkEntryState>();
   if (!emps.length) return { state, rows: [] };
+  const ids = emps.map((e) => e.id);
   const [hd, rows] = await Promise.all([
     hashDataOf(db, ctx, emps, periodKey),
-    db.hrWorkDay.findMany({
-      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey, employeeId: { in: emps.map((e) => e.id) } },
-      select: { id: true, employeeId: true, date: true, inputHash: true, digest: true, review: true },
-      take: TAKE,
-    }) as Promise<StoredDay[]>,
+    allRows((a) =>
+      db.hrWorkDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey, employeeId: { in: ids } }, select: { id: true, employeeId: true, date: true, inputHash: true, digest: true, review: true }, ...pageArgs(a) }) as Promise<StoredDay[]>,
+    ),
   ]);
+  const byEmp = new Map<string, StoredDay[]>();
+  for (const r of rows) push(byEmp, r.employeeId, r);
   for (const e of emps) {
-    const mine = rows.filter((r) => r.employeeId === e.id);
-    const days = employedDays(e, periodKey);
+    const mine = byEmp.get(e.id) ?? [];
     if (!mine.length) {
       state.set(e.id, "MISSING");
       continue;
     }
+    const days = employedDays(e, periodKey);
     const byDay = new Map(mine.map((r) => [dayOf(r.date), r]));
     const outdated = mine.length !== days.length || days.some((d) => byDay.get(d)?.inputHash !== hd.hashes.get(`${e.id}|${d}`));
     state.set(e.id, outdated ? "OUTDATED" : mine.some((r) => isBlocking(r.review)) ? "REVIEW" : "CURRENT");
@@ -292,7 +323,8 @@ export async function buildWorkEntrySnapshot(
   ctx: Ctx,
   viewer: WorkEntryViewer,
   input: { periodKey?: unknown; employeeIds?: unknown; after?: unknown },
-  opts: { now?: Date; pageSize?: number } = {},
+  // __afterRead = ช่องทดสอบของข้อสอบ (S9.5 แทรกการเปลี่ยนข้อมูลระหว่างการอ่าน) — action/หน้าไม่ส่ง
+  opts: { now?: Date; pageSize?: number; __afterRead?: () => Promise<void> } = {},
 ): Promise<BuildResult> {
   if (!canBuildWorkEntries(viewer)) return { ok: false, reason: WE_TEXT.buildNo };
   const periodKey = typeof input?.periodKey === "string" ? input.periodKey.trim() : "";
@@ -328,8 +360,11 @@ export async function buildWorkEntrySnapshot(
         }
         if (!page.length) return c;
         const ids = page.map((e) => e.id);
+        // r2 (3): ตัวอ่านกับ hash ต้องมาจากข้อมูลชุดเดียวกัน — อ่าน hash ก่อนและหลังตัวอ่าน (READ COMMITTED) · ไม่ตรงกัน ⇒ วันนั้นเก็บ hash ที่ไม่มีวันตรง ⇒ OUTDATED
+        const hd0 = await hashDataOf(tx, ctx, page, periodKey);
         const read = await workEntryDaysInTx(tx, ctx, ids, b.first, b.last, now);
         if (read.truncated) throw new Refusal(WE_TEXT.tooMuch);
+        if (opts.__afterRead) await opts.__afterRead();
         const hd = await hashDataOf(tx, ctx, page, periodKey);
         const { rules } = await settingsOf(tx, ctx);
         const lvById = new Map(hd.leaves.map((l) => [l.id, l]));
@@ -367,9 +402,17 @@ export async function buildWorkEntrySnapshot(
             const key = `${e.id}|${d.day}`;
             seen.add(key);
             if (isBlocking(d.review)) c.blocking++;
-            const inputHash = hd.hashes.get(key) ?? sha256Hex({ missing: key });
+            const h1 = hd.hashes.get(key);
+            const inputHash = h1 && h1 === hd0.hashes.get(key) ? h1 : sha256Hex({ racy: key, at: now.toISOString() });
             const ex = exBy.get(key);
             if (ex && ex.digest === d.digest && ex.inputHash === inputHash) {
+              c.unchanged++;
+              continue;
+            }
+            if (ex && ex.digest === d.digest) {
+              // ผลเท่าเดิม แต่ข้อมูลต้นทางเปลี่ยน (เช่น แถวลงเวลาของวันข้างเคียง) ⇒ อัปเดต inputHash อย่างเดียว (version/แถวชนิดคงเดิม)
+              const u = await tx.hrWorkDay.updateMany({ where: { id: ex.id, tenantId: ctx.tenantId, systemId: ctx.systemId, version: ex.version }, data: { inputHash } });
+              if (u.count !== 1) throw new Refusal(WE_TEXT.failed);
               c.unchanged++;
               continue;
             }
@@ -412,6 +455,8 @@ export async function buildWorkEntrySnapshot(
           }
         }
         if (replaced.length) await tx.hrWorkEntry.deleteMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, workDayId: { in: replaced } } });
+        // แถวชนิดเก่าที่ไม่มีหัววัน (ก่อน H3.1 · ยังไม่ผูกรอบ) ของวันที่จะเขียน ⇒ ลบก่อน ไม่ให้ unique (employeeId, date, kind) ชน
+        if (kinds.length) await tx.hrWorkEntry.deleteMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids }, periodKey, workDayId: null, runId: null } });
         if (creates.length) await tx.hrWorkDay.createMany({ data: creates });
         if (kinds.length) await tx.hrWorkEntry.createMany({ data: kinds });
         const gone = existing.filter((x) => !seen.has(`${x.employeeId}|${dayOf(x.date)}`)).map((x) => x.id);

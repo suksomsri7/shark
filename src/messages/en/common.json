@@ -693,8 +693,12 @@
         "STRAY_IN": "Clock-in outside shift",
         "WORKED_ON_LEAVE": "Worked on a leave day",
         "HOURLY_LEAVE_UNUSED": "Hourly leave exceeds missed time",
-        "LEGACY_LEAVE": "Leave without a type (counted as paid)"
-      }
+        "LEGACY_LEAVE": "Leave without a type (counted as paid)",
+        "OVER_1440": "More than one day of minutes (overlapping shifts)",
+        "HOLIDAY_LEAVE": "Leave on a holiday (counted per ruling — accountant to check)"
+      },
+      "buildMore": "Continue pulling work hours",
+      "more": "Partly pulled ({n} days) — not everyone yet, press 'Continue pulling work hours'"
     },
     "correction": {
       "tab": "Time corrections",

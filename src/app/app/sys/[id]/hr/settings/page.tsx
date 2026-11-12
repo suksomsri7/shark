@@ -29,9 +29,9 @@ import { saveAttendancePolicyAction } from "@/lib/modules/hr/attendance-actions"
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { ModuleTabs } from "@/components/module-tabs";
-import { LifecycleMsg, LifecycleSettings } from "@/lib/modules/hr/lifecycle-ui";
+import { LifecycleMsg, LifecycleSettings } from "@/lib/modules/hr/lifecycle-ui"; // HR H4.4 ▸ ค่าตั้งวงจรพนักงาน (เตือน · บอร์ดงาน · แม่แบบรายการตรวจ) ◂
 import { WorkSettingsCard, WE_MSG } from "@/lib/modules/hr/work-entries-ui"; // HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน (เจ้าของร้าน) ◂
-import { saveNormalMinutesAction } from "@/lib/modules/hr/work-entries-actions"; // HR H3.1 ◂ // HR H4.4 ▸ ค่าตั้งวงจรพนักงาน (เตือน · บอร์ดงาน · แม่แบบรายการตรวจ) ◂
+import { saveNormalMinutesAction } from "@/lib/modules/hr/work-entries-actions"; // HR H3.1 ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
