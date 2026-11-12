@@ -27,7 +27,7 @@ import { canManageHrSettings, SETTINGS_TEXT } from "./settings";
 import { otDaySpans, otPayDaysInTx, type OtPayStoredRow } from "./judge";
 import { loadOtLawRows } from "./law";
 import { OtAdjustmentConflict, writeOtAdjustmentInTx } from "./payroll";
-import { holidayWorkPricedInTx } from "./payroll"; // HR H3.4 ▸ R11: นาที HOLIDAY_WORK ที่รอบรุ่น 2 จ่ายแล้ว (ไม่จ่ายซ้ำ) ◂
+import { holidayWorkDayInTx, holidayWorkPricedInTx } from "./payroll"; // HR H3.4 ▸ R11: นาที HOLIDAY_WORK ที่รอบรุ่น 2 จ่ายแล้ว (ไม่จ่ายซ้ำ) ◂
 import { otDayMinutes } from "./ot-rules"; // HR H3.4 ▸ R11: แถบชั่วโมงปกติของวันหยุด = min(480, N) ◂
 import { normalMinutesOf } from "./work-entries"; // HR H3.4 ▸ R11: ชั่วโมงปกติต่อวันของร้าน (ตรึงใน basisJson ตอนคิดเงินครั้งแรก) ◂
 import {
@@ -471,10 +471,14 @@ async function measure(tx: Tx, ctx: Ctx, r: OtRow, now: Date): Promise<Entitleme
   // HR H3.4 ▸ R11: นาที HOLIDAY_WORK ที่รอบเงินเดือนรุ่น 2 (APPROVED/PAID) คิดไปแล้วของวันนี้ หักออกจากส่วน HOLIDAY_WORK ของคำขอ (ไม่จ่ายซ้ำทั้งสองทาง) ◂
   if (amt.ok && amt.segments.some((g) => g.cls === "HOLIDAY_WORK")) { // HR H3.4 ◂
     const priced = await holidayWorkPricedInTx(tx as unknown as Prisma.TransactionClient, ctx, { employeeId: r.employeeId, day: date }); // HR H3.4 ◂
+    const { worked } = await holidayWorkDayInTx(tx as unknown as Prisma.TransactionClient, ctx, { employeeId: r.employeeId, day: date }); // HR H3.4 ▸ fix r1 F1: W_day ◂
     if (priced > 0) { // HR H3.4 ◂
       const hw = amt.segments.find((g) => g.cls === "HOLIDAY_WORK")!; // HR H3.4 ◂
       const rest = amt.segments.filter((g) => g.cls !== "HOLIDAY_WORK"); // HR H3.4 ◂
-      const left = Math.min(hw.minutes, Math.max(0, otDayMinutes(basis.law, basis.normalDayMin) - priced)); // HR H3.4 ▸ แถบปกติของวันมี min(480,N) นาที — รอบใช้ไป priced คำขอได้ส่วนที่เหลือ ◂
+      // HR H3.4 ▸ fix r1 F1: แถบของวัน = นาทีทำงานวันหยุดที่รอบเห็น (W_day) — รอบจ่ายไป priced คำขอได้ส่วนที่เหลือ (worked 400/priced 400 ⇒ 0 · 400/200 ⇒ 200) ·
+      //   รอบเก่าที่ไม่เก็บ W_day ⇒ แถบปกติ min(480,N) ◂
+      const band = worked ?? otDayMinutes(basis.law, basis.normalDayMin); // HR H3.4 ◂
+      const left = Math.min(hw.minutes, Math.max(0, band - priced)); // HR H3.4 ◂
       const hwAmt = left > 0 ? otAmount({ ...basis, hasShift: false, dayClass, minutes: left, law: basis.law, normalDayMin: basis.normalDayMin }) : null; // HR H3.4 ◂
       const segs = [...(hwAmt && hwAmt.ok ? hwAmt.segments.filter((g) => g.cls === "HOLIDAY_WORK") : []), ...rest]; // HR H3.4 ◂
       amt = { ok: true, segments: segs, amountSatang: segs.reduce((x, g) => x + g.amountSatang, 0) }; // HR H3.4 ◂

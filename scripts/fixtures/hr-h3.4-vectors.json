@@ -1,7 +1,7 @@
 {
  "_meta": {
   "wo": "H3.4",
-  "note": "Literals computed by an independent exact-integer reference (Python, outside the repo) from the brief formulae; hand arithmetic per vector in ledger/wo-notes/hr-H3.4-oracle.md. Law rows = TAX/DEDUCTION v1 values + SSO 2569–2571 row (base 1,650–17,500, max 875 ฿ — domain-labour-payroll §ซ [V]) inserted by the oracle as QC-only ACTIVE fixture rows. r2 (controller rulings L1–L9): vectors with rev=r2 changed or added — re-verify on a lane DB. r3 (SSO wage = law-row data `wageComponents`; Por.96/2543 ข้อ 1(5) one-off tax): rev r3-* tags supersede r2 tags — re-verify.",
+  "note": "Literals computed by an independent exact-integer reference (Python, outside the repo) from the brief formulae; hand arithmetic per vector in ledger/wo-notes/hr-H3.4-oracle.md. Law rows = TAX/DEDUCTION v1 values + SSO 2569–2571 row (base 1,650–17,500, max 875 ฿ — domain-labour-payroll §ซ [V]) inserted by the oracle as QC-only ACTIVE fixture rows. r2 (controller rulings L1–L9): vectors with rev=r2 changed or added — re-verify on a lane DB. r3 (SSO wage = law-row data `wageComponents`; Por.96/2543 ข้อ 1(5) one-off tax): rev r3-* tags supersede r2 tags — re-verify. r4 (fix round 1, controller ruling F4): SSO wage 0 ⇒ SSO 0 + flag SSO_ZERO_WAGE (no item-level negative net) — V14 V20 V21 V22 V36 V55 re-derived (rev r4-sso-zero, hand arithmetic in wo-notes/hr-H3.4-oracle.md §r4).",
   "defaults": {
    "normalDayMin": 480,
    "catCapBp": 1000,
@@ -776,12 +776,12 @@
     ],
     "whtIncomeSatang": 0,
     "ssoWageSatang": 0,
-    "ssoBaseSatang": 165000,
-    "ssoEmployeeSatang": 8300,
-    "ssoEmployerSatang": 8300,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
     "whtSatang": 0,
     "whtOneOffSatang": 0,
-    "availableSatang": -8300,
+    "availableSatang": 0,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
     "catCapSatang": 0,
@@ -791,15 +791,14 @@
     "addSatang": 0,
     "deductSatang": 0,
     "grossSatang": 0,
-    "netSatang": -8300,
-    "blocked": "NET_NEGATIVE",
+    "netSatang": 0,
+    "blocked": null,
     "flags": [
-     "NEGATIVE_NET",
-     "SSO_MIN_BASE",
+     "SSO_ZERO_WAGE",
      "UNPAID_CAPPED"
     ]
    },
-   "rev": "r3-schema"
+   "rev": "r4-sso-zero"
   },
   {
    "id": "V15",
@@ -1085,12 +1084,12 @@
     ],
     "whtIncomeSatang": 80000,
     "ssoWageSatang": 0,
-    "ssoBaseSatang": 165000,
-    "ssoEmployeeSatang": 8300,
-    "ssoEmployerSatang": 8300,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
     "whtSatang": 0,
     "whtOneOffSatang": 0,
-    "availableSatang": 71700,
+    "availableSatang": 80000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
     "catCapSatang": 8000,
@@ -1100,13 +1099,13 @@
     "addSatang": 0,
     "deductSatang": 0,
     "grossSatang": 80000,
-    "netSatang": 71700,
+    "netSatang": 80000,
     "blocked": null,
     "flags": [
-     "SSO_MIN_BASE"
+     "SSO_ZERO_WAGE"
     ]
    },
-   "rev": "r3-value"
+   "rev": "r4-sso-zero"
   },
   {
    "id": "V21",
@@ -1131,12 +1130,12 @@
     "lines": [],
     "whtIncomeSatang": 0,
     "ssoWageSatang": 0,
-    "ssoBaseSatang": 165000,
-    "ssoEmployeeSatang": 8300,
-    "ssoEmployerSatang": 8300,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
     "whtSatang": 0,
     "whtOneOffSatang": 0,
-    "availableSatang": -8300,
+    "availableSatang": 0,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
     "catCapSatang": 0,
@@ -1146,14 +1145,13 @@
     "addSatang": 0,
     "deductSatang": 0,
     "grossSatang": 0,
-    "netSatang": -8300,
-    "blocked": "NET_NEGATIVE",
+    "netSatang": 0,
+    "blocked": null,
     "flags": [
-     "NEGATIVE_NET",
-     "SSO_MIN_BASE"
+     "SSO_ZERO_WAGE"
     ]
    },
-   "rev": "r3-schema"
+   "rev": "r4-sso-zero"
   },
   {
    "id": "V22",
@@ -1180,12 +1178,12 @@
     ],
     "whtIncomeSatang": 30000,
     "ssoWageSatang": 0,
-    "ssoBaseSatang": 165000,
-    "ssoEmployeeSatang": 8300,
-    "ssoEmployerSatang": 8300,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
     "whtSatang": 0,
     "whtOneOffSatang": 0,
-    "availableSatang": 21700,
+    "availableSatang": 30000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
     "catCapSatang": 3000,
@@ -1195,13 +1193,13 @@
     "addSatang": 0,
     "deductSatang": 0,
     "grossSatang": 30000,
-    "netSatang": 21700,
+    "netSatang": 30000,
     "blocked": null,
     "flags": [
-     "SSO_MIN_BASE"
+     "SSO_ZERO_WAGE"
     ]
    },
-   "rev": "r3-value"
+   "rev": "r4-sso-zero"
   },
   {
    "id": "V23",
@@ -1893,12 +1891,12 @@
     ],
     "whtIncomeSatang": 0,
     "ssoWageSatang": 0,
-    "ssoBaseSatang": 165000,
-    "ssoEmployeeSatang": 8300,
-    "ssoEmployerSatang": 8300,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
     "whtSatang": 0,
     "whtOneOffSatang": 0,
-    "availableSatang": -8300,
+    "availableSatang": 0,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
     "catCapSatang": 0,
@@ -1908,15 +1906,14 @@
     "addSatang": 0,
     "deductSatang": 100000,
     "grossSatang": 0,
-    "netSatang": -8300,
-    "blocked": "NET_NEGATIVE",
+    "netSatang": 0,
+    "blocked": null,
     "flags": [
-     "NEGATIVE_NET",
-     "SSO_MIN_BASE",
+     "SSO_ZERO_WAGE",
      "UNWORKED_CAPPED"
     ]
    },
-   "rev": "r3-schema"
+   "rev": "r4-sso-zero"
   },
   {
    "id": "V37",
@@ -2675,12 +2672,12 @@
     "lines": [],
     "whtIncomeSatang": 0,
     "ssoWageSatang": 0,
-    "ssoBaseSatang": 165000,
-    "ssoEmployeeSatang": 8300,
-    "ssoEmployerSatang": 8300,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
     "whtSatang": 0,
     "whtOneOffSatang": 0,
-    "availableSatang": -8300,
+    "availableSatang": 0,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
     "catCapSatang": 0,
@@ -2690,15 +2687,14 @@
     "addSatang": 0,
     "deductSatang": 0,
     "grossSatang": 0,
-    "netSatang": -8300,
-    "blocked": "NET_NEGATIVE",
+    "netSatang": 0,
+    "blocked": null,
     "flags": [
-     "NEGATIVE_NET",
      "SHOP_HOLIDAY",
-     "SSO_MIN_BASE"
+     "SSO_ZERO_WAGE"
     ]
    },
-   "rev": "r3-schema"
+   "rev": "r4-sso-zero"
   },
   {
    "id": "V56",
@@ -3767,6 +3763,12 @@
   "carryBound": "ยอดหักที่ยกไปงวดถัดไปถูกดึงเข้ารอบจ่ายงวดถัดไปแล้ว — กลับรายการรอบงวดถัดไปก่อน",
   "refundV1": "รายการคืนเงิน (ไม่คิดภาษี) ใช้ได้เฉพาะร้านที่เปิดเครื่องคิดเงินเดือนรุ่นใหม่",
   "confirmNo": "คุณไม่มีสิทธิ์ยืนยันชั่วโมงทำงานของสาขานี้",
-  "dup": "มีรอบจ่ายงวด {p} อยู่แล้ว — ลบหรือเลือกงวดอื่น"
+  "dup": "มีรอบจ่ายงวด {p} อยู่แล้ว — ลบหรือเลือกงวดอื่น",
+  "laterRun": "มีรอบจ่ายงวดหลังที่อนุมัติหรือจ่ายแล้ว — กลับรายการรอบงวดหลังสุดก่อน แล้วจึงกลับรายการรอบนี้",
+  "engineDraft": "ยังมีรอบจ่ายร่างของเครื่องรุ่นใหม่ — อนุมัติหรือลบรอบร่างนั้นก่อนเปลี่ยนกลับเป็นรุ่นเดิม",
+  "negativeNet": "ยอดสุทธิติดลบ: {names} — แก้รายการหักหรือค่าจ้างแล้วกด 'ดึงข้อมูลใหม่'",
+  "postFailed": "ลงบัญชีไม่สำเร็จ — รอบนี้กลับเป็นร่างแล้ว ยังไม่มียอดยกไปงวดถัดไป กรุณาลองอนุมัติอีกครั้ง",
+  "variablePay": "ร้านนี้มีพนักงานรายวัน/รายชั่วโมง หรือรับค่าคอมฯ อย่างเดียว — เครื่องรุ่นใหม่ยังไม่รองรับจนกว่านักบัญชียืนยันวิธีหักภาษี",
+  "ytdDraft": "มีรอบจ่ายร่างของปีภาษีเดียวกันที่จ่ายก่อนหรือวันเดียวกัน — อนุมัติหรือลบรอบนั้นก่อน"
  }
 }

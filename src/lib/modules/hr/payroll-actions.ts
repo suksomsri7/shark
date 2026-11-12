@@ -520,6 +520,33 @@ export async function approveRunV2Action(formData: FormData): Promise<{ ok: bool
     return r.ok ? { ok: true, note: r.note } : { ok: false, reason: r.note };
   });
 }
+// fix r1 F7: จ่าย/กลับรายการของหน้ารอบรุ่น 2 คืนผลจริง (ไม่ใช่ "บันทึกแล้ว" เสมอ) — ไม่มีสิทธิ์ = ข้อความคงที่ในหน้า
+export async function payRunV2Action(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    assertHrCan(auth, "hr.payroll.pay");
+    assertRunAllBranches(auth);
+    const systemId = String(formData.get("systemId") ?? "");
+    const runId = String(formData.get("runId") ?? "");
+    if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const r = await markPaid({ tenantId: auth.active.tenantId, systemId }, runId);
+    revalidate(systemId);
+    return r.ok ? { ok: true } : { ok: false, reason: r.note };
+  });
+}
+export async function reverseRunV2Action(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    assertHrCan(auth, "hr.payroll.reverse");
+    assertRunAllBranches(auth);
+    const systemId = String(formData.get("systemId") ?? "");
+    const runId = String(formData.get("runId") ?? "");
+    if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const r = await reverseRun({ tenantId: auth.active.tenantId, systemId }, runId, String(formData.get("reason") ?? "").trim() || undefined, h34Actor(auth));
+    revalidate(systemId);
+    return r.ok ? { ok: true } : { ok: false, reason: r.note };
+  });
+}
 export async function confirmBranchHoursAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   return h34Guard(async () => {

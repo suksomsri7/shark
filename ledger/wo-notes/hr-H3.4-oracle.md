@@ -872,3 +872,15 @@ Fixture: shop holiday Wed 17 Sep (PUBLIC, shop-wide). Shift 07:00–15:00 (420�
 - Two periods: eC advance 665,000 + 235,000 = 900,000 · mA claim 327,500 + 300,000 = 627,500 applied + 72,500 carried to Nov = 700,000.
 - System B (stale): eS monthly 2,000,000 (IN 07:20 ⇒ late 20) · MISSING_OUT ⇒ WORK_ENTRIES; OUT 15:00 + recompute ⇒ create ok: gross 2,000,000 · SSO 87,500 · WHT 0 · net **1,912,500**; OUT moved to 16:00 + recompute ⇒ approve WORK_ENTRIES.
 - S7.1 (H3.2 present): LATE_RULE ⌊2,000,000×20/14,400⌋ = 2,777 ⇒ E 1,997,223 = whtIncome = ssoWage ⇒ SSO 87,500 · WHT 0 · net **1,909,723**.
+
+## §r4 — fix round 1 F4 (controller ruling: SSO wage 0 ⇒ SSO 0, flag SSO_ZERO_WAGE, no item-level negative net) `[r4-sso-zero]`
+SSO wage of the period = 0 ⇒ ssoBase 0 · SSO ee/er 0 · available = E + adds − WHT (WHT 0 in all six) · net = available · blocked null. Wage > 0 below 1,650 ฿ keeps the 83 ฿ floor (V03 V15–V19 V23–V28 V56 V57 unchanged).
+| vector | old (SSO / net / blocked / flags) | new |
+|---|---|---|
+| V14 31 unpaid days | 8,300 / −8,300 / NET_NEGATIVE / NEGATIVE_NET SSO_MIN_BASE UNPAID_CAPPED | 0 / 0 / – / SSO_ZERO_WAGE UNPAID_CAPPED |
+| V20 daily day-off work only (BASE = E − holiday work = 0) | 8,300 / 71,700 / – / SSO_MIN_BASE | 0 / 80,000 / – / SSO_ZERO_WAGE |
+| V21 day-off work fully paid by OT | 8,300 / −8,300 / NET_NEGATIVE / NEGATIVE_NET SSO_MIN_BASE | 0 / 0 / – / SSO_ZERO_WAGE |
+| V22 day-off 180 × 2 | 8,300 / 21,700 / – / SSO_MIN_BASE | 0 / 30,000 / – / SSO_ZERO_WAGE |
+| V36 unworked ≥ wage | 8,300 / −8,300 / NET_NEGATIVE / NEGATIVE_NET SSO_MIN_BASE UNWORKED_CAPPED | 0 / 0 / – / SSO_ZERO_WAGE UNWORKED_CAPPED |
+| V55 SHOP day not worked | 8,300 / −8,300 / NET_NEGATIVE / NEGATIVE_NET SHOP_HOLIDAY SSO_MIN_BASE | 0 / 0 / – / SHOP_HOLIDAY SSO_ZERO_WAGE |
+V20 and V22 are not in the controller's list but follow from the same rule (holiday-work premium is outside the default SSO wage, so a daily worker who only worked a weekly day off has SSO wage 0) — flagged to the controller. No DB literal changes (S4.18 uses base 100 satang ⇒ wage > 0 ⇒ 83 ฿ floor ⇒ still NEGATIVE_NET).

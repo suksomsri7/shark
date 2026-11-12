@@ -6,7 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
 import { hrViewerOf } from "./privacy";
-import { getPayrollEngine, previewPayrollRunV2, RUN2_TEXT, RUN2_WARN } from "./payroll";
+import { getPayrollEngine, previewPayrollRunV2, RUN2_RESULT_TEXT, RUN2_REVERSE_TEXT, RUN2_TEXT, RUN2_WARN } from "./payroll";
 import { LAW_MSG } from "./law";
 import { WE_TEXT } from "./work-entries";
 import { ATT_TEXT, attendanceInForceOf } from "./attendance-pay-rules";
@@ -25,6 +25,8 @@ export const RUN2_MSG: Record<string, string> = Object.fromEntries([
   ...Object.entries(LAW_MSG).map(([k, v]) => [`l.${k}`, v]),
   ...Object.entries(WE_TEXT).map(([k, v]) => [`e.${k}`, v]),
   ...Object.entries(ATT_TEXT).map(([k, v]) => [`a.${k}`, v]),
+  ...Object.entries(RUN2_RESULT_TEXT).map(([k, v]) => [`p.${k}`, v]),
+  ...Object.entries(RUN2_REVERSE_TEXT).map(([k, v]) => [`v.${k}`, v]),
 ]);
 export const run2MsgCode = (reason: string | undefined) => (reason ? (Object.entries(RUN2_MSG).find(([, v]) => v === reason)?.[0] ?? "failed") : "failed");
 
@@ -210,7 +212,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
               ))}
             </ul>
           )}
-          <BranchConfirm systemId={systemId} runId={String(run.id)} status={status} steps={run.stepsJson} act={act.confirm} t={t} />
+          <BranchConfirm systemId={systemId} runId={String(run.id)} status={status} steps={run.stepsJson} act={act.confirm} t={t} unitIds={[...new Set(((pv && pv.ok ? pv.rows : []) as { unitId: string | null }[]).map((r) => r.unitId).filter((x): x is string => !!x))]} />
           {canMoney && (
             <div className="flex flex-wrap gap-2">
               {status === "DRAFT" && act.rebuild && (
@@ -274,10 +276,11 @@ function Warnings({ flags, t }: { flags: string[]; t: T }) {
   );
 }
 
-async function BranchConfirm({ systemId, runId, status, steps, act, t }: { systemId: string; runId: string; status: string; steps: unknown; act: Act | null; t: T }) {
-  if (status !== "DRAFT") return null;
+async function BranchConfirm({ systemId, runId, status, steps, act, t, unitIds }: { systemId: string; runId: string; status: string; steps: unknown; act: Act | null; t: T; unitIds: string[] }) {
+  if (status !== "DRAFT" || !unitIds.length) return null;
   const auth = await requireTenant();
-  const units = await tenantDb({ tenantId: auth.active.tenantId }).businessUnit.findMany({ where: { tenantId: auth.active.tenantId }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 50 });
+  // fix r1 F9: เฉพาะสาขาที่มีพนักงานในรอบ (ตามแถวที่ผู้ดูเห็น)
+  const units = await tenantDb({ tenantId: auth.active.tenantId }).businessUnit.findMany({ where: { tenantId: auth.active.tenantId, id: { in: unitIds } }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 50 });
   const done = (steps && typeof steps === "object" ? ((steps as Record<string, unknown>).branches as Record<string, unknown> | undefined) : undefined) ?? {};
   const open = units.filter((u) => !done[u.id]).length;
   return (

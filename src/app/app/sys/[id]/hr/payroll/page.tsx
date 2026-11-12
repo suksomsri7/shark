@@ -14,7 +14,7 @@ import { thaiDateKey } from "@/lib/ui/date";
 import { getTranslations } from "next-intl/server";
 // HR H3.4 ▸ รอบจ่ายรุ่น 2 (ภาพ 06) — ส่วน payroll-run-ui · ผลการกด ?r2= รหัสคงที่ (RUN2_MSG) · ?run= รอบที่เลือก ◂
 import { PayrollRunSection, RUN2_MSG, run2MsgCode } from "@/lib/modules/hr/payroll-run-ui";
-import { approveRunV2Action, confirmBranchHoursAction, createPayrollRunV2Action, markPaidAction, recomputeRunV2Action, reverseRunAction } from "@/lib/modules/hr/payroll-actions";
+import { approveRunV2Action, confirmBranchHoursAction, createPayrollRunV2Action, payRunV2Action, recomputeRunV2Action, reverseRunV2Action } from "@/lib/modules/hr/payroll-actions";
 import { syncAttendanceDeductionsAction } from "@/lib/modules/hr/attendance-pay-actions";
 
 // หน้าย่อย "เงินเดือน" ของระบบ HR — โปรไฟล์เงินเดือน + รอบจ่าย + สลิป
@@ -76,13 +76,13 @@ export default async function HrPayrollPage({
     },
     pay: async (fd: FormData) => {
       "use server";
-      await markPaidAction(fd);
-      back2("done", String(fd.get("runId") ?? ""));
+      const r = await payRunV2Action(fd); // fix r1 F7: ผลจริง (ปฏิเสธ = role=alert)
+      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
     },
     reverse: async (fd: FormData) => {
       "use server";
-      await reverseRunAction(fd);
-      back2("done", String(fd.get("runId") ?? ""));
+      const r = await reverseRunV2Action(fd); // fix r1 F7: CARRY_BOUND · LATER_RUN · สิทธิ์ = ข้อความคงที่
+      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
     },
     confirm: async (fd: FormData) => {
       "use server";

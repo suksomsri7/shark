@@ -114,6 +114,7 @@ export type RunFlagV2 =
   | "UNPAID_CAPPED"
   | "UNWORKED_CAPPED"
   | "SSO_MIN_BASE"
+  | "SSO_ZERO_WAGE"
   | "SSO_COMMISSION_U"
   | "NEGATIVE_NET"
   | "CLAIM_CAPPED"
@@ -427,13 +428,17 @@ function compute(input: RunItemInputV2, law: Rows): RunItemV2 {
     LATE_REFUND: lateRefund,
   };
   const ssoWageAll = add("SSO wage", ...components.map((c) => part[c]));
-  const sso = eligible ? ssoV2(ssoWageAll, ssoJson) : { baseSatang: 0, employeeSatang: 0, employerSatang: 0 };
-  if (eligible && ssoWageAll < ssoJson.minBaseSatang) flags.add("SSO_MIN_BASE"); // 83 ฿ ขั้นต่ำ = เตือน (ไม่บล็อกเอง — L5)
+  // r4 (fix round 1 F4): ไม่มีค่าจ้างฐาน ปสส. ในงวด (ลาไม่รับค่าจ้างทั้งเดือน · ฐาน 0 · หักสาย/ขาดเท่าค่าจ้าง) ⇒ ไม่มีเงินสมทบ + เตือน SSO_ZERO_WAGE [U] ·
+  //   มีค่าจ้างแต่ต่ำกว่าฐานขั้นต่ำ ⇒ ฐานขั้นต่ำ (83 ฿) + เตือน SSO_MIN_BASE (ไม่บล็อกเอง — L5)
+  const zeroWage = eligible && ssoWageAll === 0;
+  const sso = eligible && !zeroWage ? ssoV2(ssoWageAll, ssoJson) : { baseSatang: 0, employeeSatang: 0, employerSatang: 0 };
+  if (zeroWage) flags.add("SSO_ZERO_WAGE");
+  else if (eligible && ssoWageAll < ssoJson.minBaseSatang) flags.add("SSO_MIN_BASE");
   if (eligible && commission > 0 && components.includes("COMMISSION")) flags.add("SSO_COMMISSION_U");
 
   // ── ภาษีหัก ณ ที่จ่าย: ปกติแบบสะสมทั้งปี (ป.96 ข้อ 1(1)) + เงินได้ครั้งเดียว (ข้อ 1(5)) ──
   const regular = monthly ? base : E; // รายวัน/รายชั่วโมง: ตัวแทนจนกว่า NA-11
-  const regularSso = eligible ? ssoV2(regular, ssoJson).employeeSatang : 0;
+  const regularSso = eligible && regular > 0 ? ssoV2(regular, ssoJson).employeeSatang : 0;
   const dIn = input.deductions;
   const deductions = isObj(dIn) ? { spouse: dIn.spouse === true, children: (dIn.children ?? 0) as number } : (dIn as undefined); // D-9: spouse เป็น boolean ก่อนเข้า H3.3
   const ytdIn = {

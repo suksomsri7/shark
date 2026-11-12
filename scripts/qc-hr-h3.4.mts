@@ -17,6 +17,7 @@ import {
   PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, fileAt, srcFiles, makeRegistry, qc4Env, makeFixtures, cleanupFx,
   vOf, fitnessNoEnv, importsOf, jsonOf, testidsOf, loadOpt, modState, msgParity, tokensOnly, holdAdvisory, frozenControls,
 } from "./qc-hr-lib.mjs";
+import { FIX_CHECKS, fnBody, lineStr, runFixRound1, runPureH34, runStaticH34 } from "./qc-hr-h3.4-lib.mts"; // ORACLE-EDIT (H3.4 fix round 1): controller F1–F10 + coverage list — checks live in the lib (file size)
 
 const SUITE = "qc-hr-h3.4";
 const ARGV = process.argv.slice(2);
@@ -105,6 +106,8 @@ S8.1|frozen|C|G|[db] v1 golden: frozen MONTHLY digest/totals unchanged
 S8.2|frozen|C|G|[db] v1 shop cycle unchanged
 X12.1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
 Z1|house|C|G|no residue · ACTIVE law count restored
+S7.5|cov|C|G|[db] (H3.2-guarded, fix r1 coverage) v2 approve before the deductions were synced ⇒ ATTENDANCE_SYNC (H3.2 gate) · run DRAFT
+${FIX_CHECKS}
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
   return [`H3.4-${id}`, g, SEV[sv], (b === "R" ? "RED" : "GREEN") as Base, t] as const;
@@ -122,250 +125,12 @@ const BASE = baseRef("QC_H34_BASE") || "bcf352f882cfd5f0ff98fb2db2fa1bdbb6f16e15
 const H32 = existsSync(join(ROOT, F.attPay));
 
 // ═════════════════════════ statics ═════════════════════════
-const marked = (base: string, f: string, tag = /HR H\d/) => {
-  const hs = diffHunks(base, f);
-  if (hs === null) return { n: -1, bad: 1 };
-  const live = hs.filter((h) => h.added.length > 0);
-  return { n: live.length, bad: live.filter((h) => !h.added.some((l) => tag.test(l))).length };
-};
-const fnBody = (src: string, name: string) => {
-  const i = src.indexOf(`export async function ${name}`);
-  if (i < 0) return "";
-  const j = src.indexOf("\nexport ", i + 10);
-  return src.slice(i, j < 0 ? undefined : j);
-};
-const WRITE_RE = /\b(hrPayrollRun|hrPayrollItem|hrPayAdjustment)\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\b|\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"(HrPayrollRun|HrPayrollItem|HrPayAdjustment)"/i;
-function runStatic(): void {
-  const rules = stripComments(rd(F.rules));
-  const ui = rd(F.ui);
-  {
-    const imp = importsOf(rules);
-    const r = {
-      files: rules.length > 0 && ui.length > 0,
-      imports: imp.length > 0 && imp.every((i) => ["./payroll-rules-v2", "./ot-rules"].includes(i.spec ?? "")),
-      pure: !/Date\.now|new Date\(\s*\)|Math\.random|process\.env|@\/lib\/core|prisma|tenantDb|await\s/.test(rules),
-      exports: /export\s+function\s+computeRunItemV2\b/.test(rules) && /export\s+const\s+RUN_V2_DEFAULTS\b/.test(rules),
-    };
-    ck("S1.1", r, "files · pure · exports", `imports=${imp.map((i) => i.spec).join(",") || "∅"}`);
-  }
-  {
-    const k = stripComments(rd(F.migK).replace(/--.*$/gm, "")).replace(/\s+/g, " ").trim();
-    const c = stripComments(rd(F.migC).replace(/--.*$/gm, ""));
-    const stmts = k.split(";").map((s) => s.trim()).filter(Boolean);
-    const sch = rd(F.schema);
-    const enumBody = (n: string) => (sch.match(new RegExp(`enum ${n} \\{([^}]*)\\}`))?.[1] ?? "");
-    const r = {
-      kinds: stmts.length === 2 && stmts.some((s) => /^ALTER TYPE "HrPayItemKind" ADD VALUE 'REFUND'$/i.test(s)) && stmts.some((s) => /^ALTER TYPE "HrPaySource" ADD VALUE 'CARRY_FORWARD'$/i.test(s)),
-      cols: /ADD COLUMN\s+"stepsJson"\s+JSONB/i.test(c) && /ADD COLUMN\s+"inputDigest"\s+TEXT/i.test(c) && /ADD COLUMN\s+"consentAt"\s+TIMESTAMP/i.test(c),
-      additive: c.length > 0 && !/\bDROP\b|\bRENAME\b|ALTER\s+TYPE/i.test(c),
-      schema: /\bREFUND\b/.test(enumBody("HrPayItemKind")) && /\bCARRY_FORWARD\b/.test(enumBody("HrPaySource")) && /stepsJson\s+Json\?/.test(sch) && /inputDigest\s+String\?/.test(sch),
-    };
-    ck("S1.2", r, "2 migrations exact · schema", `kinds=${short(k, 120)}`);
-  }
-  {
-    const bad: string[] = [];
-    for (const p of srcFiles("src")) {
-      if (p === F.payroll) continue;
-      if (!WRITE_RE.test(stripComments(rd(p)))) continue;
-      const old = fileAt(BASE, p);
-      if (old !== null && WRITE_RE.test(stripComments(old))) continue;
-      bad.push(p);
-    }
-    chk("S1.3", bad.length === 0 && rd(F.rules).length > 0, "payroll.ts only (+ base writers)", bad.join(",") || (rd(F.rules) ? "ok" : "rules absent"));
-  }
-  {
-    const pay = stripComments(rd(F.payroll));
-    const named = [F.rules, F.ui, F.payroll].filter((p) => /hrLawTable|HrLawTable/.test(stripComments(rd(p))));
-    const r = { none: named.length === 0, reads: /loadLawSet\s*\(/.test(pay) && importsOf(pay).some((i) => i.spec === "./law"), built: rd(F.rules).length > 0 };
-    ck("S1.4", r, "law.ts only reader", named.join(","));
-  }
-  {
-    const re = /\b(lat|lng|accuracyM|photoKey|gpsLat|gpsLng|selfie)\b/;
-    const hunks = (diffHunks(BASE, F.payroll) ?? []).flatMap((h) => h.added).join("\n");
-    const hits = [["rules", rd(F.rules)], ["ui", rd(F.ui)], ["payroll+", hunks]].filter(([, s]) => re.test(stripComments(s))).map(([n]) => n);
-    chk("S1.5", hits.length === 0 && rd(F.rules).length > 0, "none", hits.join(",") || (rd(F.rules) ? "clean" : "rules absent"));
-  }
-  {
-    const shaNow = sha(rd(PAYROLL_RULES_FILE));
-    // ORACLE-EDIT (H3.4 builder, phase B — merge of H3.2 ac8de9d27): work-entries.ts carries H3.2's additive EOF exports (workEntryStatesInTx ·
-    //   workEntrySourceEmployeesInTx, marked HR H3.2) — tolerated only as pure additions whose hunks carry the HR H3.2 marker; every other frozen file unchanged
-    const h32Only = (f: string) => { const hs = diffHunks(BASE, f); return !!hs && hs.length > 0 && hs.every((h) => (h.removed.length === 0 && h.added.some((l) => /HR H3\.[24]/.test(l))) || h.added.some((l) => /HR H3\.4/.test(l))); }; // HR H3.4-marked edits of the H3.2 gate reader (controller item) may replace lines
-    //   ORACLE-EDIT (H3.4 phase B, controller item): judge.ts may carry one additive HR H3.4 export (workEntryPunchEmployeesInTx — distinct reader for the H3.2 gate)
-    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && h32Only(p))));
-    chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
-  }
-  {
-    const v2 = marked(BASE, F.v2, /HR H3\.4/);
-    const others = [F.otRules, F.ot, F.acts, F.index].map((f) => [f.split("/").pop(), marked(BASE, f)] as const);
-    const pay = stripComments(rd(F.payroll));
-    const r = {
-      v2: v2.n >= 1 && v2.n <= 2 && v2.bad === 0, others: others.every(([, m]) => m.bad === 0) && others.slice(0, 2).every(([, m]) => m.n >= 1),
-      flag: /\bV2_VARIABLE_PAY\s*=\s*false\b/.test(pay), dispatch: /createPayrollRunV2\b/.test(pay) && /HR H3\.4/.test(rd(F.payroll)),
-    };
-    ck("S1.7", r, "marked hunks", `v2=${v2.n}/${v2.bad} ${others.map(([n, m]) => `${n}=${m.n}/${m.bad}`).join(" ")}`);
-  }
-  {
-    const a = stripComments(rd(F.acts));
-    const rev = fnBody(a, "reverseRunAction");
-    const dec = fnBody(a, "decideAdjustmentAction");
-    const r = { reverse: /"hr\.payroll\.reverse"/.test(rev) && !/"hr\.payroll\.approve"/.test(rev), reject: /"hr\.payadjust\.reject"/.test(dec) && /assertHrCan\([^)]*"hr\.payadjust\.reject"/.test(dec) };
-    ck("S1.8", r, "reverse + reject keys", `rev=${rev.length} dec=${dec.length}`);
-  }
-  {
-    const ids = testidsOf(ui, "hr-run2-");
-    const th = jsonOf(F.th)?.hr?.run2 ?? {};
-    const en = jsonOf(F.en)?.hr?.run2 ?? {};
-    const mp = msgParity(th, en, []);
-    const inv = ((jsonOf(F.inv)?.rows ?? []) as Any[]).filter((x) => x.wo === "H3.4");
-    const tok = tokensOnly(stripComments(ui));
-    const engine = srcFiles("src").some((p) => /\.tsx$/.test(p) && rd(p).includes("hr-run2-engine"));
-    const r = {
-      testids: TESTIDS.every((t) => ids.has(t)), inv: inv.length >= TESTIDS.length, msgs: Object.values(mp).every(Boolean), tokens: Object.values(tok).every(Boolean) && ui.length > 0,
-      page: /payroll-run-ui/.test(rd(F.page)), engine,
-    };
-    ck("S1.9", r, "UI contract", `missing=${TESTIDS.filter((t) => !ids.has(t)).join(",").slice(0, 120)}`);
-  }
-  {
-    const rules = stripComments(rd(F.rules));
-    const block = (diffHunks(BASE, F.payroll) ?? []).flatMap((h) => h.added).map((l) => stripComments(l)).join("\n");
-    const r = { rules: rules.length > 0 && !/otWorkdayMin|otHolidayMin/.test(rules), payroll: block.length > 0 && !/otWorkdayMin|otHolidayMin/.test(block), ot: /holidayWorkPricedInTx\s*\(/.test(stripComments(rd(F.ot))), exp: /export\s+async\s+function\s+holidayWorkPricedInTx\b/.test(rd(F.payroll)) };
-    ck("S1.10", r, "never priced · H2.9 subtracts run minutes", "");
-  }
-}
+// ORACLE-EDIT (H3.4 fix round 1 — file size > 60 KB): the static group S1.* moved verbatim to qc-hr-h3.4-lib.mts (runStaticH34) · same checks, same literals
+const runStatic = () => runStaticH34({ F, FROZEN, TESTIDS, BASE, H, ck, chk });
 
 // ═════════════════════════ pure ═════════════════════════
-const LAWSET = FX ? { SSO: { id: "fx-sso", json: FX.law?.SSO }, TAX_BRACKET: { id: "fx-tax", json: FX.law?.TAX_BRACKET }, DEDUCTION: { id: "fx-ded", json: FX.law?.DEDUCTION } } : null;
-const lineStr = (l: Any, ref?: (x: string) => string) =>
-  `${l?.code}:${ref ? ref(String(l?.ref)) : l?.ref}:${l?.day ?? "-"}:${l?.minutes ?? "-"}:${l?.amountSatang}${l?.requestedSatang != null ? `/${l.requestedSatang}` : ""}`;
-const projOf = (o: Any, ref?: (x: string) => string) => {
-  if (!o || o.ok === false) return { ok: false, code: o?.code ?? "∅" };
-  return {
-    ok: true, lines: (o.lines ?? []).map((l: Any) => lineStr(l, ref)), whtIncomeSatang: o.whtIncomeSatang, ssoWageSatang: o.ssoWageSatang, ssoBaseSatang: o.ssoBaseSatang,
-    ssoEmployeeSatang: o.ssoEmployeeSatang, ssoEmployerSatang: o.ssoEmployerSatang, whtSatang: o.whtSatang, whtOneOffSatang: o.whtOneOffSatang, availableSatang: o.availableSatang, advanceAppliedSatang: o.advanceAppliedSatang,
-    claimAppliedSatang: o.claimAppliedSatang, catCapSatang: o.catCapSatang, totalCapSatang: o.totalCapSatang, carry: (o.carry ?? []).map((c: Any) => `${c.cls}:${c.amountSatang}`), receivable: (o.receivable ?? []).map((c: Any) => `${c.cls}:${c.amountSatang}`), addSatang: o.addSatang,
-    deductSatang: o.deductSatang, grossSatang: o.grossSatang, netSatang: o.netSatang, blocked: o.blocked ?? null, flags: [...(o.flags ?? [])].sort(),
-  };
-};
-const inputOf = (v: Any) => {
-  const { law, ...rest } = v.input;
-  return { input: { ...FX._meta.defaults, ...rest }, lawSet: law === "NO_SSO" ? { TAX_BRACKET: LAWSET!.TAX_BRACKET, DEDUCTION: LAWSET!.DEDUCTION } : typeof law === "string" && FX.law?.[law] ? { ...LAWSET!, SSO: { id: `fx-${law}`, json: FX.law[law] } } : LAWSET };
-};
-function runPure(R: Any, OR: Any, V2: Any): void {
-  const fn = R && !R.__err && typeof R.computeRunItemV2 === "function" ? R.computeRunItemV2 : null;
-  const call = (inp: Any, law: Any) => {
-    if (!fn) return { ok: false, code: `∅computeRunItemV2 (${modState(R, F.rules)})` };
-    try {
-      return fn(inp, law);
-    } catch (e) {
-      return { ok: false, code: `THROW ${errText(e)}` };
-    }
-  };
-  const group = (id: string, from: number, to: number, extra: string[] = []) => {
-    const vs = (FX?.vectors ?? []).filter((v: Any) => { const n = Number(v.id.slice(1)); return (n >= from && n <= to) || extra.includes(v.id); });
-    const bad: string[] = [];
-    for (const v of vs) {
-      const { input, lawSet } = inputOf(v);
-      const got = projOf(call(input, lawSet));
-      const want = v.want.ok === false ? { ok: false, code: v.want.code } : { ...v.want };
-      if (canon(got) !== canon(want)) bad.push(`${v.id}: ${short(got, 160)}`);
-    }
-    chk(id, vs.length > 0 && bad.length === 0, `${vs.length} literal vectors`, bad.slice(0, 2).join(" ‖ ") || "all");
-  };
-  group("S2.1", 1, 7);
-  group("S2.2", 8, 11);
-  group("S2.3", 12, 14);
-  group("S2.4", 15, 24);
-  group("S2.5", 25, 28);
-  group("S2.6", 29, 32);
-  group("S2.7", 33, 36);
-  group("S2.8", 37, 44, ["V51", "V61", "V62", "V63", "V65", "V66", "V67"]);
-  group("S2.13", 52, 60, ["V64"]);
-  group("S2.14", 68, 72);
-  group("S2.9", 45, 49);
-  group("S2.10", 50, 50);
-  {
-    const f = OR && typeof OR.otAmount === "function" ? OR.otAmount : null;
-    const bad: string[] = [];
-    for (const v of FX?.otNormal ?? []) {
-      let got: Any;
-      try {
-        got = f ? f({ ...v.input, law: OR.OT_LAW_DEFAULT }) : null;
-      } catch (e) {
-        got = { err: errText(e) };
-      }
-      const g = got?.ok ? { segments: got.segments.map((s: Any) => `${s.cls}:${s.minutes}:${s.multiplierBp}:${s.amountSatang}`), amountSatang: got.amountSatang } : got;
-      if (canon(g) !== canon(v.want)) bad.push(`${v.id}: ${short(g, 120)}`);
-    }
-    chk("S2.11", (FX?.otNormal ?? []).length === 5 && bad.length === 0, "5 literal vectors", bad.slice(0, 2).join(" ‖ ") || "all");
-  }
-  {
-    const c = (b: number, a: Any[]) => {
-      try {
-        return V2.classifyIncomeV2(b, a);
-      } catch (e) {
-        return { code: (e as Any)?.code ?? errText(e) };
-      }
-    };
-    const ok = c(1500000, [{ kind: "REFUND", amountSatang: 50000 }]);
-    const tip = c(3000000, [{ kind: "TIP", amountSatang: 100 }]);
-    const r = { refund: canon(ok) === canon({ whtIncomeSatang: 1500000, ssoWageSatang: 1500000, addSatang: 50000, deductSatang: 0, grossSatang: 1550000 }), tip: tip?.code === "BAD_KIND" };
-    ck("S2.12", r, "REFUND classified · TIP refused", short(ok, 120));
-  }
-  {
-    const bad: string[] = [];
-    let n = 0;
-    for (const v of FX?.vectors ?? []) {
-      if (v.want.ok === false) continue;
-      const { input, lawSet } = inputOf(v);
-      const o = call(input, lawSet);
-      n++;
-      const sumLines = (o?.lines ?? []).reduce((s: number, l: Any) => s + Number(l.amountSatang), 0);
-      const req = (o?.lines ?? []).filter((l: Any) => ["ADVANCE", "DEDUCTION"].includes(l.code)).reduce((s: number, l: Any) => s + Number(l.requestedSatang) + Number(l.amountSatang), 0);
-      const carry = [...(o?.carry ?? []), ...(o?.receivable ?? [])].reduce((s: number, c: Any) => s + Number(c.amountSatang), 0);
-      const ok = o?.ok && o.grossSatang === o.netSatang + o.ssoEmployeeSatang + o.whtSatang && sumLines === o.grossSatang && (o.blocked || o.netSatang >= 0) && (o.blocked || req === carry);
-      if (!ok) bad.push(v.id);
-    }
-    chk("S3.1", n >= 40 && bad.length === 0, "identities on all ok vectors", `${n} · bad ${bad.slice(0, 6).join(",") || "none"}`);
-  }
-  {
-    const v = (FX?.vectors ?? []).find((x: Any) => x.id === "V33");
-    const deepFreeze = (o: Any): Any => (o && typeof o === "object" ? (Object.values(o).forEach(deepFreeze), Object.freeze(o)) : o);
-    const { input, lawSet } = v ? inputOf(v) : { input: {}, lawSet: null };
-    const before = canon(input);
-    const fz = deepFreeze(JSON.parse(JSON.stringify(input)));
-    const [dn, mr] = [Date.now, Math.random];
-    let trapped = false;
-    Date.now = () => ((trapped = true), 0);
-    Math.random = () => ((trapped = true), 0);
-    let a: Any, b: Any;
-    try {
-      a = call(fz, lawSet);
-      b = call(JSON.parse(before), lawSet);
-    } finally {
-      Date.now = dn;
-      Math.random = mr;
-    }
-    const r = { ok: a?.ok === true, same: canon(a) === canon(b), untouched: canon(fz) === before, noClock: !trapped, defaults: canon(R?.RUN_V2_DEFAULTS ?? null) === canon({ normalDayMin: 480, catCapBp: 1000, totalCapBp: 2000 }) };
-    ck("S3.2", r, "pure + defaults", short(a, 80));
-  }
-  {
-    const v = (FX?.vectors ?? []).find((x: Any) => x.id === "V38");
-    const { input, lawSet } = v ? inputOf(v) : { input: {}, lawSet: null };
-    const p1 = call(input, lawSet);
-    const c = Number((p1?.carry ?? []).find((x: Any) => x.cls === "ADVANCE")?.amountSatang ?? 0);
-    const p2 = call({ ...input, periodKey: "2031-10", monthIndex: 2, adjustments: [{ id: "cf1", kind: "ADVANCE", sourceType: "CARRY_FORWARD", amountSatang: c }] }, lawSet);
-    const r = { carry: c === 575000, p2: p2?.advanceAppliedSatang === 575000 && (p2?.carry ?? []).length === 0, sum: Number(p1?.advanceAppliedSatang) + Number(p2?.advanceAppliedSatang) === 2000000 };
-    ck("S3.3", r, "1,425,000 + 575,000 = 2,000,000", `c=${c} p2=${p2?.advanceAppliedSatang}`);
-  }
-  {
-    const days = Array.from({ length: 30 }, (_, i) => ({ workDayId: `w${i}`, day: `2031-09-${String(i + 1).padStart(2, "0")}`, dayClass: "WORKDAY", workMin: 480, paidLeaveMin: 0, unpaidLeaveMin: i === 3 ? 480 : 0, holidayWorkMin: 0, holidayPaidMin: 0, unplannedMin: 0, review: [], otHolidayWorkMin: 0 }));
-    const t0 = performance.now();
-    let ok = 0;
-    for (let e = 0; e < 300; e++) if (call({ ...FX._meta.defaults, payType: e % 3 === 0 ? "MONTHLY" : "DAILY", baseSalarySatang: 2000000 + e, dailyRateSatang: 50000, periodKey: "2031-09", days, adjustments: [{ id: `a${e}`, kind: "ADVANCE", amountSatang: 100000 }] }, LAWSET)?.ok) ok++;
-    const ms = performance.now() - t0;
-    ck("S3.4", { all: ok === 300, fast: ms < 2000 }, "300 ok < 2 s", `${ok} in ${ms.toFixed(0)} ms`);
-  }
-}
+// ORACLE-EDIT (H3.4 fix round 1 — file size): the pure groups S2.* / S3.* moved verbatim to qc-hr-h3.4-lib.mts (runPureH34) · same vectors, same checks
+const runPure = (R: Any, OR: Any, V2: Any) => runPureH34({ FX, F, ck, chk }, R, OR, V2);
 
 // ═════════════════════════ DB ═════════════════════════
 type RO = { ok: boolean; text: string; value: Any };
@@ -710,12 +475,18 @@ async function runDb(): Promise<void> {
     const carry = Number((await rows(`SELECT count(*)::int AS n FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD'`, sN))[0]?.n ?? -1);
     const it = await itemBy(cr.value?.id, eN);
     const r = {
-      created: cr.ok, refused: !ap.ok && codeOf(ap) === "NEGATIVE_NET", draft: (await runRow(cr.value?.id))?.status === "DRAFT", noCarry: carry === 0,
+      created: cr.ok, refused: !ap.ok && codeOf(ap) === "NEGATIVE_NET" && ap.text === String(T.negativeNet ?? "∅").replace("{names}", `เอ็น ${tag}`), draft: (await runRow(cr.value?.id))?.status === "DRAFT", noCarry: carry === 0,
       item: Number(it?.netSatang) < 0 && (it?.snapshotJson?.carry ?? []).length === 0 && (it?.snapshotJson?.receivable ?? []).length === 0,
     };
     ck("S4.18", r, "NEGATIVE_NET · 0 carry rows", `${shown(cr)} ${shown(ap)} carry=${carry} net=${it?.netSatang}`);
     if (cr.value?.id) await pay.deleteDraftRun(cN, cr.value.id, A.owner).catch(() => null);
   }
+  // ── fix round 1 (controller F1–F10 + coverage) — own systems per check (qc-hr-h3.4-lib.mts) ──
+  await runFixRound1({
+    P, TT, tag, ck, T, LAW_KEY, sys: (n: string) => sys(n), me: (s: string, n: string, o: Record<string, unknown> = {}) => me(s, n, o), adj, att, PY, rows, itemBy, runRow, bk, V, A, U, u1, u2, OT, JG,
+    SC: await loadOpt(`${H}stock-charge.ts`, "@/lib/modules/hr/stock-charge"), pay, mkUser: (t: string, r: Who["role"], ua: string[], p: Record<string, boolean>) => mk(t, r, ua, p),
+    PAY_SEP, PAY_OCT, N_OCT1, N_NOV1,
+  });
   // ── S5 races (system B) ──
   const del = async () => {
     for (const r of await liveRuns(sB, SEP)) await pay.deleteDraftRun(cB, r.id, A.owner).catch(() => null);
@@ -759,6 +530,7 @@ async function runDb(): Promise<void> {
     chk("S7.2", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.3", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.4", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
+    chk("S7.5", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
   } else {
     const A_ = (fn: string, ...a: unknown[]) => callMod(AP, F.attPay, fn, a);
     // ORACLE-EDIT (H3.4 builder, phase B): the S5.3/S5.4 race rows (ALLOWANCE 10,000 / 20,000 of eS in 2031-09) outlive their deleted drafts —
@@ -766,6 +538,13 @@ async function runDb(): Promise<void> {
     await P.$executeRawUnsafe(`UPDATE "HrPayAdjustment" SET status = 'REJECTED' WHERE "employeeId" = $1 AND kind::text = 'ALLOWANCE' AND "runId" IS NULL AND "sourceType" IS NULL`, E.eS);
     await A_("saveAttendancePayPolicy", cB, V.owner, { enabled: true });
     await callMod(await loadOpt(`${H}work-entries.ts`, "@/lib/modules/hr/work-entries"), "work-entries", "buildWorkEntrySnapshot", [cB, V.owner, { periodKey: SEP }, { now: N_OCT1 }]);
+    {
+      // S7.5 (fix r1 coverage): policy in force for 2031 (enabled now ⇒ interval from this month on) · work hours pulled · deductions NOT synced ⇒ ATTENDANCE_SYNC
+      const c0 = await createV2(cB, V.pay1, SEP, PAY_SEP, A.pay1);
+      const a0 = await approve(cB, c0.value?.id, A.pay3);
+      ck("S7.5", { created: c0.ok, gate: !a0.ok && codeOf(a0) === "ATTENDANCE_SYNC", draft: (await runRow(c0.value?.id))?.status === "DRAFT" }, "ATTENDANCE_SYNC", `${shown(c0)} ${shown(a0)}`);
+      if (c0.value?.id) await pay.deleteDraftRun(cB, c0.value.id, A.owner).catch(() => null);
+    }
     await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
     const late = (await rows(`SELECT id FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'LATE_RULE' AND status = 'PENDING'`, E.eS))[0]?.id;
     await pay.decideAdjustment(cB, late ?? "∅", "APPROVED", A.owner).catch(() => null);
