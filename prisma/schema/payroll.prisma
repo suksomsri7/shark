@@ -313,3 +313,56 @@ model HrWorkDay {
   @@index([tenantId])
   @@index([runId])
 }
+
+// HR H4.6 ▸ เบิกของ/ค่าเสียหายของพนักงาน → รายการหักเงินเดือน (HrPayAdjustment DEDUCTION · PENDING · sourceType INVENTORY_ISSUE ·
+//   sourceRef "hrstock:<requestKey>") — ระบบไม่หักเองเด็ดขาด ต้องผ่านการอนุมัติเดิมของ H1.3 · ต้องมีหนังสือยินยอมของพนักงาน (consent*)
+//   adjustmentId = ลิงก์อ่อน ไม่มี FK (ลบรายการที่หน้าเงินเดือนได้ — แถวนี้อยู่ต่อ สถานะ REMOVED) · movementId = InvMovement ลิงก์อ่อน
+//   🔴 partial unique ("tenantId","movementId") WHERE "movementId" IS NOT NULL + CHECK ยอด/จำนวน/ความยาว — ประกาศเฉพาะใน migration.sql
+//   คืนเงิน (มติผู้คุม Q8 ทาง 2): ไม่สร้างแถวเงินได้ · ยังไม่เข้ารอบ = ยกเลิกในที่ · รอบร่าง = ทางลบเดิม · รอบอนุมัติ/จ่ายแล้ว = refundOwedSatang
+//   (ค้างคืนนอกเงินเดือน — บันทึกว่าคืนแล้วด้วย repaid*) · withdrawOutcome: REJECTED · CANCELLING · CANCELLED · REFUND_OWED · NOOP ◂
+// ISSUE = เบิกของ (ยูนิฟอร์ม/อุปกรณ์) · DAMAGE = ค่าเสียหาย
+enum HrStockChargeKind {
+  ISSUE
+  DAMAGE
+}
+
+model HrStockCharge {
+  id                  String            @id @default(cuid())
+  tenantId            String
+  systemId            String // ระบบ HR
+  employeeId          String
+  employee            HrEmployee        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  kind                HrStockChargeKind
+  requestKey          String // คีย์จากฟอร์ม (กันซ้ำ/ลองใหม่) · unique ต่อร้าน
+  adjustmentId        String // HrPayAdjustment.id (ไม่มี FK)
+  inventorySystemId   String?
+  itemId              String?
+  itemName            String? // snapshot ชื่อสินค้า
+  description         String?
+  qty                 Int?
+  unitCostSatang      Int? // ต้นทุนต่อหน่วย ณ ตอนขอ (InvItem.costSatang)
+  amountSatang        Int
+  movementId          String?
+  consentRef          String // เลขที่/ที่เก็บหนังสือยินยอม
+  consentAt           DateTime          @db.Date // วันที่ลงนาม
+  consentRecordedById String
+  requestedById       String
+  withdrawnAt         DateTime?
+  withdrawnById       String?
+  withdrawOutcome     String?
+  refundOwedSatang    Int? // ยอดค้างคืนพนักงานนอกเงินเดือน (เท่ายอดที่หักไป)
+  refundReason        String?
+  refundRunId         String? // รอบจ่าย (อนุมัติ/จ่ายแล้ว) ที่รายการหักผูกอยู่ตอนบันทึกค้างคืน — ต่างจากปัจจุบัน = กลับเข้ารอบหลังย้อนรายการ
+  repaidAt            DateTime?
+  repaidById          String?
+  repaidRef           String?
+  notifiedAt          DateTime? // แจ้งพนักงานแล้ว (กันแจ้งซ้ำเมื่อ event ถูกส่งซ้ำ)
+  takeStock           Boolean           @default(false) // คำขอนี้ตัดสต็อกด้วยไหม (ส่วนหนึ่งของ "ข้อมูลเดียวกัน" เมื่อส่งคีย์ซ้ำ)
+  claimOpen           Boolean           @default(false) // จองคีย์แล้วแต่ยังไม่จบ (ตัดสต็อกก่อน → เขียนรายการหัก) — ค้างนาน = "ต้องตรวจ" (หนี้ D1)
+  createdAt           DateTime          @default(now())
+
+  @@unique([tenantId, requestKey])
+  @@unique([adjustmentId])
+  @@index([systemId, employeeId])
+  @@index([tenantId])
+}

@@ -1,0 +1,22 @@
+# post-merge sanity (lean) session/hr @da103059d · 2026-11-12T14:16:06Z · load 3.66 13.26 19.24
+prisma generate exit=0 [14:16Z]
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 33/33 JSON_SUMMARY {"suite":"seed-hr-qc","total":33,"passed":33,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":85,"BusinessUnit":2,"HrAttend  [14:16Z]
+qc-hr-h4.6 exit=0 ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h4.6","total":69,"passed":69,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":66,"baseGreen":3,"offBase":["H4.6-S1.1(RED→pass)","H4.6-S1.2(RED→pass)","H4.6-S1.3(RED→pass)", · RESIDUE none (tenants=2 users=11) [14:17Z]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}   [14:17Z]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}   [14:17Z]
+ALLDONE 2026-11-12T14:17:30Z · red: 0
+qc-hr-h2.9 exit=0 JSON_SUMMARY {"suite":"qc-hr-h2.9","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-hr-h1.3 exit=0 JSON_SUMMARY {"suite":"qc-hr-h1.3","total":63,"passed":63,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"groupCras
+qc-hr-h0.1 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":nul
+qc-hr-h0.6 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":nul
+qc-hr-h4.4 exit=0 JSON_SUMMARY {"suite":"qc-hr-h4.4","total":86,"passed":86,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":
+qc-payroll exit=0 JSON_SUMMARY {"total":19,"passed":19,"findings":[]}
+qc-payroll-reverse exit=0 
+qc-hr-payadjust exit=0 JSON_SUMMARY {"total":27,"passed":27,"findings":[]}
+qc-inventory exit=0 JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+qc-inventory-item exit=0 JSON_SUMMARY {"total":11,"passed":11,"findings":[]}
+qc-hf-inventory-atomic exit=0 JSON_SUMMARY {"total":143,"passed":143,"findings":[]}
+qc-pos-p2.3 exit=0 JSON_SUMMARY {"suite":"qc-pos-p2.3","total":46,"passed":46,"failed":[],"parRed":[],"skipped":false,"forced":true,"missing":[],"guardHits":0,
+qc-hf-hr-privacy exit=0 JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+fitness noenv exit=0
+EXTRADONE

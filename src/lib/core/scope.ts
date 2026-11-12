@@ -272,6 +272,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrPayrollRun: sys(),
   HrPayrollItem: sys(),
   HrPayAdjustment: sys(),
+  HrStockCharge: sys(), // HR H4.6 ▸ เบิกของ/ค่าเสียหาย → รายการหักที่รออนุมัติ ◂
   // HR H1.3 ▸ ตารางกฎหมายเงินเดือนกลางของทั้ง SHARK (ไม่มี tenantId/systemId) ◂
   HrLawTable: g("กฎหมายแรงงาน/ภาษีระดับประเทศ — SHARK ดูแล ร้านอ่านอย่างเดียว · เขียนผ่านสคริปต์/หลังบ้านเท่านั้น"),
   // Subscription (WO-0027) + Procurement (WO-0028)
