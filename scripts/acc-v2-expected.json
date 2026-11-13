@@ -863,5 +863,1425 @@
     "invSimilanViewGrand": 12450000,
     "invSimilanViewPaid": 6225000,
     "invSimilanViewRemain": 6225000
+  },
+  "dashboard": {
+    "_readme": "เฉลยของ WO 2.1 (หน้าหลัก/ภาพรวม) — เขียนโดย scripts/acc-v2-expected-dashboard.mts ด้วย SQL ดิบที่ไม่พึ่ง dashboard.ts · สตางค์ล้วน · seed ใหม่ต้องรันสคริปต์นี้ซ้ำ",
+    "generatedAt": "2026-11-13T00:31:50.338Z",
+    "now": "2026-09-30T12:00:00+07:00",
+    "year": 2026,
+    "periodKey": "2026-09",
+    "series": {
+      "months": [
+        {
+          "periodKey": "2026-01",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-02",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-03",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-04",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-05",
+          "revenue": 9813084,
+          "expense": 0,
+          "profit": 9813084
+        },
+        {
+          "periodKey": "2026-06",
+          "revenue": 13682243,
+          "expense": 4090651,
+          "profit": 9591592
+        },
+        {
+          "periodKey": "2026-07",
+          "revenue": 22915888,
+          "expense": 5585978,
+          "profit": 17329910
+        },
+        {
+          "periodKey": "2026-08",
+          "revenue": 35570094,
+          "expense": 15417755,
+          "profit": 20152339
+        },
+        {
+          "periodKey": "2026-09",
+          "revenue": 59140188,
+          "expense": 16353868,
+          "profit": 42786320
+        },
+        {
+          "periodKey": "2026-10",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-11",
+          "revenue": 0,
+          "expense": 550000,
+          "profit": -550000
+        },
+        {
+          "periodKey": "2026-12",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        }
+      ],
+      "total": {
+        "revenue": 141121497,
+        "expense": 41998252,
+        "profit": 99123245
+      },
+      "prevYear": {
+        "revenue": 0,
+        "expense": 0,
+        "profit": 0
+      },
+      "yoyBp": {
+        "revenue": null,
+        "expense": null,
+        "profit": null
+      }
+    },
+    "categories": {
+      "income": {
+        "total": 59140188,
+        "rows": [
+          {
+            "accountCode": "4000",
+            "name": "รายได้จากการขายสินค้า",
+            "amount": 59140188
+          }
+        ]
+      },
+      "expense": {
+        "total": 16353868,
+        "rows": [
+          {
+            "accountCode": "5000",
+            "name": "ซื้อสินค้า/ต้นทุนขาย",
+            "amount": 7476635
+          },
+          {
+            "accountCode": "6000",
+            "name": "เงินเดือนและค่าแรง",
+            "amount": 3028972
+          },
+          {
+            "accountCode": "6300",
+            "name": "ค่าการตลาดและโฆษณา",
+            "amount": 2313084
+          },
+          {
+            "accountCode": "6200",
+            "name": "ค่าสาธารณูปโภค (น้ำ/ไฟ/เน็ต)",
+            "amount": 1628411
+          },
+          {
+            "accountCode": "6100",
+            "name": "ค่าเช่า",
+            "amount": 1500000
+          },
+          {
+            "accountCode": "6900",
+            "name": "ค่าใช้จ่ายอื่น",
+            "amount": 574766
+          },
+          {
+            "accountCode": "5310",
+            "name": "กำไร/ขาดทุนจากการปรับมูลค่าสินค้า",
+            "amount": -168000
+          }
+        ]
+      }
+    },
+    "cash": {
+      "total": 132973000,
+      "accounts": [
+        {
+          "id": "cmwe8gt6d00gs15kz77dzs43e",
+          "code": "1000-01",
+          "name": "เงินสด",
+          "type": "CASH",
+          "balance": 12488000,
+          "monthDelta": 3808000,
+          "pinned": true
+        },
+        {
+          "id": "cmwe8gten00la15kz801c0ibe",
+          "code": "1010-01",
+          "name": "กสิกรไทย ออมทรัพย์",
+          "type": "BANK",
+          "balance": 90180000,
+          "monthDelta": 13125000,
+          "pinned": true
+        },
+        {
+          "id": "cmwe8gtr000s215kzs9t0r3o2",
+          "code": "1020-01",
+          "name": "พร้อมเพย์",
+          "type": "E_WALLET",
+          "balance": 27335000,
+          "monthDelta": 2785000,
+          "pinned": true
+        },
+        {
+          "id": "cmwe8gtzj00wk15kzbknfl62b",
+          "code": "1030-01",
+          "name": "เงินสดย่อย",
+          "type": "PETTY_CASH",
+          "balance": 2970000,
+          "monthDelta": 970000,
+          "pinned": false
+        }
+      ]
+    },
+    "arap": {
+      "receivable": {
+        "count": 20,
+        "amount": 49430000,
+        "overdueCount": 4,
+        "overdueAmount": 12840000,
+        "contactCount": 14,
+        "aging": {
+          "notDueSatang": 36590000,
+          "d1_30Satang": 0,
+          "d31_60Satang": 12840000,
+          "d61_90Satang": 0,
+          "d90plusSatang": 0,
+          "totalSatang": 49430000
+        }
+      },
+      "payable": {
+        "count": 10,
+        "amount": 21475000,
+        "overdueCount": 2,
+        "overdueAmount": 7750000,
+        "contactCount": 7,
+        "aging": {
+          "notDueSatang": 13725000,
+          "d1_30Satang": 0,
+          "d31_60Satang": 7750000,
+          "d61_90Satang": 0,
+          "d90plusSatang": 0,
+          "totalSatang": 21475000
+        }
+      }
+    },
+    "issued": {
+      "INVOICE": {
+        "total": {
+          "count": 53,
+          "amount": 149650000
+        },
+        "byStatus": {
+          "AWAITING_PAYMENT": {
+            "count": 18,
+            "amount": 38205000
+          },
+          "PAID": {
+            "count": 33,
+            "amount": 90995000
+          },
+          "PARTIAL": {
+            "count": 2,
+            "amount": 20450000
+          }
+        }
+      },
+      "QUOTATION": {
+        "total": {
+          "count": 0,
+          "amount": 0
+        },
+        "byStatus": {}
+      }
+    },
+    "topCustomers": [
+      {
+        "contactId": "cmwe8gox6008w15kz2e6guflt",
+        "name": "โรงแรมสิมิลันวิว",
+        "docCount": 2,
+        "amount": 16400000
+      },
+      {
+        "contactId": "cmwe8goz9008z15kzfgn2tj57",
+        "name": "โรงเรียนสอนดำน้ำ บลูโอเชียน",
+        "docCount": 2,
+        "amount": 11000000
+      },
+      {
+        "contactId": "cmwe8gpgm009n15kz1bg0pge8",
+        "name": "บริษัท ซีสตาร์ รีสอร์ท จำกัด",
+        "docCount": 3,
+        "amount": 9475000
+      },
+      {
+        "contactId": "cmwe8gp5q009815kz84jb7k0e",
+        "name": "บริษัท ภูเก็ตดีปซี จำกัด",
+        "docCount": 3,
+        "amount": 6989000
+      },
+      {
+        "contactId": "cmwe8gpwj00ab15kz4atbxo74",
+        "name": "ปิยธิดา อินสุ่ม",
+        "docCount": 3,
+        "amount": 6885000
+      },
+      {
+        "contactId": "cmwe8gqsx00bk15kza42cwpwv",
+        "name": "บริษัท เจ็ตสกี ภูเก็ต จำกัด",
+        "docCount": 1,
+        "amount": 6300000
+      },
+      {
+        "contactId": "cmwe8gout008t15kzmc5u5wfy",
+        "name": "บริษัท อันดามัน ทราเวล จำกัด",
+        "docCount": 2,
+        "amount": 5970000
+      },
+      {
+        "contactId": "cmwe8gqb800aw15kz9b3uitv0",
+        "name": "บริษัท พีพี ไอส์แลนด์ ทัวร์ จำกัด",
+        "docCount": 1,
+        "amount": 5600000
+      },
+      {
+        "contactId": "cmwe8gqk100b815kzv2cnpe7u",
+        "name": "บริษัท เดอะเรฟ ไดฟ์วิ่ง จำกัด",
+        "docCount": 1,
+        "amount": 4750000
+      },
+      {
+        "contactId": "cmwe8gpoh009z15kz7j7yr570",
+        "name": "บริษัท ไดฟ์มาสเตอร์ เอเชีย จำกัด",
+        "docCount": 2,
+        "amount": 4600000
+      },
+      {
+        "contactId": "cmwe8gp3h009515kzrfsrpn9v",
+        "name": "คุณอรทัย พงษ์ไพบูลย์",
+        "docCount": 2,
+        "amount": 4600000
+      },
+      {
+        "contactId": "cmwe8gqma00bb15kzfk9japqd",
+        "name": "คุณปรีชา หาญกล้า",
+        "docCount": 1,
+        "amount": 4200000
+      },
+      {
+        "contactId": "cmwe8gq2o00ak15kzet7yuhri",
+        "name": "บริษัท สยามซีสปอร์ต จำกัด",
+        "docCount": 1,
+        "amount": 4200000
+      },
+      {
+        "contactId": "cmwe8gp7u009b15kz86x5jdj1",
+        "name": "บจก. อันดามัน ทราเวล",
+        "docCount": 2,
+        "amount": 3950000
+      },
+      {
+        "contactId": "cmwe8gqxa00bq15kzvklg7ore",
+        "name": "บริษัท ซันเซ็ท ครูซ จำกัด",
+        "docCount": 1,
+        "amount": 3850000
+      },
+      {
+        "contactId": "cmwe8gpyn00ae15kza01ss6m5",
+        "name": "บริษัท โอเชียนบลู ทัวร์ จำกัด",
+        "docCount": 1,
+        "amount": 3500000
+      },
+      {
+        "contactId": "cmwe8gqv200bn15kzdj8xqade",
+        "name": "คุณเอกชัย ตั้งใจ",
+        "docCount": 1,
+        "amount": 3450000
+      },
+      {
+        "contactId": "cmwe8gqfn00b215kzhbld6h0e",
+        "name": "บริษัท ทริปดีดี จำกัด",
+        "docCount": 1,
+        "amount": 3150000
+      },
+      {
+        "contactId": "cmwe8gqdc00az15kzfuvz75xe",
+        "name": "คุณวิชัย มั่นคง",
+        "docCount": 1,
+        "amount": 3120000
+      },
+      {
+        "contactId": "cmwe8gpkk009t15kzj3ffcyjl",
+        "name": "บริษัท เกาะพีพี แอดเวนเจอร์ จำกัด",
+        "docCount": 2,
+        "amount": 3030000
+      },
+      {
+        "contactId": "cmwe8gr2400bw15kzuymy8ce8",
+        "name": "บริษัท ลันตา ไดฟ์ จำกัด",
+        "docCount": 1,
+        "amount": 2950000
+      },
+      {
+        "contactId": "cmwe8gpcl009h15kzghyg6wcx",
+        "name": "คุณสมชาย ใจดี",
+        "docCount": 3,
+        "amount": 2900000
+      },
+      {
+        "contactId": "cmwe8gqqs00bh15kztb01b9ii",
+        "name": "คุณสุดารัตน์ พูนทรัพย์",
+        "docCount": 1,
+        "amount": 2880000
+      },
+      {
+        "contactId": "cmwe8gq6y00aq15kzbdbte5ir",
+        "name": "โรงแรมกมลาเบย์",
+        "docCount": 1,
+        "amount": 2800000
+      },
+      {
+        "contactId": "cmwe8gq0p00ah15kzirz0if9n",
+        "name": "คุณศิริพร ทองดี",
+        "docCount": 1,
+        "amount": 2550000
+      },
+      {
+        "contactId": "cmwe8gp1d009215kzej9ox0p8",
+        "name": "คุณณัฐพล รุ่งเรือง",
+        "docCount": 1,
+        "amount": 2490000
+      },
+      {
+        "contactId": "cmwe8gqor00be15kzbo24kbum",
+        "name": "โรงแรมในหานวิลล่า",
+        "docCount": 1,
+        "amount": 2450000
+      },
+      {
+        "contactId": "cmwe8gq9200at15kzgfycdq6p",
+        "name": "คุณจิราพร สุขสมบูรณ์",
+        "docCount": 1,
+        "amount": 2450000
+      },
+      {
+        "contactId": "cmwe8gqzn00bt15kz5ty6j21v",
+        "name": "คุณรัตนา แก้วใส",
+        "docCount": 1,
+        "amount": 2036000
+      },
+      {
+        "contactId": "cmwe8gpmj009w15kz7g8bmxyv",
+        "name": "คุณพิมพ์ชนก วัฒนสุข",
+        "docCount": 2,
+        "amount": 1920000
+      },
+      {
+        "contactId": "cmwe8gq4s00an15kzq0npfnv4",
+        "name": "คุณอนุชา รักษ์ทะเล",
+        "docCount": 1,
+        "amount": 1890000
+      },
+      {
+        "contactId": "cmwe8gpa7009e15kzjzisrg1g",
+        "name": "ห้างหุ้นส่วนจำกัด ป่าตองมารีน",
+        "docCount": 1,
+        "amount": 1800000
+      },
+      {
+        "contactId": "cmwe8gpsi00a515kzjk7pi067",
+        "name": "โรงแรมกะตะบีชรีสอร์ท",
+        "docCount": 1,
+        "amount": 1650000
+      },
+      {
+        "contactId": "cmwe8gqhp00b515kzetlqbini",
+        "name": "คุณนภัสสร อินทรีย์",
+        "docCount": 1,
+        "amount": 1560000
+      },
+      {
+        "contactId": "cmwe8gpqj00a215kzg7h1evr1",
+        "name": "คุณธนกร เจริญพร",
+        "docCount": 1,
+        "amount": 1250000
+      },
+      {
+        "contactId": "cmwe8gpuj00a815kzbjkdo5lz",
+        "name": "คุณเมธาวี บุญมาก",
+        "docCount": 1,
+        "amount": 890000
+      },
+      {
+        "contactId": "cmwe8gpil009q15kzhvgpgtji",
+        "name": "คุณกิตติพงษ์ แสงทอง",
+        "docCount": 1,
+        "amount": 750000
+      },
+      {
+        "contactId": "cmwe8gpen009k15kzt8zfe2ei",
+        "name": "คุณวราภรณ์ ศรีสุวรรณ",
+        "docCount": 1,
+        "amount": 480000
+      },
+      {
+        "contactId": null,
+        "name": "ไม่ระบุคู่ค้า",
+        "docCount": 1,
+        "amount": 285000
+      }
+    ],
+    "topVendors": [
+      {
+        "contactId": "cmwe8gred00c815kzmirlfno0",
+        "name": "บริษัท สยามแก๊ส อินดัสทรี จำกัด",
+        "docCount": 2,
+        "amount": 5900000
+      },
+      {
+        "contactId": "cmwe8grkr00ch15kzxwopo388",
+        "name": "บริษัท ภูเก็ตปิโตรเลียม จำกัด",
+        "docCount": 2,
+        "amount": 5675000
+      },
+      {
+        "contactId": "cmwe8grmt00ck15kzl8npfa5w",
+        "name": "บริษัท ครัวทะเลใต้ เคเทอริ่ง จำกัด",
+        "docCount": 2,
+        "amount": 4150000
+      },
+      {
+        "contactId": "cmwe8grim00ce15kz93hnrewc",
+        "name": "อู่ต่อเรือ ป่าตองมารีนเซอร์วิส",
+        "docCount": 2,
+        "amount": 4000000
+      },
+      {
+        "contactId": "cmwe8grgk00cb15kzeg1pempx",
+        "name": "บริษัท อควาเทค อุปกรณ์ดำน้ำ จำกัด",
+        "docCount": 1,
+        "amount": 3250000
+      },
+      {
+        "contactId": "cmwe8grr800cq15kz6ahad8wv",
+        "name": "บริษัท เซฟตี้เฟิร์ส อุปกรณ์นิรภัย จำกัด",
+        "docCount": 3,
+        "amount": 2870000
+      },
+      {
+        "contactId": "cmwe8grvr00cw15kzo63yay7f",
+        "name": "การไฟฟ้าส่วนภูมิภาค จ.ภูเก็ต",
+        "docCount": 1,
+        "amount": 2850000
+      },
+      {
+        "contactId": "cmwe8gsdd00dk15kzqdgoxm7x",
+        "name": "บริษัท ประกันภัยทะเลไทย จำกัด",
+        "docCount": 1,
+        "amount": 2400000
+      },
+      {
+        "contactId": "cmwe8gs0400d215kzp3iix32g",
+        "name": "บริษัท ขนส่งภูเก็ตเอ็กซ์เพรส จำกัด",
+        "docCount": 1,
+        "amount": 2100000
+      },
+      {
+        "contactId": "cmwe8gsfj00dn15kzjoamu5ro",
+        "name": "บริษัท ออกซิเจนพลัส จำกัด",
+        "docCount": 1,
+        "amount": 2000000
+      },
+      {
+        "contactId": "cmwe8grp600cn15kzzwr0n78u",
+        "name": "ห้างหุ้นส่วนจำกัด อันดามันซัพพลาย",
+        "docCount": 1,
+        "amount": 1850000
+      },
+      {
+        "contactId": "cmwe8gsbc00dh15kzmx5rsm6o",
+        "name": "คุณสมบัติ ช่างซ่อมเรือ",
+        "docCount": 1,
+        "amount": 856000
+      },
+      {
+        "contactId": "cmwe8gs7400db15kz5bp0hvmb",
+        "name": "สำนักงานบัญชี ภูเก็ตแอคเคาท์",
+        "docCount": 1,
+        "amount": 535000
+      },
+      {
+        "contactId": null,
+        "name": "ไม่ระบุคู่ค้า",
+        "docCount": 2,
+        "amount": 80000
+      }
+    ],
+    "topProducts": [
+      {
+        "productId": null,
+        "name": "แพ็กเกจดำน้ำแขกโรงแรม ไตรมาส 3",
+        "qty": 1,
+        "amount": 11635514
+      },
+      {
+        "productId": null,
+        "name": "ทริปสิมิลัน 3 วัน 2 คืน",
+        "qty": 4,
+        "amount": 8522056
+      },
+      {
+        "productId": null,
+        "name": "แพ็กเกจดำน้ำแขกโรงแรม ก.ย.",
+        "qty": 2,
+        "amount": 6962617
+      },
+      {
+        "productId": null,
+        "name": "บริการ WHT ทดสอบ (M40_8)",
+        "qty": 3,
+        "amount": 6000000
+      },
+      {
+        "productId": null,
+        "name": "แพ็กเกจกิจกรรมทางน้ำ",
+        "qty": 1,
+        "amount": 5887850
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำเกาะพีพี 2 วัน",
+        "qty": 2,
+        "amount": 5775701
+      },
+      {
+        "productId": null,
+        "name": "ค่าบริการนำเที่ยวดำน้ำ",
+        "qty": 2,
+        "amount": 5607477
+      },
+      {
+        "productId": null,
+        "name": "แพ็กเกจดำน้ำ 3 วัน 2 คืน",
+        "qty": 1,
+        "amount": 5233645
+      },
+      {
+        "productId": null,
+        "name": "อุปกรณ์ดำน้ำครบชุด",
+        "qty": 1,
+        "amount": 4439252
+      },
+      {
+        "productId": null,
+        "name": "คอร์ส Open Water Diver",
+        "qty": 2,
+        "amount": 4242991
+      },
+      {
+        "productId": null,
+        "name": "คอร์ส Advanced Open Water",
+        "qty": 2,
+        "amount": 4065421
+      },
+      {
+        "productId": null,
+        "name": "แพ็กเกจดำน้ำหมู่คณะ 12 ท่าน",
+        "qty": 1,
+        "amount": 3925234
+      },
+      {
+        "productId": null,
+        "name": "แพ็กเกจดำน้ำลึก",
+        "qty": 1,
+        "amount": 3831776
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำตื้นแขกโรงแรม",
+        "qty": 2,
+        "amount": 3831776
+      },
+      {
+        "productId": null,
+        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน (รายการเพิ่มเติม)",
+        "qty": 1,
+        "amount": 3738318
+      },
+      {
+        "productId": null,
+        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน",
+        "qty": 1,
+        "amount": 3738318
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำพระอาทิตย์ตก",
+        "qty": 1,
+        "amount": 3598131
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำหมู่เกาะสิมิลัน 3 วัน 2 คืน",
+        "qty": 1,
+        "amount": 3588785
+      },
+      {
+        "productId": null,
+        "name": "แพ็กเกจดำน้ำหมู่คณะ",
+        "qty": 1,
+        "amount": 3271028
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำแขกโรงแรม ส.ค.",
+        "qty": 1,
+        "amount": 3084112
+      },
+      {
+        "productId": null,
+        "name": "ค่าบริการไกด์ดำน้ำ",
+        "qty": 1,
+        "amount": 2943925
+      },
+      {
+        "productId": null,
+        "name": "ค่าเช่าอุปกรณ์ดำน้ำรายเดือน",
+        "qty": 1,
+        "amount": 2803738
+      },
+      {
+        "productId": null,
+        "name": "ค่าเช่าถังอากาศรายเดือน",
+        "qty": 1,
+        "amount": 2757009
+      },
+      {
+        "productId": null,
+        "name": "คอร์สดำน้ำและอุปกรณ์",
+        "qty": 1,
+        "amount": 2691589
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำแขกโรงแรม",
+        "qty": 1,
+        "amount": 2616822
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำเกาะพีพี",
+        "qty": 1,
+        "amount": 2289720
+      },
+      {
+        "productId": null,
+        "name": "อุปกรณ์ดำน้ำและอะไหล่",
+        "qty": 1,
+        "amount": 2242991
+      },
+      {
+        "productId": null,
+        "name": "ค่าอุปกรณ์ดำน้ำและถังอากาศ",
+        "qty": 1,
+        "amount": 2056075
+      },
+      {
+        "productId": null,
+        "name": "ค่าเช่าอุปกรณ์ดำน้ำ 3 วัน",
+        "qty": 1,
+        "amount": 1902804
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำเกาะราชา 1 วัน (2 ท่าน)",
+        "qty": 1,
+        "amount": 1850467
+      },
+      {
+        "productId": null,
+        "name": "เรกูเลเตอร์ Mares",
+        "qty": 1,
+        "amount": 1766355
+      },
+      {
+        "productId": null,
+        "name": "ค่าบริการไกด์ดำน้ำ ก.ย.",
+        "qty": 1,
+        "amount": 1654206
+      },
+      {
+        "productId": null,
+        "name": "เสื้อชูชีพ BCD Cressi",
+        "qty": 1,
+        "amount": 1457944
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำเกาะราชา หมู่คณะ",
+        "qty": 1,
+        "amount": 1261682
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำเกาะราชา หมู่คณะ (รายการเพิ่มเติม)",
+        "qty": 1,
+        "amount": 1261682
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำเกาะราชา",
+        "qty": 1,
+        "amount": 1168224
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำเกาะราชา 1 วัน",
+        "qty": 1,
+        "amount": 1168224
+      },
+      {
+        "productId": null,
+        "name": "คอร์สดำน้ำเบื้องต้น",
+        "qty": 1,
+        "amount": 911215
+      },
+      {
+        "productId": null,
+        "name": "ค่าเช่าอุปกรณ์และถังอากาศ",
+        "qty": 1,
+        "amount": 831776
+      },
+      {
+        "productId": "cmwe8gmzs003n15kzyn0csery",
+        "name": "ถังอากาศ 12 ลิตร",
+        "qty": 1,
+        "amount": 780000
+      },
+      {
+        "productId": null,
+        "name": "ค่าอุปกรณ์ดำน้ำ",
+        "qty": 1,
+        "amount": 700935
+      },
+      {
+        "productId": null,
+        "name": "ค่าบริการดำน้ำ (จ่ายผ่านลิงก์พร้อมเพย์)",
+        "qty": 1,
+        "amount": 700000
+      },
+      {
+        "productId": "cmwe8gmu0003f15kztg8m0tkp",
+        "name": "หน้ากากดำน้ำ Aqualung",
+        "qty": 2,
+        "amount": 570000
+      },
+      {
+        "productId": null,
+        "name": "ค่าเช่าอุปกรณ์ดำน้ำเพิ่มเติม (ครบกำหนดเดือนนี้)",
+        "qty": 1,
+        "amount": 467290
+      },
+      {
+        "productId": null,
+        "name": "ทริปดำน้ำตื้นเกาะเฮ",
+        "qty": 1,
+        "amount": 448598
+      },
+      {
+        "productId": null,
+        "name": "ค่าเช่าอุปกรณ์ดำน้ำ 1 วัน",
+        "qty": 1,
+        "amount": 299065
+      },
+      {
+        "productId": null,
+        "name": "ค่าธรรมเนียมทริปเสริม (ครบกำหนดเดือนนี้)",
+        "qty": 1,
+        "amount": 280374
+      },
+      {
+        "productId": null,
+        "name": "ค่าเช่าอุปกรณ์ดำน้ำ",
+        "qty": 2,
+        "amount": 240000
+      },
+      {
+        "productId": null,
+        "name": "เสื้อ SIAM DIVE",
+        "qty": 1,
+        "amount": 107103
+      }
+    ],
+    "topExpenseCategories": {
+      "total": 16353868,
+      "rows": [
+        {
+          "accountCode": "5000",
+          "name": "ซื้อสินค้า/ต้นทุนขาย",
+          "amount": 7476635
+        },
+        {
+          "accountCode": "6000",
+          "name": "เงินเดือนและค่าแรง",
+          "amount": 3028972
+        },
+        {
+          "accountCode": "6300",
+          "name": "ค่าการตลาดและโฆษณา",
+          "amount": 2313084
+        },
+        {
+          "accountCode": "6200",
+          "name": "ค่าสาธารณูปโภค (น้ำ/ไฟ/เน็ต)",
+          "amount": 1628411
+        },
+        {
+          "accountCode": "6100",
+          "name": "ค่าเช่า",
+          "amount": 1500000
+        },
+        {
+          "accountCode": "6900",
+          "name": "ค่าใช้จ่ายอื่น",
+          "amount": 574766
+        },
+        {
+          "accountCode": "5310",
+          "name": "กำไร/ขาดทุนจากการปรับมูลค่าสินค้า",
+          "amount": -168000
+        }
+      ]
+    },
+    "pending": {
+      "quotationAwaitingAccept": 0,
+      "poAwaitingApproval": 0,
+      "depositAwaitingDeduct": 1,
+      "needsReview": 1,
+      "purchaseTaxAwaiting": 0,
+      "recurringDraftsAwaiting": 0,
+      "total": 2
+    },
+    "recent": [
+      {
+        "id": "cmwe8gvkf01aj15kzxjo5tcyl",
+        "docNo": "IV-2026-09-0001",
+        "updatedAt": "2026-11-13T00:24:19.613Z"
+      },
+      {
+        "id": "cmwe8i73009mh15kzm9buzv5h",
+        "docNo": "IV-2026-09-0023",
+        "updatedAt": "2026-11-13T00:24:17.907Z"
+      },
+      {
+        "id": "cmwe8i67x09d215kzxy6ycoiz",
+        "docNo": "WHT-2026-09-0002",
+        "updatedAt": "2026-11-13T00:24:16.250Z"
+      },
+      {
+        "id": "cmwe8i5ss098e15kzwgz5x52u",
+        "docNo": "EX-2026-09-0007",
+        "updatedAt": "2026-11-13T00:24:15.937Z"
+      },
+      {
+        "id": "cmwe8i5aq093o15kzni5p3s5e",
+        "docNo": "EX-2026-09-0006",
+        "updatedAt": "2026-11-13T00:24:15.287Z"
+      },
+      {
+        "id": "cmwe8i5po098c15kz1012ir7t",
+        "docNo": "WHT-2026-09-0001",
+        "updatedAt": "2026-11-13T00:24:15.206Z"
+      },
+      {
+        "id": "cmwe8i4rs08yy15kzbiykgepu",
+        "docNo": "EX-2026-08-0004",
+        "updatedAt": "2026-11-13T00:24:14.606Z"
+      },
+      {
+        "id": "cmwe8i57l093m15kzfgsd7hux",
+        "docNo": "WHT-2026-08-0001",
+        "updatedAt": "2026-11-13T00:24:14.525Z"
+      }
+    ],
+    "calendar": {
+      "monthKey": "2026-09",
+      "tiles": {
+        "inflow": {
+          "count": 10,
+          "amount": 26220000
+        },
+        "outflow": {
+          "count": 6,
+          "amount": 5532000
+        },
+        "expectedIn": {
+          "count": 2,
+          "amount": 800000
+        },
+        "expectedOut": {
+          "count": 1,
+          "amount": 200000
+        },
+        "overdueReceivable": {
+          "count": 4,
+          "amount": 12840000
+        },
+        "overduePayable": {
+          "count": 2,
+          "amount": 7750000
+        }
+      },
+      "days": [
+        {
+          "date": "2026-09-01",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 2700000
+        },
+        {
+          "date": "2026-09-02",
+          "dir": "IN",
+          "count": 1,
+          "amount": 832000
+        },
+        {
+          "date": "2026-09-02",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 1560000
+        },
+        {
+          "date": "2026-09-03",
+          "dir": "IN",
+          "count": 1,
+          "amount": 520000
+        },
+        {
+          "date": "2026-09-03",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 2600000
+        },
+        {
+          "date": "2026-09-04",
+          "dir": "IN",
+          "count": 1,
+          "amount": 2100000
+        },
+        {
+          "date": "2026-09-07",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 2036000
+        },
+        {
+          "date": "2026-09-08",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 3950000
+        },
+        {
+          "date": "2026-09-12",
+          "dir": "IN",
+          "count": 2,
+          "amount": 2050000
+        },
+        {
+          "date": "2026-09-12",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 1000000
+        },
+        {
+          "date": "2026-09-15",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 2400000
+        },
+        {
+          "date": "2026-09-19",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 6225000
+        },
+        {
+          "date": "2026-09-20",
+          "dir": "IN",
+          "count": 1,
+          "amount": 30000
+        },
+        {
+          "date": "2026-09-23",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 3000000
+        },
+        {
+          "date": "2026-09-30",
+          "dir": "OUT",
+          "count": 1,
+          "amount": 749000
+        }
+      ],
+      "expectedDays": [
+        {
+          "date": "2026-09-30",
+          "dir": "IN",
+          "count": 1,
+          "amount": 200000
+        },
+        {
+          "date": "2026-09-30",
+          "dir": "OUT",
+          "count": 2,
+          "amount": 800000
+        }
+      ]
+    }
+  },
+  "overview": {
+    "_readme": "เฉลยของ WO 2.3 (ดูภาพรวมรายรับ/รายจ่าย §6) — SQL ดิบคนละสำนวนจาก dashboard.ts (monthlyStatusSeries/issuedByType/topTrackedContacts)",
+    "monthKey": "2026-09",
+    "revenue": {
+      "series": {
+        "months": [
+          {
+            "periodKey": "2026-01",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-02",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-03",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-04",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-05",
+            "paid": 10500000,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 3,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-06",
+            "paid": 14640000,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 7,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-07",
+            "paid": 20320000,
+            "awaiting": 0,
+            "overdue": 4200000,
+            "paidCount": 7,
+            "awaitingCount": 0,
+            "overdueCount": 1
+          },
+          {
+            "periodKey": "2026-08",
+            "paid": 29420000,
+            "awaiting": 0,
+            "overdue": 8640000,
+            "paidCount": 9,
+            "awaitingCount": 0,
+            "overdueCount": 3
+          },
+          {
+            "periodKey": "2026-09",
+            "paid": 17465000,
+            "awaiting": 45815000,
+            "overdue": 0,
+            "paidCount": 9,
+            "awaitingCount": 16,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-10",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-11",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-12",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          }
+        ],
+        "total": {
+          "paid": 92345000,
+          "awaiting": 45815000,
+          "overdue": 12840000,
+          "paidCount": 35,
+          "awaitingCount": 16,
+          "overdueCount": 4,
+          "grand": 151000000,
+          "grandCount": 55
+        }
+      },
+      "issuedThisMonth": {
+        "count": 23,
+        "amount": 61930000
+      },
+      "tracked": [
+        {
+          "contactId": "cmwe8goz9008z15kzfgn2tj57",
+          "name": "โรงเรียนสอนดำน้ำ บลูโอเชียน",
+          "outstanding": 8000000,
+          "count": 2
+        },
+        {
+          "contactId": "cmwe8gox6008w15kz2e6guflt",
+          "name": "โรงแรมสิมิลันวิว",
+          "outstanding": 6225000,
+          "count": 1
+        },
+        {
+          "contactId": "cmwe8gout008t15kzmc5u5wfy",
+          "name": "บริษัท อันดามัน ทราเวล จำกัด",
+          "outstanding": 5970000,
+          "count": 2
+        },
+        {
+          "contactId": "cmwe8gpwj00ab15kz4atbxo74",
+          "name": "ปิยธิดา อินสุ่ม",
+          "outstanding": 5820000,
+          "count": 2
+        },
+        {
+          "contactId": "cmwe8gp3h009515kzrfsrpn9v",
+          "name": "คุณอรทัย พงษ์ไพบูลย์",
+          "outstanding": 4600000,
+          "count": 2
+        }
+      ]
+    },
+    "expense": {
+      "series": {
+        "months": [
+          {
+            "periodKey": "2026-01",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-02",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-03",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-04",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-05",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-06",
+            "paid": 3200000,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 1,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-07",
+            "paid": 4800000,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 2,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-08",
+            "paid": 7570000,
+            "awaiting": 0,
+            "overdue": 7750000,
+            "paidCount": 4,
+            "awaitingCount": 0,
+            "overdueCount": 2
+          },
+          {
+            "periodKey": "2026-09",
+            "paid": 1471000,
+            "awaiting": 13725000,
+            "overdue": 0,
+            "paidCount": 4,
+            "awaitingCount": 8,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-10",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-11",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-12",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          }
+        ],
+        "total": {
+          "paid": 17041000,
+          "awaiting": 13725000,
+          "overdue": 7750000,
+          "paidCount": 11,
+          "awaitingCount": 8,
+          "overdueCount": 2,
+          "grand": 38516000,
+          "grandCount": 21
+        }
+      },
+      "issuedThisMonth": {
+        "count": 12,
+        "amount": 15196000
+      },
+      "tracked": [
+        {
+          "contactId": "cmwe8gred00c815kzmirlfno0",
+          "name": "บริษัท สยามแก๊ส อินดัสทรี จำกัด",
+          "outstanding": 5900000,
+          "count": 2
+        },
+        {
+          "contactId": "cmwe8grim00ce15kz93hnrewc",
+          "name": "อู่ต่อเรือ ป่าตองมารีนเซอร์วิส",
+          "outstanding": 4000000,
+          "count": 2
+        },
+        {
+          "contactId": "cmwe8grgk00cb15kzeg1pempx",
+          "name": "บริษัท อควาเทค อุปกรณ์ดำน้ำ จำกัด",
+          "outstanding": 3250000,
+          "count": 1
+        },
+        {
+          "contactId": "cmwe8grkr00ch15kzxwopo388",
+          "name": "บริษัท ภูเก็ตปิโตรเลียม จำกัด",
+          "outstanding": 2475000,
+          "count": 1
+        },
+        {
+          "contactId": "cmwe8grmt00ck15kzl8npfa5w",
+          "name": "บริษัท ครัวทะเลใต้ เคเทอริ่ง จำกัด",
+          "outstanding": 2200000,
+          "count": 1
+        }
+      ]
+    }
   }
 }
