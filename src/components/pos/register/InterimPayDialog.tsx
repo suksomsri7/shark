@@ -106,6 +106,8 @@ export type PayBreakdown = {
   couponDiscountSatang?: number;
   tierDiscountSatang?: number;
   memberLines?: { kind: string; discountSatang: number }[];
+  /** ACC T3b A3 ▸ บิลที่มีบรรทัดไม่ใช่มาตรฐาน: ยอดตามกลุ่ม (ไม่มี = มาตรฐานล้วน) — ไม่มียอดมาตรฐาน ⇒ ไม่แสดง "VAT 7% ฿0.00" ◂ */
+  vatGroups?: { standardSatang: number; zeroRatedSatang: number; exemptSatang: number; onBehalfSatang: number };
 };
 
 /** POS P1.12U มติ 7: ช่องวิธีชำระแถวที่ 2 — ปิดเสมอ (P2.9) · sub = บรรทัดรองตามภาพ */
@@ -1294,8 +1296,12 @@ export function PayDialog(p: Props) {
           .map((l) => tm(l.kind === "VOUCHER" ? "pay.bdVoucher" : "pay.bdPoints", { amount: moneyText(-l.discountSatang) })),
         b.serviceChargeSatang > 0 ? `${t("totals.serviceCharge")} ${moneyText(b.serviceChargeSatang)}` : null,
         tip > 0 ? `${t("totals.tip")} ${moneyText(tip)}` : null,
-        b.vatMode === "INCLUDED" ? t("pay.breakdownVat", { rate: ratePct(b.vatRateBp), amount: formatBaht(b.vatSatang, { decimals: true }) }) : null,
-        b.vatMode === "EXCLUDED" ? `${t("totals.vatExcluded", { rate: ratePct(b.vatRateBp) })} ${formatBaht(b.vatSatang, { decimals: true })}` : null,
+        // ACC T3b A3 ▸ กลุ่มอัตราแบบเดียวกับตะกร้า/ใบเสร็จ · ไม่มียอดมาตรฐาน = ไม่มีบรรทัด VAT ◂
+        b.vatGroups && b.vatGroups.zeroRatedSatang > 0 ? `${t("totals.zeroRated")} ${formatBaht(b.vatGroups.zeroRatedSatang, { decimals: true })}` : null,
+        b.vatGroups && b.vatGroups.exemptSatang > 0 ? `${t("totals.exempt")} ${formatBaht(b.vatGroups.exemptSatang, { decimals: true })}` : null,
+        b.vatGroups && b.vatGroups.onBehalfSatang > 0 ? `${t("totals.onBehalf")} ${formatBaht(b.vatGroups.onBehalfSatang, { decimals: true })}` : null,
+        b.vatGroups && b.vatGroups.standardSatang === 0 ? null : b.vatMode === "INCLUDED" ? t("pay.breakdownVat", { rate: ratePct(b.vatRateBp), amount: formatBaht(b.vatSatang, { decimals: true }) }) : null,
+        b.vatGroups && b.vatGroups.standardSatang === 0 ? null : b.vatMode === "EXCLUDED" ? `${t("totals.vatExcluded", { rate: ratePct(b.vatRateBp) })} ${formatBaht(b.vatSatang, { decimals: true })}` : null,
       ].filter((x): x is string => !!x)
     : [];
   const methodName = t(methodLabelKey(method));

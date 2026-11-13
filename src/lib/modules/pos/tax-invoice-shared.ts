@@ -198,16 +198,19 @@ export const BUYER_TAX_ID_MISSING = "BUYER_TAX_ID_MISSING" as const;
  *   stage "request" = ลูกค้าส่งคำขอ (แจ้งให้ทราบ · ไม่มีช่องติ๊กสำหรับลูกค้า) · "issue" = พนักงาน/REST ออกใบจริง (ต้องกดยืนยัน — ack:true)
  *   ทะเบียนกลางตั้ง ack:false (ฝั่งบัญชีใช้เป็นข้อมูลบนคำขอ) — ขั้นออกของ POS/โรงแรมยกเป็นต้องยืนยันที่นี่ที่เดียว (ค่าเริ่มต้นของระบบ · บันทึกใน wo-notes/T2.11)
  */
-export function buyerTaxIdWarnings(buyer: { taxId?: string | null } | null | undefined, stage: "request" | "issue"): LegalWarning[] {
+export function buyerTaxIdWarnings(buyer: { taxId?: string | null; kind?: string | null } | null | undefined, stage: "request" | "issue"): LegalWarning[] {
   if (!buyer || (typeof buyer.taxId === "string" && buyer.taxId.trim() !== "")) return [];
   const w = legalWarning(BUYER_TAX_ID_MISSING);
-  return [{ ...w, ack: stage === "issue" }];
+  // ACC T3b A1 (มติผู้คุม 14 พ.ย.) ▸ ต้องยืนยันเฉพาะผู้ซื้อที่เป็นกิจการ (แท็บนิติบุคคล) — ฉ.39 ข้อ 7 บังคับเลขเฉพาะผู้ซื้อที่จด VAT [V]
+  //   บุคคลธรรมดา = บรรทัดแจ้งให้ทราบ (ack:false) · ไม่มี kind (ข้อมูลเก่า) = ตามเลข: ไม่มีเลข ⇒ บุคคลธรรมดา (buyerKindFromTaxId) ◂
+  const kind = buyer.kind === "JURISTIC" || buyer.kind === "PERSON" ? buyer.kind : buyerKindFromTaxId(buyer.taxId ?? null);
+  return [{ ...w, ack: stage === "issue" && kind === "JURISTIC" }];
 }
 
 /** ขั้นออก: คำเตือนที่ยังไม่ได้ยืนยัน ([] = ผ่าน) */
-export function buyerTaxIdUnacked(buyer: { taxId?: string | null } | null | undefined, ackCodes: readonly string[] | null | undefined): LegalWarning[] {
+export function buyerTaxIdUnacked(buyer: { taxId?: string | null; kind?: string | null } | null | undefined, ackCodes: readonly string[] | null | undefined): LegalWarning[] {
   const acked = new Set(ackCodes ?? []);
-  return buyerTaxIdWarnings(buyer, "issue").filter((w) => !acked.has(w.code));
+  return buyerTaxIdWarnings(buyer, "issue").filter((w) => w.ack && !acked.has(w.code));
 }
 
 /** คำปฏิเสธมาตรฐานเมื่อยังไม่ยืนยัน (ไม่ throw · ยังไม่ได้เขียนอะไร) */

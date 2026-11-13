@@ -32,7 +32,9 @@ export default function CheckoutDialog({ reservationId, canManage, onPrepare, on
   // ACC T2.11 ▸ เลขผู้ซื้อว่างได้ — คำเตือน BUYER_TAX_ID_MISSING + ติ๊กรับทราบก่อนเช็กเอาต์ ◂
   const [ackCodes, setAckCodes] = useState([] as string[]);
   const noTaxId = wantInvoice && buyer.taxId.replace(/[\s-]/g, "") === "";
-  const ackMissing = noTaxId && !ackCodes.includes("BUYER_TAX_ID_MISSING");
+  // ACC T3b A1 ▸ ต้องติ๊กเฉพาะผู้ซื้อนิติบุคคล · บุคคลธรรมดา = แจ้งให้ทราบ ◂
+  const needAck = noTaxId && buyerTaxIdWarnings({ taxId: null, kind: buyer.kind }, "issue").some((w) => w.ack);
+  const ackMissing = needAck && !ackCodes.includes("BUYER_TAX_ID_MISSING");
 
   useEffect(() => {
     let live = true;
@@ -82,7 +84,7 @@ export default function CheckoutDialog({ reservationId, canManage, onPrepare, on
         securityDeposit: security,
         ...(security === "FORFEIT" ? { forfeitReason: forfeitReason.trim() } : {}),
         ...(wantInvoice ? { taxInvoice: { kind: buyer.kind, name: buyer.name, ...(noTaxId ? {} : { taxId: buyer.taxId }), branchCode: buyer.branchCode, address: buyer.address, ...(buyer.email ? { email: buyer.email } : {}) } } : {}),
-        ...(noTaxId ? { acknowledge: ackCodes } : {}), // ACC T2.11 ◂
+        ...(needAck ? { acknowledge: ackCodes } : {}), // ACC T2.11 ◂ · T3b A1 ▸ บุคคลธรรมดาไม่ต้องส่ง ◂
       });
       if (!r.ok) setError(r.reason || "เช็กเอาต์ไม่สำเร็จ");
       else setDone(r);
@@ -248,7 +250,7 @@ export default function CheckoutDialog({ reservationId, canManage, onPrepare, on
                 </label>
                 {noTaxId ? (
                   <div className="sm:col-span-2">
-                    <LegalWarnings testId="hotel-checkout-buyer-taxid" compact warnings={buyerTaxIdWarnings({ taxId: null }, "issue")} onAckChange={(c) => { setAckCodes(c); setError(""); }} />
+                    <LegalWarnings testId="hotel-checkout-buyer-taxid" compact warnings={buyerTaxIdWarnings({ taxId: null, kind: buyer.kind }, "issue")} onAckChange={(c) => { setAckCodes(c); setError(""); }} />
                   </div>
                 ) : null}
               </div>

@@ -157,7 +157,9 @@ export function TaxInvoiceDialog(p: Props) {
   const emailBad = email.trim().length > 0 && !/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(email.trim());
   // ACC T2.11 ▸ ว่าง = ไม่มีเลข (ต้องติ๊กรับทราบ) · มีค่า = ต้องถูกหลักตรวจ ◂
   const taxEmpty = taxId.length === 0;
-  const acked = ackCodes.includes(BUYER_TAX_ID_MISSING);
+  // ACC T3b A1 ▸ ต้องติ๊กเฉพาะแท็บนิติบุคคล · บุคคลธรรมดา = บรรทัดแจ้งเงียบ ๆ ไม่ต้องติ๊ก ◂
+  const needAck = buyerTaxIdWarnings({ taxId: null, kind }, "issue").some((w) => w.ack);
+  const acked = !needAck || ackCodes.includes(BUYER_TAX_ID_MISSING);
   const showNoTaxIdWarning = taxEmpty && (tried || nameLeft || addrLeft);
   const ready = (taxOk || (taxEmpty && acked)) && nameLeft && addrLeft && branchOk && !emailBad;
   const showDbd = kind === "JURISTIC" && !p.dbdOff;
@@ -247,7 +249,7 @@ export function TaxInvoiceDialog(p: Props) {
     setBusy(true);
     setErrKey(null);
     try {
-      const r = await p.onSave(out, !!p.memberId && remember, b.taxId ? [] : ackCodes);
+      const r = await p.onSave(out, !!p.memberId && remember, b.taxId || !needAck ? [] : ackCodes);
       if (r && r.errorKey) setErrKey(r.errorKey);
     } catch {
       setErrKey(taxInvoiceRefusalKey("INTERNAL"));
@@ -550,7 +552,7 @@ export function TaxInvoiceDialog(p: Props) {
               <LegalWarnings
                 testId="pos-taxinv-notaxid"
                 compact
-                warnings={buyerTaxIdWarnings({ taxId: null }, "issue")}
+                warnings={buyerTaxIdWarnings({ taxId: null, kind }, "issue")}
                 onAckChange={(codes) => {
                   setAckCodes(codes);
                   setErrKey(null);

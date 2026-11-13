@@ -1079,8 +1079,8 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       },
     });
     // ACC T2.11 ▸ รอยรับทราบ "ไม่มีเลขผู้ซื้อ" (ธุรกรรมเดียวกับบิล) ◂
-    if (input.taxInvoice && !input.taxInvoice.taxId && input.taxInvoiceLegalAck) {
-      await recordLegalAckInTx(tx, { tenantId: input.tenantId, ack: input.taxInvoiceLegalAck, op: "pos.sale.taxInvoice", targetType: "PosSale", targetId: sale.id, warnings: buyerTaxIdWarnings(input.taxInvoice, "issue") });
+    if (input.taxInvoice && !input.taxInvoice.taxId && input.taxInvoiceLegalAck && buyerTaxIdWarnings(input.taxInvoice, "issue").some((w) => w.ack)) {
+      await recordLegalAckInTx(tx, { tenantId: input.tenantId, ack: input.taxInvoiceLegalAck, op: "pos.sale.taxInvoice", targetType: "PosSale", targetId: sale.id, warnings: buyerTaxIdWarnings(input.taxInvoice, "issue").filter((w) => w.ack) });
     }
     // POS P3.6 ▸ มติ 2: อนุญาตเกินวงเงิน → audit pos.credit.override ใน tx ของบิล (id + สตางค์เท่านั้น · R14) ◂
     if (p36.override) {
