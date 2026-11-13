@@ -36,10 +36,15 @@ export default async function AccountLayout({
     // WO 9.4 — UndoToast ครอบทั้งต้นไม้ (provider ของ useUndoToast) ให้ทุกปุ่ม/แผงในหน้าเรียก toast "เลิกทำ" ได้
     <UndoToast base={base} systemId={id}>
       <div className="flex flex-col gap-4">
-        <AccountTabBar groups={groups} base={base} counts={counts} />
+        {/* ACC T1.1 ▸ แถบเมนูบัญชี + เบรดครัมบ์ ไม่ขึ้นบนกระดาษ (ทุกหน้าพิมพ์ของ /account) ◂ */}
+        <div className="contents print:hidden">
+          <AccountTabBar groups={groups} base={base} counts={counts} />
+        </div>
         {/* WO 3.4: provider ครอบทั้ง breadcrumb และเนื้อหา — หน้ารายละเอียดเติมชื่อแถวต่อท้าย breadcrumb ได้ */}
         <BreadcrumbTailProvider>
-          <AccountBreadcrumb groups={groups} base={base} />
+          <div className="contents print:hidden">
+            <AccountBreadcrumb groups={groups} base={base} />
+          </div>
           <div className="min-w-0">{children}</div>
         </BreadcrumbTailProvider>
         {/* ⌘K ใช้ได้ทุกหน้าในโมดูลบัญชี — ทางเข้ารอง: ปุ่ม "+ สร้างเอกสาร" เดิม (DashCreateMenu) */}

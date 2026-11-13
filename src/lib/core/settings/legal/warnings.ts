@@ -34,6 +34,9 @@ export const LEGAL_WARNING_CODES = [
   "ADJUST_NOTE_REASON_MISSING",
   "BUYER_TAX_ID_MISSING",
   "GIFTCARD_EXPIRY_BELOW_DEFAULT",
+  // ── หัวรายงานภาษี (T1.1 · ย้ายจากคำเตือนท้องถิ่น) ──
+  "TAX_REPORT_ORG_NAME_MISSING",
+  "TAX_REPORT_TAX_ID_MISSING",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -187,6 +190,24 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     tag: "U",
     checkedAt: "2026-11-12",
     ack: true,
+  },
+  TAX_REPORT_ORG_NAME_MISSING: {
+    code: "TAX_REPORT_ORG_NAME_MISSING",
+    titleTh: "หัวรายงานภาษีไม่มีชื่อผู้ประกอบการ",
+    messageTh: (p) => `ยังไม่ได้กรอกชื่อกิจการ — หัว${s(p, "report", "รายงานภาษี")}ต้องมีชื่อผู้ประกอบการ · กรอกได้ที่ ตั้งค่า › ข้อมูลกิจการ`,
+    citation: "ประมวลรัษฎากร ม.87 · ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 89 (หัวรายงาน: เดือนภาษี ชื่อ เลขประจำตัวผู้เสียภาษี สำนักงานใหญ่/สาขา) · references/common-vat-invoice.md §18",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  TAX_REPORT_TAX_ID_MISSING: {
+    code: "TAX_REPORT_TAX_ID_MISSING",
+    titleTh: "หัวรายงานภาษีไม่มีเลขประจำตัวผู้เสียภาษี",
+    messageTh: (p) => `เลขประจำตัวผู้เสียภาษีของกิจการยังไม่ครบ 13 หลัก — หัว${s(p, "report", "รายงานภาษี")}ต้องมีเลขนี้ · กรอกได้ที่ ตั้งค่า › ข้อมูลกิจการ`,
+    citation: "ประมวลรัษฎากร ม.87 · ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 89 (หัวรายงาน: เดือนภาษี ชื่อ เลขประจำตัวผู้เสียภาษี สำนักงานใหญ่/สาขา) · references/common-vat-invoice.md §18",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
   },
 };
 

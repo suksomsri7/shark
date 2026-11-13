@@ -137,8 +137,10 @@ export function AppShell({
     return () => window.removeEventListener("app:drawer-open", onOpen);
   }, [refreshBadges]);
 
+  // ACC T1.1 ▸ โครงแอป (แถบบน · เมนู · ราง · ผู้ช่วย AI · แผ่นแจ้งปัญหา) ไม่ขึ้นบนกระดาษ — ต้นเหตุร่วมของ "เมนูแอปติดมาบนใบพิมพ์"
+  //   ทุกหน้า /app (หน้าพิมพ์เอกสาร/รายงาน/50 ทวิ ใช้ window.print บนหน้าเดียวกับแอป) · กล่องห่อไม่มีสไตล์อื่น — ลูก fixed วางตำแหน่งเหมือนเดิม ◂
   return (
-    <>
+    <div className="contents print:hidden" data-qc="app-chrome">
       <Topbar
         branding={branding}
         aiUnread={aiUnread}
@@ -228,6 +230,6 @@ export function AppShell({
       {issueOpen && <IssueReportSheet onClose={() => setIssueOpen(false)} />}
       {/* แผงผู้ช่วย AI — เปิดจาก orb บนแถบบนผ่าน event `app:ai-open` (ไม่มีปุ่มลอยมุมล่างขวาแล้ว) */}
       {!inApp && <AiDock />}
-    </>
+    </div>
   );
 }

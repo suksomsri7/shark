@@ -55,7 +55,7 @@ export function AppMain({
   // 🔴 เขียนคลาสแยกเป็นชุดเต็ม ๆ โดยตั้งใจ — ไม่ผสม `px-*` กับ `pl-*` ในเบรกพอยต์เดียวกัน
   //    (ลำดับที่ Tailwind สร้างให้เป็นตัวตัดสิน ไม่ใช่ลำดับตัวอักษรในสตริง = อ่านแล้วเดาผิดง่าย)
   if (boardFullscreen) {
-    return <main className={`px-0 pb-0 pt-14 ${inApp ? "" : "lg:pl-14"}`}>{children}</main>;
+    return <main className={`px-0 pb-0 pt-14 print:p-0 ${inApp ? "" : "lg:pl-14"}`}>{children}</main>;
   }
   const pad = chatFullscreen
     ? `px-0 pb-2 pt-2 sm:px-6 lg:pr-6 lg:pt-[calc(3.5rem+1rem)] ${
@@ -63,5 +63,6 @@ export function AppMain({
         inApp ? "lg:pb-2 lg:pl-6" : `lg:pb-2 ${leftPad}`
       }`
     : `px-4 pb-10 pt-[calc(3.5rem+1rem)] sm:px-6 ${leftPad}`;
-  return <main className={pad}>{children}</main>;
+  // ACC T1.1 ▸ ตอนพิมพ์ไม่เว้นที่ให้แถบบน/เมนู (ซ่อนแล้วใน AppShell) ◂
+  return <main className={`${pad} print:p-0`}>{children}</main>;
 }

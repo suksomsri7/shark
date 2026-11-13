@@ -672,7 +672,7 @@ export async function pp30Csv(
   row(["สถานประกอบการ", st.header.branchLabel, "รหัสสาขา", st.header.branchCode]);
   row(["เดือนภาษี", st.header.monthLabel, "งวด", st.periodKey]);
   row(["ใบกำกับภาษีอย่างย่อ", SALES_TAX_ABB_MODE_LABEL_TH[st.abbMode]]);
-  for (const w of st.header.warnings) row(["คำเตือน", w]);
+  for (const w of st.header.warnings) row(["คำเตือน", w.messageTh, w.citation ?? ""]);
   lines.push("");
   row(["ลำดับ", "วันที่", "เลขที่", "ถึงเลขที่", "จำนวนใบ", "ชื่อผู้ซื้อ", "เลขผู้เสียภาษีผู้ซื้อ", "สาขาผู้ซื้อ", "อัตรา", "มูลค่า(บาท)", "ภาษี(บาท)", "หมายเหตุ"]);
   for (const g of st.groups) {

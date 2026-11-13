@@ -1674,7 +1674,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/issue" \

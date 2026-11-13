@@ -10,6 +10,7 @@ import {
 import { saveSalesTaxAbbModeAction } from "@/lib/modules/account/sales-tax-actions";
 import { editorDetailPath } from "@/lib/modules/account/doc-editor-config";
 import { AccountIcon } from "@/components/account-v2/AccountIcon";
+import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
 import Link from "next/link";
 import type { AccountDocType } from "@prisma/client";
 import { MoneyText } from "@/components/ui/MoneyText";
@@ -85,12 +86,11 @@ function SalesTaxHeaderBox({ st }: { st: SalesTaxReport }) {
         <div><dt className="inline text-[color:var(--color-muted)]">สถานประกอบการ </dt><dd className="inline" data-testid="salestax-branch">{h.branchLabel}</dd></div>
         <div><dt className="inline text-[color:var(--color-muted)]">เดือนภาษี </dt><dd className="inline" data-testid="salestax-month">{h.monthLabel}</dd></div>
       </dl>
-      {h.warnings.map((w) => (
-        <p key={w} className="mt-1 flex items-start gap-1 text-[color:var(--color-danger)]" data-testid="salestax-header-warn">
-          <AccountIcon name="warn" className="mt-0.5 h-4 w-4 shrink-0" />
-          {w}
-        </p>
-      ))}
+      {h.warnings.length > 0 && (
+        <div className="mt-2">
+          <LegalWarnings warnings={h.warnings} testId="salestax-header-warn" compact />
+        </div>
+      )}
     </section>
   );
 }
