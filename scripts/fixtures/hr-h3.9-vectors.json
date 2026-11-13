@@ -1,0 +1,282 @@
+{
+  "_meta": {
+    "wo": "H3.9",
+    "note": "Hand-derived contract + goldens (ledger/wo-notes/hr-H3.9-oracle.md §3 shows every sum). Never regenerate from the code under test. Column tuple = [key, class P|$|I, sum, th, en]. Golden rows = export cells (th), money = baht 2 dp, minutes = integers, leave days = one decimal, dates = ISO CE.",
+    "fixture": "employees e1 A01 (u1) · e2 A02 (u1) · e5 A03 (u1, ended 2031-09-30) · e3 B01 (u2) · e4 no code (no branch). Runs: R9 2031-09 APPROVED v1 · R10 2031-10 PAID v2-shaped (payDate 2031-10-31T20:00Z = 2031-11-01 BKK) · R8 2031-08 REVERSED · R11 2031-11 DRAFT · R12 2030-12 APPROVED v1"
+  },
+  "reportIds": ["time", "leave", "ot", "payroll-month", "payroll-year", "tax-month", "tax-year", "wages", "register"],
+  "limits": { "employees": 2000 },
+  "catalog": {
+    "time": { "period": "month", "totals": true, "thaiOnly": false, "columns": [
+      ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
+      ["slots", "P", true, "กะที่มี", "Shifts"], ["workedDays", "P", true, "วันที่มาทำงาน", "Days worked"],
+      ["lateCount", "P", true, "สาย (ครั้ง)", "Late (times)"], ["lateMin", "P", true, "สาย (นาที)", "Late (min)"],
+      ["earlyOutCount", "P", true, "ออกก่อน (ครั้ง)", "Early out (times)"], ["earlyOutMin", "P", true, "ออกก่อน (นาที)", "Early out (min)"],
+      ["absentDays", "P", true, "ขาด (วัน)", "Absent (days)"], ["absentMin", "P", true, "ขาด (นาที)", "Absent (min)"],
+      ["leaveDays", "P", true, "ลา (วัน)", "Leave (days)"], ["workedMin", "P", true, "เวลาทำงาน (นาที)", "Worked (min)"],
+      ["measuredOtMin", "P", true, "เกินเวลาที่วัดได้ (นาที)", "Measured overtime (min)"],
+      ["missingOut", "P", true, "ไม่ได้ลงเวลาออก", "Missing clock-out"], ["corrections", "P", true, "แก้เวลาที่อนุมัติ", "Approved corrections"]
+    ] },
+    "leave": { "period": "year", "totals": false, "thaiOnly": false, "columns": [
+      ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
+      ["policy", "P", false, "นโยบายลา", "Leave policy"], ["category", "P", false, "ประเภท", "Category"], ["unlimited", "P", false, "ไม่จำกัด", "Unlimited"],
+      ["granted", "P", false, "ได้รับ", "Granted"], ["carried", "P", false, "ยกมา", "Carried"], ["used", "P", false, "ใช้ไป", "Used"],
+      ["adjusted", "P", false, "ปรับ", "Adjusted"], ["expired", "P", false, "หมดอายุ", "Expired"], ["balance", "P", false, "คงเหลือ", "Balance"],
+      ["pending", "P", false, "รออนุมัติ", "Pending"]
+    ] },
+    "ot": { "period": "month", "totals": true, "thaiOnly": false, "columns": [
+      ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
+      ["pending", "P", true, "รออนุมัติ", "Pending"], ["approved", "P", true, "อนุมัติ", "Approved"], ["rejected", "P", true, "ปฏิเสธ", "Rejected"],
+      ["approvedMin", "P", true, "นาทีที่อนุมัติ", "Approved (min)"], ["otWorkdayMin", "P", true, "OT วันทำงาน (นาที)", "Workday OT (min)"],
+      ["holidayWorkMin", "P", true, "ทำงานวันหยุด (นาที)", "Holiday work (min)"], ["otHolidayMin", "P", true, "OT วันหยุด (นาที)", "Holiday OT (min)"], ["keptHolidayWorkMin", "P", true, "ทำงานวันหยุดที่คงจ่าย (นาที)", "Kept holiday work (min)"],
+      ["otWorkdayAmt", "$", true, "OT วันทำงาน (บาท)", "Workday OT (THB)"], ["holidayWorkAmt", "$", true, "ทำงานวันหยุด (บาท)", "Holiday work (THB)"],
+      ["otHolidayAmt", "$", true, "OT วันหยุด (บาท)", "Holiday OT (THB)"], ["keptHolidayWorkAmt", "$", true, "ทำงานวันหยุดที่คงจ่าย (บาท)", "Kept holiday work (THB)"], ["amount", "$", true, "รวม (บาท)", "Total (THB)"]
+    ] },
+    "payroll-month": { "period": "month", "totals": true, "thaiOnly": false, "columns": [
+      ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
+      ["status", "P", false, "สถานะรอบ", "Run status"], ["engine", "P", false, "รุ่นเครื่องคิด", "Engine"],
+      ["gross", "$", true, "ยอดก่อนหัก", "Gross"], ["add", "$", true, "รายการเพิ่ม", "Additions"], ["deduct", "$", true, "รายการหัก", "Deductions"],
+      ["ssoEmployee", "$", true, "ประกันสังคม (ลูกจ้าง)", "SSO (employee)"], ["ssoEmployer", "$", true, "ประกันสังคม (นายจ้าง)", "SSO (employer)"],
+      ["wht", "$", true, "ภาษีหัก ณ ที่จ่าย", "Withholding tax"], ["net", "$", true, "สุทธิ", "Net pay"]
+    ] },
+    "payroll-year": { "period": "year", "totals": true, "thaiOnly": false, "columns": [
+      ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
+      ["runs", "P", true, "จำนวนรอบ", "Runs"],
+      ["gross", "$", true, "ยอดก่อนหัก", "Gross"], ["add", "$", true, "รายการเพิ่ม", "Additions"], ["deduct", "$", true, "รายการหัก", "Deductions"],
+      ["ssoEmployee", "$", true, "ประกันสังคม (ลูกจ้าง)", "SSO (employee)"], ["ssoEmployer", "$", true, "ประกันสังคม (นายจ้าง)", "SSO (employer)"],
+      ["wht", "$", true, "ภาษีหัก ณ ที่จ่าย", "Withholding tax"], ["net", "$", true, "สุทธิ", "Net pay"]
+    ] },
+    "tax-month": { "period": "month", "totals": true, "thaiOnly": false, "columns": [
+      ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
+      ["citizenId", "I", false, "เลขประจำตัวประชาชน", "National ID"],
+      ["income", "$", true, "เงินได้ 40(1)", "Income 40(1)"], ["wht", "$", true, "ภาษีหัก ณ ที่จ่าย", "Withholding tax"],
+      ["ssoBase", "$", true, "ฐานประกันสังคม", "SSO wage base"],
+      ["ssoEmployee", "$", true, "ประกันสังคม (ลูกจ้าง)", "SSO (employee)"], ["ssoEmployer", "$", true, "ประกันสังคม (นายจ้าง)", "SSO (employer)"]
+    ] },
+    "tax-year": { "period": "year", "totals": true, "thaiOnly": false, "columns": [
+      ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
+      ["citizenId", "I", false, "เลขประจำตัวประชาชน", "National ID"], ["months", "P", true, "จำนวนเดือน", "Months"],
+      ["income", "$", true, "เงินได้ 40(1)", "Income 40(1)"], ["wht", "$", true, "ภาษีหัก ณ ที่จ่าย", "Withholding tax"],
+      ["ssoEmployee", "$", true, "ประกันสังคม (ลูกจ้าง)", "SSO (employee)"], ["ssoEmployer", "$", true, "ประกันสังคม (นายจ้าง)", "SSO (employer)"]
+    ] },
+    "wages": { "period": "month", "totals": true, "thaiOnly": false, "columns": [
+      ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
+      ["payType", "P", false, "รูปแบบค่าจ้าง", "Pay type"], ["rate", "$", false, "อัตราค่าจ้าง", "Wage rate"],
+      ["workedDays", "P", true, "วันที่มาทำงาน", "Days worked"], ["workedMin", "P", true, "เวลาทำงาน (นาที)", "Worked (min)"],
+      ["wage", "$", true, "ค่าจ้าง", "Wage"], ["ot", "$", true, "ค่าล่วงเวลา", "Overtime pay"], ["holidayWork", "$", true, "ค่าทำงานในวันหยุด", "Holiday work pay"],
+      ["add", "$", true, "รายการเพิ่ม", "Additions"], ["deduct", "$", true, "รายการหัก", "Deductions"],
+      ["gross", "$", true, "ยอดก่อนหัก", "Gross"], ["net", "$", true, "สุทธิ", "Net pay"], ["payDate", "P", false, "วันจ่าย", "Pay date"]
+    ] },
+    "register": { "period": "day", "totals": false, "thaiOnly": true, "columns": [
+      ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อตัวและชื่อสกุล", "First and last name"], ["gender", "P", false, "เพศ", "Sex"],
+      ["nationality", "P", false, "สัญชาติ", "Nationality"], ["birthDate", "P", false, "วันเดือนปีเกิด", "Date of birth"], ["age", "P", false, "อายุ", "Age"],
+      ["address", "P", false, "ที่อยู่ปัจจุบัน", "Current address"], ["startDate", "P", false, "วันที่เริ่มจ้าง", "Start date"],
+      ["position", "P", false, "ตำแหน่งหรืองานในหน้าที่", "Position or duty"], ["payType", "P", false, "รูปแบบค่าจ้าง", "Pay type"],
+      ["rate", "$", false, "อัตราค่าจ้าง", "Wage rate"], ["otherBenefits", "$", false, "ประโยชน์ตอบแทนอย่างอื่น", "Other benefits"],
+      ["endDate", "P", false, "วันสิ้นสุดการจ้าง", "End of employment"], ["status", "P", false, "สถานะการจ้าง", "Employment status"],
+      ["citizenId", "I", false, "เลขประจำตัวประชาชน", "National ID"]
+    ] }
+  },
+  "registerStatutory": ["gender", "nationality", "birthDate", "address", "startDate", "position", "rate"],
+  "labels": {
+    "gender": { "MALE": "ชาย", "FEMALE": "หญิง", "OTHER": "อื่น ๆ" },
+    "payType": { "MONTHLY": "รายเดือน", "DAILY": "รายวัน", "HOURLY": "รายชั่วโมง" },
+    "status": { "PROBATION": "ทดลองงาน", "ACTIVE": "ทำงาน", "ENDED": "สิ้นสุด" }
+  },
+  "wageCodesV2": ["BASE", "PRORATION", "DAY_WAGE", "HOUR_WAGE", "HOLIDAY_PAY", "UNPAID_LEAVE", "UNPAID_CAP", "LATE_RULE", "ABSENT_RULE"],
+  "pure": {
+    "mask": [["1101700203451", "•••3451"], ["3-1006-01234-56-7", "•••4567"], ["123", ""], [null, ""], ["  1234 ", "•••1234"], ["abcd", ""], ["", ""]],
+    "baht": [[0, "0.00"], [1, "0.01"], [100, "1.00"], [1234567, "12345.67"], [-150, "-1.50"], [-5, "-0.05"], [2147483647, "21474836.47"]],
+    "tenths": [[0, "0.0"], [15, "1.5"], [-5, "-0.5"], [100, "10.0"]],
+    "age": [["1990-02-28", "2031-10-31", 41], ["2000-10-31", "2031-10-31", 31], ["1985-12-01", "2031-10-31", 45], ["2000-02-29", "2031-02-28", 30], ["2000-02-29", "2031-03-01", 31], ["2000-02-29", "2032-02-29", 32], ["2031-11-01", "2031-10-31", null], [null, "2031-10-31", null]],
+    "absentMin": [
+      [{ "startMin": 420, "endMin": 900, "crossesMidnight": false, "leaveFraction": null }, 480],
+      [{ "startMin": 420, "endMin": 900, "crossesMidnight": false, "leaveFraction": "0.5" }, 240],
+      [{ "startMin": 1320, "endMin": 360, "crossesMidnight": true, "leaveFraction": null }, 480],
+      [{ "startMin": null, "endMin": 900, "crossesMidnight": false, "leaveFraction": null }, 0],
+      [{ "startMin": 600, "endMin": 900, "crossesMidnight": false, "leaveFraction": 1 }, 0],
+      [{ "startMin": 0, "endMin": 1, "crossesMidnight": false, "leaveFraction": 0.5 }, 0],
+      [{ "startMin": 0, "endMin": 3, "crossesMidnight": null, "leaveFraction": "0.5" }, 1]
+    ],
+    "whtIncome": [
+      [{ "engineVersion": 1, "addSatang": 18750, "snapshot": { "baseSalarySatang": 1500000 } }, 1518750],
+      [{ "engineVersion": 2, "addSatang": 68750, "snapshot": { "whtIncomeSatang": 1566750 } }, 1566750],
+      [{ "engineVersion": 2, "addSatang": 5, "snapshot": {} }, 0],
+      [{ "engineVersion": 1, "addSatang": 0, "snapshot": {} }, 0],
+      [{ "engineVersion": 1, "addSatang": 100, "snapshot": { "baseSalarySatang": -500 } }, 0],
+      [{ "engineVersion": 3, "addSatang": 0, "snapshot": { "whtIncomeSatang": 10 } }, 10],
+      [{ "engineVersion": 2, "addSatang": 0, "snapshot": { "whtIncomeSatang": "999" } }, 0]
+    ],
+    "address": [
+      [["12/3 ถ.สุขุมวิท", "คลองเตย", "คลองเตย", "กรุงเทพมหานคร", "10110"], "12/3 ถ.สุขุมวิท คลองเตย คลองเตย กรุงเทพมหานคร 10110"],
+      [[null, " ", "", "เชียงใหม่", null], "เชียงใหม่"],
+      [[" a  b ", null, null, null, null], "a  b"],
+      [[null, null, null, null, null], ""]
+    ],
+    "wageParts": [
+      [{ "engineVersion": 1, "snapshot": { "baseSalarySatang": 1500000, "adjustments": [{ "kind": "OT", "amountSatang": 18750 }, { "kind": "BONUS", "amountSatang": 5000 }, { "kind": "OT", "amountSatang": 250 }] } },
+        { "payType": "MONTHLY", "rateSatang": 1500000, "wageSatang": 1500000, "otSatang": 19000, "holidayWorkSatang": 0 }],
+      [{ "engineVersion": 2, "snapshot": { "payType": "MONTHLY", "lines": [
+          { "code": "BASE", "amountSatang": 1500000 }, { "code": "HOLIDAY_WORK", "amountSatang": 31250 }, { "code": "UNPAID_LEAVE", "amountSatang": -31250 },
+          { "code": "OT", "amountSatang": 68750 }, { "code": "LATE_RULE", "amountSatang": -2000 }, { "code": "ADVANCE", "amountSatang": -1000 } ] } },
+        { "payType": "MONTHLY", "rateSatang": 1500000, "wageSatang": 1466750, "otSatang": 68750, "holidayWorkSatang": 31250 }],
+      [{ "engineVersion": 2, "snapshot": { "payType": "HOURLY", "lines": [{ "code": "HOUR_WAGE", "amountSatang": 840000 }, { "code": "HOLIDAY_PAY", "amountSatang": 48000 }] } },
+        { "payType": "HOURLY", "rateSatang": null, "wageSatang": 888000, "otSatang": 0, "holidayWorkSatang": 0 }],
+      [{ "engineVersion": 1, "snapshot": {} }, { "payType": "MONTHLY", "rateSatang": null, "wageSatang": 0, "otSatang": 0, "holidayWorkSatang": 0 }]
+    ],
+    "period": [
+      ["time", "2031-10", true], ["time", "2031-13", false], ["time", "2031", false], ["time", "1999-12", false], ["time", "2601-01", false],
+      ["leave", "2031", true], ["leave", "2031-01", false], ["payroll-year", "2600", true], ["tax-year", "1999", false],
+      ["register", "2031-10-31", true], ["register", "2031-02-30", false], ["register", "2031-10", false], ["nope", "2031-10", false], ["time", null, false]
+    ],
+    "exportProblem": [
+      { "rows": [["A01", "QC ดี", "15000.00", "-1.50", "2031-10-01"]], "names": ["QC ดี"], "want": null },
+      { "rows": [["A01", "=cmd", "1"], ["A02", "ok", "2"], ["A03", "@x", "3"]], "names": ["คน 1", "คน 2", "คน 3"], "want": { "code": "FORMULA", "names": ["คน 1", "คน 3"] } },
+      { "rows": [["A01", " \t-1+2", "1"]], "names": ["คน 1"], "want": { "code": "FORMULA", "names": ["คน 1"] } },
+      { "rows": [["A01", "ok\u0007", "1"], ["A02", "+x", "2"]], "names": ["คน 1", "คน 2"], "want": { "code": "ENCODING", "names": ["คน 1"] } },
+      { "rows": [["-", "1"]], "names": ["คน 1"], "want": { "code": "FORMULA", "names": ["คน 1"] } },
+      { "rows": [["3-1006-01234-56-7", "-0.05"]], "names": ["คน 1"], "want": null }
+    ]
+  },
+  "columnsFor": {
+    "note": "keys for access {money, fullId} — fullId only changes values, never the key list",
+    "ot:noMoney": ["code", "name", "unit", "pending", "approved", "rejected", "approvedMin", "otWorkdayMin", "holidayWorkMin", "otHolidayMin", "keptHolidayWorkMin"],
+    "time:noMoney": ["code", "name", "unit", "slots", "workedDays", "lateCount", "lateMin", "earlyOutCount", "earlyOutMin", "absentDays", "absentMin", "leaveDays", "workedMin", "measuredOtMin", "missingOut", "corrections"],
+    "leave:noMoney": ["code", "name", "unit", "policy", "category", "unlimited", "granted", "carried", "used", "adjusted", "expired", "balance", "pending"]
+  },
+  "golden": {
+    "time|2031-10|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "7", "4", "2", "17", "1", "30", "1", "240", "1.5", "2048", "25", "1", "1"],
+        ["A02", "QC39 บี สอง", "QC39 สาขาเหนือ", "2", "1", "0", "0", "0", "0", "1", "480", "0.0", "480", "0", "0", "0"],
+        ["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "1", "1", "0", "0", "0", "0", "0", "0", "0.0", "300", "10", "0", "0"],
+        ["", "QC39 ดี สี่", "", "1", "1", "1", "60", "0", "0", "0", "0", "0.0", "420", "0", "0", "0"]
+      ],
+      "totals": ["รวม", "", "", "11", "7", "3", "77", "1", "30", "2", "720", "1.5", "3248", "35", "1", "1"]
+    },
+    "time|2031-10|branch": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "7", "4", "2", "17", "1", "30", "1", "240", "1.5", "2048", "25", "1", "1"],
+        ["A02", "QC39 บี สอง", "QC39 สาขาเหนือ", "2", "1", "0", "0", "0", "0", "1", "480", "0.0", "480", "0", "0", "0"]
+      ],
+      "totals": ["รวม", "", "", "9", "5", "2", "17", "1", "30", "2", "720", "1.5", "2528", "25", "1", "1"]
+    },
+    "time|2031-10|u2": {
+      "rows": [["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "1", "1", "0", "0", "0", "0", "0", "0", "0.0", "300", "10", "0", "0"]],
+      "totals": ["รวม", "", "", "1", "1", "0", "0", "0", "0", "0", "0", "0.0", "300", "10", "0", "0"]
+    },
+    "leave|2031|e1P1": { "row": ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "QC39 พักร้อน", "VACATION", "", "6.0", "0.0", "1.5", "0.0", "0.0", "4.5", "0.0"] },
+    "ot|2031-10|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "1", "3", "1", "450", "120", "180", "60", "120", "187.50", "250.00", "250.00", "150.00", "687.50"],
+        ["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "0", "1", "0", "60", "60", "0", "0", "0", "93.75", "0.00", "0.00", "0.00", "93.75"]
+      ],
+      "totals": ["รวม", "", "", "1", "4", "1", "510", "180", "180", "60", "120", "281.25", "250.00", "250.00", "150.00", "781.25"]
+    },
+    "ot|2031-10|managerBranch": {
+      "rows": [["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "1", "3", "1", "450", "120", "180", "60", "120"]],
+      "totals": ["รวม", "", "", "1", "3", "1", "450", "120", "180", "60", "120"]
+    },
+    "payroll-month|2031-10|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "PAID", "2", "15667.50", "687.50", "20.00", "749.00", "749.00", "123.45", "14795.05"],
+        ["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "PAID", "2", "10000.00", "0.00", "0.00", "500.00", "500.00", "0.00", "9500.00"],
+        ["", "QC39 ดี สี่", "", "PAID", "2", "8400.00", "0.00", "0.00", "420.00", "420.00", "0.00", "7980.00"]
+      ],
+      "totals": ["รวม", "", "", "", "", "34067.50", "687.50", "20.00", "1669.00", "1669.00", "123.45", "32275.05"]
+    },
+    "payroll-month|2031-10|branch": {
+      "rows": [["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "PAID", "2", "15667.50", "687.50", "20.00", "749.00", "749.00", "123.45", "14795.05"]],
+      "totals": ["รวม", "", "", "", "", "15667.50", "687.50", "20.00", "749.00", "749.00", "123.45", "14795.05"]
+    },
+    "payroll-month|2031-09|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "APPROVED", "1", "15187.50", "187.50", "0.00", "750.00", "750.00", "100.00", "14337.50"],
+        ["A03", "QC39 อี ห้า", "QC39 สาขาเหนือ", "APPROVED", "1", "11500.00", "0.00", "500.00", "600.00", "600.00", "0.00", "10900.00"]
+      ],
+      "totals": ["รวม", "", "", "", "", "26687.50", "187.50", "500.00", "1350.00", "1350.00", "100.00", "25237.50"]
+    },
+    "payroll-month|2031-08|owner": { "rows": [], "totals": ["รวม", "", "", "", "", "0.00", "0.00", "0.00", "0.00", "0.00", "0.00", "0.00"] },
+    "payroll-month|2031-11|owner": { "rows": [], "totals": ["รวม", "", "", "", "", "0.00", "0.00", "0.00", "0.00", "0.00", "0.00", "0.00"] },
+    "payroll-year|2031|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "2", "30855.00", "875.00", "20.00", "1499.00", "1499.00", "223.45", "29132.55"],
+        ["A03", "QC39 อี ห้า", "QC39 สาขาเหนือ", "1", "11500.00", "0.00", "500.00", "600.00", "600.00", "0.00", "10900.00"],
+        ["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "1", "10000.00", "0.00", "0.00", "500.00", "500.00", "0.00", "9500.00"],
+        ["", "QC39 ดี สี่", "", "1", "8400.00", "0.00", "0.00", "420.00", "420.00", "0.00", "7980.00"]
+      ],
+      "totals": ["รวม", "", "", "5", "60755.00", "875.00", "520.00", "3019.00", "3019.00", "223.45", "57512.55"]
+    },
+    "tax-month|2031-11|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "•••3451", "15667.50", "123.45", "14980.00", "749.00", "749.00"],
+        ["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "", "10000.00", "0.00", "10000.00", "500.00", "500.00"],
+        ["", "QC39 ดี สี่", "", "•••1223", "8400.00", "0.00", "8400.00", "420.00", "420.00"]
+      ],
+      "totals": ["รวม", "", "", "", "34067.50", "123.45", "33380.00", "1669.00", "1669.00"]
+    },
+    "tax-month|2031-10|owner": { "rows": [], "totals": ["รวม", "", "", "", "0.00", "0.00", "0.00", "0.00", "0.00"] },
+    "tax-month|2031-09|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "•••3451", "15187.50", "100.00", "15000.00", "750.00", "750.00"],
+        ["A03", "QC39 อี ห้า", "QC39 สาขาเหนือ", "", "12000.00", "0.00", "12000.00", "600.00", "600.00"]
+      ],
+      "totals": ["รวม", "", "", "", "27187.50", "100.00", "27000.00", "1350.00", "1350.00"]
+    },
+    "tax-year|2031|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "•••3451", "2", "30855.00", "223.45", "1499.00", "1499.00"],
+        ["A03", "QC39 อี ห้า", "QC39 สาขาเหนือ", "", "1", "12000.00", "0.00", "600.00", "600.00"],
+        ["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "", "1", "10000.00", "0.00", "500.00", "500.00"],
+        ["", "QC39 ดี สี่", "", "•••1223", "1", "8400.00", "0.00", "420.00", "420.00"]
+      ],
+      "totals": ["รวม", "", "", "", "5", "61255.00", "223.45", "3019.00", "3019.00"]
+    },
+    "tax-year|2031|branch": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "•••3451", "2", "30855.00", "223.45", "1499.00", "1499.00"],
+        ["A03", "QC39 อี ห้า", "QC39 สาขาเหนือ", "", "1", "12000.00", "0.00", "600.00", "600.00"]
+      ],
+      "totals": ["รวม", "", "", "", "3", "42855.00", "223.45", "2099.00", "2099.00"]
+    },
+    "tax-year|2030|owner": {
+      "rows": [["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "•••3451", "1", "14000.00", "90.00", "700.00", "700.00"]],
+      "totals": ["รวม", "", "", "", "1", "14000.00", "90.00", "700.00", "700.00"]
+    },
+    "wages|2031-10|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "รายเดือน", "15000.00", "4", "2048", "14667.50", "687.50", "312.50", "687.50", "20.00", "15667.50", "14795.05", "2031-11-01"],
+        ["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "รายเดือน", "10000.00", "1", "300", "10000.00", "0.00", "0.00", "0.00", "0.00", "10000.00", "9500.00", "2031-11-01"],
+        ["", "QC39 ดี สี่", "", "รายชั่วโมง", "", "1", "420", "8400.00", "0.00", "0.00", "0.00", "0.00", "8400.00", "7980.00", "2031-11-01"]
+      ],
+      "totals": ["รวม", "", "", "", "", "6", "2768", "33067.50", "687.50", "312.50", "687.50", "20.00", "34067.50", "32275.05", ""]
+    },
+    "wages|2031-09|owner": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "รายเดือน", "15000.00", "1", "480", "15000.00", "187.50", "0.00", "187.50", "0.00", "15187.50", "14337.50", "2031-09-30"],
+        ["A03", "QC39 อี ห้า", "QC39 สาขาเหนือ", "รายเดือน", "12000.00", "1", "480", "12000.00", "0.00", "0.00", "0.00", "500.00", "11500.00", "10900.00", "2031-09-30"]
+      ],
+      "totals": ["รวม", "", "", "", "", "2", "960", "27000.00", "187.50", "0.00", "187.50", "500.00", "26687.50", "25237.50", ""]
+    },
+    "register|2031-10-31|ownerExport": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "หญิง", "ไทย", "1990-02-28", "41", "12/3 ถ.สุขุมวิท คลองเตย คลองเตย กรุงเทพมหานคร 10110", "2030-01-15", "แคชเชียร์ / หน้าร้าน", "รายเดือน", "15000.00", "ค่าอาหาร 50 บาท/วัน", "", "ทำงาน", "1101700203451"],
+        ["A02", "QC39 บี สอง", "ชาย", "", "2000-10-31", "31", "เชียงใหม่", "2031-03-01", "บาริสต้า", "รายวัน", "500.00", "", "", "ทดลองงาน", "3-1006-01234-56-7"],
+        ["A03", "QC39 อี ห้า", "หญิง", "เมียนมา", "1995-05-05", "36", "", "2030-05-01", "เสิร์ฟ", "รายเดือน", "12000.00", "", "2031-09-30", "สิ้นสุด", ""],
+        ["B01", "QC39 ซี สาม", "", "", "", "", "", "2029-06-01", "", "", "", "", "", "ทำงาน", ""],
+        ["", "QC39 ดี สี่", "อื่น ๆ", "ไทย", "1985-12-01", "45", "", "2028-01-01", "ครัว", "รายชั่วโมง", "60.00", "", "", "", "5000011111223"]
+      ],
+      "totals": null,
+      "warnings": [["gender", 1], ["nationality", 2], ["birthDate", 1], ["address", 3], ["position", 1], ["rate", 1]],
+      "pageIds": ["•••3451", "•••4567", "", "", "•••1223"]
+    },
+    "register|2031-10-31|branchExport": {
+      "rows": [
+        ["A01", "QC39 เอ หนึ่ง", "หญิง", "ไทย", "1990-02-28", "41", "12/3 ถ.สุขุมวิท คลองเตย คลองเตย กรุงเทพมหานคร 10110", "2030-01-15", "แคชเชียร์ / หน้าร้าน", "รายเดือน", "15000.00", "ค่าอาหาร 50 บาท/วัน", "", "ทำงาน", "•••3451"],
+        ["A02", "QC39 บี สอง", "ชาย", "", "2000-10-31", "31", "เชียงใหม่", "2031-03-01", "บาริสต้า", "รายวัน", "500.00", "", "", "ทดลองงาน", "•••4567"],
+        ["A03", "QC39 อี ห้า", "หญิง", "เมียนมา", "1995-05-05", "36", "", "2030-05-01", "เสิร์ฟ", "รายเดือน", "12000.00", "", "2031-09-30", "สิ้นสุด", ""]
+      ],
+      "totals": null
+    }
+  }
+}

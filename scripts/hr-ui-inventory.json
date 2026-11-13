@@ -11619,6 +11619,618 @@
    "wo": "H3.6",
    "oracle": "qc-hr-h3.6",
    "note": "ป้าย untestedRd (ยังไม่ทดสอบกับ e-Filing จริง) — fix r1 F1"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-picker",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "แถบเลือกรายงาน — เฉพาะรายงานที่ผู้ดูเปิดได้"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-pick-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?report=<รหัส>"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "ชิปรายงาน 1 ชนิด — * = time · leave · ot · payroll-month · payroll-year · tax-month · tax-year · wages · register"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-period",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?period=<YYYY-MM|YYYY|YYYY-MM-DD>"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "ช่วงเวลาตามชนิดรายงาน (เดือน · ปี · วันที่ของทะเบียน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-unit",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?unit=<สาขา>"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "สาขาในขอบเขตของผู้ดู (unitsForScope) · ว่าง = ทุกสาขาที่เห็นได้"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-show",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "GET /hr/reports?report&period&unit"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "แสดงรายงานตามตัวเลือก"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-table",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404 · มีแถว",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "ตารางรายงาน (คอลัมน์ = columnsFor ตามสิทธิ์เงิน · เลขประจำตัวแบบ •••4 ตัวท้าย)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404 · มีแถว",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "แถวต่อพนักงาน — * = employeeId (รายงานลา: 1 แถวต่อพนักงาน × ประเภทการลา)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-totals",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404 · รายงานที่มีแถวรวม",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "แถวรวม = ผลรวมของแถวที่ผู้ดูเห็นเท่านั้น"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-export-csv",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "download",
+    "target": "/hr/reports/export?format=csv"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "ไฟล์ CSV (UTF-8 BOM · ตัวเขียน H3.5) · ลงประวัติ hr.report.export"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-export-xlsx",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "download",
+    "target": "/hr/reports/export?format=xlsx"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "ไฟล์ Excel (ตัวเขียน H3.5) · ลงประวัติ hr.report.export"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-empty",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404 · ไม่มีแถว",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "ไม่มีข้อมูลในช่วงนี้"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-warnings",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "รายงานทะเบียน (ผู้ดูเงินเดือน) · มีช่องที่ ม.113 ต้องมีแต่ยังว่าง",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "คำเตือนจำนวนคนที่ช่องทะเบียนยังว่าง (เตือน ไม่บล็อก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-notes",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ที่เปิดรายงานได้อย่างน้อย 1 ชนิด (reportAccessOf: เวลา/OT = canReadRoster ∨ ผู้ดูเงินเดือน · ลา = ด่านยอดวันลาของทีม ∨ ผู้ดูเงินเดือน · เงินเดือน/ภาษี/ค่าจ้าง/ทะเบียน = ผู้ดูเงินเดือน) — อื่น ๆ = 404 · รายงานที่มีหมายเหตุ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "หมายเหตุคงที่ (เวลา · ภาษี · ม.114 · ทะเบียน ม.112/115) — ข้อความกลาง [V2]/[U]"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-fullid-warning",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "เจ้าของร้าน · รายงานทะเบียน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "คำเตือนก่อนเปิดเลขประจำตัวเต็มในไฟล์ทะเบียน (มติ Q2)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-fullid-toggle",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "เจ้าของร้าน · รายงานทะเบียน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveReportSettingsAction",
+    "db": "AppSystem.settings.hrReports.registerFullId"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "เปิด/ปิดเลขประจำตัวเต็มในไฟล์ทะเบียน (ค่าปริยายปิด)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-fullid-ack",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "เจ้าของร้าน · รายงานทะเบียน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "ติ๊กรับทราบคำเตือน — ต้องติ๊กเมื่อเปิด (ไม่ติ๊ก = ackFullId)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/reports",
+   "testid": "hr-report-fullid-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "เจ้าของร้าน · รายงานทะเบียน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveReportSettingsAction"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "บันทึกตั้งค่า · ลงประวัติ hr.report.setting"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-register-card",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ตั้งค่า HR (canManageHrSettings) หรือผู้ดูเงินเดือน · พนักงานในสาขาของผู้ดู",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "การ์ดทะเบียนลูกจ้าง ม.113 (สัญชาติ · ประโยชน์ตอบแทนอย่างอื่น)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-register-nationality",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ตั้งค่า HR (canManageHrSettings) หรือผู้ดูเงินเดือน · พนักงานในสาขาของผู้ดู",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveRegisterFieldsAction",
+    "db": "HrEmployeeRegister.nationality"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "สัญชาติ ≤ 60 ตัวอักษร (ผู้ดูเงินเดือนที่ไม่ใช่ผู้ตั้งค่า = อ่านอย่างเดียว)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-register-benefits",
+   "kind": "textarea",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือน (OWNER หรือ hr.payroll.read) · พนักงานในสาขาของผู้ดู",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveRegisterFieldsAction",
+    "db": "HrEmployeeRegister.otherBenefits"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "ประโยชน์ตอบแทนอย่างอื่น ≤ 500 ตัวอักษร (ข้อมูลค่าจ้าง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-register-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/reports-ui.tsx",
+   "conditional": "ผู้ตั้งค่า HR (canManageHrSettings) · พนักงานในสาขาของผู้ดู",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveRegisterFieldsAction"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "บันทึก · ลงประวัติ hr.register.update (ชื่อช่องเท่านั้น)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-overview-reports-link",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/overview-ui.tsx",
+   "conditional": "มีภาพรวมทีม · ผู้ดูเปิดรายงานได้อย่างน้อย 1 ชนิด",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/reports"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "ลิงก์ \"รายงาน\" ของการ์ดเดือน (ภาพ 01) — ไม่มีแท็บใหม่ (มติ Q7)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-link-reports",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ดูเปิดรายงานได้อย่างน้อย 1 ชนิด",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/reports"
+   },
+   "wo": "H3.9",
+   "oracle": "qc-hr-h3.9",
+   "note": "การ์ดลิงก์รายงานบนหน้าภาพรวม HR"
   }
  ]
 }

@@ -17,6 +17,9 @@ import { ModuleTabs } from "@/components/module-tabs";
 // HR H4.4 ▸ วงจรพนักงาน (แถบทดลองงาน · รายการรับเข้า/ออก · บันทึก · สิ้นสุดการจ้าง) — DTO ของ lifecycle.ts เท่านั้น ◂
 import { isLinkedTo, loadLifecycleForViewer } from "@/lib/modules/hr/lifecycle"; // HR H2.10 ▸ isLinkedTo ◂
 import { LifecycleBanner, LifecycleMsg, LifecycleProfile } from "@/lib/modules/hr/lifecycle-ui";
+import { HrRegisterCard } from "@/lib/modules/hr/reports-ui"; // HR H3.9 ▸ การ์ดทะเบียนลูกจ้าง (สัญชาติ · ประโยชน์ตอบแทนอย่างอื่น) ◂
+import { reportTextFor } from "@/lib/modules/hr/reports-rules"; // HR H3.9 ◂
+import { getLocale, getTranslations } from "next-intl/server"; // HR H3.9 ◂
 
 // หน้าโปรไฟล์พนักงาน 1 คน (ข้อ 8) — ข้อมูลเต็มรูปแบบ + เอกสารแนบ
 // 🔒 ช่องอ่อนไหว (เลขบัตร/ประกันสังคม/ทะเบียนบ้าน/บัญชี) + เอกสาร = เห็นเฉพาะผู้มีสิทธิ์ดูเงินเดือน
@@ -35,10 +38,10 @@ export default async function HrEmployeeProfilePage({
   searchParams,
 }: {
   params: Promise<{ id: string; employeeId: string }>;
-  searchParams: Promise<{ life?: string }>; // HR H4.4 ▸ รหัสผลการกด (allowlist LIFE_MSG) ◂
+  searchParams: Promise<{ life?: string; reg?: string }>; // HR H4.4 ▸ รหัสผลการกด (allowlist LIFE_MSG) ◂ · HR H3.9 ▸ reg = ผลบันทึกการ์ดทะเบียน ◂
 }) {
   const { id, employeeId } = await params;
-  const { life: lifeCode } = await searchParams;
+  const { life: lifeCode, reg: regCode } = await searchParams; // HR H3.9 ▸ reg ◂
   const auth = await requireTenant();
   const sys = await prisma.appSystem.findFirst({
     where: { id, tenantId: auth.active.tenantId, type: "HR" },
@@ -104,6 +107,14 @@ export default async function HrEmployeeProfilePage({
       </Section>
 
       <LifecycleProfile systemId={id} employeeId={emp.id} life={life} active={emp.active} />
+      {/* HR H3.9 ▸ ทะเบียนลูกจ้าง ม.113 — การ์ดซ่อนเองเมื่อผู้ดูไม่มีสิทธิ์ · ผลบันทึก = รหัสคงที่ (ok · INPUT · อื่น ๆ = ไม่พบ/ไม่มีสิทธิ์) ◂ */}
+      <HrRegisterCard
+        systemId={id}
+        tenantId={auth.active.tenantId}
+        employeeId={emp.id}
+        viewer={hrViewerOf(auth)}
+        flash={regCode === "ok" ? (await getTranslations("hr.report"))("saved") : regCode === "INPUT" ? reportTextFor(await getLocale()).registerInput : regCode ? reportTextFor(await getLocale()).no : null}
+      />
 
       {sensitive ? (
         <Section title="🔒 เอกสารแนบ">

@@ -46,6 +46,7 @@ import type { OtItem } from "./ot-rules"; // HR H2.9 ◂
 import { OtRequestForm, OtRowActions } from "./ot-ui"; // HR H2.9 ◂
 import { formatBaht } from "@/lib/ui/money"; // HR H2.9 ◂
 import { HrTeamOverviewSection } from "./overview-ui"; // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) บนหน้า HrHub ◂
+import { reportAccessOf } from "./reports"; // HR H3.9 ▸ ลิงก์รายงานเฉพาะผู้ที่เปิดรายงานได้ ◂
 import { teamOverviewWithPreview } from "./inbox"; // HR H2.11 ▸ r2: ภาพรวม + ตัวอย่างคำขอจากการอ่านครั้งเดียว ◂
 export { hrViewerOf } from "./privacy"; // HR H2.11 ▸ ผู้ดูของหน้า /hr/requests (หน้านั้น import ได้เฉพาะ facade + ui) ◂
 import { hrNavFilter, type HrNavViewer } from "./nav"; // HR H2.10 ▸ แท็บตามผู้ดู ◂
@@ -735,12 +736,15 @@ export async function HrHub({ systemId }: { systemId: string }) {
   const canSettings = canManageHrSettings(hv);
   // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) เหนือการ์ดเดิม เมื่อผู้ดูมีส่วนใดส่วนหนึ่ง · ตัวอย่างคำขอ 5 รายการแรก ◂
   const { overview, preview } = await teamOverviewWithPreview(ctx, hv); // HR H2.11 ◂
+  // HR H3.9 ▸ รายงาน (ไม่มีแท็บใหม่ — มติ Q7): ลิงก์บนการ์ดภาพรวม + การ์ดลิงก์ · แสดงเมื่อผู้ดูเปิดรายงานได้อย่างน้อย 1 ชนิด ◂
+  const tRep = await getTranslations("hr.report"); // HR H3.9 ◂
+  const reportsLink = reportAccessOf(hv).reports.length > 0 ? { label: tRep("link"), desc: tRep("linkDesc") } : null; // HR H3.9 ◂
 
   return (
     <div className="flex flex-col gap-5">
       {/* HR H2.10 ▸ แท็บตามผู้ดู ◂ */}
       <ModuleTabs items={await hrTabsFor(systemId)} />
-      {overview && <HrTeamOverviewSection systemId={systemId} overview={overview} preview={preview} /> /* HR H2.11 ◂ */}
+      {overview && <HrTeamOverviewSection systemId={systemId} overview={overview} preview={preview} reports={reportsLink} /> /* HR H2.11 ◂ · HR H3.9 ▸ reports ◂ */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards.map((c) => (
           <Link
@@ -763,6 +767,12 @@ export async function HrHub({ systemId }: { systemId: string }) {
           >
             <span className="text-sm font-medium">ตั้งค่า</span>
             <span className={`text-xs ${muted}`}>กะ · ประเภทการลา · วันหยุด</span>
+          </Link>
+        )}
+        {reportsLink && ( // HR H3.9 ▸ การ์ดลิงก์รายงาน ◂
+          <Link href={`/app/sys/${systemId}/hr/reports`} data-testid="hr-link-reports" className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]">
+            <span className="text-sm font-medium">{reportsLink.label}</span>
+            <span className={`text-xs ${muted}`}>{reportsLink.desc}</span>
           </Link>
         )}
         {canManageSalesTeams && (
