@@ -46,7 +46,6 @@ No hand derivation disagreed with the code: every golden (time · leave e1P1 · 
 - Duty note counts all active employees of the system for branch-limited viewers (reveals only "≥ 10 or not").
 - Register "position" joins position + department; department alone is shown when position is empty.
 - Time rows = employees with judge rows in the month; OT rows = employees with a counted request; an employee with only CANCELLED requests has no row.
-- Approved-but-revoked OT keeps status APPROVED in counts/approvedMin (spec literal); only its ฿/segments are dropped.
 
 ## Debts
 D-1…D-7 as design §6 (name split · rate history · orphan rows · self export · daily/hourly v2 rate · historical branch · holiday-OT ฿ in wages).

@@ -35,6 +35,8 @@ export type ReportPageProps = {
   units: { id: string; name: string }[];
   dto: ReportDto | { ok: false; code: string; reason: string };
   flash?: string;
+  /** fix r1 F2d: ไฟล์ทะเบียนของผู้ดูนี้มีเลขประจำตัวเต็ม (ตั้งค่าเปิด + มีสิทธิ์) ⇒ คำแนะนำข้างปุ่ม CSV */
+  fullIdExport?: boolean;
 };
 
 /** หน้า /hr/reports — ตัวเลือก · ช่วงเวลา · สาขา · ตาราง · รวม · ปุ่มไฟล์ · หมายเหตุ · คำเตือน (+ ตั้งค่าเลขเต็มของเจ้าของ) */
@@ -110,6 +112,11 @@ export async function HrReportsSection(p: ReportPageProps) {
                 {t("exportXlsx")}
               </a>
             </div>
+          )}
+          {dto && p.fullIdExport && (
+            <p role="note" className={`w-full ${muted}`}>
+              {t("fullIdCsvHint")}
+            </p>
           )}
         </div>
         {(p.report === "time" || p.report === "ot") && <p className={muted}>{t("onlyData")}</p>}

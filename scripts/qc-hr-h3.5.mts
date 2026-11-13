@@ -100,7 +100,7 @@ S6.2|F1|C|R|[db] fix r1: generate KTB 9999-12-31 BE ⇒ options · no manifest �
 S6.3|F2|C|R|[pure] fix r1: PCT item ≥ 10^15 ⇒ AMOUNT naming the employee · Σ ≥ 10^15 ⇒ AMOUNT naming the file total · 10^15−1 ⇒ 487 bytes
 S6.4|F3|C|R|[pure] fix r1: Thai cut at the last complete cluster (50×ก+่ · 49×ก+เก · 48×ก+กิ่ข · KTB 99×ก+ก้) padded with spaces · NAME_CUT · plain ASCII cut unchanged
 S6.5|F4|C|R|[pure] fix r1: formula after leading whitespace/control · leading tab outright · name/code trimmed · UTF-8 CSV control/bidi ⇒ ENCODING · XLSX bidi ⇒ ENCODING
-S6.6|F5|C|R|[db] fix r1: route helper — rsc / next-router-prefetch ⇒ 204, no count, no audit · plain ⇒ 200 bytes +1/+1 · attachment sanitised · no-store · nosniff · 404/409/410 text, no bytes
+S6.6|F5|C|R|[db] fix r1: route helper — rsc / next-router-prefetch ⇒ 204 · HEAD ⇒ 405 (ORACLE-EDIT H3.9 fix r1 F2a), no count, no audit · plain ⇒ 200 bytes +1/+1 · attachment sanitised · no-store · nosniff · 404/409/410 text, no bytes
 S6.7|F6|C|R|[db] fix r1: bank format switched off ⇒ download formatOff (CSV file unaffected) · on again ⇒ ok
 S6.8|F7|M|R|[pure] fix r1: BANK_TEXT_EN = fixture en · same keys as BANK_TEXT · {names} parity · no Thai in en · bankTextFor(locale)
 S6.9|F8|M|R|[db] fix r1: empty employee code sorts like null (last) · shop debit account changed ⇒ changed · restored ⇒ ok
@@ -1086,6 +1086,13 @@ async function runDb(): Promise<void> {
     const a0 = await dlAudit(fid);
     const rsc = await get({ rsc: "1" });
     const pre = await get({ "next-router-prefetch": "1" });
+    // ORACLE-EDIT (builder H3.9 fix r1 F2a · controller 13 Nov): HEAD (Next answers HEAD with GET) ⇒ 405 before any read — no count, no audit ◂
+    let head: Response | null = null;
+    try {
+      head = typeof DL?.bankFileGet === "function" ? ((await DL.bankFileGet(new Request("http://qc.invalid/x", { method: "HEAD" }), cA, V.owner, fid, { now: NOW })) as Response) : null;
+    } catch {
+      head = null;
+    }
     const n1 = await dlCount(fid);
     const a1 = await dlAudit(fid);
     const plain = await get({});
@@ -1105,7 +1112,7 @@ async function runDb(): Promise<void> {
     const n3 = await dlCount(fid);
     const r = {
       gen: gen.ok,
-      rsc: rsc?.status === 204 && pre?.status === 204 && n1 === n0 && a1 === a0,
+      rsc: rsc?.status === 204 && pre?.status === 204 && head?.status === 405 && n1 === n0 && a1 === a0, // ORACLE-EDIT H3.9 fix r1 F2a: + HEAD 405 ◂
       plain: plain?.status === 200 && body.length > 0 && eqBytes(body, Buffer.from(gen.value?.bytes ?? [])) && n2 === n0 + 1 && a2 === a0 + 1,
       headers: !!plain && /^attachment; filename="[A-Za-z0-9_.-]+"$/.test(plain.headers.get("content-disposition") ?? "") && plain.headers.get("cache-control") === "no-store" && /nosniff/.test(plain.headers.get("x-content-type-options") ?? ""),
       sanitise: typeof DL?.safeFileName === "function" && DL.safeFileName('a"b;c\r\n.csv') === "a_b_c__.csv",

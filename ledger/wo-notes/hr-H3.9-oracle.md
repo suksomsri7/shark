@@ -66,3 +66,12 @@ Clean typecheck (rm -rf .next/types tsconfig.tsbuildinfo · iso.sh · gate lock)
 5. **Ruling B** — new **S3.11**: duty/under-10 note only for all-branch viewers (owner, payAll); payBranch gets neither (retention note kept).
 6. **Membership gate** — new **S1.11** (static: every exported async fn of reports.ts calls `gateOf(`; page/route/actions reach data only through reports.ts) and **S4.10** (db: other-tenant owner and a member claiming OWNER ⇒ NO from loadReport · exportReport · get/setReportSettings · load/saveRegisterFields, route 404, nothing written).
 Base: origin/session/hr now contains H3.4 (9e8ad6386) ⇒ default base resolves to it; BASE_CUT logic left as is (it only applies when the merge-base predates the cut).
+
+## 8. ORACLE-EDITs fix round 1 (builder H3.9 · controller 13 Nov — marked `ORACLE-EDIT (builder H3.9 fix r1 …)`)
+- **S1.5** frozen list: `bank-files/download-route.ts` may differ from the base only by `HR H3.9`-marked hunks (HEAD guard, F2a); the rest of bank-files stays frozen.
+- **S4.6** refusals carry exactly `{ok, code, reason}` (page and CSV).
+- **S4.10** + forged claims (branch payroll viewer claiming `["*"]` ⇒ still u1 rows / branch register export; manager claiming `hr.payroll.read` ⇒ payroll NO, time without ฿) + `loadRegisterFields` of another branch ⇒ NO (hr-admin, branch payroll); audit delta 1 (the forged branch export).
+- **S4.8** + re-save while ON without acknowledgement ⇒ ok (F2d).
+- **S4.9** + payAll tax-month / tax-year exports stay masked with full-ID ON; export audits 5 → 7.
+- New **S3.12** register as-of (F2e) · **S4.11** XLSX of the 27 non-owner allowed cells (F2c) · **S4.12** settings lost-update race (F1: report setting ∥ clock policy ×20 both orders, ∥ judge cursor ×10, own tenant) · **S5.5** HEAD/POST 405 (reports + bank helper) and injected source cap `__takeCap` ⇒ LIMIT, no audit (F2a/F2b).
+- qc-hr-h3.5 **S6.6** + HEAD ⇒ 405, no count, no audit (F2a).

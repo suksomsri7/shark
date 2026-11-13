@@ -3,10 +3,11 @@
 import { getLocale } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
-import { isRouterFetch } from "@/lib/modules/hr/bank-files/download-route";
+import { isRouterFetch, notGet, notGetResponse } from "@/lib/modules/hr/bank-files/download-route";
 import { reportExportGet } from "@/lib/modules/hr/reports-route";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (notGet(req)) return notGetResponse(); // HEAD (Next ตอบด้วย GET) = 405 ก่อนอ่านผู้ใช้
   if (isRouterFetch(req)) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
   const { id } = await params;
   const auth = await requireTenant();

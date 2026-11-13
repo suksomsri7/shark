@@ -43,6 +43,16 @@ type Ctx = { tenantId: string; systemId: string };
 export type ReportViewer = { role: string; unitAccess: unknown; permissions: unknown; userId?: string | null };
 export type ReportAccess = { reports: ReportId[]; money: boolean; fullId: boolean };
 type Opts = { locale?: string | null };
+/** HR H3.9 fix r1 F2b ▸ เพดานแถวต่อแหล่ง: อ่าน cap+1 แถว — เกิน cap = ปฏิเสธ LIMIT (ไม่คืนยอดรวมที่ถูกตัด) · __takeCap = ตัวลดเพดานสำหรับข้อสอบเท่านั้น (หน้า/route/action ไม่ส่ง) ◂ */
+type Cap = (n: number) => number;
+type BuildOpts = Opts & { surface: "page" | "export"; __takeCap?: number };
+class ReportLimit extends Error {}
+function bounded<T>(rows: T[], cap: number): T[] {
+  if (rows.length > cap) throw new ReportLimit("LIMIT");
+  return rows;
+}
+/** จำนวนพนักงานที่ยังทำงานที่ leave.ts#teamLeaveBalances อ่านได้สูงสุด (TEAM_MAX ใน leave.ts — ไฟล์แช่แข็ง) */
+const LEAVE_TEAM_MAX = 1000;
 export type ReportNo = { ok: false; code: "NO"; reason: string };
 export type ReportFail = { ok: false; code: string; reason: string };
 export type ReportDto = {
@@ -207,15 +217,16 @@ const bkk0 = (day: string) => new Date(`${day}T00:00:00+07:00`);
 type TimeAgg = { slots: number; worked: Set<string>; lateN: number; lateMin: number; earlyN: number; earlyMin: number; absent: Set<string>; absentMin: number; leaveT: number; workedMin: number; otMin: number; missingOut: number };
 const WORKED = new Set(["ON_TIME", "LATE", "EARLY_OUT"]);
 /** ผลตัดสินรายวันของเดือน (อ่านครั้งเดียว ขอบเขตพนักงานที่ส่งมา) → สรุปต่อคน — กติกา design §2 time */
-async function timeAggOf(ctx: Ctx, period: string, ids: string[]): Promise<Map<string, TimeAgg>> {
+async function timeAggOf(ctx: Ctx, period: string, ids: string[], cap: Cap): Promise<Map<string, TimeAgg>> {
   const out = new Map<string, TimeAgg>();
   if (!ids.length) return out;
   const b = monthBounds(period);
-  const days = await tenantDb(ctx).hrAttendanceDay.findMany({
+  const dCap = cap((REPORT_LIMITS.employees + 1) * 31 * 4);
+  const days = bounded(await tenantDb(ctx).hrAttendanceDay.findMany({
     where: { employeeId: { in: ids }, date: { gte: d0(b.first), lte: d0(b.last) } },
     select: { employeeId: true, date: true, status: true, startMin: true, endMin: true, crossesMidnight: true, lateMin: true, earlyOutMin: true, workedMin: true, otMin: true, missingOut: true, leaveFraction: true },
-    take: (REPORT_LIMITS.employees + 1) * 31 * 4,
-  });
+    take: dCap + 1,
+  }), dCap);
   for (const d of days) {
     let a = out.get(d.employeeId);
     if (!a) out.set(d.employeeId, (a = { slots: 0, worked: new Set(), lateN: 0, lateMin: 0, earlyN: 0, earlyMin: 0, absent: new Set(), absentMin: 0, leaveT: 0, workedMin: 0, otMin: 0, missingOut: 0 }));
@@ -237,16 +248,17 @@ async function timeAggOf(ctx: Ctx, period: string, ids: string[]): Promise<Map<s
   return out;
 }
 
-async function timeRows(ctx: Ctx, period: string, emps: Map<string, Emp>): Promise<Row[]> {
+async function timeRows(ctx: Ctx, period: string, emps: Map<string, Emp>, cap: Cap): Promise<Row[]> {
   const ids = [...emps.keys()];
-  const agg = await timeAggOf(ctx, period, ids);
+  const agg = await timeAggOf(ctx, period, ids, cap);
   if (!agg.size) return [];
   const b = monthBounds(period);
-  const corr = await tenantDb(ctx).hrTimeCorrection.findMany({
+  const cCap = cap(100_000);
+  const corr = bounded(await tenantDb(ctx).hrTimeCorrection.findMany({
     where: { employeeId: { in: [...agg.keys()] }, status: "APPROVED", day: { gte: d0(b.first), lte: d0(b.last) } },
     select: { employeeId: true },
-    take: 100_000,
-  });
+    take: cCap + 1,
+  }), cCap);
   const nCorr = new Map<string, number>();
   for (const c of corr) nCorr.set(c.employeeId, (nCorr.get(c.employeeId) ?? 0) + 1);
   return [...agg.entries()].map(([id, a]) => ({
@@ -269,10 +281,12 @@ async function timeRows(ctx: Ctx, period: string, emps: Map<string, Emp>): Promi
   }));
 }
 
-async function leaveRows(ctx: Ctx, v: ReportViewer, period: string, unitId: string | null, emps: Map<string, Emp>): Promise<Row[]> {
+async function leaveRows(ctx: Ctx, v: ReportViewer, period: string, unitId: string | null, emps: Map<string, Emp>, cap: Cap): Promise<Row[]> {
   const m = membershipOf(v);
   // มติ Q1: ผู้ดูเงินเดือนที่ไม่ผ่านด่านยอดวันลาเอง ⇒ เรียกโค้ดยอดเดียวกันด้วยสิทธิ์อ่านใบลาในขอบเขตสาขาเดิมของผู้ดู (ไม่เพิ่มสาขา · ไม่มีเหตุผล/ไฟล์แนบ)
   const lv: LeaveViewer = leaveGateOf(m) ? { role: m.role, unitAccess: m.unitAccess, permissions: m.permissions, userId: v.userId ?? null } : { role: "STAFF", unitAccess: m.unitAccess, permissions: { "hr.leave.read": true }, userId: v.userId ?? null };
+  // fix r1 F2b: teamLeaveBalances อ่านพนักงานที่ยังทำงานได้สูงสุด LEAVE_TEAM_MAX คน (ทั้งระบบ ก่อนกรองสาขา) — เกิน = LIMIT ไม่ใช่รายงานที่ขาดคน
+  if ((await tenantDb(ctx).hrEmployee.count({ where: { active: true, ...(unitId ? { unitId } : {}) } })) > cap(LEAVE_TEAM_MAX)) throw new ReportLimit("LIMIT");
   const tb = await teamLeaveBalances(ctx, lv, { year: Number(period), unitId });
   if (!tb) return [];
   const out: Row[] = [];
@@ -299,16 +313,17 @@ async function leaveRows(ctx: Ctx, v: ReportViewer, period: string, unitId: stri
   return out;
 }
 
-async function otRows(ctx: Ctx, period: string, emps: Map<string, Emp>): Promise<Row[]> {
+async function otRows(ctx: Ctx, period: string, emps: Map<string, Emp>, cap: Cap): Promise<Row[]> {
   const ids = [...emps.keys()];
   if (!ids.length) return [];
   const b = monthBounds(period);
-  const reqs = await tenantDb(ctx).hrOtRequest.findMany({
+  const oCap = cap(200_000);
+  const reqs = bounded(await tenantDb(ctx).hrOtRequest.findMany({
     // HR H3.9 ▸ มติ A: คำขอที่อนุมัติแล้วถูกยกเลิกภายหลัง (revokedAt) ไม่นับในอนุมัติ/นาทีอนุมัติเลย · ส่วน HOLIDAY_WORK ที่ H3.4 คงจ่ายไว้ = คอลัมน์ของตัวเอง ◂
     where: { employeeId: { in: ids }, date: { gte: d0(b.first), lte: d0(b.last) }, OR: [{ status: { in: ["PENDING", "APPROVED", "REJECTED"] } }, { status: "CANCELLED", revokedAt: { not: null } }] },
     select: { employeeId: true, status: true, minutes: true, amountSatang: true, segmentsJson: true, settledAt: true, revokedAt: true, settleCode: true },
-    take: 200_000,
-  });
+    take: oCap + 1,
+  }), oCap);
   type A = { p: number; a: number; r: number; min: number; wMin: number; hMin: number; ohMin: number; w: number; h: number; oh: number; amt: number; kMin: number; k: number };
   const agg = new Map<string, A>();
   for (const q of reqs) {
@@ -376,9 +391,10 @@ type Item = {
   run: { periodKey: string; payDate: Date; status: string; engineVersion: number; journalEntryId: string | null; stepsJson: unknown };
 };
 /** รายการเงินเดือนของรอบ APPROVED/PAID (รุ่น 2 เฉพาะรอบที่ปิดงานแล้ว: มี journalEntryId หรือ stepsJson.finalized — มติ Q5) · อ่านครั้งเดียว */
-async function itemsOf(ctx: Ctx, ids: string[], run: Prisma.HrPayrollRunWhereInput): Promise<Item[]> {
+async function itemsOf(ctx: Ctx, ids: string[], run: Prisma.HrPayrollRunWhereInput, cap: Cap): Promise<Item[]> {
   if (!ids.length) return [];
-  const rows = await tenantDb(ctx).hrPayrollItem.findMany({
+  const iCap = cap((REPORT_LIMITS.employees + 1) * 14);
+  const rows = bounded(await tenantDb(ctx).hrPayrollItem.findMany({
     where: { employeeId: { in: ids }, run: { ...run, status: { in: ["APPROVED", "PAID"] } } },
     select: {
       employeeId: true,
@@ -394,8 +410,8 @@ async function itemsOf(ctx: Ctx, ids: string[], run: Prisma.HrPayrollRunWhereInp
       run: { select: { periodKey: true, payDate: true, status: true, engineVersion: true, journalEntryId: true, stepsJson: true } },
     },
     orderBy: [{ run: { payDate: "asc" } }, { id: "asc" }],
-    take: (REPORT_LIMITS.employees + 1) * 14,
-  });
+    take: iCap + 1,
+  }), iCap);
   return (rows as unknown as Item[]).filter((i) => i.run.engineVersion < 2 || !!i.run.journalEntryId || obj(i.run.stepsJson).finalized === true);
 }
 const moneyCells = (i: Pick<Item, "grossSatang" | "addSatang" | "deductSatang" | "ssoEmployeeSatang" | "ssoEmployerSatang" | "whtSatang" | "netSatang">) => ({
@@ -408,8 +424,8 @@ const moneyCells = (i: Pick<Item, "grossSatang" | "addSatang" | "deductSatang" |
   net: bahtText(i.netSatang),
 });
 
-async function payrollMonthRows(ctx: Ctx, period: string, emps: Map<string, Emp>): Promise<Row[]> {
-  const items = await itemsOf(ctx, [...emps.keys()], { periodKey: period });
+async function payrollMonthRows(ctx: Ctx, period: string, emps: Map<string, Emp>, cap: Cap): Promise<Row[]> {
+  const items = await itemsOf(ctx, [...emps.keys()], { periodKey: period }, cap);
   return items.map((i) => ({ emp: emps.get(i.employeeId)!, values: { status: String(i.run.status), engine: String(i.run.engineVersion), ...moneyCells(i) } }));
 }
 
@@ -434,8 +450,8 @@ const sumBy = (items: Item[]) => {
   return out;
 };
 
-async function payrollYearRows(ctx: Ctx, period: string, emps: Map<string, Emp>): Promise<Row[]> {
-  const sums = sumBy(await itemsOf(ctx, [...emps.keys()], { periodKey: { startsWith: `${period}-` } }));
+async function payrollYearRows(ctx: Ctx, period: string, emps: Map<string, Emp>, cap: Cap): Promise<Row[]> {
+  const sums = sumBy(await itemsOf(ctx, [...emps.keys()], { periodKey: { startsWith: `${period}-` } }, cap));
   return [...sums.entries()].map(([id, s]) => ({
     emp: emps.get(id)!,
     values: { runs: String(s.n), ...moneyCells({ grossSatang: s.gross, addSatang: s.add, deductSatang: s.deduct, ssoEmployeeSatang: s.ssoE, ssoEmployerSatang: s.ssoR, whtSatang: s.wht, netSatang: s.net }) },
@@ -443,10 +459,10 @@ async function payrollYearRows(ctx: Ctx, period: string, emps: Map<string, Emp>)
 }
 
 /** ภาษี/ประกันสังคม: เดือน/ปีตามวันจ่าย (เวลาไทย — แบบเดียวกับยอดสะสมของ H3.4) · เงินได้ 40(1) = whtIncomeOf */
-async function taxRows(ctx: Ctx, report: "tax-month" | "tax-year", period: string, emps: Map<string, Emp>): Promise<Row[]> {
+async function taxRows(ctx: Ctx, report: "tax-month" | "tax-year", period: string, emps: Map<string, Emp>, cap: Cap): Promise<Row[]> {
   const from = report === "tax-month" ? bkk0(`${period}-01`) : bkk0(`${period}-01-01`);
   const to = report === "tax-month" ? bkk0(`${monthBounds(period).next}-01`) : bkk0(`${Number(period) + 1}-01-01`);
-  const sums = sumBy(await itemsOf(ctx, [...emps.keys()], { payDate: { gte: from, lt: to } }));
+  const sums = sumBy(await itemsOf(ctx, [...emps.keys()], { payDate: { gte: from, lt: to } }, cap));
   return [...sums.entries()].map(([id, s]) => {
     const emp = emps.get(id)!;
     const common = { citizenId: maskCitizenId(emp.citizen), income: bahtText(s.income), wht: bahtText(s.wht), ssoEmployee: bahtText(s.ssoE), ssoEmployer: bahtText(s.ssoR) };
@@ -455,10 +471,10 @@ async function taxRows(ctx: Ctx, report: "tax-month" | "tax-year", period: strin
 }
 
 /** เอกสารการจ่ายค่าจ้าง ม.114: รายการของงวด + วัน/นาทีทำงานของเดือนเดียวกัน (กติกาเดียวกับรายงานเวลา) */
-async function wagesRows(ctx: Ctx, period: string, emps: Map<string, Emp>): Promise<Row[]> {
-  const items = await itemsOf(ctx, [...emps.keys()], { periodKey: period });
+async function wagesRows(ctx: Ctx, period: string, emps: Map<string, Emp>, cap: Cap): Promise<Row[]> {
+  const items = await itemsOf(ctx, [...emps.keys()], { periodKey: period }, cap);
   if (!items.length) return [];
-  const agg = await timeAggOf(ctx, period, [...new Set(items.map((i) => i.employeeId))]);
+  const agg = await timeAggOf(ctx, period, [...new Set(items.map((i) => i.employeeId))], cap);
   return items.map((i) => {
     const w = wagePartsOf({ engineVersion: i.run.engineVersion, snapshot: i.snapshotJson });
     const a = agg.get(i.employeeId);
@@ -493,12 +509,15 @@ async function registerRows(ctx: Ctx, asOf: string, emps: Map<string, Emp>, full
   ]);
   const prof = new Map(profiles.map((p) => [p.employeeId, p]));
   const reg = new Map(regs.map((r) => [r.employeeId, r]));
-  return [...emps.values()].map((e) => {
+  // fix r1 F2e: ทะเบียน ณ วันที่ — ไม่แสดงคนที่เริ่มงานหลังวันนั้น · วันสิ้นสุด/สถานะตามวันนั้น (สถานะได้จากวันที่: สิ้นสุดแล้ว ⇒ สิ้นสุด ·
+  //   ยังไม่สิ้นสุด ณ วันนั้นแต่ตอนนี้สิ้นสุดแล้ว ⇒ ทำงาน · อื่น ๆ = สถานะที่เก็บไว้)
+  return [...emps.values()].filter((e) => !e.startDate || dayOf(e.startDate) <= asOf).map((e) => {
     const p = prof.get(e.id);
     const r = reg.get(e.id);
     const pt = p ? String(p.payType) : "";
     const rate = !p ? null : pt === "DAILY" ? p.dailyRateSatang : pt === "HOURLY" ? p.hourlyRateSatang : p.baseSalarySatang;
     const birth = dayOf(e.birthDate);
+    const ended = !!e.endDate && dayOf(e.endDate) <= asOf;
     const age = birth ? ageOn(birth, asOf) : null;
     return {
       emp: e,
@@ -513,8 +532,8 @@ async function registerRows(ctx: Ctx, asOf: string, emps: Map<string, Emp>, full
         payType: pt ? (REPORT_LABELS.payType[pt] ?? "") : "",
         rate: rate === null || rate === undefined || !Number.isSafeInteger(rate) ? "" : bahtText(rate),
         otherBenefits: r?.otherBenefits ?? "",
-        endDate: dayOf(e.endDate),
-        status: e.employmentStatus ? (REPORT_LABELS.status[e.employmentStatus] ?? "") : "",
+        endDate: ended ? dayOf(e.endDate) : "",
+        status: ended ? REPORT_LABELS.status.ENDED! : e.employmentStatus === "ENDED" ? REPORT_LABELS.status.ACTIVE! : e.employmentStatus ? (REPORT_LABELS.status[e.employmentStatus] ?? "") : "",
         citizenId: fullId ? (typeof e.citizen === "string" ? e.citizen.trim() : "") : maskCitizenId(e.citizen),
       },
     };
@@ -537,7 +556,17 @@ const cellNum = (report: ReportId, key: string, s: string): number => {
 };
 const cellOfSum = (report: ReportId, key: string, n: number) => (isMoneyKey(report, key) ? bahtText(n) : key === "leaveDays" ? tenthsText(n) : String(n));
 
-async function build(ctx: Ctx, g: Gate, raw: unknown, o: Opts & { surface: "page" | "export" }): Promise<Built | ReportFail> {
+async function build(ctx: Ctx, g: Gate, raw: unknown, o: BuildOpts): Promise<Built | ReportFail> {
+  try {
+    return await buildIn(ctx, g, raw, o);
+  } catch (e) {
+    if (e instanceof ReportLimit) return fail("LIMIT", textOf(o).limit);
+    throw e;
+  }
+}
+async function buildIn(ctx: Ctx, g: Gate, raw: unknown, o: BuildOpts): Promise<Built | ReportFail> {
+  const tc = o.__takeCap;
+  const cap: Cap = (n) => (Number.isSafeInteger(tc) && (tc as number) >= 0 ? Math.min(n, tc as number) : n);
   const T = textOf(o);
   const { v: viewer, settings } = g;
   const input = parseInput(raw);
@@ -553,26 +582,26 @@ async function build(ctx: Ctx, g: Gate, raw: unknown, o: Opts & { surface: "page
   let rows: Row[];
   switch (report) {
     case "time":
-      rows = await timeRows(ctx, period, byId);
+      rows = await timeRows(ctx, period, byId, cap);
       break;
     case "leave":
-      rows = await leaveRows(ctx, viewer, period, unitId, byId);
+      rows = await leaveRows(ctx, viewer, period, unitId, byId, cap);
       break;
     case "ot":
-      rows = await otRows(ctx, period, byId);
+      rows = await otRows(ctx, period, byId, cap);
       break;
     case "payroll-month":
-      rows = await payrollMonthRows(ctx, period, byId);
+      rows = await payrollMonthRows(ctx, period, byId, cap);
       break;
     case "payroll-year":
-      rows = await payrollYearRows(ctx, period, byId);
+      rows = await payrollYearRows(ctx, period, byId, cap);
       break;
     case "tax-month":
     case "tax-year":
-      rows = await taxRows(ctx, report, period, byId);
+      rows = await taxRows(ctx, report, period, byId, cap);
       break;
     case "wages":
-      rows = await wagesRows(ctx, period, byId);
+      rows = await wagesRows(ctx, period, byId, cap);
       break;
     case "register":
       rows = await registerRows(ctx, period, byId, fullId);
@@ -623,10 +652,10 @@ async function build(ctx: Ctx, g: Gate, raw: unknown, o: Opts & { surface: "page
 }
 
 /** รายงานสำหรับหน้าจอ (ค่าเดียวกับเซลล์ไฟล์ · เลขประจำตัวแบบ •••4 ตัวท้ายเสมอ) — ไม่ลงประวัติ */
-export async function loadReport(ctx: Ctx, viewer: ReportViewer, input: { report: unknown; period: unknown; unitId?: unknown }, opts?: Opts): Promise<ReportDto | ReportFail> {
+export async function loadReport(ctx: Ctx, viewer: ReportViewer, input: { report: unknown; period: unknown; unitId?: unknown }, opts?: Opts & { __takeCap?: number }): Promise<ReportDto | ReportFail> {
   const g = await gateOf(ctx, viewer);
   if (!g) return NO(opts);
-  const b = await build(ctx, g, input, { locale: opts?.locale ?? null, surface: "page" });
+  const b = await build(ctx, g, input, { locale: opts?.locale ?? null, surface: "page", __takeCap: opts?.__takeCap });
   return "dto" in b ? b.dto : b;
 }
 
@@ -635,14 +664,14 @@ export async function exportReport(
   ctx: Ctx,
   viewer: ReportViewer,
   input: { report: unknown; period: unknown; unitId?: unknown; format: unknown },
-  opts?: Opts,
+  opts?: Opts & { __takeCap?: number },
 ): Promise<ReportExport | ReportFail> {
   const T = textOf(opts);
   const g = await gateOf(ctx, viewer);
   if (!g) return NO(opts);
   const format = formatOf(obj(input).format);
   if (!format || !parseInput(input)) return fail("INPUT", T.input);
-  const b = await build(ctx, g, input, { locale: opts?.locale ?? null, surface: "export" });
+  const b = await build(ctx, g, input, { locale: opts?.locale ?? null, surface: "export", __takeCap: opts?.__takeCap });
   if (!("dto" in b)) return b;
   const { dto, keys, names, fullId } = b;
   const table = reportTable({ report: dto.report, keys, rows: dto.rows.map((r) => r.values), totals: dto.totals, locale: opts?.locale ?? null });
@@ -686,18 +715,24 @@ export async function setReportSettings(ctx: Ctx, viewer: ReportViewer, input: {
   const i = obj(input);
   if (typeof i.registerFullId !== "boolean") return fail("INPUT", T.input);
   const on = i.registerFullId;
-  if (on && i.acknowledge !== true) return fail("ACK", T.ackFullId);
+  // HR H3.9 fix r1 F1 ▸ ลำดับล็อกเดียวกับผู้เขียน AppSystem.settings ของ HR อื่น ๆ: (1) advisory hr:clockpolicy:<sys> (clock-settings · judge cursor ·
+  //   work-entries · attendance-pay ใช้ตัวนี้) → (2) ล็อกแถว AppSystem FOR UPDATE → (3) อ่านใหม่ เปลี่ยนเฉพาะ hrReports.registerFullId แล้วเขียน
+  //   (ไม่ทับค่าที่ตัวเขียนอื่นเพิ่งบันทึก และตัวงานเบื้องหลังเขียนค่าเก่ากลับมาไม่ได้) · fix r1 F2d: ติ๊กรับทราบเฉพาะตอนเปลี่ยนจากปิดเป็นเปิด ◂
   const done = await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:reports:settings:${ctx.systemId}`}, 0))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0))`;
+    const row = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AppSystem" WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'HR'::"SystemType" FOR UPDATE`;
+    if (!row.length) return "NO" as const;
     const s = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { settings: true } });
-    if (!s) return false;
+    if (!s) return "NO" as const;
     const base = obj(s.settings);
+    if (on && obj(base.hrReports).registerFullId !== true && i.acknowledge !== true) return "ACK" as const;
     const next = { ...base, hrReports: { ...obj(base.hrReports), registerFullId: on } };
     const r = await tx.appSystem.updateMany({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, data: { settings: next as Prisma.InputJsonValue } });
-    return r.count === 1;
+    return r.count === 1 ? ("OK" as const) : ("NO" as const);
   }, TX_OPTS);
-  if (!done) return NO(opts);
+  if (done === "ACK") return fail("ACK", T.ackFullId);
+  if (done !== "OK") return NO(opts);
   await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: viewer.userId ?? null, action: "hr.report.setting", targetType: "AppSystem", targetId: ctx.systemId, after: { registerFullId: on } });
   return { ok: true, registerFullId: on };
 }

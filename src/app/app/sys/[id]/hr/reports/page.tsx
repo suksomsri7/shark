@@ -8,7 +8,7 @@ import { ModuleTabs } from "@/components/module-tabs";
 import { hrTabsFor } from "@/lib/modules/hr/ui";
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
 import { hrScopeOf, unitsForScope } from "@/lib/modules/hr/scope"; // ตัวกันของหน้า (fitness-hr F16.3) — สาขาในขอบเขตของผู้ดูสำหรับตัวกรอง
-import { loadReport, reportAccessOf } from "@/lib/modules/hr/reports";
+import { getReportSettings, loadReport, reportAccessOf } from "@/lib/modules/hr/reports";
 import { isReportId, periodOk, reportTextFor, REPORT_CATALOG, type ReportId } from "@/lib/modules/hr/reports-rules";
 import { HrReportFullIdCard, HrReportsSection } from "@/lib/modules/hr/reports-ui";
 import { thaiDateKey } from "@/lib/ui/date";
@@ -38,6 +38,7 @@ export default async function HrReportsPage({ params, searchParams }: { params: 
   const unitId = ID_RE.test(one(sp.unit) ?? "") && units.some((u) => u.id === one(sp.unit)) ? one(sp.unit)! : null;
   const ctx = { tenantId: auth.active.tenantId, systemId: id };
   const dto = await loadReport(ctx, v, { report, period, unitId }, { locale });
+  const fullIdExport = report === "register" && access.fullId && dto.ok && (await getReportSettings(ctx, v, { locale }).then((r) => r.ok && r.registerFullId));
   const tx = reportTextFor(locale) as unknown as Record<string, string>;
   const rs = one(sp.rs);
   const flash = rs === "ok" ? t("saved") : rs === "OWNER" ? tx.settingOwner : rs === "ACK" ? tx.ackFullId : rs ? tx.no : undefined;
@@ -46,7 +47,7 @@ export default async function HrReportsPage({ params, searchParams }: { params: 
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("linkDesc")} back={{ href: `/app/sys/${id}`, label: sys.name }} />
       <ModuleTabs items={await hrTabsFor(id, v)} />
       <h1 className="text-2xl font-semibold">{t("title")}</h1>
-      <HrReportsSection systemId={id} viewer={v} allowed={access.reports} report={report} period={period} unitId={unitId} units={units} dto={dto} flash={flash} />
+      <HrReportsSection systemId={id} viewer={v} allowed={access.reports} report={report} period={period} unitId={unitId} units={units} dto={dto} flash={flash} fullIdExport={fullIdExport} />
       {report === "register" && <HrReportFullIdCard systemId={id} tenantId={auth.active.tenantId} viewer={v} />}
     </div>
   );

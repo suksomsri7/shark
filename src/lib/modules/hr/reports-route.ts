@@ -2,7 +2,7 @@
 //   🔴 คำขอที่ Next ดึงเอง (หัว rsc / next-router-prefetch) = 204 ก่อนอ่านอะไรทั้งสิ้น (กติกาเดียวกับไฟล์โอน H3.5)
 //   ไม่ผ่าน = ข้อความคงที่ · text/plain · ไม่มีไบต์ไฟล์ · 404 ไม่พบ/ไม่มีสิทธิ์ · 400 อินพุต · 409 สูตร/อักขระ/ข้อมูลมากเกิน
 //   สำเร็จ = attachment · no-store · nosniff · query: report period format(csv|xlsx) unit ◂
-import { isRouterFetch, safeFileName } from "./bank-files/download-route";
+import { isRouterFetch, notGet, notGetResponse, safeFileName } from "./bank-files/download-route";
 import { exportReport, type ReportViewer } from "./reports";
 import { reportTextFor } from "./reports-rules";
 
@@ -11,6 +11,7 @@ const BASE_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "n
 const STATUS_OF: Record<string, number> = { NO: 404, INPUT: 400, FORMULA: 409, ENCODING: 409, LIMIT: 409 };
 
 export async function reportExportGet(req: Request, ctx: Ctx, viewer: ReportViewer, opts?: { locale?: string | null }): Promise<Response> {
+  if (notGet(req)) return notGetResponse(); // fix r1 F2a: HEAD ฯลฯ = 405 ก่อนอ่านอะไร (ไม่สร้างไฟล์ · ไม่ลงประวัติ)
   if (isRouterFetch(req)) return new Response(null, { status: 204, headers: BASE_HEADERS });
   const refuse = (code: string, reason: string) => new Response(reason, { status: STATUS_OF[code] ?? 404, headers: { "Content-Type": "text/plain; charset=utf-8", ...BASE_HEADERS } });
   let q: URLSearchParams;

@@ -1626,7 +1626,8 @@
       "registerHint": "Used in the employee register report — may be left empty",
       "nationality": "Nationality",
       "benefits": "Other agreed benefits",
-      "onlyData": "Time and OT reports list only employees with data in the chosen period"
+      "onlyData": "Time and OT reports list only employees with data in the chosen period",
+      "fullIdCsvHint": "Full national IDs are on — 13-digit numbers display fully in the Excel file; spreadsheet programs may show them as 1.1E+12 in the CSV file"
     }
   }
 }

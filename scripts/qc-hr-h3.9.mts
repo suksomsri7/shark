@@ -89,6 +89,7 @@ S3.7|R3g|C|R|[db] register 2031-10-31 owner: page + export (setting OFF ⇒ IDs 
 S3.8|R10|C|R|[db] saveRegisterFields: gates (owner · hr-admin in branch · benefits needs payroll) · out of branch/other ⇒ NO · limits ⇒ registerInput · audit fields only · loadRegisterFields keys by gate
 S3.10|A|C|R|[db] revoked OT (ruling A): APPROVED+revokedAt and CANCELLED+revokedAt never in approved count/minutes · kept HOLIDAY_WORK minutes only in keptHolidayWorkMin (฿ only for money viewers)
 S3.11|B|C|R|[db] register "10 or more" note (ruling B): all-branch viewers get duty/under-10 · branch-limited payroll viewer gets neither (no shop-wide count signal)
+S3.12|F2e|C|R|[db] fix r1: register as of a date — hired after the date not listed · end date / status as of that date (derived from dates)
 S3.9|R7|C|R|[db] owner exports: time CSV + register CSV = independent CSV text of golden · XLSX = same table · file names · content types
 S4.1|R4|C|R|[db] gate matrix 10 viewers × 9 reports × page/export = design matrix (ok ⇔ allowed · NO otherwise)
 S4.2|R4|C|R|[db] column sets: DTO keys + export header = columnsFor(viewer access) for every allowed cell of the matrix
@@ -98,10 +99,13 @@ S4.5|R4|C|R|[db] manager / hr-admin: no $ key · no money value (OT ฿ strings 
 S4.6|X11|C|R|[db] forbidden keys absent from every DTO (HR_FORBIDDEN_DTO_KEYS + snapshot/ytd/GPS/photo/attachment) · sentinel secrets absent from DTOs, exports, audit
 S4.7|X2|C|R|[db] cross-tenant / cross-system ctx ⇒ NO with identical bytes · own empty system ⇒ ok rows []
 S4.10|X2|C|R|[db] membership gate on every entry point: non-member (other tenant owner) and role-claim mismatch ⇒ NO for loadReport · exportReport · reportExportGet (404) · get/setReportSettings · load/saveRegisterFields · nothing written
+S4.11|F2c|C|R|[db] fix r1: XLSX exports of every non-owner allowed cell parsed — no full ID · no secret · managers/hr-admin/leave reader: no ฿ strings
+S4.12|F1|C|R|[db] fix r1: settings lost update — setReportSettings OFF ∥ saveClockPolicy ×20 both orders and ∥ judge-job cursor write ×10: registerFullId OFF and earlyInMin both survive · cursor written
 S4.8|Q2|C|R|[db] ruling Q2 setting "full national ID in register export": owner only (others settingOwner) · ON needs acknowledge (ackFullId) · default OFF · other settings keys kept · audit hr.report.setting
 S4.9|Q2|C|R|[db] setting ON: register export full for owner / all-branch payroll only · branch payroll masked · pages + tax exports masked · export audit fullId true/false · OFF again ⇒ masked
 S5.1|R9|C|R|[db] export audit: 1 row hr.report.export · targetType HrReport · after keys exactly {report period format rowCount columns unitId fullId} · no values · refusals not audited
 S5.2|R8|C|R|[db] route helper: rsc / next-router-prefetch ⇒ 204 no audit · 200 attachment + no-store + nosniff + type · 404 NO text · 400 input text · 409 formula text · no bytes on refusal
+S5.5|F2a F2b|C|R|[db] fix r1: route HEAD/POST ⇒ 405 no audit (reports + bank-file helper) · injected source cap ⇒ LIMIT text (time · ot · payroll-year · tax-year · wages · corrections) not truncated totals · no audit
 S5.3|R3|M|R|[db] input refusals: bad report / period / format / unit type ⇒ INPUT text · not audited · nothing written
 S5.4|R7|C|R|[db] export guard on real data: position "+SUM(A1)" ⇒ FORMULA naming the employee · page still ok · nationality with BEL ⇒ ENCODING
 S6.1|R13|M|R|[db] performance: time 300 employees × 31 days ≤ 12 queries · ≤ 5000 ms · totals exact
@@ -286,7 +290,13 @@ function runStatic(): void {
   }
   // S1.5
   {
-    const diff = changedVsBase(BASE, FROZEN);
+    // ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F2a: bank-files/download-route.ts may change only by HR H3.9-marked hunks (HEAD guard); the rest of bank-files stays frozen ◂
+    const DLR = `${H}bank-files/download-route.ts`;
+    //   and scripts/qc-hr-h3.5.mts only by hunks that carry an "ORACLE-EDIT … H3.9" marker (S6.6 HEAD check) ◂
+    const H35 = "scripts/qc-hr-h3.5.mts";
+    const diff = changedVsBase(BASE, FROZEN.flatMap((f) => (f === `${H}bank-files` ? listFiles(f).filter((x) => x !== DLR) : f === H35 ? [] : [f])));
+    const h35Hunks = diffHunks(BASE, H35) ?? [];
+    const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
     const n = hrNavLabels();
     const b = (s: string | null, at: string) => (s && s.indexOf(at) >= 0 ? s.slice(s.indexOf(at), s.indexOf("];", s.indexOf(at))) : "");
     const labels = (s: string) => [...s.matchAll(/label:\s*["']([^"']+)["']/g)].map((m) => m[1]);
@@ -294,7 +304,7 @@ function runStatic(): void {
     const baseL = labels(b(fileAt(BASE, F.layout), 'case "HR":'));
     const r = {
       sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA,
-      frozen: diff === "unchanged",
+      frozen: diff === "unchanged" && dlrOk,
       tabs: baseT.length > 0 && canon(n.T) === canon(baseT) && canon(n.L) === canon(baseL),
     };
     ck("S1.5", r, `sha · ${FROZEN.length} unchanged · tabs`, `${diff} T=${n.T.join("/")}`);
@@ -842,6 +852,15 @@ async function runDb(): Promise<void> {
     const sig = (v: Any) => n(v).includes(T.registerDuty) || n(v).includes(T.registerUnder10);
     ck("S3.11", { owner: n(o.value).includes(T.registerUnder10), payAll: n(pa.value).includes(T.registerUnder10), branch: pb.ok && !sig(pb.value) && n(pb.value).includes(T.registerRetention) }, "all-branch only", short(n(pb.value), 120));
   }
+  // S3.12 ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F2e: register as of a date ◂
+  {
+    const r = await load(V.owner, "register", "2031-02-28");
+    const row = (e: string) => ((r.value?.rows ?? []) as Any[]).find((x) => x.employeeId === e)?.values as Record<string, string> | undefined;
+    const e5 = row(E.e5);
+    const now = await load(V.owner, "register", "2031-10-31");
+    const e5n = ((now.value?.rows ?? []) as Any[]).find((x) => x.employeeId === E.e5)?.values;
+    ck("S3.12", { ok: r.ok, notHired: !row(E.e2) && !!row(E.e1) && !!row(E.e3) && !!row(E.e4), e5: !!e5 && e5.endDate === "" && e5.status === "ทำงาน" && e5.age === "35", later: e5n?.endDate === "2031-09-30" && e5n?.status === "สิ้นสุด" }, "as of the date", short(e5, 160));
+  }
   // ── S4 matrix ──
   const ALLOW: Record<string, string[]> = {
     owner: IDS, payAll: IDS, payBranch: IDS, // ruling Q1: payroll viewers see the leave report (branch-limited = own branches)
@@ -936,6 +955,8 @@ async function runDb(): Promise<void> {
       if (k.length) bad.push(`${c.who}/${c.report}:${k.join(",")}`);
       const txt = JSON.stringify(c.page.value ?? {}) + dec(c.csv.value?.bytes);
       if (sec.some((s) => txt.includes(s))) bad.push(`${c.who}/${c.report}:secret`);
+      // ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F2c: a refusal carries exactly {ok, code, reason} — no data riding along ◂
+      for (const [sf, x] of [["page", c.page], ["csv", c.csv]] as const) if (!x.ok && srt(Object.keys(x.value ?? {})) !== srt(["ok", "code", "reason"])) bad.push(`${c.who}/${c.report}/${sf}:refusalKeys`);
     }
     const capturedLeak = CAPTURED.some((l) => sec.some((s) => l.includes(s)));
     const seen = cells.filter((c) => c.page.ok && c.csv.ok).length;
@@ -976,8 +997,45 @@ async function runDb(): Promise<void> {
       }
       if (st !== 404) bad.push(`${who}/route=${st}`);
     }
+    // ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F2c: forged permission / branch claims are ignored (DB membership wins) · register fields of another branch refused ◂
+    const fBranch = { ...V.payBranch, unitAccess: ["*"] };
+    const fPay = { ...V.mgr, permissions: { "hr.payroll.read": true } };
+    const fb = await load(fBranch, "payroll-month", "2031-10");
+    const fbX = await exp(fBranch, "register");
+    const fp = await load(fPay, "payroll-month", "2031-10");
+    const fpT = await load(fPay, "time", "2031-10");
+    const forged = {
+      branch: fb.ok && sameGold("payroll-month", fb.value, GOLD["payroll-month|2031-10|branch"]) && fbX.ok && dec(fbX.value?.bytes) === csvTextOf(goldTable("register", GOLD["register|2031-10-31|branchExport"])),
+      pay: noOf(fp.value) && fpT.ok && !(fpT.value?.columns ?? []).some((c: Any) => /Amt$|^amount$/.test(c.key)) && canon(dtoArr("time", fpT.value)) === canon(GOLD["time|2031-10|branch"].rows),
+      regOtherBranch: noOf((await S("loadRegisterFields", cA, V.hrAdmin, { employeeId: E.e3 })).value) && noOf((await S("loadRegisterFields", cA, V.payBranch, { employeeId: E.e3 })).value),
+    };
     const after = await cnt();
-    ck("S4.10", { refused: bad.length === 0, noWrite: canon(after) === canon(before) }, "NO everywhere", bad.join(" ") || "ok");
+    ck("S4.10", { refused: bad.length === 0, noWrite: canon(after.slice(1)) === canon(before.slice(1)) && Number(after[0]) - Number(before[0]) === 1, ...forged }, "NO everywhere · forged claims ignored", bad.join(" ") || "ok");
+  }
+  // S4.11 ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F2c: XLSX of non-owner viewers ◂
+  {
+    const money = ["187.50", "687.50", "93.75", "281.25", "781.25", "250.00", "150.00", "46.88"];
+    const bad: string[] = [];
+    let n = 0;
+    for (const who of ["payAll", "payBranch", "mgr", "mgrAll", "leaveReader", "hrAdmin"] as const)
+      for (const report of ALLOW[who]!) {
+        const x = await exp(V[who], report, "XLSX");
+        let txt = "";
+        try {
+          const p = x.value?.bytes instanceof Uint8Array ? DORM.parseImportFile(x.value.bytes) : null;
+          txt = p?.ok ? JSON.stringify([p.headers, ...p.rows]) : "";
+        } catch {
+          txt = "";
+        }
+        if (!x.ok || !txt) {
+          bad.push(`${who}/${report}:parse`);
+          continue;
+        }
+        n++;
+        if (hasFull(txt) || Object.values(SECRET).some((sv) => txt.includes(sv))) bad.push(`${who}/${report}:leak`);
+        if (!MONEY.has(who) && money.some((m) => txt.includes(m))) bad.push(`${who}/${report}:money`);
+      }
+    ck("S4.11", { all: bad.length === 0, n: n === 27 }, "xlsx clean", `${bad.join(" ") || "ok"} n=${n}`);
   }
   // S4.8 setting writer (ruling Q2)
   {
@@ -994,7 +1052,9 @@ async function runDb(): Promise<void> {
     const gB = await S("getReportSettings", cB, V.owner);
     const after = await P.appSystem.findFirst({ where: { id: sA }, select: { settings: true } });
     const aud = (await P.auditLog.findMany({ where: { tenantId: TT, action: "hr.report.setting" } })) as Any[];
+    const resave = await S("setReportSettings", cA, V.owner, { registerFullId: true }); // ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F2d: re-saving while ON needs no new acknowledgement ◂
     ck("S4.8", {
+      resave: resave.ok && resave.value?.registerFullId === true,
       defaultOff: g0.ok && g0.value?.registerFullId === false && typeof g0.value?.warning === "string" && g0.value.warning === T.fullIdWarning,
       ownerOnly: byPay.text === T.settingOwner && byMgr.text === T.settingOwner,
       ack: noAck.value?.ok === false && noAck.text === T.ackFullId,
@@ -1015,6 +1075,7 @@ async function runDb(): Promise<void> {
     const bR = await exp(V.payBranch, "register");
     const bA = await lastAudit();
     const oT = await exp(V.owner, "tax-month");
+    const pT = [await exp(V.payAll, "tax-month"), await exp(V.payAll, "tax-year", "CSV", "2031")]; // ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F2c: full-ID ON never reaches tax exports ◂
     const oPage = await load(V.owner, "register");
     await S("setReportSettings", cA, V.owner, { registerFullId: false });
     const oOff = await exp(V.owner, "register");
@@ -1024,10 +1085,10 @@ async function runDb(): Promise<void> {
       owner: oR.ok && dec(oR.value?.bytes) === csvTextOf(goldTable("register", GOLD["register|2031-10-31|ownerExport"])) && oA?.after?.fullId === true,
       payAll: pR.ok && hasFull(dec(pR.value?.bytes)) && pA?.after?.fullId === true,
       branch: bR.ok && dec(bR.value?.bytes) === csvTextOf(goldTable("register", GOLD["register|2031-10-31|branchExport"])) && bA?.after?.fullId === false,
-      tax: oT.ok && !hasFull(dec(oT.value?.bytes)),
+      tax: oT.ok && !hasFull(dec(oT.value?.bytes)) && pT.every((x) => x.ok && !hasFull(dec(x.value?.bytes)) && dec(x.value?.bytes).includes("•••3451")),
       page: oPage.ok && !hasFull(JSON.stringify(oPage.value)),
       off: oOff.ok && dec(oOff.value?.bytes) === csvTextOf(goldTable("register", maskedRegister())) && offA?.after?.fullId === false,
-      audits: a1 - a0 === 5,
+      audits: a1 - a0 === 7, // ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov): +2 payAll tax exports ◂
     }, "full only owner/payAll register export", `audits=${a1 - a0}`);
   }
   // S5.1
@@ -1078,6 +1139,35 @@ async function runDb(): Promise<void> {
       input: bad?.status === 400 && badTxt === T.input,
     };
     ck("S5.2", r, "route contract", `status=${rsc?.status}/${ok?.status}/${no?.status}/${bad?.status}`);
+  }
+  // S5.5 ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F2a HEAD/POST · F2b injected source cap ⇒ LIMIT ◂
+  {
+    const a0 = await P.auditLog.count({ where: { tenantId: TT } });
+    const DLM = (await import("@/lib/modules/hr/bank-files/download-route")) as Any;
+    const call = async (fn: () => Promise<Response>) => {
+      try {
+        return (await fn()).status;
+      } catch {
+        return -1;
+      }
+    };
+    const head = await call(() => RH.reportExportGet(new Request("http://qc.invalid/x?report=time&period=2031-10&format=csv", { method: "HEAD" }), cA, V.owner, {}));
+    const post = await call(() => RH.reportExportGet(new Request("http://qc.invalid/x?report=time&period=2031-10&format=csv", { method: "POST" }), cA, V.owner, {}));
+    const bank = await call(() => DLM.bankFileGet(new Request("http://qc.invalid/x", { method: "HEAD" }), cA, V.owner, "nosuchfile0000", {}));
+    const capped = (report: string, period: string, cap: number) => S("loadReport", cA, V.owner, { report, period }, { __takeCap: cap });
+    const lim = [
+      await capped("time", "2031-10", 3), await capped("ot", "2031-10", 2), await capped("payroll-year", "2031", 2), await capped("tax-year", "2031", 2), await capped("wages", "2031-10", 1),
+      await S("exportReport", cA, V.owner, { report: "time", period: "2031-10", format: "CSV" }, { __takeCap: 3 }),
+    ];
+    const corr = await capped("time", "2031-10", 1);
+    const big = await capped("time", "2031-10", 100_000);
+    const a1 = await P.auditLog.count({ where: { tenantId: TT } });
+    ck("S5.5", {
+      head: head === 405 && post === 405 && bank === 405,
+      limit: lim.every((x) => x.value?.ok === false && x.value?.code === "LIMIT" && x.text === T.limit) && corr.value?.code === "LIMIT",
+      notCapped: big.ok && sameGold("time", big.value, GOLD["time|2031-10|owner"]),
+      noAudit: a1 === a0,
+    }, "405 · LIMIT not truncation", lim.map((x) => (x.ok ? "ok" : x.value?.code)).join(","));
   }
   // S5.3
   {
@@ -1215,6 +1305,45 @@ async function runDb(): Promise<void> {
         wages: w3.ok && w3.value?.rows?.length === 0,
       }, "finalized v2 + all v1", `py=${py.value?.totals?.net} ty=${ty.value?.totals?.income}`);
     }
+  }
+  // S4.12 ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F1: AppSystem.settings lost update (hunter probe hunt-h3.9-race) — own tenant, both orders ×20 + judge cursor ×10 ◂
+  {
+    const CS = (await import("@/lib/modules/hr/clock-settings")) as Any;
+    const JG = (await import("@/lib/modules/hr/judge")) as Any;
+    const T3 = await fx.newTenant("-race", "QC HR H3.9 race");
+    const sR = await sys("ทีม race", T3);
+    const cR = { tenantId: T3, systemId: sR };
+    const oR = vOf(await fx.mkUser(T3, "race-owner", `QC39 race owner ${tag}`, "OWNER", [], {}));
+    for (let i = 0; i < 3; i++) await fx.mkEmp(T3, sR, `QC39 race ${i}`, { code: `R${i}` });
+    const sl = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const st = async () => ((await P.appSystem.findFirst({ where: { id: sR }, select: { settings: true } }))?.settings ?? {}) as Any;
+    let offLost = 0;
+    let clockLost = 0;
+    let judgeOffLost = 0;
+    let cursorSeen = 0;
+    const N = 20;
+    for (let k = 0; k < N; k++) {
+      await S("setReportSettings", cR, oR, { registerFullId: true, acknowledge: true });
+      const clockFirst = k % 2 === 0;
+      const [a, b] = await Promise.all([
+        sl(clockFirst ? (k % 5) * 15 : 0).then(() => S("setReportSettings", cR, oR, { registerFullId: false })),
+        sl(clockFirst ? 0 : (k % 5) * 15).then(() => CS.saveClockPolicy(cR, oR, { earlyInMin: 10 + k })),
+      ]);
+      const s = await st();
+      if (a.ok && s?.hrReports?.registerFullId !== false) offLost++;
+      if (b?.ok && s?.hrClock?.earlyInMin !== 10 + k) clockLost++;
+    }
+    for (let k = 0; k < 10; k++) {
+      await S("setReportSettings", cR, oR, { registerFullId: true, acknowledge: true });
+      const [, a] = await Promise.all([
+        JG.runAttendanceJobs({ now: new Date(Date.UTC(2040, 0, 1 + k, 3)), tenantId: T3, pageSize: 1, maxPages: 1 }).catch(() => null),
+        sl((k % 5) * 10).then(() => S("setReportSettings", cR, oR, { registerFullId: false })),
+      ]);
+      const s = await st();
+      if (typeof s?.hrAttendanceCursor === "string") cursorSeen++;
+      if (a.ok && s?.hrReports?.registerFullId !== false) judgeOffLost++;
+    }
+    ck("S4.12", { off: offLost === 0, clock: clockLost === 0, judge: judgeOffLost === 0, cursor: cursorSeen > 0 }, "no lost update", `offLost=${offLost} clockLost=${clockLost} judgeOffLost=${judgeOffLost} cursor=${cursorSeen}/10`);
   }
 }
 

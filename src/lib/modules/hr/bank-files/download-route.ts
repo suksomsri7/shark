@@ -14,8 +14,12 @@ const BASE_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "n
 /** คำขอที่ Next ดึงเอง (action redirect / prefetch) — ไม่ใช่การกดดาวน์โหลดของคน */
 export const isRouterFetch = (req: Request) => req.headers.has("rsc") || req.headers.has("next-router-prefetch");
 export const safeFileName = (n: string) => n.replace(/[^A-Za-z0-9_.-]/g, "_");
+/** HR H3.9 fix r1 F2a ▸ Next ตอบ HEAD ด้วย GET — คำขอที่ไม่ใช่ GET (HEAD จากตัวตรวจลิงก์ ฯลฯ) = 405 ก่อนอ่านอะไร: ไม่สร้างไฟล์ ไม่นับ ไม่ลงประวัติ ◂ */
+export const notGet = (req: Request) => req.method !== "GET"; // HR H3.9 ◂
+export const notGetResponse = () => new Response(null, { status: 405, headers: { Allow: "GET", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } }); // HR H3.9 ◂
 
 export async function bankFileGet(req: Request, ctx: Ctx, viewer: BankViewer, fileId: string, opts?: { now?: Date; locale?: string | null }): Promise<Response> {
+  if (notGet(req)) return notGetResponse(); // HR H3.9 fix r1 F2a ◂
   if (isRouterFetch(req)) return new Response(null, { status: 204, headers: BASE_HEADERS });
   const tx = bankTextFor(opts?.locale);
   const refuse = (code: string) =>
