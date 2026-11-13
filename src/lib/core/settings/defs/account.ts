@@ -27,6 +27,15 @@ import {
 } from "../legal/th-tax-2569";
 
 const EDIT = "account.settings.manage";
+
+/** ACC T1.1 ▸ รายงานภาษีขาย: วิธีลงใบกำกับภาษีอย่างย่อ (skill §1.3 "1 แถว/วัน/สาขา (หรือ/เครื่อง)") ◂ */
+export const SALES_TAX_ABB_MODES = ["DAILY_DEVICE", "DAILY_BRANCH", "PER_BILL"] as const;
+export type SalesTaxAbbMode = (typeof SALES_TAX_ABB_MODES)[number];
+export const SALES_TAX_ABB_MODE_LABEL_TH: Record<SalesTaxAbbMode, string> = {
+  DAILY_DEVICE: "รวม 1 แถวต่อวันต่อเครื่องขาย",
+  DAILY_BRANCH: "รวม 1 แถวต่อวันต่อสาขา",
+  PER_BILL: "แสดงทุกใบ",
+};
 const CHAIN = ["ACCOUNT_BOOK"] as const;
 /** จำนวนแถวที่ร้านเพิ่มได้ต่อตาราง (กันค่าก้อนใหญ่ผิดปกติ — ไม่ใช่เพดานกฎหมาย) */
 const MAX_SHOP_ROWS = 200;
@@ -133,13 +142,22 @@ const DEFS: SettingDef[] = [
       emptyTh: "ใช้ค่าเริ่มต้นของระบบทั้งหมด",
     },
   },
+  {
+    key: "account.report.salesTaxAbbMode", domain: "account", group: "report", type: "enum", labelTh: "รายงานภาษีขาย: ใบกำกับภาษีอย่างย่อ",
+    helpTh: "ลงยอดรวมรายวัน (ระบุเลขที่ตั้งแต่…ถึง…) ต่อเครื่องขายหรือต่อสาขา หรือแสดงทุกใบ — โปรดตรวจกับนักบัญชีของร้านว่าเครื่องขายได้รับอนุมัติแยกรายเครื่องหรือไม่",
+    schema: z.enum(SALES_TAX_ABB_MODES),
+    enumLabelsTh: SALES_TAX_ABB_MODE_LABEL_TH,
+    defaults: { _fallback: "DAILY_DEVICE" },
+    chain: CHAIN, editPermission: EDIT,
+  },
 ];
 
-defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย" } });
+defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน" } });
 
 export const ACCOUNT_SETTING_KEYS = {
   entityKind: "account.entity.kind",
   vat: "account.legal.vatRates",
   wht: "account.legal.whtRates",
   deadline: "account.legal.filingDeadlines",
+  salesTaxAbbMode: "account.report.salesTaxAbbMode",
 } as const;

@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/core/db";
 import { csvCell } from "@/lib/core/csv";
 import type { AccountLedgerType, AccountCashflowActivity, Prisma } from "@prisma/client";
+import { buildChecks, salesTaxReport, type SalesTaxReport } from "./sales-tax-report";
+import { rateLabelTh, SALES_TAX_ABB_MODE_LABEL_TH, type SalesTaxAbbMode } from "./sales-tax-shared";
 
 // ─────────────────────────────────────────────────────────────
 // reports.ts — งบการเงิน + รายงาน (P3) · READ-ONLY (ไม่โพสต์ GL)
@@ -480,6 +482,8 @@ export type Pp30Side = {
 
 export type Pp30 = {
   periodKey: string;
+  /** ACC T1.1 ▸ รายงานภาษีขายเต็ม (หัวรายงาน · ใบย่อรวมรายวัน · กลุ่มอัตรา · ข้อตรวจ) — output.rows/byRate มาจากก้อนนี้ ◂ */
+  salesTax: SalesTaxReport;
   output: Pp30Side; // ภาษีขาย (2200)
   input: Pp30Side; // ภาษีซื้อ (1150)
   carryForward: number; // เครดิตภาษียกมาเดือนก่อน (ผู้ใช้กรอก — v1 ไม่มีตารางยื่น)
@@ -591,7 +595,7 @@ async function pp30Side(
 export async function pp30(
   ctx: GlCtx,
   periodKey: string,
-  opts?: { carryForward?: number },
+  opts?: { carryForward?: number; abbMode?: SalesTaxAbbMode | null },
 ): Promise<Pp30> {
   const ledgers = await prisma.accountLedger.findMany({
     where: { systemId: ctx.systemId, code: { in: ["2200", "1150"] } },
@@ -600,19 +604,41 @@ export async function pp30(
   const outputId = ledgers.find((l) => l.code === "2200")?.id;
   const inputId = ledgers.find((l) => l.code === "1150")?.id;
 
-  const [output, input] = await Promise.all([
+  // ACC T1.1 ▸ ภาษีขาย: ยอด ภ.พ.30 = ยอดเคลื่อนไหว 2200 ของเดือน (คิวรีรวมแยก) · รายใบ/กลุ่มอัตรามาจากรายงานภาษีขาย ◂
+  const [salesTax, outAgg, input] = await Promise.all([
+    salesTaxReport(ctx, periodKey, { abbMode: opts?.abbMode ?? null }),
     outputId
-      ? pp30Side(ctx.systemId, outputId, periodKey, "OUTPUT")
-      : Promise.resolve<Pp30Side>({ total: 0, base: 0, rows: [], byRate: [] }),
+      ? prisma.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: outputId, entry: { periodKey } }, _sum: { debit: true, credit: true } })
+      : Promise.resolve(null),
     inputId
       ? pp30Side(ctx.systemId, inputId, periodKey, "INPUT")
       : Promise.resolve<Pp30Side>({ total: 0, base: 0, rows: [], byRate: [] }),
   ]);
+  const outputVat = (outAgg?._sum.credit ?? 0) - (outAgg?._sum.debit ?? 0);
+  salesTax.checks = buildChecks(salesTax.rows, salesTax.total.vat, salesTax.glVat, outputVat);
+  const output: Pp30Side = {
+    total: outputVat,
+    base: salesTax.total.base,
+    rows: salesTax.rows.flatMap((r) =>
+      r.parts.map((p) => ({
+        docNo: r.docNoTo ? `${r.docNo} ถึง ${r.docNoTo}` : r.docNo,
+        date: new Date(`${r.date}T00:00:00+07:00`),
+        contactName: r.buyerName,
+        taxId: r.buyerTaxId,
+        branchCode: r.buyerBranchCode,
+        base: p.base,
+        vat: p.vat,
+        rateBp: p.rateBp,
+      })),
+    ),
+    byRate: salesTax.groups.map((g) => ({ rateBp: g.rateBp, base: g.base, vat: g.vat })),
+  };
 
   const carryForward = opts?.carryForward ?? 0;
   const netPayable = output.total - input.total - carryForward;
   return {
     periodKey,
+    salesTax,
     output,
     input,
     carryForward,
@@ -630,27 +656,68 @@ const pp30Cell = (v: string | number): string => csvCell(typeof v === "number" ?
 export async function pp30Csv(
   ctx: GlCtx,
   periodKey: string,
-  opts?: { carryForward?: number },
+  opts?: { carryForward?: number; abbMode?: SalesTaxAbbMode | null },
 ): Promise<string> {
   const r = await pp30(ctx, periodKey, opts);
+  const st = r.salesTax;
   const lines: string[] = [];
+  const row = (cells: (string | number)[]) => lines.push(cells.map((v) => pp30Cell(v)).join(","));
+  const txt = (v: string | number) => String(v); // ตัวเลขที่ไม่ใช่เงิน (ลำดับ จำนวนใบ อัตรา) — ไม่แปลงสตางค์
+
+  // ── ACC T1.1 ▸ หัวรายงานภาษีขาย (skill §18: เดือนภาษี ชื่อ เลขผู้เสียภาษี สำนักงานใหญ่/สาขา) ◂
+  row(["รายงานภาษีขาย"]);
+  row(["ชื่อผู้ประกอบการ", st.header.orgName]);
+  row(["เลขประจำตัวผู้เสียภาษีอากร", st.header.taxId]);
+  row(["สถานประกอบการ", st.header.branchLabel, "รหัสสาขา", st.header.branchCode]);
+  row(["เดือนภาษี", st.header.monthLabel, "งวด", st.periodKey]);
+  row(["ใบกำกับภาษีอย่างย่อ", SALES_TAX_ABB_MODE_LABEL_TH[st.abbMode]]);
+  for (const w of st.header.warnings) row(["คำเตือน", w]);
+  lines.push("");
+  row(["ลำดับ", "วันที่", "เลขที่", "ถึงเลขที่", "จำนวนใบ", "ชื่อผู้ซื้อ", "เลขผู้เสียภาษีผู้ซื้อ", "สาขาผู้ซื้อ", "อัตรา", "มูลค่า(บาท)", "ภาษี(บาท)", "หมายเหตุ"]);
+  for (const g of st.groups) {
+    row([rateLabelTh(g.rateBp)]);
+    for (const { row: x, part, seq } of g.rows) {
+      row([
+        txt(seq),
+        x.date,
+        x.docNo,
+        x.docNoTo ?? "",
+        txt(x.count ?? 1),
+        x.buyerName,
+        x.buyerTaxId,
+        x.buyerBranchCode,
+        part.rateBp > 0 ? (part.rateBp / 100).toFixed(2) : part.rateBp === 0 ? "0.00" : "ยกเว้น",
+        part.base,
+        part.vat,
+        [...x.notes, ...(x.flag ? [x.flag] : [])].join(" · "),
+      ]);
+    }
+    row([`รวม${rateLabelTh(g.rateBp)}`, "", "", "", "", "", "", "", "", g.base, g.vat, ""]);
+  }
+  row(["รวมภาษีขายทั้งสิ้น", "", "", "", "", "", "", "", "", st.total.base, st.total.vat, ""]);
+  lines.push("");
+  row(["ข้อตรวจกระทบยอด", "ผล", "ควรเป็น(บาท/จำนวน)", "ได้(บาท/จำนวน)", "รายละเอียด"]);
+  for (const c of st.checks) {
+    const money = c.key !== "BASE_VAT";
+    row([c.label, c.ok ? "ผ่าน" : "ไม่ตรง", money ? c.expected : txt(c.expected), money ? c.actual : txt(c.actual), c.detail ?? ""]);
+  }
+  lines.push("");
+
+  // ── ภาษีซื้อ + สรุป ภ.พ.30 (รูปเดิม) ──
   const header = ["ฝั่ง", "วันที่", "เลขที่เอกสาร", "คู่ค้า", "เลขผู้เสียภาษี", "สาขา", "อัตรา(%)", "ฐานภาษี(บาท)", "ภาษี(บาท)"];
   lines.push(header.map(pp30Cell).join(","));
-  const side = (label: string, s: Pp30Side) => {
-    for (const row of s.rows) {
-      lines.push(
-        [label, row.date.toISOString().slice(0, 10), row.docNo, row.contactName, row.taxId, row.branchCode, (row.rateBp / 100).toFixed(2), pp30Cell(row.base), pp30Cell(row.vat)]
-          .map((v) => pp30Cell(v as string))
-          .join(","),
-      );
-    }
-    lines.push([`รวม${label}`, "", "", "", "", "", "", pp30Cell(s.base), pp30Cell(s.total)].map((v) => pp30Cell(v as string)).join(","));
-  };
-  side("ภาษีขาย", r.output);
-  side("ภาษีซื้อ", r.input);
+  for (const x of r.input.rows) {
+    lines.push(
+      [ "ภาษีซื้อ", x.date.toISOString().slice(0, 10), x.docNo, x.contactName, x.taxId, x.branchCode, (x.rateBp / 100).toFixed(2), pp30Cell(x.base), pp30Cell(x.vat)]
+        .map((v) => pp30Cell(v as string))
+        .join(","),
+    );
+  }
+  lines.push(["รวมภาษีซื้อ", "", "", "", "", "", "", pp30Cell(r.input.base), pp30Cell(r.input.total)].map((v) => pp30Cell(v as string)).join(","));
+  lines.push(["รวมภาษีขาย", "", "", "", "", "", "", pp30Cell(r.output.base), pp30Cell(r.output.total)].map((v) => pp30Cell(v as string)).join(","));
   lines.push(["เครดิตยกมา", "", "", "", "", "", "", "", pp30Cell(r.carryForward)].map((v) => pp30Cell(v as string)).join(","));
   lines.push([r.netPayable >= 0 ? "ภาษีต้องชำระ" : "เครดิตยกไป", "", "", "", "", "", "", "", pp30Cell(Math.abs(r.netPayable))].map((v) => pp30Cell(v as string)).join(","));
-  return "﻿" + lines.join("\n");
+  return "\uFEFF" + lines.join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────
