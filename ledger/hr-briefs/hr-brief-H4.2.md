@@ -89,3 +89,7 @@ Q14 Migration? [None · settings key via HR-SET-1; figures computed on read.]
 - Q2: sales = the same net figure POS reports show; the screen label must say so ("ยอดขายสุทธิตามรายงาน POS") — debt D-H42-vat-exclusive (labour % on VAT-exclusive sales for VAT-registered shops) goes on the owner/accountant list.
 - Q1: the POS seam hunks are marked `HR H4.2` and stay minimal (no change to existing POS report results; qc POS report suites picked by pick-suites must stay green). New fitness edge hr→pos: lazy import from `hr/labor.ts` only, asserted by fitness.
 - Q9/Q10 are privacy rules: the oracle carries a viewer matrix (OWNER · payroll viewer all-branch · payroll viewer one branch · manager without payroll key · employee · other tenant) × every figure, gate from DB membership, refusals/hidden cells carry no data.
+
+## CONTROLLER RULINGS 2 (after the oracle, d0dbd5928)
+- Q4 final: full month = base ÷ calendar days of the month (month sum = base). Q4b: partial month = the engine's prorated amount `min(base, halfUp(base×d/30))` spread evenly over the employed days. (Supersedes the Q4 line above.)
+- The oracle note `ledger/wo-notes/hr-H4.2-oracle.md` §1 (argument shapes incl. `{now}` on laborWeek/laborMonth) and §4 (readings: shift cost, SSO on holiday, live-run month, leaver `active=false` not filtered, no removed lines in pos/reports.ts) are ACCEPTED as the contract. Missing OT law: follow the existing `otLawOf` fallback (no new behaviour). Builder may not change oracle expectations; impossible contract ⇒ stop and ask.
