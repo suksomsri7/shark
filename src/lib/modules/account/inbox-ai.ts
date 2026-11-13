@@ -21,6 +21,7 @@ import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit"
 import { accountRateGuard } from "./rate-limit";
 import { MICRO_PER_USD } from "@/lib/ai/pricing";
 import { safeReason } from "./errors";
+import { vatRateBpAt } from "./legal-values";
 
 export type InboxAiStatus = "PENDING" | "DONE" | "FAILED" | "UNSUPPORTED" | "SKIPPED";
 
@@ -91,7 +92,7 @@ export const BILL_PROMPT = `Read this Thai purchase document image and return ON
   "currency": string,              // ISO code, "THB" unless clearly another currency
   "subtotalSatang": integer,       // amount BEFORE vat, in satang (1 baht = 100 satang)
   "vatSatang": integer,            // vat amount in satang, 0 if the document shows no vat
-  "vatRateBp": integer,            // vat rate in basis points: 7% = 700, 0 if no vat
+  "vatRateBp": integer,            // vat rate in basis points: {{VAT_PCT}}% = {{VAT_BP}}, 0 if no vat
   "totalSatang": integer,          // grand total actually payable (vat included), in satang
   "whtSatang": integer|null,       // withholding tax deducted, satang, null if absent
   "lineItems": [                   // at most 20 rows; [] if the document has no readable line items
@@ -104,11 +105,21 @@ export const BILL_PROMPT = `Read this Thai purchase document image and return ON
 
 Rules:
 - Money MUST be integers in satang (e.g. 1,240.00 baht -> 124000). Never send decimals, never send strings.
-- subtotalSatang + vatSatang MUST equal totalSatang. If the document only shows a total that includes 7% vat,
-  compute subtotal = round(total * 100 / 107) and vat = total - subtotal.
+- subtotalSatang + vatSatang MUST equal totalSatang. If the document only shows a total that includes {{VAT_PCT}}% vat,
+  compute subtotal = round(total * 10000 / {{VAT_DIV}}) and vat = total - subtotal.
 - "TAX_INVOICE" only when the document literally says ใบกำกับภาษี. A bank transfer slip is "SLIP" (usually no vat).
 - If a value is unreadable use null (or 0 for vat fields), do NOT guess.
 - Output the JSON object and nothing else.`;
+
+/**
+ * ACC T0.2 ▸ เติมอัตรา VAT มาตรฐานของสมุด (จากตารางค่ากฎหมาย ณ วันอ่าน) ลงโจทย์ — เดิมฝัง "7% = 700" / "100 / 107"
+ *   สูตร total × 10000 / (10000 + bp) ให้ผลเท่าสูตรเดิมเมื่ออัตรา 700 bp ◂
+ */
+export function billPromptFor(stdVatBp: number): string {
+  return BILL_PROMPT.replaceAll("{{VAT_PCT}}", String(stdVatBp / 100))
+    .replaceAll("{{VAT_BP}}", String(stdVatBp))
+    .replaceAll("{{VAT_DIV}}", String(10000 + stdVatBp));
+}
 
 // ─────────────────── เรทแปลงค่าใช้จ่ายเป็นเงินไทย (แสดงผลเท่านั้น) ───────────────────
 // มิเตอร์จริงเก็บเป็นไมโครดอลลาร์ใน AiCreditTxn — ตัวเลขสตางค์ที่เก็บบนไฟล์แนบมีไว้ให้เจ้าของร้าน
@@ -323,7 +334,7 @@ export async function readBill(
 
   const messages: AiChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: BILL_PROMPT, imageUrls: [row.fileUrl] },
+    { role: "user", content: billPromptFor(await vatRateBpAt(ctx, new Date())), imageUrls: [row.fileUrl] },
   ];
 
   let tokensIn = 0;

@@ -232,7 +232,7 @@ export function validateDocRowFormat(side: "revenue" | "expense", r: Record<stri
 
   const vatRate = parseAmount(r.vatRate ?? "");
   if (vatRate !== null && (Number.isNaN(vatRate) || vatRate < 0 || vatRate > 100)) {
-    warn("อัตราภาษีไม่ถูกต้อง (ใช้ 7%)");
+    warn("อัตราภาษีไม่ถูกต้อง (ใช้อัตรามาตรฐานของสมุด)");
   }
 
   const dt = resolveDocType(side, r.docType ?? "");
@@ -275,7 +275,7 @@ export function validateProductRowFormat(r: Record<string, string>): RowCheck {
   }
   const vatRate = parseAmount(r.vatRate ?? "");
   if (vatRate !== null && (Number.isNaN(vatRate) || vatRate < 0 || vatRate > 100)) {
-    warn("อัตราภาษีไม่ถูกต้อง (ใช้ 7%)");
+    warn("อัตราภาษีไม่ถูกต้อง (ใช้อัตรามาตรฐานของสมุด)");
   }
   return { status, reasons };
 }
@@ -348,7 +348,8 @@ export function toQty(s: string, fallback = 0): number {
   if (n === null || Number.isNaN(n)) return fallback;
   return n;
 }
-export function toVatRateBp(s: string, fallback = 700): number {
+/** ช่องว่าง/อ่านไม่ได้ ⇒ `fallback` = อัตรามาตรฐานของสมุด (ผู้เรียกส่ง settings.vatRateBp ซึ่งมาจากตารางค่ากฎหมาย · ACC T0.2) */
+export function toVatRateBp(s: string, fallback: number): number {
   const n = parseAmount(s);
   if (n === null || Number.isNaN(n)) return fallback;
   return Math.round(n * 100);

@@ -94,6 +94,7 @@ export const SCOPE_LABEL_TH: Record<string, string> = {
   RESOURCE: "ทรัพยากร",
   DEVICE: "อุปกรณ์",
   COURSE: "คอร์ส",
+  ACCOUNT_BOOK: "สมุดบัญชี", // ACC T0.1
 };
 
 // ───────────────────────── ตัวช่วย ─────────────────────────

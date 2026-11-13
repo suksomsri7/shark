@@ -14,6 +14,7 @@ import type { Prisma, AccountPriceMode, AccountVatTiming, AccountWhtIncomeType }
 import { safeReason } from "./errors";
 import { tenantDb } from "@/lib/core/db";
 import { formatDateTh, THAI_MONTH_SHORT } from "@/lib/ui/date";
+import { vatRateBpAt } from "./legal-values";
 // ป้ายไทย + ชนิดข้อมูลที่ฝั่ง client ต้องใช้ อยู่แยกไฟล์ (ห้ามลาก prisma เข้าบันเดิลเบราว์เซอร์)
 export {
   DUP_POLICY_LABEL,
@@ -83,12 +84,15 @@ export const DEFAULT_REGULAR_CUSTOMER: RegularCustomerRule = {
   periodMonths: 12,
 };
 
-export function defaultPolicy(): AccountPolicy {
+/**
+ * ค่าเริ่มของนโยบาย · `vatRateBp` = อัตราจากตารางค่ากฎหมาย (ACC T0.2 — ผู้เรียกอ่านผ่าน legal-values ส่งเข้ามา ไม่ฝังเลข)
+ */
+export function defaultPolicy(vatRateBp: number): AccountPolicy {
   return {
     fiscalYearStartMonth: 1,
     periodCloseDay: null,
     vatRegistered: true,
-    vatRateBp: 700,
+    vatRateBp,
     vatTiming: "ON_ISSUE",
     defaultPriceMode: null,
     lockBeforeDate: null,
@@ -348,8 +352,8 @@ export const POLICY_SELECT = {
  * 🔴 ทางถอย: คอลัมน์ `dupContactPolicy` เป็น null (ร้านเก่าที่ยังไม่เคยเปิดหน้านี้)
  *    ⇒ อ่านจาก `docConfig.dupNamePolicy` เดิม เพื่อไม่ให้ค่าที่ตั้งไว้ก่อน 8.2 หายไป
  */
-export function parsePolicy(row: PolicyRow | null | undefined): AccountPolicy {
-  const d = defaultPolicy();
+export function parsePolicy(row: PolicyRow | null | undefined, vatRateBp: number): AccountPolicy {
+  const d = defaultPolicy(vatRateBp);
   if (!row) return d;
   const cfg = obj(row.docConfig);
   const legacyDup = cfg.dupNamePolicy;
@@ -365,7 +369,8 @@ export function parsePolicy(row: PolicyRow | null | undefined): AccountPolicy {
         ? row.periodCloseDay
         : null,
     vatRegistered: row.vatRegistered,
-    vatRateBp: row.vatRateBp,
+    // ACC T0.2 ▸ คอลัมน์ vatRateBp เลิกเป็นแหล่งความจริง — อัตรามาจากตารางค่ากฎหมายของสมุด (ผู้เรียกส่งมา) ◂
+    vatRateBp,
     vatTiming: row.vatTiming === "ON_PAYMENT" ? "ON_PAYMENT" : "ON_ISSUE",
     defaultPriceMode: row.defaultPriceMode ?? null,
     lockBeforeDate: row.lockBeforeDate ?? null,
@@ -403,7 +408,7 @@ export async function getPolicy(ctx: Ctx): Promise<AccountPolicy> {
     where: { systemId: ctx.systemId },
     select: POLICY_SELECT,
   });
-  return parsePolicy(row as PolicyRow | null);
+  return parsePolicy(row as PolicyRow | null, await vatRateBpAt(ctx, new Date()));
 }
 
 /**
@@ -491,6 +496,10 @@ export type PolicyPatch = Partial<
   >
 >;
 
+/** ข้อความเมื่อมีคนส่งอัตรา VAT ที่ต่างจากตารางมาทางนโยบาย/ข้อมูลกิจการ (ACC T0.2) */
+export const VAT_RATE_VIA_TABLE_TH =
+  "อัตรา VAT แก้ที่ ตั้งค่า › ข้อมูลกิจการ › อัตราภาษีและกำหนดยื่น (ตารางค่ากฎหมายมีวันที่มีผล) — ช่องนี้รับเฉพาะค่าที่ตรงกับตาราง";
+
 export type PolicySaveResult = { ok: true } | { ok: false; reason: string };
 
 /** ตรวจค่าก่อนบันทึก — คืนข้อความไทยของช่องแรกที่ผิด (null = ผ่าน) */
@@ -545,6 +554,11 @@ export function validatePolicyPatch(patch: PolicyPatch): string | null {
 export async function savePolicy(ctx: Ctx, patch: PolicyPatch): Promise<PolicySaveResult> {
   const bad = validatePolicyPatch(patch);
   if (bad) return { ok: false, reason: bad };
+  // ACC T0.2 ▸ อัตรา VAT อยู่ที่ "ตารางค่ากฎหมาย" ที่เดียว — ส่งค่าเท่าเดิมมา = ผ่าน (ไม่เขียนคอลัมน์) · ค่าต่าง = ชี้ไปที่ตาราง ◂
+  if (patch.vatRateBp !== undefined) {
+    const current = await vatRateBpAt(ctx, new Date());
+    if (patch.vatRateBp !== current) return { ok: false, reason: VAT_RATE_VIA_TABLE_TH };
+  }
 
   const db = dbOf(ctx);
   const existing = await db.accountSettings.findFirst({
@@ -561,7 +575,6 @@ export async function savePolicy(ctx: Ctx, patch: PolicyPatch): Promise<PolicySa
       "fiscalYearStartMonth",
       "periodCloseDay",
       "vatRegistered",
-      "vatRateBp",
       "vatTiming",
       "defaultPriceMode",
       "lockBeforeDate",

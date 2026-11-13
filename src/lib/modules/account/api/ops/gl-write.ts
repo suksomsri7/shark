@@ -325,7 +325,7 @@ const chartCreateInput = z
       .min(0)
       .max(10000)
       .nullish()
-      .describe("Default withholding rate in basis points: 300 = 3%."),
+      .describe("Default withholding rate in basis points (1% = 100)."),
     defaultWhtType: whtTypeField.nullish(),
     vatTreatment: vatTreatmentField.nullish(),
   })

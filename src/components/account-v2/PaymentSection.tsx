@@ -45,7 +45,13 @@ export type PaymentChannelOption = {
   accountNo: string | null;
 };
 
-export function newPayBox(date: string, amountSatang: number, financeAccountId: string | null): PayBox {
+/** ประเภทเงินได้เริ่มต้นของกล่องรับ/จ่ายใหม่ (ค่าที่พบบ่อย — ไม่ใช่ค่ากฎหมาย) */
+export const DEFAULT_PAY_WHT_TYPE = "M40_8";
+
+/**
+ * กล่องรับ/จ่ายใหม่ · `whtSuggest` = อัตราหัก ณ ที่จ่ายแนะนำต่อประเภทเงินได้ (LegalUiOptions.whtSuggest จากตารางค่ากฎหมาย · ACC T0.2)
+ */
+export function newPayBox(date: string, amountSatang: number, financeAccountId: string | null, whtSuggest: Record<string, number>): PayBox {
   return {
     key: `p${Math.random().toString(36).slice(2, 10)}`,
     paidAt: date,
@@ -53,8 +59,8 @@ export function newPayBox(date: string, amountSatang: number, financeAccountId: 
     amountSatang: Math.max(0, amountSatang),
     note: "",
     whtOn: false,
-    whtIncomeType: "M40_8",
-    whtRateBp: 300,
+    whtIncomeType: DEFAULT_PAY_WHT_TYPE,
+    whtRateBp: whtSuggest[DEFAULT_PAY_WHT_TYPE] ?? 0,
     whtAmountSatang: 0,
     feeSatang: 0,
     chequeOn: false,
@@ -181,6 +187,7 @@ export function PaymentSection({
   alreadyPaidSatang,
   whtBaseSatang,
   docTotalLabel,
+  whtSuggest,
   footer,
 }: {
   value: PayBox[];
@@ -195,6 +202,8 @@ export function PaymentSection({
   /** ฐานคำนวณภาษีหัก ณ ที่จ่าย (ยอดก่อน VAT) — ใช้เติมค่าอัตโนมัติเมื่อเปิด toggle */
   whtBaseSatang: number;
   docTotalLabel: string;
+  /** ACC T0.2 ▸ อัตราหัก ณ ที่จ่ายแนะนำต่อประเภทเงินได้ (ตารางค่ากฎหมาย + นโยบายร้าน) — เดิมฝังใน WHT_TYPE_OPTIONS ◂ */
+  whtSuggest: Record<string, number>;
   footer?: React.ReactNode;
 }) {
   const t = useMemo(() => textsFor(direction, "WTI"), [direction]);
@@ -228,8 +237,7 @@ export function PaymentSection({
     patch(b.key, { whtAmountSatang: wht, amountSatang: Math.max(0, remainingBefore(b.key) - wht) });
 
   const setWhtType = (b: PayBox, incomeType: string) => {
-    const opt = WHT_TYPE_OPTIONS.find((o) => o.value === incomeType);
-    const rate = opt?.defaultRateBp ?? b.whtRateBp;
+    const rate = whtSuggest[incomeType] ?? b.whtRateBp;
     const wht = Math.round((whtBaseSatang * rate) / 10000);
     patch(b.key, {
       whtIncomeType: incomeType,
@@ -244,7 +252,7 @@ export function PaymentSection({
     const date = last?.paidAt ?? new Date().toISOString().slice(0, 10);
     let used = alreadyPaidSatang;
     for (const b of value) used += boxTieOff(b);
-    onChange([...value, newPayBox(date, Math.max(0, docTotalSatang - used), last?.financeAccountId ?? channels[0]?.id ?? null)]);
+    onChange([...value, newPayBox(date, Math.max(0, docTotalSatang - used), last?.financeAccountId ?? channels[0]?.id ?? null, whtSuggest)]);
   };
 
   return (

@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/core/db";
 import { ciContains, ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix4 ◂ · C5.5-fix8 ciContains ◂
 import { safeReason } from "./errors";
+import { vatRateBpAt } from "./legal-values";
 import type {
   AccountDocType,
   AccountProductType,
@@ -521,7 +522,8 @@ export async function createProduct(
     unitId: input.unitId || null,
     salePrice: input.salePrice ?? null,
     buyPrice: input.buyPrice ?? null,
-    vatRateBp: input.vatRateBp ?? 700,
+    // ACC T0.2 ▸ ไม่ระบุ = อัตรามาตรฐานจากตารางค่ากฎหมายของสมุด ณ วันนี้ (เดิมฝัง 700) ◂
+    vatRateBp: input.vatRateBp ?? (await vatRateBpAt({ tenantId, systemId }, new Date())),
     incomeAccountId: input.incomeAccountId || null,
     expenseAccountId: input.expenseAccountId || null,
     imageUrl: input.imageUrl?.trim() || null,
@@ -586,7 +588,8 @@ export async function updateProduct(
     unitId: input.unitId || null,
     salePrice: input.salePrice ?? null,
     buyPrice: input.buyPrice ?? null,
-    vatRateBp: input.vatRateBp ?? 700,
+    // ACC T0.2 ▸ ไม่ระบุ = อัตรามาตรฐานจากตารางค่ากฎหมายของสมุด ณ วันนี้ (เดิมฝัง 700) ◂
+    vatRateBp: input.vatRateBp ?? (await vatRateBpAt({ tenantId, systemId }, new Date())),
     incomeAccountId: input.incomeAccountId || null,
     expenseAccountId: input.expenseAccountId || null,
     imageUrl: input.imageUrl?.trim() || null,

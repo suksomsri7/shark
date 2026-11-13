@@ -223,11 +223,15 @@ eq(
   types.WHT_TYPE_OPTIONS.length,
   Object.keys(WHT_INCOME_LABEL).length,
 );
+// ORACLE-EDIT (ACC T0.2): อัตราไม่ฝังในไฟล์ client แล้ว — มาจากตารางค่ากฎหมาย (legal-values) ⇒ ตรวจจากตัวอ่านเดียว
+//   สมุดไม่มีแถวของร้าน · วันที่ 2026-11-12 (อยู่ในช่วง พ.ร.ฎ. ฉ.807)
+const legalVals = await import("@/lib/modules/account/legal-values");
+const legalUi = legalVals.legalUiOptionsFrom(legalVals.EMPTY_BOOK_LEGAL, new Date("2026-11-12T05:00:00Z"));
 assert(
-  "E2 อัตราเริ่มต้นของทุกประเภทอยู่ในช่วง 0–15%",
-  types.WHT_TYPE_OPTIONS.every((o) => o.defaultRateBp >= 0 && o.defaultRateBp <= 1500),
+  "E2 อัตราแนะนำของทุกประเภทอยู่ในช่วง 0–15%",
+  types.WHT_TYPE_OPTIONS.every((o) => (legalUi.whtSuggest[o.value] ?? 0) >= 0 && (legalUi.whtSuggest[o.value] ?? 0) <= 1500),
 );
-eq("E2 ตัวเลือก VAT ต่อบรรทัด = 7% / 0% / ยกเว้น", types.VAT_OPTIONS.map((o) => o.value).join(","), "700,0,-1");
+eq("E2 ตัวเลือก VAT ต่อบรรทัด = 7% / 0% / ยกเว้น (จากตาราง)", legalUi.vatOptions.map((o) => o.value).join(","), "700,0,-1");
 
 // packDescription/unpackDescription ไป-กลับ (ชื่อ + คำอธิบายเก็บในคอลัมน์เดียว)
 const packed = types.packDescription("ทริปสิมิลัน 3D2N", "รวมอาหาร 6 มื้อ + ที่พักบนเรือ 2 คืน");

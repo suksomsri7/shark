@@ -25,27 +25,26 @@ export type LedgerModalAccount = {
   isSystem: boolean;
 };
 
-const WHT_RATE_OPTS: { value: string; label: string }[] = [
-  { value: "", label: "ไม่ใช้กับบัญชีนี้" },
-  { value: "100", label: "1%" },
-  { value: "150", label: "1.5%" },
-  { value: "200", label: "2%" },
-  { value: "300", label: "3%" },
-  { value: "500", label: "5%" },
-  { value: "1000", label: "10%" },
-];
+/** ACC T0.2 ▸ ตัวเลือกอัตรา = อัตราที่มีผลในตารางค่ากฎหมายของสมุด (ส่งมาจากหน้า server) + ค่าเดิมของบัญชีนี้ — เดิมเป็นรายการตายตัว ◂ */
+function whtRateOpts(rates: readonly number[], current: number | null): { value: string; label: string }[] {
+  const list = [...new Set([...rates.filter((r) => r > 0), ...(current != null && current > 0 ? [current] : [])])].sort((a, b) => a - b);
+  return [{ value: "", label: "ไม่ใช้กับบัญชีนี้" }, ...list.map((bp) => ({ value: String(bp), label: `${bp / 100}%` }))];
+}
 
 export function LedgerModal({
   systemId,
   accountsPath,
   groups,
   account,
+  whtRates,
 }: {
   systemId: string;
   accountsPath: string;
   groups: SubGroupOption[];
   /** null = เพิ่มบัญชีใหม่ */
   account: LedgerModalAccount | null;
+  /** อัตราหัก ณ ที่จ่ายที่มีผลในตารางค่ากฎหมายของสมุด (bp) */
+  whtRates: number[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -167,7 +166,7 @@ export function LedgerModal({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField label="อัตราหัก ณ ที่จ่ายเริ่มต้น" error={errors.defaultWhtRateBp}>
             <select className="input" value={whtRate} onChange={(e) => setWhtRate(e.target.value)} data-testid="coa-modal-wht-rate">
-              {WHT_RATE_OPTS.map((o) => (
+              {whtRateOpts(whtRates, account?.defaultWhtRateBp ?? null).map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>

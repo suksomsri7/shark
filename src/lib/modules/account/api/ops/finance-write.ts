@@ -624,7 +624,7 @@ const whtCertInput = z
       .min(1)
       .max(10000)
       .nullish()
-      .describe("Rate in basis points: 300 = 3%. Only needed when the payment itself did not record a rate."),
+      .describe("Rate in basis points (1% = 100). Only needed when the payment itself did not record a rate."),
   })
   .strict();
 

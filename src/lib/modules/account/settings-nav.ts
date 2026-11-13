@@ -102,6 +102,8 @@ export function settingsGroups(base: string): SettingsGroup[] {
         { key: "general", label: "ข้อมูลทั่วไป", path: root, sub: "general" },
         { key: "address", label: "ที่อยู่และสาขา", path: root, sub: "address" },
         { key: "brand", label: "โลโก้ ตราประทับ ลายเซ็น", path: root, sub: "brand" },
+        // ACC T0.2 ▸ ตารางค่ากฎหมายมีวันที่มีผล (อัตรา VAT · หัก ณ ที่จ่าย · กำหนดยื่น) — หน้าของตัวเอง ◂
+        { key: "tax", label: "อัตราภาษีและกำหนดยื่น", path: `${root}/tax`, sub: "tax" },
       ],
     },
     {

@@ -9,27 +9,43 @@ import type { AccMode } from "./mode-shared";
 
 export type { AmountOrPercent, PriceMode };
 
-/** ตัวเลือก VAT ต่อบรรทัด (§5.2 C) — -1 = ยกเว้น (ไม่ใช่ 0%) */
-export const VAT_OPTIONS: { value: number; label: string }[] = [
-  { value: 700, label: "7%" },
-  { value: 0, label: "0%" },
-  { value: -1, label: "ยกเว้น" },
-];
+/**
+ * ACC T0.2 ▸ ค่ากฎหมายที่ฟอร์มฝั่ง client ต้องใช้ — หน้า server คำนวณจากตารางค่ากฎหมายของสมุด
+ *   (`legal-values.legalUiOptionsFrom`) แล้วส่งลงมาก้อนเดียว · ห้ามฝังอัตราในไฟล์ client (เดิม VAT_OPTIONS / defaultRateBp)
+ */
+export type LegalUiOptions = {
+  /** อัตรา VAT มาตรฐาน ณ วันที่ของฟอร์ม */
+  defaultVatBp: number;
+  /** ตัวเลือก VAT ต่อบรรทัด (§5.2 C) — ค่าเริ่มขึ้นก่อน · 0 = อัตรา 0% · −1 = ยกเว้น */
+  vatOptions: { value: number; label: string }[];
+  /** อัตราหัก ณ ที่จ่ายที่แนะนำต่อประเภทเงินได้ (bp) — นโยบายร้าน (WO 8.2) ทับค่าจากตาราง · 0 = ไม่มีอัตราคงที่ (กรอกเอง) */
+  whtSuggest: Record<string, number>;
+  /** ตัวเลือกอัตราหัก ณ ที่จ่าย (bp) = อัตราที่มีผลในตาราง ∪ {0} */
+  whtRates: number[];
+};
+
+/** ตัวเลือก + ค่าปัจจุบัน (ค่าเก่าที่ไม่อยู่ในตารางแล้วต้องยังแสดง/เลือกค้างได้ ไม่หายเงียบ) */
+export function withCurrent<T extends { value: number }>(opts: T[], current: number | null | undefined, make: (v: number) => T): T[] {
+  return current == null || opts.some((o) => o.value === current) ? opts : [...opts, make(current)];
+}
+export const vatLabelOf = (bp: number): string => (bp === -1 ? "ยกเว้น" : `${bp / 100}%`);
+export const whtRateChoices = (rates: readonly number[], current: number | null | undefined): number[] =>
+  current == null || rates.includes(current) ? [...rates] : [...rates, current].sort((a, b) => a - b);
 
 /**
- * ประเภทเงินได้ ม.40 สำหรับ dropdown "หัก ณ ที่จ่าย" ต่อบรรทัด
+ * ประเภทเงินได้ ม.40 สำหรับ dropdown "หัก ณ ที่จ่าย" ต่อบรรทัด (ป้ายเท่านั้น — อัตราอยู่ที่ `LegalUiOptions.whtSuggest`)
  * ⚠️ ต้องตรงกับ `WHT_INCOME_LABEL` ใน `src/lib/modules/account/expense.ts` เป๊ะ
  *    (ที่นั่น import prisma จึงดึงมาฝั่ง client ไม่ได้) — `scripts/qc-acc-v2-editor.mts` ตรวจให้ว่าไม่หลุดจากกัน
  */
-export const WHT_TYPE_OPTIONS: { value: string; label: string; defaultRateBp: number }[] = [
-  { value: "M40_1", label: "40(1) เงินเดือน/ค่าจ้าง", defaultRateBp: 0 },
-  { value: "M40_2", label: "40(2) ค่านายหน้า/รับจ้างทำงาน", defaultRateBp: 300 },
-  { value: "M40_3", label: "40(3) ค่าลิขสิทธิ์/goodwill", defaultRateBp: 300 },
-  { value: "M40_4", label: "40(4) ดอกเบี้ย/เงินปันผล", defaultRateBp: 100 },
-  { value: "M40_5", label: "40(5) ค่าเช่าทรัพย์สิน", defaultRateBp: 500 },
-  { value: "M40_6", label: "40(6) วิชาชีพอิสระ", defaultRateBp: 300 },
-  { value: "M40_7", label: "40(7) รับเหมา", defaultRateBp: 300 },
-  { value: "M40_8", label: "40(8) บริการ/อื่นๆ", defaultRateBp: 300 },
+export const WHT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "M40_1", label: "40(1) เงินเดือน/ค่าจ้าง" },
+  { value: "M40_2", label: "40(2) ค่านายหน้า/รับจ้างทำงาน" },
+  { value: "M40_3", label: "40(3) ค่าลิขสิทธิ์/goodwill" },
+  { value: "M40_4", label: "40(4) ดอกเบี้ย/เงินปันผล" },
+  { value: "M40_5", label: "40(5) ค่าเช่าทรัพย์สิน" },
+  { value: "M40_6", label: "40(6) วิชาชีพอิสระ" },
+  { value: "M40_7", label: "40(7) รับเหมา" },
+  { value: "M40_8", label: "40(8) บริการ/อื่นๆ" },
 ];
 
 export const PRICE_MODE_OPTIONS: { value: PriceMode; label: string }[] = [
@@ -200,10 +216,9 @@ export type DocEditorV2Props = {
   products: ProductOption[];
   accounts: LedgerOption[];
   /**
-   * WO 8.2 (§9.3): อัตราหัก ณ ที่จ่ายเริ่มต้น **ต่อประเภทเงินได้** ตามนโยบายของร้าน
-   * ไม่ได้ตั้ง = ใช้อัตราตามกฎหมายใน `WHT_TYPE_OPTIONS` เหมือนเดิม
+   * ACC T0.2 ▸ ค่ากฎหมายของฟอร์ม (ตัวเลือก VAT · อัตราหัก ณ ที่จ่ายที่แนะนำต่อประเภทเงินได้ = นโยบายร้าน WO 8.2 ทับตาราง)
    */
-  whtRateByIncomeType?: Record<string, number>;
+  legal: LegalUiOptions;
   salesUsers: { id: string; name: string }[];
   tagOptions: string[];
   favorites: FavoriteSet[];

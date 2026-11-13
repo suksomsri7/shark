@@ -27,8 +27,10 @@ import {
   parseYmd,
   validateRuleInput,
   type RecurringRulePayload,
+  type RecurringVatRule,
   type SaveRuleResult,
 } from "./recurring-shared";
+import { vatRuleAt } from "./legal-values";
 
 // ─────────────────────────────────────────────────────────────
 // recurring-actions.ts — server actions ของ "เอกสารประจำ" (WO 1.9)
@@ -54,8 +56,9 @@ const int = (v: unknown) => {
 /** แปลง payload จากเบราว์เซอร์ → input ที่ service ยอมรับ (หรือรายการเหตุผลไทยที่ยังไม่ผ่าน) */
 function sanitizeRulePayload(
   payload: RecurringRulePayload,
+  vat: RecurringVatRule,
 ): { ok: true; input: RecurringRuleInput } | { ok: false; reason: string } {
-  const template = parseRecurringTemplate(payload?.template);
+  const template = parseRecurringTemplate(payload?.template, vat);
   const frequency = payload?.frequency;
   const startDate = parseYmd(payload?.startDate);
   const endDate = parseYmd(payload?.endDate);
@@ -101,7 +104,8 @@ export async function saveRecurringRuleAction(payload: RecurringRulePayload): Pr
   try {
     const { auth, tenantId, userId } = await loadAccountSystem(systemId);
     assertAccountCan(auth, "account.doc.create");
-    const s = sanitizeRulePayload(payload);
+    // ACC T0.2 ▸ อัตรา VAT ที่รับได้ตามตารางค่ากฎหมายของสมุด ◂
+    const s = sanitizeRulePayload(payload, await vatRuleAt({ tenantId, systemId }, new Date()));
     if (!s.ok) return { ok: false, reason: s.reason };
 
     const ruleId = trim(payload?.ruleId, 40);

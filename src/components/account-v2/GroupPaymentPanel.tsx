@@ -31,7 +31,15 @@ import { WHT_TYPE_OPTIONS } from "./doc-editor-types";
 
 type WhtRow = { on: boolean; incomeType: string; rateBp: number; amountSatang: number };
 
-const emptyWht = (): WhtRow => ({ on: false, incomeType: "M40_8", rateBp: 300, amountSatang: 0 });
+/** ประเภทเงินได้เริ่มต้นของกล่องหัก ณ ที่จ่าย (ค่าที่พบบ่อย — ไม่ใช่ค่ากฎหมาย) */
+const DEFAULT_WHT_TYPE = "M40_8";
+/** ACC T0.2 ▸ อัตราเริ่ม = ค่าแนะนำจากตารางค่ากฎหมาย (GroupPanelData.whtSuggest) — เดิมฝัง 300 ◂ */
+const emptyWht = (suggest: Record<string, number> | undefined): WhtRow => ({
+  on: false,
+  incomeType: DEFAULT_WHT_TYPE,
+  rateBp: suggest?.[DEFAULT_WHT_TYPE] ?? 0,
+  amountSatang: 0,
+});
 
 function Toggle({
   checked,
@@ -121,7 +129,7 @@ export function GroupPaymentPanel({
         if (d && reset) {
           setTieOff(d.outstanding);
           setFinanceAccountId(d.channels[0]?.id ?? null);
-          setWht(Object.fromEntries(d.children.map((c) => [c.id, emptyWht()])));
+          setWht(Object.fromEntries(d.children.map((c) => [c.id, emptyWht(d.whtSuggest)])));
           keyRef.current = `grp-${Date.now()}`;
         }
       }),
@@ -157,7 +165,7 @@ export function GroupPaymentPanel({
 
   const setWhtOn = (childId: string, on: boolean, base: number) =>
     setWht((prev) => {
-      const cur = prev[childId] ?? emptyWht();
+      const cur = prev[childId] ?? emptyWht(data?.whtSuggest);
       return {
         ...prev,
         [childId]: on
@@ -167,12 +175,12 @@ export function GroupPaymentPanel({
     });
   const setWhtType = (childId: string, incomeType: string, base: number) =>
     setWht((prev) => {
-      const cur = prev[childId] ?? emptyWht();
-      const rate = WHT_TYPE_OPTIONS.find((o) => o.value === incomeType)?.defaultRateBp ?? cur.rateBp;
+      const cur = prev[childId] ?? emptyWht(data?.whtSuggest);
+      const rate = data?.whtSuggest[incomeType] ?? cur.rateBp;
       return { ...prev, [childId]: { ...cur, incomeType, rateBp: rate, amountSatang: Math.round((base * rate) / 10000) } };
     });
   const setWhtAmount = (childId: string, amount: number) =>
-    setWht((prev) => ({ ...prev, [childId]: { ...(prev[childId] ?? emptyWht()), amountSatang: Math.max(0, amount) } }));
+    setWht((prev) => ({ ...prev, [childId]: { ...(prev[childId] ?? emptyWht(data?.whtSuggest)), amountSatang: Math.max(0, amount) } }));
 
   const submit = () =>
     startTransition(async () => {
@@ -417,7 +425,7 @@ export function GroupPaymentPanel({
                     </thead>
                     <tbody>
                       {allocations.map((a, i) => {
-                        const w = wht[a.id] ?? emptyWht();
+                        const w = wht[a.id] ?? emptyWht(data?.whtSuggest);
                         const whtAmt = a.take > 0 && w.on ? w.amountSatang : 0;
                         return (
                           <tr key={a.id} className="border-b last:border-0" data-testid={`alloc-row-${i + 1}`}>

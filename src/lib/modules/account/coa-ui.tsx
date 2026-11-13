@@ -15,6 +15,7 @@ import { LedgerModal } from "@/components/account-v2/LedgerModal";
 import { AccountIcon } from "@/components/account-v2/AccountIcon";
 import { chartTree, ledgerDetail, usedLedgerCodes, mappingKeyLabel } from "./coa";
 import { subGroupOptions, vatTreatmentLabel, whtLabel, prefixOf, type LedgerDetail, type ChartTree } from "./coa-v2";
+import { legalUiOptionsAt } from "./legal-values";
 
 type SP = { a?: string; new?: string; edit?: string; q?: string; err?: string };
 
@@ -50,6 +51,7 @@ export async function ChartOfAccountsPage({
         systemId={systemId}
         accountsPath={accountsPath}
         groups={groups}
+        whtRates={(await legalUiOptionsAt(ctx, new Date())).whtRates}
         account={
           editing
             ? {

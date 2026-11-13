@@ -39,6 +39,7 @@ import { listPaymentChannels } from "./payment";
 import { listExpenseAccounts, listIncomeAccounts, listProducts, listUnits } from "./product";
 import { listAttachments } from "./attachment";
 import { viewableAttachmentUrl } from "./attachment-shared"; // CRM C3.5 ◂
+import { legalUiOptionsAt } from "./legal-values";
 import {
   canCreateDirect,
   dueLabelOf,
@@ -163,9 +164,13 @@ export async function DocEditorPage({
       whtRateBp: w?.rateBp ?? null,
     };
   });
-  /** อัตราเริ่มต้นต่อประเภทเงินได้ตามนโยบาย (ว่าง = ฟอร์มใช้อัตราตามกฎหมายเหมือนเดิม) */
-  const whtRateByIncomeType: Record<string, number> = {};
-  for (const w of settings.policy.whtDefaults) whtRateByIncomeType[w.incomeType] = w.rateBp;
+  /** ACC T0.2 ▸ ค่ากฎหมายของฟอร์ม ณ วันที่เอกสาร: ตัวเลือก VAT + อัตราหัก ณ ที่จ่ายแนะนำ (นโยบายร้านทับตาราง) ◂ */
+  const legal = await legalUiOptionsAt(
+    { tenantId, systemId },
+    new Date(`${issueDate}T00:00:00.000Z`),
+    settings.policy.whtDefaults,
+    side === "expense" ? "SHOP_PAYS" : "CUSTOMER_PAYS",
+  );
 
   // ── stepper (§5.2 A) ──
   const chain = stepChainFor(docType);
@@ -335,7 +340,7 @@ export async function DocEditorPage({
           accountId: (side === "revenue" ? p.incomeAccountId : p.expenseAccountId) ?? null,
         }))}
         accounts={accounts}
-        whtRateByIncomeType={whtRateByIncomeType}
+        legal={legal}
         salesUsers={salesUsers}
         tagOptions={tagOptions}
         favorites={favorites as FavoriteSet[]}

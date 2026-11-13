@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
 import { requireAccountPage } from "./guard";
+import { legalUiOptionsAt } from "./legal-values";
 // 🔴 หน้านี้ **ไม่ import prisma** — ทุกการอ่าน DB ผ่านชั้น service/product (fitness F5)
 import {
   getRecurringRule,
@@ -323,6 +324,7 @@ export async function RecurringFormPage({
       expenseAccounts={expenseAccounts.map((a) => ({ id: a.id, code: a.code, name: a.name }))}
       vatRegistered={settings.vatRegistered}
       vatRateBp={settings.vatRateBp}
+      legal={await legalUiOptionsAt({ tenantId, systemId }, new Date(), settings.policy.whtDefaults)}
     />
   );
 }

@@ -9,7 +9,7 @@ import { ContactPicker, type ContactSearchResult } from "./ContactPicker";
 import { DocLineTable } from "./DocLineTable";
 import { DocTotals } from "./DocTotals";
 import { StickyBar } from "./StickyBar";
-import { newLineDraft, type ContactOption, type LedgerOption, type LineDraft, type ProductOption } from "./doc-editor-types";
+import { newLineDraft, type ContactOption, type LedgerOption, type LegalUiOptions, type LineDraft, type ProductOption } from "./doc-editor-types";
 import { computeDocTotals, type PriceMode } from "@/lib/modules/account/totals";
 // 🔵 import server action ตรง ๆ เหมือน DocEditorV2 (บรรทัด 12–13 ของไฟล์นั้น) — ไม่ส่งผ่าน prop
 import { searchContactsAction, searchProductsAction } from "@/lib/modules/account/editor-actions";
@@ -70,6 +70,7 @@ export function RecurringRuleForm({
   expenseAccounts,
   vatRegistered,
   vatRateBp,
+  legal,
 }: {
   systemId: string;
   base: string;
@@ -79,6 +80,8 @@ export function RecurringRuleForm({
   expenseAccounts: LedgerOption[];
   vatRegistered: boolean;
   vatRateBp: number;
+  /** ACC T0.2 ▸ ตัวเลือก VAT/หัก ณ ที่จ่ายจากตารางค่ากฎหมายของสมุด ◂ */
+  legal: LegalUiOptions;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -425,6 +428,7 @@ export function RecurringRuleForm({
             easy={false}
             requireLineAccount={!isRevenue}
             defaultVatRateBp={vatRateBp}
+            legal={legal}
             invalidKeys={new Set()}
             onChange={patchLine}
             onRemove={removeLine}

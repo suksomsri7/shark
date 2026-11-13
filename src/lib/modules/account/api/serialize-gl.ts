@@ -605,6 +605,8 @@ export function settingsView(s: AccountSettingsView) {
     website: s.website,
     vatRegistered: s.vatRegistered,
     vatRateBp: s.vatRateBp,
+    // ACC T0.1 ▸ ประเภทผู้ประกอบการ (UNSET = ยังไม่ระบุ) — แยกจากสถานะจด VAT · รายละเอียด/ตารางค่ากฎหมายที่ GET /settings/tax ◂
+    entityKind: s.entityKind,
     taxPointBasis: s.taxPointBasis,
     fiscalYearStartMonth: s.policy.fiscalYearStartMonth,
     currency: "THB",

@@ -121,7 +121,7 @@ export async function savePolicyAction(formData: FormData): Promise<PolicyAction
   // ② VAT
   if (has(formData, "vatRegistered")) {
     patch.vatRegistered = s(formData, "vatRegistered") === "1";
-    patch.vatRateBp = pctToBp(s(formData, "vatRatePct"), before.vatRateBp);
+    // ACC T0.2 ▸ อัตรา VAT แก้ที่ตารางค่ากฎหมาย (ตั้งค่า › ข้อมูลกิจการ › อัตราภาษีและกำหนดยื่น) — ฟอร์มนี้ไม่ส่งแล้ว ◂
     patch.vatTiming = (s(formData, "vatTiming") === "ON_PAYMENT" ? "ON_PAYMENT" : "ON_ISSUE") as AccountVatTiming;
   }
 

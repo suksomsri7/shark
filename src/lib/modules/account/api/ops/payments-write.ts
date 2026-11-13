@@ -132,7 +132,7 @@ const paymentRowInput = z
       .min(0)
       .max(10000)
       .nullish()
-      .describe("Withholding tax rate in basis points: 300 = 3%. Printed on the certificate."),
+      .describe("Withholding tax rate in basis points (1% = 100). Suggested rates per income type are in GET /settings/tax. Printed on the certificate."),
     whtAmountSatang: z
       .number()
       .int()

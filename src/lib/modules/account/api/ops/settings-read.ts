@@ -26,6 +26,7 @@ import { HELP_TEXTS } from "../../help-texts";
 import { inboxEmailAddressOf, inboxStats } from "../../inbox";
 import { getPolicy } from "../../policy";
 import { getSettings } from "../../service";
+import { bookTaxView } from "../../legal-values";
 import { defineOp, type ApiOp } from "../op";
 import { paged, withExtra, type PagedInfo } from "../respond";
 import {
@@ -94,7 +95,7 @@ const settingsGet = defineOp({
   path: "/settings",
   kind: "read",
   action: "account.doc.view",
-  summary: "Company details printed on documents: legal name, tax id, branch, address, VAT registration and fiscal year.",
+  summary: "Company details printed on documents: legal name, tax id, branch, address, VAT registration, business entity kind and fiscal year.",
   label: "ข้อมูลกิจการ",
   tool: { name: "account_settings", hint: "Use to check the legal name, tax id, branch and VAT registration of this business." },
   test: "B4-G6.4",
@@ -149,6 +150,35 @@ const linksList = defineOp({
   async handler({ actor }) {
     const cards = await buildConnectionCards({ tenantId: actor.tenantId, systemId: actor.systemId }, new Date());
     return cards.map(linkCardView);
+  },
+});
+
+// ═══════════════ ACC T0.1/T0.2 ประเภทผู้ประกอบการ + ตารางค่ากฎหมาย ═══════════════
+
+const settingsTaxInput = z
+  .object({
+    asOf: ymdField("asOf").optional().describe("Read the table as in effect on this Thai calendar day (YYYY-MM-DD). Default: today."),
+  })
+  .strict();
+
+const settingsTax = defineOp({
+  id: "settings.tax",
+  method: "GET",
+  path: "/settings/tax",
+  kind: "read",
+  action: "account.doc.view",
+  summary:
+    "Business entity kind of this book and the effective-dated legal value tables (VAT rate, withholding tax rates by income type × payer × recipient × channel, filing deadlines incl. the online extension): every row with its value, effective range, source, confidence tag and checked date, which row is in effect, and warnings. System defaults are research, not legal advice.",
+  label: "ประเภทผู้ประกอบการและตารางค่ากฎหมาย",
+  input: settingsTaxInput,
+  tool: {
+    name: "account_tax_settings",
+    hint: "Use to answer which VAT rate, withholding tax rate or filing deadline the book uses and where it comes from. Quote the source and tag; for rows tagged S/U or shop rows say they should be checked with the shop's accountant.",
+  },
+  test: "T02-API.1",
+  async handler({ actor, input }) {
+    const at = input.asOf ? dayStart(input.asOf) : new Date();
+    return bookTaxView({ tenantId: actor.tenantId, systemId: actor.systemId }, at);
   },
 });
 
@@ -255,6 +285,7 @@ export const SETTINGS_READ_OPS: ApiOp[] = [
   settingsGet,
   settingsPolicy,
   settingsDocuments,
+  settingsTax,
   linksList,
   filesList,
   inboxGet,

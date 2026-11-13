@@ -521,24 +521,26 @@ try {
   eq("P4.11 รันซ้ำวันเดียวกัน: ไม่มีแจ้งเตือนใหม่", totalNew, 0);
   eq("P4.12 จำนวนแถวแจ้งเตือนไม่เพิ่ม", await prisma.appNotification.count({ where: { tenantId } }), beforeSecond);
 
-  // ภ.พ.30 — เตือนเฉพาะวันที่ 5 ของเดือน (5 วันก่อนกำหนดยื่นวันที่ 10)
+  // ภ.พ.30 — เตือน 5 วันก่อนกำหนดยื่นแบบกระดาษ
+  // ORACLE-EDIT (ACC T0.2): กำหนดยื่นมาจากตารางค่ากฎหมาย = วันที่ 15 (skill VAT §19 · ม.83) ⇒ วันเตือน = วันที่ 10
+  //   (เดิมฝัง "วันที่ 10" ⇒ เตือนวันที่ 5) — ตัวแปร dayFive คงชื่อเดิมเพื่อให้ diff อ่านง่าย แต่ชี้วันที่ 10
   //
   // 🔴 ระเบิดเวลา (เจอจริง 5 ก.ย. 2026): `rem1` ข้างบนเรียกด้วย **เวลาจริง** — ถ้าวันไทยวันนี้เป็นวันที่ 5 พอดี
   //    ตัวเตือน ภ.พ.30 จะถูกยิงไปแล้วตั้งแต่ `rem1` แล้ว `dayFive` (วันเดียวกัน) จะโดน
   //    `notifyUsersOncePerDay` กันซ้ำ → คืน 0 ⇒ ข้อสอบแดงเดือนละครั้งโดยที่โค้ดไม่ได้พัง
   //    ⇒ วัดที่ "ยิงไปกี่ครั้งรวมทั้งสองรอบ" แทนที่จะผูกกับรอบใดรอบหนึ่ง (ผลเท่ากันทุกวันของเดือน)
-  const dayFive = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 5, 5, 0, 0));
+  const dayFive = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 10, 5, 0, 0));
   const remPp30 = await acc.runAccountReminders(dayFive, { tenantId, systemId });
   const pp30Fired = rem1.PP30_DUE + remPp30.PP30_DUE;
   assert(
-    "P4.13 วันที่ 5 ของเดือน มีเตือน ภ.พ.30 (นับรวมรอบที่เวลาจริงตรงวันที่ 5 อยู่แล้ว)",
+    "P4.13 วันที่ 10 ของเดือน (5 วันก่อนกำหนดยื่นตามตาราง) มีเตือน ภ.พ.30 (นับรวมรอบที่เวลาจริงตรงวันนั้นอยู่แล้ว)",
     pp30Fired >= 1,
     `rem1=${rem1.PP30_DUE} · dayFive=${remPp30.PP30_DUE} · วันไทยวันนี้ ${now.toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" })}`,
   );
   // กันซ้ำ: ยิงรอบเดิมอีกครั้งในวันเดียวกัน ต้องไม่เพิ่มแถวแจ้งเตือน
   const pp30RowsBefore = await prisma.appNotification.count({ where: { tenantId, title: "ภ.พ.30 ใกล้ครบกำหนดยื่น" } });
   const remPp30Again = await acc.runAccountReminders(dayFive, { tenantId, systemId });
-  eq("P4.13b ยิงซ้ำวันที่ 5 วันเดิม → ไม่เตือนซ้ำ", remPp30Again.PP30_DUE, 0);
+  eq("P4.13b ยิงซ้ำวันที่ 10 วันเดิม → ไม่เตือนซ้ำ", remPp30Again.PP30_DUE, 0);
   eq(
     "P4.13c จำนวนแถวเตือน ภ.พ.30 ไม่เพิ่ม",
     await prisma.appNotification.count({ where: { tenantId, title: "ภ.พ.30 ใกล้ครบกำหนดยื่น" } }),

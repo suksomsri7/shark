@@ -378,7 +378,7 @@ function EditorBody(props: DocEditorV2Props) {
     setPayBoxes((prev) =>
       prev.length > 0
         ? prev
-        : [newPayBox(value.issueDate, totals.grandTotal, props.paymentChannels[0]?.id ?? null)],
+        : [newPayBox(value.issueDate, totals.grandTotal, props.paymentChannels[0]?.id ?? null, props.legal.whtSuggest)],
     );
   }, [props.paymentEnabled, props.paymentChannels, value.issueDate, totals.grandTotal, attachedPays.length]);
 
@@ -1163,7 +1163,7 @@ function EditorBody(props: DocEditorV2Props) {
           easy={easy}
           requireLineAccount={props.requireLineAccount}
           defaultVatRateBp={props.vatRateBp}
-          whtRateByIncomeType={props.whtRateByIncomeType}
+          legal={props.legal}
           invalidKeys={showErrors ? invalidLineKeys : new Set<string>()}
           onChange={patchLine}
           onRemove={removeLine}
@@ -1335,6 +1335,7 @@ function EditorBody(props: DocEditorV2Props) {
             alreadyPaidSatang={0}
             whtBaseSatang={totals.afterDiscount}
             docTotalLabel={`ยอด${props.docLabel}`}
+            whtSuggest={props.legal.whtSuggest}
           />
           )}
         </>

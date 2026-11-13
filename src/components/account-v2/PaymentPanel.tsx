@@ -53,7 +53,7 @@ export function PaymentPanel({
         setData(d);
         if (d && focusNew) {
           const today = new Date().toISOString().slice(0, 10);
-          setBoxes([newPayBox(today, d.outstanding, d.channels[0]?.id ?? null)]);
+          setBoxes([newPayBox(today, d.outstanding, d.channels[0]?.id ?? null, d.whtSuggest)]);
           keyRef.current = `pay-${docId}-${Date.now()}`;
         }
       }),
@@ -185,6 +185,7 @@ export function PaymentPanel({
                 alreadyPaidSatang={data.paidTotal}
                 whtBaseSatang={data.whtBaseSatang}
                 docTotalLabel={`ยอด${data.docLabel}`}
+                whtSuggest={data.whtSuggest}
               />
             )}
 

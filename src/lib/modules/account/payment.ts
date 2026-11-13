@@ -15,6 +15,8 @@ import { recordVendorPayment, voidVendorPayment } from "./expense";
 import { listFinanceAccounts } from "./finance";
 import { attachReceiptPaymentsWithChequesInOneTx, chequeDraftProblem, recordPaymentWithChequeInOneTx } from "./cheque";
 import { issueWhtCreditCertStandalone } from "./wht";
+import { legalUiOptionsAt } from "./legal-values";
+import { getPolicy } from "./policy";
 
 // ─────────────────────────────────────────────────────────────
 // payment.ts — ส่วน F ของ DESIGN-SPEC-V2 §5.2 "รับชำระเงิน / บันทึกจ่าย" (WO 1.4)
@@ -138,6 +140,8 @@ export type PaymentPanelData = {
   canRecord: boolean;
   payments: PaymentRowView[];
   channels: FinanceOption[];
+  /** ACC T0.2 ▸ อัตราหัก ณ ที่จ่ายแนะนำต่อประเภทเงินได้ (ตารางค่ากฎหมาย + นโยบายร้าน) ◂ */
+  whtSuggest: Record<string, number>;
 };
 
 export async function paymentPanelData(
@@ -148,11 +152,13 @@ export async function paymentPanelData(
   const found = await paymentTargetOf(tenantId, systemId, docId);
   if (!found) return null;
   const { doc, target } = found;
-  const [payments, channels] = await Promise.all([
+  const [payments, channels, policy] = await Promise.all([
     listDocPayments(tenantId, systemId, target.id),
     listPaymentChannels(tenantId, systemId),
+    getPolicy({ tenantId, systemId }),
   ]);
   const outstanding = paymentOutstandingOf(target) /* CRM C5.4-C ▸ − ใบลดหนี้ (F-05) ◂ */;
+  const legal = await legalUiOptionsAt({ tenantId, systemId }, new Date(), policy.whtDefaults, target.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS");
   return {
     docId: doc.id,
     docType: doc.docType,
@@ -170,6 +176,7 @@ export async function paymentPanelData(
     canRecord: ["AWAITING_PAYMENT", "PARTIAL"].includes(target.status),
     payments,
     channels,
+    whtSuggest: legal.whtSuggest,
   };
 }
 

@@ -75,11 +75,8 @@ const TYPE_OPTIONS: { value: string; label: string; hint: string }[] = [
   { value: "BUNDLE", label: "รายการจัดชุด", hint: "ขาย 1 ชุด = ตัดสต็อกส่วนประกอบ" },
 ];
 
-const VAT_OPTIONS: { value: number; label: string }[] = [
-  { value: 700, label: "VAT 7%" },
-  { value: 0, label: "VAT 0%" },
-  { value: -1, label: "ยกเว้น VAT" },
-];
+/** ACC T0.2 ▸ ตัวเลือก VAT มาจากตารางค่ากฎหมายของสมุด (prop `vatOptions`) + ค่าเดิมของสินค้า — เดิมฝัง 7%/0%/ยกเว้น ◂ */
+const vatOptionLabel = (bp: number) => (bp === -1 ? "ยกเว้น VAT" : `VAT ${bp / 100}%`);
 
 const bahtOf = (satang: number | null | undefined) => (satang == null ? "" : String(satang / 100));
 const money = (satang: number | null | undefined) =>
@@ -118,7 +115,7 @@ type FormState = {
   imageUrls: string;
 };
 
-function formOf(p: ProductModalProduct | null, nextCode: string): FormState {
+function formOf(p: ProductModalProduct | null, nextCode: string, defaultVatBp: number): FormState {
   return {
     code: p?.code ?? nextCode,
     type: p?.type ?? "GOODS",
@@ -131,7 +128,7 @@ function formOf(p: ProductModalProduct | null, nextCode: string): FormState {
     unitId: p?.unitId ?? "",
     salePriceBaht: bahtOf(p?.salePrice),
     buyPriceBaht: bahtOf(p?.buyPrice),
-    vatRateBp: String(p?.vatRateBp ?? 700),
+    vatRateBp: String(p?.vatRateBp ?? defaultVatBp),
     purchaseVatRateBp: p?.purchaseVatRateBp == null ? "" : String(p.purchaseVatRateBp),
     incomeAccountId: p?.incomeAccountId ?? "",
     expenseAccountId: p?.expenseAccountId ?? "",
@@ -248,6 +245,8 @@ export function ProductModal({
   defaultAdvTab,
   ssrMode,
   hasInventorySystem,
+  vatOptions,
+  defaultVatBp,
 }: {
   systemId: string;
   productsPath: string;
@@ -263,6 +262,10 @@ export function ProductModal({
   defaultAdvTab: AdvTab;
   ssrMode: AccMode;
   hasInventorySystem: boolean;
+  /** อัตรา VAT ที่เลือกได้ (bp) จากตารางค่ากฎหมายของสมุด — รวม 0 และ −1 (ยกเว้น) */
+  vatOptions: number[];
+  /** อัตรามาตรฐานวันนี้ (ค่าเริ่มของสินค้าใหม่) */
+  defaultVatBp: number;
 }) {
   const router = useRouter();
   const isEdit = !!product;
@@ -270,7 +273,11 @@ export function ProductModal({
   const easy = mode === "easy";
   const [tab, setTab] = useState<"basic" | "advanced">(defaultTab);
   const [advTab, setAdvTab] = useState<AdvTab>(defaultAdvTab);
-  const [f, setF] = useState<FormState>(() => formOf(product, nextCode));
+  const [f, setF] = useState<FormState>(() => formOf(product, nextCode, defaultVatBp));
+  const vatChoices = (current: string): number[] => {
+    const n = Number.parseInt(current, 10);
+    return Number.isFinite(n) && !vatOptions.includes(n) ? [...vatOptions, n] : vatOptions;
+  };
   const [codeEditable, setCodeEditable] = useState(false);
   const [bundleItems, setBundleItems] = useState(product?.bundleItems ?? []);
   const [showErrors, setShowErrors] = useState(false);
@@ -614,7 +621,7 @@ export function ProductModal({
                   ["หน่วย", unitName],
                   ["ราคาขาย", f.salePriceBaht ? money(Math.round(Number(f.salePriceBaht) * 100)) : "—"],
                   ["ราคาซื้อ", f.buyPriceBaht ? money(Math.round(Number(f.buyPriceBaht) * 100)) : "—"],
-                  ["VAT ขาย", VAT_OPTIONS.find((v) => String(v.value) === f.vatRateBp)?.label ?? "—"],
+                  ["VAT ขาย", f.vatRateBp ? vatOptionLabel(Number.parseInt(f.vatRateBp, 10)) : "—"],
                   ["บัญชีรายได้", incomeCode],
                   ["บัญชีสินค้า", f.inventoryAccountCode || "1200"],
                   ["ต้นทุนขาย", f.cogsAccountCode || "5000"],
@@ -737,9 +744,9 @@ export function ProductModal({
                   </FormField>
                   <FormField label="VAT ขาย">
                     <select value={f.vatRateBp} onChange={(e) => set("vatRateBp", e.target.value)} className="input" data-testid="product-vat">
-                      {VAT_OPTIONS.map((v) => (
-                        <option key={v.value} value={String(v.value)}>
-                          {v.label}
+                      {vatChoices(f.vatRateBp).map((v) => (
+                        <option key={v} value={String(v)}>
+                          {vatOptionLabel(v)}
                         </option>
                       ))}
                     </select>
@@ -747,9 +754,9 @@ export function ProductModal({
                   <FormField label="VAT ซื้อ" hint="ไม่เลือก = ใช้อัตราเดียวกับ VAT ขาย">
                     <select value={f.purchaseVatRateBp} onChange={(e) => set("purchaseVatRateBp", e.target.value)} className="input" data-testid="product-purchase-vat">
                       <option value="">ตามอัตราขาย</option>
-                      {VAT_OPTIONS.map((v) => (
-                        <option key={v.value} value={String(v.value)}>
-                          {v.label}
+                      {vatChoices(f.purchaseVatRateBp).map((v) => (
+                        <option key={v} value={String(v)}>
+                          {vatOptionLabel(v)}
                         </option>
                       ))}
                     </select>
@@ -760,7 +767,7 @@ export function ProductModal({
                     <FormField label="หัก ณ ที่จ่ายเริ่มต้น (ประเภทเงินได้)">
                       <input value={f.defaultWhtType} onChange={(e) => set("defaultWhtType", e.target.value)} placeholder="เช่น ม.40(2) ค่าจ้างทำของ" className="input" data-testid="product-wht-type" />
                     </FormField>
-                    <FormField label="อัตราหัก ณ ที่จ่าย (basis point · 300 = 3%)">
+                    <FormField label="อัตราหัก ณ ที่จ่าย (basis point · 1% = 100)">
                       <input inputMode="numeric" value={f.defaultWhtRateBp} onChange={(e) => set("defaultWhtRateBp", e.target.value)} className="input text-right" data-testid="product-wht-rate" />
                     </FormField>
                   </div>

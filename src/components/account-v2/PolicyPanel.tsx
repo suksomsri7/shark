@@ -156,7 +156,7 @@ export function PolicyPanel(p: PolicyPanelProps) {
   const body = (() => {
     switch (p.sub) {
       case "vat":
-        return <VatSection v={v} />;
+        return <VatSection v={v} taxHref={`${p.base}/settings/tax`} />;
       case "wht":
         return <WhtSection v={v} />;
       case "price":
@@ -297,7 +297,7 @@ function FiscalSection({ v }: { v: PolicyView }) {
 
 // ═══════════════ ② VAT ═══════════════
 
-function VatSection({ v }: { v: PolicyView }) {
+function VatSection({ v, taxHref }: { v: PolicyView; taxHref: string }) {
   return (
     <Card
       testId="policy-vat-card"
@@ -312,10 +312,16 @@ function VatSection({ v }: { v: PolicyView }) {
             <option value="0">ไม่จด VAT</option>
           </select>
         </label>
-        <label className={labelCls}>
-          อัตรา VAT (%)
-          <input name="vatRatePct" type="number" step="0.01" min={0} max={100} defaultValue={v.vatRatePct} className="input" data-testid="policy-vat-rate" />
-        </label>
+        {/* ACC T0.2 ▸ อัตราอยู่ที่ตารางค่ากฎหมาย (มีวันที่มีผล + ที่มา) ที่เดียว — ที่นี่แสดงอย่างเดียว ◂ */}
+        <div className={labelCls}>
+          อัตรา VAT ที่ใช้วันนี้
+          <span className="text-sm text-[color:var(--color-ink)]" data-testid="policy-vat-rate">
+            {v.vatRatePct}%
+          </span>
+          <Link href={taxHref} className="underline" data-testid="policy-vat-rate-link">
+            ดู/แก้ที่ อัตราภาษีและกำหนดยื่น
+          </Link>
+        </div>
       </div>
       <label className={labelCls}>
         จุดรับรู้ภาษีขายเริ่มต้น

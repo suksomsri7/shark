@@ -76,6 +76,7 @@ export const SKILLS: Skill[] = [
       "account_search_contacts", "account_get_contact", "account_search_products",
       "account_finance_balances", "account_wht_summary", "account_list_journal", "account_assets",
       "account_chart_of_accounts", "account_settings", "account_parse_quick_create",
+      "account_tax_settings", // ACC T0.2 ▸ ประเภทผู้ประกอบการ + ตารางค่ากฎหมาย (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",
@@ -83,6 +84,7 @@ export const SKILLS: Skill[] = [
       "account_issue_goods", "account_post_journal", "account_close_period",
       "account_run_depreciation", "account_transfer_funds", "account_email_document",
       "account_create_recurring", "account_upload_file", "account_read_bill_image",
+      "account_update_tax_settings", // ACC T0.1/T0.2 ▸ ตั้งประเภทผู้ประกอบการ / แถวตารางค่ากฎหมาย (ข้อเสนอ) ◂
       // อันตราย (ยืนยัน 2 ชั้น)
       "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",
     ],

@@ -10,7 +10,8 @@ import type {
   AccountLegalType,
 } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
-import { assertAccountCan, writeAudit } from "./access";
+import { assertAccountCan, mc, writeAudit } from "./access";
+import { isEntityKind, loadBookLegal, saveBookTax } from "./legal-values";
 import {
   createDocument,
   updateDocument,
@@ -762,7 +763,7 @@ export async function saveSettingsAction(formData: FormData) {
       ? {}
       : {
           vatRegistered: str(formData, "vatRegistered") === "1",
-          vatRateBp: num(formData, "vatRateBp") ?? 700,
+          vatRateBp: num(formData, "vatRateBp") ?? undefined, // ACC T0.2 ▸ อัตราอยู่ที่ตารางค่ากฎหมาย ◂
           taxPointBasis: (str(formData, "taxPointBasis") as AccountVatTiming) || "ON_ISSUE",
         }),
     defaultDueDays: num(formData, "defaultDueDays") ?? 30,
@@ -770,6 +771,12 @@ export async function saveSettingsAction(formData: FormData) {
     footerNote: str(formData, "footerNote") || null,
     ...(sentDocTypeFields ? { docTypes } : {}),
   });
+  // ACC T0.1 ▸ ประเภทผู้ประกอบการ = ค่าตั้งของเครื่องยนต์ (ชั้น ACCOUNT_BOOK) — เขียนเฉพาะเมื่อฟอร์มส่งมาและค่าเปลี่ยน ◂
+  const entityKind = str(formData, "entityKind");
+  if (isEntityKind(entityKind) && entityKind !== (await loadBookLegal({ tenantId, systemId })).entityKind) {
+    const r = await saveBookTax({ ...mc(auth), userId }, { tenantId, systemId }, { entityKind });
+    if (!r.ok) throw new Error(r.issues.map((i) => i.messageTh).join(" · ") || "บันทึกประเภทผู้ประกอบการไม่สำเร็จ");
+  }
   await writeAudit({
     tenantId,
     actorId: userId,

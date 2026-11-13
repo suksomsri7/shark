@@ -34,6 +34,7 @@ import {
 import { getContact, nextContactCode, listTenantMembers } from "./service";
 import { countOpenMergeCandidates } from "./contact-merge";
 import { isDbdConfigured, DBD_REASON } from "./dbd";
+import { legalUiOptionsAt } from "./legal-values";
 import {
   createContactGroupAction,
   addContactsToGroupAction,
@@ -107,6 +108,8 @@ export async function ContactsPage({
         getAccMode(),
       ])
     : ["", [] as { id: string; name: string }[], [] as string[], "accountant" as const];
+  // ACC T0.2 ▸ ตัวเลือกอัตราหัก ณ ที่จ่ายของ modal = อัตราที่มีผลในตารางค่ากฎหมายของสมุด ◂
+  const modalWhtRates = modalOpen ? (await legalUiOptionsAt(ctx, new Date())).whtRates : [];
 
   const cellsFor = (r: ContactRow): React.ReactNode[] => [
     // เลขที่ — ลิงก์สีฟ้า (accent) ตรง f5 (ไม่ใช่สีดำแบบรอบแรก)
@@ -283,6 +286,7 @@ export async function ContactsPage({
           dbdEnabled={isDbdConfigured()}
           dbdDisabledReason={DBD_REASON.noKey}
           defaultTab={searchParams.tab === "advanced" ? "advanced" : searchParams.tab === "basic" ? "basic" : accMode === "easy" ? "basic" : "advanced"}
+          whtRates={modalWhtRates}
         />
       )}
 

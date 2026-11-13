@@ -10,8 +10,11 @@ import { Modal } from "./Modal";
 import { RowActions } from "./RowActions";
 import type { DocTotalsLineOut } from "@/lib/modules/account/totals";
 import {
-  VAT_OPTIONS,
   WHT_TYPE_OPTIONS,
+  vatLabelOf,
+  whtRateChoices,
+  withCurrent,
+  type LegalUiOptions,
   type LedgerOption,
   type LineDraft,
   type ProductOption,
@@ -49,7 +52,7 @@ export function DocLineTable({
   easy,
   requireLineAccount,
   defaultVatRateBp,
-  whtRateByIncomeType,
+  legal,
   invalidKeys,
   onChange,
   onRemove,
@@ -66,8 +69,8 @@ export function DocLineTable({
   easy: boolean;
   /** อัตรา VAT ของกิจการ — ใช้เมื่อสินค้าที่เลือกไม่ได้กำหนดอัตราไว้เอง (ห้ามฮาร์ดโค้ด 7%) */
   defaultVatRateBp: number;
-  /** WO 8.2 (§9.3): อัตรา WHT เริ่มต้นต่อประเภทเงินได้ตามนโยบายร้าน (ไม่มี = ใช้อัตราตามกฎหมาย) */
-  whtRateByIncomeType?: Record<string, number>;
+  /** ACC T0.2 ▸ ตัวเลือก VAT + อัตราหัก ณ ที่จ่ายแนะนำ/ที่เลือกได้ จากตารางค่ากฎหมาย (นโยบายร้าน WO 8.2 ทับแล้ว) ◂ */
+  legal: LegalUiOptions;
   requireLineAccount: boolean;
   invalidKeys: Set<string>;
   onChange: (key: string, patch: Partial<LineDraft>) => void;
@@ -93,9 +96,9 @@ export function DocLineTable({
   }, [autoEditKey]);
 
   // ── WO 8.2 (§9.3) ตัวช่วยค่าเริ่มต้นหัก ณ ที่จ่าย ──
-  /** อัตราเริ่มต้นของประเภทเงินได้: นโยบายร้านก่อน → อัตราตามกฎหมาย → 3% */
-  const whtRateOf = (incomeType: string): number =>
-    whtRateByIncomeType?.[incomeType] ?? WHT_TYPE_OPTIONS.find((o) => o.value === incomeType)?.defaultRateBp ?? 300;
+  /** อัตราเริ่มต้นของประเภทเงินได้: นโยบายร้าน → ตารางค่ากฎหมาย (รวมไว้ที่ legal.whtSuggest แล้ว) → 0 = กรอกเอง */
+  const whtRateOf = (incomeType: string): number => legal.whtSuggest[incomeType] ?? 0;
+  const vatOptionsFor = (current: number) => withCurrent(legal.vatOptions, current, (v) => ({ value: v, label: vatLabelOf(v) }));
   /**
    * เลือก "บัญชี" ของบรรทัด → เติมประเภทเงินได้/อัตราให้ตามนโยบาย
    * 🔴 เติมเฉพาะตอนบรรทัดยัง**ไม่เคยเลือก**ประเภทเงินได้ — ไม่ทับค่าที่ผู้ใช้ตั้งเอง
@@ -285,7 +288,7 @@ export function DocLineTable({
                       aria-label="VAT"
                       data-testid={`line-${i}-vat`}
                     >
-                      {VAT_OPTIONS.map((o) => (
+                      {vatOptionsFor(l.vatRateBp).map((o) => (
                         <option key={o.value} value={o.value}>
                           {o.label}
                         </option>
@@ -325,7 +328,7 @@ export function DocLineTable({
                           aria-label="อัตราหัก ณ ที่จ่าย"
                           data-testid={`line-${i}-wht-rate`}
                         >
-                          {[0, 100, 200, 300, 500, 1000, 1500].map((bp) => (
+                          {whtRateChoices(legal.whtRates, l.whtRateBp).map((bp) => (
                             <option key={bp} value={bp}>
                               {bp / 100}%
                             </option>
@@ -363,7 +366,7 @@ export function DocLineTable({
             : requireLineAccount
               ? "— ยังไม่เลือกบัญชี —"
               : "ตามค่าเริ่มต้น";
-          const vatText = VAT_OPTIONS.find((o) => o.value === l.vatRateBp)?.label ?? `${l.vatRateBp / 100}%`;
+          const vatText = vatLabelOf(l.vatRateBp);
           return (
             <div
               key={l.key}
@@ -485,7 +488,7 @@ export function DocLineTable({
                   onChange={(e) => onChange(editingLine.key, { vatRateBp: Number(e.target.value) })}
                   data-testid="line-m-edit-vat"
                 >
-                  {VAT_OPTIONS.map((o) => (
+                  {vatOptionsFor(editingLine.vatRateBp).map((o) => (
                     <option key={o.value} value={o.value}>
                       VAT {o.label}
                     </option>

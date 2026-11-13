@@ -10,6 +10,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { ImageAssetField } from "@/components/image-asset-field";
 import { SettingsNav } from "@/components/account-v2/SettingsNav";
 import { storageEnabled } from "@/lib/storage/service";
+import { ENTITY_KINDS, ENTITY_KIND_LABEL_TH, CHECK_WITH_ACCOUNTANT_TH } from "@/lib/modules/account/legal-values";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 const labelCls = "flex flex-col gap-1 text-xs text-[color:var(--color-muted)]";
@@ -38,6 +39,16 @@ export default async function AccountSettingsPage({
       </div>
 
       {saved === "1" && <p className="text-sm text-[color:var(--color-ink)]">บันทึกแล้ว ✓</p>}
+      {/* ACC T0.1 ▸ ยังไม่ระบุประเภทผู้ประกอบการ = ชวนให้ตั้ง (ไม่บล็อกการใช้งานใด ๆ) ◂ */}
+      {s.entityKind === "UNSET" && (
+        <p
+          className="rounded-lg border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-3 py-2 text-sm"
+          data-testid="entity-kind-prompt"
+        >
+          ยังไม่ได้ระบุ <b>ประเภทผู้ประกอบการ</b> — ระบบใช้ค่านี้กับคำเตือน รายงาน ปฏิทินภาษี และอัตราหัก ณ ที่จ่ายที่แนะนำ
+          เลือกได้ในช่องด้านล่าง (ใช้งานต่อได้ตามปกติแม้ยังไม่เลือก)
+        </p>
+      )}
 
       <div className="flex flex-col gap-4 md:flex-row md:items-start">
         <SettingsNav base={base} activeGroup="org" activeSub={sub} />
@@ -74,6 +85,19 @@ export default async function AccountSettingsPage({
         <label className={labelCls}>
           เลขผู้เสียภาษี
           <input name="taxId" defaultValue={s.taxId ?? ""} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          ประเภทผู้ประกอบการ
+          <select name="entityKind" defaultValue={s.entityKind} className={inputCls} data-testid="entity-kind-select">
+            {ENTITY_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {ENTITY_KIND_LABEL_TH[k]}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px]">
+            แยกจากสถานะจด VAT · ใช้ตัดสินว่าร้านเป็นผู้จ่ายแบบนิติบุคคลหรือไม่ในหัก ณ ที่จ่าย ({CHECK_WITH_ACCOUNTANT_TH})
+          </span>
         </label>
         <label className={labelCls}>
           รหัสสาขา
