@@ -122,7 +122,16 @@ export async function huntSetup(label: string) {
     return { who, token: String(ti.teammateToken) };
   };
   const app = (o: Rec = {}): Rec => ({ legalName: `${MARK} legal ${hex(3)}`, payeeType: "TH_JURISTIC", contact: { name: `${MARK} contact` }, consentVersion: "agency-apply-v1", ...o });
-  const shop = async (fn: string, ctx: { tenantId: string; actorUserId: string }, input: Rec, opts: Rec = {}): Promise<Rec> => R(await AG(fn)(ctx, input, { deps, ...opts }));
+  /**
+   * r2 (ruling §10 item 5): approve / reject must carry `expectedUpdatedAt` — the shop screen always has it. When a probe does not pass one,
+   * send the row's CURRENT stamp (read by id, whatever shop owns it — the strongest form of a cross-shop attempt), so the call is judged on what it attacks, not on a missing field.
+   */
+  const withExpected = async (fn: string, input: Rec): Promise<Rec> => {
+    if ((fn !== "approveAgentAccount" && fn !== "rejectAgentAccount") || "expectedUpdatedAt" in input) return input;
+    const u = (await q<{ u: string }>(`SELECT to_char("updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS u FROM "AgentAccount" WHERE id = $1`, [String(input.agentAccountId)]))[0]?.u;
+    return { ...input, expectedUpdatedAt: u ?? "1970-01-01T00:00:00.000Z" };
+  };
+  const shop = async (fn: string, ctx: { tenantId: string; actorUserId: string }, input: Rec, opts: Rec = {}): Promise<Rec> => R(await AG(fn)(ctx, await withExpected(fn, input), { deps, ...opts }));
 
   // ── cleanup (same approach as the oracle: tenant tables by tenantId · global rows by tracked ids / marks) ──
   const cleanup = async (): Promise<void> => {
@@ -156,6 +165,8 @@ export async function huntSetup(label: string) {
       }
       await pool.query(`DELETE FROM "AgentLogin" WHERE subject LIKE 'hunta12-%'`);
       await pool.query(`DELETE FROM "AgentLoginCode" WHERE id = ANY($1::text[])`, [codeIds]);
+      // r2: "teammate token used" marker rows (tmj_*) written by this run (we hold the QC gate lock for this DB ⇒ only this process writes them now)
+      await pool.query(`DELETE FROM "AgentLoginCode" WHERE id LIKE 'tmj\\_%' AND "createdAt" >= $1`, [RUN_START]);
       await pool.query(`DELETE FROM "AgentIdentity" WHERE "displayName" LIKE $1 OR id = ANY($2::text[])`, [`${MARK}%`, ids]);
       // rate buckets written by this run (we hold the QC gate lock for this DB ⇒ only this process writes agent:* buckets now)
       await pool.query(`DELETE FROM "ChatRateBucket" WHERE key LIKE 'agent:%' AND "createdAt" >= $1`, [RUN_START]);

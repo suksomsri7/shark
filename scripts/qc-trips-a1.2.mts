@@ -7,6 +7,7 @@
 //   A ล็อกอินอีเมล + session + token · AP สมัคร · SH ฝั่งร้าน (ผังสถานะ · สิทธิ์ · DTO) · IN เชิญ · M ผู้ใช้/บทบาท/ลบตาม PDPA
 //   P ความเป็นส่วนตัวสองร้าน (เครื่องหมายฝังที่ร้าน B · สแกน DTO/รายการ/audit/outbox/ops/ผล error ของร้าน A) · PY Party/CRM
 //   C พร้อมกัน · CAP เพดานใบสมัคร/คำเชิญ · H งานบ้าน (ag_ · ออกทุกเครื่อง · 20 session · งานกวาด) · I ค่าคงที่ · G regression (fitness · qc-trips-a1.1 --no-regression)
+//   RU (ORACLE-ADD r3) มติผู้คุม §10 ข้อ 1–19 + §11 ข้อ 1–3 + หัวข้อที่ผู้ตรวจโค้ดขอเพิ่ม (CODE-REVIEW T-1…T-19) — ร้าน/ตัวตนของตัวเอง · ลำดับกำหนดได้ (ไม่พึ่งการแข่งเวลา)
 //
 // 🔴 ร้านชั่วคราว slug `trips-a12-*` (A: หน่วย TRIPS 2 · B: TRIPS + A36=false · C: หน่วย SHOP เท่านั้น · D: TRIPS ใช้ทดสอบพร้อมกัน)
 //    ตัวตน/ผู้ใช้ติดป้าย "QCA12" · อีเมล `qca12-*@example.test` · ลบใน finally + กวาดค้างตอนเริ่ม · แถวสมุดลบด้วย `SET LOCAL shark.ledger_purge = 'on'`
@@ -34,6 +35,7 @@ loadTripsQcEnv(LABEL); // ด่านฐาน: ไม่ใช่ qc-trips ⇒
 if (process.env.CI) { console.error(`🔴 ${LABEL}: ห้าม export CI (with-gate-lock ข้าม flock)`); process.exit(4); }
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) process.env.SESSION_SECRET = `qc-a12-session-${"s".repeat(40)}`;
 if (!process.env.INTEGRATIONS_CREDENTIALS_KEY || process.env.INTEGRATIONS_CREDENTIALS_KEY.trim().length < 32) process.env.INTEGRATIONS_CREDENTIALS_KEY = `qc-a12-${"k".repeat(40)}`;
+process.env.RESEND_API_KEY = ""; // ORACLE-ADD r3: ข้อสอบไม่เคยส่งอีเมลจริง — RU-7 สอบทาง "ไม่มีผู้ให้บริการส่งเมล" (มติ §10 ข้อ 4) · ต้องตั้งก่อน import `@/lib/env`
 const RUN_START = new Date();
 
 // ═══════════════ harness ═══════════════
@@ -157,6 +159,13 @@ const createdUserIds: string[] = [];
 const createdIdentityIds: string[] = [];
 const createdCodeIds: string[] = [];
 const usedEmails: string[] = [];
+/** ORACLE-ADD r3 (มติ §10 ข้อ 2): token เชิญเพื่อนที่ถูกใช้ในรัน ⇒ แถว "jti ใช้แล้ว" (`tmj_*` · target = แฮช tm-jti) ในตารางรหัส — เก็บไว้ลบตอนจบ */
+const usedJtiTargets = new Set<string>();
+const teammateJti = (tok: unknown): string | null => {
+  if (typeof tok !== "string" || !tok.includes(".")) return null;
+  try { const n = (JSON.parse(Buffer.from(tok.split(".")[0], "base64url").toString("utf8")) as Rec).n; return typeof n === "string" ? n : null; } catch { return null; }
+};
+const noteTeammateToken = (tok: unknown): void => { const n = teammateJti(tok); if (n) { try { usedJtiTargets.add(authHash("tm-jti", n)); } catch { /* ไม่มีกุญแจ */ } } };
 async function cleanupGlobal() {
   try {
     const us = (await q<{ id: string }>(`SELECT u.id FROM "AgentUser" u LEFT JOIN "AgentIdentity" i ON i.id = u."identityId" WHERE u."displayName" LIKE $1 OR i."displayName" LIKE $1 OR u.id = ANY($2::text[]) OR u."identityId" = ANY($3::text[])`, [`${QC_MARK}%`, createdUserIds, createdIdentityIds])).map((r) => r.id);
@@ -168,6 +177,9 @@ async function cleanupGlobal() {
     await pool.query(`DELETE FROM "AgentLogin" WHERE subject LIKE 'qca12-%'`);
     const targets = usedEmails.map((e) => { try { return authHash("login-target", e); } catch { return ""; } }).filter(Boolean);
     await pool.query(`DELETE FROM "AgentLoginCode" WHERE id = ANY($1::text[]) OR target = ANY($2::text[])`, [createdCodeIds, targets]);
+    // แถว jti ของ token เชิญเพื่อน: ตามแฮชที่จดไว้ + ทุกแถว tmj_ ที่เกิดในรันนี้ (ถือ gate lock ของฐานนี้อยู่ ⇒ มีแต่โพรเซสนี้ที่สร้าง)
+    const jt = [...usedJtiTargets];
+    await pool.query(`DELETE FROM "AgentLoginCode" WHERE target = ANY($1::text[]) OR id = ANY($2::text[]) OR (id LIKE 'tmj\\_%' AND "createdAt" >= $3)`, [jt, jt.map((t) => `tmj_${t.slice(3, 43)}`), RUN_START]);
     await pool.query(`DELETE FROM "AgentIdentity" WHERE "displayName" LIKE $1 OR id = ANY($2::text[])`, [`${QC_MARK}%`, createdIdentityIds]);
   } catch (e) { console.log(`  ⚠️ cleanup global: ${errMsg(e)}`); }
 }
@@ -200,7 +212,11 @@ try {
   const INVM = await tryImport("./trips-agency-invariants.mts");
   const need = (m: { mod: Rec | null; err: string }, what: string): Rec => { if (!m.mod) throw new AssertFail(`ยังไม่มี ${what} (${m.err.slice(0, 90)})`); return m.mod; };
   const AG = (n: string): F => fnOf(need(AGM, "@/lib/modules/agency"), n, "agency facade");
-  const AU = (n: string): F => fnOf(need(AUM, "@/lib/platform/agent-auth"), n, "platform/agent-auth");
+  const AU = (n: string): F => {
+    const f = fnOf(need(AUM, "@/lib/platform/agent-auth"), n, "platform/agent-auth");
+    if (n !== "verifyAgentLoginCode") return f;
+    return async (...a: unknown[]) => { noteTeammateToken(R(a[0]).teammateInvite); return f(...a); }; // ORACLE-ADD r3: จด jti ไว้ลบ
+  };
   const AS = (n: string): F => fnOf(need(ASM, "@/lib/modules/agency/agent-side"), n, "agency/agent-side");
   const CO = (n: string): unknown => { const m = need(COREM, "agency/accounts-core"); if (!(n in m)) throw new AssertFail(`accounts-core ยังไม่มี ${n}`); return m[n]; };
   const LIMITS = (): Rec => { const l = asRec(need(AUM, "@/lib/platform/agent-auth").AGENT_AUTH_LIMITS); if (!l) throw new AssertFail("ยังไม่มี AGENT_AUTH_LIMITS"); return l; };
@@ -362,11 +378,15 @@ try {
     eq([w({ no: "11/1", expiry: "2026-01-01" }, today), w({ no: "11/1", expiry: "2029-12-01" }, today), w({ no: "11/1", expiry: "2027-06-01" }, today), w({ no: null, expiry: null }, today), w({ no: "x", expiry: today }, today)],
       [["LICENCE_EXPIRED"], ["LICENCE_EXPIRY_TOO_FAR"], [], [], []], "คำเตือน");
   });
-  await st("K-5", "คีย์ DTO รายละเอียด/รายการตรงตัว · NEVER_SHOW_TO_SHOP_KEYS ครบ 15 · ไม่ซ้อนกับคีย์ DTO", () => {
+  await st("K-5", "คีย์ DTO รายละเอียด/รายการตรงตัว · NEVER_SHOW_TO_SHOP_KEYS = 15 คีย์ของใบสั่ง (ตรงตัว · ลำดับเดิม) + คีย์แท็กผู้สมัครของมติ §11 ข้อ 3 (ขึ้นต้น applicant) เท่านั้น · ไม่ซ้อนกับคีย์ DTO", () => {
     eq(CO("SHOP_AGENT_ACCOUNT_KEYS"), DTO_KEYS, "DTO");
     eq(CO("SHOP_AGENT_LIST_KEYS"), LIST_KEYS, "รายการ");
-    eq(CO("NEVER_SHOW_TO_SHOP_KEYS"), NEVER, "ห้ามแสดง");
-    ok(DTO_KEYS.concat(LIST_KEYS).every((k) => !NEVER.includes(k)), "ซ้อนกัน");
+    // ORACLE-ADD r3 (ต้องให้ผู้คุมรับเป็น ORACLE-EDIT): มติ §11 ข้อ 3 สั่งให้แท็กผู้สมัคร "อยู่ใน NEVER_SHOW_TO_SHOP_KEYS" ⇒ รายการยาวกว่า 15 ได้ เฉพาะคีย์ applicant*
+    const never = [...(CO("NEVER_SHOW_TO_SHOP_KEYS") as string[])];
+    eq(never.slice(0, NEVER.length), NEVER, "ห้ามแสดง (15 คีย์ของใบสั่ง)");
+    const extra = never.slice(NEVER.length);
+    ok(extra.every((k) => /^applicant[A-Z][A-Za-z]*$/.test(k)) && new Set(never).size === never.length, `คีย์เพิ่มนอกมติ: ${fmt(extra)}`);
+    ok(DTO_KEYS.concat(LIST_KEYS).every((k) => !never.includes(k)), "ซ้อนกัน");
   });
   await st("K-6", "maskEmail ไม่มีส่วน local/โดเมนเต็ม", () => {
     const m = String((CO("maskEmail") as (e: string) => unknown)("someone@example.com"));
@@ -1562,6 +1582,1106 @@ try {
     ok(accs.length === 2 && accs.every((a) => a.status === "CLOSED" && a.statusReason === "IDENTITY_CLOSED"), `บัญชี ${fmt(accs)}`);
     eq(await AU("resolveAgentSession")(w!.token), null, "session");
     for (const t of [tA, tB]) ok((await audits(t)).some((a) => a.action === "agency.account.identity_closed"), `audit ร้าน ${t === tA ? "A" : "B"}`);
+  });
+
+  // ═══════════════ RU. มติผู้คุม §10 (หลังตรวจรอบ 1) + §11 (หลังรอบแก้ r2) + หัวข้อที่ผู้ตรวจโค้ดขอเพิ่ม (CODE-REVIEW T-1…T-19) ═══════════════
+  // ORACLE-ADD r3 (ผู้เขียนข้อสอบเพิ่ม · อิสระจากผู้สร้าง) — ทุกข้อเรียกบริการที่ส่งออกจริงบนฐาน QC ด้วยแถวที่สร้างเอง (ร้าน `trips-a12-<stamp>-ru*` · ตัวตน QCA12 · อีเมล qca12-ru*)
+  //   ไม่พึ่งการแข่งเวลา: ข้อ "พร้อมกัน" ตรวจผลที่ต้องจริงทุกลำดับ · ข้อที่ต้องบังคับลำดับใช้ tx ของข้อสอบถือล็อก/แถวไว้แล้วรอจนบริการติดรอ (pg_locks) ก่อน commit
+  console.log("\n── RU: มติ §10/§11 · หัวข้อที่ผู้ตรวจขอเพิ่ม ──");
+  const SETF = (n: string) => fnOf(need(SETM, "@/lib/core/settings"), n, "settings");
+  type Shop2 = { id: string; slug: string; unitId: string; owner: Staff; ctx: { tenantId: string; actorUserId: string } };
+  const mkStaff = async (tag: string, tenantId: string, role: Staff["role"], unitAccess: string[], permissions: Rec): Promise<Staff> => {
+    const id = rid(`u${tag}`);
+    await ins("User", { id, email: `${EMAIL_PREFIX}${tag}-${STAMP}@shark.local`, name: `ผู้ทดสอบ ${tag}` });
+    await ins("Membership", { id: rid(`mb${tag}`), userId: id, tenantId, role, unitAccess: JSON.stringify(unitAccess), permissions: JSON.stringify(permissions), acceptedAt: now() });
+    return { userId: id, role, unitAccess, permissions };
+  };
+  const setRequireApproval = async (s: { id: string; unitId: string; owner: Staff }, value: boolean): Promise<void> => {
+    const w = R(await SETF("setSettings")({ ...s.owner }, { tenantId: s.id }, [{ key: "agency.signup.requireApproval", scope: "UNIT", scopeId: s.unitId, value }], {}));
+    ok(w.ok === true, `setSettings: ${fmt(w)}`);
+  };
+  /** ร้านชั่วคราวของกลุ่ม RU: หน่วย TRIPS 1 + เจ้าของ 1 · auto = ไม่ต้องอนุมัติ (A36 = false) */
+  const mkShop2 = async (tag: string, o: { auto?: boolean } = {}): Promise<Shop2> => {
+    const id = rid(`t${tag}`), unitId = rid(`u${tag}`), slug = `${SLUG}${STAMP}-${tag}`;
+    await ins("Tenant", { id, name: `${QC_MARK} ร้าน ${tag}`, slug });
+    tenantIds.push(id);
+    await ins("BusinessUnit", { id: unitId, tenantId: id, type: "TRIPS", name: `หน่วย ${tag}`, slug: `${SLUG}${tag}-${STAMP}` });
+    const owner = await mkStaff(`o${tag}`, id, "OWNER", ["*"], {});
+    const s: Shop2 = { id, slug, unitId, owner, ctx: { tenantId: id, actorUserId: owner.userId } };
+    if (o.auto) await setRequireApproval(s, false);
+    return s;
+  };
+  /** meta ที่ตัวจำกัดผ่านเสมอ (ข้อที่ไม่ได้สอบเพดาน) */
+  const mo = (at?: Date, ip?: string): Rec => meta(at, undefined, ip, OPEN_DEPS);
+  const applyAs = async (w: { token: string }, slug: string, application: Rec = app(), at?: Date): Promise<Rec> => R(await AU("agentApply")(w.token, { shopSlug: slug, application }, mo(at)));
+  const withdrawAs = async (w: { token: string }, slug: string, at?: Date): Promise<Rec> => R(await AU("agentWithdraw")(w.token, { shopSlug: slug }, mo(at)));
+  const shopDo = async (fn: string, ctx: { tenantId: string; actorUserId: string }, input: Rec, opts: Rec = {}): Promise<Rec> => R(await AG(fn)(ctx, await withExpected(fn, input), { deps: OPEN_DEPS, ...opts }));
+  const detail = async (s: Shop2, id: string): Promise<Rec> => R((await shopDo("getAgentAccount", s.ctx, { agentAccountId: id })).account);
+  const cooled = () => new Date(Date.now() + (lim("reapplyCooldownDays") + 1) * 86_400_000);
+  const count = async (sql: string, params: unknown[] = []): Promise<number> => Number((await q<{ n: number }>(sql, params))[0]?.n ?? -1);
+  /** จำนวนแถว OpsEvent ระดับ ERROR ของ agency.* (เทียบก่อน/หลัง — ไม่พึ่งนาฬิกา · ถือ gate lock ของฐานนี้อยู่) */
+  const opsErrors = () => count(`SELECT count(*)::int AS n FROM "OpsEvent" WHERE level::text = 'ERROR' AND source LIKE 'agency.%'`);
+  const opsMailWarns = () => count(`SELECT count(*)::int AS n FROM "OpsEvent" WHERE level::text = 'WARN' AND source LIKE 'agency.%'`);
+  const liveSessions = (agentUserId: string) => count(`SELECT count(*)::int AS n FROM "AgentSession" WHERE "agentUserId" = $1 AND "revokedAt" IS NULL`, [agentUserId]);
+  const loginRows = (email: string) => count(`SELECT count(*)::int AS n FROM "AgentLogin" WHERE subject = $1`, [email]);
+  const safe = async (f: () => Promise<unknown>): Promise<Rec> => { try { return R(await f()); } catch (e) { return { threw: errMsg(e) }; } };
+  const RESULT_KEYS = ["agentAccountId", "ok", "replayed", "status"];
+  const limOpts = (k: string) => ({ limit: lim(k, "limit"), windowMs: lim(k, "windowMin") * 60_000 });
+  type Seen = { key: string; limit: number; windowMs: number };
+  /** ตัวจำกัดจำลองที่จดทุกคำขอ · deny(คำขอ) ⇒ ปฏิเสธคำขอนั้น */
+  const recRate = (seen: Seen[], deny?: (s: Seen) => boolean): Rec => ({
+    ...deps,
+    rateLimit: async (key: unknown, opts: unknown) => {
+      const s: Seen = { key: String(key), limit: Number(R(opts).limit), windowMs: Number(R(opts).windowMs) };
+      seen.push(s);
+      return deny?.(s) ? { ok: false, retryAfterSec: 30, count: 999 } : { ok: true, count: 1 };
+    },
+  });
+  const isBucket = (s: Seen, k: string) => s.limit === limOpts(k).limit && s.windowMs === limOpts(k).windowMs;
+  /** จับทุกอย่างที่พิมพ์ลง console ระหว่าง fn (+ รอสั้น ๆ ให้งานนอกเส้นทางคำขอพิมพ์ ถ้ามี) */
+  const captureConsole = async <T,>(fn: () => Promise<T>): Promise<{ out: string; val: T }> => {
+    const keep = { log: console.log, info: console.info, warn: console.warn, error: console.error, debug: console.debug };
+    const buf: string[] = [];
+    const w = (...a: unknown[]) => { buf.push(a.map((x) => (typeof x === "string" ? x : fmt(x))).join(" ")); };
+    Object.assign(console, { log: w, info: w, warn: w, error: w, debug: w });
+    try { const val = await fn(); await new Promise((r) => setTimeout(r, 400)); return { out: buf.join("\n"), val }; } finally { Object.assign(console, keep); }
+  };
+  /**
+   * บังคับลำดับแบบกำหนดได้: ข้อสอบเปิด tx ของตัวเอง ทำ hold (ถือล็อก/เขียนแถวที่ยังไม่ commit) → ยิงบริการ → รอจนบริการ "ติดรอล็อก" (pg_locks มีแถว granted = false)
+   * หรือจบไปเอง → commit → คืนผลของบริการ · ข้อที่ใช้ตัวนี้ตัดสินจาก "สถานะสุดท้าย" ซึ่งต้องถูกทั้งสองทาง (ไม่ตัดสินจากว่ารอหรือไม่)
+   */
+  const underHeldTx = async (hold: (c: pg.PoolClient) => Promise<void>, call: () => Promise<unknown>): Promise<{ res: Rec; waited: boolean }> => {
+    const c = await pool.connect();
+    let waited = false, settled = false;
+    let p: Promise<Rec> = Promise.resolve({});
+    try {
+      await c.query("BEGIN");
+      await hold(c);
+      p = safe(call).finally(() => { settled = true; });
+      for (let i = 0; i < 400 && !settled; i++) {
+        if ((await count(`SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted`)) > 0) { waited = true; break; }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      await c.query("COMMIT");
+    } catch (e) { try { await c.query("ROLLBACK"); } catch { /* ignore */ } throw e; } finally { c.release(); }
+    return { res: await p, waited };
+  };
+  const inviteMate = async (by: { token: string }, email: string, role: string): Promise<string> => {
+    const ti = R(await AU("createTeammateInvite")(by.token, { email, role }, mo()));
+    ok(ti.ok === true, `เชิญเพื่อน: ${fmt(ti)}`);
+    allTokens.push(String(ti.teammateToken));
+    return String(ti.teammateToken);
+  };
+  /** ขอรหัส + ยืนยันพร้อม token เพื่อน (ตัวจำกัดผ่านเสมอ) — คืนผลยืนยันดิบ */
+  const redeem = async (email: string, tok: string, name = "ru"): Promise<Rec> => {
+    const r = await reqCode(email, mo());
+    ok(r.ok === true, `ขอรหัส ${email}: ${fmt(r)}`);
+    return verify({ email, codeId: r.codeId, code: lastMail(email, "LOGIN_CODE")?.code, teammateInvite: tok, teammateName: `${QC_MARK} ${name}` }, mo());
+  };
+  const userOfToken = async (token: unknown): Promise<string> => String(R(await AU("resolveAgentSession")(String(token))).agentUserId ?? "");
+  const rowJson = async (id: string): Promise<string> => (await q<{ j: string }>(`SELECT row_to_json(a)::text AS j FROM "AgentAccount" a WHERE id = $1`, [id]))[0]?.j ?? "";
+  const neverNow = (): string[] => [...new Set([...NEVER, "applicantTag", ...((asRec(COREM.mod)?.NEVER_SHOW_TO_SHOP_KEYS as string[] | undefined) ?? [])])];
+
+  // ─────────────────── มติ §10 ข้อ 1 — ปิดถาวรต้องติดจริง ───────────────────
+  await st("RU-1", "มติ §10 ข้อ 1 (RV-F1 · H-F2 · T-1): ร้านอนุมัติอัตโนมัติปิดบัญชี (CLOSED_BY_SHOP) → สมัครซ้ำหลังช่วงรอ ⇒ PENDING → ถอน ⇒ กลับ CLOSED เหตุเดิม CLOSED_BY_SHOP (ไม่ใช่ WITHDRAWN · ยังติดช่วงรอ) → สมัครอีก ⇒ PENDING ไม่ ACTIVE (×2 รอบ) · ประตู null ตลอด · ร้านอนุมัติเอง ⇒ ACTIVE + เหตุถูกล้าง", async () => {
+    needBuilt();
+    const s = await mkShop2("ru1", { auto: true });
+    const k = await signup(mail("ru1"), "RU1");
+    const a1 = await applyAs(k, s.slug);
+    ok(a1.status === "ACTIVE", `ตัวควบคุม: ร้านนี้ต้องอนุมัติอัตโนมัติ — ${fmt(a1)}`);
+    const id = String(a1.agentAccountId);
+    const c = await shopDo("closeAgentAccount", s.ctx, { agentAccountId: id });
+    eq([c.status, (await acc(id))?.statusReason], ["CLOSED", "CLOSED_BY_SHOP"], "ร้านปิด");
+    const at = cooled();
+    const rounds: unknown[] = [];
+    for (let round = 0; round < 2; round++) {
+      const re = await applyAs(k, s.slug, app(), at);
+      const scope = await AU("agentScope")(k.token, { shopSlug: s.slug });
+      const w = await withdrawAs(k, s.slug, at);
+      const row = await acc(id);
+      const soon = await applyAs(k, s.slug); // นาฬิกาจริง = ยังอยู่ในช่วงรอของการปิดโดยร้าน
+      rounds.push([re.status, re.agentAccountId === id, scope, w.status, row?.status, row?.statusReason, row?.approvedAt ?? null, soon.code]);
+    }
+    const one = ["PENDING", true, null, "CLOSED", "CLOSED", "CLOSED_BY_SHOP", null, "BAD_STATE"];
+    eq(rounds, [one, one], "สมัครซ้ำ → ถอน (สองรอบ)");
+    const re3 = await applyAs(k, s.slug, app(), at);
+    const ap = await shopDo("approveAgentAccount", s.ctx, { agentAccountId: id });
+    const scope3 = R(await AU("agentScope")(k.token, { shopSlug: s.slug }));
+    const fin = await acc(id);
+    eq([re3.status, ap.status, scope3.agentAccountId, fin?.status, fin?.statusReason ?? null, fin?.approvedById], ["PENDING", "ACTIVE", id, "ACTIVE", null, s.owner.userId], "ร้านอนุมัติเอง");
+  });
+  await st("RU-2", "มติ §10 ข้อ 1 (REJECTED): ร้านปฏิเสธ แล้วภายหลังร้านเปลี่ยนเป็นอนุมัติอัตโนมัติ (ตัวควบคุม: ผู้สมัครใหม่ ⇒ ACTIVE) → ผู้ถูกปฏิเสธสมัครซ้ำ ⇒ PENDING → ถอน ⇒ CLOSED เหตุเดิม REJECTED → สมัครอีก ⇒ PENDING · ประตู null · approvedAt ว่าง", async () => {
+    needBuilt();
+    const s = await mkShop2("ru2");
+    const k = await signup(mail("ru2"), "RU2");
+    const a1 = await applyAs(k, s.slug);
+    const id = String(a1.agentAccountId);
+    const rj = await shopDo("rejectAgentAccount", s.ctx, { agentAccountId: id });
+    eq([a1.status, rj.status, (await acc(id))?.statusReason], ["PENDING", "CLOSED", "REJECTED"], "ปฏิเสธ");
+    await setRequireApproval(s, false);
+    const ctl = await signup(mail("ru2c"), "RU2C");
+    const c1 = await applyAs(ctl, s.slug);
+    ok(c1.status === "ACTIVE", `ตัวควบคุม: หลังเปลี่ยนค่าตั้ง ผู้สมัครใหม่ต้อง ACTIVE — ${fmt(c1)}`);
+    const at = cooled();
+    const re1 = await applyAs(k, s.slug, app(), at);
+    const w = await withdrawAs(k, s.slug, at);
+    const mid = await acc(id);
+    const re2 = await applyAs(k, s.slug, app(), at);
+    const fin = await acc(id);
+    eq([re1.status, w.status, mid?.status, mid?.statusReason, re2.status, re2.agentAccountId, fin?.status, fin?.approvedAt ?? null, await AU("agentScope")(k.token, { shopSlug: s.slug })],
+      ["PENDING", "CLOSED", "CLOSED", "REJECTED", "PENDING", id, "PENDING", null, null], "ผล");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 2 — token เชิญเพื่อนใช้ครั้งเดียวตลอดกาล ───────────────────
+  await st("RU-3", "มติ §10 ข้อ 2 (RV-F2 · H-F1 · T-2): token เพื่อนใช้ครั้งเดียว — รับแล้วมีแถว jti (target = แฮช tm-jti · usedAt · หมดอายุ = อายุ token) · ลบผู้ถูกเชิญแล้วใช้ token เดิม ⇒ INVITE_INVALID ไม่สร้างผู้ใช้ · token ใหม่ของอีเมลเดิมใช้ได้หนึ่งครั้ง (ครั้งที่สองไม่ได้) · ปิดผู้ถูกเชิญ / ลด-คืนบทบาทผู้เชิญ ก็ไม่ทำให้ token เดิมกลับมา", async () => {
+    needBuilt();
+    const o = await signup(mail("ru3"), "RU3");
+    const usersOf = () => count(`SELECT count(*)::int AS n FROM "AgentUser" WHERE "identityId" = $1 AND status = 'ACTIVE'`, [o.identityId]);
+    // (ก) รับ → แถว jti → ลบ → เล่นซ้ำ
+    const e1 = mail("ru3a");
+    const tok1 = await inviteMate(o, e1, "ADMIN");
+    const j1 = await redeem(e1, tok1);
+    ok(j1.ok === true && j1.created === "TEAMMATE", `รับครั้งแรก: ${fmt(j1)}`);
+    const u1 = await userOfToken(j1.token);
+    const jti = teammateJti(tok1);
+    ok(jti, "token ไม่มี jti (n)");
+    const jr = await q<{ used: boolean; fresh: boolean; within: boolean }>(`SELECT ("usedAt" IS NOT NULL) AS used, ("expiresAt" > now()) AS fresh, ("expiresAt" <= now() + ($2 || ' minutes')::interval) AS within FROM "AgentLoginCode" WHERE target = $1`, [authHash("tm-jti", String(jti)), String(lim("teammateInviteTtlMin") + 5)]);
+    eq(jr, [{ used: true, fresh: true, within: true }], "แถว jti (ใช้แล้ว · หมดอายุพร้อม token ⇒ งานกวาดเดิมเก็บ)");
+    const er = R(await AS("eraseAgentUser")({ agentUserId: o.agentUserId }, { targetUserId: u1 }));
+    ok(er.ok === true, `ลบ: ${fmt(er)}`);
+    const n1 = await usersOf();
+    const r1 = await redeem(e1, tok1);
+    eq([r1.code, await loginRows(e1), await usersOf()], ["INVITE_INVALID", 0, n1], "เล่นซ้ำหลังลบผู้ถูกเชิญ");
+    // (ข) token ใหม่ของอีเมลเดิม: ใช้ได้หนึ่งครั้ง
+    const tok1b = await inviteMate(o, e1, "SALES");
+    const j1b = await redeem(e1, tok1b);
+    const again = await redeem(e1, tok1b);
+    ok(j1b.ok === true && j1b.created === "TEAMMATE", `token ใหม่ต้องใช้ได้: ${fmt(j1b)}`);
+    ok(again.ok !== true && ["INVITE_INVALID", "LOGIN_UNAVAILABLE"].includes(String(again.code)) && (await loginRows(e1)) === 1, `ใช้ครั้งที่สอง: ${fmt(again)}`);
+    // (ค) ปิดผู้ถูกเชิญ
+    const e2 = mail("ru3b");
+    const tok2 = await inviteMate(o, e2, "SALES");
+    const j2 = await redeem(e2, tok2);
+    ok(j2.ok === true, `รับ (ข้อปิด): ${fmt(j2)}`);
+    const u2 = await userOfToken(j2.token);
+    ok(R(await AS("disableAgentUser")({ agentUserId: o.agentUserId }, { targetUserId: u2 })).ok === true, "ปิดผู้ใช้");
+    const n2 = await usersOf();
+    const r2 = await redeem(e2, tok2);
+    ok(r2.ok !== true && ["INVITE_INVALID", "LOGIN_UNAVAILABLE"].includes(String(r2.code)) && (await usersOf()) === n2 && (await loginRows(e2)) === 1, `เล่นซ้ำหลังปิดผู้ถูกเชิญ: ${fmt(r2)}`);
+    // (ง) ผู้เชิญถูกลดบทบาทแล้วคืน (ผู้เชิญกลับมา "ใช้ได้") + ผู้ถูกเชิญถูกลบ ⇒ token ที่เคยใช้ยังใช้ไม่ได้
+    const ez = mail("ru3z"), e3 = mail("ru3c");
+    const jz = await redeem(ez, await inviteMate(o, ez, "ADMIN"));
+    ok(jz.ok === true, `ผู้เชิญ ADMIN: ${fmt(jz)}`);
+    const zId = await userOfToken(jz.token);
+    const tok3 = await inviteMate({ token: String(jz.token) }, e3, "SALES");
+    const j3 = await redeem(e3, tok3);
+    ok(j3.ok === true, `รับ (ข้อผู้เชิญ): ${fmt(j3)}`);
+    const u3 = await userOfToken(j3.token);
+    const steps = [
+      R(await AS("eraseAgentUser")({ agentUserId: o.agentUserId }, { targetUserId: u3 })).ok,
+      R(await AS("setAgentUserRole")({ agentUserId: o.agentUserId }, { targetUserId: zId, role: "SALES" })).ok,
+      R(await AS("setAgentUserRole")({ agentUserId: o.agentUserId }, { targetUserId: zId, role: "ADMIN" })).ok,
+    ];
+    const n3 = await usersOf();
+    const r3 = await redeem(e3, tok3);
+    eq([steps, r3.code, await loginRows(e3), await usersOf()], [[true, true, true], "INVITE_INVALID", 0, n3], "เล่นซ้ำหลังลด-คืนบทบาทผู้เชิญ");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 3 — เพดานจดหมายเชิญ ───────────────────
+  await st("RU-4", "มติ §10 ข้อ 3 (RV-F3 · T-3) เชิญเพื่อน: ตัวจำกัดจริง — ผู้เชิญหนึ่งคนเชิญได้ teammateInvitePerInviter ฉบับ/ชม. ฉบับถัดไป RATE_LIMITED ไม่มีจดหมาย · ADMIN อีกคนของตัวตนเดียวกันยังเชิญได้ (ถังต่อผู้เชิญ) · ถังต่อตัวตน/วัน: ปล่อยถังต่อผู้เชิญแล้วเชิญได้ teammateInvitePerIdentity ฉบับพอดี ตัวตนอื่นไม่กระทบ", async () => {
+    needBuilt();
+    const o = await signup(mail("ru4"), "RU4");
+    const t0 = new Date(); // now เดียวกันทุกคำขอ ⇒ หน้าต่างเดียวกัน (ไม่คร่อมขอบชั่วโมง)
+    const per = lim("teammateInvitePerInviter", "limit");
+    const m0 = mails.length;
+    const rs: Rec[] = [];
+    for (let i = 0; i <= per; i++) rs.push(R(await AU("createTeammateInvite")(o.token, { email: mail(`ru4-${i}`), role: "SALES" }, meta(t0))));
+    for (const r of rs) if (r.ok === true) allTokens.push(String(r.teammateToken));
+    ok(rs.slice(0, per).every((r) => r.ok === true), `ก่อนเพดาน: ${fmt(rs.find((r) => r.ok !== true))}`);
+    eq([rs[per].code, Number(rs[per].retryAfterSec) > 0, mails.slice(m0).filter((m) => m.kind === "TEAMMATE_INVITE").length], ["RATE_LIMITED", true, per], "ฉบับที่เกินเพดาน");
+    const adm = await teammate(o, mail("ru4adm"), "ADMIN", "RU4ADM");
+    const viaAdmin = R(await AU("createTeammateInvite")(adm.token, { email: mail("ru4-adm-x"), role: "SALES" }, meta(t0)));
+    ok(viaAdmin.ok === true, `ADMIN คนอื่นของตัวตนเดียวกันต้องยังเชิญได้: ${fmt(viaAdmin)}`);
+    allTokens.push(String(viaAdmin.teammateToken));
+    // ถังต่อตัวตน/วัน — ตัวจำกัดในหน่วยความจำที่ถือเพดานจริงของทุกถัง ยกเว้นถังต่อผู้เชิญ
+    const day = lim("teammateInvitePerIdentity", "limit");
+    const counts = new Map<string, number>();
+    const seen: Seen[] = [];
+    const honour: Rec = { ...deps, rateLimit: async (key: unknown, opts: unknown) => {
+      const s: Seen = { key: String(key), limit: Number(R(opts).limit), windowMs: Number(R(opts).windowMs) };
+      seen.push(s);
+      if (isBucket(s, "teammateInvitePerInviter")) return { ok: true, count: 1 };
+      const c = (counts.get(s.key) ?? 0) + 1;
+      counts.set(s.key, c);
+      return c <= s.limit ? { ok: true, count: c } : { ok: false, retryAfterSec: 77, count: c };
+    } };
+    const o2 = await signup(mail("ru4b"), "RU4B"), o3 = await signup(mail("ru4c"), "RU4C");
+    let okN = 0;
+    for (let i = 0; i < day; i++) { const r = R(await AU("createTeammateInvite")(o2.token, { email: mail(`ru4b-${i}`), role: "SALES" }, meta(t0, undefined, undefined, honour))); if (r.ok === true) { okN++; allTokens.push(String(r.teammateToken)); } }
+    const over = R(await AU("createTeammateInvite")(o2.token, { email: mail("ru4b-over"), role: "SALES" }, meta(t0, undefined, undefined, honour)));
+    const otherIdentity = R(await AU("createTeammateInvite")(o3.token, { email: mail("ru4c-1"), role: "SALES" }, meta(t0, undefined, undefined, honour)));
+    if (otherIdentity.ok === true) allTokens.push(String(otherIdentity.teammateToken));
+    eq([okN, over.code, otherIdentity.ok, seen.some((s) => isBucket(s, "teammateInvitePerInviter")), seen.some((s) => isBucket(s, "teammateInvitePerIdentity"))], [day, "RATE_LIMITED", true, true, true], "ถังต่อตัวตน");
+    ok(seen.every((s) => /^agent:[a-z:]+v1:[0-9a-f]{64}$/.test(s.key)), `คีย์ถังต้องเป็นแฮช (ไม่มีอีเมล/id ดิบ): ${fmt(seen.find((s) => !/^agent:[a-z:]+v1:[0-9a-f]{64}$/.test(s.key)))}`);
+  });
+  await st("RU-5", "มติ §10 ข้อ 3 (RV-F3 · T-3) ร้านเชิญอีเมล: ตัวจำกัดจริง — เชิญ + ออกใหม่ ถึงอีเมลเดียวรวม shopInviteMailPerTarget ฉบับ/วัน ฉบับถัดไป (ออกใหม่/เชิญใหม่) RATE_LIMITED ไม่มีแถว/จดหมาย/token ใหม่ · อีเมลอื่นและร้านอื่นไม่กระทบ · ถังต่อร้าน/วัน (shopInviteMailPerShop) ถูกถามด้วยคีย์เดียวกันทั้งร้าน คนละคีย์ต่อร้าน · ถังร้านปฏิเสธ ⇒ RATE_LIMITED ไม่มีแถว", async () => {
+    needBuilt();
+    const s = await mkShop2("ru5"), s2 = await mkShop2("ru5b");
+    const t0 = Date.now();
+    let tick = 0;
+    const o = (d: Rec = deps): Rec => ({ now: new Date(t0 + ++tick), deps: d }); // เวลาห่างกัน 1 มิลลิวินาที: หน้าต่างเดียวกัน แต่เวลาหมดอายุคำเชิญต่างกัน (token ใหม่จริง)
+    const target = mail("ru5-target");
+    const inv = async (ctx: Shop2["ctx"], email: string, tag: string, d?: Rec): Promise<Rec> => { const r = R(await AG("inviteAgent")(ctx, invEmail(email, `qca12-${STAMP}-ru5-${tag}`), o(d))); if (typeof r.inviteToken === "string") allTokens.push(r.inviteToken); return r; };
+    const reissue = async (id: unknown): Promise<Rec> => { const r = R(await AG("reissueAgentInvite")(s.ctx, { agentAccountId: id }, o())); if (typeof r.inviteToken === "string") allTokens.push(r.inviteToken); return r; };
+    const per = lim("shopInviteMailPerTarget", "limit");
+    const i1 = await inv(s.ctx, target, "1");
+    ok(i1.ok === true, `เชิญครั้งแรก: ${fmt(i1)}`);
+    const res: Rec[] = [];
+    for (let i = 1; i < per; i++) res.push(await reissue(i1.agentAccountId));
+    ok(res.every((r) => r.ok === true), `ออกใหม่ก่อนเพดาน: ${fmt(res.find((r) => r.ok !== true))}`);
+    const hash0 = (await acc(String(i1.agentAccountId)))?.inviteTokenHash;
+    const m0 = mails.length;
+    const r4 = await reissue(i1.agentAccountId);
+    const i2 = await inv(s.ctx, target, "2");
+    const rows = await count(`SELECT count(*)::int AS n FROM "AgentAccount" WHERE "tenantId" = $1 AND contact->>'email' = $2`, [s.id, target]);
+    eq([r4.code, i2.code, (await acc(String(i1.agentAccountId)))?.inviteTokenHash === hash0, rows, mails.length - m0, mails.filter((m) => m.to === target && m.kind === "SHOP_INVITE").length], ["RATE_LIMITED", "RATE_LIMITED", true, 1, 0, per], "เกินเพดานต่ออีเมล");
+    const other = await inv(s.ctx, mail("ru5-other"), "3"), otherShop = await inv(s2.ctx, target, "4");
+    eq([other.ok, otherShop.ok], [true, true], "อีเมลอื่น / ร้านอื่น");
+    // ถังต่อร้าน
+    const seen: Seen[] = [];
+    const a = await inv(s.ctx, mail("ru5-ka"), "ka", recRate(seen)), b = await inv(s.ctx, mail("ru5-kb"), "kb", recRate(seen)), c = await inv(s2.ctx, mail("ru5-ka"), "kc", recRate(seen));
+    ok(a.ok === true && b.ok === true && c.ok === true, `เชิญใต้ตัวจำกัดที่จด: ${fmt([a, b, c])}`);
+    const shopKeys = seen.filter((x) => isBucket(x, "shopInviteMailPerShop")).map((x) => x.key), tgtKeys = seen.filter((x) => isBucket(x, "shopInviteMailPerTarget")).map((x) => x.key);
+    eq([shopKeys.length, shopKeys[0] === shopKeys[1], shopKeys[0] !== shopKeys[2], tgtKeys.length, new Set(tgtKeys).size], [3, true, true, 3, 3], "คีย์ถัง (ต่อร้าน · ต่ออีเมลต่อร้าน)");
+    ok(seen.every((x) => /^agent:[a-z:]+v1:[0-9a-f]{64}$/.test(x.key)), "คีย์ถังต้องเป็นแฮช");
+    const denied = await inv(s.ctx, mail("ru5-deny"), "deny", recRate([], (x) => isBucket(x, "shopInviteMailPerShop")));
+    eq([denied.code, await count(`SELECT count(*)::int AS n FROM "AgentAccount" WHERE "tenantId" = $1 AND contact->>'email' = $2`, [s.id, mail("ru5-deny")]), mails.some((m) => m.to === mail("ru5-deny"))], ["RATE_LIMITED", 0, false], "ถังร้านปฏิเสธ");
+  });
+  await st("RU-6", "มติ §10 ข้อ 3 fail closed: ตัวจำกัดตอบโดยไม่มีตัวนับ ⇒ เชิญเพื่อน / ร้านเชิญอีเมล / ออกคำเชิญใหม่ = RATE_LIMITED · ตัวจำกัดโยน error ⇒ ทั้งสามไม่สำเร็จและไม่ throw ถึงผู้เรียก · ทุกกรณีไม่มีจดหมาย ไม่มีแถวใหม่ token คำเชิญเดิมไม่เปลี่ยน", async () => {
+    needBuilt();
+    const s = await mkShop2("ru6");
+    const o = await signup(mail("ru6"), "RU6");
+    const base = await shopDo("inviteAgent", s.ctx, invEmail(mail("ru6-base"), `qca12-${STAMP}-ru6-base`));
+    ok(base.ok === true, `คำเชิญตั้งต้น: ${fmt(base)}`);
+    allTokens.push(String(base.inviteToken));
+    const hash0 = (await acc(String(base.agentAccountId)))?.inviteTokenHash;
+    const modes: [string, Rec][] = [["no-count", { ...deps, rateLimit: async () => ({ ok: true }) }], ["throws", { ...deps, rateLimit: async () => { throw new Error("qca12 limiter down"); } }]];
+    const out: unknown[] = [];
+    const m0 = mails.length;
+    for (const [name, d] of modes) {
+      const em = mail(`ru6-${name}`);
+      const tm = await safe(() => AU("createTeammateInvite")(o.token, { email: em, role: "SALES" }, meta(undefined, undefined, undefined, d)));
+      const inv = await safe(() => AG("inviteAgent")(s.ctx, invEmail(em, `qca12-${STAMP}-ru6-${name}`), { deps: d }));
+      const re = await safe(() => AG("reissueAgentInvite")(s.ctx, { agentAccountId: base.agentAccountId }, { deps: d }));
+      const rows = await count(`SELECT count(*)::int AS n FROM "AgentAccount" WHERE "tenantId" = $1 AND contact->>'email' = $2`, [s.id, em]);
+      const threw = [tm, inv, re].filter((r) => r.threw !== undefined).length;
+      out.push(name === "no-count" ? [tm.code, inv.code, re.code, rows, threw] : [tm.ok === true, inv.ok === true, re.ok === true, rows, threw]);
+    }
+    eq(out, [["RATE_LIMITED", "RATE_LIMITED", "RATE_LIMITED", 0, 0], [false, false, false, 0, 0]], "ผล");
+    eq([mails.length - m0, (await acc(String(base.agentAccountId)))?.inviteTokenHash === hash0], [0, true], "จดหมาย/token");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 4 — รหัสไม่อยู่ในหัวเรื่อง · ไม่มีผู้ให้บริการ = ไม่เรียกตัวส่ง ───────────────────
+  await st("RU-7", "มติ §10 ข้อ 4 (RV-F4 · T-4): หัวเรื่องจดหมายรหัสคงที่ ไม่มีรหัส (รหัสอยู่ในเนื้อหา) · ไม่มีผู้ให้บริการส่งเมล + ไม่ฉีดตัวส่ง ⇒ ขอรหัส/เชิญเพื่อน/ร้านเชิญ ตอบรูปเดิม · console ไม่มีรหัส/อีเมล/หัวเรื่อง/'[email:dev]' (ตัวส่งไม่ถูกเรียก) · มี ops WARN ที่ไม่มีรหัส/อีเมล · ไม่มี ops ERROR", async () => {
+    needBuilt();
+    const f = CO("agentLoginCodeMail") as (c: string) => unknown;
+    const codes = ["482913", "000000", "999999", "123456"];
+    const ms = codes.map((c) => R(f(c)));
+    ok(ms.every((m, i) => !String(m.subject).includes(codes[i]) && String(m.text).includes(codes[i]) && String(m.html).includes(codes[i])), `รหัสต้องอยู่ในเนื้อหาเท่านั้น: ${fmt(ms[0])}`);
+    ok(new Set(ms.map((m) => String(m.subject))).size === 1 && !/\d{4,}/.test(String(ms[0].subject)), `หัวเรื่องต้องคงที่และไม่มีตัวเลขรหัส: ${fmt(ms.map((m) => m.subject))}`);
+    ok(!process.env.RESEND_API_KEY, "ข้อนี้ต้องรันโดยไม่มีกุญแจส่งเมล");
+    // positive control ของตัวจับ console: ทางสำรองของ sendEmailRich พิมพ์หัวเรื่อง (เหตุที่มติสั่งห้ามเรียกตัวส่ง)
+    const EM = await tryImport("@/lib/core/email");
+    const ctlSubject = `qca12 ctl ${STAMP}`;
+    const ctl = await captureConsole(() => fnOf(EM.mod, "sendEmailRich", "core/email")({ to: [mail("ru7-ctl")], subject: ctlSubject, html: "<p>x</p>", text: "x" }));
+    if (!ctl.out.includes(ctlSubject)) console.log("     ℹ️ [RU-7] ตัวควบคุม: ทางสำรองของ sendEmailRich ไม่พิมพ์หัวเรื่องแล้ว — หลักฐาน console ของข้อนี้อ่อนลง (ยังตรวจ ops WARN)");
+    const noSender: Rec = { rateLimit: async () => ({ ok: true, count: 1 }) }; // ไม่มี sendAgentMail
+    const e = mail("ru7");
+    usedEmails.push(e);
+    const withDeps = await reqCode(mail("ru7-with"));
+    const e0 = await opsErrors(), w0 = await opsMailWarns();
+    const cap = await captureConsole(async () => R(await AU("requestAgentLoginCode")({ email: e }, meta(undefined, undefined, undefined, noSender))));
+    const r = cap.val;
+    ok(r.ok === true, `ขอรหัส (ไม่มีตัวส่ง): ${fmt(r)}`);
+    createdCodeIds.push(String(r.codeId));
+    const row = (await q<{ codeHash: string }>(`SELECT "codeHash" FROM "AgentLoginCode" WHERE id = $1`, [String(r.codeId)]))[0];
+    ok(row, "ไม่มีแถวรหัส");
+    // หารหัสจริงจากแฮช (10^6 ค่า) เพื่อค้นใน console/ops
+    const kLogin = authKey("login-code");
+    let code = "";
+    for (let i = 0; i < 1_000_000 && !code; i++) { const c = String(i).padStart(6, "0"); if (`v1:${createHmac("sha256", kLogin).update(`${String(r.codeId)}:${c}`).digest("hex")}` === row.codeHash) code = c; }
+    ok(code, "หารหัสจากแฮชไม่ได้ (สูตรแฮชเปลี่ยน?)");
+    const ops = await q<{ level: string; detail: string | null; j: string }>(`SELECT level::text AS level, detail, row_to_json(o)::text AS j FROM "OpsEvent" o WHERE source LIKE 'agency.%' AND detail LIKE $1`, [`%${String(r.codeId)}%`]);
+    eq([sortedKeys(r), ops.map((x) => x.level)], [sortedKeys(withDeps), ["WARN"]], "รูปผล + ops ของคำขอนี้");
+    const dkeys = Object.keys(R((() => { try { return JSON.parse(ops[0].detail ?? "{}") as unknown; } catch { return {}; } })()));
+    ok(dkeys.length > 0 && dkeys.every((k) => ["kind", "ref", "codeId", "reason"].includes(k)) && leaks(ops[0].j, [e, e.split("@")[0]]).length === 0 && !ops[0].j.includes(code), `ops WARN ต้องมีแค่ชนิด/อ้างอิง/เหตุ: ${fmt(ops[0].detail)}`);
+    const subject = String(ms[0].subject);
+    ok(!cap.out.includes(code) && !cap.out.includes(e) && !cap.out.includes("[email:dev]") && !cap.out.includes(subject), `console ระหว่างขอรหัส: ${cap.out.slice(0, 200)}`);
+    // เชิญเพื่อน + ร้านเชิญอีเมล ทางเดียวกัน
+    const o = await signup(mail("ru7o"), "RU7");
+    const s = await mkShop2("ru7");
+    const em1 = mail("ru7-mate"), em2 = mail("ru7-inv");
+    const cap2 = await captureConsole(async () => [
+      R(await AU("createTeammateInvite")(o.token, { email: em1, role: "SALES" }, meta(undefined, undefined, undefined, noSender))),
+      R(await AG("inviteAgent")(s.ctx, invEmail(em2, `qca12-${STAMP}-ru7`), { deps: noSender })),
+    ]);
+    const [tm, inv] = cap2.val;
+    const secrets = [em1, em2, String(tm.teammateToken), String(inv.inviteToken)];
+    allTokens.push(String(tm.teammateToken), String(inv.inviteToken));
+    eq([tm.ok, inv.ok, inv.status, leaks(cap2.out, secrets), cap2.out.includes("[email:dev]")], [true, true, "INVITED", [], false], "เชิญโดยไม่มีผู้ให้บริการ");
+    eq([(await opsMailWarns()) - w0 >= 3, (await opsErrors()) - e0], [true, 0], "ops WARN ≥ 3 · ERROR 0");
+    const opsAll = await q<{ j: string }>(`SELECT row_to_json(o)::text AS j FROM "OpsEvent" o WHERE source LIKE 'agency.%' AND "createdAt" >= $1`, [RUN_START]);
+    eq(leaks(opsAll.map((x) => x.j).join("\n"), [...secrets, e]), [], "ops ไม่มีอีเมล/token");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 5 + §11 ข้อ 1 — อนุมัติ/ปฏิเสธต้องส่ง expectedUpdatedAt ───────────────────
+  await st("RU-8", "มติ §10 ข้อ 5 + §11 ข้อ 1 (RV-F5 · T-5): อนุมัติ/ปฏิเสธไม่ส่ง expectedUpdatedAt หรือส่งค่าที่ไม่ใช่เวลา ⇒ VALIDATION · ค่าเก่า ⇒ STALE reason STATE_CONFLICT ไม่เขียนอะไร (สถานะ/updatedAt/audit/event/ยอด) · เอเจนซี่ถอนแล้วสมัครใหม่ด้วยชื่ออื่นระหว่างที่ร้านเปิดดู ⇒ ตราเดิมอนุมัติ/ปฏิเสธไม่ได้ · ตราปัจจุบัน ⇒ ACTIVE", async () => {
+    needBuilt();
+    const s = await mkShop2("ru8");
+    const k = await signup(mail("ru8"), "RU8");
+    const good = `${QC_MARK} RU8 GOOD ${STAMP}`, other = `${QC_MARK} RU8 OTHER ${STAMP}`;
+    const a1 = await applyAs(k, s.slug, app({ legalName: good }));
+    ok(a1.status === "PENDING", `สมัคร: ${fmt(a1)}`);
+    const id = String(a1.agentAccountId);
+    const call = async (fn: string, input: Rec): Promise<Rec> => R(await AG(fn)(s.ctx, input, { deps: OPEN_DEPS })); // ไม่ผ่านตัวช่วยที่เติมตราให้
+    const snap = async () => { const a = await acc(id); return [a?.status, a?.legalName, a?.updatedAt instanceof Date ? a.updatedAt.getTime() : null, a?.approvedAt ?? null, a?.approvedById ?? null]; };
+    const writes = async () => [
+      (await audits(s.id)).filter((x) => x.targetId === id && ["agency.account.approve", "agency.account.reject"].includes(x.action)).length,
+      (await events(s.id, "agency.account.approved")).filter((x) => R(x.payload).agentAccountId === id).length,
+      await count(`SELECT count(*)::int AS n FROM "AgentBalance" WHERE "agentAccountId" = $1`, [id]),
+    ];
+    const s0 = await snap();
+    const noStamp = [await call("approveAgentAccount", { agentAccountId: id }), await call("rejectAgentAccount", { agentAccountId: id }), await call("approveAgentAccount", { agentAccountId: id, expectedUpdatedAt: "not-a-date" }), await call("rejectAgentAccount", { agentAccountId: id, expectedUpdatedAt: "" })];
+    eq(noStamp.map((r) => r.code), ["VALIDATION", "VALIDATION", "VALIDATION", "VALIDATION"], "ไม่ส่งตรา");
+    const old = "2020-01-01T00:00:00.000Z";
+    const staleA = await call("approveAgentAccount", { agentAccountId: id, expectedUpdatedAt: old }), staleR = await call("rejectAgentAccount", { agentAccountId: id, expectedUpdatedAt: old });
+    eq([staleA.code, staleA.reason, staleR.code, staleR.reason, await snap(), await writes()], ["STALE", "STATE_CONFLICT", "STALE", "STATE_CONFLICT", s0, [0, 0, 0]], "ตราเก่า ⇒ ไม่เขียน");
+    const view = await detail(s, id); // ร้านเปิดดูใบสมัคร "GOOD"
+    const w = await withdrawAs(k, s.slug), re = await applyAs(k, s.slug, app({ legalName: other }));
+    ok(w.status === "CLOSED" && re.status === "PENDING" && re.agentAccountId === id && view.legalName === good, `สลับใบสมัคร: ${fmt([w, re])}`);
+    const swA = await call("approveAgentAccount", { agentAccountId: id, expectedUpdatedAt: view.updatedAt }), swR = await call("rejectAgentAccount", { agentAccountId: id, expectedUpdatedAt: view.updatedAt });
+    const mid = await acc(id);
+    eq([swA.code, swA.reason, swR.code, swR.reason, mid?.status, mid?.legalName, mid?.approvedAt ?? null, await writes()], ["STALE", "STATE_CONFLICT", "STALE", "STATE_CONFLICT", "PENDING", other, null, [0, 0, 0]], "ตราของใบสมัครเดิม");
+    const fresh = await detail(s, id);
+    const okA = await call("approveAgentAccount", { agentAccountId: id, expectedUpdatedAt: fresh.updatedAt });
+    eq([okA.ok, okA.status, okA.replayed, (await acc(id))?.status, await writes()], [true, "ACTIVE", false, "ACTIVE", [1, 1, 1]], "ตราปัจจุบัน");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 6 — login แข่ง disable (ลำดับกำหนดได้) ───────────────────
+  await st("RU-9", "มติ §10 ข้อ 6 (RV-F6 · T-6): ผู้ใช้ถูกปิดระหว่างเข้าระบบ — ข้อสอบถือล็อกตัวตน + ปิดผู้ใช้ + เพิกถอน session ใน tx ที่ยังไม่ commit แล้วยิงยืนยันรหัสที่ถูก รอจนติดรอ/จบ จึง commit ⇒ ยืนยันไม่สำเร็จ · ไม่มี session ที่ยังไม่ถูกเพิกถอนของผู้ใช้ DISABLED", async () => {
+    needBuilt();
+    const v = await mkIdent("ru9");
+    const e = mail("ru9");
+    const before = await login(e);
+    const r1 = await reqCode(e, mo());
+    const code = lastMail(e, "LOGIN_CODE")?.code;
+    ok(r1.ok === true && code, `ขอรหัส: ${fmt(r1)}`);
+    const out = await underHeldTx(async (c) => {
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext($2::text))`, ["agency.identity.v1", v.identityId]);
+      await c.query(`UPDATE "AgentUser" SET status = 'DISABLED' WHERE id = $1`, [v.agentUserId]);
+      await c.query(`UPDATE "AgentSession" SET "revokedAt" = now() WHERE "agentUserId" = $1 AND "revokedAt" IS NULL`, [v.agentUserId]);
+    }, () => AU("verifyAgentLoginCode")({ email: e, codeId: r1.codeId, code }, mo()));
+    if (out.res.ok === true) allTokens.push(String(out.res.token));
+    const status = (await q<{ status: string }>(`SELECT status FROM "AgentUser" WHERE id = $1`, [v.agentUserId]))[0]?.status;
+    eq([out.res.threw, out.res.ok === true, await liveSessions(v.agentUserId), status, await AU("resolveAgentSession")(before.token)], [undefined, false, 0, "DISABLED", null], `ผล (ติดรอล็อก=${out.waited} · ${fmt(out.res)})`);
+  });
+
+  // ─────────────────── มติ §10 ข้อ 7 — now ของผู้เรียกไม่มีผลกับอายุ session ───────────────────
+  await st("RU-10", "มติ §10 ข้อ 7 (RV-F7 · T-7): ตัวห่อที่ส่งออกทุกตัวตัดสิน session ด้วยนาฬิกาจริง — session ปกติ + now อนาคต 400 วัน ⇒ ยังใช้ได้และ idle ไม่ถูกเลื่อนเกิน 72 ชม.จริง · session หมด idle/หมดอายุสัมบูรณ์ (เลื่อนแถวด้วย SQL) + now อดีต ⇒ ผลเหมือน token ที่ไม่มีจริงทุกตัว (15 ฟังก์ชัน) ไม่มีผลข้างเคียง · คืนแถวแล้วใช้ได้", async () => {
+    needBuilt();
+    const s = await mkShop2("ru10", { auto: true }), s2 = await mkShop2("ru10b");
+    const k = await signup(mail("ru10"), "RU10");
+    const a = await applyAs(k, s.slug);
+    ok(a.status === "ACTIVE", `สมัคร: ${fmt(a)}`);
+    const id = String(a.agentAccountId);
+    const th = authHash("session", k.token);
+    const far = { now: new Date(Date.now() + 400 * 86_400_000) };
+    const liveRes = [
+      !!(await AU("resolveAgentSession")(k.token, far)), R(await AU("agentScope")(k.token, { shopSlug: s.slug }, far)).agentAccountId === id,
+      R(await AU("selectAgentAccount")(k.token, { shopSlug: s.slug }, far)).ok, R(await AU("myAgentAccounts")(k.token, far)).ok, R(await AU("agentTeam")(k.token, far)).ok,
+    ];
+    const idleOk = (await q<{ b: boolean }>(`SELECT ("idleExpiresAt" <= now() + interval '73 hours' AND "idleExpiresAt" <= "expiresAt" AND "expiresAt" <= now() + interval '31 days') AS b FROM "AgentSession" WHERE "tokenHash" = $1`, [th]))[0]?.b;
+    eq([liveRes, idleOk], [[true, true, true, true, true], true], "now อนาคตไม่ทำให้หมดอายุ/ไม่เลื่อน idle");
+    const past = new Date(Date.now() - 2 * 3_600_000), old = { now: past };
+    const probe = async (token: string): Promise<unknown[]> => {
+      const out: unknown[] = [await AU("resolveAgentSession")(token, old), await AU("agentScope")(token, { shopSlug: s.slug }, old)];
+      const calls: (() => Promise<unknown>)[] = [
+        () => AU("selectAgentAccount")(token, { shopSlug: s.slug }, old),
+        () => AU("myAgentAccounts")(token, old),
+        () => AU("logoutAllAgentSessions")(token, old),
+        () => AU("agentTeam")(token, old),
+        () => AU("setTeammateRole")(token, { targetUserId: k.agentUserId, role: "OWNER" }, old),
+        () => AU("agentApply")(token, { shopSlug: s2.slug, application: app() }, mo(past)),
+        () => AU("agentAcceptInvite")(token, { shopSlug: s.slug }, mo(past)),
+        () => AU("agentWithdraw")(token, { shopSlug: s.slug }, mo(past)),
+        () => AU("createTeammateInvite")(token, { email: mail("ru10-x"), role: "SALES" }, mo(past)),
+        () => AU("disableTeammate")(token, { targetUserId: k.agentUserId }, old),
+        () => AU("eraseTeammate")(token, { targetUserId: k.agentUserId }, old),
+        () => AU("closeMyIdentity")(token, { confirm: true }, old),
+        () => AU("setAccountMember")(token, { agentAccountId: id, targetUserId: k.agentUserId, role: "OWNER" }, old),
+      ];
+      for (const c of calls) { const r = await safe(c); out.push(r.threw !== undefined ? `throw` : r.ok === true ? "OK!" : `${String(r.code)}/${String(r.reason ?? "")}`); }
+      return out;
+    };
+    const unknownToken = await probe(`ag_${randomBytes(32).toString("base64url")}`);
+    ok(unknownToken[0] === null && unknownToken[1] === null && unknownToken.slice(2).every((x) => typeof x === "string" && x !== "OK!" && x !== "throw"), `token ที่ไม่มีจริง: ${fmt(unknownToken)}`);
+    const keep = (await q<{ i: string; e: string }>(`SELECT "idleExpiresAt"::text AS i, "expiresAt"::text AS e FROM "AgentSession" WHERE "tokenHash" = $1`, [th]))[0];
+    let idle: unknown[] = [], abs: unknown[] = [];
+    try {
+      await q(`UPDATE "AgentSession" SET "idleExpiresAt" = now() - interval '1 minute' WHERE "tokenHash" = $1`, [th]);
+      idle = await probe(k.token);
+      await q(`UPDATE "AgentSession" SET "expiresAt" = now() - interval '1 minute', "idleExpiresAt" = now() - interval '2 minutes' WHERE "tokenHash" = $1`, [th]);
+      abs = await probe(k.token);
+    } finally {
+      await q(`UPDATE "AgentSession" SET "expiresAt" = $2::timestamp, "idleExpiresAt" = $3::timestamp WHERE "tokenHash" = $1`, [th, keep.e, keep.i]);
+    }
+    eq([idle, abs], [unknownToken, unknownToken], "session หมดอายุ + now อดีต ต้องเหมือน token ที่ไม่มีจริง");
+    const st1 = (await q<{ r: Date | null }>(`SELECT "revokedAt" AS r FROM "AgentSession" WHERE "tokenHash" = $1`, [th]))[0];
+    eq([st1?.r ?? null, await accountOf(s2.id, k.identityId), mails.some((m) => m.to === mail("ru10-x")), (await q<{ status: string }>(`SELECT status FROM "AgentIdentity" WHERE id = $1`, [k.identityId]))[0]?.status, (await acc(id))?.status],
+      [null, null, false, "ACTIVE", "ACTIVE"], "ไม่มีผลข้างเคียง");
+    ok(await AU("resolveAgentSession")(k.token), "คืนแถวแล้ว session ต้องใช้ได้ (ตัวควบคุม)");
+  });
+  await st("RU-11", "T-7: เลื่อน idle = min(นาฬิกาจริง + 72 ชม., expiresAt) · ไม่เกิน 1 ครั้ง/5 นาที (เพิ่งใช้ไป 1 นาที ⇒ ไม่เลื่อน) · ออกจากระบบทุกเครื่องไม่แตะ session ของผู้ใช้อื่นในตัวตนเดียวกัน", async () => {
+    needBuilt();
+    const o = await signup(mail("ru11"), "RU11");
+    const mate = await teammate(o, mail("ru11m"), "SALES", "RU11M");
+    const th = authHash("session", o.token);
+    const look = async () => (await q<{ atAbs: boolean; near72: boolean; touched: boolean; i: string; u: string }>(`SELECT ("idleExpiresAt" = "expiresAt") AS "atAbs", ("idleExpiresAt" BETWEEN now() + interval '71 hours' AND now() + interval '73 hours') AS near72,
+      ("updatedAt" > now() - interval '4 minutes') AS touched, "idleExpiresAt"::text AS i, "updatedAt"::text AS u FROM "AgentSession" WHERE "tokenHash" = $1`, [th]))[0];
+    // (ก) ใกล้หมดอายุสัมบูรณ์: idle ถูกตรึงที่ expiresAt
+    await q(`UPDATE "AgentSession" SET "expiresAt" = now() + interval '1 hour', "idleExpiresAt" = now() + interval '30 minutes', "updatedAt" = now() - interval '10 minutes' WHERE "tokenHash" = $1`, [th]);
+    ok(await AU("resolveAgentSession")(o.token), "ต้องใช้ได้ (ก)");
+    const a = await look();
+    ok(await AU("resolveAgentSession")(o.token), "ต้องใช้ได้ (ก2)");
+    const a2 = await look();
+    eq([a?.atAbs, a?.touched, a2?.u === a?.u, a2?.i === a?.i], [true, true, true, true], "ตรึงที่ expiresAt + ไม่เลื่อนซ้ำทันที");
+    // (ข) เหลืออายุอีกนาน: idle = ตอนนี้ + 72 ชม.
+    await q(`UPDATE "AgentSession" SET "expiresAt" = now() + interval '20 days', "idleExpiresAt" = now() + interval '30 minutes', "updatedAt" = now() - interval '10 minutes' WHERE "tokenHash" = $1`, [th]);
+    ok(await AU("resolveAgentSession")(o.token), "ต้องใช้ได้ (ข)");
+    const b = await look();
+    // (ค) เพิ่งใช้เมื่อ 1 นาทีก่อน: ไม่เลื่อน
+    await q(`UPDATE "AgentSession" SET "idleExpiresAt" = now() + interval '30 minutes', "updatedAt" = now() - interval '1 minute' WHERE "tokenHash" = $1`, [th]);
+    const c0 = await look();
+    ok(await AU("resolveAgentSession")(o.token), "ต้องใช้ได้ (ค)");
+    const c1 = await look();
+    eq([b?.near72, b?.atAbs, c1?.i === c0?.i, c1?.u === c0?.u], [true, false, true, true], "72 ชม. + ไม่เลื่อนภายใน 5 นาที");
+    const lo = R(await AU("logoutAllAgentSessions")(o.token));
+    eq([lo.ok, Number(lo.revoked) >= 1, await AU("resolveAgentSession")(o.token), !!(await AU("resolveAgentSession")(mate.token))], [true, true, null, true], "ออกทุกเครื่อง");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 10 — เพดานใต้ล็อก (ยิงพร้อมกันไม่เกิน) ───────────────────
+  await st("RU-12", "มติ §10 ข้อ 10 (RV-F10 · H-F10 · T-15): ร้านมี PENDING ค้าง = เพดาน − 3 แล้วตัวตนใหม่ 8 รายสมัครพร้อมกัน ⇒ ผ่าน 3 พอดี · RATE_LIMITED 5 · PENDING ของร้าน = openPendingPerShop พอดี · ไม่มี throw", async () => {
+    needBuilt();
+    const tE = await mkShop("ru12");
+    const cap = lim("openPendingPerShop");
+    const ids = await Promise.all(Array.from({ length: 8 }, (_, i) => mkIdent(`ru12-${i}`)));
+    let rs: Rec[] = [], n = -1, mine = -1;
+    try {
+      await pool.query(`INSERT INTO "AgentAccount" (id, "tenantId", "identityId", code, status, "partyId", "unitIds", "legalName", "payeeType", "updatedAt")
+        SELECT 'a12capp_' || g || '_' || $2, $1, 'a12cappid_' || g || '_' || $2, 'Q' || g, 'PENDING', 'qcparty', '{}', $3, 'TH_JURISTIC', now() FROM generate_series(1, $4::int) g`, [tE, STAMP, `${QC_MARK} cap`, cap - 3]);
+      rs = await settle(ids.map((v) => AS("applyToShop")({ agentUserId: v.agentUserId }, { tenantId: tE, application: app() }, { deps: OPEN_DEPS })));
+      n = await count(`SELECT count(*)::int AS n FROM "AgentAccount" WHERE "tenantId" = $1 AND status = 'PENDING'`, [tE]);
+      mine = await count(`SELECT count(*)::int AS n FROM "AgentAccount" WHERE "tenantId" = $1 AND "identityId" = ANY($2::text[])`, [tE, ids.map((v) => v.identityId)]);
+    } finally {
+      await pool.query(`DELETE FROM "AgentAccount" WHERE "tenantId" = $1 AND id LIKE 'a12capp_%'`, [tE]);
+    }
+    eq([n, rs.filter((r) => r.ok === true && r.status === "PENDING").length, rs.filter((r) => r.code === "RATE_LIMITED").length, rs.filter((r) => r.threw !== undefined).length, mine], [cap, 3, 5, 0, 3], `ผล ${fmt(rs.find((r) => r.ok !== true && r.code !== "RATE_LIMITED"))}`);
+  });
+  await st("RU-13", "มติ §10 ข้อ 10 (RV-F10 · T-15): ตัวตนมีคำเชิญด้วยรหัสค้าง = เพดาน − 2 (ต่างร้าน) แล้ว 4 ร้านเชิญด้วยรหัสพร้อมกัน ⇒ ผ่าน 2 พอดี · RATE_LIMITED 2 · คำเชิญค้างของตัวตน = openCodeInvitesPerIdentity พอดี", async () => {
+    needBuilt();
+    const k = await mkIdent("ru13");
+    const cap = lim("openCodeInvitesPerIdentity");
+    await Promise.all(Array.from({ length: cap - 2 }, async (_, i) => {
+      const t = await mkShop(`rk${i}`);
+      await ins("AgentAccount", { id: rid("capj"), tenantId: t, identityId: k.identityId, code: `K${i}`, status: "INVITED", partyId: "qcparty", unitIds: [], legalName: `${QC_MARK} ru13`, payeeType: "TH_JURISTIC" });
+    }));
+    const shops: Shop2[] = [];
+    for (let i = 0; i < 4; i++) shops.push(await mkShop2(`ru13s${i}`));
+    const rs = await settle(shops.map((s, i) => AG("inviteAgent")(s.ctx, { mode: "CODE", publicCode: k.publicCode, legalName: `${QC_MARK} ru13`, payeeType: "TH_JURISTIC", idempotencyKey: `qca12-${STAMP}-ru13-${i}` }, { deps: OPEN_DEPS })));
+    const open = await count(`SELECT count(*)::int AS n FROM "AgentAccount" WHERE "identityId" = $1 AND status = 'INVITED'`, [k.identityId]);
+    eq([rs.filter((r) => r.ok === true && r.status === "INVITED").length, rs.filter((r) => r.code === "RATE_LIMITED").length, rs.filter((r) => r.threw !== undefined).length, open], [2, 2, 0, cap], `ผล ${fmt(rs)}`);
+  });
+
+  // ─────────────────── มติ §10 ข้อ 11 — สมัครซ้ำล้างเงื่อนไขการค้า ───────────────────
+  await st("RU-14", "มติ §10 ข้อ 11 (RV-F11 · T-14): สมัครซ้ำ (หลังร้านปิด ⇒ PENDING) ล้าง tierId + unitIds ของยุคก่อน · คง code · ลิงก์ CRM · ข้อมูลธนาคาร · Party · สมัครซ้ำที่ ACTIVE ทันที (คำเชิญด้วยรหัสที่ร้านถอน · ร้านอนุมัติอัตโนมัติ) ⇒ tierId = ค่าเริ่มต้นของร้าน (ไม่ใช่ของเก่า) + unitIds ว่าง + code เดิม", async () => {
+    needBuilt();
+    // (ก) ปิดโดยร้าน → สมัครซ้ำ ⇒ PENDING
+    const s = await mkShop2("ru14");
+    const tierOld = rid("tier");
+    const dfltOf = async (x: Shop2) => R(await SETF("resolveSetting")({ tenantId: x.id }, "agency.tier.newAgentTier", { unitId: x.unitId })).value;
+    const notDefault = (d: unknown) => ["C", "A", "B"].find((c) => c !== d) ?? "C"; // AgentTier.code รับเฉพาะ A/B/C
+    await ins("AgentTier", { id: tierOld, tenantId: s.id, code: notDefault(await dfltOf(s)), name: "ระดับยุคก่อน" });
+    const k = await signup(mail("ru14"), "RU14");
+    const a1 = await applyAs(k, s.slug);
+    const id = String(a1.agentAccountId);
+    const ap = await shopDo("approveAgentAccount", s.ctx, { agentAccountId: id, code: "KEEP1", unitIds: [s.unitId] });
+    const d0 = await detail(s, id);
+    const pt = await shopDo("updateAgentAccountProfile", s.ctx, { agentAccountId: id, expectedUpdatedAt: d0.updatedAt, patch: { bankAccount: "1234567890" } });
+    ok(ap.status === "ACTIVE" && pt.ok === true, `ตั้งต้น: ${fmt([ap, pt])}`);
+    await q(`UPDATE "AgentAccount" SET "tierId" = $2, "crmCompanyId" = $3 WHERE id = $1`, [id, tierOld, "qccrm-ru14"]);
+    const before = await acc(id);
+    eq([before?.code, before?.unitIds, before?.tierId, before?.bankLast4, typeof before?.bankAccountEnc], ["KEEP1", [s.unitId], tierOld, "7890", "string"], "ก่อนปิด (ตัวควบคุม)");
+    const c = await shopDo("closeAgentAccount", s.ctx, { agentAccountId: id });
+    const re = await applyAs(k, s.slug, app(), cooled());
+    const after = await acc(id);
+    eq([c.status, re.status, re.agentAccountId, after?.tierId ?? null, after?.unitIds, after?.code, after?.crmCompanyId, after?.bankLast4, after?.bankAccountEnc === before?.bankAccountEnc, after?.partyId === before?.partyId, after?.approvedAt ?? null, after?.approvedById ?? null],
+      ["CLOSED", "PENDING", id, null, [], "KEEP1", "qccrm-ru14", "7890", true, true, null, null], "สมัครซ้ำ ⇒ PENDING");
+    // (ข) คำเชิญด้วยรหัสที่ร้านถอน → เอเจนซี่สมัครเอง ⇒ ACTIVE ทันที
+    const s2 = await mkShop2("ru14b", { auto: true });
+    const tierOld2 = rid("tier");
+    const dflt = await dfltOf(s2);
+    await ins("AgentTier", { id: tierOld2, tenantId: s2.id, code: notDefault(dflt), name: "ระดับยุคก่อน" });
+    let tierDefault: string | null = null;
+    if (typeof dflt === "string" && ["A", "B", "C"].includes(dflt)) { tierDefault = rid("tier"); await ins("AgentTier", { id: tierDefault, tenantId: s2.id, code: dflt, name: "ระดับเริ่มต้น" }); }
+    const k2 = await signup(mail("ru14b"), "RU14B");
+    const inv = await shopDo("inviteAgent", s2.ctx, { mode: "CODE", publicCode: k2.publicCode, legalName: `${QC_MARK} ru14b`, payeeType: "TH_JURISTIC", code: "KEEP2", unitIds: [s2.unitId], idempotencyKey: `qca12-${STAMP}-ru14b` });
+    ok(inv.status === "INVITED", `เชิญ: ${fmt(inv)}`);
+    const id2 = String(inv.agentAccountId);
+    await q(`UPDATE "AgentAccount" SET "tierId" = $2 WHERE id = $1`, [id2, tierOld2]);
+    const rv = await shopDo("revokeAgentInvite", s2.ctx, { agentAccountId: id2 });
+    const re2 = await applyAs(k2, s2.slug);
+    const after2 = await acc(id2);
+    eq([rv.status, re2.status, re2.agentAccountId, after2?.tierId ?? null, after2?.unitIds, after2?.code], ["CLOSED", "ACTIVE", id2, tierDefault, [], "KEEP2"], `สมัครซ้ำ ⇒ ACTIVE (ค่าตั้งระดับเริ่มต้น = ${fmt(dflt)})`);
+  });
+
+  // ─────────────────── มติ §10 ข้อ 12 + §11 ข้อ 2 — สมาชิกของผู้ใช้ที่ถูกปิด ───────────────────
+  await st("RU-15", "มติ §10 ข้อ 12 + §11 ข้อ 2 (RV-F12): ผู้ใช้ถูกปิด ⇒ รายละเอียดฝั่งร้าน members[].active = false (คีย์ 4 ตัวเดิม) · memberCount ไม่นับ · removeAgentAccountMember: ไม่มีสิทธิ์ edit ⇒ FORBIDDEN · สมาชิกที่ยังใช้ได้ ⇒ BAD_STATE · ร้านอื่น/สมาชิกที่ไม่มี ⇒ NOT_FOUND · สมาชิกที่ใช้ไม่ได้ ⇒ ถอดได้ (audit agency.member.remove ผู้ทำ USER) · ซ้ำ ⇒ replayed · ฝั่งเอเจนซี่: ให้บทบาทผู้ใช้ที่ถูกปิดไม่ได้ แต่ถอดได้", async () => {
+    needBuilt();
+    const s = await mkShop2("ru15", { auto: true }), sOther = await mkShop2("ru15b");
+    const viewer = await mkStaff("ru15v", s.id, "STAFF", ["*"], { "agency.account.view": true });
+    const o = await signup(mail("ru15"), "RU15");
+    const t1 = await teammate(o, mail("ru15t"), "SALES", "RU15T"), t2 = await teammate(o, mail("ru15u"), "SALES", "RU15U");
+    const a = await applyAs(o, s.slug);
+    ok(a.status === "ACTIVE", `สมัคร: ${fmt(a)}`);
+    const id = String(a.agentAccountId);
+    for (const t of [t1, t2]) ok(R(await AU("setAccountMember")(o.token, { agentAccountId: id, targetUserId: t.agentUserId, role: "SALES" })).ok === true, "เพิ่มสมาชิก");
+    const midOf = async (u: string) => (await q<{ id: string }>(`SELECT id FROM "AgentAccountMember" WHERE "agentAccountId" = $1 AND "agentUserId" = $2`, [id, u]))[0]?.id ?? "";
+    const mO = await midOf(o.agentUserId), m1 = await midOf(t1.agentUserId), m2 = await midOf(t2.agentUserId);
+    const view = async () => {
+      const d = await detail(s, id);
+      const ms = (d.members as Rec[]) ?? [];
+      const item = (((await shopDo("listAgentAccounts", s.ctx, {})).items as Rec[]) ?? []).find((i) => i.id === id);
+      return { flags: [mO, m1, m2].map((m) => ms.find((x) => x.memberId === m)?.active), keys: ms.map((x) => sortedKeys(x).join(",")), count: item?.memberCount, never: [...keysDeep([d, item])].filter((x) => neverNow().includes(x)) };
+    };
+    const v0 = await view();
+    eq([v0.flags, v0.count], [[true, true, true], 3], "ก่อนปิดผู้ใช้");
+    for (const t of [t1, t2]) ok(R(await AU("disableTeammate")(o.token, { targetUserId: t.agentUserId })).ok === true, "ปิดผู้ใช้");
+    const v1 = await view();
+    eq([v1.flags, v1.count, [...new Set(v1.keys)], v1.never], [[true, false, false], 1, ["active,displayName,memberId,role"], []], "หลังปิดผู้ใช้");
+    const rm = (ctx: { tenantId: string; actorUserId: string }, memberId: string) => safe(() => AG("removeAgentAccountMember")(ctx, { agentAccountId: id, memberId }));
+    const forb = await rm(ctxOf(s.id, viewer), m1), usable = await rm(s.ctx, mO), otherShop = await rm(sOther.ctx, m1), bogus = await rm(s.ctx, rid("nomember"));
+    const stillActive = (await q<{ active: boolean }>(`SELECT active FROM "AgentAccountMember" WHERE id = ANY($1::text[]) ORDER BY id`, [[mO, m1]])).map((r) => r.active);
+    eq([forb.code, usable.code, otherShop.code, bogus.code, stillActive], ["FORBIDDEN", "BAD_STATE", "NOT_FOUND", "NOT_FOUND", [true, true]], "กติกาถอด");
+    const done = await rm(s.ctx, m1), again = await rm(s.ctx, m1);
+    const au = (await q<{ actorType: string; actorId: string | null; after: unknown }>(`SELECT "actorType"::text AS "actorType", "actorId", after FROM "AuditLog" WHERE "tenantId" = $1 AND action = 'agency.member.remove' AND "targetId" = $2`, [s.id, m1]));
+    eq([done.ok, done.replayed, sortedKeys(done), again.ok, again.replayed, (await q<{ active: boolean }>(`SELECT active FROM "AgentAccountMember" WHERE id = $1`, [m1]))[0]?.active, au.map((x) => [x.actorType, x.actorId])],
+      [true, false, ["agentAccountId", "memberId", "ok", "replayed"], true, true, false, [["USER", s.owner.userId]]], "ถอดสมาชิกที่ใช้ไม่ได้");
+    ok(au.every((x) => Object.keys(R(x.after)).every((kk) => AUDIT_AFTER_KEYS.includes(kk))) && leaks(JSON.stringify([done, au]), [t1.agentUserId, o.identityId]).length === 0, `audit/ผลต้องไม่มี id global: ${fmt(au)}`);
+    // ฝั่งเอเจนซี่
+    const give = R(await AU("setAccountMember")(o.token, { agentAccountId: id, targetUserId: t2.agentUserId, role: "SALES" }));
+    const mid2 = (await q<{ role: string; active: boolean }>(`SELECT role, active FROM "AgentAccountMember" WHERE id = $1`, [m2]))[0];
+    const promote = R(await AS("setAgentAccountMember")({ agentUserId: o.agentUserId }, { agentAccountId: id, agentUserId: t2.agentUserId, role: "ACCOUNTING" }));
+    const take = R(await AU("setAccountMember")(o.token, { agentAccountId: id, targetUserId: t2.agentUserId, role: null }));
+    eq([give.code, mid2, promote.code, take.ok, (await q<{ active: boolean }>(`SELECT active FROM "AgentAccountMember" WHERE id = $1`, [m2]))[0]?.active], ["NOT_FOUND", { role: "SALES", active: true }, "NOT_FOUND", true, false], "ฝั่งเอเจนซี่กับผู้ใช้ที่ถูกปิด");
+  });
+  await st("RU-16", "T-11 setAgentAccountMember: บทบาทสมาชิกสูงกว่าบทบาทผู้ใช้ ⇒ VALIDATION reason ROLE_ABOVE_USER · บัญชีหรือผู้ใช้ของตัวตนอื่น ⇒ NOT_FOUND · ADMIN ถอดสมาชิก OWNER/ADMIN ⇒ FORBIDDEN (แถวไม่เปลี่ยน) · ADMIN ถอด SALES ได้", async () => {
+    needBuilt();
+    const s = await mkShop2("ru16", { auto: true });
+    const o = await signup(mail("ru16"), "RU16"), other = await signup(mail("ru16x"), "RU16X");
+    const adm = await teammate(o, mail("ru16a"), "ADMIN", "RU16A"), adm2 = await teammate(o, mail("ru16b"), "ADMIN", "RU16B"), sales = await teammate(o, mail("ru16s"), "SALES", "RU16S");
+    const a = await applyAs(o, s.slug), ax = await applyAs(other, s.slug);
+    ok(a.status === "ACTIVE" && ax.status === "ACTIVE", `สมัคร: ${fmt([a, ax])}`);
+    const id = String(a.agentAccountId);
+    const set = async (by: Who, account: string, target: string, role: string | null): Promise<Rec> => R(await AU("setAccountMember")(by.token, { agentAccountId: account, targetUserId: target, role }));
+    const seat = [await set(o, id, adm.agentUserId, "ADMIN"), await set(o, id, adm2.agentUserId, "ADMIN"), await set(o, id, sales.agentUserId, "SALES")];
+    ok(seat.every((r) => r.ok === true), `ตั้งสมาชิก: ${fmt(seat)}`);
+    const above = await set(o, id, sales.agentUserId, "ADMIN");
+    const foreignAccount = await set(o, String(ax.agentAccountId), sales.agentUserId, "SALES"), foreignUser = await set(o, id, other.agentUserId, "SALES");
+    const rmOwner = await set(adm, id, o.agentUserId, null), rmAdmin = await set(adm, id, adm2.agentUserId, null), downAdmin = await set(adm, id, adm2.agentUserId, "SALES");
+    const rows = await q<{ u: string; role: string; active: boolean }>(`SELECT "agentUserId" AS u, role, active FROM "AgentAccountMember" WHERE "agentAccountId" = $1`, [id]);
+    const rowOf = (u: string) => { const r = rows.find((x) => x.u === u); return r ? `${r.role}:${r.active}` : "none"; };
+    eq([above.code, above.reason, foreignAccount.code, foreignUser.code, rmOwner.code, rmAdmin.code, downAdmin.code, rowOf(o.agentUserId), rowOf(adm2.agentUserId), rowOf(sales.agentUserId), rowOf(other.agentUserId)],
+      ["VALIDATION", "ROLE_ABOVE_USER", "NOT_FOUND", "NOT_FOUND", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "OWNER:true", "ADMIN:true", "SALES:true", "none"], "ผล");
+    const rmSales = await set(adm, id, sales.agentUserId, null);
+    eq([rmSales.ok, (await q<{ active: boolean }>(`SELECT active FROM "AgentAccountMember" WHERE "agentAccountId" = $1 AND "agentUserId" = $2`, [id, sales.agentUserId]))[0]?.active], [true, false], "ADMIN ถอด SALES");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 13 — RV-F13 ───────────────────
+  await st("RU-17", "มติ §10 ข้อ 13 (RV-F13 ก–ง · T-13 · T-19): เชิญด้วยรหัสสาธารณะตัวเล็ก/มีช่องว่าง ⇒ เหมือนการค้น (INVITED) · เปลี่ยน payeeType ขณะมีเลขภาษี: ไม่ส่งเลข ⇒ VALIDATION reason TAX_ID_REQUIRED / เลขไม่ตรงชนิดใหม่ ⇒ VALIDATION / เลขใหม่ถูกชนิด หรือ null ⇒ ok · ร้านแก้ผู้ติดต่อ ⇒ ตราความยินยอมของเอเจนซี่ถูกล้าง + source SHOP · หน่วยที่ปิด/หน่วยของร้านอื่น ไม่รับ (เชิญ · อนุมัติ · แก้) · แก้บัญชี CLOSED ⇒ BAD_STATE", async () => {
+    needBuilt();
+    const s = await mkShop2("ru17"), sOther = await mkShop2("ru17b");
+    const uClosed = rid("uru17x");
+    await ins("BusinessUnit", { id: uClosed, tenantId: s.id, type: "TRIPS", name: "หน่วยปิด", slug: `${SLUG}ru17x-${STAMP}`, status: "ARCHIVED" });
+    // (ก) รหัสสาธารณะ
+    const v = await mkIdent("ru17a");
+    const sloppy = `  ${v.publicCode.toLowerCase()} `;
+    const lk = await shopDo("lookupAgentIdentityByCode", s.ctx, { publicCode: sloppy });
+    const ci = await shopDo("inviteAgent", s.ctx, { mode: "CODE", publicCode: sloppy, legalName: `${QC_MARK} ru17a`, payeeType: "TH_JURISTIC", idempotencyKey: `qca12-${STAMP}-ru17a` });
+    eq([R(lk.identity).publicCode, ci.status, (await acc(String(ci.agentAccountId)))?.identityId], [v.publicCode, "INVITED", v.identityId], "รหัสสาธารณะ");
+    // (ง) หน่วย
+    const iv = async (tag: string, unitIds: string[]) => { const r = await shopDo("inviteAgent", s.ctx, invEmail(mail(`ru17-${tag}`), `qca12-${STAMP}-ru17-${tag}`, { unitIds })); if (typeof r.inviteToken === "string") allTokens.push(r.inviteToken); return r; };
+    const i1 = await iv("closed", [uClosed]), i2 = await iv("foreign", [sOther.unitId]), i3 = await iv("ok", [s.unitId]);
+    const k = await signup(mail("ru17"), "RU17");
+    const tax = thaiTaxId(`0105${digits(8)}`);
+    const a1 = await applyAs(k, s.slug, app({ taxId: tax, contact: { name: `${QC_MARK} ru17 contact`, phone: "021234567" } }));
+    ok(a1.status === "PENDING", `สมัคร: ${fmt(a1)}`);
+    const id = String(a1.agentAccountId);
+    const apClosed = await shopDo("approveAgentAccount", s.ctx, { agentAccountId: id, unitIds: [uClosed] }), apForeign = await shopDo("approveAgentAccount", s.ctx, { agentAccountId: id, unitIds: [sOther.unitId] });
+    const stMid = (await acc(id))?.status;
+    const ap = await shopDo("approveAgentAccount", s.ctx, { agentAccountId: id, unitIds: [s.unitId] });
+    const patch = async (p: Rec): Promise<Rec> => shopDo("updateAgentAccountProfile", s.ctx, { agentAccountId: id, expectedUpdatedAt: (await detail(s, id)).updatedAt, patch: p });
+    const pClosed = await patch({ unitIds: [uClosed] }), pForeign = await patch({ unitIds: [sOther.unitId] });
+    eq([i1.code, i2.code, i3.status, apClosed.code, apForeign.code, stMid, ap.status, pClosed.code, pForeign.code, (await acc(id))?.unitIds], ["VALIDATION", "VALIDATION", "INVITED", "VALIDATION", "VALIDATION", "PENDING", "ACTIVE", "VALIDATION", "VALIDATION", [s.unitId]], "หน่วยที่ปิด/ของร้านอื่น");
+    // (ข) payeeType กับเลขภาษีที่เก็บอยู่
+    const person = thaiTaxId(`1${digits(11)}`);
+    const b1 = await patch({ payeeType: "TH_PERSON" });
+    const r1 = await acc(id);
+    const b2 = await patch({ payeeType: "TH_PERSON", taxId: tax }); // เลขนิติบุคคล (ขึ้นต้น 0) ใต้ชนิดบุคคล
+    const b3 = await patch({ payeeType: "TH_PERSON", taxId: person });
+    const r3 = await acc(id);
+    const b4 = await patch({ payeeType: "FOREIGN", taxId: null });
+    const r4 = await acc(id);
+    const b5 = await patch({ payeeType: "TH_JURISTIC" }); // ไม่มีเลขเก็บอยู่แล้ว ⇒ เปลี่ยนชนิดได้
+    eq([b1.code, b1.reason, r1?.payeeType, r1?.taxIdLast4, b2.code, b3.ok, r3?.payeeType, r3?.taxIdLast4, String(r3?.taxIdEnc ?? "").includes(person), b4.ok, r4?.payeeType, r4?.taxIdLast4 ?? null, r4?.taxIdEnc ?? null, b5.ok],
+      ["VALIDATION", "TAX_ID_REQUIRED", "TH_JURISTIC", tax.slice(-4), "VALIDATION", true, "TH_PERSON", person.slice(-4), false, true, "FOREIGN", null, null, true], "payeeType + เลขภาษี");
+    // (ค) ร้านแก้ผู้ติดต่อ
+    const c0 = R((await detail(s, id)).contact);
+    const pc = await patch({ contact: { phone: "0812345678" } });
+    const c1 = R(R(pc.account).contact);
+    eq([c0.consentVersion, c0.source, pc.ok, c1.name, c1.phone, c1.consentVersion, c1.consentAt, c1.source], ["agency-apply-v1", "APPLY", true, `${QC_MARK} ru17 contact`, "0812345678", null, null, "SHOP"], "ร้านแก้ผู้ติดต่อ");
+    // T-13
+    const cl = await shopDo("closeAgentAccount", s.ctx, { agentAccountId: id });
+    const pz = await patch({ legalName: `${QC_MARK} after close` });
+    eq([cl.status, pz.code], ["CLOSED", "BAD_STATE"], "แก้บัญชีที่ปิดแล้ว");
+  });
+  await st("RU-18", "มติ §10 ข้อ 13 (RV-F13 จ): unique ของวิธีล็อกอินชนระหว่างสมัคร (ข้อสอบแทรกแถว AgentLogin ของอีเมลเดียวกันใน tx ที่ยังไม่ commit · รอจนยืนยันรหัสติดรอ แล้ว commit) ⇒ LOGIN_UNAVAILABLE ไม่ใช่ BUSY · ไม่มี ops ERROR · ไม่มีตัวตนใหม่ · ล็อกอินของอีเมลนั้นมีแถวเดียว", async () => {
+    needBuilt();
+    const holder = await mkIdent("ru18h");
+    const e = mail("ru18");
+    const r1 = await reqCode(e, mo());
+    const code = lastMail(e, "LOGIN_CODE")?.code;
+    ok(r1.ok === true && code, `ขอรหัส: ${fmt(r1)}`);
+    const n0 = await opsErrors();
+    const name = `${QC_MARK} RU18 ${STAMP}`;
+    const out = await underHeldTx(
+      async (c) => { await ins("AgentLogin", { id: rid("lg"), agentUserId: holder.agentUserId, kind: "EMAIL", providerId: "email", subject: e, verifiedAt: new Date() }, c); },
+      () => verify({ email: e, codeId: r1.codeId, code, signup: { agencyName: name, ownerName: `${QC_MARK} owner ru18` } }, mo()),
+    );
+    const owners = (await q<{ u: string }>(`SELECT "agentUserId" AS u FROM "AgentLogin" WHERE subject = $1`, [e])).map((r) => r.u);
+    eq([out.res.threw, out.res.code, await count(`SELECT count(*)::int AS n FROM "AgentIdentity" WHERE "displayName" = $1`, [name]), owners, (await opsErrors()) - n0], [undefined, "LOGIN_UNAVAILABLE", 0, [holder.agentUserId], 0], `ผล (ติดรอ=${out.waited} · ${fmt(out.res)})`);
+  });
+
+  // ─────────────────── มติ §10 ข้อ 14 + §11 ข้อ 3 — หนีการพักด้วยการปิดตัวตนแล้วสมัครใหม่ ───────────────────
+  await st("RU-19", "มติ §10 ข้อ 14 (H-F3 · ส่วนอีเมลผู้ติดต่อ): ร้านอนุมัติอัตโนมัติพักบัญชีที่มีอีเมลผู้ติดต่อ C → ตัวตนอื่น (อีเมลล็อกอินอื่น) สมัครด้วยอีเมลผู้ติดต่อ C ⇒ PENDING (ผลรูปปกติ ไม่บอกเหตุ) · อีเมลผู้ติดต่ออื่น ⇒ ACTIVE · หลังร้านปิดบัญชีนั้น (CLOSED_BY_SHOP) ก็ยัง ⇒ PENDING", async () => {
+    needBuilt();
+    const s = await mkShop2("ru19", { auto: true });
+    const c = mail("ru19-contact");
+    const withContact = (email: string) => app({ contact: { name: `${QC_MARK} ru19 contact`, email } });
+    const a = await signup(mail("ru19a"), "RU19A");
+    const a1 = await applyAs(a, s.slug, withContact(c));
+    ok(a1.status === "ACTIVE", `ตัวควบคุม: ร้านอนุมัติอัตโนมัติ — ${fmt(a1)}`);
+    const sus = await shopDo("suspendAgentAccount", s.ctx, { agentAccountId: a1.agentAccountId });
+    const b = await signup(mail("ru19b"), "RU19B"), d = await signup(mail("ru19d"), "RU19D"), g = await signup(mail("ru19g"), "RU19G");
+    const b1 = await applyAs(b, s.slug, withContact(c));
+    const d1 = await applyAs(d, s.slug, withContact(mail("ru19-other")));
+    const cl = await shopDo("closeAgentAccount", s.ctx, { agentAccountId: a1.agentAccountId });
+    const g1 = await applyAs(g, s.slug, withContact(c));
+    eq([sus.status, b1.status, sortedKeys(b1), await AU("agentScope")(b.token, { shopSlug: s.slug }), d1.status, cl.status, g1.status], ["SUSPENDED", "PENDING", RESULT_KEYS, null, "ACTIVE", "CLOSED", "PENDING"], "ผล");
+  });
+  await st("RU-20", "มติ §11 ข้อ 3 (H-F3 T3 · ปิดให้ครบ): บัญชีถูกพัก (ไม่กรอกอีเมลผู้ติดต่อ) → ร้านแก้ผู้ติดต่อ → เอเจนซี่ปิดตัวตน → สมัครตัวตนใหม่ด้วยอีเมลล็อกอินเดิม → สมัครร้านอนุมัติอัตโนมัติเดิม ⇒ PENDING (ผลรูปปกติ · ประตู null) · อีเมลล็อกอินอื่นที่ร้านเดิม ⇒ ACTIVE · อีเมลเดิมที่ร้านอื่น ⇒ ACTIVE · แถวบัญชีเก็บแท็ก agentAuthHash('applicant-tag', tenantId:อีเมล) ผูกร้าน (ต่างร้านต่างค่า · อยู่รอดหลังปิดตัวตน) ไม่เก็บอีเมลดิบ · แท็กอยู่ใน NEVER_SHOW และไม่ออก DTO/รายการ/audit/outbox/ops", async () => {
+    needBuilt();
+    const s = await mkShop2("ru20", { auto: true }), s2 = await mkShop2("ru20b", { auto: true });
+    const e = mail("ru20");
+    const hx = (t: string) => t.slice(3);
+    const tagS = authHash("applicant-tag", `${s.id}:${e}`), tagS2 = authHash("applicant-tag", `${s2.id}:${e}`);
+    const x1 = await signup(e, "RU20");
+    const a1 = await applyAs(x1, s.slug); // ไม่กรอกอีเมลผู้ติดต่อ (ช่องที่ probe hunt-1 [T3] ใช้)
+    ok(a1.status === "ACTIVE", `ตัวควบคุม: ร้านอนุมัติอัตโนมัติ — ${fmt(a1)}`);
+    const id1 = String(a1.agentAccountId);
+    const sus = await shopDo("suspendAgentAccount", s.ctx, { agentAccountId: id1 });
+    const ed = await shopDo("updateAgentAccountProfile", s.ctx, { agentAccountId: id1, expectedUpdatedAt: (await detail(s, id1)).updatedAt, patch: { contact: { phone: "0812345678" } } });
+    const cl = R(await AU("closeMyIdentity")(x1.token, { confirm: true }));
+    ok(sus.status === "SUSPENDED" && ed.ok === true && cl.ok === true, `พัก → ร้านแก้ผู้ติดต่อ → ปิดตัวตน: ${fmt([sus.status, ed.ok, cl])}`);
+    const x2 = await signup(e, "RU20 again");
+    ok(x2.identityId && x2.identityId !== x1.identityId, "ต้องเป็นตัวตนใหม่");
+    const a2 = await applyAs(x2, s.slug);
+    const scope = await AU("agentScope")(x2.token, { shopSlug: s.slug });
+    const otherMail = await signup(mail("ru20o"), "RU20O");
+    const o1 = await applyAs(otherMail, s.slug);
+    const a3 = await applyAs(x2, s2.slug);
+    eq([a2.ok, a2.status, sortedKeys(a2), scope, o1.status, a3.status], [true, "PENDING", RESULT_KEYS, null, "ACTIVE", "ACTIVE"], "สมัครใหม่ด้วยอีเมลล็อกอินเดิมหลังถูกพัก");
+    const j1 = await rowJson(id1), j2 = await rowJson(String(a2.agentAccountId)), j3 = await rowJson(String(a3.agentAccountId));
+    eq([j1.includes(hx(tagS)), j2.includes(hx(tagS)), j3.includes(hx(tagS2)), j3.includes(hx(tagS)), j1.includes(hx(tagS2)), [j1, j2, j3].some((j) => j.includes(e))], [true, true, true, false, false, false], "แท็กในแถวบัญชี (สูตรมติ · ผูกร้าน · ไม่มีอีเมลดิบ)");
+    ok((CO("NEVER_SHOW_TO_SHOP_KEYS") as string[]).includes("applicantTag"), "applicantTag ต้องอยู่ใน NEVER_SHOW_TO_SHOP_KEYS");
+    const shown = [await shopDo("getAgentAccount", s.ctx, { agentAccountId: id1 }), await shopDo("getAgentAccount", s.ctx, { agentAccountId: a2.agentAccountId }), await shopDo("listAgentAccounts", s.ctx, {}), await shopDo("getAgentAccount", s2.ctx, { agentAccountId: a3.agentAccountId }), await shopDo("listAgentAccounts", s2.ctx, {})];
+    const rows = [
+      ...(await q<{ j: string }>(`SELECT row_to_json(a)::text AS j FROM "AuditLog" a WHERE "tenantId" = ANY($1::text[])`, [[s.id, s2.id]])),
+      ...(await q<{ j: string }>(`SELECT row_to_json(o)::text AS j FROM "OutboxEvent" o WHERE "tenantId" = ANY($1::text[])`, [[s.id, s2.id]])),
+      ...(await q<{ j: string }>(`SELECT row_to_json(o)::text AS j FROM "OpsEvent" o WHERE "createdAt" >= $1`, [RUN_START])),
+    ].map((r) => r.j).join("\n");
+    const tagOther = authHash("applicant-tag", `${s.id}:${mail("ru20o")}`);
+    eq([leaks(`${JSON.stringify(shown)}\n${rows}`, [hx(tagS), hx(tagS2), hx(tagOther)]), [...keysDeep(shown)].filter((kk) => /applicant/i.test(kk) || neverNow().includes(kk)), /applicant/i.test(rows)], [[], [], false], "แท็กไม่ออก DTO/รายการ/audit/outbox/ops");
+  });
+  await st("RU-21", "มติ §11 ข้อ 3 (ทางรับคำเชิญ + ปิดโดยร้าน): เชิญด้วยรหัส → รับ ⇒ ACTIVE (แถวเก็บแท็กของอีเมลล็อกอินผู้รับ) → ร้านปิดบัญชี → เอเจนซี่ปิดตัวตน → ตัวตนใหม่อีเมลล็อกอินเดิมสมัครร้านอนุมัติอัตโนมัติเดิม ⇒ PENDING ประตู null", async () => {
+    needBuilt();
+    const s = await mkShop2("ru21", { auto: true });
+    const e = mail("ru21");
+    const tagS = authHash("applicant-tag", `${s.id}:${e}`);
+    const x1 = await signup(e, "RU21");
+    const inv = await shopDo("inviteAgent", s.ctx, { mode: "CODE", publicCode: x1.publicCode, legalName: `${QC_MARK} ru21`, payeeType: "TH_JURISTIC", idempotencyKey: `qca12-${STAMP}-ru21` });
+    const ac = R(await AU("agentAcceptInvite")(x1.token, { shopSlug: s.slug }, mo()));
+    ok(inv.status === "INVITED" && ac.status === "ACTIVE", `เชิญ/รับ: ${fmt([inv, ac])}`);
+    const id1 = String(inv.agentAccountId);
+    const cl = await shopDo("closeAgentAccount", s.ctx, { agentAccountId: id1 });
+    const ci = R(await AU("closeMyIdentity")(x1.token, { confirm: true }));
+    ok(cl.status === "CLOSED" && ci.ok === true, `ปิด: ${fmt([cl, ci])}`);
+    const x2 = await signup(e, "RU21 again");
+    const a2 = await applyAs(x2, s.slug);
+    eq([a2.ok, a2.status, await AU("agentScope")(x2.token, { shopSlug: s.slug }), (await rowJson(id1)).includes(tagS.slice(3)), (await acc(id1))?.statusReason], [true, "PENDING", null, true, "CLOSED_BY_SHOP"], "ผล");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 15 — cursor ผูกร้าน ───────────────────
+  await st("RU-22", "มติ §10 ข้อ 15 (H-F4): listAgentAccounts ด้วย cursor = id บัญชีของร้านอื่น ⇒ ผลเท่ากับ cursor ที่ไม่มีจริงทุกไบต์ · cursor ของร้านเอง ⇒ แถวที่เก่ากว่าเท่านั้น · เดินทีละหน้า (limit 1) ได้ครบทุกแถว ไม่ซ้ำ ไม่ข้าม", async () => {
+    needBuilt();
+    const p = await mkShop2("ru22"), other = await mkShop2("ru22b");
+    const inv = async (s: Shop2, tag: string): Promise<string> => { const r = await shopDo("inviteAgent", s.ctx, invEmail(mail(`ru22-${tag}`), `qca12-${STAMP}-ru22-${tag}`)); ok(r.ok === true, `เชิญ ${tag}: ${fmt(r)}`); allTokens.push(String(r.inviteToken)); return String(r.agentAccountId); };
+    const p1 = await inv(p, "1"), p2 = await inv(p, "2"), f = await inv(other, "f"), p3 = await inv(p, "3");
+    const list = (input: Rec) => shopDo("listAgentAccounts", p.ctx, input);
+    const idsOf = (r: Rec) => ((r.items as Rec[]) ?? []).map((i) => String(i.id));
+    const all = await list({});
+    eq(idsOf(all), [p3, p2, p1], "ทั้งร้าน (ใหม่ก่อน)");
+    const foreign = await list({ cursor: f }), none = await list({ cursor: `aa_${hex(12)}` });
+    ok(foreign.ok === true && none.ok === true, `cursor แปลก: ${fmt([foreign, none])}`);
+    eq(foreign, none, "cursor ของร้านอื่น ต้องเท่ากับ cursor ที่ไม่มีจริง");
+    eq(idsOf(await list({ cursor: p3 })), [p2, p1], "cursor ของร้านเอง");
+    const walked: string[] = [];
+    let cursor: string | undefined;
+    for (let i = 0; i < 6; i++) {
+      const pg1 = await list({ limit: 1, ...(cursor ? { cursor } : {}) });
+      walked.push(...idsOf(pg1));
+      if (typeof pg1.nextCursor !== "string") break;
+      cursor = pg1.nextCursor;
+    }
+    eq(walked, [p3, p2, p1], "เดินทีละหน้า");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 16 — ถัง IP ───────────────────
+  await st("RU-23", "มติ §10 ข้อ 16 (H-F5 · N1): ถังต่อ IP ใช้รูปมาตรฐาน — IPv6 ตัวสะกดต่างกัน/ที่อยู่อื่นใน /64 เดียวกัน = คีย์ถังเดียว · /64 อื่น = คนละคีย์ · IPv4 กับ ::ffff:IPv4 = คีย์เดียว · IP ผิดรูป ⇒ RATE_LIMITED NO_CLIENT ไม่ถามตัวจำกัด ไม่มีแถวรหัส · ipHash ของ session ใช้ที่อยู่รูปมาตรฐาน", async () => {
+    needBuilt();
+    const ask = async (ip: string) => {
+      const seen: Seen[] = [];
+      const e = mail(`ru23-${hex(4)}`);
+      usedEmails.push(e);
+      const r = R(await AU("requestAgentLoginCode")({ email: e }, meta(undefined, undefined, ip, recRate(seen))));
+      if (r.ok === true) createdCodeIds.push(String(r.codeId));
+      const rows = await count(`SELECT count(*)::int AS n FROM "AgentLoginCode" WHERE target = $1`, [authHash("login-target", e)]);
+      return { r, ipKey: seen.find((x) => x.key.startsWith("agent:code:ip:"))?.key ?? null, calls: seen.length, rows };
+    };
+    const same64 = ["2001:db8:aa:bb::1", "2001:DB8:AA:BB::1", "2001:db8:aa:bb:0:0:0:1", "2001:0db8:00aa:00bb:0000:0000:0000:0001", "2001:db8:aa:bb::2", "2001:db8:aa:bb:ffff:ffff:ffff:ffff"];
+    const ks: Awaited<ReturnType<typeof ask>>[] = [];
+    for (const ip of same64) ks.push(await ask(ip));
+    ok(ks.every((x) => x.r.ok === true && typeof x.ipKey === "string" && /^agent:code:ip:v1:[0-9a-f]{64}$/.test(x.ipKey)), `IPv6 ที่ถูกรูปต้องผ่านและมีคีย์ถังเป็นแฮช: ${fmt(ks.map((x) => [x.r.code ?? "ok", x.ipKey]))}`);
+    const other64 = await ask("2001:db8:aa:bc::1"), v4 = await ask("10.77.1.2"), mapped = await ask("::ffff:10.77.1.2"), mappedHex = await ask("::ffff:a4d:102"), v4b = await ask("10.77.1.3");
+    eq([new Set(ks.map((x) => x.ipKey)).size, other64.ipKey !== ks[0].ipKey && other64.r.ok, v4.ipKey === mapped.ipKey && v4.ipKey === mappedHex.ipKey && v4.r.ok, v4b.ipKey !== v4.ipKey && v4b.r.ok, v4.ipKey !== ks[0].ipKey], [1, true, true, true, true], "คีย์ถัง");
+    const bad = ["10.1.2.300", "1.2.3", "1.2.3.4.5", "not-an-ip", "2001:db8:::1", "12345::1", "::ffff:1.2.3", "2001:db8::g", "10.0.0.1\u0000", " "];
+    const bs: Awaited<ReturnType<typeof ask>>[] = [];
+    for (const ip of bad) bs.push(await ask(ip));
+    eq(bs.map((x) => `${String(x.r.code)}/${String(x.r.reason)}/${x.calls}/${x.rows}`), bad.map(() => "RATE_LIMITED/NO_CLIENT/0/0"), "IP ผิดรูป");
+    // ipHash ของ session
+    const v = await mkIdent("ru23u");
+    const e = mail("ru23u");
+    const loginFrom = async (ip: string): Promise<string> => {
+      const r = await reqCode(e, mo(undefined, ip));
+      const x = await verify({ email: e, codeId: r.codeId, code: lastMail(e, "LOGIN_CODE")?.code }, mo(undefined, ip));
+      ok(x.ok === true, `เข้าระบบจาก ${ip}: ${fmt(x)}`);
+      return String((await q<{ h: string | null }>(`SELECT "ipHash" AS h FROM "AgentSession" WHERE "tokenHash" = $1`, [authHash("session", String(x.token))]))[0]?.h);
+    };
+    const h1 = await loginFrom("2001:db8:aa:bb::1"), h2 = await loginFrom("2001:DB8:AA:BB:0:0:0:1"), h3 = await loginFrom("::ffff:10.77.1.2");
+    eq([h1 === h2, h3, /^v1:[0-9a-f]{64}$/.test(h1), await liveSessions(v.agentUserId)], [true, authHash("ip", "10.77.1.2"), true, 3], "ipHash");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 17 — อีเมล / codeId ───────────────────
+  await st("RU-24", "มติ §10 ข้อ 17 (H-F6 · H-F7): อีเมลที่มีอักขระควบคุม/zero-width/bidi/BOM/soft hyphen/NUL/surrogate เดี่ยว ⇒ VALIDATION ทั้งขอรหัส (ก่อนถามตัวจำกัด · ไม่มีแถว/จดหมาย) · ยืนยัน · เชิญเพื่อน · ร้านเชิญ · อีเมลผู้ติดต่อในใบสมัคร (ด่านเดียวกัน) · ตัวใหญ่/ช่องว่างหัวท้าย = target เดียวกับรูปปกติ · codeId ผิดรูป ⇒ INVALID_CODE/VALIDATION โดยไม่ไปถึงถังต่อรหัส attempts ไม่ขยับ รหัสจริงยังใช้ได้ · อินพุตขยะของทางที่ไม่ล็อกอิน ⇒ ไม่มี ops ERROR แม้แต่แถวเดียว", async () => {
+    needBuilt();
+    const n0 = await opsErrors();
+    const s = await mkShop2("ru24");
+    const o = await signup(mail("ru24o"), "RU24");
+    const base = mail("ru24");
+    const put = (ch: string) => base.replace("-ru24-", `-ru${ch}24-`);
+    const bad: [string, string][] = [["ZWSP", put("​")], ["ZWJ", put("‍")], ["NUL", put("\u0000")], ["ESC", put("\u001b")], ["LF", put("\n")], ["RTL override", put("‮")], ["LRI", put("⁦")], ["BOM", put("﻿")], ["soft hyphen", put("­")], ["lone surrogate", put("\ud800")], ["C1", put("\u0085")]];
+    const codes0 = await count(`SELECT count(*)::int AS n FROM "AgentLoginCode"`);
+    const m0 = mails.length;
+    const lines: string[] = [];
+    for (const [name, em] of bad) {
+      const seen: Seen[] = [];
+      const rq = await safe(() => AU("requestAgentLoginCode")({ email: em }, meta(undefined, undefined, undefined, recRate(seen))));
+      const vf = await safe(() => AU("verifyAgentLoginCode")({ email: em, codeId: `alc_${hex(12)}`, code: "123456" }, mo()));
+      const tm = await safe(() => AU("createTeammateInvite")(o.token, { email: em, role: "SALES" }, mo()));
+      const iv = await safe(() => AG("inviteAgent")(s.ctx, invEmail(em, `qca12-${STAMP}-ru24-${hex(3)}`), { deps: OPEN_DEPS }));
+      const ap = await safe(() => AU("agentApply")(o.token, { shopSlug: s.slug, application: app({ contact: { name: `${QC_MARK} c`, email: em } }) }, mo()));
+      const got = [rq.code, vf.code, tm.code, iv.code, ap.code, seen.length].join("/");
+      if (got !== "VALIDATION/VALIDATION/VALIDATION/VALIDATION/VALIDATION/0") lines.push(`${name}: ${got}`);
+    }
+    eq([lines, (await count(`SELECT count(*)::int AS n FROM "AgentLoginCode"`)) - codes0, mails.length - m0, await accountOf(s.id, o.identityId)], [[], 0, 0, null], "อีเมลที่มีอักขระต้องห้าม");
+    const variants = [base, base.toUpperCase(), `  ${base} `];
+    const targets: unknown[] = [];
+    for (const em of variants) { const r = await reqCode(em, mo()); targets.push(r.ok === true ? (await q<{ target: string }>(`SELECT target FROM "AgentLoginCode" WHERE id = $1`, [String(r.codeId)]))[0]?.target : r.code); }
+    usedEmails.push(base);
+    eq(targets, variants.map(() => authHash("login-target", base)), "ตัวใหญ่/ช่องว่างหัวท้าย = target เดียว");
+    // codeId
+    const e = mail("ru24c");
+    await mkIdent("ru24c");
+    const r = await reqCode(e, mo());
+    const code = lastMail(e, "LOGIN_CODE")?.code ?? "";
+    const real = String(r.codeId);
+    const seen: Seen[] = [];
+    const badIds: unknown[] = ["alc_\u0000", `${real}\u0000`, "alc_zz", real.toUpperCase(), real.replace("alc_", "ALC_"), ` ${real}`, `${real} `, `${real}0`, real.slice(0, -1), `alc_${"g".repeat(24)}`, "x".repeat(64), `'; DROP TABLE "AgentLoginCode";--`, "x".repeat(65), 12345, null, { toString: () => real }, [real]];
+    const got: string[] = [];
+    for (const id of badIds) { const x = await safe(() => AU("verifyAgentLoginCode")({ email: e, codeId: id, code }, meta(undefined, undefined, undefined, recRate(seen)))); got.push(x.threw !== undefined ? "throw" : x.ok === true ? "OK!" : String(x.code)); }
+    const row = (await q<{ attempts: number; usedAt: Date | null }>(`SELECT attempts, "usedAt" FROM "AgentLoginCode" WHERE id = $1`, [real]))[0];
+    ok(got.every((x) => x === "INVALID_CODE" || x === "VALIDATION"), `codeId ผิดรูป: ${fmt(got)}`);
+    eq([seen.filter((x) => x.key.startsWith("agent:verify:k:") || isBucket(x, "verifyPerCode")).length, row?.attempts, row?.usedAt ?? null], [0, 0, null], "ไม่ถึงถังต่อรหัส/แถวรหัส");
+    const good = await verify({ email: e, codeId: real, code }, mo());
+    ok(good.ok === true, `รหัสจริงต้องยังใช้ได้: ${fmt(good)}`);
+    // อินพุตขยะของทางที่ไม่ล็อกอิน
+    const junkToken = `ag_${randomBytes(32).toString("base64url")}`;
+    const junk = [
+      await safe(() => AU("requestAgentLoginCode")({ email: base }, { ...mo(), clientKey: "abcd\u0000efgh" })),
+      await safe(() => AU("requestAgentLoginCode")({ email: { toString: () => base } }, mo())),
+      await safe(() => AU("requestAgentLoginCode")(null, mo())),
+      await safe(() => AU("verifyAgentLoginCode")({ email: e, codeId: `alc_${hex(12)}`, code: "12\u000034", signup: { agencyName: `${QC_MARK} a\u0000b`, ownerName: "x" } }, mo())),
+      await safe(() => AU("verifyAgentLoginCode")({ email: e, codeId: `alc_${hex(12)}`, code: "123456", teammateInvite: "\u0000.\u0000" }, mo())),
+      await safe(() => AU("agentApply")(junkToken, { shopSlug: "x\u0000y", application: app() }, mo())),
+      await safe(() => AU("agentAcceptInvite")(junkToken, { shopSlug: s.slug, inviteToken: "\u0000".repeat(43) }, mo())),
+      await safe(() => AU("selectAgentAccount")(junkToken, { shopSlug: "a\u0000" })),
+      await safe(() => AU("logoutAgentSession")("ag_\u0000")),
+    ];
+    const nulls = [await AU("resolveAgentSession")("ag_\u0000"), await AU("resolveAgentSession")(`${junkToken}\u0000`), await AU("agentScope")(junkToken, { shopSlug: "x\u0000y" }), await AU("agentScope")("\u0000", { shopSlug: s.slug })];
+    eq([junk.filter((x) => x.threw !== undefined).length, junk.slice(0, 8).filter((x) => x.ok === true).length, nulls, (await opsErrors()) - n0], [0, 0, [null, null, null, null], 0], "อินพุตขยะ ⇒ ไม่ throw · ไม่สำเร็จ · ไม่มี ops ERROR");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 18 — เข้าระบบพร้อมกันของอีเมลเดียว ───────────────────
+  await st("RU-25", "มติ §10 ข้อ 18 (H-F8): ผู้ใช้เดียวยืนยันรหัสที่ถูกสองใบพร้อมกัน (4 รอบ) ⇒ ทุกรอบ ok 1 พอดี + session ใหม่ 1 แถวพอดี · อีกใบ INVALID_CODE (หรือ BUSY reason LOCK) ไม่มี BUSY UNEXPECTED/throw · ไม่มี ops ERROR", async () => {
+    needBuilt();
+    const v = await mkIdent("ru25");
+    const e = mail("ru25");
+    const n0 = await opsErrors();
+    const bad: string[] = [];
+    for (let round = 0; round < 4; round++) {
+      const before = await count(`SELECT count(*)::int AS n FROM "AgentSession" WHERE "agentUserId" = $1`, [v.agentUserId]);
+      const r1 = await reqCode(e, mo()); const c1 = lastMail(e, "LOGIN_CODE")?.code;
+      const r2 = await reqCode(e, mo()); const c2 = lastMail(e, "LOGIN_CODE")?.code;
+      const out = await settle([AU("verifyAgentLoginCode")({ email: e, codeId: r1.codeId, code: c1 }, mo()), AU("verifyAgentLoginCode")({ email: e, codeId: r2.codeId, code: c2 }, mo())]);
+      for (const x of out) if (x.ok === true) allTokens.push(String(x.token));
+      const added = (await count(`SELECT count(*)::int AS n FROM "AgentSession" WHERE "agentUserId" = $1`, [v.agentUserId])) - before;
+      const rest = out.filter((x) => x.ok !== true);
+      if (out.filter((x) => x.ok === true).length !== 1 || added !== 1 || rest.some((x) => x.threw !== undefined || !(x.code === "INVALID_CODE" || (x.code === "BUSY" && x.reason === "LOCK")))) bad.push(`รอบ ${round}: ${fmt(out.map((x) => (x.ok === true ? "ok" : `${String(x.code)}/${String(x.reason ?? "")}${x.threw ? `/${String(x.threw)}` : ""}`)))} session +${added}`);
+    }
+    eq([bad, (await opsErrors()) - n0], [[], 0], "ผล");
+  });
+
+  // ─────────────────── มติ §10 ข้อ 19 — ถังสมัคร: ตัวตนก่อนร้าน · เล่นซ้ำไม่กินถังร้าน ───────────────────
+  await st("RU-26", "มติ §10 ข้อ 19 (H-F9): ลำดับถังของการสมัครผ่านตัวห่อ = เครื่อง → ตัวตน → ร้าน · ถังตัวตนปฏิเสธ ⇒ ถังร้านไม่ถูกถาม ไม่มีแถว · เล่นซ้ำใบสมัครเดิม (replayed) ×3 ⇒ ไม่ถามถังร้านเลย (นับถังตัวตนทุกครั้ง) · ถังร้านเต็มก็ยังเล่นซ้ำได้", async () => {
+    needBuilt();
+    const s = await mkShop2("ru26");
+    const k = await signup(mail("ru26"), "RU26");
+    const tagOf = (x: Seen) => (x.key.startsWith("agent:apply:i:") ? "i" : x.key.startsWith("agent:apply:s:") ? "s" : isBucket(x, "applyPerClient") ? "c" : "?");
+    const call = async (deny?: string): Promise<{ r: Rec; trace: string[] }> => {
+      const seen: Seen[] = [];
+      const r = R(await AU("agentApply")(k.token, { shopSlug: s.slug, application: app() }, meta(undefined, undefined, undefined, recRate(seen, (x) => tagOf(x) === deny))));
+      return { r, trace: seen.map(tagOf).filter((t) => t !== "?") };
+    };
+    const d1 = await call("i");
+    eq([d1.r.code, d1.trace, await accountOf(s.id, k.identityId)], ["RATE_LIMITED", ["c", "i"], null], "ถังตัวตนปฏิเสธ");
+    const a1 = await call();
+    eq([a1.r.status, a1.r.replayed, a1.trace], ["PENDING", false, ["c", "i", "s"]], "ใบสมัครใหม่");
+    const reps = [await call(), await call(), await call()];
+    eq([reps.map((x) => x.r.replayed), reps.map((x) => x.trace)], [[true, true, true], [["c", "i"], ["c", "i"], ["c", "i"]]], "เล่นซ้ำ");
+    const r4 = await call("s");
+    eq([r4.r.ok, r4.r.replayed, r4.r.agentAccountId], [true, true, a1.r.agentAccountId], "ถังร้านเต็ม + เล่นซ้ำ");
+  });
+  await st("RU-27", "T-9 ถังทุกตัวใช้เพดานของตัวเองใน AGENT_AUTH_LIMITS (ขอรหัส 4 ถัง · ยืนยัน 2 · สมัคร 3 · รับคำเชิญ 1 · ค้นรหัส 1) คีย์เป็นแฮช · ถังต่อเครื่องปฏิเสธ ⇒ RATE_LIMITED ไม่แตะแถว (ขอรหัส · ยืนยัน · รับคำเชิญ · สมัคร — ถังตัวตนไม่ถูกถาม) · ถังต่อรหัสปฏิเสธ ⇒ ไม่สำเร็จ attempts ไม่ขยับ รหัสยังใช้ได้ภายหลัง", async () => {
+    needBuilt();
+    const s = await mkShop2("ru27");
+    const k = await signup(mail("ru27"), "RU27");
+    const inv = await shopDo("inviteAgent", s.ctx, { mode: "CODE", publicCode: k.publicCode, legalName: `${QC_MARK} ru27`, payeeType: "TH_JURISTIC", idempotencyKey: `qca12-${STAMP}-ru27` });
+    ok(inv.status === "INVITED", `เชิญ: ${fmt(inv)}`);
+    const e = mail("ru27c");
+    await mkIdent("ru27c");
+    usedEmails.push(e);
+    const seen: Seen[] = [];
+    const rec = () => meta(undefined, undefined, undefined, recRate(seen));
+    const named = (prefix: string, k2: string) => seen.some((x) => x.key.startsWith(prefix) && isBucket(x, k2));
+    const rq = R(await AU("requestAgentLoginCode")({ email: e }, rec()));
+    ok(rq.ok === true, `ขอรหัส: ${fmt(rq)}`);
+    createdCodeIds.push(String(rq.codeId));
+    const code = lastMail(e, "LOGIN_CODE")?.code ?? "";
+    const wrong = code === "000000" ? "111111" : "000000";
+    const reqBuckets = [named("agent:code:c:", "codePerClient"), named("agent:code:ip:", "codePerIp"), named("agent:code:t:", "codePerTarget"), named("agent:code:td:", "codePerTargetDay"), seen.length];
+    seen.length = 0;
+    await AU("verifyAgentLoginCode")({ email: e, codeId: rq.codeId, code: wrong }, rec());
+    const verBuckets = [named("agent:verify:c:", "verifyPerClient"), named("agent:verify:k:", "verifyPerCode"), seen.length];
+    seen.length = 0;
+    await AG("lookupAgentIdentityByCode")(s.ctx, { publicCode: k.publicCode }, { deps: recRate(seen) });
+    const lookBuckets = [named("agent:lookup:", "lookupByCodePerActor"), seen.length];
+    seen.length = 0;
+    const s3 = await mkShop2("ru27b");
+    const ap = R(await AU("agentApply")(k.token, { shopSlug: s3.slug, application: app() }, rec()));
+    const applyBuckets = [ap.status, seen.some((x) => isBucket(x, "applyPerClient")), named("agent:apply:i:", "applyPerIdentity"), named("agent:apply:s:", "applyPerShop"), seen.length];
+    seen.length = 0;
+    const denyOf = (k2: string) => meta(undefined, undefined, undefined, recRate(seen, (x) => isBucket(x, k2)));
+    const accDenied = R(await AU("agentAcceptInvite")(k.token, { shopSlug: s.slug }, denyOf("inviteAcceptPerClient")));
+    const accBuckets = [accDenied.code, (await acc(String(inv.agentAccountId)))?.status, seen.length];
+    eq([reqBuckets, verBuckets, lookBuckets, applyBuckets, accBuckets], [[true, true, true, true, 4], [true, true, 2], [true, 1], ["PENDING", true, true, true, 3], ["RATE_LIMITED", "INVITED", 1]], "ถังและเพดาน");
+    // ปฏิเสธทีละถัง
+    const att = async () => (await q<{ attempts: number }>(`SELECT attempts FROM "AgentLoginCode" WHERE id = $1`, [String(rq.codeId)]))[0]?.attempts;
+    const a0 = await att();
+    const e2 = mail("ru27d");
+    usedEmails.push(e2);
+    const rqDenied = R(await AU("requestAgentLoginCode")({ email: e2 }, denyOf("codePerClient")));
+    const vfClient = R(await AU("verifyAgentLoginCode")({ email: e, codeId: rq.codeId, code }, denyOf("verifyPerClient")));
+    const vfCode = R(await AU("verifyAgentLoginCode")({ email: e, codeId: rq.codeId, code }, denyOf("verifyPerCode")));
+    seen.length = 0;
+    const s4 = await mkShop2("ru27d");
+    const apDenied = R(await AU("agentApply")(k.token, { shopSlug: s4.slug, application: app() }, denyOf("applyPerClient")));
+    eq([rqDenied.code, await count(`SELECT count(*)::int AS n FROM "AgentLoginCode" WHERE target = $1`, [authHash("login-target", e2)]), vfClient.code, vfCode.ok === true, ["INVALID_CODE", "RATE_LIMITED"].includes(String(vfCode.code)), (await att()) === a0, apDenied.code, seen.some((x) => x.key.startsWith("agent:apply:i:")), await accountOf(s4.id, k.identityId)],
+      ["RATE_LIMITED", 0, "RATE_LIMITED", false, true, true, "RATE_LIMITED", false, null], "ถังปฏิเสธ");
+    const good = await verify({ email: e, codeId: rq.codeId, code }, mo());
+    ok(good.ok === true, `รหัสยังต้องใช้ได้หลังถังปฏิเสธ: ${fmt(good)}`);
+  });
+
+  // ─────────────────── T-8 ประตูต่อร้าน: ตารางกรณีไม่ผ่าน ───────────────────
+  await st("RU-28", "T-8 agentScope = null เดียวกันทุกกรณี: บัญชี PENDING · บัญชี INVITED · ผู้ใช้ของตัวตนที่ไม่ได้เป็นสมาชิก · แถวสมาชิก inactive · ร้านไม่ ACTIVE · หน่วย TRIPS เดียวของร้านถูกปิด · บัญชีถูกพัก/ปิด — และ activeAgentAccountId ที่ชี้ร้านอื่นไม่มีผล (ร้านจาก URL ตัดสิน) · selectAgentAccount ของบัญชีที่ถูกพัก/ปิด ⇒ NOT_FOUND ข้อความเดียวกับร้านที่ไม่มีจริง", async () => {
+    needBuilt();
+    const sP = await mkShop2("ru28p"), sI = await mkShop2("ru28i"), sA = await mkShop2("ru28a", { auto: true }), sB = await mkShop2("ru28b", { auto: true });
+    const k = await signup(mail("ru28"), "RU28");
+    const mate = await teammate(k, mail("ru28m"), "SALES", "RU28M");
+    const pend = await applyAs(k, sP.slug);
+    const inv = await shopDo("inviteAgent", sI.ctx, { mode: "CODE", publicCode: k.publicCode, legalName: `${QC_MARK} ru28`, payeeType: "TH_JURISTIC", idempotencyKey: `qca12-${STAMP}-ru28` });
+    const actA = await applyAs(k, sA.slug), actB = await applyAs(k, sB.slug);
+    ok(pend.status === "PENDING" && inv.status === "INVITED" && actA.status === "ACTIVE" && actB.status === "ACTIVE", `ตั้งต้น: ${fmt([pend.status, inv.status, actA.status, actB.status])}`);
+    const scope = (w: { token: string }, slug: string) => AU("agentScope")(w.token, { shopSlug: slug });
+    const sel = async (w: { token: string }, slug: string): Promise<Rec> => R(await AU("selectAgentAccount")(w.token, { shopSlug: slug }));
+    const none = await sel(k, slugNone);
+    eq([R(await scope(k, sA.slug)).agentAccountId, await scope(k, sP.slug), await scope(k, sI.slug), await scope(mate, sA.slug), (await sel(k, sP.slug)).status, (await sel(k, sI.slug)).status], [actA.agentAccountId, null, null, null, "PENDING", "INVITED"], "PENDING / INVITED / ไม่ใช่สมาชิก");
+    // คำใบ้ UI ชี้ร้าน B — ประตูของร้าน A/P ต้องตัดสินจาก URL
+    const selB = await sel(k, sB.slug);
+    const hint = (await q<{ a: string | null }>(`SELECT "activeAgentAccountId" AS a FROM "AgentSession" WHERE "tokenHash" = $1`, [authHash("session", k.token)]))[0]?.a;
+    eq([selB.agentAccountId, hint, R(await scope(k, sA.slug)).agentAccountId, await scope(k, sP.slug), await scope(k, slugNone)], [actB.agentAccountId, actB.agentAccountId, actA.agentAccountId, null, null], "activeAgentAccountId ไม่มีผลกับประตู");
+    const off: unknown[] = [];
+    try {
+      await q(`UPDATE "Tenant" SET status = 'SUSPENDED' WHERE id = $1`, [sA.id]);
+      off.push(await scope(k, sA.slug), (await sel(k, sA.slug)).code);
+    } finally { await q(`UPDATE "Tenant" SET status = 'ACTIVE' WHERE id = $1`, [sA.id]); }
+    try {
+      await q(`UPDATE "BusinessUnit" SET status = 'ARCHIVED' WHERE id = $1`, [sA.unitId]);
+      off.push(await scope(k, sA.slug));
+    } finally { await q(`UPDATE "BusinessUnit" SET status = 'ACTIVE' WHERE id = $1`, [sA.unitId]); }
+    try {
+      await q(`UPDATE "AgentAccountMember" SET active = false WHERE "agentAccountId" = $1 AND "agentUserId" = $2`, [String(actA.agentAccountId), k.agentUserId]);
+      off.push(await scope(k, sA.slug));
+    } finally { await q(`UPDATE "AgentAccountMember" SET active = true WHERE "agentAccountId" = $1 AND "agentUserId" = $2`, [String(actA.agentAccountId), k.agentUserId]); }
+    eq([off, R(await scope(k, sA.slug)).agentAccountId], [[null, "NOT_FOUND", null, null], actA.agentAccountId], "ร้านไม่ ACTIVE / หน่วยปิด / สมาชิก inactive (แล้วคืนค่า ⇒ ผ่าน)");
+    const sus = await shopDo("suspendAgentAccount", sB.ctx, { agentAccountId: actB.agentAccountId });
+    const s1 = await sel(k, sB.slug), g1 = await scope(k, sB.slug);
+    const cl = await shopDo("closeAgentAccount", sB.ctx, { agentAccountId: actB.agentAccountId });
+    const s2 = await sel(k, sB.slug), g2 = await scope(k, sB.slug);
+    eq([sus.status, s1.code, s1.message === none.message, g1, cl.status, s2.code, s2.message === none.message, g2, none.code], ["SUSPENDED", "NOT_FOUND", true, null, "CLOSED", "NOT_FOUND", true, null, "NOT_FOUND"], "พัก / ปิด");
+  });
+
+  // ─────────────────── T-10 เจ้าของคนสุดท้าย (ปิด/ลบ) · ลบ · ปิดตัวตน ───────────────────
+  await st("RU-29", "T-10: เจ้าของคนเดียวปิดตัวเอง/ลบตัวเอง ⇒ LAST_OWNER (ยัง ACTIVE · session ยังใช้ได้) · ADMIN ลบผู้ใช้อื่น ⇒ FORBIDDEN · SALES ลบตัวเอง ⇒ ok (ERASED) · ADMIN ปิดตัวตน ⇒ FORBIDDEN · ไม่ยืนยัน (confirm ไม่ใช่ true) ⇒ VALIDATION ตัวตนยัง ACTIVE · OWNER ปิดตัวตน ⇒ แถวคำเชิญด้วยรหัส (INVITED) ก็ถูกปิดเป็น IDENTITY_CLOSED", async () => {
+    needBuilt();
+    const s = await mkShop2("ru29");
+    const o = await signup(mail("ru29"), "RU29");
+    const adm = await teammate(o, mail("ru29a"), "ADMIN", "RU29A"), s1 = await teammate(o, mail("ru29s"), "SALES", "RU29S"), s2 = await teammate(o, mail("ru29t"), "SALES", "RU29T");
+    const inv = await shopDo("inviteAgent", s.ctx, { mode: "CODE", publicCode: o.publicCode, legalName: `${QC_MARK} ru29`, payeeType: "TH_JURISTIC", idempotencyKey: `qca12-${STAMP}-ru29` });
+    ok(inv.status === "INVITED", `เชิญ: ${fmt(inv)}`);
+    const ust = async (id: string) => (await q<{ status: string }>(`SELECT status FROM "AgentUser" WHERE id = $1`, [id]))[0]?.status;
+    const dis = R(await AU("disableTeammate")(o.token, { targetUserId: o.agentUserId })), er = R(await AU("eraseTeammate")(o.token, { targetUserId: o.agentUserId }));
+    eq([dis.code, er.code, await ust(o.agentUserId), !!(await AU("resolveAgentSession")(o.token))], ["LAST_OWNER", "LAST_OWNER", "ACTIVE", true], "เจ้าของคนสุดท้าย");
+    const f1 = R(await AU("eraseTeammate")(adm.token, { targetUserId: s1.agentUserId }));
+    const self = R(await AU("eraseTeammate")(s2.token, { targetUserId: s2.agentUserId }));
+    eq([f1.code, await ust(s1.agentUserId), self.ok, await ust(s2.agentUserId), await loginRows(mail("ru29t")), await AU("resolveAgentSession")(s2.token)], ["FORBIDDEN", "ACTIVE", true, "ERASED", 0, null], "ลบผู้ใช้");
+    const f2 = R(await AU("closeMyIdentity")(adm.token, { confirm: true }));
+    const v1 = R(await AU("closeMyIdentity")(o.token, { confirm: false })), v2 = R(await AU("closeMyIdentity")(o.token, {})), v3 = R(await AU("closeMyIdentity")(o.token, { confirm: "true" }));
+    const identSt = async () => (await q<{ status: string }>(`SELECT status FROM "AgentIdentity" WHERE id = $1`, [o.identityId]))[0]?.status;
+    eq([f2.code, v1.code, v2.code, v3.code, await identSt(), (await acc(String(inv.agentAccountId)))?.status], ["FORBIDDEN", "VALIDATION", "VALIDATION", "VALIDATION", "ACTIVE", "INVITED"], "ปิดตัวตนที่ไม่ผ่าน");
+    const cl = R(await AU("closeMyIdentity")(o.token, { confirm: true }));
+    const row = await acc(String(inv.agentAccountId));
+    eq([cl.ok, await identSt(), row?.status, row?.statusReason, row?.inviteTokenHash ?? null, await AU("resolveAgentSession")(adm.token)], [true, "CLOSED", "CLOSED", "IDENTITY_CLOSED", null, null], "ปิดตัวตน");
+  });
+
+  // ─────────────────── T-12 การมองเห็นตามสาขา ───────────────────
+  await st("RU-30", "T-12: พนักงานจำกัดสาขา (มีสิทธิ์ดู) เห็นบัญชีที่ unitIds ว่างหรือซ้อนสาขาของตน · บัญชีของสาขาอื่น ⇒ ไม่อยู่ในรายการ และ get = NOT_FOUND ทุกไบต์เท่า id ที่ไม่มีจริง · เจ้าของเห็นครบ", async () => {
+    needBuilt();
+    const s = await mkShop2("ru30");
+    const u2 = rid("uru30b");
+    await ins("BusinessUnit", { id: u2, tenantId: s.id, type: "TRIPS", name: "หน่วยที่สอง", slug: `${SLUG}ru30b-${STAMP}` });
+    const br = await mkStaff("ru30br", s.id, "STAFF", [s.unitId], { "agency.account.view": true });
+    const inv = async (tag: string, unitIds: string[]): Promise<string> => { const r = await shopDo("inviteAgent", s.ctx, invEmail(mail(`ru30-${tag}`), `qca12-${STAMP}-ru30-${tag}`, { unitIds })); ok(r.ok === true, `เชิญ ${tag}: ${fmt(r)}`); allTokens.push(String(r.inviteToken)); return String(r.agentAccountId); };
+    const aAll = await inv("all", []), aMine = await inv("mine", [s.unitId]), aBoth = await inv("both", [s.unitId, u2]), aOther = await inv("other", [u2]);
+    const ctxBr = ctxOf(s.id, br);
+    const seenIds = (((await shopDo("listAgentAccounts", ctxBr, {})).items as Rec[]) ?? []).map((i) => String(i.id)).sort();
+    const ownerIds = (((await shopDo("listAgentAccounts", s.ctx, {})).items as Rec[]) ?? []).map((i) => String(i.id)).sort();
+    const gOther = await shopDo("getAgentAccount", ctxBr, { agentAccountId: aOther }), gNone = await shopDo("getAgentAccount", ctxBr, { agentAccountId: rid("nope") }), gMine = await shopDo("getAgentAccount", ctxBr, { agentAccountId: aMine });
+    eq([seenIds, ownerIds, gOther, gMine.ok, (await shopDo("getAgentAccount", s.ctx, { agentAccountId: aOther })).ok], [[aAll, aMine, aBoth].sort(), [aAll, aMine, aBoth, aOther].sort(), gNone, true, true], "การมองเห็น");
+    eq(gOther.code, "NOT_FOUND", "รหัส");
+  });
+
+  // ─────────────────── T-17 ไม่มีกุญแจเซิร์ฟเวอร์ · T-18 งานกวาดเคารพ signal ───────────────────
+  await st("RU-31", "T-17: SESSION_SECRET ว่าง ⇒ สมัคร · รับคำเชิญ · ร้านเชิญ (อีเมล) · ออกคำเชิญใหม่ · เชิญเพื่อน · ยืนยันรหัส · ค้นรหัส = BUSY reason SERVER_KEY_MISSING ไม่เขียนอะไร (ไม่มีกุญแจสำรอง) · INTEGRATIONS_CREDENTIALS_KEY ว่าง + ใบสมัครมีเลขภาษี ⇒ BUSY reason KEY_NOT_CONFIGURED ไม่มีแถว · คืนกุญแจแล้วทำได้ปกติ", async () => {
+    needBuilt();
+    const s = await mkShop2("ru31");
+    const k = await signup(mail("ru31"), "RU31");
+    const base = await shopDo("inviteAgent", s.ctx, invEmail(mail("ru31-base"), `qca12-${STAMP}-ru31-base`));
+    ok(base.ok === true, `คำเชิญตั้งต้น: ${fmt(base)}`);
+    allTokens.push(String(base.inviteToken));
+    const hash0 = (await acc(String(base.agentAccountId)))?.inviteTokenHash;
+    const e = mail("ru31c");
+    await mkIdent("ru31c");
+    const rq = await reqCode(e, mo());
+    const code = lastMail(e, "LOGIN_CODE")?.code;
+    const m0 = mails.length;
+    const keepS = process.env.SESSION_SECRET;
+    let out: Rec[] = [];
+    try {
+      process.env.SESSION_SECRET = "";
+      out = [
+        await safe(() => AU("agentApply")(k.token, { shopSlug: s.slug, application: app() }, mo())),
+        await safe(() => AU("agentAcceptInvite")(k.token, { shopSlug: s.slug, inviteToken: base.inviteToken }, mo())),
+        await safe(() => AG("inviteAgent")(s.ctx, invEmail(mail("ru31-new"), `qca12-${STAMP}-ru31-new`), { deps: OPEN_DEPS })),
+        await safe(() => AG("reissueAgentInvite")(s.ctx, { agentAccountId: base.agentAccountId }, { deps: OPEN_DEPS })),
+        await safe(() => AU("createTeammateInvite")(k.token, { email: mail("ru31-mate"), role: "SALES" }, mo())),
+        await safe(() => AU("verifyAgentLoginCode")({ email: e, codeId: rq.codeId, code }, mo())),
+        await safe(() => AG("lookupAgentIdentityByCode")(s.ctx, { publicCode: k.publicCode }, { deps: OPEN_DEPS })),
+      ];
+    } finally { process.env.SESSION_SECRET = keepS; }
+    const cRow = (await q<{ attempts: number; usedAt: Date | null }>(`SELECT attempts, "usedAt" FROM "AgentLoginCode" WHERE id = $1`, [String(rq.codeId)]))[0];
+    eq([out.map((r) => `${String(r.code)}/${String(r.reason)}`), await accountOf(s.id, k.identityId), await count(`SELECT count(*)::int AS n FROM "AgentAccount" WHERE "tenantId" = $1`, [s.id]), (await acc(String(base.agentAccountId)))?.inviteTokenHash === hash0, mails.length - m0, cRow?.attempts, cRow?.usedAt ?? null],
+      [out.map(() => "BUSY/SERVER_KEY_MISSING"), null, 1, true, 0, 0, null], "ไม่มี SESSION_SECRET");
+    ok(await AU("resolveAgentSession")(k.token), "คืนกุญแจแล้ว session เดิมต้องใช้ได้ (ตัวควบคุม: ไม่มีกุญแจสำรองแทรกแฮชอื่น)");
+    const tax = thaiTaxId(`0105${digits(8)}`);
+    const keepI = process.env.INTEGRATIONS_CREDENTIALS_KEY;
+    let noKey: Rec = {};
+    try { process.env.INTEGRATIONS_CREDENTIALS_KEY = ""; noKey = await safe(() => AU("agentApply")(k.token, { shopSlug: s.slug, application: app({ taxId: tax }) }, mo())); } finally { process.env.INTEGRATIONS_CREDENTIALS_KEY = keepI; }
+    const rowNoKey = await accountOf(s.id, k.identityId);
+    const withKey = await applyAs(k, s.slug, app({ taxId: tax }));
+    eq([noKey.code, noKey.reason, rowNoKey, withKey.status, (await accountOf(s.id, k.identityId))?.taxIdLast4], ["BUSY", "KEY_NOT_CONFIGURED", null, "PENDING", tax.slice(-4)], "ไม่มีกุญแจเข้ารหัสเลขภาษี");
+  });
+  await st("RU-32", "T-18: sweepAgentAuth ที่ signal ถูกยกเลิกแล้ว ⇒ ไม่ลบ session (sessions = 0 · แถวหมดอายุยังอยู่) · เรียกปกติ ⇒ ลบ", async () => {
+    needBuilt();
+    const k = await mkIdent("ru32");
+    const sx = rid("sws");
+    const t0 = new Date();
+    await ins("AgentSession", { id: sx, agentUserId: k.agentUserId, tokenHash: `qcplant-${hex(16)}`, expiresAt: new Date(t0.getTime() - 60_000), idleExpiresAt: new Date(t0.getTime() - 120_000), updatedAt: t0 });
+    const ac = new AbortController();
+    ac.abort();
+    const r = R(await AU("sweepAgentAuth")({ now: t0, signal: ac.signal }));
+    const left = await count(`SELECT count(*)::int AS n FROM "AgentSession" WHERE id = $1`, [sx]);
+    let gone = left;
+    for (let i = 0; i < 30 && gone > 0; i++) { await AU("sweepAgentAuth")({ now: t0 }); gone = await count(`SELECT count(*)::int AS n FROM "AgentSession" WHERE id = $1`, [sx]); }
+    eq([r.sessions, left, gone], [0, 1, 0], "ผล");
   });
 
   // ═══════════════ I. ค่าคงที่ ═══════════════

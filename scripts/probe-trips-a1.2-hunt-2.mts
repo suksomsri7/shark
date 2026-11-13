@@ -1,5 +1,5 @@
 // hunt-2 — login codes · e-mail variants · rate-limit buckets · sessions · enumeration shapes
-import { huntSetup, type Rec } from "./probe-trips-a1.2-hunt-lib.mts";
+import { huntSetup, type Rec } from "./probe-trips-a1.2-hunt-lib.mjs";
 
 const H = await huntSetup("probe-a1.2-hunt-2");
 const { AU, R, fmt, q, meta, report } = H;
@@ -66,9 +66,12 @@ try {
     // L2c: zero-width variant really becomes a second identity next to the clean one
     const zw = base.replace("-l2-", "-l​2-");
     const A1 = await H.login(base, { signup: { agencyName: `${H.MARK} l2 clean`, ownerName: `${H.MARK} o` } });
-    const A2 = await H.login(zw, { signup: { agencyName: `${H.MARK} l2 zw`, ownerName: `${H.MARK} o` } });
-    report("L2c", "sign-up with the zero-width variant of an e-mail that already has an identity", A2.raw.ok === true && A2.identityId !== A1.identityId,
-      "VALIDATION (or the same identity)", `clean=${A1.raw.created} · zero-width=${fmt({ ok: A2.raw.ok, created: A2.raw.created, code: A2.raw.code })} · two identities=${A2.identityId !== "" && A2.identityId !== A1.identityId}`);
+    // r2 (ruling §10 item 17): the zero-width address is now refused when the code is requested (H.login throws on a refused request) — a refusal is "held"
+    let A2: Awaited<ReturnType<typeof H.login>> | null = null;
+    let refused = "";
+    try { A2 = await H.login(zw, { signup: { agencyName: `${H.MARK} l2 zw`, ownerName: `${H.MARK} o` } }); } catch (e) { refused = (e instanceof Error ? e.message : String(e)).replace(/^reqCode [^{]*/, "").slice(0, 160); }
+    report("L2c", "sign-up with the zero-width variant of an e-mail that already has an identity", A2 !== null && A2.raw.ok === true && A2.identityId !== A1.identityId,
+      "VALIDATION (or the same identity)", A2 === null ? `clean=${A1.raw.created} · zero-width=refused when the code was requested ${refused} · two identities=false` : `clean=${A1.raw.created} · zero-width=${fmt({ ok: A2.raw.ok, created: A2.raw.created, code: A2.raw.code })} · two identities=${A2.identityId !== "" && A2.identityId !== A1.identityId}`);
   }
 
   // ───────────── L3: codeId tricks ─────────────

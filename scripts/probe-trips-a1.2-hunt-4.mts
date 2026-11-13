@@ -1,9 +1,11 @@
 // hunt-4 — follow-ups: invite accept ∥ accept · agency-only audit/outbox scan · PENDING cap race · ADMIN mints ADMIN · session idle/absolute expiry
-import { randomBytes } from "node:crypto";
-import { huntSetup, type Rec } from "./probe-trips-a1.2-hunt-lib.mts";
+import { createHmac, randomBytes } from "node:crypto";
+import { huntSetup, type Rec } from "./probe-trips-a1.2-hunt-lib.mjs";
 
 const H = await huntSetup("probe-a1.2-hunt-4");
 const { AU, R, fmt, q, meta, report } = H;
+const authKey = (label: string) => createHmac("sha256", String(process.env.SESSION_SECRET)).update(`shark:agent-auth:v1:${label}`).digest();
+const authHash = (label: string, data: string) => `v1:${createHmac("sha256", authKey(label)).update(data).digest("hex")}`;
 const tallyOf = (xs: Rec[]) => fmt(xs.reduce<Record<string, number>>((a, x) => { const k = x.ok === true ? `ok${x.replayed ? "(replayed)" : ""}${x.status ? `:${x.status}` : ""}` : `${x.code}${x.reason ? `/${x.reason}` : ""}`; a[k] = (a[k] ?? 0) + 1; return a; }, {}));
 try {
   const A = await H.mkTenant("p4a"); // needs approval
@@ -104,22 +106,30 @@ try {
     console.log(`ℹ️  INFO [V4] ADMIN promotes SALES→ADMIN=${promote.code} · ADMIN invites OWNER=${inviteOwner.code} · ADMIN invites a NEW teammate as ADMIN → created=${N.raw.created} role=${fmt(s.role)} · the inviting ADMIN can disable that new ADMIN=${disableNew.ok === true ? "yes" : disableNew.code}  (brief §4 allows "OWNER/ADMIN invite others"; §9 says "ADMIN may only manage SALES/ACCOUNTING" — the two rules disagree; as built an ADMIN can create peers it can neither demote nor disable)`);
   }
 
-  // ───────────── V5: session idle (72 h) / absolute (30 d) expiry with meta.now ─────────────
+  // ───────────── V5: session idle (72 h) / absolute (30 d) expiry ─────────────
+  // r2 (ruling §10 item 7): a caller-supplied `now` no longer has any effect on session validity, so time is simulated by moving the session ROW back
+  // (createdAt · updatedAt · expiresAt · idleExpiresAt all shifted by the same amount = "that much time has passed") and resolving with the real clock.
   {
     const X = await H.signup("v5x");
     const idleTok = (await H.login(X.email)).token; // never used again
-    const h = (n: number) => new Date(Date.now() + n * 3_600_000);
+    const age = async (token: string, hours: number) => {
+      await q(`UPDATE "AgentSession" SET "createdAt" = "createdAt" - ($2 || ' hours')::interval, "updatedAt" = "updatedAt" - ($2 || ' hours')::interval,
+        "expiresAt" = "expiresAt" - ($2 || ' hours')::interval, "idleExpiresAt" = "idleExpiresAt" - ($2 || ' hours')::interval WHERE "tokenHash" = $1`, [authHash("session", token), String(hours)]);
+    };
     const steps: string[] = [];
     let alive = true;
-    for (const at of [60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 719]) { const r = await AU("resolveAgentSession")(X.token, { now: h(at) }); steps.push(`+${at}h=${r ? "ok" : "null"}`); if (!r) alive = false; }
-    const idleDead = (await AU("resolveAgentSession")(idleTok, { now: h(73) })) === null;
-    const idleAlive71 = false; // (not probed: would slide the idle window of the control session)
-    void idleAlive71;
-    const absDead = (await AU("resolveAgentSession")(X.token, { now: h(721) })) === null;
-    const scopeDead = (await AU("agentScope")(X.token, { shopSlug: A.slug }, { now: h(721) })) === null;
+    let at = 0;
+    for (const t of [60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 719]) { await age(X.token, t - at); at = t; const r = await AU("resolveAgentSession")(X.token); steps.push(`+${t}h=${r ? "ok" : "null"}`); if (!r) alive = false; }
+    await age(idleTok, 73);
+    const idleDead = (await AU("resolveAgentSession")(idleTok)) === null;
+    await age(X.token, 721 - at);
+    const absDead = (await AU("resolveAgentSession")(X.token)) === null;
+    const scopeDead = (await AU("agentScope")(X.token, { shopSlug: A.slug })) === null;
+    // the old way of this probe (a caller-supplied clock) must not revive either session
+    const revived = (await AU("resolveAgentSession")(X.token, { now: new Date() })) !== null || (await AU("resolveAgentSession")(idleTok, { now: new Date(Date.now() - 80 * 3_600_000) })) !== null;
     const row = (await q<Rec>(`SELECT ("idleExpiresAt" <= "expiresAt") AS "idleLeAbs" FROM "AgentSession" WHERE "agentUserId" = $1 ORDER BY "createdAt" LIMIT 1`, [X.agentUserId]))[0];
-    report("V5", "session kept alive every 60 h up to day 30, an unused session at +73 h, any session at +30 d 1 h", !alive || !idleDead || !absDead || !scopeDead || row?.idleLeAbs !== true,
-      "active session lives to the absolute limit · unused session dies after 72 h · nothing survives 30 days · idle ≤ absolute", `${steps.join(" ")} · unused@+73h=${idleDead ? "null" : "LIVE"} · used@+721h=${absDead ? "null" : "LIVE"} · scope@+721h=${scopeDead ? "null" : "LIVE"} · ${fmt(row)}`);
+    report("V5", "session kept alive every 60 h up to day 30, an unused session at +73 h, any session at +30 d 1 h (time simulated by ageing the session rows)", !alive || !idleDead || !absDead || !scopeDead || revived || row?.idleLeAbs !== true,
+      "active session lives to the absolute limit · unused session dies after 72 h · nothing survives 30 days · idle ≤ absolute · a caller-supplied now revives nothing", `${steps.join(" ")} · unused@+73h=${idleDead ? "null" : "LIVE"} · used@+721h=${absDead ? "null" : "LIVE"} · scope@+721h=${scopeDead ? "null" : "LIVE"} · revived by caller now=${revived} · ${fmt(row)}`);
   }
 } catch (e) {
   console.log(`PROBE ERROR: ${e instanceof Error ? e.stack : String(e)}`);

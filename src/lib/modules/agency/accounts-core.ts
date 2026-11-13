@@ -215,6 +215,8 @@ export const SHOP_AGENT_ACCOUNT_KEYS: readonly string[] = [
 export const SHOP_AGENT_LIST_KEYS: readonly string[] = ["id", "code", "legalName", "status", "closeReason", "payeeType", "publicCode", "licenceWarnings", "memberCount", "createdAt", "updatedAt"];
 export const NEVER_SHOW_TO_SHOP_KEYS = [
   "identityId", "agentUserId", "lastLoginAt", "providerId", "subject", "activeAgentAccountId", "taxIdHash", "taxIdEnc", "bankAccountEnc", "inviteTokenHash", "tokenHash", "codeHash", "target", "tenantIds", "otherAccounts",
+  // r3 (มติ §11 ข้อ 3): แท็กผู้สมัคร (HMAC ผูกร้าน) ใน AgentAccount.contact — ไม่ออก DTO/event/audit/log
+  "applicantTag", "applicantCoTags",
 ] as const;
 
 // ═══════════════ ข้อความอิสระ (§3.2 — สูตรเดียวกับ trips/booking-core.ts:24–28 + T0.6 §17) ═══════════════

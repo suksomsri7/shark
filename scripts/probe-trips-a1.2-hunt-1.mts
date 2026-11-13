@@ -1,5 +1,5 @@
 // hunt-1 — teammate-token replay after erase · sticky-close bypass through WITHDRAW · identity-close evasion · list cursor of another shop
-import { huntSetup } from "./probe-trips-a1.2-hunt-lib.mts";
+import { huntSetup, type Rec } from "./probe-trips-a1.2-hunt-lib.mjs";
 
 const H = await huntSetup("probe-a1.2-hunt-1");
 const { AU, R, fmt, q, meta, report } = H;
@@ -39,7 +39,7 @@ try {
     const { who: D1, token: dtok } = await H.teammate(X, dMail, "SALES", "t1d");
     await AU("disableTeammate")(X.token, { targetUserId: D1.agentUserId });
     const D2 = await H.login(dMail, { teammateInvite: dtok });
-    report("T1c", "control: replay for a DISABLED teammate", D2.raw.ok === true, "LOGIN_UNAVAILABLE", fmt({ ok: D2.raw.ok, code: D2.raw.code }));
+    report("T1c", "control: replay for a DISABLED teammate", D2.raw.ok === true, "refused (LOGIN_UNAVAILABLE in r1 · INVITE_INVALID since the token is single-use)", fmt({ ok: D2.raw.ok, code: D2.raw.code }));
   }
 
   // ───────────── T2: sticky close (CLOSED_BY_SHOP) → re-apply must always be PENDING — bypass through WITHDRAW ─────────────

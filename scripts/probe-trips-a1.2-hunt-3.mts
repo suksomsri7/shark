@@ -1,6 +1,6 @@
 // hunt-3 — races (owners · close ∥ apply · invite accept) · deadlock classification · erase/close residue · input hygiene · caps · leak scans
 import { createHmac } from "node:crypto";
-import { huntSetup, type Rec } from "./probe-trips-a1.2-hunt-lib.mts";
+import { huntSetup, type Rec } from "./probe-trips-a1.2-hunt-lib.mjs";
 
 const H = await huntSetup("probe-a1.2-hunt-3");
 const { AU, R, fmt, q, meta, report } = H;
@@ -205,8 +205,8 @@ try {
     try { json = JSON.stringify([dto, listAll, scope2, R(await AU("myAgentAccounts")(X.token)), R(await AU("agentTeam")(X.token))]); JSON.parse(json); } catch (er) { jsonErr = String(er).slice(0, 80); }
     const never = [...keysDeep([dto, list, listAll, scope2])].filter((k) => NEVER.includes(k));
     const scopeKeys = Object.keys(scope2).sort().join(",");
-    const audit = await q<{ j: string; after: Rec | null; actorType: string; actorId: string | null }>(`SELECT row_to_json(a)::text AS j, after, "actorType", "actorId" FROM "AuditLog" a WHERE "tenantId" = ANY($1::text[])`, [[A.id, B.id]]);
-    const outbox = await q<{ j: string; payload: Rec }>(`SELECT row_to_json(o)::text AS j, payload FROM "OutboxEvent" o WHERE "tenantId" = ANY($1::text[])`, [[A.id, B.id]]);
+    const audit = await q<{ j: string; after: Rec | null; actorType: string; actorId: string | null }>(`SELECT row_to_json(a)::text AS j, after, "actorType", "actorId" FROM "AuditLog" a WHERE "tenantId" = ANY($1::text[]) AND action LIKE 'agency.%'`, [[A.id, B.id]]); // agency.* rows only (the settings module's own rows of setAutoApprove are not agency code — HUNT.md note on R9b)
+    const outbox = await q<{ j: string; payload: Rec }>(`SELECT row_to_json(o)::text AS j, payload FROM "OutboxEvent" o WHERE "tenantId" = ANY($1::text[]) AND type LIKE 'agency.%'`, [[A.id, B.id]]);
     const ops = await q<{ j: string }>(`SELECT row_to_json(o)::text AS j FROM "OpsEvent" o WHERE "createdAt" >= $1`, [H.RUN_START]);
     const secrets = [String(inv.inviteToken), String(tm.teammateToken), X.token, X.agentUserId, X.identityId, ...H.mails.map((m) => m.to), ...H.mails.map((m) => m.token ?? "").filter((t) => t.length > 10), ...[...H.agentUserIds], ...[...H.identityIds]].filter((s) => s && s.length >= 8);
     const hay = (rows: { j: string }[]) => rows.map((r) => r.j).join("\n");

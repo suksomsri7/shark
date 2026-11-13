@@ -14,7 +14,7 @@ const SECRET_ENV = "SESSION_SECRET";
 const SECRET_MIN = 32;
 const KEY_PREFIX = "shark:agent-auth:v1:";
 /** ป้ายของ agentAuthHash (ตาราง §4) */
-export type AgentHashLabel = "login-target" | "login-code" | "session" | "invite" | "ip" | "ua" | "rate" | "email-tag" | "tm-jti" | "idem";
+export type AgentHashLabel = "login-target" | "login-code" | "session" | "invite" | "ip" | "ua" | "rate" | "email-tag" | "tm-jti" | "idem" | "applicant-tag";
 /** ป้ายของ token ที่ได้จาก HMAC โดยตรง (§4) */
 type AgentTokenLabel = "invite-token" | "teammate-token";
 

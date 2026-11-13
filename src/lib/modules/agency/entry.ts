@@ -325,6 +325,30 @@ export async function agentEmailTagsInTx(tx: A12Tx, agentUserId: string): Promis
   const rows = await tx.$queryRaw<{ subject: string }[]>`SELECT subject FROM "AgentLogin" WHERE "agentUserId" = ${agentUserId} AND kind = 'EMAIL'`;
   return rows.map((r) => agentAuthHash("email-tag", r.subject));
 }
+/**
+ * r3 (มติ §11 ข้อ 3) ▸ แท็กผู้สมัคร **ผูกร้าน**: agentAuthHash("applicant-tag", tenantId + ":" + อีเมลล็อกอิน normalize) — ค่าทึบที่ส่งให้บริการฝั่งร้าน
+ * (accounts.ts ไม่เห็นอีเมลและไม่อ่านตาราง global เอง) · tenantId อยู่ในข้อมูลที่แฮช ⇒ แท็กของอีเมลเดียวกันที่สองร้านไม่เท่ากัน เทียบข้ามร้านไม่ได้
+ *  - own    = ล็อกอิน EMAIL ของผู้กระทำเอง (เรียงตามเวลาสร้าง · ตัวแรก = แท็กหลักที่เก็บ)
+ *  - owners = ล็อกอิน EMAIL ของ OWNER คนอื่นที่ ACTIVE ในตัวตนเดียวกัน (เก็บคู่กับแท็กหลัก)
+ *  - team   = ล็อกอิน EMAIL ของผู้ใช้ ACTIVE ที่เหลือของตัวตน (ใช้ "เทียบ" เท่านั้น ไม่เก็บ)
+ * ไม่คืนอีเมล · ไม่มีกุญแจ ⇒ โยน AgentKeyMissing (ผู้เรียกตอบ BUSY SERVER_KEY_MISSING) · ไม่มีกุญแจสำรอง · ผู้ใช้ที่มีแต่ล็อกอิน LINE ⇒ ไม่มีแท็ก
+ */
+export type AgentApplicantTags = { own: string[]; owners: string[]; team: string[] };
+export async function agentApplicantTagsInTx(tx: A12Tx, tenantId: string, actor: AgentActorRow): Promise<AgentApplicantTags> {
+  const rows = await tx.$queryRaw<{ agentUserId: string; role: string; subject: string }[]>`
+    SELECT l."agentUserId", u.role, l.subject FROM "AgentLogin" l JOIN "AgentUser" u ON u.id = l."agentUserId"
+    WHERE u."identityId" = ${actor.identityId} AND u.status = 'ACTIVE' AND l.kind = 'EMAIL'
+    ORDER BY l."createdAt", l.id LIMIT 200`;
+  const out: AgentApplicantTags = { own: [], owners: [], team: [] };
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const tag = agentAuthHash("applicant-tag", `${tenantId}:${r.subject}`);
+    if (seen.has(tag)) continue;
+    seen.add(tag);
+    (r.agentUserId === actor.id ? out.own : r.role === "OWNER" ? out.owners : out.team).push(tag);
+  }
+  return out;
+}
 /** แถว INVITED (เชิญด้วยรหัส) ที่ยังไม่หมดอายุของตัวตน ข้ามทุกร้าน — นับอย่างเดียว (มติ R1 ข้อ 11) */
 export async function countOpenCodeInvitesOfIdentity(identityId: string, now: Date): Promise<number> {
   const rows = await prisma.$queryRaw<{ n: number }[]>`

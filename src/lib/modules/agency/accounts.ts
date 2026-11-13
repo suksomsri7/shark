@@ -47,6 +47,7 @@ import { AgentKeyMissing, agentAuthHash, agentAuthKeyReady, newAgentRowId, safeE
 import {
   agentActorInTx,
   agentActorNow,
+  agentApplicantTagsInTx,
   agentEmailTagsInTx,
   agentIdentityActiveInTx,
   agentUserDisplayNames,
@@ -58,6 +59,7 @@ import {
   lockAgencyKeyInTx,
   usableAgentUserIds,
   type AgentActorRow,
+  type AgentApplicantTags,
 } from "./entry";
 
 // ═══════════════ ชนิด ═══════════════
@@ -428,25 +430,56 @@ const lockAccountPair = async (tx: Tx, identityId: string, tenantId: string): Pr
   await lockAgencyKeyInTx(tx, "agency.identity.v1", identityId);
   await lockAgencyKeyInTx(tx, "agency.account.v1", `${tenantId}:${identityId}`);
 };
+// r3 (มติ §11 ข้อ 3) ▸ แท็กผู้สมัคร — ค่าทึบจาก entry.agentApplicantTagsInTx (HMAC ผูกร้านของอีเมลล็อกอิน) เก็บใน AgentAccount.contact (Json เดิม · ไม่มี migration):
+//   contact.applicantTag = แท็กหลักของผู้ที่กดสมัคร/รับคำเชิญ · contact.applicantCoTags = ล็อกอินอื่นของผู้กระทำ + OWNER คนอื่นของตัวตนตอนนั้น (≤ APPLICANT_CO_MAX)
+//   🔴 ทั้งสองคีย์อยู่ใน NEVER_SHOW_TO_SHOP_KEYS · contactOf (DTO) ไม่อ่าน · ไม่เข้า audit/event/ops/error · ไม่มีเส้นทางใดลบ (ปิดตัวตน/ลบผู้ใช้ไม่แตะ contact · ร้านแก้ผู้ติดต่อคงไว้)
+const APPLICANT_TAG_KEY = "applicantTag";
+const APPLICANT_CO_KEY = "applicantCoTags";
+const APPLICANT_CO_MAX = 10;
+const APPLICANT_MATCH_MAX = 24;
+const APPLICANT_TAG_RE = /^v1:[0-9a-f]{64}$/;
+const isApplicantTag = (v: unknown): v is string => typeof v === "string" && APPLICANT_TAG_RE.test(v);
+/** แท็กที่เก็บอยู่ในแถว (คีย์ทึบสองตัว) — ใช้พกต่อเมื่อเขียน contact ใหม่ */
+const storedApplicantTags = (contact: unknown): { tag: string | null; co: string[] } => {
+  const r = isRec(contact) ? contact : {};
+  const co = Array.isArray(r[APPLICANT_CO_KEY]) ? (r[APPLICANT_CO_KEY] as unknown[]).filter(isApplicantTag) : [];
+  return { tag: isApplicantTag(r[APPLICANT_TAG_KEY]) ? r[APPLICANT_TAG_KEY] : null, co };
+};
+/** ส่วนของ contact ที่เป็นแท็ก: แท็กหลัก = ของผู้กระทำครั้งนี้ (ไม่มี ⇒ คงของเดิม) · แท็กร่วม = ของใหม่ + ของเดิมทั้งหมด (ไม่ทิ้งประวัติ) ตัดซ้ำ ≤ APPLICANT_CO_MAX */
+const applicantTagFields = (prev: unknown, tags: AgentApplicantTags | null): Record<string, string | string[]> => {
+  const old = storedApplicantTags(prev);
+  const tag = tags?.own[0] ?? old.tag;
+  const co = [...new Set([...(tags ? [...tags.own.slice(1), ...tags.owners] : []), ...(old.tag ? [old.tag] : []), ...old.co])].filter((t) => t !== tag).slice(0, APPLICANT_CO_MAX);
+  return { ...(tag ? { [APPLICANT_TAG_KEY]: tag } : {}), ...(co.length ? { [APPLICANT_CO_KEY]: co } : {}) };
+};
 /**
- * r2 (มติ §10 ข้อ 14 · H-F3) ▸ อีเมลผู้ติดต่อของใบสมัครตรงกับ "บัญชีอื่นของร้านเดียวกัน" ที่ร้านพัก/ปิด/ปฏิเสธไว้ไหม — ใช้เฉพาะข้อมูลที่ร้านเก็บเอง
- * (AgentAccount.contact.email ของร้านนี้ · ไม่อ่านตาราง global · ไม่ข้ามร้าน): SUSPENDED · CLOSED เหตุ STICKY · PENDING ที่มีเหตุ STICKY ค้าง ·
- * CLOSED IDENTITY_CLOSED ที่ถูกพักอยู่ตอนตัวตนปิด (suspendedAt ไม่ null — ปิดตัวตนไม่ล้างคอลัมน์นี้)
- * ⚠️ จับได้เฉพาะเมื่อทั้งสองใบกรอกอีเมลผู้ติดต่อเดียวกัน (ช่องนี้ไม่บังคับ) — ดูหนี้ใน wo-notes
+ * ใบสมัครนี้ตรงกับ "บัญชีอื่นของร้านเดียวกัน" ที่ร้านพัก/ปิด/ปฏิเสธไว้ไหม — ใช้เฉพาะข้อมูลในแถวของร้านนี้ (ไม่อ่านตาราง global · ไม่ข้ามร้าน)
+ *  r2 (มติ §10 ข้อ 14 · H-F3): อีเมลผู้ติดต่อของใบสมัคร = contact.email ของบัญชีนั้น (ช่องไม่บังคับ)
+ *  r3 (มติ §11 ข้อ 3): แท็กผู้สมัครของตัวตนนี้ (ผู้กระทำ + ผู้ใช้ ACTIVE ทุกคน ≤ APPLICANT_MATCH_MAX) ตรงกับ applicantTag/applicantCoTags ของบัญชีนั้น
+ * บัญชีที่นับ: SUSPENDED · CLOSED เหตุ STICKY · PENDING ที่มีเหตุ STICKY ค้าง · CLOSED IDENTITY_CLOSED ที่ถูกพักอยู่ตอนตัวตนปิด (suspendedAt ไม่ null — ปิดตัวตนไม่ล้างคอลัมน์นี้)
  */
-async function contactMatchesBlockedInTx(tx: Tx, tenantId: string, email: string | null, selfId: string | null): Promise<boolean> {
-  if (!email) return false;
+async function matchesBlockedInTx(tx: Tx, tenantId: string, email: string | null, tags: AgentApplicantTags, selfId: string | null): Promise<boolean> {
+  const cand = [...new Set([...tags.own, ...tags.owners, ...tags.team])].slice(0, APPLICANT_MATCH_MAX);
+  const same: Prisma.AgentAccountWhereInput[] = [
+    ...(email ? [{ contact: { path: ["email"], equals: email } }] : []),
+    ...cand.flatMap((t) => [{ contact: { path: [APPLICANT_TAG_KEY], equals: t } }, { contact: { path: [APPLICANT_CO_KEY], array_contains: [t] } }]),
+  ];
+  if (!same.length) return false;
   const sticky = [...STICKY_CLOSE_REASONS];
   const hit = await tx.agentAccount.findFirst({
     where: {
       tenantId,
       ...(selfId ? { id: { not: selfId } } : {}),
-      contact: { path: ["email"], equals: email },
-      OR: [
-        { status: "SUSPENDED" },
-        { status: "CLOSED", statusReason: { in: sticky } },
-        { status: "PENDING", statusReason: { in: sticky } },
-        { status: "CLOSED", statusReason: "IDENTITY_CLOSED", suspendedAt: { not: null } },
+      AND: [
+        { OR: same },
+        {
+          OR: [
+            { status: "SUSPENDED" },
+            { status: "CLOSED", statusReason: { in: sticky } },
+            { status: "PENDING", statusReason: { in: sticky } },
+            { status: "CLOSED", statusReason: "IDENTITY_CLOSED", suspendedAt: { not: null } },
+          ],
+        },
       ],
     },
     select: { id: true },
@@ -502,11 +535,14 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
       await lockAccountPair(tx, pre.identityId, tenantId);
       const who = await agentActorInTx(tx, a.data.agentUserId);
       if (!isAgentWriter(who) || who.identityId !== pre.identityId) return agencyFail("FORBIDDEN");
-      const row = await tx.agentAccount.findFirst({ where: { tenantId, identityId: who.identityId }, select: { id: true, status: true, statusReason: true, updatedAt: true, partyId: true } });
+      const row = await tx.agentAccount.findFirst({ where: { tenantId, identityId: who.identityId }, select: { id: true, status: true, statusReason: true, updatedAt: true, partyId: true, contact: true } });
+      // r3 (มติ §11 ข้อ 3): แท็กผู้สมัคร (ค่าทึบจาก entry.ts · อ่านใต้ล็อกตัวตน · ไม่มีกุญแจ ⇒ โยน AgentKeyMissing ⇒ BUSY SERVER_KEY_MISSING)
+      const tags = await agentApplicantTagsInTx(tx, tenantId, who);
       // r2 (มติ §10 ข้อ 1): แถวที่เคยถูกร้านปิด/ปฏิเสธ = เหตุ STICKY ค้างอยู่ใน statusReason ตลอด (รอดจากสมัครซ้ำ/ถอนทุกรอบ) ⇒ REAPPLY เสมอ ไม่มีวัน REAPPLY_AUTO
       const sticky = !!row && isStickyCloseReason(row.statusReason);
-      // r2 (มติ §10 ข้อ 14): ร้านอนุมัติอัตโนมัติ แต่อีเมลผู้ติดต่อของใบสมัครตรงกับบัญชีอื่นของร้านนี้ที่ร้านพัก/ปิด/ปฏิเสธไว้ ⇒ รอร้านอนุมัติ
-      const auto = !policy.requireApproval && !sticky && !(await contactMatchesBlockedInTx(tx, tenantId, app.contact.email, row?.id ?? null));
+      // r2 (มติ §10 ข้อ 14) + r3 (มติ §11 ข้อ 3): ร้านอนุมัติอัตโนมัติ แต่อีเมลผู้ติดต่อ **หรือ** แท็กผู้สมัคร ตรงกับบัญชีอื่นของร้านนี้ที่ร้านพัก/ปิด/ปฏิเสธไว้
+      //   ⇒ รอร้านอนุมัติ (ผลรูปเดียวกับ PENDING ปกติ · ไม่บอกเหตุ · ไม่มีอะไรใน audit/event บอกว่าตรง)
+      const auto = !policy.requireApproval && !sticky && !(await matchesBlockedInTx(tx, tenantId, app.contact.email, tags, row?.id ?? null));
       let action: AgentAccountAction;
       if (!row) action = auto ? "AUTO_APPROVE" : "APPLY";
       else if (row.status === "PENDING") return { ok: true as const, agentAccountId: row.id, status: "PENDING" as const, replayed: true };
@@ -528,7 +564,7 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
         branchCode: app.branchCode,
         country: app.country,
         vatRegistered: app.vatRegistered,
-        contact: { ...app.contact, consentVersion: AGENCY_APPLY_PRIVACY_NOTICE_VERSION, consentAt: now.toISOString(), source: "APPLY" },
+        contact: { ...app.contact, consentVersion: AGENCY_APPLY_PRIVACY_NOTICE_VERSION, consentAt: now.toISOString(), source: "APPLY", ...applicantTagFields(row?.contact, tags) },
         licenceNo: app.licenceNo,
         licenceExpiry: app.licenceExpiry ? new Date(`${app.licenceExpiry}T00:00:00.000Z`) : null,
         approvedAt: active ? now : null,
@@ -605,9 +641,11 @@ export async function acceptShopInvite(actor: AgentActor, input: { tenantId: str
       const t = agentAccountTransition("INVITED", action);
       if (!t) return agencyFail("BAD_STATE");
       const active = t.to === "ACTIVE";
+      // r3 (มติ §11 ข้อ 3): เก็บแท็กผู้สมัครของผู้รับคำเชิญลงแถว (คีย์อื่นของ contact คงเดิม) — การเชิญเป็นการตัดสินใจของร้านเอง จึงไม่เทียบแท็กตรงนี้
+      const tagFields = applicantTagFields(inv.contact, await agentApplicantTagsInTx(tx, tenantId, who));
       const n = await tx.agentAccount.updateMany({
         where: { tenantId, id: inv.id, status: "INVITED", inviteTokenHash: inv.inviteTokenHash },
-        data: { status: t.to, identityId: who.identityId, inviteTokenHash: null, ...(active ? { approvedAt: now, ...(policy.tierId ? { tierId: policy.tierId } : {}) } : {}) },
+        data: { status: t.to, identityId: who.identityId, inviteTokenHash: null, ...(Object.keys(tagFields).length ? { contact: { ...(isRec(inv.contact) ? inv.contact : {}), ...tagFields } as Prisma.InputJsonValue } : {}), ...(active ? { approvedAt: now, ...(policy.tierId ? { tierId: policy.tierId } : {}) } : {}) },
       });
       if (n.count !== 1) return agencyFail("INVITE_INVALID");
       const memberId = await seatMembersInTx(tx, tenantId, inv.id, who);
@@ -1175,7 +1213,8 @@ export async function updateAgentAccountProfile(ctx: ShopCtx, input: { agentAcco
       const lineId = c.lineId === undefined ? cur.lineId : optText(c.lineId, 64);
       if (name === undefined || phone === undefined || email === undefined || lineId === undefined) return agencyFail("VALIDATION");
       // r2 (มติ §10 ข้อ 13): ร้านแก้ผู้ติดต่อ ⇒ ล้างตราความยินยอมของเอเจนซี่ (ข้อความที่ร้านพิมพ์ไม่ใช่สิ่งที่เอเจนซี่ยินยอม) · ที่มา = SHOP
-      data.contact = { name, phone, email, lineId, consentVersion: null, consentAt: null, source: "SHOP" };
+      // r3 (มติ §11 ข้อ 3): แท็กผู้สมัคร (คีย์ทึบ) พกต่อ — ร้านแก้ผู้ติดต่อแล้วแท็กไม่หาย
+      data.contact = { name, phone, email, lineId, consentVersion: null, consentAt: null, source: "SHOP", ...applicantTagFields(row.contact, null) };
     }
     if (patch.licenceNo !== undefined) {
       const l = optText(patch.licenceNo, 40);
