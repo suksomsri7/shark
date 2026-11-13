@@ -82,3 +82,9 @@ Q12 H3.8 slip-history = 50 ทวิ rule? [Amend H3.8 to add an "ยอดย�
 Q13 SSO plausibility? [Warning only · the allowance is capped anyway.]
 Q14 Rehire = new row? [Out; never enter old-row pay as opening · double count with the old 50 ทวิ.]
 Q15 Missing rule? [no opening ∧ no earlier run ∧ max(start, 1 Jan) < run period start; unknown start ⇒ warn · never warns in January.]
+
+## CONTROLLER RULINGS (13 Nov 23:1xZ) — all 15 questions: the drafter's default is ACCEPTED, with these additions
+- Q12: the "ยอดยกมา" line in the H3.8 slip history is done **inside this ticket** (marked `HR H3.4-YTD` hunk in the H3.8 files + marked ORACLE-EDIT of qc-hr-h3.8 S3.7), not by amending H3.8. The builder therefore starts only after H3.8 is merged into session/hr; the oracle writer may start now on aa380f6b0 and must not depend on H3.8 files existing (S-checks about the slip history are added by the builder round as an authorised ORACLE-EDIT).
+- Q1 / Q14: accountant list items (previous-employer income; rehire) — add to the AC list in the notes.
+- Q3: warning only; never blocks approve. The zero opening is an explicit, audited act by a filing-gate holder.
+- Part (b) (qc-hr-h3.7 S4.35 additions + `reversedRun` code === "NO") = authorised ORACLE-EDIT, marked `ORACLE-EDIT (H3.4-YTD · controller ruling)`.
