@@ -455,3 +455,8 @@ export { runPdpaPurge } from "./jobs";
 export type { PdpaPurgeOpts, PdpaPurgeResult } from "./jobs";
 // ◂ TRIPS T0.8
 // ── /T0.8 passengers ──
+// ── W1.1 public ──
+// TRIPS W1.1 ▸ ตัวอ่านสินค้าทัวร์ของหน้าจองสาธารณะ /book/[shop] (อ่านอย่างเดียว · ผู้เรียก = platform/trips-public หลัง resolve ร้าน · ใบสั่ง ledger/trips-briefs/W1.1.md) ◂
+export { findPublicProduct, loadPublicCatalog, loadPublicProduct } from "./public-catalog";
+export type { PublicRef, PublicText, PublicCatalog, PublicSlot, PublicPrice, PublicPriceResult, PublicProduct, PublicCatalogQuery, PublicProductQuery, PublicOpts } from "./public-catalog";
+// ── /W1.1 public ──

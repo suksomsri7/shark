@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 # ภาพคู่ MOCKUP | RENDER ของจอ TRIPS (ใบ T1.1 เป็นต้นไป) — ภาพแบบ ledger/design-trips/<NN>-*.png วางคู่ภาพเรนเดอร์จริง (แบบ parity-sec.sh)
-# ใช้: bash scripts/parity-trips.sh <11|16|17> <shot.png> <out.png>
+# ใช้: bash scripts/parity-trips.sh <11|16|17|19|01> <shot.png> <out.png>
+#   19 = 19-customer-desktop-en.png (หน้าจองสาธารณะ จอใหญ่ อังกฤษ · W1.1) · 01 = 01-tour-customer.png (จอ ก มือถือ ไทย · W1.1)
 #   11 = 11-departures-calendar.png (ปฏิทินรอบ · T1.2) · 16 = 16-shop-products.png (สินค้า · ตัวแก้ราชา) · 17 = 17-shop-settings-trips.png (ค่าตั้ง trips)
 #   ผล: out.png = ซ้าย MOCKUP (ย่อ/ขยายให้สูงเท่าภาพเรนเดอร์) | เส้นแบ่ง 1 px | ขวา RENDER · ความสูงเท่ากัน
 #   exit 2 = อาร์กิวเมนต์ผิด/ไม่มีไฟล์ · exit 1 = convert ล้ม · exit 0 = เขียน out.png แล้ว
 # ภาพแบบทั้งชุดเป็นหน้าเดียว (หัวเรื่อง + กรอบจอ) — ไม่ครอป: ผู้คุมเทียบทั้งหน้า (ฉาก settings-similan-warning เทียบกับการ์ด Liveaboard ในภาพ 17)
 set -uo pipefail
 
-usage() { echo "ใช้: bash scripts/parity-trips.sh <11|16|17> <shot.png> <out.png>" >&2; exit 2; }
+usage() { echo "ใช้: bash scripts/parity-trips.sh <11|16|17|19|01> <shot.png> <out.png>" >&2; exit 2; }
 [ $# -eq 3 ] || usage
 NO="$1"; SHOT="$2"; OUT="$3"
 case "$NO" in
   11) NAME="11-departures-calendar" ;;
   16) NAME="16-shop-products" ;;
   17) NAME="17-shop-settings-trips" ;;
-  *) echo "ภาพไม่รู้จัก: $NO (ใช้ 11 16 หรือ 17)" >&2; exit 2 ;;
+  19) NAME="19-customer-desktop-en" ;;
+  01) NAME="01-tour-customer" ;;
+  *) echo "ภาพไม่รู้จัก: $NO (ใช้ 11 16 17 19 หรือ 01)" >&2; exit 2 ;;
 esac
 [ -f "$SHOT" ] || { echo "ไม่พบภาพเรนเดอร์ $SHOT" >&2; exit 2; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
