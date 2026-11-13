@@ -1,0 +1,14 @@
+H3.9 oracle — forced RED run ×2: NOT RUN
+
+Reason: owner order (13 Nov 2026, relayed by the coordinator): no heavy job — no DB suite, oracle run, seed, migrate or typecheck — until the
+coordinator gives the go (scripts/with-gate-lock.sh is being changed by another session).
+
+Pending (run in this order when allowed, lane DB wo-hr-qc-l2):
+  1. bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/seed-hr-qc.mts            (34/34 expected)
+  2. bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.9.mts   (×2, identical)
+  3. rm -rf .next/types tsconfig.tsbuildinfo && env NODE_OPTIONS=--max-old-space-size=12288 ISO_MEM=14000M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck
+
+Expected on this base (5d7bcf0c4, no H3.9 code, no H3.4): BASE-EXPECTATION 49/49 as registered — 44 RED fail · 5 GREEN pass
+(S1.5 · S2.0 · S3.0 · X12.1 · Z1) · S7.1/S7.2 print "n/a — H3.4 absent" · unforced run = SKIPPED exit 0.
+
+Already done before the order (13 Nov): prisma generate · prisma migrate deploy (20270107000000_hr_bank_files applied) · seed-hr-qc 34/34.
