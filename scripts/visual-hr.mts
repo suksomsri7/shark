@@ -102,6 +102,12 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "attpay-panel", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, users: ["owner", "manager-branch"], why: "แผงสรุปส่งเข้าเงินเดือน: นาที · เงิน (เจ้าของ) · ปุ่มคำนวณ (H3.2 04B)" },
     { key: "attpay-mine", path: (i) => `/app/sys/${i.hr}/hr/attendance`, users: ["staff"], why: "รายการหักสาย/ขาดของฉัน (มีเมื่อคำนวณแล้ว) (H3.2 Q9)" },
   ],
+  // HR H3.4 ▸ รอบจ่ายรุ่น 2 (ภาพ 06) — seed อยู่รุ่น 1 ⇒ ส่วน hr-run2 ไม่แสดงจนผู้ควบคุมเปิดรุ่น 2 (ต้องมีแถวกฎหมาย ACTIVE) + สร้างรอบก่อนถ่าย ·
+  //   การ์ดรุ่นเครื่องบนหน้าตั้งค่า (เจ้าของแก้ · ผู้จัดการอ่าน) แสดงเสมอ ◂
+  "3.4": [
+    { key: "run2-engine", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-run2-engine`, users: ["owner", "manager"], why: "การ์ดรุ่นเครื่องคิดเงินเดือน + เพดานหัก ม.76 + ช่วงที่กฎหักสาย/ขาดมีผล (H3.4 R3)" },
+    { key: "run2-run", path: (i) => `/app/sys/${i.hr}/hr/payroll?period=${i.today.slice(0, 7)}#hr-run2`, users: ["owner", "payroll", "manager-branch"], why: "รอบจ่ายรุ่น 2: ขั้น · ไทล์ · ตาราง + ที่มา · ต้องตรวจ · ยืนยันสาขา (ผู้จัดการ = นาทีเท่านั้น) (H3.4 06)" },
+  ],
   // HR H2.9 ▸ คำขอ OT (mockup 05 การ์ด OT · 07a ขอ OT) — หน้าใบลา: ฟอร์ม + รายการ (เจ้าของ ฿ · ผู้จัดการไม่เห็น ฿ — Q11) · ตั้งค่า: กฎ OT · เงินเดือน: อัตรา OT #18 ◂
   "2.9": [
     { key: "ot-leave", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager", "staff"], why: "ส่วนคำขอ OT: ฟอร์ม hr-ot-form · รายการ hr-ot-list · ปุ่มอนุมัติ/ไม่อนุมัติ/ยกเลิก (H2.9)" },

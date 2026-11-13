@@ -823,6 +823,7 @@ export async function HrOtSection({ systemId }: { systemId: string }) {
         </div>
         <div className={`text-xs ${muted}`}>
           {x.settled ? t("paidMin", { n: x.paidMin ?? 0 }) : x.status === "APPROVED" ? t("waiting") : ""}
+          {x.status === "CANCELLED" && x.settled && (x.paidMin ?? 0) > 0 ? <span className="block text-xs" data-testid="hr-ot-kept">{t("keptHoliday", { n: x.paidMin ?? 0 })}</span> : null} {/* HR H3.4 ◂ fix r3 H7: ยกเลิกแล้วแต่ยังจ่ายค่าทำงานในวันหยุดส่วนที่ทำจริง (นาที — ไม่มี ฿) */}
           {money && money.amountSatang !== null && x.settled ? ` · ${formatBaht(money.amountSatang)}` : ""}
         </div>
         <OtRowActions systemId={systemId} id={x.id} decide={isDecider && !own && x.status === "PENDING"} revoke={isDecider && !own && x.status === "APPROVED"} cancel={own && x.status === "PENDING"} />

@@ -114,3 +114,6 @@ export { settleOtRequests, notifyOtDecided } from "./ot";
 // HR H3.2 ▸ กฎหักสาย/ขาดงาน — re-export ล้วน (ตรรกะอยู่ที่ `attendance-pay.ts` · เงินที่ `attendance-pay-rules.ts` · แถวเงินเขียนที่ payroll.ts ที่เดียว)
 export { syncAttendanceDeductions, attendanceDeductionPreview, getAttendancePayPolicy } from "./attendance-pay";
 // ◂ HR H3.2
+// HR H3.4 ▸ รอบจ่ายรุ่น 2 (engineVersion 2) — ตัวเขียนอยู่ที่ payroll.ts เท่านั้น · เครื่องคิด pure = payroll-run-rules.ts ◂
+export { createPayrollRunV2, previewPayrollRunV2, confirmBranchHours, getPayrollEngine, setPayrollEngine, setAdjustmentConsent, RUN2_TEXT, V2_VARIABLE_PAY } from "./payroll"; // HR H3.4 ◂
+export { computeRunItemV2, RUN_V2_DEFAULTS } from "./payroll-run-rules"; // HR H3.4 ◂

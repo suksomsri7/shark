@@ -173,7 +173,8 @@ function runStatic(): void {
     const env = rd(F.env);
     const r = {
       models: ["HrBankProfile", "HrBankExportPreset", "HrBankFile"].every((m) => new RegExp(`^model ${m} \\{`, "m").test(cur)),
-      runSame: !!base && modelBlock(cur, "HrPayrollRun") === modelBlock(base, "HrPayrollRun") && modelBlock(cur, "HrPayrollItem") === modelBlock(base, "HrPayrollItem"),
+      // ORACLE-EDIT (H3.4 merge round): base-diff part n/a once H3.5 is in the base (as the header says / S1.6) — later tickets (H3.4) legitimately change these files; still checked on H3.5's own branch
+      runSame: IN_BASE || (!!base && modelBlock(cur, "HrPayrollRun") === modelBlock(base, "HrPayrollRun") && modelBlock(cur, "HrPayrollItem") === modelBlock(base, "HrPayrollItem")),
       empSame: !!hrBase && modelBlock(hrCur, "HrEmployee") === modelBlock(hrBase, "HrEmployee"),
       scope: ["HrBankProfile", "HrBankExportPreset", "HrBankFile"].every((m) => new RegExp(`\\b${m}:\\s*sys\\(\\)`).test(scope)),
       env: ["HrBankProfile", "HrBankExportPreset", "HrBankFile"].every((m) => new RegExp(`model:\\s*"${m}"`).test(env)),
@@ -203,13 +204,15 @@ function runStatic(): void {
     const oracles = changedVsBase(BASE, ["scripts/qc-hr-h1.2.mts", "scripts/qc-hr-h1.3.mts", "scripts/qc-hf-hr-privacy.mts", "scripts/fitness-hr.mts"]);
     const ps = rd(`${H}privacy-shared.ts`);
     const six = /EMPLOYEE_SENSITIVE_FIELDS = \[\s*"nationalId",\s*"ssoNumber",\s*"houseRegAddress",\s*"bankName",\s*"bankAccountNo",\s*"bankAccountName",\s*\] as const/.test(ps);
-    ck("S1.4", { noKey: hits.length === 0, oracles: oracles === "unchanged", six }, "no bankFileKey · oracles unchanged · 6 keys", `${hits.join(",")} ${oracles}`);
+    // ORACLE-EDIT (H3.4 merge round): base-diff part n/a once H3.5 is in the base (as the header says / S1.6) — later tickets (H3.4) legitimately change these files; still checked on H3.5's own branch
+    ck("S1.4", { noKey: hits.length === 0, oracles: IN_BASE || oracles === "unchanged", six }, "no bankFileKey · oracles unchanged · 6 keys", `${hits.join(",")} ${oracles}`);
   }
   // S1.5 control
   {
     const shaOk = sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA;
     const d = changedVsBase(BASE, FROZEN);
-    ck("S1.5", { shaOk, frozen: d === "unchanged" }, "unchanged", d);
+    // ORACLE-EDIT (H3.4 merge round): base-diff part n/a once H3.5 is in the base (as the header says / S1.6) — later tickets (H3.4) legitimately change these files; still checked on H3.5's own branch
+    ck("S1.5", { shaOk, frozen: IN_BASE || d === "unchanged" }, "unchanged", d);
   }
   // S1.6
   {

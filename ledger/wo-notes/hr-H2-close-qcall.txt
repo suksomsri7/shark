@@ -1,0 +1,528 @@
+# HR H2.12 close — whole-system qc:all on the HR base (PARTIAL — stopped on owner order) · 13 Nov 2026
+Tree /root/projects/shark-hr-b · branch wip/hr-h2-close @1b0898377 (= session/hr; origin/main 4d6ef6ee7 is an ancestor).
+DB: lane 2 `wo-hr-qc-l2` (ep-orange-dust-aotwbyc7) via scripts/qc-hr.sh · lock /tmp/shark-gate-hr-ep-orange-dust-aotwbyc7.lock.
+Prep (04:5xZ): `iso.sh pnpm exec prisma generate` exit 0 · `migrate deploy` on l2: 219 migrations, none pending · seed-hr-qc 34/34.
+Run: systemd unit `hr-qcall-h2` → /tmp/hr-qcall-h2/run.sh:
+  bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-all.mts <465 suite files>
+  Suite list = every scripts/qc-*.mts that qc-all discovers (563) MINUS qc-svc-* (60) and qc-sec-* (38): those families need their own
+  QC DB wrappers (scripts/qc-svc.sh → .env.qc-svc, scripts/qc-sec.sh → .env.qc-sec) and neither env file exists in this tree → NOT RUN HERE
+  (not improvised). Per-suite logs: /tmp/hr-qcall-h2/logs/ (copied from /tmp/claude-0/qc-all/) · driver log /tmp/hr-qcall-h2/qcall.log.
+Started 04:55:10Z. STOPPED 07:42:23Z on owner order (machine needed): the qc-all driver was frozen (SIGSTOP) while qc-kanban-k1.4 ran,
+  k1.4 finished by itself (30/30), the driver was resumed and the units `hr-qcall-h2` + its iso unit were stopped the moment k1.4's summary
+  line appeared. qc-kanban-k1.5 had been spawned and was killed after 0.1 s (before tsx started → no DB writes; counted NOT RUN).
+  Nothing else heavy was started afterwards. No product code changed.
+
+## Totals (276 suites reached of 465 planned)
+ran 275 · PASS 208 · FAIL 67 (34 of them never executed: blocked by the acc-v2 seed, see R1) · interrupted 1 (kanban-k1.5) · NOT RUN 190 (list below) · NOT RUN HERE (needs own DB wrapper) 98 (svc 60 · sec 38)
+by family (ran: pass/fail): acc-v2 44: 13/31 · account 7/0 · account-api 19: 10/9 · ai 27/0 · approval 3/0 · audit-trail 0/1 · booking 4/0 · branding 6/0 · chat 26/0 · clinic 3/0 ·
+  crm 47: 28/19 · hardening 0/1 · hardening2 1/0 · hf 10: 6/4 · hotel 3/0 · hr 32: 31/1 · inventory 3/0 · kanban 10 (+1 interrupted): 9/1 · all other single-suite families pass.
+
+## Triage of every red
+(a) known non-defect · (b) red on origin/main content too — verified by reading main's own ledger (SECRETARY-RUN.md 7 Nov qc:all 308/214, SVC-RUN.md G2/G3) and/or by showing with git diff that HR does not touch the checked code; NOT re-run on a main checkout (a worktree was prepared, then the owner stop came — removed unused) · (e) environment: suite refuses this DB / needs a different seed or wrapper · (c) caused by HR
+| suite | check | message (short) | class | evidence |
+|---|---|---|---|---|
+| 29 acc-v2-* + account-api-read-docs/-finance/-gl/-master/-settings (34) | seed | "seed ชุดข้อมูล QC ล้ม" — seed-acc-v2-qc.mts:2076 "พ้นกำหนด (จาก DB): ได้ 38740000 ต้องการ 12840000" + warning "วันนี้เลย 2026-10-31" | b/e R1 | seed is date-rotted (valid to 31 Oct); same on main per SECRETARY-RUN.md 7 Nov 02:5xZ; `git diff 4d6ef6ee7 HEAD -- scripts/seed-acc-v2-qc.mts` empty |
+| account-api-ai-skill | E1-K2.1/2.3/2.5/2.6/2.8 | tool answers "ยังไม่ได้เปิดระบบบัญชี" | b/e | needs the acc-v2 seed shop (R1) |
+| account-api-ai-external | CRASH | "Cannot read properties of undefined (reading 'slice')" | b/e | same seed dependency (R1) [cause not proven] |
+| account-api-docs | F2.1–F2.7 | .claude/skills/shark-account-api SKILL.md missing/stale | b | HR diff touches no .claude/skills or account api files |
+| account-api-openapi | OA-4.5 | gen-account-api-docs --check: endpoints.md stale | b | same |
+| kanban-k1.15 | S3.2, S3.4 | gen-kanban-api-docs --check / skill endpoints.md stale | b | HR diff touches no kanban/skill files |
+| acc-v2-schema | S6 | `pnpm drift`: "Removed unique index (unitId, buildingId, kind, periodKey)" | b | hand-written NULLS NOT DISTINCT index of main SVC migration 20261223000000_svc_d (DormUtilityRate), schema comment only in dorm.prisma:112 |
+| crm-c3.0 | S1.9 | migrate diff not empty | b | same drift as acc-v2-schema |
+| acc-v2-security | S9 (positive control + doc-numbering.ts raw#4) | search '%' found 0 (no seed) · raw SQL in account/doc-numbering.ts | b | account module not in HR diff; positive control needs R1 seed |
+| hardening | HD-5.2 | proxy lacks Permissions-Policy camera/mic/geo | b | listed red on main in SECRETARY-RUN.md 7 Nov ("camera=(self)"); HR diff touches no proxy |
+| crm-c0.2 | S1.6 | facade has extra runtime export `posSeam` | b | src/lib/modules/crm/pos-seam.ts is main POS content; HR changed only crm/commissions.ts |
+| crm-c1.3 | S0.3 | crm/pos-seam.ts queries CrmCompany | b | same file, main content |
+| crm-c2.5 | S9.1 | core sendEmail sha changed (ce9402249f8f) | b | HR diff touches no email code |
+| crm-c2.7 | S7.3 | column `crmDealId` found on PosSale/Account tables | b | no HR migration mentions crmDealId |
+| crm-c2.7 | S7.5 | pos.sale.paid/voided consumer chain differs | b | HR hunks in outbox-consumers.ts add only hr.* keys (42 changed lines, none on pos.sale.*) |
+| crm-c5.3 · crm-c51fix-equiv · crm-perf | ENV | "runs on QC2 only (ep-cool-shadow)" / "ต้องรันผ่าน scripts/qc2.sh" | e | wrapper qc2.sh (CRM QC2) — not this lane |
+| hf-fu · hf-fu2 · hf-o23 · hf-tx | guard | "เขียนได้เฉพาะ QC4 (ep-frosty-lab)" (+ hf-fu/fu2 static pins vs POS base) | e | need scripts/qc4.sh (QC4 = HR controller gate; not used for a multi-hour run) |
+| crm-forms · crm-c3.1 · c3.4 · c3.7 · c3.8 · c3.9 · crm-c1.11 · crm-buttons | seed control K.1 / T0.2 / FK | "answer key scripts/crm-expected.json ไม่ตรงกับฐานข้อมูลนี้" · thana/krabi deals 0 · owner gets 404 on switch page · FK on CrmActivity create | e | gitignored crm-expected.json in this tree does not match the CRM seed on l2 (qc-all skipped reseed because a CRM scope exists); SECRETARY-RUN.md 7 Nov notes the same class ("member/CRM seed older than answer key") |
+| crm-c1.1 (S2.2, S2.3) · crm-c2.0 (S6.1) · crm-c2.1 (S6.2) | regression child | qc-member-m1.2 6/7 · qc-member-m3.3 ERR · member section rows with other objectKey | e | member seed state on l2; HR diff touches no member module or member pages |
+| hr-h0.5 | S6.2, S6.4 (4 checks) | backfill dry-run/apply counts | a | known: qc-hr-h0.5 is QC4-only, S6.x red on lane DBs (RESUME:463, 517) |
+| **audit-trail** | **A-5.0** | "payroll-actions.ts wire writeAudit ครบ approve/pay/reverse — exp wired×3 act ขาด" (20/21) | **c — STOP** | see STOP list |
+
+## STOP list (caused by HR — not fixed here, controller ruling needed)
+1. qc-audit-trail A-5.0 (static wiring check). The check greps src/lib/modules/hr/payroll-actions.ts for `"hr.payroll.reverse"`.
+   HR commit **ea9c27a1a** (H0.6 step 2, 8 Oct, phase H0 — not an H2 change; merged 57e94fec) removed the action-level writeAudit
+   ("action-level audit removed (OQ-5)") and moved it into the service: src/lib/modules/hr/payroll.ts:1271 `action: "hr.payroll.reverse"`
+   inside reverseRun's tx. origin/main payroll-actions.ts: approve=3 pay=2 reverse=1 literal; HEAD: reverse=0.
+   Behaviour checks of the same suite (A-5.x runtime audit rows) are green (20/21) → audit row still written; the red is the stale
+   static grep. Needs an ORACLE-EDIT ruling (accept payroll.ts as the writer) — red on session/hr since 57e94fec, never picked by HR controls.
+
+## NOT RUN — to resume (190 suites; same DB, same head)
+Resume command (from /root/projects/shark-hr-b; re-run seed-hr-qc first if the lane DB was used meanwhile):
+  mapfile -t F < <(awk '$1=="NR"{print $2}' ledger/wo-notes/hr-H2-close-qcall.txt)
+  systemd-run --unit=hr-qcall-h2b --quiet --setenv=PATH="$PATH" --setenv=HOME=/root /usr/bin/bash -c "cd /root/projects/shark-hr-b && bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-all.mts ${F[*]} > /tmp/hr-qcall-h2/qcall-b.log 2>&1"
+Expected without action: suites marked `// requires: acc-v2-seed` stay seed-blocked (R1) until seed-acc-v2-qc.mts dates are moved (accounting owner).
+Measured pace: ≈ 100 suites/h overall, CRM ≈ 2–9 min each; POS (60) + member (38) remain → estimate 2.5–4 h [estimate].
+Not run here at all (needs own wrapper + env file absent in this tree): qc-svc-* 60 → scripts/qc-svc.sh (.env.qc-svc) · qc-sec-* 38 → scripts/qc-sec.sh (.env.qc-sec).
+NR qc-kanban-k1.5.mts
+NR qc-kanban-k1.6.mts
+NR qc-kanban-k1.7.mts
+NR qc-kanban-k1.8.mts
+NR qc-kanban-k1.9.mts
+NR qc-kanban-k2.1.mts
+NR qc-kanban-k2.10.mts
+NR qc-kanban-k2.11.mts
+NR qc-kanban-k2.12.mts
+NR qc-kanban-k2.2.mts
+NR qc-kanban-k2.3.mts
+NR qc-kanban-k2.4.mts
+NR qc-kanban-k2.5.mts
+NR qc-kanban-k2.6.mts
+NR qc-kanban-k2.7.mts
+NR qc-kanban-k2.8.mts
+NR qc-kanban-k2.9.mts
+NR qc-kanban-k3.1.mts
+NR qc-kanban-k3.2.mts
+NR qc-kanban-k3.3.mts
+NR qc-kanban-k3.4.mts
+NR qc-kanban-k3.5.mts
+NR qc-kanban-k3.6.mts
+NR qc-kanban-k3.7.mts
+NR qc-kanban-k3.8.mts
+NR qc-kanban-k3.9.mts
+NR qc-kanban-notify.mts
+NR qc-kb-auto.mts
+NR qc-kb-search.mts
+NR qc-kb.mts
+NR qc-kernel-guard.mts
+NR qc-lot.mts
+NR qc-marketing.mts
+NR qc-marketplace.mts
+NR qc-meeting-invite.mts
+NR qc-member-fix-s1.mts
+NR qc-member-fix-s2.mts
+NR qc-member-fix-s3.mts
+NR qc-member-fix-s4.mts
+NR qc-member-m1.10.mts
+NR qc-member-m1.11.mts
+NR qc-member-m1.12.mts
+NR qc-member-m1.2.mts
+NR qc-member-m1.3.mts
+NR qc-member-m1.4.mts
+NR qc-member-m1.5.mts
+NR qc-member-m1.6.mts
+NR qc-member-m1.7.mts
+NR qc-member-m1.8.mts
+NR qc-member-m1.9.mts
+NR qc-member-m2.1.mts
+NR qc-member-m2.10.mts
+NR qc-member-m2.2.mts
+NR qc-member-m2.3.mts
+NR qc-member-m2.4.mts
+NR qc-member-m2.5.mts
+NR qc-member-m2.6.mts
+NR qc-member-m2.7.mts
+NR qc-member-m2.8.mts
+NR qc-member-m2.9.mts
+NR qc-member-m3.1.mts
+NR qc-member-m3.10.mts
+NR qc-member-m3.11.mts
+NR qc-member-m3.2.mts
+NR qc-member-m3.3.mts
+NR qc-member-m3.4.mts
+NR qc-member-m3.5.mts
+NR qc-member-m3.6.mts
+NR qc-member-m3.7.mts
+NR qc-member-m3.8.mts
+NR qc-member-m3.9.mts
+NR qc-member-public.mts
+NR qc-member-tier.mts
+NR qc-migrate-status.mts
+NR qc-mobile-app.mts
+NR qc-mobile-auth.mts
+NR qc-mobile-authz-hotfix.mts
+NR qc-mobile-chat.mts
+NR qc-mobile-help.mts
+NR qc-money-mapping.mts
+NR qc-nav-functions.mts
+NR qc-onboarding-drip.mts
+NR qc-ops.mts
+NR qc-owner-guard.mts
+NR qc-pages.mts
+NR qc-payment-authz-hotfix.mts
+NR qc-payment.mts
+NR qc-payroll-reverse.mts
+NR qc-payroll.mts
+NR qc-pdpa.mts
+NR qc-point.mts
+NR qc-pos-account.mts
+NR qc-pos-api-skill.mts
+NR qc-pos-buttons.mts
+NR qc-pos-closeday.mts
+NR qc-pos-coupon.mts
+NR qc-pos-inventory.mts
+NR qc-pos-p0.2.mts
+NR qc-pos-p1.1.mts
+NR qc-pos-p1.10.mts
+NR qc-pos-p1.10u-print.mts
+NR qc-pos-p1.11.mts
+NR qc-pos-p1.12.mts
+NR qc-pos-p1.13.mts
+NR qc-pos-p1.14.mts
+NR qc-pos-p1.15.mts
+NR qc-pos-p1.16.mts
+NR qc-pos-p1.17.mts
+NR qc-pos-p1.18.mts
+NR qc-pos-p1.2.mts
+NR qc-pos-p1.3.mts
+NR qc-pos-p1.4.mts
+NR qc-pos-p1.5.mts
+NR qc-pos-p1.6.mts
+NR qc-pos-p1.7.mts
+NR qc-pos-p1.8.mts
+NR qc-pos-p1.9.mts
+NR qc-pos-p1.9b.mts
+NR qc-pos-p2.1.mts
+NR qc-pos-p2.10.mts
+NR qc-pos-p2.11.mts
+NR qc-pos-p2.12.mts
+NR qc-pos-p2.13.mts
+NR qc-pos-p2.14.mts
+NR qc-pos-p2.2.mts
+NR qc-pos-p2.3.mts
+NR qc-pos-p2.4.mts
+NR qc-pos-p2.5.mts
+NR qc-pos-p2.6.mts
+NR qc-pos-p2.7.mts
+NR qc-pos-p2.8.mts
+NR qc-pos-p2.9.mts
+NR qc-pos-p2.9b.mts
+NR qc-pos-p3-skel.mts
+NR qc-pos-p3.12.mts
+NR qc-pos-p3.4.mts
+NR qc-pos-p3.5.mts
+NR qc-pos-p3.6.mts
+NR qc-pos-p3.7.mts
+NR qc-pos-p3.8.mts
+NR qc-pos-p3.9.mts
+NR qc-pos-p4.1.mts
+NR qc-pos-p4.2.mts
+NR qc-pos-p4.3.mts
+NR qc-pos-p5.1.mts
+NR qc-pos-p5.2.mts
+NR qc-pos-p5.3.mts
+NR qc-pos-p6.1.mts
+NR qc-pos-p6.2.mts
+NR qc-pos-products.mts
+NR qc-pos-register.mts
+NR qc-procurement.mts
+NR qc-public-api.mts
+NR qc-public-links.mts
+NR qc-push.mts
+NR qc-pwa.mts
+NR qc-queue-public.mts
+NR qc-rental-public.mts
+NR qc-rental-race.mts
+NR qc-rental-refund.mts
+NR qc-rental.mts
+NR qc-report-builder.mts
+NR qc-restaurant-money.mts
+NR qc-restaurant-pay.mts
+NR qc-restaurant-void.mts
+NR qc-restaurant.mts
+NR qc-reward.mts
+NR qc-sanitize-hotfix.mts
+NR qc-school-public.mts
+NR qc-school-refund.mts
+NR qc-school.mts
+NR qc-security-hotfix.mts
+NR qc-shop-refund.mts
+NR qc-shop.mts
+NR qc-storage.mts
+NR qc-subscription-money.mts
+NR qc-subscription.mts
+NR qc-support-ai.mts
+NR qc-support.mts
+NR qc-systems-manage.mts
+NR qc-systems.mts
+NR qc-tax-print-audit.mts
+NR qc-ticket-cancel.mts
+NR qc-ticket-money.mts
+NR qc-ticket-public.mts
+NR qc-unit-location.mts
+NR qc-vendor-portal.mts
+NR qc-warehouse.mts
+NR qc-webhook-ui.mts
+NR qc-webhook.mts
+
+## Per-suite results (as printed by qc-all · ✅ pass / ❌ fail · summary · seconds)
+R ✅ acc-v2-adjust ผ่านทั้งหมด            16.7s
+R ❌ acc-v2-attachments seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-cheap-routes -                      9.0s
+R ❌ acc-v2-coa seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-components ผ่าน 78/78             2.1s
+R ❌ acc-v2-contact-merge seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-contact-modal seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-contact-profile seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-contacts seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-dashboard seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-detail ผ่านทั้งหมด            8.9s
+R ❌ acc-v2-doc-settings seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-editor ผ่านทั้งหมด            8.2s
+R ❌ acc-v2-finance-overview seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-finance seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-gl-inclvat -                      9.6s
+R ✅ acc-v2-groups ผ่านทั้งหมด            24.1s
+R ✅ acc-v2-guard ผ่านทั้งหมด            5.7s
+R ❌ acc-v2-home seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-import ผ่านทั้งหมด            9.9s
+R ❌ acc-v2-inbox seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-invitem seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-journal seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-list seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-mobile seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-nav ผ่านทั้งหมด            1.2s
+R ❌ acc-v2-overview seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-party seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-payments ผ่านทั้งหมด            19.5s
+R ❌ acc-v2-perf seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-period-assets seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-permissions seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-policy seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-pos-lines seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-products seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-promptpay seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-reconcile seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-recurring ผ่านทั้งหมด            11.0s
+R ❌ acc-v2-reports-drill seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ acc-v2-schema -                      18.4s
+R ❌ acc-v2-security -                      20.3s
+R ❌ acc-v2-seed-check seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ acc-v2-simplicity -                      17.3s
+R ❌ acc-v2-wht-cheque seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ account-api-ai-external ผ่าน 0/1               5.2s
+R ❌ account-api-ai-skill ผ่าน 28/33             27.9s
+R ✅ account-api-core ผ่าน 64/64             20.4s
+R ❌ account-api-docs ผ่าน 10/17             9.0s
+R ✅ account-api-keys ผ่าน 51/51             5.5s
+R ❌ account-api-openapi ผ่าน 25/26             15.3s
+R ❌ account-api-read-docs seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ account-api-read-finance seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ account-api-read-gl seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ account-api-read-master seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ❌ account-api-settings seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน
+R ✅ account-api-webhooks ผ่าน 22/22             36.8s
+R ✅ account-api-write-docs ผ่าน 52/52             18.5s
+R ✅ account-api-write-finance ผ่าน 33/33             17.0s
+R ✅ account-api-write-gl ผ่าน 35/35             11.2s
+R ✅ account-api-write-master ผ่าน 44/44             14.0s
+R ✅ account-api-write-ops ผ่าน 29/29             14.4s
+R ✅ account-api-write-payments ผ่าน 32/32             18.8s
+R ✅ account-api-write-settings ผ่าน 39/39             11.5s
+R ✅ account-cpa ผ่าน 107/107           14.7s
+R ✅ account-deep ผ่าน 10/10             32.8s
+R ✅ account-deletion ผ่าน 18/18             3.0s
+R ✅ account-doc-settings ผ่าน 23/23             3.2s
+R ✅ account-gatea ผ่านทั้งหมด            7.3s
+R ✅ account-p2p3 -                      4.9s
+R ✅ account-qc7 -                      25.1s
+R ✅ add-system-modal -                      2.5s
+R ✅ ai-actions ผ่าน 11/12             11.7s
+R ✅ ai-analyst ผ่าน 7/9               4.4s
+R ✅ ai-automation -                      7.4s
+R ✅ ai-brain ผ่าน 8/8               2.5s
+R ✅ ai-credit ผ่าน 32/32             7.4s
+R ✅ ai-eval ผ่าน 4/4               4.4s
+R ✅ ai-feedback ผ่าน 5/5               3.3s
+R ✅ ai-growth ผ่าน 8/8               6.5s
+R ✅ ai-interview ผ่าน 9/9               3.3s
+R ✅ ai-kanban-board ผ่าน 3/3               6.8s
+R ✅ ai-memory ผ่าน 7/7               6.7s
+R ✅ ai-phase-a ผ่าน 9/9               6.5s
+R ✅ ai-phase-b1 ผ่าน 9/9               10.7s
+R ✅ ai-phase-b2 ผ่าน 11/11             8.7s
+R ✅ ai-plan ผ่าน 7/7               6.6s
+R ✅ ai-proactive ผ่าน 6/6               25.6s
+R ✅ ai-proposals ผ่าน 16/16             9.7s
+R ✅ ai-quality ผ่าน 5/5               7.5s
+R ✅ ai-schedule ผ่าน 8/8               5.9s
+R ✅ ai-skills ผ่าน 23/23             4.3s
+R ✅ ai-tools ผ่าน 18/18             6.0s
+R ✅ ai-tools2 ผ่าน 8/8               6.8s
+R ✅ ai-tuning ผ่าน 7/7               2.8s
+R ✅ ai-usage -                      5.7s
+R ✅ ai-vision ผ่าน 6/6               12.9s
+R ✅ ai-wave5b ผ่าน 24/24             16.3s
+R ✅ ai ผ่าน 17/17             9.1s
+R ✅ all-discovery -                      1.8s
+R ✅ announce ผ่าน 8/8               4.5s
+R ✅ approval-edit ผ่าน 12/12             5.4s
+R ✅ approval-wiring ผ่าน 7/7               11.4s
+R ✅ approval ผ่าน 16/16             8.6s
+R ✅ appstore-ready ผ่าน 28/28             1.8s
+R ❌ audit-trail -                      9.0s
+R ✅ automation-authz-hotfix ผ่าน 12/12             4.2s
+R ✅ automation ผ่าน 13/13             3.5s
+R ✅ backoffice ผ่าน 14/14             3.1s
+R ✅ booking-deposit ผ่าน 18/18             10.7s
+R ✅ booking-edit-schedule ผ่าน 26/26             9.1s
+R ✅ booking-hours-hr ผ่าน 13/13             6.7s
+R ✅ booking-race ผ่าน 8/8               12.3s
+R ✅ branding-b1 ผ่าน 21/21             8.7s
+R ✅ branding-b2 ผ่าน 15/16             2.2s
+R ✅ branding-b3 ผ่าน 19/20             3.3s
+R ✅ branding-b4 ผ่าน 7/7               6.4s
+R ✅ branding-b5 ผ่าน 6/6               2.3s
+R ✅ branding ผ่าน 5/5               6.9s
+R ✅ bulk-ops ผ่าน 13/13             11.6s
+R ✅ calendar ผ่าน 9/9               3.9s
+R ✅ catalog-services ผ่าน 35/35             12.9s
+R ✅ chat-ai-suggest ผ่าน 44/44             4.9s
+R ✅ chat-api-v1 ผ่าน 89/89             4.5s
+R ✅ chat-attachments ผ่าน 37/37             4.6s
+R ✅ chat-business-hours ผ่าน 73/73             5.2s
+R ✅ chat-core-v2 ผ่าน 47/47             4.7s
+R ✅ chat-inbox-ui ผ่าน 55/55             2.1s
+R ✅ chat-learning ผ่าน 32/32             4.5s
+R ✅ chat-member-autolink ผ่าน 11/11             6.4s
+R ✅ chat-notify-v2 ผ่าน 30/30             4.1s
+R ✅ chat-notify ผ่าน 23 ข้อ            22.3s
+R ✅ chat-push-badge ผ่าน 48/48             4.8s
+R ✅ chat-replies ผ่าน 60/60             5.3s
+R ✅ chat-retention ผ่าน 50/50             5.2s
+R ✅ chat-security-scope ผ่าน 20/20             3.9s
+R ✅ chat-security ผ่าน 38 ข้อ            20.6s
+R ✅ chat-staff-perms ผ่าน 49/49             3.8s
+R ✅ chat-translate ผ่าน 34/34             4.0s
+R ✅ chat-v2-composer ผ่าน 54/54             2.3s
+R ✅ chat-v2-context ผ่าน 53/53             2.2s
+R ✅ chat-v2-icons ผ่าน 35/35             2.0s
+R ✅ chat-v2-list ผ่าน 41/41             1.8s
+R ✅ chat-v2-quickreply ผ่าน 28/28             2.5s
+R ✅ chat-v2-realtime ผ่าน 26/26             1.9s
+R ✅ chat-v2-room ผ่าน 42/42             1.4s
+R ✅ chat-v2-shell ผ่าน 26/26             1.1s
+R ✅ chat-v2-voice ผ่าน 50/50             3.3s
+R ✅ cheque-audit -                      13.5s
+R ✅ clinic-public ผ่าน 15/15             4.9s
+R ✅ clinic-refund ผ่าน 13/13             10.9s
+R ✅ clinic ผ่าน 8/8               5.7s
+R ✅ connections -                      2.3s
+R ✅ crm-activity ผ่าน 12/12             4.7s
+R ❌ crm-buttons -                      5.2s
+R ❌ crm-c0.2 -                      55.4s
+R ✅ crm-c0.3 -                      103.8s
+R ✅ crm-c0.4 -                      36.1s
+R ✅ crm-c0.5 -                      74.3s
+R ❌ crm-c1.1 -                      58.3s
+R ✅ crm-c1.10 -                      163.3s
+R ❌ crm-c1.11 -                      92.0s
+R ✅ crm-c1.2a -                      154.8s
+R ✅ crm-c1.2b -                      173.7s
+R ❌ crm-c1.3 -                      166.1s
+R ✅ crm-c1.4 -                      235.7s
+R ✅ crm-c1.5 -                      233.5s
+R ✅ crm-c1.6 -                      192.6s
+R ✅ crm-c1.7 -                      151.2s
+R ✅ crm-c1.8 -                      193.5s
+R ✅ crm-c1.9 -                      63.0s
+R ❌ crm-c2.0 -                      107.9s
+R ❌ crm-c2.1 -                      98.4s
+R ✅ crm-c2.10 -                      51.7s
+R ✅ crm-c2.11 -                      39.1s
+R ✅ crm-c2.2 -                      83.6s
+R ✅ crm-c2.3 -                      168.9s
+R ✅ crm-c2.4 -                      104.3s
+R ❌ crm-c2.5 -                      94.4s
+R ✅ crm-c2.6-web -                      2.1s
+R ✅ crm-c2.6 -                      179.0s
+R ❌ crm-c2.7 -                      575.3s
+R ✅ crm-c2.8 -                      174.1s
+R ✅ crm-c2.9 -                      84.2s
+R ❌ crm-c3.0 -                      57.4s
+R ❌ crm-c3.1 -                      41.1s
+R ✅ crm-c3.2 -                      109.6s
+R ✅ crm-c3.3 -                      725.1s
+R ❌ crm-c3.4 -                      71.2s
+R ✅ crm-c3.5 -                      125.9s
+R ✅ crm-c3.6 -                      37.1s
+R ❌ crm-c3.7 -                      2.7s
+R ❌ crm-c3.8 -                      236.3s
+R ❌ crm-c3.9 -                      169.9s
+R ❌ crm-c5.3 -                      2.2s
+R ❌ crm-c51fix-equiv -                      1.8s
+R ❌ crm-forms passed":0,"failures":0,"advisories":0,"skipped":0,"positiveControls":"0/0 3.3s
+R ❌ crm-perf -                      2.4s
+R ✅ crm-v1 -                      43.6s
+R ✅ crm ผ่าน 25/25             8.4s
+R ✅ cron ผ่าน 4/4               25.5s
+R ✅ csv-import ผ่าน 25/25             6.2s
+R ✅ dashboard-builder ผ่าน 6/6               4.1s
+R ✅ dashboard ผ่าน 7/7               7.3s
+R ✅ delivery ผ่าน 8/8               11.7s
+R ✅ dna-review ผ่าน 5/5               6.2s
+R ✅ dna ผ่าน 27/27             7.2s
+R ✅ domain ผ่าน 9/10              4.2s
+R ✅ env-guard -                      2.4s
+R ✅ form ผ่าน 10/10             8.7s
+R ✅ forms-notify -                      23.4s
+R ❌ hardening ผ่าน 14/15             4.9s
+R ✅ hardening2 ผ่าน 14/14             3.7s
+R ✅ help-v2 ผ่าน 8/8               4.6s
+R ✅ hf-apiv1-scope ผ่าน 143/143           92.9s
+R ❌ hf-fu -                      11.0s
+R ❌ hf-fu2 -                      13.6s
+R ✅ hf-hr-privacy ผ่าน 194/194           161.0s
+R ✅ hf-inventory-atomic ผ่าน 143/143           294.4s
+R ✅ hf-inventory-authz ผ่าน 118/118           13.1s
+R ❌ hf-o23 -                      2.6s
+R ✅ hf-pos-page-authz ผ่าน 87/87             10.4s
+R ✅ hf-reports-authz ผ่าน 79/79             13.1s
+R ❌ hf-tx -                      8.5s
+R ✅ host-routing ผ่าน 5/5               5.7s
+R ✅ hotel-money ผ่าน 5/5               11.8s
+R ✅ hotel-public ผ่าน 15/15             12.5s
+R ✅ hotel-refund ผ่าน 15/15             11.9s
+R ✅ hr-attendance ผ่าน 31/31             6.9s
+R ✅ hr-h0.1 passed 67/67           232.8s
+R ✅ hr-h0.2 ผ่าน 58/58             114.1s
+R ✅ hr-h0.3 ผ่าน 37/37             57.5s
+R ❌ hr-h0.5 ผ่าน 67/71             99.6s
+R ✅ hr-h0.6 passed 55/55           107.2s
+R ✅ hr-h0.7 passed 74/74           39.3s
+R ✅ hr-h1.1 passed 81/81           29.9s
+R ✅ hr-h1.2 passed 73/73           22.6s
+R ✅ hr-h1.3 passed 63/63           63.6s
+R ✅ hr-h2.1 passed 90/90           63.9s
+R ✅ hr-h2.10 passed 57/57           22.7s
+R ✅ hr-h2.11 passed 70/70           32.3s
+R ✅ hr-h2.2 passed 60/60           56.7s
+R ✅ hr-h2.3 passed 79/79           130.4s
+R ✅ hr-h2.4 passed 68/68           29.3s
+R ✅ hr-h2.5 passed 79/79           86.0s
+R ✅ hr-h2.6 passed 56/56           109.4s
+R ✅ hr-h2.7 passed 94/94           158.3s
+R ✅ hr-h2.9 passed 58/58           154.7s
+R ✅ hr-h3.1 passed 58/58           86.0s
+R ✅ hr-h3.2 passed 64/64           176.5s
+R ✅ hr-h3.3 passed 51/51           47.9s
+R ✅ hr-h3.5 passed 53/53           60.9s
+R ✅ hr-h4.1 passed 47/47           105.4s
+R ✅ hr-h4.4 passed 86/86           75.2s
+R ✅ hr-h4.6 passed 69/69           33.2s
+R ✅ hr-leave-booking ผ่าน 14/14             7.4s
+R ✅ hr-lib -                      1.5s
+R ✅ hr-payadjust ผ่าน 27/27             5.6s
+R ✅ hr-roster ผ่าน 24/24             6.1s
+R ✅ hr ผ่าน 9/9               4.0s
+R ✅ i18n ผ่าน 7/7               1.7s
+R ✅ i18n2 ผ่าน 6/6               1.8s
+R ✅ i18n3 ผ่าน 19/19             1.6s
+R ✅ inventory-account ผ่าน 23/23             8.3s
+R ✅ inventory-item ผ่าน 11/11             7.8s
+R ✅ inventory ผ่าน 12/12             5.6s
+R ✅ kanban-k1.1 ผ่าน 30/30             10.5s
+R ✅ kanban-k1.10 ผ่าน 16/16             9.5s
+R ✅ kanban-k1.11 ผ่าน 20/21             7.4s
+R ✅ kanban-k1.12 ผ่าน 18/18             9.7s
+R ✅ kanban-k1.13 ผ่าน 16/16             7.0s
+R ✅ kanban-k1.14 ผ่าน 15/15             7.3s
+R ❌ kanban-k1.15 ผ่าน 28/30             13.6s
+R ✅ kanban-k1.2 ผ่าน 25/25             12.7s
+R ✅ kanban-k1.3 ผ่าน 29/29             6.2s
+R ✅ kanban-k1.4 ผ่าน 30/30             222.2s
+R ❌ kanban-k1.5 -                      0.1s

@@ -1,0 +1,3778 @@
+{
+ "_meta": {
+  "wo": "H3.4",
+  "note": "Literals computed by an independent exact-integer reference (Python, outside the repo) from the brief formulae; hand arithmetic per vector in ledger/wo-notes/hr-H3.4-oracle.md. Law rows = TAX/DEDUCTION v1 values + SSO 2569–2571 row (base 1,650–17,500, max 875 ฿ — domain-labour-payroll §ซ [V]) inserted by the oracle as QC-only ACTIVE fixture rows. r2 (controller rulings L1–L9): vectors with rev=r2 changed or added — re-verify on a lane DB. r3 (SSO wage = law-row data `wageComponents`; Por.96/2543 ข้อ 1(5) one-off tax): rev r3-* tags supersede r2 tags — re-verify. r4 (fix round 1, controller ruling F4): SSO wage 0 ⇒ SSO 0 + flag SSO_ZERO_WAGE (no item-level negative net) — V14 V20 V21 V22 V36 V55 re-derived (rev r4-sso-zero, hand arithmetic in wo-notes/hr-H3.4-oracle.md §r4).",
+  "defaults": {
+   "normalDayMin": 480,
+   "catCapBp": 1000,
+   "totalCapBp": 2000,
+   "monthIndex": 1,
+   "ssoEligible": true,
+   "prior": {
+    "incomeSatang": 0,
+    "whtSatang": 0,
+    "ssoSatang": 0
+   },
+   "deductions": {},
+   "days": [],
+   "adjustments": [],
+   "startDate": null,
+   "endDate": null
+  }
+ },
+ "vectors": [
+  {
+   "id": "V01",
+   "note": "monthly 15,000 · full month · nothing else",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 150000,
+    "totalCapSatang": 300000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1500000,
+    "netSatang": 1425000,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V02",
+   "note": "monthly 30,000 · SSO ceiling 750 ฿ · = H3.3 ITM-01 parity",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-09"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000"
+    ],
+    "whtIncomeSatang": 3000000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 17083,
+    "whtOneOffSatang": 0,
+    "availableSatang": 2895417,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 300000,
+    "totalCapSatang": 600000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 3000000,
+    "netSatang": 2895417,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V03",
+   "note": "monthly 1,000 · SSO floor 83 ฿",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 100000,
+    "periodKey": "2031-09"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:100000"
+    ],
+    "whtIncomeSatang": 100000,
+    "ssoWageSatang": 100000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 91700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 10000,
+    "totalCapSatang": 20000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 100000,
+    "netSatang": 91700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V04",
+   "note": "monthly 50,000 · 5% band",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 5000000,
+    "periodKey": "2031-09"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:5000000"
+    ],
+    "whtIncomeSatang": 5000000,
+    "ssoWageSatang": 5000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 171667,
+    "whtOneOffSatang": 0,
+    "availableSatang": 4740833,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 500000,
+    "totalCapSatang": 1000000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 5000000,
+    "netSatang": 4740833,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V05",
+   "note": "monthly 120,000 · spouse + 2 children · several bands",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 12000000,
+    "periodKey": "2031-09",
+    "deductions": {
+     "spouse": true,
+     "children": 2
+    }
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:12000000"
+    ],
+    "whtIncomeSatang": 12000000,
+    "ssoWageSatang": 12000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 1272917,
+    "whtOneOffSatang": 0,
+    "availableSatang": 10639583,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 1200000,
+    "totalCapSatang": 2400000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 12000000,
+    "netSatang": 10639583,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V06",
+   "note": "monthly 30,000 · not in SSO",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-09",
+    "ssoEligible": false
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000"
+    ],
+    "whtIncomeSatang": 3000000,
+    "ssoWageSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "whtSatang": 20833,
+    "whtOneOffSatang": 0,
+    "availableSatang": 2979167,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 300000,
+    "totalCapSatang": 600000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 3000000,
+    "netSatang": 2979167,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V07",
+   "note": "monthly 30,000 · December true-up with prior YTD",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-09",
+    "monthIndex": 12,
+    "prior": {
+     "incomeSatang": 33000000,
+     "whtSatang": 150000,
+     "ssoSatang": 825000
+    }
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000"
+    ],
+    "whtIncomeSatang": 3000000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 55000,
+    "whtOneOffSatang": 0,
+    "availableSatang": 2857500,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 300000,
+    "totalCapSatang": 600000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 3000000,
+    "netSatang": 2857500,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V08",
+   "note": "proration HQ6: start 16 Sep · 15/30",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "startDate": "2031-09-16"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "PRORATION:employment:-:15:-750000"
+    ],
+    "whtIncomeSatang": 750000,
+    "ssoWageSatang": 750000,
+    "ssoBaseSatang": 750000,
+    "ssoEmployeeSatang": 37500,
+    "ssoEmployerSatang": 37500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 712500,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 75000,
+    "totalCapSatang": 150000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 750000,
+    "netSatang": 712500,
+    "blocked": null,
+    "flags": [
+     "PARTIAL_MONTH"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V09",
+   "note": "proration: leaver 10 Jul · 10/31 half-up",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-07",
+    "monthIndex": 7,
+    "endDate": "2031-07-10"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000",
+     "PRORATION:employment:-:10:-2000000"
+    ],
+    "whtIncomeSatang": 1000000,
+    "ssoWageSatang": 1000000,
+    "ssoBaseSatang": 1000000,
+    "ssoEmployeeSatang": 50000,
+    "ssoEmployerSatang": 50000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 950000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 100000,
+    "totalCapSatang": 200000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1000000,
+    "netSatang": 950000,
+    "blocked": null,
+    "flags": [
+     "PARTIAL_MONTH"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V10",
+   "note": "proration: start 15 Feb 2031 (28 days) · 14/28",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 2500000,
+    "periodKey": "2031-02",
+    "monthIndex": 2,
+    "startDate": "2031-02-15"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:2500000",
+     "PRORATION:employment:-:14:-1333333"
+    ],
+    "whtIncomeSatang": 1166667,
+    "ssoWageSatang": 1166667,
+    "ssoBaseSatang": 1166667,
+    "ssoEmployeeSatang": 58300,
+    "ssoEmployerSatang": 58300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1108367,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 116666,
+    "totalCapSatang": 233333,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1166667,
+    "netSatang": 1108367,
+    "blocked": null,
+    "flags": [
+     "PARTIAL_MONTH"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V11",
+   "note": "proration: start 10 + end 20 Sep · 11/30",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "startDate": "2031-09-10",
+    "endDate": "2031-09-20"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "PRORATION:employment:-:11:-950000"
+    ],
+    "whtIncomeSatang": 550000,
+    "ssoWageSatang": 550000,
+    "ssoBaseSatang": 550000,
+    "ssoEmployeeSatang": 27500,
+    "ssoEmployerSatang": 27500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 522500,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 55000,
+    "totalCapSatang": 110000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 550000,
+    "netSatang": 522500,
+    "blocked": null,
+    "flags": [
+     "PARTIAL_MONTH"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V12",
+   "note": "unpaid leave 1 day (480) · ÷30÷480 floor",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-04",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "UNPAID_LEAVE:wd1:2031-09-04:480:-50000"
+    ],
+    "whtIncomeSatang": 1450000,
+    "ssoWageSatang": 1450000,
+    "ssoBaseSatang": 1450000,
+    "ssoEmployeeSatang": 72500,
+    "ssoEmployerSatang": 72500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1377500,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 145000,
+    "totalCapSatang": 290000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1450000,
+    "netSatang": 1377500,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V13",
+   "note": "unpaid half day 225 · normal day 450 · floor",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 2000000,
+    "periodKey": "2031-09",
+    "normalDayMin": 450,
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-04",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 225
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:2000000",
+     "UNPAID_LEAVE:wd1:2031-09-04:225:-33333"
+    ],
+    "whtIncomeSatang": 1966667,
+    "ssoWageSatang": 1966667,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1879167,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 196666,
+    "totalCapSatang": 393333,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1966667,
+    "netSatang": 1879167,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V14",
+   "note": "unpaid leave every day of a 31-day month > base ⇒ UNPAID_CAP · E0 0 · SSO floor ⇒ NET_NEGATIVE",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1000000,
+    "periodKey": "2031-08",
+    "monthIndex": 8,
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-08-01",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd2",
+      "day": "2031-08-02",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd3",
+      "day": "2031-08-03",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd4",
+      "day": "2031-08-04",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd5",
+      "day": "2031-08-05",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd6",
+      "day": "2031-08-06",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd7",
+      "day": "2031-08-07",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd8",
+      "day": "2031-08-08",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd9",
+      "day": "2031-08-09",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd10",
+      "day": "2031-08-10",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd11",
+      "day": "2031-08-11",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd12",
+      "day": "2031-08-12",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd13",
+      "day": "2031-08-13",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd14",
+      "day": "2031-08-14",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd15",
+      "day": "2031-08-15",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd16",
+      "day": "2031-08-16",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd17",
+      "day": "2031-08-17",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd18",
+      "day": "2031-08-18",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd19",
+      "day": "2031-08-19",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd20",
+      "day": "2031-08-20",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd21",
+      "day": "2031-08-21",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd22",
+      "day": "2031-08-22",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd23",
+      "day": "2031-08-23",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd24",
+      "day": "2031-08-24",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd25",
+      "day": "2031-08-25",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd26",
+      "day": "2031-08-26",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd27",
+      "day": "2031-08-27",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd28",
+      "day": "2031-08-28",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd29",
+      "day": "2031-08-29",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd30",
+      "day": "2031-08-30",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd31",
+      "day": "2031-08-31",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1000000",
+     "UNPAID_LEAVE:wd1:2031-08-01:480:-33333",
+     "UNPAID_LEAVE:wd2:2031-08-02:480:-33333",
+     "UNPAID_LEAVE:wd3:2031-08-03:480:-33333",
+     "UNPAID_LEAVE:wd4:2031-08-04:480:-33333",
+     "UNPAID_LEAVE:wd5:2031-08-05:480:-33333",
+     "UNPAID_LEAVE:wd6:2031-08-06:480:-33333",
+     "UNPAID_LEAVE:wd7:2031-08-07:480:-33333",
+     "UNPAID_LEAVE:wd8:2031-08-08:480:-33333",
+     "UNPAID_LEAVE:wd9:2031-08-09:480:-33333",
+     "UNPAID_LEAVE:wd10:2031-08-10:480:-33333",
+     "UNPAID_LEAVE:wd11:2031-08-11:480:-33333",
+     "UNPAID_LEAVE:wd12:2031-08-12:480:-33333",
+     "UNPAID_LEAVE:wd13:2031-08-13:480:-33333",
+     "UNPAID_LEAVE:wd14:2031-08-14:480:-33333",
+     "UNPAID_LEAVE:wd15:2031-08-15:480:-33333",
+     "UNPAID_LEAVE:wd16:2031-08-16:480:-33333",
+     "UNPAID_LEAVE:wd17:2031-08-17:480:-33333",
+     "UNPAID_LEAVE:wd18:2031-08-18:480:-33333",
+     "UNPAID_LEAVE:wd19:2031-08-19:480:-33333",
+     "UNPAID_LEAVE:wd20:2031-08-20:480:-33333",
+     "UNPAID_LEAVE:wd21:2031-08-21:480:-33333",
+     "UNPAID_LEAVE:wd22:2031-08-22:480:-33333",
+     "UNPAID_LEAVE:wd23:2031-08-23:480:-33333",
+     "UNPAID_LEAVE:wd24:2031-08-24:480:-33333",
+     "UNPAID_LEAVE:wd25:2031-08-25:480:-33333",
+     "UNPAID_LEAVE:wd26:2031-08-26:480:-33333",
+     "UNPAID_LEAVE:wd27:2031-08-27:480:-33333",
+     "UNPAID_LEAVE:wd28:2031-08-28:480:-33333",
+     "UNPAID_LEAVE:wd29:2031-08-29:480:-33333",
+     "UNPAID_LEAVE:wd30:2031-08-30:480:-33333",
+     "UNPAID_LEAVE:wd31:2031-08-31:480:-33333",
+     "UNPAID_CAP:employment:-:-:33323"
+    ],
+    "whtIncomeSatang": 0,
+    "ssoWageSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 0,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 0,
+    "totalCapSatang": 0,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 0,
+    "netSatang": 0,
+    "blocked": null,
+    "flags": [
+     "SSO_ZERO_WAGE",
+     "UNPAID_CAPPED"
+    ]
+   },
+   "rev": "r4-sso-zero"
+  },
+  {
+   "id": "V15",
+   "note": "daily 400 ฿ · 3 full days",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-01",
+      "dayClass": "WORKDAY",
+      "workMin": 480
+     },
+     {
+      "workDayId": "wd2",
+      "day": "2031-09-02",
+      "dayClass": "WORKDAY",
+      "workMin": 480
+     },
+     {
+      "workDayId": "wd3",
+      "day": "2031-09-03",
+      "dayClass": "WORKDAY",
+      "workMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "DAY_WAGE:wd1:2031-09-01:480:40000",
+     "DAY_WAGE:wd2:2031-09-02:480:40000",
+     "DAY_WAGE:wd3:2031-09-03:480:40000"
+    ],
+    "whtIncomeSatang": 120000,
+    "ssoWageSatang": 120000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 111700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 12000,
+    "totalCapSatang": 24000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 120000,
+    "netSatang": 111700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V16",
+   "note": "daily · part day 300 min",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-01",
+      "dayClass": "WORKDAY",
+      "workMin": 300
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "DAY_WAGE:wd1:2031-09-01:300:25000"
+    ],
+    "whtIncomeSatang": 25000,
+    "ssoWageSatang": 25000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 16700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 2500,
+    "totalCapSatang": 5000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 25000,
+    "netSatang": 16700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V17",
+   "note": "daily · paid leave day pays · unpaid leave day pays nothing",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-01",
+      "dayClass": "WORKDAY",
+      "paidLeaveMin": 480
+     },
+     {
+      "workDayId": "wd2",
+      "day": "2031-09-02",
+      "dayClass": "WORKDAY",
+      "unpaidLeaveMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "DAY_WAGE:wd1:2031-09-01:480:40000"
+    ],
+    "whtIncomeSatang": 40000,
+    "ssoWageSatang": 40000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 31700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 4000,
+    "totalCapSatang": 8000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 40000,
+    "netSatang": 31700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V18",
+   "note": "daily · traditional (PUBLIC) holiday s.56(2) = one day's wage · leave on the holiday not paid twice",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayKind": "PUBLIC",
+      "holidayPaidMin": 480,
+      "paidLeaveMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "HOLIDAY_PAY:wd1:2031-09-17:480:40000"
+    ],
+    "whtIncomeSatang": 40000,
+    "ssoWageSatang": 40000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 31700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 4000,
+    "totalCapSatang": 8000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 40000,
+    "netSatang": 31700,
+    "blocked": null,
+    "flags": [
+     "HOLIDAY_LEAVE",
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V19",
+   "note": "daily · works the public holiday · holiday pay + 1× (s.62(1))",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 480,
+      "holidayWorkMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "HOLIDAY_PAY:wd1:2031-09-17:480:40000",
+     "HOLIDAY_WORK:wd1:2031-09-17:480:40000"
+    ],
+    "whtIncomeSatang": 80000,
+    "ssoWageSatang": 40000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 71700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 8000,
+    "totalCapSatang": 16000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 80000,
+    "netSatang": 71700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V20",
+   "note": "daily · works the weekly day off without OT request · 2× (s.62(2))",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-06",
+      "dayClass": "DAY_OFF",
+      "holidayWorkMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "HOLIDAY_WORK:wd1:2031-09-06:480:80000"
+    ],
+    "whtIncomeSatang": 80000,
+    "ssoWageSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 80000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 8000,
+    "totalCapSatang": 16000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 80000,
+    "netSatang": 80000,
+    "blocked": null,
+    "flags": [
+     "SSO_ZERO_WAGE"
+    ]
+   },
+   "rev": "r4-sso-zero"
+  },
+  {
+   "id": "V21",
+   "note": "daily · day-off work fully paid by H2.9 HOLIDAY_WORK segment ⇒ no line",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-06",
+      "dayClass": "DAY_OFF",
+      "holidayWorkMin": 480,
+      "otHolidayWorkMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [],
+    "whtIncomeSatang": 0,
+    "ssoWageSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 0,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 0,
+    "totalCapSatang": 0,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 0,
+    "netSatang": 0,
+    "blocked": null,
+    "flags": [
+     "SSO_ZERO_WAGE"
+    ]
+   },
+   "rev": "r4-sso-zero"
+  },
+  {
+   "id": "V22",
+   "note": "daily · day-off work 480, request paid 300 ⇒ 180 × 2",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-06",
+      "dayClass": "DAY_OFF",
+      "holidayWorkMin": 480,
+      "otHolidayWorkMin": 300
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "HOLIDAY_WORK:wd1:2031-09-06:180:30000"
+    ],
+    "whtIncomeSatang": 30000,
+    "ssoWageSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 30000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 3000,
+    "totalCapSatang": 6000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 30000,
+    "netSatang": 30000,
+    "blocked": null,
+    "flags": [
+     "SSO_ZERO_WAGE"
+    ]
+   },
+   "rev": "r4-sso-zero"
+  },
+  {
+   "id": "V23",
+   "note": "daily · normal day 420 · full day + day-off work 420 (divisor min(480, N))",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "normalDayMin": 420,
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-05",
+      "dayClass": "WORKDAY",
+      "workMin": 420
+     },
+     {
+      "workDayId": "wd2",
+      "day": "2031-09-06",
+      "dayClass": "DAY_OFF",
+      "holidayWorkMin": 420
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "DAY_WAGE:wd1:2031-09-05:420:40000",
+     "HOLIDAY_WORK:wd2:2031-09-06:420:80000"
+    ],
+    "whtIncomeSatang": 120000,
+    "ssoWageSatang": 40000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 111700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 12000,
+    "totalCapSatang": 24000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 120000,
+    "netSatang": 111700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V24",
+   "note": "daily 333.33 ฿ · 7 minutes · half-up edge",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 33333,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-01",
+      "dayClass": "WORKDAY",
+      "workMin": 7
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "DAY_WAGE:wd1:2031-09-01:7:486"
+    ],
+    "whtIncomeSatang": 486,
+    "ssoWageSatang": 486,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": -7814,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 48,
+    "totalCapSatang": 97,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 486,
+    "netSatang": -7814,
+    "blocked": "NET_NEGATIVE",
+    "flags": [
+     "NEGATIVE_NET",
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V25",
+   "note": "hourly 65 ฿ · two 8 h days",
+   "input": {
+    "payType": "HOURLY",
+    "baseSalarySatang": 0,
+    "hourlyRateSatang": 6500,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-01",
+      "dayClass": "WORKDAY",
+      "workMin": 480
+     },
+     {
+      "workDayId": "wd2",
+      "day": "2031-09-02",
+      "dayClass": "WORKDAY",
+      "workMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "HOUR_WAGE:wd1:2031-09-01:480:52000",
+     "HOUR_WAGE:wd2:2031-09-02:480:52000"
+    ],
+    "whtIncomeSatang": 104000,
+    "ssoWageSatang": 104000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 95700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 10400,
+    "totalCapSatang": 20800,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 104000,
+    "netSatang": 95700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V26",
+   "note": "hourly 65 ฿ · 50 minutes · half-up",
+   "input": {
+    "payType": "HOURLY",
+    "baseSalarySatang": 0,
+    "hourlyRateSatang": 6500,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-01",
+      "dayClass": "WORKDAY",
+      "workMin": 50
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "HOUR_WAGE:wd1:2031-09-01:50:5417"
+    ],
+    "whtIncomeSatang": 5417,
+    "ssoWageSatang": 5417,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": -2883,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 541,
+    "totalCapSatang": 1083,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 5417,
+    "netSatang": -2883,
+    "blocked": "NET_NEGATIVE",
+    "flags": [
+     "NEGATIVE_NET",
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V27",
+   "note": "hourly · holiday pay 480 + day-off work 240 × 2",
+   "input": {
+    "payType": "HOURLY",
+    "baseSalarySatang": 0,
+    "hourlyRateSatang": 6500,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 480
+     },
+     {
+      "workDayId": "wd2",
+      "day": "2031-09-06",
+      "dayClass": "DAY_OFF",
+      "holidayWorkMin": 240
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "HOLIDAY_WORK:wd2:2031-09-06:240:52000",
+     "HOLIDAY_PAY:wd1:2031-09-17:480:52000"
+    ],
+    "whtIncomeSatang": 104000,
+    "ssoWageSatang": 52000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 95700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 10400,
+    "totalCapSatang": 20800,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 104000,
+    "netSatang": 95700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V28",
+   "note": "hourly · works the public holiday · holiday pay + 1×",
+   "input": {
+    "payType": "HOURLY",
+    "baseSalarySatang": 0,
+    "hourlyRateSatang": 6500,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 480,
+      "holidayWorkMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "HOLIDAY_PAY:wd1:2031-09-17:480:52000",
+     "HOLIDAY_WORK:wd1:2031-09-17:480:52000"
+    ],
+    "whtIncomeSatang": 104000,
+    "ssoWageSatang": 52000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 95700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 10400,
+    "totalCapSatang": 20800,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 104000,
+    "netSatang": 95700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V29",
+   "note": "monthly 30,000 · rostered public-holiday work 480 · 1× extra (s.62(1))",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 480,
+      "holidayWorkMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000",
+     "HOLIDAY_WORK:wd1:2031-09-17:480:100000"
+    ],
+    "whtIncomeSatang": 3100000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 17500,
+    "whtOneOffSatang": 0,
+    "availableSatang": 2995000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 310000,
+    "totalCapSatang": 620000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 3100000,
+    "netSatang": 2995000,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V30",
+   "note": "monthly · day-off work fully paid by OT request · unplanned 60 flagged, unpaid",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-06",
+      "dayClass": "DAY_OFF",
+      "holidayWorkMin": 480,
+      "otHolidayWorkMin": 480
+     },
+     {
+      "workDayId": "wd2",
+      "day": "2031-09-08",
+      "dayClass": "WORKDAY",
+      "workMin": 480,
+      "unplannedMin": 60
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000"
+    ],
+    "whtIncomeSatang": 3000000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 17083,
+    "whtOneOffSatang": 0,
+    "availableSatang": 2895417,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 300000,
+    "totalCapSatang": 600000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 3000000,
+    "netSatang": 2895417,
+    "blocked": null,
+    "flags": [
+     "UNPLANNED"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V31",
+   "note": "monthly · normal day 540 · holiday work 540 · divisor capped 480",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-09",
+    "normalDayMin": 540,
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 540,
+      "holidayWorkMin": 540
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000",
+     "HOLIDAY_WORK:wd1:2031-09-17:540:112500"
+    ],
+    "whtIncomeSatang": 3112500,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 17552,
+    "whtOneOffSatang": 0,
+    "availableSatang": 3007448,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 311250,
+    "totalCapSatang": 622500,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 3112500,
+    "netSatang": 3007448,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V32",
+   "note": "monthly 14,000 · holiday work 105 min · half-up",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1400000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 480,
+      "holidayWorkMin": 105
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1400000",
+     "HOLIDAY_WORK:wd1:2031-09-17:105:10208"
+    ],
+    "whtIncomeSatang": 1410208,
+    "ssoWageSatang": 1400000,
+    "ssoBaseSatang": 1400000,
+    "ssoEmployeeSatang": 70000,
+    "ssoEmployerSatang": 70000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1340208,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 141020,
+    "totalCapSatang": 282041,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1410208,
+    "netSatang": 1340208,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V33",
+   "note": "monthly 20,000 + OT + COMMISSION + BONUS + ALLOWANCE · bonus taxable, not SSO",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 2000000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "OT",
+      "sourceType": "OT_REQUEST",
+      "amountSatang": 50000
+     },
+     {
+      "id": "a2",
+      "kind": "COMMISSION",
+      "sourceType": "CRM_COMMISSION",
+      "amountSatang": 100000
+     },
+     {
+      "id": "a3",
+      "kind": "BONUS",
+      "sourceType": null,
+      "amountSatang": 200000
+     },
+     {
+      "id": "a4",
+      "kind": "ALLOWANCE",
+      "sourceType": null,
+      "amountSatang": 30000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:2000000",
+     "OT:a1:-:-:50000",
+     "COMMISSION:a2:-:-:100000",
+     "BONUS:a3:-:-:200000",
+     "ALLOWANCE:a4:-:-:30000"
+    ],
+    "whtIncomeSatang": 2380000,
+    "ssoWageSatang": 2130000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 2292500,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 218000,
+    "totalCapSatang": 436000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 380000,
+    "deductSatang": 0,
+    "grossSatang": 2380000,
+    "netSatang": 2292500,
+    "blocked": null,
+    "flags": [
+     "SSO_COMMISSION_U"
+    ]
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V34",
+   "note": "REFUND (new kind) · not taxable, not SSO wage",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "REFUND",
+      "sourceType": null,
+      "amountSatang": 50000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "REFUND:a1:-:-:50000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1475000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 150000,
+    "totalCapSatang": 300000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 50000,
+    "deductSatang": 0,
+    "grossSatang": 1550000,
+    "netSatang": 1475000,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V35",
+   "note": "H3.2 LATE_RULE + ABSENT_RULE rows reduce taxable wage (no-work-no-pay)",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": "LATE_RULE",
+      "amountSatang": 3125
+     },
+     {
+      "id": "a2",
+      "kind": "DEDUCTION",
+      "sourceType": "ABSENT_RULE",
+      "amountSatang": 50000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "LATE_RULE:a1:-:-:-3125/3125",
+     "ABSENT_RULE:a2:-:-:-50000/50000"
+    ],
+    "whtIncomeSatang": 1446875,
+    "ssoWageSatang": 1446875,
+    "ssoBaseSatang": 1446875,
+    "ssoEmployeeSatang": 72300,
+    "ssoEmployerSatang": 72300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1374575,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 144687,
+    "totalCapSatang": 289375,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 53125,
+    "grossSatang": 1446875,
+    "netSatang": 1374575,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V36",
+   "note": "unworked rows larger than wage ⇒ capped, excess dropped (never carried)",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 100000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": "ABSENT_RULE",
+      "amountSatang": 150000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:100000",
+     "ABSENT_RULE:a1:-:-:-100000/150000"
+    ],
+    "whtIncomeSatang": 0,
+    "ssoWageSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 0,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 0,
+    "totalCapSatang": 0,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 100000,
+    "grossSatang": 0,
+    "netSatang": 0,
+    "blocked": null,
+    "flags": [
+     "SSO_ZERO_WAGE",
+     "UNWORKED_CAPPED"
+    ]
+   },
+   "rev": "r4-sso-zero"
+  },
+  {
+   "id": "V37",
+   "note": "advance 5,000 within pay",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "ADVANCE",
+      "sourceType": null,
+      "amountSatang": 500000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "ADVANCE:a1:-:-:-500000/500000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 500000,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 150000,
+    "totalCapSatang": 300000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 500000,
+    "grossSatang": 1000000,
+    "netSatang": 925000,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V38",
+   "note": "advance 20,000 > available ⇒ carry ADVANCE (HQ7) · net 0",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "ADVANCE",
+      "sourceType": null,
+      "amountSatang": 2000000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "ADVANCE:a1:-:-:-1425000/2000000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 1425000,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 150000,
+    "totalCapSatang": 300000,
+    "carry": [
+     "ADVANCE:575000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 1425000,
+    "grossSatang": 75000,
+    "netSatang": 0,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V39",
+   "note": "manual deduction 4,000 · s.76 cap 20% = 3,000 ⇒ carry 1,000",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 400000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "DEDUCTION:a1:-:-:-150000/400000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 150000,
+    "catCapSatang": 150000,
+    "totalCapSatang": 300000,
+    "carry": [
+     "DAMAGES:250000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 150000,
+    "grossSatang": 1350000,
+    "netSatang": 1275000,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD",
+     "CLAIM_CAPPED"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V40",
+   "note": "stock charge 1,000 + manual 2,500 · same category DAMAGES · cap 1,500 · order by id",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": "INVENTORY_ISSUE",
+      "amountSatang": 100000
+     },
+     {
+      "id": "a2",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 250000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "DEDUCTION:a1:-:-:-100000/100000",
+     "DEDUCTION:a2:-:-:-50000/250000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 150000,
+    "catCapSatang": 150000,
+    "totalCapSatang": 300000,
+    "carry": [
+     "DAMAGES:200000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 150000,
+    "grossSatang": 1350000,
+    "netSatang": 1275000,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD",
+     "CLAIM_CAPPED"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V41",
+   "note": "shop caps 100 %/100 % + written consent (s.77) ⇒ claim limited by available only",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "catCapBp": 10000,
+    "totalCapBp": 10000,
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 2000000,
+      "consent": true
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "DEDUCTION:a1:-:-:-1425000/2000000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 1425000,
+    "catCapSatang": 1500000,
+    "totalCapSatang": 1500000,
+    "carry": [
+     "DAMAGES:575000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 1425000,
+    "grossSatang": 75000,
+    "netSatang": 0,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V42",
+   "note": "carry-in advance applied before a new advance",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1000000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a2",
+      "kind": "ADVANCE",
+      "sourceType": null,
+      "amountSatang": 100000
+     },
+     {
+      "id": "a9",
+      "kind": "ADVANCE",
+      "sourceType": "CARRY_FORWARD",
+      "amountSatang": 950000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1000000",
+     "ADVANCE:a9:-:-:-950000/950000",
+     "ADVANCE:a2:-:-:0/100000"
+    ],
+    "whtIncomeSatang": 1000000,
+    "ssoWageSatang": 1000000,
+    "ssoBaseSatang": 1000000,
+    "ssoEmployeeSatang": 50000,
+    "ssoEmployerSatang": 50000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 950000,
+    "advanceAppliedSatang": 950000,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 100000,
+    "totalCapSatang": 200000,
+    "carry": [
+     "ADVANCE:100000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 950000,
+    "grossSatang": 50000,
+    "netSatang": 0,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V43",
+   "note": "shop category cap 0 ⇒ every claim carried",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "catCapBp": 0,
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 10000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "DEDUCTION:a1:-:-:0/10000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 0,
+    "totalCapSatang": 300000,
+    "carry": [
+     "DAMAGES:10000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1500000,
+    "netSatang": 1425000,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD",
+     "CLAIM_CAPPED"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V44",
+   "note": "advance eats the available pay ⇒ claim applied 0 though cap > 0",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "ADVANCE",
+      "sourceType": null,
+      "amountSatang": 1500000
+     },
+     {
+      "id": "a2",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 10000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "ADVANCE:a1:-:-:-1425000/1500000",
+     "DEDUCTION:a2:-:-:0/10000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 1425000,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 150000,
+    "totalCapSatang": 300000,
+    "carry": [
+     "ADVANCE:75000",
+     "DAMAGES:10000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 1425000,
+    "grossSatang": 75000,
+    "netSatang": 0,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V45",
+   "note": "refused: DAILY without daily rate",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": null,
+    "periodKey": "2031-09"
+   },
+   "want": {
+    "ok": false,
+    "code": "NO_RATE"
+   }
+  },
+  {
+   "id": "V46",
+   "note": "refused: normal day 59",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "normalDayMin": 59
+   },
+   "want": {
+    "ok": false,
+    "code": "BAD_INPUT"
+   }
+  },
+  {
+   "id": "V47",
+   "note": "refused: law set without SSO row",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "law": "NO_SSO"
+   },
+   "want": {
+    "ok": false,
+    "code": "LAW_MISSING"
+   }
+  },
+  {
+   "id": "V48",
+   "note": "refused: unknown kind TIP",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "TIP",
+      "sourceType": null,
+      "amountSatang": 100
+     }
+    ]
+   },
+   "want": {
+    "ok": false,
+    "code": "BAD_KIND"
+   }
+  },
+  {
+   "id": "V49",
+   "note": "refused: month 13",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "monthIndex": 13
+   },
+   "want": {
+    "ok": false,
+    "code": "BAD_MONTH"
+   }
+  },
+  {
+   "id": "V50",
+   "note": "daily + commission · regular month = earned (NA-11 placeholder) · month 6",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 50000,
+    "periodKey": "2031-09",
+    "monthIndex": 6,
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-01",
+      "dayClass": "WORKDAY",
+      "workMin": 480
+     },
+     {
+      "workDayId": "wd2",
+      "day": "2031-09-02",
+      "dayClass": "WORKDAY",
+      "workMin": 480
+     }
+    ],
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "COMMISSION",
+      "sourceType": null,
+      "amountSatang": 4000000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "DAY_WAGE:wd1:2031-09-01:480:50000",
+     "DAY_WAGE:wd2:2031-09-02:480:50000",
+     "COMMISSION:a1:-:-:4000000"
+    ],
+    "whtIncomeSatang": 4100000,
+    "ssoWageSatang": 4100000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 4012500,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 410000,
+    "totalCapSatang": 820000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 4000000,
+    "deductSatang": 0,
+    "grossSatang": 4100000,
+    "netSatang": 4012500,
+    "blocked": null,
+    "flags": [
+     "SSO_COMMISSION_U"
+    ]
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V51",
+   "note": "monthly 30,000 · OT 1,750 + claim · cap base counts OT [U]",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "OT",
+      "sourceType": "OT_REQUEST",
+      "amountSatang": 175000
+     },
+     {
+      "id": "a2",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 700000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000",
+     "OT:a1:-:-:175000",
+     "DEDUCTION:a2:-:-:-317500/700000"
+    ],
+    "whtIncomeSatang": 3175000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 17813,
+    "whtOneOffSatang": 0,
+    "availableSatang": 3069687,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 317500,
+    "catCapSatang": 317500,
+    "totalCapSatang": 635000,
+    "carry": [
+     "DAMAGES:382500"
+    ],
+    "receivable": [],
+    "addSatang": 175000,
+    "deductSatang": 317500,
+    "grossSatang": 2857500,
+    "netSatang": 2752187,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD",
+     "CLAIM_CAPPED"
+    ]
+   },
+   "rev": "r3-value"
+  },
+  {
+   "id": "V52",
+   "note": "L2 February full month (28 days) ⇒ base, no proration line",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 2500000,
+    "periodKey": "2031-02",
+    "monthIndex": 2
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:2500000"
+    ],
+    "whtIncomeSatang": 2500000,
+    "ssoWageSatang": 2500000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 2412500,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 250000,
+    "totalCapSatang": 500000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 2500000,
+    "netSatang": 2412500,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V53",
+   "note": "L2 31-day month, start on the 2nd ⇒ 30 days ⇒ capped at base (line 0)",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-07",
+    "monthIndex": 7,
+    "startDate": "2031-07-02"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000",
+     "PRORATION:employment:-:30:0"
+    ],
+    "whtIncomeSatang": 3000000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 2912500,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 300000,
+    "totalCapSatang": 600000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 3000000,
+    "netSatang": 2912500,
+    "blocked": null,
+    "flags": [
+     "PARTIAL_MONTH"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V54",
+   "note": "L2 31-day month, start 17 Jul ⇒ 15/30",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-07",
+    "monthIndex": 7,
+    "startDate": "2031-07-17"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000",
+     "PRORATION:employment:-:15:-1500000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 150000,
+    "totalCapSatang": 300000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1500000,
+    "netSatang": 1425000,
+    "blocked": null,
+    "flags": [
+     "PARTIAL_MONTH"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V55",
+   "note": "L4 daily · SHOP closure day not worked ⇒ no pay (not a s.56 holiday)",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayKind": "SHOP",
+      "holidayPaidMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [],
+    "whtIncomeSatang": 0,
+    "ssoWageSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 0,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 0,
+    "totalCapSatang": 0,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 0,
+    "netSatang": 0,
+    "blocked": null,
+    "flags": [
+     "SHOP_HOLIDAY",
+     "SSO_ZERO_WAGE"
+    ]
+   },
+   "rev": "r4-sso-zero"
+  },
+  {
+   "id": "V56",
+   "note": "L4 daily · works a SHOP closure day ⇒ ordinary day wage 1×",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayKind": "SHOP",
+      "holidayPaidMin": 480,
+      "holidayWorkMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "DAY_WAGE:wd1:2031-09-17:480:40000"
+    ],
+    "whtIncomeSatang": 40000,
+    "ssoWageSatang": 40000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 31700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 4000,
+    "totalCapSatang": 8000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 40000,
+    "netSatang": 31700,
+    "blocked": null,
+    "flags": [
+     "SHOP_HOLIDAY",
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V57",
+   "note": "L4 daily · weekly day off not worked ⇒ nothing · annual leave day paid (s.56(3))",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-06",
+      "dayClass": "DAY_OFF"
+     },
+     {
+      "workDayId": "wd2",
+      "day": "2031-09-08",
+      "dayClass": "WORKDAY",
+      "paidLeaveMin": 480
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "DAY_WAGE:wd2:2031-09-08:480:40000"
+    ],
+    "whtIncomeSatang": 40000,
+    "ssoWageSatang": 40000,
+    "ssoBaseSatang": 165000,
+    "ssoEmployeeSatang": 8300,
+    "ssoEmployerSatang": 8300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 31700,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 4000,
+    "totalCapSatang": 8000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 40000,
+    "netSatang": 31700,
+    "blocked": null,
+    "flags": [
+     "SSO_MIN_BASE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V58",
+   "note": "L5 SSO row from 2572 (max base 20,000) · wage 30,000 ⇒ 1,000 ฿ without code change",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-09",
+    "law": "SSO_2572"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000"
+    ],
+    "whtIncomeSatang": 3000000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 2000000,
+    "ssoEmployeeSatang": 100000,
+    "ssoEmployerSatang": 100000,
+    "whtSatang": 17083,
+    "whtOneOffSatang": 0,
+    "availableSatang": 2882917,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 300000,
+    "totalCapSatang": 600000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 3000000,
+    "netSatang": 2882917,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V59",
+   "note": "L5 SSO 10,010 ฿ ⇒ 500.50 ⇒ 501 ฿ (half-up, s.46)",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1001000,
+    "periodKey": "2031-09"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1001000"
+    ],
+    "whtIncomeSatang": 1001000,
+    "ssoWageSatang": 1001000,
+    "ssoBaseSatang": 1001000,
+    "ssoEmployeeSatang": 50100,
+    "ssoEmployerSatang": 50100,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 950900,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 100100,
+    "totalCapSatang": 200200,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1001000,
+    "netSatang": 950900,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V60",
+   "note": "L5 SSO 10,009 ฿ ⇒ 500.45 ⇒ 500 ฿",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1000900,
+    "periodKey": "2031-09"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1000900"
+    ],
+    "whtIncomeSatang": 1000900,
+    "ssoWageSatang": 1000900,
+    "ssoBaseSatang": 1000900,
+    "ssoEmployeeSatang": 50000,
+    "ssoEmployerSatang": 50000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 950900,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 100090,
+    "totalCapSatang": 200180,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 0,
+    "grossSatang": 1000900,
+    "netSatang": 950900,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V61",
+   "note": "L1 two categories: damages 2,000 + OT overpayment 2,000 · 10 % each, 20 % total",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 200000
+     },
+     {
+      "id": "a2",
+      "kind": "DEDUCTION",
+      "sourceType": "OT_REQUEST",
+      "amountSatang": 200000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "DEDUCTION:a1:-:-:-150000/200000",
+     "DEDUCTION:a2:-:-:-150000/200000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 300000,
+    "catCapSatang": 150000,
+    "totalCapSatang": 300000,
+    "carry": [
+     "DAMAGES:50000",
+     "OVERPAY:50000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 300000,
+    "grossSatang": 1200000,
+    "netSatang": 1125000,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD",
+     "CLAIM_CAPPED"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V62",
+   "note": "L1 shop caps 30 %/40 % + consent ⇒ 4,000 applied in full",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "catCapBp": 3000,
+    "totalCapBp": 4000,
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 400000,
+      "consent": true
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "DEDUCTION:a1:-:-:-400000/400000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 400000,
+    "catCapSatang": 450000,
+    "totalCapSatang": 600000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 400000,
+    "grossSatang": 1100000,
+    "netSatang": 1025000,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V63",
+   "note": "L1 shop caps 30 %/40 % without consent ⇒ legal 10 % applied · warning CAP_NEEDS_CONSENT",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "catCapBp": 3000,
+    "totalCapBp": 4000,
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 400000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "DEDUCTION:a1:-:-:-150000/400000"
+    ],
+    "whtIncomeSatang": 1500000,
+    "ssoWageSatang": 1500000,
+    "ssoBaseSatang": 1500000,
+    "ssoEmployeeSatang": 75000,
+    "ssoEmployerSatang": 75000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1425000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 150000,
+    "catCapSatang": 450000,
+    "totalCapSatang": 600000,
+    "carry": [
+     "DAMAGES:250000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 150000,
+    "grossSatang": 1350000,
+    "netSatang": 1275000,
+    "blocked": null,
+    "flags": [
+     "CAP_NEEDS_CONSENT",
+     "CARRY_FORWARD",
+     "CLAIM_CAPPED"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V64",
+   "note": "L6 refund of over-deducted lateness (ALLOWANCE, LATE_RULE) ⇒ taxable and SSO wage",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "ALLOWANCE",
+      "sourceType": "LATE_RULE",
+      "amountSatang": 3125
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "ALLOWANCE:a1:-:-:3125"
+    ],
+    "whtIncomeSatang": 1503125,
+    "ssoWageSatang": 1503125,
+    "ssoBaseSatang": 1503125,
+    "ssoEmployeeSatang": 75200,
+    "ssoEmployerSatang": 75200,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1427925,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 150312,
+    "totalCapSatang": 300625,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 3125,
+    "deductSatang": 0,
+    "grossSatang": 1503125,
+    "netSatang": 1427925,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V65",
+   "note": "L8 leaver's final period: uncollected claim ⇒ receivable, not carried",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "endDate": "2031-09-20",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 400000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "PRORATION:employment:-:20:-500000",
+     "DEDUCTION:a1:-:-:-100000/400000"
+    ],
+    "whtIncomeSatang": 1000000,
+    "ssoWageSatang": 1000000,
+    "ssoBaseSatang": 1000000,
+    "ssoEmployeeSatang": 50000,
+    "ssoEmployerSatang": 50000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 950000,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 100000,
+    "catCapSatang": 100000,
+    "totalCapSatang": 200000,
+    "carry": [],
+    "receivable": [
+     "DAMAGES:300000"
+    ],
+    "addSatang": 0,
+    "deductSatang": 100000,
+    "grossSatang": 900000,
+    "netSatang": 850000,
+    "blocked": null,
+    "flags": [
+     "CLAIM_CAPPED",
+     "PARTIAL_MONTH",
+     "RECEIVABLE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V66",
+   "note": "L8 leaver's final period: advance larger than pay ⇒ receivable ADVANCE",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1500000,
+    "periodKey": "2031-09",
+    "endDate": "2031-09-10",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "ADVANCE",
+      "sourceType": null,
+      "amountSatang": 900000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:1500000",
+     "PRORATION:employment:-:10:-1000000",
+     "ADVANCE:a1:-:-:-475000/900000"
+    ],
+    "whtIncomeSatang": 500000,
+    "ssoWageSatang": 500000,
+    "ssoBaseSatang": 500000,
+    "ssoEmployeeSatang": 25000,
+    "ssoEmployerSatang": 25000,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 475000,
+    "advanceAppliedSatang": 475000,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 50000,
+    "totalCapSatang": 100000,
+    "carry": [],
+    "receivable": [
+     "ADVANCE:425000"
+    ],
+    "addSatang": 0,
+    "deductSatang": 475000,
+    "grossSatang": 25000,
+    "netSatang": 0,
+    "blocked": null,
+    "flags": [
+     "PARTIAL_MONTH",
+     "RECEIVABLE"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V67",
+   "note": "L1 carry-in DAMAGES row keeps its category cap with a new damage row",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 2000000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a5",
+      "kind": "DEDUCTION",
+      "sourceType": null,
+      "amountSatang": 150000
+     },
+     {
+      "id": "a1",
+      "kind": "DEDUCTION",
+      "sourceType": "CARRY_FORWARD",
+      "amountSatang": 100000,
+      "carryCls": "DAMAGES"
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:2000000",
+     "DEDUCTION:a1:-:-:-100000/100000",
+     "DEDUCTION:a5:-:-:-100000/150000"
+    ],
+    "whtIncomeSatang": 2000000,
+    "ssoWageSatang": 2000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1912500,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 200000,
+    "catCapSatang": 200000,
+    "totalCapSatang": 400000,
+    "carry": [
+     "DAMAGES:50000"
+    ],
+    "receivable": [],
+    "addSatang": 0,
+    "deductSatang": 200000,
+    "grossSatang": 1800000,
+    "netSatang": 1712500,
+    "blocked": null,
+    "flags": [
+     "CARRY_FORWARD",
+     "CLAIM_CAPPED"
+    ]
+   },
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V68",
+   "note": "r3 Por.96 ข้อ 1(5): bonus 100,000 in month 6 of a 50,000 salary · prior 5 months · bonus tax withheld in full this month",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 5000000,
+    "periodKey": "2031-06",
+    "monthIndex": 6,
+    "prior": {
+     "incomeSatang": 25000000,
+     "whtSatang": 858335,
+     "ssoSatang": 437500
+    },
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "BONUS",
+      "sourceType": null,
+      "amountSatang": 10000000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:5000000",
+     "BONUS:a1:-:-:10000000"
+    ],
+    "whtIncomeSatang": 15000000,
+    "ssoWageSatang": 5000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 1326666,
+    "whtOneOffSatang": 1155000,
+    "availableSatang": 13585834,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 500000,
+    "totalCapSatang": 1000000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 10000000,
+    "deductSatang": 0,
+    "grossSatang": 15000000,
+    "netSatang": 13585834,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-new"
+  },
+  {
+   "id": "V69",
+   "note": "r3 December bonus 30,000 on a 30,000 salary · prior 11 months",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-12",
+    "monthIndex": 12,
+    "prior": {
+     "incomeSatang": 33000000,
+     "whtSatang": 187917,
+     "ssoSatang": 962500
+    },
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "BONUS",
+      "sourceType": null,
+      "amountSatang": 3000000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000",
+     "BONUS:a1:-:-:3000000"
+    ],
+    "whtIncomeSatang": 6000000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 167083,
+    "whtOneOffSatang": 150000,
+    "availableSatang": 5745417,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 300000,
+    "totalCapSatang": 600000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 3000000,
+    "deductSatang": 0,
+    "grossSatang": 6000000,
+    "netSatang": 5745417,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-new"
+  },
+  {
+   "id": "V70",
+   "note": "r3 ALLOWANCE flagged one-off 10,000 on a 50,000 salary · month 1",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 5000000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "ALLOWANCE",
+      "sourceType": null,
+      "amountSatang": 1000000,
+      "oneOff": true
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:5000000",
+     "ALLOWANCE:a1:-:-:1000000"
+    ],
+    "whtIncomeSatang": 6000000,
+    "ssoWageSatang": 6000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 271667,
+    "whtOneOffSatang": 100000,
+    "availableSatang": 5640833,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 600000,
+    "totalCapSatang": 1200000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 1000000,
+    "deductSatang": 0,
+    "grossSatang": 6000000,
+    "netSatang": 5640833,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-new"
+  },
+  {
+   "id": "V71",
+   "note": "r3 SSO wage is data: a row listing OT + HOLIDAY_WORK counts them (wage 8,000 + OT 3,000 + holiday work)",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 800000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 480,
+      "holidayWorkMin": 480
+     }
+    ],
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "OT",
+      "sourceType": "OT_REQUEST",
+      "amountSatang": 300000
+     }
+    ],
+    "law": "SSO_WITH_OT"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:800000",
+     "HOLIDAY_WORK:wd1:2031-09-17:480:26667",
+     "OT:a1:-:-:300000"
+    ],
+    "whtIncomeSatang": 1126667,
+    "ssoWageSatang": 1126667,
+    "ssoBaseSatang": 1126667,
+    "ssoEmployeeSatang": 56300,
+    "ssoEmployerSatang": 56300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1070367,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 112666,
+    "totalCapSatang": 225333,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 300000,
+    "deductSatang": 0,
+    "grossSatang": 1126667,
+    "netSatang": 1070367,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-new"
+  },
+  {
+   "id": "V72",
+   "note": "r3 default row: OT, holiday-work premium, bonus OUT of SSO wage; commission IN [U] (wage 8,000)",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 800000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 480,
+      "holidayWorkMin": 480
+     }
+    ],
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "OT",
+      "sourceType": "OT_REQUEST",
+      "amountSatang": 300000
+     },
+     {
+      "id": "a2",
+      "kind": "BONUS",
+      "sourceType": null,
+      "amountSatang": 100000
+     },
+     {
+      "id": "a3",
+      "kind": "COMMISSION",
+      "sourceType": null,
+      "amountSatang": 50000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:800000",
+     "HOLIDAY_WORK:wd1:2031-09-17:480:26667",
+     "OT:a1:-:-:300000",
+     "BONUS:a2:-:-:100000",
+     "COMMISSION:a3:-:-:50000"
+    ],
+    "whtIncomeSatang": 1276667,
+    "ssoWageSatang": 850000,
+    "ssoBaseSatang": 850000,
+    "ssoEmployeeSatang": 42500,
+    "ssoEmployerSatang": 42500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1234167,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 117666,
+    "totalCapSatang": 235333,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 450000,
+    "deductSatang": 0,
+    "grossSatang": 1276667,
+    "netSatang": 1234167,
+    "blocked": null,
+    "flags": [
+     "SSO_COMMISSION_U"
+    ]
+   },
+   "rev": "r3-new"
+  }
+ ],
+ "otNormal": [
+  {
+   "id": "OTN-01",
+   "note": "MONTHLY 14,000 · workday OT 120 · N 480 (= H2.9 worked example)",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1400000,
+    "dailyRateSatang": null,
+    "hourlyRateSatang": null,
+    "otHourlyRateSatang": null,
+    "hasShift": true,
+    "dayClass": "WORKDAY",
+    "minutes": 120,
+    "normalDayMin": 480
+   },
+   "want": {
+    "segments": [
+     "OT_WORKDAY:120:15000:17500"
+    ],
+    "amountSatang": 17500
+   }
+  },
+  {
+   "id": "OTN-02",
+   "note": "same · N 450 ⇒ divisor 30×450",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1400000,
+    "dailyRateSatang": null,
+    "hourlyRateSatang": null,
+    "otHourlyRateSatang": null,
+    "hasShift": true,
+    "dayClass": "WORKDAY",
+    "minutes": 120,
+    "normalDayMin": 450
+   },
+   "want": {
+    "segments": [
+     "OT_WORKDAY:120:15000:18667"
+    ],
+    "amountSatang": 18667
+   }
+  },
+  {
+   "id": "OTN-03",
+   "note": "same · N 540 ⇒ divisor capped at 480",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 1400000,
+    "dailyRateSatang": null,
+    "hourlyRateSatang": null,
+    "otHourlyRateSatang": null,
+    "hasShift": true,
+    "dayClass": "WORKDAY",
+    "minutes": 120,
+    "normalDayMin": 540
+   },
+   "want": {
+    "segments": [
+     "OT_WORKDAY:120:15000:17500"
+    ],
+    "amountSatang": 17500
+   }
+  },
+  {
+   "id": "OTN-04",
+   "note": "DAILY 400 · day off no shift 600 min · N 420 ⇒ 420 holiday work ×2 + 180 ×3",
+   "input": {
+    "payType": "DAILY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": 40000,
+    "hourlyRateSatang": null,
+    "otHourlyRateSatang": null,
+    "hasShift": false,
+    "dayClass": "WORKDAY",
+    "minutes": 600,
+    "normalDayMin": 420
+   },
+   "want": {
+    "segments": [
+     "HOLIDAY_WORK:420:20000:80000",
+     "OT_HOLIDAY:180:30000:51429"
+    ],
+    "amountSatang": 131429
+   }
+  },
+  {
+   "id": "OTN-05",
+   "note": "HOURLY 65 · holiday shift OT 90 · N 450 (hourly ignores N)",
+   "input": {
+    "payType": "HOURLY",
+    "baseSalarySatang": 0,
+    "dailyRateSatang": null,
+    "hourlyRateSatang": 6500,
+    "otHourlyRateSatang": null,
+    "hasShift": true,
+    "dayClass": "HOLIDAY",
+    "minutes": 90,
+    "normalDayMin": 450
+   },
+   "want": {
+    "segments": [
+     "OT_HOLIDAY:90:30000:29250"
+    ],
+    "amountSatang": 29250
+   }
+  }
+ ],
+ "law": {
+  "SSO": {
+   "rateBp": 500,
+   "minBaseSatang": 165000,
+   "maxBaseSatang": 1750000,
+   "rounding": "BAHT_HALF_UP",
+   "employerEqualsEmployee": true,
+   "wageComponents": [
+    "BASE",
+    "ALLOWANCE",
+    "LATE_REFUND",
+    "COMMISSION"
+   ]
+  },
+  "SSO_2572": {
+   "rateBp": 500,
+   "minBaseSatang": 165000,
+   "maxBaseSatang": 2000000,
+   "rounding": "BAHT_HALF_UP",
+   "employerEqualsEmployee": true,
+   "wageComponents": [
+    "BASE",
+    "ALLOWANCE",
+    "LATE_REFUND",
+    "COMMISSION"
+   ]
+  },
+  "SSO_WITH_OT": {
+   "rateBp": 500,
+   "minBaseSatang": 165000,
+   "maxBaseSatang": 1750000,
+   "rounding": "BAHT_HALF_UP",
+   "employerEqualsEmployee": true,
+   "wageComponents": [
+    "BASE",
+    "ALLOWANCE",
+    "LATE_REFUND",
+    "COMMISSION",
+    "OT",
+    "HOLIDAY_WORK"
+   ]
+  },
+  "TAX_BRACKET": {
+   "bands": [
+    {
+     "upToSatang": 15000000,
+     "rateBp": 0
+    },
+    {
+     "upToSatang": 30000000,
+     "rateBp": 500
+    },
+    {
+     "upToSatang": 50000000,
+     "rateBp": 1000
+    },
+    {
+     "upToSatang": 75000000,
+     "rateBp": 1500
+    },
+    {
+     "upToSatang": 100000000,
+     "rateBp": 2000
+    },
+    {
+     "upToSatang": 200000000,
+     "rateBp": 2500
+    },
+    {
+     "upToSatang": 500000000,
+     "rateBp": 3000
+    },
+    {
+     "upToSatang": null,
+     "rateBp": 3500
+    }
+   ],
+   "rounding": "SATANG_HALF_UP_ONCE"
+  },
+  "DEDUCTION": {
+   "expenseRateBp": 5000,
+   "expenseCapSatang": 10000000,
+   "personalSatang": 6000000,
+   "spouseSatang": 6000000,
+   "childSatang": 3000000,
+   "ssoAllowanceCapSatang": 900000
+  }
+ },
+ "texts": {
+  "lawMissing": "ยังไม่มีตารางกฎหมายที่มีผล ณ วันจ่ายเงินเดือนนี้ — รอนักบัญชียืนยันตารางกฎหมายก่อน จึงคิดเงินเดือนแบบใหม่ได้",
+  "weBlocked": "ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ",
+  "attStale": "ข้อมูลเวลาทำงานของรายการนี้เปลี่ยนแล้ว — กด 'คำนวณรายการหักสาย/ขาด' ใหม่ก่อนอนุมัติ",
+  "no": "ไม่พบรอบจ่ายนี้ หรือคุณไม่มีสิทธิ์ดู",
+  "engineOwner": "เฉพาะเจ้าของร้านเปลี่ยนรุ่นเครื่องคิดเงินเดือนได้",
+  "capRange": "เพดานรายการหักต้องอยู่ระหว่าง 0–100%",
+  "engineV1": "ร้านนี้ยังใช้เครื่องคิดเงินเดือนรุ่นเดิม — เจ้าของร้านเปิดรุ่นใหม่ได้ที่หน้าตั้งค่า HR",
+  "engineV2": "ร้านนี้ใช้เครื่องคิดเงินเดือนรุ่นใหม่แล้ว — สร้างรอบจ่ายจากหน้าเงินเดือน",
+  "otOpen": "มีคำขอ OT ของงวดนี้ที่ยังรออนุมัติหรือยังคิดเงินไม่เสร็จ — ตัดสินคำขอ OT ก่อนสร้างหรืออนุมัติรอบ",
+  "samePerson": "คนสร้างรอบอนุมัติรอบเดียวกันไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านอนุมัติ",
+  "ownPay": "รอบนี้มีเงินเดือนของคุณเอง — ให้เจ้าของร้านอนุมัติ",
+  "noActor": "ระบุผู้อนุมัติไม่ได้ — กรุณาเข้าสู่ระบบใหม่",
+  "inputsChanged": "ข้อมูลเงินเดือนเปลี่ยนหลังสร้างร่าง — กด 'ดึงข้อมูลใหม่' แล้วตรวจอีกครั้ง",
+  "carryBound": "ยอดหักที่ยกไปงวดถัดไปถูกดึงเข้ารอบจ่ายงวดถัดไปแล้ว — กลับรายการรอบงวดถัดไปก่อน",
+  "refundV1": "รายการคืนเงิน (ไม่คิดภาษี) ใช้ได้เฉพาะร้านที่เปิดเครื่องคิดเงินเดือนรุ่นใหม่",
+  "confirmNo": "คุณไม่มีสิทธิ์ยืนยันชั่วโมงทำงานของสาขานี้",
+  "dup": "มีรอบจ่ายงวด {p} อยู่แล้ว — ลบหรือเลือกงวดอื่น",
+  "laterRun": "มีรอบจ่ายงวดหลังที่อนุมัติหรือจ่ายแล้ว — กลับรายการรอบงวดหลังสุดก่อน แล้วจึงกลับรายการรอบนี้",
+  "engineDraft": "ยังมีรอบจ่ายร่างของเครื่องรุ่นใหม่ — อนุมัติหรือลบรอบร่างนั้นก่อนเปลี่ยนกลับเป็นรุ่นเดิม",
+  "negativeNet": "ยอดสุทธิติดลบ: {names} — แก้รายการหักหรือค่าจ้างแล้วกด 'ดึงข้อมูลใหม่'",
+  "postFailed": "ลงบัญชีไม่สำเร็จ — รอบนี้กลับเป็นร่างแล้ว ยังไม่มียอดยกไปงวดถัดไป กรุณาลองอนุมัติอีกครั้ง",
+  "variablePay": "ร้านนี้มีพนักงานรายวัน/รายชั่วโมง หรือรับค่าคอมฯ อย่างเดียว — เครื่องรุ่นใหม่ยังไม่รองรับจนกว่านักบัญชียืนยันวิธีหักภาษี",
+  "ytdDraft": "มีรอบจ่ายร่างของปีภาษีเดียวกันที่จ่ายก่อนหรือวันเดียวกัน — อนุมัติหรือลบรอบนั้นก่อน",
+  "posting": "รอบนี้กำลังลงบัญชีหรือยังลงบัญชีไม่เสร็จ — รอสักครู่ หรือกดอนุมัติอีกครั้งเพื่อลงบัญชีให้เสร็จ แล้วจึงบันทึกจ่าย",
+  "dayOffOne": "วันหยุดยื่นคำขอ OT ได้วันละ 1 คำขอ — ยกเลิกคำขอเดิมแล้วยื่นใหม่ให้ครอบคลุมทั้งวัน",
+  "otOverlap": "ช่วงเวลานี้มีคำขอ OT ที่รออนุมัติหรืออนุมัติแล้ว — ยกเลิกคำขอเดิมก่อน",
+  "attPending": "พนักงานที่ออกในงวดนี้มีรายการหักสาย/ขาดที่รออนุมัติ — อนุมัติหรือปฏิเสธรายการนั้น แล้วกด 'ดึงข้อมูลใหม่' ก่อนอนุมัติรอบ"
+ }
+}

@@ -51,7 +51,7 @@ const RULES_FILE = "src/lib/modules/hr/payroll-rules.ts";
 const SCHEMA_FILE = "prisma/schema/payroll.prisma";
 // hashes taken on the base (f85f5455; SCHEMA_SHA + CRM_BLOCK_SHA re-taken after H0.6, ruled ORACLE-EDITs) — FREEZE (hr-brief-COMMON §C.4/C.5 · H0.1 §4)
 const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7";
-const SCHEMA_SHA = "640d60ebf44543b7b57f7f49f7471e36c51d733063f22c9b8ac4fbe42c3e0a15"; // ORACLE-EDIT (H3.5 · Mig WO 20270107000000_hr_bank_files, builder 12 Nov — re-take per controller rule): ba34dee6… → 640d60eb… for payroll.prisma + models HrBankProfile/HrBankExportPreset/HrBankFile (pure append at EOF — additive · H3.4 also moves this pin) · was (H3.2 · Mig WO, controller-authorized): re-taken 97a2390d… → ba34dee6… for payroll.prisma + model HrAttendanceDeduction (pure append at EOF — additive) · was (H3.1 merge 847d37bf3): H4.6 HrStockCharge (pin 22fc665b…) + H3.1 HrWorkDay/workDayId (pin b4456ccd…) — both additive
+const SCHEMA_SHA = "3c20e3c0b1e7634d2cab2f90d9ae9913bfa42bf3435e45bee2876ee40299dcf1"; // ORACLE-EDIT (H3.4 builder, merge of session/hr 251d5fe66 into wip/hr-h3.4): re-taken on the merged payroll.prisma = H3.5 bank models (pin 640d60eb…) + H3.4 additive (pin 862d8725…) · ORACLE-EDIT (H3.5 · Mig WO 20270107000000_hr_bank_files, builder 12 Nov — re-take per controller rule): ba34dee6… → 640d60eb… for payroll.prisma + models HrBankProfile/HrBankExportPreset/HrBankFile (pure append at EOF — additive · H3.4 also moves this pin) · was (H3.2 · Mig WO, controller-authorized): re-taken 97a2390d… → ba34dee6… for payroll.prisma + model HrAttendanceDeduction (pure append at EOF — additive) · was (H3.1 merge 847d37bf3): H4.6 HrStockCharge (pin 22fc665b…) + H3.1 HrWorkDay/workDayId (pin b4456ccd…) — both additive
 const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13";
 const CRM_BLOCK_SHA = "33ec8e46af7dd084ac1b1460167736a662bcc80bddc97db6ca1a22fb4c403869";
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";
@@ -408,9 +408,15 @@ function runStatic(): void {
   // S4.3
   const crmSha = sha(seg(pay, "// CRM C3.3 ▸ ทางเข้าของคอมมิชชัน CRM", "// ◂ CRM C3.3", true));
   // ORACLE-EDIT (H2.5 r3 · controller-authorized): markPaid hashed with exactly the 3 marked period-lock lines (`HR H2.5 r3`) removed — same as qc-hr-h1.3 S5.6 / qc-hr-h0.6 S8.4
+  // ORACLE-EDIT (H3.4 fix round 3 H4): markPaid may carry EXACTLY ONE added line — the v2 dispatch line below, compared as a full string (count === 1); any other
+  //   added/changed line still trips the pin · negative self-test: the same block with that line twice must NOT hash to the pin
+  const H34_MP_LINE = "  if ((await runEngineVersion(ctx, runId)) === 2) return markPaidV2(ctx, runId); // HR H3.4 ◂ fix r3 H1: รอบรุ่น 2 จ่ายได้เมื่อปิดงานแล้ว (ตรวจใต้ล็อกงวด)";
+  const stripH34 = (ls: string[]) => (ls.filter((l) => l === H34_MP_LINE).length === 1 ? ls.filter((l) => l !== H34_MP_LINE) : ls);
   const mpBlk = seg(pay, "// ── จ่ายแล้ว (APPROVED→PAID) ──", "// ◂ CRM C3.3", true);
   const mpMarked = mpBlk.split("\n").filter((l) => /\/\/ HR H2\.5 r3 [▸◂]/.test(l)).length;
-  const mpSha = mpMarked === 3 ? sha(mpBlk.split("\n").filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l)).join("\n")) : "∅";
+  const mpHash = (ls: string[]) => sha(stripH34(ls).filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l)).join("\n"));
+  const mpLines = mpBlk.split("\n");
+  const mpSha = mpMarked === 3 && (!mpLines.includes(H34_MP_LINE) || mpHash([...mpLines, H34_MP_LINE]) !== MARKPAID_BLOCK_SHA) ? mpHash(mpLines) : "∅";
   chk("S4.3", crmSha === CRM_BLOCK_SHA && mpSha === MARKPAID_BLOCK_SHA, "both blocks = base", `crmEntry=${crmSha === CRM_BLOCK_SHA} markPaid=${mpSha === MARKPAID_BLOCK_SHA}`);
   // S4.4 — UI: the two buttons, wired, DRAFT only. Candidate files: payroll-ui.tsx + any hr/*.tsx that uses the new actions.
   const hrDir = join(ROOT, "src/lib/modules/hr");
