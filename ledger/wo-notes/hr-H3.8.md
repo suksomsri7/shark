@@ -51,3 +51,33 @@ h2.10 S1.5 allows /app/me/hr/** to import only the self facade/actions/ui (+ the
 ## Open questions
 1. Should the 50 ทวิ `certPrefix` setting refuse "HRSC" (cosmetic number overlap, D1)? Needs a filings change (frozen) — controller call.
 2. DEBT-H38-1: may the gate slip page call `slipForViewer` for payroll viewers (bank line + Q2 scope in-app)?
+
+---
+## Merge round (13 Nov) — session/hr b357957e7 merged · controller rulings + review (29cc93d9b) folded in
+
+Merge `0679d70d8`: conflicts in `hr-qc-env.mts` / `core/scope.ts` (both sides kept: H3.8 HrSalaryCertificate + H3.9 HrEmployeeRegister) · `hr-ui-inventory.json` merged by key (page, testid) with `$`-keys deep-merged (445 base → 499) · `qc-hr-h3.5.mts` = session/hr version (its in-base `empSame` guard ⇒ my earlier edit 6 dropped) · messages/visual auto-merged (both "3.8" and "3.9" blocks). `prisma generate` + `migrate deploy` on the lane DB (20270109000000_hr_employee_register_fields applied). h0.1 S4.2 pin unchanged (payroll.prisma not touched by H3.9).
+
+### Rulings applied
+1. qc-hr-h3.6 S1.2: `empSame: IN_BASE || (…)` — `ORACLE-EDIT (H3.8 merge round · controller 13 Nov · S1.2)`; S1.6 is base-aware on session/hr already. qc-hr-h3.8 S1.6 allows exactly one hunk in qc-hr-h3.6.mts carrying that marker. qc-hr-h3.4-lib S1.6: the `onlyH38` per-ticket tolerance is REMOVED; replaced by the in-base rule (`pathInBase(payroll-run-rules.ts)` ⇒ base-diff n/a; payroll-rules sha still checked). qc-hr-h3.8 is base-aware: local merge-base(HEAD, session/hr) rule as in h3.6, `IN_BASE` (payslip-rules.ts in base) guards S1.2 run/item blocks, S1.5 package.json, S1.6, S1.7.
+2. Gate slip page: payroll viewers (OWNER | hr.payroll.read) are served ONLY by `slipForViewer` (DB Membership, home-branch scope, bank line "account on file", employee code, yearly history); refusal ⇒ notFound (no data), SLIP_DATA ⇒ notice. The hotfix loader is reached only on the self branch (privacy suite contract unchanged, 194/194). New check S3.22: static (payroll branch calls slipForViewer, never loadPayslipForViewer, refusal ⇒ notFound) + DB (branch payroll viewer, borrowed e6 / other-branch e5 ⇒ exact NO; positive control: the hotfix loader alone opens e6 once the borrowing is open today).
+3. D-H38-prefix-lookalike (debt): 50 ทวิ `certPrefix` may be set to "HRSC" → look-alike numbers in two separate series (no counter collision). No change.
+4. One slip list on /app/me/hr/pay: qc-hr-h2.10 (frozen) pins `hr-self-payslips` / `hr-self-slip-*` in self-ui + me pages ⇒ the ids were KEPT on the new list: `SelfPay` takes `children`; the page passes `<MySlipYears />` (by tax year) into the `hr-self-payslips` section, rows carry `hr-self-slip-<runId>`. The old row markup stays only as the no-children fallback.
+5. CERT one-line summary: `inbox-shared` `InboxSummary` CERT = employee name + purpose code (`INBOX_CERT_PURPOSES`), InboxBatch renders "หนังสือรับรอง · <ชื่อ> · <วัตถุประสงค์>" (no amounts).
+6. D-H38-pdf-sara-am (debt): tone mark + ำ gets a ZWNJ in PDFs to keep names searchable; slight overlap of the tone mark on the nikhahit — check in the visual pass.
+7. Scratchpad: from now on only `scratchpad/h38/`. Earlier I moved the shared `scratchpad/suites/` dir three times (contents restored); my runner truncated `scratchpad/suites/summary.txt` on each start — that file belongs to the other agent if it had one (none was present when I listed the restored dir, so possibly it was created by me only); in this round a mis-edited runner wrote `scratchpad/suites/summary.txt` + `scratchpad/suites/h38.log` once (20:18), both moved out to `scratchpad/h38/`.
+
+### Review findings (29cc93d9b)
+- M1 → ruling 2 above. M2 → ruling 1.
+- M3: onlyH38 removed (above). qc-hr-h3.8 S1.13 pins sha256 of privacy.ts (9b95844d…) and self.ts (d63dd889…) at the H3.8 tip, unguarded like h0.1 S4.2 ⇒ any later ticket re-takes them consciously. No other oracle pins these two files.
+- S1.7 strengthened: every hunk also closes its marker (◂) and no hunk removes a line carrying another ticket's marker (HR H<n>.<n> ≠ H3.8, HF-*).
+- m1: `latestIssued` only takes runs with payDate < start of tomorrow (BKK) — S3.23 (future-paid run for e2 ⇒ certificate cites RA3).
+- m2: `slipView({…, notIssued:true})` accepts negative gross/net integers for non-issued views (DRAFT/NOT_FINAL/WITHDRAWN); issued slips keep the strict rule — S3.24.
+- m3: certificate downloads: counter + audit row in ONE transaction after the PDF is rendered (`certPdf`); slip downloads write the audit row with a throwing insert (not the swallowing `writeAudit`) before the bytes are returned ⇒ failed audit = no file, no counter.
+- m4: `myDocuments` puts the issued predicate in the query (`OR [{engineVersion:1},{stepsJson.finalized=true}]`), JS filter kept as a second guard; H2.10 keys unchanged.
+- m5: self.ts re-export approved. Import cycle: self.ts → payslip.ts / payslip-ui.tsx → self.ts (resolveSelf / selfActorOf, used only inside functions — no top-level use, safe for ESM). The only client importer of self.ts is self-ui.tsx and it is `import type` only (erased) ⇒ nothing server-only reaches a client bundle through the facade.
+- m6: `issuedRows` (mySlips + history) locks the employee's run rows FOR SHARE before reading items, then filters on the same `slipState` predicate as the single slip.
+- New ruling: `listSalaryCertificates` adds `sourceWithdrawn` (ISSUED and the cited run is no longer APPROVED/PAID; runId not exposed); UI shows a note; owner voids normally — S3.25.
+- Race: S4.3 holds RA8 (the latest source) FOR UPDATE, issue blocks in `latestIssued … FOR SHARE OF r`, holder reverses ⇒ certificate cites RA3 (next latest issued), never a reversed run.
+
+### ORACLE-EDITs this round
+qc-hr-h3.6 S1.2 (in-base guard) · qc-hr-h3.6 S1.6 — the merged code accepted only "ORACLE-EDIT … H<n>.<n>" on frozen files, not the "HR H<n>.<n>" marker the ruling describes; added `|HR H\d+\.\d+` to its in-base later-ticket regex (unmarked hunks still fail) · qc-hr-h3.9 S1.2 frozenBlocks + S1.5 frozen diff: `IN_BASE ||` guards (my HrEmployee back-relation and privacy.ts hunks are later-ticket changes) · qc-hr-h3.4-lib S1.6 (in-base guard replaces onlyH38) · qc-hr-h3.8: base-aware rule, S1.6 allowance for qc-hr-h3.6 (only hunks marked "ORACLE-EDIT (H3.8 merge round", max 2), S1.7 strengthened, new S1.13 S3.22 S3.23 S3.24 S3.25 S4.3 (65 checks). Dropped: qc-hr-h3.5 edit 6 (session/hr version taken).

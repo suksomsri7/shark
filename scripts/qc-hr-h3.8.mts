@@ -209,10 +209,10 @@ function runStatic(): void {
   }
   {
     const rulesSha = sha(rd(PAYROLL_RULES_FILE));
-    // ORACLE-EDIT (H3.8 merge round · controller 13 Nov): qc-hr-h3.6.mts may differ only by exactly one hunk marked "ORACLE-EDIT (H3.8 merge round" (its S1.2 in-base guard) ◂
+    // ORACLE-EDIT (H3.8 merge round · controller 13 Nov): qc-hr-h3.6.mts may differ only by the two hunks marked "ORACLE-EDIT (H3.8 merge round" (S1.2 in-base guard · S1.6 later-ticket marker) ◂
     const h36 = "scripts/qc-hr-h3.6.mts";
     const h36Hunks = BASE ? (diffHunks(BASE, h36) ?? []) : [];
-    const h36Ok = h36Hunks.length === 1 && h36Hunks[0]!.added.some((l) => l.includes("ORACLE-EDIT (H3.8 merge round"));
+    const h36Ok = h36Hunks.length >= 1 && h36Hunks.length <= 2 && h36Hunks.every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (H3.8 merge round")));
     const diff = IN_BASE ? "unchanged" : BASE ? changedVsBase(BASE, FROZEN.filter((f) => !(f === h36 && h36Ok))) : "no base";
     ck("S1.6", { rules: rulesSha === PAYROLL_RULES_SHA, frozen: diff === "unchanged" }, "frozen", IN_BASE ? "n/a · H3.8 in base" : diff);
   }

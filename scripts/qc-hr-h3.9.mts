@@ -269,9 +269,10 @@ function runStatic(): void {
       chkBen: /CHECK[^;]*"otherBenefits"[^;]*500/.test(mig),
       additive: !/ALTER TABLE\s+"(HrEmployee|HrSalaryProfile|HrPayrollRun|HrPayrollItem)"|DROP |ALTER TYPE/.test(mig),
       model: !!blk && /nationality\s+String\?/.test(blk) && /otherBenefits\s+String\?/.test(blk) && /employeeId\s+String\s+@unique/.test(blk),
-      frozenBlocks:
-        !!hrBase && !!payBase && modelBlock(hrCur, "HrEmployee") === modelBlock(hrBase, "HrEmployee") && modelBlock(payCur, "HrSalaryProfile") === modelBlock(payBase, "HrSalaryProfile") &&
-        modelBlock(payCur, "HrPayrollRun") === modelBlock(payBase, "HrPayrollRun") && modelBlock(payCur, "HrPayrollItem") === modelBlock(payBase, "HrPayrollItem"),
+      // ORACLE-EDIT (H3.8 merge round · controller 13 Nov · S1.2): base-diff part n/a once H3.9 is in the base (IN_BASE) — later tickets add back-relations ◂
+      frozenBlocks: IN_BASE ||
+        (!!hrBase && !!payBase && modelBlock(hrCur, "HrEmployee") === modelBlock(hrBase, "HrEmployee") && modelBlock(payCur, "HrSalaryProfile") === modelBlock(payBase, "HrSalaryProfile") &&
+        modelBlock(payCur, "HrPayrollRun") === modelBlock(payBase, "HrPayrollRun") && modelBlock(payCur, "HrPayrollItem") === modelBlock(payBase, "HrPayrollItem")),
       scope: /\bHrEmployeeRegister:\s*sys\(\)/.test(rd(F.coreScope)),
       env: /model:\s*"HrEmployeeRegister"/.test(rd(F.env)),
     };
@@ -305,9 +306,10 @@ function runStatic(): void {
     const DLR = `${H}bank-files/download-route.ts`;
     //   and scripts/qc-hr-h3.5.mts only by hunks that carry an "ORACLE-EDIT … H3.9" marker (S6.6 HEAD check) ◂
     const H35 = "scripts/qc-hr-h3.5.mts";
-    const diff = changedVsBase(BASE, FROZEN.flatMap((f) => (f === `${H}bank-files` ? listFiles(f).filter((x) => x !== DLR) : f === H35 ? [] : [f])));
+    // ORACLE-EDIT (H3.8 merge round · controller 13 Nov · S1.5): base-diff freeze n/a once H3.9 is in the base (IN_BASE) — later tickets change frozen files in their own marked hunks; sha + tabs stay checked ◂
+    const diff = IN_BASE ? "unchanged" : changedVsBase(BASE, FROZEN.flatMap((f) => (f === `${H}bank-files` ? listFiles(f).filter((x) => x !== DLR) : f === H35 ? [] : [f])));
     const h35Hunks = diffHunks(BASE, H35) ?? [];
-    const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
+    const dlrOk = IN_BASE || (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
     const n = hrNavLabels();
     const b = (s: string | null, at: string) => (s && s.indexOf(at) >= 0 ? s.slice(s.indexOf(at), s.indexOf("];", s.indexOf(at))) : "");
     const labels = (s: string) => [...s.matchAll(/label:\s*["']([^"']+)["']/g)].map((m) => m[1]);

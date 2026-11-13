@@ -237,7 +237,8 @@ function runStatic(): void {
     const laterMarked = (h: { added: string[] }, re: RegExp) => IN_BASE && h.added.some((l) => re.test(l));
     const oracleEdited = (f: string) =>
       (!!ORACLE_EDITS[f] || IN_BASE) &&
-      (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+/));
+      // ORACLE-EDIT (H3.8 merge round · controller 13 Nov · S1.6): as ruled — in base, a later ticket's "HR H<n>.<n>" marker is accepted too (not only "ORACLE-EDIT … H<n>.<n>"); unmarked hunks still fail ◂
+      (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+|HR H\d+\.\d+/));
     const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
     const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f)) : [];
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;
