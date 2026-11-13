@@ -526,3 +526,4 @@
   - Accountant: rule only for in-force months · frozen month settles on snapshot · OFF can only lose (rule OFF + data change after approval ⇒ deduction rejected, not re-created until ON) · monthly cap = base · human reject = waiver for that digest.
   - Hunter probes (untracked, lane 1): scripts/hunt-h3.2-{money,money2,race,arith,edges}.mts — candidates for H5.2 regression.
 - H3.4 phase B running on lane 3 from origin/wip/hr-h3.2 ac8de9d27 content (= base). H2.12 parts B–D running on lane 2 (wip/hr-h2.12).
+- 2026-11-13 · Owner: main 4d6ef6ee7 (REPLY_RATE no longer exported from the mobile inbox reply route) merged into session/hr once (1 file, non-HR; fitness 53/53, fitness-hr 9/9). Visual builds no longer need SHARK_TSC_PREBUILD_OK for that file — recheck at the next visual batch. Lanes pick it up at their next base merge.
