@@ -200,8 +200,12 @@ export type TaxRow = {
   refundGrossSatang?: number;
   refundVatSatang?: number;
   refundReceiptNos?: string[];
+  /** ACC T1.8 ▸ บิลผสม (เพิ่มล้วน · มีเมื่อ > 0): ยอดขาย 0% · ยกเว้น · เก็บแทน (นอกยอดขาย — ไม่อยู่ในฐาน) ◂ */
+  zeroRatedSatang?: number;
+  exemptSatang?: number;
+  onBehalfSatang?: number;
 };
-export type TaxTotals = { billCount: number; grossSatang: number; vatSatang: number; baseSatang: number; vatableGrossSatang: number; nonVatGrossSatang: number; voidCount: number; refundCount?: number; refundGrossSatang?: number; refundVatSatang?: number };
+export type TaxTotals = { billCount: number; grossSatang: number; vatSatang: number; baseSatang: number; vatableGrossSatang: number; nonVatGrossSatang: number; voidCount: number; refundCount?: number; refundGrossSatang?: number; refundVatSatang?: number; zeroRatedSatang?: number; exemptSatang?: number; onBehalfSatang?: number };
 // POS P2.11 ▸ รายงานช่องทาง (brief P2.11 §5 · มติ 5 16): แถวต่อรหัสช่องทาง (รวมข้ามสาขาด้วยรหัส · บิลเดิมไม่มีรหัส = STORE/WEB ตาม sourceModule) ·
 //   billCount = บิลขายที่ไม่ VOIDED (PAID + REFUNDED) · ใบคืนเงินหักยอด + ค่าคอมฯ ส่วนของใบในวันที่คืน ·
 //   net = gross − refund − commission − commissionVat · sharePct = ปัด 1 ตำแหน่งของ 100 × net / Σ net (Σ ≤ 0 = 0) ◂
@@ -455,6 +459,10 @@ type SaleRow = {
   /** P1.8 — SALE = บิลขาย · REFUND = ใบคืนเงิน (ยอดบวก ตีความเป็นเงินออก · refSaleId = บิลเดิม) */
   docType: string;
   refSaleId: string | null;
+  /** ACC T1.8 ▸ ยอดตามกลุ่ม VAT (บิลเก่า 0) ◂ */
+  zeroRatedSatang?: number;
+  exemptSatang?: number;
+  onBehalfSatang?: number;
   /** POS P2.9b ▸ fix1 มติ 4: POS_DEPOSIT = ใบรับ/ใบคืนเงินมัดจำ (ไม่ใช่ยอดขาย — รายงานยอดขาย/พนักงานตัดออก) ◂ */
   sourceModule?: string | null;
   /** POS P2.12 ▸ BR: คอลัมน์สำเนาช่องทางของบิล (ค่าคอมฯ ต่อสาขา · ตัวรวมเดียวกับรายงานช่องทาง) ◂ */
@@ -491,6 +499,9 @@ async function loadSales(db: Db, s: Scope, start: Date, end: Date): Promise<Sale
       channelCode: true,
       channelCommissionSatang: true,
       channelCommissionVatSatang: true,
+      zeroRatedSatang: true, // ACC T1.8 ◂
+      exemptSatang: true,
+      onBehalfSatang: true,
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
@@ -1065,6 +1076,11 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
         const gross = sum(paid, (x) => x.grandTotalSatang);
         const vat = sum(paid, (x) => x.vatSatang);
         const rs = refundGroups.get(`${g.date}|${g.unitId}`) ?? [];
+        // ACC T1.8 ▸ บิลผสม: ฐาน = ยอดขาย (ไม่รวมเก็บแทน) − VAT · ยอดที่มี VAT = เฉพาะกลุ่มมาตรฐานของบิลที่มี VAT · บิลเก่า = สูตรเดิมทุกสตางค์ ◂
+        const z = sum(paid, (x) => x.zeroRatedSatang ?? 0);
+        const e = sum(paid, (x) => x.exemptSatang ?? 0);
+        const ob = sum(paid, (x) => x.onBehalfSatang ?? 0);
+        const std = (x: SaleRow) => x.grandTotalSatang - (x.zeroRatedSatang ?? 0) - (x.exemptSatang ?? 0) - (x.onBehalfSatang ?? 0);
         return {
           businessDate: g.date,
           unitId: g.unitId,
@@ -1074,9 +1090,10 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
           billCount: paid.length,
           grossSatang: gross,
           vatSatang: vat,
-          baseSatang: gross - vat,
-          vatableGrossSatang: sum(paid.filter((x) => x.vatSatang > 0), (x) => x.grandTotalSatang),
-          nonVatGrossSatang: sum(paid.filter((x) => x.vatSatang === 0), (x) => x.grandTotalSatang),
+          baseSatang: gross - ob - vat,
+          vatableGrossSatang: sum(paid.filter((x) => x.vatSatang > 0), std),
+          nonVatGrossSatang: sum(paid.filter((x) => x.vatSatang === 0), (x) => x.grandTotalSatang - (x.onBehalfSatang ?? 0)) + sum(paid.filter((x) => x.vatSatang > 0), (x) => (x.zeroRatedSatang ?? 0) + (x.exemptSatang ?? 0)),
+          ...(z + e + ob > 0 ? { zeroRatedSatang: z, exemptSatang: e, onBehalfSatang: ob } : {}),
           voidCount: voided.length,
           voidReceiptNos: voided.map((x) => x.receiptNo ?? "").filter((x) => x !== ""),
           ...(rs.length
@@ -1093,6 +1110,9 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
       vatableGrossSatang: sum(rows, (x) => x.vatableGrossSatang),
       nonVatGrossSatang: sum(rows, (x) => x.nonVatGrossSatang),
       voidCount: sum(rows, (x) => x.voidCount),
+      ...(rows.some((x) => (x.zeroRatedSatang ?? 0) + (x.exemptSatang ?? 0) + (x.onBehalfSatang ?? 0) > 0)
+        ? { zeroRatedSatang: sum(rows, (x) => x.zeroRatedSatang ?? 0), exemptSatang: sum(rows, (x) => x.exemptSatang ?? 0), onBehalfSatang: sum(rows, (x) => x.onBehalfSatang ?? 0) }
+        : {}), // ACC T1.8 ◂
       ...(rows.some((x) => x.refundCount)
         ? { refundCount: sum(rows, (x) => x.refundCount ?? 0), refundGrossSatang: sum(rows, (x) => x.refundGrossSatang ?? 0), refundVatSatang: sum(rows, (x) => x.refundVatSatang ?? 0) }
         : {}),

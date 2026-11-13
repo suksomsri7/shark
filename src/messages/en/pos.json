@@ -1265,7 +1265,10 @@
       "taxBase": "Tax base",
       "vatable": "With VAT",
       "nonVat": "Without VAT",
-      "voidReceipts": "Voided nos."
+      "voidReceipts": "Voided nos.",
+      "zeroRated": "Zero-rated",
+      "exempt": "VAT exempt",
+      "onBehalf": "Collected on behalf (not sales)"
     },
     "summary": {
       "salesPlusTip": "Sales {sales} + tips {tip} = total received {paid}",

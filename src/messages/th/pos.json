@@ -1265,7 +1265,10 @@
       "taxBase": "ฐานภาษี",
       "vatable": "ยอดมี VAT",
       "nonVat": "ยอดไม่มี VAT",
-      "voidReceipts": "เลขที่ยกเลิก"
+      "voidReceipts": "เลขที่ยกเลิก",
+      "zeroRated": "ยอดขาย 0%",
+      "exempt": "ยอดขายยกเว้น VAT",
+      "onBehalf": "เก็บแทน (นอกยอดขาย)"
     },
     "summary": {
       "salesPlusTip": "ยอดขาย {sales} + ทิป {tip} = รับทั้งหมด {paid}",

@@ -89,6 +89,9 @@ type SourceAgg = {
   reversalDate: Date | null;
   journalNo: string;
   memo: string | null;
+  /** ACC T1.8 ▸ บิล POS ที่ไม่มีบรรทัด 2200 (ยกเว้น/0% ล้วน) · zeroReversal = มีรายการกลับรายการในเดือน ◂ */
+  zeroVat?: boolean;
+  zeroReversal?: boolean;
 };
 
 export async function salesTaxReport(ctx: Ctx, periodKey: string, opts?: { abbMode?: SalesTaxAbbMode | null }): Promise<SalesTaxReport> {
@@ -154,6 +157,27 @@ export async function salesTaxReport(ctx: Ctx, periodKey: string, opts?: { abbMo
     sources.set(key, s);
   }
 
+  // ── 1b) ACC T1.8 ▸ บิล POS ที่ไม่มีบรรทัด 2200 เลย (ขายยกเว้น/0% ล้วน · ใบคืนของรายการนั้น) — แถว VAT 0 ในกลุ่มของมัน (เดิมไม่ขึ้นรายงาน) ·
+  //   เฉพาะ refType PosSale เล่ม SALES (JV ขาย/คืน · ไม่รวมค่าคอมฯ) · ต้นทางที่มีบรรทัด 2200 แล้วไม่แตะ ◂
+  const zeroEntries = await db.accountJournalEntry.findMany({
+    where: { periodKey, refType: "PosSale", book: "SALES", lines: { none: { accountId: ledger.id } } },
+    select: { id: true, refId: true, date: true, docNo: true, reversalOfId: true, memo: true },
+  });
+  for (const e of zeroEntries) {
+    const key = `PosSale:${e.refId ?? e.id}`;
+    const ex = sources.get(key);
+    if (ex && !ex.zeroVat) continue;
+    const z = ex ?? ({ key, refType: "PosSale", refId: e.refId ?? e.id, vat: 0, reversalVat: 0, hasOriginal: false, firstDate: e.date, reversalDate: null, journalNo: e.docNo, memo: e.memo, zeroVat: true } as SourceAgg);
+    if (e.reversalOfId) {
+      z.zeroReversal = true;
+      z.reversalDate = z.reversalDate && z.reversalDate > e.date ? z.reversalDate : e.date;
+    } else {
+      z.hasOriginal = true;
+      if (e.date < z.firstDate) z.firstDate = e.date;
+    }
+    sources.set(key, z);
+  }
+
   // ── 2) เอกสารบัญชี + บิล POS ──
   const docIds = [...sources.values()].filter((s) => s.refType === "AccountDocument").map((s) => s.refId);
   const saleIds = [...sources.values()].filter((s) => s.refType === "PosSale").map((s) => s.refId);
@@ -215,10 +239,10 @@ export async function salesTaxReport(ctx: Ctx, periodKey: string, opts?: { abbMo
   const docRows: SalesTaxRow[] = [];
   const abbBills: SalesTaxRow[] = [];
   for (const s of sources.values()) {
-    if (s.vat === 0 && !s.hasOriginal) continue; // ไม่มีอะไรในเดือนนี้
-    const sameMonthCancel = s.hasOriginal && s.reversalVat !== 0 && s.vat === 0;
-    const laterMonthCancel = !s.hasOriginal && s.reversalVat !== 0;
-    if (s.vat === 0 && !sameMonthCancel) continue; // คู่บวกลบอื่น (ไม่ใช่การยกเลิก) — ไม่มียอดให้รายงาน
+    if (s.vat === 0 && !s.hasOriginal && !s.zeroReversal) continue; // ไม่มีอะไรในเดือนนี้
+    const sameMonthCancel = s.zeroVat ? s.hasOriginal && !!s.zeroReversal : s.hasOriginal && s.reversalVat !== 0 && s.vat === 0;
+    const laterMonthCancel = s.zeroVat ? !s.hasOriginal && !!s.zeroReversal : !s.hasOriginal && s.reversalVat !== 0;
+    if (s.vat === 0 && !sameMonthCancel && !s.zeroVat) continue; // คู่บวกลบอื่น (ไม่ใช่การยกเลิก) — ไม่มียอดให้รายงาน
 
     let doc: Doc | undefined;
     let meta: PosBillMeta | undefined;
@@ -237,11 +261,12 @@ export async function salesTaxReport(ctx: Ctx, periodKey: string, opts?: { abbMo
         undefined;
     }
 
+    if (s.zeroVat && !doc) continue; // ACC T1.8 ▸ ไม่มีเอกสาร = ไม่มีมูลค่าขายให้แยกกลุ่ม (เช่น ใบคืนรายการเก็บแทน) ◂
     const notes: string[] = [];
     const isAbb = s.refType === "PosSale" && (doc?.docType === "TAX_INVOICE_ABB" || (!doc && meta?.docType === "SALE" && meta.sourceModule !== "POS_DEPOSIT"));
     const docNo = doc?.docNo ?? meta?.receiptNo ?? s.journalNo;
     const date = laterMonthCancel ? (s.reversalDate ?? s.firstDate) : doc?.issueDate ?? meta?.paidAt ?? s.firstDate;
-    const sign: 1 | -1 = doc?.docType === "CREDIT_NOTE" || meta?.docType === "REFUND" ? -1 : 1;
+    const sign: 1 | -1 = (doc?.docType === "CREDIT_NOTE" || meta?.docType === "REFUND" ? -1 : 1) * (s.zeroVat && laterMonthCancel ? -1 : 1) as 1 | -1; // ACC T1.8 ▸ ยกเลิกข้ามเดือนของบิล VAT 0 = ติดลบ ◂
 
     let parts: RatePart[];
     if (sameMonthCancel) {
