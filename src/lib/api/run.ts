@@ -11,6 +11,7 @@
 
 import type { ZodType } from "zod";
 import { writeAudit } from "@/lib/core/audit";
+import { withLegalAck } from "@/lib/core/legal-ambient";
 import { actorAuditId, actorAuditType, actorCan, type ApiActor } from "./actor";
 import type { ApiOp } from "./op";
 import { ApiError, unwrapEnvelope, type ApiErrorDetail, type PagedInfo } from "./respond";
@@ -83,15 +84,31 @@ export async function runOpAsActor(op: ApiOp, actor: ApiActor, args: RunOpArgs):
   // CRM C5.5 ▸ RV-3: ด่าน scope อยู่ในเขต beforeHandler เมื่อผู้เรียกส่งมา (REST) — ไม่ส่ง = ตรวจตรงเหมือนเดิมทุกตัวอักษรของผล ◂
   if (args.beforeHandler) await args.beforeHandler(assertScope);
   else assertScope();
-  const env = unwrapEnvelope(
-    await op.handler({
-      actor,
-      params: args.params ?? {},
-      input: args.input,
-      requestId: args.requestId,
-      idempotencyKey: args.idempotencyKey ?? null,
-    }),
-  );
+  const callHandler = async () =>
+    unwrapEnvelope(
+      await op.handler({
+        actor,
+        params: args.params ?? {},
+        input: args.input,
+        requestId: args.requestId,
+        idempotencyKey: args.idempotencyKey ?? null,
+      }),
+    );
+  // ACC T1.7 ▸ op เขียน: เปิดบริบทการยืนยันคำเตือนกฎหมายจาก `input.acknowledge` — ด่านลึก (เดือนที่ยื่นแล้วในชั้นลงบัญชี)
+  //   อ่านรหัสจากบริบท · ค้างยืนยัน ⇒ LegalAckRequiredError → 409 legal_ack_required (respond.ts) แม้ service จะกลืน error ◂
+  const ackRaw = (args.input as { acknowledge?: unknown } | null | undefined)?.acknowledge;
+  const env =
+    op.kind === "read"
+      ? await callHandler()
+      : await withLegalAck(
+          {
+            codes: Array.isArray(ackRaw) ? ackRaw.filter((c): c is string => typeof c === "string") : [],
+            actorId: actorAuditId(actor),
+            actorType: actorAuditType(actor),
+            via: actor.kind === "apikey" ? "rest" : "ai-proposal",
+          },
+          callHandler,
+        );
   // audit เขียนหลังงานสำเร็จเท่านั้น · อ่านอย่างเดียวไม่เขียน (อ่านไม่เปลี่ยนอะไร)
   if (op.kind !== "read") {
     // เป้าหมายของแถว audit — op ที่ประกาศ `auditTarget` ชี้ไปที่ "ของชิ้นนั้น" (สมาชิก/เอกสาร)

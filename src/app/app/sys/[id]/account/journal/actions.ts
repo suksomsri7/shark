@@ -11,6 +11,7 @@ import {
   toggleNeedsReview,
   type ManualJvLineInput,
 } from "@/lib/modules/account/journal-v2";
+import { screenAck, withScreenLegal } from "@/lib/modules/account/legal-gate";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 /** ค่าจาก MoneyInput เป็น "สตางค์" (integer) อยู่แล้ว — ห้ามคูณ 100 ซ้ำ */
@@ -51,13 +52,16 @@ export async function createJvAction(fd: FormData): Promise<void> {
   }));
 
   const draft = str(fd, "mode") === "DRAFT";
-  const res = await createManualEntry(ctx, {
-    dateKey: str(fd, "date"),
-    book: (str(fd, "book") || "GENERAL") as AccountJournalBook,
-    memo: str(fd, "memo") || null,
-    lines,
-    postedById: userId,
-  });
+  // ACC T1.7 ▸ บริบทการยืนยัน: ลงเดือนที่ยื่นแล้ว = ต้องติ๊กยืนยันในฟอร์ม (ack) · ไม่ติ๊ก = กลับมาพร้อมคำเตือน ◂
+  const res = await withScreenLegal(screenAck(fd.getAll("ack"), userId), () =>
+    createManualEntry(ctx, {
+      dateKey: str(fd, "date"),
+      book: (str(fd, "book") || "GENERAL") as AccountJournalBook,
+      memo: str(fd, "memo") || null,
+      lines,
+      postedById: userId,
+    }),
+  );
 
   if (!res.ok) redirect(`${jvBase(systemId)}?err=${encodeURIComponent(res.reason)}&new=1`);
 

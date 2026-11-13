@@ -6,10 +6,12 @@
 // ข้อความ/มาตรา/ป้าย มาจากทะเบียนกลาง `src/lib/core/settings/legal/warnings.ts` เท่านั้น
 import type { Prisma } from "@prisma/client";
 import { recordLegalAckInTx } from "@/lib/core/legal-ack";
+import { withLegalAck } from "@/lib/core/legal-ambient";
 import {
   LEGAL_ACK_REASON_TH,
   LEGAL_ACK_REQUIRED,
   LegalAckRequiredError,
+  isLegalAckRequiredError,
   legalWarning,
   legalWarningsText,
   unacknowledged,
@@ -69,4 +71,48 @@ export function legalAckResult(e: LegalAckRequiredError): { ok: false; reason: s
 /** รหัสที่ผู้ใช้ยืนยันจากฟอร์ม (`formData.getAll("ack")`) — กรองเหลือข้อความ */
 export function ackCodesOf(values: readonly unknown[]): string[] {
   return values.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 64);
+}
+
+/**
+ * ACC T1.7 — ตัวห่อของ server action (จอ): เปิดบริบทการยืนยันรอบการเรียก service · ด่านลึก (เดือนที่ยื่นแล้ว) ค้างยืนยัน
+ * ⇒ ได้ `{ ok:false, reason, legal }` เสมอ (แม้ service จะกลืน error) · ห้ามห่อโค้ดที่ redirect()
+ */
+export async function withScreenLegal<T>(
+  ack: LegalAck,
+  fn: () => Promise<T>,
+): Promise<T | { ok: false; reason: string; legal: LegalAckRequired }> {
+  try {
+    return await withLegalAck(ack, fn);
+  } catch (e) {
+    if (isLegalAckRequiredError(e)) return legalAckResult(e);
+    throw e;
+  }
+}
+
+/** รหัสยืนยัน + ผู้ยืนยันของจอ */
+export function screenAck(codes: readonly unknown[], userId: string | null): LegalAck {
+  return { codes: ackCodesOf(codes), actorId: userId, via: "screen" };
+}
+
+// ─────────────────── ACC T1.9 ขายไม่มี VAT ในสมุดที่จด VAT ───────────────────
+
+/** เอกสารขายที่เป็นรายได้ (ใบที่ออกจากใบแจ้งหนี้ — ใบเสร็จ/ใบกำกับ — ไม่ใช่รายได้ใหม่) */
+const SALE_REVENUE_TYPES = new Set(["INVOICE", "RECEIPT", "TAX_INVOICE", "DEPOSIT_RECEIPT", "DEBIT_NOTE"]);
+
+/**
+ * คำเตือน SALE_WITHOUT_VAT_REGISTERED — pure (จอแสดงล่วงหน้า · service ใช้ตัวเดียวกัน)
+ * ใบไม่คิด VAT (vatMode NONE) ที่มีบรรทัดไม่ได้ติดป้ายยกเว้น (vatRateBp < 0) ในสมุดที่จด VAT
+ * บรรทัด 0% ในใบที่มี VAT = ติดป้าย 0% แล้ว ไม่เตือน
+ */
+export function saleWithoutVatWarnings(
+  doc: { docType: string; vatMode: string; sourceDocId?: string | null; lines: readonly { vatRateBp: number; qty: number | { toString(): string }; unitPrice: number; discount?: number | null }[] },
+  settings: { vatRegistered: boolean } | null,
+): LegalWarning[] {
+  if (!settings?.vatRegistered || !SALE_REVENUE_TYPES.has(doc.docType)) return [];
+  if ((doc.docType === "RECEIPT" || doc.docType === "TAX_INVOICE") && doc.sourceDocId) return [];
+  if (doc.vatMode !== "NONE") return [];
+  const untaxed = doc.lines.filter((l) => l.vatRateBp >= 0);
+  if (untaxed.length === 0) return [];
+  const amount = untaxed.reduce((n, l) => n + Math.max(0, Math.round((Number(l.qty) || 0) * (l.unitPrice || 0)) - (l.discount || 0)), 0);
+  return [legalWarning("SALE_WITHOUT_VAT_REGISTERED", { amount: `(ยอด ${satangTh(amount)} บาท)`, lines: untaxed.length })];
 }

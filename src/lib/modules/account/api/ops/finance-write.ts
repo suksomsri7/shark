@@ -21,6 +21,7 @@
 //      ผิดพลาดของผู้เรียก ไม่ใช่กันการแข่งกัน · การรับประกันที่แท้จริงยังเป็นงบทดลองของ GL
 //   5) เงินเป็นสตางค์จำนวนเต็มเสมอ · วันที่เป็น `YYYY-MM-DD` (วันไทย) · body ทุกตัว `.strict()`
 
+import { ackField } from "../ack-field";
 import { createHash } from "node:crypto";
 import type { AccountChequeStatus, AccountFinanceType } from "@prisma/client";
 import { z } from "zod";
@@ -48,7 +49,7 @@ import {
 } from "../../finance";
 import { reimbursePettyCash, topUpPettyCash } from "../../finance-overview";
 import { issueWhtCert, markFiled, unmarkFiled } from "../../wht";
-import { actorRefId, type ApiActor } from "../actor";
+import { actorAuditId, actorRefId, type ApiActor } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError } from "../respond";
 import { chequeRowView, financeAccountWriteView } from "../serialize-finance";
@@ -616,6 +617,7 @@ const chequesVoid = defineOp({
 
 const whtCertInput = z
   .object({
+    acknowledge: ackField,
     paymentId: idField("Id of the payment to a vendor that had withholding tax deducted. Take it from the payments of the expense document."),
     whtIncomeType: whtIncomeTypeField,
     whtRateBp: z
@@ -715,7 +717,7 @@ const whtUnmarkFiled = defineOp({
     })
     .strict(),
   test: "D1-F3.7",
-  async handler({ actor, params }) {
+  async handler({ actor, params, input }) {
     const rawForm = params.form ?? "";
     const period = params.period ?? "";
     if (rawForm !== "3" && rawForm !== "53") {
@@ -724,7 +726,8 @@ const whtUnmarkFiled = defineOp({
     if (!YM.test(period)) {
       throw new ApiError(422, "validation", "งวดต้องเป็นเดือนรูปแบบ YYYY-MM (01-12)", "The period must be a month in `YYYY-MM` form.");
     }
-    const res = await unmarkFiled(actor.tenantId, actor.systemId, { form: rawForm === "3" ? 3 : 53, periodKey: period });
+    // ACC T1.7 ▸ ไม่ลบแถว — เก็บใคร/เมื่อไร/เหตุผล ◂
+    const res = await unmarkFiled(actor.tenantId, actor.systemId, { form: rawForm === "3" ? 3 : 53, periodKey: period, userId: actorAuditId(actor), reason: input.reason });
     if (!res.ok) {
       if (res.reason.includes("ยังไม่ได้ทำเครื่องหมาย")) throw notFound(res.reason);
       failWith(res.reason);

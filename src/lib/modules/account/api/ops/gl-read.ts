@@ -34,6 +34,9 @@ import { currentPeriodKey, isPeriodKey, listPeriods, listVatFilings, periodCheck
 import { fiscalYearEndMonth, getPolicy } from "../../policy";
 import { agingReport, balanceSheet, cashFlow, pp30, pp30Csv, profitLoss, trialBalance } from "../../reports";
 import { defineOp, type ApiOp } from "../op";
+import { pndFiledDifferences, vatFiledDifferences } from "../../filed-differences";
+import { filingHistory } from "../../filing-history";
+import { revenueWithoutVat } from "../../revenue-novat";
 import { ymd } from "../serialize";
 import { parkedOutputVat } from "../../tax-point";
 import { ApiError, paged, type PagedInfo } from "../respond";
@@ -616,6 +619,134 @@ const periodsChecklist = defineOp({
   },
 });
 
+// ACC T1.9 ▸ รายได้ที่ไม่มี VAT (เอกสารขาย + บิล POS ต่อเดือน · ยกเว้น / 0% / ไม่คิด VAT) ◂
+const ymField = (name: string) => z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, `${name} ต้องเป็นเดือนรูปแบบ YYYY-MM`);
+const revenueNoVatInput = z
+  .object({
+    from: ymField("from").describe("First month, `YYYY-MM`."),
+    to: ymField("to").describe("Last month, `YYYY-MM` (inclusive). At most 24 months after `from`."),
+  })
+  .strict();
+
+const reportsRevenueWithoutVat = defineOp({
+  id: "reports.revenue-without-vat",
+  method: "GET",
+  path: "/reports/revenue-without-vat",
+  kind: "read",
+  action: "account.tax.view",
+  rate: "report",
+  summary:
+    "Revenue that carried no VAT, per month: issued sales documents and POS bills, one row per line with no VAT, grouped as EXEMPT (line marked exempt), ZERO_RATED (0% line on a VAT document) or UNTAXED (document without VAT, no reason given — what a VAT-registered shop must check). Credit notes count negative; receipts and tax invoices issued from an invoice are counted at the invoice.",
+  label: "รายได้ที่ไม่มี VAT",
+  input: revenueNoVatInput,
+  tool: { name: "account_revenue_without_vat", hint: "Use to check sales that carried no VAT in a VAT-registered shop, and whether each is exempt, zero-rated or simply untaxed." },
+  test: "T1.9-R1",
+  async handler({ actor, input }) {
+    if (input.from > input.to) throw new ApiError(422, "validation", "from ต้องไม่หลัง to", "`from` must not be after `to`.");
+    const [fy, fm] = input.from.split("-").map(Number);
+    const [ty, tm] = input.to.split("-").map(Number);
+    if ((ty - fy) * 12 + (tm - fm) > 23) throw new ApiError(422, "validation", "ช่วงเดือนยาวเกิน 24 เดือน", "The range may cover at most 24 months.");
+    const r = await revenueWithoutVat({ tenantId: actor.tenantId, systemId: actor.systemId }, input);
+    return {
+      from: r.from,
+      to: r.to,
+      vatRegistered: r.vatRegistered,
+      totals: { exemptSatang: r.totals.EXEMPT, zeroRatedSatang: r.totals.ZERO_RATED, untaxedSatang: r.totals.UNTAXED, totalSatang: r.totals.total, documents: r.totals.docCount },
+      months: r.byMonth.map((m) => ({ month: m.month, exemptSatang: m.EXEMPT, zeroRatedSatang: m.ZERO_RATED, untaxedSatang: m.UNTAXED, totalSatang: m.total })),
+      rows: r.rows.map((x) => ({
+        month: x.month,
+        date: ymd(x.date),
+        documentId: x.docId,
+        docNo: x.docNo,
+        docType: x.docType,
+        source: x.source,
+        contactName: x.contactName,
+        description: x.description,
+        category: x.category,
+        amountSatang: x.amount,
+      })),
+    };
+  },
+});
+
+// ACC T1.7 ▸ ผลต่างหลังยื่น + ประวัติเครื่องหมายยื่น (ภ.พ.30 + ภ.ง.ด.3/53) ◂
+const isoOrNull = (d: Date | null | undefined) => (d ? d.toISOString() : null);
+
+const periodsFiledDifferences = defineOp({
+  id: "periods.filed-differences",
+  method: "GET",
+  path: "/periods/{key}/filed-differences",
+  kind: "read",
+  action: "account.journal.view",
+  summary:
+    "Entries dated into a month after it was marked filed: for VAT (PP30) every posting into the month that changed output, input or parked VAT after the filing time, with document, effect, who and whether the legal warning was acknowledged; for withholding tax (PND3/53) every certificate issued or cancelled in the month after it was marked filed. Also returns the mark/unmark history. Totals are what an additional filing would add.",
+  label: "ผลต่างหลังยื่น",
+  input: noQuery,
+  test: "F17-R1",
+  async handler({ actor, params }) {
+    const key = params.key ?? "";
+    if (!isPeriodKey(key)) {
+      throw new ApiError(422, "validation", "งวดต้องเป็นรูปแบบ YYYY-MM (เดือน 01-12)", "Period must look like YYYY-MM.");
+    }
+    const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
+    const [vat, pnd, hVat, h3, h53] = await Promise.all([
+      vatFiledDifferences(ctx, key),
+      pndFiledDifferences(ctx, key),
+      filingHistory(ctx, "PP30", key),
+      filingHistory(ctx, 3, key),
+      filingHistory(ctx, 53, key),
+    ]);
+    const hist = (rows: typeof hVat) => rows.map((h) => ({ action: h.action, at: h.at.toISOString(), actorId: h.actorId, actorType: h.actorType, reason: h.reason, before: h.before }));
+    return {
+      period: key,
+      vat: {
+        filed: vat.filed,
+        filedAt: isoOrNull(vat.filedAt),
+        latestFiledAt: isoOrNull(vat.latestFiledAt),
+        totals: { outputSatang: vat.totals.output, inputSatang: vat.totals.input, parkedSatang: vat.totals.parked, netSatang: vat.totals.net },
+        notYetFiled: { outputSatang: vat.pending.output, inputSatang: vat.pending.input, netSatang: vat.pending.net },
+        rows: vat.rows.map((r) => ({
+          entryId: r.entryId,
+          entryNo: r.entryNo,
+          date: ymd(r.date),
+          postedAt: r.createdAt.toISOString(),
+          refType: r.refType,
+          refId: r.refId,
+          docNo: r.docNo,
+          docType: r.docType,
+          manual: r.manual,
+          outputSatang: r.outputDelta,
+          inputSatang: r.inputDelta,
+          parkedSatang: r.parkedDelta,
+          byId: r.byId,
+          byName: r.byName,
+          acknowledged: r.acknowledged,
+          inAdditionalFiling: !r.afterLatestFiling,
+        })),
+        history: hist(hVat),
+      },
+      pnd: {
+        forms: pnd.forms.map((f) => ({ form: f.form, filedAt: f.filedAt.toISOString() })),
+        totals: { pnd3Satang: pnd.totals["3"], pnd53Satang: pnd.totals["53"] },
+        rows: pnd.rows.map((r) => ({
+          form: r.form,
+          certId: r.certId,
+          certNo: r.certNo,
+          contactName: r.contactName,
+          issueDate: ymd(r.issueDate),
+          change: r.change,
+          at: r.at.toISOString(),
+          whtSatang: r.whtDelta,
+          byId: r.byId,
+          byName: r.byName,
+          acknowledged: r.acknowledged,
+        })),
+        history: { pnd3: hist(h3), pnd53: hist(h53) },
+      },
+    };
+  },
+});
+
 // ═══════════════ สินทรัพย์ถาวร ═══════════════
 
 const ASSET_STATUSES = ["ACTIVE", "FULLY_DEPRECIATED", "DISPOSED", "WRITTEN_OFF"] as const satisfies readonly AccountAssetStatus[];
@@ -696,6 +827,8 @@ export const GL_READ_OPS: ApiOp[] = [
   reportsParkedVat,
   periodsList,
   periodsChecklist,
+  periodsFiledDifferences,
+  reportsRevenueWithoutVat,
   assetsList,
   assetsGet,
   assetsDepreciationPreview,

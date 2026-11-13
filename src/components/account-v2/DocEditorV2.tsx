@@ -1,4 +1,6 @@
 "use client";
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
+import { LegalWarnings } from "./LegalWarnings";
 import { effectiveIssueToggle, taxPointHintTh } from "@/lib/modules/account/tax-point-shared";
 
 import Link from "next/link";
@@ -189,6 +191,9 @@ function EditorBody(props: DocEditorV2Props) {
   const [payAdvanced, setPayAdvanced] = useState(false);
   const [payBoxes, setPayBoxes] = useState<PayBox[]>([]);
   const [payError, setPayError] = useState("");
+  // ACC T1.7 — คำเตือนที่ต้องติ๊กยืนยัน (ใบเสร็จ/รับเงินลงเดือนที่ยื่นแล้ว) · กดอนุมัติซ้ำพร้อมรหัสที่ยืนยัน
+  const [payLegal, setPayLegal] = useState<LegalWarning[]>([]);
+  const [payAck, setPayAck] = useState<string[]>([]);
   // CRM C5.4-C ▸ round 13 · R12-1/R12-2: รายการรับที่ผูกกับร่างไว้แล้ว (อ่านอย่างเดียว) · ธงยืนยัน "ออกเป็นรับเงินสด" เมื่อรายการเดิมถูกยกเลิกหมด ◂
   const attachedPays = props.attachedPayments ?? [];
   const [cashConfirmed, setCashConfirmed] = useState(false);
@@ -446,8 +451,15 @@ function EditorBody(props: DocEditorV2Props) {
               : null,
           })),
           payKeyRef.current,
+          payAck,
         );
         if (!res.ok) {
+          if (res.legal) {
+            setPayLegal(res.legal.warnings);
+            setPayAck([]);
+            setPayError("มีคำเตือนตามกฎหมาย — อ่านแล้วติ๊ก «รับทราบคำเตือนและทำต่อ» แล้วกดอนุมัติอีกครั้ง");
+            return;
+          }
           setPayError(res.reason);
           toast.error(res.reason);
           return;
@@ -1307,6 +1319,9 @@ function EditorBody(props: DocEditorV2Props) {
       {props.paymentEnabled && (
         <>
           {payError && <p className="text-sm text-[color:var(--color-danger)]" data-testid="pay-error">{payError}</p>}
+          {payLegal.length > 0 && (
+            <LegalWarnings key={payLegal.map((w) => w.code + w.messageTh).join("|")} warnings={payLegal} onAckChange={setPayAck} testId="pay-legal-warnings" />
+          )}
           {props.attachedAllVoided && attachedPays.length === 0 && (
             <div className="rounded-lg border border-[color:var(--color-tag-amber)] p-3 text-sm" data-testid="pay-voided-warning">
               <p>รายการรับชำระเดิมถูกยกเลิก/เช็คเด้ง — ถ้าออกใบเสร็จตอนนี้จะบันทึกเป็นรับเงินสด</p>

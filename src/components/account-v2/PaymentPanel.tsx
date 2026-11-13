@@ -12,6 +12,8 @@ import {
 } from "@/lib/modules/account/payment-actions";
 import type { PaymentPanelData } from "@/lib/modules/account/payment";
 import { SlideOver } from "./SlideOver";
+import { LegalWarnings } from "./LegalWarnings";
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 import { PaymentSection, boxTieOff, newPayBox, textsFor, type PayBox } from "./PaymentSection";
 
 // ─────────────────────────────────────────────────────────────
@@ -45,6 +47,9 @@ export function PaymentPanel({
   const [voidingId, setVoidingId] = useState("");
   const [voidReason, setVoidReason] = useState("บันทึกผิดรายการ");
   const keyRef = useRef("");
+  // ACC T1.7 — คำเตือนที่ต้องติ๊กยืนยัน (ลงเดือนที่ยื่นแล้ว) · ได้จากผลของ action แล้วกดบันทึกซ้ำพร้อมรหัสที่ยืนยัน
+  const [legal, setLegal] = useState<LegalWarning[]>([]);
+  const [ackCodes, setAckCodes] = useState<string[]>([]);
 
   const load = useCallback(
     (focusNew: boolean) =>
@@ -103,11 +108,20 @@ export function PaymentPanel({
           cheque: b.chequeOn ? { chequeNo: b.chequeNo, bankName: b.bankName, chequeDate: b.chequeDate } : null,
         })),
         keyRef.current,
+        ackCodes,
       );
       if (!res.ok) {
+        if (res.legal) {
+          setLegal(res.legal.warnings);
+          setAckCodes([]);
+          setError("มีคำเตือนตามกฎหมาย — อ่านแล้วติ๊ก «รับทราบคำเตือนและทำต่อ» แล้วกดบันทึกอีกครั้ง");
+          return;
+        }
         setError(res.reason);
         return;
       }
+      setLegal([]);
+      setAckCodes([]);
       setOk(
         res.certNos.length > 0
           ? `บันทึกแล้ว ${res.recorded} ครั้ง · ออกเอกสารหัก ณ ที่จ่าย ${res.certNos.join(", ")}`
@@ -122,11 +136,19 @@ export function PaymentPanel({
   const confirmVoid = (paymentId: string) =>
     startTransition(async () => {
       setError("");
-      const res = await voidPaymentV2Action(systemId, docId, paymentId, voidReason.trim() || "ยกเลิกการชำระ");
+      const res = await voidPaymentV2Action(systemId, docId, paymentId, voidReason.trim() || "ยกเลิกการชำระ", ackCodes);
       if (!res.ok) {
+        if (res.legal) {
+          setLegal(res.legal.warnings);
+          setAckCodes([]);
+          setError("มีคำเตือนตามกฎหมาย — อ่านแล้วติ๊ก «รับทราบคำเตือนและทำต่อ» แล้วกดยืนยันยกเลิกอีกครั้ง");
+          return;
+        }
         setError(res.reason);
         return;
       }
+      setLegal([]);
+      setAckCodes([]);
       setVoidingId("");
       setOk("ยกเลิกการชำระแล้ว (ระบบกลับรายการบัญชีให้อัตโนมัติ)");
       load(true);
@@ -159,6 +181,11 @@ export function PaymentPanel({
       >
         {error && <p className="mb-2 text-sm text-[color:var(--color-danger)]" data-testid="pay-error">{error}</p>}
         {ok && <p className="mb-2 text-sm text-[color:var(--color-accent)]" data-testid="pay-ok">{ok}</p>}
+        {legal.length > 0 && (
+          <div className="mb-3">
+            <LegalWarnings key={legal.map((w) => w.code + w.messageTh).join("|")} warnings={legal} onAckChange={setAckCodes} testId="pay-legal-warnings" />
+          </div>
+        )}
         {!data ? (
           <p className="text-sm text-[color:var(--color-muted)]">กำลังโหลด…</p>
         ) : (

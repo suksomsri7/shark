@@ -22,6 +22,7 @@
 //      ผู้ลงมือจริงถูกบันทึกที่ `AuditLog` โดย `dispatch.ts` (actorType API_KEY + keyName + reason)
 //   5) เงินเป็นสตางค์จำนวนเต็มเสมอ · วันที่เป็น `YYYY-MM-DD` (วันไทย) · งวดเป็น `YYYY-MM` · body `.strict()`
 
+import { ackField } from "../ack-field";
 import type { AccountDocType } from "@prisma/client";
 import { z } from "zod";
 import { disposeAsset, getAsset, registerAsset, runDepreciation } from "../../asset";
@@ -59,7 +60,7 @@ import {
 import { NUMBERED_DOC_TYPES } from "../../settings-schema";
 import { fileVatAdditional, setVatCreditCarry } from "../../pp30-filing";
 import { PP30_EXCESS_CHOICES } from "../../pp30-shared";
-import { actorCan, type ApiActor } from "../actor";
+import { actorAuditId, actorCan, type ApiActor } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError, type ApiErrorDetail } from "../respond";
 import {
@@ -183,6 +184,7 @@ const journalLineInput = z
 
 const journalCreateInput = z
   .object({
+    acknowledge: ackField,
     date: ymdField("date"),
     book: z.enum(BOOKS).optional().describe("Journal book the entry belongs to. Default GENERAL."),
     memo: z.string().max(300).nullish().describe("What the entry is for. Shown in the journal list."),
@@ -246,7 +248,8 @@ const journalCreate = defineOp({
     if (!res.ok) failWith(res.reason);
     const detail = await journalEntryDetail(ctx, res.entryId);
     if (!detail) throw notFound(ERR.JOURNAL_ENTRY_NOT_FOUND);
-    return journalDetail(detail);
+    // ACC T1.9 ▸ คำเตือนแจ้งให้ทราบ (JV แตะบัญชีภาษี = รายการปรับปรุงมือในรายงานภาษี) ◂
+    return { ...journalDetail(detail), warnings: res.warnings };
   },
 });
 
@@ -259,7 +262,7 @@ const journalReverse = defineOp({
   summary:
     "Reverse a posted journal entry by writing a mirror entry with the sides swapped. The original entry stays in the books and is marked REVERSED. If its own period is already closed the reversal is dated in the next open period.",
   label: "กลับรายการใบสำคัญ",
-  input: z.object({ reason: reasonField("Why the entry is being reversed.") }).strict(),
+  input: z.object({ reason: reasonField("Why the entry is being reversed."), acknowledge: ackField }).strict(),
   test: "D2-G1.7",
   async handler({ actor, params, input }) {
     const res = await reverseJournalEntry(ctxOf(actor), params.id ?? "", input.reason);
@@ -643,9 +646,10 @@ const periodsVatUnfiled = defineOp({
   label: "ยกเลิกเครื่องหมายยื่น ภ.พ.30",
   input: z.object({ reason: reasonField("Why the filed mark is being removed.") }).strict(),
   test: "D2-G4.3",
-  async handler({ actor, params }) {
+  async handler({ actor, params, input }) {
     const key = periodParam(params.key);
-    const res = await unmarkVatFiled(ctxOf(actor), key);
+    // ACC T1.7 ▸ ไม่ลบแถว — เก็บใคร/เมื่อไร/เหตุผล ◂
+    const res = await unmarkVatFiled(ctxOf(actor), key, { userId: actorAuditId(actor), reason: input.reason });
     if (!res.ok) {
       if (res.reason.includes("ยังไม่ได้ทำเครื่องหมาย")) throw notFound(res.reason);
       failWith(res.reason);

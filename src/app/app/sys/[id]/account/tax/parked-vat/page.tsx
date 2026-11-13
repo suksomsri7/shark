@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { loadAccountSystem, accountPermFlags } from "@/lib/modules/account/guard";
 import { parkedOutputVat, type ParkedVatRow } from "@/lib/modules/account/tax-point";
+import { vatLedgers } from "@/lib/modules/account/pp30-return";
 import PageHeader from "@/components/ui/PageHeader";
 import Section from "@/components/ui/Section";
 import { DataTable } from "@/components/ui/DataList";
@@ -26,7 +27,10 @@ export default async function ParkedVatPage({
   const perm = await accountPermFlags(id);
   const base = `/app/sys/${id}/account`;
   const onlyPastMonth = sp.only === "past";
-  const r = await parkedOutputVat({ tenantId, systemId }, { onlyPastMonth });
+  const [r, L] = await Promise.all([parkedOutputVat({ tenantId, systemId }, { onlyPastMonth }), vatLedgers({ tenantId, systemId })]);
+  // ACC T1.9 ▸ รหัสบัญชีพักตาม mapping ของสมุด (ไม่ใช่ 2205/2210 ตายตัว) ◂
+  const pendCode = L.VAT_OUTPUT_PENDING_INVOICE ? `${L.VAT_OUTPUT_PENDING_INVOICE.code} ${L.VAT_OUTPUT_PENDING_INVOICE.name}` : "ภาษีขายรอออกใบกำกับ";
+  const undueCode = L.VAT_OUTPUT_UNDUE ? `${L.VAT_OUTPUT_UNDUE.code} ${L.VAT_OUTPUT_UNDUE.name}` : "ภาษีขายยังไม่ถึงกำหนด";
   const self = `${base}/tax/parked-vat${onlyPastMonth ? "?only=past" : ""}`;
   const formId = "parked-batch";
   const hasService = r.rows.some((x) => x.service > 0);
@@ -38,15 +42,15 @@ export default async function ParkedVatPage({
       {sp.msg && <p className="text-sm font-medium" data-testid="parked-msg">{sp.msg}</p>}
 
       <p className="text-sm text-[color:var(--color-muted)]">
-        ภาษีขายที่ยังไม่เข้า ภ.พ.30 — ของสินค้ารอออกใบกำกับ (บัญชี 2205) และของบริการรอรับชำระ (บัญชี 2210) ·
+        ภาษีขายที่ยังไม่เข้า ภ.พ.30 — ของสินค้ารอออกใบกำกับ (บัญชี {pendCode}) และของบริการรอรับชำระ (บัญชี {undueCode}) ·
         ใบแจ้งหนี้สินค้าที่ออกหลังเปิดใช้งาน T1.2 ออกใบกำกับพร้อมกันอยู่แล้ว รายการที่ค้างคือข้อมูลเก่าหรือใบที่ปิดสวิตช์ไว้
       </p>
 
       {r.warning && <LegalWarnings warnings={[r.warning]} testId="parked-total-warning" />}
 
       <div className="flex flex-wrap gap-6 text-sm" data-testid="parked-totals">
-        <span>สินค้า (2205) <MoneyText satang={r.total.goods} decimals /></span>
-        <span>บริการ (2210) <MoneyText satang={r.total.service} decimals /></span>
+        <span>สินค้า ({pendCode}) <MoneyText satang={r.total.goods} decimals /></span>
+        <span>บริการ ({undueCode}) <MoneyText satang={r.total.service} decimals /></span>
         <span>สินค้าค้างข้ามเดือน {r.total.countPastMonth} ใบ · <MoneyText satang={r.total.goodsPastMonth} decimals /></span>
       </div>
 

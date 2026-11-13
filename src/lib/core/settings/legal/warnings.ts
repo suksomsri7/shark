@@ -48,6 +48,12 @@ export const LEGAL_WARNING_CODES = [
   "OUTPUT_VAT_PARKED_PAST_MONTH",
   "TAX_INVOICE_LATE_DATE_CHOICE",
   "GOODS_TAX_INVOICE_DEFERRED",
+  // ── เดือนที่ยื่นแล้ว (T1.7) ──
+  "FILED_PERIOD_VAT_CHANGE",
+  "FILED_PERIOD_PND_CHANGE",
+  // ── ขายไม่มี VAT · JV มือแตะบัญชีภาษี (T1.9) ──
+  "SALE_WITHOUT_VAT_REGISTERED",
+  "MANUAL_JV_VAT_ACCOUNT",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -304,6 +310,46 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     tag: "U",
     checkedAt: "2026-11-13",
     ack: true,
+  },
+  FILED_PERIOD_VAT_CHANGE: {
+    code: "FILED_PERIOD_VAT_CHANGE",
+    titleTh: "รายการนี้เปลี่ยนภาษีของเดือนที่ยื่น ภ.พ.30 แล้ว",
+    messageTh: (p) =>
+      `เดือนภาษี ${s(p, "period")} ทำเครื่องหมายยื่น ภ.พ.30 แล้ว — รายการนี้ (${s(p, "ref")}) ลงเดือนนั้นและเปลี่ยนภาษีขาย ${s(p, "output", "0.00")} · ภาษีซื้อ ${s(p, "input", "0.00")}${p.parked ? ` · ยอดพัก ${s(p, "parked")}` : ""} บาท — ยอดในสมุดจะต่างจากแบบที่ยื่น ถ้าแบบที่ยื่นไปผิดต้องยื่นแบบเพิ่มเติม (รายการนี้จะขึ้นใน "ผลต่างหลังยื่น" ของเดือนนั้น)`,
+    citation: "ประมวลรัษฎากร ม.83 (แบบเพิ่มเติมเมื่อยื่นผิด) · references/common-vat-invoice.md §19 · §18 (ประกาศ VAT ฉ.89 ข้อ 12(ข): แก้ด้วยรายการปรับปรุง + รายงานการแก้ไข)",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  FILED_PERIOD_PND_CHANGE: {
+    code: "FILED_PERIOD_PND_CHANGE",
+    titleTh: "รายการนี้เปลี่ยน ภ.ง.ด. ของเดือนที่ทำเครื่องหมายนำส่งแล้ว",
+    messageTh: (p) =>
+      `เดือน ${s(p, "period")} ทำเครื่องหมายนำส่ง ${s(p, "forms", "ภ.ง.ด.")} แล้ว — รายการนี้ (${s(p, "ref")}) ${s(p, "what", "เปลี่ยนภาษีหัก ณ ที่จ่ายของเดือนนั้น")} ${s(p, "amount", "")} — รายการที่ยื่นไปจะไม่ตรงกับสมุด อาจต้องยื่นเพิ่มเติม (ขึ้นใน "ผลต่างหลังยื่น" ของเดือนนั้น)`,
+    citation: "references/common-withholding-tax.md (ภ.ง.ด.3/53 ยื่นรายเดือน · ใบแนบต่อรายการ) · references/domain-accounting-books.md (ป.121/2545 ข้อ 6: แก้ไขต้องมีร่องรอย/รายงานการแก้ไข) — ไม่พบกติกาแบบเพิ่มเติมของ ภ.ง.ด. ในแหล่งที่ระบบใช้",
+    tag: "S",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  SALE_WITHOUT_VAT_REGISTERED: {
+    code: "SALE_WITHOUT_VAT_REGISTERED",
+    titleTh: "กิจการจด VAT แต่เอกสารขายนี้ไม่มี VAT",
+    messageTh: (p) =>
+      `กิจการจดทะเบียน VAT แล้ว แต่${s(p, "doc", "เอกสารขายนี้")}ไม่คิด VAT ${s(p, "amount", "")}${p.lines ? ` (${s(p, "lines")} บรรทัดไม่ได้ระบุว่าอัตรา 0% หรือยกเว้น)` : ""} — ผู้ประกอบการจดทะเบียนเก็บ VAT จากการขายสินค้า/ให้บริการ เว้นแต่เป็นรายการอัตรา 0% (ม.80/1) หรือยกเว้น (ม.81) · ถ้าเป็นรายการยกเว้น/อัตรา 0% ให้เลือกอัตรานั้นที่บรรทัด · รายได้นี้จะขึ้นในรายงาน "รายได้ที่ไม่มี VAT"`,
+    citation: "ประมวลรัษฎากร ม.80/1, ม.81 · references/common-vat-invoice.md §1 (ใครต้องเก็บ VAT), §9, §21",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  MANUAL_JV_VAT_ACCOUNT: {
+    code: "MANUAL_JV_VAT_ACCOUNT",
+    titleTh: "รายการบัญชีที่บันทึกเองแตะบัญชีภาษี",
+    messageTh: (p) =>
+      `รายการนี้บันทึกเองและแตะบัญชีภาษี (${s(p, "accounts")}) — ยอดภาษีจะเปลี่ยนโดยไม่มีใบกำกับภาษีรองรับ · รายงานภาษีขาย/ซื้อลงตามใบกำกับ (ม.87) ระบบจะแสดงรายการนี้แยกเป็น "รายการปรับปรุงมือ" ในรายงานภาษีและการกระทบยอด ภ.พ.30`,
+    citation: "ประมวลรัษฎากร ม.87 · references/common-vat-invoice.md §18 (ประกาศ VAT ฉ.89: รายงานรายใบ · แก้ด้วยรายการปรับปรุง) · §19",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
   },
   GOODS_TAX_INVOICE_DEFERRED: {
     code: "GOODS_TAX_INVOICE_DEFERRED",

@@ -10,7 +10,7 @@ import type {
 } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, writeAudit, mc } from "./access";
-import { ackCodesOf } from "./legal-gate";
+import { screenAck, withScreenLegal } from "./legal-gate";
 import { permissionValue } from "@/lib/core/rbac";
 // WO 8.3 (§9.4): เพดานอนุมัติ + ส่งต่อให้ผู้มีอำนาจสูงกว่า
 import { checkApprovalCap } from "./approval-cap";
@@ -168,7 +168,9 @@ export async function issueExpenseDocAction(formData: FormData) {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.doc.issue");
   // T0.4 — รหัสคำเตือนกฎหมายที่ผู้ใช้ติ๊กยืนยันในฟอร์ม
-  const res = await issueExpenseDoc(tenantId, systemId, id, { ack: { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" } });
+  const ack = screenAck(formData.getAll("ack"), userId);
+  // ACC T1.7 ▸ บริบทการยืนยันรอบงาน (ด่านเดือนที่ยื่นแล้วในชั้นลงบัญชี) ◂
+  const res = await withScreenLegal(ack, () => issueExpenseDoc(tenantId, systemId, id, { ack }));
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -188,7 +190,7 @@ export async function recordVendorPaymentAction(formData: FormData) {
   const id = str(formData, "id");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.record");
-  const res = await recordVendorPayment(tenantId, systemId, id, {
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => recordVendorPayment(tenantId, systemId, id, {
     paidAt: date(formData, "paidAt"),
     channel: (str(formData, "channel") as AccountPayChannel) || "TRANSFER",
     financeAccountId: str(formData, "financeAccountId") || null,
@@ -199,7 +201,7 @@ export async function recordVendorPaymentAction(formData: FormData) {
     feeAmount: Math.round((num(formData, "feeAmount") ?? 0) * 100),
     note: str(formData, "note") || null,
     createdById: userId,
-  });
+  }));
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -220,7 +222,7 @@ export async function voidVendorPaymentAction(formData: FormData) {
   const paymentId = str(formData, "paymentId");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.void");
-  const res = await voidVendorPayment(tenantId, systemId, id, paymentId, str(formData, "reason"));
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => voidVendorPayment(tenantId, systemId, id, paymentId, str(formData, "reason")));
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -261,7 +263,7 @@ export async function receivePtxAction(formData: FormData) {
   const id = str(formData, "id");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.record");
-  const res = await receivePurchaseTaxInvoice(tenantId, systemId, id);
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => receivePurchaseTaxInvoice(tenantId, systemId, id));
   await writeAudit({
     tenantId,
     actorId: userId,

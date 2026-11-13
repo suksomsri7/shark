@@ -45,9 +45,13 @@ export type SalesTaxReport = {
   rows: SalesTaxRow[];
   groups: RateGroupView[];
   total: { base: number; vat: number };
-  /** ยอดเคลื่อนไหวสุทธิฝั่งเครดิตของ 2200 ในเดือน (คิวรีแยก) */
+  /** ยอดเคลื่อนไหวสุทธิฝั่งเครดิตของบัญชีภาษีขาย (ตาม mapping VAT_OUTPUT) ในเดือน (คิวรีแยก) */
   glVat: number;
   checks: SalesTaxCheck[];
+  /** ACC T1.9 ▸ บัญชีภาษีขายที่รายงานอ่าน (ตาม mapping) — หัวตาราง/ข้อตรวจแสดงรหัส+ชื่อนี้ ◂ */
+  outputLedger: { code: string; name: string } | null;
+  /** ACC T1.9 ▸ รายการปรับปรุงมือ (JV ที่บันทึกเอง) ที่แตะบัญชีภาษีขายในเดือน ◂ */
+  manualAdjustments: { count: number; vat: number };
 };
 
 const DOC_TYPE_TH: Record<string, string> = {
@@ -94,6 +98,8 @@ type SourceAgg = {
   zeroOnly?: boolean;
   /** ACC T1.3: เอกสาร 0%/ยกเว้น ที่มีรายการกลับรายการในเดือน */
   zeroReversed?: boolean;
+  /** ACC T1.9: JV ที่บันทึกเอง (รายการปรับปรุงมือ) */
+  manual?: boolean;
 };
 
 /** ชนิดเอกสารฝั่งขายที่ลงรายงานภาษีขายได้แม้ไม่มีภาษี (ยอดขาย 0% / ยกเว้น) */
@@ -130,9 +136,10 @@ export async function salesTaxReport(
     warnings: headerWarningsTh({ orgName, taxId }),
   };
 
+  const outputLedger = ledger ? await db.accountLedger.findFirst({ where: { id: ledger.id }, select: { code: true, name: true } }) : null;
   const empty = (glVat = 0): SalesTaxReport => ({
     periodKey, header, abbMode, abbModeSetting, stdRateBp, rows: [], groups: [], total: { base: 0, vat: 0 }, glVat,
-    checks: buildChecks([], 0, glVat, null),
+    checks: buildChecks([], 0, glVat, null, outputLedger), outputLedger, manualAdjustments: { count: 0, vat: 0 },
   });
   if (!ledger) return empty();
 
@@ -142,7 +149,7 @@ export async function salesTaxReport(
     select: {
       debit: true,
       credit: true,
-      entry: { select: { id: true, refType: true, refId: true, date: true, docNo: true, reversalOfId: true, memo: true } },
+      entry: { select: { id: true, refType: true, refId: true, date: true, docNo: true, reversalOfId: true, memo: true, source: true } },
     },
   });
   const glVat = lines.reduce((n, l) => n + l.credit - l.debit, 0);
@@ -156,6 +163,7 @@ export async function salesTaxReport(
     const s =
       sources.get(key) ??
       ({ key, refType, refId, vat: 0, reversalVat: 0, hasOriginal: false, firstDate: e.date, reversalDate: null, journalNo: e.docNo, memo: e.memo } as SourceAgg);
+    if (refType === "JOURNAL" && e.source === "MANUAL") s.manual = true;
     s.vat += v;
     if (e.reversalOfId) {
       s.reversalVat += v;
@@ -323,7 +331,8 @@ export async function salesTaxReport(
     if (replacedAbb) notes.push(`ออกใบกำกับภาษีเต็มรูปแทนใบกำกับภาษีอย่างย่อเลขที่ ${replacedAbb.docNo ?? "-"} (ใบย่อไม่นับซ้ำ)`);
     if (doc?.docType === "DEPOSIT_RECEIPT") notes.push("รับเงินมัดจำ (ภาษีเกิดเมื่อรับชำระ)");
     if (s.refType === "PosSale" && !doc) notes.push("บิล POS ไม่มีเอกสารบัญชี — ฐานจากยอดบิล");
-    if (s.refType === "JOURNAL") notes.push(`รายการบัญชี ${s.journalNo}${s.memo ? ` · ${s.memo}` : ""} (ไม่มีเอกสาร)`);
+    if (s.refType === "JOURNAL")
+      notes.push(s.manual ? `รายการปรับปรุงมือ ${s.journalNo}${s.memo ? ` · ${s.memo}` : ""} (JV ที่บันทึกเอง — ไม่มีใบกำกับ)` : `รายการบัญชี ${s.journalNo}${s.memo ? ` · ${s.memo}` : ""} (ไม่มีเอกสาร)`);
 
     const sum = sumParts(parts);
     const row: SalesTaxRow = {
@@ -346,6 +355,7 @@ export async function salesTaxReport(
       posRegNo: meta?.posRegNo ?? null,
       posVat: meta ? (meta.docType === "REFUND" ? -meta.vatSatang : meta.vatSatang) : null,
       posHasDeposit: meta?.hasDeposit ?? false,
+      ...(s.manual ? { manual: true, buyerName: "รายการปรับปรุงมือ" } : {}),
     };
     const bad = parts.find((p) => !partConsistent(p, baseVatTolerance(row)));
     if (bad) row.flag = `ฐาน ${(bad.base / 100).toFixed(2)} × อัตรา ไม่ตรงกับภาษี ${(bad.vat / 100).toFixed(2)}`;
@@ -361,14 +371,27 @@ export async function salesTaxReport(
   }
   const { groups } = groupByRate(rows, stdRateBp);
   const total = sumParts(rows.flatMap((r) => r.parts));
-  return { periodKey, header, abbMode, abbModeSetting, stdRateBp, rows, groups, total, glVat, checks: buildChecks(rows, total.vat, glVat, null) };
+  const manualRows = rows.filter((r) => r.manual);
+  return {
+    periodKey, header, abbMode, abbModeSetting, stdRateBp, rows, groups, total, glVat,
+    checks: buildChecks(rows, total.vat, glVat, null, outputLedger),
+    outputLedger,
+    manualAdjustments: { count: manualRows.length, vat: manualRows.reduce((n, r) => n + r.vat, 0) },
+  };
 }
 
 /**
  * ข้อตรวจกระทบยอด (ไม่บล็อก): ① รายงาน = GL 2200 ② รายงาน = ภาษีขายของ ภ.พ.30 ③ ฐานสอดคล้องภาษีทุกแถว ④ ภาษีบิล POS = ภาษีบนบิลต้นทาง
  * pp30Vat = null ⇒ ใช้ glVat (ผู้เรียก pp30 ส่งยอดของตัวเองมาเทียบ)
  */
-export function buildChecks(rows: SalesTaxRow[], reportVat: number, glVat: number, pp30Vat: number | null): SalesTaxCheck[] {
+export function buildChecks(
+  rows: SalesTaxRow[],
+  reportVat: number,
+  glVat: number,
+  pp30Vat: number | null,
+  /** ACC T1.9 ▸ บัญชีภาษีขายตาม mapping (ป้ายข้อตรวจ) — ไม่ส่ง = ป้ายกลาง ◂ */
+  ledger?: { code: string; name: string } | null,
+): SalesTaxCheck[] {
   const flat = rows.flatMap((r) => (r.kind === "ABB_SUMMARY" ? (r.bills ?? []) : [r]));
   const flagged = rows.filter((r) => r.flag);
   const posRows = flat.filter((r) => r.posVat !== null && r.posVat !== undefined && !r.cancelled && !r.posHasDeposit);
@@ -376,7 +399,7 @@ export function buildChecks(rows: SalesTaxRow[], reportVat: number, glVat: numbe
   const posVatSum = posRows.reduce((n, r) => n + (r.posVat ?? 0), 0);
   const posRepSum = posRows.reduce((n, r) => n + r.vat, 0);
   return [
-    { key: "GL_2200", label: "ภาษีขายในรายงาน = ยอดเคลื่อนไหวบัญชี 2200 ภาษีขาย ของเดือน", ok: reportVat === glVat, expected: glVat, actual: reportVat },
+    { key: "GL_2200", label: `ภาษีขายในรายงาน = ยอดเคลื่อนไหวบัญชี${ledger ? ` ${ledger.code} ${ledger.name}` : "ภาษีขาย"} ของเดือน`, ok: reportVat === glVat, expected: glVat, actual: reportVat },
     { key: "PP30", label: "ภาษีขายในรายงาน = ภาษีขายของ ภ.พ.30", ok: reportVat === (pp30Vat ?? glVat), expected: pp30Vat ?? glVat, actual: reportVat },
     {
       key: "BASE_VAT",

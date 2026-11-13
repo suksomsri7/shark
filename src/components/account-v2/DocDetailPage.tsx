@@ -19,7 +19,8 @@ import {
 import { cancelDraftFormAction } from "@/lib/modules/account/undo-stack";
 import { DocTagsBlock } from "./DocTagsBlock";
 import { LegalWarnings } from "./LegalWarnings";
-import { issueLegalWarnings } from "@/lib/modules/account/legal-gate";
+import { issueLegalWarnings, saleWithoutVatWarnings } from "@/lib/modules/account/legal-gate";
+import { filedPeriodPreview } from "@/lib/modules/account/filed-guard";
 import { invoiceTaxPointView } from "@/lib/modules/account/tax-point";
 import { ParkedVatInvoicePanel } from "./ParkedVatPanel";
 import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
@@ -184,8 +185,9 @@ function ActionRow({
     );
   } else if (dt === "PURCHASE_TAX_INVOICE" && data.status === "AWAITING_RECEIVE") {
     primary = (
-      <form action={receivePtxAction}>
+      <form action={receivePtxAction} className={legalWarnings.length ? "flex flex-col gap-2" : undefined}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <LegalWarnings warnings={legalWarnings} ackName="ack" testId="doc-legal-warnings" />
         <SubmitButton className="w-full h-11 md:h-9 md:w-auto">รับใบกำกับแล้ว</SubmitButton>
       </form>
     );
@@ -974,13 +976,27 @@ export async function DocDetailPage({
   // T0.4 — ร่างที่จะออก: แสดงคำเตือนกฎหมายล่วงหน้า (ทะเบียนกลาง) · ด่านจริงอยู่ที่ service (ไม่เชื่อจอ)
   // ACC T1.2 — จุดรับผิดของใบแจ้งหนี้/ใบเสร็จ: ร่าง = คำเตือนของใบกำกับที่จะออกพร้อมกัน · ออกแล้ว = VAT ที่ยังพัก + คำเตือนข้ามเดือน
   const taxPoint = dt === "INVOICE" || dt === "RECEIPT" ? await invoiceTaxPointView({ tenantId, systemId }, data.id) : null;
+  // ACC T1.7 — ร่างที่ลงวันที่ในเดือนที่ยื่น ภ.พ.30 แล้ว / ใบกำกับซื้อที่รอรับ: บอกล่วงหน้า + ช่องติ๊กยืนยัน (ด่านจริงอยู่ชั้นลงบัญชี)
+  const filedPreview =
+    (data.status === "DRAFT" && !PO_TYPES.includes(dt)) || (dt === "PURCHASE_TAX_INVOICE" && data.status === "AWAITING_RECEIVE")
+      ? await filedPeriodPreview(
+          { tenantId, systemId },
+          {
+            date: data.issueDate,
+            ref: `${labelOf(dt)}${data.docNo ? ` ${data.docNo}` : " (ร่าง)"}`,
+            ...(side === "revenue" ? { output: data.vatAmount } : { input: data.vatAmount }),
+          },
+        )
+      : [];
   const legalWarnings =
     data.status === "DRAFT" && !PO_TYPES.includes(dt)
       ? [
           ...issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason, vatAmount: data.vatAmount }, side === "revenue" ? settings : null),
+          ...(side === "revenue" ? saleWithoutVatWarnings({ docType: dt, vatMode: data.vatMode, sourceDocId: data.sourceDocId, lines: data.lines }, settings) : []),
           ...(taxPoint?.draftWarnings ?? []),
+          ...filedPreview,
         ]
-      : [];
+      : filedPreview;
 
   const steps: StepDef[] = data.timeline.map((s) => ({
     code: s.code,
@@ -1069,6 +1085,10 @@ export async function DocDetailPage({
           warning={taxPoint.parked.warning}
           hint={taxPoint.hint}
           canRelease={perm.issue}
+          filedWarnings={await filedPeriodPreview(
+            { tenantId, systemId },
+            { date: data.issueDate, ref: `ปล่อยภาษีขายที่พักของ ${data.docNo ?? labelOf(dt)} (ถ้าเลือกลงวันที่ใบแจ้งหนี้)`, output: taxPoint.parked.goods },
+          )}
         />
       )}
 

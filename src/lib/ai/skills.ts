@@ -78,6 +78,7 @@ export const SKILLS: Skill[] = [
       "account_chart_of_accounts", "account_settings", "account_parse_quick_create",
       "account_tax_settings", // ACC T0.2 ▸ ประเภทผู้ประกอบการ + ตารางค่ากฎหมาย (อ่าน) ◂
       "account_parked_vat", // ACC T1.2 ▸ ภาษีขายที่ค้างพัก + คำเตือนข้ามเดือน (อ่าน) ◂
+      "account_revenue_without_vat", // ACC T1.9 ▸ รายได้ที่ไม่มี VAT ต่อเดือน (ยกเว้น / 0% / ไม่คิด VAT) (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",

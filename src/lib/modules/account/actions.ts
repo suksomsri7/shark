@@ -11,7 +11,7 @@ import type {
 } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, mc, writeAudit } from "./access";
-import { ackCodesOf } from "./legal-gate";
+import { screenAck, withScreenLegal } from "./legal-gate";
 import { releaseParkedVat } from "./tax-point";
 import { isEntityKind, loadBookLegal, saveBookTax } from "./legal-values";
 import {
@@ -158,7 +158,9 @@ export async function issueDocumentAction(formData: FormData) {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.doc.issue");
   // T0.4 — รหัสคำเตือนกฎหมายที่ผู้ใช้ติ๊กยืนยันในฟอร์ม (LegalWarnings ackName="ack")
-  const res = await issueDocument(tenantId, systemId, id, { ack: { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" } });
+  const ack = screenAck(formData.getAll("ack"), userId);
+  // ACC T1.7 ▸ บริบทการยืนยันรอบงาน — ด่านเดือนที่ยื่นแล้ว (ชั้นลงบัญชี) อ่านรหัสเดียวกัน ◂
+  const res = await withScreenLegal(ack, () => issueDocument(tenantId, systemId, id, { ack }));
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -184,11 +186,14 @@ export async function releaseParkedVatAction(formData: FormData) {
   const date = dateRaw === "TODAY" || dateRaw === "INVOICE_DATE" ? dateRaw : null;
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.doc.issue");
-  const res = await releaseParkedVat({ tenantId, systemId }, ids, {
-    date,
-    kinds: { goods: formData.get("goods") !== null || formData.get("services") === null, service: formData.get("services") !== null },
-    ack: { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" },
-  });
+  const ack = screenAck(formData.getAll("ack"), userId);
+  const res = await withScreenLegal(ack, () =>
+    releaseParkedVat({ tenantId, systemId }, ids, {
+      date,
+      kinds: { goods: formData.get("goods") !== null || formData.get("services") === null, service: formData.get("services") !== null },
+      ack,
+    }),
+  );
   const path = back.startsWith(`/app/sys/${systemId}/account`) ? back : `/app/sys/${systemId}/account/tax/parked-vat`;
   revalidatePath(path);
   if (!res.ok) redirect(`${path}${path.includes("?") ? "&" : "?"}err=${encodeURIComponent(res.reason)}`);
@@ -229,7 +234,7 @@ export async function recordPaymentAction(formData: FormData) {
   const id = str(formData, "id");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.record");
-  const res = await recordPayment(tenantId, systemId, id, {
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => recordPayment(tenantId, systemId, id, {
     paidAt: date(formData, "paidAt"),
     channel: (str(formData, "channel") as AccountPayChannel) || "TRANSFER",
     financeAccountId: str(formData, "financeAccountId") || null,
@@ -239,7 +244,7 @@ export async function recordPaymentAction(formData: FormData) {
     feeAmount: Math.round((num(formData, "feeAmount") ?? 0) * 100),
     note: str(formData, "note") || null,
     createdById: userId,
-  });
+  }));
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -260,7 +265,7 @@ export async function voidPaymentAction(formData: FormData) {
   const paymentId = str(formData, "paymentId");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.void");
-  const res = await voidPayment(tenantId, systemId, id, paymentId, str(formData, "reason"));
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => voidPayment(tenantId, systemId, id, paymentId, str(formData, "reason")));
   await writeAudit({
     tenantId,
     actorId: userId,

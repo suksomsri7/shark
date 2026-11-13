@@ -382,6 +382,7 @@ function pp30SideView(s: Pp30Side) {
       baseSatang: r.base,
       vatSatang: r.vat,
       rateBp: r.rateBp,
+      ...(r.manual ? { manualAdjustment: true } : {}),
     })),
     byRate: s.byRate.map((g) => ({ rateBp: g.rateBp, baseSatang: g.base, vatSatang: g.vat })),
   };
@@ -420,6 +421,7 @@ export function pp30ReturnView(ret: Pp30Return) {
       onReturnSatang: c.onReturn,
       ok: c.ok,
       ...(c.balance !== undefined ? { balanceSatang: c.balance } : {}),
+      ...(c.manualCount ? { manualAdjustmentsSatang: c.manual ?? 0, manualAdjustmentCount: c.manualCount } : {}),
     })),
     filing: {
       filed: ret.filed.filed,
@@ -433,6 +435,9 @@ export function pp30ReturnView(ret: Pp30Return) {
         lines: x.lines,
         ...(x.diff ? { diff: x.diff } : {}),
       })),
+      ...(ret.filed.unmarked
+        ? { unmarked: { at: iso(ret.filed.unmarked.at), reason: ret.filed.unmarked.reason, previouslyFiledAt: iso(ret.filed.unmarked.filedAt), previousLines: ret.filed.unmarked.lines } }
+        : {}),
     },
     diffFromFiled: ret.diffFromFiled,
     amendmentNeeded: ret.amendmentNeeded,

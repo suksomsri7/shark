@@ -71,6 +71,13 @@ async function netCredit(ctx: Ctx, ledgerId: string | undefined, periodKey: stri
   return (a._sum.credit ?? 0) - (a._sum.debit ?? 0);
 }
 
+/** ACC T1.9 ▸ ส่วนของ JV มือ (source MANUAL) ในยอดเคลื่อนไหวของเดือน: เครดิตสุทธิ + จำนวนรายการ */
+async function manualCredit(ctx: Ctx, ledgerId: string | undefined, periodKey: string): Promise<{ net: number; count: number }> {
+  if (!ledgerId) return { net: 0, count: 0 };
+  const ls = await tenantDb(ctx).accountJournalLine.findMany({ where: { accountId: ledgerId, entry: { periodKey, source: "MANUAL" } }, select: { debit: true, credit: true, entryId: true } });
+  return { net: ls.reduce((n, l) => n + l.credit - l.debit, 0), count: new Set(ls.map((l) => l.entryId)).size };
+}
+
 /** ยอดคงเหลือสะสมถึงสิ้นเดือน (เครดิตสุทธิ) — บัญชีพักภาษี */
 async function balanceCreditTo(ctx: Ctx, ledgerId: string | undefined, periodKey: string): Promise<number> {
   if (!ledgerId) return 0;
@@ -110,6 +117,8 @@ export type VatFiledState = {
   records: VatFilingRecord[];
   /** ยอดที่ยื่นล่าสุด (แบบเพิ่มเติมล่าสุด หรือต้นฉบับ) */
   latest: VatFilingRecord | null;
+  /** ACC T1.7 ▸ เคยทำเครื่องหมายแล้วยกเลิก (แถวยังอยู่ · ตัวเลขเดิมยังอ่านได้) ◂ */
+  unmarked: { at: Date; byId: string | null; reason: string | null; filedAt: Date; lines: Partial<Record<Pp30LineKey, number | null>> } | null;
 };
 
 /** ตะขอ T1.7: เดือนนี้ยื่นแล้วไหม + ยอดที่ยื่นทุกครั้ง — T1.7 เรียกตอนมีรายการลงเดือนที่ยื่นแล้ว แล้วเทียบกับ `pp30` ของเดือนนั้น */
@@ -127,7 +136,11 @@ export async function vatFiledStates(ctx: Ctx, periodKeys?: string[]): Promise<M
   const out = new Map<string, VatFiledState>();
   const keys = new Set<string>([...(periodKeys ?? []), ...orig.map((o) => o.periodKey)]);
   for (const k of keys) {
-    const o = orig.find((x) => x.periodKey === k);
+    const raw = orig.find((x) => x.periodKey === k);
+    const o = raw && !raw.unmarkedAt ? raw : undefined;
+    const unmarked = raw?.unmarkedAt
+      ? { at: raw.unmarkedAt, byId: raw.unmarkedById, reason: raw.unmarkReason, filedAt: raw.filedAt, lines: storedPp30Lines(raw.lines, raw) }
+      : null;
     const records: VatFilingRecord[] = [];
     if (o) {
       const st = storedPp30Lines(o.lines, o);
@@ -157,7 +170,7 @@ export async function vatFiledStates(ctx: Ctx, periodKeys?: string[]): Promise<M
         });
       }
     }
-    out.set(k, { periodKey: k, filed: !!o, records, latest: records[records.length - 1] ?? null });
+    out.set(k, { periodKey: k, filed: !!o, records, latest: records[records.length - 1] ?? null, unmarked });
   }
   return out;
 }
@@ -244,6 +257,9 @@ export type Pp30Reconcile = {
   ok: boolean | null;
   /** บัญชีพัก: ยอดคงค้างสิ้นเดือน (ไม่เข้า ภ.พ.30) */
   balance?: number;
+  /** ACC T1.9 ▸ ส่วนของยอดเคลื่อนไหวที่มาจาก "รายการปรับปรุงมือ" (JV ที่บันทึกเอง — ไม่มีใบกำกับรองรับ) · ทิศเดียวกับ movement ◂ */
+  manual?: number;
+  manualCount?: number;
 };
 
 export type Pp30Return = {
@@ -280,6 +296,7 @@ export async function pp30ReturnOf(
   opts?: { carryOverride?: number | null; excessChoice?: Pp30ExcessChoice | null; ledgers?: Partial<Record<VatMappingKey, VatLedger>> },
 ): Promise<Pp30Return> {
   const L = opts?.ledgers ?? (await vatLedgers(ctx));
+  const [manOut, manIn] = await Promise.all([manualCredit(ctx, L.VAT_OUTPUT?.id, periodKey), manualCredit(ctx, L.VAT_INPUT?.id, periodKey)]);
   const [carry0, setting, filed, deadline, outMove, inMove, undueOut, pendOut, undueIn] = await Promise.all([
     creditBroughtForwardOf(ctx, periodKey, L),
     pp30ExcessChoiceSetting(ctx),
@@ -308,12 +325,17 @@ export async function pp30ReturnOf(
     if (pp30HasDiff(diffFromFiled)) warnings.push(legalWarning("PP30_FILED_DIFFERS", { period: periodKey }));
   }
   if (deadline) warnings.push(...deadline.warnings);
+  // ACC T1.9 ▸ JV มือแตะบัญชีภาษีของเดือน = แจ้งให้ทราบ (ยอดภาษีเปลี่ยนโดยไม่มีใบกำกับ) ◂
+  if (manOut.count + manIn.count > 0) {
+    const names = [manOut.count ? L.VAT_OUTPUT : null, manIn.count ? L.VAT_INPUT : null].filter((x): x is VatLedger => !!x).map((l) => `${l.code} ${l.name}`);
+    warnings.push(legalWarning("MANUAL_JV_VAT_ACCOUNT", { accounts: names.join(", ") }));
+  }
 
   const inputOnReturn = base.inputVat;
   const inMoveDr = inMove === 0 ? 0 : -inMove; // ภาษีซื้อ = เดบิตสุทธิ (กัน −0)
   const reconcile: Pp30Reconcile[] = [
-    { key: "VAT_OUTPUT", label: "ภาษีขาย", ledger: led(L.VAT_OUTPUT), movement: outMove, onReturn: base.outputVat, ok: outMove === base.outputVat },
-    { key: "VAT_INPUT", label: "ภาษีซื้อ", ledger: led(L.VAT_INPUT), movement: inMoveDr, onReturn: inputOnReturn, ok: inMoveDr === inputOnReturn },
+    { key: "VAT_OUTPUT", label: "ภาษีขาย", ledger: led(L.VAT_OUTPUT), movement: outMove, onReturn: base.outputVat, ok: outMove === base.outputVat, manual: manOut.net, manualCount: manOut.count },
+    { key: "VAT_INPUT", label: "ภาษีซื้อ", ledger: led(L.VAT_INPUT), movement: inMoveDr, onReturn: inputOnReturn, ok: inMoveDr === inputOnReturn, manual: manIn.net === 0 ? 0 : -manIn.net, manualCount: manIn.count },
     { key: "VAT_OUTPUT_UNDUE", label: L.VAT_OUTPUT_UNDUE?.label ?? "ภาษีขายยังไม่ถึงกำหนด", ledger: led(L.VAT_OUTPUT_UNDUE), movement: 0, onReturn: null, ok: null, balance: undueOut },
     { key: "VAT_OUTPUT_PENDING_INVOICE", label: L.VAT_OUTPUT_PENDING_INVOICE?.label ?? "ภาษีขายรอออกใบกำกับ", ledger: led(L.VAT_OUTPUT_PENDING_INVOICE), movement: 0, onReturn: null, ok: null, balance: pendOut },
     { key: "VAT_INPUT_UNDUE", label: L.VAT_INPUT_UNDUE?.label ?? "ภาษีซื้อยังไม่ถึงกำหนด", ledger: led(L.VAT_INPUT_UNDUE), movement: 0, onReturn: null, ok: null, balance: undueIn === 0 ? 0 : -undueIn },

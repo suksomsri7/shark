@@ -11,6 +11,7 @@ import { pp30 } from "./reports";
 import { diffPp30Lines, isPp30PeriodKey, pp30HasDiff, type Pp30ExcessChoice, type Pp30LineKey, type Pp30Lines } from "./pp30-shared";
 import { safeReason } from "./errors";
 import { creditBroughtForwardOf } from "./pp30-return";
+import { FILING_AUDIT, filingSnapshot } from "./filing-history";
 
 type Ctx = { tenantId: string; systemId: string };
 type Fail = { ok: false; reason: string };
@@ -27,8 +28,8 @@ export async function fileVatReturn(
 ): Promise<({ ok: true; lines: Pp30Lines; warnings: LegalWarning[] }) | Fail> {
   if (!isPp30PeriodKey(input.periodKey)) return { ok: false, reason: "รูปแบบงวดไม่ถูกต้อง (ต้องเป็น YYYY-MM)" };
   const db = tenantDb(ctx);
-  const existing = await db.accountVatFiling.findFirst({ where: { periodKey: input.periodKey }, select: { id: true } });
-  if (existing) return { ok: false, reason: `งวด ${input.periodKey} ทำเครื่องหมายยื่นไปแล้ว — ถ้ายื่นผิดให้ยื่นแบบเพิ่มเติม` };
+  const existing = await db.accountVatFiling.findFirst({ where: { periodKey: input.periodKey } });
+  if (existing && !existing.unmarkedAt) return { ok: false, reason: `งวด ${input.periodKey} ทำเครื่องหมายยื่นไปแล้ว — ถ้ายื่นผิดให้ยื่นแบบเพิ่มเติม` };
   const r = await pp30(ctx, input.periodKey, { excessChoice: input.excessChoice ?? null });
   const lines = r.ret.lines;
   const salesVat = input.declared?.salesVat ?? lines.outputVat;
@@ -37,22 +38,42 @@ export async function fileVatReturn(
   if (salesVat !== lines.outputVat || inputVat !== lines.inputVat) {
     warnings.push(legalWarning("PP30_DECLARED_DIFFERS", { declaredOut: baht(salesVat), declaredIn: baht(inputVat), bookOut: baht(lines.outputVat), bookIn: baht(lines.inputVat) }));
   }
+  const data = {
+    filedById: input.userId,
+    salesVatSatang: salesVat,
+    inputVatSatang: inputVat,
+    payableSatang: salesVat - inputVat,
+    note: input.note ?? null,
+    lines: lines as unknown as object,
+    creditBroughtForwardSatang: lines.creditBroughtForward,
+    excessChoice: lines.excessChoice,
+    netSatang: lines.netPayable - lines.netExcess,
+  };
   try {
-    await db.accountVatFiling.create({
-      data: {
-        tenantId: ctx.tenantId,
-        systemId: ctx.systemId,
-        periodKey: input.periodKey,
-        filedById: input.userId,
-        salesVatSatang: salesVat,
-        inputVatSatang: inputVat,
-        payableSatang: salesVat - inputVat,
-        note: input.note ?? null,
-        lines: lines as unknown as object,
-        creditBroughtForwardSatang: lines.creditBroughtForward,
-        excessChoice: lines.excessChoice,
-        netSatang: lines.netPayable - lines.netExcess,
-      },
+    await db.$transaction(async (tx) => {
+      // ACC T1.7 ▸ เคยยกเลิกเครื่องหมาย = ใช้แถวเดิม (unique ต่อเดือน) · ภาพตัวเลขเดิมเก็บใน AuditLog ก่อนเขียนทับ ◂
+      const row = existing
+        ? await tx.accountVatFiling.update({
+            where: { id: existing.id },
+            data: { ...data, filedAt: new Date(), unmarkedAt: null, unmarkedById: null, unmarkReason: null },
+            select: { id: true },
+          })
+        : await tx.accountVatFiling.create({
+            data: { ...data, tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: input.periodKey },
+            select: { id: true },
+          });
+      await tx.auditLog.create({
+        data: {
+          tenantId: ctx.tenantId,
+          actorType: "USER",
+          actorId: input.userId,
+          action: existing ? FILING_AUDIT.vatRefile : FILING_AUDIT.vatMark,
+          targetType: "AccountVatFiling",
+          targetId: row.id,
+          before: existing ? (filingSnapshot(existing) as object) : undefined,
+          after: { periodKey: input.periodKey, ...filingSnapshot({ ...data, filedAt: new Date() }) } as object,
+        },
+      });
     });
   } catch (e) {
     return { ok: false, reason: safeReason(e, "บันทึกการยื่นไม่สำเร็จ") };

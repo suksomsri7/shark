@@ -23,6 +23,8 @@ import { assertAccountCan, writeAudit } from "@/lib/modules/account/access";
 import { markVatFiled, unmarkVatFiled } from "@/lib/modules/account/period-close";
 import { fileVatAdditional, setVatCreditCarry } from "@/lib/modules/account/pp30-filing";
 import type { Pp30Return } from "@/lib/modules/account/pp30-return";
+import { namesOf, vatFiledDifferences } from "@/lib/modules/account/filed-differences";
+import { filingHistory } from "@/lib/modules/account/filing-history";
 import {
   isPp30ExcessChoice,
   PP30_AMOUNT_KEYS,
@@ -178,7 +180,14 @@ function Pp30ReconcileBox({ ret }: { ret: Pp30Return }) {
             <span>
               {c.label} — {c.ledger ? `บัญชี ${c.ledger.code} ${c.ledger.name}${c.ledger.viaMapping ? "" : " (ยังไม่ได้ผูกบัญชี ใช้รหัสเริ่มต้น)"}` : "ยังไม่ได้ผูกบัญชี"}
               {c.onReturn !== null ? (
-                <> · ยอดในบัญชี {bahtTh(c.movement)} · ในแบบ {bahtTh(c.onReturn)} — {c.ok ? "ตรง" : "ไม่ตรง"}</>
+                <>
+                  {" "}· ยอดในบัญชี {bahtTh(c.movement)} · ในแบบ {bahtTh(c.onReturn)} — {c.ok ? "ตรง" : "ไม่ตรง"}
+                  {c.manualCount ? (
+                    <span className="block text-xs text-[color:var(--color-muted)]" data-testid={`pp30-reconcile-${c.key}-manual`}>
+                      ในยอดนี้มีรายการปรับปรุงมือ (JV ที่บันทึกเอง ไม่มีใบกำกับ) {c.manualCount} รายการ รวม {bahtTh(c.manual ?? 0)}
+                    </span>
+                  ) : null}
+                </>
               ) : (
                 <> · ยอดค้างสิ้นเดือน {bahtTh(c.balance ?? 0)} (บัญชีพัก ไม่เข้า ภ.พ.30)</>
               )}
@@ -195,7 +204,7 @@ function SalesTaxTable({ st, base }: { st: SalesTaxReport; base: string }) {
     <TableWrap>
       <thead>
         <tr className="border-b bg-[color:var(--color-surface-2)] text-left">
-          <th className="px-3 py-2" colSpan={9}>รายงานภาษีขาย (2200)</th>
+          <th className="px-3 py-2" colSpan={9}>รายงานภาษีขาย{st.outputLedger ? ` (บัญชี ${st.outputLedger.code} ${st.outputLedger.name})` : ""}</th>
         </tr>
         <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
           <th className="px-2 py-1.5 text-right">ลำดับ</th>
@@ -332,6 +341,12 @@ export default async function Pp30Page({
   const ret = pp.ret;
   const L = ret.lines;
   const filed = ret.filed.filed;
+  // ACC T1.7 ▸ ผลต่างหลังยื่น (รายการที่ลงเดือนนี้หลังทำเครื่องหมาย) + ประวัติทำ/ยกเลิกเครื่องหมาย ◂
+  const [diffs, filingHist] = await Promise.all([
+    filed ? vatFiledDifferences({ tenantId, systemId }, period) : Promise.resolve(null),
+    filingHistory({ tenantId, systemId }, "PP30", period),
+  ]);
+  const histNames = await namesOf({ tenantId, systemId }, filingHist.map((h) => h.actorId));
   const path = `${base}/reports/pp30`;
   const back = (key: string, q: string) => `${path}?period=${key}&${q}`;
 
@@ -399,7 +414,8 @@ export default async function Pp30Page({
     // ยกเลิกเครื่องหมายยื่น = สิทธิ์ระดับเจ้าของ (แบบเดียวกับ account.period.reopen / wht unfile)
     assertAccountCan(auth, "account.period.reopen");
     const key = String(fd.get("periodKey") ?? "");
-    const r = await unmarkVatFiled({ tenantId, systemId: id }, key);
+    // ACC T1.7 ▸ ไม่ลบแถว — เก็บใคร/เมื่อไร/เหตุผล (ตัวเลขที่ยื่นยังอ่านได้) ◂
+    const r = await unmarkVatFiled({ tenantId, systemId: id }, key, { userId: auth.user.id, reason: String(fd.get("reason") ?? "") });
     await writeAudit({
       tenantId,
       actorId: auth.user.id,
@@ -548,10 +564,11 @@ export default async function Pp30Page({
               <ConfirmDialog
                 action={unmarkFiledAction}
                 fields={{ periodKey: period }}
+                reasonField={{ name: "reason", label: "เหตุผลที่ยกเลิกเครื่องหมาย (เก็บในประวัติ)", required: true }}
                 triggerLabel="ยกเลิกเครื่องหมาย"
                 triggerClassName="text-sm text-[color:var(--color-muted)] hover:underline"
                 title="ยกเลิกเครื่องหมายยื่น ภ.พ.30?"
-                detail="เช็กลิสต์ก่อนปิดงวดจะกลับไปเป็น “ยังไม่ได้ยื่น” (เดือนที่มีแบบเพิ่มเติมแล้วยกเลิกไม่ได้)"
+                detail="เช็กลิสต์ก่อนปิดงวดจะกลับไปเป็น “ยังไม่ได้ยื่น” · ตัวเลขที่ยื่นและประวัติยังเก็บไว้ (เดือนที่มีแบบเพิ่มเติมแล้วยกเลิกไม่ได้)"
                 confirmLabel="ยืนยัน"
                 danger
               />
@@ -573,6 +590,78 @@ export default async function Pp30Page({
           </div>
         )}
       </section>
+
+      {/* ACC T1.7 — ผลต่างหลังยื่น: ทุกรายการที่ลงเดือนนี้หลังทำเครื่องหมายยื่น (ที่มาของแบบเพิ่มเติม) */}
+      {diffs && (
+        <section className="flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm" data-testid="pp30-filed-diffs">
+          <h3 className="font-medium">
+            ผลต่างหลังยื่น ({diffs.rows.length} รายการ) · ภาษีขาย {bahtTh(diffs.totals.output)} · ภาษีซื้อ {bahtTh(diffs.totals.input)} · สุทธิ {bahtTh(diffs.totals.net)}
+          </h3>
+          {diffs.rows.length === 0 ? (
+            <p className="text-xs text-[color:var(--color-muted)]" data-testid="pp30-filed-diffs-empty">ไม่มีรายการที่ลงเดือนนี้หลังทำเครื่องหมายยื่น</p>
+          ) : (
+            <TableWrap>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-[color:var(--color-muted)]">
+                    <th className="py-1 pr-2">ลงเมื่อ</th>
+                    <th className="py-1 pr-2">วันที่รายการ</th>
+                    <th className="py-1 pr-2">เอกสาร / ที่มา</th>
+                    <th className="py-1 pr-2 text-right">ภาษีขาย</th>
+                    <th className="py-1 pr-2 text-right">ภาษีซื้อ</th>
+                    <th className="py-1 pr-2 text-right">ยอดพัก</th>
+                    <th className="py-1 pr-2">โดย</th>
+                    <th className="py-1">สถานะ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {diffs.rows.map((r) => (
+                    <tr key={r.entryId} className="border-t" data-testid="pp30-filed-diff-row">
+                      <td className="py-1 pr-2 whitespace-nowrap">{bkkDay(r.createdAt)}</td>
+                      <td className="py-1 pr-2 whitespace-nowrap">{bkkDay(r.date)}</td>
+                      <td className="py-1 pr-2">
+                        {r.docNo ?? (r.manual ? "รายการบัญชีที่บันทึกเอง" : r.refType)}
+                        {r.entryNo ? <span className="text-[color:var(--color-muted)]"> · {r.entryNo}</span> : null}
+                      </td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{bahtTh(r.outputDelta)}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{bahtTh(r.inputDelta)}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{bahtTh(r.parkedDelta)}</td>
+                      <td className="py-1 pr-2">{r.byName ?? (r.byId ? "ผู้ใช้" : "ระบบ")}</td>
+                      <td className="py-1">{r.acknowledged ? "ยืนยันคำเตือนแล้ว" : "ไม่มีการยืนยัน"}{r.afterLatestFiling ? "" : " · อยู่ในแบบเพิ่มเติมแล้ว"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+          {diffs.rows.length > 0 && (
+            <p className="text-xs text-[color:var(--color-muted)]">
+              ยังไม่อยู่ในแบบใด: ภาษีขาย {bahtTh(diffs.pending.output)} · ภาษีซื้อ {bahtTh(diffs.pending.input)} · สุทธิ {bahtTh(diffs.pending.net)} — ยื่นแบบเพิ่มเติมเพื่อนำผลต่างนี้เข้าแบบ
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ACC T1.7 — ประวัติทำ/ยกเลิกเครื่องหมายยื่น (แถวไม่ถูกลบ) */}
+      {(filingHist.length > 0 || ret.filed.unmarked) && (
+        <section className="flex flex-col gap-1 rounded-lg border px-3 py-2 text-xs print:hidden" data-testid="pp30-filing-history">
+          <h3 className="text-sm font-medium">ประวัติการทำเครื่องหมายยื่น งวด {period}</h3>
+          {ret.filed.unmarked && !filed && (
+            <p data-testid="pp30-unmarked-note">
+              เคยทำเครื่องหมายยื่นเมื่อ {bkkDay(ret.filed.unmarked.filedAt)} แล้วยกเลิกเมื่อ {bkkDay(ret.filed.unmarked.at)}
+              {ret.filed.unmarked.reason ? ` — เหตุผล: ${ret.filed.unmarked.reason}` : ""} · ตัวเลขที่เคยยื่น: ภาษีขาย {bahtTh(ret.filed.unmarked.lines.outputVat ?? 0)} · ภาษีซื้อ {bahtTh(ret.filed.unmarked.lines.inputVat ?? 0)}
+            </p>
+          )}
+          <ul className="flex flex-col gap-0.5">
+            {filingHist.map((h, i) => (
+              <li key={i} data-testid="pp30-filing-history-row">
+                {bkkDay(h.at)} · {h.action === "MARK" ? "ทำเครื่องหมายยื่น" : h.action === "REFILE" ? "ทำเครื่องหมายยื่นใหม่" : "ยกเลิกเครื่องหมาย"} · โดย {h.actorId ? (histNames.get(h.actorId) ?? "ผู้ใช้") : "ระบบ"}
+                {h.reason ? ` · เหตุผล: ${h.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
 
       {/* วิธีลงใบกำกับภาษีอย่างย่อ: ดูชั่วคราวด้วย ?abb= · ตั้งเป็นค่าเริ่มต้นของสมุดได้ (สิทธิ์ตั้งค่าบัญชี) */}
@@ -603,7 +692,13 @@ export default async function Pp30Page({
       <div className="flex flex-col gap-4">
         <SalesTaxTable st={st} base={base} />
         <SalesTaxChecks st={st} />
-        {sideBlock("รายงานภาษีซื้อ (1150)", pp.input)}
+        {sideBlock(
+          `รายงานภาษีซื้อ${(() => {
+            const l = ret.reconcile.find((c) => c.key === "VAT_INPUT")?.ledger;
+            return l ? ` (บัญชี ${l.code} ${l.name})` : "";
+          })()}`,
+          pp.input,
+        )}
       </div>
     </div>
   );

@@ -471,6 +471,8 @@ export type Pp30Row = {
   base: number; // ฐานภาษี (สตางค์)
   vat: number; // จำนวนภาษี (สตางค์)
   rateBp: number; // 700 = 7%
+  /** ACC T1.9 ▸ แถวจาก JV ที่บันทึกเอง (รายการปรับปรุงมือ — ไม่มีใบกำกับ) ◂ */
+  manual?: boolean;
 };
 
 export type Pp30RateGroup = { rateBp: number; base: number; vat: number };
@@ -486,8 +488,8 @@ export type Pp30 = {
   periodKey: string;
   /** ACC T1.1 ▸ รายงานภาษีขายเต็ม (หัวรายงาน · ใบย่อรวมรายวัน · กลุ่มอัตรา · ข้อตรวจ) — output.rows/byRate มาจากก้อนนี้ ◂ */
   salesTax: SalesTaxReport;
-  output: Pp30Side; // ภาษีขาย (2200)
-  input: Pp30Side; // ภาษีซื้อ (1150)
+  output: Pp30Side; // ภาษีขาย (บัญชีตาม mapping VAT_OUTPUT)
+  input: Pp30Side; // ภาษีซื้อ (บัญชีตาม mapping VAT_INPUT)
   carryForward: number; // เครดิตภาษียกมา (T1.3: จำจากเดือนก่อน — `ret.carry` บอกที่มา)
   netPayable: number; // > 0 = ต้องชำระ · < 0 = ชำระเกินสุทธิ
   creditCarry: number; // ยอดเครดิตยกไปเดือนถัดไป (0 เมื่อเลือกขอคืน)
@@ -507,12 +509,12 @@ async function pp30Side(
     select: {
       debit: true,
       credit: true,
-      entry: { select: { refType: true, refId: true, date: true, docNo: true } },
+      entry: { select: { refType: true, refId: true, date: true, docNo: true, source: true } },
     },
   });
 
   // รวม VAT ต่อเอกสารต้นทาง
-  type Agg = { vat: number; date: Date; docRefId: string | null; journalNo: string };
+  type Agg = { vat: number; date: Date; docRefId: string | null; journalNo: string; manual: boolean };
   const perDoc = new Map<string, Agg>();
   const docIds = new Set<string>();
   let i = 0;
@@ -530,6 +532,7 @@ async function pp30Side(
         date: l.entry.date,
         docRefId: isDoc ? l.entry.refId : null,
         journalNo: l.entry.docNo,
+        manual: l.entry.source === "MANUAL",
       });
   }
 
@@ -581,6 +584,7 @@ async function pp30Side(
       base,
       vat: agg.vat,
       rateBp,
+      ...(agg.manual ? { manual: true, contactName: "รายการปรับปรุงมือ (JV ที่บันทึกเอง)" } : {}),
     });
     total += agg.vat;
     baseTotal += base;
@@ -617,7 +621,7 @@ export async function pp30(
       : Promise.resolve<Pp30Side>({ total: 0, base: 0, rows: [], byRate: [] }),
   ]);
   const outputVat = (outAgg?._sum.credit ?? 0) - (outAgg?._sum.debit ?? 0);
-  salesTax.checks = buildChecks(salesTax.rows, salesTax.total.vat, salesTax.glVat, outputVat);
+  salesTax.checks = buildChecks(salesTax.rows, salesTax.total.vat, salesTax.glVat, outputVat, salesTax.outputLedger);
   const output: Pp30Side = {
     total: outputVat,
     base: salesTax.total.base,
@@ -632,6 +636,7 @@ export async function pp30(
         base: p.base,
         vat: p.vat,
         rateBp: p.rateBp,
+        ...(r.manual ? { manual: true } : {}),
       })),
     ),
     byRate: salesTax.groups.map((g) => ({ rateBp: g.rateBp, base: g.base, vat: g.vat })),

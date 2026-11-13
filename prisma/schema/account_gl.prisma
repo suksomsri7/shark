@@ -391,6 +391,10 @@ model AccountWhtFiling {
   totalTaxSatang   Int
   certCount        Int
   note             String?
+  // ACC T1.7 ▸ ยกเลิกเครื่องหมาย = เก็บแถวไว้ (ประวัติ) · null = ยังมีผล ◂
+  unmarkedAt       DateTime?
+  unmarkedById     String?
+  unmarkReason     String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -416,6 +420,10 @@ model AccountVatFiling {
   creditBroughtForwardSatang Int     @default(0)
   excessChoice               String? // CARRY_FORWARD | REFUND
   netSatang                  Int? // + ต้องชำระสุทธิ · − ชำระเกินสุทธิ
+  // ACC T1.7 ▸ ยกเลิกเครื่องหมาย = เก็บแถวไว้ (ประวัติ) · null = ยังมีผล ◂
+  unmarkedAt                 DateTime?
+  unmarkedById               String?
+  unmarkReason               String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

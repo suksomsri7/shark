@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import type { AccountDocType, AccountVatTiming, AccountWhtIncomeType } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, writeAudit } from "./access";
-import { ackCodesOf } from "./legal-gate";
+import { screenAck, withScreenLegal } from "./legal-gate";
 // 🔴 ไฟล์นี้ **ไม่ import prisma** โดยเจตนา — ทุกการแตะ DB ผ่าน service/product/expense (fitness F5)
 import {
   createDocument,
@@ -321,11 +321,10 @@ export async function approveDocAction(formData: FormData) {
   if (!doc) redirect(`${editorListPath(base, docType)}?err=${encodeURIComponent("ไม่พบเอกสาร")}`);
 
   // T0.4 — ปุ่มอนุมัติของหน้าแก้ไขไม่มีช่องยืนยันคำเตือน: มีคำเตือนต้องยืนยัน ⇒ ไปหน้าเอกสาร (แสดงคำเตือน + ช่องติ๊กยืนยัน)
-  const ack = { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" };
-  const res =
-    sideOf(docType) === "revenue"
-      ? await issueDocument(tenantId, systemId, id, { ack })
-      : await issueExpenseDoc(tenantId, systemId, id, { ack });
+  const ack = screenAck(formData.getAll("ack"), userId);
+  const res = await withScreenLegal(ack, () =>
+    sideOf(docType) === "revenue" ? issueDocument(tenantId, systemId, id, { ack }) : issueExpenseDoc(tenantId, systemId, id, { ack }),
+  );
   await writeAudit({
     tenantId,
     actorId: userId,

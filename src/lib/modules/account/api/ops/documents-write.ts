@@ -14,6 +14,7 @@
 //        (ห้ามไปแก้ข้อความใน service — ข้อความนั้นมีคนอ่านบนหน้าจออยู่)
 //   4) เงินเป็นสตางค์จำนวนเต็มเสมอ · วันที่เป็น `YYYY-MM-DD` (วันไทย) · body ทุกตัว `.strict()`
 
+import { ackField, ackOnlyInput } from "../ack-field";
 import { accountNow } from "@/lib/modules/account/clock";
 import type { AccountDocType, AccountVatMode, AccountVatTiming } from "@prisma/client";
 import { z } from "zod";
@@ -584,6 +585,7 @@ const documentsIssue = defineOp({
 
 const convertInput = z
   .object({
+    acknowledge: ackField,
     toType: z
       .enum(DIRECT_DOC_TYPES.filter((t) => t !== "BILLING_NOTE" && t !== "COMBINED_PAYMENT") as unknown as [DirectDocType, ...DirectDocType[]])
       .or(z.enum(["RECEIPT", "TAX_INVOICE", "PURCHASE_TAX_INVOICE"]))
@@ -722,7 +724,7 @@ const documentsReceive = defineOp({
   action: "account.payment.record",
   summary: "Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT, an asset purchase becomes RECEIVED.",
   label: "รับเอกสารตัวจริง",
-  input: noBody,
+  input: ackOnlyInput,
   test: "C1-W10.1",
   async handler({ actor, params }) {
     const { tenantId, systemId } = actor;
@@ -747,6 +749,7 @@ const documentsReceive = defineOp({
 // `confirm` ถูกตรวจและถอดออกที่ dispatch กลางแล้ว — schema เห็นแค่ `reason`
 const voidInput = z
   .object({
+    acknowledge: ackField,
     reason: z.string().min(5).max(500).describe("Why this document is being voided, at least 5 characters. Stored on the document and in the audit log."),
   })
   .strict();

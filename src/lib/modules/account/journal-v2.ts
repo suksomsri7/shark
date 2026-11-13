@@ -13,6 +13,8 @@ import { ledgerRunning, type LedgerRunningRow } from "./coa";
 import { postManualJV, reverseEntry, DORM_DEPOSIT_REF_TYPE, DORM_EXCESS_REF_TYPE } from "./gl"; // SVC D.2 F7 ◂
 import { checkNotLocked } from "./policy"; // §9.3 ล็อกข้อมูลก่อนวันที่
 import { safeReason } from "./errors";
+import { filedLedgerIdsInTx } from "./filed-guard";
+import { legalWarning, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 export type JournalCtx = { tenantId: string; systemId: string };
 import { clampSearch } from "./search-input";
@@ -405,7 +407,9 @@ export type ManualJvInput = {
   attachmentIds?: string[];
 };
 
-export type ManualJvResult = { ok: true; entryId: string; docNo: string } | { ok: false; reason: string };
+export type ManualJvResult =
+  | { ok: true; entryId: string; docNo: string; /** ACC T1.9 ▸ คำเตือนแจ้งให้ทราบ (JV แตะบัญชีภาษี) ◂ */ warnings: LegalWarning[] }
+  | { ok: false; reason: string };
 
 /** ผลรวมเดบิต/เครดิตของบรรทัดที่ "มีค่า" — ใช้ทั้งฝั่ง client (แถบสมดุล) และฝั่ง server */
 export function jvTotals(lines: ManualJvLineInput[]): { debit: number; credit: number; balanced: boolean } {
@@ -494,7 +498,12 @@ export async function createManualEntry(ctx: JournalCtx, input: ManualJvInput): 
   }
 
   const created = await db.accountJournalEntry.findFirst({ where: { id: entryId }, select: { docNo: true } });
-  return { ok: true, entryId, docNo: created?.docNo ?? "" };
+  // ACC T1.9 ▸ JV มือแตะบัญชีภาษี (ตาม mapping) = รายการปรับปรุงมือ — แจ้งให้ทราบ (ไม่บล็อก · ไม่ต้องยืนยัน) ◂
+  const tax = await filedLedgerIdsInTx(db as unknown as Prisma.TransactionClient, ctx.systemId);
+  const taxIds = new Set(Object.entries(tax).filter(([k]) => k !== "WHT_PAYABLE").map(([, v]) => v));
+  const touched = accounts.filter((a) => taxIds.has(a.id));
+  const warnings = touched.length ? [legalWarning("MANUAL_JV_VAT_ACCOUNT", { accounts: touched.map((a) => `${a.code} ${a.name}`).join(", ") })] : [];
+  return { ok: true, entryId, docNo: created?.docNo ?? "", warnings };
 }
 
 /**

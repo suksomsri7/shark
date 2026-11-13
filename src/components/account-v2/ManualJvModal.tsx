@@ -1,5 +1,7 @@
 "use client";
 
+import { legalWarning } from "@/lib/core/settings/legal/warnings";
+import { LegalWarnings } from "./LegalWarnings";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { Modal } from "./Modal";
@@ -42,6 +44,9 @@ export function ManualJvModal({
   nextDocNo,
   action,
   error,
+  taxAccounts = [],
+  filedVatMonths = [],
+  filedPndMonths = [],
 }: {
   /** เส้นทางหน้าสมุดรายวัน — ปิด modal = กลับไปหน้านี้ (แบบเดียวกับ LedgerModal ของ WO 6.1) */
   journalPath: string;
@@ -54,6 +59,10 @@ export function ManualJvModal({
   nextDocNo: string;
   action: (fd: FormData) => void;
   error?: string;
+  /** ACC T1.7/T1.9 — บัญชีภาษีของสมุดตาม mapping (id → key) · เดือนที่ยื่น ภ.พ.30 / ภ.ง.ด. แล้ว (YYYY-MM) */
+  taxAccounts?: { id: string; key: string; code: string; name: string }[];
+  filedVatMonths?: string[];
+  filedPndMonths?: string[];
 }) {
   const router = useRouter();
   const [lines, setLines] = useState<LineState[]>(() => [blank(), blank()]);
@@ -71,6 +80,25 @@ export function ManualJvModal({
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...p } : l)));
 
   const submit = (fd: FormData) => start(() => action(fd));
+
+  // ACC T1.7/T1.9 — คำเตือนล่วงหน้า (ทะเบียนกลาง · ด่านจริงอยู่ชั้นลงบัญชี): แตะบัญชีภาษี = รายการปรับปรุงมือ · ลงเดือนที่ยื่นแล้ว = ต้องติ๊กยืนยัน
+  const [dateKey, setDateKey] = useState(defaultDate);
+  const legal = useMemo(() => {
+    const used = lines.filter((l) => l.accountId && (l.debit > 0 || l.credit > 0));
+    const taxOf = (id: string) => taxAccounts.find((a) => a.id === id);
+    const touched = used.map((l) => ({ l, a: taxOf(l.accountId) })).filter((x) => x.a);
+    if (touched.length === 0) return [];
+    const net = (key: string, sign: 1 | -1) => touched.filter((x) => x.a!.key === key).reduce((n, x) => n + sign * (x.l.credit - x.l.debit), 0);
+    const baht = (v: number) => `${v < 0 ? "−" : v > 0 ? "+" : ""}${(Math.abs(v) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const ws = [legalWarning("MANUAL_JV_VAT_ACCOUNT", { accounts: [...new Set(touched.map((x) => `${x.a!.code} ${x.a!.name}`))].join(", ") })];
+    const month = dateKey.slice(0, 7);
+    const vatTouched = touched.some((x) => x.a!.key !== "WHT_PAYABLE");
+    if (vatTouched && filedVatMonths.includes(month))
+      ws.push(legalWarning("FILED_PERIOD_VAT_CHANGE", { period: month, ref: "รายการบัญชีที่บันทึกเอง", output: baht(net("VAT_OUTPUT", 1)), input: baht(net("VAT_INPUT", -1)) }));
+    if (touched.some((x) => x.a!.key === "WHT_PAYABLE") && filedPndMonths.includes(month))
+      ws.push(legalWarning("FILED_PERIOD_PND_CHANGE", { period: month, forms: "ภ.ง.ด.", ref: "รายการบัญชีที่บันทึกเอง", what: "ลงภาษีหัก ณ ที่จ่ายค้างนำส่งเข้าเดือนนั้น", amount: `${baht(net("WHT_PAYABLE", 1))} บาท` }));
+    return ws;
+  }, [lines, dateKey, taxAccounts, filedVatMonths, filedPndMonths]);
 
   // size xl (896px) ไม่ใช่ lg — g16-journal-modal.png กว้าง ~940/1440 · lg (672px) ทำให้ชื่อบัญชีในบรรทัดถูกตัด
   return (
@@ -95,7 +123,7 @@ export function ManualJvModal({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             วันที่
-            <DateInput name="date" defaultValue={defaultDate} required testId="jv-date" />
+            <DateInput name="date" defaultValue={defaultDate} onChange={(v: string) => setDateKey(v)} required testId="jv-date" />
           </label>
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             สมุด
@@ -274,6 +302,8 @@ export function ManualJvModal({
             />
           </div>
         </label>
+
+        <LegalWarnings warnings={legal} ackName="ack" testId="jv-legal-warnings" />
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3" style={{ borderColor: "var(--color-line)" }}>
           <button type="button" onClick={close} className="btn btn-ghost text-sm">

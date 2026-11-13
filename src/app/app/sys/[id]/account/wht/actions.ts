@@ -6,6 +6,7 @@ import type { AccountWhtIncomeType } from "@prisma/client";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assertAccountCan, writeAudit } from "@/lib/modules/account/access";
 import { issueWhtCert, markFiled, unmarkFiled } from "@/lib/modules/account/wht";
+import { screenAck, withScreenLegal } from "@/lib/modules/account/legal-gate";
 
 export type SimpleResult = { ok: true } | { ok: false; reason: string };
 
@@ -31,11 +32,12 @@ export async function markFiledAction(
   return { ok: true };
 }
 
-export async function unmarkFiledAction(systemId: string, input: { form: 3 | 53; periodKey: string }): Promise<SimpleResult> {
+export async function unmarkFiledAction(systemId: string, input: { form: 3 | 53; periodKey: string; reason?: string }): Promise<SimpleResult> {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   // สิทธิ์ระดับเจ้าของ — เหมือน account.period.reopen (ดู reconcile/actions.ts)
   assertAccountCan(auth, "account.wht.unmark");
-  const res = await unmarkFiled(tenantId, systemId, input);
+  // ACC T1.7 ▸ ไม่ลบแถว — เก็บใคร/เมื่อไร/เหตุผล ◂
+  const res = await unmarkFiled(tenantId, systemId, { form: input.form, periodKey: input.periodKey, userId, reason: input.reason ?? null });
   if (!res.ok) return res;
   await writeAudit({
     tenantId,
@@ -56,12 +58,14 @@ export async function issueWhtCertAction(fd: FormData) {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.wht.manage");
   const rateStr = str(fd, "whtRateBp");
-  const res = await issueWhtCert(tenantId, systemId, {
-    paymentId: str(fd, "paymentId"),
-    whtIncomeType: (str(fd, "whtIncomeType") as AccountWhtIncomeType) || "M40_8",
-    whtRateBp: rateStr ? Number(rateStr) : null,
-    createdById: userId,
-  });
+  const res = await withScreenLegal(screenAck(fd.getAll("ack"), userId), () =>
+    issueWhtCert(tenantId, systemId, {
+      paymentId: str(fd, "paymentId"),
+      whtIncomeType: (str(fd, "whtIncomeType") as AccountWhtIncomeType) || "M40_8",
+      whtRateBp: rateStr ? Number(rateStr) : null,
+      createdById: userId,
+    }),
+  );
   if (!res.ok) redirect(`${wbase(systemId)}?err=${encodeURIComponent(res.reason)}`);
   await writeAudit({
     tenantId,

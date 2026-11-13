@@ -8,6 +8,7 @@ import type {
 } from "@prisma/client";
 import { seedChartOfAccounts } from "./coa";
 import { accountNow } from "./clock";
+import { filedPeriodGuardInTx } from "./filed-guard";
 import { isLockedDate, lockedMessage } from "./policy";
 import { vatRateBpAt } from "./legal-values";
 import { kindFromTiming, rawVatByKind, splitByKind, type KindSplit, type LineKind } from "./tax-point-shared";
@@ -242,6 +243,8 @@ async function commitEntry(ctx: GlCtx, o: CommitOpts, book: Book, db: Db): Promi
   const { periodKey } = bkkPeriod(o.date);
   await assertPeriodOpen(ctx, periodKey, db);
   await assertNotLockedGl(ctx, o.date, db);
+  // ACC T1.7 ▸ เดือนที่ยื่น ภ.พ.30/ภ.ง.ด. แล้ว = คำเตือน+ยืนยัน (ไม่บล็อก · ต่างจากงวดปิดข้างบน) — filed-guard.ts ◂
+  const recordFiledAck = await filedPeriodGuardInTx(db as Tx, ctx, { periodKey, refType: o.refType, refId: o.refId, memo: o.memo ?? null, lines });
 
   const docNo = await allocateJournalNo(ctx, o.book, o.date, db as Tx);
   const idempotencyKey = `${o.refType}#${o.refId}#${o.event}`;
@@ -277,6 +280,7 @@ async function commitEntry(ctx: GlCtx, o: CommitOpts, book: Book, db: Db): Promi
     },
     select: { id: true },
   });
+  if (recordFiledAck) await recordFiledAck(entry.id);
   return entry;
 }
 
