@@ -3,7 +3,7 @@ import { requireTenant } from "@/lib/core/context";
 import { myDocuments, mySelf, selfActorOf } from "@/lib/modules/hr/self";
 import { SelfEmpty, SelfPay } from "@/lib/modules/hr/self-ui";
 import { MyTaxCertCard } from "@/lib/modules/hr/filings/ui"; // HR H3.6 ▸ หนังสือรับรอง 50 ทวิ ของตัวเอง ◂
-import { MySalaryCertCard, MySlipYears } from "@/lib/modules/hr/payslip-ui"; // HR H3.8 ▸ สลิปแยกตามปีภาษี + หนังสือรับรองเงินเดือนของฉัน ◂
+import { MySalaryCertCard, MySlipYears } from "@/lib/modules/hr/self"; // HR H3.8 ▸ สลิปแยกตามปีภาษี + หนังสือรับรองเงินเดือนของฉัน (ผ่าน facade ของฉัน) ◂
 
 export default async function MeHrPayPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) { // HR H3.8 ▸ ?sc=<รหัสผล> (allowlist ใน payslip-ui) ◂
   const sp = await searchParams; // HR H3.8 ◂

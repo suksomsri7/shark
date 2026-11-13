@@ -2,8 +2,7 @@
 //   204 สำหรับ rsc/prefetch · HEAD/อื่น ๆ = 405 ก่อนอ่านอะไร · attachment · no-store · nosniff ◂
 import { getLocale } from "next-intl/server";
 import * as session from "@/lib/core/context"; // เซสชันอ่านหลังตอบ rsc/prefetch เท่านั้น
-import { selfActorOf } from "@/lib/modules/hr/self";
-import { myPayslipPdfGet } from "@/lib/modules/hr/payslip-route";
+import { myPayslipPdfGet, selfActorOf } from "@/lib/modules/hr/self";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

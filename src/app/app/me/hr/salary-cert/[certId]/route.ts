@@ -2,8 +2,7 @@
 //   อื่น ๆ = ข้อความ "ไม่พบ" เดียวกัน · 204 สำหรับ rsc/prefetch · HEAD/อื่น ๆ = 405 ◂
 import { getLocale } from "next-intl/server";
 import * as session from "@/lib/core/context"; // เซสชันอ่านหลังตอบ rsc/prefetch เท่านั้น
-import { selfActorOf } from "@/lib/modules/hr/self";
-import { mySalaryCertGet } from "@/lib/modules/hr/payslip-route";
+import { mySalaryCertGet, selfActorOf } from "@/lib/modules/hr/self";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

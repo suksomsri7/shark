@@ -30,6 +30,11 @@ import { holidaysBetween } from "./holidays";
 import { unitNamesOf } from "./scope";
 import { addDays, bkkDayKey, shiftWindow, TimeRuleError } from "./time-rules";
 import { finalizedOf, slipState } from "./payslip-rules"; // HR H3.8 ▸ สลิปที่ออกแล้ว (pure) ◂
+// HR H3.8 ▸ ทางเข้าของหน้า "ของฉัน" (ใต้ /app/me/hr) สู่สลิป/หนังสือรับรองเงินเดือน — หน้าและ route ของฉัน import ผ่าน facade นี้เท่านั้น (H2.10 R3) ·
+//   ทุกตัวได้พนักงานจาก resolveSelf (payslip.ts) · ไม่มีตัวใดรับรหัสพนักงานจากผู้เรียก ◂
+export { mySlip, mySlips } from "./payslip";
+export { myPayslipPdfGet, mySalaryCertGet } from "./payslip-route";
+export { MySalaryCertCard, MySlipYears, SlipCard, SlipDataNotice, mySlipHistory, mySlipPdfHref } from "./payslip-ui";
 
 // ═══════════════════════════ ข้อความคงที่ (§3 · ไม่มีชื่อคน/รหัสใด ๆ) ═══════════════════════════
 export const SELF_TEXT = {

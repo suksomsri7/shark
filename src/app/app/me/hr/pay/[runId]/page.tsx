@@ -2,9 +2,7 @@
 //   PDF = <a download> ไปเส้นทาง GET · ย้อนหลัง = สลิปที่ออกแล้วของฉันรอบอื่น · แถบแท็บ "เงินเดือน" มาจาก layout ของ /app/me/hr ◂
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
-import { mySelf, selfActorOf } from "@/lib/modules/hr/self";
-import { mySlip } from "@/lib/modules/hr/payslip";
-import { SlipCard, SlipDataNotice, mySlipHistory, mySlipPdfHref } from "@/lib/modules/hr/payslip-ui";
+import { SlipCard, SlipDataNotice, mySelf, mySlip, mySlipHistory, mySlipPdfHref, selfActorOf } from "@/lib/modules/hr/self";
 
 export default async function MeHrSlipPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
