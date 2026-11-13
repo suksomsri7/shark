@@ -74,6 +74,34 @@ const readStr = (cfg: unknown, key: string): string => {
   return typeof v === "string" ? v.trim() : "";
 };
 
+/** ACC T1.6 ▸ อัตรามาตรฐานของเดือนภาษี (ตารางค่ากฎหมาย ณ วันแรกของเดือน) — รายงานภาษีขาย/ซื้อใช้ร่วม ◂ */
+export async function stdRateOfMonth(ctx: Ctx, periodKey: string): Promise<number> {
+  const monthStart = new Date(`${periodKey}-01T00:00:00+07:00`);
+  return vatRateBpAt(ctx, Number.isNaN(monthStart.getTime()) ? new Date() : monthStart);
+}
+
+/** ACC T1.6 ▸ หัวรายงานภาษี (ขาย/ซื้อ) จากค่าตั้งของสมุด — skill §18: เดือนภาษี ชื่อ เลขผู้เสียภาษี สำนักงานใหญ่/สาขา ◂ */
+export function taxReportHeaderOf(
+  settings: { orgName: string | null; taxId: string | null; branchCode: string | null; branchName: string | null; docConfig: unknown } | null,
+  periodKey: string,
+  report: string,
+): SalesTaxHeader {
+  const orgName = [readStr(settings?.docConfig, "orgPrefix"), (settings?.orgName ?? "").trim()].filter(Boolean).join(" ");
+  const taxId = (settings?.taxId ?? "").trim();
+  return {
+    orgName,
+    taxId,
+    branchCode: (settings?.branchCode ?? "").trim() || "00000",
+    branchLabel: sellerBranchLabelTh(settings?.branchCode, settings?.branchName),
+    periodKey,
+    monthLabel: taxMonthLabelTh(periodKey),
+    warnings: headerWarningsTh({ orgName, taxId }, report),
+  };
+}
+
+/** ACC T1.6 ▸ ค่าตั้งที่หัวรายงานภาษีอ่าน ◂ */
+export const TAX_HEADER_SETTINGS_SELECT = { orgName: true, taxId: true, branchCode: true, branchName: true, docConfig: true } as const;
+
 export async function salesTaxAbbModeOf(ctx: Ctx): Promise<SalesTaxAbbMode> {
   const r = await resolveBookSettings({ tenantId: ctx.tenantId }, [ACCOUNT_SETTING_KEYS.salesTaxAbbMode], ctx.systemId);
   const v = r[ACCOUNT_SETTING_KEYS.salesTaxAbbMode]?.value;
@@ -121,20 +149,8 @@ export async function salesTaxReport(
     salesTaxAbbModeOf(ctx),
   ]);
   const abbMode = opts?.abbMode && isSalesTaxAbbMode(opts.abbMode) ? opts.abbMode : abbModeSetting;
-  const monthStart = new Date(`${periodKey}-01T00:00:00+07:00`);
-  const stdRateBp = await vatRateBpAt(ctx, Number.isNaN(monthStart.getTime()) ? new Date() : monthStart);
-
-  const orgName = [readStr(settings?.docConfig, "orgPrefix"), (settings?.orgName ?? "").trim()].filter(Boolean).join(" ");
-  const taxId = (settings?.taxId ?? "").trim();
-  const header: SalesTaxHeader = {
-    orgName,
-    taxId,
-    branchCode: (settings?.branchCode ?? "").trim() || "00000",
-    branchLabel: sellerBranchLabelTh(settings?.branchCode, settings?.branchName),
-    periodKey,
-    monthLabel: taxMonthLabelTh(periodKey),
-    warnings: headerWarningsTh({ orgName, taxId }),
-  };
+  const stdRateBp = await stdRateOfMonth(ctx, periodKey);
+  const header = taxReportHeaderOf(settings, periodKey, "รายงานภาษีขาย");
 
   const outputLedger = ledger ? await db.accountLedger.findFirst({ where: { id: ledger.id }, select: { code: true, name: true } }) : null;
   const empty = (glVat = 0): SalesTaxReport => ({

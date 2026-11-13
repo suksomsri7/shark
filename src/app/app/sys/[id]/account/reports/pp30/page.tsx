@@ -1,4 +1,4 @@
-import { pp30, type Pp30Side } from "@/lib/modules/account/reports";
+import { pp30 } from "@/lib/modules/account/reports";
 import type { SalesTaxReport } from "@/lib/modules/account/sales-tax-report";
 import {
   buyerBranchLabelTh,
@@ -16,6 +16,7 @@ import type { AccountDocType } from "@prisma/client";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { loadReport, currentPeriodKey, ReportHeader, TableWrap } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
+import { PurchaseTaxSection } from "./PurchaseTaxSection";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
@@ -37,45 +38,6 @@ import {
 } from "@/lib/modules/account/pp30-shared";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
-function sideBlock(title: string, s: Pp30Side) {
-  return (
-    <TableWrap>
-      <thead>
-        <tr className="border-b bg-[color:var(--color-surface-2)] text-left">
-          <th className="sticky left-0 z-20 bg-[color:var(--color-surface-2)] px-3 py-2" colSpan={4}>{title}</th>
-        </tr>
-        <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
-          <th className="sticky left-0 z-20 bg-[color:var(--color-surface-2)] px-3 py-1.5">เลขที่</th>
-          <th className="px-3 py-1.5">คู่ค้า</th>
-          <th className="px-3 py-1.5 text-right">ฐานภาษี</th>
-          <th className="px-3 py-1.5 text-right">ภาษี</th>
-        </tr>
-      </thead>
-      <tbody>
-        {s.byRate.map((g) => (
-          <tr key={g.rateBp} className="border-b bg-[color:var(--color-surface-2)] text-xs font-medium">
-            <td className="sticky left-0 z-10 bg-[color:var(--color-surface-2)] px-3 py-1" colSpan={2}>{g.rateBp === -2 ? "รายการปรับปรุงมือ (JV ที่บันทึกเอง)" : `อัตรา ${g.rateBp / 100}%`}</td>
-            <td className="px-3 py-1 text-right"><MoneyText satang={g.base} decimals /></td>
-            <td className="px-3 py-1 text-right"><MoneyText satang={g.vat} decimals /></td>
-          </tr>
-        ))}
-        {s.rows.map((r, i) => (
-          <tr key={`${r.docNo}-${i}`} className="border-b last:border-0">
-            <td className="sticky left-0 z-10 bg-[color:var(--color-surface)] px-3 py-1.5 font-mono text-xs">{r.docNo}</td>
-            <td className="px-3 py-1.5">{r.contactName || "—"}<span className="text-xs text-[color:var(--color-muted)]"> {r.taxId}</span>{r.note && <div className="text-xs text-[color:var(--color-muted)]" data-testid="pp30-row-note">{r.note}</div>}</td>
-            <td className="px-3 py-1.5 text-right"><MoneyText satang={r.base} decimals /></td>
-            <td className="px-3 py-1.5 text-right"><MoneyText satang={r.vat} decimals /></td>
-          </tr>
-        ))}
-        <tr className="border-t-2 font-semibold">
-          <td className="sticky left-0 z-10 bg-[color:var(--color-surface)] px-3 py-2" colSpan={2}>รวม</td>
-          <td className="px-3 py-2 text-right"><MoneyText satang={s.base} decimals /></td>
-          <td className="px-3 py-2 text-right"><MoneyText satang={s.total} decimals /></td>
-        </tr>
-      </tbody>
-    </TableWrap>
-  );
-}
 
 // ── ACC T1.1 ▸ รายงานภาษีขาย: หัวรายงาน · กลุ่มอัตรา (หัวกลุ่ม → แถว → รวมกลุ่ม) · ใบย่อรวมรายวัน + กดดูรายใบ · หมายเหตุยกเลิก · ข้อตรวจ ◂
 const thDate = (ymd: string) => {
@@ -338,6 +300,7 @@ export default async function Pp30Page({
   const excessView = isPp30ExcessChoice(sp.excess) ? sp.excess : null;
   const pp = await pp30({ tenantId, systemId }, period, { carryForward: carryTry, abbMode: abbView, excessChoice: excessView });
   const st = pp.salesTax;
+  const pt = pp.purchaseTax;
   const ret = pp.ret;
   const L = ret.lines;
   const filed = ret.filed.filed;
@@ -431,7 +394,7 @@ export default async function Pp30Page({
   // ACC T1.1 ▸ Excel บนจอ: หัวรายงาน + แถวภาษีขายตามกลุ่มอัตรา (วันที่ · สาขา · หมายเหตุ) แล้วตามด้วยภาษีซื้อ ◂
   const headRow = (label: string, value: string): (string | number)[] => [label, value, "", "", "", "", "", "", "", "", ""];
   const csv = {
-    headers: ["ประเภท", "ลำดับ", "วันที่", "เลขที่", "ถึงเลขที่", "คู่ค้า/ผู้ซื้อ", "เลขภาษี", "สาขา", "อัตรา%", "ฐาน (บาท)", "ภาษี (บาท)", "หมายเหตุ"],
+    headers: ["ประเภท", "ลำดับ", "วันที่ (ซื้อ: วันที่ได้รับ)", "เลขที่ (ซื้อ: เลขที่ใบกำกับ)", "ถึงเลขที่ / วันที่ใบกำกับ (ซื้อ)", "คู่ค้า/ผู้ซื้อ", "เลขภาษี", "สาขา", "อัตรา%", "ฐาน (บาท)", "ภาษี (บาท)", "หมายเหตุ"],
     rows: [
       headRow("รายงานภาษีขาย", st.header.orgName),
       headRow("เลขประจำตัวผู้เสียภาษีอากร", st.header.taxId),
@@ -440,7 +403,13 @@ export default async function Pp30Page({
       ...st.groups.flatMap((g) =>
         g.rows.map(({ row: r, part, seq }) => ["ภาษีขาย", seq, r.date, r.docNo, r.docNoTo ?? "", r.buyerName, r.buyerTaxId, r.buyerBranchCode, part.rateBp < 0 ? "ยกเว้น" : part.rateBp / 100, part.base / 100, part.vat / 100, r.notes.join(" · ")] as (string | number)[]),
       ),
-      ...pp.input.rows.map((r) => ["ภาษีซื้อ", "", r.date.toISOString().slice(0, 10), r.docNo, "", r.contactName, r.taxId, r.branchCode, r.rateBp === -2 ? "ปรับปรุงมือ" : r.rateBp / 100, r.base / 100, r.vat / 100, ""] as (string | number)[]),
+      // ACC T1.6 ▸ รายงานภาษีซื้อ: หัว · รายใบ (ลำดับ · วันที่ได้รับ · เลขที่ใบกำกับ · วันที่ใบกำกับ) · ปรับปรุง · หักไม่ได้ · รอใบกำกับ — เนื้อหาเดียวกับจอ ◂
+      headRow("รายงานภาษีซื้อ", pt.header.orgName),
+      ...pt.rows.map((r) => ["ภาษีซื้อ", r.seq ?? "", r.receivedDate, r.invoiceNo, r.invoiceDate, r.vendorName, r.vendorTaxId, r.vendorBranchCode, r.rateBp / 100, r.base / 100, r.vat / 100, [`เลขที่เอกสาร ${r.docNo}`, ...r.notes, ...(r.flag ? [r.flag] : [])].join(" · ")] as (string | number)[]),
+      ...pt.adjustments.map((r) => ["ภาษีซื้อ (ปรับปรุง)", "", r.receivedDate, r.docNo, "", r.vendorName, "", "", "", 0, r.vat / 100, r.notes.join(" · ")] as (string | number)[]),
+      ["รวมภาษีซื้อ", "", "", "", "", "", "", "", "", pt.total.base / 100, pt.total.vat / 100, ""],
+      ...pt.notClaimable.groups.flatMap((g) => g.rows.map((x) => ["ภาษีซื้อหักไม่ได้ (ไม่รวม)", "", x.date, x.docNo, "", x.vendorName, x.vendorTaxId, "", g.labelTh, x.base / 100, x.vat / 100, [g.sectionTh, ...x.notes].filter(Boolean).join(" · ")] as (string | number)[])),
+      ...pt.pending.rows.map((x) => ["ภาษีซื้อรอใบกำกับ (ไม่รวม)", "", x.sourceDate, x.sourceDocNo ?? "", "", x.vendorName, x.vendorTaxId, "", "", "", x.vat / 100, `อายุ ${x.ageDays} วัน · ${x.pastWindow ? "เลย" : "เคลมได้ถึง"} ${x.lastClaimMonthTh ?? "—"}`] as (string | number)[]),
       // ACC T1.3 ▸ ช่อง ภ.พ.30 ครบ ◂
       ...PP30_LINE_KEYS.map((k) => ["ภ.พ.30", "", "", "", "", PP30_LINE_LABEL_TH[k], "", "", "", PP30_AMOUNT_KEYS.includes(k) ? L[k] / 100 : "", PP30_AMOUNT_KEYS.includes(k) ? "" : L[k] / 100, ""] as (string | number)[]),
     ],
@@ -692,13 +661,8 @@ export default async function Pp30Page({
       <div className="flex flex-col gap-4">
         <SalesTaxTable st={st} base={base} />
         <SalesTaxChecks st={st} />
-        {sideBlock(
-          `รายงานภาษีซื้อ${(() => {
-            const l = ret.reconcile.find((c) => c.key === "VAT_INPUT")?.ledger;
-            return l ? ` (บัญชี ${l.code} ${l.name})` : "";
-          })()}`,
-          pp.input,
-        )}
+        {/* ACC T1.6 ▸ รายงานภาษีซื้อเต็ม (แทนตารางเดิม เลขที่/คู่ค้า/ฐาน/ภาษี) ◂ */}
+        <PurchaseTaxSection pt={pt} base={base} />
       </div>
     </div>
   );

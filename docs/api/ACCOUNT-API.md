@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 209 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 210 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -962,6 +962,19 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/reports/pending-input-vat" \
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/reports/profit-loss?from=example%20from&to=example%20to" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.purchase-tax`
+
+**GET /reports/purchase-tax** - Purchase tax report (input VAT report) of one tax month: header (business name, tax id, head office or branch, tax month) with warnings; one row per purchase tax invoice claimed in the month, numbered from 1 each month and ordered by the date received, with the vendor's invoice date and number, vendor name, tax id and branch, value, VAT and notes (late-claim note, credit/debit note references, cancellations); manual journal adjustments on the input VAT account; reconciliation (report total = input VAT ledger movement = PP30 input VAT; value × rate ≈ VAT per row); and, outside the report total, non-claimable input VAT by reason and input VAT still waiting for the vendor's tax invoice. Supports CSV. · scope: `account.tax.view` · read · AI tool: `account_purchase_tax_report`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `period` | string | yes | period (accounting period, `YYYY-MM`). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/purchase-tax?period=example%20period" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -3701,7 +3714,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
 
 ## AI tools
 
-46 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+47 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 `account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
@@ -3735,6 +3748,7 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_parse_quick_create` | `documents.parse` | read | `account.doc.view` |
 | `account_pending_input_vat` | `reports.pending-input-vat` | read | `account.tax.view` |
 | `account_post_journal` | `journal.create` | write | `account.journal.adjust` |
+| `account_purchase_tax_report` | `reports.purchase-tax` | read | `account.tax.view` |
 | `account_read_bill_image` | `inbox.read` | write | `account.document.manage` |
 | `account_record_payment` | `payments.record` | write | `account.payment.record` |
 | `account_release_parked_vat` | `documents.release-vat` | write | `account.doc.issue` |
@@ -3768,7 +3782,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
 
-`GET https://shark.in.th/api/v1/ai/skills/account` returns the 46 tools (18 read, 28 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 47 tools (19 read, 28 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "account", "label": "บัญชี", "summary": "...", "tools": [

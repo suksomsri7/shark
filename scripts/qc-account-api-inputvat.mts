@@ -1,5 +1,5 @@
 // QC — API บัญชี ACC T1.4/T1.5: สถานะภาษีซื้อผ่าน REST · ใบกำกับภาษีซื้อรอรับ · รับใบข้ามเดือน · เคลมไม่ได้
-// test id ของ op: reports.pending-input-vat = "T1.5-IV-API8" · documents.input-vat-not-claimable = "T1.5-IV-API9" (ด่าน OA-5.2)
+// test id ของ op: reports.pending-input-vat = "T1.5-IV-API8" · documents.input-vat-not-claimable = "T1.5-IV-API9" · reports.purchase-tax = "T1.6-PT-API1" (ด่าน OA-5.2)
 // 🔴 tenant ใหม่ของตัวเอง · ลบทิ้งใน finally
 // รัน: bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-account-api-inputvat.mts
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
@@ -92,6 +92,15 @@ try {
   const nc = await call("POST", `/documents/${ptx5.id}/input-vat-not-claimable`, W, { reason: "ENTERTAINMENT" });
   const p5 = await prisma.accountDocument.findFirst({ where: { id: ptx5.id } });
   chk("T1.5-IV-API9", "POST /documents/{id}/input-vat-not-claimable → 200 · RECEIVED+NO_CLAIM · Dr 6950 70,000 (ค่ารับรอง = รายจ่ายได้)", nc.status === 200 && p5?.status === "RECEIVED" && p5.inputVatStatus === "NO_CLAIM" && (await net(n6950, [ptx5.id])) === 70_000, "ok", `${nc.status} ${p5?.status} ${p5?.inputVatStatus} ${JSON.stringify(nc.body?.error ?? "").slice(0, 200)}`);
+
+  // 6) ACC T1.6 — GET /reports/purchase-tax (เดือนที่รับใบ V-001) · JSON + CSV
+  const pt = await call("GET", "/reports/purchase-tax?period=2026-11", R);
+  const ptRow = pt.body?.data?.rows?.find((r: Any) => r.invoiceNo === "V-001");
+  chk("T1.6-PT-API1", "GET /reports/purchase-tax (read-only) → แถว V-001 ลำดับที่ 1 · วันที่ได้รับ 2026-11-05 · วันที่ใบ 2026-04-10 · ภาษี 70,000 · ข้อความเคลมข้ามเดือน · ข้อตรวจผ่าน · หัวรายงาน", pt.status === 200 && ptRow?.seq === 1 && ptRow.receivedDate === "2026-11-05" && ptRow.invoiceDate === "2026-04-10" && ptRow.vatSatang === 70_000 && ptRow.notes.includes("ถือเป็นภาษีซื้อในเดือนภาษี พฤศจิกายน 2569") && pt.body?.data?.checks?.every((c: Any) => c.ok) && pt.body?.data?.header?.taxId === "0105561000000", "ครบ", `${pt.status} ${JSON.stringify(pt.body?.data ?? pt.body).slice(0, 400)}`);
+  const ptCsvReq = new Request("http://x/api/v1/account/reports/purchase-tax?period=2026-11", { method: "GET", headers: { authorization: `Bearer ${R}`, accept: "text/csv" } });
+  const ptCsvRes = await route.GET!(ptCsvReq, { params: Promise.resolve({ path: ["reports", "purchase-tax"] }) });
+  const ptCsv = await ptCsvRes.text();
+  chk("T1.6-PT-API2", "Accept: text/csv → รายงานภาษีซื้อ CSV (หัว + แถว V-001 700.00)", ptCsvRes.status === 200 && /text\/csv/.test(ptCsvRes.headers.get("content-type") ?? "") && /รายงานภาษีซื้อ/.test(ptCsv) && /V-001.*700\.00/.test(ptCsv), "csv", `${ptCsvRes.status} ${ptCsv.slice(0, 200)}`);
 
   const registry = (await import("@/lib/modules/account/api/registry" as string)) as Record<string, Any>;
   const ops = registry.ACCOUNT_OPS as Any[];
