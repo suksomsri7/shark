@@ -1873,7 +1873,7 @@ export async function creditAvailable(
 ): Promise<number> {
   const src = await tx.accountDocument.findFirst({
     where: { id: sourceDocId, systemId },
-    select: { grandTotal: true, paidTotal: true },
+    select: { grandTotal: true, paidTotal: true, docType: true },
   });
   if (!src) return 0;
   const priorCns = await tx.accountDocument.findMany({
@@ -1888,7 +1888,9 @@ export async function creditAvailable(
   });
   const used = priorCns.reduce((s, c) => s + c.grandTotal, 0);
   // F-04: CN cap = ยอดคงเหลือค้างชำระจริง (grandTotal − ที่ชำระแล้ว − CN เดิม)
-  const own = Math.max(0, src.grandTotal - src.paidTotal - used);
+  // ACC T2.8 ▸ "ที่ชำระแล้ว" หักเฉพาะต้นทางที่เป็นหนี้ (ใบแจ้งหนี้) — ใบเสร็จขายสดมีรายการรับเงินเสมอแล้ว (paidTotal = ยอดใบ)
+  //   ใบลดหนี้บนใบเสร็จ = ลดยอดขาย/คืนเงิน ⇒ เพดาน = ยอดใบ − ใบลดหนี้เดิม (กติกาเดียวกับ famCap ด้านล่าง) ◂
+  const own = Math.max(0, src.grandTotal - (src.docType === "INVOICE" ? src.paidTotal : 0) - used);
   // CRM C5.4-C ▸ (hunt F4) เพดานของ "ครอบครัวใบแจ้งหนี้": ใบลดหนี้ทุกใบบนใบแจ้งหนี้ + ใบเสร็จ/ใบกำกับที่แปลงจากมัน รวมกันไม่เกินยอดขาย
   //   (ต้นทาง = ใบแจ้งหนี้เอง ⇒ ไม่เกินหนี้คงค้าง F-04 · ต้นทาง = ใบเสร็จ/ใบกำกับ ⇒ ลดหนี้/คืนเงินได้ไม่เกินยอดขายที่เหลือ)
   //   ผู้เรียกที่ตัดสินจริง (issueDocument) ถือล็อกแถวใบแจ้งหนี้อยู่ · หน้าจอเรียกแบบอ่านอย่างเดียว ◂
