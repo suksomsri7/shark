@@ -5946,6 +5946,8 @@ export type ContactPickerRow = {
   phone: string | null;
   creditTermDays: number;
   defaultPriceMode: AccountPriceMode | null;
+  /** ACC T1.4 — ประเภทคู่ค้า (ผู้รับของหัก ณ ที่จ่ายในฟอร์ม) */
+  legalType: AccountLegalType;
   outstandingSatang: number;
 };
 
