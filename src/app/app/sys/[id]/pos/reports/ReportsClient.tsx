@@ -794,6 +794,14 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId, boardOn = fal
         { key: "voidNos", header: c("voidReceipts"), cell: (r) => <span className="tabular-nums">{r.voidReceiptNos.length > 0 ? r.voidReceiptNos.join(" ") : "—"}</span> },
       ];
       const tt = x.totals;
+      // ACC T1.8 ▸ ช่วงที่มีบิลผสม: คอลัมน์ 0% · ยกเว้น · เก็บแทน (นอกยอดขาย) — ไม่มี = ตารางเดิม ◂
+      const t18 = (tt.zeroRatedSatang ?? 0) + (tt.exemptSatang ?? 0) + (tt.onBehalfSatang ?? 0) > 0;
+      if (t18)
+        cols.splice(cols.length - 2, 0,
+          { key: "zero", header: c("zeroRated"), num: true, cell: (r) => M(r.zeroRatedSatang ?? 0) },
+          { key: "exempt", header: c("exempt"), num: true, cell: (r) => M(r.exemptSatang ?? 0) },
+          { key: "onBehalf", header: c("onBehalf"), num: true, cell: (r) => M(r.onBehalfSatang ?? 0) },
+        );
       return (
         <Table
           testId="pos-report-table"
@@ -801,7 +809,7 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId, boardOn = fal
           rows={x.rows}
           rowKey={(r) => `${r.businessDate}|${r.unitId}`}
           minWidth={1160}
-          total={[t("total"), "", "", "", tt.billCount, M(tt.grossSatang), M(tt.vatSatang), M(tt.baseSatang), M(tt.vatableGrossSatang), M(tt.nonVatGrossSatang), tt.voidCount, ""]}
+          total={[t("total"), "", "", "", tt.billCount, M(tt.grossSatang), M(tt.vatSatang), M(tt.baseSatang), M(tt.vatableGrossSatang), M(tt.nonVatGrossSatang), ...(t18 ? [M(tt.zeroRatedSatang ?? 0), M(tt.exemptSatang ?? 0), M(tt.onBehalfSatang ?? 0)] : []), tt.voidCount, ""]}
         />
       );
     }

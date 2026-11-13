@@ -1263,7 +1263,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดของเซิร์ฟเวอร์เท่านั้น ⇒ quote ยังไม่ตรงรุ่น = ยอดรอ (—) เหมือนบรรทัดตัวเลือก
   // POS P2.2U fix รอบ 1 F3: ตะกร้าที่ใช้ชั้นราคา (โปร/ช่องทาง ≠ หน้าร้าน) = ยอดรอ (—) จน quote ของเซิร์ฟเวอร์ตรงรุ่น · ชำระ/ส่งขายใช้ quote เท่านั้นเหมือนเดิม
   const priceLayer = cartUsesPriceLayer(cart);
-  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode || priceLayer);
+  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode || priceLayer || cart.lines.some((l) => (l.kind === "product" && !!known.current.get(l.productId)?.vatTreatment) || (l.kind === "custom" && !!l.vatTreatment))); // ACC T1.8 · T1.8b (รายการกำหนดเอง) ◂
   const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
   // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
@@ -1387,7 +1387,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       index: i,
       ...(badge ? { badge } : {}),
       ...(lineError ? { error: lineError } : {}),
-      name: l.kind === "custom" ? l.name : prod ? displayName(prod, locale) : (heldNames.current.get(l.productId) ?? "-"),
+      name: l.kind === "custom" ? (l.vatTreatment ? `${l.name} ${t(`custom.vatMark.${l.vatTreatment}`)}` : l.name) : prod ? displayName(prod, locale) : (heldNames.current.get(l.productId) ?? "-"), // ACC T1.8b ▸ ป้ายชนิด VAT ของรายการกำหนดเอง ◂
       qty: l.qty,
       unitPriceSatang: unit,
       grossSatang: ql?.grossSatang ?? ll?.grossSatang ?? unit * l.qty,
@@ -1803,6 +1803,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (c.memberId || c.couponCode) return null;
     // POS P2.2U ▸ มติ 5: ราคาโปร/ช่องทางอื่น = ยอดจากเซิร์ฟเวอร์เท่านั้น (บรรทัดที่ไทล์/quote ล่าสุดบอกว่ามาจากโปร · บิลที่มีช่องทาง ≠ หน้าร้าน) ◂
     if (cartUsesPriceLayer(c)) return null;
+    // ACC T1.8 ▸ ตะกร้าที่มีสินค้ายกเว้น/0%/เก็บแทน = VAT ตามบรรทัด → ยอดจากเซิร์ฟเวอร์เท่านั้น (ตัวคิดในเครื่องถอด VAT ทั้งบิล) ◂
+    if (c.lines.some((l) => (l.kind === "product" && !!known.current.get(l.productId)?.vatTreatment) || (l.kind === "custom" && !!l.vatTreatment))) return null; // ACC T1.8b ◂
     const r = priceLocal(c, localCap);
     if (!r || !r.ok) return null;
     return {
@@ -2973,9 +2975,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
         return (
           <CustomItemDialog
             key={k}
-            onAdd={(name, price) => {
+            onAdd={(name, price, vatTreatment) => {
               if (cart.lines.length >= REGISTER_MAX_LINES) return { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } };
-              addLine({ kind: "custom", name, unitPriceSatang: price, qty: 1 });
+              addLine({ kind: "custom", name, unitPriceSatang: price, qty: 1, ...(vatTreatment && vatTreatment !== "STANDARD" ? { vatTreatment } : {}) }); // ACC T1.8b ◂
               pop();
               return null;
             }}

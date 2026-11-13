@@ -415,6 +415,7 @@ import { createSale, MAX_GIFT_CARD_ROWS, PosSaleError, saleWalletCart, type Crea
 // POS P1.12 ▸ คูปองที่หน้าขาย (R6 · ตรวจบนฐานเดียวกับ createSale) · VAT ของยอดหลังสิทธิ์สมาชิก (สูตรเดียวกับ createSale) ◂
 import * as couponSvc from "@/lib/modules/coupon/service";
 import { splitIncludedVat } from "@/lib/money/vat";
+import { isVatTreatment, productVatTreatment, splitBillVat, type VatTreatment } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
 import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
 import { afterSaleCommitted, pendingStockParts, posDayStart, preverifySaleGiftPins } from "./service"; // POS P2.5 ▸ fix2 มติ 4: + preverifySaleGiftPins ◂
@@ -931,6 +932,7 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
       parentId: p.parentId,
       variantCount: kidCount.get(p.id) ?? 0,
       soldByWeight: p.soldByWeight,
+      ...(productVatTreatment(p) !== "STANDARD" ? { vatTreatment: productVatTreatment(p) } : {}), // ACC T1.8 ▸ จอขายรู้ว่าต้องรอยอดจากเซิร์ฟเวอร์ ◂
       soldOut: soldOutReason !== null,
       soldOutReason,
       ...(soldOutReason === "UNAVAILABLE" && marks.has(p.id) ? { soldOutMark: marks.get(p.id) } : {}), // POS P2.6 ▸ CD 8 ◂
@@ -1353,7 +1355,7 @@ type RegParsedLine =
       weighedBarcode: string | null;
       weightGrams: number | null;
     }
-  | { kind: "custom"; name: string; qty: number; unitPriceSatang: number; discount: PriceDiscount | null; note?: string | null }
+  | { kind: "custom"; name: string; qty: number; unitPriceSatang: number; discount: PriceDiscount | null; note?: string | null; vatTreatment?: VatTreatment /* ACC T1.8 ◂ */ }
   // POS P2.4 ▸ R6: บรรทัดของบิลโต๊ะ = รายการที่ส่งครัวแล้ว (เซิร์ฟเวอร์สร้างจาก session · ราคาสำเนาตอนส่งรอบ ไม่คิดใหม่ · CD3) ◂
   | { kind: "table"; tableItemId: string; productId: string | null; name: string; qty: number; unitPriceSatang: number; options: RegPickedOption[]; choiceIds: string[]; discount: null; note?: null; share?: RegShare | null };
 /** POS P2.5 ▸ R3 มติ 3: บรรทัดส่วนแบ่งของใบแยกบิล — units = หน่วยของรายการที่หารกัน · owner = ใบนี้ตัดสต็อกของหน่วยเหล่านั้น (ใบเลขต่ำสุด) ◂ */
@@ -1548,7 +1550,10 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
       const name = typeof l.name === "string" ? l.name.trim() : "";
       if (!name || name.length > 200 || !regCleanText(name)) return regRefuse("VALIDATION", "รายการกำหนดเองต้องมีชื่อ", i);
       if (!regIsMoney(l.unitPriceSatang)) return regRefuse("INVALID_LINE", "ราคาต้องเป็นจำนวนเต็มสตางค์ที่ไม่ติดลบ", i);
-      lines.push({ kind: "custom", name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount, note });
+      // ACC T1.8 ▸ รายการกำหนดเอง (ราคาเปิด) เลือกชนิด VAT ได้ต่อบรรทัด · ไม่ส่ง = มาตรฐาน · ผิดรูป = VALIDATION ◂
+      const vt: unknown = (l as { vatTreatment?: unknown }).vatTreatment;
+      if (vt !== undefined && vt !== null && !isVatTreatment(vt)) return regRefuse("VALIDATION", "ชนิด VAT ของรายการไม่ถูกต้อง", i);
+      lines.push({ kind: "custom", name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount, note, ...(isVatTreatment(vt) && vt !== "STANDARD" ? { vatTreatment: vt } : {}) });
     }
   }
   return { lines, billDiscount, memberId, couponCode, memberChoices, channelId, tableSessionId, tableSplitPartId };
@@ -1622,6 +1627,8 @@ type RegResolvedLine = {
   priceSource: PriceSource | null;
   priceRule: { id: string; name: string } | null;
   listPriceSatang: number | null;
+  /** ACC T1.8 ▸ ชนิด VAT (รายการกำหนดเอง = ที่เลือก · สินค้า = ของสินค้า) · ไม่มี = มาตรฐาน ◂ */
+  vatTreatment?: VatTreatment;
   /** POS P2.4 ▸ fix 2 F6: บรรทัดบิลโต๊ะที่ตัดสต็อกไม่ได้ (สินค้าขายที่สาขานี้ไม่ได้แล้ว / กระจายสูตรไม่ได้) — บิลผ่าน · log STOCK_CUT_FAILED หลังบิลเกิด ◂ */
   stockCutFail?: "NOT_VISIBLE" | "RECIPE";
 };
@@ -1708,7 +1715,7 @@ async function regPrice(
     const l = cart.lines[i]!;
     if (l.kind === "custom") {
       priceLines.push({ qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount: l.discount });
-      meta.push({ name: l.name, qty: l.qty, productId: null, itemId: null, serviceId: null, note: l.note ?? null, options: [], components: [], weightGrams: null, priceSource: "CUSTOM", priceRule: null, listPriceSatang: null });
+      meta.push({ name: l.name, qty: l.qty, productId: null, itemId: null, serviceId: null, note: l.note ?? null, options: [], components: [], weightGrams: null, priceSource: "CUSTOM", priceRule: null, listPriceSatang: null, ...(l.vatTreatment ? { vatTreatment: l.vatTreatment } : {}) });
       continue;
     }
     // POS P2.4 ▸ R6: บรรทัดบิลโต๊ะ — ราคา/ตัวเลือก = สำเนาตอนส่งรอบ (ไม่คิดราคาใหม่ · ไม่ตรวจเปิดขาย/ตัวแปร/ตัวเลือก — อาหารสั่งไปแล้ว) ·
@@ -1898,7 +1905,23 @@ async function regPrice(
   const grand = r.grandTotalSatang - memberDiscount;
   if (grand < 0) return regRefuse("BENEFITS_EXCEED_TOTAL");
   // VAT ของยอดหลังสิทธิ์สมาชิก = สูตรของ createSale (splitIncludedVat บนยอดสุทธิ) · ไม่มีสมาชิก = ค่าของ priceCart เดิมทุกบาท
-  const vatSatang = memberDiscount > 0 ? (r.vatMode === "INCLUDED" && r.vatRateBp > 0 ? splitIncludedVat(grand, r.vatRateBp).vatSatang : 0) : r.vatSatang;
+  let vatSatang = memberDiscount > 0 ? (r.vatMode === "INCLUDED" && r.vatRateBp > 0 ? splitIncludedVat(grand, r.vatRateBp).vatSatang : 0) : r.vatSatang;
+  // ACC T1.8 ▸ ชนิด VAT ต่อบรรทัด (สินค้า = vatRateBp เดิม + ธงเก็บแทน · กำหนดเอง = ที่เลือก) → VAT จากกลุ่มมาตรฐาน + ยอดตามกลุ่ม (สูตรเดียวกับ createSale) · มาตรฐานล้วน = ค่าเดิม ◂
+  const t18Ids = [...new Set(meta.filter((m) => m.productId && !m.vatTreatment).map((m) => m.productId!))];
+  if (t18Ids.length) {
+    const tOf = new Map((await db.posProduct.findMany({ where: { tenantId: s.tenantId, id: { in: t18Ids } }, select: { id: true, vatRateBp: true, collectedOnBehalf: true } })).map((p) => [p.id, productVatTreatment(p)]));
+    meta.forEach((m) => {
+      const t = m.productId && !m.vatTreatment ? tOf.get(m.productId) : undefined;
+      if (t && t !== "STANDARD") m.vatTreatment = t;
+    });
+  }
+  let vatGroups: RegisterQuoteTotals["vatGroups"] = undefined;
+  if (meta.some((m) => m.vatTreatment && m.vatTreatment !== "STANDARD")) {
+    const g = splitBillVat({ lines: r.lines.map((x, i) => ({ lineTotalSatang: x.lineTotalSatang, treatment: meta[i]!.vatTreatment ?? null })), serviceChargeSatang: r.serviceChargeSatang, grandTotalSatang: grand, rateBp: r.vatMode === "INCLUDED" ? r.vatRateBp : 0 });
+    if (g.unallocatedDiscount > 0) return regRefuse("VALIDATION", "ส่วนลดใช้กับรายการเก็บแทนไม่ได้ — ส่วนลดรวมมากกว่ายอดรายการที่ลดได้");
+    vatSatang = g.vat;
+    vatGroups = { standardSatang: g.standardGross, zeroRatedSatang: g.zeroRated, exemptSatang: g.exempt, onBehalfSatang: g.onBehalf, lineTreatments: meta.map((m) => m.vatTreatment ?? "STANDARD") };
+  }
   const lines: RegisterQuoteLine[] = r.lines.map((x, i) => {
     const m = meta[i]!;
     const options: RegisterQuoteLineOption[] = m.options.map((o) => ({ choiceId: o.choiceId, groupId: o.groupId, name: o.name, priceDeltaSatang: o.priceDeltaSatang }));
@@ -1939,6 +1962,7 @@ async function regPrice(
     stampsToAdd: member?.stampsToAdd ?? [],
     memberConflicts: conflicts,
     ...(channel ? { channel } : {}), // POS P2.1 ▸ R10 ◂
+    ...(vatGroups ? { vatGroups } : {}), // ACC T1.8 ◂
   };
   const resolved = r.lines.map((x, i) => ({ ...meta[i]!, unitPriceSatang: x.unitPriceSatang, discountSatang: x.discountSatang }));
   return { quote, resolved, coupon, member, conflicts, channel };
@@ -2988,6 +3012,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
         ...(l.priceSource !== null ? { priceSource: l.priceSource } : {}),
         ...(l.priceRule ? { priceRuleId: l.priceRule.id } : {}),
         ...(l.listPriceSatang !== null ? { listPriceSatang: l.listPriceSatang } : {}),
+        ...(l.vatTreatment ? { vatTreatment: l.vatTreatment } : {}), // ACC T1.8 ◂
       })),
       billDiscountSatang: q.billDiscountSatang,
       // P1.6: เงินที่รับอยู่บนแถวเงินสด (ทอนคิดที่ createSale) · เลขอ้างอิงบัตร/โอน

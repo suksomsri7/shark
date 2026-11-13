@@ -238,9 +238,16 @@ export async function savePrintTemplateAction(formData: FormData): Promise<Actio
   const language: PrintLanguage = s(formData, "language") === "EN" ? "EN" : "TH";
   const fields = {} as Record<PrintField, boolean>;
   for (const f of PRINT_FIELDS) fields[f] = on(formData, `field_${f}`);
-  const res = await saveDocSettings({ tenantId, systemId }, { print: { template, language, fields } });
+  const sec = s(formData, "section864"); // ACC T2.10 ◂
+  const section864 = sec === "ALWAYS" || sec === "NEVER" || sec === "AUTO" ? sec : undefined;
+  const ackCodes = formData.getAll("ack").filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 64);
+  const res = await saveDocSettings(
+    { tenantId, systemId },
+    { print: { template, language, fields, ...(section864 ? { section864 } : {}) } },
+    { ack: { codes: ackCodes, actorId: userId, actorType: "USER", via: "screen" } },
+  );
   if (!res.ok) return res;
-  await audit(tenantId, userId, systemId, "เทมเพลตพิมพ์", { template, language });
+  await audit(tenantId, userId, systemId, "เทมเพลตพิมพ์", { template, language, ...(section864 ? { section864 } : {}) });
   revalidatePath(SETTINGS_PATH(systemId));
   return { ok: true };
 }

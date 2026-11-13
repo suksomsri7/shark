@@ -81,6 +81,12 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   // บัญชี
   "account.doc.create": "สร้าง/แก้ไขเอกสารบัญชี",
   "account.doc.issue": "ออกเอกสารบัญชี",
+  // ACC T2.7 ▸ ประวัติการพิมพ์ ◂
+  "account.doc.print.original": "พิมพ์ต้นฉบับ",
+  "account.doc.print.copy": "พิมพ์สำเนา",
+  "account.doc.print.set": "พิมพ์ชุดต้นฉบับ + สำเนา",
+  "account.doc.print.substitute": "ออกใบแทน",
+  "account.doc.print.original_reprint": "พิมพ์ต้นฉบับซ้ำ (ยืนยันคำเตือนแล้ว)",
   // T0.4 — ผู้ใช้กดยืนยันผ่านคำเตือนกฎหมาย (รหัสคำเตือนอยู่ใน after.codes)
   "legal.warning.ack": "ยืนยันทำต่อหลังเห็นคำเตือนตามกฎหมาย",
   "account.doc.approve": "อนุมัติเอกสารบัญชี",

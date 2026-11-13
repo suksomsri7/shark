@@ -91,11 +91,15 @@ console.log("G0 สายไฟ/ทะเบียน (อ่านจากซ�
   const payable = payjs.slice(payjs.indexOf("PAYABLE_DOC_TYPES"), payjs.indexOf("GROUP_DOC_TYPES"));
   assert("G0.10 payment.ts: BILLING_NOTE ไม่อยู่ใน PAYABLE_DOC_TYPES (ห้ามรับชำระที่ตัวกลุ่ม)", !payable.includes('"BILLING_NOTE"'));
   assert("G0.11 payment.ts: COMBINED_PAYMENT ไม่อยู่ใน PAYABLE_DOC_TYPES", !payable.includes('"COMBINED_PAYMENT"'));
-  const print = readFileSync(join(ROOT, "src/app/app/sys/[id]/account/print/[docId]/page.tsx"), "utf8");
+  // ORACLE-EDIT (ACC T2.7 เลน 2): หน้าพิมพ์แยกเป็น page.tsx (เส้นทาง) + print-view.ts (ข้อมูล) + PrintDocument.tsx (กระดาษ) —
+  //   ข้อตรวจเดิมอ่าน page.tsx ไฟล์เดียว ⇒ อ่านสามไฟล์รวมกัน (ถ้อยคำ/ตรรกะกลุ่มเดิมอยู่ครบ) · G0.12d: ตัวเลือกชื่อเอกสารฝั่งรายจ่ายอยู่ใน labelOf ของ print-view
+  const print = ["src/app/app/sys/[id]/account/print/[docId]/page.tsx", "src/lib/modules/account/print-view.ts", "src/components/account-v2/PrintDocument.tsx"]
+    .map((f) => readFileSync(join(ROOT, f), "utf8"))
+    .join("\n");
   assert("G0.12a ใบพิมพ์รู้จักเอกสารกลุ่ม (isGroupDocType)", print.includes("isGroupDocType("));
   assert("G0.12b ใบพิมพ์ของกลุ่มใช้หัวตาราง 'เอกสาร'/'ยอดค้างชำระ' แทน 'สินค้า/บริการ'", print.includes("ยอดค้างชำระ") && print.includes("รวมยอดที่ต้องชำระ"));
   assert("G0.12c ใบรวมจ่ายพิมพ์เป็น 'ใบสำคัญจ่าย' ตาม §3", print.includes("ใบสำคัญจ่าย"));
-  assert("G0.12d ใบพิมพ์ฝั่งรายจ่ายมีชื่อเอกสารจริง (ไม่ตกเป็นคำว่า 'เอกสาร')", print.includes("EXP_DOC_LABEL[doc.docType]"));
+  assert("G0.12d ใบพิมพ์ฝั่งรายจ่ายมีชื่อเอกสารจริง (ไม่ตกเป็นคำว่า 'เอกสาร')", /EXP_DOC_LABEL\[(doc\.)?docType/.test(print));
   for (const rel of [
     "combined-payment/page.tsx",
     "combined-payment/new/page.tsx",

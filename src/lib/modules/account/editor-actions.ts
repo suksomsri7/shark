@@ -125,6 +125,7 @@ function sanitize(payload: DocDraftPayload, vat: VatRule) {
     internalNote: trim(v.internalNote, 2000),
     adjustReasonCode: trim(v.adjustReasonCode, 30),
     adjustReasonText: trim(v.adjustReasonText, 500),
+    vendorDocDate: /^\d{4}-\d{2}-\d{2}$/.test(String(v.vendorDocDate ?? "")) ? String(v.vendorDocDate) : "", // ACC T2.3 ◂
     lines: lines.filter((l) => l.name.length > 0),
   };
 }
@@ -214,6 +215,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               discountAmount: totals.discountAmount,
               note: v.note || null,
               adjustReason: isAdjust ? adjustReason : undefined,
+              adjustReasonCode: isAdjust ? v.adjustReasonCode || null : undefined, // ACC T2.3 ◂
               lines: lineInputs,
             })
           : await updateExpenseDoc(tenantId, systemId, docId, {
@@ -225,6 +227,8 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               discountAmount: totals.discountAmount,
               note: v.note || null,
               adjustReason: isAdjust ? adjustReason : undefined,
+              adjustReasonCode: isAdjust ? v.adjustReasonCode || null : undefined, // ACC T2.3 ◂
+              ...(isAdjust ? { vendorInvoiceDate: v.vendorDocDate ? new Date(`${v.vendorDocDate}T12:00:00+07:00`) : null } : {}), // ACC T2.3 ◂
               lines: lineInputs,
             });
       if (!res.ok) return { ok: false, reason: res.reason };
@@ -251,6 +255,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               discountAmount: totals.discountAmount,
               note: v.note || null,
               adjustReason,
+              adjustReasonCode: isAdjust ? v.adjustReasonCode || null : null, // ACC T2.3 ◂
               sourceDocId,
               lines: lineInputs,
               createdById: userId,
@@ -267,6 +272,8 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               discountAmount: totals.discountAmount,
               note: v.note || null,
               adjustReason,
+              adjustReasonCode: isAdjust ? v.adjustReasonCode || null : null, // ACC T2.3 ◂
+              ...(isAdjust && v.vendorDocDate ? { vendorInvoiceDate: new Date(`${v.vendorDocDate}T12:00:00+07:00`) } : {}), // ACC T2.3 ◂
               sourceDocId,
               lines: lineInputs,
               createdById: userId,

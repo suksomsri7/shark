@@ -4,6 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { AccountIcon } from "./AccountIcon";
 import { Modal } from "./Modal";
+import { LegalWarnings } from "./LegalWarnings"; // ACC T2.10 ◂
+import { legalWarning } from "@/lib/core/settings/legal/warnings";
 import { previewExample } from "@/lib/modules/account/doc-numbering";
 import { useSetBreadcrumbTail } from "./breadcrumb-tail";
 import {
@@ -766,6 +768,7 @@ function AutoTaxSection(p: DocSettingsPanelProps) {
 function PrintSection(p: DocSettingsPanelProps) {
   const [preview, setPreview] = useState(false);
   const pr = p.settings.print;
+  const [section864, setSection864] = useState(pr.section864); // ACC T2.10 ◂
   return (
     <section className="card flex flex-col gap-3 p-5" data-testid="print-card">
       <div className="flex items-center justify-between">
@@ -800,6 +803,17 @@ function PrintSection(p: DocSettingsPanelProps) {
           ))}
         </select>
       </label>
+      {/* ACC T2.10 ▸ "ใบกำกับภาษีนี้ออกตามมาตรา 86/4" — ค่าเริ่มต้นพิมพ์เฉพาะใบที่ครบรายการ ม.86/4 · บังคับทุกใบ = คำเตือน + ติ๊กยืนยัน ◂ */}
+      <label className={label}>
+        ข้อความ &quot;ใบกำกับภาษีนี้ออกตามมาตรา 86/4&quot; บนใบกำกับภาษี
+        <select name="section864" value={section864} onChange={(e) => setSection864(e.target.value as typeof section864)} data-testid="print-section864" className={`${input} w-96`}>
+          <option value="AUTO">อัตโนมัติ — พิมพ์เฉพาะใบที่มีรายการครบ</option>
+          <option value="ALWAYS">พิมพ์ทุกใบ</option>
+          <option value="NEVER">ไม่พิมพ์</option>
+        </select>
+        <span>ใบที่ขาดรายการ เช่น ที่อยู่ผู้ซื้อ หรือสาขา ระบบไม่พิมพ์ข้อความนี้ เพราะข้อความยืนยันว่าใบครบตามมาตรา</span>
+      </label>
+      {section864 === "ALWAYS" && pr.section864 !== "ALWAYS" && <LegalWarnings warnings={[legalWarning("TAX_INVOICE_SECTION_TEXT_FORCED")]} ackName="ack" testId="print-section864-warning" />}
       <fieldset className="flex flex-col gap-1 border-t pt-3">
         <legend className="text-xs text-[color:var(--color-muted)]">ฟิลด์ที่แสดงบนเอกสาร</legend>
         <div className="grid grid-cols-2 gap-1 text-sm">
@@ -817,7 +831,7 @@ function PrintSection(p: DocSettingsPanelProps) {
           <iframe
             title="ตัวอย่างเอกสาร"
             data-testid="print-preview-frame"
-            src={`${p.base}/print/${p.printSampleDocId}`}
+            src={`${p.base}/print/${p.printSampleDocId}?preview=1`}
             className="h-[70vh] w-full rounded-lg border bg-white"
           />
           <p className="mt-2 text-xs text-[color:var(--color-muted)]">

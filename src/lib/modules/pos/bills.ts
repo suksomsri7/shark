@@ -7,6 +7,7 @@
 // 🔴 แถวของรายการ = บิลขาย (docType SALE) เท่านั้น · ใบคืน (REFUND) ห้อยที่บิลของมัน (refunds[]) ไม่เป็นแถว
 // 🔴 billDetail ห้ามเรียก receiptPayload (มันเขียน audit / ยกเป็นสำเนา) — คำนวณยอดด้วยสูตรเดียวกันจากแถว DB
 // 🔴 คำปฏิเสธ "คืน" {ok:false, code, message ไทย} — ไม่ throw ข้ามขอบ action (ขัดข้องที่ไม่คาดคิด = UNKNOWN)
+import { storedVatGroups } from "@/lib/money/vat-lines"; // ACC T1.8b ◂
 import type { PosSaleStatus } from "@prisma/client";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import * as account from "@/lib/modules/account";
@@ -548,6 +549,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
         // POS P2.14 ▸ UI-4 ◂
         costSatang: lineCostOf(l.id),
         marginSatang: lineCostOf(l.id) === null ? null : l.lineTotalSatang - (lineCostOf(l.id) ?? 0),
+        ...(l.vatTreatment && l.vatTreatment !== "STANDARD" ? { vatTreatment: l.vatTreatment } : {}), // ACC T1.8b ◂
       })),
       totals: {
         subtotal,
@@ -561,6 +563,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
         grandTotal: sale.grandTotalSatang,
         tip: sale.tipSatang,
         refunded: sale.refundedSatang,
+        ...billVatGroups(sale), // ACC T1.8b ◂
       },
       payments: sale.payments.map((p) => ({
         type: p.type,
@@ -736,4 +739,10 @@ async function voidNow(tenantId: string, unitId: string, saleId: string, key: st
 function pinRefusal(v: { code: string; message: string }): { ok: false; code: "PIN_INVALID" | "PIN_LOCKED" | "DEVICE_REVOKED"; message: string } | ReturnType<typeof refuse> {
   if (v.code === "PIN_INVALID" || v.code === "PIN_LOCKED" || v.code === "DEVICE_REVOKED") return { ok: false, code: v.code, message: v.message };
   return v.code === "VALIDATION" ? refuse("VALIDATION", v.message) : refuse("UNKNOWN");
+}
+
+/** ACC T1.8b ▸ กลุ่มอัตราของบิลผสม (ตัวเดียวกับใบเสร็จ — storedVatGroups) · ไม่ผสม = ไม่มีคีย์ (ลิ้นชักแสดงแถวเดิม) ◂ */
+function billVatGroups(sale: { grandTotalSatang: number; vatSatang: number; zeroRatedSatang?: number | null; exemptSatang?: number | null; onBehalfSatang?: number | null }) {
+  const g = storedVatGroups(sale);
+  return g.mixed ? { vatGroups: { standardGross: g.standardGross, base: g.base, zeroRated: g.zeroRated, exempt: g.exempt, onBehalf: g.onBehalf } } : {};
 }

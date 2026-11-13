@@ -1646,6 +1646,30 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-custom-vat",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-custom-dialog",
+        "state": "changes"
+      },
+      "wo": "T1.8b",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-reg-custom-item"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-custom-add",
       "kind": "button",
       "roles": [
@@ -33230,6 +33254,64 @@
       "opener": [
         "pos-service-bill=click"
       ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "wo": "ACC T1.8",
+      "oracle": "T18-PV",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-general"
+      ],
+      "needs": [
+        "สินค้าแรกของหน้า"
+      ],
+      "testid": "pos-prod-vat-opt-*",
+      "kind": "input",
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-vat-save",
+        "state": "changes",
+        "note": "ชนิด VAT ของสินค้า (มาตรฐาน/0%/ยกเว้น/เก็บแทน) — เลือกแล้วปุ่มบันทึกขึ้น · สินค้าผูกคลัง: มาตรฐาน/0%/ยกเว้น มาจากสมุดบัญชี (ปิด)"
+      }
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "wo": "ACC T1.8",
+      "oracle": "T18-PV",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-general"
+      ],
+      "needs": [
+        "สินค้าแรกของหน้า"
+      ],
+      "testid": "pos-prod-vat-save",
+      "kind": "button",
+      "expect": {
+        "type": "mutation",
+        "target": "pos-prod-toast",
+        "note": "setProductVatTreatmentAction → catalog.setProductVatTreatment (pos.product.manage) · เก็บแทน = คำเตือน VAT_COLLECTED_ON_BEHALF ต้องติ๊กยืนยัน",
+        "db": "PosProduct vatRateBp / collectedOnBehalf"
+      }
     }
   ]
 }

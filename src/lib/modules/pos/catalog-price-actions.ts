@@ -159,3 +159,40 @@ export async function unitPriceMatrixAction(args: {
     return refusalOf("unitPriceMatrixAction", e);
   }
 }
+
+// ═══════════ ACC T1.8 ▸ ชนิด VAT ของสินค้า (มาตรฐาน / 0% / ยกเว้น / เก็บแทน) — ลิ้นชักสินค้า จอ 06 แท็บทั่วไป ◂ ═══════════
+/**
+ * ตั้งชนิด VAT ของสินค้า → catalog.setProductVatTreatment (สิทธิ์ pos.product.manage ตามขอบเขตแถว ตรวจใน catalog.ts) ·
+ * เก็บแทน = ต้องส่ง ackCodes ที่มี VAT_COLLECTED_ON_BEHALF · ยังไม่ยืนยัน = { ok:false, code:"LEGAL_ACK_REQUIRED", warnings } (ไม่เขียนอะไร)
+ */
+export async function setProductVatTreatmentAction(args: {
+  systemId: string;
+  productId: string;
+  treatment: string;
+  ackCodes?: string[];
+}): Promise<
+  | { ok: true; treatment: string; vatRateBp: number | null; collectedOnBehalf: boolean }
+  | { ok: false; code: "LEGAL_ACK_REQUIRED"; warnings: import("@/lib/core/settings/legal/warnings").LegalWarning[] }
+  | PriceActionRefusal
+> {
+  try {
+    const auth = await requireTenant();
+    const systemId = typeof args?.systemId === "string" ? args.systemId : "";
+    if (!systemId || typeof args?.productId !== "string" || !args.productId) return { ok: false, code: "NOT_FOUND", message: "ไม่พบรายการนี้ในระบบขาย" };
+    try {
+      assertCan(posMembership(auth.active), { module: "pos", action: "pos.product.manage" });
+    } catch {
+      return { ok: false, code: "PERMISSION_DENIED", message: "บัญชีนี้ยังไม่มีสิทธิ์จัดการสินค้า — ขอสิทธิ์จากเจ้าของร้าน" };
+    }
+    const { setProductVatTreatment } = await import("./catalog");
+    const { isVatTreatment } = await import("@/lib/money/vat-lines");
+    if (!isVatTreatment(args.treatment)) return { ok: false, code: "VALIDATION", message: "ชนิด VAT ไม่ถูกต้อง" };
+    const ack = Array.isArray(args.ackCodes) ? args.ackCodes.filter((c): c is string => typeof c === "string").slice(0, 10) : [];
+    const r = await setProductVatTreatment({ tenantId: auth.active.tenantId, systemId, actorUserId: auth.user.id }, args.productId, args.treatment, ack);
+    if (!r.ok) return { ok: false, code: "LEGAL_ACK_REQUIRED", warnings: r.legal };
+    return { ok: true, treatment: args.treatment, vatRateBp: r.product.vatRateBp, collectedOnBehalf: r.product.collectedOnBehalf };
+  } catch (e) {
+    unstable_rethrow(e);
+    return refusalOf("setProductVatTreatmentAction", e);
+  }
+}

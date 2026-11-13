@@ -4,6 +4,7 @@
 // 🔴 เงินเป็นสตางค์จำนวนเต็ม · ปัดครึ่งขึ้นตัวเดียวกับการคืนเงิน (refund-math.halfUpDiv)
 // 🔴 ชื่อ "staffCommission*" เสมอ — ไม่ปนกับค่าคอมฯ ของแพลตฟอร์ม (channelCommission* · channel-shared.ts)
 import { halfUpDiv, lineNets } from "./refund-math";
+import { splitBillVat } from "@/lib/money/vat-lines"; // ACC T1.8 ▸ บริสุทธิ์ (src/lib/money) ◂
 import { POS_STAFF_COMMISSION_LIMITS, type PosStaffCommissionConfig } from "./settings-shared";
 
 export type StaffCommissionRateSource = "PRODUCT" | "CATEGORY" | "DEFAULT";
@@ -37,7 +38,12 @@ export function staffCommissionAmount(baseSatang: number, rate: { bp: number; fi
 }
 
 /** R7 มติ 8 · CD-8 — ฐานต่อบรรทัด = ยอดสุทธิหลังส่วนลดระดับบิล (ท้ายบิล + คูปอง + สิทธิ์สมาชิก) ตัวเดียวกับบัญชี/การคืนเงิน (lineNets) · รวม VAT · ค่าบริการไม่ถูกเกลี่ย */
-export function staffCommissionBases(lineTotals: number[], serviceChargeSatang: number, grandTotalSatang: number): number[] {
+export function staffCommissionBases(lineTotals: number[], serviceChargeSatang: number, grandTotalSatang: number, treatments?: readonly (string | null | undefined)[]): number[] {
+  // ACC T1.8 ▸ บิลที่มีบรรทัดเก็บแทน: ฐาน = net แบบเดียวกับตอนขาย (เก็บแทนลดไม่ได้) และบรรทัดเก็บแทนไม่คิดค่าคอมฯ (ฐาน 0 — VAT §3 ค่าเริ่มต้นระบบ) · บิลอื่น = lineNets เดิม ◂
+  if (treatments && treatments.some((t) => t === "ON_BEHALF")) {
+    const g = splitBillVat({ lines: lineTotals.map((t, i) => ({ lineTotalSatang: t, treatment: treatments[i] })), serviceChargeSatang, grandTotalSatang, rateBp: 0 });
+    return g.nets.map((n, i) => (treatments[i] === "ON_BEHALF" ? 0 : n));
+  }
   return lineNets(lineTotals, serviceChargeSatang, grandTotalSatang);
 }
 

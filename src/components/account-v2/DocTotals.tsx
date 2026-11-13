@@ -4,7 +4,7 @@ import { AccountIcon } from "./AccountIcon";
 import { useState } from "react";
 import { MoneyInput } from "./MoneyInput";
 import { MoneyText } from "@/components/ui/MoneyText";
-import type { AmountOrPercent, DocTotals as Totals } from "@/lib/modules/account/totals";
+import { vatSummaryRows, type AmountOrPercent, type DocTotals as Totals } from "@/lib/modules/account/totals";
 
 // ─────────────────────────────────────────────────────────────
 // DocTotals — ส่วน E ของ DESIGN-SPEC-V2 §5.2 · ภาพตายตัวคือ g1-invoice-form.png (บล็อกขวาล่าง)
@@ -126,7 +126,16 @@ export function DocTotals({
       </div>
 
       <Row label="หลังหักส่วนลด" satang={totals.afterDiscount} testId="tot-net" />
-      {vatRegistered && <Row label={`VAT ${vatRateBp / 100}%`} satang={totals.vatAmount} testId="tot-vat" />}
+      {/* ACC T1.8b ▸ ไม่มีบรรทัดเสียภาษี = ไม่มีแถว VAT (เดิม "VAT 7% ฿0.00" — จอนอกข้อ 14) · ใบผสม = ฐานต่อกลุ่มอัตรา แล้ว VAT ·
+          ร่างที่ยังไม่มีบรรทัด (กลุ่มว่าง) = แถว VAT เดิมของอัตรากิจการ ◂ */}
+      {vatRegistered &&
+        (totals.rateGroups.some((g) => g.base !== 0 || g.vat !== 0) ? (
+          vatSummaryRows(totals.rateGroups).map((r) => (
+            <Row key={r.key} label={r.kind === "vat" ? `VAT ${r.label.replace("ภาษีมูลค่าเพิ่ม ", "")}` : r.label} satang={r.satang} testId={r.kind === "vat" && r.key === `vat-${vatRateBp}` ? "tot-vat" : `tot-${r.key}`} />
+          ))
+        ) : totals.lines.length === 0 ? (
+          <Row label={`VAT ${vatRateBp / 100}%`} satang={totals.vatAmount} testId="tot-vat" />
+        ) : null)}
 
       <div
         className="mt-2 flex items-center justify-between gap-3 rounded-xl px-4 py-3"

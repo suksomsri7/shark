@@ -16,6 +16,7 @@ import { scheduleDrain } from "@/lib/outbox-consumers";
 import * as coupon from "@/lib/modules/coupon/service";
 import { posSaleAccountingRef } from "@/lib/modules/account";
 import { splitIncludedVat } from "@/lib/money/vat";
+import { splitBillVat, storedVatGroups, treatmentOf } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
 import { posVatRateBp } from "./service";
 import { isShiftDeviceId, parseShiftSettings, resolveApiRefundShift, resolveRegisterShift } from "./shift"; // POS P2.13 ▸ + resolveApiRefundShift (CD5) ◂
 import type { RegisterActor, RegisterCtx } from "./register-shared";
@@ -573,11 +574,16 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   }
 
   // ── ยอดคืน (R5 · CD4 · CD5) ──
-  const nets = lineNets(
-    sale.lines.map((l) => l.lineTotalSatang),
-    sale.serviceChargeSatang,
-    sale.grandTotalSatang,
-  );
+  // ACC T1.8 ▸ บิลที่มีบรรทัดเก็บแทน: เกลี่ยส่วนลดระดับบิลแบบเดียวกับตอนขาย (เก็บแทนลดไม่ได้) · บิลอื่น = lineNets เดิม (ผลเท่ากันทุกสตางค์) ◂
+  const t18 = storedVatGroups(sale);
+  const t18Split = t18.mixed ? splitBillVat({ lines: sale.lines.map((l) => ({ lineTotalSatang: l.lineTotalSatang, treatment: l.vatTreatment })), serviceChargeSatang: sale.serviceChargeSatang, grandTotalSatang: sale.grandTotalSatang, rateBp: 0 }) : null;
+  const nets = t18Split
+    ? t18Split.nets
+    : lineNets(
+        sale.lines.map((l) => l.lineTotalSatang),
+        sale.serviceChargeSatang,
+        sale.grandTotalSatang,
+      );
   const netOf = new Map(sale.lines.map((l, i) => [l.id, nets[i]!]));
   const netTotal = nets.reduce((a, b) => a + b, 0);
   const reqQty = new Map(x.lines.map((r) => [r.lineId, r.qty]));
@@ -588,13 +594,23 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   });
   const linesSum = amounts.reduce((a, b) => a + b, 0);
   // POS P5.1 ▸ MA1 (F1 · CD-P51-O3 a): ค่าบริการที่คืนได้ = ค่าบริการสุทธิ (หักส่วนลดระดับบิลที่เกิน Σ บรรทัด) — บิลปกติ = ค่าบริการเต็มเหมือนเดิม ◂
-  const scNet = serviceChargeNet(
+  const scNet = t18Split ? t18Split.serviceChargeNet : serviceChargeNet(
     sale.lines.map((l) => l.lineTotalSatang),
     sale.serviceChargeSatang,
     sale.grandTotalSatang,
   );
   const sc = refundServiceCharge(scNet, linesSum, netTotal, prior.sc, full);
   const grand = linesSum + sc;
+  // ACC T1.8 ▸ ยอดตามกลุ่มของใบคืน (บิลผสมเท่านั้น · บิลอื่น 0/0/0) ◂
+  const t18Refund = { zeroRatedSatang: 0, exemptSatang: 0, onBehalfSatang: 0 };
+  if (t18.mixed)
+    x.lines.forEach((r, i) => {
+      const t = treatmentOf(byId.get(r.lineId)!.vatTreatment);
+      if (t === "ZERO_RATED") t18Refund.zeroRatedSatang += amounts[i]!;
+      else if (t === "EXEMPT") t18Refund.exemptSatang += amounts[i]!;
+      else if (t === "ON_BEHALF") t18Refund.onBehalfSatang += amounts[i]!;
+    });
+  const t18RefundStd = grand - t18Refund.zeroRatedSatang - t18Refund.exemptSatang - t18Refund.onBehalfSatang;
   // POS P5.1 ▸ MA1 (F1 · CD-P51-O3 c): ยอดคืนรวมไม่เกินยอดที่รับจริง (ยอดบิล − Σ ใบคืนก่อนหน้า) ◂
   const refundable = Math.max(0, sale.grandTotalSatang - prior.docs.reduce((t, d) => t + d.grandTotalSatang, 0));
   if (grand > refundable) return refuse("REFUND_EXCEEDS", `ยอดคืน ${grand} เกินยอดที่ยังคืนได้ของบิล ${refundable} (สตางค์)`);
@@ -632,6 +648,18 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
     vat = Math.min(grand, left, full ? left : share);
   } else if (sale.vatSatang > 0 && full) {
     vat = Math.min(grand, Math.max(0, sale.vatSatang - prior.docs.reduce((t, d) => t + d.vatSatang, 0)));
+  } else if (sale.vatSatang > 0 && t18.mixed) {
+    // ACC T1.8 ▸ บิลผสม คืนบางส่วน: VAT = ส่วนของยอดมาตรฐานที่คืน (อัตรา POS วันนี้ถ้ายังถอด VAT บิลเดิมได้ตรง ไม่งั้นตามสัดส่วน VAT/ยอดมาตรฐานของบิล) ≤ VAT ที่เหลือ ◂
+    const left = Math.max(0, sale.vatSatang - prior.docs.reduce((t, d) => t + d.vatSatang, 0));
+    const rateNow = await posVatRateBp(tx, s.tenantId, s.systemId);
+    const std = Math.max(0, t18RefundStd);
+    const share =
+      splitIncludedVat(t18.standardGross, rateNow).vatSatang === sale.vatSatang
+        ? splitIncludedVat(std, rateNow).vatSatang
+        : t18.standardGross > 0
+          ? Number((BigInt(2) * BigInt(sale.vatSatang) * BigInt(std) + BigInt(t18.standardGross)) / (BigInt(2) * BigInt(t18.standardGross)))
+          : 0;
+    vat = Math.min(std, left, share);
   } else if (sale.vatSatang > 0) {
     // POS P5.1 ▸ MA9 (F9): ใบคืนบางส่วน = min(ส่วนของอัตราบิลเดิม, VAT ที่เหลือของบิล) — อัตรา POS วันนี้ยังถอด VAT บิลเดิมได้ตรง = อัตราเดิม (ทางเดิมทุกไบต์) ·
     //   อัตราเปลี่ยนหลังขาย = ส่วนตามสัดส่วน ปัดครึ่งขึ้น(VAT บิล × ยอดใบนี้ / ยอดบิล) (สูตรเดียวกับทางมัดจำด้านบน) ◂
@@ -683,6 +711,7 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
       discountSatang: 0,
       vatSatang: vat,
       grandTotalSatang: grand,
+      ...t18Refund, // ACC T1.8 ◂
       serviceChargeSatang: sc,
       tipSatang: 0,
       note: x.reason,
@@ -718,6 +747,7 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
       weightGrams: l.weightGrams,
       refLineId: l.id,
       restock: r.restock,
+      ...(l.vatTreatment ? { vatTreatment: l.vatTreatment } : {}), // ACC T1.8 ◂
     };
   });
   await tx.posSaleLine.createMany({ data: lineRows });

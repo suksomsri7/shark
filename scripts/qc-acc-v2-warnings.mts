@@ -153,6 +153,10 @@ try {
   console.log("\nW3 ใบลด/เพิ่มหนี้ไม่มีเหตุผล:");
   {
     const cn = await acc.createDocument({ tenantId: tid, systemId: sB, docType: "CREDIT_NOTE", contactId: custB.id, vatMode: "EXCLUDE", lines: [{ ...line, unitPrice: 10_000 }], createdById: owner.id, adjustReason: null });
+    // ORACLE-EDIT (ACC T2.3 เลน 2): ใบลด/เพิ่มหนี้ไม่อ้างใบเดิม = คำเตือนใหม่ ADJUST_NOTE_ORIGINAL_MISSING · ข้อ W3 ตรวจ "เหตุผล" อย่างเดียว ⇒
+    //   ใส่เลขที่ใบเดิม (นอกระบบ) ในช่องอ้างอิง/เลขเอกสารผู้ขาย ให้เหลือคำเตือนเหตุผลตัวเดียวเหมือนเดิม
+    const refOut = (id: string, purchase = false) => prisma.accountDocument.update({ where: { id }, data: { reference: "TX-นอกระบบ-0001", ...(purchase ? { vendorInvoiceDate: new Date() } : {}) } });
+    await refOut(cn.id);
     const c0 = await acc.issueDocument(tid, sB, cn.id);
     eqCodes("W3.1", "CN ไม่มีเหตุผล ไม่ยืนยัน → คำเตือน ADJUST_NOTE_REASON_MISSING (ไม่ crash)", c0.ok === false ? c0.legal?.warnings : [{ code: "ISSUED!" }], ["ADJUST_NOTE_REASON_MISSING"]);
     chk("W3.2", "ข้อความยังพูดถึง \"เหตุผล\" (ผู้ใช้รู้ว่าขาดอะไร)", c0.ok === false && /เหตุผล/.test(c0.reason), "มี", c0);
@@ -160,9 +164,11 @@ try {
     const cRows = await ackRows(cn.id);
     chk("W3.3", "CN ยืนยัน → ออกได้ + แถวยืนยัน 1", c1.ok === true && cRows.length === 1 && (cRows[0]!.after as Any)?.codes?.[0] === "ADJUST_NOTE_REASON_MISSING", "ok", { c1, n: cRows.length });
     const cnOk = await acc.createDocument({ tenantId: tid, systemId: sB, docType: "DEBIT_NOTE", contactId: custB.id, vatMode: "EXCLUDE", lines: [{ ...line, unitPrice: 10_000 }], createdById: owner.id, adjustReason: "ส่งของเกิน" });
+    await refOut(cnOk.id);
     const dOk = await acc.issueDocument(tid, sB, cnOk.id);
     chk("W3.4", "positive control: DN มีเหตุผล → ออกได้เลย ไม่มีแถวยืนยัน", dOk.ok === true && (await ackRows(cnOk.id)).length === 0, "ok", dOk);
     const cnr = await exp.createExpenseDoc({ tenantId: tid, systemId: sB, docType: "CREDIT_NOTE_RECEIVED", contactId: vendB.id, issueDate: new Date(), vatMode: "EXCLUDE", vatPurchaseMode: "CLAIM", lines: [{ ...line, unitPrice: 10_000 }], createdById: owner.id, adjustReason: "  " });
+    await refOut(cnr.id, true);
     const e0 = await exp.issueExpenseDoc(tid, sB, cnr.id);
     eqCodes("W3.5", "รับใบลดหนี้ (ซื้อ) เหตุผลว่าง ไม่ยืนยัน → คำเตือนเดียวกัน", e0.ok === false ? e0.legal?.warnings : [{ code: "ISSUED!" }], ["ADJUST_NOTE_REASON_MISSING"]);
     const e1 = await exp.issueExpenseDoc(tid, sB, cnr.id, { ack: { codes: ["ADJUST_NOTE_REASON_MISSING"], actorId: owner.id } });
@@ -219,6 +225,7 @@ try {
       return { status: res.status, body: parsed };
     };
     const cn = await acc.createDocument({ tenantId: tid, systemId: sB, docType: "CREDIT_NOTE", contactId: custB.id, vatMode: "EXCLUDE", lines: [{ ...line, unitPrice: 5_000 }], createdById: owner.id, adjustReason: "" });
+    await prisma.accountDocument.update({ where: { id: cn.id }, data: { reference: "TX-นอกระบบ-0002" } }); // ORACLE-EDIT (T2.3): ดู W3 — ข้อนี้ตรวจรูป 409 ของคำเตือนเหตุผลตัวเดียว
     const idem = `t04-${stamp}`;
     const r0 = await call("POST", `/documents/${cn.id}/issue`, {}, idem);
     const w = r0.body?.error?.warnings ?? [];

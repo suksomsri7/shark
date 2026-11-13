@@ -16,7 +16,7 @@ export const TAX_INVOICE_REQUEST_DAYS = 7;
 export type PublicReceiptStatus = "PAID" | "VOIDED" | "REFUNDED_PARTIAL" | "REFUNDED";
 export type PublicTaxInvoiceAction = "AVAILABLE" | "REQUESTED" | "ISSUED" | "NOT_AVAILABLE";
 
-export type PublicReceiptLine = { name: string; qty: number; unit?: string; options?: string[]; lineTotalSatang: number };
+export type PublicReceiptLine = { name: string; qty: number; unit?: string; options?: string[]; lineTotalSatang: number; /** ACC T1.8 ▸ ZERO_RATED | EXEMPT | ON_BEHALF · ไม่มี = มาตรฐาน ◂ */ vatTreatment?: string };
 
 /** ใบเสร็จสาธารณะ (R2) — หน้า /r/<token> แสดงตามนี้เท่านั้น */
 export type PublicReceipt = {
@@ -34,6 +34,8 @@ export type PublicReceipt = {
   serviceChargeSatang: number;
   tipSatang: number;
   vat: { rateBp: number; satang: number; included: true } | null;
+  /** ACC T1.8 ▸ บิลผสม: ยอดตามกลุ่ม (รวมในราคา) · ไม่มี = บิลมาตรฐานล้วน ◂ */
+  vatGroups?: { standardSatang: number; zeroRatedSatang: number; exemptSatang: number; onBehalfSatang: number };
   grandTotalSatang: number;
   payments: { method: string; satang: number }[];
   /** แต้ม — เฉพาะบิลที่มีสมาชิก (balance จากโมดูลแต้ม) */

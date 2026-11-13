@@ -98,7 +98,7 @@ export default async function TaxPage({
           <input name="period" type="month" defaultValue={period} className="input" />
         </FormField>
         <button className="btn btn-primary text-sm">ดู</button>
-        <a href={`${base}/tax/export?kind=pnd&type=${type}&period=${period}`} className="btn btn-ghost text-sm">ดาวน์โหลด CSV (ภ.ง.ด.)</a>
+        <a href={`${base}/tax/export?kind=pnd&type=${type}&period=${period}`} className="btn btn-ghost text-sm">ดาวน์โหลดรายการ ภ.ง.ด. (CSV ช่วยกรอกแบบ)</a>
       </form>
 
       {sp.ok && <p className="text-sm font-medium" data-testid="pnd-ok">{sp.ok}</p>}

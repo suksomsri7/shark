@@ -49,6 +49,7 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["2100", "LIABILITY", "เจ้าหนี้การค้า", "Accounts Payable"],
   ["2110", "LIABILITY", "เงินมัดจำรับ/เงินรับล่วงหน้า", "Deposits Received / Unearned"],
   ["2130", "LIABILITY", "ภาษีหัก ณ ที่จ่ายค้างนำส่ง", "Withholding Tax Payable"],
+  ["2120", "LIABILITY", "เงินรับแทนบุคคลอื่น (เก็บแทน)", "Amounts Collected on Behalf of Others"], // ACC T1.8 — เก็บแทนนอกฐาน VAT (VAT §3)
   ["2200", "LIABILITY", "ภาษีขาย", "Output VAT"],
   ["2205", "LIABILITY", "ภาษีขายรอออกใบกำกับ", "Output VAT (Pending Invoice)"], // QC5-A2
   ["2210", "LIABILITY", "ภาษีขายยังไม่ถึงกำหนด (บริการรอรับเงิน)", "Output VAT (Undue)"],
@@ -103,6 +104,7 @@ const MAPPINGS: [string, string][] = [
   ["WHT_ASSET", "1160"],
   ["WHT_PAYABLE", "2130"],
   ["DEPOSIT_RECEIVED", "2110"],
+  ["COLLECTED_ON_BEHALF", "2120"], // ACC T1.8 (2140 = เงินประกันผู้เช่าของหอพัก · ไฟล์นำเข้าผังทดสอบ) — POS บรรทัด "เก็บแทน" (ไม่ใช่รายได้ ไม่อยู่ในฐาน VAT)
   ["DEPOSIT_PAID", "1130"],
   ["INCOME_DEFAULT", "4030"],
   ["INCOME_GOODS", "4000"], // F-09: รายได้ขายสินค้า (tax point ON_ISSUE)
@@ -197,6 +199,7 @@ export const MAPPING_KEY_LABEL: Record<string, string> = {
   WHT_ASSET: "ภาษีถูกหัก ณ ที่จ่าย (สินทรัพย์)",
   WHT_PAYABLE: "ภาษีหัก ณ ที่จ่ายค้างนำส่ง",
   DEPOSIT_RECEIVED: "เงินมัดจำรับ/เงินรับล่วงหน้า",
+  COLLECTED_ON_BEHALF: "เงินรับแทนบุคคลอื่น (เก็บแทน)",
   DEPOSIT_PAID: "เงินมัดจำจ่าย",
   INCOME_DEFAULT: "รายได้ (บัญชีเริ่มต้น)",
   INCOME_GOODS: "รายได้จากการขายสินค้า",

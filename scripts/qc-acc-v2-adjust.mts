@@ -405,7 +405,9 @@ try {
   // ═════════ AJ7 — ไม่อ้างอิงเอกสารเดิม ═════════
   console.log("\nAJ7 CN ไม่อ้างอิงเอกสารเดิม:");
   const cnNoRef = await mkCnDraft("CREDIT_NOTE", customerB.id, null, "อื่น ๆ — ปรับยอดตามข้อตกลงใหม่", 500_000);
-  const cnNoRefIssue = await acc.issueDocument(tenantId, systemId, cnNoRef.id);
+  // ORACLE-EDIT (ACC T2.3 เลน 2): ไม่อ้างอิงใบเดิม = คำเตือน ADJUST_NOTE_ORIGINAL_MISSING (ม.86/10 · ยืนยันแล้วออกได้ — ไม่บล็อก) ·
+  //   เจตนาข้อนี้ = "ไม่มีเพดานเมื่อไม่อ้างอิง" ⇒ ส่งการยืนยันไปด้วย ข้อตรวจเพดานคงเดิม
+  const cnNoRefIssue = await acc.issueDocument(tenantId, systemId, cnNoRef.id, { ack: { codes: ["ADJUST_NOTE_ORIGINAL_MISSING"], actorId: null, via: "qc" } });
   assert("AJ7.1 CN ไม่อ้างอิงเอกสารเดิม + มีเหตุผล = ออกได้ (ไม่มีเพดาน)", cnNoRefIssue.ok, cnNoRefIssue.ok ? "" : cnNoRefIssue.reason);
   const cnNoRefDoc = await prisma.accountDocument.findFirstOrThrow({ where: { id: cnNoRef.id } });
   eq("AJ7.2 sourceDocId ยังคงว่าง", cnNoRefDoc.sourceDocId, null);

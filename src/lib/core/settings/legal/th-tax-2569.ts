@@ -423,3 +423,45 @@ export function pickWarnings<K extends LegalTableKind>(kind: K, pick: LegalPick<
   }
   return out;
 }
+
+// ═══════════════════ T2.3 ใบลดหนี้ / ใบเพิ่มหนี้ (แถวระบบ [V] — ร้านไม่ทับ) ═══════════════════
+// skill common-vat-invoice.md §16 [V] (ม.82/9, 82/10, 86/9, 86/10 · ป.80/2542) + §7 [V] (ประกาศ VAT ฉ.82 ข้อ 2) · design note ledger/wo-notes/T2.3.md
+
+/** มาตราที่พิมพ์บนใบ — §16 วาง ม.86/9 คู่ 86/10 และระบุ "รายการ ม.86/10: คำว่า 'ใบลดหนี้'" ⇒ ใบลดหนี้ = 86/10 · ใบเพิ่มหนี้ = 86/9 */
+export const ADJUST_NOTE_SECTIONS: Readonly<Record<"CREDIT" | "DEBIT", { sectionTh: string; source: string; tag: LegalTag; checkedAt: Ymd }>> = {
+  CREDIT: { sectionTh: "มาตรา 86/10", source: `${VAT_REF} §16 (ม.82/10, 86/10 · ป.80/2542)`, tag: "V", checkedAt: "2026-11-13" },
+  DEBIT: { sectionTh: "มาตรา 86/9", source: `${VAT_REF} §16 (ม.82/9, 86/9 · ป.80/2542)`, tag: "V", checkedAt: "2026-11-13" },
+};
+
+export type AdjustReasonGroup = "CREDIT" | "DEBIT" | "ANY";
+export type AdjustNoteReason = { code: string; labelTh: string; group: AdjustReasonGroup; sectionTh: string; source: string; tag: LegalTag; checkedAt: Ymd };
+
+/**
+ * เหตุผลของใบลด/เพิ่มหนี้ — เฉพาะที่ skill ยกมา (ข้อ 2 ที่เหลือของ ฉ.82 skill ไม่ได้ยกมา ⇒ ร้านใช้ "อื่น ๆ" + พิมพ์สาเหตุเอง · ไม่เดาเพิ่ม)
+ *   ลดหนี้: ฉ.82 ข้อ 2(2)(5)(6) · เพิ่มหนี้: ม.82/9 "ส่งของเกิน/ให้บริการเกิน/คำนวณราคาต่ำกว่าจริง"
+ */
+export const ADJUST_NOTE_REASONS: readonly AdjustNoteReason[] = [
+  { code: "CN_DEPOSIT_REFUND", labelTh: "คืนเงินจ่ายล่วงหน้า / เงินประกัน / มัดจำ / เงินจองตามข้อตกลง", group: "CREDIT", sectionTh: "ประกาศ VAT ฉ.82 ข้อ 2(2)", source: `${VAT_REF} §7`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "CN_SERVICE_DEFECT", labelTh: "บริการบกพร่อง / ไม่ตรงตามข้อกำหนด", group: "CREDIT", sectionTh: "ประกาศ VAT ฉ.82 ข้อ 2(5)", source: `${VAT_REF} §7`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "CN_SERVICE_NOT_PROVIDED", labelTh: "ไม่มีการให้บริการตามสัญญา", group: "CREDIT", sectionTh: "ประกาศ VAT ฉ.82 ข้อ 2(6)", source: `${VAT_REF} §7`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "DN_GOODS_OVER", labelTh: "ส่งของเกินจำนวนที่ตกลง", group: "DEBIT", sectionTh: "ม.82/9", source: `${VAT_REF} §16`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "DN_SERVICE_OVER", labelTh: "ให้บริการเกินกว่าที่ตกลง", group: "DEBIT", sectionTh: "ม.82/9", source: `${VAT_REF} §16`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "DN_PRICE_UNDER", labelTh: "คำนวณราคาต่ำกว่าที่เป็นจริง", group: "DEBIT", sectionTh: "ม.82/9", source: `${VAT_REF} §16`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "OTHER", labelTh: "อื่น ๆ (ระบุสาเหตุ)", group: "ANY", sectionTh: "", source: `${VAT_REF} §16 (สาเหตุย่อ)`, tag: "V", checkedAt: "2026-11-13" },
+];
+
+/** ชนิดเอกสารปรับปรุงหนี้ → กลุ่ม (ฝั่งซื้อใช้กลุ่มเดียวกับฝั่งขาย) · ไม่ใช่ใบลด/เพิ่มหนี้ = null */
+export function adjustGroupOfDocType(docType: string): "CREDIT" | "DEBIT" | null {
+  if (docType === "CREDIT_NOTE" || docType === "CREDIT_NOTE_RECEIVED") return "CREDIT";
+  if (docType === "DEBIT_NOTE" || docType === "DEBIT_NOTE_RECEIVED") return "DEBIT";
+  return null;
+}
+export function adjustReasonOf(code: string | null | undefined): AdjustNoteReason | null {
+  return ADJUST_NOTE_REASONS.find((r) => r.code === code) ?? null;
+}
+/** เหตุผลที่เสนอในฟอร์มของชนิดเอกสาร (กลุ่มของมัน + อื่น ๆ) */
+export function adjustReasonsFor(docType: string): AdjustNoteReason[] {
+  const g = adjustGroupOfDocType(docType);
+  return ADJUST_NOTE_REASONS.filter((r) => r.group === "ANY" || r.group === g);
+}
+

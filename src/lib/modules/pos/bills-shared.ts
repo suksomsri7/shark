@@ -125,6 +125,8 @@ export type BillDetail = {
     /** POS P2.14 ▸ UI-4: ต้นทุนของบรรทัดจากความเคลื่อนไหวสต็อกของบิล (ไม่ผูกสต็อก/ยังไม่ตัด = null) · กำไร = ยอดบรรทัด − ต้นทุน ◂ */
     costSatang: number | null;
     marginSatang: number | null;
+    /** ACC T1.8b ▸ ชนิด VAT ที่ไม่ใช่มาตรฐาน (ZERO_RATED | EXEMPT | ON_BEHALF) · มาตรฐาน/บิลเก่า = ไม่มีคีย์ ◂ */
+    vatTreatment?: string;
   }[];
   /** สตางค์ทั้งหมด · subtotal − lineDiscount − billDiscount − coupon − tier + serviceCharge = grandTotal */
   totals: {
@@ -139,6 +141,8 @@ export type BillDetail = {
     grandTotal: number;
     tip: number;
     refunded: number;
+    /** ACC T1.8b ▸ ยอดตามกลุ่มของบิลผสม (storedVatGroups) — มีเฉพาะบิลที่มี 0%/ยกเว้น/เก็บแทน · บิลเก่า/มาตรฐานล้วน = ไม่มีคีย์ ◂ */
+    vatGroups?: { standardGross: number; base: number; zeroRated: number; exempt: number; onBehalf: number };
   };
   // POS P2.9 ▸ R10: card = แถวบัตรของขวัญ/เครดิตร้าน (เลขปิดบัง · ยอดหลังรายการ) ◂
   // POS P2.9b ▸ R9: deposit = แถวใช้มัดจำ (มัดจำ · เลขใบรับ · คงเหลือหลังรายการ) ◂

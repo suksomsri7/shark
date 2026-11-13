@@ -106,9 +106,15 @@ export async function filedPeriodGuardInTx(
     ws.push(legalWarning("FILED_PERIOD_VAT_CHANGE", { period: entry.periodKey, ref, output: bahtSigned(eff.output), input: bahtSigned(eff.input), ...(eff.parked ? { parked: bahtSigned(eff.parked) } : {}) }));
   if (pndForms.length > 0 && touchesWht)
     ws.push(legalWarning("FILED_PERIOD_PND_CHANGE", { period: entry.periodKey, forms: pndForms.map((f) => `ภ.ง.ด.${f}`).join("/"), ref, what: "ลงภาษีหัก ณ ที่จ่ายค้างนำส่งเข้าเดือนนั้น", amount: `${bahtSigned(eff.wht)} บาท` }));
+  // ACC T2 step 0 (lane 2) ▸ รายการที่ POS ลงเอง (ขาย/คืน/ยกเลิก/ค่าคอมฯ — refType PosSale) = งานเบื้องหลังเสมอ แม้มาจากคำขอที่มีบริบท
+  //   (REST /pos ทุก op เขียนถูกห่อ withLegalAck) — POS ห้ามถูกบล็อก ⇒ ไม่ถาม ไม่บันทึก · ยังขึ้นใน "ผลต่างหลังยื่น" ◂
+  if (BACKGROUND_REF_TYPES.has(entry.refType)) return null;
   const rec = decide(ws);
   return rec ? (entryId) => rec(db, ctx, { op: "account.gl.post", targetType: "AccountJournalEntry", targetId: entryId }) : null;
 }
+
+/** refType ของรายการที่ระบบลงเองเบื้องหลัง (ไม่มีคนให้ถาม) — ด่านเดือนที่ยื่นแล้วไม่ถามแม้มีบริบทการยืนยัน */
+export const BACKGROUND_REF_TYPES: ReadonlySet<string> = new Set(["PosSale"]);
 
 /**
  * ด่านของ 50 ทวิ (ภ.ง.ด.) ระดับเอกสาร — ออก/ยกเลิก 50 ทวิ ที่เราหัก (direction IN) ของเดือนที่ทำเครื่องหมายนำส่งแล้ว

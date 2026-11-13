@@ -5,6 +5,8 @@
 // 🔴 ไม่มี Date.now() / new Date() ไม่มีอาร์กิวเมนต์ / Math.random() — ทุกอย่างมาจาก payload ⇒ เรียกซ้ำได้ผลเดิมทุกไบต์
 // 🔴 คำบรรยายทุกคำมาจาก payload.labels[locale] (en = ไม่มีอักษรไทยเลย) · ข้อมูลร้าน/สินค้าพิมพ์ตามที่เก็บ
 
+import { isVatTreatment, VAT_TREATMENT_MARK } from "@/lib/money/vat-lines"; // ACC T1.8 ▸ บริสุทธิ์ (ไม่ import อะไรนอก src/lib/money) ◂
+
 // ═══════════════════ ชนิดข้อมูล (สัญญา R5) ═══════════════════
 export type ReceiptDocType = "SALE" | "REFUND";
 // POS P1.13 ▸ R7: TAX_INVOICE_FULL = บิลที่ออกใบกำกับภาษีเต็มรูปแล้ว (สลิปเป็นใบเสร็จ + "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่ …" · ไม่ใช่หัวใบกำกับอย่างย่อ) ◂
@@ -73,6 +75,8 @@ export type ReceiptLine = {
   options: string[];
   note?: string;
   weightGrams?: number;
+  /** ACC T1.8 ▸ ชนิด VAT ของบรรทัดที่ไม่ใช่มาตรฐาน (ZERO_RATED | EXEMPT | ON_BEHALF) → ป้ายต่อท้ายชื่อ · ไม่มี = มาตรฐาน ◂ */
+  vatTreatment?: string;
 };
 /** POS P2.9 ▸ R10: card = แถวบัตรของขวัญ/เครดิตร้าน (เลขปิดบัง · ยอดหลังรายการ) — ไม่มี = แถวเดิม ◂ */
 export type ReceiptPaymentCard = { kind: "GIFT" | "STORE_CREDIT"; numberMasked: string; balanceAfterSatang: number };
@@ -111,6 +115,8 @@ export type ReceiptPayload = {
     vatSatang: number;
     vatRateBp: number;
     tipSatang: number;
+    /** ACC T1.8 ▸ บิลที่มีบรรทัดไม่ใช่มาตรฐาน: ยอด (รวมในราคา) ตามกลุ่ม — ท้ายใบแยกฐาน · ไม่มี = บิลมาตรฐานล้วน/บิลเก่า (แถวเดิม) ◂ */
+    vatGroups?: { standardSatang: number; zeroRatedSatang: number; exemptSatang: number; onBehalfSatang: number };
   };
   payments: ReceiptPayment[];
   /** POS P1.12 (R15): ชื่อ/รหัส/เบอร์ปิดบัง/ระดับ จากสำเนาตอนขาย (บิลเก่า = ข้อมูลสด) · pointBalance = ยอดสดของระบบแต้มของสาขา */
@@ -168,7 +174,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     weight: "น้ำหนัก",
     fullTaxInvoiceHint: "ขอใบกำกับเต็มรูปได้ภายใน 7 วัน",
     fullTaxInvoiceIssued: "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่",
-    eReceipt: "สแกนรับใบเสร็จอิเล็กทรอนิกส์",
+    eReceipt: "สแกนดูสำเนาใบเสร็จออนไลน์ (สำเนาเพื่อความสะดวก)", // ACC T2.10 ▸ ไม่ใช่ใบรับอิเล็กทรอนิกส์ (skill BOOKS §ง4) ◂
     channel: "ช่องทาง",
     cardBalance: "คงเหลือ",
     depositReceipt: "ใบรับเงินมัดจำ", // POS P2.9b ◂
@@ -213,7 +219,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     weight: "Weight",
     fullTaxInvoiceHint: "Full tax invoice available on request within 7 days",
     fullTaxInvoiceIssued: "Full tax invoice issued, no.",
-    eReceipt: "Scan for e-receipt",
+    eReceipt: "Scan to view an online copy (for convenience)", // ACC T2.10 ◂
     channel: "Channel",
     cardBalance: "Balance",
     depositReceipt: "DEPOSIT RECEIPT", // POS P2.9b ◂
@@ -301,7 +307,31 @@ function totalRows(p: ReceiptPayload, L: ReceiptLabels): { label: string; satang
   rows.push({ label: L.grandTotal, satang: t.grandTotalSatang, grand: true });
   return rows;
 }
-function vatRows(p: ReceiptPayload, L: ReceiptLabels): { label: string; satang: number }[] {
+/** ACC T1.8 ▸ ชื่อบรรทัด + ป้ายชนิด VAT (มาตรฐาน = ชื่อเดิม) */
+const lineName = (l: ReceiptLine, locale: Locale) => {
+  const mark = l.vatTreatment && isVatTreatment(l.vatTreatment) ? VAT_TREATMENT_MARK[locale][l.vatTreatment] : "";
+  return mark ? `${l.name} ${mark}` : l.name;
+};
+const T18_LABELS: Record<Locale, { taxable: string; zero: string; exempt: string; onBehalf: string }> = {
+  th: { taxable: "มูลค่าสินค้า/บริการที่เสียภาษี", zero: "ยอดขายอัตราร้อยละ 0", exempt: "ยอดขายที่ได้รับยกเว้น VAT", onBehalf: "เก็บแทน (ไม่ใช่มูลค่าขาย)" },
+  en: { taxable: "Taxable value", zero: "Zero-rated sales", exempt: "VAT-exempt sales", onBehalf: "Collected on behalf (not a sale)" },
+};
+function vatRows(p: ReceiptPayload, L: ReceiptLabels, locale: Locale = "th"): { label: string; satang: number }[] {
+  // ACC T1.8 ▸ บิลผสม: แยกฐานตามกลุ่ม (ทุกชนิดใบ) · แถว VAT เฉพาะเมื่อมียอดที่เสียภาษีและเป็นใบกำกับ — ไม่พิมพ์ "VAT 7% ฿0.00" ◂
+  const g = p.totals.vatGroups;
+  if (g) {
+    const T = T18_LABELS[locale];
+    const out: { label: string; satang: number }[] = [];
+    const isTaxDoc = p.kind === "TAX_INVOICE_ABB" || p.kind === "TAX_INVOICE_FULL";
+    if (isTaxDoc && g.standardSatang > 0) {
+      out.push({ label: L.vatBase, satang: p.totals.vatBaseSatang });
+      out.push({ label: `${L.vat} ${vatRateText(p.totals.vatRateBp)}`, satang: p.totals.vatSatang });
+    } else if (g.standardSatang > 0 && (g.zeroRatedSatang + g.exemptSatang + g.onBehalfSatang) > 0) out.push({ label: T.taxable, satang: g.standardSatang });
+    if (g.zeroRatedSatang > 0) out.push({ label: T.zero, satang: g.zeroRatedSatang });
+    if (g.exemptSatang > 0) out.push({ label: T.exempt, satang: g.exemptSatang });
+    if (g.onBehalfSatang > 0) out.push({ label: T.onBehalf, satang: g.onBehalfSatang });
+    return out;
+  }
   if (p.kind !== "TAX_INVOICE_ABB" && p.kind !== "TAX_INVOICE_FULL") return [];
   return [
     { label: L.vatBase, satang: p.totals.vatBaseSatang },
@@ -386,7 +416,7 @@ export function renderReceiptHtml(payload: ReceiptPayload, opts: RenderHtmlOptio
   // lines
   const ls: string[] = [];
   for (const l of p.lines) {
-    ls.push(line(l.name, "b"));
+    ls.push(line(lineName(l, locale), "b"));
     const qty = l.weightGrams ? `${L.weight} ${weightText(l.weightGrams)}` : `${qtyText(l.qty)} x ${formatSatang(l.unitPriceSatang)}`;
     ls.push(row(qty, formatSatang(l.qty * l.unitPriceSatang), "opt"));
     for (const o of l.options ?? []) ls.push(line(`+ ${o}`, "opt s"));
@@ -398,7 +428,7 @@ export function renderReceiptHtml(payload: ReceiptPayload, opts: RenderHtmlOptio
   // totals
   const tt: string[] = [];
   for (const r of totalRows(p, L)) tt.push(row(r.label, `${r.minus ? "−" : ""}${formatSatang(r.satang)}`, r.grand ? "grand" : ""));
-  for (const r of vatRows(p, L)) tt.push(row(r.label, formatSatang(r.satang), "s"));
+  for (const r of vatRows(p, L, locale)) tt.push(row(r.label, formatSatang(r.satang), "s"));
   if (p.totals.tipSatang > 0) tt.push(row(L.tip, formatSatang(p.totals.tipSatang)));
   out.push(`<section data-section="totals">${tt.join("")}</section>`);
 
@@ -576,7 +606,7 @@ function layout(p: ReceiptPayload, L: ReceiptLabels, cols: number, locale: Local
   rule();
   // lines
   for (const l of p.lines) {
-    add(wrap(l.name, cols));
+    add(wrap(lineName(l, locale), cols));
     const qty = l.weightGrams ? `${L.weight} ${weightText(l.weightGrams)}` : `${qtyText(l.qty)} x ${formatSatang(l.unitPriceSatang)}`;
     add(pair(ind + qty, formatSatang(l.qty * l.unitPriceSatang), cols));
     for (const o of l.options ?? []) add(wrap(`${ind}+ ${o}`, cols));
@@ -589,7 +619,7 @@ function layout(p: ReceiptPayload, L: ReceiptLabels, cols: number, locale: Local
     if (r.grand) add(pair(r.label, formatSatang(r.satang), Math.floor(cols / 2)), "left", true, true);
     else add(pair(r.label, `${r.minus ? "-" : ""}${formatSatang(r.satang)}`, cols));
   }
-  for (const r of vatRows(p, L)) add(pair(r.label, formatSatang(r.satang), cols));
+  for (const r of vatRows(p, L, locale)) add(pair(r.label, formatSatang(r.satang), cols));
   if (p.totals.tipSatang > 0) add(pair(L.tip, formatSatang(p.totals.tipSatang), cols));
   rule();
   // payments

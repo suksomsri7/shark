@@ -268,8 +268,9 @@ export async function DocEditorPage({
     // หมายเหตุท้ายเอกสาร: ของชนิดนี้ก่อน (§9.2) → ข้อความกลางของกิจการ → ว่าง
     note: doc?.note ?? settings.doc.notes[docType]?.footer ?? settings.footerNote ?? "",
     internalNote: doc?.internalNote ?? "",
-    adjustReasonCode: reasonSeed.code,
+    adjustReasonCode: doc?.adjustReasonCode ?? reasonSeed.code, // ACC T2.3 ▸ รหัสที่เก็บไว้ชนะการแกะข้อความ ◂
     adjustReasonText: reasonSeed.text,
+    vendorDocDate: doc?.vendorInvoiceDate ? new Date(new Date(doc.vendorInvoiceDate).getTime() + 7 * 3600_000).toISOString().slice(0, 10) : "", // ACC T2.3 ◂
   };
 
   // ── WO 1.4 ส่วน D/F ──

@@ -48,10 +48,14 @@ export function receiptLineText(receiptNo: string, netSatang: number, url: strin
   return `ใบเสร็จ ${receiptNo} · ยอด ${moneyText(netSatang)} — ดูใบเสร็จ: ${url}`;
 }
 
+// ACC T2.10 ▸ อีเมล/ลิงก์ = สำเนาเพื่อความสะดวก ไม่ใช่ใบรับ/ใบกำกับภาษีอิเล็กทรอนิกส์ (skill domain-accounting-books.md §ง4 · checklist B16) ◂
+export const CONVENIENCE_COPY_TH = "สำเนาเพื่อความสะดวก — ไม่ใช่ใบรับหรือใบกำกับภาษีอิเล็กทรอนิกส์ ต้นฉบับคือใบที่ร้านพิมพ์มอบให้";
+export const CONVENIENCE_COPY_EN = "Convenience copy — not an electronic receipt or tax invoice; the original is the printed copy from the shop";
+
 /** ลิงก์ใบเสร็จออนไลน์ต่อท้ายอีเมล (escape เอง — ไม่พึ่งตัวเรนเดอร์) */
 function withLink(html: string, url: string): string {
   const safe = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const block = `<p style="font-family:system-ui,sans-serif;font-size:13px;text-align:center;margin:12px 0"><a href="${safe}">ดูใบเสร็จออนไลน์ / View e-receipt</a><br><span style="font-size:11px;color:#555">${safe}</span></p>`;
+  const block = `<p style="font-family:system-ui,sans-serif;font-size:13px;text-align:center;margin:12px 0"><a href="${safe}">ดูสำเนาใบเสร็จออนไลน์ / View an online copy of the receipt</a><br><span style="font-size:11px;color:#555">${safe}</span><br><span style="font-size:11px;color:#555">${CONVENIENCE_COPY_TH} / ${CONVENIENCE_COPY_EN}</span></p>`;
   return html.includes("</body>") ? html.replace("</body>", `${block}</body>`) : `${html}${block}`;
 }
 

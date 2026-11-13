@@ -66,6 +66,7 @@ export async function publicReceipt(token: string): Promise<PublicReceiptResult>
         qty: l.qty,
         ...(l.options && l.options.length ? { options: [...l.options] } : {}),
         lineTotalSatang: l.lineTotalSatang,
+        ...(l.vatTreatment ? { vatTreatment: l.vatTreatment } : {}), // ACC T1.8 ◂
       })),
       // CD6: ส่วนลดท้ายบิล + คูปอง + สิทธิ์สมาชิก (ระดับ/ว่อชเชอร์) = PosSale.discountSatang ก้อนเดียว ("ส่วนลด + คูปอง")
       discountSatang: built.sale.discountSatang,
@@ -73,6 +74,7 @@ export async function publicReceipt(token: string): Promise<PublicReceiptResult>
       serviceChargeSatang: t.serviceChargeSatang,
       tipSatang: t.tipSatang,
       vat: t.vatRateBp > 0 && t.vatSatang > 0 ? { rateBp: t.vatRateBp, satang: t.vatSatang, included: true } : null,
+      ...(t.vatGroups ? { vatGroups: { ...t.vatGroups } } : {}), // ACC T1.8 ◂
       grandTotalSatang: t.grandTotalSatang,
       payments: payload.payments.map((p) => ({ method: p.type, satang: p.amountSatang })),
       points,

@@ -9,6 +9,7 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { Modal } from "./Modal";
 import { RowActions } from "./RowActions";
 import { InputVatLineSelect } from "./InputVatSection";
+import { nonClaimReasonOf } from "@/lib/core/settings/legal/th-tax-2569"; // ACC T1.4 ◂
 import { INPUT_VAT_STATUS_SHORT_TH, statusFromTreatment, type InputVatStatus } from "@/lib/modules/account/input-vat-shared";
 import type { DocTotalsLineOut } from "@/lib/modules/account/totals";
 import {
@@ -442,6 +443,7 @@ export function DocLineTable({
                 {inputVatDoc !== undefined && (
                   <span className="rounded-lg border px-2 py-0.5 text-xs" data-testid={`line-m-${i}-input-vat`}>
                     ภาษีซื้อ: {INPUT_VAT_STATUS_SHORT_TH[l.inputVatStatus ?? inheritedVat(l).status]}
+                    {(l.inputVatStatus ?? inheritedVat(l).status) === "NO_CLAIM" && l.inputVatReason ? ` · ${nonClaimReasonOf(l.inputVatReason)?.labelTh ?? ""}` : ""}
                   </span>
                 )}
                 {l.whtIncomeType && (

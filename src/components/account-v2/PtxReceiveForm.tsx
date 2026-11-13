@@ -70,11 +70,12 @@ export function PtxReceiveForm({
   );
   return (
     <div className="flex flex-col gap-3" data-testid={testId}>
-      <div className="flex gap-2 text-sm" role="tablist">
-        <button type="button" role="tab" aria-selected={mode === "receive"} className={mode === "receive" ? "btn btn-primary px-3" : "btn-sm"} onClick={() => setMode("receive")} data-testid={`${testId}-tab-receive`}>
+      {/* ACC T1.4 (ค้างหลังภาพจอ) ▸ แท็บหน้าตาแท็บ (เส้นใต้) ไม่ใช่ปุ่มสองปุ่ม ◂ */}
+      <div className="flex gap-1 border-b text-sm" role="tablist">
+        <button type="button" role="tab" aria-selected={mode === "receive"} className={`-mb-px border-b-2 px-3 py-2 ${mode === "receive" ? "border-[color:var(--color-ink)] font-semibold" : "border-transparent text-[color:var(--color-muted)]"}`} onClick={() => setMode("receive")} data-testid={`${testId}-tab-receive`}>
           ได้รับใบกำกับแล้ว
         </button>
-        <button type="button" role="tab" aria-selected={mode === "noclaim"} className={mode === "noclaim" ? "btn btn-primary px-3" : "btn-sm"} onClick={() => setMode("noclaim")} data-testid={`${testId}-tab-noclaim`}>
+        <button type="button" role="tab" aria-selected={mode === "noclaim"} className={`-mb-px border-b-2 px-3 py-2 ${mode === "noclaim" ? "border-[color:var(--color-ink)] font-semibold" : "border-transparent text-[color:var(--color-muted)]"}`} onClick={() => setMode("noclaim")} data-testid={`${testId}-tab-noclaim`}>
           ใบกำกับไม่มา / เคลมไม่ได้
         </button>
       </div>

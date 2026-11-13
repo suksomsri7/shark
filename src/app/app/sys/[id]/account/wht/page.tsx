@@ -200,7 +200,7 @@ export default async function WhtPage({
             <PrintButton testId="wht-print" />
             {direction === "IN" && (
               <Link href={`${base}/tax`} className="btn btn-primary" data-testid="wht-export-pnd">
-                ⬇ ส่งออก ภ.ง.ด.3/53 (CSV)
+                ส่งออกรายการ ภ.ง.ด.3/53 (CSV ช่วยกรอกแบบ)
               </Link>
             )}
           </>

@@ -39,7 +39,7 @@ import { StickyBar } from "./StickyBar";
 import { ToastProvider, useToast } from "./Toast";
 import {
   PRICE_MODE_OPTIONS,
-  REASON_OPTIONS,
+  reasonOptionsFor,
   WHT_TYPE_OPTIONS,
   newLineDraft,
   type ContactOption,
@@ -385,12 +385,17 @@ function EditorBody(props: DocEditorV2Props) {
         c && c.creditTermDays && c.creditTermDays > 0 && p.issueDate
           ? isoPlusDays(p.issueDate, c.creditTermDays)
           : p.dueDate;
+      // ACC T1.4 (ค้างหลังภาพจอ) ▸ เปลี่ยนคู่ค้า = สถานะภาษีซื้อของใบคิดใหม่ตามคู่ค้าใหม่ — เว้นแต่ผู้ใช้เลือกเองต่างจากค่าเริ่มของคู่ค้าเดิม ◂
+      const prevC = contacts.find((x) => x.id === p.contactId);
+      const prevDefault = defaultInputVatStatus({ vendorTaxId: prevC?.taxId ?? null, settings: props.inputVatSettings ?? DEFAULT_INPUT_VAT_SETTINGS }).status;
+      const inputVatStatus = p.inputVatStatus && p.inputVatStatus !== prevDefault ? p.inputVatStatus : null;
       return {
         ...p,
         contactId: id,
         contactLabel: name,
         dueDate,
         priceMode: c?.priceMode ?? p.priceMode,
+        ...(props.side === "expense" ? { inputVatStatus } : {}),
       };
     });
   };
@@ -635,7 +640,7 @@ function EditorBody(props: DocEditorV2Props) {
           )}
           {!props.refDoc && <p className="text-sm text-[color:var(--color-muted)]">ไม่อ้างอิงเอกสารเดิม</p>}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field label="เหตุผล (ตามประกาศสรรพากร ม.86/10)" htmlFor="fld-reason">
+            <Field label={props.docType.startsWith("DEBIT_NOTE") ? "เหตุผล (เหตุเพิ่มหนี้ ม.82/9)" : props.docType.startsWith("CREDIT_NOTE") ? "เหตุผล (เหตุลดหนี้ ประกาศ VAT ฉ.82 ข้อ 2)" : "เหตุผล"} htmlFor="fld-reason">
               <span
                 style={
                   showErrors && missingReason
@@ -651,7 +656,7 @@ function EditorBody(props: DocEditorV2Props) {
                   data-testid="reason-select"
                 >
                   <option value="">— เลือกเหตุผล —</option>
-                  {REASON_OPTIONS.map((o) => (
+                  {reasonOptionsFor(props.docType).map((o) => ( // ACC T2.3 ▸ สองกลุ่มตามประกาศ + อื่น ๆ ◂
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>
@@ -669,6 +674,12 @@ function EditorBody(props: DocEditorV2Props) {
                 data-testid="reason-text"
               />
             </Field>
+            {/* ACC T2.3 ▸ ใบลด/เพิ่มหนี้ที่ได้รับ: เลขที่เอกสารของผู้ขาย = ช่อง "อ้างอิง" · วันที่เอกสารของผู้ขาย ◂ */}
+            {props.side === "expense" && (props.docType === "CREDIT_NOTE_RECEIVED" || props.docType === "DEBIT_NOTE_RECEIVED") && (
+              <Field label="วันที่เอกสารของผู้ขาย (เลขที่ใส่ในช่องอ้างอิง)" htmlFor="fld-vendor-doc-date">
+                <DateInput id="fld-vendor-doc-date" value={value.vendorDocDate ?? ""} onChange={(v) => set("vendorDocDate", v)} testId="vendor-doc-date" />
+              </Field>
+            )}
           </div>
         </SectionCard>
       )}

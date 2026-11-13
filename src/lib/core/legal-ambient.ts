@@ -30,6 +30,15 @@ export function legalAmbient(): LegalAmbient | null {
   return store.getStore() ?? null;
 }
 
+/**
+ * ACC T2 step 0 (lane 2) ▸ รันงาน "เบื้องหลัง" นอกบริบทการยืนยันของคำขอ — ตัวระบายคิว (drainOutbox) เรียกผ่านตัวนี้
+ *   เหตุ: AsyncLocalStorage ไหลตาม after()/setTimeout ⇒ drain ที่ถูกปลุกจากคำขอ REST/หน้าจอ (withLegalAck) จะพาบริบทของคำขอนั้น
+ *   ไปถึง consumer ของทุกร้าน (เช่น POS ลงบัญชีขาย) ⇒ ด่านเดือนที่ยื่นแล้วจะโยนใส่งานที่ไม่มีใครกด (POS ต้องไม่ถูกบล็อก)
+ */
+export function outsideLegalAck<T>(fn: () => T): T {
+  return store.exit(fn);
+}
+
 /** ด่านจดคำเตือนที่ค้างยืนยัน (ไม่ซ้ำรหัส+ข้อความ) */
 export function notePendingLegal(ws: readonly LegalWarning[]): void {
   const c = store.getStore();

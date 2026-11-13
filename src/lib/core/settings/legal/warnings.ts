@@ -64,6 +64,15 @@ export const LEGAL_WARNING_CODES = [
   "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW",
   "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH",
   "INPUT_VAT_PENDING_PAST_WINDOW",
+  // ── POS ชนิด VAT ต่อบรรทัด (T1.8) ──
+  "VAT_COLLECTED_ON_BEHALF",
+  // ── ต้นฉบับ/สำเนา/ใบแทน (T2.7) ──
+  "TAX_INVOICE_ORIGINAL_REPRINT",
+  // ── เนื้อหาใบลด/เพิ่มหนี้ (T2.3) ──
+  "ADJUST_NOTE_ORIGINAL_MISSING",
+  "ADJUST_NOTE_REASON_GROUP_MISMATCH",
+  // ── ถ้อยคำท้ายใบกำกับ (T2.10) ──
+  "TAX_INVOICE_SECTION_TEXT_FORCED",
   // ── ใบกำกับตอนรับเงิน · ใบเสร็จ · ยกเลิกและออกแทน (T2.6 · T2.8 · T2.2 — เลน 1) ──
   "PAYMENT_TAX_INVOICE_EARLIER_MONTH",
   "RECEIPT_SELLER_TAX_ID_MISSING",
@@ -466,6 +475,59 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     tag: "V",
     checkedAt: "2026-11-13",
     ack: false,
+  },
+  // ── POS ชนิด VAT ต่อบรรทัด (T1.8) ──
+  VAT_COLLECTED_ON_BEHALF: {
+    code: "VAT_COLLECTED_ON_BEHALF",
+    titleTh: "รายการเก็บแทน (นอกฐานภาษีมูลค่าเพิ่ม)",
+    messageTh: (p) =>
+      `${p.name ? `"${s(p, "name")}" ` : ""}ตั้งเป็น "เก็บแทน" — ยอดนี้ไม่เข้ารายได้และไม่อยู่ในฐาน VAT ได้ก็ต่อเมื่อครบทั้ง 4 ข้อ: (1) ไม่ใช่ราคาเหมา และแจกแจงรายการให้ลูกค้าทราบชัดแจ้ง (2) เก็บเท่าที่ต้องจ่ายจริง ไม่บวกเพิ่ม (บวกเพิ่มแม้ร้อยละ 5 หรือ 10 = ทั้งก้อนเป็นค่าบริการ) (3) มีหลักฐานการจ่าย เช่นใบเสร็จ/ใบกำกับในชื่อลูกค้าและส่งมอบให้ลูกค้า (4) ส่วนลดที่ได้จากผู้รับเงินคืนลูกค้าทั้งหมด · ภาษีซื้อของรายจ่ายที่ทดรองแทนลูกค้าใช้เป็นภาษีซื้อของร้านไม่ได้ · ระบบลงบัญชีเงินรับแทน (หนี้สิน) ไม่คิดส่วนลด/ค่าคอมฯ กับรายการนี้ · กดยืนยันเพื่อบันทึก`,
+    citation: "หนังสือตอบข้อหารือ กค 0706/พ./625 ลว. 28 ม.ค. 2551 · กค 0811/11473 ลว. 12 ธ.ค. 2544 ข้อ 2.3 · กค 0702/พ./7308 ลว. 11 ส.ค. 2558 · กค 0706/พ./8779 ลว. 21 ต.ค. 2548 · references/common-vat-invoice.md §3 · audit-checklist-accounting.md E11",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  TAX_INVOICE_ORIGINAL_REPRINT: {
+    code: "TAX_INVOICE_ORIGINAL_REPRINT",
+    titleTh: "พิมพ์ต้นฉบับใบกำกับภาษีซ้ำ",
+    messageTh: (p) =>
+      `ใบกำกับภาษี${p.docNo ? `เลขที่ ${s(p, "docNo")} ` : ""}พิมพ์ต้นฉบับไปแล้ว — ต้นฉบับให้ผู้ซื้อ สำเนาเก็บไว้ (ป.86/2542 ข้อ 4) และฉบับที่ไม่ใช่ฉบับแรกของชุดต้องเป็น "สำเนาใบกำกับภาษี" ที่มีคำว่า "เอกสารออกเป็นชุด" (ประกาศ VAT ฉ.39 ข้อ 1) · ลูกค้าทำต้นฉบับหายให้ออก "ใบแทน" (ม.86/12) · กดยืนยันเพื่อพิมพ์ต้นฉบับซ้ำ${p.n ? ` (ครั้งที่ ${s(p, "n")})` : ""} — ระบบบันทึกผู้ยืนยัน`,
+    citation: "ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 39 ข้อ 1 · คำสั่ง ป.86/2542 ข้อ 4 · ประมวลรัษฎากร ม.86/12 · ประกาศ VAT ฉ.36 · references/common-vat-invoice.md §14 · audit-checklist-accounting.md B5 B6",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  ADJUST_NOTE_ORIGINAL_MISSING: {
+    code: "ADJUST_NOTE_ORIGINAL_MISSING",
+    titleTh: "ใบลด/เพิ่มหนี้ไม่อ้างอิงใบกำกับภาษีเดิม",
+    messageTh: (p) =>
+      p.side === "purchase"
+        ? "ใบลดหนี้/ใบเพิ่มหนี้ที่ได้รับยังไม่ได้บันทึกเลขที่และวันที่เอกสารของผู้ขาย — รายการตาม ม.86/9–86/10 ต้องมีเลขใบกำกับภาษีเดิม · บันทึกให้ครบเพื่อใช้ลงรายงานภาษีซื้อ · กดยืนยันเพื่อบันทึกโดยไม่มีข้อมูลนี้"
+        : "ยังไม่ได้อ้างอิงใบกำกับภาษีเดิม — ใบลดหนี้/ใบเพิ่มหนี้ต้องระบุเลขใบกำกับเดิม มูลค่าเดิม มูลค่าที่ถูกต้อง ผลต่าง และภาษี (ม.86/10 · ฉบับหนึ่งอ้างหลายใบได้) · ถ้าใบเดิมไม่ได้อยู่ในระบบ ให้ใส่เลขที่ใบเดิมในช่อง \"อ้างอิง\" · กดยืนยันเพื่อออกใบนี้โดยไม่อ้างอิงเอกสารในระบบ",
+    citation: "ประมวลรัษฎากร ม.86/9, 86/10 · references/common-vat-invoice.md §16 · audit-checklist-accounting.md B10",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  ADJUST_NOTE_REASON_GROUP_MISMATCH: {
+    code: "ADJUST_NOTE_REASON_GROUP_MISMATCH",
+    titleTh: "เหตุผลไม่ตรงชนิดเอกสาร",
+    messageTh: (p) =>
+      `เหตุผล "${s(p, "reason")}" เป็นเหตุของ${p.group === "DEBIT" ? "ใบเพิ่มหนี้ (ม.82/9)" : "ใบลดหนี้ (ประกาศ VAT ฉ.82 ข้อ 2)"} แต่เอกสารนี้เป็น${p.docKind === "DEBIT" ? "ใบเพิ่มหนี้" : "ใบลดหนี้"} — เลือกเหตุผลของชนิดเอกสารนี้ หรือ "อื่น ๆ" พร้อมระบุสาเหตุ · กดยืนยันเพื่อบันทึกตามที่เลือก`,
+    citation: "ประมวลรัษฎากร ม.82/9, 82/10 · ประกาศ VAT ฉ.82 ข้อ 2 · references/common-vat-invoice.md §7, §16 · audit-checklist-accounting.md B10 B11",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  TAX_INVOICE_SECTION_TEXT_FORCED: {
+    code: "TAX_INVOICE_SECTION_TEXT_FORCED",
+    titleTh: "บังคับพิมพ์ \"ออกตามมาตรา 86/4\" แม้ใบไม่ครบรายการ",
+    messageTh: (p) =>
+      `ตั้งให้พิมพ์ "ใบกำกับภาษีนี้ออกตามมาตรา 86/4 แห่งประมวลรัษฎากร" ทุกใบ — ข้อความนี้ยืนยันว่าใบมีรายการครบตาม ม.86/4 (คำว่าใบกำกับภาษี · ชื่อ ที่อยู่ เลขผู้เสียภาษีของผู้ออก · ชื่อ ที่อยู่ผู้ซื้อ · เลขที่ · รายการ · VAT แยก · วันที่ · สาขาตามประกาศ ฉ.39)${p.missing ? ` · ใบที่ขาด: ${s(p, "missing")}` : ""} · ค่าเริ่มต้น (อัตโนมัติ) พิมพ์เฉพาะใบที่ครบ · กดยืนยันเพื่อบังคับพิมพ์`,
+    citation: "ประมวลรัษฎากร ม.86/4 · ประกาศ VAT ฉ.39 ข้อ 7–9 · references/common-vat-invoice.md §5, §14",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
   },
   PAYMENT_TAX_INVOICE_EARLIER_MONTH: {
     code: "PAYMENT_TAX_INVOICE_EARLIER_MONTH",

@@ -294,6 +294,8 @@ export type RegisterProduct = {
   variantCount: number;
   /** P1.2 R9: ขายตามน้ำหนัก — priceSatang = ราคาต่อกิโลกรัม · ต้องส่ง weighedBarcode หรือ weightGrams (ไม่ส่ง = WEIGHT_REQUIRED) */
   soldByWeight: boolean;
+  /** ACC T1.8 ▸ ชนิด VAT ที่ไม่ใช่มาตรฐาน (ZERO_RATED | EXEMPT | ON_BEHALF) — มี = ยอด/VAT ของตะกร้ามาจากเซิร์ฟเวอร์ (คิดตามบรรทัด) ◂ */
+  vatTreatment?: string;
   soldOut: boolean;
   /** UNAVAILABLE = ปิดขายที่สาขา (กดขายไม่ได้ · ชนะหมดสต็อก) · NO_STOCK = นับสต็อกและหมด (ยังขายได้ · ติดลบตามนโยบายปริยาย) */
   soldOutReason: RegisterSoldOutReason | null;
@@ -378,7 +380,7 @@ export type RegisterQuoteLineInput =
       weighedBarcode?: string;
       weightGrams?: number;
     }
-  | { name: string; qty: number; unitPriceSatang: number; discount?: PriceDiscount; note?: string };
+  | { name: string; qty: number; unitPriceSatang: number; discount?: PriceDiscount; note?: string; /** ACC T1.8b ◂ */ vatTreatment?: string };
 /**
  * POS P1.12 (R6 · CD4): สิทธิ์ที่เลือกบนจอชำระ — คีย์ตรงตัว (giftCard/voucherIds/อื่น = VALIDATION · บัตรของขวัญเป็นวิธีชำระ = P2.9) ·
  * voucherId = ว่อชเชอร์ 1 ใบ (vouchersPerSale) · points = จำนวนเต็ม ≥ 0 (0 = ไม่ใช้แต้ม) · ไม่ถูกเก็บในบิลพัก
@@ -472,6 +474,8 @@ export type RegisterQuoteTotals = {
   table?: RegisterQuoteTable;
   /** POS P2.5 ▸ R4: มีเฉพาะ quote ของใบแยกบิล (tableSplitPartId) — table.itemIds = รายการที่ใบนี้ถือ ◂ */
   split?: RegisterQuoteSplit;
+  /** ACC T1.8 ▸ บิลที่มีบรรทัดไม่ใช่มาตรฐาน: ยอดตามกลุ่ม (รวมในราคา · หลังเกลี่ยส่วนลด) + ชนิดต่อบรรทัด (ลำดับเดียวกับ lines) · ไม่มี = มาตรฐานล้วน ◂ */
+  vatGroups?: { standardSatang: number; zeroRatedSatang: number; exemptSatang: number; onBehalfSatang: number; lineTreatments: string[] };
 };
 /** POS P1.12: บรรทัดสิทธิ์สมาชิกบนยอด (ลำดับกระเป๋า) · ref = id ว่อชเชอร์ (ระดับ/แต้ม = null) · note = คำอธิบายเมื่อระบบปรับให้ */
 export type RegisterMemberLine = { kind: "TIER" | "VOUCHER" | "POINTS" | "GIFTCARD"; ref: string | null; label: string; discountSatang: number; note: string | null };
@@ -701,7 +705,7 @@ export type RegisterCartLine =
       /** P1.6 R5: หมายเหตุบรรทัด (≤ REGISTER_NOTE_MAX · ส่งไปกับ quote/submit · บิลที่พักไม่เก็บ) */
       note?: string;
     }
-  | { key: string; kind: "custom"; name: string; unitPriceSatang: number; qty: number; discount?: PriceDiscount; note?: string };
+  | { key: string; kind: "custom"; name: string; unitPriceSatang: number; qty: number; discount?: PriceDiscount; note?: string; /** ACC T1.8b ▸ ชนิด VAT ที่ไม่ใช่มาตรฐาน (ZERO_RATED | EXEMPT | ON_BEHALF) · ไม่มี = มาตรฐาน ◂ */ vatTreatment?: string };
 /**
  * note = หมายเหตุบิล (P1.6 R5 · ส่งตอน submit เท่านั้น) ·
  * POS P1.12U มติ 1: couponCode = โค้ดที่ลูกค้ายื่น (ส่งทุก quote/submit · ไปกับบิลพัก) · memberChoices = แต้ม/ว่อชเชอร์ที่เลือกบนจอชำระเท่านั้น
@@ -803,8 +807,9 @@ export function quoteInputToCart(input: RegisterQuoteInput, newLineKey: () => st
         ...(typeof l.weightGrams === "number" ? { weightGrams: l.weightGrams } : {}),
       };
     }
-    const c = l as { name: string; qty: number; unitPriceSatang: number };
-    return { key: newLineKey(), kind: "custom", name: c.name, unitPriceSatang: c.unitPriceSatang, qty: c.qty, ...discount };
+    const c = l as { name: string; qty: number; unitPriceSatang: number; vatTreatment?: unknown };
+    const vt = typeof c.vatTreatment === "string" && c.vatTreatment !== "STANDARD" ? { vatTreatment: c.vatTreatment } : {}; // ACC T1.8b ◂
+    return { key: newLineKey(), kind: "custom", name: c.name, unitPriceSatang: c.unitPriceSatang, qty: c.qty, ...discount, ...vt };
   });
   return {
     lines,
@@ -828,7 +833,7 @@ export function cartToQuoteInput(cart: RegisterCart, opts?: { choices?: boolean 
     // P1.6 R5: หมายเหตุบรรทัดไปกับคำขอ (ว่าง = ไม่ส่ง)
     const note = l.note && l.note.trim() ? { note: l.note } : {};
     if (l.kind === "custom") {
-      return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, ...(l.discount ? { discount: { ...l.discount } } : {}), ...note };
+      return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, ...(l.discount ? { discount: { ...l.discount } } : {}), ...note, ...(l.vatTreatment ? { vatTreatment: l.vatTreatment } : {}) /* ACC T1.8b ◂ */ };
     }
     return {
       productId: l.productId,

@@ -201,6 +201,10 @@ model AccountDocument {
   inputVatClaimDate DateTime?
   /// ACC T1.5 — ข้อความ "ถือเป็นภาษีซื้อในเดือนภาษี…" (ประกาศ VAT ฉ.4 ข้อ 2) เมื่อเคลมข้ามเดือน
   inputVatLateNote  String?
+  /// ACC T2.3 — รหัสเหตุผลของใบลด/เพิ่มหนี้ (ตาราง ADJUST_NOTE_REASONS ใน th-tax-2569.ts) · `adjustReason` = ข้อความที่พิมพ์บนใบ · null = ใบก่อน T2.3
+  adjustReasonCode  String?
+  /// ACC T2.7 — ประวัติการพิมพ์ (ต้นฉบับ/สำเนา/ใบแทน)
+  prints        AccountDocumentPrint[]
 
   lines         AccountDocumentLine[]
   payments      AccountDocumentPayment[]
@@ -734,4 +738,40 @@ model AccountUndoToken {
 
   @@index([tenantId, systemId, expiresAt])
   @@index([userId, expiresAt])
+}
+
+// ── ACC T2.7 · ต้นฉบับ / สำเนา / ใบแทน ของใบกำกับภาษี (ปิด B5 B6 · skill common-vat-invoice.md §14) ──
+enum AccountPrintKind {
+  ORIGINAL // ต้นฉบับ (ครั้งแรก — มีได้แถวเดียวต่อเอกสาร ร่วมกับ SET)
+  COPY // สำเนา ("สำเนาใบกำกับภาษี" + "เอกสารออกเป็นชุด")
+  SET // ต้นฉบับ + สำเนา พิมพ์พร้อมกันครั้งแรก
+  SUBSTITUTE // ใบแทน (ม.86/12 · ฉ.36) — ครั้งที่ · วันที่ · สาเหตุ
+  ORIGINAL_REPRINT // ร้านยืนยันคำเตือนพิมพ์ต้นฉบับซ้ำ
+}
+
+enum AccountPrintChannel {
+  SCREEN
+  PDF
+  EMAIL
+  PUBLIC_LINK
+}
+
+model AccountDocumentPrint {
+  id               String              @id @default(cuid())
+  tenantId         String
+  systemId         String
+  documentId       String
+  document         AccountDocument     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  kind             AccountPrintKind
+  channel          AccountPrintChannel
+  /// ใบแทน: ครั้งที่ (1, 2, …) ต่อเอกสาร
+  substituteSeq    Int?
+  substituteReason String?
+  substituteDate   DateTime?
+  actorId          String?
+  actorType        String              @default("USER")
+  createdAt        DateTime            @default(now())
+
+  @@unique([documentId, substituteSeq])
+  @@index([tenantId, systemId, documentId, createdAt])
 }

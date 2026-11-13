@@ -32,6 +32,7 @@ import { draftGroups, groupKey, inheritedOf, rowsFromGroups, type GroupDraft, ty
 import { RecipeSection, type RecipePatch } from "./RecipeSection";
 // POS P2.6U ▸ มติ 9b: ส่วน "ครัว" ในแท็บทั่วไป (สถานีครัว · 86 ของสาขา) ◂
 import { ProductKitchenSection, type KitchenPatch } from "@/components/pos/products/kitchen-ui";
+import { ProductVatSection } from "@/components/pos/products/vat-ui"; // ACC T1.8 ◂
 
 export type PanelTab = "general" | "options" | "recipe" | "prices" | "stock";
 const TABS: PanelTab[] = ["general", "options", "recipe", "prices", "stock"];
@@ -266,6 +267,10 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
             {/* POS P2.6U ▸ มติ 9b ◂ */}
             <dd className="col-span-2">
               <ProductKitchenSection systemId={systemId} product={p} unit={unit} canManage={canManage} canMark={canMark86} onSaved={(id, patch, toast) => onKitchenSaved?.(id, patch, toast)} />
+            </dd>
+            {/* ACC T1.8 ▸ ชนิด VAT ของสินค้า ◂ */}
+            <dd className="col-span-2">
+              <ProductVatSection key={`${p.id}-${p.vatTreatment ?? "STANDARD"}`} systemId={systemId} productId={p.id} treatment={p.vatTreatment ?? "STANDARD"} baseTreatment={p.vatBaseTreatment ?? "STANDARD"} fromBook={!!p.vatFromBook} canManage={canManage} onSaved={(_tr, toast) => onToast?.(toast)} />
             </dd>
           </dl>
         ) : tab === "recipe" ? (

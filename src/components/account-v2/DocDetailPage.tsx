@@ -52,6 +52,8 @@ import { PAYMENT_REQUEST_DOC_TYPES } from "@/lib/modules/account/payment-request
 import { confirmPaymentRequestAction, cancelPaymentRequestAction } from "@/lib/modules/account/payment-actions";
 import { GroupPaymentPanel } from "./GroupPaymentPanel";
 import { ShareLinkButton } from "./ShareLinkButton";
+import { PrintMenu } from "./PrintMenu"; // ACC T2.7 ◂
+import { PRINT_CHANNEL_LABEL_TH } from "@/lib/modules/account/print-shared";
 import { Stepper, type StepDef } from "./Stepper";
 import type { RowActionItem } from "./RowActions";
 import { DocMoreMenu, type DangerMenuItem } from "./DocMoreMenu";
@@ -659,7 +661,7 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
                 <td className="py-2 text-right tabular-nums"><MoneyText satang={l.unitPrice} decimals /></td>
                 <td className="py-2 text-right tabular-nums">{l.discount > 0 ? <MoneyText satang={l.discount} decimals /> : "—"}</td>
                 <td className="py-2 text-right tabular-nums">{isPtx ? "—" : vatLabel(l.vatRateBp)}</td>
-                <td className="py-2 text-right tabular-nums"><MoneyText satang={l.amount} decimals /></td>
+                <td className="py-2 text-right tabular-nums"><MoneyText satang={isPtx ? l.amount : l.netBeforeVat} decimals /></td>
               </tr>
             ))}
           </tbody>
@@ -934,6 +936,13 @@ function AttachmentsTab({ data, systemId }: { data: DocDetailData; systemId: str
   );
 }
 
+/** ACC T2.7 ▸ รายละเอียดแถวประวัติการพิมพ์ (ช่องทาง · ใบแทนครั้งที่ · สาเหตุ) */
+function printDetailTh(after: unknown): string {
+  const a = (after ?? {}) as { channel?: string; substituteSeq?: number; reason?: string };
+  const ch = a.channel && a.channel in PRINT_CHANNEL_LABEL_TH ? PRINT_CHANNEL_LABEL_TH[a.channel as keyof typeof PRINT_CHANNEL_LABEL_TH] : "";
+  return [ch ? ` · ${ch}` : "", a.substituteSeq ? ` · ครั้งที่ ${a.substituteSeq}` : "", a.reason ? ` · ${a.reason}` : ""].join("");
+}
+
 function HistoryTab({ data }: { data: DocDetailData }) {
   if (data.auditLogs.length === 0) {
     return <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีประวัติ</p>;
@@ -942,7 +951,11 @@ function HistoryTab({ data }: { data: DocDetailData }) {
     <div className="card flex flex-col gap-2 text-sm">
       {data.auditLogs.map((l) => (
         <div key={l.id} className="flex items-center justify-between border-b pb-2 last:border-0">
-          <span>{l.actionLabel ?? auditActionLabelTh(l.action)}</span>
+          <span>
+            {l.actionLabel ?? auditActionLabelTh(l.action)}
+            {/* ACC T2.7 ▸ ประวัติการพิมพ์: ช่องทาง + ครั้งที่ใบแทน ◂ */}
+            {l.action.startsWith("account.doc.print.") && printDetailTh(l.after)}
+          </span>
           <span className="text-xs text-[color:var(--color-muted)]">
             {fmtDateLong(l.createdAt)} · {l.actorName}
           </span>
@@ -1070,7 +1083,7 @@ export async function DocDetailPage({
   const legalWarnings =
     data.status === "DRAFT" && !PO_TYPES.includes(dt)
       ? [
-          ...issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason, vatAmount: data.vatAmount }, side === "revenue" ? settings : null),
+          ...issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason, vatAmount: data.vatAmount, adjustReasonCode: data.adjustReasonCode, sourceDocId: data.sourceDocId, reference: data.reference, vendorInvoiceDate: data.vendorInvoiceDate }, side === "revenue" ? settings : null), // ACC T2.3 ◂
           ...(side === "revenue" ? saleWithoutVatWarnings({ docType: dt, vatMode: data.vatMode, sourceDocId: data.sourceDocId, lines: data.lines }, settings) : []),
           ...(taxPoint?.draftWarnings ?? []),
           ...filedPreview,
@@ -1135,9 +1148,8 @@ export async function DocDetailPage({
               disabledHint={payLinkBlockReason ?? undefined}
               current={currentPayLink}
             />
-            <Link href={`${base}/print/${data.id}`} target="_blank" className="btn btn-ghost text-sm">
-              PDF
-            </Link>
+            {/* ACC T2.7 ▸ ปุ่มพิมพ์จริง (ต้นฉบับ/สำเนา/ชุด/ใบแทน/ต้นฉบับซ้ำ) + บันทึกประวัติการพิมพ์ — แทนลิงก์ PDF เดิม ◂ */}
+            <PrintMenu systemId={systemId} docId={data.id} base={base} isTaxInvoice={dt === "TAX_INVOICE"} isDraft={data.status === "DRAFT"} originalPrinted={data.originalPrinted} />
             <button type="button" className="btn btn-ghost text-sm" disabled title="เร็ว ๆ นี้">
               อีเมล
             </button>

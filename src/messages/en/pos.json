@@ -106,7 +106,10 @@
       "vatExcluded": "VAT {rate}% (excluded)",
       "total": "Total",
       "serviceCharge": "Service charge",
-      "tip": "Tip"
+      "tip": "Tip",
+      "zeroRated": "Zero-rated",
+      "exempt": "VAT exempt",
+      "onBehalf": "Collected on behalf (not a sale)"
     },
     "actions": {
       "billDiscount": "Bill discount",
@@ -176,7 +179,11 @@
     "custom": {
       "name": "Item name",
       "price": "Price (baht)",
-      "add": "Add to cart"
+      "add": "Add to cart",
+      "vat": "VAT for this item",
+      "vatOpt": { "STANDARD": "Standard (shop rate)", "ZERO_RATED": "Zero-rated (0%)", "EXEMPT": "VAT exempt", "ON_BEHALF": "Collected on behalf (not income)" },
+      "vatMark": { "ZERO_RATED": "(0% VAT)", "EXEMPT": "(VAT exempt)", "ON_BEHALF": "(on behalf)" },
+      "ackRequired": "Tick the confirmation before adding an on-behalf item"
     },
     "openPrice": {
       "title": "Set a price for this sale",
@@ -1265,7 +1272,10 @@
       "taxBase": "Tax base",
       "vatable": "With VAT",
       "nonVat": "Without VAT",
-      "voidReceipts": "Voided nos."
+      "voidReceipts": "Voided nos.",
+      "zeroRated": "Zero-rated",
+      "exempt": "VAT exempt",
+      "onBehalf": "Collected on behalf (not sales)"
     },
     "summary": {
       "salesPlusTip": "Sales {sales} + tips {tip} = total received {paid}",
@@ -1905,6 +1915,7 @@
         "reviewExpired": "Rating for this bill has expired (30 days) — thank you for your visit"
       },
       "title": "Online receipt",
+      "convenienceCopy": "Convenience copy — this page is not an electronic receipt or tax invoice; the original is the printed copy from the shop",
       "status": {
         "PAID": "Paid",
         "VOIDED": "Voided",
@@ -1954,7 +1965,14 @@
       "close": "Close",
       "sending": "Sending…",
       "required": "Fill in this field first",
-      "counter": "{n}/{max}"
+      "counter": "{n}/{max}",
+      "vatTaxable": "Taxable value",
+      "vatZero": "Zero-rated sales",
+      "vatExempt": "VAT-exempt sales",
+      "onBehalf": "Collected on behalf (not a sale)",
+      "markZero": "(0% VAT)",
+      "markExempt": "(VAT exempt)",
+      "markOnBehalf": "(on behalf)"
     },
     "send": {
       "errors": {
@@ -2100,6 +2118,11 @@
       "serviceCharge": "Service charge",
       "net": "Net total",
       "vatIncl": "Includes VAT {rate}%",
+      "vatGroupTaxable": "Taxable sales (incl. VAT)",
+      "vatGroupZero": "Zero-rated sales",
+      "vatGroupExempt": "VAT-exempt sales",
+      "vatGroupOnBehalf": "Collected on behalf (not a sale)",
+      "vatMark": { "ZERO_RATED": "(0% VAT)", "EXEMPT": "(VAT exempt)", "ON_BEHALF": "(on behalf)" },
       "tip": "Tip (outside the total)",
       "refunded": "Refunded",
       "payments": "Payments",
@@ -3944,6 +3967,17 @@
       },
       "incomplete": "Products of branch {unit} are not fully loaded",
       "conflict": "This product's prices were changed elsewhere — reload"
+    },
+    "vat": {
+      "title": "VAT",
+      "STANDARD": "Standard (shop rate)",
+      "ZERO_RATED": "Zero-rated (0%)",
+      "EXEMPT": "VAT exempt",
+      "ON_BEHALF": "Collected on behalf (not income)",
+      "fromBook": "Rate comes from the accounting book — set standard/0%/exempt there",
+      "save": "Save VAT treatment",
+      "saved": "VAT treatment saved",
+      "hint": "Bills with exempt, zero-rated or on-behalf lines take VAT out of taxable lines only and split the receipt footer by group"
     }
   },
   "recipe": {

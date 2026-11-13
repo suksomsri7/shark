@@ -111,7 +111,7 @@ const productsCreate = definePosOp({
       kind: z.enum(PRODUCT_KINDS as unknown as [string, ...string[]]).optional().describe("PRODUCT (default), SERVICE, MENU or BUNDLE."),
       categoryId: z.string().min(1).max(64).optional().describe("Catalog category id."),
       basePriceSatang: satang.optional().describe("Price in satang, VAT included as the shop sets. Per kilogram for sold-by-weight products."),
-      vatRateBp: z.number().int().min(0).max(10_000).optional().describe("VAT rate in basis points (700 = 7%). Absent = the shop default."),
+      vatRateBp: z.number().int().min(-1).max(10_000).optional().describe("VAT rate in basis points (700 = 7%), 0 = zero-rated, -1 = VAT exempt. Absent = the shop default. Sales take VAT out of each line by its own treatment."),
       barcode: z.string().trim().min(1).max(64).optional().describe("Barcode."),
       trackStock: z.boolean().optional().describe("Cut stock on sale (needs a stock item)."),
       soldByWeight: z.boolean().optional().describe("Sold by weight (PRODUCT only); basePriceSatang = price per kg."),
