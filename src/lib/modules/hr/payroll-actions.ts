@@ -25,6 +25,8 @@ import {
   type Ctx,
 } from "./payroll";
 import { adjustmentReplyForViewer, screenOtHoursForViewer } from "./privacy";
+import { confirmBranchHours, createPayrollRunV2, RUN2_TEXT, setAdjustmentConsent, setPayrollEngine } from "./payroll"; // HR H3.4 ▸ รอบจ่ายรุ่น 2 ◂
+import { hrViewerOf } from "./privacy"; // HR H3.4 ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขา — สาขาของพนักงานเป้าหมายอ่านจาก DB · รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8) ◂
 import { employeeIdOfAdjustment, employeeUnitsOf, HrBranchError, hrScopeOf, isAllBranches, unitTargetOf } from "./scope";
 
@@ -216,7 +218,7 @@ export async function approvePayrollRunAction(formData: FormData): Promise<{ ok:
 export async function reverseRunAction(formData: FormData) {
   const auth = await requireTenant();
   // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
-  assertHrCan(auth, "hr.payroll.approve");
+  assertHrCan(auth, "hr.payroll.reverse"); // HR H3.4 ▸ R8: กลับรายการ = คีย์ของตัวเอง (เดิมใช้คีย์อนุมัติ) ◂
   assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
@@ -327,15 +329,17 @@ export async function decideAdjustmentAction(formData: FormData): Promise<{ ok: 
   const auth = await requireTenant();
   // อนุมัติ = สิทธิ์แตะเงินเดือน (ผ่านด่าน PDPA เหมือน action เงินเดือนอื่น)
   // ทุกสาขา: ด่านคีย์ระดับระบบ HR — สาขาของเจ้าของรายการตรวจด้วย payTarget ด้านล่าง
-  assertHrCan(auth, "hr.payadjust.approve");
+  const decision = String(formData.get("status") ?? ""); // HR H3.4 ▸ R8: ปฏิเสธ = hr.payadjust.reject · อนุมัติ = hr.payadjust.approve ◂
+  if (decision === "REJECTED") assertHrCan(auth, "hr.payadjust.reject"); // HR H3.4 ◂ ทุกสาขา: ด่านคีย์ก่อน — สาขาของเจ้าของรายการ = payTarget + assertHrCan(…, t.unitId) ด้านล่าง
+  else assertHrCan(auth, "hr.payadjust.approve"); // HR H3.4 ◂ ทุกสาขา: ด่านคีย์ก่อน — สาขาของเจ้าของรายการ = payTarget + assertHrCan(…, t.unitId) ด้านล่าง
   const systemId = String(formData.get("systemId") ?? "");
   const id = String(formData.get("id") ?? "");
-  const status = String(formData.get("status") ?? "");
+  const status = decision; // HR H3.4 ◂
   if (!systemId || !id || (status !== "APPROVED" && status !== "REJECTED")) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
   try {
     const ctx0: Ctx = { tenantId: auth.active.tenantId, systemId };
     const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
-    assertHrCan(auth, "hr.payadjust.approve", t.unitId);
+    assertHrCan(auth, decision === "REJECTED" ? "hr.payadjust.reject" : "hr.payadjust.approve", t.unitId); // HR H3.4 ◂
   } catch (e) {
     if (branchText(e)) return { ok: false, reason: branchText(e)! };
     throw e;
@@ -456,3 +460,124 @@ export async function moveStrandedAdjustmentAction(formData: FormData): Promise<
     throw e;
   }
 }
+
+// ─────────── HR H3.4 ▸ รอบจ่ายรุ่น 2 (ภาพ 06) — ทุกปุ่มคืนผลเป็นข้อมูล { ok, reason/note } (ข้อความคงที่ของ service) · รอบจ่ายครอบคลุมทุกสาขา ───────────
+//   สร้าง/ดึงข้อมูลใหม่ = hr.payroll.create · อนุมัติ = hr.payroll.approve · รุ่นเครื่อง = เจ้าของร้าน (service) · ยืนยันสาขา = ผู้จัดการสาขา/เจ้าของ (service) ·
+//   หนังสือยินยอม = hr.payadjust.approve ในสาขา (service ตรวจซ้ำ) · ผู้กด (actor) = ผู้ใช้ใน session เสมอ
+const H34_UNEXPECTED = "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง";
+async function h34Guard<T>(fn: () => Promise<T>): Promise<T | { ok: false; reason: string }> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (branchText(e)) return { ok: false, reason: branchText(e)! };
+    if (e instanceof ForbiddenError) return { ok: false, reason: RUN2_TEXT.no };
+    console.error("[hr.run2]", e);
+    return { ok: false, reason: H34_UNEXPECTED };
+  }
+}
+const h34Actor = (auth: Awaited<ReturnType<typeof requireTenant>>) => ({ userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
+const h34Day = (v: FormDataEntryValue | null): Date | null => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T12:00:00+07:00`) : null);
+export async function createPayrollRunV2Action(formData: FormData): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
+    assertHrCan(auth, "hr.payroll.create");
+    assertRunAllBranches(auth);
+    const systemId = String(formData.get("systemId") ?? "");
+    const periodKey = String(formData.get("periodKey") ?? "").trim();
+    const payDate = h34Day(formData.get("payDate"));
+    if (!systemId) return { ok: false as const, reason: "คำสั่งไม่ถูกต้อง" };
+    const r = await createPayrollRunV2({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { periodKey, payDate: payDate as Date }, { actor: h34Actor(auth) });
+    revalidate(systemId);
+    return r.ok ? { ok: true as const, id: r.id } : { ok: false as const, reason: r.reason };
+  });
+}
+export async function recomputeRunV2Action(formData: FormData): Promise<{ ok: true; note: string } | { ok: false; reason: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
+    assertHrCan(auth, "hr.payroll.create");
+    assertRunAllBranches(auth);
+    const systemId = String(formData.get("systemId") ?? "");
+    const runId = String(formData.get("runId") ?? "");
+    if (!systemId || !runId) return { ok: false as const, reason: "คำสั่งไม่ถูกต้อง" };
+    const fn = recomputeDraftRun as unknown as (c: Ctx, id: string, a: { userId: string | null; isOwner: boolean }, o: { viewer: ReturnType<typeof hrViewerOf> }) => ReturnType<typeof recomputeDraftRun>;
+    const r = await fn({ tenantId: auth.active.tenantId, systemId }, runId, h34Actor(auth), { viewer: hrViewerOf(auth) });
+    revalidate(systemId);
+    return r;
+  });
+}
+export async function approveRunV2Action(formData: FormData): Promise<{ ok: boolean; note?: string; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
+    assertHrCan(auth, "hr.payroll.approve");
+    assertRunAllBranches(auth);
+    const systemId = String(formData.get("systemId") ?? "");
+    const runId = String(formData.get("runId") ?? "");
+    const net = Number(formData.get("net"));
+    const items = Number(formData.get("items"));
+    if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const r = await approveRun({ tenantId: auth.active.tenantId, systemId }, runId, Number.isSafeInteger(net) && Number.isSafeInteger(items) ? { totalNetSatang: net, itemCount: items } : undefined, h34Actor(auth));
+    revalidate(systemId);
+    return r.ok ? { ok: true, note: r.note } : { ok: false, reason: r.note };
+  });
+}
+// fix r1 F7: จ่าย/กลับรายการของหน้ารอบรุ่น 2 คืนผลจริง (ไม่ใช่ "บันทึกแล้ว" เสมอ) — ไม่มีสิทธิ์ = ข้อความคงที่ในหน้า
+export async function payRunV2Action(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
+    assertHrCan(auth, "hr.payroll.pay");
+    assertRunAllBranches(auth);
+    const systemId = String(formData.get("systemId") ?? "");
+    const runId = String(formData.get("runId") ?? "");
+    if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const r = await markPaid({ tenantId: auth.active.tenantId, systemId }, runId);
+    revalidate(systemId);
+    return r.ok ? { ok: true } : { ok: false, reason: r.note };
+  });
+}
+export async function reverseRunV2Action(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
+    assertHrCan(auth, "hr.payroll.reverse");
+    assertRunAllBranches(auth);
+    const systemId = String(formData.get("systemId") ?? "");
+    const runId = String(formData.get("runId") ?? "");
+    if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const r = await reverseRun({ tenantId: auth.active.tenantId, systemId }, runId, String(formData.get("reason") ?? "").trim() || undefined, h34Actor(auth));
+    revalidate(systemId);
+    return r.ok ? { ok: true } : { ok: false, reason: r.note };
+  });
+}
+export async function confirmBranchHoursAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    const systemId = String(formData.get("systemId") ?? "");
+    const r = await confirmBranchHours({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { runId: String(formData.get("runId") ?? ""), unitId: String(formData.get("unitId") ?? "") });
+    if (systemId) revalidate(systemId);
+    return r;
+  });
+}
+export async function setPayrollEngineAction(formData: FormData): Promise<{ ok: boolean; reason?: string; warnings?: string[] }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    const systemId = String(formData.get("systemId") ?? "");
+    const pct = (k: string) => { const v = String(formData.get(k) ?? "").trim(); return v === "" ? undefined : /^\d{1,3}(\.\d{1,2})?$/.test(v) ? Math.round(Number(v) * 100) : -1; };
+    const r = await setPayrollEngine({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { engineVersion: Number(formData.get("engineVersion")), catCapBp: pct("catCapPct"), totalCapBp: pct("totalCapPct") });
+    revalidatePath(`/app/sys/${systemId}/hr/settings`);
+    return r.ok ? { ok: true, warnings: r.warnings } : { ok: false, reason: r.reason };
+  });
+}
+export async function setAdjustmentConsentAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    const systemId = String(formData.get("systemId") ?? "");
+    const r = await setAdjustmentConsent({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { id: String(formData.get("id") ?? ""), consent: formData.get("consent") === "1" });
+    if (systemId) revalidate(systemId);
+    return r;
+  });
+}
+// ◂ HR H3.4

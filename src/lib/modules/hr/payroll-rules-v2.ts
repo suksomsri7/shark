@@ -55,7 +55,15 @@ function exactKeys(o: Record<string, unknown>, keys: readonly string[], what: st
 
 export function parseSsoJson(json: unknown): SsoLawJson {
   if (!isObj(json)) return fail("LAW_SHAPE", "SSO json not an object");
-  exactKeys(json, ["rateBp", "minBaseSatang", "maxBaseSatang", "rounding", "employerEqualsEmployee"], "SSO");
+  // HR H3.4 ▸ r3: กุญแจเสริม wageComponents = ส่วนของค่าจ้างที่นับเป็นฐาน ปสส. ของแถวนั้น (ข้อมูลของแถวกฎหมาย ไม่ใช่ค่าคงที่ในโค้ด) ·
+  //   รายการย่อยของ 7 คำ ไม่ซ้ำ ต้องมี BASE · ไม่มีกุญแจ = รายการตั้งต้นของเครื่องคิดรอบ (payroll-run-rules) · ผิดรูป = LAW_SHAPE
+  const { wageComponents, ...ssoCore } = json;
+  exactKeys(ssoCore, ["rateBp", "minBaseSatang", "maxBaseSatang", "rounding", "employerEqualsEmployee"], "SSO");
+  if (wageComponents !== undefined) {
+    const tokens = new Set(["BASE", "HOLIDAY_WORK", "OT", "COMMISSION", "BONUS", "ALLOWANCE", "LATE_REFUND"]);
+    const ok = Array.isArray(wageComponents) && wageComponents.every((t) => typeof t === "string" && tokens.has(t)) && new Set(wageComponents).size === wageComponents.length && wageComponents.includes("BASE");
+    if (!ok) fail("LAW_SHAPE", "SSO wageComponents must be distinct tokens incl. BASE");
+  } // ◂ HR H3.4
   const { rateBp, minBaseSatang, maxBaseSatang, rounding, employerEqualsEmployee } = json;
   if (!isNonNegInt(rateBp) || rateBp > 10_000) fail("LAW_SHAPE", "SSO rateBp");
   if (!isNonNegInt(minBaseSatang) || !isNonNegInt(maxBaseSatang) || (minBaseSatang as number) > (maxBaseSatang as number)) fail("LAW_SHAPE", "SSO base range");
@@ -255,8 +263,10 @@ export function classifyIncomeV2(baseSatang: number, adjustments: readonly Adjus
   let ssoExtra = 0;
   for (const a of adjustments) {
     const kind = a?.kind;
-    if (typeof kind !== "string" || (!WHT_KINDS.has(kind) && !DEDUCT_KINDS.has(kind))) fail("BAD_KIND", `unknown adjustment kind ${String(kind)}`);
-    const amt = satang(a.amountSatang, `${kind} amount`);
+    // HR H3.4 ▸ REFUND = คืนเงินรายการหัก (ค่าเสียหาย/เรียกคืน): เพิ่มยอดจ่าย แต่ไม่ใช่เงินได้ 40(1) และไม่ใช่ค่าจ้าง ปสส. (ปิดหนี้ D-H46) ◂
+    if (typeof kind !== "string" || (!WHT_KINDS.has(kind) && !DEDUCT_KINDS.has(kind) && kind !== "REFUND")) fail("BAD_KIND", `unknown adjustment kind ${String(kind)}`);
+    const amt = satang(a.amountSatang, `${kind} amount`); // HR H3.4 ◂
+    if (kind === "REFUND") { add = sum("additions", add, amt); continue; } // HR H3.4 ◂
     if (DEDUCT_KINDS.has(kind)) deduct = sum("deductions", deduct, amt);
     else {
       add = sum("additions", add, amt);

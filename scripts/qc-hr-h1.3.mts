@@ -114,7 +114,7 @@ const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";
 /** sha256 of the `  // S8.4\n … \n  }\n` block of qc-hr-h0.6.mts on 13a0601b (the freeze check itself must not drift) */
 // ORACLE-EDIT (H2.5 r3 · controller-authorized): re-pinned after the h0.6 S8.4 block learned to strip the 3 marked markPaid lines (was 5f15f5f4a478…)
-const H06_S84_BLOCK_SHA = "d9eac3d578ea53be030bee714eb89fe93df38bc9508bd8bd2d391c4bc0058c4f";
+const H06_S84_BLOCK_SHA = "28daf076c1287d1b384ec8c44638139b9d3ebc76b4409d6abe64df92d4584c81"; // ORACLE-EDIT (H3.4 fix rounds 2/3 · G5/H4): re-taken after qc-hr-h0.6 S8.4 learned the exact one-line strip of the HR H3.4 markPaid dispatch line (was d9eac3d5…)
 /** sha256 of payroll.prisma from "  // crm_v2_c (CRM C3.0/C3.3)" through "  crmCommissionId String?\n" on 13a0601b (R4 · S1.7) */
 const CRM_BLOCK_SHA = "119baf15b3a29a75460343dbd42bbc8285bd84872e9ec0ff0706b5e4654b3221";
 /** pg_indexes.indexdef on QC4 at the base (S1.10 · byte-equal) */
@@ -768,9 +768,15 @@ function runStatic(): void {
     const r = sha(rd(RULES_FILE)) === RULES_SHA;
     const ci = sha(seg(pay, "function computeItem(", "\n}\n", true)) === COMPUTE_ITEM_SHA;
     // ORACLE-EDIT (H2.5 r3 · controller-authorized): strip only the 3 marked period-lock lines (`HR H2.5 r3`) added to markPaid, then hash = base
+  // ORACLE-EDIT (H3.4 fix round 3 H4): markPaid may carry EXACTLY ONE added line — the v2 dispatch line below, compared as a full string (count === 1); any other
+  //   added/changed line still trips the pin · negative self-test: the same block with that line twice must NOT hash to the pin
+  const H34_MP_LINE = "  if ((await runEngineVersion(ctx, runId)) === 2) return markPaidV2(ctx, runId); // HR H3.4 ◂ fix r3 H1: รอบรุ่น 2 จ่ายได้เมื่อปิดงานแล้ว (ตรวจใต้ล็อกงวด)";
+  const stripH34 = (ls: string[]) => (ls.filter((l) => l === H34_MP_LINE).length === 1 ? ls.filter((l) => l !== H34_MP_LINE) : ls);
     const mpBlk = seg(pay, "// ── จ่ายแล้ว (APPROVED→PAID) ──", "// ◂ CRM C3.3", true);
     const mpMarked = mpBlk.split("\n").filter((l) => /\/\/ HR H2\.5 r3 [▸◂]/.test(l));
-    const mp = mpMarked.length === 3 && sha(mpBlk.split("\n").filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l)).join("\n")) === MARKPAID_BLOCK_SHA;
+    const mpHash = (ls: string[]) => sha(stripH34(ls).filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l)).join("\n"));
+    const mpLines = mpBlk.split("\n");
+    const mp = mpMarked.length === 3 && mpHash(mpLines) === MARKPAID_BLOCK_SHA && (!mpLines.includes(H34_MP_LINE) || mpHash([...mpLines, H34_MP_LINE]) !== MARKPAID_BLOCK_SHA);
     const h06 = rd(H06_ORACLE);
     const i = h06.indexOf("  // S8.4\n");
     const blk = i >= 0 ? h06.slice(i, h06.indexOf("\n  }\n", i) + 4) : "";
@@ -792,6 +798,10 @@ function runStatic(): void {
     ].filter((p) => existsSync(join(ROOT, p)))
       // ORACLE-EDIT (controller 12 Nov): H3.3 ships the law engine — these two files are the intended readers of HrLawTable/lawRowIds/ytdJson
       .filter((p) => p !== "src/lib/modules/hr/law.ts" && p !== "src/lib/modules/hr/payroll-rules-v2.ts");
+    // ORACLE-EDIT (H3.4 builder, wip/hr-h3.4): hr/payroll-run-rules.ts (pure v2 run calculator, brief H3.4 R2) returns lawRowIds/ytdJson for payroll.ts
+    //   to store on HrPayrollItem (R4) — only those two tokens are ignored there; every other S6.1 token still counts
+    const RUN_RULES_FILE = "src/lib/modules/hr/payroll-run-rules.ts";
+    const RUN_RULES_OK = /^(lawRowIds|ytdJson)$/;
     // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
     //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
     const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
@@ -805,7 +815,7 @@ function runStatic(): void {
     const OT_OK = /^sourceRef$/;
     const cntOf = (f: string, s: string) =>
       (stripComments(s).match(S61_RE) ?? []).filter(
-        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t)),
+        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t)) && !(f === RUN_RULES_FILE && RUN_RULES_OK.test(t)),
       ).length;
     // ORACLE-EDIT (controller 12 Nov · H2.9 + H4.6 r3, merged into one mechanism): hr/payroll.ts may carry exactly the declared number of S6.1 tokens inside
     //   lines/blocks marked per WO tag (block = from a `HR <tag> ▸` line without `◂` to the line with `◂ HR <tag>`; a one-line hunk carries the tag itself) ·
@@ -814,7 +824,8 @@ function runStatic(): void {
     const PAY_FILE = "src/lib/modules/hr/payroll.ts";
     //   ORACLE-EDIT (controller 12 Nov · H3.2, authorized per-tag declaration): H3.2 = 6 (sourceRef in writeAttendanceDeductionInTx: findMany where ·
     //   select · gen parse · create data; attendanceApproveLockInTx: param type · parse "att:<P>:" of the row being approved)
-    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6 };
+    // ORACLE-EDIT (H3.4 builder, phase B · fix round 1): H3.4 = 11 (lawRowIds/ytdJson on v2 items · carry-row sourceRef write + carry-class/consent/reverse reads)
+    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6, "HR H3.4": 16 }; // fix round 2: + carry idempotency read · fix round 3 (H5): + the leaver attendance-row writer (sourceRef read/write ×4, mirrors H3.2's writer)
     const splitMarked = (src: string) => {
       const inside: Record<string, string[]> = Object.fromEntries(Object.keys(PAY_MARKED).map((t) => [t, []]));
       const outside: string[] = [];
@@ -1216,7 +1227,10 @@ async function runDb(): Promise<void> {
     for (const [t, cols] of [["HrPayrollRun", RUN_NEW], ["HrPayrollItem", ITEM_NEW], ["HrPayAdjustment", ADJ_NEW]] as const) for (const c of cols) if (!okDb(t, c)) bad.push(`${t}.${c[0]}`);
     for (const c of ADJ_NEW) if (info.some((x) => x.t === "HrPayAdjustment" && x.c === c[0] && x.d !== null)) bad.push(`HrPayAdjustment.${c[0]}:has DEFAULT`);
     const enumOf = async (name: string) => ((await P.$queryRawUnsafe(`SELECT e.enumlabel AS l FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid WHERE t.typname = $1 ORDER BY e.enumsortorder`, name)) as Any[]).map((r) => r.l as string).join(",");
-    for (const [n, vals] of Object.entries(ENUMS)) if ((await enumOf(n)) !== vals.join(",")) bad.push(`enum ${n}`);
+    // ORACLE-EDIT (H3.4 builder, wip/hr-h3.4): migration 20270106000000_hr_payroll_v2_kinds appends 'CARRY_FORWARD' to "HrPaySource" (brief H3.4 §6) —
+    //   the H1.3 labels must still be exact and first, in order; only that one trailing label is tolerated
+    const H34_APPENDED: Record<string, string> = { HrPaySource: "CARRY_FORWARD" };
+    for (const [n, vals] of Object.entries(ENUMS)) { const got = await enumOf(n); if (got !== vals.join(",") && !(H34_APPENDED[n] && got === [...vals, H34_APPENDED[n]].join(","))) bad.push(`enum ${n}`); }
     chk("S1.9", bad.length === 0, "4 tables + 11 columns + 6 enums exact", bad.slice(0, 14).join(" ") + (bad.length > 14 ? ` … +${bad.length - 14}` : ""));
     const idx = async (name: string) => String(((await P.$queryRawUnsafe(`SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname = $1`, name)) as Any[])[0]?.indexdef ?? "∅");
     const iCrm = await idx("HrPayAdjustment_crmCommissionId_key");

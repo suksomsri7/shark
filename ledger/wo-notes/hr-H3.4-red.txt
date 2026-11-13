@@ -1,0 +1,86 @@
+# qc-hr-h3.4 RED proof — base bcf352f88 (wip/hr-h3.4) · lane DB wo-hr-qc-l3 (scripts/qc-hr.sh) · after seed-hr-qc (ผ่าน 33/33)
+# command: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26c… [QC_FORCE=1] pnpm exec tsx scripts/qc-hr-h3.4.mts
+# forced run 1 found a harness bug (S8.2 GREEN control read the not-yet-existing stepsJson column) — fixed (stepsJson read separately); runs 2 and 3 below are on the final oracle.
+
+## 1. unforced (exit 0)
+⏭️  SKIPPED — qc-hr-h3.4: not built
+   • src/lib/modules/hr/payroll-run-rules.ts absent (H3.4 not built)
+JSON_SUMMARY {"suite":"qc-hr-h3.4","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["src/lib/modules/hr/payroll-run-rules.ts absent (H3.4 not built)"],"registered":56}
+
+## 2. forced QC_FORCE=1 run 2 (exit 1)
+[env] qc-hr-h3.4 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.4] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️ QC_FORCE=1 — running although: src/lib/modules/hr/payroll-run-rules.ts absent (H3.4 not built)
+[qc-hr-h3.4] rules=∅ src/lib/modules/hr/payroll-run-rules.ts · base=bcf352f88 · H3.2 absent (S7 n/a)
+  ❌ [H3.4-S1.1] [static] new files · rules pure (imports ./payroll-rules-v2 ./ot-rules only) — expected files · pure · exports | actual files,imports,exports imports=∅
+  ❌ [H3.4-S1.2] [static] migrations: _kinds = 2 ADD VALUE only · _v2 additive (stepsJson · inputDigest) · schema — expected 2 migrations exact · schema | actual kinds,cols,additive,schema kinds=
+  ❌ [H3.4-S1.3] [static] single writer of HrPayrollRun/Item/HrPayAdjustment = payroll.ts (base writers tolerated) — expected payroll.ts only (+ base writers) | actual rules absent
+  ❌ [H3.4-S1.4] [static] law.ts only reader of HrLawTable · payroll.ts uses loadLawSet — expected law.ts only reader | actual reads,built
+  ❌ [H3.4-S1.5] [static] no GPS/photo field in new code — expected none | actual rules absent
+  ✅ [H3.4-S1.6] [static] payroll-rules.ts sha · frozen files unchanged vs base
+  ❌ [H3.4-S1.7] [static] marked hunks (v2 ≤ 2 · ot-rules · ot · actions · index) · V2_VARIABLE_PAY = false — expected marked hunks | actual v2,others,flag,dispatch v2=0/0 ot-rules.ts=0/0 ot.ts=0/0 payroll-actions.ts=0/0 index.ts=0/0
+  ❌ [H3.4-S1.8] [static] keys hr.payroll.reverse · hr.payadjust.reject wired — expected reverse + reject keys | actual reverse,reject rev=607 dec=1745
+  ❌ [H3.4-S1.9] [static] UI testids · inventory · hr.run2 th=en · tokens · page · engine card — expected UI contract | actual testids,inv,msgs,tokens,page,engine missing=hr-run2-create,hr-run2-steps,hr-run2-tiles,hr-run2-table,hr-run2-review,hr-run2-approve,hr-run2-pay,hr-run2-reverse,hr-r
+  ❌ [H3.4-S1.10] [static] otWorkdayMin/otHolidayMin never read · ot.ts subtracts run-priced minutes — expected never priced · H2.9 subtracts run minutes | actual rules,payroll,ot,exp
+  ❌ [H3.4-S2.1] [pure] monthly V01–V07 — expected 7 literal vectors | actual V01: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"} ‖ V02: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.2] [pure] proration V08–V11 — expected 4 literal vectors | actual V08: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"} ‖ V09: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.3] [pure] unpaid leave V12–V14 — expected 3 literal vectors | actual V12: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"} ‖ V13: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.4] [pure] daily V15–V24 — expected 10 literal vectors | actual V15: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"} ‖ V16: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.5] [pure] hourly V25–V28 — expected 4 literal vectors | actual V25: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"} ‖ V26: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.6] [pure] monthly holiday work V29–V32 — expected 4 literal vectors | actual V29: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"} ‖ V30: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.7] [pure] adjustments V33–V36 — expected 4 literal vectors | actual V33: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"} ‖ V34: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.8] [pure] cap + carry V37–V44 + V51 — expected 9 literal vectors | actual V37: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"} ‖ V38: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.9] [pure] refusals V45–V49 — expected 5 literal vectors | actual V45: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"} ‖ V46: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.10] [pure] V50 daily + commission: regular month = earned (placeholder) — expected 1 literal vectors | actual V50: {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts)"}
+  ❌ [H3.4-S2.11] [pure] otAmount normalDayMin OTN-01…05 — expected 5 literal vectors | actual OTN-02: {"segments":["OT_WORKDAY:120:15000:17500"],"amountSatang":17500} ‖ OTN-04: {"segments":["HOLIDAY_WORK:480:20000:80000","OT_HOLIDAY:120:30000:30000"],"amountSatang":110000}
+  ❌ [H3.4-S2.12] [pure] classifyIncomeV2 REFUND outside 40(1)/SSO · TIP still BAD_KIND — expected REFUND classified · TIP refused | actual refund {"code":"BAD_KIND"}
+  ❌ [H3.4-S3.1] [pure] gross = net + SSO + WHT = Σ lines · net ≥ 0 · carry = requested − applied — expected identities on all ok vectors | actual 46 · bad V01,V02,V03,V04,V05,V06
+  ❌ [H3.4-S3.2] [pure] purity · RUN_V2_DEFAULTS — expected pure + defaults | actual ok,defaults {"ok":false,"code":"∅computeRunItemV2 (∅ src/lib/modules/hr/payroll-run-rules.ts
+  ❌ [H3.4-S3.3] [pure] two periods: V38 carry applied next period · Σ = 2,000,000 — expected 1,425,000 + 575,000 = 2,000,000 | actual carry,p2,sum c=0 p2=undefined
+  ❌ [H3.4-S3.4] [pure] perf: 300 employees × 31 days < 2,000 ms — expected 300 ok < 2 s | actual all 0 in 2 ms
+  ✅ [H3.4-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+
+
+  ℹ fixture: OT_REQUEST row mA = 175000 @2031-09 (want 175000 @2031-09) · REFUND enum absent
+  ❌ [H3.4-S4.1] [db] engine: default 1 · owner only · cap range · LAW_MISSING · 2 · audit — expected engine rules | actual def,owner,cap,law,ok,audit "absent: getPayrollEngine (loaded)" "absent: setPayrollEngine (loaded)" "absent: setPayrollEngine (loaded)" "absent: setPayrollEngine (loaded)" audit=0
+  ❌ [H3.4-S4.2] [db] v1 create in engine-2 shop ⇒ engineV2 · v2 create in engine-1 shop ⇒ ENGINE_V1 — expected engineV2 · ENGINE_V1 | actual v1,v2 v1="CREATED cmwdvna650037yokz9ou6sjrz" v2="absent: createPayrollRunV2 (loaded)"
+  ❌ [H3.4-S4.3] [db] no ACTIVE law ⇒ LAW_MISSING · nothing written — expected LAW_MISSING · nothing written | actual code,text "absent: createPayrollRunV2 (loaded)"
+  ❌ [H3.4-S4.4] [db] PENDING OT request ⇒ OT_OPEN — expected OT_OPEN | actual code "absent: createPayrollRunV2 (loaded)"
+  ❌ [H3.4-S4.5] [db] create Sept: 3 items + totals literal · lawRowIds · ytd · 5 bound — expected Sept literal | actual ok,run,mA,mB,eC,totals,law,ytd,bound "absent: createPayrollRunV2 (loaded)" A=∅ B=∅ C=∅ bound=0
+  ❌ [H3.4-S4.6] [db] lines literal · refs real days · no double pay · workDays 30/30/15 — expected lines literal | actual mA,mB,eC,ref,noOt,wd A=[]
+  ❌ [H3.4-S6.1] [db] preview matrix: owner/payroll 3 rows · manager minutes only · others no — expected viewer matrix | actual owner,pay,mgr,refused o="absent: previewPayrollRunV2 (loaded)" m="absent: previewPayrollRunV2 (loaded)" s="absent: previewPayrollRunV2 (loaded)" other="absent: previewPayrollRunV2 (loaded)"
+  ❌ [H3.4-S6.2] [db] IDOR ⇒ identical no — expected identical no | actual unk,other "absent: previewPayrollRunV2 (loaded)" "absent: previewPayrollRunV2 (loaded)"
+  ❌ [H3.4-S6.3] [db] confirmBranchHours rules — expected confirm rules | actual ok,no2,no3 "absent: confirmBranchHours (loaded)" "absent: confirmBranchHours (loaded)" steps=undefined
+  ❌ [H3.4-S4.7] [db] maker-checker SAME_PERSON · OWN_PAY · NO_ACTOR — expected SAME_PERSON · OWN_PAY · NO_ACTOR | actual same,own,none,draft "รอบนี้อนุมัติหรือจ่ายไปแล้ว" "รอบนี้อนุมัติหรือจ่ายไปแล้ว" "รอบนี้อนุมัติหรือจ่ายไปแล้ว"
+  ❌ [H3.4-S4.8] [db] inputs changed ⇒ INPUTS_CHANGED — expected INPUTS_CHANGED | actual code,draft "รอบนี้อนุมัติหรือจ่ายไปแล้ว"
+  ❌ [H3.4-S4.9] [db] rebuild makes pay3 the maker — expected rebuilder is the maker | actual ok,maker,steps,totals,same "ไม่พบรอบจ่าย" maker=false "รอบนี้อนุมัติหรือจ่ายไปแล้ว"
+  ❌ [H3.4-S4.10] [db] 3 ∥ approve ⇒ 1 ok · JV 12,156,667 · days bound · carry rows literal — expected 1 ok · JV · carry | actual one,run,jv,carry "รอบนี้อนุมัติหรือจ่ายไปแล้ว" "รอบนี้อนุมัติหรือจ่ายไปแล้ว" "รอบนี้อนุมัติหรือจ่ายไปแล้ว" dr=0 carry=
+  ❌ [H3.4-S4.11] [db] 2 ∥ markPaid ⇒ 1 ok · PAID — expected 1 ok · PAID | actual one,paid "ต้องอนุมัติรอบก่อนจึงจ่ายได้" "ต้องอนุมัติรอบก่อนจึงจ่ายได้"
+  ❌ [H3.4-S4.12] [db] late OT request ⇒ 200,000 (run-priced minutes subtracted) — expected OT 200,000 @2031-10 | actual row OT:466667:2031-09
+  ❌ [H3.4-S4.13] [db] Oct literal · Σ two periods 900,000 / 700,000 — expected Oct literal · Σ two periods | actual ok,mA,mB,eC,adv,claim "absent: createPayrollRunV2 (loaded)" A=∅ B=∅ C=∅
+  ❌ [H3.4-S4.14] [db] reverse Sept while carry bound ⇒ CARRY_BOUND — expected CARRY_BOUND | actual code,paid,bound "ไม่พบรอบจ่าย"
+  ❌ [H3.4-S4.15] [db] reverse Oct then Sept ⇒ carry REJECTED · rows restored · JV reversed — expected reverse both · restored | actual chain,both,carry,jv "รอบนี้อนุมัติหรือจ่ายไปแล้ว" "ไม่พบรอบจ่าย" "ไม่พบรอบจ่าย" carry=
+  ❌ [H3.4-S4.16] [db] stale ⇒ WORK_ENTRIES at create and approve — expected WORK_ENTRIES ×2 · ok between | actual blocked,ok,approve "absent: createPayrollRunV2 (loaded)" "absent: createPayrollRunV2 (loaded)" ∅ "รอบนี้อนุมัติหรือจ่ายไปแล้ว"
+  ❌ [H3.4-S4.17] [db] REFUND request only in engine-2 shops — expected refundV1 · ok | actual v1,v2 "ชนิดรายการไม่ถูกต้อง" "ชนิดรายการไม่ถูกต้อง"
+  ❌ [H3.4-S5.1] [race] 3 ∥ create ⇒ 1 ok · 2 dup — expected 1 ok · 2 dup | actual one,dups,live "absent: createPayrollRunV2 (loaded)" "absent: createPayrollRunV2 (loaded)" "absent: createPayrollRunV2 (loaded)"
+  ❌ [H3.4-S5.2] [race] create waits on the period lock — expected waits then ok | actual waited,ok false "absent: createPayrollRunV2 (loaded)" 
+  ❌ [H3.4-S5.3] [race] approve-adjustment ∥ create ⇒ bound XOR moved — expected bound XOR moved | actual ok,xor "absent: createPayrollRunV2 (loaded)" row={"s":"APPROVED","runId":null,"p":"2031-09"}
+  ❌ [H3.4-S5.4] [race] cancel ∥ create ⇒ gone XOR bound — expected gone XOR bound | actual ok,xor "absent: createPayrollRunV2 (loaded)" cancel=true row=undefined add=undefined
+  ✅ [H3.4-S7.1] [db] (H3.2-guarded) LATE_RULE −2,777 reduces taxable wage
+  ✅ [H3.4-S7.2] [db] (H3.2-guarded) stale approved row ⇒ create refused
+  ℹ listAttendance digest=8436a89981a0146a04c8954c6b0a49752eb7cb9c0661df9927bc356bd8fe46c9
+  ℹ leaves digest=f43008cba9f7bfae26638ae985e4c11565803988943cf3cf2f3921de10b8a62d
+  ℹ leaveItemsForViewer digest=54ef63446a674b6108da0bf977e2b50aab14cfd40252f18c94c0d4eb0f2798b1
+  ℹ monthlyAttendance digest=9a4c6047d670e99934b26da17183246f1c3ce07415ccc1c7f81f66cb09df1fb3
+  ℹ unavailable digest=840adc0a26e7efd47a1e90cc033305236855d619f8b06aaf42dbb91c3b5e9643
+  ✅ [H3.4-S8.1] [db] v1 golden: frozen MONTHLY digest/totals unchanged
+  ✅ [H3.4-S8.2] [db] v1 shop cycle unchanged
+RESIDUE none (tenants=3 users=16) · ACTIVE law rows after cleanup 0
+  ✅ [H3.4-Z1] no residue · ACTIVE law count restored
+BASE-EXPECTATION 56/56 as registered (RED-by-design 49 · GREEN controls 7)
+
+===== qc-hr-h3.4 ===== passed 7/56 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.4","total":56,"passed":7,"failed":["H3.4-S1.1","H3.4-S1.2","H3.4-S1.3","H3.4-S1.4","H3.4-S1.5","H3.4-S1.7","H3.4-S1.8","H3.4-S1.9","H3.4-S1.10","H3.4-S2.1","H3.4-S2.2","H3.4-S2.3","H3.4-S2.4","H3.4-S2.5","H3.4-S2.6","H3.4-S2.7","H3.4-S2.8","H3.4-S2.9","H3.4-S2.10","H3.4-S2.11","H3.4-S2.12","H3.4-S3.1","H3.4-S3.2","H3.4-S3.3","H3.4-S3.4","H3.4-S4.1","H3.4-S4.2","H3.4-S4.3","H3.4-S4.4","H3.4-S4.5","H3.4-S4.6","H3.4-S6.1","H3.4-S6.2","H3.4-S6.3","H3.4-S4.7","H3.4-S4.8","H3.4-S4.9","H3.4-S4.10","H3.4-S4.11","H3.4-S4.12","H3.4-S4.13","H3.4-S4.14","H3.4-S4.15","H3.4-S4.16","H3.4-S4.17","H3.4-S5.1","H3.4-S5.2","H3.4-S5.3","H3.4-S5.4"],"findings":[{"id":"H3.4-S1.1","sev":"CRITICAL"},{"id":"H3.4-S1.2","sev":"CRITICAL"},{"id":"H3.4-S1.3","sev":"CRITICAL"},{"id":"H3.4-S1.4","sev":"CRITICAL"},{"id":"H3.4-S1.5","sev":"MAJOR"},{"id":"H3.4-S1.7","sev":"CRITICAL"},{"id":"H3.4-S1.8","sev":"CRITICAL"},{"id":"H3.4-S1.9","sev":"MAJOR"},{"id":"H3.4-S1.10","sev":"CRITICAL"},{"id":"H3.4-S2.1","sev":"CRITICAL"},{"id":"H3.4-S2.2","sev":"CRITICAL"},{"id":"H3.4-S2.3","sev":"CRITICAL"},{"id":"H3.4-S2.4","sev":"CRITICAL"},{"id":"H3.4-S2.5","sev":"CRITICAL"},{"id":"H3.4-S2.6","sev":"CRITICAL"},{"id":"H3.4-S2.7","sev":"CRITICAL"},{"id":"H3.4-S2.8","sev":"CRITICAL"},{"id":"H3.4-S2.9","sev":"CRITICAL"},{"id":"H3.4-S2.10","sev":"MAJOR"},{"id":"H3.4-S2.11","sev":"CRITICAL"},{"id":"H3.4-S2.12","sev":"CRITICAL"},{"id":"H3.4-S3.1","sev":"CRITICAL"},{"id":"H3.4-S3.2","sev":"MAJOR"},{"id":"H3.4-S3.3","sev":"CRITICAL"},{"id":"H3.4-S3.4","sev":"MAJOR"},{"id":"H3.4-S4.1","sev":"CRITICAL"},{"id":"H3.4-S4.2","sev":"CRITICAL"},{"id":"H3.4-S4.3","sev":"CRITICAL"},{"id":"H3.4-S4.4","sev":"CRITICAL"},{"id":"H3.4-S4.5","sev":"CRITICAL"},{"id":"H3.4-S4.6","sev":"CRITICAL"},{"id":"H3.4-S6.1","sev":"CRITICAL"},{"id":"H3.4-S6.2","sev":"CRITICAL"},{"id":"H3.4-S6.3","sev":"MAJOR"},{"id":"H3.4-S4.7","sev":"CRITICAL"},{"id":"H3.4-S4.8","sev":"CRITICAL"},{"id":"H3.4-S4.9","sev":"CRITICAL"},{"id":"H3.4-S4.10","sev":"CRITICAL"},{"id":"H3.4-S4.11","sev":"MAJOR"},{"id":"H3.4-S4.12","sev":"CRITICAL"},{"id":"H3.4-S4.13","sev":"CRITICAL"},{"id":"H3.4-S4.14","sev":"CRITICAL"},{"id":"H3.4-S4.15","sev":"CRITICAL"},{"id":"H3.4-S4.16","sev":"CRITICAL"},{"id":"H3.4-S4.17","sev":"MAJOR"},{"id":"H3.4-S5.1","sev":"CRITICAL"},{"id":"H3.4-S5.2","sev":"CRITICAL"},{"id":"H3.4-S5.3","sev":"CRITICAL"},{"id":"H3.4-S5.4","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":["src/lib/modules/hr/payroll-run-rules.ts absent (H3.4 not built)"],"baseRed":49,"baseGreen":7,"offBase":[]}
+
+## 3. forced run 3 (exit 1) — summary
+# typecheck (clean: .next/types + tsconfig.tsbuildinfo deleted) exit 0 · 461 s

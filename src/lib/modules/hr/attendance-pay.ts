@@ -20,6 +20,7 @@ import { employeeOfUser } from "./service";
 import { hrScopeOf, type HrScope } from "./scope";
 import { canBuildWorkEntries, canReadWorkEntries, normalMinutesOf, workEntrySourceEmployeesInTx, workEntryStatesInTx, type WorkEntryState, type WorkEntryViewer } from "./work-entries";
 import { AttendanceAdjustmentConflict, writeAttendanceDeductionInTx } from "./payroll";
+import { leaverDraftPeriodInTx } from "./payroll"; // HR H3.4 ◂ fix r3 H5
 import {
   ATT_STEP_OPTIONS,
   ATT_FREE_MAX,
@@ -433,7 +434,7 @@ export async function syncAttendanceDeductions(
               ? {
                   kind: create0.kind,
                   amountSatang: create0.amountSatang,
-                  periodKey: target,
+                  periodKey: (await leaverDraftPeriodInTx(tx as never, ctx, e.id, P)) ? P : target, // HR H3.4 ◂ fix r3 H5: คนที่ออกในงวด P · รอบ P ยังร่าง ⇒ งวด P
                   note: create0.kind === "ALLOWANCE" ? attText(ATT_TEXT.refund, { m }) : attText(rule === "LATE_RULE" ? ATT_TEXT.adjLate : ATT_TEXT.adjAbsent, { n: minutes, m }),
                 }
               : null;

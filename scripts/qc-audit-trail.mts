@@ -98,7 +98,9 @@ try {
     /writeAudit\(/.test(paSrc) &&
     paSrc.includes('"hr.payroll.approve"') &&
     paSrc.includes('"hr.payroll.pay"') &&
-    paSrc.includes('"hr.payroll.reverse"');
+    // ORACLE-EDIT (HR controller, 13 Nov · found by qc:all at H2 close): H0.6 (ruling OQ-5, 8 Oct) moved the reverse audit
+    //   from the action into the service `reverseRun` in hr/payroll.ts — the wiring guard follows it there. A-5.1–A-5.3 (runtime) unchanged.
+    (paSrc.includes('"hr.payroll.reverse"') || (/writeAudit\(/.test(readFileSync("src/lib/modules/hr/payroll.ts", "utf8")) && readFileSync("src/lib/modules/hr/payroll.ts", "utf8").includes('"hr.payroll.reverse"')));
   chk("A-5.0", "payroll-actions.ts wire writeAudit ครบ approve/pay/reverse", wired, "wired×3", wired ? "ครบ" : "ขาด");
 
   // ฟังก์ชันจริง: สร้างรอบ→approve (ลง JV)→reverse ผ่าน service + เขียน audit แบบเดียวกับ action
