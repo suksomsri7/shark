@@ -889,6 +889,16 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       // ── /T0.7 money ──
     },
   },
+  // TRIPS A1.1 ▸ ชั้นเอเจนซี่ — ค่าตั้งโดเมน agency (คีย์อื่นของโมดูลเพิ่มในใบของตัวเอง A1.2–A2.5) ◂
+  {
+    module: "agency",
+    label: "เอเจนซี่",
+    group: "booking",
+    actions: {
+      "agency.settings.edit": "ตั้งค่าเอเจนซี่",
+      "agency.settings.money": "ตั้งค่าเอเจนซี่เรื่องเงิน",
+    },
+  },
 ] as const;
 
 // CRM C1.7 ▸ 5 คีย์ตั้งค่าของ CRM ที่ MANAGER ไม่ได้โดยปริยาย (§6.1) — ให้ได้เฉพาะเจ้าของร้าน (ผู้อ่าน: crm/access.ts ·

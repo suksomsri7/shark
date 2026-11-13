@@ -32,6 +32,9 @@ const g = (why: string): ScopeDescriptor => ({ axis: "global", why });
 const tenant: ScopeDescriptor = { axis: "tenant" };
 const unit: ScopeDescriptor = { axis: "unit" };
 const sys = (systemField = "systemId"): ScopeDescriptor => ({ axis: "system", systemField });
+// TRIPS A1.1 ▸ เหตุผลของตาราง global ชั้นเอเจนซี่ (ใบสั่ง A1.1 §2.6) ◂
+const AGENCY_IDENTITY_WHY =
+  "ตัวตนเอเจนซี่ระดับแพลตฟอร์ม (Q7) — ใช้ก่อนรู้ร้าน · อ้างได้เฉพาะ agency/entry.ts และ platform/agent-auth.ts (fitness F17.1)";
 
 // core models (Stage A) — FROZEN
 const CORE_SCOPES: Record<string, ScopeDescriptor> = {
@@ -639,6 +642,42 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   TripLinkStat: unit,
   TripPromoRedemption: unit, // มติผู้คุม 12 พ.ย. (T0.5)
   // ◂ TRIPS T0.1
+  // TRIPS A1.1 ▸ ชั้นเอเจนซี่ (agency.prisma 26) + ผู้ให้บริการ (supplier.prisma 4) + TripPassengerLink — 31 โมเดล
+  //   global 5: ตัวตนเอเจนซี่ระดับแพลตฟอร์ม — tenantDb ไม่กรองแกน global ⇒ ห้ามอ้างนอกทางเข้าที่อนุญาต (fitness F17.1)
+  AgentIdentity: g(AGENCY_IDENTITY_WHY),
+  AgentUser: g(AGENCY_IDENTITY_WHY),
+  AgentLogin: g(AGENCY_IDENTITY_WHY),
+  AgentSession: g(AGENCY_IDENTITY_WHY),
+  AgentLoginCode: g(AGENCY_IDENTITY_WHY),
+  //   tenant 22
+  AgentTier: tenant,
+  AgentAccount: tenant,
+  AgentAccountMember: tenant,
+  AgentContract: tenant,
+  AgentRateCard: tenant,
+  AgentRate: tenant,
+  AgentRequest: tenant,
+  AgentLink: tenant,
+  AgentApiKey: tenant,
+  AgentAllotmentBlock: tenant,
+  AgentAllotment: tenant,
+  AgentStopSell: tenant,
+  AgentWebhook: tenant,
+  AgentWebhookDelivery: tenant,
+  AgentMediaAsset: tenant,
+  AgentLedgerEntry: tenant, // ต่อท้ายอย่างเดียว (trigger) — ล้างร้านได้เมื่อ Tenant.status = PENDING_DELETE (platform/pdpa.ts)
+  AgentBalance: tenant,
+  AgentStatement: tenant,
+  AgentCommission: tenant,
+  AgentCommissionRun: tenant,
+  AgentCommissionPayout: tenant,
+  TripSupplier: tenant,
+  //   unit 4
+  TripSupplierCost: unit,
+  TripSupplierRequest: unit,
+  TripSupplierPayable: unit,
+  TripPassengerLink: unit,
+  // ◂ TRIPS A1.1
 };
 
 const REGISTRY: Record<string, ScopeDescriptor> = { ...CORE_SCOPES, ...MODULE_SCOPES };

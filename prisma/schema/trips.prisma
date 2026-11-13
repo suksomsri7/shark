@@ -130,6 +130,16 @@ model TripPickupZone {
   surchargeSatang Int
   polygon         Json?
   sortOrder       Int      @default(0)
+  // TRIPS A1.1 ▸ จุดรับส่ง v2 (หนี้ T1.1 Q1 · nullable ทั้งหมด · ใบนี้ไม่อ่าน/เขียน) — kind IS NULL = ยังไม่ย้าย อ่าน polygon v1 (ตัวบอกตัวเดียว)
+  //   SQL มือ: TripPickupZone_kind_check (ZONE SELF) · TripPickupZone_basis_check (PER_BOOKING) · TripPickupZone_windowMin_check (0–720)
+  //   TripPickupZone_v2_check (kind ไม่ null ⇒ windowMin active basis ครบ) · backfill = สคริปต์ของใบที่สลับโค้ด
+  kind            String?
+  nameEn          String?
+  areas           Json?
+  windowMin       Int?
+  active          Boolean?
+  basis           String?
+  // ◂ TRIPS A1.1
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -330,6 +340,7 @@ model TripPromoRedemption {
 
 // ที่ถือ — expiresAt = แหล่งเดียวของเวลาหมด · SQL มือ: INDEX "TripHold_expiresAt_active_idx" ("expiresAt") WHERE status = 'ACTIVE'
 //          INDEX "TripHold_capKeyHash_active_idx" ("capKeyHash") WHERE status = 'ACTIVE' (เพดานถือ §D.6)
+//          TRIPS A1.1 ▸ INDEX "TripHold_agentAccountId_active_idx" ("agentAccountId") WHERE status = 'ACTIVE' AND "agentAccountId" IS NOT NULL (ที่ถือของเอเจนซี่ · มติ R9 · O4) ◂
 model TripHold {
   id             String   @id @default(cuid())
   tenantId       String
@@ -402,6 +413,9 @@ model TripBooking {
   travelledAt           DateTime?
   piiPurgedAt           DateTime?
   createdById           String?
+  // TRIPS A1.1 ▸ ภาพ 04ค/05 (ใบ A2.1/A2.2 ใช้ · nullable) · SQL มือ: TripBooking_agentRef_check (1–64 ตัว) ◂
+  agentRef              String?
+  voucherOptions        Json?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -525,6 +539,10 @@ model TripMoneyEvent {
   slipId              String?
   whtByCustomerSatang Int?
   idempotencyKey      String
+  // TRIPS A1.1 ▸ หนี้ T0.7 §17 ข้อ 5–6 (nullable · ตารางว่างบน production) ◂
+  reference           String?
+  receivedAt          DateTime?
+  refEventId          String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -532,6 +550,8 @@ model TripMoneyEvent {
   @@index([bookingId])
   @@index([tenantId, postingStatus])
   @@index([postingStatus, nextAttemptAt]) // ตัวลงบัญชีซ้ำข้ามร้าน
+  @@index([tenantId, unitId, createdAt]) // TRIPS A1.1 ▸ T0.7 §6.5 ◂
+  @@index([tenantId, unitId, receivedAt]) // TRIPS A1.1 ▸ ปิดยอดตามวันรับเงินจริง (มติ R9 · O4) ◂
 }
 
 // manualDeltaSatang ติดลบได้ (ไม่มี CHECK >= 0)
@@ -734,3 +754,27 @@ model TripLinkStat {
 
   @@index([tenantId, unitId, day])
 }
+
+// TRIPS A1.1 ▸ ลิงก์ให้ผู้เดินทางกรอกข้อมูลเอง (หนี้ T0.8 มติ 4 · ใบที่ย้ายจาก AuditLog = A2.2/W1.3 · ใบนี้ไม่อ่าน/เขียน)
+//   เก็บแฮช token เท่านั้น · ไม่มี updatedAt · SQL มือ: TripPassengerLink_purpose_check (PAX_FORM) · TripPassengerLink_issuedByKind_check (STAFF AGENT SYSTEM)
+model TripPassengerLink {
+  id           String    @id @default(cuid())
+  tenantId     String
+  unitId       String
+  passengerId  String
+  bookingId    String
+  purpose      String    @default("PAX_FORM")
+  tokenHash    String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  issuedByKind String // STAFF | AGENT | SYSTEM
+  issuedById   String?
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([tokenHash])
+  @@index([passengerId, createdAt])
+  @@index([tenantId, unitId, bookingId])
+  @@index([expiresAt]) // ตัวล้างลิงก์หมดอายุ (มติ R9 · O4)
+}
+// ◂ TRIPS A1.1

@@ -335,6 +335,30 @@ export {
 export type { BookingOpts, PreparedConfirm, PreparedLine, TripBookingDTO } from "./booking";
 // ◂ TRIPS T0.6
 // ── /T0.6 booking ──
+
+// ── T1.2 departures-screen ──
+// TRIPS T1.2 ▸ ปฏิทินรอบและที่ว่าง ฝั่งร้าน (ภาพ 11) · แผงรอบ · ต่ำกว่าขั้นต่ำ → ออกขาดทุน/รวมรอบ/ยกเลิก (ใบสั่ง ledger/trips-briefs/T1.2.md) ◂
+export { DEPARTURE_CELL_STATES, departureCellState, calendarWeekDays, calendarMonthDays, defaultWeekStart } from "./departure-view-core";
+export type { DepartureCellState } from "./departure-view-core";
+export { loadDepartureCalendarVM, loadDeparturePanelVM, loadDepartureSchedulesVM, TRIPS_CALENDAR_DEPARTURE_CAP, TRIPS_CALENDAR_PRODUCT_CAP } from "./departure-screens";
+export type {
+  DepartureCalendarVM,
+  DeparturePanelVM,
+  DepartureSchedulesVM,
+  DepartureCellVM,
+  CalendarProductVM,
+  DecisionVM,
+  PanelActions,
+  PriceRowVM,
+  MergeTargetVM,
+  ScheduleItemVM,
+  CalendarView,
+  CalendarFilter,
+} from "./departure-screens";
+export { decideBelowMin, DEPARTURE_DESK_ERROR_CODES } from "./departure-desk";
+export type { DepartureDeskErrorCode, DecideBelowMinResult } from "./departure-desk";
+// ◂ TRIPS T1.2
+// ── /T1.2 departures-screen ──
 // ── T0.7 money ──
 // TRIPS T0.7 ▸ เงินฝั่ง trips: งวดจ่าย · รับเงิน · QR พร้อมเพย์ยอดล็อก · คำขอคืนเงิน G.3 · ข้อมูลเอกสาร · ข้อมูลเงินสดรายวัน · งาน trips.paymentDue (ใบสั่ง ledger/trips-briefs/T0.7.md) ◂
 export {

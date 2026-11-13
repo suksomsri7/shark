@@ -82,7 +82,7 @@ const walk = (rel: string): string[] => {
 // ═══════════════ สเปก (ใบสั่ง T1.1) ═══════════════
 const APP = "src/app/app/u/[unitSlug]/trips";
 const PAGE_KEYS = ["products", "departures", "bookings", "agents", "channels", "settings"] as const;
-const STUB_KEYS = ["departures", "bookings", "agents", "channels"] as const;
+const STUB_KEYS = ["bookings", "agents", "channels"] as const; // ORACLE-EDIT (ผู้คุม 13 พ.ย.): departures เปิดจริงใน T1.2
 const PAGES = [`${APP}/page.tsx`, ...PAGE_KEYS.map((k) => `${APP}/${k}/page.tsx`)];
 const MOD = "src/lib/modules/trips/";
 const OWN_MOD = ["pickup-core.ts", "pickup.ts", "pickup-actions.ts", "screens.ts", "trips-settings.ts", "screen-actions.ts"].map((f) => MOD + f);
@@ -338,7 +338,7 @@ try {
     ok(rows.length > 0, "rows ว่าง");
     const kinds = ["button", "link", "menu", "tab", "toggle", "drag", "form", "filter", "input", "textarea", "select", "notice"];
     const bad = rows.filter((r) => typeof r.page !== "string" || !String(r.page).startsWith("/app/u/[unitSlug]/trips") || typeof r.testid !== "string" || !kinds.includes(String(r.kind))
-      || !Array.isArray(r.roles) || (r.roles as unknown[]).length === 0 || !(r.roles as unknown[]).every((x) => ["owner", "editor", "viewer"].includes(String(x))) || r.wo !== "T1.1" || r.system !== "TRIPS" || !asRec(r.expect)?.type);
+      || !Array.isArray(r.roles) || (r.roles as unknown[]).length === 0 || !(r.roles as unknown[]).every((x) => ["owner", "editor", "viewer"].includes(String(x))) || !/^(T1\.\d+|A1\.\d+|W1\.\d+|L1\.\d+|K1\.\d+)$/.test(String(r.wo)) /* ORACLE-EDIT S-12 (ผู้คุม 13 พ.ย.): ใบจอถัดไปเพิ่มแถวของตัวเอง */ || r.system !== "TRIPS" || !asRec(r.expect)?.type);
     ok(bad.length === 0, `แถวพิการ ${bad.length}: ${fmt(bad[0])}`);
     const ids = rows.map((r) => String(r.testid));
     const miss = [...TESTIDS_FIXED.filter((t) => !ids.includes(t)), ...TESTID_PATTERNS.filter((p) => !ids.includes(`${p}*`)).map((p) => `${p}*`)];
@@ -364,7 +364,7 @@ try {
     // ORACLE-EDIT S-14 รอบ 2 (ผู้คุม 13 พ.ย.): ไฟล์ที่ตรงกับ session/trips ไม่นับ (ใบที่รับภายหลัง เช่น T0.6 แก้ pricing.ts · sellable-impl.ts)
     const sameAsSession = (f: string) => { try { execFileSync("git", ["diff", "--quiet", "session/trips", "--", f], { cwd: ROOT }); return true; } catch { return false; } };
     const del = rows.filter(([, d, f]) => T0X_FILES.includes(f) && Number(d) > 0 && !sameAsSession(f)).map(([, d, f]) => `${f} −${d}`);
-    const frozen = rows.filter(([, d, f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir)) && !(f === "src/lib/core/settings/defs/trips.ts" && Number(d) <= 1)) /* ORACLE-EDIT S-14 (ผู้คุม 12 พ.ย.): มติรอบแก้ r3 — เพิ่มป้ายแสดงผลของช่องย่อยใน defs/trips.ts ได้ (เพิ่มอย่างเดียว · ลบได้ 1 บรรทัด = import ชนิด) · คีย์/ค่าเริ่ม/ชั้น ตรึงโดย t0.1 กลุ่ม R */.map(([a, d, f]) => `${f} +${a}/−${d}`);
+    const frozen = rows.filter(([, d, f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir)) && !sameAsSession(f) /* ORACLE-EDIT S-14 รอบ 3 (ผู้คุม 13 พ.ย.): ไฟล์ settings ที่ใบอื่นซึ่งรับแล้วแก้ (A1.1) ไม่นับ */ && !(f === "src/lib/core/settings/defs/trips.ts" && Number(d) <= 1)) /* ORACLE-EDIT S-14 (ผู้คุม 12 พ.ย.): มติรอบแก้ r3 — เพิ่มป้ายแสดงผลของช่องย่อยใน defs/trips.ts ได้ (เพิ่มอย่างเดียว · ลบได้ 1 บรรทัด = import ชนิด) · คีย์/ค่าเริ่ม/ชั้น ตรึงโดย t0.1 กลุ่ม R */.map(([a, d, f]) => `${f} +${a}/−${d}`);
     ok(del.length === 0 && frozen.length === 0, `${[...del, ...frozen].join(" · ")}`);
   });
   await st("S-15", "action ใหม่: \"use server\" · ส่งออก async function เท่านั้น · ทุกตัวผ่าน requireUnit", () => {
@@ -678,9 +678,9 @@ try {
     const e = await navOf(SEED, DIVE_TRIPS_UNIT.id);
     eq(e.map((x) => x.key), [...PAGE_KEYS], "ลำดับ");
     eq(e.map((x) => x.href), PAGE_KEYS.map((k) => `/app/u/${DIVE_TRIPS_UNIT.slug}/trips/${k}`), "href");
-    eq(e.map((x) => x.available), [true, false, false, false, false, true], "available");
+    eq(e.map((x) => x.available), [true, true, false, false, false, true], "available"); // ORACLE-EDIT NAV-1 (ผู้คุม 13 พ.ย.): departures เปิดใน T1.2
     eq(e.map((x) => x.visible), [true, true, true, true, true, true], "visible (เจ้าของ)");
-    eq(e.filter((x) => !x.available).map((x) => x.wo), ["T1.2", "T1.3", "A1.2", "W1.1"], "wo");
+    eq(e.filter((x) => !x.available).map((x) => x.wo), ["T1.3", "A1.2", "W1.1"], "wo");
   });
   await st("NAV-2", "viewer (product.view): เห็น products/bookings/agents/channels · ไม่เห็น departures (ไม่มี departure.view) · ไม่เห็น settings", async () => {
     const e = await navOf(ctxOf("vw"), uA);
