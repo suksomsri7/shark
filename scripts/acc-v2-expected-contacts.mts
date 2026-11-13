@@ -90,6 +90,8 @@ const contacts = {
 // WO 3.2 รอบแก้ 2 (Fable QC): "ลูกค้าใหม่เดือนนี้" ต้องยึดวันที่เอกสารใบแรก (issueDate) ไม่ใช่ AccountContact.createdAt
 // (createdAt = เวลาที่ seed สร้างจริง เลื่อนไปเรื่อย ๆ ตามวันที่รัน ⇒ oracle เน่า) — MIN(issueDate) ต่อผู้ติดต่อ
 // มาจากเอกสารที่ fixture ตรึงวันที่ไว้แน่นอนใน D() (ปี 2026 ทั้งหมด) จึงนิ่งไม่ว่าจะรัน seed วันไหนจริง
+// ACC T3 (A1) ▸ ยอดเสมอ = id ผู้ติดต่อ (ตัวเดียวกับ contacts-overview.ts byRank) ◂
+const cmpId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const purchaseRows = await prisma.$queryRaw<Array<{ contactId: string; name: string; amount: bigint; cnt: bigint; firstDate: Date }>>`
   SELECT d."contactId", c."name", SUM(d."grandTotal")::bigint AS amount, COUNT(*)::bigint AS cnt, MIN(d."issueDate") AS "firstDate"
     FROM "AccountDocument" d JOIN "AccountContact" c ON c."id" = d."contactId"
@@ -107,7 +109,7 @@ const thisMonthRows = await prisma.$queryRaw<Array<{ contactId: string }>>`
 const boughtThisMonth = new Set(thisMonthRows.map((r) => r.contactId));
 const returningCustomers = purchaseRows.filter((r) => n(r.cnt) >= 2 && boughtThisMonth.has(r.contactId)).length;
 const topCustomersByPurchases = [...purchaseRows]
-  .sort((a, b) => n(b.amount) - n(a.amount))
+  .sort((a, b) => n(b.amount) - n(a.amount) || cmpId(a.contactId, b.contactId))
   .slice(0, 10)
   .map((r) => ({ contactId: r.contactId, name: r.name, amountSatang: n(r.amount), count: n(r.cnt) }));
 
@@ -118,7 +120,7 @@ const outstandingRows = await prisma.$queryRaw<Array<{ contactId: string; name: 
      AND d."status" IN ('AWAITING_PAYMENT','PARTIAL') AND d."contactId" IS NOT NULL
    GROUP BY d."contactId", c."name" HAVING SUM(d."grandTotal" - d."paidTotal") > 0`;
 const topOutstanding = [...outstandingRows]
-  .sort((a, b) => n(b.remain) - n(a.remain))
+  .sort((a, b) => n(b.remain) - n(a.remain) || cmpId(a.contactId, b.contactId))
   .slice(0, 10)
   .map((r) => ({ contactId: r.contactId, name: r.name, amountSatang: n(r.remain) }));
 
@@ -131,7 +133,7 @@ const vendorRows = await prisma.$queryRaw<Array<{ contactId: string; name: strin
      AND d."tenantId" = ${T} AND d."systemId" = ${S}
    GROUP BY d."contactId", c."name"`;
 const topVendorsByPayments = [...vendorRows]
-  .sort((a, b) => n(b.amount) - n(a.amount))
+  .sort((a, b) => n(b.amount) - n(a.amount) || cmpId(a.contactId, b.contactId))
   .slice(0, 10)
   .map((r) => ({ contactId: r.contactId, name: r.name, amountSatang: n(r.amount) }));
 

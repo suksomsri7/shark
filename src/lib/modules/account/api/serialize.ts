@@ -10,6 +10,7 @@
 //   3) **วันที่คือ "วันไทย" `YYYY-MM-DD"` · เวลาจริงคือ ISO** — วันที่ออกเอกสาร/ครบกำหนดเป็น "วัน"
 //      ไม่ใช่ instant (ใช้ `dayKeyBkk` ตัวเดียวกับที่หน้าจอใช้ ⇒ ตัวเลขบนจอกับใน API ตรงกันเสมอ)
 
+import { depositSettlementView, type DepositSettlementView } from "../deposit-outcome"; // ACC T3 (A2) ◂
 import type { AccountDocStatus, AccountDocType } from "@prisma/client";
 import type { AttachmentView } from "@/components/account-v2/doc-editor-types";
 import type {
@@ -75,9 +76,16 @@ export type DocRowView = {
   overdue: boolean;
   tags: string[];
   source: string;
+  /** ACC T3 (A2) ▸ ใบรับ/จ่ายมัดจำที่คืน/ริบแล้ว (ฟิลด์ที่คำนวณ · null = ไม่เกี่ยว) ◂ */
+  depositSettlement: ReturnType<typeof depositSettlementApi>;
   createdAt: string | null;
   updatedAt: string | null;
 };
+
+/** ACC T3 (A2) ▸ รูปเดียวทั้งรายการและรายละเอียด */
+export function depositSettlementApi(v: DepositSettlementView | null) {
+  return v ? { kind: v.kind, partial: v.partial, refundedSatang: v.refundedSatang, forfeitedSatang: v.forfeitedSatang, label: v.labelTh } : null;
+}
 
 export function docRow(d: ListDocumentsPage["rows"][number]): DocRowView {
   return {
@@ -100,6 +108,7 @@ export function docRow(d: ListDocumentsPage["rows"][number]): DocRowView {
     overdue: isOverdue({ status: d.status, dueDate: d.dueDate, validUntil: d.validUntil }),
     tags: [...d.tags],
     source: d.source,
+    depositSettlement: depositSettlementApi(depositSettlementView(d)),
     createdAt: iso(d.createdAt),
     updatedAt: iso(d.updatedAt),
   };
@@ -236,6 +245,7 @@ export function docDetail(d: DocDetailData) {
     docNo: d.docNo,
     status: d.status,
     label: d.label,
+    depositSettlement: depositSettlementApi(d.depositSettlement), // ACC T3 (A2) ◂
     createdAt: iso(d.createdAt),
     issueDate: ymd(d.issueDate),
     dueDate: ymd(d.dueDate),

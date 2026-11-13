@@ -1,29 +1,29 @@
 {
   "_readme": "เฉลยชุดเดียวของงานบัญชี V2 — เขียนโดย scripts/seed-acc-v2-qc.mts ทุกครั้งที่ seed · จำนวนเงินเป็นสตางค์ (integer)",
-  "generatedAt": "2026-11-13T21:50:09.343Z",
+  "generatedAt": "2026-11-13T22:12:45.624Z",
   "today": "2026-09-30",
   "asOf": "2026-09-30T12:00:00+07:00",
-  "tenantId": "cmwfidy6b0000erkzjc9r2tl2",
+  "tenantId": "cmwfj6zfx0000nmkzy7tuxu1h",
   "tenantName": "SIAM DIVE QC",
   "ownerEmail": "qc-owner@shark.local",
-  "ownerUserId": "cmwfidy6y0001erkzaxcwpxs6",
-  "unitId": "cmwfidy7u0003erkzgwbz7wit",
-  "systemId": "cmwfidy890004erkz1nxaxall",
+  "ownerUserId": "cmwfj6zg80001nmkzqdqyn2nt",
+  "unitId": "cmwfj6zgw0003nmkz0g3shv54",
+  "systemId": "cmwfj6zhc0004nmkzvk9wgivg",
   "systems": {
-    "ACCOUNT": "cmwfidy890004erkz1nxaxall",
-    "POS": "cmwfidyab0006erkzo8gmchl2",
-    "INVENTORY": "cmwfidyc40008erkz3ads7eju",
-    "MEMBER": "cmwfidydq000aerkzqj85njig",
-    "CRM": "cmwfidyfa000cerkzt8kc3mvy",
-    "CHAT": "cmwfifs230apderkzkgprifok",
-    "HR": "cmwfifs3u0apferkzs3s726ql"
+    "ACCOUNT": "cmwfj6zhc0004nmkzvk9wgivg",
+    "POS": "cmwfj6zj40006nmkzf7glm20l",
+    "INVENTORY": "cmwfj6zkq0008nmkz6a5ngvrd",
+    "MEMBER": "cmwfj6zm8000anmkzgf9micag",
+    "CRM": "cmwfj6znr000cnmkzs40k908d",
+    "CHAT": "cmwfj8upz0apdnmkzgtl0nghv",
+    "HR": "cmwfj8urh0apfnmkzjnjl46if"
   },
   "permissions": {
     "memberships": {
-      "sales@siamdive-qc.test": "cmwfifsbq0aplerkzsye8ugj5",
-      "approver@siamdive-qc.test": "cmwfifscc0apnerkz76hq4q0j",
-      "manager@siamdive-qc.test": "cmwfifsdc0apperkz77r54r2t",
-      "pos@siamdive-qc.test": "cmwfifse90aprerkzhq9uofw1"
+      "sales@siamdive-qc.test": "cmwfj8uyp0aplnmkzjlx7jvod",
+      "approver@siamdive-qc.test": "cmwfj8uz70apnnmkze64ak3mv",
+      "manager@siamdive-qc.test": "cmwfj8uzq0appnmkzq6qrnk10",
+      "pos@siamdive-qc.test": "cmwfj8v090aprnmkz02lucetm"
     },
     "roles": [
       {
@@ -83,8 +83,8 @@
       "autoCreateContact",
       "inboxFromChat"
     ],
-    "apiKeyPrefix": "shark_6e6bfa",
-    "webhookId": "cmwfifso60apxerkz1r5s1ebw",
+    "apiKeyPrefix": "shark_e624e9",
+    "webhookId": "cmwfj8v960apxnmkzp0x3nafc",
     "webhookUrl": "http://127.0.0.1:9/shark-acc-v2-qc"
   },
   "receivable": 49430000,
@@ -106,7 +106,7 @@
   "financeAccounts": [
     {
       "code": "CSH001",
-      "id": "cmwfie59u00hperkznuklbtl1",
+      "id": "cmwfj768v00hpnmkz8bnc44vi",
       "name": "เงินสด",
       "type": "CASH",
       "opening": 1400000,
@@ -114,7 +114,7 @@
     },
     {
       "code": "BSV001",
-      "id": "cmwfie5i000mnerkzzktfkaek",
+      "id": "cmwfj76gu00mnnmkzwlg0vrdf",
       "name": "กสิกรไทย ออมทรัพย์",
       "type": "BANK",
       "opening": 40505000,
@@ -122,7 +122,7 @@
     },
     {
       "code": "EWL001",
-      "id": "cmwfie5uj00u3erkzqukfe42p",
+      "id": "cmwfj76sp00u3nmkzqtxcw70j",
       "name": "พร้อมเพย์",
       "type": "E_WALLET",
       "opening": 5000000,
@@ -130,7 +130,7 @@
     },
     {
       "code": "PTY001",
-      "id": "cmwfie62o00z1erkzy0sk7xd2",
+      "id": "cmwfj770j00z1nmkzp7trxkni",
       "name": "เงินสดย่อย",
       "type": "PETTY_CASH",
       "opening": 2000000,
@@ -145,7 +145,7 @@
   },
   "financeOpeningSplit": {
     "code": "BSV001",
-    "financeId": "cmwfie5i000mnerkzzktfkaek",
+    "financeId": "cmwfj76gu00mnnmkzwlg0vrdf",
     "entries": [
       {
         "seq": 1,
@@ -159,22 +159,22 @@
     "sum": 40505000
   },
   "financeArchived": {
-    "id": "cmwfie6aq013zerkzyrivx0z9",
+    "id": "cmwfj778g013znmkzakkgs1k5",
     "code": "BSV002"
   },
   "pettyCash": {
-    "id": "cmwfie62o00z1erkzy0sk7xd2",
+    "id": "cmwfj770j00z1nmkzp7trxkni",
     "code": "PTY001",
     "balance": 2970000,
     "topUpAmount": 1000000,
     "topUpDate": "2026-09-10",
     "reimbursed": {
-      "paymentId": "cmwfif1u808qzerkzqvf5qccc",
+      "paymentId": "cmwfj83ry08qznmkzyg2vaqvm",
       "amount": 50000,
       "date": "2026-09-12"
     },
     "pending": {
-      "paymentId": "cmwfif2dg08w3erkzym742zqe",
+      "paymentId": "cmwfj84bd08w3nmkzpjsa5jsf",
       "amount": 30000,
       "date": "2026-09-20"
     }
@@ -228,7 +228,7 @@
     "total": 15
   },
   "bundle": {
-    "id": "cmwfie0lp004berkzoe6ic7q4",
+    "id": "cmwfj71qc004bnmkz73w9qt89",
     "code": "B00001",
     "sku": "SET-SNK",
     "name": "ชุดดำน้ำตื้นครบเซ็ต (หน้ากาก + ถังอากาศ)",
@@ -236,19 +236,19 @@
     "components": [
       {
         "sku": "MASK-01",
-        "productId": "cmwfidzbs003oerkzfuyj2ljd",
+        "productId": "cmwfj70gt003onmkzn428wrsn",
         "qty": 1
       },
       {
         "sku": "TANK-12",
-        "productId": "cmwfidzgv003werkzmwre30da",
+        "productId": "cmwfj70lw003wnmkzq4wo6s1q",
         "qty": 1
       }
     ]
   },
   "openingLot": {
     "sku": "LOGBK-01",
-    "productId": "cmwfidzi7003yerkzbykjry1a",
+    "productId": "cmwfj70n7003ynmkzzqgaz6yb",
     "qty": 50,
     "unitCost": 18000,
     "amount": 900000,
@@ -256,10 +256,10 @@
     "crCode": "3999"
   },
   "costAdjustment": {
-    "docId": "cmwfie0za006yerkzso6e21wo",
+    "docId": "cmwfj7239006ynmkzgbt2k2ps",
     "docNo": "CA-202609-0001",
     "sku": "MASK-01",
-    "productId": "cmwfidzbs003oerkzfuyj2ljd",
+    "productId": "cmwfj70gt003onmkzn428wrsn",
     "oldCost": 168000,
     "newCost": 175000,
     "qty": 24,
@@ -268,17 +268,17 @@
     "crCode": "5310"
   },
   "inventory": {
-    "systemId": "cmwfidyc40008erkz3ads7eju",
+    "systemId": "cmwfj6zkq0008nmkz6a5ngvrd",
     "linked": [
       {
         "sku": "MASK-01",
-        "itemId": "cmwfidzj80040erkzcblgbwpp",
+        "itemId": "cmwfj70oa0040nmkzhmo3ajvy",
         "onHand": 22,
         "costSatang": 175000
       },
       {
         "sku": "TANK-12",
-        "itemId": "cmwfie03e0046erkzg3xoywj0",
+        "itemId": "cmwfj71860046nmkza0n0z3b4",
         "onHand": 8,
         "costSatang": 520000
       }
@@ -288,8 +288,8 @@
   },
   "posSales": {
     "docType": "TAX_INVOICE_ABB",
-    "posSystemId": "cmwfidyab0006erkzo8gmchl2",
-    "memberSystemId": "cmwfidydq000aerkzqj85njig",
+    "posSystemId": "cmwfj6zj40006nmkzf7glm20l",
+    "memberSystemId": "cmwfj6zm8000anmkzgf9micag",
     "count": 2,
     "lineCount": 3,
     "grandTotal": 1350000,
@@ -297,50 +297,50 @@
     "sales": [
       {
         "key": "A",
-        "saleId": "cmwfif3hl094cerkzpw65hq73",
+        "saleId": "cmwfj85gu094cnmkz1u9kv47o",
         "receiptNo": "202609-0001",
         "grandTotalSatang": 1065000
       },
       {
         "key": "B",
-        "saleId": "cmwfif4ar099jerkzo8zhzonj",
+        "saleId": "cmwfj8681099jnmkztzgrmkzd",
         "receiptNo": "202609-0002",
         "grandTotalSatang": 285000
       }
     ],
     "docs": [
       {
-        "id": "cmwfifhao09caerkzusmlpy67",
+        "id": "cmwfj8ldx09canmkzoyt5t7cn",
         "docNo": "202609-0001",
-        "refId": "cmwfif3hl094cerkzpw65hq73",
-        "contactId": "cmwfie28x00b0erkzb7ytp307",
+        "refId": "cmwfj85gu094cnmkz1u9kv47o",
+        "contactId": "cmwfj73au00b0nmkzwizu51di",
         "subTotal": 995327,
         "vatAmount": 69673,
         "grandTotal": 1065000,
         "lines": [
           {
-            "productId": "cmwfidzbs003oerkzfuyj2ljd",
+            "productId": "cmwfj70gt003onmkzn428wrsn",
             "qty": 1,
             "amount": 285000
           },
           {
-            "productId": "cmwfidzgv003werkzmwre30da",
+            "productId": "cmwfj70lw003wnmkzq4wo6s1q",
             "qty": 1,
             "amount": 780000
           }
         ]
       },
       {
-        "id": "cmwfifi8609cierkz9w7wx7dl",
+        "id": "cmwfj8mdt09cinmkzpznvog9k",
         "docNo": "202609-0002",
-        "refId": "cmwfif4ar099jerkzo8zhzonj",
+        "refId": "cmwfj8681099jnmkztzgrmkzd",
         "contactId": null,
         "subTotal": 266355,
         "vatAmount": 18645,
         "grandTotal": 285000,
         "lines": [
           {
-            "productId": "cmwfidzbs003oerkzfuyj2ljd",
+            "productId": "cmwfj70gt003onmkzn428wrsn",
             "qty": 1,
             "amount": 285000
           }
@@ -404,15 +404,15 @@
       }
     },
     "fixtures": {
-      "manualJvId": "cmwfifr0u0aowerkz670clm43",
-      "flaggedJvId": "cmwfifr3z0aozerkztjt2ml83",
-      "reversedJvId": "cmwfifr790ap3erkzbdax1rkn",
-      "reversalJvId": "cmwfifra60ap6erkz1wjz7f3q",
-      "assetOpeningJvId": "cmwfifqeh0ao4erkz7v1shhae"
+      "manualJvId": "cmwfj8tuh0aownmkzhtrieq9a",
+      "flaggedJvId": "cmwfj8tx80aoznmkzp9db7x3c",
+      "reversedJvId": "cmwfj8u0a0ap3nmkzbc1p7n8s",
+      "reversalJvId": "cmwfj8u330ap6nmkzyo1a72p0",
+      "assetOpeningJvId": "cmwfj8t9c0ao4nmkzk8zl5r73"
     },
     "assets": [
       {
-        "id": "cmwfifqc20ao2erkz1vczwisj",
+        "id": "cmwfj8t720ao2nmkzhwpwn213",
         "code": "FA-0001",
         "name": "เรือยางท้ายติดเครื่อง Zodiac Pro 5.5",
         "cost": 48000000,
@@ -424,7 +424,7 @@
         "netBookValue": 45600006
       },
       {
-        "id": "cmwfifqch0ao3erkzggz7vvpk",
+        "id": "cmwfj8t7h0ao3nmkz6afzp03a",
         "code": "FA-0002",
         "name": "เครื่องอัดอากาศ Bauer Junior II",
         "cost": 36000000,
@@ -481,11 +481,11 @@
     ]
   },
   "bankReconcile": {
-    "tenantId": "cmwfidy6b0000erkzjc9r2tl2",
-    "systemId": "cmwfidy890004erkz1nxaxall",
-    "financeId": "cmwfie5i000mnerkzzktfkaek",
+    "tenantId": "cmwfj6zfx0000nmkzy7tuxu1h",
+    "systemId": "cmwfj6zhc0004nmkzvk9wgivg",
+    "financeId": "cmwfj76gu00mnnmkzwlg0vrdf",
     "financeCode": "BSV001",
-    "ledgerAccountId": "cmwfie5hr00mmerkz8ghqa4cy",
+    "ledgerAccountId": "cmwfj76gk00mmnmkz2a453tfj",
     "ledgerCode": "1010-01",
     "periodKey": "2026-09",
     "openingSatang": 77055000,
@@ -505,17 +505,17 @@
     "feeSatang": -25000,
     "interestSatang": 1235,
     "fileName": "kbank-2026-09.csv",
-    "statementId": "cmwfifiln09ckerkzf16m4q3e",
+    "statementId": "cmwfj8mqg09cknmkzjve39wh4",
     "imported": 11,
     "autoMatched": 8,
     "autoSuggested": 1,
     "autoUnmatched": 2,
     "prev": {
-      "tenantId": "cmwfidy6b0000erkzjc9r2tl2",
-      "systemId": "cmwfidy890004erkz1nxaxall",
-      "financeId": "cmwfie5i000mnerkzzktfkaek",
+      "tenantId": "cmwfj6zfx0000nmkzy7tuxu1h",
+      "systemId": "cmwfj6zhc0004nmkzvk9wgivg",
+      "financeId": "cmwfj76gu00mnnmkzwlg0vrdf",
       "financeCode": "BSV001",
-      "ledgerAccountId": "cmwfie5hr00mmerkz8ghqa4cy",
+      "ledgerAccountId": "cmwfj76gk00mmnmkz2a453tfj",
       "ledgerCode": "1010-01",
       "periodKey": "2026-08",
       "openingSatang": 67205000,
@@ -530,21 +530,21 @@
       "feeSatang": 0,
       "interestSatang": 0,
       "fileName": "kbank-2026-08.csv",
-      "statementId": "cmwfifiz709cyerkz6pp4970y",
+      "statementId": "cmwfj8n3w09cynmkz2cugz4si",
       "imported": 6,
       "autoMatched": 6
     }
   },
   "whtV2": {
     "creditCertIds": [
-      "cmwfifju209iberkz9j31ubjm",
-      "cmwfifkjf09njerkzwgg3zjlw",
-      "cmwfifl8609srerkzeyly1cu3"
+      "cmwfj8nxs09ibnmkzr9bm7slu",
+      "cmwfj8om109njnmkzw2cls7j5",
+      "cmwfj8pa109srnmkzj5i2dqqn"
     ],
     "deductCertIds": [
-      "cmwfifluw09xzerkzqdm9hh5i",
-      "cmwfifmgy0a35erkzqws6f8q3",
-      "cmwfifn3s0a8berkzoazgo4zx"
+      "cmwfj8pwc09xznmkz6y8kkze2",
+      "cmwfj8qil0a35nmkzotk1igiq",
+      "cmwfj8r4l0a8bnmkz2p2jomcd"
     ],
     "creditCashInSatang": 6240000,
     "creditWhtTotalSatang": 180000,
@@ -557,39 +557,39 @@
     ],
     "filedForm": 53,
     "filedPeriodKey": "2026-09",
-    "filedCertId": "cmwfifn3s0a8berkzoazgo4zx"
+    "filedCertId": "cmwfj8r4l0a8bnmkz2p2jomcd"
   },
   "promptPay": {
-    "financeId": "cmwfie5uj00u3erkzqukfe42p",
+    "financeId": "cmwfj76sp00u3nmkzqtxcw70j",
     "financeCode": "EWL001",
     "promptpayId": "0835565001234",
     "beam": {
-      "requestId": "cmwfifpkl0al8erkza55cyhva",
-      "token": "q_z7xIETlTNdqV98NG2MRg",
+      "requestId": "cmwfj8shv0al8nmkzoafpndwt",
+      "token": "tXbJz0ccquLeA0Dkyi4xXA",
       "chargeId": "qc_beam_charge_5_5",
-      "documentId": "cmwfifoc80ainerkzkeoejes1",
+      "documentId": "cmwfj8s4i0ainnmkz9fb76swn",
       "docNo": "IV-2026-09-0023",
       "amountSatang": 749000,
-      "paymentId": "cmwfifpr10alaerkzex2t63o0"
+      "paymentId": "cmwfj8sna0alanmkzz65eana9"
     },
     "staticPending": {
-      "requestId": "cmwfifq7a0anxerkz6oejrq9p",
-      "token": "h7wLr7xuMRO7j9DBB4g9AA",
-      "documentId": "cmwfie7qh01ecerkze9vi9fpp",
+      "requestId": "cmwfj8t2g0anxnmkzm7juaq71",
+      "token": "MppQJfSEJ3enqjNnXNynbg",
+      "documentId": "cmwfj78ph01ecnmkzs7oclw0d",
       "amountSatang": 2490000,
       "qrPayload": "00020101021229370016A000000677010111021308355650012345303764540824900.005802TH63045112"
     },
     "ewalletDeltaSatang": 749000
   },
   "chequeV2": {
-    "inDueSoonId": "cmwfifnb30aaterkzobcp5sgk",
+    "inDueSoonId": "cmwfj8rb70aatnmkzlp6ebs8w",
     "inDueSoonChequeNo": "1000123",
-    "inDueSoonDate": "2026-11-18T21:50:00.565Z",
-    "inBouncedId": "cmwfifngp0adberkzeg1kspk1",
+    "inDueSoonDate": "2026-11-18T22:12:38.787Z",
+    "inBouncedId": "cmwfj8rgw0adbnmkzwkfl44eu",
     "inBouncedChequeNo": "1000124",
-    "outPendingId": "cmwfifnsa0afxerkzn36w5ebp",
+    "outPendingId": "cmwfj8rqt0afxnmkzq7tb2nn1",
     "outPendingChequeNo": "5551001",
-    "outVoidedId": "cmwfifnyt0aiferkzs4qsspza",
+    "outVoidedId": "cmwfj8rvz0aifnmkzn4dac2te",
     "outVoidedChequeNo": "5551002"
   },
   "coa": {
@@ -632,27 +632,27 @@
     "samples": [
       {
         "code": "1000-01",
-        "id": "cmwfie59k00hoerkzcvo2a9gm",
+        "id": "cmwfj768m00honmkzuk7jhsm2",
         "balanceSatang": 12488000,
         "monthDeltaSatang": 3808000
       },
       {
         "code": "1100",
-        "id": "cmwfidylz000merkzowfafg3t",
+        "id": "cmwfj6zs6000mnmkzj3kebleh",
         "balanceSatang": 48230000,
         "monthDeltaSatang": 36590000
       },
       {
         "code": "4000",
-        "id": "cmwfidylz0019erkzr5x69dnj",
+        "id": "cmwfj6zs70019nmkzhfhilihs",
         "balanceSatang": 141121497,
         "monthDeltaSatang": 59140188
       }
     ],
     "custom": {
-      "onlineAds": "cmwfifq870anzerkzjwpa62zj",
-      "rentalIncome": "cmwfifq880ao0erkzo57dw9i8",
-      "archived": "cmwfifq880ao1erkz4iukxclw"
+      "onlineAds": "cmwfj8t3a0anznmkz4gy1hx60",
+      "rentalIncome": "cmwfj8t3a0ao0nmkzm2hbeiwv",
+      "archived": "cmwfj8t3a0ao1nmkzwdqqvrc9"
     }
   },
   "attachments": {
@@ -660,19 +660,19 @@
     "unlinked": 3,
     "linked": 2,
     "notAccounting": 1,
-    "staffUploaderId": "cmwfifsu40apyerkz9996n3ns",
+    "staffUploaderId": "cmwfj8vel0apynmkzs0o22tls",
     "staffUploaderName": "นภาพร ใจเย็น",
-    "ownerUploaderId": "cmwfidy6y0001erkzaxcwpxs6",
+    "ownerUploaderId": "cmwfj6zg80001nmkzqdqyn2nt",
     "ids": {
-      "unlinked1": "cmwfift3d0aq1erkztiy3780z",
-      "unlinked2": "cmwfift7w0aq3erkz4w9qh5ai",
-      "unlinked3": "cmwfiftho0aq5erkzrkpj5xku",
-      "linkedExp": "cmwfiftke0aq7erkzh2i3i0u6",
-      "linkedIv": "cmwfiftqt0aq9erkzr2u5t9oi",
-      "notAccounting": "cmwfiftvi0aqberkzow4plreb"
+      "unlinked1": "cmwfj8vmf0aq1nmkzanvz9z3x",
+      "unlinked2": "cmwfj8vr10aq3nmkzu7171q6o",
+      "unlinked3": "cmwfj8vw90aq5nmkz5num0h17",
+      "linkedExp": "cmwfj8w3b0aq7nmkzdd21p3zy",
+      "linkedIv": "cmwfj8w7a0aq9nmkzhgc7cceu",
+      "notAccounting": "cmwfj8we40aqbnmkzw519upsd"
     },
-    "linkedExpDocumentId": "cmwfieutl06z4erkzepp2uf3w",
-    "linkedIvDocumentId": "cmwfie7qh01ecerkze9vi9fpp"
+    "linkedExpDocumentId": "cmwfj7weu06z4nmkzteixeybk",
+    "linkedIvDocumentId": "cmwfj78ph01ecnmkzs7oclw0d"
   },
   "inbox": {
     "unlinked": 3,
@@ -682,9 +682,9 @@
     "aiUnsupported": 1,
     "docsFromInboxThisMonth": 0,
     "ids": {
-      "done": "cmwfift3d0aq1erkztiy3780z",
-      "unread": "cmwfift7w0aq3erkz4w9qh5ai",
-      "failed": "cmwfiftho0aq5erkzrkpj5xku"
+      "done": "cmwfj8vmf0aq1nmkzanvz9z3x",
+      "unread": "cmwfj8vr10aq3nmkzu7171q6o",
+      "failed": "cmwfj8vw90aq5nmkz5num0h17"
     },
     "sources": {
       "done": "CHAT",
@@ -769,9 +769,9 @@
       "warnOnGap": true
     },
     "channelOrder": [
-      "cmwfie5uj00u3erkzqukfe42p",
-      "cmwfie5i000mnerkzzktfkaek",
-      "cmwfie59u00hperkznuklbtl1"
+      "cmwfj76sp00u3nmkzqtxcw70j",
+      "cmwfj76gu00mnnmkzwlg0vrdf",
+      "cmwfj768v00hpnmkz8bnc44vi"
     ],
     "channelCodesInOrder": [
       "EWL001",
@@ -794,10 +794,10 @@
       }
     ],
     "tagIds": {
-      "ทริปสิมิลัน": "cmwfifrxz0apberkzf8goxqvh",
-      "ลูกค้าองค์กร": "cmwfifryy0apcerkzgmpz9ea0"
+      "ทริปสิมิลัน": "cmwfj8ump0apbnmkzb33upxao",
+      "ลูกค้าองค์กร": "cmwfj8unn0apcnmkzmi8ijyqe"
     },
-    "taggedInvoiceId": "cmwfie7qh01ecerkze9vi9fpp",
+    "taggedInvoiceId": "cmwfj78ph01ecnmkzs7oclw0d",
     "numberedDocTypes": 18
   },
   "policy": {
@@ -861,18 +861,18 @@
     "subSections": 12
   },
   "fixtures": {
-    "invPiyathidaId": "cmwfie6fq0140erkz2a5un0f5",
+    "invPiyathidaId": "cmwfj77dd0140nmkzuj0wj47i",
     "invPiyathidaDocNo": "IV-2026-08-0001",
-    "invNattapholId": "cmwfie7qh01ecerkze9vi9fpp",
+    "invNattapholId": "cmwfj78ph01ecnmkzs7oclw0d",
     "invNattapholDocNo": "IV-2026-09-0001",
-    "invSimilanViewId": "cmwfiec5002ekerkzqfr4xxs8",
+    "invSimilanViewId": "cmwfj7d9j02eknmkza01xr0gg",
     "invSimilanViewDocNo": "IV-2026-09-0015",
-    "depositNattapholId": "cmwfieude06u4erkzzp39s36d",
+    "depositNattapholId": "cmwfj7vyc06u4nmkz5z57y128",
     "depositNattapholDocNo": "DR-2026-09-0001",
-    "firstOpenBillId": "cmwfieutl06z4erkzepp2uf3w",
-    "contactC00019Id": "cmwfie28x00b0erkzb7ytp307",
-    "contactNattapholId": "cmwfie1dy009rerkz9mntpmvg",
-    "contactSimilanViewId": "cmwfie19u009lerkz9uhppqrb",
+    "firstOpenBillId": "cmwfj7weu06z4nmkzteixeybk",
+    "contactC00019Id": "cmwfj73au00b0nmkzwizu51di",
+    "contactNattapholId": "cmwfj72gn009rnmkzlm6sjbwy",
+    "contactSimilanViewId": "cmwfj72cn009lnmkzyq0zwpnv",
     "contactC00019Name": "ปิยธิดา อินสุ่ม",
     "contactC00019Code": "C00019",
     "invPiyathidaGrand": 3840000,
@@ -888,7 +888,7 @@
   },
   "dashboard": {
     "_readme": "เฉลยของ WO 2.1 (หน้าหลัก/ภาพรวม) — เขียนโดย scripts/acc-v2-expected-dashboard.mts ด้วย SQL ดิบที่ไม่พึ่ง dashboard.ts · สตางค์ล้วน · seed ใหม่ต้องรันสคริปต์นี้ซ้ำ",
-    "generatedAt": "2026-11-13T21:50:20.543Z",
+    "generatedAt": "2026-11-13T22:12:52.223Z",
     "now": "2026-09-30T12:00:00+07:00",
     "year": 2026,
     "periodKey": "2026-09",
@@ -1039,7 +1039,7 @@
       "total": 132973000,
       "accounts": [
         {
-          "id": "cmwfie59u00hperkznuklbtl1",
+          "id": "cmwfj768v00hpnmkz8bnc44vi",
           "code": "1000-01",
           "name": "เงินสด",
           "type": "CASH",
@@ -1048,7 +1048,7 @@
           "pinned": true
         },
         {
-          "id": "cmwfie5i000mnerkzzktfkaek",
+          "id": "cmwfj76gu00mnnmkzwlg0vrdf",
           "code": "1010-01",
           "name": "กสิกรไทย ออมทรัพย์",
           "type": "BANK",
@@ -1057,7 +1057,7 @@
           "pinned": true
         },
         {
-          "id": "cmwfie5uj00u3erkzqukfe42p",
+          "id": "cmwfj76sp00u3nmkzqtxcw70j",
           "code": "1020-01",
           "name": "พร้อมเพย์",
           "type": "E_WALLET",
@@ -1066,7 +1066,7 @@
           "pinned": true
         },
         {
-          "id": "cmwfie62o00z1erkzy0sk7xd2",
+          "id": "cmwfj770j00z1nmkzp7trxkni",
           "code": "1030-01",
           "name": "เงินสดย่อย",
           "type": "PETTY_CASH",
@@ -1139,229 +1139,229 @@
     },
     "topCustomers": [
       {
-        "contactId": "cmwfie19u009lerkz9uhppqrb",
+        "contactId": "cmwfj72cn009lnmkzyq0zwpnv",
         "name": "โรงแรมสิมิลันวิว",
         "docCount": 2,
         "amount": 16400000
       },
       {
-        "contactId": "cmwfie1bx009oerkzx1l1jyai",
+        "contactId": "cmwfj72el009onmkzc7of889b",
         "name": "โรงเรียนสอนดำน้ำ บลูโอเชียน",
         "docCount": 2,
         "amount": 11000000
       },
       {
-        "contactId": "cmwfie1sj00acerkzzatrtq6q",
+        "contactId": "cmwfj72uq00acnmkzaqsnre9n",
         "name": "บริษัท ซีสตาร์ รีสอร์ท จำกัด",
         "docCount": 3,
         "amount": 9475000
       },
       {
-        "contactId": "cmwfie1i6009xerkz3yh15cpg",
+        "contactId": "cmwfj72kp009xnmkz5izy778y",
         "name": "บริษัท ภูเก็ตดีปซี จำกัด",
         "docCount": 3,
         "amount": 6989000
       },
       {
-        "contactId": "cmwfie28x00b0erkzb7ytp307",
+        "contactId": "cmwfj73au00b0nmkzwizu51di",
         "name": "ปิยธิดา อินสุ่ม",
         "docCount": 3,
         "amount": 6885000
       },
       {
-        "contactId": "cmwfie33n00c9erkzbkqrlgrh",
+        "contactId": "cmwfj745200c9nmkzvovub04t",
         "name": "บริษัท เจ็ตสกี ภูเก็ต จำกัด",
         "docCount": 1,
         "amount": 6300000
       },
       {
-        "contactId": "cmwfie178009ierkz4zwvano5",
+        "contactId": "cmwfj72an009inmkzmn1vajn9",
         "name": "บริษัท อันดามัน ทราเวล จำกัด",
         "docCount": 2,
         "amount": 5970000
       },
       {
-        "contactId": "cmwfie2nc00blerkzqw2tbx12",
+        "contactId": "cmwfj73ox00blnmkzshm9ftgw",
         "name": "บริษัท พีพี ไอส์แลนด์ ทัวร์ จำกัด",
         "docCount": 1,
         "amount": 5600000
       },
       {
-        "contactId": "cmwfie2ve00bxerkzkhvjcd00",
+        "contactId": "cmwfj73ww00bxnmkzqzh7tkuc",
         "name": "บริษัท เดอะเรฟ ไดฟ์วิ่ง จำกัด",
         "docCount": 1,
         "amount": 4750000
       },
       {
-        "contactId": "cmwfie1g3009uerkz7yocm7gs",
-        "name": "คุณอรทัย พงษ์ไพบูลย์",
-        "docCount": 2,
-        "amount": 4600000
-      },
-      {
-        "contactId": "cmwfie20w00aoerkzgqgwue55",
+        "contactId": "cmwfj732n00aonmkzv76h2ulj",
         "name": "บริษัท ไดฟ์มาสเตอร์ เอเชีย จำกัด",
         "docCount": 2,
         "amount": 4600000
       },
       {
-        "contactId": "cmwfie2xh00c0erkzdpak38ke",
-        "name": "คุณปรีชา หาญกล้า",
-        "docCount": 1,
-        "amount": 4200000
+        "contactId": "cmwfj72io009unmkz34jvai5l",
+        "name": "คุณอรทัย พงษ์ไพบูลย์",
+        "docCount": 2,
+        "amount": 4600000
       },
       {
-        "contactId": "cmwfie2f500b9erkzhub51sdz",
+        "contactId": "cmwfj73gw00b9nmkz4vszn2mj",
         "name": "บริษัท สยามซีสปอร์ต จำกัด",
         "docCount": 1,
         "amount": 4200000
       },
       {
-        "contactId": "cmwfie1k900a0erkz0q5cqa3w",
+        "contactId": "cmwfj73yz00c0nmkz9merf5vy",
+        "name": "คุณปรีชา หาญกล้า",
+        "docCount": 1,
+        "amount": 4200000
+      },
+      {
+        "contactId": "cmwfj72mp00a0nmkz0rkuvs5a",
         "name": "บจก. อันดามัน ทราเวล",
         "docCount": 2,
         "amount": 3950000
       },
       {
-        "contactId": "cmwfie37r00cferkz0znga8ct",
+        "contactId": "cmwfj748z00cfnmkzvesvzgmj",
         "name": "บริษัท ซันเซ็ท ครูซ จำกัด",
         "docCount": 1,
         "amount": 3850000
       },
       {
-        "contactId": "cmwfie2az00b3erkzsrn08dus",
+        "contactId": "cmwfj73cv00b3nmkzwnt6rse8",
         "name": "บริษัท โอเชียนบลู ทัวร์ จำกัด",
         "docCount": 1,
         "amount": 3500000
       },
       {
-        "contactId": "cmwfie35q00ccerkzayj65fju",
+        "contactId": "cmwfj747000ccnmkzbouqda91",
         "name": "คุณเอกชัย ตั้งใจ",
         "docCount": 1,
         "amount": 3450000
       },
       {
-        "contactId": "cmwfie2rb00brerkz8svmq072",
+        "contactId": "cmwfj73st00brnmkzxa1xhdib",
         "name": "บริษัท ทริปดีดี จำกัด",
         "docCount": 1,
         "amount": 3150000
       },
       {
-        "contactId": "cmwfie2pc00boerkzg6gccgmv",
+        "contactId": "cmwfj73qx00bonmkzdivs60ro",
         "name": "คุณวิชัย มั่นคง",
         "docCount": 1,
         "amount": 3120000
       },
       {
-        "contactId": "cmwfie1wp00aierkz5h89echw",
+        "contactId": "cmwfj72yp00ainmkzc6t9fdce",
         "name": "บริษัท เกาะพีพี แอดเวนเจอร์ จำกัด",
         "docCount": 2,
         "amount": 3030000
       },
       {
-        "contactId": "cmwfie3bq00clerkz00m0kcu5",
+        "contactId": "cmwfj74d200clnmkzydobmnfq",
         "name": "บริษัท ลันตา ไดฟ์ จำกัด",
         "docCount": 1,
         "amount": 2950000
       },
       {
-        "contactId": "cmwfie1og00a6erkzmjfxfb41",
+        "contactId": "cmwfj72qs00a6nmkzizafsscy",
         "name": "คุณสมชาย ใจดี",
         "docCount": 3,
         "amount": 2900000
       },
       {
-        "contactId": "cmwfie31k00c6erkz1eh4nt3j",
+        "contactId": "cmwfj743100c6nmkzovdqlsod",
         "name": "คุณสุดารัตน์ พูนทรัพย์",
         "docCount": 1,
         "amount": 2880000
       },
       {
-        "contactId": "cmwfie2je00bferkze65hkbng",
+        "contactId": "cmwfj73kx00bfnmkzmd2gcwzw",
         "name": "โรงแรมกมลาเบย์",
         "docCount": 1,
         "amount": 2800000
       },
       {
-        "contactId": "cmwfie2d000b6erkzpikk8nhu",
+        "contactId": "cmwfj73ev00b6nmkzifdflybs",
         "name": "คุณศิริพร ทองดี",
         "docCount": 1,
         "amount": 2550000
       },
       {
-        "contactId": "cmwfie1dy009rerkz9mntpmvg",
+        "contactId": "cmwfj72gn009rnmkzlm6sjbwy",
         "name": "คุณณัฐพล รุ่งเรือง",
         "docCount": 1,
         "amount": 2490000
       },
       {
-        "contactId": "cmwfie2le00bierkzbybbwm5p",
+        "contactId": "cmwfj73my00binmkz7p8b6krp",
         "name": "คุณจิราพร สุขสมบูรณ์",
         "docCount": 1,
         "amount": 2450000
       },
       {
-        "contactId": "cmwfie2zi00c3erkzwegke3qz",
+        "contactId": "cmwfj741100c3nmkz7oazwtmo",
         "name": "โรงแรมในหานวิลล่า",
         "docCount": 1,
         "amount": 2450000
       },
       {
-        "contactId": "cmwfie39p00cierkz5eg988eg",
+        "contactId": "cmwfj74b000cinmkzbxp0w6wz",
         "name": "คุณรัตนา แก้วใส",
         "docCount": 1,
         "amount": 2036000
       },
       {
-        "contactId": "cmwfie1ys00alerkzwytncrpv",
+        "contactId": "cmwfj730n00alnmkzg1lxhy3v",
         "name": "คุณพิมพ์ชนก วัฒนสุข",
         "docCount": 2,
         "amount": 1920000
       },
       {
-        "contactId": "cmwfie2ha00bcerkzetcu9qzo",
+        "contactId": "cmwfj73ix00bcnmkzc2gha7o8",
         "name": "คุณอนุชา รักษ์ทะเล",
         "docCount": 1,
         "amount": 1890000
       },
       {
-        "contactId": "cmwfie1mb00a3erkz6h9tf6k0",
+        "contactId": "cmwfj72or00a3nmkzhohwo7h0",
         "name": "ห้างหุ้นส่วนจำกัด ป่าตองมารีน",
         "docCount": 1,
         "amount": 1800000
       },
       {
-        "contactId": "cmwfie24y00auerkziktaoe6v",
+        "contactId": "cmwfj736o00aunmkzygaw4lc9",
         "name": "โรงแรมกะตะบีชรีสอร์ท",
         "docCount": 1,
         "amount": 1650000
       },
       {
-        "contactId": "cmwfie2td00buerkz398cbwd6",
+        "contactId": "cmwfj73uw00bunmkzf1ztz5rf",
         "name": "คุณนภัสสร อินทรีย์",
         "docCount": 1,
         "amount": 1560000
       },
       {
-        "contactId": "cmwfie22w00arerkz2sgjl6ju",
+        "contactId": "cmwfj734o00arnmkzjy50j9o5",
         "name": "คุณธนกร เจริญพร",
         "docCount": 1,
         "amount": 1250000
       },
       {
-        "contactId": "cmwfie26x00axerkzjuhrbbgj",
+        "contactId": "cmwfj738v00axnmkz3ak6mhsb",
         "name": "คุณเมธาวี บุญมาก",
         "docCount": 1,
         "amount": 890000
       },
       {
-        "contactId": "cmwfie1up00aferkznqx5bf3e",
+        "contactId": "cmwfj72wq00afnmkzxqs11a6i",
         "name": "คุณกิตติพงษ์ แสงทอง",
         "docCount": 1,
         "amount": 750000
       },
       {
-        "contactId": "cmwfie1qh00a9erkzporgxiin",
+        "contactId": "cmwfj72sq00a9nmkzffd4h0po",
         "name": "คุณวราภรณ์ ศรีสุวรรณ",
         "docCount": 1,
         "amount": 480000
@@ -1375,79 +1375,79 @@
     ],
     "topVendors": [
       {
-        "contactId": "cmwfie3mg00cxerkz6i1u00x1",
+        "contactId": "cmwfj74nb00cxnmkzvjbzg737",
         "name": "บริษัท สยามแก๊ส อินดัสทรี จำกัด",
         "docCount": 2,
         "amount": 5900000
       },
       {
-        "contactId": "cmwfie3sp00d6erkzvmvusvzj",
+        "contactId": "cmwfj74t200d6nmkz5ci108kk",
         "name": "บริษัท ภูเก็ตปิโตรเลียม จำกัด",
         "docCount": 2,
         "amount": 5675000
       },
       {
-        "contactId": "cmwfie3un00d9erkz1od4te2t",
+        "contactId": "cmwfj74v200d9nmkz4b11tbvf",
         "name": "บริษัท ครัวทะเลใต้ เคเทอริ่ง จำกัด",
         "docCount": 2,
         "amount": 4150000
       },
       {
-        "contactId": "cmwfie3qt00d3erkzh27ahv7s",
+        "contactId": "cmwfj74r400d3nmkzum2ebde8",
         "name": "อู่ต่อเรือ ป่าตองมารีนเซอร์วิส",
         "docCount": 2,
         "amount": 4000000
       },
       {
-        "contactId": "cmwfie3om00d0erkzvji8gm0q",
+        "contactId": "cmwfj74p800d0nmkzvrh2gu2g",
         "name": "บริษัท อควาเทค อุปกรณ์ดำน้ำ จำกัด",
         "docCount": 1,
         "amount": 3250000
       },
       {
-        "contactId": "cmwfie3yu00dferkzkx3nmxra",
+        "contactId": "cmwfj74z000dfnmkz1ry1la63",
         "name": "บริษัท เซฟตี้เฟิร์ส อุปกรณ์นิรภัย จำกัด",
         "docCount": 3,
         "amount": 2870000
       },
       {
-        "contactId": "cmwfie42u00dlerkzmmp5ajle",
+        "contactId": "cmwfj752z00dlnmkzoppodxlf",
         "name": "การไฟฟ้าส่วนภูมิภาค จ.ภูเก็ต",
         "docCount": 1,
         "amount": 2850000
       },
       {
-        "contactId": "cmwfie4j700e9erkzn3f4i0gc",
+        "contactId": "cmwfj75iz00e9nmkzynwe0gkf",
         "name": "บริษัท ประกันภัยทะเลไทย จำกัด",
         "docCount": 1,
         "amount": 2400000
       },
       {
-        "contactId": "cmwfie46v00drerkz3gi9ripv",
+        "contactId": "cmwfj756y00drnmkzy0b85olm",
         "name": "บริษัท ขนส่งภูเก็ตเอ็กซ์เพรส จำกัด",
         "docCount": 1,
         "amount": 2100000
       },
       {
-        "contactId": "cmwfie4l900ecerkz95vlamfl",
+        "contactId": "cmwfj75l000ecnmkzqymylgms",
         "name": "บริษัท ออกซิเจนพลัส จำกัด",
         "docCount": 1,
         "amount": 2000000
       },
       {
-        "contactId": "cmwfie3wq00dcerkztdj8dc2w",
+        "contactId": "cmwfj74x200dcnmkz8brff6xe",
         "name": "ห้างหุ้นส่วนจำกัด อันดามันซัพพลาย",
         "docCount": 1,
         "amount": 1850000
       },
       {
-        "contactId": "cmwfie4h500e6erkzdgju8w3s",
+        "contactId": "cmwfj75gz00e6nmkz2w5iqe6z",
         "name": "คุณสมบัติ ช่างซ่อมเรือ",
         "docCount": 1,
         "amount": 856000
       },
       {
-        "contactId": "cmwfie4d000e0erkzdjqlsmr3",
+        "contactId": "cmwfj75d200e0nmkzgbh8fkvs",
         "name": "สำนักงานบัญชี ภูเก็ตแอคเคาท์",
         "docCount": 1,
         "amount": 535000
@@ -1546,13 +1546,13 @@
       },
       {
         "productId": null,
-        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน",
+        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน (รายการเพิ่มเติม)",
         "qty": 1,
         "amount": 3738318
       },
       {
         "productId": null,
-        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน (รายการเพิ่มเติม)",
+        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน",
         "qty": 1,
         "amount": 3738318
       },
@@ -1695,7 +1695,7 @@
         "amount": 831776
       },
       {
-        "productId": "cmwfidzgv003werkzmwre30da",
+        "productId": "cmwfj70lw003wnmkzq4wo6s1q",
         "name": "ถังอากาศ 12 ลิตร",
         "qty": 1,
         "amount": 780000
@@ -1713,7 +1713,7 @@
         "amount": 700000
       },
       {
-        "productId": "cmwfidzbs003oerkzfuyj2ljd",
+        "productId": "cmwfj70gt003onmkzn428wrsn",
         "name": "หน้ากากดำน้ำ Aqualung",
         "qty": 2,
         "amount": 570000
@@ -1806,44 +1806,44 @@
     },
     "recent": [
       {
-        "id": "cmwfie7qh01ecerkze9vi9fpp",
+        "id": "cmwfj78ph01ecnmkzs7oclw0d",
         "docNo": "IV-2026-09-0001",
-        "updatedAt": "2026-11-13T21:50:06.694Z"
+        "updatedAt": "2026-11-13T22:12:43.198Z"
       },
       {
-        "id": "cmwfifoc80ainerkzkeoejes1",
+        "id": "cmwfj8s4i0ainnmkz9fb76swn",
         "docNo": "IV-2026-09-0023",
-        "updatedAt": "2026-11-13T21:50:03.884Z"
+        "updatedAt": "2026-11-13T22:12:40.648Z"
       },
       {
-        "id": "cmwfifn3s0a8berkzoazgo4zx",
+        "id": "cmwfj8r4l0a8bnmkz2p2jomcd",
         "docNo": "WHT-2026-09-0002",
-        "updatedAt": "2026-11-13T21:50:00.545Z"
+        "updatedAt": "2026-11-13T22:12:38.769Z"
       },
       {
-        "id": "cmwfifmkq0a37erkzhsp8qefv",
+        "id": "cmwfj8qmj0a37nmkz8573i2rx",
         "docNo": "EX-2026-09-0007",
-        "updatedAt": "2026-11-13T21:50:00.170Z"
+        "updatedAt": "2026-11-13T22:12:38.416Z"
       },
       {
-        "id": "cmwfiflyw09y1erkz9l3qjlmm",
+        "id": "cmwfj8q0909y1nmkzzo4h14gr",
         "docNo": "EX-2026-09-0006",
-        "updatedAt": "2026-11-13T21:49:59.360Z"
+        "updatedAt": "2026-11-13T22:12:37.618Z"
       },
       {
-        "id": "cmwfifmgy0a35erkzqws6f8q3",
+        "id": "cmwfj8qil0a35nmkzotk1igiq",
         "docNo": "WHT-2026-09-0001",
-        "updatedAt": "2026-11-13T21:49:59.308Z"
+        "updatedAt": "2026-11-13T22:12:37.559Z"
       },
       {
-        "id": "cmwfiflcg09sverkza50ce5fe",
+        "id": "cmwfj8pe509svnmkzhlevgjvp",
         "docNo": "EX-2026-08-0004",
-        "updatedAt": "2026-11-13T21:49:58.555Z"
+        "updatedAt": "2026-11-13T22:12:36.821Z"
       },
       {
-        "id": "cmwfifluw09xzerkzqdm9hh5i",
+        "id": "cmwfj8pwc09xznmkz6y8kkze2",
         "docNo": "WHT-2026-08-0001",
-        "updatedAt": "2026-11-13T21:49:58.501Z"
+        "updatedAt": "2026-11-13T22:12:36.763Z"
       }
     ],
     "calendar": {
@@ -2114,31 +2114,31 @@
       },
       "tracked": [
         {
-          "contactId": "cmwfie1bx009oerkzx1l1jyai",
+          "contactId": "cmwfj72el009onmkzc7of889b",
           "name": "โรงเรียนสอนดำน้ำ บลูโอเชียน",
           "outstanding": 8000000,
           "count": 2
         },
         {
-          "contactId": "cmwfie19u009lerkz9uhppqrb",
+          "contactId": "cmwfj72cn009lnmkzyq0zwpnv",
           "name": "โรงแรมสิมิลันวิว",
           "outstanding": 6225000,
           "count": 1
         },
         {
-          "contactId": "cmwfie178009ierkz4zwvano5",
+          "contactId": "cmwfj72an009inmkzmn1vajn9",
           "name": "บริษัท อันดามัน ทราเวล จำกัด",
           "outstanding": 5970000,
           "count": 2
         },
         {
-          "contactId": "cmwfie28x00b0erkzb7ytp307",
+          "contactId": "cmwfj73au00b0nmkzwizu51di",
           "name": "ปิยธิดา อินสุ่ม",
           "outstanding": 5820000,
           "count": 2
         },
         {
-          "contactId": "cmwfie1g3009uerkz7yocm7gs",
+          "contactId": "cmwfj72io009unmkz34jvai5l",
           "name": "คุณอรทัย พงษ์ไพบูลย์",
           "outstanding": 4600000,
           "count": 2
@@ -2274,31 +2274,31 @@
       },
       "tracked": [
         {
-          "contactId": "cmwfie3mg00cxerkz6i1u00x1",
+          "contactId": "cmwfj74nb00cxnmkzvjbzg737",
           "name": "บริษัท สยามแก๊ส อินดัสทรี จำกัด",
           "outstanding": 5900000,
           "count": 2
         },
         {
-          "contactId": "cmwfie3qt00d3erkzh27ahv7s",
+          "contactId": "cmwfj74r400d3nmkzum2ebde8",
           "name": "อู่ต่อเรือ ป่าตองมารีนเซอร์วิส",
           "outstanding": 4000000,
           "count": 2
         },
         {
-          "contactId": "cmwfie3om00d0erkzvji8gm0q",
+          "contactId": "cmwfj74p800d0nmkzvrh2gu2g",
           "name": "บริษัท อควาเทค อุปกรณ์ดำน้ำ จำกัด",
           "outstanding": 3250000,
           "count": 1
         },
         {
-          "contactId": "cmwfie3sp00d6erkzvmvusvzj",
+          "contactId": "cmwfj74t200d6nmkz5ci108kk",
           "name": "บริษัท ภูเก็ตปิโตรเลียม จำกัด",
           "outstanding": 2475000,
           "count": 1
         },
         {
-          "contactId": "cmwfie3un00d9erkz1od4te2t",
+          "contactId": "cmwfj74v200d9nmkz4b11tbvf",
           "name": "บริษัท ครัวทะเลใต้ เคเทอริ่ง จำกัด",
           "outstanding": 2200000,
           "count": 1
@@ -2311,61 +2311,61 @@
     "returningCustomers": 13,
     "topCustomersByPurchases": [
       {
-        "contactId": "cmwfie19u009lerkz9uhppqrb",
+        "contactId": "cmwfj72cn009lnmkzyq0zwpnv",
         "name": "โรงแรมสิมิลันวิว",
         "amountSatang": 16400000,
         "count": 2
       },
       {
-        "contactId": "cmwfie1sj00acerkzzatrtq6q",
+        "contactId": "cmwfj72uq00acnmkzaqsnre9n",
         "name": "บริษัท ซีสตาร์ รีสอร์ท จำกัด",
         "amountSatang": 11975000,
         "count": 4
       },
       {
-        "contactId": "cmwfie1bx009oerkzx1l1jyai",
+        "contactId": "cmwfj72el009onmkzc7of889b",
         "name": "โรงเรียนสอนดำน้ำ บลูโอเชียน",
         "amountSatang": 11000000,
         "count": 2
       },
       {
-        "contactId": "cmwfie1i6009xerkz3yh15cpg",
+        "contactId": "cmwfj72kp009xnmkz5izy778y",
         "name": "บริษัท ภูเก็ตดีปซี จำกัด",
         "amountSatang": 8989000,
         "count": 4
       },
       {
-        "contactId": "cmwfie28x00b0erkzb7ytp307",
+        "contactId": "cmwfj73au00b0nmkzwizu51di",
         "name": "ปิยธิดา อินสุ่ม",
         "amountSatang": 6885000,
         "count": 3
       },
       {
-        "contactId": "cmwfie33n00c9erkzbkqrlgrh",
+        "contactId": "cmwfj745200c9nmkzvovub04t",
         "name": "บริษัท เจ็ตสกี ภูเก็ต จำกัด",
         "amountSatang": 6300000,
         "count": 1
       },
       {
-        "contactId": "cmwfie178009ierkz4zwvano5",
+        "contactId": "cmwfj72an009inmkzmn1vajn9",
         "name": "บริษัท อันดามัน ทราเวล จำกัด",
         "amountSatang": 5970000,
         "count": 2
       },
       {
-        "contactId": "cmwfie2nc00blerkzqw2tbx12",
+        "contactId": "cmwfj73ox00blnmkzshm9ftgw",
         "name": "บริษัท พีพี ไอส์แลนด์ ทัวร์ จำกัด",
         "amountSatang": 5600000,
         "count": 1
       },
       {
-        "contactId": "cmwfie2ve00bxerkzkhvjcd00",
+        "contactId": "cmwfj73ww00bxnmkzqzh7tkuc",
         "name": "บริษัท เดอะเรฟ ไดฟ์วิ่ง จำกัด",
         "amountSatang": 4750000,
         "count": 1
       },
       {
-        "contactId": "cmwfie1g3009uerkz7yocm7gs",
+        "contactId": "cmwfj72io009unmkz34jvai5l",
         "name": "คุณอรทัย พงษ์ไพบูลย์",
         "amountSatang": 4600000,
         "count": 2
@@ -2373,106 +2373,106 @@
     ],
     "topOutstanding": [
       {
-        "contactId": "cmwfie1bx009oerkzx1l1jyai",
+        "contactId": "cmwfj72el009onmkzc7of889b",
         "name": "โรงเรียนสอนดำน้ำ บลูโอเชียน",
         "amountSatang": 8000000
       },
       {
-        "contactId": "cmwfie19u009lerkz9uhppqrb",
+        "contactId": "cmwfj72cn009lnmkzyq0zwpnv",
         "name": "โรงแรมสิมิลันวิว",
         "amountSatang": 6225000
       },
       {
-        "contactId": "cmwfie178009ierkz4zwvano5",
+        "contactId": "cmwfj72an009inmkzmn1vajn9",
         "name": "บริษัท อันดามัน ทราเวล จำกัด",
         "amountSatang": 5970000
       },
       {
-        "contactId": "cmwfie28x00b0erkzb7ytp307",
+        "contactId": "cmwfj73au00b0nmkzwizu51di",
         "name": "ปิยธิดา อินสุ่ม",
         "amountSatang": 5820000
       },
       {
-        "contactId": "cmwfie1g3009uerkz7yocm7gs",
+        "contactId": "cmwfj72io009unmkz34jvai5l",
         "name": "คุณอรทัย พงษ์ไพบูลย์",
         "amountSatang": 4600000
       },
       {
-        "contactId": "cmwfie1sj00acerkzzatrtq6q",
+        "contactId": "cmwfj72uq00acnmkzaqsnre9n",
         "name": "บริษัท ซีสตาร์ รีสอร์ท จำกัด",
         "amountSatang": 3500000
       },
       {
-        "contactId": "cmwfie1wp00aierkz5h89echw",
+        "contactId": "cmwfj72yp00ainmkzc6t9fdce",
         "name": "บริษัท เกาะพีพี แอดเวนเจอร์ จำกัด",
         "amountSatang": 3030000
       },
       {
-        "contactId": "cmwfie1dy009rerkz9mntpmvg",
+        "contactId": "cmwfj72gn009rnmkzlm6sjbwy",
         "name": "คุณณัฐพล รุ่งเรือง",
         "amountSatang": 2490000
       },
       {
-        "contactId": "cmwfie20w00aoerkzgqgwue55",
+        "contactId": "cmwfj732n00aonmkzv76h2ulj",
         "name": "บริษัท ไดฟ์มาสเตอร์ เอเชีย จำกัด",
         "amountSatang": 2200000
       },
       {
-        "contactId": "cmwfie1ys00alerkzwytncrpv",
+        "contactId": "cmwfj730n00alnmkzg1lxhy3v",
         "name": "คุณพิมพ์ชนก วัฒนสุข",
         "amountSatang": 1920000
       }
     ],
     "topVendorsByPayments": [
       {
-        "contactId": "cmwfie3sp00d6erkzvmvusvzj",
+        "contactId": "cmwfj74t200d6nmkz5ci108kk",
         "name": "บริษัท ภูเก็ตปิโตรเลียม จำกัด",
         "amountSatang": 3200000
       },
       {
-        "contactId": "cmwfie42u00dlerkzmmp5ajle",
+        "contactId": "cmwfj752z00dlnmkzoppodxlf",
         "name": "การไฟฟ้าส่วนภูมิภาค จ.ภูเก็ต",
         "amountSatang": 2850000
       },
       {
-        "contactId": "cmwfie4j700e9erkzn3f4i0gc",
+        "contactId": "cmwfj75iz00e9nmkzynwe0gkf",
         "name": "บริษัท ประกันภัยทะเลไทย จำกัด",
         "amountSatang": 2400000
       },
       {
-        "contactId": "cmwfie46v00drerkz3gi9ripv",
+        "contactId": "cmwfj756y00drnmkzy0b85olm",
         "name": "บริษัท ขนส่งภูเก็ตเอ็กซ์เพรส จำกัด",
         "amountSatang": 2100000
       },
       {
-        "contactId": "cmwfie4l900ecerkz95vlamfl",
+        "contactId": "cmwfj75l000ecnmkzqymylgms",
         "name": "บริษัท ออกซิเจนพลัส จำกัด",
         "amountSatang": 2000000
       },
       {
-        "contactId": "cmwfie3un00d9erkz1od4te2t",
+        "contactId": "cmwfj74v200d9nmkz4b11tbvf",
         "name": "บริษัท ครัวทะเลใต้ เคเทอริ่ง จำกัด",
         "amountSatang": 1950000
       },
       {
-        "contactId": "cmwfie3yu00dferkzkx3nmxra",
+        "contactId": "cmwfj74z000dfnmkz1ry1la63",
         "name": "บริษัท เซฟตี้เฟิร์ส อุปกรณ์นิรภัย จำกัด",
         "amountSatang": 1040000
       },
       {
-        "contactId": "cmwfie4h500e6erkzdgju8w3s",
+        "contactId": "cmwfj75gz00e6nmkz2w5iqe6z",
         "name": "คุณสมบัติ ช่างซ่อมเรือ",
         "amountSatang": 832000
       },
       {
-        "contactId": "cmwfie4d000e0erkzdjqlsmr3",
+        "contactId": "cmwfj75d200e0nmkzgbh8fkvs",
         "name": "สำนักงานบัญชี ภูเก็ตแอคเคาท์",
         "amountSatang": 520000
       }
     ]
   },
   "contactProfile": {
-    "contactId": "cmwfie28x00b0erkzb7ytp307",
+    "contactId": "cmwfj73au00b0nmkzwizu51di",
     "code": "C00019",
     "name": "ปิยธิดา อินสุ่ม",
     "kind": "CUSTOMER",
@@ -2499,9 +2499,9 @@
     "docsCount": 3,
     "filesCount": 0,
     "recentDocIds": [
-      "cmwfieawm0248erkz4kqgwrct",
-      "cmwfifhao09caerkzusmlpy67",
-      "cmwfie6fq0140erkz2a5un0f5"
+      "cmwfj7byy0248nmkzbufau78c",
+      "cmwfj8ldx09canmkzoyt5t7cn",
+      "cmwfj77dd0140nmkzuj0wj47i"
     ],
     "recentDocNos": [
       "IV-2026-09-0011",
@@ -2512,7 +2512,7 @@
   "mergeDuplicate": {
     "taxId": "3000000000000",
     "primary": {
-      "id": "cmwfie178009ierkz4zwvano5",
+      "id": "cmwfj72an009inmkzmn1vajn9",
       "code": "C00001",
       "name": "บริษัท อันดามัน ทราเวล จำกัด",
       "branchCode": "00000",
@@ -2523,7 +2523,7 @@
       "recurringRules": 0
     },
     "secondary": {
-      "id": "cmwfie1k900a0erkz0q5cqa3w",
+      "id": "cmwfj72mp00a0nmkz0rkuvs5a",
       "code": "C00007",
       "name": "บจก. อันดามัน ทราเวล",
       "branchCode": "00002",

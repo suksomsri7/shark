@@ -181,6 +181,18 @@ export default async function PublicTaxInvoicePage({
               {t("receipt.form.name")}
               <input name="name" required className={inputCls} />
             </label>
+            {/* ACC T3 (A5) ▸ ประเภทผู้ซื้อ: กิจการที่ไม่ให้เลข ⇒ พนักงานต้องกดยืนยันตอนอนุมัติ · บุคคลทั่วไป ⇒ ไม่ต้องมีเลข ◂ */}
+            <fieldset className="flex flex-col gap-1.5 text-sm" data-testid="buyer-kind">
+              <legend className="mb-1 text-xs text-[color:var(--color-muted)]">{t("receipt.form.buyerKind")}</legend>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="legalType" value="PERSON" defaultChecked data-testid="buyer-kind-person" />
+                {t("receipt.form.buyerPerson")}
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="legalType" value="COMPANY" data-testid="buyer-kind-company" />
+                {t("receipt.form.buyerCompany")}
+              </label>
+            </fieldset>
             <label className={labelCls}>
               {t("receipt.form.taxId")}
               <input
@@ -197,6 +209,7 @@ export default async function PublicTaxInvoicePage({
             <label className={labelCls}>
               {t("receipt.form.branch")}
               <input name="branchCode" defaultValue="00000" className={inputCls} />
+              {/* ACC T3 (A4) ▸ ไม่มีเลขผู้เสียภาษี = ระบบไม่บันทึก/ไม่พิมพ์สาขา ◂ */}
             </label>
             <label className={labelCls}>
               {t("receipt.form.address")}

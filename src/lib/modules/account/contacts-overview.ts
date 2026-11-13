@@ -18,6 +18,9 @@ function dbOf(ctx: Ctx, meter?: QueryMeter): Db {
   }) as unknown as Db;
 }
 
+/** เทียบแบบรหัสอักขระ (ไม่ขึ้นกับ locale — เฉลย QC ใช้ตัวเดียวกัน) */
+export const cmpStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 export type ContactRankRow = { contactId: string; name: string; code: string; amountSatang: number; count?: number };
 
 export type ContactsOverview = {
@@ -101,6 +104,8 @@ export async function loadContactsOverview(ctx: Ctx, meter?: QueryMeter, now: Da
   const boughtThisMonth = new Set(thisMonthContactIds.map((r) => r.contactId).filter((x): x is string => !!x));
   const returningCustomers = purchaseAgg.filter((r) => (r._count._all ?? 0) >= 2 && r.contactId && boughtThisMonth.has(r.contactId)).length;
 
+  // ACC T3 (A1) ▸ ยอดเสมอกัน = เรียงต่อด้วย id ผู้ติดต่อ — ลำดับนิ่งทุกครั้ง (อันดับ 10 ที่เสมอกันเคยสลับกันเองตามลำดับที่ฐานข้อมูลคืน) ◂
+  const byRank = (a: ContactRankRow, b: ContactRankRow) => b.amountSatang - a.amountSatang || cmpStr(a.contactId, b.contactId);
   const rank = (id: string | null, amount: number, count?: number): ContactRankRow | null => {
     if (!id || !nameOf.has(id)) return null;
     return { contactId: id, name: nameOf.get(id)!, code: codeOf.get(id) ?? "—", amountSatang: amount, count };
@@ -109,14 +114,14 @@ export async function loadContactsOverview(ctx: Ctx, meter?: QueryMeter, now: Da
   const topCustomersByPurchases = purchaseAgg
     .map((r) => rank(r.contactId, r._sum.grandTotal ?? 0, r._count._all))
     .filter((r): r is ContactRankRow => !!r)
-    .sort((a, b) => b.amountSatang - a.amountSatang)
+    .sort(byRank)
     .slice(0, 10);
 
   const topOutstanding = outstandingAgg
     .map((r) => rank(r.contactId, Math.max(0, (r._sum.grandTotal ?? 0) - (r._sum.paidTotal ?? 0))))
     .filter((r): r is ContactRankRow => !!r)
     .filter((r) => r.amountSatang > 0)
-    .sort((a, b) => b.amountSatang - a.amountSatang)
+    .sort(byRank)
     .slice(0, 10);
 
   const vendorSum = new Map<string, number>();
@@ -128,7 +133,7 @@ export async function loadContactsOverview(ctx: Ctx, meter?: QueryMeter, now: Da
   const topVendorsByPayments = [...vendorSum.entries()]
     .map(([id, amount]) => rank(id, amount))
     .filter((r): r is ContactRankRow => !!r)
-    .sort((a, b) => b.amountSatang - a.amountSatang)
+    .sort(byRank)
     .slice(0, 10);
 
   bump(meter, 0); // groupBy/findMany ข้างบนนับผ่าน $allOperations แล้วทั้งหมด — ไม่มี query เพิ่มหลังจากนี้

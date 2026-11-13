@@ -7,6 +7,7 @@ import type { AccountDocStatus, AccountDocType } from "@prisma/client";
 import { getExpenseDoc, EXP_DOC_LABEL } from "./expense";
 import { taxInvoiceBuyerOf, type TaxInvoiceBuyerCheck } from "./legal-gate"; // ACC T2.1 ◂
 import { readSellerSnapshot } from "./seller-snapshot"; // ACC T2.9 ◂
+import { depositSettlementView, type DepositSettlementView } from "./deposit-outcome"; // ACC T3 (A2) ◂
 import { DOC_LABEL, STATUS_LABEL, isOverdue, listDocPayments, getDocRef, type DocPaymentRow } from "./service";
 import { listJournalEntriesForDocument } from "./gl";
 import { originalPrinted } from "./print-log"; // ACC T2.7 ◂
@@ -245,6 +246,8 @@ export type DocDetailData = {
   docType: AccountDocType;
   docNo: string | null;
   status: AccountDocStatus;
+  /** ACC T3 (A2) ▸ ใบรับ/จ่ายมัดจำที่คืน/ริบแล้ว (null = ไม่เกี่ยว) ◂ */
+  depositSettlement: DepositSettlementView | null;
   label: string;
   createdAt: Date;
   issueDate: Date;
@@ -377,6 +380,8 @@ export async function getDocDetailData(
     docType: doc.docType,
     docNo: doc.docNo,
     status: doc.status,
+    // ACC T3 (A2) ▸ ใบมัดจำที่คืน/ริบแล้ว — ป้ายตามจริง (ฟิลด์ที่คำนวณ) ◂
+    depositSettlement: depositSettlementView(doc),
     label: docLabelOf(doc.docType),
     createdAt: doc.createdAt,
     issueDate: doc.issueDate,

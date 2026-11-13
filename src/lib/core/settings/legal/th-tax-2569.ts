@@ -220,6 +220,37 @@ export const SYSTEM_WHT_ROWS: readonly WhtRateRow[] = [
     tag: "V", checkedAt: "2026-11-12",
     note: "ใช้เฉพาะรายการที่นำส่งผ่านระบบ e-WHT ของธนาคาร · หมดอายุแล้วระบบกลับไปใช้อัตราปกติ",
   }),
+  // ── ACC T3.7 ▸ e-WHT รายการอื่นที่กฎกระทรวง ฉ.402 ลดเหลือ 1% (skill §14 [V]) · ช่วง 1 ม.ค. 2569 – 31 ธ.ค. 2570 · หลังวันนั้นตัวอ่านถอยไปอัตราปกติเอง (EWHT_NOT_IN_EFFECT)
+  //   ไม่ได้ลด (ไม่มีแถว = ใช้อัตราปกติ): ค่าขนส่ง 1% · ประกันวินาศภัย 1% · ดอกเบี้ย · เงินปันผล · มูลนิธิ/สมาคม 10% · ม.50(1) · ม.70 · ข้อ 12 (ต่างประเทศไม่มีสาขา — skill ไม่ได้ระบุ ⇒ ไม่ใส่) ◂
+  ...(
+    [
+      ["M40_3", "JURISTIC", "JURISTIC_TH", "ม.40(3) → บริษัท"],
+      ["M40_5", "JURISTIC", "JURISTIC_TH", "ค่าเช่า ม.40(5)(ก) 5%→1%"],
+      ["M40_5", "JURISTIC", "INDIVIDUAL_TH", "ค่าเช่า ม.40(5)(ก) 5%→1%"],
+      ["M40_6", "JURISTIC", "JURISTIC_TH", "ม.40(6)"],
+      ["M40_6", "JURISTIC", "INDIVIDUAL_TH", "ม.40(6)"],
+      ["M40_7", "JURISTIC", "JURISTIC_TH", "ม.40(7) จ้างทำของ"],
+      ["M40_7", "JURISTIC", "INDIVIDUAL_TH", "ม.40(7) จ้างทำของ"],
+      ["M40_7", "JURISTIC", "FOREIGN_PE", "ม.40(7) จ้างทำของ"],
+      ["M40_8", "JURISTIC", "JURISTIC_TH", "ม.40(8) บริการอื่น"],
+      ["M40_8", "JURISTIC", "INDIVIDUAL_TH", "ม.40(8) บริการอื่น"],
+      ["ADVERTISING", "JURISTIC", "JURISTIC_TH", "โฆษณา 2%→1%"],
+      ["ADVERTISING", "JURISTIC", "INDIVIDUAL_TH", "โฆษณา 2%→1%"],
+      ["PROMOTION", "JURISTIC", "JURISTIC_TH", "ส่งเสริมการขาย"],
+      ["PROMOTION", "JURISTIC", "INDIVIDUAL_TH", "ส่งเสริมการขาย"],
+      ["PRIZE", "ANY", "JURISTIC_TH", "รางวัลชิงโชค 5%→1%"],
+      ["PRIZE", "ANY", "INDIVIDUAL_TH", "รางวัลชิงโชค 5%→1%"],
+      ["PERFORMER", "ANY", "INDIVIDUAL_TH", "นักแสดงในไทย 5%→1%"],
+    ] as const
+  ).map(([incomeType, payer, recipient, what]) =>
+    wht(`sys-ewht-${incomeType.toLowerCase().replace(/_/g, "-")}-${recipient.toLowerCase().replace(/_/g, "-")}`, {
+      incomeType, payer, recipient, channel: "EWHT", value: 100,
+      from: "2026-01-01", to: "2027-12-31",
+      source: `${WHT_REF} §14 — กฎกระทรวง ฉบับที่ 402 (พ.ศ. 2569): ${what} เมื่อจ่าย 1 ม.ค. 2569 – 31 ธ.ค. 2570 และนำส่งผ่าน e-WHT`,
+      tag: "V", checkedAt: "2026-11-13",
+      note: "ใช้เฉพาะรายการที่นำส่งผ่านระบบ e-WHT ของธนาคาร · หลัง 31 ธ.ค. 2570 กลับไปอัตราปกติเอง (skill: ต้องค้นซ้ำ)",
+    }),
+  ),
 ];
 
 const dl = (id: string, r: Omit<FilingDeadlineRow, "id">): FilingDeadlineRow => ({ id, ...r });
@@ -492,5 +523,72 @@ export const DEPOSIT_FORFEIT_RULE = {
   defaultMode: "KEEP_VAT" as const,
   source: `${VAT_REF} §7 — "ออกใบกำกับมัดจำแล้วต่อมาริบ [U]: ค่าเริ่มต้นปลอดภัย = ไม่ออกใบลดหนี้ (VAT คงไว้)" · ค่าปรับ/ค่าเสียหายไม่อยู่ในบังคับ VAT (ม.77/2 · กค 0811/11473 ข้อ 3.3(1)) [V]`,
   tag: "U" as LegalTag,
+  checkedAt: "2026-11-13",
+};
+
+
+// ═══════════════════ ACC T3.6 ▸ ขั้นต่ำ 1,000 บาทต่อสัญญา · ออกภาษีให้ (gross-up) ═══════════════════
+// skill common-withholding-tax.md §11 [V] (ท.ป.4/2528 ข้อ 12/7 แก้โดย ท.ป.266/2559 · กค 0706/2356) · §13 [V2]/[U] (สูตรออกภาษีให้)
+
+/**
+ * ขั้นต่ำการหักตามคำสั่ง ม.3 เตรส (ท.ป.4/2528): "ต้องมีจำนวนตามสัญญารายหนึ่งๆ…ตั้งแต่หนึ่งพันบาทขึ้นไป แม้การจ่ายนั้นจะได้แบ่งจ่ายครั้งหนึ่งๆ ไม่ถึงหนึ่งพันบาท"
+ *   value = สตางค์ · ไม่ใช้กับ ม.50 (อัตราก้าวหน้า/เงินเดือน/ดอกเบี้ย/ปันผล) และ ม.69 ทวิ · วัดก่อนหรือรวม VAT = [U] (ระบบเทียบยอดรวม VAT — ระวังด้านไม่หักผิด)
+ */
+export type WhtMinimumRow = RowBase & { measure: "CONTRACT_TOTAL" };
+export const SYSTEM_WHT_MINIMUM_ROWS: readonly WhtMinimumRow[] = [
+  {
+    id: "sys-wht-min-1000",
+    value: 100_000,
+    measure: "CONTRACT_TOTAL",
+    from: null,
+    to: null,
+    source: `${WHT_REF} §11 — ท.ป.4/2528 ข้อ 12/7 (แก้โดย ท.ป.266/2559): ยอดตามสัญญารายหนึ่ง ๆ ตั้งแต่ 1,000 บาท แม้แบ่งจ่ายครั้งละไม่ถึง · กค 0706/2356: ยอดสะสมถึง 1,000 ต้องนำยอดครั้งก่อนมารวมหัก`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    note: "วัดก่อนหรือรวม VAT ยังไม่ยืนยัน [U] — ระบบเทียบยอดรวม VAT ของสัญญา (เตือนว่า \"ไม่ถึงขั้นต่ำ\" เฉพาะเมื่อแน่ใจว่าไม่ถึง) · ผ่อนผันธนาคารพาณิชย์: ค่าบริการแต่ละครั้งไม่ถึง 1,000 ไม่ต้องหัก (กค 0811/7657)",
+  },
+];
+export function whtMinimumAt(ymd: Ymd): WhtMinimumRow | null {
+  return SYSTEM_WHT_MINIMUM_ROWS.find((r) => covers(r, ymd)) ?? null;
+}
+
+/** เงื่อนไขบน 50 ทวิ (แบบทางการ 3 ช่อง — skill §13 [V]): หัก ณ ที่จ่าย · ออกให้ตลอดไป · ออกให้ครั้งเดียว */
+export const WHT_CONDITIONS = ["WITHHOLD", "PAY_ALWAYS", "PAY_ONCE"] as const;
+export type WhtCondition = (typeof WHT_CONDITIONS)[number];
+export const WHT_CONDITION_LABEL_TH: Record<WhtCondition, string> = { WITHHOLD: "หัก ณ ที่จ่าย", PAY_ALWAYS: "ออกให้ตลอดไป", PAY_ONCE: "ออกให้ครั้งเดียว" };
+
+/**
+ * สูตรออกภาษีให้ — กรมสรรพากรไม่มีสูตรทางการ [U] · สูตรที่ใช้กันในวงการ [V2 — bangkokbiznews/Inflow, PEAK] เป็นค่าเริ่มต้น · ร้านเลือกสูตรอื่นได้ (ค่าตั้ง)
+ *   GROSS_UP_CONVERGED = สุทธิ × r ÷ (100 − r)  (10,000 @3% → 309.28 · เงินได้ 10,309.28) — ค่าเริ่มของ "ออกให้ตลอดไป"
+ *   GROSS_UP_ONE_STEP  = (สุทธิ + สุทธิ × r) × r — ค่าเริ่มของ "ออกให้ครั้งเดียว"
+ *   NET_TIMES_RATE     = สุทธิ × r (ไม่คิดภาษีซ้อน)
+ */
+export const WHT_GROSS_UP_FORMULAS = ["GROSS_UP_CONVERGED", "GROSS_UP_ONE_STEP", "NET_TIMES_RATE"] as const;
+export type WhtGrossUpFormula = (typeof WHT_GROSS_UP_FORMULAS)[number];
+export const WHT_GROSS_UP_FORMULA_LABEL_TH: Record<WhtGrossUpFormula, string> = {
+  GROSS_UP_CONVERGED: "สุทธิ × r ÷ (100 − r)",
+  GROSS_UP_ONE_STEP: "(สุทธิ + สุทธิ × r) × r",
+  NET_TIMES_RATE: "สุทธิ × r",
+};
+export const WHT_GROSS_UP_RULE = {
+  defaults: { PAY_ALWAYS: "GROSS_UP_CONVERGED", PAY_ONCE: "GROSS_UP_ONE_STEP" } as Record<"PAY_ALWAYS" | "PAY_ONCE", WhtGrossUpFormula>,
+  source: `${WHT_REF} §13 — ภาษีที่ออกแทนเป็นเงินได้ของผู้รับ "ไม่ว่าในทอดใด" (ม.40 ว.แรก) [V] · 50 ทวิ มี 3 เงื่อนไข [V] · สูตรทางการไม่พบ [U] · สูตรในวงการ [V2]`,
+  tag: "U" as LegalTag,
+  checkedAt: "2026-11-13",
+};
+
+/** ACC T3.6 ▸ ค่าธรรมเนียมรับบัตร/MDR = ค่าบริการที่ต้องหัก (คำชี้แจงข้อ 2.4 [V]) · ธนาคารพาณิชย์ผ่อนผันเมื่อแต่ละครั้งไม่ถึง 1,000 (กค 0811/7657 [V]) · GP แพลตฟอร์มเดลิเวอรี [U] */
+export const WHT_FEE_RULE = {
+  bankPerTimeMinSatang: 100_000,
+  source: `${WHT_REF} §16 — คำชี้แจง ท.ป.101/2544 ข้อ 2.4: ค่าธรรมเนียมรับบัตรเครดิตเป็นบริการที่ต้องหัก [V] · §11 ผ่อนผันธนาคารพาณิชย์ ค่าบริการแต่ละครั้งไม่ถึง 1,000 (กค 0811/7657) [V] · GP แพลตฟอร์มเดลิเวอรี ไม่มีข้อหารือตรง [U]`,
+  tag: "V" as LegalTag,
+  checkedAt: "2026-11-13",
+};
+
+/** ACC T3.6 ▸ ผู้ขายเป็น "ตัวแทนหักภาษี" (ประกาศอธิบดีฯ ภาษีเงินได้ ฉ.457 แก้โดย ฉ.459 · จ่ายตั้งแต่ 1 ก.ค. 2568) — ผู้จ่ายยกเว้นออก 50 ทวิ [V] · แพลตฟอร์มรายใดใช้ [U] */
+export const WHT_AGENT_RULE = {
+  from: "2025-07-01",
+  source: `${WHT_REF} §16 — ประกาศอธิบดีฯ ภาษีเงินได้ ฉ.457 (แก้โดย ฉ.459) ใช้กับการจ่ายตั้งแต่ 1 ก.ค. 2568: ผู้ถูกหัก (บริษัท) หัก-ยื่น ภ.ง.ด.53-นำส่งแทน · ผู้จ่ายยกเว้นการออก 50 ทวิ [V] · แพลตฟอร์มรายใดใช้ [U]`,
+  tag: "V" as LegalTag,
   checkedAt: "2026-11-13",
 };

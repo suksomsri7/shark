@@ -1184,7 +1184,7 @@ export async function DocDetailPage({
               </h1>
             </div>
             <span data-testid="doc-status" className="shrink-0">
-              <StatusBadge status={data.status} overdue={data.overdue} />
+              <StatusBadge status={data.status} overdue={data.overdue} label={data.depositSettlement?.labelTh ?? null} />
             </span>
             <HeaderStat label="ยอดสุทธิ" testId="doc-grand">
               <MoneyText satang={data.grandTotal} decimals />

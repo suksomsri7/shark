@@ -1,3 +1,5 @@
+import { forfeitKeyPrefix } from "./deposit-outcome";
+import { recomputeDepositOutcomeInTx } from "./deposit-outcome-db"; // ACC T3 (A2/A3) ◂
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/core/db";
 import type {
@@ -1206,13 +1208,23 @@ export async function postPayment(
  * ริบมัดจำไม่ออกใบลดหนี้ (FORFEIT_KEEP_VAT · ค่าเริ่ม [U]): Dr 2110 ฐาน / Cr 4900 — VAT คงอยู่ใน 2200 (refId = ใบรับมัดจำ · event FORFEIT)
  * ลงวันที่ที่ผู้ใช้เลือก (เดือนภาษีของใบลดหนี้ = เดือนที่ออก ม.82/10) · ด่านงวดปิด/เดือนที่ยื่นแล้วอยู่ใน commitEntry ◂
  */
+/** ACC T3 (A3) ▸ event ของ JV ริบ (ไม่ออกใบลดหนี้) รอบนี้ = FORFEIT · หลังรายการริบถูกกลับ n ครั้ง = FORFEIT:R<n> */
+async function forfeitEventOf(ctx: GlCtx, depositId: string, db: Db): Promise<string> {
+  const rows = await db.accountJournalEntry.findMany({ where: { systemId: ctx.systemId, refType: "AccountDocument", refId: depositId, status: "REVERSED" }, select: { idempotencyKey: true } });
+  const pre = forfeitKeyPrefix(depositId);
+  const n = rows.filter((r) => r.idempotencyKey === pre || (r.idempotencyKey ?? "").startsWith(`${pre}:R`)).length;
+  return n === 0 ? "FORFEIT" : `FORFEIT:R${n}`;
+}
+
 export async function postDepositSettlement(
   ctx: GlCtx,
   o: { mode: "REFUND" | "FORFEIT_CN" | "FORFEIT_KEEP_VAT"; refId: string; depositId: string; date: Date; base: number; vat: number; memo: string },
   tx?: Tx,
 ): Promise<{ entryId: string } | { skipped: true }> {
   return withTx(tx, async (db) => {
-    const event = o.mode === "FORFEIT_KEEP_VAT" ? "FORFEIT" : "ISSUE";
+    // ACC T3 (A3) ▸ ริบซ้ำหลังกลับรายการริบครั้งก่อน: คีย์เดิมถูกใช้แล้ว ⇒ เดิม alreadyPosted ข้ามเงียบ (ใบเป็น "ริบแล้ว" แต่ไม่ลงบัญชี)
+    //   ⇒ รอบที่ n หลังรายการริบถูกกลับ n ครั้ง ใช้ event "FORFEIT:R<n>" (แบบเดียวกับ depositRepostEvent ของการรับเงินมัดจำ) ◂
+    const event = o.mode === "FORFEIT_KEEP_VAT" ? await forfeitEventOf(ctx, o.refId, db) : "ISSUE";
     if (await alreadyPosted(ctx, `AccountDocument#${o.refId}#${event}`, db)) return { skipped: true };
     const b = new Book(ctx, db);
     const gross = o.base + o.vat;
@@ -1497,6 +1509,11 @@ export async function reverseEntry(
       select: { id: true },
     });
     await db.accountJournalEntry.update({ where: { id: e.id }, data: { status: "REVERSED" } });
+    // ACC T3 (A2/A3) ▸ กลับรายการ "ริบมัดจำ (ไม่ออกใบลดหนี้)" = ใบรับมัดจำกลับมาหักต่อ/คืน/ริบใหม่ได้ + ป้ายสถานะตามจริง ◂
+    if (e.refType === "AccountDocument" && e.refId && e.idempotencyKey && (e.idempotencyKey === forfeitKeyPrefix(e.refId) || e.idempotencyKey.startsWith(`${forfeitKeyPrefix(e.refId)}:R`))) {
+      await recomputeDepositOutcomeInTx(db as Tx, ctx.systemId, e.refId);
+      await db.accountDocument.updateMany({ where: { id: e.refId, systemId: ctx.systemId, docType: "DEPOSIT_RECEIPT", status: "DEDUCTED" }, data: { status: "AWAITING_DEDUCT" } });
+    }
     return { entryId: created.id };
   });
 }

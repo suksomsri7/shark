@@ -90,9 +90,12 @@ try {
     const dp = await prisma.accountDocument.findUnique({ where: { id: tp.id } });
     chk("B2.2", "ออกใบเต็มรูปให้บุคคลได้ · มีเลขที่ · snapshot ไม่มีเลข/สาขา", ip.ok && dp?.status === "ISSUED" && !!dp.docNo && !(dp.contactSnapshot as Any)?.taxId, "ISSUED", { ip, s: dp?.status, sn: dp?.contactSnapshot });
     const m = wb.find((w) => w.code === "BUYER_TAX_ID_MISSING");
-    chk("B2.3", "ผู้ซื้อกิจการไม่มีเลข ⇒ BUYER_TAX_ID_MISSING (V · ack=false · อ้าง ฉ.39 ข้อ 7)", !!m && m.tag === "V" && m.ack === false && /ฉบับที่ 39/.test(m.citation), "มี", wb);
-    const ib = await acc.issueDocument(tid, S, tb.id);
-    chk("B2.4", "ผู้ซื้อกิจการไม่มีเลข ออกได้ (ไม่บล็อก)", ib.ok, "ok", ib);
+    // ORACLE-EDIT (ACC T3 Job A5 · คำสั่งผู้คุม 13 พ.ย.): ฝั่งบัญชีใช้กติกาเดียว — ผู้ซื้อ "กิจการ" ไม่มีเลข = ต้องกดยืนยัน (ack=true) ไม่ใช่แจ้งเฉย ๆ
+    //   (ใบกำกับที่ขาดเลขผู้ซื้อที่จด VAT ไม่ครบรายการ ฉ.39 ข้อ 7, 9) · บุคคลยังเงียบ (B2.1) · ไม่บล็อก = ยืนยันแล้วออกได้ (B2.4)
+    chk("B2.3", "ผู้ซื้อกิจการไม่มีเลข ⇒ BUYER_TAX_ID_MISSING (V · ต้องยืนยัน ack=true · อ้าง ฉ.39 ข้อ 7)", !!m && m.tag === "V" && m.ack === true && /ฉบับที่ 39/.test(m.citation), "มี", wb);
+    const ib0 = await acc.issueDocument(tid, S, tb.id);
+    const ib = await acc.issueDocument(tid, S, tb.id, { ack: { codes: ["BUYER_TAX_ID_MISSING"], actorId: owner.id, via: "qc" } });
+    chk("B2.4", "ผู้ซื้อกิจการไม่มีเลข: ไม่ยืนยัน = ขอยืนยัน · ยืนยันแล้วออกได้ (ไม่บล็อก)", !ib0.ok && ib0.legal?.warnings?.some((w: Any) => w.code === "BUYER_TAX_ID_MISSING") && ib.ok, "ack→ok", { ib0, ib });
   }
 
   console.log("\nB3 ปิดที่อยู่/เลขลูกค้าในเทมเพลต ไม่มีผลกับใบกำกับ:");

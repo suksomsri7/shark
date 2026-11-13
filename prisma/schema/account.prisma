@@ -173,6 +173,8 @@ model AccountDocument {
   // ค่า = "<form>:<periodKey>" เช่น "53:2026-09" (ยื่น ภ.ง.ด.53 งวด ก.ย. 69) · null = ยังไม่ยื่น
   // เขียนครั้งเดียวตอน markFiled (idempotent ต่อ (form, periodKey) — ดู wht.ts) · เอกสารชนิดอื่นไม่ใช้ฟิลด์นี้
   whtFiledPeriodKey String?
+  /// ACC T3 (A2) — ผลการคืน/ริบของใบรับ/จ่ายมัดจำ {refunded, forfeited, forfeitKeep} (สตางค์) · ค่าที่คำนวณจากใบลดหนี้/JV (deposit-outcome.ts) เก็บไว้ให้หน้ารายการไม่ต้อง query เพิ่ม · null = ไม่เคยคืน/ริบ
+  depositOutcome   Json?
   etaxStatus      AccountEtaxStatus     @default(NOT_SENT) // P4
   etaxMeta        Json? // P4: {providerId, xmlUrl, sentAt, error}
   pdfUrl          String?

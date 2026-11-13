@@ -180,3 +180,14 @@ export function stripSection864(legalText: string | null | undefined): string {
     .replace(/^\s*·\s*/g, "")
     .trim();
 }
+
+/**
+ * ACC T3 (A4) ▸ ป้ายสาขาของผู้ซื้อบนใบพิมพ์ — ผู้ซื้อไม่มีเลขผู้เสียภาษี = ไม่พิมพ์สาขา
+ *   (snapshot ของผู้ซื้อไม่มีเลข ตั้งรหัส 00000 ให้เอง ⇒ เดิมพิมพ์ "สำนักงานใหญ่" ให้ผู้บริโภค ซึ่งไม่จริง ·
+ *    สาขามีความหมายเฉพาะผู้ซื้อที่จด VAT — ประกาศ VAT ฉ.39 ข้อ 7, 9) ◂
+ */
+export function buyerBranchLabel(taxId: string | null | undefined, branchCode: string | null | undefined, branchName: string | null | undefined): string {
+  if ((taxId ?? "").replace(/\D/g, "").length === 0) return "";
+  const code = (branchCode ?? "").trim();
+  return (branchName ?? "").trim() || (code === "00000" ? "สำนักงานใหญ่" : code ? `สาขา ${code}` : "");
+}

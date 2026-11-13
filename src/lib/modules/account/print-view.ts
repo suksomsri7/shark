@@ -14,7 +14,7 @@ import { documentPaymentChannels } from "./doc-settings";
 import { EXP_DOC_LABEL } from "./expense";
 import { isGroupDocType } from "./group";
 import { buildPrintOptions } from "./print-options";
-import { dedupeNotes, realPaymentTerms, section864Text, stripSection864, taxInvoiceMissing } from "./print-shared";
+import { buyerBranchLabel, dedupeNotes, realPaymentTerms, section864Text, stripSection864, taxInvoiceMissing } from "./print-shared";
 import { DOC_LABEL, baht, getDocument, getSettings, orgDisplayName } from "./service";
 import { docVatRateGroups, vatSummaryRows } from "./totals";
 import { loadPrintNotes, stripReplacementNote } from "./print-notes"; // merge T2.7 × เลน 1 (T2.8/T2.2) ◂
@@ -86,7 +86,7 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
     name: str(snap?.name) || doc.contact?.name || "",
     taxId: str(snap?.taxId) || doc.contact?.taxId || "",
     address: str(snap?.address) || doc.contact?.address || "",
-    branch: buyerBranchName || (buyerBranchCode === "00000" ? "สำนักงานใหญ่" : buyerBranchCode ? `สาขา ${buyerBranchCode}` : ""),
+    branch: buyerBranchLabel(str(snap?.taxId) || doc.contact?.taxId || "", buyerBranchCode, buyerBranchName), // ACC T3 (A4) ◂
   };
   // ACC T2.9 ▸ ผู้ขาย + ข้อความท้ายใบ = ที่ตรึงไว้ตอนออก (sellerSnapshot) · ยังไม่ตรึง (ร่าง/ใบเก่า) = ค่าตั้งปัจจุบัน ◂
   const frozen = doc.status !== "DRAFT" ? readSellerSnapshot(doc.sellerSnapshot) : null;

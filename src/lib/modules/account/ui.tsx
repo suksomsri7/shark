@@ -41,11 +41,15 @@ export function accountTone(status: string): "muted" | "strong" | "danger" {
 export function StatusBadge({
   status,
   overdue,
+  label,
 }: {
   status: AccountDocStatus;
   overdue?: boolean;
+  /** ACC T3 (A2) ▸ ป้ายที่คำนวณแล้ว (เช่น "คืนมัดจำแล้ว") แทนป้ายสถานะ ◂ */
+  label?: string | null;
 }) {
   if (overdue) return <StatusChip value="พ้นกำหนด" tone="danger" />;
+  if (label) return <StatusChip value={label} tone="muted" />;
   return <StatusChip value={status} map={STATUS_LABEL} toneOf={accountTone} />;
 }
 

@@ -18,6 +18,8 @@ export async function requestTaxInvoiceAction(fd: FormData) {
     address: str(fd, "address") || null,
     phone: str(fd, "phone") || null,
     email: str(fd, "email") || null,
+    // ACC T3 (A5) ▸ ประเภทผู้ซื้อที่ลูกค้าเลือก ◂
+    legalType: str(fd, "legalType") === "COMPANY" ? "COMPANY" : str(fd, "legalType") === "PERSON" ? "PERSON" : null,
   });
   if (!res.ok) redirect(`/r/${encodeURIComponent(token)}?err=${encodeURIComponent(res.reason)}`);
   // R-D: บันทึกเป็นคำขอ (staff อนุมัติก่อนออกเลข) — ถ้าออกใบไปแล้วโชว์เลขเดิม

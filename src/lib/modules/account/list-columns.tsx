@@ -9,6 +9,7 @@ import { DateText } from "@/lib/ui/DateText";
 import type { DocColumn } from "@/components/account-v2/DocTable";
 import { STATUS_LABEL, isOverdue } from "./service";
 import { accountTone } from "./ui";
+import { depositOutcomeLabel } from "./deposit-outcome";
 
 export type ListRow = {
   id: string;
@@ -24,6 +25,9 @@ export type ListRow = {
   status: AccountDocStatus;
   contact: { id: string; name: string } | null;
   payments?: { channel: AccountPayChannel }[];
+  /** ACC T3 (A2) ▸ ใบรับ/จ่ายมัดจำที่คืน/ริบแล้ว — ป้ายตามจริงแทน "หักมัดจำแล้ว" (deposit-outcome.ts) ◂ */
+  docType?: string;
+  depositOutcome?: unknown;
 };
 
 // f3 mockup ใช้ป้ายสั้นกว่า STATUS_LABEL กลาง (ซึ่งหลายที่อื่นในแอปยังใช้ "รอชำระเงิน"/"ชำระเงินแล้ว" อยู่ —
@@ -45,12 +49,16 @@ export const PAY_CHANNEL_LABEL: Record<AccountPayChannel, string> = {
   OTHER: "อื่น ๆ",
 };
 
-export function rowStatusLabel(status: AccountDocStatus): string {
-  return ROW_STATUS_LABEL[status] ?? STATUS_LABEL[status];
+export function rowStatusLabel(status: AccountDocStatus, row?: { docType?: string; grandTotal: number; depositOutcome?: unknown }): string {
+  const dep = row?.docType ? depositOutcomeLabel({ docType: row.docType, status, grandTotal: row.grandTotal, depositOutcome: row.depositOutcome }) : null;
+  return dep ?? ROW_STATUS_LABEL[status] ?? STATUS_LABEL[status];
 }
 
 export function StatusCell({ row }: { row: ListRow }) {
   if (isOverdue(row)) return <StatusChip value="พ้นกำหนด" tone="danger" />;
+  // ACC T3 (A2) ▸ คืน/ริบมัดจำแล้ว — ป้ายตามจริง (ไม่ใช่ "หักมัดจำแล้ว"/"ยกเลิก") ◂
+  const dep = row.docType ? depositOutcomeLabel({ docType: row.docType, status: row.status, grandTotal: row.grandTotal, depositOutcome: row.depositOutcome }) : null;
+  if (dep) return <StatusChip value={dep} tone="muted" />;
   return <StatusChip value={row.status} map={ROW_STATUS_LABEL_FULL()} toneOf={accountTone} />;
 }
 // StatusChip เตือน console.warn เมื่อ value ไม่อยู่ใน map — ต้องส่ง map ครบทุก enum (ผสาน override เข้ากับ STATUS_LABEL เต็ม)

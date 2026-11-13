@@ -507,6 +507,7 @@ const documentsDepositSettlement = defineOp({
       creditNoteOnRefund: !!p.taxInvoiceNo,
       forfeitMode: p.forfeitMode,
       forfeited: p.forfeited,
+      settlement: p.settlement, // ACC T3 (A2) ▸ คืน/ริบไปแล้วเท่าไร (null = ยังไม่เคย) ◂
       refundWarnings: wv(p.refundWarnings),
       forfeitWarnings: wv(p.forfeitWarnings),
     };

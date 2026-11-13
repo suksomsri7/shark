@@ -50,8 +50,22 @@ export function taxInvoiceBuyerWarnings(b: TaxInvoiceBuyerCheck): LegalWarning[]
   const out: LegalWarning[] = [];
   if (blank(b.name)) out.push(legalWarning("TAX_INVOICE_BUYER_NAME_MISSING"));
   if (blank(b.address)) out.push(legalWarning("TAX_INVOICE_BUYER_ADDRESS_MISSING", b.name ? { name: b.name.trim() } : {}));
-  if (b.business === true && noTaxId(b.taxId)) out.push(legalWarning("BUYER_TAX_ID_MISSING"));
+  const w = buyerTaxIdMissingWarning(b);
+  if (w) out.push(w);
   return out;
+}
+
+/**
+ * ACC T3 (A5) ▸ กติกาเดียวของฝั่งบัญชีสำหรับ BUYER_TAX_ID_MISSING (ฟอร์ม · อนุมัติคำขอจากลิงก์สาธารณะ · REST · AI ผ่านตัวนี้ทั้งหมด)
+ *   ผู้ซื้อเป็นกิจการ (นิติบุคคล/ผู้จด VAT) ไม่มีเลข = ต้องกดยืนยัน (ใบกำกับที่ขาดเลขผู้ซื้อที่จด VAT ไม่ครบรายการ — ฉ.39 ข้อ 7, 9 [V])
+ *   ผู้ซื้อบุคคลธรรมดาไม่มีเลข = เงียบ (ผู้ซื้อทั่วไปไม่ต้องมีเลข) · ไม่รู้ประเภท (ไม่มีผู้ติดต่อ/snapshot ไม่บอก) = แจ้งให้ทราบ ไม่ต้องยืนยัน
+ *   ทะเบียนกลางตั้ง ack:false — ยกเป็นต้องยืนยันที่นี่ที่เดียว (แบบเดียวกับฝั่ง POS/โรงแรม T2.11 buyerTaxIdWarnings) ◂
+ */
+export function buyerTaxIdMissingWarning(b: { taxId?: string | null; business?: boolean | null }): LegalWarning | null {
+  if (!noTaxId(b.taxId)) return null;
+  if (b.business === false) return null;
+  const w = legalWarning("BUYER_TAX_ID_MISSING");
+  return b.business === true ? { ...w, ack: true } : w;
 }
 
 /** คำเตือนตอนออกเอกสาร (ขาย/ซื้อ) — pure */

@@ -10,6 +10,7 @@
 // 🔴 ไม่ import prisma ตรง (fitness F5.1) — อ่านผ่าน service ของบัญชี
 
 import type { AccountDocType } from "@prisma/client";
+import { buyerBranchLabel } from "./print-shared";
 import { getPublicBranding } from "@/lib/branding/service";
 import { formatThaiDateLong } from "@/lib/ui/date";
 import { documentPaymentChannels, type DocChannelView } from "./doc-settings";
@@ -85,7 +86,7 @@ export async function loadPublicDocument(token: string): Promise<PublicDocView |
       name: maskLongNumbers(str(snap?.name) || doc.contact?.name || ""),
       address: maskLongNumbers(str(snap?.address) || doc.contact?.address || ""),
       taxIdMasked: maskTaxIdPublic(str(snap?.taxId) || doc.contact?.taxId || ""),
-      branch: buyerBranchName || (buyerBranchCode === "00000" ? "สำนักงานใหญ่" : buyerBranchCode ? `สาขา ${buyerBranchCode}` : ""),
+      branch: buyerBranchLabel(str(snap?.taxId) || doc.contact?.taxId || "", buyerBranchCode, buyerBranchName), // ACC T3 (A4) ◂
     },
     lines: doc.lines.map((l) => ({ description: l.description, qty: String(Number(l.qty)), unitName: l.unitName ?? "", unitPrice: l.unitPrice, vatRateBp: l.vatRateBp, amount: l.amount })),
     subTotal: doc.subTotal,

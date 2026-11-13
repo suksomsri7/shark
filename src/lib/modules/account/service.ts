@@ -5,7 +5,7 @@ import { recordLegalAckInTx } from "@/lib/core/legal-ack";
 import { legalAmbient } from "@/lib/core/legal-ambient";
 import { accountNow } from "./clock";
 import { freezeUnsnappedDocs, sellerSnapshotOf, snapshotSettingsFromRow } from "./seller-snapshot"; // ACC T2.9 ◂
-import { issueLegalWarnings, legalAckResult, legalGateInTx, saleWithoutVatWarnings } from "./legal-gate";
+import { buyerTaxIdMissingWarning, issueLegalWarnings, legalAckResult, legalGateInTx, saleWithoutVatWarnings, taxInvoiceBuyerOf } from "./legal-gate";
 import { ambientLegalGateInTx, pndCertGuardInTx } from "./filed-guard";
 import { isLegalAckRequiredError, legalWarning, unacknowledged, type LegalAck, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 
@@ -104,6 +104,8 @@ import {
 } from "./gl";
 // WO 1.4: เอกสารภาษีถูกหัก ณ ที่จ่าย ฝั่งขาย (WTI) — ออกอัตโนมัติตอนรับชำระที่ลูกค้าหักภาษี
 import { issueWhtCreditCert } from "./wht";
+import { liveForfeitKeepCount, recomputeDepositOutcomeInTx } from "./deposit-outcome-db"; // ACC T3 (A2/A3) ◂
+import { depositSettlementView } from "./deposit-outcome";
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คของงวดในชุดใบวางบิล/ใบรวมจ่าย (ผูกไว้ที่งวดแรกของชุด) — leaf module ไม่ import วน ◂
 import { chequeIdsHoldingPayments, groupBatchPayments } from "./group-batch";
 // WO 1.1: แหล่งเดียวของแมป flyout tab → สถานะ (ร่วมกับ LIST_TABS ของหน้ารายการ V2)
@@ -2510,9 +2512,11 @@ export async function issueDocumentInTx(
       //   ไม่บล็อกใบแจ้งหนี้เพราะใบกำกับ: คำเตือนของใบกำกับที่ยังไม่ได้ยืนยัน ⇒ ออกใบแจ้งหนี้ตามปกติ แต่ไม่ออกใบกำกับพร้อมกัน
       //   (VAT สินค้าพักไว้ → รายการภาษีขายค้างพัก/คำเตือนข้ามเดือน · หน้าเอกสารร่างแสดงคำเตือนนี้ให้ติ๊กยืนยันล่วงหน้าได้) ◂
       let together = taxInvoiceTogetherPlan(doc, settings);
-      const tiWarnings = together ? issueLegalWarnings({ docType: "TAX_INVOICE", vatAmount: together.vat }, settings).filter((w) => w.code !== "TAX_INVOICE_NOT_VAT_REGISTERED") : [];
+      // ACC T3 (A5) ▸ ผู้ซื้อของใบกำกับ (snapshot → ผู้ติดต่อ) เข้าด่านเดียวกัน — กิจการไม่มีเลข = ต้องยืนยัน · บุคคล = เงียบ (buyerTaxIdMissingWarning) ◂
+      const tiBuyer = taxInvoiceBuyerOf(doc.contactSnapshot, doc.contact);
+      const tiWarnings = together ? issueLegalWarnings({ docType: "TAX_INVOICE", vatAmount: together.vat, buyer: tiBuyer }, settings).filter((w) => w.code !== "TAX_INVOICE_NOT_VAT_REGISTERED") : [];
       if (together && unacknowledged(tiWarnings, opts.ack?.codes).length > 0) together = null;
-      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, settings).concat(together ? tiWarnings : []), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
+      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc.docType === "TAX_INVOICE" ? { ...doc, buyer: tiBuyer } : doc, settings).concat(together ? tiWarnings : []), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
       // ACC T1.9 ▸ สมุดจด VAT ออกเอกสารขายไม่มี VAT = คำเตือน+ยืนยัน (จอ/REST/AI) · งานเบื้องหลังไม่บล็อก (ขึ้นรายงานรายได้ไม่มี VAT) ◂
       await ambientLegalGateInTx(tx, { tenantId, systemId }, saleWithoutVatWarnings(doc, settings), { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
       // SVC D.3 ▸ (T7) ใบกำกับจากใบแจ้งหนี้หอ (source DORM) ที่มาจากรอบบิล/มีรายการยกเว้น-ไม่มี VAT ⇒ ปฏิเสธ
@@ -4263,12 +4267,14 @@ async function depositCreditNoteInTx(
   await postDepositSettlement(ctx, { mode: refund ? "REFUND" : "FORFEIT_CN", refId: cn.id, depositId: dep.id, date: o.date, base: p.base, vat: p.vat, memo: `${what} — ใบลดหนี้ (ใบรับมัดจำ ${dep.docNo ?? "-"})` }, tx);
   const left = await depositAvailable(tx, systemId, dep.id);
   if (left <= 0) await tx.accountDocument.update({ where: { id: dep.id }, data: { status: "DEDUCTED" } });
+  await recomputeDepositOutcomeInTx(tx, systemId, dep.id); // ACC T3 (A2) ◂
   return { cnId: cn.id, ...p };
 }
 
 /** ACC T2.4 ▸ ริบมัดจำไปแล้วหรือยัง (แบบไม่ออกใบลดหนี้ = JV event FORFEIT ของใบรับมัดจำที่ยังมีผล) */
 async function depositForfeitedInTx(tx: Prisma.TransactionClient, systemId: string, depositId: string): Promise<boolean> {
-  return (await tx.accountJournalEntry.count({ where: { systemId, refType: "AccountDocument", refId: depositId, idempotencyKey: `AccountDocument#${depositId}#FORFEIT`, status: "POSTED", reversalOfId: null } })) > 0; // คีย์เดียวกับ alreadyPosted ของ postDepositSettlement
+  // ACC T3 (A3) ▸ คีย์ FORFEIT หรือ FORFEIT:R<n> (ริบใหม่หลังกลับรายการ) ที่ยังมีผล ◂
+  return (await liveForfeitKeepCount(tx, systemId, depositId)) > 0;
 }
 
 /**
@@ -4330,6 +4336,7 @@ export async function refundDeposit(
         where: { systemId, docType: "TAX_INVOICE", sourceDocId: id, status: { notIn: ["VOIDED", "CANCELLED"] } },
         data: { status: "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามการคืนเงินมัดจำ: ${reason}` },
       });
+      await recomputeDepositOutcomeInTx(tx, systemId, id, { refundVoided: amount }); // ACC T3 (A2) ▸ ใบที่คืนแบบยกเลิก = "คืนมัดจำแล้ว" ไม่ใช่ "ยกเลิก" ◂
       await finalizeDocNos(tx);
       return { refunded: amount };
     });
@@ -4345,8 +4352,8 @@ export async function depositSettlePreview(
   tenantId: string,
   systemId: string,
   id: string,
-): Promise<{ taxInvoiceNo: string | null; gross: number; vat: number; base: number; forfeitMode: "KEEP_VAT" | "CREDIT_NOTE"; forfeited: boolean; refundWarnings: LegalWarning[]; forfeitWarnings: LegalWarning[] } | null> {
-  const doc = await prisma.accountDocument.findFirst({ where: { id, tenantId, systemId }, select: { id: true, docType: true, status: true, grandTotal: true, vatAmount: true } });
+): Promise<{ taxInvoiceNo: string | null; gross: number; vat: number; base: number; forfeitMode: "KEEP_VAT" | "CREDIT_NOTE"; forfeited: boolean; settlement: { kind: string; partial: boolean; refundedSatang: number; forfeitedSatang: number; label: string } | null; refundWarnings: LegalWarning[]; forfeitWarnings: LegalWarning[] } | null> {
+  const doc = await prisma.accountDocument.findFirst({ where: { id, tenantId, systemId }, select: { id: true, docType: true, status: true, grandTotal: true, vatAmount: true, depositOutcome: true } });
   if (!doc || doc.docType !== "DEPOSIT_RECEIPT") return null;
   const tx = prisma as unknown as Prisma.TransactionClient;
   const ti = doc.status === "AWAITING_DEDUCT" || doc.status === "DEDUCTED" ? await liveDepositTaxInvoiceInTx(tx, systemId, id) : null;
@@ -4359,6 +4366,7 @@ export async function depositSettlePreview(
     ...p,
     forfeitMode: mode,
     forfeited: await depositForfeitedInTx(tx, systemId, id),
+    settlement: (() => { const v = depositSettlementView(doc); return v ? { kind: v.kind, partial: v.partial, refundedSatang: v.refundedSatang, forfeitedSatang: v.forfeitedSatang, label: v.labelTh } : null; })(),
     refundWarnings: ti ? [legalWarning("DEPOSIT_REFUND_CREDIT_NOTE", params)] : [],
     forfeitWarnings: ti && p.vat > 0 ? [legalWarning("DEPOSIT_FORFEIT_VAT", params)] : [],
   };
@@ -4401,6 +4409,7 @@ export async function forfeitDeposit(
       // ไม่ออกใบลดหนี้: VAT ของมัดจำคงอยู่ใน 2200 · ฐานที่ค้างใน 2110 → รายได้อื่น (JV event FORFEIT ของใบรับมัดจำ — ยกเลิกใบรับมัดจำ = กลับพร้อมกัน)
       await postDepositSettlement({ tenantId, systemId }, { mode: "FORFEIT_KEEP_VAT", refId: id, depositId: id, date, base: p.base, vat: p.vat, memo: `ริบเงินมัดจำ ใบรับมัดจำ ${doc.docNo ?? "-"} — ${reason}` }, tx);
       await tx.accountDocument.update({ where: { id }, data: { status: "DEDUCTED", internalNote: [doc.internalNote, `ริบเงินมัดจำ ฿${satangTxt(p.gross)} เมื่อ ${thDate(date)} — ${reason}${p.vat > 0 ? ` · ไม่ออกใบลดหนี้: รายได้อื่น ฿${satangTxt(p.base)} · ภาษีขาย ฿${satangTxt(p.vat)} คงไว้` : ""}`].filter(Boolean).join("\n") } });
+      await recomputeDepositOutcomeInTx(tx, systemId, id, { keepGross: p.gross }); // ACC T3 (A2) ◂
       await finalizeDocNos(tx);
       return { forfeited: p.gross, warnings: ti && p.vat > 0 ? [legalWarning("DEPOSIT_FORFEIT_VAT", params(p))] : [] };
     });
@@ -4851,7 +4860,10 @@ export async function voidDocument(
       // round 11 · R10-7 (a): เอกสารที่หักมัดจำถูกยกเลิก ⇒ คืนสถานะใบมัดจำในธุรกรรมเดียวกัน
       if (doc.docType === "INVOICE" || doc.docType === "RECEIPT") await releaseDepositDeductionsInTx(tx, tenantId, systemId, id);
       // ACC T2.4 ▸ ยกเลิกใบลดหนี้ของการคืน/ริบมัดจำ ⇒ ยอดมัดจำกลับมาหักได้ (JV ของใบลดหนี้ถูกกลับข้างบนแล้ว) ◂
-      if (doc.docType === "CREDIT_NOTE" && (doc.refType === "DepositRefund" || doc.refType === "DepositForfeit")) await releaseDepositDeductionsInTx(tx, tenantId, systemId, id);
+      if (doc.docType === "CREDIT_NOTE" && (doc.refType === "DepositRefund" || doc.refType === "DepositForfeit")) {
+        await releaseDepositDeductionsInTx(tx, tenantId, systemId, id);
+        if (doc.refId) await recomputeDepositOutcomeInTx(tx, systemId, doc.refId); // ACC T3 (A2) ▸ ป้ายคืน/ริบตามจริงหลังยกเลิกใบลดหนี้ ◂
+      }
       // ACC T2.4 ▸ ยกเลิกใบรับมัดจำ ⇒ ใบกำกับของเงินมัดจำที่ยังค้างมีผล (ออกเอง/ออกตอนรับบางส่วน) ยกเลิกตาม + กลับ JV (ถ้ามี) — ไม่ทิ้งใบกำกับลอย ◂
       if (wasIssued && doc.docType === "DEPOSIT_RECEIPT") {
         const tis = await tx.accountDocument.findMany({
@@ -5182,14 +5194,17 @@ export async function getPublicTaxContext(token: string): Promise<{
  */
 export async function issuePublicTaxInvoice(
   token: string,
-  buyer: { name: string; taxId: string; branchCode?: string | null; address?: string | null; phone?: string | null; email?: string | null },
+  buyer: { name: string; taxId: string; branchCode?: string | null; address?: string | null; phone?: string | null; email?: string | null; /** ACC T3 (A5) ▸ ผู้ซื้อเป็น กิจการ (COMPANY) / บุคคลทั่วไป (PERSON) · ไม่ส่ง = ไม่ทราบ ◂ */ legalType?: "PERSON" | "COMPANY" | null },
 ): Promise<{ ok: true; requested: boolean; docNo: string | null; warnings: LegalWarning[] } | { ok: false; reason: string }> {
   const name = buyer.name.trim();
   const taxId = normalizeTaxId(buyer.taxId);
   if (!name) return { ok: false, reason: "กรุณากรอกชื่อผู้ซื้อ" };
   // T0.4 ▸ B2: เลขผู้ซื้อบังคับเฉพาะผู้ซื้อที่จด VAT (ฉ.39 ข้อ 7) ⇒ เว้นว่างได้ + คำเตือน BUYER_TAX_ID_MISSING (ผู้อนุมัติเห็นบนคำขอ)
   //   กรอกมาแต่หลักตรวจผิด = ยังปฏิเสธ (กันพิมพ์ผิด — ไม่ใช่เหตุผลกฎหมาย) ◂
-  const warnings: LegalWarning[] = taxId ? [] : [legalWarning("BUYER_TAX_ID_MISSING")];
+  // ACC T3 (A5) ▸ กติกาเดียว (buyerTaxIdMissingWarning): บุคคลทั่วไป = เงียบ · กิจการ = ต้องยืนยันตอนอนุมัติ (ลูกค้าเห็นเป็นข้อความแจ้ง) ◂
+  const buyerKind = buyer.legalType === "PERSON" || buyer.legalType === "COMPANY" ? buyer.legalType : null;
+  const bw = buyerTaxIdMissingWarning({ taxId, business: buyerKind === null ? null : buyerKind === "COMPANY" });
+  const warnings: LegalWarning[] = bw ? [{ ...bw, ack: false }] : [];
   if (taxId && !isValidThaiTaxId(taxId))
     return { ok: false, reason: "เลขประจำตัวผู้เสียภาษีไม่ถูกต้อง (ต้องเป็นตัวเลข 13 หลักและหลักตรวจสอบถูกต้อง) — ผู้ซื้อทั่วไปเว้นว่างได้" };
 
@@ -5244,8 +5259,10 @@ export async function issuePublicTaxInvoice(
       name,
       taxId: taxId || null,
       // ผู้ขอใบกำกับผ่านลิงก์ที่มีเลข 13 หลัก = นิติบุคคล/บุคคลที่มีเลข (freeze M4) · ไม่มีเลข (T0.4) = ผู้ซื้อทั่วไป
-      legalType: taxId ? "COMPANY" : "PERSON",
-      branchCode: buyer.branchCode?.trim() || "00000",
+      // ACC T3 (A5) ▸ ผู้ซื้อเลือกประเภทเองบนฟอร์ม (กิจการไม่มีเลข = ผู้อนุมัติต้องกดยืนยัน) · ไม่เลือก = ตามเลข (เดิม) ◂
+      legalType: buyerKind ?? (taxId ? "COMPANY" : "PERSON"),
+      // ACC T3 (A4) ▸ ไม่มีเลข = ไม่มีสาขา (เดิมตั้ง 00000 ⇒ ใบพิมพ์ขึ้น "สำนักงานใหญ่" ให้ผู้บริโภค) ◂
+      branchCode: taxId ? buyer.branchCode?.trim() || "00000" : null,
       branchName: null,
       address: buyer.address?.trim() || null,
       phone: buyer.phone?.trim() || null,
