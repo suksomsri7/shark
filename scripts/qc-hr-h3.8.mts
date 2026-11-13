@@ -239,7 +239,10 @@ function runStatic(): void {
   }
   {
     const src = [F.ui, F.pMeSlip, F.pMePay, F.pGateSlip, F.pPayroll].map((f) => rd(f)).join("\n");
-    const ids = new Set([...testidsOf(src, "hr-slip"), ...testidsOf(src, "hr-salarycert")]);
+    // ORACLE-EDIT (H3.8 builder · S1.12): testidsOf(src, prefix) needs ≥ 1 character after the prefix, so the two bare region ids "hr-slip" /
+    //   "hr-salarycert" could never be found (check unpassable by construction) ⇒ the bare ids are taken only from exact data-testid="…" attributes ◂
+    const bare = [...src.matchAll(/data-testid="(hr-slip|hr-salarycert)"/g)].map((m) => m[1]!);
+    const ids = new Set([...testidsOf(src, "hr-slip"), ...testidsOf(src, "hr-salarycert"), ...bare]);
     const miss = TESTIDS.filter((t) => !ids.has(t));
     const rows = ((jsonOf(F.inv)?.rows ?? []) as Any[]).filter((r) => r.wo === "H3.8");
     const rowIds = new Set(rows.map((r) => String(r.testid)));
