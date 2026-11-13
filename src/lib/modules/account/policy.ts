@@ -405,11 +405,22 @@ export function parsePolicy(row: PolicyRow | null | undefined, vatRateBp: number
 
 /** นโยบายของระบบบัญชีนี้ (ร้านที่ยังไม่มีแถวตั้งค่า = ค่าเริ่มต้น ไม่ 500) */
 export async function getPolicy(ctx: Ctx): Promise<AccountPolicy> {
-  const row = await dbOf(ctx).accountSettings.findFirst({
-    where: { systemId: ctx.systemId },
-    select: POLICY_SELECT,
-  });
-  return parsePolicy(row as PolicyRow | null, await vatRateBpAt(ctx, accountNow()));
+  return (await getPolicyWithDocConfig(ctx)).policy;
+}
+
+/**
+ * ACC T2 (งบ query) ▸ นโยบาย + docConfig ดิบของแถวเดียวกัน — หน้าตั้งค่านโยบายใช้ docConfig อ่านนิยามลูกค้าประจำ
+ * โดยไม่อ่านแถว AccountSettings ซ้ำ (POLICY_SELECT มี docConfig อยู่แล้ว) ◂
+ */
+export async function getPolicyWithDocConfig(ctx: Ctx): Promise<{ policy: AccountPolicy; docConfig: unknown }> {
+  const [row, vatRateBp] = await Promise.all([
+    dbOf(ctx).accountSettings.findFirst({
+      where: { systemId: ctx.systemId },
+      select: POLICY_SELECT,
+    }),
+    vatRateBpAt(ctx, accountNow()),
+  ]);
+  return { policy: parsePolicy(row as PolicyRow | null, vatRateBp), docConfig: row?.docConfig ?? null };
 }
 
 /**

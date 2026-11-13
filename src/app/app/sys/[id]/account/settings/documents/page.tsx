@@ -5,7 +5,6 @@ import { listLedgers } from "@/lib/modules/account/coa";
 import {
   docNumberingRows,
   documentPaymentChannels,
-  getDocSettings,
   listDocTags,
   listDocTypeAccounts,
 } from "@/lib/modules/account/doc-settings";
@@ -52,12 +51,15 @@ export default async function AccountDocSettingsPage({
   const sub = hasSub ? subRaw! : DEFAULT_DOC_SUB;
   const now = new Date();
 
+  // ACC T2 (งบ query) ▸ ตั้งค่าเอกสารมาจากแถวเดียวกับ getSettings (doc = parse เดียวกับ getDocSettings) — อ่านแถวครั้งเดียว ◂
+  const settingsP = getSettings(tenantId, systemId);
+  const docSettingsP = settingsP.then((s) => s.doc);
   const [settings, docSettings, rows, tags, channels, ledgers, accounts, sampleDoc] = await Promise.all([
-    getSettings(tenantId, systemId),
-    getDocSettings(ctx),
-    docNumberingRows(ctx, labelOf, now),
+    settingsP,
+    docSettingsP,
+    docNumberingRows(ctx, labelOf, now, settingsP),
     listDocTags(ctx, { withUsage: true }),
-    documentPaymentChannels(ctx),
+    documentPaymentChannels(ctx, docSettingsP),
     listLedgers(ctx),
     listDocTypeAccounts(ctx),
     // เอกสารตัวอย่างของปุ่ม "ดูตัวอย่าง" — ใบล่าสุดที่ออกแล้ว (พรีวิวต้องเป็นกระดาษจริง ไม่ใช่ภาพที่วาดเอง)

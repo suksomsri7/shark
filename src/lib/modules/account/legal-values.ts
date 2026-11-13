@@ -12,6 +12,7 @@
 // 🔴 ไม่มีแคชข้ามคำขอ (กติกาเครื่องยนต์ CC §1.4) — ลูปใหญ่ให้โหลด `loadBookLegal` ครั้งเดียวแล้วใช้ตัว *From
 // design note: ledger/wo-notes/T0.1-T0.2.md
 // ─────────────────────────────────────────────────────────────
+import { cache } from "react";
 import { accountNow } from "./clock";
 import { randomUUID } from "node:crypto";
 import { resolveBookSettings, setSettings, type SetResult, type SettingsActor } from "@/lib/core/settings";
@@ -89,6 +90,14 @@ export async function loadBookLegal(ctx: BookCtx): Promise<BookLegal> {
     },
   };
 }
+
+/**
+ * ACC T2 (งบ query) ▸ ตัวโหลดเดียวกันแบบ memo **ต่อคำขอ** (React `cache` — ขอบเขต = การเรนเดอร์ Server Component หนึ่งรอบ
+ * ตามเอกสาร Next "caching-without-cache-components" · นอกการเรนเดอร์ (สคริปต์ · งานเบื้องหลัง) = เรียกตรงทุกครั้ง)
+ * คีย์ = (tenantId, systemId) สตริง ⇒ ข้ามร้าน/ข้ามสมุดไม่ได้ · ข้ามคำขอไม่ได้ (ไม่มีแคชระดับโมดูล — กติกา CC §1.4 ยังจริง)
+ * ใช้เฉพาะเส้นทางอ่าน (getSettings) — เส้นทางเขียน/ธุรกรรมเรียก `loadBookLegal` ตรงเสมอ ◂
+ */
+export const loadBookLegalForRequest = cache((tenantId: string, systemId: string): Promise<BookLegal> => loadBookLegal({ tenantId, systemId }));
 
 /** วันตามปฏิทินไทย (Asia/Bangkok) ของเวลาหนึ่ง → "YYYY-MM-DD" */
 export function bkkYmd(d: Date): string {

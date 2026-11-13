@@ -1,8 +1,8 @@
 import { requireAccountPage } from "@/lib/modules/account/guard";
 import { listLedgers } from "@/lib/modules/account/coa";
 import { WHT_INCOME_LABEL } from "@/lib/modules/account/wht";
-import { getRegularCustomerRule, regularCustomerContactIds } from "@/lib/modules/account/contacts-list";
-import { fiscalYearOf, getPolicy } from "@/lib/modules/account/policy";
+import { regularCustomerContactIds, regularCustomerRuleOf } from "@/lib/modules/account/contacts-list";
+import { fiscalYearOf, getPolicyWithDocConfig } from "@/lib/modules/account/policy";
 import {
   DEFAULT_POLICY_SUB,
   POLICY_SETTINGS_SUBS,
@@ -39,13 +39,13 @@ export default async function AccountPolicySettingsPage({
   const hasSub = !!subRaw && POLICY_SETTINGS_SUBS.some((x) => x.key === subRaw);
   const sub = hasSub ? subRaw! : DEFAULT_POLICY_SUB;
 
-  const [policy, ledgers] = await Promise.all([getPolicy(ctx), listLedgers(ctx)]);
+  const [{ policy, docConfig }, ledgers] = await Promise.all([getPolicyWithDocConfig(ctx), listLedgers(ctx)]);
 
   // "ลูกค้าประจำ" — โชว์จำนวนรายที่เข้าเกณฑ์ปัจจุบัน (ตัวเลขจริงจากข้อมูล ไม่ใช่คำอธิบายลอย ๆ)
   // อ่านเฉพาะตอนเปิดหัวข้อนี้ (query หนักกว่าหัวข้ออื่น — ไม่ควรจ่ายทุกครั้งที่เข้าหน้า)
   let regularCount = 0;
   if (sub === "regular") {
-    const rule = await getRegularCustomerRule(ctx);
+    const rule = regularCustomerRuleOf(docConfig); // แถวเดียวกับนโยบาย — ไม่อ่านซ้ำ
     regularCount = (await regularCustomerContactIds(ctx, rule)).size;
   }
 

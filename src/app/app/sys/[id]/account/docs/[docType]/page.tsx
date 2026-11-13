@@ -188,6 +188,7 @@ export default async function DocTypeListPage({
       page,
       pageSize,
       sort: sp.sort === "docNo" || sp.sort === "amount" || sp.sort === "issueDate" ? sp.sort : "issueDate",
+      skipStatusCounts: true, // แท็บนับด้วย computeListTabCounts ด้านล่าง (ตัวกรองเดียวกัน)
     }),
     computeListTabCounts(tenantId, systemId, dt, tabDefs, {
       q: q || undefined,

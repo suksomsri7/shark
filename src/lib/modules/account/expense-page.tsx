@@ -159,6 +159,7 @@ export async function ExpenseListPage(props: {
       page,
       pageSize,
       sort: sp.sort === "docNo" || sp.sort === "amount" || sp.sort === "issueDate" ? sp.sort : "issueDate",
+      skipStatusCounts: true, // แท็บนับด้วย computeListTabCounts ด้านล่าง (ตัวกรองเดียวกัน)
     }),
     computeListTabCounts(tenantId, systemId, docType, tabDefs, {
       q: q || undefined,

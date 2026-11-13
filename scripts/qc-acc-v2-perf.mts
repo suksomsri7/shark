@@ -193,22 +193,24 @@ const CASES: Case[] = [
     kind: "overview",
     budget: 9,
     budgetWhy: "loadOverview 8 + getSettings 1 — ฝั่งค่าใช้จ่ายอยู่ที่ 8 พอดี ต่างกันที่ฝั่งรายได้ต้อง resolve ชื่อผู้ติดต่ออันดับต้น",
-    fns: "overview.loadOverview(revenue) + service.getSettings",
+    fns: "overview.loadOverview(revenue) + service.getSettingsLite",
     run: async () => {
       await Promise.all([
         overview.loadOverview(ctx, "revenue", {}, { now: NOW, base: BASE }),
-        svc.getSettings(ctx.tenantId, ctx.systemId),
+        // ORACLE-EDIT (ACC T2 lane 1): หน้าจริงอ่านแค่ getSettingsLite (เมนูสร้างเอกสาร) แทน getSettings ทั้งก้อน
+        svc.getSettingsLite(ctx.tenantId, ctx.systemId),
       ]);
     },
   },
   {
     name: "ภาพรวมค่าใช้จ่าย (/overview/expense)",
     kind: "overview",
-    fns: "overview.loadOverview(expense) + service.getSettings",
+    fns: "overview.loadOverview(expense) + service.getSettingsLite",
     run: async () => {
       await Promise.all([
         overview.loadOverview(ctx, "expense", {}, { now: NOW, base: BASE }),
-        svc.getSettings(ctx.tenantId, ctx.systemId),
+        // ORACLE-EDIT (ACC T2 lane 1): หน้าจริงอ่านแค่ getSettingsLite (เมนูสร้างเอกสาร) แทน getSettings ทั้งก้อน
+        svc.getSettingsLite(ctx.tenantId, ctx.systemId),
       ]);
     },
   },
@@ -220,9 +222,10 @@ const CASES: Case[] = [
     fns: "listDocumentsPaged + computeListTabCounts + listContacts + getSettings + sumOutstandingForFilter",
     paged: true,
     rowCount: () => prisma.accountDocument.count({ where: { systemId: ctx.systemId, docType: "INVOICE" } }),
+    // ORACLE-EDIT (ACC T2 lane 1): หน้าจริงส่ง skipStatusCounts (แท็บนับด้วย computeListTabCounts แล้ว) — เลียนแบบหน้า · งบเท่าเดิม
     run: async (pageSize) => {
       await Promise.all([
-        svc.listDocumentsPaged(ctx.tenantId, ctx.systemId, { docType: "INVOICE", page: 1, pageSize }),
+        svc.listDocumentsPaged(ctx.tenantId, ctx.systemId, { docType: "INVOICE", page: 1, pageSize, skipStatusCounts: true }),
         svc.computeListTabCounts(ctx.tenantId, ctx.systemId, "INVOICE", invoiceTabs),
         svc.listContacts(ctx.tenantId, ctx.systemId),
         svc.getSettings(ctx.tenantId, ctx.systemId),
@@ -238,9 +241,10 @@ const CASES: Case[] = [
     fns: "expense.listExpenseDocsPaged + computeListTabCounts + listContacts + getSettings + sumOutstandingForFilter",
     paged: true,
     rowCount: () => prisma.accountDocument.count({ where: { systemId: ctx.systemId, docType: "PURCHASE" } }),
+    // ORACLE-EDIT (ACC T2 lane 1): หน้าจริงส่ง skipStatusCounts — เลียนแบบหน้า · งบเท่าเดิม
     run: async (pageSize) => {
       await Promise.all([
-        expense.listExpenseDocsPaged(ctx.tenantId, ctx.systemId, { docType: "PURCHASE", page: 1, pageSize }),
+        expense.listExpenseDocsPaged(ctx.tenantId, ctx.systemId, { docType: "PURCHASE", page: 1, pageSize, skipStatusCounts: true }),
         svc.computeListTabCounts(ctx.tenantId, ctx.systemId, "PURCHASE", purchaseTabs),
         svc.listContacts(ctx.tenantId, ctx.systemId),
         svc.getSettings(ctx.tenantId, ctx.systemId),
@@ -455,13 +459,15 @@ const CASES: Case[] = [
     kind: "settings",
     budget: 7,
     budgetWhy: "หน้านี้อ่าน 6 แหล่งที่คนละตาราง (ตั้งค่า · ป้าย · ช่องทางชำระ · ผังบัญชี · mapping · เลขรันเอกสาร) — งบ 4 ทำไม่ได้จริง",
-    fns: "getSettings + getDocSettings + docNumberingRows + listDocTags + documentPaymentChannels + listLedgers + listDocTypeAccounts",
+    fns: "getSettings(.doc) + docNumberingRows + listDocTags + documentPaymentChannels + listLedgers + listDocTypeAccounts",
+    // ORACLE-EDIT (ACC T2 lane 1): เลียนแบบหน้าจริงหลังแก้ — ตั้งค่าเอกสารมาจาก getSettings().doc (แถวเดียวกัน)
+    //   ส่งต่อให้ documentPaymentChannels แทนการเรียก getDocSettings ซ้ำ · งบเท่าเดิม (7) ไม่ได้ขยับ
     run: async () => {
+      const settingsP = svc.getSettings(ctx.tenantId, ctx.systemId);
       await Promise.all([
-        svc.getSettings(ctx.tenantId, ctx.systemId),
-        docSettings.getDocSettings(ctx),
+        settingsP,
+        docSettings.documentPaymentChannels(ctx, settingsP.then((s) => s.doc)),
         docSettings.listDocTags(ctx),
-        docSettings.documentPaymentChannels(ctx),
         coa.listLedgers(ctx),
         docSettings.listDocTypeAccounts(ctx),
       ]);
@@ -470,14 +476,11 @@ const CASES: Case[] = [
   {
     name: "ตั้งค่านโยบาย (/settings/policy)",
     kind: "settings",
-    fns: "policy.getPolicy + coa.listLedgers + getRegularCustomerRule + regularCustomerContactIds",
+    fns: "policy.getPolicyWithDocConfig + coa.listLedgers + regularCustomerRuleOf + regularCustomerContactIds",
+    // ORACLE-EDIT (ACC T2 lane 1): เลียนแบบหน้าจริงหลังแก้ — นิยามลูกค้าประจำอ่านจาก docConfig ของแถวเดียวกับนโยบาย · งบเท่าเดิม (4)
     run: async () => {
-      const [, , rule] = await Promise.all([
-        policy.getPolicy(ctx),
-        coa.listLedgers(ctx),
-        contactsList.getRegularCustomerRule(ctx),
-      ]);
-      await contactsList.regularCustomerContactIds(ctx, rule);
+      const [{ docConfig }] = await Promise.all([policy.getPolicyWithDocConfig(ctx), coa.listLedgers(ctx)]);
+      await contactsList.regularCustomerContactIds(ctx, contactsList.regularCustomerRuleOf(docConfig));
     },
   },
   {

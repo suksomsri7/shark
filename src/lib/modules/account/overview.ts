@@ -19,6 +19,7 @@ import {
   type TopProductRow,
   type CategorySlice,
   type TrackedContactRow,
+  batchedContactNames,
 } from "./dashboard";
 
 // ─────────────────────────────────────────────────────────────
@@ -119,18 +120,20 @@ export async function loadOverview(
   const yearKeyRange = { fromKey: `${params.year}-01`, toKey: `${params.year}-12` };
 
   const meter: QueryMeter = { count: 0 };
+  // ACC T2 (งบ query) ▸ ชื่อผู้ติดต่อของ "ที่ติดตาม" + "ลูกค้า/ผู้ขายอันดับต้น" = คำสั่งเดียว (เดิม 2) ◂
+  const names = batchedContactNames(ctx, 2, meter);
 
   const [series, issued, tracked, sideLists] = await Promise.all([
     monthlyStatusSeries(ctx, side, params.year, meter),
     issuedByType(ctx, side, issuedRange, meter),
-    topTrackedContacts(ctx, side, 5, meter),
+    topTrackedContacts(ctx, side, 5, meter, names),
     side === "revenue"
       ? Promise.all([
           topProducts(ctx, yearRange, 5, meter),
-          topCustomers(ctx, yearRange, 5, meter),
+          topCustomers(ctx, yearRange, 5, meter, names),
           topIncomeCategories(ctx, yearKeyRange, 5, meter),
         ])
-      : Promise.all([topVendors(ctx, yearRange, 5, meter), topExpenseCategories(ctx, yearKeyRange, 5, meter)]),
+      : Promise.all([topVendors(ctx, yearRange, 5, meter, names), topExpenseCategories(ctx, yearKeyRange, 5, meter)]),
   ]);
 
   const common = {

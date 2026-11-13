@@ -381,7 +381,8 @@ export async function contactProfile(
     // [9..12] ตารางเอกสารทุกชนิด + ตัวกรอง (ใช้ listDocumentsPaged ตัวเดิม — WO นี้ขยายให้รับหลายชนิด)
     // listDocumentsPaged ยิง 4 SQL ในตัว (findMany + count + groupBy สถานะ + count พ้นกำหนด)
     // `slim` = ไม่ include contact/payments (รู้ผู้ติดต่ออยู่แล้ว) → ประหยัดอีก 2 SQL
-    bumpMeter(meter, 4);
+    // ACC T2 (งบ query) ▸ ตัวนับพ้นกำหนด (tabCounts.OVERDUE) ไม่ได้ใช้ในแท็บนี้ ⇒ ข้าม (เหลือ 3 SQL) ◂
+    bumpMeter(meter, 3);
     const paged = await listDocumentsPaged(ctx.tenantId, ctx.systemId, {
       docType: input.docType ?? undefined,
       contactId: c.id,
@@ -390,6 +391,7 @@ export async function contactProfile(
       pageSize: 10,
       sort: "issueDate",
       slim: true,
+      skipOverdueCount: true,
     });
     profile.docsTab = {
       rows: paged.rows.map((d) => toDocRow(d, asOf, docHref(d))),

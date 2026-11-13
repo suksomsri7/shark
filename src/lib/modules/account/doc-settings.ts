@@ -87,17 +87,27 @@ export async function docNumberingRows(
   ctx: SettingsCtx,
   labelOf: (dt: AccountDocType) => string,
   now: Date,
+  preloaded?: Promise<{ doc: DocSettings; branchCode: string | null }>,
 ): Promise<DocNumberingRow[]> {
   // WO 9.3: เดิมอ่านแถว AccountSettings 2 ครั้ง (getDocSettings 1 + branchCode อีก 1) ทั้งที่เป็นแถวเดียวกัน
   //         ⇒ รวมเป็น findFirst เดียวแล้วแยกใช้ (ผลลัพธ์เท่าเดิมเป๊ะ — parse ชุดเดียวกับ getDocSettings)
-  const row = await dbOf(ctx).accountSettings.findFirst({
-    where: { systemId: ctx.systemId },
-    select: { docConfig: true, defaultDueDays: true, defaultValidDays: true, branchCode: true },
-  });
-  const parsed = parseDocSettings(row?.docConfig ?? null);
-  const settings = row ? applyDueColumns(parsed, row) : parsed;
+  // ACC T2 (งบ query) ▸ หน้าที่อ่าน getSettings อยู่แล้วส่ง { doc, branchCode } มา — ไม่อ่านแถวซ้ำ ◂
+  let settings: DocSettings;
+  let branchRow: { branchCode: string | null } | null;
+  if (preloaded) {
+    const p = await preloaded;
+    settings = p.doc;
+    branchRow = { branchCode: p.branchCode };
+  } else {
+    const row = await dbOf(ctx).accountSettings.findFirst({
+      where: { systemId: ctx.systemId },
+      select: { docConfig: true, defaultDueDays: true, defaultValidDays: true, branchCode: true },
+    });
+    const parsed = parseDocSettings(row?.docConfig ?? null);
+    settings = row ? applyDueColumns(parsed, row) : parsed;
+    branchRow = row;
+  }
   const db = numberingDb(ctx);
-  const branchRow = row;
   const rows: DocNumberingRow[] = [];
   for (const docType of NUMBERED_DOC_TYPES) {
     const cfg = seqOf(settings, docType, branchRow?.branchCode ?? null);
@@ -405,9 +415,10 @@ export type DocChannelView = {
  * ช่องทางที่พิมพ์บนเอกสาร = ช่องทางที่ติ๊ก `showOnDocuments` (§10.1) เรียงตามลำดับที่ตั้งไว้ที่นี่
  * ช่องทางที่เพิ่งเพิ่มและยังไม่อยู่ในลำดับ → ต่อท้าย (ไม่หายไปเงียบ ๆ)
  */
-export async function documentPaymentChannels(ctx: SettingsCtx): Promise<DocChannelView[]> {
+export async function documentPaymentChannels(ctx: SettingsCtx, preloaded?: DocSettings | Promise<DocSettings>): Promise<DocChannelView[]> {
+  // ACC T2 (งบ query) ▸ หน้าที่อ่านตั้งค่าเอกสารอยู่แล้ว (getSettings().doc / getDocSettings) ส่งก้อนนั้นเข้ามา — ไม่อ่านแถวเดิมซ้ำ ◂
   const [settings, rows] = await Promise.all([
-    getDocSettings(ctx),
+    preloaded ?? getDocSettings(ctx),
     dbOf(ctx).accountFinance.findMany({
       where: { showOnDocuments: true, archivedAt: null },
       orderBy: { createdAt: "asc" },

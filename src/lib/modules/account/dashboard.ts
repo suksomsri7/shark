@@ -798,17 +798,39 @@ async function contactNames(db: Db, ids: string[]): Promise<Map<string, string>>
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
+/** ตัวหาชื่อผู้ติดต่อ (ids → ชื่อ) — ส่งเข้า top* เพื่อให้หลายบล็อกในหน้าเดียวใช้คำสั่งเดียวกัน */
+export type ContactNameSource = (ids: string[]) => Promise<Map<string, string>>;
+
+/**
+ * ACC T2 (งบ query) ▸ รวมการหาชื่อผู้ติดต่อของ `parties` บล็อกในหน้าเดียวเป็นคำสั่งเดียว — รอจนทุกบล็อกส่ง ids มาครบ
+ * (บล็อกที่ไม่มี id ก็ต้องเรียกด้วย [] เสมอ ไม่งั้นค้าง) แล้วยิง findMany ครั้งเดียว · ใช้ได้ครั้งเดียวต่อหน้า ◂
+ */
+export function batchedContactNames(ctx: DashCtx, parties: number, meter?: QueryMeter): ContactNameSource {
+  const want = new Set<string>();
+  let arrived = 0;
+  let release!: (m: Map<string, string>) => void;
+  let fail!: (e: unknown) => void;
+  const all = new Promise<Map<string, string>>((res, rej) => { release = res; fail = rej; });
+  return (ids) => {
+    for (const id of ids) want.add(id);
+    arrived += 1;
+    if (arrived === parties) contactNames(dbOf(ctx, meter), [...want]).then(release, fail);
+    return all;
+  };
+}
+
 /** "ขายใครได้มากที่สุด" — 2 query (groupBy + ชื่อผู้ติดต่อ) */
 export async function topCustomers(
   ctx: DashCtx,
   range: { from: Date; to: Date },
   n = 5,
   meter?: QueryMeter,
+  names?: ContactNameSource,
 ): Promise<TopContactRow[]> {
   const db = dbOf(ctx, meter);
   const rows = await topContactsRaw(db, range);
   const ids = rows.filter((r) => r.direction === "OUT" && r.contactId).map((r) => r.contactId as string);
-  return pickTop(rows, "OUT", await contactNames(db, ids), n);
+  return pickTop(rows, "OUT", await (names ? names(ids) : contactNames(db, ids)), n);
 }
 
 /** "จ่ายให้ใครมากที่สุด" — 2 query */
@@ -817,11 +839,12 @@ export async function topVendors(
   range: { from: Date; to: Date },
   n = 5,
   meter?: QueryMeter,
+  names?: ContactNameSource,
 ): Promise<TopContactRow[]> {
   const db = dbOf(ctx, meter);
   const rows = await topContactsRaw(db, range);
   const ids = rows.filter((r) => r.direction === "IN" && r.contactId).map((r) => r.contactId as string);
-  return pickTop(rows, "IN", await contactNames(db, ids), n);
+  return pickTop(rows, "IN", await (names ? names(ids) : contactNames(db, ids)), n);
 }
 
 async function topProductRows(db: Db, range: { from: Date; to: Date }): Promise<TopProductRow[]> {
@@ -936,6 +959,7 @@ export async function monthlyStatusSeries(
   if (paidIds.length > 0) {
     // hunt F1: ทั้งครอบครัวใบแจ้งหนี้ (ใบลดหนี้อ้างใบเสร็จ/ใบกำกับด้วย)
     for (const [k, v] of await familyCreditByInvoice(db as unknown as Prisma.TransactionClient, ctx.systemId, paidIds)) creditOf.set(k, v);
+    bump(meter); // ACC T2: คำสั่ง raw เดียว (recursive CTE) — มิเตอร์ตามโมเดลไม่เห็น
   }
 
   const byKey = new Map<string, MonthStatusPoint>();
@@ -1053,6 +1077,7 @@ export async function topTrackedContacts(
   side: OverviewSide,
   n = 5,
   meter?: QueryMeter,
+  names?: ContactNameSource,
 ): Promise<TrackedContactRow[]> {
   const db = dbOf(ctx, meter);
   const direction = side === "revenue" ? "OUT" : "IN";
@@ -1077,8 +1102,9 @@ export async function topTrackedContacts(
     .filter((r) => r.outstanding > 0)
     .sort((a, b) => b.outstanding - a.outstanding)
     .slice(0, n);
-  const names = await contactNames(db, rows.map((r) => r.contactId));
-  return rows.map((r) => ({ ...r, name: names.get(r.contactId) ?? NO_CONTACT }));
+  const ids = rows.map((r) => r.contactId);
+  const nameOf = await (names ? names(ids) : contactNames(db, ids));
+  return rows.map((r) => ({ ...r, name: nameOf.get(r.contactId) ?? NO_CONTACT }));
 }
 
 // ─────────────────── 7) งานที่รอคุณ (§4 บล็อก 7) ───────────────────

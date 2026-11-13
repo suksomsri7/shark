@@ -551,6 +551,10 @@ function GroupChildrenTable({ data, base }: { data: DocDetailData; base: string 
 }
 
 function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegistered: boolean; base: string }) {
+  // ACC T2 (lane 1 · Job A3) ▸ ใบกำกับภาษีซื้อ = ทะเบียนภาษีซื้อ: บรรทัดของมันคือ "ยอดภาษีซื้อ" (ไม่ใช่มูลค่าก่อนภาษี)
+  //   และหัวเอกสารเก็บ subTotal 0 · vatAmount = grandTotal = ภาษีซื้อ ⇒ เดิมโชว์ "ก่อนภาษี ฿210" คู่ "รวมเป็นเงิน ฿0" ขัดกันเอง
+  //   ⇒ หัวคอลัมน์/ยอดรวมของชนิดนี้พูดเป็น "ภาษีซื้อ" และไม่โชว์ "รวมเป็นเงิน"/"ยอดที่ต้องชำระ" (ไม่มีอะไรต้องจ่ายในใบนี้) ◂
+  const isPtx = data.docType === "PURCHASE_TAX_INVOICE";
   return (
     <div className="flex flex-col gap-4">
       <div className="card text-sm">
@@ -571,7 +575,7 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
               <span className="text-xs text-[color:var(--color-muted)]">
                 {l.qty} {l.unitName ?? ""} × <MoneyText satang={l.unitPrice} decimals />
                 {l.discount > 0 && <> · ส่วนลด <MoneyText satang={l.discount} decimals /></>}
-                {" · "}{vatLabel(l.vatRateBp)}
+                {isPtx ? null : <>{" · "}{vatLabel(l.vatRateBp)}</>}
               </span>
               {l.account && <span className="text-xs text-[color:var(--color-muted)]">{l.account.code} {l.account.name}</span>}
             </div>
@@ -583,11 +587,11 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
             <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
               <th className="py-2 font-normal">สินค้า/บริการ</th>
               <th className="py-2 text-right font-normal">จำนวน</th>
-              <th className="py-2 font-normal">หน่วย</th>
+              <th className="py-2 pl-3 font-normal">หน่วย</th>
               <th className="py-2 text-right font-normal">ราคา/หน่วย</th>
               <th className="py-2 text-right font-normal">ส่วนลด</th>
               <th className="py-2 text-right font-normal">VAT</th>
-              <th className="py-2 text-right font-normal">ก่อนภาษี</th>
+              <th className="py-2 text-right font-normal">{isPtx ? "ภาษีซื้อ" : "ก่อนภาษี"}</th>
             </tr>
           </thead>
           <tbody>
@@ -598,10 +602,11 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
                   {l.account && <span className="block text-xs text-[color:var(--color-muted)]">{l.account.code} {l.account.name}</span>}
                 </td>
                 <td className="py-2 text-right tabular-nums">{l.qty}</td>
-                <td className="py-2">{l.unitName ?? "—"}</td>
+                {/* Job A3: เดิม "1" ชิดขวา + "—" ชิดซ้ายติดกัน อ่านเป็น "1—" ⇒ เว้นช่อง + ไม่มีหน่วย = ว่าง */}
+                <td className="py-2 pl-3">{l.unitName ?? ""}</td>
                 <td className="py-2 text-right tabular-nums"><MoneyText satang={l.unitPrice} decimals /></td>
                 <td className="py-2 text-right tabular-nums">{l.discount > 0 ? <MoneyText satang={l.discount} decimals /> : "—"}</td>
-                <td className="py-2 text-right tabular-nums">{vatLabel(l.vatRateBp)}</td>
+                <td className="py-2 text-right tabular-nums">{isPtx ? "—" : vatLabel(l.vatRateBp)}</td>
                 <td className="py-2 text-right tabular-nums"><MoneyText satang={l.amount} decimals /></td>
               </tr>
             ))}
@@ -609,15 +614,24 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
         </table>
         </div>
         <div className="mt-3 ml-auto flex w-full max-w-xs flex-col gap-1 text-sm">
-          <TotalRow label="รวมเป็นเงิน" satang={data.subTotal} />
-          {data.discountAmount > 0 && <TotalRow label="ส่วนลดท้ายบิล" satang={-data.discountAmount} />}
-          {vatRegistered && <TotalRow label="ภาษีมูลค่าเพิ่ม" satang={data.vatAmount} />}
-          {data.whtAmount > 0 && <TotalRow label="หัก ณ ที่จ่าย" satang={-data.whtAmount} />}
-          {data.depositDeducted > 0 && <TotalRow label="หักเงินมัดจำ" satang={-data.depositDeducted} />}
-          <div className="flex w-full justify-between border-t pt-1 font-semibold">
-            <span>ยอดที่ต้องชำระ</span>
-            <span><MoneyText satang={data.grandTotal} decimals /></span>
-          </div>
+          {isPtx ? (
+            <div className="flex w-full justify-between border-t pt-1 font-semibold" data-testid="ptx-vat-total">
+              <span>ยอดภาษีซื้อ</span>
+              <span><MoneyText satang={data.vatAmount} decimals /></span>
+            </div>
+          ) : (
+            <>
+              <TotalRow label="รวมเป็นเงิน" satang={data.subTotal} />
+              {data.discountAmount > 0 && <TotalRow label="ส่วนลดท้ายบิล" satang={-data.discountAmount} />}
+              {vatRegistered && <TotalRow label="ภาษีมูลค่าเพิ่ม" satang={data.vatAmount} />}
+              {data.whtAmount > 0 && <TotalRow label="หัก ณ ที่จ่าย" satang={-data.whtAmount} />}
+              {data.depositDeducted > 0 && <TotalRow label="หักเงินมัดจำ" satang={-data.depositDeducted} />}
+              <div className="flex w-full justify-between border-t pt-1 font-semibold">
+                <span>ยอดที่ต้องชำระ</span>
+                <span><MoneyText satang={data.grandTotal} decimals /></span>
+              </div>
+            </>
+          )}
         </div>
       </div>
       )}

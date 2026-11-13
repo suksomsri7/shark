@@ -180,6 +180,7 @@ import {
   EMPTY_BOOK_LEGAL,
   type BookLegal,
   type EntityKind,
+  loadBookLegalForRequest,
 } from "./legal-values";
 
 // Account (บัญชี P1 — ฝั่งรายรับ) service. scope = tenantId + systemId (feature)
@@ -541,8 +542,18 @@ export async function getSettings(
   tenantId: string,
   systemId: string,
 ): Promise<AccountSettingsView> {
-  const [row, legal] = await Promise.all([prisma.accountSettings.findFirst({ where: { tenantId, systemId } }), loadBookLegal({ tenantId, systemId })]);
+  // ACC T2 ▸ ตารางค่ากฎหมาย memo ต่อคำขอ (layout + หน้า + คอมโพเนนต์ย่อยเรียก getSettings หลายครั้งในการเรนเดอร์เดียว) ◂
+  const [row, legal] = await Promise.all([prisma.accountSettings.findFirst({ where: { tenantId, systemId } }), loadBookLegalForRequest(tenantId, systemId)]);
   return settingsViewOf(row, legal, accountNow());
+}
+
+/**
+ * ACC T2 (งบ query) ▸ อ่านแค่ "จดทะเบียน VAT ไหม" + ชื่อกิจการ (1 คำสั่ง) — หน้าที่ใช้ getSettings แค่เพื่อเมนูสร้างเอกสาร/เช็กลิสต์
+ * ไม่ต้องจ่ายค่าโหลดตารางค่ากฎหมาย (getSettings = แถวตั้งค่า + ตารางค่ากฎหมาย) · ไม่มีแถว = ค่าเริ่มต้นเดียวกับ getSettings ◂
+ */
+export async function getSettingsLite(tenantId: string, systemId: string): Promise<{ vatRegistered: boolean; orgName: string }> {
+  const row = await prisma.accountSettings.findFirst({ where: { tenantId, systemId }, select: { vatRegistered: true, orgName: true } });
+  return row ? { vatRegistered: row.vatRegistered, orgName: row.orgName } : { vatRegistered: SETTINGS_DEFAULT.vatRegistered, orgName: SETTINGS_DEFAULT.orgName };
 }
 
 /**
@@ -1422,6 +1433,13 @@ export type ListDocumentsInput = {
    * ⇒ ประหยัด 2 query ต่อการเปิด 1 ครั้ง · ไม่ส่ง = พฤติกรรมเดิมเป๊ะ
    */
   slim?: boolean;
+  /**
+   * ACC T2 (งบ query) ▸ ไม่ต้องนับ `tabCounts` (groupBy สถานะ + นับพ้นกำหนด = 2 SQL) — หน้ารายการ V2 นับแท็บเองด้วย
+   * `computeListTabCounts` (ตัวกรองเดียวกัน) อยู่แล้ว ⇒ ส่ง true แล้ว `tabCounts` = { ALL: 0, OVERDUE: 0 } ห้ามอ่าน ◂
+   */
+  skipStatusCounts?: boolean;
+  /** ACC T2 (งบ query) ▸ ไม่ต้องนับ tabCounts.OVERDUE (1 SQL) — ผู้เรียกที่ใช้แค่ตัวนับต่อสถานะ (โปรไฟล์ 360° แท็บเอกสาร) ◂ */
+  skipOverdueCount?: boolean;
 };
 
 export type DocSort = "recent" | "issueDate" | "docNo" | "amount";
@@ -1563,8 +1581,8 @@ export async function listDocumentsPaged(
           .then((rs) => rs.map((r) => ({ ...r, contact: null, payments: [] as { channel: AccountPayChannel }[] })))
       : prisma.accountDocument.findMany({ ...listArgs, include: LIST_DOCUMENTS_INCLUDE }),
     prisma.accountDocument.count({ where }),
-    prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
-    prisma.accountDocument.count({ where: { AND: [base, overdueWhere(now)] } }),
+    input.skipStatusCounts ? Promise.resolve([] as { status: AccountDocStatus; _count: { _all: number } }[]) : prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
+    input.skipStatusCounts || input.skipOverdueCount ? Promise.resolve(0) : prisma.accountDocument.count({ where: { AND: [base, overdueWhere(now)] } }),
   ]);
 
   const tabCounts: DocTabCounts = { ALL: 0, OVERDUE: overdueCount };
@@ -1954,24 +1972,32 @@ async function lockCreditChainInTx(tx: Prisma.TransactionClient, tenantId: strin
 
 /**
  * CRM C5.4-C ▸ (hunt F1) แบบชุด: Σ ใบลดหนี้ที่ยังมีผลของครอบครัว ต่อใบแจ้งหนี้ (รายงานอายุหนี้ · แดชบอร์ด · พอร์ทัล · ภาพรวม)
- * ลูกหลานหาทีละชั้น (≤ 3 ชั้น · คำสั่งละชั้น) แล้วรวม groupBy ครั้งเดียว — ไม่ใช่คำสั่งต่อใบ ◂
+ * ACC T2 (งบ query) ▸ เดิมไล่ลูกหลานทีละชั้น (≤ 3 ชั้น · คำสั่งละชั้น) + groupBy อีกคำสั่ง ⇒ ตอนนี้ **คำสั่งเดียว** (recursive CTE):
+ *   ลูกหลาน = เอกสารที่ sourceDocId ชี้ขึ้นไป (ไม่ใช่ใบลด/เพิ่มหนี้) ลึก ≤ 3 ชั้น · เอกสารที่ถึงได้จากหลายราก → ยึดชั้นที่ตื้นที่สุด
+ *   (เท่ากับ BFS เดิม: ใบที่เป็นรากเองไม่ถูกนับซ้ำเป็นลูกของรากอื่น) · ใบลดหนี้ที่ยังมีผลซึ่งอ้างใบใดในครอบครัว → รวมเข้าราก
+ *   คำสั่ง raw ⇒ มิเตอร์นับ query ตามโมเดล (dashboard) ไม่เห็น — ผู้เรียกที่มีมิเตอร์ต้องบวก 1 เอง ◂
  */
 export async function familyCreditByInvoice(db: Prisma.TransactionClient, systemId: string, invoiceIds: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (invoiceIds.length === 0) return out;
-  const rootOf = new Map(invoiceIds.map((id) => [id, id]));
-  let layer = [...invoiceIds];
-  for (let depth = 0; depth < 3 && layer.length > 0; depth += 1) {
-    const kids = await db.accountDocument.findMany({ where: { systemId, sourceDocId: { in: layer }, docType: { notIn: [...CREDIT_TYPES] } }, select: { id: true, sourceDocId: true }, take: 5_000 });
-    layer = [];
-    for (const k of kids) if (k.sourceDocId && !rootOf.has(k.id)) { rootOf.set(k.id, rootOf.get(k.sourceDocId) ?? k.sourceDocId); layer.push(k.id); }
-  }
-  const cn = await db.accountDocument.groupBy({
-    by: ["sourceDocId"],
-    where: { systemId, docType: "CREDIT_NOTE", sourceDocId: { in: [...rootOf.keys()] }, status: { notIn: [...LIVE_NOT] } },
-    _sum: { grandTotal: true },
-  });
-  for (const g of cn) { const root = g.sourceDocId ? rootOf.get(g.sourceDocId) : undefined; if (root) out.set(root, (out.get(root) ?? 0) + (g._sum.grandTotal ?? 0)); }
+  const ids = [...new Set(invoiceIds)];
+  const rows = await db.$queryRaw<{ root: string; total: bigint | number | null }[]>`
+    WITH RECURSIVE fam(id, root, depth) AS (
+      SELECT x, x, 0 FROM unnest(${ids}::text[]) AS x
+      UNION
+      SELECT d."id", f.root, f.depth + 1
+        FROM "AccountDocument" d JOIN fam f ON d."sourceDocId" = f.id
+       WHERE d."systemId" = ${systemId} AND f.depth < 3
+         AND d."docType"::text <> ALL(${[...CREDIT_TYPES]}::text[])
+    ), first_root AS (
+      SELECT DISTINCT ON (id) id, root FROM fam ORDER BY id, depth
+    )
+    SELECT fr.root AS root, SUM(c."grandTotal") AS total
+      FROM first_root fr JOIN "AccountDocument" c ON c."sourceDocId" = fr.id
+     WHERE c."systemId" = ${systemId} AND c."docType"::text = 'CREDIT_NOTE'
+       AND c."status"::text <> ALL(${[...LIVE_NOT]}::text[])
+     GROUP BY fr.root`;
+  for (const r of rows) out.set(r.root, (out.get(r.root) ?? 0) + Number(r.total ?? 0));
   return out;
 }
 

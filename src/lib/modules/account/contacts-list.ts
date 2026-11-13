@@ -76,7 +76,12 @@ export async function getRegularCustomerRule(
     where: { systemId: ctx.systemId },
     select: { docConfig: true },
   });
-  const raw = (row?.docConfig as Record<string, unknown> | null)?.regularCustomerRule as
+  return regularCustomerRuleOf(row?.docConfig ?? null);
+}
+
+/** ACC T2 (งบ query) ▸ นิยาม "ลูกค้าประจำ" จาก docConfig ที่อ่านมาแล้ว (หน้าตั้งค่านโยบายอ่านแถวเดียวกับ getPolicy) ◂ */
+export function regularCustomerRuleOf(docConfig: unknown): RegularCustomerRule {
+  const raw = (docConfig as Record<string, unknown> | null)?.regularCustomerRule as
     | Partial<RegularCustomerRule>
     | undefined;
   return {

@@ -410,6 +410,8 @@ export type ListExpenseDocsInput = {
   pageSize?: number;
   sort?: DocSort;
   excludeOverdue?: boolean;
+  /** ACC T2 ▸ ข้ามการนับ tabCounts (ผู้เรียกนับแท็บเองด้วย computeListTabCounts) — ดู service.ts ListDocumentsInput ◂ */
+  skipStatusCounts?: boolean;
 };
 
 export type ExpDocTabCounts = Partial<Record<AccountDocStatus, number>> & { ALL: number; OVERDUE: number };
@@ -481,8 +483,9 @@ export async function listExpenseDocsPaged(
       take: pageSize,
     }),
     prisma.accountDocument.count({ where }),
-    prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
-    prisma.accountDocument.count({ where: { AND: [base, overdueWhere(now)] } }),
+    // ACC T2 (งบ query) ▸ หน้ารายการ V2 นับแท็บเองด้วย computeListTabCounts ⇒ ข้าม 2 SQL นี้ได้ (ดู service.ts skipStatusCounts) ◂
+    input.skipStatusCounts ? Promise.resolve([] as { status: AccountDocStatus; _count: { _all: number } }[]) : prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
+    input.skipStatusCounts ? Promise.resolve(0) : prisma.accountDocument.count({ where: { AND: [base, overdueWhere(now)] } }),
   ]);
 
   const tabCounts: ExpDocTabCounts = { ALL: 0, OVERDUE: overdueCount };

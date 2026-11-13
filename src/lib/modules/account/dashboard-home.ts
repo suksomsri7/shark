@@ -11,7 +11,7 @@ import {
   type CategoryBreakdown,
   type CategorySlice,
 } from "./dashboard";
-import { getSettings } from "./service";
+import { getSettingsLite } from "./service";
 import { ACCOUNT_NAV, type AccountNavGroup } from "./nav";
 
 // ─────────────────────────────────────────────────────────────
@@ -196,7 +196,8 @@ export async function loadDashboardHome(
   const currentPeriod = periodKeyBkk(now);
   const currentYear = Number(currentPeriod.slice(0, 4));
 
-  const settings = await getSettings(ctx.tenantId, ctx.systemId);
+  // ACC T2 (งบ query) ▸ หน้าแรกใช้แค่ vatRegistered + orgName — ไม่ต้องโหลดตารางค่ากฎหมาย (getSettings ทั้งก้อน) ◂
+  const settings = await getSettingsLite(ctx.tenantId, ctx.systemId);
   const params = normalizeParams(base, settings.vatRegistered, raw, currentYear, currentPeriod);
 
   const meter: QueryMeter = { count: 0 };

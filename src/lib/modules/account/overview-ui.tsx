@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatBaht } from "@/lib/ui/money";
-import { getSettings } from "./service";
+import { getSettingsLite } from "./service";
 import { loadOverview, ISSUED_RANGE_OPTIONS, type OverviewParams } from "./overview";
 import type { OverviewSide } from "./dashboard";
 import { createDocMenuItems } from "./dashboard-home";
@@ -33,8 +33,8 @@ export async function OverviewPage({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const base = `/app/sys/${systemId}/account`;
-  const [settings, data] = await Promise.all([
-    getSettings(tenantId, systemId),
+  const [vatRegistered, data] = await Promise.all([
+    getSettingsLite(tenantId, systemId).then((x) => x.vatRegistered), // ACC T2: หน้านี้ใช้แค่ vatRegistered (เมนูสร้างเอกสาร)
     loadOverview({ tenantId, systemId }, side, searchParams, { base }),
   ]);
   const currentQuery = searchParams;
@@ -49,7 +49,7 @@ export async function OverviewPage({
 
   const yearOptions = Array.from({ length: 3 }, (_, i) => params.year - 1 + i).map((y) => ({ value: String(y), label: `ปี ${y}` }));
 
-  const createItems = createDocMenuItems(base, settings.vatRegistered)[side];
+  const createItems = createDocMenuItems(base, vatRegistered)[side];
   const primaryTestId = side === "revenue" ? "INVOICE" : "EXPENSE";
   const primary = createItems.find((it) => it.testId === primaryTestId) ?? createItems[0];
   const createLabel = primary?.label ?? (side === "revenue" ? "สร้างเอกสาร" : "บันทึกค่าใช้จ่าย");
