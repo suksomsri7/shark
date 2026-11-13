@@ -1,3 +1,16 @@
+## ⏸ หยุดรอเจ้าของ 13 พ.ย. ~03:4xZ — 10/72 (14%) · 3 เลน
+- **เจ้าของสั่งหยุด**: session บัญชีกำลังปรับ `scripts/with-gate-lock.sh` (typecheck 2 ตัวพร้อมกัน) — **ห้ามแก้ไฟล์นี้เอง · ห้ามสั่งงานหนัก (typecheck/build/ชุดทดสอบ) จนเจ้าของแจ้ง** · เมื่อแจ้ง: merge origin/main เข้า session/trips หนึ่งครั้ง แล้วทำต่อ
+- เลน l2 · T1.2 @cfb6338bc (r2 commit แล้ว · ORACLE-EDIT PC-2 CV-5 PV-2 PV-4 S-13 ยังไม่เคยรัน) → หลังได้สัญญาณ: merge session/trips เข้าเลน → `/root/trips-runs/gate-build-t1.2.sh` → serve + `visual-trips.mts t1.2` → ดูภาพ (มุมมองเดือนใหม่ · กล่องถอนยืนยัน · ข้อความปลอมรหัส) → merge → wo-notes (ร่างของผู้สร้างอยู่ในเลน) → 11/72
+- เลน l1 (wip/trips-t0.7) และ l3 (wip/trips-t0.8): ผู้ร่างถูกหยุดกลางคัน ไม่มีไฟล์ที่ใช้ได้ → เปิดผู้ร่างใหม่ทั้งสองใบ (พรอมป์เดิมอยู่ใน transcript: ค้น "brief + oracle writer for work order T0.7" / "T0.8")
+- (บล็อกด้านล่างเป็นของเก่า)
+
+## ▶️ จุดต่อ 13 พ.ย. 03:1xZ — 10/72 (14%) · 3 เลน
+- T0.6 ✅ merge e49aaa1cb · main 4d6ef6ee7 รวมแล้ว (6f63a531d) · ฐานหลักเขียวครบ
+- เลน l1 ว่าง → T0.7 (เงิน · อ่าน `wo-notes/trips-T0.6.md` "ข้อบังคับสำหรับใบถัดไป" + OQ9/OQ12/OQ17)
+- เลน l2: T1.2 @a1049788e + งานแก้ r2 ยังไม่ commit (ผู้สร้าง agent a373aa742f857c6dc) → commit → ORACLE-EDIT ข้อที่ตรึงขาย 0 (ราชา 14 พ.ย. = 6) → `/root/trips-runs/gate-build-t1.2.sh` → ถ่ายภาพ (`visual-trips.mts t1.2`) → merge · ภาพคู่รอบก่อน `scratchpad/t1.2-parity/`
+- เลน l3 ใหม่: `/root/projects/shark-trips-l3` (branch wip/trips-l3-base · ฐาน wo-trips-qc-l3) → T0.8 (ผู้เดินทาง)
+- build/serve QC: `/root/trips-runs/build-t1.1.sh build|serve` (เลน l2 · พอร์ต 3241) · main แก้ REPLY_RATE แล้ว — ลอง build โดยไม่ตั้ง `SHARK_TSC_PREBUILD_OK` แล้วปิด OQ20 (ข)
+
 ## ▶️ จุดต่อ 12 พ.ย. 21:1xZ — 9/72 (13%)
 - T1.1 ✅ merge c0c593174 · เลน l2 ว่าง (branch wip/trips-t1.1 รวมแล้ว) → ใบถัดไปของเลน l2: ดู TRIPS-MASTER-PLAN (T1.2 จอรอบและที่ว่าง หรือ T0.8 — T0.7 รอ T0.6)
 - T0.6 เลน l1 @baebccfe1 (r1 commit แล้ว) · ผู้ตรวจ r2 → `scratchpad/t0.6-review/REVIEW-R2.md` · นักล่า r2 → `scratchpad/t0.6-hunt/HUNT-R2.md` · ผู้สร้าง agent a664da73834338699 · มติ R1–R14 ยังไม่ได้ต่อท้ายใบสั่ง §16 (ทำตอนรับ) · หลังเขียว: `gate.sh /root/projects/shark-trips-l1 gate-t0.6 qc-trips-t0.6 qc-trips-t0.5 qc-trips-t0.4 qc-trips-t0.3 qc-trips-t0.2 qc-trips-t0.1 qc-trips-p0.1 qc-svc-r0.3 qc-svc-smoke` (เลนต้อง merge session/trips ก่อน — มี T1.1)
