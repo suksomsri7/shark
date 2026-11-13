@@ -10,7 +10,8 @@ import { recordSuggestionOutcome } from "@/lib/modules/chat/ai-suggest";
 import { sendReply } from "@/lib/modules/chat/service";
 import { fail, gate, notFound, readBody, REPLY, systemOf, visibleConv, type RouteCtx, withErrors } from "../../../_shared";
 
-export const REPLY_RATE = { limit: 60, windowMs: 60_000 };
+// Not exported: a route file may only export route handlers and route config (Next validates this at build time).
+const REPLY_RATE = { limit: 60, windowMs: 60_000 };
 
 const Attachment = z
   .object({
