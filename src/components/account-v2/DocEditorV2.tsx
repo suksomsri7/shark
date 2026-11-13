@@ -385,12 +385,17 @@ function EditorBody(props: DocEditorV2Props) {
         c && c.creditTermDays && c.creditTermDays > 0 && p.issueDate
           ? isoPlusDays(p.issueDate, c.creditTermDays)
           : p.dueDate;
+      // ACC T1.4 (ค้างหลังภาพจอ) ▸ เปลี่ยนคู่ค้า = สถานะภาษีซื้อของใบคิดใหม่ตามคู่ค้าใหม่ — เว้นแต่ผู้ใช้เลือกเองต่างจากค่าเริ่มของคู่ค้าเดิม ◂
+      const prevC = contacts.find((x) => x.id === p.contactId);
+      const prevDefault = defaultInputVatStatus({ vendorTaxId: prevC?.taxId ?? null, settings: props.inputVatSettings ?? DEFAULT_INPUT_VAT_SETTINGS }).status;
+      const inputVatStatus = p.inputVatStatus && p.inputVatStatus !== prevDefault ? p.inputVatStatus : null;
       return {
         ...p,
         contactId: id,
         contactLabel: name,
         dueDate,
         priceMode: c?.priceMode ?? p.priceMode,
+        ...(props.side === "expense" ? { inputVatStatus } : {}),
       };
     });
   };

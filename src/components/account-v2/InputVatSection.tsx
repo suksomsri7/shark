@@ -143,7 +143,7 @@ export function InputVatLineSelect({
           <option value="">— เหตุ (ไม่ระบุ) —</option>
           {INPUT_VAT_NONCLAIM_REASONS.map((r) => (
             <option key={r.code} value={r.code}>
-              {r.labelTh} ({r.sectionTh})
+              {r.labelTh}
             </option>
           ))}
         </select>
