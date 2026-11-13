@@ -3,6 +3,9 @@ import { Prisma } from "@prisma/client"; // HR H0.6 r3 ▸ ค่า (Prisma.joi
 // CRM C3.3 ▸ `hr.payroll.paid` ยิงใน tx เดียวกับการปิดรอบ (markPaid) ◂
 import { emitOutbox } from "@/lib/core/outbox";
 import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
+import { payrollBookOf, linkPayrollBook, postPayrollAccrualJV, postPayrollPayJV, reversePayrollRunJV, payrollPayAccountsOf, postPayrollV1KeyedJV } from "@/lib/modules/account";
+import { payrollEntryStateInTx, payrollOwnerOk, setPayrollLinkPosting } from "@/lib/modules/account"; // HR H3.7 ▸ fix r1 F1–F7 ◂ // HR H3.7 ▸ บัญชีเงินเดือนรุ่น 2 (ตั้งค้างจ่าย · จ่าย · กลับรายการ) ผ่าน facade บัญชีเท่านั้น ◂
+import { accrualAmountsV2, payrollAccrualDay, paidOnOk, REFUND_OF_PREFIX, refundClaimIdOf, type AccrualBound, type AccrualItem, type RefundClaim } from "./payroll-journal-rules"; // HR H3.7 ◂
 import { logOps } from "@/lib/core/ops"; // HR H0.6 ▸ OQ-8: กลับ JV ล้ม = WARN id + รหัสเท่านั้น ◂
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1): ประวัติการลบรายการเงิน (ตัวเดียวกับ hr/service.ts) ◂
 import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจากตัวช่วยกลางของ HR (ไม่บวก +7 เองซ้ำ) ◂
@@ -1168,6 +1171,7 @@ export async function approveRun(
   }
 
   try {
+    const postPayrollJV = (c: { tenantId: string; systemId: string }, i: Parameters<typeof postPayrollV1KeyedJV>[2]) => postPayrollV1KeyedJV(c, runId, i); // HR H3.7 ▸ Q2: JV รุ่น 1 มีคีย์กันซ้ำ (refId = รอบ) — ผูกไม่สำเร็จแล้วกดใหม่ = ผูกรายการเดิม ไม่ลงซ้ำ (ปิด JV กำพร้า) ◂
     // ลงบัญชีผ่าน account facade เท่านั้น (postPayrollJV มี tx ภายในตัว)
     const { entryId } = await postPayrollJV(
       { tenantId: ctx.tenantId, systemId: acct.id },
@@ -1214,6 +1218,7 @@ export async function reverseRun(
   actor?: PayrollActor,
 ): Promise<{ ok: boolean; note: string; code?: ReverseRefusalCode }> {
   const id = typeof runId === "string" ? runId.trim() : "";
+  { const h37 = id ? await reverseRunH37(ctx, id, reason, actor) : null; if (h37) return h37; } // HR H3.7 ▸ รอบที่ลงบัญชีแบบ 2 ขั้น (สมุดที่บันทึกไว้) · รอบรุ่น 2 ที่ไม่ได้ลงบัญชี (Q1) ◂
   const db = tenantDb(ctx);
   const pre = id ? await db.hrPayrollRun.findFirst({ where: { id, systemId: ctx.systemId }, select: { periodKey: true } }) : null;
   if (!pre) return reverseRefused(ctx, actor, id, "NOT_FOUND");
@@ -1225,6 +1230,7 @@ export async function reverseRun(
     const tx = t as Prisma.TransactionClient;
     await lockRunPeriod(tx, ctx, periodKey);
     const cur = await lockRunRow(tx, ctx, id);
+    if (cur && (await h37OwnsRunInTx(tx, ctx, id))) throw new H37Reroute(); // HR H3.7 ▸ fix r1: finalize committed while we waited ⇒ the H3.7 path (recorded book, pay + accrual) ◂
     if (!cur || cur.periodKey !== periodKey) return { ok: false, code: "NOT_FOUND" };
     if (cur.status === "REVERSED") return { ok: false, code: "ALREADY_REVERSED" };
     if (!cur.journalEntryId) return { ok: false, code: "NO_JV" };
@@ -1272,6 +1278,7 @@ export async function reverseRun(
       ? await tenantDb({ tenantId: ctx.tenantId, systemId: acct.id }).$transaction(work, REVERSE_TX_OPTS)
       : await tenantDb(ctx).$transaction(work, REVERSE_TX_OPTS);
   } catch (e) {
+    if (e instanceof H37Reroute) return (await reverseRunH37(ctx, id, reason, actor)) ?? reverseRefused(ctx, actor, id, "TX_FAILED"); // HR H3.7 ◂
     if (e instanceof CarryBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "CARRY_BOUND" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.carryBound }; // HR H3.4 ◂
     if (e instanceof LaterRunRefusal) return { ...(await reverseRefused(ctx, actor, id, "LATER_RUN" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.laterRun }; // HR H3.4 ▸ fix r1 F5 ◂
     const code: ReverseRefusalCode = e instanceof JvReverseFailed ? "JV_REVERSE_FAILED" : "TX_FAILED";
@@ -2849,6 +2856,7 @@ async function approveRunV2(ctx: Ctx, runId: string, expect: ApproveExpect | und
     throw e;
   }
   if (r.code !== "OK" && r.code !== "RETRY_FINAL") return fail(r.code, (r as { note: string }).note);
+  if (actor.userId) return finalizeRunV2H37(ctx, runId, { userId: actor.userId, isOwner: actor.isOwner }, hooks); // HR H3.7 ▸ ธุรกรรมสุดท้ายรุ่น 2: สมุดที่เชื่อม (ไม่ใช่ระบบบัญชีแรก) · ตั้งค้างจ่าย 13 แถว · คีย์กันซ้ำ ◂
   const db = tenantDb(ctx);
   const run = await db.hrPayrollRun.findFirst({ where: { id: runId } });
   if (!run) return { ok: false, note: RUN_NOT_FOUND, code: "NOT_FOUND" };
@@ -2917,6 +2925,7 @@ async function runFinalizedInTx(db: Pick<Prisma.TransactionClient, "$queryRaw">,
 }
 /** fix r3 H1: จ่ายรอบรุ่น 2 — ล็อกงวด → อ่านสถานะ + ธงปิดงานซ้ำใต้ล็อก (อนุมัติแล้วแต่ยังไม่ปิดงาน ⇒ ปฏิเสธ "กำลังลงบัญชี") → APPROVED→PAID + event เดียวกับรุ่น 1 */
 async function markPaidV2(ctx: Ctx, runId: string): Promise<{ ok: boolean; note: string }> {
+  { const bk = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { accountSystemId: true } }); if (bk?.accountSystemId) return markPaidRun(ctx, runId); } // HR H3.7 ▸ รอบที่ลงบัญชีในสมุดแล้ว ห้ามเป็น "จ่ายแล้ว" โดยไม่มีรายการจ่าย — ทางเดียว = markPaidRun (บัญชีจ่ายที่ตั้งไว้ · วันนี้) ◂
   const out = await tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
     const per = await tx.hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
@@ -2925,11 +2934,13 @@ async function markPaidV2(ctx: Ctx, runId: string): Promise<{ ok: boolean; note:
     const cur = await lockRunRow(tx, ctx, runId);
     if (!cur || cur.status !== "APPROVED") return "NO" as const;
     if (!(await runFinalizedInTx(tx, ctx, runId))) return "POSTING" as const;
+    if ((await tx.$queryRaw<{ a: string | null }[]>`SELECT "accountSystemId" AS "a" FROM "HrPayrollRun" WHERE "id" = ${runId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0]?.a) return "BOOKED" as const; // HR H3.7 ▸ fix r1 F1: re-read the book under the row lock — finalize committed it while we waited ◂
     const upd = await tx.hrPayrollRun.updateMany({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "APPROVED" }, data: { status: "PAID" } });
     if (upd.count !== 1) return "NO" as const;
     await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "hr.payroll.paid", idempotencyKey: `hr.payroll.paid#${runId}`, payload: { runId, periodKey: per.periodKey } });
     return "OK" as const;
   }, H34_TX);
+  if (out === "BOOKED") return markPaidRun(ctx, runId); // HR H3.7 ▸ fix r1 F1 ◂
   if (out === "POSTING") return { ok: false, note: RUN2_TEXT.posting };
   if (out !== "OK") return { ok: false, note: "ต้องอนุมัติรอบก่อนจึงจ่ายได้" };
   return { ok: true, note: "บันทึกจ่ายเงินเดือนแล้ว" };
@@ -3150,3 +3161,522 @@ async function createLeaverAttRowInTx(tx: Prisma.TransactionClient, ctx: Ctx, w:
   return { id: row.id, gen, periodKey: c.periodKey, status };
 }
 // ◂ HR H3.4
+
+// ═══════════════════ HR H3.7 ▸ payroll accounting v2 — book link · accrual at finalize · payment at pay · symmetric reversal ═══════════════════
+//   brief ledger/hr-briefs/hr-brief-H3.7.md · design ledger/wo-notes/hr-H3.7-design.md · account side = account/gl.ts + connections.ts (facade only)
+//   Lock order: P (period advisory) → run row FOR UPDATE → account writes (journal-number sequence · no account-side lock) → carry target periods (> P).
+//   The book of a run is recorded on the run (`accountSystemId`) in the final tx; pay and reverse always use the recorded book, never the current link.
+export const H37_TEXT = {
+  bookAmbiguous: "ระบบเงินเดือนนี้เชื่อมกับสมุดบัญชีมากกว่า 1 เล่ม — เลือกสมุดบัญชีที่ลงเงินเดือนเล่มเดียวที่หน้าตั้งค่า HR",
+  inconsistent: "ยอดในรอบจ่ายนี้ไม่ตรงกัน จึงลงบัญชีไม่ได้ — แจ้งผู้ดูแลระบบ",
+  bookOwner: "เฉพาะเจ้าของร้านเลือกสมุดบัญชีและบัญชีจ่ายเงินเดือนได้",
+  approvedNoBook: "อนุมัติแล้ว — ยังไม่ได้เลือกสมุดบัญชีสำหรับเงินเดือน จึงไม่ได้ลงบัญชี",
+  noteNoBook: "อนุมัติแล้ว (ยังไม่ได้เลือกสมุดบัญชี — ไม่ได้ลงบัญชี)",
+  reverseNoBook: "กลับรายการเงินเดือนเรียบร้อย — รอบนี้ไม่ได้ลงบัญชีไว้ จึงไม่มีรายการบัญชีให้กลับ",
+  payDate: "วันที่จ่ายต้องอยู่ระหว่างวันแรกของงวดเงินเดือนถึงวันนี้",
+  payAccount: "เลือกบัญชีเงินที่ใช้จ่ายเงินเดือน (บัญชีธนาคารหรือเงินสดของสมุดบัญชีที่ลงรอบนี้)",
+  noteZero: "อนุมัติแล้ว (ยอดเป็นศูนย์ — ไม่มีรายการให้ลงบัญชี)",
+  // fix r1 F2/F3/F6/F8
+  bookInactive: "สมุดบัญชีที่เชื่อมกับระบบเงินเดือนนี้ถูกปิดใช้งานอยู่ — เปิดใช้งานสมุดบัญชีเล่มนั้น หรือเลือกสมุดบัญชีใหม่ที่หน้าตั้งค่า HR แล้วจึงอนุมัติ",
+  bookMissing: "ไม่พบสมุดบัญชีที่เชื่อมกับระบบเงินเดือนนี้ — เลือกสมุดบัญชีใหม่ที่หน้าตั้งค่า HR แล้วจึงอนุมัติ",
+  approvedOff: "อนุมัติแล้ว — ปิดการลงบัญชีเงินเดือนไว้ที่หน้าตั้งค่า HR จึงไม่ได้ลงบัญชี",
+  noteOff: "อนุมัติแล้ว (ปิดการลงบัญชีเงินเดือนไว้ — ไม่ได้ลงบัญชี)",
+  bookGone: "สมุดบัญชีที่ลงรอบนี้ถูกปิดใช้งานหรือไม่มีอยู่แล้ว — เปิดใช้งานสมุดบัญชีเล่มเดิมก่อน จึงจะบันทึกจ่ายหรือกลับรายการรอบนี้ได้",
+  entryReversed: "รายการบัญชีของรอบนี้ถูกกลับรายการที่ระบบบัญชีไปแล้ว — ให้ผู้ดูแลบัญชีตรวจสอบก่อน ระบบเงินเดือนไม่ทำรายการต่อ",
+  alreadyPaid: "รอบนี้บันทึกจ่ายไปแล้ว",
+  /** fixed neutral note of the settings card (controller ruling: advances) — th/en copies live in messages hr.payacct.advanceNote */
+  advanceNote: "เงินเบิกล่วงหน้าที่จ่ายให้พนักงานก่อนรอบเงินเดือน ระบบเงินเดือนไม่ได้ลงบัญชีให้ — ให้บันทึกการจ่ายในระบบบัญชีเอง (เดบิต ลูกหนี้พนักงาน / เครดิต เงินสดหรือธนาคาร) เพื่อให้การหักคืนในรอบเงินเดือนตัดยอดลูกหนี้ได้ถูกต้อง",
+} as const;
+/** fixed texts the run page shows for the refusals whose service text carries a value (period · account name) — the page never shows free text */
+export const H37_CODE_TEXT: Record<string, string> = {
+  PERIOD_CLOSED: "งวดบัญชีของวันที่ลงรายการปิดแล้ว — โพสต์บัญชีไม่ได้ (เปิดงวดที่ระบบบัญชี หรือเลือกวันอื่น)",
+  PERIOD_LOCKED: "วันที่ลงรายการอยู่ก่อนวันที่ล็อกข้อมูลบัญชี — ลงบัญชีไม่ได้",
+  MAPPING_MISSING: "ยังไม่ได้ผูกบัญชีบางรายการสำหรับลงบัญชีเงินเดือน — ตั้งที่ บัญชี › ตั้งค่า › การลงบัญชีอัตโนมัติ",
+  MAPPING_CLASS: "บัญชีที่ผูกกับรายการเงินเดือนบางรายการไม่ใช่หมวดที่ถูกต้อง — แก้การผูกที่ บัญชี › ตั้งค่า › การลงบัญชีอัตโนมัติ", // fix r2 (c)
+  OTHER_BOOK: "รอบนี้ลงบัญชีไว้ในสมุดบัญชีเล่มอื่นแล้ว — ไม่ลงซ้ำ",
+};
+/** note → the text a page may show: fixed texts pass through, valued texts of H3.7 codes become their fixed text */
+export function h37PageText(r: { note?: string; code?: string }): string {
+  return (r.code && H37_CODE_TEXT[r.code]) || r.note || "";
+}
+const H37_APPROVED_POSTED = "อนุมัติและลงบัญชีเรียบร้อย";
+const H37_NOTE_POSTED = "อนุมัติและลงบัญชีแล้ว";
+const H37_NOT_APPROVED = "ต้องอนุมัติรอบก่อนจึงจ่ายได้";
+const H37_PAID = "บันทึกจ่ายเงินเดือนแล้ว";
+export type H37Code = "MAPPING_CLASS" | "BOOK_INACTIVE" | "BOOK_MISSING" | "BOOK_GONE" | "ENTRY_REVERSED" | "ALREADY_PAID" | "NOT_APPROVED" | "POSTING" | "BOOK_AMBIGUOUS" | "MAPPING_MISSING" | "PERIOD_CLOSED" | "PERIOD_LOCKED" | "INCONSISTENT" | "OTHER_BOOK" | "PAY_ACCOUNT" | "PAY_DATE" | "BAD_INPUT" | "POST_FAILED";
+/** a refusal raised inside a tx — rolls the tx back, the caller turns it into {ok:false, code, note} (fixed text, no raw error) */
+class H37Refusal extends Error {
+  constructor(readonly code: H37Code, readonly note: string) {
+    super(code);
+    this.name = "H37Refusal";
+  }
+}
+const h37Obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? { ...(v as Record<string, unknown>) } : {});
+const h37BkkDay = (d: Date): string => bkkParts(d).dateStr;
+
+type H37ItemRow = { employeeId: string; grossSatang: number; ssoEmployeeSatang: number; ssoEmployerSatang: number; whtSatang: number; netSatang: number; snapshotJson: unknown };
+/** stored figures of the run, read inside the caller's tx (raw SQL bound to the HR tenant + system — the tx may be on the book's scope) */
+async function h37RunFiguresInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: string): Promise<{ items: AccrualItem[]; bound: AccrualBound[] }> {
+  const items = await tx.$queryRaw<H37ItemRow[]>`
+    SELECT "employeeId", "grossSatang", "ssoEmployeeSatang", "ssoEmployerSatang", "whtSatang", "netSatang", "snapshotJson"
+    FROM "HrPayrollItem" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" = ${runId} ORDER BY "id"`;
+  const bound = await tx.$queryRaw<{ id: string; employeeId: string; kind: string; sourceType: string | null; sourceRef: string | null; amountSatang: number }[]>`
+    SELECT "id", "employeeId", "kind"::text AS "kind", "sourceType"::text AS "sourceType", "sourceRef", "amountSatang"
+    FROM "HrPayAdjustment" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" = ${runId} ORDER BY "id"`;
+  return {
+    items: items.map((i) => ({ employeeId: i.employeeId, grossSatang: Number(i.grossSatang), ssoEmployeeSatang: Number(i.ssoEmployeeSatang), ssoEmployerSatang: Number(i.ssoEmployerSatang), whtSatang: Number(i.whtSatang), netSatang: Number(i.netSatang), snapshotJson: i.snapshotJson })),
+    bound: bound.map((b) => ({ id: b.id, employeeId: b.employeeId, kind: b.kind, sourceType: b.sourceType, sourceRef: b.sourceRef, amountSatang: Number(b.amountSatang) })),
+  };
+}
+
+/** fix r1 F5 — the claims named by REFUND rows (`sourceRef = "refund:<adjustment id>"`) + whether their run was posted by the accrual (book recorded) */
+async function h37RefundClaimsInTx(tx: Prisma.TransactionClient, ctx: Ctx, bound: AccrualBound[]): Promise<RefundClaim[]> {
+  const ids = bound.filter((b) => b.kind === "REFUND").map((b) => refundClaimIdOf(b.sourceRef)).filter((x): x is string => !!x);
+  if (!ids.length) return [];
+  const rows = await tx.$queryRaw<{ id: string; kind: string; sourceType: string | null; sourceRef: string | null; booked: boolean | null }[]>`
+    SELECT a."id", a."kind"::text AS "kind", a."sourceType"::text AS "sourceType", a."sourceRef", CASE WHEN r."id" IS NULL THEN NULL ELSE (r."accountSystemId" IS NOT NULL) END AS "booked"
+    FROM "HrPayAdjustment" a LEFT JOIN "HrPayrollRun" r ON r."id" = a."runId" AND r."tenantId" = a."tenantId" AND r."systemId" = a."systemId"
+    WHERE a."tenantId" = ${ctx.tenantId} AND a."systemId" = ${ctx.systemId} AND a."id" IN (${Prisma.join(ids)})`;
+  return rows.map((r) => ({ id: r.id, kind: r.kind, sourceType: r.sourceType, sourceRef: r.sourceRef, booked: r.booked === null ? null : r.booked === true }));
+}
+
+/**
+ * v2 final transaction (replaces H3.4's "first ACCOUNT system + one-step JV" for every run finalized from now on) — called by approveRunV2
+ * after the claim (or RETRY_FINAL). One tx on the linked book's scope (or the HR scope when no book): lock P → run row FOR UPDATE (APPROVED/PAID,
+ * not finalized) → re-read the book link → accrual entry (postPayrollAccrualJV, key hr-payroll#<runId>#accrual) → link journalEntryId +
+ * accountSystemId + finalized → carry rows. Any refusal/failure rolls the whole tx back (no orphan entry, no half carry) and the run returns to
+ * DRAFT exactly as H3.4's POST_FAILED path (work days unbound, approver cleared, audit hr.payroll.post_failed {code}).
+ */
+async function finalizeRunV2H37(ctx: Ctx, runId: string, actor: { userId: string; isOwner: boolean }, hooks: ApproveTestHooks): Promise<{ ok: boolean; note: string; code?: ApproveFailCode }> {
+  const head = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
+  if (!head) return { ok: false, note: RUN_NOT_FOUND, code: "NOT_FOUND" };
+  const pre = await payrollBookOf(ctx.tenantId, ctx.systemId);
+  const plan = await planCarryRows(ctx, runId);
+  const inFinal = (hooks as { __inFinal?: () => Promise<void> }).__inFinal; // fix r1 F1 test hook (service-only): runs inside the final tx after the entry is posted
+  let out: { posted: string | null; made: string[]; book: string | null; zero: boolean; off: boolean; flags: string[] };
+  try {
+    if (hooks.__beforeFinal) await hooks.__beforeFinal();
+    if (pre.kind === "MANY") throw new H37Refusal("BOOK_AMBIGUOUS", H37_TEXT.bookAmbiguous);
+    if (pre.kind === "INACTIVE") throw new H37Refusal("BOOK_INACTIVE", H37_TEXT.bookInactive); // fix r1 F2: an enabled link to an inactive book is not "no link"
+    if (pre.kind === "MISSING") throw new H37Refusal("BOOK_MISSING", H37_TEXT.bookMissing);
+    const book = pre.kind === "ONE" ? pre.systemId : null;
+    const off = pre.kind === "OFF"; // fix r1 F6: posting switched off by the owner ⇒ no journal (as before H3.7 for that link)
+    const work = async (t: unknown) => {
+      const tx = t as Prisma.TransactionClient;
+      await lockRunPeriod(tx, ctx, head.periodKey);
+      const st = await tx.$queryRaw<{ status: string; j: string | null; f: boolean | null; payDate: Date; periodKey: string }[]>`
+        SELECT "status"::text AS "status", "journalEntryId" AS "j", ("stepsJson"->>'finalized')::boolean AS "f", "payDate", "periodKey"
+        FROM "HrPayrollRun" WHERE "id" = ${runId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`;
+      const cur = st[0];
+      if (!cur || (cur.status !== "APPROVED" && cur.status !== "PAID") || cur.j || cur.f === true) throw new Run2Refusal("NOT_DRAFT", APPROVE_NOT_DRAFT);
+      const now = await payrollBookOf(ctx.tenantId, ctx.systemId, tx);
+      if (now.kind === "MANY") throw new H37Refusal("BOOK_AMBIGUOUS", H37_TEXT.bookAmbiguous);
+      if (now.kind === "INACTIVE") throw new H37Refusal("BOOK_INACTIVE", H37_TEXT.bookInactive);
+      if (now.kind === "MISSING") throw new H37Refusal("BOOK_MISSING", H37_TEXT.bookMissing);
+      if ((now.kind === "ONE" ? now.systemId : null) !== book || (now.kind === "OFF") !== off) throw new H37Refusal("POST_FAILED", RUN2_TEXT.postFailed); // link moved between the read and the lock ⇒ approve again
+      if (hooks.__failJournal) throw new Error("test: journal post failed");
+      let posted: string | null = null;
+      let zero = false;
+      let flags: string[] = [];
+      if (book) {
+        const fig = await h37RunFiguresInTx(tx, ctx, runId);
+        const am = accrualAmountsV2(fig.items, fig.bound, await h37RefundClaimsInTx(tx, ctx, fig.bound));
+        if (!am.ok) throw new H37Refusal("INCONSISTENT", H37_TEXT.inconsistent);
+        const day = payrollAccrualDay(cur.periodKey, h37BkkDay(new Date(cur.payDate)));
+        if (!day) throw new H37Refusal("INCONSISTENT", H37_TEXT.inconsistent);
+        const p = await postPayrollAccrualJV({ tenantId: ctx.tenantId, systemId: book }, { runId, periodKey: cur.periodKey, day, amounts: am.amounts, postedById: actor.userId }, tx);
+        if (!p.ok) throw new H37Refusal(p.code, p.text);
+        posted = p.entryId;
+        zero = p.entryId === null;
+        flags = am.flags;
+        if (inFinal) await inFinal();
+      }
+      const note = off ? H37_TEXT.noteOff : !book ? H37_TEXT.noteNoBook : zero ? H37_TEXT.noteZero : H37_NOTE_POSTED;
+      const linked = await tx.$executeRaw`
+        UPDATE "HrPayrollRun" SET "journalEntryId" = ${posted}, "accountSystemId" = ${book}, "note" = ${note}, "stepsJson" = COALESCE("stepsJson", '{}'::jsonb) || jsonb_build_object('finalized', true)
+        WHERE "id" = ${runId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}
+          AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") AND "journalEntryId" IS NULL AND COALESCE(("stepsJson"->>'finalized')::boolean, false) = false`;
+      if (linked !== 1) throw new Run2Refusal("NOT_DRAFT", APPROVE_NOT_DRAFT);
+      if (hooks.__failFinal) throw new Error("test: finalize failed after the journal post");
+      const made = await writeCarryRowsInTx(tx, ctx, { id: runId, periodKey: cur.periodKey }, actor.userId, plan);
+      return { posted, made, book, zero, off, flags };
+    };
+    out = book ? await tenantDb({ tenantId: ctx.tenantId, systemId: book }).$transaction(work, H34_TX) : await tenantDb(ctx).$transaction(work, H34_TX);
+  } catch (e) {
+    // same rollback as H3.4 (fix r3 H2/H3): only a run that is still not finalized goes back to DRAFT · the loser of a race gets "approved already"
+    const reverted = await tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await lockRunPeriod(tx, ctx, head.periodKey);
+      if (await runFinalizedInTx(tx, ctx, runId)) return false;
+      const back = await tx.$executeRaw`
+        UPDATE "HrPayrollRun" SET "status" = 'DRAFT'::"PayrollRunStatus", "approvedById" = NULL, "approvedAt" = NULL
+        WHERE "id" = ${runId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "status" = 'APPROVED'::"PayrollRunStatus" AND "journalEntryId" IS NULL
+          AND COALESCE(("stepsJson"->>'finalized')::boolean, false) = false`;
+      if (back === 1) await unbindWorkEntriesFromRunInTx(tx, ctx, { runId });
+      return back === 1;
+    }, H34_TX);
+    if (!reverted) return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
+    const code: H37Code = e instanceof H37Refusal ? e.code : "POST_FAILED";
+    await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: actor.userId, action: "hr.payroll.post_failed", targetType: "HrPayrollRun", targetId: runId, after: { engineVersion: 2, code } });
+    return { ok: false, note: e instanceof H37Refusal ? e.note : RUN2_TEXT.postFailed, code: code as unknown as ApproveFailCode };
+  }
+  for (const id of out.made) await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: actor.userId, action: "hr.payadjust.carry", targetType: "HrPayAdjustment", targetId: id, after: { runId, periodKey: head.periodKey } });
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: actor.userId, action: "hr.payroll.approve", targetType: "HrPayrollRun", targetId: runId, after: { engineVersion: 2, journalEntryId: out.posted, accountSystemId: out.book, carryRows: out.made.length, ...(out.flags.length ? { flags: out.flags } : {}), ...(out.off ? { posting: "OFF" } : {}) } });
+  return { ok: true, note: out.off ? H37_TEXT.approvedOff : !out.book ? H37_TEXT.approvedNoBook : out.zero ? H37_TEXT.noteZero : H37_APPROVED_POSTED };
+}
+
+export type MarkPaidRunOpts = { financeAccountId?: string | null; paidOn?: string | null; actor?: PayrollActor; /** tests only */ now?: Date };
+/**
+ * Mark paid (all engines): v1 ⇒ markPaid (unchanged) · v2 with a recorded book ⇒ one tx on THAT book: lock P → run row → APPROVED + finalized →
+ * pay entry (Dr salaries payable / Cr chosen money account, key hr-payroll#<runId>#pay, dated paidOn) → PAID + `hr.payroll.paid` event ·
+ * any refusal ⇒ nothing written · v2 without book (no link, or approved before H3.7) ⇒ H3.4 markPaidV2 (no entry).
+ */
+export async function markPaidRun(ctx: Ctx, runId: string, opts: MarkPaidRunOpts = {}): Promise<{ ok: boolean; note: string; code?: string }> {
+  const id = typeof runId === "string" ? runId.trim() : "";
+  const v = id ? await runEngineVersion(ctx, id) : null;
+  if (v !== 2) return markPaid(ctx, id);
+  // fix r1 F1: the book is decided UNDER the period lock + row lock — a pay that read "no book" while finalize held the lock re-reads it and
+  //   switches to the booked path (at most once: the book of a finalized run never changes)
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true, accountSystemId: true, status: true } });
+    if (!run) return { ok: false, note: H37_NOT_APPROVED, code: "NOT_APPROVED" };
+    if (run.status === "PAID") return { ok: false, note: H37_TEXT.alreadyPaid, code: "ALREADY_PAID" };
+    if (!run.accountSystemId) {
+      const r = await tenantDb(ctx).$transaction(async (t) => {
+        const tx = t as unknown as Prisma.TransactionClient;
+        await lockRunPeriod(tx, ctx, run.periodKey);
+        const cur = await lockRunRow(tx, ctx, id);
+        if (cur?.status === "PAID") return "PAID" as const;
+        if (!cur || cur.status !== "APPROVED") return "NO" as const;
+        if (!(await runFinalizedInTx(tx, ctx, id))) return "POSTING" as const;
+        if ((await tx.$queryRaw<{ a: string | null }[]>`SELECT "accountSystemId" AS "a" FROM "HrPayrollRun" WHERE "id" = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0]?.a) return "BOOKED" as const;
+        const upd = await tx.$executeRaw`
+          UPDATE "HrPayrollRun" SET "status" = 'PAID'::"PayrollRunStatus"
+          WHERE "id" = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "status" = 'APPROVED'::"PayrollRunStatus" AND "accountSystemId" IS NULL`;
+        if (upd !== 1) return "NO" as const;
+        await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "hr.payroll.paid", idempotencyKey: `hr.payroll.paid#${id}`, payload: { runId: id, periodKey: run.periodKey } });
+        return "OK" as const;
+      }, H34_TX);
+      if (r === "BOOKED") continue;
+      if (r === "PAID") return { ok: false, note: H37_TEXT.alreadyPaid, code: "ALREADY_PAID" };
+      if (r === "POSTING") return { ok: false, note: RUN2_TEXT.posting, code: "POSTING" };
+      if (r !== "OK") return { ok: false, note: H37_NOT_APPROVED, code: "NOT_APPROVED" };
+      return { ok: true, note: H37_PAID };
+    }
+    return markPaidBookedH37(ctx, id, run.periodKey, run.accountSystemId, opts);
+  }
+  return { ok: false, note: RUN2_TEXT.posting, code: "POSTING" };
+}
+
+/** booked pay: recorded book alive (ACCOUNT · active) · accrual still POSTED · pay entry + PAID + event in one tx on that book */
+async function markPaidBookedH37(ctx: Ctx, id: string, periodKey: string, book: string, opts: MarkPaidRunOpts): Promise<{ ok: boolean; note: string; code?: string }> {
+  if (!(await h37BookAlive(ctx.tenantId, book))) return { ok: false, note: H37_TEXT.bookGone, code: "BOOK_GONE" }; // fix r1 F2 (hunter D3)
+  const finance = (typeof opts.financeAccountId === "string" && opts.financeAccountId.trim()) || (await payrollPayAccountSetting(ctx)) || null;
+  if (!finance) return { ok: false, note: H37_TEXT.payAccount, code: "PAY_ACCOUNT" };
+  const today = h37BkkDay(opts.now ?? new Date());
+  const paidOn = typeof opts.paidOn === "string" && opts.paidOn ? opts.paidOn : today;
+  if (!paidOnOk(periodKey, paidOn, today)) return { ok: false, note: H37_TEXT.payDate, code: "PAY_DATE" };
+  let r: "OK" | "NO" | "POSTING" | "PAID";
+  try {
+    r = await tenantDb({ tenantId: ctx.tenantId, systemId: book }).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await lockRunPeriod(tx, ctx, periodKey);
+      const cur = await lockRunRow(tx, ctx, id);
+      if (cur?.status === "PAID") return "PAID" as const;
+      if (!cur || cur.status !== "APPROVED") return "NO" as const;
+      if (!(await runFinalizedInTx(tx, ctx, id))) return "POSTING" as const;
+      const rec = await tx.$queryRaw<{ a: string | null }[]>`SELECT "accountSystemId" AS "a" FROM "HrPayrollRun" WHERE "id" = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`;
+      if (rec[0]?.a !== book) throw new H37Refusal("POST_FAILED", H37_NOT_APPROVED);
+      if (!(await h37BookAlive(ctx.tenantId, book, tx))) throw new H37Refusal("BOOK_GONE", H37_TEXT.bookGone);
+      const st = await payrollEntryStateInTx({ tenantId: ctx.tenantId, systemId: book }, id, tx); // fix r1 F3: never pay against an accrual reversed elsewhere
+      if ((cur.journalEntryId && st.accrual !== "POSTED") || (st.pay !== null && st.pay !== "POSTED")) throw new H37Refusal("ENTRY_REVERSED", H37_TEXT.entryReversed);
+      const fig = await h37RunFiguresInTx(tx, ctx, id);
+      const net = fig.items.reduce((s, i) => s + i.netSatang, 0);
+      if (!Number.isSafeInteger(net) || net !== cur.totalNetSatang || net < 0) throw new H37Refusal("INCONSISTENT", H37_TEXT.inconsistent);
+      const p = await postPayrollPayJV({ tenantId: ctx.tenantId, systemId: book }, { runId: id, periodKey: cur.periodKey, day: paidOn, netSatang: net, financeAccountId: finance, postedById: opts.actor?.userId ?? null }, tx);
+      if (!p.ok) throw new H37Refusal(p.code, p.code === "PAY_ACCOUNT" ? H37_TEXT.payAccount : p.text);
+      const upd = await tx.$executeRaw`
+        UPDATE "HrPayrollRun" SET "status" = 'PAID'::"PayrollRunStatus"
+        WHERE "id" = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "status" = 'APPROVED'::"PayrollRunStatus"`;
+      if (upd !== 1) throw new H37Refusal("POST_FAILED", H37_NOT_APPROVED);
+      await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "hr.payroll.paid", idempotencyKey: `hr.payroll.paid#${id}`, payload: { runId: id, periodKey: cur.periodKey } });
+      return "OK" as const;
+    }, H34_TX);
+  } catch (e) {
+    if (e instanceof H37Refusal) return { ok: false, note: e.note, code: e.code };
+    throw e;
+  }
+  if (r === "PAID") return { ok: false, note: H37_TEXT.alreadyPaid, code: "ALREADY_PAID" };
+  if (r === "POSTING") return { ok: false, note: RUN2_TEXT.posting, code: "POSTING" };
+  if (r !== "OK") return { ok: false, note: H37_NOT_APPROVED, code: "NOT_APPROVED" };
+  return { ok: true, note: H37_PAID };
+}
+/** the recorded book still exists as an ACTIVE ACCOUNT system of this tenant (raw SQL — callable inside a book-scoped tx) */
+async function h37BookAlive(tenantId: string, book: string, tx?: Prisma.TransactionClient): Promise<boolean> {
+  const db = (tx ?? tenantDb({ tenantId })) as unknown as Prisma.TransactionClient;
+  return (await db.$queryRaw<{ n: number }[]>`SELECT 1 AS "n" FROM "AppSystem" WHERE "id" = ${book} AND "tenantId" = ${tenantId} AND "type"::text = 'ACCOUNT' AND "active" = true`).length === 1;
+}
+
+/**
+ * reverseRun for runs H3.7 owns — `null` = not ours (reverseRun keeps its v1 / H3.4-era path, Q9):
+ *   (a) a run with a recorded book (`accountSystemId`) ⇒ tx on THAT book: same gates/claim/carry/unbind/outbox as reverseRun, entries
+ *       reversed pay first then accrual (reverseEntry: mirrored lines, its key, today or the first day of the next open period); book gone ⇒ JV_REVERSE_FAILED
+ *   (b) a finalized v2 run that has no entry and no book ⇒ reversed without accounting, note reverseNoBook (Q1)
+ */
+async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, actor: PayrollActor | undefined): Promise<{ ok: boolean; note: string; code?: ReverseRefusalCode } | null> {
+  const pre = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true, accountSystemId: true, engineVersion: true, inputDigest: true, journalEntryId: true, stepsJson: true } });
+  if (!pre) return null;
+  const book = pre.accountSystemId;
+  const noBook = !book && pre.engineVersion === 2 && !!pre.inputDigest && !pre.journalEntryId && h37Obj(pre.stepsJson).finalized === true;
+  if (!book && !noBook) return null;
+  const periodKey = pre.periodKey;
+  const why = reason?.trim() || `กลับรายการเงินเดือนงวด ${periodKey}`;
+  if (book && !(await h37BookAlive(ctx.tenantId, book))) return { ...(await reverseRefused(ctx, actor, id, "JV_REVERSE_FAILED")), note: H37_TEXT.bookGone }; // fix r1 F2 (D3): inactive or gone book ⇒ fixed text, nothing reversed
+  type Out = { ok: false; code: ReverseRefusalCode } | { ok: true; prevStatus: string; journalEntryId: string | null; payEntryId: string | null; reversalEntryIds: string[]; adjustmentIds: string[] };
+  const work = async (t: unknown): Promise<Out> => {
+    const tx = t as Prisma.TransactionClient;
+    await lockRunPeriod(tx, ctx, periodKey);
+    const cur = await lockRunRow(tx, ctx, id);
+    if (!cur || cur.periodKey !== periodKey) return { ok: false, code: "NOT_FOUND" };
+    if (cur.status === "REVERSED") return { ok: false, code: "ALREADY_REVERSED" };
+    if (cur.status !== "APPROVED" && cur.status !== "PAID") return { ok: false, code: "BAD_STATUS" };
+    const claimed = await tx.$executeRaw`
+      UPDATE "HrPayrollRun"
+      SET "status" = 'REVERSED'::"PayrollRunStatus", "reversedAt" = (now() AT TIME ZONE 'UTC'), "reversedById" = ${actor?.userId ?? null},
+          "note" = ${`กลับรายการแล้ว: ${why}`}
+      WHERE "id" = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}
+        AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus")`;
+    if (claimed !== 1) return { ok: false, code: "ALREADY_REVERSED" };
+    await reverseCarryInTx(tx, ctx, id); // H3.4 LATER_RUN / CARRY_BOUND first (rolls everything back)
+    let rv = { payEntryId: null as string | null, accrualEntryId: null as string | null, reversalEntryIds: [] as string[] };
+    if (book) {
+      if (!(await h37BookAlive(ctx.tenantId, book, tx))) throw new H37Refusal("BOOK_GONE", H37_TEXT.bookGone);
+      try {
+        rv = await reversePayrollRunJV({ tenantId: ctx.tenantId, systemId: book }, id, why, tx);
+      } catch (e) {
+        if ((e as { code?: unknown })?.code === "PAYROLL_ENTRY_NOT_POSTED") throw new H37Refusal("ENTRY_REVERSED", H37_TEXT.entryReversed); // fix r1 F3: reversed elsewhere ⇒ refuse
+        throw new JvReverseFailed(e);
+      }
+    }
+    const bound = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "HrPayAdjustment"
+      WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" = ${id}
+      ORDER BY "id" FOR UPDATE`;
+    const adjustmentIds = bound.map((b) => b.id);
+    const unbound = await tx.$executeRaw`
+      UPDATE "HrPayAdjustment" SET "runId" = NULL
+      WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" = ${id}`;
+    if (unbound !== adjustmentIds.length) throw new ReverseUnbindMismatch();
+    await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "hr.payroll.reversed", idempotencyKey: `hr.payroll.reversed#${id}`, payload: { runId: id, periodKey, adjustmentIds } });
+    return { ok: true, prevStatus: cur.status, journalEntryId: cur.journalEntryId, payEntryId: rv.payEntryId, reversalEntryIds: rv.reversalEntryIds, adjustmentIds };
+  };
+  let out: Out;
+  try {
+    out = book ? await tenantDb({ tenantId: ctx.tenantId, systemId: book }).$transaction(work, REVERSE_TX_OPTS) : await tenantDb(ctx).$transaction(work, REVERSE_TX_OPTS);
+  } catch (e) {
+    if (e instanceof CarryBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "CARRY_BOUND" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.carryBound };
+    if (e instanceof LaterRunRefusal) return { ...(await reverseRefused(ctx, actor, id, "LATER_RUN" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.laterRun };
+    if (e instanceof H37Refusal) return { ...(await reverseRefused(ctx, actor, id, e.code as unknown as ReverseRefusalCode)), note: e.note };
+    const code: ReverseRefusalCode = e instanceof JvReverseFailed ? "JV_REVERSE_FAILED" : "TX_FAILED";
+    await logOps("WARN", "hr-payroll", code === "JV_REVERSE_FAILED" ? "กลับรายการรอบจ่าย: กลับ JV ไม่สำเร็จ — ย้อนทั้งธุรกรรม" : "กลับรายการรอบจ่ายไม่สำเร็จ — ย้อนทั้งธุรกรรม", {
+      tenantId: ctx.tenantId,
+      detail: `runId=${id} systemId=${ctx.systemId} accountSystemId=${book ?? "-"} code=${code} error=${reverseErrorCode(e)}`,
+    }).catch(() => undefined);
+    return reverseRefused(ctx, actor, id, code);
+  }
+  if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: actor?.userId ? "USER" : "SYSTEM",
+    actorId: actor?.userId ?? null,
+    action: "hr.payroll.reverse",
+    targetType: "HrPayrollRun",
+    targetId: id,
+    before: { status: out.prevStatus },
+    after: {
+      status: "REVERSED", runId: id, periodKey, adjustmentCount: out.adjustmentIds.length, journalEntryId: out.journalEntryId, accountSystemId: book ?? null,
+      payEntryId: out.payEntryId, reversalEntryIds: out.reversalEntryIds, jvReversed: out.reversalEntryIds.length > 0,
+    },
+  });
+  return { ok: true, note: !book ? H37_TEXT.reverseNoBook : out.reversalEntryIds.length > 0 ? REVERSE_OK : REVERSE_OK_JV_SKIPPED };
+}
+
+// ── settings (owner only): payroll book of this HR system + default pay account ──
+export type PayrollAccountingViewer = { role: string; userId?: string | null };
+const H37_PAY_KEY = "payFinanceAccountId";
+async function payrollPayAccountSetting(ctx: Ctx): Promise<string | null> {
+  const sys = await tenantDb({ tenantId: ctx.tenantId }).appSystem.findFirst({ where: { id: ctx.systemId, type: "HR" }, select: { settings: true } });
+  const v = h37Obj(h37Obj(sys?.settings)[PAYROLL_SETTINGS_KEY])[H37_PAY_KEY];
+  return typeof v === "string" && v ? v : null;
+}
+async function h37WritePaySetting(ctx: Ctx, value: string | null): Promise<boolean> {
+  return tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0))`; // same key as setPayrollEngine (settings.hrPayroll is shared)
+    const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
+    if (!sys) return false;
+    const base = h37Obj(sys.settings);
+    base[PAYROLL_SETTINGS_KEY] = { ...h37Obj(base[PAYROLL_SETTINGS_KEY]), [H37_PAY_KEY]: value };
+    const r = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: base as Prisma.InputJsonValue } });
+    return r.count === 1;
+  });
+}
+
+/** owner picks the payroll book (null = no accounting) — linkPayrollBook (one tx: other links off · link · chart ready) · audit hr.payroll.book */
+export async function setPayrollBook(ctx: Ctx, viewer: PayrollAccountingViewer, input: { accountSystemId: string | null }): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+  if (!viewer || viewer.role !== "OWNER" || !(await payrollOwnerOk(ctx.tenantId, viewer.userId))) return { ok: false, code: "BOOK_OWNER", reason: H37_TEXT.bookOwner }; // fix r1 F7: OWNER membership of ctx.tenant from the DB
+  const want = input?.accountSystemId ?? null;
+  if (want !== null && typeof want !== "string") return { ok: false, code: "BOOK_NOT_FOUND", reason: H37_TEXT.bookOwner };
+  const before = await payrollBookOf(ctx.tenantId, ctx.systemId);
+  const r = await linkPayrollBook({ tenantId: ctx.tenantId, hrSystemId: ctx.systemId, accountSystemId: want, actorUserId: viewer.userId ?? null });
+  if (!r.ok) return { ok: false, code: r.code, reason: r.text };
+  const prevId = before.kind === "ONE" ? before.systemId : null;
+  if (prevId !== want && (await payrollPayAccountSetting(ctx))) await h37WritePaySetting(ctx, null); // the default pay account belonged to the old book
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: viewer.userId ?? null, action: "hr.payroll.book", targetType: "AppSystem", targetId: ctx.systemId, before: { accountSystemId: prevId, links: before.kind }, after: { accountSystemId: want } });
+  return { ok: true };
+}
+
+/** owner picks the default pay account (a money account of the linked book · not archived · useForPay) · null clears · audit hr.payroll.payaccount */
+export async function setPayrollPayAccount(ctx: Ctx, viewer: PayrollAccountingViewer, input: { financeAccountId: string | null }): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+  if (!viewer || viewer.role !== "OWNER" || !(await payrollOwnerOk(ctx.tenantId, viewer.userId))) return { ok: false, code: "BOOK_OWNER", reason: H37_TEXT.bookOwner }; // fix r1 F7
+  const want = input?.financeAccountId ?? null;
+  if (want !== null) {
+    const b = await payrollBookOf(ctx.tenantId, ctx.systemId);
+    if (b.kind !== "ONE" || typeof want !== "string" || !(await payrollPayAccountsOf(ctx.tenantId, b.systemId)).some((a) => a.id === want)) return { ok: false, code: "PAY_ACCOUNT", reason: H37_TEXT.payAccount };
+  }
+  const before = await payrollPayAccountSetting(ctx);
+  if (!(await h37WritePaySetting(ctx, want))) return { ok: false, code: "PAY_ACCOUNT", reason: H37_TEXT.payAccount };
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: viewer.userId ?? null, action: "hr.payroll.payaccount", targetType: "AppSystem", targetId: ctx.systemId, before: { financeAccountId: before }, after: { financeAccountId: want } });
+  return { ok: true };
+}
+
+/** fix r1 — reverseRun's old path re-checks under the row lock: a run H3.7 owns (recorded book, or finalized v2 without JV/book) goes to reverseRunH37 */
+class H37Reroute extends Error {}
+async function h37OwnsRunInTx(tx: Prisma.TransactionClient, ctx: Ctx, id: string): Promise<boolean> {
+  const r = (await tx.$queryRaw<{ a: string | null; v: number; d: string | null; j: string | null; f: boolean | null }[]>`
+    SELECT "accountSystemId" AS "a", "engineVersion" AS "v", "inputDigest" AS "d", "journalEntryId" AS "j", ("stepsJson"->>'finalized')::boolean AS "f"
+    FROM "HrPayrollRun" WHERE "id" = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0];
+  return !!r && (!!r.a || (Number(r.v) === 2 && !!r.d && !r.j && r.f === true));
+}
+
+/** settings card + mark-paid dialog data (owner page reads; ids/names only — no amounts) */
+export async function getPayrollAccounting(ctx: Ctx): Promise<{ books: { id: string; name: string }[]; link: "NONE" | "ONE" | "MANY" | "INACTIVE" | "MISSING" | "OFF"; bookId: string | null; linkedBookId: string | null; payAccounts: { id: string; name: string; type: string }[]; payFinanceAccountId: string | null; lastUnlink: { at: Date; by: string | null } | null }> {
+  const tdb = tenantDb({ tenantId: ctx.tenantId });
+  const books = await tdb.appSystem.findMany({ where: { type: "ACCOUNT", active: true }, select: { id: true, name: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  const b = await payrollBookOf(ctx.tenantId, ctx.systemId);
+  const bookId = b.kind === "ONE" ? b.systemId : null;
+  const linkedBookId = "systemId" in b ? b.systemId : null; // fix r1 F6: the OFF / INACTIVE link is shown too
+  // fix r1 F2: last time the payroll link was removed (either side) — shown while there is no link
+  const un = b.kind === "NONE" ? await tdb.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: "hr.payroll.book.unlink", targetId: ctx.systemId }, orderBy: { createdAt: "desc" }, select: { createdAt: true, actorId: true } }) : null;
+  const by = un?.actorId ? ((await tdb.user.findFirst({ where: { id: un.actorId }, select: { name: true, email: true } }).catch(() => null))?.name ?? null) : null;
+  return { books, link: b.kind, bookId, linkedBookId, payAccounts: bookId ? await payrollPayAccountsOf(ctx.tenantId, bookId) : [], payFinanceAccountId: await payrollPayAccountSetting(ctx), lastUnlink: un ? { at: un.createdAt, by } : null };
+}
+/** fix r1 F6 — owner switches payroll posting of the current link on/off (OWNER from the DB · audited by the account facade) */
+export async function setPayrollPosting(ctx: Ctx, viewer: PayrollAccountingViewer, input: { on: boolean }): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+  if (!viewer || viewer.role !== "OWNER" || !(await payrollOwnerOk(ctx.tenantId, viewer.userId))) return { ok: false, code: "BOOK_OWNER", reason: H37_TEXT.bookOwner };
+  const r = await setPayrollLinkPosting({ tenantId: ctx.tenantId, hrSystemId: ctx.systemId, on: input?.on === true, actorUserId: viewer.userId ?? null });
+  return r.ok ? { ok: true } : { ok: false, code: r.code, reason: r.text };
+}
+/** money accounts of the book a run was posted in (mark-paid dialog of that run) */
+export async function payAccountsOfRun(ctx: Ctx, runId: string): Promise<{ id: string; name: string; type: string }[]> {
+  const r = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { accountSystemId: true } });
+  return r?.accountSystemId ? payrollPayAccountsOf(ctx.tenantId, r.accountSystemId) : [];
+}
+
+// ── fix r2 (b) — "give back" a recovered claim: REFUND adjustment that names its claim (sourceRef "refund:<claimId>#<refund id>") so the accrual debits the
+//   class account of that claim (F5). Rules: engine-2 shop · claim = APPROVED DEDUCTION recovered by an APPROVED/PAID run · amount ≤ what that run
+//   deducted for the claim − every earlier non-rejected refund of it · target period without a live run · authorisation from the DB membership
+//   (OWNER, or hr.payadjust.request + payroll viewer in the employee's branch) · one tx: per-claim advisory lock → P lock → re-checks → insert PENDING.
+//   Refusals are fixed texts without data.
+export const GIVE_BACK_TEXT = {
+  no: "คืนเงินรายการหักนี้ไม่ได้ — ต้องเป็นรายการหักที่หักในรอบจ่ายที่อนุมัติหรือจ่ายแล้ว และคุณต้องมีสิทธิ์ยื่นรายการเพิ่ม/หัก",
+  amount: "จำนวนเงินที่คืนต้องมากกว่า 0 และไม่เกินยอดที่หักไปของรายการนี้ (หักยอดที่คืนไปแล้วออกก่อน)",
+  period: "งวดที่คืนเงินต้องเป็นงวดถัดจากรอบจ่ายล่าสุดของพนักงานคนนี้ ที่ยังไม่มีรอบจ่าย และไม่เกินงวดที่พนักงานพ้นสภาพ (รูปแบบ YYYY-MM)",
+  engine: "คืนเงินรายการหักได้เฉพาะร้านที่ใช้เครื่องคิดเงินเดือนรุ่น 2",
+  ok: "บันทึกการคืนเงินแล้ว — รออนุมัติ แล้วจะเข้ารอบจ่ายของงวดที่เลือก",
+} as const;
+/** fix r3 (3) — latest period already covered for the employee by an APPROVED/PAID/finalized run + the end-date period (BKK) */
+async function giveBackWindowInTx(db: Pick<Prisma.TransactionClient, "$queryRaw">, ctx: Ctx, employeeId: string): Promise<{ lastCovered: string | null; endPeriod: string | null }> {
+  const last = (await db.$queryRaw<{ p: string | null }[]>`
+    SELECT MAX(r."periodKey") AS "p" FROM "HrPayrollRun" r JOIN "HrPayrollItem" i ON i."runId" = r."id" AND i."tenantId" = r."tenantId" AND i."systemId" = r."systemId"
+    WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId} AND i."employeeId" = ${employeeId}
+      AND (r."status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") OR COALESCE((r."stepsJson"->>'finalized')::boolean, false) = true) AND r."status" <> 'REVERSED'::"PayrollRunStatus"`)[0]?.p ?? null;
+  const end = (await db.$queryRaw<{ d: Date | null }[]>`SELECT "endDate" AS "d" FROM "HrEmployee" WHERE "id" = ${employeeId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0]?.d ?? null;
+  return { lastCovered: last, endPeriod: end ? h37BkkDay(new Date(end)).slice(0, 7) : null };
+}
+const nextPeriodOf = (pk: string): string => { const [y, mm] = pk.split("-").map(Number); return mm === 12 ? `${y! + 1}-01` : `${y}-${String(mm! + 1).padStart(2, "0")}`; };
+/** fix r3 (3) — the period the give-back form offers: the first period after the employee's latest covered run (and after the claim's run) that has no
+ *  live run of this HR system · null when that is after the employee's end-date period (the form is then not shown) */
+export async function giveBackPeriodOf(ctx: Ctx, claimId: string): Promise<string | null> {
+  const c = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id: claimId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true, runId: true } });
+  if (!c?.runId) return null;
+  const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: c.runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
+  if (!run) return null;
+  const win = await giveBackWindowInTx(tenantDb(ctx) as unknown as Prisma.TransactionClient, ctx, c.employeeId);
+  let p = nextPeriodOf(win.lastCovered && win.lastCovered > run.periodKey ? win.lastCovered : run.periodKey);
+  const live = new Set((await tenantDb(ctx).hrPayrollRun.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: { not: "REVERSED" } }, select: { periodKey: true } })).map((r) => r.periodKey));
+  for (let i = 0; i < 36 && live.has(p); i += 1) p = nextPeriodOf(p);
+  return win.endPeriod && p > win.endPeriod ? null : p;
+}
+export async function giveBackClaim(ctx: Ctx, viewer: { userId?: string | null }, input: { claimId: string; amountSatang: number; periodKey: string; note?: string | null }): Promise<{ ok: true; id: string } | { ok: false; code: string; reason: string }> {
+  const NO = { ok: false as const, code: "NO", reason: GIVE_BACK_TEXT.no };
+  const uid = typeof viewer?.userId === "string" ? viewer.userId : "";
+  const claimId = typeof input?.claimId === "string" ? input.claimId.trim() : "";
+  if (!uid || !claimId) return NO;
+  const m = await tenantDb({ tenantId: ctx.tenantId }).membership.findFirst({ where: { tenantId: ctx.tenantId, userId: uid, acceptedAt: { not: null } }, select: { role: true, unitAccess: true, permissions: true } });
+  if (!m) return NO;
+  if ((await getPayrollEngine(ctx)).engineVersion !== 2) return { ok: false, code: "ENGINE", reason: GIVE_BACK_TEXT.engine };
+  const claim = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id: claimId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true, kind: true, status: true, runId: true } });
+  if (!claim || claim.kind !== "DEDUCTION" || claim.status !== "APPROVED" || !claim.runId) return NO;
+  if (m.role !== "OWNER") {
+    // fix r3 (4): branch rule = the adjustment request path (payroll-actions.ts payTarget → scope.ts unitTargetOf): a branch-limited requester is refused
+    //   for an employee of another branch AND for an employee without a unit (only OWNER / all-branch viewers reach those)
+    const mc = { role: m.role, unitAccess: (Array.isArray(m.unitAccess) ? m.unitAccess : []) as string[], permissions: (m.permissions ?? {}) as Record<string, unknown> } as MembershipCtx;
+    const emp = await employeeUnitsOf(ctx, claim.employeeId);
+    const tgt = emp ? unitTargetOf(hrScopeOf({ role: m.role, unitAccess: m.unitAccess }), emp, new Date()) : { ok: false as const };
+    if (!tgt.ok || !canViewPayroll(mc) || !evaluate(mc, { module: "hr", action: "hr.payadjust.request", ...("unitId" in tgt && tgt.unitId ? { unitId: tgt.unitId } : {}) } as never)) return NO;
+  }
+  const amount = Number(input?.amountSatang);
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > HR_INT_MAX) return { ok: false, code: "AMOUNT", reason: GIVE_BACK_TEXT.amount };
+  const p = typeof input?.periodKey === "string" ? input.periodKey.trim() : "";
+  if (!PERIOD_RE.test(p)) return { ok: false, code: "PERIOD", reason: GIVE_BACK_TEXT.period };
+  type R = { ok: true; id: string } | { ok: false; code: string; reason: string };
+  const out = await tenantDb(ctx).$transaction(async (t): Promise<R> => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:giveback:${ctx.systemId}:${claimId}`}, 0))`;
+    await lockRunPeriod(tx, ctx, p);
+    const c = (await tx.$queryRaw<{ e: string; k: string; s: string; r: string | null; amt: number }[]>`
+      SELECT "employeeId" AS "e", "kind"::text AS "k", "status"::text AS "s", "runId" AS "r", "amountSatang" AS "amt" FROM "HrPayAdjustment"
+      WHERE "id" = ${claimId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`)[0];
+    if (!c || c.k !== "DEDUCTION" || c.s !== "APPROVED" || !c.r) return NO;
+    const run = (await tx.$queryRaw<{ st: string; v: number; d: string | null }[]>`SELECT "status"::text AS "st", "engineVersion" AS "v", "inputDigest" AS "d" FROM "HrPayrollRun" WHERE "id" = ${c.r} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0];
+    if (!run || (run.st !== "APPROVED" && run.st !== "PAID")) return NO;
+    let deducted = Number(c.amt);
+    if (Number(run.v) === 2 && run.d) {
+      const item = (await tx.$queryRaw<{ j: unknown }[]>`SELECT "snapshotJson" AS "j" FROM "HrPayrollItem" WHERE "runId" = ${c.r} AND "employeeId" = ${c.e} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0];
+      const lines = (h37Obj(item?.j).lines as { code?: string; ref?: string; amountSatang?: number }[] | undefined) ?? [];
+      deducted = -lines.filter((l) => l?.code === "DEDUCTION" && l?.ref === claimId).reduce((sum, l) => sum + Number(l.amountSatang ?? 0), 0);
+    }
+    const prior = Number((await tx.$queryRaw<{ n: bigint | number | null }[]>`
+      SELECT COALESCE(SUM("amountSatang"), 0) AS "n" FROM "HrPayAdjustment"
+      WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "kind"::text = 'REFUND' AND ("sourceRef" = ${`${REFUND_OF_PREFIX}${claimId}`} OR "sourceRef" LIKE ${`${REFUND_OF_PREFIX}${claimId}#%`}) AND "status"::text <> 'REJECTED'`)[0]?.n ?? 0);
+    if (!Number.isSafeInteger(deducted) || amount > deducted - prior) return { ok: false, code: "AMOUNT", reason: GIVE_BACK_TEXT.amount };
+    const live = await tx.$queryRaw<{ n: number }[]>`SELECT 1 AS "n" FROM "HrPayrollRun" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "periodKey" = ${p} AND "status" <> 'REVERSED'::"PayrollRunStatus" LIMIT 1`;
+    if (live.length) return { ok: false, code: "PERIOD", reason: GIVE_BACK_TEXT.period };
+    // fix r3 (3): the period must still be picked up for THIS employee — after the claim's deduction run and after the latest
+    //   APPROVED/PAID/finalized run that covers the employee, and not after the employee's end-date period
+    const win = await giveBackWindowInTx(tx, ctx, c.e);
+    const dedP = (await tx.$queryRaw<{ p: string }[]>`SELECT "periodKey" AS "p" FROM "HrPayrollRun" WHERE "id" = ${c.r} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0]?.p ?? "";
+    if (p <= dedP || (win.lastCovered && p <= win.lastCovered) || (win.endPeriod && p > win.endPeriod)) return { ok: false, code: "PERIOD", reason: GIVE_BACK_TEXT.period };
+    const id = `rf${randomUUID().replace(/-/g, "")}`;
+    await tx.$executeRaw`
+      INSERT INTO "HrPayAdjustment" ("id", "tenantId", "systemId", "employeeId", "periodKey", "kind", "amountSatang", "note", "status", "requestedById", "sourceType", "sourceRef", "createdAt")
+      VALUES (${id}, ${ctx.tenantId}, ${ctx.systemId}, ${c.e}, ${p}, 'REFUND'::"HrPayItemKind", ${amount}, ${typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 200) : null}, 'PENDING'::"HrPayItemStatus", ${uid},
+        'MANUAL'::"HrPaySource", ${`${REFUND_OF_PREFIX}${claimId}#${id}`}, (now() AT TIME ZONE 'UTC'))`;
+    return { ok: true, id };
+  }, H34_TX);
+  if (!out.ok) return out;
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: uid, action: "hr.payadjust.request", targetType: "HrPayAdjustment", targetId: out.id, after: { kind: "REFUND", claimId, periodKey: p, amountSatang: amount } });
+  return out;
+}
+// ◂ HR H3.7

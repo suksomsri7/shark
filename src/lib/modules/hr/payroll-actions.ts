@@ -27,6 +27,7 @@ import {
 import { adjustmentReplyForViewer, screenOtHoursForViewer } from "./privacy";
 import { confirmBranchHours, createPayrollRunV2, RUN2_TEXT, setAdjustmentConsent, setPayrollEngine } from "./payroll"; // HR H3.4 ▸ รอบจ่ายรุ่น 2 ◂
 import { hrViewerOf } from "./privacy"; // HR H3.4 ◂
+import { giveBackClaim, h37PageText, markPaidRun, setPayrollBook, setPayrollPayAccount, setPayrollPosting } from "./payroll"; // HR H3.7 ▸ จ่าย = ลงบัญชีจ่าย (สมุดของรอบ) · ตั้งสมุด/บัญชีจ่ายเงินเดือน (เจ้าของร้าน) ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขา — สาขาของพนักงานเป้าหมายอ่านจาก DB · รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8) ◂
 import { employeeIdOfAdjustment, employeeUnitsOf, HrBranchError, hrScopeOf, isAllBranches, unitTargetOf } from "./scope";
 
@@ -241,7 +242,7 @@ export async function markPaidAction(formData: FormData) {
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  const res = await markPaid(ctx, runId);
+  const res = await markPaidRun(ctx, runId, { actor: { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" } }); // HR H3.7 ▸ รุ่น 1 = markPaid เดิม · รุ่น 2 ที่ลงบัญชีแล้ว = ลงรายการจ่าย (บัญชีจ่ายที่ตั้งไว้) ◂
   await writeAudit({
     tenantId: auth.active.tenantId,
     actorId: auth.user.id,
@@ -520,7 +521,7 @@ export async function approveRunV2Action(formData: FormData): Promise<{ ok: bool
     if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
     const r = await approveRun({ tenantId: auth.active.tenantId, systemId }, runId, Number.isSafeInteger(net) && Number.isSafeInteger(items) ? { totalNetSatang: net, itemCount: items } : undefined, h34Actor(auth));
     revalidate(systemId);
-    return r.ok ? { ok: true, note: r.note } : { ok: false, reason: r.note };
+    return r.ok ? { ok: true, note: r.note } : { ok: false, reason: h37PageText(r) }; // HR H3.7 ▸ ข้อความที่มีค่า (งวด/ชื่อบัญชี) → ข้อความคงที่ ◂
   });
 }
 // fix r1 F7: จ่าย/กลับรายการของหน้ารอบรุ่น 2 คืนผลจริง (ไม่ใช่ "บันทึกแล้ว" เสมอ) — ไม่มีสิทธิ์ = ข้อความคงที่ในหน้า
@@ -533,9 +534,9 @@ export async function payRunV2Action(formData: FormData): Promise<{ ok: boolean;
     const systemId = String(formData.get("systemId") ?? "");
     const runId = String(formData.get("runId") ?? "");
     if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
-    const r = await markPaid({ tenantId: auth.active.tenantId, systemId }, runId);
+    const r = await markPaidRun({ tenantId: auth.active.tenantId, systemId }, runId, { financeAccountId: String(formData.get("financeAccountId") ?? "").trim() || null, paidOn: String(formData.get("paidOn") ?? "").trim() || null, actor: h34Actor(auth) }); // HR H3.7 ◂
     revalidate(systemId);
-    return r.ok ? { ok: true } : { ok: false, reason: r.note };
+    return r.ok ? { ok: true } : { ok: false, reason: h37PageText(r) }; // HR H3.7 ◂
   });
 }
 export async function reverseRunV2Action(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
@@ -581,3 +582,51 @@ export async function setAdjustmentConsentAction(formData: FormData): Promise<{ 
   });
 }
 // ◂ HR H3.4
+
+// ═══════════════════ HR H3.7 ▸ สมุดบัญชีเงินเดือน + บัญชีจ่ายเงินเดือน (เจ้าของร้านเท่านั้น — service ตรวจบทบาทเอง · ไม่มี assertHrCan) ═══════════════════
+export async function setPayrollBookAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    const systemId = String(formData.get("systemId") ?? "");
+    if (!systemId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const raw = String(formData.get("accountSystemId") ?? "").trim();
+    const r = await setPayrollBook({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { accountSystemId: raw || null });
+    revalidatePath(`/app/sys/${systemId}/hr/settings`);
+    return r.ok ? { ok: true } : { ok: false, reason: r.reason };
+  });
+}
+export async function setPayrollPayAccountAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    const systemId = String(formData.get("systemId") ?? "");
+    if (!systemId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const raw = String(formData.get("financeAccountId") ?? "").trim();
+    const r = await setPayrollPayAccount({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { financeAccountId: raw || null });
+    revalidatePath(`/app/sys/${systemId}/hr/settings`);
+    return r.ok ? { ok: true } : { ok: false, reason: r.reason };
+  });
+}
+export async function setPayrollPostingAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    const systemId = String(formData.get("systemId") ?? "");
+    if (!systemId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const r = await setPayrollPosting({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { on: formData.get("on") === "1" });
+    revalidatePath(`/app/sys/${systemId}/hr/settings`);
+    return r.ok ? { ok: true } : { ok: false, reason: r.reason };
+  });
+}
+// fix r2 (b) — คืนเงินรายการหักที่หักไปแล้ว (สร้าง REFUND ที่อ้างรายการหัก) · สิทธิ์ตรวจจาก membership ใน DB ที่ service
+export async function giveBackClaimAction(formData: FormData): Promise<{ ok: boolean; reason?: string; note?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    const systemId = String(formData.get("systemId") ?? "");
+    const baht = String(formData.get("amount") ?? "").trim().replace(/,/g, "");
+    if (!systemId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const amountSatang = /^\d{1,9}(\.\d{1,2})?$/.test(baht) ? Math.round(Number(baht) * 100) : -1;
+    const r = await giveBackClaim({ tenantId: auth.active.tenantId, systemId }, { userId: auth.active.userId }, { claimId: String(formData.get("claimId") ?? ""), amountSatang, periodKey: String(formData.get("periodKey") ?? ""), note: String(formData.get("note") ?? "") || null });
+    revalidate(systemId);
+    return r.ok ? { ok: true } : { ok: false, reason: r.reason };
+  });
+}
+// ◂ HR H3.7

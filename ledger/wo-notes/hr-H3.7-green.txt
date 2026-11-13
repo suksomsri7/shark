@@ -1,0 +1,142 @@
+# H3.7 green — lane DB wo-hr-qc-l3 · tree 3083a4901 (+ this notes commit) · base 51793cdb0 · env QC_H37_BASE=51793cdb0 QC_H06_BASE=d350c26c… · 2026-11-13T14:16:58Z
+qc-hr-h3.7 forced #1 (h37-4) 56/56 · forced #2 + unforced below
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34  fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 56/56 (QC_FORCE) RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.7-unforced exit=0 ===== qc-hr-h3.7 ===== passed 56/56 RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.5 exit=0 ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE) RESIDUE none (tenants=2 users=10) fails=[]
+qc-hr-h3.2 exit=0 ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) RESIDUE none (tenants=2 users=6) fails=[]
+qc-hr-h3.1 exit=0 ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE) RESIDUE none (tenants=2 users=7) fails=[]
+qc-hr-h3.3 exit=0 ===== qc-hr-h3.3 ===== passed 51/51 (QC_FORCE)  fails=[]
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE) RESIDUE none (tenants=2 users=13) fails=[]
+qc-hr-h2.9 exit=0 ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE) RESIDUE none (tenants=3 users=19) fails=[]
+qc-hr-h4.6 exit=0 ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE) RESIDUE none (tenants=2 users=11) fails=[]
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) RESIDUE none (tenants=3 users=14) fails=[]
+qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) RESIDUE none (tenants=2 users=8) fails=[]
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)  fails=[]
+qc-hr-h0.6 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) RESIDUE tenants=0 rows=0 audit=0 outbox=0 fails=[]
+qc-payroll exit=0 ===== QC Payroll ไทย =====  fails=[]
+qc-payroll-reverse exit=0   fails=[]
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====  fails=[]
+qc-bulk-ops exit=0 ===== QC Bulk Operations =====  fails=[]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====  fails=[]
+qc-audit-trail exit=0   fails=[]
+qc-account-cpa exit=0 ===== QC6 CPA audit (service layer จริง + Neon) =====  fails=[]
+qc-account-gatea exit=0 ===== QC5 Gate A verify (service layer + double-entry, Neon) =====  fails=[]
+qc-account-deep exit=0 ===== QC บัญชีลึก =====  fails=[]
+qc-acc-v2-journal exit=1 ===== QC WO 6.2 · สมุดรายวัน V2 (§11.2 · g16) =====  fails=[]
+qc-acc-v2-period-assets exit=1 ===== QC WO 6.2 · ปิดงวด + สินทรัพย์/ค่าเสื่อม (§11.4–11.5) =====  fails=[]
+qc-acc-v2-policy exit=1 ===== QC WO 8.2 · นโยบายบัญชี (§9.3) =====  fails=[]
+qc-acc-v2-coa exit=1 ===== QC WO 6.1 · ผังบัญชี V2 (§11.1 · f8) =====  fails=[]
+qc-acc-v2-permissions exit=1 ===== QC WO 8.3 · สิทธิ์ผู้ใช้งาน + การเชื่อมต่อ (§9.4–§9.5) =====  fails=[]
+qc-account-p2p3 exit=0 ===== QC P2/P3 engine (double-entry, Neon) =====  fails=[]
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) RESIDUE none (tenants=2 users=7) fails=[]
+  qc-payroll: JSON_SUMMARY {"total":19,"passed":19,"findings":[]}
+  qc-hr-payadjust: JSON_SUMMARY {"total":27,"passed":27,"findings":[]}
+  qc-bulk-ops: JSON_SUMMARY {"total":13,"passed":13,"findings":[]}
+  qc-hf-hr-privacy: JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+  qc-account-cpa: JSON_SUMMARY {"total":107,"passed":107,"findings":[]}
+  qc-account-deep: JSON_SUMMARY {"total":10,"passed":10,"findings":[]}
+  qc-payroll-reverse: ✅ PASS — 14/14
+  qc-audit-trail: ✅ PASS — 21/21
+  qc-account-gatea / qc-account-p2p3: all pass (🎉 lines)
+NOT RUNNABLE on this lane DB (need the account QC seed — empty fixtures, fail at seed-read checks, unrelated to H3.7): qc-acc-v2-journal · qc-acc-v2-period-assets · qc-acc-v2-policy · qc-acc-v2-coa · qc-acc-v2-permissions
+qc-hr-h1.3 first run 62/63 (S6.1 before the declared H3.7 count) → after ORACLE-EDIT 63/63
+fitness noenv 0 · env 0 · fitness-hr noenv 0 · env 0
+clean typecheck (rm .next/types tsconfig.tsbuildinfo; iso 14000M; gate lock) exit 0 · 0 errors
+
+# fix round 1 — 2026-11-13T15:38:50Z · default base (merge-base origin/session/hr 9e8ad638)
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34  fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 65/65 (QC_FORCE) RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 65/65 (QC_FORCE) RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.7-unforced exit=0 ===== qc-hr-h3.7 ===== passed 65/65 RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.5 exit=0 ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE) RESIDUE none (tenants=2 users=10) fails=[]
+qc-hr-h3.2 exit=0 ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) RESIDUE none (tenants=2 users=6) fails=[]
+qc-hr-h3.1 exit=0 ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE) RESIDUE none (tenants=2 users=7) fails=[]
+qc-hr-h3.3 exit=0 ===== qc-hr-h3.3 ===== passed 51/51 (QC_FORCE)  fails=[]
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE) RESIDUE none (tenants=2 users=13) fails=[]
+qc-hr-h2.9 exit=0 ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE) RESIDUE none (tenants=3 users=19) fails=[]
+qc-hr-h4.6 exit=0 ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE) RESIDUE none (tenants=2 users=11) fails=[]
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) RESIDUE none (tenants=3 users=14) fails=[]
+qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) RESIDUE none (tenants=2 users=8) fails=[]
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)  fails=[]
+qc-hr-h0.6 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) RESIDUE tenants=0 rows=0 audit=0 outbox=0 fails=[]
+qc-payroll exit=0 ===== QC Payroll ไทย =====  fails=[]
+qc-payroll-reverse exit=0   fails=[]
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====  fails=[]
+qc-bulk-ops exit=0 ===== QC Bulk Operations =====  fails=[]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====  fails=[]
+qc-audit-trail exit=0   fails=[]
+qc-account-cpa exit=0 ===== QC6 CPA audit (service layer จริง + Neon) =====  fails=[]
+qc-account-gatea exit=0 ===== QC5 Gate A verify (service layer + double-entry, Neon) =====  fails=[]
+qc-account-deep exit=0 ===== QC บัญชีลึก =====  fails=[]
+qc-account-p2p3 exit=0 ===== QC P2/P3 engine (double-entry, Neon) =====  fails=[]
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) RESIDUE none (tenants=2 users=7) fails=[]
+h3.4 (QC_H34_BASE=bcf352f8) exit=1 ===== qc-hr-h3.4 ===== passed 82/85 (QC_FORCE) ❌ [H3.4-S1.6] ❌ [H3.4-S1.7] ❌ [H3.4-S1.10] 
+h3.4 (QC_H34_BASE=8e52db009 = pre-H3.4 session/hr, the round-0 default) exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) 
+qc-hr-h3.4 on the default base: 84/85 — only H3.4-S1.7 (H3.4's own 'marked hunks vs base' — n/a once H3.4 is in the base, as the H3.5 rule)
+qc-hr-h1.3 first run 62/63 (S6.1 H3.7 count 4→10 after F5) → 63/63 after ORACLE-EDIT
+hunter probe hunt-h3.7-db.mts rerun: SUMMARY fail=0 · RESIDUE none (copied in, run, removed)
+RED evidence: round-0 src ⇒ 52/65 (RED S2.2 S2.4 S2.7 S2.9 S4.26–S4.33) · targeted F1 revert ⇒ RED S4.26 {st PAID, pe 0} · restored 65/65
+fitness noenv/env 0 · fitness-hr noenv/env 0 · clean typecheck exit 0, 0 errors
+
+# fix round 2 + H3.6 merge — 2026-11-13T18:14:43Z · QC_H37_BASE=d295e6d09 for qc-hr-h3.7 statics
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34  fails=[]
+qc-hr-h3.5 exit=0 ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE) RESIDUE none (tenants=2 users=10) fails=[]
+qc-hr-h3.4 exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) RESIDUE none (tenants=3 users=17) · ACTIVE law rows after cleanup 0 fails=[]
+qc-hr-h3.2 exit=0 ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) RESIDUE none (tenants=2 users=6) fails=[]
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE) RESIDUE none (tenants=2 users=13) fails=[]
+qc-hr-h2.6 exit=0 ===== qc-hr-h2.6 ===== passed 56/56 (QC_FORCE) RESIDUE none (tenants=3 users=18) fails=[]
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) RESIDUE none (tenants=3 users=14) fails=[]
+qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) RESIDUE none (tenants=2 users=8) fails=[]
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)  fails=[]
+qc-hr-h0.6 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) RESIDUE tenants=0 rows=0 audit=0 outbox=0 fails=[]
+qc-payroll exit=0 ===== QC Payroll ไทย =====  fails=[]
+qc-payroll-reverse exit=0   fails=[]
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====  fails=[]
+qc-account-cpa exit=0 ===== QC6 CPA audit (service layer จริง + Neon) =====  fails=[]
+qc-audit-trail exit=0   fails=[]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====  fails=[]
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) RESIDUE none (tenants=2 users=7) fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.7-unforced exit=0 ===== qc-hr-h3.7 ===== passed 68/68 RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.6 exit=0 ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) RESIDUE none (tenants=3 users=11) fails=[]
+first pass on the merged tree: qc-hr-h3.7 66/68 (S1.4 H3.6 deep imports · S1.6 default base lacks H3.6 migration) · qc-hr-h3.6 61/62 (S1.6 frozen: H3.7 files) · qc-hr-h1.3 62/63 (S6.1 H3.7 10→12) → ORACLE-EDITs → green above
+RED (a)+(c) reverted ⇒ RED S4.28 S4.32 · restored 68/68
+fitness noenv/env 0 · fitness-hr noenv/env 0 · clean typecheck exit 0, 0 errors
+
+# fix round 3 — 2026-11-13T19:00:56Z · QC_H37_BASE=d295e6d09
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) RESIDUE none (tenants=3 users=4) fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) RESIDUE none (tenants=3 users=4) fails=[]
+qc-hr-h3.7-unforced exit=0 ===== qc-hr-h3.7 ===== passed 68/68 RESIDUE none (tenants=3 users=4) fails=[]
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) RESIDUE none (tenants=3 users=14) fails=[]
+qc-hr-h3.4 exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) RESIDUE none (tenants=3 users=17) · ACTIVE law rows after cleanup 0 fails=[]
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====  fails=[]
+qc-audit-trail exit=0   fails=[]
+  payadjust 27/27 · audit-trail 21/21 · fitness-hr noenv/env 0 · clean typecheck exit 0, 0 errors
+RED (F1 re-reads reverted in the working copy) ⇒ 65/68: S1.12 v2BookReread · S4.26 {PAID, pe 0} · S4.34 paidIffEntry+payAfterFinalize · restored 68/68
+
+# final merge round (H3.9 13c9eae57) — 2026-11-13T19:41:49Z · default base (merge-base HEAD session/hr), no QC_H37_BASE
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34  fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) RESIDUE none (tenants=3 users=4) fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) RESIDUE none (tenants=3 users=4) fails=[]
+qc-hr-h3.7-unforced exit=0 ===== qc-hr-h3.7 ===== passed 68/68 RESIDUE none (tenants=3 users=4) fails=[]
+qc-hr-h3.5 exit=0 ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE) RESIDUE none (tenants=2 users=10) fails=[]
+qc-hr-h3.4 exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) RESIDUE none (tenants=3 users=17) · ACTIVE law rows after cleanup 0 fails=[]
+qc-hr-h3.2 exit=0 ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) RESIDUE none (tenants=2 users=6) fails=[]
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE) RESIDUE none (tenants=2 users=13) fails=[]
+qc-hr-h2.6 exit=0 ===== qc-hr-h2.6 ===== passed 56/56 (QC_FORCE) RESIDUE none (tenants=3 users=18) fails=[]
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) RESIDUE none (tenants=3 users=14) fails=[]
+qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) RESIDUE none (tenants=2 users=8) fails=[]
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) RESIDUE none (tenants=2 users=7) fails=[]
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)  fails=[]
+qc-hr-h0.6 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) RESIDUE tenants=0 rows=0 audit=0 outbox=0 fails=[]
+qc-payroll exit=0 ===== QC Payroll ไทย =====  fails=[]
+qc-payroll-reverse exit=0   fails=[]
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====  fails=[]
+qc-account-cpa exit=0 ===== QC6 CPA audit (service layer จริง + Neon) =====  fails=[]
+qc-audit-trail exit=0   fails=[]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====  fails=[]
+qc-hr-h3.9 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) RESIDUE none (tenants=3 users=11) fails=[]
+qc-hr-h3.6 exit=0 ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) RESIDUE none (tenants=3 users=11) fails=[]
+first pass: qc-hr-h3.9 58/60 (S1.5 · S1.10) · qc-hr-h3.6 61/62 (S1.6) → ORACLE-EDITs → green above

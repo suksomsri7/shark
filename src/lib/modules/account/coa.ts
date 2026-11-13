@@ -203,6 +203,15 @@ export const MAPPING_KEY_LABEL: Record<string, string> = {
   CASH: "เงินสด (บัญชีเริ่มต้น)",
   BANK: "เงินฝากธนาคาร (บัญชีเริ่มต้น)",
   SUSPENSE: "บัญชีพักรายการ (9999)",
+  // HR H3.7 ▸ mapping key ของบัญชีเงินเดือน (สร้าง/ผูกเมื่อเจ้าของเลือกสมุดเงินเดือน — gl.ts ensurePayrollLedgersInTx · ไม่อยู่ใน CHART) ◂
+  PAYROLL_SALARY_EXPENSE: "เงินเดือนและค่าแรง",
+  PAYROLL_SSO_EXPENSE: "เงินสมทบประกันสังคม (ส่วนนายจ้าง)",
+  PAYROLL_SALARY_PAYABLE: "เงินเดือนค้างจ่าย",
+  PAYROLL_SSO_PAYABLE: "เงินสมทบประกันสังคมค้างนำส่ง",
+  PAYROLL_WHT_PAYABLE: "ภาษีเงินได้หัก ณ ที่จ่ายค้างนำส่ง (ภ.ง.ด.1)",
+  PAYROLL_EMPLOYEE_RECEIVABLE: "ลูกหนี้พนักงาน/เงินทดรองจ่ายพนักงาน",
+  PAYROLL_DAMAGES_RECOVERY: "รายได้จากการหักค่าเสียหาย/ค่าของจากพนักงาน",
+  PAYROLL_OVERPAY_RECOVERY: "รับคืนเงินเดือน/ค่าคอมฯ ที่จ่ายเกิน",
 };
 
 /** ป้ายไทยของ mapping key — คีย์ "DOC:<docType>" (override ใบกำกับภาษีอัตโนมัติต่อชนิดเอกสาร) แปลด้วย docTypeLabel
@@ -363,6 +372,7 @@ export async function setMapping(
     select: { id: true },
   });
   if (!acct) return { ok: false, reason: "ไม่พบบัญชีปลายทาง" };
+  if (key.startsWith("PAYROLL_")) { const g = await payrollMappingGuardH37(ctx, key, accountId); if (g) return g; } // HR H3.7 ▸ fix r1 F7: คีย์เงินเดือน = เจ้าของร้าน (DB) + หมวดบัญชีตรงคีย์ ◂
   await prisma.accountMapping.upsert({
     where: { systemId_key: { systemId: ctx.systemId, key } },
     create: { tenantId: ctx.tenantId, systemId: ctx.systemId, key, accountId },
@@ -370,6 +380,25 @@ export async function setMapping(
   });
   return { ok: true };
 }
+
+// HR H3.7 ▸ fix r1 F7 — mapping of a payroll key: the saving user (session, read from the DB) must be an accepted OWNER of ctx.tenant and
+//   the ledger must be of the key's class (expense / liability / asset / income — expense keys also accept COGS) · no session (REST key) ⇒ refused
+async function payrollMappingGuardH37(ctx: CoaCtx, key: string, accountId: string): Promise<{ ok: false; reason: string } | null> {
+  const { payrollMappingTypeOk, PAYROLL_MAPPING_TYPE_TEXT, PAYROLL_ACCOUNTS, PAYROLL_CLASS_TH } = await import("./gl");
+  const { payrollOwnerOk, HR_LINK_OWNER } = await import("./connections");
+  let userId: string | null = null;
+  try {
+    userId = (await (await import("@/lib/core/context")).requireTenant()).user.id;
+  } catch {
+    userId = null;
+  }
+  if (!(await payrollOwnerOk(ctx.tenantId, userId))) return { ok: false, reason: HR_LINK_OWNER };
+  const l = await prisma.accountLedger.findFirst({ where: { id: accountId, systemId: ctx.systemId }, select: { type: true } });
+  const want = PAYROLL_ACCOUNTS.find((a) => a.key === key)?.type ?? "";
+  if (!l || !payrollMappingTypeOk(key, String(l.type))) return { ok: false, reason: PAYROLL_MAPPING_TYPE_TEXT.replace("{type}", PAYROLL_CLASS_TH[want] ?? want) };
+  return null;
+}
+// ◂ HR H3.7
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ผังบัญชี V2 (WO 6.1 · DESIGN-SPEC-V2 §11.1 · เฟรม f8-chart-of-accounts.png)

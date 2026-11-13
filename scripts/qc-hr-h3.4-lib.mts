@@ -376,6 +376,7 @@ export async function runFixRound1(X: FixEnv): Promise<void> {
   // ── S4.21 / S4.22 failed JV post · YTD_DRAFT · LATER_RUN ──
   await guard("S4.21", async () => {
     const { s, c } = await shop("ทีมลงบัญชีล้ม");
+    await PY("setPayrollBook", c, V.owner, { accountSystemId: (await rows(`SELECT id FROM "AppSystem" WHERE "tenantId" = $1 AND type::text = 'ACCOUNT' ORDER BY "createdAt" LIMIT 1`, TT))[0]?.id ?? null }); // ORACLE-EDIT (H3.7 builder): JV asserted ⇒ explicit HR→ACCOUNT link (H3.7 R3)
     const e1 = await me(s, "ล้ม", { unitId: u1 });
     await prof(s, e1, 1500000);
     await adj(s, e1, SEP, "DEDUCTION", 400000);
@@ -698,6 +699,7 @@ export async function runFixRound2(X: FixEnv): Promise<void> {
   // ── S4.34 G5 + G7 ──
   await guard("S4.34", async () => {
     const { s, c } = await shop("ทีมลงบัญชีค้าง");
+    await PY("setPayrollBook", c, V.owner, { accountSystemId: (await rows(`SELECT id FROM "AppSystem" WHERE "tenantId" = $1 AND type::text = 'ACCOUNT' ORDER BY "createdAt" LIMIT 1`, TT))[0]?.id ?? null }); // ORACLE-EDIT (H3.7 builder): JV asserted ⇒ explicit HR→ACCOUNT link (H3.7 R3)
     const e1 = await me(s, "ค้าง", { unitId: u1 });
     await prof(s, e1, 1500000);
     await adj(s, e1, SEP, "DEDUCTION", 400000);
