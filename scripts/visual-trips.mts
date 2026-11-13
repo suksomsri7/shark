@@ -47,7 +47,7 @@ type Action =
   | { waitFor: string }
   | { reveal: string }
   | { pause: number };
-type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "18"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean };
+type Spec = { name: string; mockup: "11" | "12" | "15" | "16" | "17" | "18"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; media?: "print" };
 // ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
 const LADDER = '[role="dialog"] [data-setting-key="trips.cancel.ladder"]';
 const LADDER_DAYS = `${LADDER} [data-table-cell="fromDaysBefore"] input`;
@@ -123,6 +123,27 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
     },
     // คิวเอกสารเงินรอออก (seed ว่าง ⇒ ข้อความถาวร + สถานะว่าง)
     { name: "money-docs", mockup: "18", path: (i) => `/app/u/${i.unitSlug}/trips/bookings?view=docs` },
+  ],
+  // TRIPS T1.4 ▸ ใบรายชื่อรายวัน (ภาพ 12 ส่วนจอใหญ่) — ทุกฉาก 1440 + 390 · รอบราชา ส. 14 พ.ย. (racha1114) · ฉากพิมพ์ถ่ายด้วยสื่อ print (ไม่กดปุ่มพิมพ์ ⇒ ไม่เขียนฐาน) ◂
+  "t1.4": [
+    // มุมมองตามรถรับส่ง (seed ยังไม่จัดรถ ⇒ กลุ่มเดียว "ยังไม่จัดรถ / มาเอง")
+    { name: "manifest-pickup", mockup: "12", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/manifest`, actions: [{ waitFor: '[data-testid="trips-mf"]' }] },
+    // มุมมองตามการจอง + ขยายรายชื่อรายคนของการจองแรก
+    {
+      name: "manifest-booking",
+      mockup: "12",
+      path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/manifest?view=booking`,
+      actions: [{ waitFor: '[data-testid^="trips-mf-pax-toggle-"]' }, { click: { selector: '[data-testid^="trips-mf-pax-toggle-"]' } }, { waitFor: '[data-testid^="trips-mf-pax-"]:not([data-testid^="trips-mf-pax-toggle-"])' }, { pause: 300 }],
+    },
+    // ผังพิมพ์ของฉากแรก: สื่อ print (emulateMediaType) ถ่ายทั้งหน้า — ต้องเห็นเฉพาะใบรายชื่อ ไม่มีเปลือกแอป/แถบทัวร์/ปุ่ม
+    { name: "manifest-print", mockup: "12", media: "print", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/manifest`, actions: [{ waitFor: '[data-print-root="trips-manifest"]' }] },
+    // แผงรอบในปฏิทิน: ปุ่ม "ใบรายชื่อ" เป็นลิงก์จริง
+    {
+      name: "manifest-panel-link",
+      mockup: "12",
+      path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}&dep=${i.racha1114}`,
+      actions: [{ waitFor: 'a[data-testid="trips-dep-manifest"]' }],
+    },
   ],
 };
 
@@ -241,6 +262,7 @@ type Page = {
   evaluate<R, A>(f: (a: A) => R, a?: A): Promise<R>;
   waitForSelector(sel: string, o: object): Promise<unknown>;
   screenshot(o: object): Promise<unknown>;
+  emulateMediaType(type?: string): Promise<void>;
   close(): Promise<void>;
 };
 type Browser = { newPage(): Promise<Page>; close(): Promise<void> };
@@ -312,6 +334,7 @@ try {
       await page.setCookie(...cookies);
       const errors: string[] = [];
       page.on("pageerror", (e: never) => errors.push(String((e as Error).message).slice(0, 120)));
+      if (spec.media) await page.emulateMediaType(spec.media);
       const resp = await page.goto(`${BASE}${spec.path(ids)}`, { waitUntil: "networkidle2", timeout: 90_000 }).catch(() => null);
       await new Promise((r) => setTimeout(r, 1200));
       for (const a of spec.actions ?? []) {

@@ -624,7 +624,7 @@ try {
     eq(g.flatMap((x) => (x.channels as string[]) ?? []).sort(), [...SELL_CHANNELS].sort(), "ช่องทางครบไม่ซ้ำ");
   });
   await st("PV-4", "ปุ่มเจ้าของบนรอบ GUARANTEED อนาคต: ปิดรับ/ถอนยืนยัน/ยกเลิก/ความจุ/ทรัพยากร/ราคา/หยุดขาย · ไม่มี ยืนยัน/ออกขาดทุน/รวม · ใบรายชื่อ/จองให้ลูกค้า false", () => {
-    eq(actOf(p14), { close: true, reopen: false, guarantee: false, unguarantee: true, run: false, merge: false, cancel: true, capacity: true, resources: true, price: true, stopSell: true, manifest: false, book: false }, "actions");
+    eq(actOf(p14), { close: true, reopen: false, guarantee: false, unguarantee: true, run: false, merge: false, cancel: true, capacity: true, resources: true, price: true, stopSell: true, manifest: true /* ORACLE-EDIT PV-4 (ผู้คุม 13 พ.ย. · T1.4a): ปุ่มใบรายชื่อเปิดใช้ */, book: false }, "actions");
     eq(p14.cancelBlocked, true, "cancelBlocked"); // ORACLE-EDIT (ผู้คุม 13 พ.ย.): seed ของ T0.6 ขายตรง 6 ที่ในราชา ส. 14 พ.ย. ⇒ มีผู้จอง ยกเลิกที่นี่ไม่ได้
   });
   await st("PV-5", "ไม่แต่งข้อมูลการจอง/เงิน: bookings = null · money = null (T1.3/T1.7)", () => {

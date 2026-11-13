@@ -1870,7 +1870,7 @@
     {
       "page": "/app/u/[unitSlug]/trips/departures",
       "testid": "trips-dep-manifest",
-      "kind": "button",
+      "kind": "link",
       "roles": [
         "owner"
       ],
@@ -1879,15 +1879,15 @@
         "viewer"
       ],
       "expect": {
-        "type": "ui",
-        "target": "trips-dep-manifest",
-        "state": "disabled",
-        "note": "ใบรายชื่อ ยังไม่เปิดใช้ (T1.4)"
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+        "state": "navigates",
+        "note": "ใบรายชื่อของรอบ — ลิงก์จริง แสดงเมื่อ actions.manifest (ผู้ไม่มีสิทธิ์ดูผู้เดินทาง/รอบที่เริ่มแล้วหรือยกเลิก ⇒ ไม่แสดง)"
       },
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-4",
       "system": "TRIPS",
-      "needs": "trips.departure.view|edit|status"
+      "needs": "trips.departure.view+trips.passenger.view"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -4330,6 +4330,930 @@
       "oracle": "qc-trips-t1.3#BT-30",
       "system": "TRIPS",
       "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf",
+        "state": "appears",
+        "note": "ใบรายชื่อรายวันของรอบ (ภาพ 12 ส่วนจอใหญ่)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#LV-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-back",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/departures",
+        "state": "navigates",
+        "note": "กลับปฏิทินรอบ สัปดาห์ของวันเดินทาง + เปิดแผงรอบนี้ (?view=week&start=&dep=)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-title",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-title",
+        "state": "appears",
+        "note": "ใบรายชื่อ · ชื่อสินค้า (ตามภาษาผู้ดู)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#LV-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-status",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-status",
+        "state": "appears",
+        "note": "ป้ายสถานะรอบ (ชื่อเดียวกับจอปฏิทินรอบ)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#LV-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-resources",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-resources",
+        "state": "appears",
+        "note": "เรือ/ไกด์ที่มอบให้รอบ (ไม่มีชื่อกัปตัน/คนขับ)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-16",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-view-pickup",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+        "state": "navigates",
+        "note": "มุมมองตามรถรับส่ง (ปริยาย)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-view-booking",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest?view=booking",
+        "state": "navigates",
+        "note": "มุมมองตามการจอง (?view=booking)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#LV-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-view-agency",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-view-agency",
+        "state": "disabled",
+        "note": "มุมมองตามเอเจนซี่ ยังไม่เปิดใช้"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-actions",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-actions",
+        "state": "appears",
+        "note": "แถบปุ่ม แถวเดียวห่อบรรทัดได้ ไม่กองแนวตั้ง"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-print",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "recordManifestPrintAction",
+        "state": "audit+print",
+        "note": "บันทึก trips.manifest.printed สำเร็จก่อน แล้วจึงเปิดกล่องพิมพ์ของเบราว์เซอร์"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#PR-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-export",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "exportManifestCsvAction",
+        "state": "audit+download",
+        "note": "บันทึก trips.manifest.exported แล้วดาวน์โหลด CSV (กันสูตร · ไม่มีข้อมูลสุขภาพ/เลขเอกสารเต็ม/เบอร์/เงิน)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#EX-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-health",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-health-dialog",
+        "state": "opens",
+        "note": "เปิดกล่องดูข้อมูลสุขภาพ — แสดงเฉพาะผู้มีสิทธิ์สุขภาพตรงตัว"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-3",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view+trips.passenger.health"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-send",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-send",
+        "state": "disabled",
+        "note": "ส่งให้ไกด์และคนขับ ยังไม่เปิดใช้"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-runs-edit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-runs-edit",
+        "state": "disabled",
+        "note": "จัดรถ ยังไม่เปิดใช้"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-kpis",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-kpis",
+        "state": "appears",
+        "note": "การ์ดสรุป 6 ใบ (5 ใบเมื่อไม่มีสิทธิ์ดูการจอง)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#LV-3",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-kpi-people",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-kpi-people",
+        "state": "appears",
+        "note": "ผู้เดินทาง · ประเภทคน · จำนวนการจอง"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#LV-3",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-kpi-pickup",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-kpi-pickup",
+        "state": "appears",
+        "note": "จัดรถแล้ว · รถ · ยังไม่จัดรถ/มาเอง"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-kpi-names",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-kpi-names",
+        "state": "appears",
+        "note": "รายชื่อครบ named/people · ขาด n"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-kpi-waiver",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-kpi-waiver",
+        "state": "appears",
+        "note": "เซ็นรับทราบความเสี่ยง signed/required · ไม่ต้องลงนาม · ถูกตัด ⇒ —"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-11",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-kpi-money",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-kpi-money",
+        "state": "appears",
+        "note": "ค้างชำระ — เฉพาะผู้มีสิทธิ์ดูการจอง"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-15",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-kpi-prep",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-kpi-prep",
+        "state": "appears",
+        "note": "ต้องเตรียม: อาหาร · รายการเสริม · ขนาดตีนกบ · สถานะข้อมูลสุขภาพ (จำนวน ไม่ใช่เนื้อหา)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-16",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-pending-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-pending-note",
+        "state": "conditional",
+        "note": "มีการจองที่ยังไม่ยืนยัน ไม่อยู่ในใบ (pendingBookings > 0)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-truncated",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-truncated",
+        "state": "conditional",
+        "note": "รายการถูกตัดที่เพดาน (truncated ∨ paxTruncated)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-19",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-stale-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-stale-note",
+        "state": "conditional",
+        "note": "มีจุดรับที่อ้างการจองซึ่งไม่อยู่ในใบแล้ว (staleStops > 0)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-table",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-table",
+        "state": "appears",
+        "note": "ตาราง 7 คอลัมน์ต่อกลุ่ม (จอ ≥ md)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-18",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-cards",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-cards",
+        "state": "appears",
+        "note": "การ์ดต่อการจอง (มือถือ ไม่มีตาราง)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-18",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-empty",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-empty",
+        "state": "conditional",
+        "note": "ยังไม่มีการจองที่ยืนยันในรอบนี้"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-18",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-export-truncated",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-export-truncated",
+        "state": "conditional",
+        "note": "ไฟล์ส่งออกถูกตัดที่เพดาน"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#EX-9",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-export-error",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-export-error",
+        "state": "conditional",
+        "note": "ส่งออกไม่สำเร็จ (สีอันตราย + role=alert)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#EX-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-print-error",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-print-error",
+        "state": "conditional",
+        "note": "บันทึกการพิมพ์ไม่สำเร็จ ⇒ ไม่เปิดกล่องพิมพ์ (สีอันตราย + role=alert)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#PR-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-print-footer",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-print-footer",
+        "state": "print-only",
+        "note": "ท้ายกระดาษ: เอกสารมีข้อมูลส่วนบุคคล (เห็นเฉพาะผังพิมพ์)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-18",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-health-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-health-dialog",
+        "state": "appears",
+        "note": "กล่องข้อมูลสุขภาพ — ผลอยู่ใน state ของกล่องเท่านั้น ปิด = ทิ้ง ไม่ถูกพิมพ์"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#HV-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view+trips.passenger.health"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-health-warning",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-health-warning",
+        "state": "appears",
+        "note": "คำเตือนข้อมูลอ่อนไหว + การเปิดดูถูกบันทึกรายคน"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view+trips.passenger.health"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-health-purpose",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-health-purpose",
+        "state": "selects",
+        "note": "วัตถุประสงค์ 3 ค่า (ปริยาย ความปลอดภัยของทริป)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#HV-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view+trips.passenger.health"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-health-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "revealManifestHealthAction",
+        "state": "audit+reveal",
+        "note": "บันทึก trips.passenger.revealed รายคน แล้วแสดงรายการ (กล่องใดเปิดไม่ได้ ⇒ ไม่แสดงของผู้ใดเลย)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#HV-3",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view+trips.passenger.health"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-health-list",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-health-list",
+        "state": "conditional",
+        "note": "รายการ ชื่อ · แพ้ · โรค/ข้อควรระวัง"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#HV-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view+trips.passenger.health"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-health-empty",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-health-empty",
+        "state": "conditional",
+        "note": "ไม่มีผู้เดินทางที่ให้ข้อมูลสุขภาพ"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#HV-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view+trips.passenger.health"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-group-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-group",
+        "state": "appears",
+        "note": "กลุ่ม run:<รถ> · unassigned · all — หัวกลุ่ม + เส้นทาง + ที่นั่ง"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-row",
+        "state": "appears",
+        "note": "แถวการจองในตาราง (เลขจองเป็นลิงก์เฉพาะผู้มีสิทธิ์ดูการจอง)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#LV-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-card-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-card",
+        "state": "appears",
+        "note": "การ์ดการจองบนมือถือ"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#S-18",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-pax-toggle-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-pax-toggle",
+        "state": "expands",
+        "note": "ขยาย/ย่อรายชื่อรายคนของการจอง (ตารางและการ์ดใช้สถานะเดียวกัน)"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-9",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-pax-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-pax",
+        "state": "conditional",
+        "note": "รายชื่อรายคน: ชื่อ · ประเภท · สัญชาติ · เอกสารปิดบัง · แบบฟอร์ม · ลงนาม · สุขภาพ (สถานะ) · ไฟล์"
+      },
+      "wo": "T1.4",
+      "oracle": "qc-trips-t1.4#BT-9",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
     }
   ]
 }

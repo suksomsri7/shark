@@ -1092,5 +1092,217 @@
       "IMPORT": "Import",
       "CHAT_AI": "AI chat assistant"
     }
+  },
+  "manifest": {
+    "title": "Manifest · {product}",
+    "back": "Departures",
+    "aria": "Departure manifest",
+    "dateTime": "{date} · {time}",
+    "noBooker": "No booker name",
+    "openBooking": "Open booking {code}",
+    "resources": {
+      "boat": "Boat: {names}",
+      "guide": "Guides: {names}",
+      "none": "No boat or guide assigned to this departure yet"
+    },
+    "view": {
+      "aria": "Manifest view",
+      "pickup": "By pickup vehicle",
+      "booking": "By booking",
+      "agency": "By agency"
+    },
+    "kpi": {
+      "aria": "Departure summary",
+      "people": "Travellers",
+      "pickup": "Pickup",
+      "names": "Names complete",
+      "waiver": "Risk waiver signed",
+      "money": "Outstanding",
+      "prep": "To prepare",
+      "bookings": "{n} bookings",
+      "assigned": "{n} assigned to vehicles",
+      "vehicles": "{n} vehicles",
+      "unassigned": "{n} unassigned / own way",
+      "missing": "{n} missing",
+      "noWaiver": "No waiver needed",
+      "agentCollect": "{n} bookings collected by agencies",
+      "meals": "{n} meals + {g} guides",
+      "fins": "Fins {size} × {n}",
+      "finMissing": "Fin size not given: {n}",
+      "healthProvided": "Health info: {n} provided",
+      "healthMissing": "{n} not answered",
+      "ratio": "{a} / {b}",
+      "paxItem": "{qty} {label}",
+      "extraItem": "{label} × {qty}",
+      "partial": "This figure is incomplete because the list was cut",
+      "namesDone": "Everyone named",
+      "noPrep": "No extras"
+    },
+    "col": {
+      "time": "Pickup time",
+      "place": "Pickup point",
+      "booker": "Booker · booking",
+      "people": "People",
+      "docs": "Names · documents",
+      "notes": "Notes",
+      "contact": "Contact"
+    },
+    "group": {
+      "unassigned": "Unassigned / own way",
+      "all": "All bookings",
+      "seats": "Seats {used}/{seats}",
+      "vehicleRemoved": "Removed vehicle",
+      "route": "Route: {route}",
+      "people": "{n} people",
+      "over": "Over the vehicle's seats",
+      "tableAria": "Travellers in group {name}"
+    },
+    "docState": {
+      "PURGED": "Deleted under policy",
+      "MISSING_NAMES": "{n} names missing",
+      "INCOMPLETE": "Forms incomplete",
+      "COMPLETE": "Complete"
+    },
+    "formStatus": {
+      "NOT_REQUIRED": "Not required",
+      "PENDING": "Pending",
+      "SUBMITTED": "Submitted",
+      "VERIFIED": "Verified",
+      "NEEDS_FIX": "Needs fixing",
+      "unknown": "Unknown status"
+    },
+    "waiver": {
+      "NOT_REQUIRED": "Not needed",
+      "MISSING": "Not signed",
+      "SIGNED": "Signed",
+      "NEEDS_RESIGN": "Must sign again",
+      "unknown": "Unknown status"
+    },
+    "health": {
+      "NOT_COLLECTED": "Not collected",
+      "MISSING": "Not answered",
+      "PROVIDED": "Provided",
+      "DECLINED": "Declined",
+      "WITHDRAWN": "Consent withdrawn",
+      "GUARDIAN_REQUIRED": "Awaiting guardian consent",
+      "PURGED": "Deleted under policy",
+      "unknown": "Unknown status"
+    },
+    "docType": {
+      "PASSPORT": "Passport",
+      "ID_CARD": "National ID card",
+      "OTHER": "Other document"
+    },
+    "pax": {
+      "noName": "Name not entered",
+      "purged": "Deleted under policy",
+      "files": "{n} files",
+      "pendingDeletion": "{n} awaiting deletion",
+      "minor": "Minor",
+      "signed": "Signed {a}/{b}",
+      "needsFix": "{n} to fix",
+      "fromForm": "(from the form)",
+      "listAria": "Travellers of booking {code}",
+      "none": "No traveller rows for this booking yet",
+      "colNo": "No.",
+      "colName": "Name",
+      "colType": "Type",
+      "colNationality": "Nationality",
+      "colDoc": "Document",
+      "colForm": "Form",
+      "colWaiver": "Waiver",
+      "colHealth": "Health",
+      "colFiles": "Files",
+      "colFin": "Fins",
+      "fin": "Fins {size}",
+      "healthProvided": "Health info: {n}",
+      "healthMissing": "Health not answered: {n}",
+      "outstanding": "Outstanding {amount}",
+      "pickupPaid": "Pickup service purchased",
+      "docLine": "{type} {masked}"
+    },
+    "contact": {
+      "viaAgent": "Contact through the agency",
+      "none": "No contact number"
+    },
+    "bookerPurged": "Booker details deleted under policy",
+    "notYet": {
+      "send": "Sending to guides and drivers is not available yet",
+      "runs": "Vehicle planning is not available yet",
+      "agency": "The agency view is not available yet",
+      "label": "Not available yet"
+    },
+    "note": {
+      "pending": "{n} unconfirmed bookings are not on this manifest",
+      "truncated": "Showing the first {shown} of {total} bookings — waiver and health figures are incomplete; export the file instead",
+      "paxTruncated": "Showing the first {shown} of {total} travellers — bookings at the end may have no traveller rows",
+      "stale": "{n} pickup stops refer to bookings no longer on this manifest"
+    },
+    "empty": "No confirmed bookings on this departure yet",
+    "actions": {
+      "aria": "Manifest actions",
+      "print": "Print",
+      "export": "Export CSV",
+      "health": "View health info",
+      "send": "Send to guides and drivers",
+      "runs": "Plan vehicles",
+      "expand": "{n} travellers",
+      "working": "Working…"
+    },
+    "export": {
+      "truncated": "The file holds the first {rows} rows only — this departure has more data than one file can carry",
+      "error": "Export failed — try again",
+      "done": "Exported {rows} rows (the export was logged)"
+    },
+    "print": {
+      "printedAt": "Printed {time} by {name}",
+      "footer": "Contains personal data — use only to run this trip and destroy after the trip ends",
+      "error": "The print could not be logged, so the print dialog was not opened — try again",
+      "heading": "Daily manifest",
+      "summaryPeople": "{people} travellers · {bookings} bookings",
+      "summaryNames": "Names complete {a}/{b}",
+      "summaryWaiver": "Risk waiver signed {a}/{b}",
+      "signature": "Trip leader (signature)"
+    },
+    "healthDialog": {
+      "title": "Health information for this departure",
+      "warning": "Health information is sensitive — every view is logged per traveller. Open it only as far as trip safety requires.",
+      "purpose": "Purpose of viewing",
+      "confirm": "Confirm and view",
+      "empty": "No traveller on this departure has provided health information",
+      "allergies": "Allergies",
+      "conditions": "Conditions / precautions",
+      "close": "Close and clear the screen",
+      "none": "Not given",
+      "opened": "Viewing {n} travellers — the view was logged; the data disappears when this box closes",
+      "truncated": "Only the first {n} travellers are shown — more people provided information than can be opened at once",
+      "failed": "Could not open — try again",
+      "forbidden": "This account may not view health information",
+      "busy": "Health information could not be opened right now, so none is shown — try again",
+      "booking": "Booking {code}"
+    },
+    "purpose": {
+      "MANIFEST": "Preparing the manifest",
+      "SAFETY": "Trip safety",
+      "CHECKIN": "Check-in on site"
+    },
+    "csv": {
+      "group": "Vehicle/group",
+      "pickupTime": "Pickup time",
+      "pickupPlace": "Pickup point",
+      "bookingCode": "Booking code",
+      "booker": "Booker",
+      "channel": "Channel",
+      "paxNo": "No.",
+      "traveller": "Traveller",
+      "paxType": "Type",
+      "nationality": "Nationality",
+      "docType": "Document type",
+      "docMasked": "Document no. (last 4)",
+      "formStatus": "Form",
+      "waiver": "Waiver",
+      "health": "Health info",
+      "finSize": "Fin size"
+    }
   }
 }

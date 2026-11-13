@@ -480,3 +480,25 @@ export { runPdpaPurge } from "./jobs";
 export type { PdpaPurgeOpts, PdpaPurgeResult } from "./jobs";
 // ◂ TRIPS T0.8
 // ── /T0.8 passengers ──
+// ── T1.4 manifest ──
+// TRIPS T1.4 ▸ ใบรายชื่อรายวันของรอบ (ภาพ 12 ส่วนจอใหญ่): ตัวโหลด 2 มุมมอง · ส่งออก CSV · เปิดดูข้อมูลสุขภาพแบบมีบันทึก · บันทึกการพิมพ์ + ตัวช่วยบริสุทธิ์ (ใบสั่ง ledger/trips-briefs/T1.4.md ส่วน a) ◂
+export {
+  TRIPS_MANIFEST_BOOKING_CAP,
+  TRIPS_MANIFEST_PAX_CAP,
+  RUN_STOPS_MAX,
+  MANIFEST_VIEWS,
+  MANIFEST_BOOKING_STATUSES,
+  MANIFEST_DOC_STATES,
+  MANIFEST_HEALTH_PURPOSES,
+  MANIFEST_CSV_COLUMNS,
+  parseRunStops,
+  manifestDocState,
+  csvCell,
+  manifestCsv,
+  manifestFileName,
+} from "./manifest-core";
+export type { ManifestVM, ManifestGroupVM, ManifestRowVM, ManifestPaxVM, ManifestView, ManifestDocState, ManifestHealthPurpose, ManifestPaxQty, ManifestExtraQty, ManifestWaiver, RunStop } from "./manifest-core";
+export { loadManifestVM, exportManifestCsv, revealManifestHealth, recordManifestPrint } from "./manifest";
+export type { ManifestCsvOut, ManifestHealthItem, ManifestHealthOut, ManifestPrintOut } from "./manifest";
+// ◂ TRIPS T1.4
+// ── /T1.4 manifest ──

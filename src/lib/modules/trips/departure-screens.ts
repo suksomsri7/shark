@@ -723,7 +723,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
           resources: flags.canEdit,
           price: flags.canPrice,
           stopSell: flags.canEdit,
-          manifest: false,
+          manifest: g.can("trips.passenger.view"),
           book: false,
         };
 

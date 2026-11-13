@@ -998,7 +998,7 @@ try {
   await st("BT-13", "ไฟล์เอกสาร (หนี้ T0.8): นับ live 1 · pendingDeletion 1 (ลบแล้วแต่วัตถุยังไม่ยืนยันว่าหาย) · ไฟล์ที่ลบและยืนยันแล้วไม่นับ · VM ไม่มี fileId/URL/path", async () => {
     needDb(); const vm = VM(await lm("v"), "load");
     eq([asArr(rowOf(vm, B.b1.id)?.travellers)[0]?.docs, asArr(rowOf(vm, B.b1.id)?.travellers)[1]?.docs], [{ live: 1, pendingDeletion: 1 }, { live: 0, pendingDeletion: 0 }], "docs");
-    const js = JSON.stringify(vm);
+    const js = JSON.stringify(vm).split(JSON.stringify(NASTY.eq).slice(1, -1)).join(""); // ORACLE-EDIT BT-13 (ผู้คุม 13 พ.ย.): ชื่อผู้เดินทางปลอม NASTY.eq ที่ข้อสอบปลูกเองมี http:// และ BT-9 บังคับให้อยู่ใน VM — ตัดออกก่อนสแกน URL
     ok(!js.includes(`zqxfile${STAMP}`) && !/https?:\/\//.test(js) && !/\/api\/files/.test(js), "VM มี fileId/URL");
   });
   await st("BT-14", "ข้อมูลส่วนบุคคลใน VM (ทุกบทบาท รวมเจ้าของ · ค่าตั้ง maskOnScreen = false): ไม่มีคีย์ต้องห้าม (docNumber · box · allergies · conditions · dob · phone · token · fileId · guardian …) · ไม่มีเลขเอกสารเต็ม/เนื้อหาสุขภาพ/เบอร์เต็ม · เบอร์ = maskPhone เท่านั้น", async () => {
