@@ -238,7 +238,10 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
       if (now.filter((x) => x === AP_IMPORT).length !== 1 || now.filter((x) => x === AP_TARGET).length !== 1) return false;
       return now.filter((x) => x !== AP_IMPORT).map((x) => (x === AP_TARGET ? "                  periodKey: target," : x)).join("\n") === fileAt(BASE, f);
     };
-    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p)) && !(p === `${H}attendance-pay.ts` && apOnlyLeaver(p))));
+    // ORACLE-EDIT (H3.8 builder, 13 Nov — brief hr-brief-H3.8 §5 mandates marked hunks in privacy.ts (loadPayslipForViewer self branch) and self.ts (myDocuments)):
+    //   those two files may differ from the base only when EVERY hunk carries "HR H3.8" in an added line; every other FROZEN file stays byte-unchanged ◂
+    const onlyH38 = (f: string) => (f === `${H}privacy.ts` || f === `${H}self.ts`) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR H3.8")));
+    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p)) && !(p === `${H}attendance-pay.ts` && apOnlyLeaver(p)) && !onlyH38(p)));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
   }
   {
