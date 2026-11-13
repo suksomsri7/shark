@@ -4,7 +4,7 @@
 //   เงิน = สตางค์จำนวนเต็มตลอดทาง (จัดรูปที่ขอบ) · Σ ในไฟล์ + Σ ไม่อยู่ในไฟล์ = totalNetSatang ของรอบเสมอ
 //   ลำดับในไฟล์ = ลำดับ payees ที่ส่งเข้ามา (ผู้เรียกเรียงเอง) · ไม่แก้อินพุต ◂
 import { BANK_TEXT, resolveBankCode, type BankCause, type BankWarning } from "./codes";
-import { concat, cutAtCluster, encodable, printableAscii, singleByte, type FixedEncoding } from "./encode";
+import { concat, cutAtCluster, encodable, hasBaseChar, printableAscii, singleByte, type FixedEncoding } from "./encode"; // HR H3.6 ▸ hasBaseChar ◂
 import { PCT_DETAIL_LEN, PCT_HEADER_LEN, PCT_ITEM_LIMIT_SATANG, PCT_NAME_LEN, pctDetail, pctHeader } from "./kbank";
 import { KTB_LINE_LEN, KTB_NAME_LEN, KTB_REF_LEN, ktbDetail, ktbHeader } from "./ktb";
 import { BANK_PRESETS, cellWritable, cellsOf, csvBytes, formulaLike, genericSpecOf, tableOf, type GenericRow, type GenericSpec } from "./generic";
@@ -239,7 +239,7 @@ export function buildBankFile(input: BuildInput): BuildResult {
 
   if (r.format === "KBANK_PCT" || r.format === "KTB_IPAY") {
     // ── อักขระ (R7) — ชื่อทั้งชื่อ (ก่อนตัด) ต้องอยู่ในชุด · ไม่แทนที่ ──
-    const bad = picked.filter((k) => !encodable(k.payeeName, r.encoding));
+    const bad = picked.filter((k) => !encodable(k.payeeName, r.encoding) || !hasBaseChar(k.payeeName)); // HR H3.6 ▸ หนี้ H3.5: ชื่อที่ไม่มีตัวอักษรฐาน = ปฏิเสธ (ไม่เขียนชื่อว่าง) ◂
     if (bad.length) return fail("ENCODING", bad.map((k) => k.p));
     // HR H3.5 fix r1 ▸ F2: ยอดต้องพอดีช่อง (PCT รายการ 15 · รวม 15 · KTB รายการ 17 · รวม 19 หลัก) — ไม่สร้างบรรทัดที่ยาวเกิน ◂
     const lim = r.format === "KBANK_PCT" ? { item: 10 ** 15, total: 10 ** 15 } : { item: 10 ** 17, total: 10 ** 19 };
@@ -274,7 +274,10 @@ export function buildBankFile(input: BuildInput): BuildResult {
     return cellsOf(r.spec, g, r.eff);
   });
   const target = r.format === "XLSX" ? "XLSX" : r.spec.encoding;
-  const badEnc = picked.filter((_, i) => body[i]!.some((c) => !cellWritable(c, target)));
+  // HR H3.6 ▸ หนี้ H3.5 (fix r1 F8): ชื่อที่ไม่มีตัวอักษรฐาน = ปฏิเสธ — เฉพาะเมื่อชุดคอลัมน์มีคอลัมน์ชื่อนั้นจริง (payeeName / employeeName) ◂
+  const nameCols = new Set(r.spec.columns.map(([f]) => f));
+  const blankName = (k: Picked) => (nameCols.has("payeeName") && !hasBaseChar(k.payeeName)) || (nameCols.has("employeeName") && !hasBaseChar((k.p.name ?? "").trim())); // HR H3.6 ◂
+  const badEnc = picked.filter((k, i) => body[i]!.some((c) => !cellWritable(c, target)) || blankName(k)); // HR H3.6 ◂
   if (badEnc.length) return fail("ENCODING", badEnc.map((k) => k.p));
   const badF = picked.filter((_, i) => body[i]!.some(formulaLike));
   if (badF.length) return fail("FORMULA", badF.map((k) => k.p));

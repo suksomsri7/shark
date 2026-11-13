@@ -2,11 +2,17 @@
 import { requireTenant } from "@/lib/core/context";
 import { myDocuments, mySelf, selfActorOf } from "@/lib/modules/hr/self";
 import { SelfEmpty, SelfPay } from "@/lib/modules/hr/self-ui";
+import { MyTaxCertCard } from "@/lib/modules/hr/filings/ui"; // HR H3.6 ▸ หนังสือรับรอง 50 ทวิ ของตัวเอง ◂
 
 export default async function MeHrPayPage() {
   const auth = await requireTenant();
   const a = selfActorOf(auth);
   const [self, docs] = await Promise.all([mySelf(a), myDocuments(a)]);
   if (!self.ok || !docs.ok) return <SelfEmpty />;
-  return <SelfPay docs={docs} canWrite={self.active} />;
+  return (
+    <>
+      <SelfPay docs={docs} canWrite={self.active} />
+      <MyTaxCertCard /> {/* HR H3.6 ◂ */}
+    </>
+  ); // HR H3.6 ◂
 }

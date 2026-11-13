@@ -86,6 +86,11 @@ export const HR_TABLES = {
   hrBankProfile: { model: "HrBankProfile", file: "payroll.prisma", tenantId: true, role: "บัญชีต้นทาง + รูปแบบไฟล์ธนาคารที่เปิด 1 แถวต่อระบบ HR (HR H3.5)" },
   hrBankExportPreset: { model: "HrBankExportPreset", file: "payroll.prisma", tenantId: true, role: "ชุดคอลัมน์ CSV/XLSX ของร้าน (HR H3.5)" },
   hrBankFile: { model: "HrBankFile", file: "payroll.prisma", tenantId: true, role: "ใบกำกับไฟล์โอนเงินเดือนที่สร้าง (sha · ยอด · ไม่มีไบต์/เลขบัญชี) (HR H3.5)" },
+  // HR H3.6 ▸ แบบยื่นภาษี/ประกันสังคม — seed ไม่เขียน 4 ตารางนี้ ◂
+  hrFilingProfile: { model: "HrFilingProfile", file: "payroll.prisma", tenantId: true, role: "ข้อมูลผู้จ่ายเงิน + ตัวเลือกไฟล์ยื่น 1 แถวต่อระบบ HR (HR H3.6)" },
+  hrFilingPerson: { model: "HrFilingPerson", file: "payroll.prisma", tenantId: true, role: "ชื่อ/คำนำหน้า/ที่อยู่แยกช่องของพนักงานสำหรับแบบยื่น (HR H3.6)" },
+  hrFilingFile: { model: "HrFilingFile", file: "payroll.prisma", tenantId: true, role: "ใบกำกับไฟล์ ภ.ง.ด.1/1ก/สปส.1-10 ที่สร้าง (sha · ยอด · ไม่มีไบต์/เลขประจำตัว) (HR H3.6)" },
+  hrTaxCertificate: { model: "HrTaxCertificate", file: "payroll.prisma", tenantId: true, role: "หนังสือรับรอง 50 ทวิ ที่ออกแล้ว (เนื้อหาแช่แข็ง + sha) (HR H3.6)" },
   hrReviewNote: { model: "HrReviewNote", file: "hr.prisma", tenantId: true, role: "บันทึก/ตักเตือน/ประเมิน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
   hrOnboardingTask: { model: "HrOnboardingTask", file: "hr.prisma", tenantId: true, role: "งานรับเข้า/ออกจากงาน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
   hrLawTable: { model: "HrLawTable", file: "payroll.prisma", tenantId: false, role: "ตารางกฎหมายกลางของทั้ง SHARK — ไม่ลบตามร้าน · แถว v1:* จาก hr-seed-law-draft (HR H1.3)" },
@@ -125,6 +130,7 @@ export const HR_DELETE_ORDER = [
   "hrWorkDay", // HR H3.1 ▸ หัววัน (แถวชนิดถูกลบก่อน — FK CASCADE) ◂
   "hrAttendanceDeduction", // HR H3.2 ▸ หัวรายการหักสาย/ขาด (ไม่มี FK) ◂
   "hrBankFile", "hrBankExportPreset", "hrBankProfile", // HR H3.5 ▸ ไฟล์โอนเงินเดือน (ไม่มี FK) ◂
+  "hrTaxCertificate", "hrFilingFile", "hrFilingPerson", "hrFilingProfile", // HR H3.6 ▸ แบบยื่น (FK RESTRICT ไป hrEmployee ⇒ ก่อนพนักงาน) ◂
   // สายอนุมัติ / ประวัติ / คิว / แจ้งเตือน
   "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
   "auditLog", "outboxEvent", "appNotification", "automationRun", "automationRule",
