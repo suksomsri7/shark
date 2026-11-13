@@ -818,8 +818,8 @@ function runStatic(): void {
     const PAY_FILE = "src/lib/modules/hr/payroll.ts";
     //   ORACLE-EDIT (controller 12 Nov · H3.2, authorized per-tag declaration): H3.2 = 6 (sourceRef in writeAttendanceDeductionInTx: findMany where ·
     //   select · gen parse · create data; attendanceApproveLockInTx: param type · parse "att:<P>:" of the row being approved)
-    // ORACLE-EDIT (H3.4 builder, phase B): H3.4 = 10 (lawRowIds/ytdJson written on v2 items ×4 · carry rows sourceRef create ×1 + reverse/rollback/carry-class reads ×5)
-    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6, "HR H3.4": 10 };
+    // ORACLE-EDIT (H3.4 builder, phase B · fix round 1): H3.4 = 11 (lawRowIds/ytdJson on v2 items · carry-row sourceRef write + carry-class/consent/reverse reads)
+    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6, "HR H3.4": 11 };
     const splitMarked = (src: string) => {
       const inside: Record<string, string[]> = Object.fromEntries(Object.keys(PAY_MARKED).map((t) => [t, []]));
       const outside: string[] = [];
