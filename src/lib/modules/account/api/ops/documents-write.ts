@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // ops/documents-write.ts — WRITE ของงานเอกสาร (WO C1)
 //
 // 23 op: สร้าง/แก้/ยกเลิกร่าง/ออกเอกสาร/แปลง/ตอบรับ/อนุมัติ/ปฏิเสธ/ยกเลิก(void)/รับใบกำกับ/
@@ -76,6 +77,7 @@ import {
   updateDocument,
   updateRecurringRule,
   voidDocument,
+  replaceTaxInvoice,
   type RecurringRuleInput,
 } from "../../service";
 import { actorDocSource, actorRefId } from "../actor";
@@ -1441,6 +1443,60 @@ const documentsReleaseVat = defineOp({
   },
 });
 
+// ═══════════════ ACC T2.2 — ยกเลิกและออกใบกำกับภาษีแทน ═══════════════
+
+const replaceTaxInvoiceInput = z
+  .object({
+    reason: z.string().trim().min(1).max(300).describe("Why the tax invoice was wrong. Printed on the replacement and noted in the sales-tax report."),
+    buyer: z
+      .object({
+        name: z.string().max(300).optional(),
+        taxId: z.string().max(20).optional(),
+        branchCode: z.string().max(10).optional(),
+        branchName: z.string().max(120).optional(),
+        address: z.string().max(500).optional(),
+      })
+      .strict()
+      .optional()
+      .describe("Corrected buyer details. Fields not sent keep the original value."),
+    lines: z
+      .array(z.object({ description: z.string().max(500).optional(), unitName: z.string().max(40).optional() }).strict())
+      .max(200)
+      .optional()
+      .describe("Corrected description/unit per original line, in order. Amounts cannot change here: a price change is a credit or debit note."),
+    acknowledge: z
+      .array(z.enum(LEGAL_WARNING_CODES))
+      .max(20)
+      .optional()
+      .describe("Legal warning codes the user has read and accepted (TAX_INVOICE_REPLACE; FILED_PERIOD_VAT_CHANGE when the month is marked filed)."),
+  })
+  .strict();
+
+const documentsReplaceTaxInvoice = defineOp({
+  id: "documents.replace-tax-invoice",
+  method: "POST",
+  path: "/documents/{id}/replace-tax-invoice",
+  kind: "write",
+  action: "account.doc.issue",
+  summary: "Cancel a wrong tax invoice and issue its replacement in one step: new number, the original date, a note citing the original number and the reason; the original stays on file as cancelled.",
+  label: "ยกเลิกและออกใบกำกับภาษีแทน",
+  tool: { name: "account_replace_tax_invoice", hint: "Cancels a wrong tax invoice and issues the replacement (same date, new number); propose it for the owner to confirm with the reason and the corrected buyer details." },
+  input: replaceTaxInvoiceInput,
+  test: "T2.2-X7",
+  async handler({ actor, params, input, idempotencyKey, requestId }) {
+    const { tenantId, systemId } = actor;
+    const id = params.id ?? "";
+    const current = await getDocRef(tenantId, systemId, id);
+    if (!current || current.docType !== "TAX_INVOICE") throw notFound();
+    const ack = { codes: input.acknowledge ?? [], actorId: actorAuditId(actor), actorType: actorAuditType(actor), via: actor.kind === "apikey" ? "rest" : "ai-proposal" };
+    const key = createHash("sha256").update(`api:${actorRefId(actor)}:${idempotencyKey ?? requestId}`).digest("hex").slice(0, 40);
+    const res = await replaceTaxInvoice({ tenantId, systemId }, id, { reason: input.reason, buyer: input.buyer ?? null, lines: input.lines ?? null, key, ack, createdById: null });
+    if (!res.ok && res.legal) throw legalAckApiError(res.legal.warnings);
+    if (!res.ok) failWith(res.reason);
+    return { taxInvoiceId: res.newId, taxInvoiceNo: res.newDocNo, replacedTaxInvoiceId: res.oldId, replacedTaxInvoiceNo: res.oldDocNo, date: ymd(res.date) };
+  },
+});
+
 export const DOCUMENTS_WRITE_OPS: ApiOp[] = [
   documentsCreate,
   documentsUpdate,
@@ -1452,6 +1508,7 @@ export const DOCUMENTS_WRITE_OPS: ApiOp[] = [
   documentsReject,
   documentsVoid,
   documentsReleaseVat,
+  documentsReplaceTaxInvoice,
   documentsReceive,
   documentsInputVatNotClaimable,
   documentsDeposits,

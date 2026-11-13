@@ -21,6 +21,7 @@ import {
   convertDocument,
   recordPayment,
   voidPayment,
+  replaceTaxInvoice,
   voidDocument,
   setQuotationResponse,
   createContact,
@@ -178,6 +179,32 @@ export async function issueDocumentAction(formData: FormData) {
   const path = `${docPath(systemId, docType)}/${id}`;
   revalidatePath(path);
   redirect(res.ok ? path : `${path}?err=${encodeURIComponent(res.reason)}`);
+}
+
+/** ACC T2.2 — "ยกเลิกและออกแทน" ใบกำกับภาษีที่ผิด (หน้าเอกสาร) · คำเตือน TAX_INVOICE_REPLACE ต้องติ๊กยืนยัน · ไปหน้าใบใหม่เมื่อสำเร็จ */
+export async function replaceTaxInvoiceAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const docType = str(formData, "docType");
+  const id = str(formData, "id");
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.doc.issue");
+  assertAccountCan(auth, "account.doc.void");
+  const ack = screenAck(formData.getAll("ack"), userId);
+  const opt = (k: string) => { const v = str(formData, k); return v ? v : undefined; };
+  const res = await withScreenLegal(ack, () =>
+    replaceTaxInvoice({ tenantId, systemId }, id, {
+      reason: str(formData, "reason"),
+      buyer: { name: opt("buyerName"), taxId: opt("buyerTaxId"), branchCode: opt("buyerBranchCode"), address: opt("buyerAddress") },
+      key: str(formData, "key") || null,
+      ack,
+      createdById: userId,
+    }),
+  );
+  await writeAudit({ tenantId, actorId: userId, action: "account.doc.void", targetType: "AccountDocument", targetId: id, after: res.ok ? { replacedBy: res.newId, docNo: res.newDocNo } : { error: res.reason } });
+  const path = `${docPath(systemId, docType)}/${id}`;
+  revalidatePath(path);
+  if (!res.ok) redirect(`${path}?err=${encodeURIComponent(res.reason)}`);
+  redirect(`${docPath(systemId, "TAX_INVOICE")}/${res.newId}?msg=${encodeURIComponent(`ออกใบกำกับภาษีฉบับใหม่ ${res.newDocNo ?? ""} แทนเลขที่ ${res.oldDocNo ?? ""} แล้ว`)}`);
 }
 
 /**

@@ -248,6 +248,10 @@ export type DocDetailData = {
   validUntil: Date | null;
   /** WO 1.9 — `email` ใช้ตัดสินว่าปุ่ม ⋯ "เตือนชำระ" กดได้ไหม (ไม่มีอีเมล = ปุ่มจาง + บอกเหตุผล) */
   contact: { id: string; name: string; taxId: string | null; email: string | null } | null;
+  /** ACC T2.2 — ผู้ซื้อตามที่พิมพ์บนเอกสาร (contactSnapshot) + ที่มา — ฟอร์ม "ยกเลิกและออกแทน" เติมค่าเดิม */
+  buyerSnapshot?: { name: string; taxId: string; branchCode: string; address: string };
+  docSource?: string;
+  replacedById?: string | null;
   lines: {
     id: string;
     description: string;
@@ -355,6 +359,13 @@ export async function getDocDetailData(
     contact: doc.contact
       ? { id: doc.contact.id, name: doc.contact.name, taxId: doc.contact.taxId, email: doc.contact.email }
       : null,
+    buyerSnapshot: (() => {
+      const sn = (doc.contactSnapshot && typeof doc.contactSnapshot === "object" && !Array.isArray(doc.contactSnapshot) ? doc.contactSnapshot : {}) as Record<string, unknown>;
+      const t = (k: string, d = "") => (typeof sn[k] === "string" ? (sn[k] as string) : d);
+      return { name: t("name", doc.contact?.name ?? ""), taxId: t("taxId", doc.contact?.taxId ?? ""), branchCode: t("branchCode"), address: t("address") };
+    })(),
+    docSource: doc.source,
+    replacedById: doc.replacedById,
     lines: doc.lines.map((l) => ({
       id: l.id,
       description: l.description,

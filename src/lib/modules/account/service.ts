@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { safeReason } from "./errors";
 import { recordLegalAckInTx } from "@/lib/core/legal-ack";
+import { legalAmbient } from "@/lib/core/legal-ambient";
 import { accountNow } from "./clock";
 import { issueLegalWarnings, legalAckResult, legalGateInTx, saleWithoutVatWarnings } from "./legal-gate";
 import { ambientLegalGateInTx, pndCertGuardInTx } from "./filed-guard";
@@ -2357,7 +2358,7 @@ export async function updateDocument(
     await prisma.$transaction(async (tx) => {
       const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
-      if (doc.status !== "DRAFT") throw new Error("เอกสารที่ออกแล้วแก้ไขไม่ได้ — ใช้ยกเลิก/ออกใบใหม่");
+      if (doc.status !== "DRAFT") throw new Error(doc.docType === "TAX_INVOICE" ? TAX_INVOICE_REPLACE_EDIT_MSG : "เอกสารที่ออกแล้วแก้ไขไม่ได้ — ใช้ยกเลิก/ออกใบใหม่");
       // §9.3: ล็อกทั้ง "วันที่เดิม" และ "วันที่ใหม่" — กันย้ายเอกสารเข้า/ออกจากช่วงที่ล็อก
       assertNotLockedWith(settings.policy.lockBeforeDate, doc.issueDate);
       if (input.issueDate) assertNotLockedWith(settings.policy.lockBeforeDate, input.issueDate);
@@ -9552,3 +9553,112 @@ export async function dormDocsDead(tenantId: string, ids: string[]): Promise<Set
   return new Set(rows.map((r) => r.id));
 }
 // ◂ SVC D.10
+
+// ─────────────────── ACC T2.2 ▸ ยกเลิกและออกใบกำกับภาษีแทน (ยกแบบ dormReplaceTaxInvoice) ───────────────────
+
+export type ReplaceTaxInvoiceInput = {
+  reason: string;
+  /** ผู้ซื้อที่ถูกต้อง (ไม่ส่ง = ตามใบเดิม) */
+  buyer?: { name?: string | null; taxId?: string | null; branchCode?: string | null; branchName?: string | null; address?: string | null } | null;
+  /** คำอธิบาย/หน่วยของบรรทัดที่ถูกต้อง (เรียงตามบรรทัดเดิม · ไม่ส่ง = เดิม) — ยอดเงินแก้ไม่ได้ (ใช้ใบลดหนี้/เพิ่มหนี้) */
+  lines?: { description?: string | null; unitName?: string | null }[] | null;
+  /** คีย์กันซ้ำ (ฟอร์ม/REST) — ใบเดิมถูกแทนด้วยคีย์นี้แล้ว ⇒ คืนใบใหม่เดิม */
+  key?: string | null;
+  ack?: LegalAck | null;
+  createdById?: string | null;
+};
+export type ReplaceTaxInvoiceResult =
+  | { ok: true; newId: string; newDocNo: string | null; oldId: string; oldDocNo: string | null; date: Date; duplicate: boolean }
+  | { ok: false; reason: string; legal?: LegalAckRequired };
+
+export const TAX_INVOICE_REPLACE_EDIT_MSG = "ใบกำกับภาษีที่ออกแล้วแก้ไขตรง ๆ ไม่ได้ — ใช้ \"ยกเลิกและออกแทน\" (เลขใหม่ วันที่เดิม อ้างเลขฉบับเดิม) · ยอดผิดเพราะลด/เพิ่มราคา ใช้ใบลดหนี้/ใบเพิ่มหนี้";
+
+const thDate = (d: Date) => new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "long", year: "numeric" }).format(d);
+
+/**
+ * ACC T2.2 ▸ ยกเลิกใบกำกับภาษีที่ผิดแล้วออกฉบับใหม่แทน — ธุรกรรมเดียว (ป.86/2542 ข้อ 25 · skill common-vat-invoice.md §14 [V])
+ *   ใบเดิม VOIDED (เลขคงอยู่ · voidReason · replacedById) · ใบใหม่เลขใหม่ ลงวันที่ฉบับเดิม · หมายเหตุอ้างเลข/วันที่เดิม + เหตุผล ·
+ *   ยกต้นทาง (sourceDocId · sourcePaymentId · จุดรับรู้) · ยอด/บรรทัดเท่าเดิม (แก้ได้: ผู้ซื้อ · คำอธิบาย/หน่วย)
+ *   GL: กลับรายการ JV ใบเดิม + JV ใบใหม่ ลงวันที่ฉบับเดิม (สุทธิเดือนนั้นไม่เปลี่ยน · ด่านเดือนที่ยื่นแล้วทำงานที่ชั้นลงบัญชี)
+ *   คำเตือน TAX_INVOICE_REPLACE (ack) — ยืนยันก่อน · บันทึกผู้ยืนยัน ◂
+ */
+export async function replaceTaxInvoice(ctx: { tenantId: string; systemId: string }, id: string, input: ReplaceTaxInvoiceInput): Promise<ReplaceTaxInvoiceResult> {
+  const { tenantId, systemId } = ctx;
+  const reason = (input.reason ?? "").trim().slice(0, 300);
+  if (!reason) return { ok: false, reason: "ระบุเหตุผลที่ออกฉบับใหม่แทน (พิมพ์ในหมายเหตุของใบใหม่และรายงานภาษีขาย)" };
+  const refKey = input.key ? `replace:${input.key}`.slice(0, 120) : null;
+  try {
+    return await prisma.$transaction(async (tx) => {
+      openDocNumbering(tx);
+      if (refKey) {
+        const prev = await tx.accountDocument.findFirst({ where: { tenantId, systemId, docType: "TAX_INVOICE", refType: "TaxInvoiceReplace", refId: refKey }, select: { id: true, docNo: true, issueDate: true } });
+        if (prev) {
+          const was = await tx.accountDocument.findFirst({ where: { tenantId, systemId, replacedById: prev.id }, select: { id: true, docNo: true } });
+          if (was?.id === id || prev.id === id) return { ok: true as const, newId: prev.id, newDocNo: prev.docNo, oldId: was?.id ?? id, oldDocNo: was?.docNo ?? null, date: prev.issueDate, duplicate: true };
+          throw new Error("คีย์กันซ้ำนี้ถูกใช้ออกใบแทนของใบกำกับภาษีใบอื่นแล้ว — ใช้คีย์ใหม่");
+        }
+      }
+      await lockDocumentRow(tx, tenantId, systemId, id);
+      const old = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId }, include: { lines: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }] } } });
+      if (!old || old.docType !== "TAX_INVOICE") throw new Error("ไม่พบใบกำกับภาษีนี้");
+      if (old.source === "DORM") throw new Error("ใบกำกับภาษีของหอพัก — ออกฉบับใหม่แทนที่หน้ารอบบิลหอ (ปุ่ม \"ออกใบใหม่แทน\")");
+      if (old.status !== "ISSUED" || old.replacedById) throw new Error("ออกแทนได้เฉพาะใบกำกับภาษีฉบับปัจจุบันที่ออกแล้ว — ใบนี้เป็นร่าง ถูกยกเลิก หรือถูกออกฉบับใหม่แทนไปแล้ว");
+      // ใบลดหนี้ที่ยังมีผลอ้างใบนี้ = ยกเลิกใบลดหนี้ก่อน (ใบลดหนี้อ้างเลขใบกำกับเดิม)
+      const liveCn = await tx.accountDocument.count({ where: { systemId, docType: { in: ["CREDIT_NOTE", "DEBIT_NOTE"] }, sourceDocId: old.id, status: { notIn: [...LIVE_NOT] } } });
+      if (liveCn > 0) throw new Error("ใบกำกับภาษีนี้มีใบลดหนี้/ใบเพิ่มหนี้ที่ยังมีผลอ้างอยู่ — ยกเลิกใบนั้นก่อน แล้วค่อยออกฉบับใหม่แทน");
+      const date = old.issueDate;
+      assertNotLockedWith((await getSettings(tenantId, systemId)).policy.lockBeforeDate, date);
+      const w = legalWarning("TAX_INVOICE_REPLACE", { oldNo: old.docNo ?? "-", oldDate: thDate(old.issueDate), newDate: thDate(date) });
+      await legalGateInTx(tx, tenantId, [w], input.ack ?? legalAmbient()?.ack, { op: "account.taxinvoice.replace", targetType: "AccountDocument", targetId: old.id });
+      // ผู้ซื้อ: ของใบเดิม + ที่แก้ (เฉพาะช่องที่ส่งมา)
+      const prevSnap = (old.contactSnapshot && typeof old.contactSnapshot === "object" && !Array.isArray(old.contactSnapshot) ? old.contactSnapshot : {}) as Record<string, unknown>;
+      const b = input.buyer ?? {};
+      const pick = (k: keyof NonNullable<ReplaceTaxInvoiceInput["buyer"]>) => (b[k] !== undefined && b[k] !== null ? String(b[k]).trim().slice(0, 300) : undefined);
+      const snap = { ...prevSnap, ...Object.fromEntries((["name", "taxId", "branchCode", "branchName", "address"] as const).map((k) => [k, pick(k)]).filter(([, v]) => v !== undefined)) };
+      const note = `ออกแทนใบกำกับภาษีฉบับเดิมเลขที่ ${old.docNo ?? "-"} ลงวันที่ ${thDate(old.issueDate)} — เหตุผล: ${reason}`;
+      // ใบเดิมพ้นสถานะ "มีผล" ก่อนสร้างใบใหม่ (ดัชนี 1 ใบกำกับต่อต้นทาง) — CAS ใต้ล็อกแถว
+      const moved = await tx.accountDocument.updateMany({
+        where: { id: old.id, tenantId, systemId, status: "ISSUED", replacedById: null },
+        data: { status: "VOIDED", voidedAt: new Date(), voidReason: reason },
+      });
+      if (moved.count !== 1) throw new Error("ใบกำกับภาษีนี้ถูกออกฉบับใหม่แทนไปแล้ว — ออกแทนได้เฉพาะฉบับปัจจุบัน");
+      const fix = input.lines ?? [];
+      const doc = await tx.accountDocument.create({
+        data: {
+          tenantId, systemId, docType: "TAX_INVOICE", status: "ISSUED", direction: "OUT", docNo: null,
+          issueDate: date, dueDate: old.dueDate, contactId: old.contactId, contactSnapshot: snap as Prisma.InputJsonValue,
+          vatMode: old.vatMode, vatTiming: old.vatTiming, taxPointBasis: old.taxPointBasis, priceMode: old.priceMode,
+          discountAmount: old.discountAmount, depositDeducted: old.depositDeducted,
+          subTotal: old.subTotal, vatAmount: old.vatAmount, grandTotal: old.grandTotal, paidTotal: old.paidTotal,
+          sourceDocId: old.sourceDocId, sourcePaymentId: old.sourcePaymentId, createdById: input.createdById ?? null,
+          refType: refKey ? "TaxInvoiceReplace" : null, refId: refKey, note, adjustReason: reason, reference: old.reference, tags: old.tags,
+          lines: {
+            create: old.lines.map((l, i) => ({
+              tenantId, systemId, sortOrder: i,
+              description: (fix[i]?.description ?? "").trim() ? fix[i]!.description!.trim().slice(0, 500) : l.description,
+              qty: l.qty, unitName: fix[i]?.unitName !== undefined && fix[i]?.unitName !== null ? String(fix[i]!.unitName).slice(0, 40) : l.unitName,
+              unitPrice: l.unitPrice, discount: l.discount, vatRateBp: l.vatRateBp, amount: l.amount, productId: l.productId, accountId: l.accountId, lineKind: l.lineKind,
+            })),
+          },
+        },
+        select: { id: true },
+      });
+      deferDocNo(tx, { docId: doc.id, tenantId, systemId, date, series: { kind: "configured", docType: "TAX_INVOICE", fallbackPrefix: docNoFallbackPrefix("TAX_INVOICE") } });
+      await tx.accountDocument.updateMany({ where: { id: old.id, tenantId, systemId }, data: { replacedById: doc.id } });
+      if (old.sourceDocId) await tx.accountDocumentRelation.create({ data: { tenantId, systemId, fromId: old.sourceDocId, toId: doc.id, type: "TAX_FOR", amount: old.grandTotal } });
+      await tx.accountDocumentRelation.create({ data: { tenantId, systemId, fromId: old.id, toId: doc.id, type: "REPLACE", amount: old.grandTotal } });
+      await ensureAccounting(ctx, tx);
+      // JV: กลับใบเดิม + ลงใบใหม่ ลงวันที่ฉบับเดิม — ใบใหม่ผ่าน commitEntry (ด่านเดือนที่ยื่นแล้ว · T1.7)
+      await d3ReverseDocAt(tx, ctx, old.id, `ยกเลิกและออกใบกำกับภาษีฉบับใหม่แทน — ${reason}`, date);
+      await postTaxInvoice(ctx, doc.id, tx);
+      const nos = await finalizeDocNos(tx);
+      const newDocNo = nos.get(doc.id) ?? null;
+      await emitDocumentVoided(tx, ctx, { id: old.id, docType: "TAX_INVOICE", docNo: old.docNo, reason });
+      await emitDocumentIssued(tx, ctx, { id: doc.id, docType: "TAX_INVOICE", docNo: newDocNo, status: "ISSUED", contactId: old.contactId, grandTotal: old.grandTotal, issueDate: date, source: old.source });
+      return { ok: true as const, newId: doc.id, newDocNo, oldId: old.id, oldDocNo: old.docNo, date, duplicate: false };
+    }, { maxWait: 20_000, timeout: 40_000 });
+  } catch (e) {
+    if (isLegalAckRequiredError(e)) return legalAckResult(e);
+    return { ok: false, reason: safeReason(e, "ยกเลิกและออกใบกำกับภาษีแทนไม่สำเร็จ") };
+  }
+}

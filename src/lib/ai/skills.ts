@@ -91,6 +91,7 @@ export const SKILLS: Skill[] = [
       "account_update_tax_settings", // ACC T0.1/T0.2 ▸ ตั้งประเภทผู้ประกอบการ / แถวตารางค่ากฎหมาย (ข้อเสนอ) ◂
       "account_file_vat_return", "account_file_vat_additional", "account_set_vat_credit_carry", // ACC T1.3 ▸ ภ.พ.30 ยื่น · แบบเพิ่มเติม · แก้เครดิตยกมา (ข้อเสนอ) ◂
       "account_release_parked_vat", // ACC T1.2 ▸ ออกใบกำกับปล่อยภาษีขายที่ค้างพัก (ข้อเสนอ · ร้านเลือกวันที่) ◂
+      "account_replace_tax_invoice", // ACC T2.2 ▸ ยกเลิกและออกใบกำกับภาษีแทน (ข้อเสนอ · เลขใหม่ วันที่เดิม) ◂
       "account_input_vat_not_claimable", // ACC T1.4 ▸ ใบกำกับภาษีซื้อไม่มา → ภาษีซื้อไม่ขอคืน (ข้อเสนอ) ◂
       // อันตราย (ยืนยัน 2 ชั้น)
       "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",

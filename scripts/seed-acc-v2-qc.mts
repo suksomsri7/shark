@@ -252,7 +252,9 @@ await gl.ensureAccounting({ tenantId, systemId });
 {
   const ds = await import("@/lib/modules/account/doc-settings");
   const cur = await ds.getDocSettings({ tenantId, systemId });
-  const r0 = await ds.saveDocSettings({ tenantId, systemId }, { autoTaxInvoice: { ...cur.autoTaxInvoice, goodsOnIssue: false } });
+  // ORACLE-EDIT (ACC T2.6/T2.8 lane 1): เหตุผลเดียวกัน — ข้อมูลก่อน T2.6/T2.8 ไม่มีใบกำกับของเงินมัดจำ/ใบเสร็จอัตโนมัติต่องวด
+  //   ⇒ ปิดทั้งสองระหว่างสร้างเอกสาร (จำนวนเอกสารในเฉลยคงเดิม) แล้วเปิดกลับเป็นค่าเริ่มต้นท้ายสคริปต์ · พฤติกรรมใหม่ทดสอบใน qc-acc-v2-paytaxinv / qc-acc-v2-receipt
+  const r0 = await ds.saveDocSettings({ tenantId, systemId }, { autoTaxInvoice: { ...cur.autoTaxInvoice, goodsOnIssue: false, depositOnReceipt: false }, receipt: { autoOnPayment: false } });
   if (!r0.ok) throw new Error(`ปิดใบกำกับพร้อมใบแจ้งหนี้ (ข้อมูลก่อน T1.2) ไม่สำเร็จ: ${r0.reason}`);
 }
 console.log(`🏢 ร้าน "${QC.tenantName}" ${tenantId} · ระบบบัญชี ${systemId}`);
@@ -1907,9 +1909,11 @@ const SEED_NOTES = {
       },
     },
     publicView: { enabled: true, showOutstanding: true, promptPayButton: true, expiryDays: 0 },
+    receipt: { autoOnPayment: true }, // ACC T2.8 — เปิดกลับเป็นค่าเริ่มต้น (ดูหัวสคริปต์)
     autoTaxInvoice: {
       mode: "ON_PAYMENT",
       goodsOnIssue: true, // ACC T1.2 — เปิดกลับเป็นค่าเริ่มต้นหลังสร้างข้อมูลเก่าเสร็จ (ดูหัวสคริปต์)
+      depositOnReceipt: true, // ACC T2.6 — เปิดกลับเป็นค่าเริ่มต้น (ดูหัวสคริปต์)
       posAbbreviated: true,
       legalText: "ใบกำกับภาษีนี้ออกตามมาตรา 86/4 แห่งประมวลรัษฎากร",
     },

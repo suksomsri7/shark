@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 210 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 211 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -1859,6 +1859,27 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/remind" \
   -H "Idempotency-Key: $(uuidgen)"
 ```
 
+#### `documents.replace-tax-invoice`
+
+**POST /documents/{id}/replace-tax-invoice** - Cancel a wrong tax invoice and issue its replacement in one step: new number, the original date, a note citing the original number and the reason; the original stays on file as cancelled. · scope: `account.doc.issue` · write · AI tool: `account_replace_tax_invoice`
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why the tax invoice was wrong. Printed on the replacement and noted in the sales-tax report. · min length 1 · max length 300 |
+| `buyer` | object | no | Corrected buyer details. Fields not sent keep the original value. |
+| `lines` | array of object | no | Corrected description/unit per original line, in order. Amounts cannot change here: a price change is a credit or debit note. |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "PAYMENT_TAX_INVOICE_EARLIER_MONTH", "RECEIPT_SELLER_TAX_ID_MISSING", "TAX_INVOICE_REPLACE") | no | Legal warning codes the user has read and accepted (TAX_INVOICE_REPLACE; FILED_PERIOD_VAT_CHANGE when the month is marked filed). |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/replace-tax-invoice" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log"}'
+```
+
 #### `documents.respond`
 
 **POST /documents/{id}/respond** - Record the customer answer to a quotation: accepted or rejected. · scope: `account.doc.create` · write
@@ -3714,7 +3735,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
 
 ## AI tools
 
-47 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+48 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 `account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
@@ -3753,6 +3774,7 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_record_payment` | `payments.record` | write | `account.payment.record` |
 | `account_release_parked_vat` | `documents.release-vat` | write | `account.doc.issue` |
 | `account_reopen_period` | `periods.reopen` | danger | `account.period.reopen` |
+| `account_replace_tax_invoice` | `documents.replace-tax-invoice` | write | `account.doc.issue` |
 | `account_report` | `reports.profit-loss` | read | `account.report.view` |
 | `account_revenue_without_vat` | `reports.revenue-without-vat` | read | `account.tax.view` |
 | `account_run_depreciation` | `assets.depreciation-run` | write | `account.asset.manage` |
@@ -3782,7 +3804,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
 
-`GET https://shark.in.th/api/v1/ai/skills/account` returns the 47 tools (19 read, 28 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 48 tools (19 read, 29 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "account", "label": "บัญชี", "summary": "...", "tools": [

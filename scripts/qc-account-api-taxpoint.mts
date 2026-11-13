@@ -1,5 +1,5 @@
 // QC — API บัญชี ACC T1.2: ภาษีขายที่ค้างพัก + ปล่อย VAT + ชนิดบรรทัด
-// test id ของ op: reports.parked-vat = "T1.2-TP8" · documents.release-vat = "T1.2-TP9" (ด่าน OA-5.2)
+// test id ของ op: reports.parked-vat = "T1.2-TP8" · documents.release-vat = "T1.2-TP9" · documents.replace-tax-invoice = "T2.2-X7" (ด่าน OA-5.2)
 // 🔴 tenant ใหม่ของตัวเอง · ลบทิ้งใน finally
 // รัน: bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-account-api-taxpoint.mts
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
@@ -84,9 +84,17 @@ try {
   const again = await call("POST", `/documents/${docId}/release-vat`, W, { date: "TODAY", acknowledge: ["TAX_INVOICE_LATE_DATE_CHOICE"] });
   chk("T12-API.2e", "ปล่อยซ้ำ (ไม่มีสินค้าพักแล้ว) → 4xx พร้อมเหตุผลไทย", again.status >= 400 && again.status < 500 && /[ก-๙]/.test(JSON.stringify(again.body?.error ?? "")), "4xx", `${again.status}`);
 
+  // ═══ ACC T2.2 — ยกเลิกและออกใบกำกับภาษีแทน (REST) ═══
+  const tiId = ok.body?.data?.taxInvoiceId as string;
+  const rp0 = await call("POST", `/documents/${tiId}/replace-tax-invoice`, W, { reason: "ชื่อผู้ซื้อผิด", buyer: { name: "ลูกค้าที่ถูกต้อง" } });
+  chk("T22-API.1", "ยกเลิกและออกแทน ไม่ส่ง acknowledge → 409 legal_ack_required + TAX_INVOICE_REPLACE (ป้าย V)", rp0.status === 409 && rp0.body?.error?.code === "legal_ack_required" && rp0.body.error.warnings?.some((w: Any) => w.code === "TAX_INVOICE_REPLACE" && w.tag === "V"), "409", `${rp0.status} ${JSON.stringify(rp0.body?.error ?? rp0.body).slice(0, 260)}`);
+  const rp = await call("POST", `/documents/${tiId}/replace-tax-invoice`, W, { reason: "ชื่อผู้ซื้อผิด", buyer: { name: "ลูกค้าที่ถูกต้อง" }, acknowledge: ["TAX_INVOICE_REPLACE"] });
+  const oldTi = await prisma.accountDocument.findUnique({ where: { id: tiId }, select: { status: true, replacedById: true, docNo: true } });
+  chk("T2.2-X7", "ส่ง acknowledge → 200 · ใบใหม่เลขใหม่ ลงวันที่เดิม 2026-10-15 · ใบเดิม VOIDED + replacedById", rp.status === 200 && !!rp.body?.data?.taxInvoiceNo && rp.body.data.taxInvoiceNo !== oldTi?.docNo && rp.body.data.replacedTaxInvoiceNo === oldTi?.docNo && rp.body.data.date === "2026-10-15" && oldTi?.status === "VOIDED" && oldTi.replacedById === rp.body.data.taxInvoiceId, "200", `${rp.status} ${JSON.stringify(rp.body?.data ?? rp.body?.error).slice(0, 260)}`);
+
   const registry = (await import("@/lib/modules/account/api/registry" as string)) as Record<string, Any>;
   const ops = registry.ACCOUNT_OPS as Any[];
-  const need: [string, string, string][] = [["reports.parked-vat", "read", "account.tax.view"], ["documents.release-vat", "write", "account.doc.issue"]];
+  const need: [string, string, string][] = [["reports.parked-vat", "read", "account.tax.view"], ["documents.release-vat", "write", "account.doc.issue"], ["documents.replace-tax-invoice", "write", "account.doc.issue"]];
   const bad = need.filter(([id, kind, action]) => { const o = ops.find((x) => x.id === id); return !o || o.kind !== kind || o.action !== action || !o.tool; });
   chk("T12-API.3", "registry มี reports.parked-vat / documents.release-vat (+ tool ให้เลขา AI)", bad.length === 0, "ครบ", bad.map(([id]) => id).join(","));
 } catch (e) {
@@ -100,7 +108,7 @@ try {
     await d(() => P.accountJournalEntry.deleteMany({ where: { tenantId: tid } }));
     await d(() => P.accountDocumentRelation.deleteMany({ where: { tenantId: tid } }));
     await d(() => P.accountDocumentLine.deleteMany({ where: { tenantId: tid } }));
-    await d(() => P.accountDocument.updateMany({ where: { tenantId: tid }, data: { sourceDocId: null } }));
+    await d(() => P.accountDocument.updateMany({ where: { tenantId: tid }, data: { sourceDocId: null, replacedById: null } }));
     for (const m of ["accountDocument", "settingChange", "settingValue", "accountDocSequence", "accountContact", "accountMapping", "accountPeriod", "accountSettings", "apiIdempotency", "apiKey", "auditLog", "outboxEvent", "membership", "appSystemUnit"]) {
       await d(() => P[m].deleteMany({ where: { tenantId: tid } }));
     }

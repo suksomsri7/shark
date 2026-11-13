@@ -242,6 +242,8 @@ export async function salesTaxReport(
     voidedAt: true,
     voidReason: true,
     supersededByDocId: true,
+    replacedById: true,
+    note: true,
     sourceDocId: true,
     refType: true,
     refId: true,
@@ -274,6 +276,10 @@ export async function salesTaxReport(
   const refDocMap = new Map(refDocs.map((d) => [d.id, d]));
   // ACC T2.6 ▸ ใบรับมัดจำที่มีใบกำกับของเงินมัดจำ (ออกตอนรับเงิน · ไม่มี JV ของตัวเอง — ภาษีอยู่ใน JV ของใบรับมัดจำ)
   //   ⇒ แถวรายงานแสดงเลข/วันที่ของ "ใบกำกับภาษี" (เอกสารที่ลงรายงานภาษีขาย) + หมายเหตุอ้างใบรับมัดจำ · ใช้ใบที่ยังมีผลก่อน ◂
+  // ACC T2.2 ▸ ยกเลิกและออกแทน: ใบเดิม → เลขใบใหม่ (หมายเหตุทั้งสองใบ — ป.86/2542 ข้อ 25) ◂
+  const replIds = docs.map((d) => d.replacedById).filter((x): x is string => !!x);
+  const replDocs = replIds.length ? await db.accountDocument.findMany({ where: { id: { in: replIds } }, select: { id: true, docNo: true } }) : [];
+  const replNoOf = new Map(replDocs.map((d) => [d.id, d.docNo]));
   const depIds = docs.filter((d) => d.docType === "DEPOSIT_RECEIPT").map((d) => d.id);
   const depTis = depIds.length
     ? await db.accountDocument.findMany({
@@ -354,6 +360,8 @@ export async function salesTaxReport(
 
     // หมายเหตุ
     const cancelReason = doc?.voidReason ? ` (${doc.voidReason})` : "";
+    if (doc?.replacedById) notes.push(`ยกเลิก — ออกใบกำกับภาษีฉบับใหม่แทนเลขที่ ${replNoOf.get(doc.replacedById) ?? "-"}${cancelReason}`);
+    if (doc?.docType === "TAX_INVOICE" && doc.note?.startsWith("ออกแทนใบกำกับภาษีฉบับเดิมเลขที่")) notes.push(doc.note);
     if (sameMonthCancel) notes.push(`ยกเลิกภายในเดือนนี้ — ไม่มียอดภาษี${cancelReason}`);
     if (laterMonthCancel) {
       const origDate = doc?.issueDate ?? meta?.paidAt ?? null;

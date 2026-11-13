@@ -1,3 +1,4 @@
+import { legalWarning } from "@/lib/core/settings/legal/warnings";
 import { listPaymentChannels } from "@/lib/modules/account/payment";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,6 +13,7 @@ import { auditActionLabelTh } from "@/lib/modules/account/access";
 import { storageEnabled } from "@/lib/storage/service";
 import {
   issueDocumentAction,
+  replaceTaxInvoiceAction,
   convertDocumentAction,
   quotationResponseAction,
   voidDocumentAction,
@@ -290,6 +292,31 @@ function ActionRow({
           danger
           testId="reject-po"
         />
+      )}
+      {dt === "TAX_INVOICE" && data.status === "ISSUED" && !data.replacedById && data.docSource !== "DORM" && perm.issue && perm.void && (
+        // ACC T2.2 — ใบกำกับที่ผิด: ยกเลิกและออกแทน (เลขใหม่ · วันที่เดิม · หมายเหตุอ้างเลขเดิม) · ยอดผิดเพราะลด/เพิ่มราคา ใช้ใบลดหนี้/เพิ่มหนี้
+        <details className="w-full" data-testid="replace-tax-invoice">
+          <summary className="btn btn-ghost cursor-pointer text-sm">ยกเลิกและออกแทน</summary>
+          <form action={replaceTaxInvoiceAction} className="mt-2 flex flex-col gap-2 rounded-md border p-3 text-sm">
+            <Hidden systemId={systemId} docType={dt} id={data.id} />
+            <input type="hidden" name="key" value={`rp-${data.id}-${data.docNo ?? ""}`} />
+            <p className="text-xs text-[color:var(--color-muted)]">
+              ใบนี้จะถูกยกเลิก (เก็บไว้พร้อมเหตุผล) และออกฉบับใหม่ <b>เลขที่ใหม่</b> ลงวันที่เดิม {fmtDate(data.issueDate)} พร้อมหมายเหตุอ้างเลขที่ {data.docNo ?? "-"} · ยอดเงินคงเดิม
+            </p>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[color:var(--color-muted)]">เหตุผล (พิมพ์ในหมายเหตุของใบใหม่และรายงานภาษีขาย)</span>
+              <input name="reason" required maxLength={300} className="input h-9" data-testid="replace-reason" />
+            </label>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <label className="flex flex-col gap-1"><span className="text-xs text-[color:var(--color-muted)]">ชื่อผู้ซื้อ</span><input name="buyerName" defaultValue={data.buyerSnapshot?.name ?? ""} className="input h-9" data-testid="replace-buyer-name" /></label>
+              <label className="flex flex-col gap-1"><span className="text-xs text-[color:var(--color-muted)]">เลขผู้เสียภาษีผู้ซื้อ</span><input name="buyerTaxId" defaultValue={data.buyerSnapshot?.taxId ?? ""} className="input h-9" /></label>
+              <label className="flex flex-col gap-1"><span className="text-xs text-[color:var(--color-muted)]">สาขา (00000 = สำนักงานใหญ่)</span><input name="buyerBranchCode" defaultValue={data.buyerSnapshot?.branchCode ?? ""} className="input h-9" /></label>
+              <label className="flex flex-col gap-1"><span className="text-xs text-[color:var(--color-muted)]">ที่อยู่ผู้ซื้อ</span><input name="buyerAddress" defaultValue={data.buyerSnapshot?.address ?? ""} className="input h-9" /></label>
+            </div>
+            <LegalWarnings warnings={[legalWarning("TAX_INVOICE_REPLACE", { oldNo: data.docNo ?? "-", oldDate: fmtDate(data.issueDate), newDate: fmtDate(data.issueDate) })]} ackName="ack" testId="replace-legal" />
+            <SubmitButton className="h-11 md:h-9 md:w-auto">ยกเลิกและออกฉบับใหม่แทน</SubmitButton>
+          </form>
+        </details>
       )}
       {dt === "ASSET_PURCHASE" &&
         (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL" || data.status === "PAID") && (
