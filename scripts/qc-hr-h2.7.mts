@@ -469,6 +469,12 @@ const CHECKS: readonly Def[] = [
   D("X1.1", "X1", C, "RED", "5 identical parallel requests ⇒ 1 row"),
   D("X2.1", "X2", C, "RED", "other tenant ⇒ refused · unchanged"),
   D("X12.1", "X12", M, "GREEN", "fitness + fitness-hr ± env"),
+  // ORACLE-EDIT (H2.12) ▸ F1 statutory leave presets + F5 soft warnings (ledger/wo-notes/hr-H2.12.md Part C) — RED on 936c54593 (no leave-presets module) ◂
+  D("H212.1", "F1", M, "RED", "[pure] presets list = fixture table (values · tag · ref · per-event · child-care unsupported)"),
+  D("H212.2", "F1", C, "RED", "[db] add preset: one shop-wide row · 2nd add / matching type ⇒ exists · unknown/unsupported refused · values overridable"),
+  D("H212.3", "F1", C, "RED", "[db] permissions = leave types today (owner ok · member/branch manager refused · nothing written)"),
+  D("H212.4", "F5", M, "RED", "[db+pure] low values save OK + warnings (V cites the section · otherwise neutral) · maternity summed"),
+  D("H212.5", "F1", M, "RED", "[static] th=en lawPresets/lawWarn · page wires section + warnings · testids ↔ inventory · no prisma change"),
   D("Z1", "-", C, "GREEN", "residue none"),
 ];
 initRegistry("H2.7-", CHECKS);
@@ -1506,6 +1512,65 @@ async function runDb(): Promise<void> {
     const r = await decide(idv(p), "APPROVED", U.A);
     chk("S11.5", said(r, SELF_TEXT) && (await leave(idv(p)))?.status === "PENDING", "hotfix text", shown(r));
   }
+  // ORACLE-EDIT (H2.12) ▸ F1/F5 on a fresh HR system of the suite tenant (swept with the tenant) ◂
+  {
+    const LP = await loadOpt(LPF, "@/lib/modules/hr/leave-presets");
+    const LPS = await loadOpt(`${HRD}leave-presets-service.ts`, "@/lib/modules/hr/leave-presets-service");
+    const sP = await sysSvc.createSystem(TT, "HR", "HR presets");
+    const cP = { tenantId: TT, systemId: sP.id };
+    const TXT = (LP && !LP.__err ? LP.LEAVE_PRESET_TEXT : {}) as Record<string, string>;
+    const add = async (who: Who, input: Any): Promise<RO> => {
+      try {
+        const r = typeof LPS?.addLeavePreset === "function" ? await LPS.addLeavePreset(cP, vOf(who), input) : { ok: false, reason: `∅addLeavePreset (${modState(LPS, "leave-presets-service")})` };
+        return r?.ok ? { ok: true, text: "", value: r } : { ok: false, text: String(r?.reason ?? ""), value: r };
+      } catch (e) {
+        return { ok: false, text: `THROW ${errText(e)}`, value: undefined };
+      }
+    };
+    const rows = () => P.hrLeavePolicy.findMany({ where: { tenantId: TT, systemId: sP.id, active: true }, select: { id: true, name: true, category: true, quotaDays: true, paid: true, minServiceDays: true, attachmentAfterDays: true, unitId: true } }) as Promise<Any[]>;
+    // H212.3 permissions first (nothing may be written)
+    const mem = await add(U.member, { key: "sick", name: "ลาป่วย" });
+    const mu1 = await add(U.mgrU1, { key: "sick", name: "ลาป่วย" });
+    const n0 = (await rows()).length;
+    ck("H212.3", { member: said(mem, X.noPermission ?? "∅"), branchMgr: !mu1.ok, none: n0 === 0 }, "refused · nothing written", `${shown(mem)} ${shown(mu1)} rows=${n0}`);
+    // H212.2 idempotence + overrides
+    const a1 = await add(U.owner, { key: "sick", name: "ลาป่วย" });
+    const a2 = await add(U.owner, { key: "sick", name: "ลาป่วย (2)" });
+    const a3 = await add(U.owner, { key: "personal", name: "ลากิจร้าน", quotaDays: "5", paid: "true", minServiceDays: "0" });
+    const a4 = await add(U.owner, { key: "childcare", name: "ลาเลี้ยงดูบุตร" });
+    const a5 = await add(U.owner, { key: "nope", name: "x" });
+    const own = await settings.createLeavePolicy(cP, vOf(U.owner), { unitId: null, category: "VACATION", name: "พักร้อนของร้าน", quotaDays: 10, minServiceDays: 0 });
+    const a6 = await add(U.owner, { key: "annual", name: "ลาพักร้อน" });
+    const rs = await rows();
+    const sick = rs.filter((r) => r.category === "SICK");
+    const pers = rs.find((r) => r.name === "ลากิจร้าน");
+    const list = LP && !LP.__err ? (LP.leavePresetRows(rs) as Any[]) : [];
+    ck("H212.2", {
+      first: a1.ok && sick.length === 1 && sick[0]?.unitId === null && Number(String(sick[0]?.quotaDays)) === 30 && sick[0]?.paid === true && sick[0]?.attachmentAfterDays === 3,
+      second: said(a2, TXT.exists ?? "∅"),
+      override: a3.ok && Number(String(pers?.quotaDays)) === 5 && pers?.category === "PERSONAL",
+      unsupported: said(a4, TXT.unsupported ?? "∅"), unknown: said(a5, TXT.unknown ?? "∅"),
+      matching: !!own?.ok && said(a6, TXT.exists ?? "∅") && rs.filter((r) => r.category === "VACATION").length === 1,
+      listed: list.find((r) => r.key === "sick")?.existing?.id === sick[0]?.id && list.find((r) => r.key === "annual")?.existing?.name === "พักร้อนของร้าน" && list.find((r) => r.key === "military")?.existing === null,
+    }, "one row · exists · overrides", `${shown(a1)} ${shown(a2)} ${shown(a3)} ${shown(a4)} ${shown(a5)} ${shown(a6)} rows=${rs.length}`);
+    // H212.4 warnings: low values save fine, warnings computed
+    const low = async (category: string, name: string, quotaDays: number | null, o: Any = {}) => settings.createLeavePolicy(cP, vOf(U.owner), { unitId: null, category, name, quotaDays, ...o });
+    const w1 = await low("PERSONAL", "กิจน้อย", 1);
+    const w2 = await low("OTHER", "ลาคลอด", 45);
+    const w3 = await low("OTHER", "ลารับราชการทหาร", 60, { paid: false });
+    const w4 = await low("SICK", "ป่วยน้อย", 10);
+    const rs2 = await rows();
+    const W = LP && !LP.__err ? (LP.leavePolicyWarnings(rs2) as Map<string, Any[]>) : new Map();
+    const codes = (name: string) => (W.get(rs2.find((r) => r.name === name)?.id) ?? []).map((x: Any) => `${x.code}${x.ref ? `@${x.ref}` : ""}${x.law !== undefined ? `:${x.law}/${x.set}` : ""}`).sort().join(",");
+    ck("H212.4", {
+      saved: [w1, w2, w3, w4].every((r) => r?.ok === true),
+      personal: codes("กิจน้อย") === "fewerN:3/1",
+      maternity: codes("ลาคลอด") === "maternityPaidDays@ม.59:60/45,maternityTotal@ม.41:120/45",
+      military: codes("ลารับราชการทหาร") === "unpaidV@ม.58",
+      sick: codes("ป่วยน้อย") === "fewerV@ม.32, ม.57:30/10",
+      quiet: codes("ลาป่วย") === "" && codes("พักร้อนของร้าน") === "",
+    }, "warn · never block", `กิจ=${codes("กิจน้อย")} คลอด=${codes("ลาคลอด")} ทหาร=${codes("ลารับราชการทหาร")} ป่วย=${codes("ป่วยน้อย")}`);
+  }
   {
     const rs = await Promise.all(Array.from({ length: 5 }, () => rq(U.W, E.W, "2031-11-24", "2031-11-24", SK)));
     chk("X1.1", (await nL(E.W, "2031-11-24")) === 1, "1 row", `${await nL(E.W, "2031-11-24")} rows`);
@@ -1535,9 +1600,65 @@ async function runDb(): Promise<void> {
   }
 }
 
+// ═════════ ORACLE-EDIT (H2.12) ▸ F1/F5 — pure + static (fixture = shark-thai-law domain-labour-payroll.md §ค, checked 13 Nov 2569) ═════════
+const H212_FIXTURE = [
+  "sick|SICK|30|1|0|3|V|ม.32, ม.57|0|1",
+  "personal|PERSONAL|3|1|0||V2|ม.34, ม.57/1|0|1",
+  "annual|VACATION|6|1|365||V2|ม.30|0|1",
+  "maternityPaid|OTHER|60|1|0||V|ม.41, ม.59|1|1",
+  "maternityUnpaid|OTHER|60|0|0||V|ม.41|1|1",
+  "paternity|OTHER|15|1|0||V|ม.41/1, ม.59/2|1|1",
+  "military|OTHER|60|1|0||V|ม.35, ม.58|0|1",
+  "unpaid|OTHER||0|0||U||0|1",
+  "childcare|OTHER|15|1|0||V|ม.41 วรรคสี่, ม.59/1|0|0",
+];
+const LPF = `${HRD}leave-presets.ts`;
+async function runH212Pure(): Promise<void> {
+  const LP = await loadOpt(LPF, "@/lib/modules/hr/leave-presets");
+  const ok = !!LP && !LP.__err && Array.isArray(LP.LEAVE_PRESETS);
+  const row = (p: Any) => [p.key, p.category, p.quotaDays ?? "", p.paid ? 1 : 0, p.minServiceDays, p.attachmentAfterDays ?? "", p.tag, p.ref ?? "", p.perEvent ? 1 : 0, p.supported ? 1 : 0].join("|");
+  const got = ok ? (LP.LEAVE_PRESETS as Any[]).map(row) : [];
+  const src = rd(LPF);
+  const refs = ok ? (LP.LEAVE_PRESETS as Any[]).every((p) => (LP.presetShowsRef(p) === ((p.tag === "V" || p.tag === "V2") && !!p.ref))) && !LP.presetShowsRef((LP.LEAVE_PRESETS as Any[]).find((p) => p.key === "unpaid")) : false;
+  ck("H212.1", { mod: ok, table: got.join("\n") === H212_FIXTURE.join("\n"), refs, pure: !!src && !/^\s*import\s/m.test(src) }, "fixture table", ok ? got.filter((g, i) => g !== H212_FIXTURE[i]).slice(0, 2).join(" ¦ ") || "-" : modState(LP, LPF));
+  // static (H212.5)
+  const th = jsonOf("src/messages/th/common.json")?.hr?.settings ?? {};
+  const en = jsonOf("src/messages/en/common.json")?.hr?.settings ?? {};
+  const keys = (o: Any) => Object.keys(flatO(o)).sort().join(",");
+  const parity = ["lawPresets", "lawWarn"].every((k) => !!th[k] && keys(th[k]) === keys(en[k]) && Object.values(flatO(th[k])).every((v) => typeof v === "string" && v.trim()) && Object.values(flatO(en[k])).every((v) => typeof v === "string" && v.trim()));
+  const kinds = ok && (LP.LEAVE_PRESETS as Any[]).every((p) => typeof th.lawPresets?.k?.[p.key] === "string" && typeof en.lawPresets?.k?.[p.key] === "string");
+  const w = th.lawWarn ?? {};
+  const wording = ["fewerV", "unpaidV", "maternityTotal", "maternityPaidDays"].every((k) => /\{ref\}/.test(w[k] ?? "")) && ["fewerN", "unpaidN", "serviceN"].every((k) => (w[k] ?? "").includes("โปรดตรวจกับ") && !/\{ref\}|ม\./.test(w[k] ?? "")) && (th.lawPresets?.neutral ?? "").includes("โปรดตรวจกับ") && (th.lawPresets?.unsupported ?? "") === "ยังไม่รองรับ (จ่าย 50%)";
+  const page = stripComments(rd("src/app/app/sys/[id]/hr/settings/page.tsx"));
+  const wired = /<LeavePresetSection\b/.test(page) && /<LeavePolicyWarningLines\b/.test(page) && /addLeavePresetAction\(/.test(page) && /lp\.\$\{k\}/.test(page);
+  const ids = ["hr-settings-law-presets", "hr-settings-law-presets-open", "hr-settings-law-preset-*", "hr-settings-law-preset-form-*", "hr-settings-law-preset-add-*", "hr-settings-law-preset-has-*", "hr-settings-law-preset-off-*", "hr-settings-policy-warn-*"];
+  const ui = rd(`${HRD}leave-presets-ui.tsx`).replace(/\$\{[^}]*\}/g, "*");
+  const inv = ((jsonOf("scripts/hr-ui-inventory.json")?.rows ?? []) as Any[]).filter((r) => r.page === "/app/sys/[id]/hr/settings").map((r) => String(r.testid));
+  let prismaDiff = "";
+  try {
+    prismaDiff = git(["diff", "--name-only", process.env.QC_H212_BASE ?? "30f83b99a", "--", "prisma"]);
+  } catch (e) {
+    prismaDiff = `git ${errText(e).slice(0, 40)}`;
+  }
+  ck("H212.5", { parity, kinds, wording, wired, code: ids.every((t) => ui.includes(`"${t}"`) || ui.includes(`\`${t}\``)), inv: ids.every((t) => inv.includes(t)), noMigration: prismaDiff === "" }, "th=en · wired · ids · no prisma", `prisma=${prismaDiff.replace(/\n/g, ",") || "-"}`);
+}
+const jsonOf = (p: string): Any => {
+  try {
+    return JSON.parse(rd(p));
+  } catch {
+    return null;
+  }
+};
+const flatO = (o: Any, p = "", out: Record<string, unknown> = {}): Record<string, unknown> => {
+  if (o && typeof o === "object" && !Array.isArray(o)) for (const [k, v] of Object.entries(o)) flatO(v, p ? `${p}.${k}` : k, out);
+  else out[p] = o;
+  return out;
+};
+
 let crashed = "";
 try {
   runStatic();
+  await runH212Pure(); // ORACLE-EDIT (H2.12) ◂
   runPure(lrMod && !lrMod.__err ? lrMod : null, (y) => (typeof seq?.thaiPublicHolidays === "function" ? seq.thaiPublicHolidays(y) : []), X);
   await runDb();
 } catch (e) {

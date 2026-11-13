@@ -108,6 +108,7 @@ const CHECKS: readonly Def[] = [
   d("S11.3", "R8", C, "[db] already-stale neighbour in a paid month does not block an unrelated next-day correction"),
   d("S7.5", "R11", C, "[db] evidence: only this user's open/close times · DTO branch-scoped"),
   d("S7.6", "R9", M, "[db] listCorrections complete for a narrow-scope manager (branch filter in the query)"),
+  d("VIS2.5", "VIS-2", M, "[static] ORACLE-EDIT (H2.12 VIS-2): correction form opens as a full-width sheet / centred dialog (fixed · inset-x-0 · w-full) with a backdrop that closes it — not inside the ≈140 px action cell (.qc-shots/hr/2.6/corr-day-form-owner-1440x900.png)"),
   d("S6.2", "Q4", M, "[db] owner self-filing applies at once · selfApplied on record + audit"),
   d("X2.1", "X2", C, "[db] other tenant/system raw ids"),
   D("X12.1", "X12", M, "GREEN", "[control] fitness ± env"),
@@ -225,6 +226,17 @@ function runStatic(): void {
   });
   const bad = hk.filter((x) => x !== "ok" && x !== "n/a");
   chk("S1.8", bad.length === 0, "every hunk marked", bad.join(" · ") || hk[0]);
+  // ORACLE-EDIT (H2.12 VIS-2) ▸ RED on 936c54593 (form = "mt-2 flex w-80 …" inside the details of the action cell) ◂
+  {
+    const cu = stripComments(rd(F.ui));
+    const at = cu.indexOf('data-testid="hr-corr-form"');
+    const open = cu.lastIndexOf("<form", at);
+    const tag = at < 0 || open < 0 ? "" : cu.slice(open, cu.indexOf(">", at));
+    const cls = /className="([^"]*)"/.exec(tag)?.[1] ?? "";
+    const sum = /<summary[^>]*data-testid="hr-corr-open"[^>]*className=\{?[`"]([^`"]*)[`"]/.exec(cu)?.[1] ?? "";
+    const r = { form: !!cls, sheet: /\bfixed\b/.test(cls) && /\binset-x-0\b/.test(cls) && /\bw-full\b/.test(cls) && /\bbottom-0\b/.test(cls), scroll: /max-h-/.test(cls) && /overflow-y-auto/.test(cls), notNarrow: !/\bw-80\b/.test(cls), backdrop: /group-open:fixed/.test(sum) && /group-open:inset-0/.test(sum) };
+    chk("VIS2.5", Object.values(r).every(Boolean), "sheet · backdrop", `${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "all"} cls=${cls.slice(0, 90)}`);
+  }
 }
 const S12: { stat: Record<string, boolean> } = { stat: {} };
 const S15: { stat: Record<string, boolean> } = { stat: {} };

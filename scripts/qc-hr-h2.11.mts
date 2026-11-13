@@ -130,6 +130,10 @@ R2.6|r2|C|R|[db] decideAdjustmentAs refuses an OT_REQUEST adjustment (OT_TEXT.ot
 R2.7|r2|M|R|[db] reject reason of 3 zero-width spaces ⇒ rejectReason (nothing decided)
 R2.8|r2|C|R|[static] decideLeaveAs / decideAdjustmentAs called only from hr/inbox.ts · decideInbox only from inbox-actions.ts with the actor from hrViewerOf(auth)
 R2.9|r3|C|R|[db] second open ADVANCE approved through the inbox ⇒ the same refusal as the payroll page (decideAdjustment · H2.10 hr:advance rule) · first one APPROVED
+VIS2.1|vis2|M|R|[static] ORACLE-EDIT (H2.12 VIS-2): batch bar opaque (surface under the tint) · sticky top under the topbar with a z-index · above the list (mockup 05)
+VIS2.2|vis2|M|R|[static] ORACLE-EDIT (H2.12 VIS-2): no raw codes in cards — every HrPayItemKind/HrLeaveType/HrCorrectionAction/HrAttendanceKind(corr)/HrOtTiming/source has a th=en label · no String(d.kind)/periodKey/category fallbacks
+VIS2.3|vis2|M|R|[static] ORACLE-EDIT (H2.12 VIS-2): hub cards = shared summary builder (inbox-shared inboxSummary · inboxInlineDecide) + open-in-inbox link · testids ↔ inventory
+VIS2.4|vis2|C|R|[db] ORACLE-EDIT (H2.12 VIS-2): inboxSummary non-null for every fixture item · ฿ only in payroll viewers' summaries · ADJUSTMENT never inline-decidable
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -242,9 +246,11 @@ function runStatic(): void {
   {
     const own = /HR H2\.11/;
     const marked = (h: { added: string[] }) => h.added.some((l) => own.test(l) || MARK_OTHER.test(l));
-    const addOnly = [F.leave, F.payroll].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => h.removed.length > 0 || !marked(h)).map(() => f));
-    const markOnly = [F.corr, F.hrui, F.layout].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => !marked(h)).map(() => f));
-    ck("S13.2", { addOnly: addOnly.length === 0, marked: markOnly.length === 0 }, "marked hunks", `${[...new Set([...addOnly, ...markOnly])].join(",") || "-"}`);
+    // ORACLE-EDIT (H2.12 sweep): add-only / marked-hunk rules describe H2.11's own diff — n/a once H2.11 (inbox.ts) is in the base (later WOs / main syncs change these files)
+    const inBase = pathInBase(F.inbox, BASE);
+    const addOnly = inBase ? [] : [F.leave, F.payroll].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => h.removed.length > 0 || !marked(h)).map(() => f));
+    const markOnly = inBase ? [] : [F.corr, F.hrui, F.layout].flatMap((f) => (diffHunks(BASE, f) ?? []).filter((h) => !marked(h)).map(() => f));
+    ck("S13.2", { addOnly: addOnly.length === 0, marked: markOnly.length === 0 }, "marked hunks", inBase ? "n/a · H2.11 in base" : `${[...new Set([...addOnly, ...markOnly])].join(",") || "-"}`);
   }
   {
     const hub = stripComments(rd(F.hrui));
@@ -262,6 +268,51 @@ function runStatic(): void {
       actor: /const\s+(\w+)\s*=\s*hrViewerOf\(auth\)/.test(acts) && new RegExp(`decideInbox\\((?:\\{[^}]*\\}|[^,{]+),\\s*${/const\s+(\w+)\s*=\s*hrViewerOf\(auth\)/.exec(acts)?.[1] ?? "∅"}\\s*,`).test(acts),
     };
     ck("R2.8", r, "inbox-only callers · actor from session", `leaveAs=${callsOf("decideLeaveAs").join(",")} adjAs=${callsOf("decideAdjustmentAs").join(",")} inbox=${callsOf("decideInbox").join(",")}`);
+  }
+  // ORACLE-EDIT (H2.12 VIS-2) ▸ visual MAJORs of the H2.12 batch (.qc-shots/hr/2.11/inbox-owner-*.png · hub-overview-owner-1440x900.png) — RED on 936c54593 ◂
+  {
+    const cl = stripComments(rd(F.client));
+    const at = cl.indexOf('data-testid="hr-inbox-batch"');
+    const tag = at < 0 ? "" : cl.slice(at, cl.indexOf(">", at));
+    const cls = /className="([^"]*)"/.exec(tag)?.[1] ?? "";
+    const list = cl.indexOf("{items.map(");
+    ck("VIS2.1", { bar: at > 0, opaque: cls.includes("bg-[color:var(--color-surface)]"), tintOnly: !/bg-\[color:var\(--color-accent-soft\)\]/.test(cls), sticky: /\bsticky\b/.test(cls) && /\btop-/.test(cls), z: /\bz-(\d+|\[\d+\])/.test(cls), top: at > 0 && list > at }, "opaque · sticky · top", `cls=${cls.slice(0, 120)}`);
+  }
+  {
+    const cl = stripComments(rd(F.client));
+    const enumOf = (file: string, name: string) => (new RegExp(`enum\\s+${name}\\s*\\{([^}]*)\\}`).exec(stripComments(rd(file)))?.[1] ?? "").split(/\s+/).filter((x) => /^[A-Z_]+$/.test(x));
+    const pay = enumOf("prisma/schema/payroll.prisma", "HrPayItemKind");
+    const cat = enumOf("prisma/schema/hr.prisma", "HrLeaveType");
+    const act = enumOf("prisma/schema/hr.prisma", "HrCorrectionAction");
+    const tim = enumOf("prisma/schema/hr.prisma", "HrOtTiming");
+    const labelled = (l: "th" | "en") => {
+      const m = jsonOf(l === "th" ? F.th : F.en)?.hr ?? {};
+      const ok = (o: Any, ks: string[]) => ks.length > 0 && ks.every((k) => typeof o?.[k] === "string" && o[k].trim() && o[k] !== k);
+      return ok(m.inbox?.adjKinds, pay) && ok(m.settings?.categories, cat) && ok(m.inbox?.f, [...act, ...tim, "WORKDAY", "HOLIDAY", "IN", "OUT", "BREAK_START", "BREAK_END", "MANUAL", "STOCK", "COMMISSION", "SYSTEM"]);
+    };
+    const raw = [/\{String\(d\.kind\)\}/, /\{String\(d\.periodKey\)\}/, /d\.policyName\s*\?\?\s*d\.category/, /:\s*(action|kind|src)\}/, /String\(im\.targetPeriod\s*\?\?/].filter((re) => re.test(cl)).map(String);
+    ck("VIS2.2", { enums: pay.length === 6 && cat.length === 4 && act.length === 3 && tim.length === 2, th: labelled("th"), en: labelled("en"), adjKeys: /adjKinds\./.test(cl), catKeys: /hr\.settings\.categories/.test(cl), noRaw: raw.length === 0 }, "labels th=en · no raw", `raw=${raw.join(" ") || "-"} pay=${pay.join("/")}`);
+  }
+  {
+    const cl = stripComments(rd(F.client));
+    const sh = stripComments(rd(F.shared));
+    const ui = stripComments(rd(F.ui));
+    const inv = ((jsonOf(F.inv)?.rows ?? []) as Any[]).map((r) => `${r.page}|${r.testid}`);
+    const elsewhere = (() => {
+      try {
+        return git(["grep", "-l", "-E", "function\\s+inboxSummary\\b", "--", "src"]).split("\n").filter(Boolean);
+      } catch {
+        return [] as string[]; // git grep: no match ⇒ exit 1
+      }
+    })();
+    ck("VIS2.3", {
+      builder: /export\s+function\s+inboxSummary\(/.test(sh) && /export\s+function\s+inboxInlineDecide\(/.test(sh),
+      one: elsewhere.join() === F.shared,
+      used: /inboxSummary\(/.test(cl) && /inboxInlineDecide\(/.test(cl),
+      compact: /InboxBatch[^>]*\bcompact\b/.test(ui) && !/amountSatang/.test(ui),
+      ids: /hr-inbox-summary-\$\{/.test(cl) && /hr-inbox-open-\$\{/.test(cl),
+      inv: ["/app/sys/[id]|hr-inbox-summary-*", "/app/sys/[id]|hr-inbox-open-*"].every((k) => inv.includes(k)),
+    }, "one builder · link · inventory", `builders=${elsewhere.join(",") || "∅"}`);
   }
 }
 
@@ -511,6 +562,19 @@ async function runDb(): Promise<void> {
   {
     const bad = all.filter(({ i }) => i && i.batchable !== (i.canDecide === true && i.type !== "ADJUSTMENT")).length;
     chk("S3.5", all.length > 0 && bad === 0, "batchable rule", `bad=${bad}/${all.length}`);
+  }
+  {
+    // ORACLE-EDIT (H2.12 VIS-2) ▸ hub cards: what is approved is visible · ฿ never reaches managers through the shared summary ◂
+    const SH = (await import("@/lib/modules/hr/inbox-shared")) as Any;
+    const fn = typeof SH.inboxSummary === "function" && typeof SH.inboxInlineDecide === "function";
+    const sum = (i: Any) => (fn ? SH.inboxSummary(i) : null);
+    const nulls = all.filter(({ i }) => !sum(i)).map(({ n, i }) => `${n}:${labelOf.get(i?.id)}`);
+    const mgrMoney = all.filter(({ n, i }) => ["mgr1", "key1", "dec1"].includes(n) && sum(i)?.amountSatang != null).length;
+    const a1 = sum(itemOf("pay", "A1"));
+    const o1 = sum(itemOf("owner", "O1"));
+    const l1 = sum(itemOf("owner", "L1"));
+    const adjInline = all.filter(({ i }) => i?.type === "ADJUSTMENT" && fn && SH.inboxInlineDecide(i)).length;
+    ck("VIS2.4", { fn, all: all.length > 0 && nulls.length === 0, mgr: mgrMoney === 0, a1: a1?.amountSatang === 100_000 && a1?.kind !== null, o1: typeof o1?.minutes === "number" && !!o1?.date, l1: !!l1?.fromDate && !!l1?.toDate, adj: adjInline === 0 }, "summaries · no ฿ to managers", `nulls=${nulls.slice(0, 5).join(",") || "-"} a1=${short(a1, 80)}`);
   }
 
   // ── S4 counts / filters / paging ──

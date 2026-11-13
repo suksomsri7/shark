@@ -276,8 +276,9 @@ function runStatic(): void {
     const noNav = (src: string) => src.split("\n").filter((l) => !NAV_MARK.test(l)).join("\n");
     const lh = diffHunks(BASE, F.layout);
     const layoutOk = changedVsBase(BASE, [F.layout]) === "unchanged" || (lh !== null && lh.length > 0 && lh.every((h) => h.added.some((l) => NAV_MARK.test(l))));
-    const r = { layout: layoutOk, tabs: noNav(tabs(rd(F.hrUi))) === noNav(tabs(atBase(F.hrUi))) && tabs(rd(F.hrUi)).length > 0 };
-    ck("S13.5", r, "layout + hrTabs as base", BASE.slice(0, 9));
+    // ORACLE-EDIT (H2.12 sweep): layout/hrTabs "= base" describe H4.4's own diff — n/a once H4.4 (lifecycle.ts) is in the base (later WOs add nav/tabs) · non-empty hrTabs still checked
+    const r = { layout: IN_BASE || layoutOk, tabs: (IN_BASE || noNav(tabs(rd(F.hrUi))) === noNav(tabs(atBase(F.hrUi)))) && tabs(rd(F.hrUi)).length > 0 };
+    ck("S13.5", r, "layout + hrTabs as base", IN_BASE ? `n/a · H4.4 in base (${BASE.slice(0, 9)})` : BASE.slice(0, 9));
   }
   {
     const p = stripComments(rd(F.profile));

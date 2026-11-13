@@ -405,3 +405,68 @@ model HrAttendanceDeduction {
   @@index([systemId, workPeriodKey])
   @@index([tenantId])
 }
+
+// HR H3.5 ▸ ไฟล์โอนเงินเดือน (brief hr-brief-H3.5 R1) — 3 ตารางใหม่ล้วน (additive) · ไม่แตะ HrEmployee/HrPayrollRun/HrPayrollItem
+//   HrBankProfile: บัญชีต้นทางของร้าน 1 แถวต่อระบบ HR (เจ้าของร้านเขียนที่ hr/bank-files/service.ts ที่เดียว) · formatsEnabled ว่าง = ปิดทุกรูปแบบธนาคาร
+//   HrBankExportPreset: ชุดคอลัมน์ CSV/XLSX ของร้าน (ชื่อไม่ซ้ำในระบบ) · ชุดในตัว GENERIC/KTB_BUSINESS เป็นค่าคงที่ในโค้ด ไม่มีแถว
+//   HrBankFile: ใบกำกับไฟล์ที่สร้าง (ไม่เก็บไบต์ไฟล์ — Q2): sha256 + จำนวน + ยอด + ตัวเลือกที่ใช้ (ไม่มีเลขบัญชี/ชื่อ) ·
+//     ดาวน์โหลด = สร้างใหม่ด้วยตัวเลือกเดิม + เวลาเดิม แล้วเทียบ sha (ข้อมูลเปลี่ยน = ปฏิเสธ) · หมดอายุ 7 วัน (Q13) · runId ลิงก์อ่อน (ไม่มี FK)
+//   CHECK ทั้งหมดอยู่ใน migration.sql (20270107000000_hr_bank_files) ◂
+model HrBankProfile {
+  id              String   @id @default(cuid())
+  tenantId        String
+  systemId        String   @unique
+  debitBankCode   String
+  debitAccountNo  String
+  debitBranchCode String?
+  companyNameEn   String?
+  ktbCompanyId    String?
+  formatsEnabled  String[] @default([])
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model HrBankExportPreset {
+  id             String   @id @default(cuid())
+  tenantId       String
+  systemId       String
+  name           String
+  kind           String
+  columnsJson    Json
+  includeHeader  Boolean  @default(true)
+  includeSummary Boolean  @default(false)
+  amountStyle    String
+  dateStyle      String
+  encoding       String
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([systemId, name])
+  @@index([tenantId])
+}
+
+model HrBankFile {
+  id            String   @id @default(cuid())
+  tenantId      String
+  systemId      String
+  runId         String
+  format        String
+  optionsJson   Json
+  fileName      String
+  byteLength    Int
+  sha256        String
+  itemCount     Int
+  totalSatang   Int
+  excludedCount Int
+  createdById   String
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+  downloads     Int      @default(0)
+
+  @@index([systemId, runId])
+  @@index([tenantId])
+}

@@ -1,0 +1,19 @@
+# post-merge sanity (lean) session/hr @5d7bcf0c4 · 2026-11-13T02:53:51Z · load 3.94 4.32 4.98
+prisma generate exit=0 [02:53Z]
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34 JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":34,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppNotification":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":90,"Busin  [02:54Z]
+qc-hr-h3.5 exit=0 ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.5","total":53,"passed":53,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":45,"baseGreen":8,"offBase":["H3.5-S1.1(RED→pass)","H3.5-S1.2(RED→pass)","H3.5-S1.3(RED→pass)", · RESIDUE none (tenants=2 users=10) [02:55Z]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}   [02:55Z]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}   [02:55Z]
+ALLDONE 2026-11-13T02:55:40Z · red: 0
+qc-hr-h2.11 exit=0 JSON_SUMMARY {"suite":"qc-hr-h2.11","total":70,"passed":70,"failed":[],"findings":[],"skipped":false,"forced":
+qc-hr-h3.2 exit=0 JSON_SUMMARY {"suite":"qc-hr-h3.2","total":64,"passed":64,"failed":[],"findings":[],"skipped":false,"forced":t
+qc-hr-h2.4 exit=0 JSON_SUMMARY {"suite":"qc-hr-h2.4","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":t
+qc-hr-h0.2 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.2","total":58,"passed":58,"failed":[],"skipped":false,"forced":true,"missing":
+qc-hr-h0.6 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":t
+qc-payroll-reverse exit=0 
+qc-hr-h1.2 exit=0 JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":t
+qc-hr-h3.3 exit=0 JSON_SUMMARY {"suite":"qc-hr-h3.3","total":51,"passed":51,"failed":[],"findings":[],"skipped":false,"forced":t
+qc-hr-h2.10 exit=0 JSON_SUMMARY {"suite":"qc-hr-h2.10","total":57,"passed":57,"failed":[],"findings":[],"skipped":false,"forced":
+qc-hr-h2.5 exit=0 JSON_SUMMARY {"suite":"qc-hr-h2.5","total":79,"passed":79,"failed":[],"findings":[],"skipped":false,"forced":t
+qc-hr-h2.9 exit=0 JSON_SUMMARY {"suite":"qc-hr-h2.9","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":t
+PAUSED by controller 2026-11-13T03:09:50Z on owner order (gate-lock script being changed by the accounting session): remaining suites + clean typecheck to rerun after the go-ahead

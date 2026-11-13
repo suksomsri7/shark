@@ -38,6 +38,11 @@ import { AttendancePayPolicyCard, ATT_MSG } from "@/lib/modules/hr/attendance-pa
 import { saveAttendancePayPolicyAction } from "@/lib/modules/hr/attendance-pay-actions"; // HR H3.2 ◂
 import { PayrollEngineCard, RUN2_MSG, run2MsgCode } from "@/lib/modules/hr/payroll-run-ui"; // HR H3.4 ▸ การ์ดรุ่นเครื่องคิดเงินเดือน (เจ้าของร้าน) ◂
 import { setPayrollEngineAction } from "@/lib/modules/hr/payroll-actions"; // HR H3.4 ◂
+import { LEAVE_PRESET_TEXT } from "@/lib/modules/hr/leave-presets"; // HR H2.12 ▸ F1 ◂
+import { addLeavePresetAction } from "@/lib/modules/hr/leave-presets-actions"; // HR H2.12 ▸ F1 ◂
+import { LeavePolicyWarningLines, LeavePresetSection } from "@/lib/modules/hr/leave-presets-ui"; // HR H2.12 ▸ F1 + F5 ◂
+import { BankSettingsCard, BANK_MSG, bankMsgText } from "@/lib/modules/hr/bank-files/ui"; // HR H3.5 ▸ ไฟล์โอนเงินเดือน: บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ ◂
+import { deleteBankPresetAction, saveBankPresetAction, saveBankProfileAction } from "@/lib/modules/hr/bank-files/actions"; // HR H3.5 ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -57,7 +62,9 @@ const MSG_TEXTS: Record<string, string> = {
   ...Object.fromEntries(Object.entries(ATTENDANCE_SETTINGS_TEXT).map(([k, v]) => [`a.${k}`, v])), // HR H2.5 ◂
   ...WE_MSG, // HR H3.1 ◂
   ...ATT_MSG, // HR H3.2 ◂
+  ...BANK_MSG, // HR H3.5 ◂
   ...Object.fromEntries((["sAfter", "sAhead", "sRound"] as const).map((k) => [`o.${k}`, OT_TEXT[k]])), // HR H2.9 ◂
+  ...Object.fromEntries(Object.entries(LEAVE_PRESET_TEXT).map(([k, v]) => [`lp.${k}`, v])), // HR H2.12 ▸ F1 ◂
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
 /** กลับหน้าเดิมพร้อมรหัสผลการกด (redirect โยนเพื่อจบ action) */
@@ -98,7 +105,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const where = (u: string | null) => (u ? (unitName.get(u) ?? t("unit")) : t("shopWide"));
   const path = `/app/sys/${id}/hr/settings`;
   const code = typeof sp.msg === "string" ? sp.msg : "";
-  const msg = code === "ok" ? t("saved") : code === "p.ok" ? t("holidays.presetDone") /* HR H2.8 ◂ */ : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""; // HR H1.2 R13 ▸ allowlist ◂
+  const bankMsg = await bankMsgText(code); // HR H3.5 fix r1 ▸ F7: ผลของการ์ดไฟล์โอนตามภาษาผู้ดู ◂
+  const msg = bankMsg ?? (code === "ok" ? t("saved") : code === "p.ok" ? t("holidays.presetDone") /* HR H2.8 ◂ */ : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""); // HR H1.2 R13 ▸ allowlist ◂ · HR H3.5 ◂
 
   // ผลของ action → กลับหน้าเดิมพร้อมรหัสผล (R13.3) · closure จับเฉพาะค่าพื้นฐาน (สตริง/ตัวเลข)
   const onCreateShift = async (fd: FormData) => {
@@ -112,6 +120,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const onCreatePolicy = async (fd: FormData) => {
     "use server";
     back(path, year, await createLeavePolicyAction(fd));
+  };
+  // HR H2.12 ▸ F1 เพิ่มประเภทลาตามกฎหมาย 1 รายการ (ด่านเดียวกับเพิ่มประเภทการลา) ◂
+  const onAddLeavePreset = async (fd: FormData) => {
+    "use server";
+    back(path, year, await addLeavePresetAction(fd));
   };
   const onArchivePolicy = async (fd: FormData) => {
     "use server";
@@ -162,6 +175,19 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     const r = await setPayrollEngineAction(fd); // HR H3.4 ◂
     redirect(`${path}?year=${year}&run2=${r.ok ? (r.warnings?.length ? "okw" : "ok") : encodeURIComponent(run2MsgCode(r.reason))}#hr-run2-engine`); // HR H3.4 ◂
   }; // HR H3.4 ◂
+  // HR H3.5 ▸ ไฟล์โอนเงินเดือน — บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ (service ตรวจด่านซ้ำ) ◂
+  const onSaveBankProfile = async (fd: FormData) => {
+    "use server"; // HR H3.5 ◂
+    back(path, year, await saveBankProfileAction(fd)); // HR H3.5 ◂
+  }; // HR H3.5 ◂
+  const onSaveBankPreset = async (fd: FormData) => {
+    "use server"; // HR H3.5 ◂
+    back(path, year, await saveBankPresetAction(fd)); // HR H3.5 ◂
+  }; // HR H3.5 ◂
+  const onDeleteBankPreset = async (fd: FormData) => {
+    "use server"; // HR H3.5 ◂
+    back(path, year, await deleteBankPresetAction(fd)); // HR H3.5 ◂
+  }; // HR H3.5 ◂
   // HR H2.9 ▸ R14 ◂
   const onSaveOtPolicy = async (fd: FormData) => {
     "use server";
@@ -270,6 +296,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
                   {p.attachmentAfterDays ? ` · ${t("policies.attachmentAfterDays")} ${p.attachmentAfterDays}` : ""}
                   {p.allowHalfDay ? "" : ` · ${t("policies.noHalfDay")}`}
                 </span>
+                {/* HR H2.12 ▸ F5 คำเตือน (ไม่บล็อก) ◂ */}
+                <LeavePolicyWarningLines policies={policies} id={p.id} />
                 {(all || p.unitId) && (
                   <form action={onArchivePolicy}>
                     <input type="hidden" name="systemId" value={id} />
@@ -349,6 +377,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
             {t("policies.add")}
           </button>
         </form>
+        {/* HR H2.12 ▸ F1 ประเภทลาตามกฎหมาย (ประเภททั้งร้าน ⇒ เพิ่มได้เฉพาะผู้ดูแลทุกสาขา — เหมือนฟอร์มด้านบนเลือก "ทั้งร้าน") ◂ */}
+        <LeavePresetSection systemId={id} policies={policies} onAdd={onAddLeavePreset} canAdd={all} />
       </Section>
 
       <Section title={`${t("holidays.title")} ${year + 543}`} card>
@@ -586,6 +616,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <AttendancePayPolicyCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveAttPay : null} />
       {/* HR H3.4 ▸ รุ่นเครื่องคิดเงินเดือน + เพดานหัก ม.76 + ช่วงที่กฎหักสาย/ขาดมีผล — แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <PayrollEngineCard systemId={id} flash={run2Flash} flashOk={run2Ok} onSave={auth.active.role === "OWNER" ? onSaveEngine : null} />
+      {/* HR H3.5 ▸ ไฟล์โอนเงินเดือน — การ์ดแสดงเฉพาะผู้ผ่านด่านไฟล์โอน · บัญชีต้นทาง/เปิดรูปแบบธนาคาร = เจ้าของร้าน ◂ */}
+      <BankSettingsCard systemId={id} onSaveProfile={auth.active.role === "OWNER" ? onSaveBankProfile : null} onSavePreset={onSaveBankPreset} onDeletePreset={onDeleteBankPreset} />
     </div>
   );
 }
