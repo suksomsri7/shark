@@ -57,3 +57,12 @@ Every employee carries phone, e-mail, bank name/account, account name, house-reg
 ## 6. Runs
 Seed 34/34 · unforced SKIPPED exit 0 · forced ×2 identical, BASE-EXPECTATION 52/52 as registered (`hr-H3.9-red.txt`).
 Clean typecheck (rm -rf .next/types tsconfig.tsbuildinfo · iso.sh · gate lock): tsc --noEmit exit 0, 0 errors
+
+## 7. ORACLE-EDITs (builder H3.9 · controller rulings 13 Nov — every hunk marked `ORACLE-EDIT` in the oracle)
+1. **S4.6 payType** — `payType` is a catalog column of `wages`/`register`; allowed as a DTO key only for money viewers in those two reports (still forbidden everywhere else). Keys are scanned on served DTOs only: a refusal `{ok:false, code, reason}` (brief contract, S4.7) carries the fixed text under `reason` — that tripped the old scan on every refused cell (hidden by `slice(0, 6)`); secrets still scan every cell.
+2. **S4.6 seen** — `seen === 36` (9+9+9+3+3+1+2 allowed cells; 40 needed serving another tenant's owner).
+3. **S7.1** — the stored v2 run carries `journalEntryId` (finalized) so ruling Q5 counts it; S7.3 "neither ⇒ excluded" unchanged.
+4. **Ruling A (revoked OT)** — fixture +2 OT rows on e1: 10-14 CANCELLED + revokedAt, settled, HOLIDAY_WORK 120 min / ฿150.00 (kept by H3.4) · 10-15 APPROVED + revokedAt, OT_WORKDAY 30 / ฿46.88 (counts nowhere). Catalog `ot` + `keptHolidayWorkMin` (P, sum) after `otHolidayMin` and `keptHolidayWorkAmt` ($, sum) before `amount`; goldens: e1 kept 120 / 150.00, e3 0 / 0.00, totals 120 / 150.00; approved/approvedMin/amount unchanged (3 · 450 · 687.50). `columnsFor` pin `ot:noMoney` + `keptHolidayWorkMin`. S3.0 OT count 10. S4.5 money list + 150.00, 46.88. New **S3.10**.
+5. **Ruling B** — new **S3.11**: duty/under-10 note only for all-branch viewers (owner, payAll); payBranch gets neither (retention note kept).
+6. **Membership gate** — new **S1.11** (static: every exported async fn of reports.ts calls `gateOf(`; page/route/actions reach data only through reports.ts) and **S4.10** (db: other-tenant owner and a member claiming OWNER ⇒ NO from loadReport · exportReport · get/setReportSettings · load/saveRegisterFields, route 404, nothing written).
+Base: origin/session/hr now contains H3.4 (9e8ad6386) ⇒ default base resolves to it; BASE_CUT logic left as is (it only applies when the merge-base predates the cut).

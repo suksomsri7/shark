@@ -1625,7 +1625,8 @@
       "registerCard": "Employee register details (s.113)",
       "registerHint": "Used in the employee register report — may be left empty",
       "nationality": "Nationality",
-      "benefits": "Other agreed benefits"
+      "benefits": "Other agreed benefits",
+      "onlyData": "Time and OT reports list only employees with data in the chosen period"
     }
   }
 }

@@ -112,6 +112,7 @@ export async function HrReportsSection(p: ReportPageProps) {
             </div>
           )}
         </div>
+        {(p.report === "time" || p.report === "ot") && <p className={muted}>{t("onlyData")}</p>}
         {!dto && (
           <p role="alert" className="text-sm text-[color:var(--color-danger)]">
             {p.dto.ok ? "" : p.dto.reason}

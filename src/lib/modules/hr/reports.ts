@@ -304,23 +304,35 @@ async function otRows(ctx: Ctx, period: string, emps: Map<string, Emp>): Promise
   if (!ids.length) return [];
   const b = monthBounds(period);
   const reqs = await tenantDb(ctx).hrOtRequest.findMany({
-    where: { employeeId: { in: ids }, status: { in: ["PENDING", "APPROVED", "REJECTED"] }, date: { gte: d0(b.first), lte: d0(b.last) } },
+    // HR H3.9 ▸ มติ A: คำขอที่อนุมัติแล้วถูกยกเลิกภายหลัง (revokedAt) ไม่นับในอนุมัติ/นาทีอนุมัติเลย · ส่วน HOLIDAY_WORK ที่ H3.4 คงจ่ายไว้ = คอลัมน์ของตัวเอง ◂
+    where: { employeeId: { in: ids }, date: { gte: d0(b.first), lte: d0(b.last) }, OR: [{ status: { in: ["PENDING", "APPROVED", "REJECTED"] } }, { status: "CANCELLED", revokedAt: { not: null } }] },
     select: { employeeId: true, status: true, minutes: true, amountSatang: true, segmentsJson: true, settledAt: true, revokedAt: true, settleCode: true },
     take: 200_000,
   });
-  type A = { p: number; a: number; r: number; min: number; wMin: number; hMin: number; ohMin: number; w: number; h: number; oh: number; amt: number };
+  type A = { p: number; a: number; r: number; min: number; wMin: number; hMin: number; ohMin: number; w: number; h: number; oh: number; amt: number; kMin: number; k: number };
   const agg = new Map<string, A>();
   for (const q of reqs) {
     let x = agg.get(q.employeeId);
-    if (!x) agg.set(q.employeeId, (x = { p: 0, a: 0, r: 0, min: 0, wMin: 0, hMin: 0, ohMin: 0, w: 0, h: 0, oh: 0, amt: 0 }));
+    if (!x) agg.set(q.employeeId, (x = { p: 0, a: 0, r: 0, min: 0, wMin: 0, hMin: 0, ohMin: 0, w: 0, h: 0, oh: 0, amt: 0, kMin: 0, k: 0 }));
+    const segs = Array.isArray(q.segmentsJson) ? (q.segmentsJson as unknown[]).map(obj) : [];
+    if (q.revokedAt) {
+      // ยกเลิกหลังอนุมัติ: นับเฉพาะส่วนทำงานวันหยุดที่ยังคงจ่าย (จ่ายแล้ว · ไม่มีรหัสค้าง) — ไม่ใช่ OT ที่อนุมัติ
+      if (q.settledAt && q.settleCode === null)
+        for (const s of segs)
+          if (s.cls === "HOLIDAY_WORK") {
+            x.kMin += Number.isSafeInteger(s.minutes) ? (s.minutes as number) : 0;
+            x.k += Number.isSafeInteger(s.amountSatang) ? (s.amountSatang as number) : 0;
+          }
+      continue;
+    }
     if (q.status === "PENDING") x.p++;
     else if (q.status === "REJECTED") x.r++;
     else {
       x.a++;
       x.min += q.minutes;
-      if (q.settledAt && !q.revokedAt && q.settleCode === null) {
+      if (q.settledAt && q.settleCode === null) {
         if (Number.isSafeInteger(q.amountSatang)) x.amt += q.amountSatang!;
-        for (const s of Array.isArray(q.segmentsJson) ? (q.segmentsJson as unknown[]).map(obj) : []) {
+        for (const s of segs) {
           const mn = Number.isSafeInteger(s.minutes) ? (s.minutes as number) : 0;
           const am = Number.isSafeInteger(s.amountSatang) ? (s.amountSatang as number) : 0;
           if (s.cls === "OT_WORKDAY") (x.wMin += mn), (x.w += am);
@@ -330,7 +342,7 @@ async function otRows(ctx: Ctx, period: string, emps: Map<string, Emp>): Promise
       }
     }
   }
-  return [...agg.entries()].map(([id, x]) => ({
+  return [...agg.entries()].filter(([, x]) => x.p + x.a + x.r > 0 || x.kMin > 0 || x.k !== 0).map(([id, x]) => ({
     emp: emps.get(id)!,
     values: {
       pending: String(x.p),
@@ -340,9 +352,11 @@ async function otRows(ctx: Ctx, period: string, emps: Map<string, Emp>): Promise
       otWorkdayMin: String(x.wMin),
       holidayWorkMin: String(x.hMin),
       otHolidayMin: String(x.ohMin),
+      keptHolidayWorkMin: String(x.kMin),
       otWorkdayAmt: bahtText(x.w),
       holidayWorkAmt: bahtText(x.h),
       otHolidayAmt: bahtText(x.oh),
+      keptHolidayWorkAmt: bahtText(x.k),
       amount: bahtText(x.amt),
     },
   }));
@@ -581,8 +595,9 @@ async function build(ctx: Ctx, g: Gate, raw: unknown, o: Opts & { surface: "page
       const n = outRows.filter((r) => (r.values[f] ?? "") === "").length;
       if (n > 0) warnings.push({ field: f, count: n });
     }
-    const active = await tenantDb(ctx).hrEmployee.count({ where: { active: true } });
-    notes.push(active >= 10 ? T.registerDuty : T.registerUnder10, T.registerRetention);
+    // HR H3.9 ▸ มติ B: นับพนักงานทั้งร้านเฉพาะผู้ดูทุกสาขา — ผู้ดูบางสาขาไม่ได้สัญญาณจำนวนคนของทั้งร้าน ◂
+    if (isAllBranches(scope)) notes.push((await tenantDb(ctx).hrEmployee.count({ where: { active: true } })) >= 10 ? T.registerDuty : T.registerUnder10);
+    notes.push(T.registerRetention);
     if (warnings.length) notes.push(T.registerMissing);
   } else if (report === "time") notes.push(T.timeNote);
   else if (report === "wages") notes.push(T.s114Note);

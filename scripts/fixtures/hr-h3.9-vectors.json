@@ -28,9 +28,9 @@
       ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
       ["pending", "P", true, "รออนุมัติ", "Pending"], ["approved", "P", true, "อนุมัติ", "Approved"], ["rejected", "P", true, "ปฏิเสธ", "Rejected"],
       ["approvedMin", "P", true, "นาทีที่อนุมัติ", "Approved (min)"], ["otWorkdayMin", "P", true, "OT วันทำงาน (นาที)", "Workday OT (min)"],
-      ["holidayWorkMin", "P", true, "ทำงานวันหยุด (นาที)", "Holiday work (min)"], ["otHolidayMin", "P", true, "OT วันหยุด (นาที)", "Holiday OT (min)"],
+      ["holidayWorkMin", "P", true, "ทำงานวันหยุด (นาที)", "Holiday work (min)"], ["otHolidayMin", "P", true, "OT วันหยุด (นาที)", "Holiday OT (min)"], ["keptHolidayWorkMin", "P", true, "ทำงานวันหยุดที่คงจ่าย (นาที)", "Kept holiday work (min)"],
       ["otWorkdayAmt", "$", true, "OT วันทำงาน (บาท)", "Workday OT (THB)"], ["holidayWorkAmt", "$", true, "ทำงานวันหยุด (บาท)", "Holiday work (THB)"],
-      ["otHolidayAmt", "$", true, "OT วันหยุด (บาท)", "Holiday OT (THB)"], ["amount", "$", true, "รวม (บาท)", "Total (THB)"]
+      ["otHolidayAmt", "$", true, "OT วันหยุด (บาท)", "Holiday OT (THB)"], ["keptHolidayWorkAmt", "$", true, "ทำงานวันหยุดที่คงจ่าย (บาท)", "Kept holiday work (THB)"], ["amount", "$", true, "รวม (บาท)", "Total (THB)"]
     ] },
     "payroll-month": { "period": "month", "totals": true, "thaiOnly": false, "columns": [
       ["code", "P", false, "รหัส", "Code"], ["name", "P", false, "ชื่อ", "Name"], ["unit", "P", false, "สาขา", "Branch"],
@@ -140,7 +140,7 @@
   },
   "columnsFor": {
     "note": "keys for access {money, fullId} — fullId only changes values, never the key list",
-    "ot:noMoney": ["code", "name", "unit", "pending", "approved", "rejected", "approvedMin", "otWorkdayMin", "holidayWorkMin", "otHolidayMin"],
+    "ot:noMoney": ["code", "name", "unit", "pending", "approved", "rejected", "approvedMin", "otWorkdayMin", "holidayWorkMin", "otHolidayMin", "keptHolidayWorkMin"],
     "time:noMoney": ["code", "name", "unit", "slots", "workedDays", "lateCount", "lateMin", "earlyOutCount", "earlyOutMin", "absentDays", "absentMin", "leaveDays", "workedMin", "measuredOtMin", "missingOut", "corrections"],
     "leave:noMoney": ["code", "name", "unit", "policy", "category", "unlimited", "granted", "carried", "used", "adjusted", "expired", "balance", "pending"]
   },
@@ -168,14 +168,14 @@
     "leave|2031|e1P1": { "row": ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "QC39 พักร้อน", "VACATION", "", "6.0", "0.0", "1.5", "0.0", "0.0", "4.5", "0.0"] },
     "ot|2031-10|owner": {
       "rows": [
-        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "1", "3", "1", "450", "120", "180", "60", "187.50", "250.00", "250.00", "687.50"],
-        ["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "0", "1", "0", "60", "60", "0", "0", "93.75", "0.00", "0.00", "93.75"]
+        ["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "1", "3", "1", "450", "120", "180", "60", "120", "187.50", "250.00", "250.00", "150.00", "687.50"],
+        ["B01", "QC39 ซี สาม", "QC39 สาขาใต้", "0", "1", "0", "60", "60", "0", "0", "0", "93.75", "0.00", "0.00", "0.00", "93.75"]
       ],
-      "totals": ["รวม", "", "", "1", "4", "1", "510", "180", "180", "60", "281.25", "250.00", "250.00", "781.25"]
+      "totals": ["รวม", "", "", "1", "4", "1", "510", "180", "180", "60", "120", "281.25", "250.00", "250.00", "150.00", "781.25"]
     },
     "ot|2031-10|managerBranch": {
-      "rows": [["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "1", "3", "1", "450", "120", "180", "60"]],
-      "totals": ["รวม", "", "", "1", "3", "1", "450", "120", "180", "60"]
+      "rows": [["A01", "QC39 เอ หนึ่ง", "QC39 สาขาเหนือ", "1", "3", "1", "450", "120", "180", "60", "120"]],
+      "totals": ["รวม", "", "", "1", "3", "1", "450", "120", "180", "60", "120"]
     },
     "payroll-month|2031-10|owner": {
       "rows": [

@@ -65,6 +65,7 @@ S1.6|R4 R5|C|R|[static] reports*.ts + page + route: no banned token (bank/houseR
 S1.7|R8|C|R|[static] export route: GET → reportExportGet · router fetch 204 first · page imports a scope.ts guard + reports.ts loader
 S1.8|R11|M|R|[static] nav decision: hrTabs + layout HR labels = base (no "รายงาน" tab) · overview/hub link to /hr/reports (testid hr-overview-reports-link) · nav.ts unchanged
 S1.9|R12|M|R|[static] UI testids (report page + register card) · inventory rows wo H3.9 · hr.report th = en keys · visual spec "3.9" · no "use client" report file imports reports.ts/db or reads sensitive fields
+S1.11|R4|C|R|[static] membership gate pinned: every exported async fn of reports.ts calls gateOf( · page/route/actions reach report data only through reports.ts
 S1.10|§5|M|R|[static] every hunk in shared files marked "HR H3.9" (core scope · hr-qc-env · hr.prisma · hub/overview · employee page · messages · inventory · visual)
 S2.0|fix|C|G|[pure] [control] fixture self-consistency: catalog keys unique · golden widths = catalog · golden totals = Σ golden rows (own baht/tenths parser)
 S2.1|R6|C|R|[pure] REPORT_TEXT / REPORT_TEXT_EN = texts fixture byte-exact · reportTextFor(locale)
@@ -86,6 +87,8 @@ S3.5|R3e|C|R|[db] tax-month 2031-11 / 2031-10 / 2031-09 (Bangkok pay month) + ta
 S3.6|R3f|C|R|[db] wages (s.114) 2031-10 (v2-shaped lines) / 2031-09 (v1 snapshot) = goldens · notes s114Note
 S3.7|R3g|C|R|[db] register 2031-10-31 owner: page + export (setting OFF ⇒ IDs masked) = golden · leaver kept · warnings counts · notes duty/under-10/retention
 S3.8|R10|C|R|[db] saveRegisterFields: gates (owner · hr-admin in branch · benefits needs payroll) · out of branch/other ⇒ NO · limits ⇒ registerInput · audit fields only · loadRegisterFields keys by gate
+S3.10|A|C|R|[db] revoked OT (ruling A): APPROVED+revokedAt and CANCELLED+revokedAt never in approved count/minutes · kept HOLIDAY_WORK minutes only in keptHolidayWorkMin (฿ only for money viewers)
+S3.11|B|C|R|[db] register "10 or more" note (ruling B): all-branch viewers get duty/under-10 · branch-limited payroll viewer gets neither (no shop-wide count signal)
 S3.9|R7|C|R|[db] owner exports: time CSV + register CSV = independent CSV text of golden · XLSX = same table · file names · content types
 S4.1|R4|C|R|[db] gate matrix 10 viewers × 9 reports × page/export = design matrix (ok ⇔ allowed · NO otherwise)
 S4.2|R4|C|R|[db] column sets: DTO keys + export header = columnsFor(viewer access) for every allowed cell of the matrix
@@ -94,6 +97,7 @@ S4.4|R4|C|R|[db] national ID, setting OFF (default): no full ID in any page or e
 S4.5|R4|C|R|[db] manager / hr-admin: no $ key · no money value (OT ฿ strings absent from DTO and export text) · payroll/tax/wages/register NO
 S4.6|X11|C|R|[db] forbidden keys absent from every DTO (HR_FORBIDDEN_DTO_KEYS + snapshot/ytd/GPS/photo/attachment) · sentinel secrets absent from DTOs, exports, audit
 S4.7|X2|C|R|[db] cross-tenant / cross-system ctx ⇒ NO with identical bytes · own empty system ⇒ ok rows []
+S4.10|X2|C|R|[db] membership gate on every entry point: non-member (other tenant owner) and role-claim mismatch ⇒ NO for loadReport · exportReport · reportExportGet (404) · get/setReportSettings · load/saveRegisterFields · nothing written
 S4.8|Q2|C|R|[db] ruling Q2 setting "full national ID in register export": owner only (others settingOwner) · ON needs acknowledge (ackFullId) · default OFF · other settings keys kept · audit hr.report.setting
 S4.9|Q2|C|R|[db] setting ON: register export full for owner / all-branch payroll only · branch payroll masked · pages + tax exports masked · export audit fullId true/false · OFF again ⇒ masked
 S5.1|R9|C|R|[db] export audit: 1 row hr.report.export · targetType HrReport · after keys exactly {report period format rowCount columns unitId fullId} · no values · refusals not audited
@@ -348,6 +352,26 @@ function runStatic(): void {
       client: badClient.length === 0,
     };
     ck("S1.9", r, "ui contract", `missing=${[...TESTIDS, ...REG_TESTIDS].filter((t) => !ids.has(t)).join(",") || "0"} inv=${inv.rows}/${inv.codeNoRow.length}/${inv.rowNoCode.length} badClient=${badClient.join(",") || "0"}`);
+  }
+  // S1.11 ORACLE-EDIT (builder H3.9 · controller rulings 13 Nov): membership gate pinned for every entry point ◂
+  {
+    const svc = code(F.svc);
+    const fns = [...svc.matchAll(/export\s+async\s+function\s+(\w+)\s*\(/g)].map((m) => m[1]!);
+    const body = (n: string) => {
+      const i = svc.indexOf(`function ${n}(`);
+      const j = svc.indexOf("\nexport ", i + 1);
+      return svc.slice(i, j < 0 ? undefined : j);
+    };
+    const ungated = fns.filter((n) => !/\bgateOf\(/.test(body(n)));
+    const acts = code(`${H}reports-actions.ts`);
+    const r = {
+      fns: fns.length >= 6,
+      gated: ungated.length === 0,
+      page: /\bloadReport\(/.test(code(F.page)) && !/tenantDb|hrEmployee|hrPayrollItem/.test(code(F.page)),
+      route: /reportExportGet\(/.test(code(F.route)) && /\bexportReport\(/.test(code(F.rh)) && !/tenantDb/.test(code(F.rh) + code(F.route)),
+      actions: /saveRegisterFields\(/.test(acts) && /setReportSettings\(/.test(acts) && !/tenantDb/.test(acts),
+    };
+    ck("S1.11", r, "gateOf in every entry", `fns=${fns.join(",")} ungated=${ungated.join(",") || "0"}`);
   }
   // S1.10
   {
@@ -612,6 +636,10 @@ async function runDb(): Promise<void> {
   await ot(E.e1, "2031-10-12", "CANCELLED", 45, { segmentsJson: [seg("OT_WORKDAY", 45, 15000, 7_031)], amountSatang: 7_031, settledAt: SET });
   await ot(E.e1, "2031-10-13", "APPROVED", 90);
   await ot(E.e1, "2031-11-02", "APPROVED", 60, { settledAt: SET, amountSatang: 9_375, segmentsJson: [seg("OT_WORKDAY", 60, 15000, 9_375)] });
+  // ORACLE-EDIT (builder H3.9 · controller rulings 13 Nov) ruling A: revoked requests — approved-then-revoked (ot.ts: status CANCELLED + revokedAt) keeps a HOLIDAY_WORK part ⇒ own column only;
+  //   APPROVED + revokedAt (defensive) never counts anywhere ◂
+  await ot(E.e1, "2031-10-14", "CANCELLED", 120, { revokedAt: SET, settledAt: SET, amountSatang: 15_000, paidMinutes: 120, segmentsJson: [seg("HOLIDAY_WORK", 120, 10000, 15_000)] });
+  await ot(E.e1, "2031-10-15", "APPROVED", 30, { revokedAt: SET, settledAt: SET, amountSatang: 4_688, paidMinutes: 30, segmentsJson: [seg("OT_WORKDAY", 30, 15000, 4_688)] });
   await ot(E.e3, "2031-10-20", "APPROVED", 60, { settledAt: SET, amountSatang: 9_375, paidMinutes: 60, segmentsJson: [seg("OT_WORKDAY", 60, 15000, 9_375)] });
   // leave
   const pol = await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: sA, category: "VACATION", name: "QC39 พักร้อน", quotaDays: "6.0", yearStartMonth: 1 } });
@@ -655,7 +683,8 @@ async function runDb(): Promise<void> {
     const sums = runs.every((r) => r.items.reduce((a: number, i: Any) => a + i.netSatang, 0) === r.totalNetSatang && r.items.every((i: Any) => i.grossSatang - i.ssoEmployeeSatang - i.whtSatang === i.netSatang));
     const nDays = await P.hrAttendanceDay.count({ where: { tenantId: TT } });
     const nOt = await P.hrOtRequest.count({ where: { tenantId: TT } });
-    ck("S3.0", { runs: runs.length === 5, sums, days: nDays === days.length, ot: nOt === 8, emps: Object.values(E).every(Boolean) }, "fixture", `runs=${runs.length} days=${nDays} ot=${nOt} register=${HAS_REG ? "table" : "absent"}`);
+    ck("S3.0", { runs: runs.length === 5, sums, days: nDays === days.length, ot: nOt === 10, // ORACLE-EDIT ruling A: +2 revoked requests ◂
+      emps: Object.values(E).every(Boolean) }, "fixture", `runs=${runs.length} days=${nDays} ot=${nOt} register=${HAS_REG ? "table" : "absent"}`);
   }
   const load = (v: Any, report: string, period = PERIOD[report]!, o: Record<string, unknown> = {}, c: Any = cA, opts: Any = {}) => S("loadReport", c, v, { report, period, ...o }, opts);
   const exp = (v: Any, report: string, format = "CSV", period = PERIOD[report]!, o: Record<string, unknown> = {}, c: Any = cA, opts: Any = {}) => S("exportReport", c, v, { report, period, format, ...o }, opts);
@@ -789,6 +818,30 @@ async function runDb(): Promise<void> {
       meta: t.value?.rowCount === 4 && canon(t.value?.columns) === canon(keysOf("time")),
     }, "bytes");
   }
+  // S3.10 ORACLE-EDIT (builder H3.9 · controller rulings 13 Nov) ruling A: revoked OT never in approved · kept holiday-work minutes in their own column ◂
+  {
+    const o = await load(V.owner, "ot", "2031-10");
+    const m = await load(V.mgr, "ot", "2031-10");
+    const me = await exp(V.mgr, "ot");
+    const row = (v: Any, e: string) => (((v?.rows ?? []) as Any[]).find((r) => r.employeeId === e)?.values ?? {}) as Record<string, string>;
+    const a = row(o.value, E.e1);
+    const b = row(m.value, E.e1);
+    const mt = JSON.stringify(m.value ?? {}) + dec(me.value?.bytes);
+    ck("S3.10", {
+      approved: a.approved === "3" && a.approvedMin === "450" && a.otWorkdayMin === "120" && a.holidayWorkMin === "180" && a.otWorkdayAmt === "187.50",
+      kept: a.keptHolidayWorkMin === "120" && a.keptHolidayWorkAmt === "150.00" && a.amount === "687.50",
+      manager: m.ok && b.keptHolidayWorkMin === "120" && !("keptHolidayWorkAmt" in b) && !mt.includes("150.00") && !mt.includes("46.88"),
+    }, "revoked excluded · kept own column", short(a, 200));
+  }
+  // S3.11 ORACLE-EDIT (builder H3.9 · controller rulings 13 Nov) ruling B: shop-wide "10 or more" note only for all-branch viewers ◂
+  {
+    const o = await load(V.owner, "register");
+    const pa = await load(V.payAll, "register");
+    const pb = await load(V.payBranch, "register");
+    const n = (v: Any) => (v?.notes ?? []) as string[];
+    const sig = (v: Any) => n(v).includes(T.registerDuty) || n(v).includes(T.registerUnder10);
+    ck("S3.11", { owner: n(o.value).includes(T.registerUnder10), payAll: n(pa.value).includes(T.registerUnder10), branch: pb.ok && !sig(pb.value) && n(pb.value).includes(T.registerRetention) }, "all-branch only", short(n(pb.value), 120));
+  }
   // ── S4 matrix ──
   const ALLOW: Record<string, string[]> = {
     owner: IDS, payAll: IDS, payBranch: IDS, // ruling Q1: payroll viewers see the leave report (branch-limited = own branches)
@@ -859,7 +912,7 @@ async function runDb(): Promise<void> {
   }
   // S4.5
   {
-    const money = ["187.50", "687.50", "93.75", "281.25", "781.25", "250.00"];
+    const money = ["187.50", "687.50", "93.75", "281.25", "781.25", "250.00", "150.00", "46.88"]; // ORACLE-EDIT (builder H3.9 · controller rulings 13 Nov) ruling A: kept / revoked ฿ ◂
     const bad: string[] = [];
     for (const c of cells.filter((x) => ["mgr", "mgrAll", "hrAdmin", "leaveReader"].includes(x.who) && ALLOW[x.who]!.includes(x.report))) {
       const ks = [...keysDeep(c.page.value)];
@@ -877,14 +930,17 @@ async function runDb(): Promise<void> {
     const audits = JSON.stringify(await P.auditLog.findMany({ where: { tenantId: TT, action: { startsWith: "hr.report." } }, select: { after: true, before: true } }));
     const bad: string[] = [];
     for (const c of cells) {
-      const k = [...keysDeep(c.page.value)].filter((x) => FORB.has(x));
+      // ORACLE-EDIT (builder H3.9 · controller rulings 13 Nov) 1: payType is a catalog column of wages/register — allowed for money viewers in those reports only ◂
+      // ORACLE-EDIT (builder H3.9 · ruling 1, same check): keys are scanned on served DTOs only — a refusal is the contract shape {ok:false, code, reason} (brief R7/S4.7) whose "reason" is the fixed text, not a leave/OT reason; secrets below still scan every cell ◂
+      const k = c.page.ok ? [...keysDeep(c.page.value)].filter((x) => FORB.has(x) && !(MONEY.has(c.who) && keysOf(c.report).includes(x))) : [];
       if (k.length) bad.push(`${c.who}/${c.report}:${k.join(",")}`);
       const txt = JSON.stringify(c.page.value ?? {}) + dec(c.csv.value?.bytes);
       if (sec.some((s) => txt.includes(s))) bad.push(`${c.who}/${c.report}:secret`);
     }
     const capturedLeak = CAPTURED.some((l) => sec.some((s) => l.includes(s)));
     const seen = cells.filter((c) => c.page.ok && c.csv.ok).length;
-    ck("S4.6", { seen: seen >= 40, dto: bad.length === 0, audit: !sec.some((s) => audits.includes(s)), console: !capturedLeak }, "no forbidden key / secret", `${bad.slice(0, 6).join(" ")} seen=${seen}`);
+    ck("S4.6", { seen: seen === 36, // ORACLE-EDIT (builder H3.9 · controller rulings 13 Nov) 2: the matrix has exactly 36 allowed cells (9+9+9+3+3+1+2) ◂
+       dto: bad.length === 0, audit: !sec.some((s) => audits.includes(s)), console: !capturedLeak }, "no forbidden key / secret", `${bad.slice(0, 6).join(" ")} seen=${seen}`);
   }
   // S4.7
   {
@@ -895,6 +951,33 @@ async function runDb(): Promise<void> {
     const empty = await load(V.owner, "payroll-month", "2031-10", {}, cB);
     const same = [a, b, d].every((x) => canon(x.value) === canon({ ok: false, code: "NO", reason: T.no }));
     ck("S4.7", { same, own: own.ok && own.value?.rows?.length === 0, empty: empty.ok && empty.value?.rows?.length === 0 }, "identical NO");
+  }
+  // S4.10 ORACLE-EDIT (builder H3.9 · controller rulings 13 Nov): membership gate on every entry point (non-member · role-claim mismatch) ◂
+  {
+    const cnt = async () => [await P.auditLog.count({ where: { tenantId: TT } }), HAS_REG ? Number((await fx.rawRows(`SELECT count(*)::int AS n FROM "HrEmployeeRegister" WHERE "tenantId" = $1 AND "nationality" = 'QC39X'`, TT))?.[0]?.n ?? -1) : 0];
+    const before = await cnt();
+    const intruders: Record<string, Any> = { other: V.other, claim: { ...V.member, role: "OWNER" } };
+    const bad: string[] = [];
+    for (const [who, v] of Object.entries(intruders)) {
+      const calls: [string, RO][] = [
+        ["load", await load(v, "time")],
+        ["export", await exp(v, "register")],
+        ["getSet", await S("getReportSettings", cA, v)],
+        ["setSet", await S("setReportSettings", cA, v, { registerFullId: true, acknowledge: true })],
+        ["loadReg", await S("loadRegisterFields", cA, v, { employeeId: E.e1 })],
+        ["saveReg", await S("saveRegisterFields", cA, v, { employeeId: E.e1, nationality: "QC39X" })],
+      ];
+      for (const [nm, r] of calls) if (!noOf(r.value)) bad.push(`${who}/${nm}`);
+      let st = 0;
+      try {
+        st = typeof RH?.reportExportGet === "function" ? ((await RH.reportExportGet(new Request("http://qc.invalid/x?report=time&period=2031-10&format=csv"), cA, v, {})) as Response).status : 0;
+      } catch {
+        st = -1;
+      }
+      if (st !== 404) bad.push(`${who}/route=${st}`);
+    }
+    const after = await cnt();
+    ck("S4.10", { refused: bad.length === 0, noWrite: canon(after) === canon(before) }, "NO everywhere", bad.join(" ") || "ok");
   }
   // S4.8 setting writer (ruling Q2)
   {
@@ -1074,7 +1157,8 @@ async function runDb(): Promise<void> {
       }
       if (!out || out.ok === false) chk("S7.1", false, "vector computes", `computeRunItemV2 ${short(out, 120)}`);
       else {
-        const run = await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sA, periodKey: "2031-12", payDate: new Date("2031-12-28T12:00:00+07:00"), status: "APPROVED", engineVersion: 2, totalGrossSatang: out.grossSatang, totalNetSatang: out.netSatang } });
+        // ORACLE-EDIT (builder H3.9 · controller rulings 13 Nov) 3: finalized (journalEntryId) — ruling Q5 excludes unfinalized v2 runs (S7.3 keeps "neither ⇒ excluded") ◂
+        const run = await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sA, periodKey: "2031-12", payDate: new Date("2031-12-28T12:00:00+07:00"), status: "APPROVED", engineVersion: 2, journalEntryId: `qc39-jv-s71-${tag}`, totalGrossSatang: out.grossSatang, totalNetSatang: out.netSatang } });
         await P.hrPayrollItem.create({ data: { tenantId: TT, systemId: sA, runId: run.id, employeeId: E.e2, grossSatang: out.grossSatang, addSatang: out.addSatang, deductSatang: out.deductSatang, ssoBaseSatang: out.ssoBaseSatang, ssoEmployeeSatang: out.ssoEmployeeSatang, ssoEmployerSatang: out.ssoEmployerSatang, whtSatang: out.whtSatang, netSatang: out.netSatang,
           snapshotJson: { engineVersion: 2, payType: "MONTHLY", normalDayMin: 480, lines: out.lines, flags: out.flags, carry: out.carry, receivable: out.receivable, availableSatang: out.availableSatang, whtIncomeSatang: out.whtIncomeSatang, ssoWageSatang: out.ssoWageSatang } } });
         const sumC = (codes: string[]) => (out.lines as Any[]).filter((l) => codes.includes(l.code)).reduce((a, l) => a + l.amountSatang, 0);
