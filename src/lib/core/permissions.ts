@@ -891,6 +891,13 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     actions: {
       "agency.settings.edit": "ตั้งค่าเอเจนซี่",
       "agency.settings.money": "ตั้งค่าเอเจนซี่เรื่องเงิน",
+      // TRIPS A1.2a ▸ ทะเบียนเอเจนซี่ต่อร้าน (ใบสั่ง §12) ◂
+      "agency.account.view": "ดูทะเบียนเอเจนซี่",
+      "agency.account.invite": "เชิญเอเจนซี่",
+      "agency.account.approve": "อนุมัติ/ปฏิเสธใบสมัครเอเจนซี่",
+      "agency.account.suspend": "ระงับ/บล็อก/คืนสิทธิ์/ปิดบัญชีเอเจนซี่",
+      "agency.account.edit": "แก้ข้อมูลเอเจนซี่ + ผูก CRM",
+      "agency.account.money": "แก้ข้อมูลภาษี/บัญชีธนาคารของเอเจนซี่",
     },
   },
 ] as const;

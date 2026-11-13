@@ -1572,6 +1572,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.booking.cancelled": withAutomation(async () => {}),
   "trips.booking.changed": withAutomation(async () => {}),
   // ── /T0.6 booking ──
+  // TRIPS A1.2a ▸ ทะเบียนเอเจนซี่ (agency/accounts.ts ยิงใน tx เดียวกับการเปลี่ยนสถานะ) · payload { agentAccountId } เท่านั้น · งานหลัก no-op + กฎอัตโนมัติ/เว็บฮุค ◂
+  "agency.account.applied": withAutomation(async () => {}),
+  "agency.account.approved": withAutomation(async () => {}),
+  "agency.account.suspended": withAutomation(async () => {}),
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —

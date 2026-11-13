@@ -1110,7 +1110,7 @@ try {
     const r1 = await reqCode(ey);
     const v = await verify({ email: ey, codeId: r1.codeId, code: lastMail(ey, "LOGIN_CODE")?.code, teammateInvite: ti.teammateToken, teammateName: `${QC_MARK} Y` });
     ok(v.ok === true && v.created === "TEAMMATE", fmt(v));
-    Y = { email: ey, token: String(v.token), agentUserId: String(v.agentUserId), identityId: x.identityId, publicCode: x.publicCode };
+    Y = { email: ey, token: String(v.token), agentUserId: String(R(await AU("resolveAgentSession")(String(v.token))).agentUserId) /* ORACLE-EDIT (ผู้คุม): verify ไม่คืน agentUserId (§5.1 · A-3) — อ่านจาก session */, identityId: x.identityId, publicCode: x.publicCode };
     const u = (await q<{ identityId: string; role: string }>(`SELECT "identityId", role FROM "AgentUser" WHERE id = $1`, [Y.agentUserId]))[0];
     eq([u?.identityId, u?.role], [x.identityId, "SALES"], "ผู้ใช้");
   });
