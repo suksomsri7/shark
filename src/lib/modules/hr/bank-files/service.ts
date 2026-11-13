@@ -304,6 +304,7 @@ async function loadRun(tx: Db, ctx: Ctx, runId: string): Promise<Loaded | null> 
     FOR SHARE`;
   const r = rows[0];
   if (!r) return null;
+  if (r.status === "APPROVED" && (await tx.$queryRaw<{ n: number }[]>`SELECT 1 AS "n" FROM "HrPayrollRun" WHERE "id" = ${r.id} AND "engineVersion" = 2 AND "inputDigest" IS NOT NULL AND "journalEntryId" IS NULL AND COALESCE(("stepsJson"->>'finalized')::boolean, false) = false`).length) r.status = "POSTING"; // HR H3.4 ◂ รอบรุ่น 2 ที่อนุมัติแล้วแต่ยังปิดงาน (ลงบัญชี/ยกยอด) ไม่เสร็จ = ยังไม่อนุมัติสำหรับไฟล์โอน (STATUS)
   const items = await tx.hrPayrollItem.findMany({ where: { runId: r.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true, netSatang: true }, orderBy: { id: "asc" } });
   const ids = [...new Set(items.map((i) => i.employeeId))];
   const emps = ids.length

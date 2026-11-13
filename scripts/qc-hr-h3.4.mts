@@ -17,7 +17,7 @@ import {
   PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, fileAt, srcFiles, makeRegistry, qc4Env, makeFixtures, cleanupFx,
   vOf, fitnessNoEnv, importsOf, jsonOf, testidsOf, loadOpt, modState, msgParity, tokensOnly, holdAdvisory, frozenControls,
 } from "./qc-hr-lib.mjs";
-import { FIX_CHECKS, FIX2_CHECKS, FIX3_CHECKS, fnBody, lineStr, runFixRound1, runFixRound2, runFixRound3, runPureH34, runStaticH34 } from "./qc-hr-h3.4-lib.mjs"; // ORACLE-EDIT (H3.4 fix round 1): controller F1–F10 + coverage list — checks live in the lib (file size)
+import { FIX_CHECKS, FIX2_CHECKS, FIX3_CHECKS, MERGE_CHECKS, fnBody, lineStr, runFixRound1, runFixRound2, runFixRound3, runMergeRound, runPureH34, runStaticH34 } from "./qc-hr-h3.4-lib.mjs"; // ORACLE-EDIT (H3.4 fix round 1): controller F1–F10 + coverage list — checks live in the lib (file size)
 
 const SUITE = "qc-hr-h3.4";
 const ARGV = process.argv.slice(2);
@@ -110,6 +110,8 @@ S7.5|cov|C|G|[db] (H3.2-guarded, fix r1 coverage) v2 approve before the deductio
 ${FIX_CHECKS}
 ${FIX2_CHECKS}
 ${FIX3_CHECKS}
+${MERGE_CHECKS}
+S7.8|merge|C|G|[db] (H3.2-guarded, merge round minors A/B) leaver's corrected row PENDING in P blocks approve (attPending) · one stale + one bindable approved row still refuses
 S7.7|H5|C|G|[db] (H3.2-guarded, fix r3 H5) leaver: corrected late deduction lands in the leaver's draft period, the draft must be rebuilt, then 2,361 is deducted once in Sept
 S7.6|G2|C|G|[db] (H3.2-guarded, fix r2 G2) stale late deduction bound to a v2 draft: correction → pull → sync waits → rebuild ok (stale left out) → sync supersedes → approve ⇒ corrected 2,361 settled once, no loop
 `.trim().split("\n").map((l) => {
@@ -497,6 +499,7 @@ async function runDb(): Promise<void> {
   await runFixRound1(FXE);
   await runFixRound2(FXE); // fix round 2 (controller G1–G6)
   await runFixRound3({ ...FXE, T2, sysIn: (t: string, n: string) => sys(n, t), meIn: (t: string, s: string, n: string, o: Record<string, unknown> = {}) => me(s, n, o, t) }); // fix round 3 (H1–H3)
+  await runMergeRound({ ...FXE, BF: await loadOpt(`${H}bank-files/service.ts`, "@/lib/modules/hr/bank-files/service") }); // merge round (H3.5 bank files)
   // ── S5 races (system B) ──
   const del = async () => {
     for (const r of await liveRuns(sB, SEP)) await pay.deleteDraftRun(cB, r.id, A.owner).catch(() => null);
@@ -543,6 +546,7 @@ async function runDb(): Promise<void> {
     chk("S7.5", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.6", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.7", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
+    chk("S7.8", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
   } else {
     const A_ = (fn: string, ...a: unknown[]) => callMod(AP, F.attPay, fn, a);
     // ORACLE-EDIT (H3.4 builder, phase B): the S5.3/S5.4 race rows (ALLOWANCE 10,000 / 20,000 of eS in 2031-09) outlive their deleted drafts —
@@ -651,12 +655,20 @@ async function runDb(): Promise<void> {
       await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
       const rb7 = await PY("recomputeDraftRun", cB, c7.value?.id ?? "∅", A.pay1, { viewer: V.pay1, now: N_OCT1 });
       await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
+      // merge round minor B: the corrected row is still PENDING in Sept ⇒ approve refused (attPending) — H3.2's gate alone would let it through
+      const a7p = await approve(cB, c7.value?.id, A.pay3);
       await pendL();
+      // merge round minor A: one stale (no header) + one bindable APPROVED row of Sept ⇒ still refused
+      const rawStale = `qcstale${tag}`;
+      await P.$executeRawUnsafe(`INSERT INTO "HrPayAdjustment" (id, "tenantId", "systemId", "employeeId", "periodKey", kind, "amountSatang", status, "requestedById", "sourceType", "sourceRef", "createdAt") VALUES ($1, $2, $3, $4, $5, 'DEDUCTION', 100, 'APPROVED', $6, 'LATE_RULE', $7, now())`, rawStale, TT, sB, eL, SEP, U.owner.id, `att:${SEP}:${eL}:99`);
+      const a7s = await approve(cB, c7.value?.id, A.pay3);
+      await P.$executeRawUnsafe(`DELETE FROM "HrPayAdjustment" WHERE id = $1`, rawStale);
       const a7a = await approve(cB, c7.value?.id, A.pay3);
       const rb7b = await PY("recomputeDraftRun", cB, c7.value?.id ?? "∅", A.pay1, { viewer: V.pay1, now: N_OCT1 });
       const a7 = await approve(cB, c7.value?.id, A.pay3);
       const i7 = await itemBy(c7.value?.id, eL);
       const liveL = await rows(`SELECT "amountSatang" AS a, "periodKey" AS p, "runId" FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'LATE_RULE' AND status::text = 'APPROVED'`, eL);
+      ck("S7.8", { pendingBlocks: !a7p.ok && codeOf(a7p) === "ATTENDANCE_PENDING" && a7p.text === T.attPending, staleAndBindable: !a7s.ok }, "minor A/B refusals", `${shown(a7p)} ${shown(a7s)}`);
       ck("S7.7", { bound: c7.ok && b7 === 2777, rebuilt: rb7.ok && rb7b.ok, refusedFirst: !a7a.ok && codeOf(a7a) === "INPUTS_CHANGED", approved: a7.ok, item: Number(i7?.deductSatang) === 2361, once: liveL.length === 1 && Number(liveL[0]?.a) === 2361 && liveL[0]?.p === SEP && liveL[0]?.runId === c7.value?.id }, "leaver: corrected 2,361 deducted once in Sept", `${shown(c7)} b=${b7} ${shown(a7a)} ${shown(a7)} d=${i7?.deductSatang} live=${short(liveL, 90)}`);
       if (a7.ok) await PY("reverseRun", cB, c7.value?.id ?? "∅", "qc cleanup", A.owner);
       else if (c7.value?.id) await pay.deleteDraftRun(cB, c7.value.id, A.owner).catch(() => null);

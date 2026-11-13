@@ -2224,6 +2224,7 @@ export const RUN2_TEXT = {
   engineDraft: "ยังมีรอบจ่ายร่างของเครื่องรุ่นใหม่ — อนุมัติหรือลบรอบร่างนั้นก่อนเปลี่ยนกลับเป็นรุ่นเดิม",
   negativeNet: "ยอดสุทธิติดลบ: {names} — แก้รายการหักหรือค่าจ้างแล้วกด 'ดึงข้อมูลใหม่'",
   postFailed: "ลงบัญชีไม่สำเร็จ — รอบนี้กลับเป็นร่างแล้ว ยังไม่มียอดยกไปงวดถัดไป กรุณาลองอนุมัติอีกครั้ง",
+  attPending: "พนักงานที่ออกในงวดนี้มีรายการหักสาย/ขาดที่รออนุมัติ — อนุมัติหรือปฏิเสธรายการนั้น แล้วกด 'ดึงข้อมูลใหม่' ก่อนอนุมัติรอบ",
   posting: "รอบนี้กำลังลงบัญชีหรือยังลงบัญชีไม่เสร็จ — รอสักครู่ หรือกดอนุมัติอีกครั้งเพื่อลงบัญชีให้เสร็จ แล้วจึงบันทึกจ่าย",
 } as const;
 /** คำเตือน (r2 L9 — เตือนเท่านั้น ไม่บล็อก · [U] = โปรดตรวจกับผู้เชี่ยวชาญ) — ข้อความเดียวกับ hr.run2.warn* ในไฟล์ข้อความ */
@@ -2816,9 +2817,15 @@ async function approveRunV2(ctx: Ctx, runId: string, expect: ApproveExpect | und
       }
       if (digest !== run.inputDigest) return { code: "INPUTS_CHANGED", note: RUN2_TEXT.inputsChanged };
       // fix r3 H5: รายการหักสาย/ขาดที่อนุมัติแล้วของงวดนี้แต่ยังไม่ผูก (เช่น คนที่ออกในงวด — รายการแก้ไขอยู่งวดเดิม) ⇒ ต้องดึงข้อมูลใหม่ก่อน (ไม่ปล่อยค้างหลังอนุมัติ)
-      if ((await tx.hrPayAdjustment.count({ where: { ...scope, periodKey: cur.periodKey, status: "APPROVED", runId: null, kind: "DEDUCTION", sourceType: { in: ["LATE_RULE", "ABSENT_RULE"] }, employeeId: { in: empIds } } })) > 0) {
-        if (!(await attendanceUnbindableInTx(tx, ctx, (await tx.hrPayAdjustment.findMany({ where: { ...scope, periodKey: cur.periodKey, status: "APPROVED", runId: null, kind: "DEDUCTION", sourceType: { in: ["LATE_RULE", "ABSENT_RULE"] }, employeeId: { in: empIds } }, select: { id: true } })).map((x) => x.id), cur.periodKey)).size)
-          return { code: "INPUTS_CHANGED", note: RUN2_TEXT.inputsChanged };
+      {
+        // merge-round minor A: refuse whenever any candidate row is bindable (candidates > rows held as stale/waiting) — one stale + one bindable must not approve
+        const cand = (await tx.hrPayAdjustment.findMany({ where: { ...scope, periodKey: cur.periodKey, status: "APPROVED", runId: null, kind: "DEDUCTION", sourceType: { in: ["LATE_RULE", "ABSENT_RULE"] }, employeeId: { in: empIds } }, select: { id: true } })).map((x) => x.id);
+        if (cand.length > 0 && cand.length > (await attendanceUnbindableInTx(tx, ctx, cand, cur.periodKey)).size) return { code: "INPUTS_CHANGED", note: RUN2_TEXT.inputsChanged };
+        // merge-round minor B: a leaver's corrected deduction still PENDING in P (H3.2's gate counts PENDING as settled) ⇒ refuse until it is decided + rebuilt
+        const pb = periodBounds(cur.periodKey);
+        const leaverIds = (await tx.hrEmployee.findMany({ where: { ...scope, id: { in: empIds }, endDate: { lte: new Date(`${pb?.lastDay ?? "9999-12-31"}T00:00:00.000Z`) } }, select: { id: true } })).map((e) => e.id);
+        if (leaverIds.length && (await tx.hrPayAdjustment.count({ where: { ...scope, periodKey: cur.periodKey, status: "PENDING", kind: "DEDUCTION", sourceType: { in: ["LATE_RULE", "ABSENT_RULE"] }, employeeId: { in: leaverIds } } })) > 0)
+          return { code: "ATTENDANCE_PENDING", note: RUN2_TEXT.attPending };
       }
       const negative = await tx.hrPayrollItem.count({ where: { ...scope, runId, netSatang: { lt: 0 } } });
       if (negative > 0) {

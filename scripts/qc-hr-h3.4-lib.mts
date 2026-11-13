@@ -796,3 +796,28 @@ export async function runFixRound3(X: FixEnv & { T2: string; sysIn: (t: string, 
     ck("S4.37", { one: res.filter((x) => x.ok).length === 1, finished: r?.status === "APPROVED" && fin === "true", carry: carry === 1, losers: losers.length === 3 && losers.every((x) => codeOf(x) === "NOT_DRAFT"), noFalseAudit: falseFail === 0 }, "one finished · carry once · NOT_DRAFT", `${res.map(shown).join(" ")} st=${r?.status} fin=${fin} carry=${carry} audit=${falseFail}`);
   });
 }
+
+// ═════════════════════════ merge round (controller: H3.5 interplay) ═════════════════════════
+export const MERGE_CHECKS = `
+S4.38|H3.5|C|R|[db] (merge round) a v2 run APPROVED but not finalized (posting in progress) is refused by the bank-file service (STATUS text) · after finalizing it is accepted
+`.trim();
+export async function runMergeRound(X: FixEnv & { BF: Any }): Promise<void> {
+  const { P, TT, ck, sys, me, PY, V, A, u1 } = X;
+  try {
+    const s = await sys("ทีมไฟล์โอน");
+    const c = { tenantId: TT, systemId: s };
+    await PY("setPayrollEngine", c, V.owner, { engineVersion: 2 }, { now: X.N_OCT1 });
+    const e1 = await me(s, "โอน", { unitId: u1 });
+    await P.hrSalaryProfile.create({ data: { tenantId: TT, systemId: s, employeeId: e1, baseSalarySatang: 1500000, ssoEligible: true, personalDeductionJson: { spouse: false, children: 0 } } });
+    const cr = await PY("createPayrollRunV2", c, V.pay1, { periodKey: "2031-09", payDate: X.PAY_SEP }, { now: X.N_OCT1, actor: A.pay1 });
+    const id = cr.value?.id as string | undefined;
+    const req = { runId: id ?? "∅", format: "CSV" };
+    let mid: Any = null;
+    const ap = await PY("approveRun", c, id ?? "∅", undefined, A.pay3, { __beforeFinal: async () => { mid = await X.BF?.previewBankFile(c, V.owner, req).catch((e: unknown) => ({ ok: false, reason: errText(e) })); } });
+    const after = await X.BF?.previewBankFile(c, V.owner, req).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const STATUS = X.BF?.BANK_TEXT?.status ?? "สร้างไฟล์โอนเงินได้เฉพาะรอบที่อนุมัติแล้วหรือจ่ายแล้ว";
+    ck("S4.38", { approved: ap.ok, refusedMid: !!mid && mid.ok === false && String(mid.reason ?? "") === STATUS, acceptedAfter: !!after && String(after.reason ?? "") !== STATUS }, "posting ⇒ STATUS · finalized ⇒ not STATUS", `mid=${short(mid, 80)} after=${short(after, 80)}`);
+  } catch (e) {
+    ck("S4.38", { crashed: false }, "no crash", `THROW ${errText(e)}`);
+  }
+}
