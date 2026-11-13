@@ -284,7 +284,7 @@ const ACTION_SQL = Prisma.sql`(b."policySnapshot"->'policy'->'trips'->'values'->
 export async function runPaymentDue(
   now: Date,
   opts?: CapacityJobOpts,
-): Promise<{ reminders: number; overdue: number; autoReleased: number; failed: CapacityJobFailure[]; more: { reminders: boolean; overdue: boolean } }> {
+): Promise<{ reminders: number; overdue: number; autoReleased: number; failed: CapacityJobFailure[]; more: { reminders: boolean; overdue: boolean; retry: boolean } }> {
   const out = { reminders: 0, overdue: 0, autoReleased: 0 };
   const tally = new FailureTally();
   const gates = new Map<string, Gate | null>();
@@ -327,15 +327,22 @@ export async function runPaymentDue(
   let ovCur: DueCursor = null;
   let remDone = false;
   let ovDone = false;
+  /** งวดที่เปลี่ยนเป็น OVERDUE ในรอบงานนี้ — ไม่เข้าคิวลองยื่นซ้ำของรอบเดียวกัน (มติ r3 ข้อ 1: ลองซ้ำเฉพาะรอบถัดไป) */
+  const flipped: string[] = [];
   while (!stopped(opts) && !(remDone && ovDone)) {
     // คิวเตือนก่อน (มติ r2 W5)
     if (!remDone) {
       const rows = await page(OPEN, Prisma.sql`d."dueAt" > ${iso}::timestamp AND d."dueAt" <= ${horizon}::timestamp`, remCur, SWEEP_PAGE_SIZE);
-      if (rows.length < SWEEP_PAGE_SIZE) remDone = true;
+      // มติ r3 ข้อ 2: คิว "หมด" เมื่อหน้าสุดท้ายถูกทำครบทุกแถวเท่านั้น
+      const lastPage = rows.length < SWEEP_PAGE_SIZE;
+      let complete = true;
       remCur = nextCursor(rows) ?? remCur;
       const byUnit = new Map<string, { g: Gate; items: { due: PayDueRow; d: number }[] }>();
       for (const d of rows) {
-        if (stopped(opts)) break;
+        if (stopped(opts)) {
+          complete = false;
+          break;
+        }
         try {
           const g = await gateFor(d);
           if (!g) continue;
@@ -362,13 +369,18 @@ export async function runPaymentDue(
           tally.add(grp.g.tenantId, grp.g.unitId, capCodeOf(e), grp.items.length);
         }
       }
+      if (lastPage && complete) remDone = true;
     }
     if (!ovDone && !stopped(opts)) {
       const rows = await page(OPEN, Prisma.sql`d."dueAt" <= ${iso}::timestamp AND d."dueAt" + make_interval(hours => ${GRACE_SQL}) <= ${iso}::timestamp`, ovCur, SWEEP_PAGE_SIZE);
-      if (rows.length < SWEEP_PAGE_SIZE) ovDone = true;
+      const lastPage = rows.length < SWEEP_PAGE_SIZE;
+      let complete = true;
       ovCur = nextCursor(rows) ?? ovCur;
       for (const d of rows) {
-        if (stopped(opts)) break;
+        if (stopped(opts)) {
+          complete = false;
+          break;
+        }
         try {
           const g = await gateFor(d);
           if (!g) continue;
@@ -377,27 +389,37 @@ export async function runPaymentDue(
             tally.add(d.tenantId, d.unitId, ov.code);
             continue;
           }
-          if (ov.value.overdue) out.overdue++;
+          if (ov.value.overdue) {
+            out.overdue++;
+            flipped.push(d.id);
+          }
           if (ov.value.autoReleased) out.autoReleased++;
           if (ov.value.autoReleaseFailed) tally.add(d.tenantId, d.unitId, `AUTO_RELEASE_${ov.value.autoReleaseFailed}`);
         } catch (e) {
           tally.add(d.tenantId, d.unitId, capCodeOf(e));
         }
       }
+      if (lastPage && complete) ovDone = true;
     }
   }
-  // ลองยื่น AUTO_RELEASE ซ้ำ (เพดานต่อรอบ · มติ r2 W5)
+  // ลองยื่น AUTO_RELEASE ซ้ำ (เพดานต่อรอบ · มติ r2 W5) — ไม่รวมงวดที่เพิ่งเปลี่ยนเป็น OVERDUE ในรอบนี้ (มติ r3 ข้อ 1)
+  let retryMore = true;
   if (!stopped(opts)) {
     const keySql = Prisma.sql`'refund:' || b."id" || ':sys:trips.paymentDue:due_' || d."id" || '@' || d."unitId"`;
     const rows = await page(
       Prisma.sql`'OVERDUE'`,
       Prisma.sql`d."paidSatang" < d."amountSatang" AND ${ACTION_SQL} = 'AUTO_RELEASE'
-        AND NOT EXISTS (SELECT 1 FROM "TripRefundRequest" x WHERE x."tenantId" = d."tenantId" AND x."idempotencyKey" = ${keySql})`,
+        AND NOT EXISTS (SELECT 1 FROM "TripRefundRequest" x WHERE x."tenantId" = d."tenantId" AND x."idempotencyKey" = ${keySql})
+        AND NOT (d."id" = ANY(${flipped}::text[]))`,
       null,
       AUTO_RELEASE_RETRY_CAP,
     );
+    let complete = true;
     for (const d of rows) {
-      if (stopped(opts)) break;
+      if (stopped(opts)) {
+        complete = false;
+        break;
+      }
       try {
         const g = await gateFor(d);
         if (!g) continue;
@@ -408,9 +430,11 @@ export async function runPaymentDue(
         tally.add(d.tenantId, d.unitId, capCodeOf(e));
       }
     }
+    // เพดานตัด (ได้ครบ CAP แถว) หรือ deadline ตัดกลางทาง ⇒ ยังมีงานเหลือ
+    retryMore = !complete || rows.length >= AUTO_RELEASE_RETRY_CAP;
   }
   const failed = tally.list();
   await reportFailures("trips.paymentDue", failed);
-  return { ...out, failed, more: { reminders: !remDone, overdue: !ovDone } };
+  return { ...out, failed, more: { reminders: !remDone, overdue: !ovDone, retry: retryMore } };
 }
 // ── /T0.7 money ──
