@@ -167,7 +167,7 @@ function runStatic(): void {
   for (const p of srcFiles("src")) {
     const s = code(p);
     if (/\bhrAttendance\.(findMany|findFirst|findUnique|findFirstOrThrow|count|aggregate|groupBy)\(/.test(s) && !allowed.has(p)) readers.push(p);
-    if (p !== F.corr && /modules\/hr\/|\/hr\/|^src\/lib\/[^/]+\.ts$/.test(p) && (/hrTimeCorrection\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/.test(s) || /voidedAt:\s*(?!null)[^\s,}]/.test(s) || /(INSERT INTO|UPDATE)\s+"HrTimeCorrection"/.test(s))) writers.push(p);
+    if (p !== F.corr && /modules\/hr\/|\/hr\/|^src\/lib\/[^/]+\.ts$/.test(p) && (/hrTimeCorrection\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/.test(s) || (/voidedAt:\s*(?!null)[^\s,}]/.test(s) && /hrAttendance\b/i.test(s)) /* ORACLE-EDIT controller 13 Nov: voidedAt of another model (H3.6 HrTaxCertificate) is not an attendance write — only files that touch HrAttendance count */ || /(INSERT INTO|UPDATE)\s+"HrTimeCorrection"/.test(s))) writers.push(p);
   }
   ck("S1.3", {
     clock: count(cl, /voidedAt:\s*null/g) >= 2, judge: count(jg, /voidedAt:\s*null/g) >= 1, service: count(sv, /voidedAt:\s*null/g) >= 3, posRead: count(pr, /voidedAt:\s*null/g) >= 2,
