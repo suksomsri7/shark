@@ -5,7 +5,7 @@
 //   ตรึงเมื่อ: ① ออกเอกสารทางหลัก (issueDocumentInTx) ② ก่อนบันทึกค่าตั้งกิจการ/ค่าตั้งเอกสารทุกครั้ง — ทุกใบที่ออกแล้วแต่ยังไม่ตรึง
 //   (ใบอัตโนมัติ/ใบจากระบบอื่น) ถูกตรึงด้วยค่า "ก่อนแก้" ⇒ ไม่มีช่องที่ค่าตั้งใหม่ไปทับใบเก่า · ใบเก่าก่อนมีงานนี้ = ตรึงครั้งแรกที่แก้ค่าตั้ง (lazy · ไม่ทำลายอะไร)
 //   อ่าน: หน้าพิมพ์ (print-view) · หน้ารายละเอียด (doc-detail) · REST — ไม่มี snapshot = ค่าตั้งปัจจุบัน
-import { Prisma, type AccountDocType } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { parseDocSettings, type DocSettings } from "./settings-schema";
 
 export type SellerBlock = {
@@ -95,12 +95,13 @@ export async function freezeUnsnappedDocs(db: Prisma.TransactionClient, systemId
   });
   let n = 0;
   const at = new Date();
+  // raw UPDATE: ไม่แตะ updatedAt (การตรึงไม่ใช่ "การแก้เอกสาร" — รายการ "เอกสารล่าสุด"/การเรียงตามการแก้ไขต้องไม่เปลี่ยน)
   for (const g of groups) {
-    const res = await db.accountDocument.updateMany({
-      where: { systemId, docType: g.docType as AccountDocType, sellerSnapshot: { equals: Prisma.DbNull }, status: { notIn: [...ISSUED_NOT] }, docNo: { not: null } },
-      data: { sellerSnapshot: sellerSnapshotOf(current, g.docType, "SETTINGS_CHANGE", at) as unknown as Prisma.InputJsonValue },
-    });
-    n += res.count;
+    const json = JSON.stringify(sellerSnapshotOf(current, g.docType, "SETTINGS_CHANGE", at));
+    n += await db.$executeRaw`
+      UPDATE "AccountDocument" SET "sellerSnapshot" = ${json}::jsonb
+      WHERE "systemId" = ${systemId} AND "docType" = ${g.docType}::"AccountDocType" AND "sellerSnapshot" IS NULL
+        AND "status" NOT IN ('DRAFT', 'CANCELLED') AND "docNo" IS NOT NULL`;
   }
   return n;
 }
