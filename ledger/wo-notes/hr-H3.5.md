@@ -52,3 +52,26 @@ None. Every golden (G1–G8, DB1, DB2) matched on the first build; 24/24 bank-co
 - H3.6 (tax/SSO filing files): reuse `bank-files/encode.ts` (TIS-620 single-byte, fixed-width `left/zero`) and the manifest-without-bytes + sha rebuild pattern; do **not** write `HrPayrollRun.filingJson`/the bank key column without a brief change; keep refusals unaudited (Q10 analogue).
 - H3.8: any run-row lock order must treat `FOR SHARE` on `HrPayrollRun` taken by generate/download (no advisory lock held) — reverse/markPaid wait for it; never take a period advisory lock inside a bank-file tx.
 - Whoever merges after H3.4: re-take qc-hr-h0.1 `SCHEMA_SHA` on the merged payroll.prisma.
+
+---
+## Fix round 1 (controller rulings after reviewer + hunter on 625209076)
+| F | change | where |
+|---|---|---|
+| F1 | effective date (and the Bangkok day of `now`) must have CE year 2000–2400 (BE stays 4 digits) ⇒ OPTIONS · final guard `fixedLinesOk` — every line = layout length or LAYOUT refusal, no bytes, nothing saved | `build.ts` `inYearRange` / `fixedLinesOk` |
+| F2 | PCT item/total ≥ 10^15, KTB item ≥ 10^17 / total ≥ 10^19 ⇒ AMOUNT naming the employees (or "ยอดรวมของไฟล์") | `build.ts` fixed branch |
+| F3 | `cutAtCluster`: cut before the base of a split cluster, drop a trailing lead vowel (เ แ โ ใ ไ), pad with spaces · NAME_CUT unchanged | `encode.ts` |
+| F4 | `formulaLike` = leading tab/CR outright, or `= + - @` after stripping leading whitespace/control · employeeName/employeeCode trimmed · UTF-8 CSV and XLSX refuse C0 controls (except tab/CR/LF), DEL, U+202A–202E, U+2066–2069 | `generic.ts`, `build.ts` |
+| F5 | action redirects to `payroll?bank=&bfmt=&bfile=#hr-bank` (highlighted `<a download>`, no auto-download) · `bank-files/download-route.ts#bankFileGet` answers `rsc` / `next-router-prefetch` with 204 before any service call; route.ts checks the same before `requireTenant` | `actions.ts`, `download-route.ts`, `route.ts`, `ui.tsx` |
+| F6 | download refuses FORMAT_OFF while the shop has that fixed format off (status → formatOff → expired → changed) | `service.ts#downloadBankFile` |
+| F7 | `BANK_TEXT_EN` (same shape) + `bankTextFor(locale)`; UI, route refusals and the settings flash use `getLocale()` (next-intl, like the other HR pages' `getTranslations`). Service `reason` stays Thai (oracle contract) | `codes.ts`, `ui.tsx`, `download-route.ts`, settings page |
+| F8 | empty/blank employee code sorts like null · tests for debit-account change, download ∥ reverse ×4, page data for non-holders, route helper statuses/headers | `service.ts#loadRun`, oracle |
+
+**Next redirect, verified in source** (`node_modules/next/dist/server/app-render/action-handler.js` 259–330, 889–899): a *fetch* server action (JS on) that throws `redirect()` to an app-relative URL makes the server `fetch()` that URL with `RSC_HEADER = "rsc": "1"` and the forwarded request headers (cookies included); when the answer is not an RSC payload the body is cancelled and the client router then navigates to the URL itself. With the old redirect-to-route this ran the route twice (two downloads, two audit rows). MPA (no-JS) gets a plain 303 + `Location`. `next-router-prefetch` is the router's prefetch header (`app-router-headers.js`).
+
+**ORACLE-EDITs (fix r1, all marked in place):** S1.7 reads route + `download-route.ts` (logic moved; behaviour now tested in S6.6) · S1.8 texts rule requires `{….untestedLong}` / `{….legal}` JSX (old `\blegal\b` matched the testid) · `textFor` + AMOUNT/LAYOUT · fixture `hr-h3.5-texts.json`: + th `layout` `amount` `amountTotal` and an `en` block (existing Thai untouched) · new checks S6.1–S6.11.
+
+**RED→green:** the new oracle on 625209076 (temp worktree) = 42/53, failing S1.7 S2.1 S6.1–S6.9 (`ctx` `red-625209076.txt` in the builder scratchpad; S6.10/S6.11 held → registered GREEN). On 9a783587e/8f8e54a73 = 53/53.
+
+**Hunter probes** (run, then moved to /root/backups/hr-hunt/): D1 gone (9999-12-31 BE / 0999-01-01 ⇒ OPTIONS in pure and DB) · D2 PCT ≥10^15 ⇒ AMOUNT · D4 tab/CR/space-led formulas ⇒ FORMULA, NUL/BEL/ESC/RLO ⇒ ENCODING · DB probe all ✓ incl. format-off matrix. D3: `pct-cut-orphan` still prints ❌ because the probe expects the field to end in `ก่` for 50×ก+่ — that needs 51 bytes; the ruling (cut to the last complete cluster + pad) gives 49×ก + space, which is what S6.4 asserts. The probe's "grapheme cuts 35" line counts inputs whose 51st char is a mark, not output defects.
+
+**Debts (recorded, not now):** preset edit form · per-employee bank/branch code fields · bank codes beyond the 4 verified · real-bank validation (HQ14).
