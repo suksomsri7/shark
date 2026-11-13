@@ -238,10 +238,10 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
       if (now.filter((x) => x === AP_IMPORT).length !== 1 || now.filter((x) => x === AP_TARGET).length !== 1) return false;
       return now.filter((x) => x !== AP_IMPORT).map((x) => (x === AP_TARGET ? "                  periodKey: target," : x)).join("\n") === fileAt(BASE, f);
     };
-    // ORACLE-EDIT (H3.8 merge round · controller 13 Nov · S1.6): base-diff part n/a once H3.4 is in the base (pathInBase of payroll-run-rules.ts,
-    //   same guard as S1.7/S1.10) — later tickets change frozen files in their own marked hunks; the payroll-rules sha stays checked ◂
-    const S16_IN_BASE = pathInBase(F.rules, BASE);
-    const ch = S16_IN_BASE ? "unchanged" : changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p)) && !(p === `${H}attendance-pay.ts` && apOnlyLeaver(p))));
+    // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.6: base-aware — once H3.4 is in the base (payroll-run-rules.ts there), a frozen file may differ only by hunks
+    //   marked with a later ticket ("HR H<n>.<n>" other than H3.4 · "HR-SET-<n>"); any unmarked hunk still fails ◂
+    const laterOnly = (p: string) => pathInBase(F.rules, BASE) && (diffHunks(BASE, p) ?? []).length > 0 && (diffHunks(BASE, p) ?? []).every((h) => h.added.some((l) => /HR-SET-\d+|HR H\d+\.\d+/.test(l) && !/HR H3\.4/.test(l)));
+    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !laterOnly(p) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p)) && !(p === `${H}attendance-pay.ts` && apOnlyLeaver(p))));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
   }
   {

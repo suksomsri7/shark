@@ -1,0 +1,126 @@
+# HR-SET-1 green — wip/hr-set-1 (base session/hr 13c9eae57) · QC lane 2 (ep-orange-dust) · 2026-11-13T20:12:14Z
+# clean typecheck (rm -rf .next/types tsconfig.tsbuildinfo · iso.sh ISO_MEM=14000M · gate lock): run 1 exit 0 (before the judge `next || undefined` tweak + ORACLE-EDITs) · run 2 see end of file
+## RED (oracle 0639fc421 on unchanged base, QC_FORCE=1)
+  ❌ [SET-1-S1.1] [static] helper settings-lock.ts: exports lockHrSettings + writeHrSettingsKeys · advisory hr:clockpolicy:<sys> before the caller's own keys before the AppSystem row FOR UPDATE (id · tenantId · type HR) · writer re-reads under the row lock and changes only the patch keys · type-only imports — expected helper shape | actual exists,exports,clockFirst,ownBetween,rowLock,writerRereads imports=∅
+  ❌ [SET-1-S1.2] [static] fitness: every src/lib/modules/hr/** file that writes AppSystem settings (appSystem.update/updateMany/upsert with settings · raw UPDATE "AppSystem") is settings-lock.ts or on the explicit allowlist (empty) — expected only settings-lock.ts writes (allowlist empty) | actual attendance-pay.ts:updateMany clock-settings.ts:updateMany+updateMany judge.ts:updateMany lifecycle.ts:updateMany ot.
+  ❌ [SET-1-S1.3] [static] each writer fn (OT · lifecycle · clock ×2 · judge cursor · work entries · payroll engine · attendance-pay · report settings) calls lockHrSettings + writeHrSettingsKeys and has no own appSystem settings read/write · OT/lifecycle/attendance-pay pass their own key (hr:otpolicy · hr:lifepolicy · policyLockKey) to the helper — expected 9 writer fns via helper | actual saveOtPolicy:
+  ❌ [SET-1-S1.4] [static] lock order: outside settings-lock.ts no hr/** code takes hr:clockpolicy, hr:otpolicy, hr:lifepolicy or the exclusive hr:attpay:policy itself, and nothing locks the AppSystem row FOR UPDATE — expected lock acquisitions only in the helper | actual attendance-pay.ts:130:clockpolicy attendance-pay.ts:131:attpayExclusive clock-settings.ts:240:clockpolicy clock-settings.ts:314:clockpolicy judg
+  ❌ [SET-1-S1.5] [static] hunks: every hunk in the 8 writer files vs base carries "HR-SET-1" · ot.ts + lifecycle.ts have ≥ 1 · payroll.ts removed lines ⊆ the stale lock/read/write lines (n/a once the helper is in the base) — expected marked hunks only | actual ot.ts:noHunk lifecycle.ts:noHunk
+  ❌ [SET-1-S2.1] [db] OT policy (saveOtPolicy): A clock-lock · B row-lock · C hr:otpolicy — blocked, then writer key hrOt + marker both survive (×2 each) — expected A·B·C ×2 blocked · key + marker survive | actual A0:blocked=false res=ok key=false marker=true A1:blocked=false res=ok key=false marker=true B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false C0:ok C1:ok
+  ❌ [SET-1-S2.2] [db] lifecycle policy (saveLifecyclePolicy): A · B · C hr:lifepolicy — blocked, hrLifecycle + marker survive (×2 each) — expected A·B·C ×2 blocked · key + marker survive | actual A0:blocked=false res=ok key=false marker=true A1:blocked=false res=ok key=false marker=true B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false C0:ok C1:ok
+  ❌ [SET-1-S2.3] [db] clock policy (saveClockPolicy): A · B — blocked, hrClock + marker survive (×2 each) — expected A·B ×2 blocked · key + marker survive | actual A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false
+  ❌ [SET-1-S2.4] [db] attendance policy (saveAttendancePolicy): A · B — blocked, hrAttendance + marker survive (×2 each) — expected A·B ×2 blocked · key + marker survive | actual A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false
+  ❌ [SET-1-S2.5] [db] work entries (setNormalMinutesPerDay): A · B — blocked, hrWork + marker survive (×2 each) — expected A·B ×2 blocked · key + marker survive | actual A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false
+  ❌ [SET-1-S2.6] [db] payroll engine (setPayrollEngine v1): A · B — blocked, hrPayroll + marker survive (×2 each) — expected A·B ×2 blocked · key + marker survive | actual A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false
+  ❌ [SET-1-S2.7] [db] attendance-pay (saveAttendancePayPolicy): A · B · C hr:attpay:policy — blocked, hrAttendancePay + marker survive (×2 each) — expected A·B·C ×2 blocked · key + marker survive | actual A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false C0:ok C1:ok
+  ❌ [SET-1-S2.9] [db] judge cursor (runAttendanceJobs maxPages 1 → saveCursor): A · B — blocked, hrAttendanceCursor + marker survive (×2 each) — expected A·B ×2 blocked · key + marker survive | actual A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false
+  ❌ [SET-1-S3.1] [db] no deadlock / no lost update: OT + report settings concurrently ×10 — both ok, both keys = round values — expected 10 rounds ok · both keys | actual r3:a=ok b=ok rep r5:a=ok b=ok rep r8:a=ok b=ok rep
+  ❌ [SET-1-S3.2] [db] no deadlock / no lost update: lifecycle + report settings concurrently ×10 — expected 10 rounds ok · both keys | actual r0:a=ok b=ok rep r1:a=ok b=ok rep r2:a=ok b=ok rep r3:a=ok b=ok rep r4:a=ok b=ok rep r5:a=ok b=ok rep r6:a=ok b=ok rep r7:a=ok b=ok rep r8:a=ok b=ok rep r9:a=ok b=ok rep
+BASE-EXPECTATION 21/23 as registered (RED-by-design 13 · GREEN controls 10) · off: SET-1-S3.1(GREEN→fail) SET-1-S3.2(GREEN→fail)
+===== qc-hr-set-1 ===== passed 8/23 (QC_FORCE)
+## run 1 (code change, before ORACLE-EDITs) — full list
+set-1 exit=0  qc-hr-set-1  passed 23/23 "failed":[]
+set-1F exit=0  qc-hr-set-1  passed 23/23 (QC_FORCE) "failed":[]
+set-1F2 exit=0  qc-hr-set-1  passed 23/23 (QC_FORCE) "failed":[]
+grep: /tmp/claude-0/-root/872c5096-2093-558d-8eaa-53dc53b5686a/scratchpad/suites/seed.txt: No such file or directory
+grep: /tmp/claude-0/-root/872c5096-2093-558d-8eaa-53dc53b5686a/scratchpad/suites/seed.txt: No such file or directory
+seed exit=0  
+h3.9 exit=1  qc-hr-h3.9  passed 58/60 (QC_FORCE) "failed":["H3.9-S1.5","H3.9-S1.10"]
+h3.6 exit=1  qc-hr-h3.6  passed 61/62 (QC_FORCE) "failed":["H3.6-S1.6"]
+h3.5 exit=0  qc-hr-h3.5  passed 53/53 (QC_FORCE) "failed":[]
+h3.4 exit=1  qc-hr-h3.4  passed 84/85 (QC_FORCE) "failed":["H3.4-S1.6"]
+h3.2 exit=1  qc-hr-h3.2  passed 63/64 (QC_FORCE) "failed":["H3.2-S1.8"]
+h3.1 exit=0  qc-hr-h3.1  passed 58/58 (QC_FORCE) "failed":[]
+h2.9 exit=0  qc-hr-h2.9  passed 58/58 (QC_FORCE) "failed":[]
+h2.10 exit=0  qc-hr-h2.10  passed 57/57 (QC_FORCE) "failed":[]
+h2.5 exit=0  qc-hr-h2.5  passed 79/79 (QC_FORCE) "failed":[]
+h2.4 exit=0  qc-hr-h2.4  passed 68/68 (QC_FORCE) "failed":[]
+h1.1 exit=0  qc-hr-h1.1  passed 81/81 (QC_FORCE) "failed":[]
+h1.2 exit=0  qc-hr-h1.2  passed 73/73 (QC_FORCE) "failed":[]
+h1.3 exit=0  qc-hr-h1.3  passed 63/63 (QC_FORCE) "failed":[]
+h0.1 exit=0  qc-hr-h0.1  passed 67/67 (QC_FORCE) "failed":[]
+h0.6 exit=0  qc-hr-h0.6  passed 55/55 (QC_FORCE) "failed":[]
+h4.4 exit=0  qc-hr-h4.4  passed 86/86 (QC_FORCE) "failed":[]
+h4.6 exit=0  qc-hr-h4.6  passed 69/69 (QC_FORCE) "failed":[]
+payroll exit=0  QC Payroll ไทย  
+privacy exit=0  QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา  
+audit exit=0  
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+ALLDONE
+## run 2 (after ORACLE-EDITs) — set-1 ×3 · seed · edited suites
+set-1 exit=0  qc-hr-set-1  passed 23/23 "failed":[]
+set-1F exit=0  qc-hr-set-1  passed 23/23 (QC_FORCE) "failed":[]
+set-1F2 exit=0  qc-hr-set-1  passed 23/23 (QC_FORCE) "failed":[]
+seed exit=0  seed-hr-qc  ผ่าน 34/34 
+h3.9 exit=0  qc-hr-h3.9  passed 60/60 (QC_FORCE) "failed":[]
+h3.6 exit=0  qc-hr-h3.6  passed 62/62 (QC_FORCE) "failed":[]
+h3.4 exit=0  qc-hr-h3.4  passed 85/85 (QC_FORCE) "failed":[]
+h3.2 exit=0  qc-hr-h3.2  passed 64/64 (QC_FORCE) "failed":[]
+ALLDONE
+## invariants (run 1 logs)
+  ✅ [H1.1-S5.10] [static] every assertHrCan(...) call in hr/actions.ts + payroll-actions.ts passes a unitId or carries an all-branch marker ("all-branch"/"ทุกสาขา") · both helpers for
+  ✅ [H1.2-S6.4] [static] no code under hr/** · app/**/hr/** · ai/** · outbox-consumers.ts reads lat|lng|accuracyM|photoKey|deviceId|attachmentKey
+  ✅ [H1.3-S6.1] [static] [control] no file under hr/** · app/**/{hr,payroll}/** · ai/** · outbox-consumers.ts reads ytdJson|filingJson|bankFileKey|lawRowIds|sourceRef|HrReviewNote|HrOnboardingTas
+  ✅ [H2.5-S9.5] [static] [control] frozen shas · files unchanged vs base (n/a in base) · nav unchanged
+## qc-hr-set-1 unforced (run 2)
+  ✅ [SET-1-S1.1] [static] helper settings-lock.ts: exports lockHrSettings + writeHrSettingsKeys · advisory hr:clockpolicy:<sys> before the caller's own keys before the AppSystem row FOR UPDATE (id 
+  ✅ [SET-1-S1.2] [static] fitness: every src/lib/modules/hr/** file that writes AppSystem settings (appSystem.update/updateMany/upsert with settings · raw UPDATE "AppSystem") is settings-lock.ts or
+  ✅ [SET-1-S1.3] [static] each writer fn (OT · lifecycle · clock ×2 · judge cursor · work entries · payroll engine · attendance-pay · report settings) calls lockHrSettings + writeHrSettingsK
+  ✅ [SET-1-S1.4] [static] lock order: outside settings-lock.ts no hr/** code takes hr:clockpolicy, hr:otpolicy, hr:lifepolicy or the exclusive hr:attpay:policy itself, and nothing locks the AppSyste
+  ✅ [SET-1-S1.5] [static] hunks: every hunk in the 8 writer files vs base carries "HR-SET-1" · ot.ts + lifecycle.ts have ≥ 1 · payroll.ts removed lines ⊆ the stale lock/read/write lines (n/a o
+  ✅ [SET-1-S1.6] [static] [control] payroll-rules sha · prisma/ and law.ts unchanged vs base · helper has no law-table / payroll-rules access
+  ✅ [SET-1-X1] [run] fitness + fitness-hr without env ⇒ exit 0
+  ✅ [SET-1-S2.1] [db] OT policy (saveOtPolicy): A clock-lock · B row-lock · C hr:otpolicy — blocked, then writer key hrOt + marker both survive (×2 each)
+  ✅ [SET-1-S2.2] [db] lifecycle policy (saveLifecyclePolicy): A · B · C hr:lifepolicy — blocked, hrLifecycle + marker survive (×2 each)
+  ✅ [SET-1-S2.3] [db] clock policy (saveClockPolicy): A · B — blocked, hrClock + marker survive (×2 each)
+  ✅ [SET-1-S2.4] [db] attendance policy (saveAttendancePolicy): A · B — blocked, hrAttendance + marker survive (×2 each)
+  ✅ [SET-1-S2.5] [db] work entries (setNormalMinutesPerDay): A · B — blocked, hrWork + marker survive (×2 each)
+  ✅ [SET-1-S2.6] [db] payroll engine (setPayrollEngine v1): A · B — blocked, hrPayroll + marker survive (×2 each)
+  ✅ [SET-1-S2.7] [db] attendance-pay (saveAttendancePayPolicy): A · B · C hr:attpay:policy — blocked, hrAttendancePay + marker survive (×2 each)
+  ✅ [SET-1-S2.8] [db] [control] report settings (setReportSettings OFF): A · B — blocked, hrReports + marker survive (×2 each)
+  ✅ [SET-1-S2.9] [db] judge cursor (runAttendanceJobs maxPages 1 → saveCursor): A · B — blocked, hrAttendanceCursor + marker survive (×2 each)
+  ✅ [SET-1-S3.1] [db] no deadlock / no lost update: OT + report settings concurrently ×10 — both ok, both keys = round values (base: lost updates by race)
+  ✅ [SET-1-S3.2] [db] no deadlock / no lost update: lifecycle + report settings concurrently ×10 (base: lost updates by race)
+  ✅ [SET-1-S3.3] [db] no deadlock / no lost update: clock policy + attendance-pay concurrently ×10
+  ✅ [SET-1-S4.1] [db] [control] audit rows unchanged in shape (1 row per save · action · targetType AppSystem · targetId · actor · before/after keys) + same return values for all 8 entry points
+  ✅ [SET-1-S4.2] [db] [control] OT save refusals unchanged (noPermission · shopWide · sAfter · sAhead · sRound) · nothing written · no audit · all-branch HR admin ok
+  ✅ [SET-1-S4.3] [db] [control] lifecycle save refusals unchanged (noPermission · shopWide · lead · template · failed · board · ownerSwitch) · nothing written · no audit · owner ok
+  ✅ [SET-1-Z1] no residue (opsEvent included)
+
+# Fix + merge round (session/hr aa380f6b0) · 13 Nov · lane DB via qc-hr.sh · QC_H06_BASE=d350c26cb
+## RED (old H3.7 h37WritePaySetting + helper without m2 guard restored in the working copy, forced)
+❌ [SET-1-S1.2] [static] fitness: every src/lib/modules/hr/** file that writes AppSystem settings (appSystem.update/updateMany/upsert with settings · raw UPDATE "AppSystem") is settings-lock.ts or on the explicit allowlist (empty) — expected only settings-lock.ts writes (allowlist empty) | actual payroll.ts:updateMany
+❌ [SET-1-S1.3] [static] each writer fn (OT · lifecycle · clock ×2 · judge cursor · work entries · payroll engine · attendance-pay · report settings · H3.7 pay account) calls lockHrSettings + writeHrSettingsKeys and has no own appSystem settings read/write · OT/lifecycle/attendance-pay pass their own key (hr:otpolicy · hr:lifepolicy · policyLockKey) to the helper — expected 10 writer fns via helper | a
+❌ [SET-1-S1.4] [static] lock order: outside settings-lock.ts no hr/** code takes hr:clockpolicy, hr:otpolicy, hr:lifepolicy or the exclusive hr:attpay:policy itself, and nothing locks the AppSystem row FOR UPDATE — expected lock acquisitions only in the helper | actual payroll.ts:3429:clockpolicy
+❌ [SET-1-S2.10] [db] H3.7 default pay account (setPayrollPayAccount null → h37WritePaySetting): A · B — blocked, hrPayroll.payFinanceAccountId cleared + other hrPayroll keys + marker survive (×2 each) — expected A·B ×2 blocked · key + marker survive | actual A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false
+❌ [SET-1-S4.4] [db] misuse refused (review m2): writeHrSettingsKeys in a tx that did not call lockHrSettings throws and writes nothing · after lockHrSettings in the same tx it writes (positive control) — expected misuse throws · control writes | actual throws,nothing misuse=no throw {"count":1} control={"count":1}
+===== qc-hr-set-1 ===== passed 20/25 (QC_FORCE)
+S2.10 actual: A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false · S4.4 actual: misuse=no throw {"count":1} · S1.2 payroll.ts:updateMany · S1.4 payroll.ts:3429:clockpolicy
+## GREEN
+seed: ===== seed-hr-qc ===== ผ่าน 34/34 · JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":34,"findings":[],"counts":{"AccountJournalEntry":1,"Acc · exit 0
+set1-f1: ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced": · exit 0
+set1-f2: ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced": · exit 0
+set1-f3: ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced": · exit 0
+set1-u: ===== qc-hr-set-1 ===== passed 25/25 · JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced": · exit 0
+qc-hr-h3.7: ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.7","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.9: ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.6: ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.6","total":62,"passed":62,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.4: ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.4","total":85,"passed":85,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.2: ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.2","total":64,"passed":64,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.1: ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.1","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h2.9: ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h2.9","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h2.5: ===== qc-hr-h2.5 ===== passed 79/79 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h2.5","total":79,"passed":79,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h1.1: ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-payroll: ===== QC Payroll ไทย ===== · JSON_SUMMARY {"total":19,"passed":19,"findings":[]} · exit 0
+qc-payroll-reverse:  · ✅ PASS — 14/14 · exit 0
+qc-hr-payadjust: ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ ===== · JSON_SUMMARY {"total":27,"passed":27,"findings":[]} · exit 0
+qc-audit-trail:  · ✅ PASS — 21/21 · exit 0
+qc-account-cpa: ===== QC6 CPA audit (service layer จริง + Neon) ===== · JSON_SUMMARY {"total":107,"passed":107,"findings":[]} · exit 0
+fitness (env): JSON_SUMMARY {"total":53,"passed":53,"findings":[]} · exit 0
+fitness (noenv): JSON_SUMMARY {"total":53,"passed":53,"findings":[]} · exit 0
+fitness-hr (env): JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} · exit 0
+fitness-hr (noenv): JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} · exit 0
+typecheck (clean, .next/types + tsbuildinfo removed): exit 0 · 608 s

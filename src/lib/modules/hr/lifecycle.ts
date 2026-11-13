@@ -11,6 +11,7 @@
 //   • opts.now ใช้ได้เฉพาะข้อสอบ/cron — action/หน้าไม่ส่ง ◂
 import type { HrOffboardReason, HrOnboardingKind, HrReviewNoteKind, Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET-1 ◂
 import { emitOutbox, emitOutboxMany } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
@@ -268,12 +269,11 @@ export async function saveLifecyclePolicy(ctx: Ctx, viewer: LifeViewer, patch: L
     const fields = Object.keys(next);
     await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
       const tx = t as unknown as Tx;
-      await lock(tx, `hr:lifepolicy:${ctx.systemId}`);
-      const sys = await settingsOf(tx, ctx);
+      const sys = await lockHrSettings(tx, ctx, [`hr:lifepolicy:${ctx.systemId}`]); // HR-SET-1 ▸ hr:clockpolicy → hr:lifepolicy → แถว AppSystem · อ่านใหม่ใต้ล็อก ◂
       if (!sys) throw new LifeRefusal(SETTINGS_TEXT.notFound);
       const base = sys.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? (sys.settings as Record<string, unknown>) : {};
       const merged: LifecyclePolicy = { ...policyOfSettings(base), ...next };
-      const r = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: { ...base, hrLifecycle: merged } as Prisma.InputJsonValue } });
+      const r = await writeHrSettingsKeys(tx, ctx, { hrLifecycle: merged }); // HR-SET-1 ▸ เปลี่ยนเฉพาะคีย์ hrLifecycle ◂
       if (r.count !== 1) throw new LifeRefusal(SETTINGS_TEXT.notFound);
     }, TX_OPTS);
     await writeAudit({ tenantId: ctx.tenantId, actorType: viewer.userId ? "USER" : "SYSTEM", actorId: viewer.userId ?? null, action: "hr.settings.lifecycle.update", targetType: "AppSystem", targetId: ctx.systemId, after: { systemId: ctx.systemId, fields } });
