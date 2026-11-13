@@ -82,3 +82,8 @@ seed-hr-qc 34/34 · h0.1 67/67 · h0.2 58/58 · h0.3 37/37 · **h0.5 67/71** (S6
 
 ## Part D — visual
 See `hr-H2.12-visual.md`. 330 shots in `.qc-shots/hr/<wo>/` · 3 MAJOR → fix list for the controller. Build needed `SHARK_TSC_PREBUILD_OK=1` because main's `api/mobile/inbox/conversations/[id]/reply/route.ts` exports `REPLY_RATE` (Next route-type error; same on origin/main).
+
+## Fix part (VIS-2 + F1/F5) — 13 Nov
+Commit 2227c6828 (+ notes). VIS-2 items 1–4 fixed (see `hr-H2.12-visual.md` "VIS-2 re-shoot"). F1: `hr/leave-presets.ts` (pure table + match + warnings) · `leave-presets-service.ts` `addLeavePreset` · `leave-presets-actions.ts` `addLeavePresetAction` · `leave-presets-ui.tsx` (settings section + warning lines). Permission = leave types today (OWNER or hr.employee.create; shop-wide ⇒ all-branch admin), not "owner only". F5: warnings under each leave type, never block.
+Debts: **D-H212-partial-pay-leave** (child-care 15 d at 50 % — shown disabled) · **D-H212-per-event-quota** (maternity per pregnancy / paternity within 90 d — created as yearly quota with a note) · D-H212-preset-race (two parallel adds with different names of the same kind can both pass; same name is caught by the unique index).
+Suites (lane DB, forced): h2.11 70/70 · h2.6 56/56 · h2.7 94/94 (incl. X12.1 fitness ×4) · h2.10 57/57 · h2.5 79/79 · h2.4 68/68 · h3.2 64/64 · h1.2 73/73 · h1.3 63/63 · qc-hf-hr-privacy 194/194 · fitness 53/53 ×2 · fitness-hr 9/9 ×2 · clean typecheck exit 0.

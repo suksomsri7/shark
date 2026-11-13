@@ -56,3 +56,18 @@ Note on fullPage shots: sticky elements (mobile header, bottom tab bar, desktop 
 2. **2.11 raw enum codes in inbox cards** — map kind/type to the existing Thai labels (เพิ่ม/หักเงิน kinds, leave categories). `.qc-shots/hr/2.11/inbox-owner-1440x900.png`, `inbox-adj-*`, `inbox-ot-*`.
 3. **2.11 hub pending cards approve blind** — show the one-line summary (dates/days, hours, amount) the inbox already computes, or link to the inbox instead of approving inline. `.qc-shots/hr/2.11/hub-overview-owner-1440x900.png`.
 4. **2.6 correction form inside the action cell** — open it as a row-spanning panel / dialog under the row. `.qc-shots/hr/2.6/corr-day-form-owner-1440x900.png`.
+
+## VIS-2 re-shoot (13 Nov · fix commit 2227c6828)
+Build: `next build --webpack` in `scripts/iso.sh` (ISO_MEM 16G · heap 14336 · `SHARK_TSC_PREBUILD_OK=1` — same main route-type issue as above) · lane env `.env.qc-hr` · seed 34/34 · own unit `hr-qc-serve-3226v` :3226, stopped by name · re-seeded after (inbox-batch-result approves a swap). Runs: 2.11 × manager-branch/manager/payroll/owner · 2.6 owner · 2.7 owner · 2.4 manager-branch — all passed (status = expect · no overflow · no console errors). Opened the PNGs below next to mockups 01/05/08.
+
+| page | size | verdict | differences |
+|---|---|---|---|
+| 2.11 inbox (`2.11/inbox-owner-1440x900.png`, `-390x844.png`) | 1440 · 390 | MATCH (bar) | batch bar is now at the top of the list as in 05, opaque (surface under the accent tint — the shop's `--color-accent-soft` is rgba 8 %, which was the cause), sticky under the topbar (top-14 · z-20); at 390 it wraps to label + 2 buttons, no overlap. Cards: `ค่าล่วงเวลา (OT)` / `หักเงิน` / `หักเบิกล่วงหน้า`, ประเภท `ลากิจ`, งวด `พ.ย. 2569` — no raw codes left. Remaining (known MINOR): no per-row avatar/position, quota column cut at 390 (scrolls) |
+| 2.11 inbox-adj / inbox-ot | 1440 · 390 | MATCH | same card component — labels, period month |
+| 2.11 hub-overview owner (`2.11/hub-overview-owner-1440x900.png`) | 1440 | MATCH (VIS-2 item) | each card has a summary line: `ค่าล่วงเวลา (OT) · ฿117.00 · งวด พ.ย. 2569` (money items: **no inline approve**, link "เปิดดูก่อนตัดสิน" → inbox focus), `ลากิจ · 20 พ.ย. 69 · 1.0 วัน`, `18 พ.ย. 69 · 15:00–17:00 · 2 ชม.`. Width ≈45 % and missing timeline/labour blocks = known, later WOs |
+| 2.11 hub-overview manager (`2.11/hub-overview-manager-1440x900.png`) | 1440 | MATCH | no ฿ anywhere (no pay items reach managers); OT/swap summaries + read-only reasons |
+| 2.6 corr-day-form (`2.6/corr-day-form-owner-1440x900.png`, `-390x844.png`) | 1440 · 390 | MATCH | 1440: centred dialog (28 rem) over a dimmed backdrop, full-width fields; 390: bottom sheet, full width, 44 px controls, submit visible. fullPage capture paints the backdrop over the first viewport only (capture artefact). Remaining MINOR: native datetime is Gregorian/English |
+| 2.7 leave-law-presets (`2.7/leave-law-presets-owner-1440x900.png`) | 1440 · 390 | MATCH (no mockup row; 08 style) | 9 presets: values, section ref for V/V2, neutral wording for ลาไม่รับค่าจ้าง, per-event note on maternity/paternity, "มีแล้ว: …" for the seed's 4 types, child-care = disabled "ยังไม่รองรับ (จ่าย 50%)" + note. Settings page still one narrow column (known) |
+| 2.4 clock-settings manager-branch GPS card (`2.4/clock-settings-manager-branch-390x844.png`) | 390 | MATCH (by rule) | the GPS/site card is not rendered for manager-branch: `canManageClockSettings` = OWNER or explicit `hr.employee.create`, and HQC manager-branch has no keys (H2.4 rule "ผู้จัดการที่ไม่มีคีย์ไม่เห็นส่วนนี้"). Not a defect; VIS-1 item closed |
+
+F5 warnings are not visible in the seed (all seed types ≥ law) — covered by qc-hr-h2.7 H212.4 only.
