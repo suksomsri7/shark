@@ -595,7 +595,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // ═══════ POS P1.13U ใบกำกับภาษีเต็มรูป (มติ 1–3) ═══════
   //   ผู้ซื้อ + จำไว้กับสมาชิก อยู่ในหน่วยความจำของจอเท่านั้น — บิลใหม่/พักบิล/เรียกคืน (resetBill) = หาย (บิลที่พักไม่เก็บผู้ซื้อ · ไม่มีข้อผิดพลาด)
-  const [taxInv, setTaxInv] = useState<{ buyer: TaxInvoiceBuyerInput; remember: boolean } | null>(null);
+  const [taxInv, setTaxInv] = useState<{ buyer: TaxInvoiceBuyerInput; remember: boolean; /** ACC T2.11 ▸ รหัสคำเตือนที่ติ๊กรับทราบ (ไม่มีเลขผู้ซื้อ) ◂ */ ack?: string[] } | null>(null);
   /** ร้านนี้ไม่มีกุญแจ DBD (รู้จากครั้งแรกที่ค้น) ⇒ ซ่อนปุ่มค้นจนกว่าจะโหลดหน้าใหม่ */
   const [dbdOff, setDbdOff] = useState(false);
   /**
@@ -2175,8 +2175,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
       if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED" || r.code === "APPROVAL_MISMATCH") setDiscAuth(null); // POS P1.18U ▸ 10a ◂
       if ((r.code === "APPROVAL_REQUIRED" || r.code === "PENDING_APPROVAL") && "requestId" in r) setApprovalHandoff({ requestId: r.requestId, ...(r.heldCartId ? { heldCartId: r.heldCartId } : {}) });
       // P1.13U มติ 2: เลขผู้เสียภาษีถูกปฏิเสธตอนบันทึก ⇒ เปิดกล่องใบกำกับซ้ำพร้อมข้อความ (คีย์บิลเดิม · ไม่มีบิล)
-      if (r.code === "TAX_ID_INVALID" && sale.taxInvoice)
-        setLayers((s) => (s.some((l) => l.kind === "taxInvoice") ? s : [...s, { kind: "taxInvoice", errorKey: taxInvoiceRefusalKey("TAX_ID_INVALID") }]));
+      if ((r.code === "TAX_ID_INVALID" || r.code === "LEGAL_ACK_REQUIRED") /* ACC T2.11 ◂ */ && sale.taxInvoice)
+        setLayers((s) => (s.some((l) => l.kind === "taxInvoice") ? s : [...s, { kind: "taxInvoice", errorKey: taxInvoiceRefusalKey(r.code) }]));
       if (r.code === "PRICE_CHANGED" && "grandTotalSatang" in r) {
         // ยอดสดจากคำตอบ (ไม่ต้อง quote ซ้ำ) — ผู้ใช้ต้องกดยืนยันใหม่กับยอดนี้
         setQuote({
@@ -2242,6 +2242,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (taxInv) {
       sale.taxInvoice = taxInv.buyer;
       if (taxInv.remember && cart.memberId) sale.rememberBuyer = true;
+      if (taxInv.ack && taxInv.ack.length) sale.taxInvoiceAck = taxInv.ack; // ACC T2.11 ◂
     }
     // POS P3.6U ▸ CD-P36U-3/4: บริษัท + ดีลของบิล (ตัวตัดสินจริง = เซิร์ฟเวอร์ · CUSTOMER_INVALID / DEAL_INVALID ไม่มีบิล) ◂
     if (creditUi && company) sale.customerPartyId = company.partyId;
@@ -3129,9 +3130,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
             onDbdOff={() => setDbdOff(true)}
             externalErrorKey={l.errorKey ?? null}
             onCancel={() => setLayers((s) => s.filter((x) => x.kind !== "taxInvoice"))}
-            onSave={(buyer, remember) => {
-              setTaxInv({ buyer, remember });
-              if (payError?.code === "TAX_ID_INVALID" || payError?.code === "VALIDATION") setPayError(null);
+            onSave={(buyer, remember, ack) => {
+              setTaxInv({ buyer, remember, ack });
+              if (payError?.code === "TAX_ID_INVALID" || payError?.code === "VALIDATION" || payError?.code === "LEGAL_ACK_REQUIRED") setPayError(null);
               setLayers((s) => s.filter((x) => x.kind !== "taxInvoice"));
             }}
           />

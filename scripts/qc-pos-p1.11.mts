@@ -1054,7 +1054,8 @@ async function runDb() {
       ["taxId 12", { ...TAXREQ, taxId: "010555612345" }],
       ["taxId 14", { ...TAXREQ, taxId: "01055561234570" }],
       ["taxId ตัวอักษร", { ...TAXREQ, taxId: "01055561234ab" }],
-      ["taxId ว่าง", { ...TAXREQ, taxId: "" }],
+      // ORACLE-EDIT (ACC T2.11 เลน 2 · เจ้าของสั่ง 13 พ.ย.): taxId ว่าง = ลูกค้าไม่ให้เลข (ผู้บริโภค · ฉ.39 ข้อ 7) ⇒ รับคำขอ (taxId null) + คำเตือนแจ้งให้ทราบ — ไม่ใช่ VALIDATION แล้ว
+      //   (ทางรับคำขอไม่มีเลขตรวจใน qc-acc-v2-buyer-taxid B6.1) · ผิดรูปแบบ 12/14/ตัวอักษรยังเป็น VALIDATION
       ["branchCode 3", { ...TAXREQ, branchCode: "123" }],
       ["branchCode ตัวอักษร", { ...TAXREQ, branchCode: "0000a" }],
       ["name ว่าง", { ...TAXREQ, name: "   " }],

@@ -579,7 +579,15 @@ const taxInvoiceInput = z
       .object({
         kind: z.enum(["PERSON", "JURISTIC"]).describe("PERSON or JURISTIC (company)."),
         name: z.string().trim().min(1).max(200).describe("Buyer name as on the tax invoice."),
-        taxId: z.string().trim().min(13).max(13).describe("13 digit tax id."),
+        // ACC T2.11 ▸ ว่างได้ (ผู้ซื้อทั่วไป) — ประกาศ VAT ฉ.39 ข้อ 7 บังคับเฉพาะผู้ซื้อที่จด VAT · ไม่ส่ง = 409 legal_ack_required (BUYER_TAX_ID_MISSING) จนกว่าจะส่ง acknowledge ◂
+        taxId: z
+          .string()
+          .trim()
+          .max(13)
+          .regex(/^(\d{13})?$/, { message: "taxId must be 13 digits or empty" })
+          .optional()
+          .nullable()
+          .describe("13 digit tax id. Required when the buyer is a VAT-registered business; a private buyer may leave it out (then the call answers 409 legal_ack_required with BUYER_TAX_ID_MISSING until resent with acknowledge)."),
         branchCode: z.string().trim().max(5).optional().describe("Head office 00000 or the 5 digit branch number (companies)."),
         address: z.string().trim().min(1).max(500).describe("Buyer address."),
         email: z.string().trim().max(200).optional().describe("E-mail to send the invoice to."),
@@ -587,6 +595,11 @@ const taxInvoiceInput = z
       .strict()
       .describe("Buyer of the full tax invoice."),
     unitId: unitIdOpt,
+    acknowledge: z
+      .array(z.string().min(1).max(64))
+      .max(10)
+      .optional()
+      .describe("Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (BUYER_TAX_ID_MISSING when the buyer has no tax id)."), // ACC T2.11 ◂
   })
   .strict();
 
@@ -596,7 +609,7 @@ const salesTaxInvoice = definePosOp({
   path: "/sales/{id}/tax-invoice",
   kind: "write",
   action: POS_SCOPES.taxInvoiceIssue,
-  summary: "Issue a full tax invoice for a paid bill (the shop must be VAT registered with the accounting module linked). One invoice per bill: a repeat call (any Idempotency-Key) answers the bill's existing invoice; the request key is kept on the audit row only.", // POS P2.14 ▸ fix1 F8 ◂
+  summary: "Issue a full tax invoice for a paid bill (the shop must be VAT registered with the accounting module linked). One invoice per bill: a repeat call (any Idempotency-Key) answers the bill's existing invoice; the request key is kept on the audit row only. A buyer without a tax id answers 409 legal_ack_required (BUYER_TAX_ID_MISSING) until resent with acknowledge.", // POS P2.14 ▸ fix1 F8 ◂ · ACC T2.11 ◂
   label: "ออกใบกำกับภาษีเต็มรูป",
   test: "sales.taxInvoice",
   input: taxInvoiceInput,

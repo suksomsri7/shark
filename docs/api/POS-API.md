@@ -107,6 +107,7 @@ Under the code above, the POS tells why in `message_th` / `message_en`. This is 
 | `ACCOUNT_PENDING` | 409 (state or duplicate conflict) | `state_conflict` | The accounting link of this shop is not ready yet, so this cannot be done now. |
 | `ALREADY_CLOCKED` | 409 (state or duplicate conflict) | `state_conflict` | This clock in/out was already recorded today. |
 | `ALREADY_ISSUED` | 409 (state or duplicate conflict) | `state_conflict` | A full tax invoice was already issued for this bill. |
+| `LEGAL_ACK_REQUIRED` | 409 (state or duplicate conflict) | `legal_ack_required` | This action has legal warnings that must be acknowledged first. Show them to the user, then resend with `acknowledge` listing the warning codes. |
 | `ALREADY_RECALLED` | 409 (state or duplicate conflict) | `state_conflict` | This held bill was already recalled by another device. |
 | `ALREADY_RECOUNTED` | 409 (state or duplicate conflict) | `state_conflict` | This shift was already recounted. |
 | `ALREADY_SET` | 409 (state or duplicate conflict) | `state_conflict` | This value is already set. |
@@ -726,7 +727,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/pos/sync/sales" \
 
 #### `sales.taxInvoice`
 
-**POST /sales/{id}/tax-invoice** - Issue a full tax invoice for a paid bill (the shop must be VAT registered with the accounting module linked). One invoice per bill: a repeat call (any Idempotency-Key) answers the bill's existing invoice; the request key is kept on the audit row only. · scope: `pos.taxinvoice.issue` · write
+**POST /sales/{id}/tax-invoice** - Issue a full tax invoice for a paid bill (the shop must be VAT registered with the accounting module linked). One invoice per bill: a repeat call (any Idempotency-Key) answers the bill's existing invoice; the request key is kept on the audit row only. A buyer without a tax id answers 409 legal_ack_required (BUYER_TAX_ID_MISSING) until resent with acknowledge. · scope: `pos.taxinvoice.issue` · write
 
 Path parameters: `id` (required).
 
@@ -734,6 +735,7 @@ Path parameters: `id` (required).
 | --- | --- | --- | --- |
 | `buyer` | object | yes | Buyer of the full tax invoice. |
 | `unitId` | string | no | Branch of the record. Optional: the record's own branch is used; a different branch answers 404. · min length 1 · max length 64 |
+| `acknowledge` | array of string | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (BUYER_TAX_ID_MISSING when the buyer has no tax id). · max 10 items |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/pos/sales/123/tax-invoice" \

@@ -14,7 +14,8 @@ import { resolveSettings } from "@/lib/core/settings";
 import { releaseOccupancy } from "@/lib/modules/rooms";
 import { createSale, saleStatusByKey, PosSaleError, type CreateSaleInput } from "@/lib/modules/pos/service";
 import { DEPOSIT_PAY_TYPES, moduleDepositForBill, moduleForfeitDeposit, moduleRefundDeposit, moduleTakeDeposit } from "@/lib/modules/pos/deposit";
-import { parseTaxInvoiceBuyer } from "@/lib/modules/pos/tax-invoice-shared";
+import { buyerTaxIdUnacked, parseTaxInvoiceBuyer } from "@/lib/modules/pos/tax-invoice-shared"; // ACC T2.11 ▸ buyerTaxIdUnacked ◂
+import { LEGAL_ACK_REASON_TH, legalWarningsText, type LegalAckRequired } from "@/lib/core/settings/legal/warnings"; // ACC T2.11 ◂
 import { systemForUnit } from "@/lib/modules/system/service";
 import { posAccountSystemId, vatConfigOf, reverseRoomChargePosting, restoreRoomChargePosting } from "@/lib/modules/account";
 import { roundFraction, taxLines } from "./pricing";
@@ -72,8 +73,10 @@ export type CheckoutFailCode =
   | "FOLIO_CLOSED"
   | "NO_SECURITY"
   | "DISABLED"
-  | "BUSY";
-export type CheckoutFail = { ok: false; code: CheckoutFailCode; reason: string };
+  | "BUSY"
+  // ACC T2.11: ผู้ซื้อใบกำกับไม่มีเลข — ติ๊กรับทราบคำเตือน BUYER_TAX_ID_MISSING แล้วส่ง acknowledge ซ้ำ (ยังไม่แตะเงิน/folio)
+  | "LEGAL_ACK_REQUIRED";
+export type CheckoutFail = { ok: false; code: CheckoutFailCode; reason: string; /** ACC T2.11 ◂ */ legal?: LegalAckRequired };
 const cfail = (code: CheckoutFailCode, reason: string): CheckoutFail => ({ ok: false, code, reason });
 const asCheckout = (f: FolioFail): CheckoutFail => ({ ok: false, code: f.code === "NOT_ALLOWED" ? "INVALID_INPUT" : f.code, reason: f.reason });
 
@@ -310,6 +313,7 @@ const SettleInput = z.object({
   payMethods: z.array(PayRow).max(MAX_PAY_ROWS, { message: `แยกจ่ายได้ไม่เกิน ${MAX_PAY_ROWS} แถว` }),
   shiftId: z.string().min(1).max(200).nullable().optional(),
   taxInvoice: z.unknown().optional().nullable(),
+  acknowledge: z.array(z.string().min(1).max(64)).max(10).optional(), // ACC T2.11 ▸ รหัสคำเตือนที่รับทราบ ◂
   securityDeposit: z.enum(["REFUND", "FORFEIT"], { message: "เงินประกันต้องเลือก คืน หรือ ริบ" }).optional(),
   forfeitReason: z.string().trim().max(300).optional().nullable(),
   note: z.string().trim().max(300).optional().nullable(),
@@ -348,6 +352,9 @@ export async function settleAndCheckOut(actorIn: unknown, ctx: unknown, input: u
     const b = parseTaxInvoiceBuyer(ti);
     if (!b.ok) return cfail("INVALID_INPUT", b.message);
     taxInvoice = { ...b.buyer, requestedAt: new Date().toISOString() };
+    // ACC T2.11 ▸ ไม่มีเลขผู้ซื้อ = คำเตือนต้องรับทราบ (ไม่บล็อก) — ตรวจก่อนแตะ folio/เงิน · ตัวตรวจผู้ซื้อของหอพักไม่เกี่ยว (คงโหมดเข้มตามมติเจ้าของ) ◂
+    const unacked = buyerTaxIdUnacked(b.buyer, d.acknowledge ?? []);
+    if (unacked.length) return { ...cfail("LEGAL_ACK_REQUIRED", `${LEGAL_ACK_REASON_TH}: ${legalWarningsText(unacked)}`), legal: { code: "LEGAL_ACK_REQUIRED", warnings: unacked } };
   }
   const posSystemId = await systemForUnit(c.tenantId, c.unitId, "POS");
   if (!posSystemId && !legacy) return cfail("POS_UNLINKED", "โรงแรมนี้ยังไม่ผูกระบบขายหน้าร้าน (POS) — ผูกระบบก่อนจึงเช็กเอาต์รับเงินได้");
@@ -410,6 +417,7 @@ export async function settleAndCheckOut(actorIn: unknown, ctx: unknown, input: u
         ...(legacy && d.shiftId === undefined ? {} : { shiftId: d.shiftId ?? null }),
         ...(memberId ? { memberId, memberAttachOnly: true } : {}),
         ...(taxInvoice ? { taxInvoice } : {}),
+        ...(taxInvoice && !taxInvoice.taxId ? { taxInvoiceLegalAck: { codes: d.acknowledge ?? [], actorId: g.actor.userId.startsWith("module:") ? null : g.actor.userId, actorType: "USER" as const, via: "screen" } } : {}), // ACC T2.11 ◂
         ...(g.actor.userId.startsWith("module:") ? {} : { soldByUserId: g.actor.userId }),
         ...(d.note ? { note: d.note } : {}),
       };

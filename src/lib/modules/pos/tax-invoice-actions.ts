@@ -67,7 +67,7 @@ function fromSession(auth: Session, args: unknown): { ctx: TaxInvoiceCtx; actor:
 }
 
 /** ออกใบกำกับภาษีเต็มรูปให้บิลที่ชำระแล้ว (ลิ้นชักบิล / หลังชำระ) */
-export async function issueFullTaxInvoiceAction(args: { systemId: string; unitId: string; saleId: string; buyer: unknown; requestId?: string; rememberBuyer?: boolean }): Promise<TaxInvoiceIssueResult> {
+export async function issueFullTaxInvoiceAction(args: { systemId: string; unitId: string; saleId: string; buyer: unknown; requestId?: string; rememberBuyer?: boolean; /** ACC T2.11 ▸ รหัสคำเตือนที่ติ๊กรับทราบ ◂ */ acknowledge?: string[] }): Promise<TaxInvoiceIssueResult> {
   try {
     const auth = await requireTenant();
     const s = fromSession(auth, args);
@@ -77,6 +77,7 @@ export async function issueFullTaxInvoiceAction(args: { systemId: string; unitId
       buyer: args?.buyer,
       ...(args?.requestId !== undefined ? { requestId: args.requestId } : {}),
       ...(args?.rememberBuyer !== undefined ? { rememberBuyer: args.rememberBuyer } : {}),
+      ...(args?.acknowledge !== undefined ? { acknowledge: args.acknowledge } : {}), // ACC T2.11 ◂
     });
   } catch (e) {
     unstable_rethrow(e);
@@ -85,7 +86,7 @@ export async function issueFullTaxInvoiceAction(args: { systemId: string; unitId
 }
 
 /** ออกเต็มรูปจากคำขอของลูกค้า (ใบเสร็จออนไลน์ P1.11) */
-export async function issueFromTaxInvoiceRequestAction(args: { systemId: string; unitId: string; requestId: string; rememberBuyer?: boolean }): Promise<TaxInvoiceIssueResult> {
+export async function issueFromTaxInvoiceRequestAction(args: { systemId: string; unitId: string; requestId: string; rememberBuyer?: boolean; /** ACC T2.11 ◂ */ acknowledge?: string[] }): Promise<TaxInvoiceIssueResult> {
   try {
     const auth = await requireTenant();
     const s = fromSession(auth, args);
@@ -93,6 +94,7 @@ export async function issueFromTaxInvoiceRequestAction(args: { systemId: string;
     return await issueFromTaxInvoiceRequest(s.ctx, s.actor, {
       requestId: typeof args?.requestId === "string" ? args.requestId : "",
       ...(args?.rememberBuyer !== undefined ? { rememberBuyer: args.rememberBuyer } : {}),
+      ...(args?.acknowledge !== undefined ? { acknowledge: args.acknowledge } : {}), // ACC T2.11 ◂
     });
   } catch (e) {
     unstable_rethrow(e);

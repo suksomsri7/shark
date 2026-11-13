@@ -17,7 +17,9 @@ import { parseShiftSettings } from "./shift";
 import { posDayCutoffMinutes } from "./settings-shared"; // POS P1.18 ▸ มติ Q9 ตัดวัน ◂
 // POS P1.11 ▸ R1: โทเคนใบเสร็จออนไลน์ตั้งใน tx เดียวกับบิล (ทุก sourceModule) ◂
 import { newReceiptToken } from "./receipt-token";
-import type { TaxInvoiceSnapshot } from "./tax-invoice-shared"; // POS P1.13 ▸ R1 ◂
+import { buyerTaxIdWarnings, type TaxInvoiceSnapshot } from "./tax-invoice-shared"; // POS P1.13 ▸ R1 ◂ · ACC T2.11 ◂
+import { recordLegalAckInTx } from "@/lib/core/legal-ack"; // ACC T2.11 ◂
+import type { LegalAck } from "@/lib/core/settings/legal/warnings"; // ACC T2.11 ◂
 // POS P2.1 ▸ ช่องทางขาย: ตัวแก้ช่องทางของบิล (ผู้เขียนตาราง = channel.ts) + คณิตค่าคอมฯ (บริสุทธิ์) ◂
 import { resolveSaleChannel } from "./channel";
 import { CHANNEL_REF_MAX, channelCommission, defaultChannelCode } from "./channel-shared";
@@ -150,6 +152,11 @@ export type CreateSaleInput = {
    * ไม่อยู่ใน payload ของคีย์ซ้ำ (samePayload) ⇒ ความหมาย idempotency เดิมทุกไบต์
    */
   taxInvoice?: TaxInvoiceSnapshot;
+  /**
+   * ACC T2.11 (เพิ่มล้วน): ผู้ซื้อไม่มีเลข (taxInvoice.taxId null) ⇒ ผู้เรียกผ่านด่านรับทราบคำเตือน BUYER_TAX_ID_MISSING มาแล้ว —
+   * createSale เขียนรอยรับทราบ (AuditLog legal.warning.ack) ใน tx ของบิล · ไม่ส่ง = ไม่เขียน · ไม่อยู่ใน samePayload
+   */
+  taxInvoiceLegalAck?: LegalAck;
   /**
    * POS P1.12 (R9 · เพิ่มล้วน): สำเนาสมาชิก ณ ตอนขาย {name, memberCode, phoneMasked, tierKey, tierName} (หน้าขายส่งจาก briefFor · ไม่มีเบอร์เต็ม) ·
    * เขียนลง PosSale.memberSnapshot ใน tx ของบิล · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ) · ไม่อยู่ใน samePayload · ห้ามแก้หลัง commit (ยกเว้น PDPA)
@@ -1071,6 +1078,10 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         ...p36.columns, // POS P3.6 ▸ R5: customerPartyId · crmDealId · creditTerms (+ paidAt เดียวกับที่คิดวันครบกำหนด) — เขียนครั้งเดียว ◂
       },
     });
+    // ACC T2.11 ▸ รอยรับทราบ "ไม่มีเลขผู้ซื้อ" (ธุรกรรมเดียวกับบิล) ◂
+    if (input.taxInvoice && !input.taxInvoice.taxId && input.taxInvoiceLegalAck) {
+      await recordLegalAckInTx(tx, { tenantId: input.tenantId, ack: input.taxInvoiceLegalAck, op: "pos.sale.taxInvoice", targetType: "PosSale", targetId: sale.id, warnings: buyerTaxIdWarnings(input.taxInvoice, "issue") });
+    }
     // POS P3.6 ▸ มติ 2: อนุญาตเกินวงเงิน → audit pos.credit.override ใน tx ของบิล (id + สตางค์เท่านั้น · R14) ◂
     if (p36.override) {
       await tx.auditLog.create({

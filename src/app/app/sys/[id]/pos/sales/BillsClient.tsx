@@ -94,7 +94,7 @@ const TAX_REJECT_MAX = 200;
 const sameRequestBuyer = (a: TaxInvoiceBuyerInput, b: TaxInvoiceBuyerInput) =>
   a.kind === b.kind &&
   a.name.trim() === b.name.trim() &&
-  a.taxId === b.taxId &&
+  (a.taxId || null) === (b.taxId || null) && // ACC T2.11: ไม่มีเลข = null ◂
   (a.branchCode || "00000") === (b.branchCode || "00000") &&
   a.address.trim() === b.address.trim() &&
   (a.email?.trim() || null) === (b.email?.trim() || null);
@@ -692,15 +692,15 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
       initial: { kind: buyerKindFromTaxId(rq.taxId), name: rq.name, taxId: rq.taxId, branchCode: rq.branchCode, address: rq.address, email: rq.email, source: "MANUAL" },
     });
   };
-  const issueTaxInvoice = async (buyer: TaxInvoiceBuyerInput, remember: boolean): Promise<TaxInvoiceSubmitResult> => {
+  const issueTaxInvoice = async (buyer: TaxInvoiceBuyerInput, remember: boolean, ackCodes: string[]): Promise<TaxInvoiceSubmitResult> => {
     if (!bill || !taxDlg) return;
-    const rememberArg = remember && bill.member ? { rememberBuyer: true } : {};
+    const rememberArg = { ...(remember && bill.member ? { rememberBuyer: true } : {}), ...(ackCodes.length ? { acknowledge: ackCodes } : {}) }; // ACC T2.11 ▸ รหัสที่ติ๊กรับทราบ ◂
     try {
       const r =
         taxDlg.mode === "request" && sameRequestBuyer(buyer, taxDlg.initial)
           ? await issueFromTaxInvoiceRequestAction({ systemId, unitId, requestId: taxDlg.requestId, ...rememberArg })
           : // fix F3 (มติ): ส่ง requestId เฉพาะเมื่อเลขผู้เสียภาษีตรงคำขอ · เลขต่าง = ออกตามที่กรอก แล้วบริการปฏิเสธคำขอเอง (S fix F5 + audit)
-            await issueFullTaxInvoiceAction({ systemId, unitId, saleId: bill.id, buyer, ...(taxDlg.mode === "request" && buyer.taxId === taxDlg.initial.taxId ? { requestId: taxDlg.requestId } : {}), ...rememberArg });
+            await issueFullTaxInvoiceAction({ systemId, unitId, saleId: bill.id, buyer, ...(taxDlg.mode === "request" && (!taxDlg.initial.taxId || (buyer.taxId || null) === (taxDlg.initial.taxId || null)) /* ACC T2.11: คำขอไม่มีเลข = พนักงานเติม/แก้ได้ คำขอนั้นยังเป็นของผู้ซื้อคนนี้ ◂ */ ? { requestId: taxDlg.requestId } : {}), ...rememberArg });
       if (r.ok) {
         setTaxDlg(null);
         setToast(t("taxInvoice.toastIssued", { docNo: r.docNo ?? "\u2014" }));
@@ -1946,7 +1946,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
           unitId={unitId}
           chip={`${bill.receiptNo ?? "\u2014"} \u00b7 ${money(bill.totals.grandTotal)}`}
           initial={taxDlg.mode === "request" ? taxDlg.initial : null}
-          requestTaxId={taxDlg.mode === "request" ? taxDlg.initial.taxId : null}
+          requestTaxId={taxDlg.mode === "request" ? (taxDlg.initial.taxId ?? null) : null}
           memberId={bill.member?.customerId ?? null}
           memberName={bill.member?.name ?? null}
           dbdOff={dbdOff}

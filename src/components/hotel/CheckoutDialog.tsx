@@ -5,6 +5,8 @@
 //   • มือถือ: เต็มจอ (inset-0 · h-full) · เดสก์ท็อป: กล่องกลาง max-w-2xl
 import { useEffect, useState } from "react";
 import SplitPayEditor from "./SplitPayEditor";
+import { LegalWarnings } from "@/components/account-v2/LegalWarnings"; // ACC T2.11 ▸ คำเตือนกลาง (ติ๊กรับทราบ) ◂
+import { buyerTaxIdWarnings } from "@/lib/modules/pos/tax-invoice-shared"; // ACC T2.11 ◂
 import { CHECKOUT_DONE_TH, FORFEIT_LABEL_TH, FORFEIT_REASON_TH, PAY_OPTIONS, PAY_TH, bahtTh, emptyRow, payMethodsOf, type FolioAction, type FolioActionResult, type PayRowDraft, type PrepareOk } from "./folio-shared";
 
 type Props = { reservationId: string; canManage: boolean; onPrepare: FolioAction; onSettle: FolioAction; onDone: (r: FolioActionResult) => void; onClose: () => void };
@@ -27,6 +29,10 @@ export default function CheckoutDialog({ reservationId, canManage, onPrepare, on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(null as FolioActionResult | null);
+  // ACC T2.11 ▸ เลขผู้ซื้อว่างได้ — คำเตือน BUYER_TAX_ID_MISSING + ติ๊กรับทราบก่อนเช็กเอาต์ ◂
+  const [ackCodes, setAckCodes] = useState([] as string[]);
+  const noTaxId = wantInvoice && buyer.taxId.replace(/[\s-]/g, "") === "";
+  const ackMissing = noTaxId && !ackCodes.includes("BUYER_TAX_ID_MISSING");
 
   useEffect(() => {
     let live = true;
@@ -58,6 +64,10 @@ export default function CheckoutDialog({ reservationId, canManage, onPrepare, on
   const pm = payMethods();
   async function submit() {
     if (busy || !prep || !pm.ok) return;
+    if (ackMissing) {
+      setError("ผู้ซื้อไม่มีเลขประจำตัวผู้เสียภาษี — ติ๊กรับทราบคำเตือนก่อนเช็กเอาต์"); // ACC T2.11 ◂
+      return;
+    }
     if (security === "FORFEIT" && forfeitReason.trim().length < 3) {
       setError(FORFEIT_REASON_TH);
       return;
@@ -71,7 +81,8 @@ export default function CheckoutDialog({ reservationId, canManage, onPrepare, on
         shiftId: shiftId || null,
         securityDeposit: security,
         ...(security === "FORFEIT" ? { forfeitReason: forfeitReason.trim() } : {}),
-        ...(wantInvoice ? { taxInvoice: { kind: buyer.kind, name: buyer.name, taxId: buyer.taxId, branchCode: buyer.branchCode, address: buyer.address, ...(buyer.email ? { email: buyer.email } : {}) } } : {}),
+        ...(wantInvoice ? { taxInvoice: { kind: buyer.kind, name: buyer.name, ...(noTaxId ? {} : { taxId: buyer.taxId }), branchCode: buyer.branchCode, address: buyer.address, ...(buyer.email ? { email: buyer.email } : {}) } } : {}),
+        ...(noTaxId ? { acknowledge: ackCodes } : {}), // ACC T2.11 ◂
       });
       if (!r.ok) setError(r.reason || "เช็กเอาต์ไม่สำเร็จ");
       else setDone(r);
@@ -202,7 +213,7 @@ export default function CheckoutDialog({ reservationId, canManage, onPrepare, on
             ) : null}
             {prep.invoiceFromPos ? (
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={wantInvoice} onChange={(e) => setWantInvoice(e.target.checked)} className="h-5 w-5" />
+                <input type="checkbox" checked={wantInvoice} onChange={(e) => { setWantInvoice(e.target.checked); setAckCodes([]); }} className="h-5 w-5" />
                 <span>ขอใบกำกับภาษีเต็มรูป</span>
               </label>
             ) : null}
@@ -216,8 +227,8 @@ export default function CheckoutDialog({ reservationId, canManage, onPrepare, on
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm">
-                  <span>เลขประจำตัวผู้เสียภาษี 13 หลัก</span>
-                  <input value={buyer.taxId} onChange={(e) => setBuyer({ ...buyer, taxId: e.target.value })} inputMode="numeric" maxLength={17} className={INPUT} />
+                  <span>เลขประจำตัวผู้เสียภาษี 13 หลัก (ผู้ซื้อทั่วไปเว้นว่างได้)</span>
+                  <input value={buyer.taxId} onChange={(e) => { setBuyer({ ...buyer, taxId: e.target.value }); setAckCodes([]); }} inputMode="numeric" maxLength={17} className={INPUT} />
                 </label>
                 <label className="flex flex-col gap-1 text-sm sm:col-span-2">
                   <span>ชื่อผู้ซื้อ</span>
@@ -235,6 +246,11 @@ export default function CheckoutDialog({ reservationId, canManage, onPrepare, on
                   <span>อีเมลส่งใบกำกับ (ถ้ามี)</span>
                   <input value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} inputMode="email" maxLength={120} className={INPUT} />
                 </label>
+                {noTaxId ? (
+                  <div className="sm:col-span-2">
+                    <LegalWarnings testId="hotel-checkout-buyer-taxid" compact warnings={buyerTaxIdWarnings({ taxId: null }, "issue")} onAckChange={(c) => { setAckCodes(c); setError(""); }} />
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {held ? (

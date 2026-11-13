@@ -52,7 +52,7 @@ const CHECKS: readonly Def[] = [
   D("ST4", "S", "[hard rule] ทุกไฟล์ \"use server\" ใน modules/pos export async function ล้วน · tax-invoice-actions.ts มี issueFullTaxInvoiceAction issueFromTaxInvoiceRequestAction rejectTaxInvoiceRequestAction lookupBuyerByTaxIdAction buyerProfileForMemberAction (แต่ละตัวเรียกฟังก์ชันบริการของตัวเอง + catch) + requireTenant"),
   // ── B ตัวแกะผู้ซื้อ (บริสุทธิ์) ──
   D("B1", "P", "[R1] parseTaxInvoiceBuyer รับ JURISTIC/PERSON ที่ถูก → {ok:true, buyer} ตัดช่องว่างทุกช่อง · branchCode ปริยาย \"00000\" · email ปริยาย null · source ปริยาย \"MANUAL\" · source DBD/PROFILE เก็บตามที่ส่ง · ไม่มีคีย์อื่นเกิน (kind name taxId branchCode address email source)"),
-  D("B2", "P", "[R1] เลขผู้เสียภาษี mod-11 (กรมสรรพากร): เลขถูก 4 แบบผ่าน · หลักตรวจผิด / 1111111111111 / 12 หลัก / 14 หลัก / มีตัวอักษร / ว่าง → {ok:false, code TAX_ID_INVALID} · [ตัวควบคุม] ตัวตรวจของข้อสอบเองจับเลขผิดได้"),
+  D("B2", "P", "[R1] เลขผู้เสียภาษี mod-11 (กรมสรรพากร): เลขถูก 4 แบบผ่าน · หลักตรวจผิด / 1111111111111 / 12 หลัก / 14 หลัก / มีตัวอักษร → {ok:false, code TAX_ID_INVALID} · ว่าง = ไม่มีเลข (ORACLE-EDIT ACC T2.11) · [ตัวควบคุม] ตัวตรวจของข้อสอบเองจับเลขผิดได้"),
   D("B3", "P", "[R1] สาขา + ชนิด: branchCode \"00001\" เก็บตรง · \"123\" / \"0000a\" / \"000000\" → VALIDATION · kind \"COMPANY\" / \"juristic\" / ไม่ส่ง → VALIDATION · source \"X\" → VALIDATION"),
   D("B4", "P", "[R1 R9] ขอบความยาว/รูปร่าง: name 120 ผ่าน 121 VALIDATION · address 300/301 · email 120 ผ่าน 121 / ผิดรูป → VALIDATION · name ช่องว่างล้วน · ไม่มี address · คีย์แปลก (saleId) · null/สตริง/อาร์เรย์ → VALIDATION ไม่ throw · taxInvoiceRefusalKey(\"TOO_LATE\") = \"taxInvoice.errors.tooLate\" · รหัสแปลก → \"taxInvoice.errors.unknown\""),
   // ── S ตอนชำระ ──
@@ -463,13 +463,18 @@ async function runPure(shared: Any): Promise<void> {
       ["12 หลัก", pureArgs.juristic.slice(0, 12)],
       ["14 หลัก", `${pureArgs.juristic}0`],
       ["มีตัวอักษร", `${pureArgs.juristic.slice(0, 11)}ab`],
-      ["ว่าง", ""],
+      // ORACLE-EDIT (ACC T2.11 เลน 2 · เจ้าของสั่ง 13 พ.ย.): เลขผู้ซื้อ "ว่าง" = ไม่มีเลข (taxId null) ผ่านตัวแกะ + คำเตือน BUYER_TAX_ID_MISSING ตอนออก
+      //   (ประกาศ VAT ฉ.39 ข้อ 7 บังคับเฉพาะผู้ซื้อที่จด VAT) — ตัดแถว "ว่าง" ออกจากชุดที่ต้อง TAX_ID_INVALID · ผิดรูปแบบอื่นยังปฏิเสธเหมือนเดิม
     ];
+    {
+      const r = parse({ ...base, taxId: "" });
+      if (r?.ok !== true || r.buyer?.taxId !== null) p.push(`ว่าง → ${codeOf(r)} (T2.11: ต้องผ่าน taxId null)`);
+    }
     for (const [lbl, t] of bads) {
       const r = parse({ ...base, taxId: t });
       if (!refused(r, "TAX_ID_INVALID")) p.push(`${lbl} → ${codeOf(r)}`);
     }
-    chk("B2", NS === "" && p.length === 0, "เลขถูก 4 ผ่าน · ผิด 7 แบบ TAX_ID_INVALID", NS + (p.join(" · ") || "ครบ"));
+    chk("B2", NS === "" && p.length === 0, "เลขถูก 4 ผ่าน · ผิด 6 แบบ TAX_ID_INVALID · ว่าง = ไม่มีเลข (T2.11)", NS + (p.join(" · ") || "ครบ"));
   }
   // B3
   {

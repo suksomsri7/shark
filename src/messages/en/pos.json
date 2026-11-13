@@ -462,6 +462,7 @@
       "alreadySet": "A PIN is already set — change it in Settings → Staff",
       "taxIdInvalid": "The buyer's tax ID isn't valid — check the 13 digits",
       "taxInvoiceNotEligible": "This shop can't issue tax invoices yet · check the accounting link / tax ID",
+      "legalAckRequired": "The buyer has no tax ID — open the full tax invoice and tick to acknowledge the warning before payment",
       "memberSystemMissing": "This branch has no member system yet — sell without a member",
       "memberSuspended": "This member is suspended — member benefits cannot be used on this bill",
       "phoneInvalid": "Invalid phone number — enter 9–10 digits, e.g. 0812345678",
@@ -730,7 +731,7 @@
       "kindPerson": "Individual",
       "kindJuristic": "Company",
       "taxId": "Tax ID",
-      "taxIdHint": "13 digits",
+      "taxIdHint": "13 digits · private buyers may leave blank",
       "taxIdOk": "Valid number",
       "taxIdBad": "Invalid number",
       "dbdSearch": "Look up in DBD",
@@ -764,7 +765,8 @@
       "set": "buyer set",
       "doneLabel": "Full tax invoice",
       "donePending": "Being issued in accounting",
-      "clearedOnRecall": "Full tax invoice details were cleared — enter them again before payment"
+      "clearedOnRecall": "Full tax invoice details were cleared — enter them again before payment",
+      "etaxNoTaxId": "No buyer tax ID — this invoice cannot go by e-Tax; use the printed/PDF invoice as usual"
     },
     "emptyCatalogue": {
       "cashierBody": "Ask a manager or the shop owner to add products on the Products page, then come back here to sell"
@@ -2019,14 +2021,15 @@
       "title": "Request a full tax invoice",
       "hint": "Available within {days, plural, one {# day} other {# days}} of payment · the shop issues the invoice from these details",
       "name": "Buyer / company name",
-      "taxId": "Tax ID (13 digits)",
+      "taxId": "Tax ID (13 digits · private buyers may leave blank)",
       "branchCode": "Branch code (head office = 00000)",
       "address": "Registered address",
       "email": "Email for the invoice (optional)",
       "submit": "Send request",
       "done": "Request sent — the shop will issue your full tax invoice",
       "taxIdInvalid": "The tax ID must be 13 digits",
-      "branchInvalid": "The branch code must be 5 digits"
+      "branchInvalid": "The branch code must be 5 digits",
+      "noTaxIdNote": "Private buyers may leave the tax ID blank. If you are a VAT-registered business, enter your 13-digit tax ID and branch so the invoice can be used for input VAT."
     },
     "review": {
       "open": "Rate the shop",
@@ -3364,6 +3367,7 @@
       "dbdUnavailable": "Company lookup is unavailable right now — enter the buyer details manually",
       "rateLimited": "Too many lookups — wait a moment and try again",
       "internal": "The tax invoice service is temporarily unavailable — try again",
+      "legalAckRequired": "The buyer has no tax ID — tick to acknowledge the warning before issuing the full tax invoice",
       "unknown": "That didn't work — try again"
     }
   },

@@ -9,6 +9,8 @@
 // 🔴 ตรวจฟอร์มด้วยตัวแกะบริสุทธิ์ของเซิร์ฟเวอร์ (tax-invoice-shared) — เซิร์ฟเวอร์ตรวจซ้ำเสมอ · ข้อความจากคีย์เท่านั้น (ไม่แสดง message ของเซิร์ฟเวอร์)
 // 🔴 DBD: ปุ่มเฉพาะนิติบุคคลและเลขผ่านหลักตรวจ · DBD_NOT_CONFIGURED = ซ่อนปุ่มทั้งรอบการใช้งาน (พ่อเก็บธง) แล้วบอก "กรอกเอง"
 // 🔴 ไม่มีข้อความไทยฮาร์ดโค้ดนอกคอมเมนต์ · testid ขึ้นต้น pos-taxinv- เขียนตรงบนแท็ก
+// 🔴 ACC T2.11: เลขผู้ซื้อว่างได้ — คำเตือน BUYER_TAX_ID_MISSING (ทะเบียนกลาง · คอมโพเนนต์ LegalWarnings) + ติ๊กรับทราบก่อนปุ่มหลัก ·
+//    รหัสที่ติ๊กส่งกลับทาง onSave(…, ackCodes) · มีอีเมลแต่ไม่มีเลข = บรรทัด "ส่ง e-Tax ไม่ได้"
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
@@ -18,7 +20,9 @@ import {
   TAX_INVOICE_ADDRESS_MAX,
   TAX_INVOICE_EMAIL_MAX,
   TAX_INVOICE_NAME_MAX,
+  BUYER_TAX_ID_MISSING,
   buyerKindFromTaxId,
+  buyerTaxIdWarnings,
   isValidThaiTaxIdChecksum,
   parseTaxInvoiceBuyer,
   taxInvoiceRefusalKey,
@@ -27,6 +31,7 @@ import {
   type TaxInvoiceBuyerSource,
 } from "@/lib/modules/pos/tax-invoice-shared";
 import { RegisterDialog, SheetGrab } from "./RegisterDialog";
+import { LegalWarnings } from "@/components/account-v2/LegalWarnings"; // ACC T2.11 ◂
 import { RegisterIcon } from "./RegisterIcon";
 
 type Lookup = Awaited<ReturnType<typeof lookupBuyerByTaxIdAction>>;
@@ -52,7 +57,8 @@ type Props = {
   /** ข้อความผิดพลาดจากภายนอก (คีย์ใต้ pos · เช่น submit ตอบ TAX_ID_INVALID แล้วเปิดกล่องนี้ซ้ำ) */
   externalErrorKey?: string | null;
   onCancel: () => void;
-  onSave: (buyer: TaxInvoiceBuyerInput, remember: boolean) => TaxInvoiceSubmitResult | Promise<TaxInvoiceSubmitResult>;
+  /** ACC T2.11: ackCodes = รหัสคำเตือนที่ติ๊กรับทราบ (ไม่มีเลขผู้ซื้อ = ["BUYER_TAX_ID_MISSING"]) */
+  onSave: (buyer: TaxInvoiceBuyerInput, remember: boolean, ackCodes: string[]) => TaxInvoiceSubmitResult | Promise<TaxInvoiceSubmitResult>;
   /** fix F3: ออกจากคำขอของลูกค้า — เลขที่ลูกค้าขอ (แก้เป็นเลขอื่น = แจ้งก่อนกดว่าคำขอจะถูกปฏิเสธ) */
   requestTaxId?: string | null;
   /** ลิ้นชักบิล: Esc ปิดกล่องเอง (หน้าขายมีตัวจับ Esc กลางอยู่แล้ว) */
@@ -69,7 +75,8 @@ export function TaxInvoiceDialog(p: Props) {
   const init = p.initial;
   const [kind, setKind] = useState<TaxInvoiceBuyerKind>(init?.kind ?? "JURISTIC");
   const kindTouched = useRef(!!init);
-  const [taxId, setTaxId] = useState(init ? cleanTaxId(init.taxId) : "");
+  const [taxId, setTaxId] = useState(init ? cleanTaxId(init.taxId ?? "") : "");
+  const [ackCodes, setAckCodes] = useState<string[]>([]); // ACC T2.11 ◂ (เปิดกล่องซ้ำ = ติ๊กใหม่)
   const [name, setName] = useState(init?.name ?? "");
   const [address, setAddress] = useState(init?.address ?? "");
   const initBranch = init?.branchCode && init.branchCode !== HEAD_OFFICE_BRANCH_CODE ? init.branchCode : "";
@@ -82,6 +89,11 @@ export function TaxInvoiceDialog(p: Props) {
   const [dbd, setDbd] = useState<{ state: "idle" | "busy" } | { state: "hit"; buyer: DbdHit } | { state: "miss" } | { state: "manual" } | { state: "err"; key: string }>({ state: "idle" });
   const [busy, setBusy] = useState(false);
   const [errKey, setErrKey] = useState<string | null>(p.externalErrorKey ?? null);
+  // ACC T2d ▸ ข้อความผิดพลาดอยู่ใต้กล่องคำเตือน (นอกจอเมื่อฟอร์มยาว) — ตั้งข้อความแล้วเลื่อนให้เห็น (พบจากภาพจอ) ◂
+  const errRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (errKey) errRef.current?.scrollIntoView({ block: "nearest" });
+  }, [errKey]);
   const [tried, setTried] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
   /** F4: ผู้ใช้แตะช่องใดแล้ว ⇒ ไม่เติมจากผู้ซื้อที่จำไว้ทับ (คำตอบโปรไฟล์มาช้า) */
@@ -113,7 +125,7 @@ export function TaxInvoiceDialog(p: Props) {
         const pr = r.profile;
         kindTouched.current = true;
         setKind(pr.kind);
-        setTaxId(cleanTaxId(pr.taxId));
+        setTaxId(cleanTaxId(pr.taxId ?? ""));
         setName(pr.name);
         setAddress(pr.address);
         const b = pr.branchCode && pr.branchCode !== HEAD_OFFICE_BRANCH_CODE ? pr.branchCode : "";
@@ -143,7 +155,11 @@ export function TaxInvoiceDialog(p: Props) {
   const nameLeft = name.trim().length > 0;
   const addrLeft = address.trim().length > 0;
   const emailBad = email.trim().length > 0 && !/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(email.trim());
-  const ready = taxOk && nameLeft && addrLeft && branchOk && !emailBad;
+  // ACC T2.11 ▸ ว่าง = ไม่มีเลข (ต้องติ๊กรับทราบ) · มีค่า = ต้องถูกหลักตรวจ ◂
+  const taxEmpty = taxId.length === 0;
+  const acked = ackCodes.includes(BUYER_TAX_ID_MISSING);
+  const showNoTaxIdWarning = taxEmpty && (tried || nameLeft || addrLeft);
+  const ready = (taxOk || (taxEmpty && acked)) && nameLeft && addrLeft && branchOk && !emailBad;
   const showDbd = kind === "JURISTIC" && !p.dbdOff;
 
   const edited = () => {
@@ -157,6 +173,7 @@ export function TaxInvoiceDialog(p: Props) {
   const onTaxId = (v: string) => {
     const next = cleanTaxId(v);
     if (next !== taxId) lookupFor.current = null; // F1: คำตอบ DBD ที่ค้างอยู่ใช้ไม่ได้แล้ว
+    if ((next === "") !== (taxId === "")) setAckCodes([]); // ACC T2.11: กล่องคำเตือนขึ้น/หายใหม่ = ติ๊กใหม่
     setTaxId(next);
     edited();
     if (dbd.state !== "idle" && dbd.state !== "manual") setDbd({ state: "idle" });
@@ -208,13 +225,13 @@ export function TaxInvoiceDialog(p: Props) {
     if (busy) return;
     setTried(true);
     if (!ready) {
-      setErrKey(taxInvoiceRefusalKey(taxOk ? "VALIDATION" : "TAX_ID_INVALID"));
+      setErrKey(taxInvoiceRefusalKey(taxEmpty && !acked ? "LEGAL_ACK_REQUIRED" : taxOk || taxEmpty ? "VALIDATION" : "TAX_ID_INVALID"));
       return;
     }
     const input: TaxInvoiceBuyerInput = {
       kind,
       name,
-      taxId,
+      taxId: taxEmpty ? null : taxId,
       branchCode: hq ? HEAD_OFFICE_BRANCH_CODE : branch,
       address,
       email: email.trim() ? email : null,
@@ -230,7 +247,7 @@ export function TaxInvoiceDialog(p: Props) {
     setBusy(true);
     setErrKey(null);
     try {
-      const r = await p.onSave(out, !!p.memberId && remember);
+      const r = await p.onSave(out, !!p.memberId && remember, b.taxId ? [] : ackCodes);
       if (r && r.errorKey) setErrKey(r.errorKey);
     } catch {
       setErrKey(taxInvoiceRefusalKey("INTERNAL"));
@@ -518,7 +535,7 @@ export function TaxInvoiceDialog(p: Props) {
                 />
                 {/* POS P3-SKEL U ▸ CD-SKELU-8: บรรทัดจาง "ส่ง e-Tax ทางอีเมล · รอผู้ให้บริการ" (ไม่มีช่องติ๊ก · ไม่ส่ง) ◂ */}
                 <p data-testid="pos-taxinv-etax-pending" className="text-[12px] text-[color:var(--color-muted)]">
-                  {tp("platform.etax.pending")}
+                  {taxEmpty && email.trim() ? t("etaxNoTaxId") /* ACC T2.11 ◂ */ : tp("platform.etax.pending")}
                 </p>
               </div>
             </div>
@@ -528,6 +545,19 @@ export function TaxInvoiceDialog(p: Props) {
               <span>{p.mode === "sale" ? t("info") : t("infoIssue")}</span>
             </p>
 
+            {/* ACC T2.11 ▸ ไม่มีเลขผู้ซื้อ — คำเตือนจากทะเบียนกลาง + ติ๊กรับทราบ (ไม่บล็อก) ◂ */}
+            {showNoTaxIdWarning ? (
+              <LegalWarnings
+                testId="pos-taxinv-notaxid"
+                compact
+                warnings={buyerTaxIdWarnings({ taxId: null }, "issue")}
+                onAckChange={(codes) => {
+                  setAckCodes(codes);
+                  setErrKey(null);
+                }}
+              />
+            ) : null}
+
             {p.requestTaxId && taxId !== p.requestTaxId ? (
               <p data-testid="pos-taxinv-request-changed" className="flex items-start gap-2 rounded-[12px] border border-[color:var(--color-danger)] px-3.5 py-3 text-[12.5px] leading-[1.55] text-[color:var(--color-danger)]" role="status">
                 <RegisterIcon name="warn" size={13} className="mt-0.5 shrink-0" />
@@ -536,7 +566,7 @@ export function TaxInvoiceDialog(p: Props) {
             ) : null}
 
             {errKey ? (
-              <p data-testid="pos-taxinv-error" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
+              <p ref={errRef} data-testid="pos-taxinv-error" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
                 {tp(errKey)}
               </p>
             ) : null}

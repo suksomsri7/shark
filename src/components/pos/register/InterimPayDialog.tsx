@@ -2354,10 +2354,15 @@ export function PayDialog(p: Props) {
                         {"\u2014 "}
                         {[
                           p.taxInvoice.buyer.name,
-                          p.taxInvoice.buyer.taxId,
-                          p.taxInvoice.buyer.branchCode && p.taxInvoice.buyer.branchCode !== HEAD_OFFICE_BRANCH_CODE
-                            ? t("taxInvoice.branchOf", { code: p.taxInvoice.buyer.branchCode })
-                            : t("taxInvoice.headOffice"),
+                          // ACC T2.11 ▸ ไม่มีเลขผู้ซื้อ = ไม่แสดงเลขและสาขา (ไม่มีช่องว่าง "· ·") ◂
+                          ...(p.taxInvoice.buyer.taxId
+                            ? [
+                                p.taxInvoice.buyer.taxId,
+                                p.taxInvoice.buyer.branchCode && p.taxInvoice.buyer.branchCode !== HEAD_OFFICE_BRANCH_CODE
+                                  ? t("taxInvoice.branchOf", { code: p.taxInvoice.buyer.branchCode })
+                                  : t("taxInvoice.headOffice"),
+                              ]
+                            : []),
                         ].join(" \u00b7 ")}
                       </span>
                       <button data-testid="pos-taxinv-edit" className="h-11 px-1 text-[12.5px] font-bold text-[color:var(--color-accent)] disabled:opacity-50" type="button" disabled={busy} onClick={p.taxInvoice.onOpen}>

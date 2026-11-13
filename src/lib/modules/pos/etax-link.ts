@@ -5,6 +5,8 @@
 // requestEtax: ส่งจริง = NOT_CONFIGURED (ยังไม่เลือกผู้ให้บริการ — W20) · ไม่เขียนอะไรเลย
 // 🔴 คิว/สถานะ = AccountDocument.etaxStatus/etaxMeta ภายหลัง โดยเจ้าของโมดูลบัญชีเท่านั้น (OP §ACCOUNT) — ไฟล์นี้อ่าน AccountDocument/AccountSettings อย่างเดียว
 //    (แบบเดียวกับ bills.ts) · ไม่แตะ modules/account/** · ยอดเงินมาจากแถว PosSale ตรง (สตางค์) ไม่คิดใหม่
+// 🔴 ACC T2.11: ใบกำกับที่ผู้ซื้อไม่มีเลข = สถานะ NO_BUYER_TAX_ID "ส่ง e-Tax ไม่ได้" (ไม่ใช่ข้อผิดพลาด · ใบกำกับเต็มรูปยังใช้ได้ตามปกติ)
+//    ค่าเริ่มต้นของระบบ: skill ยังไม่ได้เปิดมาตรฐาน XML ของ e-Tax [S] — ตัวสร้าง XML ของแพลตฟอร์มต้องมีเลขผู้ซื้อ ⇒ ไม่เดาค่าแทน
 import { evaluate } from "@/lib/core/rbac";
 import * as account from "@/lib/modules/account";
 import { normalizeEtaxDocument, renderEtaxXml } from "@/lib/platform/etax/render";
@@ -13,7 +15,7 @@ import { posMembership } from "./access";
 import { prisma } from "./db";
 import { snapshotBuyer } from "./tax-invoice-shared";
 
-export type EtaxLinkCode = "NOT_FOUND" | "SALE_NOT_FOUND" | "PERMISSION_DENIED" | "NOT_ELIGIBLE" | "NOT_CONFIGURED" | "VALIDATION" | "UNKNOWN";
+export type EtaxLinkCode = "NOT_FOUND" | "SALE_NOT_FOUND" | "PERMISSION_DENIED" | "NOT_ELIGIBLE" | "NO_BUYER_TAX_ID" | "NOT_CONFIGURED" | "VALIDATION" | "UNKNOWN";
 export type EtaxLinkRefusal = { ok: false; code: EtaxLinkCode; message: string };
 export type EtaxPreviewResult = { ok: true; xml: string; provider: null; state: "NOT_CONFIGURED"; docNo: string; buyerEmail: string } | EtaxLinkRefusal;
 type Ctx = { tenantId: string; systemId: string; unitId: string };
@@ -24,6 +26,7 @@ const MSG: Record<EtaxLinkCode, string> = {
   SALE_NOT_FOUND: "ไม่พบบิลนี้ในสาขานี้",
   PERMISSION_DENIED: "ต้องมีสิทธิ์ออกใบกำกับภาษี (pos.taxinvoice.issue) ที่สาขานี้",
   NOT_ELIGIBLE: "ส่ง e-Tax ได้เฉพาะบิลที่ออกใบกำกับภาษีเต็มรูปแล้วและมีอีเมลผู้ซื้อ",
+  NO_BUYER_TAX_ID: "ผู้ซื้อของใบนี้ไม่มีเลขประจำตัวผู้เสียภาษี — ส่ง e-Tax ไม่ได้ ใช้ใบกำกับภาษีเต็มรูปแบบพิมพ์/PDF ตามปกติ", // ACC T2.11 ◂
   NOT_CONFIGURED: "ส่ง e-Tax ทางอีเมล · รอผู้ให้บริการ (ยังไม่ได้เชื่อม — W4/W20)",
   VALIDATION: "ข้อมูลเอกสารไม่ครบสำหรับ e-Tax",
   UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
@@ -52,6 +55,7 @@ async function load(ctx: unknown, actor: unknown, input: unknown): Promise<Loade
   if (!sale) return refuse("SALE_NOT_FOUND");
   if (sale.status === "VOIDED" || !sale.taxInvoiceDocId) return refuse("NOT_ELIGIBLE");
   const buyer = snapshotBuyer(sale.taxInvoice);
+  if (buyer && !buyer.taxId) return refuse("NO_BUYER_TAX_ID"); // ACC T2.11 ◂
   const email = typeof buyer?.email === "string" ? buyer.email.trim() : "";
   if (!buyer || !email) return refuse("NOT_ELIGIBLE");
   const bookId = await account.posAccountSystemId(c.tenantId, c.systemId);

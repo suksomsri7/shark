@@ -55,7 +55,7 @@ export async function reportReceiptIssueAction(token: string, input: { message: 
 /** ขอใบกำกับภาษีเต็มรูป — input = { name, taxId, branchCode?, address, email? } */
 export async function requestFullTaxInvoiceAction(
   token: string,
-  input: { name: string; taxId: string; branchCode?: string | null; address: string; email?: string | null },
+  input: { name: string; taxId?: string | null; branchCode?: string | null; address: string; email?: string | null },
 ): Promise<PublicReceiptActionResult> {
   try {
     const limited = await receiptRateGuard("receiptSubmit"); // POS P5.2 ▸ CD-P52-F2 ◂

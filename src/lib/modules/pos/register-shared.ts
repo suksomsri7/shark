@@ -8,6 +8,7 @@
 import { formatBaht } from "@/lib/ui/money";
 import type { PriceDiscount, PriceCartInput, PriceVat } from "./pricing-shared";
 import type { TaxInvoiceBuyerInput } from "./tax-invoice-shared"; // POS P1.13 ◂
+import type { LegalAckRequired } from "@/lib/core/settings/legal/warnings"; // ACC T2.11 ◂
 import type { PriceSource } from "./price-shared"; // POS P2.2 ◂
 
 // ═══════════ ค่าคงที่ ═══════════
@@ -197,6 +198,8 @@ export type RegisterRefusalCode =
   | "ALREADY_SET"
   // POS P1.13: เลขผู้เสียภาษีของผู้ซื้อ (ใบกำกับเต็มรูปตอนชำระ) ผิด checksum/รูปแบบ
   | "TAX_ID_INVALID"
+  // ACC T2.11: ผู้ซื้อไม่มีเลข — ต้องส่ง taxInvoiceAck ["BUYER_TAX_ID_MISSING"] (ติ๊กรับทราบในกล่องใบกำกับ) · ยังไม่ได้เขียนอะไร
+  | "LEGAL_ACK_REQUIRED"
   // POS P1.13 follow-up 3: ขอใบกำกับเต็มรูปตอนชำระแต่ร้านออกใบกำกับไม่ได้ (ไม่ผูกสมุดจด VAT / ไม่มีเลขภาษี / ปิดใบอย่างย่อ / บิลไม่มี VAT)
   | "NOT_ELIGIBLE"
   // POS P1.12 ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (R1 R4 R11 R16) — MEMBER_RIGHTS_UNSUPPORTED คงไว้ให้จอเก่า (หน้าขายไม่คืนแล้ว) ◂
@@ -269,7 +272,7 @@ export type RegisterRefusalCode =
   | "DEAL_INVALID";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
-export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number; /** POS P2.14 ▸ DEP-1: แถวมัดจำของคำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED ◂ */ depositId?: string; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ ◂ */ giftCardRow?: number; attemptsLeft?: number; /** POS P3.5 ▸ R4: OFF_SCHEDULE — เหตุ + ช่วงตาราง (OUTSIDE_HOURS) ◂ */ reason?: StaffScheduleReason; window?: { startMin: number; endMin: number }; /** POS P3.6 ▸ CD-4: CREDIT_LIMIT_EXCEEDED — วงเงิน + ภาพหนี้ (สตางค์) เฉพาะผู้ถือ pos.credit.manage ◂ */ limitSatang?: number; exposureSatang?: number };
+export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number; /** POS P2.14 ▸ DEP-1: แถวมัดจำของคำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED ◂ */ depositId?: string; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ ◂ */ giftCardRow?: number; attemptsLeft?: number; /** POS P3.5 ▸ R4: OFF_SCHEDULE — เหตุ + ช่วงตาราง (OUTSIDE_HOURS) ◂ */ reason?: StaffScheduleReason; window?: { startMin: number; endMin: number }; /** POS P3.6 ▸ CD-4: CREDIT_LIMIT_EXCEEDED — วงเงิน + ภาพหนี้ (สตางค์) เฉพาะผู้ถือ pos.credit.manage ◂ */ limitSatang?: number; exposureSatang?: number; /** ACC T2.11 ▸ LEGAL_ACK_REQUIRED — คำเตือนที่ต้องกดยืนยัน (ทะเบียนกลาง) ◂ */ legal?: LegalAckRequired };
 
 export type RegisterSoldOutReason = "UNAVAILABLE" | "NO_STOCK";
 export type RegisterProduct = {
@@ -535,6 +538,8 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   taxInvoice?: TaxInvoiceBuyerInput;
   /** POS P1.13 R6: จำผู้ซื้อไว้กับสมาชิกของบิล (มี memberId เท่านั้น) */
   rememberBuyer?: boolean;
+  /** ACC T2.11: ผู้ซื้อไม่มีเลข ⇒ รหัสคำเตือนที่แคชเชียร์ติ๊กรับทราบ (["BUYER_TAX_ID_MISSING"]) — ไม่ส่ง = LEGAL_ACK_REQUIRED ไม่มีบิล ◂ */
+  taxInvoiceAck?: string[];
   /** POS P3.6 ▸ R5: ลูกค้าองค์กรของบิล (Party.id ของบริษัท จาก registerCompanySearch / registerMemberCompanies) — ผิด = CUSTOMER_INVALID ◂ */
   customerPartyId?: string;
   /** POS P3.6 ▸ R10: ดีลที่ผูกบิล (ต้องอยู่ในรายการ registerDealOptions ของผู้ขาย ณ ตอนส่ง ไม่งั้น DEAL_INVALID · ไม่มีบิล) ◂ */
@@ -1052,6 +1057,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   ALREADY_SET: "errors.alreadySet", // POS P1.15U F1
   // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูปตอนชำระ — เลขผู้เสียภาษีผิด (ข้อมูลผู้ซื้ออื่นผิด = VALIDATION เดิม) ◂
   TAX_ID_INVALID: "errors.taxIdInvalid",
+  LEGAL_ACK_REQUIRED: "errors.legalAckRequired", // ACC T2.11 ◂
   NOT_ELIGIBLE: "errors.taxInvoiceNotEligible", // POS P1.13 follow-up 3 ◂
   // POS P1.12 ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (R16) ◂
   MEMBER_SYSTEM_MISSING: "errors.memberSystemMissing",

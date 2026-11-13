@@ -135,13 +135,14 @@ export function PosReceiptActions({ token, actions, points }: { token: string; a
     const email = tf.email.trim();
     const branchCode = tf.branchCode.trim() || "00000";
     if (!name || !address) return setErr(t("public.required"));
-    if (!/^\d{13}$/.test(tf.taxId.trim())) return setErr(t("taxInvoice.taxIdInvalid"));
+    const taxId = tf.taxId.trim();
+    if (taxId && !/^\d{13}$/.test(taxId)) return setErr(t("taxInvoice.taxIdInvalid")); // ACC T2.11: ว่างได้ (ผู้บริโภค) ◂
     if (!/^\d{5}$/.test(branchCode)) return setErr(t("taxInvoice.branchInvalid"));
     if (email && !RECEIPT_EMAIL_RE.test(email)) return setErr(t("send.emailInvalid"));
     setBusy(true);
     setErr(null);
     try {
-      const r = await requestFullTaxInvoiceAction(token, { name, taxId: tf.taxId.trim(), branchCode, address, ...(email ? { email } : {}) });
+      const r = await requestFullTaxInvoiceAction(token, { name, ...(taxId ? { taxId } : {}), branchCode, address, ...(email ? { email } : {}) });
       if (r.ok) {
         setTax("REQUESTED");
         setTaxDone(true);
@@ -326,6 +327,12 @@ export function PosReceiptActions({ token, actions, points }: { token: string; a
               {t("taxInvoice.taxId")}
               <input data-testid="pos-rpub-taxinvoice-taxid" className={inputCls} value={tf.taxId} inputMode="numeric" maxLength={13} placeholder="0000000000000" onChange={(e) => setTf({ ...tf, taxId: e.target.value.replace(/\D/g, "").slice(0, 13) })} />
             </label>
+            {/* ACC T2.11 ▸ เลขว่างได้ — หมายเหตุแจ้งลูกค้า (ไม่มีช่องติ๊ก · ร้านกดรับทราบตอนออกใบ) ◂ */}
+            {!tf.taxId.trim() ? (
+              <p data-testid="pos-rpub-taxinvoice-notaxid" className="-mt-1 rounded-[10px] bg-[color:var(--color-surface-2)] px-3 py-2 text-[12.5px] leading-[1.55] text-[color:var(--color-ink-soft)]" role="note">
+                {t("taxInvoice.noTaxIdNote")}
+              </p>
+            ) : null}
             <label className={labelCls}>
               {t("taxInvoice.branchCode")}
               <input data-testid="pos-rpub-taxinvoice-branch" className={inputCls} value={tf.branchCode} inputMode="numeric" maxLength={5} onChange={(e) => setTf({ ...tf, branchCode: e.target.value.replace(/\D/g, "").slice(0, 5) })} />
