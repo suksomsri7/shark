@@ -176,7 +176,8 @@ function runStatic(): void {
       // ORACLE-EDIT (H3.4 merge round): base-diff part n/a once H3.5 is in the base (as the header says / S1.6) — later tickets (H3.4) legitimately change these files; still checked on H3.5's own branch
       runSame: IN_BASE || (!!base && modelBlock(cur, "HrPayrollRun") === modelBlock(base, "HrPayrollRun") && modelBlock(cur, "HrPayrollItem") === modelBlock(base, "HrPayrollItem")),
       // ORACLE-EDIT (H3.6 builder, 13 Nov · S1.2): H3.6 adds two back-relation lines (HrFilingPerson? / HrTaxCertificate[]) for its RESTRICT FKs — only those lines are ignored; every other HrEmployee line stays frozen
-      empSame: !!hrBase && modelBlock(hrCur, "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, "") === modelBlock(hrBase, "HrEmployee"),
+      // ORACLE-EDIT (controller 13 Nov · S1.2): base-diff part n/a once H3.5 is in the base, same as runSame — later tickets add their own back-relation lines (H3.6 in base now)
+      empSame: IN_BASE || (!!hrBase && modelBlock(hrCur, "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, "") === modelBlock(hrBase, "HrEmployee")),
       scope: ["HrBankProfile", "HrBankExportPreset", "HrBankFile"].every((m) => new RegExp(`\\b${m}:\\s*sys\\(\\)`).test(scope)),
       env: ["HrBankProfile", "HrBankExportPreset", "HrBankFile"].every((m) => new RegExp(`model:\\s*"${m}"`).test(env)),
     };
