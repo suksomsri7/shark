@@ -243,6 +243,8 @@ export function docDetail(d: DocDetailData) {
     contact: d.contact
       ? { id: d.contact.id, name: d.contact.name, taxId: d.contact.taxId, email: d.contact.email }
       : null,
+    // ACC T2.9 ▸ ผู้ขายที่ตรึงไว้ ณ วันออก (null = ยังไม่ตรึง — ใบร่าง/ใบเก่า ใช้ค่าตั้งปัจจุบัน) ◂
+    seller: d.seller ? { name: d.seller.name, address: d.seller.address, taxId: d.seller.taxId, branch: d.seller.branch, frozenAt: d.seller.frozenAt, frozenVia: d.seller.via } : null,
     lines: d.lines.map((l) => ({
       id: l.id,
       description: l.description,

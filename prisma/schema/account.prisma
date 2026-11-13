@@ -193,6 +193,7 @@ model AccountDocument {
   reference       String? // "อ้างอิง" ที่ผู้ใช้พิมพ์ (เลข PO ลูกค้า / เอกสารต้นทาง) ≤35 ตัว
   autoTaxInvoice  Boolean? // toggle "ออกใบกำกับภาษีพร้อมกัน" ต่อใบ (null = ตามตั้งค่ากิจการ §9.2)
   autoReceipt     Boolean? // ACC T2.8: ออกใบเสร็จให้เองทุกงวดที่รับเงินของใบแจ้งหนี้นี้ (null = ตามค่าตั้ง docConfig.receipt.autoOnPayment)
+  sellerSnapshot  Json? // ACC T2.9: ผู้ขาย (ชื่อ ที่อยู่ เลขผู้เสียภาษี สาขา โทร โลโก้) + ข้อความท้ายใบ ณ วันออก — null = ยังไม่ตรึง (อ่านจากค่าตั้งปัจจุบัน) · seller-snapshot.ts
   /// ACC T1.4 — สถานะภาษีซื้อเริ่มของใบ (บรรทัดที่ไม่ระบุใช้ค่านี้) · null = ใบก่อน T1.4 (อ่านจาก vatMode/vatTiming แบบเดิม)
   inputVatStatus    AccountInputVatStatus?
   /// ACC T1.5 — วันที่ในใบกำกับภาษีของผู้ขาย (ใบกำกับภาษีซื้อ/ค่าใช้จ่าย)
