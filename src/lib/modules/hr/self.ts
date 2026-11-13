@@ -519,7 +519,8 @@ export async function myDocuments(actor: SelfActor): Promise<MyDocuments | Fail>
   // HR H3.8 ▸ R6: เฉพาะสลิปที่ออกแล้ว (รุ่น 2 ต้องปิดงาน) · ลิงก์ไปหน้าสลิปของฉัน /app/me/hr/pay/<รอบ> · คีย์ DTO เดิม ◂
   const items = (
     await tenantDb(me.ctx).hrPayrollItem.findMany({
-      where: { tenantId: me.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, run: { status: { in: ["APPROVED", "PAID"] } } },
+      // HR H3.8 ▸ merge round m4: ตัวเลือก "ออกแล้ว" อยู่ในคิวรี (รุ่น 1 หรือ stepsJson.finalized) ⇒ 36 แถวไม่สั้นลงหลังกรอง ◂
+      where: { tenantId: me.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, run: { status: { in: ["APPROVED", "PAID"] }, OR: [{ engineVersion: 1 }, { stepsJson: { path: ["finalized"], equals: true } }] } },
       select: { runId: true, netSatang: true, run: { select: { periodKey: true, status: true, engineVersion: true, stepsJson: true } } },
       orderBy: [{ run: { periodKey: "desc" } }, { runId: "desc" }],
       take: 36,

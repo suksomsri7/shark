@@ -105,13 +105,16 @@ function merge(rows: { code: string; amountSatang: number; minutes: number | nul
   return out;
 }
 
-/** แถวรายการเงินเดือนที่เก็บไว้ → สลิป (earnings − deductions = net เสมอ) · ไม่ตรง/ไม่ครบ = SLIP_DATA */
-export function slipView(input: { engineVersion: unknown; item: unknown }): SlipViewOk | SlipViewFail {
+/** แถวรายการเงินเดือนที่เก็บไว้ → สลิป (earnings − deductions = net เสมอ) · ไม่ตรง/ไม่ครบ = SLIP_DATA
+ *  merge round (m2): `notIssued: true` = มุมมองของรอบที่ยังไม่ออก (ร่าง/ยังไม่ปิดงาน/ถอนคืน) — ยอมให้ gross/net ติดลบ (H3.4 NET_NEGATIVE)
+ *  เพื่อให้ผู้ดูแลเห็นป้ายสถานะ ไม่ใช่ "ข้อมูลเสีย" · สลิปที่ออกแล้วใช้กติกาเข้มเดิม (ค่าปริยาย) */
+export function slipView(input: { engineVersion: unknown; item: unknown; notIssued?: boolean }): SlipViewOk | SlipViewFail {
   const ev = input?.engineVersion;
   const it = objOf(input?.item);
   if (!it || (ev !== 1 && ev !== 2)) return FAIL;
   const { grossSatang, netSatang, ssoBaseSatang, ssoEmployeeSatang, ssoEmployerSatang, whtSatang } = it;
-  if (!isSatang(grossSatang) || !isSatang(netSatang) || !isSatang(ssoBaseSatang) || !isSatang(ssoEmployeeSatang) || !isSatang(ssoEmployerSatang) || !isSatang(whtSatang)) return FAIL;
+  const money = input?.notIssued === true ? isInt : isSatang;
+  if (!money(grossSatang) || !money(netSatang) || !isSatang(ssoBaseSatang) || !isSatang(ssoEmployeeSatang) || !isSatang(ssoEmployerSatang) || !isSatang(whtSatang)) return FAIL;
   if (netSatang !== grossSatang - ssoEmployeeSatang - whtSatang) return FAIL;
   const snap = objOf(it.snapshotJson);
   if (!snap) return FAIL;

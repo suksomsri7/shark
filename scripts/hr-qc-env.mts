@@ -91,7 +91,7 @@ export const HR_TABLES = {
   hrFilingPerson: { model: "HrFilingPerson", file: "payroll.prisma", tenantId: true, role: "ชื่อ/คำนำหน้า/ที่อยู่แยกช่องของพนักงานสำหรับแบบยื่น (HR H3.6)" },
   hrFilingFile: { model: "HrFilingFile", file: "payroll.prisma", tenantId: true, role: "ใบกำกับไฟล์ ภ.ง.ด.1/1ก/สปส.1-10 ที่สร้าง (sha · ยอด · ไม่มีไบต์/เลขประจำตัว) (HR H3.6)" },
   hrTaxCertificate: { model: "HrTaxCertificate", file: "payroll.prisma", tenantId: true, role: "หนังสือรับรอง 50 ทวิ ที่ออกแล้ว (เนื้อหาแช่แข็ง + sha) (HR H3.6)" },
-  hrSalaryCertificate: { model: "HrSalaryCertificate", file: "payroll.prisma", tenantId: true, role: "คำขอ/หนังสือรับรองเงินเดือนที่ออก (เนื้อหาแช่แข็ง + sha) — seed ไม่เขียน (HR H3.8)" },
+  hrSalaryCertificate: { model: "HrSalaryCertificate", file: "payroll.prisma", tenantId: true, role: "คำขอ/หนังสือรับรองเงินเดือนที่ออก (เนื้อหาแช่แข็ง + sha) — seed ไม่เขียน (HR H3.8)" }, // HR H3.8 ◂
   hrEmployeeRegister: { model: "HrEmployeeRegister", file: "hr.prisma", tenantId: true, role: "ทะเบียนลูกจ้าง: สัญชาติ + ประโยชน์ตอบแทนอย่างอื่น 1 แถว/พนักงาน (HR H3.9 · seed ไม่เขียน)" }, // HR H3.9 ◂
   hrReviewNote: { model: "HrReviewNote", file: "hr.prisma", tenantId: true, role: "บันทึก/ตักเตือน/ประเมิน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
   hrOnboardingTask: { model: "HrOnboardingTask", file: "hr.prisma", tenantId: true, role: "งานรับเข้า/ออกจากงาน (H4.4 · ว่างใน H1.3) (HR H1.3)" },

@@ -89,6 +89,8 @@ export const INBOX_CORR_ACTIONS = ["ADD", "CHANGE", "VOID"] as const;
 export const INBOX_CORR_KINDS = ["IN", "OUT", "BREAK_START", "BREAK_END"] as const;
 export const INBOX_OT_DAYCLASS = ["WORKDAY", "HOLIDAY"] as const;
 export const INBOX_OT_TIMING = ["BEFORE", "AFTER"] as const;
+/** HR H3.8 ▸ วัตถุประสงค์ของคำขอหนังสือรับรอง (รายการคงที่ · ป้าย = hr.inbox.f.cert<รหัส>) ◂ */
+export const INBOX_CERT_PURPOSES = ["GENERAL", "BANK", "VISA", "RENTAL", "OTHER"] as const;
 /** รหัสอยู่ในรายการ ⇒ รหัสนั้น · ไม่อยู่ ⇒ null (หน้าจอแสดง "—" ไม่แสดงรหัสดิบ) */
 export function inboxCode<T extends string>(list: readonly T[], v: unknown): T | null {
   return typeof v === "string" && (list as readonly string[]).includes(v) ? (v as T) : null;
@@ -99,7 +101,8 @@ export type InboxSummary =
   | { type: "OT"; date: string; startAt: string; endAt: string; minutes: number }
   | { type: "SWAP"; withName: string; from: InboxSwapSide | null; to: InboxSwapSide | null; swap: boolean }
   | { type: "CORRECTION"; action: (typeof INBOX_CORR_ACTIONS)[number]; kind: (typeof INBOX_CORR_KINDS)[number]; day: string | null; originalAt: string | null; proposedAt: string | null }
-  | { type: "ADJUSTMENT"; kind: (typeof INBOX_ADJ_KINDS)[number] | null; amountSatang: number | null; periodKey: string };
+  | { type: "ADJUSTMENT"; kind: (typeof INBOX_ADJ_KINDS)[number] | null; amountSatang: number | null; periodKey: string }
+  | { type: "CERT"; name: string; purpose: (typeof INBOX_CERT_PURPOSES)[number] | null }; // HR H3.8 ▸ merge round (ruling 5): ชื่อ + วัตถุประสงค์ · ไม่มี ฿ ◂
 
 const s = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 /** สรุปสิ่งที่กำลังจะอนุมัติ (ใคร = employeeName ของรายการ) — null = สรุปอย่างปลอดภัยไม่ได้ */
@@ -135,6 +138,12 @@ export function inboxSummary(it: InboxItem): InboxSummary | null {
     const periodKey = s(d.periodKey);
     if (!periodKey) return null;
     return { type: "ADJUSTMENT", kind: inboxCode(INBOX_ADJ_KINDS, d.kind), amountSatang: typeof d.amountSatang === "number" ? d.amountSatang : null, periodKey };
+  }
+  // HR H3.8 ▸ merge round (ruling 5): CERT = ชื่อพนักงาน + วัตถุประสงค์ (ไม่มี ฿) ◂
+  if (it.type === "CERT") {
+    const name = s(it.employeeName);
+    if (!name) return null;
+    return { type: "CERT", name, purpose: inboxCode(INBOX_CERT_PURPOSES, d.purpose) };
   }
   return null;
 }

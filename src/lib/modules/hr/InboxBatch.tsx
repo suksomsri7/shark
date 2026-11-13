@@ -146,6 +146,9 @@ function Summary({ it }: { it: InboxItem }) {
     parts.push(`${t(`f.${sm.action}`)} · ${t(`f.${sm.kind}`)}`);
     if (sm.day) parts.push(formatThaiDate(sm.day));
     if (sm.originalAt || sm.proposedAt) parts.push(`${sm.originalAt ? hm(sm.originalAt) : "—"} → ${sm.proposedAt ? hm(sm.proposedAt) : "—"}`);
+  } else if (sm.type === "CERT") {
+    // HR H3.8 ▸ merge round (ruling 5): หนังสือรับรอง · ชื่อ · วัตถุประสงค์ (ไม่มี ฿) ◂
+    parts.push(t("type.CERT"), sm.name, sm.purpose ? t(`f.cert${sm.purpose}` as "f.certGENERAL") : t("f.none"));
   } else {
     parts.push(sm.kind ? t(`adjKinds.${sm.kind}`) : t("type.ADJUSTMENT"));
     if (sm.amountSatang !== null) parts.push(baht(sm.amountSatang));

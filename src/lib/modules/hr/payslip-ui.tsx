@@ -77,7 +77,7 @@ async function Lines({ lines, sec, ssoBase }: { lines: SlipLine[]; sec: "e" | "d
   );
 }
 /** การ์ดสลิป — หัว (ย้อนกลับ · ชื่อ · ชิปสถานะ) · การ์ดดำรับสุทธิ · รายได้ · รายการหัก · ปุ่ม PDF/หนังสือรับรอง · ย้อนหลัง · หมายเหตุ */
-export async function SlipCard({ d, backHref, pdfHref, certHref, history }: { d: SlipCardDto; backHref: string; pdfHref: string | null; certHref: string | null; history: SlipRowDto[] | null }) {
+export async function SlipCard({ d, backHref, pdfHref, certHref, history, showEmployee = false }: { d: SlipCardDto; backHref: string; pdfHref: string | null; certHref: string | null; history: SlipRowDto[] | null; showEmployee?: boolean }) {
   const t = (await getTranslations("hr.slip")) as unknown as Tr;
   const locale = await getLocale();
   const tx = slipTextFor(locale);
@@ -96,6 +96,13 @@ export async function SlipCard({ d, backHref, pdfHref, certHref, history }: { d:
           {t(`status${d.status}`)}
         </span>
       </header>
+      {showEmployee ? (
+        <p className="text-sm">
+          <span className="font-semibold">{d.employee.name}</span>
+          {d.employee.code ? <span className={muted}>{` · ${d.employee.code}`}</span> : null}
+          {d.employee.position ? <span className={muted}>{` · ${d.employee.position}`}</span> : null}
+        </p>
+      ) : null}
       {banner ? (
         <p data-testid="hr-slip-state" role="note" className="rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]">
           {banner}
@@ -213,7 +220,7 @@ export async function mySlipHistory(currentRunId: string): Promise<SlipRowDto[]>
 }
 
 // ═════════════ ประวัติรายปี ═════════════
-async function YearCard({ y }: { y: YearDto }) {
+async function YearCard({ y, mine = false }: { y: YearDto; mine?: boolean }) {
   const t = (await getTranslations("hr.slip")) as unknown as Tr;
   const locale = await getLocale();
   return (
@@ -223,7 +230,7 @@ async function YearCard({ y }: { y: YearDto }) {
       <p className={`text-xs tabular-nums ${muted}`}>{t("yearTax", { income: amt(y.incomeSatang), tax: amt(y.taxSatang), sso: amt(y.ssoSatang) })}</p>
       <div className="flex flex-col">
         {y.slips.map((h) => (
-          <Link key={h.runId} href={h.href} data-testid={`hr-slip-hist-${h.runId}`} className="flex min-h-[44px] items-center gap-2.5 border-t border-[color:var(--color-line)] py-2 text-[15px] tabular-nums">
+          <Link key={h.runId} href={h.href} data-testid={mine ? `hr-self-slip-${h.runId}` : `hr-slip-hist-${h.runId}`} className="flex min-h-[44px] items-center gap-2.5 border-t border-[color:var(--color-line)] py-2 text-[15px] tabular-nums">
             <span>{periodText(h.periodKey, t, locale)}</span>
             <span className="flex-1" />
             <b>{`฿${amt(h.netSatang)}`}</b>
@@ -236,18 +243,18 @@ async function YearCard({ y }: { y: YearDto }) {
     </section>
   );
 }
-/** สลิปของฉันแยกตามปีภาษี (หน้า "เงินเดือน" ของฉัน) */
+/** สลิปของฉันแยกตามปีภาษี — merge round (ruling 4): รายการเดียวของหน้า "เงินเดือน" ของฉัน วางในช่อง hr-self-payslips ของ SelfPay ·
+ *  แถวใช้ testid เดิมของ H2.10 (hr-self-slip-<runId>) เพราะข้อสอบ H2.10 ตรึงไว้ */
 export async function MySlipYears() {
   const auth = await requireTenant();
   const r = await mySlips(selfActorOf(auth));
   const t = (await getTranslations("hr.slip")) as unknown as Tr;
   if (!r.ok) return r.code === "SLIP_DATA" ? <SlipDataNotice /> : null;
   return (
-    <section data-testid="hr-slip-years" className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold">{t("years")}</h2>
+    <section data-testid="hr-slip-years" aria-label={t("years")} className="flex flex-col gap-3">
       {r.years.length === 0 ? <p className={`text-sm ${muted}`}>{t("noSlips")}</p> : null}
       {r.years.map((y) => (
-        <YearCard key={y.taxYear} y={y} />
+        <YearCard key={y.taxYear} y={y} mine />
       ))}
     </section>
   );
@@ -431,6 +438,11 @@ export async function SalaryCertSection({ systemId, sc }: { systemId: string; sc
               <span className={`text-xs ${muted}`}>
                 {t(`p${c.purpose}`)} · {c.voided ? t("voided") : t(`st${c.status}`)} · {t("downloads", { n: c.downloads })}
               </span>
+              {c.sourceWithdrawn && !c.voided ? (
+                <span role="note" className="text-xs text-[color:var(--color-danger)]">
+                  {t("sourceWithdrawn")}
+                </span>
+              ) : null}
             </span>
             {c.status === "ISSUED" && !c.voided ? (
               <a href={`/app/sys/${systemId}/hr/payroll/salary-cert/${encodeURIComponent(c.id)}`} download data-testid={`hr-salarycert-gdl-${c.id}`} className={`${ghost} ring-2 ring-[color:var(--color-accent)]`}>

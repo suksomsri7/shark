@@ -8,11 +8,12 @@
 // Base for statics = baseRef("QC_H38_BASE") + pathInBase guard (never a hard-coded sha)
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.8.mts
 import { existsSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process"; // ORACLE-EDIT (H3.8 merge round · controller 13 Nov): local merge-base ◂
 import { join } from "node:path";
 import {
   type Any, type Base, type Sev, ROOT, rd, short, errText, textOf, srt, failedKeys, stripComments, canon, sha, keysDeep, jsonOf, loadOpt, modState,
   PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, fileAt, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf,
-  vOf, fitnessNoEnv, importsOf, tagOf, HR_FORBIDDEN_DTO_KEYS, msgParity, testidsOf, tokensOnly, useServerFile,
+  commitInBase, vOf, fitnessNoEnv, importsOf, tagOf, HR_FORBIDDEN_DTO_KEYS, msgParity, testidsOf, tokensOnly, useServerFile,
 } from "./qc-hr-lib.mjs";
 import { pdfPagesText, thNorm } from "./qc-hr-h3.6-lib.mjs";
 import { VECS, VEC, V9, V10, K, STATE_TABLE, TEXT_KEYS, LAW_CLAIM, EARN_CODES, DEDUCT_CODES, brokenItems, prng, randomItem, holdRunRow, v1Item, type ItemIn } from "./qc-hr-h3.8-lib.mjs";
@@ -100,8 +101,14 @@ S3.17|R11|C|R|[db] issue refusals consume no number: no slip ⇒ certNoSlip · d
 S3.18|R11|C|R|[db] frozen certificate: renamed employee ⇒ PDF still shows issued name · tampered content ⇒ certChanged · void owner only (certVoidOwner) · reason 1–200 · voided ⇒ voided · reissue ⇒ HRSC-2032-0003 (no reuse)
 S3.19|R6 R11|C|R|[db] self certificates: own live ISSUED listed + PDF (audit by SELF) · e1's certId ⇒ NO · voided ⇒ hidden + NO
 S3.20|R5 R8|C|R|[db] reversed run (after S4.1): history 2031 for e1 = 3 slips · gate PDF ⇒ withdrawn · certificate source skips it
+S3.22|R7 ruling2|C|R|[db] ORACLE-EDIT (H3.8 merge round · controller ruling 2): gate slip page reads payroll viewers through slipForViewer (+ loadPayslipForViewer kept) · branch payroll viewer ⇒ e6 (borrowed into u1) / e5 (home u2) refused {ok,code,reason} although the hotfix loader alone opens e6
 S3.21|R6|C|R|[db] H2.10 myDocuments keeps its keys but lists ISSUED slips only (RA2, RA1 — not RA6 unfinalized / RA4 reversed) with href /app/me/hr/pay/<runId>
 S4.1|X6|C|R|[db] hold RA7 row FOR UPDATE ⇒ gate PDF read waits on the lock (seen in pg_stat_activity) · holder flips RA7 to REVERSED and commits ⇒ the read answers WITHDRAWN (no stale slip)
+S1.13|review M3|C|R|[static] ORACLE-EDIT (H3.8 merge round · review M3): privacy.ts + self.ts sha256 pinned at the H3.8 tip (later tickets re-take consciously, like h0.1 S4.2)
+S3.23|review m1|C|R|[db] ORACLE-EDIT (H3.8 merge round · review m1): certificate source = latest ISSUED slip with payDate ≤ today (BKK) — e2 with a future-paid run cites RA3 (BASE 30,000) ⇒ HRSC-2032-0006
+S3.24|review m2|M|R|[db] ORACLE-EDIT (H3.8 merge round · review m2): DRAFT run with negative net ⇒ gate in-app state DRAFT with figures (not SLIP_DATA) · PDF notIssued
+S3.25|ruling new|C|R|[db] ORACLE-EDIT (H3.8 merge round · controller ruling): certificate whose source run is reversed after issue ⇒ gate list sourceWithdrawn (no runId) · owner voids it · gate PDF voided · number kept
+S4.3|review|C|R|[db] ORACLE-EDIT (H3.8 merge round · review): issue racing a reversal — hold RA8 FOR UPDATE ⇒ issue waits (pg_stat_activity) · holder reverses ⇒ certificate cites the next latest issued slip (RA3), never a reversed run ⇒ HRSC-2032-0007
 S4.2|X6|C|R|[db] 5 parallel self requests ⇒ 1 REQUESTED + 4 certReqOpen · 4 parallel issues of that request ⇒ 1 ISSUED HRSC-2032-0005 + 3 notDecidable (0004 = S5.1) · counter lastNo 5 · numbers 0001–0005 contiguous
 S5.1|R13|C|R|[db] route helpers: rsc / prefetch ⇒ 204, nothing audited · GET ⇒ 200 application/pdf attachment no-store nosniff safe file name · refusal ⇒ 404/409 fixed text (th/en) no bytes · self + certificate helpers
 S5.2|R13|C|R|[db] HEAD / POST to the 4 helpers ⇒ 405 Allow GET before any read · no audit row
@@ -125,7 +132,17 @@ const skipReasons: string[] = [];
 if (!existsSync(join(ROOT, F.rules))) skipReasons.push(`${F.rules} absent (H3.8 not built)`);
 if (skipReasons.length && !FORCE) skipExit(skipReasons);
 const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") => chk(id, Object.values(r).every(Boolean), exp, `${failedKeys(r)}${extra ? ` ${extra}` : ""}`);
-const BASE = baseRef("QC_H38_BASE");
+// ORACLE-EDIT (H3.8 merge round · controller 13 Nov): base-aware like qc-hr-h3.6 — merge-base(HEAD, local session/hr) wins over the origin-derived base when it is
+//   a descendant of it (env override wins) · once H3.8 is in the base (IN_BASE = payslip-rules.ts in base) every base-diff static is n/a ◂
+const LOCAL_MB = (() => {
+  try {
+    return execFileSync("git", ["merge-base", "HEAD", "session/hr"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+})();
+const MB0 = baseRef("QC_H38_BASE");
+const BASE = !process.env.QC_H38_BASE && MB0 && LOCAL_MB && LOCAL_MB !== MB0 && commitInBase(MB0, LOCAL_MB) ? LOCAL_MB : MB0;
 const IN_BASE = !!BASE && pathInBase(F.rules, BASE);
 const exists = (p: string) => existsSync(join(ROOT, p));
 const bodies = (src: string) => [...src.matchAll(/export\s+async\s+function\s+(\w+)\s*\(([\s\S]*?)(?=\nexport\s|$)/g)].map((m) => ({ name: m[1]!, body: m[2]! }));
@@ -167,7 +184,7 @@ function runStatic(): void {
     const p = rd(F.schema);
     const pb = BASE ? (fileAt(BASE, F.schema) ?? "") : "";
     ck("S1.2", {
-      model: /model HrSalaryCertificate \{/.test(p), runSame: !!pb && modelBlock(p, "HrPayrollRun") === modelBlock(pb, "HrPayrollRun"), itemSame: !!pb && modelBlock(p, "HrPayrollItem") === modelBlock(pb, "HrPayrollItem"),
+      model: /model HrSalaryCertificate \{/.test(p), runSame: IN_BASE || (!!pb && modelBlock(p, "HrPayrollRun") === modelBlock(pb, "HrPayrollRun")), itemSame: IN_BASE || (!!pb && modelBlock(p, "HrPayrollItem") === modelBlock(pb, "HrPayrollItem")), // ORACLE-EDIT (H3.8 merge round): n/a in base
       back: /HrSalaryCertificate\[\]/.test(rd(F.hrSchema)), scope: /HrSalaryCertificate:\s*sys\(\)/.test(rd(F.scope)), env: /hrSalaryCertificate/.test(rd(F.env)),
     }, "schema + registries");
   }
@@ -187,12 +204,16 @@ function runStatic(): void {
   {
     const s = stripComments(rd(F.pdf));
     const pkg = (t: string) => { try { const j = JSON.parse(t); return canon({ d: j.dependencies, dd: j.devDependencies }); } catch { return "x"; } };
-    const pkgSame = !!BASE && pkg(rd("package.json")) === pkg(fileAt(BASE, "package.json") ?? "");
+    const pkgSame = IN_BASE || (!!BASE && pkg(rd("package.json")) === pkg(fileAt(BASE, "package.json") ?? "")); // ORACLE-EDIT (H3.8 merge round): n/a in base
     ck("S1.5", { file: !!s, reactPdf: /@react-pdf\/renderer/.test(s), sarabun: /Sarabun/.test(s) && /sarabun/.test(s), wrap: /wrapPdf/.test(s) && /account\/public-doc-pdf|filings\/cert-pdf/.test(s), pkgSame }, "existing PDF path + no new dependency");
   }
   {
     const rulesSha = sha(rd(PAYROLL_RULES_FILE));
-    const diff = IN_BASE ? "unchanged" : BASE ? changedVsBase(BASE, FROZEN) : "no base";
+    // ORACLE-EDIT (H3.8 merge round · controller 13 Nov): qc-hr-h3.6.mts may differ only by exactly one hunk marked "ORACLE-EDIT (H3.8 merge round" (its S1.2 in-base guard) ◂
+    const h36 = "scripts/qc-hr-h3.6.mts";
+    const h36Hunks = BASE ? (diffHunks(BASE, h36) ?? []) : [];
+    const h36Ok = h36Hunks.length === 1 && h36Hunks[0]!.added.some((l) => l.includes("ORACLE-EDIT (H3.8 merge round"));
+    const diff = IN_BASE ? "unchanged" : BASE ? changedVsBase(BASE, FROZEN.filter((f) => !(f === h36 && h36Ok))) : "no base";
     ck("S1.6", { rules: rulesSha === PAYROLL_RULES_SHA, frozen: diff === "unchanged" }, "frozen", IN_BASE ? "n/a · H3.8 in base" : diff);
   }
   {
@@ -202,6 +223,9 @@ function runStatic(): void {
         const hs = BASE ? diffHunks(BASE, f) : null;
         if (!hs || hs.length === 0) bad.push(`${f.split("/").pop()}:none`);
         else if (!hs.every((h) => h.added.some((l) => l.includes("HR H3.8")))) bad.push(`${f.split("/").pop()}:unmarked`);
+        // ORACLE-EDIT (H3.8 merge round · review): beyond "marker present" — every hunk also closes its marker (◂) and never removes a line carrying another ticket's marker ◂
+        else if (!hs.every((h) => h.added.some((l) => l.includes("◂")))) bad.push(`${f.split("/").pop()}:unclosed`);
+        else if (hs.some((h) => h.removed.some((l) => /HR H(?!3\.8\b)\d+\.\d+|HF-[A-Z]+-\d/.test(l)))) bad.push(`${f.split("/").pop()}:removes-other-ticket`);
       }
     chk("S1.7", bad.length === 0, "marked hunks in 13 files", IN_BASE ? "n/a · H3.8 in base" : bad.join(" ") || "ok");
   }
@@ -223,6 +247,15 @@ function runStatic(): void {
     const selfFns = bodies(sv).filter((b) => /^(my|requestSalaryCertificate|cancelMySalaryCertRequest|downloadMy|listMy)/.test(b.name));
     const badFns = selfFns.filter((b) => !/resolveSelf\(/.test(b.body) || /\b(input|i|q|args|params|o)\s*(\?\.|\.)\s*employeeId\b|\[\s*["']employeeId["']\s*\]/.test(b.body)).map((b) => b.name);
     ck("S1.9", { pages: me.every(Boolean) && me.every((s) => !/employeeId/.test(s)), fns: selfFns.length >= 6, resolve: badFns.length === 0 }, "self from session only", `selfFns=${selfFns.length} bad=${badFns.join(",") || "-"}`);
+  }
+  {
+    // ORACLE-EDIT (H3.8 merge round · review M3): the two hotfix/self files H3.8 had to touch are pinned at the H3.8 tip — any later change re-takes the pin on purpose ◂
+    const PIN: Record<string, string> = {
+      [F.priv]: "9b95844dd0c066914d357429e128118e43078532e0fe2aae029ddd9ad467fa96",
+      [F.self]: "d63dd8899f0974a37b9887e0fb5817fc3ca0be8b36249e07d243ac4099b30a04",
+    };
+    const bad = Object.entries(PIN).filter(([f, h]) => sha(rd(f)) !== h).map(([f]) => `${f.split("/").pop()}=${sha(rd(f)).slice(0, 12)}`);
+    chk("S1.13", bad.length === 0, "privacy.ts + self.ts = H3.8 pins", bad.join(" ") || "ok");
   }
   {
     const ui = rd(F.ui);
@@ -666,6 +699,23 @@ async function runDb(): Promise<void> {
     const s2 = await S("mySlip", forgedActor, { runId: RA.r3, employeeId: E.e1 });
     ck("S3.11", { roleClaim: isNo(await slip(forgedA, RA.r2, E.e1)), permClaim: isNo(await slip(forgedB, RA.r2, E.e1)), selfList: canon(m2.value) === canon(mine.value) && mine.ok, selfOne: isNo(s2) }, "claims ignored");
   }
+  // S3.22 — ORACLE-EDIT (H3.8 merge round · controller ruling 2): borrowed / other-branch employee's slip page for a branch-limited payroll viewer ◂
+  {
+    const page = stripComments(rd(F.pGateSlip));
+    // review M1: the payroll branch reads only slipForViewer (no hotfix loader inside it) · refusal ⇒ notFound · the hotfix loader is reached only after that branch returned
+    const i0 = page.indexOf("if (payroll) {");
+    const iL = page.indexOf("loadPayslipForViewer(");
+    const pb = i0 >= 0 && iL > i0 ? page.slice(i0, iL) : "";
+    const stat = !!pb && /slipForViewer\(/.test(pb) && /!\s*g\.ok[\s\S]{0,160}notFound\(\)/.test(pb) && /return \(/.test(pb) && !/loadPayslipForViewer/.test(pb);
+    // the fixture borrowing starts in 2030 (not open today) ⇒ move its start to yesterday for the positive control, restored right after
+    const bor = await P.hrEmployeeUnit.findFirst({ where: { employeeId: E.e6, unitId: u1 }, select: { id: true, fromDate: true } });
+    if (bor) await P.hrEmployeeUnit.update({ where: { id: bor.id }, data: { fromDate: new Date(Date.now() - 86_400_000) } });
+    const hotfixE6 = await PRIV.loadPayslipForViewer(cA, V.payBranch, RA.r2, E.e6).catch(() => null);
+    const r6 = await slip(V.payBranch, RA.r2, E.e6);
+    const r5 = await slip(V.payBranch, RA.r2, E.e5);
+    if (bor) await P.hrEmployeeUnit.update({ where: { id: bor.id }, data: { fromDate: bor.fromDate } });
+    ck("S3.22", { stat, control: !!hotfixE6, e6: isNo(r6), e5: isNo(r5) }, "page via slipForViewer · borrowed/other branch refused", `hotfix=${hotfixE6 ? "opens" : "null"} e6=${shown(r6)} e5=${shown(r5)}`);
+  }
   // S3.12
   {
     const rs = [await slip(V.owner, "nope-run", E.e1), await slip(V.other, RA.r2, E.e1, cO), await slip(V.owner, RA.r2, E.e1, cO), await slip(V.member, RA.r2, E.e1), await slip(V.payBranch, RA.r2, E.e5), await pdf(V.mgr, RA.r2, E.e1), await hist(V.hrStaff, E.e1, 2031), await S("mySlip", actorOf(U.self), { runId: RA.r7 })];
@@ -873,6 +923,39 @@ async function runDb(): Promise<void> {
       req: okReq.length === 1 && rq.filter((r) => !r.ok).every((r) => codeIs(r, "CERT_REQ_OPEN", "certReqOpen")), issue: okIs.length === 1 && okIs[0]?.value?.docNo === "HRSC-2032-0005" && is.filter((r) => !r.ok).every((r) => codeIs(r, "NOT_DECIDABLE", "notDecidable")),
       contiguous: canon(docs) === canon(want), seq: seq === 5,
     }, "1 + 1 · contiguous", `req ${okReq.length}/5 issue ${okIs.length}/4 docs=${docs.join(",")} seq=${seq}`);
+  }
+  // ═════ ORACLE-EDIT (H3.8 merge round · review + controller rulings) ═════
+  // S3.25 source run reversed after issue (RA7 ⇒ e3's HRSC-2032-0004)
+  {
+    const l = await S("listSalaryCertificates", cA, V.owner, {});
+    const items = (l.value?.items ?? []) as Any[];
+    const c4 = items.find((x) => x.docNo === "HRSC-2032-0004");
+    const c3 = items.find((x) => x.docNo === "HRSC-2032-0003");
+    const v = await S("voidSalaryCertificate", cA, V.owner, { certId: c4?.id ?? "x", reason: "รอบต้นทางถูกกลับรายการ" }, NOW);
+    const dl = await S("downloadSalaryCertificate", cA, V.owner, { certId: c4?.id ?? "x" });
+    const row = (await scRows(TT)).find((x) => x.id === c4?.id);
+    ck("S3.25", { flag: c4?.sourceWithdrawn === true && c4?.voided === false, live: c3?.sourceWithdrawn === false, noRun: !JSON.stringify(items).includes(RA.r7), voided: v.ok && codeIs(dl, "VOIDED", "voided"), kept: row?.docNo === "HRSC-2032-0004" && row?.status === "ISSUED" && !!row?.voidedAt }, "flag · void · number kept", `c4=${short(c4, 120)}`);
+  }
+  // S3.23 future-paid run is not a certificate source
+  {
+    const rf = await mkRun(cA, "2032-02", "2032-02-27", "PAID", 2, [{ e: E.e2, it: VEC.V1!.item }]);
+    const r = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e2, purpose: "BANK" }, NOW);
+    const c = (await scRows(TT)).find((x) => x.id === r.value?.certId)?.contentJson ?? {};
+    ck("S3.23", { ok: r.value?.docNo === "HRSC-2032-0006", src: c.salary?.runId === RA.r3 && c.salary?.amountSatang === 3_000_000 && c.salary?.periodKey === "2031-03", notFuture: c.salary?.runId !== rf }, "payDate ≤ today", `${shown(r)} src=${c.salary?.periodKey}`);
+  }
+  // S4.3 issue racing a reversal of the latest source run (RA8)
+  {
+    const h = await holdRunRow(P, RA.r8, async (tx: Any) => tx.$executeRawUnsafe(`UPDATE "HrPayrollRun" SET "status" = 'REVERSED'::"PayrollRunStatus" WHERE "id" = $1`, RA.r8), () => S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e1, purpose: "VISA" }, NOW));
+    const c = (await scRows(TT)).find((x) => x.id === h.res.value?.certId)?.contentJson ?? {};
+    ck("S4.3", { waited: h.waited, holder: !h.holderErr, ok: h.res.value?.docNo === "HRSC-2032-0007", next: c.salary?.runId === RA.r3 && c.salary?.amountSatang === 2_000_000, notReversed: ![RA.r8, RA.r7, RA.r4].includes(c.salary?.runId) }, "waits · next latest", `waited=${h.waited} ${shown(h.res)} src=${c.salary?.periodKey} ${h.holderErr}`);
+  }
+  // S3.24 DRAFT with negative net (H3.4 NET_NEGATIVE) — banner, not data-corrupt
+  {
+    const neg = { ...VEC.V1!.item, grossSatang: -200_000, netSatang: -200_000, ssoBaseSatang: 0, ssoEmployeeSatang: 0, ssoEmployerSatang: 0, whtSatang: 0, snapshotJson: { ...VEC.V1!.item.snapshotJson, lines: [{ code: "BASE", ref: "profile", day: null, minutes: null, amountSatang: 1_000_000 }, { code: "ADVANCE", ref: "adv", day: null, minutes: null, amountSatang: -1_200_000 }] } };
+    const rd2 = await mkRun(cA, "2032-03", "2032-03-31", "DRAFT", 2, [{ e: E.e8, it: neg as ItemIn }]);
+    const a = await slip(V.owner, rd2, E.e8);
+    const p = await pdf(V.owner, rd2, E.e8);
+    ck("S3.24", { draft: a.value?.ok === true && a.value?.state === "DRAFT" && a.value?.netSatang === -200_000 && a.value?.earningsSatang - a.value?.deductionsSatang === -200_000, pdf: codeIs(p, "NOT_ISSUED", "notIssued") }, "DRAFT banner", `${shown(a)} ${shown(p)}`);
   }
 }
 

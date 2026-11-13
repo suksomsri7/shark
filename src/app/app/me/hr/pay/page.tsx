@@ -13,8 +13,9 @@ export default async function MeHrPayPage({ searchParams }: { searchParams: Prom
   if (!self.ok || !docs.ok) return <SelfEmpty />;
   return (
     <>
-      <SelfPay docs={docs} canWrite={self.active} />
-      <MySlipYears /> {/* HR H3.8 ◂ */}
+      <SelfPay docs={docs} canWrite={self.active}>
+        <MySlipYears /> {/* HR H3.8 ▸ รายการสลิปเดียว (แยกปีภาษี) ในช่อง hr-self-payslips ◂ */}
+      </SelfPay>
       <MySalaryCertCard canWrite={self.active} sc={typeof sp.sc === "string" ? sp.sc : undefined} /> {/* HR H3.8 ◂ */}
       <MyTaxCertCard /> {/* HR H3.6 ◂ */}
     </>
