@@ -1,0 +1,190 @@
+{
+  "_meta": {
+    "wo": "HR H3.7 — payroll accounting v2 (accrual at approve · payment at markPaid · book link · posting key · symmetric reversal)",
+    "money": "integer satang everywhere",
+    "source": "hand arithmetic in ledger/wo-notes/hr-H3.7-design.md §4 (every number written by hand, never produced by the code under test)",
+    "lines": "item.snapshot.lines = H3.4 stored pay lines {code, ref, amountSatang (signed), requestedSatang?} — Σ lines = grossSatang = net + ssoEmployee + wht"
+  },
+  "accounts": [
+    { "key": "PAYROLL_SALARY_EXPENSE", "code": "6000", "type": "EXPENSE", "label": "เงินเดือนและค่าแรง", "ledgerName": "เงินเดือนและค่าแรง", "isNew": false },
+    { "key": "PAYROLL_SSO_EXPENSE", "code": "6010", "type": "EXPENSE", "label": "เงินสมทบประกันสังคม (ส่วนนายจ้าง)", "ledgerName": "เงินสมทบประกันสังคม (ส่วนนายจ้าง)", "isNew": true },
+    { "key": "PAYROLL_SALARY_PAYABLE", "code": "2120", "type": "LIABILITY", "label": "เงินเดือนค้างจ่าย", "ledgerName": "เงินเดือนค้างจ่าย", "isNew": true },
+    { "key": "PAYROLL_SSO_PAYABLE", "code": "2150", "type": "LIABILITY", "label": "เงินสมทบประกันสังคมค้างนำส่ง", "ledgerName": "เงินสมทบประกันสังคมค้างนำส่ง", "isNew": true },
+    { "key": "PAYROLL_WHT_PAYABLE", "code": "2130", "type": "LIABILITY", "label": "ภาษีเงินได้หัก ณ ที่จ่ายค้างนำส่ง (ภ.ง.ด.1)", "ledgerName": "ภาษีหัก ณ ที่จ่ายค้างนำส่ง", "isNew": false },
+    { "key": "PAYROLL_EMPLOYEE_RECEIVABLE", "code": "1140", "type": "ASSET", "label": "ลูกหนี้พนักงาน/เงินทดรองจ่ายพนักงาน", "ledgerName": "ลูกหนี้พนักงาน/เงินทดรองจ่ายพนักงาน", "isNew": true },
+    { "key": "PAYROLL_DAMAGES_RECOVERY", "code": "4900", "type": "INCOME", "label": "รายได้จากการหักค่าเสียหาย/ค่าของจากพนักงาน", "ledgerName": "รายได้อื่น / กำไรจากการจำหน่ายสินทรัพย์", "isNew": false },
+    { "key": "PAYROLL_OVERPAY_RECOVERY", "code": "6000", "type": "EXPENSE", "label": "รับคืนเงินเดือน/ค่าคอมฯ ที่จ่ายเกิน", "ledgerName": "เงินเดือนและค่าแรง", "isNew": false }
+  ],
+  "template": [
+    ["PAYROLL_SALARY_EXPENSE", "DR", "salaryExpenseSatang", "เงินเดือนและค่าจ้าง"],
+    ["PAYROLL_SSO_EXPENSE", "DR", "ssoEmployerSatang", "เงินสมทบประกันสังคม (นายจ้าง)"],
+    ["PAYROLL_DAMAGES_RECOVERY", "DR", "refundSatang", "คืนเงินรายการหักให้พนักงาน"],
+    ["PAYROLL_EMPLOYEE_RECEIVABLE", "DR", "receivableDamagesSatang", "ลูกหนี้พนักงาน (ค่าเสียหายที่หักจากค่าจ้างงวดสุดท้ายไม่ได้)"],
+    ["PAYROLL_EMPLOYEE_RECEIVABLE", "DR", "receivableOverpaySatang", "ลูกหนี้พนักงาน (เงินจ่ายเกินที่หักจากค่าจ้างงวดสุดท้ายไม่ได้)"],
+    ["PAYROLL_SALARY_PAYABLE", "CR", "netSatang", "เงินเดือนค้างจ่าย (สุทธิ)"],
+    ["PAYROLL_SSO_PAYABLE", "CR", "ssoPayableSatang", "เงินสมทบประกันสังคมค้างนำส่ง (ลูกจ้าง+นายจ้าง)"],
+    ["PAYROLL_WHT_PAYABLE", "CR", "whtSatang", "ภาษีหัก ณ ที่จ่ายค้างนำส่ง (ภ.ง.ด.1)"],
+    ["PAYROLL_EMPLOYEE_RECEIVABLE", "CR", "advanceRecoveredSatang", "หักคืนเงินเบิกล่วงหน้า"],
+    ["PAYROLL_DAMAGES_RECOVERY", "CR", "damagesRecoveredSatang", "หักค่าเสียหาย/ค่าของจากค่าจ้าง"],
+    ["PAYROLL_OVERPAY_RECOVERY", "CR", "overpayRecoveredSatang", "หักคืนเงินที่จ่ายเกิน"],
+    ["PAYROLL_DAMAGES_RECOVERY", "CR", "receivableDamagesSatang", "รับรู้ลูกหนี้ค่าเสียหายของพนักงานที่ออก"],
+    ["PAYROLL_OVERPAY_RECOVERY", "CR", "receivableOverpaySatang", "รับรู้ลูกหนี้เงินจ่ายเกินของพนักงานที่ออก"]
+  ],
+  "payTemplate": [
+    ["PAYROLL_SALARY_PAYABLE", "DR", "netSatang", "จ่ายเงินเดือนสุทธิ"],
+    ["<pay account>", "CR", "netSatang", "จ่ายเงินเดือนสุทธิ"]
+  ],
+  "examples": {
+    "A": {
+      "title": "plain run — 2 monthly employees · payDate in the next month ⇒ accrual on the last day of P",
+      "periodKey": "2031-09", "payDay": "2031-10-05", "accrualDay": "2031-09-30", "paidOn": "2031-10-05", "payAccount": "BANK",
+      "items": [
+        { "emp": "a1", "grossSatang": 3000000, "ssoEmployeeSatang": 87500, "ssoEmployerSatang": 87500, "whtSatang": 16458, "netSatang": 2896042, "addSatang": 0, "deductSatang": 0,
+          "snapshot": { "engineVersion": 2, "lines": [{ "code": "BASE", "ref": "profile", "amountSatang": 3000000 }], "carry": [], "receivable": [] } },
+        { "emp": "a2", "grossSatang": 1500000, "ssoEmployeeSatang": 75000, "ssoEmployerSatang": 75000, "whtSatang": 0, "netSatang": 1425000, "addSatang": 0, "deductSatang": 0,
+          "snapshot": { "engineVersion": 2, "lines": [{ "code": "BASE", "ref": "profile", "amountSatang": 1500000 }], "carry": [], "receivable": [] } }
+      ],
+      "bound": [],
+      "amounts": { "salaryExpenseSatang": 4500000, "ssoEmployerSatang": 162500, "refundSatang": 0, "receivableDamagesSatang": 0, "receivableOverpaySatang": 0, "netSatang": 4321042, "ssoPayableSatang": 325000, "whtSatang": 16458, "advanceRecoveredSatang": 0, "damagesRecoveredSatang": 0, "overpayRecoveredSatang": 0 },
+      "rows": [["PAYROLL_SALARY_EXPENSE", "DR", 4500000], ["PAYROLL_SSO_EXPENSE", "DR", 162500], ["PAYROLL_SALARY_PAYABLE", "CR", 4321042], ["PAYROLL_SSO_PAYABLE", "CR", 325000], ["PAYROLL_WHT_PAYABLE", "CR", 16458]],
+      "byCode": [["6000", "DR", 4500000], ["6010", "DR", 162500], ["2120", "CR", 4321042], ["2150", "CR", 325000], ["2130", "CR", 16458]],
+      "total": 4662500,
+      "pay": [["2120", "DR", 4321042], ["1010", "CR", 4321042]]
+    },
+    "B": {
+      "title": "advances (carry-in + new) · damages capped and carried · overpay clawback · lateness · refund of a claim",
+      "periodKey": "2031-09", "payDay": "2031-09-30", "accrualDay": "2031-09-30", "paidOn": "2031-09-30", "payAccount": "BANK",
+      "items": [
+        { "emp": "b1", "grossSatang": 1580007, "ssoEmployeeSatang": 87500, "ssoEmployerSatang": 87500, "whtSatang": 9000, "netSatang": 1483507, "addSatang": 170000, "deductSatang": 589993,
+          "snapshot": { "engineVersion": 2, "lines": [
+            { "code": "BASE", "ref": "profile", "amountSatang": 2000000 },
+            { "code": "LATE_RULE", "ref": "bLate", "amountSatang": -27770, "requestedSatang": 27770 },
+            { "code": "OT", "ref": "bOT", "amountSatang": 150000 },
+            { "code": "REFUND", "ref": "bRef", "amountSatang": 20000 },
+            { "code": "ADVANCE", "ref": "bCfAdv", "amountSatang": -100000, "requestedSatang": 100000 },
+            { "code": "ADVANCE", "ref": "bAdv", "amountSatang": -200000, "requestedSatang": 200000 },
+            { "code": "DEDUCTION", "ref": "bDmg", "amountSatang": -212223, "requestedSatang": 300000 },
+            { "code": "DEDUCTION", "ref": "bOvp", "amountSatang": -50000, "requestedSatang": 50000 }
+          ], "carry": [{ "cls": "DAMAGES", "amountSatang": 87777 }], "receivable": [] } }
+      ],
+      "bound": [
+        { "id": "bLate", "emp": "b1", "kind": "DEDUCTION", "sourceType": "LATE_RULE", "sourceRef": null, "amountSatang": 27770 },
+        { "id": "bOT", "emp": "b1", "kind": "OT", "sourceType": "OT_REQUEST", "sourceRef": null, "amountSatang": 150000 },
+        { "id": "bRef", "emp": "b1", "kind": "REFUND", "sourceType": "MANUAL", "sourceRef": null, "amountSatang": 20000 },
+        { "id": "bCfAdv", "emp": "b1", "kind": "ADVANCE", "sourceType": "CARRY_FORWARD", "sourceRef": "cf:PREVRUN:b1:ADVANCE", "amountSatang": 100000 },
+        { "id": "bAdv", "emp": "b1", "kind": "ADVANCE", "sourceType": "MANUAL", "sourceRef": null, "amountSatang": 200000 },
+        { "id": "bDmg", "emp": "b1", "kind": "DEDUCTION", "sourceType": "MANUAL", "sourceRef": null, "amountSatang": 300000 },
+        { "id": "bOvp", "emp": "b1", "kind": "DEDUCTION", "sourceType": "CRM_COMMISSION", "sourceRef": null, "amountSatang": 50000 }
+      ],
+      "amounts": { "salaryExpenseSatang": 2122230, "ssoEmployerSatang": 87500, "refundSatang": 20000, "receivableDamagesSatang": 0, "receivableOverpaySatang": 0, "netSatang": 1483507, "ssoPayableSatang": 175000, "whtSatang": 9000, "advanceRecoveredSatang": 300000, "damagesRecoveredSatang": 212223, "overpayRecoveredSatang": 50000 },
+      "rows": [["PAYROLL_SALARY_EXPENSE", "DR", 2122230], ["PAYROLL_SSO_EXPENSE", "DR", 87500], ["PAYROLL_DAMAGES_RECOVERY", "DR", 20000], ["PAYROLL_SALARY_PAYABLE", "CR", 1483507], ["PAYROLL_SSO_PAYABLE", "CR", 175000], ["PAYROLL_WHT_PAYABLE", "CR", 9000], ["PAYROLL_EMPLOYEE_RECEIVABLE", "CR", 300000], ["PAYROLL_DAMAGES_RECOVERY", "CR", 212223], ["PAYROLL_OVERPAY_RECOVERY", "CR", 50000]],
+      "byCode": [["6000", "DR", 2122230], ["6010", "DR", 87500], ["4900", "DR", 20000], ["2120", "CR", 1483507], ["2150", "CR", 175000], ["2130", "CR", 9000], ["1140", "CR", 300000], ["4900", "CR", 212223], ["6000", "CR", 50000]],
+      "total": 2229730,
+      "carryRow": { "kind": "DEDUCTION", "cls": "DAMAGES", "amountSatang": 87777, "periodKey": "2031-10" },
+      "pay": [["2120", "DR", 1483507], ["1010", "CR", 1483507]]
+    },
+    "C": {
+      "title": "final period of two leavers — prorated · caps · receivables (DAMAGES/OVERPAY booked, ADVANCE stays in 1140) · one net 0",
+      "periodKey": "2031-09", "payDay": "2031-09-18", "accrualDay": "2031-09-18", "paidOn": "2031-09-18", "payAccount": "BANK",
+      "items": [
+        { "emp": "c1", "endDate": "2031-09-15", "grossSatang": 320000, "ssoEmployeeSatang": 45000, "ssoEmployerSatang": 45000, "whtSatang": 0, "netSatang": 275000, "addSatang": 0, "deductSatang": 580000,
+          "snapshot": { "engineVersion": 2, "lines": [
+            { "code": "BASE", "ref": "profile", "amountSatang": 1800000 },
+            { "code": "PRORATION", "ref": "employment", "amountSatang": -900000 },
+            { "code": "ADVANCE", "ref": "c1Adv", "amountSatang": -400000, "requestedSatang": 400000 },
+            { "code": "DEDUCTION", "ref": "c1Dmg", "amountSatang": -90000, "requestedSatang": 100000 },
+            { "code": "DEDUCTION", "ref": "c1Ovp", "amountSatang": -90000, "requestedSatang": 100000 }
+          ], "carry": [], "receivable": [{ "cls": "DAMAGES", "amountSatang": 10000 }, { "cls": "OVERPAY", "amountSatang": 10000 }] } },
+        { "emp": "c2", "endDate": "2031-09-30", "grossSatang": 45000, "ssoEmployeeSatang": 45000, "ssoEmployerSatang": 45000, "whtSatang": 0, "netSatang": 0, "addSatang": 0, "deductSatang": 855000,
+          "snapshot": { "engineVersion": 2, "lines": [
+            { "code": "BASE", "ref": "profile", "amountSatang": 900000 },
+            { "code": "ADVANCE", "ref": "c2Adv", "amountSatang": -855000, "requestedSatang": 1000000 }
+          ], "carry": [], "receivable": [{ "cls": "ADVANCE", "amountSatang": 145000 }] } }
+      ],
+      "bound": [
+        { "id": "c1Adv", "emp": "c1", "kind": "ADVANCE", "sourceType": "MANUAL", "sourceRef": null, "amountSatang": 400000 },
+        { "id": "c1Dmg", "emp": "c1", "kind": "DEDUCTION", "sourceType": "INVENTORY_ISSUE", "sourceRef": null, "amountSatang": 100000 },
+        { "id": "c1Ovp", "emp": "c1", "kind": "DEDUCTION", "sourceType": "CRM_COMMISSION", "sourceRef": null, "amountSatang": 100000 },
+        { "id": "c2Adv", "emp": "c2", "kind": "ADVANCE", "sourceType": null, "sourceRef": null, "amountSatang": 1000000 }
+      ],
+      "amounts": { "salaryExpenseSatang": 1800000, "ssoEmployerSatang": 90000, "refundSatang": 0, "receivableDamagesSatang": 10000, "receivableOverpaySatang": 10000, "netSatang": 275000, "ssoPayableSatang": 180000, "whtSatang": 0, "advanceRecoveredSatang": 1255000, "damagesRecoveredSatang": 90000, "overpayRecoveredSatang": 90000 },
+      "rows": [["PAYROLL_SALARY_EXPENSE", "DR", 1800000], ["PAYROLL_SSO_EXPENSE", "DR", 90000], ["PAYROLL_EMPLOYEE_RECEIVABLE", "DR", 10000], ["PAYROLL_EMPLOYEE_RECEIVABLE", "DR", 10000], ["PAYROLL_SALARY_PAYABLE", "CR", 275000], ["PAYROLL_SSO_PAYABLE", "CR", 180000], ["PAYROLL_EMPLOYEE_RECEIVABLE", "CR", 1255000], ["PAYROLL_DAMAGES_RECOVERY", "CR", 90000], ["PAYROLL_OVERPAY_RECOVERY", "CR", 90000], ["PAYROLL_DAMAGES_RECOVERY", "CR", 10000], ["PAYROLL_OVERPAY_RECOVERY", "CR", 10000]],
+      "byCode": [["6000", "DR", 1800000], ["6010", "DR", 90000], ["1140", "DR", 10000], ["1140", "DR", 10000], ["2120", "CR", 275000], ["2150", "CR", 180000], ["1140", "CR", 1255000], ["4900", "CR", 90000], ["6000", "CR", 90000], ["4900", "CR", 10000], ["6000", "CR", 10000]],
+      "total": 1910000,
+      "pay": [["2120", "DR", 275000], ["1010", "CR", 275000]]
+    },
+    "D": {
+      "title": "bonus month — one-off bonus taxed in full (stored WHT) · bonus outside the SSO wage · paid from the default cash account",
+      "periodKey": "2031-12", "payDay": "2031-12-25", "accrualDay": "2031-12-25", "paidOn": "2031-12-26", "payAccount": "CASH_DEFAULT",
+      "items": [
+        { "emp": "d1", "grossSatang": 7500000, "ssoEmployeeSatang": 87500, "ssoEmployerSatang": 87500, "whtSatang": 452083, "netSatang": 6960417, "addSatang": 5000000, "deductSatang": 0,
+          "snapshot": { "engineVersion": 2, "lines": [
+            { "code": "BASE", "ref": "profile", "amountSatang": 2500000 },
+            { "code": "BONUS", "ref": "dBonus", "amountSatang": 5000000 }
+          ], "carry": [], "receivable": [] } }
+      ],
+      "bound": [{ "id": "dBonus", "emp": "d1", "kind": "BONUS", "sourceType": "MANUAL", "sourceRef": null, "amountSatang": 5000000 }],
+      "amounts": { "salaryExpenseSatang": 7500000, "ssoEmployerSatang": 87500, "refundSatang": 0, "receivableDamagesSatang": 0, "receivableOverpaySatang": 0, "netSatang": 6960417, "ssoPayableSatang": 175000, "whtSatang": 452083, "advanceRecoveredSatang": 0, "damagesRecoveredSatang": 0, "overpayRecoveredSatang": 0 },
+      "rows": [["PAYROLL_SALARY_EXPENSE", "DR", 7500000], ["PAYROLL_SSO_EXPENSE", "DR", 87500], ["PAYROLL_SALARY_PAYABLE", "CR", 6960417], ["PAYROLL_SSO_PAYABLE", "CR", 175000], ["PAYROLL_WHT_PAYABLE", "CR", 452083]],
+      "byCode": [["6000", "DR", 7500000], ["6010", "DR", 87500], ["2120", "CR", 6960417], ["2150", "CR", 175000], ["2130", "CR", 452083]],
+      "total": 7587500,
+      "pay": [["2120", "DR", 6960417], ["1000", "CR", 6960417]]
+    },
+    "E": {
+      "title": "no social security (employee outside SSO) · no WHT ⇒ two lines only · book = the SECOND accounting system of the shop",
+      "periodKey": "2031-09", "payDay": "2031-09-30", "accrualDay": "2031-09-30", "paidOn": null, "payAccount": null,
+      "items": [
+        { "emp": "e1", "ssoEligible": false, "grossSatang": 1200000, "ssoEmployeeSatang": 0, "ssoEmployerSatang": 0, "whtSatang": 0, "netSatang": 1200000, "addSatang": 0, "deductSatang": 0,
+          "snapshot": { "engineVersion": 2, "lines": [{ "code": "BASE", "ref": "profile", "amountSatang": 1200000 }], "carry": [], "receivable": [] } }
+      ],
+      "bound": [],
+      "amounts": { "salaryExpenseSatang": 1200000, "ssoEmployerSatang": 0, "refundSatang": 0, "receivableDamagesSatang": 0, "receivableOverpaySatang": 0, "netSatang": 1200000, "ssoPayableSatang": 0, "whtSatang": 0, "advanceRecoveredSatang": 0, "damagesRecoveredSatang": 0, "overpayRecoveredSatang": 0 },
+      "rows": [["PAYROLL_SALARY_EXPENSE", "DR", 1200000], ["PAYROLL_SALARY_PAYABLE", "CR", 1200000]],
+      "byCode": [["6000", "DR", 1200000], ["2120", "CR", 1200000]],
+      "total": 1200000,
+      "pay": []
+    }
+  },
+  "accrualDay": [
+    [["2031-09", "2031-10-05"], "2031-09-30"],
+    [["2031-09", "2031-09-30"], "2031-09-30"],
+    [["2031-09", "2031-09-18"], "2031-09-18"],
+    [["2032-02", "2032-03-01"], "2032-02-29"],
+    [["2031-02", "2031-03-05"], "2031-02-28"],
+    [["2031-12", "2032-01-05"], "2031-12-31"],
+    [["2031-13", "2031-12-05"], null],
+    [["2031-09", "2031-9-5"], null]
+  ],
+  "paidOn": [
+    [["2031-09", "2031-09-01", "2031-10-06"], true],
+    [["2031-09", "2031-10-06", "2031-10-06"], true],
+    [["2031-09", "2031-08-31", "2031-10-06"], false],
+    [["2031-09", "2031-10-07", "2031-10-06"], false],
+    [["2031-09", "2031-02-30", "2031-10-06"], false],
+    [["2031-09", "", "2031-10-06"], false]
+  ],
+  "classes": [
+    [{ "kind": "ADVANCE", "sourceType": "MANUAL", "sourceRef": null }, "ADVANCE"],
+    [{ "kind": "ADVANCE", "sourceType": "CARRY_FORWARD", "sourceRef": "cf:r:e:ADVANCE" }, "ADVANCE"],
+    [{ "kind": "DEDUCTION", "sourceType": "MANUAL", "sourceRef": null }, "DAMAGES"],
+    [{ "kind": "DEDUCTION", "sourceType": null, "sourceRef": null }, "DAMAGES"],
+    [{ "kind": "DEDUCTION", "sourceType": "INVENTORY_ISSUE", "sourceRef": "hrstock:k" }, "DAMAGES"],
+    [{ "kind": "DEDUCTION", "sourceType": "CRM_COMMISSION", "sourceRef": null }, "OVERPAY"],
+    [{ "kind": "DEDUCTION", "sourceType": "POS_SALE_LINE", "sourceRef": null }, "OVERPAY"],
+    [{ "kind": "DEDUCTION", "sourceType": "OT_REQUEST", "sourceRef": null }, "OVERPAY"],
+    [{ "kind": "DEDUCTION", "sourceType": "CARRY_FORWARD", "sourceRef": "cf:r:e:DAMAGES" }, "DAMAGES"],
+    [{ "kind": "DEDUCTION", "sourceType": "CARRY_FORWARD", "sourceRef": "cf:r:e:OVERPAY" }, "OVERPAY"],
+    [{ "kind": "DEDUCTION", "sourceType": "LATE_RULE", "sourceRef": null }, null],
+    [{ "kind": "DEDUCTION", "sourceType": "ABSENT_RULE", "sourceRef": null }, null]
+  ],
+  "inconsistent": {
+    "I1_sum_ne_gross": { "items": [{ "emp": "x", "grossSatang": 100001, "ssoEmployeeSatang": 0, "ssoEmployerSatang": 0, "whtSatang": 0, "netSatang": 100001, "snapshot": { "lines": [{ "code": "BASE", "ref": "profile", "amountSatang": 100000 }], "carry": [], "receivable": [] } }], "bound": [] },
+    "I2_gross_ne_parts": { "items": [{ "emp": "x", "grossSatang": 100000, "ssoEmployeeSatang": 5000, "ssoEmployerSatang": 5000, "whtSatang": 0, "netSatang": 95001, "snapshot": { "lines": [{ "code": "BASE", "ref": "profile", "amountSatang": 100000 }], "carry": [], "receivable": [] } }], "bound": [] },
+    "I3_claim_not_bound": { "items": [{ "emp": "x", "grossSatang": 90000, "ssoEmployeeSatang": 0, "ssoEmployerSatang": 0, "whtSatang": 0, "netSatang": 90000, "snapshot": { "lines": [{ "code": "BASE", "ref": "profile", "amountSatang": 100000 }, { "code": "DEDUCTION", "ref": "ghost", "amountSatang": -10000 }], "carry": [], "receivable": [] } }], "bound": [] },
+    "I4_not_integer": { "items": [{ "emp": "x", "grossSatang": 100000.5, "ssoEmployeeSatang": 0, "ssoEmployerSatang": 0, "whtSatang": 0, "netSatang": 100000.5, "snapshot": { "lines": [{ "code": "BASE", "ref": "profile", "amountSatang": 100000.5 }], "carry": [], "receivable": [] } }], "bound": [] },
+    "I5_expense_negative": { "items": [{ "emp": "x", "grossSatang": 200, "ssoEmployeeSatang": 0, "ssoEmployerSatang": 0, "whtSatang": 0, "netSatang": 200, "snapshot": { "lines": [{ "code": "BASE", "ref": "profile", "amountSatang": 100 }, { "code": "LATE_RULE", "ref": "l", "amountSatang": -200 }, { "code": "REFUND", "ref": "r", "amountSatang": 300 }], "carry": [], "receivable": [] } }], "bound": [{ "id": "l", "emp": "x", "kind": "DEDUCTION", "sourceType": "LATE_RULE", "sourceRef": null, "amountSatang": 200 }, { "id": "r", "emp": "x", "kind": "REFUND", "sourceType": "MANUAL", "sourceRef": null, "amountSatang": 300 }] },
+    "I6_no_lines": { "items": [{ "emp": "x", "grossSatang": 100000, "ssoEmployeeSatang": 0, "ssoEmployerSatang": 0, "whtSatang": 0, "netSatang": 100000, "snapshot": { "engineVersion": 2 } }], "bound": [] },
+    "I7_advance_not_bound": { "items": [{ "emp": "x", "grossSatang": 90000, "ssoEmployeeSatang": 0, "ssoEmployerSatang": 0, "whtSatang": 0, "netSatang": 90000, "snapshot": { "lines": [{ "code": "BASE", "ref": "profile", "amountSatang": 100000 }, { "code": "ADVANCE", "ref": "ghost", "amountSatang": -10000 }], "carry": [], "receivable": [] } }], "bound": [] }
+  },
+  "fuzz": { "seed": 3707, "runs": 3000, "maxItems": 6 }
+}

@@ -1,0 +1,832 @@
+// QC — HR V2 · H3.7 payroll accounting v2: accrual JV at approve (finalize) · payment JV at markPaid · explicit HR→ACCOUNT book link ·
+//      posting key hr-payroll#<runId>#accrual|pay · symmetric reversal (reverseEntry) · old runs keep the one-step JV
+//      brief ledger/hr-briefs/hr-brief-H3.7.md · design + worked examples ledger/wo-notes/hr-H3.7-design.md · list ledger/wo-notes/hr-H3.7-oracle.md
+// ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
+// 🔴 Every expected amount is hand arithmetic (scripts/fixtures/hr-h3.7-vectors.json), re-derived by the oracle's own formula (qc-hr-h3.7-lib) —
+//    never produced by the code under test.
+// DB runs are INSERTED v2-shaped (engineVersion 2 + inputDigest, APPROVED, not finalized) and driven through H3.4's RETRY_FINAL door of
+//    approveRun (the single final transaction) — the builder must keep that door. Needs H3.4 merged (stepsJson/inputDigest columns);
+//    on a base without H3.4 the S4 group is RED by design (presence guard, no crash).
+// Tenants qc-hr-h37-<stamp> (3) · runs dated 2031 · markPaidRun opts.now injected · SKIP while hr/payroll-journal-rules.ts is absent (QC_FORCE=1 runs) · --list
+// Base for statics = baseRef("QC_H37_BASE") (merge-base HEAD origin/session/hr) — never a hard-coded sha.
+// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.7.mts
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import {
+  type Any, type Base, type Sev, ROOT, rd, errText, short, canon, stripComments, loadOpt, modState, baseRef, diffHunks, fileAt, makeRegistry, qc4Env,
+  makeFixtures, cleanupFx, residueOf, vOf, fitnessNoEnv, importsOf, tagOf, srcFiles,
+} from "./qc-hr-lib.mjs";
+import {
+  VEC, T, TX, type Amounts, type Row, type VItem, type VBound, oracleAmounts, oracleRows, rowsFrom, rowsEq, sumSide, vectorsSelfCheck,
+  rng, fuzzRun, amountsFrom, amountsEq, bkkDay, fill, oracleClass, codeOfKey,
+} from "./qc-hr-h3.7-lib.mjs";
+
+const SUITE = "qc-hr-h3.7";
+const ARGV = process.argv.slice(2);
+const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
+const SLUG_PREFIX = "qc-hr-h37-";
+const H = "src/lib/modules/hr/";
+const A_ = "src/lib/modules/account/";
+const F = {
+  pure: `${H}payroll-journal-rules.ts`, payroll: `${H}payroll.ts`, actions: `${H}payroll-actions.ts`,
+  gl: `${A_}gl.ts`, conn: `${A_}connections.ts`, idx: `${A_}index.ts`, coa: `${A_}coa.ts`,
+};
+const SEV: Record<string, Sev> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
+const CHECKS = `
+S1.1|R6|C|R|[static] gl.ts: ≥1 hunk vs base, every hunk carries "HR H3.7", no line removed (additive only)
+S1.2|R6|C|R|[static] connections.ts + index.ts: every hunk marked "HR H3.7" · index exports payrollBookOf linkPayrollBook ensurePayrollLedgersInTx postPayrollAccrualJV postPayrollPayJV payrollAccrualTemplate PAYROLL_ACCOUNTS
+S1.3|R6|C|R|[static] account/** files changed vs base ⊆ gl · connections · index · coa (coa: only marked MAPPING_KEY_LABEL lines) · ≥1 of gl/connections/index changed
+S1.4|R6|C|G|[static] [control] hr/** imports account only via "@/lib/modules/account" · no account table delegate / raw "Account…" SQL in hr/**
+S1.5|R3|C|R|[static] pure file hr/payroll-journal-rules.ts: exists · imports type-only or none · no db / clock / random
+S1.6|R9|C|G|[static] [control] no new migration and prisma/schema unchanged vs base (H3.7 needs none: HrPayrollRun.accountSystemId already exists)
+S1.7|R8|C|G|[static] [control] frozen vs base: markPaid block · v1 approveRun block · gl postPayrollJV/reverseEntry/reverseFor/commitEntry/resolveLine/ensureAccounting/postManualJV bodies
+S1.8|§5|M|R|[static] every new fixed text byte-exact in payroll.ts ∪ gl.ts ∪ connections.ts ∪ pure file (placeholders split)
+S1.9|X12|M|G|[run] [control] fitness + fitness-hr without env ⇒ exit 0
+S1.10|R7|m|R|[static] UI testids hr-pay-book · hr-pay-account (HR settings) · hr-markpaid-account · hr-markpaid-date (payroll) present under hr UI
+S1.11|R1 R7|M|R|[static] connections HR card accountKeys ⊇ PAYROLL_SALARY_EXPENSE, PAYROLL_SALARY_PAYABLE · payroll.ts exports markPaidRun setPayrollBook setPayrollPayAccount · payroll-actions calls markPaidRun
+S2.0|fix|C|G|[pure] [control] worked examples A–E self-consistent (oracle formula = hand numbers · Σdr = Σcr = total · pay = Σ net)
+S2.1|R2|C|R|[pure] PAYROLL_ACCOUNTS = fixture (key · code · type · label · ledgerName) in order
+S2.2|R3|C|R|[pure] accrualAmountsV2 on examples A–E = hand amounts (11 fields each)
+S2.3|R4|C|R|[pure] payrollAccrualTemplate on A–E = hand rows (order · key · side · amount · zero rows omitted) + notes = fixture
+S2.4|R3 R4|C|R|[pure] fuzz 3,000 runs: builder amounts = oracle amounts · rows = oracle rows · Σdr = Σcr · all amounts safe integers > 0
+S2.5|R3|C|R|[pure] 7 inconsistent vectors ⇒ {ok:false, code:"INCONSISTENT"}
+S2.6|R3|M|R|[pure] claimClassOf: 12 vectors (ADVANCE · DAMAGES · OVERPAY · carry suffix · LATE/ABSENT null)
+S2.7|R5|M|R|[pure] payrollAccrualDay (8 vectors: min(payDay, last day of P) · leap · malformed null) · paidOnOk (6 vectors)
+S2.8|R3|M|R|[pure] deterministic + input not mutated (amounts · template)
+S3.0|fix|C|G|[db] [control] fixture: 3 tenants · 5 books in T1 (A created first) · 1 in T2 · 1 in T3 · HR systems · owners
+S3.1|R1 R2|C|R|[db] setPayrollBook(hA→A) ⇒ payrollBookOf ONE A · 4 new ledgers (6010 2120 2150 1140, isSystem, type, name) · 8 mappings → fixture codes · ensure again = no new rows · audit hr.payroll.book · manager ⇒ bookOwner
+S3.2|R1|C|R|[db] move A→B (A link disabled · B enabled) · null ⇒ NONE · account-side connect of a 2nd book ⇒ hrOtherBook, rows unchanged
+S3.3|R6|C|R|[db] cross-tenant: T2 book ⇒ bookNotFound, no link row · facade with foreign HR ⇒ refused · forged T2 link to a T1 HR system ignored both ways
+S3.4|R1|C|R|[db] two enabled links ⇒ payrollBookOf MANY
+S3.5|R2|C|R|[db] shop's own 2120 (not ours) ⇒ PAYROLL_SALARY_PAYABLE never mapped to it · accrual ⇒ MAPPING_MISSING naming "เงินเดือนค้างจ่าย"/2120 · no entry · owner maps 2121 ⇒ posts there
+S3.6|R4|C|R|[db] postPayrollAccrualJV (example B amounts) on A: key hr-payroll#<id>#accrual · refType hr-payroll · GENERAL/ADJUST · day · memo · lines = B by code · repeat ⇒ same id (reused) · other book ⇒ OTHER_BOOK
+S3.7|R4|C|R|[db] postPayrollPayJV: Dr 2120 / Cr 1010 · PAYMENTS/PAYMENT · repeat reused · archived / other-book finance ⇒ PAY_ACCOUNT · net 0 ⇒ entryId null
+S3.8|R5|C|R|[db] facade on a CLOSED period ⇒ PERIOD_CLOSED (existing text) · before lockBeforeDate ⇒ PERIOD_LOCKED (lockedMessage) · nothing written
+S4.0|dep|C|R|[db] H3.4 in base: HrPayrollRun.stepsJson + inputDigest · HrPaySource CARRY_FORWARD
+S4.1|R1 R4|C|R|[db] example A via approveRun (final tx): ok · journalEntryId = accrual · accountSystemId = A · finalized · key/book/day 2031-09-30 (payDay 10-05) · lines = A
+S4.2|R1|C|R|[db] example B: lines = B (advances 1140 · damages 4900 · overpay 6000 · refund Dr 4900) · H3.4 carry row DAMAGES 87,777 → 2031-10 written · carry not booked
+S4.3|R1|C|R|[db] example C (leavers): lines = C incl. receivable rows · ADVANCE receivable 145,000 not booked · net-0 employee ok
+S4.4|R1|C|R|[db] example D (bonus month) lines = D
+S4.5|R1 R3|C|R|[db] example E on the SECOND book (link, not "first ACCOUNT"): 2 lines in B · nothing for that run in A
+S4.6|R1|C|R|[db] markPaidRun: A with chosen bank (Dr 2120 / Cr 1010, PAYMENTS, day 10-05, key #pay) · D with the default pay account setting (Cr 1000) · PAID · one hr.payroll.paid each
+S4.7|R1 R5|C|R|[db] pay refusals on E: no account · other book's finance ⇒ payAccount · before P / after today ⇒ payDate · closed period ⇒ periodClosed · each: APPROVED, no pay entry, no paid event
+S4.8|R5|C|R|[db] reverse PAID A ⇒ 2 REVERSAL entries (of pay and of accrual) · mirrored · originals REVERSED · per-ledger net of the run = 0 · dated today · repeat ⇒ alreadyReversed, nothing new
+S4.9|R5|C|R|[db] reverse APPROVED-unpaid E ⇒ exactly 1 reversal (accrual) · no pay entry
+S4.10|R5|C|R|[db] today's period CLOSED in A ⇒ reversals of PAID B dated the 1st of the next month (existing rule) · nothing in the closed period
+S4.11|R3|C|R|[db] book moved after approve: pay with the new book's finance ⇒ payAccount · pay/reverse land in the recorded book A · new book untouched
+S4.12|R3|C|R|[db] no link: approve ok approvedNoBook · finalized · no JV · accountSystemId null · note · markPaidRun PAID no entry · reverse ok reverseNoBook (Q1)
+S4.13|R3|C|R|[db] two enabled links ⇒ approve BOOK_AMBIGUOUS · run DRAFT · no entry anywhere
+S4.14|R2|C|R|[db] mapping PAYROLL_SSO_PAYABLE removed ⇒ MAPPING_MISSING naming it · DRAFT · no entry · audit post_failed code · a run that needs no SSO still posts in that book
+S4.15|R5|C|R|[db] accrual day in a CLOSED period ⇒ periodClosed · before lockBeforeDate ⇒ lockedMessage · DRAFT · no entry
+S4.16|R4|C|R|[db] failure after the post (__failFinal) ⇒ no entry (no orphan) · DRAFT · retry ⇒ exactly one · approve again ⇒ approveNotDraft, still one
+S4.17|R4|C|R|[db] 4 × approveRun ∥ ⇒ one accrual entry · 4 × markPaidRun ∥ ⇒ one PAID, one pay entry, one paid event
+S4.18|R5|C|R|[db] LATER_RUN (later v2 run APPROVED) and CARRY_BOUND (carry row bound to a later draft) ⇒ fixed texts · no reversal entry · status unchanged
+S4.19|R8|C|R|[db] H3.4-era run (one-step JV, accountSystemId null): reverse ⇒ 1 reversal of that JV, no hr-payroll entry · markPaidRun of such a run ⇒ PAID, no entry
+S4.20|R8|C|G|[db] [control] v1 golden: v1 run in a linked shop ⇒ one-step JV (AccountManualJV · PAYMENTS · 6000/6000/1010/2100/2130 from run totals) · no hr-payroll key · markPaid posts nothing · reverse 1 reversal
+S4.21|R6|C|R|[db] scoping: every hr-payroll entry/line in T1 · entry book = run.accountSystemId · T2/T3 books have none
+S4.22|R1 R5|M|R|[db] audits: approve after {accountSystemId, journalEntryId} · reverse after {reversalEntryIds ×2}
+S4.23|R3|C|R|[db] stored figures inconsistent (Σ lines ≠ gross) ⇒ approve INCONSISTENT · DRAFT · no entry
+Z1|house|C|G|no residue
+`.trim().split("\n").map((l) => {
+  const [id, g, sv, b, t] = l.split("|");
+  return [`H3.7-${id}`, g, SEV[sv], (b === "R" ? "RED" : "GREEN") as Base, t] as const;
+});
+const { chk, printList, skipExit, finish } = makeRegistry(SUITE, "H3.7-", CHECKS);
+if (ARGV.includes("--list")) {
+  printList();
+  process.exit(0);
+}
+const skipReasons: string[] = [];
+if (!existsSync(join(ROOT, F.pure))) skipReasons.push(`${F.pure} absent (H3.7 not built)`);
+if (skipReasons.length && !FORCE) skipExit(skipReasons);
+const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") =>
+  chk(id, Object.values(r).every(Boolean), exp, `${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "all"}${extra ? ` ${extra}` : ""}`);
+const BASE = baseRef("QC_H37_BASE");
+const GROUP_FAIL: string[] = [];
+async function blk(ids: string[], fn: () => Promise<void> | void): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    GROUP_FAIL.push(`${ids[0]}: ${errText(e)}`);
+    console.log(`  💥 ${ids.join(",")}: ${errText(e)}`);
+    for (const id of ids) chk(id, false, "checked", `group threw: ${errText(e).slice(0, 140)}`);
+  }
+}
+
+// ═════════════════════════ static ═════════════════════════
+const MARK = /HR H3\.7/;
+function hunksMarked(file: string, allowRemove: boolean): { any: boolean; all: boolean; removed: number } {
+  const hs = BASE ? diffHunks(BASE, file) : null;
+  if (!hs) return { any: false, all: false, removed: -1 };
+  const removed = hs.reduce((t, h) => t + h.removed.length, 0);
+  const all = hs.every((h) => h.added.concat(h.removed).some((l) => MARK.test(l)));
+  return { any: hs.length > 0, all, removed: allowRemove ? 0 : removed };
+}
+/** body of a top-level function `export async function name(` / `function name(` / `async function name(` up to the next line starting with "}" */
+function fnBody(src: string | null, name: string): string {
+  if (!src) return "";
+  const m = new RegExp(`^(export )?(async )?function ${name}\\(`, "m").exec(src);
+  if (!m) return "";
+  const end = src.indexOf("\n}", m.index);
+  return end < 0 ? "" : src.slice(m.index, end + 2);
+}
+const between = (src: string | null, a: string, b: string): string => {
+  if (!src) return "";
+  const i = src.indexOf(a);
+  const j = i < 0 ? -1 : src.indexOf(b, i);
+  return i < 0 || j < 0 ? "" : src.slice(i, j);
+};
+const stripMarked = (s: string) => s.split("\n").filter((l) => !MARK.test(l)).join("\n");
+function listChanged(dir: string): string[] {
+  if (!BASE) return ["(no base)"];
+  try {
+    return execFileSync("git", ["diff", "--name-only", BASE, "--", dir], { cwd: ROOT, encoding: "utf8" }).trim().split("\n").filter(Boolean);
+  } catch {
+    return ["(git error)"];
+  }
+}
+function runStatic(): void {
+  const gl = hunksMarked(F.gl, false);
+  ck("S1.1", { base: !!BASE, hunks: gl.any, marked: gl.all, additive: gl.removed === 0 }, "marked additive hunks", `removed=${gl.removed}`);
+  const cn = hunksMarked(F.conn, true);
+  const ix = hunksMarked(F.idx, false);
+  const idx = stripComments(rd(F.idx));
+  const names = ["payrollBookOf", "linkPayrollBook", "ensurePayrollLedgersInTx", "postPayrollAccrualJV", "postPayrollPayJV", "payrollAccrualTemplate", "PAYROLL_ACCOUNTS"];
+  const missing = names.filter((n) => !new RegExp(`\\b${n}\\b`).test(idx));
+  ck("S1.2", { conn: cn.any && cn.all, idx: ix.any && ix.all && ix.removed === 0, exports: missing.length === 0 }, "marked + exports", missing.join(","));
+  const changed = listChanged(A_);
+  const allowed = new Set([F.gl, F.conn, F.idx, F.coa]);
+  const coaH = changed.includes(F.coa) ? (diffHunks(BASE, F.coa) ?? []) : [];
+  const coaOk = coaH.every((h) => h.removed.length === 0 && h.added.every((l) => MARK.test(l) || /^\s*PAYROLL_[A-Z_]+: "/.test(l)));
+  ck("S1.3", { subset: changed.every((f) => allowed.has(f)), coa: coaOk, some: [F.gl, F.conn, F.idx].some((f) => changed.includes(f)) }, "⊆ 4 files", changed.join(","));
+  const hrFiles = srcFiles("src/lib/modules/hr").filter((f) => /\.(ts|tsx)$/.test(f));
+  const badImp: string[] = [];
+  const badTbl: string[] = [];
+  for (const f of hrFiles) {
+    const s = rd(f);
+    for (const i of importsOf(s)) if (/modules\/account|\.\.\/account/.test(i.spec) && i.spec !== "@/lib/modules/account") badImp.push(`${f}:${i.spec}`);
+    if (/\.(accountJournalEntry|accountJournalLine|accountLedger|accountMapping|accountSystemLink|accountPeriod|accountFinance|accountSettings)\b|"Account(JournalEntry|JournalLine|Ledger|Mapping|SystemLink|Period|Finance|Settings)"/.test(stripComments(s))) badTbl.push(f);
+  }
+  ck("S1.4", { imports: badImp.length === 0, tables: badTbl.length === 0 }, "facade only", `${badImp.join(",")} ${badTbl.join(",")}`);
+  const pure = rd(F.pure);
+  const pImps = importsOf(pure);
+  const pBody = stripComments(pure);
+  ck("S1.5", {
+    exists: pure.length > 0, imports: pImps.every((i) => i.type), noDb: !/prisma|tenantDb|@\/lib\/core\/db/.test(pBody), noClock: !/Date\.now\(|new Date\(\s*\)|Math\.random|randomUUID|performance\.now/.test(pBody),
+  }, "pure", pImps.map((i) => i.spec).join(","));
+  const migNow = existsSync(join(ROOT, "prisma/migrations")) ? readdirSync(join(ROOT, "prisma/migrations")) : [];
+  const migChanged = migNow.length ? listChanged("prisma/migrations") : ["(no migrations dir)"];
+  const schemaChanged = listChanged("prisma/schema");
+  ck("S1.6", { mig: migChanged.length === 0, schema: schemaChanged.length === 0 }, "no migration", `${migChanged.join(",")} ${schemaChanged.join(",")}`);
+  const pb = BASE ? fileAt(BASE, F.payroll) : null;
+  const pn = rd(F.payroll);
+  const gb = BASE ? fileAt(BASE, F.gl) : null;
+  const gn = rd(F.gl);
+  const mpB = fnBody(pb, "markPaid");
+  const apB = stripMarked(between(pb, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน"));
+  const apN = stripMarked(between(pn, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน"));
+  const frozen = ["postPayrollJV", "reverseEntry", "reverseFor", "commitEntry", "resolveLine", "ensureAccounting", "postManualJV"].filter((n) => !fnBody(gb, n) || fnBody(gb, n) !== fnBody(gn, n));
+  ck("S1.7", { markPaid: !!mpB && mpB === fnBody(pn, "markPaid"), approveV1: !!apB && apB === apN, gl: frozen.length === 0 }, "frozen", frozen.join(","));
+  const hay = [F.payroll, F.gl, F.conn, F.pure].map(rd).join("\n");
+  const absent = (TX_NEW()).filter((k) => !T[k]!.split(/\{\w+\}/).every((seg) => hay.includes(seg)));
+  chk("S1.8", absent.length === 0 && hay.length > 0, "all new texts", absent.join(",") || "ok");
+  const uiFiles = [...srcFiles("src/lib/modules/hr"), ...(existsSync(join(ROOT, "src/app/app/sys/[id]/hr")) ? srcFiles("src/app/app/sys/[id]/hr") : [])].filter((f) => /\.tsx$/.test(f));
+  const ui = uiFiles.map(rd).join("\n");
+  const ids = ["hr-pay-book", "hr-pay-account", "hr-markpaid-account", "hr-markpaid-date"].filter((t) => !ui.includes(`"${t}"`));
+  chk("S1.10", ids.length === 0, "4 testids", ids.join(",") || "ok");
+  const card = between(rd(F.conn), 'kind: "HR"', "},");
+  const exp = ["markPaidRun", "setPayrollBook", "setPayrollPayAccount"].filter((n) => !new RegExp(`export async function ${n}\\(`).test(pn));
+  ck("S1.11", { card: /PAYROLL_SALARY_EXPENSE/.test(card) && /PAYROLL_SALARY_PAYABLE/.test(card), exports: exp.length === 0, action: /markPaidRun\(/.test(rd(F.actions)) }, "wired", exp.join(","));
+}
+const TX_NEW = (): string[] => (Array.isArray(TX?.new) ? (TX.new as string[]) : []);
+
+// ═════════════════════════ pure ═════════════════════════
+type Mod = Any;
+const toItems = (items: VItem[]) => items.map((i) => ({ employeeId: i.emp, grossSatang: i.grossSatang, ssoEmployeeSatang: i.ssoEmployeeSatang, ssoEmployerSatang: i.ssoEmployerSatang, whtSatang: i.whtSatang, netSatang: i.netSatang, snapshotJson: i.snapshot }));
+const toBound = (b: VBound[]) => b.map((x) => ({ id: x.id, employeeId: x.emp, kind: x.kind, sourceType: x.sourceType, sourceRef: x.sourceRef, amountSatang: x.amountSatang }));
+const call = (m: Mod, fn: string, ...a: unknown[]): Any => {
+  if (!m || typeof m[fn] !== "function") return { __absent: fn };
+  try {
+    return m[fn](...a);
+  } catch (e) {
+    return { __threw: errText(e) };
+  }
+};
+function runPure(PURE: Mod, ACC: Mod): void {
+  const sc = vectorsSelfCheck();
+  chk("S2.0", sc.length === 0, "self-consistent", sc.join(" · ") || "ok");
+  const accs = ACC?.PAYROLL_ACCOUNTS;
+  const want = (VEC.accounts as Any[]).map((a) => [a.key, a.code, a.type, a.label, a.ledgerName]);
+  const got = Array.isArray(accs) ? accs.map((a: Any) => [a.key, a.code, a.type, a.label, a.ledgerName]) : null;
+  chk("S2.1", canon(got) === canon(want), "fixture accounts", short(got, 160));
+  const exs = Object.entries(VEC.examples as Record<string, Any>);
+  const badA: string[] = [];
+  const badR: string[] = [];
+  for (const [n, ex] of exs) {
+    const r = call(PURE, "accrualAmountsV2", toItems(ex.items), toBound(ex.bound));
+    if (r?.ok !== true || !amountsEq(amountsFrom(r.amounts), ex.amounts as Amounts)) badA.push(`${n}:${short(r?.amounts ?? r, 80)}`);
+    const rows = call(ACC, "payrollAccrualTemplate", ex.amounts);
+    const notes = (VEC.template as Any[]).filter((t) => ex.amounts[t[2]] !== 0).map((t) => t[3]);
+    if (!rowsEq(rowsFrom(rows), ex.rows as Row[]) || !Array.isArray(rows) || canon(rows.map((x: Any) => x.note)) !== canon(notes)) badR.push(`${n}:${short(rows, 80)}`);
+  }
+  chk("S2.2", badA.length === 0, "5 examples", badA.join(" · ") || "ok");
+  chk("S2.3", badR.length === 0, "5 examples", badR.join(" · ") || "ok");
+  {
+    const r = rng(VEC.fuzz.seed);
+    const bad: string[] = [];
+    for (let i = 0; i < VEC.fuzz.runs; i++) {
+      const x = fuzzRun(r, 1 + (i % VEC.fuzz.maxItems));
+      const o = oracleAmounts(x.items, x.bound);
+      if (!o.ok) {
+        bad.push(`gen${i}:${o.why}`);
+        break;
+      }
+      const b = call(PURE, "accrualAmountsV2", toItems(x.items), toBound(x.bound));
+      const rows = rowsFrom(call(ACC, "payrollAccrualTemplate", o.amounts));
+      const want = oracleRows(o.amounts);
+      if (b?.ok !== true || !amountsEq(amountsFrom(b.amounts), o.amounts)) bad.push(`amounts#${i}`);
+      else if (!rowsEq(rows, want) || sumSide(rows!, "DR") !== sumSide(rows!, "CR") || !rows!.every((x2) => Number.isSafeInteger(x2[2]) && x2[2] > 0)) bad.push(`rows#${i}`);
+      if (bad.length >= 3) break;
+    }
+    chk("S2.4", bad.length === 0, `${VEC.fuzz.runs} runs`, bad.join(",") || "ok");
+  }
+  {
+    const bad: string[] = [];
+    for (const [n, v] of Object.entries(VEC.inconsistent as Record<string, Any>)) {
+      const r = call(PURE, "accrualAmountsV2", toItems(v.items), toBound(v.bound));
+      if (!(r?.ok === false && r?.code === "INCONSISTENT")) bad.push(`${n}:${short(r, 60)}`);
+    }
+    chk("S2.5", bad.length === 0, "7 refusals", bad.join(" · ") || "ok");
+  }
+  {
+    const bad = (VEC.classes as [Any, string | null][]).filter(([row, want]) => oracleClass(row) !== want || call(PURE, "claimClassOf", row) !== want).map(([row]) => `${row.kind}/${row.sourceType}`);
+    chk("S2.6", bad.length === 0, "12 classes", bad.join(",") || "ok");
+  }
+  {
+    const b1 = (VEC.accrualDay as [string[], string | null][]).filter(([a, w]) => call(PURE, "payrollAccrualDay", ...a) !== w).map(([a]) => a.join("/"));
+    const b2 = (VEC.paidOn as [string[], boolean][]).filter(([a, w]) => call(PURE, "paidOnOk", ...a) !== w).map(([a]) => a.join("/"));
+    chk("S2.7", b1.length + b2.length === 0, "14 vectors", [...b1, ...b2].join(",") || "ok");
+  }
+  {
+    const ex = VEC.examples.C;
+    const it = toItems(ex.items);
+    const bd = toBound(ex.bound);
+    const before = canon([it, bd, ex.amounts]);
+    const r1 = call(PURE, "accrualAmountsV2", it, bd);
+    const r2 = call(PURE, "accrualAmountsV2", it, bd);
+    const t1 = call(ACC, "payrollAccrualTemplate", ex.amounts);
+    const t2 = call(ACC, "payrollAccrualTemplate", ex.amounts);
+    ck("S2.8", { ok: r1?.ok === true, same: canon(r1) === canon(r2) && canon(t1) === canon(t2) && Array.isArray(t1), untouched: canon([it, bd, ex.amounts]) === before }, "pure");
+  }
+}
+
+// ═════════════════════════ db ═════════════════════════
+let crashed = "";
+const { P, coreHash } = await qc4Env(SUITE);
+const tag = tagOf(String(Date.now()));
+const SLUG = `${SLUG_PREFIX}${tag}`;
+const fx = makeFixtures(P, coreHash, SLUG);
+const PURE = await loadOpt(F.pure, "@/lib/modules/hr/payroll-journal-rules");
+const ACC = (await import("@/lib/modules/account" as string).catch((e: unknown) => ({ __err: errText(e) }))) as Any;
+const CONN = (await import("@/lib/modules/account/connections" as string).catch(() => null)) as Any;
+const POLICY = (await import("@/lib/modules/account/policy" as string).catch(() => null)) as Any;
+const PAY = (await import("@/lib/modules/hr/payroll" as string)) as Any;
+const SYS = (await import("@/lib/modules/system/service" as string)) as Any;
+const HRSVC = (await import("@/lib/modules/hr/service" as string)) as Any;
+console.log(`modules: pure ${modState(PURE, F.pure)} · account ${ACC?.__err ? ACC.__err : "loaded"}`);
+
+const NOW = new Date("2032-01-10T05:00:00.000Z");
+const has = (m: Mod, ...fns: string[]) => fns.filter((f) => typeof m?.[f] !== "function");
+const rows = async (sql: string, ...p: unknown[]): Promise<Any[]> => ((await fx.rawRows(sql, ...p)) ?? []) as Any[];
+const ledgerCodes = new Map<string, string>();
+async function codeOf(accountId: string): Promise<string> {
+  if (!ledgerCodes.has(accountId)) ledgerCodes.set(accountId, ((await P.accountLedger.findUnique({ where: { id: accountId }, select: { code: true } }))?.code ?? "?") as string);
+  return ledgerCodes.get(accountId)!;
+}
+async function linesOf(entryId: string | null | undefined): Promise<Row[]> {
+  if (!entryId) return [];
+  const ls = (await P.accountJournalLine.findMany({ where: { entryId } })) as Any[];
+  const out: Row[] = [];
+  for (const l of ls) out.push([await codeOf(l.accountId), l.debit > 0 ? "DR" : "CR", l.debit > 0 ? l.debit : l.credit]);
+  return out;
+}
+const msEq = (a: Row[], b: Row[]) => canon([...a].map((r) => r.join("|")).sort()) === canon([...b].map((r) => r.join("|")).sort());
+const entriesOfRun = (runId: string) => P.accountJournalEntry.findMany({ where: { refId: runId }, orderBy: { createdAt: "asc" } }) as Promise<Any[]>;
+const keyEntry = (runId: string, ev: string) => P.accountJournalEntry.findFirst({ where: { idempotencyKey: `hr-payroll#${runId}#${ev}` } }) as Promise<Any>;
+const runOf = async (id: string): Promise<Any> => (await rows(`SELECT id, status::text AS status, "journalEntryId", "accountSystemId", note, "stepsJson" FROM "HrPayrollRun" WHERE id = $1`, id))[0];
+const fin = (r: Any) => r?.stepsJson?.finalized === true;
+const paidEvents = (runId: string) => P.outboxEvent.count({ where: { idempotencyKey: `hr.payroll.paid#${runId}` } }) as Promise<number>;
+const netByCode = async (runId: string): Promise<Record<string, number>> => {
+  const m: Record<string, number> = {};
+  for (const e of await entriesOfRun(runId)) for (const [c, s, n] of await linesOf(e.id)) m[c] = (m[c] ?? 0) + (s === "DR" ? n : -n);
+  return m;
+};
+
+async function runDb(): Promise<void> {
+  // ── S3.0 fixture ──
+  const T1 = await fx.newTenant("-a", `QC H37 A ${tag}`);
+  const T2 = await fx.newTenant("-b", `QC H37 B ${tag}`);
+  const T3 = await fx.newTenant("-c", `QC H37 C ${tag}`);
+  const own1 = await fx.mkUser(T1, "own1", `QC37 owner ${tag}`, "OWNER", [], {});
+  const mgr1 = await fx.mkUser(T1, "mgr1", `QC37 manager ${tag}`, "MANAGER", [], {});
+  const own2 = await fx.mkUser(T2, "own2", `QC37 owner2 ${tag}`, "OWNER", [], {});
+  const actor = { userId: own1.id, isOwner: true };
+  const book = async (t: string, n: string) => (await SYS.createSystem(t, "ACCOUNT", `${n} ${tag}`)).id as string;
+  const BA = await book(T1, "บัญชี A");
+  const BB = await book(T1, "บัญชี B");
+  const BF = await book(T1, "บัญชี F");
+  const BL = await book(T1, "บัญชี L");
+  const BD = await book(T1, "บัญชี D");
+  const BC = await book(T2, "บัญชี C");
+  const BV = await book(T3, "บัญชี V");
+  const hr = async (t: string, n: string) => (await SYS.createSystem(t, "HR", `${n} ${tag}`)).id as string;
+  const HS: Record<string, string> = {};
+  for (const n of ["hA", "hB", "hC", "hD", "hE", "hN", "hM", "hX", "hX2", "hX3", "hX4", "hL", "hL2", "hO1", "hO2", "hMv", "hF", "hF2", "hLk", "hDD", "hT", "hT2"]) HS[n] = await hr(T1, n);
+  const h3 = await hr(T2, "h3");
+  const hv = await hr(T3, "hv");
+  const c1 = (h: string) => ({ tenantId: T1, systemId: HS[h]! });
+  chk("S3.0", !!BA && !!BB && !!BC && !!BV && Object.keys(HS).length === 22 && !!h3 && !!hv, "fixture", "ok");
+
+  const H34 = (await rows(`SELECT column_name AS c FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'HrPayrollRun' AND column_name IN ('stepsJson','inputDigest')`)).length === 2
+    && (await rows(`SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'HrPaySource' AND e.enumlabel = 'CARRY_FORWARD'`)).length === 1;
+  const fxMissing = has(PAY, "setPayrollBook", "setPayrollPayAccount", "markPaidRun");
+  const accMissing = has(ACC, "payrollBookOf", "linkPayrollBook", "ensurePayrollLedgersInTx", "postPayrollAccrualJV", "postPayrollPayJV");
+  const link = async (h: string, acc: string | null) => PAY.setPayrollBook(c1(h), vOf(own1), { accountSystemId: acc });
+
+  // ── S3 facade ──
+  await blk(["S3.1"], async () => {
+    if (fxMissing.length || accMissing.length) throw new Error(`absent: ${[...fxMissing, ...accMissing].join(",")}`);
+    const r = await link("hA", BA);
+    const one = await ACC.payrollBookOf(T1, HS.hA);
+    const leds = (await P.accountLedger.findMany({ where: { systemId: BA } })) as Any[];
+    const newOk = (VEC.accounts as Any[]).filter((a) => a.isNew).every((a) => leds.some((l) => l.code === a.code && l.type === a.type && l.isSystem === true && l.name === a.ledgerName));
+    const maps = (await P.accountMapping.findMany({ where: { systemId: BA, key: { startsWith: "PAYROLL_" } } })) as Any[];
+    const mapOk = maps.length === 8 && (await Promise.all(maps.map(async (m) => (await codeOf(m.accountId)) === codeOfKey(m.key)))).every(Boolean);
+    const n0 = [await P.accountLedger.count({ where: { systemId: BA } }), await P.accountMapping.count({ where: { systemId: BA } })];
+    await P.$transaction((tx: Any) => ACC.ensurePayrollLedgersInTx({ tenantId: T1, systemId: BA }, tx));
+    const n1 = [await P.accountLedger.count({ where: { systemId: BA } }), await P.accountMapping.count({ where: { systemId: BA } })];
+    const audit = await P.auditLog.count({ where: { tenantId: T1, action: "hr.payroll.book" } });
+    const mgr = await PAY.setPayrollBook(c1("hB"), vOf(mgr1), { accountSystemId: BA });
+    ck("S3.1", { ok: r?.ok === true, one: one?.kind === "ONE" && one?.systemId === BA, newLedgers: newOk, maps: mapOk, idem: canon(n0) === canon(n1), audit: audit >= 1, mgr: mgr?.ok === false && mgr?.reason === T.bookOwner }, "linked", short({ one, maps: maps.length, n0, n1 }, 160));
+    for (const h of ["hB", "hC", "hD", "hX", "hX2", "hX3", "hX4", "hL", "hL2", "hO1", "hO2", "hMv", "hM"]) await link(h, BA);
+    await link("hE", BB);
+    await link("hF", BF);
+    await link("hF2", BF);
+    await link("hLk", BL);
+  });
+  await blk(["S3.2"], async () => {
+    if (fxMissing.length || accMissing.length) throw new Error("absent");
+    await link("hT", BA);
+    const mv = await link("hT", BB);
+    const ls = (await P.accountSystemLink.findMany({ where: { linkedKind: "HR", linkedId: HS.hT } })) as Any[];
+    const moved = ls.some((l) => l.systemId === BA && l.enabled === false) && ls.some((l) => l.systemId === BB && l.enabled === true) && ls.filter((l) => l.enabled).length === 1;
+    const oneB = await ACC.payrollBookOf(T1, HS.hT);
+    await link("hT", null);
+    const none = await ACC.payrollBookOf(T1, HS.hT);
+    await link("hT", BA);
+    const before = canon(((await P.accountSystemLink.findMany({ where: { linkedKind: "HR", linkedId: HS.hT }, orderBy: { systemId: "asc" } })) as Any[]).map((l) => [l.systemId, l.enabled]));
+    const cr = await CONN.connect({ tenantId: T1, systemId: BB }, "HR", HS.hT, own1.id);
+    const after = canon(((await P.accountSystemLink.findMany({ where: { linkedKind: "HR", linkedId: HS.hT }, orderBy: { systemId: "asc" } })) as Any[]).map((l) => [l.systemId, l.enabled]));
+    ck("S3.2", { move: mv?.ok === true && moved, oneB: oneB?.kind === "ONE" && oneB?.systemId === BB, none: none?.kind === "NONE", other: cr?.ok === false && cr?.reason === T.hrOtherBook, unchanged: before === after }, "moved", short({ cr, before, after }, 160));
+  });
+  await blk(["S3.3"], async () => {
+    if (fxMissing.length || accMissing.length) throw new Error("absent");
+    const r = await link("hT2", BC);
+    const lk = await P.accountSystemLink.count({ where: { linkedKind: "HR", linkedId: HS.hT2 } });
+    const f = await ACC.linkPayrollBook({ tenantId: T2, hrSystemId: HS.hT2, accountSystemId: BC, actorUserId: own2.id });
+    await P.accountSystemLink.create({ data: { tenantId: T2, systemId: BC, linkedKind: "HR", linkedId: HS.hN, enabled: true, config: {} } });
+    const a1 = await ACC.payrollBookOf(T1, HS.hN);
+    const a2 = await ACC.payrollBookOf(T2, HS.hN);
+    const lk2 = await P.accountSystemLink.count({ where: { linkedKind: "HR", linkedId: HS.hT2 } });
+    ck("S3.3", { refused: r?.ok === false && r?.reason === T.bookNotFound, noRow: lk === 0 && lk2 === 0, facade: f?.ok === false, ignoredT1: a1?.kind === "NONE", ignoredT2: a2?.kind === "NONE" }, "isolated", short({ r, f, a1, a2 }, 160));
+  });
+  await blk(["S3.4"], async () => {
+    if (accMissing.length) throw new Error("absent");
+    await P.accountSystemLink.create({ data: { tenantId: T1, systemId: BB, linkedKind: "HR", linkedId: HS.hM, enabled: true, config: {} } });
+    const m = await ACC.payrollBookOf(T1, HS.hM);
+    chk("S3.4", m?.kind === "MANY", "MANY", short(m));
+  });
+  // finance accounts (after the books were seeded by the link)
+  const ledgerId = async (sys: string, code: string) => ((await P.accountLedger.findFirst({ where: { systemId: sys, code } }))?.id ?? null) as string | null;
+  const mkFin = async (sys: string, type: string, name: string, code: string, archived = false) =>
+    (await P.accountFinance.create({ data: { tenantId: T1, systemId: sys, type, name: `${name} ${tag}`, ledgerAccountId: await ledgerId(sys, code), ...(archived ? { archivedAt: new Date() } : {}) } })).id as string;
+  let finBankA = "", finCashA = "", finArchA = "", finBankB = "";
+  await blk(["S3.5", "S3.6", "S3.7", "S3.8"], async () => {
+    if (fxMissing.length || accMissing.length) throw new Error(`absent: ${[...fxMissing, ...accMissing].join(",")}`);
+    finBankA = await mkFin(BA, "BANK", "ธนาคาร A", "1010");
+    finCashA = await mkFin(BA, "CASH", "เงินสด A", "1000");
+    finArchA = await mkFin(BA, "BANK", "ปิดแล้ว A", "1010", true);
+    finBankB = await mkFin(BB, "BANK", "ธนาคาร B", "1010");
+    const ctxOf = (s: string) => ({ tenantId: T1, systemId: s });
+    const post = (s: string, input: Any) => P.$transaction((tx: Any) => ACC.postPayrollAccrualJV(ctxOf(s), input, tx), { timeout: 60_000, maxWait: 20_000 });
+    const pay = (s: string, input: Any) => P.$transaction((tx: Any) => ACC.postPayrollPayJV(ctxOf(s), input, tx), { timeout: 60_000, maxWait: 20_000 });
+    // S3.5 shop's own 2120
+    {
+      await P.accountLedger.create({ data: { tenantId: T1, systemId: BD, code: "2120", name: "เงินกู้ยืมกรรมการ", type: "LIABILITY", cashflowActivity: "OPERATING", isSystem: false } });
+      const r = await link("hDD", BD);
+      const m = await P.accountMapping.findFirst({ where: { systemId: BD, key: "PAYROLL_SALARY_PAYABLE" } });
+      const others = await P.accountMapping.count({ where: { systemId: BD, key: { startsWith: "PAYROLL_" } } });
+      const runId = `qc37fac${tag}D`;
+      const p1 = await post(BD, { runId, periodKey: "2031-09", day: "2031-09-30", amounts: VEC.examples.A.amounts });
+      const n1 = await P.accountJournalEntry.count({ where: { refId: runId } });
+      const l2121 = (await P.accountLedger.create({ data: { tenantId: T1, systemId: BD, code: "2121", name: `ค้างจ่ายเงินเดือน ${tag}`, type: "LIABILITY", cashflowActivity: "OPERATING", isSystem: false } })).id as string;
+      await P.accountMapping.create({ data: { tenantId: T1, systemId: BD, key: "PAYROLL_SALARY_PAYABLE", accountId: l2121 } });
+      const p2 = await post(BD, { runId, periodKey: "2031-09", day: "2031-09-30", amounts: VEC.examples.A.amounts });
+      const ls = await linesOf(p2?.entryId);
+      ck("S3.5", {
+        linked: r?.ok === true, notMapped: !m && others === 7, missing: p1?.ok === false && p1?.code === "MAPPING_MISSING" && p1?.text === fill(T.mappingMissing, { name: "เงินเดือนค้างจ่าย", code: "2120" }), none: n1 === 0,
+        fixed: p2?.ok === true && ls.some((x) => x[0] === "2121" && x[1] === "CR" && x[2] === 4_321_042),
+      }, "never the shop's 2120", short({ p1, p2 }, 200));
+    }
+    // S3.6
+    {
+      const runId = `qc37fac${tag}A`;
+      const ex = VEC.examples.B;
+      const p1 = await post(BA, { runId, periodKey: "2031-09", day: "2031-09-30", amounts: ex.amounts, postedById: own1.id });
+      const e = p1?.entryId ? await P.accountJournalEntry.findUnique({ where: { id: p1.entryId } }) : null;
+      const p2 = await post(BA, { runId, periodKey: "2031-09", day: "2031-09-30", amounts: ex.amounts });
+      const pOther = await post(BB, { runId, periodKey: "2031-09", day: "2031-09-30", amounts: ex.amounts });
+      const n = await P.accountJournalEntry.count({ where: { idempotencyKey: `hr-payroll#${runId}#accrual` } });
+      ck("S3.6", {
+        ok: p1?.ok === true && p1?.reused === false, key: e?.idempotencyKey === `hr-payroll#${runId}#accrual` && e?.refType === "hr-payroll" && e?.refId === runId,
+        kind: e?.book === "GENERAL" && e?.journal === "ADJUST" && e?.source === "AUTO", day: bkkDay(e?.date) === "2031-09-30" && e?.periodKey === "2031-09",
+        memo: e?.memo === fill(T.accrualMemo, { p: "2031-09" }), lines: msEq(await linesOf(e?.id), ex.byCode), reused: p2?.ok === true && p2?.entryId === p1?.entryId && p2?.reused === true,
+        other: pOther?.ok === false && pOther?.code === "OTHER_BOOK" && pOther?.text === T.otherBook, one: n === 1,
+      }, "posted once", short({ p1, p2, pOther }, 200));
+    }
+    // S3.7
+    {
+      const runId = `qc37fac${tag}A`;
+      const q1 = await pay(BA, { runId, periodKey: "2031-09", day: "2031-10-05", netSatang: 1_483_507, financeAccountId: finBankA });
+      const e = q1?.entryId ? await P.accountJournalEntry.findUnique({ where: { id: q1.entryId } }) : null;
+      const q2 = await pay(BA, { runId, periodKey: "2031-09", day: "2031-10-05", netSatang: 1_483_507, financeAccountId: finBankA });
+      const z = `qc37fac${tag}Z`;
+      const qa = await pay(BA, { runId: z, periodKey: "2031-09", day: "2031-10-05", netSatang: 100, financeAccountId: finArchA });
+      const qb = await pay(BA, { runId: z, periodKey: "2031-09", day: "2031-10-05", netSatang: 100, financeAccountId: finBankB });
+      const q0 = await pay(BA, { runId: `qc37fac${tag}N`, periodKey: "2031-09", day: "2031-10-05", netSatang: 0, financeAccountId: finBankA });
+      const nz = await P.accountJournalEntry.count({ where: { refId: { in: [z, `qc37fac${tag}N`] } } });
+      ck("S3.7", {
+        ok: q1?.ok === true && e?.idempotencyKey === `hr-payroll#${runId}#pay` && e?.book === "PAYMENTS" && e?.journal === "PAYMENT" && bkkDay(e?.date) === "2031-10-05",
+        memo: e?.memo === fill(T.payMemo, { p: "2031-09" }), lines: msEq(await linesOf(e?.id), [["2120", "DR", 1_483_507], ["1010", "CR", 1_483_507]]),
+        reused: q2?.ok === true && q2?.entryId === q1?.entryId, arch: qa?.ok === false && qa?.code === "PAY_ACCOUNT" && qa?.text === T.payAccount,
+        otherBook: qb?.ok === false && qb?.code === "PAY_ACCOUNT", zero: q0?.ok === true && q0?.entryId === null, nothing: nz === 0,
+      }, "pay JV", short({ q1, qa, qb, q0 }, 200));
+    }
+    // S3.8
+    {
+      await P.accountPeriod.create({ data: { tenantId: T1, systemId: BL, periodKey: "2031-04", status: "CLOSED" } });
+      const lock = new Date("2031-10-01T05:00:00.000Z");
+      await P.accountSettings.upsert({ where: { systemId: BL }, create: { tenantId: T1, systemId: BL, lockBeforeDate: lock }, update: { lockBeforeDate: lock } });
+      const c = await post(BL, { runId: `qc37fac${tag}L1`, periodKey: "2031-04", day: "2031-04-30", amounts: VEC.examples.E.amounts });
+      const l = await post(BL, { runId: `qc37fac${tag}L2`, periodKey: "2031-09", day: "2031-09-30", amounts: VEC.examples.E.amounts });
+      const n = await P.accountJournalEntry.count({ where: { refId: { in: [`qc37fac${tag}L1`, `qc37fac${tag}L2`] } } });
+      ck("S3.8", {
+        closed: c?.ok === false && c?.code === "PERIOD_CLOSED" && c?.text === fill(T.periodClosed, { p: "2031-04" }),
+        locked: l?.ok === false && l?.code === "PERIOD_LOCKED" && l?.text === POLICY?.lockedMessage?.(lock), none: n === 0,
+      }, "refused", short({ c, l }, 200));
+    }
+  });
+
+  // ── S4 integration ──
+  chk("S4.0", H34, "stepsJson + inputDigest + CARRY_FORWARD", H34 ? "present" : "H3.4 not in base");
+  const emps = new Map<string, string>();
+  async function insRun(h: string, ex: Any, o: { periodKey?: string; payDay?: string; status?: string; label: string; steps?: Any; journalEntryId?: string | null; items?: VItem[]; bound?: VBound[] }): Promise<string> {
+    const ctx = c1(h);
+    const runId = `qc37${tag}${o.label}`;
+    const items: VItem[] = o.items ?? ex.items;
+    const bound: VBound[] = o.bound ?? ex.bound;
+    const idOf = (sym: string) => (bound.some((b) => b.id === sym) ? `${runId}_${sym}` : sym);
+    for (const it of items) {
+      const k = `${h}:${it.emp}`;
+      if (!emps.has(k)) emps.set(k, await fx.mkEmp(T1, ctx.systemId, `QC37 ${it.emp} ${h} ${tag}`, it.endDate ? { endDate: it.endDate } : {}));
+    }
+    const pk = o.periodKey ?? ex.periodKey;
+    const payDay = o.payDay ?? ex.payDay;
+    const sum = (f: keyof VItem) => items.reduce((t, i) => t + Number(i[f] ?? 0), 0);
+    await P.$executeRawUnsafe(
+      `INSERT INTO "HrPayrollRun" ("id","tenantId","systemId","periodKey","payDate","status","totalGrossSatang","totalSsoEmployeeSatang","totalSsoEmployerSatang","totalWhtSatang","totalNetSatang","totalAddSatang","totalDeductSatang","engineVersion","createdById","approvedById","approvedAt","stepsJson","inputDigest","journalEntryId","note")
+       VALUES ($1,$2,$3,$4,$5::timestamp,$6::"PayrollRunStatus",$7,$8,$9,$10,$11,$12,$13,2,$14,$15,$16::timestamp,$17::jsonb,$18,$19,'qc')`,
+      runId, T1, ctx.systemId, pk, `${payDay} 00:00:00`, o.status ?? "APPROVED", sum("grossSatang"), sum("ssoEmployeeSatang"), sum("ssoEmployerSatang"), sum("whtSatang"), sum("netSatang"), sum("addSatang"), sum("deductSatang"),
+      mgr1.id, (o.status ?? "APPROVED") === "DRAFT" ? null : own1.id, (o.status ?? "APPROVED") === "DRAFT" ? null : "2031-09-01 00:00:00", JSON.stringify(o.steps ?? {}), `qc37-${runId}`, o.journalEntryId ?? null,
+    );
+    for (const b of bound)
+      await P.$executeRawUnsafe(
+        `INSERT INTO "HrPayAdjustment" ("id","tenantId","systemId","employeeId","periodKey","kind","amountSatang","status","sourceType","sourceRef","runId","requestedById","decidedById","decidedAt")
+         VALUES ($1,$2,$3,$4,$5,$6::"HrPayItemKind",$7,'APPROVED'::"HrPayItemStatus",$8::"HrPaySource",$9,$10,$11,$11,now())`,
+        idOf(b.id), T1, ctx.systemId, emps.get(`${h}:${b.emp}`), pk, b.kind, b.amountSatang, b.sourceType, b.sourceRef?.replace("PREVRUN", `${runId}prev`).replace(`:${b.emp}:`, `:${emps.get(`${h}:${b.emp}`)}:`) ?? null, runId, own1.id,
+      );
+    for (const it of items) {
+      const snap = { ...it.snapshot, lines: (it.snapshot.lines ?? []).map((l: Any) => ({ ...l, ref: idOf(l.ref) })) };
+      if (!Array.isArray(it.snapshot.lines)) delete (snap as Any).lines;
+      await P.$executeRawUnsafe(
+        `INSERT INTO "HrPayrollItem" ("id","tenantId","systemId","runId","employeeId","grossSatang","ssoBaseSatang","ssoEmployeeSatang","ssoEmployerSatang","whtSatang","netSatang","addSatang","deductSatang","snapshotJson")
+         VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
+        `${runId}_${it.emp}`, T1, ctx.systemId, runId, emps.get(`${h}:${it.emp}`), it.grossSatang, it.ssoEmployeeSatang, it.ssoEmployerSatang, it.whtSatang, it.netSatang, it.addSatang ?? 0, it.deductSatang ?? 0, JSON.stringify(snap),
+      );
+    }
+    return runId;
+  }
+  const approve = (h: string, runId: string, hooks?: Any) => (hooks ? PAY.approveRun(c1(h), runId, undefined, actor, hooks) : PAY.approveRun(c1(h), runId, undefined, actor)).catch((e: unknown) => ({ ok: false, note: `threw ${errText(e)}` }));
+  const payRun = (h: string, runId: string, opts: Any) => (typeof PAY.markPaidRun === "function" ? PAY.markPaidRun(c1(h), runId, { now: NOW, actor, ...opts }) : Promise.resolve({ ok: false, note: "∅ markPaidRun" })).catch((e: unknown) => ({ ok: false, note: `threw ${errText(e)}` }));
+  const reverse = (h: string, runId: string) => PAY.reverseRun(c1(h), runId, "qc h3.7", actor).catch((e: unknown) => ({ ok: false, note: `threw ${errText(e)}` }));
+  const S4 = ["S4.1", "S4.2", "S4.3", "S4.4", "S4.5", "S4.6", "S4.7", "S4.8", "S4.9", "S4.10", "S4.11", "S4.12", "S4.13", "S4.14", "S4.15", "S4.16", "S4.17", "S4.18", "S4.19", "S4.21", "S4.22", "S4.23"];
+  const R: Record<string, string> = {};
+  const exampleCheck = async (id: string, h: string, name: string, bookId: string, extra: (runId: string, e: Any) => Promise<Record<string, unknown>> = async () => ({})) => {
+    const ex = VEC.examples[name];
+    const runId = await insRun(h, ex, { label: name });
+    R[name] = runId;
+    const r = await approve(h, runId);
+    const run = await runOf(runId);
+    const e = await keyEntry(runId, "accrual");
+    const n = (await entriesOfRun(runId)).length;
+    ck(id, {
+      ok: r?.ok === true && r?.note === T.approvedPosted, link: !!e && run?.journalEntryId === e.id && run?.accountSystemId === bookId && fin(run) && run?.status === "APPROVED",
+      entry: e?.systemId === bookId && e?.tenantId === T1 && e?.refType === "hr-payroll" && e?.book === "GENERAL" && e?.journal === "ADJUST" && bkkDay(e?.date) === ex.accrualDay && e?.periodKey === ex.periodKey,
+      lines: msEq(await linesOf(e?.id), ex.byCode), one: n === 1, ...(await extra(runId, e)),
+    }, `example ${name}`, short({ r, acct: run?.accountSystemId, n }, 160));
+  };
+  const s4ok = H34 && !fxMissing.length && !accMissing.length;
+  await blk(S4, async () => {
+    if (!s4ok) throw new Error(!H34 ? "H3.4 not in base (no stepsJson/inputDigest/CARRY_FORWARD)" : `absent: ${[...fxMissing, ...accMissing].join(",")}`);
+    await exampleCheck("S4.1", "hA", "A", BA);
+    await exampleCheck("S4.2", "hB", "B", BA, async (runId) => {
+      const cf = await rows(`SELECT kind::text AS k, "amountSatang" AS a, "periodKey" AS p, "sourceRef" AS r FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD' AND "sourceRef" LIKE $2`, HS.hB, `cf:${runId}:%`);
+      const lines = (await Promise.all((await entriesOfRun(runId)).map((x: Any) => linesOf(x.id)))).flat();
+      return { carry: cf.length === 1 && cf[0].k === "DEDUCTION" && Number(cf[0].a) === 87_777 && cf[0].p === "2031-10" && String(cf[0].r).endsWith(":DAMAGES"), notBooked: !lines.some((l) => l[2] === 87_777) };
+    });
+    await exampleCheck("S4.3", "hC", "C", BA, async (runId) => ({ advRecvNotBooked: !(await Promise.all((await entriesOfRun(runId)).map((x: Any) => linesOf(x.id)))).flat().some((l) => l[2] === 145_000) }));
+    await exampleCheck("S4.4", "hD", "D", BA);
+    await exampleCheck("S4.5", "hE", "E", BB, async (runId) => ({ notInA: (await P.accountJournalEntry.count({ where: { refId: runId, systemId: BA } })) === 0 }));
+    // S4.6 pay
+    {
+      const pa = await payRun("hA", R.A!, { financeAccountId: finBankA, paidOn: "2031-10-05" });
+      const ea = await keyEntry(R.A!, "pay");
+      const sp = await PAY.setPayrollPayAccount(c1("hD"), vOf(own1), { financeAccountId: finCashA });
+      const pd = await payRun("hD", R.D!, { paidOn: "2031-12-26" });
+      const ed = await keyEntry(R.D!, "pay");
+      const pb = await payRun("hB", R.B!, { financeAccountId: finBankA, paidOn: "2031-09-30" });
+      ck("S4.6", {
+        a: pa?.ok === true && pa?.note === T.paidOk && (await runOf(R.A!))?.status === "PAID", ea: ea?.systemId === BA && ea?.book === "PAYMENTS" && ea?.journal === "PAYMENT" && bkkDay(ea?.date) === "2031-10-05" && msEq(await linesOf(ea?.id), VEC.examples.A.pay),
+        setting: sp?.ok === true, d: pd?.ok === true && msEq(await linesOf(ed?.id), VEC.examples.D.pay) && bkkDay(ed?.date) === "2031-12-26", b: pb?.ok === true,
+        events: (await paidEvents(R.A!)) === 1 && (await paidEvents(R.D!)) === 1,
+      }, "paid", short({ pa, sp, pd, pb }, 200));
+    }
+    // S4.7 pay refusals on E (book B)
+    {
+      const tries = [
+        [await payRun("hE", R.E!, { paidOn: "2031-09-30" }), T.payAccount],
+        [await payRun("hE", R.E!, { financeAccountId: finBankA, paidOn: "2031-09-30" }), T.payAccount],
+        [await payRun("hE", R.E!, { financeAccountId: finBankB, paidOn: "2031-08-31" }), T.payDate],
+        [await payRun("hE", R.E!, { financeAccountId: finBankB, paidOn: "2032-01-11" }), T.payDate],
+      ] as [Any, string][];
+      await P.accountPeriod.create({ data: { tenantId: T1, systemId: BB, periodKey: "2031-10", status: "CLOSED" } });
+      tries.push([await payRun("hE", R.E!, { financeAccountId: finBankB, paidOn: "2031-10-01" }), fill(T.periodClosed, { p: "2031-10" })]);
+      const bad = tries.map(([r, t], i) => (r?.ok === false && r?.note === t ? "" : `#${i}:${short(r, 60)}`)).filter(Boolean);
+      ck("S4.7", { texts: bad.length === 0, approved: (await runOf(R.E!))?.status === "APPROVED", noPay: !(await keyEntry(R.E!, "pay")), noEvent: (await paidEvents(R.E!)) === 0 }, "5 refusals", bad.join(" "));
+    }
+    // S4.8 reverse PAID A
+    {
+      const acc = await keyEntry(R.A!, "accrual");
+      const pe = await keyEntry(R.A!, "pay");
+      const rv = await reverse("hA", R.A!);
+      const revs = (await P.accountJournalEntry.findMany({ where: { reversalOfId: { in: [acc?.id ?? "∅", pe?.id ?? "∅"] } } })) as Any[];
+      const mirrored = (await Promise.all(revs.map(async (x) => msEq(await linesOf(x.id), (await linesOf(x.reversalOfId)).map(([c, s, n]) => [c, s === "DR" ? "CR" : "DR", n] as Row))))).every(Boolean);
+      const orig = (await P.accountJournalEntry.findMany({ where: { id: { in: [acc?.id ?? "∅", pe?.id ?? "∅"] } } })) as Any[];
+      const net = await netByCode(R.A!);
+      const today = bkkDay(new Date());
+      const n0 = (await entriesOfRun(R.A!)).length;
+      const again = await reverse("hA", R.A!);
+      ck("S4.8", {
+        ok: rv?.ok === true && rv?.note === T.reverseOk && (await runOf(R.A!))?.status === "REVERSED", two: revs.length === 2 && revs.every((x) => x.journal === "REVERSAL" && x.systemId === BA), mirrored,
+        orig: orig.length === 2 && orig.every((x) => x.status === "REVERSED"), zero: Object.values(net).every((v) => v === 0) && Object.keys(net).length >= 5, dated: revs.every((x) => bkkDay(x.date) === today),
+        again: again?.ok === false && again?.note === T.alreadyReversed && (await entriesOfRun(R.A!)).length === n0,
+      }, "symmetric", short({ rv, net }, 200));
+    }
+    // S4.9 reverse unpaid E
+    {
+      const acc = await keyEntry(R.E!, "accrual");
+      const rv = await reverse("hE", R.E!);
+      const revs = (await P.accountJournalEntry.findMany({ where: { refId: R.E!, journal: "REVERSAL" } })) as Any[];
+      ck("S4.9", { ok: rv?.ok === true, one: revs.length === 1 && revs[0].reversalOfId === acc?.id && revs[0].systemId === BB, noPay: !(await keyEntry(R.E!, "pay")) }, "1 reversal", short(rv));
+    }
+    // S4.11 book moved after approve
+    {
+      const runId = await insRun("hMv", VEC.examples.A, { label: "Mv" });
+      const a = await approve("hMv", runId);
+      const mv = await link("hMv", BB);
+      const p1 = await payRun("hMv", runId, { financeAccountId: finBankB, paidOn: "2031-10-05" });
+      const p2 = await payRun("hMv", runId, { financeAccountId: finBankA, paidOn: "2031-10-05" });
+      const rv = await reverse("hMv", runId);
+      const inA = await P.accountJournalEntry.count({ where: { refId: runId, systemId: BA } });
+      const inB = await P.accountJournalEntry.count({ where: { refId: runId, systemId: BB } });
+      ck("S4.11", { approved: a?.ok === true, moved: mv?.ok === true, refuseNew: p1?.ok === false && p1?.note === T.payAccount, paid: p2?.ok === true, reversed: rv?.ok === true, inA: inA === 4, inB: inB === 0 }, "recorded book", short({ p1, p2, inA, inB }, 160));
+    }
+    // S4.12 no link
+    {
+      const runId = await insRun("hN", VEC.examples.E, { label: "N" });
+      const a = await approve("hN", runId);
+      const run = await runOf(runId);
+      const p = await payRun("hN", runId, { paidOn: "2031-09-30" });
+      const rv = await reverse("hN", runId);
+      const any = await P.accountJournalEntry.count({ where: { refId: runId } });
+      ck("S4.12", {
+        approve: a?.ok === true && a?.note === T.approvedNoBook, row: !run?.journalEntryId && !run?.accountSystemId && fin(run) && run?.note === T.noteNoBook, paid: p?.ok === true,
+        reverse: rv?.ok === true && rv?.note === T.reverseNoBook && (await runOf(runId))?.status === "REVERSED", none: any === 0,
+      }, "no accounting", short({ a, p, rv }, 200));
+    }
+    // S4.13 MANY
+    {
+      const runId = await insRun("hM", VEC.examples.E, { label: "M" });
+      const a = await approve("hM", runId);
+      ck("S4.13", { refused: a?.ok === false && a?.code === "BOOK_AMBIGUOUS" && a?.note === T.bookAmbiguous, draft: (await runOf(runId))?.status === "DRAFT", none: (await P.accountJournalEntry.count({ where: { refId: runId } })) === 0 }, "ambiguous", short(a));
+    }
+    // S4.14 mapping missing
+    {
+      await P.accountMapping.deleteMany({ where: { systemId: BF, key: "PAYROLL_SSO_PAYABLE" } });
+      const runId = await insRun("hF", VEC.examples.A, { label: "F" });
+      const a = await approve("hF", runId);
+      const au = (await P.auditLog.findMany({ where: { tenantId: T1, action: "hr.payroll.post_failed", targetId: runId } })) as Any[];
+      const run2 = await insRun("hF2", VEC.examples.E, { label: "F2" });
+      const b = await approve("hF2", run2);
+      ck("S4.14", {
+        refused: a?.ok === false && a?.code === "MAPPING_MISSING" && a?.note === fill(T.mappingMissing, { name: "เงินสมทบประกันสังคมค้างนำส่ง", code: "2150" }), draft: (await runOf(runId))?.status === "DRAFT",
+        none: (await P.accountJournalEntry.count({ where: { refId: runId } })) === 0, audit: au.some((x) => x.after?.code === "MAPPING_MISSING"), noSsoPosts: b?.ok === true && !!(await keyEntry(run2, "accrual")),
+      }, "named refusal", short({ a, b }, 200));
+    }
+    // S4.15 closed / locked accrual day
+    {
+      await P.accountPeriod.create({ data: { tenantId: T1, systemId: BA, periodKey: "2031-03", status: "CLOSED" } });
+      const r1 = await insRun("hX", VEC.examples.A, { label: "X1", periodKey: "2031-03", payDay: "2031-03-31" });
+      const a = await approve("hX", r1);
+      const r2 = await insRun("hLk", VEC.examples.A, { label: "Lk" });
+      const b = await approve("hLk", r2);
+      const lock = (await P.accountSettings.findUnique({ where: { systemId: BL } }))?.lockBeforeDate;
+      ck("S4.15", {
+        closed: a?.ok === false && a?.code === "PERIOD_CLOSED" && a?.note === fill(T.periodClosed, { p: "2031-03" }), locked: b?.ok === false && b?.code === "PERIOD_LOCKED" && !!lock && b?.note === POLICY?.lockedMessage?.(lock),
+        draft: (await runOf(r1))?.status === "DRAFT" && (await runOf(r2))?.status === "DRAFT", none: (await P.accountJournalEntry.count({ where: { refId: { in: [r1, r2] } } })) === 0,
+      }, "refused", short({ a, b }, 200));
+    }
+    // S4.16 failure after the post ⇒ no orphan · retry once
+    {
+      const runId = await insRun("hX2", VEC.examples.A, { label: "X2", periodKey: "2031-05", payDay: "2031-05-31" });
+      const f = await approve("hX2", runId, { __failFinal: true });
+      const n0 = await P.accountJournalEntry.count({ where: { refId: runId } });
+      const st0 = (await runOf(runId))?.status;
+      await P.$executeRawUnsafe(`UPDATE "HrPayrollRun" SET status = 'APPROVED'::"PayrollRunStatus", "approvedById" = $2, "approvedAt" = now() WHERE id = $1`, runId, own1.id);
+      const a = await approve("hX2", runId);
+      const b = await approve("hX2", runId);
+      const n = await P.accountJournalEntry.count({ where: { refId: runId } });
+      ck("S4.16", { failed: f?.ok === false && n0 === 0 && st0 === "DRAFT", retry: a?.ok === true, again: b?.ok === false && b?.note === T.approveNotDraft, one: n === 1 }, "no orphan, once", short({ f, a, b, n0, n }, 200));
+    }
+    // S4.17 races
+    {
+      const runId = await insRun("hX3", VEC.examples.A, { label: "X3", periodKey: "2031-06", payDay: "2031-06-30" });
+      const res = await Promise.all([0, 1, 2, 3].map(() => approve("hX3", runId)));
+      const n1 = await P.accountJournalEntry.count({ where: { idempotencyKey: `hr-payroll#${runId}#accrual` } });
+      const pays = await Promise.all([0, 1, 2, 3].map(() => payRun("hX3", runId, { financeAccountId: finBankA, paidOn: "2031-06-30" })));
+      const n2 = await P.accountJournalEntry.count({ where: { idempotencyKey: `hr-payroll#${runId}#pay` } });
+      const run = await runOf(runId);
+      ck("S4.17", { approveOne: res.some((x: Any) => x?.ok) && n1 === 1 && fin(run), payOne: pays.filter((x: Any) => x?.ok).length === 1 && n2 === 1 && run?.status === "PAID", event: (await paidEvents(runId)) === 1 }, "exactly once", `${res.map((x: Any) => x?.ok).join(",")} · ${pays.map((x: Any) => x?.ok).join(",")} n1=${n1} n2=${n2}`);
+    }
+    // S4.18 LATER_RUN · CARRY_BOUND
+    {
+      const l1 = await insRun("hL", VEC.examples.A, { label: "L1", periodKey: "2031-07", payDay: "2031-07-31" });
+      await approve("hL", l1);
+      await payRun("hL", l1, { financeAccountId: finBankA, paidOn: "2031-07-31" });
+      const l2 = await insRun("hL", VEC.examples.A, { label: "L2", periodKey: "2031-08", payDay: "2031-08-31" });
+      await approve("hL", l2);
+      const r1 = await reverse("hL", l1);
+      const k1 = await insRun("hL2", VEC.examples.B, { label: "K1" });
+      await approve("hL2", k1);
+      const k2 = await insRun("hL2", VEC.examples.E, { label: "K2", periodKey: "2031-10", payDay: "2031-10-31", status: "DRAFT", bound: [], items: VEC.examples.E.items });
+      await P.$executeRawUnsafe(`UPDATE "HrPayAdjustment" SET "runId" = $1 WHERE "systemId" = $2 AND "sourceRef" LIKE $3`, k2, HS.hL2, `cf:${k1}:%`);
+      const r2 = await reverse("hL2", k1);
+      const revs = await P.accountJournalEntry.count({ where: { refId: { in: [l1, k1] }, journal: "REVERSAL" } });
+      ck("S4.18", {
+        later: r1?.ok === false && r1?.note === T.laterRun && (await runOf(l1))?.status === "PAID", carry: r2?.ok === false && r2?.note === T.carryBound && (await runOf(k1))?.status === "APPROVED", none: revs === 0,
+      }, "refused", short({ r1, r2 }, 200));
+    }
+    // S4.19 H3.4-era runs
+    {
+      const jv = (await ACC.postPayrollJV({ tenantId: T1, systemId: BA }, { payDate: new Date("2031-07-31T05:00:00Z"), periodKey: "2031-07", grossSatang: 1_200_000, ssoEmployeeSatang: 0, ssoEmployerSatang: 0, whtSatang: 0, netSatang: 1_200_000 })).entryId as string;
+      const o1 = await insRun("hO1", VEC.examples.E, { label: "O1", periodKey: "2031-07", payDay: "2031-07-31", status: "PAID", steps: { finalized: true }, journalEntryId: jv });
+      const rv = await reverse("hO1", o1);
+      const revs = await P.accountJournalEntry.count({ where: { reversalOfId: jv } });
+      const jv2 = (await ACC.postPayrollJV({ tenantId: T1, systemId: BA }, { payDate: new Date("2031-07-31T05:00:00Z"), periodKey: "2031-07", grossSatang: 1_200_000, ssoEmployeeSatang: 0, ssoEmployerSatang: 0, whtSatang: 0, netSatang: 1_200_000 })).entryId as string;
+      const o2 = await insRun("hO2", VEC.examples.E, { label: "O2", periodKey: "2031-07", payDay: "2031-07-31", status: "APPROVED", steps: { finalized: true }, journalEntryId: jv2 });
+      const before = await P.accountJournalEntry.count({ where: { systemId: BA } });
+      const p = await payRun("hO2", o2, { financeAccountId: finBankA, paidOn: "2031-07-31" });
+      const after = await P.accountJournalEntry.count({ where: { systemId: BA } });
+      const keys = await P.accountJournalEntry.count({ where: { idempotencyKey: { startsWith: `hr-payroll#${o1}` } } }) + (await P.accountJournalEntry.count({ where: { idempotencyKey: { startsWith: `hr-payroll#${o2}` } } }));
+      ck("S4.19", { reversed: rv?.ok === true && revs === 1, paid: p?.ok === true && (await runOf(o2))?.status === "PAID" && after === before, noKeys: keys === 0 }, "old way", short({ rv, p, before, after }, 160));
+    }
+    // S4.23 inconsistent
+    {
+      const v = VEC.inconsistent.I1_sum_ne_gross;
+      const runId = await insRun("hX4", null, { label: "X4", periodKey: "2031-09", payDay: "2031-09-30", items: v.items, bound: v.bound });
+      const a = await approve("hX4", runId);
+      ck("S4.23", { refused: a?.ok === false && a?.code === "INCONSISTENT" && a?.note === T.inconsistent, draft: (await runOf(runId))?.status === "DRAFT", none: (await P.accountJournalEntry.count({ where: { refId: runId } })) === 0 }, "refused", short(a));
+    }
+    // S4.10 today's period closed ⇒ reversals in the next open period (book A · PAID B)
+    {
+      const today = bkkDay(new Date()).slice(0, 7);
+      const [y, m] = today.split("-").map(Number);
+      const next = `${m === 12 ? y! + 1 : y}-${String(m === 12 ? 1 : m! + 1).padStart(2, "0")}`;
+      await P.accountPeriod.upsert({ where: { systemId_periodKey: { systemId: BA, periodKey: today } }, create: { tenantId: T1, systemId: BA, periodKey: today, status: "CLOSED" }, update: { status: "CLOSED" } }).catch(async () => {
+        await P.accountPeriod.updateMany({ where: { systemId: BA, periodKey: today }, data: { status: "CLOSED" } });
+      });
+      const rv = await reverse("hB", R.B!);
+      const revs = (await P.accountJournalEntry.findMany({ where: { refId: R.B!, journal: "REVERSAL" } })) as Any[];
+      ck("S4.10", { ok: rv?.ok === true, two: revs.length === 2, next: revs.every((x) => x.periodKey === next && bkkDay(x.date) === `${next}-01`) }, `dated ${next}-01`, short(revs.map((x) => [x.periodKey, bkkDay(x.date)])));
+    }
+    // S4.21 scoping
+    {
+      const all = (await P.accountJournalEntry.findMany({ where: { refType: "hr-payroll", tenantId: { in: [T1, T2, T3] } } })) as Any[];
+      const realRuns = all.filter((e) => String(e.refId).startsWith(`qc37${tag}`));
+      const runBook = new Map<string, string | null>();
+      for (const e of realRuns) if (!runBook.has(e.refId)) runBook.set(e.refId, (await runOf(e.refId))?.accountSystemId ?? null);
+      const linesBad = await P.accountJournalLine.count({ where: { entryId: { in: all.map((e) => e.id) }, NOT: { tenantId: T1 } } });
+      ck("S4.21", {
+        tenant: all.length > 0 && all.every((e) => e.tenantId === T1), book: realRuns.every((e) => e.systemId === runBook.get(e.refId)), lines: linesBad === 0,
+        others: (await P.accountJournalEntry.count({ where: { systemId: { in: [BC, BV] }, refType: "hr-payroll" } })) === 0,
+      }, "scoped", `entries=${all.length}`);
+    }
+    // S4.22 audits
+    {
+      const ap = (await P.auditLog.findMany({ where: { tenantId: T1, action: "hr.payroll.approve", targetId: R.A! } })) as Any[];
+      const rv = (await P.auditLog.findMany({ where: { tenantId: T1, action: "hr.payroll.reverse", targetId: R.A! } })) as Any[];
+      const acc = await keyEntry(R.A!, "accrual");
+      ck("S4.22", { approve: ap.some((x) => x.after?.accountSystemId === BA && x.after?.journalEntryId === acc?.id), reverse: rv.some((x) => Array.isArray(x.after?.reversalEntryIds) && x.after.reversalEntryIds.length === 2) }, "audited", short([ap[0]?.after, rv[0]?.after], 200));
+    }
+  });
+
+  // ── S4.20 v1 golden (control — base behaviour) ──
+  await blk(["S4.20"], async () => {
+    await P.accountSystemLink.create({ data: { tenantId: T3, systemId: BV, linkedKind: "HR", linkedId: hv, enabled: true, config: {} } });
+    const ctx = { tenantId: T3, systemId: hv };
+    const e1 = await HRSVC.createEmployee(ctx, { name: `QC37 v1a ${tag}` });
+    const e2 = await HRSVC.createEmployee(ctx, { name: `QC37 v1b ${tag}` });
+    fx.names.push(`QC37 v1a ${tag}`, `QC37 v1b ${tag}`);
+    await PAY.setSalaryProfile(ctx, { employeeId: e1.id, baseSalarySatang: 3_000_000 });
+    await PAY.setSalaryProfile(ctx, { employeeId: e2.id, baseSalarySatang: 1_500_000 });
+    const run = await PAY.createPayrollRun(ctx, { periodKey: "2031-06", payDate: new Date("2031-06-25T05:00:00Z") });
+    const a = await PAY.approveRun(ctx, run.id);
+    const r = (await rows(`SELECT "journalEntryId" AS j, "accountSystemId" AS acc, "totalGrossSatang" AS g, "totalSsoEmployeeSatang" AS se, "totalSsoEmployerSatang" AS sr, "totalWhtSatang" AS w, "totalNetSatang" AS n FROM "HrPayrollRun" WHERE id = $1`, run.id))[0];
+    const e = r?.j ? await P.accountJournalEntry.findUnique({ where: { id: r.j } }) : null;
+    const want: Row[] = ([["6000", "DR", Number(r?.g)], ["6000", "DR", Number(r?.sr)], ["1010", "CR", Number(r?.n)], ["2100", "CR", Number(r?.se) + Number(r?.sr)], ["2130", "CR", Number(r?.w)]] as Row[]).filter((x) => x[2] !== 0);
+    const lines = await linesOf(e?.id);
+    const keys = await P.accountJournalEntry.count({ where: { tenantId: T3, refType: "hr-payroll" } });
+    const n0 = await P.accountJournalEntry.count({ where: { systemId: BV } });
+    const mp = await PAY.markPaid(ctx, run.id);
+    const n1 = await P.accountJournalEntry.count({ where: { systemId: BV } });
+    const rv = await PAY.reverseRun(ctx, run.id, "qc v1");
+    const revs = e ? await P.accountJournalEntry.count({ where: { reversalOfId: e.id } }) : -1;
+    ck("S4.20", {
+      approve: a?.ok === true, oneStep: e?.refType === "AccountManualJV" && e?.book === "PAYMENTS" && e?.systemId === BV && msEq(lines, want), noAcct: !r?.acc, noKey: keys === 0,
+      paidNoPost: mp?.ok === true && n1 === n0, reversed: rv?.ok === true && revs === 1,
+    }, "v1 unchanged", short({ a, lines, want, mp, rv }, 240));
+  });
+}
+
+// ═════════════════════════ run ═════════════════════════
+async function cleanup(): Promise<string[]> {
+  const ids = fx.tenants;
+  if (!ids.length) return [];
+  const inList = ids.map((x) => `'${x}'`).join(",");
+  const tables = ((await P.$queryRawUnsafe(`select distinct table_name from information_schema.columns where table_schema = current_schema() and column_name='tenantId'`).catch(() => [])) as Any[])
+    .map((r) => String(r.table_name)).filter((t) => /^[A-Za-z_]+$/.test(t));
+  for (let pass = 0; pass < 4; pass += 1) {
+    await P.$executeRawUnsafe(`UPDATE "AccountJournalEntry" SET "reversalOfId" = NULL WHERE "tenantId" IN (${inList})`).catch(() => null);
+    for (const t of tables) await P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" IN (${inList})`).catch(() => null);
+  }
+  const left: string[] = [];
+  for (const t of tables) {
+    const r = (await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" IN (${inList})`).catch(() => [{ n: -1 }])) as Any[];
+    if (Number(r?.[0]?.n ?? 0) !== 0) left.push(`${t}=${r?.[0]?.n}`);
+  }
+  return left;
+}
+try {
+  runStatic();
+  runPure(PURE, ACC);
+  const fz = await fitnessNoEnv();
+  chk("S1.9", fz.ok, "exit 0 ×2", fz.note);
+  await runDb();
+} catch (e) {
+  crashed = errText(e);
+  console.log(`💥 harness: ${crashed}`);
+} finally {
+  let left: string[] = [];
+  try {
+    left = await cleanup();
+  } catch (e) {
+    left = [`cleanup threw: ${errText(e)}`];
+  }
+  await cleanupFx(P, fx, SLUG);
+  left.push(...(await residueOf(P, fx, SLUG, SLUG_PREFIX)));
+  chk("Z1", left.length === 0, "none", left.join(",") || "clean");
+}
+if (GROUP_FAIL.length) console.log(`GROUP-THROWS ${GROUP_FAIL.length}: ${GROUP_FAIL.map((g) => g.slice(0, 120)).join(" | ")}`);
+await P.$disconnect?.().catch?.(() => {});
+process.exit(finish({ forced: FORCE, crashed, missing: skipReasons }));
