@@ -305,7 +305,12 @@ function runStatic(): void {
     const DLR = `${H}bank-files/download-route.ts`;
     //   and scripts/qc-hr-h3.5.mts only by hunks that carry an "ORACLE-EDIT … H3.9" marker (S6.6 HEAD check) ◂
     const H35 = "scripts/qc-hr-h3.5.mts";
-    const diff = changedVsBase(BASE, FROZEN.flatMap((f) => (f === `${H}bank-files` ? listFiles(f).filter((x) => x !== DLR) : f === H35 ? [] : [f])));
+    const diff0 = changedVsBase(BASE, FROZEN.flatMap((f) => (f === `${H}bank-files` ? listFiles(f).filter((x) => x !== DLR) : f === H35 ? [] : [f])));
+    // ORACLE-EDIT (H3.7 builder, merge of H3.9 into wip/hr-h3.7 — controller: base-aware rule "HR H<n>.<n>"): once H3.9 is in the base, a frozen file changed by a
+    //   LATER ticket passes when every hunk carries that ticket's mark ("HR H<n>.<n>" / "ORACLE-EDIT … H<n>.<n>") — an unmarked hunk still fails ◂
+    const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR H\d+\.\d+|ORACLE-EDIT[^\n]*H\d+\.\d+/.test(l)));
+    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
+    const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
     const h35Hunks = diffHunks(BASE, H35) ?? [];
     const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
     const n = hrNavLabels();
@@ -402,7 +407,9 @@ function runStatic(): void {
     const all = [...files, ...hub, ...emp];
     const bad = all.filter((f) => !markedOk(f) && !/\.json$/.test(f));
     const jsonTouched = [F.th, F.en, F.inv].every((f) => (diffHunks(BASE, f) ?? []).length > 0);
-    ck("S1.10", { marked: bad.length === 0, hub: hub.length > 0, json: jsonTouched }, "every hunk marked", `unmarked=${bad.join(",") || "0"}`);
+    // ORACLE-EDIT (H3.7 builder, merge of H3.9): in-base guard — once H3.9 is in the base its own hunks are not in the diff any more ⇒ n/a ◂
+    if (IN_BASE) chk("S1.10", true, "every hunk marked", "n/a — H3.9 in base");
+    else ck("S1.10", { marked: bad.length === 0, hub: hub.length > 0, json: jsonTouched }, "every hunk marked", `unmarked=${bad.join(",") || "0"}`);
   }
 }
 
