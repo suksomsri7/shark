@@ -1,0 +1,100 @@
+// ─────────────────────────────────────────────────────────────
+// supplier.prisma — ผู้ให้บริการภายนอก S1.1–S1.3 (ร้านเป็นเอเจนซี่เอง) · RUN TRIPS A1.1 (4 ตาราง)
+// สัญญา: ledger/TRIPS-CORE-CONTRACT.md §B.2 §G.2 §H.7 · ใบสั่ง ledger/trips-briefs/A1.1.md §2.4
+// ชื่อขึ้นต้น Trip เพราะ `Supplier` ถูกใช้แล้ว (procurement.prisma) · TripSupplierPeerLink (S1.5) + TripGroupQuoteRequest (S1.6) = L1.1 (มติ R2)
+// อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core) · ไม่มี FK (id หลวม) · สถานะ = String + CHECK (SQL มือ migration «agency»)
+// เงินต่อการจอง = Int (int4 สตางค์ · OQ19)
+// ⚠️ `prisma migrate diff` (ฐาน → schema) เสนอ DROP INDEX "TripSupplierCost_dims_key" (NULLS NOT DISTINCT) เสมอ — ห้ามรับ · ลบบรรทัดทิ้ง
+// ─────────────────────────────────────────────────────────────
+
+// ผู้ให้บริการของร้าน (แกน tenant) · SQL มือ: TripSupplier_payeeType_check · TripSupplier_status_check · TripSupplier_defaultChannel_check
+model TripSupplier {
+  id               String   @id @default(cuid())
+  tenantId         String
+  code             String?
+  name             String
+  partyId          String
+  accountContactId String?
+  payeeType        String // TH_JURISTIC | TH_FOUNDATION | TH_PERSON | FOREIGN
+  peerLinkId       String? // ตารางคู่ร้าน = L1.1
+  status           String   @default("ACTIVE") // ACTIVE | ARCHIVED
+  defaultChannel   String? // EMAIL | LINE | LINK | PEER
+  paymentTerms     Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+}
+
+// ต้นทุนจากผู้ให้บริการ (แกน unit)
+// SQL มือ: TripSupplierCost_dims_key UNIQUE ("supplierId","productId","optionId","paxTypeId","travelFrom") NULLS NOT DISTINCT
+//   TripSupplierCost_mode_check · TripSupplierCost_valueMinor_check · TripSupplierCost_valueBp_check · TripSupplierCost_dates_check · TripSupplierCost_value_check
+model TripSupplierCost {
+  id         String    @id @default(cuid())
+  tenantId   String
+  unitId     String
+  supplierId String
+  productId  String
+  optionId   String?
+  paxTypeId  String?
+  mode       String // NET | PCT_OF_RETAIL
+  valueMinor Int?
+  valueBp    Int?
+  currency   String    @default("THB")
+  travelFrom DateTime? @db.Date
+  travelTo   DateTime? @db.Date
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([supplierId, productId])
+}
+
+// คำขอไปผู้ให้บริการ (แกน unit · CC §G.2) · SQL มือ: TripSupplierRequest_channel_check · _status_check · _attempts_check
+model TripSupplierRequest {
+  id                String    @id @default(cuid())
+  tenantId          String
+  unitId            String
+  bookingId         String
+  supplierId        String
+  channel           String // EMAIL | LINE | LINK | PEER
+  status            String    @default("DRAFT") // DRAFT | SENT | VIEWED | CONFIRMED | DECLINED | EXPIRED | CANCELLED
+  responseTokenHash String
+  sentAt            DateTime?
+  respondBy         DateTime
+  respondedAt       DateTime?
+  confirmationRef   String?
+  declineReason     String?
+  attempts          Int       @default(0)
+  requestSnapshot   Json
+  idempotencyKey    String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([responseTokenHash])
+  @@unique([tenantId, idempotencyKey])
+  @@index([status, respondBy])
+  @@index([bookingId])
+}
+
+// เจ้าหนี้ผู้ให้บริการ (แกน unit) · SQL มือ: TripSupplierPayable_status_check · _amountSatang_check · _paidSatang_check · TripSupplierPayable_paid_check
+//   TripSupplierPayable_dueAt_open_idx ("dueAt") WHERE status IN ('ACCRUED','BILLED') (มติ R9 · O4)
+model TripSupplierPayable {
+  id             String    @id @default(cuid())
+  tenantId       String
+  unitId         String
+  supplierId     String
+  bookingId      String
+  amountSatang   Int
+  paidSatang     Int       @default(0)
+  dueAt          DateTime
+  status         String    @default("ACCRUED") // ACCRUED | BILLED | PAID | VOID
+  accountDocId   String?
+  paidAt         DateTime?
+  idempotencyKey String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([supplierId, status, dueAt])
+}
