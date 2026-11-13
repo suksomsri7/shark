@@ -22,6 +22,15 @@ export async function lockHrSettings(tx: Tx, ctx: Ctx, ownLocks: readonly string
 
 /** เปลี่ยนเฉพาะคีย์ใน patch บนค่าที่อ่านใหม่ใต้ล็อกแถว (undefined = ลบคีย์) · คืน { count } แบบ updateMany (1 = สำเร็จ) */
 export async function writeHrSettingsKeys(tx: Tx, ctx: Ctx, patch: Record<string, unknown>): Promise<{ count: number }> {
+  // ต้องเรียก lockHrSettings ใน tx เดียวกันก่อนเสมอ: ตรวจว่า backend นี้ (= tx นี้ — ล็อก xact ปล่อยเมื่อ tx จบ) ถือ advisory hr:clockpolicy:<ระบบ> อยู่จริง
+  //   ไม่ถือ ⇒ โยน error (ข้อผิดพลาดของโค้ด ไม่ใช่ของผู้ใช้) — กันการเขียนข้าม (1) แล้วไปถือแถวก่อน clockpolicy ⇒ วงรอ (HR-SET-1 review m2)
+  const held = await tx.$queryRaw<{ ok: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM pg_locks l, (SELECT hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0) AS k) h
+      WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid() AND l.granted AND l.mode = 'ExclusiveLock' AND l.objsubid = 1
+        AND l.classid::text::bigint = ((h.k >> 32) & 4294967295) AND l.objid::text::bigint = (h.k & 4294967295)
+    ) AS "ok"`;
+  if (!held[0]?.ok) throw new Error("writeHrSettingsKeys: lockHrSettings(tx, ctx) must run first in the same transaction");
   // ล็อกแถวซ้ำ (ถืออยู่แล้วจาก lockHrSettings — ซ้ำได้ใน tx เดียวกัน) แล้วอ่านใหม่ ⇒ คีย์อื่นเป็นค่าล่าสุดที่ commit แล้วเสมอ
   const row = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AppSystem" WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'HR'::"SystemType" FOR UPDATE`;
   if (!row.length) return { count: 0 };

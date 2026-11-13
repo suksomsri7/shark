@@ -89,3 +89,38 @@ ALLDONE
   ✅ [SET-1-S4.2] [db] [control] OT save refusals unchanged (noPermission · shopWide · sAfter · sAhead · sRound) · nothing written · no audit · all-branch HR admin ok
   ✅ [SET-1-S4.3] [db] [control] lifecycle save refusals unchanged (noPermission · shopWide · lead · template · failed · board · ownerSwitch) · nothing written · no audit · owner ok
   ✅ [SET-1-Z1] no residue (opsEvent included)
+
+# Fix + merge round (session/hr aa380f6b0) · 13 Nov · lane DB via qc-hr.sh · QC_H06_BASE=d350c26cb
+## RED (old H3.7 h37WritePaySetting + helper without m2 guard restored in the working copy, forced)
+❌ [SET-1-S1.2] [static] fitness: every src/lib/modules/hr/** file that writes AppSystem settings (appSystem.update/updateMany/upsert with settings · raw UPDATE "AppSystem") is settings-lock.ts or on the explicit allowlist (empty) — expected only settings-lock.ts writes (allowlist empty) | actual payroll.ts:updateMany
+❌ [SET-1-S1.3] [static] each writer fn (OT · lifecycle · clock ×2 · judge cursor · work entries · payroll engine · attendance-pay · report settings · H3.7 pay account) calls lockHrSettings + writeHrSettingsKeys and has no own appSystem settings read/write · OT/lifecycle/attendance-pay pass their own key (hr:otpolicy · hr:lifepolicy · policyLockKey) to the helper — expected 10 writer fns via helper | a
+❌ [SET-1-S1.4] [static] lock order: outside settings-lock.ts no hr/** code takes hr:clockpolicy, hr:otpolicy, hr:lifepolicy or the exclusive hr:attpay:policy itself, and nothing locks the AppSystem row FOR UPDATE — expected lock acquisitions only in the helper | actual payroll.ts:3429:clockpolicy
+❌ [SET-1-S2.10] [db] H3.7 default pay account (setPayrollPayAccount null → h37WritePaySetting): A · B — blocked, hrPayroll.payFinanceAccountId cleared + other hrPayroll keys + marker survive (×2 each) — expected A·B ×2 blocked · key + marker survive | actual A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false
+❌ [SET-1-S4.4] [db] misuse refused (review m2): writeHrSettingsKeys in a tx that did not call lockHrSettings throws and writes nothing · after lockHrSettings in the same tx it writes (positive control) — expected misuse throws · control writes | actual throws,nothing misuse=no throw {"count":1} control={"count":1}
+===== qc-hr-set-1 ===== passed 20/25 (QC_FORCE)
+S2.10 actual: A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:blocked=true res=ok key=true marker=false · S4.4 actual: misuse=no throw {"count":1} · S1.2 payroll.ts:updateMany · S1.4 payroll.ts:3429:clockpolicy
+## GREEN
+seed: ===== seed-hr-qc ===== ผ่าน 34/34 · JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":34,"findings":[],"counts":{"AccountJournalEntry":1,"Acc · exit 0
+set1-f1: ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced": · exit 0
+set1-f2: ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced": · exit 0
+set1-f3: ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced": · exit 0
+set1-u: ===== qc-hr-set-1 ===== passed 25/25 · JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced": · exit 0
+qc-hr-h3.7: ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.7","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.9: ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.6: ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.6","total":62,"passed":62,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.4: ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.4","total":85,"passed":85,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.2: ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.2","total":64,"passed":64,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h3.1: ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h3.1","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h2.9: ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h2.9","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h2.5: ===== qc-hr-h2.5 ===== passed 79/79 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h2.5","total":79,"passed":79,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-hr-h1.1: ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) · JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":t · exit 0
+qc-payroll: ===== QC Payroll ไทย ===== · JSON_SUMMARY {"total":19,"passed":19,"findings":[]} · exit 0
+qc-payroll-reverse:  · ✅ PASS — 14/14 · exit 0
+qc-hr-payadjust: ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ ===== · JSON_SUMMARY {"total":27,"passed":27,"findings":[]} · exit 0
+qc-audit-trail:  · ✅ PASS — 21/21 · exit 0
+qc-account-cpa: ===== QC6 CPA audit (service layer จริง + Neon) ===== · JSON_SUMMARY {"total":107,"passed":107,"findings":[]} · exit 0
+fitness (env): JSON_SUMMARY {"total":53,"passed":53,"findings":[]} · exit 0
+fitness (noenv): JSON_SUMMARY {"total":53,"passed":53,"findings":[]} · exit 0
+fitness-hr (env): JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} · exit 0
+fitness-hr (noenv): JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} · exit 0
+typecheck (clean, .next/types + tsbuildinfo removed): exit 0 · 608 s

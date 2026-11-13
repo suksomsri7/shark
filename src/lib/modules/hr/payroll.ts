@@ -3512,12 +3512,9 @@ async function payrollPayAccountSetting(ctx: Ctx): Promise<string | null> {
 async function h37WritePaySetting(ctx: Ctx, value: string | null): Promise<boolean> {
   return tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0))`; // same key as setPayrollEngine (settings.hrPayroll is shared)
-    const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
+    const sys = await lockHrSettings(tx, ctx); // HR-SET-1 ▸ hr:clockpolicy → แถว AppSystem · อ่านใหม่ใต้ล็อก (ลำดับเดียวกับ setPayrollEngine — คีย์ hrPayroll ใช้ร่วมกัน) ◂
     if (!sys) return false;
-    const base = h37Obj(sys.settings);
-    base[PAYROLL_SETTINGS_KEY] = { ...h37Obj(base[PAYROLL_SETTINGS_KEY]), [H37_PAY_KEY]: value };
-    const r = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: base as Prisma.InputJsonValue } });
+    const r = await writeHrSettingsKeys(tx, ctx, { [PAYROLL_SETTINGS_KEY]: { ...h37Obj(sys.settings[PAYROLL_SETTINGS_KEY]), [H37_PAY_KEY]: value } }); // HR-SET-1 ▸ เปลี่ยนเฉพาะคีย์ hrPayroll ◂
     return r.count === 1;
   });
 }

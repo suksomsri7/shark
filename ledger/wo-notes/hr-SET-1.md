@@ -68,3 +68,23 @@ No other suite needed an edit (h2.9 · h3.1 · h3.5 · h4.4 · h4.6 · h1.x · h
 - H3.7 (lane 3) files untouched. If H3.7 adds a settings writer later, S1.2 fails it until it uses the helper.
 - The judge cursor round needs ~2 s per round on QC (job overhead); whole suite ≈ 2–3 min.
 - Scratch logs of the first run were removed by something outside this session (shared scratchpad); summary lines were captured before that and the edited suites + set-1 ×3 + seed were re-run into a separate log dir.
+
+## Debts / notes (review 13 Nov — no code change)
+- N1: non-HR whole-object settings writers (point/service.ts:555 · member/privacy.ts:1705 · member/notifications.ts:188 · member/reports.ts:791/:849 · kanban/integrations.ts:269) have no `type` in their own WHERE; safe today only because every caller gates on MEMBER/KANBAN → follow-up hardening ticket outside HR.
+- N2: the helper uses `FOR UPDATE` (not `FOR NO KEY UPDATE`), so an FK KEY SHARE on the HR AppSystem row (e.g. AppSystemUnit insert from linkUnitAction) waits for a running settings save — brief wait, no cycle; same as reports.ts on base.
+- N3: a long attendance-pay sync holding hr:attpay:policy (S) makes saveAttendancePayPolicy hold hr:clockpolicy while waiting, so every HR settings save + judge saveCursor (maxWait 15 s / timeout 30 s) queues behind it and may time out; OT/lifecycle newly join that queue (clock/reports/work/engine/judge already did on base).
+
+# Fix + merge round (session/hr aa380f6b0)
+Builder (fix round, new session) · 13 Nov · tree shark-hr-b · wip/hr-set-1 7c4cbd63d → merge 67c8aac12 → fix commit (see git log).
+- Merge: `git merge --no-ff session/hr` (aa380f6b0 = H3.9 + controller oracle fix + H3.7). Text conflicts only in qc-hr-h3.6 S1.6 and qc-hr-h3.9 S1.5/S1.10. JSON (messages th/en, hr-ui-inventory.json) had no conflict (untouched on this branch → theirs taken; all three parse). prisma generate ok · migrate deploy on the lane DB: no pending migrations (223 folders).
+  - h3.6 S1.6: union of both later-ticket marks (`ORACLE-EDIT…H<n>.<n>` | `HR H<n>.<n>` | `HR-SET-<n>`), both markers kept.
+  - h3.9 S1.5: controller's base-aware shape (all frozen files, diff0/laterOk) + `HR-SET-<n>`; **m3**: a line counts only if it names a ticket other than H3.9 (`HR H3.9` / `ORACLE-EDIT … H3.9`-only lines rejected; a line like "ORACLE-EDIT (H3.7 builder, merge of H3.9)" still counts for H3.7).
+  - h3.9 S1.10: **F2** — the builder's stricter version kept (in base: every hunk of the shared non-json files needs a ticket mark), b357957e7's "n/a once in base" dropped; **m4**: `anyMarked` uses `h.added` only.
+- **F1**: payroll.ts `h37WritePaySetting` → `lockHrSettings(tx, ctx)` + `writeHrSettingsKeys(tx, ctx, { hrPayroll: { ...sys.settings.hrPayroll, payFinanceAccountId } })`; lock order = setPayrollEngine (hr:clockpolicy → row → re-read); two marked hunks `HR-SET-1`. qc-hr-h3.7 frozen statics accept it as is (68/68) — no ORACLE-EDIT needed.
+  - qc-hr-set-1: FNS + `[payroll.ts, h37WritePaySetting]` (S1.3 now 10 fns) · S1.5 removed-line allowlist + the two stale h37 lines (`const base = h37Obj(sys.settings);` · `base[PAYROLL_SETTINGS_KEY] = {…}`) · new **S2.10** (S2 style, A·B ×2 via `setPayrollPayAccount(null)` with planted hrPayroll keys).
+  - RED with the old H3.7 pattern restored in the working copy (forced, 20/25): S1.2 `payroll.ts:updateMany` · S1.3 h37WritePaySetting · S1.4 `payroll.ts:3429:clockpolicy` · **S2.10 `A0:ok A1:ok B0:blocked=true res=ok key=true marker=false B1:… marker=false`** (A passes — it already took hr:clockpolicy; B: read without the row lock → stale whole object written back) · S4.4 `misuse=no throw {"count":1}`.
+- **m2** (chosen: runtime refusal, robust for any future caller incl. ones a static scan misses): `writeHrSettingsKeys` first checks in `pg_locks` that this backend (= this interactive tx; xact locks die with the tx) holds the advisory `hr:clockpolicy:<sys>` (classid/objid = high/low 32 bits of hashtextextended) and throws `writeHrSettingsKeys: lockHrSettings(tx, ctx) must run first in the same transaction` otherwise. New **S4.4**: misuse throws + nothing written; lockHrSettings → write in the same tx = count 1 (positive control).
+- **N4: not changed — false positive.** `const lock` (work-entries.ts:73) is still used at :353 (`lock(tx, periodLockKey(…))` in the work-entry rebuild). Removing it breaks the build.
+- Debts N1–N3: section above.
+- Runs (logs scratchpad/set1/, not committed): see hr-SET-1-green.txt § fix round. All green; typecheck clean (cache removed).
+ORACLE-EDITs this round: h3.6 S1.6 (conflict union) · h3.9 S1.5 (union + m3) · h3.9 S1.10 (F2 + m4) — all named in the controller's brief; none other.

@@ -31,6 +31,7 @@ const W = {
 const FNS: [string, string][] = [
   [W.ot, "saveOtPolicy"], [W.life, "saveLifecyclePolicy"], [W.clock, "saveClockPolicy"], [W.clock, "saveAttendancePolicy"], [W.judge, "saveCursor"],
   [W.work, "setNormalMinutesPerDay"], [W.payroll, "setPayrollEngine"], [W.attpay, "saveAttendancePayPolicy"], [W.reports, "setReportSettings"],
+  [W.payroll, "h37WritePaySetting"], // fix round (controller F1): H3.7's default-pay-account writer (merged from session/hr aa380f6b0)
 ];
 /** explicit allowlist of hr/** files that may write AppSystem.settings without the helper — EMPTY by default (adding a file = an ORACLE-EDIT with a reason) */
 const ALLOW: string[] = [];
@@ -40,7 +41,7 @@ const SEV: Record<string, Sev> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
 const CHECKS = `
 S1.1|R1|C|R|[static] helper settings-lock.ts: exports lockHrSettings + writeHrSettingsKeys · advisory hr:clockpolicy:<sys> before the caller's own keys before the AppSystem row FOR UPDATE (id · tenantId · type HR) · writer re-reads under the row lock and changes only the patch keys · type-only imports
 S1.2|R4|C|R|[static] fitness: every src/lib/modules/hr/** file that writes AppSystem settings (appSystem.update/updateMany/upsert with settings · raw UPDATE "AppSystem") is settings-lock.ts or on the explicit allowlist (empty)
-S1.3|R2 R3|C|R|[static] each writer fn (OT · lifecycle · clock ×2 · judge cursor · work entries · payroll engine · attendance-pay · report settings) calls lockHrSettings + writeHrSettingsKeys and has no own appSystem settings read/write · OT/lifecycle/attendance-pay pass their own key (hr:otpolicy · hr:lifepolicy · policyLockKey) to the helper
+S1.3|R2 R3|C|R|[static] each writer fn (OT · lifecycle · clock ×2 · judge cursor · work entries · payroll engine · attendance-pay · report settings · H3.7 pay account) calls lockHrSettings + writeHrSettingsKeys and has no own appSystem settings read/write · OT/lifecycle/attendance-pay pass their own key (hr:otpolicy · hr:lifepolicy · policyLockKey) to the helper
 S1.4|R1|C|R|[static] lock order: outside settings-lock.ts no hr/** code takes hr:clockpolicy, hr:otpolicy, hr:lifepolicy or the exclusive hr:attpay:policy itself, and nothing locks the AppSystem row FOR UPDATE
 S1.5|R2 R3|C|R|[static] hunks: every hunk in the 8 writer files vs base carries "HR-SET-1" · ot.ts + lifecycle.ts have ≥ 1 · payroll.ts removed lines ⊆ the stale lock/read/write lines (n/a once the helper is in the base)
 S1.6|frozen|C|G|[static] [control] payroll-rules sha · prisma/ and law.ts unchanged vs base · helper has no law-table / payroll-rules access
@@ -53,12 +54,14 @@ S2.6|R3|C|R|[db] payroll engine (setPayrollEngine v1): A · B — blocked, hrPay
 S2.7|R3|C|R|[db] attendance-pay (saveAttendancePayPolicy): A · B · C hr:attpay:policy — blocked, hrAttendancePay + marker survive (×2 each)
 S2.8|R3|C|G|[db] [control] report settings (setReportSettings OFF): A · B — blocked, hrReports + marker survive (×2 each)
 S2.9|R3|C|R|[db] judge cursor (runAttendanceJobs maxPages 1 → saveCursor): A · B — blocked, hrAttendanceCursor + marker survive (×2 each)
+S2.10|R3|C|R|[db] H3.7 default pay account (setPayrollPayAccount null → h37WritePaySetting): A · B — blocked, hrPayroll.payFinanceAccountId cleared + other hrPayroll keys + marker survive (×2 each)
 S3.1|R1|C|R|[db] no deadlock / no lost update: OT + report settings concurrently ×10 — both ok, both keys = round values (base: lost updates by race)
 S3.2|R1|C|R|[db] no deadlock / no lost update: lifecycle + report settings concurrently ×10 (base: lost updates by race)
 S3.3|R1|C|G|[db] no deadlock / no lost update: clock policy + attendance-pay concurrently ×10
 S4.1|pin|C|G|[db] [control] audit rows unchanged in shape (1 row per save · action · targetType AppSystem · targetId · actor · before/after keys) + same return values for all 8 entry points · all 8 keys coexist
 S4.2|pin|C|G|[db] [control] OT save refusals unchanged (noPermission · shopWide · sAfter · sAhead · sRound) · nothing written · no audit · all-branch HR admin ok
 S4.3|pin|C|G|[db] [control] lifecycle save refusals unchanged (noPermission · shopWide · lead · template · failed · board · ownerSwitch) · nothing written · no audit · owner ok
+S4.4|R1|C|R|[db] misuse refused (review m2): writeHrSettingsKeys in a tx that did not call lockHrSettings throws and writes nothing · after lockHrSettings in the same tx it writes (positive control)
 X1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
 Z1|house|C|G|no residue (opsEvent included)
 `.trim().split("\n").map((l) => {
@@ -169,7 +172,7 @@ function runStatic(): void {
     own(W.ot, "saveOtPolicy", /hr:otpolicy:/);
     own(W.life, "saveLifecyclePolicy", /hr:lifepolicy:/);
     own(W.attpay, "saveAttendancePayPolicy", /policyLockKey\s*\(/);
-    chk("S1.3", bad.length === 0, "9 writer fns via helper", bad.join(" ") || "ok");
+    chk("S1.3", bad.length === 0, `${FNS.length} writer fns via helper`, bad.join(" ") || "ok");
   }
   // S1.4
   {
@@ -204,7 +207,7 @@ function runStatic(): void {
       if (f === W.payroll)
         for (const h of hs)
           for (const l of h.removed)
-            if (!/pg_advisory_xact_lock\(hashtextextended\(\$\{`hr:clockpolicy:|appSystem\.findFirst\(\{ where: \{ id: ctx\.systemId, tenantId: ctx\.tenantId, type: "HR" \}, select: \{ id: true, settings: true \} \}\)|appSystem\.updateMany\(\{ where: \{ id: sys\.id, tenantId: ctx\.tenantId \}, data: \{ settings: base/.test(l))
+            if (!/pg_advisory_xact_lock\(hashtextextended\(\$\{`hr:clockpolicy:|appSystem\.findFirst\(\{ where: \{ id: ctx\.systemId, tenantId: ctx\.tenantId, type: "HR" \}, select: \{ id: true, settings: true \} \}\)|appSystem\.updateMany\(\{ where: \{ id: sys\.id, tenantId: ctx\.tenantId \}, data: \{ settings: base|const base = h37Obj\(sys\.settings\);|base\[PAYROLL_SETTINGS_KEY\] = \{ \.\.\.h37Obj\(base\[PAYROLL_SETTINGS_KEY\]\), \[H37_PAY_KEY\]: value \};/.test(l))
               bad.push(`payroll.ts:removed '${short(l.trim(), 60)}'`);
     }
     chk("S1.5", bad.length === 0, "marked hunks only", bad.join(" ") || "ok");
@@ -230,7 +233,7 @@ const M = {
   ot: await imp("@/lib/modules/hr/ot"), otRules: await imp("@/lib/modules/hr/ot-rules"), life: await imp("@/lib/modules/hr/lifecycle"),
   clock: await imp("@/lib/modules/hr/clock-settings"), judge: await imp("@/lib/modules/hr/judge"), work: await imp("@/lib/modules/hr/work-entries"),
   payroll: await imp("@/lib/modules/hr/payroll"), attpay: await imp("@/lib/modules/hr/attendance-pay"), attRules: await imp("@/lib/modules/hr/attendance-pay-rules"),
-  reports: await imp("@/lib/modules/hr/reports"), settings: await imp("@/lib/modules/hr/settings"),
+  reports: await imp("@/lib/modules/hr/reports"), settings: await imp("@/lib/modules/hr/settings"), helper: await imp("@/lib/modules/hr/settings-lock"),
 };
 const sysSvc = (await import("@/lib/modules/system/service")) as Any;
 for (const [k, m] of Object.entries(M)) if (m?.__err) console.log(`⚠ import ${k}: ${m.__err}`);
@@ -328,7 +331,7 @@ async function runDb(): Promise<void> {
   const ctxOf = async (n: string): Promise<Ctx> => ({ tenantId: TT, systemId: await sys(n) });
   const S = {
     ot: await ctxOf("ot"), life: await ctxOf("life"), clock: await ctxOf("clock"), att: await ctxOf("att"), work: await ctxOf("work"),
-    eng: await ctxOf("engine"), attpay: await ctxOf("attpay"), rep: await ctxOf("reports"), judge: await ctxOf("judge"),
+    eng: await ctxOf("engine"), attpay: await ctxOf("attpay"), rep: await ctxOf("reports"), judge: await ctxOf("judge"), pay: await ctxOf("payacct"),
   };
   // judge: 2 active employees, nothing scheduled (nothing due ⇒ the job writes only the cursor) · pageSize 1 + maxPages 1 ⇒ cut after one ⇒ saveCursor(ids[1])
   const jIds = [await fx.mkEmp(TT, S.judge.systemId, `QC SET1 เจ หนึ่ง ${tag}`), await fx.mkEmp(TT, S.judge.systemId, `QC SET1 เจ สอง ${tag}`)].sort();
@@ -355,6 +358,13 @@ async function runDb(): Promise<void> {
         return r?.__throw ? r : { ok: true };
       },
       key: (s) => s?.hrAttendanceCursor === jIds[1],
+    },
+    {
+      // H3.7 writer: owner clears the default pay account (null needs no linked book) · planted hrPayroll keys must survive next to the cleared one
+      id: "S2.10", ctx: S.pay, modes: ["A", "B"], own: null,
+      prep: async (k) => setRaw(S.pay.systemId, { ...(await settingsOf(S.pay.systemId)), hrPayroll: { engineVersion: 1, catCapBp: 700 + k, payFinanceAccountId: "zz-qc-set1-pay" } }),
+      run: () => call(M.payroll, "setPayrollPayAccount", S.pay, O, { financeAccountId: null }),
+      key: (s, k) => !!s?.hrPayroll && s.hrPayroll.payFinanceAccountId === null && s.hrPayroll.catCapBp === 700 + k && s.hrPayroll.engineVersion === 1,
     },
   ];
   console.log("── [db] deterministic lost-update rounds ──");
@@ -473,6 +483,25 @@ async function runDb(): Promise<void> {
     const okOwner = await call(M.life, "saveLifecyclePolicy", c, O, { autoRevokePin: false });
     const after = await settingsOf(c.systemId);
     ck("S4.3", { refusals: bad.length === 0, same, noAudit, owner: canon(okOwner) === canon({ ok: true, id: c.systemId }) && after?.hrLifecycle?.autoRevokePin === false && after?.keep === 2 }, "lifecycle refusals pinned", bad.join(" "));
+  }
+  // S4.4 · misuse of the writer without the lock (review m2)
+  {
+    const c = await ctxOf("misuse");
+    await setRaw(c.systemId, { keep: 4 });
+    const before = canon(await settingsOf(c.systemId));
+    let misuse = "";
+    await P.$transaction(async (tx: Any) => {
+      const r = await call(M.helper, "writeHrSettingsKeys", tx, c, { hrQcSet1: 1 });
+      misuse = r?.__throw ? String(r.__throw) : `no throw ${short(r, 40)}`;
+    }, { timeout: 20_000, maxWait: 10_000 }).catch((e: unknown) => (misuse = `tx: ${errText(e)}`));
+    const same = canon(await settingsOf(c.systemId)) === before;
+    let good: Any = null;
+    await P.$transaction(async (tx: Any) => {
+      const l = await call(M.helper, "lockHrSettings", tx, c);
+      good = l?.__throw ? l : await call(M.helper, "writeHrSettingsKeys", tx, c, { hrQcSet1: 2 });
+    }, { timeout: 20_000, maxWait: 10_000 }).catch((e: unknown) => (good = { __throw: errText(e) }));
+    const after = await settingsOf(c.systemId);
+    ck("S4.4", { throws: /lockHrSettings/.test(misuse) && !/^∅/.test(misuse), nothing: same, control: good?.count === 1 && after?.hrQcSet1 === 2 && after?.keep === 4 }, "misuse throws · control writes", `misuse=${short(misuse, 80)} control=${short(good, 50)}`);
   }
 }
 
