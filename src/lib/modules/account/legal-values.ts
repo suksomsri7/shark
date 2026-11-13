@@ -192,7 +192,7 @@ export type VatRule = { defaultBp: number; allowed: number[] };
 
 /** อัตรา VAT ที่บรรทัดเอกสาร/REST รับได้ = อัตราทุกแถวในตาราง (ระบบ+ร้าน) ∪ {0, ยกเว้น} · ค่าเริ่ม = อัตรา ณ วันที่ */
 export function vatRuleFrom(legal: BookLegal, date: Date): VatRule {
-  const rates = new Set<number>([...SYSTEM_ROWS.vat, ...legal.shop.vat].map((r) => r.value));
+  const rates = new Set<number>([...SYSTEM_ROWS.vat, ...legal.shop.vat].flatMap((r) => (typeof r.value === "number" ? [r.value] : [])));
   const defaultBp = vatRateBpFrom(legal, date);
   rates.add(defaultBp);
   return { defaultBp, allowed: [defaultBp, ...[...rates].filter((r) => r !== defaultBp).sort((a, b) => b - a), VAT_ZERO_BP, VAT_EXEMPT_BP] };

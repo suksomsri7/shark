@@ -843,7 +843,8 @@ try {
   // 🔴 P11.0 — ค่าเริ่มต้นต้องเป็น "เปิด" ทั้งในโค้ดและใน DB
   //    ก่อน WO 8.2 ตัวกวาดปิดงวดให้ทุกระบบบัญชีโดยไม่มีสวิตช์ ⇒ ถ้า default เป็น "ปิด"
   //    ร้าน/แถวตั้งค่าที่สร้างใหม่จะเสียฟีเจอร์เดิมไปเงียบ ๆ (qc-account-deep AD-2.1–2.4 จับได้)
-  eq("P11.0a ค่าเริ่มต้นในโค้ด = เปิด", policy.defaultPolicy().autoClosePeriods, true);
+  // ORACLE-EDIT (ACC T0.2): defaultPolicy รับอัตรา VAT จากตารางค่ากฎหมาย (เดิมฝัง 700) — ค่าที่ตรวจ (autoClosePeriods) ไม่เกี่ยว
+  eq("P11.0a ค่าเริ่มต้นในโค้ด = เปิด", policy.defaultPolicy((await import("@/lib/modules/account/legal-values")).vatRateBpFrom((await import("@/lib/modules/account/legal-values")).EMPTY_BOOK_LEGAL, new Date())).autoClosePeriods, true);
   {
     const col = await prisma.$queryRawUnsafe<{ column_default: string | null }[]>(
       `SELECT column_default FROM information_schema.columns
