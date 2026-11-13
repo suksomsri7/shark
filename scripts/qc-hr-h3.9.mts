@@ -305,10 +305,16 @@ function runStatic(): void {
     const DLR = `${H}bank-files/download-route.ts`;
     //   and scripts/qc-hr-h3.5.mts only by hunks that carry an "ORACLE-EDIT … H3.9" marker (S6.6 HEAD check) ◂
     const H35 = "scripts/qc-hr-h3.5.mts";
-    // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.5: base-aware — once H3.9 is in the base (IN_BASE) a frozen file may differ only by hunks marked with a later
-    //   ticket ("HR H<n>.<n>" · "HR-SET-<n>" · "ORACLE-EDIT …" naming one); any unmarked hunk still fails ◂
-    const laterOnly = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR-SET-\d+|HR H\d+\.\d+|ORACLE-EDIT[^\n]*H\d+\.\d+/.test(l)));
-    const diff = changedVsBase(BASE, FROZEN.flatMap((f) => (f === `${H}bank-files` ? listFiles(f).filter((x) => x !== DLR) : f === H35 ? [] : [f])).flatMap((f) => (f.endsWith(".ts") || f.endsWith(".mts") || f.endsWith(".tsx") ? (laterOnly(f) ? [] : [f]) : [f])));
+    const diff0 = changedVsBase(BASE, FROZEN.flatMap((f) => (f === `${H}bank-files` ? listFiles(f).filter((x) => x !== DLR) : f === H35 ? [] : [f])));
+    // ORACLE-EDIT (H3.7 builder, merge of H3.9 into wip/hr-h3.7 — controller: base-aware rule "HR H<n>.<n>"): once H3.9 is in the base, a frozen file changed by a
+    //   LATER ticket passes when every hunk carries that ticket's mark ("HR H<n>.<n>" / "ORACLE-EDIT … H<n>.<n>") — an unmarked hunk still fails ◂
+    // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.5: "HR-SET-<n>" counts as a later-ticket mark too; a hunk marked only with H3.9 itself is NOT a later ticket
+    //   (same as the h3.2 / h3.4 edits exclude their own ticket) · the mark must be on an ADDED line ◂
+    const laterMark = (l: string) =>
+      /HR-SET-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9");
+    const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some(laterMark));
+    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
+    const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
     const h35Hunks = diffHunks(BASE, H35) ?? [];
     const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
     const n = hrNavLabels();
@@ -404,8 +410,9 @@ function runStatic(): void {
     const emp = (diffHunks(BASE, F.empPage) ?? []).length > 0 ? [F.empPage] : [];
     const all = [...files, ...hub, ...emp];
     // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.10: base-aware — once H3.9 is in the base (IN_BASE) its own hunks are gone: the shared files may only carry hunks
-    //   marked with some ticket ("HR H<n>.<n>" · "HR-SET-<n>"); hub/json presence is n/a · before that the original rule applies unchanged ◂
-    const anyMarked = (f: string) => (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.concat(h.removed).some((l) => /HR H\d+\.\d+|HR-SET-\d+/.test(l)));
+    //   marked with some ticket ("HR H<n>.<n>" · "HR-SET-<n>") on an ADDED line (deleting a marked line is not a mark); hub/json presence is n/a · before that
+    //   the original rule applies unchanged · controller ruling 13 Nov: this stricter version replaces the b357957e7 "n/a once in base" edit ◂
+    const anyMarked = (f: string) => (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H\d+\.\d+|HR-SET-\d+/.test(l)));
     const bad = IN_BASE ? files.filter((f) => !/\.json$/.test(f) && !anyMarked(f)) : all.filter((f) => !markedOk(f) && !/\.json$/.test(f));
     const jsonTouched = IN_BASE || [F.th, F.en, F.inv].every((f) => (diffHunks(BASE, f) ?? []).length > 0);
     ck("S1.10", { marked: bad.length === 0, hub: IN_BASE || hub.length > 0, json: jsonTouched }, "every hunk marked", `unmarked=${bad.join(",") || "0"}${IN_BASE ? " · H3.9 in base" : ""}`);

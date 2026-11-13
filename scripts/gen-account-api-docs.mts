@@ -695,6 +695,7 @@ export function renderDocs(ops: ApiOp[] = ACCOUNT_OPS): string {
     "- **Pagination.** Lists take `page` (1 based, default 1) and `pageSize` (default 20, maximum 100; a larger value is clamped to 100, not rejected) as query parameters, and answer with `page: { page, pageSize, pageCount, total, hasMore }` next to `data`. Keep asking for `page + 1` while `hasMore` is true. Some list operations add one more top level field with counters for the filter, for example `tabCounts`.",
     "- **Rate limits.** Per key, per class, per minute: 300 reads, 60 writes, 30 reports. 429 carries `Retry-After`; successful calls carry `X-RateLimit-Remaining`.",
     "- **Unknown fields are rejected.** Bodies are closed schemas (`additionalProperties: false`), so a typo fails loudly with 422 `validation` instead of being ignored.",
+    "- **Payroll mapping keys.** `PAYROLL_*` posting rules (payroll accrual and payment accounts) cannot be set through REST: `mappings.set` refuses them. They are set by the shop owner in the HR settings screen only.", // HR H3.7 ▸ fix r2 (d) ◂
     "",
   );
 

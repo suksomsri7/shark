@@ -2162,6 +2162,324 @@ export async function postPayrollJV(
   });
 }
 
+// ═══════════════════ HR H3.7 ▸ payroll accounting v2 — accrual at finalize · payment at pay · strict mapping · posting key (additive) ═══════════════════
+//   brief ledger/hr-briefs/hr-brief-H3.7.md · design ledger/wo-notes/hr-H3.7-design.md §2 (13-row template) §3 (default chart)
+//   Every entry goes through commitEntry (balance · period · lockBeforeDate · key `hr-payroll#<runId>#accrual|pay`, unique per shop) —
+//   no SUSPENSE fallback: a missing mapping refuses with a named key. Callers run these inside their own transaction (H3.4 final tx / pay tx).
+export const PAYROLL_REF_TYPE = "hr-payroll";
+export type PayrollAccrualAmounts = {
+  salaryExpenseSatang: number; ssoEmployerSatang: number; refundSatang: number; receivableDamagesSatang: number; receivableOverpaySatang: number;
+  /** fix r1 F5: refund of an OVERPAY claim (Dr the overpay-recovery account) · optional ⇒ 0 · `refundSatang` = refund of a DAMAGES (or unknown-class) claim */
+  refundOverpaySatang?: number;
+  netSatang: number; ssoPayableSatang: number; whtSatang: number; advanceRecoveredSatang: number; damagesRecoveredSatang: number; overpayRecoveredSatang: number;
+};
+export type PayrollAccountKey =
+  | "PAYROLL_SALARY_EXPENSE" | "PAYROLL_SSO_EXPENSE" | "PAYROLL_SALARY_PAYABLE" | "PAYROLL_SSO_PAYABLE"
+  | "PAYROLL_WHT_PAYABLE" | "PAYROLL_EMPLOYEE_RECEIVABLE" | "PAYROLL_DAMAGES_RECOVERY" | "PAYROLL_OVERPAY_RECOVERY";
+/** default chart of the 8 payroll mapping keys (design §3) — created/mapped by ensurePayrollLedgersInTx, never added to coa CHART */
+export const PAYROLL_ACCOUNTS: readonly { key: PayrollAccountKey; code: string; type: "EXPENSE" | "LIABILITY" | "ASSET" | "INCOME"; label: string; ledgerName: string; nameEn: string }[] = [
+  { key: "PAYROLL_SALARY_EXPENSE", code: "6000", type: "EXPENSE", label: "เงินเดือนและค่าแรง", ledgerName: "เงินเดือนและค่าแรง", nameEn: "Salaries & Wages" },
+  { key: "PAYROLL_SSO_EXPENSE", code: "6010", type: "EXPENSE", label: "เงินสมทบประกันสังคม (ส่วนนายจ้าง)", ledgerName: "เงินสมทบประกันสังคม (ส่วนนายจ้าง)", nameEn: "Social Security Contribution (Employer)" },
+  { key: "PAYROLL_SALARY_PAYABLE", code: "2120", type: "LIABILITY", label: "เงินเดือนค้างจ่าย", ledgerName: "เงินเดือนค้างจ่าย", nameEn: "Accrued Salaries" },
+  { key: "PAYROLL_SSO_PAYABLE", code: "2150", type: "LIABILITY", label: "เงินสมทบประกันสังคมค้างนำส่ง", ledgerName: "เงินสมทบประกันสังคมค้างนำส่ง", nameEn: "Social Security Payable" },
+  { key: "PAYROLL_WHT_PAYABLE", code: "2130", type: "LIABILITY", label: "ภาษีเงินได้หัก ณ ที่จ่ายค้างนำส่ง (ภ.ง.ด.1)", ledgerName: "ภาษีหัก ณ ที่จ่ายค้างนำส่ง", nameEn: "Withholding Tax Payable" },
+  { key: "PAYROLL_EMPLOYEE_RECEIVABLE", code: "1140", type: "ASSET", label: "ลูกหนี้พนักงาน/เงินทดรองจ่ายพนักงาน", ledgerName: "ลูกหนี้พนักงาน/เงินทดรองจ่ายพนักงาน", nameEn: "Employee Receivables / Advances" },
+  { key: "PAYROLL_DAMAGES_RECOVERY", code: "4900", type: "INCOME", label: "รายได้จากการหักค่าเสียหาย/ค่าของจากพนักงาน", ledgerName: "รายได้อื่น / กำไรจากการจำหน่ายสินทรัพย์", nameEn: "Other Income / Disposal Gain" },
+  { key: "PAYROLL_OVERPAY_RECOVERY", code: "6000", type: "EXPENSE", label: "รับคืนเงินเดือน/ค่าคอมฯ ที่จ่ายเกิน", ledgerName: "เงินเดือนและค่าแรง", nameEn: "Salaries & Wages" },
+];
+/** accrual template (design §2) — rows in this order · zero rows omitted · never netted */
+const PAYROLL_TEMPLATE: readonly [PayrollAccountKey, "DR" | "CR", keyof PayrollAccrualAmounts, string][] = [
+  ["PAYROLL_SALARY_EXPENSE", "DR", "salaryExpenseSatang", "เงินเดือนและค่าจ้าง"],
+  ["PAYROLL_SSO_EXPENSE", "DR", "ssoEmployerSatang", "เงินสมทบประกันสังคม (นายจ้าง)"],
+  ["PAYROLL_DAMAGES_RECOVERY", "DR", "refundSatang", "คืนเงินรายการหักให้พนักงาน"],
+  ["PAYROLL_OVERPAY_RECOVERY", "DR", "refundOverpaySatang", "คืนเงินที่หักคืนเกินให้พนักงาน"], // fix r1 F5
+  ["PAYROLL_EMPLOYEE_RECEIVABLE", "DR", "receivableDamagesSatang", "ลูกหนี้พนักงาน (ค่าเสียหายที่หักจากค่าจ้างงวดสุดท้ายไม่ได้)"],
+  ["PAYROLL_EMPLOYEE_RECEIVABLE", "DR", "receivableOverpaySatang", "ลูกหนี้พนักงาน (เงินจ่ายเกินที่หักจากค่าจ้างงวดสุดท้ายไม่ได้)"],
+  ["PAYROLL_SALARY_PAYABLE", "CR", "netSatang", "เงินเดือนค้างจ่าย (สุทธิ)"],
+  ["PAYROLL_SSO_PAYABLE", "CR", "ssoPayableSatang", "เงินสมทบประกันสังคมค้างนำส่ง (ลูกจ้าง+นายจ้าง)"],
+  ["PAYROLL_WHT_PAYABLE", "CR", "whtSatang", "ภาษีหัก ณ ที่จ่ายค้างนำส่ง (ภ.ง.ด.1)"],
+  ["PAYROLL_EMPLOYEE_RECEIVABLE", "CR", "advanceRecoveredSatang", "หักคืนเงินเบิกล่วงหน้า"],
+  ["PAYROLL_DAMAGES_RECOVERY", "CR", "damagesRecoveredSatang", "หักค่าเสียหาย/ค่าของจากค่าจ้าง"],
+  ["PAYROLL_OVERPAY_RECOVERY", "CR", "overpayRecoveredSatang", "หักคืนเงินที่จ่ายเกิน"],
+  ["PAYROLL_DAMAGES_RECOVERY", "CR", "receivableDamagesSatang", "รับรู้ลูกหนี้ค่าเสียหายของพนักงานที่ออก"],
+  ["PAYROLL_OVERPAY_RECOVERY", "CR", "receivableOverpaySatang", "รับรู้ลูกหนี้เงินจ่ายเกินของพนักงานที่ออก"],
+];
+export const PAYROLL_GL_TEXT = {
+  mappingMissing: `ยังไม่ได้ผูกบัญชี "{name}" สำหรับลงบัญชีเงินเดือน — ตั้งที่ บัญชี › ตั้งค่า › การลงบัญชีอัตโนมัติ (รหัสเริ่มต้น {code})`,
+  otherBook: "รอบนี้ลงบัญชีไว้ในสมุดบัญชีเล่มอื่นแล้ว — ไม่ลงซ้ำ",
+  payAccount: "เลือกบัญชีเงินที่ใช้จ่ายเงินเดือน (บัญชีธนาคารหรือเงินสดของสมุดบัญชีที่ลงรอบนี้)",
+  accrualMemo: "ตั้งค้างจ่ายเงินเดือนงวด {p}",
+  payMemo: "จ่ายเงินเดือนงวด {p}",
+  badInput: "ข้อมูลรอบจ่ายสำหรับลงบัญชีไม่ถูกต้อง",
+} as const;
+export type PayrollPostCode = "MAPPING_CLASS" | "MAPPING_MISSING" | "PERIOD_CLOSED" | "PERIOD_LOCKED" | "OTHER_BOOK" | "PAY_ACCOUNT" | "BAD_INPUT";
+export type PayrollPostResult = { ok: true; entryId: string | null; reused: boolean } | { ok: false; code: PayrollPostCode; text: string };
+
+/** pure: the accrual rows of one run (design §2) */
+export function payrollAccrualTemplate(amounts: PayrollAccrualAmounts): { key: PayrollAccountKey; side: "DR" | "CR"; amountSatang: number; note: string }[] {
+  return PAYROLL_TEMPLATE.map(([key, side, field, note]) => ({ key, side, amountSatang: amounts[field] ?? 0, note })).filter((r) => r.amountSatang !== 0);
+}
+
+/** fix r1 F7 — class a payroll key may be mapped to (expense keys also accept COGS) */
+export function payrollMappingTypeOk(key: string, ledgerType: string): boolean {
+  const want = PAYROLL_ACCOUNTS.find((a) => a.key === key)?.type;
+  if (!want) return true;
+  return ledgerType === want || (want === "EXPENSE" && ledgerType === "COGS");
+}
+export const PAYROLL_MAPPING_TYPE_TEXT = "บัญชีที่เลือกไม่ใช่หมวดที่ใช้กับรายการเงินเดือนนี้ — เลือกบัญชีหมวด{type}";
+const payrollFail = (code: PayrollPostCode, text: string): PayrollPostResult => ({ ok: false, code, text });
+const payrollPeriodOk = (p: unknown): p is string => typeof p === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(p);
+function payrollDayDate(day: unknown): Date | null {
+  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const d = new Date(`${day}T05:00:00.000Z`); // 12:00 ICT — the BKK day is the given day
+  return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === day ? d : null;
+}
+const payrollRunIdOk = (id: unknown): id is string => typeof id === "string" && id.length > 0 && id.length <= 128 && !id.includes("#");
+
+/** key → ledger id, STRICT (mapping exists · target ledger of this book, not archived) — first missing in the given order ⇒ refusal naming it */
+/** fix r2 (c) — Thai name of the ledger class a payroll key expects (fixed text; no account data) */
+export const PAYROLL_CLASS_TH: Record<string, string> = { EXPENSE: "ค่าใช้จ่าย", LIABILITY: "หนี้สิน", ASSET: "สินทรัพย์", INCOME: "รายได้" };
+export const PAYROLL_MAPPING_CLASS_TEXT = `บัญชีที่ผูกกับ "{name}" ไม่ใช่หมวดที่ถูกต้อง — ต้องเป็นบัญชีหมวด{class} แก้การผูกที่ บัญชี › ตั้งค่า › การลงบัญชีอัตโนมัติ`;
+async function payrollLedgerIdsInTx(ctx: GlCtx, keys: readonly PayrollAccountKey[], tx: Tx): Promise<{ ok: true; ids: Map<string, string> } | { ok: false; text: string; code?: "MAPPING_CLASS" | "MAPPING_MISSING" }> {
+  const uniq = [...new Set(keys)];
+  const rows = await tx.accountMapping.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, key: { in: uniq } },
+    select: { key: true, account: { select: { id: true, systemId: true, archivedAt: true, type: true } } },
+  });
+  const by = new Map(rows.map((r) => [r.key, r.account]));
+  const ids = new Map<string, string>();
+  for (const k of keys) {
+    const a = by.get(k);
+    if (!a || a.systemId !== ctx.systemId || a.archivedAt || !payrollMappingTypeOk(k, String(a.type))) { // fix r1 F7: a ledger of the wrong class counts as not mapped
+      const def = PAYROLL_ACCOUNTS.find((x) => x.key === k)!;
+      if (a && a.systemId === ctx.systemId && !a.archivedAt) return { ok: false, code: "MAPPING_CLASS", text: PAYROLL_MAPPING_CLASS_TEXT.replace("{name}", def.label).replace("{class}", PAYROLL_CLASS_TH[def.type] ?? def.type) }; // fix r2 (c): wrong class ≠ not mapped
+      return { ok: false, code: "MAPPING_MISSING", text: PAYROLL_GL_TEXT.mappingMissing.replace("{name}", def.label).replace("{code}", def.code) };
+    }
+    ids.set(k, a.id);
+  }
+  return { ok: true, ids };
+}
+
+/** the same period / lock rules commitEntry enforces, read first so the caller gets a code + the existing texts (no shift — Q7) */
+async function payrollPeriodGateInTx(ctx: GlCtx, date: Date, tx: Tx): Promise<PayrollPostResult | null> {
+  const { periodKey } = bkkPeriod(date);
+  const period = await tx.accountPeriod.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey }, select: { status: true } });
+  if (period?.status === "CLOSED") return payrollFail("PERIOD_CLOSED", `งวด ${periodKey} ปิดแล้ว — โพสต์บัญชีไม่ได้`);
+  const s = await tx.accountSettings.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { lockBeforeDate: true } });
+  if (s?.lockBeforeDate && isLockedDate(s.lockBeforeDate, date)) return payrollFail("PERIOD_LOCKED", lockedMessage(s.lockBeforeDate));
+  return null;
+}
+
+/** posting key already used in this shop: same book ⇒ reuse · another book ⇒ OTHER_BOOK (the key is unique per shop) */
+async function payrollKeyInTx(ctx: GlCtx, runId: string, event: "accrual" | "pay", tx: Tx): Promise<PayrollPostResult | null> {
+  const e = await tx.accountJournalEntry.findFirst({
+    where: { tenantId: ctx.tenantId, idempotencyKey: `${PAYROLL_REF_TYPE}#${runId}#${event}` },
+    select: { id: true, systemId: true },
+  });
+  if (!e) return null;
+  return e.systemId === ctx.systemId ? { ok: true, entryId: e.id, reused: true } : payrollFail("OTHER_BOOK", PAYROLL_GL_TEXT.otherBook);
+}
+
+/**
+ * Lazy ledgers + mappings of the 8 payroll keys in one book (dorm ensureTenantDepositLedgerInTx pattern) — call after ensureAccounting.
+ * Per key: mapping exists ⇒ kept (owner's choice) · seeded/our ledger of that code (expected type · isSystem · not archived) ⇒ mapped ·
+ * code free ⇒ ledger created (isSystem · OPERATING) then mapped · code held by the shop's own ledger ⇒ left unmapped (posting refuses MAPPING_MISSING).
+ * createMany skipDuplicates + re-read ⇒ concurrent callers end with one row each.
+ */
+export async function ensurePayrollLedgersInTx(ctx: GlCtx, tx: Tx): Promise<{ mapped: string[]; created: string[]; unmapped: string[] }> {
+  const out = { mapped: [] as string[], created: [] as string[], unmapped: [] as string[] };
+  const have = new Set(
+    (await tx.accountMapping.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, key: { in: PAYROLL_ACCOUNTS.map((a) => a.key) } }, select: { key: true } })).map((m) => m.key),
+  );
+  for (const acc of PAYROLL_ACCOUNTS) {
+    if (have.has(acc.key)) continue;
+    const read = () => tx.accountLedger.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, code: acc.code }, select: { id: true, type: true, isSystem: true, archivedAt: true } });
+    let l = await read();
+    if (!l) {
+      const made = await tx.accountLedger.createMany({
+        data: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, code: acc.code, name: acc.ledgerName, nameEn: acc.nameEn, type: acc.type, cashflowActivity: "OPERATING", isSystem: true, description: "สร้างโดยระบบเงินเดือน (HR) สำหรับลงบัญชีเงินเดือน — รอผู้ตรวจบัญชียืนยันรหัส/ชื่อบัญชี" }],
+        skipDuplicates: true,
+      });
+      if (made.count === 1) out.created.push(acc.code);
+      l = await read();
+    }
+    if (l && l.type === acc.type && l.isSystem && !l.archivedAt) {
+      await tx.accountMapping.createMany({ data: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, key: acc.key, accountId: l.id }], skipDuplicates: true });
+      have.add(acc.key);
+      out.mapped.push(acc.key);
+    } else out.unmapped.push(acc.key);
+  }
+  return out;
+}
+
+/** accrual entry of one payroll run — GENERAL/ADJUST · dated `day` (12:00 ICT) · key hr-payroll#<runId>#accrual · all-zero ⇒ entryId null */
+export async function postPayrollAccrualJV(
+  ctx: GlCtx,
+  input: { runId: string; periodKey: string; day: string; amounts: PayrollAccrualAmounts; postedById?: string | null },
+  tx: Tx,
+): Promise<PayrollPostResult> {
+  const date = payrollDayDate(input?.day);
+  const amounts = input?.amounts;
+  if (!payrollRunIdOk(input?.runId) || !payrollPeriodOk(input?.periodKey) || !date || !amounts) return payrollFail("BAD_INPUT", PAYROLL_GL_TEXT.badInput);
+  for (const [, , f] of PAYROLL_TEMPLATE) if (!Number.isSafeInteger(amounts[f] ?? 0) || (amounts[f] ?? 0) < 0) return payrollFail("BAD_INPUT", PAYROLL_GL_TEXT.badInput);
+  const hit = await payrollKeyInTx(ctx, input.runId, "accrual", tx);
+  if (hit) return hit;
+  const rows = payrollAccrualTemplate(amounts);
+  if (rows.length === 0) return { ok: true, entryId: null, reused: false };
+  const ids = await payrollLedgerIdsInTx(ctx, rows.map((r) => r.key), tx);
+  if (!ids.ok) return payrollFail(ids.code ?? "MAPPING_MISSING", ids.text);
+  const gate = await payrollPeriodGateInTx(ctx, date, tx);
+  if (gate) return gate;
+  const b = new Book(ctx, tx);
+  for (const r of rows) (r.side === "DR" ? b.dr : b.cr).call(b, ids.ids.get(r.key)!, r.amountSatang, r.note);
+  const e = await commitEntry(
+    ctx,
+    { book: "GENERAL", journal: "ADJUST", date, refType: PAYROLL_REF_TYPE, refId: input.runId, event: "accrual", memo: PAYROLL_GL_TEXT.accrualMemo.replace("{p}", input.periodKey), source: "AUTO", postedById: input.postedById ?? undefined },
+    b,
+    tx,
+  );
+  return { ok: true, entryId: e.id, reused: false };
+}
+
+/** pay entry — PAYMENTS/PAYMENT · Dr salaries payable / Cr the chosen money account of THIS book (not archived · useForPay) · net 0 ⇒ entryId null */
+export async function postPayrollPayJV(
+  ctx: GlCtx,
+  input: { runId: string; periodKey: string; day: string; netSatang: number; financeAccountId: string | null; postedById?: string | null },
+  tx: Tx,
+): Promise<PayrollPostResult> {
+  const date = payrollDayDate(input?.day);
+  if (!payrollRunIdOk(input?.runId) || !payrollPeriodOk(input?.periodKey) || !date || !Number.isSafeInteger(input?.netSatang) || input.netSatang < 0) return payrollFail("BAD_INPUT", PAYROLL_GL_TEXT.badInput);
+  const hit = await payrollKeyInTx(ctx, input.runId, "pay", tx);
+  if (hit) return hit;
+  if (input.netSatang === 0) return { ok: true, entryId: null, reused: false };
+  const fa = typeof input.financeAccountId === "string" && input.financeAccountId
+    ? await tx.accountFinance.findFirst({ where: { id: input.financeAccountId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { type: true, ledgerAccountId: true, archivedAt: true, useForPay: true } })
+    : null;
+  if (!fa || fa.archivedAt || !fa.useForPay) return payrollFail("PAY_ACCOUNT", PAYROLL_GL_TEXT.payAccount);
+  let moneyLedger: string | null = null;
+  if (fa.ledgerAccountId) {
+    const l = await tx.accountLedger.findFirst({ where: { id: fa.ledgerAccountId, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null }, select: { id: true } });
+    moneyLedger = l?.id ?? null;
+  } else {
+    const m = await tx.accountMapping.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, key: fa.type === "CASH" ? "CASH" : "BANK" }, select: { account: { select: { id: true, systemId: true, archivedAt: true } } } });
+    moneyLedger = m?.account && m.account.systemId === ctx.systemId && !m.account.archivedAt ? m.account.id : null; // never SUSPENSE
+  }
+  if (!moneyLedger) return payrollFail("PAY_ACCOUNT", PAYROLL_GL_TEXT.payAccount);
+  const ids = await payrollLedgerIdsInTx(ctx, ["PAYROLL_SALARY_PAYABLE"], tx);
+  if (!ids.ok) return payrollFail(ids.code ?? "MAPPING_MISSING", ids.text);
+  const gate = await payrollPeriodGateInTx(ctx, date, tx);
+  if (gate) return gate;
+  const b = new Book(ctx, tx);
+  b.dr(ids.ids.get("PAYROLL_SALARY_PAYABLE")!, input.netSatang, "จ่ายเงินเดือนค้างจ่าย (สุทธิ)");
+  b.cr(moneyLedger, input.netSatang, "จ่ายเงินเดือนสุทธิ");
+  const e = await commitEntry(
+    ctx,
+    { book: "PAYMENTS", journal: "PAYMENT", date, refType: PAYROLL_REF_TYPE, refId: input.runId, event: "pay", memo: PAYROLL_GL_TEXT.payMemo.replace("{p}", input.periodKey), source: "AUTO", postedById: input.postedById ?? undefined },
+    b,
+    tx,
+  );
+  return { ok: true, entryId: e.id, reused: false };
+}
+
+/** reverse a v2 run's entries in ITS book: pay first, then accrual (reverseEntry — mirror lines, its own key/date rule) */
+export async function reversePayrollRunJV(ctx: GlCtx, runId: string, reason: string, tx: Tx): Promise<{ payEntryId: string | null; accrualEntryId: string | null; reversalEntryIds: string[] }> {
+  const out = { payEntryId: null as string | null, accrualEntryId: null as string | null, reversalEntryIds: [] as string[] };
+  for (const ev of ["pay", "accrual"] as const) {
+    const e = await tx.accountJournalEntry.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, idempotencyKey: `${PAYROLL_REF_TYPE}#${runId}#${ev}` }, select: { id: true, status: true } });
+    if (!e) continue;
+    if (e.status !== "POSTED") throw Object.assign(new Error("PAYROLL_ENTRY_NOT_POSTED"), { code: "PAYROLL_ENTRY_NOT_POSTED" }); // fix r1 F3: reversed by someone else ⇒ refuse, never accept silently
+    if (ev === "pay") out.payEntryId = e.id;
+    else out.accrualEntryId = e.id;
+    const rv = await reverseEntry(ctx, e.id, reason, tx);
+    if ("entryId" in rv) out.reversalEntryIds.push(rv.entryId);
+  }
+  return out;
+}
+
+/** fix r1 F3 — state of a run's accrual / pay entry in its book (pay refuses unless the accrual is still POSTED) */
+export async function payrollEntryStateInTx(ctx: GlCtx, runId: string, tx: Tx): Promise<{ accrual: string | null; pay: string | null }> {
+  const st = async (ev: "accrual" | "pay") => (await tx.accountJournalEntry.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, idempotencyKey: `${PAYROLL_REF_TYPE}#${runId}#${ev}` }, select: { status: true } }))?.status ?? null;
+  return { accrual: await st("accrual"), pay: await st("pay") };
+}
+
+/** money accounts of a book the owner may pick to pay salaries (not archived · useForPay) — settings + mark-paid dialog */
+export async function payrollPayAccountsOf(tenantId: string, bookId: string): Promise<{ id: string; name: string; type: string }[]> {
+  if (!tenantId || !bookId) return [];
+  const rows = await prisma.accountFinance.findMany({
+    where: { tenantId, systemId: bookId, archivedAt: null, useForPay: true },
+    select: { id: true, name: true, type: true },
+    orderBy: [{ type: "asc" }, { name: "asc" }],
+  });
+  return rows.map((r) => ({ id: r.id, name: r.name, type: String(r.type) }));
+}
+
+/** v1 one-step JV with a posting key (Q2 controller ruling — closes the v1 orphan: JV committed, then the link failed ⇒ the retry
+ *  finds and links the same entry instead of posting a second one). Lines/book/refType identical to postPayrollJV (AccountManualJV ·
+ *  PAYMENTS · 6000/6000/1010/2100/2130); refId = runId; event = HR_PAYROLL_V1:<figures> ⇒ the same figures reuse the entry, changed
+ *  figures (draft recomputed after a failed link) post a new one and the stale unlinked entry of that run is reversed in the same tx. */
+export async function postPayrollV1KeyedJV(ctx: GlCtx, runId: string, input: PayrollPostingInput, tx?: Tx): Promise<{ entryId: string }> {
+  return withTx(tx, async (db) => {
+    if (!payrollRunIdOk(runId)) throw new Error(PAYROLL_GL_TEXT.badInput);
+    await ensureAccounting(ctx, db as Tx);
+    const ledgers = await db.accountLedger.findMany({ where: { systemId: ctx.systemId, code: { in: ["6000", "1010", "2100", "2130"] } }, select: { id: true, code: true } });
+    const idByCode = new Map(ledgers.map((l) => [l.code, l.id]));
+    const acctId = (code: string): string => {
+      const id = idByCode.get(code);
+      if (!id) throw new Error(`ไม่พบบัญชี ${code} ในผังบัญชี`);
+      return id;
+    };
+    const ssoPayable = input.ssoEmployeeSatang + input.ssoEmployerSatang;
+    const raw = [
+      { accountId: acctId("6000"), debit: input.grossSatang, credit: 0, note: "เงินเดือน" },
+      { accountId: acctId("6000"), debit: input.ssoEmployerSatang, credit: 0, note: "เงินสมทบประกันสังคม (นายจ้าง)" },
+      { accountId: acctId("1010"), debit: 0, credit: input.netSatang, note: "เงินเดือนสุทธิ (จ่ายผ่านธนาคาร)" },
+      { accountId: acctId("2100"), debit: 0, credit: ssoPayable, note: "ประกันสังคมค้างนำส่ง (ลูกจ้าง+นายจ้าง)" },
+      { accountId: acctId("2130"), debit: 0, credit: input.whtSatang, note: "ภาษีหัก ณ ที่จ่ายค้างนำส่ง (ภงด.1)" },
+    ];
+    // the same refusals as postManualJV (v1 behaviour kept: a negative total is refused, not flipped)
+    const lines = raw.filter((l) => (l.debit ?? 0) !== 0 || (l.credit ?? 0) !== 0);
+    if (lines.length < 2) throw new Error("JV ต้องมีอย่างน้อย 2 บรรทัด");
+    let dr = 0;
+    let cr = 0;
+    for (const l of lines) {
+      if (l.debit < 0 || l.credit < 0) throw new Error("บรรทัด JV ติดลบไม่ได้");
+      dr += l.debit;
+      cr += l.credit;
+    }
+    if (dr !== cr) throw new Error(`JV ไม่สมดุล: Σdebit ${dr} ≠ Σcredit ${cr}`);
+    const figures = `${input.periodKey}:${Number.isFinite(input.payDate?.getTime?.()) ? input.payDate.toISOString().slice(0, 10) : "-"}:${input.grossSatang}:${input.ssoEmployeeSatang}:${input.ssoEmployerSatang}:${input.whtSatang}:${input.netSatang}`;
+    const prefix = `AccountManualJV#${runId}#HR_PAYROLL_V1:`;
+    const mine = await db.accountJournalEntry.findMany({
+      where: { tenantId: ctx.tenantId, refType: "AccountManualJV", refId: runId, idempotencyKey: { startsWith: prefix } },
+      select: { id: true, systemId: true, status: true, reversalOfId: true, idempotencyKey: true },
+      orderBy: { createdAt: "asc" },
+    });
+    let event = `HR_PAYROLL_V1:${figures}`;
+    const live = (e: (typeof mine)[number]) => e.status === "POSTED" && !e.reversalOfId && !mine.some((x) => x.reversalOfId === e.id);
+    const sameFigures = (k: string | null) => k === `${prefix}${figures}` || !!k?.startsWith(`${prefix}${figures}:`);
+    const reuse = mine.find((e) => sameFigures(e.idempotencyKey) && e.systemId === ctx.systemId && live(e));
+    for (const e of mine) {
+      // a stale entry of this run that nothing links (the run is APPROVED with no journalEntryId while we post) ⇒ reverse it in its own book
+      if (e.id !== reuse?.id && live(e)) await reverseEntry({ tenantId: ctx.tenantId, systemId: e.systemId }, e.id, "รายการเงินเดือนที่ลงไว้แต่ไม่ได้ผูกกับรอบจ่าย (ลงใหม่ตามตัวเลขปัจจุบัน)", db as Tx);
+    }
+    if (reuse) return { entryId: reuse.id };
+    for (let n = 2; mine.some((e) => e.idempotencyKey === `AccountManualJV#${runId}#${event}`); n += 1) event = `HR_PAYROLL_V1:${figures}:${n}`;
+    const b = new Book(ctx, db);
+    for (const l of lines) {
+      if (l.debit > 0) b.dr(l.accountId, l.debit, l.note);
+      if (l.credit > 0) b.cr(l.accountId, l.credit, l.note);
+    }
+    const entry = await commitEntry(
+      ctx,
+      { book: "PAYMENTS", journal: "ADJUST", date: input.payDate, refType: "AccountManualJV", refId: runId, event, memo: `เงินเดือนงวด ${input.periodKey}`, source: "MANUAL" },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+// ◂ HR H3.7
+
 // ═══════════════════ SVC D.2 ▸ หอพัก — ขาบัญชีของ facade หอ (เพิ่มล้วน · ไม่แตะฟังก์ชันเดิม) ═══════════════════
 // ผู้เรียก = service.ts บล็อก "SVC D.2" (ในธุรกรรมของผู้เรียกเสมอ · ล็อกกันซ้ำถือไว้แล้ว) · ทุก JV ผ่าน commitEntry (สมดุล · งวด · ล็อกวันที่ · คีย์กันซ้ำทั้งร้าน)
 //   · รับเงินเกินบิล  = refType DormPaymentExcess · refId = คีย์ของผู้เรียก · event DOC:<docId>  ⇒ Dr เงิน / Cr DEPOSIT_RECEIVED (2110 เงินรับล่วงหน้า)

@@ -813,9 +813,11 @@ function runStatic(): void {
     //   hr/stock-charge.ts ("hrstock:<key>") · hr/ot.ts (OT_REQUEST; OT law rows go through hr/law.ts#loadOtLawRows, so HrLawTable stays ratcheted)
     const STOCK_OK = /^sourceRef$/;
     const OT_OK = /^sourceRef$/;
+    // ORACLE-EDIT (H3.7 builder · brief H3.7 §3): hr/payroll-journal-rules.ts (pure) classifies the bound adjustment rows of a run (carry suffix of sourceRef — the hoisted H3.4 rule) — only sourceRef is ignored there
+    const JR_FILE = "src/lib/modules/hr/payroll-journal-rules.ts";
     const cntOf = (f: string, s: string) =>
       (stripComments(s).match(S61_RE) ?? []).filter(
-        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t)) && !(f === RUN_RULES_FILE && RUN_RULES_OK.test(t)),
+        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t)) && !(f === RUN_RULES_FILE && RUN_RULES_OK.test(t)) && !(f === JR_FILE && t === "sourceRef"), // ORACLE-EDIT (H3.7 builder): JR_FILE
       ).length;
     // ORACLE-EDIT (controller 12 Nov · H2.9 + H4.6 r3, merged into one mechanism): hr/payroll.ts may carry exactly the declared number of S6.1 tokens inside
     //   lines/blocks marked per WO tag (block = from a `HR <tag> ▸` line without `◂` to the line with `◂ HR <tag>`; a one-line hunk carries the tag itself) ·
@@ -825,7 +827,9 @@ function runStatic(): void {
     //   ORACLE-EDIT (controller 12 Nov · H3.2, authorized per-tag declaration): H3.2 = 6 (sourceRef in writeAttendanceDeductionInTx: findMany where ·
     //   select · gen parse · create data; attendanceApproveLockInTx: param type · parse "att:<P>:" of the row being approved)
     // ORACLE-EDIT (H3.4 builder, phase B · fix round 1): H3.4 = 11 (lawRowIds/ytdJson on v2 items · carry-row sourceRef write + carry-class/consent/reverse reads)
-    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6, "HR H3.4": 16 }; // fix round 2: + carry idempotency read · fix round 3 (H5): + the leaver attendance-row writer (sourceRef read/write ×4, mirrors H3.2's writer)
+    // ORACLE-EDIT (H3.7 builder): H3.7 = 4 (sourceRef in h37RunFiguresInTx: row type · SELECT · map to the pure classifier ×2 — stored figures for the accrual)
+    //   fix round 1 F5: + 6 in h37RefundClaimsInTx (refund rows: filter · slice · claim row type · SELECT · map ×2 — the class of the claim a refund gives back) = 10
+    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6, "HR H3.4": 16, "HR H3.7": 12 }; // ORACLE-EDIT (H3.7 fix r2 b): + 2 in giveBackClaim (earlier refunds of the claim: sourceRef match · REFUND insert column) = 12 // fix round 2: + carry idempotency read · fix round 3 (H5): + the leaver attendance-row writer (sourceRef read/write ×4, mirrors H3.2's writer)
     const splitMarked = (src: string) => {
       const inside: Record<string, string[]> = Object.fromEntries(Object.keys(PAY_MARKED).map((t) => [t, []]));
       const outside: string[] = [];
