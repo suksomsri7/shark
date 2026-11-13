@@ -179,7 +179,9 @@ async function runStatic(): Promise<void> {
   }
   {
     const fs = files(ME);
-    const allowed = (spec: string) => /^(react|next\/|next-intl)/.test(spec) || /^@\/components\//.test(spec) || /^@\/lib\/ui\//.test(spec) || spec === "@/lib/core/context" || /^@\/lib\/modules\/hr\/(self|self-actions|self-ui)$/.test(spec) || /^\.{1,2}\//.test(spec);
+    // ORACLE-EDIT (H3.6 builder, 13 Nov — brief hr-brief-H3.6 R14/R15 put the self 50 Tawi card on /app/me/hr/pay and a route under /app/me/hr/tax-cert):
+    //   + exactly the two H3.6 self entry points (filings/ui#MyTaxCertCard · filings/download-route#myTaxCertGet) — both resolve the user through H2.10 resolveSelf
+    const allowed = (spec: string) => /^(react|next\/|next-intl)/.test(spec) || /^@\/components\//.test(spec) || /^@\/lib\/ui\//.test(spec) || spec === "@/lib/core/context" || /^@\/lib\/modules\/hr\/(self|self-actions|self-ui)$/.test(spec) || /^@\/lib\/modules\/hr\/filings\/(ui|download-route)$/.test(spec) || /^\.{1,2}\//.test(spec);
     const bad = fs.flatMap((f) => importsOf(stripComments(rd(f))).filter((i) => !i.type && !allowed(i.spec)).map((i) => `${f.slice(ME.length + 1)}:${i.spec}`));
     const now = fs.filter((f) => /\bnow\s*:/.test(stripComments(rd(f))));
     ck("S1.5", { pages: PAGES.every((p) => existsSync(join(ROOT, p))), imports: fs.length > 0 && !bad.length, noNow: !now.length }, "6 files · facade only", `${PAGES.filter((p) => !existsSync(join(ROOT, p))).length} missing · ${bad.slice(0, 3).join(" ")}`);

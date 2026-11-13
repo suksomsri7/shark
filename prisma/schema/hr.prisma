@@ -231,6 +231,8 @@ model HrEmployee {
   reviewNotes      HrReviewNote[]
   onboardingTasks  HrOnboardingTask[]
   stockCharges     HrStockCharge[] // HR H4.6 ▸ เบิกของ/ค่าเสียหาย (payroll.prisma) — ขาสะท้อนของ FK Restrict ◂
+  filingPerson     HrFilingPerson? // HR H3.6 ▸ ชื่อ/ที่อยู่แยกช่องของแบบยื่น (back-relation) ◂
+  taxCertificates  HrTaxCertificate[] // HR H3.6 ▸ หนังสือรับรอง 50 ทวิ (back-relation) ◂
 
   @@index([systemId, active])
   @@index([tenantId])

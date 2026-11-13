@@ -10592,6 +10592,1033 @@
    "wo": "H3.4",
    "oracle": "qc-hr-h3.4",
    "note": "นาทีเท่านั้น (ไม่มี ฿) — fix r3 H7"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-pnd1",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?fk=PND1#hr-filing"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "เลือก ภ.ง.ด.1 รายเดือน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-pnd1a",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?fk=PND1A#hr-filing"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "เลือก ภ.ง.ด.1ก รายปี"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-sso-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5) · ต่อรอบ APPROVED/PAID",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?fk=SSO110&frun=<runId>#hr-filing"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "สปส.1-10 ของรอบ — * = runId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-period",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5) · ภ.ง.ด.1/1ก",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "งวด YYYY-MM (ภ.ง.ด.1) หรือปี YYYY (1ก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-show",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5) · ภ.ง.ด.1/1ก",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?fk=&fp=#hr-filing"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ดูตัวอย่างของงวด (GET)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-untested",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5) · สปส.1-10",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ป้าย untestedSso (ยังไม่ทดสอบกับ e-Service จริง) + wageU"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-tile",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "เลือกแบบ+งวดแล้ว และตัวอย่างสำเร็จ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "จำนวนรายการ · ยอด · ภาษี/เงินสมทบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-warn",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ตัวอย่างมีคำเตือน",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "NOT_FINAL · NOT_PAID · V1_RUN · CERT_SEQ · NAME_CUT · SLASH_DASH (เตือน ไม่บล็อก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-excluded",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ตัวอย่างมีคนที่ไม่อยู่ในไฟล์",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ชื่อ · เหตุ · ช่องที่ขาด (ไม่มีเลขประจำตัว)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-opt-encoding",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ตัวอย่าง สปส.1-10",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "TIS-620 / UTF-8 (ค่าว่าง = ตามที่ตั้ง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-opt-wage",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ตัวอย่าง สปส.1-10",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ค่าจ้างหลังเพดาน / จริง (wageU)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-opt-slash",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ตัวอย่าง ภ.ง.ด.1/1ก",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "เขียน / เป็น - หรือไม่ใส่คนนั้น"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-generate",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ตัวอย่างสำเร็จ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "generateFilingAction → ?fmsg=made&ffile=<id>#hr-filing"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "สร้างไฟล์ (ใบกำกับ + ประวัติ) — ไม่ดาวน์โหลดเอง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-files",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "รายการไฟล์ 50 ล่าสุด (ชื่อไฟล์ในรายการปิดเลขผู้เสียภาษีเหลือ •••4)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-dl-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ไฟล์ยังไม่หมดอายุ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/payroll/filing/<fileId>"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ลิงก์ <a download> — route สร้างไบต์ใหม่และเทียบ sha · * = fileId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-taxcert-pdfnote",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ข้อความ pdfNote ([U] PDF/อีเมล)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-taxcert-year",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ปีภาษี ค.ศ. ของรายการหนังสือรับรอง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-taxcert-show",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?ty=<ปี>#hr-filing"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "แสดงหนังสือรับรองของปี (GET)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-taxcert-bulk",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "issueTaxCertsBulkAction → ?fmsg=bulk"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ออกสิ้นปีให้ทุกคนที่มีเงินได้ (ข้ามคนที่มีใบแล้ว/ข้อมูลไม่ครบ/ไม่มีเงินได้)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-taxcert-list",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "หนังสือรับรองของปี · เลขที่ · ลำดับที่ในแบบ · ยกเลิกแล้ว · ยอดเปลี่ยน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-taxcert-dl-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ใบที่ยังไม่ยกเลิก",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/payroll/tax-cert/<certId>"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "PDF 2 ฉบับ — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-taxcert-reason-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "เจ้าของร้าน · ใบที่ยังไม่ยกเลิก",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "เหตุผลการยกเลิก 1–200 ตัวอักษร (ไม่ลงประวัติ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-taxcert-void-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "เจ้าของร้าน · ใบที่ยังไม่ยกเลิก",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "voidTaxCertAction → ?fmsg=voided"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ยกเลิก (เลขไม่คืน) — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-taxcert-issue-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "คนที่มีเงินได้ในปีและยังไม่มีใบ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "issueTaxCertAction → ?fmsg=issued"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ออก 1 ใบ (ANNUAL หรือ LEAVER ถ้าออกจากงานในปี) — * = employeeId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-person-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?fperson=<employeeId>#hr-filing"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "เลือกพนักงานเพื่อแก้ข้อมูลยื่น — * = employeeId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-person-f-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "เลือกพนักงานแล้ว",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "คำนำหน้า · ชื่อ · สกุล · รหัสคำนำหน้า สปส. · ที่อยู่แยกช่อง 8 ช่อง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-person-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "เลือกพนักงานแล้ว",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "saveFilingPersonAction → ?fmsg=saved"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "บันทึกข้อมูลยื่นของพนักงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-filing-profile",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "การ์ดข้อมูลผู้จ่ายเงิน (ผู้ไม่ใช่เจ้าของร้านเห็นแบบอ่านอย่างเดียว)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-filing-profile-f-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5) · แก้ได้เฉพาะเจ้าของร้าน",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "เลขผู้เสียภาษี · สาขา · ชื่อ/ที่อยู่ผู้จ่าย · แผนก · รหัสผู้ใช้กรม · บัญชีนายจ้าง สปส. · ผู้ลงนาม · คำนำหน้าเลขที่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-filing-profile-formflag",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ช่องทางยื่น 1/2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-filing-profile-slashmode",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "DASH (ค่าตั้งต้น [U]) / EXCLUDE"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-filing-profile-encoding",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "TIS-620 (ค่าตั้งต้น) / UTF-8"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-filing-profile-wagemode",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "CLAMPED (ค่าตั้งต้น) / ACTUAL — ป้าย wageU"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-filing-profile-branchtype",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ประเภทสาขา '' / V / S"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-filing-profile-lto",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ผู้เสียภาษีรายใหญ่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-filing-profile-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "เจ้าของร้าน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "saveFilingProfileAction → ?fmsg=saved#hr-filing-profile"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "บันทึกข้อมูลผู้จ่ายเงิน"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-mytaxcert",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ใช้ที่ผูกกับพนักงาน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "หนังสือรับรองของตัวเองที่ยังไม่ยกเลิก"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-mytaxcert-dl-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "มีใบของตัวเอง",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/me/hr/tax-cert/<certId>"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "PDF ของตัวเอง — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-untested-rd",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5) · ภ.ง.ด.1/1ก",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ป้าย untestedRd (ยังไม่ทดสอบกับ e-Filing จริง) — fix r1 F1"
   }
  ]
 }
