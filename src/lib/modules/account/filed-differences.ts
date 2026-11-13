@@ -214,6 +214,14 @@ export async function pndFiledDifferences(ctx: Ctx, periodKey: string): Promise<
   return out;
 }
 
+/** ACC T1.7 — แถวนำส่ง ภ.ง.ด. ที่ยังมีผลของงวด/แบบ (หน้า ภ.ง.ด.3/53 แสดงสถานะ + ยกเลิกเครื่องหมาย) */
+export async function pndFilingOf(ctx: Ctx, form: 3 | 53, periodKey: string) {
+  return tenantDb(ctx).accountWhtFiling.findFirst({
+    where: { periodKey, form, unmarkedAt: null },
+    select: { filedAt: true, filedById: true, certCount: true, totalTaxSatang: true },
+  });
+}
+
 /** ACC T1.7/T1.9 — ข้อมูลให้ฟอร์มบนจอเตือนล่วงหน้า: บัญชีภาษี/WHT ของสมุด (mapping) + เดือนที่ยื่นแล้ว */
 export async function filedMarksForUi(ctx: Ctx): Promise<{
   taxAccounts: { id: string; key: string; code: string; name: string }[];
