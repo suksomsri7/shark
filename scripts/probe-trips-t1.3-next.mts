@@ -4,6 +4,8 @@
 // 🔴 แถวทดสอบทั้งหมดอยู่ใต้ร้านชั่วคราว slug `trips-t13n-*` (ผู้ใช้ `trips-t13n-*@shark.local`) — คนละคำนำหน้ากับข้อสอบ t1.3 (`trips-t13-`) จึงไม่ถูกข้อสอบกวาด
 // 🔴 ร้าน seed `andaman-dive` อ่านอย่างเดียว (SELECT id ของการจอง 1 ใบ เพื่อทดสอบข้ามร้าน) · session ปักธง userAgent แล้วลบใน finally
 // 🔴 ไม่ build · ไม่เปิด/ปิด server · ต่อ server ที่ผู้คุมเปิดไว้เท่านั้น
+// r2 (13 พ.ย. 2569 · ผู้เขียนข้อสอบ ตามมติ V1–V13 ของใบสั่ง T1.3): V1 เลขอ้างอิงต้องเห็นในลิ้นชัก+คิวเอกสาร · V2 ค้นชื่อ = คำที่ตัด % _ \ แล้ว · V3 NUL ⇒ INVALID_INPUT · V4 ปุ่มปิดหัวกล่องถามเสมอ + ข้อผิดพลาด role=alert + ยอดสูงเกิน
+//   V5 ?b= ไม่พบ = หน้าไม่พบ (HTTP 200 จาก streaming รับได้ — ยังตรวจว่าไม่มีข้อมูลรั่ว) · V6 ไทย ฿ / อังกฤษ THB · V7 พารามิเตอร์เสียทิ้งเฉพาะตัว · V10 พร้อมเพย์ช่องยอดล็อก · V11 ป้ายนักบัญชีเฉพาะแถวที่ VAT ต่าง
 import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -162,6 +164,9 @@ try {
   const unitSlug = `${SLUG}u-${STAMP}`;
   await insertRow("Tenant", { id: tN, name: `Probe T1.3 ${STAMP}`, slug: `${SLUG}${STAMP}`, updatedAt: new Date() }); tenantIds.push(tN);
   await insertRow("BusinessUnit", { id: uN, tenantId: tN, type: "TRIPS", name: "Probe trips unit", slug: unitSlug, settings: "{}", updatedAt: new Date() });
+  // หน่วยว่าง (ไม่มีการจอง/แถวเงิน) — ใช้ดูคิวเอกสารเงินรอออกตอนว่าง (มติ V11)
+  const uE = rid("uE"); const unitSlugE = `${SLUG}e-${STAMP}`;
+  await insertRow("BusinessUnit", { id: uE, tenantId: tN, type: "TRIPS", name: "Probe empty unit", slug: unitSlugE, settings: "{}", updatedAt: new Date() });
   type Actor = { role: string; unitAccess: string[]; permissions: Rec; userId: string };
   const U: Record<string, Actor> = {};
   const mkUser = async (tag: string, role: string, unitAccess: string[], perms: string[]) => {
@@ -311,6 +316,15 @@ try {
     for (const e of Array.from(scope.querySelectorAll("[aria-label],[title],[placeholder],[alt]"))) for (const a of ["aria-label", "title", "placeholder", "alt"]) { const v = e.getAttribute(a); if (v) parts.push(v); }
     return parts.join("\n");
   });
+  /** กดปุ่มปิดที่หัวกล่องรับเงิน (ปุ่มแรกข้างหัวเรื่อง) — คืน false ถ้าหาไม่เจอ */
+  const clickHeaderClose = (pr: Probe) => pr.page.evaluate(() => {
+    const box = document.querySelector('[data-testid="trips-pay-dialog"]')?.closest('[role="dialog"]');
+    const x = (box?.querySelector("h2")?.parentElement?.querySelector("button") ?? undefined) as HTMLButtonElement | undefined;
+    if (!x) return false;
+    x.click();
+    return true;
+  });
+  const readOnlyOf = (pr: Probe, id: string) => pr.page.evaluate((s: string) => (document.querySelector(s) as HTMLInputElement | null)?.readOnly ?? null, T(id));
   const firstMatch = (text: string, re: RegExp): string | null => { for (const l of text.split("\n")) if (re.test(l)) return l.trim().slice(0, 140); return null; };
   const textChecks = (label: string, text: string, locale: "th" | "en") => {
     check(`${label}: ไม่มีคีย์ข้อความดิบ (bookings.* / errors.* …)`, !RAW_KEY_RE.test(text), "ไม่มี", firstMatch(text, RAW_KEY_RE) ?? "ไม่มี");
@@ -318,7 +332,10 @@ try {
     check(`${label}: ไม่มีรหัสใบงานบนจอ`, !WO_CODE_RE.test(text), "ไม่มี", firstMatch(text, WO_CODE_RE) ?? "ไม่มี");
     if (locale === "en") {
       check(`${label}: จออังกฤษไม่มีอักษรไทย`, !THAI_RE.test(text), "ไม่มี", firstMatch(text, THAI_RE) ?? "ไม่มี");
-      if (text.includes("฿")) note(`${label}: จออังกฤษมีสัญลักษณ์ ฿ (U+0E3F) — ${firstMatch(text, /฿/)}`);
+      check(`${label}: จออังกฤษไม่มีสัญลักษณ์ ฿ (มติ V6: อังกฤษใช้ THB)`, !text.includes("฿"), "ไม่มี ฿", firstMatch(text, /฿/) ?? "ไม่มี");
+    } else {
+      const unitRe = /\d\s*บาท|\bTHB\b/;
+      check(`${label}: จอไทยแสดงสกุลเงินด้วย ฿ ทางเดียว (ไม่มี "… บาท" / THB · มติ V6)`, !unitRe.test(text), "ไม่มี", firstMatch(text, unitRe) ?? "ไม่มี");
     }
   };
   const want = (n: string) => ONLY.length === 0 || ONLY.includes(n);
@@ -339,7 +356,7 @@ try {
     const base = await call("loadBookingListVM", oa, { unitId: uN, when: "all" });
     const total0 = Number((base.vm as Rec)?.total);
     check("รายการฐาน (when=all) เห็นการจองของร้านชั่วคราว", base.ok === true && total0 >= 1, "≥ 1", total0);
-    const inj = ["' OR 1=1 --", "x') OR ('1'='1", "\"; DROP TABLE \"TripBooking\"; --", "TR-0000-0001' OR '1'='1", "$1", "\\", "'||(SELECT pg_sleep(3))||'", "{a,b}", "a\u0000b"];
+    const inj = ["' OR 1=1 --", "x') OR ('1'='1", "\"; DROP TABLE \"TripBooking\"; --", "TR-0000-0001' OR '1'='1", "$1", "\\", "'||(SELECT pg_sleep(3))||'", "{a,b}"];
     for (const s of inj) {
       const t0 = Date.now();
       const r = await call("loadBookingListVM", oa, { unitId: uN, q: s });
@@ -354,11 +371,20 @@ try {
       const r = await call("loadBookingListVM", oa, { unitId: uN, [k]: v });
       check(`${k} นอกชุด ⇒ ปฏิเสธ`, r.ok === false && ["INVALID_INPUT", "NOT_FOUND"].includes(String(r.code)), "INVALID_INPUT/NOT_FOUND", r.ok === true ? "ok:true" : r.code);
     }
-    for (const s of ["%", "_", "Probe%", "P_obe"]) {
+    // มติ V3: NUL/อักขระควบคุม ⇒ INVALID_INPUT (ไม่ throw)
+    for (const s of ["a\u0000b", "\u0000", "x\u0007y"]) {
       const r = await call("loadBookingListVM", oa, { unitId: uN, q: s });
-      const n = Number((r.vm as Rec)?.total);
-      check(`q=${JSON.stringify(s)} (wildcard ของ LIKE) ⇒ ไม่ถูกตีความเป็น wildcard (0 แถว)`, r.ok === true && n === 0, "total 0", r.ok === true ? `total ${n} · nameCapped ${fmt((r.vm as Rec)?.search)}` : r);
+      eqc(`q=${JSON.stringify(s)} (อักขระควบคุม) ⇒ INVALID_INPUT ไม่ throw`, r.ok === false ? r.code : r.ok, "INVALID_INPUT");
     }
+    // มติ V2: ตัวโหลดตัด % _ \ ออกก่อนค้นชื่อ — (ก) เหลือว่าง ⇒ ไม่ค้นชื่อ (0 แถว ไม่ใช่ "ทุกคน") (ข) ตัวแทนไม่ทำงานเป็นตัวแทน (ค) ที่เหลือค้นตามปกติ
+    const totalOf = async (s: string) => { const r = await call("loadBookingListVM", oa, { unitId: uN, q: s }); return r.ok === true ? Number((r.vm as Rec)?.total) : -1; };
+    for (const s of ["%", "_", "%_%", "P_obe", "Pr%be", "Pro%Customer"]) {
+      const n = await totalOf(s);
+      check(`q=${JSON.stringify(s)} (wildcard ของ LIKE) ⇒ ไม่ถูกตีความเป็น wildcard (0 แถว)`, n === 0, "total 0", `total ${n}`);
+    }
+    const plain = await totalOf("Probe");
+    check("q=\"Probe\" ⇒ เจอ (ตัวควบคุมของชุด wildcard)", plain >= 1, "≥ 1", plain);
+    for (const s of ["Probe%", "%Probe", "Pro_be", "Probe\\"]) eqc(`q=${JSON.stringify(s)} ⇒ ผลเท่ากับค้น "Probe" (ตัด % _ \\ แล้วค้น · มติ V2)`, await totalOf(s), plain);
     const byName = await call("loadBookingListVM", oa, { unitId: uN, q: b0.name });
     check("ค้นด้วยชื่อเต็ม ⇒ เจอการจองนั้น (positive control)", byName.ok === true && ((byName.vm as Rec).rows as Rec[]).some((r) => r.bookingId === b0.id), "เจอ", (byName.vm as Rec)?.total);
     const byCode = await call("loadBookingListVM", oa, { unitId: uN, q: b0.code.toLowerCase() });
@@ -452,7 +478,19 @@ try {
     check("ฐาน: เลขอ้างอิงที่พิมพ์ถูกส่งถึงบริการ (อยู่ใน audit ของการรับเงิน)", auditRef === 1, "audit 1 แถวมี SCB-778899", auditRef);
     check("ฐาน: เลขอ้างอิงอยู่ในแถวเงิน (TripMoneyEvent.reference)", ev[0]?.reference === "SCB-778899", "SCB-778899", Object.entries(ev[0] ?? {}).filter(([k]) => /ref/i.test(k)));
     const payTxt = (await textOf(pr, T("trips-bk-payments"))) ?? "";
-    note(`ลิ้นชัก "การรับเงิน" ${payTxt.includes("SCB-778899") ? "แสดง" : "ไม่แสดง"}เลขอ้างอิงที่บันทึก: ${payTxt.replace(/\n/g, " | ").slice(0, 160)}`);
+    check("ลิ้นชัก \"การรับเงิน\" แสดงเลขอ้างอิงที่บันทึก (มติ V1)", payTxt.includes("SCB-778899"), "มี SCB-778899", payTxt.replace(/\n/g, " | ").slice(0, 160));
+    const docTxt = (await textOf(pr, T("trips-bk-docs"))) ?? "";
+    check("ลิ้นชัก \"เอกสารเงินรอออก\" แสดงเลขอ้างอิงของแถวที่รอออก (มติ V1)", docTxt.includes("SCB-778899"), "มี SCB-778899", docTxt.replace(/\n/g, " | ").slice(0, 160));
+    {
+      // คิวเอกสารเงินรอออกของทั้งหน่วย: แถวของการรับเงินนี้ต้องมีเลขอ้างอิง (รายการที่ร้านใช้ออกใบเสร็จเอง)
+      const pd = await open(ownerCookies);
+      await go(pd, "view=docs");
+      const rowTxt = (await textOf(pd, T(`trips-docs-row-${String(ev[0]?.id ?? "")}`))) ?? "";
+      check("คิวเอกสารเงินรอออก: แถวของการรับเงินนี้แสดงเลขอ้างอิง (มติ V1)", rowTxt.includes("SCB-778899") && rowTxt.includes(b.code), `มี SCB-778899 + ${b.code}`, rowTxt.replace(/\s+/g, " ").slice(0, 200) || "(ไม่พบแถว)");
+      await shot(pd, "s2-docs-reference");
+      eqc("ไม่มี page error (คิวเอกสาร)", pd.errors, []);
+      await pd.page.close();
+    }
     const row = await bkRow(b.id);
     eqc("ฐาน: การจอง PART_PAID", [row.status, Number(row.paidSatang)], ["PART_PAID", 100_050]);
     const rest = b.payable - 100_050;
@@ -466,11 +504,28 @@ try {
     await typeInto(pr, "trips-pay-amount", baht(rest + 100));
     const hint = (await textOf(pr, T("trips-pay-dialog"))) ?? "";
     check("จ่ายเกิน (ฝั่งจอ): ข้อความอ่านได้ในกล่อง", hint.includes("ยอดเกินยอดค้าง"), "มี \"ยอดเกินยอดค้าง …\"", hint.replace(/\n/g, " | ").slice(0, 200));
+    const overAl = await alertText(pr);
+    check("จ่ายเกิน (ฝั่งจอ): ข้อความอยู่ใน role=\"alert\" + ยอดเป็น ฿ (มติ V4 · V6)", overAl.includes(`ยอดเกินยอดค้าง ฿${baht(rest)}`) && !/บาท/.test(overAl), `role=alert มี "ยอดเกินยอดค้าง ฿${baht(rest)}"`, overAl || "(ไม่มี role=alert)");
+    eqc("จ่ายเกิน (ฝั่งจอ): ช่องยอดชี้ไปที่ข้อความ (aria-describedby)", await attrOf(pr, T("trips-pay-amount"), "aria-describedby"), "trips-pay-amount-error");
     eqc("จ่ายเกิน (ฝั่งจอ): ช่องยอด aria-invalid + ปุ่มยืนยัน disabled", [await attrOf(pr, T("trips-pay-amount"), "aria-invalid"), await disabledOf(pr, "trips-pay-confirm")], ["true", true]);
     await pr.page.evaluate((s: string) => (document.querySelector(s) as HTMLButtonElement | null)?.click(), T("trips-pay-confirm"));
     await sleep(700);
     eqc("จ่ายเกิน (ฝั่งจอ): ไม่มีแถวใหม่", (await events(b.id)).length, 1);
     await shot(pr, "s2-overpay-client");
+    // มติ V4 (N2): ยอดที่เป็นตัวเลขแต่สูงเกินที่ระบบรับ ⇒ บอกว่าสูงเกิน ไม่ใช่ "ใส่ยอดเป็นตัวเลข" · ศูนย์ ⇒ บอกว่าต้องมากกว่า 0
+    await typeInto(pr, "trips-pay-amount", "99999999");
+    const hiAl = await alertText(pr);
+    check("ยอด 99999999 (สูงเกิน): role=alert บอกว่ายอดสูงเกิน ไม่ใช่ให้ใส่ตัวเลข", hiAl.includes("ยอดสูงเกินไป") && !hiAl.includes("ใส่ยอดเป็นตัวเลข"), "\"ยอดสูงเกินไป …\"", hiAl || "(ไม่มี role=alert)");
+    await typeInto(pr, "trips-pay-amount", "abc");
+    const fmAl = await alertText(pr);
+    check("ยอด \"abc\": role=alert ให้ใส่ตัวเลข + ปุ่มยืนยัน disabled", fmAl.includes("ใส่ยอดเป็นตัวเลข") && (await disabledOf(pr, "trips-pay-confirm")) === true, "\"ใส่ยอดเป็นตัวเลข …\" + disabled", fmAl || "(ไม่มี role=alert)");
+    await typeInto(pr, "trips-pay-amount", baht(rest));
+    await clickId(pr, "trips-pay-tender-TRANSFER");
+    await typeInto(pr, "trips-pay-reference", "เลขไทย");
+    const rfAl = await alertText(pr);
+    check("เลขอ้างอิงผิดรูป: ข้อความใน role=alert + ปุ่มยืนยัน disabled", rfAl.includes("เลขอ้างอิง") && (await disabledOf(pr, "trips-pay-confirm")) === true, "ข้อความเลขอ้างอิงใน role=alert", rfAl || "(ไม่มี role=alert)");
+    await clickId(pr, "trips-pay-tender-CASH");
+    eqc("(ระหว่างพิมพ์ผิด) ไม่มีแถวใหม่", (await events(b.id)).length, 1);
     // (ข) จ่ายเกินฝั่งบริการ: กล่องค้างยอดเดิม แล้วมีคนอื่นรับเงินไปก่อน ⇒ ยืนยันยอดเดิม = เกินยอดค้างจริง
     await typeInto(pr, "trips-pay-amount", baht(rest));
     const other = await call("recordTripPayment", staffCtx(), { bookingId: b.id, amountSatang: 50_000, tender: "CASH", idempotencyKey: `o${hex(6)}` });
@@ -492,12 +547,29 @@ try {
     const pr = await open(ownerCookies);
     await go(pr, `when=all&b=${b.id}`);
     await waitFor(pr, "trips-bk-qr");
+    // มติ V10: พิมพ์ยอดบางส่วนไว้ก่อน แล้วสลับเป็นพร้อมเพย์ ⇒ ช่องยอดเป็นอ่านอย่างเดียว = ยอดค้าง (ยอดที่พิมพ์ไม่ถูกใช้เงียบ ๆ) + มีข้อความบอก
+    await clickId(pr, "trips-bk-pay");
+    await waitFor(pr, "trips-pay-dialog");
+    await typeInto(pr, "trips-pay-amount", "123");
+    await clickId(pr, "trips-pay-tender-PROMPTPAY");
+    eqc("พร้อมเพย์หลังพิมพ์ 123: ช่องยอดที่แก้ได้หาย · ช่องล็อกขึ้น (อ่านอย่างเดียว) = ยอดค้าง", [await has(pr, "trips-pay-amount"), await has(pr, "trips-pay-amount-locked"), await readOnlyOf(pr, "trips-pay-amount-locked"), await valueOf(pr, "trips-pay-amount-locked")], [false, true, true, baht(b.payable)]);
+    await pr.page.click(T("trips-pay-amount-locked"));
+    await pr.page.keyboard.type("77", { delay: 15 });
+    await sleep(200);
+    eqc("ช่องล็อก: พิมพ์ทับไม่ได้", await valueOf(pr, "trips-pay-amount-locked"), baht(b.payable));
+    const lockTxt = (await textOf(pr, T("trips-pay-dialog"))) ?? "";
+    check("ช่องล็อก: มีข้อความบอกว่าพร้อมเพย์รับตามยอดล็อก (แก้ยอดเองไม่ได้)", /ล็อก/.test(lockTxt) && /แก้ยอด|บางส่วน/.test(lockTxt), "ข้อความบอกว่ายอดล็อก/แก้เองไม่ได้", lockTxt.replace(/\n/g, " | ").slice(0, 200));
+    eqc("ยังไม่มี QR ⇒ ยืนยันไม่ได้ (ยอด 123 ที่พิมพ์ไว้ส่งไม่ได้)", await disabledOf(pr, "trips-pay-confirm"), true);
+    pr.confirms.length = 0; pr.confirmMode.accept = true;
+    await pr.page.keyboard.press("Escape");
+    check("ปิดกล่อง (เปลี่ยนวิธีจ่าย/พิมพ์ยอดไว้ = มีค่าค้าง · ตอบตกลง) ⇒ ถาม 1 ครั้ง กล่องปิด", (await waitGone(pr, "trips-pay-dialog", 6000)) && pr.confirms.length === 1, "ถาม 1 · ปิด", `ถาม ${pr.confirms.length} · กล่องอยู่=${await has(pr, "trips-pay-dialog")}`);
+    eqc("ยังไม่มีอะไรถูกบันทึก", (await events(b.id)).length, 0);
     await clickId(pr, "trips-bk-qr");
     check("กล่องรับเงินขึ้น (โหมดพร้อมเพย์)", await waitFor(pr, "trips-pay-dialog"), true, await has(pr, "trips-pay-dialog"));
     await sleep(2500);
     const al0 = await alertText(pr);
     check("ร้านไม่มีผู้รับพร้อมเพย์: ข้อความอ่านได้ ไม่มีรูป QR", al0.length > 0 && !RAW_KEY_RE.test(al0) && !RAW_ENUM_RE.test(al0) && !(await has(pr, "trips-pay-qr")), "ข้อความไทยอ่านได้ · ไม่มี QR", `${al0 || "(ไม่มีข้อความ)"} · qr=${await has(pr, "trips-pay-qr")}`);
-    eqc("ยังไม่มี QR ⇒ ปุ่มยืนยัน disabled · ไม่มีช่องยอด", [await disabledOf(pr, "trips-pay-confirm"), await has(pr, "trips-pay-amount")], [true, false]);
+    eqc("ยังไม่มี QR ⇒ ปุ่มยืนยัน disabled · ไม่มีช่องยอดที่แก้ได้ · ช่องล็อก = ยอดค้าง (มติ V10)", [await disabledOf(pr, "trips-pay-confirm"), await has(pr, "trips-pay-amount"), await readOnlyOf(pr, "trips-pay-amount-locked"), await valueOf(pr, "trips-pay-amount-locked")], [true, false, true, baht(b.payable)]);
     await shot(pr, "s3-no-receiver");
     await setV([{ key: "payments.receiver", scope: "UNIT", scopeId: uN, value: { promptpayId: "0812345678", displayName: "Probe Shop T1.3" } }]);
     let got = false;
@@ -517,7 +589,8 @@ try {
     const src = (await attrOf(pr, T("trips-pay-qr"), "src")) ?? "";
     check("QR เป็น data URL ของ SVG", src.startsWith("data:image/svg+xml"), "data:image/svg+xml…", src.slice(0, 40));
     const dlg = (await textOf(pr, T("trips-pay-dialog"))) ?? "";
-    check("ยอดล็อกของ QR = ยอดค้างของการจอง", dlg.includes(baht(b.payable)), baht(b.payable), dlg.replace(/\n/g, " | ").slice(0, 220));
+    check("ยอดล็อกของ QR = ยอดค้างของการจอง (แสดงเป็น ฿ · มติ V6)", dlg.includes(`฿${baht(b.payable)}`) && !/\d\s*บาท/.test(dlg), `฿${baht(b.payable)}`, dlg.replace(/\n/g, " | ").slice(0, 220));
+    eqc("มี QR แล้ว: ช่องยอดยังล็อก = ยอดของ QR", [await has(pr, "trips-pay-amount"), await readOnlyOf(pr, "trips-pay-amount-locked"), await valueOf(pr, "trips-pay-amount-locked")], [false, true, baht(b.payable)]);
     check("ชื่อผู้รับแสดง", dlg.includes("Probe Shop T1.3"), "Probe Shop T1.3", dlg.replace(/\n/g, " | ").slice(0, 120));
     eqc("ขอ QR ไม่เขียนฐาน (ยังไม่มีแถวเงิน)", (await events(b.id)).length, 0);
     await shot(pr, "s3-qr");
@@ -664,6 +737,27 @@ try {
     check("เจ้าของ (positive control): ?view=docs มีคิวเอกสาร + แถว", (await has(po, "trips-docs")) && nDocs >= 1, "trips-docs + ≥ 1 แถว", [await has(po, "trips-docs"), nDocs]);
     textChecks("ไทย: คิวเอกสารเงินรอออก", await visibleText(po), "th");
     await shot(po, "s6-owner-docs");
+    {
+      // มติ V11: ป้าย "ตรวจกับนักบัญชีของร้าน" ขึ้นเฉพาะแถวที่ VAT ต่อใบรับรวมไม่เท่า VAT ของการจอง — ไม่อยู่ในข้อความถาวร ไม่ขึ้นบนคิวว่าง
+      const LABEL = "ตรวจกับนักบัญชี";
+      const dvm = await call("loadBookingDocsVM", { tenantId: tN, actorUserId: U.oa.userId }, { unitId: uN });
+      const diffIds = (((dvm.vm as Rec)?.items as Rec[]) ?? []).filter((x) => Number(x.vatDiffSatang) !== 0).map((x) => String(x.eventId));
+      const noteTxt = (await textOf(po, T("trips-docs-note"))) ?? "";
+      check("คิวเอกสาร: ข้อความถาวรไม่มีป้ายนักบัญชี", noteTxt.length > 0 && !noteTxt.includes(LABEL), "มีข้อความถาวร · ไม่มีป้าย", noteTxt.replace(/\s+/g, " ").slice(0, 160) || "(ไม่มี trips-docs-note)");
+      const labelled = await po.page.evaluate((l: string) => Array.from(document.querySelectorAll('[data-testid^="trips-docs-row-"]')).filter((r) => ((r as HTMLElement).innerText ?? "").includes(l)).map((r) => (r.getAttribute("data-testid") ?? "").replace("trips-docs-row-", "")), LABEL);
+      eqc("คิวเอกสาร: ป้ายนักบัญชีขึ้นเฉพาะแถวที่ตัวโหลดบอกว่า VAT ต่าง", [...labelled].sort(), [...diffIds].sort());
+      const docsTxt = (await textOf(po, T("trips-docs"))) ?? "";
+      if (diffIds.length === 0) check("คิวเอกสาร (ไม่มีแถวที่ VAT ต่าง): ไม่มีป้ายนักบัญชีทั้งจอ", !docsTxt.includes(LABEL), "ไม่มี", firstMatch(docsTxt, /ตรวจกับนักบัญชี/) ?? "ไม่มี");
+      const pe0 = await open(ownerCookies);
+      const stE = (await pe0.page.goto(`${BASE}/app/u/${unitSlugE}/trips/bookings?view=docs`, { waitUntil: "networkidle2", timeout: 90_000 }).catch(() => null))?.status() ?? 0;
+      await sleep(600);
+      const emptyTxt = (await textOf(pe0, T("trips-docs"))) ?? "";
+      const emptyRows = await pe0.page.evaluate(() => document.querySelectorAll('[data-testid^="trips-docs-row-"]').length);
+      check("คิวเอกสารว่าง (หน่วยไม่มีแถวเงิน): เปิดได้ · 0 แถว · มีข้อความถาวร · ไม่มีป้ายนักบัญชี", stE === 200 && (await has(pe0, "trips-docs")) && emptyRows === 0 && (await has(pe0, "trips-docs-note")) && !emptyTxt.includes(LABEL), "200 · trips-docs · 0 แถว · ไม่มีป้าย", `HTTP ${stE} · แถว ${emptyRows} · ${emptyTxt.replace(/\s+/g, " ").slice(0, 160) || "(ไม่มี trips-docs)"}`);
+      await shot(pe0, "s6-docs-empty");
+      eqc("ไม่มี page error (คิวว่าง)", pe0.errors, []);
+      await pe0.page.close();
+    }
     // ลิงก์ในคิวเอกสารไปลิ้นชักได้จริง (ไม่ใช่ dead link)
     const href = await po.page.evaluate(() => (document.querySelector('[data-testid^="trips-docs-row-"] a') as HTMLAnchorElement | null)?.getAttribute("href") ?? null);
     if (href) { const st = (await po.page.goto(`${BASE}${href}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null))?.status() ?? 0; check("ลิงก์เลขจองในคิวเอกสารเปิดลิ้นชักได้", st === 200 && (await waitFor(po, "trips-bk-detail", 8000)), "200 + ลิ้นชัก", st); }
@@ -675,14 +769,37 @@ try {
       const body = await po.page.evaluate(() => document.body.innerText);
       const html2 = await po.page.content();
       check("เจ้าของร้านชั่วคราวเปิด ?b= ของร้านอื่น ⇒ ไม่มีลิ้นชัก · ไม่มีข้อมูลร้านอื่น · จอ not-found", !(await has(po, "trips-bk-detail")) && !(await has(po, "trips-bk")) && !html2.includes("tripsqc-party") && !html2.includes("ภัทรา"), "ไม่มี trips-bk / trips-bk-detail / ข้อมูลร้านอื่น", `HTTP ${st} · trips-bk=${await has(po, "trips-bk")} · detail=${await has(po, "trips-bk-detail")} · body="${body.replace(/\s+/g, " ").slice(-120)}"`);
-      eqc(`?b= ของร้านอื่น (${fcode}) ⇒ HTTP 404`, st, 404);
+      // มติ V5 (F6 รับแล้ว): loading.tsx ของ T1.1 ทำให้ส่วนนี้ stream ⇒ สถานะเป็น 200 ได้ทั้งที่เนื้อหาเป็นหน้าไม่พบ — ผลที่คาด = 200 (หรือ 404 ถ้าวันหนึ่งไม่ stream) + ไม่มีข้อมูลรั่ว
+      check(`?b= ของร้านอื่น (${fcode}) ⇒ หน้าไม่พบ (HTTP 200 จาก streaming หรือ 404) · ไม่ใช่ 5xx/redirect`, st === 200 || st === 404, "200 | 404", st);
+      check(`?b= ของร้านอื่น: HTML/RSC ไม่มีเลขจอง · id · ชื่อ ของร้านอื่น`, !html2.includes(fcode) && !html2.includes(foreign.id) && !body.includes(fcode), "ไม่มี", html2.includes(fcode) ? `มีเลขจอง ${fcode}` : html2.includes(foreign.id) ? "มี id การจองร้านอื่น" : "ไม่มี");
       const st2 = await go(po, "when=all&b=does-not-exist");
-      check("?b= ที่ไม่มีจริง ⇒ จอ not-found (ไม่มีรายการ)", !(await has(po, "trips-bk")), "ไม่มี trips-bk", `HTTP ${st2} · trips-bk=${await has(po, "trips-bk")}`);
+      check("?b= ที่ไม่มีจริง ⇒ จอ not-found (ไม่มีรายการ · HTTP 200|404)", !(await has(po, "trips-bk")) && !(await has(po, "trips-bk-detail")) && (st2 === 200 || st2 === 404), "ไม่มี trips-bk · 200|404", `HTTP ${st2} · trips-bk=${await has(po, "trips-bk")}`);
+      const pv2 = await open(viewerCookies);
+      const st3 = await go(pv2, `when=all&b=${foreign.id}`);
+      const html3 = await pv2.page.content();
+      check("ผู้ดูอย่างเดียวเปิด ?b= ของร้านอื่น ⇒ หน้าไม่พบ · ไม่มีข้อมูลรั่ว", !(await has(pv2, "trips-bk-detail")) && !html3.includes(fcode) && !html3.includes("ภัทรา") && (st3 === 200 || st3 === 404), "ไม่มีลิ้นชัก/ข้อมูล · 200|404", `HTTP ${st3} · detail=${await has(pv2, "trips-bk-detail")}`);
+      await pv2.page.close();
     }
     eqc("?q= มีไบต์ NUL ⇒ ไม่ล่ม (HTTP 200)", await go(po, "q=a%00b"), 200);
+    const rowCount = (p: Probe) => p.page.evaluate(() => document.querySelectorAll('[data-testid^="trips-bk-row-"]').length);
+    const searchValue = (p: Probe) => p.page.evaluate((s: string) => { const e = document.querySelector(s) as HTMLElement | null; const i = (e instanceof HTMLInputElement ? e : (e?.querySelector("input") ?? null)) as HTMLInputElement | null; return i?.value ?? null; }, T("trips-bk-search"));
     eqc("?q=%25 (wildcard) ⇒ HTTP 200", await go(po, "q=%25"), 200);
-    note(`?q=% แสดง ${await po.page.evaluate(() => document.querySelectorAll('[data-testid^="trips-bk-row-"]').length)} แถว (ค้นด้วย % ตัวเดียว)`);
+    eqc("?q=% ⇒ 0 แถว (ค้นด้วย % ตัวเดียวไม่ใช่ \"ทุกคน\" · มติ V2)", await rowCount(po), 0);
+    await go(po, "q=Probe");
+    const nProbe = await rowCount(po);
+    check("?q=Probe ⇒ มีแถว (ตัวควบคุม)", nProbe >= 3, "≥ 3", nProbe);
+    await go(po, "q=Probe%25");
+    eqc("?q=Probe% ⇒ แถวเท่ากับ ?q=Probe (มติ V2)", await rowCount(po), nProbe);
+    await go(po, "q=Pr%25be");
+    eqc("?q=Pr%be ⇒ 0 แถว (% ไม่ทำงานเป็นตัวแทน)", await rowCount(po), 0);
     eqc("ค่าพารามิเตอร์อ่านไม่ได้ ⇒ ไม่ 404", await go(po, "when=zzz&chip=x&ch=%27&date=2026-02-31&view=zzz&day=bad"), 200);
+    // มติ V7: พารามิเตอร์ที่อ่านไม่ได้ทิ้งเฉพาะตัวนั้น — คำค้นและตัวกรองอื่นยังอยู่
+    eqc("?q=Probe&date=2026-02-31&chip=x&when=all ⇒ HTTP 200", await go(po, "q=Probe&date=2026-02-31&chip=x&when=all"), 200);
+    eqc("วันที่เสีย/ชิปเสีย: คำค้นยังอยู่ในช่อง + ผลยังกรองด้วยคำค้น (มติ V7)", [await searchValue(po), await rowCount(po)], ["Probe", nProbe]);
+    await go(po, "q=zzz-no-such-booker&date=2026-02-31");
+    eqc("วันที่เสีย + คำค้นที่ไม่มีใครตรง ⇒ 0 แถว (ไม่ตกไปแสดงรายการปริยายทั้งหมด)", await rowCount(po), 0);
+    await go(po, "q=Probe&ch=%27&when=zzz&day=bad");
+    eqc("ช่องทาง/ช่วงวัน/วันเงินสดเสีย + q=Probe ⇒ ยังได้ผลของ q", [await searchValue(po), await rowCount(po)], ["Probe", nProbe]);
     eqc("ไม่มี page error", [...pr.errors, ...po.errors], []);
     await pr.page.close(); await po.page.close();
   });
@@ -719,22 +836,26 @@ try {
     await pr.page.keyboard.press("Escape");
     await sleep(600);
     eqc("Escape (มีค่าที่พิมพ์): ถามยืนยัน 1 ครั้ง (ไม่ซ้ำ) · ตอบไม่ ⇒ กล่องยังอยู่", [pr.confirms.length, await has(pr, "trips-pay-dialog"), await valueOf(pr, "trips-pay-amount")], [1, true, "123"]);
-    // Escape ค้าง (เบราว์เซอร์จริง: keyup หายไปกับกล่องยืนยัน) แล้วกด ✕ ⇒ ต้องถามก่อนเหมือนเดิม
+    // มติ V4: ปุ่มปิดที่หัวกล่องถามก่อนทิ้งเสมอเมื่อมีค่าที่พิมพ์ค้าง — (1) หลัง Escape ปกติ (มี keyup) ที่ตอบ "ไม่"
+    pr.confirms.length = 0;
+    const x0 = await clickHeaderClose(pr);
+    await sleep(600);
+    check("หลัง Escape (ตอบไม่) แล้วกดปุ่มปิดหัวกล่อง: ถามก่อนทิ้งค่า 1 ครั้ง · กล่องยังอยู่ · ค่าไม่หาย", x0 && pr.confirms.length === 1 && (await has(pr, "trips-pay-dialog")) && (await valueOf(pr, "trips-pay-amount")) === "123", "ถาม 1 ครั้ง · กล่องยังอยู่ · 123", `หาปุ่มเจอ=${x0} · ถาม ${pr.confirms.length} ครั้ง · กล่องอยู่=${await has(pr, "trips-pay-dialog")} · ค่า=${await valueOf(pr, "trips-pay-amount")}`);
+    // (2) กดซ้ำทันที ⇒ ถามทุกครั้ง (ไม่มีธงค้างจากครั้งก่อน)
+    pr.confirms.length = 0;
+    await clickHeaderClose(pr); await sleep(400);
+    await clickHeaderClose(pr); await sleep(400);
+    eqc("กดปุ่มปิดหัวกล่อง 2 ครั้งติด (ตอบไม่ทั้งคู่) ⇒ ถาม 2 ครั้ง · กล่องยังอยู่", [pr.confirms.length, await has(pr, "trips-pay-dialog")], [2, true]);
+    // (3) Escape ค้าง (เบราว์เซอร์จริง: keyup หายไปกับกล่องยืนยัน) แล้วกด ✕ ⇒ ต้องถามก่อนเหมือนเดิม
     pr.confirms.length = 0;
     await pr.page.keyboard.down("Escape");
     await sleep(400);
     const afterEscDown = pr.confirms.length;
     pr.confirms.length = 0;
-    const xClicked = await pr.page.evaluate(() => {
-      const box = document.querySelector('[data-testid="trips-pay-dialog"]')?.closest('[role="dialog"]');
-      const x = (box?.querySelector("h2")?.parentElement?.querySelector("button") ?? undefined) as HTMLButtonElement | undefined;
-      if (!x) return false;
-      x.click();
-      return true;
-    });
+    const xClicked = await clickHeaderClose(pr);
     await sleep(600);
     if (xClicked) check("หลัง Escape ที่ไม่มี keyup (ตอบไม่) แล้วกด ✕: ยังถามก่อนทิ้งค่า", pr.confirms.length === 1 && (await has(pr, "trips-pay-dialog")), "ถาม 1 ครั้ง · กล่องยังอยู่", `ถาม ${pr.confirms.length} ครั้ง (ตอน keydown ถาม ${afterEscDown}) · กล่องอยู่=${await has(pr, "trips-pay-dialog")}`);
-    else note("หาปุ่ม ✕ ของกล่องไม่เจอ — ข้ามการทดสอบ Escape ค้าง");
+    else check("หาปุ่มปิดที่หัวกล่องรับเงิน (ทดสอบ Escape ค้าง)", false, "เจอปุ่ม", "ไม่เจอ");
     await pr.page.keyboard.up("Escape");
     if (!(await has(pr, "trips-pay-dialog"))) { await clickId(pr, "trips-bk-pay"); await waitFor(pr, "trips-pay-dialog"); await typeInto(pr, "trips-pay-amount", "123"); }
     pr.confirms.length = 0; pr.confirmMode.accept = true;
@@ -795,6 +916,13 @@ try {
     await clickId(pe, "trips-pay-tender-TRANSFER");
     await typeInto(pe, "trips-pay-amount", "99999999");
     textChecks("อังกฤษ: กล่องรับเงิน (โอน · ยอดเกิน)", await visibleText(pe), "en");
+    const enAl = await alertText(pe);
+    check("อังกฤษ: ยอด 99999999 ⇒ role=alert บอกว่ายอดสูงเกิน (ไม่ใช่ \"Enter a number\") + THB", /too high/i.test(enAl) && /THB/.test(enAl) && !/enter a number/i.test(enAl), "\"… too high … THB …\"", enAl || "(ไม่มี role=alert)");
+    await clickId(pe, "trips-pay-tender-PROMPTPAY");
+    const enLock = (await textOf(pe, T("trips-pay-dialog"))) ?? "";
+    eqc("อังกฤษ: พร้อมเพย์ ⇒ ช่องยอดล็อกอ่านอย่างเดียว = ยอดค้าง", [await has(pe, "trips-pay-amount"), await readOnlyOf(pe, "trips-pay-amount-locked"), await valueOf(pe, "trips-pay-amount-locked")], [false, true, baht(b.payable)]);
+    textChecks("อังกฤษ: กล่องรับเงิน (พร้อมเพย์ ช่องยอดล็อก)", enLock, "en");
+    await clickId(pe, "trips-pay-tender-TRANSFER");
     await shot(pe, "s7-en-pay-dialog");
     await typeInto(pe, "trips-pay-amount", baht(b.payable));
     pe.confirmMode.accept = true;

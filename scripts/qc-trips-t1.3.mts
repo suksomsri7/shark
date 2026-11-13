@@ -6,6 +6,7 @@
 //   PC ตัวควบคุม (เขียวก่อนมีงาน)   S ไฟล์/กติกาโค้ด (static)   P ตัวช่วยบริสุทธิ์ (booking-view-core)
 //   LV รายการบนร้าน seed (now = TRIPS_AS_OF)   DV รายละเอียดบนร้าน seed   CS เงินสด/คิวเอกสารบนร้าน seed
 //   BT ร้านชั่วคราว: สิทธิ์ · แยกหน่วย/ร้าน · รับเงิน → แถว/เงินสด/เอกสาร · กดซ้ำพร้อมกัน · ถือที่ · ยกเลิก · ต้องทำ · PII · ค้น · เพดาน · เขตเวลา · ไม่เขียนฐาน
+//   RV มติผู้คุม V1–V13 หลังตรวจรอบ 1 (ใบสั่ง §มติผู้คุมหลังตรวจรอบ 1) + หัวข้อที่ผู้ตรวจชี้ว่ายังไม่ตรึง: เลขอ้างอิง · ค้น % _ \ / อักขระควบคุม · SQL ดิบ · เพดานใน SQL · ต้องทำผูกหน่วย · QR ยอดล็อก · ส่วนต่าง VAT ต่อแถว · ตัวโหลด = บริการ (tripCashDay / tripMoneySummary)
 //
 // 🔴 ที่ตรวจไม่ได้ที่นี่ (ไม่มี server/เบราว์เซอร์) = ด่านภาพ + การกด action จริงผ่าน Next ของผู้คุม: ผังตาราง 1440 · ลิ้นชัก · กล่องรับเงิน · 390 ไม่ล้น · รูปทรงป้าย
 // 🔴 แถวทดสอบอยู่ใต้ร้านชั่วคราว slug `trips-t13-*` (ผู้ใช้ `trips-t13-*@shark.local`) ลบใน finally + กวาดค้างตอนเริ่ม · ร้าน seed อ่านอย่างเดียว (ไม่เรียกตัวเขียนกับ seed)
@@ -1213,6 +1214,423 @@ try {
     codeR(await call("loadBookingDetailVM", ctxOf("none"), { unitId: uA, bookingId: "nope" }, { now: new Date(NOW0) }), "FORBIDDEN", "none + id ไม่มี");
   });
   groupLine("BT");
+
+  // ═══════════════ RV. มติผู้คุม V1–V13 + หัวข้อที่ผู้ตรวจชี้ว่าข้อสอบยังไม่ตรึง (รอบ r2) ═══════════════
+  console.log("\n── RV: มติ V1–V13 · พฤติกรรมที่ผู้ตรวจพิสูจน์ · ตัวโหลดตรงบริการ (เงินสดรายวัน / ส่วนต่าง VAT) ──");
+  const PVI = await tryImport("@/lib/modules/trips/booking-view-core");
+  const flatMsg = (o: unknown, p = ""): [string, string][] => { const r = asRec(o); return r ? Object.entries(r).flatMap(([k, v]) => (asRec(v) ? flatMsg(v, `${p}${k}.`) : [[`${p}${k}`, String(v)] as [string, string]])) : []; };
+  const bkMsgs = (loc: "th" | "en") => flatMsg(asRec(JSON.parse(read(`src/messages/${loc}/trips.json`) || "{}"))?.bookings);
+  const payR = (b: Bk, input: Rec, now: string = NOW0) => call("recordTripPayment", staff({ unit: b.unit, now }), { bookingId: b.id, tender: "CASH", idempotencyKey: `p${hex(6)}`, ...input });
+  const evRows = (bookingId: string) => q<Rec>(`SELECT id, kind, tender, "amountSatang", "vatSatang", reference FROM "TripMoneyEvent" WHERE "bookingId" = $1 ORDER BY "createdAt", id`, [bookingId]);
+  const idsOfQ = async (qs: string) => { const vm = VM(await lv("oa", { q: qs }), `q=${fmt(qs)}`); return { ids: rowsOf(vm).map((r) => r.bookingId), vm }; };
+  /** แถวเงินจำลองตรงฐาน (คืนเงิน/ร้านเก็บ/ขอบวัน — บริการคืนเงินเต็มเส้นอยู่นอกใบนี้) */
+  const rawEvent = (b: Bk, o: { kind: string; tender: string; amount: number; at: string; vat?: number }) => insertRow("TripMoneyEvent", { id: rid("tme"), tenantId: tenantOfUnit(b.unit), unitId: b.unit, bookingId: b.id, kind: o.kind, amountSatang: o.amount,
+    vatSatang: o.vat ?? 0, passThroughSatang: 0, tender: o.tender, postingStatus: "UNPOSTED", postingAttempts: 0, idempotencyKey: `rvraw:${hex(8)}`, createdAt: o.at, updatedAt: o.at });
+  /** template literal ทุกตัวของซอร์ส (รวมที่ซ้อนใน ${}) ⇒ ข้อความล้วน + นิพจน์ที่แทรก */
+  const templatesOf = (src: string): { text: string; exprs: string[] }[] => {
+    const out: { text: string; exprs: string[] }[] = [];
+    const skipStr = (i: number): number => { const qd = src[i]; i++; while (i < src.length && src[i] !== qd && src[i] !== "\n") i += src[i] === "\\" ? 2 : 1; return i + 1; };
+    const parseTpl = (start: number): number => {
+      let i = start, text = ""; const exprs: string[] = [];
+      while (i < src.length) {
+        const c = src[i];
+        if (c === "\\") { text += src.slice(i, i + 2); i += 2; continue; }
+        if (c === "`") { out.push({ text, exprs }); return i + 1; }
+        if (c === "$" && src[i + 1] === "{") {
+          let depth = 1, j = i + 2; const s0 = j;
+          while (j < src.length && depth > 0) {
+            const d = src[j];
+            if (d === "`") { j = parseTpl(j + 1); continue; }
+            if (d === '"' || d === "'") { j = skipStr(j); continue; }
+            if (d === "{") depth++; else if (d === "}") depth--;
+            j++;
+          }
+          exprs.push(src.slice(s0, j - 1).trim()); text += "${}"; i = j; continue;
+        }
+        text += c; i++;
+      }
+      return i;
+    };
+    let i = 0;
+    while (i < src.length) { const c = src[i]; if (c === '"' || c === "'") i = skipStr(i); else if (c === "`") i = parseTpl(i + 1); else i++; }
+    return out;
+  };
+
+  await st("RV-1", "SQL ดิบของตัวโหลด: ทุกค่าที่แทรกในข้อความ SQL เป็น $n (x.add(…)) · ค่าคงที่ของไฟล์ · codeArray(ค่าคงที่) · ตัวประกอบเงื่อนไขของไฟล์ เท่านั้น — ไม่มีค่าจาก input ต่อสตริง · $queryRawUnsafe รับเฉพาะตัวแปร …Sql/template · ไม่มี Prisma.raw/$executeRaw", () => {
+    const s = stripComments(read(LOADER));
+    ok(s, "ยังไม่มี booking-screens.ts");
+    const SQLISH = /\b(SELECT|FROM|WHERE|LIMIT|EXISTS|ORDER BY|GROUP BY)\b|"\w+"\s*(=|>=|<=|<>|<|>|IS\b)|\bAND\b|\bOR\b|::(text|int|date|bigint|timestamp)/;
+    const tpls = templatesOf(s).filter((t) => SQLISH.test(t.text));
+    ok(tpls.length >= 8, `หา template SQL ได้ ${tpls.length} (ตัวแยกของข้อสอบพลาด หรือ SQL ย้ายไฟล์)`);
+    const BARE = new Set(["aggWhere", "dayWhere", "rowWhere", "chipSql", "dir", "today", "alias"]);
+    const allowed = (e: string): boolean => /^\w+\.add\([^`]+\)$/.test(e) || /^codeArray\([A-Z][A-Z0-9_]*\)$/.test(e) || (/^[A-Z][A-Z0-9_]*$/.test(e) && new RegExp(`\\bconst ${e}\\b`).test(s))
+      || /^(baseWhere|batchWhere|dayWhere)\([^`]*\)$/.test(e) || BARE.has(e) || /^codes\.filter\(\(c\) => \/\^\[A-Z_\]\+\$\/\.test\(c\)\)/.test(e);
+    const bad = [...new Set(tpls.flatMap((t) => t.exprs).filter((e) => !allowed(e)))];
+    ok(bad.length === 0, `ค่าที่แทรกใน SQL นอกรูปที่อนุญาต: ${bad.slice(0, 4).map((e) => e.slice(0, 70)).join(" ‖ ")}`);
+    ok(/const dir = [^;\n]*\? "DESC" : "ASC";/.test(s), "dir ต้องเป็นค่าตายตัว \"DESC\"/\"ASC\"");
+    ok(/const today = \w+\.add\(/.test(s) && /const aggWhere = baseWhere\(/.test(s) && /const rowWhere = baseWhere\(/.test(s) && /const dayWhere = (baseWhere\(|\(pp: Params\))/.test(s), "today/aggWhere/rowWhere/dayWhere ไม่ได้มาจาก add()/baseWhere()");
+    ok(/const chipSql = chip === "hold" \?/.test(s) && /alias: "pd" \| "e"/.test(s), "chipSql/alias ไม่ใช่ค่าจากชุดตายตัว");
+    const calls = [...s.matchAll(/\$queryRawUnsafe(?:<[^>]*>)?\(\s*([^,)]{1,40})/g)].map((m) => (m[1] ?? "").trim());
+    ok(calls.length >= 6 && calls.every((a) => /^\w+Sql$/.test(a) || a.startsWith("`")), `อาร์กิวเมนต์แรกของ $queryRawUnsafe: ${fmt(calls)}`);
+    ok(!/Prisma\.raw|\$executeRaw|\$queryRaw`/.test(s), "ใช้ Prisma.raw / $executeRaw / $queryRaw tagged ในตัวโหลด");
+  });
+  await st("RV-2", "ข้อความฉีด SQL ผ่านตัวโหลดจริง: q × 8 · product · dep ⇒ ok + 0 แถว (ไม่ throw · pg_sleep ไม่ถูกรัน) · channel/date/when/chip/unitId ที่เป็นข้อความฉีด ⇒ INVALID_INPUT/NOT_FOUND · ตารางยังอยู่", async () => {
+    needDb();
+    const b = await needB("conf", () => mkBooking());
+    for (const s of ["' OR 1=1 --", "x') OR ('1'='1", "\"; DROP TABLE \"TripBooking\"; --", "TR-0000-0001' OR '1'='1", "$1", "{a,b}", "'; SELECT 1; --"]) {
+      const r = await lv("oa", { q: s });
+      ok(r.ok === true && num(asRec(r.vm)?.total) === 0, `q=${fmt(s)}: ${fmt(r.ok === true ? { total: asRec(r.vm)?.total } : r)}`);
+    }
+    const t0 = Date.now();
+    const sl = await lv("oa", { q: "'||(SELECT pg_sleep(9))||'" });
+    ok(sl.ok === true && num(asRec(sl.vm)?.total) === 0 && Date.now() - t0 < 8_000, `pg_sleep: ${fmt(sl.ok)} · ${Date.now() - t0}ms`);
+    for (const k of ["product", "dep"]) { const r = await lv("oa", { when: "all", [k]: "x' OR '1'='1" }); ok(r.ok === true && num(asRec(r.vm)?.total) === 0, `${k}: ${fmt(r.ok === true ? { total: asRec(r.vm)?.total } : r)}`); }
+    for (const [k, v] of [["channel", "COUNTER' OR '1'='1"], ["date", "2027-01-01'; --"], ["when", "all; --"], ["chip", "hold' --"]] as const) codeR(await lv("oa", { [k]: v }), "INVALID_INPUT", k);
+    codeR(await call("loadBookingListVM", ctxOf("oa"), { unitId: `${uA}' OR '1'='1` }, { now: new Date(NOW0) }), ["NOT_FOUND", "INVALID_INPUT"], "unitId");
+    codeR(await dv("oa", `${b.id}' OR '1'='1`), "NOT_FOUND", "bookingId");
+    ok(rowsOf(VM(await lv("oa", { q: b.code }), "หลังฉีด")).some((r) => r.bookingId === b.id), "การจองเดิมหาย/ค้นไม่เจอหลังชุดข้อความฉีด");
+  });
+
+  // ── V1 เลขอ้างอิงของการรับเงิน ──
+  let RF: { b: Bk; withRef: string; blank: string; none: string } | null = null;
+  await st("RV-3", "V1 เก็บเลขอ้างอิง: recordTripPayment reference \"  SCB-778899 \" ⇒ TripMoneyEvent.reference = \"SCB-778899\" (ตัดช่องว่าง) · reference เป็นช่องว่างล้วน ⇒ NULL · ไม่ส่ง ⇒ NULL · reference ผิดรูป (ไทย · 65 ตัว · ว่าง · ;) ⇒ ปฏิเสธ ไม่มีแถวใหม่", async () => {
+    needDb();
+    const b = await mkBooking();
+    const a = V(await payR(b, { amountSatang: 100_000, tender: "TRANSFER", reference: "  SCB-778899 " }), "โอน + เลขอ้างอิง");
+    const c = V(await payR(b, { amountSatang: 50_000, tender: "CARD", reference: " " }), "บัตร + ช่องว่าง");
+    const d = V(await payR(b, { amountSatang: 50_000, tender: "CASH" }), "เงินสด ไม่ส่ง");
+    const idOf = (v: Rec) => String(asArr(v.events)[0]?.id ?? "");
+    const rows = await evRows(b.id);
+    const refOf = (id: string) => rows.find((r) => r.id === id)?.reference;
+    eq([rows.length, refOf(idOf(a)), refOf(idOf(c)), refOf(idOf(d))], [3, "SCB-778899", null, null], "reference ในแถวเงิน");
+    for (const bad of ["เลขไทย", "x".repeat(65), "", "a;b"]) codeR(await payR(b, { amountSatang: 1_000, tender: "TRANSFER", reference: bad }), ["VALIDATION", "INVALID_INPUT"], `reference ${fmt(bad.slice(0, 12))}`);
+    eq((await evRows(b.id)).length, 3, "แถวหลัง reference ผิดรูป");
+    RF = { b, withRef: idOf(a), blank: idOf(c), none: idOf(d) };
+  });
+  await st("RV-4", "V1 เลขอ้างอิงออกจอ: loadBookingDetailVM events[].reference + docs.waiting[].reference · loadBookingDocsVM items[].reference = ค่าในฐาน (แถวไม่มี ⇒ null ไม่ใช่ \"\"/undefined)", async () => {
+    needDb();
+    const f = RF; if (!f) throw new AssertFail("RV-3 ไม่ผ่าน (ไม่มีการจองที่มีเลขอ้างอิง)");
+    const d = VM(await dv("oa", f.b.id), "detail");
+    const want = [[f.withRef, "SCB-778899"], [f.blank, null], [f.none, null]];
+    const pick = (list: Rec[], key: string) => want.map(([id]) => { const r = list.find((x) => x[key] === id); return [id, r ? r.reference : "ไม่มีแถว"]; });
+    eq(pick(asArr(d.events), "id"), want, "events[].reference");
+    eq(pick(asArr(asRec(d.docs)?.waiting), "eventId"), want, "docs.waiting[].reference");
+    const docs = VM(await call("loadBookingDocsVM", ctxOf("oa"), { unitId: uA }, { now: new Date(NOW0) }), "docs");
+    ok(docs.truncated === false, "คิวเอกสารของร้านชั่วคราวถูกตัด (ข้อสอบต้องเห็นทุกแถว)");
+    eq(pick(asArr(docs.items), "eventId"), want, "docs items[].reference");
+    const v = VM(await dv("v", f.b.id), "detail ผู้ดูอย่างเดียว");
+    eq(asArr(v.events).find((e) => e.id === f.withRef)?.reference, "SCB-778899", "ผู้มีแค่ booking.view เห็นเลขอ้างอิงในรายละเอียด");
+  });
+  await st("RV-5", "V1 × กันซ้ำ (สัญญา T0.7a: คีย์เดิม + การจอง/ยอด/tender/สลิปเดิม ⇒ ผลเดิม — reference ไม่อยู่ในตัวเทียบ): คีย์เดิม + reference ต่าง ⇒ replayed · แถวเดียว · reference แรกคงเดิม · คีย์เดิม + ยอดต่าง ⇒ IDEMPOTENCY_CONFLICT", async () => {
+    needDb();
+    const b = await mkBooking();
+    const key = `k${hex(8)}`;
+    V(await payR(b, { amountSatang: 10_000, tender: "TRANSFER", reference: "REF-A", idempotencyKey: key }), "ครั้งแรก");
+    const again = await payR(b, { amountSatang: 10_000, tender: "TRANSFER", reference: "REF-B", idempotencyKey: key });
+    eq([again.ok, asRec(again.value)?.replayed], [true, true], "คีย์เดิม + reference ต่าง");
+    eq((await evRows(b.id)).map((r) => [num(r.amountSatang), r.reference]), [[10_000, "REF-A"]], "แถวเงิน");
+    codeR(await payR(b, { amountSatang: 10_001, tender: "TRANSFER", reference: "REF-A", idempotencyKey: key }), "IDEMPOTENCY_CONFLICT", "คีย์เดิม + ยอดต่าง");
+    eq((await evRows(b.id)).length, 1, "แถวหลังชน");
+  });
+
+  // ── V2 / V3 ค้น ──
+  await st("RV-6", "V2 ค้นชื่อ = ค้นด้วยคำที่ตัด % _ \\ ออกแล้ว: \"ชื่อ%\" \"%ชื่อ\" \"ชื่_อ\" \"ชื่อ\\\" ⇒ ผลเท่าค้น \"ชื่อ\" · \"ไว%…\" / \"ไ_ลด์…\" (จะตรงก็ต่อเมื่อถูกตีความเป็นตัวแทน) ⇒ 0 แถว", async () => {
+    needDb();
+    const stem = `ไวลด์${STAMP}`;
+    const b = await mkBooking({ name: `${stem} คนทดสอบ` });
+    eq((await idsOfQ(stem)).ids, [b.id], "ตัวควบคุม: ค้นคำตรง");
+    for (const s of [`${stem}%`, `%${stem}`, `ไวลด์_${STAMP}`, `ไว\\ลด์${STAMP}`, `%_${stem}\\`]) eq((await idsOfQ(s)).ids, [b.id], `q=${s}`);
+    for (const s of [`ไว%${STAMP}`, `ไ_ลด์${STAMP}`, `ไวลด์${STAMP.slice(0, 3)}%${STAMP.slice(-2)}zz`]) eq((await idsOfQ(s)).ids, [], `q=${s} (ตัวแทน)`);
+  });
+  await st("RV-7", "V2 q มีแต่ % _ \\ ⇒ ไม่ค้นชื่อ (0 แถว · nameCapped false · ไม่ใช่ \"ทุกคน\") · แต่เลขอ้างอิงเอเจนซี่ที่ตรงตัวกับ q เดิม (ยังไม่ตัด) ยังเจอ · เลขจองยังค้นได้", async () => {
+    needDb();
+    const b = await mkBooking();
+    ok(num(VM(await lv("oa", { when: "all" }), "ทั้งหน่วย").total) >= 2, "หน่วยทดสอบต้องมีการจองหลายใบ (ไม่งั้น 0 แถวไม่มีความหมาย)");
+    for (const s of ["%", "_", "\\", "%_%", "% _ \\", "%%%%"]) {
+      const { vm } = await idsOfQ(s);
+      eq([vm.total, rowsOf(vm).length, asRec(vm.query)?.queryMode, asRec(vm.search)?.nameCapped], [0, 0, "text", false], `q=${fmt(s)}`);
+    }
+    await pool.query(`UPDATE "TripBooking" SET "agentRef" = '%_%' WHERE id = $1`, [b.id]);
+    eq((await idsOfQ("%_%")).ids, [b.id], "agentRef = \"%_%\" ตรงตัว");
+    eq((await idsOfQ("%")).ids, [], "\"%\" ไม่ใช่ agentRef ของใคร");
+    const ref = `AG%${hex(3)}_x`;
+    await pool.query(`UPDATE "TripBooking" SET "agentRef" = $2 WHERE id = $1`, [b.id, ref]);
+    eq([(await idsOfQ(ref)).ids, (await idsOfQ(ref.replace("%", "Z"))).ids], [[b.id], []], "agentRef ที่มี % _ : ตรงตัวเจอ · ตัวอักษรอื่นแทน % ไม่เจอ");
+    eq((await idsOfQ(b.code)).ids, [b.id], "เลขจอง");
+  });
+  await st("RV-8", "V3 อักขระควบคุม ⇒ INVALID_INPUT ไม่ throw: q (NUL · BEL · DEL · ขึ้นบรรทัด/แท็บกลางคำ) · product · dep · unitId · bookingId · หน่วยของคิวเอกสาร/เงินสด", async () => {
+    needDb();
+    const b = await needB("conf", () => mkBooking());
+    for (const s of ["a\u0000b", "\u0000", "x\u0007y", "ab\u007f", "a\nb", "a\tb", "ภัท\u0001รา"]) codeR(await lv("oa", { q: s }), "INVALID_INPUT", `q=${JSON.stringify(s)}`);
+    for (const [k, v] of [["product", "p\u0000x"], ["dep", "d\u0001"], ["product", `${PRD.A?.id}\u0000`]] as const) codeR(await lv("oa", { when: "all", [k]: v }), "INVALID_INPUT", k);
+    for (const n of ["loadBookingListVM", "loadBookingDocsVM", "loadCashDayVM"]) codeR(await call(n, ctxOf("oa"), { unitId: `${uA}\u0000` }, { now: new Date(NOW0) }), "INVALID_INPUT", `${n} unitId`);
+    codeR(await dv("oa", `${b.id}\u0000`), "INVALID_INPUT", "bookingId NUL");
+    codeR(await dv("oa", "x\u001fy"), "INVALID_INPUT", "bookingId US");
+    eq(rowsOf(VM(await lv("oa", { q: ` ${b.code} ` }), "ช่องว่างหัวท้าย")).map((r) => r.bookingId), [b.id], "ช่องว่างหัวท้ายถูกตัด (ไม่ใช่อักขระต้องห้าม)");
+  });
+
+  // ── V4 ข้อความของยอด ──
+  await st("RV-9", "V4 amountProblemOf (pure): ไม่ใช่ตัวเลข/ทศนิยม 3 ตำแหน่ง/ติดลบ/ว่าง ⇒ format · 0 / 0.00 / 000 ⇒ zero · เป็นตัวเลขแต่เกินที่ระบบรับ (99999999 · 21474836.48 · 9 หลัก) ⇒ tooHigh · ใช้ได้ ⇒ null · ตรงกับ parseAmountSatang ทุกกรณี", () => {
+    const f = PVI.mod?.amountProblemOf, p = PVI.mod?.parseAmountSatang;
+    if (typeof f !== "function" || typeof p !== "function") throw new AssertFail(`booking-view-core ยังไม่มี amountProblemOf (${PVI.err.slice(0, 80)})`);
+    const cases: [string, string | null][] = [["abc", "format"], ["12.345", "format"], ["-5", "format"], ["", "format"], ["1e3", "format"], [".", "format"], ["1.2.3", "format"], ["฿100", "format"],
+      ["0", "zero"], ["0.00", "zero"], ["000", "zero"], ["0.0", "zero"], [" 0 ", "zero"],
+      ["99999999", "tooHigh"], ["21474836.48", "tooHigh"], ["999999999", "tooHigh"], ["1,000,000,000.00", "tooHigh"], ["100000000", "tooHigh"],
+      ["21474836.47", null], ["11,450.00", null], ["0.01", null], ["1 000.5", null], ["4100", null]];
+    eq(cases.map(([t]) => (f as AnyFn)(t)), cases.map(([, e]) => e), "amountProblemOf");
+    const mismatch = cases.filter(([t]) => ((f as AnyFn)(t) === null) !== ((p as AnyFn)(t) !== null)).map(([t]) => t);
+    ok(mismatch.length === 0, `amountProblemOf ไม่ตรงกับ parseAmountSatang: ${fmt(mismatch)}`);
+    eq([(f as AnyFn)(null), (f as AnyFn)(undefined), (f as AnyFn)(12)], ["format", "format", "format"], "ไม่ใช่สตริง");
+  });
+  await st("RV-10", "V4 จอ (static): ข้อผิดพลาดของยอด/เลขอ้างอิงแสดงผ่าน FieldError (role=\"alert\" + สีอันตราย) ไม่ใช่ hint · tooHigh/zero/format ผูกข้อความคนละคีย์ (amountTooHigh · amountZero · invalidAmount) ที่มีทั้งสองภาษาและไม่ซ้ำกัน", () => {
+    needOwn();
+    const parts = stripComments(read(`${COMP}/BookingParts.tsx`)), dlg = stripComments(read(`${COMP}/BookingDialogs.tsx`));
+    const fe = /export function FieldError\b[\s\S]{0,600}/.exec(parts)?.[0] ?? "";
+    ok(/role="alert"/.test(fe) && /color-danger/.test(fe), "FieldError ไม่มี role=\"alert\" / สีอันตราย");
+    ok((dlg.match(/<FieldError\b/g) ?? []).length >= 2 && /<FieldError[^>]*text=\{amountError\}/.test(dlg) && /<FieldError[^>]*text=\{referenceError\}/.test(dlg), "ยอด/เลขอ้างอิงไม่ได้แสดงผ่าน FieldError");
+    ok(!/hint=\{\s*(amountError|referenceError)/.test(dlg), "ข้อผิดพลาดยังถูกส่งเป็น hint สีเทา");
+    ok(/"tooHigh"[\s\S]{0,80}bookings\.pay\.amountTooHigh/.test(dlg) && /"zero"[\s\S]{0,80}bookings\.pay\.amountZero/.test(dlg) && /bookings\.pay\.invalidAmount/.test(dlg), "ไม่แยกข้อความ tooHigh / zero / format");
+    for (const loc of ["th", "en"] as const) {
+      const m = new Map(bkMsgs(loc));
+      const v = ["pay.amountTooHigh", "pay.amountZero", "pay.invalidAmount", "pay.overOutstanding"].map((k) => m.get(k) ?? "");
+      ok(v.every((x) => x.trim()) && new Set(v).size === v.length, `${loc}: ข้อความของยอดขาด/ซ้ำกัน ${fmt(v)}`);
+    }
+  });
+
+  // ── V6 สกุลเงิน ──
+  await st("RV-11", "V6 สกุลเงินทางเดียวต่อภาษา: Booking*.tsx ไม่ฝัง ฿ / บาท / THB · ใช้คีย์ bookings.detail.baht (ไทย \"฿{amount}\" · อังกฤษ \"THB {amount}\") · ข้อความไทยไม่มี THB/\"{n} บาท\" · อังกฤษไม่มี ฿ · คีย์ที่มี ฿ (ไทย) = คีย์ที่มี THB (อังกฤษ)", () => {
+    needOwn();
+    const hard = t13Comp.filter((f) => /฿|บาท|(^|[^A-Z_])THB([^A-Z_]|$)|\bBaht\b/m.test(stripComments(read(f))));
+    ok(hard.length === 0, `คอมโพเนนต์ฝังสกุลเงิน: ${hard.join(", ")}`);
+    ok(/t\(\s*["']bookings\.detail\.baht["']/.test(t13CompSrc), "คอมโพเนนต์ไม่ใช้คีย์ bookings.detail.baht");
+    const th = bkMsgs("th"), en = bkMsgs("en");
+    eq([new Map(th).get("detail.baht"), new Map(en).get("detail.baht")], ["฿{amount}", "THB {amount}"], "bookings.detail.baht");
+    const thBad = th.filter(([, v]) => /THB|[\d}]\s*บาท|\(บาท\)/.test(v)).map(([k]) => k), enBad = en.filter(([, v]) => /฿/.test(v)).map(([k]) => k);
+    ok(thBad.length === 0 && enBad.length === 0, `ไทยมี THB/บาท: ${thBad.join(", ") || "—"} · อังกฤษมี ฿: ${enBad.join(", ") || "—"}`);
+    eq(th.filter(([, v]) => v.includes("฿")).map(([k]) => k).sort(), en.filter(([, v]) => /\bTHB\b/.test(v)).map(([k]) => k).sort(), "คีย์ที่มีสกุลเงิน ไทย = อังกฤษ");
+  });
+
+  // ── V8 เพดานใน SQL + ต้องทำผูกหน่วย ──
+  await st("RV-12", "V8 เพดานเงินสดรายวัน/คิวเอกสาร: วันที่มีแถวเงิน CAP+3 ⇒ เงินสด shown = CAP · total = CAP+3 · truncated · ยอดรวม = Σ ทั้งวัน (ไม่ใช่ Σ ของแถวที่แสดง) · แถวที่แสดง = CAP แถวใหม่สุด · คิวเอกสาร shown = CAP · count = จำนวนจริง · truncated · segments.docsWaiting = count", async () => {
+    needDb();
+    const capC = num(constOf("TRIPS_CASH_EVENTS_CAP")), capD = num(constOf("TRIPS_MONEY_DOCS_CAP"));
+    const n = Math.max(capC, capD) + 3;
+    const b = await mkBooking({ key: "C" });
+    const pre = `rvcap_${STAMP}_`;
+    await pool.query(`INSERT INTO "TripMoneyEvent" ("id", "tenantId", "unitId", "bookingId", "kind", "amountSatang", "vatSatang", "passThroughSatang", "tender", "postingStatus", "postingAttempts", "idempotencyKey", "createdAt", "updatedAt")
+      SELECT $1 || i, $2, $3, $4, 'RECEIVED', 1000 + i, 0, 0, 'CASH', 'UNPOSTED', 0, $1 || 'k' || i, $5::timestamp + (i || ' seconds')::interval, now() FROM generate_series(1, $6::int) i`, [pre, tA, uA2, b.id, "2027-05-04 17:00:10", n]);
+    const c = VM(await call("loadCashDayVM", ctxOf("a2"), { unitId: uA2, businessDate: "2027-05-05" }, { now: new Date(NOW0) }), "cash");
+    const sumAll = Array.from({ length: n }, (_, i) => 1001 + i).reduce((s, x) => s + x, 0);
+    const amounts = asArr(c.events).map((e) => num(e.amountSatang));
+    eq([c.shown, c.total, c.truncated, amounts.length, c.receivedSatang, c.expectedSatang, asRec(asRec(c.byTender)?.CASH)?.receivedSatang], [capC, n, true, capC, sumAll, sumAll, sumAll], "เงินสด");
+    eq([amounts[0], Math.min(...amounts), new Set(amounts).size], [1000 + n, 1000 + n - capC + 1, capC], "แถวที่แสดง = ใหม่สุด CAP แถว");
+    const svc = V(await call("tripCashDay", staff({ unit: uA2 }), { businessDate: "2027-05-05" }), "tripCashDay");
+    eq([c.receivedSatang, c.refundedSatang, c.expectedSatang, c.byTender, c.total], [svc.receivedSatang, svc.refundedSatang, svc.expectedSatang, svc.byTender, asArr(svc.events).length], "ตรงบริการแม้ถูกตัด");
+    const d = VM(await call("loadBookingDocsVM", ctxOf("a2"), { unitId: uA2 }, { now: new Date(NOW0) }), "docs");
+    const cnt = num((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripMoneyEvent" WHERE "tenantId" = $1 AND "unitId" = $2 AND "postingStatus" = 'UNPOSTED' AND kind IN ('RECEIVED','REFUNDED','RETAINED')`, [tA, uA2]))[0]?.n);
+    eq([d.shown, asArr(d.items).length, d.count, d.truncated, d.cap], [capD, capD, cnt, true, capD], "คิวเอกสาร");
+    ok(cnt >= n, `count ${cnt} < ${n}`);
+    ok(asArr(d.items).every((x) => x.code === b.code && x.bookingId === b.id), "แถวที่แสดงต้องเป็นแถวใหม่สุด (ของการจองที่เพิ่งใส่) พร้อมเลขจอง");
+    eq(asRec(VM(await lv("a2", { when: "all" }, { unit: uA2 }), "list").segments)?.docsWaiting, cnt, "segments.docsWaiting");
+  });
+  await st("RV-13", "V8 ต้องทำผูกหน่วย (งวด): งวด OVERDUE ที่อยู่คนละหน่วยในร้านเดียวกัน ⇒ ไม่นับ (แถว attention [] · ชิป attention 0 · chip=attention 0 แถว — SQL กับ JS ตรงกัน) · ย้ายงวดกลับหน่วยเดิม ⇒ OVERDUE + ชิป 1", async () => {
+    needDb();
+    const b = await mkBooking();
+    const due = (await q<Rec>(`SELECT id FROM "TripPaymentDue" WHERE "bookingId" = $1 ORDER BY seq LIMIT 1`, [b.id]))[0];
+    ok(due, "การจองใหม่ไม่มีแถวงวด");
+    await pool.query(`UPDATE "TripPaymentDue" SET status = 'OVERDUE', "unitId" = $2 WHERE id = $1`, [due.id, uA2]);
+    const off = await lvRow(b);
+    const offChip = VM(await lv("oa", { dep: b.dep, when: "all", chip: "attention" }), "chip คนละหน่วย");
+    eq([off.row.attention, asRec(off.row.badge)?.shape, asRec(off.vm.chips)?.attention, offChip.total, rowsOf(offChip).length], [[], "solid", 0, 0, 0], "งวดคนละหน่วย");
+    await pool.query(`UPDATE "TripPaymentDue" SET "unitId" = $2 WHERE id = $1`, [due.id, uA]);
+    const on = await lvRow(b);
+    const onChip = VM(await lv("oa", { dep: b.dep, when: "all", chip: "attention" }), "chip หน่วยเดิม");
+    eq([on.row.attention, asRec(on.vm.chips)?.attention, onChip.total, rowsOf(onChip).map((r) => r.bookingId)], [["OVERDUE"], 1, 1, [b.id]], "งวดหน่วยเดิม");
+  });
+  await st("RV-14", "V8 ต้องทำผูกหน่วย (รอบ) + SQL↔JS: รอบ CANCELLED ที่แถวรอบอยู่คนละหน่วย ⇒ ไม่นับทั้งแถวและชิป · ย้ายกลับ ⇒ DEPARTURE_CANCELLED + ชิป 1 · ทั้งหน่วย: chip=attention total = chips.attention และทุกแถวมี attention · (ไม่ถูกตัด) จำนวนแถวที่มี attention ใน when=all = chips.attention", async () => {
+    needDb();
+    const b = await mkBooking();
+    await pool.query(`UPDATE "TripDeparture" SET status = 'CANCELLED', "cancelReason" = 'preset:WEATHER', "unitId" = $2 WHERE id = $1`, [b.dep, uA2]);
+    const off = await lvRow(b);
+    eq([off.row.attention, asRec(off.vm.chips)?.attention, num(VM(await lv("oa", { dep: b.dep, when: "all", chip: "attention" }), "chip").total)], [[], 0, 0], "รอบคนละหน่วย");
+    await pool.query(`UPDATE "TripDeparture" SET "unitId" = $2 WHERE id = $1`, [b.dep, uA]);
+    const on = await lvRow(b);
+    eq([on.row.attention, asRec(on.vm.chips)?.attention], [["DEPARTURE_CANCELLED"], 1], "รอบหน่วยเดิม");
+    const att = VM(await lv("oa", { when: "all", chip: "attention" }), "attention ทั้งหน่วย");
+    const all = VM(await lv("oa", { when: "all" }), "ทั้งหน่วย");
+    eq([att.total, asRec(att.chips)?.attention], [asRec(all.chips)?.attention, asRec(all.chips)?.attention], "chip=attention total = ชิป");
+    ok(num(att.total) >= 2, `ร้านชั่วคราวควรมีเรื่องต้องทำ ≥ 2 (ได้ ${fmt(att.total)})`);
+    ok(rowsOf(att).every((r) => Array.isArray(r.attention) && (r.attention as unknown[]).length > 0 && asRec(r.badge)?.shape === "alert"), "แถวใน chip=attention ที่ JS บอกว่าไม่มีเรื่องต้องทำ");
+    if (att.truncated === false) eq(rowsOf(att).length, att.total, "จำนวนแถว chip=attention");
+    if (all.truncated === false) eq(rowsOf(all).filter((r) => Array.isArray(r.attention) && (r.attention as unknown[]).length > 0).length, asRec(all.chips)?.attention, "แถวที่ JS ติดป้ายต้องทำ = ที่ SQL นับ");
+  });
+
+  // ── V10 พร้อมเพย์ยอดล็อก ──
+  await st("RV-15", "V10 QR พร้อมเพย์ = ยอดค้างของงวดแรกที่ยังเปิด ไม่ใช่ยอดที่พิมพ์/ยอดค้างทั้งการจอง: tripPaymentIntent ไม่รับยอด (คีย์ amountSatang ⇒ ปฏิเสธ) · การจอง 2 งวด (1,000.00 + ที่เหลือ) ⇒ QR 1,000.00 งวด 1 · ไม่เขียนฐาน · รับ PROMPTPAY 1,000.00 แล้ว ⇒ QR ถัดไป = งวด 2 · แถวรายการ nextDue ตรง", async () => {
+    needDb();
+    const b = await mkBooking();
+    const d1 = (await q<Rec>(`SELECT id, "dueAt", "amountSatang", "vatableSatang", "passThroughSatang" FROM "TripPaymentDue" WHERE "bookingId" = $1 ORDER BY seq`, [b.id]));
+    eq([d1.length, num(d1[0]?.amountSatang)], [1, b.payable], "งวดตั้งต้น (1 งวด = ยอดเต็ม)");
+    ok(num(d1[0]?.vatableSatang) > 100_000, "ฐาน VAT ของงวดเล็กเกินจะแบ่ง");
+    await pool.query(`UPDATE "TripPaymentDue" SET "amountSatang" = 100000, "vatableSatang" = 100000, "passThroughSatang" = 0 WHERE id = $1`, [d1[0]?.id]);
+    await insertRow("TripPaymentDue", { id: rid("tpd"), tenantId: tA, unitId: uA, bookingId: b.id, seq: 2, kind: "BALANCE", dueAt: d1[0]?.dueAt, amountSatang: b.payable - 100_000, vatableSatang: num(d1[0]?.vatableSatang) - 100_000,
+      passThroughSatang: num(d1[0]?.passThroughSatang), paidSatang: 0, status: "OPEN", updatedAt: new Date() });
+    codeR(await call("tripPaymentIntent", staff(), { bookingId: b.id, amountSatang: 5_000 }), ["VALIDATION", "INVALID_INPUT"], "intent + ยอดที่พิมพ์");
+    const before = await tCounts();
+    const i1 = V(await call("tripPaymentIntent", staff(), { bookingId: b.id }), "intent 1");
+    eq([i1.amountSatang, i1.seq, i1.dueId, await tCounts()], [100_000, 1, d1[0]?.id, before], "QR งวด 1 (ไม่เขียนฐาน)");
+    ok(num(i1.amountSatang) !== b.payable, "ยอด QR เท่ายอดค้างทั้งการจอง (การจองควรมี 2 งวด)");
+    const act = asRec(VM(await dv("oa", b.id), "detail").actions) ?? {};
+    eq([act.pay, act.qr], [true, true], "ปุ่ม");
+    V(await pay(b, 100_000, { tender: "PROMPTPAY" }), "รับ PROMPTPAY ตามยอด QR");
+    const i2 = V(await call("tripPaymentIntent", staff(), { bookingId: b.id }), "intent 2");
+    eq([i2.amountSatang, i2.seq], [b.payable - 100_000, 2], "QR งวด 2");
+    const { row } = await lvRow(b);
+    eq([row.status, row.outstandingSatang, asRec(row.nextDue)?.amountSatang, row.lastTender], ["PART_PAID", b.payable - 100_000, b.payable - 100_000, "PROMPTPAY"], "แถวรายการ");
+  });
+  await st("RV-16", "V10 จอ (static): โหมดพร้อมเพย์ใช้ช่องอ่านอย่างเดียว trips-pay-amount-locked (readOnly) · ยอดที่บันทึก = amountSatang ของ QR · tripPaymentIntentAction ส่งแค่ bookingId · มีแถวทะเบียนปุ่ม", () => {
+    needOwn();
+    const dlg = stripComments(read(`${COMP}/BookingDialogs.tsx`));
+    ok(/<input[^>]*data-testid="trips-pay-amount-locked"[^>]*\breadOnly\b/.test(dlg), "ไม่มีช่อง trips-pay-amount-locked แบบ readOnly");
+    ok(/promptpay\s*\?\s*\(?\s*qr\s*\?\s*qr\.amountSatang\s*:\s*null/.test(dlg), "ยอดที่บันทึกในโหมดพร้อมเพย์ไม่ได้มาจาก QR");
+    const calls = [...dlg.matchAll(/tripPaymentIntentAction\(([^)]*)\)/g)].map((m) => (m[1] ?? "").replace(/\s+/g, " ").trim());
+    ok(calls.length >= 1 && calls.every((c) => /^unitSlug, \{ bookingId(: [\w.]+)? \}$/.test(c)), `tripPaymentIntentAction: ${fmt(calls)}`);
+    const rows = asArr(asRec(JSON.parse(read("scripts/trips-ui-inventory.json") || "{}"))?.rows);
+    ok(rows.some((r) => r.testid === "trips-pay-amount-locked" && r.wo === "T1.3"), "ไม่มีแถวทะเบียน trips-pay-amount-locked");
+  });
+
+  // ── V11 ส่วนต่าง VAT ต่อแถว + ตรงบริการ ──
+  const dbVatDiff = async (bookingId: string): Promise<number> => {
+    const r = (await q<Rec>(`SELECT b."vatSatang" AS v, b."paidSatang" AS paid, (b."grossSatang" - b."discountSatang" - b."agentDiscountSatang")::int AS payable,
+      (SELECT coalesce(sum(e."vatSatang"), 0)::int FROM "TripMoneyEvent" e WHERE e."bookingId" = b.id AND e.kind = 'RECEIVED') AS rv FROM "TripBooking" b WHERE b.id = $1`, [bookingId]))[0] ?? {};
+    return num(r.payable) > 0 && num(r.paid) >= num(r.payable) ? num(r.rv) - num(r.v) : 0;
+  };
+  await st("RV-17", "V11 ส่วนต่าง VAT ต่อแถวของคิวเอกสาร: การจองที่รับหลายครั้งจน VAT ต่อใบรับรวม ≠ VAT การจอง ⇒ ทุกแถวรับเงินของการจองนั้นมี vatDiffSatang = ส่วนต่าง (≠ 0) · จ่ายครั้งเดียว ⇒ 0 · ยังจ่ายไม่ครบ (แม้ VAT เพี้ยน) ⇒ 0 · แถวคืนเงินของการจองที่ต่าง ⇒ 0 · รายละเอียด docs.vatDiffSatang ตรงกัน", async () => {
+    needDb();
+    const clean = await mkBooking(); V(await pay(clean, clean.payable), "clean");
+    const multi = await mkBooking();
+    // เลือกยอดย่อย 9 ครั้งให้ VAT ของแต่ละใบรับ (ปัดครึ่งขึ้นของ ฐาน × 7/107) ปัด "ขึ้น" ทุกใบ ⇒ Σ VAT ต่อใบรับ > VAT ของการจองแน่นอน (ไม่พึ่งโชค)
+    //   เก็บแทนของใบรับ = ปัดครึ่งขึ้น(เก็บแทนงวด × จ่ายสะสม / ยอดงวด) − เก็บแทนที่รับแล้ว (สูตร allocatePayment ของ T0.7a) · ฐาน = ยอด − เก็บแทน
+    const mDue = (await q<Rec>(`SELECT "amountSatang" AS a, "passThroughSatang" AS t FROM "TripPaymentDue" WHERE "bookingId" = $1 ORDER BY seq`, [multi.id]));
+    eq([mDue.length, num(mDue[0]?.a)], [1, multi.payable], "งวดของการจองหลายใบรับ");
+    const halfUp = (x: number, y: number, z: number) => Math.floor((2 * x * y + z) / (2 * z));
+    let paid = 0, ptPaid = 0;
+    for (let i = 0; i < 9; i++) {
+      let pickA = 0, pickPt = 0;
+      for (let a = 10_000 + i * 700; a < 10_600 + i * 700 && !pickA; a++) { const pt = halfUp(num(mDue[0]?.t), paid + a, multi.payable) - ptPaid; const fr = ((a - pt) * 7) % 107; if (fr >= 54 && fr <= 80) { pickA = a; pickPt = pt; } }
+      ok(pickA > 0, `หายอดย่อยครั้งที่ ${i + 1} ที่ VAT ปัดขึ้นไม่ได้`);
+      V(await pay(multi, pickA, { tender: i % 2 ? "TRANSFER" : "CASH" }), `multi ${i}`);
+      paid += pickA; ptPaid += pickPt;
+    }
+    V(await pay(multi, multi.payable - paid), "multi ที่เหลือ");
+    const forced = await mkBooking(); V(await pay(forced, forced.payable), "forced");
+    await pool.query(`UPDATE "TripMoneyEvent" SET "vatSatang" = "vatSatang" + 3 WHERE "bookingId" = $1 AND kind = 'RECEIVED'`, [forced.id]);
+    await rawEvent(forced, { kind: "REFUNDED", tender: "CASH", amount: 1_000, at: "2027-03-10 05:00:00", vat: 65 });
+    const part = await mkBooking(); V(await pay(part, 250_000), "part");
+    await pool.query(`UPDATE "TripMoneyEvent" SET "vatSatang" = "vatSatang" + 5 WHERE "bookingId" = $1 AND kind = 'RECEIVED'`, [part.id]);
+    const want = { clean: await dbVatDiff(clean.id), multi: await dbVatDiff(multi.id), forced: await dbVatDiff(forced.id), part: await dbVatDiff(part.id) };
+    eq([want.clean, want.part], [0, 0], "ฟิกซ์เจอร์: จ่ายครั้งเดียว/ยังไม่ครบ ต้องไม่มีส่วนต่าง");
+    ok(want.forced === 3 && want.multi !== 0, `ฟิกซ์เจอร์ไม่สร้างส่วนต่าง: ${fmt(want)} (multi ต้อง ≠ 0 · forced = 3) · แถวรับเงินของ multi [ยอด, VAT] ${fmt((await evRows(multi.id)).map((r) => [num(r.amountSatang), num(r.vatSatang)]))} · VAT การจอง ${fmt((await q<Rec>(`SELECT "vatSatang" AS v FROM "TripBooking" WHERE id = $1`, [multi.id]))[0]?.v)}`);
+    const docs = VM(await call("loadBookingDocsVM", ctxOf("oa"), { unitId: uA }, { now: new Date(NOW0) }), "docs");
+    ok(docs.truncated === false, "คิวเอกสารถูกตัด");
+    const itemsOf = (b: Bk) => asArr(docs.items).filter((x) => x.bookingId === b.id);
+    const recv = (b: Bk) => itemsOf(b).filter((x) => x.kind === "RECEIVED").map((x) => x.vatDiffSatang);
+    eq([recv(clean), recv(multi), recv(forced), recv(part)], [[0], Array.from({ length: 10 }, () => want.multi), [3], [0]], "vatDiffSatang ของแถวรับเงิน");
+    eq(itemsOf(forced).filter((x) => x.kind === "REFUNDED").map((x) => x.vatDiffSatang), [0], "แถวคืนเงิน");
+    for (const [k, b] of [["clean", clean], ["multi", multi], ["forced", forced], ["part", part]] as const) eq(asRec(VM(await dv("oa", b.id), k).docs)?.vatDiffSatang, want[k], `รายละเอียด ${k}`);
+  });
+  await st("RV-18", "ตัวโหลด = บริการ (ส่วนต่าง VAT): ทุกแถวของคิวเอกสารหน่วย uA — แถวรับเงิน vatDiffSatang = tripMoneySummary(bookingId).vat.receiptRoundingDiffSatang · แถวชนิดอื่น = 0 · และ = สูตรจากฐาน (Σ VAT ใบรับ − VAT การจอง เมื่อจ่ายครบ)", async () => {
+    needDb();
+    const docs = VM(await call("loadBookingDocsVM", ctxOf("oa"), { unitId: uA }, { now: new Date(NOW0) }), "docs");
+    ok(docs.truncated === false && asArr(docs.items).length >= 10, `คิวเอกสาร: ${fmt([docs.count, docs.truncated])}`);
+    const ids = [...new Set(asArr(docs.items).map((x) => String(x.bookingId)))];
+    const svc = new Map<string, number>(); const db = new Map<string, number>();
+    for (let i = 0; i < ids.length; i += 6) {
+      await Promise.all(ids.slice(i, i + 6).map(async (id) => {
+        db.set(id, await dbVatDiff(id));
+        const s = await call("tripMoneySummary", staff(), { bookingId: id });
+        if (s.ok === true) svc.set(id, num(asRec(asRec(s.value)?.vat)?.receiptRoundingDiffSatang));
+      }));
+    }
+    ok(svc.size >= 4 && [...svc.values()].some((v) => v !== 0), `บริการตอบ ${svc.size} การจอง · ต้องมีอย่างน้อย 1 ใบที่ส่วนต่าง ≠ 0 (RV-17)`);
+    const bad = asArr(docs.items).filter((x) => { const id = String(x.bookingId); const exp = x.kind === "RECEIVED" ? db.get(id) : 0; return x.vatDiffSatang !== exp || (x.kind === "RECEIVED" && svc.has(id) && x.vatDiffSatang !== svc.get(id)); })
+      .map((x) => ({ code: x.code, kind: x.kind, got: x.vatDiffSatang, db: db.get(String(x.bookingId)), svc: svc.get(String(x.bookingId)) }));
+    ok(bad.length === 0, `ไม่ตรง ${bad.length}: ${fmt(bad.slice(0, 3))}`);
+  });
+  await st("RV-19", "ตัวโหลด = บริการ (เงินสดรายวัน): วันทำการที่มี CASH · TRANSFER · CARD · PROMPTPAY · คืนเงินสด · คืนเงินโอน · ร้านเก็บ (ไม่นับ) · แถวขอบวัน [ต้นวัน รวม · ต้นวันถัดไป ไม่รวม) ⇒ loadCashDayVM ยอดรวม/แยก tender/expected/จำนวน/ชุดแถว = tripCashDay ของหน่วย+วันเดียวกัน และ = ตัวเลขที่ข้อสอบคิดเอง", async () => {
+    needDb();
+    const DAY = "2027-03-03", at = "2027-03-03T04:00:00.000Z";
+    const b = await mkBooking();
+    for (const [amount, tender] of [[300_000, "CASH"], [200_000, "TRANSFER"], [100_000, "CARD"], [50_000, "PROMPTPAY"]] as const) V(await pay(b, amount, { tender, now: at }), `pay ${tender}`);
+    await rawEvent(b, { kind: "REFUNDED", tender: "CASH", amount: 12_345, at: "2027-03-03 06:00:00" });
+    await rawEvent(b, { kind: "REFUNDED", tender: "TRANSFER", amount: 2_000, at: "2027-03-03 06:01:00" });
+    const retained = await rawEvent(b, { kind: "RETAINED", tender: "CASH", amount: 5_000, at: "2027-03-03 06:02:00" });
+    await rawEvent(b, { kind: "RECEIVED", tender: "CASH", amount: 111, at: "2027-03-02 17:00:00" });           // 00:00 เวลาร้านของวันนี้ ⇒ นับ
+    const next = await rawEvent(b, { kind: "RECEIVED", tender: "CASH", amount: 222, at: "2027-03-03 17:00:00" });  // 00:00 ของวันถัดไป ⇒ ไม่นับ
+    const c = VM(await call("loadCashDayVM", ctxOf("oa"), { unitId: uA, businessDate: DAY }, { now: new Date(NOW0) }), "loadCashDayVM");
+    const s = V(await call("tripCashDay", staff(), { businessDate: DAY }), "tripCashDay");
+    const expTender = { CASH: { receivedSatang: 300_111, refundedSatang: 12_345 }, PROMPTPAY: { receivedSatang: 50_000, refundedSatang: 0 }, TRANSFER: { receivedSatang: 200_000, refundedSatang: 2_000 }, CARD: { receivedSatang: 100_000, refundedSatang: 0 } };
+    eq([c.businessDate, c.receivedSatang, c.refundedSatang, c.expectedSatang, c.byTender, c.total, c.shown, c.truncated], [DAY, 650_111, 14_345, 287_766, expTender, 7, 7, false], "ตัวโหลด = ตัวเลขของข้อสอบ");
+    eq([c.receivedSatang, c.refundedSatang, c.expectedSatang, c.byTender, c.total, c.tz, c.businessDate], [s.receivedSatang, s.refundedSatang, s.expectedSatang, s.byTender, asArr(s.events).length, s.tz, s.businessDate], "ตัวโหลด = tripCashDay");
+    const key = (e: Rec) => `${e.id}|${e.kind}|${e.tender}|${e.amountSatang}|${e.bookingId}`;
+    eq(asArr(c.events).map(key).sort(), asArr(s.events).map(key).sort(), "ชุดแถว");
+    const ids = asArr(c.events).map((e) => e.id);
+    ok(!ids.includes(retained) && !ids.includes(next), "แถวร้านเก็บ/แถวของวันถัดไปโผล่ในเงินสดของวัน");
+    const dayAfter = VM(await call("loadCashDayVM", ctxOf("oa"), { unitId: uA, businessDate: "2027-03-04" }, { now: new Date(NOW0) }), "วันถัดไป");
+    const sAfter = V(await call("tripCashDay", staff(), { businessDate: "2027-03-04" }), "tripCashDay วันถัดไป");
+    eq([dayAfter.receivedSatang, dayAfter.expectedSatang, dayAfter.total], [222, 222, 1], "วันถัดไปได้แถวขอบ");
+    eq([dayAfter.receivedSatang, dayAfter.refundedSatang, dayAfter.expectedSatang, dayAfter.byTender, dayAfter.total], [sAfter.receivedSatang, sAfter.refundedSatang, sAfter.expectedSatang, sAfter.byTender, asArr(sAfter.events).length], "วันถัดไป = บริการ");
+  });
+
+  // ── V9 V11 V12 V13 (static) + PII ผู้ดูอย่างเดียว ──
+  await st("RV-20", "V11 จอ (static): ป้าย \"ตรวจกับนักบัญชี\" (bookings.docs.accountant) ในคิวเอกสารอยู่เฉพาะในข้อความเตือนต่อแถว (ซ่อนเมื่อส่วนต่าง = 0) — ไม่อยู่ในกล่องข้อความถาวร trips-docs-note · ไม่ใช่ปุ่ม/Pill · ลิ้นชักแสดงเมื่อ vatDiffSatang ≠ 0 เท่านั้น", () => {
+    needOwn();
+    const d = stripComments(read(`${COMP}/BookingDocs.tsx`));
+    eq((d.match(/bookings\.docs\.accountant/g) ?? []).length, 1, "จำนวนที่ใช้ bookings.docs.accountant ใน BookingDocs");
+    const warn = /const vatWarning = \(diffSatang: number\) =>\s*diffSatang === 0 \? null : \(([\s\S]*?)\);/.exec(d)?.[1] ?? "";
+    ok(warn.includes("bookings.docs.accountant") && !/<button|<Pill|rounded-full|border /.test(warn), "ป้ายนักบัญชีไม่ได้อยู่ในข้อความเตือนต่อแถว (หรือยังหน้าตาเป็นปุ่ม/ป้ายมีกรอบ)");
+    ok((d.match(/vatWarning\(it\.vatDiffSatang\)/g) ?? []).length >= 2, "ข้อความเตือนต้องผูกกับ it.vatDiffSatang ทั้งตารางและการ์ดมือถือ");
+    const note = /data-testid="trips-docs-note"[\s\S]{0,300}?<\/p>/.exec(d)?.[0] ?? "";
+    ok(note && !/accountant/.test(note), "กล่องข้อความถาวรยังมีป้ายนักบัญชี");
+    const dr = stripComments(read(`${COMP}/BookingDrawer.tsx`));
+    const at = dr.indexOf("bookings.docs.accountant");
+    ok(at > 0 && /vatDiffSatang !== 0 \?/.test(dr.slice(Math.max(0, at - 400), at)), "ลิ้นชัก: ป้ายนักบัญชีไม่ได้ขึ้นกับ vatDiffSatang ≠ 0");
+  });
+  await st("RV-21", "V12 ทะเบียนปุ่ม: แถว trips-nav-bookings roles = [owner] · hiddenFor มี editor + viewer (แท็บเห็นด้วย trips.booking.view เท่านั้น) · V9: Booking*.tsx ไม่มี aria-selected (ใช้ aria-current)", () => {
+    const rows = asArr(asRec(JSON.parse(read("scripts/trips-ui-inventory.json") || "{}"))?.rows).filter((r) => r.testid === "trips-nav-bookings");
+    eq(rows.length, 1, "จำนวนแถว trips-nav-bookings");
+    const hidden = Array.isArray(rows[0]?.hiddenFor) ? [...(rows[0]?.hiddenFor as unknown[])].map(String).sort() : [];
+    eq([rows[0]?.roles, hidden], [["owner"], ["editor", "viewer"]], "roles / hiddenFor");
+    needOwn();
+    const sel = t13Comp.filter((f) => /aria-selected/.test(stripComments(read(f))));
+    ok(sel.length === 0, `aria-selected: ${sel.join(", ")}`);
+    ok(/aria-current/.test(stripComments(read(`${COMP}/BookingsTable.tsx`))), "แถวที่เปิดอยู่ไม่มี aria-current");
+  });
+  await st("RV-22", "V13 ป้ายช่องทางของจอนี้: bookings.channel.* ครบทุกช่องทางขาย (= DEPARTURE_SELL_CHANNELS) ทั้งสองภาษา · ไม่มีคำว่า POS / เครื่องขาย / register · POS = \"จุดขายอื่น\" / \"Other sales point\" · คอมโพเนนต์ Booking* ใช้ bookings.channel ไม่ใช้ departures.channel", () => {
+    needOwn();
+    const chans = [...(constOf("DEPARTURE_SELL_CHANNELS") as string[])].sort();
+    for (const loc of ["th", "en"] as const) {
+      const ch = bkMsgs(loc).filter(([k]) => k.startsWith("channel."));
+      eq(ch.map(([k]) => k.slice(8)).sort(), chans, `${loc}: คีย์ bookings.channel`);
+      const bad = ch.filter(([, v]) => !v.trim() || /\bPOS\b|เครื่องขาย|point of sale|\bregister\b|\btill\b/i.test(v)).map(([k, v]) => `${k}=${v}`);
+      ok(bad.length === 0, `${loc}: ป้ายช่องทางมีคำต้องห้าม ${bad.join(", ")}`);
+      const filt = bkMsgs(loc).filter(([k, v]) => k.startsWith("filter.") && /\bPOS\b|เครื่องขาย/.test(v)).map(([k]) => k);
+      ok(filt.length === 0, `${loc}: ป้ายตัวกรองมี POS: ${filt.join(", ")}`);
+    }
+    eq([new Map(bkMsgs("th")).get("channel.POS"), new Map(bkMsgs("en")).get("channel.POS")], ["จุดขายอื่น", "Other sales point"], "ป้ายของช่องทาง POS");
+    const s = stripComments(t13CompSrc);
+    ok(/bookings\.channel\./.test(s) && !/departures\.channel/.test(s), "คอมโพเนนต์ยังใช้ departures.channel.* (มีคำว่าเครื่องขาย)");
+  });
+  await st("RV-23", "PII ผู้มีแค่ trips.booking.view: JSON ของรายการและรายละเอียดไม่มีเบอร์เต็ม (ทั้งรูป 0xxxxxxxxx และ 8 หลักท้าย) · ไม่มีตัวเลขเงินสดของหน่วย (docsWaiting null · ไม่มีคีย์ cash) · เบอร์ปิดบังยังอยู่", async () => {
+    needDb();
+    const b = await mkBooking();
+    const list = VM(await lv("v", { dep: b.dep, when: "all" }), "list v");
+    const det = VM(await dv("v", b.id), "detail v");
+    const js = JSON.stringify([list, det]);
+    ok(!js.includes(b.phone) && !js.includes(b.phone.slice(2)), "VM ของผู้ดูอย่างเดียวมีเบอร์เต็ม");
+    eq([asRec(det.customer)?.phoneMasked, asRec(list.segments)?.docsWaiting, Object.keys(list).filter((k) => /cash|docs/i.test(k))], [fn("maskPhone")(b.phone), null, []], "ปิดบัง/ไม่มีเงินของหน่วย");
+  });
+  groupLine("RV");
 
   exitCode = cks.some((c) => c.res !== "PASS") ? 1 : 0;
 } catch (e) {
