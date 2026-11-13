@@ -80,7 +80,7 @@ const thDate = (ymd: string) => {
   const [y, m, d] = ymd.split("-");
   return `${Number(d)}/${Number(m)}/${Number(y) + 543}`;
 };
-const cellCls = "px-2 py-1.5 align-top";
+const cellCls = "px-2 py-1.5 align-top print:px-1 print:py-1";
 
 function docLink(base: string, r: SalesTaxRow): string | null {
   if (!r.docId || !r.docType || r.docType === "TAX_INVOICE_ABB" || r.docType.startsWith("POS_")) return null;
@@ -108,6 +108,7 @@ function SalesTaxHeaderBox({ st }: { st: SalesTaxReport }) {
 }
 
 // ── ACC T1.3 ▸ ภ.พ.30 ครบช่อง: มูลค่า + ภาษีต่อช่อง · เครดิตยกมา (ที่มา + ประวัติ) · กำหนดยื่น · กระทบ GL ผ่าน mapping · ยื่นแล้ว/แบบเพิ่มเติม ◂
+const bkkDay = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
 const bahtTh = (n: number) => (n / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const STRONG_KEYS: readonly Pp30LineKey[] = ["salesTaxable", "outputVat", "inputVat", "netPayable", "netExcess", "creditCarriedForward"];
 
@@ -224,7 +225,7 @@ function SalesTaxTable({ st, base }: { st: SalesTaxReport; base: string }) {
               <tr key={`${g.rateBp}-${r.key}`} className={`border-b ${r.cancelled ? "text-[color:var(--color-muted)]" : ""}`} data-testid="salestax-row" data-kind={r.kind}>
                 <td className={`${cellCls} text-right tabular-nums`}>{seq}</td>
                 <td className={`${cellCls} whitespace-nowrap`}>{thDate(r.date)}</td>
-                <td className={`${cellCls} whitespace-nowrap font-mono text-xs`}>
+                <td className={`${cellCls} whitespace-nowrap font-mono text-xs print:whitespace-normal print:text-[9px]`}>
                   {href ? <Link href={href} className="hover:underline">{r.docNo}</Link> : r.docNo}
                   {r.docNoTo && (
                     <span className="block font-sans text-[11px] text-[color:var(--color-muted)]">
@@ -232,7 +233,7 @@ function SalesTaxTable({ st, base }: { st: SalesTaxReport; base: string }) {
                     </span>
                   )}
                 </td>
-                <td className={`${cellCls} min-w-[9rem]`}>{r.buyerName || "—"}</td>
+                <td className={`${cellCls} min-w-[9rem] print:min-w-0`}>{r.buyerName || "—"}</td>
                 <td className={`${cellCls} font-mono text-xs`}>{r.buyerTaxId}</td>
                 <td className={`${cellCls} text-xs`}>{buyerBranchLabelTh(r.buyerBranchCode)}</td>
                 <td className={`${cellCls} text-right`}><MoneyText satang={part.base} decimals /></td>
@@ -475,12 +476,18 @@ export default async function Pp30Page({
           <ul className="mt-2 flex flex-col gap-0.5 text-xs text-[color:var(--color-muted)]" data-testid="pp30-carry-history">
             {ret.carry.history.map((h, i) => (
               <li key={i}>
-                {h.createdAt.toISOString().slice(0, 10)} · {h.amountSatang === null ? "กลับไปใช้ค่าที่ระบบคิด" : `${bahtTh(h.amountSatang)} บาท`} · {h.reason}
+                {bkkDay(h.createdAt)} · {h.amountSatang === null ? "กลับไปใช้ค่าที่ระบบคิด" : `${bahtTh(h.amountSatang)} บาท`} · {h.reason}
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      {/* ใบพิมพ์: สถานะยื่น (กล่องจัดการยื่นซ่อนตอนพิมพ์) */}
+      <p className="hidden text-xs print:block" data-testid="pp30-filed-print">
+        สถานะยื่น: {filed ? ret.filed.records.map((x) => `${x.kind === "ORIGINAL" ? "แบบปกติ" : `แบบเพิ่มเติมครั้งที่ ${x.seq}`} ${thDate(bkkDay(x.filedAt))}`).join(" · ") : "ยังไม่ได้ทำเครื่องหมายยื่น"}
+        {ret.amendmentNeeded ? " · ยอดในสมุดต่างจากที่ยื่นล่าสุด" : ""}
+      </p>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Pp30DeadlineBox ret={ret} />
@@ -513,7 +520,7 @@ export default async function Pp30Page({
             <ul className="flex flex-col gap-0.5 text-xs" data-testid="pp30-filings">
               {ret.filed.records.map((x) => (
                 <li key={`${x.kind}-${x.seq}`}>
-                  {x.kind === "ORIGINAL" ? "แบบปกติ" : `แบบเพิ่มเติมครั้งที่ ${x.seq}`} · {x.filedAt.toISOString().slice(0, 10)} · ภาษีสุทธิ{" "}
+                  {x.kind === "ORIGINAL" ? "แบบปกติ" : `แบบเพิ่มเติมครั้งที่ ${x.seq}`} · {bkkDay(x.filedAt)} · ภาษีสุทธิ{" "}
                   {(() => {
                     const n = (x.lines.netPayable ?? 0) - (x.lines.netExcess ?? 0);
                     return n >= 0 ? `ต้องชำระ ${bahtTh(n)}` : `ชำระเกิน ${bahtTh(-n)}`;

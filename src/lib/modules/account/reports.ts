@@ -688,7 +688,7 @@ function pp30ReturnCsv(ret: Pp30Return, row: (cells: (string | number)[]) => voi
     else row([`กระทบยอด: ${c.label}`, c.ledger ? `${c.ledger.code} ${c.ledger.name}` : "ไม่ได้ผูกบัญชี", "ยอดในบัญชี", c.movement, "ในแบบ", c.onReturn, c.ok ? "ตรง" : "ไม่ตรง"]);
   }
   row(["สถานะยื่น", ret.filed.filed ? `ยื่นแล้ว ${ret.filed.records.length} ครั้ง` : "ยังไม่ได้ทำเครื่องหมายยื่น"]);
-  for (const x of ret.filed.records) row([x.kind === "ORIGINAL" ? "แบบปกติ" : `แบบเพิ่มเติมครั้งที่ ${x.seq}`, x.filedAt.toISOString().slice(0, 10), "ภาษีสุทธิ", (x.lines.netPayable ?? 0) - (x.lines.netExcess ?? 0)]);
+  for (const x of ret.filed.records) row([x.kind === "ORIGINAL" ? "แบบปกติ" : `แบบเพิ่มเติมครั้งที่ ${x.seq}`, new Date(x.filedAt.getTime() + 7 * 3600_000).toISOString().slice(0, 10), "ภาษีสุทธิ", (x.lines.netPayable ?? 0) - (x.lines.netExcess ?? 0)]);
   if (ret.amendmentNeeded) row(["ยอดในสมุดต่างจากที่ยื่นล่าสุด — อาจต้องยื่นแบบเพิ่มเติม"]);
   for (const w of ret.warnings) row(["คำเตือน", w.messageTh, w.citation ?? ""]);
 }
@@ -696,7 +696,7 @@ function pp30ReturnCsv(ret: Pp30Return, row: (cells: (string | number)[]) => voi
 export async function pp30Csv(
   ctx: GlCtx,
   periodKey: string,
-  opts?: { carryForward?: number; abbMode?: SalesTaxAbbMode | null },
+  opts?: { carryForward?: number | null; abbMode?: SalesTaxAbbMode | null },
 ): Promise<string> {
   const r = await pp30(ctx, periodKey, opts);
   const st = r.salesTax;

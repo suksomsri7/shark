@@ -229,6 +229,9 @@ try {
   chk("P7.1", "CSV: หัวรายงาน (ชื่อ · เลข 13 หลัก · เดือนภาษี) + ทุกช่อง ภ.พ.30 + เครดิตยกมา + กำหนดยื่น", ["ทีวันสาม ภพสามสิบ", "0105566012345", "ยอดขายที่เสียภาษีอัตราร้อยละ 0", "ยอดขายที่ได้รับยกเว้น", "ยอดซื้อที่มีสิทธินำภาษีซื้อมาหัก", "เครดิตภาษียกมาจากเดือนก่อน", "กำหนดยื่น"].every((s) => csv.includes(s)), "ครบ", csv.slice(0, 600));
   chk("P7.2", "CSV: ยอดขาย 0% 5,000.00 · ยกเว้น 3,000.00 · เครดิตยกมา 1,050.00", csv.includes("5000.00") && csv.includes("3000.00") && csv.includes("1050.00"), "มี", csv.split("\n").filter((l) => /ยอดขาย|เครดิต/.test(l)).join(" | "), "MAJOR");
 
+  const csvNull: string = await REP.pp30Csv(ctx, B, { carryForward: null });
+  chk("P7.3", "CSV จากปุ่มดาวน์โหลด (ไม่ส่ง carry) = ใช้เครดิตยกมาที่จำไว้ ไม่ใช่ 0 ชั่วคราว", csvNull.includes("1050.00") && !csvNull.includes(PS.PP30_CARRY_SOURCE_LABEL_TH.QUERY), "จำไว้", csvNull.split("\n").filter((l) => /เครดิต/.test(l)).join(" | "), "MAJOR");
+
   // ═══ P8 REST ═══
   console.log("\n── P8 REST op (อ่าน · ยื่น · เพิ่มเติม · แก้เครดิต) ──");
   const ak: Any = await import("@/lib/api-keys/service" as string);

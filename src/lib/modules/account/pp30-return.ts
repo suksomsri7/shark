@@ -310,12 +310,13 @@ export async function pp30ReturnOf(
   if (deadline) warnings.push(...deadline.warnings);
 
   const inputOnReturn = base.inputVat;
+  const inMoveDr = inMove === 0 ? 0 : -inMove; // ภาษีซื้อ = เดบิตสุทธิ (กัน −0)
   const reconcile: Pp30Reconcile[] = [
     { key: "VAT_OUTPUT", label: "ภาษีขาย", ledger: led(L.VAT_OUTPUT), movement: outMove, onReturn: base.outputVat, ok: outMove === base.outputVat },
-    { key: "VAT_INPUT", label: "ภาษีซื้อ", ledger: led(L.VAT_INPUT), movement: -inMove, onReturn: inputOnReturn, ok: -inMove === inputOnReturn },
+    { key: "VAT_INPUT", label: "ภาษีซื้อ", ledger: led(L.VAT_INPUT), movement: inMoveDr, onReturn: inputOnReturn, ok: inMoveDr === inputOnReturn },
     { key: "VAT_OUTPUT_UNDUE", label: L.VAT_OUTPUT_UNDUE?.label ?? "ภาษีขายยังไม่ถึงกำหนด", ledger: led(L.VAT_OUTPUT_UNDUE), movement: 0, onReturn: null, ok: null, balance: undueOut },
     { key: "VAT_OUTPUT_PENDING_INVOICE", label: L.VAT_OUTPUT_PENDING_INVOICE?.label ?? "ภาษีขายรอออกใบกำกับ", ledger: led(L.VAT_OUTPUT_PENDING_INVOICE), movement: 0, onReturn: null, ok: null, balance: pendOut },
-    { key: "VAT_INPUT_UNDUE", label: L.VAT_INPUT_UNDUE?.label ?? "ภาษีซื้อยังไม่ถึงกำหนด", ledger: led(L.VAT_INPUT_UNDUE), movement: 0, onReturn: null, ok: null, balance: -undueIn },
+    { key: "VAT_INPUT_UNDUE", label: L.VAT_INPUT_UNDUE?.label ?? "ภาษีซื้อยังไม่ถึงกำหนด", ledger: led(L.VAT_INPUT_UNDUE), movement: 0, onReturn: null, ok: null, balance: undueIn === 0 ? 0 : -undueIn },
   ];
 
   return {
