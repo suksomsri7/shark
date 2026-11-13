@@ -1,0 +1,549 @@
+// HR H3.8 ▸ สลิปเงินเดือน (07c ในแอป + PDF) · ประวัติรายปีตามปีภาษี · หนังสือรับรองเงินเดือน — service (server เท่านั้น) · brief hr-brief-H3.8 R6–R17
+//   ด่านสลิป/ประวัติ (R7) = OWNER หรือ hr.payroll.read อ่านซ้ำจากแถว Membership จริง (ยอมรับแล้ว · ร้านเดียวกัน · บทบาทที่ส่งมาต้องตรงกับในฐาน)
+//     และต้องผ่านด้วยค่าที่ผู้เรียกส่งมาด้วย · ขอบเขต = สาขาประจำของพนักงาน (HrEmployee.unitId) อยู่ในสาขาของผู้ดู (OWNER / "*" = ทุกสาขา ·
+//     ไม่ระบุสาขาประจำ = ผู้ดูทุกสาขาเท่านั้น · ยืมตัวไม่ขยาย — Q2) · ระบบ HR ของร้านเท่านั้น · อื่น ๆ = {ok:false, code:"NO", reason: no} ไบต์เดียวกัน
+//   ด่านหนังสือรับรอง = ด่านไฟล์โอนของ H3.5 (bankGateOf) บนสมาชิกภาพจริง · ผู้ไม่ใช่ OWNER ออกให้แถวพนักงานของตัวเองไม่ได้ (OWN)
+//   ตัวเอง (R6) = resolveSelf เท่านั้น ไม่รับรหัสพนักงานจาก input/URL · เห็นเฉพาะสลิปที่ออกแล้ว (ISSUED)
+//   อ่านสลิป/PDF/ประวัติ = รอบ + รายการในธุรกรรมเดียว ถือแถวรอบ FOR SHARE (R15) · ตัวเลข = ค่าที่เก็บไว้ (payslip-rules) ·
+//   ไม่เก็บไบต์ PDF · ลงประวัติเฉพาะการดาวน์โหลด/คำขอ/ออก/ไม่อนุมัติ/ยกเลิก (R16 — ไม่มีชื่อ เลขประจำตัว ฿ หรือเหตุผลการยกเลิก) · ไม่มี outbox ◂
+import { createHash } from "node:crypto";
+import type { Prisma } from "@prisma/client";
+import { tenantDb } from "@/lib/core/db";
+import { writeAudit } from "@/lib/core/audit";
+import { reserveSeq } from "@/lib/modules/account/doc-numbering";
+import { bankGateOf } from "./bank-files/service";
+import { hrScopeOf, type HrScope } from "./scope";
+import { resolveSelf, type SelfActor } from "./self";
+import {
+  SLIP_TEXT,
+  bankMaskedOf,
+  bkkDayOf,
+  finalizedOf,
+  isSlipPurpose,
+  salaryCertContent,
+  slipIncome,
+  slipState,
+  slipView,
+  taxYearOf,
+  yearTotals,
+  type SalaryCertContent,
+  type SlipLine,
+  type SlipState,
+  type SlipTextKey,
+  type YearRow,
+  type YearTotal,
+} from "./payslip-rules";
+import { renderPayslipPdf, renderSalaryCertPdf } from "./payslip-pdf";
+
+type Ctx = { tenantId: string; systemId: string };
+type Opts = { now?: Date };
+type Db = Prisma.TransactionClient;
+type TxRunner = { $transaction: <T>(fn: (tx: Db) => Promise<T>, o: typeof TX_OPTS) => Promise<T> };
+export type PayslipViewer = { role: string; unitAccess: unknown; permissions: unknown; userId?: string | null };
+export type Refusal = { ok: false; code: string; reason: string };
+export type SlipDto = {
+  ok: true;
+  runId: string;
+  periodKey: string;
+  payDate: string;
+  taxYear: number;
+  status: string;
+  state: SlipState;
+  engineVersion: number;
+  employee: { name: string; position: string | null; code: string | null };
+  earnings: SlipLine[];
+  deductions: SlipLine[];
+  earningsSatang: number;
+  deductionsSatang: number;
+  netSatang: number;
+  ssoBaseSatang: number;
+  employerSsoSatang: number;
+  bankMasked: string | null;
+  flags: string[];
+};
+export type SlipRowDto = { runId: string; periodKey: string; payDate: string; netSatang: number; href: string };
+export type YearDto = YearTotal<SlipRowDto>;
+export type MySlipsDto = { ok: true; years: YearDto[] };
+export type HistoryDto = { ok: true; employeeId: string; name: string; year: YearDto };
+export type DownloadOk = { ok: true; fileName: string; contentType: string; bytes: Uint8Array };
+export type CertRowDto = { id: string; employeeId: string; name: string; status: string; purpose: string; docNo: string | null; issuedAt: string | null; requestedAt: string | null; voided: boolean; downloads: number };
+export type MyCertRowDto = { id: string; status: string; purpose: string; docNo: string | null; issuedAt: string | null; requestedAt: string | null; canCancel: boolean };
+
+const T = SLIP_TEXT;
+const refuse = (code: string, key: SlipTextKey): Refusal => ({ ok: false, code, reason: T[key] });
+const NO = (): Refusal => refuse("NO", "no");
+const TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
+const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+const obj = (raw: unknown): Record<string, unknown> => (raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {});
+const str = (v: unknown) => (typeof v === "string" ? v : "");
+const nowOf = (o: Opts | undefined) => (o?.now instanceof Date && Number.isFinite(o.now.getTime()) ? new Date(o.now.getTime()) : new Date());
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+/** JSON คีย์เรียงทุกชั้น (sha ของเนื้อหาหนังสือรับรอง — แบบเดียวกับ H3.6) */
+const canon = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, (x as Record<string, unknown>)[k]])) : x));
+const runTx = <R,>(ctx: Ctx, fn: (tx: Db) => Promise<R>) => (tenantDb(ctx) as unknown as TxRunner).$transaction(fn, TX_OPTS);
+/** ต้นปีเวลาไทย → UTC */
+const bkkYearStart = (y: number) => new Date(Date.UTC(y, 0, 1) - 7 * 3_600_000);
+const dayOrNull = (d: Date | null | undefined) => (d instanceof Date && Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : null);
+const ctxOk = (ctx: Ctx | null | undefined): ctx is Ctx => !!ctx && typeof ctx.tenantId === "string" && typeof ctx.systemId === "string" && ID_RE.test(ctx.tenantId) && ID_RE.test(ctx.systemId);
+
+// ═════════════ ด่าน (R7) ═════════════
+type Member = { role: string; unitAccess: unknown; permissions: unknown; userId: string };
+/** สมาชิกภาพจริงของผู้ดูในร้านของ ctx (บทบาทที่ส่งมาต้องตรงกับในฐาน) + ระบบ HR ของร้าน — null = ไม่ผ่าน */
+async function memberOf(ctx: Ctx, viewer: PayslipViewer | null | undefined): Promise<Member | null> {
+  if (!ctxOk(ctx)) return null;
+  const uid = typeof viewer?.userId === "string" ? viewer.userId : "";
+  if (!uid || typeof viewer?.role !== "string") return null;
+  const db = tenantDb({ tenantId: ctx.tenantId });
+  const m = await db.membership.findFirst({ where: { tenantId: ctx.tenantId, userId: uid, acceptedAt: { not: null } }, select: { role: true, unitAccess: true, permissions: true } });
+  if (!m || String(m.role) !== viewer.role) return null;
+  const sys = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true } });
+  if (!sys) return null;
+  return { role: String(m.role), unitAccess: m.unitAccess, permissions: m.permissions, userId: uid };
+}
+/** ผู้ดูเงินเดือน = OWNER หรือ hr.payroll.read (ค่าเดียวกับ canViewPayroll) */
+const payrollReader = (v: { role: string; permissions: unknown } | null | undefined) => !!v && (v.role === "OWNER" || obj(v.permissions)["hr.payroll.read"] === true);
+async function slipGate(ctx: Ctx, viewer: PayslipViewer | null | undefined): Promise<Member | null> {
+  const m = await memberOf(ctx, viewer);
+  return m && payrollReader(m) && payrollReader(viewer) ? m : null;
+}
+/** ด่านหนังสือรับรอง (pure บนผู้ดูที่ส่งมา — กล่องคำขอใช้ตัดสินว่าแสดงชนิด CERT · ตัวจริงอ่านฐานซ้ำใน certGate) */
+export function certGateOf(v: { role: string; unitAccess: unknown; permissions: unknown } | null | undefined): boolean {
+  return bankGateOf(v);
+}
+async function certGate(ctx: Ctx, viewer: PayslipViewer | null | undefined): Promise<Member | null> {
+  const m = await memberOf(ctx, viewer);
+  return m && bankGateOf(m) && bankGateOf(viewer) ? m : null;
+}
+/** ผู้ดูคนนี้ใช้ส่วนหนังสือรับรองบนหน้าเงินเดือนได้ไหม */
+export async function canUseSalaryCerts(ctx: Ctx, viewer: PayslipViewer | null | undefined): Promise<boolean> {
+  return !!(await certGate(ctx, viewer));
+}
+/** สาขาประจำอยู่ในขอบเขตของผู้ดู (ทั้งในฐานและที่ส่งมา) — ไม่ระบุสาขาประจำ = ผู้ดูทุกสาขาเท่านั้น · ยืมตัวไม่นับ (Q2) */
+function homeInScope(m: Member, viewer: PayslipViewer, unitId: string | null): boolean {
+  const ok = (sc: HrScope) => sc.unitIds === "*" || (!!unitId && sc.unitIds.includes(unitId));
+  return ok(hrScopeOf({ role: m.role as "STAFF", unitAccess: m.unitAccess })) && ok(hrScopeOf({ role: viewer.role as "STAFF", unitAccess: viewer.unitAccess }));
+}
+
+// ═════════════ อ่านสลิปในธุรกรรม (R15) ═════════════
+type RunRow = { id: string; periodKey: string; payDate: Date; status: string; engineVersion: number; finalized: boolean };
+const ITEM_SELECT = { grossSatang: true, netSatang: true, ssoBaseSatang: true, ssoEmployeeSatang: true, ssoEmployerSatang: true, whtSatang: true, addSatang: true, deductSatang: true, snapshotJson: true } as const;
+const EMP_SELECT = { id: true, name: true, position: true, code: true, unitId: true, bankName: true, bankAccountNo: true, linkedUserId: true } as const;
+type EmpRow = { id: string; name: string; position: string | null; code: string | null; unitId: string | null; bankName: string | null; bankAccountNo: string | null; linkedUserId: string | null };
+type Loaded = { run: RunRow; item: Record<string, unknown>; emp: EmpRow };
+
+/** แถวรอบ (FOR SHARE — รอการกลับรายการที่กำลังทำอยู่ แล้วเห็นสถานะใหม่) + รายการของพนักงาน + พนักงาน */
+async function loadSlip(tx: Db, ctx: Ctx, runId: string, employeeId: string): Promise<Loaded | null> {
+  if (!ID_RE.test(runId) || !ID_RE.test(employeeId)) return null;
+  const rows = await tx.$queryRaw<RunRow[]>`
+    SELECT "id", "periodKey", "payDate", "status"::text AS "status", "engineVersion",
+           COALESCE(("stepsJson"->>'finalized')::boolean, false) AS "finalized"
+    FROM "HrPayrollRun"
+    WHERE "id" = ${runId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}
+    FOR SHARE`;
+  const run = rows[0];
+  if (!run) return null;
+  const emp = (await tx.hrEmployee.findFirst({ where: { id: employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: EMP_SELECT })) as EmpRow | null;
+  if (!emp) return null;
+  const item = await tx.hrPayrollItem.findFirst({ where: { runId: run.id, employeeId: emp.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: ITEM_SELECT });
+  if (!item) return null;
+  return { run, item: item as unknown as Record<string, unknown>, emp };
+}
+/** สลิป DTO (R10) — คีย์ตายตัว · ไม่มีเลขบัญชีเต็ม/เลขประจำตัว/หมายเหตุ */
+function dtoOf(L: Loaded): SlipDto | Refusal {
+  const v = slipView({ engineVersion: L.run.engineVersion, item: L.item });
+  if (!v.ok) return refuse("SLIP_DATA", "slipData");
+  return {
+    ok: true,
+    runId: L.run.id,
+    periodKey: L.run.periodKey,
+    payDate: bkkDayOf(L.run.payDate),
+    taxYear: taxYearOf(L.run.payDate),
+    status: L.run.status,
+    state: slipState(L.run),
+    engineVersion: L.run.engineVersion,
+    employee: { name: L.emp.name, position: L.emp.position, code: L.emp.code },
+    earnings: v.earnings,
+    deductions: v.deductions,
+    earningsSatang: v.earningsSatang,
+    deductionsSatang: v.deductionsSatang,
+    netSatang: v.netSatang,
+    ssoBaseSatang: v.ssoBaseSatang,
+    employerSsoSatang: v.employerSsoSatang,
+    bankMasked: bankMaskedOf(L.emp.bankName, L.emp.bankAccountNo),
+    flags: v.flags,
+  };
+}
+const STATE_REFUSAL: Record<Exclude<SlipState, "ISSUED">, Refusal> = {
+  DRAFT: refuse("NOT_ISSUED", "notIssued"),
+  NOT_FINAL: refuse("NOT_FINAL", "notFinal"),
+  WITHDRAWN: refuse("WITHDRAWN", "withdrawn"),
+};
+const safeCode = (c: string | null) => (c && /^[A-Za-z0-9_-]{1,20}$/.test(c.trim()) ? c.trim() : "");
+async function employerNameOf(ctx: Ctx): Promise<string> {
+  const p = await (tenantDb(ctx) as unknown as Db).hrFilingProfile.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employerName: true } });
+  if (p?.employerName?.trim()) return p.employerName.trim();
+  return (await tenantDb({ tenantId: ctx.tenantId }).tenant.findFirst({ where: { id: ctx.tenantId }, select: { name: true } }))?.name ?? "";
+}
+/** สลิปที่ออกแล้ว → PDF (ไม่เก็บไบต์) */
+async function slipPdf(ctx: Ctx, d: SlipDto): Promise<DownloadOk> {
+  const bytes = await renderPayslipPdf(d, { employerName: await employerNameOf(ctx) });
+  const code = safeCode(d.employee.code);
+  return { ok: true, fileName: `payslip-${d.periodKey}${code ? `-${code}` : ""}.pdf`, contentType: "application/pdf", bytes };
+}
+
+// ═════════════ ผู้ดูเงินเดือน (R7 · R8) ═════════════
+/** สลิปในแอป (ทุกสถานะ — หน้าแสดงป้าย DRAFT/NOT_FINAL/WITHDRAWN) */
+export async function slipForViewer(ctx: Ctx, viewer: PayslipViewer, input: { runId: unknown; employeeId: unknown }): Promise<SlipDto | Refusal> {
+  const m = await slipGate(ctx, viewer);
+  if (!m) return NO();
+  const i = obj(input);
+  const L = await runTx(ctx, (tx) => loadSlip(tx, ctx, str(i.runId), str(i.employeeId)));
+  if (!L || !homeInScope(m, viewer, L.emp.unitId)) return NO();
+  return dtoOf(L);
+}
+/** PDF ของสลิป (ISSUED เท่านั้น) + ลงประวัติการดาวน์โหลด */
+export async function downloadPayslipPdf(ctx: Ctx, viewer: PayslipViewer, input: { runId: unknown; employeeId: unknown }, opts?: Opts): Promise<DownloadOk | Refusal> {
+  void opts;
+  const m = await slipGate(ctx, viewer);
+  if (!m) return NO();
+  const i = obj(input);
+  const L = await runTx(ctx, (tx) => loadSlip(tx, ctx, str(i.runId), str(i.employeeId)));
+  if (!L || !homeInScope(m, viewer, L.emp.unitId)) return NO();
+  const st = slipState(L.run);
+  if (st !== "ISSUED") return STATE_REFUSAL[st];
+  const d = dtoOf(L);
+  if (!d.ok) return d;
+  const out = await slipPdf(ctx, d);
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "hr.payslip.download", targetType: "HrPayrollRun", targetId: L.run.id, after: { runId: L.run.id, employeeId: L.emp.id, periodKey: L.run.periodKey, by: "GATE" } });
+  return out;
+}
+
+/** รายการที่ออกแล้วของพนักงาน 1 คน (ทุกปี หรือปีเดียว) → แถวรายปี · ข้อมูลเสีย = null (SLIP_DATA) */
+async function issuedRows(tx: Db, ctx: Ctx, employeeId: string, href: (runId: string) => string, year?: number): Promise<YearRow<SlipRowDto>[] | null> {
+  const range = year === undefined ? {} : { payDate: { gte: bkkYearStart(year), lt: bkkYearStart(year + 1) } };
+  const items = await tx.hrPayrollItem.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, run: { status: { in: ["APPROVED", "PAID"] }, ...range } },
+    select: { ...ITEM_SELECT, runId: true, run: { select: { id: true, periodKey: true, payDate: true, status: true, engineVersion: true, stepsJson: true } } },
+    orderBy: [{ run: { payDate: "desc" } }, { runId: "desc" }],
+    take: 600,
+  });
+  const out: YearRow<SlipRowDto>[] = [];
+  for (const it of items) {
+    const r = it.run;
+    if (slipState({ status: String(r.status), engineVersion: r.engineVersion, finalized: finalizedOf(r.stepsJson) }) !== "ISSUED") continue;
+    const row = it as unknown as Record<string, unknown>;
+    const v = slipView({ engineVersion: r.engineVersion, item: row });
+    const income = slipIncome(r.engineVersion, row);
+    if (!v.ok || income === null) return null;
+    out.push({
+      payDate: r.payDate,
+      grossSatang: it.grossSatang,
+      netSatang: it.netSatang,
+      whtSatang: it.whtSatang,
+      ssoEmployeeSatang: it.ssoEmployeeSatang,
+      incomeSatang: income,
+      slip: { runId: r.id, periodKey: r.periodKey, payDate: bkkDayOf(r.payDate), netSatang: it.netSatang, href: href(r.id) },
+    });
+  }
+  return out;
+}
+const emptyYear = (taxYear: number): YearDto => ({ taxYear, count: 0, grossSatang: 0, incomeSatang: 0, taxSatang: 0, ssoSatang: 0, netSatang: 0, slips: [] });
+
+/** ประวัติรายปีของพนักงาน 1 คน (ผู้ดูเงินเดือน) — income/tax/SSO ตรงกับ 50 ทวิ ของปีเดียวกัน (H3.6) */
+export async function slipHistory(ctx: Ctx, viewer: PayslipViewer, input: { employeeId: unknown; taxYear: unknown }): Promise<HistoryDto | Refusal> {
+  const m = await slipGate(ctx, viewer);
+  if (!m) return NO();
+  const q = obj(input);
+  const employeeId = str(q.employeeId);
+  const rawYear = typeof q.taxYear === "string" && /^\d{4}$/.test(q.taxYear) ? Number(q.taxYear) : q.taxYear;
+  if (!ID_RE.test(employeeId) || typeof rawYear !== "number" || !Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2400) return NO();
+  const taxYear = rawYear;
+  const out = await runTx(ctx, async (tx) => {
+    const emp = (await tx.hrEmployee.findFirst({ where: { id: employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: EMP_SELECT })) as EmpRow | null;
+    if (!emp || !homeInScope(m, viewer, emp.unitId)) return null;
+    // ถือรอบของปีไว้ FOR SHARE ก่อนอ่านรายการ (การกลับรายการระหว่างอ่าน = รอแล้วเห็นสถานะใหม่)
+    await tx.$queryRaw`SELECT "id" FROM "HrPayrollRun" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "payDate" >= ${bkkYearStart(taxYear)} AND "payDate" < ${bkkYearStart(taxYear + 1)} FOR SHARE`;
+    const rows = await issuedRows(tx, ctx, emp.id, (runId) => `/app/sys/${ctx.systemId}/payroll/${runId}/slip/${emp.id}`, taxYear);
+    return { emp, rows };
+  });
+  if (!out) return NO();
+  if (!out.rows) return refuse("SLIP_DATA", "slipData");
+  const year = yearTotals(out.rows).find((y) => y.taxYear === taxYear) ?? emptyYear(taxYear);
+  return { ok: true, employeeId: out.emp.id, name: out.emp.name, year };
+}
+
+// ═════════════ หนังสือรับรองเงินเดือน — ผู้ผ่านด่าน (R11) ═════════════
+const CERT_STATUSES = ["REQUESTED", "ISSUED", "REJECTED", "CANCELLED"] as const;
+type CertRow = { id: string; employeeId: string; status: string; purpose: string; docNo: string | null; issuedAt: Date | null; requestedAt: Date | null; voidedAt: Date | null; downloads: number; contentJson: unknown; contentSha256: string | null };
+const CERT_SELECT = { id: true, employeeId: true, status: true, purpose: true, docNo: true, issuedAt: true, requestedAt: true, voidedAt: true, downloads: true, contentJson: true, contentSha256: true } as const;
+const iso = (d: Date | null) => (d ? d.toISOString() : null);
+
+/** รายการคำขอ/ใบที่ออก (ผู้ผ่านด่านหนังสือรับรอง) — ไม่มี ฿ · คำขอที่ผู้ขอยกเลิกเองไม่แสดง */
+export async function listSalaryCertificates(ctx: Ctx, viewer: PayslipViewer, input: { status?: unknown } = {}): Promise<{ ok: true; items: CertRowDto[] } | Refusal> {
+  if (!(await certGate(ctx, viewer))) return NO();
+  const st = obj(input).status;
+  const status = (CERT_STATUSES as readonly string[]).includes(st as string) ? (st as string) : null;
+  const db = tenantDb(ctx) as unknown as Db;
+  const rows = (await db.hrSalaryCertificate.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...(status ? { status } : { status: { not: "CANCELLED" } }) },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 200,
+    select: CERT_SELECT,
+  })) as CertRow[];
+  const ids = [...new Set(rows.map((r) => r.employeeId))];
+  const names = new Map(ids.length ? (await db.hrEmployee.findMany({ where: { id: { in: ids }, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, name: true } })).map((e) => [e.id, e.name]) : []);
+  return {
+    ok: true,
+    items: rows.map((r) => ({ id: r.id, employeeId: r.employeeId, name: names.get(r.employeeId) ?? "", status: r.status, purpose: r.purpose, docNo: r.docNo, issuedAt: iso(r.issuedAt), requestedAt: iso(r.requestedAt), voided: !!r.voidedAt, downloads: r.downloads })),
+  };
+}
+/** พนักงานที่ออกหนังสือรับรองให้ได้ (ตัวเลือกของฟอร์ม "ออกใหม่") — ชื่อ + รหัสเท่านั้น */
+export async function listSalaryCertEmployees(ctx: Ctx, viewer: PayslipViewer): Promise<{ ok: true; items: { employeeId: string; name: string; code: string | null }[] } | Refusal> {
+  if (!(await certGate(ctx, viewer))) return NO();
+  const rows = await (tenantDb(ctx) as unknown as Db).hrEmployee.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, name: true, code: true }, orderBy: [{ code: "asc" }, { name: "asc" }, { id: "asc" }], take: 500 });
+  return { ok: true, items: rows.map((e) => ({ employeeId: e.id, name: e.name, code: e.code })) };
+}
+
+type IssueOk = { ok: true; certId: string; docNo: string };
+const lockEmp = (tx: Db, ctx: Ctx, employeeId: string) => tx.$queryRaw`SELECT 1 AS "x" FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`hrsc:${ctx.systemId}:${employeeId}`}, 38))) AS "l"`;
+/** สลิปที่ออกแล้วล่าสุดของพนักงาน (ตามวันที่จ่าย) — ถือแถวรอบ FOR SHARE */
+async function latestIssued(tx: Db, ctx: Ctx, employeeId: string): Promise<{ run: RunRow; item: Record<string, unknown> } | null> {
+  const runs = await tx.$queryRaw<RunRow[]>`
+    SELECT r."id", r."periodKey", r."payDate", r."status"::text AS "status", r."engineVersion",
+           COALESCE((r."stepsJson"->>'finalized')::boolean, false) AS "finalized"
+    FROM "HrPayrollRun" r
+    WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId}
+      AND r."status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus")
+      AND EXISTS (SELECT 1 FROM "HrPayrollItem" i WHERE i."runId" = r."id" AND i."employeeId" = ${employeeId})
+    ORDER BY r."payDate" DESC, r."id" DESC
+    FOR SHARE OF r`;
+  const run = runs.find((r) => slipState(r) === "ISSUED");
+  if (!run) return null;
+  const item = await tx.hrPayrollItem.findFirst({ where: { runId: run.id, employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: ITEM_SELECT });
+  return item ? { run, item: item as unknown as Record<string, unknown> } : null;
+}
+
+/** ออกหนังสือรับรอง — จากคำขอ ({requestId}) หรือออกตรง ({employeeId, purpose}) · ลำดับล็อก: advisory (ระบบ, พนักงาน) → แถวคำขอ FOR UPDATE →
+ *  สลิปล่าสุด (รอบ FOR SHARE) → ข้อมูลผู้จ่ายเงิน → reserveSeq (ล็อกสุดท้าย) → เขียนแถวของตัวเอง · ปฏิเสธก่อน reserveSeq เสมอ (ไม่กินเลข) */
+export async function issueSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, input: { requestId?: unknown; employeeId?: unknown; purpose?: unknown }, opts?: Opts): Promise<IssueOk | Refusal> {
+  const m = await certGate(ctx, viewer);
+  if (!m) return NO();
+  const q = obj(input);
+  const requestId = str(q.requestId);
+  const now = nowOf(opts);
+  const db = tenantDb(ctx) as unknown as Db;
+  let employeeId: string;
+  let purpose: string;
+  if (requestId) {
+    if (!ID_RE.test(requestId)) return NO();
+    const r = await db.hrSalaryCertificate.findFirst({ where: { id: requestId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true, purpose: true } });
+    if (!r) return NO();
+    employeeId = r.employeeId;
+    purpose = r.purpose;
+  } else {
+    employeeId = str(q.employeeId);
+    if (!ID_RE.test(employeeId)) return NO();
+    if (!isSlipPurpose(q.purpose)) return refuse("PURPOSE", "purpose");
+    purpose = q.purpose;
+  }
+  const out = await runTx(ctx, async (tx): Promise<IssueOk | Refusal> => {
+    await lockEmp(tx, ctx, employeeId);
+    const emp = await tx.hrEmployee.findFirst({ where: { id: employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, name: true, position: true, startDate: true, endDate: true, active: true, employmentStatus: true, linkedUserId: true } });
+    if (!emp) return NO();
+    if (m.role !== "OWNER" && emp.linkedUserId && emp.linkedUserId === m.userId) return refuse("OWN", "own");
+    if (requestId) {
+      const rows = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "HrSalaryCertificate" WHERE "id" = ${requestId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`;
+      if (rows[0]?.status !== "REQUESTED") return refuse("NOT_DECIDABLE", "notDecidable");
+    }
+    const src = await latestIssued(tx, ctx, emp.id);
+    if (!src) return refuse("CERT_NO_SLIP", "certNoSlip");
+    const v = slipView({ engineVersion: src.run.engineVersion, item: src.item });
+    if (!v.ok) return refuse("SLIP_DATA", "slipData");
+    const base = v.earnings.find((l) => l.code === "BASE");
+    if (!base || base.amountSatang <= 0) return refuse("CERT_NO_BASE", "certNoBase");
+    const prof = await tx.hrFilingProfile.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employerName: true, employerAddress: true, signerName: true } });
+    const employerName = prof?.employerName?.trim() ?? "";
+    const signerName = prof?.signerName?.trim() ?? "";
+    if (!employerName || !signerName) return refuse("PROFILE", "profile");
+    // เลขที่ — ตัวนับของเครื่องออกเลข (ระบบ HR · WHT_CERT · งวด HRSC:<ปี ค.ศ. ของวันออก เวลาไทย>) = ล็อกสุดท้าย
+    const issueDate = bkkDayOf(now);
+    const seq = await reserveSeq(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, docType: "WHT_CERT", prefix: "HRSC", periodKey: `HRSC:${issueDate.slice(0, 4)}`, startNo: 1 });
+    const content = salaryCertContent({
+      seq,
+      issueDate,
+      purpose,
+      employer: { name: employerName, address: prof?.employerAddress?.trim() || null },
+      employee: { name: emp.name, position: emp.position, startDate: dayOrNull(emp.startDate), endDate: dayOrNull(emp.endDate), active: emp.active && emp.employmentStatus !== "ENDED" },
+      salary: { amountSatang: base.amountSatang, periodKey: src.run.periodKey, runId: src.run.id },
+      signerName,
+    });
+    const data = {
+      status: "ISSUED", decidedById: m.userId, decidedAt: now, docSeq: seq, docNo: content.docNo, contentJson: content as unknown as Prisma.InputJsonValue,
+      contentSha256: sha256(canon(content)), issuedAt: now, issuedById: m.userId,
+    };
+    if (requestId) {
+      await tx.hrSalaryCertificate.updateMany({ where: { id: requestId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "REQUESTED" }, data });
+      return { ok: true, certId: requestId, docNo: content.docNo };
+    }
+    const row = await tx.hrSalaryCertificate.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, purpose, ...data }, select: { id: true } });
+    return { ok: true, certId: row.id, docNo: content.docNo };
+  });
+  if (out.ok) await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "hr.salarycert.issue", targetType: "HrSalaryCertificate", targetId: out.certId, after: { certId: out.certId, docNo: out.docNo, employeeId } });
+  return out;
+}
+
+/** ไม่อนุมัติคำขอ (ผู้ผ่านด่าน · ไม่ใช่คำขอของตัวเอง เว้นแต่ OWNER) */
+export async function rejectSalaryCertRequest(ctx: Ctx, viewer: PayslipViewer, input: { requestId: unknown }, opts?: Opts): Promise<{ ok: true } | Refusal> {
+  const m = await certGate(ctx, viewer);
+  const requestId = str(obj(input).requestId);
+  if (!m || !ID_RE.test(requestId)) return NO();
+  const now = nowOf(opts);
+  const db = tenantDb(ctx) as unknown as Db;
+  const r = await db.hrSalaryCertificate.findFirst({ where: { id: requestId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true } });
+  if (!r) return NO();
+  const out = await runTx(ctx, async (tx): Promise<{ ok: true } | Refusal> => {
+    await lockEmp(tx, ctx, r.employeeId);
+    const emp = await tx.hrEmployee.findFirst({ where: { id: r.employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { linkedUserId: true } });
+    if (m.role !== "OWNER" && emp?.linkedUserId && emp.linkedUserId === m.userId) return refuse("OWN", "own");
+    const rows = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "HrSalaryCertificate" WHERE "id" = ${requestId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`;
+    if (rows[0]?.status !== "REQUESTED") return refuse("NOT_DECIDABLE", "notDecidable");
+    await tx.hrSalaryCertificate.updateMany({ where: { id: requestId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "REQUESTED" }, data: { status: "REJECTED", decidedById: m.userId, decidedAt: now } });
+    return { ok: true };
+  });
+  if (out.ok) await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "hr.salarycert.reject", targetType: "HrSalaryCertificate", targetId: requestId, after: { certId: requestId } });
+  return out;
+}
+
+/** ยกเลิกใบที่ออกแล้ว (OWNER เท่านั้น) — เลขไม่ถูกคืน · เหตุผลเก็บในแถว ไม่ลงประวัติ */
+export async function voidSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, input: { certId: unknown; reason: unknown }, opts?: Opts): Promise<{ ok: true } | Refusal> {
+  const m = await certGate(ctx, viewer);
+  const q = obj(input);
+  const certId = str(q.certId);
+  if (!m || !ID_RE.test(certId)) return NO();
+  if (m.role !== "OWNER" || viewer.role !== "OWNER") return refuse("CERT_VOID_OWNER", "certVoidOwner");
+  const reason = str(q.reason).trim();
+  if (reason.length < 1 || reason.length > 200 || CONTROL.test(reason)) return refuse("VOID_REASON", "voidReason");
+  const db = tenantDb(ctx) as unknown as Db;
+  const c = await db.hrSalaryCertificate.findFirst({ where: { id: certId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ISSUED" }, select: { id: true, docNo: true, voidedAt: true } });
+  if (!c) return NO();
+  if (c.voidedAt) return refuse("VOIDED", "voided");
+  const u = await db.hrSalaryCertificate.updateMany({ where: { id: c.id, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ISSUED", voidedAt: null }, data: { voidedAt: nowOf(opts), voidedById: m.userId, voidReason: reason } });
+  if (u.count !== 1) return refuse("VOIDED", "voided");
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "hr.salarycert.void", targetType: "HrSalaryCertificate", targetId: c.id, after: { certId: c.id, docNo: c.docNo } });
+  return { ok: true };
+}
+
+/** ใบที่ออกแล้ว → PDF จากเนื้อหาที่แช่แข็ง (ตรวจ sha ก่อน) · นับดาวน์โหลด */
+async function certPdf(ctx: Ctx, where: { id: string; employeeId?: string }, liveOnly: boolean): Promise<(DownloadOk & { certId: string }) | Refusal> {
+  if (!ID_RE.test(where.id)) return NO();
+  const db = tenantDb(ctx) as unknown as Db;
+  const c = (await db.hrSalaryCertificate.findFirst({ where: { ...where, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ISSUED" }, select: CERT_SELECT })) as CertRow | null;
+  if (!c || !c.docNo || (liveOnly && c.voidedAt)) return NO();
+  if (c.voidedAt) return refuse("VOIDED", "voided");
+  if (!c.contentSha256 || sha256(canon(c.contentJson)) !== c.contentSha256) return refuse("CERT_CHANGED", "certChanged");
+  const bytes = await renderSalaryCertPdf(c.contentJson as SalaryCertContent);
+  await db.hrSalaryCertificate.updateMany({ where: { id: c.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { downloads: { increment: 1 } } });
+  return { ok: true, fileName: `${c.docNo}.pdf`, contentType: "application/pdf", bytes, certId: c.id };
+}
+export async function downloadSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, input: { certId: unknown }): Promise<DownloadOk | Refusal> {
+  const m = await certGate(ctx, viewer);
+  if (!m) return NO();
+  const r = await certPdf(ctx, { id: str(obj(input).certId) }, false);
+  if (!r.ok) return r;
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "hr.salarycert.download", targetType: "HrSalaryCertificate", targetId: r.certId, after: { certId: r.certId, by: "GATE" } });
+  return { ok: true, fileName: r.fileName, contentType: r.contentType, bytes: r.bytes };
+}
+
+// ═════════════ ตัวเอง (R6 · R11) — พนักงานจากเซสชันเท่านั้น (resolveSelf) ═════════════
+const mySlipHref = (runId: string) => `/app/me/hr/pay/${runId}`;
+const P2002 = (e: unknown) => (e as { code?: string })?.code === "P2002";
+async function loadMine(meCtx: Ctx, meEmployeeId: string, runId: string): Promise<Loaded | null> {
+  return runTx(meCtx, (tx) => loadSlip(tx, meCtx, runId, meEmployeeId));
+}
+function myCertDto(r: CertRow): MyCertRowDto {
+  return { id: r.id, status: r.status, purpose: r.purpose, docNo: r.docNo, issuedAt: iso(r.issuedAt), requestedAt: iso(r.requestedAt), canCancel: r.status === "REQUESTED" };
+}
+
+/** สลิปที่ออกแล้วของฉัน แยกตามปีภาษี (ปีใหม่ก่อน) */
+export async function mySlips(actor: SelfActor): Promise<MySlipsDto | Refusal> {
+  const me = await resolveSelf(actor);
+  if (!me) return NO();
+  const rows = await runTx(me.ctx, (tx) => issuedRows(tx, me.ctx, me.employeeId, mySlipHref));
+  if (!rows) return refuse("SLIP_DATA", "slipData");
+  return { ok: true, years: yearTotals(rows) };
+}
+/** สลิปของฉัน 1 รอบ (ISSUED เท่านั้น — อื่น ๆ = ไม่พบ) */
+export async function mySlip(actor: SelfActor, input: { runId: unknown }): Promise<SlipDto | Refusal> {
+  const me = await resolveSelf(actor);
+  if (!me) return NO();
+  const L = await loadMine(me.ctx, me.employeeId, str(obj(input).runId));
+  if (!L || slipState(L.run) !== "ISSUED") return NO();
+  return dtoOf(L);
+}
+export async function downloadMyPayslipPdf(actor: SelfActor, input: { runId: unknown }): Promise<DownloadOk | Refusal> {
+  const me = await resolveSelf(actor);
+  if (!me) return NO();
+  const L = await loadMine(me.ctx, me.employeeId, str(obj(input).runId));
+  if (!L || slipState(L.run) !== "ISSUED") return NO();
+  const d = dtoOf(L);
+  if (!d.ok) return d;
+  const out = await slipPdf(me.ctx, d);
+  await writeAudit({ tenantId: me.ctx.tenantId, actorType: "USER", actorId: me.userId, action: "hr.payslip.download", targetType: "HrPayrollRun", targetId: L.run.id, after: { runId: L.run.id, employeeId: me.employeeId, periodKey: L.run.periodKey, by: "SELF" } });
+  return out;
+}
+/** ขอหนังสือรับรองเงินเดือน (พนักงานที่ยังทำงาน · 1 คำขอที่รอต่อคน) */
+export async function requestSalaryCertificate(actor: SelfActor, input: { purpose: unknown }, opts?: Opts): Promise<{ ok: true; certId: string } | Refusal> {
+  const me = await resolveSelf(actor);
+  if (!me) return NO();
+  if (!me.active) return refuse("INACTIVE", "inactive");
+  const purpose = obj(input).purpose;
+  if (!isSlipPurpose(purpose)) return refuse("PURPOSE", "purpose");
+  const db = tenantDb(me.ctx) as unknown as Db;
+  const open = await db.hrSalaryCertificate.findFirst({ where: { tenantId: me.ctx.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, status: "REQUESTED" }, select: { id: true } });
+  if (open) return refuse("CERT_REQ_OPEN", "certReqOpen");
+  let certId: string;
+  try {
+    certId = (await db.hrSalaryCertificate.create({ data: { tenantId: me.ctx.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, status: "REQUESTED", purpose, requestedById: me.userId, requestedAt: nowOf(opts) }, select: { id: true } })).id;
+  } catch (e) {
+    if (P2002(e)) return refuse("CERT_REQ_OPEN", "certReqOpen");
+    throw e;
+  }
+  await writeAudit({ tenantId: me.ctx.tenantId, actorType: "USER", actorId: me.userId, action: "hr.salarycert.request", targetType: "HrSalaryCertificate", targetId: certId, after: { certId, purpose } });
+  return { ok: true, certId };
+}
+/** ยกเลิกคำขอของฉันที่ยังรออยู่ */
+export async function cancelMySalaryCertRequest(actor: SelfActor, input: { certId: unknown }, opts?: Opts): Promise<{ ok: true } | Refusal> {
+  const me = await resolveSelf(actor);
+  const certId = str(obj(input).certId);
+  if (!me || !ID_RE.test(certId)) return NO();
+  const db = tenantDb(me.ctx) as unknown as Db;
+  const r = await db.hrSalaryCertificate.findFirst({ where: { id: certId, tenantId: me.ctx.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId }, select: { status: true } });
+  if (!r) return NO();
+  const u = await db.hrSalaryCertificate.updateMany({ where: { id: certId, tenantId: me.ctx.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, status: "REQUESTED" }, data: { status: "CANCELLED", decidedById: me.userId, decidedAt: nowOf(opts) } });
+  if (u.count !== 1) return refuse("NOT_DECIDABLE", "notDecidable");
+  await writeAudit({ tenantId: me.ctx.tenantId, actorType: "USER", actorId: me.userId, action: "hr.salarycert.cancel", targetType: "HrSalaryCertificate", targetId: certId, after: { certId } });
+  return { ok: true };
+}
+/** คำขอ/ใบของฉัน (ยกเลิกคำขอแล้ว · ใบที่ถูกยกเลิก = ไม่แสดง) */
+export async function listMySalaryCertificates(actor: SelfActor): Promise<{ ok: true; items: MyCertRowDto[] } | Refusal> {
+  const me = await resolveSelf(actor);
+  if (!me) return NO();
+  const rows = (await (tenantDb(me.ctx) as unknown as Db).hrSalaryCertificate.findMany({
+    where: { tenantId: me.ctx.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, status: { not: "CANCELLED" }, voidedAt: null },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 50,
+    select: CERT_SELECT,
+  })) as CertRow[];
+  return { ok: true, items: rows.map(myCertDto) };
+}
+/** ใบที่ออกแล้วของฉัน (ยังไม่ถูกยกเลิก) → PDF */
+export async function downloadMySalaryCertificate(actor: SelfActor, input: { certId: unknown }): Promise<DownloadOk | Refusal> {
+  const me = await resolveSelf(actor);
+  if (!me) return NO();
+  const r = await certPdf(me.ctx, { id: str(obj(input).certId), employeeId: me.employeeId }, true);
+  if (!r.ok) return r.code === "CERT_CHANGED" ? r : NO();
+  await writeAudit({ tenantId: me.ctx.tenantId, actorType: "USER", actorId: me.userId, action: "hr.salarycert.download", targetType: "HrSalaryCertificate", targetId: r.certId, after: { certId: r.certId, by: "SELF" } });
+  return { ok: true, fileName: r.fileName, contentType: r.contentType, bytes: r.bytes };
+}
+// ◂ HR H3.8
