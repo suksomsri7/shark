@@ -731,3 +731,11 @@ export async function workEntrySourceEmployeesInTx(tx: Db, ctx: Ctx, periodKey: 
   return out;
 }
 // ◂ HR H3.2
+// HR H3.4 ▸ (fix r2 G7) ปลดหัววัน/แถวชนิดออกจากรอบที่กลับเป็นร่างเพราะลงบัญชีไม่สำเร็จ — คู่ของ bindWorkEntriesToRunInTx (ผู้เรียก: payroll.ts ถือล็อกงวดอยู่)
+export async function unbindWorkEntriesFromRunInTx(tx: Db, ctx: Ctx, input: { runId: string }): Promise<{ days: number; entries: number }> {
+  const where = { tenantId: ctx.tenantId, systemId: ctx.systemId, runId: input.runId };
+  const d = await tx.hrWorkDay.updateMany({ where, data: { runId: null } });
+  const e = await tx.hrWorkEntry.updateMany({ where, data: { runId: null } });
+  return { days: d.count, entries: e.count };
+}
+// ◂ HR H3.4

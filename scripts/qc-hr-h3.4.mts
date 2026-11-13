@@ -17,7 +17,7 @@ import {
   PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, fileAt, srcFiles, makeRegistry, qc4Env, makeFixtures, cleanupFx,
   vOf, fitnessNoEnv, importsOf, jsonOf, testidsOf, loadOpt, modState, msgParity, tokensOnly, holdAdvisory, frozenControls,
 } from "./qc-hr-lib.mjs";
-import { FIX_CHECKS, fnBody, lineStr, runFixRound1, runPureH34, runStaticH34 } from "./qc-hr-h3.4-lib.mjs"; // ORACLE-EDIT (H3.4 fix round 1): controller F1–F10 + coverage list — checks live in the lib (file size)
+import { FIX_CHECKS, FIX2_CHECKS, fnBody, lineStr, runFixRound1, runFixRound2, runPureH34, runStaticH34 } from "./qc-hr-h3.4-lib.mjs"; // ORACLE-EDIT (H3.4 fix round 1): controller F1–F10 + coverage list — checks live in the lib (file size)
 
 const SUITE = "qc-hr-h3.4";
 const ARGV = process.argv.slice(2);
@@ -108,6 +108,8 @@ X12.1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
 Z1|house|C|G|no residue · ACTIVE law count restored
 S7.5|cov|C|G|[db] (H3.2-guarded, fix r1 coverage) v2 approve before the deductions were synced ⇒ ATTENDANCE_SYNC (H3.2 gate) · run DRAFT
 ${FIX_CHECKS}
+${FIX2_CHECKS}
+S7.6|G2|C|G|[db] (H3.2-guarded, fix r2 G2) stale late deduction bound to a v2 draft: correction → pull → sync waits → rebuild ok (stale left out) → sync supersedes → approve ⇒ corrected 2,361 settled once, no loop
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
   return [`H3.4-${id}`, g, SEV[sv], (b === "R" ? "RED" : "GREEN") as Base, t] as const;
@@ -370,12 +372,15 @@ async function runDb(): Promise<void> {
     const rb = await PY("recomputeDraftRun", cA, RS ?? "∅", A.pay3, { viewer: V.pay3, now: N_OCT1 });
     const run = await runRow(RS);
     const same = await approve(cA, RS, A.pay3);
-    const r = { ok: rb.ok, maker: run?.createdById === U.pay3.id, steps: (await stepsOf(RS)) === null, totals: Number(run?.n) === 12027709, same: !same.ok && codeOf(same) === "SAME_PERSON" };
+    // ORACLE-EDIT (H3.4 fix round 2 G6): stepsJson now carries the makers list — "steps cleared" = no branch confirmations left (makers include pay3)
+    const st9 = await stepsOf(RS);
+    const r = { ok: rb.ok, maker: run?.createdById === U.pay3.id, steps: !st9?.branches && Array.isArray(st9?.makers) && st9.makers.includes(U.pay3.id), totals: Number(run?.n) === 12027709, same: !same.ok && codeOf(same) === "SAME_PERSON" };
     ck("S4.9", r, "rebuilder is the maker", `${shown(rb)} maker=${run?.createdById === U.pay3.id} ${shown(same)}`);
   }
   // ── S4.10 approve ──
   {
-    const res = await Promise.all([0, 1, 2].map(() => approve(cA, RS, A.pay1)));
+    // ORACLE-EDIT (H3.4 fix round 2 G6): pay1 created this draft and pay3 rebuilt it ⇒ both are on the makers list — the checker is the owner (Q9 exemption)
+    const res = await Promise.all([0, 1, 2].map(() => approve(cA, RS, A.owner)));
     const run = await runRow(RS);
     const lines = run?.journalEntryId ? ((await P.accountJournalLine.findMany({ where: { entryId: run.journalEntryId }, select: { debit: true, credit: true } }).catch(() => [])) as Any[]) : [];
     const dr = lines.reduce((s, l) => s + Number(l.debit), 0);
@@ -384,7 +389,7 @@ async function runDb(): Promise<void> {
     const carry = (await rows(`SELECT kind::text AS k, "amountSatang" AS a, "periodKey" AS p, status::text AS s, "employeeId" AS e, "sourceRef" AS r FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD' ORDER BY "amountSatang"`, sA))
       .map((c: Any) => `${c.e === E.mA ? "mA" : c.e === E.eC ? "eC" : "?"}:${c.k}:${c.a}:${c.p}:${c.s}:${String(c.r).startsWith(`cf:${RS}:`)}`);
     const r = {
-      one: res.filter((x) => x.ok).length === 1, run: run?.status === "APPROVED" && run?.approvedById === U.pay1.id, jv: dr === 12509167 && cr === 12509167,
+      one: res.filter((x) => x.ok).length === 1, run: run?.status === "APPROVED" && run?.approvedById === U.owner.id, jv: dr === 12509167 && cr === 12509167,
       days: Number(unbound[0]?.n ?? -1) === 0, carry: canon(carry) === canon(["eC:ADVANCE:235000:2031-10:APPROVED:true", "mA:DEDUCTION:372500:2031-10:APPROVED:true"]),
     };
     ck("S4.10", r, "1 ok · JV · carry", `${res.map(shown).join(" ")} dr=${dr} carry=${carry.join(",")}`);
@@ -482,11 +487,13 @@ async function runDb(): Promise<void> {
     if (cr.value?.id) await pay.deleteDraftRun(cN, cr.value.id, A.owner).catch(() => null);
   }
   // ── fix round 1 (controller F1–F10 + coverage) — own systems per check (qc-hr-h3.4-lib.mts) ──
-  await runFixRound1({
+  const FXE = {
     P, TT, tag, ck, T, LAW_KEY, sys: (n: string) => sys(n), me: (s: string, n: string, o: Record<string, unknown> = {}) => me(s, n, o), adj, att, PY, rows, itemBy, runRow, bk, V, A, U, u1, u2, OT, JG,
     SC: await loadOpt(`${H}stock-charge.ts`, "@/lib/modules/hr/stock-charge"), pay, mkUser: (t: string, r: Who["role"], ua: string[], p: Record<string, boolean>) => mk(t, r, ua, p),
-    PAY_SEP, PAY_OCT, N_OCT1, N_NOV1,
-  });
+    PAY_SEP, PAY_OCT, N_OCT1, N_NOV1, WE: await loadOpt(`${H}work-entries.ts`, "@/lib/modules/hr/work-entries"),
+  };
+  await runFixRound1(FXE);
+  await runFixRound2(FXE); // fix round 2 (controller G1–G6)
   // ── S5 races (system B) ──
   const del = async () => {
     for (const r of await liveRuns(sB, SEP)) await pay.deleteDraftRun(cB, r.id, A.owner).catch(() => null);
@@ -531,6 +538,7 @@ async function runDb(): Promise<void> {
     chk("S7.3", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.4", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.5", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
+    chk("S7.6", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
   } else {
     const A_ = (fn: string, ...a: unknown[]) => callMod(AP, F.attPay, fn, a);
     // ORACLE-EDIT (H3.4 builder, phase B): the S5.3/S5.4 race rows (ALLOWANCE 10,000 / 20,000 of eS in 2031-09) outlive their deleted drafts —
@@ -591,6 +599,31 @@ async function runDb(): Promise<void> {
     const st = await createV2(cB, V.pay1, SEP, PAY_SEP, A.pay1);
     ck("S7.2", { refused: !st.ok && st.text === T.attStale }, "H3.2 stale text", shown(st));
     await del();
+    {
+      // S7.6 (fix r2 G2): from the stale state above — sync (supersede → PENDING 4,166 for late 30) → approve → create (binds) → correct 07:30→07:17 → pull →
+      //   sync waits (bound to a draft) → rebuild OK (stale left out) → sync (supersede → PENDING 2,361) → approve rows → approve run ⇒ settled = 2,361 once
+      //   hand: 2,000,000 × 30 / 14,400 = 4,166.67 → 4,166 (floor, H3.2) · × 17 / 14,400 = 2,361.11 → 2,361 (grace 15 ⇒ 07:17 is late 17)
+      const pend = async () => { for (const r of await rows(`SELECT id FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'LATE_RULE' AND status::text = 'PENDING'`, E.eS)) await pay.decideAdjustment(cB, r.id, "APPROVED", A.owner).catch(() => null); };
+      const buildB = () => callMod(WEm, "work-entries", "buildWorkEntrySnapshot", [cB, V.owner, { periodKey: SEP }, { now: N_OCT1 }]);
+      const WEm = await loadOpt(`${H}work-entries.ts`, "@/lib/modules/hr/work-entries");
+      const s0 = await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
+      await pend();
+      const c6 = await createV2(cB, V.pay1, SEP, PAY_SEP, A.pay1);
+      const bound0 = (await itemBy(c6.value?.id, E.eS))?.deductSatang;
+      await P.hrAttendance.updateMany({ where: { id: eSin }, data: { at: bk("2031-09-01", "07:17") } });
+      await recB();
+      await buildB();
+      const s1 = await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
+      const rb = await PY("recomputeDraftRun", cB, c6.value?.id ?? "∅", A.pay1, { viewer: V.pay1, now: N_OCT1 });
+      const s2 = await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
+      await pend();
+      const a6 = await approve(cB, c6.value?.id, A.pay3);
+      const live = await rows(`SELECT "amountSatang" AS a, status::text AS st, "runId" FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'LATE_RULE' AND status::text = 'APPROVED'`, E.eS);
+      const settled = live.reduce((x: number, r: Any) => x + Number(r.a), 0);
+      ck("S7.6", { s0: s0.ok, created: c6.ok && Number(bound0) === 4166, rebuilt: rb.ok, s2: s2.ok, approved: a6.ok, once: settled === 2361 && live.length === 1 }, "no loop · settled 2,361", `${shown(c6)} b0=${bound0} s1=${short(s1.value, 60)} ${shown(rb)} ${shown(a6)} live=${short(live, 80)}`);
+      if (a6.ok) await PY("reverseRun", cB, c6.value?.id ?? "∅", "qc cleanup", A.owner);
+      else if (c6.value?.id) await pay.deleteDraftRun(cB, c6.value.id, A.owner).catch(() => null);
+    }
   }
   // ── S8 v1 ──
   {

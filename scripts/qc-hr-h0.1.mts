@@ -410,7 +410,8 @@ function runStatic(): void {
   // ORACLE-EDIT (H2.5 r3 · controller-authorized): markPaid hashed with exactly the 3 marked period-lock lines (`HR H2.5 r3`) removed — same as qc-hr-h1.3 S5.6 / qc-hr-h0.6 S8.4
   const mpBlk = seg(pay, "// ── จ่ายแล้ว (APPROVED→PAID) ──", "// ◂ CRM C3.3", true);
   const mpMarked = mpBlk.split("\n").filter((l) => /\/\/ HR H2\.5 r3 [▸◂]/.test(l)).length;
-  const mpSha = mpMarked === 3 ? sha(mpBlk.split("\n").filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l)).join("\n")) : "∅";
+  // ORACLE-EDIT (H3.4 fix round 2 G5): the one marked posting-guard line of markPaid (`// HR H3.4 ◂ fix r2 G5`) is stripped too
+  const mpSha = mpMarked === 3 ? sha(mpBlk.split("\n").filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l) && !/\/\/ HR H3\.4 ◂ fix r2 G5/.test(l)).join("\n")) : "∅";
   chk("S4.3", crmSha === CRM_BLOCK_SHA && mpSha === MARKPAID_BLOCK_SHA, "both blocks = base", `crmEntry=${crmSha === CRM_BLOCK_SHA} markPaid=${mpSha === MARKPAID_BLOCK_SHA}`);
   // S4.4 — UI: the two buttons, wired, DRAFT only. Candidate files: payroll-ui.tsx + any hr/*.tsx that uses the new actions.
   const hrDir = join(ROOT, "src/lib/modules/hr");

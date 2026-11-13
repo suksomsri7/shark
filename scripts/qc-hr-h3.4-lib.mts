@@ -213,7 +213,7 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
     //   the named additive gate readers (H3.2: workEntryStatesInTx · workEntrySourceEmployeesInTx · H3.4: workEntryPunchEmployeesInTx) inside their marked
     //   blocks + the one import line of workEntryPunchEmployeesInTx — both sides are compared with exactly those blocks/lines removed, and every export
     //   inside a removed block must be one of the named readers
-    const GATE_READERS = new Set(["workEntryStatesInTx", "workEntrySourceEmployeesInTx", "workEntryPunchEmployeesInTx"]);
+    const GATE_READERS = new Set(["workEntryStatesInTx", "workEntrySourceEmployeesInTx", "workEntryPunchEmployeesInTx", "unbindWorkEntriesFromRunInTx"]); // + fix r2 G7 (the pair of bindWorkEntriesToRunInTx)
     const cutBlocks = (src: string | null) => {
       if (src === null) return { rest: null as string | null, names: [] as string[] };
       const names: string[] = [];
@@ -301,7 +301,7 @@ export type FixEnv = {
   bk: (day: string, hm?: string) => Date;
   V: Record<string, Any>; A: Record<string, Any>; U: Record<string, Any>;
   u1: string; u2: string; OT: Any; JG: Any; SC: Any; pay: Any; mkUser: Any;
-  PAY_SEP: Date; PAY_OCT: Date; N_OCT1: Date; N_NOV1: Date;
+  PAY_SEP: Date; PAY_OCT: Date; N_OCT1: Date; N_NOV1: Date; WE?: Any;
 };
 
 export async function runFixRound1(X: FixEnv): Promise<void> {
@@ -484,7 +484,8 @@ export async function runFixRound1(X: FixEnv): Promise<void> {
     const pv = await PY("previewPayrollRunV2", c, { role: wU1.role, unitAccess: wU1.unitAccess, permissions: wU1.permissions, userId: wU1.id }, { runId: cr.value?.id ?? "∅" });
     const rowsV = pv.value?.rows ?? [];
     const t = pv.value?.run?.totals ?? {};
-    ck("S4.24", { rows: rowsV.length === 1 && rowsV[0]?.employeeId === e1, totals: t.netSatang === rowsV[0]?.netSatang && t.grossSatang === rowsV[0]?.grossSatang, scope: pv.value?.run?.scope === "UNITS" }, "visible totals only", `${shown(pv)} rows=${rowsV.length} net=${t.netSatang}`);
+    const i1 = await itemBy(cr.value?.id, e1); // ORACLE-EDIT (fix r2 G8): employer SSO total = Σ visible employer SSO
+    ck("S4.24", { rows: rowsV.length === 1 && rowsV[0]?.employeeId === e1, totals: t.netSatang === rowsV[0]?.netSatang && t.grossSatang === rowsV[0]?.grossSatang && t.ssoEmployerSatang === Number(i1?.ssoEmployerSatang), scope: pv.value?.run?.scope === "UNITS" }, "visible totals only", `${shown(pv)} rows=${rowsV.length} net=${t.netSatang}`);
     if (cr.value?.id) await X.pay.deleteDraftRun(c, cr.value.id, A.owner).catch(() => null);
   });
 
@@ -520,6 +521,8 @@ export async function runFixRound1(X: FixEnv): Promise<void> {
     // membership: a new salaried member of the period after create (H3.1 gate only reads the run's own work days)
     const eNew = await me(s, "เข้าใหม่", { unitId: u1 });
     await tryIt("membership", () => prof(s, eNew, 1000000), () => P.hrSalaryProfile.deleteMany({ where: { systemId: s, employeeId: eNew } }));
+    // fix r2 G9: N (normal day minutes) — the H3.1 work-entries gate runs first; record which refusal answers
+    await tryIt("N", () => PY("setPayrollEngine", c, V.owner, { engineVersion: 2 }, { now: X.N_OCT1 }).then(() => X.WE?.setNormalMinutesPerDay({ tenantId: TT, systemId: s }, V.owner, 450)), () => X.WE?.setNormalMinutesPerDay({ tenantId: TT, systemId: s }, V.owner, 480));
     const fin = await approve(c, id);
     changed.finalOk = fin.ok;
     if (fin.ok) await PY("reverseRun", c, id ?? "∅", "qc cleanup", A.owner);
@@ -562,5 +565,167 @@ export async function runFixRound1(X: FixEnv): Promise<void> {
     ck("S4.19", { approved: ap.ok, runA: hwA === 83333, reqA: otA === 0, reqB: otB0 === 41667 && otB1 === 41667, runB: hwB === 41667 }, "no double pay both orders", `hwA=${hwA} otA=${otA} otB=${otB0}/${otB1} hwB=${hwB} ${short(qa, 40)}`);
     if (ap.ok) await PY("reverseRun", c, cr.value?.id ?? "∅", "qc cleanup", A.owner);
   });
-  ck("S4.27", { law: !!changed.law, amount: !!changed.amount, carryIn: !!changed.carryIn, workDay: !!changed.workDay, caps: !!changed.caps, membership: !!changed.membership, otMinutes: !!changed.otMinutes, finalOk: !!changed.finalOk }, "INPUTS_CHANGED ×7", short(changed, 160));
+  console.log(`  ℹ S4.27 refusals ${JSON.stringify(changed)}`);
+  ck("S4.27", { law: !!changed.law, amount: !!changed.amount, carryIn: !!changed.carryIn, workDay: !!changed.workDay, caps: !!changed.caps, membership: !!changed.membership, otMinutes: !!changed.otMinutes, N: !!changed.N || (changed as Any).NCode === "WORK_ENTRIES", finalOk: !!changed.finalOk }, "INPUTS_CHANGED ×7 (+ N refused)", short(changed, 200));
+}
+
+// ═════════════════════════ fix round 2 (controller G1–G9) ═════════════════════════
+export const FIX2_CHECKS = `
+S4.31|G1|C|R|[db] (fix r2 G1) v1 Jul/Aug → engine 2 → Sept v2 approved ⇒ reversing the v1 Aug run refused LATER_RUN
+S4.32|G3|C|R|[db] (fix r2 G3) Sat 420 min worked (no roster): request-first+revoke-after · run-first+request · revoke-before · revoke-then-new · reverse+rebuild ⇒ every employee 420 min / 87,500 exactly once
+S4.33|G4|M|R|[db] (fix r2 G4) a second OT request on the same day off is refused (pinned H2.9 rule)
+S4.34|G5|C|R|[db] (fix r2 G5) markPaid during the posting window refused (posting) · finalize failure rolls back with no JV · re-approve ⇒ exactly one JV linked · carry once · work days unbound after the failure (G7)
+S4.35|G6|C|R|[db] (fix r2 G6) X creates · Y cancels a bound row (rebuild) ⇒ both X and Y refused SAME_PERSON · Z approves
+`.trim();
+
+export async function runFixRound2(X: FixEnv): Promise<void> {
+  const { P, TT, ck, T, sys, me, adj, att, PY, rows, itemBy, runRow, bk, V, A, U, u1 } = X;
+  const SEP = "2031-09";
+  const shop = async (n: string, engine = 2) => {
+    const s = await sys(n);
+    if (engine === 2) await PY("setPayrollEngine", { tenantId: TT, systemId: s }, V.owner, { engineVersion: 2 }, { now: X.N_OCT1 });
+    return { s, c: { tenantId: TT, systemId: s } };
+  };
+  const prof = (s: string, emp: string, base: number) => P.hrSalaryProfile.create({ data: { tenantId: TT, systemId: s, employeeId: emp, baseSalarySatang: base, ssoEligible: true, personalDeductionJson: { spouse: false, children: 0 } } });
+  const create = (c: Any, per = SEP, payDate = X.PAY_SEP, now = X.N_OCT1, actor = A.pay1, viewer = V.pay1) => PY("createPayrollRunV2", c, viewer, { periodKey: per, payDate }, { now, actor });
+  const approve = (c: Any, id: string | undefined, actor: Any = A.pay3, hooks?: Any) => (hooks ? PY("approveRun", c, id ?? "∅", undefined, actor, hooks) : PY("approveRun", c, id ?? "∅", undefined, actor));
+  const codeOf = (r: { value: Any }) => String(r.value?.code ?? "");
+  const shown = (r: { ok: boolean; text: string }) => (r.ok ? "ok" : `"${short(r.text, 60)}"`);
+  const guard = async (id: string, fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (e) {
+      ck(id, { crashed: false }, "no crash", `THROW ${errText(e)}`);
+    }
+  };
+
+  // ── S4.31 G1 ──
+  await guard("S4.31", async () => {
+    const { s, c } = await shop("ทีมรุ่นเดิม", 1);
+    const e1 = await me(s, "รุ่นเดิม", { unitId: u1 });
+    await prof(s, e1, 3000000);
+    const v1 = async (per: string, payDate: Date) => {
+      const r = await X.pay.createPayrollRun(c, { periodKey: per, payDate }).catch((e: unknown) => ({ err: errText(e) }));
+      if (r?.id) await X.pay.approveRun(c, r.id);
+      return r?.id as string | undefined;
+    };
+    const jul = await v1("2031-07", new Date("2031-07-31T03:00:00Z"));
+    const aug = await v1("2031-08", new Date("2031-08-31T03:00:00Z"));
+    await PY("setPayrollEngine", c, V.owner, { engineVersion: 2 }, { now: X.N_OCT1 });
+    const cr = await create(c);
+    const ap = await approve(c, cr.value?.id);
+    const rv = await PY("reverseRun", c, aug ?? "∅", "qc", A.owner);
+    ck("S4.31", { v1: !!jul && !!aug, sept: cr.ok && ap.ok, refused: !rv.ok && codeOf(rv) === "LATER_RUN" && rv.text === T.laterRun, augKept: (await runRow(aug))?.status === "APPROVED" }, "LATER_RUN on the v1 run", `${shown(cr)} ${shown(ap)} ${shown(rv)}`);
+  });
+
+  // ── S4.32 / S4.33 G3 G4: Saturday 6 Sep worked 09:00–16:00 (420 min) · monthly 3,000,000 ⇒ 87,500 for the day, once ──
+  await guard("S4.32", async () => {
+    const { s, c } = await shop("ทีมวันหยุดสัปดาห์");
+    const D = "2031-09-06";
+    const E: Record<string, string> = {};
+    const shK = (await P.hrShift.create({ data: { tenantId: TT, systemId: s, name: `เช้า ${X.tag}`, startMin: 420, endMin: 900, crossesMidnight: false, graceMin: 15 } })).id as string;
+    for (const k of ["k1", "k2", "k3", "k4", "k5"]) {
+      E[k] = await me(s, k, { unitId: u1 });
+      await prof(s, E[k], 3000000);
+      // rostered weekdays (as the hunter's fixture) ⇒ Saturday without a roster entry is a day off, not "no schedule"
+      for (const wd of ["2031-09-01", "2031-09-02"]) {
+        const re = (await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: s, employeeId: E[k], date: dbDate(wd), shiftId: shK, unitId: u1, startMin: 420, endMin: 900, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-06-01T00:00:00Z"), source: "MANUAL" } })).id as string;
+        await att(s, E[k], "IN", bk(wd, "07:00"), re);
+        await att(s, E[k], "OUT", bk(wd, "15:00"), re);
+      }
+      await att(s, E[k], "IN", bk(D, "09:00"), null);
+      await att(s, E[k], "OUT", bk(D, "16:00"), null);
+    }
+    const judge = async (days: string[]) => { for (const d of days) await X.JG.runAttendanceJobs({ now: bk(d), tenantId: TT }); };
+    await judge(["2031-09-08", "2031-09-15", "2031-09-22", "2031-09-29", "2031-10-01"]);
+    const req = async (k: string, st: string, en: string, now: Date, decideNow: Date) => {
+      const q = await X.OT.requestOt(c, V.owner, { employeeId: E[k], date: D, start: st, end: en }, { now }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+      await X.OT.decideOtRequest(c, V.owner, q?.id ?? "∅", "APPROVED", { now: decideNow }).catch(() => null);
+      await X.OT.settleOtRequests({ tenantId: TT, systemId: s, now: decideNow }).catch(() => null);
+      return q as Any;
+    };
+    const revoke = (id: string, now: Date) => X.OT.revokeOtRequest(c, V.owner, id, { reason: "qc revoke" }, { now }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const before = bk("2031-09-05"), at8 = bk("2031-09-08"), late = bk(D, "20:00");
+    const q1 = await req("k1", "09:00", "13:00", before, at8);
+    const q3 = await req("k3", "09:00", "13:00", before, at8);
+    const q4 = await req("k4", "09:00", "13:00", before, at8);
+    const q5 = await req("k5", "09:00", "13:00", before, at8);
+    await revoke(q3?.id ?? "∅", bk("2031-09-09")); // revoke before the run
+    // G4: a second request on the same day off is refused
+    const dup = await X.OT.requestOt(c, V.owner, { employeeId: E.k1, date: D, start: "14:00", end: "16:00" }, { now: before }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    ck("S4.33", { refused: !dup?.id && [T.dayOffOne, T.otOverlap].includes(String(dup?.reason ?? "")) }, "second request refused", short(dup, 80));
+    const cr = await create(c);
+    const ap = await approve(c, cr.value?.id);
+    const oct1 = X.N_OCT1, oct2 = bk("2031-10-02");
+    await req("k2", "09:00", "16:00", late, oct1); // run first, request after
+    await revoke(q1?.id ?? "∅", oct2); // revoke after the run
+    await revoke(q4?.id ?? "∅", oct2);
+    await req("k4", "09:00", "16:00", late, oct2); // revoke then a new request
+    await revoke(q5?.id ?? "∅", oct2);
+    const tally = async (k: string, run: string | undefined) => {
+      const hw = ((await itemBy(run, E[k]))?.snapshotJson?.lines ?? []).filter((l: Any) => l.code === "HOLIDAY_WORK");
+      const runAmt = hw.reduce((x: number, l: Any) => x + Number(l.amountSatang), 0);
+      const runMin = hw.reduce((x: number, l: Any) => x + Number(l.minutes), 0);
+      const ot = await rows(`SELECT kind::text AS k, "amountSatang" AS a FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'OT_REQUEST' AND status::text = 'APPROVED'`, E[k]);
+      const otAmt = ot.reduce((x: number, r: Any) => x + (r.k === "DEDUCTION" ? -Number(r.a) : Number(r.a)), 0);
+      const reqs = await rows(`SELECT "segmentsJson" AS g FROM "HrOtRequest" WHERE "employeeId" = $1 AND status::text IN ('APPROVED','CANCELLED') AND "settledAt" IS NOT NULL`, E[k]);
+      const reqMin = reqs.flatMap((r: Any) => r.g ?? []).filter((g: Any) => g.cls === "HOLIDAY_WORK").reduce((x: number, g: Any) => x + Number(g.minutes), 0);
+      return { minutes: runMin + reqMin, total: runAmt + otAmt };
+    };
+    const all = async (run: string | undefined) => Object.fromEntries(await Promise.all(Object.keys(E).map(async (k) => [k, await tally(k, run)])));
+    const t1 = await all(cr.value?.id);
+    const rv = await PY("reverseRun", c, cr.value?.id ?? "∅", "qc", A.owner);
+    const cr2 = await create(c);
+    const ap2 = await approve(c, cr2.value?.id);
+    const t2 = await all(cr2.value?.id);
+    // hand: 420 × 3,000,000 / (30 × 480) = 87,500 per employee; split amounts round to whole satang per line (±1 tolerated per split)
+    const good = (t: Any) => Object.values(t).every((x: Any) => x.minutes === 420 && Math.abs(x.total - 87500) <= 1);
+    ck("S4.32", { approved: ap.ok, first: good(t1), rebuilt: rv.ok && cr2.ok && ap2.ok && good(t2) }, "420 min / 87,500 once in every order", `${shown(cr)} ${shown(ap)} t1=${short(t1, 150)} t2=${short(t2, 150)}`);
+    if (ap2.ok) await PY("reverseRun", c, cr2.value?.id ?? "∅", "qc cleanup", A.owner);
+  });
+
+  // ── S4.34 G5 + G7 ──
+  await guard("S4.34", async () => {
+    const { s, c } = await shop("ทีมลงบัญชีค้าง");
+    const e1 = await me(s, "ค้าง", { unitId: u1 });
+    await prof(s, e1, 1500000);
+    await adj(s, e1, SEP, "DEDUCTION", 400000);
+    const jvCount = async () => Number((await rows(`SELECT count(*)::int AS n FROM "AccountJournalEntry" WHERE "tenantId" = $1`, TT))[0]?.n ?? -1);
+    const cr = await create(c);
+    const id = cr.value?.id;
+    const j0 = await jvCount();
+    const f = await approve(c, id, A.pay3, { __failFinal: true });
+    const j1 = await jvCount();
+    const r1 = await runRow(id);
+    const bound = Number((await rows(`SELECT count(*)::int AS n FROM "HrWorkDay" WHERE "runId" = $1`, id ?? "∅"))[0]?.n ?? -1);
+    const carry1 = await rows(`SELECT id FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD'`, s);
+    let paidInWindow: Any = null;
+    const ok = await approve(c, id, A.pay3, { __beforeFinal: async () => { paidInWindow = await PY("markPaid", c, id ?? "∅"); } });
+    const j2 = await jvCount();
+    const r2 = await runRow(id);
+    const carry2 = await rows(`SELECT "amountSatang" AS a FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD'`, s);
+    const again = await approve(c, id, A.pay3);
+    const j3 = await jvCount();
+    ck("S4.34", {
+      failed: !f.ok && codeOf(f) === "POST_FAILED", noJv: j1 === j0 && r1?.status === "DRAFT" && !r1?.journalEntryId && carry1.length === 0, unbound: bound === 0,
+      window: !!paidInWindow && !paidInWindow.ok && paidInWindow.text === T.posting, once: ok.ok && j2 === j0 + 1 && !!r2?.journalEntryId && carry2.length === 1 && Number(carry2[0]?.a) === 250000,
+      noSecond: !again.ok && j3 === j2,
+    }, "no orphan JV · posting refusal · once", `${shown(f)} jv ${j0}/${j1}/${j2}/${j3} bound=${bound} window=${paidInWindow ? shown(paidInWindow) : "∅"} ${shown(ok)} carry=${carry2.length}`);
+    if (ok.ok) await PY("reverseRun", c, id ?? "∅", "qc cleanup", A.owner);
+  });
+
+  // ── S4.35 G6 ──
+  await guard("S4.35", async () => {
+    const { s, c } = await shop("ทีมผู้สร้างหลายคน");
+    const e1 = await me(s, "หลายคน", { unitId: u1 });
+    await prof(s, e1, 1500000);
+    const al = await adj(s, e1, SEP, "ALLOWANCE", 10000);
+    const cr = await create(c); // X = pay1
+    const cn = await X.pay.cancelAdjustment(c, al, A.pay3).catch((e: unknown) => ({ ok: false, reason: errText(e) })); // Y = pay3 rebuilds by cancelling
+    const ax = await approve(c, cr.value?.id, A.pay1);
+    const ay = await approve(c, cr.value?.id, A.pay3);
+    const az = await approve(c, cr.value?.id, A.pay2);
+    ck("S4.35", { cancelled: !!cn?.ok, x: !ax.ok && codeOf(ax) === "SAME_PERSON", y: !ay.ok && codeOf(ay) === "SAME_PERSON", z: az.ok }, "makers list", `${short(cn, 40)} ${shown(ax)} ${shown(ay)} ${shown(az)}`);
+    if (az.ok) await PY("reverseRun", c, cr.value?.id ?? "∅", "qc cleanup", A.owner);
+  });
 }

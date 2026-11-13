@@ -28,7 +28,7 @@ import { otDaySpans, otPayDaysInTx, type OtPayStoredRow } from "./judge";
 import { loadOtLawRows } from "./law";
 import { OtAdjustmentConflict, writeOtAdjustmentInTx } from "./payroll";
 import { holidayWorkDayInTx, holidayWorkPricedInTx } from "./payroll"; // HR H3.4 ▸ R11: นาที HOLIDAY_WORK ที่รอบรุ่น 2 จ่ายแล้ว (ไม่จ่ายซ้ำ) ◂
-import { otDayMinutes } from "./ot-rules"; // HR H3.4 ▸ R11: แถบชั่วโมงปกติของวันหยุด = min(480, N) ◂
+import { otDayMinutes, raised } from "./ot-rules"; // HR H3.4 ▸ R11: แถบชั่วโมงปกติของวันหยุด = min(480, N) ◂
 import { normalMinutesOf } from "./work-entries"; // HR H3.4 ▸ R11: ชั่วโมงปกติต่อวันของร้าน (ตรึงใน basisJson ตอนคิดเงินครั้งแรก) ◂
 import {
   OT_POLICY_RANGE,
@@ -478,7 +478,8 @@ async function measure(tx: Tx, ctx: Ctx, r: OtRow, now: Date): Promise<Entitleme
       // HR H3.4 ▸ fix r1 F1: แถบของวัน = นาทีทำงานวันหยุดที่รอบเห็น (W_day) — รอบจ่ายไป priced คำขอได้ส่วนที่เหลือ (worked 400/priced 400 ⇒ 0 · 400/200 ⇒ 200) ·
       //   รอบเก่าที่ไม่เก็บ W_day ⇒ แถบปกติ min(480,N) ◂
       const band = worked ?? otDayMinutes(basis.law, basis.normalDayMin); // HR H3.4 ◂
-      const left = Math.min(hw.minutes, Math.max(0, band - priced)); // HR H3.4 ◂
+      const others = worked === null ? 0 : await otherHolidayWorkMinInTx(tx, ctx, r); // HR H3.4 ▸ fix r2 G4: นาที HOLIDAY_WORK ที่คำขออื่นของวันเดียวกันจ่ายไว้แล้ว ◂
+      const left = Math.min(hw.minutes, Math.max(0, band - priced - others)); // HR H3.4 ◂
       const hwAmt = left > 0 ? otAmount({ ...basis, hasShift: false, dayClass, minutes: left, law: basis.law, normalDayMin: basis.normalDayMin }) : null; // HR H3.4 ◂
       const segs = [...(hwAmt && hwAmt.ok ? hwAmt.segments.filter((g) => g.cls === "HOLIDAY_WORK") : []), ...rest]; // HR H3.4 ◂
       amt = { ok: true, segments: segs, amountSatang: segs.reduce((x, g) => x + g.amountSatang, 0) }; // HR H3.4 ◂
@@ -538,7 +539,7 @@ async function settleTx(ctx: Ctx, base: { id: string; date: Date; employeeId: st
 
     const ent: Entitlement =
       mode.kind === "revoke"
-        ? pay0(null, r.attendanceDayId, r.attendanceDayVersion, frozenOf(r.basisJson), null)
+        ? await revokeKeepInTx(tx, ctx, r) // HR H3.4 ▸ fix r2 G3: ยกเลิกหลังรอบรุ่น 2 คิดวันนั้นแล้ว ⇒ คงค่าทำงานวันหยุดของนาทีที่รอบหักออกให้คำขอนี้ ◂
         : await measure(tx, ctx, r, now);
     if (ent.kind === "wait") {
       // r2.4: เขียนทุกครั้ง (updatedAt ขยับ) ⇒ ตัวรายชั่วโมงหยิบคำขอที่ลองนานที่สุดก่อน — คำขอที่รอไม่ขวางคำขอที่พร้อมจ่าย
@@ -746,3 +747,40 @@ export async function notifyOtDecided(evt: OtEvent): Promise<void> {
 // HR H2.10 ▸ ประตูปุ่ม "ยกเลิก" ของหน้า "ของฉัน" — สถานะเดียวที่ cancelOtRequest ข้างบนยอม (PENDING · ผู้ยื่นหรือตัวพนักงาน) ◂
 export const otCancelOpen = (status: string): boolean => status === "PENDING";
 // ◂ HR H2.10
+// HR H3.4 ▸ (fix r2 G3/G4) ค่าทำงานในวันหยุดจ่ายครั้งเดียวต่อนาทีที่ทำจริง ไม่ว่าลำดับคำขอ/รอบ/ยกเลิก:
+//   นาที HOLIDAY_WORK ที่คำขออื่น (อนุมัติ หรือยกเลิกแต่ยังคงส่วนที่ต้องจ่าย) ของพนักงาน·วันเดียวกันจ่ายไว้แล้ว ·
+//   ยกเลิกคำขอหลังรอบรุ่น 2 (APPROVED/PAID) คิดวันนั้น: รอบหักนาทีของคำขอนี้ออกไปแล้ว ⇒ คำขอนี้คงส่วน HOLIDAY_WORK = min(นาทีของคำขอ, W_day − รอบจ่าย − คำขออื่น)
+//   (ส่วน OT ×3 ถูกถอน) · ไม่มีรอบ = ถอนทั้งหมด (เดิม)
+async function otherHolidayWorkMinInTx(tx: Tx, ctx: Ctx, r: OtRow): Promise<number> {
+  const rows = await tx.hrOtRequest.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: r.employeeId, date: r.date, id: { not: r.id }, status: { in: ["APPROVED", "CANCELLED"] }, settledAt: { not: null } },
+    select: { segmentsJson: true },
+  });
+  return rows.reduce((s, x) => s + hwMinutesOf(x.segmentsJson), 0);
+}
+function hwMinutesOf(segs: unknown): number {
+  return (Array.isArray(segs) ? segs : []).reduce((s: number, g) => {
+    const o = g && typeof g === "object" ? (g as Record<string, unknown>) : {};
+    return s + (o.cls === "HOLIDAY_WORK" && typeof o.minutes === "number" ? o.minutes : 0);
+  }, 0);
+}
+async function revokeKeepInTx(tx: Tx, ctx: Ctx, r: OtRow): Promise<Entitlement> {
+  const none = pay0(null, r.attendanceDayId, r.attendanceDayVersion, frozenOf(r.basisJson), null);
+  const frozen = frozenOf(r.basisJson);
+  const mine = hwMinutesOf(r.segmentsJson);
+  if (!frozen?.profile || mine <= 0 || !r.settledAt) return none;
+  const day = dayOf(r.date);
+  const { worked } = await holidayWorkDayInTx(tx as unknown as Prisma.TransactionClient, ctx, { employeeId: r.employeeId, day });
+  if (worked === null) return none;
+  const priced = await holidayWorkPricedInTx(tx as unknown as Prisma.TransactionClient, ctx, { employeeId: r.employeeId, day });
+  const keep = Math.min(mine, Math.max(0, worked - priced - (await otherHolidayWorkMinInTx(tx, ctx, r))));
+  if (keep <= 0) return none;
+  const seg0 = (r.segmentsJson as unknown as OtSegment[]).find((g) => g.cls === "HOLIDAY_WORK");
+  const law = frozen.profile.law;
+  const dayClass: OtDayClass = seg0 && seg0.multiplierBp === raised(law).holidayWorkPaidBp ? "HOLIDAY" : "WORKDAY";
+  const amt = otAmount({ ...frozen.profile, hasShift: false, dayClass, minutes: keep, law, normalDayMin: frozen.profile.normalDayMin });
+  if (!amt.ok) return none;
+  const segments = amt.segments.filter((g) => g.cls === "HOLIDAY_WORK");
+  return { kind: "pay", paid: keep, amount: segments.reduce((x, g) => x + g.amountSatang, 0), segments, dayId: r.attendanceDayId, version: r.attendanceDayVersion, frozen, dayClass, code: null };
+}
+// ◂ HR H3.4
