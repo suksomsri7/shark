@@ -130,6 +130,7 @@ async function resolveViewers(): Promise<Viewer[]> {
 
 /** ผู้ดูคนนี้อยู่ร้านเดียวกับไฟล์ไหม (ไม่ใช่ = 404) */
 async function viewerBelongsToTenant(viewer: Viewer, tenantId: string): Promise<boolean> {
+  if (viewer.kind === "LINK_CUSTOMER") return true; // ตรวจแล้วด้วย linkCustomerMayOpenFile ก่อนบรรทัดเรียก (TRIPS T0.8)
   if (viewer.kind === "CUSTOMER" || viewer.kind === "PORTAL") return viewer.tenantId === tenantId; // CRM C3.5 ▸ PORTAL ◂
   const membership = await prisma.membership.findFirst({
     where: { userId: viewer.id, tenantId, acceptedAt: { not: null } },
@@ -172,6 +173,10 @@ async function handle(
 
   // ── 1) ใครขอ ──
   const viewers = await resolveViewers();
+  // TRIPS T0.8 ▸ ผู้ถือลิงก์กรอกข้อมูลผู้เดินทาง (OQ17(ค)): `lv` = id แถว audit link_issued (ไม่ใช่ token) — ต่อท้ายรายการ (ผู้ดูจาก cookie คงลำดับเดิม)
+  //   ไม่ใช่ตัวตนที่เชื่อได้ด้วยตัวเอง: ลายเซ็นต้องผูก `LINK_CUSTOMER:<lv>` และ trips ตรวจซ้ำทุกคำขอ (ลิงก์ล่าสุด · ไม่ถูกเพิกถอน · ไฟล์ของผู้เดินทางคนนั้น) ก่อนสตรีม ◂
+  const lv = new URL(req.url).searchParams.get("lv");
+  if (lv !== null && FILE_ASSET_ID_RE.test(lv)) viewers.push({ kind: "LINK_CUSTOMER", id: lv });
   const primary = viewers[0];
   if (!primary) return deny(403);
 
@@ -209,6 +214,8 @@ async function handle(
     select: { id: true, tenantId: true, path: true, contentType: true },
   });
   if (!asset) return deny(404);
+  // TRIPS T0.8 ▸ ผู้ดู LINK_CUSTOMER: ลิงก์ยังเป็นใบล่าสุดของผู้เดินทาง · การจองเปิด · ไฟล์เป็นของผู้เดินทางคนนั้น (ไม่ใช่ MEDICAL) — โหลด trips เฉพาะทางนี้ ◂
+  if (viewer.kind === "LINK_CUSTOMER" && !(await (await import("@/lib/modules/trips")).linkCustomerMayOpenFile({ viewerId: viewer.id, fileId: asset.id, tenantId: asset.tenantId }))) return deny(404);
   if (!(await viewerBelongsToTenant(viewer, asset.tenantId))) return deny(404);
 
   // ── 6) สตรีมไบต์จากที่เก็บด้วยกุญแจฝั่งเซิร์ฟเวอร์ ──

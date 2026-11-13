@@ -881,6 +881,13 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "trips.booking.approve": "อนุมัติหรือปฏิเสธคำขอจองทัวร์",
       "trips.booking.cancel": "ยกเลิกการจองทัวร์ที่ยังไม่ชำระ",
       // ── /T0.6 booking ──
+      // ── T0.8 passengers ── TRIPS T0.8 ▸ ผู้เดินทาง · ข้อมูลอ่อนไหว · คำขอเจ้าของข้อมูล (ใบสั่ง T0.8 §9 · reveal/health = สิทธิ์แคบ: OWNER หรือระบุตรง) ◂
+      "trips.passenger.view": "ดูข้อมูลผู้เดินทาง (ข้อมูลอ่อนไหวปิดบัง)",
+      "trips.passenger.edit": "แก้ข้อมูลผู้เดินทาง ส่งลิงก์กรอกเอง และรับเอกสาร",
+      "trips.passenger.reveal": "เปิดดูเลขเอกสารเต็ม",
+      "trips.passenger.health": "ดูข้อมูลสุขภาพและแบบฟอร์มแพทย์",
+      "trips.pdpa.manage": "จัดการคำขอข้อมูลส่วนบุคคลของผู้เดินทาง",
+      // ── /T0.8 passengers ──
     },
   },
 ] as const;

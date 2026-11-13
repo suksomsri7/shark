@@ -1572,6 +1572,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.booking.cancelled": withAutomation(async () => {}),
   "trips.booking.changed": withAutomation(async () => {}),
   // ── /T0.6 booking ──
+  // ── T0.8 passengers ── TRIPS T0.8 ▸ ผู้เดินทาง (ใบสั่ง T0.8 §10) — ยิงจาก trips/passengers.ts · trips/pdpa.ts ในธุรกรรมเดียวกับการเขียน ·
+  //   payload {bookingId, passengerId, kind} ล้วน (ไม่มีชื่อ/เลขเอกสาร/ข้อมูลสุขภาพ/token) · งานหลัก no-op + กฎอัตโนมัติ/เว็บฮุค ◂
+  "trips.passenger.form_completed": withAutomation(async () => {}),
+  "trips.document.purged": withAutomation(async () => {}),
+  // ── /T0.8 passengers ──
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —

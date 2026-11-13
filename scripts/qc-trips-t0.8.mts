@@ -400,7 +400,9 @@ try {
       pay: { method: "PAY_LATER" }, passengers: names.map((n) => ({ name: n, paxTypeId: p.adult })) }, {})) ?? {};
     ok(r.ok === true, `bookTripsNow (T0.6): ${fmt(r)}`);
     const bookingId = String(asArr(r.value)[0]?.bookingId ?? "");
-    const ids = (await q<{ id: string }>(`SELECT id FROM "TripPassenger" WHERE "bookingId" = $1 ORDER BY "createdAt", id`, [bookingId])).map((x) => x.id);
+    // ORACLE-EDIT (ผู้คุม 13 พ.ย.): T0.6 สร้างผู้เดินทางด้วย createMany (createdAt เท่ากัน · id สุ่ม) ⇒ เรียงตามชื่อที่ส่งเข้าไป ไม่ใช่ (createdAt, id)
+    const rows = await q<{ id: string; fullName: string | null }>(`SELECT id, "fullName" FROM "TripPassenger" WHERE "bookingId" = $1 ORDER BY "createdAt", id`, [bookingId]);
+    const ids = [...rows].sort((a, b) => names.indexOf(String(a.fullName)) - names.indexOf(String(b.fullName))).map((x) => x.id);
     return { bookingId, pax: ids, dep, key };
   };
   const issue = async (pid: string, who = "oa", now: string | Date = NOW0, unit = uA): Promise<{ token: string; expiresAt: string }> => {
@@ -599,7 +601,7 @@ try {
   await st("LK-2", "เปิดแบบฟอร์ม: เห็นเฉพาะคนนี้ (คนที่ i จาก 2) · spec · ไม่มีเลขเต็ม/สุขภาพ/ชื่อคนอื่น/URL", async () => {
     ok(L1, "LK-1 ไม่ผ่าน");
     const v = V(await call("openPassengerForm", pctx(), { token: L1tok.token }), "open");
-    eq([v.passengerIndex, v.passengerCount], [1, 2], "ลำดับ");
+    ok([1, 2].includes(Number(v.passengerIndex)) && v.passengerCount === 2, `ลำดับ ${fmt([v.passengerIndex, v.passengerCount])}`); // ORACLE-EDIT LK-2 (ผู้คุม 13 พ.ย.): ลำดับในระบบ = (createdAt, id) ไม่ผูกกับลำดับที่กรอก (หนี้ T0.6)
     eq(asRec(asRec(v.spec)?.waiver)?.required, true, "ต้องเซ็น");
     const s = JSON.stringify(v);
     ok(!s.includes("ผู้เดินทาง สอง") && !/https?:\/\/|\/api\/files/.test(s) && !s.includes(MK.doc), "รั่วข้อมูลคนอื่น/URL");

@@ -130,6 +130,7 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // SVC H.7 ▸ เหตุการณ์ปิดวันโรงแรม 2 ชนิด (hotel.audit.closed · hotel.audit.reopened) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // ── T0.5 pricing ── TRIPS T0.5 ▸ trips.price.changed · trips.promo.redeemed · trips.promo.exhausted ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // ── T0.6 booking ── TRIPS T0.6 ▸ trips.booking.created · .confirmed · .cancelled · .changed ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
+  // ── T0.8 passengers ── TRIPS T0.8 ▸ trips.passenger.form_completed · trips.document.purged ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC R0.3 ▸ "settings.changed" (ค่าตั้งแบบชั้นเปลี่ยน) มาจาก spread ข้างบน (ประกาศที่ automation/labels.ts ที่เดียว —
   //   ห้ามประกาศซ้ำที่นี่ · ช่องติ๊ก 2 แถวต่อ event · G1-A1 ผู้คุม 31 ต.ค.) ◂
 ];

@@ -247,3 +247,49 @@ export async function runWaitlistOffers(
   return { ...out, failed };
 }
 // ── /T0.4 capacity ──
+
+// ── T0.8 pdpa ──
+// ใบสั่ง ledger/trips-briefs/T0.8.md §7 · CC §A.4 :114 · §J.2 :931 · §D.4 ข้อ 5 — สแกนข้ามร้านแบบอ่านอย่างเดียวด้วย prisma ดิบ (หาหน่วยที่มีของครบกำหนด)
+// แล้วเขียนผ่าน pdpa.ts (tenantDb · ต่อหน่วย) เท่านั้น · ล้มต่อหน่วย = จดรหัสสั้นใน failed แล้วไปต่อ · เคารพ signal/deadline ก่อนเริ่มหน่วยถัดไป
+import { purgeTripPersonalDataForUnit } from "./pdpa";
+import type { SellResult } from "@/lib/core/sellable";
+export type PdpaPurgeResult = { units: number; documents: number; passengerStages: number; bookers: number; more: boolean; failed: TripJobFailure[] };
+/** ผลเป็น SellResult (รูปเดียวกับบริการของใบ · ข้อสอบ RT อ่าน value) — ล้มต่อหน่วยไม่ทำให้ทั้งงานล้ม (อยู่ใน value.failed) */
+export type PdpaPurgeOpts = TripJobOpts & { deadline?: number; limitPerUnit?: number; storage?: { del?: (path: string) => Promise<number> } };
+export async function runPdpaPurge(
+  now: Date,
+  opts?: PdpaPurgeOpts,
+): Promise<SellResult<PdpaPurgeResult>> {
+  const out: PdpaPurgeResult = { units: 0, documents: 0, passengerStages: 0, bookers: 0, more: false, failed: [] };
+  const iso = now.toISOString();
+  const tf = (col: string) => (opts?.tenantIds ? Prisma.sql`AND ${Prisma.raw(col)} = ANY(${opts.tenantIds}::text[])` : Prisma.empty);
+  const units = await prisma.$queryRaw<{ tenantId: string; unitId: string }[]>`
+    SELECT DISTINCT x."tenantId", x."unitId" FROM (
+      SELECT "tenantId", "unitId" FROM "TripDocument" WHERE "deletedAt" IS NULL AND "retainUntil" <= ${iso}::timestamp ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripPassenger" WHERE "retainUntil" <= ${iso}::timestamp ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripBooking" WHERE "status" = 'EXPIRED' AND "piiPurgedAt" IS NULL AND "paidSatang" = 0 ${tf(`"tenantId"`)}
+    ) x ORDER BY x."tenantId", x."unitId"`;
+  const limit = Number.isInteger(opts?.limitPerUnit) && (opts?.limitPerUnit ?? 0) >= 1 ? Math.min(200, opts?.limitPerUnit ?? 200) : 200;
+  for (const u of units) {
+    if (opts?.signal?.aborted || (typeof opts?.deadline === "number" && Date.now() >= opts.deadline)) {
+      out.more = true;
+      break;
+    }
+    try {
+      const g = await systemGate(u.tenantId, u.unitId);
+      if (!g) continue;
+      const r = await purgeTripPersonalDataForUnit({ tenantId: u.tenantId, unitId: u.unitId, now, limit, ...(opts?.storage ? { storage: opts.storage } : {}) });
+      out.units++;
+      out.documents += r.documents;
+      out.passengerStages += r.passengerStages;
+      out.bookers += r.bookers;
+      out.more = out.more || r.more;
+      for (const f of r.failed) out.failed.push({ tenantId: f.tenantId, unitId: f.unitId, code: f.code });
+    } catch (e) {
+      out.failed.push({ tenantId: u.tenantId, unitId: u.unitId, code: errorCodeOf(e) });
+    }
+  }
+  await reportFailures("trips.pdpaPurge", out.failed);
+  return { ok: true, value: out };
+}
+// ── /T0.8 pdpa ──
