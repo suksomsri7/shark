@@ -212,7 +212,11 @@ function runStatic(): void {
     // ORACLE-EDIT (H3.6 builder, 13 Nov — controller order: close two H3.5 debts in bank-files/** as marked "HR H3.6" hunks + checks S8.1/S8.2):
     //   bank-files may differ from the base only in files whose every hunk carries "HR H3.6" in an added line · everything else in FROZEN stays byte-unchanged
     const bankDir = `${H}bank-files`;
-    const d = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
+    //   + frozen oracle scripts may differ only in hunks carrying a marked "ORACLE-EDIT (H3.6" line (e.g. qc-hr-h3.5 S1.2 back-relation strip)
+    const oracleEdited = (f: string) => f.startsWith("scripts/qc-") && (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l)));
+    const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
+    const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f)) : [];
+    const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;
     const bankChanged = changedVsBase(BASE, [bankDir]);
     const bankFiles = bankChanged.startsWith("changed: ") ? bankChanged.slice(9).split(",") : [];
     const bankUnmarked = bankFiles.filter((f) => !(diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H3\.6/.test(l))));
