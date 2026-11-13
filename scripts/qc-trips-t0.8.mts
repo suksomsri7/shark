@@ -501,7 +501,7 @@ try {
     ok(n.every((r) => Number(r[1]) === 0), `jobs.ts ลบบรรทัด: ${fmt(n)}`);
     const j = read(D + "jobs.ts"); ok(/\/\/\s*── T0\.8 pdpa ──[\s\S]*runPdpaPurge[\s\S]*\/\/\s*── \/T0\.8 pdpa ──/.test(j), "ไม่มีบล็อก T0.8 pdpa");
     const mj = read("src/lib/platform/minute-jobs.ts");
-    ok(/name:\s*"trips\.pdpaPurge",\s*everyMinutes:\s*1440,\s*cadence:\s*"daily"/.test(mj), "ไม่ได้ลงทะเบียน trips.pdpaPurge");
+    ok(/name:\s*"trips\.pdpaPurge",\s*everyMinutes:\s*60,\s*cadence:\s*"hourly"/.test(mj), "ไม่ได้ลงทะเบียน trips.pdpaPurge (รายชั่วโมง)"); // ORACLE-EDIT S-9 (ผู้คุม 13 พ.ย.): มติ X4 — งานลบรันรายชั่วโมง (ตัวจัดตารางขอรันเร็วขึ้นไม่ได้)
   });
   await st("S-10", "สิทธิ์ 5 คีย์ลงทะเบียน (ป้ายไทย · โมดูล trips)", async () => {
     const P = (await tryImport("@/lib/core/permissions")).mod;

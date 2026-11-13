@@ -108,6 +108,7 @@ export const A = {
   bookingPiiPurged: "trips.booking.pii_purged",
   requestRecorded: "trips.pdpa.request_recorded",
   requestResolved: "trips.pdpa.request_resolved",
+  requestMerged: "trips.pdpa.request_merged",
 } as const;
 export const EVT_FORM_COMPLETED = "trips.passenger.form_completed";
 export const EVT_DOC_PURGED = "trips.document.purged";
@@ -197,6 +198,8 @@ const REASON_TH: Record<string, string> = {
   CONSENT_TEXT_CHANGED: "ข้อความยินยอมเปลี่ยนแล้ว กรุณาอ่านและยืนยันใหม่",
   GUARDIAN_REQUIRED: "ผู้เยาว์ต้องมีผู้ปกครองให้ความยินยอมหรือลงนาม",
   AGE_UNKNOWN: "ต้องระบุวันเกิดหรือแจ้งว่าเป็นผู้เยาว์หรือไม่ก่อน",
+  AGE_CONFLICT: "ข้อมูลที่บันทึกไว้ระบุว่าผู้เดินทางเป็นผู้เยาว์ — ผู้ปกครองต้องลงนาม หรือแก้วันเกิดผ่านแบบฟอร์มก่อน",
+  GUARDIAN_WITHOUT_CONSENT: "ส่งข้อมูลผู้ปกครองได้เฉพาะพร้อมความยินยอมของผู้ปกครองในคำขอเดียวกัน",
   WAIVER_NOT_REQUIRED: "สินค้านี้ไม่ต้องลงนามเอกสารรับทราบความเสี่ยง",
   TEMPLATE_CHANGED: "ข้อความเอกสารเปลี่ยนแล้ว กรุณาอ่านฉบับล่าสุดแล้วลงนามใหม่",
   WAIVER_ALREADY_SIGNED: "ลงนามเอกสารฉบับนี้แล้ว",
@@ -658,27 +661,66 @@ export async function deleteObjects(u: Unit, fileIds: readonly string[], deps?: 
   return failed;
 }
 /**
- * ตั้ง deletedAt (CAS deletedAt IS NULL) + retainUntil = now + audit + event ต่อชิ้น — นับเฉพาะแถวที่เปลี่ยนจริง (รันซ้อนกันได้ = ครั้งเดียวต่อชิ้น)
- * คืน fileId ของแถวที่เปลี่ยน — ผู้เรียกลบวัตถุหลัง commit (r1 P2) หรือก่อนหน้า (งานลบตามอายุ: วัตถุก่อน แล้วค่อยแถว)
+ * ตั้ง deletedAt (CAS deletedAt IS NULL) + retainUntil = now — นับเฉพาะแถวที่เปลี่ยนจริง (รันซ้อนกันได้ = ครั้งเดียวต่อชิ้น)
+ * r3 X2: `objectGone` = วัตถุถูกลบไปแล้ว (งานลบตามอายุ: วัตถุก่อน แล้วค่อยแถว) ⇒ audit + event `trips.document.purged` ทันที และ consent.objDel = true
+ *   ไม่งั้น (ปฏิเสธ/ถอน/กลายเป็นผู้เยาว์/ลบทั้งคน) = ทำเครื่องหมายอย่างเดียว · audit/event ออกใน confirmDocsInTx หลังวัตถุถูกลบจริง
  */
-export async function markDocsDeletedInTx(tx: Tx, u: Unit, who: Who, docIds: readonly string[], bookingId: string, now: Date, stage: string): Promise<{ id: string; kind: string; fileId: string }[]> {
+export async function markDocsDeletedInTx(tx: Tx, u: Unit, who: Who, docIds: readonly string[], bookingId: string, now: Date, stage: string, objectGone: boolean): Promise<{ id: string; kind: string; fileId: string }[]> {
   const out: { id: string; kind: string; fileId: string }[] = [];
   for (const id of [...docIds].sort()) {
     const rows = await tx.$queryRaw<{ id: string; kind: string; passengerId: string; fileId: string }[]>`
-      UPDATE "TripDocument" SET "deletedAt" = ${iso(now)}::timestamp, "retainUntil" = LEAST("retainUntil", ${iso(now)}::timestamp), "updatedAt" = ${iso(now)}::timestamp
+      UPDATE "TripDocument" SET "deletedAt" = ${iso(now)}::timestamp, "retainUntil" = LEAST("retainUntil", ${iso(now)}::timestamp), "updatedAt" = ${iso(now)}::timestamp,
+        "consent" = COALESCE("consent", '{}'::jsonb) || jsonb_build_object('purgeStage', ${stage}::text, 'objDel', ${objectGone}::boolean)
       WHERE "id" = ${id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "deletedAt" IS NULL RETURNING "id", "kind", "passengerId", "fileId"`;
     const r = rows[0];
     if (!r) continue;
-    await auditTx(tx, u, who, A.docPurged, "TripDocument", r.id, { documentId: r.id, passengerId: r.passengerId, kind: r.kind, stage });
-    await emitTx(tx, u, [purgedEvt(r.id, bookingId, r.passengerId, r.kind)]);
+    if (objectGone) {
+      await auditTx(tx, u, who, A.docPurged, "TripDocument", r.id, { documentId: r.id, passengerId: r.passengerId, kind: r.kind, stage });
+      await emitTx(tx, u, [purgedEvt(r.id, bookingId, r.passengerId, r.kind)]);
+    }
     out.push({ id: r.id, kind: r.kind, fileId: r.fileId });
   }
   return out;
 }
+/** r3 X2: ยืนยันว่าวัตถุถูกลบแล้ว (CAS objDel ยังไม่ true) ⇒ audit + event `trips.document.purged` ครั้งเดียวต่อชิ้น */
+export async function confirmDocsInTx(tx: Tx, u: Unit, who: Who, docIds: readonly string[]): Promise<number> {
+  let n = 0;
+  for (const id of [...docIds].sort()) {
+    const rows = await tx.$queryRaw<{ id: string; kind: string; passengerId: string; bookingId: string; stage: string | null }[]>`
+      UPDATE "TripDocument" doc SET "consent" = COALESCE(doc."consent", '{}'::jsonb) || jsonb_build_object('objDel', true), "updatedAt" = doc."updatedAt"
+      FROM "TripPassenger" p
+      WHERE doc."id" = ${id} AND doc."tenantId" = ${u.tenantId} AND doc."unitId" = ${u.unitId} AND doc."deletedAt" IS NOT NULL
+        AND COALESCE((doc."consent"->>'objDel')::boolean, false) = false AND p."id" = doc."passengerId" AND p."tenantId" = doc."tenantId"
+      RETURNING doc."id", doc."kind", doc."passengerId", p."bookingId", doc."consent"->>'purgeStage' AS "stage"`;
+    const r = rows[0];
+    if (!r) continue;
+    await auditTx(tx, u, who, A.docPurged, "TripDocument", r.id, { documentId: r.id, passengerId: r.passengerId, kind: r.kind, stage: r.stage ?? "MARKED" });
+    await emitTx(tx, u, [purgedEvt(r.id, r.bookingId, r.passengerId, r.kind)]);
+    n++;
+  }
+  return n;
+}
+/**
+ * หลัง commit ของการทำเครื่องหมาย: ลบวัตถุทีละชิ้น (นอก tx) → ชิ้นที่ลบสำเร็จ ⇒ ยืนยันใน tx สั้น · คืนจำนวนที่ยังค้าง
+ * (ค้าง ⇒ ขั้น "วัตถุค้าง" ของงานลบลองใหม่ไม่จำกัดเวลา และแจ้ง ops เมื่อค้างนาน)
+ */
+export async function deleteAndConfirm(u: Unit, who: Who, docs: readonly { id: string; fileId: string }[], deps?: DeleteDeps): Promise<number> {
+  if (!docs.length) return 0;
+  const gone: string[] = [];
+  for (const d of docs) {
+    const r = await deleteFileAsset({ tenantId: u.tenantId }, d.fileId, deps);
+    if (r.ok) gone.push(d.id);
+  }
+  if (gone.length) {
+    const c = await inTx(u, (tx) => confirmDocsInTx(tx, u, who, gone));
+    if (!c.ok) return docs.length;
+  }
+  return docs.length - gone.length;
+}
 /** ไฟล์ MEDICAL ทั้งหมดของผู้เดินทาง ⇒ ทำเครื่องหมายลบ (ในธุรกรรมที่ถือ t08.doc แล้วชนะ CAS) */
 async function markMedicalInTx(tx: Tx, u: Unit, who: Who, passengerId: string, bookingId: string, now: Date, stage: string) {
   const live = await liveDocs(tx, u, passengerId, "MEDICAL");
-  return markDocsDeletedInTx(tx, u, who, live.map((d) => d.id), bookingId, now, stage);
+  return markDocsDeletedInTx(tx, u, who, live.map((d) => d.id), bookingId, now, stage, false);
 }
 
 // ═══════════════════════ อัตรา (r1 P6) ═══════════════════════
@@ -687,12 +729,20 @@ async function markMedicalInTx(tx: Tx, u: Unit, who: Who, passengerId: string, b
  * แม้ token ถูก (ตรงกับ checkRateLimitDb ที่ให้ผ่าน count ≤ N แล้วปฏิเสธครั้งที่ N+1 ⇒ ที่นี่ count ≥ N)
  */
 async function deviceOverLimit(db: Tx, key: string, limit: number): Promise<boolean> {
-  const rows = await db.$queryRaw<{ count: number; windowStart: Date }[]>`SELECT "count", "windowStart" FROM "ChatRateBucket" WHERE "key" = ${key}`;
+  let rows: { count: number; windowStart: Date }[] = [];
+  try {
+    rows = await db.$queryRaw<{ count: number; windowStart: Date }[]>`SELECT "count", "windowStart" FROM "ChatRateBucket" WHERE "key" = ${key}`;
+  } catch {
+    return false; // ตัวจำกัดล่ม = ปล่อยผ่าน แบบเดียวกับ checkRateLimitDb (fail-open)
+  }
   const r = rows[0];
   return !!r && new Date(r.windowStart).getTime() > Date.now() - TOKEN_WINDOW_MS && r.count >= limit;
 }
 
 // ═══════════════════════ ลิงก์ (§5) ═══════════════════════
+// r3 X7: ใน T0.8 แถวลิงก์ยังอยู่ใน AuditLog (link_issued / link_revoked · after.seq) — ตาราง TripPassengerLink ของ A1.1 ยังไม่ถูกใช้
+//   ใบงานถัดไปย้ายแถวเหล่านี้ไปตารางนั้นโดย "ใช้ id เดิม" (AuditLog.id → TripPassengerLink.id) เพราะ TripDocView.viewerId (LINK_CUSTOMER)
+//   และ URL ไฟล์ที่ออกไปแล้ว (`lv`) อ้าง id นี้ · revokedAt = createdAt ของแถวถัดไปตาม seq
 type LinkRow = { id: string; action: string; after: unknown; createdAt: Date };
 /** แถวลิงก์ล่าสุดของผู้เดินทาง (issued/revoked · เรียงตาม after.seq ที่จัดใต้ advisory lock) — ดัชนี/ช่วงเวลาเดียวกับ idemFind */
 async function latestLinkRow(db: Tx, tenantId: string, passengerId: string, since: Date): Promise<LinkRow | null> {
@@ -832,12 +882,9 @@ export function openHealth(u: Unit, pid: string, h: HealthState | undefined): { 
   return { allergies: typeof o.allergies === "string" ? o.allergies : null, conditions: typeof o.conditions === "string" ? o.conditions : null };
 }
 const grantsOf = (g: GuardianConsent | null): Partial<Record<"HEALTH" | "WAIVER", GuardianGrant>> => ({ ...(g?.grants ?? {}) });
-/** ลบไฟล์วัตถุหลัง commit — ล้ม ⇒ แถวถูกทำเครื่องหมายแล้ว งานลบตามอายุลองใหม่ (pdpa.ts ขั้นวัตถุค้าง) */
-async function afterCommitDelete(u: Unit, fileIds: readonly string[], deps?: DeleteDeps): Promise<void> {
-  if (fileIds.length) await deleteObjects(u, fileIds, deps);
-}
 
-type WriteOut = { rev: number; formStatus: string; replayed?: true };
+/** r3 X5c: healthErased = การเขียนนี้ลบข้อมูลสุขภาพ (ปฏิเสธ หรือกลายเป็นผู้เยาว์) — จอต้องเตือนผู้ใช้ */
+type WriteOut = { rev: number; formStatus: string; healthErased: boolean; replayed?: true };
 /**
  * แกนการเขียนแบบฟอร์ม (ลูกค้า §6.2 submit · ร้าน §6.1 update) — กันซ้ำ → rev → ช่อง (OFF · รูป) → วันปิดรับ (ลูกค้า) → สุขภาพ/ผู้เยาว์ (r1 P3 P4) → กุญแจกล่อง →
  * tx: ล็อก t08.doc → CAS rev → (ปฏิเสธ/กลายเป็นผู้เยาว์: ทำเครื่องหมายไฟล์ MEDICAL) → audit/event → commit → ลบวัตถุ (r1 P2)
@@ -850,7 +897,7 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
   const keyHash = keyHashOf(w, req.idempotencyKey);
   const bodyHash = mac({ op: "trips.pax.write.v1", expectedRev: req.expectedRev, fields: req.fields ?? null, health: req.health ?? null, isMinorDeclared: req.isMinorDeclared ?? null, guardian: req.guardian ?? null });
   const replay = (x: Record<string, unknown>): SellResult<WriteOut> =>
-    x.bodyHash === bodyHash ? { ok: true, value: { rev: Number(x.rev), formStatus: String(x.formStatus), replayed: true } } : fail("IDEMPOTENCY_CONFLICT");
+    x.bodyHash === bodyHash ? { ok: true, value: { rev: Number(x.rev), formStatus: String(x.formStatus), healthErased: x.healthErased === true, replayed: true } } : fail("IDEMPOTENCY_CONFLICT");
   const pre = await idemFind(db, u.tenantId, A.updated, P.id, sinceOf(P.createdAt), keyHash);
   if (pre) return replay(pre);
   if (req.expectedRev !== a.rev) return fail("STATE_CONFLICT", { rev: a.rev });
@@ -942,7 +989,8 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
       }
     }
   }
-  // ผู้ปกครองที่ไม่ได้ให้ความยินยอมขอบเขตใดในคำขอนี้ ⇒ ไม่บันทึก (ไม่เปลี่ยนผู้ให้ความยินยอมเดิม · r1 P3)
+  // r3 X5a: ผู้ปกครองที่ไม่ได้ให้ความยินยอมขอบเขตใดในคำขอนี้ (ไม่มีความยินยอมสุขภาพ หรือผู้เดินทางไม่ใช่ผู้เยาว์) ⇒ ปฏิเสธ (ไม่ทิ้งเงียบ · ไม่เปลี่ยนผู้ให้ความยินยอมเดิม)
+  if (req.guardian && !(healthGivenNow && minor.isMinor)) return fail("VALIDATION", { reason: "GUARDIAN_WITHOUT_CONSENT", fields: ["guardian"] });
 
   // ── r1 P4: กลายเป็นผู้เยาว์ที่รู้อายุ ขณะสุขภาพ PROVIDED โดย SELF ⇒ ลบแบบถอน รอผู้ปกครอง · เอกสารลงนามโดย SELF ⇒ ต้องลงนามใหม่โดยผู้ปกครอง ──
   if (!healthGivenNow && minor.known && minor.isMinor && health?.status === "PROVIDED" && health.consent.signerRole === "SELF") {
@@ -973,7 +1021,10 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
   if (health) next.health = health;
   if (declaredMinor !== null) next.isMinorDeclared = declaredMinor;
   if (a.purged) next.purged = a.purged;
-  if (a.waiverResign) next.waiverResign = a.waiverResign;
+  // r3 X5b: ผู้ใหญ่ (ยืนยันแล้ว) ⇒ ล้างธงเซ็นใหม่ได้เฉพาะเมื่อลายมือชื่อเดิมเป็นของผู้ปกครอง หรือ SELF ที่มีหลักฐานผู้ใหญ่
+  const adultNow = minor.known && !minor.isMinor;
+  const resignClearable = wv.kind === "FULL" && (wv.e.signer.role === "GUARDIAN" || (wv.e.minor.ageBasis === "DOB" || wv.e.minor.ageBasis === "DECLARED_ADULT"));
+  if (a.waiverResign && !(adultNow && resignClearable)) next.waiverResign = a.waiverResign;
   if (needResign) next.waiverResign = { reason: "MINOR", at: iso(now) };
   const complete = missingFields(spec, nv, next).length === 0;
   const status = nextFormStatus(P.formStatus, complete);
@@ -996,7 +1047,7 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
   ].sort();
   const who = whoOf(w);
 
-  const r = await inTx(u, async (tx): Promise<{ out: WriteOut; fileIds: string[] }> => {
+  const r = await inTx(u, async (tx): Promise<{ out: WriteOut; docs: { id: string; fileId: string }[] }> => {
     await lockKey(tx, `t08.doc:${P.id}`);
     const done = await tx.$queryRaw<{ id: string }[]>`
       UPDATE "TripPassenger" SET "fullName" = ${nv.fullName}, "nationality" = ${nv.nationality}, "dob" = ${nv.dob}::date, "sex" = ${nv.sex}, "docType" = ${nv.docType},
@@ -1009,13 +1060,13 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
       RETURNING "id"`;
     if (done.length !== 1) {
       const again = await idemFind(tx, u.tenantId, A.updated, P.id, sinceOf(P.createdAt), keyHash);
-      if (again && again.bodyHash === bodyHash) return { out: { rev: Number(again.rev), formStatus: String(again.formStatus), replayed: true }, fileIds: [] };
+      if (again && again.bodyHash === bodyHash) return { out: { rev: Number(again.rev), formStatus: String(again.formStatus), healthErased: again.healthErased === true, replayed: true }, docs: [] };
       if (again) return abort("IDEMPOTENCY_CONFLICT");
       const curRows = await tx.$queryRaw<{ rev: number | null }[]>`
         SELECT COALESCE(("answers"->>'rev')::int, 0) AS "rev" FROM "TripPassenger" WHERE "id" = ${P.id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId}`;
       return abort("STATE_CONFLICT", { rev: curRows[0]?.rev ?? null });
     }
-    await auditTx(tx, u, who, A.updated, "TripPassenger", P.id, { bookingId: P.bookingId, rev: next.rev, formStatus: status, fieldsChanged: changedNames.join(","), keyHash, bodyHash, via: w.via });
+    await auditTx(tx, u, who, A.updated, "TripPassenger", P.id, { bookingId: P.bookingId, rev: next.rev, formStatus: status, fieldsChanged: changedNames.join(","), healthErased: eraseHealth, keyHash, bodyHash, via: w.via });
     if (consentAudit) await auditTx(tx, u, who, A.consentGiven, "TripPassenger", P.id, consentAudit);
     // ไฟล์ MEDICAL: ทำเครื่องหมายหลังชนะ CAS (ใต้ t08.doc · อัปโหลดที่มาทีหลังเห็นสุขภาพใหม่แล้วถูกปฏิเสธ)
     const marked = eraseCause ? await markMedicalInTx(tx, u, who, P.id, P.bookingId, now, eraseCause) : [];
@@ -1027,10 +1078,10 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
     if (transitioned) {
       await emitTx(tx, u, [{ type: EVT_FORM_COMPLETED, key: `${EVT_FORM_COMPLETED}:${P.id}:${next.rev}`, payload: { bookingId: P.bookingId, passengerId: P.id, kind: "FORM" } }]);
     }
-    return { out: { rev: next.rev, formStatus: status }, fileIds: marked.map((m) => m.fileId) };
+    return { out: { rev: next.rev, formStatus: status, healthErased: eraseHealth }, docs: marked.map((m) => ({ id: m.id, fileId: m.fileId })) };
   });
   if (!r.ok) return r;
-  await afterCommitDelete(u, r.value.fileIds, deps);
+  await deleteAndConfirm(u, who, r.value.docs, deps);
   return { ok: true, value: r.value.out };
 }
 
@@ -1066,6 +1117,10 @@ export type PublicFormView = {
   missing: PaxFieldKey[];
   minor: { isMinor: boolean; guardianOnly: boolean; known: boolean };
 };
+/**
+ * บริการสาธารณะของผู้ถือลิงก์ (§6.2) — r3 X6: `pctx.clientKey` คือกุญแจอุปกรณ์ของตัวจำกัดอัตรา ผู้เรียก (หน้า W1.3) ต้องสร้างฝั่งเซิร์ฟเวอร์ต่อเบราว์เซอร์
+ * (id ในคุกกี้ที่เซ็นแล้ว) — ห้ามรับจากไคลเอนต์ และห้ามใช้ IP อย่างเดียว · ว่าง/สั้นกว่า 8 ⇒ VALIDATION (publicCtxSchema)
+ */
 export async function openPassengerForm(pctx: unknown, input: unknown): Promise<SellResult<PublicFormView>> {
   return safely("openPassengerForm", null, async () => {
     const p = openSchema.safeParse(input);
@@ -1122,6 +1177,10 @@ export async function openPassengerForm(pctx: unknown, input: unknown): Promise<
   });
 }
 
+/**
+ * บริการสาธารณะของผู้ถือลิงก์ (§6.2) — r3 X6: `pctx.clientKey` คือกุญแจอุปกรณ์ของตัวจำกัดอัตรา ผู้เรียก (หน้า W1.3) ต้องสร้างฝั่งเซิร์ฟเวอร์ต่อเบราว์เซอร์
+ * (id ในคุกกี้ที่เซ็นแล้ว) — ห้ามรับจากไคลเอนต์ และห้ามใช้ IP อย่างเดียว · ว่าง/สั้นกว่า 8 ⇒ VALIDATION (publicCtxSchema)
+ */
 export async function submitPassengerForm(pctx: unknown, input: unknown, deps?: { del?: DeleteDeps["del"] }): Promise<SellResult<WriteOut>> {
   return safely("submitPassengerForm", null, async () => {
     const p = submitSchema.safeParse(input);
@@ -1137,27 +1196,34 @@ export async function submitPassengerForm(pctx: unknown, input: unknown, deps?: 
 type SignOut = { signedAt: string; templateHash: string; documentId: string | null; replayed?: true };
 type Signature = { contentType: string; data: Uint8Array };
 /**
- * หลักฐานอายุของผู้ลงนาม (r1 P5): dob ⇒ DOB · ไม่มี dob + คำขอประกาศว่าไม่ใช่ผู้เยาว์ (false) ⇒ DECLARED_ADULT ·
- * ประกาศ/บันทึกว่าเป็นผู้เยาว์ ⇒ DECLARED_MINOR · ไม่มีทั้งคู่ ⇒ UNKNOWN (SELF ⇒ AGE_UNKNOWN · GUARDIAN ลงนามแทนได้)
+ * หลักฐานอายุของผู้ลงนาม (r1 P5 · r3 X1) — คำขอลงนามไม่เปลี่ยนสถานะผู้เยาว์ที่บันทึกไว้ (ไม่บันทึก isMinorDeclared จากทางนี้):
+ *   ข้อมูลที่เก็บ = dob ก่อน ไม่งั้นคำประกาศที่เก็บ (จากแบบฟอร์ม/พนักงาน) · `req.isMinorDeclared` = คำประกาศของผู้ลงนามสำหรับลายมือชื่อนี้เท่านั้น
+ *   (a) ที่เก็บบอกผู้เยาว์ + คำขอบอก false ⇒ AGE_CONFLICT (ผู้ลงนามแทนที่ข้อมูลที่เก็บไม่ได้)
+ *   (b) ผู้เยาว์ (ที่เก็บหรือคำขอบอก true) + SELF ⇒ GUARDIAN_REQUIRED
+ *   SELF ต้องมี dob ที่เป็นผู้ใหญ่ หรือคำขอบอก false (ที่เก็บไม่ได้บอกผู้เยาว์) ⇒ ไม่งั้น AGE_UNKNOWN · GUARDIAN ลงนามแทนได้ทุกกรณี (ageBasis UNKNOWN ได้)
  */
 function signerBasis(spec: FormSpec, dob: string | null, stored: boolean | null, req: SignRequest, travelYmd: string): { isMinor: boolean | null; age: number | null; ageBasis: AgeBasis } | Failure {
+  if (req.signerRole === "GUARDIAN" && !req.guardian) return fail("VALIDATION", { reason: "GUARDIAN_REQUIRED" });
   const age = dob ? ageAt(dob, travelYmd) : null;
+  const storedMinor: boolean | null = age !== null ? age < spec.minor.minorBelow : stored;
+  // ผู้เยาว์ตามข้อมูลที่เก็บ + SELF ⇒ GUARDIAN_REQUIRED ก่อน (เหตุที่ผู้ใช้แก้ได้) · ผู้ปกครองที่ประกาศว่าไม่ใช่ผู้เยาว์ขัดกับที่เก็บ ⇒ AGE_CONFLICT
+  if (storedMinor === true && req.signerRole === "SELF") return fail("VALIDATION", { reason: "GUARDIAN_REQUIRED" });
+  if (storedMinor === true && req.isMinorDeclared === false) return fail("VALIDATION", { reason: "AGE_CONFLICT" });
   let isMinor: boolean | null;
   let ageBasis: AgeBasis;
   if (age !== null) {
     isMinor = age < spec.minor.minorBelow;
     ageBasis = "DOB";
+  } else if (storedMinor === true || req.isMinorDeclared === true) {
+    isMinor = true;
+    ageBasis = "DECLARED_MINOR";
   } else if (req.isMinorDeclared === false) {
     isMinor = false;
     ageBasis = "DECLARED_ADULT";
-  } else if ((req.isMinorDeclared ?? stored) === true) {
-    isMinor = true;
-    ageBasis = "DECLARED_MINOR";
   } else {
     isMinor = null;
     ageBasis = "UNKNOWN";
   }
-  if (req.signerRole === "GUARDIAN" && !req.guardian) return fail("VALIDATION", { reason: "GUARDIAN_REQUIRED" });
   if (req.signerRole === "SELF" && isMinor === true) return fail("VALIDATION", { reason: "GUARDIAN_REQUIRED" });
   if (req.signerRole === "SELF" && isMinor === null) return fail("VALIDATION", { reason: "AGE_UNKNOWN" });
   return { isMinor, age, ageBasis };
@@ -1266,11 +1332,10 @@ async function signCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: SignReques
     if (req.signerRole === "GUARDIAN" && req.guardian) grants = { ...grants, WAIVER: { name: req.guardian.name, relation: req.guardian.relation, at: iso(now), via: consentVia(w), version: templateHash } };
     const guardian = guardianFromGrants(grants);
     const { waiverResign: _wr, ...rest } = la;
-    const next: Answers = { ...rest, rev: la.rev + 1, retE: E, ...(req.isMinorDeclared !== undefined ? { isMinorDeclared: req.isMinorDeclared } : {}) };
+    const next: Answers = { ...rest, rev: la.rev + 1, retE: E };
     const retainUntil = paxRetainUntil(presentStages(next, { docNumberEnc: L.docNumberEnc, waiverEvidence: evidence, guardianConsent: guardian }), E, u.tz, cfg.retention);
-    const isMinorCol = basis.isMinor === null ? L.isMinor : basis.isMinor;
     const done = await tx.$queryRaw<{ id: string }[]>`
-      UPDATE "TripPassenger" SET "waiverEvidence" = ${JSON.stringify(evidence)}::jsonb, "waiverSignedAt" = ${iso(now)}::timestamp, "isMinor" = ${isMinorCol},
+      UPDATE "TripPassenger" SET "waiverEvidence" = ${JSON.stringify(evidence)}::jsonb, "waiverSignedAt" = ${iso(now)}::timestamp,
         "guardianConsent" = ${guardian ? JSON.stringify(guardian) : null}::jsonb, "answers" = ${JSON.stringify(next)}::jsonb,
         "retainUntil" = ${retainUntil ? iso(retainUntil) : null}::timestamp, "updatedAt" = ${iso(now)}::timestamp
       WHERE "id" = ${P.id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND COALESCE(("answers"->>'rev')::int, 0) = ${la.rev}
@@ -1296,6 +1361,10 @@ async function signCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: SignReques
   return r;
 }
 
+/**
+ * บริการสาธารณะของผู้ถือลิงก์ (§6.2) — r3 X6: `pctx.clientKey` คือกุญแจอุปกรณ์ของตัวจำกัดอัตรา ผู้เรียก (หน้า W1.3) ต้องสร้างฝั่งเซิร์ฟเวอร์ต่อเบราว์เซอร์
+ * (id ในคุกกี้ที่เซ็นแล้ว) — ห้ามรับจากไคลเอนต์ และห้ามใช้ IP อย่างเดียว · ว่าง/สั้นกว่า 8 ⇒ VALIDATION (publicCtxSchema)
+ */
 export async function signPassengerWaiver(pctx: unknown, input: unknown): Promise<SellResult<{ signedAt: string; templateHash: string; replayed?: true }>> {
   return safely("signPassengerWaiver", null, async () => {
     const p = signSchema.safeParse(input);
@@ -1383,6 +1452,10 @@ async function uploadCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: { idempo
   return r;
 }
 
+/**
+ * บริการสาธารณะของผู้ถือลิงก์ (§6.2) — r3 X6: `pctx.clientKey` คือกุญแจอุปกรณ์ของตัวจำกัดอัตรา ผู้เรียก (หน้า W1.3) ต้องสร้างฝั่งเซิร์ฟเวอร์ต่อเบราว์เซอร์
+ * (id ในคุกกี้ที่เซ็นแล้ว) — ห้ามรับจากไคลเอนต์ และห้ามใช้ IP อย่างเดียว · ว่าง/สั้นกว่า 8 ⇒ VALIDATION (publicCtxSchema)
+ */
 export async function uploadPassengerDocument(pctx: unknown, input: unknown, deps?: { put?: UploadDeps["put"]; del?: DeleteDeps["del"] }): Promise<SellResult<UploadOut>> {
   return safely("uploadPassengerDocument", null, async () => {
     const p = uploadPublicSchema.safeParse(input);
@@ -1394,7 +1467,8 @@ export async function uploadPassengerDocument(pctx: unknown, input: unknown, dep
 }
 
 // ═══════════════════════ ถอนความยินยอม (ม.19 วรรคห้า · Q13 ลบทันที · r1 P2) ═══════════════════════
-type WithdrawOut = { effects: { healthAnswers: boolean; medicalDocuments: number }; done: boolean; replayed?: true };
+/** r3 X2: pendingObjects = ไฟล์ที่ทำเครื่องหมายลบแล้วแต่วัตถุยังลบไม่สำเร็จ (งานลบลองใหม่) */
+type WithdrawOut = { effects: { healthAnswers: boolean; medicalDocuments: number }; done: boolean; pendingObjects?: number; replayed?: true };
 /** ล็อก t08.doc → แถว FOR UPDATE → กันซ้ำ → CAS rev (WITHDRAWN + สถานะแบบฟอร์มใหม่) → ทำเครื่องหมายไฟล์ MEDICAL → commit → ลบวัตถุ */
 async function withdrawCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: { idempotencyKey: string; mode: "PREVIEW" | "EXECUTE" }, now: Date, deps?: DeleteDeps): Promise<SellResult<WithdrawOut>> {
   const db = ro(u.tenantId);
@@ -1411,14 +1485,14 @@ async function withdrawCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: { idem
   const pre = await idemFind(db, u.tenantId, A.consentWithdrawn, P.id, sinceOf(P.createdAt), keyHash);
   if (pre) return replay(pre);
   const who = whoOf(w);
-  const r = await inTx(u, async (tx): Promise<{ out: WithdrawOut; fileIds: string[] }> => {
+  const r = await inTx(u, async (tx): Promise<{ out: WithdrawOut; docs: { id: string; fileId: string }[] }> => {
     await lockKey(tx, `t08.doc:${P.id}`);
     const L = await loadPax(tx, u.tenantId, u.unitId, P.id, "UPDATE");
     if (!L) return abort("NOT_FOUND");
     const again = await idemFind(tx, u.tenantId, A.consentWithdrawn, P.id, sinceOf(P.createdAt), keyHash);
     if (again) {
       if (again.bodyHash !== bodyHash) return abort("IDEMPOTENCY_CONFLICT");
-      return { out: { effects: { healthAnswers: again.healthAnswers === true, medicalDocuments: Number(again.medicalDocuments) || 0 }, done: true, replayed: true }, fileIds: [] };
+      return { out: { effects: { healthAnswers: again.healthAnswers === true, medicalDocuments: Number(again.medicalDocuments) || 0 }, done: true, replayed: true }, docs: [] };
     }
     const la = parseAnswers(L.answers);
     if (isPurgedAll(la)) return abort("NOT_FOUND", { reason: "PURGED" });
@@ -1441,13 +1515,17 @@ async function withdrawCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: { idem
     const marked = await markMedicalInTx(tx, u, who, P.id, P.bookingId, now, "WITHDRAWN");
     await auditTx(tx, u, who, A.consentWithdrawn, "TripPassenger", P.id, { passengerId: P.id, healthAnswers: hadHealth, medicalDocuments: marked.length, keyHash, bodyHash, via: w.via });
     if (hadHealth) await emitTx(tx, u, [purgedEvt(`${P.id}:HEALTH_ANSWERS:w${rev}`, P.bookingId, P.id, "HEALTH_ANSWERS")]);
-    return { out: { effects: { healthAnswers: hadHealth, medicalDocuments: marked.length }, done: true }, fileIds: marked.map((m) => m.fileId) };
+    return { out: { effects: { healthAnswers: hadHealth, medicalDocuments: marked.length }, done: true }, docs: marked.map((m) => ({ id: m.id, fileId: m.fileId })) };
   });
   if (!r.ok) return r;
-  await afterCommitDelete(u, r.value.fileIds, deps);
-  return { ok: true, value: r.value.out };
+  const pending = await deleteAndConfirm(u, who, r.value.docs, deps);
+  return { ok: true, value: { ...r.value.out, ...(r.value.out.replayed ? {} : { pendingObjects: pending }) } };
 }
 
+/**
+ * บริการสาธารณะของผู้ถือลิงก์ (§6.2) — r3 X6: `pctx.clientKey` คือกุญแจอุปกรณ์ของตัวจำกัดอัตรา ผู้เรียก (หน้า W1.3) ต้องสร้างฝั่งเซิร์ฟเวอร์ต่อเบราว์เซอร์
+ * (id ในคุกกี้ที่เซ็นแล้ว) — ห้ามรับจากไคลเอนต์ และห้ามใช้ IP อย่างเดียว · ว่าง/สั้นกว่า 8 ⇒ VALIDATION (publicCtxSchema)
+ */
 export async function withdrawHealthConsent(pctx: unknown, input: unknown, deps?: { del?: DeleteDeps["del"] }): Promise<SellResult<WithdrawOut>> {
   return safely("withdrawHealthConsent", null, async () => {
     const p = withdrawPublicSchema.safeParse(input);
@@ -1458,7 +1536,10 @@ export async function withdrawHealthConsent(pctx: unknown, input: unknown, deps?
   });
 }
 
-/** ผู้ถือลิงก์ขอ URL ไฟล์ของตัวเองทีละใบ (§6.3 ข้อ 4) — MEDICAL ต้อง OTP (W1.3) · URL ผูกแถว link_issued ไม่ใช่ token */
+/**
+ * ผู้ถือลิงก์ขอ URL ไฟล์ของตัวเองทีละใบ (§6.3 ข้อ 4) — MEDICAL ต้อง OTP (W1.3) · URL ผูกแถว link_issued ไม่ใช่ token
+ * r3 X6: `pctx.clientKey` ต้องสร้างฝั่งเซิร์ฟเวอร์ต่อเบราว์เซอร์ (id ในคุกกี้ที่เซ็นแล้ว) ห้ามมาจากไคลเอนต์หรือ IP อย่างเดียว · ว่าง/สั้น ⇒ VALIDATION
+ */
 export async function customerDocumentUrl(pctx: unknown, input: unknown): Promise<SellResult<{ url: string; expiresInSec: number }>> {
   return safely("customerDocumentUrl", null, async () => {
     const p = customerUrlSchema.safeParse(input);
