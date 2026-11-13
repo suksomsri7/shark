@@ -1015,7 +1015,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/settings/policy" \
 
 #### `settings.tax`
 
-**GET /settings/tax** - Business entity kind of this book and the effective-dated legal value tables (VAT rate, withholding tax rates by income type × payer × recipient × channel, filing deadlines incl. the online extension): every row with its value, effective range, source, confidence tag and checked date, which row is in effect, and warnings. System defaults are research, not legal advice. · scope: `account.doc.view` · read · AI tool: `account_tax_settings`
+**GET /settings/tax** - Business entity kind of this book and the effective-dated legal value tables (VAT rate, withholding tax rates by income type x payer x recipient x channel, filing deadlines incl. the online extension): every row with its value, effective range, source, confidence tag and checked date, which row is in effect, and warnings. System defaults are research, not legal advice. · scope: `account.doc.view` · read · AI tool: `account_tax_settings`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |

@@ -31,8 +31,9 @@ const accEnv = (await import("./acc-v2-env.mts" as string)) as {
   loadQcEnv: () => { databaseUrl: string; host: string };
   QC: { expectedPath: string; today: string; tenantName: string };
   resolveAccV2Scope: (p: unknown) => Promise<{ tenantId: string; systemId: string } | null>;
+  pinQcAccountClock: () => Promise<Date>;
 };
-const { loadQcEnv, QC, resolveAccV2Scope } = accEnv;
+const { loadQcEnv, QC, resolveAccV2Scope, pinQcAccountClock } = accEnv;
 const { host } = loadQcEnv();
 
 // ── ตัวนับ SQL จริง (แบบเดียวกับ qc-acc-v2-dashboard.mts) ──
@@ -48,6 +49,8 @@ const client = new PrismaClient({
   if (counting) sqlLog.push(ev.query);
 });
 (globalThis as unknown as { prisma?: PrismaClient }).prisma = client;
+// ORACLE-EDIT ACC T1.8 step 0: เฉลยตรึงที่ QC.today ⇒ "พ้นกำหนด" ต้องคิด ณ วันเดียวกัน ไม่ใช่นาฬิกาเครื่อง (แบบ qc-acc-v2-list · T0.3b — ACC T1.8 step 0)
+await pinQcAccountClock();
 
 const { prisma } = await import("@/lib/core/db");
 const dash = await import("@/lib/modules/account/dashboard");
