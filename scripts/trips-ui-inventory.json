@@ -1,0 +1,1276 @@
+{
+  "$schema": "ทะเบียนปุ่มของจอ TRIPS — 1 แถวต่อ element ที่กดได้/กรอกได้/ป้ายที่ต้องเห็นตามบทบาท · สคีมาเดียวกับ scripts/pos-ui-inventory.json ($fields) · ข้อสอบ qc-trips-t1.1 S-12 อ่าน rows",
+  "$owner": "ทุกใบ UI ของ RUN TRIPS เติมแถวของหน้าตัวเองก่อนปิดใบ (T1.1 วางธรรมเนียม)",
+  "$roles": "owner = เจ้าของร้าน (ทุกสิทธิ์) · editor = พนักงาน trips.product.view+edit · viewer = พนักงาน trips.product.view อย่างเดียว",
+  "$fields": "ดู scripts/pos-ui-inventory.json $fields · page = path โฟลเดอร์ /app/u/[unitSlug]/trips/… · ชื่อที่สร้างจากตัวแปรลงเป็นแพตเทิร์นลงท้าย *",
+  "rows": [
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-nav",
+      "kind": "menu",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-nav",
+        "state": "appears",
+        "note": "แถบ 6 แท็บ เห็นตามสิทธิ์ (loadTripsNav)"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#NAV-1",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-nav-products",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/products"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#NAV-2",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-nav-departures",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/departures"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#NAV-2",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-nav-bookings",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/bookings"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#NAV-2",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-nav-agents",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/agents"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#NAV-2",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-nav-channels",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/channels"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#NAV-2",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-nav-settings",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/settings"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#NAV-2",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-not-yet",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-not-yet",
+        "state": "appears",
+        "note": "หน้าแท็บที่ยังไม่สร้าง: ยังไม่เปิดใช้ + ใบที่จะเปิด"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-forbidden",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-forbidden",
+        "state": "refused",
+        "note": "ไม่มีสิทธิ์ trips/หน้านี้ ⇒ การ์ดปฏิเสธ"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#NAV-4",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-loading",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-loading",
+        "state": "appears",
+        "note": "โครงการ์ดระหว่างโหลด (Suspense fallback)"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips",
+      "testid": "trips-error",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-error",
+        "state": "appears",
+        "note": "ขอบเขตข้อผิดพลาด + ปุ่มลองใหม่ (unstable_retry)"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-list",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-product-list",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#LV-1",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-search",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/products?q=[q]"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#LV-3",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-filter-all",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/products"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-filter-tour",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/products?type=TOUR"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-filter-liveaboard",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/products?type=LIVEABOARD"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#LV-3",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-filter-archived",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/products?archived=1"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#ET-6",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-add",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "create-product",
+        "note": "createProductAction → ?p=<id>"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-empty",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-product-empty",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS",
+      "needs": "หน่วยที่ยังไม่มีสินค้า"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-item-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/products?p=[productId]"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-editor",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-product-editor",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-1",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-status",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-product-status",
+        "state": "appears",
+        "note": "เปิดขาย = กรอบทึบ · ร่าง = เส้นประ · เก็บแล้ว = พื้นเทา (data-status)"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-preview",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-product-preview",
+        "state": "disabled",
+        "note": "ยังไม่เปิดใช้ (W1.1 · OQ8)"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-save",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-product-save",
+        "db": "TripPaxType ageMin/ageMax",
+        "note": "บันทึกช่วงอายุที่แก้ค้าง (updatePaxTypeAction)"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-publish",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-product-status",
+        "db": "TripProduct status ACTIVE"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS",
+      "needs": "สินค้าร่าง"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-unpublish",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-product-status",
+        "db": "TripProduct status DRAFT"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-archive",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "archive-product",
+        "note": "ยืนยัน + เหตุผล ≥ 10 ตัว ⇒ TripProduct ARCHIVED"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-product-restore",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-product-status",
+        "db": "TripProduct status DRAFT"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS",
+      "needs": "สินค้าที่เก็บแล้ว"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-editor-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/products#options"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-option-add",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "create-option",
+        "note": "createOptionAction"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-option-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-option-row",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-2",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-option-toggle-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-option-row",
+        "db": "TripOption active"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-pax-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-pax-row",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-3",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-pax-age-from-*",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-product-save",
+        "state": "changes",
+        "note": "แก้ค้าง ⇒ ปุ่มบันทึกบนหัวเปิด"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-pax-age-to-*",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-product-save",
+        "state": "changes",
+        "note": "แก้ค้าง ⇒ ปุ่มบันทึกบนหัวเปิด"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-season-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "create-season",
+        "note": "saveSeasonAction + setPriceAction (trips.price.edit)"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-season-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-season-row",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-4",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-departure-price-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "departure-price",
+        "note": "setPriceAction departureId (trips.price.edit)"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-departure-price-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-departure-price-row",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-5",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-extra-add",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "create-extra",
+        "note": "createExtraAction"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-extra-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-extra-row",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-6",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-extra-toggle-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-extra-row",
+        "db": "TripExtra active"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-extra-warning",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-extra-warning",
+        "state": "appears",
+        "note": "รายการบังคับของร้านถูกแทนด้วยของสินค้า (แถบเส้นประ)"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#ET-4",
+      "system": "TRIPS",
+      "needs": "รายการเสริมบังคับของร้านชนิดเดียวกับของสินค้า"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-pickup-add",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pickup-zone",
+        "note": "createPickupZoneAction · ค่าบวกเพิ่ม ≠ 0 ต้องมี trips.price.edit"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#PS-1",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-pickup-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-pickup-row",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-7",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-pickup-edit-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pickup-zone",
+        "note": "updatePickupZoneAction"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-pickup-toggle-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-pickup-row",
+        "db": "TripPickupZone polygon.active"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#PS-3",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-pickup-up-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-pickup-row",
+        "db": "TripPickupZone sortOrder"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#PS-10",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-pickup-down-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-pickup-row",
+        "db": "TripPickupZone sortOrder"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#PS-10",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-content-table",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-content-table",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-8",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-content-edit-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor"
+      ],
+      "hiddenFor": [
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "content-edit",
+        "note": "setProductContentAction ไทย/อังกฤษ"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-content-draft-translate",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-content-draft-translate",
+        "state": "disabled",
+        "note": "ยังไม่มีบริการร่างคำแปล"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-brochure",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-brochure",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-9",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-applied",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-applied",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-10",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-applied-edit",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/settings?scope=PRODUCT&id=[productId]"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-example",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-example",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-11",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-example-departure",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/products?p=[productId]&ex=[departureId]"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-12",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/products",
+      "testid": "trips-example-total",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "editor",
+        "viewer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-example-total",
+        "state": "appears",
+        "note": "11,450.00 (ราชา ส. 14 พ.ย.)"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#EV-11",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/settings",
+      "testid": "trips-settings",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-settings",
+        "state": "appears"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#SET-2",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/settings",
+      "testid": "trips-settings-section-*",
+      "kind": "menu",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/settings#sec-[section]"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#SET-1",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/settings",
+      "testid": "trips-settings-scope",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/settings?scope=PRODUCT&id=[productId]"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#SET-8",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/settings",
+      "testid": "trips-settings-product-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/settings?scope=PRODUCT&id=[productId]"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#SET-8",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/settings",
+      "testid": "trips-settings-only-changed",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-settings",
+        "state": "changes",
+        "note": "ซ่อนช่องที่ตามแม่แบบ"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/settings",
+      "testid": "trips-settings-history",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-settings",
+        "state": "changes",
+        "note": "ประวัติการแก้ค่าตั้ง trips"
+      },
+      "wo": "T1.1",
+      "oracle": "",
+      "system": "TRIPS"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/settings",
+      "testid": "trips-settings-warning-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-settings-warning",
+        "state": "appears",
+        "note": "คำเตือนค้างของค่าที่บันทึกแล้ว (HIGH/HIGHEST บนสุด)"
+      },
+      "wo": "T1.1",
+      "oracle": "qc-trips-t1.1#SET-10",
+      "system": "TRIPS",
+      "needs": "ค่าตั้งที่บันทึกแล้วขึ้นคำเตือน"
+    }
+  ]
+}

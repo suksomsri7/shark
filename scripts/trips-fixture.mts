@@ -1086,3 +1086,44 @@ export const TRIPS_SEED_SIMILAN = {
 /** เหตุยกเลิก ศ. 13 (จอ 11 "ยกเลิก คลื่นลม") */
 export const TRIPS_SEED_CANCEL_REASON = "คลื่นลม";
 // ── /T0.3 departures ──
+
+// ── T1.1 screens ──
+// TRIPS T1.1 ▸ ส่วนขยาย seed ของจอ 16/17 (ใบสั่ง T1.1 §10) — ค่าล้วน · seed ลงผ่านบริการ (createPickupZone · setPrice · setSettings) · รันซ้ำไม่เขียน ◂
+/** โซนรับส่ง 3 โซนของหน่วย TRIPS (จอ 16 "รับส่ง") — ออก 08:00 ⇒ ในโซน 06:45–07:35 ฟรี · นอกโซน 06:15–06:40 +600 · มาเอง พบ 08:00 */
+export const TRIPS_SEED_PICKUP_ZONES: readonly {
+  kind: "ZONE" | "SELF";
+  name: { th: string; en: string };
+  areas: { th: string; en: string };
+  pickupOffsetMin: number;
+  windowMin: number;
+  surchargeSatang: number;
+}[] = [
+  { kind: "ZONE", name: { th: "ในโซน", en: "In zone" }, areas: { th: "กะตะ · กะรน · ป่าตอง · ฉลอง", en: "Kata · Karon · Patong · Chalong" }, pickupOffsetMin: 75, windowMin: 50, surchargeSatang: 0 },
+  { kind: "ZONE", name: { th: "นอกโซน", en: "Outside zone" }, areas: { th: "กมลา · บางเทา", en: "Kamala · Bang Tao" }, pickupOffsetMin: 105, windowMin: 25, surchargeSatang: PRODUCT_RACHA.extras.outOfZonePickup.satang },
+  { kind: "SELF", name: { th: "มาเอง", en: "Own way" }, areas: { th: `${SHOP_DIVE.pier} · เคาน์เตอร์อันดามันไดฟ์`, en: "Chalong Pier · Andaman Dive counter" }, pickupOffsetMin: 0, windowMin: 0, surchargeSatang: 0 },
+];
+/** ราคาปลีกทารกราชา = 0 (จอ 16 "ทารก ฟรี ตั้งเอง" · มติ Q5: ไม่มีแถว = PRICE_MISSING) */
+export const TRIPS_SEED_RACHA_INFANT_SATANG = 0;
+/** ตารางค่าอุทยาน "อัตราของร้าน" 2 แถว (จอ 17 · OQ6) — ต่อท้ายค่าแม่แบบ */
+export const TRIPS_SEED_SHOP_PARK_RATES: readonly { label: string; adultSatang: number; childSatang: number; diverSatang: number | null; effectiveFrom: string }[] = [
+  { label: "เกาะราชา", adultSatang: PRODUCT_RACHA.parkAdultSatang, childSatang: PRODUCT_RACHA.parkChildSatang, diverSatang: null, effectiveFrom: "2026-11-01" },
+  { label: "สิมิลัน 4 คืน", adultSatang: TRIP_SIMILAN.parkPerPersonSatang, childSatang: TRIP_SIMILAN.parkPerPersonSatang, diverSatang: null, effectiveFrom: "2026-11-01" },
+];
+/** ข้อความยืนยันการจอง "ปรับแล้ว" (จอ 17) */
+export const TRIPS_SEED_CONFIRMATION = {
+  th: "{ร้าน} ยืนยันการจอง {รหัสจอง} · {สินค้า} วันที่ {วันเดินทาง} · รถรับ {เวลารับ} ที่ {จุดนัด} · ทีมงานรอพบนะคะ",
+  en: "{ร้าน} confirmed booking {รหัสจอง} · {สินค้า} on {วันเดินทาง} · pick-up {เวลารับ} at {จุดนัด} · see you soon",
+} as const;
+/** ชั้นสินค้าสิมิลัน (จอ 17 การ์ด "เงินและงวดจ่าย" · จอ 03) — ไม่บันทึกตารางยกเลิก 50/30/0 (ในภาพเป็น "กำลังแก้" · ฉากภาพทำด้วยการกด) */
+export const TRIPS_SEED_SIMILAN_PAY = {
+  depositPct: TRIP_SIMILAN.depositBp / 100,
+  balanceDueDaysBefore: TRIP_SIMILAN.balanceDaysBefore,
+  reminderDaysBefore: [7, 1],
+} as const;
+/** ตารางยกเลิก Liveaboard สิมิลันในฉากภาพ settings-similan-warning (จอ 17 กล่อง W01 · W03) — กรอกในฉาก ไม่ seed */
+export const TRIPS_VISUAL_SIMILAN_LADDER = [
+  { fromDaysBefore: 60, refundPct: 50 },
+  { fromDaysBefore: 31, refundPct: 30 },
+  { fromDaysBefore: 0, refundPct: 0 },
+] as const;
+// ── /T1.1 screens ──

@@ -268,6 +268,35 @@ export type { CapacityJobOpts, CapacityJobFailure } from "./jobs";
 // ◂ TRIPS T0.4
 // ── /T0.4 capacity ──
 
+// ── T1.1 screens ──
+// TRIPS T1.1 ▸ จอสินค้าทัวร์ (ภาพ 16) · โซนรับส่ง (บริการใหม่ · polygon JSON v1 ชั่วคราว) · จอค่าตั้ง trips (ภาพ 17) · ด่านหน้า/แถบ TRIPS (ใบสั่ง ledger/trips-briefs/T1.1.md) ◂
+export {
+  PICKUP_ZONE_KINDS,
+  PICKUP_ERROR_CODES,
+  PICKUP_ZONE_LIMIT,
+  pickupZoneInputSchema,
+  pickupZonePatchSchema,
+  pickupWindowFor,
+} from "./pickup-core";
+export type { PickupZoneKind, PickupErrorCode, PickupZoneDTO, PickupWindow, PickupAreas } from "./pickup-core";
+export { listPickupZones, createPickupZone, updatePickupZone, setPickupZoneActive, reorderPickupZones } from "./pickup";
+export type { TripsScreenCtx, TripsFail } from "./pickup";
+export { tripsPageGate, loadTripsNav, loadProductListVM, loadProductEditorVM, loadTripsSettingsVM } from "./screens";
+export type {
+  TripsNavVM,
+  ProductListVM,
+  ProductListItemVM,
+  ProductEditorVM,
+  PaxRowVM,
+  SeasonRowVM,
+  DepartureRowVM,
+  ExtraRowVM,
+  ExampleVM,
+  TripsSettingsVM,
+} from "./screens";
+export { saveTripsSettings, resetTripsSetting } from "./trips-settings";
+// ◂ TRIPS T1.1
+// ── /T1.1 screens ──
 // ── T0.6 booking ──
 // TRIPS T0.6 ▸ การจอง: ถือผ่านตะกร้า · ยืนยันในธุรกรรมเดียว · ผังสถานะ · เลขจอง · อนุมัติ/ยกเลิกก่อนจ่าย · แก้คน/เลื่อนวัน (ใบสั่ง ledger/trips-briefs/T0.6.md) ◂
 export {

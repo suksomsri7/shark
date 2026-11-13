@@ -1,3 +1,8 @@
+## ▶️ จุดต่อ 12 พ.ย. 21:1xZ — 9/72 (13%)
+- T1.1 ✅ merge c0c593174 · เลน l2 ว่าง (branch wip/trips-t1.1 รวมแล้ว) → ใบถัดไปของเลน l2: ดู TRIPS-MASTER-PLAN (T1.2 จอรอบและที่ว่าง หรือ T0.8 — T0.7 รอ T0.6)
+- T0.6 เลน l1 @baebccfe1 (r1 commit แล้ว) · ผู้ตรวจ r2 → `scratchpad/t0.6-review/REVIEW-R2.md` · นักล่า r2 → `scratchpad/t0.6-hunt/HUNT-R2.md` · ผู้สร้าง agent a664da73834338699 · มติ R1–R14 ยังไม่ได้ต่อท้ายใบสั่ง §16 (ทำตอนรับ) · หลังเขียว: `gate.sh /root/projects/shark-trips-l1 gate-t0.6 qc-trips-t0.6 qc-trips-t0.5 qc-trips-t0.4 qc-trips-t0.3 qc-trips-t0.2 qc-trips-t0.1 qc-trips-p0.1 qc-svc-r0.3 qc-svc-smoke` (เลนต้อง merge session/trips ก่อน — มี T1.1)
+- build/serve QC: `/root/trips-runs/build-t1.1.sh build|serve` (พอร์ต 3241 · หยุดด้วย unit `iso-…` ของ pid จริง)
+
 ## ▶️ จุดต่อ 12 พ.ย. 18:2xZ — 8/72 (11%)
 - T0.4 ✅ merge 8008b2280 (ฐานหลักเขียวครบ) · เลน l1 ว่าง → ใบถัดไป T0.6 (ร่างใบ+ข้อสอบ · ข้อบังคับใน `wo-notes/trips-T0.4.md` + `trips-T0.5.md`)
 - T1.1 เลน l2 @b58095c14 + งานแก้ r1 ยังไม่ commit (ผู้สร้าง agent aaeb157b84fd7edde · รายงานผู้ตรวจ `scratchpad/t1.1-review/REVIEW.md`) → เมื่อส่ง: commit WIP → merge session/trips เข้าเลน → ผู้ตรวจรอบ 2 → ด่าน → ถ่ายภาพคู่ 16/17 → merge

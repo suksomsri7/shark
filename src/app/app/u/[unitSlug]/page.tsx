@@ -54,6 +54,12 @@ const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
   CLINIC: [
     { href: "/clinic", label: "เปิดระบบคลินิก →" },
   ],
+  // ── T1.1 screens ── TRIPS T1.1 ▸ ทัวร์ · Liveaboard ◂
+  TRIPS: [
+    { href: "/trips/products", label: "เปิดระบบทัวร์ →" },
+    { href: "/trips/settings", label: "ตั้งค่าทัวร์" },
+  ],
+  // ── /T1.1 screens ──
 };
 
 // หน้าแรกของระบบธุรกิจ (เช่น จองคิว) — งานของระบบ + การเชื่อมต่อกับระบบอื่น

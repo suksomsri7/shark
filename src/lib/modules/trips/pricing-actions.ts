@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────
 import { requireUnit } from "@/lib/core/context";
 import { ForbiddenError, assertCan, type MembershipCtx } from "@/lib/core/rbac";
+import { evaluate } from "@/lib/core/rbac"; // TRIPS T1.1
 import type { LineRequest, SellCtx } from "@/lib/core/sellable";
 import * as prices from "./prices";
 import * as pricing from "./pricing";
@@ -31,10 +32,14 @@ function denied(e: unknown): typeof FORBIDDEN {
   throw e;
 }
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+// TRIPS T1.1 ▸ มติผู้คุม: สิทธิ์ "ดูราคา" ให้ตรงกับ product-actions.ts (view|edit|publish) — เพิ่มบรรทัดอย่างเดียว (ข้อสอบ S-14 ห้ามลบบรรทัด T0.x) ◂
+const VIEW_ANY_T11 = ["trips.product.view", "trips.product.edit", "trips.product.publish"];
+const canViewTrips = (m: MembershipCtx, unitId: string): boolean => VIEW_ANY_T11.some((action) => evaluate(m, { module: "trips", action, unitId }));
 
 // ── ฤดูกาล ──
 export async function listSeasonsAction(unitSlug: string, input: unknown) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (canViewTrips(memberOf(auth), unit.id)) return prices.listSeasons(ctxOf(auth, unit.id), input); // TRIPS T1.1 ▸ view|edit|publish ◂
   try {
     assertCan(memberOf(auth), { module: "trips", action: "trips.product.view", unitId: unit.id });
   } catch (e) {
@@ -64,6 +69,7 @@ export async function archiveSeasonAction(unitSlug: string, input: unknown) {
 // ── ราคา ──
 export async function listPricesAction(unitSlug: string, input: unknown) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (canViewTrips(memberOf(auth), unit.id)) return prices.listPrices(ctxOf(auth, unit.id), input); // TRIPS T1.1 ▸ view|edit|publish ◂
   try {
     assertCan(memberOf(auth), { module: "trips", action: "trips.product.view", unitId: unit.id });
   } catch (e) {
