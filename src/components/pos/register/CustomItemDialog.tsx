@@ -8,15 +8,21 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { parseHundredths } from "./LineEditor";
 import { REG_DIALOG_PANEL, RegisterDialog, SheetGrab } from "./RegisterDialog";
+import { VAT_TREATMENTS, type VatTreatment } from "@/lib/money/vat-lines"; // ACC T1.8b ◂
+import { legalWarning } from "@/lib/core/settings/legal/warnings"; // ACC T1.8b ▸ ข้อความคำเตือนจากทะเบียนกลาง ◂
+import { LegalWarnings } from "@/components/account-v2/LegalWarnings"; // คอมโพเนนต์คำเตือนกลาง (ติ๊กยืนยัน)
 
 type Err = { key: string; values?: Record<string, string | number> };
 
-export function CustomItemDialog({ onAdd, onClose }: { onAdd: (name: string, priceSatang: number) => Err | null; onClose: () => void }) {
+// ACC T1.8b ▸ ชนิด VAT ของรายการกำหนดเอง (ค่าเริ่มต้น = มาตรฐาน) · เก็บแทน = คำเตือน VAT_COLLECTED_ON_BEHALF (ทะเบียนกลาง) + ติ๊กยืนยันก่อนเพิ่ม (ไม่บล็อก) ◂
+export function CustomItemDialog({ onAdd, onClose }: { onAdd: (name: string, priceSatang: number, vatTreatment: VatTreatment) => Err | null; onClose: () => void }) {
   const t = useTranslations("pos.register");
   const tc = useTranslations("common");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [err, setErr] = useState<Err | null>(null);
+  const [vat, setVat] = useState<VatTreatment>("STANDARD");
+  const [ack, setAck] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
   const add = () => {
@@ -24,7 +30,8 @@ export function CustomItemDialog({ onAdd, onClose }: { onAdd: (name: string, pri
     if (!nm) return setErr({ key: "errors.nameRequired" });
     const p = parseHundredths(price);
     if (p === null || price.trim() === "") return setErr({ key: "errors.amountInvalid" });
-    setErr(onAdd(nm.slice(0, 120), p));
+    if (vat === "ON_BEHALF" && !ack) return setErr({ key: "custom.ackRequired" });
+    setErr(onAdd(nm.slice(0, 120), p, vat));
   };
   return (
     <RegisterDialog onDismiss={onClose}>
@@ -68,6 +75,36 @@ export function CustomItemDialog({ onAdd, onClose }: { onAdd: (name: string, pri
               }}
             />
           </label>
+          <label className="flex flex-col gap-1.5 text-[13px] text-[color:var(--color-muted)]">
+            {t("custom.vat")}
+            <select
+              data-testid="pos-reg-custom-vat"
+              className="input h-12 rounded-[13px] text-[16px] text-[color:var(--color-ink)]"
+              value={vat}
+              onChange={(e) => {
+                setVat(e.target.value as VatTreatment);
+                setAck(false);
+                setErr(null);
+              }}
+            >
+              {VAT_TREATMENTS.map((v) => (
+                <option key={v} value={v}>
+                  {t(`custom.vatOpt.${v}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {vat === "ON_BEHALF" && (
+            <LegalWarnings
+              testId="pos-reg-custom-warning"
+              compact
+              warnings={[legalWarning("VAT_COLLECTED_ON_BEHALF", { name: name.trim() || "-" })]}
+              onAckChange={(codes) => {
+                setAck(codes.includes("VAT_COLLECTED_ON_BEHALF"));
+                setErr(null);
+              }}
+            />
+          )}
           {err && (
             <p data-testid="pos-reg-custom-error" className="text-[13.5px] text-[color:var(--color-danger)]" role="alert">
               {t(err.key, err.values)}

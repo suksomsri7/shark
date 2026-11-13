@@ -1492,7 +1492,14 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                   <div key={i} className="flex items-baseline gap-3 py-1">
                     <span className="w-7 shrink-0 font-bold tabular-nums">{l.qty}</span>
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="break-words">{l.name}</span>
+                      <span className="break-words">
+                        {l.name}
+                        {l.vatTreatment ? ( // ACC T1.8b ▸ ป้ายชนิด VAT แบบใบเสร็จ ◂
+                          <small data-testid={`pos-bill-line-vat-${i}`} className="ml-1 text-[11px] text-[color:var(--color-muted)]">
+                            {t(`drawer.vatMark.${l.vatTreatment}`)}
+                          </small>
+                        ) : null}
+                      </span>
                       {l.options.map((o, j) => (
                         <small key={j} className="text-[11px] text-[color:var(--color-muted)]">
                           {o}
@@ -1531,6 +1538,25 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                   <span>{t("drawer.net")}</span>
                   <span>{money(bill.totals.grandTotal)}</span>
                 </div>
+                {bill.totals.vatGroups ? ( // ACC T1.8b ▸ บิลผสม: แถวกลุ่มแบบใบเสร็จ · ไม่มีแถว VAT ฿0.00 ◂
+                  <div data-testid="pos-bill-vat-groups">
+                    {(
+                      [
+                        ["taxable", "drawer.vatGroupTaxable", bill.totals.vatGroups.standardGross],
+                        ["zero", "drawer.vatGroupZero", bill.totals.vatGroups.zeroRated],
+                        ["exempt", "drawer.vatGroupExempt", bill.totals.vatGroups.exempt],
+                        ["onBehalf", "drawer.vatGroupOnBehalf", bill.totals.vatGroups.onBehalf],
+                      ] as const
+                    )
+                      .filter(([, , v]) => v > 0)
+                      .map(([k, key, v]) => (
+                        <div key={k} data-testid={`pos-bill-vat-group-${k}`} className="flex justify-between py-0.5 text-[12px] text-[color:var(--color-muted)]">
+                          <span>{t(key)}</span>
+                          <span>{money(v)}</span>
+                        </div>
+                      ))}
+                  </div>
+                ) : null}
                 {bill.totals.vatSatang > 0 ? (
                   <div className="flex justify-between py-0.5 text-[12px] text-[color:var(--color-muted)]">
                     <span>{t("drawer.vatIncl", { rate: (bill.totals.vatRateBp / 100).toLocaleString("en-US", { maximumFractionDigits: 2 }) })}</span>

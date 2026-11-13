@@ -320,7 +320,7 @@ export async function applyExternalSale(input: {
   //   ไม่ครบ = ถอยไปเส้น ABB/ใบเสร็จเดิม (ไม่ล้างสำเนาผู้ซื้อ · ฝั่ง POS เตือน ops) — หน้าขายปฏิเสธ NOT_ELIGIBLE ตั้งแต่ตอนชำระแล้ว
   // POS P3.6 ▸ R7 มติ 4: บิลวางบิล = ใบแจ้งหนี้ AWAITING_PAYMENT + dueDate เสมอ (ไม่ขึ้นกับสวิตช์ใบกำกับอย่างย่อ · ไม่มี ABB/TAX_INVOICE ของบิลนี้) ◂
   // POS P3.6 ▸ F2 (CD-P36-F2 · W16/W23): ใบแจ้งหนี้นี้ = "ใบแจ้งหนี้/ใบกำกับภาษี" ของบิลวางบิล (ไม่มี TAX_INVOICE แยก) · creditInvoice ⇒ ฝั่ง POS ไม่เตือน pos.taxInvoice ◂
-  if (creditContactId && input.onAccount) return { posted, ...(await posCreditInvoiceLayer(ctx, input, lines, creditContactId, { vatRegistered, vatRateBp })), creditInvoice: true as const, ...zeroMark };
+  if (creditContactId && input.onAccount) return { posted, ...(await posCreditInvoiceLayer(ctx, input, lines, creditContactId, { vatRegistered, vatRateBp, ...(t18 && vatRegistered ? { vatSatang: vatFull } : {}) })), creditInvoice: true as const, ...zeroMark };
   const full = !!input.buyer && vatRegistered && posAbbreviatedInvoice && vat > 0 && (await bookTaxIdOf(link.systemId)) !== "";
   if (!lines || lines.length === 0 || (!posAbbreviatedInvoice && !full)) return { posted, ...zeroMark };
 
@@ -1686,21 +1686,29 @@ async function posCreditInvoiceLayer(
   input: Parameters<typeof applyExternalSale>[0],
   lines: Parameters<typeof applyExternalSale>[0]["lines"],
   contactId: string,
-  vat: { vatRegistered: boolean; vatRateBp: number },
+  vat: { vatRegistered: boolean; vatRateBp: number; /** ACC T1.8b ▸ VAT ของ JV เมื่อบิลผสม ◂ */ vatSatang?: number },
 ): Promise<{ docId?: string; reason?: string }> {
   const src = lines && lines.length > 0 ? lines : [{ name: "ขายหน้าร้าน POS (วางบิล)", qty: 1, unitPriceSatang: input.grossSatang, discountSatang: 0, itemId: null, accountProductId: null }];
   const map = await resolveProductIdsForExternalSale(ctx.systemId, {
     itemIds: src.map((l) => l.itemId ?? "").filter(Boolean),
     productIds: src.map((l) => l.accountProductId ?? "").filter(Boolean),
   });
-  const docLines: ExternalSaleDocLine[] = src.map((l) => ({
-    description: l.name,
-    qty: l.qty,
-    unitPrice: l.unitPriceSatang,
-    discount: l.discountSatang ?? 0,
-    vatRateBp: l.vatRateBp ?? null,
-    productId: (l.accountProductId ? map.byProductId.get(l.accountProductId) : undefined) ?? (l.itemId ? map.byItemId.get(l.itemId) : undefined) ?? null,
-  }));
+  // ACC T1.8b ▸ บิลผสม: อัตราต่อบรรทัดตามชนิด (มาตรฐาน = อัตราสมุด · 0% = 0 · ยกเว้น = −1) · บรรทัดเก็บแทนคงอยู่ในใบ (ลูกหนี้ = ยอดบิลเต็ม)
+  //   แต่ผูกบัญชีเก็บแทน + อัตรา −1 + ป้าย ⇒ รายงานภาษีขายตัดออก (ไม่ใช่มูลค่าขาย — skill VAT §3) · ไม่มีชนิด = ทางเดิมทุกไบต์ ◂
+  const t18 = src.some((l) => treatmentOf((l as { vatTreatment?: unknown }).vatTreatment) !== "STANDARD");
+  const onBehalfAcct = t18 && src.some((l) => treatmentOf((l as { vatTreatment?: unknown }).vatTreatment) === "ON_BEHALF") ? await resolveMapping(ctx, "COLLECTED_ON_BEHALF") : null;
+  const docLines: ExternalSaleDocLine[] = src.map((l) => {
+    const tr = treatmentOf((l as { vatTreatment?: unknown }).vatTreatment);
+    return {
+      description: t18 && tr === "ON_BEHALF" ? `${l.name} (เก็บแทน — ไม่ใช่มูลค่าขาย)` : l.name,
+      qty: l.qty,
+      unitPrice: l.unitPriceSatang,
+      discount: l.discountSatang ?? 0,
+      vatRateBp: l.vatRateBp ?? (t18 ? (tr === "ON_BEHALF" ? -1 : docRateOfTreatment(tr)) : null),
+      productId: (l.accountProductId ? map.byProductId.get(l.accountProductId) : undefined) ?? (l.itemId ? map.byItemId.get(l.itemId) : undefined) ?? null,
+      ...(t18 && tr === "ON_BEHALF" && onBehalfAcct ? { accountId: onBehalfAcct } : {}),
+    };
+  });
   const ymd = /^\d{4}-\d{2}-\d{2}$/.test(input.onAccount!.dueDate) ? input.onAccount!.dueDate : new Date(input.occurredAt.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
   const doc = await upsertPosCreditInvoiceDocument({
     tenantId: ctx.tenantId,
@@ -1717,6 +1725,7 @@ async function posCreditInvoiceLayer(
     note: input.receiptNo ? `ขายหน้าร้าน POS (วางบิล ${input.onAccount!.termDays} วัน) · ใบเสร็จ ${input.receiptNo}` : `ขายหน้าร้าน POS (วางบิล ${input.onAccount!.termDays} วัน)`,
     lines: docLines,
     ...(input.buyer ? { buyer: input.buyer } : {}),
+    ...(vat.vatSatang !== undefined ? { vatSatang: vat.vatSatang } : {}), // ACC T1.8b ◂
   });
   if (!doc.ok) throw new Error(`บิล POS ${input.refId} (วางบิล): สร้างใบแจ้งหนี้ไม่สำเร็จ — ${doc.reason} · ลองใหม่อัตโนมัติ`); // ลูกหนี้ต้องมีเอกสาร ⇒ ล้ม = คิวลองใหม่ (upsert idempotent)
   return { docId: doc.docId };

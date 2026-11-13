@@ -179,7 +179,11 @@
     "custom": {
       "name": "ชื่อรายการ",
       "price": "ราคา (บาท)",
-      "add": "เพิ่มลงตะกร้า"
+      "add": "เพิ่มลงตะกร้า",
+      "vat": "ภาษีมูลค่าเพิ่มของรายการนี้",
+      "vatOpt": { "STANDARD": "มาตรฐาน (อัตราของร้าน)", "ZERO_RATED": "อัตรา 0%", "EXEMPT": "ยกเว้น VAT", "ON_BEHALF": "เก็บแทน (ไม่ใช่รายได้)" },
+      "vatMark": { "ZERO_RATED": "(VAT 0%)", "EXEMPT": "(ยกเว้น VAT)", "ON_BEHALF": "(เก็บแทน)" },
+      "ackRequired": "ติ๊กยืนยันคำเตือนก่อนเพิ่มรายการเก็บแทน"
     },
     "openPrice": {
       "title": "ตั้งราคาขายครั้งนี้",
@@ -2113,6 +2117,11 @@
       "serviceCharge": "ค่าบริการ",
       "net": "ยอดสุทธิ",
       "vatIncl": "รวมภาษีมูลค่าเพิ่ม {rate}%",
+      "vatGroupTaxable": "มูลค่าที่เสียภาษี (รวม VAT)",
+      "vatGroupZero": "ยอดขายอัตราร้อยละ 0",
+      "vatGroupExempt": "ยอดขายที่ได้รับยกเว้น VAT",
+      "vatGroupOnBehalf": "เก็บแทน (ไม่ใช่มูลค่าขาย)",
+      "vatMark": { "ZERO_RATED": "(VAT 0%)", "EXEMPT": "(ยกเว้น VAT)", "ON_BEHALF": "(เก็บแทน)" },
       "tip": "ทิป (นอกยอด)",
       "refunded": "คืนเงินแล้ว",
       "payments": "การชำระ",

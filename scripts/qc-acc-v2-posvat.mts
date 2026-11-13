@@ -55,6 +55,12 @@ const commission: Any = await import("@/lib/modules/pos/staff-commission-shared"
 const W: Any = await import("@/lib/core/settings/legal/warnings" as string);
 const { drainAll } = (await import("@/lib/outbox-consumers" as string)) as Any;
 const accEnv: Any = await import("./acc-v2-env.mts" as string);
+// ACC T1.8b ◂
+const bills: Any = await import("@/lib/modules/pos/bills" as string);
+const regShared: Any = await import("@/lib/modules/pos/register-shared" as string);
+const TOT: Any = await import("@/lib/modules/account/totals" as string);
+const PC: Any = await import("@/lib/modules/account/period-close" as string);
+const AMB: Any = await import("@/lib/core/legal-ambient" as string);
 
 const bkk = new Date(Date.now() + 7 * 3600_000);
 const M = bkk.toISOString().slice(0, 7);
@@ -274,6 +280,79 @@ try {
   const tb = await REP.trialBalance(ctx, M, M);
   const t2120 = tb.rows?.find?.((x: Any) => x.code === "2120");
   eq("P6.5", "งบทดลองเดือนนี้ บัญชี 2120: เคลื่อนไหว Cr 10,000 / Dr 10,000 (B3 · B6 · void B6 · คืน R2)", [t2120?.movementCredit, t2120?.movementDebit], [10_000, 10_000], "MAJOR");
+
+  // ═══ P8 T1.8b ของค้าง ═══
+  console.log("\n── P8 T1.8b: ลิ้นชักบิล · รายการกำหนดเอง · บิลวางบิลผสม · ยอดฟอร์มบัญชี · เดือนที่ยื่นแล้ว ──");
+  {
+    // A1 ลิ้นชักบิล (billDetail) — บิลผสม B3 มีป้ายต่อบรรทัด + กลุ่ม (เฉลยมือ: มาตรฐาน 19,260 ฐาน 18,000 · ยกเว้น 9,000 · เก็บแทน 5,000) · B1 บิลเดิมไม่มีคีย์
+    const bd3 = await bills.billDetail(pctx, ownerActor, { unitId: unit.id, saleId: sales.B3.id });
+    const bd1 = await bills.billDetail(pctx, ownerActor, { unitId: unit.id, saleId: sales.B1.id });
+    eq("P8.1", "ลิ้นชัก B3: ป้ายต่อบรรทัด (มาตรฐานไม่มี) + กลุ่ม 19,260/18,000/0/9,000/5,000", [bd3.ok, bd3.bill?.lines.map((l: Any) => l.vatTreatment ?? null), bd3.bill?.totals.vatGroups], [true, [null, "EXEMPT", "ON_BEHALF"], { standardGross: 19_260, base: 18_000, zeroRated: 0, exempt: 9_000, onBehalf: 5_000 }]);
+    chk("P8.2", "ลิ้นชัก B1 (บิลเดิม): ไม่มี vatGroups · ไม่มีป้ายบรรทัด (แถวเดิม)", bd1.ok && !("vatGroups" in bd1.bill.totals) && bd1.bill.lines.every((l: Any) => !("vatTreatment" in l)), "เดิม", bd1.bill?.totals, "MAJOR");
+    // A2 รายการกำหนดเอง: ตะกร้า → คำขอ quote/submit มีชนิด · บิลพักเรียกคืนแล้วชนิดไม่หาย · มาตรฐานไม่ส่งคีย์
+    const cart = { lines: [{ key: "k1", kind: "custom", name: "ค่าธรรมเนียมอุทยาน", unitPriceSatang: 4_000, qty: 1, vatTreatment: "ON_BEHALF" }, { key: "k2", kind: "custom", name: "ค่าบริการ", unitPriceSatang: 1_070, qty: 1 }] };
+    const q = regShared.cartToQuoteInput(cart);
+    eq("P8.3", "ตะกร้า → quote: รายการกำหนดเองส่ง vatTreatment (มาตรฐาน = ไม่มีคีย์)", q.lines.map((l: Any) => l.vatTreatment ?? null), ["ON_BEHALF", null]);
+    const createSaleCustom = await sell("B7", [{ name: "ค่าธรรมเนียมอุทยาน", qty: 1, unitPriceSatang: 4_000, vatTreatment: "ON_BEHALF" }, { name: "ค่าบริการ", qty: 1, unitPriceSatang: 1_070 }]);
+    const b7 = await prisma.posSale.findUnique({ where: { id: createSaleCustom.saleId } });
+    eq("P8.4", "บิลรายการกำหนดเองเก็บแทน 4,000 + มาตรฐาน 1,070: VAT 70 · เก็บแทน 4,000", [b7?.vatSatang, b7?.onBehalfSatang, b7?.grandTotalSatang], [70, 4_000, 5_070]);
+    // A3 บิลวางบิลผสม → ใบแจ้งหนี้ (เรียก facade ตรง · ร้านทดสอบมี Party ของตัวเอง)
+    const partyRow = await prisma.party.create({ data: { tenantId: tid, kind: "COMPANY", name: "บริษัท วางบิล T18b จำกัด" } });
+    const refId = `t18b-credit-${Date.now().toString(36)}`;
+    const cr = await accIdx.applyExternalSale({
+      tenantId: tid, sourceSystemId: posSys.id, refId, receiptNo: "T18B-0001", occurredAt: new Date(), grossSatang: 36_400,
+      payMethods: [{ channel: "ON_ACCOUNT", amountSatang: 36_400 }],
+      onAccount: { partyId: partyRow.id, dueDate: new Date(Date.now() + 30 * 86400_000 + 7 * 3600_000).toISOString().slice(0, 10), termDays: 30 },
+      lines: [
+        { name: "ชุดดำน้ำ", qty: 1, unitPriceSatang: 21_400, discountSatang: 0, itemId: null, accountProductId: null },
+        { name: "ข้าวสาร", qty: 1, unitPriceSatang: 10_000, discountSatang: 0, itemId: null, accountProductId: null, vatTreatment: "EXEMPT" },
+        { name: "ค่าเข้าอุทยาน", qty: 1, unitPriceSatang: 5_000, discountSatang: 0, itemId: null, accountProductId: null, vatTreatment: "ON_BEHALF" },
+      ],
+    });
+    const inv = cr?.docId ? await prisma.accountDocument.findUnique({ where: { id: cr.docId }, include: { lines: { orderBy: { sortOrder: "asc" } } } }) : null;
+    // เฉลยมือ: VAT = ถอดจาก 21,400 = 1,400 · ใบ = ยอดเต็ม 36,400 (ลูกหนี้) · บรรทัด 7% / ยกเว้น / เก็บแทน(−1 + บัญชี 2120)
+    eq("P8.5", "ใบแจ้งหนี้วางบิลผสม: ยอด 36,400 · VAT 1,400 · อัตรา 700/−1/−1 · บรรทัดเก็บแทนผูก 2120 + ป้าย", [cr?.creditInvoice, inv?.grandTotal, inv?.vatAmount, inv?.lines.map((l: Any) => l.vatRateBp), inv?.lines[2]?.accountId === ledger2120?.id, inv?.lines[2]?.description.includes("เก็บแทน")], [true, 36_400, 1_400, [700, -1, -1], true, true]);
+    const jv = await prisma.accountJournalEntry.findFirst({ where: { systemId: SYS, refType: "PosSale", refId }, include: { lines: { include: { account: { select: { code: true } } } } } });
+    const jvBy: Record<string, number> = {};
+    for (const l of jv?.lines ?? []) jvBy[l.account.code] = (jvBy[l.account.code] ?? 0) + l.credit - l.debit;
+    eq("P8.6", "JV วางบิลผสม: Dr 1100 36,400 · Cr 4000 30,000 · 2200 1,400 · 2120 5,000", jvBy, { "1100": -36_400, "4000": 30_000, "2200": 1_400, "2120": 5_000 });
+    const st = await STR.salesTaxReport(ctx, M, { abbMode: "PER_BILL" });
+    const crRow = st.rows.find((x: Any) => x.docNo === inv?.docNo || x.docNo === "T18B-0001");
+    eq("P8.7", "รายงานภาษีขาย แถวบิลวางบิล: 7% 20,000/1,400 + ยกเว้น 10,000 (เก็บแทนไม่นับเป็นยกเว้น)", crRow?.parts, [{ rateBp: 700, base: 20_000, vat: 1_400 }, { rateBp: -1, base: 10_000, vat: 0 }]);
+    // A4 ยอดฟอร์มบัญชี (computeDocTotals) — ยกเว้นล้วน: ไม่มีกลุ่มอัตราบวก ⇒ ไม่มีแถว VAT · ผสม: ฐานต่อกลุ่ม
+    const allEx = TOT.computeDocTotals({ lines: [{ qty: 1, unitPriceSatang: 10_000, vatRateBp: -1 }], priceMode: "EXCL_VAT", vatRegistered: true, vatRateBp: 700 });
+    eq("P8.8", "ฟอร์ม ยกเว้นล้วน: กลุ่ม [ยกเว้น 10,000] · แถวสรุปไม่มี VAT", [allEx.rateGroups, TOT.vatSummaryRows(allEx.rateGroups)], [[{ rateBp: -1, base: 10_000, vat: 0 }], []]);
+    const mix = TOT.computeDocTotals({ lines: [{ qty: 1, unitPriceSatang: 10_000 }, { qty: 2, unitPriceSatang: 2_500, vatRateBp: 0 }, { qty: 1, unitPriceSatang: 3_000, vatRateBp: -1 }], priceMode: "EXCL_VAT", vatRegistered: true, vatRateBp: 700 });
+    eq("P8.9", "ฟอร์ม ผสม (แยก VAT): 7% 10,000/700 · 0% 5,000 · ยกเว้น 3,000 → แถว ฐาน×3 + VAT 7% 700", [mix.vatAmount, TOT.vatSummaryRows(mix.rateGroups).map((r: Any) => [r.label, r.satang])], [700, [["มูลค่าที่เสียภาษี 7%", 10_000], ["มูลค่าอัตราร้อยละ 0", 5_000], ["มูลค่าที่ได้รับยกเว้นภาษีมูลค่าเพิ่ม", 3_000], ["ภาษีมูลค่าเพิ่ม 7%", 700]]]);
+    const std = TOT.computeDocTotals({ lines: [{ qty: 1, unitPriceSatang: 10_000 }], priceMode: "EXCL_VAT", vatRegistered: true, vatRateBp: 700 });
+    eq("P8.10", "ฟอร์ม มาตรฐานล้วน: แถว VAT แถวเดียว (รูปเดิม)", TOT.vatSummaryRows(std.rateGroups).map((r: Any) => [r.kind, r.satang]), [["vat", 700]]);
+    // F เดือนที่ยื่น ภ.พ.30 แล้ว (T1.7) — POS ขาย/คืน ภายในบริบทยืนยันที่ไม่มีรหัส (เหมือนคำขอ REST) ⇒ ลงบัญชีครบ ไม่ถูกบล็อก
+    const mk = await PC.markVatFiled(ctx, { periodKey: M, userId: owner.id });
+    chk("P8.11", "ทำเครื่องหมายยื่น ภ.พ.30 เดือนปัจจุบัน", mk?.ok !== false, "ok", mk, "MAJOR");
+    let thrown: unknown = null;
+    try {
+      await AMB.withLegalAck({ codes: [], actorId: owner.id, actorType: "USER", via: "rest" }, async () => {
+        await sell("B8", [{ name: "กาแฟ", qty: 1, unitPriceSatang: 10_700 }]);
+        await drain();
+      });
+    } catch (e) {
+      thrown = e instanceof Error ? e.message : String(e);
+    }
+    await drain();
+    const jv8 = await prisma.accountJournalEntry.findFirst({ where: { systemId: SYS, idempotencyKey: `PosSale#${sales.B8?.id}#PAID` }, select: { id: true } });
+    chk("P8.12", "ขาย POS ในเดือนที่ยื่นแล้ว (บริบทยืนยันว่าง): ไม่โยน · JV ลงครบ · ไม่มีคิวค้าง/ตาย", thrown === null && !!jv8, "ลงบัญชี", { thrown, jv8 });
+    // positive control: ด่านทำงานจริงในเดือนนี้ — รายการที่ไม่ใช่ POS แตะ 2200 ในบริบทยืนยันว่าง = ต้องถาม (โยน) · refType PosSale = ไม่ถาม
+    const FG: Any = await import("@/lib/modules/account/filed-guard" as string);
+    const l2200 = await prisma.accountLedger.findFirst({ where: { systemId: SYS, code: "2200" }, select: { id: true } });
+    const guardOf = (refType: string) =>
+      AMB.withLegalAck({ codes: [], actorId: owner.id, actorType: "USER", via: "rest" }, () =>
+        prisma.$transaction((tx: Any) => FG.filedPeriodGuardInTx(tx, ctx, { periodKey: M, refType, refId: "x", lines: [{ accountId: l2200.id, debit: 0, credit: 100 }] })),
+      ).then(() => "ok", (e: unknown) => (e as Any)?.name ?? String(e));
+    eq("P8.12b", "positive control: refType AccountDocument → ถาม (LegalAckRequiredError) · PosSale → ไม่ถาม", [await guardOf("AccountDocument") !== "ok", await guardOf("PosSale")], [true, "ok"]);
+    const pending = await prisma.outboxEvent.count({ where: { tenantId: tid, status: { in: ["PENDING", "FAILED"] } } }).catch(() => -1);
+    eq("P8.13", "คิว outbox ของร้านทดสอบไม่มี PENDING/FAILED", pending, 0, "MAJOR");
+    await PC.unmarkVatFiled(ctx, M, { userId: owner.id, reason: "QC T1.8b จบข้อทดสอบ" }).catch(() => null);
+  }
 
   // ═══ P7 บิลเก่า (ไม่มีชนิด) อ่านเหมือนเดิม ═══
   console.log("\n── P7 บิลเก่า ──");

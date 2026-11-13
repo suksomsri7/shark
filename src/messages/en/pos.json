@@ -179,7 +179,11 @@
     "custom": {
       "name": "Item name",
       "price": "Price (baht)",
-      "add": "Add to cart"
+      "add": "Add to cart",
+      "vat": "VAT for this item",
+      "vatOpt": { "STANDARD": "Standard (shop rate)", "ZERO_RATED": "Zero-rated (0%)", "EXEMPT": "VAT exempt", "ON_BEHALF": "Collected on behalf (not income)" },
+      "vatMark": { "ZERO_RATED": "(0% VAT)", "EXEMPT": "(VAT exempt)", "ON_BEHALF": "(on behalf)" },
+      "ackRequired": "Tick the confirmation before adding an on-behalf item"
     },
     "openPrice": {
       "title": "Set a price for this sale",
@@ -2113,6 +2117,11 @@
       "serviceCharge": "Service charge",
       "net": "Net total",
       "vatIncl": "Includes VAT {rate}%",
+      "vatGroupTaxable": "Taxable sales (incl. VAT)",
+      "vatGroupZero": "Zero-rated sales",
+      "vatGroupExempt": "VAT-exempt sales",
+      "vatGroupOnBehalf": "Collected on behalf (not a sale)",
+      "vatMark": { "ZERO_RATED": "(0% VAT)", "EXEMPT": "(VAT exempt)", "ON_BEHALF": "(on behalf)" },
       "tip": "Tip (outside the total)",
       "refunded": "Refunded",
       "payments": "Payments",

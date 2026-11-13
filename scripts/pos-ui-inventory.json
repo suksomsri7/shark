@@ -1646,6 +1646,30 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-custom-vat",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-custom-dialog",
+        "state": "changes"
+      },
+      "wo": "T1.8b",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-reg-custom-item"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-custom-add",
       "kind": "button",
       "roles": [

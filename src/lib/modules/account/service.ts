@@ -5478,6 +5478,8 @@ export type ExternalSaleDocLine = {
   vatRateBp?: number | null;
   unitName?: string | null;
   productId?: string | null; // ทะเบียนสินค้าฝั่งบัญชี (null = รายการที่ไม่มีในทะเบียน)
+  /** ACC T1.8b ▸ บรรทัดเก็บแทนในใบแจ้งหนี้ของบิลวางบิล = ผูกบัญชีเก็บแทน (COLLECTED_ON_BEHALF) — รายงานภาษีขายไม่นับเป็นมูลค่าขาย ◂ */
+  accountId?: string | null;
 };
 
 /**
@@ -7793,6 +7795,8 @@ export async function upsertPosCreditInvoiceDocument(input: {
   note?: string | null;
   lines: ExternalSaleDocLine[];
   buyer?: ExternalBuyerSnapshot;
+  /** ACC T1.8b ▸ VAT ของใบ = VAT ของ JV (ถอดจากกลุ่มมาตรฐานของบิลผสม) — ไม่ส่ง = คิดจากบรรทัดแบบเดิม ◂ */
+  vatSatang?: number;
 }): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
   const existing = await findDocByRef(input.systemId, POS_CREDIT_DOC_TYPE, EXTERNAL_SALE_REF_TYPE, input.refId);
   if (existing) return { ok: true, docId: existing.id, created: false };
@@ -7805,6 +7809,12 @@ export async function upsertPosCreditInvoiceDocument(input: {
   });
   if (totals.grandTotal !== input.grandTotalSatang)
     return { ok: false, reason: `ยอดรวมของบรรทัด (${totals.grandTotal}) ไม่เท่ากับยอดบิล (${input.grandTotalSatang}) — ไม่สร้างใบแจ้งหนี้ของบิลวางบิล` };
+  // ACC T1.8b ▸ บิลผสม: VAT ใบ = VAT ของ JV (สูตรเดียวกับ ABB ของ T1.8) ◂
+  const v18 = input.vatSatang;
+  if (input.vatMode === "INCLUDE" && input.vatRegistered && typeof v18 === "number" && Number.isInteger(v18) && v18 >= 0 && v18 <= totals.grandTotal) {
+    totals.subTotal = totals.grandTotal - v18;
+    totals.vatAmount = v18;
+  }
   const contact = await prisma.accountContact.findFirst({
     where: { id: input.contactId, systemId: input.systemId },
     select: { name: true, taxId: true, legalType: true, branchCode: true, branchName: true, address: true, phone: true, email: true },
@@ -7853,6 +7863,7 @@ export async function upsertPosCreditInvoiceDocument(input: {
               vatRateBp: l.vatRateBp ?? input.vatRateBp,
               amount: lineAmount({ description: l.description, qty: l.qty, unitPrice: l.unitPrice, discount: l.discount ?? 0 }),
               productId: l.productId ?? null,
+              ...(l.accountId ? { accountId: l.accountId } : {}), // ACC T1.8b ◂
             })),
           },
         },

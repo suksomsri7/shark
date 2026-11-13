@@ -269,7 +269,7 @@ export async function salesTaxReport(
     adjustReason: true,
     contactSnapshot: true,
     contact: { select: { name: true, taxId: true, branchCode: true } },
-    lines: { select: { amount: true, vatRateBp: true }, orderBy: { sortOrder: "asc" as const } },
+    lines: { select: { amount: true, vatRateBp: true, accountId: true }, orderBy: { sortOrder: "asc" as const } },
   };
   const [docs, posDocs, posLinks] = await Promise.all([
     docIds.length ? db.accountDocument.findMany({ where: { id: { in: docIds } }, select: docSelect }) : [],
@@ -278,9 +278,18 @@ export async function salesTaxReport(
   ]);
   const posMeta = await posBillMeta(ctx.tenantId, [...posDocs.map((d) => d.refSystemId ?? ""), ...posLinks.map((l) => l.linkedId)], saleIds);
   type Doc = (typeof docs)[number];
+  // ACC T1.8b ▸ ใบแจ้งหนี้ของบิลวางบิลที่มีบรรทัดเก็บแทน (ผูกบัญชี COLLECTED_ON_BEHALF) — ไม่ใช่มูลค่าขาย ⇒ ตัดออกก่อนแยกกลุ่มอัตรา ◂
+  const onBehalfAcct = (await db.accountMapping.findFirst({ where: { key: "COLLECTED_ON_BEHALF" }, select: { accountId: true } }))?.accountId ?? null;
+  const salesPartOf = (d: Doc) => {
+    if (!onBehalfAcct || !d.lines.some((l) => l.accountId === onBehalfAcct)) return d;
+    const kept = d.lines.filter((l) => l.accountId !== onBehalfAcct);
+    const cut = d.lines.reduce((n, l) => n + (l.accountId === onBehalfAcct ? l.amount : 0), 0);
+    return { ...d, lines: kept, grandTotal: d.grandTotal - cut };
+  };
   const docMap = new Map<string, Doc>(docs.map((d) => [d.id, d]));
   const posDocsBySale = new Map<string, Doc[]>();
-  for (const d of posDocs) {
+  for (const d0 of posDocs) {
+    const d = salesPartOf(d0);
     const arr = posDocsBySale.get(d.refId!) ?? [];
     arr.push(d);
     posDocsBySale.set(d.refId!, arr);

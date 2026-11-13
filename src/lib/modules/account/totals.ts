@@ -250,6 +250,8 @@ export type DocTotals = {
   grandTotalWords: string;
   /** vatMode ที่ต้องบันทึกลง DB (แปลงจาก priceMode + สถานะจด VAT) */
   vatMode: AccountVatMode;
+  /** ACC T1.8b ▸ ฐาน/VAT ต่อกลุ่มอัตรา (มาตรฐาน · 0% · ยกเว้น) — ว่าง = เอกสารไม่มี VAT (ไม่จด/ไม่มี VAT) ◂ */
+  rateGroups: VatRateGroup[];
 };
 
 /** ประเภทราคา (UI) → vatMode (DB) · ไม่จด VAT = NONE เสมอ (กติกา A3 เดิมของ service) */
@@ -346,5 +348,79 @@ export function computeDocTotals(input: DocTotalsInput): DocTotals {
     dueTotal,
     grandTotalWords: bahtText(t.grandTotal),
     vatMode,
+    rateGroups: vatRateGroups(legacy.map((l) => l.vatRateBp), t.lines, vatMode, input.vatRegistered, input.vatRateBp),
   };
+}
+
+// ─────────────────── ACC T1.8b · กลุ่มอัตรา VAT ของเอกสาร (ฟอร์ม · หน้ารายละเอียด · ใบพิมพ์) ───────────────────
+// skill common-vat-invoice.md §2 §19–§21: ยอดขายแยกตามอัตรา (มาตรฐาน · 0% · ยกเว้น) · ไม่มีบรรทัดเสียภาษี = ไม่มีแถว "VAT 7% ฿0.00"
+
+/** ฐาน (ก่อน VAT หลังส่วนลดทุกชั้น) + VAT ต่อกลุ่มอัตรา · rateBp: >0 = อัตราจริง · 0 = 0% · −1 = ยกเว้น */
+export type VatRateGroup = { rateBp: number; base: number; vat: number };
+
+/** รวมผลต่อบรรทัดของ computeTotals เป็นกลุ่มอัตรา (อัตราไม่ระบุ = อัตราของกิจการ) · ไม่จด VAT / vatMode NONE = [] */
+export function vatRateGroups(
+  rates: readonly (number | null | undefined)[],
+  breakdown: readonly { net: number; vat: number }[],
+  vatMode: AccountVatMode,
+  vatRegistered: boolean,
+  fallbackBp: number,
+): VatRateGroup[] {
+  if (vatMode === "NONE" || !vatRegistered) return [];
+  const by = new Map<number, VatRateGroup>();
+  breakdown.forEach((b, i) => {
+    const raw = rates[i] ?? fallbackBp;
+    const bp = raw > 0 ? raw : raw === 0 ? 0 : -1;
+    const g = by.get(bp) ?? { rateBp: bp, base: 0, vat: 0 };
+    g.base += b.net;
+    g.vat += b.vat;
+    by.set(bp, g);
+  });
+  return [...by.values()].sort((a, b) => b.rateBp - a.rateBp);
+}
+
+/** กลุ่มอัตราของเอกสารที่บันทึกแล้ว (amount ต่อบรรทัด = ฐานตามที่ป้อน) — ตัวคิดเดียวกับฟอร์ม */
+export function docVatRateGroups(doc: {
+  lines: readonly { amount: number; vatRateBp: number | null }[];
+  discountAmount: number;
+  vatMode: AccountVatMode;
+  vatRegistered: boolean;
+  vatRateBp: number;
+}): VatRateGroup[] {
+  const t = computeTotals({
+    lines: doc.lines.map((l) => ({ description: "", qty: 1, unitPrice: l.amount, vatRateBp: l.vatRateBp ?? undefined })),
+    discountAmount: doc.discountAmount,
+    vatMode: doc.vatMode,
+    vatRegistered: doc.vatRegistered,
+    vatRateBp: doc.vatRateBp,
+  });
+  return vatRateGroups(doc.lines.map((l) => l.vatRateBp), t.lines, doc.vatMode, doc.vatRegistered, doc.vatRateBp);
+}
+
+export type VatSummaryRow = { key: string; label: string; satang: number; kind: "base" | "vat" };
+
+const VAT_ROW_LABELS = {
+  TH: { taxable: (r: string) => `มูลค่าที่เสียภาษี ${r}`, zero: "มูลค่าอัตราร้อยละ 0", exempt: "มูลค่าที่ได้รับยกเว้นภาษีมูลค่าเพิ่ม", vat: (r: string) => `ภาษีมูลค่าเพิ่ม ${r}` },
+  EN: { taxable: (r: string) => `Taxable value ${r}`, zero: "Zero-rated value", exempt: "VAT-exempt value", vat: (r: string) => `VAT ${r}` },
+} as const;
+const pct = (bp: number) => `${(bp / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
+
+/**
+ * แถวสรุป VAT ของเอกสาร (ฟอร์ม/ใบพิมพ์ใช้ตัวเดียวกัน):
+ *   · ไม่มีกลุ่มอัตราบวกที่มียอด = ไม่มีแถว VAT เลย (ไม่แสดง "VAT 7% ฿0.00")
+ *   · มีกลุ่มที่มียอดมากกว่าหนึ่งกลุ่ม (ผสม) = แถวฐานต่อกลุ่ม แล้วแถว VAT ต่ออัตราบวก
+ *   · กลุ่มเดียวที่เสียภาษี = แถว VAT แถวเดียว (รูปเดิม)
+ *   vatOverride = VAT ระดับเอกสารที่บันทึกไว้ (ใบรับมัดจำ/ใบที่ถอด VAT จากกลุ่ม) — ใช้แทนผลรวมของกลุ่มเมื่อมีอัตราบวกกลุ่มเดียว
+ */
+export function vatSummaryRows(groups: readonly VatRateGroup[], lang: "TH" | "EN" = "TH", vatOverride?: number): VatSummaryRow[] {
+  const L = VAT_ROW_LABELS[lang];
+  const live = groups.filter((g) => g.base !== 0 || g.vat !== 0);
+  const taxable = live.filter((g) => g.rateBp > 0);
+  const out: VatSummaryRow[] = [];
+  if (live.length > 1) {
+    for (const g of live)
+      out.push({ key: `base-${g.rateBp}`, kind: "base", satang: g.base, label: g.rateBp > 0 ? L.taxable(pct(g.rateBp)) : g.rateBp === 0 ? L.zero : L.exempt });
+  }
+  for (const g of taxable) out.push({ key: `vat-${g.rateBp}`, kind: "vat", satang: taxable.length === 1 && typeof vatOverride === "number" ? vatOverride : g.vat, label: L.vat(pct(g.rateBp)) });
+  return out;
 }
