@@ -104,11 +104,11 @@ export function rateGroupsOf(doc: RateGroupDoc | null, glVat: number, stdRateBp:
   const stdGross = Math.max(0, grand - nonStdGross);
   const keys = [...std.keys()].sort((a, b) => b - a);
   if (keys.length > 0) {
-    const vats = keys.length === 1 ? [absVat] : allocateProportional(absVat, keys.map((k) => Math.max(0, std.get(k)!.vat)));
-    const grosses = keys.length === 1 ? [stdGross] : allocateProportional(stdGross, keys.map((k) => Math.max(0, std.get(k)!.gross)));
+    const vats: number[] = keys.length === 1 ? [absVat] : allocateProportional(absVat, keys.map((k) => Math.max(0, std.get(k)!.vat)));
+    const grosses: number[] = keys.length === 1 ? [stdGross] : allocateProportional(stdGross, keys.map((k) => Math.max(0, std.get(k)!.gross)));
     // allocateProportional คืน 0 ทั้งหมดเมื่อน้ำหนักรวม 0 — ให้ก้อนทั้งหมดไปกลุ่มแรก
-    if (keys.length > 1 && vats.every((v) => v === 0) && absVat > 0) vats[0] = absVat;
-    if (keys.length > 1 && grosses.every((v) => v === 0) && stdGross > 0) grosses[0] = stdGross;
+    if (keys.length > 1 && !vats.some((v) => v !== 0) && absVat > 0) vats[0] = absVat;
+    if (keys.length > 1 && !grosses.some((v) => v !== 0) && stdGross > 0) grosses[0] = stdGross;
     keys.forEach((bp, i) => out.push({ rateBp: bp, base: sign * (grosses[i] - vats[i]), vat: sign * vats[i] }));
   }
   return out.sort((a, b) => rateOrder(a.rateBp, b.rateBp));

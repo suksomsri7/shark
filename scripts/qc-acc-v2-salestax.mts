@@ -307,7 +307,12 @@ try {
   eq("S3.6", `เดือน P (${P}): RP 500/35 ปกติ · = GL`, [prev.rows.map((x: Any) => [x.docNo, x.base, x.vat, !!x.cancelled]), prev.checks.find((c: Any) => c.key === "GL_2200")?.ok], [[[rpNo, 50_000, 3_500, false]], true]);
   const csv: string = await REP.pp30Csv(ctx, M);
   chk("S3.7", "CSV: BOM + หัวรายงาน (ชื่อ · เลข 13 หลัก · สถานประกอบการ · เดือนภาษี)", csv.charCodeAt(0) === 0xfeff && csv.includes("บริษัท ทีวันวัน ภาษีขาย จำกัด") && csv.includes("0105566012345") && csv.includes("สำนักงานใหญ่") && csv.includes(SH.taxMonthLabelTh(M)), "ครบ", csv.slice(0, 300));
-  chk("S3.8", "CSV: แถวใบย่อมีช่วงเลขที่ + จำนวนใบ · แถวยกเลิกมีหมายเหตุ · ยอดรวม 1,841.00", csv.includes(`${sales.S1.receiptNo}","${sales.S2.receiptNo}`) || (csv.includes(sales.S1.receiptNo) && csv.includes(sales.S2.receiptNo)), "มี", "?");
+  {
+    const L = csv.split("\n");
+    const abbLine = L.find((l) => l.includes(`"${sales.S1.receiptNo}"`) || l.includes(`,${sales.S1.receiptNo},`)) ?? "";
+    const rcLine = L.find((l) => l.includes(rcNo)) ?? "";
+    chk("S3.8", "CSV: แถวใบย่อ d1 เครื่อง A มีเลขที่แรก+ถึงเลขที่+จำนวน 2 ใบ+1500.00/105.00 · แถว RC มีหมายเหตุยกเลิก", abbLine.includes(sales.S2.receiptNo) && /,2,/.test(abbLine) && abbLine.includes("1500.00") && abbLine.includes("105.00") && rcLine.includes("ยกเลิก"), "ครบ", [abbLine, rcLine]);
+  }
   chk("S3.9", "CSV: รวมภาษีขายทั้งสิ้น 29300.00 / 1841.00 + ข้อตรวจกระทบยอด", /รวมภาษีขายทั้งสิ้น[^\n]*29300\.00[^\n]*1841\.00/.test(csv) && csv.includes("ข้อตรวจกระทบยอด") && csv.includes("ยกเลิก"), "มี", csv.split("\n").filter((l) => l.includes("รวมภาษีขาย")));
   chk("S3.10", "CSV: หัวกลุ่มอัตราอยู่เหนือแถวของกลุ่ม (อัตรา 7 → แถว → รวมอัตรา 7 → อัตรา 0)", (() => {
     const L = csv.split("\n");

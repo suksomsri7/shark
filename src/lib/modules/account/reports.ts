@@ -619,8 +619,9 @@ export async function pp30(
   const output: Pp30Side = {
     total: outputVat,
     base: salesTax.total.base,
+    // แถวยกเลิกในเดือนเดียวกัน (ยอด 0) อยู่ในรายงานภาษีขายพร้อมหมายเหตุ — ไม่ใส่ในรายการแบบแบน (API/ผู้เรียกเดิม: แถว = ยอดภาษี)
     rows: salesTax.rows.flatMap((r) =>
-      r.parts.map((p) => ({
+      r.parts.filter((p) => p.base !== 0 || p.vat !== 0).map((p) => ({
         docNo: r.docNoTo ? `${r.docNo} ถึง ${r.docNoTo}` : r.docNo,
         date: new Date(`${r.date}T00:00:00+07:00`),
         contactName: r.buyerName,
