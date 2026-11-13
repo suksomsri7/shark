@@ -168,7 +168,10 @@ function runStatic(): void {
   {
     const pay = rd(F.payroll);
     const i = pay.search(/HR H3\.2 ▸/);
-    const blk = i < 0 ? "" : stripComments(pay.slice(i));
+    // ORACLE-EDIT (H3.4 builder, phase B): the end marker `// ◂ HR H3.2` is a comment, so it was stripped before the search below and the
+    //   "block" ran to EOF (into the later HR H3.4 run block, which legitimately prices holidayWorkMin) — cut at the raw end marker first
+    const j = i < 0 ? -1 : pay.indexOf("◂ HR H3.2", pay.indexOf("HR H3.2 ▸ รายการหักสาย/ออกก่อน/ขาดงาน") > 0 ? pay.indexOf("HR H3.2 ▸ รายการหักสาย/ออกก่อน/ขาดงาน") : i);
+    const blk = i < 0 ? "" : stripComments(pay.slice(i, j > i ? j : undefined));
     const bad = /otWorkdayMin|otHolidayMin|holidayWorkMin|holidayPaidMin|OT_REQUEST|kind:\s*["']OT["']/;
     ck("S1.2", { files: have, ap: have && !bad.test(all), block: blk.length > 0 && !/holidayWorkMin|holidayPaidMin|kind:\s*["']OT["']/.test(blk.slice(0, blk.search(/◂ HR H3\.2/) > 0 ? blk.search(/◂ HR H3\.2/) : blk.length)) }, "no OT tokens", "");
   }

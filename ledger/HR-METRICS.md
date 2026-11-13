@@ -10,3 +10,4 @@
 | H2.7+H2.8 (2 tickets) | 11 Nov 22:2x→12 Nov 04:1x (≈5h50) | oracle·~400k · builder·480k (build + r2…r5, same agent) · reviewer·354k·4 passes · hunter·298k·2 passes | control FULL ×1 on l3 (60 min, one aborted start) + postmerge QC4 + 4 extra suites | 5 (ledger model rewritten once by controller ruling) | money-adjacent: every round found a real balance bug; expire-use ruled out after review |
 | H2.11 | 26/44 | merged c1dd9acab · builder 3 rounds · reviewer+hunter · control1 FULL + postmerge clean tsc | 2026-11-12 |
 | H3.2 | 27/44 | merged a8ee8c1ad · builder 4 rounds (build + r1 r2 r3) · reviewer 4 passes · hunter 2 passes · control FULL + postmerge clean tsc | 2026-11-12 |
+| H2.12 + H3.5 | 29/44 | merged b2c4a8ea8 · H2.12: sweep+visual agent, fix builder · H3.5: oracle writer, builder 2 rounds, reviewer 2 passes, hunter 1 pass · controls FULL/lean (tsc step starved → postmerge clean tsc) | 2026-11-13 |
