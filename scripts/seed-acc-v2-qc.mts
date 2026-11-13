@@ -1012,7 +1012,11 @@ async function makePettyExpense(desc: string, grand: number, issue: string): Pro
     lines: auto.lines.map((l) => ({ ...l, accountId: miscAccount.id })),
     createdById: owner.id,
   });
-  const issued = await exp.issueExpenseDoc(tenantId, systemId, doc.id);
+  // ACC T1.4 ▸ ค่าใช้จ่ายสำรองจ่ายไม่มีคู่ค้า + เลือกเคลม ⇒ คำเตือน INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID ต้องยืนยัน
+  //   ร้านทดสอบ "กดยืนยัน" ในนามเจ้าของ (คงยอดเดิมของเฉลย: ภาษีซื้อเคลม) — บันทึกผู้ยืนยันใน AuditLog ตามปกติ
+  const issued = await exp.issueExpenseDoc(tenantId, systemId, doc.id, {
+    ack: { codes: ["INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID"], actorId: owner.id, via: "screen" },
+  });
   if (!issued.ok) throw new Error(`ออกเอกสารค่าใช้จ่ายสำรองจ่าย "${desc}" ไม่สำเร็จ: ${issued.reason}`);
   const pay = await exp.recordVendorPayment(tenantId, systemId, doc.id, {
     paidAt: D(issue),
