@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
+import { outsideLegalAck } from "@/lib/core/legal-ambient"; // ACC T2 step 0 ◂
 
 // ─────────────────────────────────────────────────────────────
 // outbox.ts — transactional outbox (kernel) — WO-0002
@@ -141,9 +142,10 @@ export function drainOutbox(
   opts?: { limit?: number },
 ): Promise<{ processed: number; failed: number }> {
   // ต่อคิวหลัง drain ก่อนหน้า (ไม่ว่าสำเร็จหรือ error) แล้วค่อยเริ่ม
+  //   ACC T2 step 0 ▸ consumer = งานเบื้องหลัง: ไม่รับบริบทการยืนยันคำเตือนกฎหมายของคำขอที่ปลุก drain (legal-ambient outsideLegalAck) ◂
   const run = drainChain.then(
-    () => drainUntilQuiet(consumers, opts),
-    () => drainUntilQuiet(consumers, opts),
+    () => outsideLegalAck(() => drainUntilQuiet(consumers, opts)),
+    () => outsideLegalAck(() => drainUntilQuiet(consumers, opts)),
   );
   drainChain = run.catch(() => {});
   return run;
