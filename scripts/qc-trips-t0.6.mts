@@ -472,7 +472,9 @@ try {
       "scripts/qc-trips-p0.1.mts", "scripts/qc-trips-t0.2.mts", "scripts/qc-trips-t0.5.mts"];
     const changed = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", ...paths]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...paths]).split("\n")].filter(Boolean))];
     if (git(["ls-tree", "--name-only", "session/trips", "scripts/qc-trips-t0.6.mts"]).trim() && git(["show", "session/trips:scripts/qc-trips-t0.6.mts"]) !== read("scripts/qc-trips-t0.6.mts")) changed.push("scripts/qc-trips-t0.6.mts");
-    ok(changed.length === 0, `แตะ: ${changed.slice(0, 6).join(", ")}`);
+    // ORACLE-EDIT S-14 (ผู้คุม 13 พ.ย.): ไฟล์ที่ตรงกับ session/trips ไม่นับ (มาจากใบอื่นที่รับแล้ว เช่น T1.1 แก้ defs/trips.ts · pricing-actions.ts)
+    const ours = changed.filter((f) => git(["diff", "--name-only", "session/trips", "--", f]).trim() !== "" || git(["ls-files", "--others", "--exclude-standard", "--", f]).trim() !== "");
+    ok(ours.length === 0, `แตะ: ${ours.slice(0, 6).join(", ")}`);
   });
   await st("S-15", "snapshot.ts + pricing.ts แก้ได้แบบเพิ่มอย่างเดียว (git diff --numstat เทียบ BASE_SHA: ลบ 0 บรรทัด)", () => {
     ok(git(["cat-file", "-t", BASE_SHA]).trim() === "commit", "หา BASE_SHA ไม่เจอ");
