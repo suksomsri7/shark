@@ -2,8 +2,8 @@
 // แสดงผลเท่านั้น: ทุกยอดเป็นสตางค์จำนวนเต็มจาก VM (มาจากบริการราคา) จัดรูปด้วย formatBaht — ไฟล์นี้ไม่บวก/คูณ/ปัดเงิน
 // ค่าธรรมเนียมบังคับ (เช่นค่าอุทยาน) แยกบรรทัดตั้งแต่หน้าแรก · ไม่มีปุ่มจำนวน/ช่องติ๊ก (ใบถัดไป)
 import { formatBaht } from "@/components/trips/trips-shared";
-import { refundPercentOf, type BookLocale, type BookPriceVM } from "@/lib/platform/trips-public-core";
-import { BookUntranslated } from "./BookContent";
+import { cancelRowsOf, type BookLocale, type BookPriceVM } from "@/lib/platform/trips-public-core";
+import { BookUntranslated, shopLang } from "./BookContent";
 import { bookT, type BookT } from "./book-i18n";
 
 const ROW = "flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3";
@@ -51,7 +51,9 @@ export function BookPrices({ price, locale }: { price: BookPriceVM | null; local
           return (
             <li key={p.code} data-testid={`book-price-${p.code}`} className={ROW}>
               <div className="min-w-0">
-                <div className="break-words text-base font-medium">{p.label.text}</div>
+                <div lang={shopLang(p.label, locale)} className="break-words text-base font-medium">
+                  {p.label.text}
+                </div>
                 <div className={SUB}>{[age, p.seat ? "" : t("pax.noSeat")].filter(Boolean).join(" · ")}</div>
                 {p.label.fallback ? <BookUntranslated locale={locale} /> : null}
               </div>
@@ -60,6 +62,11 @@ export function BookPrices({ price, locale }: { price: BookPriceVM | null; local
           );
         })}
       </ul>
+      {price.groupPricing ? (
+        <p data-testid="book-group-note" className="mt-2 text-sm text-[color:var(--color-ink-soft)]">
+          {t("price.group")}
+        </p>
+      ) : null}
 
       {price.fees.length ? (
         <div className="mt-4">
@@ -68,8 +75,12 @@ export function BookPrices({ price, locale }: { price: BookPriceVM | null; local
             {price.fees.map((f, i) => (
               <li key={i} data-testid={`book-fee-${i}`} className={ROW}>
                 <div className="min-w-0">
-                  <div className="break-words text-base font-medium">{[f.name.text, f.paxCode ? paxLabel.get(f.paxCode) : ""].filter(Boolean).join(" · ")}</div>
+                  <div className="break-words text-base font-medium">
+                    <span lang={shopLang(f.name, locale)}>{f.name.text}</span>
+                    {f.paxCode && paxLabel.get(f.paxCode) ? <span>{` · ${paxLabel.get(f.paxCode)}`}</span> : null}
+                  </div>
                   {f.passThrough ? <div className={SUB}>{t("price.passThrough")}</div> : null}
+                  {f.name.text && f.name.fallback ? <BookUntranslated locale={locale} /> : null}
                 </div>
                 <div className={AMOUNT}>{bookMoney(t, f.unitSatang)}</div>
               </li>
@@ -85,8 +96,15 @@ export function BookPrices({ price, locale }: { price: BookPriceVM | null; local
             {price.extras.map((x, i) => (
               <li key={i} data-testid={`book-extra-${i}`} className={ROW}>
                 <div className="min-w-0">
-                  <div className="break-words text-base font-medium">{x.name.text}</div>
-                  {x.note.text ? <div className={`${SUB} break-words`}>{x.note.text}</div> : null}
+                  <div lang={shopLang(x.name, locale)} className="break-words text-base font-medium">
+                    {x.name.text}
+                  </div>
+                  {x.note.text ? (
+                    <div lang={shopLang(x.note, locale)} className={`${SUB} break-words`}>
+                      {x.note.text}
+                    </div>
+                  ) : null}
+                  {(x.name.text && x.name.fallback) || (x.note.text && x.note.fallback) ? <BookUntranslated locale={locale} /> : null}
                 </div>
                 <div className="shrink-0 text-right">
                   <div className={AMOUNT}>{bookMoney(t, x.unitSatang, true)}</div>
@@ -105,19 +123,21 @@ export function BookPrices({ price, locale }: { price: BookPriceVM | null; local
   );
 }
 
-/** ตารางยกเลิกแบบขั้นบันได (มาก→น้อยตามที่บริการราคาคืน) — ร้อยละแปลงจาก basis point ด้วยตัวช่วยที่ตั้งชื่อไว้ */
+/**
+ * ตารางยกเลิกแบบขั้นบันได (มาก→น้อยตามที่บริการราคาคืน) — บรรทัดตัดสินที่ cancelRowsOf (รวมบรรทัดปิดท้าย "หลังจากนั้นไม่คืนเงิน" เมื่อบันไดไม่มีขั้น 0 วัน)
+ * ไฟล์นี้แค่แปลบรรทัดเป็นข้อความ
+ */
 export function BookCancel({ ladder, locale }: { ladder: BookPriceVM["cancelLadder"]; locale: BookLocale }) {
   const t = bookT(locale);
-  if (!ladder.length) return null;
+  const rows = cancelRowsOf(ladder);
+  if (!rows.length) return null;
   return (
     <section data-testid="book-cancel">
       <h2 className="text-base font-semibold">{t("cancel.title")}</h2>
       <ul className="mt-2 flex flex-col gap-1.5 text-sm text-[color:var(--color-ink-soft)]">
-        {ladder.map((s, i) => {
-          const pct = refundPercentOf(s.refundBp);
-          const text = s.daysBefore > 0 ? t("cancel.row", { days: s.daysBefore, pct }) : pct > 0 ? t("cancel.rowLast", { pct }) : t("cancel.noRefund");
-          return <li key={i}>{text}</li>;
-        })}
+        {rows.map((r, i) => (
+          <li key={i}>{r.kind === "FROM_DAYS" ? t("cancel.row", { days: r.days, pct: r.pct }) : r.kind === "LATER_PCT" ? t("cancel.rowLast", { pct: r.pct }) : t("cancel.noRefund")}</li>
+        ))}
       </ul>
     </section>
   );

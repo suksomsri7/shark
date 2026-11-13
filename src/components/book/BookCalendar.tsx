@@ -23,6 +23,15 @@ const NAV = "inline-flex min-h-11 min-w-11 items-center justify-center rounded-l
 function dayText(t: BookT, d: BookDayVM): string {
   return dayHasDeparture(d.state) ? t(`day.${d.state}`, { n: d.left ?? 0 }) : "";
 }
+/** จำนวนรอบของวัน — แสดงเมื่อมีมากกว่า 1 รอบที่ขายได้ (เลขที่ว่างของช่อง = ของรอบที่ออกเร็วที่สุด) */
+function countText(t: BookT, d: BookDayVM): string {
+  return d.departures > 1 ? t("slot.count", { n: d.departures }) : "";
+}
+/** ชื่อเต็มของช่องวัน (วันที่ + สภาพ/ที่ว่าง + จำนวนรอบ) — ตัวอ่านหน้าจอไม่ได้ยินแค่เลขวัน */
+function dayLabel(t: BookT, d: BookDayVM, fullDate: string): string {
+  return [fullDate, t(`day.${d.state}`, { n: d.left ?? 0 }), countText(t, d)].filter(Boolean).join(" · ");
+}
+const DAY_COUNT = "break-words text-sm leading-tight text-[color:var(--color-ink-soft)]";
 
 type Props = { vm: BookProductVM; carry: BookCarry };
 
@@ -83,14 +92,16 @@ export function BookCalendar({ vm, carry }: Props) {
                         data-selected={d.selected ? "true" : "false"}
                         href={dayHref(d.date)}
                         aria-current={d.selected ? "date" : undefined}
+                        aria-label={dayLabel(t, d, formatYmd(d.date, names))}
                         title={formatYmd(d.date, names)}
                         className={`group ${CELL} ${IN_TABLE} hover:border-[color:var(--color-accent)]`}
                       >
                         <span className={DAY_NO}>{d.day}</span>
                         <span className={DAY_TEXT}>{dayText(t, d)}</span>
+                        {d.departures > 1 ? <span className={DAY_COUNT}>{countText(t, d)}</span> : null}
                       </a>
                     ) : (
-                      <div data-testid={`book-day-${d.date}`} data-state={d.state} data-selected="false" title={`${formatYmd(d.date, names)} · ${t(`day.${d.state}`, { n: d.left ?? 0 })}`} className={`group ${CELL} ${IN_TABLE}`}>
+                      <div data-testid={`book-day-${d.date}`} data-state={d.state} data-selected="false" title={dayLabel(t, d, formatYmd(d.date, names))} className={`group ${CELL} ${IN_TABLE}`}>
                         <span className={DAY_NO}>{d.day}</span>
                         <span className={DAY_TEXT}>{dayText(t, d)}</span>
                       </div>
@@ -114,14 +125,16 @@ export function BookCalendar({ vm, carry }: Props) {
                 data-selected={d.selected ? "true" : "false"}
                 href={dayHref(d.date)}
                 aria-current={d.selected ? "date" : undefined}
+                aria-label={dayLabel(t, d, formatYmd(d.date, names))}
                 className={`group ${CELL} ${AS_CHIP}`}
               >
                 <span className="text-sm leading-none text-[color:var(--color-muted)]">{names.weekdays[weekdayIndex(vm, d.date)] ?? ""}</span>
                 <span className={DAY_NO}>{d.day}</span>
                 <span className={DAY_TEXT}>{dayText(t, d)}</span>
+                {d.departures > 1 ? <span className={DAY_COUNT}>{countText(t, d)}</span> : null}
               </a>
             ) : (
-              <div data-testid={`book-chip-${d.date}`} data-state={d.state} data-selected="false" className={`group ${CELL} ${AS_CHIP}`}>
+              <div data-testid={`book-chip-${d.date}`} data-state={d.state} data-selected="false" title={dayLabel(t, d, formatYmd(d.date, names))} className={`group ${CELL} ${AS_CHIP}`}>
                 <span className="text-sm leading-none text-[color:var(--color-muted)]">{names.weekdays[weekdayIndex(vm, d.date)] ?? ""}</span>
                 <span className={DAY_NO}>{d.day}</span>
                 <span className={DAY_TEXT}>{dayText(t, d)}</span>

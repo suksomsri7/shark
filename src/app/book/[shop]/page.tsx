@@ -1,39 +1,40 @@
 // /book/[shop] — หน้ารายการสินค้าทัวร์ของร้าน (สาธารณะ · ไม่ต้องล็อกอิน · อ่านอย่างเดียว) · RUN TRIPS W1.1a
-// ทางเข้าเดียวคือ openBookShop (ด่านอัตราปิดเมื่อพัง → ตัวแก้ร้าน → ตัวโหลด) · หน้าไม่ส่งเวลาเข้าไป (นาฬิกาจริงของเซิร์ฟเวอร์)
-// ไม่พบ ⇒ notFound() (404 จริง — ห้ามมี loading ใต้เส้นนี้) · ถี่เกิน/ไม่รู้ว่าใคร/ด่านใช้ไม่ได้ ⇒ หน้าแจ้งเดียวกัน ไม่มีข้อมูลร้าน
+// ทางเข้าเดียวคือ openBookShop (ไม่รู้ว่าใคร ⇒ ปิด → ตัวแก้ร้าน → ด่านอัตราปิดเมื่อพัง → ตัวโหลด) · หน้าไม่ส่งเวลาเข้าไป (นาฬิกาจริงของเซิร์ฟเวอร์)
+// 🔴 ชื่อหน้า (metadata) กับเนื้อหาใช้ผลการเปิด **ชุดเดียวกัน** (cache ของ React ต่อคำขอ) — ไม่มีอะไรอ่านข้อมูลร้านนอกด่าน และไม่นับ/ไม่กินเพดานซ้ำ
+// ไม่พบ ⇒ notFound() (404 จริง — ห้ามมี loading ใต้เส้นนี้) · ถี่เกิน/ไม่รู้ว่าใคร/ด่านใช้ไม่ได้ ⇒ หน้าแจ้งเดียวกัน · สองกรณีนี้ไม่มีชื่อร้านทั้งในชื่อหน้าและเนื้อหา
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { BookIndex } from "@/components/book/BookIndex";
 import { BookRateLimited } from "@/components/book/BookRateLimited";
-import { bookClientKey, loadBookShopVM, openBookShop } from "@/lib/platform/trips-public";
-import { clientIpFromHeaders, parseBookQuery } from "@/lib/platform/trips-public-core";
+import { bookRequestFromHeaders, openBookShop } from "@/lib/platform/trips-public";
+import { parseBookQuery } from "@/lib/platform/trips-public-core";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ shop: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 const NO_INDEX: Metadata = { robots: { index: false, follow: false } };
 
-// อ่านอย่างเดียวสำหรับชื่อหน้า (ไม่ผ่านด่าน ไม่นับเปิดดู) — จำผลไว้ภายในคำขอเดียว
-const shopForTitle = cache((shop: string, lang: string | null, acceptLanguage: string | null) => loadBookShopVM({ shop, lang, acceptLanguage }));
-
-export async function generateMetadata(props: Props): Promise<Metadata> {
+// เปิดหน้า 1 ครั้งต่อคำขอ — อาร์กิวเมนต์เป็นค่าพื้นฐานทั้งหมด เพื่อให้ชื่อหน้าและเนื้อหาได้ผลเดียวกัน
+const openOnce = cache(async (shop: string, lang: string | null, a: string | null) => {
+  const h = await headers();
+  const req = bookRequestFromHeaders((name) => h.get(name));
+  return openBookShop({ shop, query: { lang, a }, acceptLanguage: req.acceptLanguage, clientKey: req.clientKey });
+});
+async function opened(props: Props) {
   const { shop } = await props.params;
   const q = parseBookQuery(await props.searchParams);
-  const h = await headers();
-  // ไม่รู้ว่าใคร ⇒ หน้าจะปิดอยู่แล้ว — ไม่อ่านข้อมูลร้านมาใส่ชื่อหน้า
-  if (bookClientKey(clientIpFromHeaders((name) => h.get(name))) === null) return NO_INDEX;
-  const r = await shopForTitle(shop, q.lang, h.get("accept-language"));
+  return openOnce(shop, q.lang, q.a);
+}
+
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const r = await opened(props);
   return r.ok ? { ...NO_INDEX, title: r.vm.shop.name } : NO_INDEX;
 }
 
 export default async function BookShopPage(props: Props) {
-  const { shop } = await props.params;
-  const q = parseBookQuery(await props.searchParams);
-  const h = await headers();
-  const clientKey = bookClientKey(clientIpFromHeaders((name) => h.get(name)));
-  const r = await openBookShop({ shop, query: q, acceptLanguage: h.get("accept-language"), clientKey });
+  const r = await opened(props);
   if (!r.ok) {
     if (!("reason" in r)) notFound();
     return <BookRateLimited />;

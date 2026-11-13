@@ -17,6 +17,11 @@ export function BookUntranslated({ locale }: { locale: BookLocale }) {
   );
 }
 
+/** ภาษาของข้อความที่ร้านเขียน: ยังไม่แปล ⇒ ไทย (ตัวอ่านหน้าจอออกเสียงถูกภาษา) */
+export function shopLang(value: BookText, locale: BookLocale): BookLocale {
+  return value.fallback ? "th" : locale;
+}
+
 /** ส่วนเนื้อหา 1 ส่วน — ไม่มีข้อความ ⇒ ไม่แสดง · ส่วนที่ยังไม่แปล ⇒ ข้อความไทย (กำกับ lang) + ป้าย */
 export function BookSection({ testId, title, value, locale }: { testId: string; title: string; value: BookText; locale: BookLocale }) {
   if (!value.text) return null;

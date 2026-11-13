@@ -8,7 +8,10 @@
 //    • ด่านอัตรา **ปิดเมื่อพัง**: ไม่รู้ว่าใคร (ไม่มี IP ที่อ่านได้/ไม่มีกุญแจเซิร์ฟเวอร์) ⇒ ไม่ให้ผ่าน และไม่ถามฐาน · คำสั่งล้ม/ไม่คืนเลขนับ ⇒ ไม่ให้ผ่าน
 //      (จงใจต่างจาก checkRateLimitDb ของ core ที่ปล่อยผ่านเมื่อฐานล่ม — ไฟล์นี้ไม่เรียกตัวนั้น)
 //    • กุญแจเครื่อง = HMAC ของ IP รูปมาตรฐาน (IPv6 รวม /64) ด้วยกุญแจเซิร์ฟเวอร์ — ไม่มีกุญแจสำรอง ไม่มีแฮชเปล่า · ไม่ออกไปที่ไคลเอนต์ ไม่ลง log
-//    • ตัวนับเปิดดู = คำสั่งเดียวกับด่าน (ถังกันนับซ้ำ + upsert มีเพดาน) — ไม่มีอ่านก่อนเขียน ไม่เปิดธุรกรรม ไม่มีคำสั่งที่สอง
+//    • ตัวนับเปิดดู = ถังกันนับซ้ำ + upsert มีเพดาน ในคำสั่งเดียว — ไม่มีอ่านก่อนเขียน ไม่เปิดธุรกรรม
+//      หน้าสินค้า (openBookProduct): ด่านอ่านก่อน → โหลดหน้า → **นับเมื่อรู้ว่าหน้าแสดงได้จริงเท่านั้น** (มติ X6: ไม่นับ 404/ถูกจำกัด/โหลดล่วงหน้า/บอต/ไม่ใช่ GET)
+//      ⇒ หน้าสินค้าใช้ 2 คำสั่ง (ด่าน 1 + นับ 1) · bookPageGate ที่ส่ง unit มาเอง ยังนับในคำสั่งเดียวกับด่านตามสัญญาเดิม
+//    • ผู้ใช้คือใคร: อ่านจากหัวคำขอที่เดียว (bookRequestFromHeaders → ตัวช่วยใน core) · production ไม่มีหัว IP จากขอบระบบ ⇒ ปิด (มติ X2)
 //    • VM ไม่มี id ภายใน · เวลา `now` รับได้เฉพาะจาก opts ของผู้เรียกฝั่งเซิร์ฟเวอร์ (ข้อสอบ) — หน้าไม่ส่ง
 // 🔴 เพดานทุกตัวมาจาก trips-public-core (ที่เดียว) — ไฟล์นี้ไม่มีตัวเลขเพดาน
 // 🔴 ตารางของโมดูลทัวร์อ่านผ่าน facade `@/lib/modules/trips` เท่านั้น · ตารางเอเจนซี่ไม่แตะ (ลิงก์ผู้แนะนำเข้าทางช่องเสียบ registerBookLinkResolver)
@@ -20,6 +23,7 @@ import { logOps } from "@/lib/core/ops";
 import { rateBucketCte } from "@/lib/core/rate-limit-db";
 import { resolveSettings } from "@/lib/core/settings";
 import { getPublicBranding } from "@/lib/branding/service";
+import { storagePathFromCdnUrl } from "@/lib/storage/service";
 import { findPublicProduct, loadPublicCatalog, loadPublicProduct, normalizeTimezone, utcToLocal, type PublicRef } from "@/lib/modules/trips";
 import {
   BOOK_CODE_RE,
@@ -28,13 +32,16 @@ import {
   BOOK_PRODUCT_CAP,
   BOOK_PUBLIC_CHANNELS,
   BOOK_READ_LIMIT,
+  BOOK_SLOT_CAP,
   BOOK_STAT_ROW_CAP,
   BOOK_UNIT_CAP,
   BOOK_VIEW_PER_CLIENT_DAY,
   BOOK_VIEW_WINDOW_MS,
   bookLocaleOf,
+  bookViewCountable,
   canonicalClientIp,
   clampMonth,
+  clientIpFromHeaders,
   dayCellOf,
   embedDomainsOf,
   frameAncestorsOf,
@@ -44,6 +51,9 @@ import {
   monthNeighbours,
   monthRange,
   parseBookQuery,
+  parseBookSlot,
+  sellableCountOf,
+  slotTokensOf,
   type BookBrandVM,
   type BookCarry,
   type BookDayVM,
@@ -95,6 +105,36 @@ export function bookClientKey(ip: unknown): string | null {
   const canonical = canonicalClientIp(ip);
   if (!canonical) return null;
   return `pc_${createHmac("sha256", `${CLIENT_KEY_CONTEXT}${secret}`).update(canonical).digest("hex").slice(0, 40)}`;
+}
+
+/**
+ * คำขอนี้เป็นของใคร + นับเป็นการเปิดดูได้ไหม — ทางเดียวที่หน้าอ่านหัวคำขอ (ตัวตัดสินทั้งหมดอยู่ใน trips-public-core)
+ * 🔴 production: ไม่มีหัว IP จากขอบระบบ (เซิร์ฟเวอร์เห็นแต่ที่อยู่ของเครื่องตัวเอง) ⇒ clientKey null ⇒ หน้าปิด — ห้ามตกถังรวมของ 127.0.0.1 (มติ X2 ข)
+ *    นอก production ยอมให้ใช้ที่อยู่ของเครื่องเอง (พัฒนา/ทดสอบบนเครื่อง)
+ */
+export function bookRequestFromHeaders(get: (name: string) => string | null | undefined, method?: unknown): { clientKey: string | null; countView: boolean; acceptLanguage: string | null } {
+  const read = (name: string): string | null => {
+    try {
+      const v = get(name);
+      return typeof v === "string" ? v : null;
+    } catch {
+      return null;
+    }
+  };
+  const ip = clientIpFromHeaders(read, { allowLoopback: process.env.NODE_ENV !== "production" });
+  return { clientKey: ip === null ? null : bookClientKey(ip), countView: bookViewCountable({ method, get: read }), acceptLanguage: read("accept-language") };
+}
+
+// ═══════════════ บันทึกเหตุ (ไม่เกิน 1 แถวต่อนาทีต่อเรื่องต่อโพรเซส · มติ X9) ═══════════════
+const lastNoteMs = new Map<string, number>();
+/** detail มีแค่ชนิดของความผิดพลาด (ไม่มี IP/กุญแจเครื่อง/รหัสลิงก์/ชื่อร้าน/ข้อความของคำสั่ง) */
+function noteOnce(topic: "limiter" | "branding" | "view", message: string, cause: unknown): void {
+  const at = Date.now();
+  const last = lastNoteMs.get(topic);
+  if (last !== undefined && at - last < MS_MIN) return;
+  lastNoteMs.set(topic, at);
+  const kind = cause instanceof Error ? cause.name.replace(/[^A-Za-z0-9_]/g, "").slice(0, 60) : "BadResult";
+  void logOps("WARN", "trips.public", message, { detail: kind || "Error" }).catch(() => undefined);
 }
 
 // ═══════════════ ช่องเสียบตัวแก้ลิงก์ผู้แนะนำ (?a) ═══════════════
@@ -154,10 +194,45 @@ const intOf = (v: unknown): number | null => {
   const n = typeof v === "bigint" ? Number(v) : v;
   return typeof n === "number" && Number.isInteger(n) ? n : null;
 };
-/** จดเหตุด่านใช้ไม่ได้ — detail มีแค่ชนิดของความผิดพลาด (ไม่มี IP/กุญแจเครื่อง/รหัสลิงก์/ข้อความของคำสั่ง) */
+/** จดเหตุด่านใช้ไม่ได้ (จำกัดความถี่ — ฐานล่มแล้วทุกคำขอห้ามเพิ่มงานเขียนอีกแถว) */
 function noteLimiterDown(cause: unknown): void {
-  const kind = cause instanceof Error ? cause.name.replace(/[^A-Za-z0-9_]/g, "").slice(0, 60) : "BadResult";
-  void logOps("WARN", "trips.public", "ด่านอัตราของหน้าจองสาธารณะใช้ไม่ได้ — ปิดหน้าไว้ชั่วคราว", { detail: kind || "Error" }).catch(() => undefined);
+  noteOnce("limiter", "ด่านอัตราของหน้าจองสาธารณะใช้ไม่ได้ — ปิดหน้าไว้ชั่วคราว", cause);
+}
+
+type ViewTarget = { tenantId: string; unit: { id: string; tz: string }; channel: BookPublicChannel; clientKey: string; link: BoundLink | null; now: Date };
+/**
+ * ส่วนของคำสั่งที่นับเปิดดู (ที่เดียว): ถังกันนับซ้ำต่อ (หน่วย · วันของร้าน · ช่องทาง · ลิงก์ · เครื่อง) → เพิ่มตัวนับ 1 เมื่อยังไม่เคยนับ
+ * และหน่วยนั้นเป็นหน่วยทัวร์ ACTIVE ของร้านนี้จริง · ตัวนับไม่เกินเพดานแถว · `after` = นับเฉพาะเมื่อถังก่อนหน้าผ่าน
+ */
+function viewCtes(t: ViewTarget, after?: { after: string; limit: number }): Prisma.Sql[] {
+  const day = utcToLocal(t.unit.tz, t.now).ymd;
+  const viewKey = `trips:view:${t.unit.id}:${day}:${t.channel}:${t.link ? t.link.linkId : "-"}:${t.clientKey}`;
+  return [
+    rateBucketCte("vb", viewKey, BOOK_VIEW_WINDOW_MS, t.now.getTime(), after),
+    Prisma.sql`st AS (
+        INSERT INTO "TripLinkStat" ("id", "tenantId", "unitId", "day", "channel", "linkId", "agentAccountId", "views", "starts", "paid", "createdAt", "updatedAt")
+        SELECT gen_random_uuid()::text, u."tenantId", u."id", ${day}::date, ${t.channel}::text, ${t.link ? t.link.linkId : null}::text, ${t.link ? t.link.agentAccountId : null}::text, 1, 0, 0, NOW(), NOW()
+        FROM vb v JOIN "BusinessUnit" u ON u."id" = ${t.unit.id} AND u."tenantId" = ${t.tenantId} AND u."type"::text = 'TRIPS' AND u."status"::text = 'ACTIVE'
+        WHERE v."count" <= ${BOOK_VIEW_PER_CLIENT_DAY}
+        ON CONFLICT ("unitId", "day", "channel", "linkId") DO UPDATE SET "views" = LEAST("TripLinkStat"."views" + 1, ${BOOK_STAT_ROW_CAP}), "updatedAt" = NOW()
+        RETURNING 1 AS "one")`,
+  ];
+}
+
+/**
+ * นับเปิดดู 1 ครั้ง (คำสั่งเดียว) — เรียกหลังรู้ว่าหน้าแสดงได้จริงเท่านั้น · ไม่ใช่ด่าน: ล้ม ⇒ ไม่นับ หน้าแสดงต่อ (จดเหตุแบบจำกัดความถี่)
+ */
+async function countBookView(t: ViewTarget, opts: BookOpts | undefined): Promise<boolean> {
+  try {
+    const sql = Prisma.sql`WITH ${Prisma.join(viewCtes(t), ", ")} SELECT (SELECT count(*)::int FROM st) AS "sn"`;
+    const rows: unknown = await (typeof opts?.deps?.query === "function" ? opts.deps.query : defaultQuery)(sql);
+    const row = Array.isArray(rows) && isRec(rows[0]) ? rows[0] : null;
+    const n = row ? intOf(row.sn) : null;
+    return n !== null && n > 0;
+  } catch (e) {
+    noteOnce("view", "นับยอดเปิดดูของหน้าจองสาธารณะไม่ได้ — หน้ายังแสดงตามปกติ", e);
+    return false;
+  }
 }
 
 /**
@@ -189,16 +264,7 @@ export async function bookPageGate(input: BookGateInput, opts?: BookOpts): Promi
     let tail = Prisma.sql`0 AS "sn"`;
     if (tenantId && unit) {
       link = await bindLink(tenantId, productId, typeof i.linkCode === "string" ? i.linkCode : null);
-      const day = utcToLocal(unit.tz, now).ymd;
-      const viewKey = `trips:view:${unit.id}:${day}:${channel}:${link ? link.linkId : "-"}:${clientKey}`;
-      ctes.push(rateBucketCte("vb", viewKey, BOOK_VIEW_WINDOW_MS, nowMs, { after: "rb", limit: limit.limit }));
-      ctes.push(Prisma.sql`st AS (
-        INSERT INTO "TripLinkStat" ("id", "tenantId", "unitId", "day", "channel", "linkId", "agentAccountId", "views", "starts", "paid", "createdAt", "updatedAt")
-        SELECT gen_random_uuid()::text, u."tenantId", u."id", ${day}::date, ${channel}::text, ${link ? link.linkId : null}::text, ${link ? link.agentAccountId : null}::text, 1, 0, 0, NOW(), NOW()
-        FROM vb v JOIN "BusinessUnit" u ON u."id" = ${unit.id} AND u."tenantId" = ${tenantId} AND u."type"::text = 'TRIPS' AND u."status"::text = 'ACTIVE'
-        WHERE v."count" <= ${BOOK_VIEW_PER_CLIENT_DAY}
-        ON CONFLICT ("unitId", "day", "channel", "linkId") DO UPDATE SET "views" = LEAST("TripLinkStat"."views" + 1, ${BOOK_STAT_ROW_CAP}), "updatedAt" = NOW()
-        RETURNING 1 AS "one")`);
+      ctes.push(...viewCtes({ tenantId, unit, channel, clientKey, link, now }, { after: "rb", limit: limit.limit }));
       tail = Prisma.sql`(SELECT count(*)::int FROM st) AS "sn"`;
     }
     sql = Prisma.sql`WITH ${Prisma.join(ctes, ", ")} SELECT (SELECT "count" FROM rb) AS "rc", (SELECT "windowStart" FROM rb) AS "rw", ${tail}`;
@@ -250,11 +316,18 @@ export async function bookFramePolicy(ref: { tenantId: string; unitId: string })
 }
 
 // ═══════════════ ตัวโหลด VM (อ่านอย่างเดียว) ═══════════════
+/** โลโก้แสดงเฉพาะไฟล์ที่อยู่บนที่เก็บไฟล์ของแพลตฟอร์ม (ตัวตรวจเดียวกับระบบไฟล์) — ที่อยู่ภายนอก/ไฟล์ส่วนตัว ⇒ ไม่แสดงรูป (มติ X10: ไม่ให้โฮสต์ภายนอกเห็น IP ผู้เข้าชม) */
+function platformLogoOf(url: unknown): string | null {
+  if (typeof url !== "string" || url === "" || !/^https:\/\//i.test(url)) return null;
+  const path = storagePathFromCdnUrl(url);
+  return path !== null && !path.includes("/private/") ? url : null;
+}
 async function brandOf(shop: BookShop): Promise<BookBrandVM> {
   try {
     const b = await getPublicBranding(shop.tenantId);
-    return { slug: shop.slug, name: b.displayName || shop.name, logoUrl: b.logoUrl ?? null, brandColor: b.brandColor ?? null, brandFg: b.brandFg ?? null };
-  } catch {
+    return { slug: shop.slug, name: b.displayName || shop.name, logoUrl: platformLogoOf(b.logoUrl), brandColor: b.brandColor ?? null, brandFg: b.brandFg ?? null };
+  } catch (e) {
+    noteOnce("branding", "อ่านตราสินค้าของร้านสำหรับหน้าจองสาธารณะไม่ได้ — แสดงชื่อร้านอย่างเดียว", e);
     return { slug: shop.slug, name: shop.name, logoUrl: null, brandColor: null, brandFg: null };
   }
 }
@@ -271,7 +344,7 @@ async function shopVM(shop: BookShop, locale: "th" | "en"): Promise<BookShopVM> 
   return { shop: brand, locale, products: cat.products, total: cat.total, shown: cat.products.length, truncated: cat.total > cat.products.length };
 }
 
-type ProductAsk = { productSlug: string; unit: { id: string; tz: string }; locale: "th" | "en"; month: unknown; date: unknown };
+type ProductAsk = { productSlug: string; productId: string; unit: { id: string; tz: string }; locale: "th" | "en"; month: unknown; date: unknown; slot: unknown };
 async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<BookProductVM | null> {
   const tz = ask.unit.tz;
   const today = utcToLocal(tz, now).ymd;
@@ -280,7 +353,11 @@ async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<Bo
   const range = monthRange(month);
   const grid = monthGrid(month);
   if (!range || !grid) return null;
-  const [brand, data] = await Promise.all([brandOf(shop), loadPublicProduct(refOf(shop), { productSlug: ask.productSlug, locale: ask.locale, from: range.from, to: range.to }, { now })]);
+  const [brand, data] = await Promise.all([
+    brandOf(shop),
+    // สินค้า + หน่วย + เขตเวลา มาจากตัวแก้ของคำขอนี้แล้ว — ส่งต่อ ไม่ค้นซ้ำ (มติ X9)
+    loadPublicProduct(refOf(shop), { productSlug: ask.productSlug, locale: ask.locale, from: range.from, to: range.to, found: { productId: ask.productId, unitId: ask.unit.id, tz } }, { now }),
+  ]);
   if (!data) return null;
 
   const byDate = new Map<string, number[]>();
@@ -293,11 +370,13 @@ async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<Bo
     const s = data.slots[idx];
     return s ? [s] : [];
   });
-  const cells = new Map<string, { state: BookDayVM["state"]; left: number | null; selectable: boolean }>();
+  const cells = new Map<string, { state: BookDayVM["state"]; left: number | null; selectable: boolean; departures: number }>();
   for (const ymd of grid.flat()) {
     if (ymd === null) continue;
-    const c = dayCellOf(slotsOf(ymd), ymd, today);
-    cells.set(ymd, { state: c.state, left: c.left, selectable: c.state === "OPEN" || c.state === "LOW" });
+    const list = slotsOf(ymd);
+    const c = dayCellOf(list, ymd, today);
+    const selectable = c.state === "OPEN" || c.state === "LOW";
+    cells.set(ymd, { state: c.state, left: c.left, selectable, departures: selectable ? sellableCountOf(list) : 0 });
   }
   const requested = date !== null && date.slice(0, 7) === month ? date : null;
   const firstSelectable = [...cells.entries()].find(([, c]) => c.selectable)?.[0] ?? null;
@@ -305,27 +384,56 @@ async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<Bo
   const requestedUnavailable = requested !== null && cells.get(requested)?.selectable !== true;
 
   let selected: BookProductVM["selected"] = null;
+  let offsetAt = now;
   if (selectedDate !== null) {
-    const idxs = byDate.get(selectedDate) ?? [];
-    const slots: BookSlotVM[] = [];
-    let priceIdx: number | null = null;
-    for (const idx of idxs) {
+    // ทุกรอบของวันนั้น (เรียงเวลาออก) — สภาพต่อรอบตัดสินด้วย dayCellOf ตัวเดียวกับช่องปฏิทิน
+    const day = (byDate.get(selectedDate) ?? []).flatMap((idx) => {
       const s = data.slots[idx];
-      if (!s) continue;
+      if (!s) return [];
       const c = dayCellOf([s], selectedDate, today);
       const state: BookSlotState = c.state === "OPEN" || c.state === "LOW" || c.state === "FULL" || c.state === "NOT_RUNNING" ? c.state : "CLOSED";
-      if (priceIdx === null && (state === "OPEN" || state === "LOW")) priceIdx = idx;
-      slots.push({ timeText: s.timeText, optionName: s.optionName, state, left: c.left, capacity: s.capacity, guaranteed: s.guaranteed, cutoffLocal: s.cutoffLocal });
-    }
-    const pr = priceIdx === null ? null : await data.priceOf(priceIdx);
-    selected = { date: selectedDate, slots, price: pr && pr.ok ? pr.price : null, priceError: pr && pr.ok ? null : pr ? pr.code : "NOT_FOUND" };
+      return [{ idx, s, state, left: c.left, sellable: state === "OPEN" || state === "LOW" }];
+    });
+    const tokens = slotTokensOf(day.map((d) => d.s.startTime));
+    // เกินเพดาน ⇒ รอบที่ขายได้มาก่อน แล้วเติมรอบอื่นจนเต็ม (ลำดับที่แสดงยังเป็นเวลาออก)
+    const keep = new Set<number>();
+    day.forEach((d, k) => {
+      if (d.sellable && keep.size < BOOK_SLOT_CAP) keep.add(k);
+    });
+    day.forEach((_, k) => {
+      if (keep.size < BOOK_SLOT_CAP) keep.add(k);
+    });
+    const shown = day.map((d, k) => ({ ...d, token: d.sellable ? (tokens[k] ?? null) : null })).filter((_, k) => keep.has(k));
+    // รอบที่หน้าอ้างถึง: รอบที่ขอ (ตัวอ้างตรงรูปและเป็นรอบที่ขายได้ของวันนี้) ไม่งั้นรอบแรกที่ขายได้ — หัวหน้า/ตารางราคา/ที่ว่างมาจากรอบนี้รอบเดียว (มติ X4)
+    const want = typeof ask.slot === "string" ? ask.slot : null;
+    const chosen = (want === null ? undefined : shown.find((d) => d.sellable && d.token !== null && d.token === want)) ?? shown.find((d) => d.sellable) ?? null;
+    const pr = chosen === null ? null : await data.priceOf(chosen.idx);
+    const price = pr && pr.ok ? pr.price : null;
+    const froms = await Promise.all(shown.map((d) => (d === chosen ? Promise.resolve(price ? price.headline : null) : d.sellable ? data.fromOf(d.idx) : Promise.resolve(null))));
+    const slots: BookSlotVM[] = shown.map((d, k) => ({
+      timeText: d.s.timeText,
+      optionName: d.s.optionName,
+      state: d.state,
+      left: d.left,
+      capacity: d.s.capacity,
+      guaranteed: d.s.guaranteed,
+      cutoffLocal: d.s.cutoffLocal,
+      token: d.token,
+      selectable: d.sellable && d.token !== null,
+      selected: d === chosen,
+      from: froms[k] ?? null,
+    }));
+    selected = { date: selectedDate, slots, moreSlots: day.length - shown.length, price, priceError: pr && pr.ok ? null : pr ? pr.code : "NOT_FOUND" };
+    const startMs = chosen === null ? Number.NaN : Date.parse(chosen.s.startsAt);
+    if (Number.isFinite(startMs)) offsetAt = new Date(startMs);
   }
   const nb = monthNeighbours(month, today);
   return {
     shop: brand,
     locale: ask.locale,
     product: data.product,
-    tz: { name: tz, offsetMin: offsetMinOf(tz, now) },
+    // ส่วนต่างจาก UTC คิด ณ เวลาออกของรอบที่เลือก (เขตที่มีเวลาออมแสง: ค่าของวันเดินทาง ไม่ใช่ของวันนี้ · มติ X10) — ยังไม่มีรอบที่เลือก ⇒ ณ ตอนนี้
+    tz: { name: tz, offsetMin: offsetMinOf(tz, offsetAt) },
     today,
     month,
     prevMonth: nb.prev,
@@ -334,7 +442,7 @@ async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<Bo
       w.map((ymd): BookDayVM | null => {
         const c = ymd === null ? undefined : cells.get(ymd);
         if (ymd === null || !c) return null;
-        return { date: ymd, day: Number(ymd.slice(8, 10)), state: c.state, left: c.left, selectable: c.selectable, selected: ymd === selectedDate };
+        return { date: ymd, day: Number(ymd.slice(8, 10)), state: c.state, left: c.left, selectable: c.selectable, selected: ymd === selectedDate, departures: c.departures };
       }),
     ),
     requestedUnavailable,
@@ -352,17 +460,17 @@ async function visibleProduct(shop: BookShop, productSlug: unknown): Promise<{ p
   return unit ? { productId: found.productId, productSlug, unit: { id: unit.id, tz: unit.tz } } : null;
 }
 
-/** หน้ารายการสินค้าของร้าน — อ่านอย่างเดียว ไม่ผ่านด่าน (หน้าใช้ openBookShop · ตัวนี้สำหรับ metadata) */
-export async function loadBookShopVM(input: { shop: unknown; lang?: unknown; acceptLanguage?: unknown }, _opts?: BookOpts): Promise<{ ok: true; vm: BookShopVM } | BookNotFound> {
+/** หน้ารายการสินค้าของร้าน — อ่านอย่างเดียว ไม่ผ่านด่าน (หน้าจริงใช้ openBookShop เท่านั้น ทั้งเนื้อหาและชื่อหน้า · ตัวนี้สำหรับผู้เรียกฝั่งเซิร์ฟเวอร์/ข้อสอบ) */
+export async function loadBookShopVM(input: { shop: unknown; lang?: unknown; acceptLanguage?: unknown }): Promise<{ ok: true; vm: BookShopVM } | BookNotFound> {
   const i: Record<string, unknown> = isRec(input) ? input : {};
   const r = await resolveBookShop(i.shop);
   if (!r.ok) return notFound();
   return { ok: true, vm: await shopVM(r.shop, bookLocaleOf(i.lang, i.acceptLanguage)) };
 }
 
-/** หน้าสินค้าทัวร์ — อ่านอย่างเดียว ไม่ผ่านด่าน (หน้าใช้ openBookProduct) */
+/** หน้าสินค้าทัวร์ — อ่านอย่างเดียว ไม่ผ่านด่าน (หน้าจริงใช้ openBookProduct เท่านั้น) · `slot` = ตัวอ้างรอบของ `?t=` */
 export async function loadBookProductVM(
-  input: { shop: unknown; productSlug: unknown; lang?: unknown; acceptLanguage?: unknown; month?: unknown; date?: unknown },
+  input: { shop: unknown; productSlug: unknown; lang?: unknown; acceptLanguage?: unknown; month?: unknown; date?: unknown; slot?: unknown },
   opts?: BookOpts,
 ): Promise<{ ok: true; vm: BookProductVM } | BookNotFound> {
   const i: Record<string, unknown> = isRec(input) ? input : {};
@@ -370,7 +478,7 @@ export async function loadBookProductVM(
   if (!r.ok) return notFound();
   const p = await visibleProduct(r.shop, i.productSlug);
   if (!p) return notFound();
-  const vm = await productVM(r.shop, { productSlug: p.productSlug, unit: p.unit, locale: bookLocaleOf(i.lang, i.acceptLanguage), month: i.month, date: i.date }, nowOf(opts));
+  const vm = await productVM(r.shop, { productSlug: p.productSlug, productId: p.productId, unit: p.unit, locale: bookLocaleOf(i.lang, i.acceptLanguage), month: i.month, date: i.date, slot: parseBookSlot({ t: i.slot }) }, nowOf(opts));
   return vm ? { ok: true, vm } : notFound();
 }
 
@@ -398,9 +506,14 @@ export async function openBookShop(
   return { ok: true, vm: await shopVM(r.shop, bookLocaleOf(q.lang, i.acceptLanguage)), carry: { lang: q.lang, a: null } };
 }
 
-/** หน้าสินค้า: ไม่รู้ว่าใคร ⇒ ปิด → แก้ร้าน + หาสินค้าที่มองเห็น → ด่าน (+ นับเปิดดู) → โหลด · `?s` อ่านรูปแล้วทิ้ง · `?a` พาต่อเฉพาะที่ผูกได้ */
+/**
+ * หน้าสินค้า: ไม่รู้ว่าใคร ⇒ ปิด → แก้ร้าน + หาสินค้าที่มองเห็น → ด่านอ่าน → โหลด → (หน้าแสดงได้จริง) ผูก `?a` + นับเปิดดู
+ * `?s` อ่านรูปแล้วทิ้ง · `?a` พาต่อเฉพาะที่ผูกได้ · `?t` = ตัวอ้างรอบ (ตรวจรูป · ไม่ตรง ⇒ รอบแรกที่ขายได้)
+ * `countView: false` = คำขอที่ไม่ใช่การเปิดดูของคน (โหลดล่วงหน้า/บอต/ไม่ใช่ GET — หน้าตัดสินด้วย bookRequestFromHeaders) ⇒ ได้หน้าตามปกติแต่ไม่นับ
+ * 🔴 ไม่พบ / ถูกจำกัด / โหลดหน้าไม่ได้ ⇒ ไม่มีการนับ (คำสั่งนับรันหลัง VM พร้อมเท่านั้น)
+ */
 export async function openBookProduct(
-  input: { shop: unknown; productSlug: unknown; query?: unknown; acceptLanguage?: unknown; clientKey: string | null },
+  input: { shop: unknown; productSlug: unknown; query?: unknown; acceptLanguage?: unknown; clientKey: string | null; countView?: boolean },
   opts?: BookOpts,
 ): Promise<{ ok: true; vm: BookProductVM; carry: BookCarry } | OpenFail> {
   const i: Record<string, unknown> = isRec(input) ? input : {};
@@ -411,9 +524,12 @@ export async function openBookProduct(
   if (!r.ok) return miss(clientKey, opts);
   const p = await visibleProduct(r.shop, i.productSlug);
   if (!p) return miss(clientKey, opts);
-  const g = await bookPageGate({ tenantId: r.shop.tenantId, unit: p.unit, productId: p.productId, clientKey, channel: "WEB", linkCode: q.a }, opts);
+  const g = await bookPageGate({ tenantId: r.shop.tenantId, unit: null, productId: null, clientKey, channel: "WEB", linkCode: null }, opts);
   if (!g.ok) return g;
-  const vm = await productVM(r.shop, { productSlug: p.productSlug, unit: p.unit, locale: bookLocaleOf(q.lang, i.acceptLanguage), month: q.m, date: q.d }, nowOf(opts));
+  const now = nowOf(opts);
+  const vm = await productVM(r.shop, { productSlug: p.productSlug, productId: p.productId, unit: p.unit, locale: bookLocaleOf(q.lang, i.acceptLanguage), month: q.m, date: q.d, slot: parseBookSlot(i.query) }, now);
   if (!vm) return notFound();
-  return { ok: true, vm, carry: { lang: q.lang, a: g.linkId !== null ? q.a : null } };
+  const link = await bindLink(r.shop.tenantId, p.productId, q.a);
+  if (i.countView !== false) await countBookView({ tenantId: r.shop.tenantId, unit: p.unit, channel: "WEB", clientKey, link, now }, opts);
+  return { ok: true, vm, carry: { lang: q.lang, a: link !== null ? q.a : null } };
 }

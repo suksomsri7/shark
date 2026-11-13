@@ -2,7 +2,7 @@
 // แสดงผลเท่านั้น: การ์ดต่อสินค้า (ชื่อ · สรุป · ลิงก์) — ไม่มีราคา/ที่ว่างบนการ์ด (ยังไม่มีบริการ "ราคาเริ่มต้น")
 import { bookHref, type BookCarry, type BookShopVM } from "@/lib/platform/trips-public-core";
 import { BookShell } from "./BookShell";
-import { BookUntranslated } from "./BookContent";
+import { BookUntranslated, shopLang } from "./BookContent";
 import { bookT } from "./book-i18n";
 
 export function BookIndex({ vm, carry }: { vm: BookShopVM; carry: BookCarry }) {
@@ -30,9 +30,15 @@ export function BookIndex({ vm, carry }: { vm: BookShopVM; carry: BookCarry }) {
                   href={bookHref(slug, p.slug, { lang: carry.lang, a: carry.a })}
                   className="flex h-full min-h-11 flex-col gap-2 rounded-2xl border bg-[color:var(--color-surface)] p-5 hover:border-[color:var(--color-accent)]"
                 >
-                  <span className="break-words text-lg font-semibold">{p.title.text}</span>
-                  {p.title.fallback ? <BookUntranslated locale={vm.locale} /> : null}
-                  {p.summary.text ? <span className="line-clamp-3 break-words text-sm text-[color:var(--color-ink-soft)]">{p.summary.text}</span> : null}
+                  <span lang={shopLang(p.title, vm.locale)} className="break-words text-lg font-semibold">
+                    {p.title.text}
+                  </span>
+                  {p.title.fallback || (p.summary.text && p.summary.fallback) ? <BookUntranslated locale={vm.locale} /> : null}
+                  {p.summary.text ? (
+                    <span lang={shopLang(p.summary, vm.locale)} className="line-clamp-3 break-words text-sm text-[color:var(--color-ink-soft)]">
+                      {p.summary.text}
+                    </span>
+                  ) : null}
                   <span className="mt-auto pt-2 text-sm font-medium text-[color:var(--color-accent)]">{t("index.view")}</span>
                 </a>
               </li>

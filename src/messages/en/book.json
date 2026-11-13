@@ -53,35 +53,37 @@
   "slot": {
     "guaranteed": "Confirmed to run",
     "closesAt": "Booking closes {at}",
-    "available": "{n} seats available",
-    "left": "{n} seats left"
+    "title": "Departures on this date",
+    "from": "From {amount} per person",
+    "choose": "Choose the {time} departure",
+    "chosen": "Selected departure",
+    "more": "{n} more departures not shown",
+    "count": "{n} trips"
   },
   "pax": {
     "ageRange": "age {min}–{max}",
     "ageFrom": "age {min} and over",
     "ageUnder": "up to age {max}",
     "noSeat": "no seat",
-    "free": "Free",
-    "perPerson": "per person",
-    "perBooking": "per booking"
+    "free": "Free"
   },
   "price": {
     "from": "From, per person",
-    "currency": "THB",
-    "passThrough": "Collected for the park · paid with your booking",
+    "passThrough": "Collected on behalf of a third party · paid with your booking",
     "unavailable": "Prices are not available right now — please contact the shop",
     "vat": {
       "INCLUDED": "Prices in Thai baht, VAT included",
-      "ADDED": "Prices in Thai baht, VAT not included",
+      "ADDED": "Prices in Thai baht, VAT included — this is the amount you pay",
       "NONE": "Prices in Thai baht, no VAT applies"
     },
-    "amount": "THB {amount}"
+    "amount": "THB {amount}",
+    "group": "Group prices apply when you book for more people — prices shown are for one person"
   },
   "cancel": {
     "title": "Cancellation",
     "row": "{days} days or more before departure — {pct}% refund",
-    "rowLast": "Later than that — {pct}% refund",
-    "noRefund": "Later than that — no refund"
+    "rowLast": "After that — {pct}% refund",
+    "noRefund": "After that, no refund"
   },
   "tz": {
     "note": "All times are shop local time ({zone} · GMT{offset})"

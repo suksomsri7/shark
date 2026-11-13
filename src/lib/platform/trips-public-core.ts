@@ -4,6 +4,7 @@
 // 🔴 pure ล้วน: ไม่มี import ค่า · ไม่มี I/O · ไม่อ่าน env · ไม่อ่านนาฬิกา (วัน/เวลารับเข้ามาเป็นข้อความเสมอ) · คิดวันด้วย UTC ล้วน
 // 🔴 เพดานอัตราของหน้าอ่าน/ถังเดา/ตัวนับ อยู่ในตารางค่าคงที่ของไฟล์นี้ **ที่เดียว** (มติ R3) — ไฟล์อื่นห้ามมีตัวเลขเพดาน
 // 🔴 IP ที่อ่านไม่ได้ ⇒ null เสมอ — ไม่มีถังรวมของ "ไม่รู้ว่าใคร" (ผู้เรียกต้องปิดเมื่อได้ null)
+// 🔴 ตัวอ่าน IP ของหน้าจอง (ลำดับหัว + รูปมาตรฐาน + ที่อยู่ของเครื่องเอง) และตัวตัดสิน "คำขอนี้นับเป็นการเปิดดูได้ไหม" อยู่ที่ไฟล์นี้ที่เดียว (มติ X2 · X6)
 // ─────────────────────────────────────────────────────────────
 
 export const BOOK_LOCALES = ["th", "en"] as const;
@@ -35,6 +36,8 @@ export const BOOK_UNIT_CAP = 20;
 export const BOOK_LIMITER_DOWN_RETRY_SEC = 60;
 /** จำนวนโดเมนฝังสูงสุดที่ออกในนโยบาย */
 export const BOOK_EMBED_DOMAIN_CAP = 20;
+/** จำนวนรอบต่อวันที่แผงวันที่เลือกแสดง (วันเดียวหลายรอบ) */
+export const BOOK_SLOT_CAP = 8;
 /** รูปของรหัสใน `?a` `?s` */
 export const BOOK_CODE_RE = /^[A-Za-z0-9_-]{1,32}$/;
 
@@ -146,13 +149,25 @@ export function canonicalClientIp(raw: unknown): string | null {
   return `${g.slice(0, 4).map((n) => n.toString(16)).join(":")}::/64`;
 }
 
-const IP_HEADERS = ["x-real-ip", "x-vercel-forwarded-for", "x-forwarded-for"] as const;
 /**
- * IP ของเครื่องจากหัวคำขอ (ลำดับเดียวกับหน้าโรงแรม) — หัวแรกที่มีค่า (ตัวแรกก่อนจุลภาค) เป็นตัวตัดสิน
- * อ่านไม่ได้ ⇒ null ไม่ไล่หัวถัดไป · ไม่มีหัวใดเลย ⇒ null
+ * ลำดับหัว IP ของหน้าจอง — ลำดับเดียวกับตัวช่วยของแพลตฟอร์มที่หน้าสาธารณะอื่นใช้
+ * (`PORTAL_IP_HEADERS` ใน platform/dorm-portal.ts · `hotelWebClientKey` ใน platform/hotel-web.ts): หัวที่ขอบระบบตั้งเองมาก่อนหัวที่ผู้ใช้ส่งต่อมาได้
+ * 🔴 เงื่อนไขการ deploy: ขอบระบบต้อง **เขียนทับ** หัวทั้งสามตัวนี้ (ไม่ใช่ต่อท้าย) — ไม่งั้นผู้ใช้ปลอมหัวแล้วได้ถังใหม่ไม่จำกัด
  */
-export function clientIpFromHeaders(get: (name: string) => string | null | undefined): string | null {
-  for (const name of IP_HEADERS) {
+export const BOOK_IP_HEADERS = ["x-real-ip", "x-vercel-forwarded-for", "x-forwarded-for"] as const;
+
+/** ที่อยู่ของเครื่องเซิร์ฟเวอร์เอง (รูปมาตรฐานของ canonicalClientIp): 127.0.0.0/8 · 0.0.0.0 · ::/64 (รวม ::1) — ไม่ใช่ที่อยู่ของผู้ใช้จริง */
+export function isLoopbackClientIp(canonical: unknown): boolean {
+  return typeof canonical === "string" && (/^127\./.test(canonical) || canonical === "0.0.0.0" || canonical === "0:0:0:0::/64");
+}
+
+/**
+ * IP ของเครื่องจากหัวคำขอ — หัวแรกที่มีค่า (ตัวแรกก่อนจุลภาค) เป็นตัวตัดสิน
+ * อ่านไม่ได้ ⇒ null ไม่ไล่หัวถัดไป · ไม่มีหัวใดเลย ⇒ null
+ * ที่อยู่ของเครื่องเซิร์ฟเวอร์เอง (ไม่มีขอบระบบส่งหัว IP มา — เซิร์ฟเวอร์เติมที่อยู่ของ socket ให้) ⇒ null เว้นแต่ผู้เรียกอนุญาต (`allowLoopback` · ใช้นอก production เท่านั้น)
+ */
+export function clientIpFromHeaders(get: (name: string) => string | null | undefined, opts?: { allowLoopback?: boolean }): string | null {
+  for (const name of BOOK_IP_HEADERS) {
     let v: unknown;
     try {
       v = get(name);
@@ -160,9 +175,49 @@ export function clientIpFromHeaders(get: (name: string) => string | null | undef
       return null;
     }
     if (typeof v !== "string" || v.trim() === "") continue;
-    return canonicalClientIp((v.split(",")[0] ?? "").trim());
+    const ip = canonicalClientIp((v.split(",")[0] ?? "").trim());
+    if (ip !== null && isLoopbackClientIp(ip) && opts?.allowLoopback !== true) return null;
+    return ip;
   }
   return null;
+}
+
+// ═══════════════ คำขอนี้นับเป็น "เปิดดู" ได้ไหม (มติ X6 — ที่เดียว) ═══════════════
+/** หัวที่เบราว์เซอร์/ตัวโหลดล่วงหน้าใช้บอกว่าไม่ใช่การเปิดดูของคน (ค่ามีคำว่า prefetch / prerender / preview) */
+export const BOOK_PURPOSE_HEADERS = ["sec-purpose", "purpose", "x-purpose", "x-moz"] as const;
+/** หัวที่มีอยู่ = คำขอโหลดล่วงหน้าของตัวนำทาง */
+export const BOOK_PREFETCH_FLAG_HEADERS = ["next-router-prefetch", "next-router-segment-prefetch", "x-middleware-prefetch"] as const;
+/** หัวที่มีอยู่ = คำขอมีเนื้อความ/เป็นคำสั่ง (ไม่ใช่การเปิดหน้าแบบ GET) — หน้าไม่ได้รับ method ตรง ๆ จึงอ่านจากหัวเหล่านี้ */
+export const BOOK_BODY_HEADERS = ["content-type", "transfer-encoding", "next-action"] as const;
+/** คำใน User-Agent ของบอต/ตัวทำภาพตัวอย่างลิงก์/ตัวเฝ้าระบบ (ตัวเล็ก · รายการสั้น ที่เดียว) */
+export const BOOK_BOT_UA_MARKS = [
+  "bot", "crawl", "spider", "slurp", "preview", "facebookexternalhit", "whatsapp", "telegram", "skype", "embedly", "headless", "lighthouse", "pingdom", "uptime", "monitor",
+  "curl/", "wget/", "python-", "go-http-client", "okhttp", "axios/", "node-fetch", "scrapy", "httpclient",
+] as const;
+
+/**
+ * นับเป็นการเปิดดูได้ไหม: เฉพาะ GET ของเบราว์เซอร์ที่คนเปิดเอง
+ * ไม่นับ: method อื่น (ถ้ารู้) · คำขอที่มีเนื้อความ · โหลดล่วงหน้า (Sec-Purpose / Purpose / Next-Router-Prefetch) · บอต/ตัวทำภาพตัวอย่าง · ไม่มี User-Agent
+ * อ่านหัวไม่ได้ ⇒ ไม่นับ (ตัวนับไม่ใช่ด่าน — พลาดทางไม่นับปลอดภัยกว่า)
+ */
+export function bookViewCountable(req: { method?: unknown; get: (name: string) => string | null | undefined }): boolean {
+  try {
+    if (req.method !== undefined && req.method !== null && String(req.method).toUpperCase() !== "GET") return false;
+    const h = (name: string): string => {
+      const v = req.get(name);
+      return typeof v === "string" ? v.trim().toLowerCase() : "";
+    };
+    for (const name of BOOK_BODY_HEADERS) if (h(name) !== "") return false;
+    const len = h("content-length");
+    if (len !== "" && len !== "0") return false;
+    for (const name of BOOK_PREFETCH_FLAG_HEADERS) if (h(name) !== "") return false;
+    for (const name of BOOK_PURPOSE_HEADERS) if (/prefetch|prerender|preview/.test(h(name))) return false;
+    const ua = h("user-agent");
+    if (ua === "") return false;
+    return !BOOK_BOT_UA_MARKS.some((m) => ua.includes(m));
+  } catch {
+    return false;
+  }
 }
 
 // ═══════════════ พารามิเตอร์ของหน้า ═══════════════
@@ -211,11 +266,40 @@ export function parseBookQuery(sp: unknown): BookQuery {
   };
 }
 
-/** ลิงก์ของหน้าจอง — ส่วน path เข้ารหัส · query ลำดับตายตัว lang, a, m, d · ค่าว่างไม่ใส่ */
-export function bookHref(shop: string, productSlug: string | null, q?: { lang?: string | null; a?: string | null; m?: string | null; d?: string | null }): string {
+/**
+ * ตัวอ้างรอบในวันเดียวกัน (`?t=`) = เวลาออกของร้านแบบ HHMM + ลำดับเมื่อเวลาซ้ำ (`0700` · `0700-2`) — ไม่ใช่ id ภายใน
+ * ผิดรูป ⇒ null (หน้าเลือกรอบแรกที่ขายได้แทน)
+ */
+export const BOOK_SLOT_TOKEN_RE = /^([01]\d|2[0-3])[0-5]\d(-[2-9])?$/;
+export function parseBookSlot(sp: unknown): string | null {
+  if (!isRec(sp)) return null;
+  let v: unknown;
+  try {
+    v = sp.t;
+  } catch {
+    return null;
+  }
+  return typeof v === "string" && BOOK_SLOT_TOKEN_RE.test(v) ? v : null;
+}
+/** ตัวอ้างรอบของทุกรอบในวันเดียว (เรียงเวลาออก) จากเวลาออก "HH:MM" — เวลาซ้ำได้ลำดับต่อท้าย · เวลาผิดรูป ⇒ null */
+export function slotTokensOf(startTimes: readonly string[]): (string | null)[] {
+  const seen = new Map<string, number>();
+  return startTimes.map((hm) => {
+    const m = /^(\d{2}):(\d{2})$/.exec(String(hm));
+    if (!m) return null;
+    const base = `${m[1]}${m[2]}`;
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    const token = n === 1 ? base : `${base}-${n}`;
+    return BOOK_SLOT_TOKEN_RE.test(token) ? token : null;
+  });
+}
+
+/** ลิงก์ของหน้าจอง — ส่วน path เข้ารหัส · query ลำดับตายตัว lang, a, m, d, t · ค่าว่างไม่ใส่ */
+export function bookHref(shop: string, productSlug: string | null, q?: { lang?: string | null; a?: string | null; m?: string | null; d?: string | null; t?: string | null }): string {
   const path = `/book/${encodeURIComponent(String(shop))}${productSlug === null || productSlug === undefined || productSlug === "" ? "" : `/t/${encodeURIComponent(String(productSlug))}`}`;
   const parts: string[] = [];
-  for (const k of ["lang", "a", "m", "d"] as const) {
+  for (const k of ["lang", "a", "m", "d", "t"] as const) {
     const v = q?.[k];
     if (typeof v === "string" && v !== "") parts.push(`${k}=${encodeURIComponent(v)}`);
   }
@@ -268,21 +352,28 @@ export function monthRange(month: string): { from: string; to: string } | null {
 }
 
 export type BookSlotFacts = { status: string; publicLeft: number; saleBlock: string | null; showLeft: boolean };
+const slotLeftOf = (s: BookSlotFacts): number => (Number.isFinite(s.publicLeft) && s.publicLeft > 0 ? Math.trunc(s.publicLeft) : 0);
+/** รอบนี้ขายได้ตอนนี้ (บริการไม่กั้น และยังมีที่) */
+export function slotSellable(s: BookSlotFacts): boolean {
+  return s.saleBlock === null && slotLeftOf(s) > 0;
+}
 /**
- * สภาพของวัน (ตัวตัดสินเดียว — จอห้ามตัดสินเอง): ผ่านแล้ว · ไม่มีรอบ · มีรอบที่ขายได้และยังว่าง ⇒ รอบที่ว่างมากสุด (เหลือน้อย/ว่าง · เลขของรอบนั้นรอบเดียว)
- * · มีรอบที่ขายได้แต่เต็ม ⇒ เต็ม · ทุกรอบยกเลิก ⇒ ไม่ออกเดินทาง · ที่เหลือ ⇒ ปิดรับ
+ * สภาพของวัน (ตัวตัดสินเดียว — จอห้ามตัดสินเอง) · `slots` ต้องเรียงตามเวลาออก
+ * ผ่านแล้ว · ไม่มีรอบ · มีรอบที่ขายได้และยังว่าง ⇒ **รอบที่ออกเร็วที่สุดที่ขายได้** (เหลือน้อย/ว่าง · เลขของรอบนั้นรอบเดียว — รอบเดียวกับที่หน้าเลือกให้เป็นปริยาย · มติ X4)
+ * · มีรอบที่ขายได้แต่เต็ม หรือรอบที่ร้านปิดเป็น "เต็ม" ⇒ เต็ม (มติ X7) · ทุกรอบยกเลิก ⇒ ไม่ออกเดินทาง · ที่เหลือ ⇒ ปิดรับ
  */
 export function dayCellOf(slots: readonly BookSlotFacts[], ymd: string, today: string): { state: BookDayState; left: number | null } {
   if (ymd < today) return { state: "PAST", left: null };
   if (!slots.length) return { state: "NONE", left: null };
-  const leftOf = (s: BookSlotFacts): number => (Number.isFinite(s.publicLeft) && s.publicLeft > 0 ? Math.trunc(s.publicLeft) : 0);
-  const sellable = slots.filter((s) => s.saleBlock === null);
-  let best: BookSlotFacts | null = null;
-  for (const s of sellable) if (leftOf(s) > 0 && (best === null || leftOf(s) > leftOf(best))) best = s;
-  if (best) return { state: best.showLeft ? "LOW" : "OPEN", left: leftOf(best) };
-  if (sellable.length) return { state: "FULL", left: 0 };
+  const first = slots.find(slotSellable);
+  if (first) return { state: first.showLeft ? "LOW" : "OPEN", left: slotLeftOf(first) };
+  if (slots.some((s) => s.saleBlock === null || s.status === "FULL")) return { state: "FULL", left: 0 };
   if (slots.every((s) => s.status === "CANCELLED")) return { state: "NOT_RUNNING", left: null };
   return { state: "CLOSED", left: null };
+}
+/** จำนวนรอบที่ขายได้ของวัน (ช่องปฏิทินบอกเมื่อมากกว่า 1) */
+export function sellableCountOf(slots: readonly BookSlotFacts[]): number {
+  return slots.filter(slotSellable).length;
 }
 
 /** วันนี้เป็นต้นไปที่มีรอบ (ทุกสภาพยกเว้น ผ่านแล้ว/ไม่มีรอบ) — แถบวันของจอมือถือแสดงเฉพาะวันแบบนี้ */
@@ -329,9 +420,26 @@ export function embedOriginAllowed(origin: unknown, domains: unknown): boolean {
 export type BookText = { text: string | null; fallback: boolean };
 export type BookBrandVM = { slug: string; name: string; logoUrl: string | null; brandColor: string | null; brandFg: string | null };
 export type BookShopVM = { shop: BookBrandVM; locale: BookLocale; products: { slug: string; title: BookText; summary: BookText }[]; total: number; shown: number; truncated: boolean };
-export type BookDayVM = { date: string; day: number; state: BookDayState; left: number | null; selectable: boolean; selected: boolean };
+/** departures = จำนวนรอบที่ขายได้ของวันนั้น (left = ที่ว่างของรอบที่ออกเร็วที่สุดในนั้น) */
+export type BookDayVM = { date: string; day: number; state: BookDayState; left: number | null; selectable: boolean; selected: boolean; departures: number };
 export type BookSlotState = "OPEN" | "LOW" | "FULL" | "CLOSED" | "NOT_RUNNING";
-export type BookSlotVM = { timeText: string; optionName: BookText; state: BookSlotState; left: number | null; capacity: number; guaranteed: boolean; cutoffLocal: string };
+/**
+ * รอบของวันที่เลือก · token = ตัวอ้างรอบใน `?t=` (null = กดเลือกไม่ได้) · selected = รอบที่หัวหน้า/ตารางราคา/ที่ว่างของหน้าอ้างถึง
+ * from = ราคาเริ่มต้นต่อคนของรอบนั้นเอง (คนเดียว ประเภทคนแรกที่มีที่นั่ง — จากบริการราคา · null = ยังไม่มีราคา/รอบขายไม่ได้)
+ */
+export type BookSlotVM = {
+  timeText: string;
+  optionName: BookText;
+  state: BookSlotState;
+  left: number | null;
+  capacity: number;
+  guaranteed: boolean;
+  cutoffLocal: string;
+  token: string | null;
+  selectable: boolean;
+  selected: boolean;
+  from: { code: string; unitSatang: number } | null;
+};
 export type BookVatNote = "INCLUDED" | "ADDED" | "NONE";
 export type BookPriceVM = {
   currency: "THB";
@@ -339,8 +447,11 @@ export type BookPriceVM = {
   fees: { name: BookText; paxCode: string | null; unitSatang: number; passThrough: boolean }[];
   extras: { name: BookText; note: BookText; basis: string; unitSatang: number }[];
   headline: { code: string; unitSatang: number } | null;
+  /** ADDED = ร้านคิดภาษีเพิ่มจากราคาตั้ง — ทุกยอดใน VM นี้ **รวมภาษีแล้ว** (ยอดที่จ่ายจริงจากบริการราคา · มติ X11) */
   vatNote: BookVatNote;
   cancelLadder: { daysBefore: number; refundBp: number }[];
+  /** มีราคากลุ่มเมื่อจองหลายคน (บริการราคาให้ราคาต่อคนต่างจากราคาคนเดียว) — ราคาใน VM นี้เป็นราคาคนเดียวเสมอ (มติ X3) */
+  groupPricing: boolean;
 };
 export type BookProductVM = {
   shop: BookBrandVM;
@@ -353,11 +464,33 @@ export type BookProductVM = {
   nextMonth: string | null;
   weeks: (BookDayVM | null)[][];
   requestedUnavailable: boolean;
-  selected: null | { date: string; slots: BookSlotVM[]; price: BookPriceVM | null; priceError: string | null };
+  /** slots = รอบของวันนั้นเรียงเวลาออก (ไม่เกิน BOOK_SLOT_CAP · รอบที่ขายได้มาก่อนเมื่อเกิน) · moreSlots = รอบที่ไม่ได้แสดง · price = ของรอบที่ selected เท่านั้น */
+  selected: null | { date: string; slots: BookSlotVM[]; moreSlots: number; price: BookPriceVM | null; priceError: string | null };
   cta: { enabled: false };
 };
 /** พารามิเตอร์ที่ลิงก์ในหน้าพาต่อ (ภาษาที่เลือกเอง · รหัสผู้แนะนำที่ผูกได้จริง) */
 export type BookCarry = { lang: BookLocale | null; a: string | null };
+
+export type BookCancelRow = { kind: "FROM_DAYS"; days: number; pct: number } | { kind: "LATER_PCT"; pct: number } | { kind: "LATER_NONE" };
+/**
+ * บรรทัดของตารางยกเลิก (ตัวตัดสินเดียว — จอแค่แปลเป็นข้อความ): ขั้นที่มีวัน ⇒ "N วันขึ้นไป คืน X%" · ขั้น 0 วัน ⇒ "หลังจากนั้น คืน X% / ไม่คืน"
+ * บันไดที่ไม่มีขั้น 0 วัน ⇒ ต่อท้าย "หลังจากนั้นไม่คืนเงิน" เสมอ (มติ X5 — เงื่อนไขแย่สุดต้องเขียนไว้) · บันไดว่าง ⇒ ไม่มีบรรทัด
+ */
+export function cancelRowsOf(ladder: readonly { daysBefore: number; refundBp: number }[]): BookCancelRow[] {
+  if (!Array.isArray(ladder) || ladder.length === 0) return [];
+  const rows: BookCancelRow[] = [];
+  let hasZero = false;
+  for (const s of ladder) {
+    const pct = refundPercentOf(s.refundBp);
+    if (s.daysBefore > 0) rows.push({ kind: "FROM_DAYS", days: s.daysBefore, pct });
+    else {
+      hasZero = true;
+      rows.push(pct > 0 ? { kind: "LATER_PCT", pct } : { kind: "LATER_NONE" });
+    }
+  }
+  if (!hasZero) rows.push({ kind: "LATER_NONE" });
+  return rows;
+}
 
 /** ร้อยละคืนเงินจาก basis point (ไม่ใช่ยอดเงิน — ใช้แสดงตารางยกเลิกเท่านั้น) */
 export function refundPercentOf(refundBp: number): number {
