@@ -283,6 +283,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrFilingPerson: sys(),
   HrFilingFile: sys(),
   HrTaxCertificate: sys(),
+  HrSalaryCertificate: sys(), // HR H3.8 ▸ หนังสือรับรองเงินเดือน (คำขอ + ใบที่ออก) ◂
   // HR H1.3 ▸ ตารางกฎหมายเงินเดือนกลางของทั้ง SHARK (ไม่มี tenantId/systemId) ◂
   HrLawTable: g("กฎหมายแรงงาน/ภาษีระดับประเทศ — SHARK ดูแล ร้านอ่านอย่างเดียว · เขียนผ่านสคริปต์/หลังบ้านเท่านั้น"),
   // Subscription (WO-0027) + Procurement (WO-0028)
