@@ -52,7 +52,7 @@ try {
   // ═══ T02-API.1 GET /settings/tax ═══
   const g = await call("GET", "/settings/tax?asOf=2026-11-13", R);
   const d = g.body?.data;
-  chk("T02-API.1a", "GET /settings/tax (read-only) → 200 entityKind UNSET + คำเตือน · vatRateBp 700 · ตาราง 3 ชุดพร้อมที่มา/ป้าย", g.status === 200 && d?.entityKind === "UNSET" && d?.vatRateBp === 700 && d?.warnings?.some((w: Any) => w.code === "ENTITY_KIND_UNSET") && d?.tables?.vat?.[0]?.source?.startsWith("references/") && Array.isArray(d?.tables?.wht) && Array.isArray(d?.tables?.deadline), "ครบ", `${g.status} ${JSON.stringify(d).slice(0, 220)}`);
+  chk("T02-API.1", "GET /settings/tax (read-only) → 200 entityKind UNSET + คำเตือน · vatRateBp 700 · ตาราง 3 ชุดพร้อมที่มา/ป้าย", g.status === 200 && d?.entityKind === "UNSET" && d?.vatRateBp === 700 && d?.warnings?.some((w: Any) => w.code === "ENTITY_KIND_UNSET") && d?.tables?.vat?.[0]?.source?.startsWith("references/") && Array.isArray(d?.tables?.wht) && Array.isArray(d?.tables?.deadline), "ครบ", `${g.status} ${JSON.stringify(d).slice(0, 220)}`);
   const ewht = d?.tables?.wht?.find((r: Any) => r.id === "sys-ewht-40-2-jur");
   chk("T02-API.1b", "แถว e-WHT มีช่วงวันที่ 2026-01-01..2027-12-31 + inEffect ณ asOf", ewht?.from === "2026-01-01" && ewht?.to === "2027-12-31" && ewht?.inEffect === true, "ช่วง+inEffect", JSON.stringify(ewht).slice(0, 200), "MAJOR");
   const gLater = await call("GET", "/settings/tax?asOf=2028-01-01", R);
@@ -69,7 +69,7 @@ try {
     reason: "QC T02",
   });
   const pd = p.body?.data;
-  chk("T02-API.2b", "PATCH entityKind + แถวร้าน 2% → 200 saved · คำเตือน SHOP_DIFFERS_FROM_DEFAULT (ไม่บล็อก) · settings สะท้อน", p.status === 200 && pd?.saved >= 2 && pd?.warnings?.some((w: Any) => w.code === "SHOP_DIFFERS_FROM_DEFAULT") && pd?.settings?.entityKind === "COMPANY" && pd?.settings?.tables?.wht?.some((r: Any) => r.origin === "SHOP" && r.value === 200 && r.tag === "SHOP"), "ครบ", `${p.status} ${JSON.stringify(pd).slice(0, 260)}`);
+  chk("T02-API.2", "PATCH entityKind + แถวร้าน 2% → 200 saved · คำเตือน SHOP_DIFFERS_FROM_DEFAULT (ไม่บล็อก) · settings สะท้อน", p.status === 200 && pd?.saved >= 2 && pd?.warnings?.some((w: Any) => w.code === "SHOP_DIFFERS_FROM_DEFAULT") && pd?.settings?.entityKind === "COMPANY" && pd?.settings?.tables?.wht?.some((r: Any) => r.origin === "SHOP" && r.value === 200 && r.tag === "SHOP"), "ครบ", `${p.status} ${JSON.stringify(pd).slice(0, 260)}`);
   const st = await call("GET", "/settings", S);
   chk("T02-API.2c", "GET /settings คืน entityKind COMPANY", st.status === 200 && st.body?.data?.entityKind === "COMPANY", "COMPANY", `${st.status} ${st.body?.data?.entityKind}`, "MAJOR");
   const badKind = await call("PATCH", "/settings/tax", S, { entityKind: "LLC" });
