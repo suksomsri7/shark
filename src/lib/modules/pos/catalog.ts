@@ -43,6 +43,8 @@ import { channelOriginOf, loadPriceBook, priceOf } from "./price"; // POS P2.14 
 import type { PriceSource } from "./price-shared"; // POS P2.8 ◂
 import { emitOutbox } from "@/lib/core/outbox"; // POS P2.6 ▸ event pos.product.availability ในธุรกรรมของผู้เขียน ◂
 import type { AvailabilitySource, KdsRefusal, SetAvailabilityResult } from "./kds-shared"; // POS P2.6 ◂
+import { isVatTreatment, productVatTreatment, type VatTreatment } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
+import { legalWarning, unacknowledged, type LegalWarning } from "@/lib/core/settings/legal/warnings"; // ACC T1.8 ◂
 
 // ═══════════════════ ชนิดข้อมูล + error ═══════════════════
 
@@ -1401,7 +1403,8 @@ async function assertScalePluFree(ctx: CatalogCtx, plu: string, exceptProductId:
 
 function cleanVat(v: unknown): number | null {
   if (v === undefined || v === null) return null;
-  if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 10_000) throw invalid("อัตรา VAT ต้องเป็นจำนวนเต็ม 0–10000 (หน่วย 0.01%)");
+  // ACC T1.8 ▸ −1 = ยกเว้น VAT (รหัสเดียวกับ AccountProduct.vatRateBp) ◂
+  if (typeof v !== "number" || !Number.isInteger(v) || v < -1 || v > 10_000) throw invalid("อัตรา VAT ต้องเป็นจำนวนเต็ม −1 (ยกเว้น) หรือ 0–10000 (หน่วย 0.01%)");
   return v;
 }
 
@@ -1669,6 +1672,48 @@ export type UpdateProductPatch = {
   /** POS P2.6 ▸ มติ 4: สถานีครัวของสินค้าที่ไม่ใช่เมนู (KdsStation ของสาขาเดียวกันที่ใช้งาน · null = ไม่เข้าครัว) — เมนูตั้งที่หน้าเมนูร้านอาหาร ◂ */
   stationId?: string | null;
 };
+/**
+ * ACC T1.8 ▸ ชนิด VAT ของสินค้า POS (ledger/wo-notes/T1.8.md §2 · skill common-vat-invoice.md §3 §9 §21):
+ *   STANDARD / ZERO_RATED / EXEMPT = ช่องเดิม vatRateBp (null / 0 / −1) — สินค้าที่ผูกคลัง/สมุด อัตรามาจากสมุดบัญชี (แก้ที่ระบบบัญชี · VALIDATION) ·
+ *   ON_BEHALF = ธง collectedOnBehalf (ตั้งได้ทุกแถว) — ต้องกดยืนยันคำเตือน VAT_COLLECTED_ON_BEHALF (ack) ไม่งั้นคืน { legal } ไม่เขียนอะไร ·
+ *   สิทธิ์ pos.product.manage ตามขอบเขตแถว (แบบ updateProduct) · audit pos.product.vatTreatment
+ */
+export async function setProductVatTreatment(
+  ctx: CatalogCtx,
+  id: string,
+  treatment: VatTreatment,
+  ackCodes: readonly string[] = [],
+  client: CatalogClient = prisma,
+): Promise<{ ok: true; product: PosProduct } | { ok: false; legal: LegalWarning[] }> {
+  return boundary(async () => {
+    if (!isVatTreatment(treatment)) throw invalid("ชนิด VAT ไม่ถูกต้อง");
+    return inTx(client, async (tx) => {
+      await assertPosSystem(ctx, tx);
+      const actor = await actorOf(ctx, tx);
+      const before = await loadProduct(ctx, actor, id, tx, true);
+      await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
+      if (treatment === "ON_BEHALF" && !before.collectedOnBehalf) {
+        const w = [legalWarning("VAT_COLLECTED_ON_BEHALF", { name: before.name })];
+        const missing = unacknowledged(w, ackCodes);
+        if (missing.length) return { ok: false as const, legal: missing };
+      }
+      const data: Prisma.PosProductUncheckedUpdateManyInput = { collectedOnBehalf: treatment === "ON_BEHALF" };
+      if (treatment !== "ON_BEHALF") {
+        const want = treatment === "ZERO_RATED" ? 0 : treatment === "EXEMPT" ? -1 : null;
+        const cur = productVatTreatment({ vatRateBp: before.vatRateBp });
+        if (cur !== treatment) {
+          if (before.invItemId) throw invalid("ชนิด VAT ของสินค้าจากคลังมาจากสมุดบัญชี — ตั้งที่ระบบบัญชีแทน");
+          data.vatRateBp = want;
+        }
+      }
+      await tx.posProduct.updateMany({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data });
+      await audit(tx, ctx, "pos.product.vatTreatment", "PosProduct", before.id, { vatRateBp: before.vatRateBp, collectedOnBehalf: before.collectedOnBehalf }, { treatment, ...(treatment === "ON_BEHALF" && !before.collectedOnBehalf ? { ack: ["VAT_COLLECTED_ON_BEHALF"] } : {}) });
+      const row = (await tx.posProduct.findFirst({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId } })) ?? before;
+      return { ok: true as const, product: row };
+    });
+  });
+}
+
 const PATCH_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "categoryId", "unitId", "trackStock", "availability", "soldByWeight", "scalePlu", "stationId"]); // POS P2.6 ▸ + stationId ◂
 
 /**

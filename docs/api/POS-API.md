@@ -844,7 +844,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/pos/products/123" \
 | `kind` | enum("PRODUCT", "SERVICE", "MENU", "BUNDLE") | no | PRODUCT (default), SERVICE, MENU or BUNDLE. |
 | `categoryId` | string | no | Catalog category id. · min length 1 · max length 64 |
 | `basePriceSatang` | integer | no | Price in satang, VAT included as the shop sets. Per kilogram for sold-by-weight products. · min 0 · max 2147483647 |
-| `vatRateBp` | integer | no | VAT rate in basis points (700 = 7%). Absent = the shop default. · min 0 · max 10000 |
+| `vatRateBp` | integer | no | VAT rate in basis points (700 = 7%), 0 = zero-rated, -1 = VAT exempt. Absent = the shop default. Sales take VAT out of each line by its own treatment. · min -1 · max 10000 |
 | `barcode` | string | no | Barcode. · min length 1 · max length 64 |
 | `trackStock` | boolean | no | Cut stock on sale (needs a stock item). |
 | `soldByWeight` | boolean | no | Sold by weight (PRODUCT only); basePriceSatang = price per kg. |

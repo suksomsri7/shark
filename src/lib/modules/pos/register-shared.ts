@@ -472,6 +472,8 @@ export type RegisterQuoteTotals = {
   table?: RegisterQuoteTable;
   /** POS P2.5 ▸ R4: มีเฉพาะ quote ของใบแยกบิล (tableSplitPartId) — table.itemIds = รายการที่ใบนี้ถือ ◂ */
   split?: RegisterQuoteSplit;
+  /** ACC T1.8 ▸ บิลที่มีบรรทัดไม่ใช่มาตรฐาน: ยอดตามกลุ่ม (รวมในราคา · หลังเกลี่ยส่วนลด) + ชนิดต่อบรรทัด (ลำดับเดียวกับ lines) · ไม่มี = มาตรฐานล้วน ◂ */
+  vatGroups?: { standardSatang: number; zeroRatedSatang: number; exemptSatang: number; onBehalfSatang: number; lineTreatments: string[] };
 };
 /** POS P1.12: บรรทัดสิทธิ์สมาชิกบนยอด (ลำดับกระเป๋า) · ref = id ว่อชเชอร์ (ระดับ/แต้ม = null) · note = คำอธิบายเมื่อระบบปรับให้ */
 export type RegisterMemberLine = { kind: "TIER" | "VOUCHER" | "POINTS" | "GIFTCARD"; ref: string | null; label: string; discountSatang: number; note: string | null };

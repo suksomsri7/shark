@@ -48,6 +48,8 @@ export const LEGAL_WARNING_CODES = [
   "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW",
   "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH",
   "INPUT_VAT_PENDING_PAST_WINDOW",
+  // ── POS ชนิด VAT ต่อบรรทัด (T1.8) ──
+  "VAT_COLLECTED_ON_BEHALF",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -334,6 +336,17 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     tag: "V",
     checkedAt: "2026-11-13",
     ack: false,
+  },
+  // ── POS ชนิด VAT ต่อบรรทัด (T1.8) ──
+  VAT_COLLECTED_ON_BEHALF: {
+    code: "VAT_COLLECTED_ON_BEHALF",
+    titleTh: "รายการเก็บแทน (นอกฐานภาษีมูลค่าเพิ่ม)",
+    messageTh: (p) =>
+      `${p.name ? `"${s(p, "name")}" ` : ""}ตั้งเป็น "เก็บแทน" — ยอดนี้ไม่เข้ารายได้และไม่อยู่ในฐาน VAT ได้ก็ต่อเมื่อครบทั้ง 4 ข้อ: (1) ไม่ใช่ราคาเหมา และแจกแจงรายการให้ลูกค้าทราบชัดแจ้ง (2) เก็บเท่าที่ต้องจ่ายจริง ไม่บวกเพิ่ม (บวกเพิ่มแม้ร้อยละ 5 หรือ 10 = ทั้งก้อนเป็นค่าบริการ) (3) มีหลักฐานการจ่าย เช่นใบเสร็จ/ใบกำกับในชื่อลูกค้าและส่งมอบให้ลูกค้า (4) ส่วนลดที่ได้จากผู้รับเงินคืนลูกค้าทั้งหมด · ภาษีซื้อของรายจ่ายที่ทดรองแทนลูกค้าใช้เป็นภาษีซื้อของร้านไม่ได้ · ระบบลงบัญชีเงินรับแทน (หนี้สิน) ไม่คิดส่วนลด/ค่าคอมฯ กับรายการนี้ · กดยืนยันเพื่อบันทึก`,
+    citation: "หนังสือตอบข้อหารือ กค 0706/พ./625 ลว. 28 ม.ค. 2551 · กค 0811/11473 ลว. 12 ธ.ค. 2544 ข้อ 2.3 · กค 0702/พ./7308 ลว. 11 ส.ค. 2558 · กค 0706/พ./8779 ลว. 21 ต.ค. 2548 · references/common-vat-invoice.md §3 · audit-checklist-accounting.md E11",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
   },
 };
 

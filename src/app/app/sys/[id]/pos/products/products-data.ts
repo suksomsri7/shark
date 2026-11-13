@@ -1,7 +1,8 @@
 // products-data.ts — ตัวโหลดข้อมูลฝั่งเซิร์ฟเวอร์ของจอ 06 "สินค้าและเมนู" + จอโปรราคา (POS P2.2U · มติ 1/2/4)
 //   อ่านอย่างเดียว: catalog.listForUnit ต่อสาขา (แถวราคาตามช่องทางของทุกสาขา = รวมทุกสาขาที่โหลด) · ช่องทางขายที่เปิดอยู่ของระบบ · หมวด ·
 //   โปรราคา (price-rule.listPriceRules) — ไม่เขียนอะไร (ช่องทาง builtin ที่สาขายังไม่มีแถว = ชื่อตั้งต้นจาก channel-shared ไม่สร้างแถว)
-// 🔴 ไฟล์นี้ใช้จาก server component เท่านั้น (import catalog.ts / price-rule.ts / prisma) — client import ไม่ได้
+// 🔴 ไฟล์นี้ใช้จาก server component เท่านั้น (import { productVatTreatment } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
+import catalog.ts / price-rule.ts / prisma) — client import ไม่ได้
 // 🔴 ผลส่งให้ client เป็นข้อมูลล้วน (ไม่มี Date · เงินสตางค์ Int)
 
 import { prisma } from "@/lib/core/db";
@@ -56,6 +57,10 @@ export type ProductsRow = {
   recipeCost: ProductsRecipeCost | null;
   /** POS P2.6U ▸ มติ 9b: สถานีครัวของแถวที่ไม่ใช่เมนู (PosProduct.stationId · null = ไม่ส่งเข้าครัว) ◂ */
   stationId?: string | null;
+  /** ACC T1.8 ▸ ชนิด VAT (PosProduct.vatRateBp เดิม + collectedOnBehalf) · vatFromBook = ผูกคลัง (อัตรามาจากสมุดบัญชี — แก้ที่ระบบบัญชี) ◂ */
+  vatTreatment?: string;
+  vatBaseTreatment?: string;
+  vatFromBook?: boolean;
   /** POS P2.11U ▸ มติ 3: แถวราคาที่เก็บอยู่ของช่องทางที่เลิกใช้ (ไม่มีช่องทางรหัสนี้ที่ยังไม่เก็บถาวร · builtin ไม่นับ) หรือของสาขาที่เก็บถาวร/เลิกผูก POS — นับทั้งชุดของสินค้า (รวมสาขาที่ผู้ใช้มองไม่เห็น) ◂ */
   deadRows?: number;
   /** POS HF-FU ▸ f3: ลายนิ้วมือของแถวราคาที่เก็บทั้งชุดของสินค้า (channelRowsHash · รวมแถวที่ผู้ใช้มองไม่เห็น) — ลิ้นชักส่งกลับเป็น expectedRowsHash ◂ */
@@ -203,9 +208,16 @@ export async function loadProductsData(
   const products = [...byId.values()];
   // POS P2.6U ▸ มติ 9b: สถานีครัวของแถว (อ่านอย่างเดียว · คำสั่งเดียว) ◂
   if (products.length) {
-    const st = await prisma.posProduct.findMany({ where: { tenantId, id: { in: products.map((p) => p.id) } }, select: { id: true, stationId: true } });
-    const m = new Map(st.map((x) => [x.id, x.stationId]));
-    for (const p of products) p.stationId = m.get(p.id) ?? null;
+    const st = await prisma.posProduct.findMany({ where: { tenantId, id: { in: products.map((p) => p.id) } }, select: { id: true, stationId: true, vatRateBp: true, collectedOnBehalf: true, invItemId: true } });
+    const m = new Map(st.map((x) => [x.id, x]));
+    for (const p of products) {
+      const x = m.get(p.id);
+      p.stationId = x?.stationId ?? null;
+      // ACC T1.8 ◂
+      p.vatTreatment = x ? productVatTreatment(x) : "STANDARD";
+      p.vatBaseTreatment = x ? productVatTreatment({ vatRateBp: x.vatRateBp }) : "STANDARD";
+      p.vatFromBook = !!x?.invItemId;
+    }
   }
   // POS HF-FU ▸ f3 (CD 7): ลายนิ้วมือ = ชุดที่เก็บทั้งหมดของสินค้า (คำสั่งเดียว · ไม่ใช่เฉพาะแถวที่มองเห็น) ◂
   if (products.length) {

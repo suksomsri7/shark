@@ -129,6 +129,7 @@ export function PosPublicReceipt({ token, receipt: r, locale }: { token: string;
             <li key={i} data-testid="pos-rpub-line" className={row}>
               <span className="min-w-0 break-words">
                 {l.name}
+                {l.vatTreatment === "ZERO_RATED" ? ` ${t("public.markZero")}` : l.vatTreatment === "EXEMPT" ? ` ${t("public.markExempt")}` : l.vatTreatment === "ON_BEHALF" ? ` ${t("public.markOnBehalf")}` : ""}
                 {l.qty !== 1 ? ` × ${l.qty}${l.unit ? ` ${l.unit}` : ""}` : ""}
                 {l.options && l.options.length ? <span className="block text-[11.5px] text-[color:var(--color-muted)]">{l.options.join(" · ")}</span> : null}
               </span>
@@ -153,6 +154,20 @@ export function PosPublicReceipt({ token, receipt: r, locale }: { token: string;
           <div className={row} data-testid="pos-rpub-vat">
             <span>{t("public.vatIncluded", { rate: vatRate(r.vat.rateBp) })}</span>
             <span>{receiptBaht(r.vat.satang)}</span>
+          </div>
+        ) : null}
+        {/* ACC T1.8 ▸ บิลผสม: แยกยอดตามกลุ่ม (ไม่มีแถว VAT ฿0) ◂ */}
+        {r.vatGroups ? (
+          <div data-testid="pos-rpub-vat-groups">
+            {r.vatGroups.zeroRatedSatang > 0 ? (
+              <div className={row}><span>{t("public.vatZero")}</span><span>{receiptBaht(r.vatGroups.zeroRatedSatang)}</span></div>
+            ) : null}
+            {r.vatGroups.exemptSatang > 0 ? (
+              <div className={row}><span>{t("public.vatExempt")}</span><span>{receiptBaht(r.vatGroups.exemptSatang)}</span></div>
+            ) : null}
+            {r.vatGroups.onBehalfSatang > 0 ? (
+              <div className={row}><span>{t("public.onBehalf")}</span><span>{receiptBaht(r.vatGroups.onBehalfSatang)}</span></div>
+            ) : null}
           </div>
         ) : null}
         <div data-testid="pos-rpub-net" className="flex justify-between gap-3 pt-1.5 text-[18px] font-bold tabular-nums">

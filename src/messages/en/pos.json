@@ -1954,7 +1954,14 @@
       "close": "Close",
       "sending": "Sending…",
       "required": "Fill in this field first",
-      "counter": "{n}/{max}"
+      "counter": "{n}/{max}",
+      "vatTaxable": "Taxable value",
+      "vatZero": "Zero-rated sales",
+      "vatExempt": "VAT-exempt sales",
+      "onBehalf": "Collected on behalf (not a sale)",
+      "markZero": "(0% VAT)",
+      "markExempt": "(VAT exempt)",
+      "markOnBehalf": "(on behalf)"
     },
     "send": {
       "errors": {
@@ -3944,6 +3951,17 @@
       },
       "incomplete": "Products of branch {unit} are not fully loaded",
       "conflict": "This product's prices were changed elsewhere — reload"
+    },
+    "vat": {
+      "title": "VAT",
+      "STANDARD": "Standard (shop rate)",
+      "ZERO_RATED": "Zero-rated (0%)",
+      "EXEMPT": "VAT exempt",
+      "ON_BEHALF": "Collected on behalf (not income)",
+      "fromBook": "Rate comes from the accounting book — set standard/0%/exempt there",
+      "save": "Save VAT treatment",
+      "saved": "VAT treatment saved",
+      "hint": "Bills with exempt, zero-rated or on-behalf lines take VAT out of taxable lines only and split the receipt footer by group"
     }
   },
   "recipe": {

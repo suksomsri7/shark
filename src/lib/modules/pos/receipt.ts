@@ -17,6 +17,7 @@
 //    ฐานภาษี + VAT = ยอดสุทธิ (VAT ที่เก็บบนบิล · P1.6 splitIncludedVat) · ทิปอยู่นอกยอด (Σ จ่าย = ยอด + ทิป)
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
+import { storedVatGroups } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
 // POS P1.11 ▸ R3: QR ใบเสร็จออนไลน์ = โดเมนของคำขอ (core/origin · ไม่ใช้ APP_URL ตรง) + โทเคนของบิล (สร้างแบบขี้เกียจให้บิลเก่า · มติ 4) ◂
 import { publicOrigin } from "@/lib/core/origin";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
@@ -329,6 +330,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
       options: l.options.map((o) => o.choiceName),
       ...(nonEmpty(l.note) ? { note: nonEmpty(l.note)! } : {}),
       ...(l.weightGrams !== null ? { weightGrams: l.weightGrams } : {}),
+      ...(l.vatTreatment && l.vatTreatment !== "STANDARD" ? { vatTreatment: l.vatTreatment } : {}), // ACC T1.8 ◂
     })),
     totals: {
       subtotalSatang,
@@ -341,7 +343,9 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
       serviceChargeSatang: sale.serviceChargeSatang,
       grandTotalSatang: sale.grandTotalSatang,
       // POS P2.9b ▸ R5: บิลที่ใช้มัดจำ — ฐานภาษีของบิล = ยอด − มัดจำที่หัก − VAT สุทธิ (VAT ของมัดจำออกไปแล้วที่ใบรับ) · บิลอื่นเหมือนเดิม ◂
-      vatBaseSatang: sale.grandTotalSatang - sale.payments.reduce((t, p) => t + (depLinks.has(p.id) ? p.amountSatang : 0), 0) - vatSatang,
+      // ACC T1.8 ▸ บิลผสม: ฐาน = ยอดกลุ่มมาตรฐาน (ไม่รวม 0%/ยกเว้น/เก็บแทน) ◂
+      vatBaseSatang: storedVatGroups(sale).standardGross - sale.payments.reduce((t, p) => t + (depLinks.has(p.id) ? p.amountSatang : 0), 0) - vatSatang,
+      ...(storedVatGroups(sale).mixed ? { vatGroups: { standardSatang: storedVatGroups(sale).standardGross, zeroRatedSatang: sale.zeroRatedSatang, exemptSatang: sale.exemptSatang, onBehalfSatang: sale.onBehalfSatang } } : {}),
       vatSatang,
       vatRateBp: hasVat && vat && vat.vatRegistered ? vat.vatRateBp : 0,
       tipSatang: sale.tipSatang,
