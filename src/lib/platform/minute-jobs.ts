@@ -810,6 +810,14 @@ registerMinuteJob({
   run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runPdpaPurge(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
 });
 // ── /T0.8 pdpa ──
+// TRIPS A1.2a ▸ งานกวาดล็อกอินเอเจนซี่ (ใบสั่ง §5.7 · มติ R1 ข้อ 12) — ตาราง global เท่านั้น (AgentLoginCode · AgentSession) · ต่อชนิด ≤ sweepBatch ต่อรอบ ·
+//   idempotent · โหลด platform/agent-auth ตอนรัน · เคารพ signal ◂
+registerMinuteJob({
+  name: "agency.authSweep",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/platform/agent-auth")).sweepAgentAuth({ now, signal: ctrl.signal }),
+});
 
 function errorText(e: unknown): string {
   let s: string;

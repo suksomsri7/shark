@@ -443,6 +443,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "trips.passenger.form_completed", label: "เมื่อผู้เดินทางกรอกข้อมูลครบ" },
   { value: "trips.document.purged", label: "เมื่อลบเอกสาร/ข้อมูลส่วนบุคคลของผู้เดินทางตามกำหนด" },
   // ── /T0.8 passengers ──
+  // TRIPS A1.2a ▸ ทะเบียนเอเจนซี่ — ตัวยิง `agency/accounts.ts` · payload { agentAccountId } (ไม่มีชื่อ/อีเมล) · เว็บฮุคได้จาก spread ◂
+  { value: "agency.account.applied", label: "เมื่อเอเจนซี่สมัครหรือรอร้านอนุมัติ" },
+  { value: "agency.account.approved", label: "เมื่อเอเจนซี่ได้รับอนุมัติ/เริ่มใช้งาน" },
+  { value: "agency.account.suspended", label: "เมื่อระงับบัญชีเอเจนซี่" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม
