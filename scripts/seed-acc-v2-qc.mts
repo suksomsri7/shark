@@ -1011,7 +1011,9 @@ async function makePettyExpense(desc: string, grand: number, issue: string): Pro
     lines: auto.lines.map((l) => ({ ...l, accountId: miscAccount.id })),
     createdById: owner.id,
   });
-  const issued = await exp.issueExpenseDoc(tenantId, systemId, doc.id);
+  // ACC T1.8 step 0: T1.4 ทำให้ "เคลมภาษีซื้อโดยไม่มีเลขผู้เสียภาษีของคู่ค้า" ต้องกดยืนยัน (INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID) —
+  //   ใบสำรองจ่ายในชุดข้อมูลไม่มีคู่ค้าและตั้งใจเคลม (ยอดในเฉลยเดิม) ⇒ seed กดยืนยันในนามเจ้าของ (ข้อมูลเหมือนก่อน T1.4 ทุกสตางค์)
+  const issued = await exp.issueExpenseDoc(tenantId, systemId, doc.id, { ack: { codes: ["INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID"], actorId: owner.id, actorType: "USER", via: "seed" } });
   if (!issued.ok) throw new Error(`ออกเอกสารค่าใช้จ่ายสำรองจ่าย "${desc}" ไม่สำเร็จ: ${issued.reason}`);
   const pay = await exp.recordVendorPayment(tenantId, systemId, doc.id, {
     paidAt: D(issue),
