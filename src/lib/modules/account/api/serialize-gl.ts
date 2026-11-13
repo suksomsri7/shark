@@ -709,6 +709,7 @@ export function docSettingRowView(r: DocNumberingRow, s: DocSettings) {
     terms: note?.terms ?? "",
     publicLink: { enabled: s.publicView.enabled, expiryDays: s.publicView.expiryDays },
     autoTaxInvoice: s.autoTaxInvoice.mode,
+    goodsTaxInvoiceOnIssue: s.autoTaxInvoice.goodsOnIssue,
     printTemplate: s.print.template,
     channels: [...s.channels.order],
   };

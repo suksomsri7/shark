@@ -20,6 +20,8 @@ import { cancelDraftFormAction } from "@/lib/modules/account/undo-stack";
 import { DocTagsBlock } from "./DocTagsBlock";
 import { LegalWarnings } from "./LegalWarnings";
 import { issueLegalWarnings } from "@/lib/modules/account/legal-gate";
+import { invoiceTaxPointView } from "@/lib/modules/account/tax-point";
+import { ParkedVatInvoicePanel } from "./ParkedVatPanel";
 import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 import {
   issueExpenseDocAction,
@@ -970,9 +972,14 @@ export async function DocDetailPage({
   })();
 
   // T0.4 — ร่างที่จะออก: แสดงคำเตือนกฎหมายล่วงหน้า (ทะเบียนกลาง) · ด่านจริงอยู่ที่ service (ไม่เชื่อจอ)
+  // ACC T1.2 — จุดรับผิดของใบแจ้งหนี้/ใบเสร็จ: ร่าง = คำเตือนของใบกำกับที่จะออกพร้อมกัน · ออกแล้ว = VAT ที่ยังพัก + คำเตือนข้ามเดือน
+  const taxPoint = dt === "INVOICE" || dt === "RECEIPT" ? await invoiceTaxPointView({ tenantId, systemId }, data.id) : null;
   const legalWarnings =
     data.status === "DRAFT" && !PO_TYPES.includes(dt)
-      ? issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason }, side === "revenue" ? settings : null)
+      ? [
+          ...issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason, vatAmount: data.vatAmount }, side === "revenue" ? settings : null),
+          ...(taxPoint?.draftWarnings ?? []),
+        ]
       : [];
 
   const steps: StepDef[] = data.timeline.map((s) => ({
@@ -1051,6 +1058,19 @@ export async function DocDetailPage({
 
         <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} perm={perm} legalWarnings={legalWarnings} />
       </div>
+
+      {taxPoint?.parked && (
+        <ParkedVatInvoicePanel
+          systemId={systemId}
+          docId={data.id}
+          back={selfPath}
+          goods={taxPoint.parked.goods}
+          service={taxPoint.parked.service}
+          warning={taxPoint.parked.warning}
+          hint={taxPoint.hint}
+          canRelease={perm.issue}
+        />
+      )}
 
       {/* ไทม์ไลน์เอกสาร */}
       {steps.length > 0 && (

@@ -257,6 +257,8 @@ export type DocDetailData = {
     discount: number;
     vatRateBp: number;
     amount: number;
+    /** ACC T1.2 — ชนิดบรรทัด สินค้า/บริการ (null = แถวก่อน T1.2 → ตามจุดรับรู้ของทั้งใบ) */
+    lineKind: "GOODS" | "SERVICE" | null;
     account: { code: string; name: string } | null;
   }[];
   subTotal: number;
@@ -344,6 +346,7 @@ export async function getDocDetailData(
       discount: l.discount,
       vatRateBp: l.vatRateBp,
       amount: l.amount,
+      lineKind: l.lineKind ?? null,
       account: l.account ? { code: l.account.code, name: l.account.name } : null,
     })),
     subTotal: doc.subTotal,

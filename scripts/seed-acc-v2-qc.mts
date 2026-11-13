@@ -245,6 +245,15 @@ await svc.saveSettings(tenantId, systemId, {
   defaultValidDays: 30,
 });
 await gl.ensureAccounting({ tenantId, systemId });
+// ORACLE-EDIT (ACC T1.2): ชุดข้อมูลนี้จำลองข้อมูลที่ร้านคีย์ไว้ "ก่อน" T1.2 (baseline ของผลตรวจ E5: VAT สินค้าพัก 2205 ไม่เข้า ภ.พ.30)
+//   ⇒ ปิด "ใบกำกับของสินค้าพร้อมใบแจ้งหนี้" ระหว่างสร้างเอกสาร (เฉลยเดิมทุกตัวคงที่) แล้วเปิดกลับเป็นค่าเริ่มต้นท้ายสคริปต์ (ส่วนตั้งค่าเอกสาร)
+//   ผลคือหน้า "ภาษีขายที่ค้างพัก" มีข้อมูลเก่าให้ทดลองปล่อย VAT ได้จริง
+{
+  const ds = await import("@/lib/modules/account/doc-settings");
+  const cur = await ds.getDocSettings({ tenantId, systemId });
+  const r0 = await ds.saveDocSettings({ tenantId, systemId }, { autoTaxInvoice: { ...cur.autoTaxInvoice, goodsOnIssue: false } });
+  if (!r0.ok) throw new Error(`ปิดใบกำกับพร้อมใบแจ้งหนี้ (ข้อมูลก่อน T1.2) ไม่สำเร็จ: ${r0.reason}`);
+}
 console.log(`🏢 ร้าน "${QC.tenantName}" ${tenantId} · ระบบบัญชี ${systemId}`);
 
 // ─────────────────────────── 3. หน่วยนับ + สินค้า/บริการ 12 ───────────────────────────
@@ -1883,6 +1892,7 @@ const SEED_NOTES = {
     publicView: { enabled: true, showOutstanding: true, promptPayButton: true, expiryDays: 0 },
     autoTaxInvoice: {
       mode: "ON_PAYMENT",
+      goodsOnIssue: true, // ACC T1.2 — เปิดกลับเป็นค่าเริ่มต้นหลังสร้างข้อมูลเก่าเสร็จ (ดูหัวสคริปต์)
       posAbbreviated: true,
       legalText: "ใบกำกับภาษีนี้ออกตามมาตรา 86/4 แห่งประมวลรัษฎากร",
     },

@@ -209,10 +209,10 @@ export async function saveAutoTaxInvoiceAction(formData: FormData): Promise<Acti
     raw === "ON_INVOICE" || raw === "MANUAL" || raw === "ON_PAYMENT" ? raw : "ON_PAYMENT";
   const res = await saveDocSettings(
     { tenantId, systemId },
-    { autoTaxInvoice: { mode, posAbbreviated: on(formData, "posAbbreviated"), legalText: s(formData, "legalText") } },
+    { autoTaxInvoice: { mode, goodsOnIssue: on(formData, "goodsOnIssue"), posAbbreviated: on(formData, "posAbbreviated"), legalText: s(formData, "legalText") } },
   );
   if (!res.ok) return res;
-  await audit(tenantId, userId, systemId, "ใบกำกับภาษีอัตโนมัติ", { mode });
+  await audit(tenantId, userId, systemId, "ใบกำกับภาษีอัตโนมัติ", { mode, goodsOnIssue: on(formData, "goodsOnIssue") });
   revalidatePath(SETTINGS_PATH(systemId));
   return { ok: true };
 }

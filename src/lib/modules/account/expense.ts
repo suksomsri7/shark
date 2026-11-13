@@ -457,6 +457,8 @@ export function listAssetAccounts(systemId: string) {
 export type ExpLineInput = LineInput & {
   accountId?: string | null; // EXPENSE: หมวดบัญชี · ASSET_PURCHASE: บัญชีสินทรัพย์
   productId?: string | null; // PURCHASE: อ้างสินค้า
+  /** ACC T1.2 — ฝั่งขายเท่านั้น: ชนิดบรรทัด สินค้า/บริการ (ไม่ส่ง = ตามชนิดสินค้า/ชนิดเริ่มของใบ) · ฝั่งซื้อไม่ใช้ */
+  lineKind?: "GOODS" | "SERVICE" | null;
 };
 
 // ─────────────────── มัดจำจ่าย (DP) → หักในบันทึกซื้อ/ค่าใช้จ่าย (§5.2 D) ───────────────────

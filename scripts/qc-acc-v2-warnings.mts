@@ -122,6 +122,13 @@ try {
     const r0 = await acc.issueDocument(tid, sA, ti.id);
     chk("W2.1", "ไม่ยืนยัน → ok:false + legal LEGAL_ACK_REQUIRED (ไม่ใช่ error ดิบ)", r0.ok === false && r0.legal?.code === "LEGAL_ACK_REQUIRED", "legal", r0);
     eqCodes("W2.2", "คำเตือน = ไม่จด VAT + ไม่มีเลขผู้ขาย (มีมาตรา ม.86/13 · ม.86/4)", r0.legal?.warnings, ["TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING"]);
+    // T0.4b (เจ้าของตัดสิน 13 พ.ย.) — ใบไม่ถูกบังคับเป็น "ไม่มี VAT" · ข้อความบอกยอด VAT ของใบ (100,000 สต. × 7% = ฿70.00)
+    const tiRow = await prisma.accountDocument.findUnique({ where: { id: ti.id }, select: { vatMode: true, vatAmount: true } });
+    chk("W2.3a", "T0.4b: ร่างใบกำกับของสมุดไม่จด VAT คงโหมด VAT ที่ตั้ง (EXCLUDE · VAT 7,000 สต.)", tiRow?.vatMode === "EXCLUDE" && tiRow?.vatAmount === 7_000, "EXCLUDE/7000", tiRow);
+    const nv = (r0.legal?.warnings ?? []).find((w: Any) => w.code === "TAX_INVOICE_NOT_VAT_REGISTERED");
+    chk("W2.3b", "T0.4b: ข้อความบอกว่าใบนี้ยังคิด VAT ฿70.00 + ระบบไม่เปลี่ยนเป็นไม่มี VAT + ให้แก้โหมด VAT", !!nv && /ยังคิดภาษีมูลค่าเพิ่ม ฿70\.00/.test(nv.messageTh) && /ไม่เปลี่ยนเป็น "ไม่มี VAT"/.test(nv.messageTh) && /แก้โหมด VAT/.test(nv.messageTh), "มี", nv);
+    const w0 = W;
+    chk("W2.3c", "T0.4b: ผู้เรียกไม่ส่งยอด → ข้อความบอกว่าคิดตามโหมดที่ตั้ง · ยอด 0 → บอก ฿0.00", /ตามโหมด VAT ที่ตั้งไว้ในเอกสาร/.test(w0.legalWarning("TAX_INVOICE_NOT_VAT_REGISTERED").messageTh) && /฿0\.00/.test(w0.legalWarning("TAX_INVOICE_NOT_VAT_REGISTERED", { vat: "0.00" }).messageTh), "ครบ", null);
     chk("W2.3", "คำเตือนอ้าง ม.86/13 และ ม.86/4(2)", (r0.legal?.warnings ?? []).some((w: Any) => /86\/13/.test(w.citation)) && (r0.legal?.warnings ?? []).some((w: Any) => /86\/4/.test(w.citation)), "มี", r0.legal?.warnings);
     const st0 = await prisma.accountDocument.findUnique({ where: { id: ti.id }, select: { status: true, docNo: true } });
     chk("W2.4", "ยังเป็นร่าง · ไม่กินเลขที่ · ไม่มีแถวยืนยัน", st0?.status === "DRAFT" && !st0.docNo && (await ackRows(ti.id)).length === 0, "DRAFT", st0);
@@ -129,6 +136,8 @@ try {
     chk("W2.5", "ยืนยันไม่ครบ (1 ใน 2) → ยังคืนคำเตือนทั้งชุด ไม่ออก", r1.ok === false && codes(r1.legal?.warnings).length === 2 && (await ackRows(ti.id)).length === 0, "ยังไม่ออก", r1);
     const r2 = await acc.issueDocument(tid, sA, ti.id, { ack: { codes: ["TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING"], actorId: owner.id, via: "screen" } });
     chk("W2.6", "ยืนยันครบ → ออกได้ (ok + เลขที่)", r2.ok === true && !!r2.docNo, "ok", r2);
+    const tiAfter = await prisma.accountDocument.findUnique({ where: { id: ti.id }, select: { vatMode: true, vatAmount: true } });
+    chk("W2.6a", "T0.4b: หลังกดยืนยัน ระบบไม่เปลี่ยนใบเป็นไม่มี VAT (EXCLUDE · 7,000 สต.)", tiAfter?.vatMode === "EXCLUDE" && tiAfter?.vatAmount === 7_000, "EXCLUDE/7000", tiAfter);
     const rows = await ackRows(ti.id);
     const a = rows[0]?.after as Any;
     chk("W2.7", "AuditLog legal.warning.ack 1 แถว: ผู้ยืนยัน = เจ้าของ · เอกสาร · รหัส 2 ตัว · มาตรา+ป้าย+วันตรวจ", rows.length === 1 && rows[0]!.actorId === owner.id && rows[0]!.actorType === "USER" && rows[0]!.targetType === "AccountDocument" && JSON.stringify([...(a?.codes ?? [])].sort()) === JSON.stringify(["TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING"]) && a?.op === "account.doc.issue" && a?.via === "screen" && (a?.warnings ?? []).every((w: Any) => w.citation && w.tag && w.checkedAt), "ครบ", rows);

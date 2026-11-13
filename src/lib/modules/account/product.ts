@@ -1558,6 +1558,8 @@ export async function searchProductPickerRows(
     vatRateBp: number;
     incomeAccountId: string | null;
     expenseAccountId: string | null;
+    /** ACC T1.2 — ชนิดในทะเบียน (กำหนดชนิดบรรทัดสินค้า/บริการ) */
+    type: string;
   }[]
 > {
   const term = clampSearch(q);
@@ -1587,6 +1589,7 @@ export async function searchProductPickerRows(
       vatRateBp: true,
       incomeAccountId: true,
       expenseAccountId: true,
+      type: true,
     },
   });
   const unitIds = [...new Set(rows.map((r) => r.unitId).filter((x): x is string => !!x))];

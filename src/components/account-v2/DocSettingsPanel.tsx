@@ -708,8 +708,16 @@ function AutoTaxSection(p: DocSettingsPanelProps) {
   return (
     <section className="card flex flex-col gap-3 p-5" data-testid="autotax-card">
       <h2 className="text-sm font-medium">การออกใบกำกับภาษี</h2>
+      <div className="divide-y border-b pb-2">
+        <ToggleRow
+          name="goodsOnIssue"
+          title="บรรทัดสินค้า: ออกใบกำกับภาษีพร้อมใบแจ้งหนี้"
+          desc="ภาษีขายของสินค้าเกิดเมื่อส่งมอบ (ม.78) และต้องออกใบกำกับทันที (ม.86) — ระบบถือวันที่ใบแจ้งหนี้เป็นวันส่งมอบ ถ้าส่งของทีหลังให้ปิด แล้วระบบจะเตือนเมื่อภาษีค้างพักข้ามเดือน"
+          defaultChecked={a.goodsOnIssue}
+        />
+      </div>
       <label className={label}>
-        ออกใบกำกับภาษีอัตโนมัติเมื่อ
+        บรรทัดบริการ: ออกใบกำกับภาษีอัตโนมัติเมื่อ
         <select name="mode" defaultValue={a.mode} data-testid="autotax-mode" className={`${input} w-72`}>
           {(["ON_PAYMENT", "ON_INVOICE", "MANUAL"] as const).map((m) => (
             <option key={m} value={m}>

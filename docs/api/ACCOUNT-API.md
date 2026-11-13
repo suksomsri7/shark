@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 203 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 205 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -910,6 +910,20 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/reports/general-ledger?accou
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `reports.parked-vat`
+
+**GET /reports/parked-vat** - Output VAT still parked per invoice (goods awaiting a tax invoice, services awaiting payment), with age and the legal warning for goods VAT parked past the invoice's month. · scope: `account.tax.view` · read · AI tool: `account_parked_vat`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | no | asOf (Thai calendar day, YYYY-MM-DD). |
+| `onlyPastMonth` | boolean | no | Only invoices whose goods VAT is still parked after the invoice's month. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/parked-vat" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `reports.profit-loss`
 
 **GET /reports/profit-loss** - Profit and loss: revenue, cost of goods sold and expenses, with gross and net profit. Supports CSV. · scope: `account.report.view` · read · AI tool: `account_report`
@@ -1674,7 +1688,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/issue" \
@@ -1728,6 +1742,27 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/reject" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"reason":"reason for the audit log"}'
+```
+
+#### `documents.release-vat`
+
+**POST /documents/{id}/release-vat** - Issue a tax invoice for the output VAT still parked on an invoice (goods by default) so it reaches the VAT return. Existing documents are not changed. · scope: `account.doc.issue` · write · AI tool: `account_release_parked_vat`
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `date` | enum("TODAY", "INVOICE_DATE") | yes | Date of the tax invoice issued late to release parked output VAT. Required, there is no default: INVOICE_DATE puts the VAT in the invoice's month (a filed PP30 may need an additional return); TODAY puts it in this month. |
+| `goods` | boolean | no | Release parked VAT of goods lines. Default true. |
+| `services` | boolean | no | Release parked VAT of service lines (normally released per payment). Default false. |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED") | no | Legal warning codes the user has read and accepted (TAX_INVOICE_LATE_DATE_CHOICE). |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/release-vat" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"date":"TODAY"}'
 ```
 
 #### `documents.remind`
@@ -2912,7 +2947,8 @@ Path parameters: `docType` (required).
 | `notes` | string | no | Footer note printed at the bottom of this document type. · max length 1000 |
 | `terms` | string | no | Payment terms line printed on this document type. · max length 500 |
 | `publicLink` | object | no | - |
-| `autoTaxInvoice` | enum("MANUAL", "ON_PAYMENT", "ON_INVOICE") | no | - |
+| `autoTaxInvoice` | enum("MANUAL", "ON_PAYMENT", "ON_INVOICE") | no | Service lines: when the tax invoice is issued automatically (ON_PAYMENT = per payment · ON_INVOICE = with the invoice · MANUAL). |
+| `goodsTaxInvoiceOnIssue` | boolean | no | Goods lines: issue the tax invoice together with the invoice (default true). Off = goods output VAT stays parked and a warning shows after the month. |
 | `printTemplate` | enum("STANDARD", "COMPACT", "WITH_IMAGES") | no | - |
 | `channels` | array of string | no | Money channel ids, in the order printed on documents. |
 
@@ -3587,7 +3623,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
 
 ## AI tools
 
-41 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+43 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 `account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
@@ -3616,10 +3652,12 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_list_documents` | `documents.list` | read | `account.doc.view` |
 | `account_list_journal` | `journal.list` | read | `account.journal.view` |
 | `account_merge_contacts` | `contacts.merge` | danger | `account.contact.merge` |
+| `account_parked_vat` | `reports.parked-vat` | read | `account.tax.view` |
 | `account_parse_quick_create` | `documents.parse` | read | `account.doc.view` |
 | `account_post_journal` | `journal.create` | write | `account.journal.adjust` |
 | `account_read_bill_image` | `inbox.read` | write | `account.document.manage` |
 | `account_record_payment` | `payments.record` | write | `account.payment.record` |
+| `account_release_parked_vat` | `documents.release-vat` | write | `account.doc.issue` |
 | `account_reopen_period` | `periods.reopen` | danger | `account.period.reopen` |
 | `account_report` | `reports.profit-loss` | read | `account.report.view` |
 | `account_run_depreciation` | `assets.depreciation-run` | write | `account.asset.manage` |
@@ -3649,7 +3687,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
 
-`GET https://shark.in.th/api/v1/ai/skills/account` returns the 41 tools (15 read, 26 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 43 tools (16 read, 27 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "account", "label": "บัญชี", "summary": "...", "tools": [

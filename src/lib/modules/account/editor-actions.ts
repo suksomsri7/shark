@@ -1,5 +1,6 @@
 "use server";
 
+import { kindFromProductType } from "./tax-point-shared";
 import { accountNow } from "./clock";
 import { redirect } from "next/navigation";
 import { safeReason } from "./errors";
@@ -97,6 +98,7 @@ function sanitize(payload: DocDraftPayload, vat: VatRule) {
       vatRateBp: vatBpOrDefault(vat, rate),
       whtIncomeType: whtType,
       whtRateBp: whtType ? (whtRateBp ?? 0) : null,
+      lineKind: l.lineKind === "GOODS" || l.lineKind === "SERVICE" ? l.lineKind : null,
     };
   });
   return {
@@ -106,7 +108,8 @@ function sanitize(payload: DocDraftPayload, vat: VatRule) {
     dueDate: dateOf(v.dueDate),
     reference: trim(v.reference, 35),
     priceMode,
-    autoTaxInvoice: v.autoTaxInvoice === true,
+    // ACC T1.2 ▸ null = ตามค่าตั้ง (ไม่ได้แตะสวิตช์) · true/false = ผู้ใช้เลือก ◂
+    autoTaxInvoice: v.autoTaxInvoice === true ? true : v.autoTaxInvoice === false ? false : null,
     recognizeVatNow: v.recognizeVatNow !== false,
     salesUserId: v.salesUserId ? trim(v.salesUserId, 40) : null,
     tags: (Array.isArray(v.tags) ? v.tags : []).slice(0, 20).map((t) => trim(t, 40)).filter(Boolean),
@@ -175,6 +178,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
         vatRateBp: l.vatRateBp,
         accountId: l.accountId,
         productId: l.productId,
+        lineKind: side === "revenue" ? l.lineKind : null,
       }),
     );
     const vatTiming: AccountVatTiming = v.recognizeVatNow ? "ON_ISSUE" : "ON_PAYMENT";
@@ -459,6 +463,7 @@ export async function searchProductsAction(systemId: string, q: string): Promise
     unitName: r.unitName,
     vatRateBp: r.vatRateBp,
     accountId: r.incomeAccountId ?? r.expenseAccountId ?? null,
+    kind: kindFromProductType(r.type),
   }));
 }
 

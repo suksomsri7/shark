@@ -77,6 +77,7 @@ export const SKILLS: Skill[] = [
       "account_finance_balances", "account_wht_summary", "account_list_journal", "account_assets",
       "account_chart_of_accounts", "account_settings", "account_parse_quick_create",
       "account_tax_settings", // ACC T0.2 ▸ ประเภทผู้ประกอบการ + ตารางค่ากฎหมาย (อ่าน) ◂
+      "account_parked_vat", // ACC T1.2 ▸ ภาษีขายที่ค้างพัก + คำเตือนข้ามเดือน (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",
@@ -86,6 +87,7 @@ export const SKILLS: Skill[] = [
       "account_create_recurring", "account_upload_file", "account_read_bill_image",
       "account_update_tax_settings", // ACC T0.1/T0.2 ▸ ตั้งประเภทผู้ประกอบการ / แถวตารางค่ากฎหมาย (ข้อเสนอ) ◂
       "account_file_vat_return", "account_file_vat_additional", "account_set_vat_credit_carry", // ACC T1.3 ▸ ภ.พ.30 ยื่น · แบบเพิ่มเติม · แก้เครดิตยกมา (ข้อเสนอ) ◂
+      "account_release_parked_vat", // ACC T1.2 ▸ ออกใบกำกับปล่อยภาษีขายที่ค้างพัก (ข้อเสนอ · ร้านเลือกวันที่) ◂
       // อันตราย (ยืนยัน 2 ชั้น)
       "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",
     ],

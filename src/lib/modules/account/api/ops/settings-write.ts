@@ -203,7 +203,14 @@ const docSettingsUpdateInput = z
       .object({ enabled: z.boolean().optional(), expiryDays: z.number().int().min(0).max(3650).optional() })
       .strict()
       .optional(),
-    autoTaxInvoice: z.enum(["MANUAL", "ON_PAYMENT", "ON_INVOICE"]).optional(),
+    autoTaxInvoice: z
+      .enum(["MANUAL", "ON_PAYMENT", "ON_INVOICE"])
+      .optional()
+      .describe("Service lines: when the tax invoice is issued automatically (ON_PAYMENT = per payment · ON_INVOICE = with the invoice · MANUAL)."),
+    goodsTaxInvoiceOnIssue: z
+      .boolean()
+      .optional()
+      .describe("Goods lines: issue the tax invoice together with the invoice (default true). Off = goods output VAT stays parked and a warning shows after the month."),
     printTemplate: z.enum(["STANDARD", "COMPACT", "WITH_IMAGES"]).optional(),
     channels: z.array(z.string().min(1).max(60)).max(50).optional().describe("Money channel ids, in the order printed on documents."),
   })
@@ -256,7 +263,12 @@ const settingsDocumentsUpdate = defineOp({
         ...(input.publicLink.expiryDays !== undefined ? { expiryDays: input.publicLink.expiryDays } : {}),
       };
     }
-    if (input.autoTaxInvoice !== undefined) patch.autoTaxInvoice = { ...cur.autoTaxInvoice, mode: input.autoTaxInvoice };
+    if (input.autoTaxInvoice !== undefined || input.goodsTaxInvoiceOnIssue !== undefined)
+      patch.autoTaxInvoice = {
+        ...cur.autoTaxInvoice,
+        ...(input.autoTaxInvoice !== undefined ? { mode: input.autoTaxInvoice } : {}),
+        ...(input.goodsTaxInvoiceOnIssue !== undefined ? { goodsOnIssue: input.goodsTaxInvoiceOnIssue } : {}),
+      };
     if (input.printTemplate !== undefined) patch.print = { ...cur.print, template: input.printTemplate };
     if (input.channels !== undefined) patch.channels = { order: input.channels };
 

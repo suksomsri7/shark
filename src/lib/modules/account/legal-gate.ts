@@ -21,18 +21,22 @@ import {
 const ADJUST_TYPES = new Set(["CREDIT_NOTE", "DEBIT_NOTE", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED"]);
 
 const blank = (v: string | null | undefined) => !v || v.trim().length === 0;
+/** สตางค์ → "1,234.56" (pure · ใช้ทั้ง server/client) */
+const satangTh = (s: number) => (s / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** เดียวกับด่านเดิม (normalizeTaxId ว่าง = ไม่มีเลข) */
 const noTaxId = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "").length === 0;
 
 /** คำเตือนตอนออกเอกสาร (ขาย/ซื้อ) — pure */
 export function issueLegalWarnings(
-  doc: { docType: string; adjustReason?: string | null },
+  /** `vatAmount` (สตางค์) = ยอด VAT ของใบ — ใส่ในข้อความ TAX_INVOICE_NOT_VAT_REGISTERED (T0.4b) */
+  doc: { docType: string; adjustReason?: string | null; vatAmount?: number | null },
   /** null = ฝั่งซื้อ (ไม่มีด่านของผู้ขาย) */
   settings: { vatRegistered: boolean; taxId?: string | null } | null,
 ): LegalWarning[] {
   const out: LegalWarning[] = [];
   if (settings && doc.docType === "TAX_INVOICE") {
-    if (!settings.vatRegistered) out.push(legalWarning("TAX_INVOICE_NOT_VAT_REGISTERED"));
+    if (!settings.vatRegistered)
+      out.push(legalWarning("TAX_INVOICE_NOT_VAT_REGISTERED", typeof doc.vatAmount === "number" ? { vat: satangTh(doc.vatAmount) } : {}));
     if (noTaxId(settings.taxId)) out.push(legalWarning("TAX_INVOICE_SELLER_TAX_ID_MISSING"));
   }
   if (ADJUST_TYPES.has(doc.docType) && blank(doc.adjustReason)) out.push(legalWarning("ADJUST_NOTE_REASON_MISSING"));

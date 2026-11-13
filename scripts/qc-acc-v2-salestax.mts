@@ -239,9 +239,11 @@ try {
   await issue("IV", iv.id);
   const ivRow = await prisma.accountDocument.findUnique({ where: { id: iv.id }, select: { depositDeducted: true, grandTotal: true } });
   chk("S1.5", "ใบแจ้งหนี้หักมัดจำ 3,210 → ยอดสุทธิ 7,490", ivRow?.depositDeducted === 321_000 && ivRow?.grandTotal === 749_000, "321000/749000", ivRow);
-  const conv = await acc.convertDocument(tid, SYS, iv.id, "TAX_INVOICE", owner.id);
-  if (!conv.ok) throw new Error(`แปลง IV→TX ไม่สำเร็จ: ${conv.reason}`);
-  const txNo = await issue("TX", conv.newId);
+  // ORACLE-EDIT (ACC T1.2): ใบแจ้งหนี้สินค้าออกใบกำกับพร้อมกันเป็นค่าเริ่มต้น (ม.78 + ม.86) — เดิมสคริปต์แปลง IV→TX เองวันนี้
+  //   ตอนนี้ใบกำกับ (ยอดหักมัดจำแล้ว) ออกให้ในธุรกรรมเดียวกับใบแจ้งหนี้ ลงวันที่ใบแจ้งหนี้ (d1) ⇒ อ่านใบนั้นแทน · ฐาน/VAT เท่าเดิม
+  const autoTx = await prisma.accountDocument.findFirst({ where: { systemId: SYS, docType: "TAX_INVOICE", sourceDocId: iv.id, status: "ISSUED" }, select: { docNo: true } });
+  if (!autoTx?.docNo) throw new Error("ใบแจ้งหนี้สินค้าไม่ได้ออกใบกำกับพร้อมกัน (T1.2)");
+  const txNo = autoTx.docNo;
   // CN อ้าง RA
   const cn = await acc.createDocument({ tenantId: tid, systemId: SYS, docType: "CREDIT_NOTE", contactId: ca.id, sourceDocId: ra.id, issueDate: d2, vatMode: "EXCLUDE", adjustReason: "ลดราคาเพราะสินค้าชำรุด", lines: [{ description: "ลดราคา", qty: 1, unitPrice: 100_000, vatRateBp: 700 }] });
   const cnNo = await issue("CN", cn.id);
@@ -277,7 +279,8 @@ try {
   const raRow = byNo(raNo);
   eq("S2.9", "RA: ผู้ซื้อ ก + เลข 13 หลัก + สาขา 00001 · กลุ่ม 7%/0%/ยกเว้น", [raRow?.buyerName, raRow?.buyerTaxId, raRow?.buyerBranchCode, raRow?.parts], ["บริษัท ลูกค้าเอ จำกัด", "0105555000011", "00001", [{ rateBp: 700, base: 1_000_000, vat: 70_000 }, { rateBp: 0, base: 200_000, vat: 0 }, { rateBp: -1, base: 100_000, vat: 0 }]]);
   eq("S2.10", "DR ใบรับมัดจำ: ฐาน 3,000 VAT 210 + หมายเหตุมัดจำ", [byNo(drNo)?.base, byNo(drNo)?.vat, byNo(drNo)?.notes?.some((n: string) => n.includes("มัดจำ"))], [300_000, 21_000, true]);
-  eq("S2.11", "TX หักมัดจำ: ฐาน 7,000 VAT 490 (ฐานตรง VAT) · ลงวันที่วันนี้", [byNo(txNo)?.base, byNo(txNo)?.vat, byNo(txNo)?.date, byNo(txNo)?.buyerBranchCode], [700_000, 49_000, TODAY_YMD, "00000"]);
+  // ORACLE-EDIT (ACC T1.2): วันที่ใบกำกับ = วันที่ใบแจ้งหนี้ (d1) แทน "วันนี้" — ใบกำกับออกพร้อมใบแจ้งหนี้ (จุดรับผิดสินค้า ม.78)
+  eq("S2.11", "TX หักมัดจำ: ฐาน 7,000 VAT 490 (ฐานตรง VAT) · ลงวันที่ใบแจ้งหนี้ (ออกพร้อมกัน)", [byNo(txNo)?.base, byNo(txNo)?.vat, byNo(txNo)?.date, byNo(txNo)?.buyerBranchCode], [700_000, 49_000, `${M}-01`, "00000"]);
   eq("S2.12", "CN: −1,000 / −70 + หมายเหตุอ้าง RA", [byNo(cnNo)?.base, byNo(cnNo)?.vat, byNo(cnNo)?.notes?.some((n: string) => n.includes(raNo))], [-100_000, -7_000, true]);
   eq("S2.13", "RC ยกเลิกเดือนเดียวกัน: แถวยังอยู่ 0/0 + ยกเลิก + เหตุผล", [byNo(rcNo)?.base, byNo(rcNo)?.vat, byNo(rcNo)?.cancelled, byNo(rcNo)?.notes?.some((n: string) => n.includes("ออกผิดราคา"))], [0, 0, true, true]);
   eq("S2.14", "RP ยกเลิกข้ามเดือน: −500/−35 ลงวันที่วันนี้ + หมายเหตุอ้างเลข/วันที่เดิม", [byNo(rpNo)?.base, byNo(rpNo)?.vat, byNo(rpNo)?.date, byNo(rpNo)?.cancelled, byNo(rpNo)?.notes?.some((n: string) => n.includes(`เลขที่ ${rpNo}`) && n.includes("ลูกค้าคืนทั้งใบ"))], [-50_000, -3_500, TODAY_YMD, true, true]);

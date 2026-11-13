@@ -170,9 +170,10 @@ try {
       "Cr 4000 = ฿10,000.00", `Cr 4000 = ฿${bt(side(e, "4000", "cr"))} · Cr 4030 = ฿${bt(side(e, "4030", "cr"))}`,
       "MINOR", "coa.ts MAPPINGS INCOME_DEFAULT→4030 เพียงตัวเดียว — ไม่มีเส้นแยกรายได้สินค้า/บริการ");
     // ใบกำกับภาษี (ส่งมอบสินค้า) → tax point เกิด
-    const cv = await acc.convertDocument(tenantId, systemId, inv2.id, "TAX_INVOICE", userId);
-    const tiId = (cv as { newId: string }).newId;
-    await acc.issueDocument(tenantId, systemId, tiId);
+    // ORACLE-EDIT (ACC T1.2): ใบแจ้งหนี้สินค้าออกใบกำกับพร้อมกันเป็นค่าเริ่มต้น (ม.78 + ม.86) — เดิมสคริปต์แปลง IV→TX เอง
+    //   ตอนนี้ใบกำกับออกในธุรกรรมเดียวกับใบแจ้งหนี้ ⇒ อ่านใบนั้น · JV ที่ตรวจ (Dr 2205 / Cr 2200 = 700) เท่าเดิม
+    const autoTi = await prisma.accountDocument.findFirst({ where: { systemId, docType: "TAX_INVOICE", sourceDocId: inv2.id }, select: { id: true } });
+    const tiId = autoTi?.id ?? "";
     const [te] = await entriesOf(systemId, tiId);
     chk("S3.5", "ใบกำกับสินค้า: Dr 2205 / Cr 2200 = 700", side(te, "2205", "dr") === 70_000 && side(te, "2200", "cr") === 70_000,
       "Dr2205 700 / Cr2200 700", `Dr2205 ${bt(side(te, "2205", "dr"))} / Cr2200 ${bt(side(te, "2200", "cr"))}`, "CRITICAL");
@@ -253,6 +254,8 @@ try {
     });
     chkAmt("S6.4", "IV หักมัดจำ: depositDeducted (gross) = 1,070", 107_000, inv5.depositDeducted, "CRITICAL");
     chkAmt("S6.5", "IV grandTotal คงเหลือ = 4,280", 428_000, inv5.grandTotal, "CRITICAL");
+    // ORACLE-EDIT (ACC T1.2): ใบกำกับของใบแจ้งหนี้สินค้าออกพร้อมใบแจ้งหนี้ ⇒ วัด Δ2200 ครอบการออกใบแจ้งหนี้ (เดิมวัดรอบการแปลง IV→TX)
+    const b0 = await balances(systemId);
     await acc.issueDocument(tenantId, systemId, inv5.id);
     const [ie] = await entriesOf(systemId, inv5.id);
     chk("S6.6", "F2 posting: Dr1100 4,280 · Dr2110 กลับ 1,000 · Cr รายได้ 5,000 · Cr2205 280",
@@ -264,10 +267,6 @@ try {
     chk("S6.7", "หักครบ → ใบมัดจำ DEDUCTED", depDoc2?.status === "DEDUCTED", "DEDUCTED", String(depDoc2?.status), "MAJOR");
 
     // ใบกำกับภาษีของงาน: VAT ทั้งงานต้อง = 350 (มัดจำ 70 + ส่วนที่เหลือ 280) — ไม่ซ้ำไม่ขาด
-    const b0 = await balances(systemId);
-    const cv = await acc.convertDocument(tenantId, systemId, inv5.id, "TAX_INVOICE", userId);
-    const tiId = (cv as { newId: string }).newId;
-    await acc.issueDocument(tenantId, systemId, tiId);
     const b1 = await balances(systemId);
     chkAmt("S6.8", "ใบกำกับใบแจ้งหนี้หักมัดจำ: ย้าย VAT เฉพาะส่วนคงเหลือ 280 (Δ2200)", 28_000, net(b0, "2200") - net(b1, "2200"), "CRITICAL",
       "service.ts convertDocument copy vatAmount เต็มใบ (350) โดยไม่หัก VAT มัดจำ → gl.postTaxInvoice ย้ายเกิน");

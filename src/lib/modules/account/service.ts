@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { safeReason } from "./errors";
+import { recordLegalAckInTx } from "@/lib/core/legal-ack";
 import { accountNow } from "./clock";
 import { issueLegalWarnings, legalAckResult, legalGateInTx } from "./legal-gate";
-import { isLegalAckRequiredError, legalWarning, type LegalAck, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings";
+import { isLegalAckRequiredError, legalWarning, unacknowledged, type LegalAck, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // CRM C5.4-C/C5.4-N ▸ LOCK ORDER of the account money transactions (round 11 · R10-2 · C5.4-N tail numbering) — THE one
@@ -68,8 +69,10 @@ import type {
   AccountWhtIncomeType,
   AccountDocSource,
   AccountLinkedKind,
+  AccountLineKind,
   Prisma,
 } from "@prisma/client";
+import { kindsAtIssue, resolveLineKind, type KindSplit, type LineKind } from "./tax-point-shared";
 // posting engine (owner = GL-Core, ไฟล์ gl.ts) — subagent แค่ import + เรียกตามลายเซ็น
 // ctx = { tenantId, systemId } · ทุกฟังก์ชันรับ tx? เพื่อโพสต์ใน transaction เดียวกับเอกสาร
 import {
@@ -79,6 +82,7 @@ import {
   postPayment,
   postChequeEntry,
   postTaxInvoice,
+  parkedVatOf,
   resolveMapping,
   reverseFor,
   // SVC D.2 ▸ ขาบัญชีของ facade หอพัก ◂
@@ -1752,6 +1756,31 @@ export function getDocument(tenantId: string, systemId: string, id: string) {
   });
 }
 
+/**
+ * ACC T1.2 ▸ ชนิดบรรทัดที่ resolve แล้ว (ลำดับ: ค่าที่ส่งมา → ชนิดสินค้าในทะเบียน → ชนิดเริ่มของใบ) — ทุกทางสร้างบรรทัดใช้ตัวนี้
+ */
+export async function lineKindsFor(
+  db: Prisma.TransactionClient | typeof prisma,
+  systemId: string,
+  lines: readonly { productId?: string | null; lineKind?: AccountLineKind | string | null }[],
+  docTiming: AccountVatTiming | string | null | undefined,
+): Promise<AccountLineKind[]> {
+  const pids = [...new Set(lines.map((l) => l.productId).filter((x): x is string => !!x))];
+  const types = new Map<string, string>();
+  if (pids.length > 0) {
+    for (const p of await db.accountProduct.findMany({ where: { systemId, id: { in: pids } }, select: { id: true, type: true } })) types.set(p.id, p.type);
+  }
+  return lines.map((l) => resolveLineKind(l.lineKind ?? null, l.productId ? types.get(l.productId) : null, docTiming));
+}
+
+/**
+ * T0.4b ▸ "คิด VAT ได้ไหม" ของเอกสารใบหนึ่ง — สมุดไม่จด VAT = ไม่คิด ยกเว้นใบกำกับภาษีที่ร้านสร้างเอง
+ *   (เจ้าของตัดสิน 13 พ.ย.: ไม่บังคับเปลี่ยนเป็นไม่มี VAT · คำเตือน TAX_INVOICE_NOT_VAT_REGISTERED บอกยอดแทน) ◂
+ */
+export function vatRegisteredForDoc(vatRegistered: boolean, docType: AccountDocType): boolean {
+  return vatRegistered || docType === "TAX_INVOICE";
+}
+
 async function recomputeAndSave(
   tx: Prisma.TransactionClient,
   documentId: string,
@@ -2141,7 +2170,7 @@ export async function createDocument(input: {
   /** 🐞 WO 4.3: เดิมชนิดเป็น `LineInput[]` เฉย ๆ ⇒ `productId`/`accountId` ที่ฟอร์ม V2 ส่งมาถูกทิ้งเงียบ ๆ
    *  (บรรทัดเอกสารขายที่ทำด้วยมือไม่เคยผูกทะเบียนสินค้าเลย — รายงาน "ขายอะไรดี" เห็นแต่บิล POS
    *   และ "รายการจัดชุด" ตัดสต็อกส่วนประกอบไม่ได้) — รับเข้ามาและบันทึกจริงแล้ว */
-  lines: (LineInput & { productId?: string | null; accountId?: string | null })[];
+  lines: (LineInput & { productId?: string | null; accountId?: string | null; lineKind?: AccountLineKind | null })[];
   createdById?: string | null;
   sourceDocId?: string | null;
   // ── WO 1.8 (นำเข้า CSV) · additive · optional — ไม่ส่ง = พฤติกรรมเดิมเป๊ะ (source MANUAL, tags []) ──
@@ -2156,7 +2185,10 @@ export async function createDocument(input: {
   if (srcProblem) throw new Error(srcProblem);
   const settings = await getSettings(input.tenantId, input.systemId);
   // A3: ไม่จด VAT → บังคับ vatMode NONE (ไม่มีบรรทัด VAT)
-  const vatMode: AccountVatMode = !settings.vatRegistered
+  //   T0.4b (เจ้าของตัดสิน 13 พ.ย.): ยกเว้นใบกำกับภาษี — ร้านที่ยืนยันออกใบกำกับเองได้ใบตามโหมด VAT ที่ตั้ง (ระบบไม่เปลี่ยนเป็นไม่มี VAT ให้)
+  //   คำเตือน TAX_INVOICE_NOT_VAT_REGISTERED บอกยอด VAT ของใบให้ร้านแก้โหมดเองถ้าไม่ได้ตั้งใจ
+  const vatRegForDoc = vatRegisteredForDoc(settings.vatRegistered, input.docType);
+  const vatMode: AccountVatMode = !vatRegForDoc
     ? "NONE"
     : input.vatMode ?? "EXCLUDE";
   // A1: จุดรับรู้ภาษี — ต่อใบ (form) หรือ default ตามประเภทกิจการ
@@ -2165,6 +2197,8 @@ export async function createDocument(input: {
   // §9.3 ล็อกข้อมูลก่อนวันที่ — ร่างก็ห้าม (ไม่งั้นผู้ใช้กรอกเสร็จแล้วค่อยเด้งตอนกดออกเอกสาร)
   assertNotLockedWith(settings.policy.lockBeforeDate, issueDate);
 
+  // ACC T1.2 ▸ ชนิดบรรทัด สินค้า/บริการ (เลือกบนบรรทัด → ชนิดสินค้าในทะเบียน → ชนิดเริ่มของใบ)
+  const kinds = await lineKindsFor(prisma, input.systemId, input.lines, vatTiming);
   return prisma.$transaction(async (tx) => {
     // F2: หักมัดจำ — เฉพาะใบแจ้งหนี้ + ใบมัดจำต้องเป็นของลูกค้าเดียวกันและยังหักได้
     let depositDeducted = 0;
@@ -2186,7 +2220,7 @@ export async function createDocument(input: {
       discountAmount: input.discountAmount,
       depositDeducted,
       vatMode,
-      vatRegistered: settings.vatRegistered,
+      vatRegistered: vatRegForDoc,
       vatRateBp: settings.vatRateBp,
     });
 
@@ -2232,6 +2266,7 @@ export async function createDocument(input: {
             // 🐞 WO 4.3 — ผูกทะเบียนสินค้า/บัญชี GL ของบรรทัด (เดิมหล่นหาย ดูหมายเหตุที่ชนิดของ `lines`)
             productId: l.productId ?? null,
             accountId: l.accountId ?? null,
+            lineKind: kinds[i],
           })),
         },
       },
@@ -2282,7 +2317,7 @@ export async function updateDocument(
     depositReceiptId?: string | null; // F2: เปลี่ยน/ล้างการหักมัดจำ (undefined = ไม่แตะ)
     note?: string | null;
     adjustReason?: string | null;
-    lines?: (LineInput & { productId?: string | null; accountId?: string | null })[];
+    lines?: (LineInput & { productId?: string | null; accountId?: string | null; lineKind?: AccountLineKind | null })[];
   },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const settings = await getSettings(tenantId, systemId);
@@ -2294,8 +2329,9 @@ export async function updateDocument(
       // §9.3: ล็อกทั้ง "วันที่เดิม" และ "วันที่ใหม่" — กันย้ายเอกสารเข้า/ออกจากช่วงที่ล็อก
       assertNotLockedWith(settings.policy.lockBeforeDate, doc.issueDate);
       if (input.issueDate) assertNotLockedWith(settings.policy.lockBeforeDate, input.issueDate);
-      // A3: ไม่จด VAT → บังคับ NONE
-      const vatMode: AccountVatMode = !settings.vatRegistered
+      // A3: ไม่จด VAT → บังคับ NONE (T0.4b: ยกเว้นใบกำกับภาษี — ดู vatRegisteredForDoc)
+      const vatRegForDoc = vatRegisteredForDoc(settings.vatRegistered, doc.docType);
+      const vatMode: AccountVatMode = !vatRegForDoc
         ? "NONE"
         : input.vatMode ?? doc.vatMode;
       const vatTiming: AccountVatTiming = input.vatTiming ?? doc.vatTiming;
@@ -2342,6 +2378,7 @@ export async function updateDocument(
         },
       });
       if (input.lines) {
+        const kinds = await lineKindsFor(tx, systemId, input.lines, vatTiming);
         await tx.accountDocumentLine.deleteMany({ where: { documentId: id } });
         await tx.accountDocumentLine.createMany({
           data: input.lines.map((l, i) => ({
@@ -2358,6 +2395,7 @@ export async function updateDocument(
             amount: lineAmount(l),
             productId: l.productId ?? null,
             accountId: l.accountId ?? null,
+            lineKind: kinds[i],
           })),
         });
       }
@@ -2367,7 +2405,7 @@ export async function updateDocument(
         vatMode,
         discountAmount,
         depositDeducted,
-        settings.vatRegistered,
+        vatRegForDoc,
         settings.vatRateBp,
       );
     });
@@ -2424,7 +2462,13 @@ export async function issueDocumentInTx(
       if (doc.lines.length === 0) throw new Error("ต้องมีรายการอย่างน้อย 1 รายการ");
       // T0.4 ▸ เดิม A3 (ไม่จด VAT) / M2 (ไม่มีเลขผู้ขาย) / F4 (ใบลด-เพิ่มหนี้ไม่มีสาเหตุ) = บล็อก → เปลี่ยนเป็นคำเตือนที่อ้างมาตรา
       //   ร้านกดยืนยันผ่านได้ (หลัก SHARK) · บันทึกผู้ยืนยันลง AuditLog ในธุรกรรมเดียวกัน ◂
-      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, settings), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
+      // ACC T1.2 ▸ ใบที่จะ "ออกใบกำกับพร้อมกัน" — คำเตือนของใบกำกับนั้นรวมในด่านเดียวกัน (ยืนยันครั้งเดียวที่ใบแจ้งหนี้/ใบเสร็จ) ◂
+      //   ไม่บล็อกใบแจ้งหนี้เพราะใบกำกับ: คำเตือนของใบกำกับที่ยังไม่ได้ยืนยัน ⇒ ออกใบแจ้งหนี้ตามปกติ แต่ไม่ออกใบกำกับพร้อมกัน
+      //   (VAT สินค้าพักไว้ → รายการภาษีขายค้างพัก/คำเตือนข้ามเดือน · หน้าเอกสารร่างแสดงคำเตือนนี้ให้ติ๊กยืนยันล่วงหน้าได้) ◂
+      let together = taxInvoiceTogetherPlan(doc, settings);
+      const tiWarnings = together ? issueLegalWarnings({ docType: "TAX_INVOICE", vatAmount: together.vat }, settings).filter((w) => w.code !== "TAX_INVOICE_NOT_VAT_REGISTERED") : [];
+      if (together && unacknowledged(tiWarnings, opts.ack?.codes).length > 0) together = null;
+      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, settings).concat(together ? tiWarnings : []), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
       // SVC D.3 ▸ (T7) ใบกำกับจากใบแจ้งหนี้หอ (source DORM) ที่มาจากรอบบิล/มีรายการยกเว้น-ไม่มี VAT ⇒ ปฏิเสธ
       //   (ทางแปลงทั่วไปออกใบกำกับยอดเต็มรวมค่าห้องยกเว้น) — ใบกำกับของหอออกได้ทางเดียว = ใบกำกับเฉพาะส่วน VAT ของหอ ◂
       if (doc.docType === "TAX_INVOICE" && doc.sourceDocId) await dormTaxSourceGuardInTx(tx, systemId, doc.sourceDocId);
@@ -2459,7 +2503,16 @@ export async function issueDocumentInTx(
             id: { not: id },
           },
         });
-        if (dup > 0) throw new Error("เอกสารต้นทางนี้ออกใบกำกับภาษีไปแล้ว — ออกซ้ำไม่ได้");
+        if (dup > 0) {
+          // ACC T1.2 ▸ ใบแจ้งหนี้: ออกใบกำกับเพิ่มได้ตราบที่ยังมี VAT พักเหลือ (ใบกำกับพร้อมใบแจ้งหนี้ของสินค้า + ส่วนบริการที่ร้านกดเอง ฯลฯ)
+          //   ไม่ให้ปล่อยเกินยอดที่ยังพัก (กันนับ VAT ขายซ้ำ) · ต้นทางชนิดอื่น = กติกาเดิม (ห้ามซ้ำ) ◂
+          const srcType = (await tx.accountDocument.findFirst({ where: { id: doc.sourceDocId, systemId }, select: { docType: true } }))?.docType;
+          if (srcType !== "INVOICE") throw new Error("เอกสารต้นทางนี้ออกใบกำกับภาษีไปแล้ว — ออกซ้ำไม่ได้");
+          const p = (await parkedVatOf({ tenantId, systemId }, [doc.sourceDocId], tx)).get(doc.sourceDocId);
+          const left = Math.max(0, p?.goods ?? 0) + Math.max(0, p?.service ?? 0);
+          if (doc.vatAmount > left + 1)
+            throw new Error(left > 0 ? `ภาษีขายของใบแจ้งหนี้นี้ยังพักเหลือ ฿${baht(left)} — ใบกำกับนี้ (฿${baht(doc.vatAmount)}) เกินยอดที่เหลือ` : "ภาษีขายของใบแจ้งหนี้นี้ออกใบกำกับครบแล้ว — ออกซ้ำไม่ได้");
+        }
       }
 
       // ── F2: ล็อกการหักมัดจำตอนออกเอกสาร (ตรวจว่ายังหักได้ + อัปเดตสถานะใบมัดจำ) ──
@@ -2512,6 +2565,11 @@ export async function issueDocumentInTx(
       if (doc.docType === "INVOICE" || doc.docType === "RECEIPT") {
         // ตั้งลูกหนี้/รายได้/VAT (accrual) — ON_PAYMENT พัก VAT ที่ 2210 (logic ใน gl) · หักมัดจำ Dr 2110
         await postDocument(ctx, id, tx);
+        // ACC T1.2 ▸ "ออกใบกำกับภาษีพร้อมกัน" (A6 · ม.78/ม.86): ใบกำกับของชนิดที่ถึงจุดรับผิดตอนนี้ ในธุรกรรมเดียวกัน ◂
+        if (together) {
+          if (doc.docType === "INVOICE") await issueReleaseTaxInvoiceInTx(tx, tenantId, systemId, id, together.kinds, doc.issueDate);
+          else await issueReceiptTaxInvoiceInTx(tx, tenantId, systemId, id);
+        }
       } else if (doc.docType === "CREDIT_NOTE" || doc.docType === "DEBIT_NOTE") {
         // F4: CN = Dr รายได้+Dr 2200 / Cr 1100|เงิน · DN กลับด้าน (logic ใน gl)
         await postDocument(ctx, id, tx);
@@ -2665,6 +2723,49 @@ export async function convertDocument(
       tiSubTotal = source.subTotal - depBase;
       tiVatAmount = source.vatAmount - depVat;
     }
+    // ACC T1.2 ▸ ใบแจ้งหนี้ที่ออกใบกำกับไปแล้วบางส่วน (สินค้าพร้อมใบแจ้งหนี้ / งวดรับเงิน) ⇒ ร่างใบกำกับ = VAT ที่ยังพักเท่านั้น
+    //   (บรรทัดสรุปต่อชนิด) — ไม่ปล่อยซ้ำ · ยังไม่มีใบกำกับ = ทั้งใบเหมือนเดิม ◂
+    let tiLines: { description: string; qty: Prisma.Decimal | number; unitName: string | null; unitPrice: number; discount: number; vatRateBp: number; amount: number; lineKind: AccountLineKind | null }[] =
+      source.lines.map((l) => ({ description: l.description, qty: l.qty, unitName: l.unitName, unitPrice: l.unitPrice, discount: l.discount, vatRateBp: l.vatRateBp, amount: l.amount, lineKind: l.lineKind }));
+    let tiDiscount = source.discountAmount;
+    let tiGrand = tiGrandTotal;
+    // ACC T1.2 ▸ ใบเสร็จของใบแจ้งหนี้ที่ออกใบกำกับแล้ว (พร้อมกัน/ตามงวด) ⇒ ไม่ออกใบกำกับซ้ำของการขายเดียวกัน ◂
+    if (toDocType === "TAX_INVOICE" && source.docType === "RECEIPT" && source.sourceDocId) {
+      const ivTi = await prisma.accountDocument.findFirst({ where: { systemId, docType: "TAX_INVOICE", sourceDocId: source.sourceDocId, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } }, select: { docNo: true } });
+      if (ivTi) return { ok: false, reason: `ใบแจ้งหนี้ต้นทางของใบเสร็จนี้ออกใบกำกับภาษีแล้ว (${ivTi.docNo ?? "-"}) — ไม่ออกซ้ำสำหรับการขายเดียวกัน` };
+    }
+    if (toDocType === "TAX_INVOICE" && source.docType === "INVOICE") {
+      const p = (await parkedVatOf({ tenantId, systemId }, [source.id])).get(source.id);
+      const g = Math.max(0, p?.goods ?? 0);
+      const sv = Math.max(0, p?.service ?? 0);
+      // ฐานข้อมูลมีกติกา "ใบแจ้งหนี้ 1 ใบ มีใบกำกับที่ไม่ใช่ของงวดรับเงินได้ 1 ใบ" (unique index AccountDocument_taxinvoice_source_uniq)
+      //   ⇒ มีใบกำกับพร้อมกัน/กดออกเองอยู่แล้ว = บอกทางที่เหลือแทนการชนดัชนี (VAT บริการที่เหลือออกตามงวดรับเงิน)
+      const own = await prisma.accountDocument.findFirst({ where: { systemId, docType: "TAX_INVOICE", sourceDocId: source.id, sourcePaymentId: null, status: { notIn: ["VOIDED", "CANCELLED"] } }, select: { docNo: true, status: true } });
+      if (own) {
+        if (g + sv <= 0) return { ok: false, reason: "ภาษีขายของใบแจ้งหนี้นี้ออกใบกำกับครบแล้ว" };
+        return {
+          ok: false,
+          reason: `ใบแจ้งหนี้นี้มีใบกำกับภาษี${own.status === "DRAFT" ? " (ร่าง/คำขอ)" : ""} ${own.docNo ?? ""} อยู่แล้ว — ภาษีขายที่ยังพัก ฿${baht(g + sv)} จะออกใบกำกับตามงวดรับชำระ (ค่าตั้ง "บรรทัดบริการ: เมื่อรับชำระเงิน") · ถ้าต้องการใบเดียวทั้งใบ ให้เปิดสวิตช์ "ออกใบกำกับภาษีพร้อมกัน" ตอนออกใบแจ้งหนี้`.replace(/\s+—/, " —"),
+        };
+      }
+      const livePayTi = await prisma.accountDocument.count({ where: { systemId, docType: "TAX_INVOICE", sourceDocId: source.id, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } } });
+      if (livePayTi > 0) {
+        if (g + sv <= 0) return { ok: false, reason: "ภาษีขายของใบแจ้งหนี้นี้ออกใบกำกับครบแล้ว" };
+        const rate = await vatRateBpAt({ tenantId, systemId }, source.issueDate);
+        const raw = rawVatByKindOf(source.lines, source.vatMode, source.discountAmount, rate, source.taxPointBasis ?? source.vatTiming);
+        tiLines = [];
+        tiSubTotal = 0;
+        for (const [k, v, rv, rn] of [["GOODS", g, raw.goods, raw.goodsNet], ["SERVICE", sv, raw.service, raw.serviceNet]] as const) {
+          if (v <= 0) continue;
+          const b = rv > 0 ? Math.round((v * rn) / rv) : 0;
+          tiSubTotal += b;
+          tiLines.push({ description: `ภาษีขายส่วนที่ยังค้าง (${k === "GOODS" ? "สินค้า" : "บริการ"}) ตามใบแจ้งหนี้ ${source.docNo ?? ""}`.trim(), qty: 1, unitName: null, unitPrice: b, discount: 0, vatRateBp: rate, amount: b, lineKind: k });
+        }
+        tiVatAmount = g + sv;
+        tiDiscount = 0;
+        tiGrand = tiSubTotal + tiVatAmount;
+      }
+    }
 
     const created = await prisma.$transaction(async (tx) => {
       const newDoc = await tx.accountDocument.create({
@@ -2678,10 +2779,12 @@ export async function convertDocument(
           dueDate,
           contactId: source.contactId,
           vatMode: source.vatMode,
-          discountAmount: source.discountAmount,
+          discountAmount: tiDiscount,
           subTotal: tiSubTotal,
           vatAmount: tiVatAmount,
-          grandTotal: tiGrandTotal,
+          grandTotal: tiGrand,
+          // ACC T1.2 ▸ ใบกำกับ: จุดรับรู้ตามต้นทาง (เดิมไม่คัดลอก = ON_ISSUE เสมอ ⇒ ใบบริการกดออกเองดึงจาก 2205 ผิดบัญชี) ◂
+          ...(toDocType === "TAX_INVOICE" ? { vatTiming: source.vatTiming, taxPointBasis: source.taxPointBasis } : {}),
           // §9.3 "การออกเอกสารต่อ": คัดลอกหมายเหตุ/แท็กตามที่ตั้งไว้
           // 🐞 ของเดิมคัดลอก note เสมอ และ **ไม่เคยคัดลอก tags เลย** (แท็กหายทุกครั้งที่แปลงเอกสาร)
           note: settings.policy.copyNotesOnConvert ? source.note : null,
@@ -2689,7 +2792,7 @@ export async function convertDocument(
           sourceDocId: source.id,
           createdById: createdById ?? null,
           lines: {
-            create: source.lines.map((l, i) => ({
+            create: tiLines.map((l, i) => ({
               tenantId,
               systemId,
               sortOrder: i,
@@ -2700,6 +2803,7 @@ export async function convertDocument(
               discount: l.discount,
               vatRateBp: l.vatRateBp,
               amount: l.amount,
+              lineKind: l.lineKind,
             })),
           },
         },
@@ -2956,14 +3060,15 @@ export async function recordPaymentInTx(
         //    WO 8.1 (§9.2): เคารพนโยบาย "ออกใบกำกับภาษีอัตโนมัติเมื่อ …" ของหน้าตั้งค่า
         //    ค่าเริ่มต้น = ON_PAYMENT ⇒ ร้านที่ไม่เคยแตะตั้งค่า พฤติกรรมเหมือนเดิมเป๊ะ
         //    MANUAL/ON_INVOICE = ไม่ออกให้อัตโนมัติตอนรับเงิน (staff กดออกเองจากหน้าเอกสาร)
+        //    ACC T1.2 ▸ ต่อชนิดบรรทัด: ปล่อยเฉพาะ VAT บริการที่ยังพัก (2210) ตามสัดส่วนงวด — ใบผสมที่สินค้าออกใบกำกับไปแล้วไม่ปล่อยซ้ำ
+        //      (เดิมเช็ก vatTiming ของทั้งใบ = ON_PAYMENT · ตอนนี้ดูยอดพักบริการจริงจาก GL — ใบบริการล้วนเหมือนเดิม) ◂
         if (
           settings.vatRegistered &&
           settings.doc.autoTaxInvoice.mode === "ON_PAYMENT" &&
-          doc.vatTiming === "ON_PAYMENT" &&
           doc.vatMode !== "NONE" &&
           doc.docType === "INVOICE"
         ) {
-          await issueServiceTaxInvoice(tx, tenantId, systemId, doc, payment.id, tieOff);
+          await issueServiceTaxInvoice(tx, tenantId, systemId, doc, payment.id, tieOff, fullyPaid);
         }
       }
 
@@ -3034,6 +3139,194 @@ export async function emitAccountEvent(input: {
   });
 }
 
+// ─────────────────── ACC T1.2 · ใบกำกับพร้อมใบแจ้งหนี้ / ปล่อย VAT ที่พัก ───────────────────
+
+export type TogetherPlan = { kinds: { goods: boolean; service: boolean }; vat: number };
+
+/**
+ * แผน "ออกใบกำกับภาษีพร้อมกัน" ตอนออกเอกสาร (pure บนแถวที่โหลดแล้ว) · null = ไม่ออก
+ *   ใบแจ้งหนี้: ชนิดที่ครอบ = kindsAtIssue(สวิตช์ต่อใบ, ค่าตั้ง) และต้องมี VAT ของชนิดนั้น
+ *   ใบเสร็จขายสด: เฉพาะสวิตช์ต่อใบ = true (VAT เข้า 2200 ตอนออกอยู่แล้ว — ออกแค่เอกสาร)
+ *   ต้องจด VAT · ใบมี VAT · ไม่ใช่ใบของหอ (ทางหอมีใบกำกับของตัวเอง)
+ */
+export function taxInvoiceTogetherPlan(
+  doc: {
+    docType: AccountDocType;
+    vatMode: AccountVatMode;
+    vatAmount: number;
+    discountAmount: number;
+    autoTaxInvoice: boolean | null;
+    sourceDocId: string | null;
+    source: AccountDocSource;
+    vatTiming: AccountVatTiming;
+    taxPointBasis: AccountVatTiming | null;
+    lines: { amount: number; vatRateBp: number; lineKind: AccountLineKind | null }[];
+  },
+  settings: Awaited<ReturnType<typeof getSettings>>,
+): TogetherPlan | null {
+  if (!settings.vatRegistered || doc.vatMode === "NONE" || doc.vatAmount <= 0 || doc.source === "DORM") return null;
+  if (doc.docType === "RECEIPT") {
+    if (doc.autoTaxInvoice !== true || doc.sourceDocId) return null;
+    return { kinds: { goods: true, service: true }, vat: doc.vatAmount };
+  }
+  if (doc.docType !== "INVOICE") return null;
+  const k = kindsAtIssue(doc.autoTaxInvoice, { goodsOnIssue: settings.doc.autoTaxInvoice.goodsOnIssue, mode: settings.doc.autoTaxInvoice.mode });
+  if (!k.goods && !k.service) return null;
+  const timing = doc.taxPointBasis ?? doc.vatTiming;
+  const raw = rawVatByKindOf(doc.lines, doc.vatMode, doc.discountAmount, settings.vatRateBp, timing);
+  const vat = (k.goods ? raw.goods : 0) + (k.service ? raw.service : 0);
+  if (vat <= 0) return null;
+  return { kinds: { goods: k.goods && raw.goods > 0, service: k.service && raw.service > 0 }, vat };
+}
+
+function rawVatByKindOf(
+  lines: readonly { amount: number; vatRateBp: number; lineKind: AccountLineKind | string | null }[],
+  vatMode: AccountVatMode,
+  discountAmount: number,
+  vatRateBp: number,
+  timing: AccountVatTiming | string | null,
+): KindSplit & { goodsNet: number; serviceNet: number } {
+  const t = computeTotals({
+    lines: lines.map((l) => ({ description: "", qty: 1, unitPrice: l.amount, discount: 0, vatRateBp: l.vatRateBp })),
+    discountAmount,
+    vatMode,
+    vatRegistered: true,
+    vatRateBp,
+  });
+  const out = { goods: 0, service: 0, goodsNet: 0, serviceNet: 0 };
+  lines.forEach((l, i) => {
+    const k: LineKind = resolveLineKind(l.lineKind, null, timing);
+    const b = t.lines[i];
+    if (!b) return;
+    if (k === "GOODS") { out.goods += b.vat; out.goodsNet += b.net; } else { out.service += b.vat; out.serviceNet += b.net; }
+  });
+  return out;
+}
+
+/**
+ * ออกใบกำกับภาษีของ VAT ที่ยังพักของใบแจ้งหนี้ (ชนิดที่เลือก) ในธุรกรรมของผู้เรียก + ลงบัญชี Dr 2205/2210 · Cr 2200 ลงวันที่ `date`
+ *   ใช้ทั้ง "ออกใบกำกับพร้อมกัน" ตอนออกใบแจ้งหนี้ และ "ปล่อย VAT ที่ค้างพัก" (tax-point.releaseParkedVat)
+ *   ปล่อยเต็มชนิด = คัดลอกบรรทัดของชนิดนั้น · ปล่อยบางส่วน = บรรทัดสรุป 1 บรรทัดต่อชนิด
+ *   คืน null เมื่อไม่มีอะไรพักให้ปล่อย
+ */
+export async function issueReleaseTaxInvoiceInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  systemId: string,
+  invoiceId: string,
+  kinds: { goods: boolean; service: boolean },
+  date: Date,
+  opts: { note?: string | null } = {},
+): Promise<{ id: string; docNo: string; vatAmount: number; goods: number; service: number } | null> {
+  const inv = await tx.accountDocument.findFirst({ where: { id: invoiceId, tenantId, systemId }, include: { lines: { orderBy: { sortOrder: "asc" } } } });
+  if (!inv || inv.docType !== "INVOICE") throw new Error("ไม่พบใบแจ้งหนี้");
+  const p = (await parkedVatOf({ tenantId, systemId }, [invoiceId], tx)).get(invoiceId);
+  if (!p) return null;
+  const rel = { goods: kinds.goods ? Math.max(0, p.goods) : 0, service: kinds.service ? Math.max(0, p.service) : 0 };
+  const vat = rel.goods + rel.service;
+  if (vat <= 0) return null;
+  const timing = inv.taxPointBasis ?? inv.vatTiming;
+  const vatRateBp = await vatRateBpAt({ tenantId, systemId }, inv.issueDate);
+  const raw = rawVatByKindOf(inv.lines, inv.vatMode, inv.discountAmount, vatRateBp, timing);
+  const baseOf = (k: LineKind, v: number) => {
+    const rv = k === "GOODS" ? raw.goods : raw.service;
+    const rn = k === "GOODS" ? raw.goodsNet : raw.serviceNet;
+    return rv > 0 ? Math.round((v * rn) / rv) : 0;
+  };
+  type NewLine = { description: string; qty: Prisma.Decimal | number; unitName: string | null; unitPrice: number; discount: number; vatRateBp: number; amount: number; productId: string | null; lineKind: AccountLineKind };
+  const newLines: NewLine[] = [];
+  let base = 0;
+  for (const k of ["GOODS", "SERVICE"] as const) {
+    const v = k === "GOODS" ? rel.goods : rel.service;
+    if (v <= 0) continue;
+    const full = v === (k === "GOODS" ? p.goodsAtIssue : p.serviceAtIssue);
+    const b = baseOf(k, v);
+    base += b;
+    if (full) {
+      for (const l of inv.lines) {
+        if (resolveLineKind(l.lineKind, null, timing) !== k) continue;
+        newLines.push({ description: l.description, qty: l.qty, unitName: l.unitName, unitPrice: l.unitPrice, discount: l.discount, vatRateBp: l.vatRateBp, amount: l.amount, productId: l.productId, lineKind: k });
+      }
+    } else {
+      newLines.push({
+        description: `ภาษีขายส่วนที่ยังค้าง (${k === "GOODS" ? "สินค้า" : "บริการ"}) ตามใบแจ้งหนี้ ${inv.docNo ?? ""}`.trim(),
+        qty: 1, unitName: null, unitPrice: b, discount: 0, vatRateBp, amount: b, productId: null, lineKind: k,
+      });
+    }
+  }
+  // ฐานข้อมูลให้ใบแจ้งหนี้ 1 ใบมีใบกำกับที่ไม่ใช่ของงวดรับเงินได้ 1 ใบ (AccountDocument_taxinvoice_source_uniq) — บอกเป็นข้อความแทนการชนดัชนี
+  const own = await tx.accountDocument.findFirst({ where: { systemId, docType: "TAX_INVOICE", sourceDocId: invoiceId, sourcePaymentId: null, status: { notIn: ["VOIDED", "CANCELLED"] } }, select: { docNo: true, status: true } });
+  if (own) throw new Error(`ใบแจ้งหนี้นี้มีใบกำกับภาษี${own.status === "DRAFT" ? " (ร่าง/คำขอที่รออนุมัติ)" : ""} ${own.docNo ?? ""} อยู่แล้ว — ภาษีที่ยังพักออกใบกำกับตามงวดรับชำระ หรืออนุมัติ/ยกเลิกใบเดิมก่อน`);
+  const tiTiming: AccountVatTiming = rel.goods > 0 ? "ON_ISSUE" : "ON_PAYMENT";
+  const docNo = await nextDocNo(tx, tenantId, systemId, "TAX_INVOICE", date);
+  const ti = await tx.accountDocument.create({
+    data: {
+      tenantId, systemId, docType: "TAX_INVOICE", status: "ISSUED", direction: "OUT", docNo,
+      issueDate: date, contactId: inv.contactId,
+      contactSnapshot: (inv.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
+      vatMode: inv.vatMode, vatTiming: tiTiming, taxPointBasis: tiTiming,
+      subTotal: base, vatAmount: vat, grandTotal: base + vat,
+      sourceDocId: inv.id, note: opts.note ?? null,
+      lines: { create: newLines.map((l, i) => ({ tenantId, systemId, sortOrder: i, ...l })) },
+    },
+  });
+  await tx.accountDocumentRelation.create({ data: { tenantId, systemId, fromId: inv.id, toId: ti.id, type: "TAX_FOR", amount: base + vat } });
+  await postTaxInvoice({ tenantId, systemId }, ti.id, tx);
+  return { id: ti.id, docNo, vatAmount: vat, goods: rel.goods, service: rel.service };
+}
+
+/**
+ * ACC T1.2 ▸ ปล่อย VAT ที่พักของใบแจ้งหนี้ 1 ใบ (ธุรกรรมของใบนั้น) — ตัวทำงานของ tax-point.releaseParkedVat
+ *   ล็อกแถว · ตรวจสถานะ/ใบหอ/ช่วงล็อก · ออกใบกำกับ · บันทึกผู้ยืนยันคำเตือนวันที่ (AuditLog) ในธุรกรรมเดียว
+ */
+export async function releaseParkedVatOne(
+  ctx: { tenantId: string; systemId: string },
+  id: string,
+  o: { kinds: { goods: boolean; service: boolean }; date: Date | "INVOICE_DATE"; note: string; ack: LegalAck; warning: LegalWarning; lockBeforeDate: Date | null },
+): Promise<{ documentId: string; docNo: string | null; taxInvoiceId: string; taxInvoiceNo: string; vat: number; goods: number; service: number; date: Date }> {
+  const { tenantId, systemId } = ctx;
+  return prisma.$transaction(async (tx) => {
+    await lockDocumentRow(tx, tenantId, systemId, id);
+    const inv = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId }, select: { docType: true, status: true, docNo: true, issueDate: true, source: true } });
+    if (!inv || inv.docType !== "INVOICE") throw new Error("ไม่พบใบแจ้งหนี้");
+    if (inv.status === "DRAFT" || inv.status === "VOIDED" || inv.status === "CANCELLED") throw new Error("ใบแจ้งหนี้ยังไม่ออกหรือถูกยกเลิกแล้ว");
+    if (inv.source === "DORM") throw new Error("ใบแจ้งหนี้ของหอพัก — ออกใบกำกับทางของหอ");
+    const date = o.date === "INVOICE_DATE" ? inv.issueDate : o.date;
+    assertNotLockedWith(o.lockBeforeDate, date);
+    const ti = await issueReleaseTaxInvoiceInTx(tx, tenantId, systemId, id, o.kinds, date, { note: o.note });
+    if (!ti) throw new Error("ไม่มีภาษีขายที่พักอยู่ของชนิดที่เลือก");
+    await recordLegalAckInTx(tx, { tenantId, ack: o.ack, op: "account.vat.release", targetType: "AccountDocument", targetId: id, warnings: [o.warning] });
+    return { documentId: id, docNo: inv.docNo, taxInvoiceId: ti.id, taxInvoiceNo: ti.docNo, vat: ti.vatAmount, goods: ti.goods, service: ti.service, date };
+  });
+}
+
+/** ใบเสร็จขายสด + สวิตช์ "ออกใบกำกับพร้อมกัน": ออกเอกสารใบกำกับจากใบเสร็จ (VAT เข้า 2200 แล้วตอนออกใบเสร็จ — ไม่มี JV เพิ่ม) */
+async function issueReceiptTaxInvoiceInTx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, receiptId: string): Promise<void> {
+  const rc = await tx.accountDocument.findFirst({ where: { id: receiptId, tenantId, systemId }, include: { lines: { orderBy: { sortOrder: "asc" } } } });
+  if (!rc) return;
+  const exists = await tx.accountDocument.count({ where: { systemId, docType: "TAX_INVOICE", sourceDocId: rc.id, status: { notIn: ["VOIDED", "CANCELLED"] } } });
+  if (exists > 0) return;
+  const docNo = await nextDocNo(tx, tenantId, systemId, "TAX_INVOICE", rc.issueDate);
+  const ti = await tx.accountDocument.create({
+    data: {
+      tenantId, systemId, docType: "TAX_INVOICE", status: "ISSUED", direction: "OUT", docNo,
+      issueDate: rc.issueDate, contactId: rc.contactId,
+      contactSnapshot: (rc.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
+      vatMode: rc.vatMode, vatTiming: rc.vatTiming, taxPointBasis: rc.taxPointBasis,
+      discountAmount: rc.discountAmount, subTotal: rc.subTotal, vatAmount: rc.vatAmount, grandTotal: rc.grandTotal,
+      sourceDocId: rc.id,
+      lines: {
+        create: rc.lines.map((l, i) => ({
+          tenantId, systemId, sortOrder: i, description: l.description, qty: l.qty, unitName: l.unitName, unitPrice: l.unitPrice,
+          discount: l.discount, vatRateBp: l.vatRateBp, amount: l.amount, productId: l.productId, lineKind: l.lineKind,
+        })),
+      },
+    },
+  });
+  await tx.accountDocumentRelation.create({ data: { tenantId, systemId, fromId: rc.id, toId: ti.id, type: "TAX_FOR", amount: rc.grandTotal } });
+  await postTaxInvoice({ tenantId, systemId }, ti.id, tx); // ต้นทางใบเสร็จ = ข้าม (VAT อยู่ 2200 แล้ว)
+}
+
 // A1: สร้าง+ออกใบกำกับภาษี (บริการ) ต่อ payment งวดที่รับ (1 payment = 1 ใบกำกับ) + โพสต์ VAT
 async function issueServiceTaxInvoice(
   tx: Prisma.TransactionClient,
@@ -3042,11 +3335,28 @@ async function issueServiceTaxInvoice(
   invoice: { id: string; contactId: string | null; contactSnapshot: unknown; vatMode: AccountVatMode; vatAmount: number; grandTotal: number },
   paymentId: string,
   tieOff: number, // ยอดที่ตัดหนี้งวดนี้ (เงิน + WHT)
+  fullyPaid = false,
 ): Promise<void> {
   // แบ่งสัดส่วน VAT ของงวดนี้ตามสัดส่วนที่รับต่อยอดเต็มใบ (แสดงบนเอกสาร — journal จริงอยู่ใน gl)
   const portion = invoice.grandTotal > 0 ? tieOff / invoice.grandTotal : 0;
-  const vatPortion = Math.round(invoice.vatAmount * portion);
-  const base = Math.max(0, tieOff - vatPortion);
+  // ACC T1.2 ▸ ปล่อยเฉพาะ VAT บริการที่ยังพัก: งวดปกติ = min(คงพัก, round(VAT บริการตอนออกใบ × สัดส่วน)) · งวดที่ชำระครบ = ที่เหลือทั้งหมด
+  //   (ผลรวมทุกงวด = VAT บริการเป๊ะ) · ใบบริการล้วนสูตรเดิม (ฐาน = ยอดตัดหนี้ − VAT) · ใบผสม: ฐาน = VAT × (ฐานบริการ/VAT บริการ) ◂
+  const pk = (await parkedVatOf({ tenantId, systemId }, [invoice.id], tx)).get(invoice.id);
+  const svcLeft = Math.max(0, pk?.service ?? 0);
+  if (!pk || svcLeft <= 0) return;
+  const pureService = pk.goodsAtIssue === 0;
+  const want = Math.round((pureService ? invoice.vatAmount : pk.serviceAtIssue) * portion);
+  const vatPortion = fullyPaid ? svcLeft : Math.min(svcLeft, want);
+  if (vatPortion <= 0) return;
+  let base = Math.max(0, tieOff - vatPortion);
+  let grand = tieOff;
+  if (!pureService) {
+    const full = await tx.accountDocument.findFirst({ where: { id: invoice.id }, select: { discountAmount: true, vatTiming: true, taxPointBasis: true, issueDate: true, lines: { select: { amount: true, vatRateBp: true, lineKind: true } } } });
+    const rate = await vatRateBpAt({ tenantId, systemId }, full?.issueDate ?? accountNow());
+    const raw = rawVatByKindOf(full?.lines ?? [], invoice.vatMode, full?.discountAmount ?? 0, rate, full?.taxPointBasis ?? full?.vatTiming ?? "ON_PAYMENT");
+    base = raw.service > 0 ? Math.round((vatPortion * raw.serviceNet) / raw.service) : 0;
+    grand = base + vatPortion;
+  }
   const issueDate = new Date();
   // ACC T0.2 ▸ อัตราบนบรรทัด = อัตรามาตรฐานจากตารางค่ากฎหมาย ณ วันออกใบ (เดิมฝัง 700) ◂
   const lineVatBp = invoice.vatMode === "NONE" ? 0 : await vatRateBpAt({ tenantId, systemId }, issueDate);
@@ -3067,7 +3377,7 @@ async function issueServiceTaxInvoice(
       taxPointBasis: "ON_PAYMENT",
       subTotal: base,
       vatAmount: vatPortion,
-      grandTotal: tieOff,
+      grandTotal: grand,
       sourceDocId: invoice.id,
       sourcePaymentId: paymentId,
       lines: {
@@ -3082,6 +3392,7 @@ async function issueServiceTaxInvoice(
             discount: 0,
             vatRateBp: lineVatBp,
             amount: base,
+            lineKind: "SERVICE",
           },
         ],
       },
@@ -3101,7 +3412,7 @@ async function issueServiceTaxInvoice(
       fromId: invoice.id,
       toId: taxInv.id,
       type: "TAX_FOR",
-      amount: tieOff,
+      amount: grand,
     },
   });
   // A2: ใบกำกับกำหนดเดือน VAT → โอน 2210 → 2200 ตามงวด
@@ -4022,6 +4333,21 @@ export async function voidDocument(
       if (wasIssued) {
         await reverseFor({ tenantId, systemId }, "AccountDocument", id, reason, tx);
       }
+      // ACC T1.2 ▸ ยกเลิกใบแจ้งหนี้ ⇒ ใบกำกับที่ออกจากใบนั้น (พร้อมกัน/ปล่อย VAT/กดออกเอง — ไม่ใช่ของงวดรับเงินซึ่งยกเลิกตามการชำระ)
+      //   ยกเลิกในธุรกรรมเดียวกัน + กลับรายการ JV ⇒ 2205/2210/2200 กลับเป็นศูนย์ (เดิมใบกำกับค้างมีผล VAT ขายลอย) ◂
+      if (wasIssued && doc.docType === "INVOICE") {
+        const tis = await tx.accountDocument.findMany({
+          where: { tenantId, systemId, docType: "TAX_INVOICE", sourceDocId: id, sourcePaymentId: null, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } },
+          select: { id: true, docType: true, docNo: true },
+          orderBy: { id: "asc" },
+        });
+        for (const t of tis) {
+          await lockDocumentRow(tx, tenantId, systemId, t.id);
+          await tx.accountDocument.update({ where: { id: t.id }, data: { status: "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามใบแจ้งหนี้ ${doc.docNo ?? ""}${reason ? ` — ${reason}` : ""}`.trim() } });
+          await reverseFor({ tenantId, systemId }, "AccountDocument", t.id, reason || "ยกเลิกตามใบแจ้งหนี้", tx);
+          await emitDocumentVoided(tx, { tenantId, systemId }, { id: t.id, docType: t.docType, docNo: t.docNo, reason });
+        }
+      }
       // round 11 · R10-5: รายการรับเงินของใบเสร็จขายสดที่เช็คเด้งถอยไปแล้ว — JV เช็คเด้งย้ายหนี้ไปลูกหนี้ (Dr AR / Cr เช็คระหว่างทาง)
       //   reversal ของใบเสร็จข้างบนกลับขาเงิน (Cr เช็คระหว่างทาง) อีกครั้ง ⇒ คืนให้ครบ: Dr เช็คระหว่างทาง (+1160 · ค่าธรรมเนียม) / Cr ลูกหนี้
       if (wasIssued && cashSaleReceipt) await undoBouncedReceiptClaimsInTx(tx, { tenantId, systemId }, doc, reason);
@@ -4429,7 +4755,7 @@ export async function issuePublicTaxInvoice(
           create: source.lines.map((l, i) => ({
             tenantId, systemId, sortOrder: i, description: l.description, qty: l.qty,
             unitName: l.unitName, unitPrice: l.unitPrice, discount: l.discount,
-            vatRateBp: l.vatRateBp, amount: l.amount,
+            vatRateBp: l.vatRateBp, amount: l.amount, lineKind: l.lineKind,
           })),
         },
       },

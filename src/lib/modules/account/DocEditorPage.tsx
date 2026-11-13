@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { kindFromProductType } from "./tax-point-shared";
 import type { AccountDocType } from "@prisma/client";
 import { thaiDateKey } from "@/lib/ui/date";
 import { storageEnabled } from "@/lib/storage/service";
@@ -219,6 +220,7 @@ export async function DocEditorPage({
           vatRateBp: l.vatRateBp,
           whtIncomeType: l.whtIncomeType,
           whtRateBp: l.whtRateBp,
+          lineKind: l.lineKind ?? null,
         };
       })
     : [newLineDraft(settings.vatRateBp)];
@@ -243,7 +245,7 @@ export async function DocEditorPage({
     reference: doc?.reference ?? "",
     // §9.3: ประเภทราคาเริ่มต้นมาจากนโยบายบัญชี (ไม่ได้ตั้ง = พฤติกรรมเดิม จด VAT → แยก VAT)
     priceMode: doc ? priceModeOf(doc.vatMode) : defaultPriceModeOf(settings.policy),
-    autoTaxInvoice: doc?.autoTaxInvoice ?? false,
+    autoTaxInvoice: doc?.autoTaxInvoice ?? null,
     recognizeVatNow: doc ? doc.vatTiming !== "ON_PAYMENT" : settings.taxPointBasis !== "ON_PAYMENT",
     salesUserId: doc?.salesUserId ?? null,
     tags: doc?.tags ?? [],
@@ -319,6 +321,7 @@ export async function DocEditorPage({
         docId={doc?.id}
         steps={steps}
         vatRegistered={settings.vatRegistered}
+        taxInvoiceSettings={{ goodsOnIssue: settings.doc.autoTaxInvoice.goodsOnIssue, mode: settings.doc.autoTaxInvoice.mode }}
         vatRateBp={settings.vatRateBp}
         branchName={settings.branchName ?? "สำนักงานใหญ่"}
         dueLabel={dueLabelOf(docType)}
@@ -338,6 +341,7 @@ export async function DocEditorPage({
           unitName: p.unitId ? (unitName.get(p.unitId) ?? null) : null,
           vatRateBp: p.vatRateBp,
           accountId: (side === "revenue" ? p.incomeAccountId : p.expenseAccountId) ?? null,
+          kind: kindFromProductType(p.type),
         }))}
         accounts={accounts}
         legal={legal}
