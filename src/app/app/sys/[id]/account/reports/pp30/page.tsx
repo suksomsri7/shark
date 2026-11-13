@@ -130,7 +130,7 @@ function SalesTaxTable({ st, base }: { st: SalesTaxReport; base: string }) {
               <tr key={`${g.rateBp}-${r.key}`} className={`border-b ${r.cancelled ? "text-[color:var(--color-muted)]" : ""}`} data-testid="salestax-row" data-kind={r.kind}>
                 <td className={`${cellCls} text-right tabular-nums`}>{seq}</td>
                 <td className={`${cellCls} whitespace-nowrap`}>{thDate(r.date)}</td>
-                <td className={`${cellCls} font-mono text-xs`}>
+                <td className={`${cellCls} whitespace-nowrap font-mono text-xs`}>
                   {href ? <Link href={href} className="hover:underline">{r.docNo}</Link> : r.docNo}
                   {r.docNoTo && (
                     <span className="block font-sans text-[11px] text-[color:var(--color-muted)]">
@@ -138,7 +138,7 @@ function SalesTaxTable({ st, base }: { st: SalesTaxReport; base: string }) {
                     </span>
                   )}
                 </td>
-                <td className={cellCls}>{r.buyerName || "—"}</td>
+                <td className={`${cellCls} min-w-[9rem]`}>{r.buyerName || "—"}</td>
                 <td className={`${cellCls} font-mono text-xs`}>{r.buyerTaxId}</td>
                 <td className={`${cellCls} text-xs`}>{buyerBranchLabelTh(r.buyerBranchCode)}</td>
                 <td className={`${cellCls} text-right`}><MoneyText satang={part.base} decimals /></td>
@@ -154,13 +154,13 @@ function SalesTaxTable({ st, base }: { st: SalesTaxReport; base: string }) {
                   {r.bills && r.bills.length > 0 && (
                     <details className="mt-1 print:hidden" data-testid="salestax-drill">
                       <summary className="cursor-pointer text-[color:var(--color-muted)]">ดูรายใบ ({r.bills.length})</summary>
-                      <table className="mt-1 w-full text-[11px]">
+                      <table className="mt-1 text-[11px]">
                         <tbody>
                           {r.bills.map((b) => (
                             <tr key={b.key} className={b.cancelled ? "text-[color:var(--color-muted)] line-through" : ""}>
                               <td className="pr-2 font-mono">{b.docNo}</td>
-                              <td className="pr-2 text-right"><MoneyText satang={b.base} decimals /></td>
-                              <td className="text-right"><MoneyText satang={b.vat} decimals /></td>
+                              <td className="whitespace-nowrap pr-2 text-right"><MoneyText satang={b.base} decimals /></td>
+                              <td className="whitespace-nowrap text-right"><MoneyText satang={b.vat} decimals /></td>
                             </tr>
                           ))}
                         </tbody>
@@ -179,14 +179,15 @@ function SalesTaxTable({ st, base }: { st: SalesTaxReport; base: string }) {
           </tr>
         </tbody>
       ))}
-      <tfoot>
+      {/* ACC T1.1 ▸ รวมทั้งสิ้นเป็นแถวท้ายตาราง ไม่ใช่ <tfoot> — เบราว์เซอร์พิมพ์ <tfoot> ซ้ำทุกหน้า (ใบพิมพ์หน้า 1 ขึ้น "รวมทั้งสิ้น" ก่อนแถวหน้า 2) ◂ */}
+      <tbody>
         <tr className="border-t-2 font-semibold" data-testid="salestax-total">
           <td className="px-3 py-2" colSpan={6}>รวมทั้งสิ้น</td>
           <td className="px-2 py-2 text-right"><MoneyText satang={st.total.base} decimals /></td>
           <td className="px-2 py-2 text-right"><MoneyText satang={st.total.vat} decimals /></td>
           <td />
         </tr>
-      </tfoot>
+      </tbody>
     </TableWrap>
   );
 }
@@ -308,7 +309,7 @@ export default async function Pp30Page({
   };
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div className="flex max-w-5xl flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <ReportHeader base={base} title="ภ.พ.30 + รายงานภาษีขาย/ซื้อ" subtitle={`เดือนภาษี ${st.header.monthLabel} (${period})`} />
       </div>
