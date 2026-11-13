@@ -1,0 +1,3174 @@
+{
+ "_note": "HR H3.6 pure vectors — inputs for buildPnd1 / buildSso110 / itemFigures / thaiIdOk / taxCertContent / taxCertDocNo. Hand derivation + field tables: ledger/wo-notes/hr-H3.6-oracle.md. Golden bytes: scripts/fixtures/hr-h3.6-g*.txt (ledger/wo-notes/hr-H3.6-derive.py).",
+ "employer": {
+  "taxId": "0105561234560",
+  "branchNo": "000000",
+  "employerName": "บริษัท ตัวอย่าง จำกัด",
+  "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+  "deptName": "สำนักงานใหญ่",
+  "lto": false,
+  "branchType": "",
+  "rdUserId": "REGREF0000000000001",
+  "rdFormFlag": 1,
+  "ssoAccountNo": "1234567890",
+  "ssoBranchNo": "000000",
+  "signerName": "นายผู้จ่าย ใจกว้าง",
+  "certPrefix": "HR50"
+ },
+ "persons": {
+  "p1": {
+   "employeeId": "p1",
+   "name": "สมชาย ใจดี",
+   "code": "E01",
+   "nationalId": "1100700123455",
+   "title": "นาย",
+   "firstName": "สมชาย",
+   "lastName": "ใจดี",
+   "ssoPrefix": null,
+   "address": {
+    "building": "",
+    "room": "",
+    "floor": "",
+    "village": "",
+    "houseNo": "",
+    "moo": "",
+    "soi": "",
+    "street": "",
+    "subdistrict": "",
+    "district": "พญาไท",
+    "province": "กรุงเทพมหานคร",
+    "postcode": "10400",
+    "line": ""
+   }
+  },
+  "p2": {
+   "employeeId": "p2",
+   "name": "สมหญิง รักงาน",
+   "code": "E02",
+   "nationalId": "3100500654321",
+   "title": "นางสาว",
+   "firstName": "สมหญิง",
+   "lastName": "รักงาน",
+   "ssoPrefix": null,
+   "address": {
+    "building": "",
+    "room": "",
+    "floor": "",
+    "village": "",
+    "houseNo": "",
+    "moo": "",
+    "soi": "",
+    "street": "",
+    "subdistrict": "",
+    "district": "พญาไท",
+    "province": "กรุงเทพมหานคร",
+    "postcode": "10400",
+    "line": ""
+   }
+  },
+  "p3": {
+   "employeeId": "p3",
+   "name": "ไม่มี เลข",
+   "code": "E03",
+   "nationalId": null,
+   "title": "นาย",
+   "firstName": "ไม่มี",
+   "lastName": "เลข",
+   "ssoPrefix": null,
+   "address": {
+    "building": "",
+    "room": "",
+    "floor": "",
+    "village": "",
+    "houseNo": "",
+    "moo": "",
+    "soi": "",
+    "street": "",
+    "subdistrict": "",
+    "district": "พญาไท",
+    "province": "กรุงเทพมหานคร",
+    "postcode": "10400",
+    "line": ""
+   }
+  },
+  "p4": {
+   "employeeId": "p4",
+   "name": "ว่าง เงิน",
+   "code": "E04",
+   "nationalId": "1500100123451",
+   "title": "นาย",
+   "firstName": "ว่าง",
+   "lastName": "เงิน",
+   "ssoPrefix": null,
+   "address": {
+    "building": "",
+    "room": "",
+    "floor": "",
+    "village": "",
+    "houseNo": "",
+    "moo": "",
+    "soi": "",
+    "street": "",
+    "subdistrict": "",
+    "district": "พญาไท",
+    "province": "กรุงเทพมหานคร",
+    "postcode": "10400",
+    "line": ""
+   }
+  },
+  "p5": {
+   "employeeId": "p5",
+   "name": "มี ทับ",
+   "code": "E05",
+   "nationalId": "3900100123453",
+   "title": "นาย",
+   "firstName": "มี",
+   "lastName": "ทับ",
+   "ssoPrefix": null,
+   "address": {
+    "building": "",
+    "room": "",
+    "floor": "",
+    "village": "",
+    "houseNo": "12/3",
+    "moo": "",
+    "soi": "",
+    "street": "",
+    "subdistrict": "",
+    "district": "พญาไท",
+    "province": "กรุงเทพมหานคร",
+    "postcode": "10400",
+    "line": ""
+   }
+  },
+  "p6": {
+   "employeeId": "p6",
+   "name": "อรุณ แสงทอง",
+   "code": "E06",
+   "nationalId": "1700100123459",
+   "title": "",
+   "firstName": "อรุณ",
+   "lastName": "แสงทอง",
+   "ssoPrefix": null,
+   "address": {
+    "building": "อาคารสิริภิญโญ",
+    "room": "12",
+    "floor": "3",
+    "village": "หมู่บ้านเยาวพรรณ",
+    "houseNo": "99",
+    "moo": "4",
+    "soi": "ซอยรางน้ำ",
+    "street": "พหลโยธิน",
+    "subdistrict": "ทุ่งพญาไท",
+    "district": "ราชเทวี",
+    "province": "กรุงเทพมหานคร",
+    "postcode": "10400",
+    "line": ""
+   }
+  },
+  "p7": {
+   "employeeId": "p7",
+   "name": "กมลวรรณวิภาวดีศรีสุนทรประเสริฐสุขเจริญ ทดสอบ",
+   "code": "E07",
+   "nationalId": "1200100123453",
+   "title": "นาง",
+   "firstName": "กมลวรรณวิภาวดีศรีสุนทรประเสริฐสุขเจริญ",
+   "lastName": "ทดสอบ",
+   "ssoPrefix": null,
+   "address": {
+    "building": "",
+    "room": "",
+    "floor": "",
+    "village": "",
+    "houseNo": "",
+    "moo": "",
+    "soi": "",
+    "street": "",
+    "subdistrict": "",
+    "district": "พญาไท",
+    "province": "กรุงเทพมหานคร",
+    "postcode": "10400",
+    "line": ""
+   }
+  },
+  "p8": {
+   "employeeId": "p8",
+   "name": "เด็ก ชาย",
+   "code": "E08",
+   "nationalId": "1102000123454",
+   "title": "ด.ช.",
+   "firstName": "เด็ก",
+   "lastName": "ชาย",
+   "ssoPrefix": null,
+   "address": {
+    "building": "",
+    "room": "",
+    "floor": "",
+    "village": "",
+    "houseNo": "",
+    "moo": "",
+    "soi": "",
+    "street": "",
+    "subdistrict": "",
+    "district": "พญาไท",
+    "province": "กรุงเทพมหานคร",
+    "postcode": "10400",
+    "line": ""
+   }
+  },
+  "p9": {
+   "employeeId": "p9",
+   "name": "ไม่ ประกัน",
+   "code": "E09",
+   "nationalId": "3100600999991",
+   "title": "นาย",
+   "firstName": "ไม่",
+   "lastName": "ประกัน",
+   "ssoPrefix": null,
+   "address": {
+    "building": "",
+    "room": "",
+    "floor": "",
+    "village": "",
+    "houseNo": "",
+    "moo": "",
+    "soi": "",
+    "street": "",
+    "subdistrict": "",
+    "district": "พญาไท",
+    "province": "กรุงเทพมหานคร",
+    "postcode": "10400",
+    "line": ""
+   }
+  }
+ },
+ "pnd": {
+  "G1": {
+   "in": {
+    "kind": "PND1",
+    "taxYear": 2026,
+    "taxMonth": 11,
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "persons": [
+     {
+      "employeeId": "p1",
+      "name": "สมชาย ใจดี",
+      "code": "E01",
+      "nationalId": "1100700123455",
+      "title": "นาย",
+      "firstName": "สมชาย",
+      "lastName": "ใจดี",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p2",
+      "name": "สมหญิง รักงาน",
+      "code": "E02",
+      "nationalId": "3100500654321",
+      "title": "นางสาว",
+      "firstName": "สมหญิง",
+      "lastName": "รักงาน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     }
+    ],
+    "items": [
+     {
+      "employeeId": "p1",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     }
+    ],
+    "certs": [],
+    "options": {}
+   },
+   "file": "hr-h3.6-g1-pnd1.txt",
+   "fileName": "PND1_0105561234560_000000_2569_11_00_00.txt",
+   "lineCount": 2,
+   "totalIncomeSatang": 5000000,
+   "totalTaxSatang": 50000,
+   "notIncluded": [],
+   "warnings": []
+  },
+  "G2": {
+   "in": {
+    "kind": "PND1A",
+    "taxYear": 2026,
+    "taxMonth": null,
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "persons": [
+     {
+      "employeeId": "p1",
+      "name": "สมชาย ใจดี",
+      "code": "E01",
+      "nationalId": "1100700123455",
+      "title": "นาย",
+      "firstName": "สมชาย",
+      "lastName": "ใจดี",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p2",
+      "name": "สมหญิง รักงาน",
+      "code": "E02",
+      "nationalId": "3100500654321",
+      "title": "นางสาว",
+      "firstName": "สมหญิง",
+      "lastName": "รักงาน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p3",
+      "name": "ไม่มี เลข",
+      "code": "E03",
+      "nationalId": null,
+      "title": "นาย",
+      "firstName": "ไม่มี",
+      "lastName": "เลข",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p4",
+      "name": "ว่าง เงิน",
+      "code": "E04",
+      "nationalId": "1500100123451",
+      "title": "นาย",
+      "firstName": "ว่าง",
+      "lastName": "เงิน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p5",
+      "name": "มี ทับ",
+      "code": "E05",
+      "nationalId": "3900100123453",
+      "title": "นาย",
+      "firstName": "มี",
+      "lastName": "ทับ",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "12/3",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p6",
+      "name": "อรุณ แสงทอง",
+      "code": "E06",
+      "nationalId": "1700100123459",
+      "title": "",
+      "firstName": "อรุณ",
+      "lastName": "แสงทอง",
+      "ssoPrefix": null,
+      "address": {
+       "building": "อาคารสิริภิญโญ",
+       "room": "12",
+       "floor": "3",
+       "village": "หมู่บ้านเยาวพรรณ",
+       "houseNo": "99",
+       "moo": "4",
+       "soi": "ซอยรางน้ำ",
+       "street": "พหลโยธิน",
+       "subdistrict": "ทุ่งพญาไท",
+       "district": "ราชเทวี",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     }
+    ],
+    "items": [
+     {
+      "employeeId": "p1",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p3",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 1500000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p4",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p5",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 1000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-12-25",
+      "incomeSatang": 8000000,
+      "taxSatang": 250000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p6",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-12-25",
+      "incomeSatang": 2500000,
+      "taxSatang": 12500,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     }
+    ],
+    "certs": [
+     {
+      "employeeId": "p2",
+      "docSeq": 1,
+      "formSeq": 1
+     }
+    ],
+    "options": {}
+   },
+   "file": "hr-h3.6-g2-pnd1a.txt",
+   "fileName": "PND1A_0105561234560_000000_2569_00_00_00.txt",
+   "lineCount": 3,
+   "totalIncomeSatang": 20500000,
+   "totalTaxSatang": 362500,
+   "notIncluded": [
+    {
+     "employeeId": "p3",
+     "cause": "INCOMPLETE",
+     "fields": [
+      "nationalId"
+     ],
+     "incomeSatang": 1500000,
+     "taxSatang": 0
+    },
+    {
+     "employeeId": "p4",
+     "cause": "ZERO_INCOME",
+     "fields": [],
+     "incomeSatang": 0,
+     "taxSatang": 0
+    },
+    {
+     "employeeId": "p5",
+     "cause": "INCOMPLETE",
+     "fields": [
+      "address.houseNo:char"
+     ],
+     "incomeSatang": 1000000,
+     "taxSatang": 0
+    }
+   ],
+   "warnings": []
+  },
+  "G2M10": {
+   "in": {
+    "kind": "PND1",
+    "taxYear": 2026,
+    "taxMonth": 10,
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "persons": [
+     {
+      "employeeId": "p1",
+      "name": "สมชาย ใจดี",
+      "code": "E01",
+      "nationalId": "1100700123455",
+      "title": "นาย",
+      "firstName": "สมชาย",
+      "lastName": "ใจดี",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p2",
+      "name": "สมหญิง รักงาน",
+      "code": "E02",
+      "nationalId": "3100500654321",
+      "title": "นางสาว",
+      "firstName": "สมหญิง",
+      "lastName": "รักงาน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p3",
+      "name": "ไม่มี เลข",
+      "code": "E03",
+      "nationalId": null,
+      "title": "นาย",
+      "firstName": "ไม่มี",
+      "lastName": "เลข",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p4",
+      "name": "ว่าง เงิน",
+      "code": "E04",
+      "nationalId": "1500100123451",
+      "title": "นาย",
+      "firstName": "ว่าง",
+      "lastName": "เงิน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p5",
+      "name": "มี ทับ",
+      "code": "E05",
+      "nationalId": "3900100123453",
+      "title": "นาย",
+      "firstName": "มี",
+      "lastName": "ทับ",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "12/3",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p6",
+      "name": "อรุณ แสงทอง",
+      "code": "E06",
+      "nationalId": "1700100123459",
+      "title": "",
+      "firstName": "อรุณ",
+      "lastName": "แสงทอง",
+      "ssoPrefix": null,
+      "address": {
+       "building": "อาคารสิริภิญโญ",
+       "room": "12",
+       "floor": "3",
+       "village": "หมู่บ้านเยาวพรรณ",
+       "houseNo": "99",
+       "moo": "4",
+       "soi": "ซอยรางน้ำ",
+       "street": "พหลโยธิน",
+       "subdistrict": "ทุ่งพญาไท",
+       "district": "ราชเทวี",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     }
+    ],
+    "items": [
+     {
+      "employeeId": "p1",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p3",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 1500000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p4",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p5",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 1000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-12-25",
+      "incomeSatang": 8000000,
+      "taxSatang": 250000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p6",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-12-25",
+      "incomeSatang": 2500000,
+      "taxSatang": 12500,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     }
+    ],
+    "certs": [],
+    "options": {}
+   },
+   "file": "hr-h3.6-g2m10-pnd1.txt",
+   "fileName": "PND1_0105561234560_000000_2569_10_00_00.txt",
+   "lineCount": 2,
+   "totalIncomeSatang": 5000000,
+   "totalTaxSatang": 50000,
+   "notIncluded": [
+    {
+     "employeeId": "p3",
+     "cause": "INCOMPLETE",
+     "fields": [
+      "nationalId"
+     ],
+     "incomeSatang": 1500000,
+     "taxSatang": 0
+    }
+   ],
+   "warnings": []
+  },
+  "G2M11": {
+   "in": {
+    "kind": "PND1",
+    "taxYear": 2026,
+    "taxMonth": 11,
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "persons": [
+     {
+      "employeeId": "p1",
+      "name": "สมชาย ใจดี",
+      "code": "E01",
+      "nationalId": "1100700123455",
+      "title": "นาย",
+      "firstName": "สมชาย",
+      "lastName": "ใจดี",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p2",
+      "name": "สมหญิง รักงาน",
+      "code": "E02",
+      "nationalId": "3100500654321",
+      "title": "นางสาว",
+      "firstName": "สมหญิง",
+      "lastName": "รักงาน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p3",
+      "name": "ไม่มี เลข",
+      "code": "E03",
+      "nationalId": null,
+      "title": "นาย",
+      "firstName": "ไม่มี",
+      "lastName": "เลข",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p4",
+      "name": "ว่าง เงิน",
+      "code": "E04",
+      "nationalId": "1500100123451",
+      "title": "นาย",
+      "firstName": "ว่าง",
+      "lastName": "เงิน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p5",
+      "name": "มี ทับ",
+      "code": "E05",
+      "nationalId": "3900100123453",
+      "title": "นาย",
+      "firstName": "มี",
+      "lastName": "ทับ",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "12/3",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p6",
+      "name": "อรุณ แสงทอง",
+      "code": "E06",
+      "nationalId": "1700100123459",
+      "title": "",
+      "firstName": "อรุณ",
+      "lastName": "แสงทอง",
+      "ssoPrefix": null,
+      "address": {
+       "building": "อาคารสิริภิญโญ",
+       "room": "12",
+       "floor": "3",
+       "village": "หมู่บ้านเยาวพรรณ",
+       "houseNo": "99",
+       "moo": "4",
+       "soi": "ซอยรางน้ำ",
+       "street": "พหลโยธิน",
+       "subdistrict": "ทุ่งพญาไท",
+       "district": "ราชเทวี",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     }
+    ],
+    "items": [
+     {
+      "employeeId": "p1",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p3",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 1500000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p4",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p5",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 1000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-12-25",
+      "incomeSatang": 8000000,
+      "taxSatang": 250000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p6",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-12-25",
+      "incomeSatang": 2500000,
+      "taxSatang": 12500,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     }
+    ],
+    "certs": [],
+    "options": {}
+   },
+   "file": "hr-h3.6-g1-pnd1.txt",
+   "fileName": "PND1_0105561234560_000000_2569_11_00_00.txt",
+   "lineCount": 2,
+   "totalIncomeSatang": 5000000,
+   "totalTaxSatang": 50000,
+   "notIncluded": [
+    {
+     "employeeId": "p4",
+     "cause": "ZERO_INCOME",
+     "fields": [],
+     "incomeSatang": 0,
+     "taxSatang": 0
+    },
+    {
+     "employeeId": "p5",
+     "cause": "INCOMPLETE",
+     "fields": [
+      "address.houseNo:char"
+     ],
+     "incomeSatang": 1000000,
+     "taxSatang": 0
+    }
+   ],
+   "warnings": []
+  },
+  "G2M12": {
+   "in": {
+    "kind": "PND1",
+    "taxYear": 2026,
+    "taxMonth": 12,
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "persons": [
+     {
+      "employeeId": "p1",
+      "name": "สมชาย ใจดี",
+      "code": "E01",
+      "nationalId": "1100700123455",
+      "title": "นาย",
+      "firstName": "สมชาย",
+      "lastName": "ใจดี",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p2",
+      "name": "สมหญิง รักงาน",
+      "code": "E02",
+      "nationalId": "3100500654321",
+      "title": "นางสาว",
+      "firstName": "สมหญิง",
+      "lastName": "รักงาน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p3",
+      "name": "ไม่มี เลข",
+      "code": "E03",
+      "nationalId": null,
+      "title": "นาย",
+      "firstName": "ไม่มี",
+      "lastName": "เลข",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p4",
+      "name": "ว่าง เงิน",
+      "code": "E04",
+      "nationalId": "1500100123451",
+      "title": "นาย",
+      "firstName": "ว่าง",
+      "lastName": "เงิน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p5",
+      "name": "มี ทับ",
+      "code": "E05",
+      "nationalId": "3900100123453",
+      "title": "นาย",
+      "firstName": "มี",
+      "lastName": "ทับ",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "12/3",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p6",
+      "name": "อรุณ แสงทอง",
+      "code": "E06",
+      "nationalId": "1700100123459",
+      "title": "",
+      "firstName": "อรุณ",
+      "lastName": "แสงทอง",
+      "ssoPrefix": null,
+      "address": {
+       "building": "อาคารสิริภิญโญ",
+       "room": "12",
+       "floor": "3",
+       "village": "หมู่บ้านเยาวพรรณ",
+       "houseNo": "99",
+       "moo": "4",
+       "soi": "ซอยรางน้ำ",
+       "street": "พหลโยธิน",
+       "subdistrict": "ทุ่งพญาไท",
+       "district": "ราชเทวี",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     }
+    ],
+    "items": [
+     {
+      "employeeId": "p1",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p3",
+      "runId": "r10",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 1500000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p4",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p5",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 1000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-12-25",
+      "incomeSatang": 8000000,
+      "taxSatang": 250000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p6",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-12-25",
+      "incomeSatang": 2500000,
+      "taxSatang": 12500,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     }
+    ],
+    "certs": [],
+    "options": {}
+   },
+   "file": "hr-h3.6-g2m12-pnd1.txt",
+   "fileName": "PND1_0105561234560_000000_2569_12_00_00.txt",
+   "lineCount": 2,
+   "totalIncomeSatang": 10500000,
+   "totalTaxSatang": 262500,
+   "notIncluded": [],
+   "warnings": []
+  },
+  "G2W": {
+   "_why": "same as G2 with p2's cert stored formSeq 2 and an APPROVED + a v1 run item ⇒ bytes = G2, warnings exact",
+   "in": {
+    "kind": "PND1A",
+    "taxYear": 2026,
+    "taxMonth": null,
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "persons": [
+     {
+      "employeeId": "p1",
+      "name": "สมชาย ใจดี",
+      "code": "E01",
+      "nationalId": "1100700123455",
+      "title": "นาย",
+      "firstName": "สมชาย",
+      "lastName": "ใจดี",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p2",
+      "name": "สมหญิง รักงาน",
+      "code": "E02",
+      "nationalId": "3100500654321",
+      "title": "นางสาว",
+      "firstName": "สมหญิง",
+      "lastName": "รักงาน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p3",
+      "name": "ไม่มี เลข",
+      "code": "E03",
+      "nationalId": null,
+      "title": "นาย",
+      "firstName": "ไม่มี",
+      "lastName": "เลข",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p4",
+      "name": "ว่าง เงิน",
+      "code": "E04",
+      "nationalId": "1500100123451",
+      "title": "นาย",
+      "firstName": "ว่าง",
+      "lastName": "เงิน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p5",
+      "name": "มี ทับ",
+      "code": "E05",
+      "nationalId": "3900100123453",
+      "title": "นาย",
+      "firstName": "มี",
+      "lastName": "ทับ",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "12/3",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p6",
+      "name": "อรุณ แสงทอง",
+      "code": "E06",
+      "nationalId": "1700100123459",
+      "title": "",
+      "firstName": "อรุณ",
+      "lastName": "แสงทอง",
+      "ssoPrefix": null,
+      "address": {
+       "building": "อาคารสิริภิญโญ",
+       "room": "12",
+       "floor": "3",
+       "village": "หมู่บ้านเยาวพรรณ",
+       "houseNo": "99",
+       "moo": "4",
+       "soi": "ซอยรางน้ำ",
+       "street": "พหลโยธิน",
+       "subdistrict": "ทุ่งพญาไท",
+       "district": "ราชเทวี",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     }
+    ],
+    "items": [
+     {
+      "employeeId": "p1",
+      "runId": "r10",
+      "engineVersion": 1,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r10",
+      "engineVersion": 1,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p3",
+      "runId": "r10",
+      "engineVersion": 1,
+      "runStatus": "PAID",
+      "payDate": "2026-10-25",
+      "incomeSatang": 1500000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 3000000,
+      "taxSatang": 50000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 2000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p4",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p5",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 1000000,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p1",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "APPROVED",
+      "payDate": "2026-12-25",
+      "incomeSatang": 8000000,
+      "taxSatang": 250000,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     },
+     {
+      "employeeId": "p6",
+      "runId": "r12",
+      "engineVersion": 2,
+      "runStatus": "APPROVED",
+      "payDate": "2026-12-25",
+      "incomeSatang": 2500000,
+      "taxSatang": 12500,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     }
+    ],
+    "certs": [
+     {
+      "employeeId": "p2",
+      "docSeq": 1,
+      "formSeq": 2
+     }
+    ],
+    "options": {}
+   },
+   "file": "hr-h3.6-g2-pnd1a.txt",
+   "warnings": [
+    {
+     "employeeId": null,
+     "code": "NOT_PAID"
+    },
+    {
+     "employeeId": null,
+     "code": "V1_RUN"
+    },
+    {
+     "employeeId": "p2",
+     "code": "CERT_SEQ"
+    }
+   ]
+  },
+  "refuse": [
+   {
+    "id": "R1",
+    "patch": {
+     "employer.taxId": null
+    },
+    "code": "PROFILE",
+    "fields": [
+     "taxId"
+    ]
+   },
+   {
+    "id": "R2",
+    "patch": {
+     "employer.taxId": "0105561234567"
+    },
+    "code": "PROFILE",
+    "fields": [
+     "taxId"
+    ]
+   },
+   {
+    "id": "R3",
+    "patch": {
+     "employer.rdUserId": ""
+    },
+    "code": "PROFILE",
+    "fields": [
+     "rdUserId"
+    ]
+   },
+   {
+    "id": "R4",
+    "patch": {
+     "employer.branchNo": "1"
+    },
+    "code": "PROFILE",
+    "fields": [
+     "branchNo"
+    ]
+   },
+   {
+    "id": "R5",
+    "patch": {
+     "employer.deptName": "สาขา/1"
+    },
+    "code": "PROFILE",
+    "fields": [
+     "deptName"
+    ]
+   },
+   {
+    "id": "R6",
+    "patch": {
+     "options.formType": "100"
+    },
+    "code": "OPTIONS",
+    "fields": [
+     "formType"
+    ]
+   },
+   {
+    "id": "R7",
+    "patch": {
+     "options.seqNo": 100
+    },
+    "code": "OPTIONS",
+    "fields": [
+     "seqNo"
+    ]
+   },
+   {
+    "id": "R8",
+    "patch": {
+     "options.formFlag": 3
+    },
+    "code": "OPTIONS",
+    "fields": [
+     "formFlag"
+    ]
+   },
+   {
+    "id": "R9",
+    "patch": {
+     "taxMonth": 13
+    },
+    "code": "OPTIONS",
+    "fields": [
+     "taxMonth"
+    ]
+   },
+   {
+    "id": "R10",
+    "patch": {
+     "items": []
+    },
+    "code": "EMPTY",
+    "fields": []
+   }
+  ],
+  "options": [
+   {
+    "id": "O1",
+    "options": {
+     "formType": "01",
+     "seqNo": 2
+    },
+    "fileName": "PND1_0105561234560_000000_2569_11_01_02.txt",
+    "header14": "01"
+   },
+   {
+    "id": "O2",
+    "options": {
+     "formFlag": 2
+    },
+    "header20": "500.00",
+    "header22": "2"
+   }
+  ]
+ },
+ "sso": {
+  "G3": {
+   "in": {
+    "run": {
+     "periodKey": "2026-11",
+     "payDate": "2026-11-25",
+     "status": "PAID"
+    },
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "persons": [
+     {
+      "employeeId": "p1",
+      "name": "สมชาย ใจดี",
+      "code": "E01",
+      "nationalId": "1100700123455",
+      "title": "นาย",
+      "firstName": "สมชาย",
+      "lastName": "ใจดี",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p2",
+      "name": "สมหญิง รักงาน",
+      "code": "E02",
+      "nationalId": "3100500654321",
+      "title": "นางสาว",
+      "firstName": "สมหญิง",
+      "lastName": "รักงาน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     }
+    ],
+    "items": [
+     {
+      "employeeId": "p1",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 1500000,
+      "ssoWageClampedSatang": 1500000,
+      "ssoEmployeeSatang": 75000,
+      "ssoEmployerSatang": 75000
+     },
+     {
+      "employeeId": "p2",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "PAID",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 943000,
+      "ssoWageClampedSatang": 943000,
+      "ssoEmployeeSatang": 47200,
+      "ssoEmployerSatang": 47200
+     }
+    ],
+    "options": {
+     "encoding": "TIS620",
+     "wageMode": "CLAMPED",
+     "paidDate": "2026-12-15",
+     "rateBp": 500,
+     "lineEnd": "CRLF"
+    }
+   },
+   "file": "hr-h3.6-g3-sso.txt",
+   "fileName": "SSO110_1234567890_000000_256911.txt",
+   "contentType": "text/plain; charset=windows-874",
+   "lineCount": 2,
+   "totalWageSatang": 2443000,
+   "totalContributionSatang": 244400,
+   "notIncluded": [],
+   "warnings": []
+  },
+  "G3D": {
+   "_why": "G3 with options {} ⇒ defaults TIS620 · CLAMPED · paidDate 15th of the next month · 500 · CRLF ⇒ same bytes",
+   "file": "hr-h3.6-g3-sso.txt"
+  },
+  "G3U": {
+   "options": {
+    "encoding": "UTF8"
+   },
+   "file": "hr-h3.6-g3u-sso-utf8.txt",
+   "contentType": "text/plain; charset=utf-8"
+  },
+  "G3L": {
+   "options": {
+    "lineEnd": "LF"
+   },
+   "file": "hr-h3.6-g3l-sso-lf.txt"
+  },
+  "G3A": {
+   "in": {
+    "run": {
+     "periodKey": "2026-11",
+     "payDate": "2026-11-25",
+     "status": "APPROVED"
+    },
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "persons": [
+     {
+      "employeeId": "p1",
+      "name": "สมชาย ใจดี",
+      "code": "E01",
+      "nationalId": "1100700123455",
+      "title": "นาย",
+      "firstName": "สมชาย",
+      "lastName": "ใจดี",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p7",
+      "name": "กมลวรรณวิภาวดีศรีสุนทรประเสริฐสุขเจริญ ทดสอบ",
+      "code": "E07",
+      "nationalId": "1200100123453",
+      "title": "นาง",
+      "firstName": "กมลวรรณวิภาวดีศรีสุนทรประเสริฐสุขเจริญ",
+      "lastName": "ทดสอบ",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p8",
+      "name": "เด็ก ชาย",
+      "code": "E08",
+      "nationalId": "1102000123454",
+      "title": "ด.ช.",
+      "firstName": "เด็ก",
+      "lastName": "ชาย",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     },
+     {
+      "employeeId": "p9",
+      "name": "ไม่ ประกัน",
+      "code": "E09",
+      "nationalId": "3100600999991",
+      "title": "นาย",
+      "firstName": "ไม่",
+      "lastName": "ประกัน",
+      "ssoPrefix": null,
+      "address": {
+       "building": "",
+       "room": "",
+       "floor": "",
+       "village": "",
+       "houseNo": "",
+       "moo": "",
+       "soi": "",
+       "street": "",
+       "subdistrict": "",
+       "district": "พญาไท",
+       "province": "กรุงเทพมหานคร",
+       "postcode": "10400",
+       "line": ""
+      }
+     }
+    ],
+    "items": [
+     {
+      "employeeId": "p1",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "APPROVED",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 4000000,
+      "ssoWageClampedSatang": 1750000,
+      "ssoEmployeeSatang": 87500,
+      "ssoEmployerSatang": 87500
+     },
+     {
+      "employeeId": "p7",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "APPROVED",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 1200000,
+      "ssoWageClampedSatang": 1200000,
+      "ssoEmployeeSatang": 60000,
+      "ssoEmployerSatang": 60000
+     },
+     {
+      "employeeId": "p8",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "APPROVED",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 900000,
+      "ssoWageClampedSatang": 900000,
+      "ssoEmployeeSatang": 45000,
+      "ssoEmployerSatang": 45000
+     },
+     {
+      "employeeId": "p9",
+      "runId": "r11",
+      "engineVersion": 2,
+      "runStatus": "APPROVED",
+      "payDate": "2026-11-25",
+      "incomeSatang": 0,
+      "taxSatang": 0,
+      "ssoWageActualSatang": 0,
+      "ssoWageClampedSatang": 0,
+      "ssoEmployeeSatang": 0,
+      "ssoEmployerSatang": 0
+     }
+    ],
+    "options": {
+     "wageMode": "ACTUAL"
+    }
+   },
+   "file": "hr-h3.6-g3a-sso-actual.txt",
+   "lineCount": 2,
+   "totalWageSatang": 5200000,
+   "totalContributionSatang": 295000,
+   "notIncluded": [
+    {
+     "employeeId": "p8",
+     "cause": "INCOMPLETE",
+     "fields": [
+      "ssoPrefix"
+     ],
+     "wageSatang": 900000,
+     "contributionSatang": 45000
+    },
+    {
+     "employeeId": "p9",
+     "cause": "NOT_INSURED",
+     "fields": [],
+     "wageSatang": 0,
+     "contributionSatang": 0
+    }
+   ],
+   "warnings": [
+    {
+     "employeeId": "p7",
+     "code": "NAME_CUT"
+    }
+   ]
+  },
+  "G3B": {
+   "options": {
+    "wageMode": "CLAMPED"
+   },
+   "file": "hr-h3.6-g3b-sso-clamped.txt",
+   "totalWageSatang": 2950000
+  },
+  "refuse": [
+   {
+    "id": "S1",
+    "patch": {
+     "employer.ssoAccountNo": "123"
+    },
+    "code": "PROFILE",
+    "fields": [
+     "ssoAccountNo"
+    ]
+   },
+   {
+    "id": "S2",
+    "patch": {
+     "employer.ssoBranchNo": null
+    },
+    "code": "PROFILE",
+    "fields": [
+     "ssoBranchNo"
+    ]
+   },
+   {
+    "id": "S3",
+    "patch": {
+     "employer.employerName": "Shop\tCo"
+    },
+    "code": "PROFILE",
+    "fields": [
+     "employerName"
+    ]
+   },
+   {
+    "id": "S4",
+    "patch": {
+     "options.encoding": "UTF16"
+    },
+    "code": "OPTIONS",
+    "fields": [
+     "encoding"
+    ]
+   },
+   {
+    "id": "S5",
+    "patch": {
+     "options.wageMode": "GROSS"
+    },
+    "code": "OPTIONS",
+    "fields": [
+     "wageMode"
+    ]
+   },
+   {
+    "id": "S6",
+    "patch": {
+     "options.paidDate": "2026-02-30"
+    },
+    "code": "OPTIONS",
+    "fields": [
+     "paidDate"
+    ]
+   },
+   {
+    "id": "S7",
+    "patch": {
+     "options.rateBp": 10001
+    },
+    "code": "OPTIONS",
+    "fields": [
+     "rateBp"
+    ]
+   },
+   {
+    "id": "S8",
+    "patch": {
+     "options.lineEnd": "CR"
+    },
+    "code": "OPTIONS",
+    "fields": [
+     "lineEnd"
+    ]
+   },
+   {
+    "id": "S9",
+    "patch": {
+     "run.status": "DRAFT"
+    },
+    "code": "STATUS",
+    "fields": []
+   },
+   {
+    "id": "S10",
+    "patch": {
+     "items": []
+    },
+    "code": "EMPTY",
+    "fields": []
+   }
+  ],
+  "tisChar": {
+   "_why": "p1 firstName 'สมชาย😀' under TIS620 ⇒ p1 INCOMPLETE firstName:char · UTF8 ⇒ included",
+   "employeeId": "p1",
+   "firstName": "สมชาย😀"
+  }
+ },
+ "figures": [
+  {
+   "id": "F1",
+   "row": {
+    "engineVersion": 2,
+    "whtSatang": 75000,
+    "addSatang": 500000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "snapshotJson": {
+     "engineVersion": 2,
+     "whtIncomeSatang": 3500000,
+     "whtOneOffSatang": 25000,
+     "ssoWageSatang": 3000000,
+     "baseSalarySatang": 3000000
+    }
+   },
+   "out": {
+    "ok": true,
+    "source": "V2",
+    "incomeSatang": 3500000,
+    "taxSatang": 75000,
+    "oneOffTaxSatang": 25000,
+    "ssoWageActualSatang": 3000000,
+    "ssoWageClampedSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500
+   }
+  },
+  {
+   "id": "F2",
+   "row": {
+    "engineVersion": 1,
+    "whtSatang": 0,
+    "addSatang": 100000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "snapshotJson": {
+     "baseSalarySatang": 2000000,
+     "addSatang": 100000,
+     "ssoEligible": true
+    }
+   },
+   "out": {
+    "ok": true,
+    "source": "V1",
+    "incomeSatang": 2100000,
+    "taxSatang": 0,
+    "oneOffTaxSatang": null,
+    "ssoWageActualSatang": 2000000,
+    "ssoWageClampedSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500
+   }
+  },
+  {
+   "id": "F3",
+   "row": {
+    "engineVersion": 1,
+    "whtSatang": 0,
+    "addSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "snapshotJson": {
+     "baseSalarySatang": 1000000,
+     "ssoEligible": false
+    }
+   },
+   "out": {
+    "ok": true,
+    "source": "V1",
+    "incomeSatang": 1000000,
+    "taxSatang": 0,
+    "oneOffTaxSatang": null,
+    "ssoWageActualSatang": 0,
+    "ssoWageClampedSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0
+   }
+  },
+  {
+   "id": "F4",
+   "row": {
+    "engineVersion": 2,
+    "whtSatang": 75000,
+    "addSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "snapshotJson": {
+     "engineVersion": 2,
+     "whtOneOffSatang": 0,
+     "ssoWageSatang": 0
+    }
+   },
+   "out": {
+    "ok": false
+   }
+  },
+  {
+   "id": "F5",
+   "row": {
+    "engineVersion": 2,
+    "whtSatang": 1000,
+    "addSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "snapshotJson": {
+     "whtIncomeSatang": 100000,
+     "whtOneOffSatang": 2000,
+     "ssoWageSatang": 0
+    }
+   },
+   "out": {
+    "ok": false
+   },
+   "_why": "one-off tax > total tax"
+  },
+  {
+   "id": "F6",
+   "row": {
+    "engineVersion": 2,
+    "whtSatang": 0,
+    "addSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "snapshotJson": {
+     "whtIncomeSatang": -1,
+     "whtOneOffSatang": 0,
+     "ssoWageSatang": 0
+    }
+   },
+   "out": {
+    "ok": false
+   }
+  },
+  {
+   "id": "F7",
+   "row": {
+    "engineVersion": 2,
+    "whtSatang": 0,
+    "addSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "snapshotJson": {
+     "whtIncomeSatang": "100",
+     "whtOneOffSatang": 0,
+     "ssoWageSatang": 0
+    }
+   },
+   "out": {
+    "ok": false
+   }
+  },
+  {
+   "id": "F8",
+   "row": {
+    "engineVersion": 1,
+    "whtSatang": 0,
+    "addSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "snapshotJson": {}
+   },
+   "out": {
+    "ok": false
+   }
+  },
+  {
+   "id": "F9",
+   "row": {
+    "engineVersion": 3,
+    "whtSatang": 0,
+    "addSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "snapshotJson": {
+     "whtIncomeSatang": 0,
+     "whtOneOffSatang": 0,
+     "ssoWageSatang": 0
+    }
+   },
+   "out": {
+    "ok": false
+   }
+  },
+  {
+   "id": "F10",
+   "row": {
+    "engineVersion": 2,
+    "whtSatang": 0,
+    "addSatang": 0,
+    "ssoBaseSatang": 0,
+    "ssoEmployeeSatang": 0,
+    "ssoEmployerSatang": 0,
+    "snapshotJson": null
+   },
+   "out": {
+    "ok": false
+   }
+  }
+ ],
+ "thaiId": [
+  [
+   "1100700123455",
+   true
+  ],
+  [
+   "3100500654321",
+   true
+  ],
+  [
+   "3809900379362",
+   true
+  ],
+  [
+   "0105561234560",
+   true
+  ],
+  [
+   "0105561234567",
+   false
+  ],
+  [
+   "1100700123456",
+   false
+  ],
+  [
+   "110070012345",
+   false
+  ],
+  [
+   "11007001234555",
+   false
+  ],
+  [
+   "110070012345a",
+   false
+  ],
+  [
+   "1-1007-00123-45-5",
+   false
+  ],
+  [
+   "",
+   false
+  ],
+  [
+   null,
+   false
+  ]
+ ],
+ "docNo": [
+  {
+   "prefix": "HR50",
+   "taxYear": 2026,
+   "seq": 1,
+   "out": "HR50-2026-0001"
+  },
+  {
+   "prefix": "HR50",
+   "taxYear": 2031,
+   "seq": 12,
+   "out": "HR50-2031-0012"
+  },
+  {
+   "prefix": "T",
+   "taxYear": 2031,
+   "seq": 10000,
+   "out": "T-2031-10000"
+  }
+ ],
+ "cert": [
+  {
+   "id": "C1",
+   "in": {
+    "kind": "ANNUAL",
+    "taxYear": 2026,
+    "seq": 2,
+    "formSeq": 2,
+    "issueDate": "2027-02-01",
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "person": {
+     "employeeId": "p1",
+     "name": "สมชาย ใจดี",
+     "code": "E01",
+     "nationalId": "1100700123455",
+     "title": "นาย",
+     "firstName": "สมชาย",
+     "lastName": "ใจดี",
+     "ssoPrefix": null,
+     "address": {
+      "building": "",
+      "room": "",
+      "floor": "",
+      "village": "",
+      "houseNo": "",
+      "moo": "",
+      "soi": "",
+      "street": "",
+      "subdistrict": "",
+      "district": "พญาไท",
+      "province": "กรุงเทพมหานคร",
+      "postcode": "10400",
+      "line": ""
+     }
+    },
+    "figures": {
+     "incomeSatang": 14000000,
+     "taxSatang": 350000,
+     "ssoSatang": 225000
+    }
+   },
+   "out": {
+    "v": 1,
+    "kind": "ANNUAL",
+    "taxYear": 2026,
+    "taxYearBe": 2569,
+    "bookNo": "2569",
+    "docNo": "HR50-2026-0002",
+    "formType": "PND1A",
+    "formSeq": 2,
+    "payer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "name": "บริษัท ตัวอย่าง จำกัด",
+     "address": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400"
+    },
+    "payee": {
+     "taxId": "1100700123455",
+     "name": "นาย สมชาย ใจดี",
+     "address": "พญาไท กรุงเทพมหานคร 10400"
+    },
+    "rows": [
+     {
+      "row": "1",
+      "label": "เงินเดือน ค่าจ้าง เบี้ยเลี้ยง โบนัส ฯลฯ ตามมาตรา 40 (1)",
+      "paidWhen": "2569",
+      "amountSatang": 14000000,
+      "taxSatang": 350000
+     }
+    ],
+    "totalSatang": 14000000,
+    "totalTaxSatang": 350000,
+    "totalTaxText": "สามพันห้าร้อยบาทถ้วน",
+    "funds": {
+     "govSatang": 0,
+     "ssoSatang": 225000,
+     "providentSatang": 0
+    },
+    "payCondition": 1,
+    "issueDate": "2027-02-01",
+    "signerName": "นายผู้จ่าย ใจกว้าง"
+   },
+   "pdfMust": [
+    "HR50-2026-0002",
+    "0105561234560",
+    "1100700123455",
+    "140,000.00",
+    "3,500.00",
+    "2,250.00"
+   ],
+   "pdfMustThai": [
+    "หนังสือรับรองการหักภาษี ณ ที่จ่าย",
+    "ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร",
+    "นาย สมชาย ใจดี",
+    "บริษัท ตัวอย่าง จำกัด",
+    "สามพันห้าร้อยบาทถ้วน",
+    "ภ.ง.ด.1ก",
+    "หัก ณ ที่จ่าย",
+    "กองทุนประกันสังคม",
+    "เงินเดือน ค่าจ้าง เบี้ยเลี้ยง โบนัส ฯลฯ ตามมาตรา 40 (1)"
+   ],
+   "pdfPage": [
+    "ฉบับที่ 1",
+    "ฉบับที่ 2"
+   ],
+   "pdfNot": [
+    "3100500654321"
+   ]
+  },
+  {
+   "id": "C2",
+   "in": {
+    "kind": "LEAVER",
+    "taxYear": 2026,
+    "seq": 1,
+    "formSeq": 1,
+    "issueDate": "2026-12-10",
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "person": {
+     "employeeId": "p2",
+     "name": "สมหญิง รักงาน",
+     "code": "E02",
+     "nationalId": "3100500654321",
+     "title": "นางสาว",
+     "firstName": "สมหญิง",
+     "lastName": "รักงาน",
+     "ssoPrefix": null,
+     "address": {
+      "building": "",
+      "room": "",
+      "floor": "",
+      "village": "",
+      "houseNo": "",
+      "moo": "",
+      "soi": "",
+      "street": "",
+      "subdistrict": "",
+      "district": "พญาไท",
+      "province": "กรุงเทพมหานคร",
+      "postcode": "10400",
+      "line": ""
+     }
+    },
+    "figures": {
+     "incomeSatang": 4000000,
+     "taxSatang": 0,
+     "ssoSatang": 0
+    }
+   },
+   "out": {
+    "v": 1,
+    "kind": "LEAVER",
+    "taxYear": 2026,
+    "taxYearBe": 2569,
+    "bookNo": "2569",
+    "docNo": "HR50-2026-0001",
+    "formType": "PND1A",
+    "formSeq": 1,
+    "payer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "name": "บริษัท ตัวอย่าง จำกัด",
+     "address": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400"
+    },
+    "payee": {
+     "taxId": "3100500654321",
+     "name": "นางสาว สมหญิง รักงาน",
+     "address": "พญาไท กรุงเทพมหานคร 10400"
+    },
+    "rows": [
+     {
+      "row": "1",
+      "label": "เงินเดือน ค่าจ้าง เบี้ยเลี้ยง โบนัส ฯลฯ ตามมาตรา 40 (1)",
+      "paidWhen": "2569",
+      "amountSatang": 4000000,
+      "taxSatang": 0
+     }
+    ],
+    "totalSatang": 4000000,
+    "totalTaxSatang": 0,
+    "totalTaxText": "ศูนย์บาทถ้วน",
+    "funds": {
+     "govSatang": 0,
+     "ssoSatang": 0,
+     "providentSatang": 0
+    },
+    "payCondition": 1,
+    "issueDate": "2026-12-10",
+    "signerName": "นายผู้จ่าย ใจกว้าง"
+   }
+  },
+  {
+   "id": "C3",
+   "in": {
+    "kind": "ANNUAL",
+    "taxYear": 2026,
+    "seq": 3,
+    "formSeq": 3,
+    "issueDate": "2027-02-01",
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "person": {
+     "employeeId": "p6",
+     "name": "อรุณ แสงทอง",
+     "code": "E06",
+     "nationalId": "1700100123459",
+     "title": "",
+     "firstName": "อรุณ",
+     "lastName": "แสงทอง",
+     "ssoPrefix": null,
+     "address": {
+      "building": "อาคารสิริภิญโญ",
+      "room": "12",
+      "floor": "3",
+      "village": "หมู่บ้านเยาวพรรณ",
+      "houseNo": "99",
+      "moo": "4",
+      "soi": "ซอยรางน้ำ",
+      "street": "พหลโยธิน",
+      "subdistrict": "ทุ่งพญาไท",
+      "district": "ราชเทวี",
+      "province": "กรุงเทพมหานคร",
+      "postcode": "10400",
+      "line": ""
+     }
+    },
+    "figures": {
+     "incomeSatang": 2500000,
+     "taxSatang": 12500,
+     "ssoSatang": 0
+    }
+   },
+   "out": {
+    "v": 1,
+    "kind": "ANNUAL",
+    "taxYear": 2026,
+    "taxYearBe": 2569,
+    "bookNo": "2569",
+    "docNo": "HR50-2026-0003",
+    "formType": "PND1A",
+    "formSeq": 3,
+    "payer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "name": "บริษัท ตัวอย่าง จำกัด",
+     "address": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400"
+    },
+    "payee": {
+     "taxId": "1700100123459",
+     "name": "อรุณ แสงทอง",
+     "address": "อาคารสิริภิญโญ ห้อง 12 ชั้น 3 หมู่บ้านเยาวพรรณ เลขที่ 99 หมู่ 4 ซอยรางน้ำ ถนน พหลโยธิน ทุ่งพญาไท ราชเทวี กรุงเทพมหานคร 10400"
+    },
+    "rows": [
+     {
+      "row": "1",
+      "label": "เงินเดือน ค่าจ้าง เบี้ยเลี้ยง โบนัส ฯลฯ ตามมาตรา 40 (1)",
+      "paidWhen": "2569",
+      "amountSatang": 2500000,
+      "taxSatang": 12500
+     }
+    ],
+    "totalSatang": 2500000,
+    "totalTaxSatang": 12500,
+    "totalTaxText": "หนึ่งร้อยยี่สิบห้าบาทถ้วน",
+    "funds": {
+     "govSatang": 0,
+     "ssoSatang": 0,
+     "providentSatang": 0
+    },
+    "payCondition": 1,
+    "issueDate": "2027-02-01",
+    "signerName": "นายผู้จ่าย ใจกว้าง"
+   }
+  },
+  {
+   "id": "C4",
+   "_why": "no structured parts ⇒ address.line then subdistrict district province postcode",
+   "in": {
+    "kind": "ANNUAL",
+    "taxYear": 2026,
+    "seq": 4,
+    "formSeq": 4,
+    "issueDate": "2027-02-01",
+    "employer": {
+     "taxId": "0105561234560",
+     "branchNo": "000000",
+     "employerName": "บริษัท ตัวอย่าง จำกัด",
+     "employerAddress": "99 ถนนพญาไท แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400",
+     "deptName": "สำนักงานใหญ่",
+     "lto": false,
+     "branchType": "",
+     "rdUserId": "REGREF0000000000001",
+     "rdFormFlag": 1,
+     "ssoAccountNo": "1234567890",
+     "ssoBranchNo": "000000",
+     "signerName": "นายผู้จ่าย ใจกว้าง",
+     "certPrefix": "HR50"
+    },
+    "person": {
+     "employeeId": "p4",
+     "name": "ว่าง เงิน",
+     "code": "E04",
+     "nationalId": "1500100123451",
+     "title": "นาย",
+     "firstName": "ว่าง",
+     "lastName": "เงิน",
+     "ssoPrefix": null,
+     "address": {
+      "building": "",
+      "room": "",
+      "floor": "",
+      "village": "",
+      "houseNo": "",
+      "moo": "",
+      "soi": "",
+      "street": "",
+      "subdistrict": "ทุ่งพญาไท",
+      "district": "พญาไท",
+      "province": "กรุงเทพมหานคร",
+      "postcode": "10400",
+      "line": "55/1 ซอยสุข"
+     }
+    },
+    "figures": {
+     "incomeSatang": 100,
+     "taxSatang": 0,
+     "ssoSatang": 0
+    }
+   },
+   "outPayeeAddress": "55/1 ซอยสุข ทุ่งพญาไท พญาไท กรุงเทพมหานคร 10400",
+   "outTotalTaxText": "ศูนย์บาทถ้วน"
+  }
+ ]
+}

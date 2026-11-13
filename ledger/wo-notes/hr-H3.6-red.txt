@@ -1,0 +1,63 @@
+# HR H3.6 oracle — RED evidence placeholder (13 Nov 2026)
+STATUS: NOT RUN. Owner order 13 Nov (via controller): no heavy job (no DB suite, oracle run, seed, typecheck) until told.
+Pending (controller to trigger): seed-hr-qc (34/34) on lane wo-hr-qc-l1 · forced run ×2 (identical) · clean typecheck.
+Command: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.6.mts
+Unforced run on this base: SKIPPED exit 0 (hr/filings/build.ts absent).
+Registry: 54 checks · RED-by-design 49 · GREEN controls 5 (H3.6-S1.6, H3.6-S2.0, H3.6-S3.0, H3.6-X12.1, H3.6-Z1).
+Expected forced result on 5d7bcf0c4: every RED check fails (module absent ⇒ ∅fn / missing tables), GREEN controls pass; S7.1 fails by design (H3.4 not in the tree).
+Only transpile-checked (esbuild, no type check); goldens self-checked by ledger/wo-notes/hr-H3.6-derive.py.
+
+H3.6-S1.1	R1	C	RED	[static] migration 20270108000000_hr_filings: 4 CREATE TABLE + CHECKs + partial unique live certificate + UNIQUE (systemId, docNo) · additive only
+H3.6-S1.2	R1	C	RED	[static] payroll.prisma 4 models · HrEmployee/HrPayrollRun/HrPayrollItem blocks unchanged vs base · scope.ts sys() ×4 · hr-qc-env ×4
+H3.6-S1.3	R2	C	RED	[static] pure layer filings/{build,rd,sso,figures,cert,texts}.ts: imports ⊆ ./ · ../bank-files/encode · account/totals · account/doc-numbering · no db/clock/random/fetch
+H3.6-S1.4	R11	C	RED	[static] engine reuse: service calls reserveSeq + formatDocNo from account/doc-numbering · no AccountDocSequence/lastNo SQL or own counter under hr/** · periodKey "HR50:"
+H3.6-S1.5	R3 F2	C	RED	[static] no recompute: hr/filings/** exists and imports no payroll-rules*/payroll-run-rules/law/ot-rules · no ssoContribution/ssoV2/whtYtdV2/monthlyWhtSatang/computeRunItemV2/computeItem · no ytdJson/lawRowIds/hrLawTable/filingJson token
+H3.6-S1.6	frozen	C	GREEN	[static] [control] payroll-rules sha · frozen files/dirs unchanged vs base (incl. bank-files, account, self, law)
+H3.6-S1.7	§5	M	RED	[static] marked hunks "HR H3.6" in payroll.prisma · core/scope.ts · hr-qc-env.mts · payroll page · settings page · me/hr/pay page (every hunk marked)
+H3.6-S1.8	R15	M	RED	[static] UI testids (notes §8) · inventory rows wo H3.6 · hr.filing.* th = en · untestedSso/wageU/pdfNote rendered as expressions
+H3.6-S1.9	R14	C	RED	[static] 3 routes: GET → filingFileGet / taxCertGet / myTaxCertGet · helper uses bank-files isRouterFetch · attachment · no-store · nosniff · no prisma/nationalId in routes
+H3.6-S1.10	R15 R13	C	RED	[static] client boundary: ui.tsx exists · no "use client" file under filings imports service/build/cert/db or names nationalId/contentJson
+H3.6-S1.11	R9 R12	C	RED	[static] service imports bankGateOf · actions "use server" · 7 audit action names · no uploadFile/filingJson write
+H3.6-S2.0	fix	C	GREEN	[pure] [control] goldens self-consistent (22/26 fields, totals, 135 chars, research V2 header verbatim, Σ monthly goldens = 1ก golden per PIN, DB goldens)
+H3.6-S2.1	R7	C	RED	[pure] FILING_TEXT / FILING_TEXT_EN / FIELD_LABEL = texts fixture byte-exact · filingTextFor(locale)
+H3.6-S2.2	R4	C	RED	[pure] thaiIdOk: 12 vectors (checksum · length · non-digits · formatted · empty · null)
+H3.6-S2.3	R3	C	RED	[pure] itemFigures F1–F10: v2 stored fields · v1 base + add · broken/negative/string/unknown engine ⇒ ok:false
+H3.6-S2.4	R5	C	RED	[pure] G1 ภ.ง.ด.1 byte-exact (research V1) + file name + counts + totals
+H3.6-S2.5	R4 R5	C	RED	[pure] G2 ภ.ง.ด.1ก byte-exact (cert holder first · 3112 date · full address · "-" title) + notIncluded exact · G2W same bytes + NOT_PAID/V1_RUN/CERT_SEQ
+H3.6-S2.6	R5	C	RED	[pure] monthly Oct/Nov/Dec of the G2 data byte-exact + reports (property ground truth)
+H3.6-S2.7	R5	C	RED	[pure] RD sample files: parseRdFile → emitRdFile byte-identical (final CRLF present / absent) · codes 5..1 / 1,1,1,2,3 · totals
+H3.6-S2.8	R5	M	RED	[pure] options: formType 01 + seqNo 2 (file name, header 14) · formFlag 2 (TRANS_AMT = TOT_TAX, flag 2)
+H3.6-S2.9	R7	C	RED	[pure] ภ.ง.ด. refusals R1–R10: code · fields · fixed text
+H3.6-S2.10	R6	C	RED	[pure] G3 สปส.1-10 TIS-620 = research V2 byte for byte · options {} ⇒ same bytes (defaults)
+H3.6-S2.11	R6	C	RED	[pure] G3U UTF-8 · G3L LF byte-exact · content types
+H3.6-S2.12	R6	C	RED	[pure] G3A ACTUAL / G3B CLAMPED byte-exact · NAME_CUT · ssoPrefix · NOT_INSURED · TIS char ⇒ INCOMPLETE firstName:char (UTF8 ⇒ included)
+H3.6-S2.13	R7	C	RED	[pure] SSO refusals S1–S10: code · fields · fixed text
+H3.6-S2.14	R4 R5	C	RED	[pure] properties ×40 sets: Σ 12 monthly files = 1ก per PIN · totals = Σ lines · deterministic · input not mutated
+H3.6-S2.15	R11	C	RED	[pure] taxCertContent C1–C4 exact (payee name/address rules · bahtText) · taxCertDocNo via formatDocNo
+H3.6-S2.16	R11	C	RED	[pure] renderTaxCertPdf(C1): %PDF · 2 pages (ฉบับที่ 1/2) · numbers + Thai content on both · no other ID · same text twice
+H3.6-S3.0	fix	C	GREEN	[db] [control] fixture: 6 employees · runs R1 v1 PAID · R2 v2 APPROVED · R3 v2 PAID · R4 REVERSED · R5 DRAFT · system B broken v2 · Σ items = totals · no ACCOUNT system in tenant A
+H3.6-S3.1	R1 R9	C	RED	[db] profile: owner saves/reads · non-owner payroll holder profileOwner · bad taxId ⇒ person/profile fields · audit {op}
+H3.6-S3.2	R1	C	RED	[db] person: gate holder saves title/first/last/ssoPrefix/address parts · read back · bad ssoPrefix ⇒ person text · audit {employeeId} · HrEmployee untouched
+H3.6-S3.3	R4 R5	C	RED	[db] DB1 ภ.ง.ด.1 2031-02 via generateFiling byte-exact · e6 ZERO_INCOME · NOT_PAID · preview = same counts
+H3.6-S3.4	R4 R5	C	RED	[db] DB2 ภ.ง.ด.1ก 2031 byte-exact (after e2 LEAVER cert) · e3 INCOMPLETE · V1_RUN · Σ monthly (Jan/Feb/Mar previews) = annual per employee
+H3.6-S3.5	R6	C	RED	[db] DB3 SSO R2 defaults byte-exact (TIS620 · CLAMPED · 15/03/2574) · e4 ssoPrefix · e6 NOT_INSURED · DB3A ACTUAL option bytes
+H3.6-S3.6	R10 R12	C	RED	[db] manifest (sha · bytes · counts · createdAt = now · expiresAt +7 d · options without IDs) · audit generate keys exact · no payroll/outbox write
+H3.6-S3.7	R10	C	RED	[db] download: same bytes + downloads 1 + audit · person edited ⇒ changed · restored ⇒ ok · R2 reversed ⇒ PND changed / SSO status · past expiry ⇒ expired
+H3.6-S3.8	R3 R4	C	RED	[db] statuses: DRAFT/REVERSED never in files · SSO on DRAFT ⇒ status · system B broken v2 ⇒ RUN_DATA text naming 2031-02 · no manifest on refusal
+H3.6-S3.9	R11	C	RED	[db] LEAVER e2 ⇒ HR50-2031-0001 formSeq 1 (figures frozen) · e1 LEAVER ⇒ certNotLeft · e2 again ⇒ certExists · audit issue keys · counter row (HR system, WHT_CERT, HR50:2031)
+H3.6-S3.10	R11	C	RED	[db] bulk 2031: issued e1/e4/e5 = 0002/0003/0004 · skipped e2 ALREADY · e3 INCOMPLETE [nationalId] · e6 NO_INCOME · formSeq = 1ก lines
+H3.6-S3.11	R11	C	RED	[db] frozen content: employee name/ID edited after issue ⇒ downloaded PDF still shows issued data · contentSha matches · tampered content ⇒ certChanged
+H3.6-S3.12	R11	C	RED	[db] void: owner only (certVoidOwner) · reason 1–200 · voided ⇒ download voided · reissue e4 ⇒ 0005 (no reuse) formSeq 4 · 1ก warns CERT_SEQ for e5
+H3.6-S3.13	R11	C	RED	[db] tenant with an ACCOUNT book: first certificate HR50-2031-0001 · no AccountDocument WHT_CERT · no AccountDocSequence row under the book
+H3.6-S3.14	R9	C	RED	[db] self-service: own live certificates only · own PDF ok + audit by SELF · other employee's certId / voided / unlinked user ⇒ no (identical bytes)
+H3.6-S3.15	R13	C	RED	[db] DTO keys exact (preview · row · notIncluded · warning · file · certificate · mine) · IDs only as •••last4 · no forbidden key · no contentJson
+H3.6-S4.1	R9	C	RED	[db] 10 viewers × 8 operations: owner + payroll(read+pay all branches) ok · read-only · pay-only · branch-limited · managers · member · self · other tenant ⇒ no · nothing written
+H3.6-S4.2	X2	C	RED	[db] cross system/tenant: system B ctx with file/cert of A · other tenant ctx ⇒ no (identical bytes)
+H3.6-S4.3	R12	C	RED	[db] privacy: no national/tax ID digits in audit · outbox · console · manifest optionsJson · download file names · route paths
+H3.6-S5.1	X6	C	RED	[db] 4 parallel issues for one employee ⇒ 1 certificate + 3 certExists · numbers contiguous
+H3.6-S5.2	X6	C	RED	[db] 6 parallel issues for 6 employees ⇒ 6 distinct numbers 1..6 · counter lastNo 6
+H3.6-S6.1	R14	C	RED	[db] route helpers: rsc / prefetch ⇒ 204 untouched · plain ⇒ 200 attachment no-store nosniff · refusal 404/409/410 fixed text, no bytes · self helper
+H3.6-S7.1	ruling 6	C	RED	[static] H3.4 merged: payroll.ts writes snapshot whtIncomeSatang · whtOneOffSatang · ssoWageSatang for engineVersion 2 (n/a on a base without H3.4 ⇒ fail, by design)
+H3.6-S7.2	R3	C	RED	[static] filings/figures.ts reads exactly those snapshot keys + baseSalarySatang/ssoEligible (v1) and the item columns — no other snapshot key
+H3.6-X12.1	X12	M	GREEN	[run] fitness + fitness-hr without env ⇒ exit 0
+H3.6-Z1	house	C	GREEN	no residue (4 new tables + AccountDocSequence rows of the QC tenants)
