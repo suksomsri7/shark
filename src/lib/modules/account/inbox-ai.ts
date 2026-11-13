@@ -15,6 +15,7 @@
 //  • ห้าม import prisma ตรง (fitness F5.1 เต็มเพดาน) → ทุก query ผ่าน `tenantDb`
 // ─────────────────────────────────────────────────────────────
 
+import { accountNow } from "./clock";
 import { tenantDb } from "@/lib/core/db";
 import { resolveProvider, type AiChatMessage, type AiProvider } from "@/lib/ai/provider";
 import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
@@ -334,7 +335,7 @@ export async function readBill(
 
   const messages: AiChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: billPromptFor(await vatRateBpAt(ctx, new Date())), imageUrls: [row.fileUrl] },
+    { role: "user", content: billPromptFor(await vatRateBpAt(ctx, accountNow())), imageUrls: [row.fileUrl] },
   ];
 
   let tokensIn = 0;

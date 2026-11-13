@@ -1,11 +1,13 @@
 "use server";
 
+import { accountNow } from "./clock";
 import { redirect } from "next/navigation";
 import { safeReason } from "./errors";
 import { revalidatePath } from "next/cache";
 import type { AccountDocType, AccountVatTiming, AccountWhtIncomeType } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, writeAudit } from "./access";
+import { ackCodesOf } from "./legal-gate";
 // 🔴 ไฟล์นี้ **ไม่ import prisma** โดยเจตนา — ทุกการแตะ DB ผ่าน service/product/expense (fitness F5)
 import {
   createDocument,
@@ -138,7 +140,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
     if (side === "revenue" ? !isVisibleDocType(docType) : !EXP_ROUTE[docType]) {
       return { ok: false, reason: "ยังไม่เปิดใช้เอกสารชนิดนี้" };
     }
-    const v = sanitize(payload, await vatRuleAt({ tenantId, systemId }, dateOf(payload?.value?.issueDate) ?? new Date()));
+    const v = sanitize(payload, await vatRuleAt({ tenantId, systemId }, dateOf(payload?.value?.issueDate) ?? accountNow()));
     if (v.lines.length === 0) return { ok: false, reason: "ต้องมีรายการอย่างน้อย 1 รายการ" };
     await assertEditorRefs(tenantId, systemId, {
       contactId: v.contactId,
@@ -314,10 +316,12 @@ export async function approveDocAction(formData: FormData) {
   const doc = await getDraftMeta(tenantId, systemId, id, docType);
   if (!doc) redirect(`${editorListPath(base, docType)}?err=${encodeURIComponent("ไม่พบเอกสาร")}`);
 
+  // T0.4 — ปุ่มอนุมัติของหน้าแก้ไขไม่มีช่องยืนยันคำเตือน: มีคำเตือนต้องยืนยัน ⇒ ไปหน้าเอกสาร (แสดงคำเตือน + ช่องติ๊กยืนยัน)
+  const ack = { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" };
   const res =
     sideOf(docType) === "revenue"
-      ? await issueDocument(tenantId, systemId, id)
-      : await issueExpenseDoc(tenantId, systemId, id);
+      ? await issueDocument(tenantId, systemId, id, { ack })
+      : await issueExpenseDoc(tenantId, systemId, id, { ack });
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -327,6 +331,7 @@ export async function approveDocAction(formData: FormData) {
     after: res.ok ? { docNo: res.docNo, next } : { error: res.reason },
   });
   revalidatePath(detail);
+  if (!res.ok && res.legal) redirect(`${detail}?err=${encodeURIComponent("มีคำเตือนตามกฎหมาย — อ่านแล้วติ๊ก «รับทราบคำเตือนและทำต่อ» ที่ปุ่มออกเอกสาร")}`);
   if (!res.ok) redirect(`${base}/${docTypeEditSuffix(docType, id)}?err=${encodeURIComponent(res.reason)}`);
   if (next === "print") redirect(editorPrintPath(base, id));
   if (next === "pay" && canPayAfterIssue(docType)) redirect(`${detail}?pay=1`);
@@ -533,7 +538,7 @@ export async function saveFavoriteLinesAction(
     assertAccountCan(auth, "account.doc.create");
     const label = trim(name, 60);
     if (!label) return { ok: false, reason: "กรุณาตั้งชื่อชุดรายการ" };
-    const clean = sanitize({ systemId, docType: "INVOICE", value: { lines } as DocDraftPayload["value"] }, await vatRuleAt({ tenantId, systemId }, new Date())).lines;
+    const clean = sanitize({ systemId, docType: "INVOICE", value: { lines } as DocDraftPayload["value"] }, await vatRuleAt({ tenantId, systemId }, accountNow())).lines;
     if (clean.length === 0) return { ok: false, reason: "ไม่มีรายการให้บันทึก" };
     return await saveDocFavorite(tenantId, systemId, { name: label, lines: clean });
   } catch (e) {

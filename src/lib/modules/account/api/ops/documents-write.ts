@@ -14,6 +14,7 @@
 //        (ห้ามไปแก้ข้อความใน service — ข้อความนั้นมีคนอ่านบนหน้าจออยู่)
 //   4) เงินเป็นสตางค์จำนวนเต็มเสมอ · วันที่เป็น `YYYY-MM-DD` (วันไทย) · body ทุกตัว `.strict()`
 
+import { accountNow } from "@/lib/modules/account/clock";
 import type { AccountDocType, AccountVatMode, AccountVatTiming } from "@prisma/client";
 import { z } from "zod";
 import {
@@ -78,7 +79,9 @@ import {
 import { actorDocSource, actorRefId } from "../actor";
 import { vatRuleAt, vatRateLabel } from "../../legal-values";
 import { defineOp, type ApiOp } from "../op";
-import { ApiError } from "../respond";
+import { ApiError, legalAckApiError } from "../respond";
+import { actorAuditId, actorAuditType } from "@/lib/api/actor";
+import { LEGAL_WARNING_CODES, type LegalAckRequired } from "@/lib/core/settings/legal/warnings";
 import { docRow, ymd } from "../serialize";
 
 // ── ค่าคงที่ของสัญญา ────────────────────────────────────────────────────────
@@ -186,7 +189,7 @@ const VAT_RATE_DESC =
 async function assertVatRates(ctx: { tenantId: string; systemId: string }, rates: readonly (number | undefined)[]): Promise<void> {
   const given = rates.filter((r): r is number => typeof r === "number");
   if (given.length === 0) return;
-  const rule = await vatRuleAt(ctx, new Date());
+  const rule = await vatRuleAt(ctx, accountNow());
   const bad = [...new Set(given.filter((r) => !rule.allowed.includes(r)))];
   if (bad.length === 0) return;
   throw new ApiError(
@@ -307,6 +310,17 @@ const updateInput = z
   .strict();
 
 const noBody = z.object({}).strict();
+
+/** T0.4 — รหัสคำเตือนกฎหมายที่ผู้ใช้รับทราบแล้ว (ได้จาก `error.warnings[].code` ของคำตอบ 409 legal_ack_required) */
+const issueInput = z
+  .object({
+    acknowledge: z
+      .array(z.enum(LEGAL_WARNING_CODES))
+      .max(20)
+      .optional()
+      .describe("Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required."),
+  })
+  .strict();
 
 // ── ตัวช่วยของ handler ─────────────────────────────────────────────────────
 
@@ -538,9 +552,9 @@ const documentsIssue = defineOp({
   summary: "Issue a draft: it takes the next document number and posts to the ledger. A purchase order is sent for approval instead.",
   label: "ออกเอกสาร",
   tool: { name: "account_issue_document", hint: "Issuing takes the next document number and posts to the ledger, so it is proposed for the owner to confirm." },
-  input: noBody,
+  input: issueInput,
   test: "C1-W1.8",
-  async handler({ actor, params }) {
+  async handler({ actor, params, input }) {
     const { tenantId, systemId } = actor;
     const id = params.id ?? "";
     const current = await getDocRef(tenantId, systemId, id);
@@ -548,11 +562,15 @@ const documentsIssue = defineOp({
     if (current.status !== "DRAFT") {
       throw stateConflict(`เอกสารนี้ออกแล้ว (เลขที่ ${current.docNo ?? "-"}) — ออกซ้ำไม่ได้`);
     }
+    // T0.4 — คำเตือนกฎหมาย (ไม่จด VAT · ไม่มีเลขผู้ขาย · ใบลด/เพิ่มหนี้ไม่มีสาเหตุ) = 409 legal_ack_required + warnings
+    //   ผู้เรียกส่งซ้ำพร้อม `acknowledge` ⇒ ออกได้ + บันทึกผู้ยืนยัน (API key / ผู้ใช้ที่กดยืนยันข้อเสนอของเลขา) ◂
+    const ack = { codes: input.acknowledge ?? [], actorId: actorAuditId(actor), actorType: actorAuditType(actor), via: actor.kind === "apikey" ? "rest" : "ai-proposal" };
     const res = PURCHASE_ORDER_TYPES.includes(current.docType)
       ? await submitForApproval(tenantId, systemId, id)
       : sideOf(current.docType) === "expense"
-        ? await issueExpenseDoc(tenantId, systemId, id)
-        : await issueDocument(tenantId, systemId, id);
+        ? await issueExpenseDoc(tenantId, systemId, id, { ack })
+        : await issueDocument(tenantId, systemId, id, { ack });
+    if (!res.ok && "legal" in res && res.legal) throw legalAckApiError((res.legal as LegalAckRequired).warnings);
     if (!res.ok) failWith(res.reason);
     return docStateRow(tenantId, systemId, id);
   },

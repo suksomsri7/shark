@@ -1,5 +1,6 @@
 "use server";
 
+import { accountNow } from "./clock";
 import { redirect } from "next/navigation";
 import { safeReason } from "./errors";
 import { revalidatePath } from "next/cache";
@@ -105,7 +106,7 @@ export async function saveRecurringRuleAction(payload: RecurringRulePayload): Pr
     const { auth, tenantId, userId } = await loadAccountSystem(systemId);
     assertAccountCan(auth, "account.doc.create");
     // ACC T0.2 ▸ อัตรา VAT ที่รับได้ตามตารางค่ากฎหมายของสมุด ◂
-    const s = sanitizeRulePayload(payload, await vatRuleAt({ tenantId, systemId }, new Date()));
+    const s = sanitizeRulePayload(payload, await vatRuleAt({ tenantId, systemId }, accountNow()));
     if (!s.ok) return { ok: false, reason: s.reason };
 
     const ruleId = trim(payload?.ruleId, 40);

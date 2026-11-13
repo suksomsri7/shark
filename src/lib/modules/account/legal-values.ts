@@ -12,12 +12,14 @@
 // 🔴 ไม่มีแคชข้ามคำขอ (กติกาเครื่องยนต์ CC §1.4) — ลูปใหญ่ให้โหลด `loadBookLegal` ครั้งเดียวแล้วใช้ตัว *From
 // design note: ledger/wo-notes/T0.1-T0.2.md
 // ─────────────────────────────────────────────────────────────
+import { accountNow } from "./clock";
 import { randomUUID } from "node:crypto";
 import { resolveBookSettings, setSettings, type SetResult, type SettingsActor } from "@/lib/core/settings";
 import { ACCOUNT_SETTING_KEYS } from "@/lib/core/settings/defs/account";
 import type { LegalUiOptions } from "@/components/account-v2/doc-editor-types";
 import {
   CHECK_WITH_ACCOUNTANT_TH,
+  legalWarning,
   ENTITY_KIND_LABEL_TH,
   entityKindOf,
   FILING_CHANNEL_LABEL_TH,
@@ -127,10 +129,7 @@ function payerOf(legal: BookLegal): { payer: WhtPayer; warning: LegalWarning | n
   if (j === false) return { payer: "NON_JURISTIC", warning: null };
   return {
     payer: "JURISTIC",
-    warning: {
-      code: "ENTITY_KIND_UNSET",
-      messageTh: `ยังไม่ได้ระบุประเภทผู้ประกอบการของสมุดนี้ — ระบบแนะนำอัตราแบบผู้จ่ายเป็นนิติบุคคลไปก่อน ตั้งได้ที่ ตั้งค่า › ข้อมูลกิจการ (${CHECK_WITH_ACCOUNTANT_TH})`,
-    },
+    warning: legalWarning("ENTITY_KIND_UNSET", { context: "withholding" }),
   };
 }
 
@@ -155,13 +154,13 @@ export function legalValueFrom<K extends LegalKey>(legal: BookLegal, key: K, dat
     if (p.warning) pre.push(p.warning);
   }
   const recipient = q.recipient ?? "JURISTIC_TH";
-  if (!q.recipient) pre.push({ code: "RECIPIENT_ASSUMED", messageTh: "ยังไม่ทราบประเภทผู้รับ — ระบบแนะนำอัตราแบบผู้รับเป็นบริษัท/ห้างฯ ในไทย" });
+  if (!q.recipient) pre.push(legalWarning("RECIPIENT_ASSUMED"));
   const channel = q.channel ?? "NORMAL";
   const base = { incomeType: q.incomeType, payer, recipient };
   if (channel === "EWHT") {
     const e = pickFrom("wht", legal, { ...base, channel: "EWHT" }, ymd, false);
     if (e.pick.row) return { value: e.pick.row.value, method: e.pick.row.method, row: e.pick.row, origin: e.pick.origin, ymd, warnings: [...pre, ...e.warnings] };
-    pre.push({ code: "EWHT_NOT_IN_EFFECT", messageTh: `ไม่มีอัตรา e-Withholding Tax ที่มีผลวันที่ ${ymd} สำหรับกรณีนี้ — ระบบใช้อัตราปกติ` });
+    pre.push(legalWarning("EWHT_NOT_IN_EFFECT", { ymd }));
   }
   const n = pickFrom("wht", legal, { ...base, channel: "NORMAL" }, ymd);
   const row = n.pick.row;
@@ -395,7 +394,7 @@ function tableView<K extends LegalTableKind>(kind: K, legal: BookLegal, ymd: str
         origin === "SHOP"
           ? shopRowWarnings(kind, r)
           : r.tag === "S" || r.tag === "U"
-            ? [{ code: "UNVERIFIED_DEFAULT", messageTh: `ค่าเริ่มต้นนี้ยังไม่ได้ยืนยันจากเอกสารทางการ — ${CHECK_WITH_ACCOUNTANT_TH}`, citation: r.source }]
+            ? [legalWarning("UNVERIFIED_DEFAULT", {}, { citation: r.source })]
             : [],
     };
   };
@@ -406,7 +405,7 @@ export function bookTaxViewFrom(legal: BookLegal, date: Date): BookTaxView {
   const ymd = bkkYmd(date);
   const warnings: LegalWarning[] = [];
   if (legal.entityKind === "UNSET") {
-    warnings.push({ code: "ENTITY_KIND_UNSET", messageTh: "ยังไม่ได้ระบุประเภทผู้ประกอบการ — ตั้งได้ที่ ตั้งค่า › ข้อมูลกิจการ (ใช้กับคำเตือน รายงาน ปฏิทินภาษี และหัก ณ ที่จ่าย)" });
+    warnings.push(legalWarning("ENTITY_KIND_UNSET"));
   }
   return {
     asOf: ymd,
@@ -419,7 +418,7 @@ export function bookTaxViewFrom(legal: BookLegal, date: Date): BookTaxView {
   };
 }
 
-export async function bookTaxView(ctx: BookCtx, date: Date = new Date()): Promise<BookTaxView> {
+export async function bookTaxView(ctx: BookCtx, date: Date = accountNow()): Promise<BookTaxView> {
   return bookTaxViewFrom(await loadBookLegal(ctx), date);
 }
 

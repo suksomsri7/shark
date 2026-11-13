@@ -9,6 +9,7 @@
 // 🔴 ทุกคำสั่งต้องมี `member.api.manage` (มีเฉพาะชุด admin) · เพิกถอน = danger (confirm + reason)
 
 import { z } from "zod";
+import { LEGAL_WARNING_CODES } from "@/lib/core/settings/legal/warnings";
 import * as giftcard from "@/lib/modules/giftcard";
 import { createApiKey, listApiKeys, revokeApiKey } from "@/lib/api-keys/service";
 import { bundleLabelForScopes, bundlesCovering, expandBundles } from "@/lib/api-keys/scopes";
@@ -86,10 +87,11 @@ const settingsSet = defineMemberOp({
           denominations: z.array(z.coerce.number().int().min(1)).max(20).optional(),
           transferable: z.boolean().optional(),
           reloadable: z.boolean().optional(),
+          acknowledge: z.array(z.enum(LEGAL_WARNING_CODES)).max(20).optional(),
         })
         .strict()
         .optional()
-        .describe("Same fields as PUT /giftcards/settings."),
+        .describe("Same fields as PUT /giftcards/settings (including `acknowledge` for legal warnings)."),
       reports: z
         .object({
           enabled: z.boolean().optional(),
@@ -107,13 +109,15 @@ const settingsSet = defineMemberOp({
     const ctx = memberCtxOf(actor);
     const who = memberActorOf(actor);
     await as400(async () => {
+      // T0.4: บัตรกำนัลก่อน — คำเตือนกฎหมายที่ยังไม่ยืนยัน (409 legal_ack_required) ต้องโยน "ก่อนเขียนอะไร" ⇒ ส่งซ้ำด้วยคีย์เดิมได้
+      if (input.giftCard) {
+        const b = await loyaltyCtx(actor);
+        const { acknowledge, ...gc } = input.giftCard;
+        await giftcard.setSettings(giftCardCtx(b), who, gc, { ack: acknowledge ?? [] });
+      }
       if (input.review) await reviews.setReviewSettings(ctx, who, input.review);
       if (input.referral) await referrals.setProgram(ctx, who, input.referral);
       if (input.notifications) await notifications.setNotificationSettings(ctx, who, input.notifications);
-      if (input.giftCard) {
-        const b = await loyaltyCtx(actor);
-        await giftcard.setSettings(giftCardCtx(b), who, input.giftCard);
-      }
       if (input.reports) await reports.setReportSchedule(ctx, who, input.reports);
     });
     return jsonSafe(await allSettings(actor));

@@ -185,13 +185,14 @@ export default async function PublicTaxInvoicePage({
               {t("receipt.form.taxId")}
               <input
                 name="taxId"
-                required
                 inputMode="numeric"
                 pattern="[0-9]{13}"
                 maxLength={13}
                 placeholder="0000000000000"
                 className={inputCls}
               />
+              {/* T0.4 ▸ B2: เลขผู้ซื้อบังคับเฉพาะผู้ซื้อที่จด VAT (ฉ.39 ข้อ 7) ◂ */}
+              <span className="text-xs text-[color:var(--color-muted)]" data-testid="tax-id-hint">{t("receipt.form.taxIdHint")}</span>
             </label>
             <label className={labelCls}>
               {t("receipt.form.branch")}

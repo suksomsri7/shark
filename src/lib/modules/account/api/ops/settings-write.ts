@@ -23,6 +23,7 @@
 //      `account.settings.manage` อยู่แล้ว · `addRole()` ไม่ต้องใช้ actorUserId (แค่เพิ่มนิยามบทบาท ยังไม่
 //      เขียนสิทธิ์ให้ใคร)
 
+import { accountNow } from "@/lib/modules/account/clock";
 import type { AccountDocType, AccountLinkedKind, AccountVatTiming } from "@prisma/client";
 import { z } from "zod";
 import { getDocSettings, saveDocSettings, setDocNextNo, createDocTag, docNumberingRows } from "../../doc-settings";
@@ -732,7 +733,7 @@ const settingsTaxUpdate = defineOp({
       if (res.code === "PERMISSION") throw new ApiError(403, "forbidden", msg, "Not allowed to change these settings.");
       throw invalid(msg);
     }
-    return { saved: res.saved, warnings: res.warnings, settings: await bookTaxView(ctx, new Date()) };
+    return { saved: res.saved, warnings: res.warnings, settings: await bookTaxView(ctx, accountNow()) };
   },
 });
 

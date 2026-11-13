@@ -1,4 +1,5 @@
 import type { AccountDocSource, AccountDocType, AccountPayChannel, AccountWhtIncomeType } from "@prisma/client";
+import { accountNow } from "./clock";
 import {
   DOC_LABEL,
   STATUS_LABEL,
@@ -356,7 +357,7 @@ export async function groupPanelData(
     listPaymentChannels(tenantId, systemId),
     getPolicy({ tenantId, systemId }),
   ]);
-  const legal = await legalUiOptionsAt({ tenantId, systemId }, new Date(), policy.whtDefaults, def.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS");
+  const legal = await legalUiOptionsAt({ tenantId, systemId }, accountNow(), policy.whtDefaults, def.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS");
 
   const batchMap = new Map<string, GroupBatchView>();
   for (const p of payments) {

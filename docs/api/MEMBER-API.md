@@ -122,6 +122,7 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 | `unprocessable` | 422 | The request was understood but cannot be completed as asked, for example importing more rows than the limit, or moving a member to a tier they already hold. | Read `message_en` and `message_th`; the Thai message is safe to show to the shop owner. |
 | `upstream_unavailable` | 503 | An external service an operation depends on is not configured or not reachable right now. | Retry later; this is not caused by the request itself. |
 | `idempotency_outcome_unknown` | 409 | A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again. | Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry. |
+| `legal_ack_required` | 409 | The action has legal warnings (Thai tax or consumer rules) that a person must read and accept first. Nothing was written. `error.warnings[]` lists each warning: `code`, `messageTh`, `citation`, `tag` (V, V2, S or U confidence) and `checkedAt`. Warnings are system defaults based on research, not legal advice. | Show the warnings to the user. If they accept, resend the same request with `acknowledge` listing the warning codes (the same `Idempotency-Key` is fine). Who accepted is recorded in the audit log. |
 
 ## Operations
 
@@ -1942,6 +1943,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/giftcards/123/use" \
 | `denominations` | array of integer | no | Preset values in satang. · max 20 items |
 | `transferable` | boolean | no | - |
 | `reloadable` | boolean | no | - |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT") | no | Legal warning codes the user has read and accepted (from a 409 legal_ack_required). An expiry shorter than the system default of 12 months needs GIFTCARD_EXPIRY_BELOW_DEFAULT. · max 20 items |
 
 ```bash
 curl -sS -X PUT "https://shark.in.th/api/v1/member/giftcards/settings" \
@@ -3097,7 +3099,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/segments" \
 | `review` | object | no | Same fields as PUT /reviews/settings. |
 | `referral` | object | no | Same fields as PUT /referrals/program. |
 | `notifications` | object | no | System switches. Templates change one at a time with PUT /notifications/templates/{key}. |
-| `giftCard` | object | no | Same fields as PUT /giftcards/settings. |
+| `giftCard` | object | no | Same fields as PUT /giftcards/settings (including `acknowledge` for legal warnings). |
 | `reports` | object | no | Scheduled report email. |
 
 ```bash

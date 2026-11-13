@@ -81,6 +81,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   // บัญชี
   "account.doc.create": "สร้าง/แก้ไขเอกสารบัญชี",
   "account.doc.issue": "ออกเอกสารบัญชี",
+  // T0.4 — ผู้ใช้กดยืนยันผ่านคำเตือนกฎหมาย (รหัสคำเตือนอยู่ใน after.codes)
+  "legal.warning.ack": "ยืนยันทำต่อหลังเห็นคำเตือนตามกฎหมาย",
   "account.doc.approve": "อนุมัติเอกสารบัญชี",
   "account.doc.void": "ยกเลิกเอกสารบัญชี",
   "account.doc.public_link": "สร้างลิงก์ขอใบกำกับภาษี",

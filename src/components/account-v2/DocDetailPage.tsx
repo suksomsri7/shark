@@ -18,6 +18,9 @@ import {
 // WO 9.4 §0.3 ข้อ 8 — ยกเลิกร่าง (ไม่กินเลขที่/ไม่ลงเงิน) ⇒ เลิกทำได้ภายใน 5 นาที
 import { cancelDraftFormAction } from "@/lib/modules/account/undo-stack";
 import { DocTagsBlock } from "./DocTagsBlock";
+import { LegalWarnings } from "./LegalWarnings";
+import { issueLegalWarnings } from "@/lib/modules/account/legal-gate";
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 import {
   issueExpenseDocAction,
   voidExpenseDocAction,
@@ -96,7 +99,10 @@ function ActionRow({
   vatRegistered,
   targets,
   perm,
+  legalWarnings = [],
 }: {
+  /** T0.4 — คำเตือนกฎหมายของการออกเอกสารร่างนี้ (ช่องติ๊กยืนยันอยู่ในฟอร์มออกเอกสาร) */
+  legalWarnings?: LegalWarning[];
   data: DocDetailData;
   systemId: string;
   side: "revenue" | "expense";
@@ -127,13 +133,15 @@ function ActionRow({
         <SubmitButton className="w-full h-11 md:h-9 md:w-auto">ส่งอนุมัติ</SubmitButton>
       </form>
     ) : side === "expense" ? (
-      <form action={issueExpenseDocAction}>
+      <form action={issueExpenseDocAction} className={legalWarnings.length ? "flex flex-col gap-2" : undefined}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <LegalWarnings warnings={legalWarnings} ackName="ack" testId="doc-legal-warnings" />
         <SubmitButton className="w-full h-11 md:h-9 md:w-auto">{isAdjustReceived ? "บันทึก" : "บันทึก/ตั้งเจ้าหนี้"}</SubmitButton>
       </form>
     ) : (
-      <form action={issueDocumentAction}>
+      <form action={issueDocumentAction} className={legalWarnings.length ? "flex flex-col gap-2" : undefined}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <LegalWarnings warnings={legalWarnings} ackName="ack" testId="doc-legal-warnings" />
         <SubmitButton className="w-full h-11 md:h-9 md:w-auto">ออกเอกสาร</SubmitButton>
       </form>
     );
@@ -961,6 +969,12 @@ export async function DocDetailPage({
     };
   })();
 
+  // T0.4 — ร่างที่จะออก: แสดงคำเตือนกฎหมายล่วงหน้า (ทะเบียนกลาง) · ด่านจริงอยู่ที่ service (ไม่เชื่อจอ)
+  const legalWarnings =
+    data.status === "DRAFT" && !PO_TYPES.includes(dt)
+      ? issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason }, side === "revenue" ? settings : null)
+      : [];
+
   const steps: StepDef[] = data.timeline.map((s) => ({
     code: s.code,
     label: s.label,
@@ -1035,7 +1049,7 @@ export async function DocDetailPage({
         {/* WO 9.4 §0.3 ข้อ 8/9 — แท็กเอกสาร: ลบทีละแท็กได้ (เลิกทำได้ภายใน 5 นาที) — ไม่มีแท็ก = ไม่แสดงอะไร */}
         {data.tags.length > 0 && <DocTagsBlock systemId={systemId} docId={data.id} tags={data.tags} />}
 
-        <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} perm={perm} />
+        <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} perm={perm} legalWarnings={legalWarnings} />
       </div>
 
       {/* ไทม์ไลน์เอกสาร */}

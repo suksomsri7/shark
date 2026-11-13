@@ -267,6 +267,8 @@ export type DocDetailData = {
   grandTotal: number;
   paidTotal: number;
   note: string | null;
+  /** T0.4 — สาเหตุของใบลด/เพิ่มหนี้ (ใช้แสดงคำเตือนก่อนออก) */
+  adjustReason: string | null;
   internalNote: string | null;
   /** WO 9.4 §0.3 ข้อ 8/9 — แท็กอิสระของเอกสาร (ลบทีละแท็กได้ที่หน้านี้ — เลิกทำได้ภายใน 5 นาที) */
   tags: string[];
@@ -352,6 +354,7 @@ export async function getDocDetailData(
     grandTotal: doc.grandTotal,
     paidTotal: doc.paidTotal,
     note: doc.note,
+    adjustReason: doc.adjustReason ?? null,
     internalNote: doc.internalNote,
     tags: doc.tags,
     publicToken: doc.publicToken,

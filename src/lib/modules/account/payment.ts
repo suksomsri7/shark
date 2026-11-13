@@ -1,4 +1,5 @@
 import type { AccountDocType, AccountPayChannel, AccountWhtIncomeType } from "@prisma/client";
+import { accountNow } from "./clock";
 import {
   recordPayment,
   voidPayment,
@@ -158,7 +159,7 @@ export async function paymentPanelData(
     getPolicy({ tenantId, systemId }),
   ]);
   const outstanding = paymentOutstandingOf(target) /* CRM C5.4-C ▸ − ใบลดหนี้ (F-05) ◂ */;
-  const legal = await legalUiOptionsAt({ tenantId, systemId }, new Date(), policy.whtDefaults, target.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS");
+  const legal = await legalUiOptionsAt({ tenantId, systemId }, accountNow(), policy.whtDefaults, target.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS");
   return {
     docId: doc.id,
     docType: doc.docType,

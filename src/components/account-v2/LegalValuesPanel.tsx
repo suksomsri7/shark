@@ -11,6 +11,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DateInput } from "./DateInput";
+import { LegalWarnings } from "./LegalWarnings";
 import { formatDateTh } from "@/lib/ui/date";
 import {
   CHECK_WITH_ACCOUNTANT_TH,
@@ -112,18 +113,9 @@ function payloadFromDraft(kind: Kind, d: Draft): Record<string, unknown> {
 const rangeText = (r: { from: string | null; to: string | null }) =>
   r.from || r.to ? `${r.from ? formatDateTh(r.from) : "ไม่ระบุ"} – ${r.to ? formatDateTh(r.to) : "ไม่ระบุ"}` : "ไม่ระบุช่วง";
 
+/** T0.4: ใช้ที่แสดงคำเตือนกลางตัวเดียวกับทุกหน้า */
 function Warnings({ list, testId }: { list: LegalWarning[]; testId?: string }) {
-  if (!list.length) return null;
-  return (
-    <ul className="flex flex-col gap-0.5" data-testid={testId}>
-      {list.map((w, i) => (
-        <li key={`${w.code}-${i}`} className="text-xs text-[color:var(--color-ink)]">
-          {w.messageTh}
-          {w.citation ? <span className="text-[color:var(--color-muted)]"> · อ้างอิง: {w.citation}</span> : null}
-        </li>
-      ))}
-    </ul>
-  );
+  return <LegalWarnings warnings={list} testId={testId} />;
 }
 
 function Select({ label, value, onChange, options, testId }: { label: string; value: string; onChange: (v: string) => void; options: Record<string, string>; testId?: string }) {

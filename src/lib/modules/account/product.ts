@@ -524,7 +524,7 @@ export async function createProduct(
     salePrice: input.salePrice ?? null,
     buyPrice: input.buyPrice ?? null,
     // ACC T0.2 ▸ ไม่ระบุ = อัตรามาตรฐานจากตารางค่ากฎหมายของสมุด ณ วันนี้ (เดิมฝัง 700) ◂
-    vatRateBp: input.vatRateBp ?? (await vatRateBpAt({ tenantId, systemId }, new Date())),
+    vatRateBp: input.vatRateBp ?? (await vatRateBpAt({ tenantId, systemId }, accountNow())),
     incomeAccountId: input.incomeAccountId || null,
     expenseAccountId: input.expenseAccountId || null,
     imageUrl: input.imageUrl?.trim() || null,
@@ -590,7 +590,7 @@ export async function updateProduct(
     salePrice: input.salePrice ?? null,
     buyPrice: input.buyPrice ?? null,
     // ACC T0.2 ▸ ไม่ระบุ = อัตรามาตรฐานจากตารางค่ากฎหมายของสมุด ณ วันนี้ (เดิมฝัง 700) ◂
-    vatRateBp: input.vatRateBp ?? (await vatRateBpAt({ tenantId, systemId }, new Date())),
+    vatRateBp: input.vatRateBp ?? (await vatRateBpAt({ tenantId, systemId }, accountNow())),
     incomeAccountId: input.incomeAccountId || null,
     expenseAccountId: input.expenseAccountId || null,
     imageUrl: input.imageUrl?.trim() || null,

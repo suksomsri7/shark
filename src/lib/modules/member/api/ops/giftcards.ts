@@ -10,6 +10,7 @@
 //    **ตัดยอด** ต้องมี PIN เสมอ — ยอดคงเหลือไม่ใช่ความลับ ความลับคือสิทธิ์ใช้เงินในบัตร
 
 import { z } from "zod";
+import { LEGAL_WARNING_CODES } from "@/lib/core/settings/legal/warnings";
 import * as giftcard from "@/lib/modules/giftcard";
 import { memberActorOf } from "../actor";
 import { giftCardCtx, loyaltyCtx } from "../loyalty";
@@ -255,12 +256,18 @@ const settingsSet = defineMemberOp({
       denominations: z.array(z.coerce.number().int().min(1)).max(20).optional().describe("Preset values in satang."),
       transferable: z.boolean().optional(),
       reloadable: z.boolean().optional(),
+      acknowledge: z
+        .array(z.enum(LEGAL_WARNING_CODES))
+        .max(20)
+        .optional()
+        .describe("Legal warning codes the user has read and accepted (from a 409 legal_ack_required). An expiry shorter than the system default of 12 months needs GIFTCARD_EXPIRY_BELOW_DEFAULT."),
     })
     .strict(),
   test: "M2.10-S1.1",
   async handler({ actor, input }) {
     const b = await loyaltyCtx(actor);
-    return jsonSafe(await giftcard.setSettings(giftCardCtx(b), memberActorOf(actor), input));
+    const { acknowledge, ...patch } = input;
+    return jsonSafe(await giftcard.setSettings(giftCardCtx(b), memberActorOf(actor), patch, { ack: acknowledge ?? [] }));
   },
 });
 

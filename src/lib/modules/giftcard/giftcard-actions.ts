@@ -9,6 +9,7 @@
 // 🔴 เรียก `service.ts` เท่านั้น — ห้ามแตะตาราง GiftCard ผ่าน prisma ตรงจากที่นี่
 // 🔴 ข้อความ error ที่ส่งกลับหน้าจอผ่าน `safeReason` เสมอ (ไม่ปล่อยรายละเอียดภายในหลุด)
 
+import { isLegalAckRequiredError, LEGAL_ACK_REASON_TH, LEGAL_ACK_REQUIRED, type LegalAckRequired } from "@/lib/core/settings/legal/warnings";
 import { revalidatePath } from "next/cache";
 import type { PosPayType } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
@@ -36,7 +37,7 @@ import {
   type SellRecipient,
 } from "./service";
 
-export type GiftCardActionResult<T> = { ok: true; data: T } | { ok: false; reason: string };
+export type GiftCardActionResult<T> = { ok: true; data: T } | { ok: false; reason: string; legal?: LegalAckRequired };
 
 type GiftCardQueryStatus = "ACTIVE" | "DEPLETED" | "EXPIRED" | "SUSPENDED" | null;
 
@@ -146,17 +147,20 @@ export async function reloadGiftCardAction(input: {
 // ───────────────────────── ตั้งค่า ─────────────────────────
 
 export async function setGiftCardSettingsAction(
-  input: { systemId: string } & Partial<GiftCardSettingsDto>,
+  input: { systemId: string; ack?: string[] } & Partial<GiftCardSettingsDto>,
 ): Promise<GiftCardActionResult<GiftCardSettingsDto>> {
   try {
     const { ctx, actor } = await gate(input.systemId);
     requireKey(actor, "member.giftcard.manage");
-    const { systemId: _systemId, ...patch } = input;
-    const next = await setSettings(ctx, actor, patch);
+    const { systemId: _systemId, ack, ...patch } = input;
+    const next = await setSettings(ctx, actor, patch, { ack: Array.isArray(ack) ? ack.filter((c) => typeof c === "string") : [] });
     revalidatePath(PATH(input.systemId));
     revalidatePath(`${PATH(input.systemId)}/settings`);
     return { ok: true, data: next };
   } catch (e) {
+    // T0.4 — คำเตือนกฎหมายที่ต้องกดยืนยัน = ผลปกติ (ฟอร์มแสดงคำเตือน + ช่องติ๊กแล้วส่งซ้ำพร้อม ack)
+    if (isLegalAckRequiredError(e))
+      return { ok: false, reason: LEGAL_ACK_REASON_TH, legal: { code: LEGAL_ACK_REQUIRED, warnings: e.warnings } };
     return { ok: false, reason: safeReason(e, "บันทึกการตั้งค่าบัตรกำนัลไม่สำเร็จ — ลองใหม่อีกครั้ง") };
   }
 }

@@ -1,0 +1,80 @@
+"use client";
+
+// ─────────────────────────────────────────────────────────────
+// LegalWarnings — ที่แสดงคำเตือนกฎหมายแบบเดียวกันทุกหน้า (T0.4)
+//   ข้อมูลมาจากทะเบียนกลาง `src/lib/core/settings/legal/warnings.ts` เท่านั้น (รูป LegalWarning ชุดเดียวกับ REST/AI)
+//   แต่ละรายการ: ข้อความ · อ้างอิง · ป้ายความมั่นใจ · วันที่ตรวจ · ไอคอน warn ของ AccountIcon (ไม่ใช้ emoji)
+//   ถ้ามีรายการที่ต้องกดยืนยัน → ช่องติ๊ก "รับทราบคำเตือนและทำต่อ"
+//     - ในฟอร์ม server action: ติ๊กแล้วส่ง <input name={ackName} value=code> ทุกรหัสที่ต้องยืนยัน
+//     - แบบควบคุมเอง: onAckChange(codes | [])
+// 🔴 client: import ได้เฉพาะไฟล์ pure (warnings.ts) — ห้ามลาก prisma
+// ─────────────────────────────────────────────────────────────
+import { useState } from "react";
+import { AccountIcon } from "./AccountIcon";
+import { formatDateTh } from "@/lib/ui/date";
+import { LEGAL_TAG_SHORT_TH, type LegalWarning } from "@/lib/core/settings/legal/warnings";
+
+export function LegalWarnings({
+  warnings,
+  ackName,
+  onAckChange,
+  testId = "legal-warnings",
+  compact = false,
+}: {
+  warnings: readonly LegalWarning[];
+  /** ชื่อช่องในฟอร์มที่ส่งรหัสที่ยืนยัน (server action อ่าน formData.getAll(ackName)) */
+  ackName?: string;
+  onAckChange?: (codes: string[]) => void;
+  testId?: string;
+  compact?: boolean;
+}) {
+  const [acked, setAcked] = useState(false);
+  if (!warnings.length) return null;
+  const needAck = warnings.filter((w) => w.ack).map((w) => w.code);
+  const canAck = needAck.length > 0 && (ackName !== undefined || onAckChange !== undefined);
+  return (
+    <div
+      role="alert"
+      className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] p-3"
+      data-testid={testId}
+    >
+      <ul className="flex flex-col gap-1.5">
+        {warnings.map((w, i) => (
+          <li key={`${w.code}-${i}`} className="flex gap-2 text-sm text-[color:var(--color-ink)]" data-code={w.code} data-testid={`${testId}-item`}>
+            <span className="mt-0.5 shrink-0">
+              <AccountIcon name="warn" className="h-4 w-4" />
+            </span>
+            <span className="flex flex-col gap-0.5">
+              <span>{w.messageTh}</span>
+              {!compact && (w.citation || w.tag || w.checkedAt) ? (
+                <span className="text-xs text-[color:var(--color-muted)]">
+                  {w.citation ? <>อ้างอิง: {w.citation}</> : null}
+                  {w.tag ? <> · {LEGAL_TAG_SHORT_TH[w.tag]}</> : null}
+                  {w.checkedAt ? <> · ตรวจแหล่งเมื่อ {formatDateTh(w.checkedAt)}</> : null}
+                </span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {canAck ? (
+        <label className="flex items-center gap-2 text-sm font-medium text-[color:var(--color-ink)]">
+          <input
+            type="checkbox"
+            checked={acked}
+            onChange={(e) => {
+              setAcked(e.target.checked);
+              onAckChange?.(e.target.checked ? needAck : []);
+            }}
+            data-testid={`${testId}-ack`}
+          />
+          รับทราบคำเตือนและทำต่อ
+        </label>
+      ) : null}
+      {canAck && ackName && acked ? needAck.map((c) => <input key={c} type="hidden" name={ackName} value={c} />) : null}
+      <p className="text-xs text-[color:var(--color-muted)]">ข้อมูลอ้างอิงจากผลค้นคว้าของระบบ ไม่ใช่คำปรึกษากฎหมาย</p>
+    </div>
+  );
+}
+
+export default LegalWarnings;

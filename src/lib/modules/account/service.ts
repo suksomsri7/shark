@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { safeReason } from "./errors";
 import { accountNow } from "./clock";
+import { issueLegalWarnings, legalAckResult, legalGateInTx } from "./legal-gate";
+import { isLegalAckRequiredError, legalWarning, type LegalAck, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // CRM C5.4-C/C5.4-N ▸ LOCK ORDER of the account money transactions (round 11 · R10-2 · C5.4-N tail numbering) — THE one
@@ -530,7 +532,7 @@ export async function getSettings(
   systemId: string,
 ): Promise<AccountSettingsView> {
   const [row, legal] = await Promise.all([prisma.accountSettings.findFirst({ where: { tenantId, systemId } }), loadBookLegal({ tenantId, systemId })]);
-  return settingsViewOf(row, legal, new Date());
+  return settingsViewOf(row, legal, accountNow());
 }
 
 /**
@@ -575,7 +577,7 @@ export async function saveSettings(
   systemId: string,
   input: Partial<AccountSettingsView>,
 ) {
-  if (input.vatRateBp !== undefined && input.vatRateBp !== (await vatRateBpAt({ tenantId, systemId }, new Date()))) {
+  if (input.vatRateBp !== undefined && input.vatRateBp !== (await vatRateBpAt({ tenantId, systemId }, accountNow()))) {
     throw new Error(VAT_RATE_VIA_TABLE_TH);
   }
   const existing = await prisma.accountSettings.findFirst({ where: { tenantId, systemId } });
@@ -2380,15 +2382,18 @@ export async function issueDocument(
   tenantId: string,
   systemId: string,
   id: string,
-): Promise<{ ok: true; docNo: string } | { ok: false; reason: string }> {
+  opts: { ack?: LegalAck | null } = {},
+): Promise<{ ok: true; docNo: string } | { ok: false; reason: string; legal?: LegalAckRequired }> {
   try {
     const settings = await getSettings(tenantId, systemId);
     let docNo = "";
     await prisma.$transaction(async (tx) => {
-      docNo = await issueDocumentInTx(tx, tenantId, systemId, id, settings);
+      docNo = await issueDocumentInTx(tx, tenantId, systemId, id, settings, opts);
     });
     return { ok: true, docNo };
   } catch (e) {
+    // T0.4: คำเตือนกฎหมายที่ยังไม่ได้กดยืนยัน = ผลปกติ (ไม่ใช่ error) — ผู้เรียกแสดงคำเตือนแล้วส่งซ้ำพร้อม ack
+    if (isLegalAckRequiredError(e)) return legalAckResult(e);
     return { ok: false, reason: safeReason(e, "ออกเอกสารไม่สำเร็จ") };
   }
 }
@@ -2404,6 +2409,7 @@ export async function issueDocumentInTx(
   systemId: string,
   id: string,
   settings: Awaited<ReturnType<typeof getSettings>>,
+  opts: { ack?: LegalAck | null } = {},
 ): Promise<string> {
       let docNo = "";
       // WO 9.2 ข้อ 14 — กดปุ่ม "ออกเอกสาร" รัว 2 ครั้ง: ไม่มีล็อก = ผ่านด่าน DRAFT ทั้งคู่
@@ -2416,21 +2422,16 @@ export async function issueDocumentInTx(
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (doc.status !== "DRAFT") throw new Error("เอกสารนี้ออกแล้ว");
       if (doc.lines.length === 0) throw new Error("ต้องมีรายการอย่างน้อย 1 รายการ");
-      // A3: ไม่จด VAT → ห้ามออกใบกำกับภาษี
-      if (doc.docType === "TAX_INVOICE" && !settings.vatRegistered)
-        throw new Error("กิจการยังไม่จดทะเบียน VAT — ออกใบกำกับภาษีไม่ได้");
-      // M2 (ม.86/4(2)): ออกใบกำกับภาษีต้องมีเลขผู้เสียภาษีผู้ขายใน settings
-      if (doc.docType === "TAX_INVOICE" && !normalizeTaxId(settings.taxId))
-        throw new Error("กรุณากรอกเลขประจำตัวผู้เสียภาษีของกิจการในการตั้งค่าก่อนออกใบกำกับภาษี (ม.86/4)");
+      // T0.4 ▸ เดิม A3 (ไม่จด VAT) / M2 (ไม่มีเลขผู้ขาย) / F4 (ใบลด-เพิ่มหนี้ไม่มีสาเหตุ) = บล็อก → เปลี่ยนเป็นคำเตือนที่อ้างมาตรา
+      //   ร้านกดยืนยันผ่านได้ (หลัก SHARK) · บันทึกผู้ยืนยันลง AuditLog ในธุรกรรมเดียวกัน ◂
+      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, settings), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
       // SVC D.3 ▸ (T7) ใบกำกับจากใบแจ้งหนี้หอ (source DORM) ที่มาจากรอบบิล/มีรายการยกเว้น-ไม่มี VAT ⇒ ปฏิเสธ
       //   (ทางแปลงทั่วไปออกใบกำกับยอดเต็มรวมค่าห้องยกเว้น) — ใบกำกับของหอออกได้ทางเดียว = ใบกำกับเฉพาะส่วน VAT ของหอ ◂
       if (doc.docType === "TAX_INVOICE" && doc.sourceDocId) await dormTaxSourceGuardInTx(tx, systemId, doc.sourceDocId);
 
-      // ── CN/DN (F4, tax-M3, WO 1.6): เหตุผลสรรพากรบังคับเสมอ · อ้างอิงเอกสารเดิมเป็นทางเลือก (§5.2 J
+      // ── CN/DN (F4, tax-M3, WO 1.6): สาเหตุไม่ครบ = คำเตือน ADJUST_NOTE_REASON_MISSING (T0.4 · ด่านบน) · อ้างอิงเอกสารเดิมเป็นทางเลือก (§5.2 J
       //    "ไม่อ้างอิงเอกสารเดิม") · CN cap ≤ คงเหลือของเอกสารเดิม **เฉพาะเมื่อมีการอ้างอิง** (ไม่อ้างอิง = ไม่มีเพดาน)
       if (doc.docType === "CREDIT_NOTE" || doc.docType === "DEBIT_NOTE") {
-        if (!doc.adjustReason || doc.adjustReason.trim().length === 0)
-          throw new Error("ต้องระบุเหตุผลการออก (ตามประกาศสรรพากร)");
         if (doc.docType === "CREDIT_NOTE" && doc.sourceDocId) {
           // CRM C5.4-C ▸ (review round 3 · 2) ล็อกแถวต้นทางก่อนอ่านเพดาน — recordPayment ล็อกแถวเดียวกัน ⇒ ใบลดหนี้ที่แข่งกับการรับชำระ
           //   (หรือกับใบลดหนี้อีกใบ) อ่านยอดที่ commit แล้วเสมอ ไม่ลดหนี้เกินคงเหลือ · ลำดับล็อก: ใบลดหนี้ → ต้นทาง (เหมือน voidDocument) ◂
@@ -4344,13 +4345,15 @@ export async function getPublicTaxContext(token: string): Promise<{
 export async function issuePublicTaxInvoice(
   token: string,
   buyer: { name: string; taxId: string; branchCode?: string | null; address?: string | null; phone?: string | null; email?: string | null },
-): Promise<{ ok: true; requested: boolean; docNo: string | null } | { ok: false; reason: string }> {
+): Promise<{ ok: true; requested: boolean; docNo: string | null; warnings: LegalWarning[] } | { ok: false; reason: string }> {
   const name = buyer.name.trim();
   const taxId = normalizeTaxId(buyer.taxId);
   if (!name) return { ok: false, reason: "กรุณากรอกชื่อผู้ซื้อ" };
-  // M2: เลขผู้เสียภาษี 13 หลัก + ตรวจ checksum (กัน 1111111111111)
-  if (!isValidThaiTaxId(taxId))
-    return { ok: false, reason: "เลขประจำตัวผู้เสียภาษีไม่ถูกต้อง (ต้องเป็นตัวเลข 13 หลักและหลักตรวจสอบถูกต้อง)" };
+  // T0.4 ▸ B2: เลขผู้ซื้อบังคับเฉพาะผู้ซื้อที่จด VAT (ฉ.39 ข้อ 7) ⇒ เว้นว่างได้ + คำเตือน BUYER_TAX_ID_MISSING (ผู้อนุมัติเห็นบนคำขอ)
+  //   กรอกมาแต่หลักตรวจผิด = ยังปฏิเสธ (กันพิมพ์ผิด — ไม่ใช่เหตุผลกฎหมาย) ◂
+  const warnings: LegalWarning[] = taxId ? [] : [legalWarning("BUYER_TAX_ID_MISSING")];
+  if (taxId && !isValidThaiTaxId(taxId))
+    return { ok: false, reason: "เลขประจำตัวผู้เสียภาษีไม่ถูกต้อง (ต้องเป็นตัวเลข 13 หลักและหลักตรวจสอบถูกต้อง) — ผู้ซื้อทั่วไปเว้นว่างได้" };
 
   try {
     const source = await prisma.accountDocument.findFirst({
@@ -4385,7 +4388,7 @@ export async function issuePublicTaxInvoice(
       },
       select: { docNo: true, status: true },
     });
-    if (existing) return { ok: true, requested: false, docNo: existing.docNo };
+    if (existing) return { ok: true, requested: false, docNo: existing.docNo, warnings };
 
     // ยอดใบกำกับ = ยอดต้นทาง หักส่วนมัดจำ (เหมือน convertDocument F-02)
     let tiSubTotal = source.subTotal;
@@ -4401,8 +4404,9 @@ export async function issuePublicTaxInvoice(
 
     const snapshot = {
       name,
-      taxId,
-      legalType: "COMPANY", // ผู้ขอใบกำกับผ่านลิงก์ = นิติบุคคล/บุคคลที่มีเลข 13 หลัก (freeze M4)
+      taxId: taxId || null,
+      // ผู้ขอใบกำกับผ่านลิงก์ที่มีเลข 13 หลัก = นิติบุคคล/บุคคลที่มีเลข (freeze M4) · ไม่มีเลข (T0.4) = ผู้ซื้อทั่วไป
+      legalType: taxId ? "COMPANY" : "PERSON",
       branchCode: buyer.branchCode?.trim() || "00000",
       branchName: null,
       address: buyer.address?.trim() || null,
@@ -4419,6 +4423,8 @@ export async function issuePublicTaxInvoice(
         subTotal: tiSubTotal, vatAmount: tiVatAmount, grandTotal: tiGrandTotal,
         discountAmount: source.discountAmount, note: source.note, sourceDocId: source.id,
         contactSnapshot: snapshot as Prisma.InputJsonValue,
+        // T0.4 — คำเตือนของคำขอให้ผู้อนุมัติเห็นในหมายเหตุภายใน (ทะเบียนกลาง)
+        ...(warnings.length ? { internalNote: warnings.map((w) => `คำเตือน: ${w.messageTh}`).join("\n") } : {}),
         lines: {
           create: source.lines.map((l, i) => ({
             tenantId, systemId, sortOrder: i, description: l.description, qty: l.qty,
@@ -4428,7 +4434,7 @@ export async function issuePublicTaxInvoice(
         },
       },
     });
-    return { ok: true, requested: true, docNo: null };
+    return { ok: true, requested: true, docNo: null, warnings };
   } catch (e) {
     // M1: race → partial unique (systemId, sourceDocId) ชน → คืนคำขอเดิม
     if (e instanceof Error && "code" in e && (e as { code?: string }).code === "P2002") {
@@ -4437,7 +4443,7 @@ export async function issuePublicTaxInvoice(
         where: { systemId: src.systemId, docType: "TAX_INVOICE", sourceDocId: src.id, sourcePaymentId: null, status: { notIn: ["VOIDED", "CANCELLED"] } },
         select: { docNo: true },
       }) : null;
-      return { ok: true, requested: false, docNo: dup?.docNo ?? null };
+      return { ok: true, requested: false, docNo: dup?.docNo ?? null, warnings };
     }
     // 🔴 WO 9.2 ข้อ 4 — หน้านี้เป็น "สาธารณะ" ⇒ ห้ามคืนข้อความ error ดิบ (ของเดิมส่ง `e.message`
     //    ของ Prisma ออกไปเลย = ชื่อตาราง/คอลัมน์/ข้อจำกัดรั่วให้คนนอกอ่าน) · ของจริงลง log ฝั่งเรา
@@ -6443,7 +6449,7 @@ export async function listRecurringRules(tenantId: string, systemId: string): Pr
     orderBy: [{ active: "desc" }, { nextRunAt: "asc" }],
     take: 200,
   });
-  const vat = vatRuleFrom(await loadBookLegal({ tenantId, systemId }), new Date());
+  const vat = vatRuleFrom(await loadBookLegal({ tenantId, systemId }), accountNow());
   return rows.map((r) => toRuleRow(vat, r));
 }
 
@@ -6456,7 +6462,7 @@ export async function getRecurringRule(
     where: { id, tenantId, systemId },
     select: RULE_SELECT,
   });
-  return r ? toRuleRow(vatRuleFrom(await loadBookLegal({ tenantId, systemId }), new Date()), r) : null;
+  return r ? toRuleRow(vatRuleFrom(await loadBookLegal({ tenantId, systemId }), accountNow()), r) : null;
 }
 
 export type RecurringRuleInput = {
@@ -6695,7 +6701,7 @@ export async function buildRuleDraftFromDocument(
         accountId: l.accountId,
       };
     }),
-  }, vatRuleFrom(await loadBookLegal({ tenantId, systemId }), new Date()));
+  }, vatRuleFrom(await loadBookLegal({ tenantId, systemId }), accountNow()));
   const who = doc.contact?.name ? ` ${doc.contact.name}` : "";
   return {
     name: `${DOC_LABEL[doc.docType] ?? doc.docType}${who}`.slice(0, 120),
@@ -8161,7 +8167,7 @@ export async function dormSettleSecurityDepositInTx(
       return dormReject("INVALID_INPUT", DORM_FINANCE_BAD);
     const pre = await dormOwnedDocs(tx, tenantId, systemId, unitId, input.docIds, DORM_PAYABLE_TYPES);
     if (pre.length !== input.docIds.length) return dormReject("NOT_FOUND", DORM_NOT_FOUND);
-    const settings = settingsViewOf(await tx.accountSettings.findFirst({ where: { tenantId, systemId } }), await loadBookLegal({ tenantId, systemId }), new Date());
+    const settings = settingsViewOf(await tx.accountSettings.findFirst({ where: { tenantId, systemId } }), await loadBookLegal({ tenantId, systemId }), accountNow());
     return await dormSettleBodyInTx(tx, { ...input, systemId }, settings);
   } catch (e) {
     if (e instanceof DormTxReject || e instanceof DormGlReject) return dormReject(e.code, e.message);

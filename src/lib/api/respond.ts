@@ -10,6 +10,7 @@
 
 import { randomBytes } from "node:crypto";
 import { GENERIC_ACTION_FAILED, isSafeUserMessage, safeReason } from "@/lib/core/errors";
+import { isLegalAckRequiredError, legalWarningsText, LEGAL_ACK_REASON_TH, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 /**
  * รหัส error ทั้งหมดของ REST — คู่มือ/OpenAPI/สกิล AI ของทุกโมดูลอ้างรายการนี้
@@ -48,6 +49,9 @@ export const API_ERROR_CODES = [
   // C5.5-fix1 (H55-1) — งานเขียนเริ่มไปแล้วแต่ฐานข้อมูล/เครือข่ายสะดุดกลางทาง ⇒ ไม่รู้ว่าบันทึกสำเร็จหรือไม่ · คีย์เดิมตอบรหัสนี้ซ้ำ
   //   (ไม่รันซ้ำ) จนหมดอายุ — ผู้เรียกต้องตรวจว่ารายการมีแล้วหรือยัง แล้วส่งใหม่ด้วยคีย์ใหม่
   "idempotency_outcome_unknown",
+  // T0.4 — การกระทำมีคำเตือนตามกฎหมายที่ต้องกดยืนยันก่อน (ไม่ใช่การบล็อก) ⇒ 409 + `error.warnings[]` (รูปเดียวกับจอ/เลขา AI)
+  //   ส่งซ้ำพร้อม `acknowledge: [code…]` ใน body (ใช้ Idempotency-Key เดิมได้ — ยังไม่ได้เขียนอะไร)
+  "legal_ack_required",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -146,11 +150,12 @@ export function failBody(
   message_th: string,
   message_en: string,
   requestId: string,
-  extra: { hint?: string; details?: ApiErrorDetail[] } = {},
+  extra: { hint?: string; details?: ApiErrorDetail[]; warnings?: LegalWarning[] } = {},
 ): Record<string, unknown> {
   const error: Record<string, unknown> = { code, message_th, message_en };
   if (extra.hint) error.hint = extra.hint;
   if (extra.details) error.details = extra.details;
+  if (extra.warnings) error.warnings = extra.warnings;
   return { error, requestId };
 }
 
@@ -199,6 +204,8 @@ export type MappedError = {
   hint?: string;
   /** ช่องที่ผิดรายตัว — มีเฉพาะเมื่อ handler โยน `ApiError` ที่แนบ `details` มา */
   details?: ApiErrorDetail[];
+  /** T0.4 — คำเตือนกฎหมายที่ต้องยืนยัน (มีเฉพาะรหัส `legal_ack_required`) */
+  warnings?: LegalWarning[];
 };
 
 /**
@@ -215,7 +222,8 @@ export function nothingWritten<E extends object>(e: E): E {
   return e;
 }
 export function isNothingWritten(e: unknown): boolean {
-  return typeof e === "object" && e !== null && NOTHING_WRITTEN.has(e);
+  // T0.4: ด่านคำเตือนกฎหมายโยนก่อนเขียน (หรือในธุรกรรมที่ rollback) เสมอ ⇒ ยังไม่ได้เขียนอะไร
+  return typeof e === "object" && e !== null && (NOTHING_WRITTEN.has(e) || isLegalAckRequiredError(e));
 }
 // ◂ CRM C5.5
 
@@ -235,6 +243,8 @@ export class ApiError extends Error {
    *   ไม่งั้นแอปที่ยิงมาไม่รู้ว่าต้องแก้ช่องไหน (ข้อความรวมบอกได้แค่ว่า "มีบางอย่างผิด")
    */
   readonly details?: ApiErrorDetail[];
+  /** T0.4 — คำเตือนกฎหมายที่ต้องยืนยัน (ใช้กับรหัส `legal_ack_required`) */
+  readonly warnings?: LegalWarning[];
   constructor(
     status: number,
     code: ApiErrorCode,
@@ -242,6 +252,7 @@ export class ApiError extends Error {
     message_en: string,
     hint?: string,
     details?: ApiErrorDetail[],
+    warnings?: LegalWarning[],
   ) {
     super(message_en);
     this.status = status;
@@ -250,7 +261,26 @@ export class ApiError extends Error {
     this.message_en = message_en;
     this.hint = hint;
     this.details = details;
+    this.warnings = warnings;
   }
+}
+
+/**
+ * T0.4 — คำเตือนกฎหมายที่ต้องกดยืนยัน → 409 `legal_ack_required` (ติดธง "ยังไม่ได้เขียนอะไร" ⇒ ส่งซ้ำด้วยคีย์เดิมได้)
+ * รูป `error.warnings[]` = LegalWarning ของทะเบียนกลาง (ชุดเดียวกับจอและเลขา AI)
+ */
+export function legalAckApiError(warnings: LegalWarning[]): ApiError {
+  return nothingWritten(
+    new ApiError(
+      409,
+      "legal_ack_required",
+      `${LEGAL_ACK_REASON_TH}: ${legalWarningsText(warnings)}`,
+      "This action has legal warnings that must be acknowledged first. Show them to the user, then resend with `acknowledge` listing the warning codes.",
+      `ส่งซ้ำพร้อม acknowledge: [${warnings.map((w) => `"${w.code}"`).join(", ")}] เมื่อผู้ใช้รับทราบแล้ว`,
+      undefined,
+      warnings,
+    ),
+  );
 }
 
 /** ข้อความไทยกลางเมื่อ error ไม่ปลอดภัยพอจะโชว์ (กันข้อความเทคนิครั่ว) */
@@ -309,8 +339,11 @@ export function mapError(e: unknown): MappedError {
       message_en: e.message_en,
       ...(e.hint ? { hint: e.hint } : {}),
       ...(e.details ? { details: e.details } : {}),
+      ...(e.warnings ? { warnings: e.warnings } : {}),
     };
   }
+  // T0.4 — service โยนคำเตือนที่ต้องยืนยันหลุดมาตรง ๆ (ทางที่ไม่ได้แปลงเป็น `{ ok:false, legal }`) → ซองเดียวกับ legalAckApiError
+  if (isLegalAckRequiredError(e)) return mapError(legalAckApiError(e.warnings));
   if (isZodError(e)) {
     return {
       status: 422,
