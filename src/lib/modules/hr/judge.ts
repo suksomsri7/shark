@@ -12,6 +12,7 @@
 //   • เวลา `opts.now` = ข้อสอบ/ฝั่งเซิร์ฟเวอร์เท่านั้น — action/หน้า/UI ไม่ส่ง (R13) · DTO ไม่มีพิกัด/อุปกรณ์/หมายเหตุ/เหตุผล/เงิน ◂
 import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET-1 ◂
 import { writeAudit } from "@/lib/core/audit";
 import { emitOutbox } from "@/lib/core/outbox";
 import { formatThaiDate } from "@/lib/ui/date";
@@ -695,13 +696,10 @@ async function cursorOf(db: Db, ctx: Ctx): Promise<string | null> {
 async function saveCursor(ctx: Ctx, next: string | null): Promise<void> {
   await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
     const tx = t as unknown as Db;
-    await lock(tx, `hr:clockpolicy:${ctx.systemId}`);
-    const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { id: true, settings: true } });
+    // HR-SET-1 ▸ hr:clockpolicy → แถว AppSystem · เปลี่ยนเฉพาะคีย์ hrAttendanceCursor (null = ลบคีย์) บนค่าที่อ่านใหม่ใต้ล็อก ◂
+    const sys = await lockHrSettings(tx, ctx);
     if (!sys) return;
-    const base = sys.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? { ...(sys.settings as Record<string, unknown>) } : {};
-    if (next) base[CURSOR_KEY] = next;
-    else delete base[CURSOR_KEY];
-    await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: base as Prisma.InputJsonValue } });
+    await writeHrSettingsKeys(tx, ctx, { [CURSOR_KEY]: next || undefined }); // HR-SET-1 ◂
   }, TX_OPTS);
 }
 

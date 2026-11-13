@@ -11,6 +11,7 @@
 //   • ผลลัพธ์ = { ok, … } | { ok:false, reason ไทยคงที่ } · audit = id/ตัวเลขล้วน (ไม่มีพิกัด) ◂
 import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET-1 ◂
 import { writeAudit } from "@/lib/core/audit";
 import { evaluate } from "@/lib/core/rbac"; // VIS-1 C ◂
 import { HR_UNIT_NOT_FOUND_TEXT, hrScopeOf, type HrScope } from "./scope";
@@ -244,13 +245,12 @@ export async function saveClockPolicy(
     const out = await tenantDb({ tenantId: ctx.tenantId }).$transaction(
       async (t) => {
         const tx = t as unknown as Tx;
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0))`;
-        const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
+        const sys = await lockHrSettings(tx, ctx); // HR-SET-1 ▸ hr:clockpolicy → แถว AppSystem · อ่านใหม่ใต้ล็อก ◂
         if (!sys) throw new ClockSettingsRefusal(SETTINGS_TEXT.notFound);
         const base = sys.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? (sys.settings as Record<string, unknown>) : {};
         const cur = policyOfSettings(base);
         const next: ClockPolicy = { earlyInMin: early ?? cur.earlyInMin, closeGraceMin: grace ?? cur.closeGraceMin };
-        const r = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: { ...base, hrClock: next } as Prisma.InputJsonValue } });
+        const r = await writeHrSettingsKeys(tx, ctx, { hrClock: next }); // HR-SET-1 ▸ เปลี่ยนเฉพาะคีย์ hrClock ◂
         if (r.count !== 1) throw new ClockSettingsRefusal(SETTINGS_TEXT.notFound);
         return next;
       },
@@ -318,8 +318,7 @@ export async function saveAttendancePolicy(ctx: Ctx, viewer: ClockSiteViewer, in
     const out = await tenantDb({ tenantId: ctx.tenantId }).$transaction(
       async (t) => {
         const tx = t as unknown as Tx;
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0))`;
-        const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
+        const sys = await lockHrSettings(tx, ctx); // HR-SET-1 ▸ hr:clockpolicy → แถว AppSystem · อ่านใหม่ใต้ล็อก ◂
         if (!sys) throw new ClockSettingsRefusal(SETTINGS_TEXT.notFound);
         const base = sys.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? (sys.settings as Record<string, unknown>) : {};
         const cur = attendanceOfSettings(base);
@@ -332,7 +331,7 @@ export async function saveAttendancePolicy(ctx: Ctx, viewer: ClockSiteViewer, in
           alertsOn: bool("alertsOn") ?? cur.alertsOn,
           alertEmployee: bool("alertEmployee") ?? cur.alertEmployee,
         };
-        const r = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: { ...base, hrAttendance: next } as Prisma.InputJsonValue } });
+        const r = await writeHrSettingsKeys(tx, ctx, { hrAttendance: next }); // HR-SET-1 ▸ เปลี่ยนเฉพาะคีย์ hrAttendance ◂
         if (r.count !== 1) throw new ClockSettingsRefusal(SETTINGS_TEXT.notFound);
         return next;
       },
