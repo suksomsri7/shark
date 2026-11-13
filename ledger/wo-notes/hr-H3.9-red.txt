@@ -1,0 +1,96 @@
+H3.9 oracle — forced RED run ×2 · lane DB wo-hr-qc-l2 · 2026-11-13T03:39:34Z · tree ee0e32ef5+working oracle
+Command: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.9.mts
+Seed before: seed-hr-qc 34/34 · unforced run: SKIPPED exit 0 (registered 52)
+Run 1 vs run 2 (check id + result lines): IDENTICAL
+
+===== run 1 (full) =====
+[env] qc-hr-h3.9 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.9] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️ QC_FORCE=1 — running although: src/lib/modules/hr/reports-rules.ts absent (H3.9 not built)
+[qc-hr-h3.9] rules=∅ src/lib/modules/hr/reports-rules.ts · service=∅ src/lib/modules/hr/reports.ts · route=∅ src/lib/modules/hr/reports-route.ts · H3.4=absent
+── [static] base 5d7bcf0c4 · H3.4 absent ──
+  ❌ [H3.9-S1.1] [static] files: reports-rules.ts · reports.ts · reports-ui.tsx · reports-route.ts · reports page · export route · register migration — expected 7 files | actual hr/reports-rules.ts,hr/reports.ts,hr/reports-ui.tsx,hr/reports-route.ts,reports/page.tsx,export/route.ts,20270109000000_hr_employee_register_fields/migration.sql
+  ❌ [H3.9-S1.2] [static] migration 20270109000000: CREATE TABLE "HrEmployeeRegister" (employeeId UNIQUE · nationality ≤ 60 CHECK · otherBenefits ≤ 500 CHECK) only · model in hr.prisma · HrEmployee/HrSalaryProfile/HrPayrollRun/HrPayrollItem blocks unchanged · core scope sys() · hr-qc-env — expected 1 new table · checks · frozen blocks · scope · env | actual create,cols,unique,chkNat,chkBen,model,scope,env
+  ❌ [H3.9-S1.3] [static] pure layer reports-rules.ts: imports ⊆ ./bank-files/{generic,xlsx,encode} (+ type-only) · no db/clock/random/process/fetch — expected pure | actual exists imports=∅
+  ❌ [H3.9-S1.4] [static] one CSV/XLSX writer: reports*.ts import csvBytes + xlsxBytes from bank-files · no own quoting/zip/BOM code — expected generic writer reused | actual csv,xlsx
+  ✅ [H3.9-S1.5] [static] [control] payroll-rules sha · frozen files/dirs unchanged vs base · no new tab label in hrTabs/layout
+  ❌ [H3.9-S1.6] [static] reports*.ts + page + route: no banned token (bank/houseReg/sso no./PIN/GPS/photo/device/attachment/offboard/ytdJson/lawRowIds/sourceRef/HrLawTable/HrWorkEntry) · no punch-table read · no recompute fn · nationalId only in reports.ts — expected clean | actual files banned=0 punch=0 recompute=0 nid=0
+  ❌ [H3.9-S1.7] [static] export route: GET → reportExportGet · router fetch 204 first · page imports a scope.ts guard + reports.ts loader — expected route + page wired | actual get,router204,headers,pageGuard
+  ❌ [H3.9-S1.8] [static] nav decision: hrTabs + layout HR labels = base (no "รายงาน" tab) · overview/hub link to /hr/reports (testid hr-overview-reports-link) · nav.ts unchanged — expected no tab · hub link | actual link,page
+  ❌ [H3.9-S1.9] [static] UI testids (report page + register card) · inventory rows wo H3.9 · hr.report th = en keys · visual spec "3.9" · no "use client" report file imports reports.ts/db or reads sensitive fields — expected ui contract | actual testids,inventory,msg,visual missing=hr-report-picker,hr-report-period,hr-report-unit,hr-report-table,hr-report-row-*,hr-report-totals,hr-report-export-csv,hr-report-export-xlsx,hr-report-notes,hr-report-warnings,hr-report-empty,hr-register-card,hr-register-nationality,hr-register-benefits,hr-register-save,hr-report-fullid-toggle,hr-report-fullid-ack,hr-report-fullid-warning,hr-report-fullid-save inv=0/0/0 badClient=0
+  ❌ [H3.9-S1.10] [static] every hunk in shared files marked "HR H3.9" (core scope · hr-qc-env · hr.prisma · hub/overview · employee page · messages · inventory · visual) — expected every hunk marked | actual marked,hub,json unmarked=src/lib/core/scope.ts,scripts/hr-qc-env.mts,prisma/schema/hr.prisma,scripts/visual-hr.mts
+  ✅ [H3.9-S2.0] [pure] [control] fixture self-consistency: catalog keys unique · golden widths = catalog · golden totals = Σ golden rows (own baht/tenths parser)
+── [pure] ──
+  ❌ [H3.9-S2.1] [pure] REPORT_TEXT / REPORT_TEXT_EN = texts fixture byte-exact · reportTextFor(locale) — expected byte-exact | actual th,en,forEn,forTh,fallback
+  ❌ [H3.9-S2.2] [pure] REPORT_IDS + REPORT_CATALOG = fixture (key · class P/$/I · sum · th · en · period kind · totals · thaiOnly) · REPORT_LIMITS — expected catalog = fixture | actual ids,catalog,extra,limits bad=time,leave,ot,payroll-month,payroll-year,tax-month,tax-year,wages,register
+  ❌ [H3.9-S2.3] [pure] columnsFor(report, {money, fullId}, page — expected 72 cells | actual matrix bad=time/$/id/page,time/$/id/export,time/$/m/page,time/$/m/export,time/-/id/page,time/-/id/export…+66
+  ❌ [H3.9-S2.4] [pure] maskCitizenId · bahtText · tenthsText · addressOf vectors — expected all vectors | actual maskCitizenId(1101700203451) maskCitizenId(3-1006-01234-56-7) maskCitizenId(123) maskCitizenId(null) maskCitizenId( 1234 ) maskCitizenId(abcd) maskCitizenId() bahtText(0) bahtText(1) bahtText(100) bahtText(1234567) bahtText(-150) bahtText(-5) bahtText(2147483647) tenthsText(0) tenthsText(15) tenthsText(-5) tenthsText(100) addressOf(["12/3 ถ.สุขุมวิท",") addressOf([null," ","","เชียงใ) addressOf([" a b ",null,null,n) addressOf([null,null,null,null)
+  ❌ [H3.9-S2.5] [pure] ageOn vectors (birthday on the day · leap day · future/null ⇒ null) — expected 8 vectors | actual 1990-02-28@2031-10-31=∅ageOn 2000-10-31@2031-10-31=∅ageOn 1985-12-01@2031-10-31=∅ageOn 2000-02-29@2031-02-28=∅ageOn 2000-02-29@2031-03-01=∅ageOn 2000-02-29@2032-02-29=∅ageOn 2031-11-01@2031-10-31=∅ageOn null@2031-10-31=∅ageOn
+  ❌ [H3.9-S2.6] [pure] absentMinOf · whtIncomeOf (v1 base+add · v2 whtIncomeSatang · non-integer/negative ⇒ 0) · wagePartsOf (v1 / v2 line codes) — expected all vectors | actual absent({"crossesMidnight":false,"endMin":900,"leaveFraction":null,"startMin":420}) absent({"crossesMidnight":false,"endMin":900,"leaveFraction":"0.5","startMin"
+  ❌ [H3.9-S2.7] [pure] reportTable(golden) = header (th · en · register always th) + rows + totals row ("รวม"/"Total") for every golden — expected 21 goldens × th/en | actual time|2031-10|owner/th time|2031-10|owner/en time|2031-10|branch/th time|2031-10|branch/en time|2031-10|u2/th
+  ❌ [H3.9-S2.8] [pure] reportBytes CSV = BOM + independent CSV text · XLSX parseImportFile = same table · deterministic · input not mutated — expected bytes = independent text | actual csvRegister,csvTime,deterministic,xlsx
+  ❌ [H3.9-S2.9] [pure] exportProblem: numeric/date cells exempt · formula (incl. after whitespace) ⇒ FORMULA names · control char ⇒ ENCODING first — expected 6 vectors | actual #0,#1,#2,#3,#4,#5
+  ❌ [H3.9-S2.10] [pure] periodOk vectors (month/year/day kinds · 2000–2600 · malformed ⇒ false · unknown report ⇒ false) — expected 14 vectors | actual time:2031-10 time:2031-13 time:2031 time:1999-12 time:2601-01 leave:2031 leave:2031-01 payroll-year:2600 tax-year:1999 register:2031-10-31 register:2031-02-30 register:2031-10 nope:2031-10 time:null
+  ✅ [H3.9-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+(node:2980401) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H3.9-S3.0] [db] [control] fixture inserted: 5 employees · 2 units · judge days · corrections · OT · leave ledger · 5 runs (Σ items = run totals)
+     S3.1 time|2031-10|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+  ❌ [H3.9-S3.1] [db] time 2031-10 owner = golden (rows · totals · order code→name→id) · out-of-period rows ignored · notes timeNote — expected golden | actual golden,note,cols
+  ❌ [H3.9-S3.2] [db] leave 2031 = teamLeaveBalances rows 1:1 (owner) · e1/P1 row golden · ruling Q1: payroll all-branch = owner rows · payroll branch = u1 rows only · no reason anywhere — expected = teamLeaveBalances | actual ok,same,e1,payAll,payBranch rows=0/4 pa=∅loadReport (∅ src/lib/modules/hr/reports.ts) pb=∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.3 ot|2031-10|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+  ❌ [H3.9-S3.3] [db] ot 2031-10 owner = golden (status counts · settled segments by class · ฿) · CANCELLED / unsettled segments ignored — expected golden | actual golden
+     S3.4 payroll-month|2031-10|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.4 payroll-month|2031-09|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.4 payroll-month|2031-08|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.4 payroll-month|2031-11|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.4 payroll-year|2031|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+  ❌ [H3.9-S3.4] [db] payroll-month 2031-10 / 2031-09 / 2031-08 (REVERSED) / 2031-11 (DRAFT) + payroll-year 2031 = goldens · read stored item columns — expected goldens | actual m10,m09,reversed,draft,year
+     S3.5 tax-month|2031-11|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.5 tax-month|2031-10|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.5 tax-month|2031-09|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.5 tax-year|2031|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.5 tax-year|2030|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+  ❌ [H3.9-S3.5] [db] tax-month 2031-11 / 2031-10 / 2031-09 (Bangkok pay month) + tax-year 2031 / 2030 = goldens · income 40(1) rule v1/v2 · notes taxNote — expected goldens | actual m11,m10,m09,y31,y30,note
+     S3.6 wages|2031-10|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S3.6 wages|2031-09|owner: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+  ❌ [H3.9-S3.6] [db] wages (s.114) 2031-10 (v2-shaped lines) / 2031-09 (v1 snapshot) = goldens · notes s114Note — expected goldens | actual m10,m09,note
+  ❌ [H3.9-S3.7] [db] register 2031-10-31 owner: page + export (setting OFF ⇒ IDs masked) = golden · leaver kept · warnings counts · notes duty/under-10/retention — expected golden | actual page,export,warnings,notes ∅loadReport (∅ src/lib/modules/hr/reports.ts) rows=[]
+  ❌ [H3.9-S3.8] [db] saveRegisterFields: gates (owner · hr-admin in branch · benefits needs payroll) · out of branch/other ⇒ NO · limits ⇒ registerInput · audit fields only · loadRegisterFields keys by gate — expected writer contract | actual owner,admin,benefitsNeedPayroll,outBranch,limits,audit,load ∅saveRegisterFields (∅ src/lib/modules/hr/reports.ts) ∅saveRegisterFields (∅ src/lib/modules/hr/reports.ts)
+  ❌ [H3.9-S3.9] [db] owner exports: time CSV + register CSV = independent CSV text of golden · XLSX = same table · file names · content types — expected bytes | actual csv,xlsx,names,types,meta
+  ❌ [H3.9-S4.1] [db] gate matrix 10 viewers × 9 reports × page/export = design matrix (ok ⇔ allowed · NO otherwise) — expected 90 cells as matrix | actual owner/time:nono owner/leave:nono owner/ot:nono owner/payroll-month:nono owner/payroll-year:nono owner/tax-month:nono owner/tax-year:nono owner/wages:nono
+  ❌ [H3.9-S4.2] [db] column sets: DTO keys + export header = columnsFor(viewer access) for every allowed cell of the matrix — expected keys = columnsFor | actual owner/time owner/leave owner/ot owner/payroll-month owner/payroll-year owner/tax-month owner/tax-year owner/wages
+     S4.3 time|2031-10|branch: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S4.3 tax-year|2031|branch: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S4.3 ot|2031-10|managerBranch: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+     S4.3 time|2031-10|u2: got rows=[] totals=null ∅loadReport (∅ src/lib/modules/hr/reports.ts)
+  ❌ [H3.9-S4.3] [db] branch: u1 viewers see u1 rows only · totals from visible rows (≠ run totals) · unassigned hidden · unit filter in/out of scope · unknown unit ⇒ [] — expected visible rows only | actual time,payroll,tax,ot,unitIn,unitOut,unknown,registerBranch
+  ❌ [H3.9-S4.4] [db] national ID, setting OFF (default): no full ID in any page or export of any viewer (register export masked too) — expected masked everywhere | actual xlsx
+  ❌ [H3.9-S4.5] [db] manager / hr-admin: no $ key · no money value (OT ฿ strings absent from DTO and export text) · payroll/tax/wages/register NO — expected no ฿ for managers | actual refused
+  ❌ [H3.9-S4.6] [db] forbidden keys absent from every DTO (HR_FORBIDDEN_DTO_KEYS + snapshot/ytd/GPS/photo/attachment) · sentinel secrets absent from DTOs, exports, audit — expected no forbidden key / secret | actual seen  seen=0
+  ❌ [H3.9-S4.7] [db] cross-tenant / cross-system ctx ⇒ NO with identical bytes · own empty system ⇒ ok rows [] — expected identical NO | actual same,own,empty
+  ❌ [H3.9-S4.8] [db] ruling Q2 setting "full national ID in register export": owner only (others settingOwner) · ON needs acknowledge (ackFullId) · default OFF · other settings keys kept · audit hr.report.setting — expected owner-only setting | actual defaultOff,ownerOnly,ack,on,scoped,audit ∅setReportSettings (∅ src/lib/modules/hr/reports.ts) | ∅setReportSettings (∅ src/lib/modules/hr/reports.ts)
+  ❌ [H3.9-S4.9] [db] setting ON: register export full for owner / all-branch payroll only · branch payroll masked · pages + tax exports masked · export audit fullId true/false · OFF again ⇒ masked — expected full only owner/payAll register export | actual owner,payAll,branch,tax,page,off,audits audits=0
+  ❌ [H3.9-S5.1] [db] export audit: 1 row hr.report.export · targetType HrReport · after keys exactly {report period format rowCount columns unitId fullId} · no values · refusals not audited — expected 1 audit · shape | actual one,shape,values delta=0
+  ❌ [H3.9-S5.2] [db] route helper: rsc / next-router-prefetch ⇒ 204 no audit · 200 attachment + no-store + nosniff + type · 404 NO text · 400 input text · 409 formula text · no bytes on refusal — expected route contract | actual router,ok,xlsx,no,input status=undefined/undefined/undefined/undefined
+  ❌ [H3.9-S5.3] [db] input refusals: bad report / period / format / unit type ⇒ INPUT text · not audited · nothing written — expected INPUT ×7 | actual refused ∅loadReport ,∅loadReport ,∅loadReport ,∅loadReport ,∅exportRepor,∅exportRepor,∅loadReport 
+  ❌ [H3.9-S5.4] [db] export guard on real data: position "+SUM(A1)" ⇒ FORMULA naming the employee · page still ok · nationality with BEL ⇒ ENCODING — expected guard | actual formula,page,encoding ∅exportReport (∅ src/lib/modules/hr/reports.ts) | ∅exportReport (∅ src/lib/modules/hr/reports.ts)
+  ❌ [H3.9-S6.1] [db] performance: time 300 employees × 31 days ≤ 12 queries · ≤ 5000 ms · totals exact — expected ≤12 q · ≤5 s | actual ok,totals q=0 ms=0
+  ❌ [H3.9-S6.2] [db] performance: tax-year + payroll-year 12 runs × 300 items ≤ 12 queries each · ≤ 5000 ms · totals exact — expected ≤12 q · ≤5 s | actual tax,pay tax q=0 ms=0 · pay q=0 ms=0
+  ❌ [H3.9-S6.3] [db] performance: register 300 + time CSV export 300 rows ≤ 12 queries · ≤ 5000 ms — expected ≤12 q · ≤5 s | actual reg,exp reg q=0 ms=0 · csv q=0 ms=0
+  ❌ [H3.9-S7.1] [db] [needs H3.4] item from computeRunItemV2 stored as H3.4 stores it ⇒ payroll-month = item columns · tax-month income = whtIncomeSatang · wages = Σ lines by code — expected H3.4 present | actual n/a — H3.4 absent (src/lib/modules/hr/payroll-run-rules.ts)
+  ❌ [H3.9-S7.2] [static] [needs H3.4] seam: payroll.ts writes the snapshot keys the reports read (engineVersion 2 · whtIncomeSatang · lines · payType) · reports never import payroll-run-rules — expected H3.4 present | actual n/a — H3.4 absent (src/lib/modules/hr/payroll-run-rules.ts)
+  ❌ [H3.9-S7.3] [db] [needs H3.4] ruling Q5: v2 runs count only when finalized (journalEntryId set or stepsJson.finalized = true) · unfinalized v2 APPROVED excluded from payroll/tax/wages · v1 rule unchanged — expected H3.4 present | actual n/a — H3.4 absent (src/lib/modules/hr/payroll-run-rules.ts · no stepsJson column)
+RESIDUE none (tenants=2 users=10)
+  ✅ [H3.9-Z1] no residue (HrEmployeeRegister included)
+BASE-EXPECTATION 52/52 as registered (RED-by-design 47 · GREEN controls 5)
+===== qc-hr-h3.9 ===== passed 5/52 (QC_FORCE)
+
+===== run 2 (summary) =====
+BASE-EXPECTATION 52/52 as registered (RED-by-design 47 · GREEN controls 5)
+===== qc-hr-h3.9 ===== passed 5/52 (QC_FORCE)
