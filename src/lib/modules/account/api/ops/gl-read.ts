@@ -803,7 +803,7 @@ const periodsFiledDifferences = defineOp({
       },
       pnd: {
         forms: pnd.forms.map((f) => ({ form: f.form, filedAt: f.filedAt.toISOString() })),
-        totals: { pnd3Satang: pnd.totals["3"], pnd53Satang: pnd.totals["53"] },
+        totals: { pnd3Satang: pnd.totals["3"] ?? 0, pnd53Satang: pnd.totals["53"] ?? 0, byFormSatang: pnd.totals },
         rows: pnd.rows.map((r) => ({
           form: r.form,
           certId: r.certId,

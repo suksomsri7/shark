@@ -7,6 +7,9 @@ import { deferDocNo, finalizeDocNos, openDocNumbering } from "./doc-numbering";
 import { fallbackPrefixOf } from "./settings-schema";
 import { csvCell } from "@/lib/core/csv";
 import type { AccountWhtIncomeType, AccountLegalType, AccountDocDirection, AccountDocStatus, Prisma } from "@prisma/client";
+import { legalWarning, type LegalWarning } from "@/lib/core/settings/legal/warnings";
+import { SYSTEM_WHT_FORM_ROWS } from "@/lib/core/settings/legal/th-tax-2569";
+import { PND_FORM_LABEL_TH, whtConditionOf, whtFormOf, type PndFormNumber, type RecipientFacts } from "./wht-forms";
 
 // ─────────────────────────────────────────────────────────────
 // wht.ts — ภาษีหัก ณ ที่จ่าย (WHT) สองขา — §3.5 + F5 (P2)
@@ -62,7 +65,10 @@ export type WhtCreditRow = {
   base: number | null; // ฐานเงินได้ (คำนวณย้อนจากอัตรา)
   whtRateBp: number | null;
   whtAmount: number; // ภาษีถูกหัก (สตางค์) — สะสมเป็นเครดิต 1160
-  hasCertCopy: boolean; // แนบสำเนา 50 ทวิที่ได้รับ?
+  hasCertCopy: boolean; // มีไฟล์แนบที่เอกสารต้นทาง (ข้อมูลประกอบเท่านั้น — ACC T3.5: สถานะรับดูที่ certReceivedAt)
+  /** ACC T3.5 ▸ WTI ของการรับเงินนี้ + วันที่ทำเครื่องหมาย "ได้รับ 50 ทวิ แล้ว" (ธงจริง ไม่เดาจากไฟล์แนบ) ◂ */
+  certId: string | null;
+  certReceivedAt: Date | null;
 };
 
 /** WHT ถูกหัก: payment ฝั่ง OUT (ลูกหนี้เรา) ที่มี whtAmountSatang > 0 */
@@ -103,6 +109,9 @@ export async function listWhtCredits(
     orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
 
+  const wtiIds = payments.map((p) => p.whtCertDocId).filter((x): x is string => !!x);
+  const wtis = wtiIds.length ? await prisma.accountDocument.findMany({ where: { systemId, id: { in: wtiIds } }, select: { id: true, whtCertReceivedAt: true } }) : [];
+  const recvById = new Map(wtis.map((w) => [w.id, w.whtCertReceivedAt]));
   let totalWht = 0;
   let totalBase = 0;
   const rows: WhtCreditRow[] = payments.map((p) => {
@@ -122,6 +131,8 @@ export async function listWhtCredits(
       whtRateBp: p.whtRateBp,
       whtAmount: p.whtAmountSatang,
       hasCertCopy: p.document.attachments.length > 0,
+      certId: p.whtCertDocId,
+      certReceivedAt: p.whtCertDocId ? (recvById.get(p.whtCertDocId) ?? null) : null,
     };
   });
   return { rows, totalWht, totalBase };
@@ -391,12 +402,20 @@ export async function getWhtCert(tenantId: string, systemId: string, certId: str
   });
 }
 
-// ─────────────────── ③ ภ.ง.ด.3 (บุคคล) / 53 (นิติ) ───────────────────
+// ─────────────────── ③ ภ.ง.ด. แยกแบบ 1 / 2 / 3 / 53 / 54 (ACC T3.4) ───────────────────
+// แบบของรายการ = ตัวจับแบบ `whtFormOf` (ตารางค่ากฎหมาย SYSTEM_WHT_FORM_ROWS) จาก ประเภทเงินได้ × ผู้รับ (สำเนาที่ตรึงตอนออก)
+// แหล่ง: ① 50 ทวิ ฝั่งที่เราหัก (IN · ISSUED) ออกในเดือน ② การจ่ายที่หักแล้วแต่ยังไม่มีใบ (ท.ป.4/2528 ข้อ 13 — นำส่งไม่ว่าหักแล้วหรือไม่)
+// design note ledger/wo-notes/T3.4.md
 
 export type PndRow = {
   seq: number;
-  certId: string;
+  /** null = การจ่ายที่หักแล้วแต่ยังไม่ออก 50 ทวิ */
+  certId: string | null;
   certNo: string | null;
+  /** การจ่ายต้นทาง (มีเสมอเมื่อยังไม่มีใบ) */
+  paymentId: string | null;
+  documentId: string | null;
+  hasCert: boolean;
   paidAt: Date;
   recipientName: string;
   recipientTaxId: string | null;
@@ -407,105 +426,210 @@ export type PndRow = {
   base: number;
   whtRateBp: number | null;
   whtAmount: number;
-  condition: string; // M5: เงื่อนไขการหัก (1=หัก ณ ที่จ่าย · 2=ออกให้ตลอดไป · 3=ออกให้ครั้งเดียว)
+  condition: string; // M5: เงื่อนไขการหัก (1=หัก ณ ที่จ่าย · 2=ออกให้ตลอดไป · 3=ออกให้ครั้งเดียว · 4 อื่น ๆ)
+  form: PndFormNumber;
+  /** แถวตารางแบบที่ใช้ (ป้าย U = คำเตือน WHT_FORM_UNVERIFIED) */
+  formRowId: string;
+  formTag: string;
 };
 
-/**
- * สรุป ภ.ง.ด. รายเดือน — type 3 = ผู้รับบุคคลธรรมดา · 53 = นิติบุคคล
- * (จาก WHT_CERT ที่ออกในเดือนนั้น กรองตาม legalType ของผู้รับ)
- */
-export async function pnd(
-  tenantId: string,
-  systemId: string,
-  input: { type: 3 | 53; period: string },
-): Promise<{
+export type PndReport = {
   rows: PndRow[];
   byIncomeType: Array<{ incomeType: AccountWhtIncomeType; label: string; base: number; wht: number; count: number }>;
   grandBase: number;
   grandWht: number;
-}> {
-  const legalType: AccountLegalType = input.type === 3 ? "PERSON" : "COMPANY";
-  const { gte, lt } = periodRange(input.period);
-  // M4: กรอง legalType จาก contactSnapshot (freeze ณ วันออกใบ) ไม่ใช่ contact สด → ภงด 3/53 ไม่ขยับย้อนหลัง
-  const allCerts = await prisma.accountDocument.findMany({
-    where: {
-      tenantId,
-      systemId,
-      docType: "WHT_CERT",
-      // 🔴 WO 1.4: เฉพาะ 50 ทวิ ที่ "เราหักเขา" (direction IN) เท่านั้นที่ต้องนำส่งสรรพากร
-      //    ใบ WTI (direction OUT = ลูกค้าหักเรา) เป็นเครดิตภาษีของเรา ห้ามหลุดเข้า ภ.ง.ด.3/53
-      direction: "IN",
-      status: "ISSUED",
-      issueDate: { gte, lt },
-    },
-    include: { contact: { select: { name: true, taxId: true, address: true, legalType: true, branchCode: true } } },
-    orderBy: { issueDate: "asc" },
-  });
-  const certs = allCerts.filter((c) => {
-    const snap = (c.contactSnapshot as Record<string, unknown> | null) ?? null;
-    const lt = (snap?.legalType as AccountLegalType) ?? c.contact?.legalType ?? "COMPANY";
-    return lt === legalType;
-  });
+  /** แถวที่ยังไม่มี 50 ทวิ */
+  uncertifiedCount: number;
+  warnings: LegalWarning[];
+};
 
+type SnapRec = Record<string, unknown> | null;
+const snapRec = (raw: unknown): SnapRec => (raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null);
+const sstr = (v: unknown): string | null => (typeof v === "string" ? v : null);
+const CONTACT_FACTS = { name: true, taxId: true, address: true, legalType: true, branchCode: true, taxIdCountry: true, country: true, legalEntityType: true } as const;
+type ContactFacts = { name: string; taxId: string | null; address: string | null; legalType: AccountLegalType; branchCode: string | null; taxIdCountry: string | null; country: string | null; legalEntityType: string | null };
+
+function factsOf(snap: SnapRec, c: ContactFacts | null): RecipientFacts {
+  return {
+    legalType: sstr(snap?.legalType) ?? c?.legalType ?? "COMPANY",
+    taxIdCountry: sstr(snap?.taxIdCountry) ?? c?.taxIdCountry ?? null,
+    country: sstr(snap?.country) ?? c?.country ?? null,
+    legalEntityType: sstr(snap?.legalEntityType) ?? c?.legalEntityType ?? null,
+    whtRecipient: sstr(snap?.whtRecipient),
+  };
+}
+
+/** แบบ ภ.ง.ด. ของ 50 ทวิ ใบหนึ่ง (ใช้ร่วมกับหน้า WHT · ผลต่างหลังยื่น · หน้าพิมพ์) */
+export function pndFormOfCert(c: { whtIncomeType: string | null; contactSnapshot: unknown; contact?: Partial<ContactFacts> | null }): PndFormNumber {
+  return whtFormOf(c.whtIncomeType, factsOf(snapRec(c.contactSnapshot), (c.contact as ContactFacts | null) ?? null)).form;
+}
+
+/** รายการทั้งหมดของเดือน (ทุกแบบ) — แล้วผู้เรียกกรองแบบ */
+async function pndAllRows(tenantId: string, systemId: string, period: string): Promise<Omit<PndRow, "seq">[]> {
+  const { gte, lt } = periodRange(period);
+  const [certs, pays] = await Promise.all([
+    prisma.accountDocument.findMany({
+      where: {
+        tenantId,
+        systemId,
+        docType: "WHT_CERT",
+        // 🔴 WO 1.4: เฉพาะ 50 ทวิ ที่ "เราหักเขา" (direction IN) — WTI (OUT = ลูกค้าหักเรา) เป็นเครดิตของเรา ห้ามเข้ารายงานนำส่ง
+        direction: "IN",
+        status: "ISSUED",
+        issueDate: { gte, lt },
+      },
+      include: { contact: { select: CONTACT_FACTS } },
+      orderBy: [{ issueDate: "asc" }, { docNo: "asc" }, { id: "asc" }],
+    }),
+    // ACC T3.4 ▸ หักแล้วแต่ยังไม่มีใบ ◂
+    prisma.accountDocumentPayment.findMany({
+      where: { tenantId, systemId, whtAmountSatang: { gt: 0 }, voidedAt: null, whtCertDocId: null, paidAt: { gte, lt }, document: { direction: "IN" } },
+      include: {
+        document: {
+          select: {
+            id: true,
+            docNo: true,
+            subTotal: true,
+            grandTotal: true,
+            contactSnapshot: true,
+            contact: { select: CONTACT_FACTS },
+            lines: { select: { whtIncomeType: true }, where: { whtIncomeType: { not: null } }, orderBy: { sortOrder: "asc" }, take: 1 },
+          },
+        },
+      },
+      orderBy: [{ paidAt: "asc" }, { id: "asc" }],
+    }),
+  ]);
+  const out: Omit<PndRow, "seq">[] = [];
+  for (const c of certs) {
+    const snap = snapRec(c.contactSnapshot);
+    const pick = whtFormOf(c.whtIncomeType, factsOf(snap, c.contact));
+    out.push({
+      certId: c.id,
+      certNo: c.docNo,
+      paymentId: c.sourcePaymentId,
+      documentId: c.sourceDocId,
+      hasCert: true,
+      paidAt: c.issueDate,
+      recipientName: sstr(snap?.name) ?? c.contact?.name ?? "—",
+      recipientTaxId: sstr(snap?.taxId) ?? c.contact?.taxId ?? null,
+      recipientBranch: sstr(snap?.branchCode) ?? c.contact?.branchCode ?? "00000",
+      recipientAddress: sstr(snap?.address) ?? c.contact?.address ?? null,
+      incomeType: c.whtIncomeType,
+      incomeLabel: c.whtIncomeType ? WHT_INCOME_LABEL[c.whtIncomeType] : "—",
+      base: c.subTotal,
+      whtRateBp: c.whtRateBp,
+      whtAmount: c.whtAmount,
+      condition: String(whtConditionOf(c.whtCondition)),
+      form: pick.form,
+      formRowId: pick.row.id,
+      formTag: pick.row.tag,
+    });
+  }
+  for (const p of pays) {
+    const d = p.document;
+    const snap = snapRec(d.contactSnapshot);
+    const incomeType = d.lines[0]?.whtIncomeType ?? null;
+    const pick = whtFormOf(incomeType, factsOf(snap, d.contact));
+    // ฐานโดยประมาณ: ย้อนจากภาษี/อัตรา (สูตรเดียวกับตอนออกใบ issueWhtCert) · ไม่มีอัตรา = สัดส่วนยอดจ่ายของใบ
+    const base = baseFromWht(p.whtAmountSatang, p.whtRateBp) ?? (d.grandTotal > 0 ? Math.round((d.subTotal * (p.amount + p.whtAmountSatang)) / d.grandTotal) : p.amount + p.whtAmountSatang);
+    out.push({
+      certId: null,
+      certNo: null,
+      paymentId: p.id,
+      documentId: d.id,
+      hasCert: false,
+      paidAt: p.paidAt,
+      recipientName: sstr(snap?.name) ?? d.contact?.name ?? "—",
+      recipientTaxId: sstr(snap?.taxId) ?? d.contact?.taxId ?? null,
+      recipientBranch: sstr(snap?.branchCode) ?? d.contact?.branchCode ?? "00000",
+      recipientAddress: sstr(snap?.address) ?? d.contact?.address ?? null,
+      incomeType,
+      incomeLabel: incomeType ? WHT_INCOME_LABEL[incomeType] : "ยังไม่ระบุประเภทเงินได้",
+      base,
+      whtRateBp: p.whtRateBp,
+      whtAmount: p.whtAmountSatang,
+      condition: "1",
+      form: pick.form,
+      formRowId: pick.row.id,
+      formTag: pick.row.tag,
+    });
+  }
+  // เรียงนิ่ง: วันที่จ่าย → มีใบก่อน (เลขที่) → id
+  out.sort((a, b) => a.paidAt.getTime() - b.paidAt.getTime() || Number(b.hasCert) - Number(a.hasCert) || (a.certNo ?? "").localeCompare(b.certNo ?? "") || (a.certId ?? a.paymentId ?? "").localeCompare(b.certId ?? b.paymentId ?? ""));
+  return out;
+}
+
+/**
+ * สรุป ภ.ง.ด. รายเดือนของแบบหนึ่ง (1 · 2 · 3 · 53 · 54) — ACC T3.4
+ * (เดิม: 3 = ผู้รับบุคคลธรรมดาทุกประเภทเงินได้ · 53 = อื่น ๆ — 40(1)/ดอกเบี้ยให้บุคคลไหลเข้า 3 และการจ่ายที่ไม่มีใบไม่ขึ้น · F9)
+ */
+export async function pnd(tenantId: string, systemId: string, input: { type: PndFormNumber; period: string }): Promise<PndReport> {
+  const all = await pndAllRows(tenantId, systemId, input.period);
+  const mine = all.filter((r) => r.form === input.type);
   let grandBase = 0;
   let grandWht = 0;
   const byMap = new Map<AccountWhtIncomeType, { base: number; wht: number; count: number }>();
-  const rows: PndRow[] = certs.map((c, i) => {
-    const snap = (c.contactSnapshot as Record<string, unknown> | null) ?? null;
-    const base = c.subTotal;
-    const wht = c.whtAmount;
-    grandBase += base;
-    grandWht += wht;
-    if (c.whtIncomeType) {
-      const cur = byMap.get(c.whtIncomeType) ?? { base: 0, wht: 0, count: 0 };
-      cur.base += base;
-      cur.wht += wht;
+  const rows: PndRow[] = mine.map((r, i) => {
+    grandBase += r.base;
+    grandWht += r.whtAmount;
+    if (r.incomeType) {
+      const cur = byMap.get(r.incomeType) ?? { base: 0, wht: 0, count: 0 };
+      cur.base += r.base;
+      cur.wht += r.whtAmount;
       cur.count += 1;
-      byMap.set(c.whtIncomeType, cur);
+      byMap.set(r.incomeType, cur);
     }
-    return {
-      seq: i + 1,
-      certId: c.id,
-      certNo: c.docNo,
-      paidAt: c.issueDate,
-      recipientName: (snap?.name as string) ?? c.contact?.name ?? "—",
-      recipientTaxId: (snap?.taxId as string) ?? c.contact?.taxId ?? null,
-      recipientBranch: (snap?.branchCode as string) ?? c.contact?.branchCode ?? "00000",
-      recipientAddress: (snap?.address as string) ?? c.contact?.address ?? null,
-      incomeType: c.whtIncomeType,
-      incomeLabel: c.whtIncomeType ? WHT_INCOME_LABEL[c.whtIncomeType] : "—",
-      base,
-      whtRateBp: c.whtRateBp,
-      whtAmount: wht,
-      condition: "1", // หัก ณ ที่จ่าย (default) — 2 ออกให้ตลอดไป · 3 ออกให้ครั้งเดียว
-    };
+    return { ...r, seq: i + 1 };
   });
-
-  const byIncomeType = Array.from(byMap.entries()).map(([incomeType, v]) => ({
-    incomeType,
-    label: WHT_INCOME_LABEL[incomeType],
-    base: v.base,
-    wht: v.wht,
-    count: v.count,
-  }));
-
-  return { rows, byIncomeType, grandBase, grandWht };
+  const byIncomeType = Array.from(byMap.entries()).map(([incomeType, v]) => ({ incomeType, label: WHT_INCOME_LABEL[incomeType], base: v.base, wht: v.wht, count: v.count }));
+  const uncertifiedCount = rows.filter((r) => !r.hasCert).length;
+  const warnings: LegalWarning[] = [];
+  if (uncertifiedCount > 0) warnings.push(legalWarning("WHT_PAID_WITHOUT_CERT", { count: uncertifiedCount }));
+  const unverified = rows.find((r) => r.formTag === "U" || r.formTag === "S");
+  if (unverified) {
+    const row = SYSTEM_WHT_FORM_ROWS.find((x) => x.id === unverified.formRowId);
+    warnings.push(legalWarning("WHT_FORM_UNVERIFIED", { form: PND_FORM_LABEL_TH[input.type], note: row?.note ?? "" }, { citation: row?.source }));
+  }
+  return { rows, byIncomeType, grandBase, grandWht, uncertifiedCount, warnings };
 }
 
-// CSV (BOM UTF-8 ให้ Excel เปิดไทยได้) — ยอดเป็นบาททศนิยม 2
-// 🔴 WO 9.2 ข้อ 7: เดิมมีตัวหนีบรรทัด/คอมมาเองแต่ **ไม่กันสูตร** — ชื่อคู่ค้าที่ขึ้นต้นด้วย `=`
-//    กลายเป็นสูตรทันทีที่ฝ่ายบัญชีเปิดไฟล์ ⇒ ใช้ `csvCell` กลางของ core/csv.ts แทน (กันสูตร + quote)
+/** จำนวนรายการต่อแบบของเดือน (ตัวเลือกแบบบนจอ) */
+export async function pndFormCounts(tenantId: string, systemId: string, period: string): Promise<Record<PndFormNumber, number>> {
+  const all = await pndAllRows(tenantId, systemId, period);
+  const out = { 1: 0, 2: 0, 3: 0, 53: 0, 54: 0 } as Record<PndFormNumber, number>;
+  for (const r of all) out[r.form] += 1;
+  return out;
+}
+
+export type Pnd1kRow = { seq: number; recipientName: string; recipientTaxId: string | null; recipientAddress: string | null; base: number; whtAmount: number; count: number; certIds: string[]; uncertified: number };
+
+/** ภ.ง.ด.1ก (รายปี) — รายการ ภ.ง.ด.1 ทั้งปีรวมต่อผู้รับ (เลข 13 หลัก หรือชื่อเมื่อไม่มีเลข) · ลำดับตามชื่อ */
+export async function pnd1kAnnual(tenantId: string, systemId: string, input: { year: number }): Promise<{ year: number; rows: Pnd1kRow[]; grandBase: number; grandWht: number }> {
+  const months = Array.from({ length: 12 }, (_, i) => `${input.year}-${String(i + 1).padStart(2, "0")}`);
+  const perMonth = await Promise.all(months.map((m) => pndAllRows(tenantId, systemId, m)));
+  const by = new Map<string, Omit<Pnd1kRow, "seq">>();
+  for (const r of perMonth.flat()) {
+    if (r.form !== 1) continue;
+    const k = r.recipientTaxId ? `t:${r.recipientTaxId}` : `n:${r.recipientName}`;
+    const cur = by.get(k) ?? { recipientName: r.recipientName, recipientTaxId: r.recipientTaxId, recipientAddress: r.recipientAddress, base: 0, whtAmount: 0, count: 0, certIds: [], uncertified: 0 };
+    cur.base += r.base;
+    cur.whtAmount += r.whtAmount;
+    cur.count += 1;
+    if (r.certId) cur.certIds.push(r.certId);
+    else cur.uncertified += 1;
+    by.set(k, cur);
+  }
+  const rows = [...by.values()].sort((a, b) => a.recipientName.localeCompare(b.recipientName, "th") || (a.recipientTaxId ?? "").localeCompare(b.recipientTaxId ?? "")).map((r, i) => ({ ...r, seq: i + 1 }));
+  return { year: input.year, rows, grandBase: rows.reduce((s, r) => s + r.base, 0), grandWht: rows.reduce((s, r) => s + r.whtAmount, 0) };
+}
+
+// CSV ช่วยกรอกแบบ (BOM UTF-8 ให้ Excel เปิดไทยได้) — ยอดเป็นบาททศนิยม 2 · ชื่อตามความจริง (T2.10): ไม่ใช่ไฟล์ยื่นกรม
+// 🔴 WO 9.2 ข้อ 7: ใช้ `csvCell` กลางของ core/csv.ts (กันสูตร + quote)
 const bahtStr = (satang: number) => (satang / 100).toFixed(2);
 
-export async function pndCsv(
-  tenantId: string,
-  systemId: string,
-  input: { type: 3 | 53; period: string },
-): Promise<string> {
+export async function pndCsv(tenantId: string, systemId: string, input: { type: PndFormNumber; period: string }): Promise<string> {
   const { rows, grandBase, grandWht } = await pnd(tenantId, systemId, input);
-  // M5: + ที่อยู่ผู้รับเงิน + เงื่อนไขการหัก (1 หัก ณ ที่จ่าย · 2 ออกให้ตลอดไป · 3 ออกให้ครั้งเดียว)
-  // WO 5.4: เพิ่ม "สาขา" (ม.86/4 บังคับระบุ 00000=สนง.ใหญ่ หรือรหัสสาขา) — ของจริงมีอยู่แล้วใน
-  // contactSnapshot.branchCode (WO 0.3) เดิมแค่ไม่ได้ export ลง CSV
   const header = [
     "ลำดับ",
     "เลขที่ 50 ทวิ",
@@ -519,12 +643,13 @@ export async function pndCsv(
     "อัตรา (%)",
     "ภาษีที่หัก",
     "เงื่อนไขการหัก",
+    "สถานะ 50 ทวิ",
   ];
   const lines = rows.map((r) =>
     [
       r.seq,
       r.certNo ?? "",
-      r.paidAt.toISOString().slice(0, 10),
+      dayKeyOf(r.paidAt),
       r.recipientName,
       r.recipientTaxId ?? "",
       r.recipientBranch ?? "00000",
@@ -534,14 +659,27 @@ export async function pndCsv(
       r.whtRateBp != null ? (r.whtRateBp / 100).toFixed(2) : "",
       bahtStr(r.whtAmount),
       r.condition,
+      r.hasCert ? "ออกแล้ว" : "ยังไม่ออก 50 ทวิ",
     ]
       .map(csvCell)
       .join(","),
   );
-  const totalLine = ["", "", "", "", "", "", "", "รวม", bahtStr(grandBase), "", bahtStr(grandWht), ""]
-    .map(csvCell)
-    .join(",");
+  const totalLine = ["", "", "", "", "", "", "", "รวม", bahtStr(grandBase), "", bahtStr(grandWht), "", ""].map(csvCell).join(",");
   return "﻿" + [header.map(csvCell).join(","), ...lines, totalLine].join("\n");
+}
+
+/** CSV ช่วยกรอกแบบ ภ.ง.ด.1ก (รายปี) */
+export async function pnd1kCsv(tenantId: string, systemId: string, input: { year: number }): Promise<string> {
+  const { rows, grandBase, grandWht } = await pnd1kAnnual(tenantId, systemId, input);
+  const header = ["ลำดับ", "ชื่อผู้มีเงินได้", "เลขประจำตัวผู้เสียภาษี", "ที่อยู่", "จำนวนเงินได้ทั้งปี", "ภาษีที่หักทั้งปี", "จำนวนครั้งที่จ่าย", "ยังไม่ออก 50 ทวิ"];
+  const lines = rows.map((r) => [r.seq, r.recipientName, r.recipientTaxId ?? "", r.recipientAddress ?? "", bahtStr(r.base), bahtStr(r.whtAmount), r.count, r.uncertified].map(csvCell).join(","));
+  const totalLine = ["", "รวม", "", "", bahtStr(grandBase), bahtStr(grandWht), "", ""].map(csvCell).join(",");
+  return "﻿" + [header.map(csvCell).join(","), ...lines, totalLine].join("\n");
+}
+
+/** วันที่ไทย YYYY-MM-DD */
+function dayKeyOf(d: Date): string {
+  return new Date(d.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
 }
 
 // CSV ภาษีถูกหัก (เครดิต 1160) — สะสมทั้งปี/งวด สำหรับกระทบยอดเครดิตภาษี
@@ -559,7 +697,8 @@ export async function whtCreditsCsv(
     "ฐานเงินได้",
     "อัตรา (%)",
     "ภาษีถูกหัก",
-    "มีสำเนา 50 ทวิ",
+    "ได้รับ 50 ทวิ แล้ว",
+    "วันที่ได้รับ",
   ];
   const lines = rows.map((r) =>
     [
@@ -570,12 +709,13 @@ export async function whtCreditsCsv(
       r.base != null ? bahtStr(r.base) : "",
       r.whtRateBp != null ? (r.whtRateBp / 100).toFixed(2) : "",
       bahtStr(r.whtAmount),
-      r.hasCertCopy ? "มี" : "ไม่มี",
+      r.certReceivedAt ? "ได้รับแล้ว" : "ยังไม่ได้รับ",
+      r.certReceivedAt ? dayKeyOf(r.certReceivedAt) : "",
     ]
       .map(csvCell)
       .join(","),
   );
-  const totalLine = ["", "", "", "รวม", bahtStr(totalBase), "", bahtStr(totalWht), ""]
+  const totalLine = ["", "", "", "รวม", bahtStr(totalBase), "", bahtStr(totalWht), "", ""]
     .map(csvCell)
     .join(",");
   return "﻿" + [header.map(csvCell).join(","), ...lines, totalLine].join("\n");
@@ -599,7 +739,10 @@ export type WhtCertRow = {
   contactName: string;
   contactTaxId: string | null;
   legalType: AccountLegalType;
-  form: 3 | 53; // PERSON→3 · COMPANY→53 (ใช้กับ direction IN เท่านั้น — ฝั่ง OUT ไม่มีความหมาย)
+  /** ACC T3.4 ▸ แบบ ภ.ง.ด. จากตัวจับแบบ (ประเภทเงินได้ × ผู้รับ) · ใช้กับ direction IN เท่านั้น ◂ */
+  form: PndFormNumber;
+  /** ACC T3.5 ▸ ฝั่งถูกหัก: วันที่ได้รับ 50 ทวิ จากลูกค้า (null = ยังไม่ได้รับ) ◂ */
+  certReceivedAt: Date | null;
   sourceDocId: string | null;
   sourceDocNo: string | null; // "อ้างอิงเอกสาร" (g11) — เอกสารต้นทาง (ใบแจ้งหนี้/บันทึกซื้อ ฯลฯ)
   sourceDocType: string | null; // ใช้ประกอบลิงก์ผ่าน editorDetailPath (ทำใน UI ไม่ทำใน wht.ts — คนละชั้น)
@@ -625,13 +768,14 @@ function toWhtCertRow(
     issueDate: Date;
     contactId: string | null;
     contactSnapshot: unknown;
-    contact: { name: string; taxId: string | null; legalType: AccountLegalType; branchCode: string | null } | null;
+    contact: { name: string; taxId: string | null; legalType: AccountLegalType; branchCode: string | null; taxIdCountry?: string | null; country?: string | null; legalEntityType?: string | null } | null;
     sourceDocId: string | null;
     whtIncomeType: AccountWhtIncomeType | null;
     subTotal: number;
     whtRateBp: number | null;
     whtAmount: number;
     whtFiledPeriodKey: string | null;
+    whtCertReceivedAt?: Date | null;
   },
   sourceNoById: Map<string, string | null>,
   sourceTypeById: Map<string, string>,
@@ -648,7 +792,8 @@ function toWhtCertRow(
     contactName: (snap?.name as string) ?? c.contact?.name ?? "—",
     contactTaxId: (snap?.taxId as string) ?? c.contact?.taxId ?? null,
     legalType,
-    form: legalType === "PERSON" ? (3 as const) : (53 as const),
+    form: pndFormOfCert(c),
+    certReceivedAt: c.whtCertReceivedAt ?? null,
     sourceDocId: c.sourceDocId,
     sourceDocNo: c.sourceDocId ? (sourceNoById.get(c.sourceDocId) ?? null) : null,
     sourceDocType: c.sourceDocId ? (sourceTypeById.get(c.sourceDocId) ?? null) : null,
@@ -672,6 +817,8 @@ export async function listWhtCertsV2(
     q?: string;
     page?: number;
     pageSize?: number;
+    /** ACC T3.5 ▸ ฝั่งถูกหัก: เฉพาะที่ยังไม่ได้รับ 50 ทวิ จากลูกค้า (ใบที่ยังมีผล) ◂ */
+    owedOnly?: boolean;
   },
 ): Promise<{
   rows: WhtCertRow[];
@@ -693,7 +840,8 @@ export async function listWhtCertsV2(
     systemId,
     docType: "WHT_CERT",
     direction: input.direction,
-    status: { in: ["ISSUED", "VOIDED", "CANCELLED"] },
+    status: input.owedOnly ? "ISSUED" : { in: ["ISSUED", "VOIDED", "CANCELLED"] },
+    ...(input.owedOnly ? { whtCertReceivedAt: null } : {}),
     ...(input.from || input.to
       ? { issueDate: { ...(input.from ? { gte: input.from } : {}), ...(input.to ? { lt: input.to } : {}) } }
       : {}),
@@ -717,7 +865,7 @@ export async function listWhtCertsV2(
       prisma.accountDocument.aggregate({ where, _count: { _all: true }, _sum: { subTotal: true, whtAmount: true } }),
       prisma.accountDocument.findMany({
         where,
-        include: { contact: { select: { name: true, taxId: true, legalType: true, branchCode: true } } },
+        include: { contact: { select: { name: true, taxId: true, legalType: true, branchCode: true, taxIdCountry: true, country: true, legalEntityType: true } } },
         orderBy: { issueDate: "desc" },
         skip: (pageIn - 1) * pageSizeIn,
         take: pageSizeIn,
@@ -747,7 +895,7 @@ export async function listWhtCertsV2(
 
   const certs = await prisma.accountDocument.findMany({
     where: baseWhere,
-    include: { contact: { select: { name: true, taxId: true, legalType: true, branchCode: true } } },
+    include: { contact: { select: { name: true, taxId: true, legalType: true, branchCode: true, taxIdCountry: true, country: true, legalEntityType: true } } },
     orderBy: { issueDate: "desc" },
   });
 
@@ -806,7 +954,7 @@ export async function whtCreditYearTotal(tenantId: string, systemId: string, yea
 export async function markFiled(
   tenantId: string,
   systemId: string,
-  input: { form: 3 | 53; periodKey: string; filedById?: string | null; note?: string | null },
+  input: { form: PndFormNumber; periodKey: string; filedById?: string | null; note?: string | null },
 ): Promise<{ ok: true; certCount: number; totalBaseSatang: number; totalTaxSatang: number } | { ok: false; reason: string }> {
   try {
     const report = await pnd(tenantId, systemId, { type: input.form, period: input.periodKey });
@@ -850,11 +998,11 @@ export async function markFiled(
           targetType: "AccountWhtFiling",
           targetId: saved.id,
           before: prev ? (filingSnapshot(prev) as object) : undefined,
-          after: { periodKey: input.periodKey, form: input.form, totalBaseSatang: report.grandBase, totalTaxSatang: report.grandWht, certCount: report.rows.length, certIds: report.rows.map((r) => r.certId) } as object,
+          after: { periodKey: input.periodKey, form: input.form, totalBaseSatang: report.grandBase, totalTaxSatang: report.grandWht, certCount: report.rows.length, certIds: report.rows.map((r) => r.certId).filter(Boolean), uncertifiedPaymentIds: report.rows.filter((r) => !r.certId).map((r) => r.paymentId) } as object,
         },
       });
       await tx.accountDocument.updateMany({
-        where: { systemId, docType: "WHT_CERT", id: { in: report.rows.map((r) => r.certId) }, whtFiledPeriodKey: null },
+        where: { systemId, docType: "WHT_CERT", id: { in: report.rows.map((r) => r.certId).filter((x): x is string => !!x) }, whtFiledPeriodKey: null },
         data: { whtFiledPeriodKey: key },
       });
     });
@@ -871,7 +1019,7 @@ export async function markFiled(
 export async function unmarkFiled(
   tenantId: string,
   systemId: string,
-  input: { form: 3 | 53; periodKey: string; userId?: string | null; reason?: string | null; actorType?: "USER" | "PLATFORM_USER" | "SYSTEM" | "API_KEY" },
+  input: { form: PndFormNumber; periodKey: string; userId?: string | null; reason?: string | null; actorType?: "USER" | "PLATFORM_USER" | "SYSTEM" | "API_KEY" },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const key = `${input.form}:${input.periodKey}`;
   const reason = (input.reason ?? "").trim().slice(0, 500) || null;
@@ -933,26 +1081,21 @@ export async function validateMarkFiledSelection(
   systemId: string,
   certIds: string[],
 ): Promise<
-  | { ok: true; form: 3 | 53; periodKey: string; periodLabel: string; certCount: number; totalBaseSatang: number; totalTaxSatang: number; alreadyFiled: boolean }
+  | { ok: true; form: PndFormNumber; periodKey: string; periodLabel: string; certCount: number; totalBaseSatang: number; totalTaxSatang: number; alreadyFiled: boolean }
   | { ok: false; reason: string }
 > {
   if (certIds.length === 0) return { ok: false, reason: "ยังไม่ได้เลือกรายการ" };
   const certs = await prisma.accountDocument.findMany({
     where: { tenantId, systemId, docType: "WHT_CERT", direction: "IN", id: { in: certIds } },
-    include: { contact: { select: { legalType: true } } },
+    include: { contact: { select: { legalType: true, taxIdCountry: true, country: true, legalEntityType: true } } },
   });
   if (certs.length === 0) return { ok: false, reason: "ไม่พบรายการที่เลือก" };
-  const forms = new Set(
-    certs.map((c) => {
-      const snap = (c.contactSnapshot as Record<string, unknown> | null) ?? null;
-      const lt = (snap?.legalType as AccountLegalType) ?? c.contact?.legalType ?? "COMPANY";
-      return lt === "PERSON" ? 3 : 53;
-    }),
-  );
-  const periods = new Set(certs.map((c) => `${c.issueDate.getUTCFullYear()}-${String(c.issueDate.getUTCMonth() + 1).padStart(2, "0")}`));
-  if (forms.size > 1) return { ok: false, reason: "เลือกรายการที่เป็นแบบ ภ.ง.ด. เดียวกันเท่านั้น (บุคคลธรรมดา/นิติบุคคล แยกยื่นกันคนละแบบ)" };
+  // ACC T3.4 ▸ แบบจากตัวจับแบบ (1/2/3/53/54) · เดือนตามเวลาไทย (เดิม UTC — ใบที่จ่ายช่วง 00:00–06:59 วันที่ 1 ตกเดือนก่อน) ◂
+  const forms = new Set(certs.map((c) => pndFormOfCert(c)));
+  const periods = new Set(certs.map((c) => dayKeyOf(c.issueDate).slice(0, 7)));
+  if (forms.size > 1) return { ok: false, reason: "เลือกรายการที่เป็นแบบ ภ.ง.ด. เดียวกันเท่านั้น (แต่ละแบบยื่นแยกกัน)" };
   if (periods.size > 1) return { ok: false, reason: "เลือกรายการในงวด (เดือน) เดียวกันเท่านั้น" };
-  const form = [...forms][0] as 3 | 53;
+  const form = [...forms][0] as PndFormNumber;
   const periodKey = [...periods][0];
   const report = await pnd(tenantId, systemId, { type: form, period: periodKey });
   const existing = await prisma.accountWhtFiling.findFirst({ where: { tenantId, systemId, form, periodKey, unmarkedAt: null } });

@@ -459,6 +459,30 @@ model AccountVatAdditionalFiling {
   @@index([tenantId, systemId])
 }
 
+// ACC T3.4: แบบยื่นเพิ่มเติม ภ.ง.ด. — แถวใหม่ต่อครั้ง (seq 1, 2, …) หลังทำเครื่องหมายนำส่งต้นฉบับ (AccountWhtFiling) · ภาพยอดใหม่ + ผลต่าง
+model AccountWhtAdditionalFiling {
+  id              String   @id @default(cuid())
+  tenantId        String
+  systemId        String
+  form            Int // 1 | 2 | 3 | 53 | 54
+  periodKey       String // "YYYY-MM"
+  seq             Int
+  filedAt         DateTime @default(now())
+  filedById       String?
+  totalBaseSatang Int
+  totalTaxSatang  Int
+  rowCount        Int
+  /// ภาษีส่วนต่างจากการยื่นครั้งก่อน (+ ต้องนำส่งเพิ่ม)
+  deltaTaxSatang  Int
+  /// รายการปรับ (ใบที่ออก/ยกเลิกหลังยื่นครั้งก่อน) ณ ตอนบันทึก
+  changes         Json
+  note            String?
+  createdAt       DateTime @default(now())
+
+  @@unique([systemId, form, periodKey, seq])
+  @@index([tenantId, systemId])
+}
+
 // ACC T1.3: เครดิตภาษียกมาที่ร้านแก้เอง — แถวใหม่ทุกครั้ง (ประวัติ) · แถวล่าสุดของเดือนมีผล · amountSatang null = กลับไปใช้ค่าที่ระบบคิด
 model AccountVatCreditCarry {
   id           String   @id @default(cuid())

@@ -41,7 +41,7 @@ export type FilingHistoryRow = {
 };
 
 /** ประวัติของเดือนหนึ่ง (เก่า → ใหม่) · kind = "PP30" | 3 | 53 */
-export async function filingHistory(ctx: Ctx, kind: "PP30" | 3 | 53, periodKey: string): Promise<FilingHistoryRow[]> {
+export async function filingHistory(ctx: Ctx, kind: "PP30" | number, periodKey: string): Promise<FilingHistoryRow[]> {
   const db = tenantDb(ctx);
   const row =
     kind === "PP30"

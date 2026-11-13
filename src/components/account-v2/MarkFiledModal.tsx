@@ -3,6 +3,7 @@
 // MarkFiledModal — "ทำเครื่องหมายนำส่งแล้ว" (WO 5.4 · DESIGN-SPEC-V2 §10.5 "(งวด)" · g11 bulk bar)
 // เปิดผ่าน query `?markFiled=1&ids=…` (pattern เดียวกับ FinanceModal `?edit=`) — server หน้า wht เตรียม
 // `summary` มาให้แล้ว (ตรวจว่า certs ที่เลือกอยู่แบบ/งวดเดียวกันหรือยัง) ตัวนี้แค่ยืนยัน+เรียก server action
+import type { PndFormNumber } from "@/lib/modules/account/wht-forms";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "./Modal";
@@ -12,7 +13,7 @@ import { markFiledAction } from "@/app/app/sys/[id]/account/wht/actions";
 export type MarkFiledSummary =
   | {
       ok: true;
-      form: 3 | 53;
+      form: number;
       periodKey: string;
       periodLabel: string;
       certCount: number;
@@ -38,7 +39,7 @@ export function MarkFiledModal({
   const confirm = () => {
     if (!summary.ok) return;
     start(async () => {
-      const res = await markFiledAction(systemId, { form: summary.form, periodKey: summary.periodKey });
+      const res = await markFiledAction(systemId, { form: summary.form as PndFormNumber, periodKey: summary.periodKey });
       if (res.ok) router.push(closeHref);
     });
   };

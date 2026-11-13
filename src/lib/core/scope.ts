@@ -482,6 +482,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AccountVatFiling: sys(), // V2 (WO 6.2 §11.4): ทำเครื่องหมายยื่น ภ.พ.30 ต่องวด — ใช้ในเช็กลิสต์ปิดงวด
   AccountDocumentPrint: sys(), // ACC T2.7: ประวัติการพิมพ์ (ต้นฉบับ/สำเนา/ใบแทน)
   AccountVatAdditionalFiling: sys(), // ACC T1.3: แบบยื่นเพิ่มเติม ภ.พ.30
+  AccountWhtAdditionalFiling: sys(), // ACC T3.4: แบบยื่นเพิ่มเติม ภ.ง.ด.
   AccountVatCreditCarry: sys(), // ACC T1.3: เครดิตภาษียกมาที่ร้านแก้เอง (ประวัติ)
   // WO 5.5 (บัญชี V2 §0.3 ข้อ 5) — คำขอชำระเงินผ่านลิงก์+QR PromptPay (ผูก tenantId+systemId)
   //   ทางเข้าที่ยังไม่รู้ร้าน (webhook ของผู้ให้บริการ · ลิงก์สาธารณะ · cron หมดอายุ) อ่านผ่าน

@@ -204,6 +204,12 @@ model AccountDocument {
   inputVatLateNote  String?
   /// ACC T2.3 — รหัสเหตุผลของใบลด/เพิ่มหนี้ (ตาราง ADJUST_NOTE_REASONS ใน th-tax-2569.ts) · `adjustReason` = ข้อความที่พิมพ์บนใบ · null = ใบก่อน T2.3
   adjustReasonCode  String?
+  /// ACC T3.3 — เงื่อนไขผู้จ่ายบน 50 ทวิ: 1 หัก ณ ที่จ่าย · 2 ออกให้ตลอดไป · 3 ออกให้ครั้งเดียว · 4 อื่น ๆ (null = 1) · ช่องร่วม: โหมดออกภาษีให้ (T3.6) เขียนช่องนี้
+  whtCondition      Int?
+  /// ACC T3.5 — ฝั่งถูกหัก (WHT_CERT direction OUT): ได้รับหนังสือรับรอง 50 ทวิ จากลูกค้าแล้วจริง (null = ยังไม่ได้รับ · ไม่เดาจากไฟล์แนบ)
+  whtCertReceivedAt   DateTime?
+  whtCertReceivedById String?
+  whtCertReceivedNote String?
   /// ACC T2.7 — ประวัติการพิมพ์ (ต้นฉบับ/สำเนา/ใบแทน)
   prints        AccountDocumentPrint[]
 
@@ -226,6 +232,8 @@ model AccountDocument {
   @@index([tenantId, systemId])
   // WO 5.4: หา WHT_CERT ที่ยังไม่ยื่นของ (systemId, docType) เร็ว — ใช้ตอน markFiled คำนวณผลรวมใหม่
   @@index([systemId, docType, whtFiledPeriodKey])
+  // ACC T3.5: ค้างรับ 50 ทวิ (ฝั่งถูกหัก)
+  @@index([systemId, docType, direction, whtCertReceivedAt])
 }
 
 model AccountDocumentLine {

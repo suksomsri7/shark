@@ -2595,6 +2595,10 @@ export async function issueDocumentInTx(
             address: doc.contact.address,
             phone: doc.contact.phone,
             email: doc.contact.email,
+            // ACC T3.4 ▸ ตรึงข้อมูลที่ตัวจับแบบ ภ.ง.ด. ใช้ (ต่างประเทศ · มูลนิธิ/สมาคม) ◂
+            ...(doc.contact.taxIdCountry && doc.contact.taxIdCountry !== "TH" ? { taxIdCountry: doc.contact.taxIdCountry } : {}),
+            ...(doc.contact.country && doc.contact.country !== "TH" ? { country: doc.contact.country } : {}),
+            ...(doc.contact.legalEntityType && /มูลนิธิ|สมาคม/.test(doc.contact.legalEntityType) ? { legalEntityType: doc.contact.legalEntityType } : {}),
           }
         : null;
       await tx.accountDocument.update({

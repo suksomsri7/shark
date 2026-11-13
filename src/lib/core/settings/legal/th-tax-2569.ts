@@ -494,3 +494,61 @@ export const DEPOSIT_FORFEIT_RULE = {
   tag: "U" as LegalTag,
   checkedAt: "2026-11-13",
 };
+
+// ═══════════════════ T3.3 / T3.4 แบบ ภ.ง.ด. × ผู้รับ + ช่องบน 50 ทวิ (แถวระบบ — บล็อกของเลน 2) ═══════════════════
+// skill common-withholding-tax.md §1 §3 §5 §7 §10 §15 · design note ledger/wo-notes/T3.4.md
+// แถวเจาะจง (ประเภทเงินได้ระบุ) ชนะแถว ANY ของผู้รับเดียวกัน · ป้าย U = คำเตือน WHT_FORM_UNVERIFIED (ไม่บล็อก)
+
+export const PND_FORMS = ["PND1", "PND2", "PND3", "PND53", "PND54"] as const;
+export type PndForm = (typeof PND_FORMS)[number];
+export const WHT_FORM_RECIPIENTS = ["INDIVIDUAL_TH", "JURISTIC_TH", "FOUNDATION", "FOREIGN_PE", "FOREIGN_JURISTIC", "FOREIGN_INDIVIDUAL"] as const;
+export type WhtFormRecipient = (typeof WHT_FORM_RECIPIENTS)[number];
+export const WHT_FORM_RECIPIENT_LABEL_TH: Record<WhtFormRecipient, string> = {
+  INDIVIDUAL_TH: "บุคคลธรรมดาไทย",
+  JURISTIC_TH: "นิติบุคคลไทย",
+  FOUNDATION: "มูลนิธิ/สมาคม",
+  FOREIGN_PE: "บริษัทต่างประเทศมีสาขาถาวรในไทย",
+  FOREIGN_JURISTIC: "นิติบุคคลต่างประเทศ (ไม่ได้ประกอบกิจการในไทย)",
+  FOREIGN_INDIVIDUAL: "บุคคลธรรมดาต่างประเทศ",
+};
+
+/** ช่องชนิดแบบบนหนังสือรับรอง 50 ทวิ (แบบทางการ · WHT §7) */
+export const WHT_CERT_FORM_BOXES: readonly { box: 1 | 2 | 3 | 4 | 5 | 6 | 7; labelTh: string }[] = [
+  { box: 1, labelTh: "ภ.ง.ด.1ก" },
+  { box: 2, labelTh: "ภ.ง.ด.1ก พิเศษ" },
+  { box: 3, labelTh: "ภ.ง.ด.2" },
+  { box: 4, labelTh: "ภ.ง.ด.3" },
+  { box: 5, labelTh: "ภ.ง.ด.2ก" },
+  { box: 6, labelTh: "ภ.ง.ด.3ก" },
+  { box: 7, labelTh: "ภ.ง.ด.53" },
+];
+
+export type WhtFormRow = RowBase & {
+  /** รหัสประเภทเงินได้ (M40_1…M40_8) ที่แถวนี้ครอบ · "ANY" = ทุกประเภทที่ไม่มีแถวเจาะจง */
+  incomeTypes: readonly string[] | "ANY";
+  recipient: WhtFormRecipient;
+  form: PndForm;
+  /** ช่องบน 50 ทวิ · null = แบบไม่มีช่อง */
+  certBox: 1 | 2 | 3 | 4 | 5 | 6 | 7 | null;
+  /** แบบสรุปรายปี (ภ.ง.ด.1ก) */
+  annualForm: "PND1K" | null;
+};
+
+const F1 = `${WHT_REF} §1 (โครงสร้าง ม.50 · ม.3 เตรส · ม.70)`;
+const wf = (id: string, r: Omit<WhtFormRow, "id" | "value" | "from" | "to" | "annualForm"> & Partial<Pick<WhtFormRow, "annualForm">>): WhtFormRow => ({ id, value: null, from: null, to: null, annualForm: null, ...r });
+
+export const SYSTEM_WHT_FORM_ROWS: readonly WhtFormRow[] = [
+  // ── บุคคลธรรมดาไทย ──
+  wf("sys-whtform-ind-50-1", { incomeTypes: ["M40_1", "M40_2"], recipient: "INDIVIDUAL_TH", form: "PND1", certBox: 1, annualForm: "PND1K", source: `${F1} · §3 (ค่านายหน้าให้บุคคลธรรมดา = ม.50(1) ภ.ง.ด.1) · §7 (50 ทวิ ภายใน 15 ก.พ.)`, tag: "V", checkedAt: "2026-11-13", note: "ม.50(1) · 50 ทวิ ออกภายใน 15 ก.พ. ปีถัดไป" }),
+  wf("sys-whtform-ind-50-2", { incomeTypes: ["M40_3", "M40_4"], recipient: "INDIVIDUAL_TH", form: "PND2", certBox: 3, source: `${WHT_REF} §10 (ข้อ 3/2 · 4(3) หมายเหตุ: ผู้รับบุคคลธรรมดา = ม.50(2)) · §15 (ภ.ง.ด.2)`, tag: "V", checkedAt: "2026-11-13" }),
+  wf("sys-whtform-ind-any", { incomeTypes: "ANY", recipient: "INDIVIDUAL_TH", form: "PND3", certBox: 4, source: F1, tag: "V", checkedAt: "2026-11-13" }),
+  // ── นิติบุคคลไทย ──
+  wf("sys-whtform-jur-any", { incomeTypes: "ANY", recipient: "JURISTIC_TH", form: "PND53", certBox: 7, source: F1, tag: "V", checkedAt: "2026-11-13" }),
+  wf("sys-whtform-fdn-any", { incomeTypes: "ANY", recipient: "FOUNDATION", form: "PND53", certBox: 7, source: `${WHT_REF} §10 (มูลนิธิ/สมาคม 10%) — skill ไม่ระบุแบบ`, tag: "U", checkedAt: "2026-11-13", note: "skill ให้อัตราแต่ไม่ระบุแบบ" }),
+  wf("sys-whtform-fpe-any", { incomeTypes: "ANY", recipient: "FOREIGN_PE", form: "PND53", certBox: 7, source: `${WHT_REF} §10 (ข้อ 8(3) บริษัทต่างประเทศมีสาขาถาวร 3%) — skill ไม่ระบุแบบ`, tag: "U", checkedAt: "2026-11-13", note: "skill ไม่ระบุแบบ" }),
+  // ── ต่างประเทศ ──
+  wf("sys-whtform-foreign-70", { incomeTypes: ["M40_2", "M40_3", "M40_4", "M40_5", "M40_6"], recipient: "FOREIGN_JURISTIC", form: "PND54", certBox: null, source: `${F1} · §5 (ม.70 ภ.ง.ด.54 ภายใน 7 วัน) · แบบ 50 ทวิ ไม่มีช่อง ภ.ง.ด.54 [U]`, tag: "V", checkedAt: "2026-11-13", note: "แบบ 50 ทวิ ไม่มีช่อง ภ.ง.ด.54 — skill ป้าย [U]" }),
+  wf("sys-whtform-foreign-any", { incomeTypes: "ANY", recipient: "FOREIGN_JURISTIC", form: "PND53", certBox: 7, source: `${WHT_REF} §10 (ข้อ 12 จ้างทำของ บริษัทต่างประเทศไม่มีสาขาถาวร 5% — คำสั่ง ม.3 เตรส) — skill ไม่ระบุแบบ`, tag: "U", checkedAt: "2026-11-13", note: "skill ไม่ระบุแบบ" }),
+  wf("sys-whtform-fi-50-1", { incomeTypes: ["M40_1", "M40_2"], recipient: "FOREIGN_INDIVIDUAL", form: "PND1", certBox: 1, annualForm: "PND1K", source: `${WHT_REF} §5 (ม.50(1) ว.สี่ ร้อยละ 15 · ค่าเริ่มต้นไม่หัก) — skill ไม่ระบุแบบ`, tag: "U", checkedAt: "2026-11-13", note: "skill ไม่ระบุแบบ" }),
+  wf("sys-whtform-fi-any", { incomeTypes: "ANY", recipient: "FOREIGN_INDIVIDUAL", form: "PND3", certBox: 4, source: `${WHT_REF} §1 — skill ไม่ระบุแบบของผู้รับบุคคลธรรมดาต่างประเทศ`, tag: "U", checkedAt: "2026-11-13", note: "skill ไม่ระบุแบบ" }),
+];
