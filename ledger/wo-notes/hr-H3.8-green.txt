@@ -1,0 +1,137 @@
+# H3.8 green log — wip/hr-h3.8 · lane 1 (wo-hr-qc-l1 ep-nameless-sea) · 2026-11-13T20:05:06Z
+# suite cmd: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 [QC_FORCE=1] pnpm exec tsx scripts/<suite>.mts
+
+## run 1 (after build commits b071c9d39)
+h38 rc=0 :: ===== qc-hr-h3.8 ===== passed 59/59
+h38f1 rc=0 :: ===== qc-hr-h3.8 ===== passed 59/59 (QC_FORCE)
+h38f2 rc=0 :: ===== qc-hr-h3.8 ===== passed 59/59 (QC_FORCE)
+seed rc=0 :: ===== seed-hr-qc ===== ผ่าน 34/34
+h36 rc=1 :: ===== qc-hr-h3.6 ===== passed 60/62
+h35 rc=1 :: ===== qc-hr-h3.5 ===== passed 52/53
+h34 rc=1 :: ===== qc-hr-h3.4 ===== passed 84/85
+h32 rc=0 :: ===== qc-hr-h3.2 ===== passed 64/64
+h211 rc=0 :: ===== qc-hr-h2.11 ===== passed 70/70
+h210 rc=1 :: ===== qc-hr-h2.10 ===== passed 56/57
+h26 rc=0 :: ===== qc-hr-h2.6 ===== passed 56/56
+h25 rc=0 :: ===== qc-hr-h2.5 ===== passed 79/79
+h11 rc=0 :: ===== qc-hr-h1.1 ===== passed 81/81
+h12 rc=0 :: ===== qc-hr-h1.2 ===== passed 73/73
+h13 rc=0 :: ===== qc-hr-h1.3 ===== passed 63/63
+h01 rc=0 :: ===== qc-hr-h0.1 ===== passed 67/67
+h06 rc=0 :: ===== qc-hr-h0.6 ===== passed 55/55
+payroll rc=0 :: ผ่าน 19/19
+payadj rc=0 :: ผ่าน 27/27
+privacy rc=0 :: ผ่าน 194/194
+audit rc=0 :: 
+preverse rc=0 :: 
+fitenv rc=0 :: ผ่าน 53/53
+fithrenv rc=0 :: ผ่าน 9/9
+ALLDONE
+
+## run 2 (after facade + h0.1/h3.4 ORACLE-EDITs)
+h38 rc=0 :: ===== qc-hr-h3.8 ===== passed 59/59
+h38f1 rc=0 :: ===== qc-hr-h3.8 ===== passed 59/59 (QC_FORCE)
+h38f2 rc=0 :: ===== qc-hr-h3.8 ===== passed 59/59 (QC_FORCE)
+h210 rc=1 :: ===== qc-hr-h2.10 ===== passed 56/57
+h34 rc=0 :: ===== qc-hr-h3.4 ===== passed 85/85
+h36 rc=1 :: ===== qc-hr-h3.6 ===== passed 60/62
+h35 rc=1 :: ===== qc-hr-h3.5 ===== passed 52/53
+h211 rc=0 :: ===== qc-hr-h2.11 ===== passed 70/70
+privacy rc=0 :: ผ่าน 194/194
+h01 rc=0 :: ===== qc-hr-h0.1 ===== passed 67/67
+fitenv rc=0 :: ผ่าน 53/53
+fithrenv rc=0 :: ผ่าน 9/9
+ALLDONE
+
+## run 3 (comment fix in self.ts)
+h210 rc=0 :: ===== qc-hr-h2.10 ===== passed 57/57
+h38 rc=0 :: ===== qc-hr-h3.8 ===== passed 59/59
+ALLDONE
+
+## pre-H3.6 base runs (QC_H35_BASE / QC_H36_BASE = 17f1adf81, the session/hr parent of the H3.6 merge — how earlier rounds ran these suites)
+h35b :: ===== qc-hr-h3.5 ===== passed 53/53
+h36b :: ===== qc-hr-h3.6 ===== passed 60/62
+  ❌ [H3.6-S1.2] [static] payroll.prisma 4 models · HrEmployee/HrPayrollRun/HrPayrollItem blocks unchanged vs base · scope.ts sys() ×4 · hr-qc-env ×4 — expected models · frozen blocks · scope · env | actual empSame
+  ❌ [H3.6-S1.6] [static] [control] payroll-rules sha · frozen files/dirs unchanged vs base (incl. bank-files, account, self, law) — expected unchanged (bank-files: HR H3.6 hunks only) | actual frozen changed: src/lib/modules/hr/privacy.ts,src/lib/modules/hr/self.ts · bank changed: src/lib/modules/hr/bank-files/build.ts,src/lib/modules/hr/bank-files/encode.ts,src/lib/modules/hr/bank-files/gen
+
+## final (HEAD)
+h25 rc=0 :: ===== qc-hr-h2.5 ===== passed 79/79
+h211 rc=0 :: ===== qc-hr-h2.11 ===== passed 70/70
+h38final rc=0 :: ===== qc-hr-h3.8 ===== passed 59/59
+ALLDONE
+fitness (no env) :: JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
+fitness-hr (no env) :: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+
+## clean typecheck (rm -rf .next/types tsconfig.tsbuildinfo · ISO_MEM=14000M · with-gate-lock)
+run A after build: exit=0 · error TS count 0
+run B at HEAD: exit=0 · error TS count 0
+
+## failures detail (default base = merge-base 268b81f17)
+-- h36
+  ❌ [H3.6-S1.2] [static] payroll.prisma 4 models · HrEmployee/HrPayrollRun/HrPayrollItem blocks unchanged vs base · scope.ts sys() ×4 · hr-qc-env ×4 — expected models · frozen blocks · scope · env | actual empSame
+  ❌ [H3.6-S1.6] [static] [control] payroll-rules sha · frozen files/dirs unchanged vs base (incl. bank-files, account, self, law) — expected unchanged (bank-files: HR H3.6 hunks only) | actual frozen changed: src/lib/modules/hr/privacy.ts,src/lib/modules/hr/self.ts · bank unchanged
+-- h35
+  ❌ [H3.5-S1.2] [static] payroll.prisma 3 models · HrEmployee/HrPayrollRun/HrPayrollItem blocks unchanged vs base · scope.ts sys() ×3 · hr-qc-env ×3 — expected models · frozen blocks · scope · env | actual empSame
+
+## qc-hr-h3.8 final log
+  ✅ [H3.8-S1.1] [static] migration 20270110000000_hr_payslip*: CREATE TABLE HrSalaryCertificate · CHECK status/purpose/ISSUED completeness · UNIQUE (systemId, docNo) · partial unique open request · FK HrEmployee RESTRICT · additive only
+  ✅ [H3.8-S1.2] [static] payroll.prisma model HrSalaryCertificate (HrPayrollRun/HrPayrollItem blocks unchanged) · hr.prisma back-relation · core/scope.ts sys() · hr-qc-env entry
+  ✅ [H3.8-S1.3] [static] pure payslip-rules.ts: value imports ⊆ account/totals · account/doc-numbering · ./filings/figures · no db/clock/random/fetch · exports 10 names
+  ✅ [H3.8-S1.4] [static] no recompute: payslip*.ts(x) import no payroll-rules*/payroll-run-rules (value)/law/ot-rules · no ssoContribution/ssoV2/whtYtdV2/monthlyWhtSatang/computeRunItemV2/computeItem · no HrSalaryProfile/ytdJson/lawRowIds/filingJson/hrLawT
+  ✅ [H3.8-S1.5] [static] PDF reuses the existing path: payslip-pdf.tsx imports @react-pdf/renderer + Sarabun from public/fonts/sarabun + wrapPdf (account/public-doc-pdf) · package.json dependencies identical to base (no new library)
+  ✅ [H3.8-S1.6] [static] [control] payroll-rules sha · frozen files/dirs unchanged vs base (payroll*.ts, law, service, filings, bank-files, account, approval, rbac, seed, qc-hr-lib, privacy suite, gate lock, package.json)
+  ✅ [H3.8-S1.7] [static] marked hunks "HR H3.8": ≥ 1 hunk in each of privacy.ts · self.ts · self-ui.tsx · me/hr/pay page · slip page · payroll page · payroll.prisma · hr.prisma · core/scope.ts · hr-qc-env · inbox.ts · inbox-shared.ts · visual-h
+  ✅ [H3.8-S1.8] [static] 4 routes: GET → payslip-route helper · HEAD exported = 405 · rsc/prefetch answered before requireTenant · runtime nodejs · no prisma/tenantDb/nationalId in route files
+  ✅ [H3.8-S1.9] [static] self surfaces never take an employeeId: me/hr pages + routes have no employeeId · every exported my*/requestSalaryCertificate/cancelMySalaryCertRequest calls resolveSelf and reads no input employeeId
+  ✅ [H3.8-S1.10] [static] client boundary: payslip-ui.tsx is a server module · no "use client" file under hr/ imports payslip(.ts)/payslip-pdf/payslip-route/payslip-rules (value) · new client files name no nationalId/bankAccountNo/contentJson
+  ✅ [H3.8-S1.11] [static] payslip.ts gate reads membership from DB · does not import hrViewerOf · 7 audit action names · payslip-actions.ts "use server" wrappers calling requireTenant()
+  ✅ [H3.8-S1.12] [static] UI testids (mockup 07c regions + certificate cards) · inventory rows wo H3.8 both ways · messages hr.slip / hr.slipLine (20 codes) / hr.salaryCert th = en · visual-hr SPECS["3.8"] · tokens only
+  ✅ [H3.8-S5.3] [static] pages link with a highlighted <a download> to the PDF routes · no action redirects to a PDF/certificate route
+  ✅ [H3.8-S2.1] [pure] SLIP_TEXT / SLIP_TEXT_EN: 19 keys both · th Thai, en ASCII · slipTextFor(locale) · no law-as-fact wording (เพดาน · ไม่ถึงเกณฑ์ · ตามกฎหมาย · 5 %)
+  ✅ [H3.8-S2.2] [pure] V1 plain monthly: earnings 16,000 · deductions 750 (SSO) + 0 (WHT) · net 15,250 — exact view
+  ✅ [H3.8-S2.3] [pure] V2 mockup 07c: BASE 16,000 · OT 600 · COMMISSION 1,200 (count 2) 
+  ✅ [H3.8-S2.4] [pure] V3 mid-month starter: PRORATION −14,000 stays inside earnings (qty 16) ⇒ 16,000 − 750 = 15,250
+  ✅ [H3.8-S2.5] [pure] V4 refund + advance: REFUND 500 earnings · ADVANCE 3,000 deduction ⇒ 20,500 − 3,750 = 16,750
+  ✅ [H3.8-S2.6] [pure] V5 SSO cap + WHT: ssoBase = stored 17,500 · SSO 875 · WHT 2,708.33 ⇒ net 46,416.67 (no rate/cap computed)
+  ✅ [H3.8-S2.7] [pure] V6 bonus with one-off WHT: 40,000 − 2,125 = 37,875
+  ✅ [H3.8-S2.8] [pure] V7 legacy v1 (adjustment notes never in the view) · V8 v1 without detail ⇒ balancing V1_OTHER 500 + flag
+  ✅ [H3.8-S2.9] [pure] broken stored data B1–B10 ⇒ {ok:false, code:"SLIP_DATA"} (Σ lines ≠ gross · net ≠ gross − SSO − WHT · negative · non-integer · unknown code · engine 3 · null)
+  ✅ [H3.8-S2.10] [pure] properties ×60 seeded v2 items: earnings − deductions = net exactly · Σ lines per section = section total · sections by code · deterministic · input not mutated
+  ✅ [H3.8-S2.11] [pure] slipState: 10-row table (v1 APPROVED/PAID issued · v2 needs stepsJson.finalized · REVERSED ⇒ WITHDRAWN · DRAFT)
+  ✅ [H3.8-S2.12] [pure] taxYearOf = Bangkok year of payDate (31 Dec 17:30Z ⇒ next year) · yearTotals sums count/gross/income/tax/sso/net per year, newest first · income = 40(1) income (H3.6 itemFigures)
+  ✅ [H3.8-S2.13] [pure] salaryCertContent exact (MONTHLY_BASE · bahtText words · disclaimer = certNote · no ID) · salaryCertDocNo(1
+  ✅ [H3.8-S2.14] [pure] renderPayslipPdf(V2 slip): %PDF · 1 page · 16,900.00 / 17,800.00 / 900.00 · name · bank •••4321 only · renderSalaryCertPdf: %PDF · docNo · 18,000.00
+  ✅ [H3.8-S3.0] [db] [control] fixture: 8 runs in system A (v1 PAID · v2 APPROVED/PAID finalized · REVERSED · DRAFT · APPROVED unfinalized · Dec run paid in Jan) + system B · Σ items = run totals
+  ✅ [H3.8-S3.1] [db] slipForViewer (owner) = vectors on stored rows: e1 RA2 = V2 · e2 RA3 = V3 · e3 RA7 = V5 · e4 RA1 = V7 · full DTO incl. payDate/taxYear/state/bankMasked "KBank •••4321"
+  ✅ [H3.8-S3.2] [db] snapshot only: a new HrSalaryProfile (99,999) changes nothing · tampered stored net ⇒ SLIP_DATA (in-app + PDF), never repaired · restored ⇒ ok
+  ✅ [H3.8-S3.3] [db] states: gate in-app DRAFT / NOT_FINAL / WITHDRAWN shown with state · PDF refuses NOT_ISSUED / NOT_FINAL / WITHDRAWN with fixed texts · self gets NO for all three
+  ✅ [H3.8-S3.4] [db] mySlips (self e4): own ISSUED slips only grouped by tax year · 2031 count 2 · gross 31,400 · income 31,600 · SSO 1,500 · net 29,900 · rows newest first · href /app/me/hr/pay/<runId>
+  ✅ [H3.8-S3.5] [db] mySlip: own RA1/RA2 ok (= V7 / V1) · RA3 (not in run) · RA4 reversed · RA6 unfinalized · unknown id · unlinked member ⇒ NO (identical bytes)
+  ✅ [H3.8-S3.6] [db] slipHistory e1: 2031 = 4 slips · gross 105,150 · income 107,650 · tax 1,750 · SSO 3,125 · net 100,275 · 2032 = Dec run paid 5 Jan 2032 (1 slip · 18,000)
+  ✅ [H3.8-S3.7] [db] reconcile with H3.6: issueTaxCertificate ANNUAL 2031 for e1 (real H3.6 service) ⇒ contentJson total 107,650 · tax 1,750 · SSO fund 3,125 = slipHistory 2031 income/tax/SSO
+  ✅ [H3.8-S3.8] [db] gate PDF: %PDF bytes · fileName payslip-<period>[-code].pdf without name/ID · audit hr.payslip.download after keys exact {runId, employeeId, periodKey, by:GATE} · no outbox · no stored bytes
+  ✅ [H3.8-S3.9] [db] self PDF: own RA2 ok + audit by SELF · RA3 / RA6 / unknown / member ⇒ NO (identical) · nothing audited on refusal
+  ✅ [H3.8-S3.10] [db] matrix 12 viewers × (in-app · PDF · history) for e1: owner / payroll all-branch / read-only payroll / branch payroll ok · managers · HR staff · member · self · other tenant · 2 forged ⇒ NO · branch payroll ⇒ NO for e5 (hom
+  ✅ [H3.8-S3.11] [db] forged claims ignored: passed role OWNER over a STAFF membership · passed hr.payroll.read · self actor carrying employeeId/systemId of e1 ⇒ still only e4 / NO
+  ✅ [H3.8-S3.12] [db] every refusal = exactly {ok:false, code, reason} with the fixed text · unknown run · other tenant · no right · other branch · other's slip ⇒ identical bytes
+  ✅ [H3.8-S3.13] [db] DTO keys exact (slip · employee · line · mine · year · row · history · certificate rows) · no HR_FORBIDDEN_DTO_KEYS · no national ID / full bank number in any DTO
+  ✅ [H3.8-S3.14] [db] salary-cert request (self): REQUESTED row + audit · cancel ⇒ CANCELLED · second open ⇒ certReqOpen · bad purpose ⇒ purpose · ended ⇒ inactive · unlinked ⇒ NO · self cannot issue (gate fn ⇒ NO)
+  ✅ [H3.8-S3.16] [db] owner issues e1 (no request) ⇒ HRSC-2032-0001 · content salary = BASE 18,000 of the latest issued slip (2031-12) · contentSha256 = sha(canon(content)) · no 13-digit ID · audit keys · counter (HR system, WHT_CERT, HRSC:2032) · no
+  ✅ [H3.8-S3.15] [db] inbox (default Q3): owner's listInbox type CERT lists e4's request without any ฿ key · MANAGER without gate does not see it · decideInbox APPROVED ⇒ ISSUED HRSC-2032-0002
+  ✅ [H3.8-S3.17] [db] issue refusals consume no number: no slip ⇒ certNoSlip · daily payer ⇒ certNoBase · system without profile ⇒ profile · gate holder for own employee ⇒ own · read-only / manager ⇒ NO · reject ⇒ REJECTED then notDecidable
+  ✅ [H3.8-S3.18] [db] frozen certificate: renamed employee ⇒ PDF still shows issued name · tampered content ⇒ certChanged · void owner only (certVoidOwner) · reason 1–200 · voided ⇒ voided · reissue ⇒ HRSC-2032-0003 (no reuse)
+  ✅ [H3.8-S3.19] [db] self certificates: own live ISSUED listed + PDF (audit by SELF) · e1's certId ⇒ NO · voided ⇒ hidden + NO
+  ✅ [H3.8-S3.21] [db] H2.10 myDocuments keeps its keys but lists ISSUED slips only (RA2, RA1 — not RA6 unfinalized / RA4 reversed) with href /app/me/hr/pay/<runId>
+  ✅ [H3.8-S6.1] [db] [control] loadPayslipForViewer (HF-HR-0): self opens own APPROVED v1 slip · member null · owner opens a DRAFT
+  ✅ [H3.8-S6.2] [db] loadPayslipForViewer (marked hunk): self + v2 APPROVED unfinalized ⇒ null · self + REVERSED ⇒ null
+  ✅ [H3.8-S5.1] [db] route helpers: rsc / prefetch ⇒ 204, nothing audited · GET ⇒ 200 application/pdf attachment no-store nosniff safe file name · refusal ⇒ 404/409 fixed text (th/en) no bytes · self + certificate helpers
+  ✅ [H3.8-S5.2] [db] HEAD / POST to the 4 helpers ⇒ 405 Allow GET before any read · no audit row
+  ✅ [H3.8-S6.3] [db] audit rows of H3.8 actions carry no national ID / name / ฿ key · no outbox event from any H3.8 call
+  ✅ [H3.8-S6.4] [db] PDFs: slip shows no national ID, no full account (•••4321 only), no colleague's name · certificate shows no national ID
+  ✅ [H3.8-S4.1] [db] hold RA7 row FOR UPDATE ⇒ gate PDF read waits on the lock (seen in pg_stat_activity) · holder flips RA7 to REVERSED and commits ⇒ the read answers WITHDRAWN (no stale slip)
+  ✅ [H3.8-S3.20] [db] reversed run (after S4.1): history 2031 for e1 = 3 slips · gate PDF ⇒ withdrawn · certificate source skips it
+  ✅ [H3.8-S4.2] [db] 5 parallel self requests ⇒ 1 REQUESTED + 4 certReqOpen · 4 parallel issues of that request ⇒ 1 ISSUED HRSC-2032-0005 + 3 notDecidable (0004 = S5.1) · counter lastNo 5 · numbers 0001–0005 contiguous
+  ✅ [H3.8-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+  ✅ [H3.8-Z1] no residue (HrSalaryCertificate · HrTaxCertificate · HrFilingPerson/Profile · AccountDocSequence of the QC tenants)
+===== qc-hr-h3.8 ===== passed 59/59
+JSON_SUMMARY {"suite":"qc-hr-h3.8","total":59,"passed":59,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":54,"baseGreen":5,"offBase":["H3.8-S1.1(RED→pass)","H3.8-S1.2(RED→pass)","H3.8-S1.3(RED→pass)","H3.8-
