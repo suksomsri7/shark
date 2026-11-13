@@ -83,7 +83,7 @@ export const SKILLS: Skill[] = [
       "account_purchase_tax_report", // ACC T1.6 ▸ รายงานภาษีซื้อ (ลำดับที่ต่อเดือน · หักไม่ได้ · รอใบกำกับ · ข้อตรวจ) (อ่าน) ◂
       "account_document_legal_warnings", // ACC T2.1 ▸ คำเตือนกฎหมายของเอกสาร (ใบกำกับเต็มรูปขาดชื่อ/ที่อยู่ผู้ซื้อ ฯลฯ) (อ่าน) ◂
       "account_deposit_settlement", // ACC T2.4 ▸ ดูก่อนคืน/ริบเงินมัดจำ (ยอดคงเหลือ · VAT · ใบลดหนี้ไหม) (อ่าน) ◂
-      "account_wht_pnd_report", "account_wht_credits_owed", // ACC T3.4 ▸ ภ.ง.ด. แยกแบบ 1/2/3/53/54 · T3.5 ▸ ค้างรับ 50 ทวิ จากลูกค้า (อ่าน) ◂
+      "account_wht_pnd_report", "account_wht_pnd1k", "account_wht_filing_state", "account_wht_credits_owed", // ACC T3.4 ▸ ภ.ง.ด. แยกแบบ 1/2/3/53/54 · T3.5 ▸ ค้างรับ 50 ทวิ จากลูกค้า (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",

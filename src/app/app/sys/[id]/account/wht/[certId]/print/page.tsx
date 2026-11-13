@@ -4,7 +4,7 @@ import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { accountCan } from "@/lib/modules/account/access";
 import { baht } from "@/lib/modules/account/service";
 import { listDocPrints, printEntry, recordDocPrint } from "@/lib/modules/account/print-log";
-import { loadCertPrint, whtReplaceWarnings } from "@/lib/modules/account/wht-cert";
+import { loadCertPrint, whtReplaceWarningsFor } from "@/lib/modules/account/wht-cert";
 import { WHT_INCOME_LABEL } from "@/lib/modules/account/wht";
 import { CERT_PART_LABEL_TH, WHT_CONDITIONS, certPartsOf } from "@/lib/modules/account/wht-forms";
 import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
@@ -57,6 +57,8 @@ export default async function WhtCertPrintPage({
   const parts = certPartsOf(partQ === "set" ? null : partQ);
   const canReplace = live && m.direction === "IN" && accountCan(auth, "account.wht.manage");
   const keep = sp.p ? `p=${sp.p}&` : "";
+  // ACC T3.3 ▸ เดือนที่นำส่ง ภ.ง.ด. แล้ว = คำเตือนเพิ่ม (ด่าน T1.7) ให้ติ๊กในกล่องเดียวกัน ◂
+  const replaceWarnings = canReplace ? await whtReplaceWarningsFor(ctx, { docNo: m.docNo === "—" ? null : m.docNo, issueDate: m.paidDate, whtAmount: m.tax }) : [];
 
   return (
     <>
@@ -122,7 +124,7 @@ export default async function WhtCertPrintPage({
                 <input type="checkbox" name="refreshPayee" value="1" data-testid="wht-replace-refresh" />
                 ใช้ชื่อ ที่อยู่ เลขผู้เสียภาษีของผู้ถูกหักจากข้อมูลผู้ติดต่อปัจจุบัน
               </label>
-              <LegalWarnings warnings={whtReplaceWarnings(m.docNo)} ackName="ack" testId="wht-replace-warn" />
+              <LegalWarnings warnings={replaceWarnings} ackName="ack" testId="wht-replace-warn" />
               <button className="btn btn-primary self-start text-sm" data-testid="wht-replace-submit">
                 ยกเลิกใบนี้และออกใบแทน
               </button>

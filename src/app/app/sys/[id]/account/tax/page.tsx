@@ -18,6 +18,7 @@ import { whtFilingState, recordWhtAdditionalFiling, whtAdditionalWarnings } from
 import { PND_FORM_LABEL_TH, isPndFormNumber, type PndFormNumber } from "@/lib/modules/account/wht-forms";
 import { screenAck } from "@/lib/modules/account/legal-gate";
 import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
+import { legalWarning } from "@/lib/core/settings/legal/warnings";
 import { unmarkFiledAction as unmarkPndAction, issueWhtCertAction } from "../wht/actions";
 
 const pct = (bp: number | null) => (bp != null ? `${(bp / 100).toFixed(bp % 100 ? 2 : 0)}%` : "—");
@@ -309,6 +310,13 @@ export default async function TaxPage({
           {/* รายการ (ใบแนบ) — รวมการจ่ายที่หักแล้วแต่ยังไม่มีใบ */}
           {report.rows.length > 0 && (
             <Section title="รายการ (ลำดับเดียวกับที่พิมพ์บน 50 ทวิ และ CSV)">
+              {filing && report.uncertifiedCount > 0 && canManage ? (
+                <LegalWarnings
+                  testId="pnd-issue-filed-warn"
+                  compact
+                  warnings={[legalWarning("FILED_PERIOD_PND_CHANGE", { period, forms: label, ref: "50 ทวิ ของรายการที่ยังไม่ออก", what: "ออก 50 ทวิ ลงวันที่ในเดือนนั้น", amount: "ภาษีของเดือนไม่เปลี่ยน (นับไว้ตอนยื่นแล้ว)" })]}
+                />
+              ) : null}
               <DataTable<DetailRow>
                 cols={[
                   { key: "seq", header: "#", render: (r) => r.seq },
@@ -327,6 +335,13 @@ export default async function TaxPage({
                           <input type="hidden" name="whtIncomeType" value={(r.incomeType as AccountWhtIncomeType | null) ?? "M40_8"} />
                           {r.whtRateBp ? <input type="hidden" name="whtRateBp" value={r.whtRateBp} /> : null}
                           <span className="text-xs text-[color:var(--color-danger)]">ยังไม่ออก</span>
+                          {filing ? (
+                            // เดือนที่นำส่งแล้ว: ออกใบลงเดือนนั้น = คำเตือน FILED_PERIOD_PND_CHANGE (กล่องคำเตือนเหนือตาราง) — ติ๊กยืนยันต่อแถว
+                            <label className="flex items-center gap-1 text-xs">
+                              <input type="checkbox" name="ack" value="FILED_PERIOD_PND_CHANGE" required data-testid={`pnd-issue-ack-${r.paymentId}`} />
+                              รับทราบ
+                            </label>
+                          ) : null}
                           <button className="text-xs underline">ออก 50 ทวิ</button>
                         </form>
                       ) : (

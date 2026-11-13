@@ -1206,7 +1206,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/wht/credits" \
 
 #### `wht.filing-state`
 
-**GET /wht/filings/{form}/{period}** - Filing state of one PND form and month: the original filed mark, additional filings, the tax filed last time vs the report now, and the certificates issued or cancelled after filing (the adjustment list). · scope: `account.tax.view` · read
+**GET /wht/filings/{form}/{period}** - Filing state of one PND form and month: the original filed mark, additional filings, the tax filed last time vs the report now, and the certificates issued or cancelled after filing (the adjustment list). · scope: `account.tax.view` · read · AI tool: `account_wht_filing_state`
 
 Path parameters: `form`, `period` (required).
 
@@ -1230,7 +1230,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/wht/filings" \
 
 #### `wht.pnd1k`
 
-**GET /wht/pnd1k** - Yearly PND 1A (ภ.ง.ด.1ก) list: everything on PND 1 in the year, totalled per payee. Supports CSV (a helper for filling the form). · scope: `account.tax.view` · read
+**GET /wht/pnd1k** - Yearly PND 1A (ภ.ง.ด.1ก) list: everything on PND 1 in the year, totalled per payee. Supports CSV (a helper for filling the form). · scope: `account.tax.view` · read · AI tool: `account_wht_pnd1k`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -3906,7 +3906,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
 
 ## AI tools
 
-58 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+60 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 `account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
@@ -3966,8 +3966,10 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_void_payment` | `payments.void` | danger | `account.payment.void` |
 | `account_wht_additional_filing` | `wht.additional-filing` | write | `account.wht.manage` |
 | `account_wht_credits_owed` | `wht.credits-owed` | read | `account.tax.view` |
+| `account_wht_filing_state` | `wht.filing-state` | read | `account.tax.view` |
 | `account_wht_mark_received` | `wht.mark-received` | write | `account.wht.manage` |
 | `account_wht_pnd_report` | `wht.pnd` | read | `account.tax.view` |
+| `account_wht_pnd1k` | `wht.pnd1k` | read | `account.tax.view` |
 | `account_wht_replace_cert` | `wht.replace-cert` | write | `account.wht.manage` |
 | `account_wht_summary` | `wht.list` | read | `account.tax.view` |
 | `account_wht_unmark_received` | `wht.unmark-received` | write | `account.wht.manage` |
@@ -3985,7 +3987,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
 
-`GET https://shark.in.th/api/v1/ai/skills/account` returns the 58 tools (23 read, 35 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 60 tools (25 read, 35 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "account", "label": "บัญชี", "summary": "...", "tools": [

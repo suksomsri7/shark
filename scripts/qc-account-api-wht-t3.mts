@@ -34,6 +34,8 @@ console.log("\n── A0 เครื่องมือเลขา AI ──");
   const tools = AO.accountToolInfos();
   const want: Record<string, [string, boolean]> = {
     account_wht_pnd_report: ["wht.pnd", false],
+    account_wht_pnd1k: ["wht.pnd1k", false],
+    account_wht_filing_state: ["wht.filing-state", false],
     account_wht_additional_filing: ["wht.additional-filing", true],
     account_wht_replace_cert: ["wht.replace-cert", true],
     account_wht_credits_owed: ["wht.credits-owed", false],
@@ -44,7 +46,7 @@ console.log("\n── A0 เครื่องมือเลขา AI ──");
     const t = tools.find((x: Any) => x.name === n);
     return t ? [t.opId, t.write] : null;
   });
-  eq("A0.1", "เครื่องมือใหม่ 6 ตัวผูก op · อ่าน = ทำทันที · เขียน = ข้อเสนอ", got, Object.values(want));
+  eq("A0.1", "เครื่องมือใหม่ 8 ตัวผูก op · อ่าน = ทำทันที · เขียน = ข้อเสนอ", got, Object.values(want));
   const kinds = AO.accountKindAccess();
   chk("A0.2", "ข้อเสนอของเครื่องมือเขียนใช้สิทธิ์ account.wht.manage (จาก op.action)", ["wht.additional-filing", "wht.replace-cert", "wht.mark-received"].every((id) => kinds[AO.accountKindOf(id)]?.action === "account.wht.manage"), "manage", kinds);
 }

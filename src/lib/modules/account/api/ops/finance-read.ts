@@ -518,6 +518,7 @@ const whtPnd1k = defineOp({
   rate: "report",
   summary: "Yearly PND 1A (ภ.ง.ด.1ก) list: everything on PND 1 in the year, totalled per payee. Supports CSV (a helper for filling the form).",
   label: "ภ.ง.ด.1ก รายปี",
+  tool: { name: "account_wht_pnd1k", hint: "Use for the yearly PND 1A list (salary/commission paid to individuals, per person)." },
   input: pnd1kInput,
   test: "T3.4-R2",
   async handler({ actor, input }) {
@@ -544,6 +545,7 @@ const whtFilingStateOp = defineOp({
   summary:
     "Filing state of one PND form and month: the original filed mark, additional filings, the tax filed last time vs the report now, and the certificates issued or cancelled after filing (the adjustment list).",
   label: "สถานะนำส่ง ภ.ง.ด. + รายการปรับ",
+  tool: { name: "account_wht_filing_state", hint: "Use before proposing an additional withholding tax filing: shows what changed after the month was filed." },
   input: noQuery,
   test: "T3.4-R3",
   async handler({ actor, params }) {

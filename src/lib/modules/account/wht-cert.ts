@@ -10,7 +10,7 @@ import { isLegalAckRequiredError, legalWarning, type LegalAck, type LegalAckRequ
 import { safeReason } from "./errors";
 import { deferDocNo, finalizeDocNos, openDocNumbering } from "./doc-numbering";
 import { fallbackPrefixOf } from "./settings-schema";
-import { pndCertGuardInTx } from "./filed-guard";
+import { bkkPeriodKey, pndCertGuardInTx, pndFiledFormsInTx } from "./filed-guard";
 import { legalAckResult, legalGateInTx } from "./legal-gate";
 import { WHT_INCOME_LABEL, pnd, pnd1kAnnual } from "./wht";
 import { whtFormOf, type RecipientFacts } from "./wht-forms";
@@ -127,6 +127,16 @@ export type ReplaceWhtCertResult =
 
 export function whtReplaceWarnings(docNo: string | null): LegalWarning[] {
   return [legalWarning("WHT_CERT_REPLACE", { docNo: docNo ?? "-" })];
+}
+
+/** คำเตือนที่จอต้องแสดงก่อนออกใบแทน — + เดือนที่ทำเครื่องหมายนำส่ง ภ.ง.ด. แล้ว (ด่าน T1.7 · ยกเลิก+ออกใหม่ในเดือนนั้น) */
+export async function whtReplaceWarningsFor(ctx: Ctx, cert: { docNo: string | null; issueDate: Date; whtAmount: number }): Promise<LegalWarning[]> {
+  const out = whtReplaceWarnings(cert.docNo);
+  const periodKey = bkkPeriodKey(cert.issueDate);
+  const forms = await pndFiledFormsInTx(tenantDb(ctx) as unknown as Prisma.TransactionClient, ctx.systemId, periodKey);
+  if (forms.length > 0)
+    out.push(legalWarning("FILED_PERIOD_PND_CHANGE", { period: periodKey, forms: forms.map((f) => `ภ.ง.ด.${f}`).join("/"), ref: `50 ทวิ ${cert.docNo ?? "-"}`, what: "ยกเลิก 50 ทวิ แล้วออกใบแทนลงวันที่เดิมในเดือนนั้น", amount: "ภาษีของเดือนไม่เปลี่ยน (ยอดเดิม)" }));
+  return out;
 }
 
 export async function replaceWhtCert(ctx: Ctx, certId: string, input: ReplaceWhtCertInput): Promise<ReplaceWhtCertResult> {
