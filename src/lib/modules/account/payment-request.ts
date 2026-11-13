@@ -446,6 +446,8 @@ export async function handleBeamPaid(input: {
   referenceId: string;
   chargeId: string;
   paidSatang: number;
+  /** เวลาที่ลูกค้าจ่ายจริง (ไม่ส่ง = ตอนนี้ — webhook ปกติ) · ชุดข้อมูล QC ส่งวันในชุดข้อมูลเพื่อไม่ให้เงินเข้าหลุดเดือน */
+  paidAt?: Date;
 }): Promise<HandlePaidResult> {
   const chargeId = String(input.chargeId ?? "").trim();
   if (!chargeId) return fail("ไม่มีเลขที่รายการชำระเงิน");
@@ -483,8 +485,9 @@ export async function handleBeamPaid(input: {
   const noteParts = ["พร้อมเพย์ผ่านลิงก์"];
   if (overpay > 0) noteParts.push(`เกิน ฿${baht(overpay)}`);
 
+  const paidAt = input.paidAt ?? new Date();
   const rec = await recordPayment(req.tenantId, req.systemId, target.id, {
-    paidAt: new Date(),
+    paidAt,
     channel: "PROMPTPAY",
     financeAccountId: req.financeId,
     amount,
@@ -502,7 +505,7 @@ export async function handleBeamPaid(input: {
     {
       status: "PAID",
       providerChargeId: chargeId,
-      paidAt: new Date(),
+      paidAt,
       paidAmountSatang: paid,
       paymentId: rec.paymentId ?? null,
       note: overpay > 0 ? `ลูกค้าจ่ายเกิน ฿${baht(overpay)} — ติดต่อคืนเงิน` : req.note,

@@ -1555,6 +1555,9 @@ const ppBeamPaid = await payreq.handleBeamPaid({
   referenceId: `acc:${ppBeamReq.request.id}`,
   chargeId: PP_BEAM_CHARGE_ID,
   paidSatang: PP_BEAM_GRAND,
+  // T0.3b: ลงวันในชุดข้อมูล (ไม่ใช่นาฬิกาเครื่อง) — ยอด EWL001 "ณ QC.today" (บล็อก 9) ต้องรวมเงินก้อนนี้
+  //        เดิมใช้เวลาจริง ⇒ หลัง 30 ก.ย. 2026 เงินเข้าหลุดจากยอด ณ วันที่ แล้ว seed ล้ม (26,586,000 ≠ 27,335,000)
+  paidAt: new Date(`${QC.today}T10:00:00+07:00`),
 });
 if (!ppBeamPaid.ok) throw new Error(`จำลอง webhook (Beam) ไม่สำเร็จ: ${ppBeamPaid.reason}`);
 
