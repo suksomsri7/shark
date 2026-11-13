@@ -1,0 +1,1238 @@
+{
+ "G1": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 3093000
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "กสิกรไทย",
+     "accountNo": "012-3-45678-9",
+     "accountName": "SOMCHAI JAIDEE",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "สมหญิง รักงาน",
+     "code": "E002",
+     "bankName": "KBank",
+     "accountNo": "0987654321",
+     "accountName": "SOMYING RAKNGAN",
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e3",
+     "name": "ศูนย์ บาท",
+     "code": "E003",
+     "bankName": "กสิกรไทย",
+     "accountNo": "0000000003",
+     "accountName": "ZERO",
+     "netSatang": 0
+    },
+    {
+     "employeeId": "e4",
+     "name": "ไม่มี บัญชี",
+     "code": "E004",
+     "bankName": "กสิกรไทย",
+     "accountNo": null,
+     "accountName": null,
+     "netSatang": 50000
+    },
+    {
+     "employeeId": "e5",
+     "name": "ไทย พาณิชย์",
+     "code": "E005",
+     "bankName": "ไทยพาณิชย์",
+     "accountNo": "1234567890",
+     "accountName": "SCB PERSON",
+     "netSatang": 200000
+    },
+    {
+     "employeeId": "e6",
+     "name": "สั้น เกิน",
+     "code": "E006",
+     "bankName": "กสิกรไทย",
+     "accountNo": "12345",
+     "accountName": "SHORT ACCT",
+     "netSatang": 100000
+    },
+    {
+     "employeeId": "e7",
+     "name": "กรุง ศรี",
+     "code": "E007",
+     "bankName": "กรุงศรี",
+     "accountNo": "5556667778",
+     "accountName": "BAY PERSON",
+     "netSatang": 300000
+    }
+   ],
+   "profile": {
+    "debitBankCode": "004",
+    "debitAccountNo": "1112223334",
+    "debitBranchCode": null,
+    "companyNameEn": "SHOP CO LTD",
+    "ktbCompanyId": null
+   },
+   "options": {
+    "format": "KBANK_PCT",
+    "batchRef": "NOV2026",
+    "effectiveDate": "2026-11-25",
+    "encoding": "ASCII"
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "golden": "hr-h3.5-g1-kbank-pct.txt",
+  "fileName": "PCT261124102030.txt",
+  "contentType": "text/plain; charset=us-ascii",
+  "itemCount": 2,
+  "totalSatang": 2443000,
+  "notIncluded": [
+   [
+    "e3",
+    "NET_ZERO",
+    0
+   ],
+   [
+    "e4",
+    "NO_ACCOUNT",
+    50000
+   ],
+   [
+    "e5",
+    "NOT_THIS_BANK",
+    200000
+   ],
+   [
+    "e6",
+    "ACCOUNT_FORMAT",
+    100000
+   ],
+   [
+    "e7",
+    "BANK_UNKNOWN",
+    300000
+   ]
+  ],
+  "warnings": []
+ },
+ "G2": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 2443001
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "ธนาคารกสิกรไทย จำกัด (มหาชน)",
+     "accountNo": "0123456789",
+     "accountName": "นายสมชาย ใจดี",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "สมหญิง รักงาน",
+     "code": "E002",
+     "bankName": "kbank",
+     "accountNo": "0987654321",
+     "accountName": null,
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e8",
+     "name": "ประภาพรรณ",
+     "code": "E008",
+     "bankName": "Kasikorn",
+     "accountNo": "2223334445",
+     "accountName": "นางสาวประภาพรรณศรีสวัสดิ์วงศ์ไพบูลย์ ณ อยุธยารักษ์ชาติยิ่งยืนนาน",
+     "netSatang": 1
+    }
+   ],
+   "profile": {
+    "debitBankCode": "004",
+    "debitAccountNo": "1112223334",
+    "debitBranchCode": null,
+    "companyNameEn": "SHOP CO LTD",
+    "ktbCompanyId": null
+   },
+   "options": {
+    "format": "KBANK_PCT",
+    "effectiveDate": "2026-11-25",
+    "encoding": "TIS620"
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "golden": "hr-h3.5-g2-kbank-pct-tis620.txt",
+  "fileName": "PCT261124102030.txt",
+  "contentType": "text/plain; charset=windows-874",
+  "itemCount": 3,
+  "totalSatang": 2443001,
+  "notIncluded": [],
+  "warnings": [
+   [
+    "e2",
+    "NAME_FROM_PROFILE"
+   ],
+   [
+    "e8",
+    "NAME_CUT"
+   ]
+  ],
+  "note": "batchRef omitted ⇒ default HR + periodKey without dash = HR202611 · long name cut to 50 code points"
+ },
+ "G2A": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 2443001
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "ธนาคารกสิกรไทย จำกัด (มหาชน)",
+     "accountNo": "0123456789",
+     "accountName": "นายสมชาย ใจดี",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "สมหญิง รักงาน",
+     "code": "E002",
+     "bankName": "kbank",
+     "accountNo": "0987654321",
+     "accountName": null,
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e8",
+     "name": "ประภาพรรณ",
+     "code": "E008",
+     "bankName": "Kasikorn",
+     "accountNo": "2223334445",
+     "accountName": "นางสาวประภาพรรณศรีสวัสดิ์วงศ์ไพบูลย์ ณ อยุธยารักษ์ชาติยิ่งยืนนาน",
+     "netSatang": 1
+    }
+   ],
+   "profile": {
+    "debitBankCode": "004",
+    "debitAccountNo": "1112223334",
+    "debitBranchCode": null,
+    "companyNameEn": "SHOP CO LTD",
+    "ktbCompanyId": null
+   },
+   "options": {
+    "format": "KBANK_PCT",
+    "effectiveDate": "2026-11-25",
+    "encoding": "ASCII"
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "refusal": "ENCODING",
+  "employees": [
+   "e1",
+   "e2",
+   "e8"
+  ],
+  "names": [
+   "สมชาย ใจดี",
+   "สมหญิง รักงาน",
+   "ประภาพรรณ"
+  ]
+ },
+ "G3A": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 3677567
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "SCB",
+     "accountNo": "1234567890",
+     "accountName": "SOMCHAI JAIDEE",
+     "netSatang": 1500000,
+     "paymentRef": "PAY/0001"
+    },
+    {
+     "employeeId": "e2",
+     "name": "สมหญิง รักงาน",
+     "code": "E002",
+     "bankName": "ธนาคารกรุงเทพ",
+     "accountNo": "9876543210",
+     "accountName": "SOMYING RAKNGAN",
+     "netSatang": 943000,
+     "paymentRef": "PAY/0002"
+    },
+    {
+     "employeeId": "e3",
+     "name": "มานะ ดีใจ",
+     "code": "E003",
+     "bankName": "กรุงไทย",
+     "accountNo": "4445556667",
+     "accountName": "MANA DEEJAI",
+     "netSatang": 1234567,
+     "paymentRef": "PAY/0003"
+    }
+   ],
+   "profile": {
+    "debitBankCode": "006",
+    "debitAccountNo": "1112223334",
+    "debitBranchCode": "0123",
+    "companyNameEn": "SHOP CO LTD",
+    "ktbCompanyId": "COMPANY01"
+   },
+   "options": {
+    "format": "KTB_IPAY",
+    "ktbMode": "STANDARD",
+    "ktbDateEra": "CE",
+    "ktbReceivingBranch": "ZEROS",
+    "effectiveDate": "2026-11-25",
+    "encoding": "ASCII"
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "golden": "hr-h3.5-g3a-ktb-std.txt",
+  "fileName": "KTB_IPAY_202611_261124102030.txt",
+  "contentType": "text/plain; charset=us-ascii",
+  "itemCount": 2,
+  "totalSatang": 2443000,
+  "notIncluded": [
+   [
+    "e3",
+    "SAME_BANK",
+    1234567
+   ]
+  ],
+  "warnings": []
+ },
+ "G3B": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 3677567
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "SCB",
+     "accountNo": "1234567890",
+     "accountName": "SOMCHAI JAIDEE",
+     "netSatang": 1500000,
+     "paymentRef": "PAY/0001"
+    },
+    {
+     "employeeId": "e2",
+     "name": "สมหญิง รักงาน",
+     "code": "E002",
+     "bankName": "ธนาคารกรุงเทพ",
+     "accountNo": "9876543210",
+     "accountName": "SOMYING RAKNGAN",
+     "netSatang": 943000,
+     "paymentRef": "PAY/0002"
+    },
+    {
+     "employeeId": "e3",
+     "name": "มานะ ดีใจ",
+     "code": "E003",
+     "bankName": "กรุงไทย",
+     "accountNo": "4445556667",
+     "accountName": "MANA DEEJAI",
+     "netSatang": 1234567,
+     "paymentRef": "PAY/0003"
+    }
+   ],
+   "profile": {
+    "debitBankCode": "006",
+    "debitAccountNo": "1112223334",
+    "debitBranchCode": "0123",
+    "companyNameEn": "SHOP CO LTD",
+    "ktbCompanyId": "COMPANY01"
+   },
+   "options": {
+    "format": "KTB_IPAY",
+    "ktbMode": "STANDARD",
+    "ktbDateEra": "CE",
+    "ktbReceivingBranch": "SPACES",
+    "effectiveDate": "2026-11-25",
+    "encoding": "ASCII"
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "golden": "hr-h3.5-g3b-ktb-std.txt",
+  "fileName": "KTB_IPAY_202611_261124102030.txt",
+  "contentType": "text/plain; charset=us-ascii",
+  "itemCount": 2,
+  "totalSatang": 2443000,
+  "notIncluded": [
+   [
+    "e3",
+    "SAME_BANK",
+    1234567
+   ]
+  ],
+  "warnings": []
+ },
+ "G3C": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 3677567
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "SCB",
+     "accountNo": "1234567890",
+     "accountName": "SOMCHAI JAIDEE",
+     "netSatang": 1500000,
+     "paymentRef": "PAY/0001"
+    },
+    {
+     "employeeId": "e2",
+     "name": "สมหญิง รักงาน",
+     "code": "E002",
+     "bankName": "ธนาคารกรุงเทพ",
+     "accountNo": "9876543210",
+     "accountName": "SOMYING RAKNGAN",
+     "netSatang": 943000,
+     "paymentRef": "PAY/0002"
+    },
+    {
+     "employeeId": "e3",
+     "name": "มานะ ดีใจ",
+     "code": "E003",
+     "bankName": "กรุงไทย",
+     "accountNo": "4445556667",
+     "accountName": "MANA DEEJAI",
+     "netSatang": 1234567,
+     "paymentRef": "PAY/0003"
+    }
+   ],
+   "profile": {
+    "debitBankCode": "006",
+    "debitAccountNo": "1112223334",
+    "debitBranchCode": "0123",
+    "companyNameEn": "SHOP CO LTD",
+    "ktbCompanyId": "COMPANY01"
+   },
+   "options": {
+    "format": "KTB_IPAY",
+    "ktbMode": "STANDARD",
+    "ktbDateEra": "BE",
+    "ktbReceivingBranch": "ZEROS",
+    "effectiveDate": "2026-11-25",
+    "encoding": "ASCII"
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "golden": "hr-h3.5-g3c-ktb-std.txt",
+  "fileName": "KTB_IPAY_202611_261124102030.txt",
+  "contentType": "text/plain; charset=us-ascii",
+  "itemCount": 2,
+  "totalSatang": 2443000,
+  "notIncluded": [
+   [
+    "e3",
+    "SAME_BANK",
+    1234567
+   ]
+  ],
+  "warnings": []
+ },
+ "G4": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 3677567
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "SCB",
+     "accountNo": "1234567890",
+     "accountName": "SOMCHAI JAIDEE",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "สมหญิง รักงาน",
+     "code": "E002",
+     "bankName": "ธนาคารกรุงเทพ",
+     "accountNo": "9876543210",
+     "accountName": "SOMYING RAKNGAN",
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e3",
+     "name": "มานะ ดีใจ",
+     "code": "E003",
+     "bankName": "กรุงไทย",
+     "accountNo": "4445556667",
+     "accountName": "MANA DEEJAI",
+     "netSatang": 1234567
+    }
+   ],
+   "profile": {
+    "debitBankCode": "006",
+    "debitAccountNo": "1112223334",
+    "debitBranchCode": "0123",
+    "companyNameEn": "SHOP CO LTD",
+    "ktbCompanyId": "COMPANY01"
+   },
+   "options": {
+    "format": "KTB_IPAY",
+    "ktbMode": "DIRECT",
+    "effectiveDate": "2026-11-25"
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "golden": "hr-h3.5-g4-ktb-direct.txt",
+  "fileName": "KTB_IPAY_202611_261124102030.txt",
+  "contentType": "text/plain; charset=windows-874",
+  "itemCount": 1,
+  "totalSatang": 1234567,
+  "notIncluded": [
+   [
+    "e1",
+    "NOT_THIS_BANK",
+    1500000
+   ],
+   [
+    "e2",
+    "NOT_THIS_BANK",
+    943000
+   ]
+  ],
+  "warnings": [],
+  "note": "defaults: encoding TIS620 · era CE · receiving branch SPACES · ref HR<YYYYMM>-<seq 4>"
+ },
+ "G5A": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 2443001
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "กสิกรไทย",
+     "accountNo": "0123456789",
+     "accountName": "สมชาย ใจดี",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "Somying",
+     "code": null,
+     "bankName": "SCB",
+     "accountNo": "123-4-56789-0",
+     "accountName": "Somying \"Ying\", R.",
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e3",
+     "name": "กรุง ศรี",
+     "code": "E003",
+     "bankName": "กรุงศรี",
+     "accountNo": "111222333012",
+     "accountName": null,
+     "netSatang": 1
+    },
+    {
+     "employeeId": "e4",
+     "name": "ศูนย์",
+     "code": "E004",
+     "bankName": "SCB",
+     "accountNo": "1234567891",
+     "accountName": "ZERO",
+     "netSatang": 0
+    }
+   ],
+   "profile": null,
+   "options": {
+    "format": "CSV",
+    "effectiveDate": "2026-11-25",
+    "generic": {
+     "preset": "GENERIC"
+    }
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "golden": "hr-h3.5-g5a-generic.txt",
+  "fileName": "HR_202611_261124102030.csv",
+  "contentType": "text/csv; charset=utf-8",
+  "itemCount": 3,
+  "totalSatang": 2443001,
+  "notIncluded": [
+   [
+    "e4",
+    "NET_ZERO",
+    0
+   ]
+  ],
+  "warnings": [
+   [
+    "e3",
+    "BANK_UNKNOWN"
+   ],
+   [
+    "e3",
+    "NAME_FROM_PROFILE"
+   ]
+  ]
+ },
+ "G5B": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 2443001
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "กสิกรไทย",
+     "accountNo": "0123456789",
+     "accountName": "สมชาย ใจดี",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "Somying",
+     "code": null,
+     "bankName": "SCB",
+     "accountNo": "123-4-56789-0",
+     "accountName": "Somying \"Ying\", R.",
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e3",
+     "name": "กรุง ศรี",
+     "code": "E003",
+     "bankName": "กรุงศรี",
+     "accountNo": "111222333012",
+     "accountName": null,
+     "netSatang": 1
+    },
+    {
+     "employeeId": "e4",
+     "name": "ศูนย์",
+     "code": "E004",
+     "bankName": "SCB",
+     "accountNo": "1234567891",
+     "accountName": "ZERO",
+     "netSatang": 0
+    }
+   ],
+   "profile": null,
+   "options": {
+    "format": "CSV",
+    "effectiveDate": "2026-11-25",
+    "generic": {
+     "columns": [
+      [
+       "accountNo",
+       "ACC"
+      ],
+      [
+       "amount",
+       "AMT"
+      ],
+      [
+       "const:01",
+       "SVC"
+      ],
+      [
+       "blank",
+       "X"
+      ],
+      [
+       "effectiveDate",
+       "DATE"
+      ],
+      [
+       "payeeName",
+       "NAME"
+      ]
+     ],
+     "includeHeader": false,
+     "includeSummary": true,
+     "amountStyle": "SATANG",
+     "dateStyle": "DMY_BE",
+     "encoding": "TIS620"
+    }
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "golden": "hr-h3.5-g5b-generic-tis620.txt",
+  "fileName": "HR_202611_261124102030.csv",
+  "contentType": "text/csv; charset=windows-874",
+  "itemCount": 3,
+  "totalSatang": 2443001,
+  "notIncluded": [
+   [
+    "e4",
+    "NET_ZERO",
+    0
+   ]
+  ],
+  "warnings": [
+   [
+    "e3",
+    "BANK_UNKNOWN"
+   ],
+   [
+    "e3",
+    "NAME_FROM_PROFILE"
+   ]
+  ]
+ },
+ "G5C": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 2443001
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "กสิกรไทย",
+     "accountNo": "0123456789",
+     "accountName": "สมชาย ใจดี",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "Somying",
+     "code": null,
+     "bankName": "SCB",
+     "accountNo": "123-4-56789-0",
+     "accountName": "Somying \"Ying\", R.",
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e3",
+     "name": "กรุง ศรี",
+     "code": "E003",
+     "bankName": "กรุงศรี",
+     "accountNo": "111222333012",
+     "accountName": null,
+     "netSatang": 1
+    },
+    {
+     "employeeId": "e4",
+     "name": "ศูนย์",
+     "code": "E004",
+     "bankName": "SCB",
+     "accountNo": "1234567891",
+     "accountName": "ZERO",
+     "netSatang": 0
+    }
+   ],
+   "profile": null,
+   "options": {
+    "format": "CSV",
+    "effectiveDate": "2026-11-25",
+    "generic": {
+     "columns": [
+      [
+       "seq",
+       "No"
+      ],
+      [
+       "amount",
+       "Amount"
+      ],
+      [
+       "effectiveDate",
+       "Date"
+      ]
+     ],
+     "includeHeader": true,
+     "includeSummary": true,
+     "amountStyle": "BAHT_2DP",
+     "dateStyle": "DMY_CE",
+     "encoding": "UTF8_BOM"
+    }
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "golden": "hr-h3.5-g5c-generic.txt",
+  "fileName": "HR_202611_261124102030.csv",
+  "contentType": "text/csv; charset=utf-8",
+  "itemCount": 3,
+  "totalSatang": 2443001,
+  "notIncluded": [
+   [
+    "e4",
+    "NET_ZERO",
+    0
+   ]
+  ],
+  "warnings": [
+   [
+    "e3",
+    "BANK_UNKNOWN"
+   ],
+   [
+    "e3",
+    "NAME_FROM_PROFILE"
+   ]
+  ]
+ },
+ "G6": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 2443001
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "กสิกรไทย",
+     "accountNo": "0123456789",
+     "accountName": "สมชาย ใจดี",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "Somying",
+     "code": null,
+     "bankName": "SCB",
+     "accountNo": "123-4-56789-0",
+     "accountName": "Somying \"Ying\", R.",
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e3",
+     "name": "กรุง ศรี",
+     "code": "E003",
+     "bankName": "กรุงศรี",
+     "accountNo": "111222333012",
+     "accountName": null,
+     "netSatang": 1
+    },
+    {
+     "employeeId": "e4",
+     "name": "ศูนย์",
+     "code": "E004",
+     "bankName": "SCB",
+     "accountNo": "1234567891",
+     "accountName": "ZERO",
+     "netSatang": 0
+    }
+   ],
+   "profile": null,
+   "options": {
+    "format": "XLSX",
+    "effectiveDate": "2026-11-25",
+    "generic": {
+     "preset": "GENERIC"
+    }
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "rows": [
+   [
+    "ลำดับ",
+    "รหัสพนักงาน",
+    "ชื่อบัญชี",
+    "รหัสธนาคาร",
+    "ธนาคาร",
+    "เลขที่บัญชี",
+    "จำนวนเงิน",
+    "วันที่โอน",
+    "อ้างอิง"
+   ],
+   [
+    "1",
+    "E001",
+    "สมชาย ใจดี",
+    "004",
+    "กสิกรไทย",
+    "0123456789",
+    "15000.00",
+    "2026-11-25",
+    "HR202611-0001"
+   ],
+   [
+    "2",
+    "",
+    "Somying \"Ying\", R.",
+    "014",
+    "SCB",
+    "1234567890",
+    "9430.00",
+    "2026-11-25",
+    "HR202611-0002"
+   ],
+   [
+    "3",
+    "E003",
+    "กรุง ศรี",
+    "",
+    "กรุงศรี",
+    "111222333012",
+    "0.01",
+    "2026-11-25",
+    "HR202611-0003"
+   ]
+  ],
+  "fileName": "HR_202611_261124102030.xlsx",
+  "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "itemCount": 3,
+  "totalSatang": 2443001
+ },
+ "G7": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 2443001
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "กสิกรไทย",
+     "accountNo": "0123456789",
+     "accountName": "สมชาย ใจดี",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "Somying",
+     "code": null,
+     "bankName": "SCB",
+     "accountNo": "123-4-56789-0",
+     "accountName": "Somying \"Ying\", R.",
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e3",
+     "name": "กรุง ศรี",
+     "code": "E003",
+     "bankName": "กรุงศรี",
+     "accountNo": "111222333012",
+     "accountName": null,
+     "netSatang": 1
+    },
+    {
+     "employeeId": "e4",
+     "name": "ศูนย์",
+     "code": "E004",
+     "bankName": "SCB",
+     "accountNo": "1234567891",
+     "accountName": "ZERO",
+     "netSatang": 0
+    }
+   ],
+   "profile": null,
+   "options": {
+    "format": "XLSX",
+    "effectiveDate": "2026-11-25",
+    "generic": {
+     "preset": "KTB_BUSINESS"
+    }
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "rows": [
+   [
+    "File Type",
+    "Record Type",
+    "Batch No.",
+    "Payment Reference No.",
+    "Bulk Service Type",
+    "Payee Bank ID",
+    "Payee Branch Code",
+    "PromptPay Type",
+    "Payee Account No.",
+    "Payee Name",
+    "WHT Flag",
+    "Effective Date",
+    "Service Type",
+    "Fee Payer",
+    "Amount"
+   ],
+   [
+    "10",
+    "D",
+    "",
+    "HR202611-0001",
+    "",
+    "004",
+    "",
+    "",
+    "0123456789",
+    "สมชาย ใจดี",
+    "N",
+    "25/11/2026",
+    "01",
+    "",
+    "15000.00"
+   ],
+   [
+    "10",
+    "D",
+    "",
+    "HR202611-0002",
+    "",
+    "014",
+    "",
+    "",
+    "1234567890",
+    "Somying \"Ying\", R.",
+    "N",
+    "25/11/2026",
+    "01",
+    "",
+    "9430.00"
+   ],
+   [
+    "10",
+    "D",
+    "",
+    "HR202611-0003",
+    "",
+    "",
+    "",
+    "",
+    "111222333012",
+    "กรุง ศรี",
+    "N",
+    "25/11/2026",
+    "01",
+    "",
+    "0.01"
+   ]
+  ],
+  "itemCount": 3,
+  "totalSatang": 2443001
+ },
+ "G8": {
+  "input": {
+   "run": {
+    "runId": "run-g",
+    "periodKey": "2026-11",
+    "payDate": "2026-11-25",
+    "status": "APPROVED",
+    "totalNetSatang": 2443001
+   },
+   "payees": [
+    {
+     "employeeId": "e1",
+     "name": "สมชาย ใจดี",
+     "code": "E001",
+     "bankName": "กสิกรไทย",
+     "accountNo": "0123456789",
+     "accountName": "สมชาย ใจดี",
+     "netSatang": 1500000
+    },
+    {
+     "employeeId": "e2",
+     "name": "Somying",
+     "code": null,
+     "bankName": "SCB",
+     "accountNo": "123-4-56789-0",
+     "accountName": "=HYPERLINK(\"x\")",
+     "netSatang": 943000
+    },
+    {
+     "employeeId": "e3",
+     "name": "กรุง ศรี",
+     "code": "@E3",
+     "bankName": "กรุงศรี",
+     "accountNo": "111222333012",
+     "accountName": null,
+     "netSatang": 1
+    },
+    {
+     "employeeId": "e4",
+     "name": "ศูนย์",
+     "code": "E004",
+     "bankName": "SCB",
+     "accountNo": "1234567891",
+     "accountName": "ZERO",
+     "netSatang": 0
+    }
+   ],
+   "profile": null,
+   "options": {
+    "format": "CSV",
+    "effectiveDate": "2026-11-25",
+    "generic": {
+     "preset": "GENERIC"
+    }
+   },
+   "now": "2026-11-24T10:20:30+07:00"
+  },
+  "refusal": "FORMULA",
+  "employees": [
+   "e2",
+   "e3"
+  ],
+  "names": [
+   "Somying",
+   "กรุง ศรี"
+  ]
+ },
+ "CODES": [
+  [
+   "ธนาคารกสิกรไทย",
+   "004"
+  ],
+  [
+   "กสิกรไทย จำกัด (มหาชน)",
+   "004"
+  ],
+  [
+   "KBank",
+   "004"
+  ],
+  [
+   " k bank ",
+   "004"
+  ],
+  [
+   "Kasikornbank",
+   "004"
+  ],
+  [
+   "K-Bank",
+   "004"
+  ],
+  [
+   "ธ.กรุงเทพ",
+   "002"
+  ],
+  [
+   "Bangkok Bank",
+   "002"
+  ],
+  [
+   "BBL",
+   "002"
+  ],
+  [
+   "กรุงไทย",
+   "006"
+  ],
+  [
+   "Krung Thai",
+   "006"
+  ],
+  [
+   "ktb",
+   "006"
+  ],
+  [
+   "ไทยพาณิชย์",
+   "014"
+  ],
+  [
+   "Siam Commercial Bank",
+   "014"
+  ],
+  [
+   "SCB",
+   "014"
+  ],
+  [
+   "004",
+   "004"
+  ],
+  [
+   "014",
+   "014"
+  ],
+  [
+   "กรุงศรี",
+   null
+  ],
+  [
+   "TTB",
+   null
+  ],
+  [
+   "4",
+   null
+  ],
+  [
+   "",
+   null
+  ],
+  [
+   null,
+   null
+  ],
+  [
+   "กรุงเทพประกันภัย",
+   null
+  ],
+  [
+   "ธนาคาร",
+   null
+  ]
+ ]
+}

@@ -90,6 +90,13 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   ],
   // HR H3.2 ▸ กฎหักสาย/ขาด — การ์ดกฎ (ตั้งค่า · เจ้าของแก้ · ข้อความ ม.76 เสมอ) · แผง "สรุปส่งเข้าเงินเดือน" บนปฏิทินรายคน (ภาพ 04B) ·
   //   รายการของฉัน (พนักงาน — มีเมื่อคำนวณแล้ว) · seed ปิดกฎ ⇒ แผงบอก "ยังไม่ได้เปิด" เว้นแต่ผู้ควบคุมเปิด + คำนวณก่อนถ่าย ◂
+  // HR H3.5 ▸ ไฟล์โอนเงินเดือน (ภาพ 06: ปุ่ม "ไฟล์โอน" · hero "โอน N คน · ฿X" · เลขบัญชี •••4) — ส่วนบนหน้าเงินเดือน (ผู้ผ่านด่านเท่านั้น ·
+  //   ผู้จัดการ/พนักงานต้องไม่เห็นส่วนนี้) · รอบที่จ่ายแล้วของ seed + ชุดทั่วไป CSV · การ์ดตั้งค่า (เจ้าของ) — seed ไม่มีบัญชีต้นทาง ⇒ รูปแบบธนาคารปิด ◂
+  "3.5": [
+    { key: "bank-section", path: (i) => `/app/sys/${i.hr}/hr/payroll?bank=${i.paidRun}#hr-bank`, users: ["owner", "payroll", "manager"], why: "ส่วนไฟล์โอน: รายการรอบ · รูปแบบ · hero โอน N คน · ไม่อยู่ในไฟล์ · คำเตือน · ข้อความ ม.55/77 (ผู้จัดการ = ไม่มีส่วนนี้) (H3.5 R15)" },
+    { key: "bank-untested", path: (i) => `/app/sys/${i.hr}/hr/payroll?bank=${i.paidRun}&bfmt=KBANK_PCT#hr-bank`, users: ["owner"], why: "รูปแบบธนาคารที่ยังไม่เปิด ⇒ ข้อความ formatOff + ป้ายยังไม่ทดสอบ (เปิดแล้ว = ช่องติ๊กรับทราบก่อนสร้าง) (H3.5 R10)" },
+    { key: "bank-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-bank-settings`, users: ["owner"], why: "การ์ดบัญชีต้นทาง + เปิดรูปแบบ (ป้ายยังไม่ทดสอบ + ติ๊กรับทราบ) + ชุดคอลัมน์ของร้าน (H3.5 R10 R8)" },
+  ],
   "3.2": [
     { key: "attpay-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-attpay-policy`, users: ["owner", "manager-branch"], why: "การ์ดกฎหักสาย/ออกก่อน/ขาดงาน + ข้อความ ม.76 (เจ้าของแก้ · ผู้จัดการอ่าน) (H3.2 R2 R11)" },
     { key: "attpay-panel", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, users: ["owner", "manager-branch"], why: "แผงสรุปส่งเข้าเงินเดือน: นาที · เงิน (เจ้าของ) · ปุ่มคำนวณ (H3.2 04B)" },

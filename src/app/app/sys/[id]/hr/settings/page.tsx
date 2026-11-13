@@ -39,6 +39,8 @@ import { saveAttendancePayPolicyAction } from "@/lib/modules/hr/attendance-pay-a
 import { LEAVE_PRESET_TEXT } from "@/lib/modules/hr/leave-presets"; // HR H2.12 ▸ F1 ◂
 import { addLeavePresetAction } from "@/lib/modules/hr/leave-presets-actions"; // HR H2.12 ▸ F1 ◂
 import { LeavePolicyWarningLines, LeavePresetSection } from "@/lib/modules/hr/leave-presets-ui"; // HR H2.12 ▸ F1 + F5 ◂
+import { BankSettingsCard, BANK_MSG, bankMsgText } from "@/lib/modules/hr/bank-files/ui"; // HR H3.5 ▸ ไฟล์โอนเงินเดือน: บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ ◂
+import { deleteBankPresetAction, saveBankPresetAction, saveBankProfileAction } from "@/lib/modules/hr/bank-files/actions"; // HR H3.5 ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -58,6 +60,7 @@ const MSG_TEXTS: Record<string, string> = {
   ...Object.fromEntries(Object.entries(ATTENDANCE_SETTINGS_TEXT).map(([k, v]) => [`a.${k}`, v])), // HR H2.5 ◂
   ...WE_MSG, // HR H3.1 ◂
   ...ATT_MSG, // HR H3.2 ◂
+  ...BANK_MSG, // HR H3.5 ◂
   ...Object.fromEntries((["sAfter", "sAhead", "sRound"] as const).map((k) => [`o.${k}`, OT_TEXT[k]])), // HR H2.9 ◂
   ...Object.fromEntries(Object.entries(LEAVE_PRESET_TEXT).map(([k, v]) => [`lp.${k}`, v])), // HR H2.12 ▸ F1 ◂
 };
@@ -96,7 +99,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const where = (u: string | null) => (u ? (unitName.get(u) ?? t("unit")) : t("shopWide"));
   const path = `/app/sys/${id}/hr/settings`;
   const code = typeof sp.msg === "string" ? sp.msg : "";
-  const msg = code === "ok" ? t("saved") : code === "p.ok" ? t("holidays.presetDone") /* HR H2.8 ◂ */ : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""; // HR H1.2 R13 ▸ allowlist ◂
+  const bankMsg = await bankMsgText(code); // HR H3.5 fix r1 ▸ F7: ผลของการ์ดไฟล์โอนตามภาษาผู้ดู ◂
+  const msg = bankMsg ?? (code === "ok" ? t("saved") : code === "p.ok" ? t("holidays.presetDone") /* HR H2.8 ◂ */ : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""); // HR H1.2 R13 ▸ allowlist ◂ · HR H3.5 ◂
 
   // ผลของ action → กลับหน้าเดิมพร้อมรหัสผล (R13.3) · closure จับเฉพาะค่าพื้นฐาน (สตริง/ตัวเลข)
   const onCreateShift = async (fd: FormData) => {
@@ -159,6 +163,19 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     "use server"; // HR H3.2 ◂
     back(path, year, await saveAttendancePayPolicyAction(fd)); // HR H3.2 ◂
   }; // HR H3.2 ◂
+  // HR H3.5 ▸ ไฟล์โอนเงินเดือน — บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ (service ตรวจด่านซ้ำ) ◂
+  const onSaveBankProfile = async (fd: FormData) => {
+    "use server"; // HR H3.5 ◂
+    back(path, year, await saveBankProfileAction(fd)); // HR H3.5 ◂
+  }; // HR H3.5 ◂
+  const onSaveBankPreset = async (fd: FormData) => {
+    "use server"; // HR H3.5 ◂
+    back(path, year, await saveBankPresetAction(fd)); // HR H3.5 ◂
+  }; // HR H3.5 ◂
+  const onDeleteBankPreset = async (fd: FormData) => {
+    "use server"; // HR H3.5 ◂
+    back(path, year, await deleteBankPresetAction(fd)); // HR H3.5 ◂
+  }; // HR H3.5 ◂
   // HR H2.9 ▸ R14 ◂
   const onSaveOtPolicy = async (fd: FormData) => {
     "use server";
@@ -585,6 +602,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <WorkSettingsCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveNormalMinutes : null} />
       {/* HR H3.2 ▸ กฎหักสาย/ขาด — ทุกผู้ตั้งค่าเห็น (ข้อความ ม.76 เสมอ) · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <AttendancePayPolicyCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveAttPay : null} />
+      {/* HR H3.5 ▸ ไฟล์โอนเงินเดือน — การ์ดแสดงเฉพาะผู้ผ่านด่านไฟล์โอน · บัญชีต้นทาง/เปิดรูปแบบธนาคาร = เจ้าของร้าน ◂ */}
+      <BankSettingsCard systemId={id} onSaveProfile={auth.active.role === "OWNER" ? onSaveBankProfile : null} onSavePreset={onSaveBankPreset} onDeletePreset={onDeleteBankPreset} />
     </div>
   );
 }

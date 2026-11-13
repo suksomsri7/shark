@@ -274,6 +274,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrPayAdjustment: sys(),
   HrStockCharge: sys(), // HR H4.6 ▸ เบิกของ/ค่าเสียหาย → รายการหักที่รออนุมัติ ◂
   HrAttendanceDeduction: sys(), // HR H3.2 ▸ หัวรายการหักสาย/ขาดงาน (ภาพนิ่งที่มา) ◂
+  // HR H3.5 ▸ ไฟล์โอนเงินเดือน: บัญชีต้นทาง (1 แถว/ระบบ) · ชุดคอลัมน์ของร้าน · ใบกำกับไฟล์ (ไม่มีไบต์) ◂
+  HrBankProfile: sys(),
+  HrBankExportPreset: sys(),
+  HrBankFile: sys(),
   // HR H1.3 ▸ ตารางกฎหมายเงินเดือนกลางของทั้ง SHARK (ไม่มี tenantId/systemId) ◂
   HrLawTable: g("กฎหมายแรงงาน/ภาษีระดับประเทศ — SHARK ดูแล ร้านอ่านอย่างเดียว · เขียนผ่านสคริปต์/หลังบ้านเท่านั้น"),
   // Subscription (WO-0027) + Procurement (WO-0028)

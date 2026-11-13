@@ -9580,6 +9580,514 @@
    "wo": "H2.12",
    "oracle": "qc-hr-h2.7",
    "note": "* = id ประเภทการลา · คำเตือน F5 (ไม่บล็อก) เมื่อต่ำกว่าค่าตามกฎหมาย"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-legal",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "ผู้ผ่านด่านไฟล์โอน (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "ข้อความคงที่ BANK_TEXT.legal (ม.55 · ม.77 — ความยินยอมจ่ายเข้าบัญชี) แสดงเสมอในส่วนไฟล์โอน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-open-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "ผู้ผ่านด่านไฟล์โอน (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา) · ต่อรอบ APPROVED/PAID",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?bank=<runId>#hr-bank"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "ปุ่ม \"ไฟล์โอน\" ของรอบ (ภาพ 06) — * = runId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-format",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "เลือกรอบแล้ว (?bank=)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?bfmt=<รูปแบบ>"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "รูปแบบ: CSV/Excel ชุดทั่วไป · KTB Business · ชุดของร้าน · รูปแบบธนาคารที่เปิดแล้ว (ป้ายยังไม่ทดสอบ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-untested",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "เลือกรูปแบบธนาคาร (KBANK_PCT/KTB_IPAY)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "ป้าย \"ยังไม่ทดสอบกับธนาคารจริง\" + BANK_TEXT.untestedLong"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-tile",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "ตัวอย่างสำเร็จ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "ช่อง hero \"โอน N คน · ฿X\" + ยอดสุทธิของรอบ (ภาพ 06)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-excluded",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "มีคนไม่อยู่ในไฟล์",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "รายการไม่อยู่ในไฟล์: ชื่อ + เหตุ (BANK_TEXT.reasons) + ฿"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-warn",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "มีคำเตือน",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "คำเตือน (BANK_TEXT.warnings) — ไม่ปิดกั้น"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-ack",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "รูปแบบธนาคาร + ตัวอย่างสำเร็จ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "ติ๊กรับทราบยังไม่ทดสอบ (required) — action ปฏิเสธถ้าไม่ติ๊ก (?bmsg=ack)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-generate",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "ตัวอย่างสำเร็จ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:generateBankFileAction",
+    "db": "HrBankFile 1 แถว + AuditLog hr.bankfile.generate",
+    "resultTarget": "route bank-file/[fileId]"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "สร้างไฟล์ (ใบกำกับ) แล้วพาไปดาวน์โหลด — ไม่เปลี่ยนรอบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-files",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "เลือกรอบแล้ว",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "รายการไฟล์ของรอบ (ใหม่ก่อน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-file-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "มีไฟล์ของรอบ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "แถวไฟล์: ชื่อไฟล์ · จำนวน · ยอด · ผู้สร้าง · หมดอายุ · จำนวนดาวน์โหลด — * = fileId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-bank-dl-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "ไฟล์ยังไม่หมดอายุ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/payroll/bank-file/[fileId]",
+    "db": "HrBankFile.downloads +1 + AuditLog hr.bankfile.download"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "ดาวน์โหลด (สร้างใหม่ + เทียบ sha) — * = fileId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-bank-profile",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveBankProfileAction",
+    "db": "HrBankProfile + AuditLog hr.bankfile.profile"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "บัญชีต้นทาง + เปิดรูปแบบธนาคาร"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-bank-fmt-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "checkbox เปิดรูปแบบ — * = KBANK_PCT | KTB_IPAY (ป้ายยังไม่ทดสอบ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-bank-ack-untested",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "รับทราบยังไม่ทดสอบ — เปิดรูปแบบใหม่โดยไม่ติ๊ก = ackUntested"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-bank-profile-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveBankProfileAction"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "บันทึกบัญชีต้นทาง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-bank-presets",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "ผู้ผ่านด่านไฟล์โอน (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา) (หน้าตั้งค่าเปิดได้เฉพาะ OWNER/hr.employee.create)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "ชุดคอลัมน์ CSV/Excel ของร้าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-bank-preset-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "ผู้ผ่านด่านไฟล์โอน (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveBankPresetAction",
+    "db": "HrBankExportPreset + AuditLog hr.bankfile.preset"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "บันทึกชุดคอลัมน์ (สูงสุด 10 แถวในฟอร์ม)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-bank-preset-del-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "มีชุดของร้าน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:deleteBankPresetAction",
+    "db": "ลบ HrBankExportPreset + AuditLog hr.bankfile.preset"
+   },
+   "wo": "H3.5",
+   "oracle": "qc-hr-h3.5",
+   "note": "ลบชุดคอลัมน์ — * = presetId"
   }
  ]
 }
