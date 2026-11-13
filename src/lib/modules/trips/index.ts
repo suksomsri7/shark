@@ -408,3 +408,28 @@ export type { CancelOpts } from "./booking";
 export { runPaymentDue } from "./jobs";
 // ◂ TRIPS T0.7
 // ── /T0.7 money ──
+// ── T1.3 bookings-screen ──
+// TRIPS T1.3 ▸ จอการจองฝั่งร้าน (ภาพ 18): ตัวโหลด รายการ/ค้นหา/ชิป · รายละเอียด · คิวเอกสารเงินรอออก · เงินสดหน้าร้านรายวัน + ตัวช่วยบริสุทธิ์ (ใบสั่ง ledger/trips-briefs/T1.3.md ส่วน a) ◂
+export {
+  BOOKING_LIST_WHENS,
+  BOOKING_LIST_CHIPS,
+  BOOKING_ATTENTION_KINDS,
+  BOOKING_MONEY_STATES,
+  BOOKING_OWES_STATUSES,
+  TRIPS_BOOKING_LIST_CAP,
+  TRIPS_MONEY_DOCS_CAP,
+  TRIPS_CASH_EVENTS_CAP,
+  outstandingOf,
+  moneyStateOf,
+  bookingBadgeOf,
+  listWindowOf,
+  bookingCodeQuery,
+  parseAmountSatang,
+  maskPhone,
+  intentKey,
+} from "./booking-view-core";
+export type { BookingAttention, BookingMoneyState, BookingListWhen, BookingListChip, BookingBadgeShape } from "./booking-view-core";
+export { loadBookingListVM, loadBookingDetailVM, loadBookingDocsVM, loadCashDayVM } from "./booking-screens";
+export type { BookingListVM, BookingRowVM, BookingDetailVM, BookingDocsVM, CashDayVM, BookingUnitVM } from "./booking-screens";
+// ◂ TRIPS T1.3
+// ── /T1.3 bookings-screen ──

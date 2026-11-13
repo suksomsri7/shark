@@ -947,7 +947,7 @@ try {
     const a = await mkBooking({ name });
     const b = await mkBooking({ key: "B", name });
     eq(rowsOf(VM(await lv("oa", { q: name }), "ค้นชื่อ A")).map((r) => r.bookingId), [a.id], "ชื่อ");
-    eq(num(VM(await lv("oa", { q: b.code }), "ค้นเลข B").total), 0, "เลขจองร้าน B");
+    ok(!rowsOf(VM(await lv("oa", { q: b.code }), "ค้นเลข B")).some((r) => r.bookingId === b.id), "เลขจองร้าน B"); // ORACLE-EDIT BT-5 (ผู้คุม 13 พ.ย.): เลขจองนับต่อร้าน เลขซ้ำข้ามร้านได้ — ตรวจว่าแถวของร้าน B ไม่โผล่
     codeR(await dv("oa", b.id), "NOT_FOUND", "รายละเอียดร้าน B");
   });
   await st("BT-6", "รับเงินสดเต็ม (recordTripPayment): แถว money PAID · lastTender CASH · outstanding 0 · ป้ายทึบ · รายละเอียด events 1 RECEIVED UNPOSTED · docs.waiting 1 (VAT = แถวเงิน) · pay/qr false", async () => {
@@ -1051,7 +1051,7 @@ try {
     const v0 = num((await q<Rec>(`SELECT version FROM "TripBooking" WHERE id = $1`, [b.id]))[0]?.version);
     const rq = V(await call("requestTripRefund", staff(), { bookingId: b.id, expectedVersion: v0, reasonKind: "CUSTOMER", choice: "MONEY", reason: "ลูกค้าขอยกเลิก", idempotencyKey: `r${hex(6)}` }, { canDecide: true }), "requestTripRefund");
     const { vm, row } = await lvRow(b);
-    eq([asRec(row.refund)?.requestId, asRec(row.refund)?.status, asRec(row.refund)?.amountSatang, asArr(row.attention)[0], asRec(row.badge)?.kind], [rq.requestId, rq.status, rq.amountSatang, "REFUND_OPEN", "REFUND_OPEN"], "แถว");
+    eq([asRec(row.refund)?.requestId, asRec(row.refund)?.status, asRec(row.refund)?.amountSatang, (Array.isArray(row.attention) ? row.attention[0] : undefined) /* ORACLE-EDIT BT-15 (ผู้คุม 13 พ.ย.): asArr แปลงสตริงเป็น {} */, asRec(row.badge)?.kind], [rq.requestId, rq.status, rq.amountSatang, "REFUND_OPEN", "REFUND_OPEN"], "แถว");
     ok(num(asRec(vm.segments)?.refundsOpen) >= 1, `refundsOpen: ${fmt(vm.segments)}`);
     const d = VM(await dv("oa", b.id), "detail");
     eq([asArr(d.refunds).map((x) => [x.requestId, x.status]), asRec(d.actions)?.pay], [[[rq.requestId, rq.status]], false], "รายละเอียด");

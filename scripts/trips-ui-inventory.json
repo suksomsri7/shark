@@ -2811,6 +2811,1502 @@
       "oracle": "qc-trips-t1.2#CT-14",
       "system": "TRIPS",
       "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk",
+        "state": "appears",
+        "note": "จอการจองฝั่งร้าน (ภาพ 18)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-seg-all",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-seg-all",
+        "state": "navigates",
+        "note": "ส่วน การจองทั้งหมด (?view=list)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-seg-refunds",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-seg-refunds",
+        "state": "disabled",
+        "note": "ส่วน คำขอคืนเงิน N — นับจริง แต่ยังไม่เปิดใช้"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-5",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-seg-docs",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-seg-docs",
+        "state": "navigates",
+        "note": "ส่วน เอกสารเงินรอออก N (?view=docs) เฉพาะผู้รับเงิน"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-8",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-new",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-new",
+        "state": "disabled",
+        "note": "+ จองหน้าร้าน ยังไม่เปิดใช้"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-11",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-search",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-search",
+        "state": "navigates",
+        "note": "ค้น เลขจอง · ชื่อผู้จอง · เลขอ้างอิงเอเจนซี่ (?q=)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-7",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-filter-product",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-filter-product",
+        "state": "navigates",
+        "note": "ตัวกรองสินค้า (?p=)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-8",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-filter-when",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-filter-when",
+        "state": "navigates",
+        "note": "ตัวกรองวันเดินทาง (?when=)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-6",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-filter-channel",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-filter-channel",
+        "state": "navigates",
+        "note": "ตัวกรองช่องทาง (?ch=)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-9",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-chip-all",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-chip-all",
+        "state": "navigates",
+        "note": "ชิป ทั้งหมด N"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-5",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-chip-day",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-chip-day",
+        "state": "navigates",
+        "note": "ชิป เดินทาง {วัน} N (วันเดินทางถัดไป)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-14",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-chip-hold",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-chip-hold",
+        "state": "navigates",
+        "note": "ชิป ถือที่ N (เส้นประ)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-11",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-chip-attention",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-chip-attention",
+        "state": "navigates",
+        "note": "ชิป ต้องทำ N (กรอบแดง + ไอคอน)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-14",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-table",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-table",
+        "state": "appears",
+        "note": "ตารางการจอง 6 คอลัมน์ (จอ ≥ md)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-row-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-row",
+        "state": "navigates",
+        "note": "แถวการจอง ⇒ เปิดลิ้นชักรายละเอียด (?b=)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-13",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-cards",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-cards",
+        "state": "appears",
+        "note": "การ์ดต่อการจอง (มือถือ ไม่มีตาราง)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-card-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-card",
+        "state": "navigates",
+        "note": "การ์ดการจอง ⇒ เปิดรายละเอียด (?b=)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-13",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-empty",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-empty",
+        "state": "appears",
+        "note": "ไม่มีการจองตามตัวกรอง"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-6",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-truncated",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-truncated",
+        "state": "appears",
+        "note": "แสดง N รายการแรกจากทั้งหมด (เกินเพดาน)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-21",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-footer",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-footer",
+        "state": "appears",
+        "note": "{n} รายการ · ยอดรวม ฿{sum} (ทั้งชุดที่กรอง)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-5",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-name-capped",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-name-capped",
+        "state": "appears",
+        "note": "ชื่อที่ตรงเกิน 25 ชื่อ — ให้พิมพ์เจาะจงขึ้น"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-20",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-detail",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-bk-detail",
+        "state": "opens",
+        "note": "ลิ้นชักรายละเอียดการจอง (ทับขวา)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-detail-close",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-bk-detail-close",
+        "state": "navigates",
+        "note": "ปิดลิ้นชัก (ลบ b จาก URL)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-status",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-status",
+        "state": "appears",
+        "note": "ป้ายสถานะการจอง (แยกรูปทรง)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#LV-13",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-customer",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-customer",
+        "state": "appears",
+        "note": "ลูกค้า: ชื่อ + เบอร์ปิดบัง / ข้อมูลถูกลบ"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-18",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-items",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-items",
+        "state": "appears",
+        "note": "รายการของการจอง (บรรทัดเอกสาร)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-3",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-money",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-money",
+        "state": "appears",
+        "note": "ยอด · จ่ายแล้ว · ค้าง · ก่อนภาษี/VAT/เก็บแทน"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-2",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-dues",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-dues",
+        "state": "appears",
+        "note": "งวดจ่าย"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-4",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-due-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-due",
+        "state": "appears",
+        "note": "แถวงวด"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-4",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-payments",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-payments",
+        "state": "appears",
+        "note": "การรับเงิน"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-6",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-event-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-event",
+        "state": "appears",
+        "note": "แถวเงิน + ป้ายรอออกเอกสาร"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-6",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-docs",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-docs",
+        "state": "appears",
+        "note": "เอกสารเงินรอออกของการจอง (ออกเองในระบบบัญชี)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-6",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-travellers",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-travellers",
+        "state": "appears",
+        "note": "ผู้เดินทาง {มีชื่อ}/{ที่นั่ง}"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-6",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-travellers-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-travellers-note",
+        "state": "appears",
+        "note": "แบบฟอร์มผู้เดินทางยังไม่เปิดใช้"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-6",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-refund-open",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-refund-open",
+        "state": "appears",
+        "note": "คำขอคืนเงินของการจอง (อ่านอย่างเดียว)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-15",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-actions",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-actions",
+        "state": "appears",
+        "note": "แถบปุ่มของลิ้นชัก (2 คอลัมน์)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-7",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-pay",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-bk-pay",
+        "state": "opens",
+        "note": "รับเงิน ⇒ กล่องรับเงิน"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-7",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-qr",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-bk-qr",
+        "state": "opens",
+        "note": "QR พร้อมเพย์ ⇒ กล่องรับเงิน (พร้อมเพย์)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-7",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-approve",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-bk-approve",
+        "state": "opens",
+        "note": "อนุมัติคำขอจอง"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-14",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.booking.approve"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-reject",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-bk-reject",
+        "state": "opens",
+        "note": "ปฏิเสธคำขอจอง"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-14",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.booking.approve"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-bk-cancel",
+        "state": "opens",
+        "note": "ยกเลิกการจองที่ยังไม่จ่าย (สีอันตราย)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-11",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.booking.cancel"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-change",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-change",
+        "state": "disabled",
+        "note": "เลื่อนวัน/แก้คน ยังไม่เปิดใช้"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-7",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-bk-refund",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-bk-refund",
+        "state": "disabled",
+        "note": "ขอยกเลิก/คืนเงิน ยังไม่เปิดใช้"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#DV-7",
+      "system": "TRIPS",
+      "needs": "trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-pay-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-pay-dialog",
+        "state": "opens",
+        "note": "กล่องรับเงิน"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-6",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-pay-amount",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-pay-amount",
+        "state": "changes",
+        "note": "ยอดที่รับ (บาท) ปริยาย = ยอดค้าง"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-9",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-pay-tender-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-pay-tender",
+        "state": "changes",
+        "note": "วิธีจ่าย เงินสด/พร้อมเพย์/โอน/บัตร"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-9",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-pay-reference",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-pay-reference",
+        "state": "changes",
+        "note": "เลขอ้างอิง (ไม่บังคับ · ซ่อนเมื่อเงินสด)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-9",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-pay-cash-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-pay-cash-note",
+        "state": "appears",
+        "note": "เงินสดการจองเก็บแยก ไม่ใส่ลิ้นชักเครื่องขาย"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-7",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-pay-show-qr",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-pay-show-qr",
+        "state": "submits",
+        "note": "ขอ QR พร้อมเพย์ยอดล็อก (ไม่เขียนฐาน)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-30",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-pay-qr",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-pay-qr",
+        "state": "appears",
+        "note": "รูป QR พร้อมเพย์ยอดล็อก"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-30",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-pay-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-pay-confirm",
+        "state": "submits",
+        "note": "ยืนยันรับเงิน (กันกดซ้ำด้วยคีย์ต่อเจตนา)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-10",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cancel-bk-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-cancel-bk-dialog",
+        "state": "opens",
+        "note": "กล่องยกเลิกการจองที่ยังไม่จ่าย"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-13",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.booking.cancel"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cancel-bk-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cancel-bk-reason",
+        "state": "changes",
+        "note": "เหตุผล (บังคับ)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-13",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.booking.cancel"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cancel-bk-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-cancel-bk-confirm",
+        "state": "submits",
+        "note": "ยืนยันยกเลิกการจอง"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-13",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.booking.cancel"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-approve-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-approve-dialog",
+        "state": "opens",
+        "note": "กล่องอนุมัติ/ปฏิเสธคำขอจอง"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-14",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.booking.approve"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-approve-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-approve-reason",
+        "state": "changes",
+        "note": "เหตุผล (ปฏิเสธต้องใส่)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-14",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.booking.approve"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-approve-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-approve-confirm",
+        "state": "submits",
+        "note": "ยืนยันอนุมัติ/ปฏิเสธ"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-14",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.booking.approve"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cash",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cash",
+        "state": "appears",
+        "note": "การ์ดเงินสดหน้าร้าน (เก็บแยก)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#CS-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cash-expected",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cash-expected",
+        "state": "appears",
+        "note": "เงินสดที่ต้องมีของวัน"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#CS-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cash-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-cash-open",
+        "state": "opens",
+        "note": "ดูรายละเอียดเงินของวัน"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#CS-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cash-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-cash-dialog",
+        "state": "opens",
+        "note": "กล่องเงินของวัน (แยกวิธีจ่าย + รายการ)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-7",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cash-date",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cash-date",
+        "state": "navigates",
+        "note": "เลือกวันทำการ (?day=)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#CS-2",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cash-tender-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cash-tender",
+        "state": "appears",
+        "note": "ยอดรับ/คืนต่อวิธีจ่าย"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-7",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-cash-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cash-close",
+        "state": "disabled",
+        "note": "ปิดยอดเงินสดวันนี้ ยังไม่เปิดใช้"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#CS-1",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-docs",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-docs",
+        "state": "appears",
+        "note": "คิวเอกสารเงินรอออกของหน่วย"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#CS-3",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-docs-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-docs-note",
+        "state": "appears",
+        "note": "ระบบยังไม่ออกเอกสารบัญชี — ออกเองในระบบบัญชี"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#CS-3",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-docs-row-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-docs-row",
+        "state": "navigates",
+        "note": "แถวเงินรอเอกสาร ⇒ เปิดการจอง (?b=)"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-8",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-docs-truncated",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-docs-truncated",
+        "state": "appears",
+        "note": "แสดง N รายการล่าสุดจากทั้งหมด"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-8",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
     }
   ]
 }
