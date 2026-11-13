@@ -109,6 +109,8 @@ S5.2|X6|C|R|[db] 6 parallel issues for 6 employees ⇒ 6 distinct numbers 1..6 �
 S6.1|R14|C|R|[db] route helpers: rsc / prefetch ⇒ 204 untouched · plain ⇒ 200 attachment no-store nosniff · refusal 404/409/410 fixed text, no bytes · self helper
 S7.1|ruling 6|C|R|[static] H3.4 merged: payroll.ts writes snapshot whtIncomeSatang · whtOneOffSatang · ssoWageSatang for engineVersion 2 (n/a on a base without H3.4 ⇒ fail, by design)
 S7.2|R3|C|R|[static] filings/figures.ts reads exactly those snapshot keys + baseSalarySatang/ssoEligible (v1) and the item columns — no other snapshot key
+S8.1|debt H3.5|C|R|[pure] ORACLE-EDIT (H3.6 builder, controller order): a payee/person name that is blank after cleaning (only combining marks/spaces) is refused or listed, never written — KBANK_PCT + CSV ⇒ ENCODING naming the payee · ภ.ง.ด.1 + สปส.1-10 ⇒ INCOMPLETE firstName
+S8.2|debt H3.5|C|R|[pure] ORACLE-EDIT (H3.6 builder, controller order): full-width ＝ ＋ － ＠ at the start of a CSV/XLSX cell count as formula starters (formulaLike + CSV/XLSX build ⇒ FORMULA) · ASCII rules unchanged
 X12.1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
 Z1|house|C|G|no residue (4 new tables + AccountDocSequence rows of the QC tenants)
 `.trim().split("\n").map((l) => {
@@ -166,7 +168,8 @@ function runStatic(): void {
     ck("S1.2", {
       models: MODELS.every((m) => new RegExp(`^model ${m} \\{`, "m").test(cur)),
       runSame: !!base && modelBlock(cur, "HrPayrollRun") === modelBlock(base, "HrPayrollRun") && modelBlock(cur, "HrPayrollItem") === modelBlock(base, "HrPayrollItem"),
-      empSame: !!hrBase && modelBlock(rd(F.hrSchema), "HrEmployee").replace(/^\s*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*$/gm, "") === modelBlock(hrBase, "HrEmployee"),
+      // ORACLE-EDIT (H3.6 builder, 13 Nov): the strip left each back-relation line's own "\n" behind, so any added relation line made the block differ ⇒ strip the line WITH its newline
+      empSame: !!hrBase && modelBlock(rd(F.hrSchema), "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, "") === modelBlock(hrBase, "HrEmployee"),
       scope: MODELS.every((m) => new RegExp(`\\b${m}:\\s*sys\\(\\)`).test(scope)),
       env: MODELS.every((m) => new RegExp(`model:\\s*"${m}"`).test(env)),
     }, "models · frozen blocks · scope · env");
@@ -206,8 +209,14 @@ function runStatic(): void {
   }
   {
     const shaOk = sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA;
-    const d = changedVsBase(BASE, FROZEN);
-    ck("S1.6", { shaOk, frozen: d === "unchanged" }, "unchanged", d);
+    // ORACLE-EDIT (H3.6 builder, 13 Nov — controller order: close two H3.5 debts in bank-files/** as marked "HR H3.6" hunks + checks S8.1/S8.2):
+    //   bank-files may differ from the base only in files whose every hunk carries "HR H3.6" in an added line · everything else in FROZEN stays byte-unchanged
+    const bankDir = `${H}bank-files`;
+    const d = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
+    const bankChanged = changedVsBase(BASE, [bankDir]);
+    const bankFiles = bankChanged.startsWith("changed: ") ? bankChanged.slice(9).split(",") : [];
+    const bankUnmarked = bankFiles.filter((f) => !(diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H3\.6/.test(l))));
+    ck("S1.6", { shaOk, frozen: d === "unchanged", bank: bankChanged === "unchanged" || (bankChanged.startsWith("changed: ") && bankUnmarked.length === 0) }, "unchanged (bank-files: HR H3.6 hunks only)", `${d} · bank ${bankChanged}${bankUnmarked.length ? ` unmarked ${bankUnmarked.join(",")}` : ""}`);
   }
   {
     const r = IN_BASE ? { inBase: true } : { schema: markedOk(F.schema), scope: markedOk(F.scope), env: markedOk(F.env), payPage: markedOk(F.payPage), setPage: markedOk(F.setPage), mePay: markedOk(F.mePay) };
@@ -215,7 +224,8 @@ function runStatic(): void {
   }
   {
     const ui = rd(F.ui);
-    const ids = new Set([...testidsOf(ui, "hr-filing-"), ...testidsOf(ui, "hr-taxcert-"), ...testidsOf(ui, "hr-mytaxcert"), ...testidsOf(rd(F.setPage), "hr-filing-"), ...testidsOf(rd(F.mePay), "hr-mytaxcert")]);
+    // ORACLE-EDIT (H3.6 builder, 13 Nov): testidsOf needs ≥1 char after the prefix, so the bare id "hr-mytaxcert" could never be found with prefix "hr-mytaxcert" ⇒ scan "hr-my" too
+    const ids = new Set([...testidsOf(ui, "hr-filing-"), ...testidsOf(ui, "hr-taxcert-"), ...testidsOf(ui, "hr-mytaxcert"), ...testidsOf(ui, "hr-my"), ...testidsOf(rd(F.setPage), "hr-filing-"), ...testidsOf(rd(F.mePay), "hr-mytaxcert"), ...testidsOf(rd(F.mePay), "hr-my")]);
     const th = jsonOf(F.th)?.hr?.filing ?? {};
     const en = jsonOf(F.en)?.hr?.filing ?? {};
     const mp = msgParity(th, en, ["title"]);
@@ -798,11 +808,64 @@ function sha256Hex(b: Buffer): string {
   return createHash("sha256").update(b).digest("hex");
 }
 
+// ═════════════════════════ S8 — H3.5 debts closed here (ORACLE-EDIT, H3.6 builder, controller order 13 Nov) ═════════════════════════
+async function runDebts(): Promise<void> {
+  const BK = await loadOpt(`${H}bank-files/build.ts`, "@/lib/modules/hr/bank-files/build");
+  const GN = await loadOpt(`${H}bank-files/generic.ts`, "@/lib/modules/hr/bank-files/generic");
+  const V = jsonOf("scripts/fixtures/hr-h3.6-vectors.json") as Any;
+  const MARKS = "\u0E34\u0E48\u0E31"; // ิ่ั — combining marks only
+  const bank = (accountName: string, format: string, generic?: unknown) => {
+    try {
+      return BK?.buildBankFile?.({
+        run: { runId: "r1", periodKey: "2026-11", payDate: "2026-11-25", status: "PAID", totalNetSatang: 200 },
+        payees: [
+          { employeeId: "e1", name: "สมชาย", code: "E1", bankName: "กสิกรไทย", accountNo: "1234567890", accountName, netSatang: 100 },
+          { employeeId: "e2", name: "สมหญิง", code: "E2", bankName: "กสิกรไทย", accountNo: "1234567891", accountName: "สมหญิง", netSatang: 100 },
+        ],
+        profile: { debitBankCode: "004", debitAccountNo: "1234567899", debitBranchCode: null, companyNameEn: "QC SHOP CO", ktbCompanyId: null },
+        options: { format, effectiveDate: "2026-11-25", ...(generic ? { generic } : {}) },
+        now: new Date("2026-11-20T03:00:00Z"),
+      }) ?? null;
+    } catch (e) {
+      return { ok: false, code: `THROW ${errText(e)}` };
+    }
+  };
+  {
+    const pct = bank(` ${MARKS} `, "KBANK_PCT");
+    const csv = bank(MARKS, "CSV", { preset: "GENERIC" });
+    const okName = bank("สมชาย", "CSV", { preset: "GENERIC" });
+    const g1 = V?.pnd?.G1?.in ? JSON.parse(JSON.stringify(V.pnd.G1.in)) : null;
+    if (g1) g1.persons[0].firstName = MARKS;
+    const pnd = g1 && typeof B?.buildPnd1 === "function" ? B.buildPnd1(g1) : null;
+    const g3 = V?.sso?.G3?.in ? JSON.parse(JSON.stringify(V.sso.G3.in)) : null;
+    if (g3) g3.persons[0].firstName = MARKS;
+    const sso = g3 && typeof B?.buildSso110 === "function" ? B.buildSso110(g3) : null;
+    const named = (r: Any) => r?.ok === false && r.code === "ENCODING" && canon((r.employees ?? []).map((e: Any) => e.employeeId)) === canon(["e1"]);
+    ck("S8.1", {
+      pct: named(pct), csv: named(csv), control: okName?.ok === true,
+      pnd: pnd?.ok === true && pnd.lineCount === 1 && canon((pnd.notIncluded ?? []).map((x: Any) => [x.employeeId, x.cause, x.fields])) === canon([["p1", "INCOMPLETE", ["firstName"]]]),
+      sso: sso?.ok === true && sso.lineCount === 1 && canon((sso.notIncluded ?? []).map((x: Any) => [x.employeeId, x.cause, x.fields])) === canon([["p1", "INCOMPLETE", ["firstName"]]]),
+    }, "blank-after-cleaning names refused/listed", `pct=${pct?.code ?? pct?.ok} csv=${csv?.code ?? csv?.ok} pnd=${short(pnd?.notIncluded, 60)} sso=${short(sso?.notIncluded, 60)}`);
+  }
+  {
+    const fl = typeof GN?.formulaLike === "function" ? GN.formulaLike : null;
+    const yes = ["\uFF1DSUM(A1)", "\uFF0B1", "\uFF0D1", "\uFF20x", " \uFF1D1", "\u3000\uFF0B1", "=1", "+1", "-1", "@x", "\t1"];
+    const no = ["a\uFF1D1", "สมชาย", "1\uFF0B1", ""];
+    const csv = bank("\uFF1DHYPERLINK(1)", "CSV", { preset: "GENERIC" });
+    const xlsx = bank("\uFF20cmd", "XLSX", { preset: "GENERIC" });
+    ck("S8.2", {
+      fn: !!fl, yes: !!fl && yes.every((x) => fl(x) === true), no: !!fl && no.every((x) => fl(x) === false),
+      csv: csv?.ok === false && csv.code === "FORMULA", xlsx: xlsx?.ok === false && xlsx.code === "FORMULA",
+    }, "full-width formula starters", `${fl ? [...yes.filter((x) => !fl(x)), ...no.filter((x) => fl(x))].map((x) => JSON.stringify(x)).join(",") : "∅ formulaLike"} csv=${csv?.code ?? csv?.ok} xlsx=${xlsx?.code ?? xlsx?.ok}`);
+  }
+}
+
 // ═════════════════════════ run ═════════════════════════
 let crashed = "";
 try {
   runStatic();
   await runPure(chk, B, PDFM);
+  await runDebts(); // ORACLE-EDIT (H3.6 builder): S8.1/S8.2 — H3.5 debts closed in H3.6
   const fz = await fitnessNoEnv();
   chk("X12.1", fz.ok, "exit 0 ×2", fz.note);
   await runDb();
