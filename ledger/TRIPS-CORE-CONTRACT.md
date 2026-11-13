@@ -958,13 +958,15 @@ payCommissionRun(actor, ctx, { runId, paidAt, perAgent: {agentAccountId, finance
 
 **J.3.1 ล็อกอินและ session ของเอเจนซี่ (มติ 5 · M-5)** — ต้องผ่านผู้ตรวจความปลอดภัยก่อน A1.2
 - ตัวตน = «AgentUser» ระดับแพลตฟอร์ม (อีเมลหรือ LINE) — **ไม่ใช้ `User`/`Membership`/`Session` ของ `/app`** · เข้าระบบ: อีเมล → รหัสใช้ครั้งเดียว («AgentLoginCode» · แฮช · หมดอายุ · จำกัดครั้ง) · LINE → LINE Login ของ OA ร้าน (ศูนย์เชื่อมต่อ) ได้ `lineUserId`
-- session = «AgentSession» (token สุ่ม ≥ 128 บิต เก็บแฮช · คุกกี้ชื่อของตัวเอง `shark_agent` · `HttpOnly` `Secure` `SameSite=Lax` · path `/agent` · ไม่ใช้คุกกี้ของ `/app` หรือ `shark_portal`) · หมดอายุสัมบูรณ์ + ไม่ใช้งาน · เพิกถอนได้
-- ขอบเขตทุกคำขอ: `session.activeAgentAccountId` ต้องเป็น `AgentAccount` ของร้าน `[shop]` ที่ `status ACTIVE` และมี `AgentAccountMember(agentUserId) active` · ทุกคิวรีของพอร์ทัลกรองด้วย `agentAccountId` (เห็นเฉพาะการจองของตัวเอง · MP §5 ง)
+- session = «AgentSession» (token สุ่ม ≥ 128 บิต เก็บแฮช · คุกกี้ `__Host-shark_agent` (dev `shark_agent`) · Path=/ · HttpOnly · SameSite=Lax · Secure ตามสภาพแวดล้อม · ตั้ง/อ่านเฉพาะโดเมนแพลตฟอร์ม ไม่บนโดเมนของร้านหรือวิดเจ็ตฝัง · route handler ใต้ /agent ตรวจ Origin (แก้ตาม A1.2a §5.8 · มติ R1 ข้อ 4) · ไม่ใช้คุกกี้ของ `/app` หรือ `shark_portal`) · หมดอายุสัมบูรณ์ + ไม่ใช้งาน · เพิกถอนได้
+- ขอบเขตทุกคำขอตัดสินต่อร้านจาก `[shop]` ของ URL ผ่าน `agentScope` (บัญชี ACTIVE + สมาชิก active) · `activeAgentAccountId` เป็นคำใบ้ UI เท่านั้น · โค้ดฝั่งร้านได้ `agentAccountId` + `memberId` ไม่เคยได้ agentUserId (แก้ตาม A1.2a §5.8 · มติ R1 ข้อ 10) · ทุกคิวรีของพอร์ทัลกรองด้วย `agentAccountId` (เห็นเฉพาะการจองของตัวเอง · MP §5 ง)
+- นาฬิกา (A1.2a r2 · มติ §10 ข้อ 7): อายุ session ของเอเจนซี่ตัดสินด้วยนาฬิกาจริงของเซิร์ฟเวอร์ในทุกฟังก์ชันที่ส่งออกของ `platform/agent-auth.ts` · `meta.now` / `meta.deps` เป็นช่องทดสอบของกติกาธุรกิจและหน้าต่างถัง rate เท่านั้น — **route / server action ห้ามส่งค่าใดจากคำขอ (body · query · header · คุกกี้) เข้า `meta.now` หรือ `meta.deps`** (ตัวห่อของ A1.2b สร้าง `meta` เองที่เซิร์ฟเวอร์: `clientKey` · `ip` · `userAgent` เท่านั้น)
 - เชิญ/ผูก: ร้านเชิญด้วยอีเมล/ลิงก์ หรือเอเจนซี่ให้ `AgentIdentity.publicCode` แก่ร้าน · **ร้านค้นตาราง `AgentIdentity` ด้วยข้อมูลส่วนบุคคล/เลขภาษีไม่ได้** · ยืนยันเลขภาษีตรงกันได้เฉพาะเมื่อเอเจนซี่กรอกเอง (เทียบ `taxIdHash`)
 - `AgentIdentity` แก้ได้เฉพาะ `AgentUser` role `OWNER` ของเอเจนซี่นั้น (ชื่อแสดง/รหัส) · ข้อมูลภาษี/เงินแก้ที่ `AgentAccount` ของแต่ละร้าน โดยร้านนั้น (หรือเอเจนซี่เสนอแก้ → ร้านอนุมัติ) · ร้านไม่เห็น/แก้ `AgentAccount` ของร้านอื่น (scope `tenant`)
 
 **J.3.2 กติกา token** (เดิม + m-8)
 - token ในลิงก์ = สุ่ม ≥ 128 บิต · ฐานเก็บแฮช · ลิงก์ที่หมดอายุใช้ `signLink` ซ้อน · ค้นด้วย token ผูก tenant ของ `[shop]` เสมอ
+- token เชิญเอเจนซี่ของร้าน = HMAC ของ (ร้าน · บัญชี · เวลาหมด) แบบ T0.6 (ไม่ใช่สุ่ม) (A1.2a §4 §5.8)
 - แก้/ยกเลิก/ดูเอกสาร = OTP เบอร์ (`CustomerOtp`) หรือ LINE userId ที่ผูกการจอง · ยืนยันแล้วอยู่ได้ «trips.public.otpValidMinutes»
 - **namespace กันซ้ำของสาธารณะ = token ตะกร้า/session ของหน้าจอง** (`pub:<basketTokenHash>:<key>` — ไม่ใช่แฮช IP+UA) เพื่อให้ลองซ้ำหลังเปลี่ยนเครือข่ายได้ผลเดิม (m-8) · `clientKey` (IP+UA) ใช้กับ rate limit เท่านั้น
 - QR ออฟไลน์ = payload เซ็น HMAC · กุญแจตรวจต่อร้านแจกให้เครื่องไกด์/ประตูตอนออนไลน์ · หมุนได้ (ตาราง «GateSigningKey» ใน migration K1.1: `tenantId` · `kid` · `secretBox` · `activeFrom` · `retiredAt?` · M-15)

@@ -246,6 +246,9 @@ const ALLOWED_EDGES = new Set([
   // และตรวจคำอนุมัติราคาแก้มือกับ facade approval (ไม่งั้น approvalId อะไรก็ผ่าน) · ทิศทางเดียว
   "trips→party",
   "trips→approval",
+  // TRIPS A1.2a (ผู้คุม 13 พ.ย. 2569 · สัญญา TRIPS-CORE-CONTRACT ตารางเส้นข้ามโมดูล): ทะเบียนเอเจนซี่ผูก Party (ชื่ออย่างเดียว) และบริษัทใน CRM ผ่าน facade · ทิศทางเดียว
+  "agency→party",
+  "agency→crm",
   // chokepoint (K2.9 · ledger/KANBAN-RUN.md ท้าย §K3.2 "เส้น import ข้ามโมดูลที่ Fable อนุมัติ"):
   // การกระทำ `open_approval` ของกฎอัตโนมัติบอร์ดงาน ยื่นคำขอผ่าน `approval.submitForApproval`
   // แล้วเขียนความเห็นผูกกลับมาที่การ์ด · ทิศทางเดียว (approval ไม่รู้จัก kanban)
