@@ -197,7 +197,7 @@ try {
     await d(() => P_.accountDocumentRelation.deleteMany({ where: { tenantId: tid } }));
     await d(() => P_.accountDocumentLine.deleteMany({ where: { tenantId: tid } }));
     await d(() => P_.accountDocument.updateMany({ where: { tenantId: tid }, data: { sourceDocId: null, replacedById: null, sourcePaymentId: null } }));
-    for (const m of ["accountAttachment", "accountDocument", "accountDocSequence", "accountProduct", "accountMapping", "accountFinance", "accountContact", "accountPeriod", "accountSettings", "settingChange", "settingValue", "auditLog", "outboxEvent", "membership", "appSystemUnit"]) {
+    for (const m of ["apiKey", "accountAttachment", "accountDocument", "accountDocSequence", "accountProduct", "accountMapping", "accountFinance", "accountContact", "accountPeriod", "accountSettings", "settingChange", "settingValue", "auditLog", "outboxEvent", "membership", "appSystemUnit"]) {
       await d(() => P_[m].deleteMany({ where: { tenantId: tid } }));
     }
     await d(() => P_.accountLedger.updateMany({ where: { tenantId: tid }, data: { parentId: null } }));
