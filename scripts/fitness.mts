@@ -510,9 +510,19 @@ chk(
   "MAJOR",
 );
 // chokepoint discipline: pos→account ต้อง import ผ่าน facade index เท่านั้น (ห้ามล้วง service/gl ตรง)
+// ORACLE-EDIT (HR H3.6 builder, 13 Nov — brief hr-brief-H3.6 R2/R11 + oracle qc-hr-h3.6 S1.3/S1.4 prescribe these exact deep specs; account/** is frozen
+//   so the facade cannot re-export them): hr/filings may import ONLY the pure money/number helpers below — bahtText (totals) · formatDocNo/reserveSeq
+//   (doc-numbering = the one numbering engine, reused for the HR 50 Tawi series). Any other deep account import stays illegal.
+const ACCOUNT_DEEP_ALLOWED: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["hr/filings/cert.ts", new Set(["@/lib/modules/account/totals", "@/lib/modules/account/doc-numbering"])],
+  ["hr/filings/service.ts", new Set(["@/lib/modules/account/doc-numbering"])],
+  ["hr/filings/cert-pdf.tsx", new Set(["@/lib/modules/account/public-doc-pdf"])],
+]);
 const deepAccountImports = moduleFiles
   .filter((f) => relative(moduleDir, f).split("/")[0] !== "account")
-  .filter((f) => /from\s+["']@\/lib\/modules\/account\/(?!index)/.test(readFileSync(f, "utf8")));
+  .filter((f) =>
+    [...readFileSync(f, "utf8").matchAll(/from\s+["'](@\/lib\/modules\/account\/(?!index)[^"']*)["']/g)].some((m) => !ACCOUNT_DEEP_ALLOWED.get(relative(moduleDir, f))?.has(m[1]!)),
+  );
 chk(
   "F2.2",
   "โมดูลอื่นแตะ account ได้เฉพาะผ่าน account/index (facade)",

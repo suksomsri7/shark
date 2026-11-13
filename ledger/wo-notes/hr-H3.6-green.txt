@@ -1,0 +1,24 @@
+# H3.6 fix r1 green run · lane DB wo-hr-qc-l1 · 2026-11-13T15:46:44Z · after merge origin/session/hr 91b3b525c
+r1-h36-forced1 exit=0 ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) RESIDUE none (tenants=3 users=11)
+r1-h36-forced-a exit=0 ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) RESIDUE none (tenants=3 users=11)
+r1-h36-forced-b exit=0 ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) RESIDUE none (tenants=3 users=11)
+r1-h36-unforced exit=0 ===== qc-hr-h3.6 ===== passed 62/62 RESIDUE none (tenants=3 users=11)
+r1-seed exit=0 ===== seed-hr-qc ===== ผ่าน 34/34 
+r1-qc-hr-h3.5 exit=0 ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE) RESIDUE none (tenants=2 users=10)
+r1-qc-hr-h3.4 exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) RESIDUE none (tenants=3 users=17) · ACTIVE law rows after cleanup 0
+r1-qc-hr-h3.2 exit=0 ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) RESIDUE none (tenants=2 users=6)
+r1-qc-hr-h2.10 exit=0 ===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE) RESIDUE none (tenants=2 users=11)
+r1-qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) RESIDUE none (tenants=3 users=14)
+r1-qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) RESIDUE none (tenants=2 users=8)
+r1-qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) RESIDUE none (tenants=2 users=7)
+r1 typecheck exit=0 errors=0 871s
+r1-qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE) 
+r1-qc-payroll exit=0 ===== QC Payroll ไทย ===== 
+r1-qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== 
+r1-qc-audit-trail exit=0  
+r1-qc-account-cpa exit=0 ===== QC6 CPA audit (service layer จริง + Neon) ===== 
+r1 fitness noenv exit=0 ผ่าน 53/53
+r1 fitness env exit=0 ผ่าน 53/53
+r1 fitness-hr noenv exit=0 ผ่าน 9/9
+r1 fitness-hr env exit=0 ผ่าน 9/9
+hunt-h3.6-extra (date-shifted copy): 7.debts ✓ · 4.bulkPartial ✓ (D1 gone) · hunt-h3.6-pure: no 1.u2028 finding (D2 gone) · hunt-h3.6-db (date-shifted copy): 25 ✓

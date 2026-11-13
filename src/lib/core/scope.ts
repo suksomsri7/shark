@@ -278,6 +278,11 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrBankProfile: sys(),
   HrBankExportPreset: sys(),
   HrBankFile: sys(),
+  // HR H3.6 ▸ แบบยื่นภาษี/ประกันสังคม: ข้อมูลผู้จ่ายเงิน (1 แถว/ระบบ) · ชื่อ/ที่อยู่แยกช่องของพนักงาน · ใบกำกับไฟล์ (ไม่มีไบต์) · หนังสือรับรอง 50 ทวิ ◂
+  HrFilingProfile: sys(),
+  HrFilingPerson: sys(),
+  HrFilingFile: sys(),
+  HrTaxCertificate: sys(),
   HrEmployeeRegister: sys(), // HR H3.9 ▸ ทะเบียนลูกจ้าง: สัญชาติ · ประโยชน์ตอบแทนอย่างอื่น (ม.113) ◂
   // HR H1.3 ▸ ตารางกฎหมายเงินเดือนกลางของทั้ง SHARK (ไม่มี tenantId/systemId) ◂
   HrLawTable: g("กฎหมายแรงงาน/ภาษีระดับประเทศ — SHARK ดูแล ร้านอ่านอย่างเดียว · เขียนผ่านสคริปต์/หลังบ้านเท่านั้น"),

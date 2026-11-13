@@ -43,6 +43,7 @@ import { addLeavePresetAction } from "@/lib/modules/hr/leave-presets-actions"; /
 import { LeavePolicyWarningLines, LeavePresetSection } from "@/lib/modules/hr/leave-presets-ui"; // HR H2.12 ▸ F1 + F5 ◂
 import { BankSettingsCard, BANK_MSG, bankMsgText } from "@/lib/modules/hr/bank-files/ui"; // HR H3.5 ▸ ไฟล์โอนเงินเดือน: บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ ◂
 import { deleteBankPresetAction, saveBankPresetAction, saveBankProfileAction } from "@/lib/modules/hr/bank-files/actions"; // HR H3.5 ◂
+import { FilingSettingsCard } from "@/lib/modules/hr/filings/ui"; // HR H3.6 ▸ ข้อมูลผู้จ่ายเงินของแบบยื่น (เจ้าของร้านแก้) ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -68,6 +69,8 @@ const MSG_TEXTS: Record<string, string> = {
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
 /** กลับหน้าเดิมพร้อมรหัสผลการกด (redirect โยนเพื่อจบ action) */
+// HR H3.6 ▸ อ่านพารามิเตอร์สตริงของการ์ดแบบยื่น (ไม่ใช่สตริง = ไม่มี) ◂
+const str3 = (sp: unknown, k: string) => (typeof (sp as Record<string, unknown>)[k] === "string" ? String((sp as Record<string, unknown>)[k]) : undefined); // HR H3.6 ◂
 function back(path: string, year: number, r: { ok: true; id: string } | { ok: false; reason: string }): never {
   const code = r.ok ? "ok" : (MSG_CODE_OF.get(r.reason) ?? "s.failed");
   redirect(`${path}?year=${year}&msg=${encodeURIComponent(code)}`);
@@ -618,6 +621,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <PayrollEngineCard systemId={id} flash={run2Flash} flashOk={run2Ok} onSave={auth.active.role === "OWNER" ? onSaveEngine : null} />
       {/* HR H3.5 ▸ ไฟล์โอนเงินเดือน — การ์ดแสดงเฉพาะผู้ผ่านด่านไฟล์โอน · บัญชีต้นทาง/เปิดรูปแบบธนาคาร = เจ้าของร้าน ◂ */}
       <BankSettingsCard systemId={id} onSaveProfile={auth.active.role === "OWNER" ? onSaveBankProfile : null} onSavePreset={onSaveBankPreset} onDeletePreset={onDeleteBankPreset} />
+      {/* HR H3.6 ▸ แบบยื่นภาษี/ประกันสังคม — การ์ดแสดงเฉพาะผู้ผ่านด่าน · บันทึกได้เฉพาะเจ้าของร้าน · ผล ?fmsg= (allowlist ใน ui) ◂ */}
+      <FilingSettingsCard systemId={id} msg={{ fmsg: str3(sp, "fmsg"), fflds: str3(sp, "fflds"), fdoc: str3(sp, "fdoc") }} /> {/* HR H3.6 ◂ */}
     </div>
   );
 }

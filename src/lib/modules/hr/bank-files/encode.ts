@@ -76,3 +76,14 @@ export function cutAtCluster(s: string, n: number): string {
   // ไม่ทิ้งเครื่องหมายลอยที่ต้นสตริง (กรณีชื่อขึ้นต้นด้วยเครื่องหมาย)
   return s.slice(0, cut);
 }
+
+// HR H3.6 ▸ หนี้ H3.5 (ชื่อว่างหลังทำความสะอาด): มีอักขระฐานอย่างน้อย 1 ตัว — ไม่นับช่องว่าง · อักขระควบคุม/ทิศทาง/ไม่มีความกว้าง ·
+//   เครื่องหมายกำกับ (สระบน/ล่าง วรรณยุกต์ ฯลฯ ของไทย + \p{M}) — ชื่อที่มีแต่สิ่งเหล่านี้ = ไม่มีชื่อ (ไฟล์โอน/แบบยื่นปฏิเสธ ไม่เขียนชื่อว่าง) ◂
+const INVISIBLE = /[\s\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/; // HR H3.6 ▸ fix r1 F5 ◂
+export function hasBaseChar(s: string): boolean {
+  for (const ch of s) {
+    if (INVISIBLE.test(ch) || isThaiMark(ch.codePointAt(0)!) || /\p{M}/u.test(ch)) continue;
+    return true;
+  }
+  return false;
+}
