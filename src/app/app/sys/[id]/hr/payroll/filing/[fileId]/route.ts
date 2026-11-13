@@ -11,9 +11,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string; fileId: string }> }) {
+  if (req.method !== "GET") return HEAD(); // fix r1 F9
   if (isRouterFetch(req)) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
   const { id, fileId } = await params;
   const auth = await requireTenant();
   // ระบบต้องเป็นระบบ HR ของร้านนี้ + ผู้ดูผ่านด่าน — service ตรวจทั้งคู่ (ไม่ผ่าน = ข้อความ "ไม่พบ" เดียวกัน)
   return filingFileGet(req, { tenantId: auth.active.tenantId, systemId: id }, hrViewerOf(auth), fileId, { locale: await getLocale() });
+}
+
+/** fix r1 F9: HEAD (และเมธอดอื่น) = 405 ก่อนอ่านอะไร — ไม่สร้างไฟล์ ไม่ลงประวัติ (Next ตอบ HEAD ด้วย GET ถ้าไม่ประกาศ) */
+export function HEAD(): Response {
+  return new Response(null, { status: 405, headers: { Allow: "GET", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }

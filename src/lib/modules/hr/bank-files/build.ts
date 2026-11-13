@@ -274,7 +274,10 @@ export function buildBankFile(input: BuildInput): BuildResult {
     return cellsOf(r.spec, g, r.eff);
   });
   const target = r.format === "XLSX" ? "XLSX" : r.spec.encoding;
-  const badEnc = picked.filter((k, i) => body[i]!.some((c) => !cellWritable(c, target)) || !hasBaseChar(k.payeeName)); // HR H3.6 ▸ หนี้ H3.5: ชื่อผู้รับไม่มีตัวอักษรฐาน = ปฏิเสธ ◂
+  // HR H3.6 ▸ หนี้ H3.5 (fix r1 F8): ชื่อที่ไม่มีตัวอักษรฐาน = ปฏิเสธ — เฉพาะเมื่อชุดคอลัมน์มีคอลัมน์ชื่อนั้นจริง (payeeName / employeeName) ◂
+  const nameCols = new Set(r.spec.columns.map(([f]) => f));
+  const blankName = (k: Picked) => (nameCols.has("payeeName") && !hasBaseChar(k.payeeName)) || (nameCols.has("employeeName") && !hasBaseChar((k.p.name ?? "").trim())); // HR H3.6 ◂
+  const badEnc = picked.filter((k, i) => body[i]!.some((c) => !cellWritable(c, target)) || blankName(k)); // HR H3.6 ◂
   if (badEnc.length) return fail("ENCODING", badEnc.map((k) => k.p));
   const badF = picked.filter((_, i) => body[i]!.some(formulaLike));
   if (badF.length) return fail("FORMULA", badF.map((k) => k.p));

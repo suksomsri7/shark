@@ -30,7 +30,8 @@
   "ssoDue": "ยื่น สปส.1-10 และนำส่งเงินสมทบภายในวันที่ 15 ของเดือนถัดไป",
   "certDue": "ออกหนังสือรับรอง 50 ทวิ ภายใน 15 กุมภาพันธ์ของปีถัดไป หรือภายใน 1 เดือนนับแต่วันที่ลูกจ้างออกจากงาน",
   "notFinal": "รอบเงินเดือนนี้ยังลงบัญชีไม่เสร็จ — ใช้ยื่นแบบได้หลังรอบเสร็จสมบูรณ์",
-  "slashNote": "เลขที่บ้านที่มี \"/\" (กรมสรรพากรไม่รับอักขระนี้ในไฟล์) ถูกเขียนเป็น \"-\" ในไฟล์ เช่น 12/3 → 12-3 — โปรดตรวจกับนักบัญชี/ทดสอบอัปโหลดกับ e-Filing ก่อนใช้จริง"
+  "slashNote": "เลขที่บ้านที่มี \"/\" (กรมสรรพากรไม่รับอักขระนี้ในไฟล์) ถูกเขียนเป็น \"-\" ในไฟล์ เช่น 12/3 → 12-3 — โปรดตรวจกับนักบัญชี/ทดสอบอัปโหลดกับ e-Filing ก่อนใช้จริง",
+  "certTooEarly": "ออกหนังสือรับรองสิ้นปีได้หลังสิ้นปีภาษีแล้วเท่านั้น (ตั้งแต่ 1 มกราคมของปีถัดไป) — พนักงานที่ออกจากงานแล้วใช้หนังสือรับรองแบบออกจากงาน"
  },
  "en": {
   "no": "Not found, or you may not manage tax and social security filings",
@@ -62,7 +63,8 @@
   "ssoDue": "File SSO 1-10 and pay contributions by the 15th of the following month",
   "certDue": "Issue the 50 Tawi certificate by 15 February of the following year, or within 1 month after the employee leaves",
   "notFinal": "This payroll run has not finished posting — it can be filed once it is complete",
-  "slashNote": "House numbers containing \"/\" (a character RD does not accept in the file) are written with \"-\" instead, e.g. 12/3 → 12-3 — check with the accountant / test an e-Filing upload before real use"
+  "slashNote": "House numbers containing \"/\" (a character RD does not accept in the file) are written with \"-\" instead, e.g. 12/3 → 12-3 — check with the accountant / test an e-Filing upload before real use",
+  "certTooEarly": "The year-end certificate can only be issued after the tax year has ended (from 1 January of the next year) — use the leaver certificate for an employee who has left"
  },
  "fieldLabel": {
   "th": {
@@ -150,5 +152,6 @@
    "slashMode": "Writing \"/\" in addresses"
   }
  },
- "_fieldRule": "label of a field entry 'k' = fieldLabel[k] · of 'k:char' / 'k:long' = fieldLabel[k] + ' ' + fieldLabel[':char'|':long'] · joined by ', ' in entry order"
+ "_fieldRule": "label of a field entry 'k' = fieldLabel[k] · of 'k:char' / 'k:long' = fieldLabel[k] + ' ' + fieldLabel[':char'|':long'] · joined by ', ' in entry order",
+ "_oracleEdit": "ORACLE-EDIT (H3.6 fix r1 F6, controller order 13 Nov): + th/en certTooEarly (ANNUAL certificate before the tax year ends)"
 }

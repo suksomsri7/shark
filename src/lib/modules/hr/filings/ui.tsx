@@ -55,15 +55,17 @@ const fieldsText = (fields: string[], lang: Lang) =>
 /** รหัสผลบน URL → ข้อความ (allowlist) */
 const MSG_KEY: Record<string, FilingTextKey> = {
   NO: "no", PROFILE_OWNER: "profileOwner", PROFILE: "profile", PERSON: "person", OPTIONS: "options", STATUS: "status", NOT_FINAL: "notFinal", RUN_DATA: "runData", EMPTY: "empty",
-  CERT_EXISTS: "certExists", CERT_NONE: "certNone", CERT_INCOMPLETE: "certIncomplete", CERT_NOT_LEFT: "certNotLeft", VOID_OWNER: "certVoidOwner", VOID_REASON: "voidReason", VOIDED: "voided", CHANGED: "changed",
+  CERT_EXISTS: "certExists", CERT_NONE: "certNone", CERT_INCOMPLETE: "certIncomplete", CERT_NOT_LEFT: "certNotLeft", CERT_TOO_EARLY: "certTooEarly", VOID_OWNER: "certVoidOwner", VOID_REASON: "voidReason", VOIDED: "voided", CHANGED: "changed",
 };
-export type FilingParams = { fk?: string; fp?: string; frun?: string; fmsg?: string; fflds?: string; fdoc?: string; fbi?: string; fbs?: string; ffile?: string; ty?: string; fperson?: string };
+export type FilingParams = { fstop?: string; fk?: string; fp?: string; frun?: string; fmsg?: string; fflds?: string; fdoc?: string; fbi?: string; fbs?: string; ffile?: string; ty?: string; fperson?: string };
 async function flashOf(sp: FilingParams): Promise<{ text: string; ok: boolean } | null> {
   const t = await getTranslations("hr.filing");
   const lang = langOf(await getLocale());
   const tx = filingTextFor(lang);
   const code = sp.fmsg ?? "";
   if (code === "saved" || code === "issued" || code === "voided" || code === "made") return { text: t(`done_${code}`), ok: true };
+  // fix r1 F4: ออกทั้งปีแล้วหยุดกลางทาง — แสดงจำนวนที่ออกไปแล้ว + เหตุที่หยุด (ไม่ใช่ "ไม่สำเร็จ" เปล่า)
+  if (code === "bulk" && MSG_KEY[sp.fstop ?? ""]) return { text: t("stopped", { issued: Number(/^\d{1,4}$/.test(sp.fbi ?? "") ? sp.fbi : 0), skipped: Number(/^\d{1,4}$/.test(sp.fbs ?? "") ? sp.fbs : 0), reason: tx[MSG_KEY[sp.fstop!]!].replace("{fields}", "").replace("{docNo}", "").replace("{runs}", "") }), ok: false };
   if (code === "bulk") return { text: t("done_bulk", { issued: Number(/^\d{1,4}$/.test(sp.fbi ?? "") ? sp.fbi : 0), skipped: Number(/^\d{1,4}$/.test(sp.fbs ?? "") ? sp.fbs : 0) }), ok: true };
   const key = MSG_KEY[code];
   if (!key) return null;
@@ -182,6 +184,11 @@ export async function FilingSection({ systemId, sp }: { systemId: string; sp: Fi
       )}
 
       {/* ── ตัวอย่าง ── */}
+      {kind !== "SSO110" ? (
+        <p className={chip} data-testid="hr-filing-untested-rd">
+          {t("untestedRd")}
+        </p>
+      ) : null}
       {preview && !preview.ok ? <p role="alert" className={warnBox}>{preview.code === "NO" ? tx.no : preview.reason}</p> : null}
       {preview && preview.ok ? (
         <div className="flex flex-col gap-3">
@@ -208,6 +215,7 @@ export async function FilingSection({ systemId, sp }: { systemId: string; sp: Fi
                   <li key={`${x.employeeId}-${i}`}>
                     {x.name} · {t(`cause_${x.cause}`)}
                     {x.fields.length ? ` — ${fieldsText(x.fields, lang)}` : ""}
+                    {preview.kind === "SSO110" && x.taxSatang > 0 ? ` · ${t("contribTotal", { amount: baht(x.taxSatang) })}` : ""}
                   </li>
                 ))}
               </ul>
@@ -435,10 +443,11 @@ export async function FilingSettingsCard({ systemId, msg }: { systemId: string; 
         {text("certPrefix", p?.certPrefix ?? "HR50", { maxLength: 8 })}
         <label className={label}>
           {L.formFlag}
-          <select name="rdFormFlag" defaultValue={String(p?.rdFormFlag ?? 1)} disabled={!owner} className={input} data-testid="hr-filing-profile-formflag">
+          <select name="rdFormFlag" defaultValue={String(p?.rdFormFlag ?? 2)} disabled={!owner} className={input} data-testid="hr-filing-profile-formflag">
             <option value="1">{t("formFlag1")}</option>
             <option value="2">{t("formFlag2")}</option>
           </select>
+          <span className={muted}>{t("formFlagHint")}</span>
         </label>
         <label className={label}>
           {L.slashMode}

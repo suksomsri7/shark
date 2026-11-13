@@ -1661,8 +1661,8 @@
       "save": "Save",
       "profileTitle": "Tax and social security filings",
       "profileDesc": "Payer details used in filing files and certificates — the owner can edit them",
-      "formFlag1": "Online filing (1)",
-      "formFlag2": "Filing on media (2)",
+      "formFlag1": "Filing on media (1) — registration reference = RD registration reference no.",
+      "formFlag2": "Online filing (2) — user ID = e-Filing User ID",
       "branchType": "Branch type",
       "branchTypeNone": "Not set",
       "lto": "Large taxpayer",
@@ -1675,7 +1675,11 @@
       "done_issued": "Certificate issued",
       "done_voided": "Certificate voided",
       "done_made": "File made — download it from the file list",
-      "done_bulk": "{issued} issued · {skipped} skipped"
+      "done_bulk": "{issued} issued · {skipped} skipped",
+      "formFlagHint": "[U] Check with the shop's accountant",
+      "untestedRd": "Not yet tested with the real e-Filing",
+      "contribTotal": "Total contribution (employee + employer) ฿{amount}",
+      "stopped": "Stopped part-way — {issued} issued · {skipped} skipped: {reason}"
     }
   }
 }

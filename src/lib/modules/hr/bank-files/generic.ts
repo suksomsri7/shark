@@ -69,7 +69,7 @@ export const BANK_PRESETS: Record<"GENERIC" | "KTB_BUSINESS", GenericSpec> = {
 };
 export const isPresetKey = (k: unknown): k is keyof typeof BANK_PRESETS => k === "GENERIC" || k === "KTB_BUSINESS";
 
-const CONTROL = /[\u0000-\u001f\u007f]/;
+const CONTROL = /[\u0000-\u001f\u007f\u2028\u2029]/; // HR H3.6 ▸ fix r1 F5: + U+2028/U+2029 (ตัวขึ้นบรรทัดแบบ Unicode) ◂
 /** เซลล์ที่โปรแกรมตารางอาจอ่านเป็นสูตร — HR H3.5 fix r1 ▸ F4: ดูอักขระแรกหลังตัดช่องว่าง/อักขระควบคุมด้านหน้า · ขึ้นต้นด้วย tab/CR = ปฏิเสธเลย (OWASP CSV injection) ◂ */
 // HR H3.6 ▸ หนี้ H3.5: ＝ ＋ － ＠ เต็มความกว้าง (U+FF1D U+FF0B U+FF0D U+FF20) นับเหมือนตัว ASCII ◂
 export const formulaLike = (s: string) => /^[\t\r]/.test(s) || /^[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(s.replace(/^[\s\u0000-\u001f\u007f]+/, "")); // HR H3.6 ◂
@@ -174,5 +174,6 @@ export function csvBytes(table: string[][], encoding: GenericSpec["encoding"]): 
 export function cellWritable(s: string, target: "UTF8_BOM" | "TIS620" | "XLSX"): boolean {
   if (target === "TIS620") return encodable(s.replace(/[\r\n]/g, ""), "TIS620");
   // HR H3.5 fix r1 ▸ F4: UTF-8 CSV ปฏิเสธอักขระควบคุมแบบเดียวกับ XLSX (NUL · BEL · ESC · DEL …) + ตัวกลับทิศ U+202A–202E / U+2066–2069 · tab/CR/LF ในเซลล์ยังได้ (อยู่ใน "…") ◂
-  return !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(s);
+  // HR H3.6 ▸ fix r1 F5: U+2028/U+2029 ปฏิเสธเหมือนอักขระควบคุม (โปรแกรมตารางแตกบรรทัดเงียบ ๆ) ◂
+  return !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(s);
 }

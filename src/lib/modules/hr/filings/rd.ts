@@ -18,7 +18,7 @@ export function thaiIdOk(v: unknown): boolean {
 /** ตัดช่องว่างหัวท้าย (ไม่ใช่สตริง = "") */
 export const clean = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 /** อักขระควบคุม C0/C1 · DEL · ตัวควบคุมทิศทาง/ไม่มีความกว้างที่ซ่อนข้อความได้ */
-export const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤⁦-⁩﻿]/;
+export const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/; // fix r1 F5: + U+2028/U+2029 (ขึ้นบรรทัดเหมือน CR/LF) · เขียนเป็น \u ทั้งหมด
 /** HR H3.6 ▸ หนี้ H3.5 (ชื่อว่างหลังทำความสะอาด): ตัวช่วยเดียวกับไฟล์โอน (bank-files/encode.hasBaseChar) ◂ */
 export const hasBase = hasBaseChar;
 /** จำนวนอักขระ (code point) */
@@ -119,7 +119,7 @@ export function badItemPeriods(items: FilingItem[]): string[] {
 
 // ═════════════ กฎอักขระของ RD (Format 2.0 ข้อ 11 [V]) ═════════════
 /** * + / \ ! $ % # & @ , ' " และ | CR LF tab (ตัวคั่น/ขึ้นบรรทัด) + อักขระควบคุม */
-const RD_FORBIDDEN = /[*+/\\!$%#&@,'"|\r\n\t]/;
+const RD_FORBIDDEN = /[*+/\\!$%#&@,'"|\r\n\t\u2028\u2029]/;
 const rdBad = (s: string) => RD_FORBIDDEN.test(s) || CONTROL_RE.test(s);
 
 const ADDRESS_PARTS = ["building", "room", "floor", "village", "houseNo", "moo", "soi", "street", "subdistrict", "district", "province", "postcode"] as const;
@@ -244,7 +244,7 @@ export function buildPnd1(input: PndInput): PndResult {
   if (typeof formType !== "string" || !/^\d{2}$/.test(formType)) of.push("formType");
   const seqNo = o.seqNo === undefined || o.seqNo === null ? 0 : o.seqNo;
   if (typeof seqNo !== "number" || !Number.isInteger(seqNo) || seqNo < 0 || seqNo > 99) of.push("seqNo");
-  const formFlag = o.formFlag === undefined || o.formFlag === null ? (employer?.rdFormFlag ?? 1) : o.formFlag;
+  const formFlag = o.formFlag === undefined || o.formFlag === null ? (employer?.rdFormFlag ?? 2) : o.formFlag; // FORM_FLAG [V] RD Format 2.0 ช่อง 22: 1 = ยื่นด้วยสื่อ (USER_ID = เลขอ้างอิงการลงทะเบียน · TRANS_AMT 0.00) · 2 = ยื่นอินเทอร์เน็ต (USER_ID = UserID · TRANS_AMT = ยอดที่ชำระ)
   if (formFlag !== 1 && formFlag !== 2) of.push("formFlag");
   const slashMode = o.slashMode === undefined || o.slashMode === null ? (employer?.rdSlashMode ?? "DASH") : o.slashMode;
   if (slashMode !== "DASH" && slashMode !== "EXCLUDE") of.push("slashMode");
@@ -267,30 +267,31 @@ export function buildPnd1(input: PndInput): PndResult {
   const byId = new Map(persons.map((p) => [p.employeeId, p]));
   const orphanIds = [...new Set(inPeriod.map((i) => i.employeeId).filter((id) => !byId.has(id)))].sort(cmp);
   type Cand = { p: FilingPerson | null; employeeId: string; payDate: string | null; runId: string; income: number; tax: number };
-  const cands: Cand[] = [];
   const ordered = [...persons.map((p) => p.employeeId), ...orphanIds];
+  // fix r1 F2: ตัดสินต่อ "คน" ในไฟล์ (รวมรายการก่อน) — เงินได้และภาษีรวม 0 = ZERO_INCOME 1 รายการ · ข้อมูลไม่ครบ = INCOMPLETE 1 รายการ (ยอดรวม) ·
+  //   คนที่ใส่ได้: 1ก = 1 บรรทัด (ยอดรวม) · รายเดือน = 1 บรรทัดต่อรายการที่มีเงินได้หรือภาษี (รายการ 0/0 ของคนเดียวกันไม่เป็นบรรทัดและไม่อยู่ใน notIncluded)
+  const notIncluded: PndNotIncluded[] = [];
+  type Line = Cand & { f: Extract<ReturnType<typeof rdPersonFields>, { ok: true }> };
+  const lines: Line[] = [];
   for (const id of ordered) {
     const its = inPeriod.filter((i) => i.employeeId === id);
     if (!its.length) continue;
     const p = byId.get(id) ?? null;
-    if (annual) cands.push({ p, employeeId: id, payDate: null, runId: "", income: its.reduce((s, i) => s + i.incomeSatang, 0), tax: its.reduce((s, i) => s + i.taxSatang, 0) });
-    else for (const i of [...its].sort((a, b) => cmp(a.payDate, b.payDate) || cmp(a.runId, b.runId))) cands.push({ p, employeeId: id, payDate: i.payDate, runId: i.runId, income: i.incomeSatang, tax: i.taxSatang });
-  }
-  // คัดออก (ข้อแรกจบ) — ลำดับ notIncluded = ลำดับคน
-  const notIncluded: PndNotIncluded[] = [];
-  type Line = Cand & { f: Extract<ReturnType<typeof rdPersonFields>, { ok: true }> };
-  const lines: Line[] = [];
-  for (const c of cands) {
-    if (c.income === 0 && c.tax === 0) {
-      notIncluded.push({ employeeId: c.employeeId, cause: "ZERO_INCOME", fields: [], incomeSatang: 0, taxSatang: 0 });
+    const income = its.reduce((s, i) => s + i.incomeSatang, 0);
+    const tax = its.reduce((s, i) => s + i.taxSatang, 0);
+    if (income === 0 && tax === 0) {
+      notIncluded.push({ employeeId: id, cause: "ZERO_INCOME", fields: [], incomeSatang: 0, taxSatang: 0 });
       continue;
     }
-    const f = c.p ? rdPersonFields(c.p, slashMode as SlashMode) : { ok: false as const, fields: ["nationalId", "firstName", "lastName", "address.district", "address.province", "address.postcode"] };
+    const f = p ? rdPersonFields(p, slashMode as SlashMode) : { ok: false as const, fields: ["nationalId", "firstName", "lastName", "address.district", "address.province", "address.postcode"] };
     if (!f.ok) {
-      notIncluded.push({ employeeId: c.employeeId, cause: "INCOMPLETE", fields: f.fields, incomeSatang: c.income, taxSatang: c.tax });
+      notIncluded.push({ employeeId: id, cause: "INCOMPLETE", fields: f.fields, incomeSatang: income, taxSatang: tax });
       continue;
     }
-    lines.push({ ...c, f });
+    if (annual) lines.push({ p, employeeId: id, payDate: null, runId: "", income, tax, f });
+    else
+      for (const i of [...its].sort((a, b) => cmp(a.payDate, b.payDate) || cmp(a.runId, b.runId)))
+        if (i.incomeSatang !== 0 || i.taxSatang !== 0) lines.push({ p, employeeId: id, payDate: i.payDate, runId: i.runId, income: i.incomeSatang, tax: i.taxSatang, f });
   }
   if (!lines.length) return refuse("EMPTY", [], { notIncluded });
   // ลำดับบรรทัด: รายเดือน = วันที่จ่าย → คน → runId (คนเรียงแล้วใน cands) · 1ก = ผู้ถือหนังสือรับรอง (docSeq) แล้วคนที่เหลือ

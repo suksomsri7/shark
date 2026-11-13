@@ -109,7 +109,7 @@ export function buildSso110(input: SsoInput): SsoResult {
   type Line = { i: FilingItem; p: FilingPerson; prefix: string; first: string; last: string };
   const lines: Line[] = [];
   for (const i of sorted) {
-    const out = (cause: SsoNotIncluded["cause"], fields: string[]) => void notIncluded.push({ employeeId: i.employeeId, cause, fields, wageSatang: wageOf(i), contributionSatang: i.ssoEmployeeSatang }); // ส่วนของลูกจ้าง — ตาม vector G3A (ข้อสังเกตถึงผู้คุมงาน: notes §2 เขียน ee + er) · ตรงกับแถวตัวอย่าง (tax = ee)
+    const out = (cause: SsoNotIncluded["cause"], fields: string[]) => void notIncluded.push({ employeeId: i.employeeId, cause, fields, wageSatang: wageOf(i), contributionSatang: i.ssoEmployeeSatang + i.ssoEmployerSatang }); // fix r1 F3 (มติผู้คุมงาน): เงินสมทบรวม ลูกจ้าง + นายจ้าง ⇒ ยอดในไฟล์ + ไม่อยู่ในไฟล์ = ยอดเงินสมทบของรอบ
     if (!(i.ssoEmployeeSatang > 0)) {
       out("NOT_INSURED", []);
       continue;

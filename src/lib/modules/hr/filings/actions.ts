@@ -114,7 +114,7 @@ export async function issueTaxCertsBulkAction(fd: FormData): Promise<void> {
   if (!keyGate(auth)) redirect(payroll(systemId, fd, "fmsg=NO"));
   const r = await issueTaxCertificatesBulk({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { taxYear: s(fd, "ty") });
   revalidatePath(`/app/sys/${systemId}/hr/payroll`);
-  redirect(payroll(systemId, fd, r.ok ? `fmsg=bulk&fbi=${r.issued.length}&fbs=${r.skipped.length}` : failQuery(r)));
+  redirect(payroll(systemId, fd, r.ok ? `fmsg=bulk&fbi=${r.issued.length}&fbs=${r.skipped.length}${r.stopped ? `&fstop=${encodeURIComponent(r.stopped.code)}` : ""}` : failQuery(r)));
 }
 
 /** ยกเลิกหนังสือรับรอง (เจ้าของร้าน · เหตุผล 1–200 ตัวอักษร — ไม่ลงประวัติ) */

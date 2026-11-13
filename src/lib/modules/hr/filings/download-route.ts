@@ -15,6 +15,7 @@ const BASE_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "n
 
 type Result = { ok: true; fileName: string; contentType: string; bytes: Uint8Array } | { ok: false; code: string };
 async function answer(req: Request, opts: Opts | undefined, run: () => Promise<Result>): Promise<Response> {
+  if (req.method !== "GET") return new Response(null, { status: 405, headers: { Allow: "GET", ...BASE_HEADERS } }); // fix r1 F9: HEAD/อื่น ๆ ไม่สร้างไฟล์ ไม่ลงประวัติ
   if (isRouterFetch(req)) return new Response(null, { status: 204, headers: BASE_HEADERS });
   const tx = filingTextFor(opts?.locale);
   const r = await run();

@@ -40,7 +40,7 @@ type Opts = { now?: Date };
 type Db = Prisma.TransactionClient;
 type TxRunner = { $transaction: <T>(fn: (tx: Db) => Promise<T>, o: typeof TX_OPTS) => Promise<T> };
 export type FilingNo = { ok: false; code: "NO"; reason: string };
-export type FilingFail = { ok: false; code: string; reason: string; fields?: string[]; notIncluded?: NotIncludedDto[] };
+export type FilingFail = { ok: false; code: string; reason: string; fields?: string[]; notIncluded?: NotIncludedDto[]; periods?: string[] };
 
 export type RowDto = { seq: number; employeeId: string; name: string; pinMasked: string; payDate: string | null; amountSatang: number; taxSatang: number };
 export type NotIncludedDto = { employeeId: string; name: string; cause: string; fields: string[]; amountSatang: number; taxSatang: number };
@@ -111,14 +111,14 @@ async function profileOf(db: Db, ctx: Ctx): Promise<ProfileDto | null> {
 const employerOf = (p: ProfileDto | null): FilingEmployer =>
   p
     ? { ...p }
-    : { taxId: null, branchNo: "000000", employerName: null, employerAddress: null, deptName: null, lto: false, branchType: "", rdUserId: null, rdFormFlag: 1, rdSlashMode: "DASH", ssoAccountNo: null, ssoBranchNo: "000000", ssoEncoding: "TIS620", ssoWageMode: "CLAMPED", signerName: null, certPrefix: "HR50" };
+    : { taxId: null, branchNo: "000000", employerName: null, employerAddress: null, deptName: null, lto: false, branchType: "", rdUserId: null, rdFormFlag: 2, rdSlashMode: "DASH", ssoAccountNo: null, ssoBranchNo: "000000", ssoEncoding: "TIS620", ssoWageMode: "CLAMPED", signerName: null, certPrefix: "HR50" };
 
 export async function getFilingProfile(ctx: Ctx, viewer: FilingViewer): Promise<{ ok: true; profile: ProfileDto | null } | FilingNo> {
   if (!(await gate(ctx, viewer))) return NO();
   return { ok: true, profile: await profileOf(tenantDb(ctx) as unknown as Db, ctx) };
 }
 
-const CONTROL = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/; // fix r1 F5: + U+2028/U+2029
 export type SaveProfileInput = Partial<Record<keyof ProfileDto, unknown>>;
 export async function saveFilingProfile(ctx: Ctx, viewer: FilingViewer, input: SaveProfileInput, opts?: Opts): Promise<{ ok: true } | FilingFail> {
   void opts;
@@ -148,7 +148,7 @@ export async function saveFilingProfile(ctx: Ctx, viewer: FilingViewer, input: S
   const ssoBranchNo = opt("ssoBranchNo", 6, (v) => /^\d{6}$/.test(v)) ?? "000000";
   const signerName = opt("signerName", 100, hasBase);
   const certPrefix = opt("certPrefix", 8, (v) => /^[A-Z0-9]{1,8}$/.test(v)) ?? "HR50";
-  const flag = i.rdFormFlag === undefined || i.rdFormFlag === null || i.rdFormFlag === "" ? 1 : Number(i.rdFormFlag);
+  const flag = i.rdFormFlag === undefined || i.rdFormFlag === null || i.rdFormFlag === "" ? 2 : Number(i.rdFormFlag); // fix r1 F1: ค่าตั้งต้น = ยื่นอินเทอร์เน็ต
   if (flag !== 1 && flag !== 2) bad.push("formFlag");
   const en = (k: string, allowed: string[], dflt: string, label: string) => {
     const v = i[k] === undefined || i[k] === null || i[k] === "" ? dflt : i[k];
@@ -398,6 +398,8 @@ async function prepare(ctx: Ctx, req: FilingRequest, after?: (tx: Db, b: Built) 
       return { st: "fail" as const, fail: failOf("RUN_DATA", "runData", { runs: L.badRuns }) };
     }
     const r = buildPnd1({ ...input, items: L.items });
+    // fix r1 F7: ว่างเพราะรอบของงวดยังลงบัญชีไม่เสร็จ ⇒ EMPTY พร้อมเหตุ notFinal + งวด (ผู้ใช้รู้ว่าต้องปิดรอบก่อน)
+    if (!r.ok && r.code === "EMPTY" && L.notFinal.length) return { st: "fail" as const, fail: { ...refusalOf(L, r), reason: `${T.notFinal} (${L.notFinal.join(", ")})`, periods: [...L.notFinal] } };
     if (!r.ok) return { st: "fail" as const, fail: refusalOf(L, r) };
     if (L.notFinal.length) r.warnings = [{ employeeId: null, code: "NOT_FINAL", fields: L.notFinal }, ...r.warnings];
     const b: Built = { kind, period, runId: null, r, L, options: { ...r.resolved } };
@@ -569,7 +571,9 @@ async function issueOne(ctx: Ctx, actorId: string, employeeId: string, taxYear: 
       await tx.$queryRaw`SELECT 1 AS "x" FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`hr50:${ctx.systemId}:${employeeId}:${taxYear}`}, 36))) AS "l"`;
       const emp = await tx.hrEmployee.findFirst({ where: { id: employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, endDate: true } });
       if (!emp) return NO();
-      if (kind === "LEAVER" && !(emp.endDate && emp.endDate.getUTCFullYear() === taxYear)) return failOf("CERT_NOT_LEFT", "certNotLeft");
+      // fix r1 F6: LEAVER = วันสิ้นสุดการจ้างอยู่ในปีภาษีและผ่านมาแล้ว (ออกได้ระหว่างปี — ม.50 ทวิ ภายใน 1 เดือนหลังออก) · ANNUAL = หลังสิ้นปีภาษี (เวลาไทย)
+      if (kind === "LEAVER" && !(emp.endDate && emp.endDate.getUTCFullYear() === taxYear && emp.endDate.toISOString().slice(0, 10) <= bkkDay(now))) return failOf("CERT_NOT_LEFT", "certNotLeft");
+      if (kind === "ANNUAL" && now.getTime() < bkkStart(taxYear + 1, 0).getTime()) return failOf("CERT_TOO_EARLY", "certTooEarly");
       const live = await tx.hrTaxCertificate.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, taxYear, voidedAt: null }, select: { docNo: true } });
       if (live) return failOf("CERT_EXISTS", "certExists", { docNo: live.docNo });
       // 2) ยอดของปี (รอบ FOR SHARE) — ค่าที่เก็บไว้เท่านั้น
@@ -616,14 +620,22 @@ export async function issueTaxCertificate(ctx: Ctx, viewer: FilingViewer, input:
   return issueOne(ctx, m.userId, employeeId, taxYear, i.kind, nowOf(opts));
 }
 
-export type BulkOk = { ok: true; issued: { employeeId: string; certId: string; docNo: string }[]; skipped: { employeeId: string; cause: "ALREADY" | "INCOMPLETE" | "NO_INCOME"; fields: string[] }[] };
-export async function issueTaxCertificatesBulk(ctx: Ctx, viewer: FilingViewer, input: { taxYear: unknown }, opts?: Opts): Promise<BulkOk | FilingFail> {
+export type BulkOk = {
+  ok: true;
+  issued: { employeeId: string; certId: string; docNo: string }[];
+  skipped: { employeeId: string; cause: "ALREADY" | "INCOMPLETE" | "NO_INCOME" | "GONE"; fields: string[] }[];
+  /** fix r1 F4: ปัญหาที่ต้องหยุดทั้งชุดกลางทาง (เช่น ข้อมูลผู้จ่ายเงินถูกแก้ระหว่างออก) — ใบที่ออกไปแล้วอยู่ใน issued เสมอ */
+  stopped?: { code: string; reason: string; fields?: string[] };
+};
+/** opts.__afterIssue = ตะขอทดสอบเท่านั้น (ข้อสอบ S3.17 จำลองการแก้ข้อมูลผู้จ่ายเงินกลางชุด) — action ไม่ส่ง */
+export async function issueTaxCertificatesBulk(ctx: Ctx, viewer: FilingViewer, input: { taxYear: unknown }, opts?: Opts & { __afterIssue?: (n: number) => Promise<void> }): Promise<BulkOk | FilingFail> {
   const m = await gate(ctx, viewer);
   if (!m) return NO();
   const raw = obj(input).taxYear;
   const taxYear = typeof raw === "string" && /^\d{4}$/.test(raw) ? Number(raw) : raw;
   if (!yearOk(taxYear)) return failOf("OPTIONS", "options", { fields: ["taxYear"] });
   const now = nowOf(opts);
+  if (now.getTime() < bkkStart(taxYear + 1, 0).getTime()) return failOf("CERT_TOO_EARLY", "certTooEarly"); // fix r1 F6
   // รายชื่อ = ทุกคนที่มีรายการในปี (ลำดับคน) — อ่านอย่างเดียว · แต่ละคนออกในธุรกรรมของตัวเอง
   const pre = await runTx(ctx, async (tx) => {
     const Y = await yearFigures(tx, ctx, taxYear);
@@ -641,11 +653,19 @@ export async function issueTaxCertificatesBulk(ctx: Ctx, viewer: FilingViewer, i
       continue;
     }
     const r = await issueOne(ctx, m.userId, employeeId, taxYear, "ANNUAL", now);
-    if (r.ok) issued.push({ employeeId, certId: r.certId, docNo: r.docNo });
+    if (r.ok) {
+      issued.push({ employeeId, certId: r.certId, docNo: r.docNo });
+      if (typeof opts?.__afterIssue === "function") await opts.__afterIssue(issued.length);
+    }
     else if (r.code === "CERT_EXISTS") skipped.push({ employeeId, cause: "ALREADY", fields: [] });
     else if (r.code === "CERT_NONE") skipped.push({ employeeId, cause: "NO_INCOME", fields: [] });
     else if (r.code === "CERT_INCOMPLETE") skipped.push({ employeeId, cause: "INCOMPLETE", fields: (r as FilingFail).fields ?? [] });
-    else return r as FilingFail;
+    else if (r.code === "NO") skipped.push({ employeeId, cause: "GONE", fields: [] }); // พนักงานหายจากระบบระหว่างออก
+    else {
+      // fix r1 F4: ห้ามคืนคำปฏิเสธเปล่าหลังออกไปแล้วบางใบ — หยุดชุด แล้วคืนสิ่งที่ออกไปแล้ว + เหตุที่หยุด
+      const f = r as FilingFail;
+      return { ok: true, issued, skipped, stopped: { code: f.code, reason: f.reason, ...(f.fields ? { fields: f.fields } : {}) } };
+    }
   }
   return { ok: true, issued, skipped };
 }
@@ -756,7 +776,7 @@ export async function listCertCandidates(ctx: Ctx, viewer: FilingViewer, input: 
   });
   return {
     ok: true,
-    items: Y.order.map((id) => ({ employeeId: id, name: Y.L.names.get(id) ?? "", leaver: ends.get(id)?.getUTCFullYear() === taxYear, certified: live.has(id) })),
+    items: Y.order.map((id) => { const e = ends.get(id); return { employeeId: id, name: Y.L.names.get(id) ?? "", leaver: !!e && e.getUTCFullYear() === taxYear && e.toISOString().slice(0, 10) <= bkkDay(new Date()), certified: live.has(id) }; }), // fix r1 F6
   };
 }
 export type FilingEmployeeDto = { employeeId: string; name: string; code: string | null };

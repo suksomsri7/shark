@@ -111,6 +111,11 @@ S7.1|ruling 6|C|R|[static] H3.4 merged: payroll.ts writes snapshot whtIncomeSata
 S7.2|R3|C|R|[static] filings/figures.ts reads exactly those snapshot keys + baseSalarySatang/ssoEligible (v1) and the item columns — no other snapshot key
 S8.1|debt H3.5|C|R|[pure] ORACLE-EDIT (H3.6 builder, controller order): a payee/person name that is blank after cleaning (only combining marks/spaces) is refused or listed, never written — KBANK_PCT + CSV ⇒ ENCODING naming the payee · ภ.ง.ด.1 + สปส.1-10 ⇒ INCOMPLETE firstName
 S8.2|debt H3.5|C|R|[pure] ORACLE-EDIT (H3.6 builder, controller order): full-width ＝ ＋ － ＠ at the start of a CSV/XLSX cell count as formula starters (formulaLike + CSV/XLSX build ⇒ FORMULA) · ASCII rules unchanged
+S2.17|fix r1 F1|C|R|[pure] ORACLE-EDIT (H3.6 fix r1): FORM_FLAG label ↔ value ↔ bytes — RD Format 2.0 ช่อง 22 "1=ยื่นด้วยสื่อฯ 2=ยื่นอินเตอร์เน็ต" [V]: messages formFlag1 = สื่อ / formFlag2 = อินเทอร์เน็ต (th+en) · ui option 1/2 · header 22 + TRANS_AMT · default (no flag anywhere) = 2 · service/schema default 2
+S2.18|fix r1 F2|C|R|[pure] ORACLE-EDIT (H3.6 fix r1): exclusion per employee per file — items 100,000 + 0 in one month ⇒ 1 line, not in notIncluded · 0 + 0 ⇒ one ZERO_INCOME · incomplete with 2 items ⇒ one INCOMPLETE (sums)
+S2.19|fix r1 F5|C|R|[pure] ORACLE-EDIT (H3.6 fix r1): U+2028/U+2029 refused/listed like CR/LF — PND firstName/houseNo :char · SSO firstName :char (bank CSV/XLSX cell ⇒ ENCODING is in S8.1 key ls)
+S3.17|fix r1 F4 F6 F7|C|R|[db] ORACLE-EDIT (H3.6 fix r1): ANNUAL before 1 Jan of the next year (BKK) ⇒ certTooEarly (single + bulk) · LEAVER with a future end date ⇒ certNotLeft · PND of a period whose only run is unfinalized ⇒ EMPTY with notFinal + period · bulk stopped mid-run by a profile change ⇒ ok with issued + stopped PROFILE, no wasted number
+S6.2|fix r1 F9|C|R|[db] ORACLE-EDIT (H3.6 fix r1): HEAD to the 3 helpers ⇒ 405, no build/audit/download count · routes export HEAD and refuse non-GET first
 X12.1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
 Z1|house|C|G|no residue (4 new tables + AccountDocSequence rows of the QC tenants)
 `.trim().split("\n").map((l) => {
@@ -212,8 +217,9 @@ function runStatic(): void {
     // ORACLE-EDIT (H3.6 builder, 13 Nov — controller order: close two H3.5 debts in bank-files/** as marked "HR H3.6" hunks + checks S8.1/S8.2):
     //   bank-files may differ from the base only in files whose every hunk carries "HR H3.6" in an added line · everything else in FROZEN stays byte-unchanged
     const bankDir = `${H}bank-files`;
-    //   + frozen oracle scripts may differ only in hunks carrying a marked "ORACLE-EDIT (H3.6" line (e.g. qc-hr-h3.5 S1.2 back-relation strip)
-    const oracleEdited = (f: string) => f.startsWith("scripts/qc-") && (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l)));
+    //   + (fix r1 F8) ONLY the frozen oracle edits listed in wo-notes/hr-H3.6.md: file → check ids; every hunk must carry "ORACLE-EDIT (H3.6" + one listed id
+    const ORACLE_EDITS: Record<string, string[]> = { "scripts/qc-hr-h3.5.mts": ["S1.2"] };
+    const oracleEdited = (f: string) => !!ORACLE_EDITS[f] && (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && ORACLE_EDITS[f]!.some((id) => l.includes(id))));
     const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
     const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f)) : [];
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;
@@ -793,6 +799,47 @@ async function runDb(): Promise<void> {
       self: st(mine) === 200 && st(notMine) === 404,
     }, "helpers", `${st(r204)} ${st(okF)} ${st(okC)} ${st(no)} ${st(exp)} ${st(mine)} ${st(notMine)}`);
   }
+  // ORACLE-EDIT (H3.6 fix r1): S3.17 (F4 F6 F7) on a fresh system D · S6.2 (F9) HEAD
+  {
+    const sD = await sys("ทีม D");
+    const cD = { tenantId: TT, systemId: sD };
+    await S("saveFilingProfile", cD, V.owner, PROFILE);
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const e = await emp(cD, `D0${i}`, `ดี${i}`, ["1102000123454", "3100600999991", "1500100123451"][i]!, i === 1 ? { endDate: "2031-12-31" } : {});
+      await S("saveFilingPerson", cD, V.owner, { employeeId: e, title: "นาย", firstName: `ดี${"กขค"[i]}`, lastName: "ทดสอบ" });
+      ids.push(e);
+    }
+    await mkRun(cD, "2031-01", "2031-01-30", "PAID", 2, ids.map((e) => ({ e, wht: 100, ssoBase: 0, ee: 0, snap: v2snap(100_000, 0, 0), gross: 100_000 })));
+    await mkRun(cD, "2031-06", "2031-06-30", "APPROVED", 2, [{ e: ids[0]!, wht: 100, ssoBase: 0, ee: 0, snap: v2snap(100_000, 0, 0), gross: 100_000 }], false);
+    const lastSec = at("2031-12-31T16:59:59Z"); // 23:59:59 เวลาไทย 31 ธ.ค. 2031
+    const early = await S("issueTaxCertificate", cD, V.owner, { employeeId: ids[0], taxYear: 2031, kind: "ANNUAL" }, lastSec);
+    const earlyBulk = await S("issueTaxCertificatesBulk", cD, V.owner, { taxYear: 2031 }, lastSec);
+    const notYetLeft = await S("issueTaxCertificate", cD, V.owner, { employeeId: ids[1], taxYear: 2031, kind: "LEAVER" }, at("2031-12-20T03:00:00Z"));
+    const nf = await S("previewFiling", cD, V.owner, { kind: "PND1", period: "2031-06" }, NOW_FEB);
+    const bulk = await callMod(SV, "issueTaxCertificatesBulk", [cD, V.owner, { taxYear: 2031 }, { now: new Date("2032-01-05T03:00:00Z"), __afterIssue: async (n: number) => { if (n === 1) await P.hrFilingProfile.updateMany({ where: { systemId: sD }, data: { signerName: null } }); } }]);
+    const lastNo = (await fx.rawRows(`SELECT "lastNo" FROM "AccountDocSequence" WHERE "systemId" = $1 AND "periodKey" = 'HR50:2031'`, sD))?.[0]?.lastNo;
+    const nCert = await P.hrTaxCertificate.count({ where: { systemId: sD } });
+    ck("S3.17", {
+      early: early.value?.ok === false && early.text === T.certTooEarly, earlyBulk: earlyBulk.value?.ok === false && earlyBulk.text === T.certTooEarly && !earlyBulk.value?.issued,
+      leaver: notYetLeft.value?.ok === false && notYetLeft.text === T.certNotLeft,
+      notFinal: nf.value?.ok === false && nf.value?.code === "EMPTY" && nf.text === `${T.notFinal} (2031-06)`,
+      stopped: bulk.value?.ok === true && (bulk.value.issued ?? []).length === 1 && bulk.value.stopped?.code === "PROFILE" && Number(lastNo) === 1 && nCert === 1,
+    }, "too early · not left · notFinal EMPTY · bulk stop keeps issued", `${shown(early)} ${shown(earlyBulk)} ${shown(notYetLeft)} ${shown(nf)} ${short(bulk.value, 160)} last=${lastNo}`);
+  }
+  {
+    const head = (u: string) => new Request(u, { method: "HEAD" });
+    const before = Number((await P.hrFilingFile.findUnique({ where: { id: fileDb1 } }))?.downloads ?? -1);
+    const audBefore = await P.auditLog.count({ where: { tenantId: TT, action: { in: ["hr.filing.download", "hr.taxcert.download"] } } });
+    const h1 = await D("filingFileGet", head("http://qc.invalid/f"), cA, V.owner, fileDb1, NOW_FEB);
+    const h2 = await D("taxCertGet", head("http://qc.invalid/c"), cA, V.owner, certs[E.e1], {});
+    const h3 = await D("myTaxCertGet", head("http://qc.invalid/m"), actorOf(U.self), certs[E.e5], {});
+    const after = Number((await P.hrFilingFile.findUnique({ where: { id: fileDb1 } }))?.downloads ?? -2);
+    const audAfter = await P.auditLog.count({ where: { tenantId: TT, action: { in: ["hr.filing.download", "hr.taxcert.download"] } } });
+    const st = (x: RO) => (x.value instanceof Response ? x.value.status : -1);
+    const routesOk = F.routes.every((p) => /export\s+(async\s+)?function\s+HEAD\b/.test(rd(p)) && /req\.method !== "GET"/.test(rd(p)));
+    ck("S6.2", { status: [h1, h2, h3].every((x) => st(x) === 405), noCount: before === after, noAudit: audBefore === audAfter, routes: routesOk }, "HEAD ⇒ 405 before anything", `${st(h1)} ${st(h2)} ${st(h3)} dl ${before}/${after} aud ${audBefore}/${audAfter}`);
+  }
   // S4.3 privacy sweep (after everything)
   {
     const aud = JSON.stringify(await P.auditLog.findMany({ where: { tenantId: { in: [TT, TB] } } }));
@@ -810,6 +857,69 @@ async function runDb(): Promise<void> {
 }
 function sha256Hex(b: Buffer): string {
   return createHash("sha256").update(b).digest("hex");
+}
+
+// ═════════════════════════ fix r1 pure (ORACLE-EDIT, H3.6 fix r1, controller order 13 Nov) ═════════════════════════
+function runFix1Pure(): void {
+  const V = jsonOf("scripts/fixtures/hr-h3.6-vectors.json") as Any;
+  const cl = (x: unknown) => JSON.parse(JSON.stringify(x)) as Any;
+  const hdr = (r: Any) => (r?.ok === true ? Buffer.from(r.bytes).subarray(3).toString("utf8").split("\r\n")[0]!.split("|") : []);
+  // S2.17 FORM_FLAG
+  {
+    const th = jsonOf(F.th)?.hr?.filing ?? {};
+    const en = jsonOf(F.en)?.hr?.filing ?? {};
+    const ui = stripComments(rd(F.ui));
+    const g1 = V?.pnd?.G1?.in;
+    const f1 = g1 && typeof B?.buildPnd1 === "function" ? B.buildPnd1({ ...cl(g1), options: { formFlag: 1 } }) : null;
+    const f2 = g1 && typeof B?.buildPnd1 === "function" ? B.buildPnd1({ ...cl(g1), options: { formFlag: 2 } }) : null;
+    const nd = g1 ? cl(g1) : null;
+    if (nd) delete nd.employer.rdFormFlag;
+    const fd = nd && typeof B?.buildPnd1 === "function" ? B.buildPnd1(nd) : null;
+    const h1 = hdr(f1), h2 = hdr(f2), hd = hdr(fd);
+    ck("S2.17", {
+      thLabels: /สื่อ/.test(String(th.formFlag1)) && /อินเทอร์เน็ต/.test(String(th.formFlag2)) && !/อินเทอร์เน็ต/.test(String(th.formFlag1)),
+      enLabels: /media/i.test(String(en.formFlag1)) && /online/i.test(String(en.formFlag2)),
+      uiOptions: /<option value="1">\{t\("formFlag1"\)\}<\/option>/.test(ui) && /<option value="2">\{t\("formFlag2"\)\}<\/option>/.test(ui) && /defaultValue=\{String\(p\?\.rdFormFlag \?\? 2\)\}/.test(ui),
+      bytes1: h1[21] === "1" && h1[19] === "0.00", bytes2: h2[21] === "2" && h2[19] === h2[16] && h2[16] === "500.00", dflt: hd[21] === "2",
+      svc: /rdFormFlag: 2,/.test(stripComments(rd(F.svc))) && /rdFormFlag\s+Int\s+@default\(2\)/.test(rd(F.schema)),
+    }, "1 = media · 2 = internet (label = value = byte) · default 2", `h1=${h1[21]}/${h1[19]} h2=${h2[21]}/${h2[19]} dflt=${hd[21]}`);
+  }
+  // S2.18 per-employee exclusion
+  {
+    const g = V?.pnd?.G1?.in ? cl(V.pnd.G1.in) : null;
+    let r: Any = null;
+    if (g && typeof B?.buildPnd1 === "function") {
+      const it = (e: string, run: string, inc: number, tax: number) => ({ ...cl(g.items[0]), employeeId: e, runId: run, incomeSatang: inc, taxSatang: tax });
+      g.persons = [cl(V.persons.p1), cl(V.persons.p2), cl(V.persons.p3)];
+      g.items = [it("p1", "rA", 10_000_000, 0), it("p1", "rB", 0, 0), it("p2", "rA", 0, 0), it("p2", "rB", 0, 0), it("p3", "rA", 500_000, 0), it("p3", "rB", 0, 1000)];
+      r = B.buildPnd1(g);
+    }
+    ck("S2.18", {
+      lines: r?.ok === true && r.lineCount === 1 && r.totalSatang === 10_000_000,
+      ni: r?.ok === true && canon((r.notIncluded ?? []).map((x: Any) => [x.employeeId, x.cause, x.incomeSatang, x.taxSatang])) === canon([["p2", "ZERO_INCOME", 0, 0], ["p3", "INCOMPLETE", 500_000, 1000]]),
+    }, "one decision per employee per file", short(r?.notIncluded, 120));
+  }
+  // S2.19 U+2028 / U+2029
+  {
+    const LS = String.fromCharCode(0x2028), PS = String.fromCharCode(0x2029);
+    const g = V?.pnd?.G1?.in ? cl(V.pnd.G1.in) : null;
+    let rp: Any = null, rs: Any = null;
+    if (g && typeof B?.buildPnd1 === "function") {
+      g.persons[0].firstName = `สม${LS}ชาย`;
+      g.persons[1].address.houseNo = `12${PS}3`;
+      rp = B.buildPnd1(g);
+    }
+    const s3 = V?.sso?.G3?.in ? cl(V.sso.G3.in) : null;
+    if (s3 && typeof B?.buildSso110 === "function") {
+      s3.persons[0].firstName = `สม${LS}ชาย`;
+      s3.options = { ...s3.options, encoding: "UTF8" };
+      rs = B.buildSso110(s3);
+    }
+    ck("S2.19", {
+      pnd: rp?.ok === false && rp.code === "EMPTY" && canon((rp.notIncluded ?? []).map((x: Any) => [x.employeeId, x.fields])) === canon([["p1", ["firstName:char"]], ["p2", ["address.houseNo:char"]]]),
+      sso: rs?.ok === true && canon((rs.notIncluded ?? []).map((x: Any) => [x.employeeId, x.fields])) === canon([["p1", ["firstName:char"]]]),
+    }, "U+2028/2029 like CR/LF", `${short(rp?.notIncluded ?? rp, 100)} · ${short(rs?.notIncluded, 80)}`);
+  }
 }
 
 // ═════════════════════════ S8 — H3.5 debts closed here (ORACLE-EDIT, H3.6 builder, controller order 13 Nov) ═════════════════════════
@@ -845,8 +955,10 @@ async function runDebts(): Promise<void> {
     if (g3) g3.persons[0].firstName = MARKS;
     const sso = g3 && typeof B?.buildSso110 === "function" ? B.buildSso110(g3) : null;
     const named = (r: Any) => r?.ok === false && r.code === "ENCODING" && canon((r.employees ?? []).map((e: Any) => e.employeeId)) === canon(["e1"]);
+    const lsName = `สม${String.fromCharCode(0x2028)}ชาย`; // ORACLE-EDIT (H3.6 fix r1 F5): U+2028 in a CSV/XLSX cell ⇒ ENCODING
+    const ls = named(bank(lsName, "CSV", { preset: "GENERIC" })) && named(bank(lsName, "XLSX", { preset: "GENERIC" }));
     ck("S8.1", {
-      pct: named(pct), csv: named(csv), control: okName?.ok === true,
+      pct: named(pct), csv: named(csv), control: okName?.ok === true, ls,
       pnd: pnd?.ok === true && pnd.lineCount === 1 && canon((pnd.notIncluded ?? []).map((x: Any) => [x.employeeId, x.cause, x.fields])) === canon([["p1", "INCOMPLETE", ["firstName"]]]),
       sso: sso?.ok === true && sso.lineCount === 1 && canon((sso.notIncluded ?? []).map((x: Any) => [x.employeeId, x.cause, x.fields])) === canon([["p1", "INCOMPLETE", ["firstName"]]]),
     }, "blank-after-cleaning names refused/listed", `pct=${pct?.code ?? pct?.ok} csv=${csv?.code ?? csv?.ok} pnd=${short(pnd?.notIncluded, 60)} sso=${short(sso?.notIncluded, 60)}`);
@@ -870,6 +982,7 @@ try {
   runStatic();
   await runPure(chk, B, PDFM);
   await runDebts(); // ORACLE-EDIT (H3.6 builder): S8.1/S8.2 — H3.5 debts closed in H3.6
+  runFix1Pure(); // ORACLE-EDIT (H3.6 fix r1): S2.17–S2.19
   const fz = await fitnessNoEnv();
   chk("X12.1", fz.ok, "exit 0 ×2", fz.note);
   await runDb();

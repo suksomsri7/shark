@@ -34,6 +34,7 @@ export const FILING_TEXT = {
   "certDue": "ออกหนังสือรับรอง 50 ทวิ ภายใน 15 กุมภาพันธ์ของปีถัดไป หรือภายใน 1 เดือนนับแต่วันที่ลูกจ้างออกจากงาน",
   "notFinal": "รอบเงินเดือนนี้ยังลงบัญชีไม่เสร็จ — ใช้ยื่นแบบได้หลังรอบเสร็จสมบูรณ์",
   "slashNote": "เลขที่บ้านที่มี \"/\" (กรมสรรพากรไม่รับอักขระนี้ในไฟล์) ถูกเขียนเป็น \"-\" ในไฟล์ เช่น 12/3 → 12-3 — โปรดตรวจกับนักบัญชี/ทดสอบอัปโหลดกับ e-Filing ก่อนใช้จริง",
+  "certTooEarly": "ออกหนังสือรับรองสิ้นปีได้หลังสิ้นปีภาษีแล้วเท่านั้น (ตั้งแต่ 1 มกราคมของปีถัดไป) — พนักงานที่ออกจากงานแล้วใช้หนังสือรับรองแบบออกจากงาน", // fix r1 F6
 } as const;
 
 export type FilingTextKey = keyof typeof FILING_TEXT;
@@ -68,6 +69,7 @@ export const FILING_TEXT_EN: { [K in FilingTextKey]: string } = {
   "certDue": "Issue the 50 Tawi certificate by 15 February of the following year, or within 1 month after the employee leaves",
   "notFinal": "This payroll run has not finished posting — it can be filed once it is complete",
   "slashNote": "House numbers containing \"/\" (a character RD does not accept in the file) are written with \"-\" instead, e.g. 12/3 → 12-3 — check with the accountant / test an e-Filing upload before real use",
+  "certTooEarly": "The year-end certificate can only be issued after the tax year has ended (from 1 January of the next year) — use the leaver certificate for an employee who has left",
 };
 
 export const FIELD_LABEL = {

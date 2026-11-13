@@ -11593,6 +11593,32 @@
    "wo": "H3.6",
    "oracle": "qc-hr-h3.6",
    "note": "PDF ของตัวเอง — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-filing-untested-rd",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับไฟล์โอน H3.5) · ภ.ง.ด.1/1ก",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.6",
+   "oracle": "qc-hr-h3.6",
+   "note": "ป้าย untestedRd (ยังไม่ทดสอบกับ e-Filing จริง) — fix r1 F1"
   }
  ]
 }

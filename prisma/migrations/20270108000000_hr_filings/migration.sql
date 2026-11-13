@@ -17,7 +17,7 @@ CREATE TABLE "HrFilingProfile" (
     "lto" BOOLEAN NOT NULL DEFAULT false,
     "branchType" TEXT NOT NULL DEFAULT '',
     "rdUserId" TEXT,
-    "rdFormFlag" INTEGER NOT NULL DEFAULT 1,
+    "rdFormFlag" INTEGER NOT NULL DEFAULT 2, -- 1 = ยื่นด้วยสื่อ · 2 = ยื่นอินเทอร์เน็ต (RD Format 2.0 FORM_FLAG)
     "ssoAccountNo" TEXT,
     "ssoBranchNo" TEXT NOT NULL DEFAULT '000000',
     "ssoEncoding" TEXT NOT NULL DEFAULT 'TIS620',

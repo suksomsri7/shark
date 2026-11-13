@@ -1,5 +1,5 @@
 {
- "_note": "HR H3.6 pure vectors — inputs for buildPnd1 / buildSso110 / itemFigures / thaiIdOk / taxCertContent / taxCertDocNo. Hand derivation + field tables: ledger/wo-notes/hr-H3.6-oracle.md. Golden bytes: scripts/fixtures/hr-h3.6-g*.txt (ledger/wo-notes/hr-H3.6-derive.py).",
+ "_note": "HR H3.6 pure vectors — inputs for buildPnd1 / buildSso110 / itemFigures / thaiIdOk / taxCertContent / taxCertDocNo. Hand derivation + field tables: ledger/wo-notes/hr-H3.6-oracle.md. Golden bytes: scripts/fixtures/hr-h3.6-g*.txt (ledger/wo-notes/hr-H3.6-derive.py). ORACLE-EDIT (H3.6 fix r1 F3, controller ruling 13 Nov): sso.G3A.notIncluded p8 contributionSatang 45000 → 90000 (= ee + er, so file total + not-included total = the run's contribution total).",
  "employer": {
   "taxId": "0105561234560",
   "branchNo": "000000",
@@ -3144,7 +3144,7 @@
       "ssoPrefix"
      ],
      "wageSatang": 900000,
-     "contributionSatang": 45000
+     "contributionSatang": 90000
     },
     {
      "employeeId": "p9",

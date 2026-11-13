@@ -489,7 +489,7 @@ model HrFilingProfile {
   lto             Boolean  @default(false)
   branchType      String   @default("")
   rdUserId        String?
-  rdFormFlag      Int      @default(1)
+  rdFormFlag      Int      @default(2) // HR H3.6 fix r1 ▸ F1: 2 = ยื่นอินเทอร์เน็ต (RD Format 2.0 ช่อง 22) ◂
   ssoAccountNo    String?
   ssoBranchNo     String   @default("000000")
   ssoEncoding     String   @default("TIS620")
