@@ -1813,7 +1813,9 @@
       "ok_issued": "Certificate issued",
       "ok_rejected": "Request rejected",
       "ok_voided": "Certificate voided",
-      "sourceWithdrawn": "Source slip withdrawn (pay run reversed) — review and void this certificate if needed"
+      "sourceWithdrawn": "Source slip withdrawn (pay run reversed) — review and void this certificate if needed",
+      "stFULFILLED": "Issued",
+      "fulfilled": "Issued — No. {docNo}"
     },
     "payacct": {
       "title": "Payroll accounting",

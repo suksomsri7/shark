@@ -118,6 +118,7 @@ S7.6|ruling H|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): DRAF
 S7.7|review m3|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): failed audit insert ⇒ no certificate file, downloads counter unchanged · no slip PDF bytes
 S7.8|review m4|M|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): myDocuments issued predicate in the query — 36 newer unfinalized runs do not push the issued slip out of the list
 S7.9|hunter P3d|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): cancel ∥ approve ×4 on the same request ⇒ never both, never neither · system A numbers contiguous from 1
+S7.11|ruling 2|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling 2): request closed by an existing live certificate ⇒ employee + HR lists show FULFILLED with that docNo (no "cancelled"), CANCELLED filter excludes it, its id downloads that certificate, not in the inbox
 S7.10|hunter P2|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): run states (self view/PDF NO · gate PDF WITHDRAWN/NOT_ISSUED/NOT_FINAL · gate state) · only future-paid + reversed ⇒ certNoSlip · corrupt latest issued ⇒ slipData, no number
 S4.2|X6|C|R|[db] 5 parallel self requests ⇒ 1 REQUESTED + 4 certReqOpen · 4 parallel issues of that request ⇒ 1 ISSUED HRSC-2032-0005 + 3 notDecidable (0004 = S5.1) · counter lastNo 5 · numbers 0001–0005 contiguous
 S5.1|R13|C|R|[db] route helpers: rsc / prefetch ⇒ 204, nothing audited · GET ⇒ 200 application/pdf attachment no-store nosniff safe file name · refusal ⇒ 404/409 fixed text (th/en) no bytes · self + certificate helpers
@@ -993,6 +994,9 @@ async function runDb(): Promise<void> {
     const rid = String(rq.value?.certId ?? "x");
     const n0 = await seqA();
     const d = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e4, purpose: "VISA" }, NOW);
+    // ORACLE-EDIT (H3.8 fix round 2 · controller ruling 3): the issue audit of a consumed request names requester + issuer · the employee's view shows the issued certificate ◂
+    const audD = (await raw(`SELECT "after", "actorId" FROM "AuditLog" WHERE "tenantId" = $1 AND "action" = 'hr.salarycert.issue' AND "targetId" = $2 ORDER BY "createdAt" DESC LIMIT 1`, TT, rid))[0];
+    const myD = ((await S("listMySalaryCertificates", a)).value?.items ?? []).find((x: Any) => x.id === rid);
     const open = (await scRows(TT)).filter((x) => x.employeeId === E.e4 && x.status === "REQUESTED").length;
     const ap = await S("issueSalaryCertificate", cA, V.owner, { requestId: rid }, NOW);
     const n1 = await seqA();
@@ -1004,9 +1008,31 @@ async function runDb(): Promise<void> {
     const mine = await S("listMySalaryCertificates", a);
     const visa = (mine.value?.items ?? []).filter((x: Any) => x.status === "ISSUED" && x.purpose === "VISA");
     ck("S7.3", {
+      audit: audD?.after?.requestedById === U.self.id && audD?.after?.issuedById === U.owner.id && audD?.actorId === U.owner.id, myView: myD?.status === "ISSUED" && myD?.docNo === d.value?.docNo,
       direct: d.ok && n1 === n0 + 1, closed: open === 0 && (rrow?.status !== "REQUESTED") && (d.value?.certId === rid || rrow?.status === "CANCELLED"), approve: codeIs(ap, "NOT_DECIDABLE", "notDecidable") || (ap.ok && ap.value?.certId === d.value?.certId),
       dupReturns: rq2.ok && ap2.ok && ap2.value?.certId === d.value?.certId && ap2.value?.docNo === d.value?.docNo && (await seqA()) === n1, reqClosed: !!r2 && r2.status !== "REQUESTED" && r2.status !== "ISSUED", oneVisa: visa.length === 1,
     }, "request fulfilled · no 2nd number", `open=${open} req=${rrow?.status} ap=${shown(ap)} ap2=${shown(ap2)} r2=${r2?.status} seq ${n0}→${n1}`);
+  }
+  // S7.11 ORACLE-EDIT (H3.8 fix round 2 · controller ruling 2): a request closed because a live certificate already existed (S7.3 second request) is shown as
+  //   "issued — No. <docNo>" (status FULFILLED) to the employee and to HR, downloadable as that certificate, never in a "cancelled" list ◂
+  {
+    const fr = (await scRows(TT)).find((x) => x.status === "CANCELLED" && x.contentJson?.fulfilledBy);
+    const live = fr ? await certRow(String(fr.contentJson.fulfilledBy)) : null;
+    const mine = ((await S("listMySalaryCertificates", actorOf(U.self))).value?.items ?? []) as Any[];
+    const gAll = ((await S("listSalaryCertificates", cA, V.owner, {})).value?.items ?? []) as Any[];
+    const gCan = await S("listSalaryCertificates", cA, V.owner, { status: "CANCELLED" });
+    const m = mine.find((x) => x.id === fr?.id);
+    const g = gAll.find((x) => x.id === fr?.id);
+    const dl = await S("downloadMySalaryCertificate", actorOf(U.self), { certId: String(fr?.id ?? "x") });
+    const gdl = await S("downloadSalaryCertificate", cA, V.owner, { certId: String(fr?.id ?? "x") });
+    const inbox = await callMod(INBOX, "listInbox", [cA, V.owner, { type: "CERT" }, NOW]);
+    ck("S7.11", {
+      row: !!fr && !!live && live.status === "ISSUED" && !live.voidedAt,
+      mine: m?.status === "FULFILLED" && m?.docNo === live?.docNo && m?.canCancel === false && srt(Object.keys(m ?? {})) === K.myCert,
+      gate: g?.status === "FULFILLED" && g?.docNo === live?.docNo && g?.voided === false,
+      notCancelled: gCan.ok && !(gCan.value?.items ?? []).some((x: Any) => x.id === fr?.id) && ![...mine, ...gAll].some((x) => x.status === "CANCELLED"),
+      download: pdfText(dl.value?.bytes).pages >= 1 && pdfText(gdl.value?.bytes).text.includes(String(live?.docNo ?? "∅")), inbox: inbox.ok && !(inbox.value?.items ?? []).some((x: Any) => x.id === fr?.id),
+    }, "FULFILLED · never 'cancelled'", `mine=${short(m, 120)} gate=${short(g, 120)} dl=${shown(dl)}`);
   }
   // S7.1 void ∥ download (self · gate)
   {

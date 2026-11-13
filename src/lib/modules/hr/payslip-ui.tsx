@@ -333,12 +333,12 @@ export async function MySalaryCertCard({ canWrite, sc }: { canWrite: boolean; sc
         {r.items.map((c) => (
           <li key={c.id} data-testid={`hr-salarycert-mine-${c.id}`} className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--color-line)] pt-2">
             <span className="flex flex-col text-sm">
-              <span className="font-medium">{c.docNo ?? t(`st${c.status}`)}</span>
+              <span className="font-medium">{c.status === "FULFILLED" ? t("fulfilled", { docNo: c.docNo ?? "" }) : (c.docNo ?? t(`st${c.status}`))}</span>
               <span className={`text-xs ${muted}`}>
                 {t(`p${c.purpose}`)} · {dayText(bkkDayOf(c.issuedAt ?? c.requestedAt ?? new Date(0).toISOString()), ts, locale)}
               </span>
             </span>
-            {c.status === "ISSUED" && c.docNo ? (
+            {(c.status === "ISSUED" || c.status === "FULFILLED") && c.docNo ? (
               <a href={`/app/me/hr/salary-cert/${encodeURIComponent(c.id)}`} download data-testid={`hr-salarycert-dl-${c.id}`} className={`${ghost} ring-2 ring-[color:var(--color-accent)]`}>
                 {t("download")}
               </a>
@@ -374,7 +374,7 @@ export async function SalaryCertSection({ systemId, sc }: { systemId: string; sc
   const tx = slipTextFor(locale);
   const f = await flashOf(sc);
   const reqs = list.items.filter((x) => x.status === "REQUESTED");
-  const issued = list.items.filter((x) => x.status === "ISSUED" || x.status === "REJECTED");
+  const issued = list.items.filter((x) => x.status === "ISSUED" || x.status === "FULFILLED" || x.status === "REJECTED"); // fix round 2: คำขอที่ได้ใบเดิม = ออกให้แล้ว
   const owner = v.role === "OWNER";
   return (
     <section id="hr-salarycert" data-testid="hr-salarycert" className={card} aria-labelledby="hr-salarycert-title">
@@ -434,7 +434,7 @@ export async function SalaryCertSection({ systemId, sc }: { systemId: string; sc
         <div key={c.id} data-testid={`hr-salarycert-row-${c.id}`} className="flex flex-col gap-2 border-t border-[color:var(--color-line)] pt-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="flex flex-col text-sm">
-              <span className="font-medium">{`${c.docNo ?? t(`st${c.status}`)} · ${c.name}`}</span>
+              <span className="font-medium">{`${c.status === "FULFILLED" ? t("fulfilled", { docNo: c.docNo ?? "" }) : (c.docNo ?? t(`st${c.status}`))} · ${c.name}`}</span>
               <span className={`text-xs ${muted}`}>
                 {t(`p${c.purpose}`)} · {c.voided ? t("voided") : t(`st${c.status}`)} · {t("downloads", { n: c.downloads })}
               </span>
@@ -444,7 +444,7 @@ export async function SalaryCertSection({ systemId, sc }: { systemId: string; sc
                 </span>
               ) : null}
             </span>
-            {c.status === "ISSUED" && !c.voided ? (
+            {(c.status === "ISSUED" || c.status === "FULFILLED") && !c.voided ? (
               <a href={`/app/sys/${systemId}/hr/payroll/salary-cert/${encodeURIComponent(c.id)}`} download data-testid={`hr-salarycert-gdl-${c.id}`} className={`${ghost} ring-2 ring-[color:var(--color-accent)]`}>
                 {t("download")}
               </a>
