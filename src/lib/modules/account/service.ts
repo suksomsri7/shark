@@ -3390,7 +3390,9 @@ async function issueServiceTaxInvoice(
   const svcLeft = Math.max(0, pk?.service ?? 0);
   if (!pk || svcLeft <= 0) return 0;
   const pureService = pk.goodsAtIssue === 0;
-  const want = Math.round((pureService ? invoice.vatAmount : pk.serviceAtIssue) * portion);
+  // ACC T2.6 ▸ ส่วนของงวด = VAT บริการที่พักตอนออก × สัดส่วน (เดิมใบบริการล้วนใช้ VAT ทั้งใบ ⇒ ใบที่หักมัดจำ งวดแรกปล่อยเกินส่วน
+  //   เพราะ VAT ของมัดจำออกใบกำกับไปแล้วตอนรับมัดจำ · ใบไม่มีมัดจำ: พักตอนออก = VAT ทั้งใบ = เท่าเดิม) ◂
+  const want = Math.round(pk.serviceAtIssue * portion);
   const vatPortion = fullyPaid ? svcLeft : Math.min(svcLeft, want);
   if (vatPortion <= 0) return 0;
   const full = await tx.accountDocument.findFirst({

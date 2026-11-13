@@ -278,7 +278,9 @@ try {
   eq("S2.8", "S6 = แถวใบกำกับเต็มรูป ฐาน 4,000 VAT 280 + หมายเหตุอ้างเลขใบย่อเดิม (ไม่นับซ้ำ)", [s6?.base, s6?.vat, s6?.date, s6?.notes?.some((n: string) => n.includes(sales.S6.receiptNo))], [400_000, 28_000, ymd(d2), true]);
   const raRow = byNo(raNo);
   eq("S2.9", "RA: ผู้ซื้อ ก + เลข 13 หลัก + สาขา 00001 · กลุ่ม 7%/0%/ยกเว้น", [raRow?.buyerName, raRow?.buyerTaxId, raRow?.buyerBranchCode, raRow?.parts], ["บริษัท ลูกค้าเอ จำกัด", "0105555000011", "00001", [{ rateBp: 700, base: 1_000_000, vat: 70_000 }, { rateBp: 0, base: 200_000, vat: 0 }, { rateBp: -1, base: 100_000, vat: 0 }]]);
-  eq("S2.10", "DR ใบรับมัดจำ: ฐาน 3,000 VAT 210 + หมายเหตุมัดจำ", [byNo(drNo)?.base, byNo(drNo)?.vat, byNo(drNo)?.notes?.some((n: string) => n.includes("มัดจำ"))], [300_000, 21_000, true]);
+  // ORACLE-EDIT (ACC T2.6 lane 1): รับเงินมัดจำครบ ⇒ ออกใบกำกับของเงินมัดจำให้เอง (ค่าเริ่ม) ⇒ แถวแสดงเลขใบกำกับ + หมายเหตุอ้างเลขใบรับมัดจำ (ฐาน/VAT เท่าเดิม)
+  const drTxNo = (await prisma.accountDocument.findFirst({ where: { systemId: SYS, docType: "TAX_INVOICE", sourceDocId: dr.id }, select: { docNo: true } }))?.docNo ?? "§";
+  eq("S2.10", "DR ใบรับมัดจำ: แถวเลขใบกำกับของมัดจำ ฐาน 3,000 VAT 210 + หมายเหตุมัดจำอ้างเลขใบรับมัดจำ", [byNo(drTxNo)?.base, byNo(drTxNo)?.vat, byNo(drTxNo)?.notes?.some((n: string) => n.includes("มัดจำ") && n.includes(drNo))], [300_000, 21_000, true]);
   // ORACLE-EDIT (ACC T1.2): วันที่ใบกำกับ = วันที่ใบแจ้งหนี้ (d1) แทน "วันนี้" — ใบกำกับออกพร้อมใบแจ้งหนี้ (จุดรับผิดสินค้า ม.78)
   eq("S2.11", "TX หักมัดจำ: ฐาน 7,000 VAT 490 (ฐานตรง VAT) · ลงวันที่ใบแจ้งหนี้ (ออกพร้อมกัน)", [byNo(txNo)?.base, byNo(txNo)?.vat, byNo(txNo)?.date, byNo(txNo)?.buyerBranchCode], [700_000, 49_000, `${M}-01`, "00000"]);
   eq("S2.12", "CN: −1,000 / −70 + หมายเหตุอ้าง RA", [byNo(cnNo)?.base, byNo(cnNo)?.vat, byNo(cnNo)?.notes?.some((n: string) => n.includes(raNo))], [-100_000, -7_000, true]);

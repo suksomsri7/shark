@@ -153,8 +153,9 @@ try {
   chk("F2.8", "ติ๊กแล้ว = บันทึกได้", s5b.ok, "ok", s5b);
 
   // ─── S6 รับชำระที่ปล่อย VAT ───
-  // ข้อเท็จจริงของสินค้า (T1.2): ใบกำกับงวดรับเงินของบริการลงวันที่ "วันที่บันทึก" (ไม่ใช่ paidAt) ⇒ VAT ที่ปล่อยลงเดือนปัจจุบัน
-  //   ⇒ ทดสอบด้วยเดือนปัจจุบัน (นาฬิกาเครื่อง) ที่ทำเครื่องหมายยื่นไว้ก่อน — ด่านเดียวกันที่ชั้นลงบัญชี
+  // ORACLE-EDIT (ACC T2.6 lane 1): ใบกำกับงวดรับเงินของบริการลงวันที่ **วันรับเงิน** (paidAt = day(X, 25)) แล้ว (เดิม = วันที่บันทึก)
+  //   ⇒ VAT ที่ปล่อยเข้าเดือน X ที่ยื่นแล้ว (ไม่ใช่เดือนปัจจุบัน) · ด่านเดียวกันที่ชั้นลงบัญชี — คงการทำเครื่องหมายเดือนปัจจุบันไว้
+  //   (ยืนยันว่าเดือนปัจจุบันไม่มีผลต่าง) · ผลต่างของ X เพิ่ม 1 แถว (+28,000 ภาษีขาย · −28,000 พัก · ยืนยันแล้ว) ⇒ F4.1/F4.2/F3.4/F4.4 ปรับตาม
   const CUR = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7);
   const mc = await PC.markVatFiled(ctx, { periodKey: CUR, userId: owner.id });
   chk("F2.8b", `ทำเครื่องหมายยื่นเดือนปัจจุบัน ${CUR} (ยังไม่มีรายการ)`, mc.ok, "ok", mc);
@@ -166,7 +167,8 @@ try {
   const s6b = await s6pay(["FILED_PERIOD_VAT_CHANGE"]);
   chk("F2.10", "ติ๊กแล้ว = รับชำระได้", s6b.ok, "ok", s6b);
   const dc = await FD.vatFiledDifferences(ctx, CUR);
-  eq("F2.11", `ผลต่างหลังยื่น ${CUR}: 1 รายการ (ใบกำกับงวดรับเงิน) ภาษีขาย +28,000 · พัก −28,000 · ยืนยันแล้ว`, dc.rows.map((r: Any) => [r.outputDelta, r.parkedDelta, r.acknowledged, r.docType]), [[28_000, -28_000, true, "TAX_INVOICE"]]);
+  const dx = await FD.vatFiledDifferences(ctx, X);
+  eq("F2.11", `ผลต่างหลังยื่น: ${CUR} ไม่มีรายการ · ${X} มีใบกำกับงวดรับเงิน ภาษีขาย +28,000 · พัก −28,000 · ยืนยันแล้ว (ลงวันรับเงิน)`, [dc.rows.length, dx.rows.filter((r: Any) => r.docType === "TAX_INVOICE").map((r: Any) => [r.outputDelta, r.parkedDelta, r.acknowledged, r.docType])], [0, [[28_000, -28_000, true, "TAX_INVOICE"]]]);
   const uc = await PC.unmarkVatFiled(ctx, CUR, { userId: owner.id, reason: "ทดสอบเดือนปัจจุบันเสร็จแล้ว" });
   chk("F2.12", "ยกเลิกเครื่องหมายเดือนปัจจุบันได้ (ไม่มีแบบเพิ่มเติม)", uc.ok, "ok", uc);
 
@@ -197,13 +199,14 @@ try {
   // ─── F4 ผลต่างหลังยื่น ───
   console.log("\n── F4 ผลต่างหลังยื่น ──");
   const d = await FD.vatFiledDifferences(ctx, X);
-  eq("F4.1", "4 รายการ · ภาษีขาย 16,000 · ภาษีซื้อ 21,000 · สุทธิ −5,000 · พัก 0", [d.rows.length, d.totals.output, d.totals.input, d.totals.net, d.totals.parked], [4, 16_000, 21_000, -5_000, 0]);
-  eq("F4.2", "ยืนยันแล้ว 3 · ไม่มีการยืนยัน 1 (งานเบื้องหลัง S3)", [d.rows.filter((r: Any) => r.acknowledged).length, d.rows.filter((r: Any) => !r.acknowledged).map((r: Any) => r.outputDelta)], [3, [7_000]]);
+  // ORACLE-EDIT (ACC T2.6): + แถวใบกำกับงวดรับเงิน S6 (ลงวันรับเงินในเดือนนี้แล้ว) ภาษีขาย +28,000 · พัก −28,000
+  eq("F4.1", "5 รายการ · ภาษีขาย 44,000 · ภาษีซื้อ 21,000 · สุทธิ 23,000 · พัก −28,000", [d.rows.length, d.totals.output, d.totals.input, d.totals.net, d.totals.parked], [5, 44_000, 21_000, 23_000, -28_000]);
+  eq("F4.2", "ยืนยันแล้ว 4 · ไม่มีการยืนยัน 1 (งานเบื้องหลัง S3)", [d.rows.filter((r: Any) => r.acknowledged).length, d.rows.filter((r: Any) => !r.acknowledged).map((r: Any) => r.outputDelta)], [4, [7_000]]);
   chk("F4.3", "แต่ละแถวมีเอกสาร/ที่มา · ผู้ทำ (ชื่อ) · เวลา · JV มือแยกป้าย", d.rows.every((r: Any) => r.createdAt && (r.docNo || r.manual)) && d.rows.some((r: Any) => r.manual && r.outputDelta === -5_000) && d.rows.some((r: Any) => r.byName === "เจ้าของ T1.7"), "ครบ", d.rows.map((r: Any) => ({ doc: r.docNo, m: r.manual, o: r.outputDelta, i: r.inputDelta, by: r.byName, ack: r.acknowledged })));
   const rest = await call("GET", `/periods/${X}/filed-differences`, kW.rawKey);
-  chk("F3.4", "GET /periods/{key}/filed-differences: vat.rows 4 · totals (สตางค์) · pnd ว่าง · history", rest.status === 200 && rest.body?.data?.vat?.rows?.length === 4 && rest.body.data.vat.totals.outputSatang === 16_000 && rest.body.data.vat.totals.inputSatang === 21_000 && Array.isArray(rest.body.data.vat.history) && rest.body.data.pnd.rows.length === 0, "200", { s: rest.status, d: JSON.stringify(rest.body?.data ?? rest.body).slice(0, 400) });
+  chk("F3.4", "GET /periods/{key}/filed-differences: vat.rows 5 · totals (สตางค์) · pnd ว่าง · history (ORACLE-EDIT T2.6: +แถวใบกำกับงวด)", rest.status === 200 && rest.body?.data?.vat?.rows?.length === 5 && rest.body.data.vat.totals.outputSatang === 44_000 && rest.body.data.vat.totals.inputSatang === 21_000 && Array.isArray(rest.body.data.vat.history) && rest.body.data.pnd.rows.length === 0, "200", { s: rest.status, d: JSON.stringify(rest.body?.data ?? rest.body).slice(0, 400) });
   const add = await PF.fileVatAdditional(ctx, { periodKey: X, userId: owner.id });
-  chk("F4.4", "แบบเพิ่มเติม: ผลต่าง ภาษีขาย +16,000 · ภาษีซื้อ +21,000 = ผลรวมผลต่างหลังยื่น", add.ok && add.diff.outputVat === 16_000 && add.diff.inputVat === 21_000, "16000/21000", add.ok ? add.diff : add.reason);
+  chk("F4.4", "แบบเพิ่มเติม: ผลต่าง ภาษีขาย +44,000 · ภาษีซื้อ +21,000 = ผลรวมผลต่างหลังยื่น (ORACLE-EDIT T2.6)", add.ok && add.diff.outputVat === 44_000 && add.diff.inputVat === 21_000, "16000/21000", add.ok ? add.diff : add.reason);
   const d2 = await FD.vatFiledDifferences(ctx, X);
   eq("F4.5", "หลังยื่นเพิ่มเติม: ทุกแถวอยู่ในแบบแล้ว · ยอดที่ยังไม่อยู่ในแบบ = 0", [d2.rows.every((r: Any) => !r.afterLatestFiling), d2.pending.net, d2.pending.output], [true, 0, 0]);
 
