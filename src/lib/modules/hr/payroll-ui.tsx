@@ -276,6 +276,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                     {/* H0.2 ▸ CR-H0.2-1: รายการในรอบร่างลบได้ด้วย (service ลบ + คำนวณรอบร่างใหม่ในคำสั่งเดียว) ◂ */}
                     {/* H0.2 ▸ CR-H0.2-3: รายการจาก CRM ไม่มีปุ่มลบ (แสดง "ถอนที่ CRM") · รายการ PENDING ของ CRM ยังมีปุ่มอนุมัติ/ไม่อนุมัติ ◂ */}
                     {(!a.runId || draftRunIds.has(a.runId)) && <PayAdjustRowActions systemId={systemId} id={a.id} pending={a.status === "PENDING"} canDelete={!a.crmCommissionId} />}
+                    {/* HR H3.7 ▸ fix r2 (b): คืนเงินรายการหักที่หักในรอบจ่ายแล้ว (REFUND อ้างรายการหัก) ◂ */}
                     {a.kind === "DEDUCTION" && a.status === "APPROVED" && !!a.runId && !draftRunIds.has(a.runId) && <ClaimGiveBack systemId={systemId} claimId={a.id} defaultPeriod={new Date().toISOString().slice(0, 7)} />}
                   </span>
                 </div>

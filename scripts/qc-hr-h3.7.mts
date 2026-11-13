@@ -186,7 +186,9 @@ function runStatic(): void {
   const badTbl: string[] = [];
   for (const f of hrFiles) {
     const s = rd(f);
-    for (const i of importsOf(s)) if (/modules\/account|\.\.\/account/.test(i.spec) && i.spec !== "@/lib/modules/account") badImp.push(`${f}:${i.spec}`);
+    // ORACLE-EDIT (H3.7 builder, merge of H3.6): the H3.6 brief-prescribed deep imports allowlisted per file exactly as fitness F2.2 (hr-H3.6 notes item 8) — any other deep import stays illegal
+    const DEEP_OK: Record<string, string[]> = { "src/lib/modules/hr/filings/cert.ts": ["@/lib/modules/account/totals", "@/lib/modules/account/doc-numbering"], "src/lib/modules/hr/filings/service.ts": ["@/lib/modules/account/doc-numbering"], "src/lib/modules/hr/filings/cert-pdf.tsx": ["@/lib/modules/account/public-doc-pdf"] };
+    for (const i of importsOf(s)) if (/modules\/account|\.\.\/account/.test(i.spec) && i.spec !== "@/lib/modules/account" && !(DEEP_OK[f] ?? []).includes(i.spec)) badImp.push(`${f}:${i.spec}`);
     if (/\.(accountJournalEntry|accountJournalLine|accountLedger|accountMapping|accountSystemLink|accountPeriod|accountFinance|accountSettings)\b|"Account(JournalEntry|JournalLine|Ledger|Mapping|SystemLink|Period|Finance|Settings)"/.test(stripComments(s))) badTbl.push(f);
   }
   ck("S1.4", { imports: badImp.length === 0, tables: badTbl.length === 0 }, "facade only", `${badImp.join(",")} ${badTbl.join(",")}`);

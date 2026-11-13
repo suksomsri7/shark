@@ -221,7 +221,10 @@ function runStatic(): void {
     const ORACLE_EDITS: Record<string, string[]> = { "scripts/qc-hr-h3.5.mts": ["S1.2"] };
     const oracleEdited = (f: string) => !!ORACLE_EDITS[f] && (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && ORACLE_EDITS[f]!.some((id) => l.includes(id))));
     const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
-    const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f)) : [];
+    // ORACLE-EDIT (H3.7 builder, merge of H3.6 into wip/hr-h3.7 — controller order "both frozen checks pass after the merge"): a frozen file that H3.7 touched
+    //   passes when EVERY hunk vs base carries "HR H3.7" (src) or "ORACLE-EDIT (H3.7" (oracles) in an added line — any unmarked change still fails
+    const h37Marked = (f: string) => (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR H3\.7|ORACLE-EDIT \(H3\.7/.test(l)));
+    const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f) && !h37Marked(f)) : [];
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;
     const bankChanged = changedVsBase(BASE, [bankDir]);
     const bankFiles = bankChanged.startsWith("changed: ") ? bankChanged.slice(9).split(",") : [];
