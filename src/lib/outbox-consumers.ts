@@ -132,6 +132,7 @@ const posSalePaid: OutboxHandler = async (evt) => {
           lineTotalSatang: true,
           itemId: true,
           serviceId: true,
+          vatTreatment: true, // ACC T1.8 ◂
         },
         orderBy: { id: "asc" },
       },
@@ -166,6 +167,7 @@ const posSalePaid: OutboxHandler = async (evt) => {
       discountSatang: l.discountSatang,
       lineTotalSatang: l.lineTotalSatang,
       itemId: l.itemId,
+      vatTreatment: l.vatTreatment, // ACC T1.8 ◂
     })),
     customer: member
       ? { memberId: member.id, partyId: member.partyId, name: member.name, phone: member.phone }

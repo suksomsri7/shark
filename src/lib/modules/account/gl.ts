@@ -2146,6 +2146,8 @@ export async function postExternalRefund(
     // POS P2.1 ▸ AR = แพลตฟอร์มคืนลูกค้า (ลดลูกหนี้แพลตฟอร์ม · R9) + contactId ของแพลตฟอร์ม · ไม่ส่ง = เดิม ◂
     // POS P2.9 ▸ DEPOSIT_RECEIVED = คืนเข้าบัตรของขวัญ/เครดิตร้าน (Cr 2110) ◂
     crLines: { key: "CASH" | "BANK" | "AR" | "DEPOSIT_RECEIVED"; amountSatang: number; contactId?: string | null }[];
+    /** ACC T1.8 ▸ ขา Dr เพิ่ม (บัญชีที่ facade หาแล้ว — คืนเงินเก็บแทน) · ไม่ส่ง = JV เดิมทุกไบต์ ◂ */
+    drExtra?: { accountId: string; amountSatang: number; note?: string }[];
   },
   tx?: Tx,
 ): Promise<{ entryId: string } | { skipped: true }> {
@@ -2159,6 +2161,7 @@ export async function postExternalRefund(
     if (goodsBase > 0) b.dr(await b.id("INCOME_GOODS"), goodsBase);
     if (svcBase > 0) b.dr(await b.id("INCOME_SERVICE"), svcBase);
     if (o.vatSatang > 0) b.dr(await b.id("VAT_OUTPUT"), o.vatSatang);
+    for (const x of o.drExtra ?? []) b.dr(x.accountId, x.amountSatang, x.note); // ACC T1.8 ◂
     for (const l of o.crLines) b.cr(await b.id(l.key), l.amountSatang, undefined, l.contactId ?? undefined);
 
     const entry = await commitEntry(

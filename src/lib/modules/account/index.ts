@@ -35,6 +35,7 @@ import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDoc
 import { safeReason } from "./errors";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับบิล POS ◂
 import { splitIncludedVat } from "@/lib/money/vat";
+import { docRateOfTreatment, treatmentOf } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
 // CRM C1.3 ▸ `accountSystemForCrm` (ท้ายไฟล์) — tenantDb (ไม่ใช่ prisma ดิบ · F5) + ตาม Party ที่ถูกรวมไปตัวปลายทาง
 import { tenantDb as crmTenantDb } from "@/lib/core/db";
 import * as crmPartyFacade from "@/lib/modules/party";
@@ -103,6 +104,7 @@ import {
   recordExternalSaleZeroEntry, // POS P2.9b ▸ fix4 มติ 1: เครื่องหมาย zero entry (แถวเดียวต่อบิล · ล้ม = โยน) ◂
   externalSaleZeroEntryRecorded, // POS P2.9b ▸ fix4 มติ 1: ประตูค่าคอมฯ ◂
   reverseFor,
+  resolveMapping, // ACC T1.8 ▸ บัญชีเก็บแทน (COLLECTED_ON_BEHALF) ◂
   type GlCtx,
 } from "./gl";
 // WO 4.3 (§8.2) — บิล POS ที่มีรายการจัดชุด: ตัดสต็อกส่วนประกอบหลังสร้างเอกสารบิล
@@ -155,6 +157,8 @@ export async function applyExternalSale(input: {
     unitPriceSatang: number;
     vatRateBp?: number;
     discountSatang?: number;
+    /** ACC T1.8 (เพิ่มล้วน · ไม่ส่งทุกบรรทัด = ทางเดิมทุกไบต์): ชนิด VAT ของบรรทัด STANDARD | ZERO_RATED | EXEMPT | ON_BEHALF (ยอดบรรทัด = หลังเกลี่ยส่วนลดระดับบิลแล้ว) */
+    vatTreatment?: string | null;
   }[];
   /** WO 4.2 — ลูกค้าของบิล (ไม่ส่ง/ไม่มี = ลูกค้าเดินเข้าร้าน → เอกสารไม่ผูกผู้ติดต่อ) */
   customer?: {
@@ -184,8 +188,15 @@ export async function applyExternalSale(input: {
   const { vatRegistered, vatRateBp, posAbbreviatedInvoice } = await vatConfigOf(link.systemId);
 
   const gross = input.grossSatang;
+  // ACC T1.8 ▸ บิลที่มีบรรทัดไม่ใช่มาตรฐาน: VAT ถอดจากยอดบรรทัดมาตรฐานเท่านั้น (0%/ยกเว้น VAT 0 · เก็บแทนนอกฐานและไม่ใช่รายได้ → Cr บัญชีเก็บแทน) ·
+  //   สูตรเดียวกับ PosSale (src/lib/money/vat-lines.ts splitBillVat — บรรทัดที่ส่งมาเกลี่ยส่วนลดแล้ว) · ไม่มีชนิด = ทางเดิมทุกไบต์ ◂
+  const t18 = (input.lines ?? []).some((l) => treatmentOf(l.vatTreatment) !== "STANDARD");
+  const t18Amt = (l: { qty: number; unitPriceSatang: number; discountSatang?: number }) => l.qty * l.unitPriceSatang - (l.discountSatang ?? 0);
+  const onBehalf = t18 ? (input.lines ?? []).filter((l) => treatmentOf(l.vatTreatment) === "ON_BEHALF").reduce((n, l) => n + t18Amt(l), 0) : 0;
+  const t18StdGross = t18 ? (input.lines ?? []).filter((l) => treatmentOf(l.vatTreatment) === "STANDARD").reduce((n, l) => n + t18Amt(l), 0) : gross;
   // POS P1.6 ▸ สูตรเดียวกับ PosSale.vatSatang (src/lib/money/vat.ts) ◂
-  const { baseSatang: baseFull, vatSatang: vatFull } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
+  const { vatSatang: vatFull } = vatRegistered ? splitIncludedVat(t18StdGross, vatRateBp) : { vatSatang: 0 };
+  const baseFull = gross - onBehalf - vatFull;
   // POS P2.9b ▸ R5: VAT ของมัดจำที่ใช้ (สมุดไม่จด VAT = 0 · ไม่เกิน VAT ของบิล/ยอดมัดจำ) — ไม่ส่ง = 0 ⇒ ทุกบรรทัดเดิม ◂
   const depositRows = input.payMethods.filter((p) => p.channel === "DEPOSIT").reduce((n, p) => n + p.amountSatang, 0);
   // POS P2.9b ▸ fix1 มติ 3 (hunt D2): หักตามที่บันทึก/ลงไว้ตอนรับมัดจำเสมอ (สมุดเลิกจด VAT ภายหลัง = ไม่คิดใหม่ — ส่วนเกิน VAT ของบิลลดฐานรายได้) ◂
@@ -262,8 +273,8 @@ export async function applyExternalSale(input: {
   }).filter((l) => l.amountSatang > 0 || depositVat === 0);
 
   // ถอด VAT จากฝั่งบริการด้วยอัตราส่วนเดียวกับทั้งบิล แล้ว clamp ไม่ให้เกินฐานรวม
-  const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
-  const svcBase = gross > 0 ? Math.min(base, Math.round((base * svcGross) / gross)) : 0;
+  const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross - onBehalf);
+  const svcBase = gross - onBehalf > 0 ? Math.min(base, Math.round((base * svcGross) / (gross - onBehalf))) : 0;
 
   // POS P2.9 ▸ R9: ทิป → Cr บัญชีพักทิป (หนี้สินของสมุดนี้) · ตรวจทุกครั้งก่อนลง (บัญชีถูกเก็บ/ผิดชนิด = โยน ⇒ คิวลองใหม่ ไม่ลงผิดที่) ◂
   let tipCr: { accountId: string; amountSatang: number; note: string }[] | undefined;
@@ -271,6 +282,11 @@ export async function applyExternalSale(input: {
     const ledger = await liabilityLedgerOf(ctx, input.tip.ledgerId);
     if (!ledger) throw new Error("บัญชีพักทิปของจุดขายนี้ใช้ไม่ได้ (ไม่ใช่หนี้สินของสมุดที่ผูก หรือถูกเก็บแล้ว) — แก้ที่ตั้งค่าการชำระเงินของ POS");
     tipCr = [{ accountId: ledger.id, amountSatang: input.tip.satang, note: "ทิปรอจ่ายพนักงาน" }];
+  }
+  // ACC T1.8 ▸ เก็บแทน → Cr บัญชีตาม mapping COLLECTED_ON_BEHALF (ผัง 2120 · ไม่ใช่รายได้ ไม่อยู่ในฐาน VAT — VAT §3) ◂
+  if (onBehalf > 0) {
+    await ensureAccounting(ctx);
+    tipCr = [...(tipCr ?? []), { accountId: await resolveMapping(ctx, "COLLECTED_ON_BEHALF"), amountSatang: onBehalf, note: "เก็บแทนบุคคลอื่น (นอกฐาน VAT)" }];
   }
   // POS P2.9b ▸ fix3 มติ 1 (R3 F1): ทุกบรรทัดบัญชีสุทธิ 0 (เช่น บิลสุดท้ายที่มัดจำปล่อย VAT ครอบทั้งยอดหลังสมุดเลิกจด VAT) — ไม่มี JV ให้ลง ·
   //   ข้าม JV (ไม่โยน ⇒ คิว pos.sale.paid จบ DONE) · ชั้นเอกสารยังเขียนตามปกติ + เครื่องหมาย zeroEntry (fix4 มติ 1 3) ·
@@ -313,12 +329,15 @@ export async function applyExternalSale(input: {
     itemIds: lines.map((l) => l.itemId ?? "").filter(Boolean),
     productIds: lines.map((l) => l.accountProductId ?? "").filter(Boolean),
   });
-  const docLines: ExternalSaleDocLine[] = lines.map((l) => ({
+  // ACC T1.8 ▸ เอกสาร = มูลค่าขาย: บรรทัดเก็บแทนไม่อยู่ในเอกสาร · 0% / ยกเว้น ติดอัตราต่อบรรทัด (รายงานภาษีขาย/ภ.พ.30 อ่านกลุ่มจากนี่) ◂
+  const docSrc = t18 ? lines.filter((l) => treatmentOf(l.vatTreatment) !== "ON_BEHALF") : lines;
+  if (docSrc.length === 0) return { posted, ...zeroMark }; // บิลเก็บแทนล้วน = ไม่มีมูลค่าขาย ไม่มีเอกสารขาย (JV ลง 2120 แล้ว)
+  const docLines: ExternalSaleDocLine[] = docSrc.map((l) => ({
     description: l.name,
     qty: l.qty,
     unitPrice: l.unitPriceSatang,
     discount: l.discountSatang ?? 0,
-    vatRateBp: l.vatRateBp ?? null,
+    vatRateBp: l.vatRateBp ?? (t18 ? docRateOfTreatment(treatmentOf(l.vatTreatment)) : null),
     productId:
       (l.accountProductId ? map.byProductId.get(l.accountProductId) : undefined) ??
       (l.itemId ? map.byItemId.get(l.itemId) : undefined) ??
@@ -337,9 +356,10 @@ export async function applyExternalSale(input: {
     vatMode: vatRegistered ? "INCLUDE" : "NONE",
     vatRegistered,
     vatRateBp,
-    grandTotalSatang: gross,
-    note: input.receiptNo ? `ขายหน้าร้าน POS · ใบเสร็จ ${input.receiptNo}` : "ขายหน้าร้าน POS",
+    grandTotalSatang: gross - onBehalf,
+    note: (input.receiptNo ? `ขายหน้าร้าน POS · ใบเสร็จ ${input.receiptNo}` : "ขายหน้าร้าน POS") + (onBehalf > 0 ? ` · เก็บแทน ฿${(onBehalf / 100).toFixed(2)} (นอกมูลค่าขาย)` : ""),
     lines: docLines,
+    ...(t18 && vatRegistered ? { vatSatang: vatFull } : {}), // ACC T1.8 ▸ VAT เอกสาร = VAT ของ JV (ถอดจากกลุ่มมาตรฐาน) ◂
     ...(full ? { fullTaxInvoice: true, buyer: input.buyer } : {}), // POS P1.13 ▸ R2 · fix F4 สำเนาผู้ซื้อตามที่กรอก ◂
     // POS P2.9b ▸ มติ 15: หักมัดจำ (gross) + VAT สุทธิ ◂
     ...(input.depositGrossSatang && input.depositGrossSatang > 0 ? { depositDeductedSatang: input.depositGrossSatang, depositVatSatang: depositVat } : {}),
@@ -612,7 +632,7 @@ export async function applyExternalRefund(input: {
   /** POS P2.1 (เพิ่มล้วน): ชื่อช่องทางขาย — แถว PLATFORM (แพลตฟอร์มคืนลูกค้า) ลดลูกหนี้ 1100 ของผู้ติดต่อนี้ */
   channelName?: string | null;
   /** บรรทัดของใบคืน (Σ qty×unitPrice − discount = grossSatang เป๊ะ) — ไม่ส่ง/ว่าง = ไม่มีชั้นเอกสาร */
-  lines?: { itemId?: string | null; name: string; qty: number; unitPriceSatang: number; discountSatang?: number }[];
+  lines?: { itemId?: string | null; name: string; qty: number; unitPriceSatang: number; discountSatang?: number; vatTreatment?: string | null /* ACC T1.8 ◂ */ }[];
   docNo?: string | null; // เลขใบคืนของ POS
   reason?: string | null;
   // POS P1.16 ▸ R5b(a): VAT ของใบคืน POS (PosSale.vatSatang) — ส่งมา = ใช้ตัวนี้ทั้ง JV และใบลดหนี้ (สมุดจด VAT)
@@ -642,10 +662,15 @@ export async function applyExternalRefund(input: {
   const keepVat = vatRegistered || (input.depositPaid === true && Number.isInteger(input.vatSatang) && input.vatSatang! > 0);
   const explicitVat = keepVat && Number.isInteger(input.vatSatang) && input.vatSatang! >= 0 && input.vatSatang! <= gross ? input.vatSatang! : null;
   const cnVat = vatRegistered || explicitVat !== null; // fix4 มติ 2: ใบลดหนี้แบบรวม VAT เมื่อใบคืนมี VAT ที่ต้องกลับ
-  const { baseSatang: base, vatSatang: vat } =
-    explicitVat !== null ? { baseSatang: gross - explicitVat, vatSatang: explicitVat } : vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
-  const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
-  const svcBase = Math.min(base, Math.round((base * svcGross) / gross));
+  // ACC T1.8 ▸ ใบคืนของบิลผสม: เก็บแทนที่คืน → Dr บัญชีเก็บแทน (ไม่แตะรายได้/VAT) · VAT ไม่ส่งมา = ถอดจากยอดมาตรฐาน · ไม่มีชนิด = ทางเดิมทุกไบต์ ◂
+  const t18 = lines.some((l) => treatmentOf(l.vatTreatment) !== "STANDARD");
+  const t18Amt = (l: { qty: number; unitPriceSatang: number; discountSatang?: number }) => l.qty * l.unitPriceSatang - (l.discountSatang ?? 0);
+  const onBehalf = t18 ? lines.filter((l) => treatmentOf(l.vatTreatment) === "ON_BEHALF").reduce((n, l) => n + t18Amt(l), 0) : 0;
+  const stdGross = t18 ? lines.filter((l) => treatmentOf(l.vatTreatment) === "STANDARD").reduce((n, l) => n + t18Amt(l), 0) : gross;
+  const vat = explicitVat !== null ? explicitVat : vatRegistered ? splitIncludedVat(stdGross, vatRateBp).vatSatang : 0;
+  const base = gross - onBehalf - vat;
+  const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross - onBehalf);
+  const svcBase = gross - onBehalf > 0 ? Math.min(base, Math.round((base * svcGross) / (gross - onBehalf))) : 0;
   // คืนได้เฉพาะเงินสด/ธนาคาร (มัดจำ/ลงห้อง ถูกปฏิเสธตั้งแต่ POS — R5) · ที่เหลือ = ธนาคาร
   //   POS P2.1 ▸ PLATFORM = แพลตฟอร์มคืนลูกค้า ⇒ Cr ลูกหนี้แพลตฟอร์ม (1100) ผูกผู้ติดต่อของช่องทาง (R9) ◂
   //   fix round 1 (F3) ▸ ผู้ติดต่อ = ผู้ติดต่อบนบรรทัด 1100 ของ JV ขาย (PAID) ของบิลเดิม · ไม่มี = ชื่อช่องทางปัจจุบัน ◂
@@ -665,19 +690,23 @@ export async function applyExternalRefund(input: {
         ? { key: "DEPOSIT_RECEIVED" as const, amountSatang: p.amountSatang }
         : { key: (p.channel === "CASH" ? "CASH" : "BANK") as "CASH" | "BANK", amountSatang: p.amountSatang },
   );
-  const res = await postExternalRefund(ctx, { refId: input.refId, date: input.occurredAt, baseSatang: base, vatSatang: vat, serviceBaseSatang: svcBase, crLines });
+  if (onBehalf > 0) await ensureAccounting(ctx);
+  const drExtra = onBehalf > 0 ? [{ accountId: await resolveMapping(ctx, "COLLECTED_ON_BEHALF"), amountSatang: onBehalf, note: "คืนเงินเก็บแทน (นอกฐาน VAT)" }] : undefined;
+  const res = await postExternalRefund(ctx, { refId: input.refId, date: input.occurredAt, baseSatang: base, vatSatang: vat, serviceBaseSatang: svcBase, crLines, ...(drExtra ? { drExtra } : {}) });
   const posted = "entryId" in res;
   const onAccountRefund = input.payMethods.some((p) => p.channel === "ON_ACCOUNT"); // POS P3.6 ▸ ใบลดหนี้ของบิลวางบิลออกเสมอ (ลดหนี้ของใบแจ้งหนี้) ◂
   if (lines.length === 0 || (!posAbbreviatedInvoice && !onAccountRefund)) return { posted };
 
   const abb = await findExternalSaleDoc(link.systemId, input.saleRefId);
   const map = await resolveProductIdsForExternalSale(ctx.systemId, { itemIds: lines.map((l) => l.itemId ?? "").filter(Boolean), productIds: [] });
-  const docLines: ExternalSaleDocLine[] = lines.map((l) => ({
+  const docSrc = t18 ? lines.filter((l) => treatmentOf(l.vatTreatment) !== "ON_BEHALF") : lines; // ACC T1.8 ◂
+  if (docSrc.length === 0) return { posted };
+  const docLines: ExternalSaleDocLine[] = docSrc.map((l) => ({
     description: l.name,
     qty: l.qty,
     unitPrice: l.unitPriceSatang,
     discount: l.discountSatang ?? 0,
-    vatRateBp: null,
+    vatRateBp: t18 ? docRateOfTreatment(treatmentOf(l.vatTreatment)) : null,
     productId: (l.itemId ? map.byItemId.get(l.itemId) : undefined) ?? null,
   }));
   const reason = (input.reason ?? "").trim() || "คืนสินค้า/คืนเงินหน้าร้าน";
@@ -693,8 +722,8 @@ export async function applyExternalRefund(input: {
     vatMode: cnVat ? "INCLUDE" : "NONE",
     vatRegistered: cnVat,
     vatRateBp,
-    grandTotalSatang: gross,
-    ...(explicitVat !== null ? { vatSatang: explicitVat } : {}), // POS P1.16 ▸ CD-O8: เอกสาร = ใบคืน POS = JV ◂
+    grandTotalSatang: gross - onBehalf,
+    ...(explicitVat !== null ? { vatSatang: explicitVat } : t18 && cnVat ? { vatSatang: vat } : {}), // POS P1.16 ▸ CD-O8: เอกสาร = ใบคืน POS = JV ◂ · ACC T1.8 ◂
     reason,
     note: input.docNo ? `คืนเงินหน้าร้าน POS · ใบคืน ${input.docNo}${abb?.docNo ? ` · อ้างใบเสร็จ ${abb.docNo}` : ""}` : "คืนเงินหน้าร้าน POS",
     lines: docLines,

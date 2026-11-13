@@ -12,6 +12,7 @@ import { logOps } from "@/lib/core/ops";
 import { prisma } from "./db";
 import { saleChannelName } from "./channel"; // POS P2.1 ◂
 import { allocateBillDiscount } from "./refund-math";
+import { splitBillVat, treatmentOf } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
 import { snapshotBuyer } from "./tax-invoice-shared";
 import { parsePosPaymentSettings } from "./payment-settings"; // POS P2.9 ▸ R9 บัญชีพักทิป ◂
 
@@ -80,6 +81,8 @@ export type SaleLineForBridge = {
   discountSatang: number;
   lineTotalSatang: number;
   itemId: string | null;
+  /** ACC T1.8 ▸ ชนิด VAT ของบรรทัด (PosSaleLine.vatTreatment · null = บิลเก่า = มาตรฐาน) ◂ */
+  vatTreatment?: string | null;
 };
 
 /** ลูกค้าของบิล (Customer ของระบบสมาชิก) — ไม่มี = ลูกค้าเดินเข้าร้าน */
@@ -151,8 +154,24 @@ export async function bridgePosSalePaid(
   const alloc =
     billDiscount > 0 ? allocateBillDiscount(src.map((l) => Math.max(0, l.lineTotalSatang)), billDiscount) : src.map(() => 0);
   // ส่งบรรทัดเฉพาะบิลที่ "เกลี่ยแล้วลงตัว" — บิลแปลก (ยอดติดลบ/ส่วนลดเกิน) ถอยไปเส้นเดิมแทนที่จะถูกปฏิเสธ
+  // ACC T1.8 ▸ บิลที่มีบรรทัดไม่ใช่มาตรฐาน: เกลี่ยส่วนลดระดับบิลด้วยตัวคิดเดียวกับ createSale (เก็บแทนลดไม่ได้ · ค่าบริการรับส่วนที่เกิน) + ส่งชนิดต่อบรรทัด ·
+  //   บิลอื่น = เกลี่ยแบบเดิมทุกไบต์ ◂
+  const t18 = src0.some((l) => treatmentOf(l.vatTreatment) !== "STANDARD");
+  const t18Split = t18 ? splitBillVat({ lines: src0.map((l) => ({ lineTotalSatang: l.lineTotalSatang, treatment: l.vatTreatment })), serviceChargeSatang: serviceCharge, grandTotalSatang: gross, rateBp: 0 }) : null;
   const lines =
-    src.length > 0 && gross > 0 && billDiscount >= 0
+    t18Split && gross > 0 && billDiscount >= 0 && t18Split.unallocatedDiscount === 0
+      ? src.map((l, i) => {
+          const net = i < src0.length ? t18Split.nets[i]! : t18Split.serviceChargeNet;
+          return {
+            itemId: l.itemId,
+            name: l.name,
+            qty: l.qty,
+            unitPriceSatang: l.unitPriceSatang,
+            discountSatang: l.qty * l.unitPriceSatang - net,
+            vatTreatment: i < src0.length ? treatmentOf(l.vatTreatment) : "STANDARD",
+          };
+        })
+      : src.length > 0 && gross > 0 && billDiscount >= 0
       ? src.map((l, i) => ({
           itemId: l.itemId,
           name: l.name,
@@ -380,7 +399,8 @@ export async function bridgePosSaleRefunded(
     grossSatang: refund.grandTotalSatang,
     serviceGrossSatang: Math.min(Math.max(0, serviceGrossSatang), refund.grandTotalSatang),
     payMethods: payments.map((p) => ({ channel: channelOf(p.type), amountSatang: p.amountSatang })),
-    lines: src.map((l) => ({ itemId: l.itemId, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang })),
+    // ACC T1.8 ▸ ชนิด VAT ต่อบรรทัด (บรรทัดค่าบริการ = มาตรฐาน) · ใบคืนของบิลเก่า = ไม่มีชนิด = ทางเดิม ◂
+    lines: src.map((l) => ({ itemId: l.itemId, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, ...(l.vatTreatment ? { vatTreatment: l.vatTreatment } : {}) })),
     docNo: refund.receiptNo,
     reason: refund.note,
     ...(channelName ? { channelName } : {}), // POS P2.1 ◂

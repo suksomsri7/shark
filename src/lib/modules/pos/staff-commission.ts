@@ -120,14 +120,14 @@ async function accrualRows(tx: Tx, sale: SaleForAccrual): Promise<RowInput[]> {
   // ผู้ขายต้องเป็นสมาชิกของร้าน (ไม่ใช่คีย์ API — soldByUserId ของ REST = ApiKey.id) ที่บทบาทอยู่ใน sellerRoles
   const member = await tx.membership.findFirst({ where: { tenantId: sale.tenantId, userId: sale.soldByUserId, acceptedAt: { not: null } }, select: { role: true } });
   if (!member || !(cfg.sellerRoles as string[]).includes(member.role)) return [];
-  const lines = await tx.posSaleLine.findMany({ where: { saleId: sale.id, tenantId: sale.tenantId }, orderBy: { id: "asc" }, select: { id: true, qty: true, lineTotalSatang: true, productId: true } });
+  const lines = await tx.posSaleLine.findMany({ where: { saleId: sale.id, tenantId: sale.tenantId }, orderBy: { id: "asc" }, select: { id: true, qty: true, lineTotalSatang: true, productId: true, vatTreatment: true } });
   if (!lines.length) return [];
   const productIds = [...new Set(lines.map((l) => l.productId).filter((x): x is string => !!x))];
   const catOf = new Map(
     productIds.length ? (await tx.posProduct.findMany({ where: { tenantId: sale.tenantId, id: { in: productIds } }, select: { id: true, categoryId: true } })).map((p) => [p.id, p.categoryId]) : [],
   );
   // มติ 8 · CD-8: ฐาน = ยอดสุทธิหลังส่วนลดระดับบิล (ลำดับบรรทัดเดียวกับบัญชี/การคืนเงิน = id) · รวม VAT · ไม่รวมทิป/ค่าบริการ
-  const bases = staffCommissionBases(lines.map((l) => l.lineTotalSatang), sale.serviceChargeSatang, sale.grandTotalSatang);
+  const bases = staffCommissionBases(lines.map((l) => l.lineTotalSatang), sale.serviceChargeSatang, sale.grandTotalSatang, lines.map((l) => l.vatTreatment));
   const periodKey = staffCommissionPeriodOf(sale.paidAt ?? sale.createdAt);
   const out: RowInput[] = [];
   lines.forEach((l, i) => {
@@ -208,14 +208,14 @@ async function serviceBillAccrualRows(tx: Tx, sale: SaleForAccrual): Promise<Row
   const lines = await tx.posSaleLine.findMany({
     where: { saleId: sale.id, tenantId: sale.tenantId },
     orderBy: { id: "asc" },
-    select: { id: true, qty: true, unitPriceSatang: true, lineTotalSatang: true, productId: true, serviceId: true, performerEmployeeId: true },
+    select: { id: true, qty: true, unitPriceSatang: true, lineTotalSatang: true, productId: true, serviceId: true, performerEmployeeId: true, vatTreatment: true },
   });
   if (!lines.length) return [];
   const empIds = [...new Set(lines.map((l) => l.performerEmployeeId).filter((x): x is string => !!x))];
   const userOf = new Map(
     empIds.length ? (await tx.hrEmployee.findMany({ where: { tenantId: sale.tenantId, id: { in: empIds } }, select: { id: true, linkedUserId: true } })).map((e) => [e.id, e.linkedUserId]) : [],
   );
-  const bases = staffCommissionBases(lines.map((l) => l.lineTotalSatang), sale.serviceChargeSatang, sale.grandTotalSatang);
+  const bases = staffCommissionBases(lines.map((l) => l.lineTotalSatang), sale.serviceChargeSatang, sale.grandTotalSatang, lines.map((l) => l.vatTreatment));
   const periodKey = staffCommissionPeriodOf(sale.paidAt ?? sale.createdAt);
   const out: RowInput[] = [];
   lines.forEach((l, i) => {

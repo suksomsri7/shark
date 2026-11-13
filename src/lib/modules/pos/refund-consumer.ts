@@ -61,7 +61,7 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
   //   (applyExternalDepositRefund ผ่าน account-bridge · idempotent ต่อใบคืน) · ไม่มีรายได้/สต็อก/แต้มให้กลับ · ใบรับยังไม่มี JV = ลงแทนก่อน (F8) ◂
   if (sale.sourceModule === "POS_DEPOSIT") {
     if (sale.docType === "SALE" && (await posSalePosted({ tenantId: evt.tenantId, sourceSystemId: sale.systemId, refId: sale.id })) === false) {
-      await bridgePosSalePaid(sale, sale.payments, 0, { lines: sale.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })), customer: null });
+      await bridgePosSalePaid(sale, sale.payments, 0, { lines: sale.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId, vatTreatment: l.vatTreatment })), customer: null });
     }
     if (refund.grandTotalSatang > 0) {
       const res = await bridgePosDepositRefunded(refund, sale.id, refund.payments);
@@ -80,7 +80,7 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
       const posted = await posSalePosted({ tenantId: evt.tenantId, sourceSystemId: sale.systemId, refId: sale.id });
       if (posted === false) {
         await bridgePosSalePaid(sale, sale.payments, sale.lines.reduce((n, l) => n + (l.serviceId ? l.lineTotalSatang : 0), 0), {
-          lines: sale.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })),
+          lines: sale.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId, vatTreatment: l.vatTreatment })),
           customer: null,
         });
       }
@@ -110,7 +110,7 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
       const res = await bridgePosSaleRefunded(
         refund,
         sale.id,
-        refund.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })),
+        refund.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId, vatTreatment: l.vatTreatment })),
         refund.payments,
         serviceGross,
         channelName,
