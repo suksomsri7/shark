@@ -10,6 +10,8 @@ import { getPayrollEngine, previewPayrollRunV2, RUN2_RESULT_TEXT, RUN2_REVERSE_T
 import { LAW_MSG } from "./law";
 import { WE_TEXT } from "./work-entries";
 import { ATT_TEXT, attendanceInForceOf } from "./attendance-pay-rules";
+import { H37_CODE_TEXT, H37_TEXT, getPayrollAccounting, payAccountsOfRun } from "./payroll"; // HR H3.7 ▸ จ่ายรอบที่ลงบัญชี: เลือกบัญชีจ่าย + วันที่จ่าย ◂
+import { DateInput } from "@/components/account-v2/DateInput"; // HR H3.7 ◂
 
 const btn = "btn btn-primary min-h-[44px] text-sm";
 const ghost = "btn btn-ghost min-h-[44px] text-sm";
@@ -27,6 +29,8 @@ export const RUN2_MSG: Record<string, string> = Object.fromEntries([
   ...Object.entries(ATT_TEXT).map(([k, v]) => [`a.${k}`, v]),
   ...Object.entries(RUN2_RESULT_TEXT).map(([k, v]) => [`p.${k}`, v]),
   ...Object.entries(RUN2_REVERSE_TEXT).map(([k, v]) => [`v.${k}`, v]),
+  ...Object.entries(H37_TEXT).map(([k, v]) => [`b.${k}`, v]), // HR H3.7 ◂
+  ...Object.entries(H37_CODE_TEXT).map(([k, v]) => [`c.${k}`, v]), // HR H3.7 ◂
 ]);
 export const run2MsgCode = (reason: string | undefined) => (reason ? (Object.entries(RUN2_MSG).find(([, v]) => v === reason)?.[0] ?? "failed") : "failed");
 
@@ -232,8 +236,9 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                 </form>
               )}
               {status === "APPROVED" && act.pay && (
-                <form action={act.pay}>
+                <form action={act.pay} className="flex flex-wrap items-end gap-2">
                   {hidden({ runId: String(run.id), periodKey })}
+                  <PayFields ctx={ctx} runId={String(run.id)} periodKey={periodKey} />
                   <button type="submit" className={btn} data-testid="hr-run2-pay">
                     {t("pay")}
                   </button>
@@ -301,6 +306,35 @@ async function BranchConfirm({ systemId, runId, status, steps, act, t, unitIds }
     </div>
   );
 }
+
+// HR H3.7 ▸ ช่องของปุ่มจ่าย สำหรับรอบที่ลงบัญชีแล้ว (สมุดที่บันทึกไว้ในรอบ): บัญชีเงินที่จ่าย (ค่าเริ่มต้น = ที่เจ้าของตั้ง) + วันที่จ่าย (วันแรกของงวด … วันนี้) ·
+//   รอบที่ไม่ได้ลงบัญชี = ไม่มีช่อง (จ่ายแบบเดิม) ◂
+async function PayFields({ ctx, runId, periodKey }: { ctx: { tenantId: string; systemId: string }; runId: string; periodKey: string }) {
+  const accounts = await payAccountsOfRun(ctx, runId);
+  if (!accounts.length) return null;
+  const t = await getTranslations("hr.payacct");
+  const def = (await getPayrollAccounting(ctx)).payFinanceAccountId;
+  return (
+    <>
+      <label className="flex flex-col text-sm">
+        {t("payFrom")}
+        <select name="financeAccountId" defaultValue={accounts.some((a) => a.id === def) ? (def ?? "") : ""} className="input min-h-[44px]" data-testid="hr-markpaid-account">
+          <option value="">{t("choose")}</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col text-sm">
+        {t("paidOn", { period: periodKey })}
+        <DateInput name="paidOn" testId="hr-markpaid-date" />
+      </label>
+    </>
+  );
+}
+// ◂ HR H3.7
 
 /** การ์ดรุ่นเครื่องคิดเงินเดือน (หน้าตั้งค่า) — เจ้าของร้านแก้ได้ · ผู้ตั้งค่าคนอื่นเห็นสรุป · แสดงช่วงที่กฎหักสาย/ขาดมีผล (H3.2 in-force) */
 export async function PayrollEngineCard({ systemId, flash, flashOk, onSave }: { systemId: string; flash: string; flashOk: boolean; onSave: Act | null }) {

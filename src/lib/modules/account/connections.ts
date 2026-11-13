@@ -12,6 +12,7 @@ import type { AccountLinkedKind, Prisma, SystemType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { formatDateTh } from "@/lib/ui/date";
 import { ACCOUNT_SCOPE_KEYS } from "@/lib/api-keys/scopes"; // CRM C5.5-fix8 ▸ กติกาหมุนคีย์ = กติกาออกคีย์ ◂
+import { ensureAccounting, ensureJournalSequences, ensurePayrollLedgersInTx } from "./gl"; // HR H3.7 ▸ เชื่อมสมุดเงินเดือน = ผังบัญชีเงินเดือนพร้อมลง ◂
 
 export type Ctx = { tenantId: string; systemId: string };
 
@@ -107,8 +108,8 @@ export const CONNECTION_CATALOG: readonly ConnectionCatalogItem[] = [
     label: "พนักงานและเงินเดือน",
     icon: "users",
     hint: "เชื่อมเพื่อให้เงินเดือนลงบัญชีอัตโนมัติ",
-    toggles: ["autoPost"],
-    accountKeys: ["SALARY_EXPENSE"], // ไม่มี mapping key จริง — postPayrollJV ใช้ 6000 ตรง ๆ (ดู FALLBACK_CODE)
+    toggles: [], // HR H3.7 ▸ เชื่อม = ลงบัญชีเงินเดือน (ไม่มีสวิตช์) · ระบบเงินเดือน 1 ระบบ = สมุด 1 เล่ม ◂
+    accountKeys: ["PAYROLL_SALARY_EXPENSE", "PAYROLL_SALARY_PAYABLE"], // HR H3.7 ▸ mapping key จริงของรอบรุ่น 2 (ตั้งค้างจ่าย/จ่าย) ◂
   },
   {
     kind: "BUSINESS",
@@ -136,6 +137,8 @@ const FALLBACK_CODE: Record<string, string> = {
   INVENTORY: "1200",
   GOODS_ISSUE_EXPENSE: "5300",
   SALARY_EXPENSE: "6000", // เงินเดือน (postPayrollJV ใช้ 6000 ตรง ๆ — ไม่มี mapping key)
+  PAYROLL_SALARY_EXPENSE: "6000", // HR H3.7 ◂
+  PAYROLL_SALARY_PAYABLE: "2120", // HR H3.7 ◂
 };
 
 // ─────────────────────────── อ่าน/เขียน link ───────────────────────────
@@ -244,6 +247,8 @@ export async function connect(
       if (others.length > 0) return { ok: false, reason: DORM_OTHER_BOOK };
     }
   }
+  // HR H3.7 ▸ ระบบเงินเดือน 1 ระบบ = สมุด 1 เล่ม (Q10) — อีกเล่มเชื่อมอยู่ ⇒ ปฏิเสธ · เชื่อมจากฝั่งบัญชีแล้วตั้งผังเงินเดือนให้พร้อมลง (เหมือนเชื่อมจากหน้า HR) ◂
+  if (kind === "HR" && !tx) { const b = await payrollBookOf(ctx.tenantId, linkedId); if ((b.kind === "ONE" && b.systemId !== ctx.systemId) || b.kind === "MANY") return { ok: false, reason: HR_OTHER_BOOK }; } // HR H3.7
   const db = linkDbOf(ctx, tx);
   const existing = await db.accountSystemLink.findFirst({ where: { ...ownScope(ctx, tx), linkedKind: kind, linkedId } });
   if (existing) {
@@ -251,12 +256,14 @@ export async function connect(
       where: { id: existing.id },
       data: { enabled: true, archivedAt: null, updatedById: actorUserId },
     });
+    if (kind === "HR" && !tx) await payrollBookReady(ctx); // HR H3.7 ◂
     return { ok: true };
   }
   // tenantId/systemId ถูก inject โดย tenantDb (แกน system) — TS ยังไม่รู้ ⇒ cast ตามแพตเทิร์นเดียวกับ policy.ts
   await db.accountSystemLink.create({
     data: { ...ownScope(ctx, tx), linkedKind: kind, linkedId, enabled: true, updatedById: actorUserId, config: {} } as Prisma.AccountSystemLinkCreateInput,
   });
+  if (kind === "HR" && !tx) await payrollBookReady(ctx); // HR H3.7 ◂
   return { ok: true };
 }
 
@@ -501,3 +508,77 @@ export async function accountKeyRotationProblem(tenantId: string, keyId: string)
   if (scopes.length === 0 && k.systemId) return "คีย์นี้ไม่มีสิทธิ์ของระบบบัญชีเลย จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน (เลือกสิทธิ์อย่างน้อย 1 รายการ)";
   return null;
 }
+
+// ═══════════════════ HR H3.7 ▸ HR → ACCOUNT book link (payroll) — explicit link, never "the first ACCOUNT system" ═══════════════════
+//   brief ledger/hr-briefs/hr-brief-H3.7.md R3 · model = dorm rule "1 unit = 1 book" (DORM_OTHER_BOOK)
+export const HR_OTHER_BOOK = "ระบบเงินเดือนนี้เชื่อมกับสมุดบัญชีเล่มอื่นอยู่แล้ว — ตัดการเชื่อมที่เล่มนั้นก่อน (เงินเดือน 1 ระบบลงบัญชีได้สมุดเดียว)";
+export const PAYROLL_BOOK_NOT_FOUND = "ไม่พบสมุดบัญชีนี้ในร้าน";
+export const PAYROLL_HR_NOT_FOUND = "ไม่พบระบบเงินเดือนนี้ในร้าน";
+export type PayrollBook = { kind: "NONE" } | { kind: "ONE"; systemId: string } | { kind: "MANY"; systemIds: string[] };
+
+/** the book(s) holding an enabled, not archived HR link to this HR system — ACCOUNT system (active) and HR system both of THIS tenant ·
+ *  raw SQL bound to tenantId (the link rows live in several books; tenantDb would need one systemId) · `tx` = read inside the caller's tx */
+export async function payrollBookOf(tenantId: string, hrSystemId: string, tx?: Prisma.TransactionClient): Promise<PayrollBook> {
+  if (typeof tenantId !== "string" || !tenantId || typeof hrSystemId !== "string" || !hrSystemId) return { kind: "NONE" };
+  const db = (tx ?? tenantDb({ tenantId })) as unknown as Prisma.TransactionClient;
+  const rows = await db.$queryRaw<{ s: string }[]>`
+    SELECT DISTINCT l."systemId" AS "s"
+    FROM "AccountSystemLink" l
+    JOIN "AppSystem" b ON b."id" = l."systemId" AND b."tenantId" = l."tenantId" AND b."type"::text = 'ACCOUNT' AND b."active" = true
+    JOIN "AppSystem" h ON h."id" = l."linkedId" AND h."tenantId" = l."tenantId" AND h."type"::text = 'HR'
+    WHERE l."tenantId" = ${tenantId} AND l."linkedKind"::text = 'HR' AND l."linkedId" = ${hrSystemId} AND l."enabled" = true AND l."archivedAt" IS NULL
+    ORDER BY 1`;
+  const ids = rows.map((r) => r.s);
+  return ids.length === 0 ? { kind: "NONE" } : ids.length === 1 ? { kind: "ONE", systemId: ids[0]! } : { kind: "MANY", systemIds: ids };
+}
+
+/** chart of the payroll keys ready in this book (seed + current period + 8 mappings) — autocommit setup, like the account pages */
+async function payrollBookReady(ctx: Ctx): Promise<void> {
+  await dbOf(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await ensureAccounting(ctx, tx);
+    await ensurePayrollLedgersInTx(ctx, tx);
+  });
+  await ensureJournalSequences(ctx.systemId);
+}
+
+/**
+ * Owner's choice of the payroll book for one HR system (null = unlink) — one transaction: lock the HR system's link set ·
+ * disable every other HR link of that HR system (other books of the shop) · connect the chosen book · ensureAccounting + ensurePayrollLedgersInTx.
+ * Cross-tenant ids are refused (book / HR system must belong to `tenantId`).
+ */
+export async function linkPayrollBook(input: { tenantId: string; hrSystemId: string; accountSystemId: string | null; actorUserId: string | null }): Promise<{ ok: true } | { ok: false; code: "BOOK_NOT_FOUND" | "HR_NOT_FOUND"; text: string }> {
+  const { tenantId, hrSystemId, accountSystemId, actorUserId } = input ?? ({} as typeof input);
+  if (typeof tenantId !== "string" || !tenantId) return { ok: false, code: "HR_NOT_FOUND", text: PAYROLL_HR_NOT_FOUND };
+  const tdb = tenantDb({ tenantId });
+  const hr = typeof hrSystemId === "string" && hrSystemId ? await tdb.appSystem.findFirst({ where: { id: hrSystemId, type: "HR" }, select: { id: true } }) : null;
+  if (!hr) return { ok: false, code: "HR_NOT_FOUND", text: PAYROLL_HR_NOT_FOUND };
+  if (accountSystemId !== null) {
+    const book = typeof accountSystemId === "string" && accountSystemId ? await tdb.appSystem.findFirst({ where: { id: accountSystemId, type: "ACCOUNT", active: true }, select: { id: true } }) : null;
+    if (!book) return { ok: false, code: "BOOK_NOT_FOUND", text: PAYROLL_BOOK_NOT_FOUND };
+  }
+  const lockKey = `account:hr-payroll-link:${tenantId}:${hr.id}`;
+  const others = async (tx: Prisma.TransactionClient, keep: string | null) => tx.$executeRaw`
+    UPDATE "AccountSystemLink" SET "enabled" = false, "updatedById" = ${actorUserId ?? null}, "updatedAt" = (now() AT TIME ZONE 'UTC')
+    WHERE "tenantId" = ${tenantId} AND "linkedKind"::text = 'HR' AND "linkedId" = ${hr.id} AND "enabled" = true AND (${keep}::text IS NULL OR "systemId" <> ${keep}::text)`;
+  if (accountSystemId === null) {
+    await tdb.$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+      await others(tx, null);
+    });
+    return { ok: true };
+  }
+  const ctx = { tenantId, systemId: accountSystemId };
+  await dbOf(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+    await others(tx, accountSystemId);
+    await connect(ctx, "HR", hr.id, actorUserId ?? null, tx);
+    await ensureAccounting(ctx, tx);
+    await ensurePayrollLedgersInTx(ctx, tx);
+  }, { maxWait: 20_000, timeout: 60_000 });
+  await ensureJournalSequences(accountSystemId);
+  return { ok: true };
+}
+// ◂ HR H3.7

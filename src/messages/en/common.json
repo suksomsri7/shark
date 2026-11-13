@@ -1603,6 +1603,24 @@
       "presetDelete": "Delete",
       "presetCols": "{n} columns",
       "justMade": "File created — use Download below"
+    },
+    "payacct": {
+      "title": "Payroll accounting",
+      "linked": "Payroll is posted in the book \"{name}\" — approving a run accrues salaries · marking it paid posts the payment",
+      "notLinked": "No book selected — payroll runs are not posted",
+      "saved": "Saved",
+      "failed": "Could not save",
+      "bookNotFound": "This book was not found in the shop",
+      "book": "Book for payroll",
+      "noBook": "Do not post",
+      "saveBook": "Save book",
+      "payAccount": "Default account to pay salaries from",
+      "choose": "— choose an account —",
+      "savePayAccount": "Save pay account",
+      "twoStep": "Runs approved before a book was selected are not posted afterwards · posted runs are always paid and reversed in the same book",
+      "advanceNote": "Salary advances paid to employees before the payroll run are not posted by payroll — record the pay-out in the accounting system (debit employee receivable / credit cash or bank) so that the recovery in the payroll run clears the receivable correctly",
+      "payFrom": "Pay from",
+      "paidOn": "Payment date (from the start of {period} to today)"
     }
   }
 }

@@ -10592,6 +10592,249 @@
    "wo": "H3.4",
    "oracle": "qc-hr-h3.4",
    "note": "นาทีเท่านั้น (ไม่มี ฿) — fix r3 H7"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-accounting",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "ผู้ตั้งค่า HR",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "การ์ดลงบัญชีเงินเดือน (สมุดบัญชี · บัญชีจ่าย · หมายเหตุเงินเบิกล่วงหน้า)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-book-state",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "ผู้ตั้งค่า HR",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "สมุดที่เชื่อมอยู่ / ยังไม่เลือก / เชื่อมมากกว่า 1 เล่ม (bookAmbiguous)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-accounting-flash",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "หลังกดบันทึก (?pacct=)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "ผลการกด — ข้อความคงที่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-book",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "เจ้าของร้าน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-pay-book-save"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "เลือกสมุดบัญชีที่ลงเงินเดือน (ไม่ลงบัญชี = ว่าง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-book-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "เจ้าของร้าน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "setPayrollBookAction",
+    "db": "AccountSystemLink(HR) 1 เล่ม + ผังบัญชีเงินเดือน · AuditLog hr.payroll.book"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "บันทึกสมุดบัญชี"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-account",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "เจ้าของร้าน · เชื่อมสมุดแล้ว",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-pay-account-save"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "บัญชีเงินที่ใช้จ่ายเงินเดือน (ค่าเริ่มต้น)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-account-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "เจ้าของร้าน · เชื่อมสมุดแล้ว",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "setPayrollPayAccountAction",
+    "db": "AppSystem.settings.hrPayroll.payFinanceAccountId · AuditLog hr.payroll.payaccount"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "บันทึกบัญชีจ่าย"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-advance-note",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "ผู้ตั้งค่า HR",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "หมายเหตุคงที่: การจ่ายเงินเบิกล่วงหน้าต้องบันทึกในระบบบัญชีเอง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-markpaid-account",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "รอบอนุมัติแล้ว · ลงบัญชีในสมุดแล้ว",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-run2-pay"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "บัญชีเงินที่จ่าย (ค่าเริ่มต้นจากหน้าตั้งค่า)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-markpaid-date",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "รอบอนุมัติแล้ว · ลงบัญชีในสมุดแล้ว",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-run2-pay"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "วันที่จ่าย (วันแรกของงวด … วันนี้)",
+   "via": "DateInput testId=\"hr-markpaid-date\" → data-testid ของช่องที่มองเห็น (src/components/account-v2/DateInput.tsx)"
   }
  ]
 }

@@ -38,6 +38,8 @@ import { AttendancePayPolicyCard, ATT_MSG } from "@/lib/modules/hr/attendance-pa
 import { saveAttendancePayPolicyAction } from "@/lib/modules/hr/attendance-pay-actions"; // HR H3.2 ◂
 import { PayrollEngineCard, RUN2_MSG, run2MsgCode } from "@/lib/modules/hr/payroll-run-ui"; // HR H3.4 ▸ การ์ดรุ่นเครื่องคิดเงินเดือน (เจ้าของร้าน) ◂
 import { setPayrollEngineAction } from "@/lib/modules/hr/payroll-actions"; // HR H3.4 ◂
+import { setPayrollBookAction, setPayrollPayAccountAction } from "@/lib/modules/hr/payroll-actions"; // HR H3.7 ▸ สมุดบัญชีเงินเดือน + บัญชีจ่าย (เจ้าของร้าน) ◂
+import { PayrollAccountingCard, payAcctMsgCode } from "@/lib/modules/hr/payroll-accounting-ui"; // HR H3.7 ◂
 import { LEAVE_PRESET_TEXT } from "@/lib/modules/hr/leave-presets"; // HR H2.12 ▸ F1 ◂
 import { addLeavePresetAction } from "@/lib/modules/hr/leave-presets-actions"; // HR H2.12 ▸ F1 ◂
 import { LeavePolicyWarningLines, LeavePresetSection } from "@/lib/modules/hr/leave-presets-ui"; // HR H2.12 ▸ F1 + F5 ◂
@@ -175,6 +177,15 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     const r = await setPayrollEngineAction(fd); // HR H3.4 ◂
     redirect(`${path}?year=${year}&run2=${r.ok ? (r.warnings?.length ? "okw" : "ok") : encodeURIComponent(run2MsgCode(r.reason))}#hr-run2-engine`); // HR H3.4 ◂
   }; // HR H3.4 ◂
+  // HR H3.7 ▸ ลงบัญชีเงินเดือน — ผลการกด ?pacct= (รหัสคงที่) ◂
+  const onSavePayBook = async (fd: FormData) => {
+    "use server"; // HR H3.7 ◂
+    redirect(`${path}?year=${year}&pacct=${payAcctMsgCode(await setPayrollBookAction(fd))}#hr-pay-accounting`); // HR H3.7 ◂
+  }; // HR H3.7 ◂
+  const onSavePayAccount = async (fd: FormData) => {
+    "use server"; // HR H3.7 ◂
+    redirect(`${path}?year=${year}&pacct=${payAcctMsgCode(await setPayrollPayAccountAction(fd))}#hr-pay-accounting`); // HR H3.7 ◂
+  }; // HR H3.7 ◂
   // HR H3.5 ▸ ไฟล์โอนเงินเดือน — บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ (service ตรวจด่านซ้ำ) ◂
   const onSaveBankProfile = async (fd: FormData) => {
     "use server"; // HR H3.5 ◂
@@ -616,6 +627,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <AttendancePayPolicyCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveAttPay : null} />
       {/* HR H3.4 ▸ รุ่นเครื่องคิดเงินเดือน + เพดานหัก ม.76 + ช่วงที่กฎหักสาย/ขาดมีผล — แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <PayrollEngineCard systemId={id} flash={run2Flash} flashOk={run2Ok} onSave={auth.active.role === "OWNER" ? onSaveEngine : null} />
+      {/* HR H3.7 ▸ ลงบัญชีเงินเดือน — สมุดบัญชี 1 เล่ม + บัญชีจ่ายตั้งต้น + หมายเหตุเงินเบิกล่วงหน้า · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
+      <PayrollAccountingCard systemId={id} code={typeof (sp as Record<string, unknown>).pacct === "string" ? String((sp as Record<string, unknown>).pacct) : ""} onSaveBook={auth.active.role === "OWNER" ? onSavePayBook : null} onSavePayAccount={auth.active.role === "OWNER" ? onSavePayAccount : null} />
       {/* HR H3.5 ▸ ไฟล์โอนเงินเดือน — การ์ดแสดงเฉพาะผู้ผ่านด่านไฟล์โอน · บัญชีต้นทาง/เปิดรูปแบบธนาคาร = เจ้าของร้าน ◂ */}
       <BankSettingsCard systemId={id} onSaveProfile={auth.active.role === "OWNER" ? onSaveBankProfile : null} onSavePreset={onSaveBankPreset} onDeletePreset={onDeleteBankPreset} />
     </div>

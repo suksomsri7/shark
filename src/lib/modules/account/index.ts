@@ -1276,6 +1276,9 @@ export { docWonBasis, type DocWonBasis, creditMoneyDocOf, docFamilyIds } from ".
 // Payroll posting (WO-0036) — จุดเดียวที่ hr เรียกลงบัญชีเงินเดือน
 // reverseEntry (WO Wave2-K) — hr เรียกกลับ JV เงินเดือนตาม journalEntryId (immutable ledger)
 export { postPayrollJV, reverseEntry, type PayrollPostingInput } from "./gl";
+// HR H3.7 ▸ payroll accounting v2 (accrual · pay · strict mapping · posting key hr-payroll#<runId>#accrual|pay) + HR→ACCOUNT book link ◂
+export { PAYROLL_REF_TYPE, PAYROLL_ACCOUNTS, payrollAccrualTemplate, ensurePayrollLedgersInTx, postPayrollAccrualJV, postPayrollPayJV, reversePayrollRunJV, payrollPayAccountsOf, postPayrollV1KeyedJV, type PayrollAccrualAmounts, type PayrollAccountKey, type PayrollPostCode, type PayrollPostResult } from "./gl"; // HR H3.7
+export { payrollBookOf, linkPayrollBook, type PayrollBook } from "./connections"; // HR H3.7
 
 // Perpetual inventory (WO Inventory→Account) — จุดเดียวที่ inventory เรียกลงบัญชีต้นทุนสต็อก
 // (idempotent ต่อ movementId · Dr=Cr เสมอ · ไม่มีระบบ ACCOUNT → inventory ข้ามก่อนถึงที่นี่)

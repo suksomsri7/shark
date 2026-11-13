@@ -203,6 +203,15 @@ export const MAPPING_KEY_LABEL: Record<string, string> = {
   CASH: "เงินสด (บัญชีเริ่มต้น)",
   BANK: "เงินฝากธนาคาร (บัญชีเริ่มต้น)",
   SUSPENSE: "บัญชีพักรายการ (9999)",
+  // HR H3.7 ▸ mapping key ของบัญชีเงินเดือน (สร้าง/ผูกเมื่อเจ้าของเลือกสมุดเงินเดือน — gl.ts ensurePayrollLedgersInTx · ไม่อยู่ใน CHART) ◂
+  PAYROLL_SALARY_EXPENSE: "เงินเดือนและค่าแรง",
+  PAYROLL_SSO_EXPENSE: "เงินสมทบประกันสังคม (ส่วนนายจ้าง)",
+  PAYROLL_SALARY_PAYABLE: "เงินเดือนค้างจ่าย",
+  PAYROLL_SSO_PAYABLE: "เงินสมทบประกันสังคมค้างนำส่ง",
+  PAYROLL_WHT_PAYABLE: "ภาษีเงินได้หัก ณ ที่จ่ายค้างนำส่ง (ภ.ง.ด.1)",
+  PAYROLL_EMPLOYEE_RECEIVABLE: "ลูกหนี้พนักงาน/เงินทดรองจ่ายพนักงาน",
+  PAYROLL_DAMAGES_RECOVERY: "รายได้จากการหักค่าเสียหาย/ค่าของจากพนักงาน",
+  PAYROLL_OVERPAY_RECOVERY: "รับคืนเงินเดือน/ค่าคอมฯ ที่จ่ายเกิน",
 };
 
 /** ป้ายไทยของ mapping key — คีย์ "DOC:<docType>" (override ใบกำกับภาษีอัตโนมัติต่อชนิดเอกสาร) แปลด้วย docTypeLabel
