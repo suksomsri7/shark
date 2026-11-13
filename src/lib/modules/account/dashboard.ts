@@ -1,6 +1,7 @@
 import { tenantDb } from "@/lib/core/db";
 import type { AccountDocStatus, AccountDocType, AccountLedgerType, Prisma } from "@prisma/client";
 import { DOC_LABEL, STATUS_LABEL, familyCreditByInvoice, isOverdue } from "./service";
+import { accountNow } from "./clock";
 import { EXP_DOC_LABEL } from "./expense";
 import { financeBalances } from "./finance";
 import { agingBucket, emptyAging, type AgingGrand } from "./reports";
@@ -456,7 +457,7 @@ export async function cashPosition(
   meter?: QueryMeter,
 ): Promise<CashPosition> {
   const db = dbOf(ctx, meter);
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? accountNow();
   const periodKey = periodKeyBkk(now);
   bump(meter, 1 + FINANCE_BALANCES_QUERIES);
   const [balances, glRows] = await Promise.all([
@@ -527,7 +528,7 @@ function summaryFromDocs(
     side.count += 1;
     side.amount += outstanding;
     if (d.contactId) contacts[d.direction === "IN" ? "IN" : "OUT"].add(d.contactId);
-    if (isOverdue({ status: d.status, dueDate: d.dueDate, validUntil: d.validUntil })) {
+    if (isOverdue({ status: d.status, dueDate: d.dueDate, validUntil: d.validUntil }, asOf)) {
       side.overdueCount += 1;
       side.overdueAmount += outstanding;
     }
@@ -594,7 +595,7 @@ export async function receivablePayableSummary(
 ): Promise<ReceivablePayableSummary> {
   const db = dbOf(ctx, meter);
   const { docs, cn } = await loadOpenDocs(db);
-  return summaryFromDocs(docs, cn, opts.now ?? new Date());
+  return summaryFromDocs(docs, cn, opts.now ?? accountNow());
 }
 
 // ─────────────────── 5) "เอกสารที่ออก" (§4 บล็อก 6) ───────────────────
@@ -1264,7 +1265,7 @@ export async function cashCalendar(
   const db = dbOf(ctx, meter);
   const from = monthStart(monthKey);
   const to = monthEndExclusive(monthKey);
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? accountNow();
   bump(meter, 3); // raw ×3
 
   const [paid, expected, overdue] = await Promise.all([
@@ -1453,7 +1454,7 @@ export type SnapshotOpts = {
 export async function dashboardSnapshot(ctx: DashCtx, opts: SnapshotOpts = {}): Promise<DashboardSnapshot> {
   const meter = opts.meter;
   const db = dbOf(ctx, meter);
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? accountNow();
   const periodKey = periodKeyBkk(now);
   const year = opts.year ?? Number(periodKey.slice(0, 4));
   const topN = opts.topN ?? 5;

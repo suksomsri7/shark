@@ -211,6 +211,20 @@ const docSettingsUpdateInput = z
       .boolean()
       .optional()
       .describe("Goods lines: issue the tax invoice together with the invoice (default true). Off = goods output VAT stays parked and a warning shows after the month."),
+    inputVat: z
+      .object({
+        nonClaimPosting: z
+          .enum(["SEPARATE_ACCOUNT", "INTO_COST"])
+          .optional()
+          .describe("Book-wide. Non-claimable input VAT: `SEPARATE_ACCOUNT` (default: the two non-claimable input VAT accounts, deductible vs disallowed expense) or `INTO_COST` (added to the expense/cost account of the line)."),
+        vendorNoTaxIdDefault: z
+          .enum(["PENDING", "NO_CLAIM"])
+          .optional()
+          .describe("Book-wide. Default input VAT status when the vendor has no 13-digit tax id: `PENDING` (default: waiting for the vendor's tax invoice) or `NO_CLAIM`."),
+      })
+      .strict()
+      .optional()
+      .describe("Purchase input VAT settings of the whole book (same card as the tax invoice settings on screen)."),
     printTemplate: z.enum(["STANDARD", "COMPACT", "WITH_IMAGES"]).optional(),
     channels: z.array(z.string().min(1).max(60)).max(50).optional().describe("Money channel ids, in the order printed on documents."),
   })
@@ -222,7 +236,7 @@ const settingsDocumentsUpdate = defineOp({
   path: "/settings/documents/{docType}",
   kind: "write",
   action: "account.settings.manage",
-  summary: "Change the numbering pattern, due days, footer note, terms or print settings of one document type.",
+  summary: "Change the numbering pattern, due days, footer note, terms or print settings of one document type, or the book-wide tax invoice and purchase input VAT settings.",
   label: "แก้ตั้งค่าเอกสารและเลขที่",
   input: docSettingsUpdateInput,
   test: "D4-S2.1",
@@ -269,6 +283,7 @@ const settingsDocumentsUpdate = defineOp({
         ...(input.autoTaxInvoice !== undefined ? { mode: input.autoTaxInvoice } : {}),
         ...(input.goodsTaxInvoiceOnIssue !== undefined ? { goodsOnIssue: input.goodsTaxInvoiceOnIssue } : {}),
       };
+    if (input.inputVat !== undefined) patch.inputVat = { ...cur.inputVat, ...input.inputVat };
     if (input.printTemplate !== undefined) patch.print = { ...cur.print, template: input.printTemplate };
     if (input.channels !== undefined) patch.channels = { order: input.channels };
 

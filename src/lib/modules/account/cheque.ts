@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/core/db";
 import { safeReason } from "./errors";
+import { accountNow } from "./clock";
 import type { AccountChequeDirection, AccountChequeStatus, Prisma } from "@prisma/client";
 // posting engine (owner = GL-Core) — subagent แค่ import + เรียกตามลายเซ็น
 import { ensureAccounting, postChequeEntry, resolveMapping } from "./gl";
@@ -295,7 +296,7 @@ export async function chequeSummaryV2(
     select: { amount: true, chequeDate: true },
   });
   const pendingSatang = rows.reduce((s, r) => s + r.amount, 0);
-  const horizon = new Date(Date.now() + 8 * 24 * 3600 * 1000); // 7 วันข้างหน้า + วันนี้ (รวมที่เลยกำหนดแล้ว)
+  const horizon = new Date(accountNow().getTime() + 8 * 24 * 3600 * 1000); // 7 วันข้างหน้า + วันนี้ (รวมที่เลยกำหนดแล้ว)
   const dueSoonCount = rows.filter((r) => r.chequeDate < horizon).length;
   return { pendingSatang, dueSoonCount };
 }

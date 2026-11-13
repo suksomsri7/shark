@@ -1,3 +1,5 @@
+import { pndCertGuardInTx } from "./filed-guard";
+import { FILING_AUDIT, filingSnapshot } from "./filing-history";
 import { prisma } from "@/lib/core/db";
 import { safeReason } from "./errors";
 // CRM C5.4-N ▸ เลข WTI / 50 ทวิ จองท้ายธุรกรรม (LOCK ORDER ขั้น 7 · service.ts หัวไฟล์) ◂
@@ -359,6 +361,8 @@ export async function issueWhtCert(
         },
         select: { id: true },
       });
+      // ACC T1.7 ▸ ออก 50 ทวิ ลงเดือนที่ทำเครื่องหมายนำส่ง ภ.ง.ด. แล้ว = คำเตือน+ยืนยัน (ไม่บล็อก) ◂
+      await pndCertGuardInTx(tx, { tenantId, systemId }, { id: cert.id, issueDate, docNo: null, whtAmount: pay.whtAmountSatang }, "ISSUE");
       deferDocNo(tx, {
         docId: cert.id,
         tenantId,
@@ -809,7 +813,9 @@ export async function markFiled(
     if (report.rows.length === 0) return { ok: false, reason: "ไม่มี 50 ทวิ ที่ต้องนำส่งในงวดนี้" };
     const key = `${input.form}:${input.periodKey}`;
     await prisma.$transaction(async (tx) => {
-      await tx.accountWhtFiling.upsert({
+      // ACC T1.7 ▸ ทำซ้ำ/ทำใหม่หลังยกเลิก = ใช้แถวเดิม · ภาพเดิมเก็บใน AuditLog ◂
+      const prev = await tx.accountWhtFiling.findFirst({ where: { systemId, form: input.form, periodKey: input.periodKey } });
+      const saved = await tx.accountWhtFiling.upsert({
         where: { systemId_form_periodKey: { systemId, form: input.form, periodKey: input.periodKey } },
         create: {
           tenantId,
@@ -829,6 +835,22 @@ export async function markFiled(
           totalTaxSatang: report.grandWht,
           certCount: report.rows.length,
           note: input.note ?? null,
+          unmarkedAt: null,
+          unmarkedById: null,
+          unmarkReason: null,
+        },
+        select: { id: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorType: "USER",
+          actorId: input.filedById ?? null,
+          action: prev ? FILING_AUDIT.whtRefile : FILING_AUDIT.whtMark,
+          targetType: "AccountWhtFiling",
+          targetId: saved.id,
+          before: prev ? (filingSnapshot(prev) as object) : undefined,
+          after: { periodKey: input.periodKey, form: input.form, totalBaseSatang: report.grandBase, totalTaxSatang: report.grandWht, certCount: report.rows.length, certIds: report.rows.map((r) => r.certId) } as object,
         },
       });
       await tx.accountDocument.updateMany({
@@ -842,24 +864,42 @@ export async function markFiled(
   }
 }
 
-/** ยกเลิกเครื่องหมายนำส่งแล้ว (สิทธิ์ระดับเจ้าของ — `account.wht.unmark` ตรวจที่ actions.ts) */
+/**
+ * ยกเลิกเครื่องหมายนำส่งแล้ว (สิทธิ์ระดับเจ้าของ — `account.wht.unmark` ตรวจที่ actions.ts)
+ * ACC T1.7 ▸ ไม่ลบแถว: ตั้ง unmarkedAt/โดยใคร/เหตุผล · ล้างตราประทับ 50 ทวิ (สถานะปัจจุบัน) · รายชื่อ 50 ทวิ ที่เคยประทับเก็บในภาพ AuditLog ◂
+ */
 export async function unmarkFiled(
   tenantId: string,
   systemId: string,
-  input: { form: 3 | 53; periodKey: string },
+  input: { form: 3 | 53; periodKey: string; userId?: string | null; reason?: string | null; actorType?: "USER" | "PLATFORM_USER" | "SYSTEM" | "API_KEY" },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const key = `${input.form}:${input.periodKey}`;
+  const reason = (input.reason ?? "").trim().slice(0, 500) || null;
   try {
     await prisma.$transaction(async (tx) => {
       const filing = await tx.accountWhtFiling.findFirst({
-        where: { tenantId, systemId, form: input.form, periodKey: input.periodKey },
+        where: { tenantId, systemId, form: input.form, periodKey: input.periodKey, unmarkedAt: null },
       });
       if (!filing) throw new Error("งวดนี้ยังไม่ได้ทำเครื่องหมายนำส่ง");
+      const stamped = await tx.accountDocument.findMany({ where: { systemId, docType: "WHT_CERT", whtFiledPeriodKey: key }, select: { id: true } });
       await tx.accountDocument.updateMany({
         where: { systemId, docType: "WHT_CERT", whtFiledPeriodKey: key },
         data: { whtFiledPeriodKey: null },
       });
-      await tx.accountWhtFiling.delete({ where: { id: filing.id } });
+      const at = new Date();
+      await tx.accountWhtFiling.update({ where: { id: filing.id }, data: { unmarkedAt: at, unmarkedById: input.userId ?? null, unmarkReason: reason } });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorType: input.actorType ?? "USER",
+          actorId: input.userId ?? null,
+          action: FILING_AUDIT.whtUnmark,
+          targetType: "AccountWhtFiling",
+          targetId: filing.id,
+          before: { ...filingSnapshot(filing), certIds: stamped.map((c) => c.id) } as object,
+          after: { periodKey: input.periodKey, form: input.form, reason, unmarkedAt: at.toISOString() } as object,
+        },
+      });
     });
     return { ok: true };
   } catch (e) {
@@ -869,7 +909,7 @@ export async function unmarkFiled(
 
 /** งวดที่ทำเครื่องหมายนำส่งแล้วทั้งหมดของระบบ — ใช้เช็คสถานะในหน้ารายการ/modal (ไม่ query ทีละ cert) */
 export function listWhtFilings(tenantId: string, systemId: string) {
-  return prisma.accountWhtFiling.findMany({ where: { tenantId, systemId }, orderBy: [{ periodKey: "desc" }, { form: "asc" }] });
+  return prisma.accountWhtFiling.findMany({ where: { tenantId, systemId, unmarkedAt: null }, orderBy: [{ periodKey: "desc" }, { form: "asc" }] });
 }
 
 const PERIOD_LABEL_TH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
@@ -915,7 +955,7 @@ export async function validateMarkFiledSelection(
   const form = [...forms][0] as 3 | 53;
   const periodKey = [...periods][0];
   const report = await pnd(tenantId, systemId, { type: form, period: periodKey });
-  const existing = await prisma.accountWhtFiling.findFirst({ where: { tenantId, systemId, form, periodKey } });
+  const existing = await prisma.accountWhtFiling.findFirst({ where: { tenantId, systemId, form, periodKey, unmarkedAt: null } });
   return {
     ok: true,
     form,

@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────
 import type { AccountVatMode } from "@prisma/client";
 import { allocateProportional, computeTotals } from "./totals";
+import { legalWarning, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 import {
   SALES_TAX_ABB_MODES,
   SALES_TAX_ABB_MODE_LABEL_TH,
@@ -168,6 +169,8 @@ export type SalesTaxRow = {
   flag?: string;
   /** เอกสารบัญชีของแถว (ทำลิงก์ที่หน้าจอ) */
   docId?: string;
+  /** ACC T1.9 ▸ แถวจาก JV ที่บันทึกเอง (รายการปรับปรุงมือ — ไม่มีใบกำกับ) ◂ */
+  manual?: boolean;
   /** ใบสรุปรายวัน: รายใบสำหรับกดดู */
   bills?: SalesTaxRow[];
   // ── ข้อมูลจัดกลุ่มใบย่อ (ภายใน) ──
@@ -305,8 +308,8 @@ export type SalesTaxHeader = {
   branchLabel: string;
   periodKey: string;
   monthLabel: string;
-  /** คำเตือนท้องถิ่น (ย้ายเข้าทะเบียนกลาง T0.4 ภายหลัง) */
-  warnings: string[];
+  /** คำเตือนหัวรายงาน — จากทะเบียนกลาง (T0.4) รูปเดียวกับจอ/REST/AI */
+  warnings: LegalWarning[];
 };
 
 export function sellerBranchLabelTh(code: string | null | undefined, name: string | null | undefined): string {
@@ -316,10 +319,11 @@ export function sellerBranchLabelTh(code: string | null | undefined, name: strin
   return `สาขาที่ ${c}${n ? ` (${n})` : ""}`;
 }
 
-export function headerWarningsTh(h: { orgName: string; taxId: string }): string[] {
-  const w: string[] = [];
-  if (!h.orgName.trim()) w.push("ยังไม่ได้กรอกชื่อกิจการ — หัวรายงานภาษีขายต้องมีชื่อผู้ประกอบการ (ตั้งค่า › ข้อมูลกิจการ)");
-  if (!/^\d{13}$/.test(h.taxId.trim())) w.push("เลขประจำตัวผู้เสียภาษีของกิจการยังไม่ครบ 13 หลัก — หัวรายงานภาษีขายต้องมีเลขนี้ (ตั้งค่า › ข้อมูลกิจการ)");
+/** คำเตือนหัวรายงานภาษี (ขาย/ซื้อ/ภ.พ.30) — ทะเบียนกลาง T0.4 · ไม่บล็อก */
+export function headerWarningsTh(h: { orgName: string; taxId: string }, report = "รายงานภาษีขาย"): LegalWarning[] {
+  const w: LegalWarning[] = [];
+  if (!h.orgName.trim()) w.push(legalWarning("TAX_REPORT_ORG_NAME_MISSING", { report }));
+  if (!/^\d{13}$/.test(h.taxId.trim())) w.push(legalWarning("TAX_REPORT_TAX_ID_MISSING", { report }));
   return w;
 }
 

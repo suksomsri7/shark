@@ -11,8 +11,9 @@ const accEnv = (await import("./acc-v2-env.mts" as string)) as {
 };
 const { loadQcEnv, QC } = accEnv;
 loadQcEnv();
-// ORACLE-EDIT ACC T1.8 step 0: เฉลย overdue ของ seed คิด ณ QC.today (2026-09-30) — นาฬิกาเครื่องเลย 31 ต.ค. แล้ว "พ้นกำหนด" ของโมดูลบัญชีนับเพิ่มเอง (rot แบบ T0.3b) ⇒ ตรึงนาฬิกาบัญชีที่วันเดียวกับเฉลย (เหมือน qc-acc-v2-list) · ไม่ลดข้อตรวจใด
-await ((await import("./acc-v2-env.mts" as string)) as { pinQcAccountClock: () => Promise<Date> }).pinQcAccountClock();
+// ORACLE-EDIT (13 พ.ย. 2569): ตรึงนาฬิกา "พ้นกำหนด" ที่ QC.asOfIso (T0.3b pinQcAccountClock) — เฉลยแท็บ overdue/awaiting คิด ณ 2026-09-30
+//   ปฏิทินจริงเลยวันครบกำหนดของใบรอชำระแล้ว (1–17 พ.ย.) ⇒ นาฬิกาเครื่องนับเป็นพ้นกำหนด (overdue 4 → 15) · ไม่ได้ลดข้อตรวจ
+await (accEnv as unknown as { pinQcAccountClock: () => Promise<Date> }).pinQcAccountClock();
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -35,6 +35,10 @@ const accEnv = (await import("./acc-v2-env.mts" as string)) as {
 };
 const { loadQcEnv, QC, resolveAccV2Scope, pinQcAccountClock } = accEnv;
 const { host } = loadQcEnv();
+// ORACLE-EDIT (13 พ.ย. 2569): ตรึงนาฬิกา "พ้นกำหนด" ไว้ที่ QC.asOfIso แบบเดียวกับ qc-acc-v2-list (T0.3b pinQcAccountClock)
+//   เหตุ: เฉลยของชุดข้อมูลคิด ณ 2026-09-30 — พอปฏิทินจริงเลยวันครบกำหนดของใบ "รอชำระ" (1–17 พ.ย. 2026) ใบเหล่านั้นถูกนับพ้นกำหนด
+//   ด้วยนาฬิกาเครื่อง (awaiting 14 → 5 · overdue 4 → 15) ทั้งที่สินค้าคิดถูกตามวันจริง · ไม่ได้ลดข้อตรวจ
+await (accEnv as unknown as { pinQcAccountClock: () => Promise<Date> }).pinQcAccountClock();
 
 // ── ตัวนับ SQL จริง (แบบเดียวกับ qc-acc-v2-dashboard.mts) ──
 import { PrismaClient } from "@prisma/client";

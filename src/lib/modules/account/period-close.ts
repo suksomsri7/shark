@@ -12,6 +12,7 @@
 // 🔴 ข้อ 1–2 ที่นี่เป็นแค่ "กระจกสะท้อน" ของกติกาใน gl.closePeriod — ความจริงตัดสินที่ gl เสมอ
 //    (ถ้าสองที่ไม่ตรงกัน gl ชนะ · ข้อสอบ qc-acc-v2-period-assets ตรวจว่าสองที่ให้คำตอบเดียวกัน)
 
+import { FILING_AUDIT, filingSnapshot } from "./filing-history";
 import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { safeReason } from "./errors";
@@ -19,6 +20,9 @@ import { isLockedPeriod, lockBeforeDateOf, lockedMessage } from "./policy"; // �
 import { closePeriod, reopenPeriod } from "./gl";
 import { reconcileBlock, listReconcilableChannels } from "./reconcile";
 import { emitPeriodReopened } from "./events";
+import { fileVatReturn } from "./pp30-filing";
+import type { Pp30ExcessChoice, Pp30Lines } from "./pp30-shared";
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 export type PeriodCtx = { tenantId: string; systemId: string };
 
@@ -83,7 +87,7 @@ export async function periodChecklist(ctx: PeriodCtx, periodKey: string): Promis
   const notImported = channels.length - withStatement.length;
 
   // ── ข้อ 4: ยื่น ภ.พ.30 ของงวดแล้ว
-  const vat = await db.accountVatFiling.findFirst({ where: { periodKey }, select: { filedAt: true } });
+  const vat = await db.accountVatFiling.findFirst({ where: { periodKey, unmarkedAt: null }, select: { filedAt: true } });
 
   const items: ChecklistItem[] = [
     {
@@ -296,41 +300,59 @@ export async function reopenPeriodV2(
 
 /**
  * ทำเครื่องหมาย "ยื่น ภ.พ.30 ของงวดนี้แล้ว" — idempotent ต่อ (systemId, periodKey)
- * ยอดที่บันทึกมาจากหน้า ภ.พ.30 (reports.pp30) — เก็บไว้เป็นหลักฐานว่ายื่นด้วยตัวเลขเท่าไร
+ * ACC T1.3 ▸ เก็บภาพทุกช่องจากสมุด (pp30-filing.fileVatReturn) · ยอดที่ผู้เรียกแจ้ง (salesVat/inputVat) ไม่บังคับ —
+ *   เก็บในคอลัมน์เดิม · ไม่ตรงสมุด = คำเตือน PP30_DECLARED_DIFFERS (ไม่ปฏิเสธ) ◂
  */
 export async function markVatFiled(
   ctx: PeriodCtx,
-  input: { periodKey: string; salesVat: number; inputVat: number; userId: string | null; note?: string | null },
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+  input: { periodKey: string; salesVat?: number | null; inputVat?: number | null; userId: string | null; note?: string | null; excessChoice?: Pp30ExcessChoice | null },
+): Promise<({ ok: true; lines: Pp30Lines; warnings: LegalWarning[] }) | { ok: false; reason: string }> {
   if (!isPeriodKey(input.periodKey)) return { ok: false, reason: "รูปแบบงวดไม่ถูกต้อง (ต้องเป็น YYYY-MM)" };
-  const db = tenantDb(ctx);
-  const existing = await db.accountVatFiling.findFirst({ where: { periodKey: input.periodKey }, select: { id: true } });
-  if (existing) return { ok: false, reason: `งวด ${input.periodKey} ทำเครื่องหมายยื่นไปแล้ว` };
-  await db.accountVatFiling.create({
-    data: {
-      tenantId: ctx.tenantId,
-      systemId: ctx.systemId,
-      periodKey: input.periodKey,
-      filedById: input.userId,
-      salesVatSatang: input.salesVat,
-      inputVatSatang: input.inputVat,
-      payableSatang: input.salesVat - input.inputVat,
-      note: input.note ?? null,
-    },
+  return fileVatReturn(ctx, {
+    periodKey: input.periodKey,
+    userId: input.userId,
+    note: input.note ?? null,
+    excessChoice: input.excessChoice ?? null,
+    declared: { salesVat: input.salesVat ?? null, inputVat: input.inputVat ?? null },
   });
-  return { ok: true };
 }
 
-/** ยกเลิกเครื่องหมายยื่น ภ.พ.30 (สิทธิ์ระดับเจ้าของ — เหมือน `account.wht.unfile`) */
-export async function unmarkVatFiled(ctx: PeriodCtx, periodKey: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+/**
+ * ยกเลิกเครื่องหมายยื่น ภ.พ.30 (สิทธิ์ระดับเจ้าของ — เหมือน `account.wht.unfile`)
+ * ACC T1.7 ▸ ไม่ลบแถว: ตั้ง unmarkedAt/โดยใคร/เหตุผล · ตัวเลขที่ยื่นยังอ่านได้ · ประวัติใน AuditLog (filing-history.ts) ◂
+ */
+export async function unmarkVatFiled(
+  ctx: PeriodCtx,
+  periodKey: string,
+  opts: { userId?: string | null; reason?: string | null; actorType?: "USER" | "PLATFORM_USER" | "SYSTEM" | "API_KEY" } = {},
+): Promise<{ ok: true } | { ok: false; reason: string }> {
   const db = tenantDb(ctx);
-  const row = await db.accountVatFiling.findFirst({ where: { periodKey }, select: { id: true } });
+  const row = await db.accountVatFiling.findFirst({ where: { periodKey, unmarkedAt: null } });
   if (!row) return { ok: false, reason: "งวดนี้ยังไม่ได้ทำเครื่องหมายยื่น" };
-  await db.accountVatFiling.delete({ where: { id: row.id } });
+  // ACC T1.3 ▸ มีแบบยื่นเพิ่มเติมแล้ว = ไม่ยกเลิก (ไม่ทิ้งแบบเพิ่มเติมลอย) ◂
+  const adds = await db.accountVatAdditionalFiling.count({ where: { periodKey } });
+  if (adds > 0) return { ok: false, reason: `งวด ${periodKey} มีแบบยื่นเพิ่มเติมแล้ว ${adds} ครั้ง — ยกเลิกเครื่องหมายยื่นไม่ได้` };
+  const reason = (opts.reason ?? "").trim().slice(0, 500) || null;
+  const at = new Date();
+  await db.$transaction(async (tx) => {
+    await tx.accountVatFiling.update({ where: { id: row.id }, data: { unmarkedAt: at, unmarkedById: opts.userId ?? null, unmarkReason: reason } });
+    await tx.auditLog.create({
+      data: {
+        tenantId: ctx.tenantId,
+        actorType: opts.actorType ?? "USER",
+        actorId: opts.userId ?? null,
+        action: FILING_AUDIT.vatUnmark,
+        targetType: "AccountVatFiling",
+        targetId: row.id,
+        before: filingSnapshot(row) as object,
+        after: { periodKey, reason, unmarkedAt: at.toISOString() } as object,
+      },
+    });
+  });
   return { ok: true };
 }
 
 /** งวดที่ทำเครื่องหมายยื่น ภ.พ.30 แล้ว (ใช้ติดป้ายในหน้า ภ.พ.30) */
 export async function listVatFilings(ctx: PeriodCtx) {
-  return tenantDb(ctx).accountVatFiling.findMany({ orderBy: { periodKey: "desc" } });
+  return tenantDb(ctx).accountVatFiling.findMany({ where: { unmarkedAt: null }, orderBy: { periodKey: "desc" } });
 }

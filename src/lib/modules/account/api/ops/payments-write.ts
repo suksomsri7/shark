@@ -17,6 +17,7 @@
 //      ⇒ retry ที่มาหลังแถวกันซ้ำหมดอายุ ยังไม่สร้างเงินซ้ำ เพราะชั้นบริการยังจำได้
 //   4) เงินเป็นสตางค์จำนวนเต็ม · วันที่เป็น `YYYY-MM-DD` (วันไทย) · body ทุกตัว `.strict()`
 
+import { ackField } from "../ack-field";
 import { createHash } from "node:crypto";
 import type { AccountDocType } from "@prisma/client";
 import { z } from "zod";
@@ -171,6 +172,7 @@ function toDraft(r: PaymentRowPayload): PaymentDraft {
 
 const recordInput = z
   .object({
+    acknowledge: ackField,
     documentId: idField("Id of the invoice, deposit, purchase or expense being settled. A receipt issued from an invoice settles the invoice."),
     rows: z
       .array(paymentRowInput)
@@ -234,6 +236,7 @@ const paymentsList = defineOp({
 
 const voidPaymentInput = z
   .object({
+    acknowledge: ackField,
     documentId: idField("Id of the document this payment belongs to."),
     reason: z
       .string()
@@ -268,6 +271,7 @@ const paymentsVoid = defineOp({
 
 const refundInput = z
   .object({
+    acknowledge: ackField,
     reason: z
       .string()
       .min(5)
@@ -338,6 +342,7 @@ const paymentRequestsCreate = defineOp({
 
 const payReqConfirmInput = z
   .object({
+    acknowledge: ackField,
     paidAt: ymdField("paidAt").optional(),
   })
   .strict();
@@ -429,6 +434,7 @@ const groupWhtInput = z
 
 const groupPaymentInput = z
   .object({
+    acknowledge: ackField,
     groupId: idField("Id of the billing note or combined payment."),
     paidAt: ymdField("paidAt"),
     financeAccountId: idField("Id of the finance account the money moves through. May be null only when `cheque` is sent.").nullish(),
@@ -503,6 +509,7 @@ const paymentsRecordGroup = defineOp({
 
 const voidGroupInput = z
   .object({
+    acknowledge: ackField,
     groupId: idField("Id of the billing note or combined payment the batch belongs to."),
     reason: z
       .string()

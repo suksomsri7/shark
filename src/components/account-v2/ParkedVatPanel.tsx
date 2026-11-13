@@ -16,7 +16,10 @@ export function ParkedVatReleaseForm({
   hasService,
   testId = "parked-release",
   submitLabel = "ออกใบกำกับเพื่อปล่อยภาษีขาย",
+  extraWarnings = [],
 }: {
+  /** ACC T1.7 — คำเตือนเพิ่ม (เช่น เดือนของใบแจ้งหนี้ยื่น ภ.พ.30 แล้ว) · ติ๊กเดียวยืนยันทั้งชุด */
+  extraWarnings?: LegalWarning[];
   systemId: string;
   /** ใบเดียว = ส่ง id ตรง · หลายใบ = ไม่ส่ง (ช่องติ๊กของแต่ละแถวอยู่ในตาราง ใช้ form="<testId>") */
   ids?: string[];
@@ -56,7 +59,7 @@ export function ParkedVatReleaseForm({
           </label>
         )}
       </div>
-      <LegalWarnings warnings={[w]} ackName="ack" testId={`${testId}-warning`} compact />
+      <LegalWarnings warnings={[w, ...extraWarnings]} ackName="ack" testId={`${testId}-warning`} compact />
       <div>
         <button type="submit" className="btn btn-primary btn-sm" data-testid={`${testId}-submit`}>
           {submitLabel}
@@ -75,7 +78,10 @@ export function ParkedVatInvoicePanel({
   warning,
   hint,
   canRelease,
+  filedWarnings = [],
 }: {
+  /** ACC T1.7 — ปล่อยแบบลงวันที่ใบแจ้งหนี้เข้าเดือนที่ยื่นแล้ว */
+  filedWarnings?: LegalWarning[];
   systemId: string;
   docId: string;
   back: string;
@@ -102,7 +108,7 @@ export function ParkedVatInvoicePanel({
       {warning && <LegalWarnings warnings={[warning]} testId="parked-vat-warning" />}
       {/* บริการที่พักรอรับเงิน = ปกติ (ม.78/1) ไม่ต้องปล่อยเอง — ฟอร์มปล่อยแสดงเมื่อมี VAT สินค้าพัก */}
       {canRelease && goods > 0 ? (
-        <ParkedVatReleaseForm systemId={systemId} ids={[docId]} back={back} hasService={service > 0} />
+        <ParkedVatReleaseForm systemId={systemId} ids={[docId]} back={back} hasService={service > 0} extraWarnings={filedWarnings} />
       ) : service > 0 ? (
         <p className="text-xs text-[color:var(--color-muted)]" data-testid="parked-vat-service-note">
           ภาษีของบริการเกิดเมื่อรับชำระ (ม.78/1) — ใบกำกับออกตามงวดรับเงิน

@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { safeReason } from "./errors";
 import { recordLegalAckInTx } from "@/lib/core/legal-ack";
 import { accountNow } from "./clock";
-import { issueLegalWarnings, legalAckResult, legalGateInTx } from "./legal-gate";
+import { issueLegalWarnings, legalAckResult, legalGateInTx, saleWithoutVatWarnings } from "./legal-gate";
+import { ambientLegalGateInTx, pndCertGuardInTx } from "./filed-guard";
 import { isLegalAckRequiredError, legalWarning, unacknowledged, type LegalAck, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -343,12 +344,17 @@ export function isValidThaiTaxId(taxId: string | null | undefined): boolean {
   return check === parseInt(id[12], 10);
 }
 
-export function isOverdue(d: {
-  status: AccountDocStatus | string;
-  dueDate: Date | null;
-  validUntil: Date | null;
-}): boolean {
-  const now = accountNow().getTime();
+export function isOverdue(
+  d: {
+    status: AccountDocStatus | string;
+    dueDate: Date | null;
+    validUntil: Date | null;
+  },
+  // T0.3d: ผู้เรียกที่คิด "ณ วันที่" เอง (หน้าหลัก/อายุหนี้รับ now เข้ามา) ส่งวันนั้นมาด้วย —
+  // เดิมทิ้ง now ที่รับมาแล้วอ่าน accountNow() ⇒ อายุหนี้คิด ณ now แต่ "พ้นกำหนด" คิด ณ นาฬิกาเครื่อง (สองนิยามในบล็อกเดียว)
+  at?: Date,
+): boolean {
+  const now = (at ?? accountNow()).getTime();
   if ((d.status === "AWAITING_PAYMENT" || d.status === "PARTIAL") && d.dueDate)
     return d.dueDate.getTime() < now;
   if (d.status === "AWAITING_ACCEPT" && d.validUntil) return d.validUntil.getTime() < now;
@@ -2469,6 +2475,8 @@ export async function issueDocumentInTx(
       const tiWarnings = together ? issueLegalWarnings({ docType: "TAX_INVOICE", vatAmount: together.vat }, settings).filter((w) => w.code !== "TAX_INVOICE_NOT_VAT_REGISTERED") : [];
       if (together && unacknowledged(tiWarnings, opts.ack?.codes).length > 0) together = null;
       await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, settings).concat(together ? tiWarnings : []), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
+      // ACC T1.9 ▸ สมุดจด VAT ออกเอกสารขายไม่มี VAT = คำเตือน+ยืนยัน (จอ/REST/AI) · งานเบื้องหลังไม่บล็อก (ขึ้นรายงานรายได้ไม่มี VAT) ◂
+      await ambientLegalGateInTx(tx, { tenantId, systemId }, saleWithoutVatWarnings(doc, settings), { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
       // SVC D.3 ▸ (T7) ใบกำกับจากใบแจ้งหนี้หอ (source DORM) ที่มาจากรอบบิล/มีรายการยกเว้น-ไม่มี VAT ⇒ ปฏิเสธ
       //   (ทางแปลงทั่วไปออกใบกำกับยอดเต็มรวมค่าห้องยกเว้น) — ใบกำกับของหอออกได้ทางเดียว = ใบกำกับเฉพาะส่วน VAT ของหอ ◂
       if (doc.docType === "TAX_INVOICE" && doc.sourceDocId) await dormTaxSourceGuardInTx(tx, systemId, doc.sourceDocId);
@@ -3781,6 +3789,12 @@ export async function unwindPaymentInTx(
 
   // ⑤ เอกสารภาษีหัก ณ ที่จ่ายของงวดนี้ → ยกเลิกตาม (ไม่งั้นยื่นเครดิต/นำส่งภาษีบนเงินที่ไม่มีจริง) — 1160 / 2130 กลับที่ JV ของงวด (③)
   if (pay.whtCertDocId) {
+    // ACC T1.7 ▸ 50 ทวิ ที่เราหัก (ภ.ง.ด.3/53) ของเดือนที่ทำเครื่องหมายนำส่งแล้ว — ยกเลิก = รายการของเดือนนั้นเปลี่ยน → คำเตือน+ยืนยัน ◂
+    const cert = await tx.accountDocument.findFirst({
+      where: { id: pay.whtCertDocId, systemId, docType: "WHT_CERT", direction: "IN", status: { notIn: ["VOIDED", "CANCELLED"] } },
+      select: { id: true, issueDate: true, docNo: true, whtAmount: true },
+    });
+    if (cert) await pndCertGuardInTx(tx, ctx, cert, "VOID");
     await tx.accountDocument.updateMany({
       where: { id: pay.whtCertDocId, systemId, docType: "WHT_CERT", status: { notIn: ["VOIDED", "CANCELLED"] } },
       data: { status: "VOIDED", voidedAt: new Date(), voidReason: `${isPayable ? "ยกเลิกตามการยกเลิกจ่าย" : "ยกเลิกตามการยกเลิกรับชำระ"}: ${reason}` },

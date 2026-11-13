@@ -1,5 +1,7 @@
 "use server";
 
+import { screenAck, withScreenLegal } from "./legal-gate";
+import type { LegalAckRequired } from "@/lib/core/settings/legal/warnings";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
@@ -112,7 +114,7 @@ export async function paymentPanelDataAction(systemId: string, docId: string): P
 
 export type RecordPaymentsActionResult =
   | { ok: true; status: string; outstanding: number; certNos: string[]; recorded: number }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; legal?: LegalAckRequired };
 
 /** §5.2 F — บันทึกการรับชำระ/จ่ายหลายครั้งในคำสั่งเดียว */
 export async function recordPaymentsAction(
@@ -120,16 +122,20 @@ export async function recordPaymentsAction(
   docId: string,
   payments: PaymentDraft[],
   idempotencyKey?: string,
+  /** ACC T1.7 — รหัสคำเตือนที่ผู้ใช้ติ๊กยืนยัน (เดือนที่ยื่นแล้ว) */
+  ackCodes: string[] = [],
 ): Promise<RecordPaymentsActionResult> {
   const sys = trim(systemId, 40);
   const { auth, tenantId, userId } = await loadAccountSystem(sys);
   assertAccountCan(auth, "account.payment.record");
   const id = trim(docId, 40);
   const rows = (Array.isArray(payments) ? payments : []).slice(0, 30);
-  const res = await recordPayments(tenantId, sys, id, rows, {
-    userId,
-    keyBase: idempotencyKey ? trim(idempotencyKey, 80) : null,
-  });
+  const res = await withScreenLegal(screenAck(ackCodes, userId), () =>
+    recordPayments(tenantId, sys, id, rows, {
+      userId,
+      keyBase: idempotencyKey ? trim(idempotencyKey, 80) : null,
+    }),
+  );
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -149,16 +155,19 @@ export async function approveReceiptWithPaymentsAction(
   docId: string,
   payments: PaymentDraft[],
   idempotencyKey?: string,
-): Promise<{ ok: true; docNo: string; certNos: string[]; href: string } | { ok: false; reason: string }> {
+  ackCodes: string[] = [],
+): Promise<{ ok: true; docNo: string; certNos: string[]; href: string } | { ok: false; reason: string; legal?: LegalAckRequired }> {
   const sys = trim(systemId, 40);
   const { auth, tenantId, userId } = await loadAccountSystem(sys);
   assertAccountCan(auth, "account.doc.issue");
   assertAccountCan(auth, "account.payment.record");
   const id = trim(docId, 40);
-  const res = await approveReceiptWithPayments(tenantId, sys, id, (Array.isArray(payments) ? payments : []).slice(0, 30), {
-    userId,
-    keyBase: idempotencyKey ? trim(idempotencyKey, 80) : null,
-  });
+  const res = await withScreenLegal(screenAck(ackCodes, userId), () =>
+    approveReceiptWithPayments(tenantId, sys, id, (Array.isArray(payments) ? payments : []).slice(0, 30), {
+      userId,
+      keyBase: idempotencyKey ? trim(idempotencyKey, 80) : null,
+    }),
+  );
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -178,14 +187,15 @@ export async function voidPaymentV2Action(
   docId: string,
   paymentId: string,
   reason: string,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+  ackCodes: string[] = [],
+): Promise<{ ok: true } | { ok: false; reason: string; legal?: LegalAckRequired }> {
   const sys = trim(systemId, 40);
   const { auth, tenantId, userId } = await loadAccountSystem(sys);
   assertAccountCan(auth, "account.payment.void");
   const id = trim(docId, 40);
   const pid = trim(paymentId, 40);
   const why = trim(reason, 200) || "ยกเลิกการชำระ";
-  const res = await voidPaymentAny(tenantId, sys, id, pid, why);
+  const res = await withScreenLegal(screenAck(ackCodes, userId), () => voidPaymentAny(tenantId, sys, id, pid, why));
   await writeAudit({
     tenantId,
     actorId: userId,

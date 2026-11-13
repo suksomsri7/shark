@@ -336,8 +336,10 @@ try {
   if (!u1.ok) throw new Error("unmarkFiled ล้ม: " + u1.reason);
   const after10 = await prisma.accountDocument.findUniqueOrThrow({ where: { id: testCertId }, select: { whtFiledPeriodKey: true } });
   eq("T10.3 whtFiledPeriodKey ถูกล้าง = null", after10.whtFiledPeriodKey, null);
-  const filingCount3 = await prisma.accountWhtFiling.count({ where: { systemId: sSystemId, form: 53, periodKey: "2026-09" } });
-  eq("T10.4 แถว AccountWhtFiling ถูกลบ", filingCount3, 0);
+  // ORACLE-EDIT (ACC T1.7): ยกเลิกเครื่องหมาย "ไม่ลบแถว" อีกต่อไป (เก็บประวัติ: unmarkedAt/โดยใคร/เหตุผล) — เดิมเฉลยว่าแถวถูกลบ
+  const filingCount3 = await prisma.accountWhtFiling.count({ where: { systemId: sSystemId, form: 53, periodKey: "2026-09", unmarkedAt: null } });
+  const filingKept3 = await prisma.accountWhtFiling.count({ where: { systemId: sSystemId, form: 53, periodKey: "2026-09", unmarkedAt: { not: null } } });
+  eq("T10.4 แถว AccountWhtFiling ไม่มีผลแล้ว (ยังเก็บแถวไว้เป็นประวัติ · unmarkedAt)", [filingCount3, filingKept3], [0, 1]);
   await rejected("T10.5 unmarkFiled งวดที่ไม่เคยยื่น = ปฏิเสธ", () => wht.unmarkFiled(tid, sSystemId, { form: 53, periodKey: "2026-09" }), "ยังไม่ได้ทำเครื่องหมาย");
 
   // ═════════ T11 — ยกเลิก payment → cert cascade VOIDED ═════════

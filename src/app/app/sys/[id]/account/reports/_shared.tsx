@@ -97,8 +97,9 @@ export function WarnBanner({ base, children }: { base: string; children: React.R
 
 export function TableWrap({ children }: { children: React.ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full min-w-[640px] border-collapse text-sm">{children}</table>
+    // ACC T1.3 ▸ ใบพิมพ์: ไม่ตัดคอลัมน์ขวา (overflow ของจอ = ซ่อนบนกระดาษ) — ตัวอักษรเล็กลงให้พอดี A4 ◂
+    <div className="overflow-x-auto rounded-lg border print:overflow-visible">
+      <table className="w-full min-w-[640px] border-collapse text-sm print:min-w-0 print:text-[10px]">{children}</table>
     </div>
   );
 }

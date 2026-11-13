@@ -20,6 +20,7 @@ import { JournalFilterBar } from "@/components/account-v2/JournalFilterBar";
 import { JournalTable } from "@/components/account-v2/JournalTable";
 import { ManualJvModal } from "@/components/account-v2/ManualJvModal";
 import { createJvAction } from "./actions";
+import { filedMarksForUi } from "@/lib/modules/account/filed-differences";
 
 // บัญชีรายวัน V2 — DESIGN-SPEC-V2 §11.2 · เฟรม g16-journal.png
 // โครงตามเฟรม: breadcrumb → H1 + [พิมพ์รายงาน] [+ สร้างสมุดรายวัน] → แท็บตาม book (มีตัวนับ)
@@ -184,6 +185,7 @@ export default async function JournalPage({
           nextDocNo={nextDocNo}
           action={createJvAction}
           error={sp.err}
+          {...(await filedMarksForUi({ tenantId, systemId }))}
         />
       )}
     </div>

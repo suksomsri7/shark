@@ -27,6 +27,7 @@ export function InputVatPanel({
   base,
   today,
   canReceive,
+  filedVatMonths = [],
   ptxHref,
   sourceHref,
 }: {
@@ -38,6 +39,8 @@ export function InputVatPanel({
   base: string;
   today: string;
   canReceive: boolean;
+  /** ACC T1.7 — เดือนที่ยื่น ภ.พ.30 แล้ว (ฟอร์มรับเตือน + ช่องยืนยันเมื่อวันที่ลงภาษีซื้อตกเดือนนั้น) */
+  filedVatMonths?: string[];
   ptxHref?: string | null;
   sourceHref?: string | null;
 }) {
@@ -64,6 +67,9 @@ export function InputVatPanel({
                 docId={docId}
                 docType={docType}
                 today={today}
+                filedVatMonths={filedVatMonths}
+                pendingVat={p.pendingVat ?? 0}
+                docRef={`ใบกำกับภาษีซื้อ${p.source?.docNo ? ` ของ ${p.source.docNo}` : ""}`}
                 receiveAction={receivePtxAction}
                 notClaimableAction={notClaimablePtxAction}
               />

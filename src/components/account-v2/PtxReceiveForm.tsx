@@ -8,6 +8,16 @@
 import { useMemo, useState } from "react";
 import { checkLateClaim, INPUT_VAT_NONCLAIM_REASONS } from "@/lib/modules/account/input-vat-shared";
 import { LegalWarnings } from "./LegalWarnings";
+import { legalWarning, type LegalWarning } from "@/lib/core/settings/legal/warnings";
+
+const bahtSigned = (s: number) => `${s < 0 ? "−" : s > 0 ? "+" : ""}${(Math.abs(s) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** ACC T1.7 — คำเตือนล่วงหน้า "ลงเดือนที่ยื่น ภ.พ.30 แล้ว" (ข้อความเดียวกับด่าน filed-guard · ด่านจริงอยู่ชั้นลงบัญชี) */
+function filedWarning(months: readonly string[], ymd: string, ref: string, input: number, parked: number): LegalWarning[] {
+  const period = ymd.slice(0, 7);
+  if (!months.includes(period) || (input === 0 && parked === 0)) return [];
+  return [legalWarning("FILED_PERIOD_VAT_CHANGE", { period, ref, output: bahtSigned(0), input: bahtSigned(input), ...(parked ? { parked: bahtSigned(parked) } : {}) })];
+}
 
 const toDate = (ymd: string) => (/^\d{4}-\d{2}-\d{2}$/.test(ymd) ? new Date(`${ymd}T00:00:00.000Z`) : null);
 
@@ -16,6 +26,9 @@ export function PtxReceiveForm({
   docId,
   docType,
   today,
+  filedVatMonths = [],
+  pendingVat = 0,
+  docRef = "ใบกำกับภาษีซื้อ",
   back,
   receiveAction,
   notClaimableAction,
@@ -26,6 +39,10 @@ export function PtxReceiveForm({
   docType: string;
   /** วันนี้ (ไทย YYYY-MM-DD) จาก server */
   today: string;
+  /** ACC T1.7 — เดือนที่ยื่น ภ.พ.30 แล้ว (YYYY-MM) · ยอดภาษีซื้อที่พักรอใบนี้ (สตางค์) · ชื่อรายการในคำเตือน */
+  filedVatMonths?: string[];
+  pendingVat?: number;
+  docRef?: string;
   back?: string;
   receiveAction: (fd: FormData) => void | Promise<void>;
   notClaimableAction: (fd: FormData) => void | Promise<void>;
@@ -39,6 +56,10 @@ export function PtxReceiveForm({
     const b = toDate(claimDate);
     return a && b ? checkLateClaim(a, b) : null;
   }, [invoiceDate, claimDate]);
+  // รับ: ภาษีซื้อเข้าเดือนของวันที่ลงภาษีซื้อ (1150 +, 1155 −) · เคลมไม่ได้: ลงวันนี้ (1155 −)
+  const filedReceive = filedWarning(filedVatMonths, claimDate, docRef, pendingVat, -pendingVat);
+  const filedNoClaim = filedWarning(filedVatMonths, today, docRef, 0, -pendingVat);
+  const receiveWarnings = [...(chk?.warnings ?? []), ...filedReceive];
   const hidden = (
     <>
       <input type="hidden" name="systemId" value={systemId} />
@@ -79,7 +100,7 @@ export function PtxReceiveForm({
               ข้อความที่ต้องระบุบนใบ: {chk.note}
             </p>
           )}
-          {chk && chk.warnings.length > 0 && <LegalWarnings warnings={chk.warnings} ackName="ack" testId={`${testId}-warnings`} />}
+          {receiveWarnings.length > 0 && <LegalWarnings warnings={receiveWarnings} ackName="ack" testId={`${testId}-warnings`} />}
           <div>
             <button type="submit" className="btn btn-primary btn-sm" data-testid={`${testId}-submit`}>
               รับใบกำกับแล้ว
@@ -100,6 +121,7 @@ export function PtxReceiveForm({
             </select>
           </label>
           <p className="text-xs text-[color:var(--color-muted)]">ภาษีซื้อที่พักไว้ย้ายไปบัญชีภาษีซื้อไม่ขอคืน ลงวันที่วันนี้ — ไม่เข้า ภ.พ.30</p>
+          {filedNoClaim.length > 0 && <LegalWarnings warnings={filedNoClaim} ackName="ack" testId={`${testId}-noclaim-warnings`} />}
           <div>
             <button type="submit" className="btn btn-sm" data-testid={`${testId}-noclaim-submit`}>
               บันทึกว่าเคลมไม่ได้

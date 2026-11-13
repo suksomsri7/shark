@@ -10,7 +10,7 @@ import type {
 } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, writeAudit, mc } from "./access";
-import { ackCodesOf } from "./legal-gate";
+import { screenAck, withScreenLegal } from "./legal-gate";
 import { permissionValue } from "@/lib/core/rbac";
 // WO 8.3 (§9.4): เพดานอนุมัติ + ส่งต่อให้ผู้มีอำนาจสูงกว่า
 import { checkApprovalCap } from "./approval-cap";
@@ -169,7 +169,9 @@ export async function issueExpenseDocAction(formData: FormData) {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.doc.issue");
   // T0.4 — รหัสคำเตือนกฎหมายที่ผู้ใช้ติ๊กยืนยันในฟอร์ม
-  const res = await issueExpenseDoc(tenantId, systemId, id, { ack: { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" } });
+  const ack = screenAck(formData.getAll("ack"), userId);
+  // ACC T1.7 ▸ บริบทการยืนยันรอบงาน (ด่านเดือนที่ยื่นแล้วในชั้นลงบัญชี) ◂
+  const res = await withScreenLegal(ack, () => issueExpenseDoc(tenantId, systemId, id, { ack }));
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -189,7 +191,7 @@ export async function recordVendorPaymentAction(formData: FormData) {
   const id = str(formData, "id");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.record");
-  const res = await recordVendorPayment(tenantId, systemId, id, {
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => recordVendorPayment(tenantId, systemId, id, {
     paidAt: date(formData, "paidAt"),
     channel: (str(formData, "channel") as AccountPayChannel) || "TRANSFER",
     financeAccountId: str(formData, "financeAccountId") || null,
@@ -200,7 +202,7 @@ export async function recordVendorPaymentAction(formData: FormData) {
     feeAmount: Math.round((num(formData, "feeAmount") ?? 0) * 100),
     note: str(formData, "note") || null,
     createdById: userId,
-  });
+  }));
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -221,7 +223,7 @@ export async function voidVendorPaymentAction(formData: FormData) {
   const paymentId = str(formData, "paymentId");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.void");
-  const res = await voidVendorPayment(tenantId, systemId, id, paymentId, str(formData, "reason"));
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => voidVendorPayment(tenantId, systemId, id, paymentId, str(formData, "reason")));
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -263,12 +265,16 @@ export async function receivePtxAction(formData: FormData) {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.record");
   // ACC T1.5 — วันที่ในใบ · เลขที่ใบของผู้ขาย · วันที่ลงภาษีซื้อ (ค่าเริ่ม วันนี้) · รหัสคำเตือนที่ยืนยัน
-  const res = await receivePurchaseTaxInvoice(tenantId, systemId, id, {
-    vendorInvoiceDate: date(formData, "vendorInvoiceDate") ?? null,
-    vendorInvoiceNo: formData.has("vendorInvoiceNo") ? str(formData, "vendorInvoiceNo") : undefined,
-    claimDate: date(formData, "claimDate") ?? null,
-    ack: { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" },
-  });
+  // ACC T1.7 — ห่อบริบทยืนยัน: รับใบกำกับเข้าเดือนที่ยื่น ภ.พ.30 แล้ว ⇒ เตือน + ยืนยัน (รหัสชุดเดียวกัน)
+  const ack = screenAck(formData.getAll("ack"), userId);
+  const res = await withScreenLegal(ack, () =>
+    receivePurchaseTaxInvoice(tenantId, systemId, id, {
+      vendorInvoiceDate: date(formData, "vendorInvoiceDate") ?? null,
+      vendorInvoiceNo: formData.has("vendorInvoiceNo") ? str(formData, "vendorInvoiceNo") : undefined,
+      claimDate: date(formData, "claimDate") ?? null,
+      ack,
+    }),
+  );
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -294,7 +300,10 @@ export async function notClaimablePtxAction(formData: FormData) {
   const id = str(formData, "id");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.record");
-  const res = await markPurchaseTaxInvoiceNotClaimable(tenantId, systemId, id, { reason: str(formData, "reason") || null });
+  // ACC T1.7 — กลับรายการรอใบกำกับเข้าเดือนที่ยื่น ภ.พ.30 แล้ว ⇒ เตือน + ยืนยัน
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () =>
+    markPurchaseTaxInvoiceNotClaimable(tenantId, systemId, id, { reason: str(formData, "reason") || null }),
+  );
   await writeAudit({
     tenantId,
     actorId: userId,

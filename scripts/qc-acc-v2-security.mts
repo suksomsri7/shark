@@ -821,9 +821,18 @@ try {
   // ⚠️ ข้อเท็จจริงที่วัดได้: Prisma `contains` ส่งค่าเป็นพารามิเตอร์ (ไม่มี SQL injection) แต่ **ไม่ escape
   //    `%`/`_`** ⇒ ค้น "%" = ตรงทุกแถว · **ไม่ใช่ช่องโหว่** เพราะ where ผูก tenantId+systemId อยู่แล้ว
   //    (ผู้ใช้เห็นได้เฉพาะร้านตัวเอง ซึ่งกดล้างคำค้นก็เห็นอยู่ดี) — ที่ต้องยืนยันคือ "ไม่ข้ามร้าน"
+  // ORACLE-EDIT (T0.3d): ข้อเท็จจริงด้านบนเปลี่ยนแล้ว — ciContains (src/lib/core/ci-equals.ts) escape `%`/`_` เป็นตัวอักษรธรรมดา
+  //   ⇒ ค้น "%" ไม่ใช่ wildcard อีกต่อไป · positive control เดิม ("%" ต้องเห็นของตัวเอง) จึงวัดของที่ไม่มีแล้ว
+  //   ตอนนี้: positive control = คำค้นจริงจากชื่อผู้ติดต่อของร้าน A (ต้องเจอในร้าน A) แต่ร้าน B ค้นคำเดียวกัน = 0
+  //   + "%" ในร้านตัวเอง = ตรงตัวอักษร (ไม่มีเลข/ชื่อที่มี % ⇒ 0 · ไม่หลุดทั้งตาราง)
+  const ownTerm = "ลูกค้าลับ"; // ชื่อผู้ติดต่อของร้าน A (contactA) — ร้าน B ไม่มีชื่อนี้
+  const termOwn = await acc.listDocumentsPaged(A.tenantId, A.systemId, { docType: "INVOICE", q: ownTerm });
+  const termCross = await acc.listDocumentsPaged(B.tenantId, B.systemId, { docType: "INVOICE", q: ownTerm });
   const wildcardOwn = await acc.listDocumentsPaged(A.tenantId, A.systemId, { docType: "INVOICE", q: "%" });
   const wildcardCross = await acc.listDocumentsPaged(B.tenantId, B.systemId, { docType: "INVOICE", q: "%" });
-  assert("S9 ค้น '%' ในร้านตัวเอง = เห็นของตัวเอง (positive control)", wildcardOwn.total > 0, `เจอ ${wildcardOwn.total}`);
+  assert(`S9 ค้นคำจริง "${ownTerm}" ในร้านตัวเอง = เห็นของตัวเอง (positive control)`, ownTerm.length > 0 && termOwn.total > 0, `เจอ ${termOwn.total}`);
+  eq(`S9 🔴 ค้นคำเดียวกันจากร้านอื่น = 0 (ไม่ข้ามขอบเขตร้าน)`, termCross.total, 0);
+  eq("S9 ค้น '%' ในร้านตัวเอง = ตรงตัวอักษร ไม่ใช่ wildcard (escape แล้ว)", wildcardOwn.total, 0);
   eq("S9 🔴 ค้น '%' จากร้านอื่น = 0 (wildcard ไม่ข้ามขอบเขตร้าน)", wildcardCross.total, 0);
   const sqlish = await acc.listDocumentsPaged(A.tenantId, A.systemId, { docType: "INVOICE", q: "' OR 1=1 --" });
   assert("S9 คำค้นทรง SQL injection → 0 แถว (ไม่หลุดทั้งตาราง)", sqlish.total === 0, `เจอ ${sqlish.total}`);

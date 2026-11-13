@@ -137,6 +137,12 @@ try {
   chk("D2-G4.1", "checklist งวดปัจจุบันอ่านได้ (items ≥3)", chkl.status === 200 && chkl.body?.data?.items?.length >= 3, "≥3", `${chkl.status}`);
   const vatFiled = await call("POST", `/periods/${period}/vat-filed`, A, { salesVatSatang: 0, inputVatSatang: 0, note: "ยื่นแล้ว" });
   chk("D2-G4.2", "POST /periods/{key}/vat-filed → 200 · GET /periods เห็น vatFiled=true", vatFiled.status === 200 && (await call("GET", "/periods", A)).body?.data?.find((p: Any) => p.period === period)?.vatFiled === true, "true", `${vatFiled.status} ${code(vatFiled)}`);
+  // ACC T1.3 ▸ แบบเพิ่มเติม (สมุดไม่เปลี่ยน → 409) · แก้เครดิตยกมา (+ กลับค่าระบบ) ◂
+  const vatAdd = await call("POST", `/periods/${period}/vat-additional`, A, { note: "ไม่มีอะไรเปลี่ยน" });
+  chk("D2-G4.9", "POST /periods/{key}/vat-additional เมื่อสมุดตรงกับที่ยื่น → 409 ข้อความไทย", vatAdd.status === 409 && /[ก-๙]/.test(vatAdd.body?.error?.message_th ?? ""), "409", `${vatAdd.status} ${code(vatAdd)}`, "MAJOR");
+  const vatCarry = await call("POST", `/periods/${period}/vat-credit-carry`, A, { amountSatang: 12_300, reason: "ปรับตามแบบที่ยื่นจริง" });
+  const vatCarryBack = await call("POST", `/periods/${period}/vat-credit-carry`, A, { amountSatang: null, reason: "กลับค่าที่ระบบคิด" });
+  chk("D2-G4.8", "POST /periods/{key}/vat-credit-carry → 200 {creditBroughtForwardSatang 12300, source OVERRIDE} · null → กลับค่าระบบ", vatCarry.status === 200 && vatCarry.body?.data?.creditBroughtForwardSatang === 12_300 && vatCarry.body?.data?.source === "OVERRIDE" && vatCarryBack.status === 200 && vatCarryBack.body?.data?.source !== "OVERRIDE", "200", `${vatCarry.status} ${code(vatCarry)} / ${vatCarryBack.status}`, "MAJOR");
   const vatUn = await call("DELETE", `/periods/${period}/vat-filed`, D, { confirm: true, reason: "ยื่นผิดงวด" });
   chk("D2-G4.3", "DELETE /periods/{key}/vat-filed (danger · period.reopen) → 200 vatFiled=false", vatUn.status === 200 && (await call("GET", "/periods", A)).body?.data?.find((p: Any) => p.period === period)?.vatFiled === false, "false", `${vatUn.status} ${code(vatUn)}`);
   const close = await call("POST", `/periods/${period}/close`, A, {});

@@ -14,6 +14,7 @@
 //        (ห้ามไปแก้ข้อความใน service — ข้อความนั้นมีคนอ่านบนหน้าจออยู่)
 //   4) เงินเป็นสตางค์จำนวนเต็มเสมอ · วันที่เป็น `YYYY-MM-DD` (วันไทย) · body ทุกตัว `.strict()`
 
+import { ackField, ackOnlyInput } from "../ack-field";
 import { accountNow } from "@/lib/modules/account/clock";
 import type { AccountDocType, AccountVatMode, AccountVatTiming } from "@prisma/client";
 import { z } from "zod";
@@ -596,6 +597,7 @@ const documentsIssue = defineOp({
 
 const convertInput = z
   .object({
+    acknowledge: ackField,
     toType: z
       .enum(DIRECT_DOC_TYPES.filter((t) => t !== "BILLING_NOTE" && t !== "COMBINED_PAYMENT") as unknown as [DirectDocType, ...DirectDocType[]])
       .or(z.enum(["RECEIPT", "TAX_INVOICE", "PURCHASE_TAX_INVOICE"]))
@@ -732,16 +734,16 @@ const receiveInput = z
     vendorInvoiceDate: ymdField("vendorInvoiceDate").optional().describe("Purchase tax invoice only: the date printed on the vendor's tax invoice. Default: the claim date."),
     vendorInvoiceNo: z.string().max(35).nullish().describe("Purchase tax invoice only: the vendor's tax invoice number."),
     claimDate: ymdField("claimDate").optional().describe("Purchase tax invoice only: the date input VAT is posted, which sets the tax month it is claimed in. Default: today (the month the invoice was received)."),
-    acknowledge: z
-      .array(z.enum(LEGAL_WARNING_CODES))
-      .max(20)
-      .optional()
-      .describe("Legal warning codes the user has read and accepted (INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW, INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH)."),
+    // ACC T1.7 ▸ ฟิลด์เดียวกับ op ลงบัญชีอื่น (runOpAsActor เปิดบริบทยืนยันจากฟิลด์นี้ — รับเข้าเดือนที่ยื่นแล้วเตือน FILED_PERIOD_VAT_CHANGE) ◂
+    acknowledge: ackField.describe(
+      "Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW, INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH, or FILED_PERIOD_VAT_CHANGE when the claim lands in a month already marked filed).",
+    ),
   })
   .strict();
 
 const notClaimableInput = z
   .object({
+    acknowledge: ackField,
     reason: z
       .enum(INPUT_VAT_NONCLAIM_REASONS.map((r) => r.code) as [string, ...string[]])
       .optional()
@@ -811,6 +813,7 @@ const documentsReceive = defineOp({
 // `confirm` ถูกตรวจและถอดออกที่ dispatch กลางแล้ว — schema เห็นแค่ `reason`
 const voidInput = z
   .object({
+    acknowledge: ackField,
     reason: z.string().min(5).max(500).describe("Why this document is being voided, at least 5 characters. Stored on the document and in the audit log."),
   })
   .strict();

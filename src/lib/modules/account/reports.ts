@@ -2,7 +2,10 @@ import { prisma } from "@/lib/core/db";
 import { csvCell } from "@/lib/core/csv";
 import type { AccountLedgerType, AccountCashflowActivity, Prisma } from "@prisma/client";
 import { buildChecks, salesTaxReport, type SalesTaxReport } from "./sales-tax-report";
+import { purchaseTaxReport, type PurchaseTaxReport } from "./purchase-tax-report";
 import { rateLabelTh, SALES_TAX_ABB_MODE_LABEL_TH, type SalesTaxAbbMode } from "./sales-tax-shared";
+import { pp30ReturnOf, vatLedgers, type Pp30Return } from "./pp30-return";
+import { PP30_CARRY_SOURCE_LABEL_TH, PP30_EXCESS_CHOICE_LABEL_TH, PP30_LINE_KEYS, PP30_LINE_LABEL_TH, PP30_AMOUNT_KEYS, type Pp30ExcessChoice } from "./pp30-shared";
 
 // ─────────────────────────────────────────────────────────────
 // reports.ts — งบการเงิน + รายงาน (P3) · READ-ONLY (ไม่โพสต์ GL)
@@ -469,11 +472,15 @@ export type Pp30Row = {
   base: number; // ฐานภาษี (สตางค์)
   vat: number; // จำนวนภาษี (สตางค์)
   rateBp: number; // 700 = 7%
+  /** ACC T1.9 ▸ แถวจาก JV ที่บันทึกเอง (รายการปรับปรุงมือ — ไม่มีใบกำกับ) ◂ */
+  manual?: boolean;
   /** ACC T1.5 (เลน 2) — ภาษีซื้อเคลมข้ามเดือน: "ถือเป็นภาษีซื้อในเดือนภาษี…" (ประกาศ VAT ฉ.4 ข้อ 2) */
   note?: string | null;
 };
 
 export type Pp30RateGroup = { rateBp: number; base: number; vat: number };
+/** ACC T1.9 ▸ rateBp ของกลุ่ม "รายการปรับปรุงมือ" (JV ที่บันทึกเอง ไม่มีฐาน) ในรายงานภาษีซื้อ ◂ */
+export const MANUAL_ADJUST_RATE_BP = -2;
 
 export type Pp30Side = {
   total: number; // Σ ภาษี (สตางค์)
@@ -486,11 +493,15 @@ export type Pp30 = {
   periodKey: string;
   /** ACC T1.1 ▸ รายงานภาษีขายเต็ม (หัวรายงาน · ใบย่อรวมรายวัน · กลุ่มอัตรา · ข้อตรวจ) — output.rows/byRate มาจากก้อนนี้ ◂ */
   salesTax: SalesTaxReport;
-  output: Pp30Side; // ภาษีขาย (2200)
-  input: Pp30Side; // ภาษีซื้อ (1150)
-  carryForward: number; // เครดิตภาษียกมาเดือนก่อน (ผู้ใช้กรอก — v1 ไม่มีตารางยื่น)
-  netPayable: number; // > 0 = ต้องชำระ · < 0 = เครดิตยกไป
-  creditCarry: number; // ยอดเครดิตยกไปเดือนถัดไป (= −netPayable ถ้าติดลบ)
+  /** ACC T1.6 ▸ รายงานภาษีซื้อเต็ม (หัวรายงาน · ลำดับที่ต่อเดือนตามวันที่รับ · ปรับปรุงมือ · หักไม่ได้ · รอใบกำกับ · ข้อตรวจ) ◂ */
+  purchaseTax: PurchaseTaxReport;
+  output: Pp30Side; // ภาษีขาย (บัญชีตาม mapping VAT_OUTPUT)
+  input: Pp30Side; // ภาษีซื้อ (บัญชีตาม mapping VAT_INPUT)
+  carryForward: number; // เครดิตภาษียกมา (T1.3: จำจากเดือนก่อน — `ret.carry` บอกที่มา)
+  netPayable: number; // > 0 = ต้องชำระ · < 0 = ชำระเกินสุทธิ
+  creditCarry: number; // ยอดเครดิตยกไปเดือนถัดไป (0 เมื่อเลือกขอคืน)
+  /** ACC T1.3 ▸ ภ.พ.30 ครบช่อง · เครดิตยกมา · กำหนดยื่น · กระทบ GL ผ่าน mapping · สถานะยื่น/แบบเพิ่มเติม · คำเตือน ◂ */
+  ret: Pp30Return;
 };
 
 async function pp30Side(
@@ -505,12 +516,12 @@ async function pp30Side(
     select: {
       debit: true,
       credit: true,
-      entry: { select: { refType: true, refId: true, date: true, docNo: true } },
+      entry: { select: { refType: true, refId: true, date: true, docNo: true, source: true } },
     },
   });
 
   // รวม VAT ต่อเอกสารต้นทาง
-  type Agg = { vat: number; date: Date; docRefId: string | null; journalNo: string };
+  type Agg = { vat: number; date: Date; docRefId: string | null; journalNo: string; manual: boolean };
   const perDoc = new Map<string, Agg>();
   const docIds = new Set<string>();
   let i = 0;
@@ -528,6 +539,7 @@ async function pp30Side(
         date: l.entry.date,
         docRefId: isDoc ? l.entry.refId : null,
         journalNo: l.entry.docNo,
+        manual: l.entry.source === "MANUAL",
       });
   }
 
@@ -569,7 +581,8 @@ async function pp30Side(
     const rawBase = doc ? doc.subTotal - doc.discountAmount : 0;
     const base = agg.vat < 0 ? -rawBase : rawBase;
     // อัตรา: derive จาก vat/base (700 = 7%) — SME ส่วนใหญ่อัตราเดียว (ทั้งบวก/ลบให้ได้ 700)
-    const rateBp = base !== 0 ? Math.round((agg.vat / base) * 10000) : 0;
+    // ACC T1.9 ▸ JV มือ (ไม่มีเอกสาร) ไม่มีฐาน ⇒ กลุ่มของตัวเอง (MANUAL_ADJUST_RATE_BP) ไม่ปนกับอัตรา 0% ◂
+    const rateBp = agg.manual && !doc ? MANUAL_ADJUST_RATE_BP : base !== 0 ? Math.round((agg.vat / base) * 10000) : 0;
 
     rows.push({
       docNo: doc?.docNo ?? agg.journalNo,
@@ -580,6 +593,7 @@ async function pp30Side(
       base,
       vat: agg.vat,
       rateBp,
+      ...(agg.manual ? { manual: true, contactName: "รายการปรับปรุงมือ (JV ที่บันทึกเอง)" } : {}),
       note: doc?.inputVatLateNote ?? null, // ACC T1.5 (เลน 2)
     });
     total += agg.vat;
@@ -599,18 +613,16 @@ async function pp30Side(
 export async function pp30(
   ctx: GlCtx,
   periodKey: string,
-  opts?: { carryForward?: number; abbMode?: SalesTaxAbbMode | null },
+  opts?: { carryForward?: number | null; abbMode?: SalesTaxAbbMode | null; excessChoice?: Pp30ExcessChoice | null },
 ): Promise<Pp30> {
-  const ledgers = await prisma.accountLedger.findMany({
-    where: { systemId: ctx.systemId, code: { in: ["2200", "1150"] } },
-    select: { id: true, code: true },
-  });
-  const outputId = ledgers.find((l) => l.code === "2200")?.id;
-  const inputId = ledgers.find((l) => l.code === "1150")?.id;
+  // ACC T1.3 ▸ บัญชีภาษีจาก mapping (VAT_OUTPUT / VAT_INPUT) — ไม่ใช่รหัสตายตัว ◂
+  const ledgers = await vatLedgers(ctx);
+  const outputId = ledgers.VAT_OUTPUT?.id;
+  const inputId = ledgers.VAT_INPUT?.id;
 
   // ACC T1.1 ▸ ภาษีขาย: ยอด ภ.พ.30 = ยอดเคลื่อนไหว 2200 ของเดือน (คิวรีรวมแยก) · รายใบ/กลุ่มอัตรามาจากรายงานภาษีขาย ◂
   const [salesTax, outAgg, input] = await Promise.all([
-    salesTaxReport(ctx, periodKey, { abbMode: opts?.abbMode ?? null }),
+    salesTaxReport(ctx, periodKey, { abbMode: opts?.abbMode ?? null, outputLedgerId: outputId ?? null }),
     outputId
       ? prisma.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: outputId, entry: { periodKey } }, _sum: { debit: true, credit: true } })
       : Promise.resolve(null),
@@ -619,7 +631,7 @@ export async function pp30(
       : Promise.resolve<Pp30Side>({ total: 0, base: 0, rows: [], byRate: [] }),
   ]);
   const outputVat = (outAgg?._sum.credit ?? 0) - (outAgg?._sum.debit ?? 0);
-  salesTax.checks = buildChecks(salesTax.rows, salesTax.total.vat, salesTax.glVat, outputVat);
+  salesTax.checks = buildChecks(salesTax.rows, salesTax.total.vat, salesTax.glVat, outputVat, salesTax.outputLedger);
   const output: Pp30Side = {
     total: outputVat,
     base: salesTax.total.base,
@@ -634,21 +646,42 @@ export async function pp30(
         base: p.base,
         vat: p.vat,
         rateBp: p.rateBp,
+        ...(r.manual ? { manual: true } : {}),
       })),
     ),
     byRate: salesTax.groups.map((g) => ({ rateBp: g.rateBp, base: g.base, vat: g.vat })),
   };
 
-  const carryForward = opts?.carryForward ?? 0;
-  const netPayable = output.total - input.total - carryForward;
+  // ACC T1.6 ▸ รายงานภาษีซื้อ (ข้อตรวจเทียบภาษีซื้อของแบบ = ยอดเคลื่อนไหวบัญชีภาษีซื้อตาม mapping) ◂
+  const purchaseTax = await purchaseTaxReport(ctx, periodKey, { pp30Vat: input.total });
+
+  // ACC T1.3 ▸ ช่องยอดขายแยกอัตรามาจากกลุ่มของรายงานภาษีขาย (ตัวคิดเดียว — ตรงรายงาน ม.87) ◂
+  const sumGroups = (f: (bp: number) => boolean) => salesTax.groups.filter((g) => f(g.rateBp)).reduce((n, g) => n + g.base, 0);
+  const ret = await pp30ReturnOf(
+    ctx,
+    periodKey,
+    {
+      salesTaxable: sumGroups((bp) => bp > 0),
+      salesZero: sumGroups((bp) => bp === 0),
+      salesExempt: sumGroups((bp) => bp < 0),
+      outputVat,
+      // ACC T1.6 ▸ ยอดซื้อ = มูลค่าของส่วนที่หักได้ในรายงานภาษีซื้อ (ตัวคิดเดียวกับรายงาน ม.87 · ใบที่เคลมบางส่วนนับเฉพาะส่วนนั้น) ◂
+      purchases: purchaseTax.docsTotal.base,
+      inputVat: input.total,
+    },
+    { carryOverride: opts?.carryForward ?? null, excessChoice: opts?.excessChoice ?? null, ledgers },
+  );
+  const l = ret.lines;
   return {
     periodKey,
     salesTax,
+    purchaseTax,
     output,
     input,
-    carryForward,
-    netPayable,
-    creditCarry: netPayable < 0 ? -netPayable : 0,
+    carryForward: l.creditBroughtForward,
+    netPayable: l.netPayable - l.netExcess,
+    creditCarry: l.creditCarriedForward,
+    ret,
   };
 }
 
@@ -658,10 +691,75 @@ export async function pp30(
 //    ตัวเลขที่ส่งเข้ามาเป็น number = สตางค์ → แปลงเป็นบาททศนิยม 2 ก่อนส่งต่อ
 const pp30Cell = (v: string | number): string => csvCell(typeof v === "number" ? (v / 100).toFixed(2) : v);
 
+/** ACC T1.6 ▸ รายงานภาษีซื้อ → CSV (หัว · รายใบ ลำดับที่ · ปรับปรุงมือ · รวม · ข้อตรวจ · หักไม่ได้ · รอใบกำกับ) — เนื้อหาเดียวกับจอ ◂ */
+export function purchaseTaxCsv(pt: PurchaseTaxReport, row: (cells: (string | number)[]) => void): void {
+  const txt = (v: string | number) => String(v);
+  const h = pt.header;
+  row(["รายงานภาษีซื้อ"]);
+  row(["ชื่อผู้ประกอบการ", h.orgName]);
+  row(["เลขประจำตัวผู้เสียภาษีอากร", h.taxId]);
+  row(["สถานประกอบการ", h.branchLabel, "รหัสสาขา", h.branchCode]);
+  row(["เดือนภาษี", h.monthLabel, "งวด", pt.periodKey]);
+  if (pt.inputLedger) row(["บัญชีภาษีซื้อ", `${pt.inputLedger.code} ${pt.inputLedger.name}`]);
+  for (const w of h.warnings) row(["คำเตือน", w.messageTh, w.citation ?? ""]);
+  row([]);
+  row(["ลำดับ", "วันที่ได้รับ", "วันที่ใบกำกับ", "เลขที่ใบกำกับ", "เลขที่เอกสาร", "ชื่อผู้ขาย", "เลขผู้เสียภาษีผู้ขาย", "สาขาผู้ขาย", "มูลค่า(บาท)", "ภาษี(บาท)", "หมายเหตุ"]);
+  for (const x of pt.rows)
+    row([txt(x.seq ?? ""), x.receivedDate, x.invoiceDate, x.invoiceNo, x.docNo, x.vendorName, x.vendorTaxId, x.vendorBranchCode, x.base, x.vat, [...x.notes, ...(x.flag ? [x.flag] : [])].join(" · ")]);
+  row(["รวมรายใบ", "", "", "", "", "", "", "", pt.docsTotal.base, pt.docsTotal.vat, ""]);
+  if (pt.adjustments.length) {
+    row(["รายการปรับปรุง (ไม่มีใบกำกับ)"]);
+    for (const x of pt.adjustments) row(["", x.receivedDate, "", "", x.docNo, x.vendorName, "", "", 0, x.vat, x.notes.join(" · ")]);
+    row(["รวมรายการปรับปรุง", "", "", "", "", "", "", "", 0, pt.adjustmentsTotal.vat, ""]);
+  }
+  row(["รวมภาษีซื้อทั้งสิ้น", "", "", "", "", "", "", "", pt.total.base, pt.total.vat, ""]);
+  row([]);
+  row(["ข้อตรวจกระทบยอด", "ผล", "ควรเป็น(บาท/จำนวน)", "ได้(บาท/จำนวน)", "รายละเอียด"]);
+  for (const c of pt.checks) {
+    const money = c.key !== "BASE_VAT";
+    row([c.label, c.ok ? "ผ่าน" : "ไม่ตรง", money ? c.expected : txt(c.expected), money ? c.actual : txt(c.actual), c.detail ?? ""]);
+  }
+  row([]);
+  row([`ภาษีซื้อที่หักไม่ได้ (ไม่รวมในรายงาน)${pt.notClaimable.posting === "INTO_COST" ? " — ค่าตั้ง: รวมเข้าต้นทุน ไม่มีบัญชีแยก" : ""}`]);
+  row(["เหตุ", "มาตรา", "วันที่", "เลขที่เอกสาร", "ชื่อผู้ขาย", "เลขผู้เสียภาษีผู้ขาย", "มูลค่า(บาท)", "ภาษี(บาท)", "หมายเหตุ"]);
+  for (const g of pt.notClaimable.groups) {
+    for (const x of g.rows) row([g.labelTh, g.sectionTh, x.date, x.docNo, x.vendorName, x.vendorTaxId, x.base, x.vat, x.notes.join(" · ")]);
+    row([`รวม ${g.labelTh}`, "", "", "", "", "", g.base, g.vat, ""]);
+  }
+  row(["รวมภาษีซื้อที่หักไม่ได้", "", "", "", "", "", pt.notClaimable.total.base, pt.notClaimable.total.vat, ""]);
+  row([]);
+  row(["ภาษีซื้อรอใบกำกับ (ไม่รวมในรายงาน · ณ วันที่ดู)"]);
+  row(["เอกสารต้นทาง", "วันที่", "ชื่อผู้ขาย", "เลขผู้เสียภาษีผู้ขาย", "ภาษีรอ(บาท)", "อายุ(วัน)", "เคลมได้ถึง"]);
+  for (const x of pt.pending.rows) row([x.sourceDocNo ?? "", x.sourceDate, x.vendorName, x.vendorTaxId, x.vat, txt(x.ageDays), `${x.pastWindow ? "เลย " : ""}${x.lastClaimMonthTh ?? ""}`]);
+  row(["รวมภาษีซื้อรอใบกำกับ", "", "", "", pt.pending.vat, "", ""]);
+}
+
+/** ACC T1.3 ▸ ช่อง ภ.พ.30 ครบ (มูลค่า + ภาษี) · เครดิตยกมา + ที่มา · กำหนดยื่น · กระทบ GL · สถานะยื่น — ใช้ใน CSV ◂ */
+function pp30ReturnCsv(ret: Pp30Return, row: (cells: (string | number)[]) => void): void {
+  const l = ret.lines;
+  row(["ภ.พ.30 — สรุปตามช่อง", "มูลค่า(บาท)", "ภาษี(บาท)"]);
+  for (const k of PP30_LINE_KEYS) {
+    const amount = PP30_AMOUNT_KEYS.includes(k);
+    row([PP30_LINE_LABEL_TH[k], amount ? l[k] : "", amount ? "" : l[k]]);
+  }
+  row(["ภาษีที่ชำระเกินสุทธิ", PP30_EXCESS_CHOICE_LABEL_TH[l.excessChoice]]);
+  row(["ที่มาของเครดิตยกมา", PP30_CARRY_SOURCE_LABEL_TH[ret.carry.source], "เดือนต้นทาง", ret.carry.fromPeriod]);
+  if (ret.deadline.paper) row(["กำหนดยื่น (กระดาษ)", ret.deadline.paper.date]);
+  if (ret.deadline.online) row(["กำหนดยื่น (อินเทอร์เน็ต)", ret.deadline.online.date]);
+  for (const c of ret.reconcile) {
+    if (c.onReturn === null) row([`บัญชีพัก: ${c.label}`, c.ledger ? `${c.ledger.code} ${c.ledger.name}` : "ไม่ได้ผูกบัญชี", "ยอดคงค้างสิ้นเดือน (ไม่เข้า ภ.พ.30)", c.balance ?? 0]);
+    else row([`กระทบยอด: ${c.label}`, c.ledger ? `${c.ledger.code} ${c.ledger.name}` : "ไม่ได้ผูกบัญชี", "ยอดในบัญชี", c.movement, "ในแบบ", c.onReturn, c.ok ? "ตรง" : "ไม่ตรง"]);
+  }
+  row(["สถานะยื่น", ret.filed.filed ? `ยื่นแล้ว ${ret.filed.records.length} ครั้ง` : "ยังไม่ได้ทำเครื่องหมายยื่น"]);
+  for (const x of ret.filed.records) row([x.kind === "ORIGINAL" ? "แบบปกติ" : `แบบเพิ่มเติมครั้งที่ ${x.seq}`, new Date(x.filedAt.getTime() + 7 * 3600_000).toISOString().slice(0, 10), "ภาษีสุทธิ", (x.lines.netPayable ?? 0) - (x.lines.netExcess ?? 0)]);
+  if (ret.amendmentNeeded) row(["ยอดในสมุดต่างจากที่ยื่นล่าสุด — อาจต้องยื่นแบบเพิ่มเติม"]);
+  for (const w of ret.warnings) row(["คำเตือน", w.messageTh, w.citation ?? ""]);
+}
+
 export async function pp30Csv(
   ctx: GlCtx,
   periodKey: string,
-  opts?: { carryForward?: number; abbMode?: SalesTaxAbbMode | null },
+  opts?: { carryForward?: number | null; abbMode?: SalesTaxAbbMode | null },
 ): Promise<string> {
   const r = await pp30(ctx, periodKey, opts);
   const st = r.salesTax;
@@ -676,7 +774,7 @@ export async function pp30Csv(
   row(["สถานประกอบการ", st.header.branchLabel, "รหัสสาขา", st.header.branchCode]);
   row(["เดือนภาษี", st.header.monthLabel, "งวด", st.periodKey]);
   row(["ใบกำกับภาษีอย่างย่อ", SALES_TAX_ABB_MODE_LABEL_TH[st.abbMode]]);
-  for (const w of st.header.warnings) row(["คำเตือน", w]);
+  for (const w of st.header.warnings) row(["คำเตือน", w.messageTh, w.citation ?? ""]);
   lines.push("");
   row(["ลำดับ", "วันที่", "เลขที่", "ถึงเลขที่", "จำนวนใบ", "ชื่อผู้ซื้อ", "เลขผู้เสียภาษีผู้ซื้อ", "สาขาผู้ซื้อ", "อัตรา", "มูลค่า(บาท)", "ภาษี(บาท)", "หมายเหตุ"]);
   for (const g of st.groups) {
@@ -708,20 +806,10 @@ export async function pp30Csv(
   }
   lines.push("");
 
-  // ── ภาษีซื้อ + สรุป ภ.พ.30 (รูปเดิม) ──
-  const header = ["ฝั่ง", "วันที่", "เลขที่เอกสาร", "คู่ค้า", "เลขผู้เสียภาษี", "สาขา", "อัตรา(%)", "ฐานภาษี(บาท)", "ภาษี(บาท)"];
-  lines.push(header.map(pp30Cell).join(","));
-  for (const x of r.input.rows) {
-    lines.push(
-      [ "ภาษีซื้อ", x.date.toISOString().slice(0, 10), x.docNo, x.contactName, x.taxId, x.branchCode, (x.rateBp / 100).toFixed(2), pp30Cell(x.base), pp30Cell(x.vat)]
-        .map((v) => pp30Cell(v as string))
-        .join(","),
-    );
-  }
-  lines.push(["รวมภาษีซื้อ", "", "", "", "", "", "", pp30Cell(r.input.base), pp30Cell(r.input.total)].map((v) => pp30Cell(v as string)).join(","));
-  lines.push(["รวมภาษีขาย", "", "", "", "", "", "", pp30Cell(r.output.base), pp30Cell(r.output.total)].map((v) => pp30Cell(v as string)).join(","));
-  lines.push(["เครดิตยกมา", "", "", "", "", "", "", "", pp30Cell(r.carryForward)].map((v) => pp30Cell(v as string)).join(","));
-  lines.push([r.netPayable >= 0 ? "ภาษีต้องชำระ" : "เครดิตยกไป", "", "", "", "", "", "", "", pp30Cell(Math.abs(r.netPayable))].map((v) => pp30Cell(v as string)).join(","));
+  // ── ACC T1.6 ▸ รายงานภาษีซื้อ (เนื้อหาเดียวกับจอ/ใบพิมพ์) ◂ ──
+  purchaseTaxCsv(r.purchaseTax, row);
+  lines.push("");
+  pp30ReturnCsv(r.ret, row);
   return "\uFEFF" + lines.join("\n");
 }
 

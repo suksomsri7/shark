@@ -25,6 +25,7 @@ import type { PeriodChecklist, PeriodRow } from "../period-close";
 import type { AccountPolicy } from "../policy";
 import type { AgingReport, BalanceSheet, CashFlow, CashFlowSection, Pp30, Pp30Side, ProfitLoss, TrialBalance } from "../reports";
 import type { AccountSettingsView } from "../service";
+import type { Pp30Return } from "../pp30-return";
 import type { DocSettings } from "../settings-schema";
 import { iso, ymd } from "./serialize";
 
@@ -381,6 +382,7 @@ function pp30SideView(s: Pp30Side) {
       baseSatang: r.base,
       vatSatang: r.vat,
       rateBp: r.rateBp,
+      ...(r.manual ? { manualAdjustment: true } : {}),
     })),
     byRate: s.byRate.map((g) => ({ rateBp: g.rateBp, baseSatang: g.base, vatSatang: g.vat })),
   };
@@ -394,6 +396,52 @@ export function pp30View(r: Pp30) {
     carryForwardSatang: r.carryForward,
     netPayableSatang: r.netPayable,
     creditCarrySatang: r.creditCarry,
+    ...pp30ReturnView(r.ret),
+  };
+}
+
+/** ACC T1.3 ▸ ภ.พ.30 ครบช่อง (สตางค์) · เครดิตยกมา + ที่มา + ประวัติที่ร้านแก้ · กำหนดยื่น · กระทบ GL ผ่าน mapping · สถานะยื่น · คำเตือน T0.4 ◂ */
+export function pp30ReturnView(ret: Pp30Return) {
+  return {
+    return: { ...ret.lines },
+    creditBroughtForward: {
+      amountSatang: ret.carry.amount,
+      source: ret.carry.source,
+      fromPeriod: ret.carry.fromPeriod,
+      systemAmountSatang: ret.carry.systemAmount,
+      history: ret.carry.history.map((h) => ({ amountSatang: h.amountSatang, reason: h.reason, at: iso(h.createdAt) })),
+    },
+    excessChoiceDefault: ret.excessChoiceSetting,
+    deadline: ret.deadline,
+    reconcile: ret.reconcile.map((c) => ({
+      key: c.key,
+      label: c.label,
+      account: c.ledger ? { id: c.ledger.id, code: c.ledger.code, name: c.ledger.name, viaMapping: c.ledger.viaMapping } : null,
+      movementSatang: c.movement,
+      onReturnSatang: c.onReturn,
+      ok: c.ok,
+      ...(c.balance !== undefined ? { balanceSatang: c.balance } : {}),
+      ...(c.manualCount ? { manualAdjustmentsSatang: c.manual ?? 0, manualAdjustmentCount: c.manualCount } : {}),
+    })),
+    filing: {
+      filed: ret.filed.filed,
+      records: ret.filed.records.map((x) => ({
+        kind: x.kind,
+        seq: x.seq,
+        filedAt: iso(x.filedAt),
+        note: x.note,
+        legacy: x.legacy,
+        excessChoice: x.excessChoice,
+        lines: x.lines,
+        ...(x.diff ? { diff: x.diff } : {}),
+      })),
+      ...(ret.filed.unmarked
+        ? { unmarked: { at: iso(ret.filed.unmarked.at), reason: ret.filed.unmarked.reason, previouslyFiledAt: iso(ret.filed.unmarked.filedAt), previousLines: ret.filed.unmarked.lines } }
+        : {}),
+    },
+    diffFromFiled: ret.diffFromFiled,
+    amendmentNeeded: ret.amendmentNeeded,
+    warnings: ret.warnings,
   };
 }
 
@@ -667,6 +715,8 @@ export function docSettingRowView(r: DocNumberingRow, s: DocSettings) {
     publicLink: { enabled: s.publicView.enabled, expiryDays: s.publicView.expiryDays },
     autoTaxInvoice: s.autoTaxInvoice.mode,
     goodsTaxInvoiceOnIssue: s.autoTaxInvoice.goodsOnIssue,
+    // ACC T1.4 ▸ ภาษีซื้อ (ค่าของทั้งสมุด เหมือน autoTaxInvoice — การ์ดเดียวกันบนจอ) ◂
+    inputVat: { nonClaimPosting: s.inputVat.nonClaimPosting, vendorNoTaxIdDefault: s.inputVat.vendorNoTaxIdDefault },
     printTemplate: s.print.template,
     channels: [...s.channels.order],
   };

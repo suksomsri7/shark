@@ -168,7 +168,7 @@ const settingsTax = defineOp({
   kind: "read",
   action: "account.doc.view",
   summary:
-    "Business entity kind of this book and the effective-dated legal value tables (VAT rate, withholding tax rates by income type x payer x recipient x channel, filing deadlines incl. the online extension): every row with its value, effective range, source, confidence tag and checked date, which row is in effect, and warnings. System defaults are research, not legal advice.",
+  "Business entity kind of this book and the effective-dated legal value tables (VAT rate, withholding tax rates by income type x payer x recipient x channel, filing deadlines incl. the online extension): every row with its value, effective range, source, confidence tag and checked date, which row is in effect, and warnings. System defaults are research, not legal advice.",
   label: "ประเภทผู้ประกอบการและตารางค่ากฎหมาย",
   input: settingsTaxInput,
   tool: {

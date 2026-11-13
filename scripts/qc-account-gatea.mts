@@ -65,11 +65,19 @@ try {
     pass("GOODS INVOICE: Dr1100 / Cr income / Cr2205 (VAT พัก) — balance ✓ (QC5-A2)");
 
     // ออกใบกำกับ (convert → issue) → ย้าย 2205→2200
-    const cv = await acc.convertDocument(tenantId, sA.id, (d as { id: string }).id, "TAX_INVOICE", userId);
-    if ((cv as { ok: boolean }).ok === false) throw new Error("convert TAX_INVOICE: " + JSON.stringify(cv));
-    const txId = (cv as { newId: string }).newId;
-    const ti = await acc.issueDocument(tenantId, sA.id, txId);
-    if ((ti as { ok: boolean }).ok === false) throw new Error("issue TAX_INVOICE: " + JSON.stringify(ti));
+    // ORACLE-EDIT (13 พ.ย. 2569 · ACC T1.2): ค่าเริ่มของสมุด "ใบกำกับของสินค้าออกพร้อมใบแจ้งหนี้" (goodsOnIssue · skill §13 ม.78/ม.86)
+    //   ⇒ ออกใบแจ้งหนี้สินค้าแล้วระบบออกใบกำกับให้เอง (ย้าย 2205→2200) — การแปลงซ้ำด้วยมือถูกปฏิเสธ "ออกใบกำกับครบแล้ว" (ถูกต้อง)
+    //   ข้อตรวจเดิมคงครบ: ใบกำกับที่ออกจากใบแจ้งหนี้ต้อง Dr2205/Cr2200 + balance · สมุดที่ปิดค่าตั้งยังแปลงด้วยมือได้ตามเดิม
+    const autoTx = await prisma.accountDocument.findFirst({ where: { systemId: sA.id, docType: "TAX_INVOICE", sourceDocId: (d as { id: string }).id, status: { not: "DRAFT" } }, select: { id: true } });
+    let txId: string;
+    if (autoTx) txId = autoTx.id;
+    else {
+      const cv = await acc.convertDocument(tenantId, sA.id, (d as { id: string }).id, "TAX_INVOICE", userId);
+      if ((cv as { ok: boolean }).ok === false) throw new Error("convert TAX_INVOICE: " + JSON.stringify(cv));
+      txId = (cv as { newId: string }).newId;
+      const ti = await acc.issueDocument(tenantId, sA.id, txId);
+      if ((ti as { ok: boolean }).ok === false) throw new Error("issue TAX_INVOICE: " + JSON.stringify(ti));
+    }
     const es2 = await entriesOf(sA.id);
     const te = es2.find((x) => x.refType === "AccountDocument" && x.refId === txId);
     if (!te) throw new Error("ไม่พบ journal ของใบกำกับ");

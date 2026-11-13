@@ -271,6 +271,9 @@ export type DocDetailData = {
   note: string | null;
   /** T0.4 — สาเหตุของใบลด/เพิ่มหนี้ (ใช้แสดงคำเตือนก่อนออก) */
   adjustReason: string | null;
+  /** ACC T1.9 — โหมด VAT ของใบ + ต้นทาง (คำเตือนขายไม่มี VAT ก่อนออก) */
+  vatMode: string;
+  sourceDocId: string | null;
   internalNote: string | null;
   /** WO 9.4 §0.3 ข้อ 8/9 — แท็กอิสระของเอกสาร (ลบทีละแท็กได้ที่หน้านี้ — เลิกทำได้ภายใน 5 นาที) */
   tags: string[];
@@ -358,6 +361,8 @@ export async function getDocDetailData(
     paidTotal: doc.paidTotal,
     note: doc.note,
     adjustReason: doc.adjustReason ?? null,
+    vatMode: doc.vatMode,
+    sourceDocId: doc.sourceDocId ?? null,
     internalNote: doc.internalNote,
     tags: doc.tags,
     publicToken: doc.publicToken,

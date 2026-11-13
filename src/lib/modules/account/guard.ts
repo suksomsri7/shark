@@ -187,17 +187,20 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "reports/page.tsx": "account.report.view",
   "reports/pp30/page.tsx": "account.report.view",
   "reports/profit-loss/page.tsx": "account.report.view",
+  "reports/revenue-novat/page.tsx": "account.report.view", // ACC T1.9 — รายได้ที่ไม่มี VAT (loadReport)
   "reports/trial-balance/page.tsx": "account.report.view",
   "settings/page.tsx": "account.settings.manage",
   // WO 8.1 (§9.2): หน้า "ตั้งค่า › เอกสารและเลขที่" — แก้เลขรัน/นโยบายเอกสาร ⇒ ต้องมีสิทธิ์ตั้งค่าเต็ม
   "settings/documents/page.tsx": "account.settings.manage",
   "settings/policy/page.tsx": "account.settings.manage", // WO 8.2 §9.3
+  "settings/tax/page.tsx": "account.settings.manage", // ACC T0.2 — ตารางค่ากฎหมาย
   // WO 8.3 (§9.4–§9.5): สิทธิ์ผู้ใช้งาน + การเชื่อมต่อ — แก้ได้ = แก้สิทธิ์คนอื่น/ท่อเงินเข้าบัญชี ⇒ สิทธิ์ตั้งค่าเต็ม
   //   (การแจกสิทธิ์ให้คนอื่นยังต้องผ่านด่านที่ 2 ของ staff/service ซึ่งบังคับ `settings.staff.write` อีกชั้น)
   "settings/permissions/page.tsx": "account.settings.manage",
   "settings/connections/page.tsx": "account.settings.manage",
   "tax/export/route.ts": "account.tax.view",
   "tax/page.tsx": "account.tax.view",
+  "tax/parked-vat/page.tsx": "account.tax.view", // ACC T1.2 — ภาษีขายที่ค้างพัก
   "tax/pending-input-vat/page.tsx": "account.tax.view", // ACC T1.5 — ใบกำกับภาษีซื้อรอรับ
   "wht/[certId]/print/page.tsx": "account.wht.manage",
   "wht/page.tsx": "account.wht.manage",

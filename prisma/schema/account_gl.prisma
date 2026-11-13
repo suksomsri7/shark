@@ -398,6 +398,10 @@ model AccountWhtFiling {
   totalTaxSatang   Int
   certCount        Int
   note             String?
+  // ACC T1.7 ▸ ยกเลิกเครื่องหมาย = เก็บแถวไว้ (ประวัติ) · null = ยังมีผล ◂
+  unmarkedAt       DateTime?
+  unmarkedById     String?
+  unmarkReason     String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -418,10 +422,55 @@ model AccountVatFiling {
   inputVatSatang  Int      @default(0)
   payableSatang   Int      @default(0) // ภาษีขาย − ภาษีซื้อ (ติดลบ = เครดิตยกไป)
   note            String?
+  // ACC T1.3 ▸ ภาพตัวเลขที่ยื่น (ทุกช่องของ pp30-shared PP30_LINE_KEYS + excessChoice) · แถวก่อน T1.3 = null ◂
+  lines                      Json?
+  creditBroughtForwardSatang Int     @default(0)
+  excessChoice               String? // CARRY_FORWARD | REFUND
+  netSatang                  Int? // + ต้องชำระสุทธิ · − ชำระเกินสุทธิ
+  // ACC T1.7 ▸ ยกเลิกเครื่องหมาย = เก็บแถวไว้ (ประวัติ) · null = ยังมีผล ◂
+  unmarkedAt                 DateTime?
+  unmarkedById               String?
+  unmarkReason               String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@unique([systemId, periodKey])
+  @@index([tenantId, systemId])
+}
+
+// ACC T1.3: แบบยื่นเพิ่มเติม ภ.พ.30 — หลายครั้งต่อเดือน (seq 1,2,…) · ตัวเลขใหม่ทั้งชุด + ผลต่างกับยอดที่ยื่นล่าสุดก่อนหน้า
+model AccountVatAdditionalFiling {
+  id            String   @id @default(cuid())
+  tenantId      String
+  systemId      String
+  periodKey     String // "YYYY-MM"
+  seq           Int
+  filedAt       DateTime @default(now())
+  filedById     String?
+  lines         Json
+  diff          Json
+  excessChoice  String?
+  netSatang     Int
+  diffNetSatang Int
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@unique([systemId, periodKey, seq])
+  @@index([tenantId, systemId])
+}
+
+// ACC T1.3: เครดิตภาษียกมาที่ร้านแก้เอง — แถวใหม่ทุกครั้ง (ประวัติ) · แถวล่าสุดของเดือนมีผล · amountSatang null = กลับไปใช้ค่าที่ระบบคิด
+model AccountVatCreditCarry {
+  id           String   @id @default(cuid())
+  tenantId     String
+  systemId     String
+  periodKey    String // เดือนที่รับเครดิตยกมา "YYYY-MM"
+  amountSatang Int?
+  reason       String
+  setById      String?
+  createdAt    DateTime @default(now())
+
+  @@index([systemId, periodKey])
   @@index([tenantId, systemId])
 }
 

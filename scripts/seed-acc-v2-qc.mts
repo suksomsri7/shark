@@ -19,6 +19,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join as pathJoin } from "node:path";
+import { spawnSync } from "node:child_process";
 // tsconfig ไม่ได้เปิด allowImportingTsExtensions → import แบบ static ที่ลงท้าย .mts จะ typecheck ไม่ผ่าน
 // ⇒ โหลดแบบ dynamic (tsx resolve ตอนรันได้ปกติ) แล้วประกาศชนิดไว้เอง
 const accEnv = (await import("./acc-v2-env.mts" as string)) as {
@@ -1011,9 +1012,11 @@ async function makePettyExpense(desc: string, grand: number, issue: string): Pro
     lines: auto.lines.map((l) => ({ ...l, accountId: miscAccount.id })),
     createdById: owner.id,
   });
-  // ACC T1.8 step 0: T1.4 ทำให้ "เคลมภาษีซื้อโดยไม่มีเลขผู้เสียภาษีของคู่ค้า" ต้องกดยืนยัน (INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID) —
-  //   ใบสำรองจ่ายในชุดข้อมูลไม่มีคู่ค้าและตั้งใจเคลม (ยอดในเฉลยเดิม) ⇒ seed กดยืนยันในนามเจ้าของ (ข้อมูลเหมือนก่อน T1.4 ทุกสตางค์)
-  const issued = await exp.issueExpenseDoc(tenantId, systemId, doc.id, { ack: { codes: ["INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID"], actorId: owner.id, actorType: "USER", via: "seed" } });
+  // ACC T1.4 ▸ ค่าใช้จ่ายสำรองจ่ายไม่มีคู่ค้า + เลือกเคลม ⇒ คำเตือน INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID ต้องยืนยัน
+  //   ร้านทดสอบ "กดยืนยัน" ในนามเจ้าของ (คงยอดเดิมของเฉลย: ภาษีซื้อเคลม) — บันทึกผู้ยืนยันใน AuditLog ตามปกติ
+  const issued = await exp.issueExpenseDoc(tenantId, systemId, doc.id, {
+    ack: { codes: ["INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID"], actorId: owner.id, via: "screen" },
+  });
   if (!issued.ok) throw new Error(`ออกเอกสารค่าใช้จ่ายสำรองจ่าย "${desc}" ไม่สำเร็จ: ${issued.reason}`);
   const pay = await exp.recordVendorPayment(tenantId, systemId, doc.id, {
     paidAt: D(issue),
@@ -1215,7 +1218,19 @@ for (const plan of posSalesPlan) {
       tx,
     ),
   );
-  await prisma.posSale.update({ where: { id: sale.saleId }, data: { paidAt: D(plan.date), createdAt: D(plan.date) } });
+  // T0.3d: เลขใบเสร็จตาม "เดือนของบิล" ในชุดข้อมูล ไม่ใช่เดือนที่รัน seed (createSale ออนไลน์ใช้เดือนปัจจุบัน)
+  //   ตัวนับของเดือนชุดข้อมูลขยับจริงผ่าน posReceiptCounter (ตัวเดียวกับ createSale) ⇒ ไม่ชนเลขอื่นในเดือนนั้น
+  const dataPeriod = plan.date.slice(0, 7).replace("-", "");
+  const dataCounter = await prisma.posReceiptCounter.upsert({
+    where: { unitId_period: { unitId: unit.id, period: dataPeriod } },
+    create: { tenantId, unitId: unit.id, period: dataPeriod, seq: 1 },
+    update: { seq: { increment: 1 } },
+  });
+  sale.receiptNo = `${dataPeriod}-${String(dataCounter.seq).padStart(4, "0")}`;
+  await prisma.posSale.update({
+    where: { id: sale.saleId },
+    data: { paidAt: D(plan.date), createdAt: D(plan.date), receiptNo: sale.receiptNo },
+  });
   // ตัดสต็อก (perpetual) — คีย์เดียวกับ pos.consumeSaleInventory เพื่อให้ void/คืนสต็อกภายหลังเดินเส้นเดิม
   const saleLines = await prisma.posSaleLine.findMany({
     where: { tenantId, saleId: sale.saleId, itemId: { not: null } },
@@ -2871,8 +2886,13 @@ const expected = {
 };
 writeFileSync(QC.expectedPath, `${JSON.stringify(expected, null, 2)}\n`);
 
-console.log(`\n✅ seed เสร็จ — เขียนเฉลยลง ${QC.expectedPath} · ACC_V2_SEED=created`);
-console.log("   ⚠️ เฉลยหน้าหลัก (คีย์ dashboard) ถูกเขียนทับไปด้วย — รันต่อ: QC_ENV_FILE=.env.qc pnpm tsx scripts/acc-v2-expected-dashboard.mts");
+// T0.3d: seed เขียนทับเฉลยทั้งไฟล์ ⇒ สร้างคีย์ที่ตัวสร้างเฉลยแยกเขียน (dashboard · contacts · contactProfile/mergeDuplicate)
+//   ต่อทันทีในตัว seed เอง — เดิมพึ่งให้ qc-all รันต่อ ⇒ seed มือ (ไม่ผ่าน qc-all) ได้เฉลยขาดคีย์ (seed-check J1 แดง)
+for (const gen of ["acc-v2-expected-dashboard.mts", "acc-v2-expected-contacts.mts", "acc-v2-expected-contact-profile.mts"]) {
+  const r = spawnSync("pnpm", ["exec", "tsx", pathJoin("scripts", gen)], { stdio: "inherit", env: process.env });
+  if (r.status !== 0) throw new Error(`seed: สร้างเฉลย scripts/${gen} ล้ม (exit ${r.status})`);
+}
+console.log(`\n✅ seed เสร็จ — เขียนเฉลยลง ${QC.expectedPath} (+ dashboard · contacts · contactProfile) · ACC_V2_SEED=created`);
 console.log(`   ค้างรับ ฿${bahtStr(stats.receivable)} · ${stats.overdueCount} ใบพ้นกำหนด ฿${bahtStr(stats.overdueAmount)}`);
 console.log(`   ค้างจ่าย ฿${bahtStr(pay.payable)} · เงินคงเหลือรวม ฿${bahtStr(sum(balances.map((b) => b.balance)))}`);
 console.log(`   ระบบบัญชี /app/sys/${systemId}`);

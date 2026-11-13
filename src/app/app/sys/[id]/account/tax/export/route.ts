@@ -6,7 +6,7 @@ import { pp30Csv } from "@/lib/modules/account/reports";
 // §10 CSV ภ.ง.ด. — ดาวน์โหลดจากหน้า /tax (UTF-8 BOM เปิด Excel ไทยได้)
 //   ?kind=pnd&type=3|53&period=YYYY-MM  → ภ.ง.ด.3/53
 //   ?kind=credits&period=YYYY-MM|year=YYYY → ภาษีถูกหัก (เครดิต 1160)
-//   ?kind=pp30&period=YYYY-MM (&carry=สตางค์) → ภ.พ.30 รายเดือน (WO-0035)
+//   ?kind=pp30&period=YYYY-MM (&carry=สตางค์ = ลองดูชั่วคราว · ไม่ส่ง = เครดิตยกมาที่จำไว้) → ภ.พ.30 รายเดือน (WO-0035)
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -27,8 +27,10 @@ export async function GET(
   let csv: string;
   let filename: string;
   if (kind === "pp30") {
-    const carry = Number(url.searchParams.get("carry") ?? 0);
-    csv = await pp30Csv({ tenantId, systemId }, period, { carryForward: Number.isFinite(carry) ? carry : 0 });
+    // ACC T1.3 ▸ ไม่ส่ง carry = ใช้เครดิตยกมาที่จำไว้ (ส่ง = ค่าลองดูชั่วคราว ไม่บันทึก) ◂
+    const rawCarry = url.searchParams.get("carry");
+    const carry = rawCarry === null || rawCarry === "" ? null : Number(rawCarry);
+    csv = await pp30Csv({ tenantId, systemId }, period, { carryForward: carry !== null && Number.isFinite(carry) ? carry : null });
     filename = `pp30-${period || "all"}.csv`;
   } else if (kind === "credits") {
     csv = await whtCreditsCsv(tenantId, systemId, { period: period || undefined, year: year || undefined });

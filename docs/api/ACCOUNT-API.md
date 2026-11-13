@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 205 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 210 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -697,6 +697,19 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/periods/123/checklist" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `periods.filed-differences`
+
+**GET /periods/{key}/filed-differences** - Entries dated into a month after it was marked filed: for VAT (PP30) every posting into the month that changed output, input or parked VAT after the filing time, with document, effect, who and whether the legal warning was acknowledged; for withholding tax (PND3/53) every certificate issued or cancelled in the month after it was marked filed. Also returns the mark/unmark history. Totals are what an additional filing would add. · scope: `account.journal.view` · read
+
+Path parameters: `key` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/periods/123/filed-differences" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `periods.list`
 
 **GET /periods** - Accounting periods with their status, entry count, who closed them and whether VAT was filed. · scope: `account.report.view` · read
@@ -952,6 +965,33 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/reports/profit-loss?from=exa
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `reports.purchase-tax`
+
+**GET /reports/purchase-tax** - Purchase tax report (input VAT report) of one tax month: header (business name, tax id, head office or branch, tax month) with warnings; one row per purchase tax invoice claimed in the month, numbered from 1 each month and ordered by the date received, with the vendor's invoice date and number, vendor name, tax id and branch, value, VAT and notes (late-claim note, credit/debit note references, cancellations); manual journal adjustments on the input VAT account; reconciliation (report total = input VAT ledger movement = PP30 input VAT; value x rate ~= VAT per row); and, outside the report total, non-claimable input VAT by reason and input VAT still waiting for the vendor's tax invoice. Supports CSV. · scope: `account.tax.view` · read · AI tool: `account_purchase_tax_report`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `period` | string | yes | period (accounting period, `YYYY-MM`). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/purchase-tax?period=example%20period" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.revenue-without-vat`
+
+**GET /reports/revenue-without-vat** - Revenue that carried no VAT, per month: issued sales documents and POS bills, one row per line with no VAT, grouped as EXEMPT (line marked exempt), ZERO_RATED (0% line on a VAT document) or UNTAXED (document without VAT, no reason given - what a VAT-registered shop must check). Credit notes count negative; receipts and tax invoices issued from an invoice are counted at the invoice. · scope: `account.tax.view` · read · AI tool: `account_revenue_without_vat`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `from` | string | yes | First month, `YYYY-MM`. |
+| `to` | string | yes | Last month, `YYYY-MM` (inclusive). At most 24 months after `from`. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/revenue-without-vat?from=example%20from&to=example%20to" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `reports.trial-balance`
 
 **GET /reports/trial-balance** - Trial balance: opening, movement and closing debit/credit per account, with a balanced flag. Supports CSV. · scope: `account.report.view` · read
@@ -968,12 +1008,12 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/reports/trial-balance?from=e
 
 #### `reports.vat-pp30`
 
-**GET /reports/vat-pp30** - Monthly VAT return (PP30): output VAT, input VAT and the net amount payable. Supports CSV (filing layout). · scope: `account.tax.view` · read
+**GET /reports/vat-pp30** - Monthly VAT return (PP30) with every line: sales at the standard rate, zero rated and exempt sales, output VAT, purchases and input VAT, credit brought forward from the previous month (with where it came from), net payable or excess, the filing deadlines, reconciliation to the VAT ledger accounts and the filed or additional returns of the month. Supports CSV (filing layout). · scope: `account.tax.view` · read
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
 | `period` | string | yes | period (accounting period, `YYYY-MM`). |
-| `carryForwardSatang` | integer | no | VAT credit carried forward from the previous month, in satang. Default 0. · min 0 |
+| `carryForwardSatang` | integer | no | Try another credit brought forward, in satang, without saving it. Default: the remembered credit from the previous month. · min 0 |
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/reports/vat-pp30?period=example%20period" \
@@ -1665,6 +1705,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `toType` | one of several shapes | no | Target document type. Not needed for a purchase order, which always converts to its own follow up document. |
 
 ```bash
@@ -1701,6 +1742,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `reason` | enum("ENTERTAINMENT", "PASSENGER_CAR", "ABBREVIATED_INVOICE", "NON_VAT_BUSINESS", "COPY_OR_NAME_MISMATCH", "NO_TAX_INVOICE", "INVOICE_INCOMPLETE", "NOT_BUSINESS", "ISSUER_NOT_ENTITLED") | no | Why the input VAT cannot be claimed (section 82/5). Default: NO_TAX_INVOICE. |
 
 ```bash
@@ -1719,7 +1761,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/issue" \
@@ -1754,7 +1796,7 @@ Path parameters: `id` (required).
 | `vendorInvoiceDate` | string | no | Purchase tax invoice only: the date printed on the vendor's tax invoice. Default: the claim date. |
 | `vendorInvoiceNo` | one of several shapes | no | Purchase tax invoice only: the vendor's tax invoice number. |
 | `claimDate` | string | no | Purchase tax invoice only: the date input VAT is posted, which sets the tax month it is claimed in. Default: today (the month the invoice was received). |
-| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted (INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW, INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH). |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW, INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH, or FILED_PERIOD_VAT_CHANGE when the claim lands in a month already marked filed). |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/receive" \
@@ -1793,7 +1835,7 @@ Path parameters: `id` (required).
 | `date` | enum("TODAY", "INVOICE_DATE") | yes | Date of the tax invoice issued late to release parked output VAT. Required, there is no default: INVOICE_DATE puts the VAT in the invoice's month (a filed PP30 may need an additional return); TODAY puts it in this month. |
 | `goods` | boolean | no | Release parked VAT of goods lines. Default true. |
 | `services` | boolean | no | Release parked VAT of service lines (normally released per payment). Default false. |
-| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted (TAX_INVOICE_LATE_DATE_CHOICE). |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted (TAX_INVOICE_LATE_DATE_CHOICE). |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/release-vat" \
@@ -2244,6 +2286,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/journal/123/flag" \
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `date` | string | yes | date (Thai calendar day, YYYY-MM-DD). |
 | `book` | enum("SALES", "PURCHASES", "RECEIPTS", "PAYMENTS", "GENERAL") | no | Journal book the entry belongs to. Default GENERAL. |
 | `memo` | one of several shapes | no | What the entry is for. Shown in the journal list. |
@@ -2333,6 +2376,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `paidAt` | string | no | paidAt (Thai calendar day, YYYY-MM-DD). |
 
 ```bash
@@ -2367,6 +2411,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payment-requests" \
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `groupId` | string | yes | Id of the billing note or combined payment. · min length 1 · max length 40 |
 | `paidAt` | string | yes | paidAt (Thai calendar day, YYYY-MM-DD). |
 | `financeAccountId` | one of several shapes | no | - |
@@ -2390,6 +2435,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payments/group" \
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `documentId` | string | yes | Id of the invoice, deposit, purchase or expense being settled. A receipt issued from an invoice settles the invoice. · min length 1 · max length 40 |
 | `rows` | array of object | yes | One entry per time money moved. Several entries are recorded as one batch, in order. |
 
@@ -2415,16 +2461,55 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/close" \
   -H "Idempotency-Key: $(uuidgen)"
 ```
 
-#### `periods.vat-filed`
+#### `periods.vat-additional`
 
-**POST /periods/{key}/vat-filed** - Record that the VAT return (form PP.30) of one month has been filed, together with the output and input VAT that were on it. This is checklist item four when the period is closed. · scope: `account.period.close` · write
+**POST /periods/{key}/vat-additional** - File an additional VAT return (PP.30) for a month that is already marked as filed, after documents changed that month. The new figures come from the books; the difference against the latest filed figures is returned and kept with its own record. Refused when nothing changed. · scope: `account.period.close` · write · AI tool: `account_file_vat_additional`
 
 Path parameters: `key` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `salesVatSatang` | integer | yes | Output VAT on the return, in satang. · min 0 |
-| `inputVatSatang` | integer | yes | Input VAT on the return, in satang. · min 0 |
+| `excessChoice` | enum("CARRY_FORWARD", "REFUND") | no | What to do when input VAT is more than output VAT: CARRY_FORWARD to the next month (default from the book setting) or REFUND. |
+| `note` | one of several shapes | no | Why the additional return is filed. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/vat-additional" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `periods.vat-credit-carry`
+
+**POST /periods/{key}/vat-credit-carry** - Set the VAT credit brought forward into one month by hand, for example to match what the accountant filed. Every change is kept as history with its reason. Send amountSatang null to go back to the amount the system works out from the previous month. · scope: `account.period.close` · write · AI tool: `account_set_vat_credit_carry`
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `amountSatang` | one of several shapes | yes | Credit brought forward in satang, or null to use the system amount again. |
+| `reason` | string | yes | Why the credit is being changed. Kept in the history. · min length 3 · max length 500 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/vat-credit-carry" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"amountSatang":"example amountSatang","reason":"reason for the audit log"}'
+```
+
+#### `periods.vat-filed`
+
+**POST /periods/{key}/vat-filed** - Record that the VAT return (form PP.30) of one month has been filed. Every line of the return (sales at the standard rate, zero rated and exempt sales, purchases, output and input VAT, credit brought forward, net payable or excess) is taken from the books and kept as the filed figures. The amounts in the request are optional: they are stored as declared and a warning is returned when they differ from the books. This is checklist item four when the period is closed. · scope: `account.period.close` · write · AI tool: `account_file_vat_return`
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `salesVatSatang` | integer | no | Output VAT on the return as filed, in satang. Optional; the books are used when it is missing. · min 0 |
+| `inputVatSatang` | integer | no | Input VAT on the return as filed, in satang. Optional; the books are used when it is missing. · min 0 |
+| `excessChoice` | enum("CARRY_FORWARD", "REFUND") | no | What to do when input VAT is more than output VAT: CARRY_FORWARD to the next month (default from the book setting) or REFUND. |
 | `note` | one of several shapes | no | How it was filed, for example through the e-filing site. |
 
 ```bash
@@ -2432,7 +2517,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/vat-filed" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
-  -d '{"salesVatSatang":10000,"inputVatSatang":10000}'
+  -d '{}'
 ```
 
 #### `petty-cash.reimburse`
@@ -2932,7 +3017,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/settings/documents/123/next
 
 #### `settings.documents.update`
 
-**PATCH /settings/documents/{docType}** - Change the numbering pattern, due days, footer note, terms or print settings of one document type. · scope: `account.settings.manage` · write
+**PATCH /settings/documents/{docType}** - Change the numbering pattern, due days, footer note, terms or print settings of one document type, or the book-wide tax invoice and purchase input VAT settings. · scope: `account.settings.manage` · write
 
 Path parameters: `docType` (required).
 
@@ -2948,6 +3033,7 @@ Path parameters: `docType` (required).
 | `publicLink` | object | no | - |
 | `autoTaxInvoice` | enum("MANUAL", "ON_PAYMENT", "ON_INVOICE") | no | Service lines: when the tax invoice is issued automatically (ON_PAYMENT = per payment · ON_INVOICE = with the invoice · MANUAL). |
 | `goodsTaxInvoiceOnIssue` | boolean | no | Goods lines: issue the tax invoice together with the invoice (default true). Off = goods output VAT stays parked and a warning shows after the month. |
+| `inputVat` | object | no | Purchase input VAT settings of the whole book (same card as the tax invoice settings on screen). |
 | `printTemplate` | enum("STANDARD", "COMPACT", "WITH_IMAGES") | no | - |
 | `channels` | array of string | no | Money channel ids, in the order printed on documents. |
 
@@ -3295,6 +3381,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/webhooks" \
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `paymentId` | string | yes | Id of the payment to a vendor that had withholding tax deducted. Take it from the payments of the expense document. · min length 1 · max length 40 |
 | `whtIncomeType` | enum("SALARY", "COMMISSION", "ROYALTY", "INTEREST", "DIVIDEND", "RENT", "PROFESSIONAL", "CONTRACTOR", "SERVICE", "M40_1", "M40_2", "M40_3", "M40_4", "M40_5", "M40_6", "M40_7", "M40_8") | yes | Type of income under section 40 of the Thai Revenue Code, used on the withholding tax certificate. Readable names: SALARY 40(1), COMMISSION 40(2), ROYALTY 40(3), INTEREST or DIVIDEND 40(4), RENT 40(5), PROFESSIONAL 40(6), CONTRACTOR 40(7), SERVICE 40(8). The raw codes M40_1 to M40_8 are accepted too. |
 | `whtRateBp` | one of several shapes | no | Rate in basis points (1% = 100). Only needed when the payment itself did not record a rate. |
@@ -3417,6 +3504,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `reason` | string | yes | Why the deposit is being returned, at least 5 characters. Stored on the document and in the audit log. · min length 5 · max length 500 |
 | `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
 
@@ -3436,6 +3524,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `reason` | string | yes | Why this document is being voided, at least 5 characters. Stored on the document and in the audit log. · min length 5 · max length 500 |
 | `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
 
@@ -3456,6 +3545,7 @@ Path parameters: `id` (required).
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
 | `reason` | string | yes | Why the entry is being reversed. At least 5 characters. Kept in the audit log. · min length 5 · max length 500 |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
 
 ```bash
@@ -3493,6 +3583,7 @@ Path parameters: `paymentId` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `documentId` | string | yes | Id of the document this payment belongs to. · min length 1 · max length 40 |
 | `reason` | string | yes | Why the payment is being reversed, at least 5 characters. Stored on the reversing journal entry and in the audit log. · min length 5 · max length 500 |
 | `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
@@ -3513,6 +3604,7 @@ Path parameters: `batchKey` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "FILED_PERIOD_VAT_CHANGE", "FILED_PERIOD_PND_CHANGE", "SALE_WITHOUT_VAT_REGISTERED", "MANUAL_JV_VAT_ACCOUNT", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW", "VAT_COLLECTED_ON_BEHALF") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required (for example FILED_PERIOD_VAT_CHANGE when the entry lands in a month already marked filed). |
 | `groupId` | string | yes | Id of the billing note or combined payment the batch belongs to. · min length 1 · max length 40 |
 | `reason` | string | yes | Why the whole transfer is being reversed, at least 5 characters. Stored on every reversing journal entry. · min length 5 · max length 500 |
 | `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
@@ -3622,7 +3714,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
 
 ## AI tools
 
-42 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+47 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 `account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
@@ -3641,6 +3733,8 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_create_recurring` | `recurring.create` | write | `account.doc.create` |
 | `account_dashboard` | `dashboard.get` | read | `account.doc.view` |
 | `account_email_document` | `documents.remind` | write | `account.doc.view` |
+| `account_file_vat_additional` | `periods.vat-additional` | write | `account.period.close` |
+| `account_file_vat_return` | `periods.vat-filed` | write | `account.period.close` |
 | `account_finance_balances` | `finance-accounts.list` | read | `account.finance.manage` |
 | `account_get_contact` | `contacts.get` | read | `account.doc.view` |
 | `account_get_document` | `documents.get` | read | `account.doc.view` |
@@ -3654,14 +3748,17 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_parse_quick_create` | `documents.parse` | read | `account.doc.view` |
 | `account_pending_input_vat` | `reports.pending-input-vat` | read | `account.tax.view` |
 | `account_post_journal` | `journal.create` | write | `account.journal.adjust` |
+| `account_purchase_tax_report` | `reports.purchase-tax` | read | `account.tax.view` |
 | `account_read_bill_image` | `inbox.read` | write | `account.document.manage` |
 | `account_record_payment` | `payments.record` | write | `account.payment.record` |
 | `account_release_parked_vat` | `documents.release-vat` | write | `account.doc.issue` |
 | `account_reopen_period` | `periods.reopen` | danger | `account.period.reopen` |
 | `account_report` | `reports.profit-loss` | read | `account.report.view` |
+| `account_revenue_without_vat` | `reports.revenue-without-vat` | read | `account.tax.view` |
 | `account_run_depreciation` | `assets.depreciation-run` | write | `account.asset.manage` |
 | `account_search_contacts` | `contacts.list` | read | `account.doc.view` |
 | `account_search_products` | `products.list` | read | `account.doc.view` |
+| `account_set_vat_credit_carry` | `periods.vat-credit-carry` | write | `account.period.close` |
 | `account_settings` | `settings.get` | read | `account.doc.view` |
 | `account_tax_settings` | `settings.tax` | read | `account.doc.view` |
 | `account_transfer_funds` | `finance.transfer` | write | `account.finance.manage` |
@@ -3685,7 +3782,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
 
-`GET https://shark.in.th/api/v1/ai/skills/account` returns the 42 tools (17 read, 25 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 47 tools (19 read, 28 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "account", "label": "บัญชี", "summary": "...", "tools": [

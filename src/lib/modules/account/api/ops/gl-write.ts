@@ -22,6 +22,7 @@
 //      ผู้ลงมือจริงถูกบันทึกที่ `AuditLog` โดย `dispatch.ts` (actorType API_KEY + keyName + reason)
 //   5) เงินเป็นสตางค์จำนวนเต็มเสมอ · วันที่เป็น `YYYY-MM-DD` (วันไทย) · งวดเป็น `YYYY-MM` · body `.strict()`
 
+import { ackField } from "../ack-field";
 import type { AccountDocType } from "@prisma/client";
 import { z } from "zod";
 import { disposeAsset, getAsset, registerAsset, runDepreciation } from "../../asset";
@@ -57,7 +58,9 @@ import {
   unmarkVatFiled,
 } from "../../period-close";
 import { NUMBERED_DOC_TYPES } from "../../settings-schema";
-import { actorCan, type ApiActor } from "../actor";
+import { fileVatAdditional, setVatCreditCarry } from "../../pp30-filing";
+import { PP30_EXCESS_CHOICES } from "../../pp30-shared";
+import { actorAuditId, actorAuditType, actorCan, type ApiActor } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError, type ApiErrorDetail } from "../respond";
 import {
@@ -181,6 +184,7 @@ const journalLineInput = z
 
 const journalCreateInput = z
   .object({
+    acknowledge: ackField,
     date: ymdField("date"),
     book: z.enum(BOOKS).optional().describe("Journal book the entry belongs to. Default GENERAL."),
     memo: z.string().max(300).nullish().describe("What the entry is for. Shown in the journal list."),
@@ -244,7 +248,8 @@ const journalCreate = defineOp({
     if (!res.ok) failWith(res.reason);
     const detail = await journalEntryDetail(ctx, res.entryId);
     if (!detail) throw notFound(ERR.JOURNAL_ENTRY_NOT_FOUND);
-    return journalDetail(detail);
+    // ACC T1.9 ▸ คำเตือนแจ้งให้ทราบ (JV แตะบัญชีภาษี = รายการปรับปรุงมือในรายงานภาษี) ◂
+    return { ...journalDetail(detail), warnings: res.warnings };
   },
 });
 
@@ -257,7 +262,7 @@ const journalReverse = defineOp({
   summary:
     "Reverse a posted journal entry by writing a mirror entry with the sides swapped. The original entry stays in the books and is marked REVERSED. If its own period is already closed the reversal is dated in the next open period.",
   label: "กลับรายการใบสำคัญ",
-  input: z.object({ reason: reasonField("Why the entry is being reversed.") }).strict(),
+  input: z.object({ reason: reasonField("Why the entry is being reversed."), acknowledge: ackField }).strict(),
   test: "D2-G1.7",
   async handler({ actor, params, input }) {
     const res = await reverseJournalEntry(ctxOf(actor), params.id ?? "", input.reason);
@@ -531,6 +536,11 @@ const periodsReopen = defineOp({
   },
 });
 
+// ACC T1.3 ▸ ทางเลือกเมื่อภาษีซื้อเกินภาษีขาย (ม.84) ◂
+const excessChoiceField = z
+  .enum(PP30_EXCESS_CHOICES)
+  .describe("What to do when input VAT is more than output VAT: CARRY_FORWARD to the next month (default from the book setting) or REFUND.");
+
 const periodsVatFiled = defineOp({
   id: "periods.vat-filed",
   method: "POST",
@@ -538,12 +548,14 @@ const periodsVatFiled = defineOp({
   kind: "write",
   action: "account.period.close",
   summary:
-    "Record that the VAT return (form PP.30) of one month has been filed, together with the output and input VAT that were on it. This is checklist item four when the period is closed.",
+    "Record that the VAT return (form PP.30) of one month has been filed. Every line of the return (sales at the standard rate, zero rated and exempt sales, purchases, output and input VAT, credit brought forward, net payable or excess) is taken from the books and kept as the filed figures. The amounts in the request are optional: they are stored as declared and a warning is returned when they differ from the books. This is checklist item four when the period is closed.",
   label: "ทำเครื่องหมายยื่น ภ.พ.30",
+  tool: { name: "account_file_vat_return", hint: "Use after the owner has filed PP.30 for a month; read account_report kind vat-pp30 first. Proposed for confirmation." },
   input: z
     .object({
-      salesVatSatang: z.number().int().min(0).describe("Output VAT on the return, in satang."),
-      inputVatSatang: z.number().int().min(0).describe("Input VAT on the return, in satang."),
+      salesVatSatang: z.number().int().min(0).optional().describe("Output VAT on the return as filed, in satang. Optional; the books are used when it is missing."),
+      inputVatSatang: z.number().int().min(0).optional().describe("Input VAT on the return as filed, in satang. Optional; the books are used when it is missing."),
+      excessChoice: excessChoiceField.optional(),
       note: z.string().max(200).nullish().describe("How it was filed, for example through the e-filing site."),
     })
     .strict(),
@@ -552,19 +564,74 @@ const periodsVatFiled = defineOp({
     const key = periodParam(params.key);
     const res = await markVatFiled(ctxOf(actor), {
       periodKey: key,
-      salesVat: input.salesVatSatang,
-      inputVat: input.inputVatSatang,
+      salesVat: input.salesVatSatang ?? null,
+      inputVat: input.inputVatSatang ?? null,
+      excessChoice: input.excessChoice ?? null,
       userId: null,
       note: input.note ?? null,
     });
     if (!res.ok) {
       // "งวด … ทำเครื่องหมายยื่นไปแล้ว" = มีของอยู่แล้ว ⇒ 409 duplicate (ยิงซ้ำไม่ใช่คำขอผิดรูป)
       if (res.reason.includes("ไปแล้ว")) {
-        throw new ApiError(409, "duplicate", res.reason, "This period is already marked as filed.");
+        throw new ApiError(409, "duplicate", res.reason, "This period is already marked as filed. File an additional return instead.");
       }
       failWith(res.reason);
     }
-    return { period: key, vatFiled: true };
+    return { period: key, vatFiled: true, return: res.lines, warnings: res.warnings };
+  },
+});
+
+const periodsVatAdditional = defineOp({
+  id: "periods.vat-additional",
+  method: "POST",
+  path: "/periods/{key}/vat-additional",
+  kind: "write",
+  action: "account.period.close",
+  summary:
+    "File an additional VAT return (PP.30) for a month that is already marked as filed, after documents changed that month. The new figures come from the books; the difference against the latest filed figures is returned and kept with its own record. Refused when nothing changed.",
+  label: "ยื่นแบบ ภ.พ.30 เพิ่มเติม",
+  tool: { name: "account_file_vat_additional", hint: "Use when account_report kind vat-pp30 shows amendmentNeeded for a filed month. Proposed for confirmation." },
+  input: z
+    .object({
+      excessChoice: excessChoiceField.optional(),
+      note: z.string().max(200).nullish().describe("Why the additional return is filed."),
+    })
+    .strict(),
+  test: "D2-G4.9",
+  async handler({ actor, params, input }) {
+    const key = periodParam(params.key);
+    const res = await fileVatAdditional(ctxOf(actor), { periodKey: key, userId: null, note: input.note ?? null, excessChoice: input.excessChoice ?? null });
+    if (!res.ok) {
+      if (res.reason.includes("ยังไม่ได้ทำเครื่องหมาย")) throw stateConflict(res.reason);
+      if (res.reason.includes("ไม่มีอะไรต้องยื่นเพิ่มเติม")) throw stateConflict(res.reason);
+      failWith(res.reason);
+    }
+    return { period: key, seq: res.seq, return: res.lines, diff: res.diff, warnings: res.warnings };
+  },
+});
+
+const periodsVatCreditCarry = defineOp({
+  id: "periods.vat-credit-carry",
+  method: "POST",
+  path: "/periods/{key}/vat-credit-carry",
+  kind: "write",
+  action: "account.period.close",
+  summary:
+    "Set the VAT credit brought forward into one month by hand, for example to match what the accountant filed. Every change is kept as history with its reason. Send amountSatang null to go back to the amount the system works out from the previous month.",
+  label: "แก้เครดิตภาษียกมา ภ.พ.30",
+  tool: { name: "account_set_vat_credit_carry", hint: "Only when the owner says the credit brought forward is wrong. Proposed for confirmation." },
+  input: z
+    .object({
+      amountSatang: z.number().int().min(0).nullable().describe("Credit brought forward in satang, or null to use the system amount again."),
+      reason: z.string().min(3).max(500).describe("Why the credit is being changed. Kept in the history."),
+    })
+    .strict(),
+  test: "D2-G4.8",
+  async handler({ actor, params, input }) {
+    const key = periodParam(params.key);
+    const res = await setVatCreditCarry(ctxOf(actor), { periodKey: key, amountSatang: input.amountSatang, reason: input.reason, userId: null });
+    if (!res.ok) failWith(res.reason);
+    return { period: key, creditBroughtForwardSatang: res.amountSatang, source: res.source };
   },
 });
 
@@ -579,9 +646,10 @@ const periodsVatUnfiled = defineOp({
   label: "ยกเลิกเครื่องหมายยื่น ภ.พ.30",
   input: z.object({ reason: reasonField("Why the filed mark is being removed.") }).strict(),
   test: "D2-G4.3",
-  async handler({ actor, params }) {
+  async handler({ actor, params, input }) {
     const key = periodParam(params.key);
-    const res = await unmarkVatFiled(ctxOf(actor), key);
+    // ACC T1.7 ▸ ไม่ลบแถว — เก็บใคร/เมื่อไร/เหตุผล ◂
+    const res = await unmarkVatFiled(ctxOf(actor), key, { userId: actorAuditId(actor), reason: input.reason, actorType: actorAuditType(actor) });
     if (!res.ok) {
       if (res.reason.includes("ยังไม่ได้ทำเครื่องหมาย")) throw notFound(res.reason);
       failWith(res.reason);
@@ -774,6 +842,8 @@ export const GL_WRITE_OPS: ApiOp[] = [
   periodsClose,
   periodsReopen,
   periodsVatFiled,
+  periodsVatAdditional,
+  periodsVatCreditCarry,
   periodsVatUnfiled,
   assetsRegister,
   assetsDepreciationRun,

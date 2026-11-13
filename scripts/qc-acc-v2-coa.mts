@@ -102,6 +102,7 @@ const COA = E.coa;
 // 🔴 WO 6.1 รอบ 2: ยอดคิด "ณ วันที่" (asOf) แล้ว — ข้อสอบต้องตรึง asOf ที่ QC.today (วันอ้างอิงของชุดข้อมูล)
 //    ไม่งั้นตัวเลขจะขยับตามนาฬิกาเครื่องที่รัน (ชุด QC มีรายการถึง 30 ก.ย. แต่วันนี้อาจเป็นต้นเดือน)
 const ASOF = new Date(`${QC.today}T12:00:00+07:00`);
+const ASOF_MONTH = QC.today.slice(0, 7);
 
 let sTenantId: string | null = null;
 
@@ -177,7 +178,9 @@ try {
 
   // ═════════ T3 — ยอดคงเหลือ/เคลื่อนไหวเดือนนี้ ═════════
   console.log("\nT3 ยอดคงเหลือ + เคลื่อนไหวเดือนนี้:");
-  const tb = await reports.trialBalance(ctx, "2000-01", "2100-12");
+  // ORACLE-EDIT (13 พ.ย. 2569): งบทดลองตัดที่เดือนของ ASOF (เดิม "2100-12" = ทุกเวลา) — ยอดคงเหลือฝั่งผังบัญชีคิด ณ ASOF
+  //   เมื่อข้อสอบอื่นที่รันก่อนหน้าลงรายการหลัง ASOF (เช่น เช็ครับ/เช็คเด้งลงวันที่จริง พ.ย.) สองฝั่งตัดคนละวัน ⇒ 1100 ต่าง 350,000 ทั้งที่ตัวคิดถูก
+  const tb = await reports.trialBalance(ctx, "2000-01", ASOF_MONTH);
   for (const s of COA.samples) {
     const d = await coa.ledgerDetail(ctx, s.id, { asOf: ASOF });
     if (!d) {
@@ -483,10 +486,13 @@ try {
     ],
   });
   await glMod.reverseEntry(S, jv.entryId, "กลับรายการทดสอบ (QC 6.1)");
-  const revDetail = await coa.ledgerDetail(S, revTarget.id, { asOf: new Date("2026-09-20T12:00:00+07:00") });
+  const revTo = new Date(Math.max(Date.now(), new Date("2026-09-20T23:59:59+07:00").getTime()));
+  const revDetail = await coa.ledgerDetail(S, revTarget.id, { asOf: revTo });
+  // ORACLE-EDIT (13 พ.ย. 2569): ใบกลับรายการลงวันที่ "วันนี้" (reverseEntry → resolveOpenDate(new Date())) — ข้อสอบเขียนตอนวันจริงยังอยู่ใน ก.ย.
+  //   ปฏิทินเลยมาแล้ว ⇒ ช่วง 1–20 ก.ย. เห็นแค่ขาเดิม · ขยายปลายช่วงถึงตอนนี้ (ข้อตรวจเดิมครบ: 2 ขา · ยอด 0 · Dr/Cr 25,000)
   const revLedgerPage = await coa.ledgerRunning(S, revTarget.id, {
     from: new Date("2026-09-01T00:00:00+07:00"),
-    to: new Date("2026-09-20T23:59:59+07:00"),
+    to: revTo,
   });
   eq("T15.1 ยอดยกไปของหน้าแยกประเภท = ยอดคงเหลือในแผงขวาของผังบัญชี", revLedgerPage.closing, revDetail?.balanceSatang);
   eq("T15.2 หลังกลับรายการยอดต้องเป็น 0 (เดิมกรอง POSTED จะได้ −25,000)", revLedgerPage.closing, 0);

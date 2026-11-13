@@ -4,7 +4,7 @@
 //   ฐานของงานบัญชี (T0.3 — Neon branch แยกต่อเลน) ไม่อยู่ในรายชื่อ ⇒ ตัวนี้ทำกลับด้าน:
 //   ① โหลด env ผ่าน `acc-v2-env.loadQcEnv()` (ด่าน prod เด็ดขาด + APP_ENV=development)
 //   ② ปฏิเสธ host ของฐาน QC ที่ใช้ร่วม (ห้าม migrate ฐานร่วม — ACCOUNT-TAX-PLAN กติกาข้อ 7)
-//   ③ อนุญาตแค่ `status` และ `deploy` (ไม่มี dev/reset/push — เหตุผลเดียวกับ qc-prisma.sh)
+//   ③ อนุญาตแค่ `status` · `deploy` · `drift` (diff อ่านอย่างเดียว) (ไม่มี dev/reset/push — เหตุผลเดียวกับ qc-prisma.sh)
 //
 // ใช้: bash scripts/iso.sh pnpm exec tsx scripts/acc-qc-migrate.mts status|deploy
 import { spawnSync } from "node:child_process";
@@ -24,10 +24,15 @@ for (const u of [direct, process.env.DATABASE_URL ?? ""]) {
   }
 }
 const cmd = process.argv[2];
-if (cmd !== "status" && cmd !== "deploy") {
-  console.error("ใช้: acc-qc-migrate.mts status|deploy");
+if (cmd !== "status" && cmd !== "deploy" && cmd !== "drift") {
+  console.error("ใช้: acc-qc-migrate.mts status|deploy|drift");
   process.exit(3);
 }
 console.log(`▶ acc-qc-migrate: host = ${host.split(".")[0]} (ฐานงานบัญชีของเลนนี้) · prisma migrate ${cmd}`);
-const r = spawnSync("pnpm", ["exec", "prisma", "migrate", cmd], { stdio: "inherit", env: process.env });
+// drift = `pnpm drift` (package.json) แบบอ่านอย่างเดียว กับฐานของเลนนี้ (ไม่ใช่ datasource ปริยาย)
+const args =
+  cmd === "drift"
+    ? ["exec", "prisma", "migrate", "diff", "--from-config-datasource", "--to-schema", "prisma/schema", "--exit-code"]
+    : ["exec", "prisma", "migrate", cmd];
+const r = spawnSync("pnpm", args, { stdio: "inherit", env: process.env });
 process.exit(r.status ?? 1);
