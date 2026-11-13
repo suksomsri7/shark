@@ -83,3 +83,9 @@ Q11 Forecast? [HR's own, 4 latest same weekdays before today · POS forecast zer
 Q12 Demand productivity? [`hrLabor.splhSatang`, unset ⇒ hidden · no invented default.]
 Q13 Draft entries? [Counted on 03, published only on 01 · planning vs real day.]
 Q14 Migration? [None · settings key via HR-SET-1; figures computed on read.]
+
+## CONTROLLER RULINGS (14 Nov) — drafter defaults ACCEPTED for Q1–Q14, with these changes
+- Q4: the per-day cost of monthly staff must use the SAME day-rate rule as the payroll engine (H3.4 `payroll-run-rules.ts` proration divisor). Only if the engine has no such rule does the default (base ÷ calendar days of the month) apply. The oracle states which rule it found, with file:line.
+- Q2: sales = the same net figure POS reports show; the screen label must say so ("ยอดขายสุทธิตามรายงาน POS") — debt D-H42-vat-exclusive (labour % on VAT-exclusive sales for VAT-registered shops) goes on the owner/accountant list.
+- Q1: the POS seam hunks are marked `HR H4.2` and stay minimal (no change to existing POS report results; qc POS report suites picked by pick-suites must stay green). New fitness edge hr→pos: lazy import from `hr/labor.ts` only, asserted by fitness.
+- Q9/Q10 are privacy rules: the oracle carries a viewer matrix (OWNER · payroll viewer all-branch · payroll viewer one branch · manager without payroll key · employee · other tenant) × every figure, gate from DB membership, refusals/hidden cells carry no data.
