@@ -1101,7 +1101,9 @@ try {
     ok(glob.length === 0, `แตะตาราง global นอก entry.ts: ${glob.join(", ")}`);
   });
   await st("S-6", "ไม่มี `any` (ชนิด/แคสต์) ในไฟล์ src ที่ใบนี้เพิ่ม/แก้", () => {
-    const src = changedSinceBase(["src"]).filter((f) => /\.(ts|tsx)$/.test(f) && !sameAsSession(f));
+    // ORACLE-EDIT S-6 (ผู้คุม 13 พ.ย.): หลัง merge ทุกไฟล์ตรงกับ session/trips ⇒ ใช้รายการไฟล์ของใบตรงตัว
+    const live = changedSinceBase(["src"]).filter((f) => /\.(ts|tsx)$/.test(f) && !sameAsSession(f));
+    const src = live.length > 0 ? live : ["src/lib/core/settings/defs/agency.ts", "src/lib/modules/agency/entry.ts", "src/lib/modules/agency/identity-core.ts", "src/lib/modules/agency/index.ts", "src/lib/core/scope.ts", "src/lib/core/permissions.ts", "src/lib/core/settings/index.ts", "src/lib/core/settings/service.ts"].filter((f) => read(f));
     ok(src.length > 0, "ยังไม่มีไฟล์ src ที่เปลี่ยน");
     const bad = src.filter((f) => /(:\s*any\b|\bas\s+any\b|<any>|any\[\])/.test(stripComments(read(f))));
     ok(bad.length === 0, `มี any: ${bad.join(", ")}`);
@@ -1521,7 +1523,9 @@ try {
     ok(bad.length === 0, bad.join(", "));
   });
   await st("X1-4", "ตาราง global ไม่ถูกเข้าถึงผ่าน tenantDb ในโค้ดของใบ (tenantDb ไม่กรองแกน global) — มีแค่ agency/entry.ts", () => {
-    const files = changedSinceBase(["src"]).filter((f) => /\.(ts|tsx)$/.test(f) && f !== `${AG_DIR}/entry.ts` && !sameAsSession(f));
+    // ORACLE-EDIT X1-4 (ผู้คุม 13 พ.ย.): หลัง merge ใช้รายการไฟล์ของใบตรงตัว (เหมือน S-6)
+    const live4 = changedSinceBase(["src"]).filter((f) => /\.(ts|tsx)$/.test(f) && f !== `${AG_DIR}/entry.ts` && !sameAsSession(f));
+    const files = live4.length > 0 ? live4 : ["src/lib/core/settings/defs/agency.ts", "src/lib/modules/agency/entry.ts", "src/lib/modules/agency/identity-core.ts", "src/lib/modules/agency/index.ts", "src/lib/core/scope.ts", "src/lib/core/permissions.ts", "src/lib/core/settings/index.ts", "src/lib/core/settings/service.ts"].filter((f) => f !== `${AG_DIR}/entry.ts` && read(f));
     ok(files.length > 0, "ยังไม่มีไฟล์ src ที่เปลี่ยน");
     const bad = files.filter((f) => /\b(agentIdentity|agentUser|agentLogin|agentSession|agentLoginCode)\s*\./.test(stripComments(read(f))) && f !== "src/lib/core/settings/service.ts");
     ok(bad.length === 0, `แตะตาราง global: ${bad.join(", ")}`);

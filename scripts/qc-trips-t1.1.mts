@@ -364,7 +364,7 @@ try {
     // ORACLE-EDIT S-14 รอบ 2 (ผู้คุม 13 พ.ย.): ไฟล์ที่ตรงกับ session/trips ไม่นับ (ใบที่รับภายหลัง เช่น T0.6 แก้ pricing.ts · sellable-impl.ts)
     const sameAsSession = (f: string) => { try { execFileSync("git", ["diff", "--quiet", "session/trips", "--", f], { cwd: ROOT }); return true; } catch { return false; } };
     const del = rows.filter(([, d, f]) => T0X_FILES.includes(f) && Number(d) > 0 && !sameAsSession(f)).map(([, d, f]) => `${f} −${d}`);
-    const frozen = rows.filter(([, d, f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir)) && !(f === "src/lib/core/settings/defs/trips.ts" && Number(d) <= 1)) /* ORACLE-EDIT S-14 (ผู้คุม 12 พ.ย.): มติรอบแก้ r3 — เพิ่มป้ายแสดงผลของช่องย่อยใน defs/trips.ts ได้ (เพิ่มอย่างเดียว · ลบได้ 1 บรรทัด = import ชนิด) · คีย์/ค่าเริ่ม/ชั้น ตรึงโดย t0.1 กลุ่ม R */.map(([a, d, f]) => `${f} +${a}/−${d}`);
+    const frozen = rows.filter(([, d, f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir)) && !sameAsSession(f) /* ORACLE-EDIT S-14 รอบ 3 (ผู้คุม 13 พ.ย.): ไฟล์ settings ที่ใบอื่นซึ่งรับแล้วแก้ (A1.1) ไม่นับ */ && !(f === "src/lib/core/settings/defs/trips.ts" && Number(d) <= 1)) /* ORACLE-EDIT S-14 (ผู้คุม 12 พ.ย.): มติรอบแก้ r3 — เพิ่มป้ายแสดงผลของช่องย่อยใน defs/trips.ts ได้ (เพิ่มอย่างเดียว · ลบได้ 1 บรรทัด = import ชนิด) · คีย์/ค่าเริ่ม/ชั้น ตรึงโดย t0.1 กลุ่ม R */.map(([a, d, f]) => `${f} +${a}/−${d}`);
     ok(del.length === 0 && frozen.length === 0, `${[...del, ...frozen].join(" · ")}`);
   });
   await st("S-15", "action ใหม่: \"use server\" · ส่งออก async function เท่านั้น · ทุกตัวผ่าน requireUnit", () => {
