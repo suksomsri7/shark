@@ -490,9 +490,9 @@ try {
       ...["p0.1", "t0.1", "t0.2", "t0.3", "t0.4", "t0.5", "t0.6", "t1.1"].map((w) => `scripts/qc-trips-${w}.mts`), "scripts/trips-fixture.mts", "scripts/trips-qc-env.mts"];
     const changed = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", ...paths]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...paths]).split("\n")].filter(Boolean))];
     const ours = changed.filter((f) => git(["diff", "--name-only", "session/trips", "--", f]).trim() !== "" || git(["ls-files", "--others", "--exclude-standard", "--", f]).trim() !== "");
-    const allowed = new Set(["src/app/api/files/[id]/route.ts", "src/lib/storage/private-links.ts"]);
+    const allowed = new Set(["src/app/api/files/[id]/route.ts", "src/lib/storage/private-links.ts", "src/lib/modules/trips/booking-core.ts" /* ORACLE-EDIT S-8 (ผู้คุม 13 พ.ย.): มติ P7 — export text เพิ่ม 1 บรรทัด */]);
     ok(ours.filter((f) => !allowed.has(f)).length === 0, `แตะ: ${ours.filter((f) => !allowed.has(f)).slice(0, 6).join(", ")}`);
-    const rows = git(["diff", "--numstat", BASE_SHA, "--", "src/app/api/files/[id]/route.ts", "src/lib/storage/private-links.ts"]).split("\n").filter(Boolean).map((l) => l.split("\t"));
+    const rows = git(["diff", "--numstat", BASE_SHA, "--", "src/app/api/files/[id]/route.ts", "src/lib/storage/private-links.ts", "src/lib/modules/trips/booking-core.ts"]).split("\n").filter(Boolean).map((l) => l.split("\t"));
     const del = rows.filter((r) => Number(r[1]) > (r[2].endsWith("private-links.ts") ? 2 : 0)).map((r) => `${r[2]} −${r[1]}`);
     ok(del.length === 0, `route ไฟล์กลางลบ/แก้บรรทัดเกินที่อนุญาต: ${del.join(", ")}`);
   });
@@ -601,7 +601,8 @@ try {
   await st("LK-2", "เปิดแบบฟอร์ม: เห็นเฉพาะคนนี้ (คนที่ i จาก 2) · spec · ไม่มีเลขเต็ม/สุขภาพ/ชื่อคนอื่น/URL", async () => {
     ok(L1, "LK-1 ไม่ผ่าน");
     const v = V(await call("openPassengerForm", pctx(), { token: L1tok.token }), "open");
-    ok([1, 2].includes(Number(v.passengerIndex)) && v.passengerCount === 2, `ลำดับ ${fmt([v.passengerIndex, v.passengerCount])}`); // ORACLE-EDIT LK-2 (ผู้คุม 13 พ.ย.): ลำดับในระบบ = (createdAt, id) ไม่ผูกกับลำดับที่กรอก (หนี้ T0.6)
+    const ord = (await q<{ id: string }>(`SELECT id FROM "TripPassenger" WHERE "bookingId" = $1 ORDER BY "createdAt", id`, [L1!.bookingId])).map((x) => x.id);
+    eq([v.passengerIndex, v.passengerCount], [ord.indexOf(L1!.pax[0]) + 1, 2], "ลำดับ (createdAt, id)"); // ORACLE-EDIT LK-2 (ผู้คุม 13 พ.ย.): ลำดับในระบบ = (createdAt, id) ไม่ผูกกับลำดับที่กรอก (หนี้ T0.6)
     eq(asRec(asRec(v.spec)?.waiver)?.required, true, "ต้องเซ็น");
     const s = JSON.stringify(v);
     ok(!s.includes("ผู้เดินทาง สอง") && !/https?:\/\/|\/api\/files/.test(s) && !s.includes(MK.doc), "รั่วข้อมูลคนอื่น/URL");
@@ -655,9 +656,14 @@ try {
     needDb(); const b = await mkBooking("PC", ["อัตรา หนึ่ง"]); const t = await issue(b.pax[0], "oa", NOW0, uA2);
     const ck = `t08qc_rl_${hex(4)}`;
     const rs: string[] = [];
-    for (let i = 0; i < 4; i++) { const r = await call("openPassengerForm", pctx(NOW0, ck), { token: t.token }); rs.push(r.ok === true ? "OK" : String(r.code)); }
-    eq(rs, ["OK", "OK", "OK", "RATE_LIMITED"], "ผล");
-    V(await call("openPassengerForm", pctx(), { token: t.token }), "เครื่องอื่น");
+    // ORACLE-EDIT LK-10 (ผู้คุม 13 พ.ย.): มติ P6 — ลิงก์ผิด/ใช้ไม่ได้นับต่อเครื่อง (เพดานของหน่วย = 3) · ลิงก์ถูกนับต่อ "ลิงก์" (10 × 3 = 30 ต่อชั่วโมง) · เครื่องที่เกินเพดานถูกปฏิเสธแม้ลิงก์ถูก
+    const forged = String((SL!.signLink as AnyFn)({ tenantId: tA, purpose: "trips.pax-form", subjectId: b.pax[0], expMin: 60 }));
+    for (let i = 0; i < 3; i++) { const r = await call("openPassengerForm", pctx(NOW0, ck), { token: forged }); rs.push(r.ok === true ? "OK" : String(r.code)); }
+    { const r = await call("openPassengerForm", pctx(NOW0, ck), { token: t.token }); rs.push(r.ok === true ? "OK" : String(r.code)); }
+    eq(rs, ["NOT_FOUND", "NOT_FOUND", "NOT_FOUND", "RATE_LIMITED"], "เครื่องเดิม");
+    const per: string[] = [];
+    for (let i = 0; i < 31; i++) { const r = await call("openPassengerForm", pctx(NOW0, `t08qc_ok_${hex(4)}`), { token: t.token }); per.push(r.ok === true ? "OK" : String(r.code)); }
+    eq([per.slice(0, 30).every((x) => x === "OK"), per[30]], [true, "RATE_LIMITED"], "ต่อ ลิงก์ 30 ครั้ง/ชม.");
   });
   await st("LK-11", "เดารัว: token ผิด 60 ครั้งจากเครื่องเดียว ⇒ ครั้งต่อไปแม้ token ถูก = RATE_LIMITED", async () => {
     ok(L1, "LK-1 ไม่ผ่าน"); const ck = `t08qc_guess_${hex(4)}`;
@@ -845,7 +851,7 @@ try {
   // ═══════════════ WV. เอกสารรับทราบความเสี่ยง ═══════════════
   console.log("\n── WV: เอกสารรับทราบความเสี่ยง ──");
   let W1: Bk | null = null; let W1t = ""; let W1hash = "";
-  const sign = (token: string, body: Rec, now: string | Date = NOW0) => call("signPassengerWaiver", pctx(now), { token, idempotencyKey: `w${hex(6)}`, locale: "th", accept: true, signerName: MK.name, signerRole: "SELF", ...body });
+  const sign = (token: string, body: Rec, now: string | Date = NOW0) => call("signPassengerWaiver", pctx(now), { token, idempotencyKey: `w${hex(6)}`, locale: "th", accept: true, signerName: MK.name, signerRole: "SELF", ...(body.signerRole === "GUARDIAN" || "isMinorDeclared" in body ? {} : { isMinorDeclared: false }) /* ORACLE-EDIT WV (ผู้คุม 13 พ.ย.): มติ P5 — เซ็นเองต้องรู้อายุหรือประกาศเป็นผู้ใหญ่ */, ...body });
   await st("WV-1", "สินค้าไม่ต้องเซ็น (PT · NONE) ⇒ WAIVER_NOT_REQUIRED", async () => {
     needDb(); const b = await mkBooking("PT", ["ไม่ต้องเซ็น"]); const t = (await issue(b.pax[0])).token;
     codeR(await sign(t, { templateHash: tplHash(await curTemplate("PT")) }), "VALIDATION", "PT", "WAIVER_NOT_REQUIRED");
@@ -874,13 +880,13 @@ try {
   });
   await st("WV-5", "ซ้ำ: คีย์เดิม = ผลเดิม · คีย์ใหม่ขณะเซ็นแล้ว ⇒ STATE_CONFLICT WAIVER_ALREADY_SIGNED", async () => {
     needDb(); const b = await mkBooking("PD", ["เซ็น ซ้ำ"]); const t = (await issue(b.pax[0])).token;
-    const body = { token: t, idempotencyKey: `ws${hex(5)}`, templateHash: W1hash, locale: "th", accept: true, signerName: "เซ็น ซ้ำ", signerRole: "SELF" };
+    const body = { token: t, idempotencyKey: `ws${hex(5)}`, templateHash: W1hash, locale: "th", accept: true, signerName: "เซ็น ซ้ำ", signerRole: "SELF", isMinorDeclared: false };
     V(await call("signPassengerWaiver", pctx(), body), "1"); eq(V(await call("signPassengerWaiver", pctx(), body), "2").replayed, true, "replayed");
     codeR(await sign(t, { templateHash: W1hash }), "STATE_CONFLICT", "คีย์ใหม่", "WAIVER_ALREADY_SIGNED");
   });
   await st("WV-6", "พนักงานเซ็นต่อหน้า + รูปลายเซ็น PNG ⇒ TripDocument WAIVER ส่วนตัว · method STAFF_WITNESSED · verified true · staffUserId", async () => {
     needDb(); const b = await mkBooking("PD", ["ท่าเรือ"]);
-    const v = V(await call("recordWitnessedWaiver", staff("se"), { passengerId: b.pax[0], idempotencyKey: `ww${hex(5)}`, templateHash: W1hash, locale: "th", signerName: "ท่าเรือ", signerRole: "SELF", signatureImage: { contentType: "image/png", data: PNG() } }, DEPS), "witnessed");
+    const v = V(await call("recordWitnessedWaiver", staff("se"), { passengerId: b.pax[0], idempotencyKey: `ww${hex(5)}`, templateHash: W1hash, locale: "th", signerName: "ท่าเรือ", signerRole: "SELF", isMinorDeclared: false, signatureImage: { contentType: "image/png", data: PNG() } }, DEPS), "witnessed");
     const d = await docRow(String(v.documentId)); ok(d && d.kind === "WAIVER", `doc ${fmt(d)}`);
     const e = asRec((await pax(b.pax[0])).waiverEvidence) ?? {};
     eq([e.method, asRec(e.identityProof)?.used, asRec(e.identityProof)?.verified, e.staffUserId, e.signatureDocumentId], ["STAFF_WITNESSED", "STAFF_WITNESSED", true, U.se.userId, v.documentId], "หลักฐาน");

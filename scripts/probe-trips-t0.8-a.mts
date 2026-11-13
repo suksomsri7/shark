@@ -100,7 +100,7 @@ try {
       ["sig-flip", good.replace(sig, sig.slice(0, -1) + (sig.endsWith("0") ? "1" : "0")), [403]],
       ["sig-upper", good.replace(sig, sig.toUpperCase()), [200]],
       ["exp+1", good.replace(`exp=${exp}`, `exp=${Number(exp) + 1}`), [403]],
-      ["exp-901", (() => { const e = Math.floor(Date.now() / 1000) + 901; return `/api/files/${f}?exp=${e}&sig=${L.mintSig(f, e, `LINK_CUSTOMER:${lv1}`)}&lv=${lv1}`; })(), [403]],
+      ["exp-905" /* ผู้คุม 13 พ.ย.: +901 พลาดตามเวลา (สร้าง URL ก่อนยิงจริง 1 วิ ⇒ อยู่ในเพดาน 900 วิ) */, (() => { const e = Math.floor(Date.now() / 1000) + 905; return `/api/files/${f}?exp=${e}&sig=${L.mintSig(f, e, `LINK_CUSTOMER:${lv1}`)}&lv=${lv1}`; })(), [403]],
       ["exp-past", (() => { const e = Math.floor(Date.now() / 1000) - 1; return `/api/files/${f}?exp=${e}&sig=${L.mintSig(f, e, `LINK_CUSTOMER:${lv1}`)}&lv=${lv1}`; })(), [403]],
       ["no-lv", good.replace(`&lv=${lv1}`, ""), [403]],
       ["no-sig", good.replace(`&sig=${sig}`, ""), [403]],
@@ -198,7 +198,7 @@ try {
     const ck = `t08h_rl_${hex(4)}`;
     const codes: string[] = [];
     for (let i = 0; i < lim + 1; i++) { codes.push(code(await call("openPassengerForm", pctx(NOW0, ck), { token: tok }))); opn("B.rate"); }
-    check("B4-valid-limit", codes.slice(0, lim).every((c) => c === "ok") && codes[lim] === "RATE_LIMITED", `limit ${lim}: ${codes.join(",")}`);
+    check("B4-valid-limit" /* ผู้คุม 13 พ.ย.: มติ P6 — ลิงก์ถูกจำกัดต่อ "ลิงก์" (10 × lim) ไม่ใช่ต่อเครื่อง ⇒ lim+1 ครั้งต้องผ่านทั้งหมด */, codes.every((c) => c === "ok"), `limit ${lim}: ${codes.join(",")}`);
     // flood of invalid on another device does not lock this one; flood on same device does
     const ck2 = `t08h_fl_${hex(4)}`;
     for (let i = 0; i < 60; i++) { await call("openPassengerForm", pctx(NOW0, ck2), { token: `${randomBytes(20).toString("base64url")}.${randomBytes(32).toString("base64url")}` }); opn("B.rate"); }
@@ -454,7 +454,7 @@ try {
     const c = await C("recordPdpaRequest", staff(), { kind: "ACCESS", passengerId: pid, idempotencyKey: key });
     const d = await C("recordPdpaRequest", staff(), { kind: "ERASE", passengerId: pid, idempotencyKey: `r${hex(6)}` });
     check("I1-dup", a.ok === true && asRec(b.value).replayed === true && code(c) === "IDEMPOTENCY_CONFLICT", `same key → replay=${String(asRec(b.value).replayed)} · same key other body → ${code(c)} · other key same subject → ${code(d)} (duplicate open request ${d.ok === true ? "ACCEPTED" : "refused"})`);
-    if (d.ok === true) finding({ id: "I-DUP", sev: "NOTE", status: "REPRODUCED", title: "two open ERASE requests for the same passenger are accepted with different idempotency keys", observed: "both RECEIVED", expected: "brief has no dedupe rule — note only" });
+    if (d.ok === true && asRec(d.value).merged !== true /* ผู้คุม 13 พ.ย.: มติ P9 — คำขอซ้ำถูกรวมกับใบเดิม */) finding({ id: "I-DUP", sev: "NOTE", status: "REPRODUCED", title: "two open ERASE requests for the same passenger are accepted with different idempotency keys", observed: "both RECEIVED", expected: "brief has no dedupe rule — note only" });
     // วันที่รับ
     const rx: [string, string][] = [["far-future", "9999-12-20"], ["future", "2030-01-01"], ["ancient", "0100-01-01"], ["1900", "1900-01-01"]];
     const dues: string[] = [];

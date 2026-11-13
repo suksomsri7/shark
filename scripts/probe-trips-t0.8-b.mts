@@ -115,7 +115,7 @@ try {
       val(await call("submitPassengerForm", pctx(), { token: t5, idempotencyKey: `h${hex(6)}`, expectedRev: 0, isMinorDeclared: false }), "decl");
       const h0 = await L.curTemplateHash("PN");
       const [sg] = await Promise.all([
-        call("signPassengerWaiver", pctx(), { token: t5, idempotencyKey: `w${hex(6)}`, templateHash: h0, locale: "th", accept: true, signerName: "E5 signer", signerRole: "SELF" }),
+        call("signPassengerWaiver", pctx(), { token: t5, idempotencyKey: `w${hex(6)}`, templateHash: h0, locale: "th", accept: true, signerName: "E5 signer", signerRole: "SELF", isMinorDeclared: false /* ผู้คุม 13 พ.ย.: มติ P5 */ }),
         L.setV(tA, [{ key: "trips.waiver.template", scope: "PRODUCT", scopeId: W.PRD.PN.id, value: { th: `แม่แบบใหม่ ${hex(3)} — รับทราบความเสี่ยง` } }]),
       ]); opn("E5", 2);
       const ov = asRec((await call("openPassengerForm", pctx(), { token: t5 })).value);
