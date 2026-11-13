@@ -24,6 +24,10 @@ import { WhtFilterBar } from "@/components/account-v2/WhtFilterBar";
 import { buildHref } from "@/components/account-v2/url";
 import { formatBaht } from "@/lib/ui/money";
 import { formatThaiDate } from "@/lib/ui/date";
+import { whtCreditsOwed } from "@/lib/modules/account/wht-cert";
+import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
+import { PND_FORM_LABEL_TH } from "@/lib/modules/account/wht-forms";
+import { markWhtReceivedAction } from "./actions";
 
 const pct = (bp: number | null) => (bp != null ? `${(bp / 100).toFixed(bp % 100 ? 2 : 0)}%` : "—");
 
@@ -37,6 +41,9 @@ type SP = {
   page?: string;
   markFiled?: string;
   ids?: string;
+  owed?: string;
+  ok?: string;
+  err?: string;
 };
 
 export default async function WhtPage({
@@ -72,10 +79,13 @@ export default async function WhtPage({
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 20;
 
-  const [chq, listRes, creditYearTotal] = await Promise.all([
+  // ACC T3.5 ▸ ฝั่งถูกหัก: "ค้างรับ 50 ทวิ" = ธงรับจริง (ไม่เดาจากไฟล์แนบ) ◂
+  const owedOnly = direction === "OUT" && sp.owed === "1";
+  const [chq, listRes, creditYearTotal, owed] = await Promise.all([
     chequeSummary(tenantId, systemId),
-    listWhtCertsV2(tenantId, systemId, { direction, from, to, status, q: sp.q, page, pageSize }),
+    listWhtCertsV2(tenantId, systemId, { direction, from, to, status, q: sp.q, page, pageSize, owedOnly }),
     whtCreditYearTotal(tenantId, systemId, now.getFullYear()),
+    direction === "OUT" ? whtCreditsOwed({ tenantId, systemId }) : Promise.resolve(null),
   ]);
   const { rows, total, totalBase, totalWht, tabCounts } = listRes;
 
@@ -90,7 +100,9 @@ export default async function WhtPage({
     status: sp.status,
     q: sp.q,
     page: sp.page,
+    owed: owedOnly ? "1" : undefined,
   };
+  const selfHref = buildHref(pathname, spForHref, {});
 
   const cols: DocColumn<WhtCertRow>[] = [
     {
@@ -132,6 +144,44 @@ export default async function WhtPage({
     { key: "base", header: "จำนวนเงิน", align: "right", render: (r) => formatBaht(r.base, { decimals: true }) },
     { key: "wht", header: "มูลค่าภาษี", help: "wht", align: "right", render: (r) => formatBaht(r.whtAmount, { decimals: true }) },
   ];
+  if (direction === "IN") {
+    cols.splice(5, 0, { key: "form", header: "แบบ", render: (r) => <span className="whitespace-nowrap">{PND_FORM_LABEL_TH[r.form]}</span> });
+  }
+  if (direction === "OUT") {
+    cols.push({
+      key: "received",
+      header: "50 ทวิ จากลูกค้า",
+      render: (r) =>
+        r.cancelled ? (
+          <span className="text-xs text-[color:var(--color-muted)]">—</span>
+        ) : r.certReceivedAt ? (
+          <form action={markWhtReceivedAction} className="flex items-center gap-2" data-testid={`wht-received-${r.certId}`}>
+            <input type="hidden" name="systemId" value={systemId} />
+            <input type="hidden" name="certId" value={r.certId} />
+            <input type="hidden" name="received" value="0" />
+            <input type="hidden" name="note" value="แก้เครื่องหมายจากหน้ารายการ" />
+            <input type="hidden" name="back" value={selfHref} />
+            <span className="whitespace-nowrap rounded-full border px-2 py-0.5 text-xs" style={{ borderColor: "var(--color-ink)" }}>
+              ได้รับแล้ว {formatThaiDate(r.certReceivedAt)}
+            </span>
+            <button className="text-xs text-[color:var(--color-muted)] underline" data-testid={`wht-unreceive-${r.certId}`}>
+              ยกเลิก
+            </button>
+          </form>
+        ) : (
+          <form action={markWhtReceivedAction} className="flex items-center gap-2" data-testid={`wht-owed-${r.certId}`}>
+            <input type="hidden" name="systemId" value={systemId} />
+            <input type="hidden" name="certId" value={r.certId} />
+            <input type="hidden" name="received" value="1" />
+            <input type="hidden" name="back" value={selfHref} />
+            <span className="whitespace-nowrap text-xs text-[color:var(--color-danger)]">ยังไม่ได้รับ</span>
+            <button className="btn btn-ghost btn-sm whitespace-nowrap text-xs" data-testid={`wht-mark-received-${r.certId}`}>
+              ได้รับแล้ว
+            </button>
+          </form>
+        ),
+    });
+  }
   if (direction === "IN") {
     cols.push({
       key: "filed",
@@ -200,7 +250,7 @@ export default async function WhtPage({
             <PrintButton testId="wht-print" />
             {direction === "IN" && (
               <Link href={`${base}/tax`} className="btn btn-primary" data-testid="wht-export-pnd">
-                ส่งออกรายการ ภ.ง.ด.3/53 (CSV ช่วยกรอกแบบ)
+                รายการ ภ.ง.ด. (CSV ช่วยกรอกแบบ)
               </Link>
             )}
           </>
@@ -219,6 +269,39 @@ export default async function WhtPage({
         </span>
         <StatusTabs tabs={statusTabsRight} counts={tabCounts} active={status} paramKey="status" testId="wht-status-tabs-2" />
       </div>
+
+      {sp.ok && <p className="text-sm font-medium" data-testid="wht-ok">{sp.ok}</p>}
+      {sp.err && <p className="text-sm text-[color:var(--color-danger)]" data-testid="wht-err">{sp.err}</p>}
+      {direction === "OUT" && owed && (
+        <div className="flex flex-col gap-2" data-testid="wht-owed-box">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Link
+              href={buildHref(pathname, { ...spForHref, owed: undefined, page: undefined }, {})}
+              className={`rounded-full border px-3 py-1 ${owedOnly ? "" : "border-[color:var(--color-ink)] font-semibold"}`}
+              data-testid="wht-owed-tab-all"
+            >
+              ทุกรายการ
+            </Link>
+            <Link
+              href={buildHref(pathname, { ...spForHref, page: undefined }, { owed: "1", status: undefined })}
+              className={`rounded-full border px-3 py-1 ${owedOnly ? "border-[color:var(--color-ink)] font-semibold" : ""}`}
+              data-testid="wht-owed-tab"
+            >
+              ค้างรับ 50 ทวิ ({owed.rows.length}) · {formatBaht(owed.totalWht, { decimals: true })}
+            </Link>
+          </div>
+          {owedOnly && owed.warnings.length > 0 && <LegalWarnings warnings={owed.warnings} compact testId="wht-owed-warn" />}
+          {owedOnly && owed.byContact.length > 0 && (
+            <ul className="flex flex-wrap gap-2 text-xs" data-testid="wht-owed-by-contact">
+              {owed.byContact.map((b) => (
+                <li key={b.contactId ?? b.contactName} className="rounded-full border px-2 py-0.5">
+                  {b.contactName} · {b.count} ใบ · {formatBaht(b.whtAmount, { decimals: true })}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <WhtFilterBar
         pathname={pathname}
