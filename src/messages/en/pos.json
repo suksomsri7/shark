@@ -106,7 +106,10 @@
       "vatExcluded": "VAT {rate}% (excluded)",
       "total": "Total",
       "serviceCharge": "Service charge",
-      "tip": "Tip"
+      "tip": "Tip",
+      "zeroRated": "Zero-rated",
+      "exempt": "VAT exempt",
+      "onBehalf": "Collected on behalf (not a sale)"
     },
     "actions": {
       "billDiscount": "Bill discount",

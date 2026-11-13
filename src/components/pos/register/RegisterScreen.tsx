@@ -1263,7 +1263,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดของเซิร์ฟเวอร์เท่านั้น ⇒ quote ยังไม่ตรงรุ่น = ยอดรอ (—) เหมือนบรรทัดตัวเลือก
   // POS P2.2U fix รอบ 1 F3: ตะกร้าที่ใช้ชั้นราคา (โปร/ช่องทาง ≠ หน้าร้าน) = ยอดรอ (—) จน quote ของเซิร์ฟเวอร์ตรงรุ่น · ชำระ/ส่งขายใช้ quote เท่านั้นเหมือนเดิม
   const priceLayer = cartUsesPriceLayer(cart);
-  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode || priceLayer);
+  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode || priceLayer || cart.lines.some((l) => l.kind === "product" && !!known.current.get(l.productId)?.vatTreatment)); // ACC T1.8 ◂
   const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
   // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
@@ -1803,6 +1803,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (c.memberId || c.couponCode) return null;
     // POS P2.2U ▸ มติ 5: ราคาโปร/ช่องทางอื่น = ยอดจากเซิร์ฟเวอร์เท่านั้น (บรรทัดที่ไทล์/quote ล่าสุดบอกว่ามาจากโปร · บิลที่มีช่องทาง ≠ หน้าร้าน) ◂
     if (cartUsesPriceLayer(c)) return null;
+    // ACC T1.8 ▸ ตะกร้าที่มีสินค้ายกเว้น/0%/เก็บแทน = VAT ตามบรรทัด → ยอดจากเซิร์ฟเวอร์เท่านั้น (ตัวคิดในเครื่องถอด VAT ทั้งบิล) ◂
+    if (c.lines.some((l) => l.kind === "product" && !!known.current.get(l.productId)?.vatTreatment)) return null;
     const r = priceLocal(c, localCap);
     if (!r || !r.ok) return null;
     return {

@@ -294,6 +294,8 @@ export type RegisterProduct = {
   variantCount: number;
   /** P1.2 R9: ขายตามน้ำหนัก — priceSatang = ราคาต่อกิโลกรัม · ต้องส่ง weighedBarcode หรือ weightGrams (ไม่ส่ง = WEIGHT_REQUIRED) */
   soldByWeight: boolean;
+  /** ACC T1.8 ▸ ชนิด VAT ที่ไม่ใช่มาตรฐาน (ZERO_RATED | EXEMPT | ON_BEHALF) — มี = ยอด/VAT ของตะกร้ามาจากเซิร์ฟเวอร์ (คิดตามบรรทัด) ◂ */
+  vatTreatment?: string;
   soldOut: boolean;
   /** UNAVAILABLE = ปิดขายที่สาขา (กดขายไม่ได้ · ชนะหมดสต็อก) · NO_STOCK = นับสต็อกและหมด (ยังขายได้ · ติดลบตามนโยบายปริยาย) */
   soldOutReason: RegisterSoldOutReason | null;

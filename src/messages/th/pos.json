@@ -106,7 +106,10 @@
       "vatExcluded": "VAT {rate}% (ไม่รวมในราคา)",
       "total": "ยอดสุทธิ",
       "serviceCharge": "ค่าบริการ",
-      "tip": "ทิป"
+      "tip": "ทิป",
+      "zeroRated": "ยอดขาย 0%",
+      "exempt": "ยอดขายยกเว้น VAT",
+      "onBehalf": "เก็บแทน (ไม่ใช่ยอดขาย)"
     },
     "actions": {
       "billDiscount": "ส่วนลดท้ายบิล",

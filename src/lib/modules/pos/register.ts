@@ -932,6 +932,7 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
       parentId: p.parentId,
       variantCount: kidCount.get(p.id) ?? 0,
       soldByWeight: p.soldByWeight,
+      ...(productVatTreatment(p) !== "STANDARD" ? { vatTreatment: productVatTreatment(p) } : {}), // ACC T1.8 ▸ จอขายรู้ว่าต้องรอยอดจากเซิร์ฟเวอร์ ◂
       soldOut: soldOutReason !== null,
       soldOutReason,
       ...(soldOutReason === "UNAVAILABLE" && marks.has(p.id) ? { soldOutMark: marks.get(p.id) } : {}), // POS P2.6 ▸ CD 8 ◂

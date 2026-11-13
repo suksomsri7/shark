@@ -33,6 +33,8 @@ export type CartTotalsModel = {
   /** POS P1.12U มติ 3: ส่วนลดระดับ + บรรทัดสิทธิ์ (ว่อชเชอร์/แต้ม) — มาจาก quote ของเซิร์ฟเวอร์เท่านั้น */
   tierDiscountSatang?: number;
   memberLines?: { kind: string; ref: string | null; label: string; discountSatang: number }[];
+  /** ACC T1.8 ▸ บิลผสม (จาก quote ของเซิร์ฟเวอร์): ยอดตามกลุ่ม — แถว 0% / ยกเว้น / เก็บแทน · ไม่มียอดมาตรฐาน = ไม่มีแถว VAT ◂ */
+  vatGroups?: { standardSatang: number; zeroRatedSatang: number; exemptSatang: number; onBehalfSatang: number };
 };
 
 /** POS P1.12U มติ 3: แถวคูปอง/ระดับ/สิทธิ์ในยอด — couponInvalid = quote รายงาน COUPON conflict (แถวแดงพร้อมเหตุผล) */
@@ -371,7 +373,26 @@ export function CartPanel(p: Props) {
               <span className="tabular-nums">{moneyText(tt.serviceChargeSatang ?? 0)}</span>
             </div>
           )}
-          {tt.vatMode !== "NONE" && (
+          {/* ACC T1.8 ▸ บิลผสม: แยกยอดตามกลุ่ม ◂ */}
+          {tt.vatGroups && tt.vatGroups.zeroRatedSatang > 0 && (
+            <div data-testid="pos-reg-vat-zero-line" className="flex justify-between py-px text-[12px] text-[color:var(--color-muted)] xl:py-1">
+              <span>{t("totals.zeroRated")}</span>
+              <span className="tabular-nums">{formatBaht(tt.vatGroups.zeroRatedSatang, { decimals: true })}</span>
+            </div>
+          )}
+          {tt.vatGroups && tt.vatGroups.exemptSatang > 0 && (
+            <div data-testid="pos-reg-vat-exempt-line" className="flex justify-between py-px text-[12px] text-[color:var(--color-muted)] xl:py-1">
+              <span>{t("totals.exempt")}</span>
+              <span className="tabular-nums">{formatBaht(tt.vatGroups.exemptSatang, { decimals: true })}</span>
+            </div>
+          )}
+          {tt.vatGroups && tt.vatGroups.onBehalfSatang > 0 && (
+            <div data-testid="pos-reg-vat-onbehalf-line" className="flex justify-between py-px text-[12px] text-[color:var(--color-muted)] xl:py-1">
+              <span>{t("totals.onBehalf")}</span>
+              <span className="tabular-nums">{formatBaht(tt.vatGroups.onBehalfSatang, { decimals: true })}</span>
+            </div>
+          )}
+          {tt.vatMode !== "NONE" && !(tt.vatGroups && tt.vatGroups.standardSatang === 0) && (
             <div data-testid="pos-reg-vat-line" className="flex justify-between py-px text-[12px] text-[color:var(--color-muted)] xl:py-1">
               <span>{tt.vatMode === "INCLUDED" ? t("totals.vatIncluded", { rate: ratePct(tt.vatRateBp) }) : t("totals.vatExcluded", { rate: ratePct(tt.vatRateBp) })}</span>
               <span className="tabular-nums">{formatBaht(tt.vatSatang, { decimals: true })}</span>
