@@ -61,6 +61,12 @@ const AUTOSAVE_MS = 2000;
 /** ACCOUNT-FIX A2 — ขั้นถัดไปหลังอนุมัติ ("" = ไปหน้าเอกสารเฉย ๆ) · ผู้อ่าน = approveDocAction / ทางใบเสร็จด้านล่าง */
 type ApproveNext = "" | "pay" | "print";
 
+// ACC T1.4 (ส่งต่อจาก T1.2) — สวิตช์เดิม "รับรู้ภาษีขายงวดนี้" หลัง T1.2 มีผลแค่ "ชนิดเริ่มของบรรทัดที่ไม่มีสินค้าในทะเบียน"
+//   (จุดรับผิดคิดต่อบรรทัดตามชนิด สินค้า/บริการ แล้ว) ⇒ ชื่อ/คำอธิบายบอกตามที่ทำจริง
+const VAT_NOW_LABEL = "รายการพิมพ์เองนับเป็นสินค้า";
+const VAT_NOW_HELP =
+  "ใช้กับบรรทัดที่ไม่ได้เลือกจากทะเบียนสินค้า: เปิด = สินค้า (ภาษีขายเกิดตอนออกใบ) · ปิด = บริการ (ภาษีขายเกิดตอนรับเงิน) — เปลี่ยนรายบรรทัดได้ที่ช่อง สินค้า/บริการ";
+
 function Toggle({
   checked,
   onChange,
@@ -886,10 +892,13 @@ function EditorBody(props: DocEditorV2Props) {
                 <Toggle
                   checked={value.recognizeVatNow}
                   onChange={(v) => set("recognizeVatNow", v)}
-                  label="รับรู้ภาษีขายงวดนี้ (ภ.พ.30)"
+                  label={VAT_NOW_LABEL}
                   testId="tg-vat-now"
                 />
               </div>
+              <span className="text-xs text-[color:var(--color-muted)]" data-testid="tg-vat-now-help">
+                {VAT_NOW_HELP}
+              </span>
               {autoTaxHint && (
                 <span className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]" data-testid="tg-auto-tax-hint">
                   {autoTaxHint}
@@ -1167,8 +1176,9 @@ function EditorBody(props: DocEditorV2Props) {
                 <Toggle
                   checked={value.recognizeVatNow}
                   onChange={(v) => set("recognizeVatNow", v)}
-                  label="รับรู้ภาษีขายงวดนี้ (ภ.พ.30)"
+                  label={VAT_NOW_LABEL}
                 />
+                <span className="text-xs text-[color:var(--color-muted)]">{VAT_NOW_HELP}</span>
               </div>
             </div>
           )}
