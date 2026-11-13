@@ -10,6 +10,7 @@
 //   ⚠️ T1.2: สถานะ "เดินทางแล้ว/ออกเรือแล้ว/ต่ำกว่าขั้นต่ำ" ของช่องคิดจากนาฬิกาจริงของ server (หน้าไม่รับเวลา) — ฉากแผง/กล่องตัดสินใช้รอบ 31 ธ.ค. ที่ต่ำกว่าขั้นต่ำจนถึงวันนั้น
 // ⚠️ ตัวโหลดใช้นาฬิกาจริง (ตั้งใจ — production): รอบตัวอย่าง/ลูกค้าจะเห็น ปักผ่าน ?ex= ได้เสมอ แต่ "2 รอบถัดไป" และป้าย "ใช้อยู่" ของฤดูกาลขึ้นกับวันที่ถ่าย
 //   หรือส่ง base ทาง env: QC_BASE=http://127.0.0.1:<port>
+//   … t1.3                              # T1.3a: 4 ฉาก (bookings-list · booking-detail · payment-dialog · money-docs) ↔ ภาพ 18 · ไม่กดยืนยันรับเงิน
 // ภาพคู่: bash scripts/parity-trips.sh <16|17> .qc-shots/trips/t1.1/<ฉาก>-desktop.png .qc-shots/trips/t1.1/<ฉาก>-PARITY.png
 //
 // 🔴 ไม่มี base ปริยาย · :3215 (server ของ CRM) ⇒ exit 2 · ต่อ server ไม่ได้ ⇒ exit 2 ก่อน mint session
@@ -31,20 +32,22 @@ const UA = "qc-visual-trips";
 const SHOTS_DIR = ".qc-shots/trips";
 const FORBIDDEN_PORTS = ["3215"];
 const VIEWPORT = { width: 1440, height: 900 } as const;
+/** ผู้จองของการจองตัวอย่างภาพ 18 (TR-…-0142 ในภาพ) — Party ของ seed */
+const BOOKING_0142_PARTY = "tripsqc-party-dive-pattra";
 const DEVICES = [
   { device: "desktop", width: VIEWPORT.width, height: VIEWPORT.height, mobile: false },
   { device: "mobile", width: 390, height: 844, mobile: true },
 ] as const;
 
 // ═══════════════ สเปกภาพ (คีย์ = ใบงาน) ═══════════════
-type Ids = { unitSlug: string; racha: string; similan: string; racha1114: string; racha1231: string; week: string; month: string; decWeek: string };
+type Ids = { unitSlug: string; racha: string; similan: string; racha1114: string; racha1231: string; week: string; month: string; decWeek: string; booking0142: string };
 type Action =
   | { click: { selector: string; text?: string } }
   | { fill: { selector: string; nth?: number; value: string } }
   | { waitFor: string }
   | { reveal: string }
   | { pause: number };
-type Spec = { name: string; mockup: "11" | "16" | "17"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean };
+type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "18"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean };
 // ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
 const LADDER = '[role="dialog"] [data-setting-key="trips.cancel.ladder"]';
 const LADDER_DAYS = `${LADDER} [data-table-cell="fromDaysBefore"] input`;
@@ -97,6 +100,29 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       fullPage: false,
       actions: [{ waitFor: '[data-testid="trips-dep-decide"]' }, { click: { selector: '[data-testid="trips-dep-decide"]' } }, { waitFor: '[data-testid="trips-decide-dialog"]' }, { pause: 500 }],
     },
+  ],
+  // TRIPS T1.3 ▸ การจองฝั่งร้าน (ภาพ 18) — ทุกฉาก 1440 + 390 · วันปักด้วย when=all (ไม่พึ่งวันนี้) · booking0142 = การจองของภัทรา (Party tripsqc-party-dive-pattra) บนรอบราชา ส. 14 พ.ย. หาจาก seed ตอนรัน ◂
+  "t1.3": [
+    // ภาพ 18 ส่วนตาราง: รายการการจองทั้งหมด (seed 3 ใบ)
+    { name: "bookings-list", mockup: "18", path: (i) => `/app/u/${i.unitSlug}/trips/bookings?when=all` },
+    // ลิ้นชักรายละเอียดของภัทรา เปิดทับขวา (11,450.00 · ก่อนภาษี 9,299.07 · VAT 650.93 · เก็บแทน 1,500.00)
+    {
+      name: "booking-detail",
+      mockup: "18",
+      path: (i) => `/app/u/${i.unitSlug}/trips/bookings?when=all&b=${i.booking0142}`,
+      fullPage: false,
+      actions: [{ waitFor: '[data-testid="trips-bk-detail"]' }, { pause: 500 }],
+    },
+    // ลิ้นชักเดิม → กดรับเงิน ⇒ กล่องรับเงิน (แถบเงินสดเก็บแยก) · ไม่กดยืนยัน (ไม่เขียนฐาน)
+    {
+      name: "payment-dialog",
+      mockup: "18",
+      path: (i) => `/app/u/${i.unitSlug}/trips/bookings?when=all&b=${i.booking0142}`,
+      fullPage: false,
+      actions: [{ waitFor: '[data-testid="trips-bk-pay"]' }, { click: { selector: '[data-testid="trips-bk-pay"]' } }, { waitFor: '[data-testid="trips-pay-dialog"]' }, { pause: 500 }],
+    },
+    // คิวเอกสารเงินรอออก (seed ว่าง ⇒ ข้อความถาวร + สถานะว่าง)
+    { name: "money-docs", mockup: "18", path: (i) => `/app/u/${i.unitSlug}/trips/bookings?view=docs` },
   ],
 };
 
@@ -197,7 +223,14 @@ async function idsFromSeed(): Promise<Ids> {
   const dec = await prisma.tripDeparture.findFirst({ where: { tenantId, unitId: unit.id, productId: racha, localDate: new Date(`${DEC_DATE}T00:00:00.000Z`), status: { not: "CANCELLED" } }, select: { id: true } });
   if (!dec && WO === "t1.2") throw new Fatal(`ไม่พบรอบราชา ${DEC_DATE} (ที่ไม่ยกเลิก) — รัน seed ก่อน หรือส่ง --dec-date ของรอบที่มีจริง`);
   const decWeek = new Date(Date.parse(`${DEC_DATE}T00:00:00.000Z`) - 86_400_000).toISOString().slice(0, 10);
-  return { unitSlug: unit.slug, racha, similan, racha1114: dep.id, racha1231: dec?.id ?? "", week: WEEK, month: MONTH, decWeek };
+  // TRIPS T1.3 ▸ การจองของภัทรา บนรอบราชา DEPARTURE_RACHA_1114.date (ไม่ฝัง id/เลขจอง — เลขจริงมาจากตัวนับของ seed) ◂
+  const bk0142 = await prisma.tripBooking.findFirst({
+    where: { tenantId, unitId: unit.id, productId: racha, travelDate: new Date(`${DEPARTURE_RACHA_1114.date}T00:00:00.000Z`), bookerPartyId: BOOKING_0142_PARTY },
+    orderBy: { code: "asc" },
+    select: { id: true },
+  });
+  if (!bk0142 && WO === "t1.3") throw new Fatal(`ไม่พบการจองของ ${BOOKING_0142_PARTY} บนรอบราชา ${DEPARTURE_RACHA_1114.date} — รัน scripts/seed-trips-qc.mts ก่อน`);
+  return { unitSlug: unit.slug, racha, similan, racha1114: dep.id, racha1231: dec?.id ?? "", week: WEEK, month: MONTH, decWeek, booking0142: bk0142?.id ?? "" };
 }
 
 type Page = {

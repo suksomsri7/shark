@@ -82,7 +82,7 @@ const walk = (rel: string): string[] => {
 // ═══════════════ สเปก (ใบสั่ง T1.1) ═══════════════
 const APP = "src/app/app/u/[unitSlug]/trips";
 const PAGE_KEYS = ["products", "departures", "bookings", "agents", "channels", "settings"] as const;
-const STUB_KEYS = ["bookings", "agents", "channels"] as const; // ORACLE-EDIT (ผู้คุม 13 พ.ย.): departures เปิดจริงใน T1.2
+const STUB_KEYS = ["agents", "channels"] as const; // ORACLE-EDIT (ผู้คุม 13 พ.ย. · T1.3a): แท็บการจองเปิดจริง · เห็นเมื่อมี trips.booking.view · // ORACLE-EDIT (ผู้คุม 13 พ.ย.): departures เปิดจริงใน T1.2
 const PAGES = [`${APP}/page.tsx`, ...PAGE_KEYS.map((k) => `${APP}/${k}/page.tsx`)];
 const MOD = "src/lib/modules/trips/";
 const OWN_MOD = ["pickup-core.ts", "pickup.ts", "pickup-actions.ts", "screens.ts", "trips-settings.ts", "screen-actions.ts"].map((f) => MOD + f);
@@ -678,13 +678,13 @@ try {
     const e = await navOf(SEED, DIVE_TRIPS_UNIT.id);
     eq(e.map((x) => x.key), [...PAGE_KEYS], "ลำดับ");
     eq(e.map((x) => x.href), PAGE_KEYS.map((k) => `/app/u/${DIVE_TRIPS_UNIT.slug}/trips/${k}`), "href");
-    eq(e.map((x) => x.available), [true, true, false, false, false, true], "available"); // ORACLE-EDIT NAV-1 (ผู้คุม 13 พ.ย.): departures เปิดใน T1.2
+    eq(e.map((x) => x.available), [true, true, true, false, false, true], "available"); // ORACLE-EDIT (ผู้คุม 13 พ.ย. · T1.3a): แท็บการจองเปิดจริง · เห็นเมื่อมี trips.booking.view · // ORACLE-EDIT NAV-1 (ผู้คุม 13 พ.ย.): departures เปิดใน T1.2
     eq(e.map((x) => x.visible), [true, true, true, true, true, true], "visible (เจ้าของ)");
-    eq(e.filter((x) => !x.available).map((x) => x.wo), ["T1.3", "A1.2", "W1.1"], "wo");
+    eq(e.filter((x) => !x.available).map((x) => x.wo), ["A1.2", "W1.1"], "wo"); // ORACLE-EDIT (ผู้คุม 13 พ.ย. · T1.3a): แท็บการจองเปิดจริง · เห็นเมื่อมี trips.booking.view
   });
   await st("NAV-2", "viewer (product.view): เห็น products/bookings/agents/channels · ไม่เห็น departures (ไม่มี departure.view) · ไม่เห็น settings", async () => {
     const e = await navOf(ctxOf("vw"), uA);
-    eq(e.map((x) => [x.key, x.visible]), [["products", true], ["departures", false], ["bookings", true], ["agents", true], ["channels", true], ["settings", false]], "visible");
+    eq(e.map((x) => [x.key, x.visible]), [["products", true], ["departures", false], ["bookings", false] /* ORACLE-EDIT (ผู้คุม 13 พ.ย. · T1.3a): แท็บการจองเปิดจริง · เห็นเมื่อมี trips.booking.view */, ["agents", true], ["channels", true], ["settings", false]], "visible");
   });
   await st("NAV-3", "settings-only: products ไม่เห็น · settings เห็น · ไม่มีสิทธิ์ trips ⇒ FORBIDDEN", async () => {
     const e = await navOf(ctxOf("se"), uA);
@@ -696,7 +696,7 @@ try {
     okR(await g("vw", "products"), "vw products");
     codeR(await g("vw", "settings"), "FORBIDDEN", "vw settings");
     codeR(await g("vw", "departures"), "FORBIDDEN", "vw departures");
-    okR(await g("vw", "bookings"), "vw bookings");
+    codeR(await g("vw", "bookings"), "FORBIDDEN", "vw bookings"); // ORACLE-EDIT (ผู้คุม 13 พ.ย. · T1.3a): แท็บการจองเปิดจริง · เห็นเมื่อมี trips.booking.view
     codeR(await g("se", "products"), "FORBIDDEN", "se products");
     okR(await g("se", "settings"), "se settings");
     okR(await g("sm", "settings"), "sm settings");

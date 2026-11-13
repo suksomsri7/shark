@@ -1371,7 +1371,7 @@ try {
   const refundOutbox = async (requestId: string, tenantId = tA) => q<{ idempotencyKey: string; payload: Rec; type: string }>(`SELECT "idempotencyKey", payload, type FROM "OutboxEvent" WHERE "tenantId" = $1 AND type LIKE 'trips.refund.%' AND "idempotencyKey" LIKE $2 ORDER BY "createdAt"`, [tenantId, `%:${requestId}:%`]);
   const audits = async (targetId: string, action: string, tenantId = tA) => q<Rec>(`SELECT action, after, before FROM "AuditLog" WHERE "tenantId" = $1 AND "targetId" = $2 AND action = $3`, [tenantId, targetId, action]);
   const withdraw = (b: Bk, requestId: unknown, opts?: Rec) => call("withdrawTripRefund", staff({ unit: b.unit, now: T23 }), { requestId, reason: "ถอนคำขอที่อนุมัติแล้ว", idempotencyKey: `w${hex(6)}` }, opts);
-  const noPii = (b: Bk, v: unknown) => !/ลูกค้าทดสอบ|08\d{8}|@|"phone"|"email"|"name"|"reference"/.test(JSON.stringify(v)) && !JSON.stringify(v).includes(b.code);
+  /* ORACLE-EDIT RL-3 (ผู้คุม 13 พ.ย.): รูปเบอร์โทรต้องมีขอบ (แดง 1 ครั้งบนเลน l2 แล้วเขียวเมื่อรันซ้ำ — สันนิษฐานว่าชนรหัสสุ่ม ยังไม่ได้พิสูจน์) */ const noPii = (b: Bk, v: unknown) => !/ลูกค้าทดสอบ|(?<![0-9a-z])08\d{8}(?![0-9a-z])|@|"phone"|"email"|"name"|"reference"/.test(JSON.stringify(v)) && !JSON.stringify(v).includes(b.code);
   /** ผู้รอ advisory ชั้น 0 `refund:<id>` (สองอาร์กิวเมนต์ · classid/objid = int4 ในรูป oid) */
   const advWaiters = async (key: string) => num((await q<{ n: number }>(`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 2 AND NOT granted
     AND classid = (hashtext('trips.booking.v1')::bigint & 4294967295)::oid AND objid = (hashtext($1)::bigint & 4294967295)::oid`, [key]))[0]?.n);

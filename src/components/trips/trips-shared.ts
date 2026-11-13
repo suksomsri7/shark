@@ -11,7 +11,7 @@ export type TripsNavKey = (typeof TRIPS_NAV_KEYS)[number];
 export const TRIPS_NAV: readonly { key: TripsNavKey; path: string; available: boolean; wo: string }[] = [
   { key: "products", path: "/trips/products", available: true, wo: "T1.1" },
   { key: "departures", path: "/trips/departures", available: true, wo: "T1.2" },
-  { key: "bookings", path: "/trips/bookings", available: false, wo: "T1.3" },
+  { key: "bookings", path: "/trips/bookings", available: true, wo: "T1.3" },
   { key: "agents", path: "/trips/agents", available: false, wo: "A1.2" },
   { key: "channels", path: "/trips/channels", available: false, wo: "W1.1" },
   { key: "settings", path: "/trips/settings", available: true, wo: "T1.1" },
