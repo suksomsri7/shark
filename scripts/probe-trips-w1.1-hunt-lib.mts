@@ -1,6 +1,11 @@
 // probe-trips-w1.1-hunt-lib.mts — shared helpers of the W1.1a bug-hunter probes (untracked · hunter)
 // Temp shops: slug `w11hunt-*` (NOT the oracle's `trips-w11-*` prefix) · removed in cleanup() · buckets of every IP used are removed.
 // HTTP target: the controller's QC server (read-only use) at 127.0.0.1:3241.
+// ── post-review round (rulings X1–X12 in ledger/trips-briefs/W1.1.md) — adapted by the oracle writer, attacks unchanged ──
+//   • X2(ข): the QC server is `next start` (NODE_ENV=production) ⇒ a request with NO forwarded IP header (or a loopback one) is now CLOSED (rate-limited page, no bucket).
+//     Every probe request therefore carries an IP header (`ip:` ⇒ X-Forwarded-For) unless the scenario is specifically "no header".
+//   • X6: only a human browser GET counts as a view ⇒ `req()` sends a browser User-Agent by default (node sends none, which is "not a person" now). `ua: null` sends none.
+//   • Output statuses: HELD · FOUND · KNOWN (= still observable, but ruled as an accepted debt / deployment precondition — see `known()`), so accepted items stay visible without counting as new findings.
 import { createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
 import pg from "pg";
@@ -122,12 +127,14 @@ export function freshIp(): string {
 export const useIp = (ip: string): string => { const c = canonicalClientIp(ip); if (c) usedIps.add(c); return ip; };
 
 // ═══════ HTTP ═══════
+/** a plain human browser (X6: requests without a browser User-Agent are not counted as views) */
+export const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const agent = new http.Agent({ keepAlive: true, maxSockets: 400 });
 export type Resp = { status: number; headers: http.IncomingHttpHeaders; body: string; ms: number; err?: string };
-export function req(path: string, o: { method?: string; headers?: Record<string, string | string[]>; ip?: string | null; body?: string; fresh?: boolean } = {}): Promise<Resp> {
+export function req(path: string, o: { method?: string; headers?: Record<string, string | string[]>; ip?: string | null; body?: string; fresh?: boolean; ua?: string | null } = {}): Promise<Resp> {
   return new Promise((resolve) => {
     const t0 = performance.now();
-    const headers: Record<string, string | string[]> = { accept: "text/html", ...(o.ip ? { "x-forwarded-for": o.ip } : {}), ...(o.headers ?? {}) };
+    const headers: Record<string, string | string[]> = { accept: "text/html", ...(o.ua === null ? {} : { "user-agent": o.ua ?? BROWSER_UA }), ...(o.ip ? { "x-forwarded-for": o.ip } : {}), ...(o.headers ?? {}) };
     if (o.ip) useIp(o.ip);
     const r = http.request({ host: HOST, port: PORT, path, method: o.method ?? "GET", headers, ...(o.fresh ? { agent: false as const } : { agent }) }, (res) => {
       const chunks: Buffer[] = [];
@@ -196,5 +203,14 @@ export async function cleanup() {
 }
 
 export const line = (tag: string, expected: string, got: string, okFlag: boolean) => console.log(`${okFlag ? "HELD " : "FOUND"} [${tag}] expected: ${expected} | got: ${got}`);
+/** Accepted items of the post-review rulings (kept in the output on purpose — "known/accepted", not a new finding). */
+export const ACCEPTED = {
+  OQ28: "known/accepted — deployment precondition OQ28 (ruling X2 ค): the edge must OVERWRITE X-Real-IP / X-Vercel-Forwarded-For / X-Forwarded-For; on a bare `next start` these headers are client-controlled",
+  STATUS_200: "known/accepted debt — rate-limited page answers HTTP 200 without Retry-After until the gate moves to the proxy/route layer (W1.1b)",
+  NO_METHOD: "known debt of X6 — a server component cannot see the HTTP method: a body-less non-GET request (HEAD / DELETE / OPTIONS) sent with a browser User-Agent may still count; closes when the gate moves to the proxy/route layer (W1.1b)",
+  FRAMEWORK_500: "known/accepted debt — framework 500 on a malformed percent-encoded path segment (not page code)",
+} as const;
+/** like line(), but a miss is reported as KNOWN (accepted by a ruling) instead of FOUND */
+export const known = (tag: string, expected: string, got: string, okFlag: boolean, why: string) => console.log(`${okFlag ? "HELD " : "KNOWN"} [${tag}] expected: ${expected} | got: ${got}${okFlag ? "" : ` | ${why}`}`);
 /** local date `YYYY-MM-DD` of an instant in a fixed-offset zone (minutes east) */
 export const ymdAt = (d: Date, offsetMin: number) => new Date(d.getTime() + offsetMin * 60_000).toISOString().slice(0, 10);

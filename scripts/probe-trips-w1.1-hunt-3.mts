@@ -1,5 +1,7 @@
 // probe-trips-w1.1-hunt-3.mts — W1.1a hunter: query parameters / odd paths / methods / server actions / RSC gate (HTTP, QC server)
-import { boot, cleanup, freshIp, kind as kindHtml, line, mkDep, mkProd, mkTenant, mkUnit, pmap, req, STAMP, sweepStale, viewsOf, ymdAt, type Resp } from "./probe-trips-w1.1-hunt-lib.mjs";
+// post-review round: every request carries a forwarded IP + browser UA (lib) · ?t (departure token, X4) fuzzing added · non-GET requests must not COUNT (X6) — measured per request;
+//   body-less non-GET with a browser UA = KNOWN debt (reported as observed) · framework 500 on a malformed %-path = KNOWN (accepted debt) · rate-limited RSC/prefetch: no shop name either (X1)
+import { ACCEPTED, boot, cleanup, freshIp, kind as kindHtml, known, line, mkDep, mkProd, mkTenant, mkUnit, pmap, req, STAMP, sweepStale, titlesAll, viewsOf, ymdAt, type Resp } from "./probe-trips-w1.1-hunt-lib.mjs";
 
 boot("probe-w1.1-hunt-3");
 const kind = (r: Resp): string => {
@@ -32,6 +34,9 @@ try {
     ["d=2026-02-30", "d=2026-02-30", curMonth], ["d=9999-12-31", "d=9999-12-31", curMonth], ["d=0000-01-01", "d=0000-01-01", curMonth], [`d outside m`, `m=${curMonth}&d=${far(1)}-05`, curMonth], [`d only, next month`, `d=${far(1)}-05`, far(1)],
     ["d with newline", "d=2026-11-20%0a", curMonth], ["lang=xx", "lang=xx", curMonth], ["lang=EN", "lang=EN", curMonth], ["lang twice", "lang=th&lang=en", curMonth], ["lang=%00", "lang=%00", curMonth],
     ["300 junk params", Array.from({ length: 300 }, (_, i) => `k${i}=v${i}`).join("&"), curMonth], ["__proto__ / constructor keys", "__proto__=x&constructor=y&m[__proto__]=z", curMonth],
+    // X4: ?t = departure token (HHMM[-n]) — anything else must fall back to the first sellable departure, never 5xx, never resolve an id
+    ["t=0800 (valid)", "t=0800", curMonth], ["t=9999", "t=9999", curMonth], ["t=08:00", "t=08%3A00", curMonth], ["t=0800-9 (no such)", "t=0800-9", curMonth], ["t repeated", "t=0800&t=1300", curMonth], ["t[]=", "t[]=0800", curMonth],
+    ["t with NUL", "t=0800%00", curMonth], ["t huge 6000 chars", `t=${"0".repeat(6000)}`, curMonth], ["t sql", `t=${encodeURIComponent("0800' OR 1=1 --")}`, curMonth], ["t=-1", "t=-1", curMonth], ["t=__proto__", "t=__proto__&t[constructor]=x", curMonth],
   ];
   for (const [name, qs, month] of cases) {
     const r = await req(`${PA}?${qs}`, { ip: freshIp() });
@@ -64,7 +69,10 @@ try {
   ];
   for (const [name, path, good] of paths) {
     const r = await req(path, { ip: freshIp() });
-    line(`P ${name}`, "no 5xx / no unintended resolve", `${kind(r)}${r.headers.location ? ` → ${String(r.headers.location).slice(0, 80)}` : ""} ${r.ms.toFixed(0)}ms`, good(r));
+    const gotText = `${kind(r)}${r.headers.location ? ` → ${String(r.headers.location).slice(0, 80)}` : ""} ${r.ms.toFixed(0)}ms`;
+    // accepted debt: the framework answers a bare 500 (no page code runs) for a malformed percent-encoded segment — only that exact shape is "known"
+    const framework500 = r.status === 500 && r.body.length < 100 && /%(?![0-9A-Fa-f]{2})|%E0%A4%A$/.test(path);
+    if (framework500) known(`P ${name}`, "no 5xx / no unintended resolve", `${gotText} len=${r.body.length}`, false, ACCEPTED.FRAMEWORK_500); else line(`P ${name}`, "no 5xx / no unintended resolve", gotText, good(r));
   }
 
   console.log("\n== 3. methods / server actions / RSC ==");
@@ -76,17 +84,34 @@ try {
     ["POST Next-Action multipart", { method: "POST", body: "--x\r\nContent-Disposition: form-data; name=\"1_$ACTION_ID_0123456789abcdef0123456789abcdef01234567\"\r\n\r\n\r\n--x--\r\n", headers: { "content-type": "multipart/form-data; boundary=x" } }],
     ["POST 2 MB body", { method: "POST", body: "x".repeat(2_000_000), headers: { "content-type": "text/plain" } }],
   ];
+  // X6: a non-GET request must not COUNT as a view (each request is a fresh client, so the delta is per request).
+  // Known debt: the page cannot see the method ⇒ a body-less non-GET (HEAD / OPTIONS / DELETE) sent with a browser UA may still count — reported as observed, marked KNOWN.
+  const bodyless = new Set(["HEAD", "OPTIONS", "DELETE"]);
+  let vPrev = v0;
   for (const [name, o] of meth) {
     const r = await req(PA, { ...o, ip: freshIp() });
     line(`M ${name}`, "no 5xx; non-GET methods should not render/count the page (405)", `${kind(r)} allow=${String(r.headers.allow ?? "(none)")} x-action=${String(r.headers["x-nextjs-action-not-found"] ?? r.headers["x-action-revalidated"] ?? "(none)")} len=${r.body.length}`, r.status < 500 && (name === "HEAD" || name === "OPTIONS" || r.status === 405 || r.status === 404 || r.status === 400));
+    const vNow = await viewsOf(uA);
+    if (bodyless.has(name)) known(`M ${name} view`, "+0 view (X6: only GET counts)", `+${vNow - vPrev}`, vNow === vPrev, ACCEPTED.NO_METHOD);
+    else line(`M ${name} view`, "+0 view (X6: only GET counts)", `+${vNow - vPrev}`, vNow === vPrev);
+    vPrev = vNow;
   }
-  console.log(`  INFO  views added by the 9 non-GET requests above: +${(await viewsOf(uA)) - v0}`);
+  // the same body-less methods without a browser UA (what scanners / uptime checks send) must not count at all
+  for (const m of ["HEAD", "OPTIONS", "DELETE"]) {
+    const r = await req(PA, { method: m, ua: null, ip: freshIp() });
+    const vNow = await viewsOf(uA);
+    line(`M ${m} (no User-Agent) view`, "+0 view", `+${vNow - vPrev} · ${kind(r)}`, vNow === vPrev && r.status < 500);
+    vPrev = vNow;
+  }
+  console.log(`  INFO  views added by the ${meth.length + 3} non-GET requests above: +${vPrev - v0} (expected 0; anything above 0 comes from the KNOWN body-less lines)`);
   // RSC request from an exhausted client: gated?
   const ipX = freshIp();
   await pmap(Array.from({ length: 121 }, (_, i) => i), 8, () => req(`/book/${A.slug}`, { ip: ipX }));
   const rsc = await req(`${PA}?_rsc=zz11`, { ip: ipX, headers: { rsc: "1" } });
   const pre = await req(`${PA}?_rsc=zz12`, { ip: ipX, headers: { rsc: "1", "next-router-prefetch": "1" } });
   const seg = await req(`${PA}?_rsc=zz13`, { ip: ipX, headers: { rsc: "1", "next-router-prefetch": "1", "next-router-segment-prefetch": "/_tree" } });
+  const shopLeak = [rsc, pre, seg].filter((r) => r.body.includes("Hunt Param Shop") || titlesAll(r).some((t) => t.includes("Hunt")));
+  line("RSC-GATED-NO-SHOP-NAME", "RSC / prefetch payload of an exhausted client carries no shop name or title (X1)", `${shopLeak.length} of 3 payloads carry the shop name`, shopLeak.length === 0);
   line("RSC-GATED", "RSC payload of an exhausted client is the rate-limited notice, no product data", `rsc → ${kind(rsc)} (has price data: ${rsc.body.includes("book-prices")}) · prefetch → ${kind(pre)} (has product data: ${pre.body.includes("book-prices") || pre.body.includes("Hunt A")}) · segment prefetch → ${kind(seg)} len ${seg.body.length} (product data: ${seg.body.includes("book-prices") || seg.body.includes("Hunt A")})`, !rsc.body.includes("book-prices") && !pre.body.includes("book-prices") && !seg.body.includes("book-prices"));
   console.log(`  INFO  RSC response headers: cache-control=${String(rsc.headers["cache-control"])} vary=${String(rsc.headers.vary)} content-type=${String(rsc.headers["content-type"])}`);
   console.log(`  INFO  prefetch response headers: cache-control=${String(pre.headers["cache-control"])} len=${pre.body.length}`);

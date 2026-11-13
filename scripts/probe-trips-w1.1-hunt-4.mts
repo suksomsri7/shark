@@ -1,10 +1,17 @@
 // probe-trips-w1.1-hunt-4.mts — W1.1a hunter: page truthfulness vs the accepted services (listAvailability / quoteTripLine) on a temp shop
+// post-review round (X4 · H-F4): a day with several departures — the calendar cell must show the seats of the EARLIEST sellable departure (+ "N trips"),
+//   every departure row must show its own seats and its own price (quoteTripLine of that departure), the price table must belong to the selected departure
+//   (default = first sellable · `?t=<HHMM>` picks another). X7: a pax type without a price hides only its own row (EDGE NOADULT).
 import { boot, cleanup, freshIp, insertRow, kind, line, mkDep, mkProd, mkTenant, mkUnit, req, rid, sweepStale, ymdAt, type Prod, type Rec, type Resp } from "./probe-trips-w1.1-hunt-lib.mjs";
 
 boot("probe-w1.1-hunt-4");
 const strip = (s: string) => s.replace(/<!--.*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 const after = (r: Resp, testid: string, n = 900) => { const i = r.body.indexOf(`data-testid="${testid}"`); return i < 0 ? null : strip(r.body.slice(r.body.lastIndexOf("<", i), i + n)); };
-const dayStates = (r: Resp) => new Map([...r.body.matchAll(/data-testid="book-day-(\d{4}-\d{2}-\d{2})" data-state="([A-Z_]+)"([^>]*)>/g)].map((m) => [m[1] as string, { state: m[2] as string, title: /title="([^"]*)"/.exec(m[3] ?? "")?.[1] ?? "" }]));
+// label of a day cell: selectable days are links whose full text is in aria-label (X8); non-selectable cells carry it in title
+const dayStates = (r: Resp) => new Map([...r.body.matchAll(/data-testid="book-day-(\d{4}-\d{2}-\d{2})" data-state="([A-Z_]+)"([^>]*)>/g)].map((m) => [m[1] as string, { state: m[2] as string, title: (/aria-label="([^"]*)"/.exec(m[3] ?? "")?.[1] ?? /title="([^"]*)"/.exec(m[3] ?? "")?.[1] ?? "").replace(/&amp;/g, "&") }]));
+/** text of departure row i of the selected day (up to the next row / end of the list) */
+const slotRow = (r: Resp, i: number): string | null => { const a = r.body.indexOf(`data-testid="book-slot-${i}"`); if (a < 0) return null; const b = r.body.indexOf(`data-testid="book-slot-${i + 1}"`, a); const e = b > 0 ? b : r.body.indexOf("</ul>", a); return strip(r.body.slice(r.body.lastIndexOf("<", a), e > 0 ? e : a + 4000)); };
+const hhmm = (iso: unknown, off: number) => new Date(Date.parse(String(iso)) + off * 60_000).toISOString().slice(11, 16);
 const baht = (satang: number) => (satang / 100).toLocaleString("en-US");
 
 try {
@@ -59,13 +66,17 @@ try {
       for (const s of av.value ?? []) { const k = String(s.localDate); byDay.set(k, [...(byDay.get(k) ?? []), s]); }
       for (const ymd of [...label.keys()].filter((d) => d.startsWith(month)).sort()) {
         const slots = byDay.get(ymd) ?? [];
+        slots.sort((a, b) => String(a.startsAt).localeCompare(String(b.startsAt)));
         const sellable = slots.filter((s) => s.saleBlock === null && Number(s.publicLeft) > 0);
         const maxLeft = Math.max(0, ...sellable.map((s) => Number(s.publicLeft)));
+        const firstLeft = sellable.length ? Number(sellable[0]?.publicLeft) : 0; // X4: the cell shows the earliest sellable departure
         const cell = cells.get(ymd);
         const pageBookable = cell?.state === "OPEN" || cell?.state === "LOW";
         const shownN = Number(/(\d+)\s+(?:seats|left)/.exec(cell?.title ?? "")?.[1] ?? "-1");
-        const svc = ymd < today ? "past" : sellable.length ? `sellable, best left ${maxLeft}, showLeft ${JSON.stringify(sellable.map((s) => s.showLeft))}` : `not sellable ${JSON.stringify(slots.map((s) => `${String(s.status)}/${String(s.saleBlock)}/${String(s.publicLeft)}`))}`;
-        const okFlag = ymd < today ? !pageBookable : pageBookable === sellable.length > 0 && (!pageBookable || shownN <= maxLeft);
+        const svc = ymd < today ? "past" : sellable.length ? `sellable ×${sellable.length}, earliest left ${firstLeft} (best ${maxLeft}), showLeft ${JSON.stringify(sellable.map((s) => s.showLeft))}` : `not sellable ${JSON.stringify(slots.map((s) => `${String(s.status)}/${String(s.saleBlock)}/${String(s.publicLeft)}`))}`;
+        const expState = sellable.length ? (sellable[0]?.showLeft ? "LOW" : "OPEN") : null;
+        const tripsOk = sellable.length > 1 ? (cell?.title ?? "").includes(`${sellable.length} trips`) : !/\d+ trips/.test(cell?.title ?? "");
+        const okFlag = ymd < today ? !pageBookable : pageBookable === sellable.length > 0 && (!pageBookable || (shownN === firstLeft && cell?.state === expState && tripsOk));
         line(`TRUTH ${tag} ${ymd} ${label.get(ymd)}`, `service: ${svc}`, `page: ${cell ? `${cell.state} "${cell.title}"` : "(no cell)"}`, okFlag);
         if (sellable.length && pageBookable) {
           const pr = await req(`/book/${A.slug}/t/${p.slug}?lang=en&m=${month}&d=${ymd}`, { ip: freshIp() });
@@ -76,11 +87,31 @@ try {
             quotes.push(item ? Number(item.unitMinor) : -1);
           }
           const adult = after(pr, "book-price-ADULT", 700) ?? "(no adult row)";
-          const pageHas = quotes.filter((qq) => adult.includes(baht(qq)));
           const distinct = [...new Set(quotes)];
-          const slotsTxt = [0, 1].map((i) => after(pr, `book-slot-${i}`, 500)).filter(Boolean).map((s) => (s ?? "").slice(0, 110));
-          if (distinct.length > 1) line(`PRICE ${tag} ${ymd}`, `page tells the customer each sellable departure's price (service quotes ADULT ${distinct.map(baht).join(" / ")} THB)`, `page shows only: "${adult.slice(0, 90)}" · slots: ${JSON.stringify(slotsTxt)}`, distinct.every((qq) => `${adult} ${slotsTxt.join(" ")}`.includes(baht(qq))));
-          else line(`PRICE ${tag} ${ymd}`, `ADULT ${baht(distinct[0] ?? -1)} THB (quoteTripLine)`, `"${adult.slice(0, 90)}"`, pageHas.length > 0);
+          // X4: the price table belongs to the selected departure = the first sellable one (not "any of the quotes")
+          line(`PRICE ${tag} ${ymd}`, `price table = first sellable departure: ADULT ${baht(quotes[0] ?? -1)} THB (quoteTripLine)${distinct.length > 1 ? ` · other departures quote ${distinct.slice(1).map(baht).join(" / ")}` : ""}`, `"${adult.slice(0, 90)}"`, adult.includes(`${baht(quotes[0] ?? -1)}.00`));
+          if (slots.length > 1) {
+            // every departure row (all departures of the day, by start time): its own time, its own seats, its own "from" price
+            const rowsTxt = slots.map((_, i) => slotRow(pr, i));
+            const rowOk = slots.map((s, i) => {
+              const txt = rowsTxt[i] ?? "";
+              const sell = s.saleBlock === null && Number(s.publicLeft) > 0;
+              const k = sellable.indexOf(s);
+              return txt.includes(hhmm(s.startsAt, off)) && (sell ? new RegExp(`\\b${Number(s.publicLeft)} seats`).test(txt) && txt.includes(`${baht(quotes[k] ?? -1)}.00`) : !/THB/.test(txt));
+            });
+            line(`SLOT-ROWS ${tag} ${ymd}`, `each departure row shows its own time · seats · price — service: ${JSON.stringify(slots.map((s) => `${hhmm(s.startsAt, off)} left ${String(s.publicLeft)}${s.saleBlock === null && Number(s.publicLeft) > 0 ? ` ADULT ${baht(quotes[sellable.indexOf(s)] ?? -1)}` : " (not sellable)"}`))}`, `rows: ${JSON.stringify(rowsTxt.map((t) => (t ?? "(no row)").slice(0, 150)))}`, rowOk.every(Boolean));
+            const meta = after(pr, "book-meta", 600) ?? "";
+            line(`HEADER-SLOT ${tag} ${ymd}`, `header line shows the selected (first sellable) departure ${hhmm(sellable[0]?.startsAt, off)}`, `"${meta.slice(0, 70)}"`, meta.includes(hhmm(sellable[0]?.startsAt, off)));
+            if (sellable.length > 1) {
+              // pick the last sellable departure with its token: table, header and seats must all move to that departure
+              const last = sellable[sellable.length - 1] as Rec; const token = hhmm(last.startsAt, off).replace(":", "");
+              const pt = await req(`/book/${A.slug}/t/${p.slug}?lang=en&m=${month}&d=${ymd}&t=${token}`, { ip: freshIp() });
+              const adultT = after(pt, "book-price-ADULT", 700) ?? "(no adult row)"; const metaT = after(pt, "book-meta", 600) ?? "";
+              line(`SLOT-PICK ${tag} ${ymd} t=${token}`, `price table + header of the ${hhmm(last.startsAt, off)} departure: ADULT ${baht(quotes[quotes.length - 1] ?? -1)}`, `adult "${adultT.slice(0, 60)}" · header "${metaT.slice(0, 50)}"`, adultT.includes(`${baht(quotes[quotes.length - 1] ?? -1)}.00`) && metaT.includes(hhmm(last.startsAt, off)));
+              const idsInLinks = [...pt.body.matchAll(/[?&](?:amp;)?t=([A-Za-z0-9_:.-]+)/g)].map((m) => m[1] ?? "").filter((t) => !/^\d{4}(-[2-9])?$/.test(t));
+              line(`SLOT-TOKEN-SHAPE ${tag} ${ymd}`, "departure references in links are time tokens (HHMM), never ids", JSON.stringify(idsInLinks.slice(0, 3)), idsInLinks.length === 0);
+            }
+          }
         }
       }
     }
@@ -91,7 +122,7 @@ try {
   const uE = await mkUnit(A.id, "edge");
   const today = ymdAt(now, 420);
   const mk = async (key: string, prices: Record<string, number | null>) => { const p = await mkProd(key, A.id, uE, { prices }); const ymd = plus(today, 3); await mkDep(p, ymd, at(ymd, "08:00", 420), { sold: 1 }); return { p, ymd }; };
-  for (const [key, prices, expect] of [["ZERO", { ADULT: 0, CHILD: 0, INFANT: 0 }, "what quoteTripLine says"], ["NOPRICE", { ADULT: null, CHILD: null, INFANT: null }, "price unavailable"], ["NOADULT", { ADULT: null, CHILD: 56_700, INFANT: 0 }, "price unavailable"]] as const) {
+  for (const [key, prices, expect] of [["ZERO", { ADULT: 0, CHILD: 0, INFANT: 0 }, "what quoteTripLine says"], ["NOPRICE", { ADULT: null, CHILD: null, INFANT: null }, "price unavailable"], ["NOADULT", { ADULT: null, CHILD: 56_700, INFANT: 0 }, "X7: only the adult row is hidden — child 567 still shown, no 'unavailable' note"]] as const) {
     const { p, ymd } = await mk(key, prices);
     const ctx = { tenantId: A.id, unitId: uE, channel: "WEB", actor: { kind: "PUBLIC", clientKey: "book-view" }, now: new Date(), locale: "en" };
     const av = await listAvailability(ctx, { productId: p.id, from: ymd, to: ymd });
@@ -103,8 +134,10 @@ try {
     const unavailable = after(r, "book-price-unavailable", 300);
     const cta = after(r, "book-cta", 300);
     const svc = qv.ok ? `quote ok ADULT ${baht(Number(((qv.value?.items as Rec[]) ?? []).find((i) => i.kind === "SEAT")?.unitMinor ?? -1))} total ${String((qv.value?.totals as Rec)?.payableSatang)}` : `quote refused (${qv.code})`;
-    const consistent = qv.ok ? !!adult && !unavailable : !adult && !!unavailable;
-    line(`EDGE ${key}`, `${expect} · service: ${svc}`, `day ${cell?.state} "${cell?.title}" · adult row: ${adult ? `"${adult.slice(0, 70)}"` : "(none)"} · unavailable note: ${unavailable ? `"${unavailable.slice(0, 80)}"` : "(none)"} · cta: "${(cta ?? "").slice(0, 60)}"`, consistent);
+    const child = after(r, "book-price-CHILD", 500);
+    // X7: a pax type without a price hides only its own row; the table disappears only when no pax type has a price
+    const consistent = qv.ok ? !!adult && !unavailable : key === "NOADULT" ? !adult && !unavailable && !!child && child.includes("567.00") : !adult && !!unavailable;
+    line(`EDGE ${key}`, `${expect} · service: ${svc}`, `day ${cell?.state} "${cell?.title}" · adult row: ${adult ? `"${adult.slice(0, 70)}"` : "(none)"} · child row: ${child ? `"${child.slice(0, 50)}"` : "(none)"} · unavailable note: ${unavailable ? `"${unavailable.slice(0, 80)}"` : "(none)"} · cta: "${(cta ?? "").slice(0, 60)}"`, consistent);
     if (!qv.ok) console.log(`  INFO  [EDGE ${key}] calendar still offers the day as ${cell?.state} with seats although quoteTripLine refuses (${qv.code}) — the page says price unavailable (accepted by oracle IS-5/6?)`);
   }
 } finally {

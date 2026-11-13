@@ -1,4 +1,5 @@
 // probe-trips-w1.1-hunt-1.mts — W1.1a hunter: enumeration / visibility / stored+reflected XSS / internal ids / headers (HTTP, QC server)
+// post-review round: + NF-NO-SHOP-DATA (X1 / H-F7: a not-found page under a real shop carries no shop/brand name, title included) · LOGO-EXTERNAL-* (X10: a logo on a non-platform host is not rendered)
 import { allIds, boot, cleanup, freshIp, insertRow, kind, line, median, mkDep, mkProd, mkTenant, mkUnit, q, req, rid, STAMP, sweepStale, titleOf, titlesAll, type Resp } from "./probe-trips-w1.1-hunt-lib.mjs";
 
 boot("probe-w1.1-hunt-1");
@@ -45,6 +46,14 @@ try {
     const ma = median(ra.slice(2).map((r) => r.ms)), mb = median(rb.slice(2).map((r) => r.ms));
     line(`VIS-${k}`, `identical to missing slug (${kind(b)} len ${b.body.length} titles ${JSON.stringify(titlesAll(b))})`, `${kind(a)} len ${a.body.length} titles ${JSON.stringify(titlesAll(a))} headersSame=${hdrShape(a) === hdrShape(b)} bodySame=${norm(a, [slug]) === norm(b, [miss])} · median ms hidden ${ma.toFixed(1)} vs missing ${mb.toFixed(1)}`, same);
   }
+  // X1 / H-F7: the not-found page under a real, ACTIVE shop must not carry the shop or brand name anywhere (titles streamed in the RSC payload included).
+  // The shop/brand names of this probe contain the XSS marker, which exists nowhere else ⇒ any trace of it on a 404 = shop data leaked.
+  for (const [k, path] of [["missing-slug", `/book/${A.slug}/t/nope-${STAMP}`], ...Object.entries(hidden).slice(0, 2).map(([hk, slug]) => [`hidden-${hk}`, `/book/${A.slug}/t/${slug}`] as [string, string])] as [string, string][]) {
+    const r = await req(path, { ip: freshIp() });
+    const t = titlesAll(r);
+    const leak = ["Hunt A", "Brand ", "alert(1)", "alert(7)", "onerror"].filter((m) => t.some((x) => x.includes(m))).concat(["onerror=alert(1)", "alert(7)"].filter((m) => r.body.includes(m)).map((m) => `body:${m}`));
+    line(`NF-NO-SHOP-DATA ${k}`, "404 · no shop / brand / product name in any title or in the body", `${kind(r)} titles ${JSON.stringify(t)} · traces: ${JSON.stringify(leak)}`, r.status === 404 && leak.length === 0);
+  }
   // shops
   console.log("\n== 1b. shop visibility ==");
   const missShop = (slug: string) => slug.replace(/-(\w)$/, "-q");
@@ -73,6 +82,8 @@ try {
     line(`XSS-STORED-${lang}`, "shop-written texts never appear as raw markup", `raw marks: ${JSON.stringify(raw)} · escaped form present: ${escaped} · title: ${titleOf(r).slice(0, 80)}`, raw.filter((m) => m !== "</script><script>alert" || /[^\\]<\/script><script>alert/.test(r.body)).length === 0 && escaped);
     const imgs = [...r.body.matchAll(/<img[^>]*src="([^"]*)"/g)].map((m) => m[1]);
     console.log(`  INFO  [LOGO-${lang}] <img> sources on the public page: ${JSON.stringify(imgs)}  referrer-policy=${String(r.headers["referrer-policy"])} csp=${String(r.headers["content-security-policy"] ?? "(none)")}`);
+    // X10: the shop's logo here is on a third-party host ⇒ must not be rendered (no visitor IP to that host) — nor referenced anywhere in the payload
+    line(`LOGO-EXTERNAL-${lang}`, "logo on a non-platform host is not rendered or referenced (X10)", `<img> ${JSON.stringify(imgs)} · host in payload: ${r.body.includes("hunt-tracker.invalid")}`, !r.body.includes("hunt-tracker.invalid"));
   }
 
   // ── 3. reflected params ──
