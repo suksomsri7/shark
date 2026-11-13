@@ -470,3 +470,111 @@ model HrBankFile {
   @@index([systemId, runId])
   @@index([tenantId])
 }
+
+// HR H3.6 ▸ แบบยื่นภาษี/ประกันสังคม (brief hr-brief-H3.6 R1) — 4 ตารางใหม่ล้วน (additive) · ไม่แตะ HrEmployee/HrPayrollRun/HrPayrollItem (filingJson ยังไม่มีใครเขียน)
+//   HrFilingProfile: ข้อมูลผู้จ่ายเงิน (เลขผู้เสียภาษี · สาขา · บัญชีนายจ้างประกันสังคม · ตัวเลือกไฟล์) 1 แถวต่อระบบ HR — เจ้าของร้านเขียนที่ hr/filings/service.ts ที่เดียว
+//   HrFilingPerson: ชื่อ/คำนำหน้า/ที่อยู่แยกช่องสำหรับแบบยื่น 1 แถวต่อพนักงาน (ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์/เลขประจำตัว อ่านจาก HrEmployee — ไม่คัดลอก)
+//   HrFilingFile: ใบกำกับไฟล์ที่สร้าง (ไม่เก็บไบต์ — sha256 + ตัวเลือก ไม่มีเลขประจำตัว/ชื่อ) · ดาวน์โหลด = สร้างใหม่แล้วเทียบ sha · หมดอายุ 7 วัน · runId ลิงก์อ่อน
+//   HrTaxCertificate: หนังสือรับรอง 50 ทวิ ที่ออกแล้ว (เนื้อหาแช่แข็ง contentJson + sha · เลขที่จากเครื่องออกเลขของบัญชี) — 1 ใบที่ยังไม่ยกเลิกต่อ (พนักงาน, ปีภาษี)
+//   CHECK + partial unique อยู่ใน migration.sql (20270108000000_hr_filings) ◂
+model HrFilingProfile {
+  id              String   @id @default(cuid())
+  tenantId        String
+  systemId        String   @unique
+  taxId           String?
+  branchNo        String   @default("000000")
+  employerName    String?
+  employerAddress String?
+  deptName        String?  @default("สำนักงานใหญ่")
+  lto             Boolean  @default(false)
+  branchType      String   @default("")
+  rdUserId        String?
+  rdFormFlag      Int      @default(1)
+  ssoAccountNo    String?
+  ssoBranchNo     String   @default("000000")
+  ssoEncoding     String   @default("TIS620")
+  ssoWageMode     String   @default("CLAMPED")
+  rdSlashMode     String   @default("DASH")
+  signerName      String?
+  certPrefix      String   @default("HR50")
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model HrFilingPerson {
+  id          String     @id @default(cuid())
+  tenantId    String
+  systemId    String
+  employeeId  String     @unique
+  employee    HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  title       String?
+  firstName   String?
+  lastName    String?
+  ssoPrefix   String?
+  building    String?
+  room        String?
+  floor       String?
+  village     String?
+  houseNo     String?
+  moo         String?
+  soi         String?
+  street      String?
+  updatedById String?
+  updatedAt   DateTime   @updatedAt
+
+  @@index([systemId])
+  @@index([tenantId])
+}
+
+model HrFilingFile {
+  id            String   @id @default(cuid())
+  tenantId      String
+  systemId      String
+  kind          String
+  period        String
+  runId         String?
+  optionsJson   Json
+  fileName      String
+  byteLength    Int
+  sha256        String
+  lineCount     Int
+  totalSatang   Decimal  @db.Decimal(20, 0) // HR H3.6 ▸ ยอดทั้งปีของ 1ก เกิน Int ได้ (21 ล้านบาท) — Decimal ไม่ใช่ BigInt (JSON.stringify ได้) ◂
+  taxSatang     Decimal  @db.Decimal(20, 0)
+  excludedCount Int
+  createdById   String
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+  downloads     Int      @default(0)
+
+  @@index([systemId, kind, period])
+  @@index([tenantId])
+}
+
+model HrTaxCertificate {
+  id            String     @id @default(cuid())
+  tenantId      String
+  systemId      String
+  employeeId    String
+  employee      HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  taxYear       Int
+  kind          String
+  docSeq        Int
+  docNo         String
+  formSeq       Int
+  contentJson   Json
+  contentSha256 String
+  issuedAt      DateTime
+  issuedById    String
+  voidedAt      DateTime?
+  voidedById    String?
+  voidReason    String?
+  downloads     Int        @default(0)
+
+  @@unique([systemId, docNo])
+  @@index([systemId, taxYear])
+  @@index([employeeId])
+  @@index([tenantId])
+}
