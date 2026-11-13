@@ -34,7 +34,7 @@ export type VClaim = { id: string; kind: string; sourceType: string | null; sour
 /** ORACLE-EDIT (fix round 1 F5 — controller ruling): class of a refund = class of the claim it names (sourceRef "refund:<claim id>") ·
  *  claim from an old one-step run (booked false) ⇒ stays in salary expense · no reference / unknown claim ⇒ damages recovery (+ flag) */
 export function oracleRefundClass(row: VBound | undefined, claims: VClaim[]): "DAMAGES" | "OVERPAY" | "WAGE" | "UNKNOWN" {
-  const m = /^refund:(.+)$/.exec(String(row?.sourceRef ?? ""));
+  const m = /^refund:([^#]+)(#.*)?$/.exec(String(row?.sourceRef ?? "")); // ORACLE-EDIT (fix r2 b): optional "#<refund id>" suffix (partial refunds — unique (tenant, sourceType, sourceRef))
   const c = m ? claims.find((x) => x.id === m[1]) : undefined;
   if (!c || c.kind !== "DEDUCTION" || c.booked === null) return "UNKNOWN";
   if (c.booked === false) return "WAGE";

@@ -27,7 +27,7 @@ import {
 import { adjustmentReplyForViewer, screenOtHoursForViewer } from "./privacy";
 import { confirmBranchHours, createPayrollRunV2, RUN2_TEXT, setAdjustmentConsent, setPayrollEngine } from "./payroll"; // HR H3.4 ▸ รอบจ่ายรุ่น 2 ◂
 import { hrViewerOf } from "./privacy"; // HR H3.4 ◂
-import { h37PageText, markPaidRun, setPayrollBook, setPayrollPayAccount, setPayrollPosting } from "./payroll"; // HR H3.7 ▸ จ่าย = ลงบัญชีจ่าย (สมุดของรอบ) · ตั้งสมุด/บัญชีจ่ายเงินเดือน (เจ้าของร้าน) ◂
+import { giveBackClaim, h37PageText, markPaidRun, setPayrollBook, setPayrollPayAccount, setPayrollPosting } from "./payroll"; // HR H3.7 ▸ จ่าย = ลงบัญชีจ่าย (สมุดของรอบ) · ตั้งสมุด/บัญชีจ่ายเงินเดือน (เจ้าของร้าน) ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขา — สาขาของพนักงานเป้าหมายอ่านจาก DB · รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8) ◂
 import { employeeIdOfAdjustment, employeeUnitsOf, HrBranchError, hrScopeOf, isAllBranches, unitTargetOf } from "./scope";
 
@@ -613,6 +613,19 @@ export async function setPayrollPostingAction(formData: FormData): Promise<{ ok:
     if (!systemId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
     const r = await setPayrollPosting({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { on: formData.get("on") === "1" });
     revalidatePath(`/app/sys/${systemId}/hr/settings`);
+    return r.ok ? { ok: true } : { ok: false, reason: r.reason };
+  });
+}
+// fix r2 (b) — คืนเงินรายการหักที่หักไปแล้ว (สร้าง REFUND ที่อ้างรายการหัก) · สิทธิ์ตรวจจาก membership ใน DB ที่ service
+export async function giveBackClaimAction(formData: FormData): Promise<{ ok: boolean; reason?: string; note?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    const systemId = String(formData.get("systemId") ?? "");
+    const baht = String(formData.get("amount") ?? "").trim().replace(/,/g, "");
+    if (!systemId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const amountSatang = /^\d{1,9}(\.\d{1,2})?$/.test(baht) ? Math.round(Number(baht) * 100) : -1;
+    const r = await giveBackClaim({ tenantId: auth.active.tenantId, systemId }, { userId: auth.active.userId }, { claimId: String(formData.get("claimId") ?? ""), amountSatang, periodKey: String(formData.get("periodKey") ?? ""), note: String(formData.get("note") ?? "") || null });
+    revalidate(systemId);
     return r.ok ? { ok: true } : { ok: false, reason: r.reason };
   });
 }

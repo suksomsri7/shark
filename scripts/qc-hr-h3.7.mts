@@ -97,6 +97,9 @@ S4.30|F4|C|R|[db] (ORACLE-EDIT fix r1 F4) pay day before P ⇒ accrual dated the
 S4.31|F5|C|R|[db] (ORACLE-EDIT fix r1 F5) refund vector F through approve: lines by code = F · audit flags REFUND_CLASS_UNKNOWN
 S4.32|F2 F7|C|R|[db] (ORACLE-EDIT fix r1 F2/F7) non-owner connect/disconnect of HR from the account side refused (no row change) · OWNER of another tenant ⇒ bookOwner · payroll mapping saved without an owner session refused · wrong-class mapping forced in the DB ⇒ approve MAPPING_MISSING
 S4.33|F8|M|R|[db] (ORACLE-EDIT fix r1 F8) markPaidRun on a PAID run ⇒ alreadyPaid text
+S1.12|F1|C|R|[static] (ORACLE-EDIT fix r2 e) markPaidV2's PAID update is guarded by status APPROVED · the booked pay path posts the pay entry then updates PAID guarded by status APPROVED inside the SAME $transaction callback
+S4.34|F1|C|R|[db] (ORACLE-EDIT fix r2 e) period lock held in a raw tx: approve ∥ pay and pay ∥ pay both block, then after release ⇒ accrual 1 · PAID ⇔ exactly one pay entry · pay ∥ pay exactly one ok
+S4.35|F5|C|R|[db] (ORACLE-EDIT fix r2 b) give back a recovered claim: REFUND PENDING with sourceRef refund:<claim>#<refund> · over the deducted remainder refused · member of another tenant refused · claim of a reversed run refused
 S4.24|R1|C|R|[db] (ORACLE-EDIT H3.7 builder · controller ruling H3.5/H3.6) bank file (CSV GENERIC) of a v2-accounting run = Cr "net salaries payable" of its accrual = run net · PAID D and APPROVED-unpaid F2 (accrual only) both exportable
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
@@ -218,6 +221,19 @@ function runStatic(): void {
   chk("S1.10", ids.length === 0, "4 testids", ids.join(",") || "ok");
   const card = between(rd(F.conn), 'kind: "HR"', "},");
   const exp = ["markPaidRun", "setPayrollBook", "setPayrollPayAccount"].filter((n) => !new RegExp(`export async function ${n}\\(`).test(pn));
+  // ORACLE-EDIT (fix r2 e): PAID only from APPROVED, in the same tx as the pay entry
+  {
+    const mpv2 = fnBody(pn, "markPaidV2");
+    const booked = fnBody(pn, "markPaidBookedH37");
+    const iPost = booked.indexOf("postPayrollPayJV(");
+    const iUpd = booked.indexOf(`UPDATE "HrPayrollRun" SET "status" = 'PAID'`);
+    const iTx = booked.indexOf(".$transaction(");
+    const iEnd = booked.indexOf("}, H34_TX)");
+    ck("S1.12", {
+      v2Guard: /updateMany\(\{ where: \{[^}]*status: "APPROVED" \}, data: \{ status: "PAID" \}/.test(mpv2),
+      bookedOrder: iTx > 0 && iPost > iTx && iUpd > iPost && iEnd > iUpd && /"status" = 'APPROVED'::"PayrollRunStatus"`/.test(booked.slice(iUpd, iEnd)),
+    }, "conditional PAID in the posting tx");
+  }
   ck("S1.11", { card: /PAYROLL_SALARY_EXPENSE/.test(card) && /PAYROLL_SALARY_PAYABLE/.test(card), exports: exp.length === 0, action: /markPaidRun\(/.test(rd(F.actions)) }, "wired", exp.join(","));
 }
 const TX_NEW = (): string[] => (Array.isArray(TX?.new) ? (TX.new as string[]) : []);
@@ -865,7 +881,7 @@ async function runDb(): Promise<void> {
   });
 
   // ═══════ ORACLE-EDIT (H3.7 builder · fix round 1 — reviewer/hunter coverage list) S4.26–S4.33 ═══════
-  const S5 = ["S4.26", "S4.27", "S4.28", "S4.29", "S4.30", "S4.31", "S4.32", "S4.33"];
+  const S5 = ["S4.26", "S4.27", "S4.28", "S4.29", "S4.30", "S4.31", "S4.32", "S4.33", "S4.34", "S4.35"]; // ORACLE-EDIT fix r2: + S4.34 S4.35
   await blk(S5, async () => {
     if (!s4ok) throw new Error("S4 prerequisites absent");
     const JV2 = (await import("@/lib/modules/account/journal-v2" as string)) as Any;
@@ -932,12 +948,16 @@ async function runDb(): Promise<void> {
       const acct3 = await PAY.getPayrollAccounting(c1("hD3"));
       const hD4 = await newHr("hD4", null);
       await P.accountSystemLink.create({ data: { tenantId: T1, systemId: BA, linkedKind: "HR", linkedId: hD4, enabled: true, config: {} } });
+      // ORACLE-EDIT (fix r2 a — controller ruling): a legacy link (config {}) = posting ON · OFF only when the owner stored autoPost false
+      const screen4 = await PAY.getPayrollAccounting(c1("hD4"));
       const r4 = await insRun("hD4", VEC.examples.E, { label: "D4" });
       const a4 = await approve("hD4", r4);
-      const n4 = (await runOf(r4))?.note;
-      const sw = await PAY.setPayrollPosting(c1("hD4"), vOf(own1), { on: true });
+      const p4 = await payRun("hD4", r4, { financeAccountId: finBankA, paidOn: "2031-09-30" });
+      const sw = await PAY.setPayrollPosting(c1("hD4"), vOf(own1), { on: false });
+      const cfg4 = ((await P.accountSystemLink.findFirst({ where: { systemId: BA, linkedKind: "HR", linkedId: hD4 } })) as Any)?.config;
       const r4b = await insRun("hD4", VEC.examples.E, { label: "D4b", periodKey: "2031-10", payDay: "2031-10-31" });
       const a4b = await approve("hD4", r4b);
+      const n4b = (await runOf(r4b))?.note;
       const BY = await book(T1, "บัญชี Y");
       await newHr("hD5", BY);
       const finY = await mkFin(BY, "BANK", "ธนาคาร Y", "1010");
@@ -955,9 +975,10 @@ async function runDb(): Promise<void> {
         inactive: a1?.ok === false && a1?.code === "BOOK_INACTIVE" && (await runOf(r1))?.status === "DRAFT" && (await none(r1)),
         missing: a2?.ok === false && a2?.code === "BOOK_MISSING" && (await runOf(r2))?.status === "DRAFT" && (await none(r2)),
         unlinked: un?.ok === true && a3?.ok === true && a3?.note === T.approvedNoBook && (await none(r3)) && acct3?.link === "NONE" && !!acct3?.lastUnlink,
-        off: a4?.ok === true && (await none(r4)) && !!n4 && n4 !== T.noteNoBook && sw?.ok === true && a4b?.ok === true && !!(await keyEntry(r4b, "accrual")),
+        legacyOn: screen4?.link === "ONE" && a4?.ok === true && a4?.note === T.approvedPosted && !!(await keyEntry(r4, "accrual")) && p4?.ok === true && !!(await keyEntry(r4, "pay")),
+        explicitOff: sw?.ok === true && cfg4?.autoPost === false && a4b?.ok === true && (await none(r4b)) && !!n4b && n4b !== T.noteNoBook && (await PAY.getPayrollAccounting(c1("hD4")))?.link === "OFF",
         gone: a5?.ok === true && p5?.ok === false && p5?.code === "BOOK_GONE" && v5?.ok === false && v5?.note === p5?.note && st5 === "APPROVED" && pe5 === 0 && p5b?.ok === true,
-      }, "book states", short({ a1, a2, a3: a3?.note, un, acct3: acct3?.link, a4: a4?.note, a4b: a4b?.note, p5, v5: v5?.note, p5b: p5b?.note, st5 }, 1200));
+      }, "book states", short({ a1, a2, a3: a3?.note, un, acct3: acct3?.link, a4: a4?.note, p4: p4?.note, cfg4, a4b: a4b?.note, p5, v5: v5?.note, p5b: p5b?.note, st5 }, 1200));
     }
     // S4.29 manual reversal refused · reversed behind HR's back
     {
@@ -1025,7 +1046,7 @@ async function runDb(): Promise<void> {
       const aw = await approve("hW1", rw);
       ck("S4.32", {
         connect: c?.ok === false && rowsAfter === 0, disconnect: d?.ok === false && still?.kind === "ONE", foreign: foreign?.ok === false && foreign?.reason === T.bookOwner,
-        mapping: sm?.ok === false && m1?.accountId === m0?.accountId, wrongClass: aw?.ok === false && aw?.code === "MAPPING_MISSING" && !!hW,
+        mapping: sm?.ok === false && m1?.accountId === m0?.accountId, wrongClass: aw?.ok === false && aw?.code === "MAPPING_CLASS" && /ไม่ใช่หมวดที่ถูกต้อง/.test(String(aw?.note)) && /ค่าใช้จ่าย/.test(String(aw?.note)) && !!hW, // ORACLE-EDIT (fix r2 c): wrong class named, not "not mapped"
       }, "owner only · class guard", short({ c, d, foreign, sm, aw }, 300));
     }
     // S4.33 already paid
@@ -1033,6 +1054,69 @@ async function runDb(): Promise<void> {
       const p = await payRun("hA", R.A!, { financeAccountId: finBankA, paidOn: "2031-10-05" });
       const pd = await payRun("hD", R.D!, { paidOn: "2031-12-26" });
       ck("S4.33", { text: pd?.ok === false && pd?.code === "ALREADY_PAID" && !!pd?.note && pd.note !== "ต้องอนุมัติรอบก่อนจึงจ่ายได้", reversedRun: p?.ok === false }, "already paid", short({ p, pd }, 160));
+    }
+    // ORACLE-EDIT (fix r2 e) S4.34 deterministic races through the period advisory lock
+    {
+      const sysP = await newHr("hQ1", BA);
+      const holdLock = (pk: string) => {
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        let held!: () => void;
+        const isHeld = new Promise<void>((r) => (held = r));
+        const done = P.$transaction(async (tx: Any) => {
+          await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, `hr:payroll:run:${sysP}:${pk}`);
+          held();
+          await gate;
+        }, { timeout: 120_000, maxWait: 20_000 });
+        return { isHeld, release, done };
+      };
+      const settled = (p: Promise<unknown>) => Promise.race([p.then(() => true, () => true), sleep(1200).then(() => false)]);
+      const id = await insRun("hQ1", VEC.examples.A, { label: "Q1" });
+      const h1 = holdLock("2031-09");
+      await h1.isHeld;
+      const ap = approve("hQ1", id);
+      const py = payRun("hQ1", id, { financeAccountId: finBankA, paidOn: "2031-10-05" });
+      const blocked1 = !(await settled(ap)) && !(await settled(py));
+      h1.release();
+      await h1.done;
+      const [apR, pyR] = [await ap, await py];
+      const st1 = (await runOf(id))?.status;
+      const acc1 = await P.accountJournalEntry.count({ where: { idempotencyKey: `hr-payroll#${id}#accrual` } });
+      const pe1 = await payEntries(id);
+      // pay ∥ pay on an approved (finalized) run
+      const id2 = await insRun("hQ1", VEC.examples.A, { label: "Q2", periodKey: "2031-10", payDay: "2031-10-31" });
+      await approve("hQ1", id2);
+      const h2 = holdLock("2031-10");
+      await h2.isHeld;
+      const pays = [0, 1].map(() => payRun("hQ1", id2, { financeAccountId: finBankA, paidOn: "2031-10-31" }));
+      const blocked2 = !(await settled(pays[0]!)) && !(await settled(pays[1]!));
+      h2.release();
+      await h2.done;
+      const pr = await Promise.all(pays);
+      ck("S4.34", {
+        blocked: blocked1 && blocked2, approved: apR?.ok === true && acc1 === 1, paidIffEntry: (st1 === "PAID") === (pe1 === 1) && pe1 <= 1,
+        payOnce: pr.filter((x: Any) => x?.ok).length === 1 && (await runOf(id2))?.status === "PAID" && (await payEntries(id2)) === 1 && (await paidEvents(id2)) === 1,
+      }, "lock-ordered", short({ blocked1, blocked2, apR: apR?.note, pyR: pyR?.note, st1, pe1, pr: pr.map((x: Any) => x?.ok) }, 260));
+    }
+    // ORACLE-EDIT (fix r2 b) S4.35 give back a recovered claim
+    {
+      await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hrPayroll}', COALESCE(settings->'hrPayroll', '{}'::jsonb) || '{"engineVersion": 2}'::jsonb) WHERE id = $1`, HS.hC);
+      const claim = `${R.C}_c1Dmg`;
+      const g = (amt: number, who = own1.id, pk = "2031-11", cl = claim) => PAY.giveBackClaim(c1("hC"), { userId: who }, { claimId: cl, amountSatang: amt, periodKey: pk });
+      const over = await g(90_001);
+      const ok1 = await g(60_000);
+      const over2 = await g(30_001);
+      const ok2 = await g(30_000);
+      const foreign = await g(1, own2.id);
+      const revClaim = `${R.B}_bDmg`; // claim of example B — its run was reversed in S4.10 (row unbound)
+      await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hrPayroll}', COALESCE(settings->'hrPayroll', '{}'::jsonb) || '{"engineVersion": 2}'::jsonb) WHERE id = $1`, HS.hB);
+      const reversed = revClaim ? await PAY.giveBackClaim(c1("hB"), { userId: own1.id }, { claimId: revClaim, amountSatang: 1, periodKey: "2031-11" }) : { ok: "∅" };
+      const made = await rows(`SELECT kind::text AS k, status::text AS s, "sourceRef" AS r, "amountSatang" AS a FROM "HrPayAdjustment" WHERE "sourceRef" LIKE $1 ORDER BY "amountSatang"`, `refund:${claim}#%`);
+      ck("S4.35", {
+        over: over?.ok === false && over?.code === "AMOUNT", ok: ok1?.ok === true && ok2?.ok === true, over2: over2?.ok === false && over2?.code === "AMOUNT",
+        rows: made.length === 2 && made.every((x: Any) => x.k === "REFUND" && x.s === "PENDING") && Number(made[0]?.a) === 30_000 && Number(made[1]?.a) === 60_000,
+        foreign: foreign?.ok === false && foreign?.code === "NO" && !/\d/.test(String(foreign?.reason)), reversedRun: reversed?.ok === false,
+      }, "give back", short({ over, ok1, over2, ok2, foreign, reversed, made }, 300));
     }
   });
 }

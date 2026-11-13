@@ -32,12 +32,19 @@ export type AccrualResult = { ok: true; amounts: PayrollAccrualAmounts; flags: s
 export type RefundClaim = { id: string; kind: string; sourceType: string | null; sourceRef: string | null; /** null = the claim was never recovered by a run */ booked: boolean | null };
 export const REFUND_OF_PREFIX = "refund:";
 export const REFUND_CLASS_UNKNOWN = "REFUND_CLASS_UNKNOWN";
+/** fix r2 (b): `refund:<claimId>` or `refund:<claimId>#<refund id>` (HrPayAdjustment is unique per (tenant, sourceType, sourceRef) ⇒ each partial refund carries its own suffix) */
+export function refundClaimIdOf(sourceRef: string | null | undefined): string | null {
+  const r = String(sourceRef ?? "");
+  if (!r.startsWith(REFUND_OF_PREFIX)) return null;
+  const id = r.slice(REFUND_OF_PREFIX.length).split("#")[0] ?? "";
+  return id || null;
+}
 /** class of the debit of a refund: DAMAGES → damages recovery (4900) · OVERPAY → overpay recovery (6000) · WAGE → salary expense (old run) ·
  *  unknown (no reference / claim not found / advance) → damages recovery + flag for the accountant */
 export function refundClassOf(refundRow: { sourceRef: string | null } | undefined, claims: readonly RefundClaim[]): "DAMAGES" | "OVERPAY" | "WAGE" | "UNKNOWN" {
   const ref = String(refundRow?.sourceRef ?? "");
   if (!ref.startsWith(REFUND_OF_PREFIX)) return "UNKNOWN";
-  const c = claims.find((x) => x.id === ref.slice(REFUND_OF_PREFIX.length));
+  const c = claims.find((x) => x.id === refundClaimIdOf(ref));
   if (!c || c.kind !== "DEDUCTION" || c.booked === null) return "UNKNOWN";
   if (!c.booked) return "WAGE";
   const cls = claimClassOf(c);

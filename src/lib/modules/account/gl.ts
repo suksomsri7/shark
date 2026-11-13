@@ -2212,7 +2212,7 @@ export const PAYROLL_GL_TEXT = {
   payMemo: "จ่ายเงินเดือนงวด {p}",
   badInput: "ข้อมูลรอบจ่ายสำหรับลงบัญชีไม่ถูกต้อง",
 } as const;
-export type PayrollPostCode = "MAPPING_MISSING" | "PERIOD_CLOSED" | "PERIOD_LOCKED" | "OTHER_BOOK" | "PAY_ACCOUNT" | "BAD_INPUT";
+export type PayrollPostCode = "MAPPING_CLASS" | "MAPPING_MISSING" | "PERIOD_CLOSED" | "PERIOD_LOCKED" | "OTHER_BOOK" | "PAY_ACCOUNT" | "BAD_INPUT";
 export type PayrollPostResult = { ok: true; entryId: string | null; reused: boolean } | { ok: false; code: PayrollPostCode; text: string };
 
 /** pure: the accrual rows of one run (design §2) */
@@ -2226,7 +2226,7 @@ export function payrollMappingTypeOk(key: string, ledgerType: string): boolean {
   if (!want) return true;
   return ledgerType === want || (want === "EXPENSE" && ledgerType === "COGS");
 }
-export const PAYROLL_MAPPING_TYPE_TEXT = "บัญชีที่เลือกไม่ใช่หมวดที่ใช้กับรายการเงินเดือนนี้ — เลือกบัญชีหมวด {type}";
+export const PAYROLL_MAPPING_TYPE_TEXT = "บัญชีที่เลือกไม่ใช่หมวดที่ใช้กับรายการเงินเดือนนี้ — เลือกบัญชีหมวด{type}";
 const payrollFail = (code: PayrollPostCode, text: string): PayrollPostResult => ({ ok: false, code, text });
 const payrollPeriodOk = (p: unknown): p is string => typeof p === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(p);
 function payrollDayDate(day: unknown): Date | null {
@@ -2237,7 +2237,10 @@ function payrollDayDate(day: unknown): Date | null {
 const payrollRunIdOk = (id: unknown): id is string => typeof id === "string" && id.length > 0 && id.length <= 128 && !id.includes("#");
 
 /** key → ledger id, STRICT (mapping exists · target ledger of this book, not archived) — first missing in the given order ⇒ refusal naming it */
-async function payrollLedgerIdsInTx(ctx: GlCtx, keys: readonly PayrollAccountKey[], tx: Tx): Promise<{ ok: true; ids: Map<string, string> } | { ok: false; text: string }> {
+/** fix r2 (c) — Thai name of the ledger class a payroll key expects (fixed text; no account data) */
+export const PAYROLL_CLASS_TH: Record<string, string> = { EXPENSE: "ค่าใช้จ่าย", LIABILITY: "หนี้สิน", ASSET: "สินทรัพย์", INCOME: "รายได้" };
+export const PAYROLL_MAPPING_CLASS_TEXT = `บัญชีที่ผูกกับ "{name}" ไม่ใช่หมวดที่ถูกต้อง — ต้องเป็นบัญชีหมวด{class} แก้การผูกที่ บัญชี › ตั้งค่า › การลงบัญชีอัตโนมัติ`;
+async function payrollLedgerIdsInTx(ctx: GlCtx, keys: readonly PayrollAccountKey[], tx: Tx): Promise<{ ok: true; ids: Map<string, string> } | { ok: false; text: string; code?: "MAPPING_CLASS" | "MAPPING_MISSING" }> {
   const uniq = [...new Set(keys)];
   const rows = await tx.accountMapping.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, key: { in: uniq } },
@@ -2249,7 +2252,8 @@ async function payrollLedgerIdsInTx(ctx: GlCtx, keys: readonly PayrollAccountKey
     const a = by.get(k);
     if (!a || a.systemId !== ctx.systemId || a.archivedAt || !payrollMappingTypeOk(k, String(a.type))) { // fix r1 F7: a ledger of the wrong class counts as not mapped
       const def = PAYROLL_ACCOUNTS.find((x) => x.key === k)!;
-      return { ok: false, text: PAYROLL_GL_TEXT.mappingMissing.replace("{name}", def.label).replace("{code}", def.code) };
+      if (a && a.systemId === ctx.systemId && !a.archivedAt) return { ok: false, code: "MAPPING_CLASS", text: PAYROLL_MAPPING_CLASS_TEXT.replace("{name}", def.label).replace("{class}", PAYROLL_CLASS_TH[def.type] ?? def.type) }; // fix r2 (c): wrong class ≠ not mapped
+      return { ok: false, code: "MAPPING_MISSING", text: PAYROLL_GL_TEXT.mappingMissing.replace("{name}", def.label).replace("{code}", def.code) };
     }
     ids.set(k, a.id);
   }
@@ -2323,7 +2327,7 @@ export async function postPayrollAccrualJV(
   const rows = payrollAccrualTemplate(amounts);
   if (rows.length === 0) return { ok: true, entryId: null, reused: false };
   const ids = await payrollLedgerIdsInTx(ctx, rows.map((r) => r.key), tx);
-  if (!ids.ok) return payrollFail("MAPPING_MISSING", ids.text);
+  if (!ids.ok) return payrollFail(ids.code ?? "MAPPING_MISSING", ids.text);
   const gate = await payrollPeriodGateInTx(ctx, date, tx);
   if (gate) return gate;
   const b = new Book(ctx, tx);
@@ -2362,7 +2366,7 @@ export async function postPayrollPayJV(
   }
   if (!moneyLedger) return payrollFail("PAY_ACCOUNT", PAYROLL_GL_TEXT.payAccount);
   const ids = await payrollLedgerIdsInTx(ctx, ["PAYROLL_SALARY_PAYABLE"], tx);
-  if (!ids.ok) return payrollFail("MAPPING_MISSING", ids.text);
+  if (!ids.ok) return payrollFail(ids.code ?? "MAPPING_MISSING", ids.text);
   const gate = await payrollPeriodGateInTx(ctx, date, tx);
   if (gate) return gate;
   const b = new Book(ctx, tx);

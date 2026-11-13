@@ -384,7 +384,7 @@ export async function setMapping(
 // HR H3.7 ▸ fix r1 F7 — mapping of a payroll key: the saving user (session, read from the DB) must be an accepted OWNER of ctx.tenant and
 //   the ledger must be of the key's class (expense / liability / asset / income — expense keys also accept COGS) · no session (REST key) ⇒ refused
 async function payrollMappingGuardH37(ctx: CoaCtx, key: string, accountId: string): Promise<{ ok: false; reason: string } | null> {
-  const { payrollMappingTypeOk, PAYROLL_MAPPING_TYPE_TEXT, PAYROLL_ACCOUNTS } = await import("./gl");
+  const { payrollMappingTypeOk, PAYROLL_MAPPING_TYPE_TEXT, PAYROLL_ACCOUNTS, PAYROLL_CLASS_TH } = await import("./gl");
   const { payrollOwnerOk, HR_LINK_OWNER } = await import("./connections");
   let userId: string | null = null;
   try {
@@ -395,7 +395,7 @@ async function payrollMappingGuardH37(ctx: CoaCtx, key: string, accountId: strin
   if (!(await payrollOwnerOk(ctx.tenantId, userId))) return { ok: false, reason: HR_LINK_OWNER };
   const l = await prisma.accountLedger.findFirst({ where: { id: accountId, systemId: ctx.systemId }, select: { type: true } });
   const want = PAYROLL_ACCOUNTS.find((a) => a.key === key)?.type ?? "";
-  if (!l || !payrollMappingTypeOk(key, String(l.type))) return { ok: false, reason: PAYROLL_MAPPING_TYPE_TEXT.replace("{type}", want) };
+  if (!l || !payrollMappingTypeOk(key, String(l.type))) return { ok: false, reason: PAYROLL_MAPPING_TYPE_TEXT.replace("{type}", PAYROLL_CLASS_TH[want] ?? want) };
   return null;
 }
 // ◂ HR H3.7

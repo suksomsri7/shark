@@ -5,7 +5,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
 import { payrollBookOf, linkPayrollBook, postPayrollAccrualJV, postPayrollPayJV, reversePayrollRunJV, payrollPayAccountsOf, postPayrollV1KeyedJV } from "@/lib/modules/account";
 import { payrollEntryStateInTx, payrollOwnerOk, setPayrollLinkPosting } from "@/lib/modules/account"; // HR H3.7 ▸ fix r1 F1–F7 ◂ // HR H3.7 ▸ บัญชีเงินเดือนรุ่น 2 (ตั้งค้างจ่าย · จ่าย · กลับรายการ) ผ่าน facade บัญชีเท่านั้น ◂
-import { accrualAmountsV2, payrollAccrualDay, paidOnOk, REFUND_OF_PREFIX, type AccrualBound, type AccrualItem, type RefundClaim } from "./payroll-journal-rules"; // HR H3.7 ◂
+import { accrualAmountsV2, payrollAccrualDay, paidOnOk, REFUND_OF_PREFIX, refundClaimIdOf, type AccrualBound, type AccrualItem, type RefundClaim } from "./payroll-journal-rules"; // HR H3.7 ◂
 import { logOps } from "@/lib/core/ops"; // HR H0.6 ▸ OQ-8: กลับ JV ล้ม = WARN id + รหัสเท่านั้น ◂
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1): ประวัติการลบรายการเงิน (ตัวเดียวกับ hr/service.ts) ◂
 import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจากตัวช่วยกลางของ HR (ไม่บวก +7 เองซ้ำ) ◂
@@ -3192,6 +3192,7 @@ export const H37_CODE_TEXT: Record<string, string> = {
   PERIOD_CLOSED: "งวดบัญชีของวันที่ลงรายการปิดแล้ว — โพสต์บัญชีไม่ได้ (เปิดงวดที่ระบบบัญชี หรือเลือกวันอื่น)",
   PERIOD_LOCKED: "วันที่ลงรายการอยู่ก่อนวันที่ล็อกข้อมูลบัญชี — ลงบัญชีไม่ได้",
   MAPPING_MISSING: "ยังไม่ได้ผูกบัญชีบางรายการสำหรับลงบัญชีเงินเดือน — ตั้งที่ บัญชี › ตั้งค่า › การลงบัญชีอัตโนมัติ",
+  MAPPING_CLASS: "บัญชีที่ผูกกับรายการเงินเดือนบางรายการไม่ใช่หมวดที่ถูกต้อง — แก้การผูกที่ บัญชี › ตั้งค่า › การลงบัญชีอัตโนมัติ", // fix r2 (c)
   OTHER_BOOK: "รอบนี้ลงบัญชีไว้ในสมุดบัญชีเล่มอื่นแล้ว — ไม่ลงซ้ำ",
 };
 /** note → the text a page may show: fixed texts pass through, valued texts of H3.7 codes become their fixed text */
@@ -3202,7 +3203,7 @@ const H37_APPROVED_POSTED = "อนุมัติและลงบัญชี
 const H37_NOTE_POSTED = "อนุมัติและลงบัญชีแล้ว";
 const H37_NOT_APPROVED = "ต้องอนุมัติรอบก่อนจึงจ่ายได้";
 const H37_PAID = "บันทึกจ่ายเงินเดือนแล้ว";
-export type H37Code = "BOOK_INACTIVE" | "BOOK_MISSING" | "BOOK_GONE" | "ENTRY_REVERSED" | "ALREADY_PAID" | "NOT_APPROVED" | "POSTING" | "BOOK_AMBIGUOUS" | "MAPPING_MISSING" | "PERIOD_CLOSED" | "PERIOD_LOCKED" | "INCONSISTENT" | "OTHER_BOOK" | "PAY_ACCOUNT" | "PAY_DATE" | "BAD_INPUT" | "POST_FAILED";
+export type H37Code = "MAPPING_CLASS" | "BOOK_INACTIVE" | "BOOK_MISSING" | "BOOK_GONE" | "ENTRY_REVERSED" | "ALREADY_PAID" | "NOT_APPROVED" | "POSTING" | "BOOK_AMBIGUOUS" | "MAPPING_MISSING" | "PERIOD_CLOSED" | "PERIOD_LOCKED" | "INCONSISTENT" | "OTHER_BOOK" | "PAY_ACCOUNT" | "PAY_DATE" | "BAD_INPUT" | "POST_FAILED";
 /** a refusal raised inside a tx — rolls the tx back, the caller turns it into {ok:false, code, note} (fixed text, no raw error) */
 class H37Refusal extends Error {
   constructor(readonly code: H37Code, readonly note: string) {
@@ -3230,7 +3231,7 @@ async function h37RunFiguresInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: 
 
 /** fix r1 F5 — the claims named by REFUND rows (`sourceRef = "refund:<adjustment id>"`) + whether their run was posted by the accrual (book recorded) */
 async function h37RefundClaimsInTx(tx: Prisma.TransactionClient, ctx: Ctx, bound: AccrualBound[]): Promise<RefundClaim[]> {
-  const ids = bound.filter((b) => b.kind === "REFUND" && String(b.sourceRef ?? "").startsWith(REFUND_OF_PREFIX)).map((b) => String(b.sourceRef).slice(REFUND_OF_PREFIX.length));
+  const ids = bound.filter((b) => b.kind === "REFUND").map((b) => refundClaimIdOf(b.sourceRef)).filter((x): x is string => !!x);
   if (!ids.length) return [];
   const rows = await tx.$queryRaw<{ id: string; kind: string; sourceType: string | null; sourceRef: string | null; booked: boolean | null }[]>`
     SELECT a."id", a."kind"::text AS "kind", a."sourceType"::text AS "sourceType", a."sourceRef", CASE WHEN r."id" IS NULL THEN NULL ELSE (r."accountSystemId" IS NOT NULL) END AS "booked"
@@ -3580,5 +3581,71 @@ export async function setPayrollPosting(ctx: Ctx, viewer: PayrollAccountingViewe
 export async function payAccountsOfRun(ctx: Ctx, runId: string): Promise<{ id: string; name: string; type: string }[]> {
   const r = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { accountSystemId: true } });
   return r?.accountSystemId ? payrollPayAccountsOf(ctx.tenantId, r.accountSystemId) : [];
+}
+
+// ── fix r2 (b) — "give back" a recovered claim: REFUND adjustment that names its claim (sourceRef "refund:<claimId>#<refund id>") so the accrual debits the
+//   class account of that claim (F5). Rules: engine-2 shop · claim = APPROVED DEDUCTION recovered by an APPROVED/PAID run · amount ≤ what that run
+//   deducted for the claim − every earlier non-rejected refund of it · target period without a live run · authorisation from the DB membership
+//   (OWNER, or hr.payadjust.request + payroll viewer in the employee's branch) · one tx: per-claim advisory lock → P lock → re-checks → insert PENDING.
+//   Refusals are fixed texts without data.
+export const GIVE_BACK_TEXT = {
+  no: "คืนเงินรายการหักนี้ไม่ได้ — ต้องเป็นรายการหักที่หักในรอบจ่ายที่อนุมัติหรือจ่ายแล้ว และคุณต้องมีสิทธิ์ยื่นรายการเพิ่ม/หัก",
+  amount: "จำนวนเงินที่คืนต้องมากกว่า 0 และไม่เกินยอดที่หักไปของรายการนี้ (หักยอดที่คืนไปแล้วออกก่อน)",
+  period: "งวดที่คืนเงินต้องเป็นงวดที่ยังไม่มีรอบจ่าย (รูปแบบ YYYY-MM)",
+  engine: "คืนเงินรายการหักได้เฉพาะร้านที่ใช้เครื่องคิดเงินเดือนรุ่น 2",
+  ok: "บันทึกการคืนเงินแล้ว — รออนุมัติ แล้วจะเข้ารอบจ่ายของงวดที่เลือก",
+} as const;
+export async function giveBackClaim(ctx: Ctx, viewer: { userId?: string | null }, input: { claimId: string; amountSatang: number; periodKey: string; note?: string | null }): Promise<{ ok: true; id: string } | { ok: false; code: string; reason: string }> {
+  const NO = { ok: false as const, code: "NO", reason: GIVE_BACK_TEXT.no };
+  const uid = typeof viewer?.userId === "string" ? viewer.userId : "";
+  const claimId = typeof input?.claimId === "string" ? input.claimId.trim() : "";
+  if (!uid || !claimId) return NO;
+  const m = await tenantDb({ tenantId: ctx.tenantId }).membership.findFirst({ where: { tenantId: ctx.tenantId, userId: uid, acceptedAt: { not: null } }, select: { role: true, unitAccess: true, permissions: true } });
+  if (!m) return NO;
+  if ((await getPayrollEngine(ctx)).engineVersion !== 2) return { ok: false, code: "ENGINE", reason: GIVE_BACK_TEXT.engine };
+  const claim = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id: claimId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true, kind: true, status: true, runId: true } });
+  if (!claim || claim.kind !== "DEDUCTION" || claim.status !== "APPROVED" || !claim.runId) return NO;
+  if (m.role !== "OWNER") {
+    const mc = { role: m.role, unitAccess: (Array.isArray(m.unitAccess) ? m.unitAccess : []) as string[], permissions: (m.permissions ?? {}) as Record<string, unknown> } as MembershipCtx;
+    const unitId = (await tenantDb(ctx).hrEmployee.findFirst({ where: { id: claim.employeeId }, select: { unitId: true } }))?.unitId ?? undefined;
+    if (!canViewPayroll(mc) || !evaluate(mc, { module: "hr", action: "hr.payadjust.request", ...(unitId ? { unitId } : {}) } as never)) return NO;
+  }
+  const amount = Number(input?.amountSatang);
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > HR_INT_MAX) return { ok: false, code: "AMOUNT", reason: GIVE_BACK_TEXT.amount };
+  const p = typeof input?.periodKey === "string" ? input.periodKey.trim() : "";
+  if (!PERIOD_RE.test(p)) return { ok: false, code: "PERIOD", reason: GIVE_BACK_TEXT.period };
+  type R = { ok: true; id: string } | { ok: false; code: string; reason: string };
+  const out = await tenantDb(ctx).$transaction(async (t): Promise<R> => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:giveback:${ctx.systemId}:${claimId}`}, 0))`;
+    await lockRunPeriod(tx, ctx, p);
+    const c = (await tx.$queryRaw<{ e: string; k: string; s: string; r: string | null; amt: number }[]>`
+      SELECT "employeeId" AS "e", "kind"::text AS "k", "status"::text AS "s", "runId" AS "r", "amountSatang" AS "amt" FROM "HrPayAdjustment"
+      WHERE "id" = ${claimId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`)[0];
+    if (!c || c.k !== "DEDUCTION" || c.s !== "APPROVED" || !c.r) return NO;
+    const run = (await tx.$queryRaw<{ st: string; v: number; d: string | null }[]>`SELECT "status"::text AS "st", "engineVersion" AS "v", "inputDigest" AS "d" FROM "HrPayrollRun" WHERE "id" = ${c.r} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0];
+    if (!run || (run.st !== "APPROVED" && run.st !== "PAID")) return NO;
+    let deducted = Number(c.amt);
+    if (Number(run.v) === 2 && run.d) {
+      const item = (await tx.$queryRaw<{ j: unknown }[]>`SELECT "snapshotJson" AS "j" FROM "HrPayrollItem" WHERE "runId" = ${c.r} AND "employeeId" = ${c.e} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0];
+      const lines = (h37Obj(item?.j).lines as { code?: string; ref?: string; amountSatang?: number }[] | undefined) ?? [];
+      deducted = -lines.filter((l) => l?.code === "DEDUCTION" && l?.ref === claimId).reduce((sum, l) => sum + Number(l.amountSatang ?? 0), 0);
+    }
+    const prior = Number((await tx.$queryRaw<{ n: bigint | number | null }[]>`
+      SELECT COALESCE(SUM("amountSatang"), 0) AS "n" FROM "HrPayAdjustment"
+      WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "kind"::text = 'REFUND' AND ("sourceRef" = ${`${REFUND_OF_PREFIX}${claimId}`} OR "sourceRef" LIKE ${`${REFUND_OF_PREFIX}${claimId}#%`}) AND "status"::text <> 'REJECTED'`)[0]?.n ?? 0);
+    if (!Number.isSafeInteger(deducted) || amount > deducted - prior) return { ok: false, code: "AMOUNT", reason: GIVE_BACK_TEXT.amount };
+    const live = await tx.$queryRaw<{ n: number }[]>`SELECT 1 AS "n" FROM "HrPayrollRun" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "periodKey" = ${p} AND "status" <> 'REVERSED'::"PayrollRunStatus" LIMIT 1`;
+    if (live.length) return { ok: false, code: "PERIOD", reason: GIVE_BACK_TEXT.period };
+    const id = `rf${randomUUID().replace(/-/g, "")}`;
+    await tx.$executeRaw`
+      INSERT INTO "HrPayAdjustment" ("id", "tenantId", "systemId", "employeeId", "periodKey", "kind", "amountSatang", "note", "status", "requestedById", "sourceType", "sourceRef", "createdAt")
+      VALUES (${id}, ${ctx.tenantId}, ${ctx.systemId}, ${c.e}, ${p}, 'REFUND'::"HrPayItemKind", ${amount}, ${typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 200) : null}, 'PENDING'::"HrPayItemStatus", ${uid},
+        'MANUAL'::"HrPaySource", ${`${REFUND_OF_PREFIX}${claimId}#${id}`}, (now() AT TIME ZONE 'UTC'))`;
+    return { ok: true, id };
+  }, H34_TX);
+  if (!out.ok) return out;
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: uid, action: "hr.payadjust.request", targetType: "HrPayAdjustment", targetId: out.id, after: { kind: "REFUND", claimId, periodKey: p, amountSatang: amount } });
+  return out;
 }
 // ◂ HR H3.7

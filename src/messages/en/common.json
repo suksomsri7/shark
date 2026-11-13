@@ -1627,7 +1627,8 @@
       "postingTurnOn": "Switch payroll posting on",
       "postingTurnOff": "Switch payroll posting off",
       "bookInactive": "The book linked to this payroll system is deactivated — reactivate that book or choose another book in HR settings, then approve",
-      "bookMissing": "The book linked to this payroll system no longer exists — choose another book in HR settings, then approve"
+      "bookMissing": "The book linked to this payroll system no longer exists — choose another book in HR settings, then approve",
+      "mappingClass": "The account mapped to \"{name}\" is of the wrong class — it must be a {class} account; fix the mapping in Accounting › Settings › Automatic posting"
     }
   }
 }

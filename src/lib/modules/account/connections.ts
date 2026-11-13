@@ -305,6 +305,7 @@ export async function setLinkOptions(
   // เก็บเฉพาะที่เปิด — ค่าปิดไม่ต้องเขียน (JSON เล็ก อ่านง่าย และ `=== true` เป็นนิยามเดียวทั้งระบบ)
   const clean: Record<string, boolean> = {};
   for (const [k, v] of Object.entries(next)) if (v === true) clean[k] = true;
+  if (kind === "HR" && (options.autoPost === false || (options.autoPost === undefined && isRecord(existing.config) && existing.config.autoPost === false))) clean.autoPost = false; // HR H3.7 ▸ fix r2 (a): payroll posting OFF must be stored explicitly (missing key = ON) ◂
   await db.accountSystemLink.update({
     where: { id: existing.id },
     data: { config: clean as Prisma.InputJsonValue, updatedById: actorUserId },
@@ -516,7 +517,7 @@ export async function accountKeyRotationProblem(tenantId: string, keyId: string)
 // ═══════════════════ HR H3.7 ▸ HR → ACCOUNT book link (payroll) — explicit link, never "the first ACCOUNT system" ═══════════════════
 //   brief ledger/hr-briefs/hr-brief-H3.7.md R3 · model = dorm rule "1 unit = 1 book" (DORM_OTHER_BOOK) · fix r1 F2/F6/F7:
 //   "no link" = no enabled link row · an enabled link to an inactive / missing book is NOT "no link" (approve refuses) ·
-//   a link whose posting switch is off (config.autoPost !== true — the owner's earlier choice, v1 links included) posts nothing (OFF) ·
+//   a link whose posting switch the owner explicitly turned off (config.autoPost === false stored) posts nothing (OFF) · a missing key = ON (fix r2 a) ·
 //   linking, unlinking and the switch are owner-only from both sides (OWNER membership read from the DB) and audited (hr.payroll.book.*)
 export const HR_OTHER_BOOK = "ระบบเงินเดือนนี้เชื่อมกับสมุดบัญชีเล่มอื่นอยู่แล้ว — ตัดการเชื่อมที่เล่มนั้นก่อน (เงินเดือน 1 ระบบลงบัญชีได้สมุดเดียว)";
 export const PAYROLL_BOOK_NOT_FOUND = "ไม่พบสมุดบัญชีนี้ในร้าน";
@@ -548,7 +549,7 @@ export async function payrollBookOf(tenantId: string, hrSystemId: string, tx?: P
   if (typeof tenantId !== "string" || !tenantId || typeof hrSystemId !== "string" || !hrSystemId) return { kind: "NONE" };
   const db = (tx ?? tenantDb({ tenantId })) as unknown as Prisma.TransactionClient;
   const rows = await db.$queryRaw<{ s: string; bt: string | null; ba: boolean | null; post: boolean }[]>`
-    SELECT l."systemId" AS "s", b."type"::text AS "bt", b."active" AS "ba", COALESCE((l."config"->>'autoPost')::boolean, false) AS "post"
+    SELECT l."systemId" AS "s", b."type"::text AS "bt", b."active" AS "ba", COALESCE((l."config"->>'autoPost')::boolean, true) AS "post"
     FROM "AccountSystemLink" l
     JOIN "AppSystem" h ON h."id" = l."linkedId" AND h."tenantId" = l."tenantId" AND h."type"::text = 'HR'
     LEFT JOIN "AppSystem" b ON b."id" = l."systemId" AND b."tenantId" = l."tenantId"

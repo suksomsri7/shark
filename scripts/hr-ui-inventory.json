@@ -10883,6 +10883,137 @@
    "wo": "H3.7",
    "oracle": "qc-hr-h3.7",
    "note": "สวิตช์ลงบัญชีเงินเดือน (fix r1 F6)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-pay-giveback-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ClaimGiveBack.tsx",
+   "conditional": "รายการหัก APPROVED ที่หักในรอบจ่ายที่อนุมัติ/จ่ายแล้ว",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-pay-giveback-*-amount"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "กล่องคืนเงินของรายการหัก (fix r2 b)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-pay-giveback-*-amount",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ClaimGiveBack.tsx",
+   "conditional": "รายการหัก APPROVED ที่หักในรอบจ่ายที่อนุมัติ/จ่ายแล้ว",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-pay-giveback-*-submit"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "จำนวนเงินคืน (บาท)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-pay-giveback-*-period",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ClaimGiveBack.tsx",
+   "conditional": "รายการหัก APPROVED ที่หักในรอบจ่ายที่อนุมัติ/จ่ายแล้ว",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-pay-giveback-*-submit"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "งวดที่คืน (ยังไม่มีรอบจ่าย)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-pay-giveback-*-submit",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ClaimGiveBack.tsx",
+   "conditional": "รายการหัก APPROVED ที่หักในรอบจ่ายที่อนุมัติ/จ่ายแล้ว",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "giveBackClaimAction",
+    "resultTarget": "hr-pay-giveback-*-result",
+    "db": "HrPayAdjustment REFUND PENDING sourceRef refund:<claimId> · AuditLog hr.payadjust.request"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "บันทึกคืนเงิน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-pay-giveback-*-result",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ClaimGiveBack.tsx",
+   "conditional": "รายการหัก APPROVED ที่หักในรอบจ่ายที่อนุมัติ/จ่ายแล้ว",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "ผลการกด (ข้อความคงที่)"
   }
  ]
 }
