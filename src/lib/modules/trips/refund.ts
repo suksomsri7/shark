@@ -14,7 +14,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { SellActor, SellResult } from "@/lib/core/sellable";
 import { resolveSettings } from "@/lib/core/settings";
-import { evaluateTourRule } from "@/lib/core/settings/legal";
+import { tourRefundFloorPctAt } from "@/lib/core/settings/legal/th-tour-2569";
 import { requestBindings } from "@/lib/modules/approval";
 import { BookingAbort, runTripsTx, tripsSafely } from "./booking";
 import { seatsOfSnapshot, tripText, type SnapshotShape } from "./booking-core";
@@ -68,7 +68,7 @@ const CHOICES = ["MONEY", "CREDIT", "MOVE_DATE"] as const;
 const DEDUCTION_CATEGORIES = ["VISA", "AIR_DEPOSIT", "OTHER_NECESSARY"] as const;
 const REFUNDABLE: ReadonlySet<string> = new Set(["CONFIRMED", "PART_PAID", "PAID"]);
 /** ช่วงเผื่อนาฬิกาคลาดของการค้นแถว audit กันซ้ำ (แบบ T0.6 F1 · ไม่ใช่ค่าธุรกิจ) */
-const IDEM_SKEW_MS = 24 * 60 * 60 * 1000;
+const IDEM_SKEW_S = 24 * 60 * 60;
 /** หน่วยร้อยละ (ไม่ใช่ค่าธุรกิจ) — bp ต่อ 1 % */
 const BP_PER_PCT = BP_UNIT / 100;
 const K_AUTO_APPROVE = "trips.cancel.autoApproveUpTo"; // X12 (ค่าปัจจุบัน · นโยบาย ไม่ใช่ยอด)
@@ -76,26 +76,11 @@ const K_MANUAL_APPROVAL = "trips.cancel.manualEditApprovalSatang"; // X13
 const APPROVAL_CONSUMED = "trips.approval.consumed";
 const AUTO_APPROVER: SellActor = { kind: "SYSTEM", job: "trips.refund.autoApprove" };
 
-// ═══════════════════════ ขั้นต่ำตามประกาศคืนเงิน 2563 (ทะเบียนกฎหมาย T0.1 · มติ §22 ข้อ 4) ═══════════════════════
-/**
- * ขั้นต่ำ (bp) ณ จำนวนวันก่อนเดินทาง — อ่านจากตัวตรวจ W01 ของ `core/settings/legal/th-tour-2569.ts` (ไม่มีตัวเลขขั้นบันไดในโมดูล trips):
- * ตารางทดสอบที่คืน 100 % ทุกวันยกเว้นวันที่ d ซึ่งคืน p % ⇒ W01 เตือนเมื่อ p ต่ำกว่าขั้นต่ำของวัน d · หา p ต่ำสุดที่ไม่เตือน (ค้นแบบแบ่งครึ่ง)
- * หลังวันเดินทาง (d < 0) ⇒ null (ไม่ตรวจ) · ระดับสูงสุด WARN
- */
+// ═══════════════════════ ขั้นต่ำตามประกาศคืนเงิน 2563 (ทะเบียนกฎหมาย · มติ §22 ข้อ 4 · มติ r1 V5) ═══════════════════════
+/** ขั้นต่ำ (bp) ณ จำนวนวันก่อนเดินทาง = tourRefundFloorPctAt ของ `core/settings/legal/th-tour-2569.ts` (ตารางเดียวกับ W01) · หลังวันเดินทาง ⇒ null · ระดับสูงสุด WARN */
 function statutoryFloorBpAt(daysBefore: number): number | null {
-  if (!Number.isInteger(daysBefore) || daysBefore < 0) return null;
-  const full = BP_UNIT / BP_PER_PCT;
-  const d = Math.min(daysBefore, 99_999);
-  const warns = (p: number) => evaluateTourRule("W01", [{ fromDaysBefore: d + 1, refundPct: full }, { fromDaysBefore: d, refundPct: p }, ...(d > 0 ? [{ fromDaysBefore: 0, refundPct: full }] : [])]).code === "W01";
-  if (warns(full)) return null; // ตัวตรวจตอบผิดคาด — ไม่เตือนแทน
-  let lo = 0;
-  let hi = full;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (warns(mid)) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo * BP_PER_PCT;
+  const pct = tourRefundFloorPctAt(daysBefore);
+  return pct === null ? null : pct * BP_PER_PCT;
 }
 
 // ═══════════════════════ แถวคำขอ ═══════════════════════
@@ -126,7 +111,9 @@ async function requestByKey(db: Tx, tenantId: string, key: string): Promise<ReqR
   const rows = await db.$queryRaw<ReqRow[]>`SELECT ${REQ_COLS} FROM "TripRefundRequest" WHERE "tenantId" = ${tenantId} AND "idempotencyKey" = ${key}`;
   return rows[0] ?? null;
 }
-type Computed = RefundQuote & { bookingVersion: number; quotedAt: string; reason: string };
+/** ข้อเท็จจริงเงินที่ใบเสนอคิดจาก (ตรวจซ้ำตอนบันทึกโอนคืน · มติ r1 V4) */
+type QuoteFacts = { moneyEventIds: string[]; departureId: string; passThroughPaidOut: boolean };
+type Computed = RefundQuote & { bookingVersion: number; quotedAt: string; reason: string; facts?: QuoteFacts };
 function computedOf(v: unknown): Computed | null {
   if (!isRec(v)) return null;
   const nums = ["refundSatang", "refundNonPtSatang", "refundPassThroughSatang", "paidSatang", "keptSatang", "bookingVersion"] as const;
@@ -168,11 +155,15 @@ function dtoOf(r: ReqRow): TripRefundDTO {
     createdAt: new Date(r.createdAt).toISOString(),
   };
 }
-/** แถว audit ที่จดคีย์กันซ้ำของคำขอนี้ (ดัชนี AuditLog_tenantId_createdAt_idx + กรอง targetId/action · หนี้ดัชนี (tenantId, targetId) แบบ T0.6) */
+/**
+ * แถว audit ที่จดคีย์กันซ้ำของคำขอนี้ (ดัชนี AuditLog_tenantId_createdAt_idx + กรอง targetId/action · หนี้ดัชนี (tenantId, targetId) แบบ T0.6)
+ * มติ r1 V7: audit ใช้เวลาของฐาน · ขอบล่าง = LEAST(เวลาสร้างคำขอ (ctx.now), now() ของฐาน) − 24 ชม. คิดใน SQL ⇒ ทนนาฬิกาที่ฉีด/คลาดกับฐาน
+ */
 async function idemAudit(db: Tx, tenantId: string, r: { id: string; createdAt: Date }, actions: readonly string[], keyHash: string): Promise<Record<string, unknown> | null> {
-  const since = new Date(new Date(r.createdAt).getTime() - IDEM_SKEW_MS).toISOString();
+  const created = new Date(r.createdAt).toISOString();
   const rows = await db.$queryRaw<{ after: unknown }[]>`
-    SELECT "after" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "createdAt" >= ${since}::timestamp AND "targetId" = ${r.id} AND "action" = ANY(${[...actions]}::text[])
+    SELECT "after" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "createdAt" >= LEAST(${created}::timestamp, now()::timestamp) - make_interval(secs => ${IDEM_SKEW_S})
+      AND "targetId" = ${r.id} AND "action" = ANY(${[...actions]}::text[])
       AND "after"->>'idemKeyHash' = ${keyHash} LIMIT 1`;
   const a = rows[0]?.after;
   return isRec(a) ? a : null;
@@ -184,12 +175,19 @@ async function passThroughPaidOut(db: Tx, g: { tenantId: string; unitId: string 
       AND ("bookingId" = ${b.id} OR ("bookingId" IS NULL AND "departureId" = ${b.departureId})) LIMIT 1`;
   return rows.length > 0;
 }
+/** ข้อเท็จจริงเงินของการจองตอนนี้ (แถวเงินทุกชนิด เรียง id · รอบ · หลักฐานเก็บแทนจ่ายออก) — ดัชนี TripMoneyEvent_bookingId_idx */
+async function quoteFactsOf(db: Tx, g: { tenantId: string; unitId: string }, b: { id: string; departureId: string }): Promise<QuoteFacts> {
+  const rows = await db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "TripMoneyEvent" WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} ORDER BY "id"`;
+  return { moneyEventIds: rows.map((r) => r.id), departureId: b.departureId, passThroughPaidOut: await passThroughPaidOut(db, g, b) };
+}
+const sameFacts = (a: QuoteFacts, b: QuoteFacts) =>
+  a.departureId === b.departureId && a.passThroughPaidOut === b.passThroughPaidOut && a.moneyEventIds.length === b.moneyEventIds.length && a.moneyEventIds.every((x, i) => x === b.moneyEventIds[i]);
 const settingInt = async (c: Ctx, key: string): Promise<number | null> => {
   const r = await resolveSettings({ tenantId: c.tenantId }, [key], { unitId: c.unitId }, c.clock.now);
   const v = r[key]?.value;
   return typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null;
 };
-const audActor = (c: Ctx, g: Gate) => ({ tenantId: g.tenantId, unitId: g.unitId, actor: c.actor, at: c.clock.now });
+const audActor = (c: Ctx, g: Gate) => ({ tenantId: g.tenantId, unitId: g.unitId, actor: c.actor });
 const refundEvt = (type: string, r: { id: string; bookingId: string; choice: string }, amountSatang: number): MoneyEvt => ({
   type,
   key: r.id,
@@ -250,9 +248,99 @@ async function deductionsGate(db: Tx, g: Gate, b: MoneyBooking, deds: readonly z
 }
 
 type ReqTxOut = { replay: ReqRow } | { value: RefundRequestValue };
-async function requestCore(c: Ctx, v: RequestInput, prefix: "refund" | "cancel"): Promise<SellResult<RefundRequestValue>> {
+/**
+ * สิทธิ์เพิ่มของผู้เรียกผ่าน server action (มติ r1 V2 V4): canDecide = มี trips.refund.approve
+ * ไม่ส่ง ⇒ ผู้เรียกในระบบที่ไว้ใจ (งาน SYSTEM · tripSellable ของแพลตฟอร์ม · ข้อสอบ) — ยกเว้นการถอนคำขอที่อนุมัติแล้ว ซึ่งต้อง canDecide === true เสมอ
+ */
+export type RefundOpts = { canDecide?: boolean };
+type FileArgs = {
+  reasonKind: RefundReasonKind;
+  reason: string;
+  deductions: { category: string; amountSatang: number; evidenceFileId: string | null }[];
+  deductionsSatang: number;
+  key: string;
+  requestHash: string;
+  autoApproveUpTo: number;
+};
+/**
+ * แกนยื่นคำขอในธุรกรรมของผู้เรียก — ผู้เรียกถือแถวการจองแล้ว (2b) และตรวจสถานะ/คำขอเปิด/รุ่นแล้ว:
+ * ใบเสนอจาก snapshot ณ ctx.now → INSERT QUOTED (2b′ · computed + ข้อเท็จจริงเงิน) → audit → [X12 อนุมัติอัตโนมัติ] → outbox
+ */
+async function fileRefundRequestInTx(tx: Tx, c: Ctx, g: Gate, lb: MoneyBooking, a: FileArgs): Promise<RefundRequestValue> {
+  const q = await tripRefundQuote(tx, g, lb, c.clock.iso, a.reasonKind, a.deductionsSatang);
+  if (!q.ok) throw new BookingAbort(q.code, q.details);
+  const quote = q.value;
+  if (quote.refundSatang < 0 || quote.refundSatang > INT4) throw new BookingAbort("VALIDATION", { reason: "OVER_REFUND" });
+  const computed: Computed = { ...quote, bookingVersion: lb.version, quotedAt: c.clock.iso, reason: a.reason, facts: await quoteFactsOf(tx, g, lb) };
+  const id = newId("trr_");
+  const iso = c.clock.iso;
+  // 2b′
+  await tx.$queryRaw`
+    INSERT INTO "TripRefundRequest" ("id", "tenantId", "unitId", "bookingId", "by", "reasonKind", "deductions", "status", "computed", "choice", "amountSatang", "manualDeltaSatang",
+      "approvalId", "decidedById", "idempotencyKey", "requestHash", "createdAt", "updatedAt")
+    VALUES (${id}, ${g.tenantId}, ${g.unitId}, ${lb.id}, ${c.actor.kind === "SYSTEM" ? "SYSTEM" : "STAFF"}, ${a.reasonKind}, ${JSON.stringify(a.deductions)}::jsonb, 'QUOTED', ${JSON.stringify(computed)}::jsonb,
+      'MONEY', ${quote.refundSatang}, 0, NULL, NULL, ${a.key}, ${a.requestHash}, ${iso}::timestamp, ${iso}::timestamp)
+    RETURNING "id"`;
+  const evts: MoneyEvt[] = [refundEvt("trips.refund.requested", { id, bookingId: lb.id, choice: "MONEY" }, quote.refundSatang)];
+  await auditMoney(tx, audActor(c, g), "trips.refund.request", { type: "TripRefundRequest", id }, {
+    status: "QUOTED",
+    bookingId: lb.id,
+    amountSatang: quote.refundSatang,
+    refundBp: quote.refundBp,
+    paidSatang: quote.paidSatang,
+    bookingVersion: lb.version,
+    warnings: quote.warnings.join(","),
+    idemKeyHash: sha256hex(a.key),
+    bodyHash: a.requestHash,
+  });
+  let status = "QUOTED";
+  // อนุมัติอัตโนมัติ (X12 · ค่าปัจจุบันอ่านนอก tx) — ค่าเริ่ม 0 ⇒ รอคนอนุมัติ
+  if (a.autoApproveUpTo > 0 && quote.refundSatang <= a.autoApproveUpTo) {
+    const ap = await tx.$queryRaw<{ id: string }[]>`
+      UPDATE "TripRefundRequest" SET "status" = 'APPROVED', "updatedAt" = now()
+      WHERE "id" = ${id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = 'QUOTED'
+      RETURNING "id"`;
+    if (ap.length !== 1) throw new BookingAbort("STATE_CONFLICT");
+    status = "APPROVED";
+    evts.push(refundEvt("trips.refund.approved", { id, bookingId: lb.id, choice: "MONEY" }, quote.refundSatang));
+    await auditMoney(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: AUTO_APPROVER }, "trips.refund.approve", { type: "TripRefundRequest", id }, {
+      status,
+      amountSatang: quote.refundSatang,
+      manualDeltaSatang: 0,
+      auto: true,
+      idemKeyHash: sha256hex(`auto:${id}`),
+      bodyHash: a.requestHash,
+    }, { status: "QUOTED", amountSatang: quote.refundSatang });
+  }
+  await emitMoney(tx, g, evts);
+  return { requestId: id, status, amountSatang: quote.refundSatang, computed: publicComputed(computed), replayed: false };
+}
+/** เหตุผลของคำขออัตโนมัติเมื่องวดเลยกำหนด (ข้อความแสดงผล · ไม่ใช่ค่าธุรกิจ) */
+const OVERDUE_REASON = "เลยกำหนดชำระ";
+/**
+ * AUTO_RELEASE (T17 · §13 · มติ r1 V1 + hunt M-3): เรียกจาก markTripDueOverdue ในธุรกรรมเดียวกับ CAS งวด → OVERDUE (ผู้เรียกถือแถวการจอง · งวดยังค้างจ่ายใต้ล็อก)
+ * ยื่นคำขอ SYSTEM เหตุ CUSTOMER · MONEY · คีย์ `refund:<bookingId>:sys:trips.paymentDue:due_<dueId>@<unit>` · มีคำขอเปิด/คีย์เคยใช้/สถานะไม่เข้า ⇒ ไม่ยื่น (false)
+ * autoApproveUpTo (X12) อ่านนอก tx โดยผู้เรียก
+ */
+export async function autoReleaseOverdueInTx(tx: Tx, ctx: unknown, b: MoneyBooking, dueId: string, autoApproveUpTo: number): Promise<boolean> {
+  const pc = parseCtx(ctx);
+  if (!pc.ok) throw new BookingAbort(pc.code, pc.details);
+  const c = pc.c;
+  const g: Gate = { tenantId: c.tenantId, unitId: c.unitId, tz: "" };
+  if (!REFUNDABLE.has(b.status) || moneyBookingGate(b)) return false;
+  if (await openRefundOf(tx, g, b.id)) return false;
+  const key = `refund:${b.id}:${moneyNsKey(c, `due_${dueId}`)}`;
+  if (await requestByKey(tx, g.tenantId, key)) return false;
+  const requestHash = holdRequestHash({ op: "trips.refund.refund.v1", bookingId: b.id, reasonKind: "CUSTOMER", choice: "MONEY", reason: OVERDUE_REASON, deductions: [] });
+  await fileRefundRequestInTx(tx, c, g, b, { reasonKind: "CUSTOMER", reason: OVERDUE_REASON, deductions: [], deductionsSatang: 0, key, requestHash, autoApproveUpTo });
+  return true;
+}
+async function requestCore(c: Ctx, v: RequestInput, prefix: "refund" | "cancel", opts: RefundOpts | undefined): Promise<SellResult<RefundRequestValue>> {
   if (v.choice === "CREDIT") return sellFail("VALIDATION", { reason: "CREDIT_NOT_ENABLED" });
   if (v.choice === "MOVE_DATE") return sellFail("VALIDATION", { reason: "MOVE_DATE_VIA_CHANGE" });
+  // มติ r1 V2: เหตุที่ไม่ใช่ลูกค้า (คืน 100 %) ต้องมีสิทธิ์อนุมัติคืนเงิน — ผู้เรียกผ่าน action ส่ง canDecide ตามสิทธิ์จริง · ไม่ส่ง opts = ผู้เรียกในระบบที่ไว้ใจ (SYSTEM/บริการ)
+  if (v.reasonKind !== "CUSTOMER" && opts?.canDecide === false) return sellFail("FORBIDDEN", { reason: "REASON_REQUIRES_APPROVER" });
+  const autoAllowed = v.reasonKind === "CUSTOMER" || opts?.canDecide !== false;
   const g = await gateOf(c);
   if (!g) return NF();
   const db = unitClient(g);
@@ -291,55 +379,17 @@ async function requestCore(c: Ctx, v: RequestInput, prefix: "refund" | "cancel")
     if (!REFUNDABLE.has(lb.status)) throw new BookingAbort("STATE_CONFLICT", { reason: "NOT_REFUNDABLE_STATUS" });
     if (await openRefundOf(tx, g, lb.id)) throw new BookingAbort("STATE_CONFLICT", { reason: "REFUND_IN_PROGRESS" });
     if (lb.version !== v.expectedVersion) throw new BookingAbort("STATE_CONFLICT");
-    const q = await tripRefundQuote(tx, g, lb, c.clock.iso, v.reasonKind, deductionsSatang);
-    if (!q.ok) throw new BookingAbort(q.code, q.details);
-    const quote = q.value;
-    if (quote.refundSatang < 0 || quote.refundSatang > INT4) throw new BookingAbort("VALIDATION", { reason: "OVER_REFUND" });
-    const computed: Computed = { ...quote, bookingVersion: lb.version, quotedAt: c.clock.iso, reason: v.reason };
-    const id = newId("trr_");
-    const iso = c.clock.iso;
-    const dedJson = JSON.stringify(deds.map((d) => ({ category: d.category, amountSatang: d.amountSatang, evidenceFileId: d.evidenceFileId ?? null })));
-    // 2b′
-    await tx.$queryRaw`
-      INSERT INTO "TripRefundRequest" ("id", "tenantId", "unitId", "bookingId", "by", "reasonKind", "deductions", "status", "computed", "choice", "amountSatang", "manualDeltaSatang",
-        "approvalId", "decidedById", "idempotencyKey", "requestHash", "createdAt", "updatedAt")
-      VALUES (${id}, ${g.tenantId}, ${g.unitId}, ${lb.id}, ${c.actor.kind === "SYSTEM" ? "SYSTEM" : "STAFF"}, ${v.reasonKind}, ${dedJson}::jsonb, 'QUOTED', ${JSON.stringify(computed)}::jsonb,
-        'MONEY', ${quote.refundSatang}, 0, NULL, NULL, ${key}, ${requestHash}, ${iso}::timestamp, ${iso}::timestamp)
-      RETURNING "id"`;
-    const evts: MoneyEvt[] = [refundEvt("trips.refund.requested", { id, bookingId: lb.id, choice: "MONEY" }, quote.refundSatang)];
-    const keyHash = sha256hex(key);
-    await auditMoney(tx, audActor(c, g), "trips.refund.request", { type: "TripRefundRequest", id }, {
-      status: "QUOTED",
-      bookingId: lb.id,
-      amountSatang: quote.refundSatang,
-      refundBp: quote.refundBp,
-      paidSatang: quote.paidSatang,
-      bookingVersion: lb.version,
-      warnings: quote.warnings.join(","),
-      idemKeyHash: keyHash,
-      bodyHash: requestHash,
-    });
-    let status = "QUOTED";
-    // อนุมัติอัตโนมัติ (X12 · ค่าปัจจุบันอ่านนอก tx) — ค่าเริ่ม 0 ⇒ รอคนอนุมัติ
-    if (autoApprove > 0 && quote.refundSatang <= autoApprove) {
-      const ap = await tx.$queryRaw<{ id: string }[]>`
-        UPDATE "TripRefundRequest" SET "status" = 'APPROVED', "updatedAt" = now()
-        WHERE "id" = ${id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = 'QUOTED'
-        RETURNING "id"`;
-      if (ap.length !== 1) throw new BookingAbort("STATE_CONFLICT");
-      status = "APPROVED";
-      evts.push(refundEvt("trips.refund.approved", { id, bookingId: lb.id, choice: "MONEY" }, quote.refundSatang));
-      await auditMoney(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: AUTO_APPROVER, at: c.clock.now }, "trips.refund.approve", { type: "TripRefundRequest", id }, {
-        status,
-        amountSatang: quote.refundSatang,
-        manualDeltaSatang: 0,
-        auto: true,
-        idemKeyHash: sha256hex(`auto:${id}`),
-        bodyHash: requestHash,
-      }, { status: "QUOTED", amountSatang: quote.refundSatang });
-    }
-    await emitMoney(tx, g, evts);
-    return { value: { requestId: id, status, amountSatang: quote.refundSatang, computed: publicComputed(computed), replayed: false } };
+    return {
+      value: await fileRefundRequestInTx(tx, c, g, lb, {
+        reasonKind: v.reasonKind,
+        reason: v.reason,
+        deductions: deds.map((d) => ({ category: d.category, amountSatang: d.amountSatang, evidenceFileId: d.evidenceFileId ?? null })),
+        deductionsSatang,
+        key,
+        requestHash,
+        autoApproveUpTo: autoAllowed ? autoApprove : 0,
+      }),
+    };
   });
   if (!r.ok) {
     if (r.code === "IDEMPOTENCY_CONFLICT" || r.code === "BUSY") {
@@ -361,22 +411,24 @@ function publicComputed(v: unknown): Record<string, unknown> {
  * ยื่นคำขอคืนเงิน (§8.1): STAFF · SYSTEM (งานงวด / tripSellable.cancel) · PUBLIC ⇒ FORBIDDEN OTP_REQUIRED (W1.3) · AGENT ⇒ AGENCY_NOT_ENABLED
  * คำนวณจาก snapshot ทันที ⇒ บันทึก QUOTED (REQUESTED ไม่มีแถว) · ที่นั่งไม่ปล่อยจนกว่า DONE · ระหว่างคำขอเปิด รับเงิน/แก้การจองไม่ได้
  * กันซ้ำ: `refund:<bookingId>:<nsKey>` บน TripRefundRequest (tenantId, idempotencyKey) unique + requestHash
+ * การจองที่ลบข้อมูลผู้จองแล้ว (piiPurgedAt) ยื่นได้ตามปกติ (มติ r1 V8 — เงินที่รับต้องคืนได้เสมอ · คำขอไม่ใช้ข้อมูลบุคคล)
+ * opts (มติ r1 V2): ผู้เรียกผ่าน action ส่ง canDecide · ไม่มีสิทธิ์อนุมัติ + เหตุไม่ใช่ CUSTOMER ⇒ FORBIDDEN REASON_REQUIRES_APPROVER
  */
-export async function requestTripRefund(ctx: unknown, input: unknown): Promise<SellResult<RefundRequestValue>> {
+export async function requestTripRefund(ctx: unknown, input: unknown, opts?: RefundOpts): Promise<SellResult<RefundRequestValue>> {
   return tripsSafely("requestTripRefund", ctx, async () => {
     const pc = parseCtx(ctx);
     if (!pc.ok) return pc;
     if (pc.c.actor.kind === "PUBLIC") return sellFail("FORBIDDEN", { reason: "OTP_REQUIRED" });
     const p = requestInput.safeParse(input);
     if (!p.success) return invalidInput(p.error);
-    return requestCore(pc.c, p.data, "refund");
+    return requestCore(pc.c, p.data, "refund", opts);
   });
 }
 /** tripSellable.cancel EXECUTE บนการจองที่ขายแล้ว = ยื่นคำขอคืนเงิน (คีย์ `cancel:<bookingId>:<nsKey>` · CC :351) — ผู้เรียก (booking.ts) parse ctx แล้ว */
-export async function requestTripRefundForCancel(c: Ctx, input: unknown): Promise<SellResult<RefundRequestValue>> {
+export async function requestTripRefundForCancel(c: Ctx, input: unknown, opts?: RefundOpts): Promise<SellResult<RefundRequestValue>> {
   const p = requestInput.safeParse(input);
   if (!p.success) return invalidInput(p.error);
-  return requestCore(c, p.data, "cancel");
+  return requestCore(c, p.data, "cancel", opts);
 }
 
 // ═══════════════════════ §8.2 ตัดสิน · §8.3 ถอน ═══════════════════════
@@ -456,7 +508,7 @@ export async function decideTripRefund(ctx: unknown, input: unknown): Promise<Se
         const entityId = tripRefundEntityId({ unitId: g.unitId, requestId: r.id, amountSatang: final });
         if (!v.approvalId) return sellFail("REQUIRES_APPROVAL", { entityType: TRIP_REFUND_ENTITY, entityId, amountSatang: final });
         const x = (await requestBindings({ tenantId: g.tenantId }, [v.approvalId]))[v.approvalId];
-        if (!x || x.status !== "APPROVED" || x.entityType !== TRIP_REFUND_ENTITY || x.entityId !== entityId || (x.unitId !== null && x.unitId !== g.unitId)) {
+        if (!x || x.status !== "APPROVED" || x.entityType !== TRIP_REFUND_ENTITY || x.entityId !== entityId || x.unitId !== g.unitId) {
           return sellFail("FORBIDDEN", { reason: "APPROVAL_NOT_APPROVED" });
         }
         approvalId = v.approvalId;
@@ -501,8 +553,11 @@ export async function decideTripRefund(ctx: unknown, input: unknown): Promise<Se
 }
 
 const withdrawInput = z.strictObject({ requestId: ID, reason: tripText(500).pipe(z.string().min(1)), idempotencyKey: IDEM_KEY });
-/** ถอนคำขอ (§8.3 · STAFF): QUOTED → WITHDRAWN (CAS) · APPROVED ⇒ STATE_CONFLICT (CC :709) */
-export async function withdrawTripRefund(ctx: unknown, input: unknown): Promise<SellResult<{ requestId: string; status: "WITHDRAWN"; replayed: boolean }>> {
+/**
+ * ถอนคำขอ (§8.3 · STAFF): QUOTED → WITHDRAWN (CAS) · APPROVED → WITHDRAWN เฉพาะผู้มีสิทธิ์อนุมัติ (opts.canDecide === true · มติ r1 V4 —
+ * ทางออกของคำขอที่อนุมัติแล้วแต่บันทึกโอนคืนไม่ได้ · นอกตาราง CC :709 ซึ่งคงไว้ใน TRIP_REFUND_TRANSITIONS) · อื่น ⇒ STATE_CONFLICT
+ */
+export async function withdrawTripRefund(ctx: unknown, input: unknown, opts?: RefundOpts): Promise<SellResult<{ requestId: string; status: "WITHDRAWN"; replayed: boolean }>> {
   return tripsSafely("withdrawTripRefund", ctx, async () => {
     const pc = parseCtx(ctx);
     if (!pc.ok) return pc;
@@ -521,7 +576,8 @@ export async function withdrawTripRefund(ctx: unknown, input: unknown): Promise<
     const bodyHash = holdRequestHash({ op: "trips.refund.withdraw.v1", reason: v.reason });
     const ok = { ok: true as const, value: { requestId: r.id, status: "WITHDRAWN" as const, replayed: true } };
     const lookup = (dbx: Tx) => idemAudit(dbx, g.tenantId, r, ["trips.refund.withdraw"], keyHash);
-    if (r.status !== "QUOTED") {
+    const from: string[] = opts?.canDecide === true ? ["QUOTED", "APPROVED"] : ["QUOTED"];
+    if (!from.includes(r.status)) {
       const a = await lookup(db);
       return a ? (a.bodyHash === bodyHash ? ok : sellFail("IDEMPOTENCY_CONFLICT")) : sellFail("STATE_CONFLICT");
     }
@@ -531,14 +587,14 @@ export async function withdrawTripRefund(ctx: unknown, input: unknown): Promise<
       if (!b) throw new BookingAbort("NOT_FOUND");
       const cas = await tx.$queryRaw<{ id: string }[]>`
         UPDATE "TripRefundRequest" SET "status" = 'WITHDRAWN', "computed" = "computed" || ${merge}::jsonb, "updatedAt" = now()
-        WHERE "id" = ${r.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = 'QUOTED'
+        WHERE "id" = ${r.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = ANY(${from}::text[])
         RETURNING "id"`;
       if (cas.length !== 1) {
         const a = await lookup(tx);
         if (a) return { replay: a };
         throw new BookingAbort("STATE_CONFLICT");
       }
-      await auditMoney(tx, audActor(c, g), "trips.refund.withdraw", { type: "TripRefundRequest", id: r.id }, { status: "WITHDRAWN", bookingId: r.bookingId, amountSatang: r.amountSatang, idemKeyHash: keyHash, bodyHash }, { status: "QUOTED" });
+      await auditMoney(tx, audActor(c, g), "trips.refund.withdraw", { type: "TripRefundRequest", id: r.id }, { status: "WITHDRAWN", bookingId: r.bookingId, amountSatang: r.amountSatang, idemKeyHash: keyHash, bodyHash }, { status: r.status });
       return "DONE";
     });
     if (!out.ok) return out;
@@ -637,8 +693,13 @@ export async function executeTripRefund(ctx: unknown, input: unknown): Promise<S
       // 2b
       const b = await lockMoneyBookingInTx(tx, g, r.bookingId);
       if (!b) throw new BookingAbort("NOT_FOUND");
-      if (b.departureId !== bu.departureId || b.version !== comp.bookingVersion || b.paidSatang - b.refundedSatang !== comp.paidSatang) throw new BookingAbort("STATE_CONFLICT", { reason: "STALE_QUOTE" });
-      if (!REFUNDABLE.has(b.status) || !canTransitionBooking(b.status, "CANCELLED", c.actor.kind)) throw new BookingAbort("STATE_CONFLICT");
+      // มติ r1 V4: ไม่ผูกกับรุ่นของการจอง (รุ่นขยับได้จากเลนอื่น เช่น T0.8) — ตรวจข้อเท็จจริงเงินที่ใบเสนอคิดจากใต้ล็อกแทน
+      //   ยอดสุทธิที่รับ · รอบ · ชุดแถวเงินทั้งหมด (ไม่มีแถวใหม่) · หลักฐานเก็บแทน · สถานะยังคืนได้ — เปลี่ยน ⇒ rollback แล้วคำนวณใหม่เป็น QUOTED (ต้องอนุมัติใหม่)
+      if (!REFUNDABLE.has(b.status) || !canTransitionBooking(b.status, "CANCELLED", c.actor.kind)) throw new BookingAbort("STATE_CONFLICT", { reason: "NOT_REFUNDABLE_STATUS" });
+      const facts = await quoteFactsOf(tx, g, b);
+      if (b.departureId !== bu.departureId || b.paidSatang - b.refundedSatang !== comp.paidSatang || (comp.facts ? !sameFacts(comp.facts, facts) : false)) {
+        throw new BookingAbort("STATE_CONFLICT", { reason: FACTS_CHANGED });
+      }
       const gate = moneyBookingGate(b);
       if (gate) throw new BookingAbort(gate.code, gate.details);
       // 2b′ APPROVED → EXECUTING → DONE (สองคำสั่ง · EXECUTING ไม่ค้างในฐาน)
@@ -698,10 +759,10 @@ export async function executeTripRefund(ctx: unknown, input: unknown): Promise<S
       for (const x of plan.retained) events.push(await insert("RETAINED", x, x.tender, `trips-ret:${r.id}:${x.eventId}`));
       const refunded = plan.refunded.reduce((s, x) => s + x.amountSatang, 0);
       if (refunded !== r.amountSatang) throw new BookingAbort("VALIDATION", { reason: "OVER_REFUND" });
-      // งวดทั้งหมดของ snapshot ปัจจุบัน → CANCELLED (CAS · ยอดที่รับคงอยู่ในแถว)
+      // งวดที่ยังเปิด → CANCELLED (CAS · §8.4 · มติ r1 V3) — งวด PAID คงเป็น PAID (ยอดที่รับคงอยู่ในแถว)
       await tx.$queryRaw`
         UPDATE "TripPaymentDue" SET "status" = 'CANCELLED', "updatedAt" = now()
-        WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = ANY(ARRAY['OPEN','PARTLY_PAID','PAID','OVERDUE']::text[])
+        WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = ANY(ARRAY['OPEN','PARTLY_PAID','OVERDUE']::text[])
         RETURNING "id"`;
       // 2b CAS การจอง → CANCELLED
       const cas = await tx.$queryRaw<{ version: number }[]>`
@@ -735,9 +796,43 @@ export async function executeTripRefund(ctx: unknown, input: unknown): Promise<S
       }, { status: "APPROVED", bookingStatus: b.status, bookingVersion: b.version });
       return { value: { requestId: r.id, status: "DONE", bookingId: b.id, bookingStatus: "CANCELLED", refundedSatang: refunded, events, replayed: false } };
     });
-    if (!out.ok) return out;
+    if (!out.ok) {
+      if (out.code === "STATE_CONFLICT" && out.details?.reason === FACTS_CHANGED) return requoteApproved(c, g, r0.id);
+      return out;
+    }
     return "replay" in out.value ? fromAudit(out.value.replay, db) : { ok: true, value: out.value.value };
   });
+}
+
+/** เหตุภายใน: ข้อเท็จจริงเงินเปลี่ยนหลังอนุมัติ (ไม่ส่งถึงผู้เรียก — แปลงเป็นการคำนวณใหม่) */
+const FACTS_CHANGED = "FACTS_CHANGED";
+/**
+ * มติ r1 V4: คำขอ APPROVED ที่ข้อเท็จจริงเงินเปลี่ยน ⇒ ธุรกรรมใหม่ 2b การจอง → คำนวณใบเสนอใหม่ ณ ctx.now → CAS APPROVED → QUOTED
+ * (ล้างยอดแก้มือ/คำอนุมัติ/ผู้ตัดสิน · ต้องอนุมัติใหม่) → audit trips.refund.requote — คืน STATE_CONFLICT reason QUOTE_REFRESHED (+ ยอดใหม่)
+ * การจองไม่อยู่ในสถานะคืนได้แล้ว ⇒ STATE_CONFLICT NOT_REFUNDABLE_STATUS (ทางออก: ผู้มีสิทธิ์อนุมัติถอน APPROVED → WITHDRAWN)
+ */
+async function requoteApproved(c: Ctx, g: Gate, requestId: string): Promise<SellResult<ExecuteValue>> {
+  const out = await runTripsTx(g, async (tx): Promise<SellResult<ExecuteValue>> => {
+    const r = await readRequest(tx, g, requestId);
+    if (!r) throw new BookingAbort("NOT_FOUND");
+    const b = await lockMoneyBookingInTx(tx, g, r.bookingId); // 2b
+    if (!b) throw new BookingAbort("NOT_FOUND");
+    if (!REFUNDABLE.has(b.status)) throw new BookingAbort("STATE_CONFLICT", { reason: "NOT_REFUNDABLE_STATUS" });
+    const comp = computedOf(r.computed);
+    if (r.status !== "APPROVED" || !comp) throw new BookingAbort("STATE_CONFLICT");
+    const q = await tripRefundQuote(tx, g, b, c.clock.iso, r.reasonKind as RefundReasonKind, comp.deductionsSatang);
+    if (!q.ok) throw new BookingAbort(q.code, q.details);
+    const fresh: Computed = { ...q.value, bookingVersion: b.version, quotedAt: c.clock.iso, reason: comp.reason, facts: await quoteFactsOf(tx, g, b) };
+    const cas = await tx.$queryRaw<{ id: string }[]>`
+      UPDATE "TripRefundRequest" SET "status" = 'QUOTED', "amountSatang" = ${q.value.refundSatang}, "manualDeltaSatang" = 0, "approvalId" = NULL, "decidedById" = NULL,
+        "computed" = ${JSON.stringify(fresh)}::jsonb, "updatedAt" = now()
+      WHERE "id" = ${r.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = 'APPROVED'
+      RETURNING "id"`;
+    if (cas.length !== 1) throw new BookingAbort("STATE_CONFLICT");
+    await auditMoney(tx, audActor(c, g), "trips.refund.requote", { type: "TripRefundRequest", id: r.id }, { status: "QUOTED", bookingId: b.id, amountSatang: q.value.refundSatang, bookingVersion: b.version }, { status: "APPROVED", amountSatang: r.amountSatang });
+    return sellFail("STATE_CONFLICT", { reason: "QUOTE_REFRESHED", requestId: r.id, amountSatang: q.value.refundSatang });
+  });
+  return out.ok ? out.value : out;
 }
 
 // ═══════════════════════ §8.5 อ่าน ═══════════════════════

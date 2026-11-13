@@ -240,7 +240,7 @@ export type RefundSlice = { eventId: string; dueId: string | null; tender: strin
 /**
  * เก็บแทน: ปันตามเก็บแทนของใบรับ · ส่วนไม่ใช่เก็บแทน: ปันตาม vatable ของใบรับ (allocateWithin · ผลรวมตรงพอดี · ต่อใบไม่เกินที่รับ)
  * VAT ส่วนคืนต่อใบ = min(VAT ของใบ, VAT ต่อเอกสารของส่วนคืน) · ส่วนเก็บ = ใบ − ส่วนคืน ทุกช่อง · ยอดขอเกินที่รับ ⇒ OVER_REFUND (ไม่ตัดเงียบ)
- * ใบที่คืน 0 ⇒ ไม่มีแถวคืน · ใบที่เก็บ 0 ⇒ ไม่มีแถวเก็บ · tender ของแถว = tender ของใบรับเดิม
+ * ใบที่คืน 0 ⇒ ไม่มีแถวคืน · ใบที่เก็บ 0 (ยอด 0 และ VAT 0) ⇒ ไม่มีแถวเก็บ · tender ของแถว = tender ของใบรับเดิม
  */
 export function planRefundSlices(input: { receipts: readonly ReceiptRow[]; refundNonPtSatang: number; refundPassThroughSatang: number; vatCtx: ReceiptVatCtx }):
   | { ok: true; refunded: RefundSlice[]; retained: RefundSlice[] }
@@ -259,11 +259,12 @@ export function planRefundSlices(input: { receipts: readonly ReceiptRow[]; refun
   rs.forEach((r, i) => {
     const np = npA[i] ?? 0;
     const pt = ptA[i] ?? 0;
-    const vat = Math.min(r.vatSatang, receiptVatSatang(np, input.vatCtx));
+    // คืนส่วนไม่ใช่เก็บแทนทั้งใบ ⇒ VAT ทั้งใบ (ไม่พึ่ง vatCtx ปัจจุบันที่อาจต่างจากตอนรับเงิน)
+    const vat = np === r.vatableSatang ? r.vatSatang : Math.min(r.vatSatang, receiptVatSatang(np, input.vatCtx));
     const ref: RefundSlice = { eventId: r.eventId, dueId: r.dueId, tender: r.tender, amountSatang: np + pt, vatableSatang: np, passThroughSatang: pt, vatSatang: vat };
     const ret: RefundSlice = { eventId: r.eventId, dueId: r.dueId, tender: r.tender, amountSatang: r.amountSatang - ref.amountSatang, vatableSatang: r.vatableSatang - np, passThroughSatang: r.passThroughSatang - pt, vatSatang: r.vatSatang - vat };
     if (ref.amountSatang > 0) refunded.push(ref);
-    if (ret.amountSatang > 0) retained.push(ret);
+    if (ret.amountSatang > 0 || ret.vatSatang > 0) retained.push(ret);
   });
   return { ok: true, refunded, retained };
 }

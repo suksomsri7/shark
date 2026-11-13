@@ -377,7 +377,8 @@ export type {
 export { ensureTripDuesInTx, listTripDues, recordTripPayment, tripPaymentIntent, tripMoneySummary, tripCashDay } from "./money";
 export type { DueRow, TripDueDTO, PaymentEventDTO, PaymentValue, PaymentIntentValue, TripMoneySummary, TripCashDay } from "./money";
 export { requestTripRefund, decideTripRefund, withdrawTripRefund, executeTripRefund, getTripRefund, listTripRefunds } from "./refund";
-export type { TripRefundDTO, RefundRequestValue, DecideValue, ExecuteValue, RefundMoneyEventDTO } from "./refund";
+export type { TripRefundDTO, RefundRequestValue, DecideValue, ExecuteValue, RefundMoneyEventDTO, RefundOpts } from "./refund";
+export type { CancelOpts } from "./booking";
 export { runPaymentDue } from "./jobs";
 // ◂ TRIPS T0.7
 // ── /T0.7 money ──

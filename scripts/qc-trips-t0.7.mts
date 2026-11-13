@@ -448,7 +448,9 @@ try {
       ...["p0.1", "t0.1", "t0.2", "t0.3", "t0.4", "t0.5", "t0.6", "t1.1"].map((w) => `scripts/qc-trips-${w}.mts`), "scripts/trips-fixture.mts", "scripts/fitness.mts"];
     const changed = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", ...paths]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...paths]).split("\n")].filter(Boolean))];
     if (git(["ls-tree", "--name-only", "session/trips", "scripts/qc-trips-t0.7.mts"]).trim() && git(["show", "session/trips:scripts/qc-trips-t0.7.mts"]) !== read("scripts/qc-trips-t0.7.mts")) changed.push("scripts/qc-trips-t0.7.mts");
-    const ours = changed.filter((f) => git(["diff", "--name-only", "session/trips", "--", f]).trim() !== "" || git(["ls-files", "--others", "--exclude-standard", "--", f]).trim() !== "");
+    // ORACLE-EDIT S-15 (ผู้คุม 13 พ.ย.): รอบแก้ r1 — อนุญาต th-tour-2569.ts (มติ V5 · ฟังก์ชันขั้นต่ำคืนเงิน) · booking-actions.ts (มติ V2 · สิทธิ์ยื่นคืนเงิน) · qc-trips-t0.6.mts (ผู้คุมแก้ CN-3 เอง)
+    const ALLOW_R1 = ["src/lib/core/settings/legal/th-tour-2569.ts", "src/lib/modules/trips/booking-actions.ts", "scripts/qc-trips-t0.6.mts"];
+    const ours = changed.filter((f) => !ALLOW_R1.includes(f) && (git(["diff", "--name-only", "session/trips", "--", f]).trim() !== "" || git(["ls-files", "--others", "--exclude-standard", "--", f]).trim() !== ""));
     ok(ours.length === 0, `แตะ: ${ours.slice(0, 6).join(", ")}`);
   });
   await st("S-16", "ไม่มีค่าธุรกิจตายตัวในไฟล์ของใบ (อัตรา VAT 700 · 7% · ขั้นบันได 30/15/50 · เพดาน 200000) — อ่านจาก snapshot/ค่าตั้ง", () => {
@@ -1006,7 +1008,7 @@ try {
     eq([v.status, v.bookingStatus, row.status, row.refundedSatang, row.cancelledAt !== null, (await reqs(b.id))[0]?.status], ["DONE", "CANCELLED", "CANCELLED", RF88.refundSatang, true, "DONE"], "สถานะ");
     eq((await evs(b.id)).filter((x) => x.kind !== "RECEIVED").map((x) => [x.kind, x.amountSatang, x.vatSatang, x.passThroughSatang, x.tender, x.postingStatus]).sort((a, c) => String(a[0]).localeCompare(String(c[0]))),
       [["REFUNDED", 647_500, 32_547, PARK, "PROMPTPAY", "UNPOSTED"], ["RETAINED", 497_500, 32_546, 0, "PROMPTPAY", "UNPOSTED"]], "แถวเงิน");
-    eq([(await dues(b.id)).map((d) => d.status), num(d0.sold) - num((await depRow(b.dep)).sold)], [["CANCELLED"], 3], "งวด/ที่นั่ง");
+    eq([(await dues(b.id)).map((d) => d.status), num(d0.sold) - num((await depRow(b.dep)).sold)], [["PAID"], 3] /* ORACLE-EDIT DN-1 (ผู้คุม 13 พ.ย.): มติ V3 — งวดที่จ่ายแล้วคง PAID · ยกเลิกเฉพาะงวดที่ยังเปิด */, "งวด/ที่นั่ง");
     await moneyOk(b.id, "DN-1"); await seatInv(b.dep, "DN-1");
   });
   await st("DN-2", "คีย์แถวคืน = trips-ref:<requestId>:<receivedEventId> · trips-ret:<requestId>:<receivedEventId> (อ้างใบรับเดิม)", async () => {
@@ -1334,7 +1336,7 @@ try {
     eq([(await dues(b.id))[0]?.status, (await outboxFor("trips.payment.overdue", b.id, tJ)).length, (await reqs(b.id)).length], ["OVERDUE", 1, 0], "เลยกำหนด");
   });
   await st("JB-2", "เตือนงวด (T16 [7,1] ของหน่วย): งวด BALANCE 21 มี.ค. 23:59 · 6 วันก่อน ⇒ due_soon d=7 ครั้งเดียว · 12 ชม.ก่อน ⇒ d=1 · รันซ้ำไม่ยิงซ้ำ · คีย์ <dueId>:<d>", async () => {
-    await needDb(); const b = await mkBooking({ key: "JD" }); const d2 = (await dues(b.id))[1] ?? {}; const due = new Date(String(d2.dueAt));
+    await needDb(); const b = await mkBooking({ key: "JD" }); await payOk(b, DEP30); /* ORACLE-EDIT JB-2 (ผู้คุม 13 พ.ย.): มติ V1 — การจองที่มีคำขอคืนเงินเปิดอยู่ไม่ถูกเตือน ⇒ จ่ายมัดจำก่อน (แบบ JB-3) */ const d2 = (await dues(b.id))[1] ?? {}; const due = new Date(String(d2.dueAt));
     await runJob(new Date(due.getTime() - 6 * 86_400_000)); await runJob(new Date(due.getTime() - 6 * 86_400_000 + 60_000));
     await runJob(new Date(due.getTime() - 12 * 3_600_000));
     const o = (await outboxFor("trips.payment.due_soon", b.id, tJ)).filter((x) => x.payload.dueId === d2.id);

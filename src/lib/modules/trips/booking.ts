@@ -1395,10 +1395,15 @@ async function idemAudits(db: Tx, tenantId: string, action: string, b: { id: str
  * releaseHoldInTx → CAS →CANCELLED → releasePromoInTx → outbox · ขายแล้ว ⇒ STATE_CONFLICT REFUND_REQUIRED (T0.7) · PUBLIC ⇒ FORBIDDEN OTP_REQUIRED (W1.3)
  * คีย์ซ้ำ + คำขอเดิม = ผลเดิม · คีย์ซ้ำ + คำขอต่าง = IDEMPOTENCY_CONFLICT (R12 · audit จด idemKeyHash + bodyHash)
  */
-export async function cancelTripBooking(ctx: unknown, input: unknown): Promise<SellResult<CancelResult>> {
-  return safely("cancelTripBooking", ctx, () => cancelImpl(ctx, input));
+/**
+ * TRIPS T0.7 ▸ สิทธิ์ของผู้เรียกผ่าน server action (มติ r1 V2): ยกเลิกการจองที่ขายแล้ว = ยื่นคำขอคืนเงิน ⇒ ต้องมี trips.refund.request (canRequest) ·
+ * เหตุที่ไม่ใช่ลูกค้าต้องมี trips.refund.approve (canDecide) · ไม่ส่ง = ผู้เรียกในระบบที่ไว้ใจ (tripSellable ของแพลตฟอร์ม · SYSTEM) ◂
+ */
+export type CancelOpts = { refund?: { canRequest: boolean; canDecide: boolean } };
+export async function cancelTripBooking(ctx: unknown, input: unknown, opts?: CancelOpts): Promise<SellResult<CancelResult>> {
+  return safely("cancelTripBooking", ctx, () => cancelImpl(ctx, input, opts));
 }
-async function cancelImpl(ctx: unknown, input: unknown): Promise<SellResult<CancelResult>> {
+async function cancelImpl(ctx: unknown, input: unknown, opts?: CancelOpts): Promise<SellResult<CancelResult>> {
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
   const c = pc.c;
@@ -1422,7 +1427,12 @@ async function cancelImpl(ctx: unknown, input: unknown): Promise<SellResult<Canc
       if (!q.ok) return q;
       return { ok: true, value: { computed: { refundSatang: q.value.refundSatang, feeSatang: q.value.keptSatang, ladderStep: q.value.step, source: "SNAPSHOT" }, status: b.status } };
     }
-    const rq = await requestTripRefundForCancel(c, { bookingId: b.id, expectedVersion: b.version, reasonKind: v.reasonKind ?? "CUSTOMER", choice: v.choice ?? "MONEY", reason: v.reason, idempotencyKey: v.idempotencyKey });
+    if (opts?.refund && !opts.refund.canRequest) return sellFail("FORBIDDEN");
+    const rq = await requestTripRefundForCancel(
+      c,
+      { bookingId: b.id, expectedVersion: b.version, reasonKind: v.reasonKind ?? "CUSTOMER", choice: v.choice ?? "MONEY", reason: v.reason, idempotencyKey: v.idempotencyKey },
+      opts?.refund ? { canDecide: opts.refund.canDecide } : undefined,
+    );
     if (!rq.ok) return rq;
     const step = isRec(rq.value.computed.step) ? { daysBefore: Number(rq.value.computed.step.daysBefore), refundBp: Number(rq.value.computed.step.refundBp) } : null;
     const kept = Number(rq.value.computed.keptSatang ?? 0);
@@ -1683,7 +1693,7 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
     if (nv === undefined) throw new BookingAbort("STATE_CONFLICT");
     // TRIPS T0.7 ▸ 2b′ คำขอคืนเงินเปิด (อ่านใต้ล็อกแถวการจองของ UPDATE) → 2d งวด: CONFIRMED แทนงวดใหม่ (seq ต่อ) · จ่ายแล้ว = ย้าย dueAt เท่านั้น ◂
     if (await openRefundOf(tx, g, b.id)) throw new BookingAbort("STATE_CONFLICT", { reason: "REFUND_IN_PROGRESS" });
-    if (paidChange) await retimeTripDuesInTx(tx, g, b.id, snap);
+    if (paidChange) await retimeTripDuesInTx(tx, g, b.id, snap, c.clock.now);
     else await replaceTripDuesInTx(tx, g, b.id, snap, c.clock.now);
     await tx.$queryRaw`UPDATE "TripBookingItem" SET "active" = false, "updatedAt" = now() WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "active" RETURNING "id"`;
     const items = await insertItems(tx, g.tenantId, g.unitId, b.id, to, cols.items);

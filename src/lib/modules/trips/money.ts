@@ -40,8 +40,9 @@ import { BOOKING_SOLD_STATUSES, canTransitionBooking } from "./state";
 const INT4 = 2_147_483_647;
 const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
 /**
- * id ของแถวเงิน/งวด/คำขอ: เวลาเครื่อง (ms · base36 กว้างคงที่) + ลำดับในกระบวนการ + สุ่ม ⇒ แถวที่ createdAt (= ctx.now) เท่ากัน
- * เรียงตาม id = ลำดับที่เขียนจริง (ใบรับหลายใบในนาฬิกาเดียวกัน · ชิ้นข้ามงวดในธุรกรรมเดียว) — ลำดับใบรับที่ planRefundSlices ใช้จึงคงที่
+ * id ของแถวเงิน/งวด/คำขอ = เวลาเครื่อง (ms · base36) + ลำดับในกระบวนการ + สุ่ม 64 บิต — ไม่รับประกันลำดับการเขียนข้ามกระบวนการ/เครื่อง
+ * ลำดับใบรับที่ใช้จริง (planRefundSlices) = (seq ของงวด, createdAt, id) — เป็นลำดับรวมที่กำหนดได้เพราะ id ไม่ซ้ำ · ผลรวมตรงพอดีทุกลำดับ (allocateWithin)
+ * ต่างกันได้แค่ตำแหน่งเศษสตางค์ (รีวิว r1 MINOR 6)
  */
 let idSeq = 0;
 export function moneyRowId(prefix: string): string {
@@ -57,6 +58,8 @@ const AMOUNT = z.number().int().min(1).max(INT4);
 const OPEN_DUE = Prisma.sql`ARRAY['OPEN','PARTLY_PAID','OVERDUE']::text[]`;
 const OPEN_REFUND: string[] = [...TRIP_REFUND_OPEN_STATUSES];
 const SOLD: ReadonlySet<string> = new Set(BOOKING_SOLD_STATUSES);
+const MS_PER_DAY = 86_400_000;
+const MS_PER_HOUR = 3_600_000;
 
 // ═══════════════════════ ctx ═══════════════════════
 /** SellCtx ของคำขอ (นาฬิกาเดียว = ctx.now) */
@@ -142,10 +145,10 @@ export async function openRefundOf(db: Tx, g: { tenantId: string; unitId: string
 
 // ═══════════════════════ audit · outbox ═══════════════════════
 export type MoneyAuditVal = Record<string, string | number | boolean | null>;
-/** audit ในธุรกรรมเดียวกัน (STAFF/SYSTEM · createdAt = ctx.now · ไม่มีข้อมูลบุคคล) */
+/** audit ในธุรกรรมเดียวกัน (STAFF/SYSTEM · createdAt = ค่าเริ่มของฐาน — มติ r1 V7 · ไม่มีข้อมูลบุคคล) */
 export async function auditMoney(
   tx: Tx,
-  a: { tenantId: string; unitId: string; actor: SellActor; at: Date },
+  a: { tenantId: string; unitId: string; actor: SellActor },
   action: string,
   target: { type: string; id: string },
   after: MoneyAuditVal,
@@ -163,7 +166,6 @@ export async function auditMoney(
       targetId: target.id,
       ...(before ? { before: { ...before } } : {}),
       after: { ...after },
-      createdAt: a.at,
     },
   });
 }
@@ -257,18 +259,34 @@ export function duesShapeUnchanged(cur: readonly DueRow[], snap: unknown): boole
     return !!x && x.amountSatang === r.amountSatang && x.vatableSatang === r.vatableSatang && x.passThroughSatang === r.passThroughSatang && x.kind === r.kind;
   });
 }
-/** การจองที่จ่ายแล้วเลื่อนวัน (ยอดเท่าเดิม · §9.2): UPDATE dueAt ของงวดที่ยังเปิด (CAS ต่อแถว) — ไม่แตะเงินที่รับ */
-export async function retimeTripDuesInTx(tx: Tx, g: { tenantId: string; unitId: string }, bookingId: string, snap: unknown): Promise<void> {
+/** ชั่วโมงผ่อนผันหลังเลยกำหนด (X11) จาก snapshot — ไม่ได้จด/ผิดรูป ⇒ null */
+function graceHoursOf(snap: unknown): number | null {
+  try {
+    const v = snapshotValue(snap, "trips", "trips.pay.overdueGraceHours");
+    return typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+/**
+ * การจองที่จ่ายแล้วเลื่อนวัน (ยอดเท่าเดิม · §9.2): UPDATE dueAt ของงวดที่ยังเปิด (CAS ต่อแถว) — ไม่แตะเงินที่รับ
+ * งวด OVERDUE ที่ถูกเลื่อนไปช้ากว่าเดิมและยังไม่เลยกำหนด+ผ่อนผัน (X11 ของ snapshot ใหม่) ⇒ กลับเป็น OPEN/PARTLY_PAID (รีวิว r1 MINOR 3)
+ */
+export async function retimeTripDuesInTx(tx: Tx, g: { tenantId: string; unitId: string }, bookingId: string, snap: unknown, now: Date): Promise<void> {
   const cur = await currentDues(tx, g, bookingId);
   if (!duesShapeUnchanged(cur, snap)) throw new BookingAbort("STATE_CONFLICT", { reason: "PRICE_CHANGED_AFTER_PAYMENT" });
   const d = dueDraftsFromSnapshot(snap);
   if (!d.ok) throw new BookingAbort("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+  const grace = graceHoursOf(snap) ?? 0;
   for (const [i, r] of cur.entries()) {
     const x = d.value[i];
     if (!x || r.status === "PAID") continue;
+    const at = new Date(x.dueAt);
+    const reopen = r.status === "OVERDUE" && at.getTime() > new Date(r.dueAt).getTime() && now.getTime() < at.getTime() + grace * MS_PER_HOUR;
+    const to = reopen ? (r.paidSatang > 0 ? "PARTLY_PAID" : "OPEN") : r.status;
     await tx.$queryRaw`
-      UPDATE "TripPaymentDue" SET "dueAt" = ${new Date(x.dueAt).toISOString()}::timestamp, "updatedAt" = now()
-      WHERE "id" = ${r.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = ANY(${OPEN_DUE})
+      UPDATE "TripPaymentDue" SET "dueAt" = ${at.toISOString()}::timestamp, "status" = ${to}, "updatedAt" = now()
+      WHERE "id" = ${r.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = ${r.status} AND "paidSatang" = ${r.paidSatang}
       RETURNING "id"`;
   }
 }
@@ -287,10 +305,18 @@ export type TripDueDTO = {
   outstandingSatang: number;
   status: string;
 };
-/** งวดจริง หรือร่างจาก snapshot (การจองก่อน T0.7 · id null · ไม่เขียนฐาน) */
+/** สถานะการจองที่ยังมียอดให้จ่าย (นอกจากนี้ยอดค้างของทุกงวด = 0 · มติ r1 V3) */
+const OWES: ReadonlySet<string> = new Set(["HOLD", "PENDING", "CONFIRMED", "PART_PAID"]);
+/**
+ * งวดที่แสดง (มติ r1 V3): ไม่มีแถวงวดเลย (การจองก่อน T0.7) ⇒ ร่างจาก snapshot (id null · ไม่เขียนฐาน) ·
+ * มีแถว ⇒ งวดของ snapshot ปัจจุบัน (ไม่ CANCELLED) หรือถ้าทุกแถว CANCELLED ⇒ แถวทั้งหมดตามจริง (ประวัติ) ·
+ * การจองที่ไม่ค้างจ่ายแล้ว (CANCELLED/EXPIRED/PAID/…) หรืองวดที่ CANCELLED ⇒ ยอดค้าง 0 เสมอ
+ */
 async function duesView(db: Tx, g: Gate, b: MoneyBooking): Promise<TripDueDTO[] | null> {
-  const rows = await currentDues(db, g, b.id);
-  if (!rows.length) {
+  const owes = OWES.has(b.status);
+  const all = await db.$queryRaw<DueRow[]>`
+    SELECT ${DUE_COLS} FROM "TripPaymentDue" WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} ORDER BY "seq"`;
+  if (!all.length) {
     const d = dueDraftsFromSnapshot(b.policySnapshot);
     if (!d.ok) return null;
     return d.value.map((x) => ({
@@ -303,10 +329,12 @@ async function duesView(db: Tx, g: Gate, b: MoneyBooking): Promise<TripDueDTO[] 
       passThroughSatang: x.passThroughSatang,
       paidSatang: 0,
       paidPassThroughSatang: 0,
-      outstandingSatang: x.amountSatang,
-      status: x.amountSatang === 0 ? "PAID" : "OPEN",
+      outstandingSatang: owes ? x.amountSatang : 0,
+      status: x.amountSatang === 0 ? "PAID" : owes ? "OPEN" : "CANCELLED",
     }));
   }
+  const live = all.filter((r) => r.status !== "CANCELLED");
+  const rows = live.length ? live : all;
   const pt = await receivedPtByDue(db, g, b.id);
   return rows.map((r) => ({
     id: r.id,
@@ -318,7 +346,7 @@ async function duesView(db: Tx, g: Gate, b: MoneyBooking): Promise<TripDueDTO[] 
     passThroughSatang: r.passThroughSatang,
     paidSatang: r.paidSatang,
     paidPassThroughSatang: pt.get(r.id) ?? 0,
-    outstandingSatang: r.amountSatang - r.paidSatang,
+    outstandingSatang: owes && r.status !== "CANCELLED" ? r.amountSatang - r.paidSatang : 0,
     status: r.status,
   }));
 }
@@ -357,18 +385,18 @@ type PayInput = z.infer<typeof payInput>;
 export type PaymentEventDTO = { id: string; dueId: string | null; amountSatang: number; vatSatang: number; passThroughSatang: number };
 export type PaymentValue = { bookingId: string; status: string; version: number; paidSatang: number; outstandingSatang: number; events: PaymentEventDTO[]; replayed: boolean };
 type ReceivedRow = { id: string; bookingId: string; kind: string; amountSatang: number; vatSatang: number; passThroughSatang: number; dueId: string | null; tender: string; slipId: string | null };
-/** แถวเงินของคีย์ base:1, base:2, … (ดัชนี unique TripMoneyEvent_tenantId_idempotencyKey_key · อ่านทีละคีย์จนไม่พบ) */
+/** ชิ้นสูงสุดต่อการรับเงินหนึ่งครั้ง (ขอบของการค้นกันซ้ำ · ค่าทางเทคนิค ไม่ใช่ตัวเลขธุรกิจ) */
+const MAX_SLICES = 64;
+/** แถวเงินของคีย์ base:1 … base:64 ในคำสั่งเดียว (ดัชนี unique TripMoneyEvent_tenantId_idempotencyKey_key · = ANY) — เรียงตาม i */
 async function receiptsByKey(db: Tx, tenantId: string, base: string): Promise<ReceivedRow[]> {
-  const out: ReceivedRow[] = [];
-  for (let i = 1; i <= 64; i++) {
-    const rows = await db.$queryRaw<ReceivedRow[]>`
-      SELECT "id", "bookingId", "kind", "amountSatang", "vatSatang", "passThroughSatang", "dueId", "tender", "slipId" FROM "TripMoneyEvent"
-      WHERE "tenantId" = ${tenantId} AND "idempotencyKey" = ${`${base}:${i}`}`;
-    const r = rows[0];
-    if (!r) break;
-    out.push(r);
-  }
-  return out;
+  const keys = Array.from({ length: MAX_SLICES }, (_, i) => `${base}:${i + 1}`);
+  const rows = await db.$queryRaw<(ReceivedRow & { idempotencyKey: string })[]>`
+    SELECT "id", "bookingId", "kind", "amountSatang", "vatSatang", "passThroughSatang", "dueId", "tender", "slipId", "idempotencyKey" FROM "TripMoneyEvent"
+    WHERE "tenantId" = ${tenantId} AND "idempotencyKey" = ANY(${keys}::text[])`;
+  const idx = (k: string) => Number(k.slice(base.length + 1));
+  return rows
+    .sort((a, b) => idx(a.idempotencyKey) - idx(b.idempotencyKey))
+    .map((r) => ({ id: r.id, bookingId: r.bookingId, kind: r.kind, amountSatang: r.amountSatang, vatSatang: r.vatSatang, passThroughSatang: r.passThroughSatang, dueId: r.dueId, tender: r.tender, slipId: r.slipId }));
 }
 /** คีย์เดิม + (การจอง · Σ ยอด · tender · สลิป) เดิม ⇒ ผลเดิม · ต่าง ⇒ IDEMPOTENCY_CONFLICT (สลิป: SLIP_ALREADY_USED) */
 function sameReceipt(rows: readonly ReceivedRow[], v: PayInput): boolean {
@@ -448,6 +476,7 @@ async function payTx(tx: Tx, c: Ctx, g: Gate, v: PayInput, base: string, keyHash
     throw new BookingAbort("VALIDATION", { reason: al.reason === "OVERPAYMENT" ? "OVERPAYMENT" : "INVALID_AMOUNT" });
   }
   if (b.paidSatang + v.amountSatang > payable) throw new BookingAbort("VALIDATION", { reason: "OVERPAYMENT" });
+  if (al.slices.length > MAX_SLICES) throw new BookingAbort("VALIDATION", { reason: "TOO_MANY_DUES" });
   const iso = c.clock.iso;
   const events: (PaymentEventDTO & { dueAt: Date })[] = [];
   for (const [i, s] of al.slices.entries()) {
@@ -490,7 +519,7 @@ async function payTx(tx: Tx, c: Ctx, g: Gate, v: PayInput, base: string, keyHash
   await emitMoney(tx, g, evts);
   await auditMoney(
     tx,
-    { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor, at: c.clock.now },
+    { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor },
     "trips.payment.record",
     { type: "TripBooking", id: b.id },
     {
@@ -600,6 +629,12 @@ export async function tripPaymentIntent(ctx: unknown, input: unknown): Promise<S
     if (!b) return NF();
     const gate = moneyBookingGate(b) ?? payableStatusGate(b);
     if (gate) return gate;
+    // มติ r1 V6: HOLD ต้องมี hold ACTIVE ที่ยังไม่หมดเวลา ณ ctx.now ทุกตัว (กติกาเดียวกับ CAS ของ convertHoldForBookingInTx ในเส้นรับเงิน) — ไม่ออก QR ให้เงินที่จะถูกปฏิเสธ
+    if (b.status === "HOLD") {
+      const hs = await db.$queryRaw<{ expiresAt: Date }[]>`
+        SELECT "expiresAt" FROM "TripHold" WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = 'ACTIVE'`;
+      if (!hs.length || hs.some((h) => new Date(h.expiresAt).getTime() <= c.clock.now.getTime())) return sellFail("HOLD_EXPIRED");
+    }
     if (await openRefundOf(db, g, b.id)) return sellFail("STATE_CONFLICT", { reason: "REFUND_IN_PROGRESS" });
     const dues = await duesView(db, g, b);
     if (!dues) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
@@ -629,6 +664,7 @@ export type TripMoneySummary = {
 /**
  * สรุปเงินของการจอง (STAFF/SYSTEM) — ข้อมูลให้ร้านออกเอกสารในบัญชี V2 เองระหว่างรอ T0.7b · taxDocument.status = NOT_ISSUED
  * vat.receiptRoundingDiffSatang = Σ VAT ต่อใบรับ − VAT ของการจอง (ต่อเอกสาร · ≤ n−1 สตางค์ · มติ §22 ข้อ 2 · ⚖️ ป้าย U ตรวจกับนักบัญชี)
+ * การจองที่ลบข้อมูลผู้จองแล้ว (piiPurgedAt) ยังอ่านสรุปได้ (มติ r1 V8 — ไม่มีข้อมูลบุคคลในผล · เงินที่รับต้องตรวจ/คืนได้)
  */
 export async function tripMoneySummary(ctx: unknown, input: unknown): Promise<SellResult<TripMoneySummary>> {
   return tripsSafely("tripMoneySummary", ctx, async () => {
@@ -746,8 +782,6 @@ export async function tripCashDay(ctx: unknown, input: unknown): Promise<SellRes
   });
 }
 // ═══════════════════════ §13 งาน trips.paymentDue (ส่วนต่อร้าน · jobs.ts เป็นทางเข้าข้ามร้าน) ═══════════════════════
-const MS_PER_DAY = 86_400_000;
-const MS_PER_HOUR = 3_600_000;
 export type DueTickRow = { id: string; bookingId: string; dueAt: Date; amountSatang: number; paidSatang: number };
 /** เตือนงวด: ทุก d ใน T16 ที่ dueAt − d วัน ≤ now < dueAt ⇒ trips.payment.due_soon คีย์ <dueId>:<d> (ซ้ำ = ไม่ยิง) · ไม่เปลี่ยนแถว — คืนจำนวนที่ยิงใหม่ */
 export async function emitDueReminders(g: Gate, due: DueTickRow, days: readonly number[], now: Date): Promise<number> {
@@ -758,30 +792,34 @@ export async function emitDueReminders(g: Gate, due: DueTickRow, days: readonly 
   const payload = { dueId: due.id, bookingId: due.bookingId, amountSatang: due.amountSatang - due.paidSatang, dueAt: new Date(due.dueAt).toISOString() };
   return emitOutboxMany(unitClient(g), hit.map((d) => ({ tenantId: g.tenantId, unitId: g.unitId, type: "trips.payment.due_soon", idempotencyKey: `trips.payment.due_soon:${due.id}:${d}`, payload })));
 }
-export type DueOverdueValue = { overdue: boolean; dueStatus: string | null; overdueAction: string | null; bookingStatus: string; bookingVersion: number };
+export type DueOverdueValue = { overdue: boolean; dueStatus: string | null; overdueAction: string | null; bookingStatus: string; bookingVersion: number; autoReleased: boolean };
+/** ยื่นคำขอคืนเงินอัตโนมัติ (T17 AUTO_RELEASE) ในธุรกรรมเดียวกับ CAS → OVERDUE — ผู้เรียก (jobs.ts) ส่งตัวยื่นของ refund.ts เข้ามา (ไม่มีเส้น import money → refund) */
+export type AutoReleaseInTx = (tx: Tx, b: MoneyBooking, dueId: string) => Promise<boolean>;
 /**
- * เลยกำหนด (ต่องวดหนึ่ง tx · §10): 2b การจอง FOR UPDATE (ต้อง CONFIRMED/PART_PAID) → now ≥ dueAt + X11 (snapshot) ⇒ 2d CAS งวด → OVERDUE → 2h trips.payment.overdue
- * คืน T17 (snapshot) ให้ผู้เรียกตัดสิน AUTO_RELEASE (ยื่นคำขอคืนเงิน SYSTEM — ไม่บันทึกโอนคืน/ไม่ปล่อยที่เอง)
+ * เลยกำหนด (ต่องวดหนึ่ง tx · §10 · มติ r1 V1): 2b การจอง FOR UPDATE (ต้อง CONFIRMED/PART_PAID · ไม่มีคำขอคืนเงินเปิด) → อ่านงวดซ้ำใต้ล็อก →
+ * now ≥ dueAt + X11 (snapshot) ⇒ 2d CAS งวด (ยังค้างจ่าย) → OVERDUE → 2h trips.payment.overdue →
+ * เฉพาะรอบที่เปลี่ยนเป็น OVERDUE จริง + T17 = AUTO_RELEASE ⇒ autoRelease(tx, …) ในธุรกรรมเดียวกัน (งวดยังค้างจ่ายแน่นอนใต้ล็อก · hunt M-3)
+ * ไม่บันทึกโอนคืน/ไม่ปล่อยที่เอง · งวดที่จ่ายแล้วระหว่างทาง ⇒ ไม่ทำอะไร (ไม่ใช่ความล้ม)
  */
-export async function markTripDueOverdue(g: Gate, due: { id: string; bookingId: string }, now: Date): Promise<SellResult<DueOverdueValue>> {
+export async function markTripDueOverdue(g: Gate, due: { id: string; bookingId: string }, now: Date, autoRelease?: AutoReleaseInTx): Promise<SellResult<DueOverdueValue>> {
   return runTripsTx(g, async (tx): Promise<DueOverdueValue> => {
     const b = await lockMoneyBookingInTx(tx, g, due.bookingId);
     if (!b) throw new BookingAbort("NOT_FOUND");
     const rows = await tx.$queryRaw<DueRow[]>`SELECT ${DUE_COLS} FROM "TripPaymentDue" WHERE "id" = ${due.id} AND "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`;
     const d = rows[0];
-    const base = { bookingStatus: b.status, bookingVersion: b.version };
+    const base = { bookingStatus: b.status, bookingVersion: b.version, autoReleased: false };
     if (!d || (b.status !== "CONFIRMED" && b.status !== "PART_PAID")) return { overdue: false, dueStatus: d?.status ?? null, overdueAction: null, ...base };
-    let grace: unknown;
+    if (await openRefundOf(tx, g, b.id)) return { overdue: false, dueStatus: d.status, overdueAction: null, ...base };
     let action: unknown;
     try {
-      grace = snapshotValue(b.policySnapshot, "trips", "trips.pay.overdueGraceHours");
       action = snapshotValue(b.policySnapshot, "trips", "trips.pay.overdueAction");
     } catch {
       throw new BookingAbort("VALIDATION", { reason: "SNAPSHOT_INVALID" });
     }
-    if (typeof grace !== "number" || !Number.isSafeInteger(grace) || grace < 0 || typeof action !== "string") throw new BookingAbort("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+    const grace = graceHoursOf(b.policySnapshot);
+    if (grace === null || typeof action !== "string") throw new BookingAbort("VALIDATION", { reason: "SNAPSHOT_INVALID" });
     const due0 = new Date(d.dueAt).getTime();
-    if (d.status === "OVERDUE" || now.getTime() < due0 + grace * MS_PER_HOUR || (d.status !== "OPEN" && d.status !== "PARTLY_PAID")) {
+    if (now.getTime() < due0 + grace * MS_PER_HOUR || (d.status !== "OPEN" && d.status !== "PARTLY_PAID") || d.paidSatang >= d.amountSatang) {
       return { overdue: false, dueStatus: d.status, overdueAction: action, ...base };
     }
     const cas = await tx.$queryRaw<{ id: string }[]>`
@@ -790,13 +828,14 @@ export async function markTripDueOverdue(g: Gate, due: { id: string; bookingId: 
       RETURNING "id"`;
     if (cas.length !== 1) return { overdue: false, dueStatus: d.status, overdueAction: action, ...base };
     await emitMoney(tx, g, [{ type: "trips.payment.overdue", key: d.id, payload: { dueId: d.id, bookingId: b.id, amountSatang: d.amountSatang - d.paidSatang, dueAt: new Date(d.dueAt).toISOString() } }]);
-    await auditMoney(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: { kind: "SYSTEM", job: "trips.paymentDue" }, at: now }, "trips.payment.overdue", { type: "TripPaymentDue", id: d.id }, {
+    await auditMoney(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: { kind: "SYSTEM", job: "trips.paymentDue" } }, "trips.payment.overdue", { type: "TripPaymentDue", id: d.id }, {
       bookingId: b.id,
       status: "OVERDUE",
       outstandingSatang: d.amountSatang - d.paidSatang,
       overdueAction: action,
     }, { status: d.status });
-    return { overdue: true, dueStatus: "OVERDUE", overdueAction: action, ...base };
+    const released = action === "AUTO_RELEASE" && autoRelease ? await autoRelease(tx, b, d.id) : false;
+    return { overdue: true, dueStatus: "OVERDUE", overdueAction: action, ...base, autoReleased: released };
   });
 }
 // ── /T0.7 money ──

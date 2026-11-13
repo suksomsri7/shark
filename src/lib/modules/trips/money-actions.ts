@@ -29,6 +29,16 @@ function denied(e: unknown): typeof FORBIDDEN {
   if (e instanceof ForbiddenError) return FORBIDDEN;
   throw e;
 }
+/** มีสิทธิ์อนุมัติคืนเงินไหม (มติ r1 V2 V4: เหตุที่ไม่ใช่ลูกค้า · ถอนคำขอที่อนุมัติแล้ว) */
+function canDecideRefund(m: MembershipCtx, unitId: string): boolean {
+  try {
+    assertCan(m, { module: "trips", action: "trips.refund.approve", unitId });
+    return true;
+  } catch (e) {
+    if (e instanceof ForbiddenError) return false;
+    throw e;
+  }
+}
 
 // ── อ่าน (trips.booking.view) ──
 export async function listTripDuesAction(unitSlug: string, input: unknown) {
@@ -114,9 +124,9 @@ export async function requestTripRefundAction(unitSlug: string, input: unknown) 
   } catch (e) {
     return denied(e);
   }
-  return refund.requestTripRefund(ctxOf(auth, unit.id), input);
+  return refund.requestTripRefund(ctxOf(auth, unit.id), input, { canDecide: canDecideRefund(m, unit.id) });
 }
-/** ถอนคำขอ = สิทธิ์เดียวกับผู้ยื่น */
+/** ถอนคำขอ = สิทธิ์เดียวกับผู้ยื่น · ถอนคำขอที่อนุมัติแล้วต้องมีสิทธิ์อนุมัติด้วย (มติ r1 V4) */
 export async function withdrawTripRefundAction(unitSlug: string, input: unknown) {
   const { auth, unit } = await requireUnit(unitSlug);
   const m = memberOf(auth);
@@ -125,7 +135,7 @@ export async function withdrawTripRefundAction(unitSlug: string, input: unknown)
   } catch (e) {
     return denied(e);
   }
-  return refund.withdrawTripRefund(ctxOf(auth, unit.id), input);
+  return refund.withdrawTripRefund(ctxOf(auth, unit.id), input, { canDecide: canDecideRefund(m, unit.id) });
 }
 export async function decideTripRefundAction(unitSlug: string, input: unknown) {
   const { auth, unit } = await requireUnit(unitSlug);
