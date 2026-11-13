@@ -682,11 +682,14 @@ async function markMedicalInTx(tx: Tx, u: Unit, who: Who, passengerId: string, b
 }
 
 // ═══════════════════════ อัตรา (r1 P6) ═══════════════════════
-/** ถังของเครื่องเกินเพดานความผิดพลาดแล้วหรือยัง (อ่านอย่างเดียว · ไม่เพิ่มตัวนับ) */
+/**
+ * ถังของเครื่องถึงเพดานความผิดพลาดแล้วหรือยัง (อ่านอย่างเดียว · ไม่เพิ่มตัวนับ) — กติกาเดียว: ผิดครบ N ครั้ง (N = เพดานที่ใช้) ⇒ คำขอถัดไปจากเครื่องนั้น RATE_LIMITED
+ * แม้ token ถูก (ตรงกับ checkRateLimitDb ที่ให้ผ่าน count ≤ N แล้วปฏิเสธครั้งที่ N+1 ⇒ ที่นี่ count ≥ N)
+ */
 async function deviceOverLimit(db: Tx, key: string, limit: number): Promise<boolean> {
   const rows = await db.$queryRaw<{ count: number; windowStart: Date }[]>`SELECT "count", "windowStart" FROM "ChatRateBucket" WHERE "key" = ${key}`;
   const r = rows[0];
-  return !!r && new Date(r.windowStart).getTime() > Date.now() - TOKEN_WINDOW_MS && r.count > limit;
+  return !!r && new Date(r.windowStart).getTime() > Date.now() - TOKEN_WINDOW_MS && r.count >= limit;
 }
 
 // ═══════════════════════ ลิงก์ (§5) ═══════════════════════
