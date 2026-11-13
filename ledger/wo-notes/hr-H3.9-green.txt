@@ -84,3 +84,27 @@ fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr
 fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
 typecheck exit=0 errors=0
 S4.12 red on old lock (working copy, hr:reports:settings + no row lock): 59/60 · r0:blocked=false off=false other=true (3/3)
+
+# merge round (session/hr d295e6d09 · H3.6) · HEAD 3382b8ed5 · 2026-11-13T17:47:00Z · base = local session/hr merge-base
+seed exit=0 ===== seed-hr-qc ===== ผ่าน 34/34 JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":34,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"A
+h39-forced1 exit=0   ✅ [H3.9-Z1] no residue (HrEmployeeRegister included) ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":fa
+h39-forced2 exit=0   ✅ [H3.9-Z1] no residue (HrEmployeeRegister included) ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":fa
+h39-unforced exit=0   ✅ [H3.9-Z1] no residue (HrEmployeeRegister included) ===== qc-hr-h3.9 ===== passed 60/60 JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missi
+qc-hr-h3.6 exit=0   ✅ [H3.6-Z1] no residue (4 new tables + AccountDocSequence rows of the QC tenants) ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.6","total":62,"passed":62,"failed":[],"findings":[],"skipped":fal
+qc-hr-h3.5 exit=0   ✅ [H3.5-Z1] no residue (3 new tables included) ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.5","total":53,"passed":53,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"m
+qc-hr-h3.4 exit=0   ✅ [H3.4-Z1] no residue · ACTIVE law count restored ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.4","total":85,"passed":85,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":fal
+qc-hr-h2.9 exit=0   ✅ [H2.9-Z1] [db] no residue ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.9","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed
+qc-hr-h2.6 exit=0   ✅ [H2.6-Z1] [control] residue none ===== qc-hr-h2.6 ===== passed 56/56 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.6","total":56,"passed":56,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"
+qc-hr-h2.5 exit=0   ✅ [H2.5-Z1] residue: qc-hr-h25-* tenants/rows/users/sessions/new tables gone ===== qc-hr-h2.5 ===== passed 79/79 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.5","total":79,"passed":79,"failed":[],"findings":[],"skipped":false,"f
+qc-hr-h2.4 exit=0   ✅ [H2.4-Z1] residue: qc-hr-h24-* tenants, users, buckets, rows gone ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.4","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":tr
+qc-hr-h1.1 exit=0   ✅ [H1.1-Z1] residue: tenants qc-hr-h1.1-* gone · no row of ours in HR/payroll/borrowing/audit/outbox · users/sessions gone · no rate rows ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.1","to
+qc-hr-h1.2 exit=0   ✅ [H1.2-Z1] residue: tenants qc-hr-h1.2-* gone · no row of ours in the 8 new tables + HR/payroll/audit/outbox · users/sessions gone ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73
+qc-hr-h1.3 exit=0   ✅ [H1.3-Z1] residue: tenants qc-hr-h1.3-* gone · 0 rows of ours in any tenantId table (incl. the 3 new + H1.2 tables) · law rows qc-h1.3-<stamp>* gone · users gone ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) JSON_SUMMARY
+qc-hr-h0.1 exit=0   ✅ [H0.1-Z1] residue: throwaway tenants, every tenantId row, users/sessions are gone ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":f
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]} 
+qc-audit-trail exit=0 ✅ PASS — 21/21 
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+typecheck exit=0 errors=0
