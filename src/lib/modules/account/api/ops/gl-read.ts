@@ -34,6 +34,8 @@ import { currentPeriodKey, isPeriodKey, listPeriods, listVatFilings, periodCheck
 import { fiscalYearEndMonth, getPolicy } from "../../policy";
 import { agingReport, balanceSheet, cashFlow, pp30, pp30Csv, profitLoss, trialBalance } from "../../reports";
 import { defineOp, type ApiOp } from "../op";
+import { ymd } from "../serialize";
+import { parkedOutputVat } from "../../tax-point";
 import { ApiError, paged, type PagedInfo } from "../respond";
 import {
   agingView,
@@ -527,6 +529,54 @@ const reportsAging = defineOp({
   },
 });
 
+// ═══════════════ ACC T1.2 — ภาษีขายที่ค้างพัก ═══════════════
+
+const parkedVatInput = z
+  .object({
+    asOf: ymdField("asOf").optional(),
+    onlyPastMonth: z
+      .preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean())
+      .optional()
+      .describe("Only invoices whose goods VAT is still parked after the invoice's month."),
+  })
+  .strict();
+
+const reportsParkedVat = defineOp({
+  id: "reports.parked-vat",
+  method: "GET",
+  path: "/reports/parked-vat",
+  kind: "read",
+  action: "account.tax.view",
+  rate: "report",
+  summary: "Output VAT still parked per invoice (goods awaiting a tax invoice, services awaiting payment), with age and the legal warning for goods VAT parked past the invoice's month.",
+  label: "ภาษีขายที่ค้างพัก",
+  input: parkedVatInput,
+  tool: { name: "account_parked_vat", hint: "Use to find output VAT that has not reached the VAT return yet, and which invoices need a tax invoice." },
+  test: "T1.2-TP8",
+  async handler({ actor, input }) {
+    const asOf = input.asOf ? dayEnd(input.asOf) : undefined;
+    const r = await parkedOutputVat({ tenantId: actor.tenantId, systemId: actor.systemId }, { asOf, onlyPastMonth: input.onlyPastMonth });
+    return {
+      asOf: r.asOf.toISOString(),
+      rows: r.rows.map((x) => ({
+        documentId: x.documentId,
+        docNo: x.docNo,
+        issueDate: ymd(x.issueDate),
+        status: x.status,
+        contactName: x.contactName,
+        grandTotalSatang: x.grandTotal,
+        goodsVatSatang: x.goods,
+        serviceVatSatang: x.service,
+        ageDays: x.ageDays,
+        pastMonth: x.pastMonth,
+        warning: x.warning,
+      })),
+      total: { goodsVatSatang: r.total.goods, serviceVatSatang: r.total.service, goodsPastMonthSatang: r.total.goodsPastMonth, invoicesPastMonth: r.total.countPastMonth },
+      warning: r.warning,
+    };
+  },
+});
+
 // ═══════════════ งวดบัญชี ═══════════════
 
 const periodsList = defineOp({
@@ -643,6 +693,7 @@ export const GL_READ_OPS: ApiOp[] = [
   reportsCashFlow,
   reportsVatPp30,
   reportsAging,
+  reportsParkedVat,
   periodsList,
   periodsChecklist,
   assetsList,

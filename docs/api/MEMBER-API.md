@@ -1943,7 +1943,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/giftcards/123/use" \
 | `denominations` | array of integer | no | Preset values in satang. · max 20 items |
 | `transferable` | boolean | no | - |
 | `reloadable` | boolean | no | - |
-| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT") | no | Legal warning codes the user has read and accepted (from a 409 legal_ack_required). An expiry shorter than the system default of 12 months needs GIFTCARD_EXPIRY_BELOW_DEFAULT. · max 20 items |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED") | no | Legal warning codes the user has read and accepted (from a 409 legal_ack_required). An expiry shorter than the system default of 12 months needs GIFTCARD_EXPIRY_BELOW_DEFAULT. · max 20 items |
 
 ```bash
 curl -sS -X PUT "https://shark.in.th/api/v1/member/giftcards/settings" \

@@ -83,6 +83,7 @@ import { ApiError, legalAckApiError } from "../respond";
 import { actorAuditId, actorAuditType } from "@/lib/api/actor";
 import { LEGAL_WARNING_CODES, type LegalAckRequired } from "@/lib/core/settings/legal/warnings";
 import { docRow, ymd } from "../serialize";
+import { releaseParkedVat } from "../../tax-point";
 
 // ── ค่าคงที่ของสัญญา ────────────────────────────────────────────────────────
 
@@ -212,6 +213,10 @@ const lineInput = z
       .describe(`${VAT_RATE_DESC} Default: the standard rate of the book on the issue date.`),
     productId: z.string().max(40).nullish().describe("Id of a product in this book, when the line comes from the catalogue."),
     accountId: z.string().max(40).nullish().describe("Id of the chart of accounts entry to post this line to (expense and asset documents)."),
+    kind: z
+      .enum(["GOODS", "SERVICE"])
+      .nullish()
+      .describe("Sales documents: goods or service line. Decides when output VAT is due (goods: on delivery/invoice; service: on payment). Default: the product's type, else the document's tax point."),
   })
   .strict();
 
@@ -229,6 +234,7 @@ async function toServiceLines(ctx: { tenantId: string; systemId: string }, lines
     ...(l.vatRateBp === undefined ? {} : { vatRateBp: l.vatRateBp }),
     productId: l.productId ?? null,
     accountId: l.accountId ?? null,
+    ...(l.kind ? { lineKind: l.kind } : {}),
   }));
 }
 
@@ -1325,6 +1331,49 @@ const recurringRun = defineOp({
   },
 });
 
+// ═══════════════ ACC T1.2 — ปล่อยภาษีขายที่ค้างพัก ═══════════════
+
+const releaseVatInput = z
+  .object({
+    date: z
+      .enum(["TODAY", "INVOICE_DATE"])
+      .describe("Date of the tax invoice issued late to release parked output VAT. Required, there is no default: INVOICE_DATE puts the VAT in the invoice's month (a filed PP30 may need an additional return); TODAY puts it in this month."),
+    goods: z.boolean().optional().describe("Release parked VAT of goods lines. Default true."),
+    services: z.boolean().optional().describe("Release parked VAT of service lines (normally released per payment). Default false."),
+    acknowledge: z
+      .array(z.enum(LEGAL_WARNING_CODES))
+      .max(20)
+      .optional()
+      .describe("Legal warning codes the user has read and accepted (TAX_INVOICE_LATE_DATE_CHOICE)."),
+  })
+  .strict();
+
+const documentsReleaseVat = defineOp({
+  id: "documents.release-vat",
+  method: "POST",
+  path: "/documents/{id}/release-vat",
+  kind: "write",
+  action: "account.doc.issue",
+  summary: "Issue a tax invoice for the output VAT still parked on an invoice (goods by default) so it reaches the VAT return. Existing documents are not changed.",
+  label: "ปล่อยภาษีขายที่ค้างพัก",
+  tool: { name: "account_release_parked_vat", hint: "Issues a tax invoice for VAT still parked on an invoice; the date choice is the shop's, so propose it for the owner to confirm." },
+  input: releaseVatInput,
+  test: "T1.2-TP9",
+  async handler({ actor, params, input }) {
+    const { tenantId, systemId } = actor;
+    const id = params.id ?? "";
+    const current = await getDocRef(tenantId, systemId, id);
+    if (!current || current.docType !== "INVOICE") throw notFound();
+    const ack = { codes: input.acknowledge ?? [], actorId: actorAuditId(actor), actorType: actorAuditType(actor), via: actor.kind === "apikey" ? "rest" : "ai-proposal" };
+    const res = await releaseParkedVat({ tenantId, systemId }, [id], { date: input.date, kinds: { goods: input.goods ?? true, service: input.services ?? false }, ack });
+    if (!res.ok && res.legal) throw legalAckApiError(res.legal.warnings);
+    if (!res.ok) failWith(res.reason);
+    if (res.skipped.length > 0) failWith(res.skipped[0]!.reason);
+    const r = res.released[0]!;
+    return { documentId: r.documentId, taxInvoiceId: r.taxInvoiceId, taxInvoiceNo: r.taxInvoiceNo, vatSatang: r.vat, goodsVatSatang: r.goods, serviceVatSatang: r.service, date: ymd(r.date) };
+  },
+});
+
 export const DOCUMENTS_WRITE_OPS: ApiOp[] = [
   documentsCreate,
   documentsUpdate,
@@ -1335,6 +1384,7 @@ export const DOCUMENTS_WRITE_OPS: ApiOp[] = [
   documentsApprove,
   documentsReject,
   documentsVoid,
+  documentsReleaseVat,
   documentsReceive,
   documentsDeposits,
   documentsSetDeposits,

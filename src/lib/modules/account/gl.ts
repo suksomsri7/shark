@@ -9,6 +9,7 @@ import type {
 import { seedChartOfAccounts } from "./coa";
 import { isLockedDate, lockedMessage } from "./policy";
 import { vatRateBpAt } from "./legal-values";
+import { kindFromTiming, rawVatByKind, splitByKind, type KindSplit, type LineKind } from "./tax-point-shared";
 
 // ─────────────────────────────────────────────────────────────
 // gl.ts — Posting engine (double-entry) — QC5 Gate A
@@ -524,6 +525,78 @@ function splitByWeight(total: number, weights: number[]): number[] {
   return out;
 }
 
+// ─────────────────── ACC T1.2 · VAT ขายที่พักต่อชนิดบรรทัด ───────────────────
+
+/** แบ่งยอด VAT ที่พักของใบแจ้งหนี้เป็นสินค้า/บริการ ตาม VAT ต่อบรรทัด (ผลรวม = total เป๊ะ) */
+async function invoiceParkSplit(
+  ctx: GlCtx,
+  db: Db,
+  doc: { id: string; vatMode: string; discountAmount: number; vatTiming: string; taxPointBasis: string | null },
+  total: number,
+  vatRateBp: number,
+): Promise<KindSplit> {
+  const timing = doc.taxPointBasis ?? doc.vatTiming;
+  const lines = await db.accountDocumentLine.findMany({
+    where: { documentId: doc.id, systemId: ctx.systemId },
+    orderBy: { sortOrder: "asc" },
+    select: { amount: true, vatRateBp: true, lineKind: true },
+  });
+  const raw = rawVatByKind({ lines, vatMode: doc.vatMode, discountAmount: doc.discountAmount, vatRateBp, docTiming: timing });
+  return splitByKind(total, raw, kindFromTiming(timing));
+}
+
+export type ParkedVat = {
+  /** VAT ที่ยังพัก (สตางค์) — สินค้า 2205 · บริการ 2210 */
+  goods: number;
+  service: number;
+  /** VAT ที่พักตอนออกใบแจ้งหนี้ (ก่อนปล่อย) */
+  goodsAtIssue: number;
+  serviceAtIssue: number;
+};
+
+/**
+ * ACC T1.2 ▸ VAT ขายที่ยังพักของใบแจ้งหนี้ — อ่านจาก GL จริง (ไม่เชื่อสถานะเอกสาร):
+ *   Σ(เครดิต − เดบิต) ของบัญชีพักสินค้า (2205) / บริการ (2210) ใน JV ของตัวใบแจ้งหนี้ + ใบกำกับที่อ้างใบนั้น
+ *   (รวมรายการกลับ — ใช้ refId เดียวกับต้นฉบับ ⇒ ยกเลิกแล้วหักล้างเป็นศูนย์เอง) · ใช้กับข้อมูลเก่าได้ทันที ◂
+ */
+export async function parkedVatOf(ctx: GlCtx, invoiceIds: readonly string[], tx?: Tx): Promise<Map<string, ParkedVat>> {
+  const out = new Map<string, ParkedVat>();
+  if (invoiceIds.length === 0) return out;
+  return withTx(tx, async (db) => {
+    const goodsAcc = (await resolveLine(ctx, "VAT_OUTPUT_PENDING_INVOICE", undefined, db)).accountId;
+    const svcAcc = (await resolveLine(ctx, "VAT_OUTPUT_UNDUE", undefined, db)).accountId;
+    const tis = await db.accountDocument.findMany({
+      where: { systemId: ctx.systemId, docType: "TAX_INVOICE", sourceDocId: { in: [...invoiceIds] } },
+      select: { id: true, sourceDocId: true },
+    });
+    const owner = new Map<string, string>();
+    for (const id of invoiceIds) owner.set(id, id);
+    for (const t of tis) if (t.sourceDocId) owner.set(t.id, t.sourceDocId);
+    for (const id of invoiceIds) out.set(id, { goods: 0, service: 0, goodsAtIssue: 0, serviceAtIssue: 0 });
+    const lines = await db.accountJournalLine.findMany({
+      where: {
+        systemId: ctx.systemId,
+        accountId: { in: [goodsAcc, svcAcc] },
+        entry: { refType: "AccountDocument", refId: { in: [...owner.keys()] } },
+      },
+      select: { accountId: true, debit: true, credit: true, entry: { select: { refId: true, reversalOfId: true, journal: true } } },
+    });
+    for (const l of lines) {
+      const ivId = owner.get(l.entry.refId ?? "");
+      if (!ivId) continue;
+      const row = out.get(ivId)!;
+      const net = l.credit - l.debit;
+      if (l.accountId === goodsAcc) row.goods += net;
+      else row.service += net;
+      if (l.entry.refId === ivId && !l.entry.reversalOfId && l.entry.journal !== "REVERSAL") {
+        if (l.accountId === goodsAcc) row.goodsAtIssue += l.credit;
+        else row.serviceAtIssue += l.credit;
+      }
+    }
+    return out;
+  });
+}
+
 // ─────────────────── postDocument ───────────────────
 
 export async function postDocument(
@@ -606,12 +679,17 @@ export async function postDocument(
     switch (doc.docType) {
       case "INVOICE": {
         // Dr 1100 AR · Dr 2110 (ฐานมัดจำ) · Cr รายได้ · Cr VAT รอ (2205 goods / 2210 service)
-        const timing = doc.taxPointBasis ?? doc.vatTiming;
-        const vatKey = timing === "ON_PAYMENT" ? "VAT_OUTPUT_UNDUE" : "VAT_OUTPUT_PENDING_INVOICE";
+        // ACC T1.2 ▸ แยกตามชนิดบรรทัด (ม.78 สินค้า · ม.78/1 บริการ): VAT สินค้า → 2205 · VAT บริการ → 2210
+        //   ยอดรวมพัก = vatAmount − VAT ส่วนมัดจำ (เท่าเดิม) · แบ่งตาม VAT ต่อบรรทัด (largest remainder · ผลรวมเป๊ะ)
+        //   บรรทัดเดิมที่ไม่มีชนิด = ชนิดตามจุดรับรู้ของทั้งใบ ⇒ ใบเดิม JV เหมือนเดิมทุกสตางค์ ◂
         b.dr(await b.id("AR"), doc.grandTotal);
         if (dep.base > 0) b.dr(await b.id("DEPOSIT_RECEIVED"), dep.base, "หักมัดจำ");
         await creditIncome(await b.id(incomeKey, doc.docType));
-        if (rate > 0) b.cr(await b.id(vatKey), doc.vatAmount - dep.vat);
+        if (rate > 0) {
+          const split = await invoiceParkSplit(ctx, db, doc, doc.vatAmount - dep.vat, vatRateBp);
+          b.cr(await b.id("VAT_OUTPUT_PENDING_INVOICE"), split.goods);
+          b.cr(await b.id("VAT_OUTPUT_UNDUE"), split.service);
+        }
         book = "SALES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ออกใบแจ้งหนี้" };
         break;
@@ -934,7 +1012,15 @@ export async function postTaxInvoice(
     const timing = doc.taxPointBasis ?? doc.vatTiming;
     const parkedKey = timing === "ON_PAYMENT" ? "VAT_OUTPUT_UNDUE" : "VAT_OUTPUT_PENDING_INVOICE";
     const b = new Book(ctx, db);
-    b.dr(await b.id(parkedKey), doc.vatAmount);
+    // ACC T1.2 ▸ ใบกำกับของใบแจ้งหนี้: ปล่อยจากบัญชีพักตามชนิดบรรทัดของใบกำกับ (สินค้า 2205 · บริการ 2210)
+    //   ใบที่ครอบทั้งสองชนิด = แบ่งตามยอดที่ยังพักของใบแจ้งหนี้ (ตรงยอดพอดี = ปล่อยหมดทั้งคู่) ◂
+    const rel = await releaseSplitFor(ctx, db, doc, timing);
+    if (rel) {
+      b.dr(await b.id("VAT_OUTPUT_PENDING_INVOICE"), rel.goods);
+      b.dr(await b.id("VAT_OUTPUT_UNDUE"), rel.service);
+    } else {
+      b.dr(await b.id(parkedKey), doc.vatAmount);
+    }
     b.cr(await b.id("VAT_OUTPUT"), doc.vatAmount);
 
     const entry = await commitEntry(
@@ -953,6 +1039,27 @@ export async function postTaxInvoice(
     );
     return { entryId: entry.id };
   });
+}
+
+/** ACC T1.2 ▸ ยอดปล่อยต่อชนิดของใบกำกับที่อ้างใบแจ้งหนี้ · null = ไม่ใช่ใบกำกับของใบแจ้งหนี้ (ใช้กติกาเดิม) */
+async function releaseSplitFor(
+  ctx: GlCtx,
+  db: Db,
+  ti: { id: string; vatAmount: number; sourceDocId: string | null },
+  timing: string,
+): Promise<KindSplit | null> {
+  if (!ti.sourceDocId) return null;
+  const src = await db.accountDocument.findFirst({ where: { id: ti.sourceDocId, systemId: ctx.systemId }, select: { docType: true } });
+  if (src?.docType !== "INVOICE") return null;
+  const lines = await db.accountDocumentLine.findMany({ where: { documentId: ti.id, systemId: ctx.systemId }, select: { lineKind: true } });
+  const kinds = new Set<LineKind>(lines.map((l) => (l.lineKind === "GOODS" || l.lineKind === "SERVICE" ? l.lineKind : kindFromTiming(timing))));
+  if (kinds.size === 0) kinds.add(kindFromTiming(timing));
+  if (kinds.size === 1) return kinds.has("GOODS") ? { goods: ti.vatAmount, service: 0 } : { goods: 0, service: ti.vatAmount };
+  const p = (await parkedVatOf(ctx, [ti.sourceDocId], db as Tx)).get(ti.sourceDocId)!;
+  const g = Math.max(0, p.goods);
+  const sv = Math.max(0, p.service);
+  if (g + sv === ti.vatAmount) return { goods: g, service: sv };
+  return splitByKind(ti.vatAmount, { goods: g, service: sv }, kindFromTiming(timing));
 }
 
 /**

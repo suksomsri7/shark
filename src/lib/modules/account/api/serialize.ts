@@ -252,6 +252,7 @@ export function docDetail(d: DocDetailData) {
       discountSatang: l.discount,
       vatRateBp: l.vatRateBp,
       amountSatang: l.amount,
+      kind: l.lineKind ?? null,
       account: l.account ? { code: l.account.code, name: l.account.name } : null,
     })),
     subTotalSatang: d.subTotal,

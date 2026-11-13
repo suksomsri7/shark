@@ -167,7 +167,10 @@ export type DocSettings = {
   };
   /** การออกใบกำกับภาษีอัตโนมัติ */
   autoTaxInvoice: {
+    /** บรรทัดบริการ: ON_PAYMENT ต่องวดรับเงิน (ม.78/1) · ON_INVOICE พร้อมใบแจ้งหนี้ · MANUAL ร้านกดเอง */
     mode: AutoTaxInvoiceMode;
+    /** ACC T1.2 — บรรทัดสินค้า: ออกใบกำกับพร้อมใบแจ้งหนี้ (ม.78 + ม.86) · ค่าเริ่ม true · ปิด = VAT สินค้าพักไว้ + คำเตือนข้ามเดือน */
+    goodsOnIssue: boolean;
     posAbbreviated: boolean; // สร้างใบกำกับอย่างย่อจากบิล POS
     legalText: string; // ข้อความตามกฎหมายท้ายใบกำกับ
   };
@@ -217,7 +220,7 @@ export function defaultDocSettings(): DocSettings {
     due: { quotationValidDays: 30, invoiceCreditDays: 30, purchaseOrderDueDays: 7, basis: "ISSUE" },
     channels: { order: [] },
     publicView: { enabled: true, showOutstanding: true, promptPayButton: true, expiryDays: 0 },
-    autoTaxInvoice: { mode: "ON_PAYMENT", posAbbreviated: true, legalText: DEFAULT_LEGAL_TEXT },
+    autoTaxInvoice: { mode: "ON_PAYMENT", goodsOnIssue: true, posAbbreviated: true, legalText: DEFAULT_LEGAL_TEXT },
     print: {
       template: "STANDARD",
       language: "TH",
@@ -335,6 +338,7 @@ export function parseDocSettings(docConfig: unknown): DocSettings {
         auto.mode === "ON_INVOICE" || auto.mode === "MANUAL" || auto.mode === "ON_PAYMENT"
           ? (auto.mode as AutoTaxInvoiceMode)
           : d.autoTaxInvoice.mode,
+      goodsOnIssue: bool(auto.goodsOnIssue, d.autoTaxInvoice.goodsOnIssue),
       posAbbreviated: bool(auto.posAbbreviated, d.autoTaxInvoice.posAbbreviated),
       legalText: str(auto.legalText, d.autoTaxInvoice.legalText),
     },

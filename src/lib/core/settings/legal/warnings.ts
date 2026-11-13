@@ -34,6 +34,10 @@ export const LEGAL_WARNING_CODES = [
   "ADJUST_NOTE_REASON_MISSING",
   "BUYER_TAX_ID_MISSING",
   "GIFTCARD_EXPIRY_BELOW_DEFAULT",
+  // ── จุดรับผิดขายสินค้า (T1.2) ──
+  "OUTPUT_VAT_PARKED_PAST_MONTH",
+  "TAX_INVOICE_LATE_DATE_CHOICE",
+  "GOODS_TAX_INVOICE_DEFERRED",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -196,6 +200,38 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     tag: "U",
     checkedAt: "2026-11-12",
     ack: true,
+  },
+  OUTPUT_VAT_PARKED_PAST_MONTH: {
+    code: "OUTPUT_VAT_PARKED_PAST_MONTH",
+    titleTh: "ภาษีขายของสินค้าค้างพักข้ามเดือน",
+    messageTh: (p) =>
+      p.count !== undefined
+        ? `มีใบแจ้งหนี้ ${s(p, "count")} ใบที่ภาษีขายของสินค้ารวม ฿${s(p, "vat")} ยังพักอยู่ (ยังไม่ออกใบกำกับ) ข้ามเดือนของใบแจ้งหนี้ — ภาษีขายของสินค้าเกิดเมื่อส่งมอบ (ม.78) และต้องออกใบกำกับในทันทีที่ความรับผิดเกิด (ม.86) · ยอดที่พักไม่เข้า ภ.พ.30 จนกว่าจะออกใบกำกับ`
+        : `ภาษีขายของสินค้า ฿${s(p, "vat")} ในใบแจ้งหนี้ ${s(p, "docNo")} (ลงวันที่ ${s(p, "date")}) ยังพักอยู่ ${s(p, "days")} วัน ข้ามเดือนของใบแจ้งหนี้ — ภาษีขายของสินค้าเกิดเมื่อส่งมอบ (ม.78) และต้องออกใบกำกับในทันทีที่ความรับผิดเกิด (ม.86) · ยอดนี้ไม่เข้า ภ.พ.30 จนกว่าจะออกใบกำกับ`,
+    citation: "ประมวลรัษฎากร ม.78(1), ม.86 · references/common-vat-invoice.md §4, §13",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  TAX_INVOICE_LATE_DATE_CHOICE: {
+    code: "TAX_INVOICE_LATE_DATE_CHOICE",
+    titleTh: "เลือกวันที่ของใบกำกับที่ออกตามหลัง",
+    messageTh: (p) =>
+      `ใบกำกับที่ออกตามหลังเพื่อปล่อยภาษีขายที่พักไว้ (${s(p, "choice")}) — ลงวันที่ใบแจ้งหนี้: ภาษีเข้าเดือนเดิมตามจุดรับผิด (ม.78) แต่ถ้ายื่น ภ.พ.30 เดือนนั้นแล้วอาจต้องยื่นเพิ่มเติม · ลงวันที่วันนี้: ภาษีเข้าเดือนนี้ แต่จุดรับผิดของสินค้าอยู่ที่วันส่งมอบ · ไม่พบกติกาเรื่องวันที่ของใบกำกับที่ออกล่าช้าในแหล่งที่ระบบใช้ ร้านต้องเลือกเอง`,
+    citation: "ประมวลรัษฎากร ม.78(1), ม.86 · references/common-vat-invoice.md §4, §13 (§14 ข้อ 25 ว่าด้วยยกเลิก-ออกใหม่แทนฉบับเดิมเท่านั้น)",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  GOODS_TAX_INVOICE_DEFERRED: {
+    code: "GOODS_TAX_INVOICE_DEFERRED",
+    titleTh: "ไม่ออกใบกำกับของสินค้าพร้อมใบแจ้งหนี้",
+    messageTh: (p) =>
+      `ใบนี้จะไม่ออกใบกำกับของสินค้าพร้อมกัน — ภาษีขายของสินค้า ฿${s(p, "vat")} จะพักไว้จนกว่าจะออกใบกำกับ · ภาษีขายของสินค้าเกิดเมื่อส่งมอบ (ม.78) ถ้าส่งมอบแล้วต้องออกใบกำกับทันที (ม.86) · ระบบเตือนเมื่อค้างข้ามเดือน`,
+    citation: "ประมวลรัษฎากร ม.78(1), ม.86 · references/common-vat-invoice.md §4, §13",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
   },
 };
 
