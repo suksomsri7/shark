@@ -45,8 +45,10 @@ export type PrintView = {
   validUntilText: string | null;
   reference: string | null;
   seller: { name: string; address: string | null; branch: string; taxId: string | null; phone: string | null; logoUrl: string | null };
+  /** ACC T2.9 — ผู้ขายตรึงไว้ ณ วันออก (วันที่ตรึง) · null = อ่านจากค่าตั้งปัจจุบัน (ร่าง/ใบเก่าที่ยังไม่ตรึง) */
+  sellerFrozenAt?: string | null;
   buyer: { name: string; address: string; taxId: string; branch: string };
-  lines: { id: string; description: string; qty: string; unitName: string; unitPrice: string; vatCell: string | null; amount: string; imageUrl: string | null; sku: string }[];
+  lines: { id: string; description: string; qty: string; unitName: string; unitPrice: string; vatCell: string | null; amount: string; /** ACC T2.1 ส่วนลดของบรรทัด · null = ไม่มี */ discount?: string | null; imageUrl: string | null; sku: string }[];
   totals: { subTotal: string; discount: string | null; deposit: string | null; vatRows: (VatSummaryRow & { text: string })[]; grandTotal: string; grandLabel: string };
   note: string | null;
   footerNote: string | null;
@@ -263,6 +265,7 @@ function Page({ v, mark, L }: { v: PrintView; mark: PrintMark; L: PrintLabels })
               <th className="py-1 text-left">{L.item}</th>
               <th className="py-1 text-right">{L.qty}</th>
               <th className="py-1 text-right">{L.unitPrice}</th>
+              {v.lines.some((l) => l.discount) && <th className="py-1 text-right" data-testid="print-col-discount">{L.lineDiscount}</th>}
               {v.lines.some((l) => l.vatCell !== null) && <th className="py-1 text-right">{L.vat}</th>}
               <th className="py-1 text-right">{L.amount}</th>
             </tr>
@@ -284,6 +287,7 @@ function Page({ v, mark, L }: { v: PrintView; mark: PrintMark; L: PrintLabels })
                   {l.qty} {l.unitName}
                 </td>
                 <td className="py-1 text-right">{l.unitPrice}</td>
+                {v.lines.some((x) => x.discount) && <td className="py-1 text-right">{l.discount ?? "—"}</td>}
                 {l.vatCell !== null && <td className="py-1 text-right">{l.vatCell}</td>}
                 <td className="py-1 text-right">{l.amount}</td>
               </tr>

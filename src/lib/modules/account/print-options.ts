@@ -11,6 +11,8 @@ export type PrintLabels = {
   docNo: string; date: string; dueDate: string; validUntil: string; reference: string;
   buyer: string; buyerTax: string; taxId: string;
   item: string; sku: string; qty: string; unitPrice: string; vat: string; amount: string;
+  /** ACC T2.1 — หัวคอลัมน์ส่วนลดรายบรรทัด */
+  lineDiscount: string;
   subTotal: string; discount: string; deposit: string; vatAmount: string;
   grandTotal: string; netTotal: string;
   note: string; terms: string; channels: string;
@@ -35,6 +37,7 @@ const LABELS: Record<PrintLanguage, PrintLabels> = {
     sku: "รหัส",
     qty: "จำนวน",
     unitPrice: "ราคา/หน่วย",
+    lineDiscount: "ส่วนลด",
     vat: "VAT",
     amount: "จำนวนเงิน",
     subTotal: "มูลค่าสินค้า/บริการ",
@@ -69,6 +72,7 @@ const LABELS: Record<PrintLanguage, PrintLabels> = {
     sku: "Code",
     qty: "Qty",
     unitPrice: "Unit price",
+    lineDiscount: "Discount",
     vat: "VAT",
     amount: "Amount",
     subTotal: "Subtotal",
