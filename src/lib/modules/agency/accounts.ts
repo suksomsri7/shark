@@ -9,7 +9,7 @@
 // 🔴 ร้านไม่เห็นค่าใดของร้านอื่น · DTO มีเฉพาะคีย์ใน SHOP_AGENT_*_KEYS · ไม่มี agentUserId/identityId/ค่าลับ
 // 🔴 ไม่มีอีเมล/token/รหัส/ชื่อ ใน audit · event (payload {agentAccountId}) · ops log · ข้อความ error
 // ─────────────────────────────────────────────────────────────
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import type { Prisma, PartyKind } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
@@ -19,19 +19,25 @@ import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { resolveSettingsMany } from "@/lib/core/settings";
 import { integrationSecretKeyConfigured, sealIntegrationSecret } from "@/lib/core/integrations/secret-box";
 import { sendEmailRich } from "@/lib/core/email";
-import { env } from "@/lib/env";
+import { emailEnabled, env } from "@/lib/env";
 import { AGENT_PUBLIC_CODE_ALPHABET, normalizeAgentLogin, normalizeJuristicTaxId, type AgentRole } from "./identity-core";
 import {
   AGENCY_APPLY_PRIVACY_NOTICE_VERSION,
+  AGENCY_ID_RE,
   AGENT_AUTH_LIMITS,
+  STICKY_CLOSE_REASONS,
   agencyFail,
   agentAccountTransition,
   agentShopInviteMail,
   bucketOpts,
   cleanAgencyText,
+  cleanAgentEmailInput,
+  closeReasonKeepingSticky,
+  isPgRetryable,
   isRealYmd,
   isStickyCloseReason,
   licenceWarnings,
+  pgErrorCode,
   type AgencyFail,
   type AgencyErrorCode,
   type AgentAccountAction,
@@ -42,12 +48,15 @@ import {
   agentActorInTx,
   agentActorNow,
   agentEmailTagsInTx,
+  agentIdentityActiveInTx,
   agentUserDisplayNames,
   countOpenCodeInvitesOfIdentity,
+  countOpenCodeInvitesOfIdentityInTx,
   findAgentIdentityByCode,
   identityOwnerIdsInTx,
   identityPublicByIds,
   lockAgencyKeyInTx,
+  usableAgentUserIds,
   type AgentActorRow,
 } from "./entry";
 
@@ -129,7 +138,7 @@ const REQ_KEY = "agency.signup.requireApproval";
 const TIER_KEY = "agency.tier.newAgentTier";
 const DAY_MS = 86_400_000;
 const IDEM_WINDOW_MS = DAY_MS; // ย้อนหาแถว audit กันซ้ำ 24 ชม. (§7.4)
-const ID = z.string().min(1).max(64);
+const ID = z.string().regex(AGENCY_ID_RE); // r2 (มติ §10 ข้อ 17): id ที่มีอักขระควบคุม/NUL ไม่ไปถึงฐาน
 const IDEM = z.string().regex(/^[A-Za-z0-9_-]{8,90}$/);
 const SHOP_CODE_RE = /^[A-Z0-9][A-Z0-9_-]{1,15}$/;
 const UNIT_IDS = z.array(ID).max(50);
@@ -150,29 +159,12 @@ const iso = (d: Date | null | undefined): string | null => (d instanceof Date ? 
 const ymdOfDate = (d: Date | null | undefined): string | null => (d instanceof Date ? d.toISOString().slice(0, 10) : null);
 /** วันที่ไทย (Asia/Bangkok) ของ now — ใช้ตัดสินใบอนุญาตหมดอายุ */
 const thaiToday = (now: Date): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const canonical = (v: unknown): unknown => (Array.isArray(v) ? v.map(canonical) : isRec(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
 const randomShopCode = (): string => [...randomBytes(6)].map((b) => AGENT_PUBLIC_CODE_ALPHABET[b % AGENT_PUBLIC_CODE_ALPHABET.length]).join("");
 const partyKindOf = (payeeType: string): PartyKind => (payeeType === "TH_PERSON" ? "PERSON" : "COMPANY");
 const asStatus = (s: string): AgentAccountStatus => s as AgentAccountStatus;
 const platformOrigin = (): string => new URL(env.APP_URL).origin;
 
-const pgCodeOf = (e: unknown): string | null => {
-  const seen = new Set<unknown>();
-  const stack: unknown[] = [e];
-  while (stack.length) {
-    const cur = stack.pop();
-    if (!cur || typeof cur !== "object" || seen.has(cur)) continue;
-    seen.add(cur);
-    const o = cur as Record<string, unknown>;
-    if (o.code === "P2002") return "23505";
-    if (o.code === "P2034") return "40001";
-    if (o.code === "P2028") return "TX_TIMEOUT";
-    for (const k of ["code", "originalCode"]) if (typeof o[k] === "string" && /^[0-9A-Z]{5}$/.test(o[k] as string)) return o[k] as string;
-    for (const v of Object.values(o)) if (v && typeof v === "object") stack.push(v);
-  }
-  return null;
-};
 /** ชื่อ unique constraint ที่ชน (ไม่มีค่าของแถว) */
 const uniqueNameOf = (e: unknown): string => {
   const out: string[] = [];
@@ -207,24 +199,24 @@ async function safely<T>(where: string, tenantId: string | null, fn: () => Promi
   } catch (e) {
     if (e instanceof Abort) return e.fail;
     if (e instanceof AgentKeyMissing) return agencyFail("BUSY", { reason: "SERVER_KEY_MISSING" });
-    const code = pgCodeOf(e);
+    const code = pgErrorCode(e); // r2 (มติ §10 ข้อ 18): SQLSTATE จริงใต้ P2010
     if (code === "23505" && onUnique) {
       const f = onUnique(uniqueNameOf(e));
       if (f) return f;
     }
-    if (code === "40P01" || code === "40001" || code === "55P03" || code === "TX_TIMEOUT") return agencyFail("BUSY", { reason: "LOCK" });
+    if (isPgRetryable(code) || code === "55P03" || code === "TX_TIMEOUT") return agencyFail("BUSY", { reason: "LOCK" });
     await logUnexpected(where, e, tenantId);
     return agencyFail("BUSY", { reason: "UNEXPECTED" });
   }
 }
-/** tx ของร้าน (tenantDb) + ลองใหม่ 1 ครั้งเมื่อ deadlock/serialization */
+const RUN_TX_TRIES = 3;
+/** tx ของร้าน (tenantDb) + ลองใหม่เมื่อ deadlock/serialization (ครบแล้วยังชน ⇒ safely ตอบ BUSY LOCK ไม่ใช่ ERROR) */
 async function runTx<T>(tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
+  for (let attempt = 1; ; attempt++) {
     try {
       return await tenantDb({ tenantId }).$transaction((t) => fn(t as unknown as Tx), TX_OPTS);
     } catch (e) {
-      const code = pgCodeOf(e);
-      if ((code === "40P01" || code === "40001") && attempt === 0 && !(e instanceof Abort)) continue;
+      if (!(e instanceof Abort) && isPgRetryable(pgErrorCode(e)) && attempt < RUN_TX_TRIES) continue;
       throw e;
     }
   }
@@ -239,15 +231,22 @@ async function bucket(deps: AgencyDeps | undefined, prefix: string, raw: string,
   if (!v.ok) return agencyFail("RATE_LIMITED", { retryAfterSec: Math.max(1, Math.ceil(v.retryAfterSec ?? 60)) });
   return null;
 }
-/** ส่งนอกเส้นทางคำขอ (แบบ sendOtpMailOffPath) · ไม่เคยโยน · ล้ม ⇒ ops { kind, ref } เท่านั้น */
+/**
+ * ส่งนอกเส้นทางคำขอ (แบบ sendOtpMailOffPath) · ไม่เคยโยน · ล้ม ⇒ ops { kind, ref } เท่านั้น
+ * r2 (มติ §10 ข้อ 4): ไม่มีผู้ให้บริการส่งเมล ⇒ ไม่เรียก sendEmailRich (ทางสำรองของมันพิมพ์หัวเรื่องลง console) · ops WARN { kind, ref, reason }
+ */
 async function deliverShopInvite(deps: AgencyDeps | undefined, m: AgencyMail & { kind: "SHOP_INVITE"; token: string; url: string }, mail: { subject: string; text: string; html: string }, ref: string, tenantId: string): Promise<void> {
-  const fail = () => logOps("WARN", "agency.mail", "ส่งจดหมายเอเจนซี่ไม่สำเร็จ", { tenantId, detail: JSON.stringify({ kind: m.kind, ref }) }).catch(() => undefined);
+  const fail = (reason?: string) => logOps("WARN", "agency.mail", "ส่งจดหมายเอเจนซี่ไม่สำเร็จ", { tenantId, detail: JSON.stringify(reason ? { kind: m.kind, ref, reason } : { kind: m.kind, ref }) }).catch(() => undefined);
   if (deps?.sendAgentMail) {
     try {
       await deps.sendAgentMail(m);
     } catch {
       await fail();
     }
+    return;
+  }
+  if (!emailEnabled) {
+    await fail("NO_MAIL_PROVIDER");
     return;
   }
   const deliver = async (): Promise<void> => {
@@ -295,7 +294,7 @@ const last4Of = (v: string | null): string | null => {
 };
 const normEmail = (raw: unknown): string | null | undefined => {
   if (raw === undefined || raw === null) return null;
-  const s = cleanAgencyText(raw, 254);
+  const s = cleanAgentEmailInput(raw); // r2 (มติ §10 ข้อ 17): ด่านเดียวกับฝั่งล็อกอิน (ปฏิเสธอักขระควบคุม/zero-width/bidi ไม่ตัดทิ้ง)
   if (!s) return undefined;
   return normalizeAgentLogin({ kind: "EMAIL", providerId: "email", subject: s })?.subject ?? undefined;
 };
@@ -373,7 +372,8 @@ async function signupPolicy(shop: ShopInfo, now: Date): Promise<{ requireApprova
 async function unitsValid(db: Db, tenantId: string, unitIds: readonly string[]): Promise<boolean> {
   const uniq = [...new Set(unitIds)];
   if (!uniq.length) return true;
-  const n = await db.businessUnit.count({ where: { tenantId, id: { in: uniq }, type: { in: [...SELLING_UNIT_TYPES] } } });
+  // r2 (มติ §10 ข้อ 13): หน่วยที่ปิดแล้วไม่รับ (เชิญ/อนุมัติ/แก้)
+  const n = await db.businessUnit.count({ where: { tenantId, id: { in: uniq }, type: { in: [...SELLING_UNIT_TYPES] }, status: "ACTIVE" } });
   return n === uniq.length;
 }
 
@@ -428,6 +428,31 @@ const lockAccountPair = async (tx: Tx, identityId: string, tenantId: string): Pr
   await lockAgencyKeyInTx(tx, "agency.identity.v1", identityId);
   await lockAgencyKeyInTx(tx, "agency.account.v1", `${tenantId}:${identityId}`);
 };
+/**
+ * r2 (มติ §10 ข้อ 14 · H-F3) ▸ อีเมลผู้ติดต่อของใบสมัครตรงกับ "บัญชีอื่นของร้านเดียวกัน" ที่ร้านพัก/ปิด/ปฏิเสธไว้ไหม — ใช้เฉพาะข้อมูลที่ร้านเก็บเอง
+ * (AgentAccount.contact.email ของร้านนี้ · ไม่อ่านตาราง global · ไม่ข้ามร้าน): SUSPENDED · CLOSED เหตุ STICKY · PENDING ที่มีเหตุ STICKY ค้าง ·
+ * CLOSED IDENTITY_CLOSED ที่ถูกพักอยู่ตอนตัวตนปิด (suspendedAt ไม่ null — ปิดตัวตนไม่ล้างคอลัมน์นี้)
+ * ⚠️ จับได้เฉพาะเมื่อทั้งสองใบกรอกอีเมลผู้ติดต่อเดียวกัน (ช่องนี้ไม่บังคับ) — ดูหนี้ใน wo-notes
+ */
+async function contactMatchesBlockedInTx(tx: Tx, tenantId: string, email: string | null, selfId: string | null): Promise<boolean> {
+  if (!email) return false;
+  const sticky = [...STICKY_CLOSE_REASONS];
+  const hit = await tx.agentAccount.findFirst({
+    where: {
+      tenantId,
+      ...(selfId ? { id: { not: selfId } } : {}),
+      contact: { path: ["email"], equals: email },
+      OR: [
+        { status: "SUSPENDED" },
+        { status: "CLOSED", statusReason: { in: sticky } },
+        { status: "PENDING", statusReason: { in: sticky } },
+        { status: "CLOSED", statusReason: "IDENTITY_CLOSED", suspendedAt: { not: null } },
+      ],
+    },
+    select: { id: true },
+  });
+  return !!hit;
+}
 
 /**
  * สมัครกับร้าน (§6) — OWNER/ADMIN · zod + cleanAgencyText → rate limit ตัวตน → ร้าน → ร้าน (ไม่ผ่านไม่นับ) → ร้านขายทริป/ตั๋ว → A36/A2 →
@@ -446,11 +471,12 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
     if (app.taxId && !integrationSecretKeyConfigured()) return agencyFail("BUSY", { reason: "KEY_NOT_CONFIGURED" });
     const pre = await agentActorNow(a.data.agentUserId);
     if (!isAgentWriter(pre)) return agencyFail("FORBIDDEN");
-    const rl = (await bucket(opts.deps, "agent:apply:i:", pre.identityId, AGENT_AUTH_LIMITS.applyPerIdentity, now)) ?? (await bucket(opts.deps, "agent:apply:s:", tenantId, AGENT_AUTH_LIMITS.applyPerShop, now));
-    if (rl) return rl;
+    // r2 (มติ §10 ข้อ 19): ถังต่อตัวตนก่อน · ถังของร้านนับเฉพาะคำขอที่ "จะสร้าง/เปิดใบสมัคร" จริง — การเล่นซ้ำใบสมัครเดิม (PENDING ⇒ replayed)
+    //   และคำขอที่ถูกปฏิเสธจากสถานะแถวเดิม ไม่กินถังของร้าน (ตัวตนทิ้งขว้างไม่กี่รายปิดการสมัครของทั้งร้านไม่ได้)
+    const rlIdentity = await bucket(opts.deps, "agent:apply:i:", pre.identityId, AGENT_AUTH_LIMITS.applyPerIdentity, now);
+    if (rlIdentity) return rlIdentity;
     const shop = await sellingShop(tenantId);
     if (!shop) return agencyFail("NOT_FOUND");
-    const policy = await signupPolicy(shop, now);
     const db = tenantDb({ tenantId });
     const existing = await db.agentAccount.findFirst({ where: { tenantId, identityId: pre.identityId }, select: { id: true, status: true, statusReason: true, updatedAt: true, partyId: true } });
     const cooldownOver = (r: { updatedAt: Date }) => now.getTime() >= r.updatedAt.getTime() + AGENT_AUTH_LIMITS.reapplyCooldownDays * DAY_MS;
@@ -462,6 +488,9 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
     } else if ((await db.agentAccount.count({ where: { tenantId, status: "PENDING" } })) >= AGENT_AUTH_LIMITS.openPendingPerShop) {
       return agencyFail("RATE_LIMITED", { retryAfterSec: 3600 });
     }
+    const rlShop = await bucket(opts.deps, "agent:apply:s:", tenantId, AGENT_AUTH_LIMITS.applyPerShop, now);
+    if (rlShop) return rlShop;
+    const policy = await signupPolicy(shop, now);
     // Party ชื่ออย่างเดียว (นอก tx · ครั้งแรกเท่านั้น · ไม่มีเลขภาษี/อีเมล/เบอร์ — มติ R3 Q5)
     let partyId = existing?.partyId ?? null;
     if (!partyId) {
@@ -474,15 +503,19 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
       const who = await agentActorInTx(tx, a.data.agentUserId);
       if (!isAgentWriter(who) || who.identityId !== pre.identityId) return agencyFail("FORBIDDEN");
       const row = await tx.agentAccount.findFirst({ where: { tenantId, identityId: who.identityId }, select: { id: true, status: true, statusReason: true, updatedAt: true, partyId: true } });
+      // r2 (มติ §10 ข้อ 1): แถวที่เคยถูกร้านปิด/ปฏิเสธ = เหตุ STICKY ค้างอยู่ใน statusReason ตลอด (รอดจากสมัครซ้ำ/ถอนทุกรอบ) ⇒ REAPPLY เสมอ ไม่มีวัน REAPPLY_AUTO
+      const sticky = !!row && isStickyCloseReason(row.statusReason);
+      // r2 (มติ §10 ข้อ 14): ร้านอนุมัติอัตโนมัติ แต่อีเมลผู้ติดต่อของใบสมัครตรงกับบัญชีอื่นของร้านนี้ที่ร้านพัก/ปิด/ปฏิเสธไว้ ⇒ รอร้านอนุมัติ
+      const auto = !policy.requireApproval && !sticky && !(await contactMatchesBlockedInTx(tx, tenantId, app.contact.email, row?.id ?? null));
       let action: AgentAccountAction;
-      if (!row) action = policy.requireApproval ? "APPLY" : "AUTO_APPROVE";
+      if (!row) action = auto ? "AUTO_APPROVE" : "APPLY";
       else if (row.status === "PENDING") return { ok: true as const, agentAccountId: row.id, status: "PENDING" as const, replayed: true };
       else if (row.status === "ACTIVE") return agencyFail("ALREADY_REGISTERED");
       else if (row.status !== "CLOSED") return agencyFail("BAD_STATE");
-      else if (isStickyCloseReason(row.statusReason)) {
+      else if (sticky) {
         if (!cooldownOver(row)) return agencyFail("BAD_STATE");
         action = "REAPPLY";
-      } else action = policy.requireApproval ? "REAPPLY" : "REAPPLY_AUTO";
+      } else action = auto ? "REAPPLY_AUTO" : "REAPPLY";
       const t = agentAccountTransition(row ? asStatus(row.status) : null, action);
       if (!t) return agencyFail("BAD_STATE");
       const id = row?.id ?? newId;
@@ -501,15 +534,19 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
         approvedAt: active ? now : null,
         approvedById: null,
         suspendedAt: null,
-        statusReason: null,
-        ...(active && policy.tierId ? { tierId: policy.tierId } : {}),
+        // เหตุ STICKY คงไว้ระหว่าง PENDING (ร้านอนุมัติจึงล้าง) — closeReason ใน DTO แสดงเฉพาะเมื่อ CLOSED
+        statusReason: sticky && row ? row.statusReason : null,
       };
       if (!row) {
+        // r2 (มติ §10 ข้อ 10): นับ + แทรกใต้ล็อกระดับร้าน ⇒ ไม่เกินเพดานแม้ผู้สมัครคนละตัวตนยิงพร้อมกัน (ล็อกนี้ถือหลังล็อกตัวตน/บัญชีเสมอ และไม่มีใครถือมันแล้วขอล็อกอื่น)
+        await lockAgencyKeyInTx(tx, "agency.account.v1", `pending:${tenantId}`);
         if ((await tx.agentAccount.count({ where: { tenantId, status: "PENDING" } })) >= AGENT_AUTH_LIMITS.openPendingPerShop) return agencyFail("RATE_LIMITED", { retryAfterSec: 3600 });
         const code = await uniqueShopCodeInTx(tx, tenantId);
-        await tx.agentAccount.create({ data: { id, tenantId, identityId: who.identityId, kind: "AGENT", code, status: t.to, partyId: partyId as string, unitIds: [], ...fields } });
+        await tx.agentAccount.create({ data: { id, tenantId, identityId: who.identityId, kind: "AGENT", code, status: t.to, partyId: partyId as string, unitIds: [], ...fields, ...(active && policy.tierId ? { tierId: policy.tierId } : {}) } });
       } else {
-        const n = await tx.agentAccount.updateMany({ where: { tenantId, id: row.id, status: "CLOSED", updatedAt: row.updatedAt }, data: { status: t.to, ...fields } });
+        // r2 (มติ §10 ข้อ 11): สมัครซ้ำล้างเงื่อนไขการค้าของยุคก่อน — tierId = ค่าเริ่มต้นของร้าน (ACTIVE ทันที) หรือว่าง (ร้านตั้งตอนอนุมัติ) · unitIds ว่าง ·
+        //   คง code · ลิงก์ CRM · ข้อมูลธนาคาร
+        const n = await tx.agentAccount.updateMany({ where: { tenantId, id: row.id, status: "CLOSED", updatedAt: row.updatedAt }, data: { status: t.to, ...fields, tierId: active ? policy.tierId : null, unitIds: [] } });
         if (n.count !== 1) return stop("BUSY", "RACE");
       }
       const memberId = await seatMembersInTx(tx, tenantId, id, who);
@@ -582,13 +619,16 @@ export async function acceptShopInvite(actor: AgentActor, input: { tenantId: str
   }, () => agencyFail("ALREADY_LINKED"));
 }
 
-/** ถอนใบสมัคร (PENDING → CLOSED WITHDRAWN · ไม่มีช่วงรอ) — OWNER/ADMIN · ซ้ำ ⇒ replayed */
-export async function withdrawApplication(actor: AgentActor, input: { tenantId: string }, opts: AgencyOpts = {}): Promise<AccountWriteResult> {
+/**
+ * ถอนใบสมัคร (PENDING → CLOSED WITHDRAWN · ไม่มีช่วงรอ) — OWNER/ADMIN · ซ้ำ ⇒ replayed
+ * r2 (มติ §10 ข้อ 1): ใบสมัครซ้ำของบัญชีที่ร้านเคยปิด/ปฏิเสธ (เหตุ STICKY ค้าง) ⇒ กลับไป CLOSED พร้อมเหตุเดิม (ไม่ใช่ WITHDRAWN) — ช่วงรอนับใหม่จากตอนถอน ·
+ *   ถอนซ้ำในกรณีนี้ = BAD_STATE (แยกไม่ได้จากแถวที่ร้านปิดเอง — ตั้งใจ)
+ */
+export async function withdrawApplication(actor: AgentActor, input: { tenantId: string }, _opts: AgencyOpts = {}): Promise<AccountWriteResult> {
   const a = ACTOR.safeParse(actor);
   const p = z.object({ tenantId: ID }).strict().safeParse(input);
   if (!a.success || !p.success) return agencyFail("VALIDATION");
   const tenantId = p.data.tenantId;
-  void opts;
   return safely("withdrawApplication", tenantId, async () => {
     const pre = await agentActorNow(a.data.agentUserId);
     if (!isAgentWriter(pre)) return agencyFail("FORBIDDEN");
@@ -601,10 +641,11 @@ export async function withdrawApplication(actor: AgentActor, input: { tenantId: 
       if (row.status === "CLOSED" && row.statusReason === "WITHDRAWN") return { ok: true as const, agentAccountId: row.id, status: "CLOSED" as const, replayed: true };
       const t = agentAccountTransition(asStatus(row.status), "WITHDRAW");
       if (!t) return agencyFail("BAD_STATE");
-      const n = await tx.agentAccount.updateMany({ where: { tenantId, id: row.id, status: row.status }, data: { status: t.to, statusReason: t.reason } });
+      const reason = closeReasonKeepingSticky(row.statusReason, t.reason ?? "WITHDRAWN");
+      const n = await tx.agentAccount.updateMany({ where: { tenantId, id: row.id, status: row.status, statusReason: row.statusReason }, data: { status: t.to, statusReason: reason } });
       if (n.count !== 1) return agencyFail("BAD_STATE");
       const member = await tx.agentAccountMember.findFirst({ where: { tenantId, agentAccountId: row.id, agentUserId: who.id }, select: { id: true } });
-      await auditInTx(tx, { tenantId, actorType: "SYSTEM", actorId: member?.id ?? null, action: "agency.account.withdraw", targetId: row.id, after: { from: row.status, to: t.to, reason: t.reason, actorKind: "AGENT" } });
+      await auditInTx(tx, { tenantId, actorType: "SYSTEM", actorId: member?.id ?? null, action: "agency.account.withdraw", targetId: row.id, after: { from: row.status, to: t.to, reason, actorKind: "AGENT" } });
       return { ok: true as const, agentAccountId: row.id, status: t.to, replayed: false };
     });
   });
@@ -657,7 +698,12 @@ const contactOf = (c: unknown): ShopAgentContact => {
 /** DTO รายละเอียด (§7.2) — คีย์ตรง SHOP_AGENT_ACCOUNT_KEYS · ไม่มีคีย์ NEVER_SHOW ทุกชั้น */
 async function detailOf(g: Gate, row: AccountRow, now: Date): Promise<ShopAgentAccountDTO> {
   const members = await g.db.agentAccountMember.findMany({ where: { tenantId: g.tenantId, agentAccountId: row.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, agentUserId: true, role: true, active: true } });
-  const [names, idents] = await Promise.all([agentUserDisplayNames(members.map((m) => m.agentUserId)), identityPublicByIds(row.identityId ? [row.identityId] : [])]);
+  // r2 (มติ §10 ข้อ 12): active ของสมาชิก = แถวสมาชิก active **และ** ผู้ใช้ยังใช้งานได้ (ร้านรู้แค่ใช้ได้/ไม่ได้ — ไม่รู้ว่าถูกปิดหรือถูกลบ)
+  const [names, idents, usable] = await Promise.all([
+    agentUserDisplayNames(members.map((m) => m.agentUserId)),
+    identityPublicByIds(row.identityId ? [row.identityId] : []),
+    usableAgentUserIds(members.filter((m) => m.active).map((m) => m.agentUserId)),
+  ]);
   const ident = row.identityId ? idents.get(row.identityId) ?? null : null;
   const expiry = ymdOfDate(row.licenceExpiry);
   const lw = licenceWarnings({ no: row.licenceNo, expiry }, thaiToday(now));
@@ -697,7 +743,7 @@ async function detailOf(g: Gate, row: AccountRow, now: Date): Promise<ShopAgentA
     partyId: row.partyId,
     crm,
     identity: ident ? { publicCode: ident.publicCode, displayName: ident.displayName, status: ident.status } : null,
-    members: members.map((m) => ({ memberId: m.id, displayName: names.get(m.agentUserId) ?? "", role: m.role, active: m.active })),
+    members: members.map((m) => ({ memberId: m.id, displayName: names.get(m.agentUserId) ?? "", role: m.role, active: m.active && usable.has(m.agentUserId) })),
     invite: row.status === "INVITED" ? { mode: row.identityId ? "CODE" : "EMAIL", expiresAt: iso(row.inviteExpiresAt), expired: !!row.inviteExpiresAt && row.inviteExpiresAt.getTime() <= now.getTime() } : null,
     approvedAt: iso(row.approvedAt),
     suspendedAt: iso(row.suspendedAt),
@@ -732,17 +778,27 @@ export async function listAgentAccounts(ctx: ShopCtx, input: { status?: AgentAcc
       ...(q ? { OR: [{ legalName: { contains: q, mode: "insensitive" } }, { code: q.toUpperCase() }] } : {}),
       ...(g.unrestricted ? {} : { AND: [{ OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: g.member.unitAccess } }] }] }),
     };
+    // r2 (มติ §10 ข้อ 15): cursor ผูกร้าน — หาแถว cursor ด้วย tenantId ของร้านนี้เท่านั้น · id ของร้านอื่น = id ที่ไม่มี = หน้าว่างเหมือนกันทุกไบต์
+    //   (ไม่ใช้ cursor ของ Prisma ซึ่งหาแถวด้วย id โดยไม่กรองร้าน) · เลื่อนหน้าด้วยคู่ (createdAt, id)
+    let after: Prisma.AgentAccountWhereInput | null = null;
+    if (p.data.cursor) {
+      const c = await g.db.agentAccount.findFirst({ where: { tenantId: g.tenantId, id: p.data.cursor }, select: { id: true, createdAt: true } });
+      if (!c) return { ok: true as const, items: [], nextCursor: null };
+      after = { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] };
+    }
     const rows = await g.db.agentAccount.findMany({
-      where,
+      where: after ? { AND: [where, after] } : where,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
-      ...(p.data.cursor ? { cursor: { id: p.data.cursor }, skip: 1 } : {}),
       select: { id: true, code: true, legalName: true, status: true, statusReason: true, payeeType: true, identityId: true, licenceNo: true, licenceExpiry: true, createdAt: true, updatedAt: true },
     });
     const page = rows.slice(0, limit);
     const ids = page.map((r) => r.id);
-    const counts = ids.length ? await g.db.agentAccountMember.groupBy({ by: ["agentAccountId"], where: { tenantId: g.tenantId, agentAccountId: { in: ids }, active: true }, _count: { _all: true } }) : [];
-    const countOf = new Map(counts.map((c) => [c.agentAccountId, c._count._all]));
+    // memberCount = สมาชิก active ที่ผู้ใช้ยังใช้งานได้ (ตรงกับ members[].active ของรายละเอียด · มติ §10 ข้อ 12)
+    const mem = ids.length ? await g.db.agentAccountMember.findMany({ where: { tenantId: g.tenantId, agentAccountId: { in: ids }, active: true }, select: { agentAccountId: true, agentUserId: true } }) : [];
+    const usable = await usableAgentUserIds(mem.map((m) => m.agentUserId));
+    const countOf = new Map<string, number>();
+    for (const m of mem) if (usable.has(m.agentUserId)) countOf.set(m.agentAccountId, (countOf.get(m.agentAccountId) ?? 0) + 1);
     const idents = await identityPublicByIds(page.map((r) => r.identityId ?? "").filter(Boolean));
     const today = thaiToday(now);
     const items: ShopAgentListItem[] = page.map((r) => ({
@@ -778,7 +834,8 @@ export async function getAgentAccount(ctx: ShopCtx, input: { agentAccountId: str
 
 // ─────────────────── ผังสถานะฝั่งร้าน (§7.3) ───────────────────
 const SHOP_CODE = z.string().max(32);
-type TransitionExtra = { code?: string; unitIds?: string[] };
+type TransitionExtra = { code?: string; unitIds?: string[]; expectedUpdatedAt?: string };
+const EXPECTED_AT = z.string().min(1).max(40);
 /** ปลายทางของการกระทำฝั่งร้าน (ตรงผังสถานะ §3.1) — ใช้ตัดสิน replayed เมื่อแถวอยู่ที่ปลายทางแล้ว + ชื่อ audit */
 const SHOP_GOAL: Partial<Record<AgentAccountAction, { to: AgentAccountStatus; reason: string | null; verb: string }>> = {
   APPROVE: { to: "ACTIVE", reason: null, verb: "approve" },
@@ -789,10 +846,18 @@ const SHOP_GOAL: Partial<Record<AgentAccountAction, { to: AgentAccountStatus; re
   REVOKE_INVITE: { to: "CLOSED", reason: "INVITE_REVOKED", verb: "revoke" },
 };
 async function shopTransition(where: string, ctx: ShopCtx, input: unknown, opts: AgencyOpts, action: AgentAccountAction, perm: string, allowExtra: boolean): Promise<AccountWriteResult> {
-  const schema = allowExtra ? z.object({ agentAccountId: ID, code: SHOP_CODE.optional(), unitIds: UNIT_IDS.optional() }).strict() : z.object({ agentAccountId: ID }).strict();
+  // r2 (มติ §10 ข้อ 5): อนุมัติ/ปฏิเสธใบสมัครต้องส่ง expectedUpdatedAt ของแถวที่ร้านเปิดดู — ไม่ส่ง = VALIDATION · ไม่ตรง = STALE (reason STATE_CONFLICT) ไม่เขียน
+  const decides = action === "APPROVE" || action === "REJECT";
+  const schema = allowExtra
+    ? z.object({ agentAccountId: ID, expectedUpdatedAt: EXPECTED_AT, code: SHOP_CODE.optional(), unitIds: UNIT_IDS.optional() }).strict()
+    : decides
+      ? z.object({ agentAccountId: ID, expectedUpdatedAt: EXPECTED_AT }).strict()
+      : z.object({ agentAccountId: ID }).strict();
   const p = schema.safeParse(input);
   if (!p.success) return agencyFail("VALIDATION");
   const data = p.data as { agentAccountId: string } & TransitionExtra;
+  const expected = decides ? new Date(data.expectedUpdatedAt ?? "") : null;
+  if (expected && Number.isNaN(expected.getTime())) return agencyFail("VALIDATION");
   const code = data.code === undefined ? undefined : data.code.trim().toUpperCase();
   if (code !== undefined && !SHOP_CODE_RE.test(code)) return agencyFail("VALIDATION");
   const now = opts.now ?? new Date();
@@ -806,6 +871,7 @@ async function shopTransition(where: string, ctx: ShopCtx, input: unknown, opts:
     const replay = (s: string, r: string | null) => !!goal && s === goal.to && (goal.reason === null || r === goal.reason);
     if (!t0) return replay(row.status, row.statusReason) ? { ok: true as const, agentAccountId: row.id, status: asStatus(row.status), replayed: true } : agencyFail("BAD_STATE");
     if (action === "REINSTATE" && row.approvedAt === null) return agencyFail("BAD_STATE");
+    if (expected && row.updatedAt.getTime() !== expected.getTime()) return agencyFail("STALE", { reason: "STATE_CONFLICT" });
     let tierId: string | null = null;
     if (action === "APPROVE") {
       if (data.unitIds && !(await unitsValid(g.db, g.tenantId, data.unitIds))) return agencyFail("VALIDATION");
@@ -821,6 +887,7 @@ async function shopTransition(where: string, ctx: ShopCtx, input: unknown, opts:
       if (action === "APPROVE") {
         upd.approvedAt = now;
         upd.approvedById = g.userId;
+        upd.statusReason = null; // ร้านอนุมัติใหม่ ⇒ ล้างเหตุปิดถาวรที่ค้างของใบสมัครซ้ำ (มติ §10 ข้อ 1)
         if (code) upd.code = code;
         if (data.unitIds) upd.unitIds = [...new Set(data.unitIds)];
         if (tierId) upd.tierId = tierId;
@@ -828,10 +895,12 @@ async function shopTransition(where: string, ctx: ShopCtx, input: unknown, opts:
       if (action === "SUSPEND") upd.suspendedAt = now;
       if (action === "REINSTATE") upd.suspendedAt = null;
       if (action === "REVOKE_INVITE" || action === "CLOSE" || action === "REJECT") upd.inviteTokenHash = null;
-      const n = await tx.agentAccount.updateMany({ where: { tenantId: g.tenantId, id: row.id, status: row.status }, data: upd });
+      const n = await tx.agentAccount.updateMany({ where: { tenantId: g.tenantId, id: row.id, status: row.status, ...(expected ? { updatedAt: expected } : {}) }, data: upd });
       if (n.count !== 1) {
         const cur = await reloadStatus(tx, g.tenantId, row.id);
-        return cur && replay(cur.status, cur.statusReason) ? { ok: true as const, agentAccountId: row.id, status: asStatus(cur.status), replayed: true } : agencyFail("BAD_STATE");
+        if (cur && replay(cur.status, cur.statusReason)) return { ok: true as const, agentAccountId: row.id, status: asStatus(cur.status), replayed: true };
+        // สถานะยังเดิมแต่แถวถูกแก้/สมัครใหม่ระหว่างที่ร้านเปิดดู ⇒ ให้ร้านโหลดใหม่ก่อนตัดสิน
+        return expected && cur && cur.status === row.status ? agencyFail("STALE", { reason: "STATE_CONFLICT" }) : agencyFail("BAD_STATE");
       }
       if (action === "APPROVE") await ensureBalanceInTx(tx, g.tenantId, row.id);
       await auditInTx(tx, { tenantId: g.tenantId, actorType: "USER", actorId: g.userId, action: `agency.account.${goal?.verb ?? "edit"}`, targetId: row.id, after: { from: row.status, to: t0.to, ...(t0.reason ? { reason: t0.reason } : {}), actorKind: "SHOP" } });
@@ -841,10 +910,10 @@ async function shopTransition(where: string, ctx: ShopCtx, input: unknown, opts:
     });
   }, (name) => (/code/.test(name) ? agencyFail("CODE_TAKEN") : null));
 }
-/** อนุมัติ (PENDING → ACTIVE · code/unitIds ไม่บังคับ · ใบอนุญาตหมดอายุไม่บล็อก) */
-export const approveAgentAccount = (ctx: ShopCtx, input: { agentAccountId: string; code?: string; unitIds?: string[] }, opts: AgencyOpts = {}) => shopTransition("approveAgentAccount", ctx, input, opts, "APPROVE", "agency.account.approve", true);
-/** ปฏิเสธ (PENDING → CLOSED REJECTED · สมัครซ้ำได้หลังช่วงรอ และต้องอนุมัติใหม่เสมอ) */
-export const rejectAgentAccount = (ctx: ShopCtx, input: { agentAccountId: string }, opts: AgencyOpts = {}) => shopTransition("rejectAgentAccount", ctx, input, opts, "REJECT", "agency.account.approve", false);
+/** อนุมัติ (PENDING → ACTIVE · ต้องส่ง expectedUpdatedAt ของแถวที่เปิดดู · code/unitIds ไม่บังคับ · ใบอนุญาตหมดอายุไม่บล็อก) */
+export const approveAgentAccount = (ctx: ShopCtx, input: { agentAccountId: string; expectedUpdatedAt: string; code?: string; unitIds?: string[] }, opts: AgencyOpts = {}) => shopTransition("approveAgentAccount", ctx, input, opts, "APPROVE", "agency.account.approve", true);
+/** ปฏิเสธ (PENDING → CLOSED REJECTED · ต้องส่ง expectedUpdatedAt · สมัครซ้ำได้หลังช่วงรอ และต้องอนุมัติใหม่เสมอ) */
+export const rejectAgentAccount = (ctx: ShopCtx, input: { agentAccountId: string; expectedUpdatedAt: string }, opts: AgencyOpts = {}) => shopTransition("rejectAgentAccount", ctx, input, opts, "REJECT", "agency.account.approve", false);
 /** ระงับ (ACTIVE → SUSPENDED) หรือบล็อกผู้สมัคร (PENDING → SUSPENDED) */
 export const suspendAgentAccount = (ctx: ShopCtx, input: { agentAccountId: string }, opts: AgencyOpts = {}) => shopTransition("suspendAgentAccount", ctx, input, opts, "SUSPEND", "agency.account.suspend", false);
 /** คืนสิทธิ์ (SUSPENDED → ACTIVE · เฉพาะแถวที่เคยอนุมัติ) */
@@ -865,6 +934,13 @@ export type InviteAgentInput =
   | { mode: "CODE"; publicCode: string; legalName: string; payeeType: AgentPayeeType; code?: string; unitIds?: string[]; idempotencyKey: string };
 export type InviteResult = { ok: true; agentAccountId: string; status: AgentAccountStatus; inviteToken: string | null; inviteExpiresAt: string | null; replayed: boolean } | AgencyFail;
 
+/** r2 (มติ §10 ข้อ 3) ▸ ถังจดหมายเชิญของร้าน (เชิญใหม่ + ออกใหม่ใช้ถังเดียวกัน) — fail closed ทั้งคู่ */
+async function shopInviteMailBuckets(deps: AgencyDeps | undefined, tenantId: string, email: string, now: Date): Promise<AgencyFail | null> {
+  return (
+    (await bucket(deps, "agent:shopinv:t:", `${tenantId}:${email}`, AGENT_AUTH_LIMITS.shopInviteMailPerTarget, now, true)) ??
+    (await bucket(deps, "agent:shopinv:s:", tenantId, AGENT_AUTH_LIMITS.shopInviteMailPerShop, now, true))
+  );
+}
 /** token ของแถวคำเชิญอีเมลที่ยังเปิด (สูตรกำหนดได้ ⇒ คืนซ้ำได้โดยไม่เก็บ token ดิบ) */
 const tokenOfRow = (tenantId: string, r: { id: string; status: string; identityId: string | null; inviteExpiresAt: Date | null }): string | null =>
   r.status === "INVITED" && r.identityId === null && r.inviteExpiresAt ? shopInviteToken(tenantId, r.id, r.inviteExpiresAt) : null;
@@ -894,15 +970,18 @@ export async function inviteAgent(ctx: ShopCtx, input: InviteAgentInput, opts: A
   const code = v.code === undefined ? undefined : v.code.trim().toUpperCase();
   const email = v.mode === "EMAIL" ? normEmail(v.email) : null;
   if (!legalName || (code !== undefined && !SHOP_CODE_RE.test(code)) || (v.mode === "EMAIL" && !email)) return agencyFail("VALIDATION");
+  // r2 (มติ §10 ข้อ 13): รหัสสาธารณะ normalise แบบเดียวกับ lookupAgentIdentityByCode (trim + ตัวใหญ่) ⇒ รหัสที่ค้นเจอ เชิญได้เสมอ
+  const publicCode = v.mode === "CODE" ? v.publicCode.trim().toUpperCase() : null;
   const unitIds = [...new Set(v.unitIds ?? [])].sort();
   const now = opts.now ?? new Date();
-  const bodyHash = sha256(JSON.stringify(canonical({ op: "agency.invite.v1", mode: v.mode, target: v.mode === "EMAIL" ? email : v.publicCode, legalName, payeeType: v.payeeType, code: code ?? null, unitIds })));
   const key = v.idempotencyKey;
   return safely("inviteAgent", null, async () => {
     const g = await shopGate(ctx);
     if (!g || !canWrite(g, "agency.account.invite")) return agencyFail("FORBIDDEN");
     const tenantId = g.tenantId;
     if (!agentAuthKeyReady()) return agencyFail("BUSY", { reason: "SERVER_KEY_MISSING" });
+    // ลายนิ้วมือของคำขอ (กันซ้ำ) = แฮชมีกุญแจ (มีอีเมลที่เชิญอยู่ข้างใน — ไม่ใช้ sha256 เปล่า · N3)
+    const bodyHash = agentAuthHash("idem", JSON.stringify(canonical({ op: "agency.invite.v1", mode: v.mode, target: v.mode === "EMAIL" ? email : publicCode, legalName, payeeType: v.payeeType, code: code ?? null, unitIds })));
     const shop = await sellingShop(tenantId);
     if (!shop) return agencyFail("NOT_FOUND");
     const early = await inviteReplay(g.db, tenantId, key, bodyHash, now);
@@ -911,7 +990,7 @@ export async function inviteAgent(ctx: ShopCtx, input: InviteAgentInput, opts: A
     if (v.mode === "CODE") {
       const rl = await bucket(opts.deps, "agent:lookup:", `${tenantId}:${g.userId}`, AGENT_AUTH_LIMITS.lookupByCodePerActor, now);
       if (rl) return rl;
-      const ident = await findAgentIdentityByCode(v.publicCode);
+      const ident = await findAgentIdentityByCode(publicCode ?? "");
       if (!ident || ident.status !== "ACTIVE") return agencyFail("NOT_FOUND");
       identityId = ident.id;
       if (await g.db.agentAccount.findFirst({ where: { tenantId, identityId }, select: { id: true } })) return agencyFail("ALREADY_REGISTERED");
@@ -919,17 +998,31 @@ export async function inviteAgent(ctx: ShopCtx, input: InviteAgentInput, opts: A
     }
     if (!(await unitsValid(g.db, tenantId, unitIds))) return agencyFail("VALIDATION");
     if (code && (await g.db.agentAccount.findFirst({ where: { tenantId, code }, select: { id: true } }))) return agencyFail("CODE_TAKEN");
+    if (email) {
+      // r2 (มติ §10 ข้อ 3): เพดานจดหมายเชิญของร้าน — ต่ออีเมลปลายทางต่อร้าน/วัน → ต่อร้าน/วัน (รวมออกใหม่) · ตัวจำกัดล้ม = ปฏิเสธ · ก่อนสร้าง Party/แถว
+      const rl = await shopInviteMailBuckets(opts.deps, tenantId, email, now);
+      if (rl) return rl;
+    }
     const party = await import("@/lib/modules/party");
     const partyId = (await party.findOrCreate(tenantId, { name: legalName, kind: partyKindOf(v.payeeType) })).id;
     const id = newAgentRowId("aa_");
     const inviteExpiresAt = new Date(now.getTime() + AGENT_AUTH_LIMITS.shopInviteTtlDays * DAY_MS);
     const token = v.mode === "EMAIL" ? shopInviteToken(tenantId, id, inviteExpiresAt) : null;
     const out = await runTx(tenantId, async (tx): Promise<InviteResult> => {
-      if (identityId) await lockAgencyKeyInTx(tx, "agency.account.v1", `${tenantId}:${identityId}`);
+      // r2 (มติ §10 ข้อ 10): เชิญด้วยรหัส ⇒ ถือล็อกตัวตนก่อน (ลำดับ identity → account → invite) — เพดานคำเชิญค้างของตัวตนนับข้ามร้าน จึงต้องเรียงคิวที่ระดับตัวตน
+      //   (ล็อกระดับร้านอย่างเดียวกันสองร้านแข่งกันไม่ได้) · ใต้ล็อกนี้อ่านซ้ำว่าตัวตนยัง ACTIVE (เชิญแข่งกับการปิดตัวตนไม่ทิ้งแถว INVITED ของตัวตนที่ปิดแล้ว · N8)
+      if (identityId) {
+        await lockAgencyKeyInTx(tx, "agency.identity.v1", identityId);
+        await lockAgencyKeyInTx(tx, "agency.account.v1", `${tenantId}:${identityId}`);
+      }
       await lockAgencyKeyInTx(tx, "agency.invite.v1", `${tenantId}:${key}`);
       const again = await inviteReplay(tx, tenantId, key, bodyHash, now);
       if (again) return again;
-      if (identityId && (await tx.agentAccount.findFirst({ where: { tenantId, identityId }, select: { id: true } }))) return agencyFail("ALREADY_REGISTERED");
+      if (identityId) {
+        if (!(await agentIdentityActiveInTx(tx, identityId))) return agencyFail("NOT_FOUND");
+        if (await tx.agentAccount.findFirst({ where: { tenantId, identityId }, select: { id: true } })) return agencyFail("ALREADY_REGISTERED");
+        if ((await countOpenCodeInvitesOfIdentityInTx(tx, identityId, now)) >= AGENT_AUTH_LIMITS.openCodeInvitesPerIdentity) return agencyFail("RATE_LIMITED", { retryAfterSec: 3600 });
+      }
       const shopCode = code ?? (await uniqueShopCodeInTx(tx, tenantId));
       await tx.agentAccount.create({
         data: {
@@ -964,6 +1057,12 @@ export async function reissueAgentInvite(ctx: ShopCtx, input: { agentAccountId: 
     if (!shop) return agencyFail("NOT_FOUND");
     const inviteExpiresAt = new Date(now.getTime() + AGENT_AUTH_LIMITS.shopInviteTtlDays * DAY_MS);
     const token = row.identityId === null ? shopInviteToken(g.tenantId, row.id, inviteExpiresAt) : null;
+    const mailTo = token ? contactOf(row.contact).email : null;
+    if (mailTo) {
+      // ออกใหม่ = จดหมายอีกฉบับถึงอีเมลเดิม ⇒ นับถังเดียวกับการเชิญ (มติ §10 ข้อ 3)
+      const rl = await shopInviteMailBuckets(opts.deps, g.tenantId, mailTo, now);
+      if (rl) return rl;
+    }
     const out = await runTx(g.tenantId, async (tx): Promise<InviteResult> => {
       const n = await tx.agentAccount.updateMany({
         where: { tenantId: g.tenantId, id: row.id, status: "INVITED", inviteExpiresAt: row.inviteExpiresAt },
@@ -973,7 +1072,7 @@ export async function reissueAgentInvite(ctx: ShopCtx, input: { agentAccountId: 
       await auditInTx(tx, { tenantId: g.tenantId, actorType: "USER", actorId: g.userId, action: "agency.account.reissue", targetId: row.id, after: { from: "INVITED", to: "INVITED", actorKind: "SHOP" } });
       return { ok: true, agentAccountId: row.id, status: "INVITED", inviteToken: token, inviteExpiresAt: inviteExpiresAt.toISOString(), replayed: false };
     });
-    const email = contactOf(row.contact).email;
+    const email = mailTo;
     if (out.ok && token && email) {
       const url = `${platformOrigin()}/agent/${encodeURIComponent(shop.slug)}/invite#${token}`;
       await deliverShopInvite(opts.deps, { to: email, kind: "SHOP_INVITE", token, url }, agentShopInviteMail(shop.name, url, thaiToday(inviteExpiresAt)), row.id, g.tenantId);
@@ -1032,7 +1131,15 @@ export async function updateAgentAccountProfile(ctx: ShopCtx, input: { agentAcco
       if (c !== row.code && (await g.db.agentAccount.findFirst({ where: { tenantId: g.tenantId, code: c }, select: { id: true } }))) return agencyFail("CODE_TAKEN");
       data.code = c;
     }
-    if (patch.payeeType !== undefined) data.payeeType = patch.payeeType;
+    if (patch.payeeType !== undefined) {
+      // r2 (มติ §10 ข้อ 13): เปลี่ยนชนิดผู้รับเงินขณะมีเลขภาษีเก็บอยู่ ⇒ ต้องส่ง taxId มาใน patch เดียวกัน (ตรวจตามชนิดใหม่ · หรือ null เพื่อล้าง) —
+      //   ค่าที่ปิดผนึกไว้ตรวจซ้ำไม่ได้ จึงไม่ยอมให้เลขของชนิดเก่าค้างอยู่ใต้ชนิดใหม่
+      if (patch.payeeType !== row.payeeType && patch.taxId === undefined) {
+        const cur = await g.db.agentAccount.findFirst({ where: { tenantId: g.tenantId, id: row.id }, select: { taxIdEnc: true } });
+        if (cur?.taxIdEnc) return agencyFail("VALIDATION", { reason: "TAX_ID_REQUIRED" });
+      }
+      data.payeeType = patch.payeeType;
+    }
     if (patch.taxId !== undefined) {
       const t = normTaxId(payeeType, patch.taxId);
       if (t === undefined) return agencyFail("VALIDATION");
@@ -1067,7 +1174,8 @@ export async function updateAgentAccountProfile(ctx: ShopCtx, input: { agentAcco
       const email = c.email === undefined ? cur.email : normEmail(c.email);
       const lineId = c.lineId === undefined ? cur.lineId : optText(c.lineId, 64);
       if (name === undefined || phone === undefined || email === undefined || lineId === undefined) return agencyFail("VALIDATION");
-      data.contact = { ...cur, name, phone, email, lineId };
+      // r2 (มติ §10 ข้อ 13): ร้านแก้ผู้ติดต่อ ⇒ ล้างตราความยินยอมของเอเจนซี่ (ข้อความที่ร้านพิมพ์ไม่ใช่สิ่งที่เอเจนซี่ยินยอม) · ที่มา = SHOP
+      data.contact = { name, phone, email, lineId, consentVersion: null, consentAt: null, source: "SHOP" };
     }
     if (patch.licenceNo !== undefined) {
       const l = optText(patch.licenceNo, 40);
@@ -1112,6 +1220,8 @@ export async function lookupAgentIdentityByCode(ctx: ShopCtx, input: { publicCod
 }
 
 // ─────────────────── CRM (§10 · facade · lazy · นอก tx) ───────────────────
+/** error "ไม่พบ/ไม่มีสิทธิ์เห็น" ของ CRM (crm/companies โยน CompaniesError ที่มี code) — ดูจากรูป เพราะ facade ไม่ส่งออกคลาส */
+const isCrmNotVisible = (e: unknown): boolean => e instanceof Error && e.name === "CompaniesError" && ["NOT_FOUND", "FORBIDDEN"].includes(String((e as { code?: unknown }).code));
 /** ผูกบริษัท CRM — edit (ไม่จำกัดสาขา) · ร้านไม่มี CRM ⇒ CRM_NOT_AVAILABLE · Party ไม่ตรง: INVITED/PENDING ⇒ ใช้ Party ของบริษัท · อื่น ⇒ CRM_PARTY_MISMATCH */
 export async function linkAgentCrmCompany(ctx: ShopCtx, input: { agentAccountId: string; crmCompanyId: string }, opts: AgencyOpts = {}): Promise<{ ok: true; account: ShopAgentAccountDTO; replayed: boolean } | AgencyFail> {
   const p = z.object({ agentAccountId: ID, crmCompanyId: ID }).strict().safeParse(input);
@@ -1131,8 +1241,11 @@ export async function linkAgentCrmCompany(ctx: ShopCtx, input: { agentAccountId:
     try {
       const c360 = await crm.companies.getCompany360({ tenantId: g.tenantId, systemId: target.systemId, actorUserId: g.userId }, crmActorOf(g), p.data.crmCompanyId);
       companyPartyId = c360.company.partyId;
-    } catch {
-      return agencyFail("NOT_FOUND");
+    } catch (e) {
+      // r2 (มติ §10 ข้อ 8): เฉพาะ "ไม่พบ/มองไม่เห็น" ของ CRM (CompaniesError NOT_FOUND/FORBIDDEN) = NOT_FOUND · อ่านล้มแบบอื่น ⇒ ops (ชื่อ/รหัส/stack เท่านั้น) + BUSY
+      if (isCrmNotVisible(e)) return agencyFail("NOT_FOUND");
+      await logUnexpected("linkAgentCrmCompany.crmRead", e, g.tenantId);
+      return agencyFail("BUSY", { reason: "CRM_READ" });
     }
     let newPartyId: string | null = null;
     if (companyPartyId !== row.partyId) {
@@ -1172,5 +1285,32 @@ export async function unlinkAgentCrmCompany(ctx: ShopCtx, input: { agentAccountI
     const fresh = await rowOf(g, row.id);
     if (!fresh) return agencyFail("NOT_FOUND");
     return { ok: true as const, account: await detailOf(g, fresh, now), replayed: false };
+  });
+}
+
+// ─────────────────── สมาชิกที่ผู้ใช้ใช้งานไม่ได้แล้ว (r2 · มติ §10 ข้อ 12) ───────────────────
+/**
+ * ร้านถอดสมาชิกของบัญชีเอเจนซี่ที่ "ผู้ใช้ใช้งานไม่ได้แล้ว" (ถูกปิดฝั่งเอเจนซี่) ออกจากรายการ — edit (ไม่จำกัดสาขา) ·
+ * สมาชิกที่ยังใช้งานได้ ร้านถอดไม่ได้ (BAD_STATE — เป็นอำนาจของเอเจนซี่ · ร้านใช้ ระงับ/ปิดบัญชี แทน) · ถอดแล้ว/ไม่ active อยู่แล้ว ⇒ replayed ·
+ * ร้านรู้แค่ใช้ได้/ไม่ได้ (เท่ากับ members[].active ของ DTO) · ไม่แตะตาราง global · audit agency.member.remove
+ */
+export async function removeAgentAccountMember(ctx: ShopCtx, input: { agentAccountId: string; memberId: string }): Promise<{ ok: true; agentAccountId: string; memberId: string; replayed: boolean } | AgencyFail> {
+  const p = z.object({ agentAccountId: ID, memberId: ID }).strict().safeParse(input);
+  if (!p.success) return agencyFail("VALIDATION");
+  return safely("removeAgentAccountMember", null, async () => {
+    const g = await shopGate(ctx);
+    if (!g || !canWrite(g, "agency.account.edit")) return agencyFail("FORBIDDEN");
+    const row = await rowOf(g, p.data.agentAccountId);
+    if (!row) return agencyFail("NOT_FOUND");
+    const m = await g.db.agentAccountMember.findFirst({ where: { tenantId: g.tenantId, agentAccountId: row.id, id: p.data.memberId }, select: { id: true, agentUserId: true, role: true, active: true } });
+    if (!m) return agencyFail("NOT_FOUND");
+    if (!m.active) return { ok: true as const, agentAccountId: row.id, memberId: m.id, replayed: true };
+    if ((await usableAgentUserIds([m.agentUserId])).has(m.agentUserId)) return agencyFail("BAD_STATE");
+    return runTx(g.tenantId, async (tx) => {
+      const n = await tx.agentAccountMember.updateMany({ where: { tenantId: g.tenantId, id: m.id, agentAccountId: row.id, active: true }, data: { active: false } });
+      if (n.count !== 1) return { ok: true as const, agentAccountId: row.id, memberId: m.id, replayed: true };
+      await tx.auditLog.create({ data: { tenantId: g.tenantId, actorType: "USER", actorId: g.userId, action: "agency.member.remove", targetType: "AgentAccountMember", targetId: m.id, after: { from: m.role, to: null, actorKind: "SHOP" } } });
+      return { ok: true as const, agentAccountId: row.id, memberId: m.id, replayed: false };
+    });
   });
 }

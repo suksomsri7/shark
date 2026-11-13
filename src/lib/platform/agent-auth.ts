@@ -8,17 +8,21 @@
 // 🔴 รหัส/token เก็บเป็น agentAuthHash เท่านั้น · เทียบเวลาคงที่ · ไม่ขึ้น log/event/audit/error · ไม่มีกุญแจ ⇒ BUSY SERVER_KEY_MISSING
 // 🔴 ถังต่ออีเมล + ต่อรหัส fail closed (ผลไม่มี count = RATE_LIMITED) · clientKey ตรวจรูป · ไม่มี IP ⇒ ปฏิเสธ (ไม่มีถัง "unknown")
 // 🔴 agentScope = ประตูเดียวของบริการพอร์ทัล: คืน { agentAccountId, memberId, tenantId, role } — ไม่มี agentUserId/identityId
-// 🔴 meta.now / meta.deps = จุดต่อของข้อสอบ · ตัวห่อ A1.2b สร้าง meta เองจากเซิร์ฟเวอร์ · ความใช้ได้ของ session ในตัวห่อตัดสินด้วยนาฬิกาจริงเสมอ
+// 🔴 meta.now / meta.deps = จุดต่อของข้อสอบ · ตัวห่อ A1.2b สร้าง meta เองจากเซิร์ฟเวอร์ ห้ามส่งค่าจากคำขอเข้า meta.now/meta.deps
+// 🔴 r2 (มติ §10 ข้อ 7): ความใช้ได้ของ session ตัดสินด้วย **นาฬิกาจริงในทุกฟังก์ชันที่ส่งออก** (resolve · agentScope · select · my · ตัวห่อทั้งหมด) —
+//    meta.now มีผลกับกติกาธุรกิจ (อายุรหัส · ช่วงรอ · เวลาบนแถวที่สร้าง) และหน้าต่างของถัง rate เท่านั้น
+// 🔴 r2 ลำดับล็อกของการยืนยันรหัส (ข้อ 6 ข้อ 18): agency.login.v1 (อีเมล) → agency.identity.v1 → แถวรหัส — ลำดับเดียวกับ disable/erase/close ⇒ ไม่ deadlock
 // ─────────────────────────────────────────────────────────────
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { sendEmailRich } from "@/lib/core/email";
-import { env, secureCookies } from "@/lib/env";
+import { emailEnabled, env, secureCookies } from "@/lib/env";
 import {
   AGENT_AUTH_LIMITS as LIMITS,
   AGENT_CLIENT_KEY_RE,
+  AGENT_LOGIN_CODE_ID_RE,
   AGENT_ROLES,
   AgentKeyMissing,
   acceptShopInvite,
@@ -31,14 +35,18 @@ import {
   agentUserOfEmailLoginInTx,
   applyToShop,
   bucketOpts,
+  canonicalAgentIp,
   cleanAgencyText,
+  cleanAgentEmailInput,
   closeAgentIdentity,
+  consumeTeammateJtiInTx,
   createAgentIdentityInTx,
   createTeammateUserInTx,
   disableAgentUser,
   eraseAgentUser,
   isAgentLoginCodeShape,
   isAgentSessionTokenShape,
+  isPgRetryable,
   listAgentTeam,
   lockAgencyKeyInTx,
   maskEmail,
@@ -47,6 +55,8 @@ import {
   newAgentSessionToken,
   normalizeAgentLogin,
   openTeammateToken,
+  pgErrorCode,
+  pgErrorHints,
   safeEqualStr,
   setAgentAccountMember,
   setAgentUserRole,
@@ -85,7 +95,7 @@ export type AgentScope = { agentAccountId: string; memberId: string; tenantId: s
 const DAY_MS = 86_400_000;
 const SLIDE_EVERY_MS = 5 * 60_000; // เลื่อน idle ≤ 1 ครั้ง/5 นาที (§5.3)
 const TX_OPTS = { maxWait: 10_000, timeout: 30_000 } as const;
-const IP_RE = /^[0-9A-Fa-f:.]{2,64}$/;
+const VERIFY_TX_TRIES = 3;
 const SLUG_RE = /^[A-Za-z0-9_-]{1,80}$/;
 const DEFAULT_TEAMMATE_NAME = "สมาชิกทีม";
 const isRole = (r: unknown): r is AgentRole => typeof r === "string" && (AGENT_ROLES as readonly string[]).includes(r);
@@ -98,21 +108,6 @@ class Abort extends Error {
     super(fail.code);
   }
 }
-const pgCodeOf = (e: unknown): string | null => {
-  const seen = new Set<unknown>();
-  const stack: unknown[] = [e];
-  while (stack.length) {
-    const cur = stack.pop();
-    if (!cur || typeof cur !== "object" || seen.has(cur)) continue;
-    seen.add(cur);
-    const o = cur as Record<string, unknown>;
-    if (o.code === "P2002") return "23505";
-    if (o.code === "P2034") return "40001";
-    for (const k of ["code", "originalCode"]) if (typeof o[k] === "string" && /^[0-9A-Z]{5}$/.test(o[k] as string)) return o[k] as string;
-    for (const v of Object.values(o)) if (v && typeof v === "object") stack.push(v);
-  }
-  return null;
-};
 /** ops ของ error ที่ไม่คาด: ชื่อ · รหัส · stack frame — ไม่มีข้อความ (อาจมีอีเมล) ไม่มีอินพุต */
 async function logUnexpected(where: string, e: unknown): Promise<void> {
   const err = e instanceof Error ? e : null;
@@ -121,29 +116,33 @@ async function logUnexpected(where: string, e: unknown): Promise<void> {
   const detail = { where, name: err ? err.name || "Error" : typeof e, code: typeof o.code === "string" ? o.code.slice(0, 16) : null, frames };
   await logOps("ERROR", "agency.auth", `ข้อผิดพลาดที่ไม่คาดคิดใน ${where}`, { detail: JSON.stringify(detail) }).catch(() => undefined);
 }
-async function guard<T>(where: string, fn: () => Promise<T | AgencyFail>, onUnique?: () => AgencyFail): Promise<T | AgencyFail> {
+/** ไม่ throw · Abort ⇒ ผลมีชื่อ · ไม่มีกุญแจ ⇒ BUSY SERVER_KEY_MISSING · deadlock/serialization/รอล็อกนาน (SQLSTATE จริงใต้ P2010) ⇒ BUSY LOCK ไม่ใช่ ERROR */
+async function guard<T>(where: string, fn: () => Promise<T | AgencyFail>): Promise<T | AgencyFail> {
   try {
     return await fn();
   } catch (e) {
     if (e instanceof Abort) return e.fail;
     if (e instanceof AgentKeyMissing) return keyMissing();
-    const code = pgCodeOf(e);
-    if (code === "23505" && onUnique) return onUnique();
-    if (code === "40P01" || code === "40001" || code === "55P03") return agencyFail("BUSY", { reason: "LOCK" });
+    const code = pgErrorCode(e);
+    if (isPgRetryable(code) || code === "55P03" || code === "TX_TIMEOUT") return agencyFail("BUSY", { reason: "LOCK" });
     await logUnexpected(where, e);
     return agencyFail("BUSY", { reason: "UNEXPECTED" });
   }
 }
 
 // ═══════════════ meta · rate limit · จดหมาย ═══════════════
-type Meta = { clientKey: string; ip: string; ua: string | null; now: Date; deps: AgentAuthDeps | undefined };
-/** §5.4: clientKey ตรวจรูป (VALIDATION) · ไม่มี IP ⇒ RATE_LIMITED NO_CLIENT (ไม่มีถัง "unknown" ร่วม) */
+type Meta = { clientKey: string; ip: string; ipBucket: string; ua: string | null; now: Date; deps: AgentAuthDeps | undefined };
+/**
+ * §5.4: clientKey ตรวจรูป (VALIDATION) · ไม่มี IP/ผิดรูป ⇒ RATE_LIMITED NO_CLIENT (ไม่มีถัง "unknown" ร่วม)
+ * r2 (มติ §10 ข้อ 16): IP ทำรูปมาตรฐานก่อน — ip = ที่อยู่เต็มรูปเดียว (แฮชลง session) · ipBucket = คีย์ถัง (IPv6 = /64)
+ */
 function metaOf(meta: unknown): Meta | AgencyFail {
   if (!isRec(meta) || typeof meta.clientKey !== "string" || !AGENT_CLIENT_KEY_RE.test(meta.clientKey)) return agencyFail("VALIDATION", { reason: "CLIENT_KEY" });
-  if (typeof meta.ip !== "string" || !IP_RE.test(meta.ip)) return agencyFail("RATE_LIMITED", { reason: "NO_CLIENT", retryAfterSec: 60 });
+  const ip = canonicalAgentIp(meta.ip);
+  if (!ip) return agencyFail("RATE_LIMITED", { reason: "NO_CLIENT", retryAfterSec: 60 });
   const now = meta.now instanceof Date && !Number.isNaN(meta.now.getTime()) ? meta.now : new Date();
   const ua = typeof meta.userAgent === "string" && meta.userAgent.length > 0 ? meta.userAgent.slice(0, 512) : null;
-  return { clientKey: meta.clientKey, ip: meta.ip, ua, now, deps: isRec(meta.deps) ? (meta.deps as AgentAuthDeps) : undefined };
+  return { clientKey: meta.clientKey, ip: ip.addr, ipBucket: ip.bucket, ua, now, deps: isRec(meta.deps) ? (meta.deps as AgentAuthDeps) : undefined };
 }
 const isFail = (v: unknown): v is AgencyFail => isRec(v) && v.ok === false;
 const limiter = (deps: AgentAuthDeps | undefined) => deps?.rateLimit ?? ((key: string, o: { limit: number; windowMs: number }, nowMs: number) => checkRateLimitDb(key, o, nowMs));
@@ -156,17 +155,23 @@ async function hit(m: Meta, prefix: string, raw: string, b: { limit: number; win
 }
 type AgentMail = { to: string; kind: "LOGIN_CODE" | "TEAMMATE_INVITE"; code?: string; token?: string; url?: string };
 /**
- * ส่งจดหมาย: deps (ข้อสอบ) รอผล · ไม่งั้น sendEmailRich (ไม่บันทึกที่อยู่/หัวเรื่อง/เนื้อหา) นอกเส้นทางคำขอแบบ sendOtpMailOffPath ·
+ * ส่งจดหมาย: deps (ข้อสอบ) รอผล · ไม่งั้น sendEmailRich นอกเส้นทางคำขอแบบ sendOtpMailOffPath ·
  * ล้ม ⇒ ops { kind, ref } เท่านั้น · ไม่เคยโยน · ไม่พิมพ์รหัสในสภาพแวดล้อมใด
+ * r2 (มติ §10 ข้อ 4): ไม่มีผู้ให้บริการส่งเมล (ไม่มี RESEND_API_KEY) ⇒ **ไม่เรียกตัวส่งเลย** — ทางสำรองของ sendEmailRich พิมพ์หัวเรื่องลง console
+ *   (core/email.ts ทางสำรอง dev) · บันทึก ops WARN { kind, ref, reason } (ไม่มีรหัส/อีเมล) แล้วผู้เรียกตอบรูปเดิม
  */
 async function deliver(deps: AgentAuthDeps | undefined, m: AgentMail, body: { subject: string; text: string; html: string }, ref: string): Promise<void> {
-  const fail = () => logOps("WARN", "agency.mail", "ส่งจดหมายเอเจนซี่ไม่สำเร็จ", { detail: JSON.stringify({ kind: m.kind, ref }) }).catch(() => undefined);
+  const fail = (reason?: string) => logOps("WARN", "agency.mail", "ส่งจดหมายเอเจนซี่ไม่สำเร็จ", { detail: JSON.stringify(reason ? { kind: m.kind, ref, reason } : { kind: m.kind, ref }) }).catch(() => undefined);
   if (deps?.sendAgentMail) {
     try {
       await deps.sendAgentMail(m);
     } catch {
       await fail();
     }
+    return;
+  }
+  if (!emailEnabled) {
+    await fail("NO_MAIL_PROVIDER");
     return;
   }
   const send = async (): Promise<void> => {
@@ -187,9 +192,10 @@ async function deliver(deps: AgentAuthDeps | undefined, m: AgentMail, body: { su
   }
   if (!scheduled) void send();
 }
+/** r2 (มติ §10 ข้อ 17): ด่านเดียวกับฝั่งร้าน (cleanAgentEmailInput ปฏิเสธอักขระควบคุม/zero-width/bidi/NUL) → normalizeAgentLogin — ก่อนแตะฐาน/ถัง */
 const emailOf = (raw: unknown): string | null => {
-  if (typeof raw !== "string" || raw.length > 320) return null;
-  return normalizeAgentLogin({ kind: "EMAIL", providerId: "email", subject: raw })?.subject ?? null;
+  const s = cleanAgentEmailInput(raw);
+  return s ? (normalizeAgentLogin({ kind: "EMAIL", providerId: "email", subject: s })?.subject ?? null) : null;
 };
 const platformOrigin = (): string => new URL(env.APP_URL).origin;
 
@@ -203,7 +209,7 @@ async function insertLoginCode(emailNorm: string, codeId: string, code: string, 
 // ═══════════════ §5.2 ขอรหัส ═══════════════
 /**
  * ขอรหัสเข้าระบบ — ไม่มี oracle ว่ามีบัญชี: ไม่อ่านตารางตัวตน · ไม่ปิดรหัสที่ค้างอยู่ · สร้างแถวใหม่ · ส่งจดหมายเดียวกันทุกครั้ง · ผลรูปเดียวกัน
- * ถัง: เครื่อง → IP → อีเมล 15 นาที (fail closed) → อีเมลรายวัน (fail closed)
+ * ถัง: เครื่อง → IP (รูปมาตรฐาน · IPv6 = /64) → อีเมล 15 นาที (fail closed) → อีเมลรายวัน (fail closed)
  */
 export async function requestAgentLoginCode(input: { email: string }, meta: AgentAuthMeta): Promise<{ ok: true; codeId: string; expiresAt: string; maskedTo: string } | AgencyFail> {
   const m = metaOf(meta);
@@ -214,7 +220,7 @@ export async function requestAgentLoginCode(input: { email: string }, meta: Agen
   return guard("requestAgentLoginCode", async () => {
     const rl =
       (await hit(m, "agent:code:c:", m.clientKey, LIMITS.codePerClient)) ??
-      (await hit(m, "agent:code:ip:", m.ip, LIMITS.codePerIp)) ??
+      (await hit(m, "agent:code:ip:", m.ipBucket, LIMITS.codePerIp)) ??
       (await hit(m, "agent:code:t:", email, LIMITS.codePerTarget, true)) ??
       (await hit(m, "agent:code:td:", email, LIMITS.codePerTargetDay, true));
     if (rl) return rl;
@@ -260,9 +266,57 @@ async function openSessionInTx(tx: Prisma.TransactionClient, agentUserId: string
   return { token, expiresAt };
 }
 
+/** หาเจ้าของ + เปิด session ใน tx เดียว (ผู้เรียกลองใหม่ทั้ง tx เมื่อ deadlock/รหัสสาธารณะชน) */
+type VerifyOwner = { email: string; codeId: string; target: string; signup: { agencyName: string; ownerName: string } | null; teammateInvite: string | undefined; teammateName: string | null };
+async function verifyOwnerTx(tx: Prisma.TransactionClient, v: VerifyOwner, m: Meta): Promise<{ ok: true; token: string; expiresAt: string; created: Created }> {
+  const invalid = () => agencyFail("INVALID_CODE");
+  // 🔴 ล็อกต่ออีเมลก่อนทุกอย่าง ⇒ การเข้าระบบพร้อมกันของอีเมลเดียวเรียงคิว (ไม่แย่งแถวรหัสสลับลำดับกัน ⇒ ไม่ deadlock)
+  await lockAgencyKeyInTx(tx, "agency.login.v1", v.target);
+  let agentUserId: string | null = null;
+  let created: Created = "NONE";
+  let teammate: { identityId: string; role: AgentRole } | null = null;
+  if (v.teammateInvite !== undefined) {
+    const t = openTeammateToken(v.teammateInvite, v.email, m.now);
+    if (!t) throw new Abort(agencyFail("INVITE_INVALID"));
+    await lockAgencyKeyInTx(tx, "agency.identity.v1", t.i);
+    if (!(await teammateInviterValidInTx(tx, { inviterId: t.b, identityId: t.i, role: t.r }))) throw new Abort(agencyFail("INVITE_INVALID"));
+    // 🔴 ใช้ครั้งเดียวตลอดกาล: jti ที่เคยรับแล้ว ⇒ INVITE_INVALID (ก่อนดูว่าอีเมลมีล็อกอินไหม — ลบผู้ถูกเชิญแล้ว token เดิมก็ไม่กลับมา) · tx ถอย ⇒ ยังไม่นับว่าใช้
+    if (!(await consumeTeammateJtiInTx(tx, { jti: t.n, expiresAt: new Date(t.e * 1000), now: m.now }))) throw new Abort(agencyFail("INVITE_INVALID"));
+    if ((await agentUserOfEmailLoginInTx(tx, v.email)).loginExists) throw new Abort(agencyFail("LOGIN_UNAVAILABLE"));
+    teammate = { identityId: t.i, role: t.r };
+  } else {
+    const pre = await agentUserOfEmailLoginInTx(tx, v.email);
+    if (pre.user) {
+      // 🔴 ล็อกตัวตนเดียวกับ disable/erase/close แล้วอ่านสถานะผู้ใช้ใหม่ใต้ล็อก ⇒ ไม่มี session ใหม่ของผู้ใช้ที่เพิ่งถูกปิด/ลบ (มติ §10 ข้อ 6)
+      await lockAgencyKeyInTx(tx, "agency.identity.v1", pre.user.identityId);
+      const again = await agentUserOfEmailLoginInTx(tx, v.email);
+      if (!again.user || again.user.id !== pre.user.id) throw new Abort(agencyFail("LOGIN_UNAVAILABLE"));
+      agentUserId = again.user.id;
+    } else if (pre.loginExists || !v.signup) throw new Abort(agencyFail("LOGIN_UNAVAILABLE"));
+  }
+  const used = await tx.$executeRaw`UPDATE "AgentLoginCode" SET "usedAt" = ${m.now} WHERE id = ${v.codeId} AND target = ${v.target} AND "usedAt" IS NULL`;
+  if (used !== 1) throw new Abort(invalid());
+  await tx.$executeRaw`UPDATE "AgentLoginCode" SET "usedAt" = ${m.now} WHERE target = ${v.target} AND "usedAt" IS NULL AND id <> ${v.codeId}`;
+  if (teammate) {
+    agentUserId = await createTeammateUserInTx(tx, { identityId: teammate.identityId, role: teammate.role, displayName: v.teammateName ?? DEFAULT_TEAMMATE_NAME, emailNorm: v.email, now: m.now });
+    created = "TEAMMATE";
+  } else if (!agentUserId && v.signup) {
+    agentUserId = (await createAgentIdentityInTx(tx, { displayName: v.signup.agencyName, ownerName: v.signup.ownerName, emailNorm: v.email, now: m.now })).agentUserId;
+    created = "IDENTITY";
+  }
+  if (!agentUserId) throw new Abort(agencyFail("LOGIN_UNAVAILABLE"));
+  const s = await openSessionInTx(tx, agentUserId, m);
+  await tx.agentUser.update({ where: { id: agentUserId }, data: { lastLoginAt: m.now }, select: { id: true } });
+  await tx.agentLogin.updateMany({ where: { agentUserId, kind: "EMAIL", providerId: "email", subject: v.email }, data: { lastUsedAt: m.now } });
+  return { ok: true as const, token: s.token, expiresAt: s.expiresAt.toISOString(), created };
+}
+
 /**
  * ยืนยันรหัส → session ใหม่ (ไม่คืน agentUserId) — ถัง: เครื่อง → ต่อรหัส (fail closed) · นับครั้งด้วยคำสั่งเดียว (attempts < max · ยังไม่ใช้ · ยังไม่หมด · target ตรง) ·
- * ถูก ⇒ tx เดียว: ใช้รหัส (ต้อง 1 แถว) + ปิดรหัสอื่นของอีเมลนี้ + หาเจ้าของ (เพื่อน → มีอยู่ → สมัครใหม่) + session · ล้มทุกแบบของรหัส = INVALID_CODE ข้อความเดียว
+ * ถูก ⇒ tx เดียว (verifyOwnerTx): ล็อกอีเมล → ล็อกตัวตน + อ่านสถานะใหม่ → ใช้รหัส (ต้อง 1 แถว) + ปิดรหัสอื่นของอีเมลนี้ → เจ้าของ (เพื่อน → มีอยู่ → สมัครใหม่) → session ·
+ * ล้มทุกแบบของรหัส = INVALID_CODE ข้อความเดียว
+ * r2 (มติ §10 ข้อ 17): อีเมล/codeId ตรวจรูปก่อนแตะฐาน (codeId ผิดรูป = INVALID_CODE ไม่มีคำสั่ง SQL · ไม่มี ops ERROR จากอินพุต) ·
+ * (ข้อ 18) deadlock/serialization ⇒ ลองทั้ง tx ใหม่ แล้ว BUSY LOCK · (ข้อ 13) รหัสสาธารณะชน ⇒ ลองใหม่ · ล็อกอินชน ⇒ LOGIN_UNAVAILABLE
  */
 export async function verifyAgentLoginCode(input: VerifyInput, meta: AgentAuthMeta): Promise<{ ok: true; token: string; expiresAt: string; created: Created } | AgencyFail> {
   const m = metaOf(meta);
@@ -285,56 +339,45 @@ export async function verifyAgentLoginCode(input: VerifyInput, meta: AgentAuthMe
   const code = input.code;
   if (!agentAuthKeyReady()) return keyMissing();
   const invalid = () => agencyFail("INVALID_CODE");
-  return guard(
-    "verifyAgentLoginCode",
-    async () => {
-      const rl = await hit(m, "agent:verify:c:", m.clientKey, LIMITS.verifyPerClient);
-      if (rl) return rl;
-      // ถังต่อรหัส: ตัวจำกัดล้ม (ไม่มี count) ⇒ RATE_LIMITED (fail closed) · เกินเพดาน ⇒ รหัสใบนี้ใช้ไม่ได้แล้ว = INVALID_CODE (ล้มทุกแบบของรหัส = ข้อความเดียว §5.3)
-      const perCode = await limiter(m.deps)(`agent:verify:k:${agentAuthHash("rate", codeId)}`, bucketOpts(LIMITS.verifyPerCode), m.now.getTime());
-      if (typeof perCode.count !== "number") return agencyFail("RATE_LIMITED", { retryAfterSec: 60 });
-      if (!perCode.ok) return invalid();
-      if (!isAgentLoginCodeShape(code)) return invalid();
-      const target = agentAuthHash("login-target", email);
-      // 🔴 คำสั่งเดียว: นับครั้ง + ตรวจเงื่อนไข (กันเดาพร้อมกัน — ไม่มีช่วงอ่าน-แล้ว-เขียน)
-      const rows = await prisma.$queryRaw<{ codeHash: string }[]>`
-        UPDATE "AgentLoginCode" SET attempts = attempts + 1
-        WHERE id = ${codeId} AND target = ${target} AND "usedAt" IS NULL AND attempts < ${LIMITS.codeMaxAttempts} AND "expiresAt" > ${m.now}
-        RETURNING "codeHash"`;
-      const stored = rows[0]?.codeHash;
-      if (!stored || !safeEqualStr(stored, agentAuthHash("login-code", `${codeId}:${code}`))) return invalid();
-      return prisma.$transaction(async (tx) => {
-        const used = await tx.$executeRaw`UPDATE "AgentLoginCode" SET "usedAt" = ${m.now} WHERE id = ${codeId} AND "usedAt" IS NULL`;
-        if (used !== 1) throw new Abort(invalid());
-        await tx.$executeRaw`UPDATE "AgentLoginCode" SET "usedAt" = ${m.now} WHERE target = ${target} AND "usedAt" IS NULL AND id <> ${codeId}`;
-        let agentUserId: string;
-        let created: Created;
-        if (input.teammateInvite !== undefined) {
-          const t = openTeammateToken(input.teammateInvite, email, m.now);
-          if (!t) throw new Abort(agencyFail("INVITE_INVALID"));
-          await lockAgencyKeyInTx(tx, "agency.identity.v1", t.i);
-          if (!(await teammateInviterValidInTx(tx, { inviterId: t.b, identityId: t.i, role: t.r }))) throw new Abort(agencyFail("INVITE_INVALID"));
-          if ((await agentUserOfEmailLoginInTx(tx, email)).loginExists) throw new Abort(agencyFail("LOGIN_UNAVAILABLE"));
-          agentUserId = await createTeammateUserInTx(tx, { identityId: t.i, role: t.r, displayName: teammateName ?? DEFAULT_TEAMMATE_NAME, emailNorm: email, now: m.now });
-          created = "TEAMMATE";
-        } else {
-          const who = await agentUserOfEmailLoginInTx(tx, email);
-          if (who.user) {
-            agentUserId = who.user.id;
-            created = "NONE";
-          } else if (!who.loginExists && signup) {
-            agentUserId = (await createAgentIdentityInTx(tx, { displayName: signup.agencyName, ownerName: signup.ownerName, emailNorm: email, now: m.now })).agentUserId;
-            created = "IDENTITY";
-          } else throw new Abort(agencyFail("LOGIN_UNAVAILABLE"));
+  return guard("verifyAgentLoginCode", async () => {
+    const rl = await hit(m, "agent:verify:c:", m.clientKey, LIMITS.verifyPerClient);
+    if (rl) return rl;
+    // codeId ที่ไม่ใช่รูปของแถวรหัส = ไม่มีรหัสใบนั้น (ผลเดียวกับรหัสผิด) — ไม่ไปถึงถังต่อรหัส/ฐาน
+    if (!AGENT_LOGIN_CODE_ID_RE.test(codeId)) return invalid();
+    // ถังต่อรหัส: ตัวจำกัดล้ม (ไม่มี count) ⇒ RATE_LIMITED (fail closed) · เกินเพดาน ⇒ รหัสใบนี้ใช้ไม่ได้แล้ว = INVALID_CODE (ล้มทุกแบบของรหัส = ข้อความเดียว §5.3)
+    const perCode = await limiter(m.deps)(`agent:verify:k:${agentAuthHash("rate", codeId)}`, bucketOpts(LIMITS.verifyPerCode), m.now.getTime());
+    if (typeof perCode.count !== "number") return agencyFail("RATE_LIMITED", { retryAfterSec: 60 });
+    if (!perCode.ok) return invalid();
+    if (!isAgentLoginCodeShape(code)) return invalid();
+    const target = agentAuthHash("login-target", email);
+    // 🔴 คำสั่งเดียว: นับครั้ง + ตรวจเงื่อนไข (กันเดาพร้อมกัน — ไม่มีช่วงอ่าน-แล้ว-เขียน)
+    const rows = await prisma.$queryRaw<{ codeHash: string }[]>`
+      UPDATE "AgentLoginCode" SET attempts = attempts + 1
+      WHERE id = ${codeId} AND target = ${target} AND "usedAt" IS NULL AND attempts < ${LIMITS.codeMaxAttempts} AND "expiresAt" > ${m.now}
+      RETURNING "codeHash"`;
+    const stored = rows[0]?.codeHash;
+    if (!stored || !safeEqualStr(stored, agentAuthHash("login-code", `${codeId}:${code}`))) return invalid();
+    const owner: VerifyOwner = { email, codeId, target, signup, teammateInvite: input.teammateInvite, teammateName };
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await prisma.$transaction((tx) => verifyOwnerTx(tx, owner, m), TX_OPTS);
+      } catch (e) {
+        if (e instanceof Abort || e instanceof AgentKeyMissing) throw e;
+        const pg = pgErrorCode(e);
+        if (isPgRetryable(pg) && attempt < VERIFY_TX_TRIES) continue;
+        if (pg === "23505") {
+          const hints = pgErrorHints(e);
+          // รหัสสาธารณะของตัวตนใหม่ชน (สุ่มซ้ำ/แข่งกัน) ⇒ สุ่มใหม่ทั้ง tx · วิธีล็อกอินถูกจองพร้อมกัน ⇒ LOGIN_UNAVAILABLE · อื่น ⇒ ไม่คาด (ops)
+          if (/publicCode/.test(hints)) {
+            if (attempt < VERIFY_TX_TRIES) continue;
+            return agencyFail("BUSY", { reason: "PUBLIC_CODE_EXHAUSTED" });
+          }
+          if (/AgentLogin(?!Code)|providerId|subject/.test(hints)) return agencyFail("LOGIN_UNAVAILABLE");
         }
-        const s = await openSessionInTx(tx, agentUserId, m);
-        await tx.agentUser.update({ where: { id: agentUserId }, data: { lastLoginAt: m.now }, select: { id: true } });
-        await tx.agentLogin.updateMany({ where: { agentUserId, kind: "EMAIL", providerId: "email", subject: email }, data: { lastUsedAt: m.now } });
-        return { ok: true as const, token: s.token, expiresAt: s.expiresAt.toISOString(), created };
-      }, TX_OPTS);
-    },
-    () => agencyFail("LOGIN_UNAVAILABLE"),
-  );
+        throw e;
+      }
+    }
+  });
 }
 
 // ═══════════════ session ═══════════════
@@ -375,12 +418,13 @@ const viewOf = (r: SessionRow): AgentSessionView => ({
   identity: { id: r.identityId, displayName: r.identityName, publicCode: r.publicCode, status: r.identityStatus },
   activeAgentAccountId: r.activeAgentAccountId,
 });
-const nowOf = (meta: unknown): Date => (isRec(meta) && meta.now instanceof Date && !Number.isNaN(meta.now.getTime()) ? meta.now : new Date());
-
-/** มุมมองของเอเจนซี่เอง (ห้ามส่งเข้าโค้ดฝั่งร้าน) · token ผิดรูป ⇒ null ก่อนแฮช · ไม่ผ่านทุกแบบ ⇒ null */
-export async function resolveAgentSession(token: string, meta?: { now?: Date }): Promise<AgentSessionView | null> {
+/**
+ * มุมมองของเอเจนซี่เอง (ห้ามส่งเข้าโค้ดฝั่งร้าน) · token ผิดรูป ⇒ null ก่อนแฮช · ไม่ผ่านทุกแบบ ⇒ null
+ * r2 (มติ §10 ข้อ 7): อายุ session ตัดสินด้วยนาฬิกาจริงเสมอ — พารามิเตอร์ที่สองคงไว้ตามลายเซ็น §5.1 แต่ **ไม่มีผล** (now เก่าปลุก session ที่หมดอายุไม่ได้)
+ */
+export async function resolveAgentSession(token: string, _meta?: { now?: Date }): Promise<AgentSessionView | null> {
   try {
-    const r = await liveSession(token, nowOf(meta));
+    const r = await liveSession(token, new Date());
     return r ? viewOf(r) : null;
   } catch (e) {
     await logUnexpected("resolveAgentSession", e);
@@ -399,11 +443,12 @@ export async function logoutAgentSession(token: string): Promise<{ ok: true }> {
   return { ok: true };
 }
 /** "ออกจากระบบทุกเครื่อง" ของผู้ใช้เอง */
-export async function logoutAllAgentSessions(token: string, meta?: { now?: Date }): Promise<{ ok: true; revoked: number } | AgencyFail> {
+export async function logoutAllAgentSessions(token: string, _meta?: { now?: Date }): Promise<{ ok: true; revoked: number } | AgencyFail> {
   return guard("logoutAllAgentSessions", async () => {
-    const s = await liveSession(token, new Date());
+    const now = new Date();
+    const s = await liveSession(token, now);
     if (!s) return relogin();
-    const n = await prisma.agentSession.updateMany({ where: { agentUserId: s.agentUserId, revokedAt: null }, data: { revokedAt: nowOf(meta) } });
+    const n = await prisma.agentSession.updateMany({ where: { agentUserId: s.agentUserId, revokedAt: null }, data: { revokedAt: now } });
     return { ok: true as const, revoked: n.count };
   });
 }
@@ -434,9 +479,9 @@ const shopFromInput = (input: unknown): unknown => (isRec(input) ? input.shopSlu
  * ประตูเดียวของบริการพอร์ทัล (A2.x): ร้านจาก shopSlug ของ URL · บัญชีของร้านนั้นที่เป็นของตัวตนของผู้ใช้ · ACTIVE · สมาชิก active ·
  * อ่านใหม่ทุกครั้ง · ไม่ใช้ activeAgentAccountId · ไม่ผ่านทุกกรณี = null เดียวกัน · ผลไม่มี agentUserId/identityId
  */
-export async function agentScope(token: string, input: { shopSlug: string }, meta?: { now?: Date }): Promise<AgentScope | null> {
+export async function agentScope(token: string, input: { shopSlug: string }, _meta?: { now?: Date }): Promise<AgentScope | null> {
   try {
-    const s = await liveSession(token, nowOf(meta));
+    const s = await liveSession(token, new Date());
     if (!s) return null;
     const shop = await shopBySlug(shopFromInput(input));
     if (!shop) return null;
@@ -450,9 +495,9 @@ export async function agentScope(token: string, input: { shopSlug: string }, met
 }
 
 /** ตั้ง activeAgentAccountId (คำใบ้ UI เท่านั้น) — ACTIVE/PENDING ที่เป็นสมาชิก active · INVITED ของตัวตน (OWNER/ADMIN) · อื่น ⇒ NOT_FOUND ข้อความเดียวกับร้านที่ไม่มีจริง */
-export async function selectAgentAccount(token: string, input: { shopSlug: string }, meta?: { now?: Date }): Promise<{ ok: true; agentAccountId: string; status: string; role: AgentRole } | AgencyFail> {
+export async function selectAgentAccount(token: string, input: { shopSlug: string }, _meta?: { now?: Date }): Promise<{ ok: true; agentAccountId: string; status: string; role: AgentRole } | AgencyFail> {
   return guard("selectAgentAccount", async () => {
-    const s = await liveSession(token, nowOf(meta));
+    const s = await liveSession(token, new Date());
     if (!s) return relogin();
     const shop = await shopBySlug(shopFromInput(input));
     if (!shop) return agencyFail("NOT_FOUND");
@@ -468,9 +513,9 @@ export async function selectAgentAccount(token: string, input: { shopSlug: strin
 }
 
 /** บัญชีของผู้ใช้ข้ามร้าน (มุมมองเอเจนซี่เอง): สมาชิก active + แถว INVITED ของตัวตน (OWNER/ADMIN) · ไม่มีคีย์ภายใน */
-export async function myAgentAccounts(token: string, meta?: { now?: Date }): Promise<{ ok: true; items: { agentAccountId: string; shopSlug: string; shopName: string; status: string; role: AgentRole }[] } | AgencyFail> {
+export async function myAgentAccounts(token: string, _meta?: { now?: Date }): Promise<{ ok: true; items: { agentAccountId: string; shopSlug: string; shopName: string; status: string; role: AgentRole }[] } | AgencyFail> {
   return guard("myAgentAccounts", async () => {
-    const s = await liveSession(token, nowOf(meta));
+    const s = await liveSession(token, new Date());
     if (!s) return relogin();
     const invitedToo = s.role === "OWNER" || s.role === "ADMIN";
     const rows = await prisma.$queryRaw<{ id: string; status: string; role: string; slug: string; name: string }[]>`
@@ -532,7 +577,7 @@ export async function agentWithdraw(token: string, input: { shopSlug: string }, 
 }
 
 // ═══════════════ เพื่อนร่วมทีม · ทีม (§9) ═══════════════
-/** เชิญเพื่อน (OWNER/ADMIN · ADMIN เชิญ OWNER ไม่ได้) — token มีผู้เชิญในตัว · อายุ teammateInviteTtlMin · ไม่สร้างแถว · ไม่อ่าน AgentLogin */
+/** เชิญเพื่อน (OWNER/ADMIN · ADMIN เชิญ OWNER ไม่ได้) — token มีผู้เชิญ + jti ในตัว (ใช้ครั้งเดียว) · อายุ teammateInviteTtlMin · ไม่สร้างแถว · ไม่อ่าน AgentLogin · เพดานต่อผู้เชิญ/ต่อตัวตน */
 export async function createTeammateInvite(token: string, input: { email: string; role: AgentRole }, meta: AgentAuthMeta): Promise<{ ok: true; teammateToken: string; expiresAt: string } | AgencyFail> {
   const m = metaOf(meta);
   if (isFail(m)) return m;
@@ -547,6 +592,9 @@ export async function createTeammateInvite(token: string, input: { email: string
     if (role === "OWNER" && who.role !== "OWNER") return agencyFail("FORBIDDEN");
     const email = emailOf(input.email);
     if (!email) return agencyFail("VALIDATION");
+    // r2 (มติ §10 ข้อ 3): เพดานจดหมายเชิญ — ต่อผู้เชิญ/ชม. → ต่อตัวตน/วัน · ตัวจำกัดล้ม = ปฏิเสธ (fail closed)
+    const rl = (await hit(m, "agent:tminv:u:", who.id, LIMITS.teammateInvitePerInviter, true)) ?? (await hit(m, "agent:tminv:i:", who.identityId, LIMITS.teammateInvitePerIdentity, true));
+    if (rl) return rl;
     const expiresAt = new Date(m.now.getTime() + LIMITS.teammateInviteTtlMin * 60_000);
     const teammateToken = signTeammateToken({ identityId: who.identityId, role, inviterAgentUserId: who.id, emailNorm: email, expiresAtSec: Math.floor(expiresAt.getTime() / 1000) });
     const url = `${platformOrigin()}/agent/join#${teammateToken}`;

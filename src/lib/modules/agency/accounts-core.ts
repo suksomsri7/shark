@@ -32,7 +32,12 @@ export type AgentAccountAction = (typeof AGENT_ACCOUNT_ACTIONS)[number];
 /** = statusReason เมื่อ CLOSED (รหัสเท่านั้น) */
 export const AGENT_CLOSE_REASONS = ["REJECTED", "WITHDRAWN", "INVITE_REVOKED", "CLOSED_BY_SHOP", "IDENTITY_CLOSED"] as const;
 export type AgentCloseReason = (typeof AGENT_CLOSE_REASONS)[number];
-/** สมัครซ้ำ ⇒ PENDING เสมอ + รอ reapplyCooldownDays (§6 ข้อ 5 · มติ R1 ข้อ 6) */
+/**
+ * สมัครซ้ำ ⇒ PENDING เสมอ + รอ reapplyCooldownDays (§6 ข้อ 5 · มติ R1 ข้อ 6)
+ * r2 (มติ §10 ข้อ 1) ▸ "เคยถูกร้านปิด/ปฏิเสธ" ต้องรอดจากการสมัครซ้ำ/ถอนกี่รอบก็ตาม: แถวที่สมัครซ้ำจากเหตุ STICKY **คง statusReason เดิมไว้ระหว่าง PENDING**
+ *   (DTO แสดง closeReason เฉพาะเมื่อ CLOSED) · ถอน/ปิดตัวตนจาก PENDING แบบนั้น ⇒ CLOSED พร้อมเหตุเดิม (ไม่ใช่ WITHDRAWN/IDENTITY_CLOSED) ·
+ *   ร้านอนุมัติ ⇒ ล้าง · ผังสถานะข้างล่างให้เหตุปริยาย ผู้เรียกแทนด้วยเหตุ STICKY ที่ค้างอยู่ผ่าน `closeReasonKeepingSticky`
+ */
 export const STICKY_CLOSE_REASONS = ["REJECTED", "CLOSED_BY_SHOP"] as const;
 export type AgentTransitionActor = "SHOP" | "AGENT" | "SYSTEM";
 export type AgentTransition = { to: AgentAccountStatus; reason: AgentCloseReason | null; actor: AgentTransitionActor };
@@ -73,7 +78,11 @@ export function agentAccountTransition(from: AgentAccountStatus | null, action: 
   const t = TRANSITIONS[`${from ?? "-"}|${action}`];
   return t ? { to: t.to, reason: t.reason, actor: t.actor } : null;
 }
-export const isStickyCloseReason = (r: unknown): boolean => (STICKY_CLOSE_REASONS as readonly unknown[]).includes(r);
+export const isStickyCloseReason = (r: unknown): r is (typeof STICKY_CLOSE_REASONS)[number] => (STICKY_CLOSE_REASONS as readonly unknown[]).includes(r);
+/** เหตุปิดของการปิดที่ไม่ใช่การตัดสินของร้าน (ถอน · ปิดตัวตน): แถวมีเหตุ STICKY ค้าง ⇒ คงเหตุนั้น · ไม่งั้นใช้เหตุปริยายของผัง (มติ §10 ข้อ 1) */
+export function closeReasonKeepingSticky(current: unknown, fallback: AgentCloseReason): AgentCloseReason {
+  return isStickyCloseReason(current) ? current : fallback;
+}
 
 // ═══════════════ ผลล้ม ═══════════════
 export const AGENCY_ERROR_CODES = [
@@ -149,6 +158,11 @@ export type AgentAuthLimits = {
   lookupByCodePerActor: Bucket;
   reapplyCooldownDays: number;
   sweepBatch: number;
+  // r2 (มติ §10 ข้อ 3) ▸ เพดานจดหมายเชิญ — ทุกถัง fail closed
+  teammateInvitePerInviter: Bucket;
+  teammateInvitePerIdentity: Bucket;
+  shopInviteMailPerTarget: Bucket;
+  shopInviteMailPerShop: Bucket;
 };
 export const AGENT_AUTH_LIMITS: AgentAuthLimits = {
   codeTtlMin: 10,
@@ -173,6 +187,10 @@ export const AGENT_AUTH_LIMITS: AgentAuthLimits = {
   lookupByCodePerActor: { limit: 30, windowMin: 60 },
   reapplyCooldownDays: 7,
   sweepBatch: 5000,
+  teammateInvitePerInviter: { limit: 5, windowMin: 60 }, // เชิญเพื่อนร่วมทีม ≤ 5/ชม. ต่อผู้เชิญ
+  teammateInvitePerIdentity: { limit: 20, windowMin: 1440 }, // ≤ 20/วัน ต่อตัวตน
+  shopInviteMailPerTarget: { limit: 3, windowMin: 1440 }, // ร้านเชิญอีเมล (รวมออกใหม่) ≤ 3/วัน ต่ออีเมลปลายทางต่อร้าน
+  shopInviteMailPerShop: { limit: 50, windowMin: 1440 }, // ≤ 50/วัน ต่อร้าน
 };
 /** ถัง → ตัวเลือกของ checkRateLimitDb */
 export const bucketOpts = (b: Bucket): { limit: number; windowMs: number } => ({ limit: b.limit, windowMs: b.windowMin * 60_000 });
@@ -184,6 +202,10 @@ export const AGENT_CLIENT_KEY_RE = /^[A-Za-z0-9_:.-]{8,128}$/;
 /** §4 — "ag_" + base64url(32 ไบต์) · ไม่ตรงรูป ⇒ ปฏิเสธก่อนแฮช */
 export const AGENT_SESSION_TOKEN_RE = /^ag_[A-Za-z0-9_-]{43}$/;
 export const AGENT_LOGIN_CODE_RE = /^[0-9]{6}$/;
+/** r2 (มติ §10 ข้อ 17) — id ของแถวรหัส = "alc_" + hex 24 (newAgentRowId) · ไม่ตรงรูป ⇒ ปฏิเสธก่อนแตะฐาน/ถัง */
+export const AGENT_LOGIN_CODE_ID_RE = /^alc_[0-9a-f]{24}$/;
+/** id ที่บริการรับจากผู้เรียก (cuid · id ที่มีคำนำหน้า) — ไม่มีอักขระควบคุม/NUL ไปถึงฐาน (มติ §10 ข้อ 17) */
+export const AGENCY_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 // ═══════════════ DTO ฝั่งร้าน (§7.2 ตรงตัว) ═══════════════
 export const SHOP_AGENT_ACCOUNT_KEYS: readonly string[] = [
@@ -208,6 +230,130 @@ export function cleanAgencyText(raw: unknown, max: number): string | null {
   if (BAD_CHARS.test(s) || LONE_SURROGATE.test(s)) return null;
   return s;
 }
+
+// ═══════════════ อีเมล / IP / รหัส error ของฐาน (r2 · มติ §10 ข้อ 16–18 · บริสุทธิ์) ═══════════════
+const EMAIL_BAD_CHARS = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/;
+/**
+ * ด่านอีเมลชุดเดียวของทั้งฝั่งล็อกอินและฝั่งร้าน (ก่อน normalizeAgentLogin): ตัดช่องว่างธรรมดาหัวท้าย → NFC ·
+ * อักขระควบคุม (C0 รวม NUL/TAB/LF/CR · DEL · C1) / zero-width / ตัวกลับทิศ / BOM / soft hyphen / surrogate เดี่ยว ⇒ null (**ปฏิเสธ ไม่ตัดทิ้ง**) · ยาวเกิน 254 ⇒ null
+ */
+export function cleanAgentEmailInput(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length > 320) return null;
+  const s = raw.replace(/^ +| +$/g, "");
+  if (s.length === 0 || EMAIL_BAD_CHARS.test(s) || LONE_SURROGATE.test(s)) return null;
+  const n = s.normalize("NFC");
+  return n.length > 254 ? null : n;
+}
+
+const V4_PART = /^(0|[1-9][0-9]{0,2})$/;
+const parseV4 = (s: string): number[] | null => {
+  const p = s.split(".");
+  if (p.length !== 4 || !p.every((x) => V4_PART.test(x))) return null;
+  const n = p.map(Number);
+  return n.every((x) => x <= 255) ? n : null;
+};
+/** IPv6 → 8 กลุ่ม (ตัวเลข) · ผิดรูป ⇒ null · รับ `::` · ท้ายเป็น IPv4 ได้ · ไม่รับ zone id */
+const parseV6 = (s: string): number[] | null => {
+  if (!/^[0-9A-Fa-f:.]{2,45}$/.test(s) || !s.includes(":")) return null;
+  const dbl = s.indexOf("::");
+  if (dbl !== s.lastIndexOf("::")) return null;
+  const groupsOf = (part: string): number[] | null => {
+    if (part === "") return [];
+    const out: number[] = [];
+    const items = part.split(":");
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it.includes(".")) {
+        const v4 = i === items.length - 1 ? parseV4(it) : null;
+        if (!v4) return null;
+        out.push((v4[0] << 8) | v4[1], (v4[2] << 8) | v4[3]);
+      } else if (/^[0-9A-Fa-f]{1,4}$/.test(it)) out.push(parseInt(it, 16));
+      else return null;
+    }
+    return out;
+  };
+  if (dbl < 0) {
+    const g = groupsOf(s);
+    return g && g.length === 8 ? g : null;
+  }
+  const head = groupsOf(s.slice(0, dbl));
+  const tail = groupsOf(s.slice(dbl + 2));
+  if (!head || !tail || head.length + tail.length > 7) return null;
+  if (s.slice(0, dbl).includes(".")) return null;
+  return [...head, ...new Array<number>(8 - head.length - tail.length).fill(0), ...tail];
+};
+/**
+ * รูปมาตรฐานของ IP ก่อนทำถัง/แฮช (มติ §10 ข้อ 16): `addr` = ที่อยู่เต็มรูปเดียว (IPv4 จุดทศนิยม · IPv6 ขยายเต็มตัวเล็ก) ·
+ * `bucket` = คีย์ของถังต่อ IP — IPv4 = ที่อยู่ · **IPv6 = /64** (ผู้ใช้หนึ่งรายถือทั้ง /64) · IPv4 ที่ห่อใน IPv6 (::ffff:a.b.c.d) = IPv4 นั้น · ผิดรูป ⇒ null
+ */
+export function canonicalAgentIp(raw: unknown): { addr: string; bucket: string } | null {
+  if (typeof raw !== "string" || raw.length < 2 || raw.length > 64) return null;
+  const v4 = parseV4(raw);
+  if (v4) return { addr: v4.join("."), bucket: `v4:${v4.join(".")}` };
+  const g = parseV6(raw);
+  if (!g) return null;
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) {
+    const a = [g[6] >> 8, g[6] & 255, g[7] >> 8, g[7] & 255].join(".");
+    return { addr: a, bucket: `v4:${a}` };
+  }
+  const hex = g.map((x) => x.toString(16).padStart(4, "0"));
+  return { addr: hex.join(":"), bucket: `v6:${hex.slice(0, 4).join(":")}::/64` };
+}
+
+/**
+ * รหัส SQLSTATE จริงของ error จาก Prisma/ตัวขับ (มติ §10 ข้อ 18) — เดินทั้งโครง (meta · cause · driverAdapterError) หา SQLSTATE 5 ตัว
+ * **ก่อน** รหัสของ Prisma เอง (P2010 "raw query failed" ห่อ 40P01/40001 ไว้ใน cause.originalCode) · ไม่เจอ ⇒ แปลงรหัส Prisma ที่รู้จัก ·
+ * คืน "TX_TIMEOUT" สำหรับ P2028 · ไม่รู้ ⇒ null
+ */
+export function pgErrorCode(e: unknown): string | null {
+  const SQLSTATE = /^[0-9A-Z]{5}$/;
+  const PRISMA = /^P[1-6][0-9]{3}$/;
+  const prismaCodes: string[] = [];
+  const seen = new Set<unknown>();
+  const stack: unknown[] = [e];
+  let steps = 0;
+  while (stack.length && steps++ < 200) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object" || seen.has(cur)) continue;
+    seen.add(cur);
+    const o = cur as Record<string, unknown>;
+    for (const k of ["originalCode", "code"]) {
+      const v = o[k];
+      if (typeof v !== "string") continue;
+      if (PRISMA.test(v)) prismaCodes.push(v);
+      else if (SQLSTATE.test(v)) return v;
+    }
+    for (const k of ["meta", "cause", "driverAdapterError", "error", "originalError"]) if (o[k] && typeof o[k] === "object") stack.push(o[k]);
+  }
+  if (prismaCodes.includes("P2002")) return "23505";
+  if (prismaCodes.includes("P2034")) return "40001";
+  if (prismaCodes.includes("P2028")) return "TX_TIMEOUT";
+  return null;
+}
+/**
+ * ค่าสตริงที่ error พกมาในช่องโครงสร้าง (meta.modelName · meta.target · constraint.fields · originalMessage ของตัวขับ) — ผู้เรียกเทียบชื่อตาราง/constraint เท่านั้น ไม่บันทึกที่ใด
+ * ⚠️ ไม่รวม `message` ของ Prisma (มีโค้ดต้นทางของจุดเรียกปนมา ⇒ จับคำผิดได้)
+ */
+export function pgErrorHints(e: unknown): string {
+  const out: string[] = [];
+  const seen = new Set<unknown>();
+  const stack: unknown[] = [e];
+  let steps = 0;
+  while (stack.length && steps++ < 200) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object" || seen.has(cur)) continue;
+    seen.add(cur);
+    for (const [k, v] of Object.entries(cur as Record<string, unknown>)) {
+      if (k === "stack") continue;
+      if (typeof v === "string") out.push(v.slice(0, 300));
+      else if (Array.isArray(v)) out.push(v.filter((x) => typeof x === "string").join(","));
+      else if (v && typeof v === "object") stack.push(v);
+    }
+  }
+  return out.join("|");
+}
+/** deadlock / serialization failure — ลองใหม่ได้ ไม่ใช่ error ที่ไม่คาด */
+export const isPgRetryable = (code: string | null): boolean => code === "40P01" || code === "40001";
 
 // ═══════════════ ใบอนุญาต (§3.3 · WARN เท่านั้น) ═══════════════
 const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -246,12 +392,13 @@ export function maskEmail(email: string): string {
 
 /**
  * จดหมายรหัสเข้าระบบ (§5.6 · มติ R1 ข้อ 3) — รับรหัสอย่างเดียว ⇒ เหมือนกันทุกไบต์ไม่ว่าผู้รับมี/ไม่มีบัญชี
- * มีแค่รหัส + อายุ + "ถ้าไม่ได้ขอ ไม่ต้องทำอะไร" · ไม่มีชื่อร้าน/เอเจนซี่ · ไม่มีลิงก์กดได้
+ * มีแค่รหัส + อายุ + "ถ้าไม่ได้ขอ ไม่ต้องทำอะไร" · ไม่มีชื่อร้าน/เอเจนซี่ · ไม่มีลิงก์กดได้ · หัวเรื่องไม่มีรหัส
  */
 export function agentLoginCodeMail(code: string): { subject: string; text: string; html: string } {
   const c = String(code).replace(/[^0-9]/g, "").slice(0, 6);
   const ttl = AGENT_AUTH_LIMITS.codeTtlMin;
-  const subject = `รหัสเข้าระบบเอเจนซี่ SHARK: ${c}`;
+  // r2 (มติ §10 ข้อ 4) ▸ หัวเรื่องคงที่ — รหัสอยู่ในเนื้อหาเท่านั้น (หัวเรื่องขึ้นแดชบอร์ดผู้ให้บริการ/หน้าจอล็อก/log ของตัวส่ง)
+  const subject = "รหัสเข้าระบบเอเจนซี่ SHARK";
   const text = [
     `รหัสเข้าระบบเอเจนซี่ของคุณคือ ${c}`,
     `รหัสนี้ใช้ได้ ${ttl} นาที และใช้ได้ครั้งเดียว`,

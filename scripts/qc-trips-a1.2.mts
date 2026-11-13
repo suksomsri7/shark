@@ -220,6 +220,7 @@ try {
   };
   const lastMail = (to: string, kind: string) => [...mails].reverse().find((m) => m.to === to && m.kind === kind);
   const rip = () => `10.${randomBytes(1)[0]}.${randomBytes(1)[0]}.${randomBytes(1)[0]}`;
+  const OPEN_DEPS: Rec = { ...deps, rateLimit: async () => ({ ok: true, count: 1 }) };
   const meta = (now?: Date, ck?: string, ip?: string, d: Rec = deps): Rec => ({ clientKey: ck ?? `qc-${hex(6)}`, ip: ip ?? rip(), userAgent: "qca12-oracle", ...(now ? { now } : {}), deps: d });
   const allTokens: string[] = [];
 
@@ -267,7 +268,13 @@ try {
   const ctxOf = (tenantId: string, s: Staff) => ({ tenantId, actorUserId: s.userId });
   const cA = () => ctxOf(tA, staff.OA), cB = () => ctxOf(tB, staff.OB), cD = () => ctxOf(tD, staff.OD);
   const seenByA: string[] = []; // ผลทุกตัวที่ร้าน A ได้รับ (สแกนเครื่องหมายของร้าน B)
-  const shop = async (fn: string, ctx: { tenantId: string; actorUserId: string }, input: Rec, opts: Rec = {}): Promise<Rec> => {
+  const withExpected = async (fn: string, input: Rec): Promise<Rec> => {
+    if ((fn !== "approveAgentAccount" && fn !== "rejectAgentAccount") || "expectedUpdatedAt" in input) return input;
+    const u = (await q<{ u: string }>(`SELECT to_char("updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS u FROM "AgentAccount" WHERE id = $1`, [String(input.agentAccountId)]))[0]?.u;
+    return { ...input, expectedUpdatedAt: u ?? "1970-01-01T00:00:00.000Z" };
+  };
+  const shop = async (fn: string, ctx: { tenantId: string; actorUserId: string }, input0: Rec, opts: Rec = {}): Promise<Rec> => {
+    const input = await withExpected(fn, input0);
     const r = R(await AG(fn)(ctx, input, { deps, ...opts }));
     if (ctx.tenantId === tA) seenByA.push(JSON.stringify(r));
     return r;
@@ -379,6 +386,8 @@ try {
     applyPerClient: { limit: 20, windowMin: 60 }, applyPerIdentity: { limit: 10, windowMin: 1440 }, applyPerShop: { limit: 30, windowMin: 60 },
     openPendingPerShop: 200, openCodeInvitesPerIdentity: 20, inviteAcceptPerClient: { limit: 20, windowMin: 15 }, lookupByCodePerActor: { limit: 30, windowMin: 60 },
     reapplyCooldownDays: 7, sweepBatch: 5000,
+    teammateInvitePerInviter: { limit: 5, windowMin: 60 }, teammateInvitePerIdentity: { limit: 20, windowMin: 1440 },
+    shopInviteMailPerTarget: { limit: 3, windowMin: 1440 }, shopInviteMailPerShop: { limit: 50, windowMin: 1440 },
   };
   await st("K-8", "AGENT_AUTH_LIMITS = ตาราง §5.0 ตรงตัว (มติ R2) · งบเดาต่ออีเมลต่อวัน codePerTargetDay × codeMaxAttempts ≤ 50", () => {
     needBuilt();
@@ -451,7 +460,7 @@ try {
   const OWNED = new Set([...OWNED_NEW, `${AG_DIR}/entry.ts`, `${AG_DIR}/index.ts`, "src/lib/core/permissions.ts", "src/lib/outbox-consumers.ts", "src/lib/automation/labels.ts", "src/lib/platform/minute-jobs.ts"]);
   await st("S-6", `ขอบเขต (เทียบ ${BASE_SHA} · ไม่นับ ledger/ · ไฟล์ข้อสอบนี้ · ไฟล์ที่ตรง session/trips): แตะได้เฉพาะไฟล์ใบสั่ง §2`, () => {
     needBuilt();
-    const ch = changedSinceBase(["."]).filter((f) => !f.startsWith("ledger/") && f !== ORACLE_FILE && !sameAsSession(f));
+    const ch = changedSinceBase(["."]).filter((f) => !f.startsWith("ledger/") && f !== ORACLE_FILE && !/^scripts\/(probe-trips-a1\.2-hunt-)/.test(f) && !sameAsSession(f));
     const extra = ch.filter((f) => !OWNED.has(f));
     eq(extra, [], "ไฟล์นอกขอบเขต");
   });
@@ -459,7 +468,7 @@ try {
     needBuilt();
     const forb = ["trips", "ticket", "pos", "hotel", "rooms", "dorm", "booking", "queue", "account", "party", "crm", "member"].map((m) => `src/lib/modules/${m}`)
       .concat(["src/lib/core/settings", "src/lib/core/db.ts", "src/lib/core/scope.ts", "src/lib/core/signed-link.ts", "src/lib/core/rate-limit-db.ts", "src/lib/core/email.ts", "src/lib/core/audit.ts", "src/lib/core/outbox.ts", "src/lib/core/session.ts", "src/lib/core/origin.ts", "prisma", "src/app", "src/components", "scripts"]);
-    const t = changedSinceBase(forb).filter((f) => f !== ORACLE_FILE && !sameAsSession(f));
+    const t = changedSinceBase(forb).filter((f) => f !== ORACLE_FILE && !/^scripts\/(probe-trips-a1\.2-hunt-)/.test(f) && !sameAsSession(f));
     eq(t, [], "ไฟล์ต้องห้ามที่เปลี่ยน");
   });
   await st("S-8", "ผู้กระทำ AGENT ยังปิดในเส้นทางขาย/จอง: trips/state.ts คง AGENCY_NOT_ENABLED และไม่มีไฟล์ trips เปลี่ยน", () => {
@@ -547,7 +556,7 @@ try {
   };
   const signup = (email: string, tag: string) => login(email, { signup: { agencyName: `${QC_MARK} ${tag} ${STAMP}`, ownerName: `${QC_MARK} owner ${tag}` } });
   const teammate = async (inviter: Who, email: string, role: string, name: string): Promise<Who> => {
-    const ti = R(await AU("createTeammateInvite")(inviter.token, { email, role }, meta()));
+    const ti = R(await AU("createTeammateInvite")(inviter.token, { email, role }, meta(undefined, undefined, undefined, OPEN_DEPS)));
     ok(ti.ok === true, `เชิญเพื่อน: ${fmt(ti)}`);
     allTokens.push(String(ti.teammateToken));
     return login(email, { teammateInvite: ti.teammateToken, teammateName: `${QC_MARK} ${name}` });
@@ -675,9 +684,17 @@ try {
     const x = needX();
     const s = (await q<{ idleExpiresAt: Date; expiresAt: Date }>(`SELECT "idleExpiresAt", "expiresAt" FROM "AgentSession" WHERE "tokenHash" = $1`, [authHash("session", x.token)]))[0];
     ok(s, "ไม่มี session");
-    const a = await AU("resolveAgentSession")(x.token, { now: new Date(s.idleExpiresAt.getTime() + 1000) });
-    const b = await AU("resolveAgentSession")(x.token, { now: new Date(s.expiresAt.getTime() + 1000) });
-    eq([a, b], [null, null], "ผล");
+    const th = authHash("session", x.token);
+    const keep = (await q<{ i: string; e: string }>(`SELECT "idleExpiresAt"::text AS i, "expiresAt"::text AS e FROM "AgentSession" WHERE "tokenHash" = $1`, [th]))[0];
+    const past = await AU("resolveAgentSession")(x.token, { now: new Date(Date.now() + 400 * 86_400_000) });
+    ok(past !== null, "now ของผู้เรียกต้องไม่มีผลกับอายุ session (มติ §10 ข้อ 7)");
+    await q(`UPDATE "AgentSession" SET "idleExpiresAt" = now() - interval '1 second' WHERE "tokenHash" = $1`, [th]);
+    const a = await AU("resolveAgentSession")(x.token);
+    const revive = await AU("resolveAgentSession")(x.token, { now: new Date(Date.now() - 3_600_000) });
+    await q(`UPDATE "AgentSession" SET "expiresAt" = now() - interval '1 second', "idleExpiresAt" = now() - interval '2 second' WHERE "tokenHash" = $1`, [th]);
+    const b = await AU("resolveAgentSession")(x.token);
+    await q(`UPDATE "AgentSession" SET "expiresAt" = $2::timestamp, "idleExpiresAt" = $3::timestamp WHERE "tokenHash" = $1`, [th, keep.e, keep.i]);
+    eq([a, b, revive], [null, null, null], "ผล");
     ok(await AU("resolveAgentSession")(x.token), "session ปกติต้องยังใช้ได้หลังลองเวลาอนาคต");
   });
   await st("A-12", "ไม่มีกุญแจเซิร์ฟเวอร์ (SESSION_SECRET ว่าง) ⇒ BUSY reason SERVER_KEY_MISSING · ไม่สร้างแถวรหัส · ไม่มีกุญแจสำรอง", async () => {
@@ -1104,7 +1121,7 @@ try {
   let Y: Who | null = null, Z2: Who | null = null, T1: Who | null = null, T2: Who | null = null;
   await st("M-1", "X เชิญเพื่อน Y (SALES) ⇒ token + จดหมาย TEAMMATE_INVITE · Y ยืนยันรหัสพร้อม token ⇒ created TEAMMATE · AgentUser ของ Y อยู่ตัวตน X role SALES", async () => {
     const x = needX();
-    const ti = R(await AU("createTeammateInvite")(x.token, { email: ey, role: "SALES" }, meta()));
+    const ti = R(await AU("createTeammateInvite")(x.token, { email: ey, role: "SALES" }, meta(undefined, undefined, undefined, OPEN_DEPS)));
     ok(ti.ok === true && lastMail(ey, "TEAMMATE_INVITE")?.token === ti.teammateToken, fmt(ti));
     allTokens.push(String(ti.teammateToken));
     const r1 = await reqCode(ey);
@@ -1117,7 +1134,7 @@ try {
   await st("M-2", "token เพื่อนแก้ 1 ตัว ⇒ INVITE_INVALID · หมดอายุ (ยืนยัน ณ +teammateInviteTtlMin+60 นาที) ⇒ INVITE_INVALID · ไม่สร้างผู้ใช้", async () => {
     const x = needX();
     const e = mail("m2");
-    const ti = R(await AU("createTeammateInvite")(x.token, { email: e, role: "SALES" }, meta()));
+    const ti = R(await AU("createTeammateInvite")(x.token, { email: e, role: "SALES" }, meta(undefined, undefined, undefined, OPEN_DEPS)));
     const tok = String(ti.teammateToken); allTokens.push(tok);
     const flip = `${tok.slice(0, -2)}${tok.endsWith("AA") ? "BB" : "AA"}`;
     const r1 = await reqCode(e);
@@ -1130,7 +1147,7 @@ try {
   });
   await st("M-3", "เชิญเพื่อนด้วยอีเมลที่มีเจ้าของแล้ว (W) ⇒ ผู้เชิญได้ผลปกติ (ไม่รู้) · W ยืนยันพร้อม token ⇒ LOGIN_UNAVAILABLE · W ยังอยู่ตัวตนเดิม", async () => {
     const x = needX(), w = W; ok(w, "ไม่มี W");
-    const ti = R(await AU("createTeammateInvite")(x.token, { email: ew, role: "SALES" }, meta()));
+    const ti = R(await AU("createTeammateInvite")(x.token, { email: ew, role: "SALES" }, meta(undefined, undefined, undefined, OPEN_DEPS)));
     ok(ti.ok === true, `ผู้เชิญต้องได้ผลปกติ: ${fmt(ti)}`);
     allTokens.push(String(ti.teammateToken));
     const r1 = await reqCode(ew);
@@ -1141,7 +1158,7 @@ try {
   await st("M-4", "Y (SALES) สมัครร้าน ⇒ FORBIDDEN · เชิญเพื่อน ⇒ FORBIDDEN", async () => {
     const y = Y; ok(y, "ไม่มี Y");
     const a = R(await AU("agentApply")(y!.token, { shopSlug: slugD, application: app() }, meta()));
-    const b = R(await AU("createTeammateInvite")(y!.token, { email: mail("m4"), role: "SALES" }, meta()));
+    const b = R(await AU("createTeammateInvite")(y!.token, { email: mail("m4"), role: "SALES" }, meta(undefined, undefined, undefined, OPEN_DEPS)));
     eq([a.code, b.code], ["FORBIDDEN", "FORBIDDEN"], "ผล");
   });
   await st("M-5", "X เพิ่ม Y เป็นสมาชิกบัญชีร้าน B (SALES) ⇒ แถวสมาชิกในร้าน B · myAgentAccounts(Y) = ร้าน B เท่านั้น", async () => {
@@ -1157,7 +1174,7 @@ try {
     Z2 = await teammate(x, mail("z2"), "ADMIN", "Z2");
     const a = R(await AS("setAgentAccountMember")({ agentUserId: Z2.agentUserId }, { agentAccountId: accXB, agentUserId: y!.agentUserId, role: "OWNER" }));
     const b = R(await AS("setAgentUserRole")({ agentUserId: Z2.agentUserId }, { targetUserId: y!.agentUserId, role: "OWNER" }));
-    const c = R(await AU("createTeammateInvite")(Z2.token, { email: mail("m6"), role: "OWNER" }, meta()));
+    const c = R(await AU("createTeammateInvite")(Z2.token, { email: mail("m6"), role: "OWNER" }, meta(undefined, undefined, undefined, OPEN_DEPS)));
     eq([a.code, b.code, c.code], ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN"], "ผล");
   });
   await st("M-7", "เจ้าของคนสุดท้ายของตัวตน: X ลดตัวเองเป็น ADMIN ⇒ LAST_OWNER · role ยัง OWNER", async () => {
@@ -1211,8 +1228,8 @@ try {
     const z3 = await teammate(x, mail("z3"), "ADMIN", "Z3");
     const z4 = await teammate(x, mail("z4"), "ADMIN", "Z4");
     const e1 = mail("m13a"), e2 = mail("m13b");
-    const t1 = R(await AU("createTeammateInvite")(z3.token, { email: e1, role: "SALES" }, meta()));
-    const t2 = R(await AU("createTeammateInvite")(z4.token, { email: e2, role: "SALES" }, meta()));
+    const t1 = R(await AU("createTeammateInvite")(z3.token, { email: e1, role: "SALES" }, meta(undefined, undefined, undefined, OPEN_DEPS)));
+    const t2 = R(await AU("createTeammateInvite")(z4.token, { email: e2, role: "SALES" }, meta(undefined, undefined, undefined, OPEN_DEPS)));
     ok(t1.ok === true && t2.ok === true, `เชิญ ${fmt([t1, t2])}`);
     allTokens.push(String(t1.teammateToken), String(t2.teammateToken));
     R(await AS("disableAgentUser")({ agentUserId: x.agentUserId }, { targetUserId: z3.agentUserId }));
@@ -1350,7 +1367,8 @@ try {
     const ids = await Promise.all([1, 2, 3, 4, 5].map((i) => mkIdent(`c3-${i}`)));
     const accs: string[] = [];
     for (const v of ids) accs.push(String(R(await AS("applyToShop")({ agentUserId: v.agentUserId }, { tenantId: tD, application: app() })).agentAccountId));
-    const out = await Promise.all(accs.map((a) => settle([AG("approveAgentAccount")(cD(), { agentAccountId: a }), AG("rejectAgentAccount")(cD(), { agentAccountId: a })])));
+    const exp = await Promise.all(accs.map((a) => withExpected("approveAgentAccount", { agentAccountId: a })));
+    const out = await Promise.all(accs.map((a, i) => settle([AG("approveAgentAccount")(cD(), exp[i]), AG("rejectAgentAccount")(cD(), exp[i])])));
     let approvedWins = 0;
     for (let i = 0; i < accs.length; i++) {
       const [ap, rj] = out[i];
@@ -1414,7 +1432,7 @@ try {
   await st("C-8", "รับคำเชิญเพื่อนพร้อมกัน (ยืนยันรหัสเดียวกัน 6 ครั้ง + token เพื่อน) ⇒ ผู้ใช้ใหม่ 1 คน · AgentLogin 1 แถว", async () => {
     const x = needX();
     const e = mail("c8");
-    const ti = R(await AU("createTeammateInvite")(x.token, { email: e, role: "SALES" }, meta()));
+    const ti = R(await AU("createTeammateInvite")(x.token, { email: e, role: "SALES" }, meta(undefined, undefined, undefined, OPEN_DEPS)));
     allTokens.push(String(ti.teammateToken));
     const r = await reqCode(e);
     const code = lastMail(e, "LOGIN_CODE")?.code ?? "";

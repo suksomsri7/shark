@@ -14,7 +14,7 @@ const SECRET_ENV = "SESSION_SECRET";
 const SECRET_MIN = 32;
 const KEY_PREFIX = "shark:agent-auth:v1:";
 /** ป้ายของ agentAuthHash (ตาราง §4) */
-export type AgentHashLabel = "login-target" | "login-code" | "session" | "invite" | "ip" | "ua" | "rate" | "email-tag";
+export type AgentHashLabel = "login-target" | "login-code" | "session" | "invite" | "ip" | "ua" | "rate" | "email-tag" | "tm-jti" | "idem";
 /** ป้ายของ token ที่ได้จาก HMAC โดยตรง (§4) */
 type AgentTokenLabel = "invite-token" | "teammate-token";
 
@@ -76,7 +76,14 @@ export function shopInviteToken(tenantId: string, agentAccountId: string, invite
 }
 export const SHOP_INVITE_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 
-// ═══════════════ token เพื่อนร่วมทีม (§4 · ไม่มีตาราง · มติ R1 ข้อ 9) ═══════════════
+// ═══════════════ token เพื่อนร่วมทีม (§4 · มติ R1 ข้อ 9) ═══════════════
+// r2 (มติ §10 ข้อ 2) ▸ ใช้ครั้งเดียวตลอดกาล: `n` = jti · ตอนรับ ผู้เรียกบันทึกแถว "ใช้แล้ว" (teammateJtiRow → entry.consumeTeammateJtiInTx) ใต้ล็อกตัวตน
+//   ลบ/ปิด/ลดสิทธิ์ผู้ถูกเชิญหรือผู้เชิญ ไม่ทำให้ token กลับมาใช้ได้ (แถว jti ไม่ผูกกับผู้ใช้/อีเมล)
+/** แถว AgentLoginCode ที่แทน "jti นี้ใช้แล้ว": id กำหนดได้จาก jti (PK กันใช้ซ้ำ) · target/codeHash = แฮชมีกุญแจของ jti (ไม่ใช่รหัสเข้าระบบ) */
+export function teammateJtiRow(jti: string): { id: string; target: string } {
+  const h = agentAuthHash("tm-jti", jti);
+  return { id: `tmj_${h.slice(3, 43)}`, target: h };
+}
 export type TeammatePayload = { v: 1; i: string; r: AgentRole; b: string; m: string; e: number; n: string };
 const B64URL_RE = /^[A-Za-z0-9_-]+$/;
 const TEAMMATE_MAX = 1024;
@@ -114,6 +121,7 @@ export function openTeammateToken(token: unknown, emailNorm: string, now: Date):
   if (typeof r.i !== "string" || typeof r.b !== "string" || typeof r.m !== "string" || typeof r.n !== "string" || typeof r.e !== "number" || !Number.isInteger(r.e)) return null;
   if (typeof r.r !== "string" || !(AGENT_ROLES as readonly string[]).includes(r.r)) return null;
   if (r.i.length === 0 || r.i.length > 64 || r.b.length === 0 || r.b.length > 64) return null;
+  if (r.n.length < 16 || r.n.length > 64 || !B64URL_RE.test(r.n)) return null;
   if (r.e * 1000 <= now.getTime()) return null;
   if (!safeEqualStr(r.m, teammateEmailTag(emailNorm))) return null;
   return { v: 1, i: r.i, r: r.r as AgentRole, b: r.b, m: r.m, e: r.e, n: r.n };

@@ -275,16 +275,22 @@ export async function listAgentAccountsOfUser(agentUserId: string): Promise<{ ag
 // 🔴 audit ฝั่งเอเจนซี่: actorType SYSTEM · actorId = AgentAccountMember.id ของผู้กระทำในบัญชีนั้น (หรือ null) · after ⊂ {from to reason actorKind fields}
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 import {
+  AGENCY_ID_RE,
   agencyFail,
   canManageAgentRole,
   cascadeMemberRole,
+  closeReasonKeepingSticky,
   agentRoleRank,
+  isPgRetryable,
+  pgErrorCode,
   type AgencyFail,
 } from "./accounts-core";
-import { AgentKeyMissing, agentAuthHash } from "./tokens";
+import { AgentKeyMissing, agentAuthHash, teammateJtiRow } from "./tokens";
 
 type A12Tx = Prisma.TransactionClient;
-export type AgencyLockNs = "agency.identity.v1" | "agency.account.v1" | "agency.invite.v1";
+// r2 (มติ §10 ข้อ 6 ข้อ 18) ▸ "agency.login.v1" (คีย์ = แฮช login-target ของอีเมล) ถือ **ก่อน** agency.identity.v1 เสมอ — ใช้ที่ verifyAgentLoginCode เท่านั้น
+//   ลำดับเต็ม: agency.login.v1 → agency.identity.v1 → agency.account.v1 → agency.invite.v1 → แถว AgentAccount เรียง id → แถว AgentLoginCode
+export type AgencyLockNs = "agency.login.v1" | "agency.identity.v1" | "agency.account.v1" | "agency.invite.v1";
 const A12_TX_OPTS = { maxWait: 10_000, timeout: 30_000 } as const;
 const ERASED_USER_NAME = "ผู้ใช้ที่ถูกลบ";
 const CLOSED_IDENTITY_NAME = "เอเจนซี่ที่ปิดแล้ว";
@@ -326,6 +332,28 @@ export async function countOpenCodeInvitesOfIdentity(identityId: string, now: Da
     WHERE "identityId" = ${identityId} AND status = 'INVITED' AND ("inviteExpiresAt" IS NULL OR "inviteExpiresAt" > ${now})`;
   return rows[0]?.n ?? 0;
 }
+/** r2 (มติ §10 ข้อ 10) ▸ นับคำเชิญด้วยรหัสที่ค้างของตัวตน **ใน tx ของผู้เรียก** (ผู้เรียกถือ agency.identity.v1 ของตัวตนนี้ ⇒ นับ+แทรกไม่แข่งกันข้ามร้าน) */
+export async function countOpenCodeInvitesOfIdentityInTx(tx: A12Tx, identityId: string, now: Date): Promise<number> {
+  const rows = await tx.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM "AgentAccount"
+    WHERE "identityId" = ${identityId} AND status = 'INVITED' AND ("inviteExpiresAt" IS NULL OR "inviteExpiresAt" > ${now})`;
+  return rows[0]?.n ?? 0;
+}
+/** ตัวตนยัง ACTIVE ไหม (อ่านใน tx ของผู้เรียก ใต้ agency.identity.v1 — กันเชิญด้วยรหัสแข่งกับการปิดตัวตน · N8) */
+export async function agentIdentityActiveInTx(tx: A12Tx, identityId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AgentIdentity" WHERE id = ${identityId} AND status = 'ACTIVE'`;
+  return rows.length === 1;
+}
+/**
+ * r2 (มติ §10 ข้อ 12) ▸ ผู้ใช้ที่ "ใช้งานได้" (AgentUser ACTIVE) ในชุด id — DTO ฝั่งร้านใช้ตอบ active ของสมาชิกเท่านั้น
+ * (ใช้ได้/ไม่ได้ · ไม่เผยว่า DISABLED หรือ ERASED · ไม่เผยอะไรข้ามร้าน)
+ */
+export async function usableAgentUserIds(ids: readonly string[]): Promise<Set<string>> {
+  const list = [...new Set(ids.filter((x) => typeof x === "string" && x.length > 0))].slice(0, 5000);
+  if (!list.length) return new Set();
+  const rows = await prisma.agentUser.findMany({ where: { id: { in: list }, status: ACTIVE }, select: { id: true } });
+  return new Set(rows.map((r) => r.id));
+}
 /** ช่องสาธารณะของตัวตน (DTO ฝั่งร้าน: ไม่มี id) */
 export async function identityPublicByIds(ids: readonly string[]): Promise<Map<string, { publicCode: string; displayName: string; status: string }>> {
   const list = [...new Set(ids.filter((x) => typeof x === "string" && x.length > 0))].slice(0, 500);
@@ -343,7 +371,14 @@ export async function agentUserDisplayNames(ids: readonly string[]): Promise<Map
 
 /** สร้างตัวตน + OWNER + ล็อกอิน EMAIL ใน tx ของผู้เรียก (ยืนยันรหัสแล้ว) — ชน unique (ล็อกอิน/รหัสสาธารณะ) ⇒ โยน (ผู้เรียกจัดการ) */
 export async function createAgentIdentityInTx(tx: A12Tx, p: { displayName: string; ownerName: string; emailNorm: string; now: Date }): Promise<{ agentUserId: string; identityId: string }> {
-  const identity = await tx.agentIdentity.create({ data: { displayName: p.displayName, publicCode: makeAgentPublicCode(randomBytes(6)), status: ACTIVE }, select: { id: true } });
+  // r2 (มติ §10 ข้อ 13) ▸ เลือกรหัสสาธารณะที่ยังว่างก่อนแทรก (ชนตอนแทรกเหลือแค่กรณีแข่งกันจริง — ผู้เรียกลองทั้ง tx ใหม่ ไม่ตอบ LOGIN_UNAVAILABLE)
+  let publicCode = makeAgentPublicCode(randomBytes(6));
+  for (let i = 0; i < CODE_TRIES; i++) {
+    const taken = await tx.agentIdentity.findUnique({ where: { publicCode }, select: { id: true } });
+    if (!taken) break;
+    publicCode = makeAgentPublicCode(randomBytes(6));
+  }
+  const identity = await tx.agentIdentity.create({ data: { displayName: p.displayName, publicCode, status: ACTIVE }, select: { id: true } });
   const user = await tx.agentUser.create({ data: { identityId: identity.id, displayName: p.ownerName, role: "OWNER", status: ACTIVE }, select: { id: true } });
   await tx.agentLogin.create({ data: { agentUserId: user.id, kind: "EMAIL", providerId: "email", subject: p.emailNorm, verifiedAt: p.now } });
   return { agentUserId: user.id, identityId: identity.id };
@@ -360,6 +395,19 @@ export async function agentUserOfEmailLoginInTx(tx: A12Tx, emailNorm: string): P
   if (!l) return { loginExists: false, user: null };
   return { loginExists: true, user: await agentActorInTx(tx, l.agentUserId) };
 }
+/**
+ * r2 (มติ §10 ข้อ 2) ▸ บันทึกว่า jti ของ token เชิญเพื่อนถูกใช้แล้ว (ใน tx ของการรับ · ใต้ agency.identity.v1) — แถวในตารางรหัสเข้าระบบ:
+ * id กำหนดจาก jti (PK ⇒ ใช้ซ้ำไม่ได้แม้แข่งกัน) · usedAt = now · expiresAt = อายุ token (งานกวาดเดิมเก็บหลังหมดอายุ 1 วัน — token หมดอายุไปแล้ว)
+ * คืน false = jti นี้ใช้ไปแล้ว (ผู้เรียกตอบ INVITE_INVALID) · แถวไม่ผูกกับผู้ใช้/อีเมล ⇒ การลบ/ปิดผู้ใช้ไม่ลบแถวนี้
+ */
+export async function consumeTeammateJtiInTx(tx: A12Tx, p: { jti: string; expiresAt: Date; now: Date }): Promise<boolean> {
+  const row = teammateJtiRow(p.jti);
+  const n = await tx.$executeRaw`
+    INSERT INTO "AgentLoginCode" (id, target, "codeHash", attempts, "expiresAt", "usedAt", "createdAt")
+    VALUES (${row.id}, ${row.target}, ${row.target}, 0, ${p.expiresAt}, ${p.now}, ${p.now})
+    ON CONFLICT (id) DO NOTHING`;
+  return n === 1;
+}
 /** ผู้เชิญ (b) ยัง ACTIVE + ตัวตนเดียวกับ token (i) + บทบาทปัจจุบันให้ r ได้ (มติ R1 ข้อ 9) */
 export async function teammateInviterValidInTx(tx: A12Tx, p: { inviterId: string; identityId: string; role: AgentRole }): Promise<boolean> {
   const who = await agentActorInTx(tx, p.inviterId);
@@ -370,35 +418,29 @@ export async function teammateInviterValidInTx(tx: A12Tx, p: { inviterId: string
 
 // ─────────────────── §9 ผู้ใช้และบทบาท (ฝั่งเอเจนซี่ · ส่งออกผ่าน agent-side.ts) ───────────────────
 type TeamResult<T> = ({ ok: true } & T) | AgencyFail;
-const A12_ACTOR = z.object({ agentUserId: z.string().min(1).max(64) }).strict();
-const A12_ID = z.string().min(1).max(64);
+const A12_ID = z.string().regex(AGENCY_ID_RE); // r2 (มติ §10 ข้อ 17): ไม่มีอักขระควบคุม/NUL ไปถึงฐาน
+const A12_ACTOR = z.object({ agentUserId: A12_ID }).strict();
 const A12_ROLE = z.enum(AGENT_ROLES);
 class TeamAbort extends Error {
   constructor(readonly fail: AgencyFail) {
     super(fail.code);
   }
 }
-const pgCodeOf = (e: unknown): string | null => {
-  if (!e || typeof e !== "object") return null;
-  const o = e as Record<string, unknown>;
-  if (typeof o.code === "string" && /^[0-9A-Z]{5}$/.test(o.code)) return o.code;
-  if (o.code === "P2034") return "40001";
-  const m = o.meta as Record<string, unknown> | undefined;
-  if (m && typeof m.code === "string") return m.code;
-  const c = o.cause as Record<string, unknown> | undefined;
-  if (c && typeof c.originalCode === "string") return c.originalCode;
-  return null;
-};
-/** tx + ลองใหม่ 1 ครั้งเมื่อ deadlock/serialization · TeamAbort ⇒ ผลล้ม · อื่น ⇒ log (ไม่มีอินพุต) + BUSY */
+const TEAM_TX_TRIES = 3;
+/**
+ * tx + ลองใหม่เมื่อ deadlock/serialization (r2 · มติ §10 ข้อ 18: อ่าน SQLSTATE จริงใต้ P2010 ผ่าน pgErrorCode) ·
+ * ลองครบแล้วยังชน/รอล็อกนาน ⇒ BUSY LOCK (ไม่ใช่ ERROR) · TeamAbort ⇒ ผลล้ม · อื่น ⇒ log (ไม่มีอินพุต) + BUSY
+ */
 async function teamTx<T>(where: string, fn: (tx: A12Tx) => Promise<TeamResult<T>>): Promise<TeamResult<T>> {
-  for (let attempt = 0; ; attempt++) {
+  for (let attempt = 1; ; attempt++) {
     try {
       return await prisma.$transaction((tx) => fn(tx), A12_TX_OPTS);
     } catch (e) {
       if (e instanceof TeamAbort) return e.fail;
       if (e instanceof AgentKeyMissing) return agencyFail("BUSY", { reason: "SERVER_KEY_MISSING" });
-      const code = pgCodeOf(e);
-      if ((code === "40P01" || code === "40001") && attempt === 0) continue;
+      const code = pgErrorCode(e);
+      if (isPgRetryable(code) && attempt < TEAM_TX_TRIES) continue;
+      if (isPgRetryable(code) || code === "55P03" || code === "TX_TIMEOUT") return agencyFail("BUSY", { reason: "LOCK" });
       await logUnexpected(where, e);
       return agencyFail("BUSY", { reason: "UNEXPECTED" });
     }
@@ -413,12 +455,12 @@ async function auditAgentInTx(tx: A12Tx, a: { tenantId: string; actorMemberId: s
   });
 }
 type MemberRow = { id: string; tenantId: string; agentAccountId: string; agentUserId: string; role: string; active: boolean };
-type AccRow = { id: string; tenantId: string; status: string; identityId: string | null };
+type AccRow = { id: string; tenantId: string; status: string; identityId: string | null; statusReason: string | null };
 /** ล็อกแถวบัญชี (FOR UPDATE · เรียง id) */
 async function lockAccountsInTx(tx: A12Tx, ids: readonly string[]): Promise<AccRow[]> {
   const list = [...new Set(ids)].sort();
   if (!list.length) return [];
-  return tx.$queryRaw<AccRow[]>`SELECT id, "tenantId", status, "identityId" FROM "AgentAccount" WHERE id = ANY(${list}::text[]) ORDER BY id FOR UPDATE`;
+  return tx.$queryRaw<AccRow[]>`SELECT id, "tenantId", status, "identityId", "statusReason" FROM "AgentAccount" WHERE id = ANY(${list}::text[]) ORDER BY id FOR UPDATE`;
 }
 const OWNER_REQUIRED = new Set(["PENDING", "ACTIVE", "SUSPENDED"]);
 /** บัญชีนี้ยังมีสมาชิก active role OWNER ที่ AgentUser ACTIVE นอกจาก exclude ไหม */
@@ -573,10 +615,13 @@ export async function closeAgentIdentity(actor: { agentUserId: string }, input: 
     let closed = 0;
     for (const acc of accs) {
       if (acc.status === "CLOSED") continue;
-      const n = await tx.agentAccount.updateMany({ where: { id: acc.id, tenantId: acc.tenantId, status: acc.status }, data: { status: "CLOSED", statusReason: "IDENTITY_CLOSED", inviteTokenHash: null } });
+      // r2 (มติ §10 ข้อ 1) ▸ แถวที่มีเหตุปิดถาวรค้างอยู่ (ใบสมัครซ้ำหลังร้านปิด/ปฏิเสธ) กลับไปเหตุเดิม — การปิดตัวตนไม่ล้างข้อเท็จจริงของร้าน
+      //   suspendedAt ของแถว SUSPENDED คงไว้ (accounts.ts ใช้ตัดสิน "เคยถูกพักตอนปิดตัวตน" · ข้อ 14)
+      const reason = closeReasonKeepingSticky(acc.statusReason, "IDENTITY_CLOSED");
+      const n = await tx.agentAccount.updateMany({ where: { id: acc.id, tenantId: acc.tenantId, status: acc.status }, data: { status: "CLOSED", statusReason: reason, inviteTokenHash: null } });
       if (n.count !== 1) continue;
       closed++;
-      await auditAgentInTx(tx, { tenantId: acc.tenantId, actorMemberId: await actorMemberIdOf(tx, acc.id, who.id), action: "agency.account.identity_closed", targetType: "AgentAccount", targetId: acc.id, after: { from: acc.status, to: "CLOSED", reason: "IDENTITY_CLOSED" } });
+      await auditAgentInTx(tx, { tenantId: acc.tenantId, actorMemberId: await actorMemberIdOf(tx, acc.id, who.id), action: "agency.account.identity_closed", targetType: "AgentAccount", targetId: acc.id, after: { from: acc.status, to: "CLOSED", reason } });
     }
     const users = await tx.$queryRaw<{ id: string; status: string }[]>`SELECT id, status FROM "AgentUser" WHERE "identityId" = ${who.identityId} ORDER BY id`;
     for (const u of users) if (u.status !== "ERASED") await eraseUserInTx(tx, u.id, who.id);
@@ -605,7 +650,8 @@ export async function setAgentAccountMember(actor: { agentUserId: string }, inpu
     if (!acc || acc.identityId !== who.identityId) return agencyFail("NOT_FOUND");
     if (!OWNER_REQUIRED.has(acc.status)) return agencyFail("BAD_STATE");
     const target = await targetUserInTx(tx, who.identityId, p.data.agentUserId);
-    if (!target || target.status !== ACTIVE) return agencyFail("NOT_FOUND");
+    // r2 (มติ §10 ข้อ 12) ▸ ถอดสมาชิก (role null) ของผู้ใช้ที่ถูกปิด (DISABLED) ได้ — ให้/แก้บทบาทยังต้อง ACTIVE · ERASED = ไม่พบ (แถวสมาชิกถูกปิดไปแล้วตอนลบ)
+    if (!target || target.status === "ERASED" || (target.status !== ACTIVE && role !== null)) return agencyFail("NOT_FOUND");
     if (role !== null && agentRoleRank(role) < agentRoleRank(target.role)) return agencyFail("VALIDATION", { reason: "ROLE_ABOVE_USER" });
     const cur = (await tx.$queryRaw<MemberRow[]>`SELECT id, "tenantId", "agentAccountId", "agentUserId", role, active FROM "AgentAccountMember" WHERE "agentAccountId" = ${acc.id} AND "agentUserId" = ${target.id}`)[0] ?? null;
     if (cur && cur.active && isRole(cur.role) && !canManageAgentRole(who.role, cur.role)) return agencyFail("FORBIDDEN");

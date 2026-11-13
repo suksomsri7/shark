@@ -8,7 +8,22 @@ export { applyToShop, acceptShopInvite, withdrawApplication } from "./accounts";
 export type { AgentActor, AgentApplication, AccountWriteResult, AgencyDeps, AgencyMail, AgencyOpts, AgencyRateLimiter } from "./accounts";
 export { setAgentUserRole, disableAgentUser, eraseAgentUser, closeAgentIdentity, setAgentAccountMember, listAgentTeam } from "./entry";
 // ตัวช่วยของ platform/agent-auth.ts (กุญแจ/token · ตัวช่วยตาราง global ใน tx · ค่าคงที่ชุดเดียว)
-export { AGENT_AUTH_LIMITS, AGENT_CLIENT_KEY_RE, agencyFail, agentLoginCodeMail, agentTeammateInviteMail, bucketOpts, cleanAgencyText, maskEmail } from "./accounts-core";
+export {
+  AGENT_AUTH_LIMITS,
+  AGENT_CLIENT_KEY_RE,
+  AGENT_LOGIN_CODE_ID_RE,
+  agencyFail,
+  agentLoginCodeMail,
+  agentTeammateInviteMail,
+  bucketOpts,
+  canonicalAgentIp,
+  cleanAgencyText,
+  cleanAgentEmailInput,
+  isPgRetryable,
+  maskEmail,
+  pgErrorCode,
+  pgErrorHints,
+} from "./accounts-core";
 export type { AgencyFail, AgentAuthLimits } from "./accounts-core";
 export {
   AgentKeyMissing,
@@ -26,6 +41,7 @@ export {
 export {
   agentActorNow,
   agentUserOfEmailLoginInTx,
+  consumeTeammateJtiInTx,
   createAgentIdentityInTx,
   createTeammateUserInTx,
   lockAgencyKeyInTx,

@@ -64,6 +64,7 @@ export {
   lookupAgentIdentityByCode,
   linkAgentCrmCompany,
   unlinkAgentCrmCompany,
+  removeAgentAccountMember, // r2 (มติ §10 ข้อ 12)
 } from "./accounts";
 export type { ShopCtx, AgencyOpts, AgencyDeps, AccountWriteResult, ShopAgentAccountDTO, ShopAgentListItem, InviteAgentInput, InviteResult, AgentProfilePatch, AgentPayeeType } from "./accounts";
 // ◂ TRIPS A1.2a
