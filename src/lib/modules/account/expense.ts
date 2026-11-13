@@ -916,8 +916,11 @@ export async function updateExpenseDoc(
         ? "NONE"
         : input.vatMode ?? doc.vatMode;
       // ACC T1.4: สถานะใบ = ที่ส่งมา → ค่าเดิมของร่าง → (ร่างก่อน T1.4) ค่าเริ่มตามคู่ค้า
+      //   input.inputVatStatus: ค่า = เลือกเอง · null = "ตามค่าเริ่ม" (ฟอร์ม V2 — คิดใหม่จากคู่ค้าปัจจุบัน) · undefined = คงค่าเดิมของร่าง
       const explicitDoc =
-        input.inputVatStatus ?? statusFromPurchaseMode(input.vatPurchaseMode) ?? (isInputVatStatus(doc.inputVatStatus) ? doc.inputVatStatus : null);
+        input.inputVatStatus !== undefined
+          ? input.inputVatStatus
+          : (statusFromPurchaseMode(input.vatPurchaseMode) ?? (isInputVatStatus(doc.inputVatStatus) ? doc.inputVatStatus : null));
       const curLines = input.lines
         ? null
         : await tx.accountDocumentLine.findMany({ where: { documentId: id }, orderBy: { sortOrder: "asc" }, select: { accountId: true, inputVatStatus: true, inputVatReason: true } });

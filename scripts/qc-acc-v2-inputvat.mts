@@ -207,7 +207,9 @@ try {
     const before = (await docOf(d3.id))?.inputVatStatus;
     await exp.updateExpenseDoc(tid, S, d3.id, { contactId: V0.id, inputVatStatus: null });
     const after = (await docOf(d3.id))?.inputVatStatus;
-    chk("B9.2", "แก้ร่าง: เปลี่ยนเป็นคู่ค้าไม่มีเลข + ไม่เลือกสถานะ ⇒ คงค่าเดิมของร่าง (CLAIM) — ค่าเริ่มคิดใหม่เฉพาะร่างก่อน T1.4", before === "CLAIM" && after === "CLAIM", "CLAIM/CLAIM", { before, after }, "MINOR");
+    await exp.updateExpenseDoc(tid, S, d3.id, { note: "ไม่ส่งสถานะ" });
+    const kept = (await docOf(d3.id))?.inputVatStatus;
+    chk("B9.2", "แก้ร่าง: ฟอร์มส่ง null (ตามค่าเริ่ม) + เปลี่ยนเป็นคู่ค้าไม่มีเลข ⇒ คิดใหม่เป็น PENDING · ผู้เรียกที่ไม่ส่งช่อง (undefined) ⇒ คงค่า", before === "CLAIM" && after === "PENDING" && kept === "PENDING", "CLAIM/PENDING/PENDING", { before, after, kept });
     await exp.voidExpenseDoc(tid, S, d3.id, "ร่างทดสอบ");
   }
 

@@ -50,10 +50,10 @@ export function PtxReceiveForm({
   return (
     <div className="flex flex-col gap-3" data-testid={testId}>
       <div className="flex gap-2 text-sm" role="tablist">
-        <button type="button" role="tab" aria-selected={mode === "receive"} className={`btn-sm ${mode === "receive" ? "btn-primary" : ""}`} onClick={() => setMode("receive")} data-testid={`${testId}-tab-receive`}>
+        <button type="button" role="tab" aria-selected={mode === "receive"} className={`btn btn-sm ${mode === "receive" ? "btn-primary" : "btn-ghost"}`} onClick={() => setMode("receive")} data-testid={`${testId}-tab-receive`}>
           ได้รับใบกำกับแล้ว
         </button>
-        <button type="button" role="tab" aria-selected={mode === "noclaim"} className={`btn-sm ${mode === "noclaim" ? "btn-primary" : ""}`} onClick={() => setMode("noclaim")} data-testid={`${testId}-tab-noclaim`}>
+        <button type="button" role="tab" aria-selected={mode === "noclaim"} className={`btn btn-sm ${mode === "noclaim" ? "btn-primary" : "btn-ghost"}`} onClick={() => setMode("noclaim")} data-testid={`${testId}-tab-noclaim`}>
           ใบกำกับไม่มา / เคลมไม่ได้
         </button>
       </div>

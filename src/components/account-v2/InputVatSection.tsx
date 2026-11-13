@@ -10,6 +10,7 @@ import {
   hasVendorTaxId,
   INPUT_VAT_NONCLAIM_REASONS,
   INPUT_VAT_STATUS_LABEL_TH,
+  INPUT_VAT_STATUS_SHORT_TH,
   INPUT_VAT_STATUSES,
   inputVatWarnings,
   statusFromTreatment,
@@ -85,7 +86,7 @@ export function InputVatSection({
         </select>
       </label>
       <p className="text-xs text-[color:var(--color-muted)]" data-testid="input-vat-hint">
-        {status ? "เลือกเอง" : `ค่าเริ่ม — ${why}`} ·{" "}
+        {status ? "ตั้งไว้ในเอกสาร" : `ค่าเริ่ม — ${why}`} ·{" "}
         {effective === "CLAIM"
           ? "ภาษีซื้อเข้าบัญชีภาษีซื้อ (ภ.พ.30 เดือนนี้)"
           : effective === "PENDING"
@@ -127,7 +128,7 @@ export function InputVatLineSelect({
         <option value="">{inherited.label}</option>
         {INPUT_VAT_STATUSES.map((s) => (
           <option key={s} value={s}>
-            {INPUT_VAT_STATUS_LABEL_TH[s]}
+            {INPUT_VAT_STATUS_SHORT_TH[s]}
           </option>
         ))}
       </select>

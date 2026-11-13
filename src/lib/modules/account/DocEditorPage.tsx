@@ -1,3 +1,4 @@
+import { defaultInputVatStatus } from "./input-vat-shared";
 import { notFound, redirect } from "next/navigation";
 import { kindFromProductType } from "./tax-point-shared";
 import type { AccountDocType } from "@prisma/client";
@@ -250,7 +251,11 @@ export async function DocEditorPage({
     // §9.3: ประเภทราคาเริ่มต้นมาจากนโยบายบัญชี (ไม่ได้ตั้ง = พฤติกรรมเดิม จด VAT → แยก VAT)
     priceMode: doc ? priceModeOf(doc.vatMode) : defaultPriceModeOf(settings.policy),
     autoTaxInvoice: doc?.autoTaxInvoice ?? null,
-    inputVatStatus: side === "expense" ? (doc?.inputVatStatus ?? null) : null, // ACC T1.4
+    // ACC T1.4 — สถานะที่ตรงกับค่าเริ่มของคู่ค้า = ไม่ได้เลือกเอง ⇒ ส่ง null (เปลี่ยนคู่ค้าในฟอร์มแล้วค่าเริ่มคำนวณใหม่)
+    inputVatStatus:
+      side === "expense" && doc?.inputVatStatus && doc.inputVatStatus !== defaultInputVatStatus({ vendorTaxId: contactRow?.taxId ?? null, settings: settings.doc.inputVat }).status
+        ? doc.inputVatStatus
+        : null,
     recognizeVatNow: doc ? doc.vatTiming !== "ON_PAYMENT" : settings.taxPointBasis !== "ON_PAYMENT",
     salesUserId: doc?.salesUserId ?? null,
     tags: doc?.tags ?? [],

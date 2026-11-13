@@ -439,6 +439,11 @@ export function DocLineTable({
               {!easy && <div className="mt-1 truncate text-xs text-[color:var(--color-muted)]">บัญชี: {accountText}</div>}
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span className="rounded-lg border px-2 py-0.5 text-xs">VAT {vatText}</span>
+                {inputVatDoc !== undefined && (
+                  <span className="rounded-lg border px-2 py-0.5 text-xs" data-testid={`line-m-${i}-input-vat`}>
+                    ภาษีซื้อ: {INPUT_VAT_STATUS_SHORT_TH[l.inputVatStatus ?? inheritedVat(l).status]}
+                  </span>
+                )}
                 {l.whtIncomeType && (
                   <span className="rounded-lg border px-2 py-0.5 text-xs">
                     หัก ณ ที่จ่าย {((l.whtRateBp ?? whtRateOf(l.whtIncomeType)) / 100).toString()}%
