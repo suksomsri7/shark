@@ -9,6 +9,12 @@ enum AccountVatTiming {
   ON_PAYMENT // บริการ = ต่องวดรับเงิน
 }
 
+/// ACC T1.2 — ชนิดบรรทัดเอกสารขาย (จุดรับผิด VAT ต่อบรรทัด)
+enum AccountLineKind {
+  GOODS
+  SERVICE
+}
+
 enum AccountProductType {
   GOODS
   SERVICE

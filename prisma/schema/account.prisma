@@ -243,6 +243,9 @@ model AccountDocumentLine {
   ///   ใบเบิก PRR/ใบส่งคืน RPR = ต้นทุนที่ตัด/คืนจริงตอนอนุมัติ (มาจาก InvMovement.costSatang)
   ///   ใบปรับต้นทุน CA = **ต้นทุนเดิม** ก่อนปรับ (ต้นทุนใหม่เก็บที่ `unitPrice`)
   unitCost      Int?
+  // ── ACC T1.2 · additive · nullable = แถวเดิมอ่านเป็นชนิดตามจุดรับรู้ของทั้งใบ (ON_PAYMENT → บริการ · อื่น → สินค้า) ──
+  /// ชนิดบรรทัด สินค้า/บริการ — กำหนดจุดรับผิด VAT ต่อบรรทัด (ม.78 สินค้า · ม.78/1 บริการ)
+  lineKind      AccountLineKind?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
