@@ -49,7 +49,7 @@ export function ProductVatSection({
         setCurrent(value);
         onSaved?.(value, t("saved"));
       } else if (r.code === "LEGAL_ACK_REQUIRED" && "warnings" in r) setLegal(r.warnings);
-      else setErr("message" in r ? r.message : r.code);
+      else setErr("message" in r ? r.message : String((r as { code?: string }).code ?? ""));
     } finally {
       setBusy(false);
     }

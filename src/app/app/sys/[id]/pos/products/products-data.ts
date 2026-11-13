@@ -1,11 +1,11 @@
 // products-data.ts — ตัวโหลดข้อมูลฝั่งเซิร์ฟเวอร์ของจอ 06 "สินค้าและเมนู" + จอโปรราคา (POS P2.2U · มติ 1/2/4)
 //   อ่านอย่างเดียว: catalog.listForUnit ต่อสาขา (แถวราคาตามช่องทางของทุกสาขา = รวมทุกสาขาที่โหลด) · ช่องทางขายที่เปิดอยู่ของระบบ · หมวด ·
 //   โปรราคา (price-rule.listPriceRules) — ไม่เขียนอะไร (ช่องทาง builtin ที่สาขายังไม่มีแถว = ชื่อตั้งต้นจาก channel-shared ไม่สร้างแถว)
-// 🔴 ไฟล์นี้ใช้จาก server component เท่านั้น (import { productVatTreatment } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
-import catalog.ts / price-rule.ts / prisma) — client import ไม่ได้
+// 🔴 ไฟล์นี้ใช้จาก server component เท่านั้น (import catalog.ts / price-rule.ts / prisma) — client import ไม่ได้
 // 🔴 ผลส่งให้ client เป็นข้อมูลล้วน (ไม่มี Date · เงินสตางค์ Int)
 
 import { prisma } from "@/lib/core/db";
+import { productVatTreatment } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
 import { CatalogError, listForUnit, type PosProductView } from "@/lib/modules/pos/catalog";
 // POS P2.3U ▸ มติ 1/3/4: สูตร/วัตถุดิบของแถว (listForUnit) + ต้นทุนตามสูตร (recipe.recipeCost ครั้งเดียวต่อหน้า ต่อสาขา) + ข้อมูลวัตถุดิบ (ชื่อ · หน่วย · เก็บถาวร · คลัง) ◂
 import { recipeCost } from "@/lib/modules/pos/recipe";
