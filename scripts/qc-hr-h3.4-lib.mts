@@ -242,11 +242,13 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
   }
   {
+    const H34_IN_BASE = pathInBase(F.rules, BASE);
     const v2 = marked(BASE, F.v2, /HR H3\.4/);
     const others = [F.otRules, F.ot, F.acts, F.index].map((f) => [f.split("/").pop(), marked(BASE, f)] as const);
     const pay = stripComments(rd(F.payroll));
     const r = {
-      v2: v2.n >= 1 && v2.n <= 2 && v2.bad === 0, others: others.every(([, m]) => m.bad === 0) && others.slice(0, 2).every(([, m]) => m.n >= 1),
+      // ORACLE-EDIT (controller · after H3.4 merged): once H3.4 is in the base the diff-vs-base parts are n/a (in-base guard, same as qc-hr-h4.1 S1.4)
+      v2: H34_IN_BASE || (v2.n >= 1 && v2.n <= 2 && v2.bad === 0), others: H34_IN_BASE || (others.every(([, m]) => m.bad === 0) && others.slice(0, 2).every(([, m]) => m.n >= 1)),
       flag: /\bV2_VARIABLE_PAY\s*=\s*false\b/.test(pay), dispatch: /createPayrollRunV2\b/.test(pay) && /HR H3\.4/.test(rd(F.payroll)),
     };
     ck("S1.7", r, "marked hunks", `v2=${v2.n}/${v2.bad} ${others.map(([n, m]) => `${n}=${m.n}/${m.bad}`).join(" ")}`);
@@ -275,7 +277,7 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
   {
     const rules = stripComments(rd(F.rules));
     const block = (diffHunks(BASE, F.payroll) ?? []).flatMap((h) => h.added).map((l) => stripComments(l)).join("\n");
-    const r = { rules: rules.length > 0 && !/otWorkdayMin|otHolidayMin/.test(rules), payroll: block.length > 0 && !/otWorkdayMin|otHolidayMin/.test(block), ot: /holidayWorkPricedInTx\s*\(/.test(stripComments(rd(F.ot))), exp: /export\s+async\s+function\s+holidayWorkPricedInTx\b/.test(rd(F.payroll)) };
+    const r = { rules: rules.length > 0 && !/otWorkdayMin|otHolidayMin/.test(rules), payroll: pathInBase(F.rules, BASE) /* ORACLE-EDIT (controller): n/a once H3.4 is in the base */ || (block.length > 0 && !/otWorkdayMin|otHolidayMin/.test(block)), ot: /holidayWorkPricedInTx\s*\(/.test(stripComments(rd(F.ot))), exp: /export\s+async\s+function\s+holidayWorkPricedInTx\b/.test(rd(F.payroll)) };
     ck("S1.10", r, "never priced · H2.9 subtracts run minutes", "");
   }
 }
