@@ -140,9 +140,12 @@ T0 → T1 → T2 → T3 → T7 → (A4–A7 + B1–B5 ที่ค้าง) →
 ## สถานะ RUN (ผู้คุมอัปเดตทุกครั้งที่ใบงานเปลี่ยนสถานะ)
 | ใบงาน | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|
-| T0.3 (ฐานข้อมูล) | DONE | – | Neon `wo-acc-fix-qc` + `.env.qc` · seed + ข้อสอบ A1–A3 + typecheck กำลังรัน (log `/tmp/shark-acc-qc/a123.log`) |
-| T0.1 | TODO | | |
-| T0.2 | TODO | | |
+| T0.3 (ฐานข้อมูล) | DONE | – | Neon `wo-acc-fix-qc` + `.env.qc` |
+| T0.3b (ซ่อมชุดทดสอบ + พิสูจน์ A1–A3) | DONE 13 พ.ย. | bbac180fc 98ce0c53d 439d976ba 213fae836 ef65582c6 | seed ตรึงวันที่ 30 ก.ย. รันซ้ำได้ค่าเดิม · detail 93/0 · editor 224/0 · payments 162/0 · list 159/0 · cheap-routes 105/0 · typecheck 0 error (6:49 นาที · สูงสุด 8.6 GB) · log `/tmp/shark-acc-qc/` · ค้างดูทีหลัง: เช็คใกล้ครบกำหนดใช้นาฬิกาจริง (`cheque.ts:298`) · เลขใบเสร็จ POS ใช้เดือนที่รัน |
+| T0.3c (รอบดูหน้าจอจริง ~60 แถว) | DOING เลน 1 | | ผล → `ledger/ACCOUNT-AUDIT-SCREEN-PASS.md` |
+| 🔴 กติกาเครื่อง | – | – | งานหนักทุกคำสั่งต้องผ่าน `scripts/iso.sh` + gate lock (session ถูกจำกัด 5 GB · typecheck ใช้ `ISO_MEM=14000M`) — ไม่ทำ = session ถูกฆ่า (เกิด 4 ครั้ง 12–13 พ.ย.) |
+| T0.1 | DOING เลน 2 | wip cbdea1f25 | `wip/acc-t0` |
+| T0.2 | DOING เลน 2 | wip cbdea1f25 | `wip/acc-t0` |
 | T0.4 | TODO | | |
 | T0.5 | ถือว่าผ่านด้วยวันที่ตรวจของ skill (12–13 พ.ย. 2569 ≤ 1 วัน) | – | ค่า ⏱ ใส่ตารางพร้อมวันที่ตรวจ + วันหมดอายุตาม skill · ค้นซ้ำเมื่อใกล้ 31 ม.ค. 2570 |
 
