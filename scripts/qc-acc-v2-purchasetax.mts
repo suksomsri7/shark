@@ -4,6 +4,8 @@
 // ใบงาน: ledger/ACCOUNT-TAX-PLAN.md แถว T1.6 (ปิด C4) · design note ledger/wo-notes/T1.6.md
 // ฟิกซ์เจอร์ของตัวเอง (ร้านทิ้ง สร้างเอง ลบใน finally) — ไม่พึ่ง seed กลาง
 // รัน: bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-acc-v2-purchasetax.mts
+// ภาพจอ: PT_KEEP=1 = ไม่ลบร้าน + เติมฟิกซ์เจอร์ภาพ (JV ภาษีขาย · ยื่น ภ.พ.30 เดือนก่อนด้วยคีย์ API · ร่างในเดือนที่ยื่น · สิทธิ์ qc-owner)
+//        PT_CLEAN_TID=<tenantId> = ลบร้านที่เก็บไว้ (ทางเดียวกับ finally) แล้วจบ
 //
 // เฉลยคำนวณมือ (อัตรา 7% · แยก VAT) · M = เดือนนี้ (ไทย) · P = เดือนก่อน:
 //   P2  ใบค่าใช้จ่ายรอใบกำกับ P-12 ฐาน 2,000,000 → รับใบ "B-77" ลงวันที่ P-12 · ลงภาษีซื้อ M-03 ⇒ แถว 140,000 · ข้อความเคลมข้ามเดือน
@@ -36,9 +38,11 @@ const D = (ym: string, day: number) => new Date(`${ym}-${String(day).padStart(2,
 const TH_MONTHS = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
 const thMonth = (ym: string) => `${TH_MONTHS[Number(ym.slice(5)) - 1]} ${Number(ym.slice(0, 4)) + 543}`;
 
-let tid = "";
+let tid = process.env.PT_CLEAN_TID ?? "";
 const users: string[] = [];
+const KEEP = process.env.PT_KEEP === "1";
 try {
+  if (tid) throw new Error("CLEAN_ONLY");
   const acc = (await import("@/lib/modules/account/service" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
   const exp = (await import("@/lib/modules/account/expense" as string)) as Any;
   const gl = (await import("@/lib/modules/account/gl" as string)) as Any;
@@ -147,11 +151,32 @@ try {
   await acc.saveSettings(tid, S, { orgName: "ร้าน T1.6", vatRegistered: true, vatRateBp: 700, taxId: "", branchCode: "00001", branchName: "ป่าตอง" });
   const pt2 = (await REP.pp30(ctx, M)).purchaseTax;
   chk("D1", "ไม่มีเลขผู้เสียภาษี ⇒ คำเตือนหัวรายงาน (ทะเบียนกลาง) ระบุรายงานภาษีซื้อ · สาขา 00001", pt2.header.warnings.some((w: Any) => w.code === "TAX_REPORT_TAX_ID_MISSING" && /รายงานภาษีซื้อ/.test(w.messageTh)) && /สาขาที่ 00001/.test(pt2.header.branchLabel), "เตือน", pt2.header);
+  if (KEEP) {
+    // ═══ ฟิกซ์เจอร์ภาพจอ (ไม่ใช่ข้อสอบ) ═══
+    const qcOwner = await prisma.user.findFirst({ where: { email: "qc-owner@shark.local" }, select: { id: true } });
+    if (qcOwner) await prisma.membership.create({ data: { userId: qcOwner.id, tenantId: tid, role: "OWNER", unitAccess: ["*"], acceptedAt: new Date() } });
+    await acc.saveSettings(tid, S, { orgName: "ร้าน T1.6", vatRegistered: true, vatRateBp: 700, taxId: "0105561000000", branchCode: "00000", branchName: "สำนักงานใหญ่" });
+    const v2200 = await L("2200");
+    await JV.createManualEntry(ctx, { dateKey: `${M}-09`, memo: "ปรับภาษีขาย", lines: [{ accountId: v2200, debit: 5_000, credit: 0 }, { accountId: A.e6900, debit: 0, credit: 5_000 }], postedById: owner.id });
+    const ak = (await import("@/lib/api-keys/service" as string)) as Any;
+    const scopes = (await import("@/lib/api-keys/scopes" as string)) as Any;
+    const route = (await import("@/app/api/v1/account/[...path]/route" as string)) as Any;
+    const kW = await ak.createApiKey({ tenantId: tid }, "T16 shots", { scopes: scopes.expandBundles(["accountant"]), systemId: S });
+    const call = async (method: string, path: string, body?: unknown) => {
+      const req = new Request(`http://x/api/v1/account${path}`, { method, headers: { authorization: `Bearer ${kW.rawKey}`, "idempotency-key": `t16-${Date.now()}-${Math.random()}`, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+      const res = await route[method](req, { params: Promise.resolve({ path: path.split("?")[0]!.split("/").filter(Boolean) }) });
+      return res.status;
+    };
+    const f1 = await call("POST", `/periods/${P}/vat-filed`, {});
+    const draft = await mk(V1.id, D(P, 20), A.e6900, 200_000);
+    console.log(`KEEP tenant=${tid} system=${S} M=${M} P=${P} vatFiledViaApi=${f1} draftInFiledMonth=${draft.id} p5=${p5.id} n4=${n4.id} x6ptx=${x6ptx.id}`);
+  }
 } catch (e) {
-  chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.message.slice(0, 400)}\n${e.stack?.split("\n").slice(1, 6).join("\n")}` : String(e));
+  if (e instanceof Error && e.message === "CLEAN_ONLY") console.log(`cleaning ${tid}`);
+  else chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.message.slice(0, 400)}\n${e.stack?.split("\n").slice(1, 6).join("\n")}` : String(e));
 } finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
-  if (tid) {
+  if (tid && !KEEP) {
     const P_ = prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown>; updateMany: (a: unknown) => Promise<unknown> }>;
     await d(() => P_.accountJournalLine.deleteMany({ where: { tenantId: tid } }));
     await d(() => P_.accountJournalEntry.updateMany({ where: { tenantId: tid }, data: { reversalOfId: null } }));
@@ -169,7 +194,8 @@ try {
     await d(() => prisma.businessUnit.deleteMany({ where: { tenantId: tid } }));
     await d(() => prisma.tenant.delete({ where: { id: tid } }));
   }
-  for (const u of users) await d(() => prisma.user.delete({ where: { id: u } }));
+  if (!KEEP) for (const u of users) await d(() => prisma.user.delete({ where: { id: u } }));
+  if (process.env.PT_CLEAN_TID) await d(() => prisma.user.deleteMany({ where: { email: { startsWith: "qc-t16-", endsWith: "@qc.local" }, memberships: { none: {} } } }));
   await prisma.$disconnect();
 }
 
