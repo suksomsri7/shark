@@ -84,7 +84,7 @@ import { defineOp, type ApiOp } from "../op";
 import { ApiError, legalAckApiError } from "../respond";
 import { actorAuditId, actorAuditType } from "@/lib/api/actor";
 import { LEGAL_WARNING_CODES, type LegalAckRequired } from "@/lib/core/settings/legal/warnings";
-import { INPUT_VAT_NONCLAIM_REASONS } from "@/lib/core/settings/legal/th-tax-2569";
+import { ADJUST_NOTE_REASONS, INPUT_VAT_NONCLAIM_REASONS } from "@/lib/core/settings/legal/th-tax-2569";
 import { docRow, ymd } from "../serialize";
 import { releaseParkedVat } from "../../tax-point";
 
@@ -277,6 +277,10 @@ const documentFields = {
   discountSatang: z.number().int().min(0).optional().describe("Discount on the whole document in satang (integer)."),
   note: z.string().max(2000).nullish().describe("Note printed on the document."),
   adjustReason: z.string().max(500).nullish().describe("Reason required by the Revenue Department on credit and debit notes."),
+  adjustReasonCode: z
+    .enum(ADJUST_NOTE_REASONS.map((r) => r.code) as [string, ...string[]])
+    .nullish()
+    .describe("Credit/debit note reason code from the legal table: CN_* for credit notes, DN_* for debit notes, OTHER with adjustReason text. A code of the other note kind is accepted with a warning."),
   sourceDocId: z.string().max(40).nullish().describe("Id of the document this one refers to: a QUOTATION of this book for INVOICE; an invoice, receipt or tax invoice for credit and debit notes; any document of this book otherwise. An INVOICE pointing at anything but a QUOTATION is rejected with 422 `validation`."),
   tags: tagsField.optional(),
 } as const;
@@ -433,6 +437,7 @@ const documentsCreate = defineOp({
       ...(input.discountSatang === undefined ? {} : { discountAmount: input.discountSatang }),
       note: input.note ?? null,
       adjustReason: input.adjustReason ?? null,
+      adjustReasonCode: input.adjustReasonCode ?? null,
       sourceDocId: input.sourceDocId ?? null,
       // 🔴 ทุกใบที่เกิดจาก REST: มาจากแอปภายนอก ไม่มี "คนสร้าง" ในร้าน
       //    WO E1: ใบที่มาจากสกิล AI (คนในร้านกดยืนยัน) ต้องแยกเป็น `AI` — บัญชีต้องรู้เสมอว่าใครก่อ
@@ -519,6 +524,7 @@ const documentsUpdate = defineOp({
       ...(input.discountSatang === undefined ? {} : { discountAmount: input.discountSatang }),
       ...(input.note === undefined ? {} : { note: input.note ?? null }),
       ...(input.adjustReason === undefined ? {} : { adjustReason: input.adjustReason ?? null }),
+      ...(input.adjustReasonCode === undefined ? {} : { adjustReasonCode: input.adjustReasonCode ?? null }),
       ...vatFieldsOf(input),
       ...(input.lines ? { lines: await toServiceLines(actor, input.lines) } : {}),
     };

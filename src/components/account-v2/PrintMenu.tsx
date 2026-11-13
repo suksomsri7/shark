@@ -9,6 +9,7 @@ import { printDocAction } from "@/lib/modules/account/print-actions";
 import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 import { LegalWarnings } from "./LegalWarnings";
 import { Modal } from "./Modal";
+import { DateInput } from "./DateInput";
 
 type Req = "PRINT" | "COPY" | "SET" | "REPRINT_ORIGINAL" | "SUBSTITUTE";
 
@@ -128,7 +129,7 @@ export function PrintMenu({
           </label>
           <label className="mt-2 flex flex-col gap-1 text-sm">
             วันที่ออกใบแทน
-            <input type="date" className="input w-48" value={sub.date} onChange={(e) => setSub({ ...sub, date: e.target.value })} data-testid="doc-print-substitute-date" />
+            <DateInput value={sub.date} onChange={(v) => setSub({ ...sub, date: v })} testId="doc-print-substitute-date" />
           </label>
           <div className="mt-3 flex justify-end gap-2">
             <button type="button" className="btn btn-ghost text-sm" onClick={() => setSub(null)}>

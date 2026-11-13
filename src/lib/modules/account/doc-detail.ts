@@ -298,8 +298,10 @@ export type DocDetailData = {
   paymentRequests: PaymentRequestView[];
   /** ACC T2.7 — พิมพ์ต้นฉบับไปแล้วหรือยัง (ปุ่มพิมพ์บอกว่าครั้งนี้เป็นต้นฉบับหรือสำเนา) */
   originalPrinted: boolean;
-  /** ACC T2.3 — รหัสเหตุผลของใบลด/เพิ่มหนี้ */
+  /** ACC T2.3 — รหัสเหตุผลของใบลด/เพิ่มหนี้ + เลขที่/วันที่เอกสารเดิม (ช่องอ้างอิง · ฝั่งซื้อ = เอกสารของผู้ขาย) */
   adjustReasonCode: string | null;
+  reference: string | null;
+  vendorInvoiceDate: Date | null;
 };
 
 /** โหลด+ประกอบข้อมูลหน้าเอกสาร 1 ใบ — ใช้ร่วมทั้งฝั่งรายรับและรายจ่าย (getExpenseDoc คิวรีได้ทั้งคู่) */
@@ -333,7 +335,7 @@ export async function getDocDetailData(
     discountAmount: 0,
     vatMode: doc.vatMode,
     vatRegistered: doc.vatMode !== "NONE",
-    vatRateBp: 700,
+    vatRateBp: 0, // บรรทัดที่บันทึกแล้วมีอัตราของตัวเองเสมอ (คอลัมน์ไม่ว่าง) — ไม่ใช้อัตราสำรอง
   }).lines.map((b) => b.net);
   const timeline = timelineStepsFor({
     docType: doc.docType,
@@ -402,6 +404,8 @@ export async function getDocDetailData(
     paymentRequests,
     originalPrinted: await originalPrinted({ tenantId, systemId }, doc.id),
     adjustReasonCode: doc.adjustReasonCode ?? null,
+    reference: doc.reference ?? null,
+    vendorInvoiceDate: doc.vendorInvoiceDate ?? null,
   };
 }
 

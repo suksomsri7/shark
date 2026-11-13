@@ -19,6 +19,7 @@ import {
   type LegalAckRequired,
   type LegalWarning,
 } from "@/lib/core/settings/legal/warnings";
+import { adjustGroupOfDocType, adjustReasonOf } from "@/lib/core/settings/legal/th-tax-2569"; // ACC T2.3 ◂
 
 const ADJUST_TYPES = new Set(["CREDIT_NOTE", "DEBIT_NOTE", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED"]);
 
@@ -31,7 +32,16 @@ const noTaxId = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "").l
 /** คำเตือนตอนออกเอกสาร (ขาย/ซื้อ) — pure */
 export function issueLegalWarnings(
   /** `vatAmount` (สตางค์) = ยอด VAT ของใบ — ใส่ในข้อความ TAX_INVOICE_NOT_VAT_REGISTERED (T0.4b) */
-  doc: { docType: string; adjustReason?: string | null; vatAmount?: number | null },
+  doc: {
+    docType: string;
+    adjustReason?: string | null;
+    vatAmount?: number | null;
+    /** ACC T2.3 ▸ ใบลด/เพิ่มหนี้: รหัสเหตุผล · ใบเดิมในระบบ · เลขที่ใบเดิม (ช่องอ้างอิง/เลขเอกสารผู้ขาย) · วันที่เอกสารผู้ขาย — ไม่ส่ง = ไม่ตรวจข้อนั้น ◂ */
+    adjustReasonCode?: string | null;
+    sourceDocId?: string | null;
+    reference?: string | null;
+    vendorInvoiceDate?: Date | string | null;
+  },
   /** null = ฝั่งซื้อ (ไม่มีด่านของผู้ขาย) */
   settings: { vatRegistered: boolean; taxId?: string | null } | null,
 ): LegalWarning[] {
@@ -41,7 +51,19 @@ export function issueLegalWarnings(
       out.push(legalWarning("TAX_INVOICE_NOT_VAT_REGISTERED", typeof doc.vatAmount === "number" ? { vat: satangTh(doc.vatAmount) } : {}));
     if (noTaxId(settings.taxId)) out.push(legalWarning("TAX_INVOICE_SELLER_TAX_ID_MISSING"));
   }
-  if (ADJUST_TYPES.has(doc.docType) && blank(doc.adjustReason)) out.push(legalWarning("ADJUST_NOTE_REASON_MISSING"));
+  if (ADJUST_TYPES.has(doc.docType)) {
+    // ACC T2.3 ▸ รหัสที่ไม่ใช่ "อื่น ๆ" = มีเหตุแล้ว (ข้อความเสริมไม่บังคับ) · อื่น ๆ / ไม่มีรหัส = ต้องมีข้อความ ◂
+    const reason = adjustReasonOf(doc.adjustReasonCode);
+    if (blank(doc.adjustReason) && (!reason || reason.code === "OTHER")) out.push(legalWarning("ADJUST_NOTE_REASON_MISSING"));
+    const group = adjustGroupOfDocType(doc.docType);
+    if (reason && reason.group !== "ANY" && reason.group !== group)
+      out.push(legalWarning("ADJUST_NOTE_REASON_GROUP_MISMATCH", { reason: reason.labelTh, group: reason.group, docKind: group ?? "" }));
+    const purchase = doc.docType.endsWith("_RECEIVED");
+    if ("sourceDocId" in doc || "reference" in doc) {
+      const noRef = purchase ? !doc.sourceDocId && (blank(doc.reference) || !doc.vendorInvoiceDate) : !doc.sourceDocId && blank(doc.reference);
+      if (noRef) out.push(legalWarning("ADJUST_NOTE_ORIGINAL_MISSING", { side: purchase ? "purchase" : "sale" }));
+    }
+  }
   return out;
 }
 

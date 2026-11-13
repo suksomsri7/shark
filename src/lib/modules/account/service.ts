@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { adjustReasonOf } from "@/lib/core/settings/legal/th-tax-2569"; // ACC T2.3 ◂
 import { safeReason } from "./errors";
 import { recordLegalAckInTx } from "@/lib/core/legal-ack";
 import { accountNow } from "./clock";
@@ -2173,6 +2174,7 @@ export async function createDocument(input: {
   depositReceiptId?: string | null; // F2: ใบมัดจำที่จะหักในใบแจ้งหนี้นี้
   note?: string | null;
   adjustReason?: string | null;
+  adjustReasonCode?: string | null; // ACC T2.3 ◂
   /** 🐞 WO 4.3: เดิมชนิดเป็น `LineInput[]` เฉย ๆ ⇒ `productId`/`accountId` ที่ฟอร์ม V2 ส่งมาถูกทิ้งเงียบ ๆ
    *  (บรรทัดเอกสารขายที่ทำด้วยมือไม่เคยผูกทะเบียนสินค้าเลย — รายงาน "ขายอะไรดี" เห็นแต่บิล POS
    *   และ "รายการจัดชุด" ตัดสต็อกส่วนประกอบไม่ได้) — รับเข้ามาและบันทึกจริงแล้ว */
@@ -2251,6 +2253,7 @@ export async function createDocument(input: {
         grandTotal: totals.grandTotal,
         note: input.note ?? null,
         adjustReason: input.adjustReason ?? null,
+        adjustReasonCode: adjustReasonOf(input.adjustReasonCode)?.code ?? null, // ACC T2.3 ◂
         sourceDocId: input.sourceDocId ?? null,
         createdById: input.createdById ?? null,
         source: input.source ?? "MANUAL",
@@ -2323,6 +2326,7 @@ export async function updateDocument(
     depositReceiptId?: string | null; // F2: เปลี่ยน/ล้างการหักมัดจำ (undefined = ไม่แตะ)
     note?: string | null;
     adjustReason?: string | null;
+    adjustReasonCode?: string | null; // ACC T2.3 ◂
     lines?: (LineInput & { productId?: string | null; accountId?: string | null; lineKind?: AccountLineKind | null })[];
   },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -2381,6 +2385,7 @@ export async function updateDocument(
           depositDeducted,
           note: input.note === undefined ? doc.note : input.note,
           adjustReason: input.adjustReason === undefined ? doc.adjustReason : input.adjustReason,
+          adjustReasonCode: input.adjustReasonCode === undefined ? doc.adjustReasonCode : (adjustReasonOf(input.adjustReasonCode)?.code ?? null), // ACC T2.3 ◂
         },
       });
       if (input.lines) {

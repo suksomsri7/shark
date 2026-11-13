@@ -1,5 +1,6 @@
 import type { AmountOrPercent, PriceMode } from "@/lib/modules/account/totals";
 import type { AccMode } from "./mode-shared";
+import { ADJUST_NOTE_REASONS, adjustGroupOfDocType, adjustReasonsFor } from "@/lib/core/settings/legal/th-tax-2569"; // ACC T2.3 ◂
 
 // ─────────────────────────────────────────────────────────────
 // doc-editor-types.ts — สัญญาระหว่าง "หน้า (server)" กับ "ฟอร์ม (client)" ของ DocEditorV2
@@ -70,9 +71,19 @@ export const REASON_OPTIONS: { value: string; label: string }[] = [
   { value: "SERVICE_CANCELLED", label: "ยกเลิกบริการ" },
   { value: "OTHER", label: "อื่น ๆ" },
 ];
-export const REASON_LABEL: Record<string, string> = Object.fromEntries(
-  REASON_OPTIONS.map((o) => [o.value, o.label]),
-);
+export const REASON_LABEL: Record<string, string> = Object.fromEntries([
+  ...REASON_OPTIONS.map((o) => [o.value, o.label]),
+  ...ADJUST_NOTE_REASONS.filter((r) => r.code !== "OTHER").map((r) => [r.code, r.labelTh]), // ACC T2.3 ◂
+]);
+
+/**
+ * ACC T2.3 ▸ เหตุผลที่ฟอร์มเสนอตามชนิดเอกสาร — ใบลด/เพิ่มหนี้ (ขาย/ซื้อ) ใช้ตารางค่ากฎหมาย (สองกลุ่มตามประกาศ + อื่น ๆ) ·
+ *   ใบส่งคืนสินค้า (RPR) ฯลฯ ใช้รายการเดิม · ค่าที่ร่างเดิมเก็บไว้แต่ไม่อยู่ในรายการใหม่ = แสดงเป็น "อื่น ๆ" + ข้อความเดิม (unpack)
+ */
+export function reasonOptionsFor(docType: string): { value: string; label: string }[] {
+  if (!adjustGroupOfDocType(docType)) return REASON_OPTIONS;
+  return adjustReasonsFor(docType).map((r) => ({ value: r.code, label: r.labelTh }));
+}
 
 /** เก็บ `adjustReason` (DB เก็บเป็นข้อความก้อนเดียว) → รวม/แยกรหัส+ข้อความเสริม */
 export function packAdjustReason(code: string, text: string): string {
@@ -86,7 +97,7 @@ export function packAdjustReason(code: string, text: string): string {
 export function unpackAdjustReason(raw: string | null | undefined): { code: string; text: string } {
   const s = (raw ?? "").trim();
   if (!s) return { code: "", text: "" };
-  for (const o of REASON_OPTIONS) {
+  for (const o of Object.entries(REASON_LABEL).map(([value, label]) => ({ value, label }))) {
     if (o.value === "OTHER") continue;
     if (s === o.label) return { code: o.value, text: "" };
     if (s.startsWith(`${o.label} — `)) return { code: o.value, text: s.slice(o.label.length + 3) };
@@ -144,6 +155,8 @@ export type DocDraftValue = {
   /** WO 1.6 §5.2 J — เหตุผล (เฉพาะ CN/DN/CNR/DNR) */
   adjustReasonCode: string;
   adjustReasonText: string;
+  /** ACC T2.3 — ใบลด/เพิ่มหนี้ที่ได้รับ (ฝั่งซื้อ): วันที่เอกสารของผู้ขาย (เลขที่ = ช่อง "อ้างอิง") · yyyy-mm-dd หรือ "" */
+  vendorDocDate?: string;
 };
 
 /** payload ที่ส่งขึ้น server action — ตัด key ฝั่ง React ทิ้ง */

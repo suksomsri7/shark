@@ -58,7 +58,7 @@ export async function recordDocPrint(
       const kind = decidePrintKind(input.request, hasOriginal);
       if (kind === "ORIGINAL_REPRINT") {
         const n = prev.filter((p) => p.kind === "ORIGINAL_REPRINT").length + 1;
-        await legalGateInTx(tx, ctx.tenantId, [legalWarning("TAX_INVOICE_ORIGINAL_REPRINT", { docNo: doc.docNo ?? "-", n })], input.ack, {
+        await legalGateInTx(tx as unknown as Prisma.TransactionClient, ctx.tenantId, [legalWarning("TAX_INVOICE_ORIGINAL_REPRINT", { docNo: doc.docNo ?? "-", n })], input.ack, {
           op: "account.doc.print",
           targetType: "AccountDocument",
           targetId: doc.id,

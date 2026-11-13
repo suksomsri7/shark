@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/db";
+import { adjustReasonOf } from "@/lib/core/settings/legal/th-tax-2569"; // ACC T2.3 ◂
 import { safeReason } from "./errors";
 import { accountNow } from "./clock";
 import { issueLegalWarnings, legalAckResult, legalGateInTx } from "./legal-gate";
@@ -755,6 +756,9 @@ export async function createExpenseDoc(input: {
   discountAmount?: number;
   note?: string | null;
   adjustReason?: string | null;
+  adjustReasonCode?: string | null; // ACC T2.3 ◂
+  /** ACC T2.3 — ใบลด/เพิ่มหนี้ที่ได้รับ: วันที่เอกสารของผู้ขาย (เลขที่ = reference) */
+  vendorInvoiceDate?: Date | null;
   sourceDocId?: string | null;
   /** ใบจ่ายเงินมัดจำ (DP) ที่จะหักในเอกสารนี้ — เฉพาะ PURCHASE/EXPENSE ของผู้ขายรายเดียวกัน */
   depositPaymentId?: string | null;
@@ -829,6 +833,8 @@ export async function createExpenseDoc(input: {
         grandTotal: totals.grandTotal,
         note: input.note ?? null,
         adjustReason: input.adjustReason ?? null,
+        adjustReasonCode: adjustReasonOf(input.adjustReasonCode)?.code ?? null, // ACC T2.3 ◂
+        ...(input.vendorInvoiceDate ? { vendorInvoiceDate: input.vendorInvoiceDate } : {}), // ACC T2.3 ◂
         sourceDocId: input.sourceDocId ?? null,
         createdById: input.createdById ?? null,
         source: input.source ?? "MANUAL",
@@ -900,6 +906,8 @@ export async function updateExpenseDoc(
     discountAmount?: number;
     note?: string | null;
     adjustReason?: string | null;
+    adjustReasonCode?: string | null; // ACC T2.3 ◂
+    vendorInvoiceDate?: Date | null; // ACC T2.3 ◂
     lines?: ExpLineInput[];
   },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -964,6 +972,8 @@ export async function updateExpenseDoc(
           discountAmount,
           note: input.note === undefined ? doc.note : input.note,
           adjustReason: input.adjustReason === undefined ? doc.adjustReason : input.adjustReason,
+          adjustReasonCode: input.adjustReasonCode === undefined ? doc.adjustReasonCode : (adjustReasonOf(input.adjustReasonCode)?.code ?? null), // ACC T2.3 ◂
+          ...(input.vendorInvoiceDate !== undefined ? { vendorInvoiceDate: input.vendorInvoiceDate } : {}), // ACC T2.3 ◂
         },
       });
       if (input.lines) {

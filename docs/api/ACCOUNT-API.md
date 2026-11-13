@@ -1927,6 +1927,7 @@ Path parameters: `id` (required).
 | `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
 | `note` | one of several shapes | no | Note printed on the document. |
 | `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
+| `adjustReasonCode` | one of several shapes | no | Credit/debit note reason code from the legal table: CN_* for credit notes, DN_* for debit notes, OTHER with adjustReason text. A code of the other note kind is accepted with a warning. |
 | `sourceDocId` | one of several shapes | no | Id of the document this one refers to: a QUOTATION of this book for INVOICE; an invoice, receipt or tax invoice for credit and debit notes; any document of this book otherwise. An INVOICE pointing at anything but a QUOTATION is rejected with 422 `validation`. |
 | `tags` | array of string | no | Labels for grouping documents. At most 10 tags, each at most 30 characters. |
 | `lines` | array of object | no | Replaces every line of the draft when sent. Omit to keep the current lines. |
@@ -1956,6 +1957,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/documents/123" \
 | `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
 | `note` | one of several shapes | no | Note printed on the document. |
 | `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
+| `adjustReasonCode` | one of several shapes | no | Credit/debit note reason code from the legal table: CN_* for credit notes, DN_* for debit notes, OTHER with adjustReason text. A code of the other note kind is accepted with a warning. |
 | `sourceDocId` | one of several shapes | no | Id of the document this one refers to: a QUOTATION of this book for INVOICE; an invoice, receipt or tax invoice for credit and debit notes; any document of this book otherwise. An INVOICE pointing at anything but a QUOTATION is rejected with 422 `validation`. |
 | `tags` | array of string | no | Labels for grouping documents. At most 10 tags, each at most 30 characters. |
 | `refType` | string | no | Name of the record in your own system this document belongs to, for example `Booking`. · min length 1 · max length 60 |

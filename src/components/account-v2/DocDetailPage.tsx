@@ -1008,7 +1008,7 @@ export async function DocDetailPage({
   const legalWarnings =
     data.status === "DRAFT" && !PO_TYPES.includes(dt)
       ? [
-          ...issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason, vatAmount: data.vatAmount }, side === "revenue" ? settings : null),
+          ...issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason, vatAmount: data.vatAmount, adjustReasonCode: data.adjustReasonCode, sourceDocId: data.sourceDocId, reference: data.reference, vendorInvoiceDate: data.vendorInvoiceDate }, side === "revenue" ? settings : null), // ACC T2.3 ◂
           ...(side === "revenue" ? saleWithoutVatWarnings({ docType: dt, vatMode: data.vatMode, sourceDocId: data.sourceDocId, lines: data.lines }, settings) : []),
           ...(taxPoint?.draftWarnings ?? []),
           ...filedPreview,
