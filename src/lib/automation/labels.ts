@@ -439,6 +439,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "trips.refund.requoted", label: "เมื่อคำขอคืนเงินทัวร์ถูกคำนวณใหม่หลังอนุมัติ" },
   { value: "trips.refund.done", label: "เมื่อบันทึกการโอนคืนเงินทัวร์" },
   // ── /T0.7 money ──
+  // ── T0.8 passengers ── TRIPS T0.8 ▸ ผู้เดินทาง — ตัวยิง trips/passengers.ts · trips/pdpa.ts · payload {bookingId, passengerId, kind} (ไม่มีข้อมูลบุคคล) · เว็บฮุคได้จาก spread ◂
+  { value: "trips.passenger.form_completed", label: "เมื่อผู้เดินทางกรอกข้อมูลครบ" },
+  { value: "trips.document.purged", label: "เมื่อลบเอกสาร/ข้อมูลส่วนบุคคลของผู้เดินทางตามกำหนด" },
+  // ── /T0.8 passengers ──
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

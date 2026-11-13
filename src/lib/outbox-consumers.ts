@@ -1584,6 +1584,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.refund.requoted": withAutomation(async () => {}), // TRIPS T0.7 ▸ มติ r2 W2: คำนวณใหม่หลังอนุมัติ (คีย์ …:<requestId>:g<รุ่น>) ◂
   "trips.refund.done": withAutomation(async () => {}),
   // ── /T0.7 money ──
+  // ── T0.8 passengers ── TRIPS T0.8 ▸ ผู้เดินทาง (ใบสั่ง T0.8 §10) — ยิงจาก trips/passengers.ts · trips/pdpa.ts ในธุรกรรมเดียวกับการเขียน ·
+  //   payload {bookingId, passengerId, kind} ล้วน (ไม่มีชื่อ/เลขเอกสาร/ข้อมูลสุขภาพ/token) · งานหลัก no-op + กฎอัตโนมัติ/เว็บฮุค ◂
+  "trips.passenger.form_completed": withAutomation(async () => {}),
+  "trips.document.purged": withAutomation(async () => {}),
+  // ── /T0.8 passengers ──
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —
