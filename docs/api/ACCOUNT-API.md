@@ -3004,7 +3004,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/settings/documents/123/next
 
 #### `settings.documents.update`
 
-**PATCH /settings/documents/{docType}** - Change the numbering pattern, due days, footer note, terms or print settings of one document type. · scope: `account.settings.manage` · write
+**PATCH /settings/documents/{docType}** - Change the numbering pattern, due days, footer note, terms or print settings of one document type, or the book-wide tax invoice and purchase input VAT settings. · scope: `account.settings.manage` · write
 
 Path parameters: `docType` (required).
 
@@ -3020,6 +3020,7 @@ Path parameters: `docType` (required).
 | `publicLink` | object | no | - |
 | `autoTaxInvoice` | enum("MANUAL", "ON_PAYMENT", "ON_INVOICE") | no | Service lines: when the tax invoice is issued automatically (ON_PAYMENT = per payment · ON_INVOICE = with the invoice · MANUAL). |
 | `goodsTaxInvoiceOnIssue` | boolean | no | Goods lines: issue the tax invoice together with the invoice (default true). Off = goods output VAT stays parked and a warning shows after the month. |
+| `inputVat` | object | no | Purchase input VAT settings of the whole book (same card as the tax invoice settings on screen). |
 | `printTemplate` | enum("STANDARD", "COMPACT", "WITH_IMAGES") | no | - |
 | `channels` | array of string | no | Money channel ids, in the order printed on documents. |
 

@@ -52,6 +52,11 @@ export type AccountNavGroup = {
   icon: string;
   href: string; // ปลายทางเมื่อกดตัวหมวดตรง ๆ (ไม่เปิด dropdown) — ใช้รายการ "ready" แรกของหมวดเป็นค่าเริ่มต้น
   items: AccountNavItem[];
+  /**
+   * หน้าใต้หมวดที่ไม่อยู่ในเมนู แต่ต้องจับคู่ breadcrumb/แถบสว่างให้ถูก (ไม่แสดงใน dropdown)
+   * — กันหน้าใต้ path ของเมนูอื่นถูกจับเป็นเมนูนั้น (เช่น /tax/parked-vat เคยขึ้น "ภ.ง.ด.3/53" เพราะเมนูนั้นคือ /tax)
+   */
+  hiddenPages?: AccountNavItem[];
 };
 
 type ItemOpts = {
@@ -558,6 +563,11 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         page({ label: "อายุหนี้ (ลูกหนี้-เจ้าหนี้)", href: `${base}/aging`, status: "ready", icon: "clock", testId: "AGING" }),
         soon("DBD e-Filing", "upload", "DBD_EFILING") // f8-menu เขียน "ยื่นงบ DBD e-Filing" แต่ SPEC §2 (แหล่งจริงที่ qc-acc-v2-nav ตรวจ) เขียน "DBD e-Filing",
       ],
+      // ACC T1.2/T1.5 ▸ หน้าภาษีใต้ /tax ที่ไม่ใช่ ภ.ง.ด. (เข้าจากหน้ารายงาน/ภ.พ.30) — breadcrumb ต้องไม่ขึ้น "ภ.ง.ด.3/53" ◂
+      hiddenPages: [
+        page({ label: "ภาษีขายที่ค้างพัก", href: `${base}/tax/parked-vat`, status: "ready", icon: "pct", testId: "PARKED_VAT" }),
+        page({ label: "ใบกำกับภาษีซื้อรอรับ", href: `${base}/tax/pending-input-vat`, status: "ready", icon: "pct", testId: "PENDING_INPUT_VAT" }),
+      ],
     },
 
     // 8. คลังเอกสาร
@@ -647,7 +657,7 @@ export function findActiveNav(
   };
   let best: { group: AccountNavGroup; item: AccountNavItem; len: number; own: boolean } | null = null;
   for (const g of groups) {
-    for (const it of g.items) {
+    for (const it of [...g.items, ...(g.hiddenPages ?? [])]) {
       if (it.status !== "ready") continue;
       const p = stripQueryHash(it.href);
       if (!p || p === base) continue;

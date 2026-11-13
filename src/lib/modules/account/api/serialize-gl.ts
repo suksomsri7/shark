@@ -715,6 +715,8 @@ export function docSettingRowView(r: DocNumberingRow, s: DocSettings) {
     publicLink: { enabled: s.publicView.enabled, expiryDays: s.publicView.expiryDays },
     autoTaxInvoice: s.autoTaxInvoice.mode,
     goodsTaxInvoiceOnIssue: s.autoTaxInvoice.goodsOnIssue,
+    // ACC T1.4 ▸ ภาษีซื้อ (ค่าของทั้งสมุด เหมือน autoTaxInvoice — การ์ดเดียวกันบนจอ) ◂
+    inputVat: { nonClaimPosting: s.inputVat.nonClaimPosting, vendorNoTaxIdDefault: s.inputVat.vendorNoTaxIdDefault },
     printTemplate: s.print.template,
     channels: [...s.channels.order],
   };
