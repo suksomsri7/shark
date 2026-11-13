@@ -9,6 +9,7 @@
 // 🔴 ไฟล์นี้ต้อง "บริสุทธิ์" (ไม่แตะ DB/prisma) — fitness F5.1 ล็อกจำนวนไฟล์โมดูลที่ import prisma ไว้ที่ 45
 //    และตรรกะรูปแบบเลขที่ต้องเทสได้โดยไม่ต้องมีฐานข้อมูล
 import type { AccountDocType } from "@prisma/client";
+import { DEFAULT_INPUT_VAT_SETTINGS, parseInputVatSettings, type InputVatSettings } from "./input-vat-shared";
 
 // ─────────────────── ชนิดเอกสารที่มี "เลขรัน" ให้ตั้งค่า (18 ชนิด · §9.2) ───────────────────
 // 8 รายรับ + 10 รายจ่าย · ไม่รวม WHT_CERT (50 ทวิ มีเล่ม/เลขของตัวเองตามกฎหมาย)
@@ -188,6 +189,8 @@ export type DocSettings = {
     minAmountSatang: number; // ยอดขั้นต่ำที่ให้ขอได้ · 0 = ไม่จำกัด
   };
   /** กฎอัตโนมัติของเอกสาร (การ์ดล่างของ f10) */
+  /** ACC T1.4 — ภาษีซื้อ: ลงบัญชีส่วนที่เคลมไม่ได้ + ค่าเริ่มเมื่อคู่ค้าไม่มีเลขผู้เสียภาษี */
+  inputVat: InputVatSettings;
   rules: {
     lockNumberOnIssue: boolean; // ล็อกเลขที่เอกสารเมื่อออกแล้ว
     warnOnGap: boolean; // เตือนเมื่อเลขที่ข้ามลำดับ
@@ -247,6 +250,7 @@ export function defaultDocSettings(): DocSettings {
       minAmountSatang: 0,
     },
     rules: { lockNumberOnIssue: true, warnOnGap: false },
+    inputVat: { ...DEFAULT_INPUT_VAT_SETTINGS },
   };
 }
 
@@ -356,6 +360,7 @@ export function parseDocSettings(docConfig: unknown): DocSettings {
       conditionNote: str(taxRequest.conditionNote, d.taxRequest.conditionNote),
       minAmountSatang: int(taxRequest.minAmountSatang, d.taxRequest.minAmountSatang, 0, 1_000_000_00),
     },
+    inputVat: parseInputVatSettings(raw.inputVat),
     rules: {
       lockNumberOnIssue: bool(rules.lockNumberOnIssue, d.rules.lockNumberOnIssue),
       warnOnGap: bool(rules.warnOnGap, d.rules.warnOnGap),
@@ -407,7 +412,7 @@ export function mergeDocSettings(
     }
     next.notes = notes;
   }
-  for (const key of ["due", "channels", "publicView", "print", "taxRequest", "rules"] as const) {
+  for (const key of ["due", "channels", "publicView", "print", "taxRequest", "rules", "inputVat"] as const) {
     if (patch[key] !== undefined) next[key] = patch[key];
   }
   if (patch.autoTaxInvoice !== undefined)

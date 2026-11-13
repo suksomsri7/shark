@@ -161,11 +161,23 @@ export function codeInRange(code: string, groupPrefix: string): boolean {
 
 // ─────────────────── ประเภทภาษี (ฝั่งซื้อ) ───────────────────
 
-export const VAT_TREATMENTS = ["CLAIMABLE", "NON_CLAIMABLE", "PENDING_INVOICE"] as const;
+// ACC T1.4 — ธงนี้มีผลจริงตอนลงบัญชีแล้ว (ค่าเริ่มของสถานะภาษีซื้อของบรรทัด · input-vat-shared.statusFromTreatment)
+//   NON_CLAIMABLE_* = หมวดภาษีซื้อต้องห้ามตาม ม.82/5 (common-vat-invoice.md §17) — เหตุใช้เลือกบัญชีภาษีซื้อไม่ขอคืน 2 ชนิด
+export const VAT_TREATMENTS = [
+  "CLAIMABLE",
+  "NON_CLAIMABLE",
+  "NON_CLAIMABLE_ENTERTAINMENT",
+  "NON_CLAIMABLE_PASSENGER_CAR",
+  "NON_CLAIMABLE_NOT_BUSINESS",
+  "PENDING_INVOICE",
+] as const;
 export type VatTreatment = (typeof VAT_TREATMENTS)[number];
 export const VAT_TREATMENT_LABEL: Record<VatTreatment, string> = {
   CLAIMABLE: "ภาษีซื้อขอคืนได้",
-  NON_CLAIMABLE: "ภาษีซื้อขอคืนไม่ได้",
+  NON_CLAIMABLE: "ภาษีซื้อขอคืนไม่ได้ (ไม่ระบุเหตุ)",
+  NON_CLAIMABLE_ENTERTAINMENT: "ภาษีซื้อขอคืนไม่ได้ — ค่ารับรอง (ม.82/5(4))",
+  NON_CLAIMABLE_PASSENGER_CAR: "ภาษีซื้อขอคืนไม่ได้ — รถยนต์นั่ง ≤10 ที่นั่ง (ม.82/5(6))",
+  NON_CLAIMABLE_NOT_BUSINESS: "ภาษีซื้อขอคืนไม่ได้ — ไม่เกี่ยวกับกิจการ (ม.82/5(3))",
   PENDING_INVOICE: "รอใบกำกับภาษี",
 };
 export function vatTreatmentLabel(v: string | null): string {

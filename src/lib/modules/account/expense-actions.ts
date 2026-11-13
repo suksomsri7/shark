@@ -23,6 +23,7 @@ import {
   voidVendorPayment,
   voidExpenseDoc,
   receivePurchaseTaxInvoice,
+  markPurchaseTaxInvoiceNotClaimable,
   markAssetReceived,
   createPurchaseOrder,
   submitForApproval,
@@ -117,7 +118,7 @@ export async function createExpenseDocAction(formData: FormData) {
     : await createExpenseDoc({
         ...common,
         depositPaymentId,
-        vatPurchaseMode: (str(formData, "vatPurchaseMode") as VatPurchaseMode) || "CLAIM",
+        vatPurchaseMode: (str(formData, "vatPurchaseMode") as VatPurchaseMode) || undefined, // ACC T1.4: ไม่เลือก = ค่าเริ่มตามคู่ค้า/ธงบัญชี (เดิม CLAIM)
       });
   await writeAudit({
     tenantId,
@@ -263,18 +264,58 @@ export async function receivePtxAction(formData: FormData) {
   const id = str(formData, "id");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.record");
-  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => receivePurchaseTaxInvoice(tenantId, systemId, id));
+  // ACC T1.5 — วันที่ในใบ · เลขที่ใบของผู้ขาย · วันที่ลงภาษีซื้อ (ค่าเริ่ม วันนี้) · รหัสคำเตือนที่ยืนยัน
+  // ACC T1.7 — ห่อบริบทยืนยัน: รับใบกำกับเข้าเดือนที่ยื่น ภ.พ.30 แล้ว ⇒ เตือน + ยืนยัน (รหัสชุดเดียวกัน)
+  const ack = screenAck(formData.getAll("ack"), userId);
+  const res = await withScreenLegal(ack, () =>
+    receivePurchaseTaxInvoice(tenantId, systemId, id, {
+      vendorInvoiceDate: date(formData, "vendorInvoiceDate") ?? null,
+      vendorInvoiceNo: formData.has("vendorInvoiceNo") ? str(formData, "vendorInvoiceNo") : undefined,
+      claimDate: date(formData, "claimDate") ?? null,
+      ack,
+    }),
+  );
   await writeAudit({
     tenantId,
     actorId: userId,
     action: "account.doc.issue",
     targetType: "AccountDocument",
     targetId: id,
-    after: res.ok ? { received: true } : { error: res.reason },
+    after: res.ok ? { received: true, lateNote: res.lateNote } : { error: res.reason },
   });
   const path = `${pathFor(systemId, "PURCHASE_TAX_INVOICE")}/${id}`;
+  const back = safeBack(str(formData, "back")) ?? path;
   revalidatePath(path);
-  redirect(res.ok ? path : `${path}?err=${encodeURIComponent(res.reason)}`);
+  redirect(res.ok ? back : `${back}${back.includes("?") ? "&" : "?"}err=${encodeURIComponent(res.reason)}`);
+}
+
+/** ปลายทางกลับหลังทำรายการ — เฉพาะทางภายในระบบบัญชีเดียวกัน */
+function safeBack(v: string): string | null {
+  return /^\/app\/sys\/[A-Za-z0-9_-]+\/account\/[A-Za-z0-9/_?=&.-]*$/.test(v) ? v : null;
+}
+
+/** ACC T1.4 §7 — ใบกำกับไม่มาแล้ว: บันทึก "เคลมไม่ได้" (ภาษีซื้อไม่ขอคืน) */
+export async function notClaimablePtxAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const id = str(formData, "id");
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.payment.record");
+  // ACC T1.7 — กลับรายการรอใบกำกับเข้าเดือนที่ยื่น ภ.พ.30 แล้ว ⇒ เตือน + ยืนยัน
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () =>
+    markPurchaseTaxInvoiceNotClaimable(tenantId, systemId, id, { reason: str(formData, "reason") || null }),
+  );
+  await writeAudit({
+    tenantId,
+    actorId: userId,
+    action: "account.doc.issue",
+    targetType: "AccountDocument",
+    targetId: id,
+    after: res.ok ? { notClaimable: true, reason: str(formData, "reason") || null } : { error: res.reason },
+  });
+  const path = `${pathFor(systemId, "PURCHASE_TAX_INVOICE")}/${id}`;
+  const back = safeBack(str(formData, "back")) ?? path;
+  revalidatePath(path);
+  redirect(res.ok ? back : `${back}${back.includes("?") ? "&" : "?"}err=${encodeURIComponent(res.reason)}`);
 }
 
 export async function markAssetReceivedAction(formData: FormData) {

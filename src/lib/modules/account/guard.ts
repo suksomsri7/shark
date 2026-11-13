@@ -198,6 +198,7 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "settings/connections/page.tsx": "account.settings.manage",
   "tax/export/route.ts": "account.tax.view",
   "tax/page.tsx": "account.tax.view",
+  "tax/pending-input-vat/page.tsx": "account.tax.view", // ACC T1.5 — ใบกำกับภาษีซื้อรอรับ
   "wht/[certId]/print/page.tsx": "account.wht.manage",
   "wht/page.tsx": "account.wht.manage",
 };

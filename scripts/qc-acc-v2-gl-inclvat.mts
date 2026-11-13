@@ -174,7 +174,7 @@ try {
     units: number[];
     cost: number; // Dr 6900
     vat: number; // Dr 1150/1155
-    vatCode: "1150" | "1155" | null;
+    vatCode: "1150" | "1155" | "6960" | null;
     grand: number; // Cr 2100
     note: string;
   }[] = [
@@ -182,8 +182,12 @@ try {
     { id: "B2", purchaseMode: "CLAIM", price: "INCLUDE", units: INCL, cost: 150_000, vat: 10_500, vatCode: "1150", grand: 160_500, note: "เคลมได้ · ราคารวม VAT" },
     { id: "B3", purchaseMode: "AWAITING", price: "EXCLUDE", units: EXCL, cost: 150_000, vat: 10_500, vatCode: "1155", grand: 160_500, note: "รอใบกำกับ · ราคาแยก VAT" },
     { id: "B4", purchaseMode: "AWAITING", price: "INCLUDE", units: INCL, cost: 150_000, vat: 10_500, vatCode: "1155", grand: 160_500, note: "รอใบกำกับ · ราคารวม VAT" },
-    { id: "B5", purchaseMode: "NO_CLAIM", price: "EXCLUDE", units: EXCL, cost: 150_000, vat: 0, vatCode: null, grand: 150_000, note: "เคลมไม่ได้ · ราคาแยก VAT (ไม่มี VAT)" },
-    { id: "B6", purchaseMode: "NO_CLAIM", price: "INCLUDE", units: INCL, cost: 160_500, vat: 0, vatCode: null, grand: 160_500, note: "เคลมไม่ได้ · VAT เป็นส่วนหนึ่งของต้นทุน" },
+    // ORACLE-EDIT (ACC T1.4 · design note ledger/wo-notes/T1.4.md §5): "เคลมไม่ได้" ไม่ใช่ "ไม่มี VAT" อีกต่อไป —
+    //   ผู้ขายเรียก VAT จริง ร้านจ่ายจริง แต่ขอคืนไม่ได้ ⇒ VAT คงอยู่บนเอกสาร (เจ้าหนี้ = 1,605) และลงบัญชีภาษีซื้อไม่ขอคืน
+    //   (ค่าเริ่ม SEPARATE_ACCOUNT · ไม่ระบุเหตุ = 6960 รายจ่ายต้องห้าม [S]) — เดิมทิ้ง VAT จากใบ (B5 เจ้าหนี้ 1,500 ต่ำกว่าบิลจริง)
+    //   ค่าตั้ง INTO_COST = VAT รวมเข้า 6900 (ทดสอบใน qc-acc-v2-inputvat B8)
+    { id: "B5", purchaseMode: "NO_CLAIM", price: "EXCLUDE", units: EXCL, cost: 150_000, vat: 10_500, vatCode: "6960", grand: 160_500, note: "เคลมไม่ได้ · ราคาแยก VAT (VAT คงบนใบ → ภาษีซื้อไม่ขอคืน)" },
+    { id: "B6", purchaseMode: "NO_CLAIM", price: "INCLUDE", units: INCL, cost: 150_000, vat: 10_500, vatCode: "6960", grand: 160_500, note: "เคลมไม่ได้ · ราคารวม VAT (VAT → ภาษีซื้อไม่ขอคืน)" },
   ];
   for (const c of table) {
     try {
@@ -199,6 +203,7 @@ try {
       chkAmt(`${c.id}.3`, `${c.note} — Dr 6900 ค่าใช้จ่าย`, c.cost, side(r.entry, "6900", "dr"));
       chkAmt(`${c.id}.4`, `${c.note} — Dr 1150 ภาษีซื้อ`, c.vatCode === "1150" ? c.vat : 0, side(r.entry, "1150", "dr"));
       chkAmt(`${c.id}.5`, `${c.note} — Dr 1155 ภาษีซื้อรอใบกำกับ`, c.vatCode === "1155" ? c.vat : 0, side(r.entry, "1155", "dr"));
+      chkAmt(`${c.id}.5b`, `${c.note} — Dr 6960 ภาษีซื้อไม่ขอคืน`, c.vatCode === "6960" ? c.vat : 0, side(r.entry, "6960", "dr"));
       chkAmt(`${c.id}.6`, `${c.note} — Cr 2100 เจ้าหนี้`, c.grand, side(r.entry, "2100", "cr"));
       chkAmt(`${c.id}.7`, `${c.note} — VAT ในเอกสาร`, c.vat, r.doc?.vatAmount ?? -1);
     } catch (e) {

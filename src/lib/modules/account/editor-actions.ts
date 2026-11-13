@@ -41,6 +41,7 @@ import type {
 } from "@/components/account-v2/doc-editor-types";
 import { packDescription, packAdjustReason } from "@/components/account-v2/doc-editor-types";
 import { vatBpOrDefault, vatRuleAt, type VatRule } from "./legal-values";
+import { isInputVatStatus, nonClaimReasonOf, type InputVatStatus } from "./input-vat-shared";
 
 // ─────────────────────────────────────────────────────────────
 // editor-actions.ts — server actions ของฟอร์มเอกสาร V2 (WO 1.3)
@@ -99,6 +100,8 @@ function sanitize(payload: DocDraftPayload, vat: VatRule) {
       whtIncomeType: whtType,
       whtRateBp: whtType ? (whtRateBp ?? 0) : null,
       lineKind: l.lineKind === "GOODS" || l.lineKind === "SERVICE" ? l.lineKind : null,
+      inputVatStatus: isInputVatStatus(l.inputVatStatus) ? l.inputVatStatus : null,
+      inputVatReason: l.inputVatReason && nonClaimReasonOf(l.inputVatReason) ? l.inputVatReason : null,
     };
   });
   return {
@@ -110,6 +113,8 @@ function sanitize(payload: DocDraftPayload, vat: VatRule) {
     priceMode,
     // ACC T1.2 ▸ null = ตามค่าตั้ง (ไม่ได้แตะสวิตช์) · true/false = ผู้ใช้เลือก ◂
     autoTaxInvoice: v.autoTaxInvoice === true ? true : v.autoTaxInvoice === false ? false : null,
+    // ACC T1.4 ▸ null = ค่าเริ่มตามคู่ค้า/ธงบัญชี (server ตัดสิน) ◂
+    inputVatStatus: isInputVatStatus(v.inputVatStatus) ? v.inputVatStatus : null,
     recognizeVatNow: v.recognizeVatNow !== false,
     salesUserId: v.salesUserId ? trim(v.salesUserId, 40) : null,
     tags: (Array.isArray(v.tags) ? v.tags : []).slice(0, 20).map((t) => trim(t, 40)).filter(Boolean),
@@ -168,7 +173,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
       docDiscount: v.docDiscount,
     });
 
-    const lineInputs: (LineInput & { accountId: string | null; productId: string | null })[] = v.lines.map(
+    const lineInputs: (LineInput & { accountId: string | null; productId: string | null; inputVatStatus?: InputVatStatus | null; inputVatReason?: string | null })[] = v.lines.map(
       (l, i) => ({
         description: packDescription(l.name, l.description),
         qty: l.qty,
@@ -179,6 +184,8 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
         accountId: l.accountId,
         productId: l.productId,
         lineKind: side === "revenue" ? l.lineKind : null,
+        inputVatStatus: side === "expense" ? l.inputVatStatus : null,
+        inputVatReason: side === "expense" ? l.inputVatReason : null,
       }),
     );
     const vatTiming: AccountVatTiming = v.recognizeVatNow ? "ON_ISSUE" : "ON_PAYMENT";
@@ -212,6 +219,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               issueDate: v.issueDate,
               dueDate: v.dueDate ?? null,
               vatMode: totals.vatMode,
+              inputVatStatus: v.inputVatStatus, // ACC T1.4 (C1 — เดิมฟอร์มไม่ส่ง ⇒ เคลมเสมอ)
               discountAmount: totals.discountAmount,
               note: v.note || null,
               adjustReason: isAdjust ? adjustReason : undefined,
@@ -253,6 +261,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               issueDate: v.issueDate,
               dueDate: v.dueDate ?? null,
               vatMode: totals.vatMode,
+              inputVatStatus: v.inputVatStatus, // ACC T1.4 (C1)
               discountAmount: totals.discountAmount,
               note: v.note || null,
               adjustReason,
@@ -447,6 +456,8 @@ export async function searchContactsAction(systemId: string, q: string): Promise
     outstandingSatang: r.outstandingSatang,
     creditTermDays: r.creditTermDays,
     priceMode: (r.defaultPriceMode as PriceMode | null) ?? null,
+    taxId: r.taxId ?? null, // ACC T1.4
+    legalType: r.legalType === "PERSON" ? "PERSON" : "COMPANY",
   }));
 }
 

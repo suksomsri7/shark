@@ -62,7 +62,7 @@ function sideBlock(title: string, s: Pp30Side) {
         {s.rows.map((r, i) => (
           <tr key={`${r.docNo}-${i}`} className="border-b last:border-0">
             <td className="sticky left-0 z-10 bg-[color:var(--color-surface)] px-3 py-1.5 font-mono text-xs">{r.docNo}</td>
-            <td className="px-3 py-1.5">{r.contactName || "—"}<span className="text-xs text-[color:var(--color-muted)]"> {r.taxId}</span></td>
+            <td className="px-3 py-1.5">{r.contactName || "—"}<span className="text-xs text-[color:var(--color-muted)]"> {r.taxId}</span>{r.note && <div className="text-xs text-[color:var(--color-muted)]" data-testid="pp30-row-note">{r.note}</div>}</td>
             <td className="px-3 py-1.5 text-right"><MoneyText satang={r.base} decimals /></td>
             <td className="px-3 py-1.5 text-right"><MoneyText satang={r.vat} decimals /></td>
           </tr>

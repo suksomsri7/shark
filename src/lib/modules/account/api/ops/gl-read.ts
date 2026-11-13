@@ -39,6 +39,7 @@ import { filingHistory } from "../../filing-history";
 import { revenueWithoutVat } from "../../revenue-novat";
 import { ymd } from "../serialize";
 import { parkedOutputVat } from "../../tax-point";
+import { pendingInputVat } from "../../input-vat";
 import { ApiError, paged, type PagedInfo } from "../respond";
 import {
   agingView,
@@ -580,6 +581,51 @@ const reportsParkedVat = defineOp({
   },
 });
 
+// ═══════════════ ACC T1.5 — ใบกำกับภาษีซื้อรอรับ ═══════════════
+
+const pendingInputVatInput = z.object({ asOf: ymdField("asOf").optional() }).strict();
+
+const reportsPendingInputVat = defineOp({
+  id: "reports.pending-input-vat",
+  method: "GET",
+  path: "/reports/pending-input-vat",
+  kind: "read",
+  action: "account.tax.view",
+  rate: "report",
+  summary: "Input VAT parked while waiting for the vendor's tax invoice, per purchase document, with age, the last tax month it can still be claimed in (legal window) and a warning when that month has passed.",
+  label: "ใบกำกับภาษีซื้อรอรับ",
+  input: pendingInputVatInput,
+  tool: { name: "account_pending_input_vat", hint: "Use to find purchases whose input VAT is still waiting for the vendor's tax invoice, and which ones are running out of the claim window." },
+  test: "T1.5-IV-API8",
+  async handler({ actor, input }) {
+    const asOf = input.asOf ? dayEnd(input.asOf) : undefined;
+    const r = await pendingInputVat({ tenantId: actor.tenantId, systemId: actor.systemId }, { asOf });
+    return {
+      asOf: r.asOf.toISOString(),
+      limitMonths: r.limitMonths,
+      source: r.source,
+      rows: r.rows.map((x) => ({
+        purchaseTaxInvoiceId: x.ptxId,
+        purchaseTaxInvoiceNo: x.ptxNo,
+        sourceId: x.sourceId,
+        sourceDocNo: x.sourceDocNo,
+        sourceDocType: x.sourceDocType,
+        sourceDate: ymd(x.sourceDate),
+        contactName: x.contactName,
+        contactTaxId: x.contactTaxId,
+        vatSatang: x.vat,
+        ageDays: x.ageDays,
+        lastClaimMonth: x.lastClaimYm,
+        monthsLeft: x.monthsLeft,
+        pastWindow: x.pastWindow,
+        warning: x.warning,
+      })),
+      total: { vatSatang: r.total.vat, count: r.total.count, pastWindowVatSatang: r.total.pastWindowVat, pastWindowCount: r.total.pastWindowCount },
+      warning: r.warning,
+    };
+  },
+});
+
 // ═══════════════ งวดบัญชี ═══════════════
 
 const periodsList = defineOp({
@@ -825,6 +871,7 @@ export const GL_READ_OPS: ApiOp[] = [
   reportsVatPp30,
   reportsAging,
   reportsParkedVat,
+  reportsPendingInputVat,
   periodsList,
   periodsChecklist,
   periodsFiledDifferences,

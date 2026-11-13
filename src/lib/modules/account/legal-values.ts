@@ -220,10 +220,10 @@ export const DOC_WHT_INCOME_TYPES = ["M40_1", "M40_2", "M40_3", "M40_4", "M40_5"
  * อัตราหัก ณ ที่จ่ายที่แนะนำต่อประเภทเงินได้ (bp) — ผู้จ่ายตามประเภทผู้ประกอบการ · ผู้รับไม่ทราบ = บริษัทในไทย · ช่องทางปกติ
  * ไม่หัก/อัตราก้าวหน้า/ไม่มีแถว ⇒ 0 (ผู้ใช้กรอกเอง)
  */
-export function whtSuggestionsFrom(legal: BookLegal, date: Date, payer?: WhtPayer): Record<string, number> {
+export function whtSuggestionsFrom(legal: BookLegal, date: Date, payer?: WhtPayer, recipient?: WhtRecipient): Record<string, number> {
   const out: Record<string, number> = {};
   for (const t of DOC_WHT_INCOME_TYPES) {
-    const v = legalValueFrom(legal, "wht.rate", date, { incomeType: t, ...(payer ? { payer } : {}) });
+    const v = legalValueFrom(legal, "wht.rate", date, { incomeType: t, ...(payer ? { payer } : {}), ...(recipient ? { recipient } : {}) });
     out[t] = v.method === "RATE" && v.value !== null ? v.value : 0;
   }
   return out;
@@ -260,7 +260,12 @@ export function legalUiOptionsFrom(
   const rule = vatRuleFrom(legal, date);
   const whtSuggest = whtSuggestionsFrom(legal, date, side === "CUSTOMER_PAYS" ? "JURISTIC" : undefined);
   for (const w of shopWhtDefaults) whtSuggest[w.incomeType] = w.rateBp;
-  return { defaultVatBp: rule.defaultBp, vatOptions: vatOptionsFrom(rule), whtSuggest, whtRates: whtRateOptionsFrom(legal, date) };
+  // ACC T1.4 (จอข้อ 13): ตารางล้วน (ไม่ทับด้วยอัตราคงที่ของนโยบาย) ต่อประเภทผู้รับ — ผู้จ่าย = ร้าน (ตามประเภทผู้ประกอบการ)
+  const whtByRecipient =
+    side === "SHOP_PAYS"
+      ? { COMPANY: whtSuggestionsFrom(legal, date, undefined, "JURISTIC_TH"), PERSON: whtSuggestionsFrom(legal, date, undefined, "INDIVIDUAL_TH") }
+      : undefined;
+  return { defaultVatBp: rule.defaultBp, vatOptions: vatOptionsFrom(rule), whtSuggest, whtRates: whtRateOptionsFrom(legal, date), ...(whtByRecipient ? { whtByRecipient } : {}) };
 }
 
 export async function legalUiOptionsAt(

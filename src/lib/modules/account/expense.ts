@@ -15,7 +15,7 @@ import type {
   Prisma,
 } from "@prisma/client";
 // posting engine (owner = GL-P2P3, ไฟล์ gl.ts) — subagent P2 แค่ import + เรียกตามลายเซ็น
-import { ensureAccounting, postDocument, postPayment, reverseFor } from "./gl";
+import { ensureAccounting, pendingInputVatOf, postDocument, postPayment, reverseFor } from "./gl";
 // reuse (read-only) helper จาก service P1 — ห้ามแก้ service.ts
 import {
   computeTotals,
@@ -46,6 +46,19 @@ import { assertNotLockedTx, assertNotLockedWith } from "./policy";
 // WO C4 — เหตุการณ์บัญชีที่ออกทาง webhook (ตัวประกอบ payload + คีย์กันซ้ำอยู่ที่ events.ts ที่เดียว)
 import { emitDocumentApproved, emitDocumentIssued, emitDocumentVoided } from "./events";
 import { EXPENSE_DOC_PREFIX, fallbackPrefixOf } from "./settings-schema";
+import {
+  checkLateClaim,
+  defaultInputVatStatus,
+  inputVatWarnings,
+  isInputVatStatus,
+  nonClaimReasonOf,
+  statusFromPurchaseMode,
+  statusFromTreatment,
+  type InputVatSettings,
+  type InputVatStatus,
+} from "./input-vat-shared";
+import { type LegalWarning } from "@/lib/core/settings/legal/warnings";
+import { INPUT_VAT_NONCLAIM_DEFAULT_REASON } from "@/lib/core/settings/legal/th-tax-2569";
 import { clampSearch } from "./search-input";
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คจ่ายใบเดียวของใบรวมจ่ายผูกไว้ที่งวดแรก — งวดอื่นหาเช็คจากคีย์ชุด ◂
 import { chequeIdsHoldingPayments } from "./group-batch";
@@ -168,6 +181,73 @@ function vatFieldsFor(
   if (mode === "AWAITING") return { vatMode: reqVatMode, vatTiming: "ON_PAYMENT" };
   return { vatMode: reqVatMode, vatTiming: "ON_ISSUE" };
 }
+
+// ─────────────────── ACC T1.4 สถานะภาษีซื้อ (เคลม / รอใบกำกับ / เคลมไม่ได้) ───────────────────
+// ใบที่มีสถานะ (inputVatStatus ไม่ null) เก็บยอด VAT ไว้ทุกสถานะ (เคลมไม่ได้ ≠ ไม่มี VAT) — gl.ts แยกบัญชีตามสถานะ
+// design note: ledger/wo-notes/T1.4.md §4
+
+/** ชนิดที่ใช้สถานะภาษีซื้อ (PO/APO เก็บไว้ส่งต่อตอนแปลง) · CNR/DNR ตามใบเดิม · DP เคลมตอนจ่ายแบบเดิม */
+const INPUT_VAT_TYPES: AccountDocType[] = ["PURCHASE", "EXPENSE", "ASSET_PURCHASE", "PURCHASE_ORDER", "ASSET_PURCHASE_ORDER"];
+
+type Db = Prisma.TransactionClient | typeof prisma;
+
+type ResolvedInputVat = {
+  docStatus: InputVatStatus | null;
+  lines: { inputVatStatus: InputVatStatus | null; inputVatReason: string | null }[];
+};
+
+/**
+ * ค่าเริ่ม + ค่าที่ผู้ใช้เลือก → สถานะที่บันทึก
+ *   ใบ: ผู้ใช้เลือก → คู่ค้าไม่มีเลขผู้เสียภาษี = ค่าตั้ง (ค่าเริ่ม รอใบกำกับ) → เคลม
+ *   บรรทัด: ผู้ใช้เลือก → ธงของบัญชี (หมวดต้องห้าม/รอใบกำกับ) → ตามใบ (null)
+ */
+async function resolveInputVat(
+  db: Db,
+  input: {
+    systemId: string;
+    docType: AccountDocType;
+    vatRegistered: boolean;
+    contactId: string | null;
+    explicitDoc: InputVatStatus | null;
+    lines: { accountId?: string | null; inputVatStatus?: InputVatStatus | null; inputVatReason?: string | null }[];
+    settings: InputVatSettings;
+  },
+): Promise<ResolvedInputVat> {
+  if (!input.vatRegistered || !INPUT_VAT_TYPES.includes(input.docType))
+    return { docStatus: null, lines: input.lines.map(() => ({ inputVatStatus: null, inputVatReason: null })) };
+  const contact = input.contactId
+    ? await db.accountContact.findFirst({ where: { id: input.contactId, systemId: input.systemId }, select: { taxId: true } })
+    : null;
+  const vendorDefault = defaultInputVatStatus({ vendorTaxId: contact?.taxId ?? null, settings: input.settings });
+  const docStatus: InputVatStatus = input.explicitDoc ?? vendorDefault.status;
+  const accIds = [...new Set(input.lines.map((l) => l.accountId).filter((x): x is string => !!x))];
+  const ledgers = accIds.length
+    ? await db.accountLedger.findMany({ where: { systemId: input.systemId, id: { in: accIds } }, select: { id: true, vatTreatment: true } })
+    : [];
+  const treat = new Map(ledgers.map((l) => [l.id, l.vatTreatment]));
+  const docReason = docStatus === "NO_CLAIM" && !input.explicitDoc ? vendorDefault.reason : null;
+  return {
+    docStatus,
+    lines: input.lines.map((l) => {
+      const explicit = isInputVatStatus(l.inputVatStatus) ? l.inputVatStatus : null;
+      const fromAcc = !explicit && l.accountId ? statusFromTreatment(treat.get(l.accountId)) : null;
+      const st = explicit ?? fromAcc?.status ?? null;
+      const eff = st ?? docStatus;
+      const reasonIn = l.inputVatReason && nonClaimReasonOf(l.inputVatReason) ? l.inputVatReason : null;
+      const reason = eff === "NO_CLAIM" ? (reasonIn ?? fromAcc?.reason ?? (l.accountId ? TREATMENT_NC_REASON(treat.get(l.accountId)) : null) ?? docReason) : null;
+      return { inputVatStatus: st, inputVatReason: reason };
+    }),
+  };
+}
+
+export { inputVatWarnings };
+
+/** เหตุจากธงบัญชีเมื่อผู้ใช้เลือกเคลมไม่ได้เอง (บัญชีหมวดต้องห้าม) */
+function TREATMENT_NC_REASON(t: string | null | undefined): string | null {
+  const r = statusFromTreatment(t);
+  return r && r.status === "NO_CLAIM" && r.explicitReason ? r.reason : null;
+}
+
 
 // ─────────────────── เลขรันเอกสาร (จองใน tx) ───────────────────
 //
@@ -439,7 +519,7 @@ export function listExpenseAccounts(systemId: string) {
   return prisma.accountLedger.findMany({
     where: { systemId, archivedAt: null, type: { in: ["EXPENSE", "COGS"] } },
     orderBy: { code: "asc" },
-    select: { id: true, code: true, name: true },
+    select: { id: true, code: true, name: true, vatTreatment: true },
   });
 }
 
@@ -457,6 +537,9 @@ export function listAssetAccounts(systemId: string) {
 export type ExpLineInput = LineInput & {
   accountId?: string | null; // EXPENSE: หมวดบัญชี · ASSET_PURCHASE: บัญชีสินทรัพย์
   productId?: string | null; // PURCHASE: อ้างสินค้า
+  /** ACC T1.4 — สถานะภาษีซื้อของบรรทัด (ไม่ส่ง = ธงของบัญชี → ตามใบ) + รหัสเหตุเมื่อเคลมไม่ได้ */
+  inputVatStatus?: InputVatStatus | null;
+  inputVatReason?: string | null;
   /** ACC T1.2 — ฝั่งขายเท่านั้น: ชนิดบรรทัด สินค้า/บริการ (ไม่ส่ง = ตามชนิดสินค้า/ชนิดเริ่มของใบ) · ฝั่งซื้อไม่ใช้ */
   lineKind?: "GOODS" | "SERVICE" | null;
 };
@@ -667,6 +750,8 @@ export async function createExpenseDoc(input: {
   dueDate?: Date | null;
   vatMode?: AccountVatMode;
   vatPurchaseMode?: VatPurchaseMode;
+  /** ACC T1.4 — สถานะภาษีซื้อของทั้งใบ (ชนะ vatPurchaseMode) · ไม่ส่งทั้งคู่ = ค่าเริ่มตามคู่ค้า/ธงบัญชี */
+  inputVatStatus?: InputVatStatus | null;
   discountAmount?: number;
   note?: string | null;
   adjustReason?: string | null;
@@ -685,10 +770,20 @@ export async function createExpenseDoc(input: {
   const reqVatMode: AccountVatMode = !settings.vatRegistered
     ? "NONE"
     : input.vatMode ?? "EXCLUDE";
-  const purchaseMode: VatPurchaseMode = !settings.vatRegistered
-    ? "NO_CLAIM"
-    : input.vatPurchaseMode ?? "CLAIM";
-  const { vatMode, vatTiming } = vatFieldsFor(purchaseMode, reqVatMode);
+  // ACC T1.4: ไม่ส่งโหมด ⇒ ค่าเริ่มตามคู่ค้า/ธงบัญชี (เดิม "CLAIM" เงียบ ๆ — C1)
+  const explicitDoc = input.inputVatStatus ?? statusFromPurchaseMode(input.vatPurchaseMode);
+  const ivr = await resolveInputVat(prisma, {
+    systemId: input.systemId,
+    docType: input.docType,
+    vatRegistered: settings.vatRegistered,
+    contactId: input.contactId ?? null,
+    explicitDoc,
+    lines: input.lines,
+    settings: settings.doc.inputVat,
+  });
+  const { vatMode, vatTiming } = ivr.docStatus
+    ? { vatMode: reqVatMode, vatTiming: (ivr.docStatus === "PENDING" ? "ON_PAYMENT" : "ON_ISSUE") as AccountVatTiming }
+    : vatFieldsFor(!settings.vatRegistered ? "NO_CLAIM" : (input.vatPurchaseMode ?? "CLAIM"), reqVatMode);
   const issueDate = input.issueDate ?? new Date();
   // §9.3 ล็อกข้อมูลก่อนวันที่ (ฝั่งรายจ่าย — กติกาเดียวกับฝั่งรายรับ)
   assertNotLockedWith(settings.policy.lockBeforeDate, issueDate);
@@ -740,8 +835,11 @@ export async function createExpenseDoc(input: {
         tags: input.tags ?? [],
         refType: input.refType ?? null,
         refId: input.refId ?? null,
+        inputVatStatus: ivr.docStatus,
         lines: {
           create: input.lines.map((l, i) => ({
+            inputVatStatus: ivr.lines[i]?.inputVatStatus ?? null,
+            inputVatReason: ivr.lines[i]?.inputVatReason ?? null,
             tenantId: input.tenantId,
             systemId: input.systemId,
             sortOrder: i,
@@ -797,6 +895,8 @@ export async function updateExpenseDoc(
     dueDate?: Date | null;
     vatMode?: AccountVatMode;
     vatPurchaseMode?: VatPurchaseMode;
+    /** ACC T1.4 — สถานะภาษีซื้อของทั้งใบ · ไม่ส่ง = คงค่าเดิม (ใบที่ยังไม่มีสถานะ = ค่าเริ่มตามคู่ค้า) */
+    inputVatStatus?: InputVatStatus | null;
     discountAmount?: number;
     note?: string | null;
     adjustReason?: string | null;
@@ -815,7 +915,25 @@ export async function updateExpenseDoc(
       const reqVatMode: AccountVatMode = !settings.vatRegistered
         ? "NONE"
         : input.vatMode ?? doc.vatMode;
-      const purchaseMode: VatPurchaseMode = !settings.vatRegistered
+      // ACC T1.4: สถานะใบ = ที่ส่งมา → ค่าเดิมของร่าง → (ร่างก่อน T1.4) ค่าเริ่มตามคู่ค้า
+      //   input.inputVatStatus: ค่า = เลือกเอง · null = "ตามค่าเริ่ม" (ฟอร์ม V2 — คิดใหม่จากคู่ค้าปัจจุบัน) · undefined = คงค่าเดิมของร่าง
+      const explicitDoc =
+        input.inputVatStatus !== undefined
+          ? input.inputVatStatus
+          : (statusFromPurchaseMode(input.vatPurchaseMode) ?? (isInputVatStatus(doc.inputVatStatus) ? doc.inputVatStatus : null));
+      const curLines = input.lines
+        ? null
+        : await tx.accountDocumentLine.findMany({ where: { documentId: id }, orderBy: { sortOrder: "asc" }, select: { accountId: true, inputVatStatus: true, inputVatReason: true } });
+      const ivr = await resolveInputVat(tx, {
+        systemId,
+        docType: doc.docType,
+        vatRegistered: settings.vatRegistered,
+        contactId: input.contactId === undefined ? doc.contactId : input.contactId,
+        explicitDoc,
+        lines: input.lines ?? (curLines ?? []).map((l) => ({ accountId: l.accountId, inputVatStatus: l.inputVatStatus, inputVatReason: l.inputVatReason })),
+        settings: settings.doc.inputVat,
+      });
+      const legacyMode: VatPurchaseMode = !settings.vatRegistered
         ? "NO_CLAIM"
         : input.vatPurchaseMode ??
           (doc.vatMode === "NONE"
@@ -823,7 +941,15 @@ export async function updateExpenseDoc(
             : doc.vatTiming === "ON_PAYMENT"
               ? "AWAITING"
               : "CLAIM");
-      const { vatMode, vatTiming } = vatFieldsFor(purchaseMode, reqVatMode);
+      const { vatMode, vatTiming } = ivr.docStatus
+        ? { vatMode: reqVatMode, vatTiming: (ivr.docStatus === "PENDING" ? "ON_PAYMENT" : "ON_ISSUE") as AccountVatTiming }
+        : vatFieldsFor(legacyMode, reqVatMode);
+      if (curLines && ivr.docStatus) {
+        // บรรทัดเดิม (ไม่ได้ส่งมาแก้): เติมเหตุ/สถานะตามสถานะใบใหม่
+        const rows = await tx.accountDocumentLine.findMany({ where: { documentId: id }, orderBy: { sortOrder: "asc" }, select: { id: true } });
+        for (let i = 0; i < rows.length; i++)
+          await tx.accountDocumentLine.update({ where: { id: rows[i]!.id }, data: { inputVatStatus: ivr.lines[i]?.inputVatStatus ?? null, inputVatReason: ivr.lines[i]?.inputVatReason ?? null } });
+      }
       const discountAmount = input.discountAmount ?? doc.discountAmount;
       await tx.accountDocument.update({
         where: { id },
@@ -834,6 +960,7 @@ export async function updateExpenseDoc(
           vatMode,
           vatTiming,
           taxPointBasis: vatTiming,
+          inputVatStatus: ivr.docStatus,
           discountAmount,
           note: input.note === undefined ? doc.note : input.note,
           adjustReason: input.adjustReason === undefined ? doc.adjustReason : input.adjustReason,
@@ -847,6 +974,8 @@ export async function updateExpenseDoc(
             systemId,
             documentId: id,
             sortOrder: i,
+            inputVatStatus: ivr.lines[i]?.inputVatStatus ?? null,
+            inputVatReason: ivr.lines[i]?.inputVatReason ?? null,
             description: l.description,
             qty: l.qty,
             unitName: l.unitName ?? null,
@@ -958,7 +1087,17 @@ export async function issueExpenseDoc(
 
       // ── CNR/DNR (WO 1.6, mirror F4 ฝั่งขาย): ไม่มีสาเหตุ = คำเตือน ADJUST_NOTE_REASON_MISSING (T0.4 · กดยืนยันผ่านได้) ·
       //    อ้างอิงเอกสารเดิมเป็นทางเลือก · CNR cap ≤ คงเหลือของเอกสารเดิม (PUR/EXP) **เฉพาะเมื่อมีการอ้างอิง**
-      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, null), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
+      // ACC T1.4 — คำเตือนภาษีซื้อ (เคลมทั้งที่คู่ค้าไม่มีเลข / หมวดต้องห้าม = ต้องยืนยัน · อื่น ๆ แจ้งให้ทราบ)
+      const accIds = [...new Set(doc.lines.map((l) => l.accountId).filter((x): x is string => !!x))];
+      const treat = new Map(
+        (accIds.length ? await tx.accountLedger.findMany({ where: { systemId, id: { in: accIds } }, select: { id: true, vatTreatment: true } }) : []).map((l) => [l.id, l.vatTreatment]),
+      );
+      const ivWarnings = inputVatWarnings(
+        doc,
+        doc.lines.map((l) => ({ ...l, accountTreatment: l.accountId ? treat.get(l.accountId) : null })),
+        doc.contact ? { name: doc.contact.name, taxId: doc.contact.taxId } : null,
+      );
+      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, null).concat(ivWarnings), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
       if (doc.docType === "CREDIT_NOTE_RECEIVED" || doc.docType === "DEBIT_NOTE_RECEIVED") {
         if (doc.docType === "CREDIT_NOTE_RECEIVED" && doc.sourceDocId) {
           const cap = await creditAvailableExpense(tx, systemId, doc.sourceDocId, id);
@@ -1005,14 +1144,16 @@ export async function issueExpenseDoc(
       //    ⇒ โพสต์ตอน "จ่ายครบ" ใน recordVendorPayment เหมือนใบรับมัดจำฝั่งขาย (service.ts DEPOSIT_RECEIPT)
       //    ถ้าโพสต์ที่นี่จะ Cr เงินซ้ำ 2 รอบ (ตอนออก + ตอนจ่าย) และ Dr 2100 ลอยโดยไม่เคยมี Cr 2100
       if (doc.docType !== "DEPOSIT_PAYMENT") await postDocument(ctx, id, tx);
-      // VAT รอใบกำกับ (vatTiming ON_PAYMENT + มี VAT) → เปิดทะเบียนใบกำกับภาษีซื้อรอรับ
-      if (
-        doc.vatTiming === "ON_PAYMENT" &&
-        doc.vatMode !== "NONE" &&
-        doc.vatAmount > 0 &&
-        (doc.docType === "PURCHASE" || doc.docType === "EXPENSE" || doc.docType === "ASSET_PURCHASE")
-      ) {
-        await createPendingTaxInvoice(tx, tenantId, systemId, doc, docNo);
+      // VAT รอใบกำกับ → เปิดทะเบียนใบกำกับภาษีซื้อรอรับ
+      //   ACC T1.4: ยอด = ภาษีซื้อที่พักจริงใน 1155 ของ JV ใบนี้ (บรรทัดที่ "รอใบกำกับ" เท่านั้น · หักส่วนมัดจำแล้ว) · ใบเก่า = เงื่อนไขเดิม
+      if (doc.vatMode !== "NONE" && doc.vatAmount > 0 && (doc.docType === "PURCHASE" || doc.docType === "EXPENSE" || doc.docType === "ASSET_PURCHASE")) {
+        const explicit = !!doc.inputVatStatus || doc.lines.some((l) => !!l.inputVatStatus);
+        if (explicit) {
+          const pend = (await pendingInputVatOf(ctx, [id], tx)).get(id) ?? 0;
+          if (pend > 0) await createPendingTaxInvoice(tx, tenantId, systemId, { ...doc, vatAmount: pend }, docNo);
+        } else if (doc.vatTiming === "ON_PAYMENT") {
+          await createPendingTaxInvoice(tx, tenantId, systemId, doc, docNo);
+        }
       }
       // WO C4: "ออกเอกสารแล้ว" ฝั่งซื้อ — คีย์เดียวกับฝั่งขาย (ผูก docId) ⇒ `createGroupDoc` ที่เรียกต่อไม่ยิงซ้ำ
       await emitDocumentIssued(tx, ctx, {
@@ -1098,26 +1239,112 @@ async function createPendingTaxInvoice(
   });
 }
 
+export type ReceivePurchaseTaxInvoiceInput = {
+  /** วันที่ในใบกำกับของผู้ขาย · ไม่ส่ง = วันที่ลงภาษีซื้อ (ช่องทางเดิมที่ไม่ส่ง) */
+  vendorInvoiceDate?: Date | null;
+  /** เลขที่ใบกำกับของผู้ขาย → `reference` (≤35) */
+  vendorInvoiceNo?: string | null;
+  /** วันที่ลงภาษีซื้อ (เดือนภาษีที่เคลม) · ไม่ส่ง = วันนี้ (เดือนที่รับจริง) */
+  claimDate?: Date | null;
+  ack?: LegalAck | null;
+};
+
+/** เลขลำดับคีย์โพสต์ของ PTX (รับซ้ำหลังยกเลิกการรับ ⇒ คีย์ใหม่ — คีย์เดิมถูกกลับรายการแล้ว) */
+async function nextPtxEvent(tx: Prisma.TransactionClient, systemId: string, id: string): Promise<string> {
+  const n = await tx.accountJournalEntry.count({ where: { systemId, refType: "AccountDocument", refId: id, reversalOfId: null } });
+  return n === 0 ? "ISSUE" : `RECEIVE${n + 1}`;
+}
+
+/** โหลด PTX ที่รอรับ + ล็อกแถว · ปรับยอดให้ตรงกับภาษีซื้อที่ยังพักจริงของสายเอกสาร (GL) */
+async function loadPendingPtx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, id: string) {
+  const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
+  if (!doc) throw new Error("ไม่พบเอกสาร");
+  if (doc.docType !== "PURCHASE_TAX_INVOICE") throw new Error("ไม่ใช่ใบกำกับภาษีซื้อ");
+  if (doc.status !== "AWAITING_RECEIVE") throw new Error("สถานะไม่ถูกต้อง (ต้องรอรับ)");
+  let vat = doc.vatAmount;
+  let base = doc.subTotal;
+  if (doc.sourceDocId) {
+    const pend = (await pendingInputVatOf({ tenantId, systemId }, [doc.sourceDocId], tx)).get(doc.sourceDocId) ?? 0;
+    vat = Math.max(0, pend);
+    // ฐานภาษีของใบกำกับซื้อ (รายงานภาษีซื้อ/ภ.พ.30 แสดงมูลค่า) = ฐานของใบต้นทางตามสัดส่วน VAT ที่ย้าย
+    const src = await tx.accountDocument.findFirst({ where: { id: doc.sourceDocId, systemId }, select: { subTotal: true, discountAmount: true, vatAmount: true } });
+    if (src && src.vatAmount > 0) base = Math.round(((src.subTotal - src.discountAmount) * vat) / src.vatAmount);
+  }
+  return { doc, vat, base };
+}
+
 // ใบกำกับภาษีซื้อ "รับแล้ว" → RECEIVED + postDocument (โอน 1155 → 1150 เคลม VAT)
+//   ACC T1.5: เก็บวันที่ในใบ + วันที่ลงภาษีซื้อ (ค่าเริ่ม = วันนี้ = เดือนที่รับจริง) · JV ลงวันที่ลงภาษีซื้อ
+//   เคลมข้ามเดือน: ข้อความ "ถือเป็นภาษีซื้อในเดือนภาษี…" · เกินเพดานตารางค่ากฎหมาย / ก่อนเดือนใบ = คำเตือนที่ต้องยืนยัน (ไม่บล็อก)
 export async function receivePurchaseTaxInvoice(
   tenantId: string,
   systemId: string,
   id: string,
+  input: ReceivePurchaseTaxInvoiceInput = {},
+): Promise<{ ok: true; lateNote: string | null; warnings: LegalWarning[] } | { ok: false; reason: string; legal?: LegalAckRequired }> {
+  try {
+    const res = await prisma.$transaction(async (tx) => {
+      const { vat, base } = await loadPendingPtx(tx, tenantId, systemId, id);
+      const claimDate = input.claimDate ?? accountNow();
+      const vendorInvoiceDate = input.vendorInvoiceDate ?? claimDate;
+      await assertNotLockedTx(tx, systemId, claimDate);
+      const chk = checkLateClaim(vendorInvoiceDate, claimDate);
+      await legalGateInTx(tx, tenantId, chk.warnings, input.ack, { op: "account.ptx.receive", targetType: "AccountDocument", targetId: id });
+      await tx.accountDocument.update({
+        where: { id },
+        data: {
+          status: "RECEIVED",
+          vatAmount: vat,
+          grandTotal: vat,
+          subTotal: base,
+          vendorInvoiceDate,
+          inputVatClaimDate: claimDate,
+          inputVatLateNote: chk.note,
+          inputVatStatus: "CLAIM",
+          ...(input.vendorInvoiceNo !== undefined ? { reference: input.vendorInvoiceNo ? input.vendorInvoiceNo.trim().slice(0, 35) : null } : {}),
+        },
+      });
+      await tx.accountDocumentLine.updateMany({ where: { documentId: id }, data: { unitPrice: vat, amount: vat } });
+      const ctx = { tenantId, systemId };
+      await ensureAccounting(ctx, tx);
+      await postDocument(ctx, id, tx, { event: await nextPtxEvent(tx, systemId, id) }); // Dr 1150 / Cr 1155 ณ วันที่ลงภาษีซื้อ
+      return { lateNote: chk.note, warnings: chk.warnings };
+    });
+    return { ok: true, ...res };
+  } catch (e) {
+    if (isLegalAckRequiredError(e)) return legalAckResult(e);
+    return { ok: false, reason: safeReason(e, "รับใบกำกับไม่สำเร็จ") };
+  }
+}
+
+/**
+ * ACC T1.4 §7 — ใบกำกับไม่มาแล้ว: PTX ที่รอรับ → "เคลมไม่ได้" (RECEIVED + inputVatStatus NO_CLAIM)
+ *   JV: Dr ภาษีซื้อไม่ขอคืนตามกลุ่มของเหตุ (หรือค่าใช้จ่ายของใบต้นทางตามค่าตั้ง) / Cr 1155 ลงวันที่ `date` (ค่าเริ่มวันนี้)
+ */
+export async function markPurchaseTaxInvoiceNotClaimable(
+  tenantId: string,
+  systemId: string,
+  id: string,
+  input: { reason?: string | null; date?: Date | null } = {},
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     await prisma.$transaction(async (tx) => {
-      const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
-      if (!doc) throw new Error("ไม่พบเอกสาร");
-      if (doc.docType !== "PURCHASE_TAX_INVOICE") throw new Error("ไม่ใช่ใบกำกับภาษีซื้อ");
-      if (doc.status !== "AWAITING_RECEIVE") throw new Error("สถานะไม่ถูกต้อง (ต้องรอรับ)");
-      await tx.accountDocument.update({ where: { id }, data: { status: "RECEIVED" } });
+      const { vat } = await loadPendingPtx(tx, tenantId, systemId, id);
+      const date = input.date ?? accountNow();
+      await assertNotLockedTx(tx, systemId, date);
+      const reason = input.reason && nonClaimReasonOf(input.reason) ? input.reason : INPUT_VAT_NONCLAIM_DEFAULT_REASON;
+      await tx.accountDocument.update({
+        where: { id },
+        data: { status: "RECEIVED", vatAmount: vat, grandTotal: vat, inputVatStatus: "NO_CLAIM", inputVatClaimDate: date, inputVatLateNote: null },
+      });
+      await tx.accountDocumentLine.updateMany({ where: { documentId: id }, data: { unitPrice: vat, amount: vat, inputVatStatus: "NO_CLAIM", inputVatReason: reason } });
       const ctx = { tenantId, systemId };
       await ensureAccounting(ctx, tx);
-      await postDocument(ctx, id, tx); // GL-P2P3: Dr 1150 / Cr 1155
+      await postDocument(ctx, id, tx, { event: await nextPtxEvent(tx, systemId, id) });
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: safeReason(e, "รับใบกำกับไม่สำเร็จ") };
+    return { ok: false, reason: safeReason(e, "บันทึกเคลมไม่ได้ไม่สำเร็จ") };
   }
 }
 
@@ -1403,6 +1630,16 @@ export async function voidExpenseDoc(
         throw new Error("เอกสารถูกยกเลิกแล้ว");
       // §9.3 ล็อกข้อมูลก่อนวันที่
       await assertNotLockedTx(tx, systemId, doc.issueDate);
+      // ACC T1.4 §7 — ยกเลิกใบกำกับภาษีซื้อที่ "รับแล้ว" ของใบซื้อ = ยกเลิกการรับ: กลับรายการ + กลับเป็นรอรับ (VAT กลับไปพัก 1155)
+      if (doc.docType === "PURCHASE_TAX_INVOICE" && doc.status === "RECEIVED" && doc.sourceDocId) {
+        await reverseFor({ tenantId, systemId }, "AccountDocument", id, reason, tx);
+        await tx.accountDocument.update({
+          where: { id },
+          data: { status: "AWAITING_RECEIVE", inputVatStatus: null, inputVatClaimDate: null, inputVatLateNote: null, vendorInvoiceDate: null, voidReason: reason || null },
+        });
+        await tx.accountDocumentLine.updateMany({ where: { documentId: id }, data: { inputVatStatus: null, inputVatReason: null } });
+        return;
+      }
       if (doc.status !== "DRAFT") {
         const activePay = await tx.accountDocumentPayment.count({
           where: { documentId: id, voidedAt: null },
@@ -1425,6 +1662,17 @@ export async function voidExpenseDoc(
       });
       if (posted) {
         await reverseFor({ tenantId, systemId }, "AccountDocument", id, reason, tx);
+      }
+      // ACC T1.4 §7 — ใบซื้อที่มีใบกำกับภาษีซื้อ: ยกเลิก/กลับรายการ PTX ด้วย (เดิม 1155 ติดลบเมื่อ PTX รับแล้ว · PTX รอรับค้างในทะเบียน)
+      if (doc.docType === "PURCHASE" || doc.docType === "EXPENSE" || doc.docType === "ASSET_PURCHASE") {
+        const ptxs = await tx.accountDocument.findMany({
+          where: { systemId, docType: "PURCHASE_TAX_INVOICE", sourceDocId: id, status: { in: ["AWAITING_RECEIVE", "RECEIVED"] } },
+          select: { id: true, status: true },
+        });
+        for (const p of ptxs) {
+          if (p.status === "RECEIVED") await reverseFor({ tenantId, systemId }, "AccountDocument", p.id, reason, tx);
+          await tx.accountDocument.update({ where: { id: p.id }, data: { status: "VOIDED", voidedAt: new Date(), voidReason: reason || null } });
+        }
       }
       // CRM C5.4-C ▸ round 11 · R10-7 (a) ฝั่งซื้อ: เอกสารที่หักเงินมัดจำจ่ายถูกยกเลิก ⇒ ใบจ่ายมัดจำกลับเป็นรอหัก (ในธุรกรรมเดียวกัน) ◂
       if (DEPOSIT_DEDUCTIBLE_TYPES.includes(doc.docType)) await releaseDepositDeductionsInTx(tx, tenantId, systemId, id);
@@ -1463,11 +1711,8 @@ export async function createPurchaseOrder(input: {
   refType?: string | null;
   refId?: string | null;
 }) {
-  // PO/APO ไม่โพสต์บัญชี — ใช้ VAT CLAIM เป็น default (มีผลตอนแปลงเป็นบันทึกซื้อ)
-  return createExpenseDoc({
-    ...input,
-    vatPurchaseMode: "CLAIM",
-  });
+  // PO/APO ไม่โพสต์บัญชี — ACC T1.4: สถานะภาษีซื้อตามค่าเริ่ม (คู่ค้า/ธงบัญชี) แล้วส่งต่อตอนแปลงเป็นบันทึกซื้อ (เดิมบังคับ CLAIM)
+  return createExpenseDoc({ ...input });
 }
 
 // ส่งอนุมัติ: DRAFT → AWAITING_APPROVAL
@@ -1620,6 +1865,7 @@ export async function convertPurchaseOrder(
           contactId: source.contactId,
           vatMode: source.vatMode,
           vatTiming: source.vatTiming,
+          inputVatStatus: source.inputVatStatus, // ACC T1.4 — สถานะภาษีซื้อตาม PO
           taxPointBasis: source.taxPointBasis,
           discountAmount: source.discountAmount,
           subTotal: source.subTotal,
@@ -1642,6 +1888,8 @@ export async function convertPurchaseOrder(
               vatRateBp: l.vatRateBp,
               amount: l.amount,
               accountId: l.accountId,
+              inputVatStatus: l.inputVatStatus,
+              inputVatReason: l.inputVatReason,
               productId: l.productId,
             })),
           },

@@ -5960,6 +5960,8 @@ export type ContactPickerRow = {
   phone: string | null;
   creditTermDays: number;
   defaultPriceMode: AccountPriceMode | null;
+  /** ACC T1.4 — ประเภทคู่ค้า (ผู้รับของหัก ณ ที่จ่ายในฟอร์ม) */
+  legalType: AccountLegalType;
   outstandingSatang: number;
 };
 
@@ -5989,7 +5991,7 @@ export async function searchContactPickerRows(
     },
     orderBy: { name: "asc" },
     take,
-    select: { id: true, name: true, taxId: true, phone: true, creditTermDays: true, defaultPriceMode: true },
+    select: { id: true, name: true, taxId: true, phone: true, creditTermDays: true, defaultPriceMode: true, legalType: true },
   });
   const outstanding = await outstandingByContacts(tenantId, systemId, rows.map((r) => r.id));
   return rows.map((r) => ({ ...r, outstandingSatang: outstanding.get(r.id) ?? 0 }));

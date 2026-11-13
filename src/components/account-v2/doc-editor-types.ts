@@ -22,6 +22,11 @@ export type LegalUiOptions = {
   whtSuggest: Record<string, number>;
   /** ตัวเลือกอัตราหัก ณ ที่จ่าย (bp) = อัตราที่มีผลในตาราง ∪ {0} */
   whtRates: number[];
+  /**
+   * ACC T1.4 (จอข้อ 13) — อัตราจากตารางค่ากฎหมายตามประเภทผู้รับ (ผู้จ่าย = ประเภทผู้ประกอบการของสมุด) · 0 = ไม่หัก/ไม่มีอัตราคงที่
+   * ใช้เติมหัก ณ ที่จ่ายให้บรรทัดใหม่ของเอกสารซื้อ — ไม่มีคู่ค้า = ไม่เติม
+   */
+  whtByRecipient?: { COMPANY: Record<string, number>; PERSON: Record<string, number> };
 };
 
 /** ตัวเลือก + ค่าปัจจุบัน (ค่าเก่าที่ไม่อยู่ในตารางแล้วต้องยังแสดง/เลือกค้างได้ ไม่หายเงียบ) */
@@ -110,6 +115,10 @@ export type LineDraft = {
   whtRateBp: number | null;
   /** ACC T1.2 — ชนิดบรรทัด สินค้า/บริการ (เอกสารขาย) · null = ตามชนิดสินค้า/ชนิดเริ่มของใบ */
   lineKind: "GOODS" | "SERVICE" | null;
+  /** ACC T1.4 — สถานะภาษีซื้อของบรรทัด (เอกสารซื้อ) · null = ตามใบ/ธงของบัญชี (server ตัดสิน) */
+  inputVatStatus?: "CLAIM" | "PENDING" | "NO_CLAIM" | null;
+  /** ACC T1.4 — รหัสเหตุเมื่อเคลมไม่ได้ (ตาราง INPUT_VAT_NONCLAIM_REASONS) */
+  inputVatReason?: string | null;
 };
 
 /** ค่าทั้งฟอร์ม (§5.2 B, C, E, G) */
@@ -123,6 +132,8 @@ export type DocDraftValue = {
   priceMode: PriceMode;
   /** ACC T1.2 — สวิตช์ "ออกใบกำกับภาษีพร้อมกัน": null = ตามค่าตั้ง (สินค้าพร้อมใบ · บริการตามโหมด) · true/false = ผู้ใช้เลือกเอง */
   autoTaxInvoice: boolean | null;
+  /** ACC T1.4 — สถานะภาษีซื้อของทั้งใบ (เอกสารซื้อ) · null = ค่าเริ่มตามคู่ค้า (server ตัดสิน) */
+  inputVatStatus?: "CLAIM" | "PENDING" | "NO_CLAIM" | null;
   recognizeVatNow: boolean;
   salesUserId: string | null;
   tags: string[];
@@ -152,6 +163,9 @@ export type SaveDraftResult =
 export type ContactOption = {
   id: string;
   name: string;
+  /** ACC T1.4 — เลขผู้เสียภาษี (ค่าเริ่มสถานะภาษีซื้อ) · ประเภท (ผู้รับของหัก ณ ที่จ่าย) */
+  taxId?: string | null;
+  legalType?: "PERSON" | "COMPANY" | null;
   /** "C00019 · 081-234-5678" */
   sub?: string;
   member?: boolean;
@@ -179,6 +193,8 @@ export type LedgerOption = {
   /** WO 8.2 (§9.3): หัก ณ ที่จ่ายเริ่มต้นของบัญชีนี้ตามนโยบาย — เลือกบัญชีแล้วเติมให้เอง */
   whtIncomeType?: string | null;
   whtRateBp?: number | null;
+  /** ACC T1.4 — ธงภาษีซื้อของบัญชี (`vatTreatment`) */
+  vatTreatment?: string | null;
 };
 
 export type FavoriteSet = { name: string; lines: Omit<LineDraft, "key">[] };
@@ -216,6 +232,8 @@ export type DocEditorV2Props = {
   vatRateBp: number;
   /** ACC T1.2 — ค่าตั้งใบกำกับอัตโนมัติ (สินค้า: พร้อมใบแจ้งหนี้ · บริการ: โหมด) ใช้คำนวณค่าเริ่มของสวิตช์ "ออกใบกำกับภาษีพร้อมกัน" */
   taxInvoiceSettings?: { goodsOnIssue: boolean; mode: "MANUAL" | "ON_PAYMENT" | "ON_INVOICE" };
+  /** ACC T1.4 — ค่าตั้งภาษีซื้อ (ค่าเริ่มเมื่อคู่ค้าไม่มีเลขผู้เสียภาษี) */
+  inputVatSettings?: { nonClaimPosting: "SEPARATE_ACCOUNT" | "INTO_COST"; vendorNoTaxIdDefault: "PENDING" | "NO_CLAIM" };
   branchName: string;
   /** ชนิดนี้มีวันที่ "ใช้ได้ถึง" แทน "ครบกำหนด" หรือไม่ (ใบเสนอราคา) */
   dueLabel: string;

@@ -150,6 +150,12 @@ async function refLabelInTx(db: Tx, systemId: string, refType: string, refId: st
   return memo ? memo.slice(0, 80) : refType === "AccountManualJV" ? "รายการบัญชีที่บันทึกเอง" : refType;
 }
 
+/** ACC T1.4/T1.5 × T1.7 — เดือนภาษี (YYYY-MM) ที่ทำเครื่องหมายยื่น ภ.พ.30 แล้ว (ยังไม่ยกเลิก) · ฟอร์มรับใบกำกับซื้อคิดคำเตือนล่วงหน้าเองตามวันที่ที่เลือก */
+export async function filedVatPeriodKeys(ctx: Ctx): Promise<string[]> {
+  const rows = await tenantDb(ctx).accountVatFiling.findMany({ where: { unmarkedAt: null }, select: { periodKey: true }, distinct: ["periodKey"] });
+  return rows.map((r) => r.periodKey).sort();
+}
+
 /**
  * ตัวอย่างคำเตือนล่วงหน้าบนจอ (ไม่โยน · ไม่เขียน) — ฟอร์มที่จะลงรายการวันที่ `date` แสดงช่องติ๊กยืนยันก่อนกด
  * ด่านจริงอยู่ที่ชั้นลงบัญชีเสมอ (จอเป็นแค่การบอกล่วงหน้า) · effect โดยประมาณจากยอดของเอกสาร

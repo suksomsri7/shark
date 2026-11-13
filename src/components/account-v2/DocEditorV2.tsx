@@ -18,6 +18,9 @@ import {
 import { approveReceiptWithPaymentsAction } from "@/lib/modules/account/payment-actions";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { ContactPicker, type ContactSearchResult } from "./ContactPicker";
+import { InputVatSection } from "./InputVatSection";
+import { DEFAULT_INPUT_VAT_SETTINGS, defaultInputVatStatus, type InputVatStatus } from "@/lib/modules/account/input-vat-shared";
+import { legalWarning } from "@/lib/core/settings/legal/warnings";
 import { DepositSection, type DepositApplied } from "./DepositSection";
 import { PaymentSection, boxTieOff, newPayBox, type PayBox } from "./PaymentSection";
 import { DateInput } from "./DateInput";
@@ -62,6 +65,14 @@ const AUTOSAVE_MS = 2000;
 
 /** ACCOUNT-FIX A2 — ขั้นถัดไปหลังอนุมัติ ("" = ไปหน้าเอกสารเฉย ๆ) · ผู้อ่าน = approveDocAction / ทางใบเสร็จด้านล่าง */
 type ApproveNext = "" | "pay" | "print";
+
+// ACC T1.4 (ส่งต่อจาก T1.2) — สวิตช์เดิม "รับรู้ภาษีขายงวดนี้" หลัง T1.2 มีผลแค่ "ชนิดเริ่มของบรรทัดที่ไม่มีสินค้าในทะเบียน"
+//   (จุดรับผิดคิดต่อบรรทัดตามชนิด สินค้า/บริการ แล้ว) ⇒ ชื่อ/คำอธิบายบอกตามที่ทำจริง
+/** ACC T1.4 — ข้อความจากทะเบียนคำเตือนกลาง (EXPENSE_PAYEE_MISSING · ม.65 ตรี (18)) */
+const PAYEE_MISSING_TH = legalWarning("EXPENSE_PAYEE_MISSING").messageTh;
+const VAT_NOW_LABEL = "รายการพิมพ์เองนับเป็นสินค้า";
+const VAT_NOW_HELP =
+  "ใช้กับบรรทัดที่ไม่ได้เลือกจากทะเบียนสินค้า: เปิด = สินค้า (ภาษีขายเกิดตอนออกใบ) · ปิด = บริการ (ภาษีขายเกิดตอนรับเงิน) — เปลี่ยนรายบรรทัดได้ที่ช่อง สินค้า/บริการ";
 
 function Toggle({
   checked,
@@ -237,7 +248,12 @@ function EditorBody(props: DocEditorV2Props) {
     }
     return s;
   }, [value.lines, props.requireLineAccount]);
-  const missingContact = !value.contactId;
+  // ACC T1.4 (จอข้อ 13 · checklist C6): เอกสารซื้อไม่มีผู้รับ = คำเตือน ไม่บล็อก (ม.65 ตรี (18) — ข้อมูลไม่เสีย) · ฝั่งขายยังต้องเลือก
+  const payeeMissing = props.side === "expense" && !value.contactId;
+  const missingContact = !value.contactId && props.side !== "expense";
+  // ACC T1.4 — ตัวเลือกภาษีซื้อ (เอกสารซื้อที่ลงบัญชี · ใบลด/เพิ่มหนี้รับตามใบเดิม)
+  const inputVatEnabled =
+    props.side === "expense" && props.vatRegistered && !props.adjustMode && ["PURCHASE", "EXPENSE", "ASSET_PURCHASE"].includes(props.docType);
   const missingDate = !value.issueDate;
   // WO 1.6 §5.2 J — เหตุผลบังคับสำหรับเอกสารปรับปรุงหนี้ ("อื่น ๆ" ต้องกรอกข้อความเพิ่ม)
   const missingReason =
@@ -380,6 +396,9 @@ function EditorBody(props: DocEditorV2Props) {
   };
 
   const selectedContact = contacts.find((c) => c.id === value.contactId);
+  const inputVatSettings = props.inputVatSettings ?? DEFAULT_INPUT_VAT_SETTINGS;
+  const inputVatDocEffective: InputVatStatus =
+    value.inputVatStatus ?? defaultInputVatStatus({ vendorTaxId: selectedContact?.taxId ?? null, settings: inputVatSettings }).status;
 
   const steps: StepDef[] = props.steps.map((s) => ({
     code: s.code,
@@ -789,6 +808,16 @@ function EditorBody(props: DocEditorV2Props) {
                   />
                 )}
               </span>
+              {showErrors && missingContact && (
+                <span className="text-xs font-medium" style={{ color: "var(--color-danger)" }} data-testid="contact-required-msg">
+                  ต้องเลือกผู้ติดต่อก่อนบันทึก/อนุมัติ
+                </span>
+              )}
+              {payeeMissing && (
+                <span className="text-xs" style={{ color: "var(--color-warning, var(--color-muted))" }} data-testid="payee-missing-msg">
+                  {PAYEE_MISSING_TH}
+                </span>
+              )}
               {selectedContact && (
                 <span
                   className="flex flex-wrap items-center gap-2 rounded-lg px-2 py-1 text-xs"
@@ -898,10 +927,13 @@ function EditorBody(props: DocEditorV2Props) {
                 <Toggle
                   checked={value.recognizeVatNow}
                   onChange={(v) => set("recognizeVatNow", v)}
-                  label="รับรู้ภาษีขายงวดนี้ (ภ.พ.30)"
+                  label={VAT_NOW_LABEL}
                   testId="tg-vat-now"
                 />
               </div>
+              <span className="text-xs text-[color:var(--color-muted)]" data-testid="tg-vat-now-help">
+                {VAT_NOW_HELP}
+              </span>
               {autoTaxHint && (
                 <span className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]" data-testid="tg-auto-tax-hint">
                   {autoTaxHint}
@@ -997,6 +1029,11 @@ function EditorBody(props: DocEditorV2Props) {
             onCreate={() => router.push(`${props.basePath}/contacts`)}
             testId="contact-picker-m"
           />
+        )}
+        {payeeMissing && (
+          <p className="mt-2 text-xs text-[color:var(--color-muted)]" data-testid="payee-missing-msg-m">
+            {PAYEE_MISSING_TH}
+          </p>
         )}
         {selectedContact && (
           <span
@@ -1179,8 +1216,9 @@ function EditorBody(props: DocEditorV2Props) {
                 <Toggle
                   checked={value.recognizeVatNow}
                   onChange={(v) => set("recognizeVatNow", v)}
-                  label="รับรู้ภาษีขายงวดนี้ (ภ.พ.30)"
+                  label={VAT_NOW_LABEL}
                 />
+                <span className="text-xs text-[color:var(--color-muted)]">{VAT_NOW_HELP}</span>
               </div>
             </div>
           )}
@@ -1207,6 +1245,8 @@ function EditorBody(props: DocEditorV2Props) {
           autoEditKey={autoEditLineKey}
           onAutoEditConsumed={() => setAutoEditLineKey(null)}
           kindDefault={lineKindDefault}
+          inputVatDoc={inputVatEnabled ? inputVatDocEffective : undefined}
+          whtRecipient={props.side === "expense" ? (selectedContact ? (selectedContact.legalType ?? "COMPANY") : null) : undefined}
         />
         {/* มือถือ (g17): ปุ่มเต็มความกว้างเส้นประ — เดสก์ท็อปใช้ปุ่มกะทัดรัดเดิม */}
         <button
@@ -1268,6 +1308,24 @@ function EditorBody(props: DocEditorV2Props) {
           </details>
         </div>
       </SectionCard>
+
+      {/* ACC T1.4 — ภาษีซื้อ (สถานะทั้งใบ + คำเตือน) */}
+      {inputVatEnabled && (
+        <SectionCard title="ภาษีซื้อ" complete testId="sec-input-vat">
+          <InputVatSection
+            docType={props.docType}
+            status={value.inputVatStatus ?? null}
+            onChange={(v) => set("inputVatStatus", v)}
+            vendor={selectedContact ? { name: selectedContact.name, taxId: selectedContact.taxId ?? null } : value.contactId ? { name: value.contactLabel, taxId: null } : null}
+            contactId={value.contactId}
+            lines={value.lines}
+            breakdown={totals.lines}
+            vatAmount={totals.vatAmount}
+            accounts={props.accounts}
+            settings={inputVatSettings}
+          />
+        </SectionCard>
+      )}
 
       {/* D — เงินมัดจำ (§5.2 D) */}
       {props.depositEnabled && (

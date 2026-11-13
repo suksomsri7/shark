@@ -20,14 +20,15 @@ import { cancelDraftFormAction } from "@/lib/modules/account/undo-stack";
 import { DocTagsBlock } from "./DocTagsBlock";
 import { LegalWarnings } from "./LegalWarnings";
 import { issueLegalWarnings, saleWithoutVatWarnings } from "@/lib/modules/account/legal-gate";
-import { filedPeriodPreview } from "@/lib/modules/account/filed-guard";
+import { filedPeriodPreview, filedVatPeriodKeys } from "@/lib/modules/account/filed-guard";
 import { invoiceTaxPointView } from "@/lib/modules/account/tax-point";
 import { ParkedVatInvoicePanel } from "./ParkedVatPanel";
+import { InputVatPanel } from "./InputVatPanel";
+import { inputVatDocView } from "@/lib/modules/account/input-vat";
 import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 import {
   issueExpenseDocAction,
   voidExpenseDocAction,
-  receivePtxAction,
   markAssetReceivedAction,
   submitApprovalAction,
   approvePOAction,
@@ -184,12 +185,11 @@ function ActionRow({
       </form>
     );
   } else if (dt === "PURCHASE_TAX_INVOICE" && data.status === "AWAITING_RECEIVE") {
+    // ACC T1.5 — รับใบกำกับต้องกรอกวันที่ในใบ/วันที่ลงภาษีซื้อ ⇒ ปุ่มหลักพาไปฟอร์มในแผงภาษีซื้อ (InputVatPanel)
     primary = (
-      <form action={receivePtxAction} className={legalWarnings.length ? "flex flex-col gap-2" : undefined}>
-        <Hidden systemId={systemId} docType={dt} id={data.id} />
-        <LegalWarnings warnings={legalWarnings} ackName="ack" testId="doc-legal-warnings" />
-        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">รับใบกำกับแล้ว</SubmitButton>
-      </form>
+      <a href="#input-vat-panel" className="btn btn-primary h-11 w-full text-sm md:h-9 md:w-auto" data-testid="btn-ptx-receive">
+        รับใบกำกับแล้ว
+      </a>
     );
   } else if (canPay && isGroupDocType(dt)) {
     // WO 1.7 §5.2 K — เอกสารกลุ่ม: 1 ครั้ง = กระจายลงใบลูกทุกใบ (แผงคนละตัวกับ §5.2 F)
@@ -976,9 +976,10 @@ export async function DocDetailPage({
   // T0.4 — ร่างที่จะออก: แสดงคำเตือนกฎหมายล่วงหน้า (ทะเบียนกลาง) · ด่านจริงอยู่ที่ service (ไม่เชื่อจอ)
   // ACC T1.2 — จุดรับผิดของใบแจ้งหนี้/ใบเสร็จ: ร่าง = คำเตือนของใบกำกับที่จะออกพร้อมกัน · ออกแล้ว = VAT ที่ยังพัก + คำเตือนข้ามเดือน
   const taxPoint = dt === "INVOICE" || dt === "RECEIPT" ? await invoiceTaxPointView({ tenantId, systemId }, data.id) : null;
-  // ACC T1.7 — ร่างที่ลงวันที่ในเดือนที่ยื่น ภ.พ.30 แล้ว / ใบกำกับซื้อที่รอรับ: บอกล่วงหน้า + ช่องติ๊กยืนยัน (ด่านจริงอยู่ชั้นลงบัญชี)
+  // ACC T1.7 — ร่างที่ลงวันที่ในเดือนที่ยื่น ภ.พ.30 แล้ว: บอกล่วงหน้า + ช่องติ๊กยืนยัน (ด่านจริงอยู่ชั้นลงบัญชี)
+  //   ใบกำกับซื้อที่รอรับ: วันที่ลงภาษีซื้อเลือกได้ในฟอร์มรับ (T1.5) ⇒ ฟอร์มคิดคำเตือนสดจากรายชื่อเดือนที่ยื่นแล้ว (filedVatMonths)
   const filedPreview =
-    (data.status === "DRAFT" && !PO_TYPES.includes(dt)) || (dt === "PURCHASE_TAX_INVOICE" && data.status === "AWAITING_RECEIVE")
+    data.status === "DRAFT" && !PO_TYPES.includes(dt)
       ? await filedPeriodPreview(
           { tenantId, systemId },
           {
@@ -988,6 +989,9 @@ export async function DocDetailPage({
           },
         )
       : [];
+  const filedVatMonths = dt === "PURCHASE_TAX_INVOICE" && data.status === "AWAITING_RECEIVE" ? await filedVatPeriodKeys({ tenantId, systemId }) : [];
+  // ACC T1.4/T1.5 — ภาษีซื้อของใบซื้อ/ใบกำกับภาษีซื้อ (สถานะ · ยอดพัก · เคลมข้ามเดือน) + คำเตือนของร่าง
+  const inputVat = side === "expense" ? await inputVatDocView({ tenantId, systemId }, data.id) : null;
   const legalWarnings =
     data.status === "DRAFT" && !PO_TYPES.includes(dt)
       ? [
@@ -995,6 +999,7 @@ export async function DocDetailPage({
           ...(side === "revenue" ? saleWithoutVatWarnings({ docType: dt, vatMode: data.vatMode, sourceDocId: data.sourceDocId, lines: data.lines }, settings) : []),
           ...(taxPoint?.draftWarnings ?? []),
           ...filedPreview,
+          ...(inputVat?.draftWarnings ?? []),
         ]
       : filedPreview;
 
@@ -1090,6 +1095,24 @@ export async function DocDetailPage({
             { date: data.issueDate, ref: `ปล่อยภาษีขายที่พักของ ${data.docNo ?? labelOf(dt)} (ถ้าเลือกลงวันที่ใบแจ้งหนี้)`, output: taxPoint.parked.goods },
           )}
         />
+      )}
+
+      {inputVat && (
+        <div id="input-vat-panel">
+          <InputVatPanel
+            view={inputVat}
+            systemId={systemId}
+            docId={data.id}
+            docType={dt}
+            status={data.status}
+            base={base}
+            today={new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10)}
+            canReceive={perm.recordPayment}
+            filedVatMonths={filedVatMonths}
+            ptxHref={inputVat.pendingPtx ? editorDetailPath(base, "PURCHASE_TAX_INVOICE", inputVat.pendingPtx.id) : null}
+            sourceHref={inputVat.ptx?.source ? editorDetailPath(base, inputVat.ptx.source.docType as AccountDocType, inputVat.ptx.source.id) : null}
+          />
+        </div>
       )}
 
       {/* ไทม์ไลน์เอกสาร */}

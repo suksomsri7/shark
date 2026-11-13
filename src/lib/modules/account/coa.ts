@@ -80,6 +80,11 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["6510", "EXPENSE", "ค่าธรรมเนียมธนาคาร", "Bank Charges"],
   ["6800", "EXPENSE", "ค่าเสื่อมราคา", "Depreciation"],
   ["6900", "EXPENSE", "ค่าใช้จ่ายอื่น", "Other Expenses"],
+  // ACC T1.4 — หมวดที่ภาษีซื้อต้องห้าม (ธงต่อบัญชี) + ภาษีซื้อไม่ขอคืน 2 ชนิด (TAX §ก4 (6 ทวิ))
+  ["6930", "EXPENSE", "ค่ารับรอง", "Entertainment"],
+  ["6940", "EXPENSE", "ค่าใช้จ่ายรถยนต์นั่ง (ไม่เกิน 10 ที่นั่ง)", "Passenger Car Expenses"],
+  ["6950", "EXPENSE", "ภาษีซื้อไม่ขอคืน (ถือเป็นรายจ่ายได้)", "Non-claimable Input VAT (deductible)"],
+  ["6960", "EXPENSE", "ภาษีซื้อไม่ขอคืน (รายจ่ายต้องห้าม)", "Non-claimable Input VAT (non-deductible)"],
   // 9999 พักรายการ
   ["9999", "ASSET", "พักรายการ (Suspense)", "Suspense"],
 ];
@@ -93,6 +98,8 @@ const MAPPINGS: [string, string][] = [
   ["VAT_OUTPUT_PENDING_INVOICE", "2205"], // QC5-A2
   ["VAT_INPUT", "1150"],
   ["VAT_INPUT_UNDUE", "1155"],
+  ["VAT_INPUT_NONCLAIM", "6950"], // ACC T1.4 — ภาษีซื้อต้องห้าม ม.82/5(4)(6) (รายจ่ายได้)
+  ["VAT_INPUT_NONCLAIM_DISALLOWED", "6960"], // ACC T1.4 — ภาษีซื้อต้องห้าม ม.82/5(1)(2)(3)(5) (รายจ่ายไม่ได้)
   ["WHT_ASSET", "1160"],
   ["WHT_PAYABLE", "2130"],
   ["DEPOSIT_RECEIVED", "2110"],
@@ -121,6 +128,12 @@ const MAPPINGS: [string, string][] = [
   ["SUSPENSE", "9999"],
 ];
 
+/** ACC T1.4 — ธง `vatTreatment` ของบัญชีระบบที่เป็นหมวดภาษีซื้อต้องห้าม (common-vat-invoice.md §17 · checklist C2) */
+const CHART_VAT_TREATMENT: Record<string, string> = {
+  "6930": "NON_CLAIMABLE_ENTERTAINMENT",
+  "6940": "NON_CLAIMABLE_PASSENGER_CAR",
+};
+
 /**
  * seedChartOfAccounts — สร้างผังบัญชี system ครบตาม §4.14 + mapping default
  * idempotent: createMany skipDuplicates (unique systemId+code) + mapping upsert
@@ -138,6 +151,8 @@ export async function seedChartOfAccounts(ctx: CoaCtx, tx?: Tx): Promise<void> {
       type,
       cashflowActivity: activityFor(code),
       isSystem: true,
+      // ACC T1.4 — ธงภาษีซื้อของหมวดต้องห้าม (ตั้งตอนสร้างเท่านั้น — skipDuplicates ไม่ทับค่าที่ร้านแก้)
+      ...(CHART_VAT_TREATMENT[code] ? { vatTreatment: CHART_VAT_TREATMENT[code] } : {}),
     })),
     skipDuplicates: true,
   });
@@ -177,6 +192,8 @@ export const MAPPING_KEY_LABEL: Record<string, string> = {
   VAT_OUTPUT_PENDING_INVOICE: "ภาษีขายรอออกใบกำกับ",
   VAT_INPUT: "ภาษีซื้อ",
   VAT_INPUT_UNDUE: "ภาษีซื้อยังไม่ถึงกำหนด (รอใบกำกับ)",
+  VAT_INPUT_NONCLAIM: "ภาษีซื้อไม่ขอคืน (ถือเป็นรายจ่ายได้)",
+  VAT_INPUT_NONCLAIM_DISALLOWED: "ภาษีซื้อไม่ขอคืน (รายจ่ายต้องห้าม)",
   WHT_ASSET: "ภาษีถูกหัก ณ ที่จ่าย (สินทรัพย์)",
   WHT_PAYABLE: "ภาษีหัก ณ ที่จ่ายค้างนำส่ง",
   DEPOSIT_RECEIVED: "เงินมัดจำรับ/เงินรับล่วงหน้า",
