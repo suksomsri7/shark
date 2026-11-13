@@ -88,3 +88,8 @@ Q15 Missing rule? [no opening ∧ no earlier run ∧ max(start, 1 Jan) < run per
 - Q1 / Q14: accountant list items (previous-employer income; rehire) — add to the AC list in the notes.
 - Q3: warning only; never blocks approve. The zero opening is an explicit, audited act by a filing-gate holder.
 - Part (b) (qc-hr-h3.7 S4.35 additions + `reversedRun` code === "NO") = authorised ORACLE-EDIT, marked `ORACLE-EDIT (H3.4-YTD · controller ruling)`.
+
+## CONTROLLER RULINGS 2 (after the oracle, 7123ea8a3)
+- The oracle's 13 readings in `ledger/wo-notes/hr-H3.4-YTD-oracle.md` are ACCEPTED as the contract (lock: save/clear take `hr50:<sys>:<emp>:<year>` seed 36 — the 50 ทวิ key; `hr:ytd` own lock seed 0 if one is needed; list result `rows`; warning code `SSO_HIGH`; row carries `asOfDay` "YYYY-MM-DD"; YEAR for a tax year outside 2000–2400; Q15 "1 Jan" = 1 Jan of the payDay year; one identical refusal for all refused viewers on all 4 entry points).
+- The builder may NOT change oracle expectations; a contract that turns out impossible ⇒ stop and ask.
+- Open item for the builder: tsc over scripts/qc-hr-h3.7.mts part (b) lines is proven only by the builder's final clean typecheck.
