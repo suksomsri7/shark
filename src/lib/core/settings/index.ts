@@ -9,6 +9,7 @@ import "./defs/rooms";
 import "./defs/booking"; // SVC B.0
 import "./defs/integrations"; // SVC C.3 (#83)
 import "./defs/trips"; // TRIPS T0.1
+import "./defs/agency"; // TRIPS A1.1
 
 export type * from "./types";
 export { SCOPE_KINDS } from "./types";

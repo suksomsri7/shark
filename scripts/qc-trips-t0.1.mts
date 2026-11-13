@@ -462,7 +462,9 @@ try {
   const mainCode = stripSqlComments(mainSql);
   await st("M-1", "migration ใหม่ = 2 โฟลเดอร์ `<ts>_trips_enum` + `<ts>_trips` · ts > ฐาน · enum มาก่อน", () => {
     ok(enumDir && mainDir, `ยังไม่มี (ใหม่: ${newMigs.join(", ") || "ไม่มี"})`);
-    eq(newMigs.length, 2, "จำนวนโฟลเดอร์ใหม่");
+    // ORACLE-EDIT M-1 (ผู้คุม 13 พ.ย.): A1.1 เพิ่ม `<ts>_agency` หลัง `_trips` (ใบ migration ถัดไป K1.1/L1.1 เพิ่มได้อีก)
+    const later = newMigs.filter((d) => d !== enumDir && d !== mainDir);
+    ok(later.every((d) => /^\d{14}_(agency|ticket_v2|liveaboard)[a-z0-9_]*$/.test(d) && d > (mainDir ?? "")), `โฟลเดอร์ใหม่นอกรายการ: ${later.join(", ")}`);
     ok((enumDir ?? "") > BASE_LAST_MIG && (enumDir ?? "") < (mainDir ?? ""), `ลำดับ ${enumDir} < ${mainDir}`);
   });
   await st("M-2", "ไฟล์ trips_enum = ADD VALUE 4 คำสั่งพอดี (UnitType TRIPS · AccountDocSource TRIPS/AGENCY/SUPPLIER) ไม่มีคำสั่งอื่น", () => {
@@ -503,7 +505,7 @@ try {
   });
   await st("M-6", "schema: trips.prisma + sellable.prisma ใหม่ · แตะไฟล์เดิมแค่ core.prisma + account.prisma · ไม่ประกาศ @@unique ซ้ำกับ SQL มือ + มีคอมเมนต์ SQL มือ", () => {
     const ch = changedFiles(["prisma/schema"]).sort();
-    eq(ch, ["prisma/schema/account.prisma", "prisma/schema/core.prisma", "prisma/schema/sellable.prisma", "prisma/schema/trips.prisma"], "ไฟล์ schema ที่เปลี่ยน");
+    eq(ch.filter((f) => !["prisma/schema/agency.prisma", "prisma/schema/supplier.prisma"].includes(f) /* ORACLE-EDIT M-6 (ผู้คุม 13 พ.ย.): A1.1 */), ["prisma/schema/account.prisma", "prisma/schema/core.prisma", "prisma/schema/sellable.prisma", "prisma/schema/trips.prisma"], "ไฟล์ schema ที่เปลี่ยน");
     const tp = stripComments(read("prisma/schema/trips.prisma"));
     const dup = [/@@unique\(\[\s*productId\s*,\s*optionId\s*,\s*startsAt\s*\]/, /@@unique\(\[\s*passengerId\s*\]/, /@@unique\(\[\s*unitId\s*,\s*day\s*,\s*channel\s*,\s*linkId\s*\]/, /@@unique\(\[\s*productId\s*,\s*optionId\s*,\s*paxTypeId/].filter((r) => r.test(tp));
     ok(dup.length === 0, `ประกาศ @@unique ซ้ำ SQL มือ: ${dup.map(String).join(" ")}`);
@@ -822,7 +824,7 @@ try {
     const into = ["agency", "supplier", "ticket"].flatMap((m) => walk(`src/lib/modules/${m}`)).filter((f) => /@\/lib\/modules\/trips/.test(read(f)));
     ok(into.length === 0, `import trips: ${into.join(", ")}`);
     // ORACLE-EDIT S-8 (ผู้คุม 12 พ.ย.): ผู้คุมแก้ fitness.mts เอง (F5 baseline 50→51 · trips/jobs.ts ของ T0.3) — ตรวจว่า baseline ไม่เกิน 51 แทนการห้ามแก้ไฟล์
-    ok(/f5RawPrisma:\s*(50|51)\b/.test(read("scripts/fitness.mts")), "fitness F5 baseline ถูกขยับเกิน 51 (ORACLE-EDIT ผู้คุมเท่านั้น)");
+    ok(/f5RawPrisma:\s*(50|51|52)\b/.test(read("scripts/fitness.mts")), "fitness F5 baseline ถูกขยับเกิน 52 (ORACLE-EDIT ผู้คุมเท่านั้น)"); // ORACLE-EDIT S-8 รอบ 3 (ผู้คุม 13 พ.ย.): 52 = agency/entry.ts ของ A1.1
   });
   await st("S-9", "permissions: trips.settings.edit + trips.settings.money ลงทะเบียนพร้อมป้ายไทย", () => {
     const keys = PERM?.PERMISSION_KEYS;
@@ -1201,7 +1203,7 @@ try {
       const r = await setV(o, ctxA, [{ key, scope, scopeId: rid("x"), value: key === "trips.pay.depositPct" ? 50 : "ANY" }], { ackLegalWarn: true });
       out.push(`${scope}:${String(r.code)}:${String(asRec((r.issues as unknown[] | undefined)?.[0])?.code)}`);
     }
-    eq(out, ["AGENT:VALIDATION:SCOPE_UNSUPPORTED", "AGENT_TIER:VALIDATION:SCOPE_UNSUPPORTED", "VESSEL:VALIDATION:SCOPE_UNSUPPORTED"], "ผล");
+    eq(out, ["AGENT:NOT_FOUND:NOT_FOUND", "AGENT_TIER:NOT_FOUND:NOT_FOUND", "VESSEL:VALIDATION:SCOPE_UNSUPPORTED"], "ผล"); // ORACLE-EDIT RS-5 (ผู้คุม 13 พ.ย.): A1.1 เปิดชั้น AGENT/AGENT_TIER — id ที่ไม่มีจริง ⇒ NOT_FOUND
   });
   await st("RS-6", "ไม่มีแม่แบบ (หน่วยไม่มี SettingProfile) ⇒ _fallback = DIVE_SHOP (source FALLBACK)", async () => {
     needOwnerA(); needDef("trips.sell.holdMinutes");

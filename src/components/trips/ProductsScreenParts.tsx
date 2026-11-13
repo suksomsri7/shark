@@ -166,6 +166,24 @@ const ERROR_CODES = new Set([
   "AGE_OVERLAP",
   "LAST_ACTIVE_OPTION",
   "LAST_SEAT_PAX_TYPE",
+  // TRIPS T1.2 ▸ รหัสของจอปฏิทินรอบ (บริการ T0.3/T0.5 + decideBelowMin) ◂
+  "NOT_BELOW_MIN",
+  "MERGE_NEEDS_BOOKINGS",
+  "MERGE_TARGET_INVALID",
+  "HAS_BOOKINGS",
+  "CAPACITY_BELOW_USED",
+  "RESOURCE_CLASH",
+  "PAST_DEPARTURE",
+  "FORBIDDEN_TRANSITION",
+  "DUPLICATE_DEPARTURE",
+  "RESOURCE_INACTIVE",
+  "NO_DURATION",
+  "OPTION_INACTIVE",
+  "PRODUCT_ARCHIVED",
+  "SCHEDULE_PAUSED",
+  "HORIZON_OFF",
+  "STATE_CONFLICT",
+  "CURRENCY_NOT_ALLOWED",
 ]);
 
 /** เรียก server action ทีละครั้ง: สำเร็จ ⇒ รีเฟรชข้อมูลจอจากเซิร์ฟเวอร์ · ไม่สำเร็จ ⇒ ข้อความไทยของบริการ */
