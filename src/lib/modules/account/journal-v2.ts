@@ -524,6 +524,8 @@ export async function reverseJournalEntry(ctx: JournalCtx, entryId: string, reas
     select: { id: true, status: true, docNo: true, date: true, refType: true },
   });
   if (!e) return { ok: false, reason: "ไม่พบใบสำคัญนี้" };
+  // HR H3.7 ▸ fix r1 F3 (มติผู้คุมงาน — แบบเดียวกับหอพักด้านล่าง): ใบสำคัญที่ระบบเงินเดือนลง (ตั้งค้างจ่าย/จ่าย/กลับรายการ · JV รุ่น 1 ที่มีคีย์รอบ) กลับที่สมุดรายวันไม่ได้ — ถอยที่หน้าเงินเดือน (กลับรายการรอบจ่าย) ◂
+  if (e.refType === "hr-payroll" || (e.refType === "AccountManualJV" && ((await db.accountJournalEntry.findFirst({ where: { id: e.id }, select: { idempotencyKey: true } }))?.idempotencyKey ?? "").includes("#HR_PAYROLL_V1:"))) return { ok: false, reason: `${e.docNo} เป็นรายการบัญชีเงินเดือนที่ระบบเงินเดือนลงไว้ — กลับรายการที่สมุดรายวันไม่ได้ ให้กลับรายการรอบจ่ายที่หน้าเงินเดือน (HR › เงินเดือน) เพื่อให้รอบจ่ายกับบัญชีตรงกัน` }; // HR H3.7 ◂
   if (e.status === "REVERSED") return { ok: false, reason: `${e.docNo} ถูกกลับรายการไปแล้ว` };
   // SVC D.2 F7 ▸ ใบสำคัญของหอพัก (เงินประกันผู้เช่า · รับเงินเกินบิล) ผูกกับแถวรับชำระ/ยอดถือของสัญญา — กลับรายการตรงนี้จะทำให้เอกสารกับบัญชีไม่ตรงกัน
   //   ⇒ ปฏิเสธ ให้ถอยที่ระบบหอ (reverseSecurityDepositSettlement) · refType อื่นทั้งหมดเหมือนเดิม ◂

@@ -88,6 +88,15 @@ S4.21|R6|C|R|[db] scoping: every hr-payroll entry/line in T1 · entry book = run
 S4.22|R1 R5|M|R|[db] audits: approve after {accountSystemId, journalEntryId} · reverse after {reversalEntryIds ×2}
 S4.23|R3|C|R|[db] stored figures inconsistent (Σ lines ≠ gross) ⇒ approve INCONSISTENT · DRAFT · no entry
 S4.25|Q2|C|R|[db] (ORACLE-EDIT H3.7 builder · controller ruling Q2) v1 orphan closed: a keyed v1 JV already posted for the run (approve posted, link failed) ⇒ approveRun links THAT entry (one live entry) · figures changed meanwhile ⇒ new entry linked + the stale one reversed once
+S2.9|F5|C|R|[pure] (ORACLE-EDIT H3.7 fix r1 F5) refund vector F: refund of OVERPAY → Dr overpay recovery · DAMAGES → Dr 4900 · old one-step run → salary expense · unknown → 4900 + flag · rows/notes
+S4.26|F1|C|R|[db] (ORACLE-EDIT fix r1 F1) approve ∥ pay: pays fired while finalize holds the lock (__inFinal) ⇒ never PAID without the pay entry · ≤ 1 pay entry · ≤ 1 paid event
+S4.27|F1|C|R|[db] (ORACLE-EDIT fix r1) approve ∥ reverse: reverse fired while finalize holds the lock ⇒ REVERSED with the accrual reversed in its book (net 0) or APPROVED with the accrual live
+S4.28|F2 F6|C|R|[db] (ORACLE-EDIT fix r1 F2/F6/D3) link to an inactive book ⇒ BOOK_INACTIVE · to a missing book ⇒ BOOK_MISSING (DRAFT, no entry) · owner unlink from the account side ⇒ no-book approve + last-unlink shown · legacy link with posting off ⇒ approvedOff, no entry, switch on ⇒ posts · book deactivated after approve ⇒ pay + reverse refused bookGone, reactivated ⇒ pay ok
+S4.29|F3|C|R|[db] (ORACLE-EDIT fix r1 F3) manual reversal of accrual / pay / keyed v1 entries refused at the journal · accrual reversed behind HR's back ⇒ pay ENTRY_REVERSED and reverse entryReversed, nothing written
+S4.30|F4|C|R|[db] (ORACLE-EDIT fix r1 F4) pay day before P ⇒ accrual dated the first day of P (period P) · pay date before P refused
+S4.31|F5|C|R|[db] (ORACLE-EDIT fix r1 F5) refund vector F through approve: lines by code = F · audit flags REFUND_CLASS_UNKNOWN
+S4.32|F2 F7|C|R|[db] (ORACLE-EDIT fix r1 F2/F7) non-owner connect/disconnect of HR from the account side refused (no row change) · OWNER of another tenant ⇒ bookOwner · payroll mapping saved without an owner session refused · wrong-class mapping forced in the DB ⇒ approve MAPPING_MISSING
+S4.33|F8|M|R|[db] (ORACLE-EDIT fix r1 F8) markPaidRun on a PAID run ⇒ alreadyPaid text
 S4.24|R1|C|R|[db] (ORACLE-EDIT H3.7 builder · controller ruling H3.5/H3.6) bank file (CSV GENERIC) of a v2-accounting run = Cr "net salaries payable" of its accrual = run net · PAID D and APPROVED-unpaid F2 (accrual only) both exportable
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
@@ -158,10 +167,17 @@ function runStatic(): void {
   const missing = names.filter((n) => !new RegExp(`\\b${n}\\b`).test(idx));
   ck("S1.2", { conn: cn.any && cn.all, idx: ix.any && ix.all && ix.removed === 0, exports: missing.length === 0 }, "marked + exports", missing.join(","));
   const changed = listChanged(A_);
-  const allowed = new Set([F.gl, F.conn, F.idx, F.coa]);
+  // ORACLE-EDIT (H3.7 builder · fix round 1): + account/journal-v2.ts (controller authorised ONE marked additive hunk — F3) · coa.ts may also hold one
+  //   marked block (first added line carries "HR H3.7", last carries "◂ HR H3.7") for the payroll-mapping guard (F7)
+  const JV2 = `${A_}journal-v2.ts`;
+  const allowed = new Set([F.gl, F.conn, F.idx, F.coa, JV2]);
+  const nb = (ls: string[]) => ls.filter((l) => l.trim() !== "");
+  const block = (h: { added: string[]; removed: string[] }) => { const a = nb(h.added); return h.removed.length === 0 && a.length > 0 && MARK.test(a[0]!) && /◂ HR H3\.7|HR H3\.7.*◂/.test(a[a.length - 1]!); };
   const coaH = changed.includes(F.coa) ? (diffHunks(BASE, F.coa) ?? []) : [];
-  const coaOk = coaH.every((h) => h.removed.length === 0 && h.added.every((l) => MARK.test(l) || /^\s*PAYROLL_[A-Z_]+: "/.test(l)));
-  ck("S1.3", { subset: changed.every((f) => allowed.has(f)), coa: coaOk, some: [F.gl, F.conn, F.idx].some((f) => changed.includes(f)) }, "⊆ 4 files", changed.join(","));
+  const coaOk = coaH.every((h) => (h.removed.length === 0 && h.added.every((l) => MARK.test(l) || /^\s*PAYROLL_[A-Z_]+: "/.test(l))) || block(h));
+  const jvH = changed.includes(JV2) ? (diffHunks(BASE, JV2) ?? []) : [];
+  const jvOk = jvH.length <= 1 && jvH.every((h) => h.removed.length === 0 && nb(h.added).every((l) => MARK.test(l)));
+  ck("S1.3", { subset: changed.every((f) => allowed.has(f)), coa: coaOk, journalV2: jvOk, some: [F.gl, F.conn, F.idx].some((f) => changed.includes(f)) }, "⊆ 4 files", changed.join(","));
   const hrFiles = srcFiles("src/lib/modules/hr").filter((f) => /\.(ts|tsx)$/.test(f));
   const badImp: string[] = [];
   const badTbl: string[] = [];
@@ -189,7 +205,10 @@ function runStatic(): void {
   const apB = stripMarked(between(pb, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน"));
   const apN = stripMarked(between(pn, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน"));
   const frozen = ["postPayrollJV", "reverseEntry", "reverseFor", "commitEntry", "resolveLine", "ensureAccounting", "postManualJV"].filter((n) => !fnBody(gb, n) || fnBody(gb, n) !== fnBody(gn, n));
-  ck("S1.7", { markPaid: !!mpB && mpB === fnBody(pn, "markPaid"), approveV1: !!apB && apB === apN, gl: frozen.length === 0 }, "frozen", frozen.join(","));
+  // ORACLE-EDIT (H3.7 fix r1 F8): v1 approveRun may carry exactly ONE marked line, byte-exact (the posting-key shadow of postPayrollJV — Q2)
+  const V1_LINE = "    const postPayrollJV = (c: { tenantId: string; systemId: string }, i: Parameters<typeof postPayrollV1KeyedJV>[2]) => postPayrollV1KeyedJV(c, runId, i); // HR H3.7 ▸ Q2: JV รุ่น 1 มีคีย์กันซ้ำ (refId = รอบ) — ผูกไม่สำเร็จแล้วกดใหม่ = ผูกรายการเดิม ไม่ลงซ้ำ (ปิด JV กำพร้า) ◂";
+  const apMarked = between(pn, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน").split("\n").filter((l) => MARK.test(l));
+  ck("S1.7", { v1Pin: apMarked.length === 1 && apMarked[0] === V1_LINE, markPaid: !!mpB && mpB === fnBody(pn, "markPaid"), approveV1: !!apB && apB === apN, gl: frozen.length === 0 }, "frozen", frozen.join(","));
   const hay = [F.payroll, F.gl, F.conn, F.pure].map(rd).join("\n");
   const absent = (TX_NEW()).filter((k) => !T[k]!.split(/\{\w+\}/).every((seg) => hay.includes(seg)));
   chk("S1.8", absent.length === 0 && hay.length > 0, "all new texts", absent.join(",") || "ok");
@@ -280,6 +299,18 @@ function runPure(PURE: Mod, ACC: Mod): void {
     const t1 = call(ACC, "payrollAccrualTemplate", ex.amounts);
     const t2 = call(ACC, "payrollAccrualTemplate", ex.amounts);
     ck("S2.8", { ok: r1?.ok === true, same: canon(r1) === canon(r2) && canon(t1) === canon(t2) && Array.isArray(t1), untouched: canon([it, bd, ex.amounts]) === before }, "pure");
+  }
+  // ORACLE-EDIT (H3.7 fix r1 F5): refund vector F
+  {
+    const F5 = VEC.refundVector;
+    const o = oracleAmounts(F5.items, F5.bound, F5.claims);
+    const b = call(PURE, "accrualAmountsV2", toItems(F5.items), toBound(F5.bound), F5.claims);
+    const rows = rowsFrom(call(ACC, "payrollAccrualTemplate", F5.amounts));
+    const byCode = (rows ?? []).map(([k, sd, n]) => [codeOfKey(k), sd, n]);
+    ck("S2.9", {
+      oracle: o.ok && amountsEq(o.amounts, F5.amounts as Amounts), builder: b?.ok === true && amountsEq(amountsFrom(b.amounts), F5.amounts as Amounts), flag: canon(b?.flags) === canon(F5.flags),
+      rows: canon(byCode) === canon(F5.byCode) && sumSide(rows ?? [], "DR") === F5.total && sumSide(rows ?? [], "CR") === F5.total,
+    }, "refund classes", short({ b: b?.amounts ?? b, byCode }, 200));
   }
 }
 
@@ -831,6 +862,178 @@ async function runDb(): Promise<void> {
       a: aa?.ok === true && linkA === orphanA && (await live(ra.id)) === 1, b: ab?.ok === true && !!linkB && linkB !== orphanB && staleRev === 1 && (await live(rb.id)) === 1,
       bFigures: linesB.some((l) => l[0] === "1010" && l[1] === "CR" && l[2] === Number(tb.n)), refType: (await P.accountJournalEntry.count({ where: { tenantId: T3, refType: "hr-payroll" } })) === 0,
     }, "one live entry, linked", short({ aa, linkA, orphanA, ab, linkB, orphanB, staleRev }, 220));
+  });
+
+  // ═══════ ORACLE-EDIT (H3.7 builder · fix round 1 — reviewer/hunter coverage list) S4.26–S4.33 ═══════
+  const S5 = ["S4.26", "S4.27", "S4.28", "S4.29", "S4.30", "S4.31", "S4.32", "S4.33"];
+  await blk(S5, async () => {
+    if (!s4ok) throw new Error("S4 prerequisites absent");
+    const JV2 = (await import("@/lib/modules/account/journal-v2" as string)) as Any;
+    const COA = (await import("@/lib/modules/account/coa" as string)) as Any;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const newHr = async (n: string, bookId: string | null) => {
+      HS[n] = await hr(T1, n);
+      if (bookId) {
+        const r = await link(n, bookId);
+        if (r?.ok !== true) throw new Error(`link ${n}: ${short(r)}`);
+      }
+      return HS[n]!;
+    };
+    const payEntries = (runId: string) => P.accountJournalEntry.count({ where: { idempotencyKey: `hr-payroll#${runId}#pay` } });
+    // S4.26 approve ∥ pay
+    {
+      await newHr("hP1", BA);
+      const id = await insRun("hP1", VEC.examples.A, { label: "P1" });
+      let pays: Promise<Any>[] = [];
+      const a = await approve("hP1", id, {
+        __inFinal: async () => {
+          pays = [
+            ...[0, 1].map(() => payRun("hP1", id, { financeAccountId: finBankA, paidOn: "2031-10-05" })),
+            ...[0, 1].map(() => PAY.markPaid(c1("hP1"), id).catch((e: unknown) => ({ ok: false, note: errText(e) }))),
+          ];
+          await sleep(1500);
+        },
+      });
+      const res = await Promise.all(pays);
+      const run = await runOf(id);
+      const pe = await payEntries(id);
+      ck("S4.26", { approved: a?.ok === true, fired: res.length === 4, neverPaidWithout: run?.status !== "PAID" || pe === 1, onePay: pe <= 1, events: (await paidEvents(id)) <= 1 && ((await paidEvents(id)) === 1) === (run?.status === "PAID") },
+        "no PAID without pay entry", short({ st: run?.status, pe, res: res.map((x: Any) => x?.ok ? "ok" : String(x?.note ?? "").slice(0, 20)) }, 220));
+    }
+    // S4.27 approve ∥ reverse
+    {
+      await newHr("hP2", BA);
+      const id = await insRun("hP2", VEC.examples.A, { label: "P2" });
+      let revs: Promise<Any>[] = [];
+      const a = await approve("hP2", id, { __inFinal: async () => { revs = [0, 1].map(() => reverse("hP2", id)); await sleep(1500); } });
+      const res = await Promise.all(revs);
+      const run = await runOf(id);
+      const acc = await keyEntry(id, "accrual");
+      const revN = acc ? await P.accountJournalEntry.count({ where: { reversalOfId: acc.id, systemId: BA } }) : -1;
+      const net = await netByCode(id);
+      const okState = run?.status === "REVERSED" ? acc?.status === "REVERSED" && revN === 1 && Object.values(net).every((v) => v === 0) : run?.status === "APPROVED" && acc?.status === "POSTED" && revN === 0;
+      ck("S4.27", { approved: a?.ok === true, state: okState, oneOk: res.filter((x: Any) => x?.ok).length <= 1 }, "consistent", short({ st: run?.status, revN, res: res.map((x: Any) => x?.ok ? "ok" : String(x?.note ?? "").slice(0, 24)) }, 220));
+    }
+    // S4.28 book inactive / missing / unlinked / posting off / deactivated after approve
+    {
+      const BX = await book(T1, "บัญชี X");
+      await newHr("hD1", BX);
+      await P.appSystem.update({ where: { id: BX }, data: { active: false } });
+      const r1 = await insRun("hD1", VEC.examples.E, { label: "D1" });
+      const a1 = await approve("hD1", r1);
+      const hD2 = await newHr("hD2", null);
+      await P.accountSystemLink.create({ data: { tenantId: T1, systemId: `qc37ghost${tag}`, linkedKind: "HR", linkedId: hD2, enabled: true, config: { autoPost: true } } });
+      const r2 = await insRun("hD2", VEC.examples.E, { label: "D2" });
+      const a2 = await approve("hD2", r2);
+      const hD3 = await newHr("hD3", BA);
+      const un = await CONN.disconnect({ tenantId: T1, systemId: BA }, "HR", hD3, own1.id);
+      const r3 = await insRun("hD3", VEC.examples.E, { label: "D3" });
+      const a3 = await approve("hD3", r3);
+      const acct3 = await PAY.getPayrollAccounting(c1("hD3"));
+      const hD4 = await newHr("hD4", null);
+      await P.accountSystemLink.create({ data: { tenantId: T1, systemId: BA, linkedKind: "HR", linkedId: hD4, enabled: true, config: {} } });
+      const r4 = await insRun("hD4", VEC.examples.E, { label: "D4" });
+      const a4 = await approve("hD4", r4);
+      const n4 = (await runOf(r4))?.note;
+      const sw = await PAY.setPayrollPosting(c1("hD4"), vOf(own1), { on: true });
+      const r4b = await insRun("hD4", VEC.examples.E, { label: "D4b", periodKey: "2031-10", payDay: "2031-10-31" });
+      const a4b = await approve("hD4", r4b);
+      const BY = await book(T1, "บัญชี Y");
+      await newHr("hD5", BY);
+      const finY = await mkFin(BY, "BANK", "ธนาคาร Y", "1010");
+      const r5 = await insRun("hD5", VEC.examples.E, { label: "D5" });
+      const a5 = await approve("hD5", r5);
+      await P.appSystem.update({ where: { id: BY }, data: { active: false } });
+      const p5 = await payRun("hD5", r5, { financeAccountId: finY, paidOn: "2031-09-30" });
+      const v5 = await reverse("hD5", r5);
+      const st5 = (await runOf(r5))?.status;
+      const pe5 = await payEntries(r5);
+      await P.appSystem.update({ where: { id: BY }, data: { active: true } });
+      const p5b = await payRun("hD5", r5, { financeAccountId: finY, paidOn: "2031-09-30" });
+      const none = async (r: string) => (await P.accountJournalEntry.count({ where: { refId: r } })) === 0;
+      ck("S4.28", {
+        inactive: a1?.ok === false && a1?.code === "BOOK_INACTIVE" && (await runOf(r1))?.status === "DRAFT" && (await none(r1)),
+        missing: a2?.ok === false && a2?.code === "BOOK_MISSING" && (await runOf(r2))?.status === "DRAFT" && (await none(r2)),
+        unlinked: un?.ok === true && a3?.ok === true && a3?.note === T.approvedNoBook && (await none(r3)) && acct3?.link === "NONE" && !!acct3?.lastUnlink,
+        off: a4?.ok === true && (await none(r4)) && !!n4 && n4 !== T.noteNoBook && sw?.ok === true && a4b?.ok === true && !!(await keyEntry(r4b, "accrual")),
+        gone: a5?.ok === true && p5?.ok === false && p5?.code === "BOOK_GONE" && v5?.ok === false && v5?.note === p5?.note && st5 === "APPROVED" && pe5 === 0 && p5b?.ok === true,
+      }, "book states", short({ a1, a2, a3: a3?.note, un, acct3: acct3?.link, a4: a4?.note, a4b: a4b?.note, p5, v5: v5?.note, p5b: p5b?.note, st5 }, 1200));
+    }
+    // S4.29 manual reversal refused · reversed behind HR's back
+    {
+      await newHr("hM1", BA);
+      const id = await insRun("hM1", VEC.examples.A, { label: "M1" });
+      await approve("hM1", id);
+      const acc = await keyEntry(id, "accrual");
+      const mj = await JV2.reverseJournalEntry({ tenantId: T1, systemId: BA }, acc?.id ?? "∅", "ทดสอบกลับมือ");
+      const v1e = (await rows(`SELECT "journalEntryId" AS j FROM "HrPayrollRun" WHERE "tenantId" = $1 AND "journalEntryId" IS NOT NULL ORDER BY "createdAt" LIMIT 1`, T3))[0]?.j;
+      const mv1 = await JV2.reverseJournalEntry({ tenantId: T3, systemId: BV }, v1e ?? "∅", "ทดสอบกลับมือ");
+      await ACC.reverseEntry({ tenantId: T1, systemId: BA }, acc?.id, "สมมุติกลับจากระบบบัญชี");
+      const n0 = (await entriesOfRun(id)).length;
+      const p = await payRun("hM1", id, { financeAccountId: finBankA, paidOn: "2031-10-05" });
+      const v = await reverse("hM1", id);
+      ck("S4.29", {
+        manual: mj?.ok === false && /เงินเดือน/.test(String(mj?.reason)), manualV1: mv1?.ok === false && /เงินเดือน/.test(String(mv1?.reason)),
+        pay: p?.ok === false && p?.code === "ENTRY_REVERSED", reverse: v?.ok === false && v?.note === p?.note, untouched: (await entriesOfRun(id)).length === n0 && (await runOf(id))?.status === "APPROVED",
+      }, "refused", short({ mj, mv1, p, v }, 300));
+    }
+    // S4.30 pay day before P
+    {
+      await newHr("hD6", BA);
+      const id = await insRun("hD6", VEC.examples.A, { label: "D6", periodKey: "2031-09", payDay: "2031-08-25" });
+      const a = await approve("hD6", id);
+      const e = await keyEntry(id, "accrual");
+      const p = await payRun("hD6", id, { financeAccountId: finBankA, paidOn: "2031-08-25" });
+      ck("S4.30", { approved: a?.ok === true, day: bkkDay(e?.date) === "2031-09-01" && e?.periodKey === "2031-09", payBefore: p?.ok === false && p?.note === T.payDate }, "clamped", short({ d: bkkDay(e?.date), p: e?.periodKey, pay: p }, 200));
+    }
+    // S4.31 refund vector F through approve
+    {
+      const F5 = VEC.refundVector;
+      await newHr("hR1", BA);
+      const prevB = await insRun("hR1", VEC.examples.E, { label: "R0b", periodKey: "2031-07", payDay: "2031-07-31" });
+      await P.$executeRawUnsafe(`UPDATE "HrPayrollRun" SET "accountSystemId" = $2, "stepsJson" = '{"finalized": true}'::jsonb, status = 'PAID'::"PayrollRunStatus" WHERE id = $1`, prevB, BA);
+      const prevO = await insRun("hR1", VEC.examples.E, { label: "R0o", periodKey: "2031-08", payDay: "2031-08-31" });
+      await P.$executeRawUnsafe(`UPDATE "HrPayrollRun" SET "stepsJson" = '{"finalized": true}'::jsonb, status = 'PAID'::"PayrollRunStatus" WHERE id = $1`, prevO);
+      const emp = emps.get("hR1:e1")!;
+      for (const c of F5.claims as Any[])
+        await P.$executeRawUnsafe(`INSERT INTO "HrPayAdjustment" ("id","tenantId","systemId","employeeId","periodKey","kind","amountSatang","status","sourceType","runId","requestedById","decidedById","decidedAt") VALUES ($1,$2,$3,$4,'2031-07','DEDUCTION'::"HrPayItemKind",1000,'APPROVED'::"HrPayItemStatus",$5::"HrPaySource",$6,$7,$7,now())`,
+          `qc37${tag}${c.id}`, T1, HS.hR1, emp, c.sourceType, c.booked ? prevB : prevO, own1.id);
+      const items = (F5.items as VItem[]).map((i) => ({ ...i, emp: "e1" }));
+      const bound = (F5.bound as VBound[]).map((b) => ({ ...b, emp: "e1", sourceRef: b.sourceRef ? b.sourceRef.replace(/^refund:/, `refund:qc37${tag}`) : null }));
+      const id = await insRun("hR1", null, { label: "R1", periodKey: "2031-09", payDay: "2031-09-30", items, bound });
+      const a = await approve("hR1", id);
+      const e = await keyEntry(id, "accrual");
+      const au = (await P.auditLog.findMany({ where: { tenantId: T1, action: "hr.payroll.approve", targetId: id } })) as Any[];
+      ck("S4.31", { approved: a?.ok === true, lines: msEq(await linesOf(e?.id), F5.byCode), flag: au.some((x) => canon(x.after?.flags) === canon(F5.flags)) }, "refund classes posted", short({ a, l: await linesOf(e?.id) }, 260));
+    }
+    // S4.32 owner-only linking (both sides) · mapping guard
+    {
+      const hO = await newHr("hO3", null);
+      const c = await CONN.connect({ tenantId: T1, systemId: BB }, "HR", hO, mgr1.id);
+      const rowsAfter = await P.accountSystemLink.count({ where: { linkedKind: "HR", linkedId: hO } });
+      const hO4 = await newHr("hO4", BA);
+      const d = await CONN.disconnect({ tenantId: T1, systemId: BA }, "HR", hO4, mgr1.id);
+      const still = await ACC.payrollBookOf(T1, hO4);
+      const foreign = await PAY.setPayrollBook(c1("hO3"), vOf(own2), { accountSystemId: BA });
+      const l1010 = await ledgerId(BA, "1010");
+      const m0 = await P.accountMapping.findFirst({ where: { systemId: BA, key: "PAYROLL_SALARY_EXPENSE" } });
+      const sm = await COA.setMapping({ tenantId: T1, systemId: BA }, "PAYROLL_SALARY_EXPENSE", l1010).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+      const m1 = await P.accountMapping.findFirst({ where: { systemId: BA, key: "PAYROLL_SALARY_EXPENSE" } });
+      const hW = await newHr("hW1", BF);
+      await P.accountMapping.updateMany({ where: { systemId: BF, key: "PAYROLL_SALARY_EXPENSE" }, data: { accountId: (await ledgerId(BF, "1010"))! } });
+      const rw = await insRun("hW1", VEC.examples.E, { label: "W1" });
+      const aw = await approve("hW1", rw);
+      ck("S4.32", {
+        connect: c?.ok === false && rowsAfter === 0, disconnect: d?.ok === false && still?.kind === "ONE", foreign: foreign?.ok === false && foreign?.reason === T.bookOwner,
+        mapping: sm?.ok === false && m1?.accountId === m0?.accountId, wrongClass: aw?.ok === false && aw?.code === "MAPPING_MISSING" && !!hW,
+      }, "owner only · class guard", short({ c, d, foreign, sm, aw }, 300));
+    }
+    // S4.33 already paid
+    {
+      const p = await payRun("hA", R.A!, { financeAccountId: finBankA, paidOn: "2031-10-05" });
+      const pd = await payRun("hD", R.D!, { paidOn: "2031-12-26" });
+      ck("S4.33", { text: pd?.ok === false && pd?.code === "ALREADY_PAID" && !!pd?.note && pd.note !== "ต้องอนุมัติรอบก่อนจึงจ่ายได้", reversedRun: p?.ok === false }, "already paid", short({ p, pd }, 160));
+    }
   });
 }
 

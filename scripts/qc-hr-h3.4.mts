@@ -133,7 +133,14 @@ const H32 = existsSync(join(ROOT, F.attPay));
 // ═════════════════════════ statics ═════════════════════════
 // ORACLE-EDIT (H3.4 fix round 1 — file size > 60 KB): the static group S1.* moved verbatim to qc-hr-h3.4-lib.mts (runStaticH34) · same checks, same literals
 // ORACLE-EDIT (H3.7 builder): account/gl.ts stays frozen for H3.4 except additive hunks marked "HR H3.7" (H3.7 is the one HR ticket allowed to touch gl.ts — brief H3.7 R6)
-const glH37Only = (p: string) => p === "src/lib/modules/account/gl.ts" && (() => { const hs = diffHunks(BASE, p); return !!hs && hs.length > 0 && hs.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H3\.7/.test(l))); })();
+//   fix r1 F8 (reviewer): EVERY added line of the hunk must lie inside the H3.7 block — first non-blank added line opens "HR H3.7 ▸", last closes "◂ HR H3.7"
+const glH37Only = (p: string) => p === "src/lib/modules/account/gl.ts" && (() => {
+  const hs = diffHunks(BASE, p);
+  return !!hs && hs.length > 0 && hs.every((h) => {
+    const a = h.added.filter((l) => l.trim() !== "");
+    return h.removed.length === 0 && a.length > 0 && /HR H3\.7 ▸/.test(a[0]!) && /◂ HR H3\.7/.test(a[a.length - 1]!) && a.slice(1, -1).every((l) => !/◂ HR H3\.7/.test(l));
+  });
+})();
 const runStatic = () => runStaticH34({ F, FROZEN: FROZEN.filter((p) => !glH37Only(p)), TESTIDS, BASE, H, ck, chk }); // ORACLE-EDIT (H3.7 builder)
 
 // ═════════════════════════ pure ═════════════════════════

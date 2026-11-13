@@ -1278,7 +1278,8 @@ export { docWonBasis, type DocWonBasis, creditMoneyDocOf, docFamilyIds } from ".
 export { postPayrollJV, reverseEntry, type PayrollPostingInput } from "./gl";
 // HR H3.7 ▸ payroll accounting v2 (accrual · pay · strict mapping · posting key hr-payroll#<runId>#accrual|pay) + HR→ACCOUNT book link ◂
 export { PAYROLL_REF_TYPE, PAYROLL_ACCOUNTS, payrollAccrualTemplate, ensurePayrollLedgersInTx, postPayrollAccrualJV, postPayrollPayJV, reversePayrollRunJV, payrollPayAccountsOf, postPayrollV1KeyedJV, type PayrollAccrualAmounts, type PayrollAccountKey, type PayrollPostCode, type PayrollPostResult } from "./gl"; // HR H3.7
-export { payrollBookOf, linkPayrollBook, type PayrollBook } from "./connections"; // HR H3.7
+export { payrollBookOf, linkPayrollBook, setPayrollLinkPosting, payrollOwnerOk, HR_LINK_OWNER, type PayrollBook } from "./connections"; // HR H3.7
+export { payrollEntryStateInTx, payrollMappingTypeOk } from "./gl"; // HR H3.7 ▸ fix r1 F3/F7 ◂
 
 // Perpetual inventory (WO Inventory→Account) — จุดเดียวที่ inventory เรียกลงบัญชีต้นทุนสต็อก
 // (idempotent ต่อ movementId · Dr=Cr เสมอ · ไม่มีระบบ ACCOUNT → inventory ข้ามก่อนถึงที่นี่)

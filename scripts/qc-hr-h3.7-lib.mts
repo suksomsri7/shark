@@ -9,8 +9,9 @@ export const VEC = jsonOf(`${FIX}hr-h3.7-vectors.json`) as Any;
 export const TX = jsonOf(`${FIX}hr-h3.7-texts.json`) as Any;
 export const T: Record<string, string> = TX?.th ?? {};
 
+// ORACLE-EDIT (H3.7 builder · fix round 1 F5): + refundOverpaySatang (refund of an OVERPAY claim debits the overpay-recovery account)
 export const AMOUNT_KEYS = [
-  "salaryExpenseSatang", "ssoEmployerSatang", "refundSatang", "receivableDamagesSatang", "receivableOverpaySatang",
+  "salaryExpenseSatang", "ssoEmployerSatang", "refundSatang", "refundOverpaySatang", "receivableDamagesSatang", "receivableOverpaySatang",
   "netSatang", "ssoPayableSatang", "whtSatang", "advanceRecoveredSatang", "damagesRecoveredSatang", "overpayRecoveredSatang",
 ] as const;
 export type Amounts = Record<(typeof AMOUNT_KEYS)[number], number>;
@@ -29,8 +30,19 @@ export function oracleClass(a: { kind: string; sourceType: string | null; source
 
 const int = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n);
 
+export type VClaim = { id: string; kind: string; sourceType: string | null; sourceRef: string | null; booked: boolean | null };
+/** ORACLE-EDIT (fix round 1 F5 — controller ruling): class of a refund = class of the claim it names (sourceRef "refund:<claim id>") ·
+ *  claim from an old one-step run (booked false) ⇒ stays in salary expense · no reference / unknown claim ⇒ damages recovery (+ flag) */
+export function oracleRefundClass(row: VBound | undefined, claims: VClaim[]): "DAMAGES" | "OVERPAY" | "WAGE" | "UNKNOWN" {
+  const m = /^refund:(.+)$/.exec(String(row?.sourceRef ?? ""));
+  const c = m ? claims.find((x) => x.id === m[1]) : undefined;
+  if (!c || c.kind !== "DEDUCTION" || c.booked === null) return "UNKNOWN";
+  if (c.booked === false) return "WAGE";
+  const k = oracleClass(c);
+  return k === "DAMAGES" || k === "OVERPAY" ? k : "UNKNOWN";
+}
 /** brief §3 R3 — accrual amounts from STORED figures only (never recomputed pay) */
-export function oracleAmounts(items: VItem[], bound: VBound[]): { ok: true; amounts: Amounts } | { ok: false; why: string } {
+export function oracleAmounts(items: VItem[], bound: VBound[], claims: VClaim[] = []): { ok: true; amounts: Amounts } | { ok: false; why: string } {
   const a = Object.fromEntries(AMOUNT_KEYS.map((k) => [k, 0])) as Amounts;
   const byId = new Map(bound.map((b) => [b.id, b]));
   for (const it of items) {
@@ -42,6 +54,7 @@ export function oracleAmounts(items: VItem[], bound: VBound[]): { ok: true; amou
     let dmg = 0;
     let ovp = 0;
     let refund = 0;
+    let refundO = 0;
     for (const l of lines) {
       if (!int(l.amountSatang)) return { ok: false, why: `${it.emp}: line not integer` };
       sum += l.amountSatang;
@@ -53,15 +66,20 @@ export function oracleAmounts(items: VItem[], bound: VBound[]): { ok: true; amou
         else if (c === "DAMAGES") dmg -= l.amountSatang;
         else if (c === "OVERPAY") ovp -= l.amountSatang;
         else return { ok: false, why: `${it.emp}: DEDUCTION ${l.ref} class null` };
-      } else if (l.code === "REFUND") refund += l.amountSatang;
+      } else if (l.code === "REFUND") {
+        const rc = oracleRefundClass(byId.get(l.ref), claims);
+        if (rc === "OVERPAY") refundO += l.amountSatang;
+        else if (rc !== "WAGE") refund += l.amountSatang;
+      }
     }
     if (sum !== it.grossSatang) return { ok: false, why: `${it.emp}: Σ lines ${sum} ≠ gross ${it.grossSatang}` };
     if (it.grossSatang !== it.netSatang + it.ssoEmployeeSatang + it.whtSatang) return { ok: false, why: `${it.emp}: gross ≠ net+sso+wht` };
-    const exp = sum + adv + dmg + ovp - refund;
+    const exp = sum + adv + dmg + ovp - refund - refundO;
     if (exp < 0 || adv < 0 || dmg < 0 || ovp < 0 || refund < 0 || it.netSatang < 0) return { ok: false, why: `${it.emp}: negative part` };
     a.salaryExpenseSatang += exp;
     a.ssoEmployerSatang += it.ssoEmployerSatang;
     a.refundSatang += refund;
+    a.refundOverpaySatang += refundO;
     a.netSatang += it.netSatang;
     a.ssoPayableSatang += it.ssoEmployeeSatang + it.ssoEmployerSatang;
     a.whtSatang += it.whtSatang;

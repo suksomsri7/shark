@@ -10835,6 +10835,54 @@
    "oracle": "qc-hr-h3.7",
    "note": "วันที่จ่าย (วันแรกของงวด … วันนี้)",
    "via": "DateInput testId=\"hr-markpaid-date\" → data-testid ของช่องที่มองเห็น (src/components/account-v2/DateInput.tsx)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-unlinked",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "ไม่มีลิงก์ + เคยถูกยกเลิก",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "การเชื่อมสมุดบัญชีถูกยกเลิกเมื่อ … โดย … (fix r1 F2)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-pay-posting",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-accounting-ui.tsx",
+   "conditional": "เจ้าของร้าน · มีลิงก์ (เปิด/ปิดการลงบัญชี)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "setPayrollPostingAction",
+    "db": "AccountSystemLink.config.autoPost · AuditLog hr.payroll.book.posting"
+   },
+   "wo": "H3.7",
+   "oracle": "qc-hr-h3.7",
+   "note": "สวิตช์ลงบัญชีเงินเดือน (fix r1 F6)"
   }
  ]
 }

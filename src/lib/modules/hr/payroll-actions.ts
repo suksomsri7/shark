@@ -27,7 +27,7 @@ import {
 import { adjustmentReplyForViewer, screenOtHoursForViewer } from "./privacy";
 import { confirmBranchHours, createPayrollRunV2, RUN2_TEXT, setAdjustmentConsent, setPayrollEngine } from "./payroll"; // HR H3.4 ▸ รอบจ่ายรุ่น 2 ◂
 import { hrViewerOf } from "./privacy"; // HR H3.4 ◂
-import { h37PageText, markPaidRun, setPayrollBook, setPayrollPayAccount } from "./payroll"; // HR H3.7 ▸ จ่าย = ลงบัญชีจ่าย (สมุดของรอบ) · ตั้งสมุด/บัญชีจ่ายเงินเดือน (เจ้าของร้าน) ◂
+import { h37PageText, markPaidRun, setPayrollBook, setPayrollPayAccount, setPayrollPosting } from "./payroll"; // HR H3.7 ▸ จ่าย = ลงบัญชีจ่าย (สมุดของรอบ) · ตั้งสมุด/บัญชีจ่ายเงินเดือน (เจ้าของร้าน) ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขา — สาขาของพนักงานเป้าหมายอ่านจาก DB · รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8) ◂
 import { employeeIdOfAdjustment, employeeUnitsOf, HrBranchError, hrScopeOf, isAllBranches, unitTargetOf } from "./scope";
 
@@ -602,6 +602,16 @@ export async function setPayrollPayAccountAction(formData: FormData): Promise<{ 
     if (!systemId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
     const raw = String(formData.get("financeAccountId") ?? "").trim();
     const r = await setPayrollPayAccount({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { financeAccountId: raw || null });
+    revalidatePath(`/app/sys/${systemId}/hr/settings`);
+    return r.ok ? { ok: true } : { ok: false, reason: r.reason };
+  });
+}
+export async function setPayrollPostingAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  return h34Guard(async () => {
+    const systemId = String(formData.get("systemId") ?? "");
+    if (!systemId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    const r = await setPayrollPosting({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { on: formData.get("on") === "1" });
     revalidatePath(`/app/sys/${systemId}/hr/settings`);
     return r.ok ? { ok: true } : { ok: false, reason: r.reason };
   });

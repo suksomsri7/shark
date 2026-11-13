@@ -2169,6 +2169,8 @@ export async function postPayrollJV(
 export const PAYROLL_REF_TYPE = "hr-payroll";
 export type PayrollAccrualAmounts = {
   salaryExpenseSatang: number; ssoEmployerSatang: number; refundSatang: number; receivableDamagesSatang: number; receivableOverpaySatang: number;
+  /** fix r1 F5: refund of an OVERPAY claim (Dr the overpay-recovery account) · optional ⇒ 0 · `refundSatang` = refund of a DAMAGES (or unknown-class) claim */
+  refundOverpaySatang?: number;
   netSatang: number; ssoPayableSatang: number; whtSatang: number; advanceRecoveredSatang: number; damagesRecoveredSatang: number; overpayRecoveredSatang: number;
 };
 export type PayrollAccountKey =
@@ -2190,6 +2192,7 @@ const PAYROLL_TEMPLATE: readonly [PayrollAccountKey, "DR" | "CR", keyof PayrollA
   ["PAYROLL_SALARY_EXPENSE", "DR", "salaryExpenseSatang", "เงินเดือนและค่าจ้าง"],
   ["PAYROLL_SSO_EXPENSE", "DR", "ssoEmployerSatang", "เงินสมทบประกันสังคม (นายจ้าง)"],
   ["PAYROLL_DAMAGES_RECOVERY", "DR", "refundSatang", "คืนเงินรายการหักให้พนักงาน"],
+  ["PAYROLL_OVERPAY_RECOVERY", "DR", "refundOverpaySatang", "คืนเงินที่หักคืนเกินให้พนักงาน"], // fix r1 F5
   ["PAYROLL_EMPLOYEE_RECEIVABLE", "DR", "receivableDamagesSatang", "ลูกหนี้พนักงาน (ค่าเสียหายที่หักจากค่าจ้างงวดสุดท้ายไม่ได้)"],
   ["PAYROLL_EMPLOYEE_RECEIVABLE", "DR", "receivableOverpaySatang", "ลูกหนี้พนักงาน (เงินจ่ายเกินที่หักจากค่าจ้างงวดสุดท้ายไม่ได้)"],
   ["PAYROLL_SALARY_PAYABLE", "CR", "netSatang", "เงินเดือนค้างจ่าย (สุทธิ)"],
@@ -2214,9 +2217,16 @@ export type PayrollPostResult = { ok: true; entryId: string | null; reused: bool
 
 /** pure: the accrual rows of one run (design §2) */
 export function payrollAccrualTemplate(amounts: PayrollAccrualAmounts): { key: PayrollAccountKey; side: "DR" | "CR"; amountSatang: number; note: string }[] {
-  return PAYROLL_TEMPLATE.map(([key, side, field, note]) => ({ key, side, amountSatang: amounts[field], note })).filter((r) => r.amountSatang !== 0);
+  return PAYROLL_TEMPLATE.map(([key, side, field, note]) => ({ key, side, amountSatang: amounts[field] ?? 0, note })).filter((r) => r.amountSatang !== 0);
 }
 
+/** fix r1 F7 — class a payroll key may be mapped to (expense keys also accept COGS) */
+export function payrollMappingTypeOk(key: string, ledgerType: string): boolean {
+  const want = PAYROLL_ACCOUNTS.find((a) => a.key === key)?.type;
+  if (!want) return true;
+  return ledgerType === want || (want === "EXPENSE" && ledgerType === "COGS");
+}
+export const PAYROLL_MAPPING_TYPE_TEXT = "บัญชีที่เลือกไม่ใช่หมวดที่ใช้กับรายการเงินเดือนนี้ — เลือกบัญชีหมวด {type}";
 const payrollFail = (code: PayrollPostCode, text: string): PayrollPostResult => ({ ok: false, code, text });
 const payrollPeriodOk = (p: unknown): p is string => typeof p === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(p);
 function payrollDayDate(day: unknown): Date | null {
@@ -2231,13 +2241,13 @@ async function payrollLedgerIdsInTx(ctx: GlCtx, keys: readonly PayrollAccountKey
   const uniq = [...new Set(keys)];
   const rows = await tx.accountMapping.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, key: { in: uniq } },
-    select: { key: true, account: { select: { id: true, systemId: true, archivedAt: true } } },
+    select: { key: true, account: { select: { id: true, systemId: true, archivedAt: true, type: true } } },
   });
   const by = new Map(rows.map((r) => [r.key, r.account]));
   const ids = new Map<string, string>();
   for (const k of keys) {
     const a = by.get(k);
-    if (!a || a.systemId !== ctx.systemId || a.archivedAt) {
+    if (!a || a.systemId !== ctx.systemId || a.archivedAt || !payrollMappingTypeOk(k, String(a.type))) { // fix r1 F7: a ledger of the wrong class counts as not mapped
       const def = PAYROLL_ACCOUNTS.find((x) => x.key === k)!;
       return { ok: false, text: PAYROLL_GL_TEXT.mappingMissing.replace("{name}", def.label).replace("{code}", def.code) };
     }
@@ -2307,7 +2317,7 @@ export async function postPayrollAccrualJV(
   const date = payrollDayDate(input?.day);
   const amounts = input?.amounts;
   if (!payrollRunIdOk(input?.runId) || !payrollPeriodOk(input?.periodKey) || !date || !amounts) return payrollFail("BAD_INPUT", PAYROLL_GL_TEXT.badInput);
-  for (const [, , f] of PAYROLL_TEMPLATE) if (!Number.isSafeInteger(amounts[f]) || amounts[f] < 0) return payrollFail("BAD_INPUT", PAYROLL_GL_TEXT.badInput);
+  for (const [, , f] of PAYROLL_TEMPLATE) if (!Number.isSafeInteger(amounts[f] ?? 0) || (amounts[f] ?? 0) < 0) return payrollFail("BAD_INPUT", PAYROLL_GL_TEXT.badInput);
   const hit = await payrollKeyInTx(ctx, input.runId, "accrual", tx);
   if (hit) return hit;
   const rows = payrollAccrualTemplate(amounts);
@@ -2371,14 +2381,21 @@ export async function postPayrollPayJV(
 export async function reversePayrollRunJV(ctx: GlCtx, runId: string, reason: string, tx: Tx): Promise<{ payEntryId: string | null; accrualEntryId: string | null; reversalEntryIds: string[] }> {
   const out = { payEntryId: null as string | null, accrualEntryId: null as string | null, reversalEntryIds: [] as string[] };
   for (const ev of ["pay", "accrual"] as const) {
-    const e = await tx.accountJournalEntry.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, idempotencyKey: `${PAYROLL_REF_TYPE}#${runId}#${ev}` }, select: { id: true } });
+    const e = await tx.accountJournalEntry.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, idempotencyKey: `${PAYROLL_REF_TYPE}#${runId}#${ev}` }, select: { id: true, status: true } });
     if (!e) continue;
+    if (e.status !== "POSTED") throw Object.assign(new Error("PAYROLL_ENTRY_NOT_POSTED"), { code: "PAYROLL_ENTRY_NOT_POSTED" }); // fix r1 F3: reversed by someone else ⇒ refuse, never accept silently
     if (ev === "pay") out.payEntryId = e.id;
     else out.accrualEntryId = e.id;
     const rv = await reverseEntry(ctx, e.id, reason, tx);
     if ("entryId" in rv) out.reversalEntryIds.push(rv.entryId);
   }
   return out;
+}
+
+/** fix r1 F3 — state of a run's accrual / pay entry in its book (pay refuses unless the accrual is still POSTED) */
+export async function payrollEntryStateInTx(ctx: GlCtx, runId: string, tx: Tx): Promise<{ accrual: string | null; pay: string | null }> {
+  const st = async (ev: "accrual" | "pay") => (await tx.accountJournalEntry.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, idempotencyKey: `${PAYROLL_REF_TYPE}#${runId}#${ev}` }, select: { status: true } }))?.status ?? null;
+  return { accrual: await st("accrual"), pay: await st("pay") };
 }
 
 /** money accounts of a book the owner may pick to pay salaries (not archived · useForPay) — settings + mark-paid dialog */
@@ -2426,7 +2443,7 @@ export async function postPayrollV1KeyedJV(ctx: GlCtx, runId: string, input: Pay
       cr += l.credit;
     }
     if (dr !== cr) throw new Error(`JV ไม่สมดุล: Σdebit ${dr} ≠ Σcredit ${cr}`);
-    const figures = `${input.periodKey}:${input.grossSatang}:${input.ssoEmployeeSatang}:${input.ssoEmployerSatang}:${input.whtSatang}:${input.netSatang}`;
+    const figures = `${input.periodKey}:${Number.isFinite(input.payDate?.getTime?.()) ? input.payDate.toISOString().slice(0, 10) : "-"}:${input.grossSatang}:${input.ssoEmployeeSatang}:${input.ssoEmployerSatang}:${input.whtSatang}:${input.netSatang}`;
     const prefix = `AccountManualJV#${runId}#HR_PAYROLL_V1:`;
     const mine = await db.accountJournalEntry.findMany({
       where: { tenantId: ctx.tenantId, refType: "AccountManualJV", refId: runId, idempotencyKey: { startsWith: prefix } },

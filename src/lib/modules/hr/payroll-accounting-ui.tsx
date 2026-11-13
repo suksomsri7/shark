@@ -15,13 +15,14 @@ export function payAcctMsgCode(r: { ok: boolean; reason?: string }): string {
   return (Object.entries(H37_TEXT).find(([, v]) => v === r.reason)?.[0] ?? (r.reason === "ไม่พบสมุดบัญชีนี้ในร้าน" ? "bookNotFound" : "failed"));
 }
 
-export async function PayrollAccountingCard({ systemId, code, onSaveBook, onSavePayAccount }: { systemId: string; code: string; onSaveBook: Act | null; onSavePayAccount: Act | null }) {
+export async function PayrollAccountingCard({ systemId, code, onSaveBook, onSavePayAccount, onSavePosting }: { systemId: string; code: string; onSaveBook: Act | null; onSavePayAccount: Act | null; onSavePosting?: Act | null }) {
   const auth = await requireTenant();
   const t = await getTranslations("hr.payacct");
   const a = await getPayrollAccounting({ tenantId: auth.active.tenantId, systemId });
   const owner = auth.active.role === "OWNER";
   const flash = code === "ok" ? t("saved") : code && code in H37_TEXT ? H37_TEXT[code as keyof typeof H37_TEXT] : code === "bookNotFound" ? t("bookNotFound") : code ? t("failed") : "";
   const current = a.books.find((b) => b.id === a.bookId)?.name ?? null;
+  const linkedName = a.books.find((b) => b.id === a.linkedBookId)?.name ?? null; // fix r1 F6: OFF link (inactive books are not in the list)
   // Q4: ยังไม่เชื่อมแต่ร้านมีสมุดเล่มเดียว ⇒ เลือกไว้ให้ในฟอร์ม (เจ้าของกดบันทึกเอง · ไม่เชื่อมอัตโนมัติ)
   const preselect = a.bookId ?? (a.link === "NONE" && a.books.length === 1 ? a.books[0]!.id : "");
   return (
@@ -30,8 +31,13 @@ export async function PayrollAccountingCard({ systemId, code, onSaveBook, onSave
         {t("title")}
       </h2>
       <p className={muted} data-testid="hr-pay-book-state">
-        {a.link === "MANY" ? H37_TEXT.bookAmbiguous : current ? t("linked", { name: current }) : t("notLinked")}
+        {a.link === "MANY" ? H37_TEXT.bookAmbiguous : a.link === "INACTIVE" ? t("bookInactive") : a.link === "MISSING" ? t("bookMissing") : a.link === "OFF" ? t("postingOff", { name: linkedName ?? "—" }) : current ? t("linked", { name: current }) : t("notLinked")}
       </p>
+      {a.link === "NONE" && a.lastUnlink && (
+        <p className={muted} data-testid="hr-pay-unlinked">
+          {t("unlinked", { when: a.lastUnlink.at.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "medium", timeStyle: "short" }), who: a.lastUnlink.by ?? t("unknownUser") })}
+        </p>
+      )}
       {flash && (
         <p role={code === "ok" ? "status" : "alert"} className="text-sm" data-testid="hr-pay-accounting-flash">
           {flash}
@@ -72,6 +78,15 @@ export async function PayrollAccountingCard({ systemId, code, onSaveBook, onSave
           </label>
           <button type="submit" className={btn} data-testid="hr-pay-account-save">
             {t("savePayAccount")}
+          </button>
+        </form>
+      )}
+      {owner && onSavePosting && (a.link === "ONE" || a.link === "OFF") && (
+        <form action={onSavePosting} className="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="systemId" value={systemId} />
+          <input type="hidden" name="on" value={a.link === "OFF" ? "1" : "0"} />
+          <button type="submit" className="btn btn-ghost min-h-[44px] text-sm" data-testid="hr-pay-posting">
+            {a.link === "OFF" ? t("postingTurnOn") : t("postingTurnOff")}
           </button>
         </form>
       )}

@@ -13,6 +13,7 @@ import { tenantDb } from "@/lib/core/db";
 import { formatDateTh } from "@/lib/ui/date";
 import { ACCOUNT_SCOPE_KEYS } from "@/lib/api-keys/scopes"; // CRM C5.5-fix8 ▸ กติกาหมุนคีย์ = กติกาออกคีย์ ◂
 import { ensureAccounting, ensureJournalSequences, ensurePayrollLedgersInTx } from "./gl"; // HR H3.7 ▸ เชื่อมสมุดเงินเดือน = ผังบัญชีเงินเดือนพร้อมลง ◂
+import { writeAudit as h37Audit } from "@/lib/core/audit"; // HR H3.7 ▸ fix r1 F2: เชื่อม/ตัดสมุดเงินเดือนลงประวัติทั้งสองฝั่ง ◂
 
 export type Ctx = { tenantId: string; systemId: string };
 
@@ -248,7 +249,7 @@ export async function connect(
     }
   }
   // HR H3.7 ▸ ระบบเงินเดือน 1 ระบบ = สมุด 1 เล่ม (Q10) — อีกเล่มเชื่อมอยู่ ⇒ ปฏิเสธ · เชื่อมจากฝั่งบัญชีแล้วตั้งผังเงินเดือนให้พร้อมลง (เหมือนเชื่อมจากหน้า HR) ◂
-  if (kind === "HR" && !tx) { const b = await payrollBookOf(ctx.tenantId, linkedId); if ((b.kind === "ONE" && b.systemId !== ctx.systemId) || b.kind === "MANY") return { ok: false, reason: HR_OTHER_BOOK }; } // HR H3.7
+  if (kind === "HR" && !tx) { if (!(await payrollOwnerOk(ctx.tenantId, actorUserId))) return { ok: false, reason: HR_LINK_OWNER }; const b = await payrollBookOf(ctx.tenantId, linkedId); if (b.kind !== "NONE" && !("systemId" in b && b.systemId === ctx.systemId)) return { ok: false, reason: HR_OTHER_BOOK }; } // HR H3.7 ▸ fix r1 F2: เจ้าของร้านเท่านั้น (อ่านจาก DB) · สมุดอื่นถือลิงก์อยู่ (รวมเล่มที่ปิด/หาย) ⇒ ปฏิเสธ ◂
   const db = linkDbOf(ctx, tx);
   const existing = await db.accountSystemLink.findFirst({ where: { ...ownScope(ctx, tx), linkedKind: kind, linkedId } });
   if (existing) {
@@ -256,14 +257,14 @@ export async function connect(
       where: { id: existing.id },
       data: { enabled: true, archivedAt: null, updatedById: actorUserId },
     });
-    if (kind === "HR" && !tx) await payrollBookReady(ctx); // HR H3.7 ◂
+    if (kind === "HR" && !tx) await payrollBookReady(ctx, linkedId, actorUserId); // HR H3.7 ◂
     return { ok: true };
   }
   // tenantId/systemId ถูก inject โดย tenantDb (แกน system) — TS ยังไม่รู้ ⇒ cast ตามแพตเทิร์นเดียวกับ policy.ts
   await db.accountSystemLink.create({
     data: { ...ownScope(ctx, tx), linkedKind: kind, linkedId, enabled: true, updatedById: actorUserId, config: {} } as Prisma.AccountSystemLinkCreateInput,
   });
-  if (kind === "HR" && !tx) await payrollBookReady(ctx); // HR H3.7 ◂
+  if (kind === "HR" && !tx) await payrollBookReady(ctx, linkedId, actorUserId); // HR H3.7 ◂
   return { ok: true };
 }
 
@@ -277,12 +278,14 @@ export async function disconnect(
   actorUserId: string | null,
   tx?: Prisma.TransactionClient, // POS P1.18 ▸ F7 ◂
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (kind === "HR" && !tx && !(await payrollOwnerOk(ctx.tenantId, actorUserId))) return { ok: false, reason: HR_LINK_OWNER }; // HR H3.7 ▸ fix r1 F2 ◂
   const db = linkDbOf(ctx, tx);
   const n = await db.accountSystemLink.updateMany({
     where: { ...ownScope(ctx, tx), linkedKind: kind, linkedId },
     data: { enabled: false, updatedById: actorUserId },
   });
   if (n.count === 0) return { ok: false, reason: "ยังไม่ได้เชื่อมระบบนี้อยู่แล้ว" };
+  if (kind === "HR" && !tx) await payrollLinkAudit(ctx.tenantId, linkedId, actorUserId, "unlink", { from: ctx.systemId, side: "ACCOUNT" }); // HR H3.7 ◂
   return { ok: true };
 }
 
@@ -294,6 +297,7 @@ export async function setLinkOptions(
   options: LinkConfig,
   actorUserId: string | null,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (kind === "HR" && !(await payrollOwnerOk(ctx.tenantId, actorUserId))) return { ok: false, reason: HR_LINK_OWNER }; // HR H3.7 ▸ fix r1 F2/F6: สวิตช์ลงบัญชีเงินเดือน = เจ้าของร้าน ◂
   const db = dbOf(ctx);
   const existing = await db.accountSystemLink.findFirst({ where: { linkedKind: kind, linkedId } });
   if (!existing) return { ok: false, reason: "ต้องเชื่อมระบบนี้ก่อนจึงตั้งตัวเลือกได้" };
@@ -510,75 +514,126 @@ export async function accountKeyRotationProblem(tenantId: string, keyId: string)
 }
 
 // ═══════════════════ HR H3.7 ▸ HR → ACCOUNT book link (payroll) — explicit link, never "the first ACCOUNT system" ═══════════════════
-//   brief ledger/hr-briefs/hr-brief-H3.7.md R3 · model = dorm rule "1 unit = 1 book" (DORM_OTHER_BOOK)
+//   brief ledger/hr-briefs/hr-brief-H3.7.md R3 · model = dorm rule "1 unit = 1 book" (DORM_OTHER_BOOK) · fix r1 F2/F6/F7:
+//   "no link" = no enabled link row · an enabled link to an inactive / missing book is NOT "no link" (approve refuses) ·
+//   a link whose posting switch is off (config.autoPost !== true — the owner's earlier choice, v1 links included) posts nothing (OFF) ·
+//   linking, unlinking and the switch are owner-only from both sides (OWNER membership read from the DB) and audited (hr.payroll.book.*)
 export const HR_OTHER_BOOK = "ระบบเงินเดือนนี้เชื่อมกับสมุดบัญชีเล่มอื่นอยู่แล้ว — ตัดการเชื่อมที่เล่มนั้นก่อน (เงินเดือน 1 ระบบลงบัญชีได้สมุดเดียว)";
 export const PAYROLL_BOOK_NOT_FOUND = "ไม่พบสมุดบัญชีนี้ในร้าน";
 export const PAYROLL_HR_NOT_FOUND = "ไม่พบระบบเงินเดือนนี้ในร้าน";
-export type PayrollBook = { kind: "NONE" } | { kind: "ONE"; systemId: string } | { kind: "MANY"; systemIds: string[] };
+export const HR_LINK_OWNER = "เฉพาะเจ้าของร้านเชื่อมหรือตัดการเชื่อมสมุดบัญชีกับระบบเงินเดือนได้";
+export type PayrollBook =
+  | { kind: "NONE" }
+  | { kind: "ONE"; systemId: string }
+  | { kind: "MANY"; systemIds: string[] }
+  | { kind: "INACTIVE"; systemId: string }
+  | { kind: "MISSING"; systemId: string }
+  | { kind: "OFF"; systemId: string };
 
-/** the book(s) holding an enabled, not archived HR link to this HR system — ACCOUNT system (active) and HR system both of THIS tenant ·
- *  raw SQL bound to tenantId (the link rows live in several books; tenantDb would need one systemId) · `tx` = read inside the caller's tx */
+/** OWNER membership (accepted) of this tenant, read from the DB — never from a client-side role */
+export async function payrollOwnerOk(tenantId: string, userId: string | null | undefined, tx?: Prisma.TransactionClient): Promise<boolean> {
+  if (!tenantId || typeof userId !== "string" || !userId) return false;
+  const db = (tx ?? tenantDb({ tenantId })) as unknown as Prisma.TransactionClient;
+  return !!(await db.membership.findFirst({ where: { tenantId, userId, role: "OWNER", acceptedAt: { not: null } }, select: { id: true } }));
+}
+/** audit of a payroll link change (both sides) — targetId = the HR system (the HR settings card reads the last unlink) */
+export async function payrollLinkAudit(tenantId: string, hrSystemId: string, actorUserId: string | null | undefined, what: "link" | "unlink" | "posting", after: Record<string, unknown>): Promise<void> {
+  await h37Audit({ tenantId, actorType: actorUserId ? "USER" : "SYSTEM", actorId: actorUserId ?? null, action: `hr.payroll.book.${what}`, targetType: "AppSystem", targetId: hrSystemId, after });
+}
+
+/** the payroll book of one HR system: enabled + not archived HR link rows of this tenant whose linkedId is an HR system of this tenant ·
+ *  0 rows ⇒ NONE · > 1 ⇒ MANY · 1 row: book missing / not an ACCOUNT system of the tenant ⇒ MISSING · book inactive ⇒ INACTIVE ·
+ *  posting switch off ⇒ OFF · else ONE. Raw SQL bound to tenantId (the rows live in several books) · `tx` = read inside the caller's tx */
 export async function payrollBookOf(tenantId: string, hrSystemId: string, tx?: Prisma.TransactionClient): Promise<PayrollBook> {
   if (typeof tenantId !== "string" || !tenantId || typeof hrSystemId !== "string" || !hrSystemId) return { kind: "NONE" };
   const db = (tx ?? tenantDb({ tenantId })) as unknown as Prisma.TransactionClient;
-  const rows = await db.$queryRaw<{ s: string }[]>`
-    SELECT DISTINCT l."systemId" AS "s"
+  const rows = await db.$queryRaw<{ s: string; bt: string | null; ba: boolean | null; post: boolean }[]>`
+    SELECT l."systemId" AS "s", b."type"::text AS "bt", b."active" AS "ba", COALESCE((l."config"->>'autoPost')::boolean, false) AS "post"
     FROM "AccountSystemLink" l
-    JOIN "AppSystem" b ON b."id" = l."systemId" AND b."tenantId" = l."tenantId" AND b."type"::text = 'ACCOUNT' AND b."active" = true
     JOIN "AppSystem" h ON h."id" = l."linkedId" AND h."tenantId" = l."tenantId" AND h."type"::text = 'HR'
+    LEFT JOIN "AppSystem" b ON b."id" = l."systemId" AND b."tenantId" = l."tenantId"
     WHERE l."tenantId" = ${tenantId} AND l."linkedKind"::text = 'HR' AND l."linkedId" = ${hrSystemId} AND l."enabled" = true AND l."archivedAt" IS NULL
     ORDER BY 1`;
-  const ids = rows.map((r) => r.s);
-  return ids.length === 0 ? { kind: "NONE" } : ids.length === 1 ? { kind: "ONE", systemId: ids[0]! } : { kind: "MANY", systemIds: ids };
+  if (rows.length === 0) return { kind: "NONE" };
+  if (rows.length > 1) return { kind: "MANY", systemIds: rows.map((r) => r.s) };
+  const r = rows[0]!;
+  if (r.bt !== "ACCOUNT") return { kind: "MISSING", systemId: r.s };
+  if (r.ba !== true) return { kind: "INACTIVE", systemId: r.s };
+  if (r.post !== true) return { kind: "OFF", systemId: r.s };
+  return { kind: "ONE", systemId: r.s };
 }
 
-/** chart of the payroll keys ready in this book (seed + current period + 8 mappings) — autocommit setup, like the account pages */
-async function payrollBookReady(ctx: Ctx): Promise<void> {
+/** link of an HR system to THIS book made from the account side: posting switch on + chart ready (autocommit) + audit */
+async function payrollBookReady(ctx: Ctx, hrSystemId: string, actorUserId: string | null): Promise<void> {
   await dbOf(ctx).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
+    await payrollPostingInTx(tx, ctx.tenantId, ctx.systemId, hrSystemId, true);
     await ensureAccounting(ctx, tx);
     await ensurePayrollLedgersInTx(ctx, tx);
   });
   await ensureJournalSequences(ctx.systemId);
+  await payrollLinkAudit(ctx.tenantId, hrSystemId, actorUserId, "link", { to: ctx.systemId, side: "ACCOUNT" });
+}
+async function payrollPostingInTx(tx: Prisma.TransactionClient, tenantId: string, bookId: string, hrSystemId: string, on: boolean): Promise<number> {
+  return tx.$executeRaw`
+    UPDATE "AccountSystemLink" SET "config" = COALESCE("config", '{}'::jsonb) || jsonb_build_object('autoPost', ${on}::boolean), "updatedAt" = (now() AT TIME ZONE 'UTC')
+    WHERE "tenantId" = ${tenantId} AND "systemId" = ${bookId} AND "linkedKind"::text = 'HR' AND "linkedId" = ${hrSystemId}`;
 }
 
 /**
- * Owner's choice of the payroll book for one HR system (null = unlink) — one transaction: lock the HR system's link set ·
- * disable every other HR link of that HR system (other books of the shop) · connect the chosen book · ensureAccounting + ensurePayrollLedgersInTx.
- * Cross-tenant ids are refused (book / HR system must belong to `tenantId`).
+ * Owner's choice of the payroll book for one HR system (null = unlink) — owner from the DB · one transaction: lock the HR system's link set ·
+ * disable every other HR link of that HR system (other books of the shop) · connect the chosen book with posting on ·
+ * ensureAccounting + ensurePayrollLedgersInTx · audit link / unlink. Cross-tenant ids are refused (book / HR system must belong to `tenantId`).
  */
-export async function linkPayrollBook(input: { tenantId: string; hrSystemId: string; accountSystemId: string | null; actorUserId: string | null }): Promise<{ ok: true } | { ok: false; code: "BOOK_NOT_FOUND" | "HR_NOT_FOUND"; text: string }> {
+export async function linkPayrollBook(input: { tenantId: string; hrSystemId: string; accountSystemId: string | null; actorUserId: string | null }): Promise<{ ok: true } | { ok: false; code: "BOOK_NOT_FOUND" | "HR_NOT_FOUND" | "BOOK_OWNER"; text: string }> {
   const { tenantId, hrSystemId, accountSystemId, actorUserId } = input ?? ({} as typeof input);
   if (typeof tenantId !== "string" || !tenantId) return { ok: false, code: "HR_NOT_FOUND", text: PAYROLL_HR_NOT_FOUND };
   const tdb = tenantDb({ tenantId });
   const hr = typeof hrSystemId === "string" && hrSystemId ? await tdb.appSystem.findFirst({ where: { id: hrSystemId, type: "HR" }, select: { id: true } }) : null;
   if (!hr) return { ok: false, code: "HR_NOT_FOUND", text: PAYROLL_HR_NOT_FOUND };
+  if (!(await payrollOwnerOk(tenantId, actorUserId))) return { ok: false, code: "BOOK_OWNER", text: HR_LINK_OWNER };
   if (accountSystemId !== null) {
     const book = typeof accountSystemId === "string" && accountSystemId ? await tdb.appSystem.findFirst({ where: { id: accountSystemId, type: "ACCOUNT", active: true }, select: { id: true } }) : null;
     if (!book) return { ok: false, code: "BOOK_NOT_FOUND", text: PAYROLL_BOOK_NOT_FOUND };
   }
   const lockKey = `account:hr-payroll-link:${tenantId}:${hr.id}`;
-  const others = async (tx: Prisma.TransactionClient, keep: string | null) => tx.$executeRaw`
+  const others = async (tx: Prisma.TransactionClient, keep: string | null) => tx.$queryRaw<{ s: string }[]>`
     UPDATE "AccountSystemLink" SET "enabled" = false, "updatedById" = ${actorUserId ?? null}, "updatedAt" = (now() AT TIME ZONE 'UTC')
-    WHERE "tenantId" = ${tenantId} AND "linkedKind"::text = 'HR' AND "linkedId" = ${hr.id} AND "enabled" = true AND (${keep}::text IS NULL OR "systemId" <> ${keep}::text)`;
+    WHERE "tenantId" = ${tenantId} AND "linkedKind"::text = 'HR' AND "linkedId" = ${hr.id} AND "enabled" = true AND (${keep}::text IS NULL OR "systemId" <> ${keep}::text)
+    RETURNING "systemId" AS "s"`;
+  let removed: string[] = [];
   if (accountSystemId === null) {
     await tdb.$transaction(async (t) => {
       const tx = t as unknown as Prisma.TransactionClient;
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
-      await others(tx, null);
+      removed = (await others(tx, null)).map((r) => r.s);
     });
-    return { ok: true };
+  } else {
+    const ctx = { tenantId, systemId: accountSystemId };
+    await dbOf(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+      removed = (await others(tx, accountSystemId)).map((r) => r.s);
+      await connect(ctx, "HR", hr.id, actorUserId ?? null, tx);
+      await payrollPostingInTx(tx, tenantId, accountSystemId, hr.id, true);
+      await ensureAccounting(ctx, tx);
+      await ensurePayrollLedgersInTx(ctx, tx);
+    }, { maxWait: 20_000, timeout: 60_000 });
+    await ensureJournalSequences(accountSystemId);
   }
-  const ctx = { tenantId, systemId: accountSystemId };
-  await dbOf(ctx).$transaction(async (t) => {
-    const tx = t as unknown as Prisma.TransactionClient;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
-    await others(tx, accountSystemId);
-    await connect(ctx, "HR", hr.id, actorUserId ?? null, tx);
-    await ensureAccounting(ctx, tx);
-    await ensurePayrollLedgersInTx(ctx, tx);
-  }, { maxWait: 20_000, timeout: 60_000 });
-  await ensureJournalSequences(accountSystemId);
+  if (removed.length) await payrollLinkAudit(tenantId, hr.id, actorUserId, "unlink", { from: removed, side: "HR" });
+  if (accountSystemId) await payrollLinkAudit(tenantId, hr.id, actorUserId, "link", { to: accountSystemId, side: "HR" });
+  return { ok: true };
+}
+
+/** fix r1 F6 — owner switches payroll posting of the CURRENT link on/off (a link left off by the owner earlier keeps posting nothing) */
+export async function setPayrollLinkPosting(input: { tenantId: string; hrSystemId: string; on: boolean; actorUserId: string | null }): Promise<{ ok: true } | { ok: false; code: "BOOK_OWNER" | "NO_LINK"; text: string }> {
+  if (!(await payrollOwnerOk(input?.tenantId, input?.actorUserId))) return { ok: false, code: "BOOK_OWNER", text: HR_LINK_OWNER };
+  const b = await payrollBookOf(input.tenantId, input.hrSystemId);
+  if (b.kind !== "ONE" && b.kind !== "OFF") return { ok: false, code: "NO_LINK", text: PAYROLL_BOOK_NOT_FOUND };
+  const n = await tenantDb({ tenantId: input.tenantId }).$transaction(async (t) => payrollPostingInTx(t as unknown as Prisma.TransactionClient, input.tenantId, b.systemId, input.hrSystemId, input.on === true));
+  if (n !== 1) return { ok: false, code: "NO_LINK", text: PAYROLL_BOOK_NOT_FOUND };
+  await payrollLinkAudit(input.tenantId, input.hrSystemId, input.actorUserId, "posting", { book: b.systemId, on: input.on === true });
   return { ok: true };
 }
 // ◂ HR H3.7
