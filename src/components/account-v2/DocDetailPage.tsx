@@ -972,7 +972,7 @@ export async function DocDetailPage({
   // T0.4 — ร่างที่จะออก: แสดงคำเตือนกฎหมายล่วงหน้า (ทะเบียนกลาง) · ด่านจริงอยู่ที่ service (ไม่เชื่อจอ)
   const legalWarnings =
     data.status === "DRAFT" && !PO_TYPES.includes(dt)
-      ? issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason }, side === "revenue" ? settings : null)
+      ? issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason, vatAmount: data.vatAmount }, side === "revenue" ? settings : null)
       : [];
 
   const steps: StepDef[] = data.timeline.map((s) => ({

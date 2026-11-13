@@ -1752,6 +1752,14 @@ export function getDocument(tenantId: string, systemId: string, id: string) {
   });
 }
 
+/**
+ * T0.4b ▸ "คิด VAT ได้ไหม" ของเอกสารใบหนึ่ง — สมุดไม่จด VAT = ไม่คิด ยกเว้นใบกำกับภาษีที่ร้านสร้างเอง
+ *   (เจ้าของตัดสิน 13 พ.ย.: ไม่บังคับเปลี่ยนเป็นไม่มี VAT · คำเตือน TAX_INVOICE_NOT_VAT_REGISTERED บอกยอดแทน) ◂
+ */
+export function vatRegisteredForDoc(vatRegistered: boolean, docType: AccountDocType): boolean {
+  return vatRegistered || docType === "TAX_INVOICE";
+}
+
 async function recomputeAndSave(
   tx: Prisma.TransactionClient,
   documentId: string,
@@ -2156,7 +2164,10 @@ export async function createDocument(input: {
   if (srcProblem) throw new Error(srcProblem);
   const settings = await getSettings(input.tenantId, input.systemId);
   // A3: ไม่จด VAT → บังคับ vatMode NONE (ไม่มีบรรทัด VAT)
-  const vatMode: AccountVatMode = !settings.vatRegistered
+  //   T0.4b (เจ้าของตัดสิน 13 พ.ย.): ยกเว้นใบกำกับภาษี — ร้านที่ยืนยันออกใบกำกับเองได้ใบตามโหมด VAT ที่ตั้ง (ระบบไม่เปลี่ยนเป็นไม่มี VAT ให้)
+  //   คำเตือน TAX_INVOICE_NOT_VAT_REGISTERED บอกยอด VAT ของใบให้ร้านแก้โหมดเองถ้าไม่ได้ตั้งใจ
+  const vatRegForDoc = vatRegisteredForDoc(settings.vatRegistered, input.docType);
+  const vatMode: AccountVatMode = !vatRegForDoc
     ? "NONE"
     : input.vatMode ?? "EXCLUDE";
   // A1: จุดรับรู้ภาษี — ต่อใบ (form) หรือ default ตามประเภทกิจการ
@@ -2186,7 +2197,7 @@ export async function createDocument(input: {
       discountAmount: input.discountAmount,
       depositDeducted,
       vatMode,
-      vatRegistered: settings.vatRegistered,
+      vatRegistered: vatRegForDoc,
       vatRateBp: settings.vatRateBp,
     });
 
@@ -2294,8 +2305,9 @@ export async function updateDocument(
       // §9.3: ล็อกทั้ง "วันที่เดิม" และ "วันที่ใหม่" — กันย้ายเอกสารเข้า/ออกจากช่วงที่ล็อก
       assertNotLockedWith(settings.policy.lockBeforeDate, doc.issueDate);
       if (input.issueDate) assertNotLockedWith(settings.policy.lockBeforeDate, input.issueDate);
-      // A3: ไม่จด VAT → บังคับ NONE
-      const vatMode: AccountVatMode = !settings.vatRegistered
+      // A3: ไม่จด VAT → บังคับ NONE (T0.4b: ยกเว้นใบกำกับภาษี — ดู vatRegisteredForDoc)
+      const vatRegForDoc = vatRegisteredForDoc(settings.vatRegistered, doc.docType);
+      const vatMode: AccountVatMode = !vatRegForDoc
         ? "NONE"
         : input.vatMode ?? doc.vatMode;
       const vatTiming: AccountVatTiming = input.vatTiming ?? doc.vatTiming;
@@ -2367,7 +2379,7 @@ export async function updateDocument(
         vatMode,
         discountAmount,
         depositDeducted,
-        settings.vatRegistered,
+        vatRegForDoc,
         settings.vatRateBp,
       );
     });
