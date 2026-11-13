@@ -68,7 +68,7 @@ function Row({ r, base }: { r: PurchaseTaxRow; base: string }) {
       <td className={`${cellCls} text-xs`}>{buyerBranchLabelTh(r.vendorBranchCode)}</td>
       <td className={`${cellCls} text-right`}><MoneyText satang={r.base} decimals /></td>
       <td className={`${cellCls} text-right`}><MoneyText satang={r.vat} decimals /></td>
-      <td className={`${cellCls} text-xs`}>
+      <td className={`${cellCls} min-w-[14rem] text-xs print:min-w-0`}>
         {r.cancelled && <span className="mr-1 rounded border px-1 font-semibold" data-testid="purchasetax-cancel">ยกเลิก</span>}
         {r.notes.join(" · ")}
         {r.flag && (

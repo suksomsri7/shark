@@ -305,7 +305,7 @@ export async function reopenPeriodV2(
  */
 export async function markVatFiled(
   ctx: PeriodCtx,
-  input: { periodKey: string; salesVat?: number | null; inputVat?: number | null; userId: string | null; note?: string | null; excessChoice?: Pp30ExcessChoice | null },
+  input: { periodKey: string; salesVat?: number | null; inputVat?: number | null; userId: string | null; note?: string | null; excessChoice?: Pp30ExcessChoice | null; actorType?: "USER" | "PLATFORM_USER" | "SYSTEM" | "API_KEY" },
 ): Promise<({ ok: true; lines: Pp30Lines; warnings: LegalWarning[] }) | { ok: false; reason: string }> {
   if (!isPeriodKey(input.periodKey)) return { ok: false, reason: "รูปแบบงวดไม่ถูกต้อง (ต้องเป็น YYYY-MM)" };
   return fileVatReturn(ctx, {
@@ -314,6 +314,7 @@ export async function markVatFiled(
     note: input.note ?? null,
     excessChoice: input.excessChoice ?? null,
     declared: { salesVat: input.salesVat ?? null, inputVat: input.inputVat ?? null },
+    ...(input.actorType ? { actorType: input.actorType } : {}),
   });
 }
 

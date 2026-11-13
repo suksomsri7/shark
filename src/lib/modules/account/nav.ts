@@ -419,6 +419,8 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         },
         soon("AI ช่วยบันทึก (ถ่ายบิล)", "spark", "EXPENSE_AI_SCAN"),
       ],
+      // ACC T1.4/T1.5 ▸ หน้าเอกสารใบกำกับภาษีซื้อ (/purchase-tax-invoice/…) — เมนูชี้ไปรายการที่ /asset-buy?docType=… ⇒ breadcrumb เคยตกเป็น "หน้าหลัก" ◂
+      hiddenPages: [page({ label: "ใบกำกับภาษีซื้อ", href: `${base}/purchase-tax-invoice`, status: "ready", icon: "pct", testId: "PURCHASE_TAX_INVOICE_DOC" })],
     },
 
     // 4. ผู้ติดต่อ

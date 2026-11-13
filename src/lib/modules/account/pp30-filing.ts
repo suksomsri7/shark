@@ -24,7 +24,7 @@ const baht = (s: number) => (s / 100).toLocaleString("th-TH", { minimumFractionD
  */
 export async function fileVatReturn(
   ctx: Ctx,
-  input: { periodKey: string; userId: string | null; note?: string | null; excessChoice?: Pp30ExcessChoice | null; declared?: { salesVat?: number | null; inputVat?: number | null } },
+  input: { periodKey: string; userId: string | null; note?: string | null; excessChoice?: Pp30ExcessChoice | null; declared?: { salesVat?: number | null; inputVat?: number | null }; /** ACC T1.7 ▸ ผู้ทำ (REST = API_KEY) — ประวัติแสดง "คีย์ API" ◂ */ actorType?: "USER" | "PLATFORM_USER" | "SYSTEM" | "API_KEY" },
 ): Promise<({ ok: true; lines: Pp30Lines; warnings: LegalWarning[] }) | Fail> {
   if (!isPp30PeriodKey(input.periodKey)) return { ok: false, reason: "รูปแบบงวดไม่ถูกต้อง (ต้องเป็น YYYY-MM)" };
   const db = tenantDb(ctx);
@@ -65,7 +65,7 @@ export async function fileVatReturn(
       await tx.auditLog.create({
         data: {
           tenantId: ctx.tenantId,
-          actorType: "USER",
+          actorType: input.actorType ?? "USER",
           actorId: input.userId,
           action: existing ? FILING_AUDIT.vatRefile : FILING_AUDIT.vatMark,
           targetType: "AccountVatFiling",

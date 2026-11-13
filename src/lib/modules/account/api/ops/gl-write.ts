@@ -567,7 +567,9 @@ const periodsVatFiled = defineOp({
       salesVat: input.salesVatSatang ?? null,
       inputVat: input.inputVatSatang ?? null,
       excessChoice: input.excessChoice ?? null,
-      userId: null,
+      // ACC T1.7 ▸ ผู้ทำ = คีย์ API / ผู้ใช้ที่ยืนยันข้อเสนอของเลขา (ประวัติแสดงป้ายถูก ไม่ใช่ "ระบบ") ◂
+      userId: actorAuditId(actor),
+      actorType: actorAuditType(actor),
       note: input.note ?? null,
     });
     if (!res.ok) {

@@ -776,11 +776,11 @@ function EditorBody(props: DocEditorV2Props) {
               />
               <Link
                 href={`${props.basePath}/settings`}
-                className="btn-sm h-11 w-11 shrink-0 px-0 text-center leading-[2.6]"
+                className="btn-sm h-11 w-11 shrink-0 px-0"
                 aria-label="ตั้งค่าเลขที่เอกสาร"
                 title="ตั้งค่าเลขที่เอกสาร"
               >
-                ⚙
+                <AccountIcon name="gear" className="h-4 w-4" />
               </Link>
             </span>
           </Field>
@@ -824,9 +824,9 @@ function EditorBody(props: DocEditorV2Props) {
                   style={{ background: "var(--color-surface-2)", color: "var(--color-accent)" }}
                   data-testid="contact-badge"
                 >
-                  <span aria-hidden>👤</span>
+                  <AccountIcon name="user" className="h-3.5 w-3.5" />
                   {selectedContact.member ? "สมาชิก" : "ผู้ติดต่อ"}
-                  {selectedContact.sub ? ` #${selectedContact.sub}` : ""} · ค้างรับ{" "}
+                  {selectedContact.sub ? ` #${selectedContact.sub}` : ""} · {props.side === "expense" ? "ค้างจ่าย" : "ค้างรับ"}{" "}
                   <MoneyText satang={selectedContact.outstandingSatang ?? 0} decimals />
                 </span>
               )}
