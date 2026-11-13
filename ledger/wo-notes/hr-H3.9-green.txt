@@ -32,3 +32,21 @@ fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"fin
 fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
 fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
 ALLDONE
+
+# rulings round (13 Nov) · default base 9e8ad6386 (origin/session/hr) · HEAD 7178317ea + notes
+seed exit=0 ===== seed-hr-qc ===== ผ่าน 34/34 JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":34,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMa
+h39-forced1 exit=0 ===== qc-hr-h3.9 ===== passed 56/56 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.9","total":56,"passed":56,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":
+h39-forced2 exit=0 ===== qc-hr-h3.9 ===== passed 56/56 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.9","total":56,"passed":56,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":
+h39-unforced exit=0 ===== qc-hr-h3.9 ===== passed 56/56 JSON_SUMMARY {"suite":"qc-hr-h3.9","total":56,"passed":56,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":51,"baseGr
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":
+qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.3","total":63,"passed":63,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"groupCrashes":[],"miss
+qc-hr-h2.9 exit=0 ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.9","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":
+qc-hr-h3.4 exit=1 ===== qc-hr-h3.4 ===== passed 83/85 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.4","total":85,"passed":83,"failed":["H3.4-S1.7","H3.4-S1.10"],"findings":[{"id":"H3.4-S1.7","sev":"CRITICAL"},{"id":"H3.4
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]} 
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+typecheck exit=0 errors=0
+qc-hr-h3.4 with QC_H34_BASE=8e52db009 (pre-H3.4 parent of its merge) exit=0 passed 85/85 — the 2 default-base fails (S1.7 marked hunks · S1.10) are H3.4's own vs-base statics now that H3.4 is in origin/session/hr

@@ -50,3 +50,11 @@ No hand derivation disagreed with the code: every golden (time · leave e1P1 · 
 
 ## Debts
 D-1…D-7 as design §6 (name split · rate history · orphan rows · self export · daily/hourly v2 rate · historical branch · holiday-OT ฿ in wages).
+
+## Rulings round (13 Nov)
+- Merged origin/session/hr 9e8ad6386 (H3.4 pushed) — default base now resolves; S1.2/S1.5 pass without QC_H39_BASE.
+- ORACLE-EDITs applied (marked, listed in hr-H3.9-oracle.md §7): S4.6 payType for money viewers in wages/register + keys scanned on served DTOs only (refusal shape carries "reason") · seen === 36 · S7.1 finalized run · new S1.11 / S3.10 / S3.11 / S4.10 + fixture (2 revoked OT rows, catalog ot + keptHolidayWorkMin/Amt, goldens).
+- A (reports.ts:307–330): revokedAt ⇒ never approved/approvedMin; settled HOLIDAY_WORK segments of a revoked request ⇒ keptHolidayWorkMin (P) / keptHolidayWorkAmt ($).
+- B (reports.ts:598–600): duty/under-10 note (and its count query) only for all-branch viewers.
+- Help text hr.report.onlyData (th/en) on time/OT reports.
+- qc-hr-h3.4 on the default base: 83/85 — S1.7/S1.10 are H3.4's own "hunks vs base" statics, empty now that H3.4 is in the base; 85/85 with QC_H34_BASE=8e52db009. Not an H3.9 effect; needs an H3.4 base pin (controller).
