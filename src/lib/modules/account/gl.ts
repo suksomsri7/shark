@@ -1126,6 +1126,7 @@ export async function postPayment(
         financeAccountId: true,
         amount: true,
         whtAmountSatang: true,
+        whtBorneSatang: true, // ACC T3.6 ◂
         feeAmount: true,
         voidedAt: true,
         document: { select: { direction: true, contactId: true } },
@@ -1168,6 +1169,11 @@ export async function postPayment(
       if (p.feeAmount > 0) b.dr(await b.id("PAYMENT_FEE"), p.feeAmount, "ค่าธรรมเนียม");
       b.cr(cashId, p.amount + p.feeAmount);
       if (p.whtAmountSatang > 0) b.cr(await b.id("WHT_PAYABLE"), p.whtAmountSatang, "ภาษีหัก ณ ที่จ่ายค้างนำส่ง", contactId);
+      // ACC T3.6 ▸ ออกภาษีให้: ภาษีที่ร้านออกแทนไม่ตัดหนี้ผู้ขาย — Dr 6970 ภาษีที่ออกแทน / Cr 2130 ค้างนำส่ง (แยกบัญชี: รายจ่ายต้องห้ามหรือไม่ยังไม่ยืนยัน [U]) ◂
+      if (p.whtBorneSatang > 0) {
+        b.dr(await b.id("WHT_BORNE"), p.whtBorneSatang, "ภาษีหัก ณ ที่จ่ายที่ออกแทนผู้รับ", contactId);
+        b.cr(await b.id("WHT_PAYABLE"), p.whtBorneSatang, "ภาษีหัก ณ ที่จ่ายค้างนำส่ง (ออกแทน)", contactId);
+      }
     } else {
       // รับชำระลูกหนี้: Dr เงิน (amount−fee) + Dr 1160 WHT + Dr 6500 fee · Cr 1100 AR (amount+WHT)
       const cashId = await financeLedgerId(ctx, p.financeAccountId, p.channel, db);

@@ -325,6 +325,16 @@ function EditorBody(props: DocEditorV2Props) {
   // ── ACC T1.2: ชนิดบรรทัด + สวิตช์ "ออกใบกำกับภาษีพร้อมกัน" (ค่าเริ่มตามชนิดบรรทัด × ค่าตั้ง · ผู้ใช้กดแล้ว = ค่าของใบนี้) ──
   const salesKinds = props.side === "revenue" && props.vatRegistered && props.docType !== "TAX_INVOICE";
   const lineKindDefault: "GOODS" | "SERVICE" | null = salesKinds ? (value.recognizeVatNow ? "GOODS" : "SERVICE") : null;
+  // ACC T3.2 ▸ ฐานหัก ณ ที่จ่ายของฟอร์ม = ก่อน VAT เฉพาะบรรทัดที่ติดธงหัก · ไม่มีธง = ไม่นับบรรทัดสินค้า (เดิม afterDiscount ทั้งใบ) ◂
+  const editorWhtBase = (() => {
+    const flagged = value.lines.some((l) => !!l.whtIncomeType || (l.whtRateBp ?? 0) > 0);
+    return totals.lines.reduce((sum, b, i) => {
+      const l = value.lines[i];
+      if (!l) return sum;
+      const take = flagged ? !!l.whtIncomeType || (l.whtRateBp ?? 0) > 0 : (l.lineKind ?? lineKindDefault) !== "GOODS";
+      return take ? sum + b.net : sum;
+    }, 0);
+  })();
   const kindsPresent = {
     goods: value.lines.some((l) => (l.lineKind ?? lineKindDefault) === "GOODS"),
     service: value.lines.some((l) => (l.lineKind ?? lineKindDefault) === "SERVICE"),
@@ -1461,7 +1471,7 @@ function EditorBody(props: DocEditorV2Props) {
             direction={props.side === "expense" ? "IN" : "OUT"}
             docTotalSatang={totals.grandTotal}
             alreadyPaidSatang={0}
-            whtBaseSatang={totals.afterDiscount}
+            whtBaseSatang={editorWhtBase}
             docTotalLabel={`ยอด${props.docLabel}`}
             whtSuggest={props.legal.whtSuggest}
           />

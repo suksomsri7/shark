@@ -86,6 +86,8 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["6940", "EXPENSE", "ค่าใช้จ่ายรถยนต์นั่ง (ไม่เกิน 10 ที่นั่ง)", "Passenger Car Expenses"],
   ["6950", "EXPENSE", "ภาษีซื้อไม่ขอคืน (ถือเป็นรายจ่ายได้)", "Non-claimable Input VAT (deductible)"],
   ["6960", "EXPENSE", "ภาษีซื้อไม่ขอคืน (รายจ่ายต้องห้าม)", "Non-claimable Input VAT (non-deductible)"],
+  // ACC T3.6 ▸ ภาษีเงินได้หัก ณ ที่จ่ายที่ร้านออกแทนผู้รับ (ออกภาษีให้) — แยกบัญชีไว้ เพราะเป็นรายจ่ายต้องห้ามหรือไม่ยังไม่ยืนยัน (skill common-withholding-tax §13 [U]) ◂
+  ["6970", "EXPENSE", "ภาษีหัก ณ ที่จ่ายที่ออกแทนผู้รับ", "Withholding Tax Borne for Payee"],
   // 9999 พักรายการ
   ["9999", "ASSET", "พักรายการ (Suspense)", "Suspense"],
 ];
@@ -103,6 +105,7 @@ const MAPPINGS: [string, string][] = [
   ["VAT_INPUT_NONCLAIM_DISALLOWED", "6960"], // ACC T1.4 — ภาษีซื้อต้องห้าม ม.82/5(1)(2)(3)(5) (รายจ่ายไม่ได้)
   ["WHT_ASSET", "1160"],
   ["WHT_PAYABLE", "2130"],
+  ["WHT_BORNE", "6970"], // ACC T3.6 — ออกภาษีให้ (Dr 6970 / Cr 2130)
   ["DEPOSIT_RECEIVED", "2110"],
   ["COLLECTED_ON_BEHALF", "2120"], // ACC T1.8 (2140 = เงินประกันผู้เช่าของหอพัก · ไฟล์นำเข้าผังทดสอบ) — POS บรรทัด "เก็บแทน" (ไม่ใช่รายได้ ไม่อยู่ในฐาน VAT)
   ["DEPOSIT_PAID", "1130"],

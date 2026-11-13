@@ -379,6 +379,7 @@ function toModalContact(
     defaultPriceMode: string | null; defaultWhtType: string | null; defaultWhtRateBp: number | null;
     bankAccountNote: string | null; arAccountCode: string | null; apAccountCode: string | null;
     ownerUserId: string | null; note: string | null; tags: unknown; partyId: string | null;
+    whtRecipient?: string | null; whtAgent?: boolean;
   },
   groupIds: string[],
 ): ContactModalContact {
@@ -390,6 +391,7 @@ function toModalContact(
     postcode: c.postcode, country: c.country, email: c.email, phone: c.phone, website: c.website,
     fax: c.fax, lineId: c.lineId, creditTermDays: c.creditTermDays, defaultPriceMode: c.defaultPriceMode,
     defaultWhtType: c.defaultWhtType, defaultWhtRateBp: c.defaultWhtRateBp,
+    whtRecipient: c.whtRecipient ?? null, whtAgent: !!c.whtAgent,
     bankAccountNote: c.bankAccountNote, arAccountCode: c.arAccountCode, apAccountCode: c.apAccountCode,
     ownerUserId: c.ownerUserId, note: c.note,
     tags: Array.isArray(c.tags) ? (c.tags as unknown[]).map(String) : [],

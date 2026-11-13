@@ -393,6 +393,8 @@ export type ContactFormPayload = {
   defaultPriceMode?: string;
   defaultWhtType?: string;
   defaultWhtRateBp?: number | null;
+  whtRecipient?: string | null;
+  whtAgent?: boolean;
   bankAccountNote?: string;
   arAccountCode?: string;
   apAccountCode?: string;
@@ -516,6 +518,9 @@ export async function saveContactAction(systemId: string, payload: ContactFormPa
     defaultPriceMode: (trimOrNull(payload.defaultPriceMode) as AccountPriceMode | null),
     defaultWhtType: trimOrNull(payload.defaultWhtType),
     defaultWhtRateBp: payload.defaultWhtRateBp ?? null,
+    // ACC T3.1/T3.6 ◂
+    ...(payload.whtRecipient !== undefined ? { whtRecipient: trimOrNull(payload.whtRecipient ?? undefined) } : {}),
+    ...(payload.whtAgent !== undefined ? { whtAgent: payload.whtAgent === true } : {}),
     bankAccountNote: trimOrNull(payload.bankAccountNote),
     arAccountCode: trimOrNull(payload.arAccountCode),
     apAccountCode: trimOrNull(payload.apAccountCode),

@@ -63,6 +63,7 @@ import {
   WHT_CHANNELS,
   WHT_METHODS,
   WHT_PAYERS,
+  WHT_GROSS_UP_FORMULAS,
   WHT_RECIPIENTS,
 } from "@/lib/core/settings/legal/th-tax-2569";
 import { defineOp, type ApiOp } from "../op";
@@ -747,6 +748,10 @@ const settingsTaxUpdateInput = z
     vatRows: z.array(taxVatRow).max(200).optional().describe("Replaces ALL shop rows of the VAT table. [] = use the system defaults only."),
     whtRows: z.array(taxWhtRow).max(200).optional().describe("Replaces ALL shop rows of the withholding tax table."),
     deadlineRows: z.array(taxDeadlineRow).max(200).optional().describe("Replaces ALL shop rows of the filing deadline table."),
+    // ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่าย ◂
+    ewhtEnabled: z.boolean().optional().describe("The shop remits withholding tax through a bank's e-Withholding Tax service. On: payments may use the reduced e-WHT rate from the table (it expires by itself) and no 50 Tawi certificate is issued for them. Default off."),
+    grossUpAlways: z.enum(WHT_GROSS_UP_FORMULAS).optional().describe("Formula when the shop bears the tax for the payee every time (condition PAY_ALWAYS). GROSS_UP_CONVERGED = net x r / (100 - r) (default) · GROSS_UP_ONE_STEP = (net + net x r) x r · NET_TIMES_RATE = net x r. No official formula exists; check with the shop's accountant."),
+    grossUpOnce: z.enum(WHT_GROSS_UP_FORMULAS).optional().describe("Formula when the shop bears the tax once (condition PAY_ONCE). Default GROSS_UP_ONE_STEP."),
     reason: z.string().max(500).optional().describe("Why the change was made. Kept in the settings history."),
   })
   .strict();
@@ -758,7 +763,7 @@ const settingsTaxUpdate = defineOp({
   kind: "write",
   action: "account.settings.manage",
   summary:
-    "Set the business entity kind of this book and/or replace the shop's own rows of the legal value tables (VAT rate, withholding tax rates, filing deadlines). System rows cannot be edited, only overridden by a shop row with the same dimensions and dates. A shop value that differs from a system default is accepted and returned with a warning.",
+    "Set the business entity kind of this book, the withholding tax settings (e-WHT on/off, gross-up formulas) and/or replace the shop's own rows of the legal value tables (VAT rate, withholding tax rates, filing deadlines). System rows cannot be edited, only overridden by a shop row with the same dimensions and dates. A shop value that differs from a system default is accepted and returned with a warning.",
   label: "แก้ประเภทผู้ประกอบการ/ตารางค่ากฎหมาย",
   input: settingsTaxUpdateInput,
   tool: {
@@ -773,6 +778,9 @@ const settingsTaxUpdate = defineOp({
       ...(input.vatRows !== undefined ? { vatRows: input.vatRows.map((r) => ({ ...r, id: r.id ?? "", source: r.source ?? "", checkedAt: null })) } : {}),
       ...(input.whtRows !== undefined ? { whtRows: input.whtRows.map((r) => ({ ...r, id: r.id ?? "", source: r.source ?? "", checkedAt: null })) } : {}),
       ...(input.deadlineRows !== undefined ? { deadlineRows: input.deadlineRows.map((r) => ({ ...r, id: r.id ?? "", source: r.source ?? "", checkedAt: null })) } : {}),
+      ...(input.ewhtEnabled !== undefined ? { ewhtEnabled: input.ewhtEnabled } : {}),
+      ...(input.grossUpAlways !== undefined ? { grossUpAlways: input.grossUpAlways } : {}),
+      ...(input.grossUpOnce !== undefined ? { grossUpOnce: input.grossUpOnce } : {}),
     };
     const res = await saveBookTax({ ...actor.membership, userId: actorRefId(actor) }, ctx, patch, input.reason);
     if (!res.ok) {

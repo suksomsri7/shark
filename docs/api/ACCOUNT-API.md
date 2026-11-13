@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 214 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 216 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -413,6 +413,19 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123/payments" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `documents.wht-context`
+
+**GET /documents/{id}/wht-context** - Withholding tax facts for paying or receiving this document: payer status (from the book's entity kind) and payee type (from the contact), the rate of every income type from the legal value table for that payer x payee x channel today (normal and e-WHT, with source, tag and expiry), the withholding base of the whole document (before VAT, only the lines that are withheld; goods lines excluded), what has been settled, the 1,000 baht per contract minimum, the gross-up formulas and whether the vendor is a withholding agent. Defaults from research, not legal advice. · scope: `account.doc.view` · read · AI tool: `account_wht_context`
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123/wht-context" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -1079,6 +1092,19 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/settings/policy" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `settings.tax.deadlines`
+
+**GET /settings/tax/deadlines** - Upcoming filing deadlines of this book (VAT return PP30 and withholding tax returns PND1/2/3/53/54) for the tax month that is due next: paper and online dates and days left, computed from the effective-dated filing deadline table (the online extension stops by itself when its row expires). · scope: `account.doc.view` · read · AI tool: `account_tax_deadlines`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | no | Read the table as in effect on this Thai calendar day (YYYY-MM-DD). Default: today. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/settings/tax/deadlines" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `settings.tax`
 
 **GET /settings/tax** - Business entity kind of this book and the effective-dated legal value tables (VAT rate, withholding tax rates by income type x payer x recipient x channel, filing deadlines incl. the online extension): every row with its value, effective range, source, confidence tag and checked date, which row is in effect, and warnings. System defaults are research, not legal advice. · scope: `account.doc.view` · read · AI tool: `account_tax_settings`
@@ -1597,6 +1623,8 @@ Path parameters: `id` (required).
 | `note` | one of several shapes | no | - |
 | `code` | one of several shapes | no | Contact number, e.g. "C00019". Omit to let the book assign the next one. |
 | `groupIds` | array of string | no | Custom contact groups this contact belongs to. Replaces the whole set. |
+| `whtRecipient` | one of several shapes | no | Payee type for withholding tax rates: JURISTIC_TH (Thai company/partnership), INDIVIDUAL_TH, FOUNDATION (foundation/association), FOREIGN_PE (foreign company with a permanent establishment in Thailand), FOREIGN. null = derived from legalType/country. |
+| `whtAgent` | boolean | no | The vendor is an appointed withholding agent (Director-General notification No. 457/459): it withholds and files PND53 for the shop, so the shop does not withhold or issue a 50 Tawi certificate. |
 
 ```bash
 curl -sS -X PATCH "https://shark.in.th/api/v1/account/contacts/123" \
@@ -1646,6 +1674,8 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/contacts/merge-candidates/d
 | `note` | one of several shapes | no | - |
 | `code` | one of several shapes | no | Contact number, e.g. "C00019". Omit to let the book assign the next one. |
 | `groupIds` | array of string | no | Custom contact groups this contact belongs to. Replaces the whole set. |
+| `whtRecipient` | one of several shapes | no | Payee type for withholding tax rates: JURISTIC_TH (Thai company/partnership), INDIVIDUAL_TH, FOUNDATION (foundation/association), FOREIGN_PE (foreign company with a permanent establishment in Thailand), FOREIGN. null = derived from legalType/country. |
+| `whtAgent` | boolean | no | The vendor is an appointed withholding agent (Director-General notification No. 457/459): it withholds and files PND53 for the shop, so the shop does not withhold or issue a 50 Tawi certificate. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/contacts" \
@@ -3229,7 +3259,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/settings/tags" \
 
 #### `settings.tax.update`
 
-**PATCH /settings/tax** - Set the business entity kind of this book and/or replace the shop's own rows of the legal value tables (VAT rate, withholding tax rates, filing deadlines). System rows cannot be edited, only overridden by a shop row with the same dimensions and dates. A shop value that differs from a system default is accepted and returned with a warning. · scope: `account.settings.manage` · write · AI tool: `account_update_tax_settings`
+**PATCH /settings/tax** - Set the business entity kind of this book, the withholding tax settings (e-WHT on/off, gross-up formulas) and/or replace the shop's own rows of the legal value tables (VAT rate, withholding tax rates, filing deadlines). System rows cannot be edited, only overridden by a shop row with the same dimensions and dates. A shop value that differs from a system default is accepted and returned with a warning. · scope: `account.settings.manage` · write · AI tool: `account_update_tax_settings`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -3237,6 +3267,9 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/settings/tags" \
 | `vatRows` | array of object | no | Replaces ALL shop rows of the VAT table. [] = use the system defaults only. |
 | `whtRows` | array of object | no | Replaces ALL shop rows of the withholding tax table. |
 | `deadlineRows` | array of object | no | Replaces ALL shop rows of the filing deadline table. |
+| `ewhtEnabled` | boolean | no | The shop remits withholding tax through a bank's e-Withholding Tax service. On: payments may use the reduced e-WHT rate from the table (it expires by itself) and no 50 Tawi certificate is issued for them. Default off. |
+| `grossUpAlways` | enum("GROSS_UP_CONVERGED", "GROSS_UP_ONE_STEP", "NET_TIMES_RATE") | no | Formula when the shop bears the tax for the payee every time (condition PAY_ALWAYS). GROSS_UP_CONVERGED = net x r / (100 - r) (default) · GROSS_UP_ONE_STEP = (net + net x r) x r · NET_TIMES_RATE = net x r. No official formula exists; check with the shop's accountant. |
+| `grossUpOnce` | enum("GROSS_UP_CONVERGED", "GROSS_UP_ONE_STEP", "NET_TIMES_RATE") | no | Formula when the shop bears the tax once (condition PAY_ONCE). Default GROSS_UP_ONE_STEP. |
 | `reason` | string | no | Why the change was made. Kept in the settings history. · max length 500 |
 
 ```bash
@@ -3789,7 +3822,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
 
 ## AI tools
 
-52 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+54 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 `account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
@@ -3840,6 +3873,7 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_search_products` | `products.list` | read | `account.doc.view` |
 | `account_set_vat_credit_carry` | `periods.vat-credit-carry` | write | `account.period.close` |
 | `account_settings` | `settings.get` | read | `account.doc.view` |
+| `account_tax_deadlines` | `settings.tax.deadlines` | read | `account.doc.view` |
 | `account_tax_settings` | `settings.tax` | read | `account.doc.view` |
 | `account_transfer_funds` | `finance.transfer` | write | `account.finance.manage` |
 | `account_update_contact` | `contacts.update` | write | `account.contact.manage` |
@@ -3847,6 +3881,7 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_upload_file` | `documents.add-attachment` | write | `account.doc.create` |
 | `account_void_document` | `documents.void` | danger | `account.doc.void` |
 | `account_void_payment` | `payments.void` | danger | `account.payment.void` |
+| `account_wht_context` | `documents.wht-context` | read | `account.doc.view` |
 | `account_wht_summary` | `wht.list` | read | `account.tax.view` |
 
 ## AI agents
@@ -3862,7 +3897,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
 
-`GET https://shark.in.th/api/v1/ai/skills/account` returns the 52 tools (21 read, 31 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 54 tools (23 read, 31 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "account", "label": "บัญชี", "summary": "...", "tools": [

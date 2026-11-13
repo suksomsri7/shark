@@ -28,9 +28,11 @@ import {
   WHT_PAYER_LABEL_TH,
   WHT_RECIPIENTS,
   WHT_RECIPIENT_LABEL_TH,
+  WHT_GROSS_UP_FORMULAS,
+  WHT_GROSS_UP_FORMULA_LABEL_TH,
   type LegalWarning,
 } from "@/lib/core/settings/legal/th-tax-2569";
-import type { BookTaxView, LegalRowView } from "@/lib/modules/account/legal-values";
+import type { BookTaxView, LegalRowView, UpcomingDeadline } from "@/lib/modules/account/legal-values";
 
 type Kind = "vat" | "wht" | "deadline";
 type SaveFn = (systemId: string, kind: Kind, rows: unknown) => Promise<{ ok: true; warnings: LegalWarning[] } | { ok: false; reason: string }>;
@@ -309,7 +311,98 @@ function TableCard({ kind, rows, systemId, save }: { kind: Kind; rows: LegalRowV
   );
 }
 
-export function LegalValuesPanel({ systemId, orgSettingsHref, view, save }: { systemId: string; orgSettingsHref: string; view: BookTaxView; save: SaveFn }) {
+type WhtSaveFn = (systemId: string, patch: { ewhtEnabled?: boolean; grossUpAlways?: string; grossUpOnce?: string }) => Promise<{ ok: true; warnings: LegalWarning[] } | { ok: false; reason: string }>;
+
+/** ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่ายของสมุด: e-WHT · สูตรออกภาษีให้ ◂ */
+function WhtSettingsCard({ systemId, view, save }: { systemId: string; view: BookTaxView; save: WhtSaveFn }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState("");
+  const [warn, setWarn] = useState<LegalWarning[]>([]);
+  const w = view.whtSettings;
+  const commit = (patch: { ewhtEnabled?: boolean; grossUpAlways?: string; grossUpOnce?: string }) =>
+    start(async () => {
+      setMsg("");
+      const r = await save(systemId, patch);
+      if (!r.ok) return setMsg(r.reason);
+      setWarn(r.warnings);
+      setMsg("บันทึกแล้ว");
+      router.refresh();
+    });
+  const ewhtRows = view.tables.wht.filter((r) => r.dims.channel === "EWHT" && r.origin === "SYSTEM");
+  const ewhtTo = ewhtRows.map((r) => r.to).filter(Boolean).sort().pop();
+  return (
+    <section className="card flex flex-col gap-3 p-5" data-testid="wht-settings-card">
+      <h2 className="text-base font-semibold">หัก ณ ที่จ่าย</h2>
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-1" checked={w.ewhtEnabled} disabled={pending} onChange={(e) => commit({ ewhtEnabled: e.target.checked })} data-testid="wht-ewht-enabled" />
+        <span>
+          ใช้ e-Withholding Tax (นำส่งผ่านธนาคาร)
+          <span className={`block ${helpCls}`}>
+            เปิดแล้วแผงบันทึกจ่ายมีตัวเลือก “นำส่งผ่าน e-WHT” — ใช้อัตราลด 1% ตามกฎกระทรวง ฉ.402 สำหรับการจ่ายถึง {ewhtTo ? formatDateTh(ewhtTo) : "-"} (หลังจากนั้นระบบกลับไปใช้อัตราปกติเอง) ·
+            หลักฐานของธนาคารใช้แทน 50 ทวิ ระบบจึงไม่ออก 50 ทวิ ให้รายการนั้น
+          </span>
+        </span>
+      </label>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {(
+          [
+            ["grossUpAlways", "สูตร “ออกภาษีให้ตลอดไป”", w.grossUpAlways],
+            ["grossUpOnce", "สูตร “ออกภาษีให้ครั้งเดียว”", w.grossUpOnce],
+          ] as const
+        ).map(([k, label, cur]) => (
+          <label key={k} className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            {label}
+            <select className="input" value={cur} disabled={pending} onChange={(e) => commit({ [k]: e.target.value })} data-testid={`wht-${k}`}>
+              {WHT_GROSS_UP_FORMULAS.map((f) => (
+                <option key={f} value={f}>
+                  {WHT_GROSS_UP_FORMULA_LABEL_TH[f]}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+      <p className={helpCls}>กรมสรรพากรไม่มีสูตรออกภาษีให้ทางการ — ค่าเริ่มต้นเป็นสูตรที่ใช้กันทั่วไป · ภาษีที่ออกแทนลงบัญชีแยก (6970) {CHECK_WITH_ACCOUNTANT_TH}</p>
+      {msg && <p className="text-sm" data-testid="wht-settings-msg">{msg}</p>}
+      {warn.length > 0 && <LegalWarnings warnings={warn} testId="wht-settings-warnings" />}
+    </section>
+  );
+}
+
+/** ACC T3.7 ▸ กำหนดยื่นที่กำลังจะถึง (จากตาราง) ◂ */
+function DeadlinesCard({ deadlines }: { deadlines: UpcomingDeadline[] }) {
+  return (
+    <section className="card flex flex-col gap-2 p-5" data-testid="upcoming-deadlines">
+      <h2 className="text-base font-semibold">กำหนดยื่นที่กำลังจะถึง</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-[color:var(--color-muted)]">
+              <th className="py-1 pr-3">แบบ</th>
+              <th className="py-1 pr-3">เดือนภาษี</th>
+              <th className="py-1 pr-3">ยื่นกระดาษ</th>
+              <th className="py-1 pr-3">ยื่นทางอินเทอร์เน็ต</th>
+            </tr>
+          </thead>
+          <tbody>
+            {deadlines.map((d) => (
+              <tr key={d.form} className="border-t" data-testid={`deadline-${d.form}`}>
+                <td className="py-1.5 pr-3 font-medium">{d.formLabel}</td>
+                <td className="py-1.5 pr-3">{d.taxMonth}</td>
+                <td className="py-1.5 pr-3">{d.paper ? `${formatDateTh(d.paper.date)} (อีก ${d.paper.daysLeft} วัน)` : "-"}</td>
+                <td className="py-1.5 pr-3">{d.online ? `${formatDateTh(d.online.date)} (อีก ${d.online.daysLeft} วัน)` : "ไม่มีช่วงขยายที่มีผล"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className={helpCls}>วันที่มาจากตารางกำหนดยื่นด้านล่าง (ขยายเวลายื่นทางอินเทอร์เน็ตมีวันสิ้นสุด — หลังจากนั้นเหลือเฉพาะวันยื่นปกติจนกว่าจะเพิ่มแถวใหม่) · ระบบแจ้งเตือนล่วงหน้า 5 วัน</p>
+    </section>
+  );
+}
+
+export function LegalValuesPanel({ systemId, orgSettingsHref, view, save, saveWht, deadlines }: { systemId: string; orgSettingsHref: string; view: BookTaxView; save: SaveFn; saveWht?: WhtSaveFn; deadlines?: UpcomingDeadline[] }) {
   return (
     <div className="flex flex-col gap-4" data-testid="legal-values-panel">
       <section className="card flex flex-col gap-2 p-5">
@@ -331,6 +424,8 @@ export function LegalValuesPanel({ systemId, orgSettingsHref, view, save }: { sy
           อัตรา VAT ที่ใช้วันนี้ ({formatDateTh(view.asOf)}): <b data-testid="legal-vat-today">{view.vatRateBp / 100}%</b>
         </p>
       </section>
+      {deadlines && deadlines.length > 0 && <DeadlinesCard deadlines={deadlines} />}
+      {saveWht && <WhtSettingsCard systemId={systemId} view={view} save={saveWht} />}
       {(["vat", "wht", "deadline"] as const).map((k) => (
         <TableCard key={k} kind={k} rows={view.tables[k]} systemId={systemId} save={save} />
       ))}

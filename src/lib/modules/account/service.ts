@@ -106,6 +106,7 @@ import {
 import { issueWhtCreditCert } from "./wht";
 import { liveForfeitKeepCount, recomputeDepositOutcomeInTx } from "./deposit-outcome-db"; // ACC T3 (A2/A3) ◂
 import { depositSettlementView } from "./deposit-outcome";
+import { docWhtBase, instalmentWhtBase, type WhtBaseLine } from "./wht-calc"; // ACC T3.2 ◂
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คของงวดในชุดใบวางบิล/ใบรวมจ่าย (ผูกไว้ที่งวดแรกของชุด) — leaf module ไม่ import วน ◂
 import { chequeIdsHoldingPayments, groupBatchPayments } from "./group-batch";
 // WO 1.1: แหล่งเดียวของแมป flyout tab → สถานะ (ร่วมกับ LIST_TABS ของหน้ารายการ V2)
@@ -802,6 +803,10 @@ export type ContactExtraFields = Partial<{
   apAccountCode: string | null;
   ownerUserId: string | null;
   tags: string[];
+  /** ACC T3.1 ▸ ประเภทผู้รับเงินได้ (null = เดาจากประเภท/ประเทศ) ◂ */
+  whtRecipient: string | null;
+  /** ACC T3.6 ▸ ผู้ขายเป็นตัวแทนหักภาษี (ฉ.457) ◂ */
+  whtAgent: boolean;
 }>;
 
 /** ที่อยู่แบบแยกช่องที่ประกอบเป็นสตริงเดียวได้ */
@@ -859,6 +864,9 @@ function contactExtraWriteFields(input: ContactExtraFields): Record<string, unkn
     "bankAccountNote", "arAccountCode", "apAccountCode", "ownerUserId", "country",
   ] as const;
   for (const k of keys) if (k in input) out[k] = (input as Record<string, unknown>)[k] ?? null;
+  // ACC T3.1/T3.6 ▸ ประเภทผู้รับ (ค่าที่รู้จักเท่านั้น) · ธงตัวแทนหักภาษี ◂
+  if ("whtRecipient" in input) out.whtRecipient = ["JURISTIC_TH", "INDIVIDUAL_TH", "FOUNDATION", "FOREIGN_PE", "FOREIGN"].includes(input.whtRecipient ?? "") ? input.whtRecipient : null;
+  if ("whtAgent" in input) out.whtAgent = input.whtAgent === true;
   // tags เป็น Json — เก็บเป็น array ของสตริงที่ตัดช่องว่าง/ตัวซ้ำแล้ว (ค่าว่าง = [] ไม่ใช่ null)
   if ("tags" in input) {
     const raw = Array.isArray(input.tags) ? input.tags : [];
@@ -2994,7 +3002,122 @@ export type RecordPaymentInput = {
   paymentRequestId?: string | null;
   /** ACC T2.8 ▸ ไม่ออกใบเสร็จอัตโนมัติของงวดนี้ (ผู้เรียกออกใบเสร็จเองแล้ว เช่น รับเงินผ่านใบเสร็จที่แปลงจากใบแจ้งหนี้) ◂ */
   skipAutoReceipt?: boolean;
+  /** ACC T3 ▸ รายละเอียดหัก ณ ที่จ่ายของงวด (แผงรับ/จ่าย · REST) — ไม่ส่ง = ระบบคิดฐานเอง (whtInstalmentBaseInTx) ◂ */
+  wht?: PaymentWhtExtra | null;
 };
+
+/** ACC T3 ▸ หัก ณ ที่จ่ายของงวดหนึ่ง (เพิ่มเติมจากยอด/อัตรา) */
+export type PaymentWhtExtra = {
+  /** รหัสขยาย (ADVERTISING ฯลฯ) — enum เก็บที่ whtIncomeType */
+  code?: string | null;
+  /** ฐานที่ผู้เรียกคิดแล้ว (แผงจ่าย) — ไม่ส่ง = คิดใหม่จากบรรทัด */
+  baseSatang?: number | null;
+  /** NORMAL | EWHT | AGENT — EWHT/AGENT ไม่ออก 50 ทวิ */
+  channel?: string | null;
+  /** WITHHOLD | PAY_ALWAYS | PAY_ONCE */
+  condition?: string | null;
+  /** ภาษีที่ร้านออกแทน (ไม่ตัดหนี้) */
+  borneSatang?: number;
+  ewhtRef?: string | null;
+};
+
+/**
+ * ACC T3.2 ▸ ฐานหัก ณ ที่จ่ายของงวดจ่าย (ตัวเดียวทุกทาง: รับชำระ · บันทึกจ่าย · ใบวางบิล/รวมจ่าย)
+ *   ฐานทั้งใบ = docWhtBase (ก่อน VAT · ธงรายบรรทัด · ไม่มีธง = ไม่นับบรรทัดสินค้า) · หักมัดจำในใบ = ส่วนของมัดจำหักไปแล้วตอนจ่ายมัดจำ (ตัดตามสัดส่วน)
+ *   งวด = instalmentWhtBase (สัดส่วนสะสม — รวมทุกงวดเท่าฐานทั้งใบพอดี) · paidBefore = ยอดตัดหนี้ก่อนงวดนี้
+ */
+export async function whtInstalmentBaseInTx(
+  tx: Prisma.TransactionClient,
+  systemId: string,
+  doc: { id: string; grandTotal: number; paidTotal: number; discountAmount: number; vatMode: string; depositDeducted?: number | null },
+  tieOff: number,
+): Promise<number> {
+  const lines = await tx.accountDocumentLine.findMany({ where: { documentId: doc.id, systemId }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { amount: true, vatRateBp: true, whtIncomeType: true, whtRateBp: true, whtIncomeCode: true, lineKind: true } });
+  return whtInstalmentBaseOf({ ...doc, lines }, tieOff);
+}
+
+/** pure คู่ของ whtInstalmentBaseInTx (บรรทัดโหลดมาแล้ว) */
+export function whtInstalmentBaseOf(
+  doc: { grandTotal: number; paidTotal: number; discountAmount: number; vatMode: string; depositDeducted?: number | null; lines: readonly WhtBaseLine[] },
+  tieOff: number,
+): number {
+  if (doc.lines.length === 0) return Math.max(0, tieOff);
+  const full = docWhtBase({ lines: doc.lines, discountAmount: doc.discountAmount, vatMode: doc.vatMode }).base;
+  const dep = Math.max(0, doc.depositDeducted ?? 0);
+  const eff = dep > 0 && doc.grandTotal + dep > 0 ? Math.round((full * doc.grandTotal) / (doc.grandTotal + dep)) : full;
+  return instalmentWhtBase(eff, doc.grandTotal, doc.paidTotal, tieOff);
+}
+
+/** ACC T3 ▸ ข้อมูลของเอกสารที่แผงรับ/จ่ายและการบันทึกใช้คิดหัก ณ ที่จ่าย — คิวรีเดียว (บรรทัด + ผู้ติดต่อ + ต้นทาง) */
+export type WhtDocContext = {
+  id: string;
+  direction: "IN" | "OUT";
+  grandTotal: number;
+  paidTotal: number;
+  discountAmount: number;
+  vatMode: string;
+  depositDeducted: number;
+  lines: WhtBaseLine[];
+  contact: { whtRecipient: string | null; legalType: string | null; legalEntityType: string | null; country: string | null; taxIdCountry: string | null; whtAgent: boolean } | null;
+  /** ยอดตามสัญญา (รวม VAT): ใบสั่งซื้อต้นทาง ถ้ามี · ไม่มี = ยอดเอกสารก่อนหักมัดจำ — ใช้กับขั้นต่ำ 1,000 */
+  contractTotal: number;
+};
+
+export async function whtDocContext(tenantId: string, systemId: string, docId: string): Promise<WhtDocContext | null> {
+  const d = await prisma.accountDocument.findFirst({
+    where: { id: docId, tenantId, systemId },
+    select: {
+      id: true, direction: true, grandTotal: true, paidTotal: true, discountAmount: true, vatMode: true, depositDeducted: true, sourceDocId: true,
+      lines: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { amount: true, vatRateBp: true, whtIncomeType: true, whtRateBp: true, whtIncomeCode: true, lineKind: true } },
+      contact: { select: { whtRecipient: true, legalType: true, legalEntityType: true, country: true, taxIdCountry: true, whtAgent: true } },
+    },
+  });
+  if (!d) return null;
+  const src = d.sourceDocId ? await prisma.accountDocument.findFirst({ where: { id: d.sourceDocId, systemId }, select: { docType: true, grandTotal: true } }) : null;
+  const own = d.grandTotal + d.depositDeducted;
+  return {
+    id: d.id, direction: d.direction as "IN" | "OUT", grandTotal: d.grandTotal, paidTotal: d.paidTotal, discountAmount: d.discountAmount, vatMode: d.vatMode, depositDeducted: d.depositDeducted,
+    lines: d.lines,
+    contact: d.contact,
+    contractTotal: src && src.docType === "PURCHASE_ORDER" ? Math.max(own, src.grandTotal) : own,
+  };
+}
+
+/**
+ * ACC T3.2 ▸ ฐานหัก ณ ที่จ่ายของ "ยอดค้างทั้งก้อน" ต่อเอกสาร (ใบวางบิล/ใบรวมจ่าย — ลูกหลายใบ) · คิวรีเดียว
+ *   เดิมแผงกลุ่มใช้ยอดค้างรวม VAT เป็นฐาน (F4) · ตอนนี้ = ก่อน VAT เฉพาะรายการที่หัก × สัดส่วนของยอดค้าง
+ */
+export async function whtOutstandingBases(tenantId: string, systemId: string, ids: readonly string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const docs = await prisma.accountDocument.findMany({
+    where: { tenantId, systemId, id: { in: [...ids] } },
+    select: { id: true, grandTotal: true, paidTotal: true, discountAmount: true, vatMode: true, depositDeducted: true, lines: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { amount: true, vatRateBp: true, whtIncomeType: true, whtRateBp: true, whtIncomeCode: true, lineKind: true } } },
+  });
+  for (const d of docs) out.set(d.id, whtInstalmentBaseOf(d, Math.max(0, d.grandTotal - d.paidTotal)));
+  return out;
+}
+
+/** ฐานของงวด: ผู้เรียกส่งมา (แผงจ่ายคิดแล้ว) ชนะ · ไม่ส่ง = คิดจากบรรทัด */
+async function whtBaseForInTx(tx: Prisma.TransactionClient, systemId: string, doc: { id: string; grandTotal: number; paidTotal: number; discountAmount: number; vatMode: string; depositDeducted?: number | null }, tieOff: number, extra: PaymentWhtExtra | null | undefined): Promise<number> {
+  if (typeof extra?.baseSatang === "number" && extra.baseSatang >= 0) return Math.round(extra.baseSatang);
+  return whtInstalmentBaseInTx(tx, systemId, doc, tieOff);
+}
+
+/** คอลัมน์ ACC T3 ของแถวการจ่าย */
+export function whtPaymentColumns(incomeType: AccountWhtIncomeType | null, extra: PaymentWhtExtra | null | undefined, base: number) {
+  const ch = extra?.channel === "EWHT" || extra?.channel === "AGENT" ? extra.channel : "NORMAL";
+  const cond = extra?.condition === "PAY_ALWAYS" || extra?.condition === "PAY_ONCE" ? extra.condition : "WITHHOLD";
+  return {
+    whtIncomeType: incomeType,
+    whtIncomeCode: extra?.code ? String(extra.code).slice(0, 40) : null,
+    whtBaseSatang: base,
+    whtChannel: ch,
+    whtCondition: cond,
+    whtBorneSatang: Math.max(0, Math.round(extra?.borneSatang ?? 0)),
+    ewhtRef: extra?.ewhtRef ? String(extra.ewhtRef).trim().slice(0, 60) || null : null,
+  };
+}
 
 export async function recordPayment(
   tenantId: string,
@@ -3101,6 +3224,7 @@ export async function recordPaymentInTx(
           amount: input.amount,
           whtAmountSatang: wht,
           whtRateBp: input.whtRateBp ?? null,
+          ...(wht > 0 ? whtPaymentColumns(input.whtIncomeType ?? null, input.wht, await whtBaseForInTx(tx, systemId, doc, tieOff, input.wht)) : {}),
           feeAmount: Math.max(0, input.feeAmount ?? 0),
           note: input.note ?? null,
           createdById: input.createdById ?? null,
@@ -3152,7 +3276,8 @@ export async function recordPaymentInTx(
       // ── WO 1.4 §5.2 F: ลูกค้าหักภาษี ณ ที่จ่าย → ออกเอกสารภาษีถูกหัก (WTI) อัตโนมัติ ──
       //    ฐานเงินได้จริง = ส่วนของ subTotal ตามสัดส่วนที่ตัดหนี้งวดนี้ (ไม่ย้อนจาก wht/rate — ปัดเศษเพี้ยน)
       if (wht > 0 && input.whtIncomeType) {
-        const base = doc.grandTotal > 0 ? Math.round((doc.subTotal * (input.amount + wht)) / doc.grandTotal) : input.amount + wht;
+        // ACC T3.2 ▸ ฐานของงวด = ก่อน VAT เฉพาะรายการที่ถูกหัก · สัดส่วนสะสม (เดิม subTotal ทั้งใบ × สัดส่วน ปัดต่องวด — รวมสินค้า/ไม่หักส่วนลดท้ายบิล) ◂
+        const base = payment.whtBaseSatang ?? (await whtBaseForInTx(tx, systemId, doc, tieOff, input.wht));
         const cert = await issueWhtCreditCert(tx, { tenantId, systemId }, {
           documentId: id,
           paymentId: payment.id,
@@ -7899,7 +8024,8 @@ export type ReminderKind =
   | "OVERDUE_TODAY"
   | "PTX_AWAITING"
   | "CHEQUE_DUE"
-  | "PP30_DUE";
+  | "PP30_DUE"
+  | "PND_DUE";
 
 export const REMINDER_TITLE: Record<ReminderKind, string> = {
   DUE_TOMORROW: "ครบกำหนดพรุ่งนี้",
@@ -7907,6 +8033,7 @@ export const REMINDER_TITLE: Record<ReminderKind, string> = {
   PTX_AWAITING: "ใบกำกับภาษีซื้อยังไม่ได้รับ",
   CHEQUE_DUE: "เช็คถึงกำหนด",
   PP30_DUE: "ภ.พ.30 ใกล้ครบกำหนดยื่น",
+  PND_DUE: "ภ.ง.ด. ใกล้ครบกำหนดยื่น",
 };
 
 export type ReminderSummary = Record<ReminderKind, number> & { systems: number };
@@ -7918,6 +8045,7 @@ const EMPTY_REMINDER_SUMMARY = (): ReminderSummary => ({
   PTX_AWAITING: 0,
   CHEQUE_DUE: 0,
   PP30_DUE: 0,
+  PND_DUE: 0,
 });
 
 /** เอกสารที่ "ครบกำหนดแล้วต้องจ่าย/ต้องเก็บ" — ฝั่งขายเก็บเงิน · ฝั่งซื้อจ่ายเงิน */
@@ -8040,6 +8168,32 @@ export async function runAccountReminders(
         const online = dl.online ? ` · ยื่นทางอินเทอร์เน็ตภายในวันที่ ${dl.online.day}` : "";
         const body = `งวด ${periodKey} — ยื่นแบบกระดาษภายในวันที่ ${dl.paper.day} ของเดือนนี้ (เหลือ ${PP30_LEAD_DAYS} วัน)${online}`;
         summary.PP30_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.PP30_DUE, body, now);
+      }
+    }
+
+    // (6) ACC T3.7 ▸ ภ.ง.ด.3/53 (ที่ร้านยื่นเอง) — เตือนล่วงหน้า PP30_LEAD_DAYS วันก่อนกำหนดยื่นกระดาษของเดือนก่อน (วันจากตาราง T0.2)
+    //   เฉพาะเดือนที่มี 50 ทวิ ที่ยังไม่ทำเครื่องหมายนำส่ง · แบบตามผู้รับ (บุคคล = ภ.ง.ด.3 · อื่น = ภ.ง.ด.53 — การแยกแบบละเอียดเป็นงาน T3.4 ของรายงาน) ◂
+    {
+      const py = today.getUTCMonth() === 0 ? today.getUTCFullYear() - 1 : today.getUTCFullYear();
+      const pm = today.getUTCMonth() === 0 ? 12 : today.getUTCMonth();
+      const periodKey = `${py}-${String(pm).padStart(2, "0")}`;
+      const from = new Date(Date.UTC(py, pm - 1, 1) - 7 * 3600_000);
+      const toD = new Date(Date.UTC(pm === 12 ? py + 1 : py, pm === 12 ? 0 : pm, 1) - 7 * 3600_000);
+      const certs = await prisma.accountDocument.findMany({
+        where: { tenantId, systemId, docType: "WHT_CERT", direction: "IN", status: "ISSUED", whtFiledPeriodKey: null, issueDate: { gte: from, lt: toD } },
+        select: { contact: { select: { legalType: true } } },
+        take: 500,
+      });
+      const forms = new Set(certs.map((c) => (c.contact?.legalType === "PERSON" ? "PND3" : "PND53") as "PND3" | "PND53"));
+      if (forms.size) {
+        const legal = await loadBookLegal({ tenantId, systemId });
+        for (const form of [...forms].sort()) {
+          const dl = filingDeadlineFrom(legal, form, periodKey);
+          if (dl.paper && today.getTime() === dl.paper.date.getTime() - PP30_LEAD_DAYS * REC_DAY_MS) {
+            const w = legalWarning("WHT_FILING_DUE", { form: form === "PND3" ? "ภ.ง.ด.3" : "ภ.ง.ด.53", period: periodKey, paper: `วันที่ ${dl.paper.day}`, online: dl.online ? `วันที่ ${dl.online.day}` : "" });
+            summary.PND_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.PND_DUE, `${w.messageTh} (เหลือ ${PP30_LEAD_DAYS} วัน)`, now);
+          }
+        }
       }
     }
   }

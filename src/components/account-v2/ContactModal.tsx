@@ -51,6 +51,9 @@ export type ContactModalContact = {
   defaultPriceMode: string | null;
   defaultWhtType: string | null;
   defaultWhtRateBp: number | null;
+  /** ACC T3.1/T3.6 ▸ ประเภทผู้รับเงินได้ · ตัวแทนหักภาษี ◂ */
+  whtRecipient?: string | null;
+  whtAgent?: boolean;
   bankAccountNote: string | null;
   arAccountCode: string | null;
   apAccountCode: string | null;
@@ -88,6 +91,8 @@ type FormState = {
   defaultPriceMode: string;
   defaultWhtType: string;
   defaultWhtRateBp: string;
+  whtRecipient: string;
+  whtAgent: boolean;
   bankAccountNote: string;
   arAccountCode: string;
   apAccountCode: string;
@@ -132,7 +137,7 @@ function emptyForm(): FormState {
     officeType: "HQ", branchCode: "", legalEntityType: "", personTitle: "", name: "",
     contactPerson: "", addressLine: "", subdistrict: "", district: "", province: "",
     postcode: "", country: "TH", email: "", phone: "", website: "", fax: "", lineId: "",
-    creditTermDays: "0", defaultPriceMode: "", defaultWhtType: "", defaultWhtRateBp: "",
+    creditTermDays: "0", defaultPriceMode: "", defaultWhtType: "", defaultWhtRateBp: "", whtRecipient: "", whtAgent: false,
     bankAccountNote: "", arAccountCode: "", apAccountCode: "", ownerUserId: "", note: "",
   };
 }
@@ -148,7 +153,7 @@ function formOf(c: ContactModalContact | null, nextCode: string): FormState {
     province: c.province ?? "", postcode: c.postcode ?? "", country: c.country ?? "TH",
     email: c.email ?? "", phone: c.phone ?? "", website: c.website ?? "", fax: c.fax ?? "",
     lineId: c.lineId ?? "", creditTermDays: String(c.creditTermDays ?? 0),
-    defaultPriceMode: c.defaultPriceMode ?? "", defaultWhtType: c.defaultWhtType ?? "",
+    defaultPriceMode: c.defaultPriceMode ?? "", defaultWhtType: c.defaultWhtType ?? "", whtRecipient: c.whtRecipient ?? "", whtAgent: !!c.whtAgent,
     defaultWhtRateBp: c.defaultWhtRateBp != null ? String(c.defaultWhtRateBp) : "",
     bankAccountNote: c.bankAccountNote ?? "", arAccountCode: c.arAccountCode ?? "",
     apAccountCode: c.apAccountCode ?? "", ownerUserId: c.ownerUserId ?? "", note: c.note ?? "",
@@ -161,7 +166,7 @@ function validate(f: FormState): Record<string, string> {
   if (!f.name.trim()) e.name = "จำเป็นต้องกรอก";
   if (!f.phone.trim()) e.phone = "จำเป็นต้องกรอก";
   for (const [k, max] of Object.entries(MAXLEN))
-    if ((f[k as keyof FormState] ?? "").length > max) e[k] = `ยาวเกิน ${max} ตัวอักษร`;
+    if (String(f[k as keyof FormState] ?? "").length > max) e[k] = `ยาวเกิน ${max} ตัวอักษร`;
   if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) e.email = "รูปแบบอีเมลไม่ถูกต้อง";
   const tax = f.taxId.replace(/\D/g, "");
   if (f.taxIdCountry === "TH" && f.taxId.trim() && tax.length !== 13) e.taxId = "เลขทะเบียนไทยต้องเป็นตัวเลข 13 หลัก";
@@ -334,7 +339,7 @@ export function ContactModal({
   const [linkPending, setLinkPending] = useState(false);
   const [linkMsg, setLinkMsg] = useState("");
 
-  const set = <K extends keyof FormState>(k: K, v: string) => {
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setF((prev) => ({ ...prev, [k]: v }));
     // แก้อะไรก็ตาม = การยืนยันซ้ำเดิมใช้ไม่ได้แล้ว (เรียกเฉพาะตอนยังมีแถบค้างอยู่ — ไม่ setState เปล่า ๆ ทุกตัวอักษร)
     setDup((prev) => (prev ? null : prev));
@@ -374,6 +379,7 @@ export function ContactModal({
       creditTermDays: Number(f.creditTermDays || "0"),
       defaultPriceMode: f.defaultPriceMode, defaultWhtType: f.defaultWhtType,
       defaultWhtRateBp: f.defaultWhtRateBp ? Number(f.defaultWhtRateBp) : null,
+      whtRecipient: f.whtRecipient || null, whtAgent: f.whtAgent,
       bankAccountNote: f.bankAccountNote.trim(), arAccountCode: f.arAccountCode.trim(),
       apAccountCode: f.apAccountCode.trim(), ownerUserId: f.ownerUserId, note: f.note.trim(),
       tags, groupIds,
@@ -896,6 +902,27 @@ export function ContactModal({
                   ))}
                 </select>
               </FormField>
+            </div>
+
+            {/* ACC T3.1/T3.6 ▸ ผู้รับเงินได้ (ขับอัตราหัก ณ ที่จ่ายจากตาราง) · ตัวแทนหักภาษี (ฉ.457 — ร้านไม่หัก/ไม่ออก 50 ทวิ) ◂ */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FormField label="หัก ณ ที่จ่าย — ประเภทผู้รับ">
+                <select value={f.whtRecipient} onChange={(e) => set("whtRecipient", e.target.value)} className="input" data-testid="contact-wht-recipient">
+                  <option value="">ตามประเภทผู้ติดต่อ/ประเทศ</option>
+                  <option value="JURISTIC_TH">บริษัท/ห้างฯ ในไทย</option>
+                  <option value="INDIVIDUAL_TH">บุคคลธรรมดาในไทย</option>
+                  <option value="FOUNDATION">มูลนิธิ/สมาคม</option>
+                  <option value="FOREIGN_PE">บริษัทต่างประเทศมีสาขาถาวรในไทย</option>
+                  <option value="FOREIGN">ผู้รับต่างประเทศ</option>
+                </select>
+              </FormField>
+              <label className="flex items-start gap-2 pt-6 text-sm" data-testid="contact-wht-agent-label">
+                <input type="checkbox" checked={f.whtAgent} onChange={(e) => set("whtAgent", e.target.checked)} data-testid="contact-wht-agent" className="mt-1" />
+                <span>
+                  ผู้ขายเป็น “ตัวแทนหักภาษี”
+                  <span className="block text-xs text-[color:var(--color-muted)]">ผู้ขายหักและนำส่ง ภ.ง.ด.53 แทนร้าน (ประกาศอธิบดีฯ ฉ.457) — ร้านไม่หัก ไม่ออก 50 ทวิ</span>
+                </span>
+              </label>
             </div>
 
             <FormField label="ช่องทางรับ/จ่ายเงินที่ใช้ประจำ (เลขบัญชีธนาคารของผู้ขาย)">

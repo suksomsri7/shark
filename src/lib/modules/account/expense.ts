@@ -39,6 +39,9 @@ import {
   lockDocumentRow,
   lockGroupHeadsOfDocsInTx,
   releaseDepositDeductionsInTx,
+  whtInstalmentBaseInTx, // ACC T3.2 ◂
+  whtPaymentColumns,
+  type PaymentWhtExtra,
 } from "./service";
 // WO 8.1 — เครื่องออกเลขที่เอกสารร่วม (ที่เดียวทั้งรายรับ/รายจ่าย) + ตารางคำนำหน้ากลาง
 import { issueDocNo, peekDocNo, openDocNumbering, deferDocNo, finalizeDocNos } from "./doc-numbering";
@@ -1390,6 +1393,8 @@ export type RecordVendorPaymentInput = {
   createdById?: string | null;
   /** WO 1.4: กันบันทึกซ้ำจากการกดปุ่ม/รีทรายซ้ำ — คีย์เดิม = ไม่สร้าง payment/JV ใหม่ */
   idempotencyKey?: string | null;
+  /** ACC T3 ▸ รหัสขยาย · ฐานงวด · ช่องทาง (e-WHT/ตัวแทน) · เงื่อนไข (ออกภาษีให้) — ไม่ส่ง = ฐานคิดจากบรรทัด · หัก ณ ที่จ่ายปกติ ◂ */
+  wht?: PaymentWhtExtra | null;
 };
 
 export async function recordVendorPayment(
@@ -1464,6 +1469,9 @@ export async function recordVendorPaymentInTx(
       const tieOff = input.amount + wht; // ยอดที่ตัดเจ้าหนี้
       const remain = Math.max(0, doc.grandTotal - doc.paidTotal);
       if (tieOff > remain + 1) throw new Error("ยอดจ่ายเกินยอดคงเหลือ");
+      // ACC T3 ▸ ออกภาษีให้ (PAY_ALWAYS/PAY_ONCE): ภาษีไม่ตัดหนี้ (wht = 0) — เก็บเป็น whtBorneSatang · ฐาน = เงินได้รวมภาษีที่ออกแทน (ผู้เรียกส่งมา) ◂
+      const borne = input.wht?.condition === "PAY_ALWAYS" || input.wht?.condition === "PAY_ONCE" ? Math.max(0, Math.round(input.wht.borneSatang ?? 0)) : 0;
+      const whtBase = wht > 0 || borne > 0 ? (typeof input.wht?.baseSatang === "number" ? Math.max(0, Math.round(input.wht.baseSatang)) : await whtInstalmentBaseInTx(tx, systemId, doc, tieOff)) : null;
       const payment = await tx.accountDocumentPayment.create({
         data: {
           tenantId,
@@ -1475,6 +1483,7 @@ export async function recordVendorPaymentInTx(
           amount: input.amount,
           whtAmountSatang: wht,
           whtRateBp: input.whtRateBp ?? null,
+          ...(whtBase !== null ? whtPaymentColumns(input.whtIncomeType ?? null, { ...input.wht, borneSatang: borne }, whtBase) : {}),
           feeAmount: Math.max(0, input.feeAmount ?? 0),
           note: input.note ?? null,
           createdById: input.createdById ?? null,
@@ -1503,11 +1512,16 @@ export async function recordVendorPaymentInTx(
         await postPayment(ctx, payment.id, tx);
       }
       // ออกหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) อัตโนมัติ
-      if (wht > 0 && input.whtIncomeType) {
-        // M5: ฐานเงินได้จริง = ยอดจ่ายจริงงวดนี้ก่อน VAT (subTotal × สัดส่วนที่ตัดหนี้) ไม่ย้อนจาก wht/rate
-        const realBase = doc.grandTotal > 0 ? Math.round((doc.subTotal * tieOff) / doc.grandTotal) : tieOff;
+      //   ACC T3.2 ▸ ฐาน = ก่อน VAT เฉพาะรายการที่หัก ตามสัดส่วนสะสม (เดิม subTotal ทั้งใบ × สัดส่วน — รวมสินค้า/ส่วนลดท้ายบิล · ปัดต่องวด) ◂
+      //   ACC T3.6/T3.7 ▸ e-WHT (หลักฐานธนาคารแทน 50 ทวิ) · ผู้ขายเป็นตัวแทนหักภาษี = ไม่ออก 50 ทวิ · ออกภาษีให้ = 50 ทวิ ภาษีที่ออกแทน + เงื่อนไข ◂
+      const certTax = wht > 0 ? wht : borne;
+      const channel = input.wht?.channel === "EWHT" || input.wht?.channel === "AGENT" ? input.wht.channel : "NORMAL";
+      if (certTax > 0 && input.whtIncomeType && channel === "NORMAL") {
         // C3: 50 ทวิ ใช้ paidAt (WHT ตกงวด ภงด. ถูกเดือน)
-        await issueWhtCert(tx, tenantId, systemId, doc, payment.id, wht, input.whtRateBp ?? null, input.whtIncomeType, realBase, payment.paidAt);
+        await issueWhtCert(tx, tenantId, systemId, doc, payment.id, certTax, input.whtRateBp ?? null, input.whtIncomeType, whtBase ?? tieOff, payment.paidAt, {
+          code: input.wht?.code ?? null,
+          condition: borne > 0 ? (input.wht?.condition ?? null) : null,
+        });
       }
   return { status, paymentId, duplicate: false };
 }
@@ -1532,6 +1546,8 @@ async function issueWhtCert(
   incomeType: AccountWhtIncomeType,
   base: number, // M5: ฐานเงินได้จริง (คำนวณจากยอดจ่ายจริง ไม่ย้อนจาก wht/rate)
   issueDate: Date, // C3: = paidAt (WHT ตกงวด ภงด. ถูกเดือน)
+  /** ACC T3 ▸ รหัสขยาย + เงื่อนไขออกภาษีให้ (พิมพ์บน 50 ทวิ — งานพิมพ์ของเลน 2 อ่าน) ◂ */
+  extra: { code?: string | null; condition?: string | null } = {},
 ): Promise<void> {
   // CRM C5.4-N ▸ ยังไม่มีเลข — finalizeDocNos ของตัวห่อออกเลข 50 ทวิ ท้ายธุรกรรม ◂
   const cert = await tx.accountDocument.create({
@@ -1552,6 +1568,8 @@ async function issueWhtCert(
       grandTotal: base,
       whtIncomeType: incomeType,
       whtRateBp: whtRateBp,
+      whtIncomeCode: extra.code ?? null,
+      whtCondition: extra.condition ?? null,
       sourceDocId: source.id,
       sourcePaymentId: paymentId,
       note: "หนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ)",

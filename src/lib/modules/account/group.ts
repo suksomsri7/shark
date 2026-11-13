@@ -18,6 +18,7 @@ import {
   syncGroupHead,
   voidPaymentBatchInOneTx,
   voidPaymentInTx,
+  whtOutstandingBases, // ACC T3.2 ◂
   type GroupChildDoc,
   type GroupRelType,
 } from "./service";
@@ -325,9 +326,9 @@ export type GroupPanelData = {
   whtSuggest: Record<string, number>;
 };
 
-function toChildView(c: GroupChildDoc): GroupChildView {
-  // ฐาน WHT โดยประมาณ = ยอดค้าง ÷ (1 + 7%) เมื่อใบนั้นมี VAT — ใช้เติมค่าอัตโนมัติในฟอร์มเท่านั้น
-  // (ตัวเลขจริงที่ลงบัญชีคือค่าที่ผู้ใช้ยืนยัน + service ตรวจซ้ำ)
+function toChildView(c: GroupChildDoc, whtBase?: number): GroupChildView {
+  // ACC T3.2 ▸ ฐาน WHT = ก่อน VAT เฉพาะรายการที่หัก ตามสัดส่วนยอดค้าง (service.whtOutstandingBases) — เดิมยอดค้างรวม VAT (F4)
+  //   ตัวเลขที่ลงบัญชี/50 ทวิ = service คิดซ้ำจากบรรทัดตอนบันทึก (whtInstalmentBaseInTx) ◂
   return {
     id: c.id,
     docType: c.docType,
@@ -339,7 +340,7 @@ function toChildView(c: GroupChildDoc): GroupChildView {
     outstanding: c.outstanding,
     status: c.status,
     statusLabel: c.statusLabel,
-    whtBaseSatang: c.outstanding,
+    whtBaseSatang: whtBase ?? c.outstanding,
   };
 }
 
@@ -358,7 +359,10 @@ export async function groupPanelData(
     listPaymentChannels(tenantId, systemId),
     getPolicy({ tenantId, systemId }),
   ]);
-  const legal = await legalUiOptionsAt({ tenantId, systemId }, accountNow(), policy.whtDefaults, def.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS");
+  const [legal, whtBases] = await Promise.all([
+    legalUiOptionsAt({ tenantId, systemId }, accountNow(), policy.whtDefaults, def.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS"),
+    whtOutstandingBases(tenantId, systemId, children.map((c) => c.id)), // ACC T3.2 ▸ ฐานก่อน VAT ต่อใบลูก (คิวรีเดียว) ◂
+  ]);
 
   const batchMap = new Map<string, GroupBatchView>();
   for (const p of payments) {
@@ -403,7 +407,7 @@ export async function groupPanelData(
     statusLabel: STATUS_LABEL[head.status] ?? head.status,
     dueDate: head.dueDate ? head.dueDate.toISOString().slice(0, 10) : null,
     canRecord: ["AWAITING_PAYMENT", "PARTIAL"].includes(head.status) && outstanding > 0,
-    children: children.map(toChildView),
+    children: children.map((c) => toChildView(c, whtBases.get(c.id))),
     batches: [...batchMap.values()],
     channels,
     texts: def.texts,

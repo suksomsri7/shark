@@ -83,6 +83,8 @@ export const SKILLS: Skill[] = [
       "account_purchase_tax_report", // ACC T1.6 ▸ รายงานภาษีซื้อ (ลำดับที่ต่อเดือน · หักไม่ได้ · รอใบกำกับ · ข้อตรวจ) (อ่าน) ◂
       "account_document_legal_warnings", // ACC T2.1 ▸ คำเตือนกฎหมายของเอกสาร (ใบกำกับเต็มรูปขาดชื่อ/ที่อยู่ผู้ซื้อ ฯลฯ) (อ่าน) ◂
       "account_deposit_settlement", // ACC T2.4 ▸ ดูก่อนคืน/ริบเงินมัดจำ (ยอดคงเหลือ · VAT · ใบลดหนี้ไหม) (อ่าน) ◂
+      "account_wht_context", // ACC T3.1/T3.2 ▸ อัตราหัก ณ ที่จ่ายตามตาราง × ผู้จ่าย × ผู้รับ × ช่องทาง + ฐานรายบรรทัดของเอกสาร (อ่าน) ◂
+      "account_tax_deadlines", // ACC T3.7 ▸ กำหนดยื่น ภ.พ.30/ภ.ง.ด. ที่กำลังจะถึง จากตาราง (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",

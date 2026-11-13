@@ -58,7 +58,7 @@ export function PaymentPanel({
         setData(d);
         if (d && focusNew) {
           const today = new Date().toISOString().slice(0, 10);
-          setBoxes([newPayBox(today, d.outstanding, d.channels[0]?.id ?? null, d.whtSuggest)]);
+          setBoxes([newPayBox(today, d.outstanding, d.channels[0]?.id ?? null, d.whtSuggest, d.wht)]);
           keyRef.current = `pay-${docId}-${Date.now()}`;
         }
       }),
@@ -101,9 +101,14 @@ export function PaymentPanel({
           financeAccountId: b.financeAccountId,
           amountSatang: b.amountSatang,
           note: b.note,
-          whtIncomeType: b.whtOn ? (b.whtIncomeType as never) : null,
+          // ACC T3.1 ▸ รหัสขยาย (ADVERTISING ฯลฯ) ส่งเป็น whtIncomeCode · ม.40 ให้เซิร์ฟเวอร์แปลง ◂
+          whtIncomeType: b.whtOn && /^M40_[1-8]$/.test(b.whtIncomeType) ? (b.whtIncomeType as never) : null,
+          whtIncomeCode: b.whtOn ? b.whtIncomeType : null,
           whtRateBp: b.whtOn ? b.whtRateBp : null,
           whtAmountSatang: b.whtOn ? b.whtAmountSatang : 0,
+          whtChannel: b.whtOn && b.whtEwht ? "EWHT" : "NORMAL",
+          whtCondition: b.whtOn ? (b.whtCondition ?? "WITHHOLD") : "WITHHOLD",
+          ewhtRef: b.whtOn && b.whtEwht ? (b.ewhtRef ?? "") : null,
           feeSatang: b.feeSatang,
           cheque: b.chequeOn ? { chequeNo: b.chequeNo, bankName: b.bankName, chequeDate: b.chequeDate } : null,
         })),
@@ -214,6 +219,7 @@ export function PaymentPanel({
                 whtBaseSatang={data.whtBaseSatang}
                 docTotalLabel={`ยอด${data.docLabel}`}
                 whtSuggest={data.whtSuggest}
+                wht={data.wht}
               />
             )}
 

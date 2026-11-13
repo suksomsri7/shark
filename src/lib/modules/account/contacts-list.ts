@@ -578,6 +578,9 @@ export type ContactDetail = ContactRow & {
   address: string | null;
   creditTermDays: number;
   note: string | null;
+  /** ACC T3.1/T3.6 ▸ ประเภทผู้รับเงินได้ · ตัวแทนหักภาษี ◂ */
+  whtRecipient?: string | null;
+  whtAgent?: boolean;
   recentDocs: { id: string; docType: AccountDocType; docNo: string | null; issueDate: Date; grandTotal: number; status: string }[];
 };
 
@@ -613,6 +616,8 @@ export async function getContactDetail(ctx: Ctx, id: string): Promise<ContactDet
     address: c.address,
     creditTermDays: c.creditTermDays,
     note: c.note,
+    whtRecipient: c.whtRecipient,
+    whtAgent: c.whtAgent,
     recentDocs,
   };
 }

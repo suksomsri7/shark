@@ -175,6 +175,10 @@ model AccountDocument {
   whtFiledPeriodKey String?
   /// ACC T3 (A2) — ผลการคืน/ริบของใบรับ/จ่ายมัดจำ {refunded, forfeited, forfeitKeep} (สตางค์) · ค่าที่คำนวณจากใบลดหนี้/JV (deposit-outcome.ts) เก็บไว้ให้หน้ารายการไม่ต้อง query เพิ่ม · null = ไม่เคยคืน/ริบ
   depositOutcome   Json?
+  /// ACC T3.1 — WHT_CERT: ประเภทเงินได้แบบรหัสขยาย (ADVERTISING · TRANSPORT … — wht-calc.ts WHT_INCOME_CODES) · null = ตาม whtIncomeType
+  whtIncomeCode    String?
+  /// ACC T3.6 — WHT_CERT: เงื่อนไขบน 50 ทวิ WITHHOLD | PAY_ALWAYS | PAY_ONCE · null = หัก ณ ที่จ่าย
+  whtCondition     String?
   etaxStatus      AccountEtaxStatus     @default(NOT_SENT) // P4
   etaxMeta        Json? // P4: {providerId, xmlUrl, sentAt, error}
   pdfUrl          String?
@@ -254,6 +258,8 @@ model AccountDocumentLine {
   // เพื่อให้เปิดร่างกลับมาแก้แล้วค่าไม่หาย · **การสร้าง WHT_CERT/JV จริงยังเป็นงาน WO 1.4**
   whtIncomeType AccountWhtIncomeType? // ประเภทเงินได้ ม.40
   whtRateBp     Int? // 300 = 3%
+  /// ACC T3.1 — รหัสขยายของประเภทเงินได้ (ADVERTISING · TRANSPORT … ) · null = ตาม whtIncomeType
+  whtIncomeCode String?
   // ── V2 (WO 4.3) · additive · nullable = แถวเดิม/โค้ดเดิมไม่กระทบ ──
   /// ต้นทุน/หน่วย (สตางค์) ของบรรทัดนี้ — ใช้กับเอกสารปรับปรุงสต็อกเท่านั้น:
   ///   ใบเบิก PRR/ใบส่งคืน RPR = ต้นทุนที่ตัด/คืนจริงตอนอนุมัติ (มาจาก InvMovement.costSatang)
@@ -287,6 +293,20 @@ model AccountDocumentPayment {
   whtAmountSatang  Int               @default(0) // WHT ถูกหัก (รับ) / หักเขา (จ่าย)
   whtRateBp        Int?
   whtCertDocId     String?           @unique // Document(WHT_CERT) ที่ออกให้ vendor
+  // ── ACC T3.1 · T3.2 · T3.6 · T3.7 (additive · nullable = แถวเดิมพฤติกรรมไม่เปลี่ยน) ──
+  /// ประเภทเงินได้ (ม.40) + รหัสขยาย ของภาษีงวดนี้ — เก็บที่การจ่ายด้วย (e-WHT/ตัวแทนหักภาษีไม่มี 50 ทวิ ให้เก็บ)
+  whtIncomeType    AccountWhtIncomeType?
+  whtIncomeCode    String?
+  /// ฐานเงินได้ของงวดนี้ที่ระบบคิด (ก่อน VAT · เฉพาะรายการที่หัก · สัดส่วนสะสม — wht-calc.ts) · ออกภาษีให้ = เงินได้รวมภาษีที่ออกแทน
+  whtBaseSatang    Int?
+  /// NORMAL | EWHT (นำส่งผ่าน e-Withholding Tax — ไม่ออก 50 ทวิ) | AGENT (ผู้ขายเป็นตัวแทนหักภาษี — ไม่ออก 50 ทวิ)
+  whtChannel       String?
+  /// WITHHOLD | PAY_ALWAYS | PAY_ONCE (ออกภาษีให้)
+  whtCondition     String?
+  /// ภาษีที่ร้านออกแทนผู้รับ (ไม่ตัดหนี้ · Dr 6970 / Cr 2130) — ใช้กับ PAY_ALWAYS/PAY_ONCE
+  whtBorneSatang   Int               @default(0)
+  /// เลขอ้างอิงการนำส่งผ่านธนาคาร (e-WHT)
+  ewhtRef          String?
   feeAmount        Int               @default(0) // ค่าธรรมเนียมโอน/gateway
   chequeId         String?           @unique
   cheque           AccountCheque?    @relation(fields: [chequeId], references: [id])
@@ -444,6 +464,10 @@ model AccountContact {
   defaultPriceMode AccountPriceMode? // โหมดราคาปริยายเวลาออกเอกสารให้รายนี้
   defaultWhtType   String? // ประเภทเงินได้ที่หัก ณ ที่จ่ายเป็นประจำ (ม.40 (…))
   defaultWhtRateBp Int? // อัตราหัก ณ ที่จ่ายปริยาย (basis point · 300 = 3%)
+  /// ACC T3.6 — ผู้ขายเป็น "ตัวแทนหักภาษี" (ประกาศอธิบดีฯ ฉ.457/459) — ร้านไม่หัก/ไม่ออก 50 ทวิ/ไม่เข้า ภ.ง.ด.53 ของร้าน
+  whtAgent         Boolean            @default(false)
+  /// ACC T3.1 — ประเภทผู้รับเงินได้ (JURISTIC_TH | INDIVIDUAL_TH | FOUNDATION | FOREIGN_PE | FOREIGN) · null = เดาจากประเภท/ประเทศ (wht-calc.whtRecipientOf)
+  whtRecipient     String?
   bankAccountNote  String? // บัญชีธนาคารสำหรับโอนจ่าย (ข้อความอิสระ)
   // ── WO 3.1 — Party (INTEGRATION-MAP §F.1) ──
   /// เชื่อมตัวตนกลางระดับ tenant (nullable — ไม่มี = ทำงานเหมือนเดิม) ไม่ใส่ FK/relation ตามใบสั่งงาน

@@ -17,7 +17,13 @@ import { recordVendorPayment, voidVendorPayment } from "./expense";
 import { listFinanceAccounts } from "./finance";
 import { attachReceiptPaymentsWithChequesInOneTx, chequeDraftProblem, recordPaymentWithChequeInOneTx } from "./cheque";
 import { issueWhtCreditCertStandalone } from "./wht";
-import { legalUiOptionsAt } from "./legal-values";
+import { legalUiOptionsAt, loadBookLegal } from "./legal-values";
+import { whtDocContext, whtInstalmentBaseOf } from "./service";
+import { evaluateWhtRow, whtPanelContextFrom, type WhtPanelContext, type WhtRowEval } from "./wht-context";
+import { instalmentWhtBase, whtIncomeCodeOf, whtParentOf } from "./wht-calc";
+import { legalAmbient } from "@/lib/core/legal-ambient";
+import { LegalAckRequiredError, unacknowledged } from "@/lib/core/settings/legal/warnings";
+import type { WhtCondition } from "@/lib/core/settings/legal/th-tax-2569";
 import { getPolicy } from "./policy";
 
 // ─────────────────────────────────────────────────────────────
@@ -44,6 +50,13 @@ export type PaymentDraft = {
   whtAmountSatang: number;
   feeSatang: number;
   cheque: ChequeDraft | null;
+  /** ACC T3.1 ▸ รหัสประเภทเงินได้แบบขยาย (ADVERTISING · TRANSPORT …) — ส่งแทน/คู่กับ whtIncomeType ◂ */
+  whtIncomeCode?: string | null;
+  /** ACC T3.7 ▸ NORMAL | EWHT (นำส่งผ่าน e-WHT — ร้านต้องเปิดค่าตั้ง) ◂ */
+  whtChannel?: string | null;
+  /** ACC T3.6 ▸ WITHHOLD | PAY_ALWAYS | PAY_ONCE (ออกภาษีให้: whtAmountSatang = ภาษีที่ร้านออกแทน ไม่ตัดหนี้) ◂ */
+  whtCondition?: string | null;
+  ewhtRef?: string | null;
 };
 
 export type RecordPaymentsResult =
@@ -146,6 +159,8 @@ export type PaymentPanelData = {
   channels: FinanceOption[];
   /** ACC T0.2 ▸ อัตราหัก ณ ที่จ่ายแนะนำต่อประเภทเงินได้ (ตารางค่ากฎหมาย + นโยบายร้าน) ◂ */
   whtSuggest: Record<string, number>;
+  /** ACC T3 ▸ ก้อนหัก ณ ที่จ่ายของใบนี้ (อัตราตามตาราง × ผู้จ่าย × ผู้รับ × ช่องทาง · ฐานรายบรรทัด · ขั้นต่ำ · ออกภาษีให้ · e-WHT) ◂ */
+  wht: WhtPanelContext | null;
 };
 
 export async function paymentPanelData(
@@ -162,7 +177,12 @@ export async function paymentPanelData(
     getPolicy({ tenantId, systemId }),
   ]);
   const outstanding = paymentOutstandingOf(target) /* CRM C5.4-C ▸ − ใบลดหนี้ (F-05) ◂ */;
-  const legal = await legalUiOptionsAt({ tenantId, systemId }, accountNow(), policy.whtDefaults, target.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS");
+  const [legal, bookLegal, wctx] = await Promise.all([
+    legalUiOptionsAt({ tenantId, systemId }, accountNow(), policy.whtDefaults, target.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS"),
+    loadBookLegal({ tenantId, systemId }),
+    whtDocContext(tenantId, systemId, target.id),
+  ]);
+  const wht = wctx ? whtPanelContextFrom(bookLegal, wctx, accountNow(), target.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS") : null;
   return {
     docId: doc.id,
     docType: doc.docType,
@@ -173,7 +193,8 @@ export async function paymentPanelData(
     grandTotal: doc.grandTotal,
     paidTotal: target.paidTotal,
     outstanding,
-    whtBaseSatang: Math.max(0, target.subTotal - target.discountAmount),
+    // ACC T3.2 ▸ ฐานของยอดค้างทั้งก้อน (ก่อน VAT · เฉพาะรายการที่หัก · สัดส่วนสะสม) — เดิม subTotal − ส่วนลด ทั้งใบ ◂
+    whtBaseSatang: wht ? instalmentWhtBase(wht.base.full, wht.grandTotal, wht.paidBefore, outstanding) : Math.max(0, target.subTotal - target.discountAmount),
     status: target.status,
     targetDocId: target.id,
     targetDocNo: target.docNo,
@@ -181,6 +202,7 @@ export async function paymentPanelData(
     payments,
     channels,
     whtSuggest: legal.whtSuggest,
+    wht,
   };
 }
 
@@ -200,6 +222,10 @@ function clean(d: PaymentDraft): PaymentDraft {
     whtRateBp: wht > 0 ? (d.whtRateBp == null ? null : Math.min(10000, Math.max(0, int(d.whtRateBp)))) : null,
     whtAmountSatang: wht,
     feeSatang: int(d.feeSatang),
+    whtIncomeCode: wht > 0 && d.whtIncomeCode && whtIncomeCodeOf(d.whtIncomeCode) ? d.whtIncomeCode : null,
+    whtChannel: d.whtChannel === "EWHT" ? "EWHT" : "NORMAL",
+    whtCondition: d.whtCondition === "PAY_ALWAYS" || d.whtCondition === "PAY_ONCE" ? d.whtCondition : "WITHHOLD",
+    ewhtRef: d.ewhtRef ? String(d.ewhtRef).trim().slice(0, 60) || null : null,
     cheque:
       d.cheque && String(d.cheque.chequeNo ?? "").trim()
         ? {
@@ -212,6 +238,12 @@ function clean(d: PaymentDraft): PaymentDraft {
 }
 
 const dateOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+
+/** ม.40 ของงวด: รหัสขยาย → enum (ADVERTISING → M40_8 ฯลฯ) · ไม่มีรหัสขยาย = ค่าที่ส่งมา */
+function incomeTypeOf(r: PaymentDraft, ev: WhtRowEval | null | undefined): AccountWhtIncomeType | null {
+  if (r.whtAmountSatang <= 0) return null;
+  return (ev?.parent ?? whtParentOf(r.whtIncomeCode) ?? r.whtIncomeType ?? null) as AccountWhtIncomeType | null;
+}
 
 /**
  * บันทึกการรับ/จ่ายชำระหลายครั้งในคำสั่งเดียว (§5.2 F)
@@ -277,6 +309,34 @@ export async function recordPayments(
   const warnings: LegalWarning[] = [];
   let recorded = 0;
 
+  // ACC T3 ▸ หัก ณ ที่จ่ายของแต่ละงวด: ประเภทเงินได้ (รหัสขยาย → ม.40) · ฐานรายบรรทัด × สัดส่วนสะสม · ช่องทาง (e-WHT/ตัวแทน) · ออกภาษีให้ ·
+  //   คำเตือนจากตาราง (ไม่บล็อก) · ผู้รับต่างประเทศไม่หัก = ต้องยืนยันข้อเท็จจริง (ด่านของคำขอ — งานเบื้องหลังไม่บล็อก) ◂
+  const needsWht = rows.some((r) => r.whtAmountSatang > 0 || r.feeSatang > 0) || isPayable;
+  const wctx = needsWht ? await whtDocContext(tenantId, systemId, target.id) : null;
+  const wpanel = wctx ? whtPanelContextFrom(await loadBookLegal({ tenantId, systemId }), wctx, accountNow(), isPayable ? "SHOP_PAYS" : "CUSTOMER_PAYS") : null;
+  const evals: (WhtRowEval | null)[] = [];
+  {
+    let paidBefore = wctx?.paidTotal ?? 0;
+    const pending: LegalWarning[] = [];
+    for (const r of rows) {
+      const code = r.whtIncomeCode ?? r.whtIncomeType ?? null;
+      const ev = wpanel
+        ? evaluateWhtRow(wpanel, { code, rateBp: r.whtRateBp, whtAmount: r.whtAmountSatang, cash: r.amountSatang, fee: r.feeSatang, channel: r.whtChannel === "EWHT" ? "EWHT" : "NORMAL", condition: (r.whtCondition as WhtCondition) ?? "WITHHOLD", ewhtRef: r.ewhtRef }, paidBefore)
+        : null;
+      evals.push(ev);
+      paidBefore += ev ? ev.tieOff : r.amountSatang + r.whtAmountSatang;
+      for (const w of ev?.warnings ?? []) {
+        if (w.ack) pending.push(w);
+        else if (!warnings.some((x) => x.code === w.code && x.messageTh === w.messageTh)) warnings.push(w);
+      }
+    }
+    const amb = legalAmbient();
+    if (amb && pending.length) {
+      const missing = unacknowledged(pending, amb.ack.codes);
+      if (missing.length) throw new LegalAckRequiredError(pending);
+    }
+  }
+
   // CRM C5.4-C ▸ round 10 · มติ B (R9-5): ด่านที่ไม่ต้องเขียนอะไร ตรวจครบ **ทุกครั้ง** ก่อนบันทึกครั้งแรก (เดิมตรวจทีละครั้งกลางลูป) ◂
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -298,18 +358,22 @@ export async function recordPayments(
       // เช็ค: เงินยังไม่เข้าบัญชีจริง → ไม่ผูกบัญชีเงิน (GL พักที่ 1040/2300 ตาม gl.financeLedgerId)
       financeAccountId: r.cheque ? null : r.financeAccountId,
       amount: r.amountSatang,
-      whtAmountSatang: r.whtAmountSatang,
+      // ACC T3.6 ▸ ออกภาษีให้: ภาษีไม่ตัดหนี้ (borne) · หัก ณ ที่จ่ายปกติ = ตัดหนี้ ◂
+      whtAmountSatang: evals[i] ? evals[i]!.withheld : r.whtAmountSatang,
       whtRateBp: r.whtRateBp,
       feeAmount: r.feeSatang,
       note: clampNote(r.note),
       createdById: opts.userId ?? null,
       idempotencyKey,
+      wht: evals[i] && (r.whtAmountSatang > 0)
+        ? { code: evals[i]!.code, baseSatang: evals[i]!.base, channel: evals[i]!.channel, condition: r.whtCondition ?? "WITHHOLD", borneSatang: evals[i]!.borne, ewhtRef: r.ewhtRef ?? null }
+        : null,
       // ACC T2.8 ▸ รับเงินผ่านใบเสร็จที่แปลงจากใบแจ้งหนี้ (ทาง ①) = ใบเสร็จมีอยู่แล้ว ⇒ ไม่ออกใบเสร็จอัตโนมัติซ้ำ ◂
       skipAutoReceipt: doc.id !== target.id && doc.docType === "RECEIPT",
     };
     // CRM C5.4-C ▸ round 10 · มติ B (R9-4): รับ/จ่ายด้วยเช็ค = งวด + เช็ค + ผูก ในธุรกรรมเดียว (ไม่มีช่องให้ยกเลิกงวดแทรกก่อนผูก · เช็คล้ม = งวดไม่เกิด) ◂
     const res = r.cheque
-      ? await recordPaymentWithChequeInOneTx(tenantId, systemId, target.id, isPayable ? "expense" : "revenue", { ...common, whtIncomeType: r.whtIncomeType }, {
+      ? await recordPaymentWithChequeInOneTx(tenantId, systemId, target.id, isPayable ? "expense" : "revenue", { ...common, whtIncomeType: incomeTypeOf(r, evals[i]) }, {
           chequeNo: r.cheque.chequeNo,
           bankName: r.cheque.bankName,
           chequeDate: dateOf(r.cheque.chequeDate),
@@ -318,8 +382,8 @@ export async function recordPayments(
           note: clampNote(r.note),
         })
       : isPayable
-        ? await recordVendorPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType })
-        : await recordPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType });
+        ? await recordVendorPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: incomeTypeOf(r, evals[i]) })
+        : await recordPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: incomeTypeOf(r, evals[i]) });
     if (!res.ok) return { ok: false, reason: `ครั้งที่ ${i + 1}: ${res.reason}` };
     recorded++;
     if (res.paymentId) paymentIds.push(res.paymentId);
@@ -452,14 +516,21 @@ export async function approveReceiptWithPayments(
 
   // เอกสารภาษีถูกหัก (WTI) + ทะเบียนเช็ค — ทำหลังออกเอกสาร (ต้องมีเลขที่/สถานะจริงแล้ว)
   const certNos: string[] = [];
+  // ACC T3.2 ▸ ฐานของงวด = ก่อน VAT เฉพาะรายการที่ถูกหัก × สัดส่วนสะสม (ตัวเดียวกับทางรับชำระ) — เดิม subTotal ทั้งใบ × สัดส่วน ปัดต่องวด ◂
+  const wctxR = rows.some((r) => r.whtAmountSatang > 0) ? await whtDocContext(tenantId, systemId, docId) : null;
+  let paidBeforeR = 0;
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const paymentId = attached.paymentIds[i];
-    if (r.whtAmountSatang > 0 && r.whtIncomeType) {
+    const tieOffR = r.amountSatang + r.whtAmountSatang;
+    const baseR = wctxR ? whtInstalmentBaseOf({ ...wctxR, paidTotal: paidBeforeR }, tieOffR) : null;
+    paidBeforeR += tieOffR;
+    const code = r.whtIncomeCode ?? r.whtIncomeType;
+    if (r.whtAmountSatang > 0 && code) {
       const base =
-        doc.grandTotal > 0
+        baseR ?? (doc.grandTotal > 0
           ? Math.round((doc.subTotal * (r.amountSatang + r.whtAmountSatang)) / doc.grandTotal)
-          : r.amountSatang + r.whtAmountSatang;
+          : r.amountSatang + r.whtAmountSatang);
       const cert = await issueWhtCreditCertStandalone(
         { tenantId, systemId },
         {
@@ -467,7 +538,7 @@ export async function approveReceiptWithPayments(
           paymentId,
           whtAmount: r.whtAmountSatang,
           whtRateBp: r.whtRateBp,
-          incomeType: r.whtIncomeType,
+          incomeType: (whtParentOf(code) ?? r.whtIncomeType) as AccountWhtIncomeType,
           base,
           issueDate: dateOf(r.paidAt),
         },

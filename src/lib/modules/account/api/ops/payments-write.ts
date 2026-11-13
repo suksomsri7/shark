@@ -42,6 +42,7 @@ import { ApiError } from "../respond";
 import { groupCandidateView, paymentPanelView } from "../serialize";
 import { paymentRequestView } from "../serialize-finance";
 import { toWhtIncomeType, whtIncomeTypeField } from "../wht-income";
+import { WHT_INCOME_CODES, whtParentOf } from "../../wht-calc"; // ACC T3 ◂
 
 // ── ตัวช่วยร่วม ─────────────────────────────────────────────────────────────
 
@@ -141,6 +142,17 @@ const paymentRowInput = z
       .min(0)
       .optional()
       .describe("Withholding tax in satang. It settles the invoice as well, so amountSatang plus this is what clears the debt. Default 0."),
+    // ACC T3 ▸ หัก ณ ที่จ่าย: รหัสขยาย · ช่องทาง e-WHT · ออกภาษีให้ ◂
+    whtIncomeCode: z
+      .enum(WHT_INCOME_CODES.map((c) => c.code) as [string, ...string[]])
+      .nullish()
+      .describe("Finer income type of the Revenue Department order Tor.Por.4/2528 (e.g. ADVERTISING 2%, TRANSPORT 1%, PRIZE 5%) — the rate table is per this code. Send it instead of or together with whtIncomeType; the s.40 section is derived from it. Rates per code for this document: GET /documents/{id}/wht-context."),
+    whtChannel: z.enum(["NORMAL", "EWHT"]).optional().describe("EWHT = remitted through a bank's e-Withholding Tax service (book setting ewhtEnabled): reduced rate while it is in effect, no 50 Tawi certificate. Default NORMAL."),
+    whtCondition: z
+      .enum(["WITHHOLD", "PAY_ALWAYS", "PAY_ONCE"])
+      .optional()
+      .describe("WITHHOLD (default) = tax is withheld from the payment. PAY_ALWAYS / PAY_ONCE = the shop bears the tax for the payee (only when the shop pays): whtAmountSatang is the tax the shop pays on top, it does not settle the bill, and amountSatang is the full amount to the payee."),
+    ewhtRef: z.string().max(60).nullish().describe("Bank reference of the e-WHT remittance."),
     feeSatang: z.number().int().min(0).optional().describe("Bank or gateway fee in satang, booked as an expense. Default 0."),
     note: z.string().max(MAX_NOTE).nullish().describe(`Short note kept on the payment row, at most ${MAX_NOTE} characters.`),
     cheque: chequeInput.nullish(),
@@ -161,10 +173,14 @@ function toDraft(r: PaymentRowPayload): PaymentDraft {
     financeAccountId: r.financeAccountId ?? null,
     amountSatang: r.amountSatang,
     note: r.note ?? "",
-    whtIncomeType: r.whtIncomeType ? toWhtIncomeType(r.whtIncomeType) : null,
+    whtIncomeType: r.whtIncomeType ? toWhtIncomeType(r.whtIncomeType) : (whtParentOf(r.whtIncomeCode) as PaymentDraft["whtIncomeType"]),
     whtRateBp: r.whtRateBp ?? null,
     whtAmountSatang: r.whtAmountSatang ?? 0,
     feeSatang: r.feeSatang ?? 0,
+    whtIncomeCode: r.whtIncomeCode ?? null,
+    whtChannel: r.whtChannel ?? "NORMAL",
+    whtCondition: r.whtCondition ?? "WITHHOLD",
+    ewhtRef: r.ewhtRef ?? null,
     cheque: r.cheque
       ? { chequeNo: r.cheque.chequeNo, bankName: r.cheque.bankName, chequeDate: r.cheque.chequeDate }
       : null,

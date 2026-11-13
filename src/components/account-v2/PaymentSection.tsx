@@ -5,6 +5,9 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { DateInput } from "./DateInput";
 import { MoneyInput } from "./MoneyInput";
 import { WHT_TYPE_OPTIONS } from "./doc-editor-types";
+import { evaluateWhtRow, type WhtPanelContext } from "@/lib/modules/account/wht-panel";
+import { grossUp, instalmentWhtBase, whtForCash, whtOf } from "@/lib/modules/account/wht-calc";
+import { WHT_CONDITION_LABEL_TH, WHT_GROSS_UP_FORMULA_LABEL_TH, type WhtCondition } from "@/lib/core/settings/legal/th-tax-2569";
 
 // ─────────────────────────────────────────────────────────────
 // PaymentSection — ส่วน F ของ DESIGN-SPEC-V2 §5.2 "รับชำระเงิน / บันทึกจ่าย"
@@ -35,7 +38,20 @@ export type PayBox = {
   chequeNo: string;
   bankName: string;
   chequeDate: string;
+  /** ACC T3.7 ▸ นำส่งผ่าน e-WHT (อัตราลดตามตาราง · ไม่ออก 50 ทวิ) ◂ */
+  whtEwht?: boolean;
+  ewhtRef?: string;
+  /** ACC T3.6 ▸ หัก ณ ที่จ่าย / ออกให้ตลอดไป / ออกให้ครั้งเดียว ◂ */
+  whtCondition?: WhtCondition;
 };
+
+/** ACC T3.1 ▸ อัตราตามตาราง (ตามรหัส × ผู้จ่าย × ผู้รับ × ช่องทาง ณ วันนี้) — ไม่มีอัตราคงที่ = null ◂ */
+export function tableRateOf(ctx: WhtPanelContext | null | undefined, code: string, ewht: boolean): number | null {
+  const cell = ctx?.rates[code];
+  if (!cell) return null;
+  const c = ewht ? (cell.ewht ?? cell.normal) : cell.normal;
+  return c.method === "RATE" && c.value !== null ? c.value : c.method === "NONE" ? 0 : null;
+}
 
 export type PaymentChannelOption = {
   id: string;
@@ -51,7 +67,8 @@ export const DEFAULT_PAY_WHT_TYPE = "M40_8";
 /**
  * กล่องรับ/จ่ายใหม่ · `whtSuggest` = อัตราหัก ณ ที่จ่ายแนะนำต่อประเภทเงินได้ (LegalUiOptions.whtSuggest จากตารางค่ากฎหมาย · ACC T0.2)
  */
-export function newPayBox(date: string, amountSatang: number, financeAccountId: string | null, whtSuggest: Record<string, number>): PayBox {
+export function newPayBox(date: string, amountSatang: number, financeAccountId: string | null, whtSuggest: Record<string, number>, ctx?: WhtPanelContext | null): PayBox {
+  const code = ctx?.defaultCode ?? DEFAULT_PAY_WHT_TYPE;
   return {
     key: `p${Math.random().toString(36).slice(2, 10)}`,
     paidAt: date,
@@ -59,19 +76,24 @@ export function newPayBox(date: string, amountSatang: number, financeAccountId: 
     amountSatang: Math.max(0, amountSatang),
     note: "",
     whtOn: false,
-    whtIncomeType: DEFAULT_PAY_WHT_TYPE,
-    whtRateBp: whtSuggest[DEFAULT_PAY_WHT_TYPE] ?? 0,
+    whtIncomeType: code,
+    // ACC T3.1 ▸ อัตราจากตาราง (ผู้รับของเอกสารนี้) — ไม่มีก้อน = ค่าแนะนำเดิม (ผู้รับไม่ทราบ = บริษัท) ◂
+    // ACC T3.2 ▸ บรรทัดของเอกสารติดธงอัตราเดียว = ใช้อัตรานั้น (ผู้ใช้ตั้งไว้ตอนสร้างเอกสาร) ◂
+    whtRateBp: ctx?.docRateBp ?? tableRateOf(ctx, code, false) ?? whtSuggest[code] ?? 0,
     whtAmountSatang: 0,
     feeSatang: 0,
     chequeOn: false,
     chequeNo: "",
     bankName: "",
     chequeDate: date,
+    whtEwht: false,
+    ewhtRef: "",
+    whtCondition: "WITHHOLD",
   };
 }
 
-/** ยอดที่ตัดหนี้ของกล่องหนึ่ง = เงินที่ได้รับ/จ่ายจริง + ภาษีที่ถูกหักไว้ */
-export const boxTieOff = (b: PayBox) => b.amountSatang + (b.whtOn ? b.whtAmountSatang : 0);
+/** ยอดที่ตัดหนี้ของกล่องหนึ่ง = เงินที่ได้รับ/จ่ายจริง + ภาษีที่ถูกหักไว้ (ออกภาษีให้ = เงินอย่างเดียว — ภาษีร้านออกแทน ไม่ตัดหนี้) */
+export const boxTieOff = (b: PayBox) => b.amountSatang + (b.whtOn && (b.whtCondition ?? "WITHHOLD") === "WITHHOLD" ? b.whtAmountSatang : 0);
 
 const channelLabel = (c: PaymentChannelOption) =>
   c.bankName ? `${c.bankName} ${c.name}`.trim() : c.name;
@@ -189,6 +211,7 @@ export function PaymentSection({
   docTotalLabel,
   whtSuggest,
   footer,
+  wht,
 }: {
   value: PayBox[];
   onChange: (next: PayBox[]) => void;
@@ -205,11 +228,16 @@ export function PaymentSection({
   /** ACC T0.2 ▸ อัตราหัก ณ ที่จ่ายแนะนำต่อประเภทเงินได้ (ตารางค่ากฎหมาย + นโยบายร้าน) — เดิมฝังใน WHT_TYPE_OPTIONS ◂ */
   whtSuggest: Record<string, number>;
   footer?: React.ReactNode;
+  /** ACC T3 ▸ ก้อนหัก ณ ที่จ่ายของเอกสารที่บันทึกแล้ว (แผงรับ/จ่าย) — ไม่มี = ฟอร์มสร้างเอกสาร (ฐานจาก whtBaseSatang) ◂ */
+  wht?: WhtPanelContext | null;
 }) {
   const t = useMemo(() => textsFor(direction, "WTI"), [direction]);
   const paidSum = value.reduce((s, b) => s + b.amountSatang, 0);
   const whtSum = value.reduce((s, b) => s + (b.whtOn ? b.whtAmountSatang : 0), 0);
-  const outstanding = Math.max(0, docTotalSatang - alreadyPaidSatang - paidSum - whtSum);
+  const tieSum = value.reduce((s, b) => s + boxTieOff(b), 0);
+  const outstanding = Math.max(0, docTotalSatang - alreadyPaidSatang - tieSum);
+  const ctx = wht ?? null;
+  const shopPays = direction === "IN";
 
   const patch = (key: string, p: Partial<PayBox>) => onChange(value.map((b) => (b.key === key ? { ...b, ...p } : b)));
 
@@ -223,28 +251,40 @@ export function PaymentSection({
     return Math.max(0, docTotalSatang - used);
   };
 
-  const setWhtOn = (b: PayBox, on: boolean) => {
-    if (!on) {
-      patch(b.key, { whtOn: false, whtAmountSatang: 0, amountSatang: remainingBefore(b.key) });
-      return;
+  /** ACC T3.2 ▸ ฐานของงวดตามยอดตัดหนี้ (สัดส่วนสะสม · ก่อน VAT เฉพาะรายการที่หัก) — ไม่มีก้อน = ฐานทั้งใบ (ฟอร์มสร้างเอกสาร) */
+  const paidBeforeOf = (key: string) => docTotalSatang - remainingBefore(key);
+  const baseFor = (key: string, tieOff: number) =>
+    ctx ? instalmentWhtBase(ctx.base.full, ctx.grandTotal, paidBeforeOf(key), tieOff) : docTotalSatang > 0 ? Math.round((whtBaseSatang * Math.min(tieOff, docTotalSatang)) / docTotalSatang) : 0;
+
+  /** คิดภาษี/เงินจริงของกล่องใหม่ทั้งก้อน (ยอดค้างที่เหลือ) ตามโหมด — หัก ณ ที่จ่าย: เงินจริง = ค้าง − ภาษี · ออกภาษีให้: เงินจริง = ค้าง · ภาษีตามสูตร */
+  const settle = (b: PayBox, p: Partial<PayBox>): Partial<PayBox> => {
+    const n = { ...b, ...p };
+    if (!n.whtOn) return { ...p, whtAmountSatang: 0, amountSatang: remainingBefore(b.key) };
+    const remain = remainingBefore(b.key);
+    const cond = n.whtCondition ?? "WITHHOLD";
+    if (cond !== "WITHHOLD" && ctx) {
+      const net = baseFor(b.key, remain);
+      const f = cond === "PAY_ONCE" ? ctx.settings.grossUpOnce : ctx.settings.grossUpAlways;
+      return { ...p, whtAmountSatang: grossUp(net, n.whtRateBp, f).tax, amountSatang: remain };
     }
-    // ค่าเริ่มต้น = ฐานเงินได้ก่อน VAT × อัตรา (แก้เองได้) · เงินที่ได้รับจริงลดลงเท่ากับภาษีที่ถูกหัก
-    const wht = Math.round((whtBaseSatang * b.whtRateBp) / 10000);
-    patch(b.key, { whtOn: true, whtAmountSatang: wht, amountSatang: Math.max(0, remainingBefore(b.key) - wht) });
+    const wht = whtOf(baseFor(b.key, remain), n.whtRateBp);
+    return { ...p, whtAmountSatang: wht, amountSatang: Math.max(0, remain - wht) };
   };
 
-  const setWhtAmount = (b: PayBox, wht: number) =>
-    patch(b.key, { whtAmountSatang: wht, amountSatang: Math.max(0, remainingBefore(b.key) - wht) });
+  const setWhtOn = (b: PayBox, on: boolean) => patch(b.key, settle(b, { whtOn: on }));
 
-  const setWhtType = (b: PayBox, incomeType: string) => {
-    const rate = whtSuggest[incomeType] ?? b.whtRateBp;
-    const wht = Math.round((whtBaseSatang * rate) / 10000);
-    patch(b.key, {
-      whtIncomeType: incomeType,
-      whtRateBp: rate,
-      whtAmountSatang: wht,
-      amountSatang: Math.max(0, remainingBefore(b.key) - wht),
-    });
+  const setWhtAmount = (b: PayBox, wht: number) =>
+    patch(b.key, (b.whtCondition ?? "WITHHOLD") === "WITHHOLD" ? { whtAmountSatang: wht, amountSatang: Math.max(0, remainingBefore(b.key) - wht) } : { whtAmountSatang: wht });
+
+  const rateOf = (code: string, ewht: boolean, fallback: number) => tableRateOf(ctx, code, ewht) ?? whtSuggest[code] ?? fallback;
+
+  const setWhtType = (b: PayBox, incomeType: string) => patch(b.key, settle(b, { whtIncomeType: incomeType, whtRateBp: rateOf(incomeType, !!b.whtEwht, b.whtRateBp) }));
+
+  /** ACC T3.2 (F6) ▸ แก้ "จำนวนเงินจ่ายจริง" = จ่ายบางส่วน ⇒ ภาษีคิดใหม่ตามฐานของงวดนั้น (เดิมคงภาษีเต็มใบ) */
+  const setAmount = (b: PayBox, cash: number) => {
+    if (!b.whtOn || !ctx || (b.whtCondition ?? "WITHHOLD") !== "WITHHOLD") return patch(b.key, { amountSatang: cash });
+    const r = whtForCash(cash, b.whtRateBp, ctx.base.full, ctx.grandTotal, paidBeforeOf(b.key));
+    patch(b.key, { amountSatang: cash, whtAmountSatang: r.wht });
   };
 
   const addBox = () => {
@@ -252,7 +292,7 @@ export function PaymentSection({
     const date = last?.paidAt ?? new Date().toISOString().slice(0, 10);
     let used = alreadyPaidSatang;
     for (const b of value) used += boxTieOff(b);
-    onChange([...value, newPayBox(date, Math.max(0, docTotalSatang - used), last?.financeAccountId ?? channels[0]?.id ?? null, whtSuggest)]);
+    onChange([...value, newPayBox(date, Math.max(0, docTotalSatang - used), last?.financeAccountId ?? channels[0]?.id ?? null, whtSuggest, ctx)]);
   };
 
   return (
@@ -323,7 +363,7 @@ export function PaymentSection({
               <Field label={b.whtOn ? t.amountWithWhtLabel : t.amountLabel}>
                 <MoneyInput
                   value={b.amountSatang}
-                  onChangeSatang={(satang) => patch(b.key, { amountSatang: satang })}
+                  onChangeSatang={(satang) => setAmount(b, satang)}
                   testId={`pay-amount-${i + 1}`}
                 />
               </Field>
@@ -358,7 +398,7 @@ export function PaymentSection({
                           onChange={(e) => setWhtType(b, e.target.value)}
                           data-testid={`pay-wht-type-${i + 1}`}
                         >
-                          {WHT_TYPE_OPTIONS.map((o) => (
+                          {(ctx ? ctx.codes.map((c) => ({ value: c.code, label: c.label })) : WHT_TYPE_OPTIONS).map((o) => (
                             <option key={o.value} value={o.value}>
                               {o.label}
                             </option>
@@ -374,13 +414,9 @@ export function PaymentSection({
                           step="0.01"
                           value={b.whtRateBp / 100}
                           onChange={(e) => {
+                            // ACC T3.1 ▸ อัตราเป็นค่าเริ่มที่ผู้ใช้เปลี่ยนได้ — ต่างจากตาราง = คำเตือน WHT_RATE_DIFFERS_FROM_TABLE (ไม่บล็อก) ◂
                             const rate = Math.round(Number(e.target.value || 0) * 100);
-                            const wht = Math.round((whtBaseSatang * rate) / 10000);
-                            patch(b.key, {
-                              whtRateBp: rate,
-                              whtAmountSatang: wht,
-                              amountSatang: Math.max(0, remainingBefore(b.key) - wht),
-                            });
+                            patch(b.key, settle(b, { whtRateBp: rate }));
                           }}
                           data-testid={`pay-wht-rate-${i + 1}`}
                         />
@@ -393,6 +429,37 @@ export function PaymentSection({
                         />
                       </Field>
                     </>
+                  )}
+                  {b.whtOn && ctx && shopPays && (
+                    <Field label="เงื่อนไข" className="w-[170px]">
+                      <select
+                        className="input"
+                        value={b.whtCondition ?? "WITHHOLD"}
+                        onChange={(e) => patch(b.key, settle(b, { whtCondition: e.target.value as WhtCondition }))}
+                        data-testid={`pay-wht-condition-${i + 1}`}
+                      >
+                        {(["WITHHOLD", "PAY_ALWAYS", "PAY_ONCE"] as const).map((c) => (
+                          <option key={c} value={c}>
+                            {WHT_CONDITION_LABEL_TH[c]}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                  {b.whtOn && ctx && shopPays && ctx.settings.ewhtEnabled && (
+                    <span className="pb-2.5">
+                      <Toggle
+                        checked={!!b.whtEwht}
+                        onChange={(v) => patch(b.key, settle(b, { whtEwht: v, whtRateBp: rateOf(b.whtIncomeType, v, b.whtRateBp) }))}
+                        label="นำส่งผ่าน e-WHT"
+                        testId={`pay-wht-ewht-${i + 1}`}
+                      />
+                    </span>
+                  )}
+                  {b.whtOn && b.whtEwht && (
+                    <Field label="เลขอ้างอิงธนาคาร (e-WHT)" className="w-[190px]">
+                      <input className="input" maxLength={60} value={b.ewhtRef ?? ""} onChange={(e) => patch(b.key, { ewhtRef: e.target.value })} data-testid={`pay-wht-ewht-ref-${i + 1}`} />
+                    </Field>
                   )}
                   <Field label="ค่าธรรมเนียมธนาคาร" className="w-[170px]">
                     <MoneyInput
@@ -410,6 +477,10 @@ export function PaymentSection({
                     />
                   </span>
                 </div>
+
+                {ctx && (b.whtOn || (shopPays && (ctx.agent || ctx.recipient === "FOREIGN"))) && (
+                  <WhtInfo ctx={ctx} box={b} index={i + 1} tieOff={boxTieOff(b)} paidBefore={paidBeforeOf(b.key)} shopPays={shopPays} />
+                )}
 
                 {b.chequeOn && (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -448,7 +519,7 @@ export function PaymentSection({
                   </b>
                 </div>
 
-                {b.whtOn && b.whtAmountSatang > 0 && (
+                {b.whtOn && b.whtAmountSatang > 0 && !b.whtEwht && !(ctx?.agent && shopPays) && (
                   <div
                     className="flex items-center gap-2 self-start rounded-lg px-2 py-1 text-xs"
                     style={{ background: "var(--color-surface-2)", color: "var(--color-accent)" }}
@@ -485,6 +556,62 @@ export function PaymentSection({
       </div>
 
       {footer}
+    </div>
+  );
+}
+
+/**
+ * ACC T3 ▸ ข้อมูลหัก ณ ที่จ่ายของกล่อง: ผู้จ่าย/ผู้รับ · อัตราตามตาราง + ที่มา · ฐานของงวด · คำเตือน (พรีวิวตัวเดียวกับที่เซิร์ฟเวอร์ใช้ตอนบันทึก)
+ */
+function WhtInfo({ ctx, box, index, tieOff, paidBefore, shopPays }: { ctx: WhtPanelContext; box: PayBox; index: number; tieOff: number; paidBefore: number; shopPays: boolean }) {
+  const cond = box.whtCondition ?? "WITHHOLD";
+  const ev = evaluateWhtRow(
+    ctx,
+    { code: box.whtIncomeType, rateBp: box.whtOn ? box.whtRateBp : 0, whtAmount: box.whtOn ? box.whtAmountSatang : 0, cash: box.amountSatang, fee: box.feeSatang, channel: box.whtEwht ? "EWHT" : "NORMAL", condition: cond, ewhtRef: box.ewhtRef },
+    paidBefore,
+  );
+  const cell = ctx.rates[box.whtIncomeType];
+  const tc = box.whtEwht ? (cell?.ewht ?? cell?.normal) : cell?.normal;
+  const tableTxt = !tc ? "ไม่มีแถว" : tc.method === "RATE" ? (tc.value === null ? "-" : `${tc.value / 100}%`) : tc.method === "NONE" ? "ไม่ต้องหัก" : "อัตราก้าวหน้า (กรอกเอง)";
+  const formula = cond === "PAY_ONCE" ? ctx.settings.grossUpOnce : ctx.settings.grossUpAlways;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--color-surface-2)" }} data-testid={`pay-wht-info-${index}`}>
+      <div className="text-[color:var(--color-muted)]">
+        {shopPays ? "ผู้จ่าย (ร้าน)" : "ผู้จ่าย (ลูกค้า)"}: <b>{ctx.payerLabel}</b> · ผู้รับ: <b>{ctx.recipientLabel}</b>
+        {ctx.recipientAssumed ? " (ไม่ทราบ — ถือว่าเป็นบริษัท)" : ""}
+        {box.whtOn && (
+          <>
+            {" "}· อัตราตามตาราง: <b data-testid={`pay-wht-table-rate-${index}`}>{tableTxt}</b>
+            {tc?.tag ? ` [${tc.tag}]` : ""}
+            {box.whtEwht && tc?.to ? ` (e-WHT ถึง ${tc.to})` : ""}
+          </>
+        )}
+      </div>
+      {box.whtOn && (
+        <div className="text-[color:var(--color-muted)]">
+          ฐานงวดนี้ (ก่อน VAT · เฉพาะรายการที่หัก){cond !== "WITHHOLD" ? " ก่อนบวกภาษีที่ออกแทน" : ""}:{" "}
+          <b className="tabular-nums" data-testid={`pay-wht-base-${index}`}>
+            <MoneyText satang={cond !== "WITHHOLD" ? ev.base - box.whtAmountSatang : ev.base} decimals />
+          </b>
+          {ctx.base.goodsExcluded > 0 ? <> · ไม่นับค่าสินค้า <MoneyText satang={ctx.base.goodsExcluded} decimals /></> : null}
+          {cond !== "WITHHOLD" ? <> · สูตร {WHT_GROSS_UP_FORMULA_LABEL_TH[formula]} · เงินได้บน 50 ทวิ <MoneyText satang={ev.base} decimals /></> : null}
+          {` · ยอดตัดหนี้ `}
+          <MoneyText satang={tieOff} decimals />
+        </div>
+      )}
+      {ctx.agent && shopPays && (
+        <div data-testid={`pay-wht-agent-${index}`}>ผู้ขายรายนี้เป็น “ตัวแทนหักภาษี” — ผู้ขายหักและนำส่งแทนร้าน ระบบจะไม่ออก 50 ทวิ</div>
+      )}
+      {ev.warnings.length > 0 && (
+        <ul className="flex flex-col gap-1" data-testid={`pay-wht-warnings-${index}`}>
+          {ev.warnings.map((w) => (
+            <li key={w.code} style={{ color: w.ack ? "var(--color-danger)" : "var(--color-ink)" }} data-testid={`pay-wht-warning-${w.code}`}>
+              ⚠ {w.messageTh}
+              {w.citation ? <span className="text-[color:var(--color-muted)]"> (อ้างอิง: {w.citation})</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -50,7 +50,7 @@ function normalizePhoneInput(phone: string | null | undefined): string | null | 
 
 /** แถวผู้ติดต่อของ REST write ops — B2 row + ฟิลด์ที่ modal เขียนได้แต่ B2 (รายการ) ไม่ต้องแสดง */
 function contactWriteRow(d: ContactDetail) {
-  return { ...contactRow(d), address: d.address, creditTermDays: d.creditTermDays, note: d.note };
+  return { ...contactRow(d), address: d.address, creditTermDays: d.creditTermDays, note: d.note, whtRecipient: d.whtRecipient ?? null, whtAgent: d.whtAgent ?? false };
 }
 
 // ── ตัวช่วยร่วม ─────────────────────────────────────────────────────────────
@@ -121,6 +121,12 @@ const contactFields = {
   note: z.string().max(2000).nullish(),
   code: z.string().max(20).nullish().describe('Contact number, e.g. "C00019". Omit to let the book assign the next one.'),
   groupIds: z.array(z.string().max(40)).max(50).optional().describe("Custom contact groups this contact belongs to. Replaces the whole set."),
+  // ACC T3.1/T3.6 ▸ หัก ณ ที่จ่ายของผู้รับ ◂
+  whtRecipient: z
+    .enum(["JURISTIC_TH", "INDIVIDUAL_TH", "FOUNDATION", "FOREIGN_PE", "FOREIGN"])
+    .nullish()
+    .describe("Payee type for withholding tax rates: JURISTIC_TH (Thai company/partnership), INDIVIDUAL_TH, FOUNDATION (foundation/association), FOREIGN_PE (foreign company with a permanent establishment in Thailand), FOREIGN. null = derived from legalType/country."),
+  whtAgent: z.boolean().optional().describe("The vendor is an appointed withholding agent (Director-General notification No. 457/459): it withholds and files PND53 for the shop, so the shop does not withhold or issue a 50 Tawi certificate."),
 } as const;
 
 const contactsCreateInput = z.object(contactFields).strict();
@@ -177,6 +183,8 @@ const contactsCreate = defineOp({
       ...(input.website !== undefined ? { website: input.website } : {}),
       ...(input.lineId !== undefined ? { lineId: input.lineId } : {}),
       ...(input.contactPerson !== undefined ? { contactPerson: input.contactPerson } : {}),
+      ...(input.whtRecipient !== undefined ? { whtRecipient: input.whtRecipient } : {}),
+      ...(input.whtAgent !== undefined ? { whtAgent: input.whtAgent } : {}),
       ...addressFieldsOf(input.address),
     });
     if (input.groupIds && input.groupIds.length > 0) {
@@ -234,6 +242,8 @@ const contactsUpdate = defineOp({
       ...(input.website !== undefined ? { website: input.website } : {}),
       ...(input.lineId !== undefined ? { lineId: input.lineId } : {}),
       ...(input.contactPerson !== undefined ? { contactPerson: input.contactPerson } : {}),
+      ...(input.whtRecipient !== undefined ? { whtRecipient: input.whtRecipient } : {}),
+      ...(input.whtAgent !== undefined ? { whtAgent: input.whtAgent } : {}),
       ...addressFieldsOf(input.address),
     });
     if (input.groupIds) await setContactGroups({ tenantId, systemId } satisfies Ctx, id, input.groupIds);

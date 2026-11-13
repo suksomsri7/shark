@@ -24,6 +24,8 @@ import {
   WHT_PAYER_LABEL_TH,
   WHT_RECIPIENTS,
   WHT_RECIPIENT_LABEL_TH,
+  WHT_GROSS_UP_FORMULAS,
+  WHT_GROSS_UP_FORMULA_LABEL_TH,
 } from "../legal/th-tax-2569";
 
 const EDIT = "account.settings.manage";
@@ -167,9 +169,35 @@ const DEFS: SettingDef[] = [
     defaults: { _fallback: "CARRY_FORWARD" },
     chain: CHAIN, editPermission: EDIT,
   },
+  // ── ACC T3.6 · T3.7 ▸ หัก ณ ที่จ่าย ──
+  {
+    // skill common-withholding-tax §6/§14 [V]: อัตราลด e-WHT ใช้เฉพาะรายการที่นำส่งผ่านระบบ e-WHT ของธนาคาร · ค่าเริ่ม "ปิด · ร้านเปิดเอง" (SKILL.md สรุป) ◂
+    key: "account.wht.ewhtEnabled", domain: "account", group: "wht", type: "bool", labelTh: "ใช้ e-Withholding Tax",
+    helpTh: "เปิดเมื่อร้านนำส่งภาษีหัก ณ ที่จ่ายผ่านระบบ e-WHT ของธนาคาร — แผงจ่ายจะมีตัวเลือก \"นำส่งผ่าน e-WHT\" ใช้อัตราลดตามตาราง (มีวันหมดอายุ) และไม่ออก 50 ทวิ",
+    schema: z.boolean(),
+    defaults: { _fallback: false },
+    chain: CHAIN, editPermission: EDIT,
+  },
+  {
+    // skill §13: สูตรทางการไม่พบ [U] · สูตรในวงการ [V2] เป็นค่าเริ่ม — ร้านเลือกได้ (ค่าตั้ง + คำเตือน WHT_GROSS_UP) ◂
+    key: "account.wht.grossUpAlways", domain: "account", group: "wht", type: "enum", labelTh: "สูตรออกภาษีให้ตลอดไป",
+    helpTh: "ใช้เมื่อเลือกเงื่อนไข \"ออกให้ตลอดไป\" ในแผงจ่าย — กรมสรรพากรไม่มีสูตรทางการ โปรดตรวจกับนักบัญชีของร้าน",
+    schema: z.enum(WHT_GROSS_UP_FORMULAS),
+    enumLabelsTh: WHT_GROSS_UP_FORMULA_LABEL_TH,
+    defaults: { _fallback: "GROSS_UP_CONVERGED" },
+    chain: CHAIN, editPermission: EDIT,
+  },
+  {
+    key: "account.wht.grossUpOnce", domain: "account", group: "wht", type: "enum", labelTh: "สูตรออกภาษีให้ครั้งเดียว",
+    helpTh: "ใช้เมื่อเลือกเงื่อนไข \"ออกให้ครั้งเดียว\" ในแผงจ่าย — กรมสรรพากรไม่มีสูตรทางการ โปรดตรวจกับนักบัญชีของร้าน",
+    schema: z.enum(WHT_GROSS_UP_FORMULAS),
+    enumLabelsTh: WHT_GROSS_UP_FORMULA_LABEL_TH,
+    defaults: { _fallback: "GROSS_UP_ONE_STEP" },
+    chain: CHAIN, editPermission: EDIT,
+  },
 ];
 
-defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน" } });
+defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน", wht: "หัก ณ ที่จ่าย" } });
 
 export const ACCOUNT_SETTING_KEYS = {
   entityKind: "account.entity.kind",
@@ -178,4 +206,7 @@ export const ACCOUNT_SETTING_KEYS = {
   deadline: "account.legal.filingDeadlines",
   salesTaxAbbMode: "account.report.salesTaxAbbMode",
   pp30ExcessChoice: "account.report.pp30ExcessChoice",
+  ewhtEnabled: "account.wht.ewhtEnabled",
+  grossUpAlways: "account.wht.grossUpAlways",
+  grossUpOnce: "account.wht.grossUpOnce",
 } as const;

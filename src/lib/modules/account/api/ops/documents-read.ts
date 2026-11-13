@@ -17,6 +17,10 @@ import { z } from "zod";
 import { dayKeyBkk, dashboardSnapshot, monthEndExclusive, monthlySeries } from "../../dashboard";
 import { issuableDocTypes } from "../../dashboard-home";
 import { getDocDetailData } from "../../doc-detail";
+import { whtPanelContextFrom } from "../../wht-context"; // ACC T3 ◂
+import { instalmentWhtBase } from "../../wht-calc";
+import { loadBookLegal } from "../../legal-values";
+import { accountNow } from "../../clock";
 import { issueLegalWarnings, saleWithoutVatWarnings } from "../../legal-gate"; // ACC T2.1 ◂
 import { sideOf } from "../../doc-editor-config";
 import { ERR } from "../../errors";
@@ -27,6 +31,7 @@ import { parseQuickCreateQuery } from "../../quick-create-parse";
 import {
   computeListTabCounts,
   depositSettlePreview,
+  whtDocContext, // ACC T3 ◂
   getDocFavorites,
   getDocRef,
   getRecurringRule,
@@ -483,6 +488,47 @@ const documentsLegalWarnings = defineOp({
   },
 });
 
+// ═══════════════ ACC T3.1 · T3.2 · T3.6 · T3.7 หัก ณ ที่จ่ายของเอกสาร ═══════════════
+const documentsWhtContext = defineOp({
+  id: "documents.wht-context",
+  method: "GET",
+  path: "/documents/{id}/wht-context",
+  kind: "read",
+  action: "account.doc.view",
+  summary:
+    "Withholding tax facts for paying or receiving this document: payer status (from the book's entity kind) and payee type (from the contact), the rate of every income type from the legal value table for that payer x payee x channel today (normal and e-WHT, with source, tag and expiry), the withholding base of the whole document (before VAT, only the lines that are withheld; goods lines excluded), what has been settled, the 1,000 baht per contract minimum, the gross-up formulas and whether the vendor is a withholding agent. Defaults from research, not legal advice.",
+  label: "ข้อมูลหัก ณ ที่จ่ายของเอกสาร",
+  tool: {
+    name: "account_wht_context",
+    hint: "Read before proposing account_record_payment with withholding tax: pick whtIncomeCode, take the table rate for the payee, compute the tax on the instalment base (before VAT). Quote the source/tag; a rate different from the table is allowed but say so.",
+  },
+  input: noQuery,
+  test: "T3-API.1",
+  async handler({ actor, params }) {
+    const d = await whtDocContext(actor.tenantId, actor.systemId, params.id ?? "");
+    if (!d) throw new Error(ERR.DOC_NOT_FOUND);
+    const legal = await loadBookLegal({ tenantId: actor.tenantId, systemId: actor.systemId });
+    const c = whtPanelContextFrom(legal, d, accountNow(), d.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS");
+    const cell = (x: { value: number | null; method: string; source: string | null; tag: string | null; to: string | null } | null) => (x ? { rateBp: x.value, method: x.method, source: x.source, tag: x.tag, until: x.to } : null);
+    return {
+      documentId: d.id,
+      side: c.side,
+      asOf: c.asOf,
+      payer: { kind: c.payer, label: c.payerLabel },
+      payee: { kind: c.recipient, label: c.recipientLabel, assumed: c.recipientAssumed, withholdingAgent: c.agent },
+      incomeTypes: c.codes.map((k) => ({ code: k.code, section: k.parent, label: k.label, normal: cell(c.rates[k.code]?.normal ?? null), ewht: cell(c.rates[k.code]?.ewht ?? null) })),
+      base: { wholeDocumentSatang: c.base.full, byLineFlags: c.base.byLineFlags, goodsExcludedSatang: c.base.goodsExcluded, beforeVatAllLinesSatang: c.base.netAll },
+      grandTotalSatang: c.grandTotal,
+      settledSatang: c.paidBefore,
+      remainingBaseSatang: instalmentWhtBase(c.base.full, c.grandTotal, c.paidBefore, Math.max(0, c.grandTotal - c.paidBefore)),
+      contractTotalSatang: c.contractTotal,
+      minimumPerContractSatang: c.minSatang,
+      minimumSource: c.minSource,
+      settings: c.settings,
+    };
+  },
+});
+
 const documentsDepositSettlement = defineOp({
   id: "documents.deposit-settlement",
   method: "GET",
@@ -516,6 +562,7 @@ const documentsDepositSettlement = defineOp({
 
 export const DOCUMENTS_READ_OPS: ApiOp[] = [
   documentsLegalWarnings,
+  documentsWhtContext,
   documentsDepositSettlement,
   documentsList,
   documentsGet,

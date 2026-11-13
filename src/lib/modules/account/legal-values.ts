@@ -37,6 +37,8 @@ import {
   WHT_METHOD_LABEL_TH,
   WHT_PAYER_LABEL_TH,
   WHT_RECIPIENT_LABEL_TH,
+  WHT_GROSS_UP_FORMULAS,
+  type WhtGrossUpFormula,
   type EntityKind,
   type FilingChannel,
   type FilingDeadlineRow,
@@ -70,7 +72,14 @@ export type { LegalUiOptions };
 export type BookLegal = {
   entityKind: EntityKind;
   shop: { vat: VatRateRow[]; wht: WhtRateRow[]; deadline: FilingDeadlineRow[] };
+  /** ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่ายของสมุด (อ่านในคิวรีเดียวกัน) · ไม่มี = ค่าเริ่ม ◂ */
+  wht?: BookWhtSettings;
 };
+
+export type BookWhtSettings = { ewhtEnabled: boolean; grossUpAlways: WhtGrossUpFormula; grossUpOnce: WhtGrossUpFormula };
+export const DEFAULT_BOOK_WHT: BookWhtSettings = { ewhtEnabled: false, grossUpAlways: "GROSS_UP_CONVERGED", grossUpOnce: "GROSS_UP_ONE_STEP" };
+const isFormula = (v: unknown): v is WhtGrossUpFormula => typeof v === "string" && (WHT_GROSS_UP_FORMULAS as readonly string[]).includes(v);
+export const bookWhtOf = (legal: BookLegal): BookWhtSettings => legal.wht ?? DEFAULT_BOOK_WHT;
 
 const KEY_OF: Record<LegalTableKind, string> = { vat: ACCOUNT_SETTING_KEYS.vat, wht: ACCOUNT_SETTING_KEYS.wht, deadline: ACCOUNT_SETTING_KEYS.deadline };
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
@@ -80,13 +89,21 @@ export const EMPTY_BOOK_LEGAL: BookLegal = { entityKind: "UNSET", shop: { vat: [
 
 /** อ่านค่าตั้งทั้ง 4 คีย์ของสมุดในคิวรีเดียว */
 export async function loadBookLegal(ctx: BookCtx): Promise<BookLegal> {
-  const r = await resolveBookSettings({ tenantId: ctx.tenantId }, [ACCOUNT_SETTING_KEYS.entityKind, KEY_OF.vat, KEY_OF.wht, KEY_OF.deadline], ctx.systemId);
+  const K = ACCOUNT_SETTING_KEYS;
+  const r = await resolveBookSettings({ tenantId: ctx.tenantId }, [K.entityKind, KEY_OF.vat, KEY_OF.wht, KEY_OF.deadline, K.ewhtEnabled, K.grossUpAlways, K.grossUpOnce], ctx.systemId);
+  const ga = r[K.grossUpAlways]?.value;
+  const go = r[K.grossUpOnce]?.value;
   return {
-    entityKind: entityKindOf({ entityKind: r[ACCOUNT_SETTING_KEYS.entityKind]?.value }),
+    entityKind: entityKindOf({ entityKind: r[K.entityKind]?.value }),
     shop: {
       vat: arr<VatRateRow>(r[KEY_OF.vat]?.value),
       wht: arr<WhtRateRow>(r[KEY_OF.wht]?.value),
       deadline: arr<FilingDeadlineRow>(r[KEY_OF.deadline]?.value),
+    },
+    wht: {
+      ewhtEnabled: r[K.ewhtEnabled]?.value === true,
+      grossUpAlways: isFormula(ga) ? ga : DEFAULT_BOOK_WHT.grossUpAlways,
+      grossUpOnce: isFormula(go) ? go : DEFAULT_BOOK_WHT.grossUpOnce,
     },
   };
 }
@@ -353,6 +370,8 @@ export type LegalRowView = {
 
 export type BookTaxView = {
   asOf: string;
+  /** ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่าย ◂ */
+  whtSettings: BookWhtSettings;
   entityKind: EntityKind;
   entityKindLabel: string;
   isJuristicPayer: boolean | null;
@@ -423,6 +442,7 @@ export function bookTaxViewFrom(legal: BookLegal, date: Date): BookTaxView {
   }
   return {
     asOf: ymd,
+    whtSettings: bookWhtOf(legal),
     entityKind: legal.entityKind,
     entityKindLabel: ENTITY_KIND_LABEL_TH[legal.entityKind],
     isJuristicPayer: isJuristicPayer(legal.entityKind),
@@ -444,6 +464,10 @@ export type BookTaxPatch = {
   vatRows?: Omit<VatRateRow, "tag">[];
   whtRows?: Omit<WhtRateRow, "tag">[];
   deadlineRows?: Omit<FilingDeadlineRow, "tag">[];
+  /** ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่าย (ส่งเฉพาะช่องที่เปลี่ยน) ◂ */
+  ewhtEnabled?: boolean;
+  grossUpAlways?: WhtGrossUpFormula;
+  grossUpOnce?: WhtGrossUpFormula;
 };
 
 export type BookTaxSaveResult = (SetResult & { warnings: LegalWarning[] });
@@ -473,7 +497,53 @@ export async function saveBookTax(actor: SettingsActor, ctx: BookCtx, patch: Boo
     for (const r of rows) warnings.push(...shopRowWarnings("deadline", r));
     push(KEY_OF.deadline, rows);
   }
+  if (patch.ewhtEnabled !== undefined) push(ACCOUNT_SETTING_KEYS.ewhtEnabled, patch.ewhtEnabled);
+  if (patch.grossUpAlways !== undefined) push(ACCOUNT_SETTING_KEYS.grossUpAlways, patch.grossUpAlways);
+  if (patch.grossUpOnce !== undefined) push(ACCOUNT_SETTING_KEYS.grossUpOnce, patch.grossUpOnce);
+  // ACC T3.6 ▸ สูตรที่ต่างจากค่าเริ่ม (สูตรในวงการ [V2]) = แจ้ง (ไม่บล็อก) · ทุกสูตรเป็น [U] (ไม่มีสูตรทางการ) ◂
+  if (patch.grossUpAlways !== undefined || patch.grossUpOnce !== undefined)
+    warnings.push(legalWarning("WHT_GROSS_UP", { condition: "ออกให้ตลอดไป/ครั้งเดียว", formula: [patch.grossUpAlways, patch.grossUpOnce].filter(Boolean).join(" · "), tax: "ตามสูตร" }));
   if (changes.length === 0) return { ok: true, saved: 0, warnings };
   const res = await setSettings(actor, { tenantId: ctx.tenantId }, changes);
   return { ...res, warnings };
+}
+
+// ═══════════════════ ACC T3.7 ▸ กำหนดยื่นที่กำลังจะถึง (จากตาราง T0.2) ═══════════════════
+
+export type UpcomingDeadline = {
+  form: FilingForm;
+  formLabel: string;
+  /** เดือนภาษี "YYYY-MM" */
+  taxMonth: string;
+  paper: { date: string; day: number; daysLeft: number; source: string; tag: string } | null;
+  online: { date: string; day: number; daysLeft: number; source: string; tag: string } | null;
+  warnings: LegalWarning[];
+};
+
+const DL_FORMS: readonly FilingForm[] = ["PP30", "PND1", "PND2", "PND3", "PND53", "PND54"];
+
+/**
+ * กำหนดยื่นของเดือนภาษีที่ยังไม่ถึงกำหนด ณ วันนี้ (เดือนก่อน · ถ้ากำหนดของเดือนก่อนผ่านแล้วทั้งกระดาษและออนไลน์ = เดือนนี้)
+ *   วันที่ทุกตัวมาจากตารางค่ากฎหมาย (filingDeadlineFrom) — หลัง 31 ม.ค. 2570 แถวออนไลน์หมดอายุ ⇒ ไม่มีวันออนไลน์ (skill ให้ค้นซ้ำ)
+ */
+export function upcomingDeadlinesFrom(legal: BookLegal, today: Date, forms: readonly FilingForm[] = DL_FORMS): UpcomingDeadline[] {
+  const ymd = bkkYmd(today);
+  const t0 = Date.parse(`${ymd}T00:00:00Z`);
+  const [y, m] = ymd.split("-").map(Number);
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+  const cur = `${y}-${String(m).padStart(2, "0")}`;
+  const out: UpcomingDeadline[] = [];
+  for (const form of forms) {
+    let dl = filingDeadlineFrom(legal, form, prev);
+    const last = Math.max(dl.paper?.date.getTime() ?? 0, dl.online?.date.getTime() ?? 0);
+    if (last && last < t0) dl = filingDeadlineFrom(legal, form, cur);
+    const view = (x: FilingDeadline["paper"]) =>
+      x ? { date: x.date.toISOString().slice(0, 10), day: x.day, daysLeft: Math.round((x.date.getTime() - t0) / 86_400_000), source: x.row.source, tag: x.row.tag } : null;
+    out.push({ form, formLabel: FILING_FORM_LABEL_TH[form], taxMonth: dl.taxMonth, paper: view(dl.paper), online: view(dl.online), warnings: dl.warnings });
+  }
+  return out;
+}
+
+export async function upcomingDeadlines(ctx: BookCtx, today: Date = accountNow()): Promise<UpcomingDeadline[]> {
+  return upcomingDeadlinesFrom(await loadBookLegal(ctx), today);
 }

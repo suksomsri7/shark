@@ -1,6 +1,6 @@
 import { requireAccountPage } from "@/lib/modules/account/guard";
-import { bookTaxView } from "@/lib/modules/account/legal-values";
-import { saveLegalRowsAction } from "@/lib/modules/account/tax-settings-actions";
+import { bookTaxView, upcomingDeadlines } from "@/lib/modules/account/legal-values";
+import { saveLegalRowsAction, saveWhtSettingsAction } from "@/lib/modules/account/tax-settings-actions";
 import { SettingsNav } from "@/components/account-v2/SettingsNav";
 import { LegalValuesPanel } from "@/components/account-v2/LegalValuesPanel";
 
@@ -13,7 +13,7 @@ export default async function AccountTaxSettingsPage({ params }: { params: Promi
   const { id } = await params;
   const { tenantId, systemId } = await requireAccountPage(id, "account.settings.manage");
   const base = `/app/sys/${id}/account`;
-  const view = await bookTaxView({ tenantId, systemId }, new Date());
+  const [view, deadlines] = await Promise.all([bookTaxView({ tenantId, systemId }, new Date()), upcomingDeadlines({ tenantId, systemId }, new Date())]);
 
   return (
     <div className="flex max-w-[1200px] flex-col gap-4">
@@ -23,7 +23,7 @@ export default async function AccountTaxSettingsPage({ params }: { params: Promi
       <div className="flex flex-col gap-4 md:flex-row md:items-start">
         <SettingsNav base={base} activeGroup="org" activeSub="tax" />
         <div className="min-w-0 flex-1">
-          <LegalValuesPanel systemId={systemId} orgSettingsHref={`${base}/settings`} view={view} save={saveLegalRowsAction} />
+          <LegalValuesPanel systemId={systemId} orgSettingsHref={`${base}/settings`} view={view} save={saveLegalRowsAction} saveWht={saveWhtSettingsAction} deadlines={deadlines} />
         </div>
       </div>
     </div>

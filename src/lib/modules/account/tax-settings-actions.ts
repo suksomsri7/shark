@@ -42,3 +42,26 @@ export async function saveLegalRowsAction(
     return { ok: false, reason: safeReason(e, "บันทึกตารางค่ากฎหมายไม่สำเร็จ") };
   }
 }
+
+/** ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่าย (e-WHT · สูตรออกภาษีให้) — ค่าที่ไม่รู้จักถูกปฏิเสธที่ zod ของเครื่องยนต์ค่าตั้ง */
+export async function saveWhtSettingsAction(
+  systemId: string,
+  patch: { ewhtEnabled?: unknown; grossUpAlways?: unknown; grossUpOnce?: unknown },
+): Promise<{ ok: true; warnings: LegalWarning[] } | { ok: false; reason: string }> {
+  try {
+    const { auth, tenantId, userId } = await loadAccountSystem(String(systemId ?? "").slice(0, 40));
+    assertAccountCan(auth, "account.settings.manage");
+    const p: BookTaxPatch = {
+      ...(typeof patch?.ewhtEnabled === "boolean" ? { ewhtEnabled: patch.ewhtEnabled } : {}),
+      ...(typeof patch?.grossUpAlways === "string" ? { grossUpAlways: patch.grossUpAlways as BookTaxPatch["grossUpAlways"] } : {}),
+      ...(typeof patch?.grossUpOnce === "string" ? { grossUpOnce: patch.grossUpOnce as BookTaxPatch["grossUpOnce"] } : {}),
+    };
+    if (Object.keys(p).length === 0) return { ok: false, reason: "ไม่มีค่าที่เปลี่ยน" };
+    const res = await saveBookTax({ ...mc(auth), userId }, { tenantId, systemId }, p);
+    if (!res.ok) return { ok: false, reason: res.issues.map((i) => i.messageTh).join(" · ") || "บันทึกไม่สำเร็จ" };
+    revalidatePath(`/app/sys/${systemId}/account/settings/tax`);
+    return { ok: true, warnings: res.warnings };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "บันทึกค่าตั้งหัก ณ ที่จ่ายไม่สำเร็จ") };
+  }
+}

@@ -26,7 +26,7 @@ import { HELP_TEXTS } from "../../help-texts";
 import { inboxEmailAddressOf, inboxStats } from "../../inbox";
 import { getPolicy } from "../../policy";
 import { getSettings } from "../../service";
-import { bookTaxView } from "../../legal-values";
+import { bookTaxView, upcomingDeadlines } from "../../legal-values";
 import { defineOp, type ApiOp } from "../op";
 import { paged, withExtra, type PagedInfo } from "../respond";
 import {
@@ -182,6 +182,29 @@ const settingsTax = defineOp({
   },
 });
 
+// ═══════════════ ACC T3.7 กำหนดยื่นแบบที่กำลังจะถึง ═══════════════
+
+const taxDeadlines = defineOp({
+  id: "settings.tax.deadlines",
+  method: "GET",
+  path: "/settings/tax/deadlines",
+  kind: "read",
+  action: "account.doc.view",
+  summary:
+    "Upcoming filing deadlines of this book (VAT return PP30 and withholding tax returns PND1/2/3/53/54) for the tax month that is due next: paper and online dates and days left, computed from the effective-dated filing deadline table (the online extension stops by itself when its row expires).",
+  label: "กำหนดยื่นแบบที่กำลังจะถึง",
+  input: settingsTaxInput,
+  tool: {
+    name: "account_tax_deadlines",
+    hint: "Use to answer when the next VAT/withholding tax return is due. Quote the dates and the table source; online dates exist only while the extension row is in effect.",
+  },
+  test: "T3-API.2",
+  async handler({ actor, input }) {
+    const at = input.asOf ? dayStart(input.asOf) : new Date();
+    return { asOf: at.toISOString().slice(0, 10), deadlines: await upcomingDeadlines({ tenantId: actor.tenantId, systemId: actor.systemId }, at) };
+  },
+});
+
 // ═══════════════ คลังเอกสาร / กล่องขาเข้า ═══════════════
 
 const filesListInput = z
@@ -282,6 +305,7 @@ const helpGlossary = defineOp({
 
 export const SETTINGS_READ_OPS: ApiOp[] = [
   auditList,
+  taxDeadlines,
   settingsGet,
   settingsPolicy,
   settingsDocuments,
