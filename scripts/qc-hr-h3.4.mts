@@ -132,7 +132,9 @@ const H32 = existsSync(join(ROOT, F.attPay));
 
 // ═════════════════════════ statics ═════════════════════════
 // ORACLE-EDIT (H3.4 fix round 1 — file size > 60 KB): the static group S1.* moved verbatim to qc-hr-h3.4-lib.mts (runStaticH34) · same checks, same literals
-const runStatic = () => runStaticH34({ F, FROZEN, TESTIDS, BASE, H, ck, chk });
+// ORACLE-EDIT (H3.7 builder): account/gl.ts stays frozen for H3.4 except additive hunks marked "HR H3.7" (H3.7 is the one HR ticket allowed to touch gl.ts — brief H3.7 R6)
+const glH37Only = (p: string) => p === "src/lib/modules/account/gl.ts" && (() => { const hs = diffHunks(BASE, p); return !!hs && hs.length > 0 && hs.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H3\.7/.test(l))); })();
+const runStatic = () => runStaticH34({ F, FROZEN: FROZEN.filter((p) => !glH37Only(p)), TESTIDS, BASE, H, ck, chk }); // ORACLE-EDIT (H3.7 builder)
 
 // ═════════════════════════ pure ═════════════════════════
 // ORACLE-EDIT (H3.4 fix round 1 — file size): the pure groups S2.* / S3.* moved verbatim to qc-hr-h3.4-lib.mts (runPureH34) · same vectors, same checks
@@ -198,7 +200,7 @@ async function runDb(): Promise<void> {
   const u2 = await fx.newUnit(TT, `สาขาใต้ ${tag}`, "u2");
   const sys = async (n: string, t = TT) => (await sysSvc.createSystem(t, "HR", `${n} ${tag}`)).id as string;
   const [sA, sB, sV, sO] = [await sys("ทีม A"), await sys("ทีม B"), await sys("ทีม V1"), await sys("ทีมอื่น", T2)];
-  await sysSvc.createSystem(TT, "ACCOUNT", `บัญชี ${tag}`);
+  const ACCT34 = (await sysSvc.createSystem(TT, "ACCOUNT", `บัญชี ${tag}`)).id as string; // ORACLE-EDIT (H3.7 builder): keep the book id — H3.7 posts only into the book linked to the HR system (no "first ACCOUNT system")
   const [cA, cB, cV, cO] = [{ tenantId: TT, systemId: sA }, { tenantId: TT, systemId: sB }, { tenantId: TT, systemId: sV }, { tenantId: T2, systemId: sO }];
   const PK = { "hr.payroll.read": true, "hr.payroll.create": true, "hr.payroll.approve": true, "hr.payroll.pay": true, "hr.payroll.reverse": true, "hr.payadjust.request": true, "hr.payadjust.approve": true };
   const mk = (t: string, r: Who["role"], ua: string[], p: Record<string, boolean>, tid = TT) => fx.mkUser(tid, t, `QC34 ${t} ${tag}`, r, ua, p);
@@ -208,6 +210,10 @@ async function runDb(): Promise<void> {
     self: await mk("self", "STAFF", [], {}), other: await mk("other", "OWNER", [], {}, T2),
   };
   const V = Object.fromEntries(Object.entries(U).map(([k, w]) => [k, vOf(w)])) as Record<keyof typeof U, Any>;
+  // ORACLE-EDIT (H3.7 builder · brief H3.7 §6): the JV assertions of system A (S4.10 · S4.15) need the explicit HR→ACCOUNT link (H3.7 R3) ·
+  //   a BANK money account of that book for the pay entry (markPaidRun · S4.11 / S4.15) — no literal of H3.4 changes except S4.10's JV total (see there)
+  if (typeof (pay as Any)?.setPayrollBook === "function") await PY("setPayrollBook", { tenantId: TT, systemId: sA }, V.owner, { accountSystemId: ACCT34 });
+  const FIN34 = ((await P.accountFinance.create({ data: { tenantId: TT, systemId: ACCT34, type: "BANK", name: `QC34 ธนาคาร ${tag}`, ledgerAccountId: (await P.accountLedger.findFirst({ where: { systemId: ACCT34, code: "1010" } }))?.id ?? null } })) as Any).id as string; // ORACLE-EDIT (H3.7 builder)
   const A = Object.fromEntries(Object.entries(U).map(([k, w]) => [k, { userId: w.id, isOwner: w.role === "OWNER" }])) as Record<keyof typeof U, Any>;
   const me = (s: string, n: string, o: Record<string, unknown> = {}, tid = TT) => fx.mkEmp(tid, s, `${n} ${tag}`, { startDate: "2030-01-01", ...o } as Any);
   const E = {
@@ -393,13 +399,18 @@ async function runDb(): Promise<void> {
     const carry = (await rows(`SELECT kind::text AS k, "amountSatang" AS a, "periodKey" AS p, status::text AS s, "employeeId" AS e, "sourceRef" AS r FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD' ORDER BY "amountSatang"`, sA))
       .map((c: Any) => `${c.e === E.mA ? "mA" : c.e === E.eC ? "eC" : "?"}:${c.k}:${c.a}:${c.p}:${c.s}:${String(c.r).startsWith(`cf:${RS}:`)}`);
     const r = {
-      one: res.filter((x) => x.ok).length === 1, run: run?.status === "APPROVED" && run?.approvedById === U.owner.id, jv: dr === 12509167 && cr === 12509167,
+      // ORACLE-EDIT (H3.7 builder): the approve entry is now the ACCRUAL (design H3.7 §2), no longer the one-step JV (gross + employer SSO = 12,299,167 + 210,000 = 12,509,167).
+      //   Accrual Σdr = salary expense (Σ lines 12,299,167 + advances 665,000 + claims 327,500 − refund 50,000 = 13,241,667) + employer SSO 210,000 + refund 50,000 = 13,501,667
+      //   = Σcr net 12,027,709 + SSO 420,000 + WHT 61,458 + advances 665,000 (1140) + damages 327,500 (4900) = 13,501,667 ⇒ 12,509,167 → 13,501,667 (= old + 665,000 + 327,500)
+      one: res.filter((x) => x.ok).length === 1, run: run?.status === "APPROVED" && run?.approvedById === U.owner.id, jv: dr === 13501667 && cr === 13501667,
       days: Number(unbound[0]?.n ?? -1) === 0, carry: canon(carry) === canon(["eC:ADVANCE:235000:2031-10:APPROVED:true", "mA:DEDUCTION:372500:2031-10:APPROVED:true"]),
     };
     ck("S4.10", r, "1 ok · JV · carry", `${res.map(shown).join(" ")} dr=${dr} carry=${carry.join(",")}`);
   }
   {
-    const pr = await Promise.all([0, 1].map(() => PY("markPaid", cA, RS ?? "∅")));
+    // ORACLE-EDIT (H3.7 builder): a run posted in a book is paid through markPaidRun (pay entry Dr 2120 / Cr bank) — markPaid of a booked v2 run now
+    //   delegates there and needs a pay account + a pay date inside the wage month (2031 fixture ⇒ `now` injected); "exactly one PAID" unchanged
+    const pr = await Promise.all([0, 1].map(() => PY("markPaidRun", cA, RS ?? "∅", { financeAccountId: FIN34, paidOn: "2031-09-30", now: N_OCT1 })));
     ck("S4.11", { one: pr.filter((x) => x.ok).length === 1, paid: (await runRow(RS))?.status === "PAID" }, "1 ok · PAID", pr.map(shown).join(" "));
   }
   {
@@ -431,7 +442,7 @@ async function runDb(): Promise<void> {
   }
   {
     const ap = await approve(cA, RO_, A.pay3);
-    const pd = await PY("markPaid", cA, RO_ ?? "∅");
+    const pd = await PY("markPaidRun", cA, RO_ ?? "∅", { financeAccountId: FIN34, paidOn: "2031-10-31", now: N_NOV1 }); // ORACLE-EDIT (H3.7 builder): as S4.11 (booked run ⇒ pay entry)
     const r1 = await PY("reverseRun", cA, RO_ ?? "∅", "qc", A.owner);
     const r2 = await PY("reverseRun", cA, RS ?? "∅", "qc", A.owner);
     const [s1, s2] = [await runRow(RS), await runRow(RO_)];

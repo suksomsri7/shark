@@ -2922,6 +2922,7 @@ async function runFinalizedInTx(db: Pick<Prisma.TransactionClient, "$queryRaw">,
 }
 /** fix r3 H1: จ่ายรอบรุ่น 2 — ล็อกงวด → อ่านสถานะ + ธงปิดงานซ้ำใต้ล็อก (อนุมัติแล้วแต่ยังไม่ปิดงาน ⇒ ปฏิเสธ "กำลังลงบัญชี") → APPROVED→PAID + event เดียวกับรุ่น 1 */
 async function markPaidV2(ctx: Ctx, runId: string): Promise<{ ok: boolean; note: string }> {
+  { const bk = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { accountSystemId: true } }); if (bk?.accountSystemId) return markPaidRun(ctx, runId); } // HR H3.7 ▸ รอบที่ลงบัญชีในสมุดแล้ว ห้ามเป็น "จ่ายแล้ว" โดยไม่มีรายการจ่าย — ทางเดียว = markPaidRun (บัญชีจ่ายที่ตั้งไว้ · วันนี้) ◂
   const out = await tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
     const per = await tx.hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });

@@ -87,6 +87,8 @@ S4.20|R8|C|G|[db] [control] v1 golden: v1 run in a linked shop ⇒ one-step JV (
 S4.21|R6|C|R|[db] scoping: every hr-payroll entry/line in T1 · entry book = run.accountSystemId · T2/T3 books have none
 S4.22|R1 R5|M|R|[db] audits: approve after {accountSystemId, journalEntryId} · reverse after {reversalEntryIds ×2}
 S4.23|R3|C|R|[db] stored figures inconsistent (Σ lines ≠ gross) ⇒ approve INCONSISTENT · DRAFT · no entry
+S4.25|Q2|C|R|[db] (ORACLE-EDIT H3.7 builder · controller ruling Q2) v1 orphan closed: a keyed v1 JV already posted for the run (approve posted, link failed) ⇒ approveRun links THAT entry (one live entry) · figures changed meanwhile ⇒ new entry linked + the stale one reversed once
+S4.24|R1|C|R|[db] (ORACLE-EDIT H3.7 builder · controller ruling H3.5/H3.6) bank file (CSV GENERIC) of a v2-accounting run = Cr "net salaries payable" of its accrual = run net · PAID D and APPROVED-unpaid F2 (accrual only) both exportable
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -293,6 +295,7 @@ const CONN = (await import("@/lib/modules/account/connections" as string).catch(
 const POLICY = (await import("@/lib/modules/account/policy" as string).catch(() => null)) as Any;
 const PAY = (await import("@/lib/modules/hr/payroll" as string)) as Any;
 const SYS = (await import("@/lib/modules/system/service" as string)) as Any;
+const BANK = (await import("@/lib/modules/hr/bank-files/service" as string).catch(() => null)) as Any; // ORACLE-EDIT (H3.7 builder): S4.24 bank file total
 const HRSVC = (await import("@/lib/modules/hr/service" as string)) as Any;
 console.log(`modules: pure ${modState(PURE, F.pure)} · account ${ACC?.__err ? ACC.__err : "loaded"}`);
 
@@ -530,7 +533,7 @@ async function runDb(): Promise<void> {
   const approve = (h: string, runId: string, hooks?: Any) => (hooks ? PAY.approveRun(c1(h), runId, undefined, actor, hooks) : PAY.approveRun(c1(h), runId, undefined, actor)).catch((e: unknown) => ({ ok: false, note: `threw ${errText(e)}` }));
   const payRun = (h: string, runId: string, opts: Any) => (typeof PAY.markPaidRun === "function" ? PAY.markPaidRun(c1(h), runId, { now: NOW, actor, ...opts }) : Promise.resolve({ ok: false, note: "∅ markPaidRun" })).catch((e: unknown) => ({ ok: false, note: `threw ${errText(e)}` }));
   const reverse = (h: string, runId: string) => PAY.reverseRun(c1(h), runId, "qc h3.7", actor).catch((e: unknown) => ({ ok: false, note: `threw ${errText(e)}` }));
-  const S4 = ["S4.1", "S4.2", "S4.3", "S4.4", "S4.5", "S4.6", "S4.7", "S4.8", "S4.9", "S4.10", "S4.11", "S4.12", "S4.13", "S4.14", "S4.15", "S4.16", "S4.17", "S4.18", "S4.19", "S4.21", "S4.22", "S4.23"];
+  const S4 = ["S4.1", "S4.2", "S4.3", "S4.4", "S4.5", "S4.6", "S4.7", "S4.8", "S4.9", "S4.10", "S4.11", "S4.12", "S4.13", "S4.14", "S4.15", "S4.16", "S4.17", "S4.18", "S4.19", "S4.21", "S4.22", "S4.23", "S4.24"]; // ORACLE-EDIT (H3.7 builder): + S4.24
   const R: Record<string, string> = {};
   const exampleCheck = async (id: string, h: string, name: string, bookId: string, extra: (runId: string, e: Any) => Promise<Record<string, unknown>> = async () => ({})) => {
     const ex = VEC.examples[name];
@@ -648,6 +651,7 @@ async function runDb(): Promise<void> {
       const a = await approve("hF", runId);
       const au = (await P.auditLog.findMany({ where: { tenantId: T1, action: "hr.payroll.post_failed", targetId: runId } })) as Any[];
       const run2 = await insRun("hF2", VEC.examples.E, { label: "F2" });
+      R.F2 = run2; // ORACLE-EDIT (H3.7 builder): S4.24 reads this APPROVED-unpaid (accrual-only) run
       const b = await approve("hF2", run2);
       ck("S4.14", {
         refused: a?.ok === false && a?.code === "MAPPING_MISSING" && a?.note === fill(T.mappingMissing, { name: "เงินสมทบประกันสังคมค้างนำส่ง", code: "2150" }), draft: (await runOf(runId))?.status === "DRAFT",
@@ -728,6 +732,19 @@ async function runDb(): Promise<void> {
       const a = await approve("hX4", runId);
       ck("S4.23", { refused: a?.ok === false && a?.code === "INCONSISTENT" && a?.note === T.inconsistent, draft: (await runOf(runId))?.status === "DRAFT", none: (await P.accountJournalEntry.count({ where: { refId: runId } })) === 0 }, "refused", short(a));
     }
+    // ORACLE-EDIT (H3.7 builder · controller ruling): S4.24 bank file total = Cr 2120 of the accrual = run net (H3.5 status rules unchanged for accrual-only runs)
+    {
+      const bad: string[] = [];
+      for (const [h, name, runId] of [["hD", "D", R.D!], ["hF2", "E", R.F2!]] as const) {
+        for (const it of VEC.examples[name].items as VItem[]) await P.hrEmployee.update({ where: { id: emps.get(`${h}:${it.emp}`)! }, data: { bankName: "KBank", bankAccountNo: "0123456789", bankAccountName: `QC37 ${it.emp}` } });
+        const pv = BANK?.previewBankFile ? await BANK.previewBankFile(c1(h), vOf(own1), { runId, format: "CSV", presetId: "GENERIC" }, { now: NOW }).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : { ok: false, reason: "∅ bank-files" };
+        const cr2120 = (await linesOf((await keyEntry(runId, "accrual"))?.id)).filter((l) => l[0] === "2120" && l[1] === "CR").reduce((t, l) => t + l[2], 0);
+        const net = (VEC.examples[name].items as VItem[]).reduce((t, i) => t + i.netSatang, 0);
+        const st = (await runOf(runId))?.status;
+        if (!(pv?.ok === true && pv.totalSatang === cr2120 && cr2120 === net && pv.runNetSatang === net && pv.itemCount === (VEC.examples[name].items as VItem[]).length)) bad.push(`${name}/${st}:${short({ pv: pv?.ok ? [pv.totalSatang, pv.runNetSatang, pv.itemCount] : pv, cr2120, net }, 120)}`);
+      }
+      chk("S4.24", bad.length === 0, "bank total = Cr 2120 = net (PAID + APPROVED-unpaid)", bad.join(" · ") || "ok");
+    }
     // S4.10 today's period closed ⇒ reversals in the next open period (book A · PAID B)
     {
       const today = bkkDay(new Date()).slice(0, 7);
@@ -786,6 +803,34 @@ async function runDb(): Promise<void> {
       approve: a?.ok === true, oneStep: e?.refType === "AccountManualJV" && e?.book === "PAYMENTS" && e?.systemId === BV && msEq(lines, want), noAcct: !r?.acc, noKey: keys === 0,
       paidNoPost: mp?.ok === true && n1 === n0, reversed: rv?.ok === true && revs === 1,
     }, "v1 unchanged", short({ a, lines, want, mp, rv }, 240));
+  });
+
+  // ── S4.25 v1 orphan (ORACLE-EDIT H3.7 builder · controller ruling Q2) ──
+  await blk(["S4.25"], async () => {
+    if (typeof ACC.postPayrollV1KeyedJV !== "function") throw new Error("absent: postPayrollV1KeyedJV");
+    const ctx = { tenantId: T3, systemId: hv };
+    const book = { tenantId: T3, systemId: BV };
+    const totals = async (id: string) => (await rows(`SELECT "payDate" AS d, "periodKey" AS p, "totalGrossSatang" AS g, "totalSsoEmployeeSatang" AS se, "totalSsoEmployerSatang" AS sr, "totalWhtSatang" AS w, "totalNetSatang" AS n, "journalEntryId" AS j FROM "HrPayrollRun" WHERE id = $1`, id))[0];
+    const inputOf = (t: Any, bump = 0) => ({ payDate: new Date(t.d), periodKey: t.p, grossSatang: Number(t.g) + bump, ssoEmployeeSatang: Number(t.se), ssoEmployerSatang: Number(t.sr), whtSatang: Number(t.w), netSatang: Number(t.n) + bump });
+    const live = async (id: string) => P.accountJournalEntry.count({ where: { refId: id, status: "POSTED", reversalOfId: null } });
+    // (a) same figures: the earlier approve posted, then the link failed (run back to DRAFT, no journalEntryId)
+    const ra = await PAY.createPayrollRun(ctx, { periodKey: "2031-07", payDate: new Date("2031-07-25T05:00:00Z") });
+    const ta = await totals(ra.id);
+    const orphanA = (await ACC.postPayrollV1KeyedJV(book, ra.id, inputOf(ta))).entryId as string;
+    const aa = await PAY.approveRun(ctx, ra.id);
+    const linkA = (await totals(ra.id))?.j;
+    // (b) figures changed between the failed link and the retry (draft recomputed) ⇒ the stale entry is reversed, the new one linked
+    const rb = await PAY.createPayrollRun(ctx, { periodKey: "2031-08", payDate: new Date("2031-08-25T05:00:00Z") });
+    const tb = await totals(rb.id);
+    const orphanB = (await ACC.postPayrollV1KeyedJV(book, rb.id, inputOf(tb, 100))).entryId as string;
+    const ab = await PAY.approveRun(ctx, rb.id);
+    const linkB = (await totals(rb.id))?.j;
+    const staleRev = await P.accountJournalEntry.count({ where: { reversalOfId: orphanB } });
+    const linesB = await linesOf(linkB);
+    ck("S4.25", {
+      a: aa?.ok === true && linkA === orphanA && (await live(ra.id)) === 1, b: ab?.ok === true && !!linkB && linkB !== orphanB && staleRev === 1 && (await live(rb.id)) === 1,
+      bFigures: linesB.some((l) => l[0] === "1010" && l[1] === "CR" && l[2] === Number(tb.n)), refType: (await P.accountJournalEntry.count({ where: { tenantId: T3, refType: "hr-payroll" } })) === 0,
+    }, "one live entry, linked", short({ aa, linkA, orphanA, ab, linkB, orphanB, staleRev }, 220));
   });
 }
 
