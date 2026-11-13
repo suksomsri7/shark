@@ -15,6 +15,7 @@
 //   ⇒ ไม่มีใครถือล็อกงวดแล้วรอ hr:clockpolicy / ล็อกงวดที่น้อยกว่า ◂
 import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET-1 ◂
 import { writeAudit } from "@/lib/core/audit";
 import { employeeOfUser } from "./service";
 import { hrScopeOf, type HrScope } from "./scope";
@@ -133,15 +134,14 @@ export async function saveAttendancePayPolicy(ctx: Ctx, viewer: WorkEntryViewer,
   // fix r3 (reviewer minor): ล็อกรอนานเกิน (sync ยาว) ⇒ คืนข้อความคงที่ failed แทนการ throw
   const res = await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
     const tx = t as unknown as Db;
-    await lock(tx, `hr:clockpolicy:${ctx.systemId}`);
-    await lock(tx, policyLockKey(ctx)); // fix r2 (F4): รอ sync ที่กำลังทำอยู่ (ถือ shared) ให้จบก่อน — ไม่ถือล็อกงวดใด ⇒ ไม่มีวงรอ
-    const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
+    // HR-SET-1 ▸ hr:clockpolicy → policyLockKey (fix r2 F4: รอ sync ที่ถือ shared ให้จบก่อน — ไม่ถือล็อกงวดใด ⇒ ไม่มีวงรอ) → แถว AppSystem · อ่านใหม่ใต้ล็อก ◂
+    const sys = await lockHrSettings(tx, ctx, [policyLockKey(ctx)]);
     if (!sys) return null;
     const base = obj(sys.settings);
     const cur = attendancePayPolicyOf(base[SETTINGS_KEY]);
     const next: AttendancePayPolicy = { ...cur, ...patch };
     const inForce = attendanceInForceToggle(attendanceInForceOf(base[INFORCE_KEY]), next.enabled, next.enabled ? period : closeAt);
-    const u = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: { ...base, [SETTINGS_KEY]: next, [INFORCE_KEY]: inForce } as Prisma.InputJsonValue } });
+    const u = await writeHrSettingsKeys(tx, ctx, { [SETTINGS_KEY]: next, [INFORCE_KEY]: inForce }); // HR-SET-1 ▸ เปลี่ยนเฉพาะ 2 คีย์ของกฎ ◂
     return u.count === 1 ? { cur, next, inForce } : null;
   }, TX_OPTS).catch(() => null);
   if (!res) return { ok: false, reason: ATT_TEXT.failed };
