@@ -48,6 +48,18 @@ export {
 
 // POS P1.10 ▸ ใบเสร็จ/ใบกำกับภาษีอย่างย่อของ POS: config VAT ของสมุดที่ผูก (อ่านล้วน · vatRegistered · vatRateBp · posAbbreviatedInvoice) ◂
 export { vatConfigOf } from "./service";
+// ACC T0.1/T0.2 ▸ ตัวอ่านเดียวของค่ากฎหมาย + ประเภทผู้ประกอบการ (เฟสหลังและโมดูลอื่นอ่านผ่าน facade นี้) ◂
+export {
+  legalValueAt,
+  vatRateBpAt,
+  filingDeadlineOf,
+  entityKindOf,
+  isJuristicPayer,
+  type EntityKind,
+  type LegalValue,
+  type LegalWarning,
+} from "./legal-values";
+import { vatRateBpAt } from "./legal-values";
 
 // M3.7 (ระบบสมาชิก v2 · ไทม์ไลน์ประวัติ) — เอกสารขาออกของ party หนึ่ง (อ่านอย่างเดียว · read-through)
 //   ผู้เรียก: `member/history.ts` (dynamic import — account/index อยู่ในวงจรโหลดไฟล์ของโมดูลบัญชีเอง)
@@ -998,7 +1010,7 @@ function externalQuotationProblem(
       if (l.vatRateBp !== undefined && l.vatRateBp !== null) {
         const bp = l.vatRateBp;
         if (!isSatang(bp) || bp < -1 || bp > 10_000)
-          return `${at}: อัตราภาษีต้องเป็นจำนวนเต็ม (0 = 0% · -1 = ยกเว้น · 700 = 7%) (ได้รับ ${String(bp)})`;
+          return `${at}: อัตราภาษีต้องเป็นจำนวนเต็ม basis point (0 = 0% · -1 = ยกเว้น · 1% = 100) (ได้รับ ${String(bp)})`;
       }
     }
   } else {
@@ -1838,9 +1850,14 @@ function dormLinesProblem(lines: unknown): string | null {
   return null;
 }
 
-/** บรรทัดหอ → บรรทัดเอกสาร: VAT7 = 700 · EXEMPT / NONE = −1 (ไม่ใช่ 0 = อัตรา 0% ส่งออก · ⚠️ J4) */
-const dormDocLines = (lines: ExternalDocLine[]): LineInput[] =>
-  lines.map((l) => ({ description: l.description.trim(), qty: l.qty, unitPrice: l.unitPriceSatang, vatRateBp: l.taxKind === "VAT7" ? 700 : -1 }));
+/**
+ * บรรทัดหอ → บรรทัดเอกสาร: VAT7 = อัตรามาตรฐานจากตารางค่ากฎหมายของสมุด ณ วันออกเอกสาร (ACC T0.2 · เดิมฝัง 700)
+ *   · EXEMPT / NONE = −1 (ไม่ใช่ 0 = อัตรา 0% ส่งออก · ⚠️ J4)
+ */
+const dormDocLines = async (ctx: { tenantId: string; systemId: string }, lines: ExternalDocLine[], issueDate: Date): Promise<LineInput[]> => {
+  const std = await vatRateBpAt(ctx, issueDate);
+  return lines.map((l) => ({ description: l.description.trim(), qty: l.qty, unitPrice: l.unitPriceSatang, vatRateBp: l.taxKind === "VAT7" ? std : -1 }));
+};
 
 const dormVatOk = (v: unknown): v is DormVat =>
   !!v && typeof v === "object" && typeof (v as DormVat).registered === "boolean" && typeof (v as DormVat).pricesIncludeVat === "boolean";
@@ -1878,7 +1895,7 @@ async function createDormExternalInvoice(input: DormExternalInvoiceInput): Promi
     const ctx = { tenantId: input.tenantId, systemId };
     const r = await dormUpsertDocument({
       tenantId: input.tenantId, systemId, unitId: input.unitId, docType: "INVOICE", refType: input.refType, refId: input.refId,
-      lines: dormDocLines(input.lines), vatMode: dormVatMode(input.vat), issueDate, dueDate, draft: input.draft === true,
+      lines: await dormDocLines(ctx, input.lines, issueDate), vatMode: dormVatMode(input.vat), issueDate, dueDate, draft: input.draft === true,
       note: input.note ?? null, adjustReason: null, sourceDocId: null, createdById: input.createdById ?? null,
       resolveContactId: async () => (await findOrCreateCustomerContact(ctx, { ...input.customer, partyId: input.partyId ?? null })).id,
     });
@@ -1910,7 +1927,7 @@ async function createDormNote(docType: "CREDIT_NOTE" | "DEBIT_NOTE", input: Dorm
     if (mm) return mm;
     const r = await dormUpsertDocument({
       tenantId: input.tenantId, systemId, unitId: input.unitId, docType, refType: input.refType, refId: input.refId,
-      lines: dormDocLines(input.lines), vatMode: dormVatMode(input.vat), issueDate, dueDate: null, draft: false,
+      lines: await dormDocLines({ tenantId: input.tenantId, systemId }, input.lines, issueDate), vatMode: dormVatMode(input.vat), issueDate, dueDate: null, draft: false,
       note: typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 500) : null, // SVC D.3 ▸ ◂
       adjustReason: input.reason.trim(), sourceDocId: src.id, createdById: input.createdById ?? null,
       resolveContactId: async () => src.contactId,

@@ -125,6 +125,7 @@ import {
   parsePolicy,
   POLICY_SELECT,
   toDupPolicy,
+  VAT_RATE_VIA_TABLE_TH,
   type PolicyRow,
   type AccountPolicy,
 } from "./policy";
@@ -160,8 +161,19 @@ import {
   periodKeyOf,
   utcDay,
   type RecurringTemplate,
+  type RecurringVatRule,
 } from "./recurring-shared";
 import type { AccountRecurringFrequency } from "@prisma/client";
+import {
+  filingDeadlineFrom,
+  loadBookLegal,
+  vatRateBpAt,
+  vatRateBpFrom,
+  vatRuleFrom,
+  EMPTY_BOOK_LEGAL,
+  type BookLegal,
+  type EntityKind,
+} from "./legal-values";
 
 // Account (บัญชี P1 — ฝั่งรายรับ) service. scope = tenantId + systemId (feature)
 // เอกสารเงิน immutable: DRAFT แก้ได้ · พ้น DRAFT แก้ไม่ได้ → void/reissue
@@ -388,7 +400,10 @@ export type AccountSettingsView = {
   stampUrl: string | null;
   signatureUrl: string | null;
   vatRegistered: boolean;
+  /** ACC T0.2 ▸ อัตรา VAT มาตรฐาน ณ วันที่อ่าน — จากตารางค่ากฎหมาย (legal-values) ไม่ใช่คอลัมน์ AccountSettings.vatRateBp ◂ */
   vatRateBp: number;
+  /** ACC T0.1 ▸ ประเภทผู้ประกอบการของสมุด (ค่าตั้ง account.entity.kind) — "UNSET" = ยังไม่ระบุ ◂ */
+  entityKind: EntityKind;
   // QC5-A1: จุดรับรู้ภาษีขายเริ่มต้นของกิจการ (สินค้า=ON_ISSUE / บริการ=ON_PAYMENT)
   taxPointBasis: AccountVatTiming;
   defaultDueDays: number;
@@ -451,7 +466,7 @@ function readStr(docConfig: unknown, key: string): string | null {
   return typeof v === "string" && v.trim() ? v : null;
 }
 
-const SETTINGS_DEFAULT: AccountSettingsView = {
+const SETTINGS_DEFAULT: Omit<AccountSettingsView, "vatRateBp" | "entityKind" | "policy"> = {
   orgPrefix: null,
   orgName: "",
   orgNameEn: null,
@@ -466,14 +481,12 @@ const SETTINGS_DEFAULT: AccountSettingsView = {
   stampUrl: null,
   signatureUrl: null,
   vatRegistered: true,
-  vatRateBp: 700,
   taxPointBasis: "ON_ISSUE",
   defaultDueDays: 30,
   defaultValidDays: 30,
   footerNote: null,
   docTypes: {},
   doc: defaultDocSettings(),
-  policy: defaultPolicy(),
 };
 
 /** คำนำหน้าชื่อนิติบุคคลที่ให้เลือก — ค่าว่าง = ไม่มีคำนำหน้า (บุคคลธรรมดา/ร้านค้า) */
@@ -516,12 +529,17 @@ export async function getSettings(
   tenantId: string,
   systemId: string,
 ): Promise<AccountSettingsView> {
-  return settingsViewOf(await prisma.accountSettings.findFirst({ where: { tenantId, systemId } }));
+  const [row, legal] = await Promise.all([prisma.accountSettings.findFirst({ where: { tenantId, systemId } }), loadBookLegal({ tenantId, systemId })]);
+  return settingsViewOf(row, legal, new Date());
 }
 
-/** SVC D.12 ▸ แถวตั้งค่า → view (ตัวเดียวกับ getSettings · แยกออกให้รุ่นในธุรกรรมอ่านผ่าน tx ของผู้เรียกได้) ◂ */
-function settingsViewOf(s: Awaited<ReturnType<typeof prisma.accountSettings.findFirst>>): AccountSettingsView {
-  if (!s) return { ...SETTINGS_DEFAULT, doc: defaultDocSettings(), policy: defaultPolicy() };
+/**
+ * SVC D.12 ▸ แถวตั้งค่า → view (ตัวเดียวกับ getSettings · แยกออกให้รุ่นในธุรกรรมอ่านผ่าน tx ของผู้เรียกได้) ◂
+ * ACC T0.1/T0.2 ▸ `legal` = ค่าตั้งของสมุดจากเครื่องยนต์ค่าตั้ง (ประเภทผู้ประกอบการ + แถวตารางค่ากฎหมาย) · `at` = วันที่ของอัตรา VAT ◂
+ */
+function settingsViewOf(s: Awaited<ReturnType<typeof prisma.accountSettings.findFirst>>, legal: BookLegal, at: Date): AccountSettingsView {
+  const vatRateBp = vatRateBpFrom(legal, at);
+  if (!s) return { ...SETTINGS_DEFAULT, vatRateBp, entityKind: legal.entityKind, doc: defaultDocSettings(), policy: defaultPolicy(vatRateBp) };
   return {
     orgPrefix: readStr(s.docConfig, "orgPrefix"),
     orgName: s.orgName,
@@ -537,7 +555,8 @@ function settingsViewOf(s: Awaited<ReturnType<typeof prisma.accountSettings.find
     stampUrl: readStr(s.docConfig, "stampUrl"),
     signatureUrl: readStr(s.docConfig, "signatureUrl"),
     vatRegistered: s.vatRegistered,
-    vatRateBp: s.vatRateBp,
+    vatRateBp,
+    entityKind: legal.entityKind,
     taxPointBasis: s.vatTiming,
     defaultDueDays: s.defaultDueDays,
     defaultValidDays: s.defaultValidDays,
@@ -547,7 +566,7 @@ function settingsViewOf(s: Awaited<ReturnType<typeof prisma.accountSettings.find
       defaultValidDays: s.defaultValidDays,
       defaultDueDays: s.defaultDueDays,
     }),
-    policy: parsePolicy(s),
+    policy: parsePolicy(s, vatRateBp),
   };
 }
 
@@ -556,6 +575,9 @@ export async function saveSettings(
   systemId: string,
   input: Partial<AccountSettingsView>,
 ) {
+  if (input.vatRateBp !== undefined && input.vatRateBp !== (await vatRateBpAt({ tenantId, systemId }, new Date()))) {
+    throw new Error(VAT_RATE_VIA_TABLE_TH);
+  }
   const existing = await prisma.accountSettings.findFirst({ where: { tenantId, systemId } });
   const prevConfig =
     (existing?.docConfig as Record<string, unknown> | null | undefined) ?? {};
@@ -588,7 +610,7 @@ export async function saveSettings(
     //    ⇒ เขียนเฉพาะเมื่อผู้เรียกส่งมาจริง · ถ้าเขียนทุกครั้งแบบเดิม (`?? true` / `?? 700`)
     //    การกดบันทึกหน้า "ข้อมูลกิจการ" จะรีเซ็ต VAT ของร้านทิ้งเงียบ ๆ
     ...(input.vatRegistered === undefined ? {} : { vatRegistered: input.vatRegistered }),
-    ...(input.vatRateBp === undefined ? {} : { vatRateBp: input.vatRateBp }),
+    // ACC T0.2 ▸ อัตรา VAT อยู่ที่ตารางค่ากฎหมายที่เดียว — ไม่เขียนคอลัมน์ vatRateBp อีก (ค่าต่างจากตาราง = ถูกปฏิเสธด้านบน) ◂
     ...(input.taxPointBasis === undefined ? {} : { vatTiming: input.taxPointBasis }),
     defaultDueDays: input.defaultDueDays ?? 30,
     defaultValidDays: input.defaultValidDays ?? 30,
@@ -652,17 +674,22 @@ export async function createAccountProductWithSalePrice(
   return p.id;
 }
 
-/** อ่าน config VAT ของระบบบัญชี (default: จด VAT 7% = 700 bp) */
+/** อ่าน config VAT ของระบบบัญชี — อัตรา = ตารางค่ากฎหมายของสมุด ณ `at` (ACC T0.2 · ไม่มีแถวตั้งค่า = จด VAT ตามค่าเริ่มเดิม) */
 export async function vatConfigOf(
   systemId: string,
+  at: Date = new Date(),
 ): Promise<{ vatRegistered: boolean; vatRateBp: number; posAbbreviatedInvoice: boolean }> {
-  const s = await prisma.accountSettings.findFirst({
-    where: { systemId },
-    select: { vatRegistered: true, vatRateBp: true, docConfig: true },
-  });
+  const [s, sys] = await Promise.all([
+    prisma.accountSettings.findFirst({
+      where: { systemId },
+      select: { vatRegistered: true, docConfig: true },
+    }),
+    prisma.appSystem.findFirst({ where: { id: systemId }, select: { tenantId: true } }),
+  ]);
+  const legal = sys ? await loadBookLegal({ tenantId: sys.tenantId, systemId }) : EMPTY_BOOK_LEGAL;
   return {
     vatRegistered: s?.vatRegistered ?? true,
-    vatRateBp: s?.vatRateBp ?? 700,
+    vatRateBp: vatRateBpFrom(legal, at),
     // WO 8.1 (§9.2 "ใบกำกับอย่างย่อจาก POS"): ปิดสวิตช์นี้ = ไม่สร้างเอกสารใบกำกับอย่างย่อจากบิลหน้าร้าน
     // (JV ของ POS ยังลงเหมือนเดิม — เงินไม่หาย · หายแค่ "ชั้นเอกสาร" ที่ใช้ทำรายงานขายรายสินค้า)
     posAbbreviatedInvoice: parseDocSettings(s?.docConfig ?? null).autoTaxInvoice.posAbbreviated,
@@ -3020,6 +3047,8 @@ async function issueServiceTaxInvoice(
   const vatPortion = Math.round(invoice.vatAmount * portion);
   const base = Math.max(0, tieOff - vatPortion);
   const issueDate = new Date();
+  // ACC T0.2 ▸ อัตราบนบรรทัด = อัตรามาตรฐานจากตารางค่ากฎหมาย ณ วันออกใบ (เดิมฝัง 700) ◂
+  const lineVatBp = invoice.vatMode === "NONE" ? 0 : await vatRateBpAt({ tenantId, systemId }, issueDate);
   // CRM C5.4-N ▸ เลขใบกำกับภาษีจองท้ายธุรกรรม (finalizeDocNos · LOCK ORDER ขั้น 7) — ไม่ถือแถวตัวนับระหว่างลงบัญชี ◂
   const taxInv = await tx.accountDocument.create({
     data: {
@@ -3050,7 +3079,7 @@ async function issueServiceTaxInvoice(
             qty: 1,
             unitPrice: base,
             discount: 0,
-            vatRateBp: invoice.vatMode === "NONE" ? 0 : 700,
+            vatRateBp: lineVatBp,
             amount: base,
           },
         ],
@@ -6346,7 +6375,7 @@ export type RecurringRuleRow = {
   runCount: number;
 };
 
-function toRuleRow(r: {
+function toRuleRow(vat: RecurringVatRule, r: {
   id: string;
   name: string;
   docType: AccountDocType;
@@ -6381,7 +6410,7 @@ function toRuleRow(r: {
     leadDays: r.leadDays,
     autoApprove: r.autoApprove,
     active: r.active,
-    template: parseRecurringTemplate(r.templateJson),
+    template: parseRecurringTemplate(r.templateJson, vat),
     runCount: r._count?.runs ?? 0,
   };
 }
@@ -6414,7 +6443,8 @@ export async function listRecurringRules(tenantId: string, systemId: string): Pr
     orderBy: [{ active: "desc" }, { nextRunAt: "asc" }],
     take: 200,
   });
-  return rows.map(toRuleRow);
+  const vat = vatRuleFrom(await loadBookLegal({ tenantId, systemId }), new Date());
+  return rows.map((r) => toRuleRow(vat, r));
 }
 
 export async function getRecurringRule(
@@ -6426,7 +6456,7 @@ export async function getRecurringRule(
     where: { id, tenantId, systemId },
     select: RULE_SELECT,
   });
-  return r ? toRuleRow(r) : null;
+  return r ? toRuleRow(vatRuleFrom(await loadBookLegal({ tenantId, systemId }), new Date()), r) : null;
 }
 
 export type RecurringRuleInput = {
@@ -6665,7 +6695,7 @@ export async function buildRuleDraftFromDocument(
         accountId: l.accountId,
       };
     }),
-  });
+  }, vatRuleFrom(await loadBookLegal({ tenantId, systemId }), new Date()));
   const who = doc.contact?.name ? ` ${doc.contact.name}` : "";
   return {
     name: `${DOC_LABEL[doc.docType] ?? doc.docType}${who}`.slice(0, 120),
@@ -6794,7 +6824,8 @@ async function generateOneRecurringDocument(
   });
   if (existing) return "skipped";
 
-  const template = parseRecurringTemplate(rule.templateJson);
+  // ACC T0.2 ▸ อัตรา VAT ที่รับได้/ค่าเริ่ม = ตารางค่ากฎหมาย ณ วันออกงวดนี้ ◂
+  const template = parseRecurringTemplate(rule.templateJson, vatRuleFrom(await loadBookLegal({ tenantId, systemId }), rule.nextRunAt));
   if (template.lines.length === 0) throw new Error("แม่แบบไม่มีรายการสินค้า/บริการ");
 
   const settings = await getSettings(tenantId, systemId);
@@ -7021,8 +7052,10 @@ const REMIND_DOC_TYPES: readonly AccountDocType[] = [
 const PTX_WAIT_DAYS = 7;
 /** เตือนเช็คล่วงหน้ากี่วัน */
 const CHEQUE_LEAD_DAYS = 3;
-/** ภ.พ.30 ยื่นภายในวันที่ 10 ของเดือนถัดไป — เตือนล่วงหน้า 5 วัน = วันที่ 5 */
-const PP30_DUE_DAY = 10;
+/**
+ * ภ.พ.30 — เตือนล่วงหน้ากี่วันก่อน "กำหนดยื่นแบบกระดาษ" (ค่าการแจ้งเตือนของระบบ ไม่ใช่ค่ากฎหมาย)
+ * ACC T0.2 ▸ กำหนดยื่นเองอ่านจากตารางค่ากฎหมาย (filingDeadlineFrom · skill VAT §19) — เดิมฝัง "วันที่ 10" ◂
+ */
 const PP30_LEAD_DAYS = 5;
 
 /**
@@ -7113,13 +7146,17 @@ export async function runAccountReminders(
       summary.CHEQUE_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.CHEQUE_DUE, body, now);
     }
 
-    // (5) ภ.พ.30 — เตือนวันที่ 5 ของเดือน (ก่อนกำหนดยื่นวันที่ 10 อยู่ 5 วัน) สำหรับงวดเดือนก่อน
-    if (today.getUTCDate() === PP30_DUE_DAY - PP30_LEAD_DAYS) {
+    // (5) ภ.พ.30 — เตือนล่วงหน้า PP30_LEAD_DAYS วันก่อนกำหนดยื่นแบบกระดาษของงวดเดือนก่อน (วันจากตารางค่ากฎหมาย)
+    {
       const py = today.getUTCMonth() === 0 ? today.getUTCFullYear() - 1 : today.getUTCFullYear();
       const pm = today.getUTCMonth() === 0 ? 12 : today.getUTCMonth();
       const periodKey = `${py}-${String(pm).padStart(2, "0")}`;
-      const body = `งวด ${periodKey} — ยื่นภายในวันที่ ${PP30_DUE_DAY} ของเดือนนี้ (เหลือ ${PP30_LEAD_DAYS} วัน)`;
-      summary.PP30_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.PP30_DUE, body, now);
+      const dl = filingDeadlineFrom(await loadBookLegal({ tenantId, systemId }), "PP30", periodKey);
+      if (dl.paper && today.getTime() === dl.paper.date.getTime() - PP30_LEAD_DAYS * REC_DAY_MS) {
+        const online = dl.online ? ` · ยื่นทางอินเทอร์เน็ตภายในวันที่ ${dl.online.day}` : "";
+        const body = `งวด ${periodKey} — ยื่นแบบกระดาษภายในวันที่ ${dl.paper.day} ของเดือนนี้ (เหลือ ${PP30_LEAD_DAYS} วัน)${online}`;
+        summary.PP30_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.PP30_DUE, body, now);
+      }
     }
   }
   return summary;
@@ -7327,12 +7364,12 @@ export async function runAccountEmailReports(now: Date = new Date()): Promise<Em
 
   const out: EmailReportResult = { systems: rows.length, sent: 0, skipped: 0, failed: 0 };
   for (const row of rows) {
-    const policy = parsePolicy(row as unknown as PolicyRow);
+    const ctx = { tenantId: row.tenantId, systemId: row.systemId };
+    const policy = parsePolicy(row as unknown as PolicyRow, await vatRateBpAt(ctx, now));
     if (policy.emailReportRecipients.length === 0) {
       out.skipped += 1;
       continue;
     }
-    const ctx = { tenantId: row.tenantId, systemId: row.systemId };
     for (const kind of reportKindsDue(policy, now)) {
       const key = reportIdempotencyKey(row.systemId, kind, now);
       const already = await prisma.appNotification.count({
@@ -8124,7 +8161,7 @@ export async function dormSettleSecurityDepositInTx(
       return dormReject("INVALID_INPUT", DORM_FINANCE_BAD);
     const pre = await dormOwnedDocs(tx, tenantId, systemId, unitId, input.docIds, DORM_PAYABLE_TYPES);
     if (pre.length !== input.docIds.length) return dormReject("NOT_FOUND", DORM_NOT_FOUND);
-    const settings = settingsViewOf(await tx.accountSettings.findFirst({ where: { tenantId, systemId } }));
+    const settings = settingsViewOf(await tx.accountSettings.findFirst({ where: { tenantId, systemId } }), await loadBookLegal({ tenantId, systemId }), new Date());
     return await dormSettleBodyInTx(tx, { ...input, systemId }, settings);
   } catch (e) {
     if (e instanceof DormTxReject || e instanceof DormGlReject) return dormReject(e.code, e.message);

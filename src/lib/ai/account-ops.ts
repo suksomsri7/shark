@@ -28,6 +28,7 @@ import { jsonSchemaOf } from "@/lib/modules/account/api/openapi";
 import type { ApiOp } from "@/lib/modules/account/api/op";
 import { ACCOUNT_OPS } from "@/lib/modules/account/api/registry";
 import { mapError } from "@/lib/modules/account/api/respond";
+import { vatRateBpAt } from "@/lib/modules/account/legal-values";
 import { detailsMessageTh, runOpAsActor, validateOpInput, validateWith } from "@/lib/modules/account/api/run";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -187,7 +188,7 @@ const recordPaymentArgs = z
     amountSatang: z.number().int().positive().describe("Money actually received or paid in satang, excluding withholding tax. 1,070.00 baht is 107000."),
     financeAccountId: z.string().min(1).max(40).optional().describe("Cash box, bank account or wallet the money moves through (from account_finance_balances)."),
     whtAmountSatang: z.number().int().min(0).optional().describe("Withholding tax in satang, when the payer kept some back."),
-    whtRateBp: z.number().int().min(0).max(10000).optional().describe("Withholding tax rate in basis points: 300 = 3%."),
+    whtRateBp: z.number().int().min(0).max(10000).optional().describe("Withholding tax rate in basis points (1% = 100). Suggested rates per income type: account_tax_settings."),
     whtIncomeType: z.enum(WHT_INCOME_TYPES).optional().describe("Type of income for the withholding tax certificate, for example SERVICE for 40(8)."),
     feeSatang: z.number().int().min(0).optional().describe("Bank or gateway fee in satang, booked as an expense."),
     note: z.string().max(20).optional().describe("Short note on the payment row."),
@@ -220,7 +221,7 @@ const ADAPTERS: Record<string, ToolAdapter> = {
     extraHint:
       "If the user also asks to send this document to the customer, call send_customer_message in the same turn with kind='quote' and no documentId; the system adds the document number and link when sending, after the document has been approved. " +
       // SEC S3a.1-R2 ▸ R-Z49: VAT มาจากค่าตั้งค่าของร้าน (ระบบเติมให้) — ห้ามถาม ◂
-      "VAT: if the user does not mention VAT, leave vatRateBp and vatMode out; the system fills them from the shop's settings (registered: 7% added on top; not registered: no VAT). Do not ask about VAT; ask only for what the system cannot fill in (customer name, items, prices).",
+      "VAT: if the user does not mention VAT, leave vatRateBp and vatMode out; the system fills them from the shop's settings (registered: the standard rate from the book's legal value table added on top; not registered: no VAT). Do not ask about VAT; ask only for what the system cannot fill in (customer name, items, prices).",
   },
   // รายงาน: 7 op ใต้ชื่อเดียว — ผู้ช่วยเลือกด้วย `kind` (ถามว่า "กำไรเดือนนี้เท่าไร" ไม่ต้องรู้ชื่อ endpoint)
   "reports.profit-loss": {
@@ -444,7 +445,7 @@ function opOf(opId: string): ApiOp | undefined {
 
 /**
  * SEC S3a.1-R2 ▸ R-Z49 (รอบจริง #2): ค่าปริยาย VAT ของ `documents.create` จากค่าตั้งค่าเล่ม (`AccountSettings.vatRegistered`) —
- *   บรรทัดที่ไม่ระบุ `vatRateBp` ⇒ 700 เมื่อจด VAT · 0 เมื่อไม่จด · ไม่ระบุ `vatMode` ⇒ EXCLUDE เมื่อจด · NONE เมื่อไม่จด
+ *   บรรทัดที่ไม่ระบุ `vatRateBp` ⇒ อัตรามาตรฐานจากตารางค่ากฎหมายของสมุด (ACC T0.2 · legal-values) เมื่อจด VAT · 0 เมื่อไม่จด · ไม่ระบุ `vatMode` ⇒ EXCLUDE เมื่อจด · NONE เมื่อไม่จด
  *   (ค่าที่ผู้ใช้/โมเดลระบุเองชนะเสมอ) · ใช้ทั้งตอนเสนอ (สรุปยอดรวม VAT ถูก) และก่อนลงมือ (ข้อเสนอรุ่นเก่าที่ยังไม่มีค่า)
  *   ไม่มีแถวตั้งค่า = ค่าปริยายของ schema (จด VAT) · op อื่น = คืน input เดิม
  */
@@ -455,10 +456,11 @@ export async function fillDocVatDefaults(opId: string, tenantId: string, systemI
   if (!needLine && input.vatMode !== undefined) return input;
   const st = await tenantDb({ tenantId, systemId }).accountSettings.findFirst({ where: { systemId }, select: { vatRegistered: true } });
   const registered = st?.vatRegistered ?? true;
+  const stdBp = registered ? await vatRateBpAt({ tenantId, systemId }, new Date()) : 0;
   return {
     ...input,
     ...(input.vatMode === undefined ? { vatMode: registered ? "EXCLUDE" : "NONE" } : {}),
-    ...(lines ? { lines: lines.map((l) => (isRecord(l) && l.vatRateBp === undefined ? { ...l, vatRateBp: registered ? 700 : 0 } : l)) } : {}),
+    ...(lines ? { lines: lines.map((l) => (isRecord(l) && l.vatRateBp === undefined ? { ...l, vatRateBp: stdBp } : l)) } : {}),
   };
 }
 

@@ -128,6 +128,11 @@ console.log("P0 สายไฟ/ทะเบียน (อ่านจากซ�
 // ═══════════════════════ P1 — คณิตความถี่ (บริสุทธิ์) ═══════════════════════
 console.log("\nP1 คณิตความถี่ (ไม่แตะ DB):");
 const RS = await import("@/lib/modules/account/recurring-shared");
+// ORACLE-EDIT (ACC T0.2): parseRecurringTemplate รับชุดอัตรา VAT จากตารางค่ากฎหมาย (เดิมฝัง 700/0/−1 ในตัว) —
+//   ส่งชุดของสมุดที่ไม่มีแถวร้าน ณ วันที่ในช่วง พ.ร.ฎ. ฉ.807 ⇒ ผลเท่าเดิม (ค่าเริ่ม 700 · รับ 700/0/−1) · ค่าที่คาดไม่แตะ
+const LVR = await import("@/lib/modules/account/legal-values");
+const VAT_RULE_QC = LVR.vatRuleFrom(LVR.EMPTY_BOOK_LEGAL, new Date("2026-11-12T05:00:00Z"));
+const parseTpl = (raw: unknown) => RS.parseRecurringTemplate(raw, VAT_RULE_QC);
 {
   const d = (s: string) => new Date(`${s}T00:00:00.000Z`);
   const iso = (x: Date) => x.toISOString().slice(0, 10);
@@ -169,17 +174,17 @@ const RS = await import("@/lib/modules/account/recurring-shared");
   eq("P1.18 ป้ายตารางเวลา WEEKLY เป็นภาษาคน",
     RS.scheduleLabel({ frequency: "WEEKLY", weekday: 1, startDate: d("2026-09-07") }), "ทุกสัปดาห์ วันจันทร์");
 
-  const tpl = RS.parseRecurringTemplate({ lines: [{ name: "ค่าเช่า", qty: "2", unitPriceSatang: 100000.4, vatRateBp: 999 }], dueDays: "15" });
+  const tpl = parseTpl({ lines: [{ name: "ค่าเช่า", qty: "2", unitPriceSatang: 100000.4, vatRateBp: 999 }], dueDays: "15" });
   eq("P1.19 แม่แบบ: ราคาเป็นสตางค์จำนวนเต็มเสมอ", tpl.lines[0]?.unitPriceSatang, 100000);
   eq("P1.20 แม่แบบ: อัตรา VAT นอกชุดที่รู้จัก → 700", tpl.lines[0]?.vatRateBp, 700);
   eq("P1.21 แม่แบบ: dueDays แปลงเป็นตัวเลข", tpl.dueDays, 15);
-  eq("P1.22 แม่แบบ: JSON เพี้ยนไม่ throw (คืนแม่แบบเปล่า)", RS.parseRecurringTemplate("ขยะ").lines.length, 0);
+  eq("P1.22 แม่แบบ: JSON เพี้ยนไม่ throw (คืนแม่แบบเปล่า)", parseTpl("ขยะ").lines.length, 0);
   assert("P1.23 ไม่เลือกผู้ติดต่อ → ออกอัตโนมัติไม่ได้ พร้อมเหตุผลไทย",
     (RS.autoApproveBlockReason({ contactId: null, template: tpl }) ?? "").includes("ผู้ติดต่อ"));
   eq("P1.24 ข้อมูลครบ → ไม่มีเหตุขวางการออกอัตโนมัติ",
     RS.autoApproveBlockReason({ contactId: "c1", template: tpl }), null);
   assert("P1.25 validateRuleInput จับ 'ไม่มีรายการ'",
-    RS.validateRuleInput({ name: "x", docType: "INVOICE", frequency: "MONTHLY", startDate: d("2026-09-01"), endDate: null, template: RS.parseRecurringTemplate({}), leadDays: 0 })
+    RS.validateRuleInput({ name: "x", docType: "INVOICE", frequency: "MONTHLY", startDate: d("2026-09-01"), endDate: null, template: parseTpl({}), leadDays: 0 })
       .some((e) => e.includes("อย่างน้อย 1 รายการ")));
   assert("P1.26 validateRuleInput จับ 'วันสิ้นสุดก่อนวันเริ่ม'",
     RS.validateRuleInput({ name: "x", docType: "INVOICE", frequency: "MONTHLY", startDate: d("2026-09-10"), endDate: d("2026-09-01"), template: tpl, leadDays: 0 })
@@ -261,7 +266,7 @@ try {
     name: "ค่าเช่าสำนักงาน รายเดือน",
     docType: "INVOICE" as const,
     contactId: cust.id,
-    template: RS.parseRecurringTemplate({ priceMode: "EXCL_VAT", lines: [lineTpl("ค่าเช่าสำนักงาน", 1_000_000)], dueDays: 7 }),
+    template: parseTpl({ priceMode: "EXCL_VAT", lines: [lineTpl("ค่าเช่าสำนักงาน", 1_000_000)], dueDays: 7 }),
     frequency: "MONTHLY" as const,
     dayOfMonth: 1,
     weekday: null,
@@ -283,7 +288,7 @@ try {
   const badType = await acc.createRecurringRule(tenantId, systemId, { ...baseRule, docType: "RECEIPT" as never }, owner.id);
   assert("P2.6 ชนิดเอกสารที่ไม่รองรับถูกปฏิเสธพร้อมเหตุผลไทย",
     !badType.ok && badType.reason.includes("ตั้งเป็นเอกสารประจำไม่ได้"), badType.ok ? "ผ่านไปได้" : badType.reason);
-  const noLines = await acc.createRecurringRule(tenantId, systemId, { ...baseRule, template: RS.parseRecurringTemplate({}) }, owner.id);
+  const noLines = await acc.createRecurringRule(tenantId, systemId, { ...baseRule, template: parseTpl({}) }, owner.id);
   assert("P2.7 แม่แบบไม่มีรายการถูกปฏิเสธ", !noLines.ok && noLines.reason.includes("อย่างน้อย 1 รายการ"));
 
   const crossContact = await acc.createRecurringRule(tenantId, systemId, { ...baseRule, name: "ข้ามระบบ", contactId: foreignContact.id }, owner.id);
@@ -432,7 +437,7 @@ try {
     name: "ค่าเช่าออฟฟิศ (รายจ่าย)",
     docType: "EXPENSE",
     contactId: vendor.id,
-    template: RS.parseRecurringTemplate({ priceMode: "EXCL_VAT", lines: [lineTpl("ค่าเช่าออฟฟิศ", 500_000, expAccountId)], dueDays: 30 }),
+    template: parseTpl({ priceMode: "EXCL_VAT", lines: [lineTpl("ค่าเช่าออฟฟิศ", 500_000, expAccountId)], dueDays: 30 }),
     startDate: d("2026-05-01"),
     dayOfMonth: 1,
   }, owner.id);
@@ -521,24 +526,26 @@ try {
   eq("P4.11 รันซ้ำวันเดียวกัน: ไม่มีแจ้งเตือนใหม่", totalNew, 0);
   eq("P4.12 จำนวนแถวแจ้งเตือนไม่เพิ่ม", await prisma.appNotification.count({ where: { tenantId } }), beforeSecond);
 
-  // ภ.พ.30 — เตือนเฉพาะวันที่ 5 ของเดือน (5 วันก่อนกำหนดยื่นวันที่ 10)
+  // ภ.พ.30 — เตือน 5 วันก่อนกำหนดยื่นแบบกระดาษ
+  // ORACLE-EDIT (ACC T0.2): กำหนดยื่นมาจากตารางค่ากฎหมาย = วันที่ 15 (skill VAT §19 · ม.83) ⇒ วันเตือน = วันที่ 10
+  //   (เดิมฝัง "วันที่ 10" ⇒ เตือนวันที่ 5) — ตัวแปร dayFive คงชื่อเดิมเพื่อให้ diff อ่านง่าย แต่ชี้วันที่ 10
   //
   // 🔴 ระเบิดเวลา (เจอจริง 5 ก.ย. 2026): `rem1` ข้างบนเรียกด้วย **เวลาจริง** — ถ้าวันไทยวันนี้เป็นวันที่ 5 พอดี
   //    ตัวเตือน ภ.พ.30 จะถูกยิงไปแล้วตั้งแต่ `rem1` แล้ว `dayFive` (วันเดียวกัน) จะโดน
   //    `notifyUsersOncePerDay` กันซ้ำ → คืน 0 ⇒ ข้อสอบแดงเดือนละครั้งโดยที่โค้ดไม่ได้พัง
   //    ⇒ วัดที่ "ยิงไปกี่ครั้งรวมทั้งสองรอบ" แทนที่จะผูกกับรอบใดรอบหนึ่ง (ผลเท่ากันทุกวันของเดือน)
-  const dayFive = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 5, 5, 0, 0));
+  const dayFive = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 10, 5, 0, 0));
   const remPp30 = await acc.runAccountReminders(dayFive, { tenantId, systemId });
   const pp30Fired = rem1.PP30_DUE + remPp30.PP30_DUE;
   assert(
-    "P4.13 วันที่ 5 ของเดือน มีเตือน ภ.พ.30 (นับรวมรอบที่เวลาจริงตรงวันที่ 5 อยู่แล้ว)",
+    "P4.13 วันที่ 10 ของเดือน (5 วันก่อนกำหนดยื่นตามตาราง) มีเตือน ภ.พ.30 (นับรวมรอบที่เวลาจริงตรงวันนั้นอยู่แล้ว)",
     pp30Fired >= 1,
     `rem1=${rem1.PP30_DUE} · dayFive=${remPp30.PP30_DUE} · วันไทยวันนี้ ${now.toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" })}`,
   );
   // กันซ้ำ: ยิงรอบเดิมอีกครั้งในวันเดียวกัน ต้องไม่เพิ่มแถวแจ้งเตือน
   const pp30RowsBefore = await prisma.appNotification.count({ where: { tenantId, title: "ภ.พ.30 ใกล้ครบกำหนดยื่น" } });
   const remPp30Again = await acc.runAccountReminders(dayFive, { tenantId, systemId });
-  eq("P4.13b ยิงซ้ำวันที่ 5 วันเดิม → ไม่เตือนซ้ำ", remPp30Again.PP30_DUE, 0);
+  eq("P4.13b ยิงซ้ำวันที่ 10 วันเดิม → ไม่เตือนซ้ำ", remPp30Again.PP30_DUE, 0);
   eq(
     "P4.13c จำนวนแถวเตือน ภ.พ.30 ไม่เพิ่ม",
     await prisma.appNotification.count({ where: { tenantId, title: "ภ.พ.30 ใกล้ครบกำหนดยื่น" } }),

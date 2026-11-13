@@ -81,7 +81,7 @@ const CONSUMED_ACTION = "settings.legal_override.consumed";
 const PROPOSAL_TARGET = "SettingProposal";
 
 /** ชั้นที่มีตารางให้ตรวจความเป็นเจ้าของ — ชั้นอื่น (LEASE RATE_PLAN RESOURCE DEVICE COURSE) ปฏิเสธจนกว่าใบที่สร้างตารางยื่นขอเพิ่ม */
-const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE", "RATE_PLAN"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂ · SVC H.0 ▸ RATE_PLAN = HotelRatePlan ◂
+const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE", "RATE_PLAN", "ACCOUNT_BOOK"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂ · SVC H.0 ▸ RATE_PLAN = HotelRatePlan ◂
 const REF_FIELD: Record<ScopeKind, keyof ScopeRefs | null> = {
   TENANT: null,
   UNIT: "unitId",
@@ -95,6 +95,7 @@ const REF_FIELD: Record<ScopeKind, keyof ScopeRefs | null> = {
   RESOURCE: "resourceId",
   DEVICE: "deviceId",
   COURSE: "courseId",
+  ACCOUNT_BOOK: "accountBookId", // ACC T0.1
 };
 
 // ─────────────────── ตัวช่วย ───────────────────
@@ -273,6 +274,13 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
         for (const r of rs) out.set(`RATE_PLAN|${r.id}`, { unitId: r.unitId, known: { TENANT: T, UNIT: r.unitId, RATE_PLAN: r.id } });
       }),
     );
+  // ACC T0.1 ▸ ชั้น ACCOUNT_BOOK = AppSystem ชนิด ACCOUNT ของร้าน (สมุดไม่ผูกสาขา ⇒ unitId null · สิทธิ์ระดับร้าน) ◂
+  if (by.has("ACCOUNT_BOOK"))
+    jobs.push(
+      db.appSystem.findMany({ where: { tenantId: T, id: { in: ids("ACCOUNT_BOOK") }, type: "ACCOUNT" }, select: { id: true } }).then((rs) => {
+        for (const r of rs) out.set(`ACCOUNT_BOOK|${r.id}`, { unitId: null, known: { TENANT: T, ACCOUNT_BOOK: r.id } });
+      }),
+    );
   await Promise.all(jobs); // ชั้นที่ยังไม่มีตาราง — คง null (fail closed)
   return out;
 }
@@ -387,6 +395,14 @@ export async function resolveSetting(ctx: SettingsCtx, key: string, refs: ScopeR
 /** query เดียวต่อชุด (+ แม่แบบของสาขา) · ผลเท่ากับเรียก resolveSetting ทีละตัว */
 export async function resolveSettings(ctx: SettingsCtx, keys: string[], refs: ScopeRefs, at: Date = new Date()): Promise<Record<string, Resolved>> {
   return (await resolveBatch(prisma, ctx, keys, [refs], at)).outs[0];
+}
+
+/**
+ * ACC T0.1 ▸ ค่าของสมุดบัญชี (ชั้น ACCOUNT_BOOK) — สมุดไม่ผูกสาขา ⇒ ไม่มีแม่แบบ (ค่าเริ่ม = `_fallback`)
+ *   ผลเท่ากับ resolveSettings ที่ refs มีแต่ accountBookId (unitId ว่าง = ไม่อ่าน SettingProfile) ◂
+ */
+export async function resolveBookSettings(ctx: SettingsCtx, keys: string[], accountBookId: string, at: Date = new Date()): Promise<Record<string, Resolved>> {
+  return (await resolveBatch(prisma, ctx, keys, [{ unitId: "", accountBookId }], at)).outs[0];
 }
 
 /**

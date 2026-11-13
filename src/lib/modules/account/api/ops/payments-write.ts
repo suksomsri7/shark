@@ -132,7 +132,7 @@ const paymentRowInput = z
       .min(0)
       .max(10000)
       .nullish()
-      .describe("Withholding tax rate in basis points: 300 = 3%. Printed on the certificate."),
+      .describe("Withholding tax rate in basis points (1% = 100). Suggested rates per income type are in GET /settings/tax. Printed on the certificate."),
     whtAmountSatang: z
       .number()
       .int()
@@ -422,7 +422,7 @@ const groupWhtInput = z
   .object({
     childDocId: idField("Id of the child document this withholding tax belongs to."),
     whtIncomeType: whtIncomeTypeField,
-    whtRateBp: z.number().int().min(0).max(10000).nullish().describe("Withholding tax rate in basis points: 300 = 3%."),
+    whtRateBp: z.number().int().min(0).max(10000).nullish().describe("Withholding tax rate in basis points (1% = 100). Suggested rates per income type are in GET /settings/tax."),
     whtAmountSatang: z.number().int().min(0).describe("Withholding tax deducted from that child document, in satang."),
   })
   .strict();

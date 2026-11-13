@@ -407,6 +407,9 @@ if (WO === "1.9") {
   const { prisma: db } = await import("@/lib/core/db");
   const svc = await import("@/lib/modules/account/service");
   const rs = await import("@/lib/modules/account/recurring-shared");
+  // ACC T0.2 ▸ ชุดอัตรา VAT จากตารางค่ากฎหมาย (สมุดไม่มีแถวร้าน = 700/0/−1 เหมือนเดิม) ◂
+  const lvr = await import("@/lib/modules/account/legal-values");
+  const vatRuleQc = lvr.vatRuleFrom(lvr.EMPTY_BOOK_LEGAL, new Date());
   cleanupFixture = async () => {
     const rules = await db.accountRecurringRule.findMany({
       where: { systemId: SYS, name: { startsWith: FIXTURE_REF_19 } },
@@ -447,7 +450,7 @@ if (WO === "1.9") {
         name: `${FIXTURE_REF_19} ${name}`,
         docType: "INVOICE",
         contactId: E.fixtures.contactNattapholId,
-        template: rs.parseRecurringTemplate({ priceMode: "EXCL_VAT", lines: [tplLine(lineName, price)], dueDays: 7 }),
+        template: rs.parseRecurringTemplate({ priceMode: "EXCL_VAT", lines: [tplLine(lineName, price)], dueDays: 7 }, vatRuleQc),
         frequency: freq,
         dayOfMonth,
         weekday,

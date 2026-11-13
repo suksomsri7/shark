@@ -8,6 +8,7 @@ import "./defs/messaging";
 import "./defs/rooms";
 import "./defs/booking"; // SVC B.0
 import "./defs/integrations"; // SVC C.3 (#83)
+import "./defs/account"; // ACC T0.1/T0.2 (สมุดบัญชี: ประเภทผู้ประกอบการ + ตารางค่ากฎหมาย)
 
 export type * from "./types";
 export { SCOPE_KINDS } from "./types";
@@ -34,6 +35,7 @@ export {
   resolveSetting,
   resolveSettings,
   resolveSettingsMany,
+  resolveBookSettings, // ACC T0.1
   refsFor,
   settingsDiff,
   setSettings,

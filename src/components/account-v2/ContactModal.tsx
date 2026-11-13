@@ -114,17 +114,12 @@ const WHT_TYPES: [string, string][] = [
   ["M40_8", "40(8) บริการ/อื่นๆ"],
 ];
 
-const WHT_RATES: [string, string][] = [
-  ["", "— ไม่ระบุ"],
-  ["50", "0.5%"],
-  ["100", "1%"],
-  ["150", "1.5%"],
-  ["200", "2%"],
-  ["300", "3%"],
-  ["500", "5%"],
-  ["1000", "10%"],
-  ["1500", "15%"],
-];
+/** ACC T0.2 ▸ ตัวเลือกอัตรา = อัตราที่มีผลในตารางค่ากฎหมายของสมุด (ส่งมาจากหน้า server) + ค่าเดิมของผู้ติดต่อ — เดิมเป็นรายการตายตัว ◂ */
+function whtRateChoicesOf(rates: readonly number[], current: string): [string, string][] {
+  const cur = Number.parseInt(current, 10);
+  const list = [...new Set([...rates.filter((r) => r > 0), ...(Number.isFinite(cur) && cur > 0 ? [cur] : [])])].sort((a, b) => a - b);
+  return [["", "— ไม่ระบุ"], ...list.map((bp): [string, string] => [String(bp), `${bp / 100}%`])];
+}
 
 const MAXLEN = {
   name: 256, contactPerson: 100, addressLine: 200, email: 50, phone: 20,
@@ -293,6 +288,7 @@ export function ContactModal({
   dbdEnabled,
   dbdDisabledReason,
   defaultTab,
+  whtRates,
 }: {
   systemId: string;
   /** path หน้ารายการผู้ติดต่อ — ใช้ปิด modal (ถอด ?new/?edit) และทำลิงก์ "เปิด C00012" */
@@ -304,6 +300,8 @@ export function ContactModal({
   dbdEnabled: boolean;
   dbdDisabledReason: string;
   defaultTab: "basic" | "advanced";
+  /** อัตราหัก ณ ที่จ่ายที่มีผลในตารางค่ากฎหมายของสมุด (bp) */
+  whtRates: number[];
 }) {
   const router = useRouter();
   const isEdit = !!contact;
@@ -893,7 +891,7 @@ export function ContactModal({
               </FormField>
               <FormField label="หัก ณ ที่จ่ายเริ่มต้น — อัตรา">
                 <select value={f.defaultWhtRateBp} onChange={(e) => set("defaultWhtRateBp", e.target.value)} className="input" data-testid="contact-wht-rate">
-                  {WHT_RATES.map(([v, l]) => (
+                  {whtRateChoicesOf(whtRates, f.defaultWhtRateBp).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
                   ))}
                 </select>

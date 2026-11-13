@@ -22,6 +22,7 @@ import { inventorySystemId } from "@/lib/modules/account/inventory-link";
 import { getAccMode } from "@/components/account-v2/mode";
 import { ProductsPanel, type ProductRow, type ProductTypeTab } from "@/components/account-v2/ProductsPanel";
 import { ProductModal } from "@/components/account-v2/ProductModal";
+import { legalUiOptionsAt } from "@/lib/modules/account/legal-values";
 import type { RowActionItem } from "@/components/account-v2/RowActions";
 import type { AccountProductType } from "@prisma/client";
 import { buildHref } from "@/components/account-v2/url";
@@ -73,6 +74,8 @@ export default async function ProductsPage({
         listProductsPaged(tenantId, systemId, { type: "GOODS", pageSize: 100 }),
       ])
     : [[], [], [], [], "", null];
+  // ACC T0.2 ▸ ตัวเลือก VAT ของ modal = ตารางค่ากฎหมายของสมุด ◂
+  const legal = wantModal ? await legalUiOptionsAt({ tenantId, systemId }, new Date()) : null;
 
   const typeTabs: ProductTypeTab[] = (["GOODS", "SERVICE", "BUNDLE"] as AccountProductType[]).map((t) => ({
     key: KEY_OF[t],
@@ -273,6 +276,8 @@ export default async function ProductsPage({
           }
           ssrMode={mode}
           hasInventorySystem={!!invSystemId}
+          vatOptions={(legal?.vatOptions ?? []).map((o) => o.value)}
+          defaultVatBp={legal?.defaultVatBp ?? 0}
         />
       )}
     </>

@@ -160,7 +160,7 @@ function readProductInput(formData: FormData): ProductInput {
     unitId: str(formData, "unitId") || null,
     salePrice: satang(formData, "salePrice"),
     buyPrice: satang(formData, "buyPrice"),
-    vatRateBp: num(formData, "vatRateBp") ?? 700,
+    vatRateBp: num(formData, "vatRateBp") ?? undefined, // ACC T0.2 ▸ ไม่ส่ง = product.ts ใช้อัตราจากตารางค่ากฎหมาย ◂
     incomeAccountId: str(formData, "incomeAccountId") || null,
     expenseAccountId: str(formData, "expenseAccountId") || null,
     imageUrl: str(formData, "imageUrl") || null,
@@ -488,7 +488,7 @@ export async function saveProductAction(systemId: string, payload: ProductFormPa
     unitId: payload.unitId ?? null,
     salePrice: bahtToSatang(payload.salePriceBaht),
     buyPrice: bahtToSatang(payload.buyPriceBaht),
-    vatRateBp: payload.vatRateBp ?? 700,
+    vatRateBp: payload.vatRateBp ?? undefined, // ACC T0.2 ▸ ไม่ส่ง = อัตราจากตารางค่ากฎหมาย ◂
     incomeAccountId: payload.incomeAccountId ?? null,
     expenseAccountId: payload.expenseAccountId ?? null,
     barcode: payload.barcode ?? null,

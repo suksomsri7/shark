@@ -37,6 +37,7 @@ import type {
   SaveDraftResult,
 } from "@/components/account-v2/doc-editor-types";
 import { packDescription, packAdjustReason } from "@/components/account-v2/doc-editor-types";
+import { vatBpOrDefault, vatRuleAt, type VatRule } from "./legal-values";
 
 // ─────────────────────────────────────────────────────────────
 // editor-actions.ts — server actions ของฟอร์มเอกสาร V2 (WO 1.3)
@@ -61,7 +62,7 @@ const dateOf = (v: unknown) => {
 };
 
 const PRICE_MODES: PriceMode[] = ["EXCL_VAT", "INCL_VAT", "NO_VAT"];
-const VAT_BPS = new Set([700, 0, -1]);
+// ACC T0.2 ▸ อัตรา VAT ที่รับได้ = ตารางค่ากฎหมายของสมุด (vatRuleAt) — เดิมล็อก 700/0/−1 ◂
 
 function amountOrPercent(v: unknown): AmountOrPercent {
   const o = (v ?? {}) as Record<string, unknown>;
@@ -73,7 +74,7 @@ function amountOrPercent(v: unknown): AmountOrPercent {
 }
 
 /** ตรวจ payload ที่มาจากเบราว์เซอร์ให้เหลือแต่ค่าที่ยอมรับได้ (ห้ามยัดค่าดิบลง prisma) */
-function sanitize(payload: DocDraftPayload) {
+function sanitize(payload: DocDraftPayload, vat: VatRule) {
   const v = payload.value ?? ({} as DocDraftPayload["value"]);
   const priceMode: PriceMode = PRICE_MODES.includes(v.priceMode as PriceMode)
     ? (v.priceMode as PriceMode)
@@ -91,7 +92,7 @@ function sanitize(payload: DocDraftPayload) {
       unitName: trim(l.unitName, 40),
       unitPriceSatang: Math.max(0, int(l.unitPriceSatang)),
       discount: amountOrPercent(l.discount),
-      vatRateBp: VAT_BPS.has(rate) ? rate : 700,
+      vatRateBp: vatBpOrDefault(vat, rate),
       whtIncomeType: whtType,
       whtRateBp: whtType ? (whtRateBp ?? 0) : null,
     };
@@ -137,7 +138,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
     if (side === "revenue" ? !isVisibleDocType(docType) : !EXP_ROUTE[docType]) {
       return { ok: false, reason: "ยังไม่เปิดใช้เอกสารชนิดนี้" };
     }
-    const v = sanitize(payload);
+    const v = sanitize(payload, await vatRuleAt({ tenantId, systemId }, dateOf(payload?.value?.issueDate) ?? new Date()));
     if (v.lines.length === 0) return { ok: false, reason: "ต้องมีรายการอย่างน้อย 1 รายการ" };
     await assertEditorRefs(tenantId, systemId, {
       contactId: v.contactId,
@@ -532,7 +533,7 @@ export async function saveFavoriteLinesAction(
     assertAccountCan(auth, "account.doc.create");
     const label = trim(name, 60);
     if (!label) return { ok: false, reason: "กรุณาตั้งชื่อชุดรายการ" };
-    const clean = sanitize({ systemId, docType: "INVOICE", value: { lines } as DocDraftPayload["value"] }).lines;
+    const clean = sanitize({ systemId, docType: "INVOICE", value: { lines } as DocDraftPayload["value"] }, await vatRuleAt({ tenantId, systemId }, new Date())).lines;
     if (clean.length === 0) return { ok: false, reason: "ไม่มีรายการให้บันทึก" };
     return await saveDocFavorite(tenantId, systemId, { name: label, lines: clean });
   } catch (e) {

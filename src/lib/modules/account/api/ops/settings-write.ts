@@ -52,7 +52,16 @@ import {
 } from "../../connections";
 import { listApiKeys } from "@/lib/api-keys/service";
 import { bundleLabelForScopes } from "@/lib/api-keys/scopes";
-import type { ApiActor } from "../actor";
+import { actorRefId, type ApiActor } from "../actor";
+import { bookTaxView, ENTITY_KINDS, saveBookTax, type BookTaxPatch } from "../../legal-values";
+import {
+  FILING_CHANNELS,
+  FILING_FORMS,
+  WHT_CHANNELS,
+  WHT_METHODS,
+  WHT_PAYERS,
+  WHT_RECIPIENTS,
+} from "@/lib/core/settings/legal/th-tax-2569";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError } from "../respond";
 import { iso } from "../serialize";
@@ -99,7 +108,13 @@ const settingsUpdateInput = z
     email: z.string().email().max(160).nullish(),
     website: z.string().max(200).nullish(),
     vatRegistered: z.boolean().optional(),
-    vatRateBp: z.number().int().min(0).max(10000).optional().describe("Basis points: 700 = 7%."),
+    vatRateBp: z
+      .number()
+      .int()
+      .min(0)
+      .max(10000)
+      .optional()
+      .describe("Basis points (1% = 100). Read-only mirror of the legal value table: only the current standard rate is accepted; change rates with PATCH /settings/tax."),
     taxPointBasis: z.enum(["ON_ISSUE", "ON_PAYMENT"]).optional(),
   })
   .strict();
@@ -642,6 +657,85 @@ const linksDisconnect = defineOp({
   },
 });
 
+// ═══════════════════════════ ACC T0.1/T0.2 ประเภทผู้ประกอบการ + ตารางค่ากฎหมาย ═══════════════════════════
+//
+// เขียนผ่านเครื่องยนต์ค่าตั้ง (setSettings — ชั้น ACCOUNT_BOOK) ⇒ ตรวจสิทธิ์ `account.settings.manage` · zod ของแถว ·
+// ประวัติ SettingChange + AuditLog เหมือนหน้าจอ · แถวที่ส่งมา = "แถวของร้าน" ทั้งชุดของตารางนั้น (แถวระบบแก้ไม่ได้ ทับได้)
+// ค่าที่ต่างจากค่าเริ่มต้นของระบบ = คำเตือนในคำตอบ ไม่ปฏิเสธ (หลัก SHARK)
+
+const YMD_FIELD = z.string().regex(YMD, "วันที่ต้องเป็นรูปแบบ YYYY-MM-DD");
+const rowCommon = {
+  id: z.string().max(64).optional().describe("Row id. Omit for a new row; send the existing id to replace that row."),
+  from: YMD_FIELD.nullable().describe("First Thai calendar day the row applies (null = open)."),
+  to: YMD_FIELD.nullable().describe("Last Thai calendar day the row applies (null = open)."),
+  source: z.string().max(500).optional().describe("Where the value comes from (notice number, accountant's advice). Default: set by the shop."),
+  note: z.string().max(500).optional(),
+};
+const RATE_FIELD = z.number().int().min(0).max(10000);
+const taxVatRow = z.object({ ...rowCommon, value: RATE_FIELD.describe("Standard VAT rate in basis points (1% = 100).") }).strict();
+const taxWhtRow = z
+  .object({
+    ...rowCommon,
+    incomeType: z.string().regex(/^[A-Z][A-Z0-9_:]{1,39}$/).describe("Income type code, e.g. M40_2 … M40_8, ADVERTISING, TRANSPORT."),
+    payer: z.enum(WHT_PAYERS),
+    recipient: z.enum(WHT_RECIPIENTS),
+    channel: z.enum(WHT_CHANNELS).describe("NORMAL or EWHT (rate only when remitted through e-Withholding Tax)."),
+    method: z.enum(WHT_METHODS).describe("RATE = fixed rate in `value` · NONE = not withheld · PROGRESSIVE = s.50(1) progressive, entered by hand."),
+    value: RATE_FIELD.nullable().describe("Rate in basis points when method is RATE, otherwise null."),
+  })
+  .strict();
+const taxDeadlineRow = z
+  .object({
+    ...rowCommon,
+    form: z.enum(FILING_FORMS),
+    channel: z.enum(FILING_CHANNELS),
+    value: z.number().int().min(1).max(31).describe("File by this day of the month after the tax month."),
+  })
+  .strict();
+
+const settingsTaxUpdateInput = z
+  .object({
+    entityKind: z.enum(ENTITY_KINDS).optional().describe("Business entity kind of this book (separate from VAT registration). UNSET = not chosen yet."),
+    vatRows: z.array(taxVatRow).max(200).optional().describe("Replaces ALL shop rows of the VAT table. [] = use the system defaults only."),
+    whtRows: z.array(taxWhtRow).max(200).optional().describe("Replaces ALL shop rows of the withholding tax table."),
+    deadlineRows: z.array(taxDeadlineRow).max(200).optional().describe("Replaces ALL shop rows of the filing deadline table."),
+    reason: z.string().max(500).optional().describe("Why the change was made. Kept in the settings history."),
+  })
+  .strict();
+
+const settingsTaxUpdate = defineOp({
+  id: "settings.tax.update",
+  method: "PATCH",
+  path: "/settings/tax",
+  kind: "write",
+  action: "account.settings.manage",
+  summary:
+    "Set the business entity kind of this book and/or replace the shop's own rows of the legal value tables (VAT rate, withholding tax rates, filing deadlines). System rows cannot be edited, only overridden by a shop row with the same dimensions and dates. A shop value that differs from a system default is accepted and returned with a warning.",
+  label: "แก้ประเภทผู้ประกอบการ/ตารางค่ากฎหมาย",
+  input: settingsTaxUpdateInput,
+  tool: {
+    name: "account_update_tax_settings",
+    hint: "Use when the owner asks to set the business entity kind or to change a VAT/withholding tax rate or filing deadline for this book. Read account_tax_settings first and send the full list of shop rows for the table you change. Proposed for confirmation.",
+  },
+  test: "T02-API.2",
+  async handler({ actor, input }) {
+    const ctx = ctxOf(actor);
+    const patch: BookTaxPatch = {
+      ...(input.entityKind !== undefined ? { entityKind: input.entityKind } : {}),
+      ...(input.vatRows !== undefined ? { vatRows: input.vatRows.map((r) => ({ ...r, id: r.id ?? "", source: r.source ?? "", checkedAt: null })) } : {}),
+      ...(input.whtRows !== undefined ? { whtRows: input.whtRows.map((r) => ({ ...r, id: r.id ?? "", source: r.source ?? "", checkedAt: null })) } : {}),
+      ...(input.deadlineRows !== undefined ? { deadlineRows: input.deadlineRows.map((r) => ({ ...r, id: r.id ?? "", source: r.source ?? "", checkedAt: null })) } : {}),
+    };
+    const res = await saveBookTax({ ...actor.membership, userId: actorRefId(actor) }, ctx, patch, input.reason);
+    if (!res.ok) {
+      const msg = res.issues.map((i) => i.messageTh).join(" · ") || "บันทึกไม่สำเร็จ";
+      if (res.code === "PERMISSION") throw new ApiError(403, "forbidden", msg, "Not allowed to change these settings.");
+      throw invalid(msg);
+    }
+    return { saved: res.saved, warnings: res.warnings, settings: await bookTaxView(ctx, new Date()) };
+  },
+});
+
 // ═══════════════════════════ S6 คีย์ API (list เท่านั้น) ═══════════════════════════
 //
 // 🔴 ห้ามเพิ่ม POST /api-keys ที่นี่หรือที่ไหนก็ตาม — คีย์ที่ใช้สร้างคีย์อื่นได้ = ยกระดับสิทธิ์ตัวเอง
@@ -679,6 +773,7 @@ export const SETTINGS_WRITE_OPS: ApiOp[] = [
   settingsDocumentsNextNo,
   settingsTagsCreate,
   settingsPolicyUpdate,
+  settingsTaxUpdate,
   settingsPermissionsGet,
   settingsPermissionsAddRole,
   settingsPermissionsSaveRole,

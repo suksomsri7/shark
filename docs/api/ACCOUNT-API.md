@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 199 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 201 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -985,9 +985,22 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/settings/policy" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `settings.tax`
+
+**GET /settings/tax** - Business entity kind of this book and the effective-dated legal value tables (VAT rate, withholding tax rates by income type × payer × recipient × channel, filing deadlines incl. the online extension): every row with its value, effective range, source, confidence tag and checked date, which row is in effect, and warnings. System defaults are research, not legal advice. · scope: `account.doc.view` · read · AI tool: `account_tax_settings`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | no | Read the table as in effect on this Thai calendar day (YYYY-MM-DD). Default: today. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/settings/tax" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `settings.get`
 
-**GET /settings** - Company details printed on documents: legal name, tax id, branch, address, VAT registration and fiscal year. · scope: `account.doc.view` · read · AI tool: `account_settings`
+**GET /settings** - Company details printed on documents: legal name, tax id, branch, address, VAT registration, business entity kind and fiscal year. · scope: `account.doc.view` · read · AI tool: `account_settings`
 
 No query parameters.
 
@@ -1279,7 +1292,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/chart/123" \
 | `nameEn` | one of several shapes | no | English account name, optional. |
 | `groupPrefix` | string | yes | Three digit prefix of the sub group the account belongs to, such as 610. The code must start with it. |
 | `description` | one of several shapes | no | What the account is for, shown in the account panel. |
-| `defaultWhtRateBp` | one of several shapes | no | Default withholding rate in basis points: 300 = 3%. |
+| `defaultWhtRateBp` | one of several shapes | no | Default withholding rate in basis points (1% = 100). |
 | `defaultWhtType` | one of several shapes | no | - |
 | `vatTreatment` | one of several shapes | no | - |
 
@@ -2488,7 +2501,7 @@ Path parameters: `id` (required).
 | `description` | one of several shapes | no | - |
 | `salePriceSatang` | one of several shapes | no | Sale price in satang (integer). 1,500.00 baht is 150000. |
 | `buyPriceSatang` | one of several shapes | no | Cost/buy price in satang (integer). |
-| `vatRateBp` | integer | no | VAT rate in basis points: 700 = 7%, 0 = zero rated, -1 = exempt. Default 700. · min -1 · max 10000 |
+| `vatRateBp` | integer | no | VAT rate in basis points (1% = 100), 0 = zero rated, -1 = exempt. Default: the standard rate in the book's legal value table (GET /settings/tax). · min -1 · max 10000 |
 | `purchaseVatRateBp` | one of several shapes | no | Purchase VAT rate. Null uses vatRateBp. |
 | `incomeAccountId` | one of several shapes | no | - |
 | `expenseAccountId` | one of several shapes | no | - |
@@ -2524,7 +2537,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/products/123" \
 | `description` | one of several shapes | no | - |
 | `salePriceSatang` | one of several shapes | no | Sale price in satang (integer). 1,500.00 baht is 150000. |
 | `buyPriceSatang` | one of several shapes | no | Cost/buy price in satang (integer). |
-| `vatRateBp` | integer | no | VAT rate in basis points: 700 = 7%, 0 = zero rated, -1 = exempt. Default 700. · min -1 · max 10000 |
+| `vatRateBp` | integer | no | VAT rate in basis points (1% = 100), 0 = zero rated, -1 = exempt. Default: the standard rate in the book's legal value table (GET /settings/tax). · min -1 · max 10000 |
 | `purchaseVatRateBp` | one of several shapes | no | Purchase VAT rate. Null uses vatRateBp. |
 | `incomeAccountId` | one of several shapes | no | - |
 | `expenseAccountId` | one of several shapes | no | - |
@@ -2996,6 +3009,26 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/settings/tags" \
   -d '{"name":"example name","color":"slate","docTypes":[]}'
 ```
 
+#### `settings.tax.update`
+
+**PATCH /settings/tax** - Set the business entity kind of this book and/or replace the shop's own rows of the legal value tables (VAT rate, withholding tax rates, filing deadlines). System rows cannot be edited, only overridden by a shop row with the same dimensions and dates. A shop value that differs from a system default is accepted and returned with a warning. · scope: `account.settings.manage` · write · AI tool: `account_update_tax_settings`
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `entityKind` | enum("UNSET", "INDIVIDUAL", "ORDINARY_PARTNERSHIP", "JURISTIC_PARTNERSHIP", "COMPANY", "OTHER") | no | Business entity kind of this book (separate from VAT registration). UNSET = not chosen yet. |
+| `vatRows` | array of object | no | Replaces ALL shop rows of the VAT table. [] = use the system defaults only. |
+| `whtRows` | array of object | no | Replaces ALL shop rows of the withholding tax table. |
+| `deadlineRows` | array of object | no | Replaces ALL shop rows of the filing deadline table. |
+| `reason` | string | no | Why the change was made. Kept in the settings history. · max length 500 |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/settings/tax" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
 #### `settings.update`
 
 **PATCH /settings** - Update the company details printed on documents. Only sent fields change. The company stamp, signature and logo images are managed from the app only, never through this API. · scope: `account.settings.manage` · write
@@ -3011,7 +3044,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/settings/tags" \
 | `email` | one of several shapes | no | - |
 | `website` | one of several shapes | no | - |
 | `vatRegistered` | boolean | no | - |
-| `vatRateBp` | integer | no | Basis points: 700 = 7%. · min 0 · max 10000 |
+| `vatRateBp` | integer | no | Basis points (1% = 100). Read-only mirror of the legal value table: only the current standard rate is accepted; change rates with PATCH /settings/tax. · min 0 · max 10000 |
 | `taxPointBasis` | enum("ON_ISSUE", "ON_PAYMENT") | no | - |
 
 ```bash
@@ -3185,7 +3218,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/webhooks" \
 | --- | --- | --- | --- |
 | `paymentId` | string | yes | Id of the payment to a vendor that had withholding tax deducted. Take it from the payments of the expense document. · min length 1 · max length 40 |
 | `whtIncomeType` | enum("SALARY", "COMMISSION", "ROYALTY", "INTEREST", "DIVIDEND", "RENT", "PROFESSIONAL", "CONTRACTOR", "SERVICE", "M40_1", "M40_2", "M40_3", "M40_4", "M40_5", "M40_6", "M40_7", "M40_8") | yes | Type of income under section 40 of the Thai Revenue Code, used on the withholding tax certificate. Readable names: SALARY 40(1), COMMISSION 40(2), ROYALTY 40(3), INTEREST or DIVIDEND 40(4), RENT 40(5), PROFESSIONAL 40(6), CONTRACTOR 40(7), SERVICE 40(8). The raw codes M40_1 to M40_8 are accepted too. |
-| `whtRateBp` | one of several shapes | no | Rate in basis points: 300 = 3%. Only needed when the payment itself did not record a rate. |
+| `whtRateBp` | one of several shapes | no | Rate in basis points (1% = 100). Only needed when the payment itself did not record a rate. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/wht/certs" \
@@ -3510,7 +3543,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
 
 ## AI tools
 
-36 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+38 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 `account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
@@ -3547,8 +3580,10 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_search_contacts` | `contacts.list` | read | `account.doc.view` |
 | `account_search_products` | `products.list` | read | `account.doc.view` |
 | `account_settings` | `settings.get` | read | `account.doc.view` |
+| `account_tax_settings` | `settings.tax` | read | `account.doc.view` |
 | `account_transfer_funds` | `finance.transfer` | write | `account.finance.manage` |
 | `account_update_contact` | `contacts.update` | write | `account.contact.manage` |
+| `account_update_tax_settings` | `settings.tax.update` | write | `account.settings.manage` |
 | `account_upload_file` | `documents.add-attachment` | write | `account.doc.create` |
 | `account_void_document` | `documents.void` | danger | `account.doc.void` |
 | `account_void_payment` | `payments.void` | danger | `account.payment.void` |
@@ -3567,7 +3602,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
 
-`GET https://shark.in.th/api/v1/ai/skills/account` returns the 36 tools (14 read, 22 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 38 tools (15 read, 23 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "account", "label": "บัญชี", "summary": "...", "tools": [

@@ -843,7 +843,8 @@ try {
   // 🔴 P11.0 — ค่าเริ่มต้นต้องเป็น "เปิด" ทั้งในโค้ดและใน DB
   //    ก่อน WO 8.2 ตัวกวาดปิดงวดให้ทุกระบบบัญชีโดยไม่มีสวิตช์ ⇒ ถ้า default เป็น "ปิด"
   //    ร้าน/แถวตั้งค่าที่สร้างใหม่จะเสียฟีเจอร์เดิมไปเงียบ ๆ (qc-account-deep AD-2.1–2.4 จับได้)
-  eq("P11.0a ค่าเริ่มต้นในโค้ด = เปิด", policy.defaultPolicy().autoClosePeriods, true);
+  // ORACLE-EDIT (ACC T0.2): defaultPolicy รับอัตรา VAT จากตารางค่ากฎหมาย (เดิมฝัง 700) — ค่าที่ตรวจ (autoClosePeriods) ไม่เกี่ยว
+  eq("P11.0a ค่าเริ่มต้นในโค้ด = เปิด", policy.defaultPolicy((await import("@/lib/modules/account/legal-values")).vatRateBpFrom((await import("@/lib/modules/account/legal-values")).EMPTY_BOOK_LEGAL, new Date())).autoClosePeriods, true);
   {
     const col = await prisma.$queryRawUnsafe<{ column_default: string | null }[]>(
       `SELECT column_default FROM information_schema.columns
@@ -899,13 +900,14 @@ try {
       await prisma.accountSettings.count({ where: { systemId: bare2.id } }),
       0,
     );
-    // ใช้วันที่ 5 ของเดือนอนาคต — กันชนกับตัวกันซ้ำที่เทียบ createdAt กับ "ต้นวันไทยของ now"
-    const fifth = d("2026-12-05");
+    // ใช้วันเตือนของเดือนอนาคต — กันชนกับตัวกันซ้ำที่เทียบ createdAt กับ "ต้นวันไทยของ now"
+    // ORACLE-EDIT (ACC T0.2): กำหนดยื่น ภ.พ.30 มาจากตารางค่ากฎหมาย = วันที่ 15 ⇒ วันเตือน = วันที่ 10 (เดิมวันที่ 5)
+    const fifth = d("2026-12-10");
     const rem = await svc.runAccountReminders(fifth, { tenantId: tid, systemId: bare2.id });
-    assert("P11.7b ไม่มีแถวตั้งค่า → ยังเตือน ภ.พ.30 วันที่ 5 ตามเดิม", rem.PP30_DUE >= 1, JSON.stringify(rem));
+    assert("P11.7b ไม่มีแถวตั้งค่า → ยังเตือน ภ.พ.30 (5 วันก่อนกำหนดยื่นตามตาราง = วันที่ 10)", rem.PP30_DUE >= 1, JSON.stringify(rem));
     const eighth = d("2026-12-08");
     const rem8 = await svc.runAccountReminders(eighth, { tenantId: tid, systemId: bare2.id });
-    eq("P11.7c วันที่ไม่ใช่วันที่ 5 → ไม่เตือน", rem8.PP30_DUE, 0);
+    eq("P11.7c วันที่ไม่ใช่วันเตือน → ไม่เตือน", rem8.PP30_DUE, 0);
   }
 
   // ═════════════════ P13 — ด่านสิทธิ์ + ค่าที่กรอกผิด ═════════════════

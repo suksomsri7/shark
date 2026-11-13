@@ -185,7 +185,7 @@ export type RecurringTemplateLine = {
   unitName: string | null;
   /** สตางค์ (integer) — ห้ามเป็นทศนิยม/บาท */
   unitPriceSatang: number;
-  /** 700 = 7% · 0 = 0% · -1 = ยกเว้น (ชุดเดียวกับ DocEditorV2) */
+  /** basis point (อัตราจากตารางค่ากฎหมายของสมุด) · 0 = 0% · -1 = ยกเว้น (ชุดเดียวกับ DocEditorV2) */
   vatRateBp: number;
   discountSatang: number;
   productId: string | null;
@@ -203,7 +203,11 @@ export type RecurringTemplate = {
 
 export const TEMPLATE_MAX_LINES = 100;
 const PRICE_MODES = ["EXCL_VAT", "INCL_VAT", "NO_VAT"] as const;
-const VAT_BPS = new Set([700, 0, -1]);
+/**
+ * ACC T0.2 ▸ อัตรา VAT ที่รับได้ = ตามตารางค่ากฎหมายของสมุด (ผู้เรียกโหลดด้วย legal-values.vatRuleAt แล้วส่งมา)
+ *   ไฟล์นี้ pure (ฝั่ง client ใช้ด้วย) ⇒ รับเป็นพารามิเตอร์ ไม่ import ตัวอ่านที่แตะฐาน ◂
+ */
+export type RecurringVatRule = { defaultBp: number; allowed: readonly number[] };
 
 const str = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
 const int = (v: unknown) => {
@@ -215,7 +219,7 @@ const int = (v: unknown) => {
  * อ่าน templateJson ที่มาจาก DB/ฟอร์มให้เหลือแต่ค่าที่ยอมรับได้ — **ไม่เคย throw**
  * (JSON ในคอลัมน์อาจเป็นอะไรก็ได้ ถ้า parse พังแล้ว cron ล้มทั้งรอบ = ร้านอื่นซวยด้วย)
  */
-export function parseRecurringTemplate(raw: unknown): RecurringTemplate {
+export function parseRecurringTemplate(raw: unknown, vat: RecurringVatRule): RecurringTemplate {
   const o = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
   const priceMode = (PRICE_MODES as readonly string[]).includes(String(o.priceMode))
     ? (o.priceMode as RecurringTemplate["priceMode"])
@@ -232,7 +236,7 @@ export function parseRecurringTemplate(raw: unknown): RecurringTemplate {
         qty: Math.max(0, Number(line.qty) || 0),
         unitName: str(line.unitName, 40) || null,
         unitPriceSatang: Math.max(0, int(line.unitPriceSatang)),
-        vatRateBp: VAT_BPS.has(rate) ? rate : 700,
+        vatRateBp: vat.allowed.includes(rate) ? rate : vat.defaultBp,
         discountSatang: Math.max(0, int(line.discountSatang)),
         productId: str(line.productId, 40) || null,
         accountId: str(line.accountId, 40) || null,

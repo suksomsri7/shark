@@ -198,7 +198,7 @@ const productCreateInput = z
     description: z.string().max(500).nullish(),
     salePriceSatang: z.number().int().min(0).nullish().describe("Sale price in satang (integer). 1,500.00 baht is 150000."),
     buyPriceSatang: z.number().int().min(0).nullish().describe("Cost/buy price in satang (integer)."),
-    vatRateBp: vatRateBpField.optional().describe("VAT rate in basis points: 700 = 7%, 0 = zero rated, -1 = exempt. Default 700."),
+    vatRateBp: vatRateBpField.optional().describe("VAT rate in basis points (1% = 100), 0 = zero rated, -1 = exempt. Default: the standard rate in the book's legal value table (GET /settings/tax)."),
     purchaseVatRateBp: vatRateBpField.nullish().describe("Purchase VAT rate. Null uses vatRateBp."),
     incomeAccountId: z.string().max(40).nullish(),
     expenseAccountId: z.string().max(40).nullish(),

@@ -25,11 +25,12 @@ export const SCOPE_KINDS = [
   "RESOURCE",
   "DEVICE",
   "COURSE",
+  "ACCOUNT_BOOK", // ACC T0.1/T0.2 ▸ สมุดบัญชี (AppSystem type ACCOUNT · ไม่ผูกสาขา) ◂
 ] as const;
 export type ScopeKind = (typeof SCOPE_KINDS)[number];
 
 /** "qcfx" = ฟิกซ์เจอร์ QC เท่านั้น (defs/_fixture.ts) */
-export type SettingDomain = "booking" | "rooms" | "payments" | "messaging" | "integrations" | "qcfx"; // SVC C.3 ▸ + integrations ◂
+export type SettingDomain = "booking" | "rooms" | "payments" | "messaging" | "integrations" | "account" | "qcfx"; // SVC C.3 ▸ + integrations ◂ · ACC T0.1 ▸ + account ◂
 
 export type SettingValueType =
   | "int"
@@ -175,6 +176,8 @@ export type ScopeRefs = {
   resourceId?: string;
   deviceId?: string;
   courseId?: string;
+  /** ACC T0.1 ▸ สมุดบัญชี (AppSystem.id ชนิด ACCOUNT) — ใช้กับค่าโดเมน account ที่ไม่ผูกสาขา ◂ */
+  accountBookId?: string;
 };
 
 export type ResolvedSource = ScopeKind | "TEMPLATE" | "FALLBACK";

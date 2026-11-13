@@ -21,6 +21,8 @@ import {
 } from "./service";
 import { EXP_DOC_LABEL, issueExpenseDoc, recordVendorPaymentInTx, voidVendorPaymentInTx } from "./expense";
 import { listPaymentChannels, type FinanceOption } from "./payment";
+import { legalUiOptionsAt } from "./legal-values";
+import { getPolicy } from "./policy";
 import { chequeDraftProblem, createChequeInTx } from "./cheque";
 import { safeReason } from "./errors";
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) คีย์ของชุดการชำระ — ที่เดียวกับตัวหา "เช็คของชุด" (service/expense/cheque ใช้ร่วม ไม่ import วน) ◂
@@ -317,6 +319,8 @@ export type GroupPanelData = {
   batches: GroupBatchView[];
   channels: FinanceOption[];
   texts: GroupDefinition["texts"];
+  /** ACC T0.2 ▸ อัตราหัก ณ ที่จ่ายแนะนำต่อประเภทเงินได้ (ตารางค่ากฎหมาย + นโยบายร้าน) ◂ */
+  whtSuggest: Record<string, number>;
 };
 
 function toChildView(c: GroupChildDoc): GroupChildView {
@@ -346,11 +350,13 @@ export async function groupPanelData(
   if (!head) return null;
   const def = groupDefOf(head.docType);
   if (!def) return null;
-  const [children, payments, channels] = await Promise.all([
+  const [children, payments, channels, policy] = await Promise.all([
     groupChildDocs(tenantId, systemId, groupId, def.relType),
     findGroupChildPayments(tenantId, systemId, groupKeyPrefix(groupId)),
     listPaymentChannels(tenantId, systemId),
+    getPolicy({ tenantId, systemId }),
   ]);
+  const legal = await legalUiOptionsAt({ tenantId, systemId }, new Date(), policy.whtDefaults, def.direction === "IN" ? "SHOP_PAYS" : "CUSTOMER_PAYS");
 
   const batchMap = new Map<string, GroupBatchView>();
   for (const p of payments) {
@@ -399,6 +405,7 @@ export async function groupPanelData(
     batches: [...batchMap.values()],
     channels,
     texts: def.texts,
+    whtSuggest: legal.whtSuggest,
   };
 }
 

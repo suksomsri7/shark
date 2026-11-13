@@ -76,6 +76,7 @@ import {
   type RecurringRuleInput,
 } from "../../service";
 import { actorDocSource, actorRefId } from "../actor";
+import { vatRuleAt, vatRateLabel } from "../../legal-values";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError } from "../respond";
 import { docRow, ymd } from "../serialize";
@@ -173,6 +174,29 @@ async function docStateRow(
 
 // ── สคีมาร่วม ──────────────────────────────────────────────────────────────
 
+/**
+ * ACC T0.2 ▸ อัตรา VAT ต่อบรรทัด: zod ตรวจแค่รูปแบบ (จำนวนเต็ม bp ตั้งแต่ −1) — ค่าที่ "รับได้" ตัดสินจาก
+ *   ตารางค่ากฎหมายของสมุดใน handler (`assertVatRates`) · เดิมล็อก 700/0/−1 ในสคีมา ◂
+ */
+const vatRateBpField = z.number().int().min(-1).max(10000);
+const VAT_RATE_DESC =
+  "VAT rate in basis points (1% = 100); 0 = zero rated, -1 = exempt. Accepted standard rates come from the book's legal value table (GET /settings/tax).";
+
+/** อัตราที่ส่งมาต้องอยู่ในตารางค่ากฎหมายของสมุด (ไม่อยู่ = 422 พร้อมรายการที่รับได้ — ร้านเพิ่มแถวในตารางได้เอง) */
+async function assertVatRates(ctx: { tenantId: string; systemId: string }, rates: readonly (number | undefined)[]): Promise<void> {
+  const given = rates.filter((r): r is number => typeof r === "number");
+  if (given.length === 0) return;
+  const rule = await vatRuleAt(ctx, new Date());
+  const bad = [...new Set(given.filter((r) => !rule.allowed.includes(r)))];
+  if (bad.length === 0) return;
+  throw new ApiError(
+    422,
+    "validation",
+    `อัตรา VAT ${bad.join(", ")} (bp) ไม่มีในตารางค่ากฎหมายของสมุดนี้ — รับได้: ${rule.allowed.map((r) => `${r} (${vatRateLabel(r)})`).join(", ")} · เพิ่มอัตราได้ที่ ตั้งค่า › ข้อมูลกิจการ › อัตราภาษีและกำหนดยื่น`,
+    `VAT rate ${bad.join(", ")} is not in this book's legal value table. Accepted: ${rule.allowed.join(", ")}.`,
+  );
+}
+
 const lineInput = z
   .object({
     description: z.string().min(1).max(1000).describe("What is being sold or bought, as it appears on the printed document."),
@@ -180,10 +204,9 @@ const lineInput = z
     unitName: z.string().max(40).nullish().describe("Unit label, for example `ชิ้น` or `ทริป`."),
     unitPriceSatang: z.number().int().min(0).describe("Price of one unit in satang (integer). 1,250.50 baht is 125050."),
     discountSatang: z.number().int().min(0).optional().describe("Discount of this line in satang (integer). Default 0."),
-    vatRateBp: z
-      .union([z.literal(700), z.literal(0), z.literal(-1)])
+    vatRateBp: vatRateBpField
       .optional()
-      .describe("VAT rate in basis points: 700 = 7%, 0 = zero rated, -1 = exempt. Default: the rate in the book settings."),
+      .describe(`${VAT_RATE_DESC} Default: the standard rate of the book on the issue date.`),
     productId: z.string().max(40).nullish().describe("Id of a product in this book, when the line comes from the catalogue."),
     accountId: z.string().max(40).nullish().describe("Id of the chart of accounts entry to post this line to (expense and asset documents)."),
   })
@@ -191,8 +214,9 @@ const lineInput = z
 
 type LineInputPayload = z.infer<typeof lineInput>;
 
-/** บรรทัดของ API (`…Satang`) → บรรทัดของ service (`unitPrice`/`discount` เป็นสตางค์อยู่แล้ว) */
-function toServiceLines(lines: LineInputPayload[]): ExpLineInput[] {
+/** บรรทัดของ API (`…Satang`) → บรรทัดของ service (`unitPrice`/`discount` เป็นสตางค์อยู่แล้ว) · ตรวจอัตรา VAT กับตารางก่อน */
+async function toServiceLines(ctx: { tenantId: string; systemId: string }, lines: LineInputPayload[]): Promise<ExpLineInput[]> {
+  await assertVatRates(ctx, lines.map((l) => l.vatRateBp));
   return lines.map((l) => ({
     description: l.description,
     qty: l.qty,
@@ -407,14 +431,14 @@ const documentsCreate = defineOp({
         ...common,
         docType: type as "PURCHASE_ORDER" | "ASSET_PURCHASE_ORDER",
         ...vatFieldsOf(input),
-        lines: toServiceLines(input.lines ?? []),
+        lines: await toServiceLines(actor, input.lines ?? []),
       });
       id = doc.id;
     } else if (sideOf(type) === "expense") {
       const doc = await createExpenseDoc({
         ...common,
         ...vatFieldsOf(input),
-        lines: toServiceLines(input.lines ?? []),
+        lines: await toServiceLines(actor, input.lines ?? []),
       });
       id = doc.id;
     } else {
@@ -424,7 +448,7 @@ const documentsCreate = defineOp({
         ...(input.validUntil === undefined
           ? {}
           : { validUntil: input.validUntil ? dayToDate(input.validUntil) : null }),
-        lines: toServiceLines(input.lines ?? []),
+        lines: await toServiceLines(actor, input.lines ?? []),
       });
       id = doc.id;
     }
@@ -463,7 +487,7 @@ const documentsUpdate = defineOp({
       ...(input.note === undefined ? {} : { note: input.note ?? null }),
       ...(input.adjustReason === undefined ? {} : { adjustReason: input.adjustReason ?? null }),
       ...vatFieldsOf(input),
-      ...(input.lines ? { lines: toServiceLines(input.lines) } : {}),
+      ...(input.lines ? { lines: await toServiceLines(actor, input.lines) } : {}),
     };
 
     const res =
@@ -992,7 +1016,7 @@ const templateLineInput = z
     qty: z.number().positive().max(1_000_000).describe("Quantity."),
     unitName: z.string().max(40).nullish().describe("Unit label."),
     unitPriceSatang: z.number().int().min(0).describe("Price of one unit in satang (integer)."),
-    vatRateBp: z.union([z.literal(700), z.literal(0), z.literal(-1)]).describe("VAT rate in basis points: 700, 0 or -1 (exempt)."),
+    vatRateBp: vatRateBpField.describe(VAT_RATE_DESC),
     discountSatang: z.number().int().min(0).optional().describe("Discount of this line in satang. Default 0."),
     productId: z.string().max(40).nullish().describe("Product in the catalogue, when this line comes from one."),
     accountId: z.string().max(40).nullish().describe("Chart of accounts entry to post this line to."),
@@ -1044,7 +1068,8 @@ const recurringUpdateInput = z
 
 type RecurringTemplatePayload = z.infer<typeof templateInput>;
 
-function toTemplate(t: RecurringTemplatePayload): RecurringTemplate {
+async function toTemplate(ctx: { tenantId: string; systemId: string }, t: RecurringTemplatePayload): Promise<RecurringTemplate> {
+  await assertVatRates(ctx, t.lines.map((l) => l.vatRateBp));
   return {
     priceMode: t.priceMode,
     lines: t.lines.map((l) => ({
@@ -1148,7 +1173,7 @@ const recurringCreate = defineOp({
       name: input.name,
       docType: input.docType,
       contactId: input.contactId ?? null,
-      template: toTemplate(input.template),
+      template: await toTemplate(actor, input.template),
       frequency: input.frequency,
       dayOfMonth: input.dayOfMonth ?? null,
       weekday: input.weekday ?? null,
@@ -1201,7 +1226,7 @@ const recurringUpdate = defineOp({
       ...(input.leadDays === undefined ? {} : { leadDays: input.leadDays }),
       ...(input.autoApprove === undefined ? {} : { autoApprove: input.autoApprove }),
       ...(input.active === undefined ? {} : { active: input.active }),
-      ...(input.template === undefined ? {} : { template: toTemplate(input.template) }),
+      ...(input.template === undefined ? {} : { template: await toTemplate(actor, input.template) }),
     };
     assertRuleValid(merged);
     const res = await updateRecurringRule(tenantId, systemId, id, merged);

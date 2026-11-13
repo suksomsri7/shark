@@ -8,6 +8,7 @@ import type {
 } from "@prisma/client";
 import { seedChartOfAccounts } from "./coa";
 import { isLockedDate, lockedMessage } from "./policy";
+import { vatRateBpAt } from "./legal-values";
 
 // ─────────────────────────────────────────────────────────────
 // gl.ts — Posting engine (double-entry) — QC5 Gate A
@@ -451,12 +452,13 @@ type SaleDoc = {
   sourceDocId: string | null;
 };
 
-async function settingsOf(ctx: GlCtx, db: Db): Promise<{ vatRegistered: boolean; vatRateBp: number }> {
+/** ACC T0.2 ▸ อัตรา VAT = ตารางค่ากฎหมายของสมุด ณ วันที่เอกสาร (เดิม: คอลัมน์ AccountSettings.vatRateBp ?? 700) ◂ */
+async function settingsOf(ctx: GlCtx, db: Db, at: Date): Promise<{ vatRegistered: boolean; vatRateBp: number }> {
   const s = await db.accountSettings.findFirst({
     where: { systemId: ctx.systemId },
-    select: { vatRegistered: true, vatRateBp: true },
+    select: { vatRegistered: true },
   });
-  return { vatRegistered: s?.vatRegistered ?? true, vatRateBp: s?.vatRateBp ?? 700 };
+  return { vatRegistered: s?.vatRegistered ?? true, vatRateBp: await vatRateBpAt(ctx, at) };
 }
 
 // อัตรา VAT ที่ใช้จริงกับเอกสาร (0 เมื่อไม่จด VAT / vatMode NONE)
@@ -576,7 +578,7 @@ export async function postDocument(
     if (await alreadyPosted(ctx, `AccountDocument#${docId}#${event}`, db))
       return { skipped: true, reason: "โพสต์แล้ว (idempotent)" };
 
-    const { vatRegistered, vatRateBp } = await settingsOf(ctx, db);
+    const { vatRegistered, vatRateBp } = await settingsOf(ctx, db, doc.issueDate);
     const rate = effectiveRate(doc, vatRegistered, vatRateBp);
     const afterDiscount = doc.subTotal - doc.discountAmount; // ฐานรายได้สุทธิ
     const dep = depositSplit(doc.depositDeducted, rate);
