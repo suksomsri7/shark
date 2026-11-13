@@ -66,11 +66,12 @@
       "testid": "trips-nav-bookings",
       "kind": "tab",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "editor",
         "viewer"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/u/[unitSlug]/trips/bookings"
@@ -4305,6 +4306,28 @@
       },
       "wo": "T1.3",
       "oracle": "qc-trips-t1.3#BT-8",
+      "system": "TRIPS",
+      "needs": "trips.booking.view|trips.payment.record"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/bookings",
+      "testid": "trips-pay-amount-locked",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-pay-amount-locked",
+        "state": "visible",
+        "note": "พร้อมเพย์: ยอดที่รับอ่านอย่างเดียว = ยอดค้าง (หลังแสดง QR = ยอดล็อกของ QR) + ข้อความบอกว่าแก้ยอดไม่ได้"
+      },
+      "wo": "T1.3",
+      "oracle": "qc-trips-t1.3#BT-30",
       "system": "TRIPS",
       "needs": "trips.booking.view|trips.payment.record"
     }

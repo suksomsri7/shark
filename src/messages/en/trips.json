@@ -971,7 +971,8 @@
       "refundLine": "{date} · refund {amount}",
       "loadFailed": "This booking cannot be opened — its price record is incomplete. Contact support.",
       "qty": "× {qty}",
-      "baht": "{amount} THB"
+      "baht": "THB {amount}",
+      "reference": "Ref {ref}"
     },
     "docs": {
       "title": "Money documents to issue",
@@ -980,7 +981,7 @@
       "empty": "No money documents to issue",
       "truncated": "Showing the latest {shown} of {total}",
       "manual": "Issue the receipt / tax invoice (or credit note) by hand in the accounting system — the system does not issue documents yet",
-      "vatDiff": "VAT across the receipts differs from the booking’s VAT by {diff} THB",
+      "vatDiff": "VAT across the receipts differs from the booking’s VAT by THB {diff}",
       "colAt": "Date and time",
       "colCode": "Booking no.",
       "colKind": "Type",
@@ -989,7 +990,9 @@
       "colVat": "VAT",
       "colPassThrough": "Collected for others",
       "back": "Back to bookings",
-      "tableAria": "Money entries without a document"
+      "tableAria": "Money entries without a document",
+      "colReference": "Reference",
+      "noReference": "None"
     },
     "cash": {
       "title": "Counter cash",
@@ -1015,16 +1018,20 @@
       "reference": "Reference (optional)",
       "cashNote": "Booking cash is kept separately — do not put it in the POS drawer",
       "showQr": "Show QR",
-      "qrAmount": "QR amount {amount} THB (locked)",
+      "qrAmount": "QR amount THB {amount} (locked)",
       "received": "Payment received",
       "confirm": "Confirm payment",
-      "overOutstanding": "More than the outstanding {due} THB",
-      "outstanding": "Outstanding {due} THB",
+      "overOutstanding": "More than the outstanding THB {due}",
+      "outstanding": "Outstanding THB {due}",
       "invalidAmount": "Enter a number, e.g. 4,100.00",
       "invalidReference": "The reference may use only English letters, digits, spaces and . _ / - (up to 64 characters)",
       "qrFirst": "Press “Show QR” for the customer to scan first, then confirm the payment",
       "qrAlt": "PromptPay QR for {name}",
-      "qrLoading": "Creating the QR…"
+      "qrLoading": "Creating the QR…",
+      "amountTooHigh": "The amount is too high — enter no more than the outstanding THB {due}",
+      "amountZero": "The amount must be more than 0",
+      "amountLocked": "Amount received (THB) — locked to the QR",
+      "promptpayLocked": "PromptPay takes the amount locked in the QR — it cannot be edited. To take a part payment, choose another method."
     },
     "cancel": {
       "title": "Cancel booking {code}",
@@ -1039,7 +1046,7 @@
       "reject": "Reject booking request",
       "reason": "Reason",
       "confirm": "Confirm",
-      "summary": "{customer} · {trip} · {date} · total {amount} THB",
+      "summary": "{customer} · {trip} · {date} · total THB {amount}",
       "reasonRequired": "A reason is required to reject",
       "reasonOptional": "Optional",
       "conflict": "The booking has changed — reload"
@@ -1070,6 +1077,20 @@
       "SLIP_REQUIRED": "A checked transfer slip is required",
       "TRANSITION_NOT_ALLOWED": "This cannot be done for a booking in this status — reload and look again",
       "REFUND_REQUIRED": "This booking is already paid — it must be cancelled through a refund request, which is not available yet"
+    },
+    "channel": {
+      "WEB": "Website",
+      "LIFF": "LINE",
+      "EMBED": "Booking widget",
+      "COUNTER": "Front desk",
+      "POS": "Other sales point",
+      "AGENT_PORTAL": "Agent portal",
+      "AGENT_LINK": "Agent link",
+      "AGENT_API": "Agent system",
+      "OTA": "Online travel agency",
+      "API": "External system",
+      "IMPORT": "Import",
+      "CHAT_AI": "AI chat assistant"
     }
   }
 }

@@ -14,7 +14,6 @@ import BookingsTable from "./BookingsTable";
 import BookingDocs from "./BookingDocs";
 import BookingDrawer from "./BookingDrawer";
 import { CashDialog } from "./BookingDialogs";
-import { formatBaht } from "./trips-shared";
 
 const WHENS = ["upcoming", "today", "tomorrow", "next7", "past30", "all"] as const;
 const CHIP = "inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm";
@@ -95,7 +94,7 @@ export default function BookingsScreen({
           <div className="flex min-w-0 flex-col items-start gap-0.5">
             <span className="text-sm text-[color:var(--color-ink-soft)]">{t("bookings.cash.expected", { date: D.short(cash.businessDate) })}</span>
             <b data-testid="trips-cash-expected" className="text-xl tabular-nums text-[color:var(--color-ink)]">
-              ฿{formatBaht(cash.expectedSatang)}
+              {X.money(cash.expectedSatang)}
             </b>
           </div>
           <button type="button" data-testid="trips-cash-open" className={BTN} onClick={() => setCashOpen(true)}>
@@ -170,7 +169,7 @@ export default function BookingsScreen({
               <option value="agent">{t("bookings.filter.agent")}</option>
               {channels.map((c) => (
                 <option key={c} value={c}>
-                  {t(`departures.channel.${c}`)}
+                  {X.channelName(c)}
                 </option>
               ))}
             </select>

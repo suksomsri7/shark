@@ -64,7 +64,7 @@ export default function BookingsTable({ vm, base, q, channels }: { vm: BookingLi
                   key={row.bookingId}
                   data-testid={`trips-bk-row-${row.bookingId}`}
                   data-status={row.status}
-                  aria-selected={selected}
+                  aria-current={selected ? "true" : undefined}
                   onClick={() => router.push(hrefOf(row), { scroll: false })}
                   className={`cursor-pointer border-b border-[color:var(--color-line)] last:border-b-0 hover:bg-[color:var(--color-surface-2)] ${selected ? "bg-[color:var(--color-surface-2)]" : ""}`}
                 >
@@ -121,7 +121,7 @@ export default function BookingsTable({ vm, base, q, channels }: { vm: BookingLi
               <span className="[overflow-wrap:anywhere]">{tripLine(row)}</span>
               {subLine(row) ? <span className="text-[color:var(--color-muted)] [overflow-wrap:anywhere]">{subLine(row)}</span> : null}
               <span className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <b className="whitespace-nowrap tabular-nums">฿{formatBaht(row.payableSatang)}</b>
+                <b className="whitespace-nowrap tabular-nums">{X.money(row.payableSatang)}</b>
                 <span className="min-w-0 text-right text-[color:var(--color-ink-soft)] [overflow-wrap:anywhere]">{X.moneyLines(row).join(" · ")}</span>
               </span>
             </Link>

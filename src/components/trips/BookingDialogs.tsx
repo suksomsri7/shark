@@ -7,12 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BookingDetailVM, CashDayVM, PaymentIntentValue } from "@/lib/modules/trips";
-import { intentKey, parseAmountSatang } from "@/lib/modules/trips/booking-view-core";
+import { amountProblemOf, intentKey, parseAmountSatang } from "@/lib/modules/trips/booking-view-core";
 import { recordTripPaymentAction, tripPaymentIntentAction } from "@/lib/modules/trips/money-actions";
 import { approveTripBookingAction, cancelTripBookingAction } from "@/lib/modules/trips/booking-actions";
 import { BTN, BTN_PRIMARY, ErrorLine, Field, INPUT } from "./ProductsScreenParts";
 import { BTN_DANGER } from "./DepartureParts";
-import { BkDialog, KV, NotYetButton, PAY_TENDERS, bkHref, useBkRunner, useBkText, useGuardedClose, type BkQuery, type PayTender } from "./BookingParts";
+import { BkDialog, FieldError, KV, NotYetButton, PAY_TENDERS, bkHref, useBkRunner, useBkText, useGuardedClose, type BkQuery, type PayTender } from "./BookingParts";
 import { formatBaht } from "./trips-shared";
 
 /** seed ของคีย์กันซ้ำ — สุ่มครั้งเดียวต่อการเปิดกล่อง (ตัวอักษร/ตัวเลข 24 ตัว) */
@@ -42,9 +42,20 @@ export function PayDialog({ unitSlug, vm, initialTender, onClose }: { unitSlug: 
   const close = useGuardedClose(onClose, busy, dirty);
 
   const promptpay = tender === "PROMPTPAY";
-  // พร้อมเพย์: ยอดที่บันทึก = ยอดล็อกของ QR (จากบริการ) ไม่ใช่ช่องยอด
+  // พร้อมเพย์: บริการออก QR ยอดล็อกเท่านั้น (ไม่รับยอดที่พิมพ์) ⇒ ช่องยอดอ่านอย่างเดียว · ยอดที่บันทึก = ยอดล็อกของ QR (จากบริการ)
   const amount = promptpay ? (qr ? qr.amountSatang : null) : parseAmountSatang(amountText);
-  const amountError = promptpay ? null : amount === null ? t("bookings.pay.invalidAmount") : amount > due ? t("bookings.pay.overOutstanding", { due: formatBaht(due) }) : null;
+  const problem = promptpay ? null : amountProblemOf(amountText);
+  const amountError = promptpay
+    ? null
+    : problem === "tooHigh"
+      ? t("bookings.pay.amountTooHigh", { due: formatBaht(due) })
+      : problem === "zero"
+        ? t("bookings.pay.amountZero")
+        : problem === "format" || amount === null
+          ? t("bookings.pay.invalidAmount")
+          : amount > due
+            ? t("bookings.pay.overOutstanding", { due: formatBaht(due) })
+            : null;
   const ref = tender === "CASH" ? "" : reference.trim();
   const referenceError = ref !== "" && !REFERENCE_RE.test(ref) ? t("bookings.pay.invalidReference") : null;
   const canSubmit = amount !== null && amountError === null && referenceError === null;
@@ -96,7 +107,7 @@ export function PayDialog({ unitSlug, vm, initialTender, onClose }: { unitSlug: 
         </>
       }
     >
-      <KV label={t("bookings.detail.outstanding")} value={t("bookings.detail.baht", { amount: formatBaht(due) })} strong />
+      <KV label={t("bookings.detail.outstanding")} value={X.money(due)} strong />
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-sm font-medium text-[color:var(--color-ink)]">{t("bookings.pay.tender")}</span>
         <div role="group" aria-label={t("bookings.pay.tender")} className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4">
@@ -120,6 +131,11 @@ export function PayDialog({ unitSlug, vm, initialTender, onClose }: { unitSlug: 
 
       {promptpay ? (
         <div className="flex min-w-0 flex-col items-start gap-2">
+          <div className="w-full min-w-0">
+            <Field label={t("bookings.pay.amountLocked")} hint={t("bookings.pay.promptpayLocked")}>
+              <input data-testid="trips-pay-amount-locked" className={`${INPUT} bg-[color:var(--color-surface-2)] text-right tabular-nums`} readOnly aria-readonly="true" value={formatBaht(qr ? qr.amountSatang : due)} />
+            </Field>
+          </div>
           {qr ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -137,9 +153,21 @@ export function PayDialog({ unitSlug, vm, initialTender, onClose }: { unitSlug: 
           )}
         </div>
       ) : (
-        <Field label={t("bookings.pay.amount")} hint={amountError ?? t("bookings.pay.outstanding", { due: formatBaht(due) })}>
-          <input data-testid="trips-pay-amount" className={`${INPUT} text-right tabular-nums`} inputMode="decimal" autoComplete="off" value={amountText} aria-invalid={amountError !== null} onChange={(e) => setAmountText(e.target.value)} />
-        </Field>
+        <div className="flex min-w-0 flex-col gap-1">
+          <Field label={t("bookings.pay.amount")} hint={t("bookings.pay.outstanding", { due: formatBaht(due) })}>
+            <input
+              data-testid="trips-pay-amount"
+              className={`${INPUT} text-right tabular-nums`}
+              inputMode="decimal"
+              autoComplete="off"
+              value={amountText}
+              aria-invalid={amountError !== null}
+              aria-describedby={amountError !== null ? "trips-pay-amount-error" : undefined}
+              onChange={(e) => setAmountText(e.target.value)}
+            />
+          </Field>
+          <FieldError id="trips-pay-amount-error" text={amountError} />
+        </div>
       )}
 
       {tender === "CASH" ? (
@@ -147,9 +175,21 @@ export function PayDialog({ unitSlug, vm, initialTender, onClose }: { unitSlug: 
           {t("bookings.pay.cashNote")}
         </p>
       ) : (
-        <Field label={t("bookings.pay.reference")} hint={referenceError ?? undefined}>
-          <input data-testid="trips-pay-reference" className={INPUT} maxLength={64} autoComplete="off" value={reference} aria-invalid={referenceError !== null} onChange={(e) => setReference(e.target.value)} />
-        </Field>
+        <div className="flex min-w-0 flex-col gap-1">
+          <Field label={t("bookings.pay.reference")}>
+            <input
+              data-testid="trips-pay-reference"
+              className={INPUT}
+              maxLength={64}
+              autoComplete="off"
+              value={reference}
+              aria-invalid={referenceError !== null}
+              aria-describedby={referenceError !== null ? "trips-pay-reference-error" : undefined}
+              onChange={(e) => setReference(e.target.value)}
+            />
+          </Field>
+          <FieldError id="trips-pay-reference-error" text={referenceError} />
+        </div>
       )}
       <ErrorLine text={error} />
     </BkDialog>
@@ -276,7 +316,7 @@ export function CashDialog({ cash, base, q, onClose }: { cash: CashDayVM; base: 
       <Field label={t("bookings.cash.date")}>
         <input data-testid="trips-cash-date" type="date" className={INPUT} defaultValue={cash.businessDate} key={cash.businessDate} max={cash.unit.today} onChange={(e) => pickDay(e.target.value)} />
       </Field>
-      <KV label={t("bookings.cash.expected", { date: D.short(cash.businessDate) })} value={t("bookings.detail.baht", { amount: formatBaht(cash.expectedSatang) })} strong />
+      <KV label={t("bookings.cash.expected", { date: D.short(cash.businessDate) })} value={X.money(cash.expectedSatang)} strong />
       <KV label={t("bookings.cash.totalReceived")} value={formatBaht(cash.receivedSatang)} />
       <KV label={t("bookings.cash.totalRefunded")} value={formatBaht(cash.refundedSatang)} />
 

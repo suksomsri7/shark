@@ -180,7 +180,10 @@ export default function BookingDrawer({ unitSlug, vm, base, q, channels }: { uni
                       <span className="shrink-0 tabular-nums text-[color:var(--color-ink)]">{formatBaht(e.amountSatang)}</span>
                     </div>
                     <div className={ROW}>
-                      <span className="min-w-0 text-[color:var(--color-muted)] [overflow-wrap:anywhere]">{X.stamp(e.atLocal)}</span>
+                      <span className="min-w-0 text-[color:var(--color-muted)] [overflow-wrap:anywhere]">
+                        {X.stamp(e.atLocal)}
+                        {e.reference ? ` · ${t("bookings.detail.reference", { ref: e.reference })}` : ""}
+                      </span>
                       <Pill shape={e.postingStatus === "POSTED" ? "solid" : e.postingStatus === "UNPOSTED" ? "dashed" : "thick"}>{X.posting(e.postingStatus)}</Pill>
                     </div>
                   </li>
@@ -202,19 +205,20 @@ export default function BookingDrawer({ unitSlug, vm, base, q, channels }: { uni
                         <span className="shrink-0 tabular-nums text-[color:var(--color-ink)]">{formatBaht(w.amountSatang)}</span>
                       </div>
                       <span className="text-[color:var(--color-muted)] [overflow-wrap:anywhere]">
-                        {X.stamp(w.atLocal)} · {X.tender(w.tender)} · {t("bookings.detail.vat", { vat: formatBaht(w.vatSatang) })} · {t("bookings.detail.passThrough")} {formatBaht(w.passThroughSatang)}
+                        {X.stamp(w.atLocal)} · {X.tender(w.tender)}
+                        {w.reference ? ` · ${t("bookings.detail.reference", { ref: w.reference })}` : ""} · {t("bookings.detail.vat", { vat: formatBaht(w.vatSatang) })} · {t("bookings.detail.passThrough")} {formatBaht(w.passThroughSatang)}
                       </span>
                     </li>
                   ))}
                 </ul>
                 <p className="rounded-lg border border-dashed border-[color:var(--color-ink-soft)] px-3 py-2 text-sm text-[color:var(--color-ink)]">{t("bookings.docs.manual")}</p>
                 {vm.docs.vatDiffSatang !== 0 ? (
-                  <p className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-[color:var(--color-ink)]">
-                    <span className="inline-flex items-center gap-1 rounded-md border-2 border-[color:var(--color-danger)] px-2 py-0.5 font-bold text-[color:var(--color-danger)]">
-                      <span aria-hidden="true">⚠</span>
+                  <p className="text-sm text-[color:var(--color-ink)] [overflow-wrap:anywhere]">
+                    <b className="text-[color:var(--color-danger)]">
+                      <span aria-hidden="true">⚠ </span>
                       {t("bookings.docs.accountant")}
-                    </span>
-                    <span className="[overflow-wrap:anywhere]">{t("bookings.docs.vatDiff", { diff: formatBaht(vm.docs.vatDiffSatang) })}</span>
+                    </b>{" "}
+                    — {t("bookings.docs.vatDiff", { diff: formatBaht(vm.docs.vatDiffSatang) })}
                   </p>
                 ) : null}
               </>

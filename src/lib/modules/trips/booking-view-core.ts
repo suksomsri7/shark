@@ -118,6 +118,18 @@ export function parseAmountSatang(text: string): number | null {
   return Number.isSafeInteger(v) && v >= 1 && v <= INT4_MAX ? v : null;
 }
 
+/**
+ * เหตุที่ยอดที่พิมพ์ใช้ไม่ได้ (ให้จอบอกตรงเรื่อง) — "format" = ไม่ใช่ตัวเลข/ทศนิยมเกิน 2 ตำแหน่ง · "zero" = ศูนย์ · "tooHigh" = เป็นตัวเลขแต่สูงเกินที่ระบบรับ
+ * ใช้ได้ (parseAmountSatang ไม่ null) ⇒ null
+ */
+export function amountProblemOf(text: string): "format" | "zero" | "tooHigh" | null {
+  if (parseAmountSatang(text) !== null) return null;
+  if (typeof text !== "string") return "format";
+  const s = text.replace(/[,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return "format";
+  return /^[0.]+$/.test(s) ? "zero" : "tooHigh";
+}
+
 /** เบอร์โทร → รูปปิดบัง "081-xxx-5523" (แสดงในรายละเอียดเท่านั้น) · ว่าง ⇒ null */
 export function maskPhone(phone: string | null | undefined): string | null {
   if (typeof phone !== "string") return null;

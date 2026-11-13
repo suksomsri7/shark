@@ -2,7 +2,8 @@
 // trips/booking-screens.ts — ตัวโหลดจอการจองฝั่งร้าน (ภาพ 18 · 13ค · RUN TRIPS T1.3a §4): รายการ/ค้นหา/ชิป · รายละเอียด · คิวเอกสารเงินรอออก · เงินสดหน้าร้านรายวัน
 // ทุกตัว (ctx: { tenantId, actorUserId }, input, opts?: { now? }) · ด่าน: zod strict (INVALID_INPUT) → หน่วย (NOT_FOUND/UNIT_NOT_TRIPS) → สิทธิ์ (FORBIDDEN)
 //   คืน { ok: true, vm } | { ok: false, code, message } ไม่ throw (ยกเว้นฐานล่ม)
-// 🔴 อ่านอย่างเดียว — ไม่เขียนฐานเลย (ไม่มี audit/outbox/งวดร่างถูกเขียน) · tenantDb ของด่าน + บริการ T0.7a (สรุปเงิน · เงินสด · คำขอคืน) + facade party
+// 🔴 อ่านอย่างเดียว — ไม่เขียนฐานเลย (ไม่มี audit/outbox/งวดร่างถูกเขียน) · tenantDb ของด่าน + บริการ T0.7a (สรุปเงิน · คำขอคืน) + facade party
+//   เงินสดรายวัน: อ่านเองด้วยคิวรีรวม + แถวที่มีเพดานใน SQL (กติกาเดียวกับ tripCashDay ของ T0.7a — บริการนั้นอ่านทุกแถวของวัน ไม่มีเพดาน)
 // 🔴 ทุกคิวรีผูก (tenantId, unitId) จากด่าน — ชื่อจาก party (ระดับร้าน) ใช้เป็น id กรองการจองของหน่วยนี้เท่านั้น
 // 🔴 เพดาน + ไม่ N+1: แถว ≤ TRIPS_BOOKING_LIST_CAP · ชิป/จำนวน/ยอดรวมนับด้วยคิวรีรวมบนชุดฐาน (ไม่นับจากแถวที่ถูกตัด) · ข้อมูลประกอบอ่านเป็นชุดครั้งเดียวต่อจอ
 // 🔴 ป้าย · ต้องทำ · ปุ่มไหนแสดง · ยอดค้าง ตัดสินที่นี่ (คอมโพเนนต์แสดงอย่างเดียว) · เวลา/วันที่แสดงคิดตามเขตเวลาของหน่วยที่นี่
@@ -13,10 +14,10 @@ import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import type { SellChannel, SellCtx } from "@/lib/core/sellable";
 import { getProfile, listBriefsByIds, searchByName } from "@/lib/modules/party";
-import { DEPARTURE_SELL_CHANNELS, hhmm, normalizeTimezone, utcToLocal } from "./departures-core";
+import { DEPARTURE_SELL_CHANNELS, addDaysYmd, hhmm, localToUtc, normalizeTimezone, utcToLocal } from "./departures-core";
 import { isCalendarYmd } from "./departure-view-core";
-import { TRIP_REFUND_OPEN_STATUSES } from "./money-core";
-import { tripCashDay, tripMoneySummary } from "./money";
+import { TRIP_REFUND_OPEN_STATUSES, TRIP_TENDERS } from "./money-core";
+import { tripMoneySummary } from "./money";
 import { listTripRefunds } from "./refund";
 import { tripsFail, tripsUnitGate, type TripsFail, type TripsScreenCtx, type TripsUnitGate } from "./pickup";
 import {
@@ -45,7 +46,10 @@ type Opts = { now?: Date };
 type Fail = TripsFail<string>;
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isFail = (x: unknown): x is TripsFail => isRec(x) && x.ok === false;
-const ID = z.string().min(1).max(128);
+/** อักขระควบคุม (รวม NUL ที่ฐานข้อมูลรับไม่ได้) — ค่าที่มี ⇒ INVALID_INPUT ไม่ปล่อยถึงคิวรี */
+const CTL_RE = /[\u0000-\u001f\u007f]/;
+const noCtl = (s: string): boolean => !CTL_RE.test(s);
+const ID = z.string().min(1).max(128).refine(noCtl);
 const YMD = z.string().refine(isCalendarYmd);
 const nowOf = (opts?: Opts) => (opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date());
 const DAY_MS = 86_400_000;
@@ -64,6 +68,14 @@ const NAME_MATCH_CAP = 25;
 const PRODUCT_FILTER_CAP = 200;
 /** ชื่อผู้เดินทางสูงสุดที่อ่านต่อการจอง */
 const TRAVELLER_NAMES_CAP = 200;
+/** แถวเงินสูงสุดที่อ่านเลขอ้างอิงต่อการจอง */
+const EVENT_REFERENCE_CAP = 500;
+/** กลุ่ม (ชนิด × วิธีจ่าย) สูงสุดของยอดรวมเงินสดรายวัน */
+const CASH_GROUP_CAP = 64;
+const CASH_KINDS = ["RECEIVED", "REFUNDED"];
+const POSTING_STATUSES = ["UNPOSTED", "POSTED", "FAILED_NEEDS_ACTION"];
+/** อักขระที่ facade party ใช้เป็นตัวแทน (LIKE) — ตัดออกก่อนค้นชื่อ */
+const NAME_WILDCARD_RE = /[%_\\]/g;
 const MONEY_DOC_KINDS = ["RECEIVED", "REFUNDED", "RETAINED"];
 const DUE_OPEN = ["OPEN", "PARTLY_PAID", "OVERDUE"];
 const PAYABLE_STATUSES = ["HOLD", "CONFIRMED", "PART_PAID"];
@@ -117,8 +129,8 @@ const codeArray = (codes: readonly string[]): string => `ARRAY[${codes.filter((c
 const ATTENTION_SQL = `(
   b."status" = 'PENDING'
   OR EXISTS (SELECT 1 FROM "TripRefundRequest" r WHERE r."bookingId" = b."id" AND r."tenantId" = b."tenantId" AND r."unitId" = b."unitId" AND r."status" = ANY(${codeArray(OPEN_REFUND)}))
-  OR (b."status" = ANY(${codeArray(LIVE)}) AND EXISTS (SELECT 1 FROM "TripDeparture" dc WHERE dc."id" = b."departureId" AND dc."tenantId" = b."tenantId" AND dc."status" = 'CANCELLED'))
-  OR (b."status" = ANY(${codeArray(OWES)}) AND EXISTS (SELECT 1 FROM "TripPaymentDue" pd WHERE pd."bookingId" = b."id" AND pd."tenantId" = b."tenantId" AND pd."status" = 'OVERDUE'))
+  OR (b."status" = ANY(${codeArray(LIVE)}) AND EXISTS (SELECT 1 FROM "TripDeparture" dc WHERE dc."id" = b."departureId" AND dc."tenantId" = b."tenantId" AND dc."unitId" = b."unitId" AND dc."status" = 'CANCELLED'))
+  OR (b."status" = ANY(${codeArray(OWES)}) AND EXISTS (SELECT 1 FROM "TripPaymentDue" pd WHERE pd."bookingId" = b."id" AND pd."tenantId" = b."tenantId" AND pd."unitId" = b."unitId" AND pd."status" = 'OVERDUE'))
 )`;
 const PAYABLE_SQL = `(b."grossSatang" - b."discountSatang" - b."agentDiscountSatang")`;
 const ROW_COLS = `b."id", b."code", b."status", b."version", b."productId", b."departureId", b."travelDate", b."bookerPartyId", b."piiPurgedAt", b."channel", b."agentAccountId", b."agentRef",
@@ -173,6 +185,26 @@ function baseWhere(g: TripsUnitGate, f: BaseFilter, p: Params): string {
   if (f.code) w.push(`b."code" = ${p.add(f.code)}`);
   if (f.text) w.push(`(b."agentRef" = ${p.add(f.text.agentRef)} OR b."bookerPartyId" = ANY(${p.add(f.text.partyIds)}::text[]))`);
   return w.join(" AND ");
+}
+/** เงื่อนไขของคิวรีชุด "ของการจองชุดนี้" (ร้าน + หน่วย + bookingId ∈ ids) — alias เป็นค่าคงที่ของไฟล์ */
+function batchWhere(g: TripsUnitGate, alias: "pd" | "e", ids: readonly string[], p: Params): string {
+  return `${alias}."tenantId" = ${p.add(g.tenantId)} AND ${alias}."unitId" = ${p.add(g.unitId)} AND ${alias}."bookingId" = ANY(${p.add([...ids])}::text[])`;
+}
+type NextDueRow = { bookingId: string; dueAt: Date; outstandingSatang: number };
+type BookingIdRow = { bookingId: string };
+type LastTenderRow = { bookingId: string; tender: string };
+/** งวดแรกที่ยังค้างต่อการจอง · การจองที่มีงวดเกินกำหนด · วิธีจ่ายของการรับเงินล่าสุดต่อการจอง — แต่ละคิวรีได้ไม่เกิน 1 แถวต่อการจอง + LIMIT ใน SQL */
+function batchMoney(g: TripsUnitGate, ids: readonly string[]): [Promise<NextDueRow[]>, Promise<BookingIdRow[]>, Promise<LastTenderRow[]>] {
+  const np = newParams();
+  const nextSql = `SELECT DISTINCT ON (pd."bookingId") pd."bookingId", pd."dueAt", (pd."amountSatang" - pd."paidSatang")::int AS "outstandingSatang"
+    FROM "TripPaymentDue" pd WHERE ${batchWhere(g, "pd", ids, np)} AND pd."status" = ANY(${codeArray(DUE_OPEN)}) AND pd."amountSatang" - pd."paidSatang" > 0
+    ORDER BY pd."bookingId" ASC, pd."seq" ASC LIMIT ${np.add(TRIPS_BOOKING_LIST_CAP)}::int`;
+  const op = newParams();
+  const overdueSql = `SELECT DISTINCT pd."bookingId" FROM "TripPaymentDue" pd WHERE ${batchWhere(g, "pd", ids, op)} AND pd."status" = 'OVERDUE' LIMIT ${op.add(TRIPS_BOOKING_LIST_CAP)}::int`;
+  const tp = newParams();
+  const tenderSql = `SELECT DISTINCT ON (e."bookingId") e."bookingId", e."tender" FROM "TripMoneyEvent" e WHERE ${batchWhere(g, "e", ids, tp)} AND e."kind" = 'RECEIVED'
+    ORDER BY e."bookingId" ASC, e."createdAt" DESC, e."id" DESC LIMIT ${tp.add(TRIPS_BOOKING_LIST_CAP)}::int`;
+  return [g.db.$queryRawUnsafe<NextDueRow[]>(nextSql, ...np.values), g.db.$queryRawUnsafe<BookingIdRow[]>(overdueSql, ...op.values), g.db.$queryRawUnsafe<LastTenderRow[]>(tenderSql, ...tp.values)];
 }
 
 // ═══════════════ ชนิด VM ═══════════════
@@ -245,8 +277,9 @@ export type BookingDetailVM = {
   refundedSatang: number;
   outstandingSatang: number;
   dues: { id: string | null; seq: number; kind: string; dueAt: string; dueLocal: string; amountSatang: number; paidSatang: number; outstandingSatang: number; status: string }[];
-  events: { id: string; kind: string; tender: string; amountSatang: number; vatSatang: number; passThroughSatang: number; postingStatus: string; at: string; atLocal: string }[];
-  docs: { issued: false; waiting: { eventId: string; kind: string; tender: string; amountSatang: number; vatSatang: number; passThroughSatang: number; atLocal: string }[]; vatDiffSatang: number };
+  /** reference = เลขอ้างอิงที่ผู้รับเงินพิมพ์ตอนรับเงิน (ไม่มี ⇒ null) */
+  events: { id: string; kind: string; tender: string; amountSatang: number; vatSatang: number; passThroughSatang: number; postingStatus: string; at: string; atLocal: string; reference: string | null }[];
+  docs: { issued: false; waiting: { eventId: string; kind: string; tender: string; amountSatang: number; vatSatang: number; passThroughSatang: number; atLocal: string; reference: string | null }[]; vatDiffSatang: number };
   travellers: { seats: number; names: string[]; formsAvailable: false };
   refunds: { requestId: string; status: string; amountSatang: number; createdLocal: string }[];
   actions: { pay: boolean; qr: boolean; approve: boolean; reject: boolean; cancel: boolean; change: false; refund: false };
@@ -257,7 +290,8 @@ export type BookingDocsVM = {
   shown: number;
   cap: number;
   truncated: boolean;
-  items: { eventId: string; bookingId: string; code: string; kind: string; tender: string; amountSatang: number; vatSatang: number; passThroughSatang: number; at: string; atLocal: string }[];
+  /** reference = เลขอ้างอิงที่ผู้รับเงินพิมพ์ · vatDiffSatang = Σ VAT ต่อใบรับ − VAT ของการจอง (เฉพาะแถวรับเงินของการจองที่จ่ายครบ · ไม่ต่าง ⇒ 0) ⇒ ≠ 0 ให้ตรวจกับนักบัญชี */
+  items: { eventId: string; bookingId: string; code: string; kind: string; tender: string; amountSatang: number; vatSatang: number; passThroughSatang: number; at: string; atLocal: string; reference: string | null; vatDiffSatang: number }[];
 };
 type TenderTotals = { receivedSatang: number; refundedSatang: number };
 export type CashDayVM = {
@@ -286,15 +320,17 @@ async function buildRows(g: TripsUnitGate, unit: BookingUnitVM, now: Date, base:
   const ids = base.map((b) => b.id);
   const productIds = [...new Set(base.map((b) => b.productId))];
   const partyIds = [...new Set(base.filter((b) => b.piiPurgedAt === null && b.bookerPartyId).map((b) => String(b.bookerPartyId)))];
-  const [products, paxTypes, items, briefs, holds, refunds, dues, receipts] = await Promise.all([
+  const [nextDueQ, overdueQ, lastTenderQ] = batchMoney(g, ids);
+  const [products, paxTypes, items, briefs, holds, refunds, nextDues, overdues, lastTenders] = await Promise.all([
     g.db.tripProduct.findMany({ where: { ...scope, id: { in: productIds } }, select: { id: true, title: true } }),
     g.db.tripPaxType.findMany({ where: { ...scope, productId: { in: productIds } }, select: { id: true, productId: true, code: true, label: true, countsCapacity: true, sortOrder: true } }),
     g.db.tripBookingItem.findMany({ where: { ...scope, bookingId: { in: ids }, active: true }, select: { bookingId: true, kind: true, paxTypeId: true, extraId: true, qty: true, passThrough: true } }),
     listBriefsByIds(g.tenantId, partyIds),
     g.db.tripHold.findMany({ where: { ...scope, bookingId: { in: ids }, status: "ACTIVE" }, select: { bookingId: true, expiresAt: true }, orderBy: [{ expiresAt: "asc" }, { id: "asc" }] }),
     g.db.tripRefundRequest.findMany({ where: { ...scope, bookingId: { in: ids }, status: { in: OPEN_REFUND } }, select: { id: true, bookingId: true, status: true, amountSatang: true }, orderBy: [{ createdAt: "desc" }, { id: "asc" }] }),
-    g.db.tripPaymentDue.findMany({ where: { ...scope, bookingId: { in: ids } }, select: { bookingId: true, seq: true, dueAt: true, amountSatang: true, paidSatang: true, status: true }, orderBy: [{ bookingId: "asc" }, { seq: "asc" }] }),
-    g.db.tripMoneyEvent.findMany({ where: { ...scope, bookingId: { in: ids }, kind: "RECEIVED" }, select: { bookingId: true, tender: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }),
+    nextDueQ,
+    overdueQ,
+    lastTenderQ,
   ]);
   const extraIds = [...new Set(items.filter((i) => i.kind === "EXTRA" && i.extraId).map((i) => String(i.extraId)))];
   const extras: ExtraRow[] = extraIds.length ? await g.db.tripExtra.findMany({ where: { ...scope, id: { in: extraIds } }, select: { id: true, name: true } }) : [];
@@ -316,8 +352,9 @@ async function buildRows(g: TripsUnitGate, unit: BookingUnitVM, now: Date, base:
   const itemsOf = group(items);
   const holdsOf = group(holds);
   const refundsOf = group(refunds);
-  const duesOf = group(dues);
-  const receiptsOf = group(receipts);
+  const nextDueOf = new Map(nextDues.map((x) => [x.bookingId, x]));
+  const overdueSet = new Set(overdues.map((x) => x.bookingId));
+  const lastTenderOf = new Map(lastTenders.map((x) => [x.bookingId, x.tender]));
   const seatsOf = new Map<string, number>();
 
   const rows = base.map((b): BookingRowVM => {
@@ -340,10 +377,9 @@ async function buildRows(g: TripsUnitGate, unit: BookingUnitVM, now: Date, base:
     const purged = b.piiPurgedAt !== null;
     const h = (holdsOf.get(b.id) ?? [])[0];
     const rf = (refundsOf.get(b.id) ?? [])[0];
-    const ds = duesOf.get(b.id) ?? [];
     const owes = OWES.includes(b.status);
-    const next = owes ? ds.find((x) => DUE_OPEN.includes(x.status) && x.amountSatang - x.paidSatang > 0) : undefined;
-    const attention: BookingAttention[] = BOOKING_ATTENTION_KINDS.filter((k) => attentionOf(k, { status: b.status, hasOpenRefund: !!rf, departureStatus: b.depStatus, hasOverdue: ds.some((x) => x.status === "OVERDUE") }));
+    const next = owes ? nextDueOf.get(b.id) : undefined;
+    const attention: BookingAttention[] = BOOKING_ATTENTION_KINDS.filter((k) => attentionOf(k, { status: b.status, hasOpenRefund: !!rf, departureStatus: b.depStatus, hasOverdue: overdueSet.has(b.id) }));
     const product = productOf.get(b.productId);
     return {
       bookingId: b.id,
@@ -372,8 +408,8 @@ async function buildRows(g: TripsUnitGate, unit: BookingUnitVM, now: Date, base:
       refundedSatang: b.refundedSatang,
       outstandingSatang: outstanding,
       money: moneyStateOf({ status: b.status, collectMode: b.collectMode, agentAccountId: b.agentAccountId, payableSatang: payable, paidSatang: b.paidSatang, refundedSatang: b.refundedSatang }),
-      lastTender: (receiptsOf.get(b.id) ?? [])[0]?.tender ?? null,
-      nextDue: next ? { dueAt: iso(next.dueAt), localDate: localYmd(unit.tz, next.dueAt), amountSatang: next.amountSatang - next.paidSatang } : null,
+      lastTender: lastTenderOf.get(b.id) ?? null,
+      nextDue: next ? { dueAt: iso(next.dueAt), localDate: localYmd(unit.tz, next.dueAt), amountSatang: Number(next.outstandingSatang) } : null,
       hold: h ? { expiresAt: iso(h.expiresAt), localDate: localYmd(unit.tz, h.expiresAt), time: localHm(unit.tz, h.expiresAt), expired: new Date(h.expiresAt).getTime() <= now.getTime() } : null,
       refund: rf ? { requestId: rf.id, status: rf.status, amountSatang: rf.amountSatang } : null,
       attention,
@@ -402,7 +438,7 @@ function attentionOf(kind: BookingAttention, b: { status: string; hasOpenRefund:
 const CHANNELS: readonly string[] = ["all", "direct", "agent", ...DEPARTURE_SELL_CHANNELS];
 const LIST_IN = z.strictObject({
   unitId: ID,
-  q: z.string().trim().min(1).max(100).optional(),
+  q: z.string().trim().min(1).max(100).refine(noCtl).optional(),
   product: ID.optional(),
   when: z.enum(BOOKING_LIST_WHENS).optional(),
   date: YMD.optional(),
@@ -430,7 +466,9 @@ export async function loadBookingListVM(ctx: TripsScreenCtx, input: unknown, opt
   // ── ค้น: เลขจอง (ตรงตัว) หรือ เลขอ้างอิงเอเจนซี่/ชื่อผู้จอง · มี q ⇒ ไม่จำกัดหน้าต่างวัน ──
   const code = p.q ? bookingCodeQuery(p.q) : null;
   const queryMode: "none" | "code" | "text" = !p.q ? "none" : code ? "code" : "text";
-  const matches = queryMode === "text" && p.q ? await searchByName(g.tenantId, p.q, 25) : [];
+  // ชื่อผู้จอง: ตัดตัวแทนของ LIKE (% _ \) ออกก่อนส่ง facade party (ไม่ให้ "%" แปลว่า "ทุกคน") · เหลือว่าง ⇒ ไม่ค้นชื่อ (ยังค้นเลขอ้างอิงเอเจนซี่ตรงตัว)
+  const nameQ = queryMode === "text" && p.q ? p.q.replace(NAME_WILDCARD_RE, "").trim() : "";
+  const matches = nameQ ? await searchByName(g.tenantId, nameQ, 25) : [];
   const win = p.q ? { from: null, to: null } : p.date ? { from: p.date, to: p.date } : (listWindowOf(when, unit.today) ?? { from: null, to: null });
   const filter: BaseFilter = {
     from: win.from,
@@ -548,19 +586,21 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
   // ── ป้ายอังกฤษของบรรทัด + ชื่อผู้เดินทาง (อ่านเป็นชุด) ──
   const refExtraIds = [...new Set(doc.lines.map((l) => l.itemRef.split(":")).filter((x) => x[0] === "extra" && x[1]).map((x) => x[1]))];
   const seats = built.seatsOf.get(b.id) ?? 0;
-  const [lineExtras, passengers] = await Promise.all([
+  const [lineExtras, passengers, refRows] = await Promise.all([
     refExtraIds.length ? g.db.tripExtra.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId, id: { in: refExtraIds } }, select: { id: true, name: true } }) : Promise.resolve<ExtraRow[]>([]),
     seats > 0
       ? g.db.tripPassenger.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId, bookingId: b.id }, select: { bookingId: true, fullName: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: Math.min(seats, TRAVELLER_NAMES_CAP) })
       : Promise.resolve<{ bookingId: string; fullName: string }[]>([]),
+    g.db.tripMoneyEvent.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId, bookingId: b.id, reference: { not: null } }, select: { id: true, reference: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: EVENT_REFERENCE_CAP }),
   ]);
+  const referenceOf = new Map(refRows.map((r) => [r.id, r.reference]));
   const paxByCode = new Map(built.paxTypes.filter((x) => x.productId === b.productId).map((x) => [x.code, x]));
   const extraOf = new Map(lineExtras.map((e) => [e.id, e]));
 
-  const events = s.events.map((e) => ({ id: e.id, kind: e.kind, tender: e.tender, amountSatang: e.amountSatang, vatSatang: e.vatSatang, passThroughSatang: e.passThroughSatang, postingStatus: e.postingStatus, at: e.at, atLocal: localStamp(unit.tz, e.at) }));
+  const events = s.events.map((e) => ({ id: e.id, kind: e.kind, tender: e.tender, amountSatang: e.amountSatang, vatSatang: e.vatSatang, passThroughSatang: e.passThroughSatang, postingStatus: e.postingStatus, at: e.at, atLocal: localStamp(unit.tz, e.at), reference: referenceOf.get(e.id) ?? null }));
   const waiting = events
     .filter((e) => e.postingStatus === "UNPOSTED" && MONEY_DOC_KINDS.includes(e.kind))
-    .map((e) => ({ eventId: e.id, kind: e.kind, tender: e.tender, amountSatang: e.amountSatang, vatSatang: e.vatSatang, passThroughSatang: e.passThroughSatang, atLocal: e.atLocal }));
+    .map((e) => ({ eventId: e.id, kind: e.kind, tender: e.tender, amountSatang: e.amountSatang, vatSatang: e.vatSatang, passThroughSatang: e.passThroughSatang, atLocal: e.atLocal, reference: e.reference }));
 
   // ── ปุ่ม (ตรงกับด่านของ recordTripPayment / approveTripBooking / cancelTripBooking) ──
   const holdOk = b.status !== "HOLD" || (row.hold !== null && !row.hold.expired);
@@ -591,12 +631,41 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
 
 // ═══════════════ 3. คิวเอกสารเงินรอออก (ทั้งหน่วย) ═══════════════
 const UNIT_IN = z.strictObject({ unitId: ID });
+type DocBooking = { code: string; vatDiffSatang: number };
+type VatSumRow = { bookingId: string; vat: Big };
 /** เลขจองของชุด id (คิวรีเดียว) */
 async function codesOf(g: TripsUnitGate, bookingIds: readonly string[]): Promise<Map<string, string>> {
   const ids = [...new Set(bookingIds)];
   if (!ids.length) return new Map();
-  const rows = await g.db.tripBooking.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId, id: { in: ids } }, select: { id: true, code: true } });
+  const rows = await g.db.tripBooking.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId, id: { in: ids } }, select: { id: true, code: true }, take: ids.length });
   return new Map(rows.map((r) => [r.id, r.code]));
+}
+/**
+ * เลขจอง + ส่วนต่าง VAT ของการจองในคิวเอกสาร (2 คิวรีต่อจอ ไม่ใช่ต่อแถว)
+ * ส่วนต่าง = กติกาเดียวกับ vat.receiptRoundingDiffSatang ของ tripMoneySummary: การจองที่จ่ายครบ ⇒ Σ VAT ของแถวรับเงิน − VAT ของการจอง · ยังไม่ครบ ⇒ 0
+ */
+async function docBookingsOf(g: TripsUnitGate, bookingIds: readonly string[]): Promise<Map<string, DocBooking>> {
+  const ids = [...new Set(bookingIds)];
+  if (!ids.length) return new Map();
+  const vp = newParams();
+  const vatSql = `SELECT e."bookingId", coalesce(sum(e."vatSatang"), 0)::bigint AS "vat" FROM "TripMoneyEvent" e WHERE ${batchWhere(g, "e", ids, vp)} AND e."kind" = 'RECEIVED'
+    GROUP BY e."bookingId" LIMIT ${vp.add(TRIPS_MONEY_DOCS_CAP)}::int`;
+  const [rows, vats] = await Promise.all([
+    g.db.tripBooking.findMany({
+      where: { tenantId: g.tenantId, unitId: g.unitId, id: { in: ids } },
+      select: { id: true, code: true, grossSatang: true, discountSatang: true, agentDiscountSatang: true, paidSatang: true, vatSatang: true },
+      take: ids.length,
+    }),
+    g.db.$queryRawUnsafe<VatSumRow[]>(vatSql, ...vp.values),
+  ]);
+  const receivedVatOf = new Map(vats.map((v) => [v.bookingId, numOf(v.vat)]));
+  return new Map(
+    rows.map((r) => {
+      const payable = r.grossSatang - r.discountSatang - r.agentDiscountSatang;
+      const full = payable > 0 && r.paidSatang >= payable;
+      return [r.id, { code: r.code, vatDiffSatang: full ? (receivedVatOf.get(r.id) ?? 0) - r.vatSatang : 0 }];
+    }),
+  );
 }
 export async function loadBookingDocsVM(ctx: TripsScreenCtx, input: unknown, opts?: Opts): Promise<{ ok: true; vm: BookingDocsVM } | Fail> {
   const p = parse(UNIT_IN, input);
@@ -609,12 +678,12 @@ export async function loadBookingDocsVM(ctx: TripsScreenCtx, input: unknown, opt
     g.db.tripMoneyEvent.count({ where }),
     g.db.tripMoneyEvent.findMany({
       where,
-      select: { id: true, bookingId: true, kind: true, tender: true, amountSatang: true, vatSatang: true, passThroughSatang: true, createdAt: true },
+      select: { id: true, bookingId: true, kind: true, tender: true, amountSatang: true, vatSatang: true, passThroughSatang: true, reference: true, createdAt: true },
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       take: TRIPS_MONEY_DOCS_CAP,
     }),
   ]);
-  const codes = await codesOf(g, evs.map((e) => e.bookingId));
+  const bookings = await docBookingsOf(g, evs.map((e) => e.bookingId));
   return {
     ok: true,
     vm: {
@@ -623,13 +692,33 @@ export async function loadBookingDocsVM(ctx: TripsScreenCtx, input: unknown, opt
       shown: evs.length,
       cap: TRIPS_MONEY_DOCS_CAP,
       truncated: count > evs.length,
-      items: evs.map((e) => ({ eventId: e.id, bookingId: e.bookingId, code: codes.get(e.bookingId) ?? "", kind: e.kind, tender: e.tender, amountSatang: e.amountSatang, vatSatang: e.vatSatang, passThroughSatang: e.passThroughSatang, at: iso(e.createdAt), atLocal: localStamp(unit.tz, e.createdAt) })),
+      items: evs.map((e) => ({
+        eventId: e.id,
+        bookingId: e.bookingId,
+        code: bookings.get(e.bookingId)?.code ?? "",
+        kind: e.kind,
+        tender: e.tender,
+        amountSatang: e.amountSatang,
+        vatSatang: e.vatSatang,
+        passThroughSatang: e.passThroughSatang,
+        at: iso(e.createdAt),
+        atLocal: localStamp(unit.tz, e.createdAt),
+        reference: e.reference ?? null,
+        vatDiffSatang: e.kind === "RECEIVED" ? (bookings.get(e.bookingId)?.vatDiffSatang ?? 0) : 0,
+      })),
     },
   };
 }
 
 // ═══════════════ 4. เงินสดหน้าร้านรายวัน (ห่อ tripCashDay · อ่านอย่างเดียว) ═══════════════
 const CASH_IN = z.strictObject({ unitId: ID, businessDate: YMD.optional() });
+type CashAggRow = { kind: string; tender: string; sum: Big; n: number };
+type CashEventRow = { id: string; bookingId: string; kind: string; tender: string; amountSatang: number; createdAt: Date };
+const isCashTender = (t: string): t is (typeof TRIP_TENDERS)[number] => (TRIP_TENDERS as readonly string[]).includes(t);
+/**
+ * แถวเงินของวันทำการ (เวลาร้าน) — กติกาเดียวกับ tripCashDay ของ T0.7a: แถวรับเงิน/คืนเงินของหน่วยในช่วง [ต้นวัน, ต้นวันถัดไป) · เงินสดที่ต้องมี = เงินสดรับ − เงินสดคืน
+ * ยอดรวม/จำนวน = คิวรีรวม (ทั้งวัน) · รายการ = ใหม่→เก่า ตัดที่เพดานใน SQL (ไม่อ่านทุกแถวของวันขึ้นมาแล้วตัด)
+ */
 export async function loadCashDayVM(ctx: TripsScreenCtx, input: unknown, opts?: Opts): Promise<{ ok: true; vm: CashDayVM } | Fail> {
   const p = parse(CASH_IN, input);
   if (isFail(p)) return p;
@@ -637,26 +726,42 @@ export async function loadCashDayVM(ctx: TripsScreenCtx, input: unknown, opts?: 
   if (isFail(g)) return g;
   const now = nowOf(opts);
   const unit = await unitOf(g, now);
-  const r = await tripCashDay(sellCtxOf(g, now), { businessDate: p.businessDate ?? unit.today });
-  if (!r.ok) return r.code === "NOT_FOUND" ? tripsFail("NOT_FOUND") : { ok: false, code: r.code, message: r.messageTh };
-  const v = r.value;
-  // รายการของวัน: ใหม่→เก่า ตัดที่เพดาน (ยอดรวมทุกตัวมาจากบริการ — ไม่คิดซ้ำจากแถวที่ตัด)
-  const shown = [...v.events].reverse().slice(0, TRIPS_CASH_EVENTS_CAP);
+  const day = p.businessDate ?? unit.today;
+  const from = localToUtc(unit.tz, day, 0).toISOString();
+  const to = localToUtc(unit.tz, addDaysYmd(day, 1), 0).toISOString();
+  const dayWhere = (pp: Params): string =>
+    `e."tenantId" = ${pp.add(g.tenantId)} AND e."postingStatus" = ANY(${codeArray(POSTING_STATUSES)}) AND e."unitId" = ${pp.add(g.unitId)} AND e."kind" = ANY(${codeArray(CASH_KINDS)})
+      AND e."createdAt" >= ${pp.add(from)}::timestamp AND e."createdAt" < ${pp.add(to)}::timestamp`;
+  const ap = newParams();
+  const aggSql = `SELECT e."kind", e."tender", coalesce(sum(e."amountSatang"), 0)::bigint AS "sum", count(*)::int AS "n" FROM "TripMoneyEvent" e WHERE ${dayWhere(ap)}
+    GROUP BY e."kind", e."tender" LIMIT ${ap.add(CASH_GROUP_CAP)}::int`;
+  const rp = newParams();
+  const rowSql = `SELECT e."id", e."bookingId", e."kind", e."tender", e."amountSatang", e."createdAt" FROM "TripMoneyEvent" e WHERE ${dayWhere(rp)}
+    ORDER BY e."createdAt" DESC, e."id" DESC LIMIT ${rp.add(TRIPS_CASH_EVENTS_CAP)}::int`;
+  const [aggs, shown] = await Promise.all([g.db.$queryRawUnsafe<CashAggRow[]>(aggSql, ...ap.values), g.db.$queryRawUnsafe<CashEventRow[]>(rowSql, ...rp.values)]);
+  const byTender: CashDayVM["byTender"] = { CASH: { receivedSatang: 0, refundedSatang: 0 }, PROMPTPAY: { receivedSatang: 0, refundedSatang: 0 }, TRANSFER: { receivedSatang: 0, refundedSatang: 0 }, CARD: { receivedSatang: 0, refundedSatang: 0 } };
+  const totals = { receivedSatang: 0, refundedSatang: 0, n: 0 };
+  for (const a of aggs) {
+    const field = a.kind === "RECEIVED" ? "receivedSatang" : "refundedSatang";
+    totals[field] += numOf(a.sum);
+    totals.n += numOf(a.n);
+    if (isCashTender(a.tender)) byTender[a.tender][field] += numOf(a.sum);
+  }
   const codes = await codesOf(g, shown.map((e) => e.bookingId));
   return {
     ok: true,
     vm: {
       unit,
-      businessDate: v.businessDate,
-      tz: v.tz,
-      receivedSatang: v.receivedSatang,
-      refundedSatang: v.refundedSatang,
-      expectedSatang: v.expectedSatang,
-      byTender: v.byTender,
-      events: shown.map((e) => ({ id: e.id, bookingId: e.bookingId, code: codes.get(e.bookingId) ?? "", kind: e.kind, tender: e.tender, amountSatang: e.amountSatang, atLocal: localStamp(v.tz, e.at) })),
-      total: v.events.length,
+      businessDate: day,
+      tz: unit.tz,
+      receivedSatang: totals.receivedSatang,
+      refundedSatang: totals.refundedSatang,
+      expectedSatang: byTender.CASH.receivedSatang - byTender.CASH.refundedSatang,
+      byTender,
+      events: shown.map((e) => ({ id: e.id, bookingId: e.bookingId, code: codes.get(e.bookingId) ?? "", kind: e.kind, tender: e.tender, amountSatang: Number(e.amountSatang), atLocal: localStamp(unit.tz, e.createdAt) })),
+      total: totals.n,
       shown: shown.length,
-      truncated: v.events.length > shown.length,
+      truncated: totals.n > shown.length,
       closeAvailable: false,
     },
   };

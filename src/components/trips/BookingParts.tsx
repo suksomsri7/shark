@@ -86,9 +86,13 @@ export function useBkText() {
   const docKind = (code: string) => pick("docKind", EVENT_KIND_CODES, code, "other");
   const posting = (code: string) => pick("posting", POSTING_CODES, code, "other");
   const refundStatus = (code: string) => pick("refundStatus", REFUND_STATUS_CODES, code, "other");
-  /** ช่องทาง: เอเจนซี่ / ชื่อช่องทางของ T1.2 (+ เลขอ้างอิงเอเจนซี่) */
+  /** ชื่อช่องทางขายของจอนี้ (ข้อความของจอการจองเอง — ไม่มีคำเรียกเครื่องขาย) */
+  const channelName = (code: string) => t(`bookings.channel.${code}`);
+  /** จำนวนเงินพร้อมสกุลเงิน — รูปเดียวต่อภาษา (ข้อความ ไม่ฝังสัญลักษณ์ในคอมโพเนนต์) */
+  const money = (satang: number) => t("bookings.detail.baht", { amount: formatBaht(satang) });
+  /** ช่องทาง: เอเจนซี่ / ชื่อช่องทาง (+ เลขอ้างอิงเอเจนซี่) */
   const channel = (row: Pick<BookingRowVM, "channel" | "agentAccountId" | "agentRef">, channels: readonly string[]) => {
-    const name = row.agentAccountId ? t("bookings.filter.agent") : channels.includes(row.channel) ? t(`departures.channel.${row.channel}`) : t("bookings.filter.direct");
+    const name = row.agentAccountId ? t("bookings.filter.agent") : channels.includes(row.channel) ? channelName(row.channel) : t("bookings.filter.direct");
     return row.agentRef ? `${name} · ${t("bookings.row.agentRef", { ref: row.agentRef })}` : name;
   };
   /** ข้อความป้ายของแถว (เรื่องต้องทำเรื่องแรก หรือชื่อสถานะ · ถือที่ ⇒ เวลาหมด) */
@@ -144,7 +148,7 @@ export function useBkText() {
     const [ymd, hm] = local.split(" ");
     return hm ? `${D.short(ymd)} ${hm}` : D.short(ymd);
   };
-  return { t, D, T, status, tender, dueKind, dueStatus, eventKind, docKind, posting, refundStatus, channel, badge, paxLine, departureCancelled, moneyLines, stamp };
+  return { t, D, T, status, tender, dueKind, dueStatus, eventKind, docKind, posting, refundStatus, channel, channelName, money, badge, paxLine, departureCancelled, moneyLines, stamp };
 }
 
 // ═══════════════ ป้ายสถานะ (แยกด้วยรูปทรง: ทึบ = ยืนยัน · เส้นประ = ถือที่ · กรอบแดง + ไอคอน = ต้องทำ · เทา = จบแล้ว) ═══════════════
@@ -181,14 +185,19 @@ export function NotYetButton({ "data-testid": testid, label, hint, className }: 
 // ═══════════════ กล่องโต้ตอบของจอนี้ ═══════════════
 /**
  * Dialog ของ T1.1 + data-testid + แถบปุ่มติดล่าง · ปิดด้วยปุ่มขณะมีค่าที่กรอก ⇒ ถามก่อน (ไม่ทิ้งค่าเงียบ ๆ)
- * Escape: Dialog ถามเองแล้ว — จดว่ากำลังกด Escape อยู่ (keydown → keyup) เพื่อไม่ถามซ้ำ
+ * Escape: Dialog ถามเองแล้ว — จดไว้เฉพาะช่วงที่กำลังส่งต่อปุ่ม Escape ครั้งนั้น (ล้างทันทีหลังตัวจัดการทำงานจบ) เพื่อไม่ถามซ้ำ
+ *   ไม่พึ่ง keyup: กล่องยืนยันของเบราว์เซอร์ที่เปิดระหว่าง keydown กลืน keyup ได้ ⇒ ถ้าค้างไว้ ปุ่มปิดครั้งถัดไปจะทิ้งค่าโดยไม่ถาม
  */
 export function BkDialog({ "data-testid": testid, title, busy, dirty, onClose, footer, wide, children }: { "data-testid": string; title: string; busy: boolean; dirty: boolean; onClose: () => void; footer?: ReactNode; wide?: boolean; children: ReactNode }) {
   const t = useTranslations("trips");
   const escDown = useRef(false);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.key === "Escape") escDown.current = true;
+      if (e.key !== "Escape") return;
+      escDown.current = true;
+      window.setTimeout(() => {
+        escDown.current = false;
+      }, 0);
     };
     const up = (e: KeyboardEvent) => {
       if (e.key === "Escape") escDown.current = false;
@@ -257,6 +266,17 @@ export function useBkRunner() {
     return ok;
   };
   return { busy: r.busy, error: r.error, setError: r.setError, run, failText };
+}
+
+/** ข้อความผิดพลาดของช่องกรอก (สีอันตราย + อ่านออกเสียงทันที) */
+export function FieldError({ id, text }: { id: string; text: string | null }) {
+  if (!text) return null;
+  return (
+    <p id={id} role="alert" className="text-sm font-medium text-[color:var(--color-danger)] [overflow-wrap:anywhere]">
+      <span aria-hidden="true">⚠ </span>
+      {text}
+    </p>
+  );
 }
 
 /** บรรทัดป้าย–ค่า (ป้ายซ้าย · ค่าชิดขวา ตัวเลขเท่ากันทุกหลัก) */
