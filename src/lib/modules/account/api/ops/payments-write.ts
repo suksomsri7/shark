@@ -209,6 +209,8 @@ const paymentsRecord = defineOp({
       outstandingSatang: res.outstanding,
       payments: res.paymentIds,
       whtCertNos: res.certNos,
+      // ACC T2.6 (additive) ▸ คำเตือนที่ไม่บล็อก (รูปทะเบียนกลาง: code · messageTh · citation · tag · checkedAt · ack) ◂
+      ...(res.warnings?.length ? { warnings: res.warnings } : {}),
     };
   },
 });

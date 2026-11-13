@@ -891,9 +891,13 @@ export async function postDocument(
         const pays = await db.accountDocumentPayment.findMany({
           where: { documentId: docId, systemId: ctx.systemId, voidedAt: null },
           orderBy: { paidAt: "asc" },
-          select: { financeAccountId: true, channel: true, amount: true, whtAmountSatang: true, feeAmount: true },
+          select: { financeAccountId: true, channel: true, amount: true, whtAmountSatang: true, feeAmount: true, paidAt: true },
         });
+        // ACC T2.6 ▸ ความรับผิดของเงินมัดจำเกิดเมื่อได้รับชำระ (ป.73/2541 ข้อ 2(3)(ข) · ม.78(1)(ข)) ⇒ JV (Cr 2200) ลงวันที่รับเงินครบ
+        //   (งวดล่าสุด) — เดิมลงวันที่ออกใบรับมัดจำ ⇒ รับเงินคนละเดือนกับวันที่ใบ ภาษีเข้าผิดเดือน · ไม่มีงวด = วันที่ใบ (คงเดิม) ◂
+        let depDate = doc.issueDate;
         if (pays.length > 0 && pays.reduce((s, p) => s + p.amount + p.whtAmountSatang, 0) === doc.grandTotal) {
+          depDate = pays[pays.length - 1].paidAt;
           for (const p of pays) {
             b.dr(await financeLedgerId(ctx, p.financeAccountId, p.channel, db), p.amount - p.feeAmount);
             if (p.feeAmount > 0) b.dr(await b.id("PAYMENT_FEE"), p.feeAmount, "ค่าธรรมเนียม");
@@ -906,7 +910,7 @@ export async function postDocument(
         b.cr(await b.id("DEPOSIT_RECEIVED"), doc.grandTotal - doc.vatAmount);
         if (rate > 0) b.cr(await b.id("VAT_OUTPUT"), doc.vatAmount);
         book = "RECEIPTS";
-        opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "รับเงินมัดจำ" };
+        opts = { book, journal: "DOC", date: depDate, refType: "AccountDocument", refId: docId, event, memo: "รับเงินมัดจำ" };
         break;
       }
       case "CREDIT_NOTE": {

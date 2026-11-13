@@ -2969,7 +2969,7 @@ export async function recordPayment(
   systemId: string,
   id: string,
   input: RecordPaymentInput,
-): Promise<{ ok: true; status: AccountDocStatus; paymentId?: string; whtCertNo?: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; status: AccountDocStatus; paymentId?: string; whtCertNo?: string; warnings?: LegalWarning[] } | { ok: false; reason: string }> {
   if (!input.amount || input.amount <= 0) return { ok: false, reason: "ยอดชำระต้องมากกว่า 0" };
   // ── idempotency: คีย์เดิม = คืนผลเดิม ไม่แตะบัญชี ──
   if (input.idempotencyKey) {
@@ -2991,7 +2991,7 @@ export async function recordPayment(
       const nos = await finalizeDocNos(tx); // CRM C5.4-N ▸ คำสั่งสุดท้าย — ล็อกสุดท้ายของธุรกรรม ◂
       return { ...r, whtCertNo: r.whtCertDocId ? nos.get(r.whtCertDocId) : undefined };
     });
-    return { ok: true, status: r.status, paymentId: r.paymentId, whtCertNo: r.whtCertNo };
+    return { ok: true, status: r.status, paymentId: r.paymentId, whtCertNo: r.whtCertNo, ...(r.warnings?.length ? { warnings: r.warnings } : {}) };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "บันทึกชำระไม่สำเร็จ") };
   }
@@ -3015,7 +3015,7 @@ export async function recordPaymentInTx(
    *   ไม่ส่ง = เดิมทุกบรรทัด ◂
    */
   internal?: { glByCaller?: boolean },
-): Promise<{ status: AccountDocStatus; paymentId: string; whtCertDocId?: string; duplicate: boolean }> {
+): Promise<{ status: AccountDocStatus; paymentId: string; whtCertDocId?: string; duplicate: boolean; warnings?: LegalWarning[] }> {
   if (!input.amount || input.amount <= 0) throw new Error("ยอดชำระต้องมากกว่า 0");
   const wht = Math.max(0, input.whtAmountSatang ?? 0);
   if (input.idempotencyKey) {
@@ -3030,6 +3030,9 @@ export async function recordPaymentInTx(
   }
   let status: AccountDocStatus = "PARTIAL";
   let paymentId = "";
+  /** ACC T2.6 ▸ VAT ของใบกำกับที่ออกให้เองในงวดนี้ (บริการ/มัดจำ) — ใช้ทำคำเตือนรับเงินย้อนเดือน ◂ */
+  let taxInvoiceVat = 0;
+  let paidAtOf: Date = input.paidAt ?? new Date();
   // CRM C5.4-N ▸ เลข WTI ออกตอนท้ายธุรกรรม (finalizeDocNos ของตัวห่อ) — ที่นี่รู้แค่ id ของใบ ◂
   let whtCertDocId: string | undefined;
       // 🔴 WO 9.2 ข้อ 12 — ล็อกแถวเอกสารก่อนอ่านยอด (SELECT … FOR UPDATE)
@@ -3072,6 +3075,7 @@ export async function recordPaymentInTx(
         },
       });
       paymentId = payment.id;
+      paidAtOf = payment.paidAt;
       const newPaid = doc.paidTotal + tieOff;
       // CRM C5.4-C ▸ L2-M3 (ฝั่งบัญชี · ขั้นต่ำ): หนี้ของใบแจ้งหนี้ที่มีใบลดหนี้ = grand − CN (F-05 ข้างบน) ⇒ "ครบ" ต้องนับใบลดหนี้ด้วย
       //   เดิม newPaid ≥ grandTotal ไม่มีวันจริง ⇒ ค้าง PARTIAL ตลอดไป + ไม่มี account.invoice.paid (แถวปิดยอด WHT ของ CRM ไม่เกิด) ◂
@@ -3084,7 +3088,12 @@ export async function recordPaymentInTx(
         status = fullyPaid ? "AWAITING_DEDUCT" : "PARTIAL";
         await tx.accountDocument.update({ where: { id }, data: { paidTotal: newPaid, status } });
         // มัดจำโพสต์เต็มก้อนเมื่อรับครบ (เงินสด Dr = grandTotal) — postDocument อ่าน finance account จาก payment
-        if (fullyPaid) await postDocument(ctx, id, tx, { event: await depositRepostEvent(tx, systemId, id) });
+        //   ACC T2.6 ▸ JV ลงวันที่รับเงินครบ (gl.ts DEPOSIT_RECEIPT) · ใบกำกับของเงินมัดจำออกให้เองตามค่าตั้ง (ลงวันเดียวกัน) ◂
+        if (fullyPaid) {
+          await postDocument(ctx, id, tx, { event: await depositRepostEvent(tx, systemId, id) });
+          if (settings.vatRegistered && settings.doc.autoTaxInvoice.depositOnReceipt && doc.vatMode !== "NONE" && doc.vatAmount > 0)
+            taxInvoiceVat += await issueDepositTaxInvoiceInTx(tx, tenantId, systemId, id, payment.id, payment.paidAt);
+        }
       } else {
         status = receivableStatusOf(doc.grandTotal, newPaid, cnTotal); // CRM C5.4-C ▸ ฟังก์ชันสถานะเดียว (review B1) ◂
         await tx.accountDocument.update({ where: { id }, data: { paidTotal: newPaid, status } });
@@ -3102,7 +3111,7 @@ export async function recordPaymentInTx(
           doc.vatMode !== "NONE" &&
           doc.docType === "INVOICE"
         ) {
-          await issueServiceTaxInvoice(tx, tenantId, systemId, doc, payment.id, tieOff, fullyPaid);
+          taxInvoiceVat += await issueServiceTaxInvoice(tx, tenantId, systemId, doc, payment.id, tieOff, fullyPaid, payment.paidAt);
         }
       }
 
@@ -3147,7 +3156,7 @@ export async function recordPaymentInTx(
             ]
           : []),
       ]);
-  return { status, paymentId, whtCertDocId, duplicate: false };
+  return { status, paymentId, whtCertDocId, duplicate: false, warnings: paymentTaxInvoiceWarnings(paidAtOf, taxInvoiceVat, accountNow()) };
 }
 
 // ─────────────────── WO 8.3 (§9.5) — เหตุการณ์บัญชีสำหรับ webhook ขาออก ───────────────────
@@ -3370,30 +3379,71 @@ async function issueServiceTaxInvoice(
   paymentId: string,
   tieOff: number, // ยอดที่ตัดหนี้งวดนี้ (เงิน + WHT)
   fullyPaid = false,
-): Promise<void> {
+  /** ACC T2.6 ▸ วันที่รับเงินของงวดนี้ (payment.paidAt) = วันที่ใบกำกับ + วันที่ JV โอน 2210→2200 (เดิม new Date() = วันที่กดบันทึก) ◂ */
+  paidAt: Date = new Date(),
+): Promise<number> {
   // แบ่งสัดส่วน VAT ของงวดนี้ตามสัดส่วนที่รับต่อยอดเต็มใบ (แสดงบนเอกสาร — journal จริงอยู่ใน gl)
   const portion = invoice.grandTotal > 0 ? tieOff / invoice.grandTotal : 0;
   // ACC T1.2 ▸ ปล่อยเฉพาะ VAT บริการที่ยังพัก: งวดปกติ = min(คงพัก, round(VAT บริการตอนออกใบ × สัดส่วน)) · งวดที่ชำระครบ = ที่เหลือทั้งหมด
   //   (ผลรวมทุกงวด = VAT บริการเป๊ะ) · ใบบริการล้วนสูตรเดิม (ฐาน = ยอดตัดหนี้ − VAT) · ใบผสม: ฐาน = VAT × (ฐานบริการ/VAT บริการ) ◂
   const pk = (await parkedVatOf({ tenantId, systemId }, [invoice.id], tx)).get(invoice.id);
   const svcLeft = Math.max(0, pk?.service ?? 0);
-  if (!pk || svcLeft <= 0) return;
+  if (!pk || svcLeft <= 0) return 0;
   const pureService = pk.goodsAtIssue === 0;
   const want = Math.round((pureService ? invoice.vatAmount : pk.serviceAtIssue) * portion);
   const vatPortion = fullyPaid ? svcLeft : Math.min(svcLeft, want);
-  if (vatPortion <= 0) return;
+  if (vatPortion <= 0) return 0;
+  const full = await tx.accountDocument.findFirst({
+    where: { id: invoice.id },
+    select: {
+      docNo: true, discountAmount: true, vatTiming: true, taxPointBasis: true, issueDate: true,
+      lines: { orderBy: { sortOrder: "asc" }, select: { id: true, description: true, qty: true, unitName: true, unitPrice: true, discount: true, amount: true, vatRateBp: true, lineKind: true, productId: true } },
+    },
+  });
+  const timing = full?.taxPointBasis ?? full?.vatTiming ?? "ON_PAYMENT";
   let base = Math.max(0, tieOff - vatPortion);
-  let grand = tieOff;
   if (!pureService) {
-    const full = await tx.accountDocument.findFirst({ where: { id: invoice.id }, select: { discountAmount: true, vatTiming: true, taxPointBasis: true, issueDate: true, lines: { select: { amount: true, vatRateBp: true, lineKind: true } } } });
     const rate = await vatRateBpAt({ tenantId, systemId }, full?.issueDate ?? accountNow());
-    const raw = rawVatByKindOf(full?.lines ?? [], invoice.vatMode, full?.discountAmount ?? 0, rate, full?.taxPointBasis ?? full?.vatTiming ?? "ON_PAYMENT");
+    const raw = rawVatByKindOf(full?.lines ?? [], invoice.vatMode, full?.discountAmount ?? 0, rate, timing);
     base = raw.service > 0 ? Math.round((vatPortion * raw.serviceNet) / raw.service) : 0;
-    grand = base + vatPortion;
   }
-  const issueDate = new Date();
-  // ACC T0.2 ▸ อัตราบนบรรทัด = อัตรามาตรฐานจากตารางค่ากฎหมาย ณ วันออกใบ (เดิมฝัง 700) ◂
+  const grand = base + vatPortion;
+  // ACC T2.6 ▸ วันที่ใบกำกับ = วันที่รับเงิน (ม.78/1(1) ความรับผิดเกิดเมื่อได้รับชำระ · ม.86 ออกใบกำกับในทันทีที่ความรับผิดเกิด) ◂
+  const issueDate = paidAt;
+  // ACC T0.2 / T2.6 ▸ อัตราบนบรรทัด = อัตรามาตรฐานจากตารางค่ากฎหมาย ณ วันรับเงิน (เดิมฝัง 700 · ต่อมา = วันที่กดบันทึก) ◂
   const lineVatBp = invoice.vatMode === "NONE" ? 0 : await vatRateBpAt({ tenantId, systemId }, issueDate);
+  // ACC T2.6 ▸ บรรทัด = บรรทัดบริการของใบแจ้งหนี้ (ไม่ใช่บรรทัดเดียวแบบกลาง) · สินค้าที่ออกใบกำกับไปพร้อมใบแจ้งหนี้แล้ว (T1.2) ไม่ซ้ำ
+  //   ฐานงวดนี้แบ่งตามน้ำหนักบรรทัด **แบบสะสม**: ยอดสะสมของบรรทัด i หลังงวดนี้ = ส่วนแบ่งของ (ฐานงวดก่อน ๆ + ฐานงวดนี้) ตามน้ำหนัก
+  //   (เศษเหลือมากสุด) ลบที่ใบก่อน ๆ ได้ไปแล้ว ⇒ Σ บรรทัด = ฐานงวดนี้เป๊ะ และงวดสุดท้ายได้เศษที่เหลือของทุกบรรทัด ◂
+  const svcLinesAll = (full?.lines ?? []).filter((l) => resolveLineKind(l.lineKind, null, timing) === "SERVICE");
+  const svcVatable = svcLinesAll.filter((l) => l.vatRateBp > 0);
+  const svcLines = svcVatable.length > 0 ? svcVatable : svcLinesAll;
+  const prevTis = await tx.accountDocument.findMany({
+    where: { systemId, docType: "TAX_INVOICE", sourceDocId: invoice.id, sourcePaymentId: { not: null }, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } },
+    select: { subTotal: true, lines: { select: { sortOrder: true, amount: true } } },
+  });
+  const prevBase = prevTis.reduce((n, t) => n + t.subTotal, 0);
+  const prevByLine = new Map<number, number>();
+  for (const t of prevTis) for (const l of t.lines) prevByLine.set(l.sortOrder, (prevByLine.get(l.sortOrder) ?? 0) + l.amount);
+  const weights = svcLines.map((l) => Math.max(0, l.amount));
+  const cum = allocateByWeight(prevBase + base, weights);
+  let amounts = svcLines.map((_, i) => cum[i] - (prevByLine.get(i) ?? 0));
+  // ใบก่อน ๆ ออกด้วยสูตรเดิม (บรรทัดเดียว) หรือสะสมติดลบ ⇒ แบ่งเฉพาะฐานงวดนี้ตรง ๆ
+  if (amounts.some((a) => a < 0) || amounts.reduce((n, a) => n + a, 0) !== base) amounts = allocateByWeight(base, weights);
+  const portionPct = invoice.grandTotal > 0 ? Math.min(100, (tieOff / invoice.grandTotal) * 100) : 100;
+  const newLines =
+    svcLines.length === 0
+      ? [{ description: `ค่าบริการตามใบแจ้งหนี้ ${full?.docNo ?? ""} (รับชำระงวดนี้)`.trim(), qty: 1, unitName: null as string | null, unitPrice: base, discount: 0, amount: base, productId: null as string | null }]
+      : svcLines.map((l, i) => {
+          const whole = amounts[i] === l.amount && l.discount >= 0;
+          return whole
+            ? { description: l.description, qty: l.qty, unitName: l.unitName, unitPrice: l.unitPrice, discount: l.discount, amount: l.amount, productId: l.productId }
+            : {
+                // ส่วนของงวด: ยกชื่อ/จำนวน/ราคาของบรรทัดเดิมไว้ในคำอธิบาย · จำนวน 1 × ยอดของงวด (ฐานตรงกับยอดบรรทัดเสมอ)
+                description: `${l.description} (${prevTis.length === 0 && fullyPaid ? "มูลค่าหลังหักส่วนลด/เงินมัดจำตามใบแจ้งหนี้" : `ส่วนที่รับชำระงวดนี้ ~${portionPct.toFixed(2)}%`} · ${Number(l.qty)}${l.unitName ? ` ${l.unitName}` : ""} × ฿${(l.unitPrice / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })})`,
+                qty: 1, unitName: null, unitPrice: amounts[i], discount: 0, amount: amounts[i], productId: l.productId,
+              };
+        });
   // CRM C5.4-N ▸ เลขใบกำกับภาษีจองท้ายธุรกรรม (finalizeDocNos · LOCK ORDER ขั้น 7) — ไม่ถือแถวตัวนับระหว่างลงบัญชี ◂
   const taxInv = await tx.accountDocument.create({
     data: {
@@ -3415,20 +3465,20 @@ async function issueServiceTaxInvoice(
       sourceDocId: invoice.id,
       sourcePaymentId: paymentId,
       lines: {
-        create: [
-          {
-            tenantId,
-            systemId,
-            sortOrder: 0,
-            description: "ใบกำกับภาษี — รับชำระค่าบริการ (ตามงวดรับเงิน)",
-            qty: 1,
-            unitPrice: base,
-            discount: 0,
-            vatRateBp: lineVatBp,
-            amount: base,
-            lineKind: "SERVICE",
-          },
-        ],
+        create: newLines.map((l, i) => ({
+          tenantId,
+          systemId,
+          sortOrder: i,
+          description: l.description,
+          qty: l.qty,
+          unitName: l.unitName,
+          unitPrice: l.unitPrice,
+          discount: l.discount,
+          vatRateBp: lineVatBp,
+          amount: l.amount,
+          productId: l.productId,
+          lineKind: "SERVICE" as const,
+        })),
       },
     },
   });
@@ -3449,8 +3499,71 @@ async function issueServiceTaxInvoice(
       amount: grand,
     },
   });
-  // A2: ใบกำกับกำหนดเดือน VAT → โอน 2210 → 2200 ตามงวด
+  // A2: ใบกำกับกำหนดเดือน VAT → โอน 2210 → 2200 ตามงวด (JV ลงวันที่ใบกำกับ = วันรับเงิน)
   await postTaxInvoice({ tenantId, systemId }, taxInv.id, tx);
+  return vatPortion;
+}
+
+/**
+ * ACC T2.6 ▸ ใบกำกับภาษีของ "เงินมัดจำ" — ออกเมื่อรับเงินมัดจำครบ (ค่าตั้ง autoTaxInvoice.depositOnReceipt · ค่าเริ่มเปิด)
+ *   ความรับผิดของเงินมัดจำ/เงินล่วงหน้าเกิดเมื่อได้รับชำระ (ป.73/2541 ข้อ 2(3)(ข) · ม.78(1)(ข)) + ม.86 ออกในทันที ⇒ ลงวันที่รับเงิน
+ *   VAT เข้า 2200 แล้วใน JV ของใบรับมัดจำ (ลงวันเดียวกัน) ⇒ ใบนี้ไม่มี JV ของตัวเอง (postTaxInvoice ข้ามต้นทางมัดจำ)
+ *   ผูก sourcePaymentId = งวดที่ทำให้รับครบ (ไม่ชนดัชนี 1 ใบกำกับ/ต้นทาง) · ยกเลิกรับเงินมัดจำ ⇒ ยกเลิกใบนี้ตาม (unwindPaymentInTx ④) ◂
+ */
+async function issueDepositTaxInvoiceInTx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, depositId: string, paymentId: string, paidAt: Date): Promise<number> {
+  const dep = await tx.accountDocument.findFirst({ where: { id: depositId, tenantId, systemId }, include: { lines: { orderBy: { sortOrder: "asc" } } } });
+  if (!dep || dep.docType !== "DEPOSIT_RECEIPT") return 0;
+  const exists = await tx.accountDocument.count({ where: { systemId, docType: "TAX_INVOICE", sourceDocId: dep.id, status: { notIn: ["VOIDED", "CANCELLED"] } } });
+  if (exists > 0) return 0;
+  const lineVatBp = await vatRateBpAt({ tenantId, systemId }, paidAt);
+  const ti = await tx.accountDocument.create({
+    data: {
+      tenantId, systemId, docType: "TAX_INVOICE", status: "ISSUED", direction: "OUT", docNo: null,
+      issueDate: paidAt, contactId: dep.contactId,
+      contactSnapshot: (dep.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
+      vatMode: dep.vatMode, vatTiming: "ON_PAYMENT", taxPointBasis: "ON_PAYMENT",
+      discountAmount: dep.discountAmount, subTotal: dep.subTotal, vatAmount: dep.vatAmount, grandTotal: dep.grandTotal,
+      sourceDocId: dep.id, sourcePaymentId: paymentId,
+      note: `ใบกำกับภาษีของเงินมัดจำตามใบรับเงินมัดจำ ${dep.docNo ?? ""}`.trim(),
+      lines: {
+        create: dep.lines.map((l, i) => ({
+          tenantId, systemId, sortOrder: i, description: l.description, qty: l.qty, unitName: l.unitName, unitPrice: l.unitPrice,
+          discount: l.discount, vatRateBp: l.vatRateBp > 0 ? lineVatBp : l.vatRateBp, amount: l.amount, productId: l.productId, lineKind: l.lineKind,
+        })),
+      },
+    },
+  });
+  deferDocNo(tx, { docId: ti.id, tenantId, systemId, date: paidAt, series: { kind: "configured", docType: "TAX_INVOICE", fallbackPrefix: docNoFallbackPrefix("TAX_INVOICE") } });
+  await tx.accountDocumentRelation.create({ data: { tenantId, systemId, fromId: dep.id, toId: ti.id, type: "TAX_FOR", amount: dep.grandTotal } });
+  return dep.vatAmount;
+}
+
+/**
+ * ACC T2.6 ▸ คำเตือนรับเงินย้อนเดือน (pure — ฟอร์มรับชำระแสดงล่วงหน้าได้ · service ส่งกลับในผล)
+ *   มีใบกำกับออกให้เองในงวดนี้ (vat > 0) และเดือนของวันรับเงิน (เวลาไทย) อยู่ก่อนเดือนของ "วันนี้" ⇒ PAYMENT_TAX_INVOICE_EARLIER_MONTH [U] ไม่บล็อก ◂
+ */
+export function paymentTaxInvoiceWarnings(paidAt: Date, vat: number, now: Date, docNo?: string | null): LegalWarning[] {
+  if (vat <= 0) return [];
+  const ym = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 7);
+  const pm = ym(paidAt);
+  const nm = ym(now);
+  if (pm >= nm) return [];
+  const ymd = new Date(paidAt.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+  return [legalWarning("PAYMENT_TAX_INVOICE_EARLIER_MONTH", { paidAt: ymd, paidMonth: pm, nowMonth: nm, vat: (vat / 100).toLocaleString("en-US", { minimumFractionDigits: 2 }), docNo: docNo ? ` ${docNo} ` : "" })];
+}
+
+/** ACC T2.6 ▸ แบ่ง `total` (สตางค์ ≥ 0) ตามน้ำหนัก — เศษเหลือมากสุด · Σ = total เป๊ะ · น้ำหนักรวม 0 ⇒ ก้อนเดียวที่ตัวแรก ◂ */
+export function allocateByWeight(total: number, weights: readonly number[]): number[] {
+  const n = weights.length;
+  if (n === 0) return [];
+  const sum = weights.reduce((a, w) => a + Math.max(0, w), 0);
+  if (sum <= 0) return weights.map((_, i) => (i === 0 ? total : 0));
+  const raw = weights.map((w) => (total * Math.max(0, w)) / sum);
+  const out = raw.map((x) => Math.floor(x));
+  let left = total - out.reduce((a, x) => a + x, 0);
+  const order = raw.map((x, i) => ({ i, f: x - Math.floor(x) })).sort((a, b) => b.f - a.f || a.i - b.i);
+  for (let k = 0; left > 0 && n > 0; k = (k + 1) % n, left--) out[order[k].i] += 1;
+  return out;
 }
 
 // ยกเลิกการรับชำระ → reversal journal + ถอย paidTotal/สถานะ
@@ -3829,8 +3942,10 @@ export async function unwindPaymentInTx(
   }
 
   // ⑥ R-A/C1: ใบกำกับภาษี (บริการ ON_PAYMENT) ที่ออกต่องวดนี้ → ยกเลิก + กลับ 2210→2200 (ไม่งั้น ภพ.30 เกินจริง)
+  //   ACC T2.6 ▸ ใบรับมัดจำที่ JV ถูกกลับในข้อ ④ ⇒ ใบกำกับของเงินมัดจำ (ผูกงวดที่รับครบ ซึ่งอาจไม่ใช่งวดนี้) ยกเลิกตามด้วย ◂
+  const depositTiWhere = isDeposit && (doc.status === "AWAITING_DEDUCT" || doc.status === "DEDUCTED") ? [{ sourceDocId: doc.id }] : [];
   const linkedTis = await tx.accountDocument.findMany({
-    where: { systemId, docType: "TAX_INVOICE", sourcePaymentId: paymentId, status: { notIn: ["VOIDED", "CANCELLED"] } },
+    where: { systemId, docType: "TAX_INVOICE", OR: [{ sourcePaymentId: paymentId }, ...depositTiWhere], status: { notIn: ["VOIDED", "CANCELLED"] } },
     select: { id: true, status: true },
     orderBy: { id: "asc" },
   });
@@ -3951,6 +4066,12 @@ export async function refundDeposit(
       });
       // JV ของใบมัดจำอยู่ที่ "ตัวเอกสาร" → กลับรายการทั้งใบ = จ่ายเงินคืน/รับเงินคืนพอดี
       await reverseFor({ tenantId, systemId }, "AccountDocument", id, `คืนมัดจำ: ${reason}`, tx);
+      // ACC T2.6 ▸ ใบกำกับของเงินมัดจำ (ออกให้เองตอนรับครบ · ไม่มี JV ของตัวเอง) ต้องไม่ค้างมีผลหลัง VAT ถูกกลับ ⇒ ยกเลิกตาม
+      //   (ทางที่ถูกตาม skill = ใบลดหนี้ของการคืนเงินมัดจำ ประกาศ VAT ฉ.82 ข้อ 2(2) — งาน T2.4 · ที่นี่แค่ไม่ทิ้งใบกำกับลอย) ◂
+      await tx.accountDocument.updateMany({
+        where: { systemId, docType: "TAX_INVOICE", sourceDocId: id, status: { notIn: ["VOIDED", "CANCELLED"] } },
+        data: { status: "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามการคืนเงินมัดจำ: ${reason}` },
+      });
       return amount;
     });
     return { ok: true, refunded };

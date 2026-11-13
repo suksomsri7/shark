@@ -1,7 +1,7 @@
 "use server";
 
 import { screenAck, withScreenLegal } from "./legal-gate";
-import type { LegalAckRequired } from "@/lib/core/settings/legal/warnings";
+import type { LegalAckRequired, LegalWarning } from "@/lib/core/settings/legal/warnings";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
@@ -113,7 +113,7 @@ export async function paymentPanelDataAction(systemId: string, docId: string): P
 }
 
 export type RecordPaymentsActionResult =
-  | { ok: true; status: string; outstanding: number; certNos: string[]; recorded: number }
+  | { ok: true; status: string; outstanding: number; certNos: string[]; recorded: number; warnings?: LegalWarning[] }
   | { ok: false; reason: string; legal?: LegalAckRequired };
 
 /** §5.2 F — บันทึกการรับชำระ/จ่ายหลายครั้งในคำสั่งเดียว */
@@ -146,7 +146,7 @@ export async function recordPaymentsAction(
   });
   if (!res.ok) return res;
   revalidatePath(`/app/sys/${sys}/account`, "layout");
-  return { ok: true, status: res.status, outstanding: res.outstanding, certNos: res.certNos, recorded: res.recorded };
+  return { ok: true, status: res.status, outstanding: res.outstanding, certNos: res.certNos, recorded: res.recorded, ...(res.warnings ? { warnings: res.warnings } : {}) };
 }
 
 /** §5.2 F — "อนุมัติใบเสร็จรับเงิน" พร้อมรายการรับชำระที่กรอกไว้ (ภาพ g2) */

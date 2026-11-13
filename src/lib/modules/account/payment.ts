@@ -1,3 +1,4 @@
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 import type { AccountDocType, AccountPayChannel, AccountWhtIncomeType } from "@prisma/client";
 import { accountNow } from "./clock";
 import {
@@ -62,6 +63,8 @@ export type RecordPaymentsResult =
        * ยิงคีย์กันซ้ำเดิมซ้ำ → คืน id ชุดเดิม (ไม่ใช่ค่าว่าง) เพื่อให้ผลลัพธ์ของการ retry เท่ากัน
        */
       paymentIds: string[];
+      /** ACC T2.6 (additive) ▸ คำเตือนกฎหมายที่ไม่บล็อก (เช่น รับเงินย้อนเดือน → ใบกำกับลงเดือนนั้น) — รูปเดียวของทะเบียนกลาง ◂ */
+      warnings?: LegalWarning[];
     }
   | { ok: false; reason: string };
 
@@ -271,6 +274,7 @@ export async function recordPayments(
   const isPayable = target.direction === "IN";
   const certNos: string[] = [];
   const paymentIds: string[] = [];
+  const warnings: LegalWarning[] = [];
   let recorded = 0;
 
   // CRM C5.4-C ▸ round 10 · มติ B (R9-5): ด่านที่ไม่ต้องเขียนอะไร ตรวจครบ **ทุกครั้ง** ก่อนบันทึกครั้งแรก (เดิมตรวจทีละครั้งกลางลูป) ◂
@@ -320,6 +324,7 @@ export async function recordPayments(
     // ฝั่งขายคืนเลขใบภาษีถูกหัก (WTI) มาด้วย · ฝั่งจ่ายออก 50 ทวิ เองภายใน recordVendorPayment
     const certNo = (res as { whtCertNo?: string }).whtCertNo;
     if (certNo) certNos.push(certNo);
+    for (const w of (res as { warnings?: LegalWarning[] }).warnings ?? []) if (!warnings.some((x) => x.code === w.code && x.messageTh === w.messageTh)) warnings.push(w);
   }
 
   const after = (await paymentTargetOf(tenantId, systemId, target.id))?.target;
@@ -332,6 +337,7 @@ export async function recordPayments(
     certNos,
     recorded,
     paymentIds,
+    ...(warnings.length ? { warnings } : {}),
   };
 }
 

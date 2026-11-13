@@ -64,6 +64,10 @@ export const LEGAL_WARNING_CODES = [
   "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW",
   "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH",
   "INPUT_VAT_PENDING_PAST_WINDOW",
+  // ── ใบกำกับตอนรับเงิน · ใบเสร็จ · ยกเลิกและออกแทน (T2.6 · T2.8 · T2.2 — เลน 1) ──
+  "PAYMENT_TAX_INVOICE_EARLIER_MONTH",
+  "RECEIPT_SELLER_TAX_ID_MISSING",
+  "TAX_INVOICE_REPLACE",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -462,6 +466,40 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     tag: "V",
     checkedAt: "2026-11-13",
     ack: false,
+  },
+  PAYMENT_TAX_INVOICE_EARLIER_MONTH: {
+    code: "PAYMENT_TAX_INVOICE_EARLIER_MONTH",
+    titleTh: "บันทึกรับเงินย้อนหลังข้ามเดือน",
+    messageTh: (p) =>
+      `วันที่รับเงิน ${s(p, "paidAt")} อยู่ในเดือน ${s(p, "paidMonth")} ซึ่งก่อนเดือนนี้ (${s(p, "nowMonth")}) — ใบกำกับภาษี${s(p, "docNo", "")}ของงวดนี้ลงวันที่รับเงิน ภาษีขาย ฿${s(p, "vat")} จึงเข้าเดือนภาษี ${s(p, "paidMonth")} ` +
+      `(ความรับผิดของค่าบริการ/เงินมัดจำเกิดเมื่อได้รับชำระ ม.78/1(1) · ป.73/2541 ข้อ 2(3)(ข) และต้องออกใบกำกับในทันที ม.86) · ` +
+      `การออกใบกำกับตามหลังโดยลงวันที่รับเงินย้อนหลังไม่มีแนวทางระบุไว้ ถ้าเดือน ${s(p, "paidMonth")} ยื่น ภ.พ.30 ไปแล้วอาจต้องยื่นเพิ่มเติม`,
+    citation: "ประมวลรัษฎากร ม.78/1(1), ม.86 · ป.73/2541 ข้อ 2(3)(ข) · references/common-vat-invoice.md §4",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  RECEIPT_SELLER_TAX_ID_MISSING: {
+    code: "RECEIPT_SELLER_TAX_ID_MISSING",
+    titleTh: "ร้านยังไม่กรอกเลขประจำตัวผู้เสียภาษี",
+    messageTh: () =>
+      `ใบรับ (ใบเสร็จรับเงิน) ต้องแสดงเลขประจำตัวผู้เสียภาษีอากรของผู้ออก (ม.105 ทวิ) แต่ร้านยังไม่ได้กรอกเลขผู้เสียภาษีในตั้งค่ากิจการ — ใบเสร็จจะพิมพ์โดยไม่มีเลขนี้ · กรอกได้ที่ ตั้งค่า › กิจการ`,
+    citation: "ประมวลรัษฎากร ม.105 ทวิ · references/domain-accounting-books.md §ง1 · audit-checklist-accounting.md B8",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  TAX_INVOICE_REPLACE: {
+    code: "TAX_INVOICE_REPLACE",
+    titleTh: "ยกเลิกใบกำกับภาษีและออกฉบับใหม่แทน",
+    messageTh: (p) =>
+      `จะยกเลิกใบกำกับภาษีเลขที่ ${s(p, "oldNo")} (ลงวันที่ ${s(p, "oldDate")}) แล้วออกฉบับใหม่เลขที่ใหม่ ลงวันที่ ${s(p, "newDate")} พร้อมหมายเหตุ "ออกแทนฉบับเดิมเลขที่ ${s(p, "oldNo")}" — ` +
+      `ใช้สำหรับใบที่รายการผิดเท่านั้น (คืนสินค้า/ลดราคา ให้ออกใบลดหนี้) · ให้เรียกคืนฉบับเดิมจากผู้ซื้อมาเก็บรวมกับสำเนา · ` +
+      `ฉบับใหม่ลงวันที่ตรงกับฉบับเดิมตามแนวทางใบกำกับกระดาษ (e-Tax Invoice ใช้วันที่ใหม่)${s(p, "filed", "") ? ` · ${s(p, "filed")}` : ""}`,
+    citation: "ประกาศอธิบดีฯ เรื่อง VAT (ป.86/2542) ข้อ 25 · ประกาศ VAT ฉ.384 ข้อ 17 (e-Tax) · references/common-vat-invoice.md §14",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
   },
 };
 

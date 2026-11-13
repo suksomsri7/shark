@@ -272,6 +272,22 @@ export async function salesTaxReport(
     ? await db.accountDocument.findMany({ where: { id: { in: refDocIds } }, select: { id: true, docNo: true, docType: true, issueDate: true } })
     : [];
   const refDocMap = new Map(refDocs.map((d) => [d.id, d]));
+  // ACC T2.6 ▸ ใบรับมัดจำที่มีใบกำกับของเงินมัดจำ (ออกตอนรับเงิน · ไม่มี JV ของตัวเอง — ภาษีอยู่ใน JV ของใบรับมัดจำ)
+  //   ⇒ แถวรายงานแสดงเลข/วันที่ของ "ใบกำกับภาษี" (เอกสารที่ลงรายงานภาษีขาย) + หมายเหตุอ้างใบรับมัดจำ · ใช้ใบที่ยังมีผลก่อน ◂
+  const depIds = docs.filter((d) => d.docType === "DEPOSIT_RECEIPT").map((d) => d.id);
+  const depTis = depIds.length
+    ? await db.accountDocument.findMany({
+        where: { docType: "TAX_INVOICE", sourceDocId: { in: depIds }, docNo: { not: null } },
+        select: { id: true, sourceDocId: true, docNo: true, issueDate: true, status: true },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  const depTiOf = new Map<string, (typeof depTis)[number]>();
+  for (const t of depTis) {
+    const cur = depTiOf.get(t.sourceDocId!);
+    const live = t.status !== "VOIDED" && t.status !== "CANCELLED";
+    if (!cur || live) depTiOf.set(t.sourceDocId!, t);
+  }
 
   const buyerOf = (d: Doc | undefined) => {
     const snap = (d?.contactSnapshot ?? null) as { name?: string; taxId?: string; branchCode?: string } | null;
@@ -313,8 +329,9 @@ export async function salesTaxReport(
 
     const notes: string[] = [];
     const isAbb = s.refType === "PosSale" && (doc?.docType === "TAX_INVOICE_ABB" || (!doc && meta?.docType === "SALE" && meta.sourceModule !== "POS_DEPOSIT"));
-    const docNo = doc?.docNo ?? meta?.receiptNo ?? s.journalNo;
-    const date = laterMonthCancel ? (s.reversalDate ?? s.firstDate) : doc?.issueDate ?? meta?.paidAt ?? s.firstDate;
+    const depTi = doc?.docType === "DEPOSIT_RECEIPT" ? depTiOf.get(doc.id) : undefined;
+    const docNo = depTi?.docNo ?? doc?.docNo ?? meta?.receiptNo ?? s.journalNo;
+    const date = laterMonthCancel ? (s.reversalDate ?? s.firstDate) : depTi?.issueDate ?? doc?.issueDate ?? meta?.paidAt ?? s.firstDate;
     const sign: 1 | -1 = doc?.docType === "CREDIT_NOTE" || meta?.docType === "REFUND" ? -1 : 1;
 
     let parts: RatePart[];
@@ -340,7 +357,7 @@ export async function salesTaxReport(
     if (sameMonthCancel) notes.push(`ยกเลิกภายในเดือนนี้ — ไม่มียอดภาษี${cancelReason}`);
     if (laterMonthCancel) {
       const origDate = doc?.issueDate ?? meta?.paidAt ?? null;
-      notes.push(`ยกเลิก${DOC_TYPE_TH[doc?.docType ?? ""] ?? "เอกสาร"}เลขที่ ${docNo}${origDate ? ` ลงวันที่ ${fmtThDate(origDate)}` : ""} (ลงไว้ในเดือนก่อน)${cancelReason}`);
+      notes.push(`ยกเลิก${DOC_TYPE_TH[depTi ? "TAX_INVOICE" : (doc?.docType ?? "")] ?? "เอกสาร"}เลขที่ ${docNo}${origDate ? ` ลงวันที่ ${fmtThDate(origDate)}` : ""} (ลงไว้ในเดือนก่อน)${cancelReason}`);
     }
     if (doc && (doc.docType === "CREDIT_NOTE" || doc.docType === "DEBIT_NOTE") && doc.sourceDocId) {
       const src = refDocMap.get(doc.sourceDocId);
@@ -348,7 +365,8 @@ export async function salesTaxReport(
     }
     const replacedAbb = doc ? abbOfTx.get(doc.id) : undefined;
     if (replacedAbb) notes.push(`ออกใบกำกับภาษีเต็มรูปแทนใบกำกับภาษีอย่างย่อเลขที่ ${replacedAbb.docNo ?? "-"} (ใบย่อไม่นับซ้ำ)`);
-    if (doc?.docType === "DEPOSIT_RECEIPT") notes.push("รับเงินมัดจำ (ภาษีเกิดเมื่อรับชำระ)");
+    if (doc?.docType === "DEPOSIT_RECEIPT")
+      notes.push(depTi ? `ใบกำกับภาษีของเงินมัดจำ ตามใบรับเงินมัดจำเลขที่ ${doc.docNo ?? "-"} (ภาษีเกิดเมื่อรับชำระ)` : "รับเงินมัดจำ (ภาษีเกิดเมื่อรับชำระ)");
     if (s.refType === "PosSale" && !doc) notes.push("บิล POS ไม่มีเอกสารบัญชี — ฐานจากยอดบิล");
     if (s.refType === "JOURNAL")
       notes.push(s.manual ? `รายการปรับปรุงมือ ${s.journalNo}${s.memo ? ` · ${s.memo}` : ""} (JV ที่บันทึกเอง — ไม่มีใบกำกับ)` : `รายการบัญชี ${s.journalNo}${s.memo ? ` · ${s.memo}` : ""} (ไม่มีเอกสาร)`);

@@ -172,9 +172,20 @@ export type DocSettings = {
     mode: AutoTaxInvoiceMode;
     /** ACC T1.2 — บรรทัดสินค้า: ออกใบกำกับพร้อมใบแจ้งหนี้ (ม.78 + ม.86) · ค่าเริ่ม true · ปิด = VAT สินค้าพักไว้ + คำเตือนข้ามเดือน */
     goodsOnIssue: boolean;
+    /**
+     * ACC T2.6 — ใบรับเงินมัดจำ: ออกใบกำกับภาษีให้เองเมื่อรับเงินมัดจำครบ (ลงวันที่รับเงิน) · ค่าเริ่ม true
+     * (ความรับผิดของเงินมัดจำ/เงินล่วงหน้าเกิดเมื่อได้รับชำระ — ป.73/2541 ข้อ 2(3)(ข) · สินค้า ม.78(1)(ข) "ได้รับชำระราคา" — skill §4 §13 [V])
+     * ปิด = ร้านออกใบกำกับเองจากหน้าใบรับมัดจำ (VAT ยังเข้าเดือนที่รับเงินตามบัญชี)
+     */
+    depositOnReceipt: boolean;
     posAbbreviated: boolean; // สร้างใบกำกับอย่างย่อจากบิล POS
     legalText: string; // ข้อความตามกฎหมายท้ายใบกำกับ
   };
+  /**
+   * ACC T2.8 — ใบเสร็จรับเงิน (ใบรับ ม.105): `autoOnPayment` = รับเงินตามใบแจ้งหนี้แล้วออกใบเสร็จให้ทุกงวดอัตโนมัติ (ค่าเริ่ม true —
+   * ม.105 "ในทันทีทุกคราวที่รับเงิน" · checklist B9) · ปิด = ร้านออกเอง (+ คำเตือนเกณฑ์ 100/1,000 บาท) · ต่อเอกสารสั่งทับได้ (`autoReceipt`)
+   */
+  receipt: { autoOnPayment: boolean };
   /** เทมเพลตพิมพ์ */
   print: {
     template: PrintTemplate;
@@ -223,7 +234,8 @@ export function defaultDocSettings(): DocSettings {
     due: { quotationValidDays: 30, invoiceCreditDays: 30, purchaseOrderDueDays: 7, basis: "ISSUE" },
     channels: { order: [] },
     publicView: { enabled: true, showOutstanding: true, promptPayButton: true, expiryDays: 0 },
-    autoTaxInvoice: { mode: "ON_PAYMENT", goodsOnIssue: true, posAbbreviated: true, legalText: DEFAULT_LEGAL_TEXT },
+    autoTaxInvoice: { mode: "ON_PAYMENT", goodsOnIssue: true, depositOnReceipt: true, posAbbreviated: true, legalText: DEFAULT_LEGAL_TEXT },
+    receipt: { autoOnPayment: true },
     print: {
       template: "STANDARD",
       language: "TH",
@@ -343,9 +355,11 @@ export function parseDocSettings(docConfig: unknown): DocSettings {
           ? (auto.mode as AutoTaxInvoiceMode)
           : d.autoTaxInvoice.mode,
       goodsOnIssue: bool(auto.goodsOnIssue, d.autoTaxInvoice.goodsOnIssue),
+      depositOnReceipt: bool(auto.depositOnReceipt, d.autoTaxInvoice.depositOnReceipt),
       posAbbreviated: bool(auto.posAbbreviated, d.autoTaxInvoice.posAbbreviated),
       legalText: str(auto.legalText, d.autoTaxInvoice.legalText),
     },
+    receipt: { autoOnPayment: bool(obj(raw.receipt).autoOnPayment, d.receipt.autoOnPayment) },
     print: {
       template:
         print.template === "COMPACT" || print.template === "WITH_IMAGES" || print.template === "STANDARD"
@@ -371,7 +385,7 @@ export function parseDocSettings(docConfig: unknown): DocSettings {
 /** ส่วนที่แก้ได้ทีละก้อน (หน้าตั้งค่า 1 หน้า = 1 คีย์) */
 export type DocSettingsPatch = Partial<Omit<DocSettings, "sequences" | "notes" | "autoTaxInvoice">> & {
   /** ACC T1.2 — `goodsOnIssue` ไม่ส่ง = คงค่าเดิมของร้าน (ผู้เรียกเดิมส่งบล็อกนี้โดยไม่รู้จักช่องใหม่) */
-  autoTaxInvoice?: Omit<DocSettings["autoTaxInvoice"], "goodsOnIssue"> & { goodsOnIssue?: boolean };
+  autoTaxInvoice?: Omit<DocSettings["autoTaxInvoice"], "goodsOnIssue" | "depositOnReceipt"> & { goodsOnIssue?: boolean; depositOnReceipt?: boolean };
   sequences?: Record<string, Partial<SeqConfig>>;
   notes?: Record<string, Partial<DocNoteConfig>>;
 };
@@ -412,11 +426,15 @@ export function mergeDocSettings(
     }
     next.notes = notes;
   }
-  for (const key of ["due", "channels", "publicView", "print", "taxRequest", "rules", "inputVat"] as const) {
+  for (const key of ["due", "channels", "publicView", "print", "taxRequest", "rules", "inputVat", "receipt"] as const) {
     if (patch[key] !== undefined) next[key] = patch[key];
   }
   if (patch.autoTaxInvoice !== undefined)
-    next.autoTaxInvoice = { ...patch.autoTaxInvoice, goodsOnIssue: patch.autoTaxInvoice.goodsOnIssue ?? current.autoTaxInvoice.goodsOnIssue };
+    next.autoTaxInvoice = {
+      ...patch.autoTaxInvoice,
+      goodsOnIssue: patch.autoTaxInvoice.goodsOnIssue ?? current.autoTaxInvoice.goodsOnIssue,
+      depositOnReceipt: patch.autoTaxInvoice.depositOnReceipt ?? current.autoTaxInvoice.depositOnReceipt, // ACC T2.6 — ผู้เรียกเดิมไม่รู้จักช่องนี้
+    };
   root[DOC_SETTINGS_KEY] = next;
   return root;
 }

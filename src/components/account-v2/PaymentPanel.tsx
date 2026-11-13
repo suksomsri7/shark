@@ -120,7 +120,8 @@ export function PaymentPanel({
         setError(res.reason);
         return;
       }
-      setLegal([]);
+      // ACC T2.6 ▸ คำเตือนที่ไม่บล็อก (รับเงินย้อนเดือน → ใบกำกับลงเดือนนั้น) แสดงต่อหลังบันทึกสำเร็จ ◂
+      setLegal(res.warnings ?? []);
       setAckCodes([]);
       setOk(
         res.certNos.length > 0
