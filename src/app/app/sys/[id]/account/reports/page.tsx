@@ -16,6 +16,7 @@ const OTHER = [
   { href: "wht?tab=deduct", title: "ภ.ง.ด.3 / 53", desc: "หนังสือรับรองหัก ณ ที่จ่าย · ไฟล์ยื่นกรมสรรพากร" },
   { href: "aging", title: "อายุหนี้ (ลูกหนี้-เจ้าหนี้)", desc: "ยอดค้างแยกช่วงเกินกำหนด ณ วันนี้" },
   { href: "tax/parked-vat", title: "ภาษีขายที่ค้างพัก", desc: "VAT ที่ยังไม่เข้า ภ.พ.30 ต่อใบแจ้งหนี้ · อายุ · ปล่อยด้วยการออกใบกำกับ" },
+  { href: "tax/pending-input-vat", title: "ใบกำกับภาษีซื้อรอรับ", desc: "ภาษีซื้อที่พักรอใบกำกับจากผู้ขาย · อายุ · เดือนสุดท้ายที่ยังเคลมได้ · บันทึกรับ" },
 ];
 
 export default async function ReportsIndexPage({ params }: { params: Promise<{ id: string }> }) {

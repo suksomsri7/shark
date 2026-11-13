@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 203 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 205 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -924,6 +924,19 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/reports/parked-vat" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `reports.pending-input-vat`
+
+**GET /reports/pending-input-vat** - Input VAT parked while waiting for the vendor's tax invoice, per purchase document, with age, the last tax month it can still be claimed in (legal window) and a warning when that month has passed. · scope: `account.tax.view` · read · AI tool: `account_pending_input_vat`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | no | asOf (Thai calendar day, YYYY-MM-DD). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/pending-input-vat" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `reports.profit-loss`
 
 **GET /reports/profit-loss** - Profit and loss: revenue, cost of goods sold and expenses, with gross and net profit. Supports CSV. · scope: `account.report.view` · read · AI tool: `account_report`
@@ -1680,6 +1693,24 @@ curl -sS -X PUT "https://shark.in.th/api/v1/account/documents/123/deposits" \
   -d '{"picks":[]}'
 ```
 
+#### `documents.input-vat-not-claimable`
+
+**POST /documents/{id}/input-vat-not-claimable** - For a purchase tax invoice still waiting for the vendor's paper: record that the input VAT cannot be claimed. The parked input VAT moves to non-claimable input VAT today and leaves the pending list. · scope: `account.payment.record` · write · AI tool: `account_input_vat_not_claimable`
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | enum("ENTERTAINMENT", "PASSENGER_CAR", "ABBREVIATED_INVOICE", "NON_VAT_BUSINESS", "COPY_OR_NAME_MISMATCH", "NO_TAX_INVOICE", "INVOICE_INCOMPLETE", "NOT_BUSINESS", "ISSUER_NOT_ENTITLED") | no | Why the input VAT cannot be claimed (section 82/5). Default: NO_TAX_INVOICE. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/input-vat-not-claimable" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
 #### `documents.issue`
 
 **POST /documents/{id}/issue** - Issue a draft: it takes the next document number and posts to the ledger. A purchase order is sent for approval instead. · scope: `account.doc.issue` · write · AI tool: `account_issue_document`
@@ -1688,7 +1719,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/issue" \
@@ -1714,16 +1745,23 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/public-link" 
 
 #### `documents.receive`
 
-**POST /documents/{id}/receive** - Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT, an asset purchase becomes RECEIVED. · scope: `account.payment.record` · write
+**POST /documents/{id}/receive** - Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT on the claim date (default today = the month it was received), an asset purchase becomes RECEIVED. A claim in a later month than the invoice stores the note "ถือเป็นภาษีซื้อในเดือนภาษี…"; a claim past the legal window answers 409 legal_ack_required. · scope: `account.payment.record` · write
 
 Path parameters: `id` (required).
 
-No body fields.
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `vendorInvoiceDate` | string | no | Purchase tax invoice only: the date printed on the vendor's tax invoice. Default: the claim date. |
+| `vendorInvoiceNo` | one of several shapes | no | Purchase tax invoice only: the vendor's tax invoice number. |
+| `claimDate` | string | no | Purchase tax invoice only: the date input VAT is posted, which sets the tax month it is claimed in. Default: today (the month the invoice was received). |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW") | no | Legal warning codes the user has read and accepted (INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW, INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH). |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/receive" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
-  -H "Idempotency-Key: $(uuidgen)"
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
 #### `documents.reject`
@@ -1755,7 +1793,7 @@ Path parameters: `id` (required).
 | `date` | enum("TODAY", "INVOICE_DATE") | yes | Date of the tax invoice issued late to release parked output VAT. Required, there is no default: INVOICE_DATE puts the VAT in the invoice's month (a filed PP30 may need an additional return); TODAY puts it in this month. |
 | `goods` | boolean | no | Release parked VAT of goods lines. Default true. |
 | `services` | boolean | no | Release parked VAT of service lines (normally released per payment). Default false. |
-| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED") | no | Legal warning codes the user has read and accepted (TAX_INVOICE_LATE_DATE_CHOICE). |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "OUTPUT_VAT_PARKED_PAST_MONTH", "TAX_INVOICE_LATE_DATE_CHOICE", "GOODS_TAX_INVOICE_DEFERRED", "INPUT_VAT_VENDOR_NO_TAX_ID", "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID", "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY", "INPUT_VAT_NONCLAIM_REASON_DEFAULTED", "EXPENSE_PAYEE_MISSING", "INPUT_VAT_LATE_CLAIM", "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW", "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH", "INPUT_VAT_PENDING_PAST_WINDOW") | no | Legal warning codes the user has read and accepted (TAX_INVOICE_LATE_DATE_CHOICE). |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/release-vat" \
@@ -1843,7 +1881,7 @@ Path parameters: `id` (required).
 | `validUntil` | one of several shapes | no | - |
 | `vatMode` | enum("EXCLUDE", "INCLUDE", "NONE") | no | How the unit prices relate to VAT: `EXCLUDE` (price before VAT), `INCLUDE` (price already contains VAT) or `NONE`. |
 | `vatTiming` | enum("ON_ISSUE", "ON_PAYMENT") | no | Tax point: `ON_ISSUE` for goods, `ON_PAYMENT` for services. Default: the setting of the book. |
-| `vatPurchaseMode` | enum("CLAIM", "AWAITING", "NO_CLAIM") | no | Purchase VAT handling: `CLAIM` (claimable now), `AWAITING` (waiting for the tax invoice) or `NO_CLAIM`. |
+| `vatPurchaseMode` | enum("CLAIM", "AWAITING", "NO_CLAIM") | no | Purchase VAT handling for the whole document: `CLAIM` (full tax invoice received), `AWAITING` (waiting for the vendor's tax invoice — parked until it is recorded) or `NO_CLAIM` (VAT kept on the document, posted to non-claimable input VAT). Default: `AWAITING` when the vendor has no 13-digit tax id, else `CLAIM`; lines on prohibited-category accounts default to `NO_CLAIM`. Claiming against a vendor without a tax id asks for acknowledgement when the document is issued. |
 | `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
 | `note` | one of several shapes | no | Note printed on the document. |
 | `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
@@ -1872,7 +1910,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/documents/123" \
 | `validUntil` | one of several shapes | no | - |
 | `vatMode` | enum("EXCLUDE", "INCLUDE", "NONE") | no | How the unit prices relate to VAT: `EXCLUDE` (price before VAT), `INCLUDE` (price already contains VAT) or `NONE`. |
 | `vatTiming` | enum("ON_ISSUE", "ON_PAYMENT") | no | Tax point: `ON_ISSUE` for goods, `ON_PAYMENT` for services. Default: the setting of the book. |
-| `vatPurchaseMode` | enum("CLAIM", "AWAITING", "NO_CLAIM") | no | Purchase VAT handling: `CLAIM` (claimable now), `AWAITING` (waiting for the tax invoice) or `NO_CLAIM`. |
+| `vatPurchaseMode` | enum("CLAIM", "AWAITING", "NO_CLAIM") | no | Purchase VAT handling for the whole document: `CLAIM` (full tax invoice received), `AWAITING` (waiting for the vendor's tax invoice — parked until it is recorded) or `NO_CLAIM` (VAT kept on the document, posted to non-claimable input VAT). Default: `AWAITING` when the vendor has no 13-digit tax id, else `CLAIM`; lines on prohibited-category accounts default to `NO_CLAIM`. Claiming against a vendor without a tax id asks for acknowledgement when the document is issued. |
 | `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
 | `note` | one of several shapes | no | Note printed on the document. |
 | `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
@@ -3584,7 +3622,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
 
 ## AI tools
 
-40 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+42 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 `account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
@@ -3606,6 +3644,7 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_finance_balances` | `finance-accounts.list` | read | `account.finance.manage` |
 | `account_get_contact` | `contacts.get` | read | `account.doc.view` |
 | `account_get_document` | `documents.get` | read | `account.doc.view` |
+| `account_input_vat_not_claimable` | `documents.input-vat-not-claimable` | write | `account.payment.record` |
 | `account_issue_document` | `documents.issue` | write | `account.doc.issue` |
 | `account_issue_goods` | `stock-documents.create` | write | `account.product.manage` |
 | `account_list_documents` | `documents.list` | read | `account.doc.view` |
@@ -3613,6 +3652,7 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_merge_contacts` | `contacts.merge` | danger | `account.contact.merge` |
 | `account_parked_vat` | `reports.parked-vat` | read | `account.tax.view` |
 | `account_parse_quick_create` | `documents.parse` | read | `account.doc.view` |
+| `account_pending_input_vat` | `reports.pending-input-vat` | read | `account.tax.view` |
 | `account_post_journal` | `journal.create` | write | `account.journal.adjust` |
 | `account_read_bill_image` | `inbox.read` | write | `account.document.manage` |
 | `account_record_payment` | `payments.record` | write | `account.payment.record` |
@@ -3645,7 +3685,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
 
-`GET https://shark.in.th/api/v1/ai/skills/account` returns the 40 tools (16 read, 24 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 42 tools (17 read, 25 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "account", "label": "บัญชี", "summary": "...", "tools": [

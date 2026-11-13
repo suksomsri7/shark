@@ -469,6 +469,8 @@ export type Pp30Row = {
   base: number; // ฐานภาษี (สตางค์)
   vat: number; // จำนวนภาษี (สตางค์)
   rateBp: number; // 700 = 7%
+  /** ACC T1.5 (เลน 2) — ภาษีซื้อเคลมข้ามเดือน: "ถือเป็นภาษีซื้อในเดือนภาษี…" (ประกาศ VAT ฉ.4 ข้อ 2) */
+  note?: string | null;
 };
 
 export type Pp30RateGroup = { rateBp: number; base: number; vat: number };
@@ -542,6 +544,7 @@ async function pp30Side(
             discountAmount: true,
             contactSnapshot: true,
             contact: { select: { name: true, taxId: true, branchCode: true } },
+            inputVatLateNote: true, // ACC T1.5 (เลน 2)
           },
         });
   const docMap = new Map(docs.map((d) => [d.id, d]));
@@ -577,6 +580,7 @@ async function pp30Side(
       base,
       vat: agg.vat,
       rateBp,
+      note: doc?.inputVatLateNote ?? null, // ACC T1.5 (เลน 2)
     });
     total += agg.vat;
     baseTotal += base;
