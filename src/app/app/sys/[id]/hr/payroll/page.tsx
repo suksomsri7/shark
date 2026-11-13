@@ -58,8 +58,8 @@ export default async function HrPayrollPage({
       <WorkEntriesPanel systemId={id} periodKey={period} flash={weFlash} onBuild={onBuild} after={weAfter} onFinalize={onFinalize} /> {/* HR H3.1 ◂ */}
       {/* HR H4.6 ▸ ฟอร์ม = ผู้ถือคีย์ยื่นรายการ · รายการ/ยอด = ผู้ดูเงินเดือน (ด่านในตัว) ◂ */}
       <StockChargeSection systemId={id} msg={one(sp.stock)} q={one(sp.stockq)} inv={one(sp.stockinv)} />
-      {/* HR H3.5 ▸ ไฟล์โอนเงินเดือน — ?bank=<รอบ> · ?bfmt= · ?beff= · ?benc= · ?bmode= · ?bera= · ?bbranch= · ?bmsg=<รหัสสั้น> (allowlist ใน ui) ◂ */}
-      <BankFileSection systemId={id} sp={{ bank: one(sp.bank), bfmt: one(sp.bfmt), beff: one(sp.beff), benc: one(sp.benc), bmode: one(sp.bmode), bera: one(sp.bera), bbranch: one(sp.bbranch), bmsg: one(sp.bmsg) }} /> {/* HR H3.5 ◂ */}
+      {/* HR H3.5 ▸ ไฟล์โอนเงินเดือน — ?bank=<รอบ> · ?bfmt= · ?beff= · ?benc= · ?bmode= · ?bera= · ?bbranch= · ?bmsg=<รหัสสั้น> (allowlist ใน ui) · ?bfile=<ไฟล์ที่เพิ่งสร้าง> ◂ */}
+      <BankFileSection systemId={id} sp={{ bank: one(sp.bank), bfmt: one(sp.bfmt), beff: one(sp.beff), benc: one(sp.benc), bmode: one(sp.bmode), bera: one(sp.bera), bbranch: one(sp.bbranch), bmsg: one(sp.bmsg), bfile: one(sp.bfile) }} /> {/* HR H3.5 ◂ */}
     </div>
   );
 }

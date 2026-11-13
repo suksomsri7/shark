@@ -70,8 +70,8 @@ export const BANK_PRESETS: Record<"GENERIC" | "KTB_BUSINESS", GenericSpec> = {
 export const isPresetKey = (k: unknown): k is keyof typeof BANK_PRESETS => k === "GENERIC" || k === "KTB_BUSINESS";
 
 const CONTROL = /[\u0000-\u001f\u007f]/;
-/** เซลล์ที่โปรแกรมตารางอาจอ่านเป็นสูตร */
-export const formulaLike = (s: string) => /^[=+\-@]/.test(s);
+/** เซลล์ที่โปรแกรมตารางอาจอ่านเป็นสูตร — HR H3.5 fix r1 ▸ F4: ดูอักขระแรกหลังตัดช่องว่าง/อักขระควบคุมด้านหน้า · ขึ้นต้นด้วย tab/CR = ปฏิเสธเลย (OWASP CSV injection) ◂ */
+export const formulaLike = (s: string) => /^[\t\r]/.test(s) || /^[=+\-@]/.test(s.replace(/^[\s\u0000-\u001f\u007f]+/, ""));
 
 /** ตรวจคอลัมน์หนึ่งคู่ [field, header] — null = ใช้ได้ · อื่น ๆ = เหตุ */
 export function columnProblem(col: unknown, encoding: GenericSpec["encoding"] | null): string | null {
@@ -172,6 +172,6 @@ export function csvBytes(table: string[][], encoding: GenericSpec["encoding"]): 
 /** เซลล์นี้เขียนลงไฟล์ได้ไหม (CSV TIS-620 = ชุดอักขระ TIS-620 · CR/LF ใส่ในเครื่องหมายคำพูดได้ · XLSX = ไม่มีอักขระควบคุมนอก tab/CR/LF) */
 export function cellWritable(s: string, target: "UTF8_BOM" | "TIS620" | "XLSX"): boolean {
   if (target === "TIS620") return encodable(s.replace(/[\r\n]/g, ""), "TIS620");
-  if (target === "XLSX") return !/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(s);
-  return !/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(s);
+  // HR H3.5 fix r1 ▸ F4: UTF-8 CSV ปฏิเสธอักขระควบคุมแบบเดียวกับ XLSX (NUL · BEL · ESC · DEL …) + ตัวกลับทิศ U+202A–202E / U+2066–2069 · tab/CR/LF ในเซลล์ยังได้ (อยู่ใน "…") ◂
+  return !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(s);
 }

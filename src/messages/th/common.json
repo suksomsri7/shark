@@ -1437,7 +1437,8 @@
       "encTis620": "TIS-620 / Windows-874",
       "presetSave": "บันทึกชุดคอลัมน์",
       "presetDelete": "ลบ",
-      "presetCols": "{n} คอลัมน์"
+      "presetCols": "{n} คอลัมน์",
+      "justMade": "สร้างไฟล์แล้ว — กดดาวน์โหลดด้านล่าง"
     }
   }
 }

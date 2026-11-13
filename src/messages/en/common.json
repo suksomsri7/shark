@@ -1437,7 +1437,8 @@
       "encTis620": "TIS-620 / Windows-874",
       "presetSave": "Save column set",
       "presetDelete": "Delete",
-      "presetCols": "{n} columns"
+      "presetCols": "{n} columns",
+      "justMade": "File created — use Download below"
     }
   }
 }

@@ -4,13 +4,14 @@
 //   เงิน = สตางค์จำนวนเต็มตลอดทาง (จัดรูปที่ขอบ) · Σ ในไฟล์ + Σ ไม่อยู่ในไฟล์ = totalNetSatang ของรอบเสมอ
 //   ลำดับในไฟล์ = ลำดับ payees ที่ส่งเข้ามา (ผู้เรียกเรียงเอง) · ไม่แก้อินพุต ◂
 import { BANK_TEXT, resolveBankCode, type BankCause, type BankWarning } from "./codes";
-import { concat, encodable, printableAscii, singleByte, type FixedEncoding } from "./encode";
-import { PCT_ITEM_LIMIT_SATANG, PCT_NAME_LEN, pctDetail, pctHeader } from "./kbank";
-import { KTB_NAME_LEN, KTB_REF_LEN, ktbDetail, ktbHeader } from "./ktb";
+import { concat, cutAtCluster, encodable, printableAscii, singleByte, type FixedEncoding } from "./encode";
+import { PCT_DETAIL_LEN, PCT_HEADER_LEN, PCT_ITEM_LIMIT_SATANG, PCT_NAME_LEN, pctDetail, pctHeader } from "./kbank";
+import { KTB_LINE_LEN, KTB_NAME_LEN, KTB_REF_LEN, ktbDetail, ktbHeader } from "./ktb";
 import { BANK_PRESETS, cellWritable, cellsOf, csvBytes, formulaLike, genericSpecOf, tableOf, type GenericRow, type GenericSpec } from "./generic";
 import { XLSX_CONTENT_TYPE, xlsxBytes } from "./xlsx";
 
 export { BANK_TEXT, resolveBankCode, BANK_PRESETS };
+export { BANK_TEXT_EN, bankTextFor } from "./codes"; // HR H3.5 fix r1 ▸ F7 ◂
 export type { BankCause, BankWarning, GenericSpec };
 
 export const BANK_FORMATS = ["KBANK_PCT", "KTB_IPAY", "CSV", "XLSX"] as const;
@@ -37,7 +38,8 @@ export type BuildInput = { run: BankRun; payees: BankPayee[]; profile: BankProfi
 export type NotIncluded = { employeeId: string; cause: BankCause; netSatang: number };
 export type BuildWarning = { employeeId: string | null; code: BankWarning };
 export type IncludedRow = { seq: number; employeeId: string; bankCode: string | null; accountNo: string; amountSatang: number };
-export type RefusalCode = "STATUS" | "NEGATIVE" | "MISMATCH" | "OPTIONS" | "PROFILE" | "ENCODING" | "FORMULA" | "EMPTY";
+// HR H3.5 fix r1 ▸ F1/F2: AMOUNT = ยอด/ยอดรวมเกินช่องของไฟล์ · LAYOUT = ด่านสุดท้าย บรรทัดยาวไม่ตรงรูปแบบ (ไม่ควรเกิด — ไม่บันทึกอะไร) ◂
+export type RefusalCode = "STATUS" | "NEGATIVE" | "MISMATCH" | "OPTIONS" | "PROFILE" | "ENCODING" | "FORMULA" | "AMOUNT" | "LAYOUT" | "EMPTY";
 export type BuildOk = {
   ok: true;
   bytes: Uint8Array;
@@ -53,9 +55,11 @@ export type BuildOk = {
 export type BuildFail = { ok: false; code: RefusalCode; text: string; employees: { employeeId: string; name: string }[]; notIncluded?: NotIncluded[] };
 export type BuildResult = BuildOk | BuildFail;
 
-const TEXT_KEY: Record<RefusalCode, keyof typeof BANK_TEXT> = { STATUS: "status", NEGATIVE: "negative", MISMATCH: "mismatch", OPTIONS: "options", PROFILE: "profile", ENCODING: "encoding", FORMULA: "formula", EMPTY: "empty" };
+const TEXT_KEY: Record<RefusalCode, keyof typeof BANK_TEXT> = { STATUS: "status", NEGATIVE: "negative", MISMATCH: "mismatch", OPTIONS: "options", PROFILE: "profile", ENCODING: "encoding", FORMULA: "formula", AMOUNT: "amount", LAYOUT: "layout", EMPTY: "empty" };
 /** ข้อความคงที่ของคำปฏิเสธ ({names} = ชื่อที่แสดงของพนักงาน คั่นด้วย ", ") */
-export const refusalText = (code: RefusalCode, names: string[] = []) => String(BANK_TEXT[TEXT_KEY[code]]).replace("{names}", names.join(", "));
+export const refusalText = (code: RefusalCode, names: string[] = [], texts: { [k: string]: unknown } = BANK_TEXT) => String(texts[TEXT_KEY[code]]).replace("{names}", names.join(", "));
+/** รหัสคำปฏิเสธ → คีย์ข้อความ (ให้หน้าจอเลือกภาษาเอง) */
+export const refusalKey = (code: string): keyof typeof BANK_TEXT | null => (Object.prototype.hasOwnProperty.call(TEXT_KEY, code) ? TEXT_KEY[code as RefusalCode] : null);
 const fail = (code: RefusalCode, who: BankPayee[] = [], notIncluded?: NotIncluded[]): BuildFail => ({
   ok: false,
   code,
@@ -66,6 +70,13 @@ const fail = (code: RefusalCode, who: BankPayee[] = [], notIncluded?: NotInclude
 
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 /** วันที่ "YYYY-MM-DD" ที่มีอยู่จริง */
+/** HR H3.5 fix r1 ▸ F1: ปี ค.ศ. ของวันที่ในไฟล์ต้องอยู่ 2000–2400 (พ.ศ. 2543–2943 = 4 หลักเสมอ · yy ของ PCT ไม่ซ้ำกันในช่วงนี้ไม่ได้ถูกอ้าง) ◂ */
+export const FILE_YEAR_MIN = 2000;
+export const FILE_YEAR_MAX = 2400;
+const inYearRange = (day: string) => {
+  const y = Number(day.slice(0, 4));
+  return y >= FILE_YEAR_MIN && y <= FILE_YEAR_MAX && String(y).length === 4 && String(y + 543).length === 4;
+};
 export function validDay(s: unknown): s is string {
   if (typeof s !== "string") return false;
   const m = DAY_RE.exec(s);
@@ -94,7 +105,7 @@ type Resolved =
 function resolveOptions(run: BankRun, payees: BankPayee[], o: BankOptions | null | undefined): Resolved | null {
   if (!o || typeof o !== "object") return null;
   const eff = o.effectiveDate === undefined || o.effectiveDate === null ? run.payDate : o.effectiveDate;
-  if (!validDay(eff)) return null;
+  if (!validDay(eff) || !inYearRange(eff)) return null;
   if (o.format === "KBANK_PCT" || o.format === "KTB_IPAY") {
     const encoding = one(o.encoding, ["ASCII", "TIS620"] as const, "TIS620");
     if (!encoding) return null;
@@ -139,6 +150,13 @@ function profileOk(r: Resolved, p: BankProfileInput): boolean {
   );
 }
 
+/** HR H3.5 fix r1 ▸ F1: ความยาวทุกบรรทัดของไฟล์ความกว้างคงที่ = รูปแบบ (header แล้ว detail) — 1 อักขระ = 1 ไบต์ในชุดที่ใช้ ◂ */
+export function fixedLinesOk(format: FixedFormat, lines: string[]): boolean {
+  if (lines.length < 2) return false;
+  const [h, ...d] = lines;
+  return format === "KBANK_PCT" ? h!.length === PCT_HEADER_LEN && d.every((l) => l.length === PCT_DETAIL_LEN) : h!.length === KTB_LINE_LEN && d.every((l) => l.length === KTB_LINE_LEN);
+}
+
 type Picked = { p: BankPayee; digits: string; bankCode: string | null; payeeName: string; seq: number };
 
 /** ไฟล์โอนเงินเดือน 1 ไฟล์ (R2) */
@@ -150,6 +168,7 @@ export function buildBankFile(input: BuildInput): BuildResult {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime()) || typeof run.periodKey !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(run.periodKey)) return fail("OPTIONS");
   const r = resolveOptions(run, payees, options);
   if (!r) return fail("OPTIONS");
+  if (!inYearRange(bangkokParts(now).day)) return fail("OPTIONS"); // HR H3.5 fix r1 ▸ F1: วันที่สร้างไฟล์ (yyMMdd · ชื่อไฟล์) ก็อยู่ในช่วงเดียวกัน ◂
   if (!profileOk(r, profile)) return fail("PROFILE");
 
   const fixed = r.format === "KBANK_PCT" || r.format === "KTB_IPAY";
@@ -222,28 +241,36 @@ export function buildBankFile(input: BuildInput): BuildResult {
     // ── อักขระ (R7) — ชื่อทั้งชื่อ (ก่อนตัด) ต้องอยู่ในชุด · ไม่แทนที่ ──
     const bad = picked.filter((k) => !encodable(k.payeeName, r.encoding));
     if (bad.length) return fail("ENCODING", bad.map((k) => k.p));
+    // HR H3.5 fix r1 ▸ F2: ยอดต้องพอดีช่อง (PCT รายการ 15 · รวม 15 · KTB รายการ 17 · รวม 19 หลัก) — ไม่สร้างบรรทัดที่ยาวเกิน ◂
+    const lim = r.format === "KBANK_PCT" ? { item: 10 ** 15, total: 10 ** 15 } : { item: 10 ** 17, total: 10 ** 19 };
+    const tooBig = picked.filter((k) => k.p.netSatang >= lim.item);
+    if (tooBig.length) return fail("AMOUNT", tooBig.map((k) => k.p));
+    if (totalSatang >= lim.total) return { ok: false, code: "AMOUNT", text: refusalText("AMOUNT", [BANK_TEXT.amountTotal]), employees: [] };
     if (!picked.length) return fail("EMPTY", [], notIncluded);
     const lines: string[] = [];
     let fileName: string;
     if (r.format === "KBANK_PCT") {
       const h = { batchRef: r.batchRef, debitAccountNo: profile!.debitAccountNo!, totalSatang, fileDate: yymmdd(today), companyName: profile!.companyNameEn!, effectiveDate: yymmdd(r.eff), count: picked.length };
       lines.push(pctHeader(h));
-      for (const k of picked) lines.push(pctDetail({ seq: k.seq, accountNo: k.digits, amountSatang: k.p.netSatang, name: k.payeeName }, h));
+      for (const k of picked) lines.push(pctDetail({ seq: k.seq, accountNo: k.digits, amountSatang: k.p.netSatang, name: cutAtCluster(k.payeeName, PCT_NAME_LEN) }, h)); // HR H3.5 fix r1 ▸ F3 ◂
       fileName = `PCT${stamp}.txt`;
     } else {
       const eff = ddmmyyyy(r.eff, r.era);
       lines.push(ktbHeader({ count: picked.length, totalSatang, effectiveDate: eff, companyId: profile!.ktbCompanyId! }));
       const c = { effectiveDate: eff, debitBranchCode: profile!.debitBranchCode!, debitAccountNo: profile!.debitAccountNo!, senderName: profile!.companyNameEn!, service: r.mode === "DIRECT" ? ("02" as const) : ("01" as const), receivingBranch: r.branch };
-      for (const k of picked) lines.push(ktbDetail({ bankCode: k.bankCode!, accountNo: k.digits, amountSatang: k.p.netSatang, name: k.payeeName, ref: refOf(k), running: k.seq }, c));
+      for (const k of picked) lines.push(ktbDetail({ bankCode: k.bankCode!, accountNo: k.digits, amountSatang: k.p.netSatang, name: cutAtCluster(k.payeeName, KTB_NAME_LEN), ref: refOf(k), running: k.seq }, c)); // HR H3.5 fix r1 ▸ F3 ◂
       fileName = `KTB_IPAY_${yyyymm}_${stamp}.txt`;
     }
+    // HR H3.5 fix r1 ▸ F1: ด่านสุดท้าย — ทุกบรรทัดต้องยาวเท่ารูปแบบ (ไม่ผ่าน = ปฏิเสธ ไม่มีไบต์ ผู้เรียกไม่บันทึกอะไร) ◂
+    if (!fixedLinesOk(r.format, lines)) return fail("LAYOUT");
     const bytes = concat(lines.map((l) => singleByte(`${l}\r\n`)));
     return done(bytes, fileName, r.encoding === "ASCII" ? "text/plain; charset=us-ascii" : "text/plain; charset=windows-874");
   }
 
   // ── ไฟล์ทั่วไป (R8) ──
   const body = picked.map((k) => {
-    const g: GenericRow = { seq: k.seq, employeeCode: k.p.code ?? "", employeeName: k.p.name ?? "", payeeName: k.payeeName, bankName: (k.p.bankName ?? "").trim(), bankCode: k.bankCode ?? "", accountNo: k.digits, amountSatang: k.p.netSatang, paymentRef: refOf(k) };
+    const g: GenericRow = { seq: k.seq, employeeCode: (k.p.code ?? "").trim(), employeeName: (k.p.name ?? "").trim(), // HR H3.5 fix r1 ▸ F4: ตัดช่องว่างหัวท้ายแบบเดียวกับชื่อบัญชี ◂
+      payeeName: k.payeeName, bankName: (k.p.bankName ?? "").trim(), bankCode: k.bankCode ?? "", accountNo: k.digits, amountSatang: k.p.netSatang, paymentRef: refOf(k) };
     return cellsOf(r.spec, g, r.eff);
   });
   const target = r.format === "XLSX" ? "XLSX" : r.spec.encoding;

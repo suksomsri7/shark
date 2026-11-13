@@ -313,7 +313,8 @@ async function loadRun(tx: Db, ctx: Ctx, runId: string): Promise<Loaded | null> 
   const missing = new Set(ids.filter((id) => !byId.has(id)));
   const payees: BankPayee[] = items.map((it) => {
     const e = byId.get(it.employeeId);
-    return { employeeId: it.employeeId, name: e?.name ?? "", code: e?.code ?? null, bankName: e?.bankName ?? null, accountNo: e?.bankAccountNo ?? null, accountName: e?.bankAccountName ?? null, netSatang: it.netSatang };
+    const code = typeof e?.code === "string" && e.code.trim() ? e.code.trim() : null; // HR H3.5 fix r1 ▸ F8: รหัสว่าง = ไม่มีรหัส (เรียงท้าย) ◂
+    return { employeeId: it.employeeId, name: e?.name ?? "", code, bankName: e?.bankName ?? null, accountNo: e?.bankAccountNo ?? null, accountName: e?.bankAccountName ?? null, netSatang: it.netSatang };
   });
   // ลำดับในไฟล์ (R9): รหัสพนักงาน (ว่างไว้ท้าย) → ชื่อ → id · เทียบแบบ code unit ของ JS
   const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -346,8 +347,8 @@ function refusalOf(L: Loaded, r: Extract<BuildResult, { ok: false }>): BankFail 
   return {
     ok: false,
     code: r.code,
-    reason: refusalText(r.code, r.employees.map((e) => e.name)),
-    ...(r.code === "ENCODING" || r.code === "FORMULA" ? { employees: r.employees } : {}),
+    reason: r.code === "AMOUNT" && !r.employees.length ? r.text : refusalText(r.code, r.employees.map((e) => e.name)), // HR H3.5 fix r1 ▸ F2: ยอดรวมเกินช่อง = ข้อความที่ระบุ "ยอดรวมของไฟล์" ◂
+    ...(r.code === "ENCODING" || r.code === "FORMULA" || r.code === "AMOUNT" ? { employees: r.employees } : {}),
     ...(r.notIncluded ? { notIncluded: niDto(L, r.notIncluded) } : {}),
   };
 }
@@ -463,6 +464,8 @@ export async function downloadBankFile(ctx: Ctx, viewer: BankViewer, input: { fi
     const L = await loadRun(tx, ctx, f.runId);
     if (!L) return { kind: "no" };
     if (L.run.status !== "APPROVED" && L.run.status !== "PAID") return { kind: "fail", fail: failOf("STATUS", "status") };
+    // HR H3.5 fix r1 ▸ F6 (มติผู้คุมงาน): รูปแบบธนาคารที่ร้านปิดอยู่ตอนนี้ = ดาวน์โหลดไม่ได้ (เปิดกลับภายใน 7 วัน = ได้อีก) · CSV/XLSX ไม่เกี่ยว ◂
+    if (isFixedFormat(f.format) && !L.formatsEnabled.includes(f.format)) return { kind: "fail", fail: failOf("FORMAT_OFF", "formatOff") };
     if (now.getTime() >= f.expiresAt.getTime()) return { kind: "fail", fail: failOf("EXPIRED", "expired") };
     const o = obj(f.optionsJson) as ResolvedOptions;
     const r = build(L, o, f.createdAt);

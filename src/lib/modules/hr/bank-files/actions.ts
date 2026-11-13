@@ -91,7 +91,7 @@ export async function deleteBankPresetAction(fd: FormData): Promise<{ ok: true; 
 }
 
 /**
- * สร้างไฟล์ (ลงใบกำกับ + ประวัติ) แล้วพาไปหน้าดาวน์โหลด (route สร้างไบต์ใหม่และเทียบ sha) ·
+ * สร้างไฟล์ (ลงใบกำกับ + ประวัติ) แล้วกลับหน้าเงินเดือนที่มีลิงก์ดาวน์โหลด (route สร้างไบต์ใหม่และเทียบ sha) ·
  * รูปแบบธนาคารต้องติ๊กรับทราบ "ยังไม่ทดสอบกับธนาคารจริง" ก่อน · ไม่สำเร็จ = กลับหน้าเงินเดือนพร้อมรหัสสั้น (?bmsg=)
  * 🔴 การดาวน์โหลดไม่เปลี่ยนรอบเป็น "จ่ายแล้ว" (Q12) — ปุ่มจ่ายแล้วยังเป็นขั้นแยกของคน
  */
@@ -114,5 +114,7 @@ export async function generateBankFileAction(fd: FormData): Promise<void> {
   const r = await generateBankFile({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { runId, format, presetId: s(fd, "presetId") || undefined, options });
   revalidatePath(`/app/sys/${systemId}/hr/payroll`);
   if (!r.ok) redirect(back(r.code));
-  redirect(`/app/sys/${systemId}/hr/payroll/bank-file/${encodeURIComponent(r.fileId)}`);
+  // HR H3.5 fix r1 ▸ F5: กลับหน้าเงินเดือนพร้อมลิงก์ดาวน์โหลดของไฟล์นี้ (ไม่ redirect ไป route — action redirect ของ Next ดึงปลายทางฝั่ง server
+  //   ด้วยหัว rsc แล้วเบราว์เซอร์เปิดซ้ำอีกครั้ง = ดาวน์โหลด/ประวัติ 2 ครั้งต่อการกดครั้งเดียว) ◂
+  redirect(`/app/sys/${systemId}/hr/payroll?bank=${encodeURIComponent(runId)}&bfmt=${encodeURIComponent(pick)}&bfile=${encodeURIComponent(r.fileId)}#hr-bank`);
 }

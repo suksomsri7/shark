@@ -26,6 +26,8 @@ const F = {
   build: `${BF}build.ts`, svc: `${BF}service.ts`, acts: `${BF}actions.ts`, ui: `${BF}ui.tsx`,
   pure: ["build", "codes", "encode", "kbank", "ktb", "generic", "xlsx"].map((n) => `${BF}${n}.ts`),
   route: "src/app/app/sys/[id]/hr/payroll/bank-file/[fileId]/route.ts",
+  dl: `${BF}download-route.ts`, // ORACLE-EDIT H3.5 fix r1 (F5): route logic lives in a helper the oracle can call without cookies
+
   mig: "prisma/migrations/20270107000000_hr_bank_files/migration.sql", schema: "prisma/schema/payroll.prisma", hrSchema: "prisma/schema/hr.prisma",
   scope: "src/lib/core/scope.ts", env: "scripts/hr-qc-env.mts", payPage: "src/app/app/sys/[id]/hr/payroll/page.tsx", setPage: "src/app/app/sys/[id]/hr/settings/page.tsx",
   th: "src/messages/th/common.json", en: "src/messages/en/common.json", inv: "scripts/hr-ui-inventory.json",
@@ -93,6 +95,17 @@ S5.1|X6|M|R|[db] 6 parallel generates ⇒ 6 manifests · one sha · audit 6
 S5.2|X6|C|R|[db] generate ∥ reverseRun (v2 run) ⇒ consistent · download after reverse ⇒ status
 X8.1|X8|M|R|[db] tenant without ACCOUNT/POS: S3.2 path ok and no account/POS row written
 X12.1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
+S6.1|F1|C|R|[pure] fix r1: effective year outside 2000–2400 (KTB CE/BE · PCT) ⇒ OPTIONS · bounds 2000-01-01 / 2400-12-31 BE ⇒ 498 · fixedLinesOk rejects 497/499
+S6.2|F1|C|R|[db] fix r1: generate KTB 9999-12-31 BE ⇒ options · no manifest · no audit
+S6.3|F2|C|R|[pure] fix r1: PCT item ≥ 10^15 ⇒ AMOUNT naming the employee · Σ ≥ 10^15 ⇒ AMOUNT naming the file total · 10^15−1 ⇒ 487 bytes
+S6.4|F3|C|R|[pure] fix r1: Thai cut at the last complete cluster (50×ก+่ · 49×ก+เก · 48×ก+กิ่ข · KTB 99×ก+ก้) padded with spaces · NAME_CUT · plain ASCII cut unchanged
+S6.5|F4|C|R|[pure] fix r1: formula after leading whitespace/control · leading tab outright · name/code trimmed · UTF-8 CSV control/bidi ⇒ ENCODING · XLSX bidi ⇒ ENCODING
+S6.6|F5|C|R|[db] fix r1: route helper — rsc / next-router-prefetch ⇒ 204, no count, no audit · plain ⇒ 200 bytes +1/+1 · attachment sanitised · no-store · nosniff · 404/409/410 text, no bytes
+S6.7|F6|C|R|[db] fix r1: bank format switched off ⇒ download formatOff (CSV file unaffected) · on again ⇒ ok
+S6.8|F7|M|R|[pure] fix r1: BANK_TEXT_EN = fixture en · same keys as BANK_TEXT · {names} parity · no Thai in en · bankTextFor(locale)
+S6.9|F8|M|R|[db] fix r1: empty employee code sorts like null (last) · shop debit account changed ⇒ changed · restored ⇒ ok
+S6.10|F8|C|R|[db] fix r1: download ∥ reverseRun ×4 ⇒ consistent (ok-then-reversed or status) · later downloads ⇒ status · audit = real downloads
+S6.11|F8|C|R|[db+static] fix r1: page data for managers / read-only / pay-only / branch / member / self = nothing (canUseBankFiles false · runs/profile/presets NO) · owner + payroll true · both UI parts return null without the gate
 Z1|house|C|G|no residue (3 new tables included)
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -207,11 +220,15 @@ function runStatic(): void {
   }
   // S1.7
   {
-    const s = stripComments(rd(F.route));
+    // ORACLE-EDIT H3.5 fix r1 (F5, controller ruling): the GET logic moved to bank-files/download-route.ts#bankFileGet (behaviour tested in S6.6) —
+    //   the route must call it; service call + header contract are read from route + helper together; noRaw applies to both
+    const s0 = stripComments(rd(F.route));
+    const h0 = stripComments(rd(F.dl));
+    const s = `${s0}\n${h0}`;
     const r = {
-      exists: !!s,
-      get: /export\s+(async\s+)?function\s+GET\b|export\s+const\s+GET\b/.test(s),
-      svc: /downloadBankFile\s*\(/.test(s),
+      exists: !!s0 && !!h0,
+      get: /export\s+(async\s+)?function\s+GET\b|export\s+const\s+GET\b/.test(s0),
+      svc: /bankFileGet\s*\(/.test(s0) && /downloadBankFile\s*\(/.test(h0),
       attach: /attachment/.test(s) && /Content-Disposition/i.test(s),
       noStore: /no-store/.test(s),
       nosniff: /nosniff/i.test(s),
@@ -232,7 +249,8 @@ function runStatic(): void {
       inv: invRows.length >= TESTIDS.length && invRows.every((r) => r.wo === "H3.5" && r.oracle === "qc-hr-h3.5"),
       msg: Object.values(mp).every(Boolean),
       untested: th.untested === TX?.messages?.untested?.th && en.untested === TX?.messages?.untested?.en,
-      texts: /BANK_TEXT\.untested|untestedLong/.test(ui) && /BANK_TEXT\.legal|\blegal\b/.test(ui),
+      // ORACLE-EDIT H3.5 fix r1 (F8, reviewer minor): `\blegal\b` matched the testid — now the texts must be rendered as JSX expressions
+      texts: /\.untestedLong\s*\}/.test(stripComments(ui)) && /\.legal\s*\}/.test(stripComments(ui)),
     };
     ck("S1.8", r, "ids · inventory · messages", `missing ids: ${TESTIDS.filter((t) => !ids.has(t)).join(",") || "-"} · inv ${invRows.length}`);
   }
@@ -301,7 +319,7 @@ function goldenCheck(id: string, B: Any, keys: string[]) {
   ck(id, r, keys.join("+") + " exact", notes.join(" | "));
 }
 function textFor(code: string, names: string[] = []) {
-  const key: Record<string, string> = { STATUS: "status", NEGATIVE: "negative", MISMATCH: "mismatch", OPTIONS: "options", PROFILE: "profile", ENCODING: "encoding", FORMULA: "formula", EMPTY: "empty" };
+  const key: Record<string, string> = { STATUS: "status", NEGATIVE: "negative", MISMATCH: "mismatch", OPTIONS: "options", PROFILE: "profile", ENCODING: "encoding", FORMULA: "formula", EMPTY: "empty", AMOUNT: "amount", LAYOUT: "layout" }; // ORACLE-EDIT H3.5 fix r1: + AMOUNT/LAYOUT texts (F1/F2)
   return String(T[key[code]] ?? "∅").replace("{names}", names.join(", "));
 }
 const refusalOk = (r: Any, code: string, names?: string[], emps?: string[]) =>
@@ -570,6 +588,114 @@ function runPure(B: Any, DORM: Any): void {
   }
 }
 
+// ═════════════════════════ fix round 1 — pure (ORACLE-EDIT H3.5 fix r1: checks added per controller rulings F1–F4 · F7) ═════════════════════════
+const tisDec = (b: Uint8Array) => Array.from(b, (x) => (x >= 0xa1 ? String.fromCharCode(x - 0xa0 + 0x0e00) : String.fromCharCode(x))).join("");
+function runPureFix(B: Any): void {
+  const kOne = (over: Any, opt: Any, prof: Any = PROF_K) => {
+    const p = { employeeId: "x", name: "X", code: "C", bankName: opt.format === "KBANK_PCT" ? "KBank" : "SCB", accountNo: "0123456789", accountName: "ACC", netSatang: 100, ...over };
+    return callBuild(B, { run: runOf(p.netSatang), payees: [p], profile: prof, options: opt, now: NOW1 });
+  };
+  const lensOf = (o: Any) => (o?.bytes ? tisDec(o.bytes).split("\r\n").slice(0, -1).map((l) => l.length).join("/") : `∅${o?.code}`);
+  // S6.1
+  {
+    const ktb = (eff: string, era: string) => kOne({}, { format: "KTB_IPAY", effectiveDate: eff, ktbDateEra: era }, PROF_T);
+    const pct = (eff: string) => kOne({}, { format: "KBANK_PCT", effectiveDate: eff });
+    const r = {
+      ktbBigBE: refusalOk(ktb("9999-12-31", "BE"), "OPTIONS"),
+      ktbSmallCE: refusalOk(ktb("0999-01-01", "CE"), "OPTIONS"),
+      ktb1999: refusalOk(ktb("1999-12-31", "CE"), "OPTIONS"),
+      ktb2401: refusalOk(ktb("2401-01-01", "BE"), "OPTIONS"),
+      pctBig: refusalOk(pct("9999-12-31"), "OPTIONS"),
+      pctSmall: refusalOk(pct("0999-01-01"), "OPTIONS"),
+      lo: lensOf(ktb("2000-01-01", "CE")) === "498/498" && lensOf(pct("2000-01-01")) === "178/487",
+      hi: lensOf(ktb("2400-12-31", "BE")) === "498/498" && lensOf(pct("2400-12-31")) === "178/487",
+      guard: typeof B?.fixedLinesOk === "function" && B.fixedLinesOk("KTB_IPAY", ["x".repeat(498), "x".repeat(498)]) && !B.fixedLinesOk("KTB_IPAY", ["x".repeat(498), "x".repeat(499)]) && !B.fixedLinesOk("KTB_IPAY", ["x".repeat(497), "x".repeat(498)]) && B.fixedLinesOk("KBANK_PCT", ["x".repeat(178), "x".repeat(487)]) && !B.fixedLinesOk("KBANK_PCT", ["x".repeat(178), "x".repeat(488)]),
+    };
+    ck("S6.1", r, "year range + length guard", `2000=${lensOf(ktb("2000-01-01", "CE"))} 2400BE=${lensOf(ktb("2400-12-31", "BE"))}`);
+  }
+  // S6.3
+  {
+    const big = kOne({ netSatang: 10 ** 15, name: "BIG ONE" }, { format: "KBANK_PCT", effectiveDate: "2026-11-25" });
+    const ok15 = kOne({ netSatang: 10 ** 15 - 1 }, { format: "KBANK_PCT", effectiveDate: "2026-11-25" });
+    const two = callBuild(B, {
+      run: runOf(2 * 6e14),
+      payees: [0, 1].map((i) => ({ employeeId: `t${i}`, name: `T${i}`, code: null, bankName: "KBank", accountNo: `012345678${i}`, accountName: `T${i}`, netSatang: 6e14 })),
+      profile: PROF_K, options: { format: "KBANK_PCT", effectiveDate: "2026-11-25" }, now: NOW1,
+    });
+    const r = {
+      item: refusalOk(big, "AMOUNT", ["BIG ONE"], ["x"]) && !big?.bytes,
+      total: two?.ok === false && two.code === "AMOUNT" && two.text === String(T.amount).replace("{names}", String(T.amountTotal)) && !two.bytes,
+      fits: lensOf(ok15) === "178/487",
+    };
+    ck("S6.3", r, "amount fits field", `${big?.code} ${short(big?.text, 50)} · ${two?.code} ${short(two?.text, 50)}`);
+  }
+  // S6.4
+  {
+    const K = "ก";
+    const pctName = (nm: string) => {
+      const o = kOne({ accountName: nm }, { format: "KBANK_PCT", effectiveDate: "2026-11-25" });
+      return { field: o?.bytes ? tisDec(o.bytes).split("\r\n")[1]?.slice(79, 129) : "∅", w: wOf(o), len: lensOf(o) };
+    };
+    const ktbName = (nm: string) => {
+      const o = kOne({ accountName: nm }, { format: "KTB_IPAY", effectiveDate: "2026-11-25" }, PROF_T);
+      return { field: o?.bytes ? tisDec(o.bytes).split("\r\n")[1]?.slice(92, 192) : "∅", w: wOf(o), len: lensOf(o) };
+    };
+    const a = pctName(K.repeat(50) + "่");
+    const b = pctName(K.repeat(49) + "เก");
+    const c = pctName(K.repeat(48) + "กิ่ข");
+    const d = pctName(K.repeat(51));
+    const e = ktbName(K.repeat(99) + "ก้");
+    const f = pctName("N".repeat(60));
+    const r = {
+      toneOrphan: a.field === K.repeat(49) + " " && a.w === "x:NAME_CUT" && a.len === "178/487",
+      leadVowel: b.field === K.repeat(49) + " " && b.w === "x:NAME_CUT",
+      twoMarks: c.field === K.repeat(48) + "  " && c.w === "x:NAME_CUT",
+      plainThai: d.field === K.repeat(50) && d.w === "x:NAME_CUT",
+      ktb: e.field === K.repeat(99) + " " && e.w === "x:NAME_CUT" && e.len === "498/498",
+      ascii: f.field === "N".repeat(50) && f.w === "x:NAME_CUT",
+    };
+    ck("S6.4", r, "cut at cluster start", `a=${JSON.stringify(a.field?.slice(-3))} b=${JSON.stringify(b.field?.slice(-3))} c=${JSON.stringify(c.field?.slice(-3))} e=${JSON.stringify(e.field?.slice(-3))}`);
+  }
+  // S6.5
+  {
+    const spec = (encoding = "UTF8_BOM") => ({ columns: [["employeeCode", "c"], ["employeeName", "n"], ["payeeName", "p"], ["paymentRef", "r"], ["amount", "a"]], includeHeader: false, includeSummary: false, amountStyle: "SATANG", dateStyle: "ISO_CE", encoding });
+    const g = (over: Any, fmt = "CSV", enc = "UTF8_BOM") => {
+      const p = { employeeId: "x", name: "N", code: "C1", bankName: "SCB", accountNo: "0123456789", accountName: "OK", netSatang: 100, ...over };
+      return callBuild(B, { run: runOf(100), payees: [p], profile: null, options: { format: fmt, effectiveDate: "2026-11-25", generic: spec(enc) }, now: NOW1 });
+    };
+    const trimmed = g({ name: "  สมชาย  ", code: " E9 " });
+    const r = {
+      wsFormula: refusalOk(g({ accountName: "  =1+1" }), "FORMULA", ["N"], ["x"]),
+      ctlFormula: refusalOk(g({ paymentRef: " \n=1" }), "FORMULA", ["N"], ["x"]) && refusalOk(g({ paymentRef: " \u0007=1" }), "ENCODING", ["N"], ["x"]),
+      tabRef: refusalOk(g({ paymentRef: "\tABC" }), "FORMULA", ["N"], ["x"]),
+      crRef: refusalOk(g({ paymentRef: "\rABC" }), "FORMULA", ["N"], ["x"]),
+      codeTab: refusalOk(g({ code: "\t=1+1" }), "FORMULA", ["N"], ["x"]),
+      trim: trimmed?.ok === true && Buffer.from(trimmed.bytes).toString("utf8") === "﻿E9,สมชาย,OK,HR202611-0001,100\r\n",
+      bidi: refusalOk(g({ accountName: "AB‮C" }), "ENCODING", ["N"], ["x"]) && refusalOk(g({ accountName: "AB⁦C" }), "ENCODING", ["N"], ["x"]),
+      ctl: ["\u0000", "\u0007", "\u001b", "\u007f"].every((c) => refusalOk(g({ accountName: `A${c}B` }), "ENCODING", ["N"], ["x"])),
+      xlsxBidi: refusalOk(g({ accountName: "AB⁩C" }, "XLSX"), "ENCODING", ["N"], ["x"]),
+      crlfInside: g({ accountName: "A\r\nB" })?.ok === true,
+    };
+    ck("S6.5", r, "formula/control guard", `trim=${trimmed?.ok ? JSON.stringify(Buffer.from(trimmed.bytes).toString("utf8")) : trimmed?.code}`);
+  }
+  // S6.8
+  {
+    const th = { ...T, reasons: TX?.reasons, warnings: TX?.warnings } as Any;
+    const en = TX?.en as Any;
+    const keysOf = (o: Any) => srt([...Object.keys(o ?? {}).filter((k) => typeof o[k] === "string"), ...Object.keys(o?.reasons ?? {}).map((k) => `r.${k}`), ...Object.keys(o?.warnings ?? {}).map((k) => `w.${k}`)]);
+    const flat = (o: Any): [string, string][] => [...Object.entries(o ?? {}).filter(([, v]) => typeof v === "string"), ...Object.entries(o?.reasons ?? {}).map(([k, v]) => [`r.${k}`, v]), ...Object.entries(o?.warnings ?? {}).map(([k, v]) => [`w.${k}`, v])] as [string, string][];
+    const enMap = new Map(flat(en));
+    const r = {
+      fixture: !!en && canon(B?.BANK_TEXT_EN) === canon(en),
+      keys: keysOf(en) === keysOf(th) && keysOf(B?.BANK_TEXT_EN) === keysOf(B?.BANK_TEXT),
+      names: flat(th).every(([k, v]) => String(v).includes("{names}") === String(enMap.get(k) ?? "").includes("{names}")),
+      noThai: flat(en).every(([, v]) => typeof v === "string" && v.trim() !== "" && !/[฀-๿]/.test(v)),
+      pick: typeof B?.bankTextFor === "function" && B.bankTextFor("en") === B.BANK_TEXT_EN && B.bankTextFor("th") === B.BANK_TEXT && B.bankTextFor(undefined) === B.BANK_TEXT,
+    };
+    ck("S6.8", r, "en text set parity", `${keysOf(en).length} keys`);
+  }
+}
+
 // ═════════════════════════ DB ═════════════════════════
 type RO = { ok: boolean; text: string; value: Any };
 const CAPTURED: string[] = [];
@@ -596,6 +722,7 @@ const { P, coreHash } = await qc4Env(SUITE);
 if (FORCE && skipReasons.length) console.log(`⚠️ QC_FORCE=1 — running although: ${skipReasons.join(" · ")}`);
 const B = await loadOpt(F.build, "@/lib/modules/hr/bank-files/build");
 const SV = await loadOpt(F.svc, "@/lib/modules/hr/bank-files/service");
+const DL = await loadOpt(F.dl, "@/lib/modules/hr/bank-files/download-route"); // ORACLE-EDIT H3.5 fix r1 (F5) ◂
 const DORM = (await import("@/lib/modules/dorm/import-parse")) as Any;
 console.log(`[${SUITE}] build=${modState(B, F.build)} · service=${modState(SV, F.svc)} · base=${BASE.slice(0, 9)}${IN_BASE ? " (H3.5 in base)" : ""}`);
 const sysSvc = (await import("@/lib/modules/system/service")) as Any;
@@ -927,6 +1054,124 @@ async function runDb(): Promise<void> {
     };
     ck("S5.2", r, "consistent", `gen=${shown(g)} rv=${short(rv, 50)} files=${files.length} dl=${dls.map(shown).join(",")}`);
   }
+  // ═════════ fix round 1 — DB (ORACLE-EDIT H3.5 fix r1: checks added per controller rulings F1 · F5 · F6 · F8) ═════════
+  const dlCount = async (id: string) => Number((await fx.rawRows(`SELECT "downloads" FROM "HrBankFile" WHERE "id" = $1`, id))?.[0]?.downloads ?? -1);
+  const dlAudit = async (id: string) => (await P.auditLog.findMany({ where: { tenantId: TT, action: "hr.bankfile.download" } })).filter((a: Any) => a.after?.fileId === id).length;
+  // S6.2
+  {
+    await S("saveBankProfile", cB, V.owner, { debitBankCode: "006", debitAccountNo: "9990001112", debitBranchCode: "0456", companyNameEn: "QC SHOP B", ktbCompanyId: "QCB01", formatsEnabled: ["KTB_IPAY"], acknowledgeUntested: true }, { now: NOW });
+    const c0 = await counts();
+    const x = await S("generateBankFile", cB, V.owner, { runId: R.rb, format: "KTB_IPAY", options: { effectiveDate: "9999-12-31", ktbDateEra: "BE" } }, { now: NOW });
+    const y = await S("generateBankFile", cB, V.owner, { runId: R.rb, format: "KTB_IPAY", options: { effectiveDate: "0999-01-01" } }, { now: NOW });
+    const c1 = await counts();
+    ck("S6.2", { refused: x.text === T.options && y.text === T.options && !x.value?.bytes, none: c1.files === c0.files && c1.audit === c0.audit }, "options · nothing saved", `${shown(x)} ${shown(y)}`);
+  }
+  // S6.6 route helper
+  {
+    const gen = await S("generateBankFile", cA, V.owner, { runId: R.r1, format: "CSV", presetId: "GENERIC" }, { now: NOW });
+    const fid = String(gen.value?.fileId ?? "∅");
+    const get = async (h: Record<string, string>, fileId = fid, now = NOW, ctx: Any = cA, v: Any = V.owner) => {
+      if (typeof DL?.bankFileGet !== "function") return null;
+      try {
+        return (await DL.bankFileGet(new Request("http://qc.invalid/x", { headers: h }), ctx, v, fileId, { now })) as Response;
+      } catch (e) {
+        console.log(`bankFileGet threw ${errText(e)}`);
+        return null;
+      }
+    };
+    const n0 = await dlCount(fid);
+    const a0 = await dlAudit(fid);
+    const rsc = await get({ rsc: "1" });
+    const pre = await get({ "next-router-prefetch": "1" });
+    const n1 = await dlCount(fid);
+    const a1 = await dlAudit(fid);
+    const plain = await get({});
+    const body = plain ? Buffer.from(await plain.arrayBuffer()) : Buffer.alloc(0);
+    const n2 = await dlCount(fid);
+    const a2 = await dlAudit(fid);
+    const no = await get({}, "nosuchfile0000");
+    const exp = await get({}, fid, new Date(NOW.getTime() + 8 * DAY));
+    await P.hrEmployee.update({ where: { id: E.a1 }, data: { bankAccountNo: "0123456780" } });
+    const chg = await get({});
+    await P.hrEmployee.update({ where: { id: E.a1 }, data: { bankAccountNo: "0123456789" } });
+    const r6files = ((await fx.rawRows(`SELECT "id" FROM "HrBankFile" WHERE "runId" = $1`, R.r6)) ?? []) as Any[];
+    const st = r6files[0] ? await get({}, String(r6files[0].id)) : null;
+    const other = await get({}, fid, NOW, cO, V.other);
+    const refusal = async (x: Response | null, status: number, text: string) =>
+      !!x && x.status === status && (await x.text()) === text && !x.headers.get("content-disposition") && x.headers.get("cache-control") === "no-store" && /nosniff/.test(x.headers.get("x-content-type-options") ?? "");
+    const n3 = await dlCount(fid);
+    const r = {
+      gen: gen.ok,
+      rsc: rsc?.status === 204 && pre?.status === 204 && n1 === n0 && a1 === a0,
+      plain: plain?.status === 200 && body.length > 0 && eqBytes(body, Buffer.from(gen.value?.bytes ?? [])) && n2 === n0 + 1 && a2 === a0 + 1,
+      headers: !!plain && /^attachment; filename="[A-Za-z0-9_.-]+"$/.test(plain.headers.get("content-disposition") ?? "") && plain.headers.get("cache-control") === "no-store" && /nosniff/.test(plain.headers.get("x-content-type-options") ?? ""),
+      sanitise: typeof DL?.safeFileName === "function" && DL.safeFileName('a"b;c\r\n.csv') === "a_b_c__.csv",
+      r404: await refusal(no, 404, T.no), r410: await refusal(exp, 410, T.expired), r409: await refusal(chg, 409, T.changed), status: await refusal(st, 409, T.status), other: await refusal(other, 404, T.no),
+      noExtra: n3 === n2,
+    };
+    ck("S6.6", r, "route helper contract", `rsc=${rsc?.status} pre=${pre?.status} plain=${plain?.status} n=${n0}/${n1}/${n2}/${n3} a=${a0}/${a1}/${a2} no=${no?.status} exp=${exp?.status} chg=${chg?.status} st=${st?.status}`);
+  }
+  // S6.7 format OFF ⇒ no download
+  const kFile = await S("generateBankFile", cA, V.owner, { runId: R.r1, format: "KBANK_PCT", options: {} }, { now: NOW });
+  const kId = String(kFile.value?.fileId ?? "∅");
+  {
+    const csv = await S("generateBankFile", cA, V.owner, { runId: R.r1, format: "CSV", presetId: "GENERIC" }, { now: NOW });
+    await S("saveBankProfile", cA, V.owner, { ...profA, formatsEnabled: [] }, { now: NOW });
+    const off = await S("downloadBankFile", cA, V.owner, { fileId: kId }, { now: NOW });
+    const csvOff = await S("downloadBankFile", cA, V.owner, { fileId: String(csv.value?.fileId ?? "∅") }, { now: NOW });
+    await S("saveBankProfile", cA, V.owner, profA, { now: NOW });
+    const on = await S("downloadBankFile", cA, V.owner, { fileId: kId }, { now: NOW });
+    ck("S6.7", { made: kFile.ok && csv.ok, off: off.value?.ok === false && off.text === T.formatOff && !off.value?.bytes, csv: csvOff.ok, on: on.ok && eqBytes(on.value?.bytes, Buffer.from(kFile.value?.bytes ?? [])) }, "formatOff while off", `${shown(off)} ${shown(csvOff)} ${shown(on)}`);
+  }
+  // S6.9 empty code sorts last · shop debit account changed
+  {
+    const b3 = await emp(sB, "", "เค ว่าง", "SCB", "3334445556", "K EMPTY");
+    const b4 = await emp(sB, "L-TMP", "แอล นัล", "SCB", "3334445557", "L NULL");
+    await P.hrEmployee.update({ where: { id: b4 }, data: { code: null } });
+    const b5 = await emp(sB, "B00", "เอ็ม ศูนย์", "SCB", "3334445558", "M ZERO");
+    const rc = await mkRun(cB, "2031-09", "2031-09-30", "APPROVED", [[b3, 100], [b4, 200], [b5, 300]]);
+    const pv = await S("previewBankFile", cB, V.owner, { runId: rc, format: "CSV", presetId: "GENERIC" }, { now: NOW });
+    const order = ((pv.value?.rows ?? []) as Any[]).map((x) => x.employeeId);
+    await S("saveBankProfile", cA, V.owner, { ...profA, debitAccountNo: "2223334441" }, { now: NOW });
+    const chg = await S("downloadBankFile", cA, V.owner, { fileId: kId }, { now: NOW });
+    await S("saveBankProfile", cA, V.owner, profA, { now: NOW });
+    const back = await S("downloadBankFile", cA, V.owner, { fileId: kId }, { now: NOW });
+    ck("S6.9", { order: canon(order) === canon([b5, b3, b4]), changed: chg.value?.ok === false && chg.text === T.changed && !chg.value?.bytes, restored: back.ok }, "sort + debit change", `order=${order.map((x) => (x === b3 ? "b3" : x === b4 ? "b4" : x === b5 ? "b5" : x)).join(",")} ${shown(chg)} ${shown(back)}`);
+  }
+  // S6.10 download ∥ reverse ×4
+  {
+    const runs = [await mkRun(cA, "2031-01", "2031-01-31", "APPROVED", [[E.a1, 3_000_000]]), await mkRun(cA, "2031-02", "2031-02-28", "APPROVED", [[E.a1, 3_000_000]]), await mkRun(cA, "2031-03", "2031-03-31", "APPROVED", [[E.a1, 3_000_000]]), await mkRun(cA, "2031-04", "2031-04-30", "APPROVED", [[E.a1, 3_000_000]])];
+    const files = await Promise.all(runs.map((runId) => S("generateBankFile", cA, V.owner, { runId, format: "CSV", presetId: "GENERIC" }, { now: NOW })));
+    const ids = files.map((f) => String(f.value?.fileId ?? "∅"));
+    const res = await Promise.all(runs.map((runId, i) => Promise.all([
+      S("downloadBankFile", cA, V.owner, { fileId: ids[i] }, { now: NOW }),
+      pay.reverseRun(cA, runId, "qc h3.5 fix race", { userId: U.owner.id, isOwner: true }).catch((e: unknown) => ({ ok: false, note: errText(e) })),
+    ])));
+    const after = await Promise.all(ids.map((fileId) => S("downloadBankFile", cA, V.owner, { fileId }, { now: NOW })));
+    const sts = await Promise.all(runs.map(async (id) => (await P.hrPayrollRun.findUnique({ where: { id } }))?.status));
+    const per = await Promise.all(ids.map(async (id) => ({ n: await dlCount(id), a: await dlAudit(id) })));
+    const r = {
+      made: files.every((f) => f.ok),
+      reversed: res.every(([, rv]) => (rv as Any)?.ok === true) && sts.every((x) => x === "REVERSED"),
+      consistent: res.every(([d], i) => (d.ok ? eqBytes(d.value?.bytes, Buffer.from(files[i]!.value?.bytes ?? [])) && per[i]!.n === 1 && per[i]!.a === 1 : d.text === T.status && per[i]!.n === 0 && per[i]!.a === 0)),
+      later: after.every((d) => d.value?.ok === false && d.text === T.status),
+    };
+    ck("S6.10", r, "consistent ×4", res.map(([d]) => shown(d)).join(" ") + ` · ${per.map((x) => `${x.n}/${x.a}`).join(",")}`);
+  }
+  // S6.11 page data for viewers without the right
+  {
+    const DENY = ["readOnly", "payOnly", "branchPay", "mgr", "mgrAll", "member", "self"] as const;
+    const bad: string[] = [];
+    for (const k of DENY) {
+      const can = typeof SV?.canUseBankFiles === "function" ? await SV.canUseBankFiles(cA, V[k]) : true;
+      const [runsR, prof, pres] = [await S("listBankRuns", cA, V[k]), await S("getBankProfile", cA, V[k]), await S("listBankPresets", cA, V[k])];
+      if (can !== false || ![runsR, prof, pres].every(noOk)) bad.push(k);
+    }
+    const okOwner = (await SV?.canUseBankFiles?.(cA, V.owner)) === true && (await SV?.canUseBankFiles?.(cA, V.pay)) === true;
+    const ui = stripComments(rd(F.ui));
+    const guards = (ui.match(/if\s*\(!\(await canUseBankFiles\(ctx, viewer\)\)\)\s*return null;/g) ?? []).length;
+    ck("S6.11", { deny: bad.length === 0, allow: okOwner, ui: guards >= 2 }, "nothing for non-holders", `${bad.join(",") || "ok"} guards=${guards}`);
+  }
 }
 function sha256Hex(b: Buffer): string {
   return createHash("sha256").update(b).digest("hex");
@@ -937,6 +1182,7 @@ let crashed = "";
 try {
   runStatic();
   runPure(B, DORM);
+  runPureFix(B); // ORACLE-EDIT H3.5 fix r1 ◂
   const fz = await fitnessNoEnv();
   chk("X12.1", fz.ok, "exit 0 ×2", fz.note);
   await runDb();

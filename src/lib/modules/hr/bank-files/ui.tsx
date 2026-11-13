@@ -5,10 +5,11 @@
 //   รูปแบบธนาคารทุกจุดมีป้าย "ยังไม่ทดสอบกับธนาคารจริง" + ติ๊กรับทราบก่อนสร้าง · ข้อความกฎหมาย (ม.55/ม.77) แสดงเสมอ ·
 //   ผลการกดอ่านจาก ?bmsg= / ?msg= ผ่านรายการคงที่ (allowlist) ◂
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { hrViewerOf } from "../privacy";
-import { BANK_TEXT } from "./codes";
+import { BANK_TEXT, bankTextFor, type BankTexts } from "./codes"; // HR H3.5 fix r1 ▸ F7: ข้อความตามภาษาผู้ดู ◂
+import { refusalKey } from "./build";
 import { GENERIC_FIELDS } from "./generic";
 import { generateBankFileAction } from "./actions";
 import { canUseBankFiles, getBankProfile, listBankFiles, listBankPresets, listBankRuns, previewBankFile, type BankFileRequest } from "./service";
@@ -35,6 +36,20 @@ export const BANK_MSG: Record<string, string> = Object.fromEntries(
     .filter(([, v]) => typeof v === "string")
     .map(([k, v]) => [`b.${k}`, v as string]),
 );
+/** HR H3.5 fix r1 ▸ F7: รหัสผลของหน้าตั้งค่า (b.<คีย์>) → ข้อความตามภาษาผู้ดู · ไม่ใช่รหัสของส่วนนี้ = null ◂ */
+export async function bankMsgText(code: string): Promise<string | null> {
+  if (!code.startsWith("b.")) return null;
+  const tx = bankTextFor(await getLocale()) as unknown as Record<string, unknown>;
+  const v = tx[code.slice(2)];
+  return typeof v === "string" ? v : null;
+}
+/** คำปฏิเสธจาก service → ข้อความตามภาษาผู้ดู (รายชื่อจาก employees · ยอดรวมเกินช่อง = คำว่า "ยอดรวมของไฟล์") */
+function refusalFor(tx: BankTexts, f: { code: string; reason: string; employees?: { name: string }[] }): string {
+  const k = refusalKey(f.code) ?? (f.code === "FORMAT_OFF" ? "formatOff" : f.code === "NO" ? "no" : null);
+  if (!k) return f.reason;
+  const names = f.employees?.length ? f.employees.map((e) => e.name) : f.code === "AMOUNT" ? [tx.amountTotal] : [];
+  return String((tx as unknown as Record<string, unknown>)[k]).replace("{names}", names.join(", "));
+}
 /** รหัสคำปฏิเสธจาก ?bmsg= ของหน้าเงินเดือน → คีย์ข้อความคงที่ (ENCODING/FORMULA แสดงจากตัวอย่างพร้อมรายชื่อแทน) */
 const BMSG_KEY: Record<string, keyof typeof BANK_TEXT> = { NO: "no", STATUS: "status", NEGATIVE: "negative", MISMATCH: "mismatch", OPTIONS: "options", PROFILE: "profile", EMPTY: "empty", FORMAT_OFF: "formatOff", EXPIRED: "expired", CHANGED: "changed" };
 
@@ -45,7 +60,7 @@ function pickOf(v: string | undefined): Pick | null {
   return m ? { format: m[1] as "CSV" | "XLSX", presetId: m[2] } : null;
 }
 
-export type BankSectionParams = { bank?: string; bfmt?: string; beff?: string; benc?: string; bmode?: string; bera?: string; bbranch?: string; bmsg?: string };
+export type BankSectionParams = { bank?: string; bfmt?: string; beff?: string; benc?: string; bmode?: string; bera?: string; bbranch?: string; bmsg?: string; bfile?: string };
 
 /** ส่วนไฟล์โอนบนหน้าเงินเดือน — ผู้ไม่ผ่านด่านไม่เห็นอะไรเลย (คืน null) */
 export async function BankFileSection({ systemId, sp }: { systemId: string; sp: BankSectionParams }) {
@@ -54,6 +69,7 @@ export async function BankFileSection({ systemId, sp }: { systemId: string; sp: 
   const viewer = hrViewerOf(auth);
   if (!(await canUseBankFiles(ctx, viewer))) return null;
   const t = await getTranslations("hr.bank");
+  const tx = bankTextFor(await getLocale());
   const [runs, profile, presets] = await Promise.all([listBankRuns(ctx, viewer), getBankProfile(ctx, viewer), listBankPresets(ctx, viewer)]);
   if (!runs.ok) return null;
   const enabled = profile.ok && profile.profile ? profile.profile.formatsEnabled : [];
@@ -73,10 +89,11 @@ export async function BankFileSection({ systemId, sp }: { systemId: string; sp: 
   const req: BankFileRequest = { runId, format: pick.format, presetId: pick.presetId, options };
   const [preview, files] = run ? await Promise.all([previewBankFile(ctx, viewer, req), listBankFiles(ctx, viewer, { runId: run.id })]) : [null, null];
   const flashKey = sp.bmsg === "ack" ? null : BMSG_KEY[sp.bmsg ?? ""];
-  const flash = sp.bmsg === "ack" ? t("ackNeeded") : flashKey ? String(BANK_TEXT[flashKey]) : "";
+  const flash = sp.bmsg === "ack" ? t("ackNeeded") : flashKey ? String(tx[flashKey]) : "";
   const kindLabel = (k: "CSV" | "XLSX") => (k === "CSV" ? "CSV" : "Excel");
   const ni = preview && (preview.ok ? preview.notIncluded : (preview.notIncluded ?? []));
   const nowMs = Date.now();
+  const justMade = ID_RE.test(sp.bfile ?? "") ? sp.bfile! : ""; // HR H3.5 fix r1 ▸ F5: ไฟล์ที่เพิ่งสร้าง — ลิงก์ <a download> เด่น ไม่ดาวน์โหลดเอง ◂
 
   return (
     <section className={card} id="hr-bank" aria-labelledby="hr-bank-title">
@@ -87,7 +104,7 @@ export async function BankFileSection({ systemId, sp }: { systemId: string; sp: 
       </div>
       <p className={muted}>{t("desc")}</p>
       <p role="note" className="rounded-xl border border-[color:var(--color-line)] p-3 text-sm" data-testid="hr-bank-legal">
-        {BANK_TEXT.legal}
+        {tx.legal}
       </p>
       <h3 className="text-sm font-semibold">{t("runs")}</h3>
       {runs.items.length === 0 ? (
@@ -193,12 +210,12 @@ export async function BankFileSection({ systemId, sp }: { systemId: string; sp: 
           {fixed ? (
             <div role="note" className="flex flex-col gap-1 rounded-xl border border-[color:var(--color-danger)] p-3 text-sm" data-testid="hr-bank-untested">
               <span className={warnChip}>{t("untested")}</span>
-              <span>{BANK_TEXT.untestedLong}</span>
+              <span>{tx.untestedLong}</span>
             </div>
           ) : null}
           {preview && !preview.ok ? (
             <p role="alert" className="rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]">
-              {preview.reason}
+              {refusalFor(tx, preview)}
             </p>
           ) : null}
           {preview && preview.ok ? (
@@ -230,7 +247,7 @@ export async function BankFileSection({ systemId, sp }: { systemId: string; sp: 
                 {ni.map((x) => (
                   <li key={x.employeeId} className="flex flex-wrap justify-between gap-2">
                     <span>
-                      {x.name || "—"} · {BANK_TEXT.reasons[x.cause as keyof typeof BANK_TEXT.reasons] ?? x.cause}
+                      {x.name || "—"} · {tx.reasons[x.cause as keyof BankTexts["reasons"]] ?? x.cause}
                     </span>
                     <span>฿{baht(x.netSatang)}</span>
                   </li>
@@ -244,7 +261,7 @@ export async function BankFileSection({ systemId, sp }: { systemId: string; sp: 
               <ul className="flex flex-col gap-1 text-sm">
                 {preview.warnings.map((w, i) => (
                   <li key={`${w.employeeId ?? "-"}-${w.warning}-${i}`}>
-                    {w.name ?? t("allRows")} · {BANK_TEXT.warnings[w.warning as keyof typeof BANK_TEXT.warnings] ?? w.warning}
+                    {w.name ?? t("allRows")} · {tx.warnings[w.warning as keyof BankTexts["warnings"]] ?? w.warning}
                   </li>
                 ))}
               </ul>
@@ -279,7 +296,13 @@ export async function BankFileSection({ systemId, sp }: { systemId: string; sp: 
             {files && files.ok && files.items.length ? (
               <ul className="flex flex-col gap-2">
                 {files.items.map((f) => (
-                  <li key={f.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[color:var(--color-line)] p-3 text-sm" data-testid={`hr-bank-file-${f.id}`}>
+                  <li
+                    key={f.id}
+                    className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 text-sm ${f.id === justMade ? "border-2 border-[color:var(--color-accent)]" : "border-[color:var(--color-line)]"}`}
+                    data-testid={`hr-bank-file-${f.id}`}
+                    aria-current={f.id === justMade ? "true" : undefined}
+                  >
+                    {f.id === justMade ? <span className="w-full text-sm font-semibold">{t("justMade")}</span> : null}
                     <span className="flex flex-col">
                       <span className="font-semibold">
                         {f.fileName} {f.format === "KBANK_PCT" || f.format === "KTB_IPAY" ? <span className={warnChip}>{t("untested")}</span> : null}
@@ -288,11 +311,11 @@ export async function BankFileSection({ systemId, sp }: { systemId: string; sp: 
                       <span className={muted}>{t("fileWhen", { at: bkkTime(f.createdAt), until: bkkTime(f.expiresAt), d: f.downloads })}</span>
                     </span>
                     {new Date(f.expiresAt).getTime() > nowMs ? (
-                      <a href={`/app/sys/${systemId}/hr/payroll/bank-file/${encodeURIComponent(f.id)}`} className={ghost} data-testid={`hr-bank-dl-${f.id}`} download>
+                      <a href={`/app/sys/${systemId}/hr/payroll/bank-file/${encodeURIComponent(f.id)}`} className={f.id === justMade ? btn : ghost} data-testid={`hr-bank-dl-${f.id}`} download>
                         {t("download")}
                       </a>
                     ) : (
-                      <span className={muted}>{BANK_TEXT.expired}</span>
+                      <span className={muted}>{tx.expired}</span>
                     )}
                   </li>
                 ))}
@@ -330,6 +353,7 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
   const viewer = hrViewerOf(auth);
   if (!(await canUseBankFiles(ctx, viewer))) return null;
   const t = await getTranslations("hr.bank");
+  const tx = bankTextFor(await getLocale());
   const [prof, presets] = await Promise.all([getBankProfile(ctx, viewer), listBankPresets(ctx, viewer)]);
   const owner = auth.active.role === "OWNER" && !!onSaveProfile;
   const p = prof.ok ? prof.profile : null;
@@ -340,7 +364,7 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
       </h2>
       <p className={muted}>{t("profileDesc")}</p>
       <p role="note" className="rounded-xl border border-[color:var(--color-line)] p-3 text-sm">
-        {BANK_TEXT.legal}
+        {tx.legal}
       </p>
       {owner ? (
         <form action={onSaveProfile!} className="flex flex-col gap-2" data-testid="hr-bank-profile">
@@ -380,7 +404,7 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
                 {f === "KBANK_PCT" ? t("fmtKbank") : t("fmtKtb")} <span className={warnChip}>{t("untested")}</span>
               </label>
             ))}
-            <p className={muted}>{BANK_TEXT.untestedLong}</p>
+            <p className={muted}>{tx.untestedLong}</p>
             <label className={check}>
               <input type="checkbox" name="ackUntested" className="h-5 w-5" data-testid="hr-bank-ack-untested" />
               {t("ackUntested")}

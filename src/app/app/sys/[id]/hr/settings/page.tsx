@@ -36,7 +36,7 @@ import { WorkSettingsCard, WE_MSG } from "@/lib/modules/hr/work-entries-ui"; // 
 import { saveNormalMinutesAction } from "@/lib/modules/hr/work-entries-actions"; // HR H3.1 ◂
 import { AttendancePayPolicyCard, ATT_MSG } from "@/lib/modules/hr/attendance-pay-ui"; // HR H3.2 ◂ กฎหักสาย/ขาด (เจ้าของร้าน)
 import { saveAttendancePayPolicyAction } from "@/lib/modules/hr/attendance-pay-actions"; // HR H3.2 ◂
-import { BankSettingsCard, BANK_MSG } from "@/lib/modules/hr/bank-files/ui"; // HR H3.5 ▸ ไฟล์โอนเงินเดือน: บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ ◂
+import { BankSettingsCard, BANK_MSG, bankMsgText } from "@/lib/modules/hr/bank-files/ui"; // HR H3.5 ▸ ไฟล์โอนเงินเดือน: บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ ◂
 import { deleteBankPresetAction, saveBankPresetAction, saveBankProfileAction } from "@/lib/modules/hr/bank-files/actions"; // HR H3.5 ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
@@ -95,7 +95,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const where = (u: string | null) => (u ? (unitName.get(u) ?? t("unit")) : t("shopWide"));
   const path = `/app/sys/${id}/hr/settings`;
   const code = typeof sp.msg === "string" ? sp.msg : "";
-  const msg = code === "ok" ? t("saved") : code === "p.ok" ? t("holidays.presetDone") /* HR H2.8 ◂ */ : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""; // HR H1.2 R13 ▸ allowlist ◂
+  const bankMsg = await bankMsgText(code); // HR H3.5 fix r1 ▸ F7: ผลของการ์ดไฟล์โอนตามภาษาผู้ดู ◂
+  const msg = bankMsg ?? (code === "ok" ? t("saved") : code === "p.ok" ? t("holidays.presetDone") /* HR H2.8 ◂ */ : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""); // HR H1.2 R13 ▸ allowlist ◂ · HR H3.5 ◂
 
   // ผลของ action → กลับหน้าเดิมพร้อมรหัสผล (R13.3) · closure จับเฉพาะค่าพื้นฐาน (สตริง/ตัวเลข)
   const onCreateShift = async (fd: FormData) => {
