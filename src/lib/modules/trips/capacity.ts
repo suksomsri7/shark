@@ -1236,19 +1236,19 @@ export async function sweepDeparturesTx(tx: Tx, g: Gate, groups: readonly SweepG
   const depOfBooking = new Map(cas.filter((h) => h.bookingId).map((h) => [h.bookingId as string, h.departureId]));
   const bookingIds = [...depOfBooking.keys()].sort();
   if (bookingIds.length) {
-    const bs = await tx.$queryRaw<{ id: string; channel: string; grossSatang: number; agentAccountId: string | null }[]>`
+    const bs = await tx.$queryRaw<{ id: string; channel: string; grossSatang: number; payableSatang: number | null; agentAccountId: string | null }[]>`
       WITH "locked" AS (
         SELECT "id" FROM "TripBooking" WHERE "id" = ANY(${bookingIds}::text[]) AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" IN ('HOLD', 'PENDING')
         ORDER BY "id" FOR UPDATE
       )
       UPDATE "TripBooking" b SET "status" = 'EXPIRED', "version" = b."version" + 1, "updatedAt" = now()
       FROM "locked" WHERE b."id" = "locked"."id" AND b."status" IN ('HOLD', 'PENDING')
-      RETURNING b."id", b."channel", b."grossSatang", b."agentAccountId"`;
+      RETURNING b."id", b."channel", b."grossSatang", (b."policySnapshot"->'totals'->>'payableSatang')::int AS "payableSatang", b."agentAccountId"`; // TRIPS T0.7 ▸ ยอด payable จาก snapshot (§9.4) ◂
     for (const b of bs.sort((x, y) => (x.id < y.id ? -1 : 1))) {
       evts.push({
         type: "trips.booking.expired",
         key: b.id,
-        payload: { bookingId: b.id, unitId: g.unitId, departureId: depOfBooking.get(b.id) ?? null, status: "EXPIRED", channel: b.channel, amountSatang: b.grossSatang, ...(b.agentAccountId ? { agentAccountId: b.agentAccountId } : {}) },
+        payload: { bookingId: b.id, unitId: g.unitId, departureId: depOfBooking.get(b.id) ?? null, status: "EXPIRED", channel: b.channel, amountSatang: b.payableSatang ?? b.grossSatang, ...(b.agentAccountId ? { agentAccountId: b.agentAccountId } : {}) },
       });
     }
   }

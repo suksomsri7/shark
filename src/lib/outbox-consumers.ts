@@ -1572,6 +1572,18 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.booking.cancelled": withAutomation(async () => {}),
   "trips.booking.changed": withAutomation(async () => {}),
   // ── /T0.6 booking ──
+  // ── T0.7 money ── TRIPS T0.7 ▸ เงินฝั่ง trips (ใบสั่ง T0.7 §12) — ยิงจาก `trips/money.ts` · `trips/refund.ts` ในธุรกรรมเดียวกับการเขียน ·
+  //   payload id/จำนวน/สตางค์ล้วน (ไม่มีชื่อ/เบอร์/เลขอ้างอิงโอน) · งานหลัก no-op (ลงบัญชี = T0.7b จากแถว UNPOSTED) + กฎอัตโนมัติ/เว็บฮุค ◂
+  "trips.payment.received": withAutomation(async () => {}),
+  "trips.payment.due_soon": withAutomation(async () => {}),
+  "trips.payment.overdue": withAutomation(async () => {}),
+  "trips.booking.part_paid": withAutomation(async () => {}),
+  "trips.booking.paid": withAutomation(async () => {}),
+  "trips.refund.requested": withAutomation(async () => {}),
+  "trips.refund.approved": withAutomation(async () => {}),
+  "trips.refund.requoted": withAutomation(async () => {}), // TRIPS T0.7 ▸ มติ r2 W2: คำนวณใหม่หลังอนุมัติ (คีย์ …:<requestId>:g<รุ่น>) ◂
+  "trips.refund.done": withAutomation(async () => {}),
+  // ── /T0.7 money ──
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —

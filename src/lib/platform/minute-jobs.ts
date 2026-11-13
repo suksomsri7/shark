@@ -793,6 +793,14 @@ registerMinuteJob({
   run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runWaitlistOffers(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
 });
 // ── /T0.4 capacity ──
+// ── T0.7 money ── TRIPS T0.7 ▸ งวดจ่ายทัวร์ (ใบสั่ง T0.7 §13): เตือนงวด · เลยกำหนด ⇒ OVERDUE · AUTO_RELEASE ⇒ ยื่นคำขอคืนเงิน SYSTEM · ข้ามร้าน (ทางเข้า `trips/jobs.ts`) ◂
+registerMinuteJob({
+  name: "trips.paymentDue",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runPaymentDue(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+// ── /T0.7 money ──
 
 function errorText(e: unknown): string {
   let s: string;
