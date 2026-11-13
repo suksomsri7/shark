@@ -27,8 +27,8 @@ File generate/download: one tx, runs FOR SHARE, manifest insert / downloads+1 la
 - `bank-files/encode.ts#hasBaseChar` (new, shared by filings `rd.ts#hasBase`): a name with no base character after dropping whitespace, controls/bidi/zero-width and combining marks is "no name". Bank files: KBANK_PCT/KTB and CSV/XLSX ⇒ `ENCODING` naming the payee (existing text; no new reason key ⇒ H3.5 texts fixture untouched). Filings: `firstName`/`lastName`/`title` ⇒ INCOMPLETE field (PND + SSO), profile names ⇒ PROFILE.
 - `bank-files/generic.ts#formulaLike`: ＝ ＋ － ＠ (U+FF1D U+FF0B U+FF0D U+FF20) after leading whitespace (incl. U+3000) count like ASCII. New checks S8.1/S8.2 (RED on the base: marks-only name produced a file; ＝/＠ cells passed).
 
-## Golden / notes disagreement (not bent silently — controller please rule)
-- **SSO notIncluded `contributionSatang`**: notes §2 say "contribution = ee + er", vector `sso.G3A.notIncluded` has p8 `contributionSatang: 45000` = **ee only** (item ee 45,000 · er 45,000 ⇒ ee+er would be 90,000). Implemented per the vector (S2.12 green); consistent with the preview row (tax = ee). Header/`taxSatang` stay Σee+Σer (= vector totals 244,400 / 295,000). If the ruling is ee+er, change one expression in `sso.ts` (`out(…)`) and the vector.
+## Golden / notes disagreement (ruled 13 Nov — see fix r1 F3)
+- ~~**SSO notIncluded `contributionSatang`**: notes §2 say "contribution = ee + er", vector `sso.G3A.notIncluded` has p8 `contributionSatang: 45000` = **ee only** (item ee 45,000 · er 45,000 ⇒ ee+er would be 90,000). Implemented per the vector (S2.12 green); consistent with the preview row (tax = ee). Header/`taxSatang` stay Σee+Σer (= vector totals 244,400 / 295,000). If the ruling is ee+er, change one expression in `sso.ts` (`out(…)`) and the vector.~~ Ruled ee + er (fix r1 F3).
 No other golden disagreed: G1/G2/G2X/G2W/G2M*/G3*/DB1–DB3A byte-exact, RD samples round-trip.
 
 ## ORACLE-EDITs (all marked in place)
@@ -59,3 +59,28 @@ No other golden disagreed: G1/G2/G2X/G2W/G2M*/G3*/DB1–DB3A byte-exact, RD samp
 - visual-hr spec + mockup-06 parity screenshot for the filing step.
 - certificate "stale" is informational only (no auto-reissue).
 - bank refusal for a marks-only name reuses the ENCODING text (a dedicated reason would need an H3.5 texts-fixture ORACLE-EDIT).
+
+## Fix round 1 (13 Nov, reviewer + hunter on 0e661cbdc) — merged origin/session/hr 91b3b525c first
+- **F1 FORM_FLAG** — RD source `/root/backups/hr-fmt-src/fmt-src/gov/Download_FormatPND1V2_0.pdf` (pdftotext, header part), field 22:
+  `22  ช่องทางการยื่นแบบ  C  FORM_FLAG  1  M M M  1  1=ยื่นด้วยสื่อฯ / 2=ยื่นอินเตอร์เน็ต`;
+  field 20 `TRANS_AMT … ยื่นอินเทอร์เน็ต ให้ระบุ จำนวนเงินทศนิยมที่ชำระ · ยื่นด้วยสื่อ ให้ระบุ 0.00`; field 21 `USER_ID … ยื่นด้วยสื่อ = เลขอ้างอิงการลงทะเบียน · กรณียื่นอินเทอร์เน็ต = UserID`.
+  ⇒ the labels were swapped. Fixed: messages th/en formFlag1 = media (+ "registration reference"), formFlag2 = internet (+ "e-Filing User ID"); default 2 everywhere
+  (`rd.ts:247` build default · `service.ts` profile default + save default · `ui.tsx:446` select · `payroll.prisma` @default(2) · migration DEFAULT 2); hint `formFlagHint`
+  "[U] โปรดตรวจกับนักบัญชีของร้าน" under the select; PND note `untestedRd` "ยังไม่ทดสอบกับ e-Filing จริง" (`hr-filing-untested-rd`, inventory row). TRANS_AMT = TOT_TAX for 2 stays [U] (whole tax paid in one transfer).
+  Lane DB note: the migration was edited in place before any merge; the lane DB column default is still 1 (service always writes the value). QC4/prod get DEFAULT 2.
+- **F2** `rd.ts:271` — one decision per employee per file (sums first): ZERO_INCOME / INCOMPLETE once with totals; included monthly lines skip 0/0 items.
+- **F3** `sso.ts:112` contribution = ee + er; vector G3A p8 45,000 → 90,000 (ORACLE-EDIT, marked in the vector `_note`); UI shows "เงินสมทบรวม (ลูกจ้าง + นายจ้าง)" for excluded SSO rows.
+- **F4** `service.ts:665` bulk never returns a bare failure: per-employee causes → skipped (ALREADY · INCOMPLETE · NO_INCOME · GONE); any other refusal stops the batch → `{ok:true, issued, skipped, stopped:{code, reason, fields?}}`; action → `?fstop=`, UI flash `stopped`. Test hook `opts.__afterIssue` (never from an action).
+- **F5** U+2028/U+2029: `rd.ts:21` CONTROL_RE + RD_FORBIDDEN · `service.ts:121` · shared H3.5 guards `bank-files/generic.ts:72` (CONTROL) and `:177` (cellWritable) · `encode.ts:82` (hasBaseChar invisible set) — all marked `HR H3.6`. Source files now contain no literal invisible characters (all `\u` escapes).
+- **F6** `service.ts:574` LEAVER = end date in the tax year and already passed (BKK); ANNUAL only from 1 Jan of the next year (BKK) → new fixed text `certTooEarly` th/en (fixture ORACLE-EDIT, `_oracleEdit` key); bulk refuses up front (`service.ts:638`); candidate list `leaver` uses the same rule.
+- **F7** `service.ts:401` PND whose runs are all unfinalized → EMPTY with reason `notFinal (periods)` + `periods`.
+- **F8** `qc-hr-h3.6.mts:220` S1.6 exception = explicit map `{qc-hr-h3.5.mts: [S1.2]}` (hunk must carry "ORACLE-EDIT (H3.6" + the id); `bank-files/build.ts:277` blank-name refusal in CSV/XLSX only when the preset has a payeeName / employeeName column.
+- **F9** 3 routes: `req.method !== "GET"` → 405 first + exported `HEAD` → 405; helper `download-route.ts:18` same (no build, no audit, no count). Shared `bank-files/download-route.ts` untouched (H3.9).
+- New checks (ORACLE-EDIT): S2.17 (label ↔ value ↔ field 22/20 bytes, defaults) · S2.18 · S2.19 · S3.17 (too early ×2, future leaver, notFinal EMPTY, bulk stop with 1 issued and counter 1) · S6.2 (HEAD 405 ×3, no count/audit) · S8.1 key `ls`. h0.1 SCHEMA_SHA re-taken → 322c86ae… (@default(2)).
+- Hunter probes (copied in, run, removed): extra **D1 gone** (bulk → ok, 17 issued = 17 committed; with the probe's own in-year date it now gets CERT_TOO_EARLY with 0 certificates — F6); pure **D2 gone** (no `1.u2028` finding). Remaining probe ❌ are expectation changes, not defects: `1.pnd1.fuzz` counts per-item notIncluded (F2 changed that by ruling); `1.overflow` = recorded debt; db-probe ANNUAL issues dated "now" (2026) for 2031/2035 hit CERT_TOO_EARLY (F6) — with those dates shifted to after the year (copy only) the db probe is 25 ✓ / 0 ❌ except `4.book` (same date cause).
+
+## Debts (added in fix r1)
+- D-H36-account-pure: a pure re-export module in account/** (bahtText · formatDocNo · reserveSeq) instead of the fitness F2.2 per-file allowance.
+- UTF-8 SSO name cut with decomposed Latin accents (cut counts code points; a combining accent can be separated from its base).
+- `bahtText(1)` wording comes from the frozen account module.
+- PND totals: no safe-integer assertion (Σ of MAX_SAFE amounts gives a float artefact; hunter `1.overflow`).
