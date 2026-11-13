@@ -462,6 +462,8 @@ type SaleDoc = {
   /** ACC T1.4/T1.5 — ฝั่งซื้อ */
   inputVatStatus?: string | null;
   inputVatClaimDate?: Date | null;
+  /** ACC T2.4 — ใบลดหนี้ของเงินมัดจำ (DepositRefund / DepositForfeit) ลงบัญชีที่ postDepositSettlement */
+  refType?: string | null;
 };
 
 /** ACC T0.2 ▸ อัตรา VAT = ตารางค่ากฎหมายของสมุด ณ วันที่เอกสาร (เดิม: คอลัมน์ AccountSettings.vatRateBp ?? 700) ◂ */
@@ -774,6 +776,7 @@ export async function postDocument(
         issueDate: true,
         inputVatStatus: true,
         inputVatClaimDate: true,
+        refType: true, // ACC T2.4 ◂
       },
     })) as SaleDoc | null;
     if (!doc) throw new Error("ไม่พบเอกสาร");
@@ -914,6 +917,8 @@ export async function postDocument(
         break;
       }
       case "CREDIT_NOTE": {
+        // ACC T2.4 ▸ ใบลดหนี้ของเงินมัดจำ (คืน/ริบ) ลงบัญชีที่ postDepositSettlement เท่านั้น — ห้ามโพสต์แบบใบลดหนี้ขาย (Dr รายได้/Cr ลูกหนี้) ◂
+        if (doc.refType === "DepositRefund" || doc.refType === "DepositForfeit") return { skipped: true, reason: "ใบลดหนี้ของเงินมัดจำ — ลงบัญชีตอนคืน/ริบมัดจำ" };
         // Dr รายได้ + Dr 2200 · Cr 1100 AR
         b.dr(await b.id(incomeKey, doc.docType), afterDiscount);
         if (rate > 0) b.dr(await b.id("VAT_OUTPUT"), doc.vatAmount);
@@ -1190,6 +1195,51 @@ export async function postPayment(
     //    เขียนเพิ่มอย่างเดียว (additive) — ไม่มีใครอ่านค่านี้อยู่ ⇒ ไม่กระทบพฤติกรรมเดิม
     //    ⚠️ ไม่ unique: ใบวางบิล/รวมจ่าย 1 entry ผูกได้หลาย payment (Gate B-M4)
     await db.accountDocumentPayment.update({ where: { id: paymentId }, data: { entryId: entry.id } });
+    return { entryId: entry.id };
+  });
+}
+
+// ─────────────────── ACC T2.4 ▸ เงินมัดจำที่ออกใบกำกับแล้ว: คืน / ริบ (ใบลดหนี้ · JV ของตัวใบลดหนี้) ───────────────────
+/**
+ * คืนเงินมัดจำ (REFUND · ประกาศ VAT ฉ.82 ข้อ 2(2)): Dr 2110 ฐาน + Dr 2200 VAT / Cr เงินตามช่องทางที่รับมัดจำ (สัดส่วนต่อรายการรับ)
+ * ริบมัดจำ + ใบลดหนี้ (FORFEIT_CN · ค่าตั้งร้าน [U]): Dr 2110 ฐาน + Dr 2200 VAT / Cr 4900 รายได้อื่น (ค่าเสียหาย ไม่มี VAT — ม.77/2)
+ * ริบมัดจำไม่ออกใบลดหนี้ (FORFEIT_KEEP_VAT · ค่าเริ่ม [U]): Dr 2110 ฐาน / Cr 4900 — VAT คงอยู่ใน 2200 (refId = ใบรับมัดจำ · event FORFEIT)
+ * ลงวันที่ที่ผู้ใช้เลือก (เดือนภาษีของใบลดหนี้ = เดือนที่ออก ม.82/10) · ด่านงวดปิด/เดือนที่ยื่นแล้วอยู่ใน commitEntry ◂
+ */
+export async function postDepositSettlement(
+  ctx: GlCtx,
+  o: { mode: "REFUND" | "FORFEIT_CN" | "FORFEIT_KEEP_VAT"; refId: string; depositId: string; date: Date; base: number; vat: number; memo: string },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = o.mode === "FORFEIT_KEEP_VAT" ? "FORFEIT" : "ISSUE";
+    if (await alreadyPosted(ctx, `AccountDocument#${o.refId}#${event}`, db)) return { skipped: true };
+    const b = new Book(ctx, db);
+    const gross = o.base + o.vat;
+    b.dr(await b.id("DEPOSIT_RECEIVED"), o.base);
+    if (o.mode !== "FORFEIT_KEEP_VAT" && o.vat > 0) b.dr(await b.id("VAT_OUTPUT"), o.vat);
+    if (o.mode === "REFUND") {
+      const pays = await db.accountDocumentPayment.findMany({
+        where: { documentId: o.depositId, systemId: ctx.systemId, voidedAt: null },
+        orderBy: [{ paidAt: "asc" }, { id: "asc" }],
+        select: { financeAccountId: true, channel: true, amount: true },
+      });
+      if (pays.length === 0) {
+        b.cr(await b.id("CASH"), gross);
+      } else {
+        const parts = splitByWeight(gross, pays.map((p) => p.amount));
+        // เช็คที่รับมา = เงินเข้าธนาคารแล้วตอนคืน ⇒ คืนจากบัญชีธนาคาร (ไม่ใช่เช็ครอเรียกเก็บ)
+        for (let i = 0; i < pays.length; i++) if ((parts[i] ?? 0) > 0) b.cr(await financeLedgerId(ctx, pays[i]!.financeAccountId, pays[i]!.channel === "CHEQUE" ? "TRANSFER" : pays[i]!.channel, db), parts[i]!);
+      }
+    } else {
+      b.cr(await b.id("ASSET_DISPOSAL_GAIN"), o.mode === "FORFEIT_CN" ? gross : o.base);
+    }
+    const entry = await commitEntry(
+      ctx,
+      { book: o.mode === "FORFEIT_KEEP_VAT" ? "GENERAL" : "SALES", journal: o.mode === "FORFEIT_KEEP_VAT" ? "ADJUST" : "DOC", date: o.date, refType: "AccountDocument", refId: o.refId, event, memo: o.memo },
+      b,
+      db,
+    );
     return { entryId: entry.id };
   });
 }

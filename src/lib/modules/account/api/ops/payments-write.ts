@@ -34,7 +34,8 @@ import {
   confirmStaticPaymentRequest,
   createPaymentRequest,
 } from "../../payment-request";
-import { getDocRef, refundDeposit } from "../../service";
+import { forfeitDeposit, getDocRef, refundDeposit } from "../../service";
+import { legalAckApiError } from "../respond"; // ACC T2.4 ◂
 import { actorRefId } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError } from "../respond";
@@ -279,6 +280,7 @@ const refundInput = z
       .min(5)
       .max(500)
       .describe("Why the deposit is being returned, at least 5 characters. Stored on the document and in the audit log."),
+    date: ymdField("date").optional().describe("Day the money goes back (Thai calendar, YYYY-MM-DD). Default today. The credit note and its ledger entry carry this date."),
   })
   .strict();
 
@@ -288,18 +290,65 @@ const documentsRefundDeposit = defineOp({
   path: "/documents/{id}/refund-deposit",
   kind: "danger",
   action: "account.doc.void",
-  summary: "Give a paid deposit back to the customer or get it back from the vendor. The deposit document is voided and its ledger entry reversed.",
+  summary:
+    "Give a paid deposit back. A sales deposit that already has its tax invoice keeps the deposit receipt and the tax invoice and issues a credit note citing that tax invoice (reason CN_DEPOSIT_REFUND), dated `date`; only the part not yet deducted in an invoice is refunded. Any other deposit (no tax invoice, purchase deposit) is voided and its ledger entry reversed.",
   label: "คืนมัดจำ",
+  tool: { name: "account_refund_deposit", hint: "Gives the deposit money back: a credit note when the deposit has a tax invoice, otherwise the deposit is voided. Needs a reason and a double confirmation from the owner." },
   input: refundInput,
   test: "C2-P5.4",
   async handler({ actor, params, input }) {
     const { tenantId, systemId } = actor;
     const id = params.id ?? "";
-    const res = await refundDeposit(tenantId, systemId, id, input.reason);
+    const res = await refundDeposit(tenantId, systemId, id, input.reason, { date: input.date ? new Date(`${input.date}T00:00:00.000Z`) : null, createdById: null });
+    if (!res.ok && res.legal) throw legalAckApiError(res.legal.warnings);
     if (!res.ok) failPayment(res.reason);
     const doc = await getDocRef(tenantId, systemId, id);
     if (!doc) throw notFoundDoc();
-    return { refundedSatang: res.refunded, status: doc.status };
+    return {
+      refundedSatang: res.refunded,
+      status: doc.status,
+      creditNote: res.creditNoteId ? { id: res.creditNoteId, docNo: res.creditNoteNo ?? null } : null,
+      warnings: res.warnings ?? [],
+    };
+  },
+});
+
+// ACC T2.4 ▸ ริบมัดจำ (ค่าตั้ง deposit.forfeit [U]) · ดูล่วงหน้าก่อนคืน/ริบ ◂
+const forfeitInput = z
+  .object({
+    acknowledge: ackField,
+    reason: z.string().min(5).max(500).describe("Why the deposit is kept (customer cancelled, no-show, ...), at least 5 characters."),
+    date: ymdField("date").optional().describe("Day the deposit is forfeited (Thai calendar). Default today."),
+  })
+  .strict();
+
+const documentsForfeitDeposit = defineOp({
+  id: "documents.forfeit-deposit",
+  method: "POST",
+  path: "/documents/{id}/forfeit-deposit",
+  kind: "danger",
+  action: "account.doc.void",
+  summary:
+    "Keep a fully received sales deposit as damages (customer cancelled). The part not yet deducted moves from the deposit liability to other income. Book setting `depositForfeit`: KEEP_VAT (default) issues no credit note and output VAT stays; CREDIT_NOTE issues a credit note citing the deposit's tax invoice. Returns the unsettled-rule warning DEPOSIT_FORFEIT_VAT (no acknowledgement needed).",
+  label: "ริบเงินมัดจำ",
+  tool: { name: "account_forfeit_deposit", hint: "Keeps the customer's deposit as damages (deposit liability to other income). Default: no credit note, VAT stays - an unsettled rule, tell the owner to check with the accountant. Double confirmation." },
+  input: forfeitInput,
+  test: "T2.4-D9",
+  async handler({ actor, params, input }) {
+    const { tenantId, systemId } = actor;
+    const id = params.id ?? "";
+    const res = await forfeitDeposit(tenantId, systemId, id, input.reason, { date: input.date ? new Date(`${input.date}T00:00:00.000Z`) : null, createdById: null });
+    if (!res.ok && res.legal) throw legalAckApiError(res.legal.warnings);
+    if (!res.ok) failPayment(res.reason);
+    const doc = await getDocRef(tenantId, systemId, id);
+    if (!doc) throw notFoundDoc();
+    return {
+      forfeitedSatang: res.forfeited ?? 0,
+      mode: res.mode ?? "KEEP_VAT",
+      status: doc.status,
+      creditNote: res.creditNoteId ? { id: res.creditNoteId, docNo: res.creditNoteNo ?? null } : null,
+      warnings: res.warnings ?? [],
+    };
   },
 });
 
@@ -549,6 +598,7 @@ export const PAYMENTS_WRITE_OPS: ApiOp[] = [
   paymentsList,
   paymentsVoid,
   documentsRefundDeposit,
+  documentsForfeitDeposit,
   paymentRequestsCreate,
   paymentRequestsConfirm,
   paymentRequestsCancel,

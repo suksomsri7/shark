@@ -507,11 +507,17 @@ try {
   assert("P7.18 คืนมัดจำสำเร็จ", refund.ok, refund.ok ? "" : refund.reason);
   eqAmt("P7.19 ยอดที่คืน = 2,000.00", refund.ok ? refund.refunded : -1, 200_000);
   const depDAfterRefund = await prisma.accountDocument.findFirstOrThrow({ where: { id: depD } });
-  eq("P7.20 ใบมัดจำถูกปิดเป็นยกเลิก", depDAfterRefund.status, "VOIDED");
-  const depDEntries3 = await entriesOf(systemId, depD);
+  // ORACLE-EDIT (ACC T2.4): สมุด QC จด VAT + ออกใบกำกับมัดจำตอนรับครบ (T2.6) ⇒ คืนมัดจำ = ใบลดหนี้อ้างใบกำกับของมัดจำ (ฉ.82 ข้อ 2(2))
+  //   ใบรับมัดจำไม่ถูกยกเลิกแล้ว (หักครบ = DEDUCTED) · เงินสดคืนอยู่ใน JV ของใบลดหนี้ ⇒ ตรวจสุทธิรวม JV ของใบมัดจำ + ใบลดหนี้ (ใบที่ไม่มีใบกำกับยังเป็นทางเดิม — qc-acc-v2-deposit-refund)
+  const depDCn = refund.ok && "creditNoteId" in refund ? (refund.creditNoteId as string | undefined) : undefined;
+  eq("P7.20 ใบมัดจำหักครบด้วยใบลดหนี้ (ไม่ยกเลิก)", `${depDAfterRefund.status}/${!!depDCn}`, "DEDUCTED/true");
+  const depDEntries3 = [...(await entriesOf(systemId, depD)), ...(depDCn ? await entriesOf(systemId, depDCn) : [])];
   eqAmt("P7.21 เงินสดสุทธิกลับเป็น 0 หลังคืนมัดจำ", drOf(depDEntries3, cashLedger) - crOf(depDEntries3, cashLedger), 0);
-  const refundBlocked = await acc.refundDeposit(tenantId, systemId, depB, "ลองคืนใบที่ถูกหักไปแล้ว");
-  assert("P7.22 คืนมัดจำใบที่ถูกหักในเอกสารอื่นแล้ว = ถูกปฏิเสธ", !refundBlocked.ok, refundBlocked.ok ? "ผ่านไปได้" : refundBlocked.reason);
+  // ORACLE-EDIT (ACC T2.4): ใบมัดจำที่มีใบกำกับแล้วและถูกหักบางส่วน (5,000 หัก 3,000) คืน "ส่วนที่ยังไม่ได้หัก" ได้ด้วยใบลดหนี้ (2,000)
+  //   — เดิมปฏิเสธทั้งใบ · ส่วนที่หักไปแล้วยังคืนไม่ได้ (ยอดคืน = คงเหลือเท่านั้น · คืนซ้ำ = ปฏิเสธ)
+  const refundBlocked = await acc.refundDeposit(tenantId, systemId, depB, "คืนส่วนที่เหลือของใบที่ถูกหักบางส่วน");
+  const refundAgain = await acc.refundDeposit(tenantId, systemId, depB, "คืนซ้ำ");
+  assert("P7.22 ใบมัดจำที่ถูกหักบางส่วน: คืนได้เฉพาะคงเหลือ 2,000.00 (ใบลดหนี้) · คืนซ้ำ = ถูกปฏิเสธ", refundBlocked.ok && refundBlocked.refunded === 200_000 && !!refundBlocked.creditNoteId && !refundAgain.ok, refundBlocked.ok ? `คืน ${refundBlocked.refunded} · ซ้ำ ${refundAgain.ok}` : refundBlocked.reason);
 
   // ═════════ P8 — idempotency ═════════
   console.log("\nP8 กันบันทึกซ้ำ (idempotency):");

@@ -16,7 +16,7 @@ import {
   type PaymentDraft,
   type PaymentPanelData,
 } from "./payment";
-import { listDeductibleDeposits, setDocDeposits, refundDeposit } from "./service";
+import { listDeductibleDeposits, setDocDeposits, refundDeposit, forfeitDeposit } from "./service";
 import { listDeductiblePaidDeposits, setExpenseDocDeposits } from "./expense";
 import { editorDetailPath } from "./doc-editor-config";
 // WO 5.5 — ลิงก์ชำระเงิน / QR PromptPay
@@ -212,36 +212,65 @@ export async function voidPaymentV2Action(
 export async function refundDepositFormAction(formData: FormData) {
   const systemId = trim(formData.get("systemId"), 40);
   const docId = trim(formData.get("id"), 40);
-  const res = await refundDepositAction(systemId, docId, trim(formData.get("reason"), 200));
+  const res = await refundDepositAction(systemId, docId, trim(formData.get("reason"), 200), { date: trim(formData.get("date"), 10), ack: formData.getAll("ack") });
   // ACCOUNT-FIX A3: เดิมต่อสตริง `docs/<docType>/<id>` ⇒ ใบมัดจำจ่าย (DEPOSIT_PAYMENT) ไป 404 (route จริง = `deposit-payment/<id>`)
   //   ⇒ ใช้ตัวสร้าง path กลางตามชนิดเอกสาร (ฝั่งรับ `docs/DEPOSIT_RECEIPT/<id>` · ฝั่งจ่าย `deposit-payment/<id>`)
   const docType = trim(formData.get("docType"), 40) as AccountDocType;
   const path = editorDetailPath(`/app/sys/${systemId}/account`, docType, docId);
+  // ACC T2.4 ▸ ออกใบลดหนี้ ⇒ พาไปหน้าใบลดหนี้ที่เพิ่งออก ◂
+  if (res.ok && "creditNoteId" in res && res.creditNoteId) redirect(editorDetailPath(`/app/sys/${systemId}/account`, "CREDIT_NOTE", res.creditNoteId));
   redirect(res.ok ? path : `${path}?err=${encodeURIComponent(res.reason)}`);
 }
 
-/** §3 ทำรายการ — "คืนมัดจำ" (DR/DP): กลับรายการ JV ของใบมัดจำ + ปิดใบ */
+/** ACC T2.4 ▸ วันที่จากฟอร์ม (YYYY-MM-DD) → Date (UTC เที่ยงคืน แบบเดียวกับวันที่เอกสาร) · ว่าง/ผิด = null (service ใช้วันนี้) */
+const formDay = (v: string | undefined) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00.000Z`) : null);
+
+/** §3 ทำรายการ — "คืนมัดจำ" (DR/DP) · ACC T2.4: ใบรับมัดจำที่มีใบกำกับ = ใบลดหนี้ (วันที่ที่เลือก) · อื่น ๆ = กลับรายการ JV + ปิดใบ */
 export async function refundDepositAction(
   systemId: string,
   docId: string,
   reason: string,
-): Promise<{ ok: true; refunded: number } | { ok: false; reason: string }> {
+  extra: { date?: string; ack?: readonly unknown[] } = {},
+) {
   const sys = trim(systemId, 40);
   const { auth, tenantId, userId } = await loadAccountSystem(sys);
   assertAccountCan(auth, "account.payment.void");
   const id = trim(docId, 40);
   const why = trim(reason, 200) || "คืนเงินมัดจำให้ผู้ติดต่อ";
-  const res = await refundDeposit(tenantId, sys, id, why);
+  const res = await withScreenLegal(screenAck(extra.ack ?? [], userId), () => refundDeposit(tenantId, sys, id, why, { date: formDay(extra.date), createdById: userId }));
   await writeAudit({
     tenantId,
     actorId: userId,
     action: "account.payment.void",
     targetType: "AccountDocument",
     targetId: id,
-    after: res.ok ? { refunded: res.refunded, reason: why } : { error: res.reason },
+    after: res.ok ? { refunded: res.refunded, reason: why, creditNoteId: "creditNoteId" in res ? res.creditNoteId : undefined } : { error: res.reason },
   });
   if (res.ok) revalidatePath(`/app/sys/${sys}/account`, "layout");
   return res;
+}
+
+/** ACC T2.4 ▸ "ริบมัดจำ" (ใบรับมัดจำที่รับครบ) — ค่าตั้ง deposit.forfeit (ค่าเริ่มไม่ออกใบลดหนี้ [U]) */
+export async function forfeitDepositFormAction(formData: FormData) {
+  const sys = trim(formData.get("systemId"), 40);
+  const id = trim(formData.get("id"), 40);
+  const { auth, tenantId, userId } = await loadAccountSystem(sys);
+  assertAccountCan(auth, "account.payment.void");
+  const why = trim(formData.get("reason"), 200) || "ริบเงินมัดจำ";
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => forfeitDeposit(tenantId, sys, id, why, { date: formDay(trim(formData.get("date"), 10)), createdById: userId }));
+  await writeAudit({
+    tenantId,
+    actorId: userId,
+    action: "account.deposit.forfeit",
+    targetType: "AccountDocument",
+    targetId: id,
+    after: res.ok ? { forfeited: "forfeited" in res ? res.forfeited : 0, mode: "mode" in res ? res.mode : undefined, reason: why, creditNoteId: "creditNoteId" in res ? res.creditNoteId : undefined } : { error: res.reason },
+  });
+  const base = `/app/sys/${sys}/account`;
+  if (res.ok) revalidatePath(base, "layout");
+  if (res.ok && "creditNoteId" in res && res.creditNoteId) redirect(editorDetailPath(base, "CREDIT_NOTE", res.creditNoteId));
+  const path = editorDetailPath(base, "DEPOSIT_RECEIPT", id);
+  redirect(res.ok ? path : `${path}?err=${encodeURIComponent(res.reason)}`);
 }
 
 // ─────────────────────────────────────────────────────────────

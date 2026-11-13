@@ -17,11 +17,11 @@
 //       รับ 856,000 วันที่ 5 ก.ย. ⇒ ใบกำกับ VAT 56,000 ฐาน 800,000 · รวม VAT ทั้งเรื่อง 70,000 (ไม่ซ้ำ)
 //   P6 ยกเลิกรับชำระหลังออกใบกำกับ: ใบ 10 ก.ย. 200,000 (VAT 14,000) รับ 12 ก.ย. แล้วยกเลิก ⇒ ใบกำกับ VOIDED · ก.ย. คง +14,000 · เดือนที่กลับ −14,000
 //   P7 ยกเลิกรับเงินมัดจำ (ยังไม่ถูกหัก): มัดจำ 100,000 + 7,000 รับ 4 ก.ย. แล้วยกเลิก ⇒ ใบกำกับมัดจำ VOIDED · ก.ย. +7,000 · เดือนที่กลับ −7,000
-//   P8 คืนมัดจำ (refundDeposit): มัดจำ 100,000 + 7,000 รับ 6 ก.ย. แล้วคืน ⇒ ใบกำกับมัดจำ VOIDED (ใบลดหนี้ = T2.4) · ก.ย. +7,000 · เดือนที่กลับ −7,000
+//   P8 คืนมัดจำ (refundDeposit): มัดจำ 100,000 + 7,000 รับ 6 ก.ย. แล้วคืน ⇒ ใบลดหนี้อ้างใบกำกับมัดจำ (T2.4 · ใบกำกับคงอยู่) · ก.ย. +7,000 · เดือนที่คืน −7,000
 //   P9 ปิดค่าตั้ง depositOnReceipt ⇒ รับมัดจำ 8 ก.ย. 50,000 + 3,500 ไม่มีใบกำกับ (VAT ยังเข้า ก.ย. ตามบัญชี +3,500)
 //   ภาษีขายต่อเดือน: ส.ค. = 52,500 + 6,542 + 70,000 + 35,000 + 14,000 = 178,042
 //                    ก.ย. = 45,958 + 7,000 + 56,000 + 14,000 + 7,000 + 7,000 + 3,500 + 700 (P3.4) = 141,158 (P11 ลงหลังตรวจรายงาน)
-//                    ต.ค. = 7,000 · เดือนที่กลับรายการ (วันที่จริงของการยกเลิก) = −14,000 − 7,000 − 7,000 = −28,000
+//                    ต.ค. = 7,000 − 7,000 (ใบลดหนี้คืนมัดจำ P8 ลงวันที่นาฬิกาบัญชี 2026-10-20) = 0 · เดือนที่กลับรายการ (วันที่จริงของการยกเลิก) = −14,000 − 7,000 = −21,000
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-acc-v2-paytaxinv");
 
@@ -217,7 +217,9 @@ try {
     const t7 = await tisOf(p7.id);
     const t8 = await tisOf(p8.id);
     chk("P7.1", "ยกเลิกรับเงินมัดจำ → ใบกำกับมัดจำ VOIDED · 2200 สุทธิ 0", p7v.ok && t7.length === 1 && t7[0].status === "VOIDED" && (await net(A2200, [p7.id])) === 0, "VOIDED/0", { ok: p7v, s: t7.map((x) => x.status), o: await net(A2200, [p7.id]) });
-    chk("P8.1", "คืนมัดจำ → ใบกำกับมัดจำ VOIDED (เหตุผลอ้างการคืน) · 2200 สุทธิ 0 · ใบลดหนี้ยังไม่ออก (= T2.4)", p8f.ok && t8.length === 1 && t8[0].status === "VOIDED" && (t8[0].voidReason ?? "").includes("คืนเงินมัดจำ") && (await net(A2200, [p8.id])) === 0 && (await prisma.accountDocument.count({ where: { systemId: S, docType: "CREDIT_NOTE", sourceDocId: p8.id } })) === 0, "VOIDED/0", { ok: p8f, s: t8.map((x) => [x.status, x.voidReason]) });
+    // ORACLE-EDIT (ACC T2.4): คืนมัดจำที่มีใบกำกับแล้ว = ใบลดหนี้อ้างใบกำกับของมัดจำ (ฉ.82 ข้อ 2(2)) — ใบกำกับเดิมคงอยู่ (เดิม T2.6 ยกเลิกใบกำกับชั่วคราวรอ T2.4)
+    const cn8 = await prisma.accountDocument.findMany({ where: { systemId: S, docType: "CREDIT_NOTE", sourceDocId: t8[0]?.id ?? "§" } });
+    chk("P8.1", "คืนมัดจำ → ใบลดหนี้ 1 ใบอ้างใบกำกับมัดจำ (ใบกำกับยัง ISSUED) · 2200 สุทธิ (ใบมัดจำ + ใบลดหนี้) 0", p8f.ok && t8.length === 1 && t8[0].status === "ISSUED" && cn8.length === 1 && cn8[0].status === "ISSUED" && cn8[0].vatAmount === 7_000 && (await net(A2200, [p8.id, cn8[0].id])) === 0, "ISSUED + CN/0", { ok: p8f, s: t8.map((x) => [x.status, x.voidReason]), cn: cn8.map((c) => [c.status, c.vatAmount]) });
   }
 
   // ═══ P9 ค่าตั้งปิด ═══
@@ -243,7 +245,8 @@ try {
     const oct = await STR.salesTaxReport(ctx, "2026-10");
     chk("P10.1", "ส.ค. = 178,042 (รายงาน = GL)", aug.total.vat === 178_042 && aug.glVat === 178_042, 178_042, { r: aug.total.vat, g: aug.glVat });
     chk("P10.2", "ก.ย. = 141,158 (รายงาน = GL)", sep.total.vat === 141_158 && sep.glVat === 141_158, 141_158, { r: sep.total.vat, g: sep.glVat, rows: sep.rows.map((r: Any) => [r.docNo, r.date, r.vat]) });
-    chk("P10.3", "ต.ค. = 7,000", oct.total.vat === 7_000 && oct.glVat === 7_000, 7_000, { r: oct.total.vat, g: oct.glVat });
+    // ORACLE-EDIT (ACC T2.4): ใบลดหนี้คืนมัดจำ P8 ลงวันที่ "วันนี้" ตามนาฬิกาบัญชี (ตรึง 2026-10-20) ⇒ −7,000 อยู่ ต.ค. (เดิมกลับรายการวันที่จริง)
+    chk("P10.3", "ต.ค. = 7,000 − 7,000 (ใบลดหนี้คืนมัดจำ P8) = 0", oct.total.vat === 0 && oct.glVat === 0, 0, { r: oct.total.vat, g: oct.glVat });
     const depRow = aug.rows.find((r: Any) => r.docNo === p5TiNo);
     const depDoc = await prisma.accountDocument.findUnique({ where: { id: p5d.id }, select: { docNo: true } });
     chk("P10.4", "แถวมัดจำ ส.ค. แสดงเลขใบกำกับของมัดจำ · วันที่ 2026-08-03 · ฐาน 200,000 VAT 14,000 · หมายเหตุอ้างเลขใบรับมัดจำ", !!depRow && depRow.date === "2026-08-03" && depRow.base === 200_000 && depRow.vat === 14_000 && depRow.notes.some((n: string) => n.includes(depDoc?.docNo ?? "§") && n.includes("ใบกำกับภาษีของเงินมัดจำ")), "แถวมัดจำ", depRow ?? aug.rows.map((r: Any) => [r.docNo, r.vat, r.notes]));
@@ -253,11 +256,13 @@ try {
     chk("P10.6", "ทุกแถวฐานสอดคล้อง VAT (ไม่มีธงเตือน)", [...aug.rows, ...sep.rows, ...oct.rows].every((r: Any) => !r.flag), "ไม่มีธง", [...aug.rows, ...sep.rows].filter((r: Any) => r.flag).map((r: Any) => [r.docNo, r.flag]));
     if (revMonth) {
       const rv = await STR.salesTaxReport(ctx, revMonth);
-      const extra = revMonth === "2026-10" ? 7_000 : 0;
-      chk("P10.7", `เดือนที่กลับรายการ (${revMonth}) = −28,000 (+ ต.ค. 7,000 ถ้าเป็นเดือนเดียวกัน) · มีหมายเหตุการยกเลิกอ้างเลขเดิม`, rv.total.vat === -28_000 + extra && rv.rows.filter((r: Any) => r.vat < 0).every((r: Any) => r.notes.some((n: string) => n.startsWith("ยกเลิก"))), -28_000 + extra, { v: rv.total.vat, rows: rv.rows.map((r: Any) => [r.docNo, r.vat, r.notes]) });
+      const extra = revMonth === "2026-10" ? 0 : 0;
+      // ORACLE-EDIT (ACC T2.4): −7,000 ของ P8 ย้ายไปเดือนของใบลดหนี้ (ต.ค. ตามนาฬิกาบัญชี) ⇒ เดือนที่กลับรายการจริง = −14,000 − 7,000 = −21,000
+      chk("P10.7", `เดือนที่กลับรายการ (${revMonth}) = −21,000 (P6 + P7 · ต.ค. รวม P8 = 0 ถ้าเป็นเดือนเดียวกัน) · มีหมายเหตุการยกเลิกอ้างเลขเดิม`, rv.total.vat === -21_000 + extra && /* ORACLE-EDIT (ACC T2.4): แถว −7,000 ของ P8 เป็นใบลดหนี้คืนมัดจำ (อ้างใบกำกับ) แทนแถวยกเลิก — ยอดเดือนเท่าเดิม */ rv.rows.filter((r: Any) => r.vat < 0).every((r: Any) => r.notes.some((n: string) => n.startsWith("ยกเลิก") || (r.docType === "CREDIT_NOTE" && n.startsWith("ใบลดหนี้ อ้างอิงใบกำกับภาษี")))), -21_000 + extra, { v: rv.total.vat, rows: rv.rows.map((r: Any) => [r.docNo, r.vat, r.notes]) });
     }
     const [pa, ps, po] = await Promise.all([REP.pp30(ctx, "2026-08"), REP.pp30(ctx, "2026-09"), REP.pp30(ctx, "2026-10")]);
-    chk("P10.8", "ภ.พ.30 ภาษีขาย ส.ค./ก.ย./ต.ค. = 178,042 / 141,158 / 7,000", pa.output.total === 178_042 && ps.output.total === 141_158 && po.output.total === 7_000, [178_042, 141_158, 7_000], [pa.output.total, ps.output.total, po.output.total]);
+    // ORACLE-EDIT (ACC T2.4): ต.ค. = 0 (ใบลดหนี้คืนมัดจำ P8 — ดู P10.3)
+    chk("P10.8", "ภ.พ.30 ภาษีขาย ส.ค./ก.ย./ต.ค. = 178,042 / 141,158 / 0", pa.output.total === 178_042 && ps.output.total === 141_158 && po.output.total === 0, [178_042, 141_158, 0], [pa.output.total, ps.output.total, po.output.total]);
   }
 
   // ═══ P11 ข้อมูลเดิม ═══
