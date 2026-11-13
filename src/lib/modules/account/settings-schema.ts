@@ -364,7 +364,9 @@ export function parseDocSettings(docConfig: unknown): DocSettings {
 }
 
 /** ส่วนที่แก้ได้ทีละก้อน (หน้าตั้งค่า 1 หน้า = 1 คีย์) */
-export type DocSettingsPatch = Partial<Omit<DocSettings, "sequences" | "notes">> & {
+export type DocSettingsPatch = Partial<Omit<DocSettings, "sequences" | "notes" | "autoTaxInvoice">> & {
+  /** ACC T1.2 — `goodsOnIssue` ไม่ส่ง = คงค่าเดิมของร้าน (ผู้เรียกเดิมส่งบล็อกนี้โดยไม่รู้จักช่องใหม่) */
+  autoTaxInvoice?: Omit<DocSettings["autoTaxInvoice"], "goodsOnIssue"> & { goodsOnIssue?: boolean };
   sequences?: Record<string, Partial<SeqConfig>>;
   notes?: Record<string, Partial<DocNoteConfig>>;
 };
@@ -405,9 +407,11 @@ export function mergeDocSettings(
     }
     next.notes = notes;
   }
-  for (const key of ["due", "channels", "publicView", "autoTaxInvoice", "print", "taxRequest", "rules"] as const) {
+  for (const key of ["due", "channels", "publicView", "print", "taxRequest", "rules"] as const) {
     if (patch[key] !== undefined) next[key] = patch[key];
   }
+  if (patch.autoTaxInvoice !== undefined)
+    next.autoTaxInvoice = { ...patch.autoTaxInvoice, goodsOnIssue: patch.autoTaxInvoice.goodsOnIssue ?? current.autoTaxInvoice.goodsOnIssue };
   root[DOC_SETTINGS_KEY] = next;
   return root;
 }
