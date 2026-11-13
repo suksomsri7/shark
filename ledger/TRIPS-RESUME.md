@@ -1,3 +1,10 @@
+## ▶️ จุดต่อ 13 พ.ย. ~05:4xZ — 11/72 (15%) · 3 เลน · gate-lock ใหม่ (typecheck 2 ช่อง)
+- T1.2 ✅ merge 3db6eb844 · ฐานหลักเขียวครบ
+- เลน l1 · T0.7a (เงินฝั่งทริป) @d4b06ad7f ใบสั่ง+ข้อสอบ 124 ข้อ · ผู้สร้าง agent a33a9ef04273d524c → เมื่อส่ง: commit WIP → ORACLE-EDIT ที่ตรวจแล้ว → ผู้ตรวจ + นักล่า (🔴) → ด่าน `gate.sh /root/projects/shark-trips-l1 gate-t0.7 qc-trips-t0.7 qc-trips-t0.6 qc-trips-t1.2 qc-trips-t1.1 qc-trips-t0.5 qc-trips-t0.4 qc-trips-t0.3 qc-trips-t0.2 qc-trips-t0.1 qc-trips-p0.1 qc-svc-r0.3 qc-svc-smoke` · T0.7b รอ OQ21
+- เลน l3 · T0.8 (ผู้เดินทาง) @f730a3451 ใบสั่ง+ข้อสอบ 135 ข้อ · ผู้สร้าง agent afb5a85aebf7dbc08 → เหมือนกัน (ผู้ตรวจ + นักล่า: ข้อมูลสุขภาพ) · ผู้คุมต้องทดสอบ route ไฟล์กลางผ่าน Next จริงด้วยคุกกี้พนักงาน 1 รอบ
+- เลน l2 · A1.1 (migration agency) branch wip/trips-a1.1 · ผู้ร่าง agent adfb637163181535c → ตัดสินคำถาม + หนี้ตาราง → ผู้สร้าง · หลังรับ: `migrate deploy` ฐานหลัก + เลน l1/l3
+- OQ17 ตอบแล้ว (ค อนุญาต · ข ตอน L1.9 · ก ไม่) · OQ21–OQ23 รอ
+
 ## ⏸ หยุดรอเจ้าของ 13 พ.ย. ~03:4xZ — 10/72 (14%) · 3 เลน
 - **เจ้าของสั่งหยุด**: session บัญชีกำลังปรับ `scripts/with-gate-lock.sh` (typecheck 2 ตัวพร้อมกัน) — **ห้ามแก้ไฟล์นี้เอง · ห้ามสั่งงานหนัก (typecheck/build/ชุดทดสอบ) จนเจ้าของแจ้ง** · เมื่อแจ้ง: merge origin/main เข้า session/trips หนึ่งครั้ง แล้วทำต่อ
 - เลน l2 · T1.2 @cfb6338bc (r2 commit แล้ว · ORACLE-EDIT PC-2 CV-5 PV-2 PV-4 S-13 ยังไม่เคยรัน) → หลังได้สัญญาณ: merge session/trips เข้าเลน → `/root/trips-runs/gate-build-t1.2.sh` → serve + `visual-trips.mts t1.2` → ดูภาพ (มุมมองเดือนใหม่ · กล่องถอนยืนยัน · ข้อความปลอมรหัส) → merge → wo-notes (ร่างของผู้สร้างอยู่ในเลน) → 11/72
