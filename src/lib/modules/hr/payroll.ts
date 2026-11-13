@@ -2790,7 +2790,7 @@ async function approveRunV2(ctx: Ctx, runId: string, expect: ApproveExpect | und
       if (cur.journalEntryId) return { code: "DRAFT_HAS_JV", note: APPROVE_DRAFT_HAS_JV };
       const run = (await tx.hrPayrollRun.findFirst({ where: { ...scope, id: runId }, select: { createdById: true, payDate: true, inputDigest: true, stepsJson: true } }))!;
       const makers = new Set([...(((objH34(run.stepsJson).makers as unknown[]) ?? []).filter((x): x is string => typeof x === "string")), ...(run.createdById ? [run.createdById] : [])]);
-      if (makers.has(actor.userId) && !actor.isOwner) return { code: "SAME_PERSON", note: RUN2_TEXT.samePerson }; // fix r2 G6: ทุกคนที่เคยสร้าง/คิดร่างนี้ใหม่
+      if (makers.has(actor.userId!) && !actor.isOwner) return { code: "SAME_PERSON", note: RUN2_TEXT.samePerson }; // fix r2 G6: ทุกคนที่เคยสร้าง/คิดร่างนี้ใหม่
       const empIds = (await tx.hrPayrollItem.findMany({ where: { ...scope, runId }, select: { employeeId: true } })).map((i) => i.employeeId);
       if (!actor.isOwner && (await tx.hrEmployee.count({ where: { ...scope, id: { in: empIds }, linkedUserId: actor.userId } })) > 0) return { code: "OWN_PAY", note: RUN2_TEXT.ownPay };
       if (expect !== undefined) {
