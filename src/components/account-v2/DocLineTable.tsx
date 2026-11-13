@@ -8,6 +8,8 @@ import { ProductPicker, type ProductSearchResult } from "./ProductPicker";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { Modal } from "./Modal";
 import { RowActions } from "./RowActions";
+import { InputVatLineSelect } from "./InputVatSection";
+import { INPUT_VAT_STATUS_SHORT_TH, statusFromTreatment, type InputVatStatus } from "@/lib/modules/account/input-vat-shared";
 import type { DocTotalsLineOut } from "@/lib/modules/account/totals";
 import {
   WHT_TYPE_OPTIONS,
@@ -61,6 +63,8 @@ export function DocLineTable({
   autoEditKey,
   onAutoEditConsumed,
   kindDefault,
+  inputVatDoc,
+  whtRecipient,
 }: {
   lines: LineDraft[];
   breakdown: DocTotalsLineOut[];
@@ -84,6 +88,10 @@ export function DocLineTable({
   onAutoEditConsumed?: () => void;
   /** ACC T1.2 — เอกสารขาย: แสดงตัวเลือก "สินค้า/บริการ" ต่อบรรทัด · ค่า = ชนิดเริ่มของใบ (บรรทัดที่ไม่มีสินค้าในทะเบียน) · ไม่ส่ง = ไม่แสดง */
   kindDefault?: "GOODS" | "SERVICE" | null;
+  /** ACC T1.4 — เอกสารซื้อ: สถานะภาษีซื้อของใบ (บรรทัดที่ไม่เลือกใช้ค่านี้ เว้นธงของบัญชี) · ไม่ส่ง = ไม่แสดงตัวเลือกต่อบรรทัด */
+  inputVatDoc?: InputVatStatus | null;
+  /** ACC T1.4 (จอข้อ 13) — ประเภทผู้รับของคู่ค้าที่เลือก (อัตราหัก ณ ที่จ่ายจากตาราง) · null = ยังไม่เลือกคู่ค้า ⇒ ไม่เติม */
+  whtRecipient?: "COMPANY" | "PERSON" | null;
 }) {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   // WO 9.1 รอบ 2 (§13 · g17): การ์ดมือถือเป็น "อ่านอย่างเดียว" — แก้ผ่านแผ่นเต็มจอเท่านั้น (ไม่ใช่กรอกในการ์ดตรง ๆ แบบเดิม)
@@ -111,10 +119,28 @@ export function DocLineTable({
     if (l.whtIncomeType) return patch;
     const acc = accountId ? accounts.find((a) => a.id === accountId) : null;
     if (acc?.whtIncomeType) {
+      if (legal.whtByRecipient) {
+        // ACC T1.4 (จอข้อ 13): นโยบายให้แค่ "ประเภทเงินได้" · อัตรา = ตารางค่ากฎหมาย (ประเภทเงินได้ × ผู้จ่าย × ผู้รับ)
+        //   ยังไม่เลือกคู่ค้า / ตารางว่าไม่หัก ⇒ ไม่เติม (ไม่หัก) — เดิมเติมอัตราคงที่ของนโยบาย (3%) ทุกกรณี
+        const rate = whtRecipient ? (legal.whtByRecipient[whtRecipient][acc.whtIncomeType] ?? 0) : 0;
+        if (rate > 0) {
+          patch.whtIncomeType = acc.whtIncomeType;
+          patch.whtRateBp = rate;
+        }
+        return patch;
+      }
       patch.whtIncomeType = acc.whtIncomeType;
       patch.whtRateBp = acc.whtRateBp ?? whtRateOf(acc.whtIncomeType);
     }
     return patch;
+  };
+  /** ACC T1.4 — สถานะที่บรรทัดได้ถ้าไม่เลือกเอง: ธงของบัญชี → ตามใบ */
+  const inheritedVat = (l: LineDraft): { status: InputVatStatus; label: string } => {
+    const acc = l.accountId ? accounts.find((a) => a.id === l.accountId) : null;
+    const t = statusFromTreatment(acc?.vatTreatment);
+    if (t) return { status: t.status, label: `ตามบัญชี: ${INPUT_VAT_STATUS_SHORT_TH[t.status]}` };
+    const d = inputVatDoc ?? "CLAIM";
+    return { status: d, label: `ตามใบ: ${INPUT_VAT_STATUS_SHORT_TH[d]}` };
   };
 
   const productResults = (q: string): Promise<ProductSearchResult[]> =>
@@ -225,6 +251,15 @@ export function DocLineTable({
                       </button>
                     )}
                     {kindDefault && <LineKindSelect value={l.lineKind ?? kindDefault} onChange={(k) => onChange(l.key, { lineKind: k })} testId={`line-${i}-kind`} />}
+                    {inputVatDoc !== undefined && (
+                      <InputVatLineSelect
+                        value={l.inputVatStatus ?? null}
+                        reason={l.inputVatReason ?? null}
+                        inherited={inheritedVat(l)}
+                        onChange={(v) => onChange(l.key, v)}
+                        testId={`line-${i}-input-vat`}
+                      />
+                    )}
                   </td>
                   {!easy && (
                     <td className={`${TD} min-w-0`}>
@@ -448,6 +483,15 @@ export function DocLineTable({
                 testId={`line-m-edit-product`}
               />
             </label>
+            {inputVatDoc !== undefined && (
+              <InputVatLineSelect
+                value={editingLine.inputVatStatus ?? null}
+                reason={editingLine.inputVatReason ?? null}
+                inherited={inheritedVat(editingLine)}
+                onChange={(v) => onChange(editingLine.key, v)}
+                testId="line-m-edit-input-vat"
+              />
+            )}
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
                 จำนวน

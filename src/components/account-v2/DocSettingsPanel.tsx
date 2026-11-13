@@ -738,6 +738,24 @@ function AutoTaxSection(p: DocSettingsPanelProps) {
         ข้อความตามกฎหมายท้ายใบกำกับ
         <textarea name="legalText" defaultValue={a.legalText} rows={3} maxLength={500} className={input} />
       </label>
+      {/* ACC T1.4 — ภาษีซื้อ (ค่าตั้ง docConfig.inputVat) */}
+      <h3 className="mt-2 border-t pt-3 text-sm font-medium" data-testid="inputvat-settings">ภาษีซื้อ</h3>
+      <label className={label}>
+        ภาษีซื้อที่เคลมไม่ได้ ลงบัญชีที่
+        <select name="nonClaimPosting" defaultValue={p.settings.inputVat?.nonClaimPosting ?? "SEPARATE_ACCOUNT"} className={`${input} w-96`} data-testid="inputvat-nonclaim-posting">
+          <option value="SEPARATE_ACCOUNT">บัญชีภาษีซื้อไม่ขอคืน แยก 2 ชนิด (รายจ่ายได้ / รายจ่ายต้องห้าม)</option>
+          <option value="INTO_COST">รวมเข้าค่าใช้จ่าย/ต้นทุนของรายการนั้น</option>
+        </select>
+        <span>ภาษีซื้อต้องห้ามตาม ม.82/5(4) ค่ารับรอง และ (6) เป็นรายจ่ายได้ · (1)(2)(3)(5) เป็นรายจ่ายไม่ได้ (ม.65 ตรี (6 ทวิ)) — ซื้อสินทรัพย์รวมเข้าราคาทุนเสมอ</span>
+      </label>
+      <label className={label}>
+        คู่ค้าไม่มีเลขประจำตัวผู้เสียภาษี: ภาษีซื้อเริ่มต้นเป็น
+        <select name="vendorNoTaxIdDefault" defaultValue={p.settings.inputVat?.vendorNoTaxIdDefault ?? "PENDING"} className={`${input} w-96`} data-testid="inputvat-vendor-default">
+          <option value="PENDING">ยังไม่ได้รับใบกำกับ (พักรอ)</option>
+          <option value="NO_CLAIM">เคลมไม่ได้</option>
+        </select>
+        <span>ค่าเริ่มต้นของระบบ — ภาษีซื้อเคลมได้เมื่อมีใบกำกับเต็มรูป (ม.82/5) · เปลี่ยนต่อเอกสารได้ที่ฟอร์ม · โปรดตรวจกับนักบัญชีของร้าน</span>
+      </label>
       <CardFooter systemId={p.systemId} reset={p.actions.reset} />
     </section>
   );

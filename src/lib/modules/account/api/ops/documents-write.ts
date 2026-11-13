@@ -34,6 +34,7 @@ import {
   listDeductiblePaidDeposits,
   markAssetReceived,
   receivePurchaseTaxInvoice,
+  markPurchaseTaxInvoiceNotClaimable,
   rejectPurchaseOrder,
   setExpenseDocDeposits,
   submitForApproval,
@@ -82,6 +83,7 @@ import { defineOp, type ApiOp } from "../op";
 import { ApiError, legalAckApiError } from "../respond";
 import { actorAuditId, actorAuditType } from "@/lib/api/actor";
 import { LEGAL_WARNING_CODES, type LegalAckRequired } from "@/lib/core/settings/legal/warnings";
+import { INPUT_VAT_NONCLAIM_REASONS } from "@/lib/core/settings/legal/th-tax-2569";
 import { docRow, ymd } from "../serialize";
 import { releaseParkedVat } from "../../tax-point";
 
@@ -217,6 +219,14 @@ const lineInput = z
       .enum(["GOODS", "SERVICE"])
       .nullish()
       .describe("Sales documents: goods or service line. Decides when output VAT is due (goods: on delivery/invoice; service: on payment). Default: the product's type, else the document's tax point."),
+    inputVatStatus: z
+      .enum(["CLAIM", "PENDING", "NO_CLAIM"])
+      .nullish()
+      .describe("Purchase documents: input VAT of this line. `CLAIM` (full tax invoice received), `PENDING` (waiting for the vendor's tax invoice) or `NO_CLAIM`. Default: the account's VAT flag (prohibited categories are not claimable), else the document's status."),
+    inputVatReason: z
+      .enum(INPUT_VAT_NONCLAIM_REASONS.map((r) => r.code) as [string, ...string[]])
+      .nullish()
+      .describe("Purchase documents with `NO_CLAIM`: why the input VAT cannot be claimed (section 82/5). Decides the non-claimable input VAT account."),
   })
   .strict();
 
@@ -231,6 +241,8 @@ async function toServiceLines(ctx: { tenantId: string; systemId: string }, lines
     unitName: l.unitName ?? null,
     unitPrice: l.unitPriceSatang,
     discount: l.discountSatang ?? 0,
+    ...(l.inputVatStatus ? { inputVatStatus: l.inputVatStatus } : {}),
+    ...(l.inputVatReason ? { inputVatReason: l.inputVatReason } : {}),
     ...(l.vatRateBp === undefined ? {} : { vatRateBp: l.vatRateBp }),
     productId: l.productId ?? null,
     accountId: l.accountId ?? null,
@@ -251,7 +263,7 @@ const vatTimingField = z
   .describe("Tax point: `ON_ISSUE` for goods, `ON_PAYMENT` for services. Default: the setting of the book.");
 const vatPurchaseModeField = z
   .enum(["CLAIM", "AWAITING", "NO_CLAIM"])
-  .describe("Purchase VAT handling: `CLAIM` (claimable now), `AWAITING` (waiting for the tax invoice) or `NO_CLAIM`.");
+  .describe("Purchase VAT handling for the whole document: `CLAIM` (full tax invoice received), `AWAITING` (waiting for the vendor's tax invoice — parked until it is recorded) or `NO_CLAIM` (VAT kept on the document, posted to non-claimable input VAT). Default: `AWAITING` when the vendor has no 13-digit tax id, else `CLAIM`; lines on prohibited-category accounts default to `NO_CLAIM`. Claiming against a vendor without a tax id asks for acknowledgement when the document is issued.");
 
 const documentFields = {
   contactId: z.string().max(40).nullish().describe("Id of the customer or vendor in this book."),
@@ -714,23 +726,75 @@ const documentsReject = defineOp({
   },
 });
 
+// ACC T1.5 — รับใบกำกับภาษีซื้อ: วันที่ในใบ · เลขที่ · วันที่ลงภาษีซื้อ · คำเตือนที่ยืนยันแล้ว (ส่งว่าง = แบบเดิม: วันนี้)
+const receiveInput = z
+  .object({
+    vendorInvoiceDate: ymdField("vendorInvoiceDate").optional().describe("Purchase tax invoice only: the date printed on the vendor's tax invoice. Default: the claim date."),
+    vendorInvoiceNo: z.string().max(35).nullish().describe("Purchase tax invoice only: the vendor's tax invoice number."),
+    claimDate: ymdField("claimDate").optional().describe("Purchase tax invoice only: the date input VAT is posted, which sets the tax month it is claimed in. Default: today (the month the invoice was received)."),
+    acknowledge: z
+      .array(z.enum(LEGAL_WARNING_CODES))
+      .max(20)
+      .optional()
+      .describe("Legal warning codes the user has read and accepted (INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW, INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH)."),
+  })
+  .strict();
+
+const notClaimableInput = z
+  .object({
+    reason: z
+      .enum(INPUT_VAT_NONCLAIM_REASONS.map((r) => r.code) as [string, ...string[]])
+      .optional()
+      .describe("Why the input VAT cannot be claimed (section 82/5). Default: NO_TAX_INVOICE."),
+  })
+  .strict();
+
+const documentsInputVatNotClaimable = defineOp({
+  id: "documents.input-vat-not-claimable",
+  method: "POST",
+  path: "/documents/{id}/input-vat-not-claimable",
+  kind: "write",
+  action: "account.payment.record",
+  summary: "For a purchase tax invoice still waiting for the vendor's paper: record that the input VAT cannot be claimed. The parked input VAT moves to non-claimable input VAT today and leaves the pending list.",
+  label: "ภาษีซื้อเคลมไม่ได้",
+  tool: { name: "account_input_vat_not_claimable", hint: "Use when the vendor's tax invoice will not come. Proposed for the owner to confirm." },
+  input: notClaimableInput,
+  test: "T1.5-IV-API9",
+  async handler({ actor, params, input }) {
+    const { tenantId, systemId } = actor;
+    const id = params.id ?? "";
+    const current = await getDocRef(tenantId, systemId, id);
+    if (!current || current.docType !== "PURCHASE_TAX_INVOICE") throw notFound();
+    const res = await markPurchaseTaxInvoiceNotClaimable(tenantId, systemId, id, { reason: input.reason ?? null });
+    if (!res.ok) failWith(res.reason);
+    return docStateRow(tenantId, systemId, id);
+  },
+});
+
 const documentsReceive = defineOp({
   id: "documents.receive",
   method: "POST",
   path: "/documents/{id}/receive",
   kind: "write",
   action: "account.payment.record",
-  summary: "Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT, an asset purchase becomes RECEIVED.",
+  summary: "Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT on the claim date (default today = the month it was received), an asset purchase becomes RECEIVED. A claim in a later month than the invoice stores the note \"ถือเป็นภาษีซื้อในเดือนภาษี…\"; a claim past the legal window answers 409 legal_ack_required.",
   label: "รับเอกสารตัวจริง",
-  input: noBody,
+  input: receiveInput,
   test: "C1-W10.1",
-  async handler({ actor, params }) {
+  async handler({ actor, params, input }) {
     const { tenantId, systemId } = actor;
     const id = params.id ?? "";
     const current = await getDocRef(tenantId, systemId, id);
     if (!current) throw notFound();
     if (current.docType === "PURCHASE_TAX_INVOICE") {
-      const res = await receivePurchaseTaxInvoice(tenantId, systemId, id);
+      const ack = { codes: input.acknowledge ?? [], actorId: actorAuditId(actor), actorType: actorAuditType(actor), via: actor.kind === "apikey" ? "rest" : "ai-proposal" };
+      const res = await receivePurchaseTaxInvoice(tenantId, systemId, id, {
+        vendorInvoiceDate: input.vendorInvoiceDate ? dayToDate(input.vendorInvoiceDate) : null,
+        vendorInvoiceNo: input.vendorInvoiceNo,
+        claimDate: input.claimDate ? dayToDate(input.claimDate) : null,
+        ack,
+      });
+      if (!res.ok && "legal" in res && res.legal) throw legalAckApiError(res.legal.warnings);
       if (!res.ok) failWith(res.reason);
     } else if (current.docType === "ASSET_PURCHASE") {
       const res = await markAssetReceived(tenantId, systemId, id);
@@ -1386,6 +1450,7 @@ export const DOCUMENTS_WRITE_OPS: ApiOp[] = [
   documentsVoid,
   documentsReleaseVat,
   documentsReceive,
+  documentsInputVatNotClaimable,
   documentsDeposits,
   documentsSetDeposits,
   documentsPublicLink,

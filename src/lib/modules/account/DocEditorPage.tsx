@@ -163,6 +163,7 @@ export async function DocEditorPage({
       name: a.name,
       whtIncomeType: w?.incomeType ?? null,
       whtRateBp: w?.rateBp ?? null,
+      vatTreatment: "vatTreatment" in a ? ((a as { vatTreatment?: string | null }).vatTreatment ?? null) : null, // ACC T1.4
     };
   });
   /** ACC T0.2 ▸ ค่ากฎหมายของฟอร์ม ณ วันที่เอกสาร: ตัวเลือก VAT + อัตราหัก ณ ที่จ่ายแนะนำ (นโยบายร้านทับตาราง) ◂ */
@@ -221,6 +222,9 @@ export async function DocEditorPage({
           whtIncomeType: l.whtIncomeType,
           whtRateBp: l.whtRateBp,
           lineKind: l.lineKind ?? null,
+          // ACC T1.4 — สถานะภาษีซื้อของบรรทัด (ร่างเดิม/ใบอ้างอิง)
+          inputVatStatus: side === "expense" && doc ? (l.inputVatStatus ?? null) : null,
+          inputVatReason: side === "expense" && doc ? (l.inputVatReason ?? null) : null,
         };
       })
     : [newLineDraft(settings.vatRateBp)];
@@ -246,6 +250,7 @@ export async function DocEditorPage({
     // §9.3: ประเภทราคาเริ่มต้นมาจากนโยบายบัญชี (ไม่ได้ตั้ง = พฤติกรรมเดิม จด VAT → แยก VAT)
     priceMode: doc ? priceModeOf(doc.vatMode) : defaultPriceModeOf(settings.policy),
     autoTaxInvoice: doc?.autoTaxInvoice ?? null,
+    inputVatStatus: side === "expense" ? (doc?.inputVatStatus ?? null) : null, // ACC T1.4
     recognizeVatNow: doc ? doc.vatTiming !== "ON_PAYMENT" : settings.taxPointBasis !== "ON_PAYMENT",
     salesUserId: doc?.salesUserId ?? null,
     tags: doc?.tags ?? [],
@@ -325,14 +330,17 @@ export async function DocEditorPage({
         vatRateBp={settings.vatRateBp}
         branchName={settings.branchName ?? "สำนักงานใหญ่"}
         dueLabel={dueLabelOf(docType)}
-        contacts={contactRows.slice(0, 20).map((c) => ({
+        contacts={[...contactRows.slice(0, 20), ...(contactRow && !contactRows.slice(0, 20).includes(contactRow) ? [contactRow] : [])].map((c) => ({
           id: c.id,
           name: c.name,
           sub: [c.taxId, c.phone].filter(Boolean).join(" · ") || undefined,
           outstandingSatang: outstanding.get(c.id) ?? 0,
           creditTermDays: c.creditTermDays,
           priceMode: c.defaultPriceMode ?? null,
+          taxId: c.taxId ?? null, // ACC T1.4
+          legalType: c.legalType === "PERSON" ? "PERSON" : "COMPANY",
         }))}
+        inputVatSettings={settings.doc.inputVat}
         products={productRows.slice(0, 20).map((p) => ({
           id: p.id,
           name: p.name,

@@ -245,6 +245,70 @@ export const SYSTEM_DEADLINE_ROWS: readonly FilingDeadlineRow[] = [
   ]),
 ];
 
+// ═══════════════════ T1.4 / T1.5 ภาษีซื้อ (แถวระบบ — ร้านไม่ทับ เพราะเป็นตัวบท [V]) ═══════════════════
+
+/** กลุ่มรายจ่ายของภาษีซื้อต้องห้าม (ม.65 ตรี (6 ทวิ)): ม.82/5(4)(6) เป็นรายจ่ายได้ · (1)(2)(3)(5) เป็นรายจ่ายไม่ได้ */
+export type NonClaimGroup = "DEDUCTIBLE" | "DISALLOWED";
+
+export type InputVatNonClaimReason = {
+  code: string;
+  labelTh: string;
+  /** มาตราสั้นที่แสดงบนจอ */
+  sectionTh: string;
+  group: NonClaimGroup;
+  source: string;
+  tag: LegalTag;
+  checkedAt: Ymd;
+};
+
+const NC17 = `${VAT_REF} §17 (ม.82/5)`;
+const NC_TAX = "references/domain-business-income-tax.md §ก4 (6 ทวิ)";
+
+/** เหตุที่ภาษีซื้อเคลมไม่ได้ — เฉพาะที่ skill ระบุ (common-vat-invoice.md §17) · กลุ่มรายจ่ายตาม domain-business-income-tax.md §ก4 (6 ทวิ) */
+export const INPUT_VAT_NONCLAIM_REASONS: readonly InputVatNonClaimReason[] = [
+  { code: "ENTERTAINMENT", labelTh: "ค่ารับรอง", sectionTh: "ม.82/5(4) · ประกาศ VAT ฉ.17", group: "DEDUCTIBLE", source: `${NC17}(4) ประกาศ ฉ.17 · ${NC_TAX}`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "PASSENGER_CAR", labelTh: "รถยนต์นั่ง/รถโดยสารไม่เกิน 10 ที่นั่ง (ซื้อ เช่า น้ำมัน ซ่อม)", sectionTh: "ม.82/5(6) · ประกาศ VAT ฉ.42", group: "DEDUCTIBLE", source: `${NC17}(6) ประกาศ ฉ.42 · ${NC_TAX}`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "ABBREVIATED_INVOICE", labelTh: "ใบกำกับภาษีอย่างย่อ", sectionTh: "ม.82/5(6) · ประกาศ VAT ฉ.42", group: "DEDUCTIBLE", source: `${NC17}(6) ประกาศ ฉ.42 · ${NC_TAX}`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "NON_VAT_BUSINESS", labelTh: "ใช้ในกิจการที่ไม่เสียภาษีมูลค่าเพิ่ม", sectionTh: "ม.82/5(6) · ประกาศ VAT ฉ.42", group: "DEDUCTIBLE", source: `${NC17}(6) ประกาศ ฉ.42 · ${NC_TAX}`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "COPY_OR_NAME_MISMATCH", labelTh: "สำเนาใบกำกับ / ชื่อผู้ซื้อไม่ตรง", sectionTh: "ม.82/5(6) · ประกาศ VAT ฉ.42", group: "DEDUCTIBLE", source: `${NC17}(6) ประกาศ ฉ.42 · ${NC_TAX}`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "NO_TAX_INVOICE", labelTh: "ไม่มีใบกำกับภาษี", sectionTh: "ม.82/5(1)", group: "DISALLOWED", source: `${NC17}(1) · ${NC_TAX}`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "INVOICE_INCOMPLETE", labelTh: "ใบกำกับไม่สมบูรณ์ในสาระสำคัญ", sectionTh: "ม.82/5(2)", group: "DISALLOWED", source: `${NC17}(2) · ${NC_TAX}`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "NOT_BUSINESS", labelTh: "ไม่เกี่ยวกับกิจการโดยตรง", sectionTh: "ม.82/5(3)", group: "DISALLOWED", source: `${NC17}(3) · ${NC_TAX}`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "ISSUER_NOT_ENTITLED", labelTh: "ผู้ออกใบกำกับไม่มีสิทธิออก", sectionTh: "ม.82/5(5)", group: "DISALLOWED", source: `${NC17}(5) · ${NC_TAX}`, tag: "V", checkedAt: "2026-11-13" },
+];
+
+/** เหตุเมื่อร้านไม่ระบุ — skill ไม่ได้บอก ⇒ ค่าเริ่มของระบบ [S] (กลุ่มรายจ่ายไม่ได้ = ระมัดระวัง) + คำเตือน INPUT_VAT_NONCLAIM_REASON_DEFAULTED */
+export const INPUT_VAT_NONCLAIM_DEFAULT_REASON = "NO_TAX_INVOICE";
+
+export function nonClaimReasonOf(code: string | null | undefined): InputVatNonClaimReason | null {
+  return INPUT_VAT_NONCLAIM_REASONS.find((r) => r.code === code) ?? null;
+}
+
+/**
+ * เพดานเคลมภาษีซื้อข้ามเดือน — value = จำนวนเดือน · countFrom = วิธีนับของ skill:
+ *   "MONTH_AFTER_INVOICE_MONTH" = "ไม่เกินหกเดือนนับแต่เดือนถัดจากเดือนที่ออกใบกำกับภาษี" ⇒ ใบเดือน M เคลมได้ M … M+value
+ */
+export type InputVatLateClaimRow = RowBase & { countFrom: "MONTH_AFTER_INVOICE_MONTH" };
+
+export const SYSTEM_INPUT_VAT_LATE_CLAIM_ROWS: readonly InputVatLateClaimRow[] = [
+  {
+    id: "sys-inputvat-late-claim",
+    value: 6,
+    countFrom: "MONTH_AFTER_INVOICE_MONTH",
+    from: null,
+    to: null,
+    source: `${VAT_REF} §17 — ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 4 ข้อ 2: ใช้เดือนหลังได้ "ไม่เกินหกเดือนนับแต่เดือนถัดจากเดือนที่ออกใบกำกับภาษี" + ระบุ "ถือเป็นภาษีซื้อในเดือนภาษี…" บนใบ (https://www.rd.go.th/3417.html) · audit-checklist-accounting.md C3`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    note: "เพดานตัวบท 3 ปี (ม.82/3 ว.สี่) — ใช้ในข้อความเตือนเท่านั้น",
+  },
+];
+
+/** แถวเพดานที่ครอบวันที่ (ไทย YYYY-MM-DD) · ไม่มี = null (ผู้เรียกเตือน NO_ROW ไม่เดา) */
+export function lateClaimRuleAt(ymd: Ymd): InputVatLateClaimRow | null {
+  return SYSTEM_INPUT_VAT_LATE_CLAIM_ROWS.find((r) => (r.from === null || r.from <= ymd) && (r.to === null || ymd <= r.to)) ?? null;
+}
+
 export const SYSTEM_ROWS: { [K in LegalTableKind]: readonly LegalRowOf<K>[] } = {
   vat: SYSTEM_VAT_ROWS,
   wht: SYSTEM_WHT_ROWS,

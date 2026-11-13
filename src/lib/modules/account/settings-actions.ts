@@ -209,7 +209,18 @@ export async function saveAutoTaxInvoiceAction(formData: FormData): Promise<Acti
     raw === "ON_INVOICE" || raw === "MANUAL" || raw === "ON_PAYMENT" ? raw : "ON_PAYMENT";
   const res = await saveDocSettings(
     { tenantId, systemId },
-    { autoTaxInvoice: { mode, goodsOnIssue: on(formData, "goodsOnIssue"), posAbbreviated: on(formData, "posAbbreviated"), legalText: s(formData, "legalText") } },
+    {
+      autoTaxInvoice: { mode, goodsOnIssue: on(formData, "goodsOnIssue"), posAbbreviated: on(formData, "posAbbreviated"), legalText: s(formData, "legalText") },
+      // ACC T1.4 — ภาษีซื้อ (การ์ดเดียวกัน) · ไม่ส่งช่อง = คงค่าเดิม
+      ...(formData.has("nonClaimPosting")
+        ? {
+            inputVat: {
+              nonClaimPosting: s(formData, "nonClaimPosting") === "INTO_COST" ? ("INTO_COST" as const) : ("SEPARATE_ACCOUNT" as const),
+              vendorNoTaxIdDefault: s(formData, "vendorNoTaxIdDefault") === "NO_CLAIM" ? ("NO_CLAIM" as const) : ("PENDING" as const),
+            },
+          }
+        : {}),
+    },
   );
   if (!res.ok) return res;
   await audit(tenantId, userId, systemId, "ใบกำกับภาษีอัตโนมัติ", { mode, goodsOnIssue: on(formData, "goodsOnIssue") });

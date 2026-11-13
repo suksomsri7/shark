@@ -10,6 +10,8 @@ import { seedChartOfAccounts } from "./coa";
 import { isLockedDate, lockedMessage } from "./policy";
 import { vatRateBpAt } from "./legal-values";
 import { kindFromTiming, rawVatByKind, splitByKind, type KindSplit, type LineKind } from "./tax-point-shared";
+import { bucketOf, docDefaultStatus, lineStatusOf, parseInputVatSettings, type InputVatSettings, type VatBucket } from "./input-vat-shared";
+import { DOC_SETTINGS_KEY } from "./settings-schema";
 
 // ─────────────────────────────────────────────────────────────
 // gl.ts — Posting engine (double-entry) — QC5 Gate A
@@ -451,6 +453,9 @@ type SaleDoc = {
   taxPointBasis: string | null;
   issueDate: Date;
   sourceDocId: string | null;
+  /** ACC T1.4/T1.5 — ฝั่งซื้อ */
+  inputVatStatus?: string | null;
+  inputVatClaimDate?: Date | null;
 };
 
 /** ACC T0.2 ▸ อัตรา VAT = ตารางค่ากฎหมายของสมุด ณ วันที่เอกสาร (เดิม: คอลัมน์ AccountSettings.vatRateBp ?? 700) ◂ */
@@ -474,12 +479,95 @@ async function loadDocLines(
   ctx: GlCtx,
   docId: string,
   db: Db,
-): Promise<{ accountId: string | null; amount: number; vatRateBp: number }[]> {
+): Promise<{ accountId: string | null; amount: number; vatRateBp: number; inputVatStatus: string | null; inputVatReason: string | null }[]> {
   return db.accountDocumentLine.findMany({
     where: { documentId: docId, systemId: ctx.systemId },
     orderBy: { sortOrder: "asc" },
-    select: { accountId: true, amount: true, vatRateBp: true },
+    select: { accountId: true, amount: true, vatRateBp: true, inputVatStatus: true, inputVatReason: true },
   });
+}
+
+// ─────────────────── ACC T1.4 ภาษีซื้อตามสถานะ (เคลม / รอใบกำกับ / เคลมไม่ได้) ───────────────────
+// design note: ledger/wo-notes/T1.4.md §5 · T1.5.md §5
+
+/** ค่าตั้งภาษีซื้อของสมุด (docConfig.docSettings.inputVat) */
+async function inputVatSettingsOf(ctx: GlCtx, db: Db): Promise<InputVatSettings> {
+  const s = await db.accountSettings.findFirst({ where: { systemId: ctx.systemId }, select: { docConfig: true } });
+  const root = (s?.docConfig ?? {}) as Record<string, unknown>;
+  const ds = (root[DOC_SETTINGS_KEY] ?? {}) as Record<string, unknown>;
+  return parseInputVatSettings(ds.inputVat);
+}
+
+type PurchaseLine = { accountId: string | null; amount: number; vatRateBp: number; inputVatStatus: string | null; inputVatReason: string | null };
+type PurchaseDocVat = { inputVatStatus?: string | null; vatMode: string; vatTiming?: string | null; taxPointBasis?: string | null; status?: string };
+
+/** ใบนี้ใช้สถานะภาษีซื้อแบบ T1.4 ไหม (ใบเก่า = เส้นทางเดิมเป๊ะ) */
+function hasExplicitInputVat(doc: PurchaseDocVat, lines: PurchaseLine[]): boolean {
+  return !!doc.inputVatStatus || lines.some((l) => !!l.inputVatStatus);
+}
+
+/** แบ่ง VAT ของใบ (สตางค์) ลงบรรทัดตาม ฐานสุทธิ × อัตราของบรรทัด (largest remainder · Σ = vatTotal เป๊ะ) */
+function vatPartsByLine(vatTotal: number, lines: PurchaseLine[], bases: number[]): number[] {
+  if (vatTotal === 0 || lines.length === 0) return lines.map(() => 0);
+  const w = lines.map((l, i) => Math.max(0, bases[i] ?? 0) * Math.max(0, l.vatRateBp));
+  const useW = w.some((x) => x > 0) ? w : bases.map((b) => Math.max(0, b));
+  return splitByWeight(vatTotal, useW);
+}
+
+/** ถังบัญชีต่อบรรทัด */
+function lineBuckets(doc: PurchaseDocVat, lines: PurchaseLine[]): VatBucket[] {
+  const d = docDefaultStatus(doc);
+  return lines.map((l) => bucketOf(lineStatusOf(l, d), l.inputVatReason));
+}
+
+/** บัญชีของถัง (ภาษีซื้อไม่ขอคืน 2 ชนิด · TAX §ก4 (6 ทวิ)) */
+async function bucketLedger(b: Book, bucket: VatBucket, docType: string): Promise<string> {
+  if (bucket === "CLAIM") return b.id("VAT_INPUT");
+  if (bucket === "PENDING") return b.id("VAT_INPUT_UNDUE");
+  if (bucket === "NC_DEDUCTIBLE") return b.id("VAT_INPUT_NONCLAIM", docType);
+  return b.id("VAT_INPUT_NONCLAIM_DISALLOWED", docType);
+}
+
+const BUCKETS: VatBucket[] = ["CLAIM", "PENDING", "NC_DEDUCTIBLE", "NC_DISALLOWED"];
+
+/**
+ * น้ำหนัก VAT ต่อถัง "ปัจจุบัน" ของใบซื้อต้นทาง (ใช้แบ่ง VAT ของใบลด/เพิ่มหนี้รับ · T1.5 §5)
+ *   ส่วนที่รอใบกำกับ: PTX รับแล้ว = เคลม · PTX เคลมไม่ได้ = ไม่ขอคืนตามเหตุ · ยังรอ = รอ
+ *   null = ไม่มีต้นทาง/ต้นทางไม่ใช่ใบซื้อ ⇒ ผู้เรียกใช้ 1150 แบบเดิม
+ */
+export async function sourcePurchaseVatWeights(ctx: GlCtx, sourceId: string, db: Db): Promise<Record<VatBucket, number> | null> {
+  const src = await db.accountDocument.findFirst({
+    where: { id: sourceId, systemId: ctx.systemId },
+    select: { id: true, docType: true, status: true, vatMode: true, vatTiming: true, taxPointBasis: true, inputVatStatus: true, vatAmount: true, subTotal: true, depositDeducted: true, issueDate: true },
+  });
+  if (!src || !["PURCHASE", "EXPENSE", "ASSET_PURCHASE"].includes(src.docType) || src.vatAmount <= 0) return null;
+  const lines = await loadDocLines(ctx, src.id, db);
+  const { vatRegistered, vatRateBp } = await settingsOf(ctx, db, src.issueDate);
+  const rate = !vatRegistered || src.vatMode === "NONE" ? 0 : vatRateBp / 10000;
+  const bases = splitByWeight(src.subTotal, lines.map((l) => lineNetBase(l, rate, src.vatMode)));
+  const parts = vatPartsByLine(src.vatAmount, lines, bases);
+  const buckets = lineBuckets(src, lines);
+  const out: Record<VatBucket, number> = { CLAIM: 0, PENDING: 0, NC_DEDUCTIBLE: 0, NC_DISALLOWED: 0 };
+  parts.forEach((v, i) => (out[buckets[i]!] += v));
+  if (out.PENDING > 0) {
+    const ptx = await db.accountDocument.findFirst({
+      where: { systemId: ctx.systemId, docType: "PURCHASE_TAX_INVOICE", sourceDocId: src.id, status: { in: ["RECEIVED", "AWAITING_RECEIVE"] } },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, inputVatStatus: true, lines: { select: { inputVatReason: true }, take: 1 } },
+    });
+    if (ptx?.status === "RECEIVED") {
+      const to = ptx.inputVatStatus === "NO_CLAIM" ? bucketOf("NO_CLAIM", ptx.lines[0]?.inputVatReason) : "CLAIM";
+      out[to] += out.PENDING;
+      out.PENDING = 0;
+    }
+  }
+  return out;
+}
+
+/** แบ่งยอดตามน้ำหนักถัง (largest remainder) */
+function splitBuckets(total: number, w: Record<VatBucket, number>): Record<VatBucket, number> {
+  const parts = splitByWeight(total, BUCKETS.map((k) => Math.max(0, w[k])));
+  return Object.fromEntries(BUCKETS.map((k, i) => [k, parts[i] ?? 0])) as Record<VatBucket, number>;
 }
 
 // แยกฐาน/VAT ของยอดมัดจำ (depositDeducted = gross รวม VAT — QC5-A4)
@@ -597,6 +685,59 @@ export async function parkedVatOf(ctx: GlCtx, invoiceIds: readonly string[], tx?
   });
 }
 
+/**
+ * ACC T1.5 — ภาษีซื้อที่ยังพักรอใบกำกับ (1155) ต่อใบซื้อต้นทาง จาก GL จริง:
+ *   Σ(Dr−Cr) ของ VAT_INPUT_UNDUE ใน JV ของใบต้นทาง + ใบลด/เพิ่มหนี้รับที่อ้างใบนั้น + ใบกำกับภาษีซื้อของใบนั้น (รวมรายการกลับ)
+ */
+export async function pendingInputVatOf(ctx: GlCtx, sourceIds: readonly string[], tx?: Tx): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (sourceIds.length === 0) return out;
+  return withTx(tx, async (db) => {
+    const acc = (await resolveLine(ctx, "VAT_INPUT_UNDUE", undefined, db)).accountId;
+    const kids = await db.accountDocument.findMany({
+      where: { systemId: ctx.systemId, sourceDocId: { in: [...sourceIds] }, docType: { in: ["PURCHASE_TAX_INVOICE", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED"] } },
+      select: { id: true, sourceDocId: true },
+    });
+    const owner = new Map<string, string>();
+    for (const id of sourceIds) {
+      owner.set(id, id);
+      out.set(id, 0);
+    }
+    for (const k of kids) if (k.sourceDocId) owner.set(k.id, k.sourceDocId);
+    const lines = await db.accountJournalLine.findMany({
+      where: { systemId: ctx.systemId, accountId: acc, entry: { refType: "AccountDocument", refId: { in: [...owner.keys()] } } },
+      select: { debit: true, credit: true, entry: { select: { refId: true } } },
+    });
+    for (const l of lines) {
+      const src = owner.get(l.entry.refId ?? "");
+      if (src) out.set(src, (out.get(src) ?? 0) + l.debit - l.credit);
+    }
+    return out;
+  });
+}
+
+/** ใบลด/เพิ่มหนี้รับ: ขาต้นทุน + ขา VAT ตามสถานะของใบเดิม (side CR = ใบลดหนี้ · DR = ใบเพิ่มหนี้) */
+async function adjustPurchaseVat(ctx: GlCtx, db: Db, b: Book, doc: SaleDoc, rate: number, afterDiscount: number, side: "CR" | "DR"): Promise<void> {
+  const post = (id: string, amt: number, note?: string) => (side === "CR" ? b.cr(id, amt, note) : b.dr(id, amt, note));
+  const costAcct = await b.id("PURCHASE_DEFAULT", doc.docType);
+  const vat = rate > 0 ? doc.vatAmount : 0;
+  const w = vat > 0 && doc.sourceDocId ? await sourcePurchaseVatWeights(ctx, doc.sourceDocId, db) : null;
+  if (!w || BUCKETS.every((k) => w[k] <= 0)) {
+    post(costAcct, afterDiscount);
+    if (vat > 0) post(await b.id("VAT_INPUT"), vat);
+    return;
+  }
+  const parts = splitBuckets(vat, w);
+  const ivs = await inputVatSettingsOf(ctx, db);
+  let cost = afterDiscount;
+  for (const k of BUCKETS) {
+    if (parts[k] === 0) continue;
+    if ((k === "NC_DEDUCTIBLE" || k === "NC_DISALLOWED") && ivs.nonClaimPosting === "INTO_COST") cost += parts[k];
+    else post(await bucketLedger(b, k, doc.docType), parts[k], k === "CLAIM" || k === "PENDING" ? undefined : "ภาษีซื้อไม่ขอคืน");
+  }
+  post(costAcct, cost);
+}
+
 // ─────────────────── postDocument ───────────────────
 
 export async function postDocument(
@@ -625,6 +766,8 @@ export async function postDocument(
         vatTiming: true,
         taxPointBasis: true,
         issueDate: true,
+        inputVatStatus: true,
+        inputVatClaimDate: true,
       },
     })) as SaleDoc | null;
     if (!doc) throw new Error("ไม่พบเอกสาร");
@@ -790,6 +933,33 @@ export async function postDocument(
             ? "VAT_INPUT_UNDUE"
             : "VAT_INPUT";
         const lines = await loadDocLines(ctx, docId, db);
+        if (hasExplicitInputVat(doc, lines)) {
+          // ── ACC T1.4: VAT ต่อบรรทัดตามสถานะ — เคลม 1150 · รอใบกำกับ 1155 · เคลมไม่ได้ 6950/6960 หรือเข้าต้นทุนของบรรทัด ──
+          const ivs = await inputVatSettingsOf(ctx, db);
+          const bases = lines.map((l) => lineNetBase(l, rate, doc.vatMode));
+          const drs = lines.length > 0 ? splitByWeight(doc.subTotal, bases) : [];
+          const vatTotal = rate > 0 ? doc.vatAmount - dep.vat : 0;
+          const parts = vatPartsByLine(vatTotal, lines, drs);
+          const buckets = lineBuckets(doc, lines);
+          const agg: Record<VatBucket, number> = { CLAIM: 0, PENDING: 0, NC_DEDUCTIBLE: 0, NC_DISALLOWED: 0 };
+          for (let i = 0; i < lines.length; i++) {
+            const nc = buckets[i] === "NC_DEDUCTIBLE" || buckets[i] === "NC_DISALLOWED";
+            if (nc && ivs.nonClaimPosting === "INTO_COST") drs[i] = (drs[i] ?? 0) + (parts[i] ?? 0);
+            else agg[buckets[i]!] += parts[i] ?? 0;
+          }
+          if (lines.length === 0) {
+            b.dr(await b.id(expKey, doc.docType), doc.subTotal);
+            agg[bucketOf(docDefaultStatus(doc), null)] += vatTotal;
+          }
+          for (let i = 0; i < lines.length; i++) b.dr(lines[i]!.accountId ?? (await b.id(expKey, doc.docType)), drs[i] ?? 0);
+          if (doc.discountAmount > 0) b.cr(await b.id("DISCOUNT_RECEIVED"), doc.discountAmount, "ส่วนลดรับ");
+          for (const k of BUCKETS) if (agg[k] !== 0) b.dr(await bucketLedger(b, k, doc.docType), agg[k], k === "CLAIM" || k === "PENDING" ? undefined : "ภาษีซื้อไม่ขอคืน");
+          if (dep.base > 0) b.cr(await b.id("DEPOSIT_PAID"), dep.base, "หักมัดจำจ่าย");
+          b.cr(await b.id("AP"), doc.grandTotal);
+          book = "PURCHASES";
+          opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "บันทึกซื้อ/ค่าใช้จ่าย" };
+          break;
+        }
         if (lines.length > 0) {
           // เดบิตต้นทุน/ค่าใช้จ่ายด้วย "ฐานสุทธิ" เสมอ — ตรงกับฝั่งขายที่ใช้ subTotal − discountAmount
           // โหมดราคารวม VAT: l.amount รวม VAT อยู่ → ถ้าเดบิตตรง ๆ Dr จะเกิน Cr เท่ากับ VAT (ออกเอกสารไม่ได้)
@@ -818,6 +988,25 @@ export async function postDocument(
         // Dr 16xx สินทรัพย์ (ราคาสุทธิ) + Dr 1150 VAT ซื้อ · Cr 2100 เจ้าหนี้
         const lines = await loadDocLines(ctx, docId, db);
         const assetAcct = lines.find((l) => l.accountId)?.accountId ?? (await b.id("ASSET_DEFAULT", doc.docType));
+        if (hasExplicitInputVat(doc, lines) && rate > 0) {
+          // ACC T1.4: ส่วนที่เคลมไม่ได้เข้าราคาทุนสินทรัพย์เสมอ (TFRS NPAEs 10.5 — domain-accounting-books.md) · รอใบกำกับ = 1155
+          const bases = splitByWeight(doc.subTotal, lines.map((l) => lineNetBase(l, rate, doc.vatMode)));
+          const parts = vatPartsByLine(doc.vatAmount, lines, bases);
+          const buckets = lineBuckets(doc, lines);
+          let claim = 0, pending = 0, cost = 0;
+          parts.forEach((v, i) => {
+            if (buckets[i] === "CLAIM") claim += v;
+            else if (buckets[i] === "PENDING") pending += v;
+            else cost += v;
+          });
+          b.dr(assetAcct, afterDiscount + cost, "ราคาทุนสินทรัพย์");
+          b.dr(await b.id("VAT_INPUT"), claim);
+          b.dr(await b.id("VAT_INPUT_UNDUE"), pending);
+          b.cr(await b.id("AP"), doc.grandTotal);
+          book = "PURCHASES";
+          opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ซื้อสินทรัพย์" };
+          break;
+        }
         b.dr(assetAcct, afterDiscount, "ราคาทุนสินทรัพย์");
         if (rate > 0) b.dr(await b.id("VAT_INPUT"), doc.vatAmount);
         b.cr(await b.id("AP"), doc.grandTotal);
@@ -828,10 +1017,28 @@ export async function postDocument(
       case "PURCHASE_TAX_INVOICE": {
         // รับใบกำกับภาษีซื้อแล้ว → ย้าย 1155 (รอใบกำกับ) เข้า 1150 (เคลมได้)
         if (doc.vatAmount <= 0) return { skipped: true, reason: "ไม่มี VAT ให้ย้าย" };
+        // ACC T1.5: ลงวันที่ลงภาษีซื้อ (เดือนที่รับใบจริง) — เดิม = วันที่สร้างรายการรอรับ
+        const ptxDate = doc.inputVatClaimDate ?? doc.issueDate;
+        if (doc.inputVatStatus === "NO_CLAIM") {
+          // ACC T1.4 §7: ใบกำกับไม่มาแล้ว → ภาษีซื้อไม่ขอคืน (หรือเข้าค่าใช้จ่ายของใบต้นทางตามค่าตั้ง) / Cr 1155
+          const ivs = await inputVatSettingsOf(ctx, db);
+          const ptxLines = await loadDocLines(ctx, docId, db);
+          const bucket = bucketOf("NO_CLAIM", ptxLines[0]?.inputVatReason);
+          let acct = await bucketLedger(b, bucket, doc.docType);
+          if (ivs.nonClaimPosting === "INTO_COST" && doc.sourceDocId) {
+            const srcLine = await db.accountDocumentLine.findFirst({ where: { documentId: doc.sourceDocId, systemId: ctx.systemId, accountId: { not: null } }, orderBy: { sortOrder: "asc" }, select: { accountId: true } });
+            acct = srcLine?.accountId ?? (await b.id("EXPENSE_DEFAULT", doc.docType));
+          }
+          b.dr(acct, doc.vatAmount, "ภาษีซื้อไม่ขอคืน");
+          b.cr(await b.id("VAT_INPUT_UNDUE"), doc.vatAmount);
+          book = "GENERAL";
+          opts = { book, journal: "ADJUST", date: ptxDate, refType: "AccountDocument", refId: docId, event, memo: "ใบกำกับภาษีซื้อ — เคลมไม่ได้" };
+          break;
+        }
         b.dr(await b.id("VAT_INPUT"), doc.vatAmount);
         b.cr(await b.id("VAT_INPUT_UNDUE"), doc.vatAmount);
         book = "GENERAL";
-        opts = { book, journal: "ADJUST", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "รับใบกำกับภาษีซื้อ — รับรู้ภาษีซื้อ" };
+        opts = { book, journal: "ADJUST", date: ptxDate, refType: "AccountDocument", refId: docId, event, memo: "รับใบกำกับภาษีซื้อ — รับรู้ภาษีซื้อ" };
         break;
       }
       case "DEPOSIT_PAYMENT": {
@@ -861,16 +1068,15 @@ export async function postDocument(
       case "CREDIT_NOTE_RECEIVED": {
         // รับใบลดหนี้จากผู้ขาย: Dr 2100 เจ้าหนี้ · Cr ต้นทุน/ค่าใช้จ่าย + Cr 1150 (กลับภาษีซื้อ)
         b.dr(await b.id("AP"), doc.grandTotal);
-        b.cr(await b.id("PURCHASE_DEFAULT", doc.docType), afterDiscount);
-        if (rate > 0) b.cr(await b.id("VAT_INPUT"), doc.vatAmount);
+        // ACC T1.5 §5: VAT ตามสถานะปัจจุบันของใบเดิม (เคลม 1150 · รอ 1155 · ไม่ขอคืน 6950/6960 หรือต้นทุน) · ไม่อ้างใบเดิม = 1150 (เดิม)
+        await adjustPurchaseVat(ctx, db, b, doc, rate, afterDiscount, "CR");
         book = "PURCHASES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "รับใบลดหนี้" };
         break;
       }
       case "DEBIT_NOTE_RECEIVED": {
         // รับใบเพิ่มหนี้จากผู้ขาย: Dr ต้นทุน/ค่าใช้จ่าย + Dr 1150 · Cr 2100 เจ้าหนี้
-        b.dr(await b.id("PURCHASE_DEFAULT", doc.docType), afterDiscount);
-        if (rate > 0) b.dr(await b.id("VAT_INPUT"), doc.vatAmount);
+        await adjustPurchaseVat(ctx, db, b, doc, rate, afterDiscount, "DR");
         b.cr(await b.id("AP"), doc.grandTotal);
         book = "PURCHASES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "รับใบเพิ่มหนี้" };

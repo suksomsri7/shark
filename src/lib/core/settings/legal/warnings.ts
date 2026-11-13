@@ -38,6 +38,16 @@ export const LEGAL_WARNING_CODES = [
   "OUTPUT_VAT_PARKED_PAST_MONTH",
   "TAX_INVOICE_LATE_DATE_CHOICE",
   "GOODS_TAX_INVOICE_DEFERRED",
+  // ── ภาษีซื้อ (T1.4 · T1.5) ──
+  "INPUT_VAT_VENDOR_NO_TAX_ID",
+  "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID",
+  "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY",
+  "INPUT_VAT_NONCLAIM_REASON_DEFAULTED",
+  "EXPENSE_PAYEE_MISSING",
+  "INPUT_VAT_LATE_CLAIM",
+  "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW",
+  "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH",
+  "INPUT_VAT_PENDING_PAST_WINDOW",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -229,6 +239,98 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     messageTh: (p) =>
       `ใบนี้จะไม่ออกใบกำกับของสินค้าพร้อมกัน — ภาษีขายของสินค้า ฿${s(p, "vat")} จะพักไว้จนกว่าจะออกใบกำกับ · ภาษีขายของสินค้าเกิดเมื่อส่งมอบ (ม.78) ถ้าส่งมอบแล้วต้องออกใบกำกับทันที (ม.86) · ระบบเตือนเมื่อค้างข้ามเดือน`,
     citation: "ประมวลรัษฎากร ม.78(1), ม.86 · references/common-vat-invoice.md §4, §13",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  // ── ภาษีซื้อ (T1.4) ──
+  INPUT_VAT_VENDOR_NO_TAX_ID: {
+    code: "INPUT_VAT_VENDOR_NO_TAX_ID",
+    titleTh: "คู่ค้าไม่มีเลขประจำตัวผู้เสียภาษี",
+    messageTh: (p) =>
+      `${p.vendor ? `คู่ค้า ${s(p, "vendor")}` : "เอกสารนี้ยังไม่มีคู่ค้า"} ไม่มีเลขประจำตัวผู้เสียภาษี — ภาษีซื้อเคลมได้เมื่อมีใบกำกับภาษีเต็มรูปที่ถูกต้อง (ไม่มีใบกำกับ/ใบไม่สมบูรณ์ = ภาษีซื้อต้องห้าม ม.82/5(1)(2)) · ระบบตั้งภาษีซื้อ ฿${s(p, "vat")} เป็น "${s(p, "status")}" ให้ก่อน เปลี่ยนได้ที่ช่องภาษีซื้อ`,
+    citation: "ประมวลรัษฎากร ม.82/5(1)(2), ม.86/4 · references/common-vat-invoice.md §5, §17 · audit-checklist-accounting.md C1",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID: {
+    code: "INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID",
+    titleTh: "เคลมภาษีซื้อจากคู่ค้าที่ไม่มีเลขผู้เสียภาษี",
+    messageTh: (p) =>
+      `เลือกเคลมภาษีซื้อ ฿${s(p, "vat")} ทั้งที่${p.vendor ? `คู่ค้า ${s(p, "vendor")}` : "เอกสาร"}ไม่มีเลขประจำตัวผู้เสียภาษี — เคลมได้เฉพาะเมื่อได้รับใบกำกับภาษีเต็มรูปที่ถูกต้องแล้ว (ม.82/5(1)(2)) · ถ้ามีใบกำกับแล้วให้กรอกเลขผู้เสียภาษีของคู่ค้า · กดยืนยันเพื่อเคลมตามที่เลือก`,
+    citation: "ประมวลรัษฎากร ม.82/5(1)(2), ม.86/4 · references/common-vat-invoice.md §5, §17 · audit-checklist-accounting.md C1",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  INPUT_VAT_CLAIM_PROHIBITED_CATEGORY: {
+    code: "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY",
+    titleTh: "เคลมภาษีซื้อในหมวดที่ภาษีซื้อต้องห้าม",
+    messageTh: (p) =>
+      `บรรทัด "${s(p, "line")}" ลงบัญชีหมวด ${s(p, "reason")} ซึ่งภาษีซื้อเป็นภาษีซื้อต้องห้าม (${s(p, "section")}) แต่เลือกเคลม ฿${s(p, "vat")} — กดยืนยันเพื่อเคลมตามที่เลือก`,
+    citation: "ประมวลรัษฎากร ม.82/5 · ประกาศ VAT ฉ.17, ฉ.42 · references/common-vat-invoice.md §17 · audit-checklist-accounting.md C2",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  INPUT_VAT_NONCLAIM_REASON_DEFAULTED: {
+    code: "INPUT_VAT_NONCLAIM_REASON_DEFAULTED",
+    titleTh: "ไม่ได้ระบุเหตุที่เคลมไม่ได้",
+    messageTh: (p) =>
+      `ภาษีซื้อที่เคลมไม่ได้ ฿${s(p, "vat")} ไม่ได้ระบุเหตุ — ระบบลงเป็น "ภาษีซื้อไม่ขอคืน (รายจ่ายต้องห้าม)" ไว้ก่อน (ภาษีซื้อต้องห้ามตาม ม.82/5(4) ค่ารับรอง และ (6) เป็นรายจ่ายได้ · (1)(2)(3)(5) เป็นรายจ่ายไม่ได้) · เลือกเหตุได้ที่ช่องภาษีซื้อ`,
+    citation: "ประมวลรัษฎากร ม.65 ตรี (6 ทวิ), ม.82/5 · references/domain-business-income-tax.md §ก4",
+    tag: "S",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  EXPENSE_PAYEE_MISSING: {
+    code: "EXPENSE_PAYEE_MISSING",
+    titleTh: "รายจ่ายไม่มีชื่อผู้รับ",
+    messageTh: () =>
+      "ยังไม่ได้เลือกผู้รับเงิน (คู่ค้า) — บันทึกได้ แต่รายจ่ายที่พิสูจน์ไม่ได้ว่าใครเป็นผู้รับเป็นรายจ่ายต้องห้ามทางภาษีเงินได้ (ม.65 ตรี (18)) · ควรเลือกคู่ค้าและแนบหลักฐานการจ่าย",
+    citation: "ประมวลรัษฎากร ม.65 ตรี (18) · references/domain-business-income-tax.md §ก4 (18) · audit-checklist-accounting.md C6",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  // ── ภาษีซื้อข้ามเดือน (T1.5) ──
+  INPUT_VAT_LATE_CLAIM: {
+    code: "INPUT_VAT_LATE_CLAIM",
+    titleTh: "เคลมภาษีซื้อข้ามเดือน",
+    messageTh: (p) =>
+      `ใบกำกับลงวันที่เดือน ${s(p, "invoiceMonth")} นำมาเคลมในเดือนภาษี ${s(p, "claimMonth")} (เดือนที่ ${s(p, "months")} นับแต่เดือนถัดจากเดือนที่ออกใบ · เพดาน ${s(p, "limit")} เดือน) — ใช้ได้เมื่อมีเหตุจำเป็น และต้องระบุ "${s(p, "note")}" บนใบกำกับ · ระบบเก็บข้อความนี้ไว้กับเอกสารและรายงานภาษีซื้อ`,
+    citation: "ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 4 ข้อ 2 · references/common-vat-invoice.md §17 · audit-checklist-accounting.md C3",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW: {
+    code: "INPUT_VAT_LATE_CLAIM_OUT_OF_WINDOW",
+    titleTh: "เคลมภาษีซื้อเกินเพดานเดือน",
+    messageTh: (p) =>
+      `ใบกำกับลงวันที่เดือน ${s(p, "invoiceMonth")} นำมาเคลมในเดือนภาษี ${s(p, "claimMonth")} = เดือนที่ ${s(p, "months")} นับแต่เดือนถัดจากเดือนที่ออกใบ เกินเพดาน ${s(p, "limit")} เดือน (ประกาศ VAT ฉ.4 ข้อ 2 · ตัวบทให้ไม่เกิน 3 ปี ม.82/3 ว.สี่) — ภาษีซื้อนี้อาจใช้เคลมในเดือนนี้ไม่ได้ · กดยืนยันเพื่อบันทึกตามที่เลือก`,
+    citation: "ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 4 ข้อ 2 · ประมวลรัษฎากร ม.82/3 ว.สี่ · references/common-vat-invoice.md §17 · audit-checklist-accounting.md C3",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH: {
+    code: "INPUT_VAT_CLAIM_BEFORE_INVOICE_MONTH",
+    titleTh: "เดือนที่เคลมอยู่ก่อนเดือนของใบกำกับ",
+    messageTh: (p) =>
+      `เดือนภาษีที่เลือกเคลม (${s(p, "claimMonth")}) อยู่ก่อนเดือนของใบกำกับ (${s(p, "invoiceMonth")}) — ปกติเคลมได้ตั้งแต่เดือนของใบกำกับ ตรวจวันที่อีกครั้ง · กดยืนยันเพื่อบันทึกตามที่เลือก`,
+    citation: "references/common-vat-invoice.md §17 (เดือนที่ใช้: ปกติเดือนของใบกำกับ)",
+    tag: "S",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  INPUT_VAT_PENDING_PAST_WINDOW: {
+    code: "INPUT_VAT_PENDING_PAST_WINDOW",
+    titleTh: "ภาษีซื้อรอใบกำกับเกินเพดานเดือน",
+    messageTh: (p) =>
+      `ภาษีซื้อ ฿${s(p, "vat")} ของ ${s(p, "docNo")} (ลงวันที่ ${s(p, "date")}) ยังรอใบกำกับ เลยเดือนภาษี ${s(p, "lastMonth")} ซึ่งเป็นเดือนสุดท้ายที่เคลมได้ตามเพดาน ${s(p, "limit")} เดือน (นับจากเดือนของเอกสารต้นทาง) — ถ้าใบกำกับไม่มาแล้วให้บันทึกเป็น "เคลมไม่ได้"`,
+    citation: "ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 4 ข้อ 2 · references/common-vat-invoice.md §17",
     tag: "V",
     checkedAt: "2026-11-13",
     ack: false,

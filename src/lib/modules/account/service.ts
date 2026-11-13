@@ -5975,7 +5975,7 @@ export async function searchContactPickerRows(
     },
     orderBy: { name: "asc" },
     take,
-    select: { id: true, name: true, taxId: true, phone: true, creditTermDays: true, defaultPriceMode: true },
+    select: { id: true, name: true, taxId: true, phone: true, creditTermDays: true, defaultPriceMode: true, legalType: true },
   });
   const outstanding = await outstandingByContacts(tenantId, systemId, rows.map((r) => r.id));
   return rows.map((r) => ({ ...r, outstandingSatang: outstanding.get(r.id) ?? 0 }));
