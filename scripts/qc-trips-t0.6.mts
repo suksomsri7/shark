@@ -465,11 +465,11 @@ try {
   });
   await st("S-14", `ไม่แตะไฟล์ต้องห้ามเทียบ BASE_SHA ${BASE_SHA.slice(0, 9)}: prisma/ · core/settings · core/sellable · ไฟล์ T0.1–T0.5 (ยกเว้น index/sellable-impl/snapshot/pricing) · pos/hotel/rooms/booking/dorm/queue/ticket · ข้อสอบเดิม`, () => {
     ok(git(["cat-file", "-t", BASE_SHA]).trim() === "commit", `หา BASE_SHA ${BASE_SHA} ไม่เจอ`);
-    const trips = ["capacity-core.ts", "capacity.ts", "capacity-service.ts", "capacity-actions.ts", "pricing-core.ts", "promo.ts", "prices.ts", "pricing-actions.ts", "products.ts", "products-core.ts", "product-actions.ts",
+    const trips = ["capacity-core.ts", /* ORACLE-EDIT S-14 (ผู้คุม 13 พ.ย.): capacity.ts ออก — มติ R9 (ปล่อย hold ที่ผูกการจอง ⇒ HOLD_HAS_BOOKING) · ข้อสอบ t0.1/t0.3/t0.4 ออก — ผู้คุมแก้เอง */ "capacity-service.ts", "capacity-actions.ts", "pricing-core.ts", "promo.ts", "prices.ts", "pricing-actions.ts", "products.ts", "products-core.ts", "product-actions.ts",
       "departures.ts", "departures-core.ts", "departure-actions.ts", "resources.ts", "waitlist.ts", "jobs.ts", "money-math.ts", "json-schemas.ts"].map((f) => D + f);
     const paths = ["prisma", "src/lib/core/settings", "src/lib/core/sellable.ts", "src/lib/platform/sellables.ts", ...trips,
       "src/lib/modules/pos", "src/lib/modules/rooms", "src/lib/modules/hotel", "src/lib/modules/booking", "src/lib/modules/dorm", "src/lib/modules/queue", "src/lib/modules/ticket",
-      "scripts/qc-trips-p0.1.mts", "scripts/qc-trips-t0.1.mts", "scripts/qc-trips-t0.2.mts", "scripts/qc-trips-t0.3.mts", "scripts/qc-trips-t0.4.mts", "scripts/qc-trips-t0.5.mts"];
+      "scripts/qc-trips-p0.1.mts", "scripts/qc-trips-t0.2.mts", "scripts/qc-trips-t0.5.mts"];
     const changed = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", ...paths]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...paths]).split("\n")].filter(Boolean))];
     if (git(["ls-tree", "--name-only", "session/trips", "scripts/qc-trips-t0.6.mts"]).trim() && git(["show", "session/trips:scripts/qc-trips-t0.6.mts"]) !== read("scripts/qc-trips-t0.6.mts")) changed.push("scripts/qc-trips-t0.6.mts");
     ok(changed.length === 0, `แตะ: ${changed.slice(0, 6).join(", ")}`);
@@ -477,7 +477,7 @@ try {
   await st("S-15", "snapshot.ts + pricing.ts แก้ได้แบบเพิ่มอย่างเดียว (git diff --numstat เทียบ BASE_SHA: ลบ 0 บรรทัด)", () => {
     ok(git(["cat-file", "-t", BASE_SHA]).trim() === "commit", "หา BASE_SHA ไม่เจอ");
     const rows = git(["diff", "--numstat", BASE_SHA, "--", D + "snapshot.ts", D + "pricing.ts"]).split("\n").filter(Boolean).map((l) => l.split("\t"));
-    const del = rows.filter((r) => Number(r[1]) > 0).map((r) => `${r[2]} −${r[1]}`);
+    const del = rows.filter((r) => Number(r[1]) > (r[2].endsWith("pricing.ts") ? 1 : 0)).map( /* ORACLE-EDIT S-15 (ผู้คุม 13 พ.ย.): pricing.ts แก้ได้ 1 บรรทัด (OPTS.overrideApprovals รับ resolvedMinor · มติ R14) */ (r) => `${r[2]} −${r[1]}`);
     ok(del.length === 0, `ลบ/แก้บรรทัดเดิม: ${del.join(", ")}`);
   });
   await st("S-16", "Sellable: sellableFor(\"TRIP\") hold/confirm/cancel/finalizeInTx ไม่ใช่ตัวปิด NOT_IMPLEMENTED_YET แล้ว · platform/basket.ts ส่งออก basketHold + basketConfirm", async () => {
@@ -961,13 +961,17 @@ try {
   });
   await st("CF-23", "คำอนุมัติ APPROVED จริง + resolvedMinor ⇒ CONFIRMED · ที่นั่งผู้ใหญ่ 2,000 priceSource MANUAL · audit trips.booking.price_override", async () => {
     await needDb(); const d = await mkDep("2027-03-25");
-    const apId = await insertRow("ApprovalRequest", { id: rid("ap"), tenantId: tA, policyId: rid("pol"), entityType: "trips.price_override", entityId: rid("e"), unitId: uA, status: "APPROVED", requestedById: String(U.oa.userId), decidedAt: new Date(), idempotencyKey: `qc-${hex(6)}` });
+    const apId = await insertRow("ApprovalRequest", { id: rid("ap"), tenantId: tA, policyId: rid("pol"), entityType: "trips.price_override", entityId: String(fn("tripPriceOverrideEntityId")({ unitId: uA, departureId: d, itemRef: "seat:ADULT", unitMinor: 200_000, resolvedMinor: R.adultSatang })) /* ORACLE-EDIT CF-23 (ผู้คุม 13 พ.ย.): มติ R1 — คำอนุมัติต้องผูกรอบ/รายการ/ยอด */, unitId: uA, status: "APPROVED", requestedById: String(U.oa.userId), decidedAt: new Date(), idempotencyKey: `qc-${hex(6)}` });
     const ap = [{ approvalId: apId, itemRef: "seat:ADULT", unitMinor: 200_000, resolvedMinor: R.adultSatang }];
     const r = (await bookNow(staff(), [line(d)], { overrides: OVR(), approvals: ap, canOverride: true })).r;
     const id = ref0(r).bookingId; ok(r.ok === true, `ผล ${fmt(r)}`);
     const a = (await items(id)).find((i) => i.kind === "SEAT" && i.paxCode === "ADULT");
     eq([a?.unitPriceMinor, a?.priceSource], [200_000, "MANUAL"], "ที่นั่ง");
     ok((await q<{ n: number }>(`SELECT count(*)::int n FROM "AuditLog" WHERE "tenantId" = $1 AND action = 'trips.booking.price_override' AND "targetId" = $2`, [tA, id]))[0]?.n === 1, "ไม่มี audit");
+    // ORACLE-EDIT CF-23 (ผู้คุม 13 พ.ย.): มติ R1 — ใช้คำอนุมัติเดิมซ้ำ ⇒ APPROVAL_USED · ไม่เขียน
+    const n1 = await bookingCount();
+    codeR((await bookNow(staff(), [line(d)], { overrides: OVR(), approvals: ap, canOverride: true })).r, "FORBIDDEN", "ใช้คำอนุมัติซ้ำ", "APPROVAL_USED");
+    eq(await bookingCount(), n1, "ใช้ซ้ำแล้วไม่เขียน");
   });
   await st("CF-24", "แก้ราคามือโดยไม่มี canOverride (action ไม่ได้ assertCan) ⇒ FORBIDDEN · ไม่เขียน", async () => {
     await needDb(); const d = await mkDep("2027-03-25"); const n0 = await bookingCount();

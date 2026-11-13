@@ -10,13 +10,22 @@ import type { Booker } from "@/lib/core/sellable";
 
 // ── T0.6 booking ──
 export const INT4_MAX = 2_147_483_647;
-const ID = z.string().trim().min(1).max(128);
+/** อักขระควบคุม (รวม NUL) ห้ามอยู่ในข้อความใด ๆ ของคำขอ (มติ R10 · ฐาน UTF8 ไม่รับ 0x00) */
+const NO_CTL = /^[^\u0000-\u001f\u007f]*$/;
+const noCtl = (s: string) => NO_CTL.test(s);
+/** ข้อความอิสระ (ตัดช่องว่าง · ห้ามอักขระควบคุม) */
+const text = (max: number) => z.string().trim().max(max).refine(noCtl, { message: "มีอักขระควบคุม" });
+const ID = z.string().trim().min(1).max(128).refine(noCtl, { message: "มีอักขระควบคุม" });
 const NN = z.number().int().min(0).max(INT4_MAX);
 /** คีย์กันซ้ำของผู้เรียก (CC §C ข้อ 3) — สั้นกว่า 100 เพื่อเผื่อส่วนต่อท้ายของ hold ต่อบรรทัด (`_<i>`) */
 export const IDEM_KEY = z.string().regex(/^[A-Za-z0-9_-]{8,90}$/);
 /** token ตะกร้าของหน้าจอง (PUBLIC) */
 export const BASKET_TOKEN = z.string().regex(/^[A-Za-z0-9_-]{22,128}$/);
-const YMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** วันที่จริง YYYY-MM-DD (2026-13-01 ⇒ ไม่ผ่าน) */
+const YMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => {
+  const d = new Date(`${s}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}, { message: "วันที่ไม่ถูกต้อง" });
 const ISO = z.string().min(1).max(64).refine((s) => !Number.isNaN(Date.parse(s)), { message: "เวลาไม่ถูกต้อง" });
 
 // ═══════════════ บรรทัด · ใบเสนอราคา (รูปเดียวกับ LineRequest/QuoteRequest ของ CC §C) ═══════════════
@@ -31,43 +40,44 @@ export const lineSchema = z.strictObject({
   wholeCabinIds: z.array(ID).max(200).optional(),
   extras: z.array(z.strictObject({ extraId: ID, qty: NN })).max(200).optional(),
   pickupZoneId: ID.optional(),
-  promoCode: z.string().max(64).optional(),
+  promoCode: text(64).optional(),
   currency: z.string().regex(/^[A-Z]{3}$/).optional(),
 });
 export type LineInput = z.infer<typeof lineSchema>;
 export const quoteRequestSchema = z.strictObject({
   lines: z.array(lineSchema).min(1).max(20),
-  attribution: z.strictObject({ agentCode: z.string().max(64).optional(), staffCode: z.string().max(64).optional(), linkId: z.string().max(128).optional(), source: z.string().max(64).optional() }).optional(),
+  attribution: z.strictObject({ agentCode: text(64).optional(), staffCode: text(64).optional(), linkId: text(128).optional(), source: text(64).optional() }).optional(),
   agentDiscountSatang: NN.optional(),
 });
 export type QuoteRequestInput = z.infer<typeof quoteRequestSchema>;
 
-const overrideSchema = z.strictObject({ itemRef: z.string().min(1).max(200), unitMinor: NN, reason: z.string().max(500) });
+const overrideSchema = z.strictObject({ itemRef: text(200).pipe(z.string().min(1)), unitMinor: NN, reason: text(500) });
 /** resolvedMinor ไม่บังคับในรูป — ตรวจแยกเพื่อคืนเหตุ APPROVAL_RESOLVED_REQUIRED (ใบสั่ง §5.2 ข้อ 6 · มติ §16 ข้อ 3) */
-const approvalSchema = z.strictObject({ approvalId: ID, itemRef: z.string().min(1).max(200), unitMinor: NN, resolvedMinor: NN.optional() });
+const approvalSchema = z.strictObject({ approvalId: ID, itemRef: text(200).pipe(z.string().min(1)), unitMinor: NN, resolvedMinor: NN.optional() });
 export type OverrideInput = z.infer<typeof overrideSchema>;
 export type ApprovalInput = z.infer<typeof approvalSchema>;
 
+/**
+ * ผู้จอง — ช่องที่ยังไม่มีที่เก็บ (marketingConsent · CC Booker) ไม่รับ (strict ⇒ VALIDATION) จนกว่าจะมีที่เก็บ (มติ R14)
+ * ผู้เดินทาง — `fields` (แบบฟอร์ม) = T0.8 ไม่รับในใบนี้ · การชำระ — `tender` = T0.7 ไม่รับ · `note` ไม่รับ (ไม่มีคอลัมน์)
+ */
 export const bookerSchema = z.strictObject({
-  name: z.string().trim().min(1).max(200),
-  phone: z.string().trim().max(40).optional(),
-  email: z.string().trim().max(200).optional(),
-  lineUserId: z.string().trim().max(128).optional(),
+  name: text(200).pipe(z.string().min(1)),
+  phone: text(40).optional(),
+  email: text(200).optional(),
+  lineUserId: text(128).optional(),
   partyId: ID.optional(),
-  marketingConsent: z.boolean().optional(),
 });
-const passengerSchema = z.strictObject({ name: z.string().trim().min(1).max(200), paxTypeId: ID, fields: z.record(z.string(), z.unknown()).optional() });
-const paySchema = z.strictObject({ method: z.enum(["PAY_NOW", "PAY_LATER", "WALLET", "CREDIT"]), tender: z.enum(["PROMPTPAY", "CARD", "SLIP", "CASH"]).optional() });
+const passengerSchema = z.strictObject({ name: text(200).pipe(z.string().min(1)), paxTypeId: ID });
+const paySchema = z.strictObject({ method: z.enum(["PAY_NOW", "PAY_LATER", "WALLET", "CREDIT"]) });
 
 // ═══════════════ คำขอของบริการ (ใบสั่ง §5.1) ═══════════════
 export const holdRequestSchema = z.strictObject({
   quote: quoteRequestSchema,
-  quoteId: z.string().min(1).max(128),
+  quoteId: z.string().regex(/^[0-9a-f]{64}$/),
   quoteExpiresAt: ISO,
   idempotencyKey: IDEM_KEY,
   basketToken: BASKET_TOKEN.optional(),
-  basketId: ID.optional(),
-  holdMinutes: NN.optional(),
   priceOverrides: z.array(overrideSchema).max(200).optional(),
   overrideApprovals: z.array(approvalSchema).max(200).optional(),
 });
@@ -76,11 +86,10 @@ export type TripHoldRequest = z.infer<typeof holdRequestSchema>;
 const confirmBase = {
   holdIds: z.array(ID).min(1).max(20),
   idempotencyKey: IDEM_KEY,
-  quoteId: z.string().min(1).max(128),
+  quoteId: z.string().regex(/^[0-9a-f]{64}$/),
   booker: bookerSchema,
   passengers: z.array(passengerSchema).max(200).optional(),
   pay: paySchema,
-  note: z.string().max(1000).optional(),
   basketId: ID,
   quote: quoteRequestSchema,
   basketToken: BASKET_TOKEN.optional(),
@@ -93,12 +102,11 @@ export type TripConfirmRequest = z.infer<typeof confirmRequestSchema>;
 
 export const bookNowRequestSchema = z.strictObject({
   idempotencyKey: IDEM_KEY,
-  quoteId: z.string().min(1).max(128),
+  quoteId: z.string().regex(/^[0-9a-f]{64}$/),
   quoteExpiresAt: ISO,
   booker: bookerSchema,
   passengers: z.array(passengerSchema).max(200).optional(),
   pay: paySchema,
-  note: z.string().max(1000).optional(),
   quote: quoteRequestSchema,
   priceOverrides: z.array(overrideSchema).max(200).optional(),
   overrideApprovals: z.array(approvalSchema).max(200).optional(),
@@ -109,11 +117,13 @@ export const changeRequestSchema = z.strictObject({
   bookingId: ID,
   expectedVersion: NN,
   line: lineSchema,
-  quoteId: z.string().min(1).max(128),
+  quoteId: z.string().regex(/^[0-9a-f]{64}$/),
   quoteExpiresAt: ISO,
   idempotencyKey: IDEM_KEY,
   useCurrentPolicy: z.boolean().optional(),
-  reason: z.string().max(500).optional(),
+  reason: text(500).optional(),
+  /** มติ R3: การจองมีโค้ดส่วนลด ⇒ ต้องส่ง dropPromo: true (คืนสิทธิ์โค้ดในธุรกรรมเดียวกัน) ไม่งั้น VALIDATION PROMO_ON_CHANGE */
+  dropPromo: z.boolean().optional(),
   priceOverrides: z.array(overrideSchema).max(200).optional(),
   overrideApprovals: z.array(approvalSchema).max(200).optional(),
 });
@@ -122,22 +132,21 @@ export type TripChangeRequest = z.infer<typeof changeRequestSchema>;
 export const cancelRequestSchema = z.strictObject({
   bookingId: ID,
   mode: z.enum(["QUOTE", "EXECUTE"]),
-  reason: z.string().trim().min(1).max(500),
+  reason: text(500).pipe(z.string().min(1)),
   reasonKind: z.enum(["CUSTOMER", "EXTERNAL", "MIN_NOT_MET", "SHOP_FAULT"]).optional(),
-  choice: z.enum(["MONEY", "CREDIT", "MOVE_DATE"]).optional(),
-  moveToSlotId: ID.optional(),
+  // choice / moveToSlotId (คำขอคืนเงิน G.3) = T0.7 — ไม่รับในใบนี้ (strict ⇒ VALIDATION · มติ R14)
   idempotencyKey: IDEM_KEY,
 });
-export const approveRequestSchema = z.strictObject({ bookingId: ID, expectedVersion: NN, decision: z.enum(["APPROVE", "REJECT"]), reason: z.string().trim().max(500).optional() });
+export const approveRequestSchema = z.strictObject({ bookingId: ID, expectedVersion: NN, decision: z.enum(["APPROVE", "REJECT"]), reason: text(500).optional() });
 export const getRequestSchema = z.strictObject({ bookingId: ID });
 export const listRequestSchema = z.strictObject({
   departureId: ID.optional(),
-  status: z.string().max(16).optional(),
+  status: text(16).optional(),
   from: YMD.optional(),
   to: YMD.optional(),
   limit: z.number().int().min(1).max(200).optional(),
 });
-export const transitionRequestSchema = z.strictObject({ bookingId: ID, from: z.string().min(1).max(16), to: z.string().min(1).max(16), expectedVersion: NN, reason: z.string().trim().max(500).optional() });
+export const transitionRequestSchema = z.strictObject({ bookingId: ID, from: z.string().min(1).max(16), to: z.string().min(1).max(16), expectedVersion: NN, reason: text(500).optional() });
 export const expiredEventSchema = z.object({ tenantId: ID, unitId: ID, bookingId: ID });
 
 /** เหตุผลของ useCurrentPolicy ต้องยาว ≥ 10 ตัวอักษร (CC :667) */

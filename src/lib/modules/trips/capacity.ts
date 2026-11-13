@@ -879,10 +879,12 @@ async function releaseLockedHold(tx: Tx, g: Gate, c: Ctx, d: DepRow, holdId: str
   return { dep: withCounters(d, counters), released: true, current: "RELEASED" };
 }
 
-export async function releaseCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof releaseInput>, policies: CapacityPolicies | undefined): Promise<ReleaseValue> {
+export async function releaseCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof releaseInput>, policies: CapacityPolicies | undefined, forBookingId?: string): Promise<ReleaseValue> {
   const h0 = await readHold(tx, g, v.holdId);
   if (!h0) throw new CapacityAbort("HOLD_NOT_FOUND");
   assertHoldOwner(c, h0, v.capKey);
+  // T0.6 R9 ▸ hold ที่ผูกการจองแล้วปล่อยได้เฉพาะผ่านการยกเลิก/ปฏิเสธการจองนั้น (booking.ts ส่ง forBookingId) ◂
+  if (h0.bookingId !== null && h0.bookingId !== forBookingId) throw new CapacityAbort("STATE_CONFLICT", { reason: "HOLD_HAS_BOOKING" });
   if (h0.status === "RELEASED") return { holdId: v.holdId, status: "RELEASED", duplicated: true };
   if (h0.status === "CONVERTED") throw new CapacityAbort("STATE_CONFLICT");
   if (h0.status === "EXPIRED") throw new CapacityAbort("HOLD_EXPIRED");
@@ -890,6 +892,8 @@ export async function releaseCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof r
   const pol = departurePolicyOf(policies, g, h0.departureId); // ไม่มี ⇒ ไม่เสนอ (งาน 5 นาทีเป็นตัวสำรอง)
   const d = await lockDeparture(tx, g, h0.departureId); // 1a
   if (!d) throw new CapacityAbort("HOLD_NOT_FOUND");
+  const h1 = await readHold(tx, g, v.holdId); // T0.6 R9 ▸ อ่านซ้ำใต้ล็อกรอบ (การผูกการจองทำใต้ล็อกรอบเดียวกัน) ◂
+  if (h1 && h1.bookingId !== null && h1.bookingId !== forBookingId) throw new CapacityAbort("STATE_CONFLICT", { reason: "HOLD_HAS_BOOKING" });
   const r = await releaseLockedHold(tx, g, c, d, v.holdId, v.reason, "CANCELLED"); // 2a (+2a′)
   if (!r.released) {
     if (r.current === "RELEASED") return { holdId: v.holdId, status: "RELEASED", duplicated: true };
@@ -902,7 +906,7 @@ export async function releaseCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof r
 /**
  * ปล่อยในธุรกรรมของผู้เรียก · `policies` (ไม่บังคับ) ใช้เสนอที่ให้รายการรอในทีเดียวกัน — ไม่ส่ง (และแคชไม่มี) ⇒ ปล่อยได้ แต่ไม่เสนอ
  */
-export async function releaseHoldInTx(tx: unknown, ctx: unknown, input: unknown, policies?: CapacityPolicies): Promise<SellResult<ReleaseValue>> {
+export async function releaseHoldInTx(tx: unknown, ctx: unknown, input: unknown, policies?: CapacityPolicies, internal?: { forBookingId: string }): Promise<SellResult<ReleaseValue>> {
   const t = asTx(tx);
   const pc = parseCtx(ctx);
   if (!pc.ok) abortOf(pc);
@@ -910,7 +914,7 @@ export async function releaseHoldInTx(tx: unknown, ctx: unknown, input: unknown,
   if (!p.success) abortOf(invalidInput(p.error));
   const g = await gateOfTx(t, pc.c);
   if (!g) throw new CapacityAbort("HOLD_NOT_FOUND");
-  return { ok: true, value: withOfferFailures(await releaseCoreTx(t, g, pc.c, p.data, policies), pc.c) };
+  return { ok: true, value: withOfferFailures(await releaseCoreTx(t, g, pc.c, p.data, policies, internal?.forBookingId), pc.c) };
 }
 
 // ═══════════════════════ ต่ออายุ (r2 m13) ═══════════════════════

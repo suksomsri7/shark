@@ -1,22 +1,24 @@
 // ─────────────────────────────────────────────────────────────
 // trips/booking.ts — การจองทัวร์: ถือผ่านตะกร้า · ยืนยันในธุรกรรมเดียว · อนุมัติ/ปฏิเสธ · ยกเลิกก่อนจ่าย · แก้คน/เลื่อนวัน · อ่าน · RUN TRIPS T0.6
-// ใบสั่ง ledger/trips-briefs/T0.6.md §2 §5 §8 (§16 มติผู้คุมชนะ) · CC §C §D.4–§D.6 §F.2 §G §J.1 §K · wo-notes T0.4 r2 §(d) · T0.5 r2/r3
+// ใบสั่ง ledger/trips-briefs/T0.6.md §2 §5 §8 (§16 มติผู้คุมชนะ + มติรอบแก้ r1 R1–R14) · CC §C §D.4–§D.6 §F.2 §G §J.1 §K · wo-notes T0.4 r2 §(d) · T0.5 r2/r3
 //
 // 🔴 นอก tx เท่านั้น: quoteTrips · buildTripBookingSnapshot · capacityRowsOf · loadCapacityPolicies · resolveSettings (X1 X3) · party · approval
 //    ในธุรกรรม = *InTx ของ T0.4/T0.5 + SQL ผ่าน tx เดียวกัน (ไม่ขอ connection ที่สอง · pool 10)
-// 🔴 ลำดับล็อก (ใบสั่ง §5.4 · r2 §d): ชั้น 0 (SellBasket FOR UPDATE / INSERT → advisory เพดานถือ/rekey) → สินค้า FOR SHARE เรียง id →
-//    1a รอบ เรียง id → 2a hold (เรียงตามรอบ) → 2c เลขจอง → 2b การจอง/รายการ/ผู้เดินทาง → โค้ดส่วนลด (เรียง id การจอง · ภายในเรียง ruleId) → 2h outbox/audit → ตะกร้า CAS
-//    ยกเลิก/ปฏิเสธ: คืนที่นั่ง (releaseHoldInTx) ก่อน releasePromoInTx เสมอ (r2 §d ข้อ 4)
+// 🔴 ลำดับล็อก (ใบสั่ง §5.4 · r2 §d · R7 R13): ชั้น 0 (SellBasket FOR UPDATE / INSERT → advisory เพดานถือ/rekey/ผูกการแก้) → สินค้า FOR SHARE เรียง (id, ตัวเลือก) →
+//    1a รอบ เรียง id → 2a hold (เรียงตามรอบ) → advisory คำอนุมัติ (เรียง id) → 2c เลขจอง (เรียง prefix, งวด) → 2b การจอง/รายการ/ผู้เดินทาง →
+//    โค้ดส่วนลดทั้งตะกร้าเรียง ruleId → 2h outbox/audit → ตะกร้า CAS · ยกเลิก/ปฏิเสธ: คืนที่นั่ง (releaseHoldInTx) ก่อน releasePromoInTx เสมอ (r2 §d ข้อ 4)
 // 🔴 ทุกการเปลี่ยนสถานะการจอง = CAS (status + version) + ตรวจจำนวนแถว · ไม่มีการลบแถว Trip* · ไม่ส่ง object ผู้เรียกเข้า Prisma data
 // 🔴 ไม่มีค่าธุรกิจตายตัว: X1 X2 X3 X10 T5 มาจากค่าตั้ง (resolveSettings / policies ของ T0.4) · event/audit ไม่มีชื่อ/เบอร์/อีเมล/เลขจอง
+// 🔴 ทุกฟังก์ชันบริการคืน SellResult — error ที่ไม่คาดคิดถูกบันทึก ops แล้วคืน BUSY (R10) · *InTx ปฏิเสธด้วย throw (ผู้เรียก rollback)
 // ─────────────────────────────────────────────────────────────
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { logOps } from "@/lib/core/ops";
 import { emitOutboxMany } from "@/lib/core/outbox";
 import type { BookingRef, CancelResult, DueSpec, Hold, LedgerDraft, Quote, QuoteRequest, SellActor, SellCtx, SellResult } from "@/lib/core/sellable";
 import { resolveSettings } from "@/lib/core/settings";
-import { requestStatuses } from "@/lib/modules/approval";
+import { requestBindings } from "@/lib/modules/approval";
 import { safeFindOrCreate } from "@/lib/modules/party";
 import {
   approveRequestSchema,
@@ -35,7 +37,6 @@ import {
   transitionRequestSchema,
   CHANGE_POLICY_REASON_MIN,
   type ApprovalInput,
-  type BookingColumns,
   type BookingItemColumns,
   type LineInput,
   type OverrideInput,
@@ -46,7 +47,6 @@ import {
   CapacityAbort,
   acquireHoldCapInTx,
   convertHoldInTx,
-  holdCapKeyHash,
   holdRequestHash,
   insertHoldInTx,
   invalidInput,
@@ -63,9 +63,9 @@ import {
   type Gate,
   type Tx,
 } from "./capacity";
-import { QTY_MAX, holdExpiresAt, idemKeyFor } from "./capacity-core";
+import { LOCK_RETRIES, QTY_MAX, holdExpiresAt, idemKeyFor } from "./capacity-core";
 import { capacityRowsOf, gateOf, loadCapacityPolicies, runTx } from "./capacity-service";
-import { nextBookingCodeInTx } from "./numbering";
+import { bookingPeriodOf, nextBookingCodeInTx } from "./numbering";
 import { buildTripBookingSnapshot, quoteTrips, type TripQuoteLine, type TripQuoteOpts } from "./pricing";
 import { PricingAbort } from "./pricing-core";
 import { TripProductNotSellableError, assertProductSellableInTx } from "./products";
@@ -92,6 +92,8 @@ const PREFIX_RE = /^[A-Z]{1,4}$/;
 const PROMO_REASONS: ReadonlySet<string> = new Set(["PROMO_EXHAUSTED", "PROMO_PER_CONTACT", "PROMO_INACTIVE", "PROMO_EXPIRED"]);
 const UNPAID: ReadonlySet<string> = new Set(["HOLD", "PENDING"]);
 const SOLD: ReadonlySet<string> = new Set(BOOKING_SOLD_STATUSES);
+/** entityType ของคำขออนุมัติราคาแก้มือ (มติ R1) */
+export const TRIP_PRICE_OVERRIDE_ENTITY = "trips.price_override";
 
 const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
 const newId = (prefix: string) => `${prefix}${randomBytes(12).toString("hex")}`;
@@ -99,51 +101,97 @@ const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object
 const NF = (): Failure => sellFail("NOT_FOUND");
 const ymdOf = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
 const dateOfYmd = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
+const byStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-// ═══════════════════════ token ลิงก์ลูกค้า (มติ §16 ข้อ 5) ═══════════════════════
+// ═══════════════════════ token ลิงก์ลูกค้า (มติ §16 ข้อ 5 · R11) ═══════════════════════
+const SECRET_MIN = 32;
+const tokenSecret = (): string | null => {
+  const s = process.env.SESSION_SECRET;
+  return typeof s === "string" && s.length >= SECRET_MIN ? s : null;
+};
 /**
  * publicToken = base64url(HMAC-SHA256(กุญแจเซิร์ฟเวอร์ · ป้าย trips.booking.token.v1 · bookingId)) — 256 บิต · เก็บเฉพาะ sha256 ของ token
- * กุญแจ = SESSION_SECRET (≥ 32 ตัว · แบบแผนเดียวกับ holdCapKeyHash) · production ไม่มีกุญแจ ⇒ throw (ปิดแบบล้ม) · นอก production (QC/dev) = sha256 ติดป้าย
+ * กุญแจ = SESSION_SECRET (≥ 32 ตัว) · ไม่มีกุญแจ ⇒ null ทุกสภาพแวดล้อม (ไม่มีสูตรสำรองที่ไม่มีกุญแจ · R11) — บริการคืน BUSY reason SERVER_KEY_MISSING
  * หนี้: เพิกถอน/ออกใหม่ต้องมีคอลัมน์รุ่น (W1.x · สัญญา J.3.2)
  */
-export function bookingPublicToken(bookingId: string): string {
-  const secret = process.env.SESSION_SECRET;
-  if (typeof secret === "string" && secret.length >= 32) return createHmac("sha256", `trips.booking.token.v1:${secret}`).update(bookingId).digest("base64url");
-  if (process.env.NODE_ENV === "production") throw new Error("[trips/booking] ไม่ได้ตั้งค่า SESSION_SECRET — ออก token ลิงก์การจองไม่ได้");
-  return createHash("sha256").update(`trips.booking.token.v1:dev:${bookingId}`).digest("base64url");
+export function bookingPublicToken(bookingId: string): string | null {
+  const secret = tokenSecret();
+  return secret ? createHmac("sha256", `trips.booking.token.v1:${secret}`).update(bookingId).digest("base64url") : null;
+}
+const keyMissing = (): Failure => sellFail("BUSY", { reason: "SERVER_KEY_MISSING" }, "ระบบยังไม่ได้ตั้งกุญแจเซิร์ฟเวอร์ — ทำรายการจองไม่ได้ชั่วคราว");
+
+/** id ของคำขออนุมัติราคาแก้มือ (entityId · มติ R1) — จอ/ใบถัดไปต้องยื่นคำขอด้วยค่านี้ */
+export function tripPriceOverrideEntityId(i: { unitId: string; departureId: string; itemRef: string; unitMinor: number; resolvedMinor: number }): string {
+  return `tpo1_${sha256hex(JSON.stringify(["trips.price_override.v1", i.unitId, i.departureId, i.itemRef, i.unitMinor, i.resolvedMinor]))}`;
+}
+
+// ═══════════════════════ error ที่ไม่คาดคิด (R10) ═══════════════════════
+async function logUnexpected(where: string, e: unknown, tenantId: string | null): Promise<void> {
+  const name = e instanceof Error ? e.name || "Error" : typeof e;
+  await logOps("ERROR", "trips.booking", `ข้อผิดพลาดที่ไม่คาดคิดใน ${where} (${name})`, { tenantId: tenantId ?? undefined, detail: JSON.stringify({ where, name }) }).catch(() => undefined);
+}
+/** ห่อบริการ: CapacityAbort/PricingAbort ⇒ ผลมีชื่อ · อื่น ⇒ บันทึก ops (ไม่มีข้อมูลบุคคล) แล้ว BUSY — ไม่มี error ดิบหลุดถึงผู้เรียก */
+async function safely<T>(where: string, ctx: unknown, fn: () => Promise<SellResult<T>>): Promise<SellResult<T>> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof CapacityAbort) return sellFail(e.code, e.details);
+    if (e instanceof PricingAbort) return sellFail(e.code, e.details);
+    await logUnexpected(where, e, isRec(ctx) && typeof ctx.tenantId === "string" ? ctx.tenantId : null);
+    return sellFail("BUSY", { reason: "UNEXPECTED" });
+  }
 }
 
 // ═══════════════════════ ธุรกรรม ═══════════════════════
-function isUniqueViolation(e: unknown): boolean {
+/** ชื่อ unique constraint ที่ชน (23505/P2002) ในสาย error · ไม่ใช่ unique ⇒ null */
+function uniqueViolationOf(e: unknown): { name: string } | null {
   const seen = new Set<unknown>();
   const stack: unknown[] = [e];
   let depth = 0;
+  let hit = false;
+  const names: string[] = [];
   while (stack.length && depth++ < 64) {
     const cur = stack.pop();
     if (!cur || typeof cur !== "object" || seen.has(cur)) continue;
     seen.add(cur);
     const o = cur as Record<string, unknown>;
-    if (o.code === "23505" || o.code === "P2002" || o.originalCode === "23505") return true;
-    if (typeof o.message === "string" && /duplicate key value|Unique constraint failed/i.test(o.message)) return true;
-    if (o.cause) stack.push(o.cause);
-    if (o.meta && typeof o.meta === "object") stack.push(o.meta);
+    if (o.code === "23505" || o.code === "P2002" || o.originalCode === "23505") hit = true;
+    for (const v of Object.values(o)) {
+      if (typeof v === "string") {
+        if (/duplicate key value|Unique constraint failed/i.test(v)) hit = true;
+        for (const m of v.matchAll(/"([A-Za-z]+_[A-Za-z_]+_key)"/g)) names.push(m[1]);
+      } else if (Array.isArray(v)) names.push(v.filter((x) => typeof x === "string").join(","));
+      else if (v && typeof v === "object") stack.push(v);
+    }
   }
-  return false;
+  return hit ? { name: names.join("|") } : null;
 }
-/** runTx ของ T0.4 (ลองใหม่เมื่อ 40P01 · CapacityAbort ⇒ SellResult) + PricingAbort/สินค้าขายไม่ได้ ⇒ BookingAbort · คีย์ชน (23505) ⇒ IDEMPOTENCY_CONFLICT */
+const IDEM_CONSTRAINTS = /SellBasket_tenantId_idempotencyKey_key|TripHold_tenantId_idempotencyKey_key|^tenantId,idempotencyKey$|\|tenantId,idempotencyKey/;
+const TOKEN_CONSTRAINT = /SellBasket_publicTokenHash_key/;
+/**
+ * runTx ของ T0.4 (ลองใหม่เมื่อ 40P01 · CapacityAbort ⇒ SellResult) + PricingAbort ⇒ BookingAbort
+ * unique ชน: คีย์กันซ้ำ ⇒ IDEMPOTENCY_CONFLICT · token ตะกร้า ⇒ VALIDATION BASKET_TOKEN_USED · อื่น ⇒ ลองใหม่ แล้ว BUSY + ops (R12)
+ */
 async function runBooking<T>(g: Gate, fn: (tx: Tx) => Promise<T>): Promise<SellResult<T>> {
-  try {
-    return await runTx(g, async (tx) => {
-      try {
-        return await fn(tx);
-      } catch (e) {
-        if (e instanceof PricingAbort) throw new BookingAbort(e.code, e.details);
-        throw e;
-      }
-    });
-  } catch (e) {
-    if (isUniqueViolation(e)) return sellFail("IDEMPOTENCY_CONFLICT");
-    throw e;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await runTx(g, async (tx) => {
+        try {
+          return await fn(tx);
+        } catch (e) {
+          if (e instanceof PricingAbort) throw new BookingAbort(e.code, e.details);
+          throw e;
+        }
+      });
+    } catch (e) {
+      const u = uniqueViolationOf(e);
+      if (!u) throw e;
+      if (IDEM_CONSTRAINTS.test(u.name)) return sellFail("IDEMPOTENCY_CONFLICT");
+      if (TOKEN_CONSTRAINT.test(u.name)) return sellFail("VALIDATION", { reason: "BASKET_TOKEN_USED" });
+      if (attempt < LOCK_RETRIES) continue;
+      await logOps("ERROR", "trips.booking", "unique constraint ชนซ้ำหลังลองใหม่ (ไม่ใช่คีย์กันซ้ำ)", { tenantId: g.tenantId, detail: JSON.stringify({ unitId: g.unitId, constraint: u.name.slice(0, 200) }) }).catch(() => undefined);
+      return sellFail("BUSY", { reason: "UNIQUE_CONFLICT" });
+    }
   }
 }
 
@@ -154,8 +202,9 @@ function sellCtxOf(c: Ctx, raw: unknown): SellCtx {
   return { tenantId: c.tenantId, unitId: c.unitId, channel: c.channel, actor: c.actor, now: c.clock.now, ...(locale ? { locale } : {}) };
 }
 const isPublicActor = (a: SellActor) => a.kind === "PUBLIC";
-/** คีย์กันซ้ำตาม namespace ของผู้เรียก (CC §C ข้อ 3) */
-const nsKey = (c: Ctx, key: string, tokenHash: string | null) => idemKeyFor(c.actor, key, tokenHash ?? undefined);
+const actorIdOf = (a: SellActor) => (a.kind === "STAFF" ? a.userId : a.kind === "PUBLIC" ? a.clientKey : a.kind === "SYSTEM" ? a.job : a.agentUserId);
+/** คีย์กันซ้ำตาม namespace ของผู้เรียก (CC §C ข้อ 3) + หน่วย (R12: ผูก tenant+unit) */
+const nsKey = (c: Ctx, key: string, tokenHash: string | null) => `${idemKeyFor(c.actor, key, tokenHash ?? undefined)}@${c.unitId}`;
 
 /** บรรทัดต้องเป็น TRIP ของหน่วยนี้ (ตะกร้าข้ามหน่วย/ข้ามชนิด = K1.1) */
 function linesGate(c: Ctx, lines: readonly LineInput[]): Failure | null {
@@ -166,9 +215,10 @@ function linesGate(c: Ctx, lines: readonly LineInput[]): Failure | null {
   return null;
 }
 type OverrideReq = { priceOverrides?: OverrideInput[]; overrideApprovals?: ApprovalInput[] };
-/** ราคาแก้มือต้องมี canOverride (จาก action) · คำอนุมัติทุกตัวต้องมี resolvedMinor (มติ §16 ข้อ 3) */
+/** ราคาแก้มือต้องมี canOverride (จาก action) · คำอนุมัติทุกตัวต้องมี resolvedMinor (มติ §16 ข้อ 3) · คำอนุมัติโดยไม่มีราคาแก้มือ ⇒ VALIDATION */
 function overrideGate(req: OverrideReq, opts: BookingOpts | undefined): Failure | null {
   if (req.priceOverrides?.length && opts?.canOverride !== true) return sellFail("FORBIDDEN");
+  if (req.overrideApprovals?.length && !req.priceOverrides?.length) return sellFail("VALIDATION", { fields: ["overrideApprovals"] });
   if (req.overrideApprovals?.some((a) => a.resolvedMinor === undefined)) return sellFail("VALIDATION", { reason: "APPROVAL_RESOLVED_REQUIRED" });
   return null;
 }
@@ -186,12 +236,25 @@ function quoteOptsOf(req: OverrideReq, opts: BookingOpts | undefined): TripQuote
 function lineOptsOf(q: QuoteRequestInput, base: TripQuoteOpts): TripQuoteOpts {
   return { ...base, ...(q.agentDiscountSatang ? { agentDiscountSatang: q.agentDiscountSatang } : {}), ...(q.attribution?.linkId ? { linkId: q.attribution.linkId } : {}) };
 }
-/** คำอนุมัติราคาแก้มือต้อง APPROVED ทุกตัว (นอก tx) */
-async function approvalsGate(c: Ctx, req: OverrideReq): Promise<Failure | null> {
-  const ids = (req.overrideApprovals ?? []).map((a) => a.approvalId);
-  if (!ids.length) return null;
-  const st = await requestStatuses({ tenantId: c.tenantId }, ids);
-  return ids.every((id) => st[id] === "APPROVED") ? null : sellFail("FORBIDDEN", { reason: "APPROVAL_NOT_APPROVED" });
+/**
+ * คำอนุมัติราคาแก้มือ (มติ R1 · นอก tx): ทุกตัวต้อง APPROVED · entityType trips.price_override · หน่วยเดียวกัน (ถ้าระบุ) ·
+ * entityId = tripPriceOverrideEntityId(หน่วย, รอบ, itemRef, unitMinor, resolvedMinor) — คำขอที่มีคำอนุมัติต้องอยู่บนรอบเดียว (ผูกรอบได้ชัด)
+ * การใช้ครั้งเดียว: ตรวจใน tx (consumeApprovalsInTx) · ไม่ผ่าน ⇒ FORBIDDEN APPROVAL_NOT_APPROVED
+ */
+async function approvalsGate(c: Ctx, req: OverrideReq, departureIds: readonly string[]): Promise<Failure | null> {
+  const aps = req.overrideApprovals ?? [];
+  if (!aps.length) return null;
+  const deps = [...new Set(departureIds)];
+  if (deps.length !== 1) return sellFail("VALIDATION", { fields: ["overrideApprovals"], reason: "APPROVAL_SINGLE_DEPARTURE" });
+  const b = await requestBindings({ tenantId: c.tenantId }, aps.map((a) => a.approvalId));
+  for (const a of aps) {
+    const x = b[a.approvalId];
+    const want = tripPriceOverrideEntityId({ unitId: c.unitId, departureId: deps[0], itemRef: a.itemRef, unitMinor: a.unitMinor, resolvedMinor: a.resolvedMinor ?? -1 });
+    if (!x || x.status !== "APPROVED" || x.entityType !== TRIP_PRICE_OVERRIDE_ENTITY || x.entityId !== want || (x.unitId !== null && x.unitId !== c.unitId)) {
+      return sellFail("FORBIDDEN", { reason: "APPROVAL_NOT_APPROVED" });
+    }
+  }
+  return null;
 }
 const priceChanged = (quote: Quote, reason?: string): Failure => sellFail("PRICE_CHANGED", { ...(reason ? { reason } : {}), quote });
 /** ตัดสิทธิ์โค้ดไม่ผ่าน ⇒ PRICE_CHANGED + ใบเสนอราคาใหม่ของคำขอเดิม "ไม่มีโค้ด" (ใบสั่ง §5.4) */
@@ -204,7 +267,7 @@ async function promoFailure(sc: SellCtx, q: QuoteRequestInput, qopts: TripQuoteO
   return sellFail("PRICE_CHANGED", { reason, ...(fresh.ok ? { quote: fresh.value } : {}) });
 }
 
-/** ที่นั่งที่นับความจุต่อบรรทัด (Σ qty ของประเภทคน countsCapacity · ทารกไม่นับ) — 0 หรือเกิน QTY_MAX ⇒ VALIDATION */
+/** ที่นั่งที่นับความจุต่อบรรทัดใหม่ (Σ qty ของประเภทคน countsCapacity · ทารกไม่นับ) — 0 หรือเกิน QTY_MAX ⇒ VALIDATION */
 async function seatsOfLines(g: Gate, lines: readonly LineInput[]): Promise<number[] | Failure> {
   const ids = [...new Set(lines.flatMap((l) => l.pax.map((p) => p.paxTypeId)))];
   const rows = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).tripPaxType.findMany({
@@ -222,6 +285,21 @@ async function seatsOfLines(g: Gate, lines: readonly LineInput[]): Promise<numbe
     }
     if (n < 1 || n > QTY_MAX) return sellFail("VALIDATION", { fields: ["pax"] });
     out.push(n);
+  }
+  return out;
+}
+type ProductRef = { productId: string; optionId: string | null };
+/** ตัวเลือกของแต่ละบรรทัด = ตัวเลือกของรอบ (หรือของบรรทัดเมื่อรอบไม่ระบุ) — ใช้ตรวจตัวเลือกเปิดในธุรกรรม (R8) */
+async function productRefsOf(g: Gate, lines: readonly { productId: string; slotId: string; optionId?: string }[]): Promise<ProductRef[] | Failure> {
+  const ids = [...new Set(lines.map((l) => l.slotId))];
+  const rows = await unitDb(g).$queryRaw<{ id: string; productId: string; optionId: string | null }[]>`
+    SELECT "id", "productId", "optionId" FROM "TripDeparture" WHERE "id" = ANY(${ids}::text[]) AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out: ProductRef[] = [];
+  for (const l of lines) {
+    const d = byId.get(l.slotId);
+    if (!d || d.productId !== l.productId) return NF();
+    out.push({ productId: l.productId, optionId: d.optionId ?? l.optionId ?? null });
   }
   return out;
 }
@@ -262,7 +340,7 @@ async function basketTokenUsed(db: Tx, tokenHash: string): Promise<boolean> {
   const rows = await db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "SellBasket" WHERE "publicTokenHash" = ${tokenHash}`;
   return rows.length > 0;
 }
-/** ชั้น 0: INSERT ตะกร้า OPEN · ชนคีย์/ token ⇒ null (ผู้เรียกตัดสิน) */
+/** ชั้น 0: INSERT ตะกร้า OPEN · ชนคีย์/ token ⇒ false (ผู้เรียกตัดสิน) */
 async function insertBasket(tx: Tx, b: { id: string; tenantId: string; channel: string; expiresAt: Date; tokenHash: string | null; key: string; requestHash: string; unitId: string }): Promise<boolean> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
     INSERT INTO "SellBasket" ("id", "tenantId", "channel", "status", "expiresAt", "publicTokenHash", "idempotencyKey", "requestHash", "unitIds", "createdAt", "updatedAt")
@@ -278,17 +356,19 @@ async function holdValueOf(g: Gate, b: BasketRow): Promise<Hold> {
   const rows = await unitDb(g).$queryRaw<{ id: string; idempotencyKey: string }[]>`
     SELECT "id", "idempotencyKey" FROM "TripHold" WHERE "basketId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`;
   const idx = (k: string) => Number(/_(\d+)@[^@]*$/.exec(k)?.[1] ?? "9999");
-  const holdIds = rows.sort((a, z) => idx(a.idempotencyKey) - idx(z.idempotencyKey) || (a.id < z.id ? -1 : 1)).map((r) => r.id);
+  const holdIds = rows.sort((a, z) => idx(a.idempotencyKey) - idx(z.idempotencyKey) || byStr(a.id, z.id)).map((r) => r.id);
   return { holdIds, basketId: b.id, expiresAt: new Date(b.expiresAt).toISOString() };
 }
 
 // ═══════════════════════ ล็อกชั้นสินค้า/รอบ ═══════════════════════
-/** สินค้าทุกตัวของตะกร้า FOR SHARE เรียง id (หลังชั้น 0 · ก่อนแตะรอบ · r2 §d ข้อ 2) */
-async function lockProductsInTx(tx: Tx, sc: SellCtx, productIds: readonly string[]): Promise<void> {
+/** สินค้า (+ ตัวเลือกของบรรทัด · R8) FOR SHARE เรียง (สินค้า, ตัวเลือก) — หลังชั้น 0 ก่อนแตะรอบ (r2 §d ข้อ 2) */
+async function lockProductsInTx(tx: Tx, sc: SellCtx, refs: readonly ProductRef[]): Promise<void> {
   const pub = isPublicActor(sc.actor);
-  for (const productId of [...new Set(productIds)].sort()) {
+  const uniq = new Map<string, ProductRef>();
+  for (const r of refs) uniq.set(`${r.productId}\u0001${r.optionId ?? ""}`, r);
+  for (const r of [...uniq.values()].sort((a, b) => byStr(a.productId, b.productId) || byStr(a.optionId ?? "", b.optionId ?? ""))) {
     try {
-      const p = await assertProductSellableInTx(tx, { tenantId: sc.tenantId, unitId: sc.unitId, productId });
+      const p = await assertProductSellableInTx(tx, { tenantId: sc.tenantId, unitId: sc.unitId, productId: r.productId, optionId: r.optionId });
       if (pub && p.status !== "ACTIVE") throw new BookingAbort("NOT_FOUND");
     } catch (e) {
       if (e instanceof TripProductNotSellableError) throw new BookingAbort(pub || e.code === "NOT_FOUND" ? "NOT_FOUND" : "SLOT_CLOSED");
@@ -304,7 +384,7 @@ async function lockDeparturesInTx(tx: Tx, sc: SellCtx, departureIds: readonly st
 }
 /** เฟส 1 ถือ: reserveInTx(HOLD) ทีละบรรทัดตามรอบ (sortCapacityRows = id รอบ) */
 async function reserveHoldsInTx(tx: Tx, sc: SellCtx, lines: readonly { departureId: string; qty: number }[], policies: CapacityPolicies, capKey: string | null): Promise<void> {
-  const order = lines.map((l, i) => ({ ...l, i })).sort((a, b) => (a.departureId < b.departureId ? -1 : a.departureId > b.departureId ? 1 : a.i - b.i));
+  const order = lines.map((l, i) => ({ ...l, i })).sort((a, b) => byStr(a.departureId, b.departureId) || a.i - b.i);
   for (const l of order) {
     await reserveInTx(tx, sc, [{ layer: "1a", table: "TripDeparture", id: l.departureId, sortKey: l.departureId }], { op: "HOLD", qtyPublic: l.qty, qtyAllot: 0, ...(capKey ? { capKey } : {}), policies });
   }
@@ -319,13 +399,30 @@ async function insertHoldsInTx(tx: Tx, sc: SellCtx, lines: readonly { departureI
   }
   return ids;
 }
+/**
+ * คำอนุมัติราคาแก้มือใช้ได้ครั้งเดียว (มติ R1): advisory ต่อ id (เรียง) แล้วหา audit trips.booking.price_override ที่จด id นี้ไว้ — มี ⇒ FORBIDDEN APPROVAL_USED
+ * (ล็อกอยู่ถึงจบ tx ⇒ สองการจองที่อ้างคำอนุมัติเดียวกันพร้อมกัน ได้ตัวเดียว)
+ */
+async function consumeApprovalsInTx(tx: Tx, tenantId: string, approvalIds: readonly string[]): Promise<void> {
+  for (const id of [...new Set(approvalIds)].sort()) {
+    await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext('trips-approval:' || ${id}))`;
+    const used = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "action" = 'trips.booking.price_override'
+        AND ${id} = ANY(string_to_array("after"->>'approvalIds', ',')) LIMIT 1`;
+    if (used.length) throw new BookingAbort("FORBIDDEN", { reason: "APPROVAL_USED" });
+  }
+}
 
 // ═══════════════════════ ถือผ่านตะกร้า (ใบสั่ง §5.3) ═══════════════════════
 /**
  * tripSellable.hold — นอก tx: ตรวจรูป → กันซ้ำ → ราคาเดิม (quoteId · เวลาหมดของใบเสนอราคา) → แถวเฟส 1 + ค่าตั้ง
- * tx: ชั้น 0 INSERT SellBasket → (PUBLIC) acquireHoldCapInTx ของตะกร้า → สินค้าเรียง id → reserveInTx(HOLD) ตามรอบ → insertHoldInTx ต่อบรรทัด
+ * tx: ชั้น 0 INSERT SellBasket → (PUBLIC) acquireHoldCapInTx ของตะกร้า → สินค้า+ตัวเลือกเรียง → reserveInTx(HOLD) ตามรอบ → insertHoldInTx ต่อบรรทัด
+ * หมายเหตุ (R12): คีย์ของการถือถูกแทนด้วยคีย์ยืนยันตอน CHECKED_OUT (ไม่มีคอลัมน์เก็บคู่) ⇒ ถือซ้ำหลังยืนยันแล้ว: PUBLIC = VALIDATION BASKET_TOKEN_USED · STAFF = IDEMPOTENCY_CONFLICT
  */
 export async function holdTrips(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<Hold>> {
+  return safely("holdTrips", ctx, () => holdTripsImpl(ctx, input, opts));
+}
+async function holdTripsImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<Hold>> {
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
   const c = pc.c;
@@ -335,9 +432,9 @@ export async function holdTrips(ctx: unknown, input: unknown, opts?: BookingOpts
   const req = p.data;
   const pub = c.actor.kind === "PUBLIC";
   if (pub && !req.basketToken) return sellFail("VALIDATION", { fields: ["basketToken"] });
-  if (req.basketId !== undefined || req.holdMinutes !== undefined) return sellFail("VALIDATION", { fields: ["basketId", "holdMinutes"] });
   const lg = linesGate(c, req.quote.lines) ?? overrideGate(req, opts);
   if (lg) return lg;
+  if (!tokenSecret()) return keyMissing();
   const g = await gateOf(c);
   if (!g) return NF();
   const tokenHash = pub && req.basketToken ? sha256hex(req.basketToken) : null;
@@ -354,20 +451,16 @@ export async function holdTrips(ctx: unknown, input: unknown, opts?: BookingOpts
   if (!fresh.ok) return fresh;
   if (c.clock.now.getTime() > Date.parse(req.quoteExpiresAt)) return priceChanged(fresh.value, "QUOTE_EXPIRED");
   if (fresh.value.quoteId !== req.quoteId) return priceChanged(fresh.value);
-  const ag = await approvalsGate(c, req);
+  const ag = await approvalsGate(c, req, req.quote.lines.map((l) => l.slotId));
   if (ag) return ag;
   const seats = await seatsOfLines(g, req.quote.lines);
   if (!Array.isArray(seats)) return seats;
+  const refs = await productRefsOf(g, req.quote.lines);
+  if (!Array.isArray(refs)) return refs;
   const policies = await policiesOfLines(sc, req.quote.lines);
   if ("ok" in policies) return policies;
   const lines = req.quote.lines.map((l, i) => ({ departureId: l.slotId, qty: seats[i], key: `${req.idempotencyKey}_${i}` }));
-  let expiresAt: Date;
-  try {
-    expiresAt = new Date(Math.max(...lines.map((l) => holdExpiry(policies, l.departureId, "PAYMENT", c.clock.now).getTime())));
-  } catch (e) {
-    if (e instanceof BookingAbort) return sellFail(e.code, e.details);
-    throw e;
-  }
+  const expiresAt = new Date(Math.max(...lines.map((l) => holdExpiry(policies, l.departureId, "PAYMENT", c.clock.now).getTime())));
   const capKey = tokenHash ? `basket:${tokenHash}` : null;
   const basketId = newId("sb_");
   const r = await runBooking(g, async (tx): Promise<{ dup: BasketRow } | { value: Hold }> => {
@@ -378,7 +471,7 @@ export async function holdTrips(ctx: unknown, input: unknown, opts?: BookingOpts
       throw new BookingAbort("VALIDATION", { reason: "BASKET_TOKEN_USED" });
     }
     if (capKey) await acquireHoldCapInTx(tx, sc, { capKey, mode: "HOLDS", add: lines.length, limit: policies.holdCap });
-    await lockProductsInTx(tx, sc, req.quote.lines.map((l) => l.productId));
+    await lockProductsInTx(tx, sc, refs);
     await reserveHoldsInTx(tx, sc, lines, policies, capKey);
     const holdIds = await insertHoldsInTx(tx, sc, lines, basketId, policies, capKey);
     return { value: { holdIds, basketId, expiresAt: expiresAt.toISOString() } };
@@ -390,38 +483,54 @@ export async function holdTrips(ctx: unknown, input: unknown, opts?: BookingOpts
 
 // ═══════════════════════ เตรียมยืนยัน (นอก tx · ใบสั่ง §5.4 ข้อ 1) ═══════════════════════
 export type PreparedLine = {
-  index: number;
-  bookingId: string;
-  productId: string;
-  departureId: string;
-  seats: number;
-  snapshot: TripsBookingSnapshot;
-  columns: BookingColumns;
-  items: BookingItemColumns[];
-  status: BookingStatus;
-  holdMode: InitialHoldMode;
-  prefix: string;
-  passengers: { name: string; paxTypeId: string }[];
-  promo: { ruleId: string; discountSatang: number } | null;
-  holdId: string | null;
+  readonly index: number;
+  readonly bookingId: string;
+  readonly productId: string;
+  readonly optionId: string | null;
+  readonly departureId: string;
+  readonly seats: number;
+  readonly snapshot: TripsBookingSnapshot;
+  readonly status: BookingStatus;
+  readonly holdMode: InitialHoldMode;
+  readonly prefix: string;
+  readonly passengers: readonly { name: string; paxTypeId: string }[];
+  readonly promo: { ruleId: string; discountSatang: number } | null;
+  readonly holdId: string | null;
 };
+/** ผลของการเตรียมยืนยัน — ออกโดยโมดูลนี้เท่านั้น (WeakSet · แช่แข็ง · R4) · finalizeTripsInTx ไม่รับก้อนที่สร้างเอง */
 export type PreparedConfirm = {
-  kind: "trips.confirm.v1";
-  tenantId: string;
-  unitId: string;
-  channel: string;
-  basketId: string | null;
-  basketKey: string;
-  requestHash: string;
-  tokenHash: string | null;
-  contactKey: string | null;
-  bookerPartyId: string | null;
-  payMethod: "PAY_NOW" | "PAY_LATER";
-  overridden: boolean;
-  onExpired: "FAIL" | "REHOLD";
-  lines: PreparedLine[];
-  policies: CapacityPolicies;
+  readonly kind: "trips.confirm.v1";
+  readonly tenantId: string;
+  readonly unitId: string;
+  readonly channel: string;
+  readonly actorKind: SellActor["kind"];
+  readonly actorId: string;
+  readonly basketId: string;
+  readonly basketKey: string;
+  readonly requestHash: string;
+  readonly tokenHash: string | null;
+  readonly contactKey: string | null;
+  readonly bookerPartyId: string;
+  readonly payMethod: "PAY_NOW" | "PAY_LATER";
+  readonly approvalIds: readonly string[];
+  readonly onExpired: "FAIL" | "REHOLD";
+  readonly lines: readonly PreparedLine[];
+  readonly policies: CapacityPolicies;
 };
+const SEALED = new WeakSet<object>();
+function deepFreeze<T>(v: T): T {
+  if (v && typeof v === "object" && !Object.isFrozen(v)) {
+    Object.freeze(v);
+    for (const x of Object.values(v as Record<string, unknown>)) deepFreeze(x);
+  }
+  return v;
+}
+function seal(P: PreparedConfirm): PreparedConfirm {
+  const frozen = deepFreeze(structuredClone(P));
+  SEALED.add(frozen);
+  return frozen;
+}
+
 type CoreReq = OverrideReq & {
   quote: QuoteRequestInput;
   quoteId: string;
@@ -429,16 +538,17 @@ type CoreReq = OverrideReq & {
   passengers?: { name: string; paxTypeId: string }[];
   pay: { method: "PAY_NOW" | "PAY_LATER" | "WALLET" | "CREDIT" };
 };
+type CoreOut = { ok: true; lines: Omit<PreparedLine, "holdId">[]; contactKey: string | null; bookerPartyId: string; payMethod: "PAY_NOW" | "PAY_LATER" };
 
-/** ส่วนร่วมของ confirm/bookNow นอก tx: ราคา (quoteId) → snapshot ต่อบรรทัด → ค่าตั้ง X1/X3 → สถานะแรก → ผู้เดินทาง → คำอนุมัติ → ผู้จอง (Party) */
+/** ส่วนร่วมของ confirm/bookNow นอก tx: ราคา (quoteId) → คำอนุมัติ → snapshot ต่อบรรทัด → ค่าตั้ง X1/X3 → สถานะแรก → ผู้เดินทาง → ผู้จอง (Party) */
 async function prepareCore(
   c: Ctx,
   sc: SellCtx,
   g: Gate,
   req: CoreReq,
   opts: BookingOpts | undefined,
-  extra: { quoteExpiresAt?: string; policies: CapacityPolicies },
-): Promise<{ ok: true; lines: PreparedLine[]; contactKey: string | null; bookerPartyId: string | null; payMethod: "PAY_NOW" | "PAY_LATER" } | Failure> {
+  extra: { quoteExpiresAt?: string; policies: CapacityPolicies; refs: readonly ProductRef[] },
+): Promise<CoreOut | Failure> {
   const lg = linesGate(c, req.quote.lines) ?? overrideGate(req, opts);
   if (lg) return lg;
   const contactKey = contactKeyOf(req.booker);
@@ -449,7 +559,7 @@ async function prepareCore(
   if (!fresh.ok) return fresh;
   if (extra.quoteExpiresAt !== undefined && c.clock.now.getTime() > Date.parse(extra.quoteExpiresAt)) return priceChanged(fresh.value, "QUOTE_EXPIRED");
   if (fresh.value.quoteId !== req.quoteId) return priceChanged(fresh.value);
-  const ag = await approvalsGate(c, req);
+  const ag = await approvalsGate(c, req, req.quote.lines.map((l) => l.slotId));
   if (ag) return ag;
   // snapshot ต่อบรรทัด (ยอดที่จด/ตัดโค้ด มาจากที่นี่เท่านั้น)
   const qLines = fresh.value.lines as TripQuoteLine[];
@@ -459,6 +569,8 @@ async function prepareCore(
     if (!ql) return priceChanged(fresh.value);
     const s = await buildTripBookingSnapshot(sc, { ...req.quote.lines[i], productKind: "TRIP" }, { quotedFingerprint: ql.fingerprint, policyAt: ql.policyAt }, lineOptsOf(req.quote, qopts));
     if (!s.ok) return s.code === "PRICE_CHANGED" ? priceChanged(fresh.value) : s;
+    // แต้ม/คูปองของผู้ให้บริการ (X.2) ยังไม่ต่อสาย — ห้ามให้ส่วนลดที่ไม่ได้ตัดจริง (review m13)
+    if ((s.value.providers ?? []).length > 0) return sellFail("VALIDATION", { reason: "PROVIDERS_NOT_WIRED" });
     snaps.push(s.value);
   }
   // ค่าตั้ง X1 (ชั้นสินค้า) · X3 (ชั้นหน่วย)
@@ -471,14 +583,7 @@ async function prepareCore(
     settingsOf.set(productId, { confirmMode, prefix });
   }
   // ผู้เดินทาง: จับคู่ตามประเภทคนกับที่นั่งของบรรทัด (ตามลำดับบรรทัด) · เกิน ⇒ TOO_MANY_PASSENGERS
-  const seatLeft = snaps.map((s) => {
-    const m: Record<string, number> = {};
-    for (const l of s.lines) {
-      const pt = (l as { paxTypeId?: unknown }).paxTypeId;
-      if (l.kind === "SEAT" && typeof pt === "string") m[pt] = (m[pt] ?? 0) + l.qty;
-    }
-    return m;
-  });
+  const seatLeft = snaps.map((s) => seatsByPaxType(s));
   const paxOf: { name: string; paxTypeId: string }[][] = snaps.map(() => []);
   for (const p of req.passengers ?? []) {
     const i = seatLeft.findIndex((m) => (m[p.paxTypeId] ?? 0) > 0);
@@ -487,11 +592,10 @@ async function prepareCore(
     paxOf[i].push({ name: p.name, paxTypeId: p.paxTypeId });
   }
   const bookingPrefix = `tb${randomBytes(10).toString("hex")}`;
-  const lines: PreparedLine[] = [];
+  const lines: Omit<PreparedLine, "holdId">[] = [];
   for (let i = 0; i < snaps.length; i++) {
     const s = snaps[i];
-    const cols = bookingColumnsFromSnapshot(s as unknown as SnapshotShape);
-    if (!cols) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+    if (!bookingColumnsFromSnapshot(s as unknown as SnapshotShape)) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
     const set = settingsOf.get(req.quote.lines[i].productId);
     if (!set) return sellFail("VALIDATION", { reason: "SETTINGS_INVALID" });
     const st = initialBookingStatus({ actorKind: c.actor.kind, payMethod: req.pay.method, confirmMode: set.confirmMode, dueNowSatang: dueNowOfSnapshot(s as unknown as SnapshotShape) });
@@ -500,22 +604,20 @@ async function prepareCore(
       index: i,
       bookingId: `${bookingPrefix}${String(i).padStart(2, "0")}`,
       productId: req.quote.lines[i].productId,
+      optionId: extra.refs[i]?.optionId ?? null,
       departureId: req.quote.lines[i].slotId,
       seats: seatsOfSnapshot(s as unknown as SnapshotShape),
       snapshot: s,
-      columns: cols.booking,
-      items: cols.items,
       status: st.status,
       holdMode: st.hold,
       prefix: set.prefix,
       passengers: paxOf[i],
       promo: s.promo && s.promo.discountSatang > 0 ? { ruleId: s.promo.ruleId, discountSatang: s.promo.discountSatang } : null,
-      holdId: null,
     });
   }
   for (const l of lines) if (!extra.policies.departures[l.departureId]) return NF();
-  // ผู้จอง = Party ของร้าน (ช่องทางใดก็ได้ · นอก tx · ซ้ำได้ไม่เพิ่มแถว) — STAFF ส่ง partyId ของร้านตัวเองได้
-  let bookerPartyId: string | null = null;
+  // ผู้จอง = Party ของร้าน (นอก tx · ซ้ำได้ไม่เพิ่มแถว) — STAFF ส่ง partyId ของร้านตัวเองได้ · หา/สร้างไม่ได้ ⇒ ล้ม (ห้ามการจองไม่มีผู้จอง · R10)
+  let bookerPartyId: string | null;
   if (c.actor.kind === "STAFF" && req.booker.partyId) {
     const party = await tenantDb({ tenantId: c.tenantId }).party.findFirst({ where: { id: req.booker.partyId, tenantId: c.tenantId }, select: { id: true } });
     if (!party) return NF();
@@ -523,21 +625,35 @@ async function prepareCore(
   } else {
     bookerPartyId = await safeFindOrCreate(c.tenantId, { name: req.booker.name, phone: req.booker.phone ?? null, email: req.booker.email ?? null });
   }
+  if (!bookerPartyId) return sellFail("BUSY", { reason: "BOOKER_UNAVAILABLE" });
   return { ok: true, lines, contactKey, bookerPartyId, payMethod: req.pay.method === "PAY_LATER" ? "PAY_LATER" : "PAY_NOW" };
+}
+/** ที่นั่งต่อประเภทคนของ snapshot (SEAT ทุกประเภท — ผู้เดินทางทารกผูกที่นั่งทารกได้) */
+function seatsByPaxType(s: TripsBookingSnapshot): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const l of s.lines) {
+    const pt = (l as { paxTypeId?: unknown }).paxTypeId;
+    if (l.kind === "SEAT" && typeof pt === "string") m[pt] = (m[pt] ?? 0) + l.qty;
+  }
+  return m;
 }
 
 type ConfirmPrep = { replay: BookingRef[] } | { prepared: PreparedConfirm; c: Ctx; sc: SellCtx; g: Gate; quote: QuoteRequestInput; qopts: TripQuoteOpts };
 
-async function replayOrConflict(g: Gate, b: BasketRow, key: string, requestHash: string): Promise<SellResult<BookingRef[]>> {
-  if (b.status === "CHECKED_OUT" && b.idempotencyKey === key) return b.requestHash === requestHash ? { ok: true, value: await refsOfBasket(g, b.id) } : sellFail("IDEMPOTENCY_CONFLICT");
-  return sellFail("STATE_CONFLICT", { reason: "BASKET_CHECKED_OUT" });
+/** ตะกร้าของคีย์นี้มีอยู่แล้ว: CHECKED_OUT + แฮชเดิม = ผลเดิม · แฮชต่าง/ตะกร้ายัง OPEN (คีย์ถูกใช้กับคำขออื่น) = IDEMPOTENCY_CONFLICT (R12) */
+async function replayByKey(g: Gate, b: BasketRow, requestHash: string): Promise<SellResult<BookingRef[]>> {
+  if (b.status === "CHECKED_OUT" && b.requestHash === requestHash) return refsOfBasket(g, b.id);
+  return sellFail("IDEMPOTENCY_CONFLICT");
 }
 
 /**
- * ส่วนนอก tx ของการยืนยัน (ให้ K1.1 ประกอบตะกร้าข้ามชนิดได้) — คืน `prepared` ที่ finalizeTripsInTx ใช้ หรือผลเดิม (กันซ้ำ)
+ * ส่วนนอก tx ของการยืนยัน (ให้ K1.1 ประกอบตะกร้าข้ามชนิดได้) — คืน `prepared` (แช่แข็ง · ลงทะเบียนในโมดูล) ที่ finalizeTripsInTx ใช้ หรือผลเดิม (กันซ้ำ)
  * ตะกร้า/ token ผิด ⇒ HOLD_NOT_FOUND · บรรทัดไม่ตรง hold ⇒ VALIDATION HOLD_MISMATCH · ราคาไม่ตรง ⇒ PRICE_CHANGED + ใบใหม่
  */
 export async function prepareTripConfirm(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<ConfirmPrep>> {
+  return safely("prepareTripConfirm", ctx, () => prepareTripConfirmImpl(ctx, input, opts));
+}
+async function prepareTripConfirmImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<ConfirmPrep>> {
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
   const c = pc.c;
@@ -547,6 +663,8 @@ export async function prepareTripConfirm(ctx: unknown, input: unknown, opts?: Bo
   const req = p.data;
   const pub = c.actor.kind === "PUBLIC";
   if (pub && !req.basketToken) return sellFail("VALIDATION", { fields: ["basketToken"] });
+  if (pub && req.onExpired === "REHOLD") return sellFail("VALIDATION", { fields: ["onExpired"] });
+  if (!tokenSecret()) return keyMissing();
   const g = await gateOf(c);
   if (!g) return sellFail("HOLD_NOT_FOUND");
   const db = unitDb(g);
@@ -563,14 +681,16 @@ export async function prepareTripConfirm(ctx: unknown, input: unknown, opts?: Bo
     booker: req.booker,
     passengers: req.passengers ?? null,
     pay: req.pay,
-    note: req.note ?? null,
     onExpired: req.onExpired ?? "FAIL",
     priceOverrides: req.priceOverrides ?? null,
     overrideApprovals: req.overrideApprovals ?? null,
   });
   if (b.status !== "OPEN") {
-    const r = await replayOrConflict(g, b, key, requestHash);
-    return r.ok ? { ok: true, value: { replay: r.value } } : r;
+    if (b.status === "CHECKED_OUT" && b.idempotencyKey === key) {
+      const r = await replayByKey(g, b, requestHash);
+      return r.ok ? { ok: true, value: { replay: r.value } } : r;
+    }
+    return sellFail("STATE_CONFLICT", { reason: "BASKET_CHECKED_OUT" });
   }
   const lg = linesGate(c, req.quote.lines);
   if (lg) return lg;
@@ -587,49 +707,40 @@ export async function prepareTripConfirm(ctx: unknown, input: unknown, opts?: Bo
     const h = byId.get(req.holdIds[i]);
     if (!h || h.departureId !== req.quote.lines[i].slotId || h.qtyPublic + h.qtyAllot !== seats[i]) return sellFail("VALIDATION", { reason: "HOLD_MISMATCH" });
   }
+  const refs = await productRefsOf(g, req.quote.lines);
+  if (!Array.isArray(refs)) return refs;
   const sc = sellCtxOf(c, ctx);
   const policies = await loadCapacityPolicies(sc, { departureIds: [...new Set(req.quote.lines.map((l) => l.slotId))] });
   if (!policies.ok) return policies;
-  const core = await prepareCore(c, sc, g, req, opts, { policies: policies.value });
+  const core = await prepareCore(c, sc, g, req, opts, { policies: policies.value, refs });
   if (!core.ok) return core;
-  for (const l of core.lines) {
-    l.holdId = req.holdIds[l.index];
-    if (l.seats !== seats[l.index]) return sellFail("VALIDATION", { reason: "HOLD_MISMATCH" });
-  }
-  return {
-    ok: true,
-    value: {
-      prepared: {
-        kind: "trips.confirm.v1",
-        tenantId: c.tenantId,
-        unitId: c.unitId,
-        channel: c.channel,
-        basketId: b.id,
-        basketKey: key,
-        requestHash,
-        tokenHash,
-        contactKey: core.contactKey,
-        bookerPartyId: core.bookerPartyId,
-        payMethod: core.payMethod,
-        overridden: !!req.priceOverrides?.length,
-        onExpired: req.onExpired ?? "FAIL",
-        lines: core.lines,
-        policies: policies.value,
-      },
-      c,
-      sc,
-      g,
-      quote: req.quote,
-      qopts: quoteOptsOf(req, opts),
-    },
-  };
+  for (const l of core.lines) if (l.seats !== seats[l.index]) return sellFail("VALIDATION", { reason: "HOLD_MISMATCH" });
+  const prepared = seal({
+    kind: "trips.confirm.v1",
+    tenantId: c.tenantId,
+    unitId: c.unitId,
+    channel: c.channel,
+    actorKind: c.actor.kind,
+    actorId: actorIdOf(c.actor),
+    basketId: b.id,
+    basketKey: key,
+    requestHash,
+    tokenHash,
+    contactKey: core.contactKey,
+    bookerPartyId: core.bookerPartyId,
+    payMethod: core.payMethod,
+    approvalIds: (req.overrideApprovals ?? []).map((a) => a.approvalId),
+    onExpired: req.onExpired ?? "FAIL",
+    lines: core.lines.map((l) => ({ ...l, holdId: req.holdIds[l.index] })),
+    policies: policies.value,
+  });
+  return { ok: true, value: { prepared, c, sc, g, quote: req.quote, qopts: quoteOptsOf(req, opts) } };
 }
 
 // ═══════════════════════ ยืนยัน (ใบสั่ง §5.4) ═══════════════════════
 type TxOut = { replay: true } | { refs: BookingRef[] };
 /** ชั้น 0 ของการยืนยัน: ตะกร้า FOR UPDATE (ไม่ OPEN ⇒ กันซ้ำ §5.5) */
 async function lockOpenBasket(tx: Tx, P: PreparedConfirm): Promise<{ replay: true } | null> {
-  if (!P.basketId) throw new BookingAbort("HOLD_NOT_FOUND");
   const b = await basketById(tx, P.tenantId, P.basketId, true);
   if (!b || !b.unitIds.includes(P.unitId) || (P.tokenHash !== null && b.publicTokenHash !== P.tokenHash)) throw new BookingAbort("HOLD_NOT_FOUND");
   if (b.status === "OPEN") return null;
@@ -639,32 +750,33 @@ async function lockOpenBasket(tx: Tx, P: PreparedConfirm): Promise<{ replay: tru
   }
   throw new BookingAbort("STATE_CONFLICT", { reason: "BASKET_CHECKED_OUT" });
 }
-async function confirmTx(tx: Tx, sc: SellCtx, P: PreparedConfirm, mode: "FAIL" | "REHOLD"): Promise<TxOut> {
+async function confirmTx(tx: Tx, c: Ctx, sc: SellCtx, P: PreparedConfirm, mode: "FAIL" | "REHOLD"): Promise<TxOut> {
   if (await lockOpenBasket(tx, P)) return { replay: true };
   const pub = isPublicActor(sc.actor);
-  let lines = P.lines;
+  const refs = P.lines.map((l) => ({ productId: l.productId, optionId: l.optionId }));
+  let holdIds = P.lines.map((l) => l.holdId ?? "");
   if (mode === "FAIL") {
     if (pub) {
       if (!P.contactKey) throw new BookingAbort("VALIDATION", { reason: "CONTACT_REQUIRED" });
-      await rekeyHoldsToContactInTx(tx, sc, { holdIds: lines.map((l) => l.holdId ?? ""), contactKey: `contact:${P.contactKey}` }, P.policies);
+      // ชั้น 0 (มติ: rekey ก่อนแปลงเสมอ · r2 §d ข้อ 3) — ⚠️ T0.7: rekey UPDATE แถว TripHold ก่อนล็อกรอบ 1a ขณะที่ตัวกวาด (sweepDeparturesTx)
+      //   ล็อกรอบก่อนแล้วจึง UPDATE hold เดียวกัน ⇒ ลำดับสลับทางทฤษฎี (ยืนยันสาธารณะ ณ เวลาหมด ∥ runExpireHolds) — ผู้ล่ายิง 600 ครั้งไม่พบ 40P01
+      //   (review m1 / hunt S1) · ถ้าเกิด runTx ลองใหม่ (ไม่ใช่ข้อมูลเสีย) — ใบที่แก้ลำดับต้องย้าย rekey ไปหลัง 1a พร้อมมติผู้คุม
+      await rekeyHoldsToContactInTx(tx, sc, { holdIds, contactKey: `contact:${P.contactKey}` }, P.policies);
     }
-    await lockProductsInTx(tx, sc, lines.map((l) => l.productId));
-    await lockDeparturesInTx(tx, sc, lines.map((l) => l.departureId));
+    await lockProductsInTx(tx, sc, refs);
+    await lockDeparturesInTx(tx, sc, P.lines.map((l) => l.departureId));
   } else {
     // REHOLD (ธุรกรรมใหม่ · STAFF): สินค้า → 1a → ปล่อย hold เก่าที่ยัง ACTIVE → reserveInTx(HOLD) → insertHoldInTx (rh_<holdIdเดิม>)
-    await lockProductsInTx(tx, sc, lines.map((l) => l.productId));
-    await lockDeparturesInTx(tx, sc, lines.map((l) => l.departureId));
-    for (const l of [...lines].sort((a, b) => (a.departureId < b.departureId ? -1 : a.departureId > b.departureId ? 1 : 0))) {
+    await lockProductsInTx(tx, sc, refs);
+    await lockDeparturesInTx(tx, sc, P.lines.map((l) => l.departureId));
+    for (const l of [...P.lines].sort((a, b) => byStr(a.departureId, b.departureId))) {
       const cur = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "TripHold" WHERE "id" = ${l.holdId ?? ""} AND "tenantId" = ${P.tenantId} AND "unitId" = ${P.unitId}`;
       if (cur[0]?.status === "ACTIVE") await releaseHoldInTx(tx, sc, { holdId: l.holdId ?? "", reason: "REHOLD" }, P.policies);
     }
-    await reserveHoldsInTx(tx, sc, lines.map((l) => ({ departureId: l.departureId, qty: l.seats })), P.policies, null);
-    const ids = await insertHoldsInTx(tx, sc, lines.map((l) => ({ departureId: l.departureId, qty: l.seats, key: `rh_${l.holdId ?? ""}`.slice(0, 100) })), P.basketId ?? "", P.policies, null);
-    lines = lines.map((l, i) => ({ ...l, holdId: ids[i] }));
+    await reserveHoldsInTx(tx, sc, P.lines.map((l) => ({ departureId: l.departureId, qty: l.seats })), P.policies, null);
+    holdIds = await insertHoldsInTx(tx, sc, P.lines.map((l) => ({ departureId: l.departureId, qty: l.seats, key: `rh_${l.holdId ?? ""}`.slice(0, 100) })), P.basketId, P.policies, null);
   }
-  const out = await finalizeTripsInTx(tx, sc, [], { prepared: { ...P, lines }, basketId: P.basketId ?? "" });
-  if (!out.ok) throw new BookingAbort(out.code, out.details);
-  return { refs: out.value.bookings };
+  return { refs: await finalizeCoreInTx(tx, c, P, holdIds) };
 }
 
 /** ผลของธุรกรรมยืนยัน → SellResult (replay อ่านผลเดิม · โค้ดตัดสิทธิ์ไม่ผ่าน ⇒ PRICE_CHANGED + ใบใหม่ไม่มีโค้ด) */
@@ -674,23 +786,25 @@ async function finishConfirm(r: SellResult<TxOut>, g: Gate, basketId: string, sc
     if (PROMO_REASONS.has(reason)) return promoFailure(sc, quote, qopts, reason);
     return r;
   }
-  if ("replay" in r.value) return { ok: true, value: await refsOfBasket(g, basketId) };
+  if ("replay" in r.value) return refsOfBasket(g, basketId);
   return { ok: true, value: r.value.refs };
 }
 
 /** tripSellable.confirm — ยืนยันการจองจากตะกร้าที่ถือไว้ในธุรกรรมเดียว (ลำดับ §5.4) */
 export async function confirmTrips(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<BookingRef[]>> {
-  const prep = await prepareTripConfirm(ctx, input, opts);
-  if (!prep.ok) return prep;
-  if ("replay" in prep.value) return { ok: true, value: prep.value.replay };
-  const { prepared: P, c, sc, g, quote, qopts } = prep.value;
-  let r = await runBooking(g, (tx) => confirmTx(tx, sc, P, "FAIL"));
-  if (!r.ok && r.code === "HOLD_EXPIRED" && P.onExpired === "REHOLD" && c.actor.kind === "STAFF") r = await runBooking(g, (tx) => confirmTx(tx, sc, P, "REHOLD"));
-  return finishConfirm(r, g, P.basketId ?? "", sc, quote, qopts);
+  return safely("confirmTrips", ctx, async () => {
+    const prep = await prepareTripConfirmImpl(ctx, input, opts);
+    if (!prep.ok) return prep;
+    if ("replay" in prep.value) return { ok: true, value: prep.value.replay };
+    const { prepared: P, c, sc, g, quote, qopts } = prep.value;
+    let r = await runBooking(g, (tx) => confirmTx(tx, c, sc, P, "FAIL"));
+    if (!r.ok && r.code === "HOLD_EXPIRED" && P.onExpired === "REHOLD" && c.actor.kind === "STAFF") r = await runBooking(g, (tx) => confirmTx(tx, c, sc, P, "REHOLD"));
+    return finishConfirm(r, g, P.basketId, sc, quote, qopts);
+  });
 }
 
 // ═══════════════════════ แกนในธุรกรรม (ข้อ 4–7 ของ §5.4) ═══════════════════════
-type InsertedBooking = { line: PreparedLine; code: string; token: string };
+type InsertedBooking = { line: PreparedLine; code: string; token: string; items: BookingItemColumns[] };
 function duesOf(snap: { currency?: unknown; paymentSchedule?: unknown }): DueSpec[] {
   const cur = typeof snap.currency === "string" ? snap.currency : "THB";
   const rows = Array.isArray(snap.paymentSchedule) ? snap.paymentSchedule : [];
@@ -710,8 +824,9 @@ const eventPayload = (b: { id: string; unitId: string; departureId: string; stat
   amountSatang: b.amountSatang,
 });
 type AuditActor = { tenantId: string; unitId: string; actor: SellActor };
+type AuditVal = Record<string, string | number | boolean | null>;
 /** audit ใน tx เดียวกัน (STAFF/SYSTEM · ไม่มีข้อมูลบุคคล) */
-async function auditBooking(tx: Tx, a: AuditActor, action: string, targetId: string, after: Record<string, string | number | boolean | null>, before?: Record<string, string | number | boolean | null>) {
+async function auditBooking(tx: Tx, a: AuditActor, action: string, targetId: string, after: AuditVal, before?: AuditVal) {
   if (a.actor.kind !== "STAFF" && a.actor.kind !== "SYSTEM") return;
   await tx.auditLog.create({
     data: {
@@ -727,29 +842,35 @@ async function auditBooking(tx: Tx, a: AuditActor, action: string, targetId: str
     },
   });
 }
-function isPrepared(v: unknown): v is PreparedConfirm {
-  return isRec(v) && v.kind === "trips.confirm.v1" && Array.isArray(v.lines) && isRec(v.policies);
-}
 
 /**
  * แกนข้อ 4–7 ของ §5.4 ในธุรกรรมของผู้เรียก (ให้ K1.1 ประกอบตะกร้าข้ามชนิด) — ผู้เรียกทำชั้น 0 (ตะกร้า · rekey) + สินค้า + 1a มาแล้ว
- * `req.prepared` = ผลของ prepareTripConfirm/bookTripsNow (snapshot · สถานะแรก · ค่าตั้ง สร้างนอก tx) · ปฏิเสธ ⇒ throw BookingAbort/CapacityAbort/PricingAbort
- * 2a ผูก bookingId (CAS) + CONVERT/SHOP_CONFIRM/KEEP ตามรอบเรียง id → 2c เลขจอง → 2b การจอง/รายการ/ผู้เดินทาง → โค้ดส่วนลด (เรียง id การจอง) → 2h outbox/audit → ตะกร้า CHECKED_OUT
+ * `req.prepared` ต้องเป็นก้อนที่ prepareTripConfirm ของกระบวนการนี้ออกให้ (แช่แข็ง · ลงทะเบียน · R4) และผู้กระทำ/ร้าน/หน่วย/ตะกร้าตรงกับ ctx
+ * ปฏิเสธ ⇒ throw BookingAbort/CapacityAbort/PricingAbort
  */
 export async function finalizeTripsInTx(tx: unknown, ctx: unknown, reservations: unknown, req: unknown): Promise<SellResult<{ holds?: Hold; bookings: BookingRef[]; ledger: LedgerDraft[] }>> {
-  const t = tx as Tx;
   const pc = parseCtx(ctx);
   if (!pc.ok) throw new BookingAbort(pc.code, pc.details);
   const c = pc.c;
   const P = isRec(req) ? req.prepared : undefined;
-  if (!isPrepared(P) || P.tenantId !== c.tenantId || P.unitId !== c.unitId || (isRec(req) && req.basketId !== P.basketId) || !Array.isArray(reservations)) throw new BookingAbort("VALIDATION", { reason: "PREPARED_REQUIRED" });
+  if (!isRec(P) || !SEALED.has(P) || !Array.isArray(reservations)) throw new BookingAbort("VALIDATION", { reason: "PREPARED_REQUIRED" });
+  const prepared = P as unknown as PreparedConfirm;
+  if (prepared.tenantId !== c.tenantId || prepared.unitId !== c.unitId || prepared.actorKind !== c.actor.kind || prepared.actorId !== actorIdOf(c.actor) || (isRec(req) ? req.basketId : undefined) !== prepared.basketId) {
+    throw new BookingAbort("VALIDATION", { reason: "PREPARED_REQUIRED" });
+  }
+  const holdIds = prepared.lines.map((l) => l.holdId ?? "");
+  if (holdIds.some((h) => !h)) throw new BookingAbort("VALIDATION", { reason: "PREPARED_REQUIRED" });
+  return { ok: true, value: { bookings: await finalizeCoreInTx(tx as Tx, c, prepared, holdIds), ledger: [] } };
+}
+
+/** แกนของ finalize (ภายในโมดูล) — holdIds ตามบรรทัด (REHOLD/จองหน้าร้านส่ง hold ที่เพิ่งสร้างใน tx นี้) · คอลัมน์เงินคำนวณใหม่จาก snapshot เสมอ */
+async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: readonly string[]): Promise<BookingRef[]> {
   const sc: SellCtx = { tenantId: c.tenantId, unitId: c.unitId, channel: c.channel, actor: c.actor, now: c.clock.now };
   const nowIso = c.clock.iso;
   const pub = c.actor.kind === "PUBLIC";
+  const lines = P.lines.map((l, i) => ({ l, holdId: holdIds[i] ?? "" }));
   // 2a: ผูก hold กับการจอง ตามรอบเรียง id
-  const ordered = [...P.lines].sort((a, b) => (a.departureId < b.departureId ? -1 : a.departureId > b.departureId ? 1 : (a.holdId ?? "") < (b.holdId ?? "") ? -1 : 1));
-  for (const l of ordered) {
-    const holdId = l.holdId ?? "";
+  for (const { l, holdId } of [...lines].sort((a, b) => byStr(a.l.departureId, b.l.departureId) || byStr(a.holdId, b.holdId))) {
     const bound = await t.$queryRaw<{ id: string }[]>`
       UPDATE "TripHold" SET "bookingId" = ${l.bookingId}, "updatedAt" = now()
       WHERE "id" = ${holdId} AND "tenantId" = ${c.tenantId} AND "unitId" = ${c.unitId} AND "basketId" = ${P.basketId} AND "departureId" = ${l.departureId}
@@ -771,13 +892,24 @@ export async function finalizeTripsInTx(tx: unknown, ctx: unknown, reservations:
       if (s.length !== 1) throw new BookingAbort("HOLD_EXPIRED");
     }
   }
-  // 2c เลขจอง → 2b การจอง + รายการ + ผู้เดินทาง (ตามลำดับบรรทัด)
+  // คำอนุมัติราคาแก้มือ: ใช้ได้ครั้งเดียว (R1)
+  if (P.approvalIds.length) await consumeApprovalsInTx(t, c.tenantId, P.approvalIds);
+  // 2c เลขจอง: จองเลขเรียง (prefix, งวด) ก่อน แล้วจึงคืนให้บรรทัด (R7 — แถว SellCounter ล็อกตามลำดับเดียวกันทุกตะกร้า)
+  const codeOf = new Map<number, string>();
+  const keyOf = (l: PreparedLine) => `${l.prefix}\u0001${bookingPeriodOf(l.snapshot.travel.localDate)}`;
+  for (const l of [...P.lines].sort((a, b) => byStr(keyOf(a), keyOf(b)) || a.index - b.index)) {
+    codeOf.set(l.index, await nextBookingCodeInTx(t, { tenantId: c.tenantId, prefix: l.prefix, localDate: l.snapshot.travel.localDate }));
+  }
+  // 2b การจอง + รายการ + ผู้เดินทาง (ตามลำดับบรรทัด) — คอลัมน์เงินคำนวณใหม่จาก snapshot (R4)
   const done: InsertedBooking[] = [];
   const staffId = c.actor.kind === "STAFF" ? c.actor.userId : null;
   for (const l of P.lines) {
-    const code = await nextBookingCodeInTx(t, { tenantId: c.tenantId, prefix: l.prefix, localDate: l.columns.travelDate });
+    const cols = bookingColumnsFromSnapshot(l.snapshot as unknown as SnapshotShape);
+    if (!cols) throw new BookingAbort("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+    const code = codeOf.get(l.index) ?? "";
     const token = bookingPublicToken(l.bookingId);
-    const k = l.columns;
+    if (!token) throw new BookingAbort("BUSY", { reason: "SERVER_KEY_MISSING" });
+    const k = cols.booking;
     await t.tripBooking.create({
       data: {
         id: l.bookingId,
@@ -816,7 +948,7 @@ export async function finalizeTripsInTx(tx: unknown, ctx: unknown, reservations:
         createdById: staffId,
       },
     });
-    const itemIds = await insertItems(t, c.tenantId, c.unitId, l.bookingId, l.departureId, l.items);
+    const itemIds = await insertItems(t, c.tenantId, c.unitId, l.bookingId, l.departureId, cols.items);
     if (l.passengers.length) {
       await t.tripPassenger.createMany({
         data: l.passengers.map((p) => ({
@@ -831,23 +963,25 @@ export async function finalizeTripsInTx(tx: unknown, ctx: unknown, reservations:
         })),
       });
     }
-    done.push({ line: l, code, token });
+    done.push({ line: l, code, token, items: cols.items });
   }
-  // โค้ดส่วนลด (เรียง id การจอง · ภายในเรียง ruleId) — ยอดจาก snapshot
-  for (const d of [...done].sort((a, b) => (a.line.bookingId < b.line.bookingId ? -1 : 1))) {
-    if (!d.line.promo) continue;
-    if (!P.contactKey) throw new BookingAbort("VALIDATION", { reason: "CONTACT_REQUIRED" });
-    await redeemPromosInTx(t, sc, { contactKey: P.contactKey, bookingId: d.line.bookingId, items: [{ ruleId: d.line.promo.ruleId, discountSatang: d.line.promo.discountSatang }] });
+  // โค้ดส่วนลดทั้งตะกร้าเรียง ruleId (แล้ว id การจอง) — ยอดจาก snapshot (R13)
+  const redeems = done.filter((d) => d.line.promo).map((d) => ({ ruleId: d.line.promo?.ruleId ?? "", bookingId: d.line.bookingId, discountSatang: d.line.promo?.discountSatang ?? 0 }));
+  if (redeems.length && !P.contactKey) throw new BookingAbort("VALIDATION", { reason: "CONTACT_REQUIRED" });
+  for (const x of redeems.sort((a, b) => byStr(a.ruleId, b.ruleId) || byStr(a.bookingId, b.bookingId))) {
+    await redeemPromosInTx(t, sc, { contactKey: P.contactKey ?? "", bookingId: x.bookingId, items: [{ ruleId: x.ruleId, discountSatang: x.discountSatang }] });
   }
   // 2h outbox + audit
   const evts: { tenantId: string; unitId: string; type: string; idempotencyKey: string; payload: Record<string, unknown> }[] = [];
+  const a: AuditActor = { tenantId: c.tenantId, unitId: c.unitId, actor: c.actor };
   for (const d of done) {
     const payload = eventPayload({ id: d.line.bookingId, unitId: c.unitId, departureId: d.line.departureId, status: d.line.status, channel: c.channel, amountSatang: d.line.snapshot.totals.payableSatang });
     evts.push({ tenantId: c.tenantId, unitId: c.unitId, type: "trips.booking.created", idempotencyKey: `trips.booking.created:${d.line.bookingId}`, payload });
     if (d.line.status === "CONFIRMED") evts.push({ tenantId: c.tenantId, unitId: c.unitId, type: "trips.booking.confirmed", idempotencyKey: `trips.booking.confirmed:${d.line.bookingId}`, payload });
-    const a: AuditActor = { tenantId: c.tenantId, unitId: c.unitId, actor: c.actor };
-    await auditBooking(t, a, "trips.booking.create", d.line.bookingId, { status: d.line.status, departureId: d.line.departureId, seats: d.line.seats, grossSatang: d.line.columns.grossSatang, payableSatang: d.line.snapshot.totals.payableSatang });
-    if (P.overridden) await auditBooking(t, a, "trips.booking.price_override", d.line.bookingId, { grossSatang: d.line.columns.grossSatang, discountSatang: d.line.columns.discountSatang });
+    await auditBooking(t, a, "trips.booking.create", d.line.bookingId, { status: d.line.status, departureId: d.line.departureId, seats: d.line.seats, grossSatang: d.line.snapshot.totals.grossSatang, payableSatang: d.line.snapshot.totals.payableSatang });
+    if (P.approvalIds.length) {
+      await auditBooking(t, a, "trips.booking.price_override", d.line.bookingId, { grossSatang: d.line.snapshot.totals.grossSatang, discountSatang: d.line.snapshot.totals.discountSatang, approvalIds: [...P.approvalIds].sort().join(",") });
+    }
   }
   await emitOutboxMany(t, evts);
   // ตะกร้า OPEN → CHECKED_OUT (คีย์/แฮชของการยืนยันแทนของการถือ · §5.5)
@@ -856,8 +990,7 @@ export async function finalizeTripsInTx(tx: unknown, ctx: unknown, reservations:
     WHERE "id" = ${P.basketId} AND "tenantId" = ${c.tenantId} AND "status" = 'OPEN'
     RETURNING "id"`;
   if (co.length !== 1) throw new BookingAbort("STATE_CONFLICT", { reason: "BASKET_CHECKED_OUT" });
-  const bookings: BookingRef[] = done.map((d) => ({ productKind: "TRIP", bookingId: d.line.bookingId, code: d.code, status: d.line.status, publicToken: d.token, dues: duesOf(d.line.snapshot) }));
-  return { ok: true, value: { bookings, ledger: [] } };
+  return done.map((d) => ({ productKind: "TRIP", bookingId: d.line.bookingId, code: d.code, status: d.line.status, publicToken: d.token, dues: duesOf(d.line.snapshot) }));
 }
 
 /** INSERT รายการของการจอง (id ฝั่งแอป · คืน id ต่อรายการให้ผูกผู้เดินทาง) */
@@ -888,15 +1021,24 @@ async function insertItems(tx: Tx, tenantId: string, unitId: string, bookingId: 
 }
 
 /** BookingRef ของตะกร้า (ผลเดิมของการยืนยันซ้ำ · token สร้างซ้ำได้จาก HMAC) — เรียง id = ลำดับบรรทัด */
-async function refsOfBasket(g: Gate, basketId: string): Promise<BookingRef[]> {
+async function refsOfBasket(g: Gate, basketId: string): Promise<SellResult<BookingRef[]>> {
   const rows = await unitDb(g).$queryRaw<{ id: string; code: string; status: string; policySnapshot: unknown }[]>`
     SELECT "id", "code", "status", "policySnapshot" FROM "TripBooking" WHERE "basketId" = ${basketId} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} ORDER BY "id"`;
-  return rows.map((r) => ({ productKind: "TRIP", bookingId: r.id, code: r.code, status: r.status, publicToken: bookingPublicToken(r.id), dues: isRec(r.policySnapshot) ? duesOf(r.policySnapshot) : [] }));
+  const out: BookingRef[] = [];
+  for (const r of rows) {
+    const publicToken = bookingPublicToken(r.id);
+    if (!publicToken) return keyMissing();
+    out.push({ productKind: "TRIP", bookingId: r.id, code: r.code, status: r.status, publicToken, dues: isRec(r.policySnapshot) ? duesOf(r.policySnapshot) : [] });
+  }
+  return { ok: true, value: out };
 }
 
 // ═══════════════════════ จองหน้าร้านทีเดียว (ใบสั่ง §5.6) ═══════════════════════
 /** STAFF เท่านั้น: ตะกร้า + hold + ยืนยัน ในธุรกรรมเดียว (ลำดับ §5.3 แล้ว §5.4 ข้อ 4–7 · ไม่มี rekey) · คีย์ซ้ำ = ผลเดิม */
 export async function bookTripsNow(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<BookingRef[]>> {
+  return safely("bookTripsNow", ctx, () => bookTripsNowImpl(ctx, input, opts));
+}
+async function bookTripsNowImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<BookingRef[]>> {
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
   const c = pc.c;
@@ -906,6 +1048,7 @@ export async function bookTripsNow(ctx: unknown, input: unknown, opts?: BookingO
   const req = p.data;
   const lg = linesGate(c, req.quote.lines) ?? overrideGate(req, opts);
   if (lg) return lg;
+  if (!tokenSecret()) return keyMissing();
   const g = await gateOf(c);
   if (!g) return NF();
   const key = nsKey(c, req.idempotencyKey, null);
@@ -916,33 +1059,30 @@ export async function bookTripsNow(ctx: unknown, input: unknown, opts?: BookingO
     booker: req.booker,
     passengers: req.passengers ?? null,
     pay: req.pay,
-    note: req.note ?? null,
     priceOverrides: req.priceOverrides ?? null,
     overrideApprovals: req.overrideApprovals ?? null,
   });
   const prior = await basketByKey(unitDb(g), g.tenantId, key);
-  if (prior) return replayOrConflict(g, prior, key, requestHash);
+  if (prior) return replayByKey(g, prior, requestHash);
   const sc = sellCtxOf(c, ctx);
   const seats = await seatsOfLines(g, req.quote.lines);
   if (!Array.isArray(seats)) return seats;
+  const refs = await productRefsOf(g, req.quote.lines);
+  if (!Array.isArray(refs)) return refs;
   const policies = await policiesOfLines(sc, req.quote.lines);
   if ("ok" in policies) return policies;
-  const core = await prepareCore(c, sc, g, req, opts, { quoteExpiresAt: req.quoteExpiresAt, policies });
+  const core = await prepareCore(c, sc, g, req, opts, { quoteExpiresAt: req.quoteExpiresAt, policies, refs });
   if (!core.ok) return core;
   for (const l of core.lines) if (l.seats !== seats[l.index]) return sellFail("VALIDATION", { fields: ["pax"] });
-  let expiresAt: Date;
-  try {
-    expiresAt = new Date(Math.max(...core.lines.map((l) => holdExpiry(policies, l.departureId, "PAYMENT", c.clock.now).getTime())));
-  } catch (e) {
-    if (e instanceof BookingAbort) return sellFail(e.code, e.details);
-    throw e;
-  }
+  const expiresAt = new Date(Math.max(...core.lines.map((l) => holdExpiry(policies, l.departureId, "PAYMENT", c.clock.now).getTime())));
   const basketId = newId("sb_");
-  const P: PreparedConfirm = {
+  const P = seal({
     kind: "trips.confirm.v1",
     tenantId: c.tenantId,
     unitId: c.unitId,
     channel: c.channel,
+    actorKind: c.actor.kind,
+    actorId: actorIdOf(c.actor),
     basketId,
     basketKey: key,
     requestHash,
@@ -950,27 +1090,25 @@ export async function bookTripsNow(ctx: unknown, input: unknown, opts?: BookingO
     contactKey: core.contactKey,
     bookerPartyId: core.bookerPartyId,
     payMethod: core.payMethod,
-    overridden: !!req.priceOverrides?.length,
+    approvalIds: (req.overrideApprovals ?? []).map((a) => a.approvalId),
     onExpired: "FAIL",
-    lines: core.lines,
+    lines: core.lines.map((l) => ({ ...l, holdId: null })),
     policies,
-  };
+  });
   const r = await runBooking(g, async (tx): Promise<TxOut> => {
     if (!(await insertBasket(tx, { id: basketId, tenantId: g.tenantId, channel: c.channel, expiresAt, tokenHash: null, key, requestHash, unitId: g.unitId }))) {
       const b = await basketByKey(tx, g.tenantId, key);
       if (b && b.status === "CHECKED_OUT" && b.requestHash === requestHash) return { replay: true };
-      throw new BookingAbort(b && b.requestHash !== requestHash ? "IDEMPOTENCY_CONFLICT" : "STATE_CONFLICT", b && b.requestHash !== requestHash ? undefined : { reason: "BASKET_CHECKED_OUT" });
+      throw new BookingAbort("IDEMPOTENCY_CONFLICT");
     }
-    await lockProductsInTx(tx, sc, core.lines.map((l) => l.productId));
-    await reserveHoldsInTx(tx, sc, core.lines.map((l) => ({ departureId: l.departureId, qty: l.seats })), policies, null);
-    const ids = await insertHoldsInTx(tx, sc, core.lines.map((l) => ({ departureId: l.departureId, qty: l.seats, key: `${req.idempotencyKey}_${l.index}` })), basketId, policies, null);
-    const out = await finalizeTripsInTx(tx, sc, [], { prepared: { ...P, lines: core.lines.map((l, i) => ({ ...l, holdId: ids[i] })) }, basketId });
-    if (!out.ok) throw new BookingAbort(out.code, out.details);
-    return { refs: out.value.bookings };
+    await lockProductsInTx(tx, sc, refs);
+    await reserveHoldsInTx(tx, sc, P.lines.map((l) => ({ departureId: l.departureId, qty: l.seats })), policies, null);
+    const ids = await insertHoldsInTx(tx, sc, P.lines.map((l) => ({ departureId: l.departureId, qty: l.seats, key: `${req.idempotencyKey}_${l.index}` })), basketId, policies, null);
+    return { refs: await finalizeCoreInTx(tx, c, P, ids) };
   });
   if (r.ok && "replay" in r.value) {
     const b = await basketByKey(unitDb(g), g.tenantId, key);
-    return b ? { ok: true, value: await refsOfBasket(g, b.id) } : sellFail("STATE_CONFLICT");
+    return b ? refsOfBasket(g, b.id) : sellFail("STATE_CONFLICT");
   }
   return finishConfirm(r, g, basketId, sc, req.quote, quoteOptsOf(req, opts));
 }
@@ -1042,44 +1180,48 @@ function readerGate(c: Ctx): Failure | null {
   return c.actor.kind === "STAFF" || c.actor.kind === "SYSTEM" ? null : sellFail("FORBIDDEN");
 }
 export async function getTripBooking(ctx: unknown, input: unknown): Promise<SellResult<TripBookingDTO>> {
-  const pc = parseCtx(ctx);
-  if (!pc.ok) return pc;
-  const rg = readerGate(pc.c);
-  if (rg) return rg;
-  const p = getRequestSchema.safeParse(input);
-  if (!p.success) return invalidInput(p.error);
-  const g = await gateOf(pc.c);
-  if (!g) return NF();
-  const b = await readBooking(unitDb(g), g, p.data.bookingId);
-  return b ? { ok: true, value: dtoOf(b) } : NF();
+  return safely("getTripBooking", ctx, async () => {
+    const pc = parseCtx(ctx);
+    if (!pc.ok) return pc;
+    const rg = readerGate(pc.c);
+    if (rg) return rg;
+    const p = getRequestSchema.safeParse(input);
+    if (!p.success) return invalidInput(p.error);
+    const g = await gateOf(pc.c);
+    if (!g) return NF();
+    const b = await readBooking(unitDb(g), g, p.data.bookingId);
+    return b ? { ok: true, value: dtoOf(b) } : NF();
+  });
 }
 export async function listTripBookings(ctx: unknown, input: unknown): Promise<SellResult<{ items: TripBookingDTO[] }>> {
-  const pc = parseCtx(ctx);
-  if (!pc.ok) return pc;
-  const rg = readerGate(pc.c);
-  if (rg) return rg;
-  const p = listRequestSchema.safeParse(input);
-  if (!p.success) return invalidInput(p.error);
-  const v = p.data;
-  if (v.status !== undefined && !isBookingStatus(v.status)) return sellFail("VALIDATION", { fields: ["status"] });
-  const g = await gateOf(pc.c);
-  if (!g) return NF();
-  const rows = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).tripBooking.findMany({
-    where: {
-      tenantId: g.tenantId,
-      unitId: g.unitId,
-      ...(v.departureId ? { departureId: v.departureId } : {}),
-      ...(v.status ? { status: v.status } : {}),
-      ...(v.from || v.to ? { travelDate: { ...(v.from ? { gte: dateOfYmd(v.from) } : {}), ...(v.to ? { lte: dateOfYmd(v.to) } : {}) } } : {}),
-    },
-    orderBy: [{ travelDate: "asc" }, { id: "asc" }],
-    take: v.limit ?? 50,
-    select: {
-      id: true, code: true, status: true, version: true, productId: true, departureId: true, travelDate: true, basketId: true, channel: true, payMethod: true, bookerPartyId: true, currency: true,
-      grossSatang: true, discountSatang: true, passThroughSatang: true, vatSatang: true, netToShopSatang: true, paidSatang: true, refundedSatang: true, cancelReason: true, cancelledAt: true, createdAt: true, policySnapshot: true,
-    },
+  return safely("listTripBookings", ctx, async () => {
+    const pc = parseCtx(ctx);
+    if (!pc.ok) return pc;
+    const rg = readerGate(pc.c);
+    if (rg) return rg;
+    const p = listRequestSchema.safeParse(input);
+    if (!p.success) return invalidInput(p.error);
+    const v = p.data;
+    if (v.status !== undefined && !isBookingStatus(v.status)) return sellFail("VALIDATION", { fields: ["status"] });
+    const g = await gateOf(pc.c);
+    if (!g) return NF();
+    const rows = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).tripBooking.findMany({
+      where: {
+        tenantId: g.tenantId,
+        unitId: g.unitId,
+        ...(v.departureId ? { departureId: v.departureId } : {}),
+        ...(v.status ? { status: v.status } : {}),
+        ...(v.from || v.to ? { travelDate: { ...(v.from ? { gte: dateOfYmd(v.from) } : {}), ...(v.to ? { lte: dateOfYmd(v.to) } : {}) } } : {}),
+      },
+      orderBy: [{ travelDate: "asc" }, { id: "asc" }],
+      take: v.limit ?? 50,
+      select: {
+        id: true, code: true, status: true, version: true, productId: true, departureId: true, travelDate: true, basketId: true, channel: true, payMethod: true, bookerPartyId: true, currency: true,
+        grossSatang: true, discountSatang: true, passThroughSatang: true, vatSatang: true, netToShopSatang: true, paidSatang: true, refundedSatang: true, cancelReason: true, cancelledAt: true, createdAt: true, policySnapshot: true,
+      },
+    });
+    return { ok: true, value: { items: rows.map((r) => dtoOf(r)) } };
   });
-  return { ok: true, value: { items: rows.map((r) => dtoOf(r)) } };
 }
 
 // ═══════════════════════ CAS สถานะ (ตัวช่วยให้ใบถัดไป · ใบสั่ง §3) ═══════════════════════
@@ -1117,13 +1259,13 @@ export async function transitionBookingInTx(tx: unknown, ctx: unknown, input: un
 }
 
 // ═══════════════════════ ปล่อย hold ของการจอง → ยกเลิก → คืนโค้ด (r2 §d ข้อ 4) ═══════════════════════
-/** คืนที่นั่ง (releaseHoldInTx) ก่อน CAS การจอง แล้วจึง releasePromoInTx — ลำดับเดียวกับยืนยัน (รอบ → hold → การจอง → กฎโค้ด) */
+/** คืนที่นั่ง (releaseHoldInTx · ระบุว่าเป็นการจองนี้ — R9) ก่อน CAS การจอง แล้วจึง releasePromoInTx — ลำดับเดียวกับยืนยัน (รอบ → hold → การจอง → กฎโค้ด) */
 async function cancelUnpaidInTx(tx: Tx, sc: SellCtx, b: { id: string; status: string; version: number }, reason: string, policies: CapacityPolicies | undefined): Promise<number> {
   const a = { tenantId: sc.tenantId, unitId: sc.unitId };
   const holds = await tx.$queryRaw<{ id: string }[]>`
     SELECT "id" FROM "TripHold" WHERE "bookingId" = ${b.id} AND "tenantId" = ${a.tenantId} AND "unitId" = ${a.unitId} AND "status" = 'ACTIVE' ORDER BY "departureId", "id"`;
   for (const h of holds) {
-    const r = await releaseHoldInTx(tx, sc, { holdId: h.id, reason: "BOOKING_CANCELLED" }, policies);
+    const r = await releaseHoldInTx(tx, sc, { holdId: h.id, reason: "BOOKING_CANCELLED" }, policies, { forBookingId: b.id });
     if (!r.ok) throw new BookingAbort(r.code, r.details);
   }
   const version = await casStatus(tx, a, b.id, b.status, "CANCELLED", b.version, (sc.now ?? new Date()).toISOString(), reason);
@@ -1141,14 +1283,24 @@ const payableOf = (b: BookingRow) => {
   const t = isRec(b.policySnapshot) && isRec(b.policySnapshot.totals) ? b.policySnapshot.totals.payableSatang : undefined;
   return typeof t === "number" ? t : b.grossSatang;
 };
+/** แถว audit ที่จดคีย์กันซ้ำนี้ไว้ (ยกเลิก/แก้ไข) — idemKeyHash + bodyHash ใน after */
+type IdemAudit = { after: Record<string, unknown> };
+async function idemAudits(db: Tx, tenantId: string, action: string, bookingId: string, keyHash: string): Promise<IdemAudit[]> {
+  const rows = await db.$queryRaw<{ after: unknown }[]>`
+    SELECT "after" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "action" = ${action} AND "targetId" = ${bookingId} AND "after"->>'idemKeyHash' = ${keyHash} LIMIT 1`;
+  return rows.filter((r) => isRec(r.after)).map((r) => ({ after: r.after as Record<string, unknown> }));
+}
 
 // ═══════════════════════ ยกเลิกก่อนจ่าย (ใบสั่ง §5.6) ═══════════════════════
 /**
  * tripSellable.cancel — QUOTE = คำนวณจาก snapshot (ไม่เขียน) · EXECUTE (STAFF/SYSTEM) บน HOLD/PENDING:
  * releaseHoldInTx → CAS →CANCELLED → releasePromoInTx → outbox · ขายแล้ว ⇒ STATE_CONFLICT REFUND_REQUIRED (T0.7) · PUBLIC ⇒ FORBIDDEN OTP_REQUIRED (W1.3)
- * คีย์ซ้ำ = ผลเดิม (สถานะ CANCELLED + audit ของคีย์นี้)
+ * คีย์ซ้ำ + คำขอเดิม = ผลเดิม · คีย์ซ้ำ + คำขอต่าง = IDEMPOTENCY_CONFLICT (R12 · audit จด idemKeyHash + bodyHash)
  */
 export async function cancelTripBooking(ctx: unknown, input: unknown): Promise<SellResult<CancelResult>> {
+  return safely("cancelTripBooking", ctx, () => cancelImpl(ctx, input));
+}
+async function cancelImpl(ctx: unknown, input: unknown): Promise<SellResult<CancelResult>> {
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
   const c = pc.c;
@@ -1161,51 +1313,57 @@ export async function cancelTripBooking(ctx: unknown, input: unknown): Promise<S
   const b = await readBooking(unitDb(g), g, v.bookingId);
   if (!b) return NF();
   const sc = sellCtxOf(c, ctx);
-  const computed = (): CancelResult["computed"] | null => {
-    const r = recomputeFromSnapshot(b.policySnapshot, { kind: "CANCEL", at: c.clock.iso, reasonKind: v.reasonKind ?? "CUSTOMER", paidSatang: b.paidSatang });
-    if (!r.ok || !("refundSatang" in r.value) || !("keptSatang" in r.value)) return null;
-    return { refundSatang: r.value.refundSatang, feeSatang: r.value.keptSatang, ladderStep: r.value.step, source: "SNAPSHOT" };
-  };
   if (v.mode === "QUOTE") {
     try {
-      const cv = computed();
-      return cv ? { ok: true, value: { computed: cv, status: b.status } } : sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+      const r = recomputeFromSnapshot(b.policySnapshot, { kind: "CANCEL", at: c.clock.iso, reasonKind: v.reasonKind ?? "CUSTOMER", paidSatang: b.paidSatang });
+      if (!r.ok || !("refundSatang" in r.value) || !("keptSatang" in r.value)) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+      return { ok: true, value: { computed: { refundSatang: r.value.refundSatang, feeSatang: r.value.keptSatang, ladderStep: r.value.step, source: "SNAPSHOT" }, status: b.status } };
     } catch {
       return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
     }
   }
   const keyHash = sha256hex(`cancel:${b.id}:${nsKey(c, v.idempotencyKey, null)}`);
-  const replayed = async (): Promise<boolean> => {
-    const rows = await tenantDb({ tenantId: g.tenantId }).auditLog.findMany({ where: { tenantId: g.tenantId, action: "trips.booking.cancel", targetId: b.id }, select: { after: true }, take: 20 });
-    return rows.some((r) => isRec(r.after) && r.after.idemKeyHash === keyHash);
-  };
+  const bodyHash = holdRequestHash({ op: "trips.cancel.v1", reason: v.reason, reasonKind: v.reasonKind ?? null });
   const zero: CancelResult["computed"] = { refundSatang: 0, feeSatang: 0, ladderStep: null, source: "SNAPSHOT" };
-  if (b.status === "CANCELLED" && (await replayed())) return { ok: true, value: { computed: zero, status: "CANCELLED" } };
+  const replay = (rows: IdemAudit[]): SellResult<CancelResult> | null => {
+    const hit = rows[0];
+    if (!hit) return null;
+    return hit.after.bodyHash === bodyHash ? { ok: true, value: { computed: zero, status: "CANCELLED" } } : sellFail("IDEMPOTENCY_CONFLICT");
+  };
+  const pre = replay(await idemAudits(unitDb(g), g.tenantId, "trips.booking.cancel", b.id, keyHash));
+  if (pre) return pre;
   if (SOLD.has(b.status)) return sellFail("STATE_CONFLICT", { reason: "REFUND_REQUIRED" });
   if (!UNPAID.has(b.status)) return sellFail("STATE_CONFLICT");
   const policies = await optionalPolicies(sc, b.departureId);
-  const r = await runBooking(g, async (tx): Promise<"DONE" | "REPLAY"> => {
+  const r = await runBooking(g, async (tx): Promise<SellResult<CancelResult> | "DONE"> => {
     let version: number;
     try {
       version = await cancelUnpaidInTx(tx, sc, b, v.reason, policies);
     } catch (e) {
       if (e instanceof BookingAbort && e.code === "STATE_CONFLICT" && !e.details) {
-        const rows = await tx.auditLog.findMany({ where: { tenantId: g.tenantId, action: "trips.booking.cancel", targetId: b.id }, select: { after: true }, take: 20 });
-        if (rows.some((x) => isRec(x.after) && x.after.idemKeyHash === keyHash)) return "REPLAY";
+        const rr = replay(await idemAudits(tx, g.tenantId, "trips.booking.cancel", b.id, keyHash));
+        if (rr) return rr;
       }
       throw e;
     }
     await emitBooking(tx, g, "trips.booking.cancelled", b.id, { id: b.id, departureId: b.departureId, status: "CANCELLED", channel: b.channel, amountSatang: payableOf(b) });
-    await auditBooking(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor }, "trips.booking.cancel", b.id, { status: "CANCELLED", version, idemKeyHash: keyHash }, { status: b.status, version: b.version });
+    await auditBooking(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor }, "trips.booking.cancel", b.id, { status: "CANCELLED", version, idemKeyHash: keyHash, bodyHash }, { status: b.status, version: b.version });
     return "DONE";
   });
   if (!r.ok) return r;
+  if (r.value !== "DONE") return r.value;
   return { ok: true, value: { computed: zero, status: "CANCELLED" } };
 }
 
-// ═══════════════════════ อนุมัติ/ปฏิเสธคำขอ PENDING (ใบสั่ง §5.6) ═══════════════════════
-/** APPROVE = PENDING→HOLD (hold CAS purpose PAYMENT · expiresAt = now + T5) · REJECT = ปล่อย hold → PENDING→CANCELLED → releasePromoInTx */
+// ═══════════════════════ อนุมัติ/ปฏิเสธคำขอ PENDING (ใบสั่ง §5.6 · R5) ═══════════════════════
+/**
+ * APPROVE: ยอดตอนจอง > 0 ⇒ PENDING→HOLD (hold CAS purpose PAYMENT · expiresAt = now + T5) · = 0 ⇒ แปลง hold เป็นขาย + PENDING→CONFIRMED + event confirmed (R5)
+ * REJECT = ปล่อย hold → PENDING→CANCELLED → releasePromoInTx · สินค้า/ตัวเลือกปิดแล้ว ⇒ อนุมัติไม่ได้ (R8)
+ */
 export async function approveTripBooking(ctx: unknown, input: unknown): Promise<SellResult<{ bookingId: string; status: string; version: number }>> {
+  return safely("approveTripBooking", ctx, () => approveImpl(ctx, input));
+}
+async function approveImpl(ctx: unknown, input: unknown): Promise<SellResult<{ bookingId: string; status: string; version: number }>> {
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
   const c = pc.c;
@@ -1223,7 +1381,14 @@ export async function approveTripBooking(ctx: unknown, input: unknown): Promise<
   if (v.decision === "APPROVE") {
     const pol = await loadCapacityPolicies(sc, { departureIds: [b.departureId] });
     if (!pol.ok) return pol;
+    const refs = await productRefsOf(g, [{ productId: b.productId, slotId: b.departureId }]);
+    if (!Array.isArray(refs)) return refs;
+    const snap = isRec(b.policySnapshot) ? (b.policySnapshot as unknown as SnapshotShape) : null;
+    if (!snap || !Array.isArray(snap.paymentSchedule)) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+    const confirmNow = dueNowOfSnapshot(snap) === 0;
+    const to: BookingStatus = confirmNow ? "CONFIRMED" : "HOLD";
     const r = await runBooking(g, async (tx) => {
+      await lockProductsInTx(tx, sc, refs);
       await lockDeparturesInTx(tx, sc, [b.departureId]);
       const exp = holdExpiry(pol.value, b.departureId, "PAYMENT", c.clock.now);
       const h = await tx.$queryRaw<{ id: string }[]>`
@@ -1231,12 +1396,19 @@ export async function approveTripBooking(ctx: unknown, input: unknown): Promise<
         WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = 'ACTIVE' AND "purpose" = 'SHOP_CONFIRM' AND "expiresAt" > ${c.clock.iso}::timestamp
         RETURNING "id"`;
       if (!h.length) throw new BookingAbort("STATE_CONFLICT");
-      const tr = await transitionBookingInTx(tx, sc, { bookingId: b.id, from: "PENDING", to: "HOLD", expectedVersion: v.expectedVersion });
+      if (confirmNow) {
+        for (const x of h) {
+          const cv = await convertHoldInTx(tx, sc, { holdId: x.id });
+          if (!cv.ok) throw new BookingAbort(cv.code, cv.details);
+        }
+      }
+      const tr = await transitionBookingInTx(tx, sc, { bookingId: b.id, from: "PENDING", to, expectedVersion: v.expectedVersion });
       if (!tr.ok) throw new BookingAbort(tr.code, tr.details);
-      await auditBooking(tx, a, "trips.booking.approve", b.id, { status: "HOLD", version: tr.value.version }, { status: b.status, version: b.version });
+      if (confirmNow) await emitBooking(tx, g, "trips.booking.confirmed", b.id, { id: b.id, departureId: b.departureId, status: "CONFIRMED", channel: b.channel, amountSatang: payableOf(b) });
+      await auditBooking(tx, a, "trips.booking.approve", b.id, { status: to, version: tr.value.version }, { status: b.status, version: b.version });
       return tr.value.version;
     });
-    return r.ok ? { ok: true, value: { bookingId: b.id, status: "HOLD", version: r.value } } : r;
+    return r.ok ? { ok: true, value: { bookingId: b.id, status: to, version: r.value } } : r;
   }
   const policies = await optionalPolicies(sc, b.departureId);
   const r = await runBooking(g, async (tx) => {
@@ -1248,13 +1420,19 @@ export async function approveTripBooking(ctx: unknown, input: unknown): Promise<
   return r.ok ? { ok: true, value: { bookingId: b.id, status: "CANCELLED", version: r.value } } : r;
 }
 
-// ═══════════════════════ แก้คน/เลื่อนวัน (ใบสั่ง §5.6) ═══════════════════════
+// ═══════════════════════ แก้คน/เลื่อนวัน (ใบสั่ง §5.6 · R2 R3 R6 R12 R14) ═══════════════════════
+type ChangeValue = { bookingId: string; version: number; departureId: string };
 /**
- * STAFF · การจองที่ขายแล้ว (CONFIRMED/PART_PAID/PAID) · snapshot ใหม่ทั้งก้อนนอก tx (ตารางยกเลิก/นโยบายคงของเดิม เว้น useCurrentPolicy + เหตุผล ≥ 10 ตัว)
- * tx: สินค้า → 1a รอบเก่า/ใหม่ min→max → ที่นั่ง (รอบเดิม: เพิ่ม reserveInTx(HOLD)→insertHoldInTx→convertHoldInTx / ลด returnSoldInTx · ย้าย: moveSoldInTx + ส่วนต่าง)
- *     → CAS การจอง (สถานะเดิม · version+1) → รายการเดิม active=false + INSERT ใหม่ → audit before/after → event · เลขจองเดิม
+ * STAFF · การจอง CONFIRMED (PART_PAID/PAID = T0.7 ⇒ STATE_CONFLICT NOT_SUPPORTED) · snapshot ใหม่ทั้งก้อนนอก tx —
+ * นโยบาย (policy) ใหม่ทั้งหมด · คงเฉพาะตารางยกเลิก (cancelLadder · cancelMinimumLadder · shopCancelRefundBpByReason) เว้น useCurrentPolicy + เหตุผล ≥ 10 ตัว (R2)
+ * การจองมีโค้ดส่วนลด ⇒ ต้อง dropPromo: true (คืนสิทธิ์ในธุรกรรมเดียวกัน · R3) · ที่นั่งเดิมนับจาก snapshot เดิม (R6) · คีย์กันซ้ำ = ผลเดิม (R12)
+ * tx: advisory ต่อการจอง → สินค้า+ตัวเลือก → 1a รอบเก่า/ใหม่ min→max → ที่นั่ง → CAS การจอง (สถานะเดิม · version+1) → รายการเดิม active=false + ใหม่
+ *     → คืนโค้ด (กฎโค้ดล็อกท้ายสุด) → audit before/after (sha256 ของ snapshot เดิม) → event · เลขจองเดิม
  */
-export async function changeTripBooking(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<{ bookingId: string; version: number; departureId: string }>> {
+export async function changeTripBooking(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<ChangeValue>> {
+  return safely("changeTripBooking", ctx, () => changeImpl(ctx, input, opts));
+}
+async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Promise<SellResult<ChangeValue>> {
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
   const c = pc.c;
@@ -1268,12 +1446,32 @@ export async function changeTripBooking(ctx: unknown, input: unknown, opts?: Boo
   if (lg) return lg;
   const g = await gateOf(c);
   if (!g) return NF();
-  const b = await readBooking(unitDb(g), g, v.bookingId);
+  const db = unitDb(g);
+  const b = await readBooking(db, g, v.bookingId);
   if (!b) return NF();
+  // กันซ้ำ (R12): คีย์เดิม + คำขอเดิม = ผลเดิม · คำขอต่าง = IDEMPOTENCY_CONFLICT
+  const keyHash = sha256hex(`change:${b.id}:${nsKey(c, v.idempotencyKey, null)}`);
+  const { idempotencyKey: _k, ...body } = v;
+  const bodyHash = holdRequestHash({ op: "trips.change.v1", ...body });
+  const replay = (rows: IdemAudit[]): SellResult<ChangeValue> | null => {
+    const hit = rows[0];
+    if (!hit) return null;
+    if (hit.after.bodyHash !== bodyHash) return sellFail("IDEMPOTENCY_CONFLICT");
+    return { ok: true, value: { bookingId: b.id, version: Number(hit.after.version), departureId: String(hit.after.departureId) } };
+  };
+  const pre = replay(await idemAudits(db, g.tenantId, "trips.booking.change", b.id, keyHash));
+  if (pre) return pre;
   if (UNPAID.has(b.status)) return sellFail("STATE_CONFLICT", { reason: "CHANGE_BEFORE_CONFIRM" });
-  if (b.status !== "CONFIRMED" && b.status !== "PART_PAID" && b.status !== "PAID") return sellFail("STATE_CONFLICT");
+  if (b.status === "PART_PAID" || b.status === "PAID") return sellFail("STATE_CONFLICT", { reason: "NOT_SUPPORTED" });
+  if (b.status !== "CONFIRMED") return sellFail("STATE_CONFLICT");
   if (b.version !== v.expectedVersion) return sellFail("STATE_CONFLICT");
   if (v.line.productId !== b.productId) return sellFail("VALIDATION", { fields: ["line.productId"] });
+  const old = isRec(b.policySnapshot) ? (b.policySnapshot as unknown as TripsBookingSnapshot) : null;
+  if (!old || !Array.isArray(old.lines)) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+  // โค้ดส่วนลดของการจองนี้ (R3)
+  const promos = await db.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "TripPromoRedemption" WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = 'ACTIVE' LIMIT 1`;
+  if (promos.length && v.dropPromo !== true) return sellFail("VALIDATION", { reason: "PROMO_ON_CHANGE" });
   const sc = sellCtxOf(c, ctx);
   const quote: QuoteRequestInput = { lines: [v.line] };
   const qopts = quoteOptsOf(v, opts);
@@ -1281,33 +1479,49 @@ export async function changeTripBooking(ctx: unknown, input: unknown, opts?: Boo
   if (!fresh.ok) return fresh;
   if (c.clock.now.getTime() > Date.parse(v.quoteExpiresAt)) return priceChanged(fresh.value, "QUOTE_EXPIRED");
   if (fresh.value.quoteId !== v.quoteId) return priceChanged(fresh.value);
-  const ag = await approvalsGate(c, v);
+  const ag = await approvalsGate(c, v, [v.line.slotId]);
   if (ag) return ag;
   const ql = (fresh.value.lines as TripQuoteLine[])[0];
   if (!ql) return priceChanged(fresh.value);
   const built = await buildTripBookingSnapshot(sc, { ...v.line, productKind: "TRIP" }, { quotedFingerprint: ql.fingerprint, policyAt: ql.policyAt }, qopts);
   if (!built.ok) return built.code === "PRICE_CHANGED" ? priceChanged(fresh.value) : built;
-  const old = isRec(b.policySnapshot) ? (b.policySnapshot as unknown as TripsBookingSnapshot) : null;
-  if (!old) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+  if ((built.value.providers ?? []).length > 0) return sellFail("VALIDATION", { reason: "PROVIDERS_NOT_WIRED" });
   const snap: TripsBookingSnapshot = v.useCurrentPolicy
     ? built.value
-    : { ...built.value, policy: old.policy, cancelLadder: old.cancelLadder, cancelMinimumLadder: old.cancelMinimumLadder, shopCancelRefundBpByReason: old.shopCancelRefundBpByReason };
+    : { ...built.value, cancelLadder: old.cancelLadder, cancelMinimumLadder: old.cancelMinimumLadder, shopCancelRefundBpByReason: old.shopCancelRefundBpByReason };
   const cols = bookingColumnsFromSnapshot(snap as unknown as SnapshotShape);
   if (!cols) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
   const newSeats = seatsOfSnapshot(snap as unknown as SnapshotShape);
+  const oldSeats = seatsOfSnapshot(old as unknown as SnapshotShape);
   if (newSeats < 1 || newSeats > QTY_MAX) return sellFail("VALIDATION", { fields: ["line.pax"] });
-  const oldRows = await unitDb(g).$queryRaw<{ n: number }[]>`
-    SELECT COALESCE(sum(i."qty"), 0)::int AS "n" FROM "TripBookingItem" i LEFT JOIN "TripPaxType" p ON p."id" = i."paxTypeId" AND p."tenantId" = i."tenantId"
-    WHERE i."bookingId" = ${b.id} AND i."tenantId" = ${g.tenantId} AND i."unitId" = ${g.unitId} AND i."active" AND i."kind" = 'SEAT' AND COALESCE(p."countsCapacity", true)`;
-  const oldSeats = oldRows[0]?.n ?? 0;
+  // ผู้เดินทางที่มีอยู่ต้องไม่เกินที่นั่งใหม่ต่อประเภทคน (R14)
+  const paxRows = await db.$queryRaw<{ paxTypeId: string | null; n: number }[]>`
+    SELECT i."paxTypeId", count(*)::int AS "n" FROM "TripPassenger" p LEFT JOIN "TripBookingItem" i ON i."id" = p."itemId" AND i."tenantId" = p."tenantId"
+    WHERE p."bookingId" = ${b.id} AND p."tenantId" = ${g.tenantId} AND p."unitId" = ${g.unitId} GROUP BY i."paxTypeId"`;
+  const newByPax = seatsByPaxType(snap);
+  const totalNew = Object.values(newByPax).reduce((s, n) => s + n, 0);
+  if (paxRows.some((r) => (r.paxTypeId ? r.n > (newByPax[r.paxTypeId] ?? 0) : false)) || paxRows.reduce((s, r) => s + r.n, 0) > totalNew) {
+    return sellFail("VALIDATION", { reason: "TOO_MANY_PASSENGERS" });
+  }
   const from = b.departureId;
   const to = v.line.slotId;
+  const refs = await productRefsOf(g, [v.line]);
+  if (!Array.isArray(refs)) return refs;
   const policies = await loadCapacityPolicies(sc, { departureIds: [...new Set([from, to])] });
   if (!policies.ok) return policies;
   if (!policies.value.departures[to]) return NF();
   const a = { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor };
-  const r = await runBooking(g, async (tx) => {
-    await lockProductsInTx(tx, sc, [b.productId]);
+  const oldSha = sha256hex(JSON.stringify(b.policySnapshot));
+  const approvalIds = (v.overrideApprovals ?? []).map((x) => x.approvalId);
+  const r = await runBooking(g, async (tx): Promise<ChangeValue> => {
+    // ชั้น 0: การแก้ของการจองเดียวกันทีละคำขอ (คีย์ซ้ำที่ยิงพร้อมกันได้ผลเดิม)
+    await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext('trips-booking-change:' || ${b.id}))`;
+    const again = replay(await idemAudits(tx, g.tenantId, "trips.booking.change", b.id, keyHash));
+    if (again) {
+      if (!again.ok) throw new BookingAbort(again.code, again.details);
+      return again.value;
+    }
+    await lockProductsInTx(tx, sc, refs);
     await lockDeparturesInTx(tx, sc, [from, to]);
     const addOn = async (dep: string, qty: number) => {
       await reserveHoldsInTx(tx, sc, [{ departureId: dep, qty }], policies.value, null);
@@ -1332,6 +1546,7 @@ export async function changeTripBooking(ctx: unknown, input: unknown, opts?: Boo
       if (newSeats > moveQty) await addOn(to, newSeats - moveQty);
       if (oldSeats > moveQty) await giveBack(from, oldSeats - moveQty);
     }
+    if (approvalIds.length) await consumeApprovalsInTx(tx, g.tenantId, approvalIds);
     const k = cols.booking;
     const upd = await tx.$queryRaw<{ version: number }[]>`
       UPDATE "TripBooking" SET "version" = "version" + 1, "departureId" = ${to}, "travelDate" = ${k.travelDate}::date,
@@ -1351,38 +1566,42 @@ export async function changeTripBooking(ctx: unknown, input: unknown, opts?: Boo
         WHERE p."bookingId" = ${b.id} AND p."tenantId" = ${g.tenantId} AND p."unitId" = ${g.unitId} AND i."id" = p."itemId" AND i."paxTypeId" = ${pt}
         RETURNING p."id"`;
     }
+    // คืนสิทธิ์โค้ด (หลังที่นั่งและการจอง · กฎโค้ดล็อกท้ายสุด · R3)
+    if (v.dropPromo === true) await releasePromoInTx(tx, sc, { bookingId: b.id });
     await auditBooking(
       tx,
       a,
       "trips.booking.change",
       b.id,
-      { departureId: to, version: nv, seats: newSeats, grossSatang: k.grossSatang, payableSatang: snap.totals.payableSatang, useCurrentPolicy: v.useCurrentPolicy === true },
-      { departureId: from, version: b.version, seats: oldSeats, grossSatang: b.grossSatang, payableSatang: payableOf(b) },
+      { departureId: to, version: nv, seats: newSeats, grossSatang: k.grossSatang, payableSatang: snap.totals.payableSatang, useCurrentPolicy: v.useCurrentPolicy === true, dropPromo: v.dropPromo === true, idemKeyHash: keyHash, bodyHash },
+      { departureId: from, version: b.version, seats: oldSeats, grossSatang: b.grossSatang, payableSatang: payableOf(b), snapshotSha256: oldSha },
     );
-    if (v.priceOverrides?.length) await auditBooking(tx, a, "trips.booking.price_override", b.id, { grossSatang: k.grossSatang, discountSatang: k.discountSatang, version: nv });
+    if (approvalIds.length) await auditBooking(tx, a, "trips.booking.price_override", b.id, { grossSatang: k.grossSatang, discountSatang: k.discountSatang, version: nv, approvalIds: [...approvalIds].sort().join(",") });
     await emitBooking(tx, g, "trips.booking.changed", `${b.id}:${nv}`, { id: b.id, departureId: to, status: b.status, channel: b.channel, amountSatang: snap.totals.payableSatang });
-    return nv;
+    return { bookingId: b.id, version: nv, departureId: to };
   });
-  return r.ok ? { ok: true, value: { bookingId: b.id, version: r.value, departureId: to } } : r;
+  return r;
 }
 
 // ═══════════════════════ consumer ของ trips.booking.expired (ใบสั่ง §11 ข้อ 6) ═══════════════════════
 /** การจองหมดเวลาโดยตัวกวาด T0.4 ⇒ คืนสิทธิ์โค้ดส่วนลดในธุรกรรมใหม่ (ซ้ำ = ไม่ลดอีก · การจองไม่ EXPIRED ⇒ ไม่ทำอะไร) — รับ {tenantId, unitId, bookingId} หรือ event outbox */
 export async function onTripBookingExpired(input: unknown): Promise<SellResult<{ released: number }>> {
-  const raw = isRec(input) && isRec(input.payload) ? { tenantId: input.tenantId, unitId: input.payload.unitId ?? input.unitId, bookingId: input.payload.bookingId } : input;
-  const p = expiredEventSchema.safeParse(raw);
-  if (!p.success) return invalidInput(p.error);
-  const v = p.data;
-  const g = await gateOf(v);
-  if (!g) return NF();
-  const b = await readBooking(unitDb(g), g, v.bookingId);
-  if (!b) return NF();
-  if (b.status !== "EXPIRED") return { ok: true, value: { released: 0 } };
-  const sc: SellCtx = { tenantId: g.tenantId, unitId: g.unitId, channel: b.channel === "COUNTER" ? "COUNTER" : "WEB", actor: { kind: "SYSTEM", job: "trips.booking.expired" }, now: new Date() };
-  const r = await runBooking(g, async (tx) => {
-    const rel = await releasePromoInTx(tx, sc, { bookingId: b.id });
-    return rel.ok ? rel.value.released : 0;
+  return safely("onTripBookingExpired", input, async () => {
+    const raw = isRec(input) && isRec(input.payload) ? { tenantId: input.tenantId, unitId: input.payload.unitId ?? input.unitId, bookingId: input.payload.bookingId } : input;
+    const p = expiredEventSchema.safeParse(raw);
+    if (!p.success) return invalidInput(p.error);
+    const v = p.data;
+    const g = await gateOf(v);
+    if (!g) return NF();
+    const b = await readBooking(unitDb(g), g, v.bookingId);
+    if (!b) return NF();
+    if (b.status !== "EXPIRED") return { ok: true, value: { released: 0 } };
+    const sc: SellCtx = { tenantId: g.tenantId, unitId: g.unitId, channel: "WEB", actor: { kind: "SYSTEM", job: "trips.booking.expired" }, now: new Date() };
+    const r = await runBooking(g, async (tx) => {
+      const rel = await releasePromoInTx(tx, sc, { bookingId: b.id });
+      return rel.ok ? rel.value.released : 0;
+    });
+    return r.ok ? { ok: true, value: { released: r.value } } : r;
   });
-  return r.ok ? { ok: true, value: { released: r.value } } : r;
 }
 // ── /T0.6 booking ──

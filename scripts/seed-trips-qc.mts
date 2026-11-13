@@ -579,7 +579,8 @@ console.log(`T0.3: รอบ ${Object.keys(tripsDepartures.departureIds).length}
   const sctx = { tenantId: D.tenant.id, unitId, channel: "COUNTER" as const, actor: { kind: "STAFF" as const, userId: diveOwner.userId }, now: new Date(TRIPS_AS_OF), locale: "th" as const };
   for (const bk of DEPARTURE_RACHA_1114.bookings.filter((b) => b.agency === null)) {
     const key = `seed-tr-${bk.ref.slice(-4)}`;
-    const done = await prisma.sellBasket.findFirst({ where: { tenantId: D.tenant.id, idempotencyKey: `st:${diveOwner.userId}:${key}` }, select: { status: true } });
+    // คีย์ตะกร้า = st:<ผู้ใช้>:<คีย์>@<หน่วย> (มติ R12) · รุ่นก่อน r1 ไม่มี @<หน่วย> — ยอมรับทั้งสองรูปเพื่อให้ seed รอบสองไม่เขียน
+    const done = await prisma.sellBasket.findFirst({ where: { tenantId: D.tenant.id, idempotencyKey: { in: [`st:${diveOwner.userId}:${key}@${unitId}`, `st:${diveOwner.userId}:${key}`] } }, select: { status: true } });
     if (done?.status === "CHECKED_OUT") continue;
     const party = DIVE_PARTIES.find((x) => x.name === bk.customer);
     if (!party) throw new Error(`seed T0.6: ไม่มี Party ของ ${bk.ref}`);

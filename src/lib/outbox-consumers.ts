@@ -1560,7 +1560,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.waitlist.offered": withAutomation(async () => {}),
   "trips.booking.expired": withAutomation(async (evt) => {
     // ── T0.6 booking ── คืนสิทธิ์โค้ดส่วนลดของการจองที่หมดเวลา (ตัวกวาด T0.4 ไม่ปล่อยโค้ด · ใบสั่ง T0.6 §11 ข้อ 6 · ซ้ำ = ไม่ลดอีก)
-    await (await import("@/lib/modules/trips")).onTripBookingExpired(evt);
+    const r = await (await import("@/lib/modules/trips")).onTripBookingExpired(evt);
+    if (!r.ok && r.retryable) throw new Error(`trips.booking.expired: ${r.code}`); // BUSY ⇒ outbox ลองใหม่ (ไม่ ack เงียบ · R14)
   }),
   // ── /T0.4 capacity ──
   // ── T0.6 booking ── TRIPS T0.6 ▸ การจองทัวร์ (ใบสั่ง T0.6 §8) — ยิงจาก `trips/booking.ts` ในธุรกรรมเดียวกับการเขียน · payload id/สถานะ/ช่องทาง/สตางค์ล้วน (X8)

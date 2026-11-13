@@ -286,6 +286,8 @@ export type { TripHoldRequest, TripConfirmRequest, TripBookNowRequest, TripChang
 export { BOOKING_CODE_RE, bookingPeriodOf, formatBookingCode, nextSeqInTx, nextBookingCodeInTx } from "./numbering";
 export {
   BookingAbort,
+  TRIP_PRICE_OVERRIDE_ENTITY,
+  tripPriceOverrideEntityId,
   bookingPublicToken,
   holdTrips,
   prepareTripConfirm,
