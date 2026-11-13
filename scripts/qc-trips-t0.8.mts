@@ -1847,6 +1847,21 @@ try {
     eq(early.map((x) => x.id), [], "PASSENGER_ALL ออกทั้งที่ยังมีวัตถุไม่ยืนยัน");
     eq(new Set(all.map((e) => e.idempotencyKey)).size, all.length, "คีย์ซ้ำ");
   });
+  // ORACLE-ADD r5 (ผู้เขียนข้อสอบ 13 พ.ย.): มติผู้คุม — คำขอ ERASE ที่ยัง RECEIVED แต่เลยกำหนด ต้องแจ้งเตือนด้วย (กำหนดตามกฎหมายห้ามเงียบ)
+  await st("PJ-8", "มติผู้คุม: หน่วยที่ปัญหาอย่างเดียวคือคำขอ ERASE สถานะ RECEIVED เลย dueAt (ไม่มีวัตถุค้าง ไม่มีคำขอ IN_PROGRESS) ⇒ งานลบเยี่ยมหน่วย + OpsEvent ERROR trips.pdpa 1 แถว detail = {unitId, pendingObjects 0, overdueEraseRequests 1} · รันซ้ำทันทีไม่เพิ่ม · RECEIVED ที่ยังไม่เลยกำหนด ⇒ ไม่แจ้ง · คำขอยัง RECEIVED (งานไม่ทำแทนคน)", async () => {
+    needDb(); const o = await mkUnitR4("j8o"), n = await mkUnitR4("j8n"); const at = new Date("2027-03-10T00:00:00Z");
+    const bo = await plantBk(o.key, { status: "CONFIRMED", pax: 1 }); const ro = await plantReq(o.unit, bo.pax[0], "RECEIVED", hrs(at, -24));
+    const bn = await plantBk(n.key, { status: "CONFIRMED", pax: 1 }); const rn = await plantReq(n.unit, bn.pax[0], "RECEIVED", hrs(at, 24));
+    const v1 = V(await purge(at), "รอบแรก");
+    const oo = await opsOf(o.unit);
+    eq([oo.length, oo[0]?.level, (await opsOf(n.unit)).length, failedOf(v1, o.unit)], [1, "ERROR", 0, []], "แถวแจ้งเตือน");
+    eq(JSON.parse(String(oo[0].detail)), { unitId: o.unit, pendingObjects: 0, overdueEraseRequests: 1 }, "detail");
+    ok(![bo.pax[0], bo.bookingId, ro, "ผู้เดินทาง r4"].some((s) => JSON.stringify(oo).includes(s)), "แจ้งเตือนมีรหัสคน/คำขอ");
+    V(await purge(at), "รอบสองทันที");
+    eq([(await opsOf(o.unit)).length, (await opsOf(n.unit)).length], [1, 0], "ไม่แจ้งซ้ำใน 24 ชม.");
+    const qo = await reqRow(ro), qn = await reqRow(rn);
+    eq([qo.status, qo.doneAt, qn.status, (await pax(bo.pax[0])).fullName, (await audits("trips.pdpa.request_resolved", ro)).length], ["RECEIVED", null, "RECEIVED", "ผู้เดินทาง r4 0", 0], "คำขอ/ข้อมูลไม่ถูกแตะ");
+  });
   groupLine("PJ");
 
   // ═══════════════ LE. สแกนการรั่ว ═══════════════

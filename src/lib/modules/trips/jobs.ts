@@ -460,6 +460,9 @@ export async function runPdpaPurge(
   //   (ค) TripBooking_tenantId_unitId_status_travelDate_idx (มีตัวกรองร้าน) · (จ) TripPassenger_retainUntil_idx (IS NOT NULL) / TripDocument_retainUntil_deletedAt_idx + PK ของการจอง/รอบ ·
   //   (ฉ) TripPdpaRequest_tenantId_status_dueAt_idx (มีตัวกรองร้าน)
   //   (ช · r4 F1) การจองที่ลบผู้จองแล้วแต่ยังไม่มี event BOOKER (ผู้เดินทางยังค้าง หรือขั้นปิดงานล้ม) — TripBooking_tenantId_unitId_status_travelDate_idx + OutboxEvent unique (tenantId, idempotencyKey)
+  //   (ซ · r5) คำขอ ERASE ที่ RECEIVED/IN_PROGRESS เลย dueAt — พาหน่วยไปถึงขั้นแจ้ง ops ใน pdpa.ts เท่านั้น (งานไม่แตะคำขอ RECEIVED · คนเท่านั้นที่ย้ายสถานะ) ·
+  //     ดัชนี TripPdpaRequest_tenantId_status_dueAt_idx (status IN + dueAt เป็นช่วง · ใช้ได้เต็มเมื่อมีตัวกรองร้าน) · ไม่มีตัวกรองร้าน = ไม่มีดัชนีนำด้วย (status, dueAt)
+  //     ⇒ อ่านทั้งตารางคำขอ (ตารางเล็ก: 1 แถวต่อคำขอของเจ้าของข้อมูล · ผล DISTINCT ต่อหน่วย) — หนี้ดัชนีจดใน ledger/wo-notes/trips-T0.8.md r5
   // r3 X4: ลำดับหน่วยหมุนทุกชั่วโมง (md5(unitId ‖ ช่วง) แบบงานรายการรอ T0.4) · แต่ละหน่วยได้ส่วนแบ่งเวลาที่เหลือ
   const bucket = String(Math.floor(now.getTime() / 3_600_000));
   const units = await prisma.$queryRaw<{ tenantId: string; unitId: string }[]>`
@@ -482,6 +485,7 @@ export async function runPdpaPurge(
         JOIN "TripBooking" b ON b."id" = p."bookingId" AND b."tenantId" = p."tenantId" JOIN "TripDeparture" d ON d."id" = b."departureId" AND d."tenantId" = b."tenantId"
         WHERE doc."deletedAt" IS NULL AND (doc."consent"->>'retE') > ((((d."endsAt") AT TIME ZONE 'UTC') AT TIME ZONE tz."tz")::date)::text ${tf(`doc."tenantId"`)}
       UNION SELECT "tenantId", "unitId" FROM "TripPdpaRequest" WHERE "kind" = 'ERASE' AND "status" = 'IN_PROGRESS' ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripPdpaRequest" WHERE "kind" = 'ERASE' AND "status" IN ('RECEIVED', 'IN_PROGRESS') AND "dueAt" < ${iso}::timestamp ${tf(`"tenantId"`)}
       UNION SELECT b."tenantId", b."unitId" FROM "TripBooking" b WHERE b."status" = 'EXPIRED' AND b."piiPurgedAt" IS NOT NULL ${tf(`b."tenantId"`)}
         AND NOT EXISTS (SELECT 1 FROM "OutboxEvent" o WHERE o."tenantId" = b."tenantId" AND o."idempotencyKey" = 'trips.document.purged:booking:' || b."id")
     ) x ORDER BY md5(x."unitId" || ${bucket}), x."tenantId", x."unitId"`;
