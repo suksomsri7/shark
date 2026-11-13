@@ -343,12 +343,17 @@ export function isValidThaiTaxId(taxId: string | null | undefined): boolean {
   return check === parseInt(id[12], 10);
 }
 
-export function isOverdue(d: {
-  status: AccountDocStatus | string;
-  dueDate: Date | null;
-  validUntil: Date | null;
-}): boolean {
-  const now = accountNow().getTime();
+export function isOverdue(
+  d: {
+    status: AccountDocStatus | string;
+    dueDate: Date | null;
+    validUntil: Date | null;
+  },
+  // T0.3d: ผู้เรียกที่คิด "ณ วันที่" เอง (หน้าหลัก/อายุหนี้รับ now เข้ามา) ส่งวันนั้นมาด้วย —
+  // เดิมทิ้ง now ที่รับมาแล้วอ่าน accountNow() ⇒ อายุหนี้คิด ณ now แต่ "พ้นกำหนด" คิด ณ นาฬิกาเครื่อง (สองนิยามในบล็อกเดียว)
+  at?: Date,
+): boolean {
+  const now = (at ?? accountNow()).getTime();
   if ((d.status === "AWAITING_PAYMENT" || d.status === "PARTIAL") && d.dueDate)
     return d.dueDate.getTime() < now;
   if (d.status === "AWAITING_ACCEPT" && d.validUntil) return d.validUntil.getTime() < now;

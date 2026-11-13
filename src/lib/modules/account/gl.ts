@@ -7,6 +7,7 @@ import type {
   AccountEntrySource,
 } from "@prisma/client";
 import { seedChartOfAccounts } from "./coa";
+import { accountNow } from "./clock";
 import { isLockedDate, lockedMessage } from "./policy";
 import { vatRateBpAt } from "./legal-values";
 import { kindFromTiming, rawVatByKind, splitByKind, type KindSplit, type LineKind } from "./tax-point-shared";
@@ -420,7 +421,8 @@ export async function peekJournalNo(ctx: GlCtx, book: string, date: Date): Promi
 export async function ensureAccounting(ctx: GlCtx, tx?: Tx): Promise<void> {
   await withTx(tx, async (db) => {
     await seedChartOfAccounts(ctx, db as Tx);
-    const { periodKey } = bkkPeriod(new Date());
+    // T0.3d: "งวดปัจจุบัน" ตามนาฬิกาบัญชี (ร้านจริง = เวลาจริง · สคริปต์ QC ที่ตรึง = ณ วันที่ของชุดข้อมูล)
+    const { periodKey } = bkkPeriod(accountNow());
     const existing = await db.accountPeriod.findFirst({
       where: { systemId: ctx.systemId, periodKey },
       select: { id: true },

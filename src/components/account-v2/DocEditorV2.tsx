@@ -1308,7 +1308,7 @@ function EditorBody(props: DocEditorV2Props) {
         <>
           {payError && <p className="text-sm text-[color:var(--color-danger)]" data-testid="pay-error">{payError}</p>}
           {props.attachedAllVoided && attachedPays.length === 0 && (
-            <div className="rounded-lg border border-[color:var(--color-warning,#d97706)] p-3 text-sm" data-testid="pay-voided-warning">
+            <div className="rounded-lg border border-[color:var(--color-tag-amber)] p-3 text-sm" data-testid="pay-voided-warning">
               <p>รายการรับชำระเดิมถูกยกเลิก/เช็คเด้ง — ถ้าออกใบเสร็จตอนนี้จะบันทึกเป็นรับเงินสด</p>
               <label className="mt-2 flex items-center gap-2">
                 <input type="checkbox" checked={cashConfirmed} onChange={(e) => setCashConfirmed(e.target.checked)} data-testid="pay-voided-confirm" />

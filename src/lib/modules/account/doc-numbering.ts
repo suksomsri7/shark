@@ -106,6 +106,24 @@ export function periodKeyOf(reset: SeqReset, year: string, month: string): strin
   return `${year}-${month}`;
 }
 
+/**
+ * T0.3d ▸ รูปแบบที่ "รีเซ็ตถี่กว่าที่ตัวเลขแยกได้" = เลขชนกันแน่นอน
+ *   (เช่น รีเซ็ตรายเดือนแต่ไม่มี {เดือน}: ใบ ต.ค. ลำดับ 1 กับใบ ธ.ค. ลำดับ 1 ได้เลขเดียวกัน)
+ *   คืนข้อความบอกวิธีแก้ · null = ไม่มีปัญหา · รูปแบบว่าง = ใช้ค่าเริ่มต้นของระบบ (ปลอดภัยเสมอ)
+ */
+export function seqPatternGap(pattern: string, reset: SeqReset): string | null {
+  const p = pattern.trim();
+  if (!p || reset === "NONE") return null;
+  const has = (...toks: string[]) => toks.some((t) => p.includes(`{${t}}`));
+  const year = has("ปี", "YYYY", "ปีสั้น", "YY");
+  const month = has("เดือน", "MM");
+  if (reset === "MONTH" && (!year || !month))
+    return "รีเซ็ตเลขทุกเดือนต้องมีทั้ง {ปี} และ {เดือน} ในรูปแบบ ไม่งั้นเลขของคนละเดือนจะซ้ำกัน — เพิ่มตัวแปรที่ขาด หรือเปลี่ยนเป็นรีเซ็ตรายปี/ไม่รีเซ็ต";
+  if (reset === "YEAR" && !year)
+    return "รีเซ็ตเลขทุกปีต้องมี {ปี} ในรูปแบบ ไม่งั้นเลขของคนละปีจะซ้ำกัน — เพิ่ม {ปี} หรือเปลี่ยนเป็นไม่รีเซ็ต";
+  return null;
+}
+
 // ─────────────────── อ่านตั้งค่าของชนิดเอกสาร ───────────────────
 
 export type ResolvedSeq = SeqConfig & { effectivePattern: string; branchCode: string };
@@ -297,20 +315,13 @@ export async function reserveSeq(
   input: { tenantId: string; systemId: string; docType: AccountDocType; prefix: string; periodKey: string; startNo: number },
 ): Promise<number> {
   const id = `seq_${input.systemId.slice(-8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-  const rows = (await db.$queryRawUnsafe(
-    `INSERT INTO "AccountDocSequence" ("id","tenantId","systemId","docType","prefix","periodKey","lastNo","createdAt","updatedAt")
-     VALUES ($1,$2,$3,$4::"AccountDocType",$5,$6,$7,NOW(),NOW())
-     ON CONFLICT ("systemId","docType","periodKey")
-     DO UPDATE SET "lastNo" = "AccountDocSequence"."lastNo" + 1, "updatedAt" = NOW()
-     RETURNING "lastNo"`,
-    id,
-    input.tenantId,
-    input.systemId,
-    input.docType,
-    input.prefix,
-    input.periodKey,
-    input.startNo,
-  )) as { lastNo: number }[];
+  // T0.3d (S9): tagged template = Prisma ผูกทุกค่าเป็นพารามิเตอร์เอง (ไม่ใช่ตัว Unsafe)
+  const rows = await db.$queryRaw<{ lastNo: number }[]>`
+    INSERT INTO "AccountDocSequence" ("id","tenantId","systemId","docType","prefix","periodKey","lastNo","createdAt","updatedAt")
+    VALUES (${id}, ${input.tenantId}, ${input.systemId}, ${input.docType}::"AccountDocType", ${input.prefix}, ${input.periodKey}, ${input.startNo}, NOW(), NOW())
+    ON CONFLICT ("systemId","docType","periodKey")
+    DO UPDATE SET "lastNo" = "AccountDocSequence"."lastNo" + 1, "updatedAt" = NOW()
+    RETURNING "lastNo"`;
   return Number(rows[0]?.lastNo ?? input.startNo);
 }
 
@@ -339,20 +350,23 @@ export async function issueDocNo(
   const startNo = existing
     ? existing.lastNo + 1
     : (await legacyMaxSeq(db, input.systemId, input.docType, cfg.reset, year, month, seriesOfCfg(cfg, input.date))) + 1;
-  const seq = await reserveSeq(db, {
-    tenantId: input.tenantId,
-    systemId: input.systemId,
-    docType: input.docType,
-    prefix: cfg.prefix,
-    periodKey,
-    startNo,
-  });
-  return formatDocNo(cfg.effectivePattern, {
-    prefix: cfg.prefix,
-    date: input.date,
-    seq,
-    branchCode: cfg.branchCode,
-  });
+  const reserve = (start: number) =>
+    reserveSeq(db, { tenantId: input.tenantId, systemId: input.systemId, docType: input.docType, prefix: cfg.prefix, periodKey, startNo: start });
+  const fmt = (seq: number) =>
+    formatDocNo(cfg.effectivePattern, { prefix: cfg.prefix, date: input.date, seq, branchCode: cfg.branchCode });
+  let docNo = fmt(await reserve(startNo));
+  // T0.3d ▸ กันเลขซ้ำ (ความถูกต้องของข้อมูล): ตั้งค่าที่บันทึกไว้ก่อนมีด่าน seqPatternGap อาจรีเซ็ตถี่กว่าที่รูปแบบแยกได้
+  //   ⇒ เลขที่ได้ซ้ำกับเอกสารชนิดเดียวกันที่ออกไปแล้ว = จองลำดับถัดไปจนกว่าจะไม่ซ้ำ (เพดาน 1000 กันวนไม่รู้จบ)
+  //   รูปแบบปกติ: query เพิ่ม 1 ครั้งต่อใบ ไม่เคยเข้าวน
+  for (let guard = 0; guard < 1000; guard++) {
+    const clash = await db.accountDocument.findFirst({
+      where: { systemId: input.systemId, docType: input.docType, docNo },
+      select: { id: true },
+    });
+    if (!clash) break;
+    docNo = fmt(await reserve(startNo));
+  }
+  return docNo;
 }
 
 /**
@@ -429,19 +443,13 @@ export async function setNextNo(
       reason: `งวดนี้ออกเลขไปถึง ${used} แล้ว — ตั้งเลขถัดไปได้ตั้งแต่ ${used + 1} ขึ้นไป (ย้อนกลับจะได้เลขซ้ำกับเอกสารที่ออกไปแล้ว)`,
     };
   // lastNo = "เลขล่าสุดที่ใช้ไป" ⇒ อยากให้ใบถัดไปได้ n ต้องตั้ง lastNo = n-1
-  await db.$queryRawUnsafe(
-    `INSERT INTO "AccountDocSequence" ("id","tenantId","systemId","docType","prefix","periodKey","lastNo","createdAt","updatedAt")
-     VALUES ($1,$2,$3,$4::"AccountDocType",$5,$6,$7,NOW(),NOW())
-     ON CONFLICT ("systemId","docType","periodKey")
-     DO UPDATE SET "lastNo" = $7, "updatedAt" = NOW()`,
-    `seq_${input.systemId.slice(-8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`,
-    input.tenantId,
-    input.systemId,
-    input.docType,
-    cfg.prefix,
-    periodKey,
-    input.nextNo - 1,
-  );
+  const seqId = `seq_${input.systemId.slice(-8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  const lastNo = input.nextNo - 1;
+  await db.$executeRaw`
+    INSERT INTO "AccountDocSequence" ("id","tenantId","systemId","docType","prefix","periodKey","lastNo","createdAt","updatedAt")
+    VALUES (${seqId}, ${input.tenantId}, ${input.systemId}, ${input.docType}::"AccountDocType", ${cfg.prefix}, ${periodKey}, ${lastNo}, NOW(), NOW())
+    ON CONFLICT ("systemId","docType","periodKey")
+    DO UPDATE SET "lastNo" = ${lastNo}, "updatedAt" = NOW()`;
   return { ok: true, nextNo: input.nextNo };
 }
 
@@ -612,21 +620,14 @@ export async function finalizeDocNos(tx: NumberingDb): Promise<Map<string, strin
       select: { lastNo: true },
     });
     const startNo = existing ? 0 : (await legacyMaxSeq(tx, h.systemId, h.docType, h.reset, h.year, h.month, h.seriesRe)) + 1;
-    const rows = (await tx.$queryRawUnsafe(
-      `INSERT INTO "AccountDocSequence" ("id","tenantId","systemId","docType","prefix","periodKey","lastNo","createdAt","updatedAt")
-       VALUES ($1,$2,$3,$4::"AccountDocType",$5,$6,$7,NOW(),NOW())
-       ON CONFLICT ("systemId","docType","periodKey")
-       DO UPDATE SET "lastNo" = "AccountDocSequence"."lastNo" + $8, "updatedAt" = NOW()
-       RETURNING "lastNo"`,
-      `seq_${h.systemId.slice(-8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`,
-      h.tenantId,
-      h.systemId,
-      h.docType,
-      h.prefix,
-      h.periodKey,
-      Math.max(1, startNo) + k - 1,
-      k,
-    )) as { lastNo: number }[];
+    const seqId = `seq_${h.systemId.slice(-8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    const firstLast = Math.max(1, startNo) + k - 1;
+    const rows = await tx.$queryRaw<{ lastNo: number }[]>`
+      INSERT INTO "AccountDocSequence" ("id","tenantId","systemId","docType","prefix","periodKey","lastNo","createdAt","updatedAt")
+      VALUES (${seqId}, ${h.tenantId}, ${h.systemId}, ${h.docType}::"AccountDocType", ${h.prefix}, ${h.periodKey}, ${firstLast}, NOW(), NOW())
+      ON CONFLICT ("systemId","docType","periodKey")
+      DO UPDATE SET "lastNo" = "AccountDocSequence"."lastNo" + ${k}, "updatedAt" = NOW()
+      RETURNING "lastNo"`;
     const last = Number(rows[0]?.lastNo);
     if (!Number.isFinite(last)) throw new Error("จองเลขที่เอกสารไม่สำเร็จ");
     g.forEach((r, i) => {
@@ -635,12 +636,14 @@ export async function finalizeDocNos(tx: NumberingDb): Promise<Map<string, strin
       out.set(r.docId, no);
     });
   }
-  const params: string[] = [];
-  const values = stamps.map(([id, no], i) => { params.push(id, no); return `($${2 * i + 1}, $${2 * i + 2})`; }).join(", ");
-  const stamped = await tx.$executeRawUnsafe(
-    `UPDATE "AccountDocument" AS d SET "docNo" = v.no, "updatedAt" = NOW() FROM (VALUES ${values}) AS v(id, no) WHERE d."id" = v.id AND d."docNo" IS NULL`,
-    ...params,
-  );
+  // T0.3d (S9): เดิมประกอบ "($1,$2),($3,$4)…" ด้วย template string (ไม่มีข้อมูลผู้ใช้ปน แต่ผิดกติกา raw SQL)
+  //   ⇒ ส่งเป็นอาร์เรย์ 2 ตัวผูกพารามิเตอร์ แล้วคลี่ด้วย unnest — UPDATE คำสั่งเดียวเหมือนเดิม
+  const ids = stamps.map(([id]) => id);
+  const nos = stamps.map(([, no]) => no);
+  const stamped = await tx.$executeRaw`
+    UPDATE "AccountDocument" AS d SET "docNo" = v.no, "updatedAt" = NOW()
+      FROM unnest(${ids}::text[], ${nos}::text[]) AS v(id, no)
+     WHERE d."id" = v.id AND d."docNo" IS NULL`;
   // ใบที่จดไว้ต้องได้เลขครบทุกใบ — ไม่ครบ = ย้อนทั้งธุรกรรม (ไม่มีทางมีเอกสารภาษีออกแล้วแต่ไม่มีเลข / เลขถูกจองแต่ไม่ได้ใช้)
   if (Number(stamped) !== stamps.length) throw new Error("ออกเลขที่เอกสารไม่ครบ — ไม่มีอะไรถูกบันทึก กรุณาลองใหม่");
   return out;

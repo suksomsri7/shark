@@ -22,11 +22,12 @@ import {
   fallbackPrefixOf,
   mergeDocSettings,
   parseDocSettings,
+  toSeqReset,
   type DocSettings,
   type DocSettingsPatch,
 } from "./settings-schema";
 export { TAG_COLORS, TAG_COLOR_LABEL, type TagColor } from "./settings-schema";
-import { peekDocNo, resolveSeqConfig, findSeqGaps, setNextNo } from "./doc-numbering";
+import { peekDocNo, resolveSeqConfig, findSeqGaps, setNextNo, seqPatternGap } from "./doc-numbering";
 
 export type SettingsCtx = { tenantId: string; systemId: string };
 
@@ -140,6 +141,13 @@ export async function saveDocSettings(ctx: SettingsCtx, patch: DocSettingsPatch)
     select: { id: true, docConfig: true },
   });
   const docConfig = mergeDocSettings(existing?.docConfig ?? null, patch);
+  // T0.3d ▸ ตรวจบนค่าที่รวมแล้ว (patch อาจส่งมาแค่ pattern หรือแค่ reset) — เลขซ้ำ = ความถูกต้องของข้อมูล ปฏิเสธ
+  const mergedSeqs = parseDocSettings(docConfig).sequences as Record<string, { pattern?: string; reset?: unknown }>;
+  for (const dt of Object.keys(patch.sequences ?? {})) {
+    const m = mergedSeqs[dt];
+    const gap = m ? seqPatternGap(m.pattern ?? "", toSeqReset(m.reset)) : null;
+    if (gap) return { ok: false, reason: `รูปแบบเลขที่ของ ${dt}: ${gap}` };
+  }
   // "วันครบกำหนด" 2 ค่าแรกอยู่ในคอลัมน์เดิม (ฟอร์มเอกสารอ่านจากตรงนั้น)
   const dueCols =
     patch.due === undefined

@@ -405,13 +405,28 @@ try {
   };
   const before5 = await mkInvoice(d("2026-12-03"));
   assert(`T5.1 ใบแรกของ ธ.ค. ใช้รูปแบบเดิม (ได้ ${before5.docNo})`, before5.docNo === "IV-2612-0001", before5.docNo);
+  // ORACLE-EDIT (T0.3d): เดิมรูปแบบ "BILL/{ปี}/{สาขา}/{00000}" + รีเซ็ตรายเดือน — ไม่มี {เดือน} ⇒ ใบ ต.ค. ลำดับ 1 ชนใบ ธ.ค. ลำดับ 1
+  //   (T11 ล้ม "ออกเอกสารไม่สำเร็จ" เพราะเลขซ้ำ) · ตอนนี้ระบบปฏิเสธรูปแบบแบบนั้น (T5.0) ⇒ ใช้รูปแบบที่มี {ปี}{เดือน}
+  await rejected(
+    "T5.0 รีเซ็ตรายเดือนแต่รูปแบบไม่มี {เดือน} = ปฏิเสธ (เลขคนละเดือนจะซ้ำกัน)",
+    () => docSet.saveDocSettings(S, { sequences: { INVOICE: { prefix: "BILL", pattern: "BILL/{ปี}/{สาขา}/{00000}", reset: "MONTH" } } }),
+    "{เดือน}",
+  );
+  await rejected(
+    "T5.0b ส่งมาแค่ reset (ไม่ส่ง pattern) ก็ตรวจบนค่าที่รวมแล้ว",
+    async () => {
+      await docSet.saveDocSettings(S, { sequences: { INVOICE: { prefix: "BILL", pattern: "BILL/{0000}", reset: "NONE" } } });
+      return docSet.saveDocSettings(S, { sequences: { INVOICE: { reset: "YEAR" } as never } });
+    },
+    "{ปี}",
+  );
   await docSet.saveDocSettings(S, {
-    sequences: { INVOICE: { prefix: "BILL", pattern: "BILL/{ปี}/{สาขา}/{00000}", reset: "MONTH" } },
+    sequences: { INVOICE: { prefix: "BILL", pattern: "BILL/{ปี}{เดือน}/{สาขา}/{00000}", reset: "MONTH" } },
   });
   const after5 = await mkInvoice(d("2026-12-04"));
-  eq("T5.2 เปลี่ยนรูปแบบแล้ว ใบถัดไปได้เลขตามรูปแบบใหม่ (รวม {สาขา})", after5.docNo, "BILL/2026/00007/00002");
+  eq("T5.2 เปลี่ยนรูปแบบแล้ว ใบถัดไปได้เลขตามรูปแบบใหม่ (รวม {สาขา})", after5.docNo, "BILL/202612/00007/00002");
   const preview5 = await svc.previewNextDocNo(sid, "INVOICE", d("2026-12-05"));
-  eq("T5.3 พรีวิวบนฟอร์มร่างตรงกับเลขที่จะออกจริงใบถัดไป", preview5, "BILL/2026/00007/00003");
+  eq("T5.3 พรีวิวบนฟอร์มร่างตรงกับเลขที่จะออกจริงใบถัดไป", preview5, "BILL/202612/00007/00003");
   const seqRowsAfterPreview = await prisma.accountDocSequence.findFirst({
     where: { systemId: sid, docType: "INVOICE", periodKey: "2026-12" },
     select: { lastNo: true },
@@ -422,21 +437,38 @@ try {
   console.log("\nT6 ต่อเลขจากเอกสารเดิมเมื่อไม่มีแถวตัวนับ:");
   await prisma.accountDocSequence.deleteMany({ where: { systemId: sid, docType: "INVOICE", periodKey: "2026-12" } });
   const cont = await svc.previewNextDocNo(sid, "INVOICE", d("2026-12-06"));
-  eq("T6.1 ลบแถวตัวนับทิ้ง → เลขถัดไป = เลขสูงสุดของงวด + 1 (ไม่ทับใบเดิม)", cont, "BILL/2026/00007/00003");
+  eq("T6.1 ลบแถวตัวนับทิ้ง → เลขถัดไป = เลขสูงสุดของงวด + 1 (ไม่ทับใบเดิม)", cont, "BILL/202612/00007/00003");
   const cont2 = await mkInvoice(d("2026-12-06"));
-  eq("T6.2 ออกใบจริงหลังตัวนับหาย = ได้เลขต่อจากของเดิม", cont2.docNo, "BILL/2026/00007/00003");
+  eq("T6.2 ออกใบจริงหลังตัวนับหาย = ได้เลขต่อจากของเดิม", cont2.docNo, "BILL/202612/00007/00003");
   const gaps = await docSet.docNoGapsFor(S, "INVOICE", d("2026-12-06"));
   eq("T6.3 ตรวจข้ามลำดับ: งวดนี้ 1,2,3 ครบ → ไม่มีช่องว่าง", gaps, []);
   await prisma.accountDocument.updateMany({
-    where: { systemId: sid, docNo: "BILL/2026/00007/00002" },
-    data: { docNo: "BILL/2026/00007/00009" },
+    where: { systemId: sid, docNo: "BILL/202612/00007/00002" },
+    data: { docNo: "BILL/202612/00007/00009" },
   });
   const gaps2 = await docSet.docNoGapsFor(S, "INVOICE", d("2026-12-06"));
   eq("T6.4 มีเลขข้ามจริง → รายงานลำดับที่หายไป", gaps2, [2, 4, 5, 6, 7, 8]);
   await prisma.accountDocument.updateMany({
-    where: { systemId: sid, docNo: "BILL/2026/00007/00009" },
-    data: { docNo: "BILL/2026/00007/00002" },
+    where: { systemId: sid, docNo: "BILL/202612/00007/00009" },
+    data: { docNo: "BILL/202612/00007/00002" },
   });
+
+  // ── T6b ตั้งค่าเก่าที่บันทึกไว้ก่อนมีด่าน (เขียนตรง DB) — ออกเลขต้องไม่ซ้ำ ──
+  console.log("\nT6b ตั้งค่าเก่าที่รีเซ็ตถี่กว่ารูปแบบ — ออกเลขไม่ซ้ำ:");
+  {
+    const row = await prisma.accountSettings.findFirstOrThrow({ where: { systemId: sid }, select: { id: true, docConfig: true } });
+    const cfg = JSON.parse(JSON.stringify(row.docConfig ?? {})) as Record<string, Record<string, unknown>>;
+    const savedInvoice = cfg.sequences?.INVOICE;
+    cfg.sequences = { ...(cfg.sequences ?? {}), INVOICE: { prefix: "LEG", pattern: "LEG/{ปี}/{0000}", reset: "MONTH" } };
+    await prisma.accountSettings.update({ where: { id: row.id }, data: { docConfig: cfg as never } });
+    // เดือนที่ร้านทดสอบนี้ยังไม่เคยออกใบแจ้งหนี้ (มี.ค./เม.ย. 2026) ⇒ ตัวนับของทั้งสองเดือนเริ่มที่ 1
+    const legMar = await mkInvoice(d("2026-03-10"));
+    eq("T6b.1 ใบแรกของรูปแบบเก่า (มี.ค. — ยังไม่มีตัวนับของเดือน)", legMar.docNo, "LEG/2026/0001");
+    const legApr = await mkInvoice(d("2026-04-10"));
+    eq("T6b.2 ใบ เม.ย. ลำดับ 1 ชนเลขของ มี.ค. → ข้ามไปเลขถัดไปที่ว่าง (ไม่ซ้ำ)", legApr.docNo, "LEG/2026/0002");
+    cfg.sequences = { ...cfg.sequences, INVOICE: savedInvoice as Record<string, unknown> };
+    await prisma.accountSettings.update({ where: { id: row.id }, data: { docConfig: cfg as never } });
+  }
 
   // ── T12 ใบกำกับภาษีอัตโนมัติเมื่อรับชำระ ──
   console.log("\nT12 ใบกำกับภาษีอัตโนมัติเมื่อรับชำระ:");

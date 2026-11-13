@@ -27,9 +27,13 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const accEnv = (await import("./acc-v2-env.mts" as string)) as {
   loadQcEnv: () => { databaseUrl: string; host: string };
   QC: { expectedPath: string; today: string; tenantName: string };
+  pinQcAccountClock: () => Promise<Date>;
 };
-const { loadQcEnv, QC } = accEnv;
+const { loadQcEnv, QC, pinQcAccountClock } = accEnv;
 const { host } = loadQcEnv();
+// T0.3d: ตัวอ้างอิงเดิม (overviewStats/payableStats ที่ P4.12–P4.16 เทียบ) ไม่รับ now — อ่าน accountNow()
+//   ⇒ ต้องตรึงนาฬิกาที่วันเดียวกับเฉลย (QC.asOfIso = X.now) ไม่งั้นฝั่งอ้างอิงคิดพ้นกำหนด ณ วันที่รันจริง
+const QC_CLOCK = await pinQcAccountClock();
 
 // ── ตัวนับ SQL จริง ──
 let sqlLog: string[] = [];
@@ -99,6 +103,7 @@ if (!qcScope || qcScope.tenantId !== ctx.tenantId || qcScope.systemId !== ctx.sy
   process.exit(1);
 }
 const NOW = new Date(X.now as string);
+eq("P0.0 นาฬิกาบัญชีตรึงที่ ณ วันเดียวกับเฉลย (X.now)", QC_CLOCK.getTime(), NOW.getTime());
 const YEAR = X.year as number;
 const MONTH = X.periodKey as string;
 const yearRange = { from: dash.monthStart(`${YEAR}-01`), to: dash.monthEndExclusive(`${YEAR}-12`) };
