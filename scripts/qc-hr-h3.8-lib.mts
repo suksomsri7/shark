@@ -180,3 +180,36 @@ export async function holdRunRow<R>(P: Any, runId: string, during: (tx: Any) => 
   await holder;
   return { res: await p, waited: seen > 0, holderErr };
 }
+
+// ORACLE-EDIT (H3.8 fix round 2 · controller ruling M): row holder for the new race checks — the holder tx runs `lockSql` (FOR UPDATE), then `fn()` starts.
+//   Blocking is read from pg_blocking_pids (a backend whose blockers include the holder pid), never from a sleep. until "blocked": wait for that
+//   (bounded 15 s), then run `during(tx)` in the holder and commit · until "settled": stop as soon as fn() settled or a blocked backend is seen. ◂
+export async function holdRows<R>(P: Any, lockSql: string, params: unknown[], fn: () => Promise<R>, o: { until: "blocked" | "settled"; during?: (tx: Any) => Promise<unknown> }): Promise<{ res: R; blocked: boolean; settledWhileHeld: boolean; holderErr: string }> {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  let held: () => void = () => {};
+  const heldP = new Promise<void>((r) => (held = r));
+  let holderErr = "";
+  let holderPid = -1;
+  const holder = P.$transaction(async (tx: Any) => {
+    holderPid = Number(((await tx.$queryRawUnsafe(`SELECT pg_backend_pid() AS p`)) as Any[])[0]?.p ?? -1);
+    await tx.$queryRawUnsafe(lockSql, ...params);
+    held();
+    await gate;
+    if (o.during) await o.during(tx);
+  }, { maxWait: 10_000, timeout: 60_000 }).catch((e: unknown) => ((holderErr = errText(e)), held()));
+  await heldP;
+  let settled = false;
+  const p = fn().finally(() => void (settled = true));
+  let blocked = false;
+  for (let i = 0; i < 150; i++) {
+    const w = (await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))`, holderPid).catch(() => null)) as Any[] | null;
+    if (Number(w?.[0]?.n ?? 0) > 0) blocked = true;
+    if (o.until === "blocked" ? blocked : settled || blocked) break;
+    await sleep(100);
+  }
+  const settledWhileHeld = settled;
+  release();
+  await holder;
+  return { res: await p, blocked, settledWhileHeld, holderErr };
+}

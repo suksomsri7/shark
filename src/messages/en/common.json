@@ -1756,7 +1756,8 @@
       "mon9": "Sep",
       "mon10": "Oct",
       "mon11": "Nov",
-      "mon12": "Dec"
+      "mon12": "Dec",
+      "rowProblem": "This period's slip data has a problem"
     },
     "slipLine": {
       "BASE": "Salary",

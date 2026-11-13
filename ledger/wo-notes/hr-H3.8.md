@@ -81,3 +81,37 @@ Merge `0679d70d8`: conflicts in `hr-qc-env.mts` / `core/scope.ts` (both sides ke
 
 ### ORACLE-EDITs this round
 qc-hr-h3.6 S1.2 (in-base guard) · qc-hr-h3.6 S1.6 — the merged code accepted only "ORACLE-EDIT … H<n>.<n>" on frozen files, not the "HR H<n>.<n>" marker the ruling describes; added `|HR H\d+\.\d+` to its in-base later-ticket regex (unmarked hunks still fail) · qc-hr-h3.9 S1.2 frozenBlocks + S1.5 frozen diff: `IN_BASE ||` guards (my HrEmployee back-relation and privacy.ts hunks are later-ticket changes) · qc-hr-h3.4-lib S1.6 (in-base guard replaces onlyH38) · qc-hr-h3.8: base-aware rule, S1.6 allowance for qc-hr-h3.6 (only hunks marked "ORACLE-EDIT (H3.8 merge round", max 2), S1.7 strengthened, new S1.13 S3.22 S3.23 S3.24 S3.25 S4.3 (65 checks). Dropped: qc-hr-h3.5 edit 6 (session/hr version taken).
+
+---
+# Fix round 2 + merge (session/hr aa380f6b0)
+
+## Merge (ad7279eaa)
+- session/hr aa380f6b0 (H3.7 payroll → accounting v2) merged. Conflicts: messages th/en → `json3way.py` (clean) · `qc-hr-h3.6.mts` S1.6 → session/hr form (H3.7 marker comment), my S1.2 in-base hunk kept · `qc-hr-h3.9.mts` S1.5 → lane 2 (HR-SET-1, wip/hr-set-1 7c4cbd63d) wording verbatim (`laterMark`: HR-SET-<n> · HR H<n>.<n> ≠ H3.9 · ORACLE-EDIT … H<n>.<n> ≠ H3.9; `dlrOk` without IN_BASE) · inventory auto-merged (516 rows, unique by (page, testid), union of both parents). H3.7 has no migration; `prisma generate` + `migrate deploy` on the lane DB: "No pending migrations". H3.8 migration stays `20270110000000_hr_payslip_salary_cert`.
+
+## Controller rulings applied (payslip.ts unless noted)
+- B (hunter F1 / review MINOR-1) `certPdf`: after rendering, one tx locks the certificate row FOR UPDATE, re-checks status ISSUED · voidedAt NULL · same sha/content, then `updateMany({status:ISSUED, voidedAt:null})` with count 1, then the audit row. Voided in between ⇒ self NO / gate VOIDED (changed ⇒ CERT_CHANGED), no bytes, no counter, no audit.
+- C (F2) issue under the employee advisory lock: a live certificate (ISSUED, not voided) of the same employee + purpose citing the same run (`contentJson.salary.runId`) is returned as is (no number, no audit). Other purpose / after void ⇒ new number.
+- D (F3) both paths read the employee's open REQUESTED row FOR UPDATE. No duplicate ⇒ the request row itself becomes the issued certificate (purpose = the issuer's choice on a direct issue; normal `hr.salarycert.issue` audit) — approving it later ⇒ NOT_DECIDABLE. Duplicate ⇒ the request is closed `CANCELLED` with decidedById = issuer and `contentJson {fulfilledBy, docNo}` (CHECK set of statuses unchanged, no migration), audit `hr.salarycert.issue {certId: existing, docNo, employeeId}`; approve returns the existing certificate.
+- E (F4) `issuedRows` skips bad items; `yearsOf` adds one neutral row per bad period (`netSatang: null`, same row keys, excluded from totals/count); UI shows `hr.slip.rowProblem` "ข้อมูลสลิปงวดนี้มีปัญหา". mySlips + gate history no longer answer SLIP_DATA as a whole.
+- F (I2) `cleanText` strips C0/C1, U+200E/200F, U+202A–202E, U+2066–2069; tab/newline/U+2028/2029 → space; applied to employee name/position, employer name/address, signer before freezing.
+- G (I1) no change — **D-H38-resolveSelf-former-member** (debt): `resolveSelf`/`employeeOfUser` serves a linked former employee after the Membership row is deleted; not reachable over HTTP (requireTenant). Re-check when self surfaces get a non-session entry point.
+- H (MINOR-2) `issuedRows` locks FOR SHARE only APPROVED/PAID runs of that employee (+ year range for history), ORDER BY id; the extra year-wide lock in `slipHistory` removed.
+- I (MINOR-3) qc-hr-h3.9 S1.2 `frozenBlocks`: marker-aware (LCS hunks of each frozen model block; every hunk needs an added line with a later mark — same `laterMark` rule as S1.5) · S1.5 = lane 2 form. J: no change. K: CERT inline/batch kept.
+- L slip page uses `canViewPayroll(viewer)` (NOTE-2) · `/app/me/hr/pay` no longer loads `myDocuments`; `SelfPay.docs` optional (NOTE-5).
+- M qc-hr-h3.8 +10 checks S7.1–S7.10 (75 total), helper `holdRows` (pg_blocking_pids) in qc-hr-h3.8-lib — all marked `ORACLE-EDIT (H3.8 fix round 2 · controller ruling)`.
+
+## RED with the fix reverted (payslip.ts = e101d1820 in the working copy, run once, restored) — scratchpad/h38/red-reverted.log: passed 69/75
+- S7.2 ❌ `actual one,number ids=3 live=3 seq 7→10→11`
+- S7.3 ❌ `actual direct,closed,approve,dupReturns,reqClosed,oneVisa open=1 req=ISSUED ap=ok ap2=ok r2=ISSUED seq 12→14`
+- S7.1 ❌ `actual self,gate,counter,audit self=ok gate=ok blocked=true/true dl=1/1`
+- S7.6 ❌ `actual mine,hist mine blocked=true settled=false · hist blocked=true settled=false`
+- S7.4 ❌ `actual mine,hist mine=ข้อมูลที่บันทึกไว้ของสลิปนี้ไม่ครบหรือไม่ตรงกัน…` · S7.5 ❌ `actual name,position {"name":"‮ห้าว หาญ ‏\u0007 …‬" …}`
+- Green on the old code by nature (regressions of behaviour already correct / fixed last round): S7.7 (m3), S7.8 (m4, self.ts), S7.9 (hunter P3d was correct), S7.10 (hunter P2 was correct).
+
+## Run (fix round 2 tree) — ledger/wo-notes/hr-H3.8-green.txt
+seed 34/34 · qc-hr-h3.8 75/75 ×3 forced + 75/75 unforced · h3.9 60/60 · h3.6 62/62 · h3.5 53/53 · h3.4 85/85 · h2.11 70/70 · h2.10 57/57 · h1.1 81/81 · h0.1 67/67 · hf-hr-privacy 194/194 · payroll 19/19 · payroll-reverse 14/14 · audit-trail 21/21 · fitness 53/53 + fitness-hr 9/9 (env + no env) · typecheck rc=0.
+**qc-hr-h3.7 67/68 — S1.4 red (merge-caused, NOT edited):** H3.7's "hr/** imports account only via the facade" sees the H3.8 brief-prescribed deep imports (payslip-rules.ts → account/totals + account/doc-numbering · payslip.ts → account/doc-numbering · payslip-pdf.tsx → account/public-doc-pdf), the same set fitness F2.2 allowlists for H3.8 and qc-hr-h3.8 S1.3/S1.5 require. Proposed ORACLE-EDIT (controller ruling needed): qc-hr-h3.7 S1.4 `DEEP_OK` + those 3 files/specs, marked `ORACLE-EDIT (H3.8 fix round 2 · controller …)` — same pattern as the H3.6 entries already there.
+
+## ORACLE-EDITs this round
+qc-hr-h3.9 S1.2 (marker-aware frozenBlocks, ruling I) · qc-hr-h3.9 S1.5 (lane-2 HR-SET-1 laterMark form, ruling I) · qc-hr-h3.6 S1.6 (session/hr form taken in the merge; no new edit) · qc-hr-h3.8 S7.1–S7.10 + lib `holdRows` (ruling M). Pending: qc-hr-h3.7 S1.4 (above).
+Scratchpad is untracked ⇒ scratchpad/h38-hunt/hunt.mts not committed.

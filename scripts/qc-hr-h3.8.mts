@@ -16,7 +16,7 @@ import {
   commitInBase, vOf, fitnessNoEnv, importsOf, tagOf, HR_FORBIDDEN_DTO_KEYS, msgParity, testidsOf, tokensOnly, useServerFile,
 } from "./qc-hr-lib.mjs";
 import { pdfPagesText, thNorm } from "./qc-hr-h3.6-lib.mjs";
-import { VECS, VEC, V9, V10, K, STATE_TABLE, TEXT_KEYS, LAW_CLAIM, EARN_CODES, DEDUCT_CODES, brokenItems, prng, randomItem, holdRunRow, v1Item, type ItemIn } from "./qc-hr-h3.8-lib.mjs";
+import { VECS, VEC, V9, V10, K, STATE_TABLE, TEXT_KEYS, LAW_CLAIM, EARN_CODES, DEDUCT_CODES, brokenItems, prng, randomItem, holdRunRow, v1Item, holdRows, type ItemIn } from "./qc-hr-h3.8-lib.mjs"; // ORACLE-EDIT (H3.8 fix round 2 · controller ruling): + holdRows ◂
 
 const SUITE = "qc-hr-h3.8";
 const ARGV = process.argv.slice(2);
@@ -109,6 +109,16 @@ S3.23|review m1|C|R|[db] ORACLE-EDIT (H3.8 merge round · review m1): certificat
 S3.24|review m2|M|R|[db] ORACLE-EDIT (H3.8 merge round · review m2): DRAFT run with negative net ⇒ gate in-app state DRAFT with figures (not SLIP_DATA) · PDF notIssued
 S3.25|ruling new|C|R|[db] ORACLE-EDIT (H3.8 merge round · controller ruling): certificate whose source run is reversed after issue ⇒ gate list sourceWithdrawn (no runId) · owner voids it · gate PDF voided · number kept
 S4.3|review|C|R|[db] ORACLE-EDIT (H3.8 merge round · review): issue racing a reversal — hold RA8 FOR UPDATE ⇒ issue waits (pg_stat_activity) · holder reverses ⇒ certificate cites the next latest issued slip (RA3), never a reversed run ⇒ HRSC-2032-0007
+S7.1|ruling B|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): void ∥ download (hunter P3a) — certificate row held FOR UPDATE · download blocked (pg_blocking_pids) · holder voids + commits ⇒ self NO / gate VOIDED · no bytes · downloads 0 · no download audit row
+S7.2|ruling C|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): 3 parallel direct issues (same employee · purpose · cited run, hunter P3b) ⇒ one certificate, one number · other purpose ⇒ new number · after void ⇒ new number
+S7.3|ruling D|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): direct issue while the employee's request is open (hunter P3c) ⇒ the request is fulfilled in the same tx (no REQUESTED left) · approving it ⇒ notDecidable, no 2nd number · request matching a live certificate ⇒ approve returns that certificate, request closed, no number
+S7.4|ruling E|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): one corrupt ISSUED item (hunter P2) ⇒ mySlips + gate history keep the healthy slips and totals · bad period = one row with netSatang null (no amounts) · row keys unchanged
+S7.5|ruling F|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): bidi / line-separator / C0 / C1 controls in name + position are stripped from the frozen certificate content (hunter P4)
+S7.6|ruling H|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): DRAFT run rows of the employee held FOR UPDATE ⇒ mySlips + gate history answer while held, never blocked by the holder (pg_blocking_pids)
+S7.7|review m3|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): failed audit insert ⇒ no certificate file, downloads counter unchanged · no slip PDF bytes
+S7.8|review m4|M|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): myDocuments issued predicate in the query — 36 newer unfinalized runs do not push the issued slip out of the list
+S7.9|hunter P3d|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): cancel ∥ approve ×4 on the same request ⇒ never both, never neither · system A numbers contiguous from 1
+S7.10|hunter P2|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): run states (self view/PDF NO · gate PDF WITHDRAWN/NOT_ISSUED/NOT_FINAL · gate state) · only future-paid + reversed ⇒ certNoSlip · corrupt latest issued ⇒ slipData, no number
 S4.2|X6|C|R|[db] 5 parallel self requests ⇒ 1 REQUESTED + 4 certReqOpen · 4 parallel issues of that request ⇒ 1 ISSUED HRSC-2032-0005 + 3 notDecidable (0004 = S5.1) · counter lastNo 5 · numbers 0001–0005 contiguous
 S5.1|R13|C|R|[db] route helpers: rsc / prefetch ⇒ 204, nothing audited · GET ⇒ 200 application/pdf attachment no-store nosniff safe file name · refusal ⇒ 404/409 fixed text (th/en) no bytes · self + certificate helpers
 S5.2|R13|C|R|[db] HEAD / POST to the 4 helpers ⇒ 405 Allow GET before any read · no audit row
@@ -956,6 +966,161 @@ async function runDb(): Promise<void> {
     const a = await slip(V.owner, rd2, E.e8);
     const p = await pdf(V.owner, rd2, E.e8);
     ck("S3.24", { draft: a.value?.ok === true && a.value?.state === "DRAFT" && a.value?.netSatang === -200_000 && a.value?.earningsSatang - a.value?.deductionsSatang === -200_000, pdf: codeIs(p, "NOT_ISSUED", "notIssued") }, "DRAFT banner", `${shown(a)} ${shown(p)}`);
+  }
+  // ═════ ORACLE-EDIT (H3.8 fix round 2 · controller ruling M): hunter F1–F4 / I2 · review MINOR-1/2 · m3 · m4 · hunter P2/P3 regressions ◂ ═════
+  const seqA = async () => Number((await raw(`SELECT "lastNo" FROM "AccountDocSequence" WHERE "systemId" = $1 AND "periodKey" = 'HRSC:2032'`, sA))[0]?.lastNo ?? -1);
+  const certRow = async (id: string) => (await raw(`SELECT * FROM "HrSalaryCertificate" WHERE "id" = $1`, id))[0];
+  const LOCK_CERT = `SELECT "id" FROM "HrSalaryCertificate" WHERE "id" = $1 FOR UPDATE`;
+  const voidIn = (id: string) => async (tx: Any) => tx.$executeRawUnsafe(`UPDATE "HrSalaryCertificate" SET "voidedAt" = now(), "voidedById" = $2, "voidReason" = 'race' WHERE "id" = $1`, id, U.owner.id);
+  // S7.2 double submit of a direct issue (e5 · RENTAL · cites RA2)
+  {
+    const n0 = await seqA();
+    const par = await Promise.all([0, 1, 2].map(() => S("issueSalaryCertificate", cA, V.pay, { employeeId: E.e5, purpose: "RENTAL" }, NOW)));
+    const n1 = await seqA();
+    const ids = new Set(par.map((r) => String(r.value?.certId ?? "")));
+    const live = (await scRows(TT)).filter((x) => x.employeeId === E.e5 && x.status === "ISSUED" && !x.voidedAt && x.purpose === "RENTAL");
+    const other = await S("issueSalaryCertificate", cA, V.pay, { employeeId: E.e5, purpose: "OTHER" }, NOW);
+    const n2 = await seqA();
+    const first = [...ids][0] ?? "x";
+    await S("voidSalaryCertificate", cA, V.owner, { certId: first, reason: "ทดสอบออกซ้ำ" }, NOW);
+    const again = await S("issueSalaryCertificate", cA, V.pay, { employeeId: E.e5, purpose: "RENTAL" }, NOW);
+    ck("S7.2", { all: par.every((r) => r.ok), one: ids.size === 1 && live.length === 1, number: n1 === n0 + 1, other: other.ok && !ids.has(String(other.value?.certId)) && n2 === n1 + 1, afterVoid: again.ok && String(again.value?.certId) !== first && (await seqA()) === n2 + 1 }, "1 certificate · 1 number", `ids=${ids.size} live=${live.length} seq ${n0}→${n1}→${n2}`);
+  }
+  // S7.3 direct issue while a request is open · approve of a request matching a live certificate
+  {
+    const a = actorOf(U.self);
+    const rq = await S("requestSalaryCertificate", a, { purpose: "BANK" }, NOW);
+    const rid = String(rq.value?.certId ?? "x");
+    const n0 = await seqA();
+    const d = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e4, purpose: "VISA" }, NOW);
+    const open = (await scRows(TT)).filter((x) => x.employeeId === E.e4 && x.status === "REQUESTED").length;
+    const ap = await S("issueSalaryCertificate", cA, V.owner, { requestId: rid }, NOW);
+    const n1 = await seqA();
+    const rrow = await certRow(rid);
+    const rq2 = await S("requestSalaryCertificate", a, { purpose: "VISA" }, NOW);
+    const rid2 = String(rq2.value?.certId ?? "x");
+    const ap2 = await S("issueSalaryCertificate", cA, V.owner, { requestId: rid2 }, NOW);
+    const r2 = await certRow(rid2);
+    const mine = await S("listMySalaryCertificates", a);
+    const visa = (mine.value?.items ?? []).filter((x: Any) => x.status === "ISSUED" && x.purpose === "VISA");
+    ck("S7.3", {
+      direct: d.ok && n1 === n0 + 1, closed: open === 0 && (rrow?.status !== "REQUESTED") && (d.value?.certId === rid || rrow?.status === "CANCELLED"), approve: codeIs(ap, "NOT_DECIDABLE", "notDecidable") || (ap.ok && ap.value?.certId === d.value?.certId),
+      dupReturns: rq2.ok && ap2.ok && ap2.value?.certId === d.value?.certId && ap2.value?.docNo === d.value?.docNo && (await seqA()) === n1, reqClosed: !!r2 && r2.status !== "REQUESTED" && r2.status !== "ISSUED", oneVisa: visa.length === 1,
+    }, "request fulfilled · no 2nd number", `open=${open} req=${rrow?.status} ap=${shown(ap)} ap2=${shown(ap2)} r2=${r2?.status} seq ${n0}→${n1}`);
+  }
+  // S7.1 void ∥ download (self · gate)
+  {
+    const y = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e4, purpose: "GENERAL" }, NOW);
+    const z = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e5, purpose: "GENERAL" }, NOW);
+    const yId = String(y.value?.certId ?? "x");
+    const zId = String(z.value?.certId ?? "x");
+    const a0 = await auditCount(TT, "hr.salarycert.download");
+    const hs = await holdRows(P, LOCK_CERT, [yId], () => S("downloadMySalaryCertificate", actorOf(U.self), { certId: yId }), { until: "blocked", during: voidIn(yId) });
+    const hg = await holdRows(P, LOCK_CERT, [zId], () => S("downloadSalaryCertificate", cA, V.pay, { certId: zId }), { until: "blocked", during: voidIn(zId) });
+    const [ry, rz] = [await certRow(yId), await certRow(zId)];
+    ck("S7.1", {
+      issued: y.ok && z.ok, blocked: hs.blocked && hg.blocked, holder: !hs.holderErr && !hg.holderErr, self: isNo(hs.res) && !hs.res.value?.bytes, gate: codeIs(hg.res, "VOIDED", "voided") && !hg.res.value?.bytes,
+      counter: ry?.downloads === 0 && rz?.downloads === 0 && !!ry?.voidedAt && !!rz?.voidedAt, audit: (await auditCount(TT, "hr.salarycert.download")) === a0,
+    }, "voided ⇒ refused · nothing counted", `self=${shown(hs.res)} gate=${shown(hg.res)} blocked=${hs.blocked}/${hg.blocked} dl=${ry?.downloads}/${rz?.downloads}`);
+  }
+  // S7.5 controls stripped from the frozen content (e5 · BANK)
+  {
+    const nm = `\u202Eห้าว\u2028หาญ\u2029\u200F\u0007 ${tag}\u202C`;
+    await P.hrEmployee.update({ where: { id: E.e5 }, data: { name: nm, position: "\u2066บาริสต้า\u2069\n\u0085" } });
+    const r = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e5, purpose: "BANK" }, NOW);
+    await P.hrEmployee.update({ where: { id: E.e5 }, data: { name: `ห้าวหาญ ${tag}`, position: "บาริสต้า" } });
+    const c = (await certRow(String(r.value?.certId ?? "x")))?.contentJson ?? {};
+    const bad = /[\u0000-\u001f\u007f-\u009f\u200E\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069]/;
+    ck("S7.5", { ok: r.ok, name: typeof c.employee?.name === "string" && !bad.test(c.employee.name) && c.employee.name.includes("ห้าว") && c.employee.name.includes("หาญ"), position: typeof c.employee?.position === "string" && !bad.test(c.employee.position) && c.employee.position.includes("บาริสต้า") }, "no control chars", short(c.employee ?? r.text, 120));
+  }
+  // S7.10 hunter P2 states + certificate sources
+  {
+    const self = actorOf(U.self);
+    const sv = await Promise.all([RA.r4, RA.r6].map((r) => S("mySlip", self, { runId: r })));
+    const sp = await Promise.all([RA.r4, RA.r6].map((r) => S("downloadMyPayslipPdf", self, { runId: r })));
+    const gp = [await pdf(V.owner, RA.r4, E.e4), await pdf(V.owner, RA.r5, E.e1), await pdf(V.owner, RA.r6, E.e4)];
+    const gs = [(await slip(V.owner, RA.r4, E.e4)).value?.state, (await slip(V.owner, RA.r5, E.e1)).value?.state, (await slip(V.owner, RA.r6, E.e4)).value?.state];
+    const e20 = await emp(cA, "A20", "ยี่สิบ");
+    await mkRun(cA, "2032-01", "2032-01-31", "PAID", 2, [{ e: e20, it: V10 }]);
+    await mkRun(cA, "2031-09", "2031-09-30", "REVERSED", 2, [{ e: e20, it: V10 }]);
+    const n0 = await seqA();
+    const c20 = await S("issueSalaryCertificate", cA, V.owner, { employeeId: e20, purpose: "GENERAL" }, NOW);
+    const rx = await mkRun(cA, "2031-10", "2031-10-30", "PAID", 2, [{ e: E.e4, it: { ...VEC.V1!.item, netSatang: VEC.V1!.item.netSatang + 1 } }]);
+    const ce = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e4, purpose: "RENTAL" }, NOW);
+    await P.hrPayrollItem.deleteMany({ where: { runId: rx } });
+    await P.hrPayrollRun.deleteMany({ where: { id: rx } });
+    ck("S7.10", {
+      selfNo: [...sv, ...sp].every(isNo), gatePdf: codeIs(gp[0]!, "WITHDRAWN", "withdrawn") && codeIs(gp[1]!, "NOT_ISSUED", "notIssued") && codeIs(gp[2]!, "NOT_FINAL", "notFinal"), gateState: canon(gs) === canon(["WITHDRAWN", "DRAFT", "NOT_FINAL"]),
+      noSlip: codeIs(c20, "CERT_NO_SLIP", "certNoSlip"), corrupt: codeIs(ce, "SLIP_DATA", "slipData"), noNumber: (await seqA()) === n0,
+    }, "states · sources", `${gs.join("/")} c20=${shown(c20)} ce=${shown(ce)}`);
+  }
+  // S7.4 one corrupt ISSUED item for e4 (2031-08) — the rest stays
+  {
+    const rx = await mkRun(cA, "2031-08", "2031-08-29", "PAID", 2, [{ e: E.e4, it: { ...VEC.V1!.item, netSatang: VEC.V1!.item.netSatang + 1 } }]);
+    const ms = await S("mySlips", actorOf(U.self));
+    const hx = await hist(V.owner, E.e4, 2031);
+    await P.hrPayrollItem.deleteMany({ where: { runId: rx } });
+    await P.hrPayrollRun.deleteMany({ where: { id: rx } });
+    const y = (ms.value?.years ?? []).find((x: Any) => x.taxYear === 2031);
+    const hy = hx.value?.year;
+    const okYear = (yy: Any, pre: string) => !!yy && yy.count === 2 && yy.grossSatang === 3_140_000 && yy.netSatang === 2_990_000 && canon(yy.slips.map((r: Any) => r.runId)) === canon([rx, RA.r2, RA.r1]) &&
+      yy.slips[0]?.netSatang === null && yy.slips[0]?.periodKey === "2031-08" && yy.slips[0]?.href === `${pre}${rx}${pre.startsWith("/app/sys") ? `/slip/${E.e4}` : ""}` && yy.slips.every((r: Any) => srt(Object.keys(r)) === K.row);
+    ck("S7.4", { mine: ms.ok && okYear(y, "/app/me/hr/pay/"), hist: hx.ok && okYear(hy, `/app/sys/${sA}/payroll/`) }, "healthy kept · neutral bad row", `mine=${short(y ?? ms.text, 160)} hist=${short(hy ?? hx.text, 100)}`);
+  }
+  // S7.6 held DRAFT rows never block the slip list / history
+  {
+    const rdr = await mkRun(cA, "2031-11", "2031-11-28", "DRAFT", 2, [{ e: E.e4, it: VEC.V1!.item }]);
+    const LOCK_DRAFTS = `SELECT "id" FROM "HrPayrollRun" WHERE "id" = ANY($1::text[]) ORDER BY "id" FOR UPDATE`;
+    const hm = await holdRows(P, LOCK_DRAFTS, [[rdr, RA.r5]], () => S("mySlips", actorOf(U.self)), { until: "settled" });
+    const hh = await holdRows(P, LOCK_DRAFTS, [[rdr, RA.r5]], () => hist(V.owner, E.e1, 2031), { until: "settled" });
+    await P.hrPayrollItem.deleteMany({ where: { runId: rdr } });
+    await P.hrPayrollRun.deleteMany({ where: { id: rdr } });
+    ck("S7.6", { mine: hm.res.ok && hm.settledWhileHeld && !hm.blocked, hist: hh.res.ok && hh.settledWhileHeld && !hh.blocked, holder: !hm.holderErr && !hh.holderErr }, "not blocked by drafts", `mine blocked=${hm.blocked} settled=${hm.settledWhileHeld} · hist blocked=${hh.blocked} settled=${hh.settledWhileHeld}`);
+  }
+  // S7.7 failed audit ⇒ no file, no counter
+  {
+    const live = (await scRows(TT)).find((x) => x.status === "ISSUED" && !x.voidedAt && x.employeeId === E.e4);
+    const fnName = `qc_h38_fail_audit_${tag.replace(/[^a-z0-9]/gi, "").toLowerCase()}`;
+    const d0 = Number(live?.downloads ?? -1);
+    const a0 = await auditCount(TT, "hr.%download");
+    let cert: RO = { ok: true, text: "", value: undefined };
+    let sl: RO = { ok: true, text: "", value: undefined };
+    try {
+      await P.$executeRawUnsafe(`CREATE FUNCTION "${fnName}"() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN IF NEW."tenantId" = '${TT}' AND NEW."action" LIKE 'hr.%download' THEN RAISE EXCEPTION 'qc audit down'; END IF; RETURN NEW; END $f$`);
+      await P.$executeRawUnsafe(`CREATE TRIGGER "${fnName}" BEFORE INSERT ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION "${fnName}"()`);
+      cert = await S("downloadSalaryCertificate", cA, V.owner, { certId: String(live?.id ?? "x") });
+      sl = await pdf(V.owner, RA.r2, E.e1);
+    } finally {
+      await P.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${fnName}" ON "AuditLog"`).catch(() => 0);
+      await P.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${fnName}"()`).catch(() => 0);
+    }
+    const after = await certRow(String(live?.id ?? "x"));
+    ck("S7.7", { live: !!live, cert: !cert.ok && !cert.value?.bytes, counter: after?.downloads === d0, slip: !sl.ok && !sl.value?.bytes, audit: (await auditCount(TT, "hr.%download")) === a0 }, "no file · no counter", `cert=${shown(cert)} slip=${shown(sl)} dl ${d0}→${after?.downloads}`);
+  }
+  // S7.9 cancel ∥ approve (self2 · e11)
+  {
+    let both = 0, neither = 0, rounds = 0;
+    for (let i = 0; i < 4; i++) {
+      const rq = await S("requestSalaryCertificate", actorOf(U.self2), { purpose: "OTHER" }, NOW);
+      if (!rq.ok) continue;
+      rounds++;
+      const [x, y] = await Promise.all([S("issueSalaryCertificate", cA, V.owner, { requestId: rq.value.certId }, NOW), S("cancelMySalaryCertRequest", actorOf(U.self2), { certId: rq.value.certId }, NOW)]);
+      if (x.ok && y.ok) both++;
+      if (!x.ok && !y.ok) neither++;
+    }
+    const ns = (await raw(`SELECT "docSeq" FROM "HrSalaryCertificate" WHERE "systemId" = $1 AND "docSeq" IS NOT NULL ORDER BY 1`, sA)).map((r) => Number(r.docSeq));
+    ck("S7.9", { rounds: rounds === 4, both: both === 0, neither: neither === 0, contiguous: ns.length > 0 && ns.every((n, i) => n === i + 1) && ns.length === (await seqA()) }, "exactly one wins · contiguous", `both=${both} neither=${neither} seqs=${ns.join(",")}`);
+  }
+  // S7.8 myDocuments: issued predicate in the query (e11 · RA2 issued · 36 newer unfinalized runs)
+  {
+    for (let i = 0; i < 36; i++) {
+      const y = 2033 + Math.floor(i / 12);
+      const mo = String((i % 12) + 1).padStart(2, "0");
+      await mkRun(cA, `${y}-${mo}`, `${y}-${mo}-25`, "APPROVED", 2, [{ e: E.e11, it: VEC.V1!.item }], false);
+    }
+    const r = await callMod(SELF, "myDocuments", [actorOf(U.self2)]);
+    const ps = (r.value?.payslips ?? []) as Any[];
+    ck("S7.8", { listed: ps.some((p) => p.runId === RA.r2), onlyIssued: ps.every((p) => p.runId === RA.r2) }, "issued slip kept", `payslips=${ps.length}`);
   }
 }
 

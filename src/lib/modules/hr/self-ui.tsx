@@ -1011,7 +1011,7 @@ function periodLabel(p: string, t: (k: string) => string): string {
 }
 
 // ═══════════════════════════ เงินเดือน ═══════════════════════════
-export function SelfPay({ docs, canWrite, children }: { docs: MyDocuments; canWrite: boolean; children?: React.ReactNode }) { // HR H3.8 ▸ children = รายการสลิปแยกปีภาษี (server) แทนรายการเดิม ◂
+export function SelfPay({ docs, canWrite, children }: { docs?: MyDocuments; canWrite: boolean; children?: React.ReactNode }) { // HR H3.8 ▸ children = รายการสลิปแยกปีภาษี (server) แทนรายการเดิม · fix round 2 (NOTE-5): มี children ไม่ต้องส่ง docs ◂
   const t = useTranslations("hr.self");
   return (
     <>
@@ -1021,7 +1021,7 @@ export function SelfPay({ docs, canWrite, children }: { docs: MyDocuments; canWr
         {/* HR H3.8 ▸ merge round (ruling 4): รายการเดียว — สลิปแยกปีภาษีจาก server (แถว hr-self-slip-<runId> เดิม) · ไม่มี children = รายการเดิม ◂ */}
         {children ? (
           children
-        ) : docs.payslips.length === 0 ? (
+        ) : !docs || docs.payslips.length === 0 ? ( // HR H3.8 ▸ fix round 2: docs ไม่บังคับ ◂
           <p className={`${BOX} p-4 text-sm ${MUTED}`}>{t("noSlips")}</p>
         ) : (
           docs.payslips.map((s) => (

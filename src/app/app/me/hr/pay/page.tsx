@@ -1,6 +1,6 @@
 // HR H2.10 ▸ "เงินเดือน": สลิปของตัวเอง (รอบที่อนุมัติ/จ่ายแล้ว · ลิงก์ไปหน้าสลิปเดิม) · เบิกล่วงหน้า · ช่องหนังสือรับรอง (H3.8) ◂
 import { requireTenant } from "@/lib/core/context";
-import { myDocuments, mySelf, selfActorOf } from "@/lib/modules/hr/self";
+import { mySelf, selfActorOf } from "@/lib/modules/hr/self"; // HR H3.8 ▸ fix round 2 (NOTE-5): myDocuments ไม่ถูกแสดงแล้ว (รายการสลิป = MySlipYears) — ไม่โหลด ◂
 import { SelfEmpty, SelfPay } from "@/lib/modules/hr/self-ui";
 import { MyTaxCertCard } from "@/lib/modules/hr/filings/ui"; // HR H3.6 ▸ หนังสือรับรอง 50 ทวิ ของตัวเอง ◂
 import { MySalaryCertCard, MySlipYears } from "@/lib/modules/hr/self"; // HR H3.8 ▸ สลิปแยกตามปีภาษี + หนังสือรับรองเงินเดือนของฉัน (ผ่าน facade ของฉัน) ◂
@@ -9,11 +9,11 @@ export default async function MeHrPayPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams; // HR H3.8 ◂
   const auth = await requireTenant();
   const a = selfActorOf(auth);
-  const [self, docs] = await Promise.all([mySelf(a), myDocuments(a)]);
-  if (!self.ok || !docs.ok) return <SelfEmpty />;
+  const self = await mySelf(a); // HR H3.8 ▸ fix round 2 ◂
+  if (!self.ok) return <SelfEmpty />;
   return (
     <>
-      <SelfPay docs={docs} canWrite={self.active}>
+      <SelfPay canWrite={self.active}> {/* HR H3.8 ▸ fix round 2: ไม่ส่ง docs ◂ */}
         <MySlipYears /> {/* HR H3.8 ▸ รายการสลิปเดียว (แยกปีภาษี) ในช่อง hr-self-payslips ◂ */}
       </SelfPay>
       <MySalaryCertCard canWrite={self.active} sc={typeof sp.sc === "string" ? sp.sc : undefined} /> {/* HR H3.8 ◂ */}

@@ -8,6 +8,7 @@ import { hrViewerOf, loadPayslipForViewer } from "@/lib/modules/hr/privacy";
 import { GateSlipHistory, SlipCard, SlipDataNotice, gateSlipPdfHref, mySlipPdfHref, slipCardFromHotfix } from "@/lib/modules/hr/payslip-ui";
 // HR H3.8 ▸ merge round (ruling 2): ผู้ดูเงินเดือนอ่านผ่าน slipForViewer ด้วย — สมาชิกภาพจริงในฐาน + สาขาประจำเท่านั้น (ยืมตัวไม่นับ) · บัญชีที่บันทึกไว้ · รหัสพนักงาน ◂
 import { slipForViewer } from "@/lib/modules/hr/payslip";
+import { canViewPayroll } from "@/lib/core/rbac"; // HR H3.8 ▸ fix round 2 (NOTE-2) ◂
 
 // สลิปเงินเดือน (payslip) — HR H3.8 ▸ ภาพ 07c (มือถือก่อน) · พิมพ์ = ไฟล์ PDF ◂
 export default async function PayslipPage({
@@ -25,7 +26,7 @@ export default async function PayslipPage({
   const viewer = hrViewerOf(auth); // HR H3.8 ◂
   // HR H3.8 ▸ merge round (ruling 2 · review M1): ผู้ดูเงินเดือน (OWNER หรือ hr.payroll.read) อ่านผ่าน slipForViewer เท่านั้น — สิทธิ์จากแถว Membership ในฐาน ·
   //   สาขาประจำเท่านั้น (ยืมตัวไม่นับ) · ปฏิเสธ = 404 ไม่มีข้อมูล · SLIP_DATA = ข้อความ · ไม่ผ่านตัวโหลด hotfix เลย ◂
-  const payroll = viewer.role === "OWNER" || viewer.permissions["hr.payroll.read"] === true;
+  const payroll = canViewPayroll(viewer); // HR H3.8 ▸ fix round 2 (NOTE-2): ตัวตัดสินเดียวกับ rbac ไม่เขียนซ้ำ ◂
   if (payroll) {
     const g = await slipForViewer({ tenantId, systemId: id }, viewer, { runId, employeeId });
     if (!g.ok) {

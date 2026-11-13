@@ -160,7 +160,7 @@ export async function SlipCard({ d, backHref, pdfHref, certHref, history, showEm
             <Link key={h.runId} href={h.href} data-testid={`hr-slip-hist-${h.runId}`} className="flex min-h-[44px] items-center gap-2.5 border-t border-[color:var(--color-line)] py-2.5 text-[15px] tabular-nums first:border-t-0">
               <span>{periodText(h.periodKey, t, locale)}</span>
               <span className="flex-1" />
-              <b>{`฿${amt(h.netSatang)}`}</b>
+              <b>{h.netSatang === null ? t("rowProblem") : `฿${amt(h.netSatang)}`}</b>
               <span aria-hidden className={muted}>
                 ›
               </span>
@@ -233,7 +233,7 @@ async function YearCard({ y, mine = false }: { y: YearDto; mine?: boolean }) {
           <Link key={h.runId} href={h.href} data-testid={mine ? `hr-self-slip-${h.runId}` : `hr-slip-hist-${h.runId}`} className="flex min-h-[44px] items-center gap-2.5 border-t border-[color:var(--color-line)] py-2 text-[15px] tabular-nums">
             <span>{periodText(h.periodKey, t, locale)}</span>
             <span className="flex-1" />
-            <b>{`฿${amt(h.netSatang)}`}</b>
+            <b>{h.netSatang === null ? t("rowProblem") : `฿${amt(h.netSatang)}`}</b>
             <span aria-hidden className={muted}>
               ›
             </span>

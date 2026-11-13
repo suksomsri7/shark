@@ -135,3 +135,36 @@ run B at HEAD: exit=0 · error TS count 0
   ✅ [H3.8-Z1] no residue (HrSalaryCertificate · HrTaxCertificate · HrFilingPerson/Profile · AccountDocSequence of the QC tenants)
 ===== qc-hr-h3.8 ===== passed 59/59
 JSON_SUMMARY {"suite":"qc-hr-h3.8","total":59,"passed":59,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":54,"baseGreen":5,"offBase":["H3.8-S1.1(RED→pass)","H3.8-S1.2(RED→pass)","H3.8-S1.3(RED→pass)","H3.8-
+
+## fix round 2 + merge session/hr aa380f6b0 — 2026-11-13T22:57:06Z (merge ad7279eaa + fix round 2 working tree, committed right after)
+seed rc=0 :: ===== seed-hr-qc ===== ผ่าน 34/34
+h38f1 rc=0 :: ===== qc-hr-h3.8 ===== passed 75/75 (QC_FORCE)
+h38f2 rc=0 :: ===== qc-hr-h3.8 ===== passed 75/75 (QC_FORCE)
+h38f3 rc=0 :: ===== qc-hr-h3.8 ===== passed 75/75 (QC_FORCE)
+h38u rc=0 :: ===== qc-hr-h3.8 ===== passed 75/75
+qc-hr-h3.7 rc=1 :: ===== qc-hr-h3.7 ===== passed 67/68 (QC_FORCE)
+qc-hr-h3.9 rc=0 :: ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-h3.6 rc=0 :: ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE)
+qc-hr-h3.5 rc=0 :: ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE)
+qc-hr-h3.4 rc=0 :: ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h2.11 rc=0 :: ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+qc-hr-h2.10 rc=0 :: ===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE)
+qc-hr-h1.1 rc=0 :: ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h0.1 rc=0 :: ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+qc-hf-hr-privacy rc=0 :: ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-payroll rc=0 :: ===== QC Payroll ไทย =====
+qc-payroll-reverse rc=0 :: 
+qc-audit-trail rc=0 :: 
+fitness-env rc=0 :: ===== FITNESS =====
+fitness-noenv rc=0 ::  JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+fitness-hr-env rc=0 :: ===== FITNESS-HR =====
+fitness-hr-noenv rc=0 ::  JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+qc-hf-hr-privacy totals :: ผ่าน 194/194
+qc-payroll totals :: ผ่าน 19/19
+qc-payroll-reverse totals :: ✅ PASS — 14/14
+qc-audit-trail totals :: ✅ PASS — 21/21
+fitness-env totals :: ผ่าน 53/53
+fitness-hr-env totals :: ผ่าน 9/9
+qc-hr-h3.7 red: H3.7-S1.4 [static] facade only — actual imports hr/payslip-pdf.tsx:@/lib/modules/account/public-doc-pdf, payslip-rules.ts:account/totals + account/doc-numbering, payslip.ts:account/doc-numbering (H3.8 brief-prescribed deep imports; fitness F2.2 allowlists them) — ORACLE-EDIT request to controller, not edited
+RED with fix reverted (payslip.ts = e101d1820): qc-hr-h3.8 passed 69/75 — S7.1 S7.2 S7.3 S7.4 S7.5 S7.6 red (lines in hr-H3.8.md)
+typecheck (clean, gate lock) rc=0 · 1350 s wall incl. lock wait (1st attempt rc=2 only on my scratch copy scratchpad/h38/payslip.fixed.ts — moved to .txt, rerun clean)

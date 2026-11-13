@@ -61,7 +61,8 @@ export type SlipDto = {
   bankMasked: string | null;
   flags: string[];
 };
-export type SlipRowDto = { runId: string; periodKey: string; payDate: string; netSatang: number; href: string };
+/** fix round 2 (ruling E): netSatang = null ⇒ แถวกลาง "ข้อมูลสลิปงวดนี้มีปัญหา" ของงวดที่ข้อมูลเสีย (ไม่มีตัวเลข · ไม่รวมในยอดปี) */
+export type SlipRowDto = { runId: string; periodKey: string; payDate: string; netSatang: number | null; href: string };
 export type YearDto = YearTotal<SlipRowDto>;
 export type MySlipsDto = { ok: true; years: YearDto[] };
 export type HistoryDto = { ok: true; employeeId: string; name: string; year: YearDto };
@@ -75,6 +76,15 @@ const NO = (): Refusal => refuse("NO", "no");
 const TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+/** fix round 2 (ruling F): ตัดอักขระควบคุม C0/C1 · bidi (U+202A–202E, U+2066–2069, U+200E/200F) · ตัวแบ่งบรรทัด/ย่อหน้า (U+2028/2029) ก่อนแช่แข็งเนื้อหาหนังสือรับรอง
+ *  (ขึ้นบรรทัด/แท็บ = ช่องว่าง) */
+const cleanText = (v: string | null | undefined): string =>
+  String(v ?? "")
+    .replace(/[\t\n\r\u000b\u000c\u2028\u2029]+/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+    .replace(/ {2,}/g, " ")
+    .trim();
+const cleanOrNull = (v: string | null | undefined) => cleanText(v) || null;
 const obj = (raw: unknown): Record<string, unknown> => (raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const nowOf = (o: Opts | undefined) => (o?.now instanceof Date && Number.isFinite(o.now.getTime()) ? new Date(o.now.getTime()) : new Date());
@@ -222,36 +232,49 @@ export async function downloadPayslipPdf(ctx: Ctx, viewer: PayslipViewer, input:
   return out;
 }
 
-/** รายการที่ออกแล้วของพนักงาน 1 คน (ทุกปี หรือปีเดียว) → แถวรายปี · ข้อมูลเสีย = null (SLIP_DATA) */
-async function issuedRows(tx: Db, ctx: Ctx, employeeId: string, href: (runId: string) => string, year?: number): Promise<YearRow<SlipRowDto>[] | null> {
+/** รายการที่ออกแล้วของพนักงาน 1 คน (ทุกปี หรือปีเดียว) → แถวรายปี + งวดที่ข้อมูลเสีย (fix round 2 ruling E: ข้ามแถวเสีย ไม่ทิ้งทั้งรายการ) */
+type IssuedRows = { rows: YearRow<SlipRowDto>[]; bad: { payDate: Date; slip: SlipRowDto }[] };
+async function issuedRows(tx: Db, ctx: Ctx, employeeId: string, href: (runId: string) => string, year?: number): Promise<IssuedRows> {
   const range = year === undefined ? {} : { payDate: { gte: bkkYearStart(year), lt: bkkYearStart(year + 1) } };
-  // merge round m6: same read rule as the single slip — the employee's run rows FOR SHARE before the items are read (a reversal in flight ⇒ wait, then WITHDRAWN is excluded)
-  await tx.$queryRaw`SELECT r."id" FROM "HrPayrollRun" r WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId} AND EXISTS (SELECT 1 FROM "HrPayrollItem" i WHERE i."runId" = r."id" AND i."employeeId" = ${employeeId}) FOR SHARE OF r`;
+  // merge round m6 + fix round 2 (ruling H): ถือ FOR SHARE เฉพาะรอบ APPROVED/PAID ของพนักงานคนนี้ (ไม่แตะรอบร่าง) เรียงตาม id ก่อนอ่านรายการ —
+  //   การกลับรายการที่กำลังทำ = รอแล้วเห็น REVERSED (ไม่นับ) · ผู้เขียนรอบร่างไม่ขวางรายการสลิป
+  if (year === undefined)
+    await tx.$queryRaw`SELECT r."id" FROM "HrPayrollRun" r WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId} AND r."status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") AND EXISTS (SELECT 1 FROM "HrPayrollItem" i WHERE i."runId" = r."id" AND i."employeeId" = ${employeeId}) ORDER BY r."id" FOR SHARE OF r`;
+  else
+    await tx.$queryRaw`SELECT r."id" FROM "HrPayrollRun" r WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId} AND r."status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") AND r."payDate" >= ${bkkYearStart(year)} AND r."payDate" < ${bkkYearStart(year + 1)} AND EXISTS (SELECT 1 FROM "HrPayrollItem" i WHERE i."runId" = r."id" AND i."employeeId" = ${employeeId}) ORDER BY r."id" FOR SHARE OF r`;
   const items = await tx.hrPayrollItem.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, run: { status: { in: ["APPROVED", "PAID"] }, ...range } },
     select: { ...ITEM_SELECT, runId: true, run: { select: { id: true, periodKey: true, payDate: true, status: true, engineVersion: true, stepsJson: true } } },
     orderBy: [{ run: { payDate: "desc" } }, { runId: "desc" }],
     take: 600,
   });
-  const out: YearRow<SlipRowDto>[] = [];
+  const out: IssuedRows = { rows: [], bad: [] };
   for (const it of items) {
     const r = it.run;
     if (slipState({ status: String(r.status), engineVersion: r.engineVersion, finalized: finalizedOf(r.stepsJson) }) !== "ISSUED") continue;
     const row = it as unknown as Record<string, unknown>;
     const v = slipView({ engineVersion: r.engineVersion, item: row });
     const income = slipIncome(r.engineVersion, row);
-    if (!v.ok || income === null) return null;
-    out.push({
-      payDate: r.payDate,
-      grossSatang: it.grossSatang,
-      netSatang: it.netSatang,
-      whtSatang: it.whtSatang,
-      ssoEmployeeSatang: it.ssoEmployeeSatang,
-      incomeSatang: income,
-      slip: { runId: r.id, periodKey: r.periodKey, payDate: bkkDayOf(r.payDate), netSatang: it.netSatang, href: href(r.id) },
-    });
+    const slip = { runId: r.id, periodKey: r.periodKey, payDate: bkkDayOf(r.payDate), netSatang: it.netSatang, href: href(r.id) };
+    if (!v.ok || income === null) {
+      out.bad.push({ payDate: r.payDate, slip: { ...slip, netSatang: null } }); // ไม่มีตัวเลข · ไม่รวมในยอดปี
+      continue;
+    }
+    out.rows.push({ payDate: r.payDate, grossSatang: it.grossSatang, netSatang: it.netSatang, whtSatang: it.whtSatang, ssoEmployeeSatang: it.ssoEmployeeSatang, incomeSatang: income, slip });
   }
   return out;
+}
+/** ยอดรายปี (แถวดีเท่านั้น) + แถวกลางของงวดที่ข้อมูลเสีย แทรกตามวันที่จ่าย (ปีใหม่ก่อน · งวดใหม่ก่อน) */
+function yearsOf(r: IssuedRows): YearDto[] {
+  const years = yearTotals(r.rows) as YearDto[];
+  for (const b of r.bad) {
+    const ty = taxYearOf(b.payDate);
+    let y = years.find((x) => x.taxYear === ty);
+    if (!y) years.push((y = emptyYear(ty)));
+    y.slips.push(b.slip);
+    y.slips.sort((a, c) => (a.payDate === c.payDate ? (a.runId < c.runId ? 1 : -1) : a.payDate < c.payDate ? 1 : -1));
+  }
+  return years.sort((a, c) => c.taxYear - a.taxYear);
 }
 const emptyYear = (taxYear: number): YearDto => ({ taxYear, count: 0, grossSatang: 0, incomeSatang: 0, taxSatang: 0, ssoSatang: 0, netSatang: 0, slips: [] });
 
@@ -267,14 +290,12 @@ export async function slipHistory(ctx: Ctx, viewer: PayslipViewer, input: { empl
   const out = await runTx(ctx, async (tx) => {
     const emp = (await tx.hrEmployee.findFirst({ where: { id: employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: EMP_SELECT })) as EmpRow | null;
     if (!emp || !homeInScope(m, viewer, emp.unitId)) return null;
-    // ถือรอบของปีไว้ FOR SHARE ก่อนอ่านรายการ (การกลับรายการระหว่างอ่าน = รอแล้วเห็นสถานะใหม่)
-    await tx.$queryRaw`SELECT "id" FROM "HrPayrollRun" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "payDate" >= ${bkkYearStart(taxYear)} AND "payDate" < ${bkkYearStart(taxYear + 1)} FOR SHARE`;
+    // fix round 2 (ruling H): ล็อกรอบอยู่ใน issuedRows (APPROVED/PAID ของพนักงานคนนี้ในปีนั้น เรียงตาม id) — ไม่ล็อกรอบร่าง/รอบของคนอื่น
     const rows = await issuedRows(tx, ctx, emp.id, (runId) => `/app/sys/${ctx.systemId}/payroll/${runId}/slip/${emp.id}`, taxYear);
     return { emp, rows };
   });
   if (!out) return NO();
-  if (!out.rows) return refuse("SLIP_DATA", "slipData");
-  const year = yearTotals(out.rows).find((y) => y.taxYear === taxYear) ?? emptyYear(taxYear);
+  const year = yearsOf(out.rows).find((y) => y.taxYear === taxYear) ?? emptyYear(taxYear);
   return { ok: true, employeeId: out.emp.id, name: out.emp.name, year };
 }
 
@@ -318,6 +339,8 @@ export async function listSalaryCertEmployees(ctx: Ctx, viewer: PayslipViewer): 
 }
 
 type IssueOk = { ok: true; certId: string; docNo: string };
+/** ผลภายในของธุรกรรมออกใบ — audit = แถวประวัติที่ต้องเขียน (null = ไม่มีอะไรเปลี่ยน: คืนใบเดิม) */
+type IssueTx = IssueOk & { audit: { certId: string; docNo: string } | null };
 const lockEmp = (tx: Db, ctx: Ctx, employeeId: string) => tx.$queryRaw`SELECT 1 AS "x" FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`hrsc:${ctx.systemId}:${employeeId}`}, 38))) AS "l"`;
 /** สลิปที่ออกแล้วล่าสุดของพนักงาน (ตามวันที่จ่าย) — ถือแถวรอบ FOR SHARE */
 async function latestIssued(tx: Db, ctx: Ctx, employeeId: string, now: Date): Promise<{ run: RunRow; item: Record<string, unknown> } | null> {
@@ -362,24 +385,44 @@ export async function issueSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, in
     if (!isSlipPurpose(q.purpose)) return refuse("PURPOSE", "purpose");
     purpose = q.purpose;
   }
-  const out = await runTx(ctx, async (tx): Promise<IssueOk | Refusal> => {
+  const out = await runTx(ctx, async (tx): Promise<IssueTx | Refusal> => {
     await lockEmp(tx, ctx, employeeId);
     const emp = await tx.hrEmployee.findFirst({ where: { id: employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, name: true, position: true, startDate: true, endDate: true, active: true, employmentStatus: true, linkedUserId: true } });
     if (!emp) return NO();
     if (m.role !== "OWNER" && emp.linkedUserId && emp.linkedUserId === m.userId) return refuse("OWN", "own");
-    if (requestId) {
-      const rows = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "HrSalaryCertificate" WHERE "id" = ${requestId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`;
-      if (rows[0]?.status !== "REQUESTED") return refuse("NOT_DECIDABLE", "notDecidable");
-    }
+    // fix round 2 (ruling D): คำขอที่รออยู่ของพนักงานคนนี้ — ทางคำขอ = แถวที่ระบุ · ทางออกตรง = คำขอที่รออยู่ (ถ้ามี) ถูกปิดในธุรกรรมเดียวกัน
+    const reqRows = requestId
+      ? await tx.$queryRaw<{ id: string; status: string }[]>`SELECT "id", "status" FROM "HrSalaryCertificate" WHERE "id" = ${requestId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`
+      : await tx.$queryRaw<{ id: string; status: string }[]>`SELECT "id", "status" FROM "HrSalaryCertificate" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "employeeId" = ${emp.id} AND "status" = 'REQUESTED' ORDER BY "id" FOR UPDATE`;
+    if (requestId && reqRows[0]?.status !== "REQUESTED") return refuse("NOT_DECIDABLE", "notDecidable");
+    const open = reqRows.find((r) => r.status === "REQUESTED") ?? null;
     const src = await latestIssued(tx, ctx, emp.id, now);
     if (!src) return refuse("CERT_NO_SLIP", "certNoSlip");
     const v = slipView({ engineVersion: src.run.engineVersion, item: src.item });
     if (!v.ok) return refuse("SLIP_DATA", "slipData");
     const base = v.earnings.find((l) => l.code === "BASE");
     if (!base || base.amountSatang <= 0) return refuse("CERT_NO_BASE", "certNoBase");
+    // fix round 2 (ruling C): ใบที่ยังใช้ได้ (ISSUED · ไม่ถูกยกเลิก) ของพนักงานคนเดิม อ้างรอบเดิม วัตถุประสงค์เดิม = คืนใบเดิม ไม่ออกเลขใหม่ (กดซ้ำ/ส่งซ้ำ)
+    const dup = (
+      await tx.$queryRaw<{ id: string; docNo: string }[]>`
+        SELECT "id", "docNo" FROM "HrSalaryCertificate"
+        WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "employeeId" = ${emp.id} AND "status" = 'ISSUED' AND "voidedAt" IS NULL
+          AND "purpose" = ${purpose} AND "contentJson"->'salary'->>'runId' = ${src.run.id}
+        ORDER BY "issuedAt" DESC, "id" DESC LIMIT 1`
+    )[0];
+    if (dup) {
+      if (!open) return { ok: true, certId: dup.id, docNo: dup.docNo, audit: null };
+      // คำขอที่รออยู่ = ได้ใบเดิมแล้ว ⇒ ปิดคำขอ (ผู้ตัดสิน = ผู้ออก · เนื้อหาชี้ไปใบเดิม) — อนุมัติซ้ำภายหลังไม่ได้อีก
+      const u = await tx.hrSalaryCertificate.updateMany({
+        where: { id: open.id, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "REQUESTED" },
+        data: { status: "CANCELLED", decidedById: m.userId, decidedAt: now, contentJson: { fulfilledBy: dup.id, docNo: dup.docNo } as Prisma.InputJsonValue },
+      });
+      if (u.count !== 1) return refuse("NOT_DECIDABLE", "notDecidable");
+      return { ok: true, certId: dup.id, docNo: dup.docNo, audit: { certId: dup.id, docNo: dup.docNo } };
+    }
     const prof = await tx.hrFilingProfile.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employerName: true, employerAddress: true, signerName: true } });
-    const employerName = prof?.employerName?.trim() ?? "";
-    const signerName = prof?.signerName?.trim() ?? "";
+    const employerName = cleanText(prof?.employerName);
+    const signerName = cleanText(prof?.signerName);
     if (!employerName || !signerName) return refuse("PROFILE", "profile");
     // เลขที่ — ตัวนับของเครื่องออกเลข (ระบบ HR · WHT_CERT · งวด HRSC:<ปี ค.ศ. ของวันออก เวลาไทย>) = ล็อกสุดท้าย
     const issueDate = bkkDayOf(now);
@@ -388,8 +431,8 @@ export async function issueSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, in
       seq,
       issueDate,
       purpose,
-      employer: { name: employerName, address: prof?.employerAddress?.trim() || null },
-      employee: { name: emp.name, position: emp.position, startDate: dayOrNull(emp.startDate), endDate: dayOrNull(emp.endDate), active: emp.active && emp.employmentStatus !== "ENDED" },
+      employer: { name: employerName, address: cleanOrNull(prof?.employerAddress) },
+      employee: { name: cleanText(emp.name), position: cleanOrNull(emp.position), startDate: dayOrNull(emp.startDate), endDate: dayOrNull(emp.endDate), active: emp.active && emp.employmentStatus !== "ENDED" },
       salary: { amountSatang: base.amountSatang, periodKey: src.run.periodKey, runId: src.run.id },
       signerName,
     });
@@ -397,15 +440,18 @@ export async function issueSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, in
       status: "ISSUED", decidedById: m.userId, decidedAt: now, docSeq: seq, docNo: content.docNo, contentJson: content as unknown as Prisma.InputJsonValue,
       contentSha256: sha256(canon(content)), issuedAt: now, issuedById: m.userId,
     };
-    if (requestId) {
-      await tx.hrSalaryCertificate.updateMany({ where: { id: requestId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "REQUESTED" }, data });
-      return { ok: true, certId: requestId, docNo: content.docNo };
+    if (open) {
+      // ทางคำขอ หรือออกตรงขณะมีคำขอรออยู่ (ruling D) = แถวคำขอกลายเป็นใบที่ออก (วัตถุประสงค์ = ที่ผู้ออกเลือก) · อนุมัติภายหลังไม่ได้อีก
+      const u = await tx.hrSalaryCertificate.updateMany({ where: { id: open.id, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "REQUESTED" }, data: { ...data, purpose } });
+      if (u.count !== 1) throw new Error("salary-cert request moved under lock");
+      return { ok: true, certId: open.id, docNo: content.docNo, audit: { certId: open.id, docNo: content.docNo } };
     }
     const row = await tx.hrSalaryCertificate.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, purpose, ...data }, select: { id: true } });
-    return { ok: true, certId: row.id, docNo: content.docNo };
+    return { ok: true, certId: row.id, docNo: content.docNo, audit: { certId: row.id, docNo: content.docNo } };
   });
-  if (out.ok) await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "hr.salarycert.issue", targetType: "HrSalaryCertificate", targetId: out.certId, after: { certId: out.certId, docNo: out.docNo, employeeId } });
-  return out;
+  if (!out.ok) return out;
+  if (out.audit) await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "hr.salarycert.issue", targetType: "HrSalaryCertificate", targetId: out.audit.certId, after: { certId: out.audit.certId, docNo: out.audit.docNo, employeeId } });
+  return { ok: true, certId: out.certId, docNo: out.docNo };
 }
 
 /** ไม่อนุมัติคำขอ (ผู้ผ่านด่าน · ไม่ใช่คำขอของตัวเอง เว้นแต่ OWNER) */
@@ -459,10 +505,20 @@ async function certPdf(ctx: Ctx, where: { id: string; employeeId?: string }, liv
   if (!c.contentSha256 || sha256(canon(c.contentJson)) !== c.contentSha256) return refuse("CERT_CHANGED", "certChanged");
   const bytes = await renderSalaryCertPdf(c.contentJson as SalaryCertContent);
   // merge round m3: ตัวนับ + ประวัติในธุรกรรมเดียว — ประวัติล้ม = ตัวนับไม่ขยับ และไม่ส่งไฟล์ (โยนออก)
-  await runTx(ctx, async (tx) => {
-    await tx.hrSalaryCertificate.updateMany({ where: { id: c.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { downloads: { increment: 1 } } });
+  // fix round 2 (ruling B): ล็อกแถวใบ (FOR UPDATE) แล้วตรวจซ้ำ ISSUED · ไม่ถูกยกเลิก · sha เดิม — ยกเลิกระหว่างดาวน์โหลด = ปฏิเสธ ไม่ส่งไฟล์ ไม่นับ ไม่ลงประวัติ
+  const live = await runTx(ctx, async (tx): Promise<"OK" | "VOIDED" | "CHANGED"> => {
+    const cur = await tx.$queryRaw<{ status: string; voided: boolean; sha: string | null; same: boolean }[]>`
+      SELECT "status", ("voidedAt" IS NOT NULL) AS "voided", "contentSha256" AS "sha", ("contentJson" = ${JSON.stringify(c.contentJson)}::jsonb) AS "same" FROM "HrSalaryCertificate"
+      WHERE "id" = ${c.id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`;
+    if (cur[0]?.status !== "ISSUED" || cur[0].voided) return "VOIDED";
+    if (cur[0].sha !== c.contentSha256 || !cur[0].same) return "CHANGED";
+    const u = await tx.hrSalaryCertificate.updateMany({ where: { id: c.id, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ISSUED", voidedAt: null }, data: { downloads: { increment: 1 } } });
+    if (u.count !== 1) return "VOIDED";
     await auditIn(tx, { tenantId: ctx.tenantId, actorId: audit.actorId, action: "hr.salarycert.download", targetType: "HrSalaryCertificate", targetId: c.id, after: { certId: c.id, by: audit.by } });
+    return "OK";
   });
+  if (live === "CHANGED") return refuse("CERT_CHANGED", "certChanged");
+  if (live !== "OK") return liveOnly ? NO() : refuse("VOIDED", "voided");
   return { ok: true, fileName: `${c.docNo}.pdf`, contentType: "application/pdf", bytes, certId: c.id };
 }
 export async function downloadSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, input: { certId: unknown }): Promise<DownloadOk | Refusal> {
@@ -488,8 +544,7 @@ export async function mySlips(actor: SelfActor): Promise<MySlipsDto | Refusal> {
   const me = await resolveSelf(actor);
   if (!me) return NO();
   const rows = await runTx(me.ctx, (tx) => issuedRows(tx, me.ctx, me.employeeId, mySlipHref));
-  if (!rows) return refuse("SLIP_DATA", "slipData");
-  return { ok: true, years: yearTotals(rows) };
+  return { ok: true, years: yearsOf(rows) };
 }
 /** สลิปของฉัน 1 รอบ (ISSUED เท่านั้น — อื่น ๆ = ไม่พบ) */
 export async function mySlip(actor: SelfActor, input: { runId: unknown }): Promise<SlipDto | Refusal> {
