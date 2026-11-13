@@ -2819,6 +2819,14 @@ export async function convertDocument(
       }
     }
 
+    // ACC T2.5 (ภาพจอ) ▸ ใบกำกับเต็มรูปที่ออกจากใบเสร็จขายสด/ใบรับมัดจำ = ลงวันที่บิลเดิม (ภาษีลงบัญชีเดือนนั้นแล้ว · ใบนี้ไม่มี JV)
+    //   กติกาเดียวกับคำขอผ่านลิงก์ (skill domain-shark-accounting-cases.md §1.5 [V] — ค่าเริ่มของระบบสำหรับใบเสร็จที่ไม่ใช่ใบย่อ) ◂
+    let convDate = new Date();
+    if (toDocType === "TAX_INVOICE" && source.docType === "RECEIPT" && !source.sourceDocId) convDate = source.issueDate;
+    if (toDocType === "TAX_INVOICE" && source.docType === "DEPOSIT_RECEIPT") {
+      const lastPay = await prisma.accountDocumentPayment.findFirst({ where: { documentId: source.id, systemId, voidedAt: null }, orderBy: [{ paidAt: "desc" }, { id: "desc" }], select: { paidAt: true } });
+      convDate = lastPay?.paidAt ?? source.issueDate;
+    }
     const created = await prisma.$transaction(async (tx) => {
       const newDoc = await tx.accountDocument.create({
         data: {
@@ -2827,7 +2835,7 @@ export async function convertDocument(
           docType: toDocType,
           status: "DRAFT",
           direction: "OUT",
-          issueDate: new Date(),
+          issueDate: convDate,
           dueDate,
           contactId: source.contactId,
           vatMode: source.vatMode,
@@ -4344,8 +4352,8 @@ export async function depositSettlePreview(
   const ti = doc.status === "AWAITING_DEDUCT" || doc.status === "DEDUCTED" ? await liveDepositTaxInvoiceInTx(tx, systemId, id) : null;
   const p = await depositSettlePartsInTx(tx, systemId, doc);
   const mode = (await getSettings(tenantId, systemId)).doc.deposit.forfeit;
-  const today = thDate(ymdUtc(accountNow()));
-  const params = { tiNo: ti?.docNo ?? "-", gross: satangTxt(p.gross), vat: satangTxt(p.vat), base: satangTxt(p.base), date: today, mode };
+  // ภาพจอ ▸ ผู้ใช้เลือกวันที่ในกล่องยืนยันได้ ⇒ คำเตือนล่วงหน้าไม่ตายตัวที่วันนี้ ◂
+  const params = { tiNo: ti?.docNo ?? "-", gross: satangTxt(p.gross), vat: satangTxt(p.vat), base: satangTxt(p.base), date: "ที่เลือก", mode };
   return {
     taxInvoiceNo: ti?.docNo ?? null,
     ...p,
@@ -4392,7 +4400,7 @@ export async function forfeitDeposit(
       if (p.gross <= 0) throw new Error("ใบมัดจำนี้ไม่มียอดคงเหลือให้ริบ — ถูกหักในเอกสารอื่นแล้ว");
       // ไม่ออกใบลดหนี้: VAT ของมัดจำคงอยู่ใน 2200 · ฐานที่ค้างใน 2110 → รายได้อื่น (JV event FORFEIT ของใบรับมัดจำ — ยกเลิกใบรับมัดจำ = กลับพร้อมกัน)
       await postDepositSettlement({ tenantId, systemId }, { mode: "FORFEIT_KEEP_VAT", refId: id, depositId: id, date, base: p.base, vat: p.vat, memo: `ริบเงินมัดจำ ใบรับมัดจำ ${doc.docNo ?? "-"} — ${reason}` }, tx);
-      await tx.accountDocument.update({ where: { id }, data: { status: "DEDUCTED", internalNote: [doc.internalNote, `ริบเงินมัดจำ ฿${satangTxt(p.gross)} เมื่อ ${thDate(date)} — ${reason}`].filter(Boolean).join("\n") } });
+      await tx.accountDocument.update({ where: { id }, data: { status: "DEDUCTED", internalNote: [doc.internalNote, `ริบเงินมัดจำ ฿${satangTxt(p.gross)} เมื่อ ${thDate(date)} — ${reason}${p.vat > 0 ? ` · ไม่ออกใบลดหนี้: รายได้อื่น ฿${satangTxt(p.base)} · ภาษีขาย ฿${satangTxt(p.vat)} คงไว้` : ""}`].filter(Boolean).join("\n") } });
       await finalizeDocNos(tx);
       return { forfeited: p.gross, warnings: ti && p.vat > 0 ? [legalWarning("DEPOSIT_FORFEIT_VAT", params(p))] : [] };
     });

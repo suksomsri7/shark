@@ -181,6 +181,7 @@ try {
     const rp = old ? await acc.replaceTaxInvoice(ctx, old.id, { reason: "ชื่อผู้ซื้อสะกดผิด", buyer: { name: "บริษัท ลูกค้า ทีทูซี (ถูก) จำกัด" }, ack: { codes: ["TAX_INVOICE_REPLACE"], actorId: owner.id, via: "qc" }, createdById: owner.id }) : null;
     const aug = await SR.salesTaxReport(ctx, "2026-08");
     const rcRow = aug.rows.find((r: Any) => r.docId === rc.id);
+    chk("D5", "แปลงใบเสร็จขายสด (5 ส.ค.) เป็นใบกำกับเต็มรูป ⇒ ลงวันที่ใบเสร็จ 2026-08-05 (T2.5 · ไม่ใช่วันที่กด)", !!old && ymd(old.issueDate) === "2026-08-05", "2026-08-05", old && ymd(old.issueDate));
     chk("A7.1", "ใบกำกับจากใบเสร็จออกแล้ว + ออกแทนสำเร็จ (เลขใหม่)", !!old?.docNo && rp?.ok && rp.newDocNo && rp.newDocNo !== old.docNo, "ok", rp);
     chk("A7.2", "แถวใบเสร็จ: \"ใบกำกับภาษีเลขที่ <เดิม> ยกเลิก — ออกฉบับใหม่แทนแล้ว เลขที่ <ใหม่>\" + \"ออกแทนใบกำกับภาษีฉบับเดิมเลขที่ <เดิม>\"", !!rcRow && rcRow.notes.some((n: string) => n.includes(`ใบกำกับภาษีเลขที่ ${old?.docNo} ยกเลิก`) && n.includes(rp?.newDocNo ?? "§")) && rcRow.notes.some((n: string) => n.includes(`ออกแทนใบกำกับภาษีฉบับเดิมเลขที่ ${old?.docNo}`)), "2 หมายเหตุ", rcRow?.notes ?? aug.rows.map((r: Any) => [r.docNo, r.notes]));
     chk("A7.3", "ยอด ส.ค. ไม่เปลี่ยนจากการออกแทน (ใบกำกับไม่มี JV ของตัวเอง)", aug.total.vat === augBefore && aug.checks.every((c: Any) => c.ok), augBefore, aug.total.vat);

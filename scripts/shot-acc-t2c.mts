@@ -31,7 +31,7 @@ const D = (s: string) => new Date(`${s}T05:00:00.000Z`);
 const bank = await prisma.accountFinance.findFirst({ where: { systemId: S, type: "BANK", archivedAt: null }, orderBy: { createdAt: "asc" } });
 const ack = (codes: string[]) => ({ ack: { codes, actorId: owner.id, via: "qc-shot" } });
 const L = (amt: number, extra: Any = {}) => ({ description: "ทริปดำน้ำเกาะเต่า", qty: 1, unitPrice: amt, vatRateBp: 700, lineKind: "SERVICE", ...extra });
-const mkContact = (o: Any) => acc.createContact({ tenantId: TID, systemId: S, kind: "CUSTOMER", ...o });
+const mkContact = async (o: Any) => (await prisma.accountContact.findFirst({ where: { systemId: S, name: o.name, archivedAt: null } })) ?? acc.createContact({ tenantId: TID, systemId: S, kind: "CUSTOMER", ...o });
 const mk = (docType: string, contactId: string | null, date: string, lines: Any[], extra: Any = {}) =>
   acc.createDocument({ tenantId: TID, systemId: S, docType, contactId, vatMode: "EXCLUDE", issueDate: D(date), dueDate: D(date), lines, createdById: owner.id, ...extra });
 const issue = async (id: string) => {
@@ -63,7 +63,7 @@ await issue(ivPay.id);
 const p = await pay(ivPay.id, 321_000, "2026-09-06", "ivpay");
 const payTi = await prisma.accountDocument.findFirst({ where: { systemId: S, docType: "TAX_INVOICE", sourcePaymentId: p.paymentId } });
 // ใบแทน (A1) + ใบเสร็จ → ใบกำกับ → ออกแทน (A7 · หน้าพิมพ์หมายเหตุครั้งเดียว)
-const tiSub = await mk("TAX_INVOICE", cAddr.id, "2026-08-15", [L(120_000)]);
+const tiSub = await mk("TAX_INVOICE", cAddr.id, "2026-09-02", [L(120_000)]);
 await issue(tiSub.id);
 await PL.recordDocPrint(ctx, tiSub.id, { request: "PRINT", channel: "SCREEN", actorId: owner.id });
 await PL.recordDocPrint(ctx, tiSub.id, { request: "SUBSTITUTE", channel: "SCREEN", actorId: owner.id, substitute: { reason: "ลูกค้าทำต้นฉบับหาย", date: new Date("2026-09-25T12:00:00+07:00") } });

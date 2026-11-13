@@ -310,7 +310,11 @@ function ActionRow({
           fields={{ systemId, docType: dt, id: data.id }}
           triggerLabel="ริบมัดจำ"
           title="ริบเงินมัดจำใบนี้?"
-          detail={`เงินมัดจำส่วนที่ยังไม่ได้หัก ฿${(depositSettle.gross / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} จะเป็นรายได้อื่น (ค่าเสียหาย) — ${depositSettle.taxInvoiceNo ? (depositSettle.forfeitMode === "CREDIT_NOTE" ? "ร้านตั้งให้ออกใบลดหนี้อ้างใบกำกับ" : "ไม่ออกใบลดหนี้ ภาษีขายคงไว้ (ค่าตั้งของร้าน)") : "ใบนี้ไม่มีใบกำกับภาษี"}`}
+          detail={
+            depositSettle.taxInvoiceNo && depositSettle.forfeitMode === "KEEP_VAT"
+              ? `เงินมัดจำส่วนที่ยังไม่ได้หัก ฿${(depositSettle.gross / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} — ฐาน ฿${(depositSettle.base / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} เป็นรายได้อื่น (ค่าเสียหาย) · ไม่ออกใบลดหนี้ ภาษีขาย ฿${(depositSettle.vat / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} คงไว้ (ค่าตั้งของร้าน)`
+              : `เงินมัดจำส่วนที่ยังไม่ได้หัก ฿${(depositSettle.gross / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} จะเป็นรายได้อื่น (ค่าเสียหาย) — ${depositSettle.taxInvoiceNo ? "ร้านตั้งให้ออกใบลดหนี้อ้างใบกำกับ" : "ใบนี้ไม่มีใบกำกับภาษี"}`
+          }
           confirmLabel="ยืนยันริบมัดจำ"
           reasonLabel="เหตุผล (เช่น ลูกค้ายกเลิกการจอง)"
           todayIso={depositSettle.todayIso}
