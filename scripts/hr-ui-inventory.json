@@ -9319,6 +9319,267 @@
    "wo": "H3.2",
    "oracle": "qc-hr-h3.2",
    "note": "รายการหักสาย/ขาดของฉัน (ยอด + บรรทัดรายวัน)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-inbox-summary-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/InboxBatch.tsx",
+   "conditional": "ผู้เห็นคำขออย่างน้อย 1 ชนิด (ภาพรวมทีมบนหน้า HR — ตัวอย่าง 5 รายการ · การ์ดย่อ)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.11",
+   "note": "* = id คำขอ · สรุป 1 บรรทัดจาก inboxSummary (ชนิด · วัน/ช่วง · ชม./วัน · ฿ เฉพาะผู้ดูเงินเดือน) — VIS-2"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-inbox-open-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/InboxBatch.tsx",
+   "conditional": "ผู้เห็นคำขออย่างน้อย 1 ชนิด (ภาพรวมทีมบนหน้า HR — ตัวอย่าง 5 รายการ · การ์ดย่อ) · รายการเงิน/สรุปไม่ได้",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/requests"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.11",
+   "note": "* = id คำขอ · แทนปุ่มอนุมัติในการ์ดย่อเมื่อสรุปไม่ได้หรือเป็นรายการเงิน → ?type=&focus= — VIS-2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-law-presets",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/leave-presets-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · hr.employee.create) · เพิ่มได้เฉพาะผู้ดูแลทุกสาขา (ประเภททั้งร้าน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.7",
+   "note": "ส่วนพับ \"เพิ่มประเภทลาตามกฎหมาย\" (F1)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-law-presets-open",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/leave-presets-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · hr.employee.create) · เพิ่มได้เฉพาะผู้ดูแลทุกสาขา (ประเภททั้งร้าน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.7",
+   "note": "เปิด/ปิดรายการชุดตั้งต้นตามกฎหมาย (F1)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-law-preset-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/leave-presets-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · hr.employee.create) · เพิ่มได้เฉพาะผู้ดูแลทุกสาขา (ประเภททั้งร้าน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.7",
+   "note": "* = sick|personal|annual|maternityPaid|maternityUnpaid|paternity|military|unpaid|childcare · ค่า · มาตรา (V/V2) หรือถ้อยคำกลาง (U)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-law-preset-form-*",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/leave-presets-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · hr.employee.create) · เพิ่มได้เฉพาะผู้ดูแลทุกสาขา (ประเภททั้งร้าน)",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:addLeavePresetAction",
+    "db": "HrLeavePolicy (ทั้งร้าน · 1 แถว · ไม่ซ้ำชนิด)"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.7",
+   "note": "ฟอร์มค่าตั้งต้นที่แก้ได้ทุกช่อง (ชื่อ · โควตา · ค่าจ้าง · อายุงาน · ใบรับรอง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-law-preset-add-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/leave-presets-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · hr.employee.create) · เพิ่มได้เฉพาะผู้ดูแลทุกสาขา (ประเภททั้งร้าน)",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:addLeavePresetAction",
+    "db": "HrLeavePolicy (ทั้งร้าน · 1 แถว · ไม่ซ้ำชนิด)"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.7",
+   "note": "เพิ่มประเภทนี้ (1 รายการ · มีแล้ว = ปฏิเสธ lp.exists)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-law-preset-has-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/leave-presets-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · hr.employee.create) · เพิ่มได้เฉพาะผู้ดูแลทุกสาขา (ประเภททั้งร้าน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.7",
+   "note": "มีประเภทที่ตรงชนิดแล้ว — ไม่มีปุ่มเพิ่ม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-law-preset-off-*",
+   "kind": "button",
+   "interactive": false,
+   "file": "src/lib/modules/hr/leave-presets-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · hr.employee.create) · เพิ่มได้เฉพาะผู้ดูแลทุกสาขา (ประเภททั้งร้าน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.7",
+   "note": "ยังไม่รองรับ (จ่าย 50%) — ปุ่มปิด · ลาเลี้ยงดูบุตร (D-H212-partial-pay-leave)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-warn-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/leave-presets-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · hr.employee.create) · เพิ่มได้เฉพาะผู้ดูแลทุกสาขา (ประเภททั้งร้าน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H2.12",
+   "oracle": "qc-hr-h2.7",
+   "note": "* = id ประเภทการลา · คำเตือน F5 (ไม่บล็อก) เมื่อต่ำกว่าค่าตามกฎหมาย"
   }
  ]
 }

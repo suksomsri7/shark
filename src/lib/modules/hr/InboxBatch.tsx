@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { formatThaiDate, formatThaiTime } from "@/lib/ui/date";
 import { decideInboxAction } from "./inbox-actions";
 import { INBOX_BATCH_MAX, type InboxDecision, type InboxItem, type InboxResult } from "./inbox-shared";
+import { INBOX_ADJ_KINDS, INBOX_ADJ_SOURCES, INBOX_CORR_ACTIONS, INBOX_CORR_KINDS, INBOX_LEAVE_CATEGORIES, INBOX_OT_DAYCLASS, INBOX_OT_TIMING, inboxCode, inboxInlineDecide, inboxSummary } from "./inbox-shared"; // HR H2.12 ▸ VIS-2 ป้ายแทนรหัสดิบ + สรุปร่วม ◂
 
 type Any = Record<string, unknown>;
 const btn = "btn btn-primary min-h-[44px] whitespace-nowrap text-sm";
@@ -17,6 +18,8 @@ const newKey = () => `ib-${Date.now().toString(36)}-${Math.random().toString(36)
 const hm = (iso: string) => formatThaiTime(iso);
 const minHm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 const baht = (s: number) => `฿${(s / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// HR H2.12 ▸ VIS-2 งวด "2026-11" → "พ.ย. 2569" (ค่าที่อ่านไม่ออก = ค่าเดิม) ◂
+const monthLabel = (p: string) => (/^\d{4}-\d{2}$/.test(p) ? new Date(`${p}-01T00:00:00Z`).toLocaleDateString("th-TH", { month: "short", year: "numeric", timeZone: "UTC" }) : p);
 
 /** ค่าแบบมีป้ายกำกับ (VIS-1 A2) — ป้ายเสมอ ค่าว่าง = "—" */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -30,6 +33,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Detail({ it }: { it: InboxItem }) {
   const t = useTranslations("hr.inbox");
+  const tc = useTranslations("hr.settings.categories"); // HR H2.12 ▸ VIS-2 ป้ายหมวดการลาของโมดูลตั้งค่า ◂
   const d = it.detail as Any;
   const none = t("f.none");
   if (it.type === "LEAVE") {
@@ -39,7 +43,7 @@ function Detail({ it }: { it: InboxItem }) {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Field label={t("f.dates")}>{from === to ? formatThaiDate(from) : `${formatThaiDate(from)} – ${formatThaiDate(to)}`}</Field>
         <Field label={t("f.days")}>{d.days ? t("f.daysN", { n: String(d.days) }) : none}{d.halfDay ? ` · ${t("f.halfDay")}` : ""}{d.hours ? ` · ${String(d.hours)} ${t("f.hours")}` : ""}</Field>
-        <Field label={t("f.policy")}>{String(d.policyName ?? d.category ?? none)}</Field>
+        <Field label={t("f.policy")}>{d.policyName ? String(d.policyName) : inboxCode(INBOX_LEAVE_CATEGORIES, d.category) ? tc(inboxCode(INBOX_LEAVE_CATEGORIES, d.category)!) : none /* HR H2.12 ▸ VIS-2 ◂ */}</Field>
         {"reason" in d && <Field label={t("f.reason")}>{String(d.reason ?? none)}</Field>}
         {d.needsAttachment === true && <Field label={t("f.attachNeeded")}>✓</Field>}
       </div>
@@ -53,8 +57,8 @@ function Detail({ it }: { it: InboxItem }) {
         <Field label={t("f.otTime")}>{`${hm(String(d.startAt))}–${hm(String(d.endAt))}`}</Field>
         <Field label={t("f.otMin")}>{t("f.otMinN", { n: String(d.requestedMin) })}</Field>
         <Field label={t("f.otRate")}>{bp ? t("f.otRateN", { n: String(bp / 10000) }) : t("f.otRateNone")}</Field>
-        <Field label={t("f.dayClass")}>{d.dayClass === "HOLIDAY" ? t("f.HOLIDAY") : t("f.WORKDAY")}</Field>
-        <Field label={t("f.timing")}>{d.timing === "AFTER" ? t("f.AFTER") : t("f.BEFORE")}</Field>
+        <Field label={t("f.dayClass")}>{inboxCode(INBOX_OT_DAYCLASS, d.dayClass) ? t(`f.${inboxCode(INBOX_OT_DAYCLASS, d.dayClass)!}`) : none}</Field>
+        <Field label={t("f.timing")}>{inboxCode(INBOX_OT_TIMING, d.timing) ? t(`f.${inboxCode(INBOX_OT_TIMING, d.timing)!}`) : none}</Field>
         <Field label={t("f.reason")}>{String(d.reason ?? none)}</Field>
       </div>
     );
@@ -79,7 +83,7 @@ function Detail({ it }: { it: InboxItem }) {
     const action = String(d.action);
     return (
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Field label={t("f.corrAction")}>{`${["ADD", "CHANGE", "VOID"].includes(action) ? t(`f.${action}` as "f.ADD") : action} · ${["IN", "OUT", "BREAK_START", "BREAK_END"].includes(kind) ? t(`f.${kind}` as "f.IN") : kind}`}</Field>
+        <Field label={t("f.corrAction")}>{`${inboxCode(INBOX_CORR_ACTIONS, action) ? t(`f.${inboxCode(INBOX_CORR_ACTIONS, action)!}`) : none} · ${inboxCode(INBOX_CORR_KINDS, kind) ? t(`f.${inboxCode(INBOX_CORR_KINDS, kind)!}`) : none}`}</Field>
         <Field label={t("f.corrDay")}>{d.day ? formatThaiDate(String(d.day)) : none}</Field>
         <Field label={t("f.original")}>{d.originalAt ? hm(String(d.originalAt)) : none}</Field>
         <Field label={t("f.proposed")}>{d.proposedAt ? hm(String(d.proposedAt)) : none}</Field>
@@ -94,10 +98,10 @@ function Detail({ it }: { it: InboxItem }) {
   const src = String(d.source);
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      <Field label={t("f.adjKind")}>{String(d.kind)}</Field>
+      <Field label={t("f.adjKind")}>{inboxCode(INBOX_ADJ_KINDS, d.kind) ? t(`adjKinds.${inboxCode(INBOX_ADJ_KINDS, d.kind)!}`) : none /* HR H2.12 ▸ VIS-2 ◂ */}</Field>
       <Field label={t("f.amount")}>{baht(Number(d.amountSatang))}</Field>
-      <Field label={t("f.period")}>{String(d.periodKey)}</Field>
-      <Field label={t("f.source")}>{["MANUAL", "STOCK", "COMMISSION", "SYSTEM"].includes(src) ? t(`f.${src}` as "f.MANUAL") : src}</Field>
+      <Field label={t("f.period")}>{monthLabel(String(d.periodKey))}</Field>
+      <Field label={t("f.source")}>{inboxCode(INBOX_ADJ_SOURCES, src) ? t(`f.${inboxCode(INBOX_ADJ_SOURCES, src)!}`) : none}</Field>
       {consent && <Field label={t("f.consent")}>{`${String(consent.ref)} · ${formatThaiDate(String(consent.at))}`}</Field>}
       {consent?.employeeEnded === true && (
         <p role="note" className="col-span-full text-sm text-[color:var(--color-danger)]">
@@ -106,6 +110,41 @@ function Detail({ it }: { it: InboxItem }) {
       )}
       {!!d.note && <Field label={t("f.note")}>{String(d.note)}</Field>}
     </div>
+  );
+}
+
+// HR H2.12 ▸ VIS-2 สรุป 1 บรรทัด (ตัวสรุปร่วม inboxSummary) — ใคร = ชื่อบนการ์ด · ชนิด · วัน/ช่วง · ชม./วัน · ฿ เฉพาะเมื่อ DTO มียอด (ผู้ดูเงินเดือน) ◂
+function Summary({ it }: { it: InboxItem }) {
+  const t = useTranslations("hr.inbox");
+  const tc = useTranslations("hr.settings.categories");
+  const sm = inboxSummary(it);
+  if (!sm) return <p data-testid={`hr-inbox-summary-${it.id}`} className={`text-sm ${muted}`}>{t("sum.none")}</p>;
+  const range = (a: string, b: string) => (a === b ? formatThaiDate(a) : `${formatThaiDate(a)} – ${formatThaiDate(b)}`);
+  const hrs = (m: number) => t("sum.hoursN", { n: String(Math.round((m / 60) * 100) / 100) });
+  const parts: string[] = [];
+  if (sm.type === "LEAVE") {
+    parts.push(sm.policyName ?? (sm.category ? tc(sm.category) : t("type.LEAVE")), range(sm.fromDate, sm.toDate));
+    if (sm.hours) parts.push(`${sm.hours} ${t("f.hours")}`);
+    else if (sm.days) parts.push(t("f.daysN", { n: sm.days }) + (sm.halfDay ? ` · ${t("f.halfDay")}` : ""));
+  } else if (sm.type === "OT") {
+    parts.push(formatThaiDate(sm.date), `${hm(sm.startAt)}–${hm(sm.endAt)}`, hrs(sm.minutes));
+  } else if (sm.type === "SWAP") {
+    const side = (x: typeof sm.from) => (x ? `${formatThaiDate(x.date)} · ${x.shiftName} ${minHm(x.startMin)}–${minHm(x.endMin)}` : t("f.swapHidden"));
+    parts.push(`${t("f.swapWith")} ${sm.withName}`, side(sm.from));
+    if (sm.swap) parts.push(`⇄ ${side(sm.to)}`);
+  } else if (sm.type === "CORRECTION") {
+    parts.push(`${t(`f.${sm.action}`)} · ${t(`f.${sm.kind}`)}`);
+    if (sm.day) parts.push(formatThaiDate(sm.day));
+    if (sm.originalAt || sm.proposedAt) parts.push(`${sm.originalAt ? hm(sm.originalAt) : "—"} → ${sm.proposedAt ? hm(sm.proposedAt) : "—"}`);
+  } else {
+    parts.push(sm.kind ? t(`adjKinds.${sm.kind}`) : t("type.ADJUSTMENT"));
+    if (sm.amountSatang !== null) parts.push(baht(sm.amountSatang));
+    parts.push(`${t("f.period")} ${monthLabel(sm.periodKey)}`);
+  }
+  return (
+    <p data-testid={`hr-inbox-summary-${it.id}`} className="break-words text-sm font-medium">
+      {parts.join(" · ")}
+    </p>
   );
 }
 
@@ -128,7 +167,7 @@ function Impact({ it }: { it: InboxItem }) {
     if (typeof im.deltaMin === "number") rows.push([t("impact.delta"), t("impact.deltaN", { n: String(im.deltaMin) })]);
     if (typeof im.monthClosed === "boolean") rows.push([t("impact.title"), im.monthClosed ? t("impact.monthClosed") : t("impact.monthOpen")]); // ผู้ดูเงินเดือนเท่านั้น (r2)
   } else if (it.type === "ADJUSTMENT") {
-    rows.push([t("impact.targetPeriod"), String(im.targetPeriod ?? t("f.none"))]);
+    rows.push([t("impact.targetPeriod"), im.targetPeriod ? monthLabel(String(im.targetPeriod)) : t("f.none")]); // HR H2.12 ▸ VIS-2 ◂
   }
   return (
     <div data-testid={`hr-inbox-impact-${it.id}`} className="flex flex-col gap-1 rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2">
@@ -147,7 +186,7 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
   const router = useRouter();
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
-  const [ask, setAsk] = useState<null | { ids: string[] }>(null);
+  const [ask, setAsk] = useState<null | { ids: string[]; at?: string }>(null); // HR H2.12 ▸ at = การ์ดที่กด (ช่องเหตุผลอยู่ในการ์ดนั้น) · ไม่มี = แถบเลือก ◂
   const [reason, setReason] = useState("");
   const [out, setOut] = useState<null | { results: InboxResult[]; replayed: boolean } | { error: string }>(null);
   const keyRef = useRef<{ sig: string; key: string } | null>(null);
@@ -186,6 +225,23 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
   const selIds = [...sel].filter((id) => byId.get(id)?.batchable);
   const reasonOk = Array.from(reason.trim()).length >= 3 && Array.from(reason.trim()).length <= 200;
 
+  const askBox = ask && (
+        <div className="card flex flex-col gap-2 p-4" role="dialog" aria-label={t("rejectReason")}>
+          <label className="flex flex-col gap-1 text-sm">
+            {t("rejectReason")}
+            <span className={`text-xs ${muted}`}>{ask.ids.map(nameOf).join(" · ")}</span>
+            <textarea data-testid="hr-inbox-reject-reason" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} rows={2} className="input" />
+          </label>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" className={ghost} onClick={() => (setAsk(null), setReason(""))}>
+              {t("cancel")}
+            </button>
+            <button type="button" className={btn} disabled={!reasonOk || pending} onClick={() => send(ask.ids, "REJECTED", reason.trim())}>
+              {t("rejectConfirm")}
+            </button>
+          </div>
+        </div>
+  );
   return (
     <div className="flex flex-col gap-3">
       {out && (
@@ -212,6 +268,36 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
           )}
         </div>
       )}
+
+      {!compact && batchable.length > 0 && (
+        <div
+          data-testid="hr-inbox-batch"
+          className="sticky top-14 z-20 rounded-xl bg-[color:var(--color-surface)] shadow-sm"
+        >
+          {/* HR H2.12 ▸ VIS-2 แถบเลือกอยู่บนสุดของรายการ (ภาพ 05) · ติดใต้แถบบน (top-14 · z-20 < แถบบน z-40) · พื้นทึบ surface ก่อน
+               แล้วค่อยทินท์ accent-soft (สีแบรนด์ของร้านเป็น rgba 8% — ทินท์อย่างเดียวโปร่ง การ์ดจึงทะลุ) ◂ */}
+          <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] p-3 sm:flex-row sm:items-center">
+          <label className="flex min-h-[44px] items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              className="h-5 w-5"
+              checked={selIds.length > 0 && selIds.length === Math.min(batchable.length, INBOX_BATCH_MAX)}
+              onChange={(e) => setSel(e.target.checked ? new Set(batchable.slice(0, INBOX_BATCH_MAX).map((i) => i.id)) : new Set())}
+            />
+            {selIds.length ? t("batch.selected", { n: String(selIds.length) }) : t("batch.selectAll")}
+          </label>
+          <div className="flex flex-wrap gap-2 sm:ml-auto">
+            <button type="button" data-testid="hr-inbox-batch-reject" disabled={!selIds.length || pending} onClick={() => setAsk({ ids: selIds })} className={ghost}>
+              {t("batch.reject", { n: String(selIds.length) })}
+            </button>
+            <button type="button" data-testid="hr-inbox-batch-approve" disabled={!selIds.length || pending} onClick={() => send(selIds, "APPROVED")} className={btn}>
+              {pending ? t("batch.busy") : t("batch.approve", { n: String(selIds.length) })}
+            </button>
+          </div>
+          </div>
+        </div>
+      )}
+      {ask && !ask.at && askBox}
 
       {items.map((it) => {
         const checked = sel.has(it.id);
@@ -247,6 +333,7 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
                 </div>
               </div>
             </div>
+            {compact && <Summary it={it} /> /* HR H2.12 ▸ VIS-2 การ์ดย่อบอกว่ากำลังอนุมัติอะไร ◂ */}
             {!compact && <Detail it={it} />}
             {!compact && <Impact it={it} />}
             {it.blocker && (
@@ -262,10 +349,18 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
                 )}
               </p>
             )}
-            {it.canDecide && (
+            {compact && it.canDecide && !inboxInlineDecide(it) && (
+              /* HR H2.12 ▸ VIS-2 สรุปไม่ได้/รายการเงิน ⇒ เปิดดูในกล่องคำขอ แทนปุ่มอนุมัติแบบไม่เห็นรายละเอียด ◂ */
+              <div className="flex flex-wrap justify-end gap-2">
+                <a href={`/app/sys/${systemId}/hr/requests?type=${it.type}&focus=${encodeURIComponent(it.id)}#req-${it.id}`} data-testid={`hr-inbox-open-${it.id}`} className={ghost}>
+                  {t("sum.open")}
+                </a>
+              </div>
+            )}
+            {it.canDecide && (!compact || inboxInlineDecide(it)) && (
               <div className="flex flex-wrap justify-end gap-2">
                 {it.type === "ADJUSTMENT" && <span className={`mr-auto self-center text-xs ${muted}`}>{t("oneByOne")}</span>}
-                <button type="button" data-testid={`hr-inbox-reject-${it.id}`} disabled={pending} onClick={() => setAsk({ ids: [it.id] })} className={ghost}>
+                <button type="button" data-testid={`hr-inbox-reject-${it.id}`} disabled={pending} onClick={() => setAsk({ ids: [it.id], at: it.id })} className={ghost}>
                   {t("reject")}
                 </button>
                 <button type="button" data-testid={`hr-inbox-approve-${it.id}`} disabled={pending} onClick={() => send([it.id], "APPROVED")} className={btn}>
@@ -273,52 +368,12 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
                 </button>
               </div>
             )}
+            {ask?.at === it.id && askBox}
           </article>
         );
       })}
 
-      {ask && (
-        <div className="card flex flex-col gap-2 p-4" role="dialog" aria-label={t("rejectReason")}>
-          <label className="flex flex-col gap-1 text-sm">
-            {t("rejectReason")}
-            <span className={`text-xs ${muted}`}>{ask.ids.map(nameOf).join(" · ")}</span>
-            <textarea data-testid="hr-inbox-reject-reason" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} rows={2} className="input" />
-          </label>
-          <div className="flex flex-wrap justify-end gap-2">
-            <button type="button" className={ghost} onClick={() => (setAsk(null), setReason(""))}>
-              {t("cancel")}
-            </button>
-            <button type="button" className={btn} disabled={!reasonOk || pending} onClick={() => send(ask.ids, "REJECTED", reason.trim())}>
-              {t("rejectConfirm")}
-            </button>
-          </div>
-        </div>
-      )}
 
-      {!compact && batchable.length > 0 && (
-        <div
-          data-testid="hr-inbox-batch"
-          className="sticky bottom-0 z-10 flex flex-col gap-2 rounded-xl border border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] p-3 sm:flex-row sm:items-center"
-        >
-          <label className="flex min-h-[44px] items-center gap-2 text-sm font-medium">
-            <input
-              type="checkbox"
-              className="h-5 w-5"
-              checked={selIds.length > 0 && selIds.length === Math.min(batchable.length, INBOX_BATCH_MAX)}
-              onChange={(e) => setSel(e.target.checked ? new Set(batchable.slice(0, INBOX_BATCH_MAX).map((i) => i.id)) : new Set())}
-            />
-            {selIds.length ? t("batch.selected", { n: String(selIds.length) }) : t("batch.selectAll")}
-          </label>
-          <div className="flex flex-wrap gap-2 sm:ml-auto">
-            <button type="button" data-testid="hr-inbox-batch-reject" disabled={!selIds.length || pending} onClick={() => setAsk({ ids: selIds })} className={ghost}>
-              {t("batch.reject", { n: String(selIds.length) })}
-            </button>
-            <button type="button" data-testid="hr-inbox-batch-approve" disabled={!selIds.length || pending} onClick={() => send(selIds, "APPROVED")} className={btn}>
-              {pending ? t("batch.busy") : t("batch.approve", { n: String(selIds.length) })}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
