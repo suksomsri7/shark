@@ -291,7 +291,8 @@ function runStatic(): void {
       return ok(m.inbox?.adjKinds, pay) && ok(m.settings?.categories, cat) && ok(m.inbox?.f, [...act, ...tim, "WORKDAY", "HOLIDAY", "IN", "OUT", "BREAK_START", "BREAK_END", "MANUAL", "STOCK", "COMMISSION", "SYSTEM"]);
     };
     const raw = [/\{String\(d\.kind\)\}/, /\{String\(d\.periodKey\)\}/, /d\.policyName\s*\?\?\s*d\.category/, /:\s*(action|kind|src)\}/, /String\(im\.targetPeriod\s*\?\?/].filter((re) => re.test(cl)).map(String);
-    ck("VIS2.2", { enums: pay.length === 6 && cat.length === 4 && act.length === 3 && tim.length === 2, th: labelled("th"), en: labelled("en"), adjKeys: /adjKinds\./.test(cl), catKeys: /hr\.settings\.categories/.test(cl), noRaw: raw.length === 0 }, "labels th=en · no raw", `raw=${raw.join(" ") || "-"} pay=${pay.join("/")}`);
+    // ORACLE-EDIT (H3.4 merge round): HrPayItemKind may carry the 7th label REFUND (H3.4 migration 20270106000000) — it needs its th=en label like the others
+    ck("VIS2.2", { enums: (pay.length === 6 || (pay.length === 7 && pay.includes("REFUND"))) && cat.length === 4 && act.length === 3 && tim.length === 2, th: labelled("th"), en: labelled("en"), adjKeys: /adjKinds\./.test(cl), catKeys: /hr\.settings\.categories/.test(cl), noRaw: raw.length === 0 }, "labels th=en · no raw", `raw=${raw.join(" ") || "-"} pay=${pay.join("/")}`);
   }
   {
     const cl = stripComments(rd(F.client));

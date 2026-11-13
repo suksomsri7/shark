@@ -1637,6 +1637,8 @@ async function runH212Pure(): Promise<void> {
   let prismaDiff = "";
   try {
     prismaDiff = git(["diff", "--name-only", process.env.QC_H212_BASE ?? "30f83b99a", "--", "prisma"]);
+    // ORACLE-EDIT (H3.4 merge round): the payroll model + migrations of later tickets (H3.4 20270106*, H3.5 20270107*) are not H2.12's — still fails on any other prisma change
+    prismaDiff = prismaDiff.split("\n").filter((f) => f && !/^prisma\/migrations\/2027010[67]\d{6}_hr_(payroll_v2|payroll_v2_kinds|bank_files)\/migration\.sql$/.test(f) && f !== "prisma/schema/payroll.prisma").join("\n");
   } catch (e) {
     prismaDiff = `git ${errText(e).slice(0, 40)}`;
   }

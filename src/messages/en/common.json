@@ -1490,7 +1490,8 @@
         "BONUS": "Bonus",
         "ALLOWANCE": "Allowance/travel",
         "DEDUCTION": "Deduction",
-        "ADVANCE": "Advance repayment"
+        "ADVANCE": "Advance repayment",
+        "REFUND": "Claim refund (not taxable)"
       },
       "sum": {
         "none": "Cannot summarise this request — open it in Requests before deciding",
