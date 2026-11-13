@@ -10,7 +10,7 @@ import { formatThaiDate as fmtDate } from "@/lib/ui/date";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { accountCan } from "@/lib/modules/account/access";
+import { accountCan, assertAccountCan } from "@/lib/modules/account/access";
 import { pndFiledDifferences, pndFilingOf, namesOf } from "@/lib/modules/account/filed-differences";
 import { filingHistory } from "@/lib/modules/account/filing-history";
 import { unmarkFiledAction as unmarkPndAction } from "../wht/actions";
@@ -53,7 +53,9 @@ export default async function TaxPage({
 
   async function unmarkAction(fd: FormData) {
     "use server";
-    // ตัวเดียวกับหน้า 50 ทวิ (สิทธิ์ account.wht.unmark · ไม่ลบแถว · เก็บเหตุผล)
+    // ตัวเดียวกับหน้า 50 ทวิ (สิทธิ์ account.wht.unmark · ไม่ลบแถว · เก็บเหตุผล) — ด่านสิทธิ์ในตัว action นี้ด้วย
+    const { auth: a } = await loadAccountSystem(id);
+    assertAccountCan(a, "account.wht.unmark");
     const r = await unmarkPndAction(id, { form: type, periodKey: period, reason: String(fd.get("reason") ?? "") });
     revalidatePath(`${base}/tax`);
     redirect(`${self}&${r.ok ? `ok=${encodeURIComponent("ยกเลิกเครื่องหมายนำส่งแล้ว")}` : `err=${encodeURIComponent(r.reason)}`}`);

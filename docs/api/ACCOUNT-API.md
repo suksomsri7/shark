@@ -967,7 +967,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/reports/profit-loss?from=exa
 
 #### `reports.purchase-tax`
 
-**GET /reports/purchase-tax** - Purchase tax report (input VAT report) of one tax month: header (business name, tax id, head office or branch, tax month) with warnings; one row per purchase tax invoice claimed in the month, numbered from 1 each month and ordered by the date received, with the vendor's invoice date and number, vendor name, tax id and branch, value, VAT and notes (late-claim note, credit/debit note references, cancellations); manual journal adjustments on the input VAT account; reconciliation (report total = input VAT ledger movement = PP30 input VAT; value × rate ≈ VAT per row); and, outside the report total, non-claimable input VAT by reason and input VAT still waiting for the vendor's tax invoice. Supports CSV. · scope: `account.tax.view` · read · AI tool: `account_purchase_tax_report`
+**GET /reports/purchase-tax** - Purchase tax report (input VAT report) of one tax month: header (business name, tax id, head office or branch, tax month) with warnings; one row per purchase tax invoice claimed in the month, numbered from 1 each month and ordered by the date received, with the vendor's invoice date and number, vendor name, tax id and branch, value, VAT and notes (late-claim note, credit/debit note references, cancellations); manual journal adjustments on the input VAT account; reconciliation (report total = input VAT ledger movement = PP30 input VAT; value x rate ~= VAT per row); and, outside the report total, non-claimable input VAT by reason and input VAT still waiting for the vendor's tax invoice. Supports CSV. · scope: `account.tax.view` · read · AI tool: `account_purchase_tax_report`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -980,7 +980,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/reports/purchase-tax?period=
 
 #### `reports.revenue-without-vat`
 
-**GET /reports/revenue-without-vat** - Revenue that carried no VAT, per month: issued sales documents and POS bills, one row per line with no VAT, grouped as EXEMPT (line marked exempt), ZERO_RATED (0% line on a VAT document) or UNTAXED (document without VAT, no reason given — what a VAT-registered shop must check). Credit notes count negative; receipts and tax invoices issued from an invoice are counted at the invoice. · scope: `account.tax.view` · read · AI tool: `account_revenue_without_vat`
+**GET /reports/revenue-without-vat** - Revenue that carried no VAT, per month: issued sales documents and POS bills, one row per line with no VAT, grouped as EXEMPT (line marked exempt), ZERO_RATED (0% line on a VAT document) or UNTAXED (document without VAT, no reason given - what a VAT-registered shop must check). Credit notes count negative; receipts and tax invoices issued from an invoice are counted at the invoice. · scope: `account.tax.view` · read · AI tool: `account_revenue_without_vat`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -1055,7 +1055,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/settings/policy" \
 
 #### `settings.tax`
 
-**GET /settings/tax** - Business entity kind of this book and the effective-dated legal value tables (VAT rate, withholding tax rates by income type × payer × recipient × channel, filing deadlines incl. the online extension): every row with its value, effective range, source, confidence tag and checked date, which row is in effect, and warnings. System defaults are research, not legal advice. · scope: `account.doc.view` · read · AI tool: `account_tax_settings`
+**GET /settings/tax** - Business entity kind of this book and the effective-dated legal value tables (VAT rate, withholding tax rates by income type x payer x recipient x channel, filing deadlines incl. the online extension): every row with its value, effective range, source, confidence tag and checked date, which row is in effect, and warnings. System defaults are research, not legal advice. · scope: `account.doc.view` · read · AI tool: `account_tax_settings`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |

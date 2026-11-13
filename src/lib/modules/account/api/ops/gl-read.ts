@@ -638,7 +638,7 @@ const reportsPurchaseTax = defineOp({
   action: "account.tax.view",
   rate: "report",
   summary:
-    "Purchase tax report (input VAT report) of one tax month: header (business name, tax id, head office or branch, tax month) with warnings; one row per purchase tax invoice claimed in the month, numbered from 1 each month and ordered by the date received, with the vendor's invoice date and number, vendor name, tax id and branch, value, VAT and notes (late-claim note, credit/debit note references, cancellations); manual journal adjustments on the input VAT account; reconciliation (report total = input VAT ledger movement = PP30 input VAT; value × rate ≈ VAT per row); and, outside the report total, non-claimable input VAT by reason and input VAT still waiting for the vendor's tax invoice. Supports CSV.",
+  "Purchase tax report (input VAT report) of one tax month: header (business name, tax id, head office or branch, tax month) with warnings; one row per purchase tax invoice claimed in the month, numbered from 1 each month and ordered by the date received, with the vendor's invoice date and number, vendor name, tax id and branch, value, VAT and notes (late-claim note, credit/debit note references, cancellations); manual journal adjustments on the input VAT account; reconciliation (report total = input VAT ledger movement = PP30 input VAT; value x rate ~= VAT per row); and, outside the report total, non-claimable input VAT by reason and input VAT still waiting for the vendor's tax invoice. Supports CSV.",
   label: "รายงานภาษีซื้อ",
   input: purchaseTaxInput,
   tool: { name: "account_purchase_tax_report", hint: "Use to list the input VAT claimed in a tax month (purchase tax report), check it reconciles with the ledger and PP30, or see which input VAT is not claimable or still waiting for a tax invoice." },
@@ -712,7 +712,7 @@ const reportsRevenueWithoutVat = defineOp({
   action: "account.tax.view",
   rate: "report",
   summary:
-    "Revenue that carried no VAT, per month: issued sales documents and POS bills, one row per line with no VAT, grouped as EXEMPT (line marked exempt), ZERO_RATED (0% line on a VAT document) or UNTAXED (document without VAT, no reason given — what a VAT-registered shop must check). Credit notes count negative; receipts and tax invoices issued from an invoice are counted at the invoice.",
+  "Revenue that carried no VAT, per month: issued sales documents and POS bills, one row per line with no VAT, grouped as EXEMPT (line marked exempt), ZERO_RATED (0% line on a VAT document) or UNTAXED (document without VAT, no reason given - what a VAT-registered shop must check). Credit notes count negative; receipts and tax invoices issued from an invoice are counted at the invoice.",
   label: "รายได้ที่ไม่มี VAT",
   input: revenueNoVatInput,
   tool: { name: "account_revenue_without_vat", hint: "Use to check sales that carried no VAT in a VAT-registered shop, and whether each is exempt, zero-rated or simply untaxed." },
@@ -755,7 +755,7 @@ const periodsFiledDifferences = defineOp({
   kind: "read",
   action: "account.journal.view",
   summary:
-    "Entries dated into a month after it was marked filed: for VAT (PP30) every posting into the month that changed output, input or parked VAT after the filing time, with document, effect, who and whether the legal warning was acknowledged; for withholding tax (PND3/53) every certificate issued or cancelled in the month after it was marked filed. Also returns the mark/unmark history. Totals are what an additional filing would add.",
+  "Entries dated into a month after it was marked filed: for VAT (PP30) every posting into the month that changed output, input or parked VAT after the filing time, with document, effect, who and whether the legal warning was acknowledged; for withholding tax (PND3/53) every certificate issued or cancelled in the month after it was marked filed. Also returns the mark/unmark history. Totals are what an additional filing would add.",
   label: "ผลต่างหลังยื่น",
   input: noQuery,
   test: "F17-R1",
