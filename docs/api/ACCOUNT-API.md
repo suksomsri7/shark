@@ -1745,7 +1745,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/public-link" 
 
 #### `documents.receive`
 
-**POST /documents/{id}/receive** - Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT on the claim date (default today = the month it was received), an asset purchase becomes RECEIVED. A claim in a later month than the invoice stores the note "ถือเป็นภาษีซื้อในเดือนภาษี…"; a claim past the legal window answers 409 legal_ack_required. · scope: `account.payment.record` · write
+**POST /documents/{id}/receive** - Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT on the claim date (default today = the month it was received), an asset purchase becomes RECEIVED. A claim in a later month than the invoice stores the late-claim note required on the invoice; a claim past the legal window answers 409 legal_ack_required. · scope: `account.payment.record` · write
 
 Path parameters: `id` (required).
 

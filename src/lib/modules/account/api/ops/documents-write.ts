@@ -777,7 +777,7 @@ const documentsReceive = defineOp({
   path: "/documents/{id}/receive",
   kind: "write",
   action: "account.payment.record",
-  summary: "Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT on the claim date (default today = the month it was received), an asset purchase becomes RECEIVED. A claim in a later month than the invoice stores the note \"ถือเป็นภาษีซื้อในเดือนภาษี…\"; a claim past the legal window answers 409 legal_ack_required.",
+  summary: "Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT on the claim date (default today = the month it was received), an asset purchase becomes RECEIVED. A claim in a later month than the invoice stores the late-claim note required on the invoice; a claim past the legal window answers 409 legal_ack_required.",
   label: "รับเอกสารตัวจริง",
   input: receiveInput,
   test: "C1-W10.1",
