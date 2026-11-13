@@ -14,6 +14,8 @@ import { payrollItemsDigest } from "./payroll-digest"; // H0.1 ▸ CR16: ลา�
 import PayAdjustForm from "./PayAdjustForm";
 import { stockConsentByAdjustment } from "./stock-charge"; // HR H4.6 ▸ r2 m8: หนังสือยินยอมที่แถวอนุมัติ ◂
 import PayAdjustRowActions from "./PayAdjustRowActions"; // HF-HR-0 ▸ รอบ 5c (F5): ปุ่มของรายการ + เหตุผลที่ถูกปฏิเสธในแถว ◂
+import ClaimGiveBack from "./ClaimGiveBack"; // HR H3.7 ▸ fix r2 (b): คืนเงินรายการหักที่หักไปแล้ว (อ้างรายการหัก) ◂
+import { giveBackPeriodOf } from "./payroll"; // HR H3.7 ▸ fix r3 (3) ◂
 import RunRowActions, { CreateRunForm, StrandedMoveButton } from "./RunRowActions"; // H0.1 ▸ R6 · CR12: "อนุมัติ" / "ดึงข้อมูลใหม่" (คำนวณใหม่) / "ลบร่าง" ของรอบร่าง + เหตุผลที่ถูกปฏิเสธในแถว ◂ · H0.2 ▸ ฟอร์มสร้างรอบ + ปุ่มย้ายรายการค้าง ◂
 import {
   markPaidAction,
@@ -124,6 +126,8 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
     strandedAdjustments(ctx).then((xs) => xs.filter((x) => allBranches || inScope.has(x.employeeId))),
   ]);
   const draftRunIds = new Set(runs.filter((r) => r.status === "DRAFT").map((r) => r.id));
+  // HR H3.7 ▸ fix r3 (3): period offered by "คืนเงิน" = next open period of that employee (null ⇒ no form — e.g. after the end-date period) ◂
+  const giveBackPeriods = new Map(await Promise.all(adjustments.slice(0, 30).filter((a) => a.kind === "DEDUCTION" && a.status === "APPROVED" && !!a.runId && !draftRunIds.has(a.runId)).map(async (a) => [a.id, await giveBackPeriodOf({ tenantId: auth.active.tenantId, systemId }, a.id)] as const)));
 
   return (
     <div className="flex flex-col gap-6">
@@ -275,6 +279,8 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                     {/* H0.2 ▸ CR-H0.2-1: รายการในรอบร่างลบได้ด้วย (service ลบ + คำนวณรอบร่างใหม่ในคำสั่งเดียว) ◂ */}
                     {/* H0.2 ▸ CR-H0.2-3: รายการจาก CRM ไม่มีปุ่มลบ (แสดง "ถอนที่ CRM") · รายการ PENDING ของ CRM ยังมีปุ่มอนุมัติ/ไม่อนุมัติ ◂ */}
                     {(!a.runId || draftRunIds.has(a.runId)) && <PayAdjustRowActions systemId={systemId} id={a.id} pending={a.status === "PENDING"} canDelete={!a.crmCommissionId} />}
+                    {/* HR H3.7 ▸ fix r2 (b): คืนเงินรายการหักที่หักในรอบจ่ายแล้ว (REFUND อ้างรายการหัก) ◂ */}
+                    {a.kind === "DEDUCTION" && a.status === "APPROVED" && !!a.runId && !draftRunIds.has(a.runId) && !!giveBackPeriods.get(a.id) && <ClaimGiveBack systemId={systemId} claimId={a.id} defaultPeriod={giveBackPeriods.get(a.id)!} />}
                   </span>
                 </div>
               ))

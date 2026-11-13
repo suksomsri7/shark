@@ -255,6 +255,29 @@ function runStatic(): void {
   ck("S1.1", Object.fromEntries([F.rules, F.svc, F.ui, F.rh, F.page, F.route, F.mig].map((p) => [p.split("/").slice(-2).join("/"), existsSync(join(ROOT, p))])), "7 files");
   // S1.2
   {
+    // ORACLE-EDIT (H3.8 fix round 2 · controller ruling I · S1.2): line hunks of a model block vs its base block (LCS) · a hunk passes when one ADDED line carries a later mark ◂
+    const blockLaterMark = (l: string) =>
+      /HR-SET-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9");
+    const blockHunks = (a: string[], b: string[]) => {
+      const L = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+      for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+      const hs: { added: string[]; removed: string[] }[] = [];
+      let i = 0, j = 0, open = false;
+      const cur = () => (open ? hs[hs.length - 1] : (hs.push({ added: [], removed: [] }), (open = true), hs[hs.length - 1]));
+      while (i < a.length || j < b.length) {
+        if (i < a.length && j < b.length && a[i] === b[j]) { i++; j++; open = false; }
+        else if (j < b.length && (i >= a.length || L[i][j + 1] >= L[i + 1][j])) cur().added.push(b[j++]);
+        else cur().removed.push(a[i++]);
+      }
+      return hs;
+    };
+    const blockSame = (cur: string, base: string | null, name: string) => {
+      const x = modelBlock(cur, name), y = modelBlock(base, name);
+      if (x === y) return true;
+      if (!IN_BASE || !x || !y) return false;
+      const hs = blockHunks(y.split("\n"), x.split("\n"));
+      return hs.length > 0 && hs.every((h) => h.added.some(blockLaterMark));
+    };
     const mig = rd(F.mig);
     const hrCur = rd(F.hrSchema);
     const hrBase = fileAt(BASE, F.hrSchema);
@@ -269,10 +292,11 @@ function runStatic(): void {
       chkBen: /CHECK[^;]*"otherBenefits"[^;]*500/.test(mig),
       additive: !/ALTER TABLE\s+"(HrEmployee|HrSalaryProfile|HrPayrollRun|HrPayrollItem)"|DROP |ALTER TYPE/.test(mig),
       model: !!blk && /nationality\s+String\?/.test(blk) && /otherBenefits\s+String\?/.test(blk) && /employeeId\s+String\s+@unique/.test(blk),
-      // ORACLE-EDIT (H3.8 merge round · controller 13 Nov · S1.2): base-diff part n/a once H3.9 is in the base (IN_BASE) — later tickets add back-relations ◂
-      frozenBlocks: IN_BASE ||
-        (!!hrBase && !!payBase && modelBlock(hrCur, "HrEmployee") === modelBlock(hrBase, "HrEmployee") && modelBlock(payCur, "HrSalaryProfile") === modelBlock(payBase, "HrSalaryProfile") &&
-        modelBlock(payCur, "HrPayrollRun") === modelBlock(payBase, "HrPayrollRun") && modelBlock(payCur, "HrPayrollItem") === modelBlock(payBase, "HrPayrollItem")),
+      // ORACLE-EDIT (H3.8 fix round 2 · controller ruling I · S1.2): marker-aware (replaces the H3.8 merge-round IN_BASE guard) — once H3.9 is in the base, a frozen
+      //   block may differ from the base only by hunks whose ADDED lines carry a later ticket's mark ("HR H<n>.<n>" ≠ H3.9 · "HR-SET-<n>" · "ORACLE-EDIT … H<n>.<n>"); unmarked hunks fail ◂
+      frozenBlocks:
+        !!hrBase && !!payBase && blockSame(hrCur, hrBase, "HrEmployee") && blockSame(payCur, payBase, "HrSalaryProfile") &&
+        blockSame(payCur, payBase, "HrPayrollRun") && blockSame(payCur, payBase, "HrPayrollItem"),
       scope: /\bHrEmployeeRegister:\s*sys\(\)/.test(rd(F.coreScope)),
       env: /model:\s*"HrEmployeeRegister"/.test(rd(F.env)),
     };
@@ -306,10 +330,18 @@ function runStatic(): void {
     const DLR = `${H}bank-files/download-route.ts`;
     //   and scripts/qc-hr-h3.5.mts only by hunks that carry an "ORACLE-EDIT … H3.9" marker (S6.6 HEAD check) ◂
     const H35 = "scripts/qc-hr-h3.5.mts";
-    // ORACLE-EDIT (H3.8 merge round · controller 13 Nov · S1.5): base-diff freeze n/a once H3.9 is in the base (IN_BASE) — later tickets change frozen files in their own marked hunks; sha + tabs stay checked ◂
-    const diff = IN_BASE ? "unchanged" : changedVsBase(BASE, FROZEN.flatMap((f) => (f === `${H}bank-files` ? listFiles(f).filter((x) => x !== DLR) : f === H35 ? [] : [f])));
+    const diff0 = changedVsBase(BASE, FROZEN.flatMap((f) => (f === `${H}bank-files` ? listFiles(f).filter((x) => x !== DLR) : f === H35 ? [] : [f])));
+    // ORACLE-EDIT (H3.7 builder, merge of H3.9 into wip/hr-h3.7 — controller: base-aware rule "HR H<n>.<n>"): once H3.9 is in the base, a frozen file changed by a
+    //   LATER ticket passes when every hunk carries that ticket's mark ("HR H<n>.<n>" / "ORACLE-EDIT … H<n>.<n>") — an unmarked hunk still fails ◂
+    // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.5: "HR-SET-<n>" counts as a later-ticket mark too; a hunk marked only with H3.9 itself is NOT a later ticket
+    //   (same as the h3.2 / h3.4 edits exclude their own ticket) · the mark must be on an ADDED line ◂
+    const laterMark = (l: string) =>
+      /HR-SET-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9");
+    const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some(laterMark));
+    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
+    const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
     const h35Hunks = diffHunks(BASE, H35) ?? [];
-    const dlrOk = IN_BASE || (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
+    const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
     const n = hrNavLabels();
     const b = (s: string | null, at: string) => (s && s.indexOf(at) >= 0 ? s.slice(s.indexOf(at), s.indexOf("];", s.indexOf(at))) : "");
     const labels = (s: string) => [...s.matchAll(/label:\s*["']([^"']+)["']/g)].map((m) => m[1]);
