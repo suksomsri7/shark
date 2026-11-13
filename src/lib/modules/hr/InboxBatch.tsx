@@ -94,6 +94,16 @@ function Detail({ it }: { it: InboxItem }) {
       </div>
     );
   }
+  // HR H3.8 ▸ CERT: คำขอหนังสือรับรองเงินเดือน — วัตถุประสงค์ (รายการคงที่) + วันที่ขอ · ไม่มี ฿ ◂
+  if (it.type === "CERT") {
+    const p = ["GENERAL", "BANK", "VISA", "RENTAL", "OTHER"].includes(String(d.purpose)) ? String(d.purpose) : null;
+    return (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Field label={t("f.certPurpose")}>{p ? t(`f.cert${p}` as "f.certGENERAL") : none}</Field>
+        <Field label={t("f.certRequestedAt")}>{d.requestedAt ? formatThaiDate(String(d.requestedAt)) : none}</Field>
+      </div>
+    );
+  }
   const consent = d.consent as Any | null;
   const src = String(d.source);
   return (

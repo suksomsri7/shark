@@ -1042,7 +1042,14 @@ export function SelfPay({ docs, canWrite }: { docs: MyDocuments; canWrite: boole
       ) : null}
       <section data-testid="hr-self-cert-slot" className={`${BOX} flex flex-col gap-1 p-4`}>
         <Title>{t("certTitle")}</Title>
-        <p className={`text-sm ${MUTED}`}>{t("certSoon")}</p>
+        {/* HR H3.8 ▸ ช่องเดิมชี้ไปการ์ดหนังสือรับรองเงินเดือนของฉัน (ขอ/ดาวน์โหลด) · พ้นสภาพ = ขอผ่านแอปไม่ได้ (Q9) ◂ */}
+        {canWrite ? (
+          <Link href={`${ME}/pay#hr-salarycert-mine`} className="btn btn-ghost min-h-11 text-sm">
+            {t("certOpen")}
+          </Link>
+        ) : (
+          <p className={`text-sm ${MUTED}`}>{t("certSoon")}</p>
+        )}
       </section>
     </>
   );

@@ -14,7 +14,7 @@ export const INBOX_TEXT = {
   inProgress: "ชุดนี้กำลังดำเนินการอยู่ — รอสักครู่แล้วเปิดหน้านี้ใหม่",
 } as const;
 
-export const INBOX_TYPES = ["LEAVE", "OT", "SWAP", "CORRECTION", "ADJUSTMENT"] as const;
+export const INBOX_TYPES = ["LEAVE", "OT", "SWAP", "CORRECTION", "ADJUSTMENT", "CERT"] as const; // HR H3.8 ▸ + CERT (คำขอหนังสือรับรองเงินเดือน · Q3) ◂
 export type InboxType = (typeof INBOX_TYPES)[number];
 export type InboxBlocker = null | "CHAIN" | "FILED_BY_YOU" | "NO_RIGHT";
 export type InboxDecision = "APPROVED" | "REJECTED";
@@ -45,7 +45,8 @@ export type InboxDetail =
       reason: string;
       repeat: boolean | null;
     }
-  | { amountSatang: number; consent: { at: string; employeeEnded: boolean; ref: string } | null; kind: string; note: string | null; periodKey: string; source: "MANUAL" | "STOCK" | "COMMISSION" | "SYSTEM" };
+  | { amountSatang: number; consent: { at: string; employeeEnded: boolean; ref: string } | null; kind: string; note: string | null; periodKey: string; source: "MANUAL" | "STOCK" | "COMMISSION" | "SYSTEM" }
+  | { purpose: string; requestedAt: string | null }; // HR H3.8 ▸ CERT — วัตถุประสงค์จากรายการคงที่ + เวลาขอ (ไม่มี ฿) ◂
 
 export type InboxLeaveImpact = {
   balance: { available: string | null; pending: string; used: string } | null;
@@ -68,7 +69,7 @@ export type InboxItem = {
   detail: InboxDetail;
   impact: InboxImpact;
 };
-export type InboxCounts = { LEAVE: number; OT: number; SWAP: number; CORRECTION: number; ADJUSTMENT: number; total: number; decidable: number };
+export type InboxCounts = { LEAVE: number; OT: number; SWAP: number; CORRECTION: number; ADJUSTMENT: number; CERT: number; total: number; decidable: number }; // HR H3.8 ▸ + CERT ◂
 export type InboxList = { items: InboxItem[]; counts: InboxCounts; nextCursor: string | null; truncated: InboxType[] };
 export type InboxResult = { id: string; ok: true; status: string; type: InboxType } | { id: string; ok: false; reason: string; type: InboxType };
 export type InboxDecideOutcome = { ok: true; batchKey: string; replayed: boolean; results: InboxResult[] } | { ok: false; reason: string };

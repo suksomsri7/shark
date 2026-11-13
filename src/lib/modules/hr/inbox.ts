@@ -45,6 +45,7 @@ import { lifecycleDue } from "./lifecycle";
 import { rosterLeaveOverlay } from "./roster-board";
 import { hrScopeOf } from "./scope";
 import type { HrViewer } from "./privacy";
+import { certGateOf, issueSalaryCertificate, listSalaryCertificates, rejectSalaryCertRequest } from "./payslip"; // HR H3.8 ▸ CERT: ด่าน + ตัวอ่าน/ตัวตัดสินของหนังสือรับรอง ◂
 
 type Ctx = { tenantId: string; systemId: string };
 type Opts = { now?: Date };
@@ -68,6 +69,7 @@ function visibleTypes(v: HrViewer | null | undefined): Set<InboxType> {
   if (boss || permOf(m, "hr.payadjust.approve") || permOf(m, "hr.*") || canViewPayroll(m)) out.add("OT");
   if (boss || permOf(m, "hr.employee.create") || permOf(m, "hr.*")) (out.add("SWAP"), out.add("CORRECTION"));
   if (canViewPayroll(m)) out.add("ADJUSTMENT");
+  if (certGateOf(m)) out.add("CERT"); // HR H3.8 ▸ ด่านหนังสือรับรอง (OWNER หรือ อ่าน+จ่ายเงินเดือนทุกสาขา) — ผู้จัดการที่ไม่ผ่านไม่เห็นชนิดนี้ ◂
   return out;
 }
 
@@ -109,7 +111,11 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
   const S = swaps && swaps.ok ? swaps.items : [];
   const C = corrs && corrs.ok ? corrs.items : [];
   const A = adjs ?? [];
+  // HR H3.8 ▸ CERT: คำขอที่รออยู่ (ตัวอ่านของ payslip.ts — อ่านสมาชิกภาพจากฐานซ้ำ) ◂
+  const certs = types.has("CERT") ? await listSalaryCertificates(ctx, v, { status: "REQUESTED" }) : null;
+  const CR = certs && certs.ok ? certs.items : [];
   const seen = new Set<InboxType>([...(leaves ? ["LEAVE" as const] : []), ...(ots?.ok ? ["OT" as const] : []), ...(swaps?.ok ? ["SWAP" as const] : []), ...(corrs?.ok ? ["CORRECTION" as const] : []), ...(adjs ? ["ADJUSTMENT" as const] : [])]);
+  if (certs?.ok) seen.add("CERT"); // HR H3.8 ◂
   if (!seen.size) return null;
   // r2: OT/แก้เวลา = ตัวอ่านบอกเองว่าคิวรีดิบชนเพดาน (กรองสาขาในคิวรีแล้ว) · ชนิดอื่นกรองสาขาในคิวรีอยู่แล้ว ⇒ ความยาว ≥ เพดาน
   const truncated = INBOX_TYPES.filter((t) =>
@@ -118,7 +124,7 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
 
   // ── 2. ข้อเท็จจริงของผู้ดู (สาขา ณ วัน · ของตัวเอง · ผู้ยื่น · สายอนุมัติ) — 1 ชุด ──
   const subj = await inboxSubjects(ctx, v, {
-    employeeIds: [...L.map((l) => l.employeeId), ...O.map((o) => o.employeeId), ...S.flatMap((s) => [s.requester.employeeId, s.target.employeeId]), ...C.map((c) => c.employeeId), ...A.map((a) => a.employeeId)],
+    employeeIds: [...L.map((l) => l.employeeId), ...O.map((o) => o.employeeId), ...S.flatMap((s) => [s.requester.employeeId, s.target.employeeId]), ...C.map((c) => c.employeeId), ...A.map((a) => a.employeeId), ...CR.map((c) => c.employeeId)], // HR H3.8 ▸ + CERT ◂
     otIds: O.map((o) => o.id),
     correctionIds: C.map((c) => c.id),
     chainIds: { leave: L.map((l) => l.id), swap: S.map((s) => s.id), correction: C.map((c) => c.id) },
@@ -296,6 +302,11 @@ async function readAll(ctx: Ctx, v: HrViewer, now: Date): Promise<ReadAll> {
       });
     }
   }
+  // HR H3.8 ▸ CERT — คำขอหนังสือรับรองเงินเดือน (ไม่มี ฿ · ของผู้ดูเองซ่อน · ตัดสิน = ออก/ไม่อนุมัติผ่าน payslip.ts) ◂
+  for (const c of CR) {
+    if (own(c.employeeId)) continue;
+    push({ id: c.id, type: "CERT", employeeId: c.employeeId, employeeName: c.name, unitId: unitAt(c.employeeId, null), blocker: null, detail: { purpose: c.purpose, requestedAt: c.requestedAt }, impact: null, at: new Date(c.requestedAt ?? 0) });
+  }
   out.sort((a, b) => a._at - b._at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return { items: out, truncated };
 }
@@ -307,7 +318,7 @@ const strip = (r: Raw): InboxItem => {
 };
 const countsOf = (xs: Raw[]): InboxCounts => {
   const n = (t: InboxType) => xs.filter((x) => x.type === t).length;
-  return { LEAVE: n("LEAVE"), OT: n("OT"), SWAP: n("SWAP"), CORRECTION: n("CORRECTION"), ADJUSTMENT: n("ADJUSTMENT"), total: xs.length, decidable: xs.filter((x) => x.canDecide).length };
+  return { LEAVE: n("LEAVE"), OT: n("OT"), SWAP: n("SWAP"), CORRECTION: n("CORRECTION"), ADJUSTMENT: n("ADJUSTMENT"), CERT: n("CERT"), total: xs.length, decidable: xs.filter((x) => x.canDecide).length }; // HR H3.8 ▸ + CERT ◂
 };
 const cursorOf = (r: Raw) => Buffer.from(`${r._at}.${r.id}`).toString("base64url");
 function parseCursor(c: unknown): { at: number; id: string } | null {
@@ -365,6 +376,11 @@ async function decideOne(ctx: Ctx, v: HrViewer, it: { type: InboxType; id: strin
     if (it.type === "OT") return await decideOtRequest(ctx, v, it.id, decision, nowOpt);
     if (it.type === "SWAP") return await decideSwap(ctx, v, it.id, { decision });
     if (it.type === "CORRECTION") return await decideCorrection(ctx, v, it.id, { decision }, nowOpt);
+    // HR H3.8 ▸ CERT: อนุมัติ = ออกหนังสือรับรอง (เลขที่ + เนื้อหาแช่แข็ง) · ไม่อนุมัติ = REJECTED — ด่าน/ข้อความของ payslip.ts ทุกไบต์ ◂
+    if (it.type === "CERT") {
+      const r = decision === "APPROVED" ? await issueSalaryCertificate(ctx, v, { requestId: it.id }, nowOpt) : await rejectSalaryCertRequest(ctx, v, { requestId: it.id }, nowOpt);
+      return r.ok ? { ok: true, status: decision === "APPROVED" ? "ISSUED" : "REJECTED" } : { ok: false, reason: r.reason };
+    }
     return await decideAdjustmentAs(ctx, v, it.id, decision);
   } catch (e) {
     console.error("[hr.inbox.decide]", it.type, e);
