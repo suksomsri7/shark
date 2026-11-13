@@ -1080,7 +1080,8 @@ try {
   await st("PR-7", "ลำดับยกเลิก (r2 §d ข้อ 4): ในฟังก์ชันยกเลิก/ปฏิเสธ คืนที่นั่ง (releaseHoldInTx/returnSoldInTx) มาก่อน releasePromoInTx ในซอร์ส", () => {
     const s = srcOf(D + "booking.ts"); ok(s, "ยังไม่มี booking.ts");
     const i = s.indexOf("releasePromoInTx("); ok(i > 0, "ไม่เรียก releasePromoInTx");
-    const before = s.lastIndexOf("releaseHoldInTx(", i);
+    const before = Math.max(s.lastIndexOf("releaseHoldForBookingInTx(", i), s.lastIndexOf("releaseHoldInTx(", i)); // ORACLE-EDIT PR-7 (ผู้คุม 13 พ.ย.): F4 — ทางปล่อยของการจองชื่อ releaseHoldForBookingInTx
+    ok(!/(convert|release)HoldForBookingInTx/.test(srcOf(D + "index.ts")), "facade ห้ามส่งออกทางข้ามของการจอง (F4)");
     ok(before > 0 && before < i, "releasePromoInTx มาก่อนคืนที่นั่ง");
   });
   groupLine("PR");

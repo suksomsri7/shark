@@ -19,8 +19,14 @@ export const INT4_MAX = 2_147_483_647;
 const BAD_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u2028-\u202e\u2066-\u2069\ufeff]/;
 const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
 const noCtl = (s: string) => !BAD_CHARS.test(s) && !LONE_SURROGATE.test(s);
-/** ข้อความอิสระ (ตัดช่องว่าง · ห้ามอักขระข้างบน · เก็บแบบ NFC) */
-const text = (max: number) => z.string().trim().max(max).refine(noCtl, { message: "มีอักขระควบคุม" }).transform((s) => s.normalize("NFC"));
+/** F2: ZWSP U+200B และ BOM/ZWNBSP U+FEFF (ต้นข้อความหรือกลางข้อความ) ในข้อความอิสระ = ตัดทิ้งเงียบ ๆ (ข้อความไทยที่วางจากเว็บ/Word/LINE มักมี) · ในรหัส (ID) ยังปฏิเสธ */
+const STRIP_SOFT = /[\u200b\ufeff]/g;
+/** ข้อความอิสระ: ตัด ZWSP/BOM → NFC → ตัดช่องว่าง แล้วจึงตรวจความยาว + อักขระต้องห้าม (F2) */
+const text = (max: number) =>
+  z
+    .string()
+    .transform((s) => s.replace(STRIP_SOFT, "").normalize("NFC").trim())
+    .pipe(z.string().max(max).refine(noCtl, { message: "มีอักขระควบคุม" }));
 const ID = z.string().trim().min(1).max(128).refine(noCtl, { message: "มีอักขระควบคุม" });
 const NN = z.number().int().min(0).max(INT4_MAX);
 /** คีย์กันซ้ำของผู้เรียก (CC §C ข้อ 3) — สั้นกว่า 100 เพื่อเผื่อส่วนต่อท้ายของ hold ต่อบรรทัด (`_<i>`) */

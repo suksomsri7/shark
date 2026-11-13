@@ -46,13 +46,14 @@ import {
 import {
   CapacityAbort,
   acquireHoldCapInTx,
-  convertHoldInTx,
+  convertHoldForBookingInTx,
   holdRequestHash,
   insertHoldInTx,
   invalidInput,
   moveSoldInTx,
   parseCtx,
   rekeyHoldsToContactInTx,
+  releaseHoldForBookingInTx,
   releaseHoldInTx,
   reserveInTx,
   returnSoldInTx,
@@ -105,6 +106,8 @@ const byStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 // ═══════════════════════ token ลิงก์ลูกค้า (มติ §16 ข้อ 5 · R11) ═══════════════════════
 const SECRET_MIN = 32;
+/** F1: ช่วงเผื่อนาฬิกาคลาดของการค้นแถว audit กันซ้ำ (ไม่ใช่ค่าธุรกิจ) */
+const IDEM_SKEW_MS = 24 * 60 * 60 * 1000;
 const tokenSecret = (): string | null => {
   const s = process.env.SESSION_SECRET;
   return typeof s === "string" && s.length >= SECRET_MIN ? s : null;
@@ -135,11 +138,23 @@ export function tripsUnexpectedCount(): number {
   return unexpectedCount;
 }
 /** บันทึก ops: ชื่อ + ข้อความ + stack ของ error (ตัดความยาว) — ไม่มีอินพุตของผู้เรียก (ไม่มีข้อมูลบุคคล) */
+/**
+ * F3: ข้อความของ error จาก Prisma/driver อาจมีค่าอินพุต (เบอร์/อีเมล) ⇒ ไม่บันทึกข้อความ — เก็บชื่อ · รหัส Prisma · meta.target/constraint · เฉพาะบรรทัด stack frame
+ * error อื่น: ชื่อ + ข้อความที่ลบสตริงในเครื่องหมายคำพูดออก ("…") + stack frame
+ */
+const isDbError = (e: Error, o: Record<string, unknown>) =>
+  /^Prisma|DriverAdapterError|DatabaseError/.test(e.name) || (typeof o.code === "string" && /^P\d{4}$|^[0-9A-Z]{5}$/.test(o.code)) || "clientVersion" in o;
+const redactQuoted = (s: string) => s.replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, "$1…$1");
 async function logUnexpected(where: string, e: unknown, tenantId: string | null): Promise<void> {
-  const name = e instanceof Error ? e.name || "Error" : typeof e;
-  const message = e instanceof Error ? e.message.slice(0, 500) : String(e).slice(0, 200);
-  const stack = e instanceof Error && e.stack ? e.stack.split("\n").slice(0, 8).join("\n").slice(0, 1500) : null;
-  await logOps("ERROR", "trips.booking", `ข้อผิดพลาดที่ไม่คาดคิดใน ${where} (${name})`, { tenantId: tenantId ?? undefined, detail: JSON.stringify({ where, name, message, stack }) }).catch(() => undefined);
+  const err = e instanceof Error ? e : null;
+  const o = err ? (err as unknown as Record<string, unknown>) : {};
+  const name = err ? err.name || "Error" : typeof e;
+  const frames = err?.stack ? err.stack.split("\n").filter((l) => /^\s+at\s/.test(l)).slice(0, 8).map((l) => l.trim().slice(0, 200)) : [];
+  const meta = isRec(o.meta) ? o.meta : {};
+  const detail = err && isDbError(err, o)
+    ? { where, name, code: typeof o.code === "string" ? o.code : null, target: meta.target ?? null, constraint: typeof meta.constraint === "string" ? meta.constraint : null, frames }
+    : { where, name, message: err ? redactQuoted(err.message).slice(0, 500) : redactQuoted(String(e)).slice(0, 200), frames };
+  await logOps("ERROR", "trips.booking", `ข้อผิดพลาดที่ไม่คาดคิดใน ${where} (${name})`, { tenantId: tenantId ?? undefined, detail: JSON.stringify(detail) }).catch(() => undefined);
 }
 /** ห่อบริการ: CapacityAbort/PricingAbort ⇒ ผลมีชื่อ · อื่น ⇒ บันทึก ops (ไม่มีข้อมูลบุคคล) แล้ว BUSY — ไม่มี error ดิบหลุดถึงผู้เรียก */
 async function safely<T>(where: string, ctx: unknown, fn: () => Promise<SellResult<T>>): Promise<SellResult<T>> {
@@ -952,7 +967,7 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
       throw new BookingAbort(cur.length ? "HOLD_EXPIRED" : "HOLD_NOT_FOUND");
     }
     if (l.holdMode === "CONVERT") {
-      const r = await convertHoldInTx(t, sc, { holdId, ...(pub && P.contactKey ? { capKey: `contact:${P.contactKey}` } : {}) }, { forBookingId: l.bookingId });
+      const r = await convertHoldForBookingInTx(t, sc, { holdId, ...(pub && P.contactKey ? { capKey: `contact:${P.contactKey}` } : {}) }, l.bookingId);
       if (!r.ok) throw new BookingAbort(r.code, r.details);
     } else if (l.holdMode === "SHOP_CONFIRM") {
       const exp = holdExpiry(P.policies, l.departureId, "SHOP_CONFIRM", c.clock.now);
@@ -1336,7 +1351,7 @@ async function cancelUnpaidInTx(tx: Tx, sc: SellCtx, b: { id: string; status: st
   const holds = await tx.$queryRaw<{ id: string }[]>`
     SELECT "id" FROM "TripHold" WHERE "bookingId" = ${b.id} AND "tenantId" = ${a.tenantId} AND "unitId" = ${a.unitId} AND "status" = 'ACTIVE' ORDER BY "departureId", "id"`;
   for (const h of holds) {
-    const r = await releaseHoldInTx(tx, sc, { holdId: h.id, reason: "BOOKING_CANCELLED" }, policies, { forBookingId: b.id });
+    const r = await releaseHoldForBookingInTx(tx, sc, { holdId: h.id, reason: "BOOKING_CANCELLED" }, policies, b.id);
     if (!r.ok) throw new BookingAbort(r.code, r.details);
   }
   const version = await casStatus(tx, a, b.id, b.status, "CANCELLED", b.version, (sc.now ?? new Date()).toISOString(), reason);
@@ -1361,7 +1376,8 @@ type IdemAudit = { after: Record<string, unknown> };
  * targetId = bookingId · action · idemKeyHash (S4: ไม่สแกนตาม action ทั้งแพลตฟอร์ม · ไม่มี index ของ targetId ในฐาน — หนี้: (tenantId, targetId) ต้อง migration)
  */
 async function idemAudits(db: Tx, tenantId: string, action: string, b: { id: string; createdAt: Date }, keyHash: string): Promise<IdemAudit[]> {
-  const since = new Date(b.createdAt).toISOString();
+  // F1: เผื่อนาฬิกาเครื่องแอปคลาดกัน 24 ชม. (แถว audit เขียนโดยเครื่องอื่นอาจมี createdAt ก่อนการจอง) — ยังอยู่ใน index tenantId+createdAt
+  const since = new Date(new Date(b.createdAt).getTime() - IDEM_SKEW_MS).toISOString();
   const rows = await db.$queryRaw<{ after: unknown }[]>`
     SELECT "after" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "createdAt" >= ${since}::timestamp AND "targetId" = ${b.id} AND "action" = ${action} AND "after"->>'idemKeyHash' = ${keyHash} LIMIT 1`;
   return rows.filter((r) => isRec(r.after)).map((r) => ({ after: r.after as Record<string, unknown> }));
@@ -1474,7 +1490,7 @@ async function approveImpl(ctx: unknown, input: unknown): Promise<SellResult<{ b
       if (!h.length) throw new BookingAbort("STATE_CONFLICT");
       if (confirmNow) {
         for (const x of h) {
-          const cv = await convertHoldInTx(tx, sc, { holdId: x.id }, { forBookingId: b.id });
+          const cv = await convertHoldForBookingInTx(tx, sc, { holdId: x.id }, b.id);
           if (!cv.ok) throw new BookingAbort(cv.code, cv.details);
         }
       }
@@ -1606,7 +1622,7 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
       await reserveHoldsInTx(tx, sc, [{ departureId: dep, qty }], policies.value, null);
       const h = await insertHoldInTx(tx, sc, { departureId: dep, qty, idempotencyKey: `cg_${v.expectedVersion}_${b.id}`.slice(0, 100), purpose: "PAYMENT", bookingId: b.id }, policies.value);
       if (!h.ok) throw new BookingAbort(h.code, h.details);
-      const cv = await convertHoldInTx(tx, sc, { holdId: h.value.holdId }, { forBookingId: b.id });
+      const cv = await convertHoldForBookingInTx(tx, sc, { holdId: h.value.holdId }, b.id);
       if (!cv.ok) throw new BookingAbort(cv.code, cv.details);
     };
     const giveBack = async (dep: string, qty: number) => {
