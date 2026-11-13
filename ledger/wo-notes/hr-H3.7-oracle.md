@@ -15,6 +15,7 @@ Run (lane DB only): `bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with
 - Order inside S4 matters and is fixed: examples A–E → pay (S4.6) → pay refusals on E → reverse A → reverse E → moved book → no link → MANY → mapping missing (book F) → closed/locked (A 2031-03, book L) → failure/retry → races → LATER/CARRY → H3.4-era → inconsistent → **S4.10 last** (closes today's period in book A) → scoping → audits; S4.20 (v1 golden, T3) runs outside the guard.
 
 ## RED on this base (session/hr 1b0898377, H3.4 not merged)
+Clean typecheck (`rm -rf .next/types tsconfig.tsbuildinfo` → `pnpm typecheck` via iso + gate lock) exit 0 on 421e619f1.
 Forced ×2, identical: **8/54 pass = exactly the 8 GREEN controls** (S1.4 S1.6 S1.7 S1.9 S2.0 S3.0 S4.20 Z1) · BASE-EXPECTATION 54/54 as registered · no crash · residue none. Evidence `ledger/wo-notes/hr-H3.7-red.txt`.
 
 ## Checks
