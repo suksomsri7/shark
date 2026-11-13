@@ -5,7 +5,7 @@ Companion of `ledger/hr-briefs/hr-brief-H3.7.md`. The brief wins on contract wor
 ## 1. Treatment (controller ruling 1 — HQ16 unanswered, defaults)
 | event | when | entry |
 |---|---|---|
-| **accrual** | v2 run finalized (H3.4 final transaction) in an HR system that has exactly one book link | GENERAL book, journal ADJUST, key `hr-payroll#<runId>#accrual`, dated the **accrual day** = min(pay day, last day of P) |
+| **accrual** | v2 run finalized (H3.4 final transaction) in an HR system that has exactly one book link | GENERAL book, journal ADJUST, key `hr-payroll#<runId>#accrual`, dated the **accrual day** = clamp(pay day, first day of P, last day of P) (fix r1 F4 — always inside the wage month) |
 | **payment** | `markPaidRun` of such a run | PAYMENTS book, journal PAYMENT, key `hr-payroll#<runId>#pay`, dated `paidOn` (default today BKK; allowed first day of P … today) |
 | **reversal** | `reverseRun` | existing `reverseEntry` per entry, pay first then accrual; keys `hr-payroll#<runId>#REVERSAL:<entryId>` (reverseEntry's own key = the "#reverse-…" of the ruling — no second mechanism); dated today, or the first day of the next open period when today's period is closed (existing Gate C rule) |
 | none | no book link | run finalized without JV (H3.4 "no accounting" behaviour), `accountSystemId` null |
@@ -20,7 +20,8 @@ Why accrual (law file, tags kept): TFRS for NPAEs uses accrual basis — "มี
 |---|---|---|---|
 | 1 | Dr | PAYROLL_SALARY_EXPENSE (6000) | salaryExpense = Σ lines − ADVANCE lines − DEDUCTION lines − REFUND lines (= gross + advances + claims − refund) |
 | 2 | Dr | PAYROLL_SSO_EXPENSE (6010) | Σ ssoEmployer |
-| 3 | Dr | PAYROLL_DAMAGES_RECOVERY (4900) | Σ REFUND lines (claim given back) |
+| 3 | Dr | PAYROLL_DAMAGES_RECOVERY (4900) | Σ REFUND lines giving back a DAMAGES claim, or of unknown class (flag `REFUND_CLASS_UNKNOWN`) |
+| 3b | Dr | PAYROLL_OVERPAY_RECOVERY (6000) | Σ REFUND lines giving back an OVERPAY claim (fix r1 F5) · a refund of a claim recovered in a v1 / H3.4-era one-step run stays in row 1 (salary expense — how that deduction was posted) |
 | 4 | Dr | PAYROLL_EMPLOYEE_RECEIVABLE (1140) | Σ receivable DAMAGES (final period) |
 | 5 | Dr | PAYROLL_EMPLOYEE_RECEIVABLE (1140) | Σ receivable OVERPAY |
 | 6 | Cr | PAYROLL_SALARY_PAYABLE (2120) | Σ net |
@@ -97,3 +98,9 @@ Merge risk: **low**; marked additive hunks merge cleanly in either order. Only w
 - AC14 Runs approved before H3.7 keep the one-step JV (cash credited at approve, SSO in 2100); no backfill.
 - AC15 No book link ⇒ nothing posted; the shop posts payroll by hand.
 - AC16 Pay date between the first day of the wage month and today.
+
+## Fix round 1 (controller rulings on the reviewer + hunter report)
+- F4: accrual day = clamp(pay day, first day of P, last day of P); a closed-period refusal therefore always names P. Vectors +2 (pay day before P ⇒ first day of P).
+- F5: refund class = class of the claim named by the REFUND row (`sourceRef = "refund:<claim adjustment id>"`); no reference ⇒ 4900 + flag (accountant). Worked vector F in the fixture (`refundVector`): Σ 2,134,500 both sides. **Gap:** nothing in HR writes `refund:<id>` yet (requestRefundAdjustment has no claim picker) — every live refund is "unknown" until the refund request names its claim.
+- F6: links with `config.autoPost !== true` (all pre-H3.7 links unless the owner switched it on) post nothing (`OFF`); the HR settings card shows the state with an owner switch.
+- AC1 (updated) accrual inside the wage month always; AC19 refund classes; AC20 a run whose recorded book is deactivated/deleted is stuck APPROVED (pay and reverse refuse `bookGone`) until the owner reactivates that book — deleting a book that holds payroll entries is not recoverable from HR.

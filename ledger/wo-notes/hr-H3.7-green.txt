@@ -43,3 +43,38 @@ NOT RUNNABLE on this lane DB (need the account QC seed — empty fixtures, fail 
 qc-hr-h1.3 first run 62/63 (S6.1 before the declared H3.7 count) → after ORACLE-EDIT 63/63
 fitness noenv 0 · env 0 · fitness-hr noenv 0 · env 0
 clean typecheck (rm .next/types tsconfig.tsbuildinfo; iso 14000M; gate lock) exit 0 · 0 errors
+
+# fix round 1 — 2026-11-13T15:38:50Z · default base (merge-base origin/session/hr 9e8ad638)
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34  fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 65/65 (QC_FORCE) RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 65/65 (QC_FORCE) RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.7-unforced exit=0 ===== qc-hr-h3.7 ===== passed 65/65 RESIDUE none (tenants=3 users=3) fails=[]
+qc-hr-h3.5 exit=0 ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE) RESIDUE none (tenants=2 users=10) fails=[]
+qc-hr-h3.2 exit=0 ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) RESIDUE none (tenants=2 users=6) fails=[]
+qc-hr-h3.1 exit=0 ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE) RESIDUE none (tenants=2 users=7) fails=[]
+qc-hr-h3.3 exit=0 ===== qc-hr-h3.3 ===== passed 51/51 (QC_FORCE)  fails=[]
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE) RESIDUE none (tenants=2 users=13) fails=[]
+qc-hr-h2.9 exit=0 ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE) RESIDUE none (tenants=3 users=19) fails=[]
+qc-hr-h4.6 exit=0 ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE) RESIDUE none (tenants=2 users=11) fails=[]
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) RESIDUE none (tenants=3 users=14) fails=[]
+qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) RESIDUE none (tenants=2 users=8) fails=[]
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)  fails=[]
+qc-hr-h0.6 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) RESIDUE tenants=0 rows=0 audit=0 outbox=0 fails=[]
+qc-payroll exit=0 ===== QC Payroll ไทย =====  fails=[]
+qc-payroll-reverse exit=0   fails=[]
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====  fails=[]
+qc-bulk-ops exit=0 ===== QC Bulk Operations =====  fails=[]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====  fails=[]
+qc-audit-trail exit=0   fails=[]
+qc-account-cpa exit=0 ===== QC6 CPA audit (service layer จริง + Neon) =====  fails=[]
+qc-account-gatea exit=0 ===== QC5 Gate A verify (service layer + double-entry, Neon) =====  fails=[]
+qc-account-deep exit=0 ===== QC บัญชีลึก =====  fails=[]
+qc-account-p2p3 exit=0 ===== QC P2/P3 engine (double-entry, Neon) =====  fails=[]
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) RESIDUE none (tenants=2 users=7) fails=[]
+h3.4 (QC_H34_BASE=bcf352f8) exit=1 ===== qc-hr-h3.4 ===== passed 82/85 (QC_FORCE) ❌ [H3.4-S1.6] ❌ [H3.4-S1.7] ❌ [H3.4-S1.10] 
+h3.4 (QC_H34_BASE=8e52db009 = pre-H3.4 session/hr, the round-0 default) exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) 
+qc-hr-h3.4 on the default base: 84/85 — only H3.4-S1.7 (H3.4's own 'marked hunks vs base' — n/a once H3.4 is in the base, as the H3.5 rule)
+qc-hr-h1.3 first run 62/63 (S6.1 H3.7 count 4→10 after F5) → 63/63 after ORACLE-EDIT
+hunter probe hunt-h3.7-db.mts rerun: SUMMARY fail=0 · RESIDUE none (copied in, run, removed)
+RED evidence: round-0 src ⇒ 52/65 (RED S2.2 S2.4 S2.7 S2.9 S4.26–S4.33) · targeted F1 revert ⇒ RED S4.26 {st PAID, pe 0} · restored 65/65
+fitness noenv/env 0 · fitness-hr noenv/env 0 · clean typecheck exit 0, 0 errors
