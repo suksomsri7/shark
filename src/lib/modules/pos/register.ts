@@ -1399,7 +1399,8 @@ const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
 ]);
 const REG_GIFT_KEYS: ReadonlySet<string> = new Set(["number", "pin"]); // POS P2.9 ◂
 const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference", "giftCard", "depositId", "phoneLast4"]); // POS P2.9b fix1 มติ 6 ▸ + phoneLast4 ◂ · POS P2.9 ▸ giftCard {number, pin} เฉพาะ GIFT_CARD ◂ · POS P2.9b ▸ depositId เฉพาะ DEPOSIT ◂
-const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note", "options", "weighedBarcode", "weightGrams"]);
+// ACC T2d ▸ + vatTreatment (รายการกำหนดเอง · T1.8b ส่งจากจอแล้วแต่ตัวกรองคีย์ไม่รับ ⇒ ตะกร้าที่มีรายการกำหนดเองชนิดไม่ใช่มาตรฐานได้ VALIDATION ทุกครั้ง — พบจากภาพจอจริง) ◂
+const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note", "options", "weighedBarcode", "weightGrams", "vatTreatment"]);
 /** P1.2 R1: คีย์ของรายการตัวเลือก — priceDeltaSatang/name รับได้แต่ "ไม่ใช้" (ราคาจาก client ไม่ถูกเชื่อ · มติ R2) · คีย์อื่น = VALIDATION */
 const REG_OPTION_KEYS: ReadonlySet<string> = new Set(["choiceId", "priceDeltaSatang", "name"]);
 
@@ -1544,6 +1545,8 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
       }
       if ((hasWb || hasWg) && l.qty !== 1) return regRefuse("INVALID_LINE", "สินค้าชั่งใส่ได้ครั้งละ 1 ป้าย (จำนวน 1)", i);
       // ราคาที่ client ส่งมากับสินค้าแคตตาล็อก (ไม่ใช่ราคาเปิด) = ไม่ใช้เลย — ราคามาจาก DB เสมอ (มติ R2)
+      // ACC T2d ▸ ชนิด VAT ของสินค้ามาจากทะเบียนสินค้าเท่านั้น — ส่งมากับบรรทัดสินค้า = VALIDATION (ไม่ยอมให้ client ทับ) ◂
+      if ((l as { vatTreatment?: unknown }).vatTreatment !== undefined) return regRefuse("VALIDATION", "ชนิด VAT ของสินค้ากำหนดที่ทะเบียนสินค้า", i);
       lines.push({ kind: "product", productId: l.productId, qty: l.qty, discount, openPrice, note, options, weighedBarcode, weightGrams });
     } else {
       if (l.openPrice === true) return regRefuse("VALIDATION", undefined, i);

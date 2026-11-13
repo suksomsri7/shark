@@ -89,6 +89,11 @@ export function TaxInvoiceDialog(p: Props) {
   const [dbd, setDbd] = useState<{ state: "idle" | "busy" } | { state: "hit"; buyer: DbdHit } | { state: "miss" } | { state: "manual" } | { state: "err"; key: string }>({ state: "idle" });
   const [busy, setBusy] = useState(false);
   const [errKey, setErrKey] = useState<string | null>(p.externalErrorKey ?? null);
+  // ACC T2d ▸ ข้อความผิดพลาดอยู่ใต้กล่องคำเตือน (นอกจอเมื่อฟอร์มยาว) — ตั้งข้อความแล้วเลื่อนให้เห็น (พบจากภาพจอ) ◂
+  const errRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (errKey) errRef.current?.scrollIntoView({ block: "nearest" });
+  }, [errKey]);
   const [tried, setTried] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
   /** F4: ผู้ใช้แตะช่องใดแล้ว ⇒ ไม่เติมจากผู้ซื้อที่จำไว้ทับ (คำตอบโปรไฟล์มาช้า) */
@@ -561,7 +566,7 @@ export function TaxInvoiceDialog(p: Props) {
             ) : null}
 
             {errKey ? (
-              <p data-testid="pos-taxinv-error" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
+              <p ref={errRef} data-testid="pos-taxinv-error" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
                 {tp(errKey)}
               </p>
             ) : null}

@@ -330,6 +330,16 @@ try {
     const row = r.rows.find((x: Any) => x.docNo === lDocNo2);
     eq("B10.1", "แถวใบ L: ชื่อผู้ซื้อ · เลขว่าง · สาขาว่าง (ไม่พิมพ์ 00000 ให้คนไม่มีเลข) · 10,000/700", [row?.buyerName, row?.buyerTaxId, row?.buyerBranchCode, row?.base ?? row?.parts?.[0]?.base, row?.vat ?? row?.parts?.[0]?.vat], ["นางสาวออกทีหลัง", "", "", 10_000, 700], "MAJOR");
   }
+  // ═══ T2d: จอขายส่งรายการกำหนดเองที่มีชนิด VAT (T1.8b) — ตัวกรองคีย์ของ register ต้องรับ ═══
+  console.log("\n── B11 จอขาย: รายการกำหนดเองชนิดเก็บแทน/ยกเว้น ผ่าน quoteRegisterCart (พบจากภาพจอ T2d) ──");
+  {
+    const REG: Any = await import("@/lib/modules/pos/register" as string);
+    const q = await REG.quoteRegisterCart(pctx, ownerActor, { lines: [{ name: "ค่าธรรมเนียมอุทยาน", qty: 1, unitPriceSatang: 20_000, vatTreatment: "ON_BEHALF" }, { name: "ผักสด", qty: 1, unitPriceSatang: 10_000, vatTreatment: "EXEMPT" }, { name: "ค่าบริการ", qty: 1, unitPriceSatang: 10_700 }] });
+    // เฉลยมือ: ยอด 40,700 · VAT ถอดจากมาตรฐาน 10,700 = 700 · เก็บแทน 20,000 · ยกเว้น 10,000
+    eq("B11.1", "quote รายการกำหนดเองชนิดเก็บแทน+ยกเว้น+มาตรฐาน → ok · ยอด 40,700 · VAT 700", [q.ok, q.grandTotalSatang, q.vatSatang], [true, 40_700, 700]);
+    const bad = await REG.quoteRegisterCart(pctx, ownerActor, { lines: [{ name: "x", qty: 1, unitPriceSatang: 100, vatTreatment: "WEIRD" }] });
+    eq("B11.2", "ชนิดผิดรูป → VALIDATION (positive control ของตัวตรวจ)", bad.code, "VALIDATION");
+  }
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.message}\n${e.stack?.split("\n").slice(0, 6).join("\n")}` : String(e));
 } finally {
