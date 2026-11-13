@@ -65,6 +65,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // business = ต่อด้วย slug (/app/u/<slug>/...) · feature = ต่อด้วย id (/app/sys/<id>/...)
   // ⚠️ ทุก href ที่นี่ต้องมี page.tsx จริง (กัน dead link) — ตรวจโดย scripts/qc-nav-functions.mts
   const posNav = await getTranslations("pos"); // POS P1.18 ▸ R13c ป้ายแท็บ POS จาก messages ◂
+  const tripsNav = await getTranslations("trips"); // ── T1.1 screens ── ป้ายแท็บ TRIPS ◂
   const childrenFor = (
     type: string,
     slugOrId: string,
@@ -114,6 +115,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             //   ปฏิทินนัด/ของฉัน (B.5 · หน่วยแถวเดียว) อยู่ในแถบแท็บของโมดูล (booking/layout.tsx) · ข้อความแจ้งเตือนอยู่ในเมนูหมวดตั้งค่า · จอทีวี อยู่ที่ปุ่มบนคิววันนี้ ◂
             { href: `${b}/booking/settings`, label: "ตั้งค่า" },
           ];
+        // ── T1.1 screens ── TRIPS T1.1 ▸ ทัวร์ · Liveaboard: 6 แท็บ (แท็บที่ยังไม่สร้างไปหน้า "ยังไม่เปิดใช้" — ไม่มีลิงก์ตาย) ◂
+        case "TRIPS":
+          // ลำดับ/path ตรงกับ TRIPS_NAV (src/components/trips/trips-shared.ts) — เขียน href ตรงตัวเพื่อให้ qc-nav-functions ตรวจ dead link ได้
+          return [
+            { href: `${b}/trips/products`, label: tripsNav("nav.products") },
+            { href: `${b}/trips/departures`, label: tripsNav("nav.departures") },
+            { href: `${b}/trips/bookings`, label: tripsNav("nav.bookings") },
+            { href: `${b}/trips/agents`, label: tripsNav("nav.agents") },
+            { href: `${b}/trips/channels`, label: tripsNav("nav.channels") },
+            { href: `${b}/trips/settings`, label: tripsNav("nav.settings") },
+          ];
+        // ── /T1.1 screens ──
         default:
           return undefined; // RENTAL/SCHOOL/CLINIC = หน้าเดียว ไม่ต้องกาง
       }

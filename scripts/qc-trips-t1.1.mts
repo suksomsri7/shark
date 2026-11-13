@@ -96,7 +96,7 @@ const PICKUP_ERRORS = ["INVALID_INPUT", "NOT_FOUND", "FORBIDDEN", "UNIT_NOT_TRIP
 const T0X_FILES = ["products.ts", "products-core.ts", "product-actions.ts", "departures.ts", "departures-core.ts", "departure-actions.ts", "resources.ts", "jobs.ts", "pricing.ts", "pricing-core.ts",
   "prices.ts", "pricing-actions.ts", "promo.ts", "snapshot.ts", "money-math.ts", "sellable-impl.ts", "json-schemas.ts"].map((f) => MOD + f);
 const FROZEN_DIRS = ["src/lib/core/settings", "src/components/settings"];
-const BASE_COMMIT = "fc9e373ec"; // session/trips ตอนเขียนใบสั่ง (T0.1 T0.2 T0.3 T0.5 merge แล้ว)
+const BASE_COMMIT = "2fd4c1509"; // ORACLE-EDIT (ผู้คุม 12 พ.ย.): ฐานเลื่อนเป็น session/trips หลังรับ T0.4 (เดิม fc9e373ec นับบรรทัดที่ T0.4 ลบว่า T1.1 ลบ) · session/trips ตอนเขียนใบสั่ง (T0.1 T0.2 T0.3 T0.5 merge แล้ว)
 const TESTIDS_FIXED = ["trips-nav", ...PAGE_KEYS.map((k) => `trips-nav-${k}`), "trips-not-yet", "trips-forbidden", "trips-loading", "trips-error",
   "trips-product-list", "trips-product-search", "trips-product-filter-all", "trips-product-filter-tour", "trips-product-filter-liveaboard", "trips-product-filter-archived", "trips-product-add", "trips-product-empty",
   "trips-product-editor", "trips-product-status", "trips-product-preview", "trips-product-save", "trips-product-publish", "trips-product-unpublish", "trips-product-archive", "trips-product-restore",
@@ -362,7 +362,7 @@ try {
     try { out = execFileSync("git", ["diff", "--numstat", BASE_COMMIT, "--", ...T0X_FILES, ...FROZEN_DIRS], { cwd: ROOT, encoding: "utf8" }); } catch (e) { throw new AssertFail(`git diff ไม่ได้: ${errMsg(e)}`); }
     const rows = out.trim().split("\n").filter(Boolean).map((l) => l.split("\t"));
     const del = rows.filter(([, d, f]) => T0X_FILES.includes(f) && Number(d) > 0).map(([, d, f]) => `${f} −${d}`);
-    const frozen = rows.filter(([, , f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir))).map(([a, d, f]) => `${f} +${a}/−${d}`);
+    const frozen = rows.filter(([, d, f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir)) && !(f === "src/lib/core/settings/defs/trips.ts" && Number(d) <= 1)) /* ORACLE-EDIT S-14 (ผู้คุม 12 พ.ย.): มติรอบแก้ r3 — เพิ่มป้ายแสดงผลของช่องย่อยใน defs/trips.ts ได้ (เพิ่มอย่างเดียว · ลบได้ 1 บรรทัด = import ชนิด) · คีย์/ค่าเริ่ม/ชั้น ตรึงโดย t0.1 กลุ่ม R */.map(([a, d, f]) => `${f} +${a}/−${d}`);
     ok(del.length === 0 && frozen.length === 0, `${[...del, ...frozen].join(" · ")}`);
   });
   await st("S-15", "action ใหม่: \"use server\" · ส่งออก async function เท่านั้น · ทุกตัวผ่าน requireUnit", () => {
@@ -761,7 +761,7 @@ try {
     const by = (c: string) => p.find((x) => x.code === c) ?? {};
     const A = by("ADULT"), C = by("CHILD"), I = by("INFANT");
     eq([A.priceSatang, A.priceBasis, A.ageFrom], [R.adultSatang, "SET", R.childAge.max + 1], "ผู้ใหญ่");
-    eq([C.priceSatang, C.priceBasis, C.derivedPct, C.ageFrom, C.ageTo, C.bandSource], [R.childSatang, "DERIVED_PCT", 70, R.childAge.min, R.childAge.max, "SETTING"], "เด็ก");
+    eq([C.priceSatang, C.priceBasis, C.derivedPct, C.ageFrom, C.ageTo, C.bandSource, C.equalsSetting], [R.childSatang, "DERIVED_PCT", 70, R.childAge.min, R.childAge.max, "PRODUCT", true], "เด็ก"); // ORACLE-EDIT EV-3 (ผู้คุม 12 พ.ย.): ช่วงอายุถูกคัดลงสินค้าตอนสร้าง (มติ T0.2 §11 ข้อ 5) ⇒ แหล่ง = PRODUCT + equalsSetting
     eq([I.priceSatang, I.priceBasis, I.countsCapacity, I.ageTo], [0, "FREE", false, R.childAge.min - 1], "ทารก");
   });
   await st("EV-4", "ฤดูกาล 3 แถว: หลัก 3,500/2,450 · ปีใหม่ 3,900/2,730 · นอกฤดู 2,900/2,030 · เด็กคิด 70% · มีผลตอนนี้ = ฤดูกาลหลัก", async () => {
