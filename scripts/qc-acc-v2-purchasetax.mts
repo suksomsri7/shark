@@ -169,6 +169,18 @@ try {
     };
     const f1 = await call("POST", `/periods/${P}/vat-filed`, {});
     const draft = await mk(V1.id, D(P, 20), A.e6900, 200_000);
+    // ภ.ง.ด.53 เดือนก่อน: จ่ายหัก ณ ที่จ่าย → ทำเครื่องหมายนำส่ง → จ่ายอีกงวดหลังนำส่ง (ผลต่าง) — หน้าจอ ภ.ง.ด.3/53
+    const fin = (await import("@/lib/modules/account/finance" as string)) as Any;
+    const WHT = (await import("@/lib/modules/account/wht" as string)) as Any;
+    const bankRes = await fin.createFinanceAccount({ tenantId: tid, systemId: S, type: "BANK", name: "ออมทรัพย์", bankName: "กสิกรไทย" });
+    const svc = await exp.createExpenseDoc({ tenantId: tid, systemId: S, docType: "EXPENSE", contactId: V1.id, issueDate: D(P, 5), vatMode: "NONE", lines: [{ description: "ค่าบริการ", qty: 1, unitPrice: 1_000_000, discount: 0, vatRateBp: 0, accountId: A.e6900 }], createdById: owner.id });
+    await issue(svc.id);
+    const vpay = (dd: number) => exp.recordVendorPayment(tid, S, svc.id, { paidAt: D(P, dd), channel: "TRANSFER", financeAccountId: bankRes.id, amount: 485_000, whtAmountSatang: 15_000, whtRateBp: 300, whtIncomeType: "M40_8", createdById: owner.id, idempotencyKey: `t16-${tid}-${dd}` });
+    const w1 = await vpay(10);
+    const wf = await WHT.markFiled(tid, S, { form: 53, periodKey: P, filedById: owner.id });
+    await new Promise((r) => setTimeout(r, 30));
+    const w2 = await vpay(20);
+    console.log(`KEEP pnd pay1=${w1.ok} filed=${wf.ok} pay2=${w2.ok} ${wf.ok ? "" : wf.reason}`);
     console.log(`KEEP tenant=${tid} system=${S} M=${M} P=${P} vatFiledViaApi=${f1} draftInFiledMonth=${draft.id} p5=${p5.id} n4=${n4.id} x6ptx=${x6ptx.id}`);
   }
 } catch (e) {
