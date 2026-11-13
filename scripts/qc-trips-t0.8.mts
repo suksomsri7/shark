@@ -6,6 +6,7 @@
 //   PC ตัวควบคุมบวก (เขียวก่อนมีงาน)   S ไฟล์/facade/ขอบเขต (เทียบ BASE_SHA)   FS แกนบริสุทธิ์   LK ลิงก์กรอกเอง (token · หมดอายุ · เพิกถอน · เดา · อัตรา)
 //   SB ส่งแบบฟอร์ม   HL สุขภาพ/ความยินยอม/ผู้เยาว์   WV เอกสารรับทราบความเสี่ยง   DC ไฟล์   CR route ไฟล์กลาง (ผู้ดูเดิมไม่เปลี่ยน + LINK_CUSTOMER)
 //   MK ปิดบัง/เปิดดู   SE สิทธิ์ฝั่งร้าน   X แยกร้าน/หน่วย   PQ คำขอเจ้าของข้อมูล   RC ยิงพร้อมกัน   RT ลบตามอายุ (เขตเวลาหน่วย)   LE สแกนการรั่ว   EV event
+//   ORACLE-ADD r4 (13 พ.ย. · มติ X1–X5 + ข้อแก้ F1 F4–F13 · REVIEW-R3 §8): PQ-7   ER ปิดงานลบทั้งคน/วัตถุค้าง   MN ผู้เยาว์/ผู้ลงนาม   PJ งานลบ (ค้นพบหน่วย · แจ้งเตือน · ค่าตั้งเสีย · เขตเวลา · รอบเลื่อน · deadline)
 //
 // 🔴 แถวทดสอบอยู่ใต้ร้านชั่วคราว slug `trips-t08-*` ลบใน finally + กวาดค้างตอนเริ่ม · ไม่แตะร้าน seed
 // 🔴 ที่เก็บไฟล์ = ปลอม: env SHARK_BUNNY_* ถูกตั้งเป็นค่าปลอมในโปรเซสนี้ + ดัก fetch ของ host ที่เก็บ (ไม่มีทางยิง Bunny จริง) · deps.put/del ที่ส่งให้บริการเขียนที่เดียวกัน
@@ -1194,6 +1195,26 @@ try {
     ok(JSON.stringify(v).includes(MK.doc), "ไม่มีเลขเต็ม");
     eq((await audits("trips.passenger.exported", SB1.pax[0])).length, 1, "audit");
   });
+  // ORACLE-ADD r4 (ผู้เขียนข้อสอบ 13 พ.ย.): มติ X5d — คำขอ ERASE ซ้ำของเจ้าของข้อมูลเดียวกันถูกรวม
+  await st("PQ-7", "รวมคำขอ ERASE ที่ยังเปิด (X5d): วันรับเร็วกว่า ⇒ dueAt = ค่าน้อยสุด · วันรับช้ากว่า ⇒ dueAt เดิม · คีย์เดิมเนื้อเดิม ⇒ merged+replayed ผลเดิม · คีย์เดิมเนื้อต่าง ⇒ IDEMPOTENCY_CONFLICT · แถวเปิด 1 · ACCESS ไม่ถูกรวม", async () => {
+    needDb(); const b = await mkBooking("PT", ["รวมคำขอ"]); const p = b.pax[0]; const at = "2027-03-20T03:00:00Z";
+    const rec = (receivedAt: string, key: string, kind = "ERASE") => call("recordPdpaRequest", staff("pm", { now: at }), { kind, passengerId: p, receivedAt, idempotencyKey: key });
+    const k2 = `pq${hex(5)}`;
+    const a = V(await rec("2027-03-15", `pq${hex(5)}`), "ครั้งแรก");
+    eq([a.merged, new Date(String(a.dueAt)).toISOString()], [undefined, instAfter(addDays("2027-03-15", 90)).toISOString()], "ครั้งแรก");
+    const early = instAfter(addDays("2027-03-05", 90)).toISOString();
+    const m = V(await rec("2027-03-05", k2), "วันรับเร็วกว่า");
+    eq([m.requestId, m.merged, new Date(String(m.dueAt)).toISOString()], [a.requestId, true, early], "รวม + dueAt น้อยสุด");
+    const l = V(await rec("2027-03-18", `pq${hex(5)}`), "วันรับช้ากว่า");
+    eq([l.requestId, l.merged, new Date(String(l.dueAt)).toISOString()], [a.requestId, true, early], "dueAt ไม่เลื่อนออก");
+    const rp = V(await rec("2027-03-05", k2), "คีย์เดิม");
+    eq([rp.requestId, rp.merged, rp.replayed, new Date(String(rp.dueAt)).toISOString()], [a.requestId, true, true, early], "ส่งซ้ำ");
+    codeR(await rec("2027-03-06", k2), "IDEMPOTENCY_CONFLICT", "คีย์เดิมเนื้อต่าง");
+    const rows = await q<{ id: string; dueAt: Date }>(`SELECT id, "dueAt" FROM "TripPdpaRequest" WHERE "passengerId" = $1 AND kind = 'ERASE'`, [p]);
+    eq([rows.length, rows[0]?.id, rows[0]?.dueAt.toISOString()], [1, a.requestId, early], "แถวคำขอ");
+    const acc = V(await rec("2027-03-15", `pq${hex(5)}`, "ACCESS"), "ACCESS");
+    ok(acc.requestId !== a.requestId && acc.merged === undefined, `ACCESS ถูกรวม ${fmt(acc)}`);
+  });
   groupLine("PQ");
 
   // ═══════════════ RC. ยิงพร้อมกัน ═══════════════
@@ -1400,6 +1421,433 @@ try {
     ok(!(await docRow(d2.id))?.deletedAt, "ลบของหน่วยอื่น");
   });
   groupLine("RT");
+
+  // ═══════════════ ORACLE-ADD r4 (ผู้เขียนข้อสอบ 13 พ.ย.) — มติ X1–X5 + ข้อแก้ F1 F4–F13 ของรอบ r4 (REVIEW-R3 §7 §8) ═══════════════
+  // กลุ่ม ER (ปิดงานลบทั้งคน · วัตถุค้าง) · MN (ผู้เยาว์/ผู้ลงนาม) · PJ (งานลบ: ค้นพบหน่วย · แจ้งเตือน · ค่าตั้งเสีย · เขตเวลา · รอบเลื่อนเร็วขึ้น · deadline)
+  // 🔴 หน่วยใหม่ต่อข้อ (ใต้ร้าน tA ของข้อสอบ) ⇒ "หน่วยที่มีงานอย่างเดียว" เป็นจริง · ทุกแถวที่ปลูก/ลบเป็นของร้านชั่วคราว · ไม่พึ่งเวลานาฬิกาจริง (ยกเว้น deadline ที่ผ่านไปแล้ว)
+  const evN = async (key: string) => (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "OutboxEvent" WHERE "tenantId" = $1 AND "idempotencyKey" = $2`, [tA, `trips.document.purged:${key}`]))[0]?.n ?? 0;
+  const evP = async (key: string) => (await q<{ payload: Rec }>(`SELECT payload FROM "OutboxEvent" WHERE "tenantId" = $1 AND "idempotencyKey" = $2`, [tA, `trips.document.purged:${key}`])).map((r) => r.payload);
+  const objDelOf = async (docId: string) => asRec((await docRow(docId))?.consent)?.objDel;
+  const faN = async (fileId?: string) => (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "FileAsset" WHERE "tenantId" = $1 ${fileId ? `AND id = $2` : ""}`, fileId ? [tA, fileId] : [tA]))[0]?.n ?? 0;
+  const reqRow = async (id: unknown) => (await q<{ status: string; doneAt: Date | null; dueAt: Date }>(`SELECT status, "doneAt", "dueAt" FROM "TripPdpaRequest" WHERE id = $1`, [String(id)]))[0] ?? { status: "", doneAt: null, dueAt: new Date(0) };
+  const failedOf = (v: Rec, unitId: string) => asArr(v.failed).filter((f) => f.unitId === unitId).map((f) => String(f.code));
+  const bkRow = async (id: string) => (await q<Rec>(`SELECT "bookerPartyId", "piiPurgedAt", version, status FROM "TripBooking" WHERE id = $1`, [id]))[0] ?? {};
+  const liveDocsN = async (pid: string) => (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripDocument" WHERE "passengerId" = $1 AND "deletedAt" IS NULL`, [pid]))[0]?.n ?? 0;
+  const purgeU = async (unitId: string, at: Date, o: Rec = {}): Promise<Rec> => asRec(await fn("purgeTripPersonalDataForUnit")({ tenantId: tA, unitId, now: at, storage: { del: fakeDel }, ...o })) ?? {};
+  const failing = async <T,>(f: () => Promise<T>): Promise<T> => { storageFail = true; try { return await f(); } finally { storageFail = false; } };
+  /** หน่วย TRIPS ใหม่ของร้าน A + สินค้าหนึ่งตัว (รูปเดียวกับที่ตั้งร้านด้านบน) */
+  const mkUnitR4 = async (tag: string, tz = "Asia/Bangkok"): Promise<{ unit: string; key: string }> => {
+    const unit = rid(`un${tag}`), key = `R4${tag}`, id = rid(`p${tag}`), o = rid(`o${tag}`);
+    await insertRow("BusinessUnit", { id: unit, tenantId: tA, type: "TRIPS", name: `หน่วย r4 ${tag}`, slug: `${SLUG}r4${tag}-${STAMP}`, settings: JSON.stringify({ timezone: tz }), updatedAt: new Date() });
+    await insertRow("TripProduct", { id, tenantId: tA, unitId: unit, slug: `t08qc-r4${tag}-${STAMP}`.toLowerCase().replace(/[^a-z0-9-]/g, ""), productType: "TOUR", sourceKind: "OWN", status: "ACTIVE", title: JSON.stringify({ th: `ทดสอบ r4 ${tag}` }), body: "{}", currency: "THB", deepDive: true, crossBorder: false, updatedAt: new Date() });
+    await insertRow("TripOption", { id: o, tenantId: tA, unitId: unit, productId: id, name: JSON.stringify({ th: "ร่วมกลุ่ม" }), durationMin: 480, sortOrder: 1, active: true, updatedAt: new Date() });
+    const adult = await insertRow("TripPaxType", { id: rid("pt"), tenantId: tA, unitId: unit, productId: id, code: "ADULT", label: JSON.stringify({ th: "ผู้ใหญ่" }), countsCapacity: true, active: true, sortOrder: 0, updatedAt: new Date() });
+    await insertRow("TripPrice", { id: rid("pr"), tenantId: tA, unitId: unit, productId: id, optionId: null, paxTypeId: adult, cabinTypeId: null, seasonId: null, departureId: null, currency: "THB", amountMinor: 350_000, weekdayMask: null, priority: 0, updatedAt: new Date() });
+    PRD[key] = { id, opt: o, unit, tenant: tA, adult };
+    return { unit, key };
+  };
+  const PURGED_ALL = (at = "2027-03-20T00:00:00.000Z") => JSON.stringify({ v: 1, rev: 1, fields: {}, purged: { at, stages: ["ALL"] } });
+  /** การจองที่ปลูกตรง (ไม่ผ่าน T0.6): EXPIRED ไม่มีเงิน (หมดเวลา 2 มี.ค. ไทย ⇒ ครบ X22 ที่ 2027-04-01T17:00Z) หรือสถานะอื่น · purged = ลบผู้จองไปแล้ว · purgedPax = ผู้เดินทางถูกลบทั้งคนแล้ว */
+  const plantBk = async (key: string, o: { status?: string; pax?: number; purged?: boolean; purgedPax?: boolean; endsAt?: Date } = {}): Promise<Bk> => {
+    const p = PRD[key]; const date = o.endsAt ? "2027-03-10" : "2027-03-12"; const dep = await mkDep(key, date, o.endsAt ? { endsAt: o.endsAt } : {}); const status = o.status ?? "EXPIRED";
+    const party = await insertRow("Party", { id: rid("pty"), tenantId: tA, name: `ผู้จอง r4 ${hex(2)}`, phone: "0899999999", updatedAt: new Date() });
+    const booking = await insertRow("TripBooking", { id: rid("bk"), tenantId: tA, unitId: p.unit, code: `TR-7004-${hex(4)}`, publicTokenHash: sha256hex(rid("t")), status, productId: p.id, departureId: dep, travelDate: date, channel: "WEB", collectMode: "SHOP", payMethod: "PAY_NOW",
+      bookerPartyId: o.purged ? null : party, piiPurgedAt: o.purged ? new Date("2027-03-20T00:00:00Z") : null, marketingEligible: true, contactRoute: "DIRECT", currency: "THB", grossSatang: 350_000, discountSatang: 0, agentDiscountSatang: 0, passThroughSatang: 0, vatSatang: 0, commissionSatang: 0, commissionVatSatang: 0, whtSatang: 0, netToShopSatang: 350_000, paidSatang: 0, refundedSatang: 0, accountingState: "NONE", policySnapshot: "{}", version: 2, updatedAt: new Date("2027-03-02T05:00:00Z") });
+    if (status === "EXPIRED") await insertRow("TripHold", { id: rid("h"), tenantId: tA, unitId: p.unit, departureId: dep, bookingId: booking, channel: "WEB", qtyPublic: 1, qtyAllot: 0, unitIds: [], purpose: "PAYMENT", capKeyHash: "x", requestHash: "x", idempotencyKey: rid("hk"), status: "EXPIRED", expiresAt: new Date("2027-03-02T05:00:00Z"), updatedAt: new Date() });
+    const ids: string[] = [];
+    for (let i = 0; i < (o.pax ?? 1); i++) ids.push(await insertRow("TripPassenger", o.purgedPax
+      ? { id: rid("tp"), tenantId: tA, unitId: p.unit, bookingId: booking, fullName: "", answers: PURGED_ALL(), formStatus: "PENDING", updatedAt: new Date() }
+      : { id: rid("tp"), tenantId: tA, unitId: p.unit, bookingId: booking, fullName: `ผู้เดินทาง r4 ${i}`, phone: "+66899999999", docLast4: "1234", answers: JSON.stringify({ v: 1, rev: 0, fields: {} }), formStatus: "PENDING", updatedAt: new Date() }));
+    return { bookingId: booking, pax: ids, dep, key };
+  };
+  const plantReq = (unitId: string, passengerId: string, status: string, dueAt: Date) => insertRow("TripPdpaRequest", { id: rid("rq"), tenantId: tA, unitId, passengerId, partyId: null, kind: "ERASE", status, dueAt, doneAt: null, updatedAt: new Date() });
+  /** แถวไฟล์ที่ปลูกตรง: deletedAt มี = ทำเครื่องหมายลบแล้ว (วัตถุยังอยู่ในที่เก็บปลอม) · ไม่มี = ไฟล์ปกติ */
+  const plantDocRow = async (unitId: string, passengerId: string, o: { deletedAt?: Date; retainUntil?: Date; consent?: unknown; kind?: string }) => {
+    const f = await plantFile(tA);
+    const id = await insertRow("TripDocument", { id: rid("doc"), tenantId: tA, unitId, passengerId, kind: o.kind ?? "CERT", fileId: f.fileId, consent: o.consent === undefined ? null : JSON.stringify(o.consent), retainUntil: o.retainUntil ?? o.deletedAt ?? new Date("2027-01-01T00:00:00Z"), deletedAt: o.deletedAt ?? null, updatedAt: new Date() });
+    return { id, ...f };
+  };
+  const MARKED = { purgeStage: "ERASE", objDel: false };
+  const D0 = new Date("2027-03-01T00:00:00Z");
+  const hrs = (d: Date, h: number) => new Date(d.getTime() + h * 3_600_000);
+  const X22_DUE = new Date("2027-04-01T17:00:00Z");
+  const record = async (who: string, pid: string) => String(V(await call("recordPdpaRequest", staff(who), { kind: "ERASE", passengerId: pid, idempotencyKey: `pq${hex(5)}` }), "recordPdpaRequest").requestId);
+  const resolve = (requestId: string, expectedStatus: string, decision: string, extra: Rec = {}, deps: Rec = DEPS) => call("resolvePdpaRequest", staff("pm"), { requestId, expectedStatus, decision, ...extra }, deps);
+
+  // ═══════════════ ER. ปิดงานลบทั้งคน · วัตถุค้าง (X2 · F1 F5 F8 F11 F12 F13) ═══════════════
+  console.log("\n── ER: ปิดงานลบทั้งคน · วัตถุค้าง (r4) ──");
+  await st("ER-1", "F1: การจอง EXPIRED ไม่มีเงิน ไม่มีผู้เดินทางสักคน ⇒ ครบ X22 แล้วได้ event BOOKER {passengerId null} ครั้งเดียว (คีย์ booking:<id>) · ก่อนกำหนดไม่มี · รอบสองไม่เพิ่ม", async () => {
+    needDb(); const { key, unit } = await mkUnitR4("e1"); const b = await plantBk(key, { pax: 0 });
+    V(await purge(secs(X22_DUE, -1)), "ก่อน");
+    eq([(await bkRow(b.bookingId)).piiPurgedAt, await evN(`booking:${b.bookingId}`)], [null, 0], "ก่อนกำหนด");
+    const v = V(await purge(X22_DUE), "ถึง");
+    const bk = await bkRow(b.bookingId);
+    eq([bk.bookerPartyId, !!bk.piiPurgedAt, bk.version, failedOf(v, unit)], [null, true, 3, []], "การจอง");
+    eq(await evP(`booking:${b.bookingId}`), [{ bookingId: b.bookingId, kind: "BOOKER", passengerId: null }], "event BOOKER");
+    eq((await outbox("trips.document.purged")).filter((e) => e.payload.bookingId === b.bookingId).length, 1, "event ของการจองนี้");
+    V(await purge(hrs(X22_DUE, 1)), "รอบสอง");
+    eq([await evN(`booking:${b.bookingId}`), (await bkRow(b.bookingId)).version], [1, 3], "รอบสอง");
+  });
+  await st("ER-2", "X2/F1: ผู้จองหมดเวลา + ผู้เดินทาง 1 คนที่ไฟล์ MEDICAL ลบไม่ได้ (503) ⇒ รอบแรก: ข้อมูลถูกล้าง+ไฟล์ทำเครื่องหมาย แต่ไม่มี event BOOKER/PASSENGER_ALL/ไฟล์ · รอบที่ลบได้ ⇒ อย่างละ 1 · รอบสามไม่เพิ่ม", async () => {
+    needDb(); const { key, unit } = await mkUnitR4("e2"); const b = await plantBk(key, { pax: 1 }); const p = b.pax[0];
+    const d = await plantDocRow(unit, p, { kind: "MEDICAL", retainUntil: new Date("2035-01-01T00:00:00Z") });
+    const counts = async () => [await evN(`booking:${b.bookingId}`), await evN(`${p}:ALL`), await evN(d.id)];
+    const v1 = await failing(async () => V(await purge(X22_DUE), "รอบแรก"));
+    const r = await pax(p);
+    eq([!!(await bkRow(b.bookingId)).piiPurgedAt, r.fullName, r.phone, !!(await docRow(d.id))?.deletedAt, await objDelOf(d.id), STORE.has(d.path), await faN(d.fileId)], [true, "", null, true, false, true, 1], "รอบแรก: ล้างแล้ว วัตถุยังค้าง");
+    eq(await counts(), [0, 0, 0], "รอบแรก: ประกาศเสร็จก่อนวัตถุหาย");
+    ok(failedOf(v1, unit).includes("STORAGE_DELETE_FAILED"), `failed ${fmt(v1.failed)}`);
+    V(await purge(hrs(X22_DUE, 1)), "รอบสอง");
+    eq([await counts(), await objDelOf(d.id), STORE.has(d.path), await faN(d.fileId)], [[1, 1, 1], true, false, 0], "รอบสอง");
+    eq([await evP(`${p}:ALL`), await evP(`booking:${b.bookingId}`)], [[{ bookingId: b.bookingId, kind: "PASSENGER_ALL", passengerId: p }], [{ bookingId: b.bookingId, kind: "BOOKER", passengerId: null }]], "payload");
+    V(await purge(hrs(X22_DUE, 2)), "รอบสาม");
+    eq(await counts(), [1, 1, 1], "รอบสาม");
+  });
+  await st("ER-3", "F1/F5 ค้นพบใหม่ (ขั้น 5): หน่วยที่เหลือแค่ \"งานปิดที่ยังไม่จบ\" — การจองลบผู้จองแล้ว+ผู้เดินทางลบทั้งคนแล้วแต่ยังไม่มี event + คำขอ ERASE ค้าง IN_PROGRESS · การจองลบผู้จองแล้วไม่มีผู้เดินทาง ⇒ รอบถัดไปออก PASSENGER_ALL/BOOKER อย่างละ 1 + คำขอ DONE (audit SYSTEM) · รอบสองไม่เพิ่ม", async () => {
+    needDb(); const { key, unit } = await mkUnitR4("e3");
+    const b1 = await plantBk(key, { purged: true, purgedPax: true, pax: 1 }); const p = b1.pax[0];
+    const rq = await plantReq(unit, p, "IN_PROGRESS", new Date("2027-06-01T00:00:00Z"));
+    const b0 = await plantBk(key, { purged: true, pax: 0 });
+    const counts = async () => [await evN(`${p}:ALL`), await evN(`booking:${b1.bookingId}`), await evN(`booking:${b0.bookingId}`)];
+    eq(await counts(), [0, 0, 0], "ก่อนรัน");
+    const v = V(await purge(new Date("2027-03-21T00:00:00Z")), "รอบแรก");
+    eq([await counts(), failedOf(v, unit)], [[1, 1, 1], []], "event หลังค้นพบใหม่");
+    const q1 = await reqRow(rq); const au = await audits("trips.pdpa.request_resolved", rq);
+    eq([q1.status, q1.doneAt?.toISOString(), au.map((a) => [a.after?.from, a.after?.to, a.actorType, a.actorId])], ["DONE", "2027-03-21T00:00:00.000Z", [["IN_PROGRESS", "DONE", "SYSTEM", null]]], "คำขอ");
+    V(await purge(new Date("2027-03-21T01:00:00Z")), "รอบสอง");
+    eq([await counts(), (await audits("trips.pdpa.request_resolved", rq)).length], [[1, 1, 1], 1], "รอบสอง");
+  });
+  let E4: { b: Bk; req: string; docs: { id: string; path: string; fileId: string }[]; tok: string; lv: string } | null = null;
+  await st("ER-4", "X2: ERASE → DONE ขณะที่เก็บลบไม่ได้ ⇒ คืน {IN_PROGRESS, pendingObjects 2} · คำขอ IN_PROGRESS · ข้อมูลในแถวหายแล้ว · ไม่มี event ไฟล์/PASSENGER_ALL · พนักงาน/ผู้ถือลิงก์/route เปิดไฟล์ไม่ได้ทันที · F12: จอร้าน+ส่งออกบอก pendingDeletion", async () => {
+    needDb(); const b = await mkBooking("PD", ["ลบค้าง หนึ่ง", "ลบค้าง สอง"]); const p = b.pax[0]; const tok = (await issue(p)).token;
+    const one: Bk = { ...b, pax: [p] };
+    const pp = await plantDoc(one, "PASSPORT", 3000), md = await plantDoc(one, "MEDICAL", 3000);
+    // ตัวควบคุมบวก: ก่อนลบเปิดได้ทั้งสามทาง
+    const cu = V(await call("customerDocumentUrl", pctx(), { token: tok, documentId: pp.id, purpose: "CUSTOMER_SELF" }), "customerDocumentUrl ก่อนลบ");
+    const lv = String(new URL(`http://x${String(cu.url)}`).searchParams.get("lv"));
+    V(await call("passengerDocumentUrl", staff("oa"), { documentId: md.id, purpose: "SAFETY" }), "passengerDocumentUrl ก่อนลบ");
+    eq(await fn("linkCustomerMayOpenFile")({ viewerId: lv, fileId: pp.fileId, tenantId: tA, now: new Date(NOW0) }), true, "route ก่อนลบ");
+    const req = await record("pm", p);
+    const v = await failing(async () => V(await resolve(req, "RECEIVED", "DONE"), "resolve"));
+    eq([v.requestId, v.status, v.pendingObjects], [req, "IN_PROGRESS", 2], "ผล resolve");
+    E4 = { b, req, docs: [pp, md], tok, lv };
+    const r = await pax(p);
+    eq([(await reqRow(req)).status, r.fullName, r.docNumberEnc, r.phone, asRec(asRec(r.answers)?.purged)?.stages], ["IN_PROGRESS", "", null, null, ["ALL"]], "แถว");
+    for (const d of [pp, md]) eq([!!(await docRow(d.id))?.deletedAt, await objDelOf(d.id), STORE.has(d.path), await evN(d.id)], [true, false, true, 0], `ไฟล์ ${d.id.slice(-4)}`);
+    eq(await evN(`${p}:ALL`), 0, "PASSENGER_ALL ก่อนวัตถุหาย");
+    codeR(await call("passengerDocumentUrl", staff("oa"), { documentId: pp.id, purpose: "CHECKIN" }), "NOT_FOUND", "พนักงาน PASSPORT");
+    codeR(await call("passengerDocumentUrl", staff("oa"), { documentId: md.id, purpose: "SAFETY" }), "NOT_FOUND", "พนักงาน MEDICAL");
+    codeR(await call("customerDocumentUrl", pctx(), { token: tok, documentId: pp.id, purpose: "CUSTOMER_SELF" }), "NOT_FOUND", "ผู้ถือลิงก์");
+    eq(await fn("linkCustomerMayOpenFile")({ viewerId: lv, fileId: pp.fileId, tenantId: tA, now: new Date(NOW0) }), false, "route หลังลบ");
+    const dto = asArr(asArr(V(await call("getTripPassengers", staff("oa"), { bookingId: b.bookingId }), "getTripPassengers").passengers).find((x) => x.id === p)?.documents);
+    eq([pp, md].map((d) => { const x = dto.find((y) => y.id === d.id); return [x?.deleted, x?.pendingDeletion]; }), [[true, true], [true, true]], "DTO ร้าน pendingDeletion");
+    const ex = asArr(V(await call("exportPassengerData", staff("oa"), { passengerId: p, purpose: "PDPA_REQUEST" }), "export").documents);
+    eq([pp, md].map((d) => { const x = ex.find((y) => y.id === d.id); return [x?.deletedAt !== null && x?.deletedAt !== undefined, x?.pendingDeletion]; }), [[true, true], [true, true]], "ส่งออก pendingDeletion");
+  });
+  await st("ER-5", "X2 การเดินสถานะ: REJECT หลังเริ่มลบ ⇒ STATE_CONFLICT PURGED (ยัง IN_PROGRESS) · เข้าซ้ำ IN_PROGRESS→DONE ขณะยังค้าง ⇒ ผลเดิม ไม่ลบซ้ำ/ไม่มี audit ALL ที่สอง/ไม่มี event · REJECT จาก IN_PROGRESS ก่อนลบ ⇒ ได้ ข้อมูลอยู่ · เข้าซ้ำเมื่อที่เก็บกลับมา ⇒ DONE + event ครั้งเดียว", async () => {
+    ok(E4, "ER-4 ไม่ผ่าน"); const p = E4.b.pax[0], p2 = E4.b.pax[1];
+    const rev0 = revOf(await pax(p));
+    codeR(await resolve(E4.req, "IN_PROGRESS", "REJECTED", { reasonCode: "OTHER" }), "STATE_CONFLICT", "REJECT หลังลบ", "PURGED");
+    codeR(await resolve(E4.req, "RECEIVED", "DONE"), "STATE_CONFLICT", "สถานะเก่า");
+    const again = await failing(async () => V(await resolve(E4!.req, "IN_PROGRESS", "DONE"), "เข้าซ้ำขณะค้าง"));
+    eq([again.status, again.pendingObjects, (await reqRow(E4.req)).status, revOf(await pax(p))], ["IN_PROGRESS", 2, "IN_PROGRESS", rev0], "เข้าซ้ำ");
+    eq([(await audits("trips.passenger.purged", p)).filter((a) => a.after?.stage === "ALL").length, await evN(`${p}:ALL`), await evN(E4.docs[0].id), await evN(E4.docs[1].id)], [1, 0, 0, 0], "ไม่ลบซ้ำ/ไม่มี event");
+    // คนที่สอง: ปฏิเสธก่อนลบได้ · แล้วคำขอใหม่ → ค้าง → พนักงานเข้าซ้ำตอนที่เก็บกลับมา
+    const ra = await record("pm", p2);
+    V(await resolve(ra, "RECEIVED", "IN_PROGRESS"), "IN_PROGRESS");
+    eq(V(await resolve(ra, "IN_PROGRESS", "REJECTED", { reasonCode: "IDENTITY_NOT_VERIFIED" }), "REJECT ก่อนลบ").status, "REJECTED", "REJECT ก่อนลบ");
+    eq([(await pax(p2)).fullName, (await reqRow(ra)).status], ["ลบค้าง สอง", "REJECTED"], "ข้อมูลอยู่");
+    const d2 = await plantDoc({ ...E4.b, pax: [p2] }, "CERT", 3000);
+    const rb = await record("pm", p2); ok(rb !== ra, "คำขอใหม่ต้องเป็นแถวใหม่ (ใบเก่าปิดแล้ว)");
+    eq((await failing(async () => V(await resolve(rb, "RECEIVED", "DONE"), "ค้าง"))).pendingObjects, 1, "ค้าง 1");
+    const fin = V(await resolve(rb, "IN_PROGRESS", "DONE"), "เข้าซ้ำที่เก็บกลับมา");
+    eq([fin.status, fin.pendingObjects, (await reqRow(rb)).status, await evN(`${p2}:ALL`), await evN(d2.id), STORE.has(d2.path), await objDelOf(d2.id)], ["DONE", undefined, "DONE", 1, 1, false, true], "ปิดโดยพนักงาน");
+    const au = (await audits("trips.pdpa.request_resolved", rb)).map((a) => [a.after?.to, a.actorType]);
+    eq(au[au.length - 1], ["DONE", "USER"], "audit ปิด");
+    codeR(await resolve(rb, "IN_PROGRESS", "DONE"), "STATE_CONFLICT", "ปิดซ้ำ");
+  });
+  await st("ER-6", "X2: งานลบรอบที่ที่เก็บกลับมา ⇒ ปิดคำขอที่ค้างเอง: DONE + doneAt · audit request_resolved IN_PROGRESS→DONE ผู้กระทำ SYSTEM · event ไฟล์ละ 1 + PASSENGER_ALL 1 (ไม่มี BOOKER) · วัตถุ/FileAsset หาย · รอบสองไม่มีอะไรใหม่", async () => {
+    ok(E4, "ER-4 ไม่ผ่าน"); const p = E4.b.pax[0]; const at = hrs(new Date(NOW0), 2);
+    V(await purge(at), "รอบแรก");
+    const q1 = await reqRow(E4.req); const au = (await audits("trips.pdpa.request_resolved", E4.req)).map((a) => [a.after?.from, a.after?.to, a.actorType, a.actorId]);
+    eq([q1.status, q1.doneAt?.toISOString(), au[au.length - 1], au.filter((a) => a[1] === "DONE").length], ["DONE", at.toISOString(), ["IN_PROGRESS", "DONE", "SYSTEM", null], 1], "คำขอ");
+    const state = async () => [await evN(`${p}:ALL`), await evN(`booking:${E4!.b.bookingId}`), ...(await Promise.all(E4!.docs.map(async (d) => [await evN(d.id), await objDelOf(d.id), STORE.has(d.path), await faN(d.fileId)])))];
+    eq(await state(), [1, 0, [1, true, false, 0], [1, true, false, 0]], "รอบแรก");
+    eq(await evP(`${p}:ALL`), [{ bookingId: E4.b.bookingId, kind: "PASSENGER_ALL", passengerId: p }], "payload");
+    const dto = asArr(asArr(V(await call("getTripPassengers", staff("oa"), { bookingId: E4.b.bookingId }), "getTripPassengers").passengers).find((x) => x.id === p)?.documents);
+    eq(E4.docs.map((d) => { const x = dto.find((y) => y.id === d.id); return [x?.deleted, x?.pendingDeletion]; }), [[true, false], [true, false]], "DTO หลังวัตถุหาย");
+    const n = (await outbox("trips.document.purged")).length;
+    V(await purge(hrs(at, 1)), "รอบสอง");
+    eq([await state(), (await outbox("trips.document.purged")).length, (await audits("trips.pdpa.request_resolved", E4.req)).length], [[1, 0, [1, true, false, 0], [1, true, false, 0]], n, au.length], "รอบสอง");
+  });
+  await st("ER-7", "F12 + X2 ถอนความยินยอมขณะที่เก็บลบไม่ได้: ผล pendingObjects 1 · DTO ร้าน {deleted, pendingDeletion} = MEDICAL [true,true] / PASSPORT [false,false] · ส่งออกบอก pendingDeletion · มุมมองสาธารณะไม่มีคีย์นี้ · งานลบสำเร็จ ⇒ pendingDeletion false", async () => {
+    needDb(); const b = await mkBooking("PD", ["ค้างลบ ธง"]); const p = b.pax[0]; const t = (await issue(p)).token;
+    V(await submit(t, { expectedRev: 0, fields: fullPD({ fullName: "ค้างลบ ธง" }), health: { consent, conditions: "ไม่มี" } }), "submit");
+    const md = String(V(await upload(t, { kind: "MEDICAL", contentType: "application/pdf", data: PDF() }), "MEDICAL").documentId), pp = String(V(await upload(t, { kind: "PASSPORT" }), "PASSPORT").documentId);
+    const w = await failing(async () => V(await call("withdrawHealthConsent", pctx(), { token: t, idempotencyKey: `we${hex(5)}`, mode: "EXECUTE" }, DEPS), "ถอน"));
+    eq([w.pendingObjects, asRec(w.effects)], [1, { healthAnswers: true, medicalDocuments: 1 }], "ผลถอน");
+    const dtoOf = async () => { const ds = asArr(asArr(V(await call("getTripPassengers", staff("oa"), { bookingId: b.bookingId }), "getTripPassengers").passengers).find((x) => x.id === p)?.documents); return [md, pp].map((id) => { const x = ds.find((y) => y.id === id); return [x?.deleted, x?.pendingDeletion]; }); };
+    const exOf = async () => { const ds = asArr(V(await call("exportPassengerData", staff("oa"), { passengerId: p, purpose: "PDPA_REQUEST" }), "export").documents); return [md, pp].map((id) => ds.find((y) => y.id === id)?.pendingDeletion); };
+    eq([await dtoOf(), await exOf(), await evN(md)], [[[true, true], [false, false]], [true, false], 0], "ขณะค้าง");
+    const pub = V(await call("openPassengerForm", pctx(), { token: t }), "open");
+    ok(!JSON.stringify(pub).includes("pendingDeletion") && asArr(pub.documents).some((x) => x.id === pp), `มุมมองสาธารณะ ${fmt(pub.documents)}`);
+    await purgeU(uA, hrs(new Date(NOW0), 3));
+    eq([await dtoOf(), await exOf(), await evN(md)], [[[true, false], [false, false]], [false, false], 1], "หลังงานลบ");
+  });
+  await st("ER-8", "F8: ปฏิเสธให้ข้อมูลสุขภาพ / กลายเป็นผู้เยาว์ ขณะมีไฟล์ MEDICAL ⇒ ผลมี healthErased + pendingObjects (1 เมื่อที่เก็บลบไม่ได้ · 0 เมื่อลบได้) · ไม่มีไฟล์ให้ลบ ⇒ ไม่มีคีย์ pendingObjects", async () => {
+    needDb(); const b = await mkBooking("PD", ["ปฏิเสธ ค้าง", "กลายเด็ก", "ปฏิเสธ เปล่า"]);
+    const toks: string[] = []; for (const p of b.pax) toks.push((await issue(p)).token);
+    const prep = async (i: number, med: boolean) => {
+      V(await submit(toks[i], { expectedRev: 0, fields: fullPD({ fullName: `สุขภาพ ${i}` }), health: { consent, conditions: "ไม่มี" } }), `submit ${i}`);
+      return med ? String(V(await upload(toks[i], { kind: "MEDICAL", contentType: "application/pdf", data: PDF() }), `MEDICAL ${i}`).documentId) : "";
+    };
+    const m0 = await prep(0, true), m1 = await prep(1, true); await prep(2, false);
+    const a = await failing(async () => V(await submit(toks[0], { expectedRev: 1, health: { declined: true } }), "ปฏิเสธขณะค้าง"));
+    eq([a.healthErased, a.pendingObjects, !!(await docRow(m0))?.deletedAt, await objDelOf(m0), asRec(asRec((await pax(b.pax[0])).answers)?.health)?.status], [true, 1, true, false, "DECLINED"], "ปฏิเสธ ที่เก็บล้ม");
+    const c = V(await submit(toks[1], { expectedRev: 1, fields: { dob: "2012-01-01" } }), "กลายเป็นผู้เยาว์");
+    eq([c.healthErased, c.pendingObjects, !!(await docRow(m1))?.deletedAt, await objDelOf(m1), asRec(asRec((await pax(b.pax[1])).answers)?.health)?.status], [true, 0, true, true, "GUARDIAN_REQUIRED"], "กลายเป็นผู้เยาว์ ที่เก็บปกติ");
+    const n = V(await submit(toks[2], { expectedRev: 1, health: { declined: true } }), "ปฏิเสธ ไม่มีไฟล์");
+    eq([n.healthErased, "pendingObjects" in n], [true, false], "ไม่มีไฟล์");
+    await purgeU(uA, hrs(new Date(NOW0), 4));
+    eq([await objDelOf(m0), await evN(m0)], [true, 1], "งานลบเก็บกวาด");
+  });
+  await st("ER-9", "X2 การแข่ง (กำหนดลำดับด้วย put): ERASE commit ระหว่างที่อัปโหลดเขียนวัตถุเสร็จแต่ยังไม่เข้า tx ⇒ อัปโหลด NOT_FOUND PURGED · พนักงานเซ็นต่อหน้าพร้อมรูปลายเซ็นก็ถูกปฏิเสธ · วัตถุ+FileAsset ของคำขอถูกลบ · ผู้เดินทางที่ถูกลบทั้งคนไม่มี TripDocument ที่ยังเปิดได้", async () => {
+    needDb(); const b = await mkBooking("PD", ["แข่งอัป หนึ่ง", "แข่งเซ็น สอง"]); const [p1, p2] = b.pax; const t1 = (await issue(p1)).token;
+    const r1 = await record("pm", p1), r2 = await record("pm", p2);
+    const fa0 = await faN(); const seen: { path: string; erase: Rec }[] = [];
+    const putThenErase = (reqId: string) => async (path: string, data: Uint8Array) => { await fakePut(path, data); seen.push({ path, erase: await resolve(reqId, "RECEIVED", "DONE") }); };
+    const up = await call("uploadPassengerDocument", pctx(), { token: t1, idempotencyKey: `f${hex(6)}`, kind: "PASSPORT", contentType: "image/jpeg", data: JPG() }, { put: putThenErase(r1), del: fakeDel });
+    eq([seen.length, asRec(seen[0]?.erase.value)?.status], [1, "DONE"], "ตัวควบคุม: การลบ commit ระหว่าง PUT");
+    codeR(up, "NOT_FOUND", "อัปโหลดหลังลบ", "PURGED");
+    eq([await faN(), STORE.has(seen[0].path), await liveDocsN(p1), (await q(`SELECT 1 FROM "TripDocument" WHERE "passengerId" = $1`, [p1])).length], [fa0, false, 0, 0], "อัปโหลด: ไม่มีอะไรค้าง");
+    const sg = await call("recordWitnessedWaiver", staff("se"), { passengerId: p2, idempotencyKey: `ww${hex(5)}`, templateHash: tplHash(await curTemplate("PD")), locale: "th", signerName: "แข่งเซ็น สอง", signerRole: "SELF", isMinorDeclared: false, signatureImage: { contentType: "image/png", data: PNG() } }, { put: putThenErase(r2), del: fakeDel });
+    eq([seen.length, asRec(seen[1]?.erase.value)?.status], [2, "DONE"], "ตัวควบคุม: การลบ commit ระหว่าง PUT ของลายเซ็น");
+    codeR(sg, "NOT_FOUND", "เซ็นหลังลบ", "PURGED");
+    const row2 = await pax(p2);
+    eq([await faN(), STORE.has(seen[1].path), await liveDocsN(p2), row2.waiverEvidence, row2.waiverSignedAt, (await audits("trips.waiver.signed", p2)).length], [fa0, false, 0, null, null, 0], "เซ็น: ไม่มีอะไรค้าง");
+  });
+  await st("ER-10", "F11: อัปโหลดที่ธุรกรรมถูกยกเลิก (ครบเพดานระหว่าง PUT) ⇒ ลบวัตถุของตัวเอง · ลบไม่ได้ ⇒ มีแถวติดตาม purgeStage ABORTED (deletedAt · objDel false · ไม่นับเป็นไฟล์ที่ใช้ได้) แล้วงานลบเก็บกวาดให้ · ลบได้ ⇒ ไม่มีแถวติดตาม ไม่มีวัตถุค้าง", async () => {
+    needDb(); const b = await mkBooking("PD", ["ค้างอัป หนึ่ง", "ค้างอัป สอง"]);
+    const run = async (p: string, del: (path: string) => Promise<number>) => {
+      const t = (await issue(p)).token; let path = "";
+      const put = async (pth: string, data: Uint8Array) => { await fakePut(pth, data); path = pth; for (let i = 0; i < 3; i++) await plantDoc({ ...b, pax: [p] }, "PASSPORT", 3000); };
+      const r = await call("uploadPassengerDocument", pctx(), { token: t, idempotencyKey: `f${hex(6)}`, kind: "PASSPORT", contentType: "image/jpeg", data: JPG() }, { put, del });
+      codeR(r, "VALIDATION", "ยกเลิกใน tx", "DOC_LIMIT"); ok(path, "put ไม่ถูกเรียก");
+      return { path, tr: await q<{ id: string; fileId: string; consent: Rec | null; deletedAt: Date | null }>(`SELECT id, "fileId", consent, "deletedAt" FROM "TripDocument" WHERE "passengerId" = $1 AND consent->>'purgeStage' = 'ABORTED'`, [p]) };
+    };
+    const okc = await run(b.pax[1], fakeDel);
+    eq([okc.tr.length, STORE.has(okc.path), await liveDocsN(b.pax[1])], [0, false, 3], "ลบได้: ไม่มีแถวติดตาม");
+    const bad = await run(b.pax[0], async () => 503);
+    eq([bad.tr.length, bad.tr[0]?.consent?.objDel, !!bad.tr[0]?.deletedAt, STORE.has(bad.path), await liveDocsN(b.pax[0])], [1, false, true, true, 3], "ลบไม่ได้: แถวติดตาม");
+    eq((await q<{ path: string }>(`SELECT path FROM "FileAsset" WHERE id = $1`, [bad.tr[0].fileId]))[0]?.path, bad.path, "แถวติดตามชี้วัตถุที่ค้าง");
+    await purgeU(uA, hrs(new Date(NOW0), 5));
+    eq([await objDelOf(bad.tr[0].id), STORE.has(bad.path), await faN(bad.tr[0].fileId)], [true, false, 0], "งานลบเก็บกวาด");
+  });
+  await st("ER-11", "F13: consent ของไฟล์ที่ทำเครื่องหมายแล้วเป็น JSON รูปแปลก (objDel = ข้อความ/ตัวเลข/วัตถุ · consent เป็นข้อความ/อาร์เรย์/null) ⇒ จอร้านไม่ล้ม (pendingDeletion true) · งานลบไม่ล้ม ถือว่ายังค้าง แล้วลบ+ยืนยัน (objDel true · event 1)", async () => {
+    needDb(); const { key, unit } = await mkUnitR4("e11"); const b = await plantBk(key, { status: "CONFIRMED", pax: 1 }); const p = b.pax[0];
+    const docs = [];
+    for (const c of [{ objDel: "maybe" }, { objDel: 5 }, { objDel: { x: 1 } }, "text", [1, 2], null, { objDel: "true" }]) docs.push(await plantDocRow(unit, p, { deletedAt: D0, consent: c }));
+    const g = await call("getTripPassengers", staff("oa", { unit }), { bookingId: b.bookingId });
+    const dto = asArr(asArr(V(g, "getTripPassengers").passengers)[0]?.documents);
+    eq(docs.map((d) => dto.find((x) => x.id === d.id)?.pendingDeletion), docs.map(() => true), "DTO");
+    const v = V(await purge(hrs(D0, 1)), "งานลบ");
+    eq(failedOf(v, unit), [], "failed ของหน่วย");
+    for (const d of docs) eq([await objDelOf(d.id), STORE.has(d.path), await faN(d.fileId), await evN(d.id)], [true, false, 0, 1], `ไฟล์ ${docs.indexOf(d)}`);
+    V(await purge(hrs(D0, 2)), "รอบสอง");
+    eq(await Promise.all(docs.map((d) => evN(d.id))), docs.map(() => 1), "รอบสอง");
+  });
+  groupLine("ER");
+
+  // ═══════════════ MN. ผู้เยาว์ / ผู้ลงนาม (X1 · X5 · F7 F9) ═══════════════
+  console.log("\n── MN: ผู้เยาว์/ผู้ลงนาม (r4) ──");
+  const GD = { name: MK.guardian, relation: "PARENT" };
+  const ageMatrix = async (ch: "LINK" | "STAFF") => {
+    needDb();
+    const b = await mkBooking("PD", ["dm", "cm", "un", "ug", "uu", "da", "ca"].map((x) => `อายุ ${ch} ${x}`)); const [dm, cm, un, ug, uu, da, ca] = b.pax;
+    const tpl = tplHash(await curTemplate("PD"));
+    const toks: Record<string, string> = {}; if (ch === "LINK") for (const p of b.pax) toks[p] = (await issue(p)).token;
+    const store = async (p: string, body: Rec) => V(ch === "LINK" ? await submit(toks[p], { expectedRev: 0, ...body }) : await call("updateTripPassenger", staff("se"), { passengerId: p, expectedRev: 0, idempotencyKey: `u${hex(6)}`, ...body }), "ตั้งข้อมูลอายุ");
+    const sg = (p: string, role: "SELF" | "GUARDIAN", decl?: boolean) => {
+      const body = { idempotencyKey: `w${hex(6)}`, templateHash: tpl, locale: "th", signerName: role === "GUARDIAN" ? GD.name : "ผู้ลงนาม เอง", signerRole: role, ...(role === "GUARDIAN" ? { guardian: GD } : {}), ...(decl === undefined ? {} : { isMinorDeclared: decl }) };
+      return ch === "LINK" ? call("signPassengerWaiver", pctx(), { token: toks[p], accept: true, ...body }) : call("recordWitnessedWaiver", staff("se"), { passengerId: p, ...body }, DEPS);
+    };
+    const snap = async (p: string) => (await q<Rec>(`SELECT "isMinor"::text AS m, (answers->'isMinorDeclared')::text AS d, "waiverEvidence"::text AS w, "waiverSignedAt"::text AS s, "guardianConsent"::text AS g, answers->>'rev' AS r FROM "TripPassenger" WHERE id = $1`, [p]))[0] ?? {};
+    const refuse = async (p: string, role: "SELF" | "GUARDIAN", decl: boolean | undefined, reason: string, what: string) => {
+      const s0 = await snap(p); codeR(await sg(p, role, decl), "VALIDATION", what, reason); eq(await snap(p), s0, `${what}: แถวถูกเขียน`);
+    };
+    const accept = async (p: string, role: "SELF" | "GUARDIAN", decl: boolean | undefined, basis: [boolean | null, string], what: string) => {
+      const s0 = await snap(p); V(await sg(p, role, decl), what); const s1 = await snap(p);
+      eq([s1.m, s1.d], [s0.m, s0.d], `${what}: isMinor/isMinorDeclared ที่เก็บเปลี่ยนจากการลงนาม`);
+      const e = asRec((await pax(p)).waiverEvidence) ?? {}; const mn = asRec(e.minor) ?? {};
+      eq([mn.isMinor, mn.ageBasis, asRec(e.signer)?.role], [...basis, role], `${what}: หลักฐาน`);
+    };
+    await store(dm, { fields: { dob: "2015-01-01" } }); await store(cm, { isMinorDeclared: true }); await store(da, { fields: { dob: "1990-05-06" } }); await store(ca, { isMinorDeclared: false });
+    eq([(await snap(dm)).m, (await snap(cm)).m, (await snap(cm)).d, (await snap(da)).m, (await snap(ca)).d, (await snap(un)).d], ["true", "true", "true", "false", "false", null], "ข้อมูลอายุที่เก็บ");
+    // ที่เก็บบอกผู้เยาว์ (วันเกิด / คำประกาศที่เก็บ)
+    await refuse(dm, "SELF", false, "GUARDIAN_REQUIRED", "วันเกิดผู้เยาว์ + SELF ประกาศผู้ใหญ่");
+    await refuse(dm, "SELF", undefined, "GUARDIAN_REQUIRED", "วันเกิดผู้เยาว์ + SELF");
+    await refuse(dm, "GUARDIAN", false, "AGE_CONFLICT", "วันเกิดผู้เยาว์ + GUARDIAN ประกาศผู้ใหญ่");
+    await refuse(cm, "SELF", false, "GUARDIAN_REQUIRED", "ประกาศผู้เยาว์ที่เก็บ + SELF");
+    await refuse(cm, "GUARDIAN", false, "AGE_CONFLICT", "ประกาศผู้เยาว์ที่เก็บ + GUARDIAN ประกาศผู้ใหญ่");
+    // ไม่รู้อายุ
+    await refuse(un, "SELF", undefined, "AGE_UNKNOWN", "ไม่รู้อายุ + SELF");
+    await refuse(un, "SELF", true, "GUARDIAN_REQUIRED", "ไม่รู้อายุ + SELF ประกาศผู้เยาว์");
+    // F7: ที่เก็บบอกผู้ใหญ่ + คำขอประกาศผู้เยาว์
+    await refuse(da, "SELF", true, "AGE_CONFLICT", "วันเกิดผู้ใหญ่ + SELF ประกาศผู้เยาว์");
+    await refuse(da, "GUARDIAN", true, "AGE_CONFLICT", "วันเกิดผู้ใหญ่ + GUARDIAN ประกาศผู้เยาว์");
+    await refuse(ca, "SELF", true, "AGE_CONFLICT", "ประกาศผู้ใหญ่ที่เก็บ + SELF ประกาศผู้เยาว์");
+    await refuse(ca, "GUARDIAN", true, "AGE_CONFLICT", "ประกาศผู้ใหญ่ที่เก็บ + GUARDIAN ประกาศผู้เยาว์");
+    eq((await q(`SELECT 1 FROM "AuditLog" WHERE action = 'trips.waiver.signed' AND "targetId" = ANY($1::text[])`, [b.pax])).length, 0, "audit ก่อนมีการลงนามสำเร็จ");
+    // ลงนามสำเร็จ: ไม่เปลี่ยนสถานะผู้เยาว์ที่เก็บ + ageBasis ตรงที่มา
+    await accept(dm, "GUARDIAN", undefined, [true, "DOB"], "วันเกิดผู้เยาว์ + GUARDIAN");
+    await accept(cm, "GUARDIAN", undefined, [true, "DECLARED_MINOR"], "ประกาศผู้เยาว์ที่เก็บ + GUARDIAN");
+    await accept(un, "SELF", false, [false, "DECLARED_ADULT"], "ไม่รู้อายุ + SELF ประกาศผู้ใหญ่");
+    await accept(ug, "GUARDIAN", true, [true, "DECLARED_MINOR"], "ไม่รู้อายุ + GUARDIAN ประกาศผู้เยาว์");
+    await accept(uu, "GUARDIAN", undefined, [null, "UNKNOWN"], "ไม่รู้อายุ + GUARDIAN");
+    await accept(da, "SELF", undefined, [false, "DOB"], "วันเกิดผู้ใหญ่ + SELF");
+    await accept(ca, "SELF", false, [false, "DECLARED_ADULT"], "ประกาศผู้ใหญ่ที่เก็บ + SELF ประกาศผู้ใหญ่");
+  };
+  await st("MN-1", "X1 + F7 ทางลิงก์ (signPassengerWaiver): ผู้เยาว์ที่เก็บ + SELF ⇒ GUARDIAN_REQUIRED · + GUARDIAN ประกาศผู้ใหญ่ ⇒ AGE_CONFLICT · ไม่รู้อายุ + ประกาศผู้เยาว์ + SELF ⇒ GUARDIAN_REQUIRED · ผู้ใหญ่ที่เก็บ + ประกาศผู้เยาว์ ⇒ AGE_CONFLICT · ปฏิเสธ = ไม่เขียนอะไร · ลงนามสำเร็จไม่เปลี่ยน isMinor/isMinorDeclared และ ageBasis ตรงที่มา", () => ageMatrix("LINK"));
+  await st("MN-2", "X1 + F7 ทางพนักงาน (recordWitnessedWaiver): ตารางเดียวกับ MN-1", () => ageMatrix("STAFF"));
+  await st("MN-3", "X5 + F9: แก้วันเกิดผู้เยาว์→ผู้ใหญ่ ไม่ลบผู้ปกครองของขอบเขต HEALTH · ผู้ใหญ่ให้ความยินยอมสุขภาพเอง ⇒ ปลดผู้ปกครอง HEALTH (WAIVER + หลักฐานลงนามไม่ถูกแตะ) · audit consent_given มี retiredGuardianRef = ตัวอ้างอิงแบบมีกุญแจของผู้ปกครองเดิม (ไม่มีชื่อ)", async () => {
+    needDb(); const b = await mkBooking("PD", ["โตแล้ว"]); const p = b.pax[0]; const t = (await issue(p)).token;
+    V(await submit(t, { expectedRev: 0, fields: fullPD({ fullName: "โตแล้ว", dob: "2011-06-01" }), health: { consent, allergies: "ถั่ว" }, guardian: GD }), "ผู้เยาว์ + ผู้ปกครอง");
+    V(await call("signPassengerWaiver", pctx(), { token: t, idempotencyKey: `w${hex(6)}`, templateHash: tplHash(await curTemplate("PD")), locale: "th", accept: true, signerName: GD.name, signerRole: "GUARDIAN", guardian: GD }), "ผู้ปกครองลงนาม");
+    const grants = async () => asRec(asRec((await pax(p)).guardianConsent)?.grants) ?? {};
+    eq([asRec((await grants()).HEALTH)?.name, asRec((await grants()).WAIVER)?.name], [GD.name, GD.name], "ก่อนแก้");
+    V(await submit(t, { expectedRev: 2, fields: { dob: "1990-05-06" } }), "แก้วันเกิดเป็นผู้ใหญ่");
+    const mid = await pax(p);
+    eq([mid.isMinor, asRec((await grants()).HEALTH)?.name, asRec(asRec(mid.answers)?.health)?.status], [false, GD.name, "PROVIDED"], "หลังแก้วันเกิด: ผู้ปกครอง HEALTH ยังอยู่");
+    V(await submit(t, { expectedRev: 3, health: { consent, allergies: "ถั่ว" } }), "ผู้ใหญ่ยินยอมเอง");
+    const row = await pax(p); const g = asRec(row.guardianConsent) ?? {}; const gr = asRec(g.grants) ?? {};
+    eq([gr.HEALTH, asRec(gr.WAIVER)?.name, asRec(gr.WAIVER)?.relation, g.scopes, asRec(asRec(asRec(row.answers)?.health)?.consent)?.signerRole], [undefined, GD.name, "PARENT", ["WAIVER"], "SELF"], "หลังยินยอมเอง");
+    eq([row.waiverEvidence, row.waiverSignedAt], [mid.waiverEvidence, mid.waiverSignedAt], "หลักฐานลงนามถูกแตะ");
+    const au = await audits("trips.passenger.consent_given", p); const last = au[au.length - 1]?.after ?? {};
+    eq([au.length, last.signerRole, last.guardianRef], [2, "SELF", null], "audit ล่าสุด");
+    ok(typeof last.retiredGuardianRef === "string" && last.retiredGuardianRef.length >= 32 && last.retiredGuardianRef === au[0].after?.guardianRef, `retiredGuardianRef ${fmt(last)} ≠ guardianRef เดิม ${fmt(au[0].after)}`);
+    eq(leaks(JSON.stringify(au)), [], "audit มีชื่อผู้ปกครอง");
+  });
+  await st("MN-4", "X5b: ลงนามเอง (ผู้ใหญ่ตามวันเกิด) แล้วแก้วันเกิดเป็นผู้เยาว์ ⇒ ธงเซ็นใหม่ + audit resign_required + สถานะ NEEDS_RESIGN · แก้กลับเป็นผู้ใหญ่ ⇒ ธงหาย กลับเป็น SIGNED (หลักฐาน SELF+DOB)", async () => {
+    needDb(); const b = await mkBooking("PD", ["สลับอายุ"]); const p = b.pax[0]; const t = (await issue(p)).token;
+    V(await submit(t, { expectedRev: 0, fields: fullPD({ fullName: "สลับอายุ" }) }), "ผู้ใหญ่");
+    V(await call("signPassengerWaiver", pctx(), { token: t, idempotencyKey: `w${hex(6)}`, templateHash: tplHash(await curTemplate("PD")), locale: "th", accept: true, signerName: "สลับอายุ", signerRole: "SELF" }), "เซ็นเอง");
+    const status = async () => asRec(asArr(V(await call("getTripPassengers", staff(), { bookingId: b.bookingId }), "get").passengers)[0]?.waiver)?.status;
+    eq([await status(), asRec(asRec((await pax(p)).waiverEvidence)?.minor)?.ageBasis], ["SIGNED", "DOB"], "ก่อน");
+    V(await submit(t, { expectedRev: 2, fields: { dob: "2012-01-01" } }), "เป็นผู้เยาว์");
+    eq([asRec(asRec((await pax(p)).answers)?.waiverResign)?.reason, await status(), (await q(`SELECT 1 FROM "AuditLog" WHERE action = 'trips.waiver.resign_required' AND "targetId" = $1`, [p])).length], ["MINOR", "NEEDS_RESIGN", 1], "ผู้เยาว์");
+    V(await submit(t, { expectedRev: 3, fields: { dob: "1990-05-06" } }), "กลับเป็นผู้ใหญ่");
+    eq([asRec((await pax(p)).answers)?.waiverResign, await status()], [undefined, "SIGNED"], "ผู้ใหญ่");
+  });
+  await st("MN-5", "X5a: ส่ง guardian โดยไม่มีความยินยอมสุขภาพในคำขอเดียวกัน (ผู้เยาว์) หรือผู้เดินทางเป็นผู้ใหญ่ ⇒ VALIDATION GUARDIAN_WITHOUT_CONSENT · ไม่เขียน · ผู้ปกครองที่ให้ความยินยอมไว้เดิมไม่ถูกแทน", async () => {
+    needDb(); const b = await mkBooking("PD", ["เด็ก ผป", "ผู้ใหญ่ ผป"]); const [kid, adult] = b.pax; const tk = (await issue(kid)).token, ta = (await issue(adult)).token;
+    codeR(await submit(tk, { expectedRev: 0, fields: fullPD({ dob: "2015-01-01" }), guardian: GD }), "VALIDATION", "ผู้เยาว์ไม่มีความยินยอม", "GUARDIAN_WITHOUT_CONSENT");
+    codeR(await submit(ta, { expectedRev: 0, fields: fullPD(), health: { consent, allergies: "ไข่" }, guardian: GD }), "VALIDATION", "ผู้ใหญ่", "GUARDIAN_WITHOUT_CONSENT");
+    eq([revOf(await pax(kid)), (await pax(kid)).guardianConsent, revOf(await pax(adult)), asRec((await pax(adult)).answers)?.health], [0, null, 0, undefined], "ไม่เขียน");
+    V(await submit(tk, { expectedRev: 0, fields: fullPD({ dob: "2015-01-01" }), health: { consent, allergies: "ไข่" }, guardian: GD }), "ผู้ปกครองคนแรกยินยอม");
+    const g0 = (await pax(kid)).guardianConsent;
+    codeR(await submit(tk, { expectedRev: 1, guardian: { name: "ผู้ปกครอง คนใหม่", relation: "LEGAL_GUARDIAN" } }), "VALIDATION", "เปลี่ยนผู้ปกครองโดยไม่ยินยอม", "GUARDIAN_WITHOUT_CONSENT");
+    eq([(await pax(kid)).guardianConsent, revOf(await pax(kid))], [g0, 1], "ผู้ปกครองเดิม");
+  });
+  groupLine("MN");
+
+  // ═══════════════ PJ. งานลบ: ค้นพบหน่วย · แจ้งเตือน · ค่าตั้งเสีย · เขตเวลา · รอบเลื่อนเร็วขึ้น · deadline (X2 X3 X4 · F4 F6 F10) ═══════════════
+  console.log("\n── PJ: งานลบ — ค้นพบ/แจ้งเตือน/ค่าตั้ง/เขตเวลา (r4) ──");
+  const opsOf = async (unit: string) => q<{ level: string; message: string; detail: string | null }>(`SELECT level, message, detail FROM "OpsEvent" WHERE source = 'trips.pdpa' AND "tenantId" = $1 AND detail LIKE $2 ORDER BY "createdAt"`, [tA, `%${unit}%`]);
+  await st("PJ-1", "X3 ค้นพบหน่วย: หน่วยที่งานอย่างเดียวคือวัตถุค้าง 1 ชิ้น ⇒ ถูกเยี่ยม (ลบ+ยืนยัน · event 1) · หน่วยที่งานอย่างเดียวคือคำขอ ERASE ค้าง IN_PROGRESS ของคนที่ถูกลบแล้ว ⇒ ถูกเยี่ยม (DONE + PASSENGER_ALL 1)", async () => {
+    needDb(); const a = await mkUnitR4("j1a"), c = await mkUnitR4("j1b");
+    const ba = await plantBk(a.key, { status: "CONFIRMED", pax: 1 }); const d = await plantDocRow(a.unit, ba.pax[0], { deletedAt: D0, consent: MARKED });
+    const bc = await plantBk(c.key, { status: "CONFIRMED", pax: 1, purgedPax: true }); const rq = await plantReq(c.unit, bc.pax[0], "IN_PROGRESS", new Date("2027-06-01T00:00:00Z"));
+    const v = V(await purge(hrs(D0, 1)), "งานลบ");
+    eq([await objDelOf(d.id), STORE.has(d.path), await faN(d.fileId), await evN(d.id), failedOf(v, a.unit)], [true, false, 0, 1, []], "หน่วยวัตถุค้าง");
+    eq([(await reqRow(rq)).status, await evN(`${bc.pax[0]}:ALL`), await evN(`booking:${bc.bookingId}`), failedOf(v, c.unit)], ["DONE", 1, 0, []], "หน่วยคำขอค้าง");
+  });
+  await st("PJ-2", "X2 แจ้งเตือน + F10: วัตถุค้างเกิน 24 ชม. หรือคำขอ ERASE เลยกำหนด ⇒ OpsEvent ERROR source trips.pdpa · detail = {unitId, pendingObjects, overdueEraseRequests} เท่านั้น (ไม่มีรหัสคน/ไฟล์/path) · รันซ้ำทันที = ยังแถวเดียวต่อหน่วย · ค้าง 23 ชม. + คำขอยังไม่เลยกำหนด ⇒ ไม่แจ้ง", async () => {
+    needDb(); const x = await mkUnitR4("j2x"), y = await mkUnitR4("j2y"), z = await mkUnitR4("j2z"); const at = hrs(D0, 25);
+    const bx = await plantBk(x.key, { status: "CONFIRMED", pax: 1 }); const dx = await plantDocRow(x.unit, bx.pax[0], { deletedAt: D0, consent: MARKED });
+    const by = await plantBk(y.key, { status: "CONFIRMED", pax: 1 }); const dy = await plantDocRow(y.unit, by.pax[0], { deletedAt: hrs(at, -23), consent: MARKED });
+    await plantReq(y.unit, by.pax[0], "IN_PROGRESS", hrs(at, 24));
+    const bz = await plantBk(z.key, { status: "CONFIRMED", pax: 1 }); await plantReq(z.unit, bz.pax[0], "IN_PROGRESS", hrs(at, -24));
+    const v1 = await failing(async () => V(await purge(at), "รอบแรก"));
+    ok(failedOf(v1, x.unit).includes("STORAGE_DELETE_FAILED") && failedOf(v1, y.unit).includes("STORAGE_DELETE_FAILED"), `ตัวควบคุม: หน่วย x/y ต้องถูกเยี่ยมและลบไม่สำเร็จ ${fmt(v1.failed)}`);
+    const ox = await opsOf(x.unit), oz = await opsOf(z.unit);
+    eq([ox.length, ox[0]?.level, (await opsOf(y.unit)).length, oz.length, oz[0]?.level], [1, "ERROR", 0, 1, "ERROR"], "แถวแจ้งเตือน");
+    eq([JSON.parse(String(ox[0].detail)), JSON.parse(String(oz[0].detail))], [{ unitId: x.unit, pendingObjects: 1, overdueEraseRequests: 0 }, { unitId: z.unit, pendingObjects: 0, overdueEraseRequests: 1 }], "detail");
+    const text = JSON.stringify([ox, oz]);
+    ok(![dx.id, dx.fileId, dx.path, dx.path.split("/").pop() ?? "x", bx.pax[0], bx.bookingId, bz.pax[0], "ผู้เดินทาง r4"].some((s) => text.includes(s)), "แจ้งเตือนมีรหัสคน/ไฟล์/path");
+    await failing(async () => V(await purge(at), "รอบสองทันที"));
+    eq([(await opsOf(x.unit)).length, (await opsOf(y.unit)).length, (await opsOf(z.unit)).length], [1, 0, 1], "F10: ไม่แจ้งซ้ำใน 24 ชม.");
+    V(await purge(hrs(at, 1)), "เก็บกวาด");
+    eq([await objDelOf(dx.id), await objDelOf(dy.id)], [true, true], "เก็บกวาด");
+  });
+  await st("PJ-3", "F4: ค่าตั้งอายุเก็บของหน่วยเสีย ⇒ failed SETTINGS_INVALID_RETENTION · ข้ามเฉพาะขั้น 2–3 (ไฟล์/เลขเอกสารที่ครบกำหนดยังอยู่) · ขั้น 1 (ผู้จองหมดเวลา) 4 (วัตถุค้าง) 5 (ปิดคำขอ ERASE) ยังทำ", async () => {
+    needDb(); const { key, unit } = await mkUnitR4("j3");
+    await insertRow("SettingValue", { id: rid("sv"), tenantId: tA, key: "trips.pdpa.retention", scope: "UNIT", scopeId: unit, value: JSON.stringify({ passportImageDays: "เสีย" }), updatedAt: new Date() });
+    const bl = await plantBk(key, { status: "CONFIRMED", pax: 1, endsAt: endsRT }); const pl = bl.pax[0];
+    await pool.query(`UPDATE "TripPassenger" SET "docNumberEnc" = 'x', "retainUntil" = $2 WHERE id = $1`, [pl, new Date("2027-01-01T00:00:00Z")]);
+    const live = await plantDocRow(unit, pl, { kind: "PASSPORT", retainUntil: new Date("2027-01-01T00:00:00Z") });
+    const pend = await plantDocRow(unit, pl, { deletedAt: D0, consent: MARKED });
+    const be = await plantBk(key, { status: "CONFIRMED", pax: 1, purgedPax: true }); const rq = await plantReq(unit, be.pax[0], "IN_PROGRESS", new Date("2027-06-01T00:00:00Z"));
+    const bx = await plantBk(key, { pax: 0 });
+    const v = V(await purge(new Date("2029-01-01T00:00:00Z")), "งานลบ");
+    ok(failedOf(v, unit).includes("SETTINGS_INVALID_RETENTION"), `failed ของหน่วย ${fmt(failedOf(v, unit))}`);
+    eq([(await docRow(live.id))?.deletedAt, STORE.has(live.path), (await pax(pl)).docNumberEnc], [null, true, "x"], "ขั้น 2–3 ต้องข้าม");
+    eq([await objDelOf(pend.id), STORE.has(pend.path), await evN(pend.id)], [true, false, 1], "ขั้น 4");
+    eq([(await reqRow(rq)).status, await evN(`${be.pax[0]}:ALL`)], ["DONE", 1], "ขั้น 5");
+    eq([!!(await bkRow(bx.bookingId)).piiPurgedAt, await evN(`booking:${bx.bookingId}`)], [true, 1], "ขั้น 1");
+  });
+  await st("PJ-4", "F6/X3 เขตเวลาที่ Postgres ไม่รู้จัก (\"america/new_york\" ตัวเล็ก): งานไม่ล้ม · หน่วยนั้นใช้ Asia/Bangkok ทั้ง SQL และ JS (ไม่ลบที่ 16:59:59Z · ลบที่ 17:00Z ของ E+30 เวลาไทย) + failed TIMEZONE_UNKNOWN_TO_DB · หน่วยอื่น (เขตเวลาขยะ · ปกติ) ยังถูกทำตามปกติ", async () => {
+    needDb(); const ny = await mkUnitR4("j4n", "america/new_york"), junk = await mkUnitR4("j4j", "Mars/Phobos"), okU = await mkUnitR4("j4o");
+    const docs: { unit: string; id: string; path: string }[] = [];
+    for (const u of [ny, junk, okU]) { const b = await plantBk(u.key, { status: "CONFIRMED", pax: 1, endsAt: endsRT }); docs.push({ unit: u.unit, ...(await plantDocRow(u.unit, b.pax[0], { kind: "PASSPORT", retainUntil: new Date("2027-01-01T00:00:00Z") })) }); }
+    const due = instAfter(addDays(E, 30));
+    const v1 = V(await purge(secs(due, -1)), "ก่อนกำหนด");
+    eq(await Promise.all(docs.map(async (d) => [(await docRow(d.id))?.deletedAt, new Date(String((await docRow(d.id))?.retainUntil)).toISOString()])), docs.map(() => [null, due.toISOString()]), "ก่อนกำหนด: ไม่ลบ + retainUntil = กำหนดตามเวลาไทย");
+    eq([failedOf(v1, ny.unit), failedOf(v1, junk.unit), failedOf(v1, okU.unit)], [["TIMEZONE_UNKNOWN_TO_DB"], [], []], "failed");
+    const v2 = V(await purge(due), "ถึงกำหนด");
+    eq(await Promise.all(docs.map(async (d) => [!!(await docRow(d.id))?.deletedAt, STORE.has(d.path)])), docs.map(() => [true, false]), "ถึงกำหนด: ลบครบทุกหน่วย");
+    ok(Number(v2.documents) >= 3, `documents ${fmt(v2.documents)}`);
+  });
+  await st("PJ-5", "X3 รอบเลื่อนเร็วขึ้น 20 วัน (หน่วยไม่มีอย่างอื่นครบกำหนด): งานถัดไปใช้กำหนดใหม่ E′+N — ไฟล์: ไม่ลบก่อน 1 วินาที · ลบตรงกำหนดใหม่ (ก่อน retainUntil ที่เก็บไว้เดิม) · เลขเอกสารในแถว: ลบที่ E′+365", async () => {
+    needDb(); const { key, unit } = await mkUnitR4("j5");
+    await setV(tA, [{ key: "trips.tax.vatRegistered", scope: "UNIT", scopeId: unit, value: VATREG },
+      { key: "trips.pax.fields", scope: "PRODUCT", scopeId: PRD[key].id, value: FIELDS(["fullName", "docType", "docNumber"]) },
+      { key: "trips.pdpa.healthDataProducts", scope: "PRODUCT", scopeId: PRD[key].id, value: false }, { key: "trips.waiver.requiredFor", scope: "PRODUCT", scopeId: PRD[key].id, value: "NONE" }]);
+    const b = await mkBooking(key, ["ย้ายรอบ"], { endsAt: endsRT }); const p = b.pax[0]; const t = (await issue(p, "oa", NOW0, unit)).token;
+    V(await submit(t, { expectedRev: 0, fields: { fullName: "ย้ายรอบ", docType: "PASSPORT", docNumber: "MV1234567" } }), "submit");
+    const d = String(V(await upload(t, { kind: "PASSPORT" }), "upload").documentId);
+    const d0 = await docRow(d); const path = (await q<{ path: string }>(`SELECT path FROM "FileAsset" WHERE id = $1`, [d0?.fileId]))[0]?.path ?? "";
+    eq([new Date(String(d0?.retainUntil)).toISOString(), new Date(String((await pax(p)).retainUntil)).toISOString()], [instAfter(addDays(E, 30)).toISOString(), instAfter(addDays(E, 365)).toISOString()], "กำหนดเดิม (E = 11 มี.ค.)");
+    await pool.query(`UPDATE "TripDeparture" SET "startsAt" = "startsAt" - interval '20 days', "endsAt" = "endsAt" - interval '20 days', "updatedAt" = now() WHERE id = $1`, [b.dep]);
+    const E2 = addDays(E, -20); const due = instAfter(addDays(E2, 30));
+    V(await purge(secs(due, -1)), "ก่อนกำหนดใหม่");
+    ok(!(await docRow(d))?.deletedAt && STORE.has(path), "ลบก่อนกำหนดใหม่");
+    const v = V(await purge(due), "กำหนดใหม่");
+    eq([!!(await docRow(d))?.deletedAt, STORE.has(path), failedOf(v, unit), due.getTime() < new Date(String(d0?.retainUntil)).getTime()], [true, false, [], true], "ไฟล์ลบที่กำหนดใหม่");
+    const due2 = instAfter(addDays(E2, 365));
+    V(await purge(secs(due2, -1)), "ก่อนกำหนดใหม่ของแถว"); ok((await pax(p)).docNumberEnc, "เลขเอกสารถูกลบก่อนกำหนดใหม่");
+    V(await purge(due2), "กำหนดใหม่ของแถว");
+    eq([(await pax(p)).docNumberEnc, (await pax(p)).docLast4], [null, "4567"], "เลขเอกสารลบที่ E′+365 (ก่อน E+365 เดิม)");
+  });
+  await st("PJ-6", "X4 deadline: deadline ที่ผ่านไปแล้ว ⇒ ไม่ทำชิ้นใด + more true (ทั้งต่อหน่วยและทั้งงาน) · ไม่มี deadline ⇒ ทำจนหมด more false", async () => {
+    needDb(); const { key, unit } = await mkUnitR4("j6"); const b = await plantBk(key, { status: "CONFIRMED", pax: 1, endsAt: endsRT });
+    const d = await plantDocRow(unit, b.pax[0], { kind: "PASSPORT", retainUntil: new Date("2027-01-01T00:00:00Z") }); const at = new Date("2029-01-01T00:00:00Z");
+    const r1 = await purgeU(unit, at, { deadline: Date.now() - 1 });
+    eq([r1.documents, r1.more, (await docRow(d.id))?.deletedAt], [0, true, null], "ต่อหน่วย");
+    const r2 = V(await purge(at, { deadline: Date.now() - 1 }), "ทั้งงาน");
+    eq([r2.units, r2.documents, r2.more, (await docRow(d.id))?.deletedAt], [0, 0, true, null], "ทั้งงาน");
+    const r3 = await purgeU(unit, at);
+    eq([r3.documents, r3.more, !!(await docRow(d.id))?.deletedAt, asArr(r3.failed).length], [1, false, true, 0], "ไม่มี deadline");
+  });
+  await st("PJ-7", "X2 ค่าคงที่ท้ายรัน: ผู้เดินทางที่ถูกลบทั้งคนของร้านทดสอบไม่มี TripDocument ที่ยังไม่ถูกทำเครื่องหมายลบ · event BOOKER/PASSENGER_ALL ไม่ซ้ำคีย์ และ PASSENGER_ALL ทุกใบเป็นของผู้เดินทางที่ไม่มีวัตถุค้าง", async () => {
+    const live = await q<{ id: string }>(`SELECT d.id FROM "TripDocument" d JOIN "TripPassenger" p ON p.id = d."passengerId" WHERE d."tenantId" = ANY($1::text[]) AND d."deletedAt" IS NULL AND (COALESCE(p.answers->'purged'->'stages', '[]'::jsonb) ? 'ALL')`, [tenantIds]);
+    eq(live.map((x) => x.id), [], "ไฟล์ที่ยังเปิดได้ของคนที่ถูกลบแล้ว");
+    const all = (await outbox("trips.document.purged")).filter((e) => e.payload.kind === "PASSENGER_ALL");
+    ok(all.length > 0, "ไม่มี event PASSENGER_ALL ให้ตรวจ");
+    const early = await q<{ id: string }>(`SELECT d.id FROM "TripDocument" d WHERE d."passengerId" = ANY($1::text[]) AND (d."deletedAt" IS NULL OR (d.consent->'objDel') IS DISTINCT FROM 'true'::jsonb)`, [all.map((e) => String(e.payload.passengerId))]);
+    eq(early.map((x) => x.id), [], "PASSENGER_ALL ออกทั้งที่ยังมีวัตถุไม่ยืนยัน");
+    eq(new Set(all.map((e) => e.idempotencyKey)).size, all.length, "คีย์ซ้ำ");
+  });
+  groupLine("PJ");
 
   // ═══════════════ LE. สแกนการรั่ว ═══════════════
   console.log("\n── LE: สแกนการรั่ว (ตัวบ่งชี้ที่ปลูก · token) ──");
