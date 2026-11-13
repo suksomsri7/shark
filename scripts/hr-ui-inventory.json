@@ -9800,6 +9800,29 @@
    "wo": "H3.4",
    "oracle": "qc-hr-h3.4",
    "note": "บันทึกรุ่นเครื่อง/เพดาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-ot-kept",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "คำขอ OT ที่ยกเลิกหลังรอบเงินเดือนคิดวันนั้นแล้ว และยังคงส่วนค่าทำงานในวันหยุด",
+   "roles": [
+    "owner",
+    "manager",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "นาทีเท่านั้น (ไม่มี ฿) — fix r3 H7"
   }
  ]
 }

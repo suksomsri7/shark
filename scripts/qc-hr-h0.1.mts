@@ -408,10 +408,15 @@ function runStatic(): void {
   // S4.3
   const crmSha = sha(seg(pay, "// CRM C3.3 ▸ ทางเข้าของคอมมิชชัน CRM", "// ◂ CRM C3.3", true));
   // ORACLE-EDIT (H2.5 r3 · controller-authorized): markPaid hashed with exactly the 3 marked period-lock lines (`HR H2.5 r3`) removed — same as qc-hr-h1.3 S5.6 / qc-hr-h0.6 S8.4
+  // ORACLE-EDIT (H3.4 fix round 3 H4): markPaid may carry EXACTLY ONE added line — the v2 dispatch line below, compared as a full string (count === 1); any other
+  //   added/changed line still trips the pin · negative self-test: the same block with that line twice must NOT hash to the pin
+  const H34_MP_LINE = "  if ((await runEngineVersion(ctx, runId)) === 2) return markPaidV2(ctx, runId); // HR H3.4 ◂ fix r3 H1: รอบรุ่น 2 จ่ายได้เมื่อปิดงานแล้ว (ตรวจใต้ล็อกงวด)";
+  const stripH34 = (ls: string[]) => (ls.filter((l) => l === H34_MP_LINE).length === 1 ? ls.filter((l) => l !== H34_MP_LINE) : ls);
   const mpBlk = seg(pay, "// ── จ่ายแล้ว (APPROVED→PAID) ──", "// ◂ CRM C3.3", true);
   const mpMarked = mpBlk.split("\n").filter((l) => /\/\/ HR H2\.5 r3 [▸◂]/.test(l)).length;
-  // ORACLE-EDIT (H3.4 fix round 2 G5): the one marked posting-guard line of markPaid (`// HR H3.4 ◂ fix r2 G5`) is stripped too
-  const mpSha = mpMarked === 3 ? sha(mpBlk.split("\n").filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l) && !/\/\/ HR H3\.4 ◂ fix r2 G5/.test(l)).join("\n")) : "∅";
+  const mpHash = (ls: string[]) => sha(stripH34(ls).filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l)).join("\n"));
+  const mpLines = mpBlk.split("\n");
+  const mpSha = mpMarked === 3 && (!mpLines.includes(H34_MP_LINE) || mpHash([...mpLines, H34_MP_LINE]) !== MARKPAID_BLOCK_SHA) ? mpHash(mpLines) : "∅";
   chk("S4.3", crmSha === CRM_BLOCK_SHA && mpSha === MARKPAID_BLOCK_SHA, "both blocks = base", `crmEntry=${crmSha === CRM_BLOCK_SHA} markPaid=${mpSha === MARKPAID_BLOCK_SHA}`);
   // S4.4 — UI: the two buttons, wired, DRAFT only. Candidate files: payroll-ui.tsx + any hr/*.tsx that uses the new actions.
   const hrDir = join(ROOT, "src/lib/modules/hr");

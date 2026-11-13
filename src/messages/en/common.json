@@ -671,7 +671,8 @@
       "afterHours": "File after the work within (hours)",
       "maxAheadDays": "File ahead up to (days)",
       "otRoundMin": "Round paid minutes down by (minutes)",
-      "policySave": "Save OT rules"
+      "policySave": "Save OT rules",
+      "keptHoliday": "Cancelled — the {n} holiday-work minutes actually worked are still paid (not paid twice by the payroll run)"
     },
     "correction": {
       "tab": "Time corrections",
@@ -1221,7 +1222,8 @@
       "done": "Saved",
       "created": "Pay run created",
       "approved": "Approved",
-      "synced": "Work hours pulled and deductions calculated"
+      "synced": "Work hours pulled and deductions calculated",
+      "rv_RECEIVABLE_ATT": "Employee receivable (late/absence deduction not collectable from the final wage)"
     },
     "attpay": {
       "policyTitle": "Late / early-out / absence deductions",

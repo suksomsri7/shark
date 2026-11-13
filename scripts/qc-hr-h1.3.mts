@@ -768,9 +768,15 @@ function runStatic(): void {
     const r = sha(rd(RULES_FILE)) === RULES_SHA;
     const ci = sha(seg(pay, "function computeItem(", "\n}\n", true)) === COMPUTE_ITEM_SHA;
     // ORACLE-EDIT (H2.5 r3 · controller-authorized): strip only the 3 marked period-lock lines (`HR H2.5 r3`) added to markPaid, then hash = base
+  // ORACLE-EDIT (H3.4 fix round 3 H4): markPaid may carry EXACTLY ONE added line — the v2 dispatch line below, compared as a full string (count === 1); any other
+  //   added/changed line still trips the pin · negative self-test: the same block with that line twice must NOT hash to the pin
+  const H34_MP_LINE = "  if ((await runEngineVersion(ctx, runId)) === 2) return markPaidV2(ctx, runId); // HR H3.4 ◂ fix r3 H1: รอบรุ่น 2 จ่ายได้เมื่อปิดงานแล้ว (ตรวจใต้ล็อกงวด)";
+  const stripH34 = (ls: string[]) => (ls.filter((l) => l === H34_MP_LINE).length === 1 ? ls.filter((l) => l !== H34_MP_LINE) : ls);
     const mpBlk = seg(pay, "// ── จ่ายแล้ว (APPROVED→PAID) ──", "// ◂ CRM C3.3", true);
     const mpMarked = mpBlk.split("\n").filter((l) => /\/\/ HR H2\.5 r3 [▸◂]/.test(l));
-    const mp = mpMarked.length === 3 && sha(mpBlk.split("\n").filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l) && !/\/\/ HR H3\.4 ◂ fix r2 G5/.test(l) /* ORACLE-EDIT (H3.4 fix round 2 G5): the one marked posting-guard line of markPaid is stripped too */).join("\n")) === MARKPAID_BLOCK_SHA;
+    const mpHash = (ls: string[]) => sha(stripH34(ls).filter((l) => !/\/\/ HR H2\.5 r3 [▸◂]/.test(l)).join("\n"));
+    const mpLines = mpBlk.split("\n");
+    const mp = mpMarked.length === 3 && mpHash(mpLines) === MARKPAID_BLOCK_SHA && (!mpLines.includes(H34_MP_LINE) || mpHash([...mpLines, H34_MP_LINE]) !== MARKPAID_BLOCK_SHA);
     const h06 = rd(H06_ORACLE);
     const i = h06.indexOf("  // S8.4\n");
     const blk = i >= 0 ? h06.slice(i, h06.indexOf("\n  }\n", i) + 4) : "";

@@ -229,7 +229,16 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
       const was = cutBlocks(fileAt(BASE, f));
       return now.rest !== null && was.rest !== null && now.rest === was.rest && now.names.length > 0 && now.names.every((n) => GATE_READERS.has(n));
     };
-    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p))));
+    // ORACLE-EDIT (H3.4 fix round 3 H5, controller ruling): attendance-pay.ts may carry exactly the two marked leaver-targeting lines (one import · the
+    //   `periodKey:` line of the corrected row) — undoing exactly those two lines must give the base bytes
+    const AP_IMPORT = 'import { leaverDraftPeriodInTx } from "./payroll"; // HR H3.4 ◂ fix r3 H5';
+    const AP_TARGET = "                  periodKey: (await leaverDraftPeriodInTx(tx as never, ctx, e.id, P)) ? P : target, // HR H3.4 ◂ fix r3 H5: คนที่ออกในงวด P · รอบ P ยังร่าง ⇒ งวด P";
+    const apOnlyLeaver = (f: string) => {
+      const now = rd(f).split("\n");
+      if (now.filter((x) => x === AP_IMPORT).length !== 1 || now.filter((x) => x === AP_TARGET).length !== 1) return false;
+      return now.filter((x) => x !== AP_IMPORT).map((x) => (x === AP_TARGET ? "                  periodKey: target," : x)).join("\n") === fileAt(BASE, f);
+    };
+    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p)) && !(p === `${H}attendance-pay.ts` && apOnlyLeaver(p))));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
   }
   {
@@ -727,5 +736,63 @@ export async function runFixRound2(X: FixEnv): Promise<void> {
     const az = await approve(c, cr.value?.id, A.pay2);
     ck("S4.35", { cancelled: !!cn?.ok, x: !ax.ok && codeOf(ax) === "SAME_PERSON", y: !ay.ok && codeOf(ay) === "SAME_PERSON", z: az.ok }, "makers list", `${short(cn, 40)} ${shown(ax)} ${shown(ay)} ${shown(az)}`);
     if (az.ok) await PY("reverseRun", c, cr.value?.id ?? "∅", "qc cleanup", A.owner);
+  });
+}
+
+// ═════════════════════════ fix round 3 (controller H1–H3) ═════════════════════════
+export const FIX3_CHECKS = `
+S4.36|H1|C|R|[db] (fix r3 H1) approve with a failing JV post ∥ markPaid 5–300 ms later ×4 ⇒ never PAID without JV · run back to DRAFT · no JV · no carry
+S4.37|H2|C|R|[db] (fix r3 H2/H3) shop without an accounting system: approve ∥ approve ×4 ⇒ one finished run (never DRAFT again) · carry once · losers NOT_DRAFT · no post_failed audit
+`.trim();
+
+export async function runFixRound3(X: FixEnv & { T2: string; sysIn: (t: string, n: string) => Promise<string>; meIn: (t: string, s: string, n: string, o?: Record<string, unknown>) => Promise<string> }): Promise<void> {
+  const { P, TT, ck, T, sys, me, adj, PY, rows, runRow, V, A, u1 } = X;
+  const SEP = "2031-09";
+  const codeOf = (r: { value: Any }) => String(r.value?.code ?? "");
+  const shown = (r: { ok: boolean; text: string }) => (r.ok ? "ok" : `"${short(r.text, 50)}"`);
+  const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const guard = async (id: string, fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (e) {
+      ck(id, { crashed: false }, "no crash", `THROW ${errText(e)}`);
+    }
+  };
+  // ── S4.36 H1 ──
+  await guard("S4.36", async () => {
+    const s = await sys("ทีมจ่ายระหว่างลงบัญชี");
+    const c = { tenantId: TT, systemId: s };
+    await PY("setPayrollEngine", c, V.owner, { engineVersion: 2 }, { now: X.N_OCT1 });
+    const e1 = await me(s, "จ่ายเร็ว", { unitId: u1 });
+    await P.hrSalaryProfile.create({ data: { tenantId: TT, systemId: s, employeeId: e1, baseSalarySatang: 1500000, ssoEligible: true, personalDeductionJson: { spouse: false, children: 0 } } });
+    await adj(s, e1, SEP, "DEDUCTION", 400000);
+    const cr = await PY("createPayrollRunV2", c, V.pay1, { periodKey: SEP, payDate: X.PAY_SEP }, { now: X.N_OCT1, actor: A.pay1 });
+    const id = cr.value?.id as string | undefined;
+    const bad: string[] = [];
+    for (const delay of [5, 40, 120, 300]) {
+      const [ap, mp] = await Promise.all([PY("approveRun", c, id ?? "∅", undefined, A.pay3, { __failJournal: true }), sleepMs(delay).then(() => PY("markPaid", c, id ?? "∅"))]);
+      const r = await runRow(id);
+      const carry = Number((await rows(`SELECT count(*)::int AS n FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD'`, s))[0]?.n ?? -1);
+      if (!(r?.status === "DRAFT" && !r?.journalEntryId && carry === 0 && !mp.ok && codeOf(ap) === "POST_FAILED")) bad.push(`d${delay}:${r?.status}/${r?.journalEntryId ? "jv" : "-"}/c${carry}/${shown(mp)}/${codeOf(ap)}`);
+    }
+    ck("S4.36", { created: cr.ok, never: bad.length === 0 }, "4/4 restored, markPaid refused", bad.join(" ‖ ") || "4/4");
+  });
+  // ── S4.37 H2/H3 (tenant without an accounting system) ──
+  await guard("S4.37", async () => {
+    const s = await X.sysIn(X.T2, "ทีมไม่มีบัญชี");
+    const c = { tenantId: X.T2, systemId: s };
+    await PY("setPayrollEngine", c, V.other, { engineVersion: 2 }, { now: X.N_OCT1 });
+    const e1 = await X.meIn(X.T2, s, "ไม่มีบัญชี", {});
+    await P.hrSalaryProfile.create({ data: { tenantId: X.T2, systemId: s, employeeId: e1, baseSalarySatang: 1500000, ssoEligible: true, personalDeductionJson: { spouse: false, children: 0 } } });
+    await P.hrPayAdjustment.create({ data: { tenantId: X.T2, systemId: s, employeeId: e1, periodKey: SEP, kind: "DEDUCTION", amountSatang: 400000, status: "APPROVED", requestedById: A.other.userId, decidedById: A.other.userId, decidedAt: new Date("2031-06-01T00:00:00Z"), note: `qc ${X.tag}` } });
+    const cr = await PY("createPayrollRunV2", c, V.other, { periodKey: SEP, payDate: X.PAY_SEP }, { now: X.N_OCT1, actor: A.other });
+    const id = cr.value?.id as string | undefined;
+    const res = await Promise.all([0, 1, 2, 3].map(() => PY("approveRun", c, id ?? "∅", undefined, A.other)));
+    const r = await runRow(id);
+    const fin = (await rows(`SELECT ("stepsJson"->>'finalized') AS f FROM "HrPayrollRun" WHERE id = $1`, id ?? "∅"))[0]?.f;
+    const carry = Number((await rows(`SELECT count(*)::int AS n FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text = 'CARRY_FORWARD'`, s))[0]?.n ?? -1);
+    const falseFail = await P.auditLog.count({ where: { tenantId: X.T2, action: "hr.payroll.post_failed" } }).catch(() => -1);
+    const losers = res.filter((x) => !x.ok);
+    ck("S4.37", { one: res.filter((x) => x.ok).length === 1, finished: r?.status === "APPROVED" && fin === "true", carry: carry === 1, losers: losers.length === 3 && losers.every((x) => codeOf(x) === "NOT_DRAFT"), noFalseAudit: falseFail === 0 }, "one finished · carry once · NOT_DRAFT", `${res.map(shown).join(" ")} st=${r?.status} fin=${fin} carry=${carry} audit=${falseFail}`);
   });
 }

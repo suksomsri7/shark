@@ -17,7 +17,7 @@ import {
   PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, fileAt, srcFiles, makeRegistry, qc4Env, makeFixtures, cleanupFx,
   vOf, fitnessNoEnv, importsOf, jsonOf, testidsOf, loadOpt, modState, msgParity, tokensOnly, holdAdvisory, frozenControls,
 } from "./qc-hr-lib.mjs";
-import { FIX_CHECKS, FIX2_CHECKS, fnBody, lineStr, runFixRound1, runFixRound2, runPureH34, runStaticH34 } from "./qc-hr-h3.4-lib.mjs"; // ORACLE-EDIT (H3.4 fix round 1): controller F1–F10 + coverage list — checks live in the lib (file size)
+import { FIX_CHECKS, FIX2_CHECKS, FIX3_CHECKS, fnBody, lineStr, runFixRound1, runFixRound2, runFixRound3, runPureH34, runStaticH34 } from "./qc-hr-h3.4-lib.mjs"; // ORACLE-EDIT (H3.4 fix round 1): controller F1–F10 + coverage list — checks live in the lib (file size)
 
 const SUITE = "qc-hr-h3.4";
 const ARGV = process.argv.slice(2);
@@ -109,6 +109,8 @@ Z1|house|C|G|no residue · ACTIVE law count restored
 S7.5|cov|C|G|[db] (H3.2-guarded, fix r1 coverage) v2 approve before the deductions were synced ⇒ ATTENDANCE_SYNC (H3.2 gate) · run DRAFT
 ${FIX_CHECKS}
 ${FIX2_CHECKS}
+${FIX3_CHECKS}
+S7.7|H5|C|G|[db] (H3.2-guarded, fix r3 H5) leaver: corrected late deduction lands in the leaver's draft period, the draft must be rebuilt, then 2,361 is deducted once in Sept
 S7.6|G2|C|G|[db] (H3.2-guarded, fix r2 G2) stale late deduction bound to a v2 draft: correction → pull → sync waits → rebuild ok (stale left out) → sync supersedes → approve ⇒ corrected 2,361 settled once, no loop
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -494,6 +496,7 @@ async function runDb(): Promise<void> {
   };
   await runFixRound1(FXE);
   await runFixRound2(FXE); // fix round 2 (controller G1–G6)
+  await runFixRound3({ ...FXE, T2, sysIn: (t: string, n: string) => sys(n, t), meIn: (t: string, s: string, n: string, o: Record<string, unknown> = {}) => me(s, n, o, t) }); // fix round 3 (H1–H3)
   // ── S5 races (system B) ──
   const del = async () => {
     for (const r of await liveRuns(sB, SEP)) await pay.deleteDraftRun(cB, r.id, A.owner).catch(() => null);
@@ -539,6 +542,7 @@ async function runDb(): Promise<void> {
     chk("S7.4", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.5", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.6", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
+    chk("S7.7", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
   } else {
     const A_ = (fn: string, ...a: unknown[]) => callMod(AP, F.attPay, fn, a);
     // ORACLE-EDIT (H3.4 builder, phase B): the S5.3/S5.4 race rows (ALLOWANCE 10,000 / 20,000 of eS in 2031-09) outlive their deleted drafts —
@@ -618,11 +622,44 @@ async function runDb(): Promise<void> {
       const s2 = await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
       await pend();
       const a6 = await approve(cB, c6.value?.id, A.pay3);
-      const live = await rows(`SELECT "amountSatang" AS a, status::text AS st, "runId" FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'LATE_RULE' AND status::text = 'APPROVED'`, E.eS);
+      const live = await rows(`SELECT "amountSatang" AS a, status::text AS st, "runId", "periodKey" AS p FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'LATE_RULE' AND status::text = 'APPROVED'`, E.eS);
       const settled = live.reduce((x: number, r: Any) => x + Number(r.a), 0);
-      ck("S7.6", { s0: s0.ok, created: c6.ok && Number(bound0) === 4166, rebuilt: rb.ok, s2: s2.ok, approved: a6.ok, once: settled === 2361 && live.length === 1 }, "no loop · settled 2,361", `${shown(c6)} b0=${bound0} s1=${short(s1.value, 60)} ${shown(rb)} ${shown(a6)} live=${short(live, 80)}`);
+      const i6 = await itemBy(c6.value?.id, E.eS);
+      // ORACLE-EDIT (H3.4 fix round 3 H6): the corrected row lives in the month after the live Sept draft (non-leaver ⇒ P+1) and is not in the Sept run; the Sept item deducts 0
+      ck("S7.6", { s0: s0.ok, created: c6.ok && Number(bound0) === 4166, rebuilt: rb.ok, s2: s2.ok, approved: a6.ok, once: settled === 2361 && live.length === 1, where: live[0]?.p === "2031-10" && live[0]?.runId === null, item: Number(i6?.deductSatang) === 0 }, "no loop · settled 2,361", `${shown(c6)} b0=${bound0} s1=${short(s1.value, 60)} ${shown(rb)} ${shown(a6)} live=${short(live, 80)}`);
       if (a6.ok) await PY("reverseRun", cB, c6.value?.id ?? "∅", "qc cleanup", A.owner);
       else if (c6.value?.id) await pay.deleteDraftRun(cB, c6.value.id, A.owner).catch(() => null);
+      // S7.7 (fix r3 H5): a leaver (end 2031-09-30) — late 20 bound in the Sept draft (2,777) → corrected to late 17 → pull → sync waits → rebuild →
+      //   sync puts the corrected row in Sept itself (the leaver's last period, run still DRAFT) → approve the row (stays in Sept) → approve run refused
+      //   INPUTS_CHANGED (approved row not bound) → rebuild binds it → approve ⇒ Sept item deducts 2,361 exactly once · hand 2,000,000 × 17 / 14,400 = 2,361.11 → 2,361
+      const eL = await me(sB, "ลาออก7", { unitId: u1, endDate: "2031-09-30" });
+      await P.hrSalaryProfile.create({ data: { tenantId: TT, systemId: sB, employeeId: eL, baseSalarySatang: 2000000, ssoEligible: true, personalDeductionJson: { spouse: false, children: 0 } } });
+      const reL = await ent(sB, shB, eL, "2031-09-02", u1);
+      const inL = await att(sB, eL, "IN", bk("2031-09-02", "07:20"), reL);
+      await att(sB, eL, "OUT", bk("2031-09-02", "15:00"), reL);
+      for (const d of ["2031-09-08", "2031-09-15", "2031-09-22", "2031-09-29", "2031-10-01"]) await JG.runAttendanceJobs({ now: bk(d), tenantId: TT });
+      await buildB();
+      await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
+      const pendL = async () => { for (const r of await rows(`SELECT id FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'LATE_RULE' AND status::text = 'PENDING'`, eL)) await pay.decideAdjustment(cB, r.id, "APPROVED", A.owner).catch(() => null); };
+      await pendL();
+      const c7 = await createV2(cB, V.pay1, SEP, PAY_SEP, A.pay1);
+      const b7 = Number((await itemBy(c7.value?.id, eL))?.deductSatang);
+      await P.hrAttendance.updateMany({ where: { id: inL }, data: { at: bk("2031-09-02", "07:17") } });
+      const dL = (await rows(`SELECT id FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND date = '2031-09-02'`, eL))[0]?.id;
+      await JG.recomputeAttendanceDay(cB, V.owner, { dayId: dL ?? "∅", reason: "แก้ผลตรวจ QC" }, { now: N_OCT1 }).catch(() => null);
+      await buildB();
+      await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
+      const rb7 = await PY("recomputeDraftRun", cB, c7.value?.id ?? "∅", A.pay1, { viewer: V.pay1, now: N_OCT1 });
+      await A_("syncAttendanceDeductions", cB, V.owner, { periodKey: SEP }, { now: N_OCT1 });
+      await pendL();
+      const a7a = await approve(cB, c7.value?.id, A.pay3);
+      const rb7b = await PY("recomputeDraftRun", cB, c7.value?.id ?? "∅", A.pay1, { viewer: V.pay1, now: N_OCT1 });
+      const a7 = await approve(cB, c7.value?.id, A.pay3);
+      const i7 = await itemBy(c7.value?.id, eL);
+      const liveL = await rows(`SELECT "amountSatang" AS a, "periodKey" AS p, "runId" FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "sourceType"::text = 'LATE_RULE' AND status::text = 'APPROVED'`, eL);
+      ck("S7.7", { bound: c7.ok && b7 === 2777, rebuilt: rb7.ok && rb7b.ok, refusedFirst: !a7a.ok && codeOf(a7a) === "INPUTS_CHANGED", approved: a7.ok, item: Number(i7?.deductSatang) === 2361, once: liveL.length === 1 && Number(liveL[0]?.a) === 2361 && liveL[0]?.p === SEP && liveL[0]?.runId === c7.value?.id }, "leaver: corrected 2,361 deducted once in Sept", `${shown(c7)} b=${b7} ${shown(a7a)} ${shown(a7)} d=${i7?.deductSatang} live=${short(liveL, 90)}`);
+      if (a7.ok) await PY("reverseRun", cB, c7.value?.id ?? "∅", "qc cleanup", A.owner);
+      else if (c7.value?.id) await pay.deleteDraftRun(cB, c7.value.id, A.owner).catch(() => null);
     }
   }
   // ── S8 v1 ──

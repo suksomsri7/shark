@@ -295,6 +295,7 @@ export async function decideAdjustment(
       await lockRunPeriod(tx, ctx, row.periodKey);
       const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey)); // HR H0.6 ▸ OQ-4 ◂
       let moveTo: string | null = null;
+      if (isAttRow(row) && (await leaverDraftPeriodInTx(tx, ctx, row.employeeId, row.periodKey))) runs.delete(row.periodKey); // HR H3.4 ◂ fix r3 H5: รายการหักสาย/ขาดของคนที่ออกในงวดนี้ อนุมัติแล้วอยู่งวดเดิม (รอบร่างคิดใหม่ผูกได้)
       if (runs.has(row.periodKey)) {
         moveTo = nextRunlessPeriod(row.periodKey, runs);
         if (!moveTo) return { ok: false, reason: `งวด ${row.periodKey} มีรอบจ่ายแล้ว และหางวดถัดไปที่ยังไม่มีรอบจ่ายไม่พบ — ตรวจรอบจ่ายเงินเดือน` };
@@ -1302,7 +1303,7 @@ export async function reverseRun(
 //   🔴 tenantDb().$transaction (ไม่ import prisma ดิบ — ratchet F5.1 เต็มเพดาน) · tx ของ client ที่ $extends ส่งเข้า emitOutbox
 //      ได้ทางชนิดเท่านั้น (runtime มี outboxEvent ครบ และ OutboxEvent อยู่ในทะเบียน scope แบบ tenant)
 export async function markPaid(ctx: Ctx, runId: string): Promise<{ ok: boolean; note: string }> {
-  if (await v2PostingPending(ctx, runId)) return { ok: false, note: RUN2_TEXT.posting }; // HR H3.4 ◂ fix r2 G5: รอบรุ่น 2 ต้องปิดงาน (ลงบัญชี/ยกยอด) ก่อนจ่าย
+  if ((await runEngineVersion(ctx, runId)) === 2) return markPaidV2(ctx, runId); // HR H3.4 ◂ fix r3 H1: รอบรุ่น 2 จ่ายได้เมื่อปิดงานแล้ว (ตรวจใต้ล็อกงวด)
   const paid = await tenantDb(ctx).$transaction(async (tx) => {
     // HR H2.5 r3 ▸ ล็อกงวดก่อนเปลี่ยนสถานะ (คีย์เดียวกับคิดผลการลงเวลาใหม่) ◂
     const per = await tx.hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } }); // HR H2.5 r3 ◂
@@ -1983,6 +1984,7 @@ export async function writeAttendanceDeductionInTx(tx: Prisma.TransactionClient,
   if (!c) return { rejected, created: null };
   if (!Number.isSafeInteger(c.amountSatang) || c.amountSatang < 1 || c.amountSatang > INT || (c.kind !== "DEDUCTION" && c.kind !== "ALLOWANCE")) throw new AttendanceAdjustmentConflict("ATT_BAD_AMOUNT");
   if (!PERIOD_RE.test(c.periodKey) || c.periodKey < w.workPeriodKey) throw new AttendanceAdjustmentConflict("ATT_BAD_INPUT");
+  if (c.periodKey === w.workPeriodKey && (await leaverDraftPeriodInTx(tx, ctx, w.employeeId, c.periodKey))) return { rejected, created: await createLeaverAttRowInTx(tx, ctx, w) }; // HR H3.4 ◂ fix r3 H5: คนที่ออกในงวด P และรอบ P ยังเป็นร่าง ⇒ รายการแก้ไขอยู่งวด P (ไม่ค้างในงวดที่ไม่มีโปรไฟล์)
   const taken = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: c.periodKey, ...liveRunWhere() }, select: { id: true } });
   if (taken) throw new AttendanceAdjustmentConflict("ATT_TARGET_TAKEN");
   const prefix = `att:${w.workPeriodKey}:${w.employeeId}:`;
@@ -2813,6 +2815,11 @@ async function approveRunV2(ctx: Ctx, runId: string, expect: ApproveExpect | und
         throw e;
       }
       if (digest !== run.inputDigest) return { code: "INPUTS_CHANGED", note: RUN2_TEXT.inputsChanged };
+      // fix r3 H5: รายการหักสาย/ขาดที่อนุมัติแล้วของงวดนี้แต่ยังไม่ผูก (เช่น คนที่ออกในงวด — รายการแก้ไขอยู่งวดเดิม) ⇒ ต้องดึงข้อมูลใหม่ก่อน (ไม่ปล่อยค้างหลังอนุมัติ)
+      if ((await tx.hrPayAdjustment.count({ where: { ...scope, periodKey: cur.periodKey, status: "APPROVED", runId: null, kind: "DEDUCTION", sourceType: { in: ["LATE_RULE", "ABSENT_RULE"] }, employeeId: { in: empIds } } })) > 0) {
+        if (!(await attendanceUnbindableInTx(tx, ctx, (await tx.hrPayAdjustment.findMany({ where: { ...scope, periodKey: cur.periodKey, status: "APPROVED", runId: null, kind: "DEDUCTION", sourceType: { in: ["LATE_RULE", "ABSENT_RULE"] }, employeeId: { in: empIds } }, select: { id: true } })).map((x) => x.id), cur.periodKey)).size)
+          return { code: "INPUTS_CHANGED", note: RUN2_TEXT.inputsChanged };
+      }
       const negative = await tx.hrPayrollItem.count({ where: { ...scope, runId, netSatang: { lt: 0 } } });
       if (negative > 0) {
         // fix r1 F4: ข้อความคงที่บอกชื่อพนักงานที่สุทธิติดลบ (เจ้าของแก้ได้ตรงคน)
@@ -2861,7 +2868,7 @@ async function approveRunV2(ctx: Ctx, runId: string, expect: ApproveExpect | und
       const linked = await tx.$executeRaw`
         UPDATE "HrPayrollRun" SET "journalEntryId" = ${posted}, "note" = ${note}, "stepsJson" = COALESCE("stepsJson", '{}'::jsonb) || jsonb_build_object('finalized', true)
         WHERE "id" = ${runId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}
-          AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") AND "journalEntryId" IS NULL`;
+          AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") AND "journalEntryId" IS NULL AND COALESCE(("stepsJson"->>'finalized')::boolean, false) = false`;
       if (linked !== 1) throw new Run2Refusal("NOT_DRAFT", APPROVE_NOT_DRAFT);
       if (hooks.__failFinal) throw new Error("test: finalize failed after the journal post");
       const made = await writeCarryRowsInTx(tx, ctx, { id: runId, periodKey: run.periodKey }, actor.userId!, plan);
@@ -2872,12 +2879,19 @@ async function approveRunV2(ctx: Ctx, runId: string, expect: ApproveExpect | und
     entryId = out.posted;
   } catch {
     // ลงบัญชี/ปิดงานล้ม → ทั้งธุรกรรมสุดท้ายย้อน (ไม่มี JV · ไม่มียอดยกไป) → คืนร่างแบบสมมาตร: approvedBy/At ว่าง · ปลดชั่วโมงทำงาน (G7) · ประวัติไม่มีข้อความดิบ
-    await tenantDb(ctx).$transaction(async (t) => {
+    // fix r3 H2/H3: คืนร่างเฉพาะรอบที่ยังไม่ปิดงาน (ร้านไม่มีระบบบัญชี journalEntryId ว่างตลอด) · ผู้อนุมัติที่แพ้การแข่งขัน (อีกคนปิดงานแล้ว) ได้ข้อความ "อนุมัติไปแล้ว" ไม่มีประวัติล้มเท็จ
+    const reverted = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Prisma.TransactionClient;
       await lockRunPeriod(tx, ctx, run.periodKey);
-      const back = await tx.hrPayrollRun.updateMany({ where: { ...scope, id: runId, status: "APPROVED", journalEntryId: null }, data: { status: "DRAFT", approvedById: null, approvedAt: null } });
-      if (back.count === 1) await unbindWorkEntriesFromRunInTx(tx, ctx, { runId });
+      if (await runFinalizedInTx(tx, ctx, runId)) return false;
+      const back = await tx.$executeRaw`
+        UPDATE "HrPayrollRun" SET "status" = 'DRAFT'::"PayrollRunStatus", "approvedById" = NULL, "approvedAt" = NULL
+        WHERE "id" = ${runId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "status" = 'APPROVED'::"PayrollRunStatus" AND "journalEntryId" IS NULL
+          AND COALESCE(("stepsJson"->>'finalized')::boolean, false) = false`;
+      if (back === 1) await unbindWorkEntriesFromRunInTx(tx, ctx, { runId });
+      return back === 1;
     }, H34_TX);
+    if (!reverted) return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
     await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: actor.userId, action: "hr.payroll.post_failed", targetType: "HrPayrollRun", targetId: runId, after: { engineVersion: 2, code: "POST_FAILED" } });
     return { ok: false, note: RUN2_TEXT.postFailed, code: "POST_FAILED" };
   }
@@ -2894,11 +2908,24 @@ async function runFinalizedInTx(db: Pick<Prisma.TransactionClient, "$queryRaw">,
   const r = await db.$queryRaw<{ j: string | null; f: boolean | null }[]>`SELECT "journalEntryId" AS "j", ("stepsJson"->>'finalized')::boolean AS "f" FROM "HrPayrollRun" WHERE "id" = ${runId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`;
   return !!r[0] && (!!r[0].j || r[0].f === true);
 }
-/** fix r2 G5: จ่าย (markPaid) รอบรุ่น 2 ที่อนุมัติแล้วแต่ยังปิดงานไม่เสร็จ ⇒ ปฏิเสธด้วยข้อความคงที่ (รอลงบัญชี) · รอบรุ่น 1 ไม่มีด่านนี้ */
-async function v2PostingPending(ctx: Ctx, runId: string): Promise<boolean> {
-  const r = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: typeof runId === "string" ? runId : "", tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { engineVersion: true, inputDigest: true, status: true } });
-  if (!r || r.engineVersion !== 2 || !r.inputDigest || r.status !== "APPROVED") return false;
-  return !(await runFinalizedInTx(tenantDb(ctx) as unknown as Pick<Prisma.TransactionClient, "$queryRaw">, ctx, runId));
+/** fix r3 H1: จ่ายรอบรุ่น 2 — ล็อกงวด → อ่านสถานะ + ธงปิดงานซ้ำใต้ล็อก (อนุมัติแล้วแต่ยังไม่ปิดงาน ⇒ ปฏิเสธ "กำลังลงบัญชี") → APPROVED→PAID + event เดียวกับรุ่น 1 */
+async function markPaidV2(ctx: Ctx, runId: string): Promise<{ ok: boolean; note: string }> {
+  const out = await tenantDb(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    const per = await tx.hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
+    if (!per) return "NO" as const;
+    await lockRunPeriod(tx, ctx, per.periodKey);
+    const cur = await lockRunRow(tx, ctx, runId);
+    if (!cur || cur.status !== "APPROVED") return "NO" as const;
+    if (!(await runFinalizedInTx(tx, ctx, runId))) return "POSTING" as const;
+    const upd = await tx.hrPayrollRun.updateMany({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "APPROVED" }, data: { status: "PAID" } });
+    if (upd.count !== 1) return "NO" as const;
+    await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "hr.payroll.paid", idempotencyKey: `hr.payroll.paid#${runId}`, payload: { runId, periodKey: per.periodKey } });
+    return "OK" as const;
+  }, H34_TX);
+  if (out === "POSTING") return { ok: false, note: RUN2_TEXT.posting };
+  if (out !== "OK") return { ok: false, note: "ต้องอนุมัติรอบก่อนจึงจ่ายได้" };
+  return { ok: true, note: "บันทึกจ่ายเงินเดือนแล้ว" };
 }
 async function reverseCarryInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: string): Promise<void> {
   // fix r1 F5: รอบรุ่น 2 ของงวดหลังที่อนุมัติ/จ่ายแล้ว ⇒ ห้ามกลับรอบนี้ (ภาษีสะสมของรอบหลังคิดจากรอบนี้) — ไม่ว่ามียอดยกไปผูกหรือไม่
@@ -3024,10 +3051,19 @@ export async function previewPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: {
       }),
     };
   }
+  // fix r3 H5: คนที่ออกในงวดนี้ที่มีรายการหักสาย/ขาดค้าง (ไม่ผูก · อยู่งวดหลัง) ⇒ เก็บจากค่าจ้างไม่ได้ — แสดงเป็นรายการต้องตรวจ RECEIVABLE_ATT (ลูกหนี้พนักงาน)
+  const pb = periodBounds(run.periodKey);
+  const leavers = new Set((await db.hrEmployee.findMany({ where: { id: { in: mine.map((i) => i.employeeId) }, endDate: { lte: new Date(`${pb?.lastDay ?? "9999-12-31"}T00:00:00.000Z`) } }, select: { id: true } })).map((e) => e.id));
+  const strandedAtt = leavers.size
+    ? await db.hrPayAdjustment.findMany({ where: { systemId: ctx.systemId, employeeId: { in: [...leavers] }, sourceType: { in: ["LATE_RULE", "ABSENT_RULE"] }, kind: "DEDUCTION", status: { in: ["PENDING", "APPROVED"] }, runId: null, periodKey: { gt: run.periodKey } }, select: { employeeId: true } })
+    : [];
   const rows: Run2PayRow[] = mine.map((i) => {
     const e = emps.get(i.employeeId);
     const s = objH34(i.snapshotJson);
-    const receivable = ((s.receivable as { cls: string; amountSatang: number }[] | undefined) ?? []).map(() => ({ day: null, code: "RECEIVABLE" }));
+    const receivable = [
+      ...((s.receivable as { cls: string; amountSatang: number }[] | undefined) ?? []).map(() => ({ day: null, code: "RECEIVABLE" })),
+      ...strandedAtt.filter((x) => x.employeeId === i.employeeId).map(() => ({ day: null, code: "RECEIVABLE_ATT" })),
+    ];
     return {
       employeeId: i.employeeId, name: e?.name ?? "", unitId: e?.unitId ?? null, payType: String(s.payType ?? "MONTHLY"), lines: run.engineVersion >= 2 ? ((s.lines as unknown[] | undefined) ?? []) : [{ code: "BASE", ref: "profile", day: null, minutes: null, amountSatang: Number(s.baseSalarySatang ?? 0) }], flags: (s.flags as string[] | undefined) ?? [], carry: (s.carry as unknown[] | undefined) ?? [], // fix r1 F9: รอบรุ่น 1 = แถวรุ่น 1 (เงินเดือน + ยอดเดิม)
       grossSatang: i.grossSatang, ssoEmployeeSatang: i.ssoEmployeeSatang, whtSatang: i.whtSatang, netSatang: i.netSatang, addSatang: i.addSatang, deductSatang: i.deductSatang, review: [...reviewOf(i.employeeId), ...receivable],
@@ -3080,3 +3116,30 @@ export async function confirmBranchHours(ctx: Ctx, viewer: Run2Viewer, input: { 
 // ◂ HR H3.4
 // HR H3.4 ▸ fix r1 F7: ข้อความปฏิเสธการกลับรายการ (รุ่น 1) ให้หน้ารอบรุ่น 2 แสดงตรงตัว ◂
 export const RUN2_REVERSE_TEXT: Record<string, string> = { ...REVERSE_TEXT }; // HR H3.4 ◂
+// HR H3.4 ▸ fix r3 H5: คนที่ออกในงวด P (วันสิ้นสุด ≤ วันสุดท้ายของ P) และรอบของ P ยังเป็นร่าง — รายการหักสาย/ขาดที่คำนวณใหม่ต้องอยู่ในงวด P
+//   (งวดถัดไปไม่มีโปรไฟล์ของเขา ⇒ เดิมค้างตลอดไป) · รอบ P อนุมัติ/จ่ายแล้ว ⇒ เก็บจากค่าจ้างไม่ได้ ⇒ รายการค้าง + แสดงในรายการต้องตรวจของรอบ P (RECEIVABLE_ATT)
+export async function leaverDraftPeriodInTx(tx: Prisma.TransactionClient, ctx: Ctx, employeeId: string, periodKey: string): Promise<boolean> {
+  const b = periodBounds(periodKey);
+  if (!b) return false;
+  const emp = await tx.hrEmployee.findFirst({ where: { id: employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { endDate: true } });
+  const end = dayOf(emp?.endDate ?? null);
+  if (!end || end > b.lastDay) return false;
+  const run = await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey, ...liveRunWhere() }, select: { status: true } });
+  return run?.status === "DRAFT";
+}
+async function createLeaverAttRowInTx(tx: Prisma.TransactionClient, ctx: Ctx, w: AttendanceAdjustmentWrite): Promise<{ id: string; gen: number; periodKey: string; status: "PENDING" | "APPROVED" }> {
+  const c = w.create!;
+  const prefix = `att:${w.workPeriodKey}:${w.employeeId}:`;
+  const prev = await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: w.employeeId, sourceType: w.rule, sourceRef: { startsWith: prefix } }, select: { sourceRef: true }, take: 10_000 });
+  const gen = prev.reduce((m, r) => Math.max(m, Number(String(r.sourceRef).slice(prefix.length)) || 0), 0) + 1;
+  const status = c.kind === "ALLOWANCE" ? ("APPROVED" as const) : ("PENDING" as const);
+  const row = await tx.hrPayAdjustment.create({
+    data: {
+      tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: w.employeeId, periodKey: c.periodKey, kind: c.kind, amountSatang: c.amountSatang, hours: null, rateSatang: null, note: c.note, status,
+      requestedById: w.requestedById, decidedById: null, decidedAt: status === "APPROVED" ? w.now : null, sourceType: w.rule, sourceRef: `${prefix}${gen}`,
+    },
+    select: { id: true },
+  });
+  return { id: row.id, gen, periodKey: c.periodKey, status };
+}
+// ◂ HR H3.4
