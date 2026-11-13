@@ -20,6 +20,7 @@ for U in "$D" "$P"; do
     ep-wandering-butterfly-aogzkfrd*) M=ep-wandering-butterfly-aogzkfrd ;;
     ep-green-sound-aokclp5k*) M=ep-green-sound-aokclp5k ;;
     ep-calm-sun-ao0wyfu5*) M=ep-calm-sun-ao0wyfu5 ;;
+    ep-red-cake-aozcx44y*) M=ep-red-cake-aozcx44y ;;
     *) echo "🔴 qc-trips: host $H is not a TRIPS QC DB (production or another RUN's QC) — stop" >&2; exit 4 ;;
   esac
   [ -z "${MARK:-}" ] || [ "$MARK" = "$M" ] || { echo "🔴 qc-trips: DATABASE_URL and DIRECT_URL point at different branches — stop" >&2; exit 4; }
