@@ -793,6 +793,23 @@ registerMinuteJob({
   run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runWaitlistOffers(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
 });
 // ── /T0.4 capacity ──
+// ── T0.7 money ── TRIPS T0.7 ▸ งวดจ่ายทัวร์ (ใบสั่ง T0.7 §13): เตือนงวด · เลยกำหนด ⇒ OVERDUE · AUTO_RELEASE ⇒ ยื่นคำขอคืนเงิน SYSTEM · ข้ามร้าน (ทางเข้า `trips/jobs.ts`) ◂
+registerMinuteJob({
+  name: "trips.paymentDue",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runPaymentDue(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+// ── /T0.7 money ──
+// ── T0.8 pdpa ── TRIPS T0.8 ▸ ลบข้อมูลส่วนบุคคลของผู้เดินทางตามอายุเก็บ (ใบสั่ง T0.8 §7) — ข้ามร้าน (ทางเข้า `trips/jobs.ts`) · ต่อหน่วยเป็นชุดจำกัด · ซ้อนกัน = ลบครั้งเดียวต่อชิ้น ◂
+//   r3 X4: รายชั่วโมง (ตัวจัดตารางขอรอบเร็วขึ้นไม่ได้) — งบต่อรอบเท่าเดิม (20 วิ) · งานค้าง (more) ทำต่อในรอบถัดไป
+registerMinuteJob({
+  name: "trips.pdpaPurge",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runPdpaPurge(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+// ── /T0.8 pdpa ──
 // TRIPS A1.2a ▸ งานกวาดล็อกอินเอเจนซี่ (ใบสั่ง §5.7 · มติ R1 ข้อ 12) — ตาราง global เท่านั้น (AgentLoginCode · AgentSession) · ต่อชนิด ≤ sweepBatch ต่อรอบ ·
 //   idempotent · โหลด platform/agent-auth ตอนรัน · เคารพ signal ◂
 registerMinuteJob({

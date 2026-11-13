@@ -45,13 +45,14 @@ export const FILE_ASSET_ID_RE = /^[a-z0-9]{16,40}$/i;
  * CRM C3.5 ▸ `PORTAL` = session พอร์ทัลลูกค้าองค์กร (`PortalSession.id` — ผูกกับ **ใบ session** ไม่ใช่ตัวคน:
  *   ลิงก์ที่ออกให้ session หนึ่งใช้กับ session อื่น/บริษัทอื่นของคนเดียวกันไม่ได้ · ออกจากระบบ/ถูกถอนสิทธิ์ = ใช้ไม่ได้ทันที) ◂
  */
-export type PrivateFileViewer = { kind: "STAFF" | "CUSTOMER" | "PORTAL"; id: string };
+// TRIPS T0.8 ▸ `LINK_CUSTOMER` = ผู้ถือลิงก์กรอกข้อมูลผู้เดินทาง (id = แถว audit link_issued ไม่ใช่ token · route ตรวจซ้ำทุกคำขอด้วย trips.linkCustomerMayOpenFile) ◂
+export type PrivateFileViewer = { kind: "STAFF" | "CUSTOMER" | "PORTAL" | "LINK_CUSTOMER"; id: string };
 
 /** คีย์ของผู้ดูที่เข้าไปอยู่ในลายเซ็น (`STAFF:<userId>` / `CUSTOMER:<customerId>` / `PORTAL:<portalSessionId>`) */
 export function privateFileViewerKey(viewer: PrivateFileViewer): string {
   const kind = viewer?.kind;
   const id = typeof viewer?.id === "string" ? viewer.id.trim() : "";
-  if ((kind !== "STAFF" && kind !== "CUSTOMER" && kind !== "PORTAL") || !id) {
+  if ((kind !== "STAFF" && kind !== "CUSTOMER" && kind !== "PORTAL" && kind !== "LINK_CUSTOMER") || !id) {
     throw new Error("ผู้ดูไฟล์ไม่ถูกต้อง — ต้องระบุ { kind: 'STAFF' | 'CUSTOMER' | 'PORTAL', id }");
   }
   return `${kind}:${id}`;

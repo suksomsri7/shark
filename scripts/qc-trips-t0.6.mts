@@ -1103,6 +1103,8 @@ try {
     await invOk([dPend], "CN-2");
   });
   await st("CN-3", "ยกเลิกการจองที่ขายแล้ว (CONFIRMED) ⇒ STATE_CONFLICT REFUND_REQUIRED · ไม่เปลี่ยน (version · sold)", async () => {
+    // ORACLE-EDIT CN-3 (ผู้คุม 13 พ.ย.): T0.7a §9.1 แทนเส้นทางนี้ — ยกเลิกการจองที่ขายแล้ว = ยื่นคำขอคืนเงิน (ครอบโดย t0.7 CN-2 · S-10) · ข้อนี้ปลดเมื่อ facade มี requestTripRefund
+    if (typeof needTrips().requestTripRefund === "function") return;
     ok(CF7.bookingId, "CF-7 ไม่ผ่าน"); const v0 = (await bk(CF7.bookingId)).version;
     codeR(await call("cancelTripBooking", staff(), { bookingId: CF7.bookingId, mode: "EXECUTE", reason: "ลูกค้าขอยกเลิก", idempotencyKey: `cn${hex(5)}` }), "STATE_CONFLICT", "CONFIRMED", "REFUND_REQUIRED");
     eq([(await bk(CF7.bookingId)).status, (await bk(CF7.bookingId)).version, (await dep(dCF7)).sold], ["CONFIRMED", v0, 3], "ไม่เปลี่ยน");
@@ -1159,7 +1161,7 @@ try {
   await st("MV-3", "audit trips.booking.change (before/after มีรอบ · ไม่มีชื่อ/เบอร์) · event trips.booking.changed payload ตรงชุด · คีย์มี version", async () => {
     ok(MV.bookingId, "MV-1 ไม่ผ่าน");
     const a = await q<Rec>(`SELECT before, after FROM "AuditLog" WHERE "tenantId" = $1 AND action = 'trips.booking.change' AND "targetId" = $2`, [tA, MV.bookingId]);
-    ok(a.length >= 1 && /departureId/.test(JSON.stringify(a[0])) && !/ลูกค้าทดสอบ|08\d{8}/.test(JSON.stringify(a)), `audit ${fmt(a[0])}`);
+    ok(a.length >= 1 && /departureId/.test(JSON.stringify(a[0])) && !/ลูกค้าทดสอบ|08\d{8}/.test(JSON.stringify(a).replace(/[0-9a-f]{32,}/g, "<hex>")), `audit ${fmt(a[0])}`); // ORACLE-EDIT MV-3 (ผู้คุม 13 พ.ย.): ตัดแฮช hex ก่อนหาเบอร์โทร (แฮชที่มี 08 + เลข 8 ตัวทำให้แดงปลอม — แบบเดียวกับ t0.4 EV-3)
     const ev = (await outbox("trips.booking.changed")).filter((e) => e.payload.bookingId === MV.bookingId);
     ok(ev.length >= 1, "ไม่มี event changed");
     eq(Object.keys(ev[0].payload).sort(), PAYLOAD_KEYS, "payload");

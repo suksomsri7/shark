@@ -1572,6 +1572,23 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.booking.cancelled": withAutomation(async () => {}),
   "trips.booking.changed": withAutomation(async () => {}),
   // ── /T0.6 booking ──
+  // ── T0.7 money ── TRIPS T0.7 ▸ เงินฝั่ง trips (ใบสั่ง T0.7 §12) — ยิงจาก `trips/money.ts` · `trips/refund.ts` ในธุรกรรมเดียวกับการเขียน ·
+  //   payload id/จำนวน/สตางค์ล้วน (ไม่มีชื่อ/เบอร์/เลขอ้างอิงโอน) · งานหลัก no-op (ลงบัญชี = T0.7b จากแถว UNPOSTED) + กฎอัตโนมัติ/เว็บฮุค ◂
+  "trips.payment.received": withAutomation(async () => {}),
+  "trips.payment.due_soon": withAutomation(async () => {}),
+  "trips.payment.overdue": withAutomation(async () => {}),
+  "trips.booking.part_paid": withAutomation(async () => {}),
+  "trips.booking.paid": withAutomation(async () => {}),
+  "trips.refund.requested": withAutomation(async () => {}),
+  "trips.refund.approved": withAutomation(async () => {}),
+  "trips.refund.requoted": withAutomation(async () => {}), // TRIPS T0.7 ▸ มติ r2 W2: คำนวณใหม่หลังอนุมัติ (คีย์ …:<requestId>:g<รุ่น>) ◂
+  "trips.refund.done": withAutomation(async () => {}),
+  // ── /T0.7 money ──
+  // ── T0.8 passengers ── TRIPS T0.8 ▸ ผู้เดินทาง (ใบสั่ง T0.8 §10) — ยิงจาก trips/passengers.ts · trips/pdpa.ts ในธุรกรรมเดียวกับการเขียน ·
+  //   payload {bookingId, passengerId, kind} ล้วน (ไม่มีชื่อ/เลขเอกสาร/ข้อมูลสุขภาพ/token) · งานหลัก no-op + กฎอัตโนมัติ/เว็บฮุค ◂
+  "trips.passenger.form_completed": withAutomation(async () => {}),
+  "trips.document.purged": withAutomation(async () => {}),
+  // ── /T0.8 passengers ──
   // TRIPS A1.2a ▸ ทะเบียนเอเจนซี่ (agency/accounts.ts ยิงใน tx เดียวกับการเปลี่ยนสถานะ) · payload { agentAccountId } เท่านั้น · งานหลัก no-op + กฎอัตโนมัติ/เว็บฮุค ◂
   "agency.account.applied": withAutomation(async () => {}),
   "agency.account.approved": withAutomation(async () => {}),

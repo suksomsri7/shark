@@ -147,6 +147,16 @@ export async function cancelTripBookingAction(unitSlug: string, input: unknown) 
   } catch (e) {
     return denied(e);
   }
-  return booking.cancelTripBooking(ctxOf(auth, unit.id), input);
+  // TRIPS T0.7 ▸ ยกเลิกการจองที่ขายแล้ว = ยื่นคำขอคืนเงิน ⇒ ต้องมี trips.refund.request · เหตุที่ไม่ใช่ลูกค้าต้องมี trips.refund.approve (มติ r1 V2) — บริการตัดสินเมื่อรู้สถานะ ◂
+  const can = (action: "trips.refund.request" | "trips.refund.approve") => {
+    try {
+      assertCan(m, { module: "trips", action, unitId: unit.id });
+      return true;
+    } catch (e) {
+      if (e instanceof ForbiddenError) return false;
+      throw e;
+    }
+  };
+  return booking.cancelTripBooking(ctxOf(auth, unit.id), input, { refund: { canRequest: can("trips.refund.request"), canDecide: can("trips.refund.approve") } });
 }
 // ── /T0.6 booking ──

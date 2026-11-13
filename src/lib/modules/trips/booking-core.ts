@@ -27,6 +27,7 @@ const text = (max: number) =>
     .string()
     .transform((s) => s.replace(STRIP_SOFT, "").normalize("NFC").trim())
     .pipe(z.string().max(max).refine(noCtl, { message: "มีอักขระควบคุม" }));
+export { text }; // TRIPS T0.8 ▸ ข้อความอิสระของผู้เดินทางใช้กติกาเดียวกันตัวนี้ (มติผู้คุม r1 P7 · ส่งออกอย่างเดียว ไม่แก้ตัวฟังก์ชัน) ◂
 const ID = z.string().trim().min(1).max(128).refine(noCtl, { message: "มีอักขระควบคุม" });
 const NN = z.number().int().min(0).max(INT4_MAX);
 /** คีย์กันซ้ำของผู้เรียก (CC §C ข้อ 3) — สั้นกว่า 100 เพื่อเผื่อส่วนต่อท้ายของ hold ต่อบรรทัด (`_<i>`) */
@@ -81,7 +82,8 @@ export const bookerSchema = z.strictObject({
   partyId: ID.optional(),
 });
 const passengerSchema = z.strictObject({ name: text(200).pipe(z.string().min(1)), paxTypeId: ID });
-const paySchema = z.strictObject({ method: z.enum(["PAY_NOW", "PAY_LATER", "WALLET", "CREDIT"]) });
+// TRIPS T0.7 ▸ pay.tender = คำใบ้ของหน้าจอเท่านั้น (ไม่มีคอลัมน์ · ไม่เปลี่ยนผล · ไม่บันทึกเงินในธุรกรรมยืนยัน — ใบสั่ง T0.7 §9.5 · §17 ข้อ 9) ◂
+const paySchema = z.strictObject({ method: z.enum(["PAY_NOW", "PAY_LATER", "WALLET", "CREDIT"]), tender: z.enum(["PROMPTPAY", "CARD", "SLIP", "CASH"]).optional() });
 
 // ═══════════════ คำขอของบริการ (ใบสั่ง §5.1) ═══════════════
 export const holdRequestSchema = z.strictObject({
@@ -146,7 +148,9 @@ export const cancelRequestSchema = z.strictObject({
   mode: z.enum(["QUOTE", "EXECUTE"]),
   reason: text(500).pipe(z.string().min(1)),
   reasonKind: z.enum(["CUSTOMER", "EXTERNAL", "MIN_NOT_MET", "SHOP_FAULT"]).optional(),
-  // choice / moveToSlotId (คำขอคืนเงิน G.3) = T0.7 — ไม่รับในใบนี้ (strict ⇒ VALIDATION · มติ R14)
+  // TRIPS T0.7 ▸ คำขอคืนเงิน G.3 (ใบสั่ง T0.7 §9.1): choice ใช้กับการจองที่ขายแล้ว · moveToSlotId ⇒ VALIDATION MOVE_DATE_VIA_CHANGE ทุกกรณี ◂
+  choice: z.enum(["MONEY", "CREDIT", "MOVE_DATE"]).optional(),
+  moveToSlotId: ID.optional(),
   idempotencyKey: IDEM_KEY,
 });
 export const approveRequestSchema = z.strictObject({ bookingId: ID, expectedVersion: NN, decision: z.enum(["APPROVE", "REJECT"]), reason: text(500).optional() });
@@ -160,6 +164,9 @@ export const listRequestSchema = z.strictObject({
 });
 export const transitionRequestSchema = z.strictObject({ bookingId: ID, from: z.string().min(1).max(16), to: z.string().min(1).max(16), expectedVersion: NN, reason: text(500).optional() });
 export const expiredEventSchema = z.object({ tenantId: ID, unitId: ID, bookingId: ID });
+
+// TRIPS T0.7 ▸ ข้อความอิสระของบริการเงิน (money.ts · refund.ts) ใช้กติกาเดียวกับ T0.6 (S6/F2 · มติ T0.7 §22 ข้อ 7) ◂
+export const tripText = text;
 
 /** เหตุผลของ useCurrentPolicy ต้องยาว ≥ 10 ตัวอักษร (CC :667) */
 export const CHANGE_POLICY_REASON_MIN = 10;

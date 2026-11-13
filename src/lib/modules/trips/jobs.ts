@@ -21,6 +21,11 @@ import { CapacityAbort, type Gate, type SweepGroup } from "./capacity";
 import { expireHoldsBatch, jobGate, sweepPolicies } from "./capacity-service";
 import { offerWaitlistForDeparture } from "./waitlist";
 // ── /T0.4 capacity ──
+// ── T0.7 money ── (งาน trips.paymentDue)
+import { resolveSettings } from "@/lib/core/settings";
+import { emitDueReminders, markTripDueOverdue, reminderDayOf, retryTripAutoRelease, type AutoReleaseInTx } from "./money";
+import { autoReleaseOverdueInTx } from "./refund";
+// ── /T0.7 money ──
 
 export type TripJobOpts = { tenantIds?: string[]; signal?: AbortSignal };
 export type TripJobFailure = { tenantId: string; unitId?: string; scheduleId?: string; departureId?: string; code: string };
@@ -247,3 +252,269 @@ export async function runWaitlistOffers(
   return { ...out, failed };
 }
 // ── /T0.4 capacity ──
+
+// ── T0.7 money ──
+// TRIPS T0.7 ▸ งาน trips.paymentDue (ใบสั่ง T0.7 §13 · CC :926) — อ่านไม่ล็อกข้ามร้านด้วย prisma ดิบ (ดัชนี TripPaymentDue_status_dueAt_idx · หน้าละ 200 · keyset)
+//   แล้วเขียนต่อร้านผ่าน money.ts (tenantDb · ต่องวดหนึ่ง tx) · AUTO_RELEASE = ยื่นคำขอคืนเงิน SYSTEM ผ่าน refund.ts (ไม่บันทึกโอนคืน/ไม่ปล่อยที่เอง) ◂
+type PayDueRow = { id: string; tenantId: string; unitId: string; bookingId: string; productId: string; dueAt: Date; amountSatang: number; paidSatang: number };
+/** ขอบเขตการเตือนล่วงหน้า (T16 สูงสุด 365 วันตามสคีมาค่าตั้ง + 1 · ค่าทางเทคนิคของการสแกน ไม่ใช่ตัวเลขธุรกิจ) */
+const REMINDER_HORIZON_MS = 366 * 86_400_000;
+const K_REMINDER_DAYS = "trips.pay.reminderDaysBefore"; // T16 (ค่าปัจจุบันของหน่วย/สินค้า · นโยบาย ไม่ใช่ยอด)
+const K_AUTO_APPROVE = "trips.cancel.autoApproveUpTo"; // X12 (ค่าปัจจุบันของหน่วย)
+/** ผ่อนผัน X11 จาก snapshot ในรูป SQL (คีย์ไม่ได้จด/ไม่ใช่จำนวนเต็ม ⇒ 0 — ธุรกรรมต่องวดตัดสินซ้ำจาก snapshot อีกครั้ง) */
+const GRACE_SQL = Prisma.sql`(CASE WHEN (b."policySnapshot"->'policy'->'trips'->'values'->>'trips.pay.overdueGraceHours') ~ '^[0-9]+$'
+  THEN (b."policySnapshot"->'policy'->'trips'->'values'->>'trips.pay.overdueGraceHours')::int ELSE 0 END)`;
+/** การจองที่ยังค้างจ่ายและไม่มีคำขอคืนเงินเปิด (ดัชนี TripRefundRequest_bookingId_idx ในเงื่อนไข NOT EXISTS) */
+const LIVE_BOOKING_SQL = Prisma.sql`b."status" IN ('CONFIRMED', 'PART_PAID')
+  AND NOT EXISTS (SELECT 1 FROM "TripRefundRequest" r WHERE r."bookingId" = b."id" AND r."tenantId" = b."tenantId" AND r."status" IN ('REQUESTED', 'QUOTED', 'APPROVED', 'EXECUTING', 'FAILED'))`;
+type DueCursor = { at: string; id: string } | null;
+/** เพดานการลองยื่น AUTO_RELEASE ซ้ำต่อรอบงาน (มติ r2 W5 · ค่าทางเทคนิค ไม่ใช่ตัวเลขธุรกิจ) */
+const AUTO_RELEASE_RETRY_CAP = 50;
+/** T17 จาก snapshot ในรูป SQL */
+const ACTION_SQL = Prisma.sql`(b."policySnapshot"->'policy'->'trips'->'values'->>'trips.pay.overdueAction')`;
+/**
+ * งาน trips.paymentDue (มติ r1 V1 · r2 W5 W8 W9) — สามคิว แต่ละคิวมี cursor (dueAt, id) · หน้าละ 200 · ทุกรอบของลูปทำหน้าเตือนก่อนแล้วจึงหน้าเลยกำหนด (คิวหนึ่งไม่กินอีกคิว):
+ *   เตือน: งวด OPEN/PARTLY_PAID ที่ now < dueAt ≤ now + 366 วัน ⇒ trips.payment.due_soon ของ d ที่เล็กที่สุดใน T16 ที่ dueAt − d วัน ≤ now
+ *     (คีย์ <dueId>:<d> · ตรวจคีย์ที่มีแล้วในคำสั่งเดียวก่อนเขียน) — ไม่มีธุรกรรม/ไม่ล็อก
+ *   เลยกำหนด: งวด OPEN/PARTLY_PAID ที่ dueAt + X11 ≤ now ⇒ markTripDueOverdue (ต่องวดหนึ่ง tx) · รอบที่เปลี่ยนเป็น OVERDUE + T17 AUTO_RELEASE ⇒ ยื่นคำขอใต้ SAVEPOINT
+ *   ลองยื่นซ้ำ (เพดาน AUTO_RELEASE_RETRY_CAP ต่อรอบ · หลังสองคิวแรก): งวด OVERDUE + AUTO_RELEASE ที่ยังไม่มีคำขอของงวดนั้น (คีย์ refund:<booking>:sys:trips.paymentDue:due_<due>@<unit>)
+ * ทุกคิวข้ามการจองที่ไม่ค้างจ่าย (HOLD ใช้เวลาของ hold · CANCELLED/EXPIRED/PAID) และการจองที่มีคำขอคืนเงินเปิด
+ * คืน more = { reminders, overdue } — true เมื่อหยุดเพราะ signal/deadline ทั้งที่คิวยังไม่หมด · ล้มรายแถว = นับใน failed ไม่หยุดงาน
+ */
+export async function runPaymentDue(
+  now: Date,
+  opts?: CapacityJobOpts,
+): Promise<{ reminders: number; overdue: number; autoReleased: number; failed: CapacityJobFailure[]; more: { reminders: boolean; overdue: boolean; retry: boolean } }> {
+  const out = { reminders: 0, overdue: 0, autoReleased: 0 };
+  const tally = new FailureTally();
+  const gates = new Map<string, Gate | null>();
+  const daysOf = new Map<string, number[]>();
+  const autoOf = new Map<string, number>();
+  const iso = now.toISOString();
+  const horizon = new Date(now.getTime() + REMINDER_HORIZON_MS).toISOString();
+  const tenantFilter = opts?.tenantIds ? Prisma.sql`AND d."tenantId" = ANY(${opts.tenantIds}::text[])` : Prisma.empty;
+  const afterOf = (cur: DueCursor) => (cur ? Prisma.sql`AND (d."dueAt", d."id") > (${cur.at}::timestamp, ${cur.id})` : Prisma.empty);
+  const gateFor = async (d: PayDueRow): Promise<Gate | null> => {
+    const uk = `${d.tenantId}|${d.unitId}`;
+    if (!gates.has(uk)) gates.set(uk, await jobGate(d.tenantId, d.unitId));
+    const g = gates.get(uk) ?? null;
+    if (!g) tally.add(d.tenantId, d.unitId, "UNIT_NOT_TRIPS");
+    return g;
+  };
+  const autoFor = async (g: Gate): Promise<number> => {
+    if (!autoOf.has(g.unitId)) {
+      const r = await resolveSettings({ tenantId: g.tenantId }, [K_AUTO_APPROVE], { unitId: g.unitId }, now);
+      const v = r[K_AUTO_APPROVE]?.value;
+      autoOf.set(g.unitId, typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : 0);
+    }
+    return autoOf.get(g.unitId) ?? 0;
+  };
+  const autoReleaseFor = (g: Gate, auto: number): AutoReleaseInTx => {
+    const sysCtx = { tenantId: g.tenantId, unitId: g.unitId, channel: "COUNTER", actor: { kind: "SYSTEM", job: "trips.paymentDue" }, now };
+    return (tx, b, dueId) => autoReleaseOverdueInTx(tx, sysCtx, b, dueId, auto);
+  };
+  const page = (statuses: Prisma.Sql, where: Prisma.Sql, cur: DueCursor, limit: number) => prisma.$queryRaw<PayDueRow[]>`
+    SELECT d."id", d."tenantId", d."unitId", d."bookingId", b."productId", d."dueAt", d."amountSatang", d."paidSatang"
+    FROM "TripPaymentDue" d JOIN "TripBooking" b ON b."id" = d."bookingId" AND b."tenantId" = d."tenantId"
+    WHERE d."status" IN (${statuses}) AND ${where} AND ${LIVE_BOOKING_SQL} ${tenantFilter} ${afterOf(cur)}
+    ORDER BY d."dueAt", d."id" LIMIT ${limit}`;
+  const OPEN = Prisma.sql`'OPEN', 'PARTLY_PAID'`;
+  const nextCursor = (rows: PayDueRow[]): DueCursor => {
+    const last = rows[rows.length - 1];
+    return last ? { at: new Date(last.dueAt).toISOString(), id: last.id } : null;
+  };
+  let remCur: DueCursor = null;
+  let ovCur: DueCursor = null;
+  let remDone = false;
+  let ovDone = false;
+  /** งวดที่เปลี่ยนเป็น OVERDUE ในรอบงานนี้ — ไม่เข้าคิวลองยื่นซ้ำของรอบเดียวกัน (มติ r3 ข้อ 1: ลองซ้ำเฉพาะรอบถัดไป) */
+  const flipped: string[] = [];
+  while (!stopped(opts) && !(remDone && ovDone)) {
+    // คิวเตือนก่อน (มติ r2 W5)
+    if (!remDone) {
+      const rows = await page(OPEN, Prisma.sql`d."dueAt" > ${iso}::timestamp AND d."dueAt" <= ${horizon}::timestamp`, remCur, SWEEP_PAGE_SIZE);
+      // มติ r3 ข้อ 2: คิว "หมด" เมื่อหน้าสุดท้ายถูกทำครบทุกแถวเท่านั้น
+      const lastPage = rows.length < SWEEP_PAGE_SIZE;
+      let complete = true;
+      remCur = nextCursor(rows) ?? remCur;
+      const byUnit = new Map<string, { g: Gate; items: { due: PayDueRow; d: number }[] }>();
+      for (const d of rows) {
+        if (stopped(opts)) {
+          complete = false;
+          break;
+        }
+        try {
+          const g = await gateFor(d);
+          if (!g) continue;
+          const pk = `${d.tenantId}|${d.unitId}|${d.productId}`;
+          if (!daysOf.has(pk)) {
+            const r = await resolveSettings({ tenantId: d.tenantId }, [K_REMINDER_DAYS], { unitId: d.unitId, productId: d.productId }, now);
+            const v = r[K_REMINDER_DAYS]?.value;
+            daysOf.set(pk, Array.isArray(v) ? v.filter((x): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0) : []);
+          }
+          const day = reminderDayOf(d.dueAt, daysOf.get(pk) ?? [], now);
+          if (day === null) continue;
+          const uk = `${d.tenantId}|${d.unitId}`;
+          const grp = byUnit.get(uk) ?? { g, items: [] };
+          grp.items.push({ due: d, d: day });
+          byUnit.set(uk, grp);
+        } catch (e) {
+          tally.add(d.tenantId, d.unitId, capCodeOf(e));
+        }
+      }
+      for (const grp of byUnit.values()) {
+        try {
+          out.reminders += await emitDueReminders(grp.g, grp.items);
+        } catch (e) {
+          tally.add(grp.g.tenantId, grp.g.unitId, capCodeOf(e), grp.items.length);
+        }
+      }
+      if (lastPage && complete) remDone = true;
+    }
+    if (!ovDone && !stopped(opts)) {
+      const rows = await page(OPEN, Prisma.sql`d."dueAt" <= ${iso}::timestamp AND d."dueAt" + make_interval(hours => ${GRACE_SQL}) <= ${iso}::timestamp`, ovCur, SWEEP_PAGE_SIZE);
+      const lastPage = rows.length < SWEEP_PAGE_SIZE;
+      let complete = true;
+      ovCur = nextCursor(rows) ?? ovCur;
+      for (const d of rows) {
+        if (stopped(opts)) {
+          complete = false;
+          break;
+        }
+        try {
+          const g = await gateFor(d);
+          if (!g) continue;
+          const ov = await markTripDueOverdue(g, { id: d.id, bookingId: d.bookingId }, now, autoReleaseFor(g, await autoFor(g)));
+          if (!ov.ok) {
+            tally.add(d.tenantId, d.unitId, ov.code);
+            continue;
+          }
+          if (ov.value.overdue) {
+            out.overdue++;
+            flipped.push(d.id);
+          }
+          if (ov.value.autoReleased) out.autoReleased++;
+          if (ov.value.autoReleaseFailed) tally.add(d.tenantId, d.unitId, `AUTO_RELEASE_${ov.value.autoReleaseFailed}`);
+        } catch (e) {
+          tally.add(d.tenantId, d.unitId, capCodeOf(e));
+        }
+      }
+      if (lastPage && complete) ovDone = true;
+    }
+  }
+  // ลองยื่น AUTO_RELEASE ซ้ำ (เพดานต่อรอบ · มติ r2 W5) — ไม่รวมงวดที่เพิ่งเปลี่ยนเป็น OVERDUE ในรอบนี้ (มติ r3 ข้อ 1)
+  let retryMore = true;
+  if (!stopped(opts)) {
+    const keySql = Prisma.sql`'refund:' || b."id" || ':sys:trips.paymentDue:due_' || d."id" || '@' || d."unitId"`;
+    const rows = await page(
+      Prisma.sql`'OVERDUE'`,
+      Prisma.sql`d."paidSatang" < d."amountSatang" AND ${ACTION_SQL} = 'AUTO_RELEASE'
+        AND NOT EXISTS (SELECT 1 FROM "TripRefundRequest" x WHERE x."tenantId" = d."tenantId" AND x."idempotencyKey" = ${keySql})
+        AND NOT (d."id" = ANY(${flipped}::text[]))`,
+      null,
+      AUTO_RELEASE_RETRY_CAP,
+    );
+    let complete = true;
+    for (const d of rows) {
+      if (stopped(opts)) {
+        complete = false;
+        break;
+      }
+      try {
+        const g = await gateFor(d);
+        if (!g) continue;
+        const r = await retryTripAutoRelease(g, { id: d.id, bookingId: d.bookingId }, autoReleaseFor(g, await autoFor(g)));
+        if (!r.ok) tally.add(d.tenantId, d.unitId, `AUTO_RELEASE_${r.code}`);
+        else if (r.value) out.autoReleased++;
+      } catch (e) {
+        tally.add(d.tenantId, d.unitId, capCodeOf(e));
+      }
+    }
+    // เพดานตัด (ได้ครบ CAP แถว) หรือ deadline ตัดกลางทาง ⇒ ยังมีงานเหลือ
+    retryMore = !complete || rows.length >= AUTO_RELEASE_RETRY_CAP;
+  }
+  const failed = tally.list();
+  await reportFailures("trips.paymentDue", failed);
+  return { ...out, failed, more: { reminders: !remDone, overdue: !ovDone, retry: retryMore } };
+}
+// ── /T0.7 money ──
+// ── T0.8 pdpa ──
+// ใบสั่ง ledger/trips-briefs/T0.8.md §7 · CC §A.4 :114 · §J.2 :931 · §D.4 ข้อ 5 — สแกนข้ามร้านแบบอ่านอย่างเดียวด้วย prisma ดิบ (หาหน่วยที่มีของครบกำหนด)
+// แล้วเขียนผ่าน pdpa.ts (tenantDb · ต่อหน่วย) เท่านั้น · ล้มต่อหน่วย = จดรหัสสั้นใน failed แล้วไปต่อ · เคารพ signal/deadline ก่อนเริ่มหน่วยถัดไป
+// r3 X4: ตัวจัดตารางไม่มีทาง "ขอรอบเร็วขึ้น" ⇒ ลงทะเบียนรายชั่วโมง (minute-jobs.ts) · งานเดิมทำซ้ำได้ (idempotent) · ยังเหลือ = value.more (รอบถัดไปทำต่อ)
+import { purgeTripPersonalDataForUnit } from "./pdpa";
+import type { SellResult } from "@/lib/core/sellable";
+export type PdpaPurgeResult = { units: number; documents: number; passengerStages: number; bookers: number; more: boolean; failed: TripJobFailure[] };
+/** ผลเป็น SellResult (รูปเดียวกับบริการของใบ · ข้อสอบ RT อ่าน value) — ล้มต่อหน่วยไม่ทำให้ทั้งงานล้ม (อยู่ใน value.failed) */
+export type PdpaPurgeOpts = TripJobOpts & { deadline?: number; limitPerUnit?: number; storage?: { del?: (path: string) => Promise<number> } };
+export async function runPdpaPurge(
+  now: Date,
+  opts?: PdpaPurgeOpts,
+): Promise<SellResult<PdpaPurgeResult>> {
+  const out: PdpaPurgeResult = { units: 0, documents: 0, passengerStages: 0, bookers: 0, more: false, failed: [] };
+  const iso = now.toISOString();
+  const tf = (col: string) => (opts?.tenantIds ? Prisma.sql`AND ${Prisma.raw(col)} = ANY(${opts.tenantIds}::text[])` : Prisma.empty);
+  // r3 X3: หน่วยที่มีงาน = (ก) ไฟล์ครบกำหนด (ข) แถวผู้เดินทางครบกำหนด (ค) ผู้จองหมดเวลาไม่มีเงิน (ง) วัตถุที่ทำเครื่องหมายแล้วแต่ยังไม่ยืนยันว่าหาย
+  //   (จ) รอบเลื่อนเร็วขึ้น: retE ที่เก็บ > วันจบตามเวลาหน่วยปัจจุบัน (เขตเวลาที่ Postgres ไม่รู้จัก ⇒ Asia/Bangkok) (ฉ) คำขอ ERASE ที่ IN_PROGRESS
+  //   ดัชนี: (ก)(ง) TripDocument_retainUntil_deletedAt_idx (retainUntil ≤ now · แถวที่ทำเครื่องหมายมี retainUntil ≤ เวลาทำเครื่องหมาย) · (ข) TripPassenger_retainUntil_idx ·
+  //   (ค) TripBooking_tenantId_unitId_status_travelDate_idx (มีตัวกรองร้าน) · (จ) TripPassenger_retainUntil_idx (IS NOT NULL) / TripDocument_retainUntil_deletedAt_idx + PK ของการจอง/รอบ ·
+  //   (ฉ) TripPdpaRequest_tenantId_status_dueAt_idx (มีตัวกรองร้าน)
+  //   (ช · r4 F1) การจองที่ลบผู้จองแล้วแต่ยังไม่มี event BOOKER (ผู้เดินทางยังค้าง หรือขั้นปิดงานล้ม) — TripBooking_tenantId_unitId_status_travelDate_idx + OutboxEvent unique (tenantId, idempotencyKey)
+  //   (ซ · r5) คำขอ ERASE ที่ RECEIVED/IN_PROGRESS เลย dueAt — พาหน่วยไปถึงขั้นแจ้ง ops ใน pdpa.ts เท่านั้น (งานไม่แตะคำขอ RECEIVED · คนเท่านั้นที่ย้ายสถานะ) ·
+  //     ดัชนี TripPdpaRequest_tenantId_status_dueAt_idx (status IN + dueAt เป็นช่วง · ใช้ได้เต็มเมื่อมีตัวกรองร้าน) · ไม่มีตัวกรองร้าน = ไม่มีดัชนีนำด้วย (status, dueAt)
+  //     ⇒ อ่านทั้งตารางคำขอ (ตารางเล็ก: 1 แถวต่อคำขอของเจ้าของข้อมูล · ผล DISTINCT ต่อหน่วย) — หนี้ดัชนีจดใน ledger/wo-notes/trips-T0.8.md r5
+  // r3 X4: ลำดับหน่วยหมุนทุกชั่วโมง (md5(unitId ‖ ช่วง) แบบงานรายการรอ T0.4) · แต่ละหน่วยได้ส่วนแบ่งเวลาที่เหลือ
+  const bucket = String(Math.floor(now.getTime() / 3_600_000));
+  const units = await prisma.$queryRaw<{ tenantId: string; unitId: string }[]>`
+    WITH tz AS (
+      SELECT bu."id", CASE WHEN n."name" IS NOT NULL THEN n."name" ELSE 'Asia/Bangkok' END AS "tz"
+      FROM "BusinessUnit" bu LEFT JOIN pg_timezone_names n ON n."name" = bu."settings"->>'timezone'
+      WHERE bu."type"::text = 'TRIPS' ${tf(`bu."tenantId"`)}
+    )
+    SELECT x."tenantId", x."unitId" FROM (
+      SELECT "tenantId", "unitId" FROM "TripDocument" WHERE "deletedAt" IS NULL AND "retainUntil" <= ${iso}::timestamp ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripPassenger" WHERE "retainUntil" <= ${iso}::timestamp ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripBooking" WHERE "status" = 'EXPIRED' AND "piiPurgedAt" IS NULL AND "paidSatang" = 0 ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripDocument" WHERE "retainUntil" <= ${iso}::timestamp AND "deletedAt" IS NOT NULL
+        AND ("consent"->'objDel') IS DISTINCT FROM 'true'::jsonb ${tf(`"tenantId"`)}
+      UNION SELECT p."tenantId", p."unitId" FROM "TripPassenger" p JOIN tz ON tz."id" = p."unitId"
+        JOIN "TripBooking" b ON b."id" = p."bookingId" AND b."tenantId" = p."tenantId" JOIN "TripDeparture" d ON d."id" = b."departureId" AND d."tenantId" = b."tenantId"
+        WHERE p."retainUntil" IS NOT NULL AND (p."answers"->>'retE') > ((((d."endsAt") AT TIME ZONE 'UTC') AT TIME ZONE tz."tz")::date)::text ${tf(`p."tenantId"`)}
+      UNION SELECT doc."tenantId", doc."unitId" FROM "TripDocument" doc JOIN tz ON tz."id" = doc."unitId"
+        JOIN "TripPassenger" p ON p."id" = doc."passengerId" AND p."tenantId" = doc."tenantId"
+        JOIN "TripBooking" b ON b."id" = p."bookingId" AND b."tenantId" = p."tenantId" JOIN "TripDeparture" d ON d."id" = b."departureId" AND d."tenantId" = b."tenantId"
+        WHERE doc."deletedAt" IS NULL AND (doc."consent"->>'retE') > ((((d."endsAt") AT TIME ZONE 'UTC') AT TIME ZONE tz."tz")::date)::text ${tf(`doc."tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripPdpaRequest" WHERE "kind" = 'ERASE' AND "status" = 'IN_PROGRESS' ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripPdpaRequest" WHERE "kind" = 'ERASE' AND "status" IN ('RECEIVED', 'IN_PROGRESS') AND "dueAt" < ${iso}::timestamp ${tf(`"tenantId"`)}
+      UNION SELECT b."tenantId", b."unitId" FROM "TripBooking" b WHERE b."status" = 'EXPIRED' AND b."piiPurgedAt" IS NOT NULL ${tf(`b."tenantId"`)}
+        AND NOT EXISTS (SELECT 1 FROM "OutboxEvent" o WHERE o."tenantId" = b."tenantId" AND o."idempotencyKey" = 'trips.document.purged:booking:' || b."id")
+    ) x ORDER BY md5(x."unitId" || ${bucket}), x."tenantId", x."unitId"`;
+  // เพดานต่อหน่วยต่อขั้นต่อรอบงาน (ชุดละ ≤ 200 วนต่อในรอบเดียวกัน · r1 P8) — ค่าเริ่ม 2,000
+  const limit = Number.isInteger(opts?.limitPerUnit) && (opts?.limitPerUnit ?? 0) >= 1 ? Math.min(2000, opts?.limitPerUnit ?? 2000) : 2000;
+  for (let k = 0; k < units.length; k++) {
+    const u = units[k];
+    if (!u) continue;
+    if (opts?.signal?.aborted || (typeof opts?.deadline === "number" && Date.now() >= opts.deadline)) {
+      out.more = true;
+      break;
+    }
+    try {
+      const g = await systemGate(u.tenantId, u.unitId);
+      if (!g) continue;
+      // ส่วนแบ่งเวลา: เวลาที่เหลือ ÷ หน่วยที่เหลือ (อย่างน้อย 2 วิ · ไม่เกิน deadline รวม)
+      const unitDeadline = typeof opts?.deadline === "number" ? Math.min(opts.deadline, Date.now() + Math.max(2000, (opts.deadline - Date.now()) / (units.length - k))) : undefined;
+      const r = await purgeTripPersonalDataForUnit({ tenantId: u.tenantId, unitId: u.unitId, now, limit, ...(unitDeadline !== undefined ? { deadline: unitDeadline } : {}), ...(opts?.storage ? { storage: opts.storage } : {}) });
+      out.units++;
+      out.documents += r.documents;
+      out.passengerStages += r.passengerStages;
+      out.bookers += r.bookers;
+      out.more = out.more || r.more;
+      for (const f of r.failed) out.failed.push({ tenantId: f.tenantId, unitId: f.unitId, code: f.code });
+    } catch (e) {
+      out.failed.push({ tenantId: u.tenantId, unitId: u.unitId, code: errorCodeOf(e) });
+    }
+  }
+  await reportFailures("trips.pdpaPurge", out.failed);
+  return { ok: true, value: out };
+}
+// ── /T0.8 pdpa ──
