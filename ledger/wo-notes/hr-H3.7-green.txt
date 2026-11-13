@@ -104,3 +104,14 @@ qc-hr-h3.6 exit=0 ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) RESIDUE none (t
 first pass on the merged tree: qc-hr-h3.7 66/68 (S1.4 H3.6 deep imports · S1.6 default base lacks H3.6 migration) · qc-hr-h3.6 61/62 (S1.6 frozen: H3.7 files) · qc-hr-h1.3 62/63 (S6.1 H3.7 10→12) → ORACLE-EDITs → green above
 RED (a)+(c) reverted ⇒ RED S4.28 S4.32 · restored 68/68
 fitness noenv/env 0 · fitness-hr noenv/env 0 · clean typecheck exit 0, 0 errors
+
+# fix round 3 — 2026-11-13T19:00:56Z · QC_H37_BASE=d295e6d09
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) RESIDUE none (tenants=3 users=4) fails=[]
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) RESIDUE none (tenants=3 users=4) fails=[]
+qc-hr-h3.7-unforced exit=0 ===== qc-hr-h3.7 ===== passed 68/68 RESIDUE none (tenants=3 users=4) fails=[]
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) RESIDUE none (tenants=3 users=14) fails=[]
+qc-hr-h3.4 exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) RESIDUE none (tenants=3 users=17) · ACTIVE law rows after cleanup 0 fails=[]
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====  fails=[]
+qc-audit-trail exit=0   fails=[]
+  payadjust 27/27 · audit-trail 21/21 · fitness-hr noenv/env 0 · clean typecheck exit 0, 0 errors
+RED (F1 re-reads reverted in the working copy) ⇒ 65/68: S1.12 v2BookReread · S4.26 {PAID, pe 0} · S4.34 paidIffEntry+payAfterFinalize · restored 68/68
