@@ -778,3 +778,21 @@ model HrAttendanceAlert {
   @@index([systemId, date]) // HR H2.5 r2 ▸ ตัวงานอ่านการเตือนของช่วงวัน D−7…D (migration 20261230000002) ◂
   @@index([tenantId])
 }
+
+// HR H3.9 ▸ ทะเบียนลูกจ้าง ม.113 [V2]: (3) สัญชาติ · (8) ประโยชน์ตอบแทนอย่างอื่น (ข้อมูลค่าจ้าง ⇒ ชั้นเงินเดือน) — ช่องที่ HrEmployee ไม่มี
+//   1 แถวต่อพนักงาน · ไม่มี relation (บล็อก HrEmployee คงเดิม) · เขียนที่ hr/reports.ts#saveRegisterFields เท่านั้น ·
+//   CHECK ความยาว 1–60 / 1–500 อยู่ใน migration 20270109000000_hr_employee_register_fields ◂
+model HrEmployeeRegister {
+  id            String   @id @default(cuid())
+  tenantId      String
+  systemId      String
+  employeeId    String   @unique
+  nationality   String?
+  otherBenefits String?
+  updatedById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([systemId])
+  @@index([tenantId])
+}
