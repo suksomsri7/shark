@@ -1,5 +1,6 @@
 "use client";
 
+import { AccountIcon } from "./AccountIcon";
 import { useState } from "react";
 import { MoneyInput } from "./MoneyInput";
 import { MoneyText } from "@/components/ui/MoneyText";
@@ -74,7 +75,7 @@ export function DocTotals({
             onClick={() => setEditDiscount((v) => !v)}
             data-testid="tot-discount-edit"
           >
-            ✏
+            <AccountIcon name="edit" className="h-4 w-4" />
           </button>
         </span>
         {editDiscount ? (

@@ -157,11 +157,11 @@ function ActionRow({
             <span className="font-medium">รับเงินตามใบเสร็จนี้ <MoneyText satang={data.grandTotal} decimals /></span>
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-2">
-                <span className="text-xs text-[color:var(--color-muted)]">วันที่รับเงิน</span>
+                <span className="whitespace-nowrap text-xs text-[color:var(--color-muted)]">วันที่รับเงิน</span>
                 <input type="date" name="payPaidAt" defaultValue={cashSale.paidAt} className="input h-9" data-testid="cash-sale-date" />
               </label>
               <label className="flex items-center gap-2">
-                <span className="text-xs text-[color:var(--color-muted)]">รับเข้าบัญชี</span>
+                <span className="whitespace-nowrap text-xs text-[color:var(--color-muted)]">รับเข้าบัญชี</span>
                 <select name="payFinanceId" defaultValue={cashSale.defaultId ?? ""} className="input h-9" data-testid="cash-sale-finance">
                   {cashSale.defaultId === null && <option value="">เงินสด (ตามผังบัญชี)</option>}
                   {cashSale.channels.map((c) => (

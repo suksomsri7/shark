@@ -3591,16 +3591,22 @@ async function issueAutoReceiptInTx(
   const livePays = await tx.accountDocumentPayment.count({ where: { documentId: invoiceId, systemId, voidedAt: null } });
   const whole = livePays === 1 && tieOff === inv.grandTotal;
   const no = await tx.accountDocumentPayment.count({ where: { documentId: invoiceId, systemId, createdAt: { lte: pay.createdAt } } });
+  // งวดบางส่วน: แสดงภาษีที่รวมอยู่ในเงินงวดนี้ (= VAT ของใบกำกับงวดเดียวกันถ้ามี · ไม่มี = ส่วนของ VAT ใบตามสัดส่วน) — ไม่ใช่ "0%"
+  //   (หน้าจอแรกพิมพ์ VAT 0% / ภาษี 0.00 บนใบเสร็จงวดของใบแจ้งหนี้ที่มี VAT — อ่านเหมือนขายอัตรา 0) ◂
+  const tiOfPay = whole ? null : await tx.accountDocument.findFirst({ where: { systemId, docType: "TAX_INVOICE", sourcePaymentId: pay.id, status: { notIn: ["VOIDED", "CANCELLED"] } }, select: { vatAmount: true } });
+  const partVat = whole || inv.vatMode === "NONE" || inv.grandTotal <= 0 ? 0 : (tiOfPay?.vatAmount ?? Math.round((inv.vatAmount * tieOff) / inv.grandTotal));
+  const partRate = inv.lines.find((l) => l.vatRateBp > 0)?.vatRateBp ?? 0;
+  const partNet = tieOff - partVat;
   const rc = await tx.accountDocument.create({
     data: {
       tenantId, systemId, docType: "RECEIPT", status: "PAID", direction: "OUT", docNo: null,
       issueDate: pay.paidAt, contactId: inv.contactId,
       contactSnapshot: (inv.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
-      vatMode: whole ? inv.vatMode : "NONE", vatTiming: inv.vatTiming, taxPointBasis: inv.taxPointBasis,
+      vatMode: whole ? inv.vatMode : partVat > 0 ? "EXCLUDE" : "NONE", vatTiming: inv.vatTiming, taxPointBasis: inv.taxPointBasis,
       discountAmount: whole ? inv.discountAmount : 0,
       depositDeducted: whole ? inv.depositDeducted : 0,
-      subTotal: whole ? inv.subTotal : tieOff,
-      vatAmount: whole ? inv.vatAmount : 0,
+      subTotal: whole ? inv.subTotal : partNet,
+      vatAmount: whole ? inv.vatAmount : partVat,
       grandTotal: whole ? inv.grandTotal : tieOff,
       paidTotal: tieOff,
       sourceDocId: inv.id, sourcePaymentId: pay.id,
@@ -3612,7 +3618,7 @@ async function issueAutoReceiptInTx(
               tenantId, systemId, sortOrder: i, description: l.description, qty: l.qty, unitName: l.unitName, unitPrice: l.unitPrice,
               discount: l.discount, vatRateBp: l.vatRateBp, amount: l.amount, productId: l.productId, lineKind: l.lineKind,
             }))
-          : [{ tenantId, systemId, sortOrder: 0, description: `รับชำระตามใบแจ้งหนี้ ${inv.docNo ?? ""} งวดที่ ${no}`.replace(/\s+/g, " "), qty: 1, unitPrice: tieOff, discount: 0, vatRateBp: 0, amount: tieOff }],
+          : [{ tenantId, systemId, sortOrder: 0, description: `รับชำระตามใบแจ้งหนี้ ${inv.docNo ?? ""} งวดที่ ${no}`.replace(/\s+/g, " "), qty: 1, unitPrice: partNet, discount: 0, vatRateBp: partVat > 0 ? partRate : 0, amount: partNet }],
       },
     },
   });

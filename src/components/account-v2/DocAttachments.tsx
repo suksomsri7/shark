@@ -1,5 +1,6 @@
 "use client";
 
+import { AccountIcon } from "./AccountIcon";
 import { useRef, useState, useTransition } from "react";
 import {
   deleteDocAttachmentAction,
@@ -103,7 +104,7 @@ export function DocAttachments({
           if (e.dataTransfer.files.length) void upload(e.dataTransfer.files);
         }}
       >
-        <span aria-hidden>⬆</span>
+        <AccountIcon name="upload" className="h-4 w-4" />
         <span className="text-[color:var(--color-muted)]">ลากไฟล์มาวาง หรือ</span>
         <button
           type="button"

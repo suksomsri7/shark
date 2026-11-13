@@ -360,7 +360,7 @@ export async function salesTaxReport(
 
     // หมายเหตุ
     const cancelReason = doc?.voidReason ? ` (${doc.voidReason})` : "";
-    if (doc?.replacedById) notes.push(`ยกเลิก — ออกใบกำกับภาษีฉบับใหม่แทนเลขที่ ${replNoOf.get(doc.replacedById) ?? "-"}${cancelReason}`);
+    if (doc?.replacedById) notes.push(`ออกใบกำกับภาษีฉบับใหม่แทนแล้ว เลขที่ ${replNoOf.get(doc.replacedById) ?? "-"}${cancelReason}`);
     if (doc?.docType === "TAX_INVOICE" && doc.note?.startsWith("ออกแทนใบกำกับภาษีฉบับเดิมเลขที่")) notes.push(doc.note);
     if (sameMonthCancel) notes.push(`ยกเลิกภายในเดือนนี้ — ไม่มียอดภาษี${cancelReason}`);
     if (laterMonthCancel) {
