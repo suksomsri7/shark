@@ -14,7 +14,7 @@ import { documentPaymentChannels } from "./doc-settings";
 import { EXP_DOC_LABEL } from "./expense";
 import { isGroupDocType } from "./group";
 import { buildPrintOptions } from "./print-options";
-import { dedupeNotes, realPaymentTerms, section864Text, taxInvoiceMissing } from "./print-shared";
+import { dedupeNotes, realPaymentTerms, section864Text, stripSection864, taxInvoiceMissing } from "./print-shared";
 import { DOC_LABEL, baht, getDocument, getSettings, orgDisplayName } from "./service";
 import { docVatRateGroups, vatSummaryRows } from "./totals";
 
@@ -151,7 +151,8 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
     footerNote: notes.footer,
     paymentTerms: po.show.paymentTerms && po.paymentTerms && !isAdjust ? realPaymentTerms(po.paymentTerms, doc.issueDate, doc.dueDate, dueText, po.language) || null : null,
     channels: channels.map((c) => [c.bankName, c.accountNo, c.accountName].filter(Boolean).join(" · ") || c.promptpayId || c.name),
-    legalText: po.legalText || null,
+    // T2.10 ▸ ข้อความ ม.86/4 ในข้อความท้ายใบของร้าน ⇒ ให้ค่าตั้ง print.section864 ตัดสิน (ไม่พิมพ์บนใบที่ไม่ครบโดยอ้อม)
+    legalText: stripSection864(po.legalText) || null,
     sectionText: isTaxInvoice && doc.status !== "DRAFT" ? section864Text(s.doc.print.section864, missing, po.language) : null,
     stampUrl: s.stampUrl,
     signatureUrl: s.signatureUrl,

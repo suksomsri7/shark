@@ -18,7 +18,7 @@ export default async function UnsubscribePage({ params }: { params: Promise<{ to
         <h1 className="text-lg font-semibold text-slate-900">ยกเลิกรับอีเมลข่าวสาร</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           กดปุ่มด้านล่างเพื่อยืนยันว่าไม่ต้องการรับอีเมลข่าวสารจากร้านนี้อีก
-          หลังจากนี้เรายังอาจส่งเอกสารที่คุณขอไว้ เช่น ใบเสนอราคาหรือใบเสร็จ ตามที่กฎหมายกำหนด
+          หลังจากนี้เรายังอาจส่งเอกสารที่เกี่ยวกับรายการของคุณ เช่น ใบเสนอราคาหรือใบเสร็จที่คุณขอไว้
         </p>
         <form method="post" action={action} className="mt-6">
           <button

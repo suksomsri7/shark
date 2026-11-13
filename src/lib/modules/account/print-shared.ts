@@ -171,3 +171,12 @@ export function section864Text(mode: Section864Mode, missing: readonly string[],
   if (mode === "ALWAYS" || missing.length === 0) return SECTION_864_TEXT[lang];
   return null;
 }
+
+/** ข้อความท้ายใบของร้านที่มีประโยค "ออกตามมาตรา 86/4" — ตัดประโยคนั้นออก (ค่าตั้ง section864 เป็นผู้ตัดสินแทน) · ส่วนอื่นของข้อความคงเดิม */
+export function stripSection864(legalText: string | null | undefined): string {
+  return (legalText ?? "")
+    .replace(/(ใบกำกับภาษีนี้)?\s*ออกตามมาตรา\s*86\/4(\s*แห่งประมวลรัษฎากร)?/g, "")
+    .replace(/\s*·\s*$/g, "")
+    .replace(/^\s*·\s*/g, "")
+    .trim();
+}

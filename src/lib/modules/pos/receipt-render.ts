@@ -174,7 +174,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     weight: "น้ำหนัก",
     fullTaxInvoiceHint: "ขอใบกำกับเต็มรูปได้ภายใน 7 วัน",
     fullTaxInvoiceIssued: "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่",
-    eReceipt: "สแกนรับใบเสร็จอิเล็กทรอนิกส์",
+    eReceipt: "สแกนดูสำเนาใบเสร็จออนไลน์ (สำเนาเพื่อความสะดวก)", // ACC T2.10 ▸ ไม่ใช่ใบรับอิเล็กทรอนิกส์ (skill BOOKS §ง4) ◂
     channel: "ช่องทาง",
     cardBalance: "คงเหลือ",
     depositReceipt: "ใบรับเงินมัดจำ", // POS P2.9b ◂
@@ -219,7 +219,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     weight: "Weight",
     fullTaxInvoiceHint: "Full tax invoice available on request within 7 days",
     fullTaxInvoiceIssued: "Full tax invoice issued, no.",
-    eReceipt: "Scan for e-receipt",
+    eReceipt: "Scan to view an online copy (for convenience)", // ACC T2.10 ◂
     channel: "Channel",
     cardBalance: "Balance",
     depositReceipt: "DEPOSIT RECEIPT", // POS P2.9b ◂

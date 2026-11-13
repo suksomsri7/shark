@@ -1915,6 +1915,7 @@
         "reviewExpired": "Rating for this bill has expired (30 days) — thank you for your visit"
       },
       "title": "Online receipt",
+      "convenienceCopy": "Convenience copy — this page is not an electronic receipt or tax invoice; the original is the printed copy from the shop",
       "status": {
         "PAID": "Paid",
         "VOIDED": "Voided",

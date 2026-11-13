@@ -198,6 +198,8 @@ export function PosPublicReceipt({ token, receipt: r, locale }: { token: string;
       </NextIntlClientProvider>
 
       <footer className="mt-auto flex flex-col items-center gap-1 pb-[18px] pt-8 text-center text-[11.5px] text-[color:var(--color-muted)]">
+        {/* ACC T2.10 ▸ สำเนาเพื่อความสะดวก (skill BOOKS §ง4 · checklist B16) ◂ */}
+        <p data-testid="pos-receipt-convenience-copy">{t("public.convenienceCopy")}</p>
         <p>{t("public.footer")}</p>
         <LangLinks locale={locale} t={t} />
       </footer>
