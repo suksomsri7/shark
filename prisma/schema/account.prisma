@@ -192,6 +192,7 @@ model AccountDocument {
   // ── V2 (WO 1.3 · ฟอร์ม DocEditorV2 §5.2 B) · additive · nullable ──
   reference       String? // "อ้างอิง" ที่ผู้ใช้พิมพ์ (เลข PO ลูกค้า / เอกสารต้นทาง) ≤35 ตัว
   autoTaxInvoice  Boolean? // toggle "ออกใบกำกับภาษีพร้อมกัน" ต่อใบ (null = ตามตั้งค่ากิจการ §9.2)
+  autoReceipt     Boolean? // ACC T2.8: ออกใบเสร็จให้เองทุกงวดที่รับเงินของใบแจ้งหนี้นี้ (null = ตามค่าตั้ง docConfig.receipt.autoOnPayment)
   /// ACC T1.4 — สถานะภาษีซื้อเริ่มของใบ (บรรทัดที่ไม่ระบุใช้ค่านี้) · null = ใบก่อน T1.4 (อ่านจาก vatMode/vatTiming แบบเดิม)
   inputVatStatus    AccountInputVatStatus?
   /// ACC T1.5 — วันที่ในใบกำกับภาษีของผู้ขาย (ใบกำกับภาษีซื้อ/ค่าใช้จ่าย)

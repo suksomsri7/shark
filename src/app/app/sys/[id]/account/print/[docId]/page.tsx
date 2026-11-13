@@ -8,6 +8,7 @@ import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 // WO 8.1 (§9.2 "รายงานเอกสาร"): เทมเพลต/ฟิลด์ที่แสดง/ภาษา + หมายเหตุ+เงื่อนไขต่อชนิด + ช่องทางบนเอกสาร
 import { buildPrintOptions } from "@/lib/modules/account/print-options";
 import { documentPaymentChannels } from "@/lib/modules/account/doc-settings";
+import { PrintDocNotes } from "@/components/account-v2/PrintDocNotes"; // เลน 1 (T2.8/T2.2): ร่าง · ได้รับเงินแล้ว · ออกแทน
 
 
 // หน้าเอกสารสำหรับพิมพ์/บันทึก PDF (Ctrl+P) — B&W A4
@@ -91,7 +92,7 @@ export default async function PrintPage({
           </div>
         </div>
         <div className="text-right">
-          <div className="text-lg font-bold">{docTitle}</div>
+          <div className="text-lg font-bold">{doc.status === "DRAFT" ? `ร่าง — ${docTitle}` : docTitle}</div>
           {isTaxInvoice && <div className="text-xs font-medium">{setLabel}</div>}
           <div className="mt-1 text-xs">{L.docNo} {doc.docNo ?? "(ร่าง)"}</div>
           <div className="text-xs">{L.date} {fmtDate(doc.issueDate)}</div>
@@ -101,6 +102,7 @@ export default async function PrintPage({
         </div>
       </div>
 
+      <PrintDocNotes tenantId={tenantId} systemId={systemId} doc={doc} slot="head" />
       <div className="mt-4 rounded border p-3">
         <div className="text-xs text-neutral-600">{isTaxInvoice ? L.buyerTax : L.buyer}</div>
         <div className="font-medium">{buyerName || "—"}</div>
@@ -200,6 +202,7 @@ export default async function PrintPage({
         </div>
       </div>
 
+      <PrintDocNotes tenantId={tenantId} systemId={systemId} doc={doc} slot="foot" />
       {po.show.note && doc.note && (
         <div className="mt-4 text-xs text-neutral-600">{L.note}: {doc.note}</div>
       )}

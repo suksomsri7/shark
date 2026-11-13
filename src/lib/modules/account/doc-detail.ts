@@ -310,6 +310,21 @@ export async function getDocDetailData(
     listDocAuditLogs(tenantId, docId),
   ]);
   const jv = await loadJvEntries(systemId, docId, payments.map((p) => p.id));
+  // ACC T2.8 ▸ ใบเสร็จ: แท็บการชำระต้องตรงกับหัวเอกสาร
+  //   ใบเสร็จอัตโนมัติ/ของใบแจ้งหนี้ (sourcePaymentId) = แสดงรายการรับของงวดนั้น (เงินอยู่ที่ใบแจ้งหนี้)
+  //   ใบเสร็จขายสดเก่าที่ออกก่อนมีรายการรับ (ชำระแล้วแต่ไม่มีแถว) = แถวแสดงผลที่คิดจากใบ (derived · ไม่เขียนฐาน) ◂
+  if (doc.docType === "RECEIPT" && payments.length === 0) {
+    const srcPay = (doc as { sourcePaymentId?: string | null }).sourcePaymentId;
+    if (srcPay && doc.sourceDocId) {
+      payments.push(...(await listDocPayments(tenantId, systemId, doc.sourceDocId)).filter((p) => p.id === srcPay));
+    } else if (!doc.sourceDocId && doc.status === "PAID") {
+      payments.push({
+        id: `derived:${doc.id}`, paidAt: doc.issueDate, channel: "CASH", financeAccountId: null,
+        financeName: "เงินสด (ตามใบเสร็จ — ไม่มีรายการรับเงินในระบบ)", amount: doc.grandTotal, whtAmount: 0, feeAmount: 0,
+        note: "แสดงจากยอดใบเสร็จที่ออกก่อนมีรายการรับเงิน", chequeNo: null, certNo: null, voidedAt: null, createdByName: null, derived: true,
+      });
+    }
+  }
   const related = await relatedSlotsFor(tenantId, systemId, doc);
   const isGroup = isGroupDocType(doc.docType);
   const [groupPanel, groupChip] = await Promise.all([

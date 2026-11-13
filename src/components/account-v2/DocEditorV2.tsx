@@ -934,6 +934,21 @@ function EditorBody(props: DocEditorV2Props) {
               <span className="text-xs text-[color:var(--color-muted)]" data-testid="tg-vat-now-help">
                 {VAT_NOW_HELP}
               </span>
+              {props.docType === "INVOICE" && (
+                <span className="flex flex-wrap items-center gap-2" data-testid="tg-auto-receipt-row">
+                  <Toggle
+                    checked={value.autoReceipt ?? props.receiptAutoDefault ?? true}
+                    onChange={(v) => set("autoReceipt", v)}
+                    label="ออกใบเสร็จทุกครั้งที่รับเงิน"
+                    testId="tg-auto-receipt"
+                  />
+                  {value.autoReceipt !== null && value.autoReceipt !== undefined && (
+                    <button type="button" className="text-xs text-[color:var(--color-accent)]" onClick={() => set("autoReceipt", null)} data-testid="tg-auto-receipt-reset">
+                      ใช้ตามค่าตั้ง
+                    </button>
+                  )}
+                </span>
+              )}
               {autoTaxHint && (
                 <span className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]" data-testid="tg-auto-tax-hint">
                   {autoTaxHint}

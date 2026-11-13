@@ -160,7 +160,13 @@ export async function issueDocumentAction(formData: FormData) {
   // T0.4 — รหัสคำเตือนกฎหมายที่ผู้ใช้ติ๊กยืนยันในฟอร์ม (LegalWarnings ackName="ack")
   const ack = screenAck(formData.getAll("ack"), userId);
   // ACC T1.7 ▸ บริบทการยืนยันรอบงาน — ด่านเดือนที่ยื่นแล้ว (ชั้นลงบัญชี) อ่านรหัสเดียวกัน ◂
-  const res = await withScreenLegal(ack, () => issueDocument(tenantId, systemId, id, { ack }));
+  // ACC T2.8 ▸ ร่างใบเสร็จขายสด: วันที่/บัญชีรับเงินที่เลือกในฟอร์ม (ไม่ส่ง = ค่าเริ่มของ service) ◂
+  const payPaidAt = str(formData, "payPaidAt");
+  const payFinanceId = str(formData, "payFinanceId");
+  const cashSale = /^\d{4}-\d{2}-\d{2}$/.test(payPaidAt) || payFinanceId
+    ? { paidAt: /^\d{4}-\d{2}-\d{2}$/.test(payPaidAt) ? new Date(`${payPaidAt}T05:00:00.000Z`) : null, financeAccountId: payFinanceId || null }
+    : undefined;
+  const res = await withScreenLegal(ack, () => issueDocument(tenantId, systemId, id, { ack, cashSale }));
   await writeAudit({
     tenantId,
     actorId: userId,

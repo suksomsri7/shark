@@ -41,6 +41,8 @@ export function issueLegalWarnings(
       out.push(legalWarning("TAX_INVOICE_NOT_VAT_REGISTERED", typeof doc.vatAmount === "number" ? { vat: satangTh(doc.vatAmount) } : {}));
     if (noTaxId(settings.taxId)) out.push(legalWarning("TAX_INVOICE_SELLER_TAX_ID_MISSING"));
   }
+  // ACC T2.8 ▸ ใบเสร็จ (ใบรับ ม.105 ทวิ) ต้องแสดงเลขผู้เสียภาษีของผู้ออก — ร้านยังไม่กรอก = แจ้งให้ทราบ (ack=false · ไม่บล็อก) ◂
+  if (settings && doc.docType === "RECEIPT" && noTaxId(settings.taxId)) out.push(legalWarning("RECEIPT_SELLER_TAX_ID_MISSING"));
   if (ADJUST_TYPES.has(doc.docType) && blank(doc.adjustReason)) out.push(legalWarning("ADJUST_NOTE_REASON_MISSING"));
   return out;
 }

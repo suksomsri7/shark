@@ -20,6 +20,7 @@ import {
   unwindPaymentInTx,
   getSettings,
   recordPaymentInTx,
+  afterRevenuePaymentInTx,
   type PaymentChequeGl,
   type RecordPaymentInput,
   attachDraftReceiptPaymentsInTx,
@@ -378,6 +379,8 @@ export async function recordPaymentWithChequeInOneTx(
       const one = side === "expense"
         ? await recordVendorPaymentInTx(tx, tenantId, systemId, documentId, payment)
         : await recordPaymentInTx(tx, tenantId, systemId, documentId, payment, settings!);
+      // ACC T2.8 ▸ ใบเสร็จอัตโนมัติของงวด (ฝั่งรายรับ) — กติกาเดียวกับ recordPayment ◂
+      if (side === "revenue") await afterRevenuePaymentInTx(tx, tenantId, systemId, documentId, one as { paymentId: string; duplicate: boolean }, payment, settings!);
       const linked = one.duplicate
         ? (await tx.accountDocumentPayment.findFirst({ where: { id: one.paymentId, tenantId, systemId }, select: { chequeId: true } }))?.chequeId
         : null;

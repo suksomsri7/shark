@@ -113,6 +113,8 @@ function sanitize(payload: DocDraftPayload, vat: VatRule) {
     priceMode,
     // ACC T1.2 ▸ null = ตามค่าตั้ง (ไม่ได้แตะสวิตช์) · true/false = ผู้ใช้เลือก ◂
     autoTaxInvoice: v.autoTaxInvoice === true ? true : v.autoTaxInvoice === false ? false : null,
+    // ACC T2.8 ▸ null = ตามค่าตั้ง (ไม่ได้แตะสวิตช์ใบเสร็จอัตโนมัติ) ◂
+    autoReceipt: v.autoReceipt === true ? true : v.autoReceipt === false ? false : null,
     // ACC T1.4 ▸ null = ค่าเริ่มตามคู่ค้า/ธงบัญชี (server ตัดสิน) ◂
     inputVatStatus: isInputVatStatus(v.inputVatStatus) ? v.inputVatStatus : null,
     recognizeVatNow: v.recognizeVatNow !== false,
@@ -289,6 +291,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
       tags: v.tags,
       internalNote: v.internalNote || null,
       autoTaxInvoice: settings.vatRegistered ? v.autoTaxInvoice : null,
+      autoReceipt: v.autoReceipt ?? null,
       whtAmount: totals.whtTotal, // พรีวิว WHT (ตัวจริงเกิดตอนรับ/จ่ายชำระ — WO 1.4)
       lineWht: v.lines.map((l) => ({ whtIncomeType: l.whtIncomeType, whtRateBp: l.whtRateBp })),
     });

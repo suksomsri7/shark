@@ -132,6 +132,8 @@ export type DocDraftValue = {
   priceMode: PriceMode;
   /** ACC T1.2 — สวิตช์ "ออกใบกำกับภาษีพร้อมกัน": null = ตามค่าตั้ง (สินค้าพร้อมใบ · บริการตามโหมด) · true/false = ผู้ใช้เลือกเอง */
   autoTaxInvoice: boolean | null;
+  /** ACC T2.8 — ใบแจ้งหนี้: "ออกใบเสร็จทุกครั้งที่รับเงิน" null = ตามค่าตั้ง (docConfig.receipt.autoOnPayment) · true/false = ผู้ใช้เลือกเอง */
+  autoReceipt?: boolean | null;
   /** ACC T1.4 — สถานะภาษีซื้อของทั้งใบ (เอกสารซื้อ) · null = ค่าเริ่มตามคู่ค้า (server ตัดสิน) */
   inputVatStatus?: "CLAIM" | "PENDING" | "NO_CLAIM" | null;
   recognizeVatNow: boolean;
@@ -232,6 +234,8 @@ export type DocEditorV2Props = {
   vatRateBp: number;
   /** ACC T1.2 — ค่าตั้งใบกำกับอัตโนมัติ (สินค้า: พร้อมใบแจ้งหนี้ · บริการ: โหมด) ใช้คำนวณค่าเริ่มของสวิตช์ "ออกใบกำกับภาษีพร้อมกัน" */
   taxInvoiceSettings?: { goodsOnIssue: boolean; mode: "MANUAL" | "ON_PAYMENT" | "ON_INVOICE" };
+  /** ACC T2.8 — ค่าตั้ง "ออกใบเสร็จทุกครั้งที่รับเงิน" (docConfig.receipt.autoOnPayment) · ไม่ส่ง = เปิด */
+  receiptAutoDefault?: boolean;
   /** ACC T1.4 — ค่าตั้งภาษีซื้อ (ค่าเริ่มเมื่อคู่ค้าไม่มีเลขผู้เสียภาษี) */
   inputVatSettings?: { nonClaimPosting: "SEPARATE_ACCOUNT" | "INTO_COST"; vendorNoTaxIdDefault: "PENDING" | "NO_CLAIM" };
   branchName: string;

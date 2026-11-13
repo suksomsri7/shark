@@ -304,6 +304,8 @@ export async function recordPayments(
       note: clampNote(r.note),
       createdById: opts.userId ?? null,
       idempotencyKey,
+      // ACC T2.8 ▸ รับเงินผ่านใบเสร็จที่แปลงจากใบแจ้งหนี้ (ทาง ①) = ใบเสร็จมีอยู่แล้ว ⇒ ไม่ออกใบเสร็จอัตโนมัติซ้ำ ◂
+      skipAutoReceipt: doc.id !== target.id && doc.docType === "RECEIPT",
     };
     // CRM C5.4-C ▸ round 10 · มติ B (R9-4): รับ/จ่ายด้วยเช็ค = งวด + เช็ค + ผูก ในธุรกรรมเดียว (ไม่มีช่องให้ยกเลิกงวดแทรกก่อนผูก · เช็คล้ม = งวดไม่เกิด) ◂
     const res = r.cheque

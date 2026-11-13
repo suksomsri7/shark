@@ -2452,7 +2452,7 @@ export async function issueDocument(
   tenantId: string,
   systemId: string,
   id: string,
-  opts: { ack?: LegalAck | null } = {},
+  opts: { ack?: LegalAck | null; cashSale?: CashSalePaymentInput } = {},
 ): Promise<{ ok: true; docNo: string } | { ok: false; reason: string; legal?: LegalAckRequired }> {
   try {
     const settings = await getSettings(tenantId, systemId);
@@ -2479,7 +2479,7 @@ export async function issueDocumentInTx(
   systemId: string,
   id: string,
   settings: Awaited<ReturnType<typeof getSettings>>,
-  opts: { ack?: LegalAck | null } = {},
+  opts: { ack?: LegalAck | null; cashSale?: CashSalePaymentInput } = {},
 ): Promise<string> {
       let docNo = "";
       // WO 9.2 ข้อ 14 — กดปุ่ม "ออกเอกสาร" รัว 2 ครั้ง: ไม่มีล็อก = ผ่านด่าน DRAFT ทั้งคู่
@@ -2597,6 +2597,10 @@ export async function issueDocumentInTx(
       const ctx = { tenantId, systemId };
       await ensureAccounting(ctx, tx);
       if (doc.docType === "INVOICE" || doc.docType === "RECEIPT") {
+        // ACC T2.8 ▸ ใบเสร็จขายสด = มีเงินรับจริงเสมอ: ยังไม่มีรายการรับเงิน ⇒ สร้างรายการรับ (ค่าเริ่ม/ที่ผู้ใช้เลือก) ก่อนลงบัญชี
+        //   ⇒ หัวเอกสาร · แท็บการชำระ · บัญชี ตรงกัน (เดิม: สถานะ "ชำระแล้ว" แต่แท็บการชำระว่าง · GL ลงเงินสดลอย) ◂
+        if (doc.docType === "RECEIPT" && !doc.sourceDocId && doc.source !== "POS" && doc.refType !== "PosSale")
+          await ensureCashSalePaymentInTx(tx, { tenantId, systemId }, { id, issueDate: doc.issueDate, grandTotal: doc.grandTotal, createdById: doc.createdById ?? null }, opts.cashSale);
         // ตั้งลูกหนี้/รายได้/VAT (accrual) — ON_PAYMENT พัก VAT ที่ 2210 (logic ใน gl) · หักมัดจำ Dr 2110
         await postDocument(ctx, id, tx);
         // ACC T1.2 ▸ "ออกใบกำกับภาษีพร้อมกัน" (A6 · ม.78/ม.86): ใบกำกับของชนิดที่ถึงจุดรับผิดตอนนี้ ในธุรกรรมเดียวกัน ◂
@@ -2962,6 +2966,8 @@ export type RecordPaymentInput = {
   idempotencyKey?: string | null;
   /** WO 5.5: รับเงินใบนี้มาจากคำขอชำระเงิน (ลิงก์+QR PromptPay) ใบไหน — null = ทางเรียกเดิมทั้งหมด */
   paymentRequestId?: string | null;
+  /** ACC T2.8 ▸ ไม่ออกใบเสร็จอัตโนมัติของงวดนี้ (ผู้เรียกออกใบเสร็จเองแล้ว เช่น รับเงินผ่านใบเสร็จที่แปลงจากใบแจ้งหนี้) ◂ */
+  skipAutoReceipt?: boolean;
 };
 
 export async function recordPayment(
@@ -2987,6 +2993,8 @@ export async function recordPayment(
     const r = await prisma.$transaction(async (tx) => {
       openDocNumbering(tx); // CRM C5.4-N ▸ เลขใบกำกับภาษี/WTI จองท้ายธุรกรรม (LOCK ORDER ขั้น 7) ◂
       const r = await recordPaymentInTx(tx, tenantId, systemId, id, input, settings);
+      // ACC T2.8 ▸ ใบเสร็จอัตโนมัติของงวดนี้ (ค่าตั้ง receipt.autoOnPayment · ต่อใบ autoReceipt) — ในธุรกรรมเดียวกัน เลขจองท้ายธุรกรรม ◂
+      await afterRevenuePaymentInTx(tx, tenantId, systemId, id, r, input, settings);
       await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, [id]); // CRM C5.4-C ▸ round 10 · มติ C: หัวกลุ่มตามใบลูก ◂
       const nos = await finalizeDocNos(tx); // CRM C5.4-N ▸ คำสั่งสุดท้าย — ล็อกสุดท้ายของธุรกรรม ◂
       return { ...r, whtCertNo: r.whtCertDocId ? nos.get(r.whtCertDocId) : undefined };
@@ -3540,6 +3548,115 @@ async function issueDepositTaxInvoiceInTx(tx: Prisma.TransactionClient, tenantId
   return dep.vatAmount;
 }
 
+/** ACC T2.8 ▸ หลังบันทึกรับเงิน 1 งวด (ทุกทางของฝั่งรายรับ: ฟอร์ม · เช็ค · REST · ลิงก์ชำระ): ใบเสร็จอัตโนมัติ + คำเตือนร้านไม่มีเลขผู้เสียภาษี ◂ */
+export async function afterRevenuePaymentInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  systemId: string,
+  documentId: string,
+  r: { paymentId: string; duplicate: boolean; warnings?: LegalWarning[] },
+  input: { skipAutoReceipt?: boolean },
+  settings: Awaited<ReturnType<typeof getSettings>>,
+): Promise<void> {
+  if (r.duplicate || input.skipAutoReceipt) return;
+  const rc = await issueAutoReceiptInTx(tx, tenantId, systemId, documentId, r.paymentId, settings);
+  if (rc && !(settings.taxId ?? "").replace(/\D/g, "")) r.warnings = [...(r.warnings ?? []), legalWarning("RECEIPT_SELLER_TAX_ID_MISSING")];
+}
+
+/**
+ * ACC T2.8 ▸ ใบเสร็จรับเงินอัตโนมัติต่องวดรับเงินของใบแจ้งหนี้ (ม.105 "ในทันทีทุกคราวที่รับเงิน" · checklist B9)
+ *   เปิดเมื่อ: ใบแจ้งหนี้ (ไม่ใช่ของหอพัก) · ต่อใบ autoReceipt ?? ค่าตั้ง receipt.autoOnPayment (ค่าเริ่มเปิด)
+ *   ใบเสร็จ: ISSUED เป็น PAID · ลงวันที่รับเงิน · เลขจองท้ายธุรกรรม · sourceDocId = ใบแจ้งหนี้ · sourcePaymentId = งวด · ไม่มี JV (เงินลงที่งวดของใบแจ้งหนี้แล้ว)
+ *   งวดเดียวครบทั้งใบ ⇒ ยกบรรทัด/ยอดของใบแจ้งหนี้ · งวดบางส่วน ⇒ 1 บรรทัด "รับชำระตามใบแจ้งหนี้ … งวดที่ n" ยอด = เงิน + ภาษีถูกหัก
+ *   ยกเลิกงวด ⇒ ใบเสร็จนี้ยกเลิกตาม (unwindPaymentInTx) ◂
+ */
+async function issueAutoReceiptInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  systemId: string,
+  invoiceId: string,
+  paymentId: string,
+  settings: Awaited<ReturnType<typeof getSettings>>,
+): Promise<string | null> {
+  const inv = await tx.accountDocument.findFirst({ where: { id: invoiceId, tenantId, systemId }, include: { lines: { orderBy: { sortOrder: "asc" } } } });
+  if (!inv || inv.docType !== "INVOICE" || inv.source === "DORM") return null;
+  if (!(inv.autoReceipt ?? settings.doc.receipt.autoOnPayment)) return null;
+  const pay = await tx.accountDocumentPayment.findFirst({ where: { id: paymentId, documentId: invoiceId, systemId, voidedAt: null } });
+  if (!pay) return null;
+  if ((await tx.accountDocument.count({ where: { systemId, docType: "RECEIPT", sourcePaymentId: paymentId, status: { notIn: ["VOIDED", "CANCELLED"] } } })) > 0) return null;
+  const tieOff = pay.amount + pay.whtAmountSatang;
+  const livePays = await tx.accountDocumentPayment.count({ where: { documentId: invoiceId, systemId, voidedAt: null } });
+  const whole = livePays === 1 && tieOff === inv.grandTotal;
+  const no = await tx.accountDocumentPayment.count({ where: { documentId: invoiceId, systemId, createdAt: { lte: pay.createdAt } } });
+  const rc = await tx.accountDocument.create({
+    data: {
+      tenantId, systemId, docType: "RECEIPT", status: "PAID", direction: "OUT", docNo: null,
+      issueDate: pay.paidAt, contactId: inv.contactId,
+      contactSnapshot: (inv.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
+      vatMode: whole ? inv.vatMode : "NONE", vatTiming: inv.vatTiming, taxPointBasis: inv.taxPointBasis,
+      discountAmount: whole ? inv.discountAmount : 0,
+      depositDeducted: whole ? inv.depositDeducted : 0,
+      subTotal: whole ? inv.subTotal : tieOff,
+      vatAmount: whole ? inv.vatAmount : 0,
+      grandTotal: whole ? inv.grandTotal : tieOff,
+      paidTotal: tieOff,
+      sourceDocId: inv.id, sourcePaymentId: pay.id,
+      note: `ออกอัตโนมัติจากการรับชำระใบแจ้งหนี้ ${inv.docNo ?? ""}`.trim(),
+      createdById: pay.createdById ?? null,
+      lines: {
+        create: whole
+          ? inv.lines.map((l, i) => ({
+              tenantId, systemId, sortOrder: i, description: l.description, qty: l.qty, unitName: l.unitName, unitPrice: l.unitPrice,
+              discount: l.discount, vatRateBp: l.vatRateBp, amount: l.amount, productId: l.productId, lineKind: l.lineKind,
+            }))
+          : [{ tenantId, systemId, sortOrder: 0, description: `รับชำระตามใบแจ้งหนี้ ${inv.docNo ?? ""} งวดที่ ${no}`.replace(/\s+/g, " "), qty: 1, unitPrice: tieOff, discount: 0, vatRateBp: 0, amount: tieOff }],
+      },
+    },
+  });
+  deferDocNo(tx, { docId: rc.id, tenantId, systemId, date: pay.paidAt, series: { kind: "configured", docType: "RECEIPT", fallbackPrefix: docNoFallbackPrefix("RECEIPT") } });
+  await tx.accountDocumentRelation.create({ data: { tenantId, systemId, fromId: inv.id, toId: rc.id, type: "CONVERT", amount: tieOff } });
+  return rc.id;
+}
+
+/** ACC T2.8 ▸ รายการรับเงินของใบเสร็จขายสดที่ผู้ใช้เลือกตอนออก (ไม่ส่ง = ค่าเริ่ม: วันที่ใบ · บัญชีเงินสดบัญชีแรก · ยอดเต็ม) */
+export type CashSalePaymentInput = { paidAt?: Date | null; financeAccountId?: string | null; note?: string | null };
+
+/**
+ * ACC T2.8 ▸ ใบเสร็จขายสดที่กำลังออกยังไม่มีรายการรับเงิน (หรือรับไม่ครบ) ⇒ สร้างรายการรับส่วนที่ขาด
+ *   ค่าเริ่ม: วันที่รับ = วันที่ใบเสร็จ · บัญชีเงิน = บัญชีประเภทเงินสดที่สร้างก่อนสุด (ไม่มี = ผัง "เงินสด" ตาม mapping) · ช่องทางตามชนิดบัญชี
+ *   skill: ใบรับออก "ในทันทีทุกคราวที่รับเงิน" (domain-accounting-books.md §ง1 ม.105) ⇒ ใบเสร็จ = มีเงินรับจริงคู่กันเสมอ
+ *   ใบเสร็จที่ผูกรายการรับครบแล้ว (ฟอร์ม V2 ทาง ②) ไม่แตะ ◂
+ */
+async function ensureCashSalePaymentInTx(
+  tx: Prisma.TransactionClient,
+  ctx: { tenantId: string; systemId: string },
+  doc: { id: string; issueDate: Date; grandTotal: number; createdById: string | null },
+  pick?: CashSalePaymentInput,
+): Promise<void> {
+  const live = await tx.accountDocumentPayment.findMany({ where: { documentId: doc.id, systemId: ctx.systemId, voidedAt: null }, select: { amount: true, whtAmountSatang: true } });
+  const have = live.reduce((n, p) => n + p.amount + p.whtAmountSatang, 0);
+  const missing = doc.grandTotal - have;
+  if (missing <= 0) return;
+  const fin = pick?.financeAccountId
+    ? await tx.accountFinance.findFirst({ where: { id: pick.financeAccountId, systemId: ctx.systemId, archivedAt: null }, select: { id: true, type: true } })
+    : await tx.accountFinance.findFirst({ where: { systemId: ctx.systemId, type: "CASH", archivedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, type: true } });
+  if (pick?.financeAccountId && !fin) throw new Error("ช่องทางการเงินไม่ถูกต้อง");
+  await tx.accountDocumentPayment.create({
+    data: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      documentId: doc.id,
+      paidAt: pick?.paidAt ?? doc.issueDate,
+      channel: !fin || fin.type === "CASH" ? "CASH" : "TRANSFER",
+      financeAccountId: fin?.id ?? null,
+      amount: missing,
+      note: pick?.note ?? "รับเงินตามใบเสร็จขายสด (บันทึกพร้อมการออกใบเสร็จ)",
+      createdById: doc.createdById,
+    },
+  });
+  await tx.accountDocument.update({ where: { id: doc.id }, data: { paidTotal: doc.grandTotal } });
+}
+
 /**
  * ACC T2.6 ▸ คำเตือนรับเงินย้อนเดือน (pure — ฟอร์มรับชำระแสดงล่วงหน้าได้ · service ส่งกลับในผล)
  *   มีใบกำกับออกให้เองในงวดนี้ (vat > 0) และเดือนของวันรับเงิน (เวลาไทย) อยู่ก่อนเดือนของ "วันนี้" ⇒ PAYMENT_TAX_INVOICE_EARLIER_MONTH [U] ไม่บล็อก ◂
@@ -3958,6 +4075,11 @@ export async function unwindPaymentInTx(
     });
     if (ti.status !== "DRAFT") await reverseFor(ctx, "AccountDocument", ti.id, reason, tx);
   }
+  // ⑥b ACC T2.8 ▸ ใบเสร็จอัตโนมัติของงวดนี้ (ไม่มี JV ของตัวเอง) → ยกเลิกตาม (เก็บใบที่ยกเลิกไว้ — ไม่ลบ) ◂
+  await tx.accountDocument.updateMany({
+    where: { systemId, docType: "RECEIPT", sourcePaymentId: paymentId, status: { notIn: ["VOIDED", "CANCELLED"] } },
+    data: { status: "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามการยกเลิกรับชำระ: ${reason}` },
+  });
   // ⑦ WO C4: webhook — ยอดที่รายงานคือยอดเงินของงวดที่ถูกยกเลิก (ไม่รวม WHT)
   //   round 12 · event symmetry: รายการรับของใบเสร็จขายสดส่ง `account.payment.recorded` ตอนผูก (attachDraftReceiptPaymentsInTx) แล้ว ⇒ voided คู่กันเสมอ
   await emitPaymentVoided(tx, ctx, { paymentId, documentId: doc.id, docNo: doc.docNo, amountSatang: pay.amount, reason });
@@ -4197,6 +4319,8 @@ export type DocPaymentRow = {
   voidedAt: Date | null;
   /** WO 1.5 §5.3 — ชื่อผู้บันทึกการชำระ (resolve จาก membership+user ของร้านนี้ · ไม่เจอ = null) */
   createdByName: string | null;
+  /** ACC T2.8 — แถวแสดงผลที่คิดจากใบเสร็จเก่า (ไม่มีในฐาน · ยกเลิกไม่ได้) */
+  derived?: boolean;
 };
 
 /**
@@ -6254,6 +6378,8 @@ export async function applyEditorExtras(
     tags: string[];
     internalNote: string | null;
     autoTaxInvoice: boolean | null;
+    /** ACC T2.8 — ไม่ส่ง = ไม่แตะคอลัมน์ (ผู้เรียกเดิม) */
+    autoReceipt?: boolean | null;
     whtAmount: number;
     lineWht: { whtIncomeType: AccountWhtIncomeType | null; whtRateBp: number | null }[];
   },
@@ -6268,6 +6394,7 @@ export async function applyEditorExtras(
       tags: extras.tags,
       internalNote: extras.internalNote,
       autoTaxInvoice: extras.autoTaxInvoice,
+      ...(extras.autoReceipt !== undefined ? { autoReceipt: extras.autoReceipt } : {}),
       whtAmount: extras.whtAmount,
     },
   });

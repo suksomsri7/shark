@@ -1,3 +1,4 @@
+import { listPaymentChannels } from "@/lib/modules/account/payment";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
@@ -104,9 +105,12 @@ function ActionRow({
   targets,
   perm,
   legalWarnings = [],
+  cashSale = null,
 }: {
   /** T0.4 — คำเตือนกฎหมายของการออกเอกสารร่างนี้ (ช่องติ๊กยืนยันอยู่ในฟอร์มออกเอกสาร) */
   legalWarnings?: LegalWarning[];
+  /** ACC T2.8 — ร่างใบเสร็จขายสด: ช่องทางรับเงินให้เลือกตอนออก (ใบเสร็จ = มีรายการรับเงินเสมอ) */
+  cashSale?: { channels: { id: string; name: string; type: string }[]; defaultId: string | null; paidAt: string } | null;
   data: DocDetailData;
   systemId: string;
   side: "revenue" | "expense";
@@ -143,10 +147,31 @@ function ActionRow({
         <SubmitButton className="w-full h-11 md:h-9 md:w-auto">{isAdjustReceived ? "บันทึก" : "บันทึก/ตั้งเจ้าหนี้"}</SubmitButton>
       </form>
     ) : (
-      <form action={issueDocumentAction} className={legalWarnings.length ? "flex flex-col gap-2" : undefined}>
+      <form action={issueDocumentAction} className={legalWarnings.length || cashSale ? "flex flex-col gap-2" : undefined}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
         <LegalWarnings warnings={legalWarnings} ackName="ack" testId="doc-legal-warnings" />
-        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">ออกเอกสาร</SubmitButton>
+        {cashSale && (
+          <div className="flex flex-col gap-2 rounded-md border p-3 text-sm" data-testid="cash-sale-payment">
+            <span className="font-medium">รับเงินตามใบเสร็จนี้ <MoneyText satang={data.grandTotal} decimals /></span>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2">
+                <span className="text-xs text-[color:var(--color-muted)]">วันที่รับเงิน</span>
+                <input type="date" name="payPaidAt" defaultValue={cashSale.paidAt} className="input h-9" data-testid="cash-sale-date" />
+              </label>
+              <label className="flex items-center gap-2">
+                <span className="text-xs text-[color:var(--color-muted)]">รับเข้าบัญชี</span>
+                <select name="payFinanceId" defaultValue={cashSale.defaultId ?? ""} className="input h-9" data-testid="cash-sale-finance">
+                  {cashSale.defaultId === null && <option value="">เงินสด (ตามผังบัญชี)</option>}
+                  {cashSale.channels.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <span className="text-xs text-[color:var(--color-muted)]">ระบบบันทึกรายการรับเงินพร้อมการออกใบเสร็จ — หัวเอกสาร แท็บการชำระ และบัญชีตรงกัน</span>
+          </div>
+        )}
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">{cashSale ? "รับเงินและออกใบเสร็จ" : "ออกเอกสาร"}</SubmitButton>
       </form>
     );
   } else if (dt === "QUOTATION" && data.status === "AWAITING_ACCEPT") {
@@ -987,6 +1012,15 @@ export async function DocDetailPage({
     };
   })();
 
+  // ACC T2.8 — ร่างใบเสร็จขายสด: เลือกวันที่/บัญชีรับเงินตอนออก (ค่าเริ่ม = วันที่ใบ · บัญชีเงินสดบัญชีแรก)
+  const cashSale =
+    dt === "RECEIPT" && data.status === "DRAFT" && !data.sourceDocId && data.payments.filter((p) => !p.voidedAt).length === 0
+      ? await (async () => {
+          const channels = (await listPaymentChannels(tenantId, systemId)).map((c) => ({ id: c.id, name: c.name, type: c.type }));
+          const cash = channels.find((c) => c.type === "CASH");
+          return { channels, defaultId: cash?.id ?? null, paidAt: new Date(data.issueDate.getTime() + 7 * 3_600_000).toISOString().slice(0, 10) };
+        })()
+      : null;
   // T0.4 — ร่างที่จะออก: แสดงคำเตือนกฎหมายล่วงหน้า (ทะเบียนกลาง) · ด่านจริงอยู่ที่ service (ไม่เชื่อจอ)
   // ACC T1.2 — จุดรับผิดของใบแจ้งหนี้/ใบเสร็จ: ร่าง = คำเตือนของใบกำกับที่จะออกพร้อมกัน · ออกแล้ว = VAT ที่ยังพัก + คำเตือนข้ามเดือน
   const taxPoint = dt === "INVOICE" || dt === "RECEIPT" ? await invoiceTaxPointView({ tenantId, systemId }, data.id) : null;
@@ -1091,7 +1125,7 @@ export async function DocDetailPage({
         {/* WO 9.4 §0.3 ข้อ 8/9 — แท็กเอกสาร: ลบทีละแท็กได้ (เลิกทำได้ภายใน 5 นาที) — ไม่มีแท็ก = ไม่แสดงอะไร */}
         {data.tags.length > 0 && <DocTagsBlock systemId={systemId} docId={data.id} tags={data.tags} />}
 
-        <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} perm={perm} legalWarnings={legalWarnings} />
+        <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} perm={perm} legalWarnings={legalWarnings} cashSale={cashSale} />
       </div>
 
       {taxPoint?.parked && (

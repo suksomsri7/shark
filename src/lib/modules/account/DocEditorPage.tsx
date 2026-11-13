@@ -251,6 +251,7 @@ export async function DocEditorPage({
     // §9.3: ประเภทราคาเริ่มต้นมาจากนโยบายบัญชี (ไม่ได้ตั้ง = พฤติกรรมเดิม จด VAT → แยก VAT)
     priceMode: doc ? priceModeOf(doc.vatMode) : defaultPriceModeOf(settings.policy),
     autoTaxInvoice: doc?.autoTaxInvoice ?? null,
+    autoReceipt: doc?.autoReceipt ?? null,
     // ACC T1.4 — สถานะที่ตรงกับค่าเริ่มของคู่ค้า = ไม่ได้เลือกเอง ⇒ ส่ง null (เปลี่ยนคู่ค้าในฟอร์มแล้วค่าเริ่มคำนวณใหม่)
     inputVatStatus:
       side === "expense" && doc?.inputVatStatus && doc.inputVatStatus !== defaultInputVatStatus({ vendorTaxId: contactRow?.taxId ?? null, settings: settings.doc.inputVat }).status
@@ -332,6 +333,7 @@ export async function DocEditorPage({
         steps={steps}
         vatRegistered={settings.vatRegistered}
         taxInvoiceSettings={{ goodsOnIssue: settings.doc.autoTaxInvoice.goodsOnIssue, mode: settings.doc.autoTaxInvoice.mode }}
+        receiptAutoDefault={settings.doc.receipt.autoOnPayment}
         vatRateBp={settings.vatRateBp}
         branchName={settings.branchName ?? "สำนักงานใหญ่"}
         dueLabel={dueLabelOf(docType)}
