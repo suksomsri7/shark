@@ -11,7 +11,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   type Any, type Base, type Sev, ROOT, rd, short, errText, textOf, srt, failedKeys, stripComments, canon, sha, keysDeep, jsonOf, loadOpt, modState,
-  PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, fileAt, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf,
+  PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, commitInBase, pathInBase, changedVsBase, diffHunks, fileAt, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf,
   vOf, fitnessNoEnv, importsOf, tagOf, HR_FORBIDDEN_DTO_KEYS, msgParity, testidsOf, inventoryParity, hrNavLabels, QUERY_COUNTER,
 } from "./qc-hr-lib.mjs";
 
@@ -47,7 +47,7 @@ const FROZEN = [
 ];
 const TESTIDS = ["hr-report-picker", "hr-report-period", "hr-report-unit", "hr-report-table", "hr-report-row-*", "hr-report-totals", "hr-report-export-csv",
   "hr-report-export-xlsx", "hr-report-notes", "hr-report-warnings", "hr-report-empty"];
-const REG_TESTIDS = ["hr-register-card", "hr-register-nationality", "hr-register-benefits", "hr-register-save"];
+const REG_TESTIDS = ["hr-register-card", "hr-register-nationality", "hr-register-benefits", "hr-register-save", "hr-report-fullid-toggle", "hr-report-fullid-ack", "hr-report-fullid-warning", "hr-report-fullid-save"]; // ruling Q2
 /** tokens that may never appear in report code (S1.6): sensitive / health / location / ratchet tokens (qc-hr-h1.2 S6.4 · qc-hr-h1.3 S6.1 · F16.1) */
 const BANNED = ["bankAccountNo", "bankAccountName", "bankName", "houseRegAddress", "ssoNumber", "pinCode", "pinHash", "offboardNote", "offboardReason",
   "attachmentKey", "photoKey", "lat", "lng", "accuracyM", "deviceId", "ytdJson", "lawRowIds", "sourceRef", "filingJson", "bankFileKey", "hrLawTable",
@@ -79,22 +79,24 @@ S2.9|R7|C|R|[pure] exportProblem: numeric/date cells exempt · formula (incl. af
 S2.10|R3|M|R|[pure] periodOk vectors (month/year/day kinds · 2000–2600 · malformed ⇒ false · unknown report ⇒ false)
 S3.0|fix|C|G|[db] [control] fixture inserted: 5 employees · 2 units · judge days · corrections · OT · leave ledger · 5 runs (Σ items = run totals)
 S3.1|R3a|C|R|[db] time 2031-10 owner = golden (rows · totals · order code→name→id) · out-of-period rows ignored · notes timeNote
-S3.2|R3b|C|R|[db] leave 2031 = teamLeaveBalances rows 1:1 (same viewer) · e1/P1 row golden · no reason anywhere
+S3.2|R3b|C|R|[db] leave 2031 = teamLeaveBalances rows 1:1 (owner) · e1/P1 row golden · ruling Q1: payroll all-branch = owner rows · payroll branch = u1 rows only · no reason anywhere
 S3.3|R3c|C|R|[db] ot 2031-10 owner = golden (status counts · settled segments by class · ฿) · CANCELLED / unsettled segments ignored
 S3.4|R3d|C|R|[db] payroll-month 2031-10 / 2031-09 / 2031-08 (REVERSED) / 2031-11 (DRAFT) + payroll-year 2031 = goldens · read stored item columns
 S3.5|R3e|C|R|[db] tax-month 2031-11 / 2031-10 / 2031-09 (Bangkok pay month) + tax-year 2031 / 2030 = goldens · income 40(1) rule v1/v2 · notes taxNote
 S3.6|R3f|C|R|[db] wages (s.114) 2031-10 (v2-shaped lines) / 2031-09 (v1 snapshot) = goldens · notes s114Note
-S3.7|R3g|C|R|[db] register 2031-10-31 owner: page (IDs masked) + export (IDs full) = golden · leaver kept · warnings counts · notes duty/under-10/retention
+S3.7|R3g|C|R|[db] register 2031-10-31 owner: page + export (setting OFF ⇒ IDs masked) = golden · leaver kept · warnings counts · notes duty/under-10/retention
 S3.8|R10|C|R|[db] saveRegisterFields: gates (owner · hr-admin in branch · benefits needs payroll) · out of branch/other ⇒ NO · limits ⇒ registerInput · audit fields only · loadRegisterFields keys by gate
 S3.9|R7|C|R|[db] owner exports: time CSV + register CSV = independent CSV text of golden · XLSX = same table · file names · content types
 S4.1|R4|C|R|[db] gate matrix 10 viewers × 9 reports × page/export = design matrix (ok ⇔ allowed · NO otherwise)
 S4.2|R4|C|R|[db] column sets: DTO keys + export header = columnsFor(viewer access) for every allowed cell of the matrix
 S4.3|R4|C|R|[db] branch: u1 viewers see u1 rows only · totals from visible rows (≠ run totals) · unassigned hidden · unit filter in/out of scope · unknown unit ⇒ []
-S4.4|R4|C|R|[db] national ID: masked on every page and every tax export · full only in register export of owner / all-branch payroll viewer
+S4.4|R4|C|R|[db] national ID, setting OFF (default): no full ID in any page or export of any viewer (register export masked too)
 S4.5|R4|C|R|[db] manager / hr-admin: no $ key · no money value (OT ฿ strings absent from DTO and export text) · payroll/tax/wages/register NO
 S4.6|X11|C|R|[db] forbidden keys absent from every DTO (HR_FORBIDDEN_DTO_KEYS + snapshot/ytd/GPS/photo/attachment) · sentinel secrets absent from DTOs, exports, audit
 S4.7|X2|C|R|[db] cross-tenant / cross-system ctx ⇒ NO with identical bytes · own empty system ⇒ ok rows []
-S5.1|R9|C|R|[db] export audit: 1 row hr.report.export · targetType HrReport · after keys exactly {report period format rowCount columns unitId} · no values · refusals not audited
+S4.8|Q2|C|R|[db] ruling Q2 setting "full national ID in register export": owner only (others settingOwner) · ON needs acknowledge (ackFullId) · default OFF · other settings keys kept · audit hr.report.setting
+S4.9|Q2|C|R|[db] setting ON: register export full for owner / all-branch payroll only · branch payroll masked · pages + tax exports masked · export audit fullId true/false · OFF again ⇒ masked
+S5.1|R9|C|R|[db] export audit: 1 row hr.report.export · targetType HrReport · after keys exactly {report period format rowCount columns unitId fullId} · no values · refusals not audited
 S5.2|R8|C|R|[db] route helper: rsc / next-router-prefetch ⇒ 204 no audit · 200 attachment + no-store + nosniff + type · 404 NO text · 400 input text · 409 formula text · no bytes on refusal
 S5.3|R3|M|R|[db] input refusals: bad report / period / format / unit type ⇒ INPUT text · not audited · nothing written
 S5.4|R7|C|R|[db] export guard on real data: position "+SUM(A1)" ⇒ FORMULA naming the employee · page still ok · nationality with BEL ⇒ ENCODING
@@ -103,6 +105,7 @@ S6.2|R13|M|R|[db] performance: tax-year + payroll-year 12 runs × 300 items ≤ 
 S6.3|R13|M|R|[db] performance: register 300 + time CSV export 300 rows ≤ 12 queries · ≤ 5000 ms
 S7.1|v2|C|R|[db] [needs H3.4] item from computeRunItemV2 stored as H3.4 stores it ⇒ payroll-month = item columns · tax-month income = whtIncomeSatang · wages = Σ lines by code
 S7.2|v2|C|R|[static] [needs H3.4] seam: payroll.ts writes the snapshot keys the reports read (engineVersion 2 · whtIncomeSatang · lines · payType) · reports never import payroll-run-rules
+S7.3|Q5|C|R|[db] [needs H3.4] ruling Q5: v2 runs count only when finalized (journalEntryId set or stepsJson.finalized = true) · unfinalized v2 APPROVED excluded from payroll/tax/wages · v1 rule unchanged
 X12.1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
 Z1|house|C|G|no residue (HrEmployeeRegister included)
 `.trim().split("\n").map((l) => {
@@ -118,7 +121,10 @@ const skipReasons: string[] = [];
 if (!existsSync(join(ROOT, F.rules))) skipReasons.push(`${F.rules} absent (H3.9 not built)`);
 if (skipReasons.length && !FORCE) skipExit(skipReasons);
 const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") => chk(id, Object.values(r).every(Boolean), exp, `${failedKeys(r)}${extra ? ` ${extra}` : ""}`);
-const BASE = baseRef("QC_H39_BASE") || "5d7bcf0c4";
+// base = merge-base with origin/session/hr; when that is older than the tip this WO was cut from (session/hr merged locally, not yet
+//   pushed: 5d7bcf0c4 = H3.5 merge), the cut point is used instead — statics never see earlier merged WOs as "changed"
+const BASE_CUT = "5d7bcf0c4";
+const BASE = ((b: string) => (b && commitInBase(BASE_CUT, b) ? b : BASE_CUT))(baseRef("QC_H39_BASE"));
 const IN_BASE = pathInBase(F.svc, BASE);
 const HAS_H34 = existsSync(join(ROOT, F.runRules));
 const code = (p: string) => stripComments(rd(p));
@@ -178,6 +184,11 @@ const padRows = (rows: string[][]) => {
 };
 /** golden → the table a CSV export must contain (header + rows + totals) */
 const goldTable = (report: string, g: Any, locale: "th" | "en" = "th", money = true) => [labelsOf(report, locale, money), ...(g.rows as string[][]), ...(g.totals ? [locale === "en" ? [TE.total, ...(g.totals as string[]).slice(1)] : (g.totals as string[])] : [])];
+/** ruling Q2: default register export = IDs masked like the page (golden pageIds) */
+const maskedRegister = () => {
+  const g = GOLD["register|2031-10-31|ownerExport"];
+  return { ...g, rows: (g.rows as string[][]).map((row, i) => [...row.slice(0, -1), g.pageIds[i] as string]) };
+};
 const totalsRecord = (report: string, g: Any): Record<string, string> | null => {
   if (!g.totals) return null;
   const ks = keysOf(report);
@@ -609,10 +620,10 @@ async function runDb(): Promise<void> {
   await P.hrLeaveBalanceTxn.create({ data: { tenantId: TT, systemId: sA, employeeId: E.e1, policyId: pol.id, kind: "USE", days: "-1.5", leaveYear: 2031, effectiveDate: d0("2031-10-06"), sourceKey: `qc39-u-${tag}`, leaveId: lv.id } });
   // payroll runs
   type It = { e: string; gross: number; add: number; deduct: number; ssoBase: number; sso: number; wht: number; net: number; snap: Record<string, unknown> };
-  const mkRun = async (c: Any, periodKey: string, payDate: Date, status: string, engineVersion: number, items: It[]) => {
+  const mkRun = async (c: Any, periodKey: string, payDate: Date, status: string, engineVersion: number, items: It[], journal: string | null = status === "DRAFT" ? null : `qc39-jv-${tag}-${periodKey}`) => {
     const t = (f: keyof It) => items.reduce((a, i) => a + (i[f] as number), 0);
     const run = await P.hrPayrollRun.create({
-      data: { tenantId: c.tenantId, systemId: c.systemId, periodKey, payDate, status, engineVersion, totalGrossSatang: t("gross"), totalAddSatang: t("add"), totalDeductSatang: t("deduct"), totalSsoEmployeeSatang: t("sso"), totalSsoEmployerSatang: t("sso"), totalWhtSatang: t("wht"), totalNetSatang: t("net") },
+      data: { tenantId: c.tenantId, systemId: c.systemId, periodKey, payDate, status, engineVersion, journalEntryId: journal, totalGrossSatang: t("gross"), totalAddSatang: t("add"), totalDeductSatang: t("deduct"), totalSsoEmployeeSatang: t("sso"), totalSsoEmployerSatang: t("sso"), totalWhtSatang: t("wht"), totalNetSatang: t("net") },
     });
     for (const i of items)
       await P.hrPayrollItem.create({ data: { tenantId: c.tenantId, systemId: c.systemId, runId: run.id, employeeId: i.e, grossSatang: i.gross, addSatang: i.add, deductSatang: i.deduct, ssoBaseSatang: i.ssoBase, ssoEmployeeSatang: i.sso, ssoEmployerSatang: i.sso, whtSatang: i.wht, netSatang: i.net, snapshotJson: i.snap } });
@@ -625,7 +636,7 @@ async function runDb(): Promise<void> {
       { e: E.e1, gross: 1_518_750, add: 18_750, deduct: 0, ssoBase: 1_500_000, sso: 75_000, wht: 10_000, net: 1_433_750, snap: v1snap(1_500_000, 18_750, 0, [["OT", 18_750]]) },
       { e: E.e5, gross: 1_150_000, add: 0, deduct: 50_000, ssoBase: 1_200_000, sso: 60_000, wht: 0, net: 1_090_000, snap: v1snap(1_200_000, 0, 50_000, [["DEDUCTION", 50_000]]) },
     ]),
-    r10: await mkRun(cA, "2031-10", new Date("2031-10-31T20:00:00Z"), "PAID", 2, [
+    r10: await mkRun(cA, "2031-10", new Date("2031-10-31T20:00:00Z"), "PAID", 2, [ // finalized: journalEntryId set (ruling Q5)
       { e: E.e1, gross: 1_566_750, add: 68_750, deduct: 2_000, ssoBase: 1_498_000, sso: 74_900, wht: 12_345, net: 1_479_505,
         snap: { engineVersion: 2, payType: "MONTHLY", whtIncomeSatang: 1_566_750, ssoWageSatang: 1_498_000, flags: [], lines: [
           { code: "BASE", ref: "profile", day: null, minutes: null, amountSatang: 1_500_000 }, { code: "UNPAID_LEAVE", ref: "employment", day: "2031-10-04", minutes: 240, amountSatang: -31_250 },
@@ -667,7 +678,19 @@ async function runDb(): Promise<void> {
     const want: string[] = (tb?.rows ?? []).flatMap((row: Any) => (row.items ?? []).map((it: Any) => [row.employeeId, it.name, it.category, ...fields.map((f) => it[f]), it.unlimited ? "Y" : ""].join("|"))).sort();
     const got: string[] = (r.value?.rows ?? []).map((x: Any) => [x.employeeId, x.values?.policy, x.values?.category, ...fields.map((f) => x.values?.[f]), x.values?.unlimited].join("|")).sort();
     const e1 = dtoArr("leave", r.value).filter((row) => row[0] === "A01" && row[3] === "QC39 พักร้อน");
-    ck("S3.2", { ok: r.ok, same: canon(got) === canon(want) && got.length > 0, e1: canon(e1) === canon([GOLD["leave|2031|e1P1"].row]), noReason: !JSON.stringify(r.value ?? {}).includes(SECRET.reason) }, "= teamLeaveBalances", `rows=${got.length}/${want.length}`);
+    const rows = (v: Any) => ((v?.rows ?? []) as Any[]).map((x) => [x.employeeId, x.values?.policy, ...fields.map((f) => x.values?.[f])].join("|")).sort();
+    const pa = await load(V.payAll, "leave", "2031");
+    const pb = await load(V.payBranch, "leave", "2031");
+    const u1Emps = new Set([E.e1, E.e2, E.e5]);
+    const wantB = ((r.value?.rows ?? []) as Any[]).filter((x) => u1Emps.has(x.employeeId)).map((x) => [x.employeeId, x.values?.policy, ...fields.map((f) => x.values?.[f])].join("|")).sort();
+    ck("S3.2", {
+      ok: r.ok,
+      same: canon(got) === canon(want) && got.length > 0,
+      e1: canon(e1) === canon([GOLD["leave|2031|e1P1"].row]),
+      payAll: pa.ok && canon(rows(pa.value)) === canon(rows(r.value)),
+      payBranch: pb.ok && wantB.length > 0 && canon(rows(pb.value)) === canon(wantB),
+      noReason: ![r, pa, pb].some((x) => JSON.stringify(x.value ?? {}).includes(SECRET.reason)),
+    }, "= teamLeaveBalances", `rows=${got.length}/${want.length} pa=${pa.ok ? pa.value?.rows?.length : pa.text} pb=${pb.ok ? pb.value?.rows?.length : pb.text}`);
   }
   // S3.3
   ck("S3.3", { golden: await goldOk("S3.3", V.owner, "ot", "2031-10", "ot|2031-10|owner") }, "golden");
@@ -706,7 +729,7 @@ async function runDb(): Promise<void> {
     const notes = r.value?.notes ?? [];
     ck("S3.7", {
       page: r.ok && canon(dtoArr("register", r.value)) === canon(pageRows) && r.value?.totals === null,
-      export: e.ok && dec(e.value?.bytes) === csvTextOf(goldTable("register", g)),
+      export: e.ok && dec(e.value?.bytes) === csvTextOf(goldTable("register", maskedRegister())),
       warnings: canon(warn) === canon(g.warnings),
       notes: notes.includes(T.registerUnder10) && notes.includes(T.registerRetention) && notes.includes(T.registerMissing) && !notes.includes(T.registerDuty),
     }, "golden", `${r.ok ? "" : r.text} rows=${short(dtoArr("register", r.value), 200)}`);
@@ -757,7 +780,7 @@ async function runDb(): Promise<void> {
       }
     };
     const gt = goldTable("time", GOLD["time|2031-10|owner"]);
-    const gr = goldTable("register", GOLD["register|2031-10-31|ownerExport"]);
+    const gr = goldTable("register", maskedRegister());
     ck("S3.9", {
       csv: t.ok && dec(t.value?.bytes) === csvTextOf(gt),
       xlsx: tx.ok && canon(parse(tx.value?.bytes)) === canon(padRows(gt)) && rg.ok && canon(parse(rg.value?.bytes)) === canon(padRows(gr)),
@@ -768,11 +791,10 @@ async function runDb(): Promise<void> {
   }
   // ── S4 matrix ──
   const ALLOW: Record<string, string[]> = {
-    owner: IDS, payAll: IDS.filter((r) => r !== "leave"), payBranch: IDS.filter((r) => r !== "leave"),
+    owner: IDS, payAll: IDS, payBranch: IDS, // ruling Q1: payroll viewers see the leave report (branch-limited = own branches)
     mgr: ["time", "leave", "ot"], mgrAll: ["time", "leave", "ot"], leaveReader: ["leave"], hrAdmin: ["time", "ot"], self: [], member: [], other: [],
   };
   const MONEY = new Set(["owner", "payAll", "payBranch"]);
-  const FULLID = new Set(["owner", "payAll"]);
   const cells: { who: string; report: string; page: RO; csv: RO }[] = [];
   for (const who of Object.keys(ALLOW))
     for (const report of IDS) cells.push({ who, report, page: await load(V[who as keyof typeof V], report), csv: await exp(V[who as keyof typeof V], report) });
@@ -815,18 +837,25 @@ async function runDb(): Promise<void> {
     };
     ck("S4.3", r, "visible rows only");
   }
-  // S4.4
+  // S4.4 (setting OFF — default)
+  const FULL_IDS = ["1101700203451", "3-1006-01234-56-7", "5000011111223", "3100601234567"];
+  const hasFull = (t: string) => FULL_IDS.some((f) => t.includes(f));
   {
-    const full = ["1101700203451", "3-1006-01234-56-7", "5000011111223", "3100601234567"];
-    const has = (s: string) => full.some((f) => s.includes(f));
     const bad: string[] = [];
     for (const c of cells) {
-      if (c.page.ok && has(JSON.stringify(c.page.value))) bad.push(`${c.who}/${c.report}/page`);
-      const txt = dec(c.csv.value?.bytes);
-      const mayFull = c.report === "register" && FULLID.has(c.who);
-      if (c.csv.ok && has(txt) !== mayFull) bad.push(`${c.who}/${c.report}/csv`);
+      if (c.page.ok && hasFull(JSON.stringify(c.page.value))) bad.push(`${c.who}/${c.report}/page`);
+      if (c.csv.ok && hasFull(dec(c.csv.value?.bytes))) bad.push(`${c.who}/${c.report}/csv`);
     }
-    chk("S4.4", bad.length === 0, "masked except register export (owner/payAll)", bad.join(" ") || "ok");
+    const xl = await exp(V.owner, "register", "XLSX");
+    const xlTxt = (() => {
+      try {
+        const p = xl.value?.bytes instanceof Uint8Array ? DORM.parseImportFile(xl.value.bytes) : null;
+        return JSON.stringify(p?.rows ?? []);
+      } catch {
+        return "";
+      }
+    })();
+    ck("S4.4", { none: bad.length === 0, xlsx: xl.ok && xlTxt.includes("•••3451") && !hasFull(xlTxt) }, "masked everywhere", bad.join(" ") || "");
   }
   // S4.5
   {
@@ -854,7 +883,8 @@ async function runDb(): Promise<void> {
       if (sec.some((s) => txt.includes(s))) bad.push(`${c.who}/${c.report}:secret`);
     }
     const capturedLeak = CAPTURED.some((l) => sec.some((s) => l.includes(s)));
-    ck("S4.6", { dto: bad.length === 0, audit: !sec.some((s) => audits.includes(s)), console: !capturedLeak }, "no forbidden key / secret", bad.slice(0, 6).join(" ") || "");
+    const seen = cells.filter((c) => c.page.ok && c.csv.ok).length;
+    ck("S4.6", { seen: seen >= 40, dto: bad.length === 0, audit: !sec.some((s) => audits.includes(s)), console: !capturedLeak }, "no forbidden key / secret", `${bad.slice(0, 6).join(" ")} seen=${seen}`);
   }
   // S4.7
   {
@@ -865,6 +895,57 @@ async function runDb(): Promise<void> {
     const empty = await load(V.owner, "payroll-month", "2031-10", {}, cB);
     const same = [a, b, d].every((x) => canon(x.value) === canon({ ok: false, code: "NO", reason: T.no }));
     ck("S4.7", { same, own: own.ok && own.value?.rows?.length === 0, empty: empty.ok && empty.value?.rows?.length === 0 }, "identical NO");
+  }
+  // S4.8 setting writer (ruling Q2)
+  {
+    const sysRow = await P.appSystem.findFirst({ where: { id: sA }, select: { settings: true } });
+    await P.appSystem.update({ where: { id: sA }, data: { settings: { ...((sysRow?.settings as Any) ?? {}), qc39Keep: { a: 1 } } } });
+    const before = await P.auditLog.count({ where: { tenantId: TT, action: "hr.report.setting" } });
+    const g0 = await S("getReportSettings", cA, V.owner);
+    const byPay = await S("setReportSettings", cA, V.payAll, { registerFullId: true, acknowledge: true });
+    const byMgr = await S("setReportSettings", cA, V.mgrAll, { registerFullId: true, acknowledge: true });
+    const noAck = await S("setReportSettings", cA, V.owner, { registerFullId: true });
+    const on = await S("setReportSettings", cA, V.owner, { registerFullId: true, acknowledge: true });
+    const g1 = await S("getReportSettings", cA, V.owner);
+    const other = await S("setReportSettings", cO, V.other, { registerFullId: true, acknowledge: true });
+    const gB = await S("getReportSettings", cB, V.owner);
+    const after = await P.appSystem.findFirst({ where: { id: sA }, select: { settings: true } });
+    const aud = (await P.auditLog.findMany({ where: { tenantId: TT, action: "hr.report.setting" } })) as Any[];
+    ck("S4.8", {
+      defaultOff: g0.ok && g0.value?.registerFullId === false && typeof g0.value?.warning === "string" && g0.value.warning === T.fullIdWarning,
+      ownerOnly: byPay.text === T.settingOwner && byMgr.text === T.settingOwner,
+      ack: noAck.value?.ok === false && noAck.text === T.ackFullId,
+      on: on.ok && g1.value?.registerFullId === true,
+      scoped: other.ok && gB.ok && gB.value?.registerFullId === false,
+      keep: (after?.settings as Any)?.qc39Keep?.a === 1,
+      audit: aud.length - before === 1 && canon(aud.at(-1)?.after) === canon({ registerFullId: true }),
+    }, "owner-only setting", `${byPay.text} | ${noAck.text}`);
+  }
+  // S4.9 setting ON
+  {
+    const a0 = await P.auditLog.count({ where: { tenantId: TT, action: "hr.report.export" } });
+    const lastAudit = async () => ((await P.auditLog.findMany({ where: { tenantId: TT, action: "hr.report.export" }, orderBy: { createdAt: "desc" }, take: 1 })) as Any[])[0];
+    const oR = await exp(V.owner, "register");
+    const oA = await lastAudit();
+    const pR = await exp(V.payAll, "register");
+    const pA = await lastAudit();
+    const bR = await exp(V.payBranch, "register");
+    const bA = await lastAudit();
+    const oT = await exp(V.owner, "tax-month");
+    const oPage = await load(V.owner, "register");
+    await S("setReportSettings", cA, V.owner, { registerFullId: false });
+    const oOff = await exp(V.owner, "register");
+    const offA = await lastAudit();
+    const a1 = await P.auditLog.count({ where: { tenantId: TT, action: "hr.report.export" } });
+    ck("S4.9", {
+      owner: oR.ok && dec(oR.value?.bytes) === csvTextOf(goldTable("register", GOLD["register|2031-10-31|ownerExport"])) && oA?.after?.fullId === true,
+      payAll: pR.ok && hasFull(dec(pR.value?.bytes)) && pA?.after?.fullId === true,
+      branch: bR.ok && dec(bR.value?.bytes) === csvTextOf(goldTable("register", GOLD["register|2031-10-31|branchExport"])) && bA?.after?.fullId === false,
+      tax: oT.ok && !hasFull(dec(oT.value?.bytes)),
+      page: oPage.ok && !hasFull(JSON.stringify(oPage.value)),
+      off: oOff.ok && dec(oOff.value?.bytes) === csvTextOf(goldTable("register", maskedRegister())) && offA?.after?.fullId === false,
+      audits: a1 - a0 === 5,
+    }, "full only owner/payAll register export", `audits=${a1 - a0}`);
   }
   // S5.1
   {
@@ -878,7 +959,7 @@ async function runDb(): Promise<void> {
     const all = JSON.stringify(await P.auditLog.findMany({ where: { tenantId: TT, action: "hr.report.export" }, select: { after: true } }));
     const r = {
       one: ok.ok && after - before === 1,
-      shape: a?.targetType === "HrReport" && a?.targetId === "time" && a?.actorId === U.owner.id && srt(Object.keys(a?.after ?? {})) === srt(["report", "period", "format", "rowCount", "columns", "unitId"]),
+      shape: a?.targetType === "HrReport" && a?.targetId === "time" && a?.actorId === U.owner.id && srt(Object.keys(a?.after ?? {})) === srt(["report", "period", "format", "rowCount", "columns", "unitId", "fullId"]) && a?.after?.fullId === false,
       values: a?.after?.report === "time" && a?.after?.period === "2031-10" && a?.after?.format === "CSV" && a?.after?.rowCount === 2 && canon(a?.after?.columns) === canon(keysOf("time")) && a?.after?.unitId === u1,
       noValues: !/QC39 |1101700203451|15000\.00|เชียงใหม่/.test(all),
     };
@@ -1021,6 +1102,34 @@ async function runDb(): Promise<void> {
         reader: /whtIncomeSatang/.test(code(F.rules) + svc) && /\blines\b/.test(code(F.rules) + svc),
         noImport: ![F.rules, F.svc].some((f) => importsOf(rd(f)).some((i) => !i.type && /payroll-run-rules|payroll-rules(-v2)?$|\/payroll$/.test(i.spec))),
       }, "seam");
+    }
+  }
+  // S7.3 ruling Q5 — v2 runs count only when finalized (needs H3.4 stepsJson)
+  {
+    const cols = await fx.rawRows(`SELECT column_name FROM information_schema.columns WHERE table_name = 'HrPayrollRun' AND column_name = 'stepsJson'`);
+    if (!HAS_H34 || !cols?.length) chk("S7.3", false, "H3.4 present", `n/a — H3.4 absent (${F.runRules}${cols?.length ? "" : " · no stepsJson column"})`);
+    else {
+      const mkV2 = async (pk: string, payDay: string, journal: string | null, finalized: boolean | null, net: number) => {
+        const run = await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sB, periodKey: pk, payDate: new Date(`${payDay}T12:00:00+07:00`), status: "APPROVED", engineVersion: 2, journalEntryId: journal, totalGrossSatang: net, totalNetSatang: net } });
+        if (finalized !== null) await P.$executeRawUnsafe(`UPDATE "HrPayrollRun" SET "stepsJson" = $1::jsonb WHERE "id" = $2`, JSON.stringify({ finalized }), run.id);
+        const e = await fx.mkEmp(TT, sB, `QC39 V2 ${pk}`, { code: `V${pk.slice(5)}` });
+        await P.hrPayrollItem.create({ data: { tenantId: TT, systemId: sB, runId: run.id, employeeId: e, grossSatang: net, ssoBaseSatang: 0, ssoEmployeeSatang: 0, ssoEmployerSatang: 0, whtSatang: 0, netSatang: net, snapshotJson: { engineVersion: 2, payType: "MONTHLY", whtIncomeSatang: net, lines: [{ code: "BASE", amountSatang: net }] } } });
+      };
+      await mkV2("2033-01", "2033-01-31", null, true, 100_000); // flag only ⇒ counts
+      await mkV2("2033-02", "2033-02-28", "qc39-jv-v2", null, 200_000); // journal only ⇒ counts
+      await mkV2("2033-03", "2033-03-31", null, null, 300_000); // neither ⇒ excluded
+      await mkV2("2033-04", "2033-04-30", null, false, 400_000); // flag false ⇒ excluded
+      const v1 = await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sB, periodKey: "2033-05", payDate: new Date("2033-05-31T12:00:00+07:00"), status: "APPROVED", engineVersion: 1, journalEntryId: null, totalGrossSatang: 500_000, totalNetSatang: 500_000 } });
+      const e5v1 = await fx.mkEmp(TT, sB, "QC39 V1 2033-05", { code: "V05" });
+      await P.hrPayrollItem.create({ data: { tenantId: TT, systemId: sB, runId: v1.id, employeeId: e5v1, grossSatang: 500_000, ssoBaseSatang: 0, ssoEmployeeSatang: 0, ssoEmployerSatang: 0, whtSatang: 0, netSatang: 500_000, snapshotJson: { baseSalarySatang: 500_000, addSatang: 0 } } });
+      const py = await load(V.owner, "payroll-year", "2033", {}, cB);
+      const ty = await load(V.owner, "tax-year", "2033", {}, cB);
+      const w3 = await load(V.owner, "wages", "2033-03", {}, cB);
+      ck("S7.3", {
+        payroll: py.ok && py.value?.rows?.length === 3 && py.value?.totals?.net === bahtOwn(800_000),
+        tax: ty.ok && ty.value?.totals?.income === bahtOwn(800_000),
+        wages: w3.ok && w3.value?.rows?.length === 0,
+      }, "finalized v2 + all v1", `py=${py.value?.totals?.net} ty=${ty.value?.totals?.income}`);
     }
   }
 }

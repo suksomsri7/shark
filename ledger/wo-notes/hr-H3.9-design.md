@@ -7,10 +7,10 @@ Gates reuse existing rules; nothing new is invented.
 | gate | rule (existing function) |
 |---|---|
 | G.time, G.ot | `canReadRoster(v)` (roster-board.ts: settings key `hr.employee.create` via evaluate, or MANAGER) **or** `canViewPayroll(v)` (rbac.ts) |
-| G.leave | the gate of `leave.ts#teamLeaveBalances` (OWNER · MANAGER · `hr.leave.read` · `hr.leave.decide`) — the report **calls** teamLeaveBalances, so its gate applies by construction |
+| G.leave | the gate of `leave.ts#teamLeaveBalances` (OWNER · MANAGER · `hr.leave.read` · `hr.leave.decide`) **∨ `canViewPayroll`** (ruling Q1, 13 Nov) — same balance code; payroll viewers get rows of their scope only |
 | G.money (payroll-month · payroll-year · tax-month · tax-year · wages · register) | `canViewPayroll(v)` |
 | money columns (class `$`) in time/ot/leave | `canViewPayroll(v)` |
-| full national ID (class `I`) | register **export** only, and only OWNER or (`canViewPayroll` ∧ `hrScopeOf(v).unitIds === "*"`) |
+| full national ID (class `I`) | ruling Q2: never by default · register **export** only while the owner setting `hrReports.registerFullId` is ON (export audit `fullId`), and only OWNER or (`canViewPayroll` ∧ `hrScopeOf(v).unitIds === "*"`) |
 | rows | `hrScopeOf(v)` → `scopedEmployeeIds` (home branch + open borrowing, H1.1 rule); unassigned employees only for all-branch viewers |
 
 ### 1.1 Matrix (report × viewer → ✓ allowed with all columns · ✓− allowed without `$` columns · — refused `NO`)
@@ -19,13 +19,13 @@ Viewers = the oracle's 10: owner · payAll (STAFF `*` + `hr.payroll.read`) · pa
 | report | owner | payAll | payBranch | mgr | mgrAll | leaveReader | hrAdmin | self | member | other |
 |---|---|---|---|---|---|---|---|---|---|---|
 | time | ✓ | ✓ | ✓ u1 | ✓− u1 | ✓− | — | ✓− u1 | — | — | — |
-| leave | ✓ | — (Q4) | — | ✓ u1 | ✓ | ✓ u1 | — | — | — | — |
+| leave | ✓ | ✓ | ✓ u1 | ✓ u1 | ✓ | ✓ u1 | — | — | — | — |
 | ot | ✓ | ✓ | ✓ u1 | ✓− u1 | ✓− | — | ✓− u1 | — | — | — |
 | payroll-month / -year | ✓ | ✓ | ✓ u1 | — | — | — | — | — | — | — |
 | tax-month / -year | ✓ ID masked | ✓ masked | ✓ u1 masked | — | — | — | — | — | — | — |
 | wages (s.114) | ✓ | ✓ | ✓ u1 | — | — | — | — | — | — | — |
-| register | ✓ export ID **full** | ✓ export full | ✓ u1 export **masked** | — | — | — | — | — | — | — |
-Page and export follow the same gate. On every **page** the ID is masked (`•••` + last 4 digits; fewer than 4 digits ⇒ ""). Bank fields, house-registration address, SSO number, PIN, GPS/photo/device, attachments, leave/OT/correction reasons, notes, offboarding note/reason, phone/e-mail, linked user — **never** in any report, any viewer (S1.6 static + S4.6 DB).
+| register | ✓ ID masked · full in export if setting ON | ✓ same | ✓ u1 ID always masked | — | — | — | — | — | — | — |
+Page and export follow the same gate. On every **page** and (default) every export the ID is masked (`•••` + last 4 digits; fewer than 4 digits ⇒ ""). Bank fields, house-registration address, SSO number, PIN, GPS/photo/device, attachments, leave/OT/correction reasons, notes, offboarding note/reason, phone/e-mail, linked user — **never** in any report, any viewer (S1.6 static + S4.6 DB).
 
 ### 1.2 Totals = visible rows only
 Every total is the sum of the rows the viewer received (never a run total). A branch-limited payroll viewer sees `payroll-month 2031-10` net 14,795.05 (e1 only), not the run's 32,275.05 (lesson from H3.4).
@@ -36,7 +36,7 @@ Every total is the sum of the rows the viewer received (never a run total). A br
 | time | `YYYY-MM` | `HrAttendanceDay` (judge snapshot, H2.5 — **not** the punch table `HrAttendance`) + `HrTimeCorrection` APPROVED by `day` | slots = rows not DAY_OFF/NO_SCHEDULE · workedDays = distinct dates ON_TIME/LATE/EARLY_OUT · late/early = count(>0) + Σ min · absentDays = distinct ABSENT dates · absentMin = Σ ABSENT ⌊span × (1 − leaveFraction)⌋, span = end − start (+1440 overnight) · leaveDays = Σ leaveFraction · workedMin/measuredOtMin/missingOut = Σ |
 | leave | `YYYY` leave year | `leave.ts#teamLeaveBalances` (call it; one row per employee × policy item, strings as returned) | active employees only (teamLeaveBalances rule) |
 | ot | `YYYY-MM` by `date` | `HrOtRequest` | counts PENDING/APPROVED/REJECTED (CANCELLED ignored) · approvedMin Σ APPROVED · class minutes/฿ from `segmentsJson` of APPROVED ∧ settledAt ≠ null ∧ revokedAt = null ∧ settleCode = null · amount = Σ stored `amountSatang` of those |
-| payroll-month | `YYYY-MM` = periodKey | `HrPayrollItem` columns of APPROVED/PAID runs | REVERSED and DRAFT excluded |
+| payroll-month | `YYYY-MM` = periodKey | `HrPayrollItem` columns of APPROVED/PAID runs; v2 only when finalized (`journalEntryId` ∨ `stepsJson.finalized`, ruling Q5 — every money report) | REVERSED and DRAFT excluded |
 | payroll-year | `YYYY` | same, periodKey `YYYY-*` | runs = count |
 | tax-month / tax-year | Bangkok month/year of `payDate` | item columns + income 40(1) | income = v2 (engineVersion ≥ 2) `snapshot.whtIncomeSatang` · v1 `snapshot.baseSalarySatang + addSatang` · non-integer/negative ⇒ 0 — **the exact rule H3.4 uses for prior YTD** (`origin/wip/hr-h3.4` payroll.ts ≈:2491) · year = Σ of stored months (same set `ytdPriorV2` sums); `ytdJson` is **not** read (projection, and an S6.1 ratchet token) |
 | wages (s.114) | `YYYY-MM` = periodKey | items + time rules for the same month | v1: rate = wage = snapshot.baseSalarySatang, ot = Σ snapshot.adjustments kind OT, holidayWork 0 · v2: rate = Σ BASE lines (none ⇒ ""), wage = Σ lines in `WAGE_CODES_V2` (BASE PRORATION DAY_WAGE HOUR_WAGE HOLIDAY_PAY UNPAID_LEAVE UNPAID_CAP LATE_RULE ABSENT_RULE), ot = Σ OT lines, holidayWork = Σ HOLIDAY_WORK lines · payDate = Bangkok day |

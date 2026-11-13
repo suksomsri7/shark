@@ -1,12 +1,12 @@
 # H3.9 — oracle notes (`scripts/qc-hr-h3.9.mts`)
 
-49 checks · **44 RED-by-design · 5 GREEN controls** (S1.5 frozen/tabs · S2.0 fixture · S3.0 DB fixture · X12.1 fitness no env · Z1 residue). `--list` prints the registry. Unforced run while `hr/reports-rules.ts` is absent = `SKIPPED` exit 0. Statics use `baseRef("QC_H39_BASE")` (merge-base with origin/session/hr; fallback 5d7bcf0c4). v2 checks S7.1/S7.2 are presence-guarded on `hr/payroll-run-rules.ts` (H3.4): absent ⇒ "n/a — H3.4 absent" ⇒ fail, no crash.
+52 checks · **47 RED-by-design · 5 GREEN controls** (S1.5 frozen/tabs · S2.0 fixture · S3.0 DB fixture · X12.1 fitness no env · Z1 residue). `--list` prints the registry. Unforced run while `hr/reports-rules.ts` is absent = `SKIPPED` exit 0. Statics use `baseRef("QC_H39_BASE")` (merge-base with origin/session/hr; fallback 5d7bcf0c4). v2 checks S7.1/S7.2/S7.3 are presence-guarded on `hr/payroll-run-rules.ts` (H3.4): absent ⇒ "n/a — H3.4 absent" ⇒ fail, no crash.
 
 Run (lane DB wo-hr-qc-l2):
 `bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.9.mts`
 
 ## 1. Groups
-S1 static (files · migration/table · pure imports · one writer · frozen · banned tokens/read ownership/no recompute · route/page · nav · UI · marked hunks) · S2 pure vectors + goldens through `reportTable`/`reportBytes` · S3 DB goldens per report + register writer + export bytes · S4 privacy matrix (10 viewers × 9 reports × page/CSV = 180 cells) · S5 audit/route/input/guard · S6 performance (300 employees) · S7 v2 seam (needs H3.4).
+S1 static (files · migration/table · pure imports · one writer · frozen · banned tokens/read ownership/no recompute · route/page · nav · UI · marked hunks) · S2 pure vectors + goldens through `reportTable`/`reportBytes` · S3 DB goldens per report + register writer + export bytes · S4 privacy matrix (10 viewers × 9 reports × page/CSV = 180 cells) + full-ID setting S4.8/S4.9 · S5 audit/route/input/guard · S6 performance (300 employees) · S7 v2 seam + finalized rule (needs H3.4).
 
 ## 2. Independence
 - The CSV text an export must equal is built by the oracle's own `csvTextOf` (BOM + `,` + CRLF + quote on `, " CR LF` or edge space) from golden tables; XLSX is read back with `dorm/import-parse#parseImportFile`.
@@ -48,5 +48,12 @@ Employees (system A): e1 A01 u1 (linked to `self`) · e2 A02 u1 · e5 A03 u1 end
 ## 4. Sentinels (S4.6)
 Every employee carries phone, e-mail, bank name/account, account name, house-registration address, SSO number and note sentinels; leave/OT/correction rows carry a reason sentinel; e5 an offboard note. None may appear in any DTO, export, audit row or captured console line.
 
-## 5. Not run yet
-Owner order 13 Nov: no heavy job. The forced RED run ×2 (`hr-H3.9-red.txt`), seed and clean typecheck are pending the coordinator's go. Syntax of the oracle and both JSON fixtures were checked with an esbuild transform (no DB, no tsc).
+## 5. Controller rulings 13 Nov (oracle edits by the oracle writer, before any build)
+- **Q1** payroll viewers see the leave report: `ALLOW.payAll/payBranch` include `leave`; S3.2 adds payAll = owner rows and payBranch = owner rows of u1 employees.
+- **Q2** no full ID by default: S3.7/S3.9 expect the masked register export (golden `pageIds`); S4.4 = no full ID in any page/export of any viewer; new S4.8 (setting writer: owner only · acknowledge to turn ON · default OFF · other settings keys kept · audit) and S4.9 (ON: owner/payAll register export full, branch payroll masked, pages and tax exports masked, export audit `fullId` true/false, OFF again masked); S5.1 audit keys + `fullId`. Texts `fullIdWarning · ackFullId · settingOwner · fullIdLabel`.
+- **Q5** v2 runs count only when finalized (`journalEntryId` ∨ `stepsJson.finalized`): fixture R10 now carries a journal id; new S7.3 behind the H3.4 presence guard (stepsJson column).
+- Fixes from the first forced run: base = merge-base with origin/session/hr unless that is older than the cut point 5d7bcf0c4 (origin/session/hr lags the local merges; S1.5 saw H3.5 files as "changed"); S4.6 requires ≥ 40 served cells (passed vacuously without the module).
+
+## 6. Runs
+Seed 34/34 · unforced SKIPPED exit 0 · forced ×2 identical, BASE-EXPECTATION 52/52 as registered (`hr-H3.9-red.txt`).
+Clean typecheck (rm -rf .next/types tsconfig.tsbuildinfo · iso.sh · gate lock): tsc --noEmit exit 0, 0 errors

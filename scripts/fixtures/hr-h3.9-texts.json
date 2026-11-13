@@ -23,7 +23,11 @@
     "title.tax-month": "ภาษีและประกันสังคมรายเดือน",
     "title.tax-year": "ภาษีและประกันสังคมทั้งปี",
     "title.wages": "เอกสารการจ่ายค่าจ้าง",
-    "title.register": "ทะเบียนลูกจ้าง"
+    "title.register": "ทะเบียนลูกจ้าง",
+    "fullIdWarning": "ไฟล์ทะเบียนที่มีเลขประจำตัวประชาชนเต็มเป็นการเปิดเผยข้อมูลส่วนบุคคลเพิ่มขึ้น และไฟล์ที่ดาวน์โหลดแล้วอยู่นอกการดูแลของระบบ — เปิดเฉพาะเมื่อจำเป็น และโปรดตรวจกับที่ปรึกษาด้านคุ้มครองข้อมูลส่วนบุคคลของร้าน",
+    "ackFullId": "กรุณาติ๊กรับทราบคำเตือนก่อนเปิดการใส่เลขประจำตัวประชาชนเต็ม",
+    "settingOwner": "เฉพาะเจ้าของร้านตั้งค่านี้ได้",
+    "fullIdLabel": "ใส่เลขประจำตัวประชาชนเต็มในไฟล์ทะเบียนลูกจ้าง"
   },
   "en": {
     "no": "Report not found, or you do not have access to this report",
@@ -48,6 +52,10 @@
     "title.tax-month": "Tax and social security by month",
     "title.tax-year": "Tax and social security for the year",
     "title.wages": "Wage payment record",
-    "title.register": "Employee register"
+    "title.register": "Employee register",
+    "fullIdWarning": "A register file with full national ID numbers discloses more personal data, and a downloaded file is outside the system's care — turn this on only when needed, and please check with the shop's data-protection adviser",
+    "ackFullId": "Please tick to acknowledge the warning before including full national ID numbers",
+    "settingOwner": "Only the shop owner can change this setting",
+    "fullIdLabel": "Include full national ID numbers in the employee register export"
   }
 }
