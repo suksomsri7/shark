@@ -3591,10 +3591,33 @@ export async function payAccountsOfRun(ctx: Ctx, runId: string): Promise<{ id: s
 export const GIVE_BACK_TEXT = {
   no: "คืนเงินรายการหักนี้ไม่ได้ — ต้องเป็นรายการหักที่หักในรอบจ่ายที่อนุมัติหรือจ่ายแล้ว และคุณต้องมีสิทธิ์ยื่นรายการเพิ่ม/หัก",
   amount: "จำนวนเงินที่คืนต้องมากกว่า 0 และไม่เกินยอดที่หักไปของรายการนี้ (หักยอดที่คืนไปแล้วออกก่อน)",
-  period: "งวดที่คืนเงินต้องเป็นงวดที่ยังไม่มีรอบจ่าย (รูปแบบ YYYY-MM)",
+  period: "งวดที่คืนเงินต้องเป็นงวดถัดจากรอบจ่ายล่าสุดของพนักงานคนนี้ ที่ยังไม่มีรอบจ่าย และไม่เกินงวดที่พนักงานพ้นสภาพ (รูปแบบ YYYY-MM)",
   engine: "คืนเงินรายการหักได้เฉพาะร้านที่ใช้เครื่องคิดเงินเดือนรุ่น 2",
   ok: "บันทึกการคืนเงินแล้ว — รออนุมัติ แล้วจะเข้ารอบจ่ายของงวดที่เลือก",
 } as const;
+/** fix r3 (3) — latest period already covered for the employee by an APPROVED/PAID/finalized run + the end-date period (BKK) */
+async function giveBackWindowInTx(db: Pick<Prisma.TransactionClient, "$queryRaw">, ctx: Ctx, employeeId: string): Promise<{ lastCovered: string | null; endPeriod: string | null }> {
+  const last = (await db.$queryRaw<{ p: string | null }[]>`
+    SELECT MAX(r."periodKey") AS "p" FROM "HrPayrollRun" r JOIN "HrPayrollItem" i ON i."runId" = r."id" AND i."tenantId" = r."tenantId" AND i."systemId" = r."systemId"
+    WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId} AND i."employeeId" = ${employeeId}
+      AND (r."status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") OR COALESCE((r."stepsJson"->>'finalized')::boolean, false) = true) AND r."status" <> 'REVERSED'::"PayrollRunStatus"`)[0]?.p ?? null;
+  const end = (await db.$queryRaw<{ d: Date | null }[]>`SELECT "endDate" AS "d" FROM "HrEmployee" WHERE "id" = ${employeeId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0]?.d ?? null;
+  return { lastCovered: last, endPeriod: end ? h37BkkDay(new Date(end)).slice(0, 7) : null };
+}
+const nextPeriodOf = (pk: string): string => { const [y, mm] = pk.split("-").map(Number); return mm === 12 ? `${y! + 1}-01` : `${y}-${String(mm! + 1).padStart(2, "0")}`; };
+/** fix r3 (3) — the period the give-back form offers: the first period after the employee's latest covered run (and after the claim's run) that has no
+ *  live run of this HR system · null when that is after the employee's end-date period (the form is then not shown) */
+export async function giveBackPeriodOf(ctx: Ctx, claimId: string): Promise<string | null> {
+  const c = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id: claimId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true, runId: true } });
+  if (!c?.runId) return null;
+  const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: c.runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
+  if (!run) return null;
+  const win = await giveBackWindowInTx(tenantDb(ctx) as unknown as Prisma.TransactionClient, ctx, c.employeeId);
+  let p = nextPeriodOf(win.lastCovered && win.lastCovered > run.periodKey ? win.lastCovered : run.periodKey);
+  const live = new Set((await tenantDb(ctx).hrPayrollRun.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: { not: "REVERSED" } }, select: { periodKey: true } })).map((r) => r.periodKey));
+  for (let i = 0; i < 36 && live.has(p); i += 1) p = nextPeriodOf(p);
+  return win.endPeriod && p > win.endPeriod ? null : p;
+}
 export async function giveBackClaim(ctx: Ctx, viewer: { userId?: string | null }, input: { claimId: string; amountSatang: number; periodKey: string; note?: string | null }): Promise<{ ok: true; id: string } | { ok: false; code: string; reason: string }> {
   const NO = { ok: false as const, code: "NO", reason: GIVE_BACK_TEXT.no };
   const uid = typeof viewer?.userId === "string" ? viewer.userId : "";
@@ -3606,9 +3629,12 @@ export async function giveBackClaim(ctx: Ctx, viewer: { userId?: string | null }
   const claim = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id: claimId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true, kind: true, status: true, runId: true } });
   if (!claim || claim.kind !== "DEDUCTION" || claim.status !== "APPROVED" || !claim.runId) return NO;
   if (m.role !== "OWNER") {
+    // fix r3 (4): branch rule = the adjustment request path (payroll-actions.ts payTarget → scope.ts unitTargetOf): a branch-limited requester is refused
+    //   for an employee of another branch AND for an employee without a unit (only OWNER / all-branch viewers reach those)
     const mc = { role: m.role, unitAccess: (Array.isArray(m.unitAccess) ? m.unitAccess : []) as string[], permissions: (m.permissions ?? {}) as Record<string, unknown> } as MembershipCtx;
-    const unitId = (await tenantDb(ctx).hrEmployee.findFirst({ where: { id: claim.employeeId }, select: { unitId: true } }))?.unitId ?? undefined;
-    if (!canViewPayroll(mc) || !evaluate(mc, { module: "hr", action: "hr.payadjust.request", ...(unitId ? { unitId } : {}) } as never)) return NO;
+    const emp = await employeeUnitsOf(ctx, claim.employeeId);
+    const tgt = emp ? unitTargetOf(hrScopeOf({ role: m.role, unitAccess: m.unitAccess }), emp, new Date()) : { ok: false as const };
+    if (!tgt.ok || !canViewPayroll(mc) || !evaluate(mc, { module: "hr", action: "hr.payadjust.request", ...("unitId" in tgt && tgt.unitId ? { unitId: tgt.unitId } : {}) } as never)) return NO;
   }
   const amount = Number(input?.amountSatang);
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount > HR_INT_MAX) return { ok: false, code: "AMOUNT", reason: GIVE_BACK_TEXT.amount };
@@ -3637,6 +3663,11 @@ export async function giveBackClaim(ctx: Ctx, viewer: { userId?: string | null }
     if (!Number.isSafeInteger(deducted) || amount > deducted - prior) return { ok: false, code: "AMOUNT", reason: GIVE_BACK_TEXT.amount };
     const live = await tx.$queryRaw<{ n: number }[]>`SELECT 1 AS "n" FROM "HrPayrollRun" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "periodKey" = ${p} AND "status" <> 'REVERSED'::"PayrollRunStatus" LIMIT 1`;
     if (live.length) return { ok: false, code: "PERIOD", reason: GIVE_BACK_TEXT.period };
+    // fix r3 (3): the period must still be picked up for THIS employee — after the claim's deduction run and after the latest
+    //   APPROVED/PAID/finalized run that covers the employee, and not after the employee's end-date period
+    const win = await giveBackWindowInTx(tx, ctx, c.e);
+    const dedP = (await tx.$queryRaw<{ p: string }[]>`SELECT "periodKey" AS "p" FROM "HrPayrollRun" WHERE "id" = ${c.r} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`)[0]?.p ?? "";
+    if (p <= dedP || (win.lastCovered && p <= win.lastCovered) || (win.endPeriod && p > win.endPeriod)) return { ok: false, code: "PERIOD", reason: GIVE_BACK_TEXT.period };
     const id = `rf${randomUUID().replace(/-/g, "")}`;
     await tx.$executeRaw`
       INSERT INTO "HrPayAdjustment" ("id", "tenantId", "systemId", "employeeId", "periodKey", "kind", "amountSatang", "note", "status", "requestedById", "sourceType", "sourceRef", "createdAt")

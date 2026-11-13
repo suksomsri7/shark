@@ -98,8 +98,8 @@ S4.31|F5|C|R|[db] (ORACLE-EDIT fix r1 F5) refund vector F through approve: lines
 S4.32|F2 F7|C|R|[db] (ORACLE-EDIT fix r1 F2/F7) non-owner connect/disconnect of HR from the account side refused (no row change) · OWNER of another tenant ⇒ bookOwner · payroll mapping saved without an owner session refused · wrong-class mapping forced in the DB ⇒ approve MAPPING_MISSING
 S4.33|F8|M|R|[db] (ORACLE-EDIT fix r1 F8) markPaidRun on a PAID run ⇒ alreadyPaid text
 S1.12|F1|C|R|[static] (ORACLE-EDIT fix r2 e) markPaidV2's PAID update is guarded by status APPROVED · the booked pay path posts the pay entry then updates PAID guarded by status APPROVED inside the SAME $transaction callback
-S4.34|F1|C|R|[db] (ORACLE-EDIT fix r2 e) period lock held in a raw tx: approve ∥ pay and pay ∥ pay both block, then after release ⇒ accrual 1 · PAID ⇔ exactly one pay entry · pay ∥ pay exactly one ok
-S4.35|F5|C|R|[db] (ORACLE-EDIT fix r2 b) give back a recovered claim: REFUND PENDING with sourceRef refund:<claim>#<refund> · over the deducted remainder refused · member of another tenant refused · claim of a reversed run refused
+S4.34|F1|C|R|[db] (ORACLE-EDIT fix r2 e · r3 5) period lock held in a raw tx ⇒ approve blocked; released ⇒ approve held at __inFinal while pay is observed waiting; released ⇒ pay runs after finalize (booked path, pay entry after the accrual, PAID) · pay ∥ pay exactly one ok / one entry / one event
+S4.35|F5|C|R|[db] (ORACLE-EDIT fix r2 b · r3 3/4) give back a recovered claim: offered = next open period · past period / covered period / leaver after end period refused · REFUND PENDING with sourceRef refund:<claim>#<refund> · branch-limited requester on a unit-less employee refused · over the deducted remainder refused · member of another tenant refused · claim of a reversed run refused
 S4.24|R1|C|R|[db] (ORACLE-EDIT H3.7 builder · controller ruling H3.5/H3.6) bank file (CSV GENERIC) of a v2-accounting run = Cr "net salaries payable" of its accrual = run net · PAID D and APPROVED-unpaid F2 (accrual only) both exportable
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
@@ -233,6 +233,8 @@ function runStatic(): void {
     const iEnd = booked.indexOf("}, H34_TX)");
     ck("S1.12", {
       v2Guard: /updateMany\(\{ where: \{[^}]*status: "APPROVED" \}, data: \{ status: "PAID" \}/.test(mpv2),
+      // ORACLE-EDIT (fix r3 6): the book is re-read under the row lock BEFORE the PAID update (F1)
+      v2BookReread: (() => { const i = mpv2.indexOf(`SELECT "accountSystemId" AS "a" FROM "HrPayrollRun"`); const j = mpv2.indexOf("updateMany({ where:"); return i > 0 && j > i && /return "BOOKED" as const/.test(mpv2.slice(i, j)); })(),
       bookedOrder: iTx > 0 && iPost > iTx && iUpd > iPost && iEnd > iUpd && /"status" = 'APPROVED'::"PayrollRunStatus"`/.test(booked.slice(iUpd, iEnd)),
     }, "conditional PAID in the posting tx");
   }
@@ -1073,18 +1075,31 @@ async function runDb(): Promise<void> {
         return { isHeld, release, done };
       };
       const settled = (p: Promise<unknown>) => Promise.race([p.then(() => true, () => true), sleep(1200).then(() => false)]);
+      // ORACLE-EDIT (fix r3 5): deterministic order — P held ⇒ approve blocked · P released ⇒ approve reaches __inFinal (holds P inside the final tx) ⇒
+      //   pay started and observed waiting ⇒ finalize released ⇒ pay must run AFTER finalize: booked path, pay entry created after the accrual
       const id = await insRun("hQ1", VEC.examples.A, { label: "Q1" });
       const h1 = holdLock("2031-09");
       await h1.isHeld;
-      const ap = approve("hQ1", id);
-      const py = payRun("hQ1", id, { financeAccountId: finBankA, paidOn: "2031-10-05" });
-      const blocked1 = !(await settled(ap)) && !(await settled(py));
+      let inFinal!: () => void;
+      const reachedFinal = new Promise<void>((r) => (inFinal = r));
+      let releaseFinal!: () => void;
+      const finalGate = new Promise<void>((r) => (releaseFinal = r));
+      const ap = approve("hQ1", id, { __inFinal: async () => { inFinal(); await finalGate; } });
+      const blockedP = !(await settled(ap));
       h1.release();
       await h1.done;
+      await Promise.race([reachedFinal, sleep(30_000)]);
+      const py = payRun("hQ1", id, { financeAccountId: finBankA, paidOn: "2031-10-05" });
+      const payWaits = !(await settled(py));
+      releaseFinal();
       const [apR, pyR] = [await ap, await py];
+      const blocked1 = blockedP && payWaits;
       const st1 = (await runOf(id))?.status;
       const acc1 = await P.accountJournalEntry.count({ where: { idempotencyKey: `hr-payroll#${id}#accrual` } });
       const pe1 = await payEntries(id);
+      const accE = await keyEntry(id, "accrual");
+      const payE = await keyEntry(id, "pay");
+      const order = !!accE && !!payE && new Date(payE.createdAt).getTime() > new Date(accE.createdAt).getTime() && pyR?.ok === true && st1 === "PAID" && pe1 === 1;
       // pay ∥ pay on an approved (finalized) run
       const id2 = await insRun("hQ1", VEC.examples.A, { label: "Q2", periodKey: "2031-10", payDay: "2031-10-31" });
       await approve("hQ1", id2);
@@ -1096,29 +1111,45 @@ async function runDb(): Promise<void> {
       await h2.done;
       const pr = await Promise.all(pays);
       ck("S4.34", {
-        blocked: blocked1 && blocked2, approved: apR?.ok === true && acc1 === 1, paidIffEntry: (st1 === "PAID") === (pe1 === 1) && pe1 <= 1,
+        blocked: blocked1 && blocked2, approved: apR?.ok === true && acc1 === 1, paidIffEntry: (st1 === "PAID") === (pe1 === 1) && pe1 <= 1, payAfterFinalize: order,
         payOnce: pr.filter((x: Any) => x?.ok).length === 1 && (await runOf(id2))?.status === "PAID" && (await payEntries(id2)) === 1 && (await paidEvents(id2)) === 1,
       }, "lock-ordered", short({ blocked1, blocked2, apR: apR?.note, pyR: pyR?.note, st1, pe1, pr: pr.map((x: Any) => x?.ok) }, 260));
     }
-    // ORACLE-EDIT (fix r2 b) S4.35 give back a recovered claim
+    // ORACLE-EDIT (fix r2 b · r3 3/4) S4.35 give back a recovered claim
     {
-      await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hrPayroll}', COALESCE(settings->'hrPayroll', '{}'::jsonb) || '{"engineVersion": 2}'::jsonb) WHERE id = $1`, HS.hC);
-      const claim = `${R.C}_c1Dmg`;
-      const g = (amt: number, who = own1.id, pk = "2031-11", cl = claim) => PAY.giveBackClaim(c1("hC"), { userId: who }, { claimId: cl, amountSatang: amt, periodKey: pk });
-      const over = await g(90_001);
-      const ok1 = await g(60_000);
-      const over2 = await g(30_001);
-      const ok2 = await g(30_000);
-      const foreign = await g(1, own2.id);
-      const revClaim = `${R.B}_bDmg`; // claim of example B — its run was reversed in S4.10 (row unbound)
-      await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hrPayroll}', COALESCE(settings->'hrPayroll', '{}'::jsonb) || '{"engineVersion": 2}'::jsonb) WHERE id = $1`, HS.hB);
-      const reversed = revClaim ? await PAY.giveBackClaim(c1("hB"), { userId: own1.id }, { claimId: revClaim, amountSatang: 1, periodKey: "2031-11" }) : { ok: "∅" };
-      const made = await rows(`SELECT kind::text AS k, status::text AS s, "sourceRef" AS r, "amountSatang" AS a FROM "HrPayAdjustment" WHERE "sourceRef" LIKE $1 ORDER BY "amountSatang"`, `refund:${claim}#%`);
+      const setV2 = (sysId: string) => P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hrPayroll}', COALESCE(settings->'hrPayroll', '{}'::jsonb) || '{"engineVersion": 2}'::jsonb) WHERE id = $1`, sysId);
+      const hG = await newHr("hG1", BA);
+      await setV2(hG);
+      const gRun = await insRun("hG1", VEC.examples.B, { label: "G1" });
+      await approve("hG1", gRun);
+      const claim = `${gRun}_bDmg`; // deducted 212,223 in 2031-09 (example B, 10 % cap)
+      const g = (amt: number, pk: string, who = own1.id, cl = claim, h = "hG1") => PAY.giveBackClaim(c1(h), { userId: who }, { claimId: cl, amountSatang: amt, periodKey: pk });
+      const offered = await PAY.giveBackPeriodOf(c1("hG1"), claim);
+      const past = await g(1, "2031-08");
+      const covered = await g(1, "2031-09");
+      const over = await g(212_224, "2031-10");
+      const ok1 = await g(150_000, "2031-10");
+      const over2 = await g(62_224, "2031-10");
+      const ok2 = await g(62_223, "2031-11");
+      const foreign = await g(1, "2031-10", own2.id);
+      // branch-limited requester, employee without a unit (rule of payroll-actions payTarget → unitTargetOf) ⇒ refused
+      const uBr = await fx.newUnit(T1, `QC37 สาขา ${tag}`, "u37");
+      const brl = await fx.mkUser(T1, "brl37", `QC37 branch ${tag}`, "STAFF", [uBr], { "hr.payadjust.request": true, "hr.payroll.read": true });
+      const branchRef = await g(1, "2031-10", brl.id);
+      // leaver: c1 of example C ended 2031-09-15 ⇒ 2031-10 is after the end period
+      await setV2(HS.hC!);
+      const leaver = await g(1, "2031-10", own1.id, `${R.C}_c1Dmg`, "hC");
+      const leaverOffer = await PAY.giveBackPeriodOf(c1("hC"), `${R.C}_c1Dmg`);
+      await setV2(HS.hB!);
+      const reversed = await g(1, "2031-11", own1.id, `${R.B}_bDmg`, "hB");
+      const made = await rows(`SELECT kind::text AS k, status::text AS s, "periodKey" AS p, "amountSatang" AS a FROM "HrPayAdjustment" WHERE "sourceRef" LIKE $1 ORDER BY "amountSatang"`, `refund:${claim}#%`);
+      const isP = (x: Any) => x?.ok === false && x?.code === "PERIOD";
       ck("S4.35", {
-        over: over?.ok === false && over?.code === "AMOUNT", ok: ok1?.ok === true && ok2?.ok === true, over2: over2?.ok === false && over2?.code === "AMOUNT",
-        rows: made.length === 2 && made.every((x: Any) => x.k === "REFUND" && x.s === "PENDING") && Number(made[0]?.a) === 30_000 && Number(made[1]?.a) === 60_000,
-        foreign: foreign?.ok === false && foreign?.code === "NO" && !/\d/.test(String(foreign?.reason)), reversedRun: reversed?.ok === false,
-      }, "give back", short({ over, ok1, over2, ok2, foreign, reversed, made }, 300));
+        offered: offered === "2031-10", past: isP(past), covered: isP(covered), over: over?.ok === false && over?.code === "AMOUNT", ok: ok1?.ok === true && ok2?.ok === true,
+        over2: over2?.ok === false && over2?.code === "AMOUNT", rows: made.length === 2 && made.every((x: Any) => x.k === "REFUND" && x.s === "PENDING") && Number(made[0]?.a) === 62_223 && Number(made[1]?.a) === 150_000,
+        foreign: foreign?.ok === false && foreign?.code === "NO" && !/\d/.test(String(foreign?.reason)), branchUnitless: branchRef?.ok === false && branchRef?.code === "NO",
+        leaver: isP(leaver) && leaverOffer === null, reversedRun: reversed?.ok === false,
+      }, "give back", short({ offered, past, covered, over, ok1, over2, ok2, foreign, branchRef, leaver, leaverOffer, reversed, made }, 400));
     }
   });
 }
