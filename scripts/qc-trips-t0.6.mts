@@ -1103,6 +1103,8 @@ try {
     await invOk([dPend], "CN-2");
   });
   await st("CN-3", "ยกเลิกการจองที่ขายแล้ว (CONFIRMED) ⇒ STATE_CONFLICT REFUND_REQUIRED · ไม่เปลี่ยน (version · sold)", async () => {
+    // ORACLE-EDIT CN-3 (ผู้คุม 13 พ.ย.): T0.7a §9.1 แทนเส้นทางนี้ — ยกเลิกการจองที่ขายแล้ว = ยื่นคำขอคืนเงิน (ครอบโดย t0.7 CN-2 · S-10) · ข้อนี้ปลดเมื่อ facade มี requestTripRefund
+    if (typeof needTrips().requestTripRefund === "function") return;
     ok(CF7.bookingId, "CF-7 ไม่ผ่าน"); const v0 = (await bk(CF7.bookingId)).version;
     codeR(await call("cancelTripBooking", staff(), { bookingId: CF7.bookingId, mode: "EXECUTE", reason: "ลูกค้าขอยกเลิก", idempotencyKey: `cn${hex(5)}` }), "STATE_CONFLICT", "CONFIRMED", "REFUND_REQUIRED");
     eq([(await bk(CF7.bookingId)).status, (await bk(CF7.bookingId)).version, (await dep(dCF7)).sold], ["CONFIRMED", v0, 3], "ไม่เปลี่ยน");

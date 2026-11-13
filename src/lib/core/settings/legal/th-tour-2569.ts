@@ -56,6 +56,15 @@ const REFUND_FLOOR: readonly { fromDaysBefore: number; minPct: number; rangeTh: 
   { fromDaysBefore: 30, minPct: 100, rangeTh: "30 วันขึ้นไปก่อนเดินทาง" },
   { fromDaysBefore: 15, minPct: 50, rangeTh: "15–29 วันก่อนเดินทาง" },
 ];
+/**
+ * TRIPS T0.7 ▸ ขั้นต่ำที่ต้องคืน (%) ณ จำนวนวันก่อนเดินทาง ตามประกาศคณะกรรมการธุรกิจนำเที่ยวและมัคคุเทศก์ เรื่องการคืนเงิน พ.ศ. 2563 (ม.28 พ.ร.บ.ธุรกิจนำเที่ยวฯ)
+ * อ่านจากตาราง REFUND_FLOOR ตัวเดียวกับ W01 (แหล่งเดียว) · ไม่มีขั้นที่ใช้ ⇒ 0 · หลังวันเดินทาง (d < 0) / ไม่ใช่จำนวนเต็ม ⇒ null (ไม่ตรวจ)
+ * ผู้ใช้: trips/refund.ts (คำเตือน REFUND_BELOW_STATUTORY_MINIMUM · ระดับสูงสุด WARN — ไม่บล็อก) ◂
+ */
+export function tourRefundFloorPctAt(daysBefore: number): number | null {
+  if (!Number.isInteger(daysBefore) || daysBefore < 0) return null;
+  return REFUND_FLOOR.find((f) => daysBefore >= f.fromDaysBefore)?.minPct ?? 0;
+}
 /** W25 วงเงินประกันอุบัติเหตุขั้นต่ำต่อคน (ประกาศ 20 ก.ย. 2561) — สตางค์ */
 const INSURANCE_FLOOR = { deathDisabilitySatang: 100_000_000, injurySatang: 50_000_000 } as const;
 /** W26 แขกสูงสุดต่อผู้ควบคุม 1 คน (ประกาศ ทส. 2568) */

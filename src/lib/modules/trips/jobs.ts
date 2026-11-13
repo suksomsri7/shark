@@ -21,6 +21,11 @@ import { CapacityAbort, type Gate, type SweepGroup } from "./capacity";
 import { expireHoldsBatch, jobGate, sweepPolicies } from "./capacity-service";
 import { offerWaitlistForDeparture } from "./waitlist";
 // ── /T0.4 capacity ──
+// ── T0.7 money ── (งาน trips.paymentDue)
+import { resolveSettings } from "@/lib/core/settings";
+import { emitDueReminders, markTripDueOverdue, reminderDayOf, retryTripAutoRelease, type AutoReleaseInTx } from "./money";
+import { autoReleaseOverdueInTx } from "./refund";
+// ── /T0.7 money ──
 
 export type TripJobOpts = { tenantIds?: string[]; signal?: AbortSignal };
 export type TripJobFailure = { tenantId: string; unitId?: string; scheduleId?: string; departureId?: string; code: string };
@@ -248,6 +253,191 @@ export async function runWaitlistOffers(
 }
 // ── /T0.4 capacity ──
 
+// ── T0.7 money ──
+// TRIPS T0.7 ▸ งาน trips.paymentDue (ใบสั่ง T0.7 §13 · CC :926) — อ่านไม่ล็อกข้ามร้านด้วย prisma ดิบ (ดัชนี TripPaymentDue_status_dueAt_idx · หน้าละ 200 · keyset)
+//   แล้วเขียนต่อร้านผ่าน money.ts (tenantDb · ต่องวดหนึ่ง tx) · AUTO_RELEASE = ยื่นคำขอคืนเงิน SYSTEM ผ่าน refund.ts (ไม่บันทึกโอนคืน/ไม่ปล่อยที่เอง) ◂
+type PayDueRow = { id: string; tenantId: string; unitId: string; bookingId: string; productId: string; dueAt: Date; amountSatang: number; paidSatang: number };
+/** ขอบเขตการเตือนล่วงหน้า (T16 สูงสุด 365 วันตามสคีมาค่าตั้ง + 1 · ค่าทางเทคนิคของการสแกน ไม่ใช่ตัวเลขธุรกิจ) */
+const REMINDER_HORIZON_MS = 366 * 86_400_000;
+const K_REMINDER_DAYS = "trips.pay.reminderDaysBefore"; // T16 (ค่าปัจจุบันของหน่วย/สินค้า · นโยบาย ไม่ใช่ยอด)
+const K_AUTO_APPROVE = "trips.cancel.autoApproveUpTo"; // X12 (ค่าปัจจุบันของหน่วย)
+/** ผ่อนผัน X11 จาก snapshot ในรูป SQL (คีย์ไม่ได้จด/ไม่ใช่จำนวนเต็ม ⇒ 0 — ธุรกรรมต่องวดตัดสินซ้ำจาก snapshot อีกครั้ง) */
+const GRACE_SQL = Prisma.sql`(CASE WHEN (b."policySnapshot"->'policy'->'trips'->'values'->>'trips.pay.overdueGraceHours') ~ '^[0-9]+$'
+  THEN (b."policySnapshot"->'policy'->'trips'->'values'->>'trips.pay.overdueGraceHours')::int ELSE 0 END)`;
+/** การจองที่ยังค้างจ่ายและไม่มีคำขอคืนเงินเปิด (ดัชนี TripRefundRequest_bookingId_idx ในเงื่อนไข NOT EXISTS) */
+const LIVE_BOOKING_SQL = Prisma.sql`b."status" IN ('CONFIRMED', 'PART_PAID')
+  AND NOT EXISTS (SELECT 1 FROM "TripRefundRequest" r WHERE r."bookingId" = b."id" AND r."tenantId" = b."tenantId" AND r."status" IN ('REQUESTED', 'QUOTED', 'APPROVED', 'EXECUTING', 'FAILED'))`;
+type DueCursor = { at: string; id: string } | null;
+/** เพดานการลองยื่น AUTO_RELEASE ซ้ำต่อรอบงาน (มติ r2 W5 · ค่าทางเทคนิค ไม่ใช่ตัวเลขธุรกิจ) */
+const AUTO_RELEASE_RETRY_CAP = 50;
+/** T17 จาก snapshot ในรูป SQL */
+const ACTION_SQL = Prisma.sql`(b."policySnapshot"->'policy'->'trips'->'values'->>'trips.pay.overdueAction')`;
+/**
+ * งาน trips.paymentDue (มติ r1 V1 · r2 W5 W8 W9) — สามคิว แต่ละคิวมี cursor (dueAt, id) · หน้าละ 200 · ทุกรอบของลูปทำหน้าเตือนก่อนแล้วจึงหน้าเลยกำหนด (คิวหนึ่งไม่กินอีกคิว):
+ *   เตือน: งวด OPEN/PARTLY_PAID ที่ now < dueAt ≤ now + 366 วัน ⇒ trips.payment.due_soon ของ d ที่เล็กที่สุดใน T16 ที่ dueAt − d วัน ≤ now
+ *     (คีย์ <dueId>:<d> · ตรวจคีย์ที่มีแล้วในคำสั่งเดียวก่อนเขียน) — ไม่มีธุรกรรม/ไม่ล็อก
+ *   เลยกำหนด: งวด OPEN/PARTLY_PAID ที่ dueAt + X11 ≤ now ⇒ markTripDueOverdue (ต่องวดหนึ่ง tx) · รอบที่เปลี่ยนเป็น OVERDUE + T17 AUTO_RELEASE ⇒ ยื่นคำขอใต้ SAVEPOINT
+ *   ลองยื่นซ้ำ (เพดาน AUTO_RELEASE_RETRY_CAP ต่อรอบ · หลังสองคิวแรก): งวด OVERDUE + AUTO_RELEASE ที่ยังไม่มีคำขอของงวดนั้น (คีย์ refund:<booking>:sys:trips.paymentDue:due_<due>@<unit>)
+ * ทุกคิวข้ามการจองที่ไม่ค้างจ่าย (HOLD ใช้เวลาของ hold · CANCELLED/EXPIRED/PAID) และการจองที่มีคำขอคืนเงินเปิด
+ * คืน more = { reminders, overdue } — true เมื่อหยุดเพราะ signal/deadline ทั้งที่คิวยังไม่หมด · ล้มรายแถว = นับใน failed ไม่หยุดงาน
+ */
+export async function runPaymentDue(
+  now: Date,
+  opts?: CapacityJobOpts,
+): Promise<{ reminders: number; overdue: number; autoReleased: number; failed: CapacityJobFailure[]; more: { reminders: boolean; overdue: boolean; retry: boolean } }> {
+  const out = { reminders: 0, overdue: 0, autoReleased: 0 };
+  const tally = new FailureTally();
+  const gates = new Map<string, Gate | null>();
+  const daysOf = new Map<string, number[]>();
+  const autoOf = new Map<string, number>();
+  const iso = now.toISOString();
+  const horizon = new Date(now.getTime() + REMINDER_HORIZON_MS).toISOString();
+  const tenantFilter = opts?.tenantIds ? Prisma.sql`AND d."tenantId" = ANY(${opts.tenantIds}::text[])` : Prisma.empty;
+  const afterOf = (cur: DueCursor) => (cur ? Prisma.sql`AND (d."dueAt", d."id") > (${cur.at}::timestamp, ${cur.id})` : Prisma.empty);
+  const gateFor = async (d: PayDueRow): Promise<Gate | null> => {
+    const uk = `${d.tenantId}|${d.unitId}`;
+    if (!gates.has(uk)) gates.set(uk, await jobGate(d.tenantId, d.unitId));
+    const g = gates.get(uk) ?? null;
+    if (!g) tally.add(d.tenantId, d.unitId, "UNIT_NOT_TRIPS");
+    return g;
+  };
+  const autoFor = async (g: Gate): Promise<number> => {
+    if (!autoOf.has(g.unitId)) {
+      const r = await resolveSettings({ tenantId: g.tenantId }, [K_AUTO_APPROVE], { unitId: g.unitId }, now);
+      const v = r[K_AUTO_APPROVE]?.value;
+      autoOf.set(g.unitId, typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : 0);
+    }
+    return autoOf.get(g.unitId) ?? 0;
+  };
+  const autoReleaseFor = (g: Gate, auto: number): AutoReleaseInTx => {
+    const sysCtx = { tenantId: g.tenantId, unitId: g.unitId, channel: "COUNTER", actor: { kind: "SYSTEM", job: "trips.paymentDue" }, now };
+    return (tx, b, dueId) => autoReleaseOverdueInTx(tx, sysCtx, b, dueId, auto);
+  };
+  const page = (statuses: Prisma.Sql, where: Prisma.Sql, cur: DueCursor, limit: number) => prisma.$queryRaw<PayDueRow[]>`
+    SELECT d."id", d."tenantId", d."unitId", d."bookingId", b."productId", d."dueAt", d."amountSatang", d."paidSatang"
+    FROM "TripPaymentDue" d JOIN "TripBooking" b ON b."id" = d."bookingId" AND b."tenantId" = d."tenantId"
+    WHERE d."status" IN (${statuses}) AND ${where} AND ${LIVE_BOOKING_SQL} ${tenantFilter} ${afterOf(cur)}
+    ORDER BY d."dueAt", d."id" LIMIT ${limit}`;
+  const OPEN = Prisma.sql`'OPEN', 'PARTLY_PAID'`;
+  const nextCursor = (rows: PayDueRow[]): DueCursor => {
+    const last = rows[rows.length - 1];
+    return last ? { at: new Date(last.dueAt).toISOString(), id: last.id } : null;
+  };
+  let remCur: DueCursor = null;
+  let ovCur: DueCursor = null;
+  let remDone = false;
+  let ovDone = false;
+  /** งวดที่เปลี่ยนเป็น OVERDUE ในรอบงานนี้ — ไม่เข้าคิวลองยื่นซ้ำของรอบเดียวกัน (มติ r3 ข้อ 1: ลองซ้ำเฉพาะรอบถัดไป) */
+  const flipped: string[] = [];
+  while (!stopped(opts) && !(remDone && ovDone)) {
+    // คิวเตือนก่อน (มติ r2 W5)
+    if (!remDone) {
+      const rows = await page(OPEN, Prisma.sql`d."dueAt" > ${iso}::timestamp AND d."dueAt" <= ${horizon}::timestamp`, remCur, SWEEP_PAGE_SIZE);
+      // มติ r3 ข้อ 2: คิว "หมด" เมื่อหน้าสุดท้ายถูกทำครบทุกแถวเท่านั้น
+      const lastPage = rows.length < SWEEP_PAGE_SIZE;
+      let complete = true;
+      remCur = nextCursor(rows) ?? remCur;
+      const byUnit = new Map<string, { g: Gate; items: { due: PayDueRow; d: number }[] }>();
+      for (const d of rows) {
+        if (stopped(opts)) {
+          complete = false;
+          break;
+        }
+        try {
+          const g = await gateFor(d);
+          if (!g) continue;
+          const pk = `${d.tenantId}|${d.unitId}|${d.productId}`;
+          if (!daysOf.has(pk)) {
+            const r = await resolveSettings({ tenantId: d.tenantId }, [K_REMINDER_DAYS], { unitId: d.unitId, productId: d.productId }, now);
+            const v = r[K_REMINDER_DAYS]?.value;
+            daysOf.set(pk, Array.isArray(v) ? v.filter((x): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0) : []);
+          }
+          const day = reminderDayOf(d.dueAt, daysOf.get(pk) ?? [], now);
+          if (day === null) continue;
+          const uk = `${d.tenantId}|${d.unitId}`;
+          const grp = byUnit.get(uk) ?? { g, items: [] };
+          grp.items.push({ due: d, d: day });
+          byUnit.set(uk, grp);
+        } catch (e) {
+          tally.add(d.tenantId, d.unitId, capCodeOf(e));
+        }
+      }
+      for (const grp of byUnit.values()) {
+        try {
+          out.reminders += await emitDueReminders(grp.g, grp.items);
+        } catch (e) {
+          tally.add(grp.g.tenantId, grp.g.unitId, capCodeOf(e), grp.items.length);
+        }
+      }
+      if (lastPage && complete) remDone = true;
+    }
+    if (!ovDone && !stopped(opts)) {
+      const rows = await page(OPEN, Prisma.sql`d."dueAt" <= ${iso}::timestamp AND d."dueAt" + make_interval(hours => ${GRACE_SQL}) <= ${iso}::timestamp`, ovCur, SWEEP_PAGE_SIZE);
+      const lastPage = rows.length < SWEEP_PAGE_SIZE;
+      let complete = true;
+      ovCur = nextCursor(rows) ?? ovCur;
+      for (const d of rows) {
+        if (stopped(opts)) {
+          complete = false;
+          break;
+        }
+        try {
+          const g = await gateFor(d);
+          if (!g) continue;
+          const ov = await markTripDueOverdue(g, { id: d.id, bookingId: d.bookingId }, now, autoReleaseFor(g, await autoFor(g)));
+          if (!ov.ok) {
+            tally.add(d.tenantId, d.unitId, ov.code);
+            continue;
+          }
+          if (ov.value.overdue) {
+            out.overdue++;
+            flipped.push(d.id);
+          }
+          if (ov.value.autoReleased) out.autoReleased++;
+          if (ov.value.autoReleaseFailed) tally.add(d.tenantId, d.unitId, `AUTO_RELEASE_${ov.value.autoReleaseFailed}`);
+        } catch (e) {
+          tally.add(d.tenantId, d.unitId, capCodeOf(e));
+        }
+      }
+      if (lastPage && complete) ovDone = true;
+    }
+  }
+  // ลองยื่น AUTO_RELEASE ซ้ำ (เพดานต่อรอบ · มติ r2 W5) — ไม่รวมงวดที่เพิ่งเปลี่ยนเป็น OVERDUE ในรอบนี้ (มติ r3 ข้อ 1)
+  let retryMore = true;
+  if (!stopped(opts)) {
+    const keySql = Prisma.sql`'refund:' || b."id" || ':sys:trips.paymentDue:due_' || d."id" || '@' || d."unitId"`;
+    const rows = await page(
+      Prisma.sql`'OVERDUE'`,
+      Prisma.sql`d."paidSatang" < d."amountSatang" AND ${ACTION_SQL} = 'AUTO_RELEASE'
+        AND NOT EXISTS (SELECT 1 FROM "TripRefundRequest" x WHERE x."tenantId" = d."tenantId" AND x."idempotencyKey" = ${keySql})
+        AND NOT (d."id" = ANY(${flipped}::text[]))`,
+      null,
+      AUTO_RELEASE_RETRY_CAP,
+    );
+    let complete = true;
+    for (const d of rows) {
+      if (stopped(opts)) {
+        complete = false;
+        break;
+      }
+      try {
+        const g = await gateFor(d);
+        if (!g) continue;
+        const r = await retryTripAutoRelease(g, { id: d.id, bookingId: d.bookingId }, autoReleaseFor(g, await autoFor(g)));
+        if (!r.ok) tally.add(d.tenantId, d.unitId, `AUTO_RELEASE_${r.code}`);
+        else if (r.value) out.autoReleased++;
+      } catch (e) {
+        tally.add(d.tenantId, d.unitId, capCodeOf(e));
+      }
+    }
+    // เพดานตัด (ได้ครบ CAP แถว) หรือ deadline ตัดกลางทาง ⇒ ยังมีงานเหลือ
+    retryMore = !complete || rows.length >= AUTO_RELEASE_RETRY_CAP;
+  }
+  const failed = tally.list();
+  await reportFailures("trips.paymentDue", failed);
+  return { ...out, failed, more: { reminders: !remDone, overdue: !ovDone, retry: retryMore } };
+}
+// ── /T0.7 money ──
 // ── T0.8 pdpa ──
 // ใบสั่ง ledger/trips-briefs/T0.8.md §7 · CC §A.4 :114 · §J.2 :931 · §D.4 ข้อ 5 — สแกนข้ามร้านแบบอ่านอย่างเดียวด้วย prisma ดิบ (หาหน่วยที่มีของครบกำหนด)
 // แล้วเขียนผ่าน pdpa.ts (tenantDb · ต่อหน่วย) เท่านั้น · ล้มต่อหน่วย = จดรหัสสั้นใน failed แล้วไปต่อ · เคารพ signal/deadline ก่อนเริ่มหน่วยถัดไป
