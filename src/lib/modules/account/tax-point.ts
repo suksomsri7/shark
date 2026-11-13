@@ -20,7 +20,9 @@ import { legalAckResult } from "./legal-gate";
 import { safeReason } from "./errors";
 import { accountNow } from "./clock";
 import { bkkMonthKey } from "./tax-point-shared";
-import { getSettings, releaseParkedVatOne } from "./service";
+import { getSettings, releaseParkedVatOne, taxInvoiceTogetherPlan } from "./service";
+import { issueLegalWarnings } from "./legal-gate";
+import { rawVatByKind, taxPointHintTh, kindFromTiming } from "./tax-point-shared";
 
 type Ctx = { tenantId: string; systemId: string };
 
@@ -183,4 +185,42 @@ export async function releaseParkedVat(
     }
   }
   return { ok: true, released, skipped };
+}
+
+
+export type InvoiceTaxPointView = {
+  /** ร่าง: คำเตือนของ "ใบกำกับพร้อมกัน" (ติ๊กยืนยันในฟอร์มออกเอกสาร · ไม่ติ๊ก = ออกใบแจ้งหนี้โดยยังไม่ออกใบกำกับ) + แจ้งเมื่อปิดสวิตช์ */
+  draftWarnings: LegalWarning[];
+  /** ข้อความผลต่อชนิด (สินค้า/บริการ) */
+  hint: string;
+  /** ออกแล้ว: ยอดที่ยังพัก + คำเตือนข้ามเดือน (null = ไม่มีพัก) */
+  parked: { goods: number; service: number; warning: LegalWarning | null } | null;
+};
+
+/** หน้าเอกสาร (ใบแจ้งหนี้/ใบเสร็จ): จุดรับผิดของใบนี้ — ร่างแสดงผลที่จะเกิด · ออกแล้วแสดง VAT ที่ยังพัก */
+export async function invoiceTaxPointView(ctx: Ctx, docId: string): Promise<InvoiceTaxPointView | null> {
+  const doc = await tenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountDocument.findFirst({
+    where: { id: docId },
+    include: { lines: { orderBy: { sortOrder: "asc" } } },
+  });
+  if (!doc || (doc.docType !== "INVOICE" && doc.docType !== "RECEIPT")) return null;
+  const settings = await getSettings(ctx.tenantId, ctx.systemId);
+  if (!settings.vatRegistered || doc.vatMode === "NONE") return null;
+  const st = { goodsOnIssue: settings.doc.autoTaxInvoice.goodsOnIssue, mode: settings.doc.autoTaxInvoice.mode };
+  const timing = doc.taxPointBasis ?? doc.vatTiming;
+  const raw = rawVatByKind({ lines: doc.lines, vatMode: doc.vatMode, discountAmount: doc.discountAmount, vatRateBp: settings.vatRateBp, docTiming: timing });
+  const kinds = { goods: doc.lines.some((l) => (l.lineKind ?? kindFromTiming(timing)) === "GOODS"), service: doc.lines.some((l) => (l.lineKind ?? kindFromTiming(timing)) === "SERVICE") };
+  const hint = doc.docType === "INVOICE" ? taxPointHintTh(doc.autoTaxInvoice, st, kinds) : "";
+  if (doc.status === "DRAFT") {
+    const plan = taxInvoiceTogetherPlan(doc, settings);
+    const out: LegalWarning[] = plan
+      ? issueLegalWarnings({ docType: "TAX_INVOICE", vatAmount: plan.vat }, settings).filter((w) => w.code !== "TAX_INVOICE_NOT_VAT_REGISTERED")
+      : [];
+    if (doc.docType === "INVOICE" && !(plan?.kinds.goods) && raw.goods > 0)
+      out.push(legalWarning("GOODS_TAX_INVOICE_DEFERRED", { vat: baht(raw.goods) }));
+    return { draftWarnings: out, hint, parked: null };
+  }
+  if (doc.docType !== "INVOICE") return { draftWarnings: [], hint, parked: null };
+  const p = await parkedWarningForDocument(ctx, docId);
+  return { draftWarnings: [], hint, parked: p };
 }

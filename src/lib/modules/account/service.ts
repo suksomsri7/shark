@@ -3,7 +3,7 @@ import { safeReason } from "./errors";
 import { recordLegalAckInTx } from "@/lib/core/legal-ack";
 import { accountNow } from "./clock";
 import { issueLegalWarnings, legalAckResult, legalGateInTx } from "./legal-gate";
-import { isLegalAckRequiredError, legalWarning, type LegalAck, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings";
+import { isLegalAckRequiredError, legalWarning, unacknowledged, type LegalAck, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // CRM C5.4-C/C5.4-N ▸ LOCK ORDER of the account money transactions (round 11 · R10-2 · C5.4-N tail numbering) — THE one
@@ -2463,12 +2463,12 @@ export async function issueDocumentInTx(
       // T0.4 ▸ เดิม A3 (ไม่จด VAT) / M2 (ไม่มีเลขผู้ขาย) / F4 (ใบลด-เพิ่มหนี้ไม่มีสาเหตุ) = บล็อก → เปลี่ยนเป็นคำเตือนที่อ้างมาตรา
       //   ร้านกดยืนยันผ่านได้ (หลัก SHARK) · บันทึกผู้ยืนยันลง AuditLog ในธุรกรรมเดียวกัน ◂
       // ACC T1.2 ▸ ใบที่จะ "ออกใบกำกับพร้อมกัน" — คำเตือนของใบกำกับนั้นรวมในด่านเดียวกัน (ยืนยันครั้งเดียวที่ใบแจ้งหนี้/ใบเสร็จ) ◂
-      const together = taxInvoiceTogetherPlan(doc, settings);
-      const gateWarnings = [
-        ...issueLegalWarnings(doc, settings),
-        ...(together ? issueLegalWarnings({ docType: "TAX_INVOICE", vatAmount: together.vat }, settings).filter((w) => w.code !== "TAX_INVOICE_NOT_VAT_REGISTERED") : []),
-      ];
-      await legalGateInTx(tx, tenantId, gateWarnings, opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
+      //   ไม่บล็อกใบแจ้งหนี้เพราะใบกำกับ: คำเตือนของใบกำกับที่ยังไม่ได้ยืนยัน ⇒ ออกใบแจ้งหนี้ตามปกติ แต่ไม่ออกใบกำกับพร้อมกัน
+      //   (VAT สินค้าพักไว้ → รายการภาษีขายค้างพัก/คำเตือนข้ามเดือน · หน้าเอกสารร่างแสดงคำเตือนนี้ให้ติ๊กยืนยันล่วงหน้าได้) ◂
+      let together = taxInvoiceTogetherPlan(doc, settings);
+      const tiWarnings = together ? issueLegalWarnings({ docType: "TAX_INVOICE", vatAmount: together.vat }, settings).filter((w) => w.code !== "TAX_INVOICE_NOT_VAT_REGISTERED") : [];
+      if (together && unacknowledged(tiWarnings, opts.ack?.codes).length > 0) together = null;
+      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, settings).concat(together ? tiWarnings : []), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
       // SVC D.3 ▸ (T7) ใบกำกับจากใบแจ้งหนี้หอ (source DORM) ที่มาจากรอบบิล/มีรายการยกเว้น-ไม่มี VAT ⇒ ปฏิเสธ
       //   (ทางแปลงทั่วไปออกใบกำกับยอดเต็มรวมค่าห้องยกเว้น) — ใบกำกับของหอออกได้ทางเดียว = ใบกำกับเฉพาะส่วน VAT ของหอ ◂
       if (doc.docType === "TAX_INVOICE" && doc.sourceDocId) await dormTaxSourceGuardInTx(tx, systemId, doc.sourceDocId);
@@ -2729,6 +2729,11 @@ export async function convertDocument(
       source.lines.map((l) => ({ description: l.description, qty: l.qty, unitName: l.unitName, unitPrice: l.unitPrice, discount: l.discount, vatRateBp: l.vatRateBp, amount: l.amount, lineKind: l.lineKind }));
     let tiDiscount = source.discountAmount;
     let tiGrand = tiGrandTotal;
+    // ACC T1.2 ▸ ใบเสร็จของใบแจ้งหนี้ที่ออกใบกำกับแล้ว (พร้อมกัน/ตามงวด) ⇒ ไม่ออกใบกำกับซ้ำของการขายเดียวกัน ◂
+    if (toDocType === "TAX_INVOICE" && source.docType === "RECEIPT" && source.sourceDocId) {
+      const ivTi = await prisma.accountDocument.findFirst({ where: { systemId, docType: "TAX_INVOICE", sourceDocId: source.sourceDocId, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } }, select: { docNo: true } });
+      if (ivTi) return { ok: false, reason: `ใบแจ้งหนี้ต้นทางของใบเสร็จนี้ออกใบกำกับภาษีแล้ว (${ivTi.docNo ?? "-"}) — ไม่ออกซ้ำสำหรับการขายเดียวกัน` };
+    }
     if (toDocType === "TAX_INVOICE" && source.docType === "INVOICE") {
       const p = (await parkedVatOf({ tenantId, systemId }, [source.id])).get(source.id);
       const g = Math.max(0, p?.goods ?? 0);
@@ -3136,7 +3141,7 @@ export async function emitAccountEvent(input: {
 
 // ─────────────────── ACC T1.2 · ใบกำกับพร้อมใบแจ้งหนี้ / ปล่อย VAT ที่พัก ───────────────────
 
-type TogetherPlan = { kinds: { goods: boolean; service: boolean }; vat: number };
+export type TogetherPlan = { kinds: { goods: boolean; service: boolean }; vat: number };
 
 /**
  * แผน "ออกใบกำกับภาษีพร้อมกัน" ตอนออกเอกสาร (pure บนแถวที่โหลดแล้ว) · null = ไม่ออก
@@ -3144,7 +3149,7 @@ type TogetherPlan = { kinds: { goods: boolean; service: boolean }; vat: number }
  *   ใบเสร็จขายสด: เฉพาะสวิตช์ต่อใบ = true (VAT เข้า 2200 ตอนออกอยู่แล้ว — ออกแค่เอกสาร)
  *   ต้องจด VAT · ใบมี VAT · ไม่ใช่ใบของหอ (ทางหอมีใบกำกับของตัวเอง)
  */
-function taxInvoiceTogetherPlan(
+export function taxInvoiceTogetherPlan(
   doc: {
     docType: AccountDocType;
     vatMode: AccountVatMode;
@@ -3347,7 +3352,7 @@ async function issueServiceTaxInvoice(
   let grand = tieOff;
   if (!pureService) {
     const full = await tx.accountDocument.findFirst({ where: { id: invoice.id }, select: { discountAmount: true, vatTiming: true, taxPointBasis: true, issueDate: true, lines: { select: { amount: true, vatRateBp: true, lineKind: true } } } });
-    const rate = await vatRateBpAt({ tenantId, systemId }, full?.issueDate ?? new Date());
+    const rate = await vatRateBpAt({ tenantId, systemId }, full?.issueDate ?? accountNow());
     const raw = rawVatByKindOf(full?.lines ?? [], invoice.vatMode, full?.discountAmount ?? 0, rate, full?.taxPointBasis ?? full?.vatTiming ?? "ON_PAYMENT");
     base = raw.service > 0 ? Math.round((vatPortion * raw.serviceNet) / raw.service) : 0;
     grand = base + vatPortion;

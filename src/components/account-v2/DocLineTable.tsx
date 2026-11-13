@@ -60,6 +60,7 @@ export function DocLineTable({
   onDuplicate,
   autoEditKey,
   onAutoEditConsumed,
+  kindDefault,
 }: {
   lines: LineDraft[];
   breakdown: DocTotalsLineOut[];
@@ -81,6 +82,8 @@ export function DocLineTable({
   /** WO 9.1 รอบ 2: เปิดแผ่นแก้ไขของบรรทัดที่เพิ่งสร้าง (ใช้ตอนกด "+ เพิ่มรายการ" บนมือถือ) — key ของบรรทัดใหม่ */
   autoEditKey?: string | null;
   onAutoEditConsumed?: () => void;
+  /** ACC T1.2 — เอกสารขาย: แสดงตัวเลือก "สินค้า/บริการ" ต่อบรรทัด · ค่า = ชนิดเริ่มของใบ (บรรทัดที่ไม่มีสินค้าในทะเบียน) · ไม่ส่ง = ไม่แสดง */
+  kindDefault?: "GOODS" | "SERVICE" | null;
 }) {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   // WO 9.1 รอบ 2 (§13 · g17): การ์ดมือถือเป็น "อ่านอย่างเดียว" — แก้ผ่านแผ่นเต็มจอเท่านั้น (ไม่ใช่กรอกในการ์ดตรง ๆ แบบเดิม)
@@ -135,6 +138,7 @@ export function DocLineTable({
             unitName: p.unitName ?? "",
             vatRateBp: p.vatRateBp ?? defaultVatRateBp,
             accountId: p.accountId,
+            ...(kindDefault && p.kind ? { lineKind: p.kind } : {}),
           }
         : {}),
     });
@@ -220,6 +224,7 @@ export function DocLineTable({
                         + เพิ่มคำอธิบาย
                       </button>
                     )}
+                    {kindDefault && <LineKindSelect value={l.lineKind ?? kindDefault} onChange={(k) => onChange(l.key, { lineKind: k })} testId={`line-${i}-kind`} />}
                   </td>
                   {!easy && (
                     <td className={`${TD} min-w-0`}>
@@ -534,3 +539,26 @@ export function DocLineTable({
 }
 
 export default DocLineTable;
+
+/**
+ * ACC T1.2 — ชนิดบรรทัด สินค้า/บริการ (กำหนดจุดรับผิด VAT: สินค้า = ส่งมอบ/ออกใบแจ้งหนี้ · บริการ = รับชำระ)
+ * ปุ่มคู่เล็ก ๆ ใต้ชื่อรายการ — ไม่กินคอลัมน์ของตาราง
+ */
+function LineKindSelect({ value, onChange, testId }: { value: "GOODS" | "SERVICE"; onChange: (k: "GOODS" | "SERVICE") => void; testId: string }) {
+  return (
+    <span className="mt-1 inline-flex overflow-hidden rounded-md border text-xs" role="group" aria-label="ชนิดรายการ (จุดรับผิดภาษีขาย)" data-testid={testId} data-kind={value}>
+      {(["GOODS", "SERVICE"] as const).map((k) => (
+        <button
+          key={k}
+          type="button"
+          aria-pressed={value === k}
+          className={`px-2 py-0.5 ${value === k ? "bg-[color:var(--color-accent)] text-white" : "text-[color:var(--color-muted)]"}`}
+          onClick={() => onChange(k)}
+          data-testid={`${testId}-${k === "GOODS" ? "goods" : "service"}`}
+        >
+          {k === "GOODS" ? "สินค้า" : "บริการ"}
+        </button>
+      ))}
+    </span>
+  );
+}

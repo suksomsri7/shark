@@ -12,6 +12,7 @@ import type {
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, mc, writeAudit } from "./access";
 import { ackCodesOf } from "./legal-gate";
+import { releaseParkedVat } from "./tax-point";
 import { isEntityKind, loadBookLegal, saveBookTax } from "./legal-values";
 import {
   createDocument,
@@ -169,6 +170,30 @@ export async function issueDocumentAction(formData: FormData) {
   const path = `${docPath(systemId, docType)}/${id}`;
   revalidatePath(path);
   redirect(res.ok ? path : `${path}?err=${encodeURIComponent(res.reason)}`);
+}
+
+/**
+ * ACC T1.2 — ปล่อยภาษีขายที่ค้างพัก (หน้าใบแจ้งหนี้ทีละใบ · หน้ารายการภาษีขายค้างพักเป็นชุด)
+ *   ต้องเลือกวันที่ (ไม่มีค่าเริ่ม) + ติ๊กยืนยันคำเตือน TAX_INVOICE_LATE_DATE_CHOICE · ผลลัพธ์กลับไปหน้าเดิมพร้อมข้อความ
+ */
+export async function releaseParkedVatAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const back = str(formData, "back");
+  const ids = formData.getAll("id").filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 40).slice(0, 200);
+  const dateRaw = str(formData, "date");
+  const date = dateRaw === "TODAY" || dateRaw === "INVOICE_DATE" ? dateRaw : null;
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.doc.issue");
+  const res = await releaseParkedVat({ tenantId, systemId }, ids, {
+    date,
+    kinds: { goods: formData.get("goods") !== null || formData.get("services") === null, service: formData.get("services") !== null },
+    ack: { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" },
+  });
+  const path = back.startsWith(`/app/sys/${systemId}/account`) ? back : `/app/sys/${systemId}/account/tax/parked-vat`;
+  revalidatePath(path);
+  if (!res.ok) redirect(`${path}${path.includes("?") ? "&" : "?"}err=${encodeURIComponent(res.reason)}`);
+  const msg = `ออกใบกำกับ ${res.released.length} ใบ${res.released.length ? ` (${res.released.map((r) => r.taxInvoiceNo).join(", ")})` : ""}${res.skipped.length ? ` · ข้าม ${res.skipped.length} ใบ: ${res.skipped.map((x) => x.reason).slice(0, 2).join(" / ")}` : ""}`;
+  redirect(`${path}${path.includes("?") ? "&" : "?"}msg=${encodeURIComponent(msg)}`);
 }
 
 export async function convertDocumentAction(formData: FormData) {

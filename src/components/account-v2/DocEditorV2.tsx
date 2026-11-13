@@ -1,4 +1,5 @@
 "use client";
+import { effectiveIssueToggle, taxPointHintTh } from "@/lib/modules/account/tax-point-shared";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -300,6 +301,17 @@ function EditorBody(props: DocEditorV2Props) {
 
   // ── ตัวช่วยแก้ค่า ──
   const set = <K extends keyof typeof value>(k: K, v: (typeof value)[K]) => setValue((p) => ({ ...p, [k]: v }));
+  // ── ACC T1.2: ชนิดบรรทัด + สวิตช์ "ออกใบกำกับภาษีพร้อมกัน" (ค่าเริ่มตามชนิดบรรทัด × ค่าตั้ง · ผู้ใช้กดแล้ว = ค่าของใบนี้) ──
+  const salesKinds = props.side === "revenue" && props.vatRegistered && props.docType !== "TAX_INVOICE";
+  const lineKindDefault: "GOODS" | "SERVICE" | null = salesKinds ? (value.recognizeVatNow ? "GOODS" : "SERVICE") : null;
+  const kindsPresent = {
+    goods: value.lines.some((l) => (l.lineKind ?? lineKindDefault) === "GOODS"),
+    service: value.lines.some((l) => (l.lineKind ?? lineKindDefault) === "SERVICE"),
+  };
+  const taxSettings = props.taxInvoiceSettings ?? { goodsOnIssue: true, mode: "ON_PAYMENT" as const };
+  const autoTaxEffective =
+    props.docType === "RECEIPT" ? value.autoTaxInvoice === true : effectiveIssueToggle(value.autoTaxInvoice, taxSettings, kindsPresent);
+  const autoTaxHint = props.docType === "INVOICE" && props.vatRegistered ? taxPointHintTh(value.autoTaxInvoice, taxSettings, kindsPresent) : "";
   const patchLine = (key: string, patch: Partial<LineDraft>) =>
     setValue((p) => ({ ...p, lines: p.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) }));
   const addLine = () => setValue((p) => ({ ...p, lines: [...p.lines, newLineDraft(props.vatRateBp)] }));
@@ -866,7 +878,7 @@ function EditorBody(props: DocEditorV2Props) {
               <span className="text-xs text-[color:var(--color-muted)]">การออกใบกำกับภาษี</span>
               <div className="flex flex-wrap items-center gap-6">
                 <Toggle
-                  checked={value.autoTaxInvoice}
+                  checked={autoTaxEffective}
                   onChange={(v) => set("autoTaxInvoice", v)}
                   label="ออกใบกำกับภาษีพร้อมกัน"
                   testId="tg-auto-tax"
@@ -878,6 +890,16 @@ function EditorBody(props: DocEditorV2Props) {
                   testId="tg-vat-now"
                 />
               </div>
+              {autoTaxHint && (
+                <span className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]" data-testid="tg-auto-tax-hint">
+                  {autoTaxHint}
+                  {value.autoTaxInvoice !== null && (
+                    <button type="button" className="text-[color:var(--color-accent)]" onClick={() => set("autoTaxInvoice", null)} data-testid="tg-auto-tax-reset">
+                      ใช้ตามค่าตั้ง
+                    </button>
+                  )}
+                </span>
+              )}
             </div>
           )}
 
@@ -1137,10 +1159,11 @@ function EditorBody(props: DocEditorV2Props) {
               <span className="text-xs text-[color:var(--color-muted)]">การออกใบกำกับภาษี</span>
               <div className="flex flex-col gap-3">
                 <Toggle
-                  checked={value.autoTaxInvoice}
+                  checked={autoTaxEffective}
                   onChange={(v) => set("autoTaxInvoice", v)}
                   label="ออกใบกำกับภาษีพร้อมกัน"
                 />
+                {autoTaxHint && <span className="text-xs text-[color:var(--color-muted)]">{autoTaxHint}</span>}
                 <Toggle
                   checked={value.recognizeVatNow}
                   onChange={(v) => set("recognizeVatNow", v)}
@@ -1171,6 +1194,7 @@ function EditorBody(props: DocEditorV2Props) {
           onDuplicate={duplicateLine}
           autoEditKey={autoEditLineKey}
           onAutoEditConsumed={() => setAutoEditLineKey(null)}
+          kindDefault={lineKindDefault}
         />
         {/* มือถือ (g17): ปุ่มเต็มความกว้างเส้นประ — เดสก์ท็อปใช้ปุ่มกะทัดรัดเดิม */}
         <button

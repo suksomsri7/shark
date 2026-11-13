@@ -108,6 +108,8 @@ export type LineDraft = {
   vatRateBp: number;
   whtIncomeType: string | null;
   whtRateBp: number | null;
+  /** ACC T1.2 — ชนิดบรรทัด สินค้า/บริการ (เอกสารขาย) · null = ตามชนิดสินค้า/ชนิดเริ่มของใบ */
+  lineKind: "GOODS" | "SERVICE" | null;
 };
 
 /** ค่าทั้งฟอร์ม (§5.2 B, C, E, G) */
@@ -119,7 +121,8 @@ export type DocDraftValue = {
   dueDate: string;
   reference: string;
   priceMode: PriceMode;
-  autoTaxInvoice: boolean;
+  /** ACC T1.2 — สวิตช์ "ออกใบกำกับภาษีพร้อมกัน": null = ตามค่าตั้ง (สินค้าพร้อมใบ · บริการตามโหมด) · true/false = ผู้ใช้เลือกเอง */
+  autoTaxInvoice: boolean | null;
   recognizeVatNow: boolean;
   salesUserId: string | null;
   tags: string[];
@@ -165,6 +168,8 @@ export type ProductOption = {
   unitName: string | null;
   vatRateBp: number | null;
   accountId: string | null;
+  /** ACC T1.2 — ชนิดในทะเบียน (สินค้า/ชุด = GOODS · บริการ = SERVICE) */
+  kind?: "GOODS" | "SERVICE" | null;
 };
 
 export type LedgerOption = {
@@ -209,6 +214,8 @@ export type DocEditorV2Props = {
   steps: StepView[];
   vatRegistered: boolean;
   vatRateBp: number;
+  /** ACC T1.2 — ค่าตั้งใบกำกับอัตโนมัติ (สินค้า: พร้อมใบแจ้งหนี้ · บริการ: โหมด) ใช้คำนวณค่าเริ่มของสวิตช์ "ออกใบกำกับภาษีพร้อมกัน" */
+  taxInvoiceSettings?: { goodsOnIssue: boolean; mode: "MANUAL" | "ON_PAYMENT" | "ON_INVOICE" };
   branchName: string;
   /** ชนิดนี้มีวันที่ "ใช้ได้ถึง" แทน "ครบกำหนด" หรือไม่ (ใบเสนอราคา) */
   dueLabel: string;
@@ -274,6 +281,7 @@ export function newLineDraft(vatRateBp: number): LineDraft {
     vatRateBp,
     whtIncomeType: null,
     whtRateBp: null,
+    lineKind: null,
   };
 }
 

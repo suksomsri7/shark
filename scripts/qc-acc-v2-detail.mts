@@ -197,6 +197,9 @@ try {
   if (!qtIssued.ok) throw new Error("P2: ออกใบเสนอราคาไม่สำเร็จ — " + qtIssued.reason);
   const toIv = await acc.convertDocument(tenantId, systemId, qt.id, "INVOICE", owner.id);
   if (!toIv.ok) throw new Error("P2: แปลง QT→IV ไม่สำเร็จ — " + toIv.reason);
+  // ORACLE-EDIT (ACC T1.2): ใบแจ้งหนี้สินค้าออกใบกำกับพร้อมกันเป็นค่าเริ่มต้น — ข้อสอบนี้ทดสอบสาย QT→IV→RE→TX
+  //   จึงปิดสวิตช์ต่อใบ (autoTaxInvoice=false) ให้ใบกำกับมาจากใบเสร็จตามสายเดิม (P2.6 "IV ไม่มีใบกำกับตรง" ยังเป็นจริง)
+  await prisma.accountDocument.update({ where: { id: toIv.newId }, data: { autoTaxInvoice: false } });
   const ivIssued = await acc.issueDocument(tenantId, systemId, toIv.newId);
   if (!ivIssued.ok) throw new Error("P2: ออกใบแจ้งหนี้ไม่สำเร็จ — " + ivIssued.reason);
   const toRe = await acc.convertDocument(tenantId, systemId, toIv.newId, "RECEIPT", owner.id);
