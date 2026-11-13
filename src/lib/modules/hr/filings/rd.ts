@@ -4,7 +4,7 @@
 //   "/" ในส่วนที่อยู่: slashMode DASH (ค่าตั้งต้น [U]) เขียน "-" + เตือน SLASH_DASH · EXCLUDE = "<ช่อง>:char" · "/" ในชื่อไม่แก้เด็ดขาด
 //   HR H3.6 ▸ หนี้ H3.5: ชื่อที่ว่างหลังทำความสะอาด (เช่น มีแต่สระ/วรรณยุกต์) = ช่องขาด ไม่เขียนชื่อว่าง ◂
 //   ไม่มี db/เวลา/สุ่ม · ไม่แก้อินพุต ◂
-import { utf8, concat, isThaiMark } from "../bank-files/encode";
+import { utf8, concat, hasBaseChar } from "../bank-files/encode";
 import { filingText, type FilingTextKey } from "./texts";
 
 // ═════════════ ตัวช่วยร่วม (sso.ts / cert.ts ใช้ด้วย) ═════════════
@@ -19,17 +19,8 @@ export function thaiIdOk(v: unknown): boolean {
 export const clean = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 /** อักขระควบคุม C0/C1 · DEL · ตัวควบคุมทิศทาง/ไม่มีความกว้างที่ซ่อนข้อความได้ */
 export const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤⁦-⁩﻿]/;
-/**
- * HR H3.6 ▸ หนี้ H3.5 (ชื่อว่างหลังทำความสะอาด): มีอักขระฐานอย่างน้อย 1 ตัว — ตัดช่องว่าง · อักขระควบคุม · เครื่องหมายกำกับ (สระบน/ล่าง วรรณยุกต์ \p{M}) ออกแล้วยังเหลือ ◂
- */
-export function hasBase(s: string): boolean {
-  for (const ch of s) {
-    const c = ch.codePointAt(0)!;
-    if (/\s/.test(ch) || CONTROL_RE.test(ch) || isThaiMark(c) || /\p{M}/u.test(ch)) continue;
-    return true;
-  }
-  return false;
-}
+/** HR H3.6 ▸ หนี้ H3.5 (ชื่อว่างหลังทำความสะอาด): ตัวช่วยเดียวกับไฟล์โอน (bank-files/encode.hasBaseChar) ◂ */
+export const hasBase = hasBaseChar;
 /** จำนวนอักขระ (code point) */
 export const charLen = (s: string) => Array.from(s).length;
 /** วันที่ "YYYY-MM-DD" ที่มีอยู่จริง ปี ค.ศ. 2000–2400 */

@@ -71,7 +71,8 @@ export const isPresetKey = (k: unknown): k is keyof typeof BANK_PRESETS => k ===
 
 const CONTROL = /[\u0000-\u001f\u007f]/;
 /** เซลล์ที่โปรแกรมตารางอาจอ่านเป็นสูตร — HR H3.5 fix r1 ▸ F4: ดูอักขระแรกหลังตัดช่องว่าง/อักขระควบคุมด้านหน้า · ขึ้นต้นด้วย tab/CR = ปฏิเสธเลย (OWASP CSV injection) ◂ */
-export const formulaLike = (s: string) => /^[\t\r]/.test(s) || /^[=+\-@]/.test(s.replace(/^[\s\u0000-\u001f\u007f]+/, ""));
+// HR H3.6 ▸ หนี้ H3.5: ＝ ＋ － ＠ เต็มความกว้าง (U+FF1D U+FF0B U+FF0D U+FF20) นับเหมือนตัว ASCII ◂
+export const formulaLike = (s: string) => /^[\t\r]/.test(s) || /^[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(s.replace(/^[\s\u0000-\u001f\u007f]+/, "")); // HR H3.6 ◂
 
 /** ตรวจคอลัมน์หนึ่งคู่ [field, header] — null = ใช้ได้ · อื่น ๆ = เหตุ */
 export function columnProblem(col: unknown, encoding: GenericSpec["encoding"] | null): string | null {
