@@ -102,7 +102,12 @@ try {
   const evPV = await events("account.payment.voided");
   chk("C4-E3.6", "voidPaymentAny → account.payment.voided payload{paymentId,documentId,reason,amountSatang}", v?.ok === true && evPV.length === 1 && (evPV[0]!.payload as Any)?.paymentId === payment!.id && (evPV[0]!.payload as Any)?.reason === "ทดสอบ void", "1", `${evPV.length} ${JSON.stringify(evPV[0]?.payload).slice(0, 160)}`);
   const vd = await acc.voidDocument(tid, SYS, conv.newId, "ยกเลิกใบแจ้งหนี้");
-  const evV = await events("account.document.voided");
+  const evAll = await events("account.document.voided");
+  // ORACLE-EDIT (13 พ.ย. 2569 · ACC T1.2): ยกเลิกใบแจ้งหนี้สินค้า ⇒ ยกเลิกใบกำกับที่ออกพร้อมกันอัตโนมัติด้วย (เหตุการณ์ของใบกำกับอีก 1 ตัว ถูกต้อง)
+  //   ข้อตรวจเดิมคงครบกับเหตุการณ์ของใบแจ้งหนี้ (1 ตัว · payload ครบ) + ตัวที่เหลือต้องเป็นใบกำกับของใบนี้เท่านั้น
+  const cascaded = evAll.filter((e) => (e.payload as Any)?.documentId !== conv.newId);
+  const cascadeOk = (await Promise.all(cascaded.map(async (e) => (await prisma.accountDocument.findFirst({ where: { id: (e.payload as Any)?.documentId, docType: "TAX_INVOICE", sourceDocId: conv.newId }, select: { id: true } })) !== null))).every(Boolean);
+  const evV = cascadeOk ? evAll.filter((e) => (e.payload as Any)?.documentId === conv.newId) : evAll;
   chk("C4-E3.7", "voidDocument → account.document.voided payload{documentId,type,docNo,reason}", vd?.ok === true && evV.length === 1 && (evV[0]!.payload as Any)?.documentId === conv.newId && (evV[0]!.payload as Any)?.reason === "ยกเลิกใบแจ้งหนี้", "1", `${evV.length} ${JSON.stringify(evV[0]?.payload).slice(0, 160)}`);
 
   // ═══ E4 ลิงก์ชำระเงิน ═══

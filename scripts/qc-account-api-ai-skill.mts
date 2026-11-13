@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string }; QC: { expectedPath: string } };
 const { loadQcEnv, QC } = accEnv;
 loadQcEnv();
+// ORACLE-EDIT (13 พ.ย. 2569): ตรึงนาฬิกา "พ้นกำหนด" ที่ QC.asOfIso (T0.3b pinQcAccountClock) — K2.3 เทียบเฉลย overdue ของชุดข้อมูล (ณ 2026-09-30)
+await (accEnv as unknown as { pinQcAccountClock: () => Promise<Date> }).pinQcAccountClock();
 // ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
 const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 // ⏭️ WO ยังไม่สร้าง → ข้ามแบบเห็นชัด (exit 0) ไม่ทำ qc:all/CI แดงค้าง (บทเรียน WO 0.7) — ด่านนี้หายไปเองเมื่อ WO ลงจริง
