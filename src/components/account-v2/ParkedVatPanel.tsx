@@ -100,7 +100,14 @@ export function ParkedVatInvoicePanel({
       </div>
       {hint && <p className="text-xs text-[color:var(--color-muted)]">{hint}</p>}
       {warning && <LegalWarnings warnings={[warning]} testId="parked-vat-warning" />}
-      {canRelease && goods + service > 0 && <ParkedVatReleaseForm systemId={systemId} ids={[docId]} back={back} hasService={service > 0} />}
+      {/* บริการที่พักรอรับเงิน = ปกติ (ม.78/1) ไม่ต้องปล่อยเอง — ฟอร์มปล่อยแสดงเมื่อมี VAT สินค้าพัก */}
+      {canRelease && goods > 0 ? (
+        <ParkedVatReleaseForm systemId={systemId} ids={[docId]} back={back} hasService={service > 0} />
+      ) : service > 0 ? (
+        <p className="text-xs text-[color:var(--color-muted)]" data-testid="parked-vat-service-note">
+          ภาษีของบริการเกิดเมื่อรับชำระ (ม.78/1) — ใบกำกับออกตามงวดรับเงิน
+        </p>
+      ) : null}
     </div>
   );
 }
