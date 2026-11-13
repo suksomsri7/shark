@@ -330,8 +330,8 @@ export async function decideAdjustmentAction(formData: FormData): Promise<{ ok: 
   // อนุมัติ = สิทธิ์แตะเงินเดือน (ผ่านด่าน PDPA เหมือน action เงินเดือนอื่น)
   // ทุกสาขา: ด่านคีย์ระดับระบบ HR — สาขาของเจ้าของรายการตรวจด้วย payTarget ด้านล่าง
   const decision = String(formData.get("status") ?? ""); // HR H3.4 ▸ R8: ปฏิเสธ = hr.payadjust.reject · อนุมัติ = hr.payadjust.approve ◂
-  if (decision === "REJECTED") assertHrCan(auth, "hr.payadjust.reject"); // HR H3.4 ◂
-  else assertHrCan(auth, "hr.payadjust.approve"); // HR H3.4 ◂
+  if (decision === "REJECTED") assertHrCan(auth, "hr.payadjust.reject"); // HR H3.4 ◂ ทุกสาขา: ด่านคีย์ก่อน — สาขาของเจ้าของรายการ = payTarget + assertHrCan(…, t.unitId) ด้านล่าง
+  else assertHrCan(auth, "hr.payadjust.approve"); // HR H3.4 ◂ ทุกสาขา: ด่านคีย์ก่อน — สาขาของเจ้าของรายการ = payTarget + assertHrCan(…, t.unitId) ด้านล่าง
   const systemId = String(formData.get("systemId") ?? "");
   const id = String(formData.get("id") ?? "");
   const status = decision; // HR H3.4 ◂
@@ -480,6 +480,7 @@ const h34Day = (v: FormDataEntryValue | null): Date | null => (typeof v === "str
 export async function createPayrollRunV2Action(formData: FormData): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
   const auth = await requireTenant();
   return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
     assertHrCan(auth, "hr.payroll.create");
     assertRunAllBranches(auth);
     const systemId = String(formData.get("systemId") ?? "");
@@ -494,6 +495,7 @@ export async function createPayrollRunV2Action(formData: FormData): Promise<{ ok
 export async function recomputeRunV2Action(formData: FormData): Promise<{ ok: true; note: string } | { ok: false; reason: string }> {
   const auth = await requireTenant();
   return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
     assertHrCan(auth, "hr.payroll.create");
     assertRunAllBranches(auth);
     const systemId = String(formData.get("systemId") ?? "");
@@ -508,6 +510,7 @@ export async function recomputeRunV2Action(formData: FormData): Promise<{ ok: tr
 export async function approveRunV2Action(formData: FormData): Promise<{ ok: boolean; note?: string; reason?: string }> {
   const auth = await requireTenant();
   return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
     assertHrCan(auth, "hr.payroll.approve");
     assertRunAllBranches(auth);
     const systemId = String(formData.get("systemId") ?? "");
@@ -524,6 +527,7 @@ export async function approveRunV2Action(formData: FormData): Promise<{ ok: bool
 export async function payRunV2Action(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
     assertHrCan(auth, "hr.payroll.pay");
     assertRunAllBranches(auth);
     const systemId = String(formData.get("systemId") ?? "");
@@ -537,6 +541,7 @@ export async function payRunV2Action(formData: FormData): Promise<{ ok: boolean;
 export async function reverseRunV2Action(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   return h34Guard(async () => {
+    // HR H3.4 ▸ ทุกสาขา: รอบจ่ายครอบคลุมทุกสาขา (HQ20 · มติ 8) — ผู้จำกัดสาขาถูกปฏิเสธด้วย assertRunAllBranches บรรทัดถัดไป ◂
     assertHrCan(auth, "hr.payroll.reverse");
     assertRunAllBranches(auth);
     const systemId = String(formData.get("systemId") ?? "");
