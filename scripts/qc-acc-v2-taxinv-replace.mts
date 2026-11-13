@@ -121,7 +121,7 @@ try {
     const ti = (await tisOf(sv.id))[0];
     const r = await screen(["TAX_INVOICE_REPLACE"], () => acc.replaceTaxInvoice(ctx, ti.id, { reason: "ที่อยู่ผิด", buyer: { ...BUYER, branchCode: "00000" }, lines: [{ description: "ล่องเรือเกาะเต่า 1 วัน" }], key: `x5-${stamp}` }));
     const nw = await prisma.accountDocument.findUnique({ where: { id: r.newId }, include: { lines: true } });
-    chk("X5.1", "ออกแทนได้ · ยกงวดรับเงินเดิม (sourcePaymentId) · ลงวันที่ 2026-08-12 · แก้คำอธิบายบรรทัดได้ ยอดคงเดิม", r.ok && nw?.sourcePaymentId === p.paymentId && ymd(nw.issueDate) === "2026-08-12" && nw.lines[0]?.description === "ล่องเรือเกาะเต่า 1 วัน" && nw.lines[0].amount === ti.lines[0].amount && nw.vatAmount === 14_000, "ตามนั้น", { r, nw: nw && { p: nw.sourcePaymentId, d: ymd(nw.issueDate), l: nw.lines.map((l) => [l.description, l.amount]) } });
+    chk("X5.1", "ออกแทนได้ · ยกงวดรับเงินเดิม (sourcePaymentId) · ลงวันที่ 2026-08-12 · แก้คำอธิบายบรรทัดได้ ยอดคงเดิม", r.ok && nw?.sourcePaymentId === p.paymentId && ymd(nw!.issueDate) === "2026-08-12" && nw!.lines[0]?.description === "ล่องเรือเกาะเต่า 1 วัน" && nw!.lines[0].amount === ti.lines[0].amount && nw!.vatAmount === 14_000, "ตามนั้น", { r, nw: nw && { p: nw.sourcePaymentId, d: ymd(nw.issueDate), l: nw.lines.map((l) => [l.description, l.amount]) } });
     const v = await acc.voidPayment(tid, S, sv.id, p.paymentId, "บันทึกผิด");
     const nw2 = await prisma.accountDocument.findUnique({ where: { id: r.newId } });
     chk("X5.2", "ยกเลิกรับชำระ → ใบใหม่ VOIDED · 2200 ของเรื่องนี้สุทธิ 0", v.ok && nw2?.status === "VOIDED" && (await net2200([sv.id, ti.id, r.newId])) === 0, "VOIDED/0", { v, s: nw2?.status, n: await net2200([sv.id, ti.id, r.newId]) });
