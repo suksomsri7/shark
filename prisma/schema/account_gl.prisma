@@ -15,6 +15,13 @@ enum AccountLineKind {
   SERVICE
 }
 
+/// ACC T1.4 — สถานะภาษีซื้อ: เคลมได้ (มีใบกำกับเต็มรูป) · รอใบกำกับ (พัก 1155) · เคลมไม่ได้ (ภาษีซื้อไม่ขอคืน)
+enum AccountInputVatStatus {
+  CLAIM
+  PENDING
+  NO_CLAIM
+}
+
 enum AccountProductType {
   GOODS
   SERVICE
