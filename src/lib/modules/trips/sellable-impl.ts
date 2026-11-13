@@ -18,6 +18,10 @@ export const tripSellable: Sellable = {
   reserveInTx: (tx, ctx, rows, intent) => reserveInTx(tx, ctx, rows, intent),
   // ── /T0.4 capacity ──
   // ── T0.6 booking ── hold/confirm/cancel คืน SellResult (ไม่ throw) · finalizeInTx = แกนข้อ 4–7 ในธุรกรรมของผู้เรียก (req.prepared จาก prepareTripConfirm)
+  //   ช่องที่ core/sellable.ts ประกาศแต่ T0.6 ปฏิเสธด้วย VALIDATION (zod strict · มติ R14/S9) และใบที่จะเปิดรับ:
+  //   HoldRequest.basketId (เติมตะกร้าเดิม) → K1.1 · HoldRequest.holdMinutes → ไม่เปิด (ระยะถือมาจากค่าตั้ง T5/X2 เท่านั้น)
+  //   ConfirmRequest.note → T1.3 (จอการจอง · ต้องมีที่เก็บ) · pay.tender → T0.7 (รับเงิน) · Booker.marketingConsent → W1.x (หน้าจอง + ความยินยอม PDPA)
+  //   passengers[].fields → T0.8 (แบบฟอร์มผู้เดินทาง) · CancelRequest.choice / moveToSlotId → T0.7 (คำขอคืนเงิน G.3)
   hold: (ctx, req) => holdTrips(ctx, req),
   confirm: (ctx, req) => confirmTrips(ctx, req),
   cancel: (ctx, req) => cancelTripBooking(ctx, req),

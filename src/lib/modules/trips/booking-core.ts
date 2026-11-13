@@ -10,11 +10,17 @@ import type { Booker } from "@/lib/core/sellable";
 
 // ── T0.6 booking ──
 export const INT4_MAX = 2_147_483_647;
-/** อักขระควบคุม (รวม NUL) ห้ามอยู่ในข้อความใด ๆ ของคำขอ (มติ R10 · ฐาน UTF8 ไม่รับ 0x00) */
-const NO_CTL = /^[^\u0000-\u001f\u007f]*$/;
-const noCtl = (s: string) => NO_CTL.test(s);
-/** ข้อความอิสระ (ตัดช่องว่าง · ห้ามอักขระควบคุม) */
-const text = (max: number) => z.string().trim().max(max).refine(noCtl, { message: "มีอักขระควบคุม" });
+/**
+ * อักขระที่ห้ามในข้อความ/รหัสของคำขอ (มติ R10 + S6):
+ * C0 U+0000–001F (รวม NUL) · DEL U+007F · C1 U+0080–009F · ตัวควบคุมทิศทาง U+061C U+200E U+200F U+202A–202E U+2066–2069 ·
+ * ตัวแบ่งบรรทัด/ย่อหน้า U+2028 U+2029 · ZWSP U+200B · BOM U+FEFF · surrogate เดี่ยว
+ * (ยอม ZWNJ U+200C / ZWJ U+200D — ใช้ในอีโมจิและบางอักษร)
+ */
+const BAD_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u2028-\u202e\u2066-\u2069\ufeff]/;
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+const noCtl = (s: string) => !BAD_CHARS.test(s) && !LONE_SURROGATE.test(s);
+/** ข้อความอิสระ (ตัดช่องว่าง · ห้ามอักขระข้างบน · เก็บแบบ NFC) */
+const text = (max: number) => z.string().trim().max(max).refine(noCtl, { message: "มีอักขระควบคุม" }).transform((s) => s.normalize("NFC"));
 const ID = z.string().trim().min(1).max(128).refine(noCtl, { message: "มีอักขระควบคุม" });
 const NN = z.number().int().min(0).max(INT4_MAX);
 /** คีย์กันซ้ำของผู้เรียก (CC §C ข้อ 3) — สั้นกว่า 100 เพื่อเผื่อส่วนต่อท้ายของ hold ต่อบรรทัด (`_<i>`) */

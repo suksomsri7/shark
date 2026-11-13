@@ -961,8 +961,16 @@ try {
   });
   await st("CF-23", "คำอนุมัติ APPROVED จริง + resolvedMinor ⇒ CONFIRMED · ที่นั่งผู้ใหญ่ 2,000 priceSource MANUAL · audit trips.booking.price_override", async () => {
     await needDb(); const d = await mkDep("2027-03-25");
-    const apId = await insertRow("ApprovalRequest", { id: rid("ap"), tenantId: tA, policyId: rid("pol"), entityType: "trips.price_override", entityId: String(fn("tripPriceOverrideEntityId")({ unitId: uA, departureId: d, itemRef: "seat:ADULT", unitMinor: 200_000, resolvedMinor: R.adultSatang })) /* ORACLE-EDIT CF-23 (ผู้คุม 13 พ.ย.): มติ R1 — คำอนุมัติต้องผูกรอบ/รายการ/ยอด */, unitId: uA, status: "APPROVED", requestedById: String(U.oa.userId), decidedAt: new Date(), idempotencyKey: `qc-${hex(6)}` });
+    const apId = await insertRow("ApprovalRequest", { id: rid("ap"), tenantId: tA, policyId: rid("pol"), entityType: "trips.price_override", entityId: String(fn("tripPriceOverrideEntityId")({ unitId: uA, departureId: d, itemRef: "seat:ADULT", unitMinor: 200_000, resolvedMinor: R.adultSatang, qty: 2 })) /* ORACLE-EDIT CF-23 (ผู้คุม 13 พ.ย.): มติ R1 + S3 — คำอนุมัติต้องผูกรอบ/รายการ/ยอด/จำนวน */, unitId: uA, status: "APPROVED", requestedById: String(U.oa.userId), decidedAt: new Date(), idempotencyKey: `qc-${hex(6)}` });
     const ap = [{ approvalId: apId, itemRef: "seat:ADULT", unitMinor: 200_000, resolvedMinor: R.adultSatang }];
+    // ORACLE-EDIT CF-23 (ผู้คุม 13 พ.ย.): กรณีลบของการผูก — จำนวนผิด · รอบผิด · ยอดผิด · ชนิดผิด ⇒ ไม่ผ่าน · ไม่เขียน
+    const nNeg = await bookingCount(); const d9 = await mkDep("2027-03-26");
+    const eid = (o: Rec) => String(fn("tripPriceOverrideEntityId")({ unitId: uA, departureId: d, itemRef: "seat:ADULT", unitMinor: 200_000, resolvedMinor: R.adultSatang, qty: 2, ...o }));
+    for (const [what, row] of [["จำนวนผิด", { entityId: eid({ qty: 1 }) }], ["รอบผิด", { entityId: eid({ departureId: d9 }) }], ["ยอดผิด", { entityId: eid({ unitMinor: 100_000 }) }], ["ชนิดผิด", { entityId: eid({}), entityType: "hr.leave" }], ["amount ผิด", { entityId: eid({}), amountSatang: 1 }]] as const) {
+      const bad = await insertRow("ApprovalRequest", { id: rid("ap"), tenantId: tA, policyId: rid("pol"), entityType: "trips.price_override", unitId: uA, status: "APPROVED", requestedById: String(U.oa.userId), decidedAt: new Date(), idempotencyKey: `qc-${hex(6)}`, ...row });
+      codeR((await bookNow(staff(), [line(d)], { overrides: OVR(), approvals: [{ ...ap[0], approvalId: bad }], canOverride: true })).r, "FORBIDDEN", what, "APPROVAL_NOT_APPROVED");
+    }
+    eq(await bookingCount(), nNeg, "กรณีลบไม่เขียน");
     const r = (await bookNow(staff(), [line(d)], { overrides: OVR(), approvals: ap, canOverride: true })).r;
     const id = ref0(r).bookingId; ok(r.ok === true, `ผล ${fmt(r)}`);
     const a = (await items(id)).find((i) => i.kind === "SEAT" && i.paxCode === "ADULT");

@@ -102,7 +102,7 @@ async function main() {
         out(`B same-key ×${n} ${who}`, tally(rs), "distinct results", okIds.size, "bookings", nb, "tokens", tokens.size);
         if (nb !== 1 || okIds.size !== 1 || rs.some((r) => r.ok !== true)) finding("B-dup", "MAJOR", `same confirm ×${n} (${who}) not idempotent`, { tally: tally(rs), nb, distinct: okIds.size });
         // same key different body
-        const diff = await call("confirmTrips", ctx, { ...body, note: "different" }, {}); bump("B");
+        const diff = await call("confirmTrips", ctx, { ...body, booker: { ...(body.booker as Rec), name: "ชื่ออื่น" } }, {}); bump("B");
         const other = await call("confirmTrips", ctx, { ...body, idempotencyKey: `oth${hex(5)}` }, {}); bump("B");
         out(`B ${who} diff-body`, code(diff), "other-key", code(other));
         if (diff.ok === true || (diff.ok === false && diff.code !== "IDEMPOTENCY_CONFLICT")) finding("B-diffbody", "MINOR", `same key different body ⇒ ${code(diff)}`, { who });
@@ -114,7 +114,7 @@ async function main() {
       const d = await mkDep(sh, { date: "2027-03-21" });
       const h = await hold(staff(sh), [line(sh.P, d, { a: 2 })]);
       const key = `race${hex(5)}`;
-      const rs = await par(10, (i) => call("confirmTrips", h.ctx, confirmBody(h, { key, extra: { note: `n${i % 2}` } }), {}));
+      const bk0 = booker(); const rs = await par(10, (i) => call("confirmTrips", h.ctx, confirmBody(h, { key, booker: { ...bk0, name: `n${i % 2}` } }), {}));
       bump("B", 11);
       const nb = (await q<{ n: number }>(`SELECT count(*)::int n FROM "TripBooking" WHERE "basketId" = $1`, [h.v.basketId]))[0].n;
       out("B same-key mixed-bodies ×10", tally(rs), "bookings", nb);

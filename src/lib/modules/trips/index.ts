@@ -288,6 +288,7 @@ export {
   BookingAbort,
   TRIP_PRICE_OVERRIDE_ENTITY,
   tripPriceOverrideEntityId,
+  tripsUnexpectedCount,
   bookingPublicToken,
   holdTrips,
   prepareTripConfirm,

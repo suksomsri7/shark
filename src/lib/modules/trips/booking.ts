@@ -66,7 +66,7 @@ import {
 import { LOCK_RETRIES, QTY_MAX, holdExpiresAt, idemKeyFor } from "./capacity-core";
 import { capacityRowsOf, gateOf, loadCapacityPolicies, runTx } from "./capacity-service";
 import { bookingPeriodOf, nextBookingCodeInTx } from "./numbering";
-import { buildTripBookingSnapshot, quoteTrips, type TripQuoteLine, type TripQuoteOpts } from "./pricing";
+import { buildTripBookingSnapshot, quoteTripLine, quoteTrips, type TripQuoteLine, type TripQuoteOpts } from "./pricing";
 import { PricingAbort } from "./pricing-core";
 import { TripProductNotSellableError, assertProductSellableInTx } from "./products";
 import { redeemPromosInTx, releasePromoInTx } from "./promo";
@@ -120,15 +120,26 @@ export function bookingPublicToken(bookingId: string): string | null {
 }
 const keyMissing = (): Failure => sellFail("BUSY", { reason: "SERVER_KEY_MISSING" }, "ระบบยังไม่ได้ตั้งกุญแจเซิร์ฟเวอร์ — ทำรายการจองไม่ได้ชั่วคราว");
 
-/** id ของคำขออนุมัติราคาแก้มือ (entityId · มติ R1) — จอ/ใบถัดไปต้องยื่นคำขอด้วยค่านี้ */
-export function tripPriceOverrideEntityId(i: { unitId: string; departureId: string; itemRef: string; unitMinor: number; resolvedMinor: number }): string {
-  return `tpo1_${sha256hex(JSON.stringify(["trips.price_override.v1", i.unitId, i.departureId, i.itemRef, i.unitMinor, i.resolvedMinor]))}`;
+/**
+ * id ของคำขออนุมัติราคาแก้มือ (entityId · มติ R1 + S3) — ผูก หน่วย · รอบ · itemRef · ราคาที่แก้ · ราคาระบบ · จำนวนของ itemRef นั้นในบรรทัด
+ * คำอนุมัติหนึ่งใบ = บรรทัดเดียว · จอยื่นคำขอใช้ค่านี้ (REQUIRES_APPROVAL ของบริการการจองคืน details.entityId + qty ให้แล้ว)
+ */
+export function tripPriceOverrideEntityId(i: { unitId: string; departureId: string; itemRef: string; unitMinor: number; resolvedMinor: number; qty: number }): string {
+  return `tpo2_${sha256hex(JSON.stringify(["trips.price_override.v2", i.unitId, i.departureId, i.itemRef, i.unitMinor, i.resolvedMinor, i.qty]))}`;
 }
 
-// ═══════════════════════ error ที่ไม่คาดคิด (R10) ═══════════════════════
+// ═══════════════════════ error ที่ไม่คาดคิด (R10 · S8) ═══════════════════════
+let unexpectedCount = 0;
+/** จำนวนผล BUSY reason UNEXPECTED ของกระบวนการนี้ (ให้ข้อสอบตรวจว่าเป็น 0 ตลอดการรัน · S8) */
+export function tripsUnexpectedCount(): number {
+  return unexpectedCount;
+}
+/** บันทึก ops: ชื่อ + ข้อความ + stack ของ error (ตัดความยาว) — ไม่มีอินพุตของผู้เรียก (ไม่มีข้อมูลบุคคล) */
 async function logUnexpected(where: string, e: unknown, tenantId: string | null): Promise<void> {
   const name = e instanceof Error ? e.name || "Error" : typeof e;
-  await logOps("ERROR", "trips.booking", `ข้อผิดพลาดที่ไม่คาดคิดใน ${where} (${name})`, { tenantId: tenantId ?? undefined, detail: JSON.stringify({ where, name }) }).catch(() => undefined);
+  const message = e instanceof Error ? e.message.slice(0, 500) : String(e).slice(0, 200);
+  const stack = e instanceof Error && e.stack ? e.stack.split("\n").slice(0, 8).join("\n").slice(0, 1500) : null;
+  await logOps("ERROR", "trips.booking", `ข้อผิดพลาดที่ไม่คาดคิดใน ${where} (${name})`, { tenantId: tenantId ?? undefined, detail: JSON.stringify({ where, name, message, stack }) }).catch(() => undefined);
 }
 /** ห่อบริการ: CapacityAbort/PricingAbort ⇒ ผลมีชื่อ · อื่น ⇒ บันทึก ops (ไม่มีข้อมูลบุคคล) แล้ว BUSY — ไม่มี error ดิบหลุดถึงผู้เรียก */
 async function safely<T>(where: string, ctx: unknown, fn: () => Promise<SellResult<T>>): Promise<SellResult<T>> {
@@ -137,6 +148,7 @@ async function safely<T>(where: string, ctx: unknown, fn: () => Promise<SellResu
   } catch (e) {
     if (e instanceof CapacityAbort) return sellFail(e.code, e.details);
     if (e instanceof PricingAbort) return sellFail(e.code, e.details);
+    unexpectedCount++;
     await logUnexpected(where, e, isRec(ctx) && typeof ctx.tenantId === "string" ? ctx.tenantId : null);
     return sellFail("BUSY", { reason: "UNEXPECTED" });
   }
@@ -216,8 +228,9 @@ function linesGate(c: Ctx, lines: readonly LineInput[]): Failure | null {
 }
 type OverrideReq = { priceOverrides?: OverrideInput[]; overrideApprovals?: ApprovalInput[] };
 /** ราคาแก้มือต้องมี canOverride (จาก action) · คำอนุมัติทุกตัวต้องมี resolvedMinor (มติ §16 ข้อ 3) · คำอนุมัติโดยไม่มีราคาแก้มือ ⇒ VALIDATION */
-function overrideGate(req: OverrideReq, opts: BookingOpts | undefined): Failure | null {
-  if (req.priceOverrides?.length && opts?.canOverride !== true) return sellFail("FORBIDDEN");
+function overrideGate(req: OverrideReq, opts: BookingOpts | undefined, actorKind: SellActor["kind"]): Failure | null {
+  // S2: ราคาแก้มือเป็นงานของพนักงานเท่านั้น (ผู้กระทำอื่น ⇒ FORBIDDEN แม้ส่ง canOverride มา)
+  if (req.priceOverrides?.length && (opts?.canOverride !== true || actorKind !== "STAFF")) return sellFail("FORBIDDEN");
   if (req.overrideApprovals?.length && !req.priceOverrides?.length) return sellFail("VALIDATION", { fields: ["overrideApprovals"] });
   if (req.overrideApprovals?.some((a) => a.resolvedMinor === undefined)) return sellFail("VALIDATION", { reason: "APPROVAL_RESOLVED_REQUIRED" });
   return null;
@@ -236,25 +249,61 @@ function quoteOptsOf(req: OverrideReq, opts: BookingOpts | undefined): TripQuote
 function lineOptsOf(q: QuoteRequestInput, base: TripQuoteOpts): TripQuoteOpts {
   return { ...base, ...(q.agentDiscountSatang ? { agentDiscountSatang: q.agentDiscountSatang } : {}), ...(q.attribution?.linkId ? { linkId: q.attribution.linkId } : {}) };
 }
+/** รายการที่คิดราคาแล้วของบรรทัด (ราคาตั้งต้น ไม่มีราคาแก้มือ) — จำนวนของ itemRef ไม่ขึ้นกับราคาที่แก้ */
+async function baseItemsOf(sc: SellCtx, line: LineInput): Promise<{ itemRef: string; qty: number }[] | null> {
+  const r = await quoteTripLine(sc, { ...line, productKind: "TRIP" }, {});
+  return r.ok ? r.value.items.map((x) => ({ itemRef: x.itemRef, qty: x.qty })) : null;
+}
 /**
- * คำอนุมัติราคาแก้มือ (มติ R1 · นอก tx): ทุกตัวต้อง APPROVED · entityType trips.price_override · หน่วยเดียวกัน (ถ้าระบุ) ·
- * entityId = tripPriceOverrideEntityId(หน่วย, รอบ, itemRef, unitMinor, resolvedMinor) — คำขอที่มีคำอนุมัติต้องอยู่บนรอบเดียว (ผูกรอบได้ชัด)
+ * คำอนุมัติราคาแก้มือ (มติ R1 + S3 · นอก tx): ราคาแก้มือใช้กับทุกบรรทัดที่มี itemRef นั้น ⇒ itemRef ที่มีคำอนุมัติต้องอยู่ในบรรทัดเดียวของคำขอ
+ * (มากกว่าหนึ่ง ⇒ VALIDATION APPROVAL_MULTI_LINE · ไม่มีเลย ⇒ VALIDATION) · ทุกตัวต้อง APPROVED · entityType trips.price_override · หน่วยเดียวกัน (ถ้าระบุ) ·
+ * entityId = tripPriceOverrideEntityId(หน่วย, รอบของบรรทัด, itemRef, unitMinor, resolvedMinor, qty ของ itemRef ในบรรทัด) · ยอด (amountSatang) ถ้ามี = unitMinor × qty
  * การใช้ครั้งเดียว: ตรวจใน tx (consumeApprovalsInTx) · ไม่ผ่าน ⇒ FORBIDDEN APPROVAL_NOT_APPROVED
  */
-async function approvalsGate(c: Ctx, req: OverrideReq, departureIds: readonly string[]): Promise<Failure | null> {
+async function approvalsGate(c: Ctx, sc: SellCtx, req: OverrideReq, lines: readonly LineInput[]): Promise<Failure | null> {
   const aps = req.overrideApprovals ?? [];
   if (!aps.length) return null;
-  const deps = [...new Set(departureIds)];
-  if (deps.length !== 1) return sellFail("VALIDATION", { fields: ["overrideApprovals"], reason: "APPROVAL_SINGLE_DEPARTURE" });
+  const itemsOf: ({ itemRef: string; qty: number }[] | null)[] = [];
+  for (const l of lines) itemsOf.push(await baseItemsOf(sc, l));
   const b = await requestBindings({ tenantId: c.tenantId }, aps.map((a) => a.approvalId));
   for (const a of aps) {
+    const hits = lines.map((l, i) => ({ l, it: itemsOf[i]?.find((x) => x.itemRef === a.itemRef) })).filter((x) => x.it);
+    if (hits.length > 1) return sellFail("VALIDATION", { fields: ["overrideApprovals"], reason: "APPROVAL_MULTI_LINE" });
+    const hit = hits[0];
+    if (!hit?.it) return sellFail("VALIDATION", { fields: ["overrideApprovals"] });
+    const qty = hit.it.qty;
     const x = b[a.approvalId];
-    const want = tripPriceOverrideEntityId({ unitId: c.unitId, departureId: deps[0], itemRef: a.itemRef, unitMinor: a.unitMinor, resolvedMinor: a.resolvedMinor ?? -1 });
-    if (!x || x.status !== "APPROVED" || x.entityType !== TRIP_PRICE_OVERRIDE_ENTITY || x.entityId !== want || (x.unitId !== null && x.unitId !== c.unitId)) {
+    const want = tripPriceOverrideEntityId({ unitId: c.unitId, departureId: hit.l.slotId, itemRef: a.itemRef, unitMinor: a.unitMinor, resolvedMinor: a.resolvedMinor ?? -1, qty });
+    if (
+      !x ||
+      x.status !== "APPROVED" ||
+      x.entityType !== TRIP_PRICE_OVERRIDE_ENTITY ||
+      x.entityId !== want ||
+      (x.unitId !== null && x.unitId !== c.unitId) ||
+      (x.amountSatang !== null && x.amountSatang !== a.unitMinor * qty)
+    ) {
       return sellFail("FORBIDDEN", { reason: "APPROVAL_NOT_APPROVED" });
     }
   }
   return null;
+}
+/**
+ * REQUIRES_APPROVAL ของ T0.5 + entityId/qty/departureId/unitMinor ที่จอต้องยื่น (S3) — หาบรรทัดที่ต้องอนุมัติ แล้วคิดจำนวนของ itemRef จากราคาตั้งต้น
+ * (REQUIRES_APPROVAL ที่ได้จาก quoteTrips ของ T0.5 โดยตรงยังไม่มีช่องเหล่านี้ — จอต้องเรียกผ่านบริการการจอง หรือ tripPriceOverrideEntityId)
+ */
+async function withApprovalTarget(r: Failure, c: Ctx, sc: SellCtx, lines: readonly LineInput[], qopts: TripQuoteOpts): Promise<Failure> {
+  if (r.code !== "REQUIRES_APPROVAL" || !r.details) return r;
+  const d = r.details;
+  if (typeof d.itemRef !== "string" || typeof d.resolvedMinor !== "number" || typeof d.requestedMinor !== "number") return r;
+  for (const l of lines) {
+    const one = await quoteTripLine(sc, { ...l, productKind: "TRIP" }, qopts);
+    if (one.ok || one.code !== "REQUIRES_APPROVAL" || one.details?.itemRef !== d.itemRef) continue;
+    const qty = (await baseItemsOf(sc, l))?.find((x) => x.itemRef === d.itemRef)?.qty;
+    if (qty === undefined) return r;
+    const entityId = tripPriceOverrideEntityId({ unitId: c.unitId, departureId: l.slotId, itemRef: d.itemRef, unitMinor: d.requestedMinor, resolvedMinor: d.resolvedMinor, qty });
+    return { ...r, details: { ...d, entityId, qty, departureId: l.slotId, unitMinor: d.requestedMinor, amountSatang: d.requestedMinor * qty } };
+  }
+  return r;
 }
 const priceChanged = (quote: Quote, reason?: string): Failure => sellFail("PRICE_CHANGED", { ...(reason ? { reason } : {}), quote });
 /** ตัดสิทธิ์โค้ดไม่ผ่าน ⇒ PRICE_CHANGED + ใบเสนอราคาใหม่ของคำขอเดิม "ไม่มีโค้ด" (ใบสั่ง §5.4) */
@@ -400,16 +449,35 @@ async function insertHoldsInTx(tx: Tx, sc: SellCtx, lines: readonly { departureI
   return ids;
 }
 /**
- * คำอนุมัติราคาแก้มือใช้ได้ครั้งเดียว (มติ R1): advisory ต่อ id (เรียง) แล้วหา audit trips.booking.price_override ที่จด id นี้ไว้ — มี ⇒ FORBIDDEN APPROVAL_USED
- * (ล็อกอยู่ถึงจบ tx ⇒ สองการจองที่อ้างคำอนุมัติเดียวกันพร้อมกัน ได้ตัวเดียว)
+ * advisory lock ของ trips ในรูปสองอาร์กิวเมนต์ (int4, int4) — ไม่มีโมดูลใดใช้รูปนี้ (ทั้ง repo ใช้รูป bigint หนึ่งอาร์กิวเมนต์) ⇒ ไม่ชนกับคีย์ของโมดูลอื่น (S9)
+ * classid = hashtext('trips.booking.v1') · objid = hashtext('<ชนิด>:<id>')
  */
-async function consumeApprovalsInTx(tx: Tx, tenantId: string, approvalIds: readonly string[]): Promise<void> {
+const lockTripsKey = (tx: Tx, kind: "approval" | "change", id: string) =>
+  tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext('trips.booking.v1'), hashtext(${`${kind}:${id}`}))`;
+/** แถวบันทึกการใช้คำอนุมัติ (S4): action นี้ + targetId = approvalId — ค้นผ่าน index "AuditLog_action_idx" (action เป็นของการใช้คำอนุมัติอย่างเดียว) */
+const APPROVAL_CONSUMED = "trips.approval.consumed";
+/**
+ * คำอนุมัติราคาแก้มือใช้ได้ครั้งเดียว (มติ R1 · S4): advisory ต่อ id (เรียง) แล้วหาแถว trips.approval.consumed ของ id นี้ — มี ⇒ FORBIDDEN APPROVAL_USED
+ * แล้วเขียนแถวนั้นทันที (ทุกผู้กระทำ · ไม่ผ่าน auditBooking ที่ข้าม PUBLIC/AGENT · S2) — ล็อกอยู่ถึงจบ tx ⇒ สองการจองพร้อมกันได้ตัวเดียว
+ */
+async function consumeApprovalsInTx(tx: Tx, a: AuditActor, approvalIds: readonly string[], bookingIds: readonly string[]): Promise<void> {
   for (const id of [...new Set(approvalIds)].sort()) {
-    await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext('trips-approval:' || ${id}))`;
+    await lockTripsKey(tx, "approval", id);
     const used = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "action" = 'trips.booking.price_override'
-        AND ${id} = ANY(string_to_array("after"->>'approvalIds', ',')) LIMIT 1`;
+      SELECT "id" FROM "AuditLog" WHERE "action" = ${APPROVAL_CONSUMED} AND "tenantId" = ${a.tenantId} AND "targetId" = ${id} LIMIT 1`;
     if (used.length) throw new BookingAbort("FORBIDDEN", { reason: "APPROVAL_USED" });
+    await tx.auditLog.create({
+      data: {
+        tenantId: a.tenantId,
+        unitId: a.unitId,
+        actorType: a.actor.kind === "STAFF" ? "USER" : "SYSTEM",
+        actorId: a.actor.kind === "STAFF" ? a.actor.userId : null,
+        action: APPROVAL_CONSUMED,
+        targetType: "ApprovalRequest",
+        targetId: id,
+        after: { bookingIds: [...bookingIds].sort().join(",") },
+      },
+    });
   }
 }
 
@@ -432,7 +500,7 @@ async function holdTripsImpl(ctx: unknown, input: unknown, opts?: BookingOpts): 
   const req = p.data;
   const pub = c.actor.kind === "PUBLIC";
   if (pub && !req.basketToken) return sellFail("VALIDATION", { fields: ["basketToken"] });
-  const lg = linesGate(c, req.quote.lines) ?? overrideGate(req, opts);
+  const lg = linesGate(c, req.quote.lines) ?? overrideGate(req, opts, c.actor.kind);
   if (lg) return lg;
   if (!tokenSecret()) return keyMissing();
   const g = await gateOf(c);
@@ -448,10 +516,10 @@ async function holdTripsImpl(ctx: unknown, input: unknown, opts?: BookingOpts): 
   const sc = sellCtxOf(c, ctx);
   const qopts = quoteOptsOf(req, opts);
   const fresh = await quoteTrips(sc, req.quote as QuoteRequest, qopts);
-  if (!fresh.ok) return fresh;
+  if (!fresh.ok) return withApprovalTarget(fresh, c, sc, req.quote.lines, qopts);
   if (c.clock.now.getTime() > Date.parse(req.quoteExpiresAt)) return priceChanged(fresh.value, "QUOTE_EXPIRED");
   if (fresh.value.quoteId !== req.quoteId) return priceChanged(fresh.value);
-  const ag = await approvalsGate(c, req, req.quote.lines.map((l) => l.slotId));
+  const ag = await approvalsGate(c, sc, req, req.quote.lines);
   if (ag) return ag;
   const seats = await seatsOfLines(g, req.quote.lines);
   if (!Array.isArray(seats)) return seats;
@@ -549,17 +617,17 @@ async function prepareCore(
   opts: BookingOpts | undefined,
   extra: { quoteExpiresAt?: string; policies: CapacityPolicies; refs: readonly ProductRef[] },
 ): Promise<CoreOut | Failure> {
-  const lg = linesGate(c, req.quote.lines) ?? overrideGate(req, opts);
+  const lg = linesGate(c, req.quote.lines) ?? overrideGate(req, opts, c.actor.kind);
   if (lg) return lg;
   const contactKey = contactKeyOf(req.booker);
   const pub = c.actor.kind === "PUBLIC";
   if (!contactKey && (pub || req.quote.lines.some((l) => l.promoCode))) return sellFail("VALIDATION", { reason: "CONTACT_REQUIRED" });
   const qopts = quoteOptsOf(req, opts);
   const fresh = await quoteTrips(sc, req.quote as QuoteRequest, qopts);
-  if (!fresh.ok) return fresh;
+  if (!fresh.ok) return withApprovalTarget(fresh, c, sc, req.quote.lines, qopts);
   if (extra.quoteExpiresAt !== undefined && c.clock.now.getTime() > Date.parse(extra.quoteExpiresAt)) return priceChanged(fresh.value, "QUOTE_EXPIRED");
   if (fresh.value.quoteId !== req.quoteId) return priceChanged(fresh.value);
-  const ag = await approvalsGate(c, req, req.quote.lines.map((l) => l.slotId));
+  const ag = await approvalsGate(c, sc, req, req.quote.lines);
   if (ag) return ag;
   // snapshot ต่อบรรทัด (ยอดที่จด/ตัดโค้ด มาจากที่นี่เท่านั้น)
   const qLines = fresh.value.lines as TripQuoteLine[];
@@ -860,6 +928,9 @@ export async function finalizeTripsInTx(tx: unknown, ctx: unknown, reservations:
   }
   const holdIds = prepared.lines.map((l) => l.holdId ?? "");
   if (holdIds.some((h) => !h)) throw new BookingAbort("VALIDATION", { reason: "PREPARED_REQUIRED" });
+  // S5: ผู้เรียกตรงต้องไม่จองบนสินค้า/ตัวเลือกที่ปิดแล้ว — ตรวจ (และล็อก FOR SHARE ซ้ำ ซึ่งไม่รอเมื่อถืออยู่แล้ว) ที่นี่เอง
+  const sc: SellCtx = { tenantId: c.tenantId, unitId: c.unitId, channel: c.channel, actor: c.actor, now: c.clock.now };
+  await lockProductsInTx(tx as Tx, sc, prepared.lines.map((l) => ({ productId: l.productId, optionId: l.optionId })));
   return { ok: true, value: { bookings: await finalizeCoreInTx(tx as Tx, c, prepared, holdIds), ledger: [] } };
 }
 
@@ -881,7 +952,7 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
       throw new BookingAbort(cur.length ? "HOLD_EXPIRED" : "HOLD_NOT_FOUND");
     }
     if (l.holdMode === "CONVERT") {
-      const r = await convertHoldInTx(t, sc, { holdId, ...(pub && P.contactKey ? { capKey: `contact:${P.contactKey}` } : {}) });
+      const r = await convertHoldInTx(t, sc, { holdId, ...(pub && P.contactKey ? { capKey: `contact:${P.contactKey}` } : {}) }, { forBookingId: l.bookingId });
       if (!r.ok) throw new BookingAbort(r.code, r.details);
     } else if (l.holdMode === "SHOP_CONFIRM") {
       const exp = holdExpiry(P.policies, l.departureId, "SHOP_CONFIRM", c.clock.now);
@@ -893,7 +964,7 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
     }
   }
   // คำอนุมัติราคาแก้มือ: ใช้ได้ครั้งเดียว (R1)
-  if (P.approvalIds.length) await consumeApprovalsInTx(t, c.tenantId, P.approvalIds);
+  if (P.approvalIds.length) await consumeApprovalsInTx(t, { tenantId: c.tenantId, unitId: c.unitId, actor: c.actor }, P.approvalIds, P.lines.map((l) => l.bookingId));
   // 2c เลขจอง: จองเลขเรียง (prefix, งวด) ก่อน แล้วจึงคืนให้บรรทัด (R7 — แถว SellCounter ล็อกตามลำดับเดียวกันทุกตะกร้า)
   const codeOf = new Map<number, string>();
   const keyOf = (l: PreparedLine) => `${l.prefix}\u0001${bookingPeriodOf(l.snapshot.travel.localDate)}`;
@@ -1046,7 +1117,7 @@ async function bookTripsNowImpl(ctx: unknown, input: unknown, opts?: BookingOpts
   const p = bookNowRequestSchema.safeParse(input);
   if (!p.success) return invalidInput(p.error);
   const req = p.data;
-  const lg = linesGate(c, req.quote.lines) ?? overrideGate(req, opts);
+  const lg = linesGate(c, req.quote.lines) ?? overrideGate(req, opts, c.actor.kind);
   if (lg) return lg;
   if (!tokenSecret()) return keyMissing();
   const g = await gateOf(c);
@@ -1285,9 +1356,14 @@ const payableOf = (b: BookingRow) => {
 };
 /** แถว audit ที่จดคีย์กันซ้ำนี้ไว้ (ยกเลิก/แก้ไข) — idemKeyHash + bodyHash ใน after */
 type IdemAudit = { after: Record<string, unknown> };
-async function idemAudits(db: Tx, tenantId: string, action: string, bookingId: string, keyHash: string): Promise<IdemAudit[]> {
+/**
+ * แถว audit ที่จดคีย์กันซ้ำนี้ (ยกเลิก/แก้ไข) — ค้นด้วย tenantId + createdAt ≥ เวลาสร้างการจอง (index "AuditLog_tenantId_createdAt_idx") แล้วกรอง
+ * targetId = bookingId · action · idemKeyHash (S4: ไม่สแกนตาม action ทั้งแพลตฟอร์ม · ไม่มี index ของ targetId ในฐาน — หนี้: (tenantId, targetId) ต้อง migration)
+ */
+async function idemAudits(db: Tx, tenantId: string, action: string, b: { id: string; createdAt: Date }, keyHash: string): Promise<IdemAudit[]> {
+  const since = new Date(b.createdAt).toISOString();
   const rows = await db.$queryRaw<{ after: unknown }[]>`
-    SELECT "after" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "action" = ${action} AND "targetId" = ${bookingId} AND "after"->>'idemKeyHash' = ${keyHash} LIMIT 1`;
+    SELECT "after" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "createdAt" >= ${since}::timestamp AND "targetId" = ${b.id} AND "action" = ${action} AND "after"->>'idemKeyHash' = ${keyHash} LIMIT 1`;
   return rows.filter((r) => isRec(r.after)).map((r) => ({ after: r.after as Record<string, unknown> }));
 }
 
@@ -1330,7 +1406,7 @@ async function cancelImpl(ctx: unknown, input: unknown): Promise<SellResult<Canc
     if (!hit) return null;
     return hit.after.bodyHash === bodyHash ? { ok: true, value: { computed: zero, status: "CANCELLED" } } : sellFail("IDEMPOTENCY_CONFLICT");
   };
-  const pre = replay(await idemAudits(unitDb(g), g.tenantId, "trips.booking.cancel", b.id, keyHash));
+  const pre = replay(await idemAudits(unitDb(g), g.tenantId, "trips.booking.cancel", b, keyHash));
   if (pre) return pre;
   if (SOLD.has(b.status)) return sellFail("STATE_CONFLICT", { reason: "REFUND_REQUIRED" });
   if (!UNPAID.has(b.status)) return sellFail("STATE_CONFLICT");
@@ -1341,7 +1417,7 @@ async function cancelImpl(ctx: unknown, input: unknown): Promise<SellResult<Canc
       version = await cancelUnpaidInTx(tx, sc, b, v.reason, policies);
     } catch (e) {
       if (e instanceof BookingAbort && e.code === "STATE_CONFLICT" && !e.details) {
-        const rr = replay(await idemAudits(tx, g.tenantId, "trips.booking.cancel", b.id, keyHash));
+        const rr = replay(await idemAudits(tx, g.tenantId, "trips.booking.cancel", b, keyHash));
         if (rr) return rr;
       }
       throw e;
@@ -1398,7 +1474,7 @@ async function approveImpl(ctx: unknown, input: unknown): Promise<SellResult<{ b
       if (!h.length) throw new BookingAbort("STATE_CONFLICT");
       if (confirmNow) {
         for (const x of h) {
-          const cv = await convertHoldInTx(tx, sc, { holdId: x.id });
+          const cv = await convertHoldInTx(tx, sc, { holdId: x.id }, { forBookingId: b.id });
           if (!cv.ok) throw new BookingAbort(cv.code, cv.details);
         }
       }
@@ -1442,7 +1518,7 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
   const v = p.data;
   if (v.useCurrentPolicy && (v.reason ?? "").trim().length < CHANGE_POLICY_REASON_MIN) return sellFail("VALIDATION", { fields: ["reason"] });
   if (v.line.promoCode) return sellFail("VALIDATION", { fields: ["line.promoCode"] });
-  const lg = linesGate(c, [v.line]) ?? overrideGate(v, opts);
+  const lg = linesGate(c, [v.line]) ?? overrideGate(v, opts, c.actor.kind);
   if (lg) return lg;
   const g = await gateOf(c);
   if (!g) return NF();
@@ -1459,7 +1535,7 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
     if (hit.after.bodyHash !== bodyHash) return sellFail("IDEMPOTENCY_CONFLICT");
     return { ok: true, value: { bookingId: b.id, version: Number(hit.after.version), departureId: String(hit.after.departureId) } };
   };
-  const pre = replay(await idemAudits(db, g.tenantId, "trips.booking.change", b.id, keyHash));
+  const pre = replay(await idemAudits(db, g.tenantId, "trips.booking.change", b, keyHash));
   if (pre) return pre;
   if (UNPAID.has(b.status)) return sellFail("STATE_CONFLICT", { reason: "CHANGE_BEFORE_CONFIRM" });
   if (b.status === "PART_PAID" || b.status === "PAID") return sellFail("STATE_CONFLICT", { reason: "NOT_SUPPORTED" });
@@ -1476,10 +1552,10 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
   const quote: QuoteRequestInput = { lines: [v.line] };
   const qopts = quoteOptsOf(v, opts);
   const fresh = await quoteTrips(sc, quote as QuoteRequest, qopts);
-  if (!fresh.ok) return fresh;
+  if (!fresh.ok) return withApprovalTarget(fresh, c, sc, [v.line], qopts);
   if (c.clock.now.getTime() > Date.parse(v.quoteExpiresAt)) return priceChanged(fresh.value, "QUOTE_EXPIRED");
   if (fresh.value.quoteId !== v.quoteId) return priceChanged(fresh.value);
-  const ag = await approvalsGate(c, v, [v.line.slotId]);
+  const ag = await approvalsGate(c, sc, v, [v.line]);
   if (ag) return ag;
   const ql = (fresh.value.lines as TripQuoteLine[])[0];
   if (!ql) return priceChanged(fresh.value);
@@ -1515,19 +1591,22 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
   const approvalIds = (v.overrideApprovals ?? []).map((x) => x.approvalId);
   const r = await runBooking(g, async (tx): Promise<ChangeValue> => {
     // ชั้น 0: การแก้ของการจองเดียวกันทีละคำขอ (คีย์ซ้ำที่ยิงพร้อมกันได้ผลเดิม)
-    await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext('trips-booking-change:' || ${b.id}))`;
-    const again = replay(await idemAudits(tx, g.tenantId, "trips.booking.change", b.id, keyHash));
+    await lockTripsKey(tx, "change", b.id);
+    const again = replay(await idemAudits(tx, g.tenantId, "trips.booking.change", b, keyHash));
     if (again) {
       if (!again.ok) throw new BookingAbort(again.code, again.details);
       return again.value;
     }
+    // S7: ตรวจเวอร์ชันใต้ล็อกของการจองนี้ก่อนสร้าง hold เพิ่ม (คีย์ cg_<เวอร์ชัน> ของผู้ชนะจะชน) ⇒ เวอร์ชันเก่า = STATE_CONFLICT
+    const cur = await tx.$queryRaw<{ version: number; status: string }[]>`SELECT "version", "status" FROM "TripBooking" WHERE "id" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`;
+    if (cur[0]?.version !== v.expectedVersion || cur[0]?.status !== b.status) throw new BookingAbort("STATE_CONFLICT");
     await lockProductsInTx(tx, sc, refs);
     await lockDeparturesInTx(tx, sc, [from, to]);
     const addOn = async (dep: string, qty: number) => {
       await reserveHoldsInTx(tx, sc, [{ departureId: dep, qty }], policies.value, null);
       const h = await insertHoldInTx(tx, sc, { departureId: dep, qty, idempotencyKey: `cg_${v.expectedVersion}_${b.id}`.slice(0, 100), purpose: "PAYMENT", bookingId: b.id }, policies.value);
       if (!h.ok) throw new BookingAbort(h.code, h.details);
-      const cv = await convertHoldInTx(tx, sc, { holdId: h.value.holdId });
+      const cv = await convertHoldInTx(tx, sc, { holdId: h.value.holdId }, { forBookingId: b.id });
       if (!cv.ok) throw new BookingAbort(cv.code, cv.details);
     };
     const giveBack = async (dep: string, qty: number) => {
@@ -1546,7 +1625,7 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
       if (newSeats > moveQty) await addOn(to, newSeats - moveQty);
       if (oldSeats > moveQty) await giveBack(from, oldSeats - moveQty);
     }
-    if (approvalIds.length) await consumeApprovalsInTx(tx, g.tenantId, approvalIds);
+    if (approvalIds.length) await consumeApprovalsInTx(tx, a, approvalIds, [b.id]);
     const k = cols.booking;
     const upd = await tx.$queryRaw<{ version: number }[]>`
       UPDATE "TripBooking" SET "version" = "version" + 1, "departureId" = ${to}, "travelDate" = ${k.travelDate}::date,
