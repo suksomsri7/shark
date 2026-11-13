@@ -104,8 +104,8 @@ S6.6|F5|C|R|[db] fix r1: route helper — rsc / next-router-prefetch ⇒ 204, no
 S6.7|F6|C|R|[db] fix r1: bank format switched off ⇒ download formatOff (CSV file unaffected) · on again ⇒ ok
 S6.8|F7|M|R|[pure] fix r1: BANK_TEXT_EN = fixture en · same keys as BANK_TEXT · {names} parity · no Thai in en · bankTextFor(locale)
 S6.9|F8|M|R|[db] fix r1: empty employee code sorts like null (last) · shop debit account changed ⇒ changed · restored ⇒ ok
-S6.10|F8|C|R|[db] fix r1: download ∥ reverseRun ×4 ⇒ consistent (ok-then-reversed or status) · later downloads ⇒ status · audit = real downloads
-S6.11|F8|C|R|[db+static] fix r1: page data for managers / read-only / pay-only / branch / member / self = nothing (canUseBankFiles false · runs/profile/presets NO) · owner + payroll true · both UI parts return null without the gate
+S6.10|F8|C|G|[db] fix r1: download ∥ reverseRun ×4 ⇒ consistent (ok-then-reversed or status) · later downloads ⇒ status · audit = real downloads
+S6.11|F8|C|G|[db+static] fix r1: page data for managers / read-only / pay-only / branch / member / self = nothing (canUseBankFiles false · runs/profile/presets NO) · owner + payroll true · both UI parts return null without the gate
 Z1|house|C|G|no residue (3 new tables included)
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
