@@ -1,4 +1,5 @@
 import { tenantDb } from "@/lib/core/db";
+import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET-1 ◂
 import { Prisma } from "@prisma/client"; // HR H0.6 r3 ▸ ค่า (Prisma.join) ไม่ใช่แค่ type ◂
 // CRM C3.3 ▸ `hr.payroll.paid` ยิงใน tx เดียวกับการปิดรอบ (markPaid) ◂
 import { emitOutbox } from "@/lib/core/outbox";
@@ -2290,8 +2291,7 @@ export async function setPayrollEngine(
   const now = opts.now ?? new Date();
   const out = await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0))`;
-    const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
+    const sys = await lockHrSettings(tx, ctx); // HR-SET-1 ▸ hr:clockpolicy → แถว AppSystem · อ่านใหม่ใต้ล็อก ◂
     if (!sys) return { ok: false as const, code: "FAILED" as const, reason: ENGINE_FAILED_TH };
     if (version === 1 && (await tx.$queryRaw<{ n: number }[]>`SELECT 1 AS "n" FROM "HrPayrollRun" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "engineVersion" = 2 AND "status" = 'DRAFT'::"PayrollRunStatus" AND "inputDigest" IS NOT NULL LIMIT 1`).length > 0)
       return { ok: false as const, code: "ENGINE_DRAFT" as const, reason: RUN2_TEXT.engineDraft }; // fix r1: รอบร่างรุ่น 2 ค้างอยู่ ⇒ เปลี่ยนกลับรุ่น 1 ไม่ได้
@@ -2307,7 +2307,7 @@ export async function setPayrollEngine(
     };
     const base = objOf(sys.settings);
     base[PAYROLL_SETTINGS_KEY] = { ...objOf(base[PAYROLL_SETTINGS_KEY]), ...after };
-    const r = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: base as Prisma.InputJsonValue } });
+    const r = await writeHrSettingsKeys(tx, ctx, { [PAYROLL_SETTINGS_KEY]: base[PAYROLL_SETTINGS_KEY] }); // HR-SET-1 ▸ เปลี่ยนเฉพาะคีย์ hrPayroll ◂
     if (r.count !== 1) return { ok: false as const, code: "FAILED" as const, reason: ENGINE_FAILED_TH };
     return { ok: true as const, before, after };
   }, ENGINE_TX_OPTS);

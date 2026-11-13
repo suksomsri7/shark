@@ -7,6 +7,7 @@
 //   ไม่เก็บไฟล์ (สร้างตามคำขอ) · ส่งออกสำเร็จลงประวัติ hr.report.export (คีย์คอลัมน์ ไม่มีค่า) · ดูหน้า/ปฏิเสธไม่ลงประวัติ ◂
 import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET-1 ◂
 import { writeAudit } from "@/lib/core/audit";
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { employeeUnitsOf, hrScopeOf, isAllBranches, unitNamesOf, unitTargetOf, unitWhere, type HrScope } from "./scope";
@@ -723,15 +724,11 @@ export async function setReportSettings(ctx: Ctx, viewer: ReportViewer, input: {
   //   (ไม่ทับค่าที่ตัวเขียนอื่นเพิ่งบันทึก และตัวงานเบื้องหลังเขียนค่าเก่ากลับมาไม่ได้) · fix r1 F2d: ติ๊กรับทราบเฉพาะตอนเปลี่ยนจากปิดเป็นเปิด ◂
   const done = await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clockpolicy:${ctx.systemId}`}, 0))`;
-    const row = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AppSystem" WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'HR'::"SystemType" FOR UPDATE`;
-    if (!row.length) return "NO" as const;
-    const s = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { settings: true } });
+    const s = await lockHrSettings(tx, ctx); // HR-SET-1 ▸ ตัวช่วยกลาง (ล็อก/อ่านลำดับเดิม: hr:clockpolicy → แถว FOR UPDATE → อ่านใหม่) ◂
     if (!s) return "NO" as const;
     const base = obj(s.settings);
     if (on && obj(base.hrReports).registerFullId !== true && i.acknowledge !== true) return "ACK" as const;
-    const next = { ...base, hrReports: { ...obj(base.hrReports), registerFullId: on } };
-    const r = await tx.appSystem.updateMany({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, data: { settings: next as Prisma.InputJsonValue } });
+    const r = await writeHrSettingsKeys(tx, ctx, { hrReports: { ...obj(base.hrReports), registerFullId: on } }); // HR-SET-1 ▸ เปลี่ยนเฉพาะคีย์ hrReports ◂
     return r.count === 1 ? ("OK" as const) : ("NO" as const);
   }, TX_OPTS);
   if (done === "ACK") return fail("ACK", T.ackFullId);

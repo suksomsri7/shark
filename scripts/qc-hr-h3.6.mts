@@ -236,7 +236,8 @@ function runStatic(): void {
     const laterMarked = (h: { added: string[] }, re: RegExp) => IN_BASE && h.added.some((l) => re.test(l));
     const oracleEdited = (f: string) =>
       (!!ORACLE_EDITS[f] || IN_BASE) &&
-      (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+/));
+      // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.6: in-base only — a later fix ticket's code hunks marked "HR-SET-<n>" are accepted too · unmarked still fails ◂
+      (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+|HR-SET-\d+/));
     const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
     const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f)) : [];
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;

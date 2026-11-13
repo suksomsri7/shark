@@ -14,6 +14,7 @@
 //   • เงินเห็นได้เฉพาะ OWNER · hr.payroll.read · ตัวพนักงานเอง (Q11) · event/แจ้งเตือน/audit = id ล้วน ไม่มีจำนวนเงิน ◂
 import type { HrOtRequest, Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET-1 ◂
 import { writeAudit } from "@/lib/core/audit";
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
@@ -174,13 +175,12 @@ export async function saveOtPolicy(ctx: Ctx, viewer: OtViewer, input: { afterHou
     const round = pick("otRoundMin", (n) => R.otRoundMin.includes(n), T.sRound);
     const next = await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
       const tx = t as unknown as Tx;
-      await lock(tx, `hr:otpolicy:${ctx.systemId}`);
-      const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "HR" }, select: { id: true, settings: true } });
+      const sys = await lockHrSettings(tx, ctx, [`hr:otpolicy:${ctx.systemId}`]); // HR-SET-1 ▸ hr:clockpolicy → hr:otpolicy → แถว AppSystem · อ่านใหม่ใต้ล็อก ◂
       if (!sys) throw new OtRefusal(SETTINGS_TEXT.notFound);
       const base = sys.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? (sys.settings as Record<string, unknown>) : {};
       const cur = policyOfSettings(base);
       const nx: OtPolicy = { afterHours: after ?? cur.afterHours, maxAheadDays: ahead ?? cur.maxAheadDays, otRoundMin: round ?? cur.otRoundMin };
-      const r = await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: { ...base, hrOt: nx } as Prisma.InputJsonValue } });
+      const r = await writeHrSettingsKeys(tx, ctx, { hrOt: nx }); // HR-SET-1 ▸ เปลี่ยนเฉพาะคีย์ hrOt ◂
       if (r.count !== 1) throw new OtRefusal(SETTINGS_TEXT.notFound);
       return nx;
     }, TX_OPTS);
