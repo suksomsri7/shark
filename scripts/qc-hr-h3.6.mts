@@ -47,7 +47,7 @@ const K = {
   preview: srt(["ok", "kind", "period", "lineCount", "totalSatang", "taxSatang", "rows", "notIncluded", "warnings", "untested"]),
   row: srt(["seq", "employeeId", "name", "pinMasked", "payDate", "amountSatang", "taxSatang"]),
   ni: srt(["employeeId", "name", "cause", "fields", "amountSatang", "taxSatang"]),
-  warn: srt(["employeeId", "name", "warning"]),
+  warn: srt(["employeeId", "name", "warning", "fields"]),
   file: srt(["id", "kind", "period", "fileName", "lineCount", "totalSatang", "taxSatang", "excludedCount", "createdAt", "expiresAt", "createdByName", "downloads"]),
   cert: srt(["id", "employeeId", "name", "taxYear", "kind", "docNo", "formSeq", "issuedAt", "voided", "downloads", "stale"]),
   mine: srt(["id", "taxYear", "kind", "docNo", "issuedAt"]),
@@ -72,11 +72,11 @@ S2.1|R7|C|R|[pure] FILING_TEXT / FILING_TEXT_EN / FIELD_LABEL = texts fixture by
 S2.2|R4|C|R|[pure] thaiIdOk: 12 vectors (checksum · length · non-digits · formatted · empty · null)
 S2.3|R3|C|R|[pure] itemFigures F1–F10: v2 stored fields · v1 base + add · broken/negative/string/unknown engine ⇒ ok:false
 S2.4|R5|C|R|[pure] G1 ภ.ง.ด.1 byte-exact (research V1) + file name + counts + totals
-S2.5|R4 R5|C|R|[pure] G2 ภ.ง.ด.1ก byte-exact (cert holder first · 3112 date · full address · "-" title) + notIncluded exact · G2W same bytes + NOT_PAID/V1_RUN/CERT_SEQ
-S2.6|R5|C|R|[pure] monthly Oct/Nov/Dec of the G2 data byte-exact + reports (property ground truth)
+S2.5|R4 R5|C|R|[pure] G2 ภ.ง.ด.1ก byte-exact (cert holder first · 3112 date · full address · "-" title · 12/3 ⇒ 12-3 + SLASH_DASH) · G2X slashMode EXCLUDE ⇒ named :char · G2W warnings · "/" in a name ⇒ INCOMPLETE
+S2.6|R5|C|R|[pure] monthly Oct/Nov(DASH)/Nov(EXCLUDE)/Dec of the G2 data byte-exact + reports (property ground truth)
 S2.7|R5|C|R|[pure] RD sample files: parseRdFile → emitRdFile byte-identical (final CRLF present / absent) · codes 5..1 / 1,1,1,2,3 · totals
 S2.8|R5|M|R|[pure] options: formType 01 + seqNo 2 (file name, header 14) · formFlag 2 (TRANS_AMT = TOT_TAX, flag 2)
-S2.9|R7|C|R|[pure] ภ.ง.ด. refusals R1–R10: code · fields · fixed text
+S2.9|R7|C|R|[pure] ภ.ง.ด. refusals R1–R11: code · fields · fixed text
 S2.10|R6|C|R|[pure] G3 สปส.1-10 TIS-620 = research V2 byte for byte · options {} ⇒ same bytes (defaults)
 S2.11|R6|C|R|[pure] G3U UTF-8 · G3L LF byte-exact · content types
 S2.12|R6|C|R|[pure] G3A ACTUAL / G3B CLAMPED byte-exact · NAME_CUT · ssoPrefix · NOT_INSURED · TIS char ⇒ INCOMPLETE firstName:char (UTF8 ⇒ included)
@@ -99,10 +99,11 @@ S3.11|R11|C|R|[db] frozen content: employee name/ID edited after issue ⇒ downl
 S3.12|R11|C|R|[db] void: owner only (certVoidOwner) · reason 1–200 · voided ⇒ download voided · reissue e4 ⇒ 0005 (no reuse) formSeq 4 · 1ก warns CERT_SEQ for e5
 S3.13|R11|C|R|[db] tenant with an ACCOUNT book: first certificate HR50-2031-0001 · no AccountDocument WHT_CERT · no AccountDocSequence row under the book
 S3.14|R9|C|R|[db] self-service: own live certificates only · own PDF ok + audit by SELF · other employee's certId / voided / unlinked user ⇒ no (identical bytes)
+S3.16|R4|C|R|[db] v2 run not finalized (H3.4 stepsJson.finalized ≠ true — posting in progress) is no filing source: 1ก excludes it + NOT_FINAL naming 2031-06 · SSO ⇒ notFinal (guard: stepsJson column absent ⇒ n/a fail)
 S3.15|R13|C|R|[db] DTO keys exact (preview · row · notIncluded · warning · file · certificate · mine) · IDs only as •••last4 · no forbidden key · no contentJson
 S4.1|R9|C|R|[db] 10 viewers × 8 operations: owner + payroll(read+pay all branches) ok · read-only · pay-only · branch-limited · managers · member · self · other tenant ⇒ no · nothing written
 S4.2|X2|C|R|[db] cross system/tenant: system B ctx with file/cert of A · other tenant ctx ⇒ no (identical bytes)
-S4.3|R12|C|R|[db] privacy: no national/tax ID digits in audit · outbox · console · manifest optionsJson · download file names · route paths
+S4.3|R12|C|R|[db] privacy (after files + certificates were produced): no national/tax ID digits in audit · outbox · console · manifest optionsJson · download file names · route paths
 S5.1|X6|C|R|[db] 4 parallel issues for one employee ⇒ 1 certificate + 3 certExists · numbers contiguous
 S5.2|X6|C|R|[db] 6 parallel issues for 6 employees ⇒ 6 distinct numbers 1..6 · counter lastNo 6
 S6.1|R14|C|R|[db] route helpers: rsc / prefetch ⇒ 204 untouched · plain ⇒ 200 attachment no-store nosniff · refusal 404/409/410 fixed text, no bytes · self helper
@@ -123,7 +124,9 @@ const skipReasons: string[] = [];
 if (!existsSync(join(ROOT, F.build))) skipReasons.push(`${F.build} absent (H3.6 not built)`);
 if (skipReasons.length && !FORCE) skipExit(skipReasons);
 const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") => chk(id, Object.values(r).every(Boolean), exp, `${failedKeys(r)}${extra ? ` ${extra}` : ""}`);
-const BASE = baseRef("QC_H36_BASE") || "5d7bcf0c4";
+// base = merge-base with origin/session/hr when it already holds H3.5 (bank-files/service.ts); else the brief's base 5d7bcf0c4 (session/hr merges not pushed yet)
+const MB = baseRef("QC_H36_BASE");
+const BASE = MB && pathInBase("src/lib/modules/hr/bank-files/service.ts", MB) ? MB : "5d7bcf0c4";
 const IN_BASE = pathInBase(F.svc, BASE);
 const listDir = (d: string): string[] => (existsSync(join(ROOT, d)) ? readdirSync(join(ROOT, d)).map((n) => `${d}${n}`) : []);
 const markedOk = (file: string) => {
@@ -383,8 +386,9 @@ async function runDb(): Promise<void> {
   // runs (rows inserted directly — figures are stored data, H3.6 only reads them)
   const v1snap = (base: number, add: number, elig: boolean) => ({ baseSalarySatang: base, addSatang: add, deductSatang: 0, adjustments: [], ssoEligible: elig, deductions: { spouse: false, children: 0 }, computedAt: "2031-01-25T00:00:00.000Z" });
   const v2snap = (inc: number, one: number, wage: number) => ({ engineVersion: 2, payType: "MONTHLY", baseSalarySatang: inc, normalDayMin: 480, lines: [], flags: [], carry: [], receivable: [], availableSatang: 0, whtIncomeSatang: inc, whtOneOffSatang: one, ssoWageSatang: wage, workDays: [], holidayWork: {} });
+  const HAS_STEPS = !!(await fx.rawRows(`SELECT 1 AS x FROM information_schema.columns WHERE table_name = 'HrPayrollRun' AND column_name = 'stepsJson'`))?.length;
   type It = { e: string; wht: number; add?: number; ssoBase: number; ee: number; snap: Any; gross: number };
-  const mkRun = async (c: Any, periodKey: string, payDay: string, status: string, ev: number, items: It[]) => {
+  const mkRun = async (c: Any, periodKey: string, payDay: string, status: string, ev: number, items: It[], final = ev >= 2 && (status === "APPROVED" || status === "PAID")) => {
     const tot = (f: (i: It) => number) => items.reduce((a, i) => a + f(i), 0);
     const run = await P.hrPayrollRun.create({
       data: {
@@ -397,6 +401,8 @@ async function runDb(): Promise<void> {
       await P.hrPayrollItem.create({
         data: { tenantId: c.tenantId, systemId: c.systemId, runId: run.id, employeeId: i.e, grossSatang: i.gross, ssoBaseSatang: i.ssoBase, ssoEmployeeSatang: i.ee, ssoEmployerSatang: i.ee, whtSatang: i.wht, netSatang: i.gross - i.ee - i.wht, addSatang: i.add ?? 0, snapshotJson: i.snap },
       });
+    // H3.4 finalized flag (stepsJson exists only once H3.4 is merged) — raw SQL so this file compiles on either client
+    if (final && HAS_STEPS) await P.$executeRawUnsafe(`UPDATE "HrPayrollRun" SET "stepsJson" = '{"finalized":true}'::jsonb WHERE "id" = $1`, run.id);
     return run.id as string;
   };
   const R = {
@@ -418,6 +424,7 @@ async function runDb(): Promise<void> {
     ]),
     r4: await mkRun(cA, "2031-04", "2031-04-30", "REVERSED", 2, [{ e: E.e1, wht: 50_000, ssoBase: 1_750_000, ee: 87_500, snap: v2snap(3_000_000, 0, 3_000_000), gross: 3_000_000 }]),
     r5: await mkRun(cA, "2031-05", "2031-05-29", "DRAFT", 2, [{ e: E.e1, wht: 50_000, ssoBase: 1_750_000, ee: 87_500, snap: v2snap(3_000_000, 0, 3_000_000), gross: 3_000_000 }]),
+    r6: await mkRun(cA, "2031-06", "2031-06-30", "APPROVED", 2, [{ e: E.e1, wht: 50_000, ssoBase: 1_750_000, ee: 87_500, snap: v2snap(3_000_000, 0, 3_000_000), gross: 3_000_000 }], false),
     rb: await mkRun(cB, "2031-02", "2031-02-27", "APPROVED", 2, [{ e: E.b1, wht: 0, ssoBase: 1_000_000, ee: 50_000, snap: { engineVersion: 2, whtOneOffSatang: 0, ssoWageSatang: 1_000_000 }, gross: 1_000_000 }]),
   };
   // S3.0 control
@@ -426,7 +433,7 @@ async function runDb(): Promise<void> {
     const items = (await P.hrPayrollItem.findMany({ where: { tenantId: TT } })) as Any[];
     const sums = runs.every((r) => items.filter((i) => i.runId === r.id).reduce((a, i) => a + i.whtSatang, 0) === r.totalWhtSatang);
     const acct = await P.appSystem.count({ where: { tenantId: TT, type: "ACCOUNT" } });
-    ck("S3.0", { runs: runs.length === 6, items: items.length === 13, sums, noAcct: acct === 0, book: (await P.appSystem.count({ where: { tenantId: TB, type: "ACCOUNT" } })) === 1 }, "fixture ok", `${runs.length} runs ${items.length} items`);
+    ck("S3.0", { runs: runs.length === 7, items: items.length === 14, sums, noAcct: acct === 0, book: (await P.appSystem.count({ where: { tenantId: TB, type: "ACCOUNT" } })) === 1 }, "fixture ok", `${runs.length} runs ${items.length} items`);
   }
   const PROFILE = { taxId: "0105555000013", branchNo: "000000", employerName: "บริษัท คิวซี ไฟล์ยื่น จำกัด", employerAddress: "1 ถนนทดสอบ แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400", deptName: "สำนักงานใหญ่", lto: false, branchType: "", rdUserId: "QCREF00000000000036", rdFormFlag: 1, ssoAccountNo: "9876543210", ssoBranchNo: "000000", ssoEncoding: "TIS620", ssoWageMode: "CLAMPED", signerName: "นายผู้ลงนาม ทดสอบ", certPrefix: "HR50" };
   // S3.1 profile
@@ -509,7 +516,7 @@ async function runDb(): Promise<void> {
     ck("S3.4", {
       bytes: eqBytes(g.value?.bytes, want),
       e3: (g.value?.notIncluded ?? []).some((x: Any) => x.employeeId === E.e3 && x.cause === "INCOMPLETE" && canon(x.fields) === canon(["nationalId"])),
-      warn: canon((g.value?.warnings ?? []).map((w: Any) => w.warning ?? w.code).sort()) === canon(["NOT_PAID", "V1_RUN"]),
+      warn: canon((g.value?.warnings ?? []).map((w: Any) => w.warning ?? w.code).sort()) === canon(["NOT_FINAL", "NOT_PAID", "V1_RUN"]),
       prop: annMap.size === 4 && [...annMap].every(([k, v]) => canon(sum.get(k)) === canon(v)),
     }, "DB2 byte-exact · Σ monthly = annual", `${firstDiff(g.value?.bytes, want)} ${shown(g)}`);
   }
@@ -531,14 +538,14 @@ async function runDb(): Promise<void> {
     const m = fileDb1 ? await P.hrFilingFile?.findUnique?.({ where: { id: fileDb1 } }).catch(() => null) : null;
     const want = gold("hr-h3.6-db1-pnd1.txt");
     const aud = ((await P.auditLog.findMany({ where: { tenantId: TT, action: "hr.filing.generate" } })) as Any[]).find((a) => a.after?.fileId === fileDb1);
-    const runs = (await P.hrPayrollRun.findMany({ where: { tenantId: TT }, orderBy: { periodKey: "asc" } })) as Any[];
+    const runs = ((await P.hrPayrollRun.findMany({ where: { tenantId: TT }, orderBy: { periodKey: "asc" } })) as Any[]).filter((r) => r.systemId === sA);
     const outbox = await P.outboxEvent.count({ where: { tenantId: TT } }).catch(() => -1);
     ck("S3.6", {
       manifest: !!m && m.sha256 === sha256Hex(want) && m.byteLength === want.length && m.lineCount === 3 && m.kind === "PND1" && m.period === "2031-02",
       times: !!m && +m.createdAt === +NOW_FEB.now && +m.expiresAt === +NOW_FEB.now + 7 * DAY,
       noIds: !!m && leaks(JSON.stringify(m.optionsJson ?? {})).length === 0,
       audit: !!aud && srt(Object.keys(aud.after ?? {})) === K.audGen && aud.after.totalSatang === 6_700_000,
-      runs: runs.map((r) => r.status).join(",") === "PAID,APPROVED,PAID,REVERSED,DRAFT" && runs.every((r) => r.filingJson === null),
+      runs: runs.map((r) => r.status).join(",") === "PAID,APPROVED,PAID,REVERSED,DRAFT,APPROVED" && runs.every((r) => r.filingJson === null),
       outbox: outbox === 0,
     }, "manifest · audit · read-only", short(m, 100));
   }
@@ -671,6 +678,15 @@ async function runDb(): Promise<void> {
       audit: aud.length === 1,
     }, "own certificate only", [list, own, other, member].map(shown).join(" "));
   }
+  // S3.16 not finalized (H3.4)
+  {
+    const ann = await S("previewFiling", cA, V.owner, { kind: "PND1A", period: "2031" }, at("2032-02-05T03:00:00Z"));
+    const nf = ((ann.value?.warnings ?? []) as Any[]).find((w) => w.warning === "NOT_FINAL");
+    const e1 = ((ann.value?.rows ?? []) as Any[]).find((r) => r.employeeId === E.e1);
+    const sso6 = await gen(cA, V.owner, { kind: "SSO110", runId: R.r6 });
+    ck("S3.16", { guard: HAS_STEPS, warn: !!nf && canon(nf.fields) === canon(["2031-06"]) && nf.employeeId === null, e1: e1?.amountSatang === 9_500_000, sso: sso6.value?.ok === false && sso6.text === T.notFinal },
+      "finalized runs only", HAS_STEPS ? `${short(nf, 80)} ${shown(sso6)}` : "n/a — HrPayrollRun.stepsJson absent (H3.4 not merged) ⇒ fail by design");
+  }
   // S3.15 DTO keys
   {
     const pv = await S("previewFiling", cA, V.owner, { kind: "PND1A", period: "2031" }, at("2032-02-05T03:00:00Z"));
@@ -771,8 +787,9 @@ async function runDb(): Promise<void> {
     const names = ((await P.hrFilingFile?.findMany?.({ where: { tenantId: TT }, select: { fileName: true } }).catch(() => [])) ?? []) as Any[];
     const routesLeak = F.routes.some((p) => /nationalId|taxId/.test(p));
     const cons = CAPTURED.join("\n");
+    const produced = (await P.auditLog.count({ where: { tenantId: TT, action: { in: ["hr.filing.generate", "hr.taxcert.issue"] } } })) >= 2;
     ck("S4.3", {
-      audit: leaks(aud).length === 0, outbox: leaks(ob).length === 0, console: leaks(cons).filter((x) => x !== "0105555000013").length === 0,
+      produced, audit: leaks(aud).length === 0, outbox: leaks(ob).length === 0, console: leaks(cons).filter((x) => x !== "0105555000013").length === 0,
       manifest: leaks(man.replace(/"fileName":"[^"]*"/g, "")).length === 0, names: names.every((n) => !leaks(String(n.fileName)).some((x) => x !== "0105555000013" && x !== "0105555000021")), routes: !routesLeak,
     }, "no IDs outside files", `audit ${leaks(aud).join(",")} console ${leaks(cons).join(",")}`);
   }

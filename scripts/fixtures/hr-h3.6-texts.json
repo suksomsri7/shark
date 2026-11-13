@@ -28,7 +28,9 @@
   "pnd1Due": "ยื่น ภ.ง.ด.1 ภายใน 7 วันนับแต่สิ้นเดือนที่จ่าย (ยื่นทางอินเทอร์เน็ตได้ถึง 15 วัน สำหรับแบบที่ครบกำหนดถึง 31 ม.ค. 2570)",
   "pnd1aDue": "ยื่น ภ.ง.ด.1ก ภายในสิ้นเดือนกุมภาพันธ์ของปีถัดไป (ยื่นทางอินเทอร์เน็ตได้ถึง 8 มีนาคม)",
   "ssoDue": "ยื่น สปส.1-10 และนำส่งเงินสมทบภายในวันที่ 15 ของเดือนถัดไป",
-  "certDue": "ออกหนังสือรับรอง 50 ทวิ ภายใน 15 กุมภาพันธ์ของปีถัดไป หรือภายใน 1 เดือนนับแต่วันที่ลูกจ้างออกจากงาน"
+  "certDue": "ออกหนังสือรับรอง 50 ทวิ ภายใน 15 กุมภาพันธ์ของปีถัดไป หรือภายใน 1 เดือนนับแต่วันที่ลูกจ้างออกจากงาน",
+  "notFinal": "รอบเงินเดือนนี้ยังลงบัญชีไม่เสร็จ — ใช้ยื่นแบบได้หลังรอบเสร็จสมบูรณ์",
+  "slashNote": "เลขที่บ้านที่มี \"/\" (กรมสรรพากรไม่รับอักขระนี้ในไฟล์) ถูกเขียนเป็น \"-\" ในไฟล์ เช่น 12/3 → 12-3 — โปรดตรวจกับนักบัญชี/ทดสอบอัปโหลดกับ e-Filing ก่อนใช้จริง"
  },
  "en": {
   "no": "Not found, or you may not manage tax and social security filings",
@@ -58,7 +60,9 @@
   "pnd1Due": "File PND 1 within 7 days after the end of the month paid (online up to 15 days, for filings due up to 31 Jan 2027)",
   "pnd1aDue": "File PND 1A by the end of February of the following year (online up to 8 March)",
   "ssoDue": "File SSO 1-10 and pay contributions by the 15th of the following month",
-  "certDue": "Issue the 50 Tawi certificate by 15 February of the following year, or within 1 month after the employee leaves"
+  "certDue": "Issue the 50 Tawi certificate by 15 February of the following year, or within 1 month after the employee leaves",
+  "notFinal": "This payroll run has not finished posting — it can be filed once it is complete",
+  "slashNote": "House numbers containing \"/\" (a character RD does not accept in the file) are written with \"-\" instead, e.g. 12/3 → 12-3 — check with the accountant / test an e-Filing upload before real use"
  },
  "fieldLabel": {
   "th": {
@@ -100,7 +104,8 @@
    "address.street": "ถนน",
    "address.subdistrict": "ตำบล/แขวง",
    "taxMonth": "เดือนภาษี",
-   "taxYear": "ปีภาษี"
+   "taxYear": "ปีภาษี",
+   "slashMode": "การเขียนเครื่องหมาย / ในที่อยู่"
   },
   "en": {
    "taxId": "Shop tax ID",
@@ -141,7 +146,8 @@
    "address.street": "Street",
    "address.subdistrict": "Subdistrict",
    "taxMonth": "Tax month",
-   "taxYear": "Tax year"
+   "taxYear": "Tax year",
+   "slashMode": "Writing \"/\" in addresses"
   }
  },
  "_fieldRule": "label of a field entry 'k' = fieldLabel[k] · of 'k:char' / 'k:long' = fieldLabel[k] + ' ' + fieldLabel[':char'|':long'] · joined by ', ' in entry order"

@@ -196,7 +196,7 @@ export const firstDiff = (x: unknown, g: Buffer) => {
   return b.length === g.length ? "same" : `len ${b.length}/${g.length}`;
 };
 export const niKey = (r: Any) => canon((r?.notIncluded ?? []) as Any[]);
-export const wKey = (r: Any) => canon(((r?.warnings ?? []) as Any[]).map((w) => ({ employeeId: w.employeeId ?? null, code: w.code })));
+export const wKey = (r: Any) => canon(((r?.warnings ?? []) as Any[]).map((w) => ({ employeeId: w.employeeId ?? null, code: w.code, fields: w.fields ?? [] })));
 export function fillText(key: string, fields: string[], lang: "th" | "en" = "th"): string {
   const L = TX?.fieldLabel?.[lang] ?? {};
   const label = (f: string) => {
@@ -244,21 +244,25 @@ export async function runPure(chk: Chk, B: Any, PDFM: Any): Promise<void> {
   const S = VEC?.sso ?? {};
   // S2.0 control — the goldens agree with the layouts on their own
   {
-    const rdFiles = ["hr-h3.6-g1-pnd1.txt", "hr-h3.6-g2-pnd1a.txt", "hr-h3.6-g2m10-pnd1.txt", "hr-h3.6-g2m12-pnd1.txt", "hr-h3.6-db1-pnd1.txt", "hr-h3.6-db2-pnd1a.txt"];
+    const rdFiles = ["hr-h3.6-g1-pnd1.txt", "hr-h3.6-g2-pnd1a.txt", "hr-h3.6-g2x-pnd1a-exclude.txt", "hr-h3.6-g2m10-pnd1.txt", "hr-h3.6-g2m11-pnd1.txt", "hr-h3.6-g2m12-pnd1.txt", "hr-h3.6-db1-pnd1.txt", "hr-h3.6-db2-pnd1a.txt"];
     const rdBad = rdFiles.filter((f) => !rdConsistent(gold(f)).ok);
     const sso: [string, "TIS620" | "UTF8", "\r\n" | "\n"][] = [["hr-h3.6-g3-sso.txt", "TIS620", "\r\n"], ["hr-h3.6-g3u-sso-utf8.txt", "UTF8", "\r\n"], ["hr-h3.6-g3l-sso-lf.txt", "TIS620", "\n"], ["hr-h3.6-g3a-sso-actual.txt", "TIS620", "\r\n"], ["hr-h3.6-g3b-sso-clamped.txt", "TIS620", "\r\n"], ["hr-h3.6-db3-sso.txt", "TIS620", "\r\n"], ["hr-h3.6-db3a-sso-actual.txt", "TIS620", "\r\n"]];
     const ssoBad = sso.filter(([f, e, l]) => !ssoConsistent(ssoRead(gold(f), e, l)).ok).map(([f]) => f);
     const g3 = ssoRead(gold("hr-h3.6-g3-sso.txt"), "TIS620");
     // research C3 V2 header, verbatim (· = space)
     const research = "112345678900000001512691169บริษัท·ตัวอย่าง·จำกัด························050000000200000000244300000000000244400000000122200000000122200".replace(/·/g, " ");
-    const ann = rdConsistent(gold("hr-h3.6-g2-pnd1a.txt")).perPin;
-    const mon = [gold("hr-h3.6-g2m10-pnd1.txt"), gold("hr-h3.6-g1-pnd1.txt"), gold("hr-h3.6-g2m12-pnd1.txt")].map((g) => rdConsistent(g).perPin);
-    const sumMon = new Map<string, [number, number]>();
-    for (const m of mon) for (const [k, [a, t]] of m) sumMon.set(k, [(sumMon.get(k)?.[0] ?? 0) + a, (sumMon.get(k)?.[1] ?? 0) + t]);
-    const prop = ann.size === sumMon.size && [...ann].every(([k, v]) => canon(sumMon.get(k)) === canon(v));
+    const propOf = (annual: string, months: string[]) => {
+      const ann = rdConsistent(gold(annual)).perPin;
+      const sumMon = new Map<string, [number, number]>();
+      for (const m of months.map((g) => rdConsistent(gold(g)).perPin)) for (const [k, [a, t]] of m) sumMon.set(k, [(sumMon.get(k)?.[0] ?? 0) + a, (sumMon.get(k)?.[1] ?? 0) + t]);
+      return ann.size === sumMon.size && [...ann].every(([k, v]) => canon(sumMon.get(k)) === canon(v));
+    };
+    // DASH (default): Oct + Nov(DASH) + Dec = G2 · EXCLUDE: Oct + Nov(= G1) + Dec = G2X
+    const prop = propOf("hr-h3.6-g2-pnd1a.txt", ["hr-h3.6-g2m10-pnd1.txt", "hr-h3.6-g2m11-pnd1.txt", "hr-h3.6-g2m12-pnd1.txt"]) && propOf("hr-h3.6-g2x-pnd1a-exclude.txt", ["hr-h3.6-g2m10-pnd1.txt", "hr-h3.6-g1-pnd1.txt", "hr-h3.6-g2m12-pnd1.txt"]);
+    const dash = rdRead(gold("hr-h3.6-g2-pnd1a.txt")).rows.find((x) => x[3] === "3900100123453")?.[18] === "12-3";
     const dbAnn = rdConsistent(gold("hr-h3.6-db2-pnd1a.txt")).perPin;
     const rows = rdRead(gold("hr-h3.6-g2-pnd1a.txt")).rows;
-    ck("S2.0", { rd: rdBad.length === 0, sso: ssoBad.length === 0, research: g3[0] === research, prop, db2: dbAnn.get("1102000123454")?.[0] === 9_500_000, dates: rows.slice(1).every((x) => x[8] === "31122569"), texts: !!T.no && !!TX?.en?.no }, "goldens consistent", `${rdBad.join(",")} ${ssoBad.join(",")}`);
+    ck("S2.0", { rd: rdBad.length === 0, sso: ssoBad.length === 0, research: g3[0] === research, prop, db2: dbAnn.get("1102000123454")?.[0] === 9_500_000, dates: rows.slice(1).every((x) => x[8] === "31122569"), dash, texts: !!T.no && !!TX?.en?.no }, "goldens consistent", `${rdBad.join(",")} ${ssoBad.join(",")}`);
   }
   // S2.1 texts
   {
@@ -290,21 +294,29 @@ export async function runPure(chk: Chk, B: Any, PDFM: Any): Promise<void> {
     const r = pnd(v.in);
     ck("S2.4", { bytes: eqBytes(r?.bytes, gold(v.file)), ...meta(r, v) }, "G1 byte-exact", firstDiff(r?.bytes, gold(v.file)));
   }
-  // S2.5 G2 + G2W
+  // S2.5 G2 (slash DASH default) + G2X (EXCLUDE) + G2W + '/' in a name
   {
     const v = P.G2;
     const r = pnd(v.in);
+    const x = P.G2X;
+    const rx = pnd(x.in);
     const w = P.G2W;
     const rw = pnd(w.in);
-    ck("S2.5", { bytes: eqBytes(r?.bytes, gold(v.file)), ...meta(r, v), wBytes: eqBytes(rw?.bytes, gold(w.file)), wWarn: wKey(rw) === canon(w.warnings) }, "G2 1ก byte-exact · reports · G2W warnings", `${firstDiff(r?.bytes, gold(v.file))} ni=${short(r?.notIncluded, 90)} w=${short(rw?.warnings, 90)}`);
+    const cn = P.charName;
+    const rc = pnd(patched(P.G1.in, cn.patch));
+    const mx = meta(rx, x);
+    ck("S2.5", {
+      bytes: eqBytes(r?.bytes, gold(v.file)), ...meta(r, v), xBytes: eqBytes(rx?.bytes, gold(x.file)), xMeta: Object.values(mx).every(Boolean),
+      wBytes: eqBytes(rw?.bytes, gold(w.file)), wWarn: wKey(rw) === canon(w.warnings), name: rc?.ok === true && rc.lineCount === cn.lineCount && niKey(rc) === canon(cn.notIncluded),
+    }, "G2 1ก byte-exact (DASH) · G2X EXCLUDE · reports · G2W warnings · '/' in a name", `${firstDiff(r?.bytes, gold(v.file))} ni=${short(r?.notIncluded, 90)} w=${short(rw?.warnings, 90)}`);
   }
   // S2.6 monthly of the same data
   {
-    const bad = ["G2M10", "G2M11", "G2M12"].filter((k) => {
+    const bad = ["G2M10", "G2M11", "G2M11X", "G2M12"].filter((k) => {
       const r = pnd(P[k].in);
       return !(eqBytes(r?.bytes, gold(P[k].file)) && Object.values(meta(r, P[k])).every(Boolean));
     });
-    chk("S2.6", bad.length === 0, "3 monthly byte-exact + reports", bad.join(",") || "ok");
+    chk("S2.6", bad.length === 0, "4 monthly byte-exact + reports (Nov DASH + EXCLUDE)", bad.join(",") || "ok");
   }
   // S2.7 RD sample round trip
   {
@@ -339,7 +351,7 @@ export async function runPure(chk: Chk, B: Any, PDFM: Any): Promise<void> {
       const text = fillText(REFUSE_KEY[x.code], x.fields);
       if (!(r?.ok === false && r.code === x.code && canon(r.fields ?? []) === canon(x.fields) && r.text === text)) bad.push(`${x.id}:${r?.code}/${short(r?.fields, 30)}`);
     }
-    chk("S2.9", bad.length === 0, "R1–R10 code · fields · text", bad.join(" · ") || "ok");
+    chk("S2.9", bad.length === 0, "R1–R11 code · fields · text", bad.join(" · ") || "ok");
   }
   const sso = (inp: Any) => call(B, "buildSso110", clone(inp));
   // S2.10 G3 + defaults

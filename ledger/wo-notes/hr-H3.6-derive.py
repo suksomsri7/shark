@@ -39,13 +39,25 @@ g1 = [rd_header("PND1", NID, "11", "2569", 2, 5000000, 50000, USER),
       rd_detail(1, "1100700123455", "นาย", "สมชาย", "ใจดี", "25112569", 3000000, 50000, A1),
       rd_detail(2, "3100500654321", "นางสาว", "สมหญิง", "รักงาน", "25112569", 2000000, 0, A1)]
 w("hr-h3.6-g1-pnd1.txt", rd_file(g1))
-# G2 annual 1ก 2569: cert holder p2 first, then p1, p6 (person order) · PAID_DATE = 3112<BE>
-g2 = [rd_header("PND1A", NID, "00", "2569", 3, 20500000, 362500, USER),
+# G2 annual 1ก 2569: cert holder p2 first, then person order · PAID_DATE = 3112<BE>
+# p5 houseNo "12/3": rule 11 forbids "/" ⇒ default slashMode DASH writes "12-3" (+ warning SLASH_DASH) · EXCLUDE ⇒ p5 out (G2X)
+A5 = ["", "", "", "", "12-3", "", "", "", "", "พญาไท", "กรุงเทพมหานคร", "10400"]
+g2 = [rd_header("PND1A", NID, "00", "2569", 4, 21500000, 362500, USER),
+      rd_detail(1, "3100500654321", "นางสาว", "สมหญิง", "รักงาน", "31122569", 4000000, 0, A1),
+      rd_detail(2, "1100700123455", "นาย", "สมชาย", "ใจดี", "31122569", 14000000, 350000, A1),
+      rd_detail(3, "3900100123453", "นาย", "มี", "ทับ", "31122569", 1000000, 0, A5),
+      rd_detail(4, "1700100123459", "", "อรุณ", "แสงทอง", "31122569", 2500000, 12500, A6)]
+w("hr-h3.6-g2-pnd1a.txt", rd_file(g2))
+g2x = [rd_header("PND1A", NID, "00", "2569", 3, 20500000, 362500, USER),
       rd_detail(1, "3100500654321", "นางสาว", "สมหญิง", "รักงาน", "31122569", 4000000, 0, A1),
       rd_detail(2, "1100700123455", "นาย", "สมชาย", "ใจดี", "31122569", 14000000, 350000, A1),
       rd_detail(3, "1700100123459", "", "อรุณ", "แสงทอง", "31122569", 2500000, 12500, A6)]
-w("hr-h3.6-g2-pnd1a.txt", rd_file(g2))
-# G2M monthly Oct/Nov/Dec of the same data (property oracle)
+w("hr-h3.6-g2x-pnd1a-exclude.txt", rd_file(g2x))
+# G2M monthly Oct/Nov/Dec of the same data (property oracle) · Nov EXCLUDE = G1 bytes
+w("hr-h3.6-g2m11-pnd1.txt", rd_file([rd_header("PND1", NID, "11", "2569", 3, 6000000, 50000, USER),
+    rd_detail(1, "1100700123455", "นาย", "สมชาย", "ใจดี", "25112569", 3000000, 50000, A1),
+    rd_detail(2, "3100500654321", "นางสาว", "สมหญิง", "รักงาน", "25112569", 2000000, 0, A1),
+    rd_detail(3, "3900100123453", "นาย", "มี", "ทับ", "25112569", 1000000, 0, A5)]))
 w("hr-h3.6-g2m10-pnd1.txt", rd_file([rd_header("PND1", NID, "10", "2569", 2, 5000000, 50000, USER),
     rd_detail(1, "1100700123455", "นาย", "สมชาย", "ใจดี", "25102569", 3000000, 50000, A1),
     rd_detail(2, "3100500654321", "นางสาว", "สมหญิง", "รักงาน", "25102569", 2000000, 0, A1)]))
@@ -95,7 +107,7 @@ def g3x(mode):
             sso_detail("1200100123453", "005", LONG, "ทดสอบ", 1200000, 60000)]
 w("hr-h3.6-g3a-sso-actual.txt", sso_file(g3x("ACTUAL"), "TIS620", "\r\n"))
 w("hr-h3.6-g3b-sso-clamped.txt", sso_file(g3x("CLAMPED"), "TIS620", "\r\n"))
-for l in g1 + g2: print(len(l), "|".join(l))
+for l in g1 + g2 + g2x: print(len(l), "|".join(l))
 for l in g3 + g3x("ACTUAL"): print(l.replace(" ", "·"))
 
 # ---- DB goldens (oracle §5 fixture: tenant qc-hr-h36-*, system A, runs 2031 = BE 2574) ----
