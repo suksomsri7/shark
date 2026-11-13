@@ -85,6 +85,7 @@ export const SKILLS: Skill[] = [
       "account_run_depreciation", "account_transfer_funds", "account_email_document",
       "account_create_recurring", "account_upload_file", "account_read_bill_image",
       "account_update_tax_settings", // ACC T0.1/T0.2 ▸ ตั้งประเภทผู้ประกอบการ / แถวตารางค่ากฎหมาย (ข้อเสนอ) ◂
+      "account_file_vat_return", "account_file_vat_additional", "account_set_vat_credit_carry", // ACC T1.3 ▸ ภ.พ.30 ยื่น · แบบเพิ่มเติม · แก้เครดิตยกมา (ข้อเสนอ) ◂
       // อันตราย (ยืนยัน 2 ชั้น)
       "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",
     ],

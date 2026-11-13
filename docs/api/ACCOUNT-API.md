@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 201 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 203 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -941,12 +941,12 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/reports/trial-balance?from=e
 
 #### `reports.vat-pp30`
 
-**GET /reports/vat-pp30** - Monthly VAT return (PP30): output VAT, input VAT and the net amount payable. Supports CSV (filing layout). · scope: `account.tax.view` · read
+**GET /reports/vat-pp30** - Monthly VAT return (PP30) with every line: sales at the standard rate, zero rated and exempt sales, output VAT, purchases and input VAT, credit brought forward from the previous month (with where it came from), net payable or excess, the filing deadlines, reconciliation to the VAT ledger accounts and the filed or additional returns of the month. Supports CSV (filing layout). · scope: `account.tax.view` · read
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
 | `period` | string | yes | period (accounting period, `YYYY-MM`). |
-| `carryForwardSatang` | integer | no | VAT credit carried forward from the previous month, in satang. Default 0. · min 0 |
+| `carryForwardSatang` | integer | no | Try another credit brought forward, in satang, without saving it. Default: the remembered credit from the previous month. · min 0 |
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/reports/vat-pp30?period=example%20period" \
@@ -1674,7 +1674,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
+| `acknowledge` | array of enum("SHOP_DIFFERS_FROM_DEFAULT", "UNVERIFIED_DEFAULT", "NO_ROW_FOR_DATE", "NO_ROW", "EWHT_NOT_IN_EFFECT", "ENTITY_KIND_UNSET", "RECIPIENT_ASSUMED", "TAX_INVOICE_NOT_VAT_REGISTERED", "TAX_INVOICE_SELLER_TAX_ID_MISSING", "ADJUST_NOTE_REASON_MISSING", "BUYER_TAX_ID_MISSING", "GIFTCARD_EXPIRY_BELOW_DEFAULT", "TAX_REPORT_ORG_NAME_MISSING", "TAX_REPORT_TAX_ID_MISSING", "PP30_EXCESS_REFUND", "PP30_CREDIT_CARRY_OVERRIDDEN", "PP30_FILED_DIFFERS", "PP30_ADDITIONAL_SURCHARGE", "PP30_DECLARED_DIFFERS", "PP30_LEGACY_FILING") | no | Legal warning codes the user has read and accepted. Send only after showing the user the warnings returned with a 409 legal_ack_required. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/issue" \
@@ -2342,16 +2342,55 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/close" \
   -H "Idempotency-Key: $(uuidgen)"
 ```
 
-#### `periods.vat-filed`
+#### `periods.vat-additional`
 
-**POST /periods/{key}/vat-filed** - Record that the VAT return (form PP.30) of one month has been filed, together with the output and input VAT that were on it. This is checklist item four when the period is closed. · scope: `account.period.close` · write
+**POST /periods/{key}/vat-additional** - File an additional VAT return (PP.30) for a month that is already marked as filed, after documents changed that month. The new figures come from the books; the difference against the latest filed figures is returned and kept with its own record. Refused when nothing changed. · scope: `account.period.close` · write · AI tool: `account_file_vat_additional`
 
 Path parameters: `key` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `salesVatSatang` | integer | yes | Output VAT on the return, in satang. · min 0 |
-| `inputVatSatang` | integer | yes | Input VAT on the return, in satang. · min 0 |
+| `excessChoice` | enum("CARRY_FORWARD", "REFUND") | no | What to do when input VAT is more than output VAT: CARRY_FORWARD to the next month (default from the book setting) or REFUND. |
+| `note` | one of several shapes | no | Why the additional return is filed. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/vat-additional" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `periods.vat-credit-carry`
+
+**POST /periods/{key}/vat-credit-carry** - Set the VAT credit brought forward into one month by hand, for example to match what the accountant filed. Every change is kept as history with its reason. Send amountSatang null to go back to the amount the system works out from the previous month. · scope: `account.period.close` · write · AI tool: `account_set_vat_credit_carry`
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `amountSatang` | one of several shapes | yes | Credit brought forward in satang, or null to use the system amount again. |
+| `reason` | string | yes | Why the credit is being changed. Kept in the history. · min length 3 · max length 500 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/vat-credit-carry" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"amountSatang":"example amountSatang","reason":"reason for the audit log"}'
+```
+
+#### `periods.vat-filed`
+
+**POST /periods/{key}/vat-filed** - Record that the VAT return (form PP.30) of one month has been filed. Every line of the return (sales at the standard rate, zero rated and exempt sales, purchases, output and input VAT, credit brought forward, net payable or excess) is taken from the books and kept as the filed figures. The amounts in the request are optional: they are stored as declared and a warning is returned when they differ from the books. This is checklist item four when the period is closed. · scope: `account.period.close` · write · AI tool: `account_file_vat_return`
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `salesVatSatang` | integer | no | Output VAT on the return as filed, in satang. Optional; the books are used when it is missing. · min 0 |
+| `inputVatSatang` | integer | no | Input VAT on the return as filed, in satang. Optional; the books are used when it is missing. · min 0 |
+| `excessChoice` | enum("CARRY_FORWARD", "REFUND") | no | What to do when input VAT is more than output VAT: CARRY_FORWARD to the next month (default from the book setting) or REFUND. |
 | `note` | one of several shapes | no | How it was filed, for example through the e-filing site. |
 
 ```bash
@@ -2359,7 +2398,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/vat-filed" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
-  -d '{"salesVatSatang":10000,"inputVatSatang":10000}'
+  -d '{}'
 ```
 
 #### `petty-cash.reimburse`
@@ -3548,7 +3587,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
 
 ## AI tools
 
-38 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+41 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 `account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
@@ -3567,6 +3606,8 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_create_recurring` | `recurring.create` | write | `account.doc.create` |
 | `account_dashboard` | `dashboard.get` | read | `account.doc.view` |
 | `account_email_document` | `documents.remind` | write | `account.doc.view` |
+| `account_file_vat_additional` | `periods.vat-additional` | write | `account.period.close` |
+| `account_file_vat_return` | `periods.vat-filed` | write | `account.period.close` |
 | `account_finance_balances` | `finance-accounts.list` | read | `account.finance.manage` |
 | `account_get_contact` | `contacts.get` | read | `account.doc.view` |
 | `account_get_document` | `documents.get` | read | `account.doc.view` |
@@ -3584,6 +3625,7 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_run_depreciation` | `assets.depreciation-run` | write | `account.asset.manage` |
 | `account_search_contacts` | `contacts.list` | read | `account.doc.view` |
 | `account_search_products` | `products.list` | read | `account.doc.view` |
+| `account_set_vat_credit_carry` | `periods.vat-credit-carry` | write | `account.period.close` |
 | `account_settings` | `settings.get` | read | `account.doc.view` |
 | `account_tax_settings` | `settings.tax` | read | `account.doc.view` |
 | `account_transfer_funds` | `finance.transfer` | write | `account.finance.manage` |
@@ -3607,7 +3649,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
 
-`GET https://shark.in.th/api/v1/ai/skills/account` returns the 38 tools (15 read, 23 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 41 tools (15 read, 26 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "account", "label": "บัญชี", "summary": "...", "tools": [

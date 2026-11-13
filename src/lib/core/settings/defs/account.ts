@@ -28,6 +28,14 @@ import {
 
 const EDIT = "account.settings.manage";
 
+/** ACC T1.3 ▸ ภ.พ.30: ภาษีที่ชำระเกิน → ยกไปเดือนถัดไป / ขอคืน (ม.84 · skill common-vat-invoice §19) ◂ */
+export const PP30_EXCESS_CHOICES = ["CARRY_FORWARD", "REFUND"] as const;
+export type Pp30ExcessChoice = (typeof PP30_EXCESS_CHOICES)[number];
+export const PP30_EXCESS_CHOICE_LABEL_TH: Record<Pp30ExcessChoice, string> = {
+  CARRY_FORWARD: "ยกไปหักในเดือนถัดไป",
+  REFUND: "ขอคืนเป็นเงินสด",
+};
+
 /** ACC T1.1 ▸ รายงานภาษีขาย: วิธีลงใบกำกับภาษีอย่างย่อ (skill §1.3 "1 แถว/วัน/สาขา (หรือ/เครื่อง)") ◂ */
 export const SALES_TAX_ABB_MODES = ["DAILY_DEVICE", "DAILY_BRANCH", "PER_BILL"] as const;
 export type SalesTaxAbbMode = (typeof SALES_TAX_ABB_MODES)[number];
@@ -150,6 +158,15 @@ const DEFS: SettingDef[] = [
     defaults: { _fallback: "DAILY_DEVICE" },
     chain: CHAIN, editPermission: EDIT,
   },
+  {
+    // ACC T1.3 ▸ ม.84: ภาษีซื้อเกินภาษีขาย = ยกไปเป็นเครดิตเดือนถัดไป หรือขอคืน — ค่าเริ่มของสมุด · เลือกต่อเดือนได้ตอนทำเครื่องหมายยื่น ◂
+    key: "account.report.pp30ExcessChoice", domain: "account", group: "report", type: "enum", labelTh: "ภ.พ.30: ภาษีที่ชำระเกิน",
+    helpTh: "เมื่อภาษีซื้อมากกว่าภาษีขาย จะยกไปหักในเดือนถัดไปหรือขอคืนเป็นเงินสด (ม.84) — เลือกใหม่ได้ทุกเดือนตอนทำเครื่องหมายยื่น",
+    schema: z.enum(PP30_EXCESS_CHOICES),
+    enumLabelsTh: PP30_EXCESS_CHOICE_LABEL_TH,
+    defaults: { _fallback: "CARRY_FORWARD" },
+    chain: CHAIN, editPermission: EDIT,
+  },
 ];
 
 defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน" } });
@@ -160,4 +177,5 @@ export const ACCOUNT_SETTING_KEYS = {
   wht: "account.legal.whtRates",
   deadline: "account.legal.filingDeadlines",
   salesTaxAbbMode: "account.report.salesTaxAbbMode",
+  pp30ExcessChoice: "account.report.pp30ExcessChoice",
 } as const;

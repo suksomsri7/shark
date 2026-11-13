@@ -461,7 +461,7 @@ const pp30Input = z
       .int()
       .min(0)
       .optional()
-      .describe("VAT credit carried forward from the previous month, in satang. Default 0."),
+      .describe("Try another credit brought forward, in satang, without saving it. Default: the remembered credit from the previous month."),
   })
   .strict();
 
@@ -472,7 +472,7 @@ const reportsVatPp30 = defineOp({
   kind: "read",
   action: "account.tax.view",
   rate: "report",
-  summary: "Monthly VAT return (PP30): output VAT, input VAT and the net amount payable. Supports CSV (filing layout).",
+  summary: "Monthly VAT return (PP30) with every line: sales at the standard rate, zero rated and exempt sales, output VAT, purchases and input VAT, credit brought forward from the previous month (with where it came from), net payable or excess, the filing deadlines, reconciliation to the VAT ledger accounts and the filed or additional returns of the month. Supports CSV (filing layout).",
   label: "ภ.พ.30 รายเดือน",
   input: pp30Input,
   test: "B4-G3.10",

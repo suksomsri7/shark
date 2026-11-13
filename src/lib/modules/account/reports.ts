@@ -3,6 +3,8 @@ import { csvCell } from "@/lib/core/csv";
 import type { AccountLedgerType, AccountCashflowActivity, Prisma } from "@prisma/client";
 import { buildChecks, salesTaxReport, type SalesTaxReport } from "./sales-tax-report";
 import { rateLabelTh, SALES_TAX_ABB_MODE_LABEL_TH, type SalesTaxAbbMode } from "./sales-tax-shared";
+import { pp30ReturnOf, vatLedgers, type Pp30Return } from "./pp30-return";
+import { PP30_CARRY_SOURCE_LABEL_TH, PP30_EXCESS_CHOICE_LABEL_TH, PP30_LINE_KEYS, PP30_LINE_LABEL_TH, PP30_AMOUNT_KEYS, type Pp30ExcessChoice } from "./pp30-shared";
 
 // ─────────────────────────────────────────────────────────────
 // reports.ts — งบการเงิน + รายงาน (P3) · READ-ONLY (ไม่โพสต์ GL)
@@ -486,9 +488,11 @@ export type Pp30 = {
   salesTax: SalesTaxReport;
   output: Pp30Side; // ภาษีขาย (2200)
   input: Pp30Side; // ภาษีซื้อ (1150)
-  carryForward: number; // เครดิตภาษียกมาเดือนก่อน (ผู้ใช้กรอก — v1 ไม่มีตารางยื่น)
-  netPayable: number; // > 0 = ต้องชำระ · < 0 = เครดิตยกไป
-  creditCarry: number; // ยอดเครดิตยกไปเดือนถัดไป (= −netPayable ถ้าติดลบ)
+  carryForward: number; // เครดิตภาษียกมา (T1.3: จำจากเดือนก่อน — `ret.carry` บอกที่มา)
+  netPayable: number; // > 0 = ต้องชำระ · < 0 = ชำระเกินสุทธิ
+  creditCarry: number; // ยอดเครดิตยกไปเดือนถัดไป (0 เมื่อเลือกขอคืน)
+  /** ACC T1.3 ▸ ภ.พ.30 ครบช่อง · เครดิตยกมา · กำหนดยื่น · กระทบ GL ผ่าน mapping · สถานะยื่น/แบบเพิ่มเติม · คำเตือน ◂ */
+  ret: Pp30Return;
 };
 
 async function pp30Side(
@@ -595,18 +599,16 @@ async function pp30Side(
 export async function pp30(
   ctx: GlCtx,
   periodKey: string,
-  opts?: { carryForward?: number; abbMode?: SalesTaxAbbMode | null },
+  opts?: { carryForward?: number | null; abbMode?: SalesTaxAbbMode | null; excessChoice?: Pp30ExcessChoice | null },
 ): Promise<Pp30> {
-  const ledgers = await prisma.accountLedger.findMany({
-    where: { systemId: ctx.systemId, code: { in: ["2200", "1150"] } },
-    select: { id: true, code: true },
-  });
-  const outputId = ledgers.find((l) => l.code === "2200")?.id;
-  const inputId = ledgers.find((l) => l.code === "1150")?.id;
+  // ACC T1.3 ▸ บัญชีภาษีจาก mapping (VAT_OUTPUT / VAT_INPUT) — ไม่ใช่รหัสตายตัว ◂
+  const ledgers = await vatLedgers(ctx);
+  const outputId = ledgers.VAT_OUTPUT?.id;
+  const inputId = ledgers.VAT_INPUT?.id;
 
   // ACC T1.1 ▸ ภาษีขาย: ยอด ภ.พ.30 = ยอดเคลื่อนไหว 2200 ของเดือน (คิวรีรวมแยก) · รายใบ/กลุ่มอัตรามาจากรายงานภาษีขาย ◂
   const [salesTax, outAgg, input] = await Promise.all([
-    salesTaxReport(ctx, periodKey, { abbMode: opts?.abbMode ?? null }),
+    salesTaxReport(ctx, periodKey, { abbMode: opts?.abbMode ?? null, outputLedgerId: outputId ?? null }),
     outputId
       ? prisma.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: outputId, entry: { periodKey } }, _sum: { debit: true, credit: true } })
       : Promise.resolve(null),
@@ -635,16 +637,31 @@ export async function pp30(
     byRate: salesTax.groups.map((g) => ({ rateBp: g.rateBp, base: g.base, vat: g.vat })),
   };
 
-  const carryForward = opts?.carryForward ?? 0;
-  const netPayable = output.total - input.total - carryForward;
+  // ACC T1.3 ▸ ช่องยอดขายแยกอัตรามาจากกลุ่มของรายงานภาษีขาย (ตัวคิดเดียว — ตรงรายงาน ม.87) ◂
+  const sumGroups = (f: (bp: number) => boolean) => salesTax.groups.filter((g) => f(g.rateBp)).reduce((n, g) => n + g.base, 0);
+  const ret = await pp30ReturnOf(
+    ctx,
+    periodKey,
+    {
+      salesTaxable: sumGroups((bp) => bp > 0),
+      salesZero: sumGroups((bp) => bp === 0),
+      salesExempt: sumGroups((bp) => bp < 0),
+      outputVat,
+      purchases: input.base,
+      inputVat: input.total,
+    },
+    { carryOverride: opts?.carryForward ?? null, excessChoice: opts?.excessChoice ?? null, ledgers },
+  );
+  const l = ret.lines;
   return {
     periodKey,
     salesTax,
     output,
     input,
-    carryForward,
-    netPayable,
-    creditCarry: netPayable < 0 ? -netPayable : 0,
+    carryForward: l.creditBroughtForward,
+    netPayable: l.netPayable - l.netExcess,
+    creditCarry: l.creditCarriedForward,
+    ret,
   };
 }
 
@@ -653,6 +670,28 @@ export async function pp30(
 // 🔴 WO 9.2 ข้อ 7: กันสูตร + quote ผ่าน `csvCell` กลาง (ชื่อคู่ค้า/เลขที่เอกสารมาจากผู้ใช้)
 //    ตัวเลขที่ส่งเข้ามาเป็น number = สตางค์ → แปลงเป็นบาททศนิยม 2 ก่อนส่งต่อ
 const pp30Cell = (v: string | number): string => csvCell(typeof v === "number" ? (v / 100).toFixed(2) : v);
+
+/** ACC T1.3 ▸ ช่อง ภ.พ.30 ครบ (มูลค่า + ภาษี) · เครดิตยกมา + ที่มา · กำหนดยื่น · กระทบ GL · สถานะยื่น — ใช้ใน CSV ◂ */
+function pp30ReturnCsv(ret: Pp30Return, row: (cells: (string | number)[]) => void): void {
+  const l = ret.lines;
+  row(["ภ.พ.30 — สรุปตามช่อง", "มูลค่า(บาท)", "ภาษี(บาท)"]);
+  for (const k of PP30_LINE_KEYS) {
+    const amount = PP30_AMOUNT_KEYS.includes(k);
+    row([PP30_LINE_LABEL_TH[k], amount ? l[k] : "", amount ? "" : l[k]]);
+  }
+  row(["ภาษีที่ชำระเกินสุทธิ", PP30_EXCESS_CHOICE_LABEL_TH[l.excessChoice]]);
+  row(["ที่มาของเครดิตยกมา", PP30_CARRY_SOURCE_LABEL_TH[ret.carry.source], "เดือนต้นทาง", ret.carry.fromPeriod]);
+  if (ret.deadline.paper) row(["กำหนดยื่น (กระดาษ)", ret.deadline.paper.date]);
+  if (ret.deadline.online) row(["กำหนดยื่น (อินเทอร์เน็ต)", ret.deadline.online.date]);
+  for (const c of ret.reconcile) {
+    if (c.onReturn === null) row([`บัญชีพัก: ${c.label}`, c.ledger ? `${c.ledger.code} ${c.ledger.name}` : "ไม่ได้ผูกบัญชี", "ยอดคงค้างสิ้นเดือน (ไม่เข้า ภ.พ.30)", c.balance ?? 0]);
+    else row([`กระทบยอด: ${c.label}`, c.ledger ? `${c.ledger.code} ${c.ledger.name}` : "ไม่ได้ผูกบัญชี", "ยอดในบัญชี", c.movement, "ในแบบ", c.onReturn, c.ok ? "ตรง" : "ไม่ตรง"]);
+  }
+  row(["สถานะยื่น", ret.filed.filed ? `ยื่นแล้ว ${ret.filed.records.length} ครั้ง` : "ยังไม่ได้ทำเครื่องหมายยื่น"]);
+  for (const x of ret.filed.records) row([x.kind === "ORIGINAL" ? "แบบปกติ" : `แบบเพิ่มเติมครั้งที่ ${x.seq}`, x.filedAt.toISOString().slice(0, 10), "ภาษีสุทธิ", (x.lines.netPayable ?? 0) - (x.lines.netExcess ?? 0)]);
+  if (ret.amendmentNeeded) row(["ยอดในสมุดต่างจากที่ยื่นล่าสุด — อาจต้องยื่นแบบเพิ่มเติม"]);
+  for (const w of ret.warnings) row(["คำเตือน", w.messageTh, w.citation ?? ""]);
+}
 
 export async function pp30Csv(
   ctx: GlCtx,
@@ -715,9 +754,8 @@ export async function pp30Csv(
     );
   }
   lines.push(["รวมภาษีซื้อ", "", "", "", "", "", "", pp30Cell(r.input.base), pp30Cell(r.input.total)].map((v) => pp30Cell(v as string)).join(","));
-  lines.push(["รวมภาษีขาย", "", "", "", "", "", "", pp30Cell(r.output.base), pp30Cell(r.output.total)].map((v) => pp30Cell(v as string)).join(","));
-  lines.push(["เครดิตยกมา", "", "", "", "", "", "", "", pp30Cell(r.carryForward)].map((v) => pp30Cell(v as string)).join(","));
-  lines.push([r.netPayable >= 0 ? "ภาษีต้องชำระ" : "เครดิตยกไป", "", "", "", "", "", "", "", pp30Cell(Math.abs(r.netPayable))].map((v) => pp30Cell(v as string)).join(","));
+  lines.push("");
+  pp30ReturnCsv(r.ret, row);
   return "\uFEFF" + lines.join("\n");
 }
 

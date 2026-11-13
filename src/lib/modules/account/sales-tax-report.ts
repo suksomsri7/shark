@@ -11,6 +11,7 @@ import { resolveBookSettings } from "@/lib/core/settings";
 import { ACCOUNT_SETTING_KEYS } from "@/lib/core/settings/defs/account";
 import { vatRateBpAt } from "./legal-values";
 import { posBillMeta, type PosBillMeta } from "./pos-bill-meta";
+import { vatLedgers } from "./pp30-return";
 import {
   baseVatTolerance,
   groupByRate,
@@ -89,16 +90,28 @@ type SourceAgg = {
   reversalDate: Date | null;
   journalNo: string;
   memo: string | null;
+  /** ACC T1.3: เอกสารขายที่มีแต่บรรทัด 0%/ยกเว้น (ไม่มียอดภาษี) */
+  zeroOnly?: boolean;
+  /** ACC T1.3: เอกสาร 0%/ยกเว้น ที่มีรายการกลับรายการในเดือน */
+  zeroReversed?: boolean;
 };
 
-export async function salesTaxReport(ctx: Ctx, periodKey: string, opts?: { abbMode?: SalesTaxAbbMode | null }): Promise<SalesTaxReport> {
+/** ชนิดเอกสารฝั่งขายที่ลงรายงานภาษีขายได้แม้ไม่มีภาษี (ยอดขาย 0% / ยกเว้น) */
+const ZERO_RATED_SALES_DOC_TYPES = ["TAX_INVOICE", "RECEIPT", "CREDIT_NOTE", "DEBIT_NOTE"] as const;
+
+export async function salesTaxReport(
+  ctx: Ctx,
+  periodKey: string,
+  opts?: { abbMode?: SalesTaxAbbMode | null; /** ACC T1.3: บัญชีภาษีขายจาก mapping (ผู้เรียกที่หาไว้แล้วส่งมา) */ outputLedgerId?: string | null },
+): Promise<SalesTaxReport> {
   const db = tenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId });
   const [settings, ledger, abbModeSetting] = await Promise.all([
     db.accountSettings.findFirst({
       where: {},
       select: { orgName: true, taxId: true, branchCode: true, branchName: true, docConfig: true },
     }),
-    db.accountLedger.findFirst({ where: { code: "2200" }, select: { id: true } }),
+    // ACC T1.3 ▸ บัญชีภาษีขายตาม mapping VAT_OUTPUT (ไม่ใช่รหัส 2200 ตายตัว) ◂
+    opts?.outputLedgerId ? Promise.resolve({ id: opts.outputLedgerId }) : vatLedgers(ctx).then((l) => (l.VAT_OUTPUT ? { id: l.VAT_OUTPUT.id } : null)),
     salesTaxAbbModeOf(ctx),
   ]);
   const abbMode = opts?.abbMode && isSalesTaxAbbMode(opts.abbMode) ? opts.abbMode : abbModeSetting;
@@ -152,6 +165,42 @@ export async function salesTaxReport(ctx: Ctx, periodKey: string, opts?: { abbMo
       if (e.date < s.firstDate) s.firstDate = e.date;
     }
     sources.set(key, s);
+  }
+
+  // ── 1b) ACC T1.3 ▸ เอกสารขายที่มีแต่บรรทัด 0% / ยกเว้น (ไม่มีบรรทัด 2200 จึงไม่อยู่ในข้อ 1) ──
+  //   ยอดขาย 0% / ยกเว้น ของ ภ.พ.30 ต้องนับด้วย (skill §19) · เอาเฉพาะใบชนิดภาษีขายที่ลงบัญชีในเดือน และไม่มีบรรทัดอัตราบวกเลย
+  //   (ใบที่มีบรรทัด 7% แต่ไม่มีภาษีขายในเดือน = ภาษีพัก/ยังไม่ถึงจุดรับผิด — ไม่ใช่ยอดขาย 0%) ◂
+  const zeroEntries = await db.accountJournalEntry.findMany({
+    where: { periodKey, refType: "AccountDocument" },
+    select: { refId: true, date: true, docNo: true, memo: true, reversalOfId: true },
+  });
+  const zeroCand = zeroEntries.filter((e) => e.refId && !sources.has(`AccountDocument:${e.refId}`));
+  if (zeroCand.length) {
+    const zDocs = await db.accountDocument.findMany({
+      where: {
+        id: { in: [...new Set(zeroCand.map((e) => e.refId!))] },
+        docType: { in: [...ZERO_RATED_SALES_DOC_TYPES] },
+        status: { not: "DRAFT" },
+        lines: { some: { vatRateBp: { lte: 0 } }, none: { vatRateBp: { gt: 0 } } },
+      },
+      select: { id: true },
+    });
+    const ok = new Set(zDocs.map((d) => d.id));
+    for (const e of zeroCand) {
+      if (!ok.has(e.refId!)) continue;
+      const key = `AccountDocument:${e.refId}`;
+      const z =
+        sources.get(key) ??
+        ({ key, refType: "AccountDocument", refId: e.refId!, vat: 0, reversalVat: 0, hasOriginal: false, firstDate: e.date, reversalDate: null, journalNo: e.docNo, memo: e.memo, zeroOnly: true } as SourceAgg);
+      if (e.reversalOfId) {
+        z.zeroReversed = true;
+        z.reversalDate = z.reversalDate && z.reversalDate > e.date ? z.reversalDate : e.date;
+      } else {
+        z.hasOriginal = true;
+        if (e.date < z.firstDate) z.firstDate = e.date;
+      }
+      sources.set(key, z);
+    }
   }
 
   // ── 2) เอกสารบัญชี + บิล POS ──
@@ -215,10 +264,11 @@ export async function salesTaxReport(ctx: Ctx, periodKey: string, opts?: { abbMo
   const docRows: SalesTaxRow[] = [];
   const abbBills: SalesTaxRow[] = [];
   for (const s of sources.values()) {
-    if (s.vat === 0 && !s.hasOriginal) continue; // ไม่มีอะไรในเดือนนี้
-    const sameMonthCancel = s.hasOriginal && s.reversalVat !== 0 && s.vat === 0;
-    const laterMonthCancel = !s.hasOriginal && s.reversalVat !== 0;
-    if (s.vat === 0 && !sameMonthCancel) continue; // คู่บวกลบอื่น (ไม่ใช่การยกเลิก) — ไม่มียอดให้รายงาน
+    if (s.vat === 0 && !s.hasOriginal && !s.zeroReversed) continue; // ไม่มีอะไรในเดือนนี้
+    const reversed = s.reversalVat !== 0 || !!s.zeroReversed;
+    const sameMonthCancel = s.hasOriginal && reversed && s.vat === 0;
+    const laterMonthCancel = !s.hasOriginal && reversed;
+    if (s.vat === 0 && !sameMonthCancel && !s.zeroOnly) continue; // คู่บวกลบอื่น (ไม่ใช่การยกเลิก) — ไม่มียอดให้รายงาน
 
     let doc: Doc | undefined;
     let meta: PosBillMeta | undefined;
@@ -254,6 +304,8 @@ export async function salesTaxReport(ctx: Ctx, periodKey: string, opts?: { abbMo
         stdRateBp,
         { sign, grossFallback: meta?.grandTotalSatang },
       );
+      // ACC T1.3 ▸ ใบ 0%/ยกเว้น ที่ถูกยกเลิกข้ามเดือน: ไม่มียอดภาษีให้กลับทิศ ⇒ กลับทิศฐานเอง ◂
+      if (s.zeroOnly && laterMonthCancel) parts = parts.map((x) => ({ ...x, base: -x.base }));
     }
 
     // หมายเหตุ
