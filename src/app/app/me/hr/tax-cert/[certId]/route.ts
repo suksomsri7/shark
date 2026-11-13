@@ -1,0 +1,17 @@
+// HR H3.6 ▸ หนังสือรับรอง 50 ทวิ ของตัวเอง (brief R9 · R14) — GET → downloadMyTaxCertificate (ผ่าน filings/download-route.ts#myTaxCertGet)
+//   ผู้ใช้ → พนักงานของตัวเอง (H2.10 resolveSelf) · ใบที่ยังไม่ยกเลิกของตัวเองเท่านั้น · อื่น ๆ = ข้อความ "ไม่พบ" เดียวกัน · 204 สำหรับ rsc/prefetch ◂
+import { getLocale } from "next-intl/server";
+import { requireTenant } from "@/lib/core/context";
+import { selfActorOf } from "@/lib/modules/hr/self";
+import { isRouterFetch } from "@/lib/modules/hr/bank-files/download-route";
+import { myTaxCertGet } from "@/lib/modules/hr/filings/download-route";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request, { params }: { params: Promise<{ certId: string }> }) {
+  if (isRouterFetch(req)) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+  const { certId } = await params;
+  const auth = await requireTenant();
+  return myTaxCertGet(req, selfActorOf(auth), certId, { locale: await getLocale() });
+}
