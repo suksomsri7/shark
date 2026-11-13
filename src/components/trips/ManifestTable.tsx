@@ -45,8 +45,8 @@ export default function ManifestGroups({ vm, unitSlug, X }: { vm: ManifestVM; un
   );
   const notes = (row: ManifestRowVM) => (
     <div className="flex min-w-0 flex-col gap-0.5">
-      {X.noteParts(row).map((line) => (
-        <span key={line} className="[overflow-wrap:anywhere]">
+      {X.noteParts(row).map((line, i) => (
+        <span key={`${i}:${line}`} className="[overflow-wrap:anywhere]">
           {line}
         </span>
       ))}
@@ -69,7 +69,7 @@ export default function ManifestGroups({ vm, unitSlug, X }: { vm: ManifestVM; un
       {vm.groups.map((grp) => {
         const name = groupTitle(grp, X);
         const run = grp.run;
-        const over = run !== null && run.vehicleSeats !== null && grp.people > run.vehicleSeats;
+        const over = grp.overSeats;
         return (
           <section key={grp.key} data-testid={`trips-mf-group-${grp.key}`} data-group-kind={grp.kind} className="flex min-w-0 flex-col gap-2 border-t-2 border-[color:var(--color-ink)] pt-3">
             <header className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">

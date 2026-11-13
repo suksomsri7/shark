@@ -479,7 +479,7 @@ try {
     const forbidden = ["prisma", "src/lib/core", "src/lib/platform", "src/lib/payment", "src/app/api", "src/lib/outbox-consumers.ts",
       ...["pos", "account", "party", "approval", "hotel", "rooms", "booking", "dorm", "queue", "ticket", "agency", "supplier", "hr"].map((m) => `src/lib/modules/${m}`),
       ...atBase("src/lib/modules/trips").filter((f) => !LIMITED_SET.has(f)), ...atBase(COMP).filter((f) => !LIMITED_SET.has(f)), ...atBase(APP),
-      ...atBase("scripts").filter((f) => /^scripts\/(qc-trips-[\w.]+\.mts|probe-trips-[\w.-]+\.mts)$/.test(f) && f !== "scripts/qc-trips-t1.4.mts"), "scripts/fitness.mts", "scripts/with-gate-lock.sh", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts", "scripts/iso.sh", "scripts/qc-trips.sh"];
+      ...atBase("scripts").filter((f) => /^scripts\/(qc-trips-[\w.]+\.mts|probe-trips-[\w.-]+\.mts)$/.test(f) && f !== "scripts/qc-trips-t1.4.mts" && f !== "scripts/qc-trips-t1.2.mts" /* ORACLE-EDIT S-13: ผู้คุมแก้ t1.2 PV-4/PV-8/PV-9 ในใบนี้ (มติ M2) */), "scripts/fitness.mts", "scripts/with-gate-lock.sh", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts", "scripts/iso.sh", "scripts/qc-trips.sh"];
     const sameAsSession = (f: string) => git(["diff", "--name-only", "session/trips", "--", lit(f)]).trim() === "" && git(["ls-files", "--others", "--exclude-standard", "--", lit(f)]).trim() === "";
     const changed = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", ...forbidden.map(lit)]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...forbidden.filter((p) => !p.includes(".")).map(lit)]).split("\n")].filter(Boolean))];
     const touched = changed.filter((f) => !sameAsSession(f));
@@ -1168,7 +1168,10 @@ try {
   await st("EX-9", "เพดาน: รอบที่เกินเพดาน ⇒ truncated true · แถวข้อมูล ≤ TRIPS_MANIFEST_PAX_CAP · audit จด truncated true + rows จริง · ขนาดไฟล์มีขอบเขต", async () => {
     needDb(); ok(CAPDEP, "BT-19 ไม่ผ่าน (ไม่มีรอบเกินเพดาน)"); const PCAP = num(constOf("TRIPS_MANIFEST_PAX_CAP"));
     const v = V(await ex("oa", {}, { dep: CAPDEP }), "export cap"); const rows = parseCsv(String(v.csv ?? ""));
-    ok(v.truncated === true && rows.length - 1 <= PCAP && rows.length - 1 === v.rows && num(v.rows) > 0, `truncated ${v.truncated} rows ${rows.length - 1}/${v.rows} cap ${PCAP}`);
+    // ORACLE-EDIT EX-9 (มติ M3): ไฟล์ที่ถูกตัดมีบรรทัดแจ้งเป็นบรรทัดแรก (1 ช่อง · บอก x จาก y) ก่อนหัวตาราง — ไม่นับเป็นแถวข้อมูล
+    const data = rows.length - 2;
+    ok(rows[0]?.filter(Boolean).length === 1 && /\d+\s*จาก\s*\d+/.test(rows[0].join("")), `บรรทัดแรกต้องเป็นบรรทัดแจ้งว่าถูกตัด: ${JSON.stringify(rows[0]).slice(0, 120)}`);
+    ok(v.truncated === true && data <= PCAP && data === v.rows && num(v.rows) > 0, `truncated ${v.truncated} rows ${data}/${v.rows} cap ${PCAP}`);
     ok(String(v.csv ?? "").length < PCAP * 2000, "ไฟล์ใหญ่เกินขอบเขต");
     const a = (await audits("trips.manifest.exported")).filter((x) => x.targetId === CAPDEP).pop();
     eq([a?.after?.truncated, a?.after?.rows], [true, v.rows], "audit");

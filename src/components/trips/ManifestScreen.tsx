@@ -16,13 +16,30 @@ import ManifestPrint from "./ManifestPrint";
 import { HealthDialog } from "./ManifestDialogs";
 
 const NOTE = "rounded-lg border border-dashed border-[color:var(--color-line)] px-3 py-2 text-sm text-[color:var(--color-ink)] [overflow-wrap:anywhere]";
-const ALERT = "rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-sm font-medium text-[color:var(--color-danger)] [overflow-wrap:anywhere]";
+/** BOM ของ UTF-8 (เขียนเป็น escape — ไม่ใช่อักขระมองไม่เห็นในซอร์ส) */
+const BOM = "\uFEFF";
+const REVOKE_DELAY_MS = 60_000;
+const CUT_KEYS = ["runs", "itemGroups", "items", "resourceUses", "paxTypes"] as const;
+const ALERT ="rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-sm font-medium text-[color:var(--color-danger)] [overflow-wrap:anywhere]";
+
+/**
+ * ขนาดตัวเลขใหญ่ของการ์ดตามความยาวข้อความ — ตัวเลขไม่ขึ้นบรรทัดกลางตัวเลข (whitespace-nowrap) ที่ 1440 (6 การ์ด) และ 390 (2 การ์ด)
+ * การ์ดแคบสุด ≈ 138 px ของเนื้อหา: ≤ 6 ตัว = 24 px · ≤ 9 = 20 px · ≤ 12 = 18 px · ≤ 14 = 16 px · ยาวกว่านั้น = 14 px
+ */
+function kpiSize(value: string): string {
+  const n = value.length;
+  if (n <= 6) return "text-2xl";
+  if (n <= 9) return "text-xl";
+  if (n <= 12) return "text-lg";
+  if (n <= 14) return "text-base";
+  return "text-sm";
+}
 
 function Kpi({ "data-testid": testid, label, value, children }: { "data-testid": string; label: string; value: string; children?: ReactNode }) {
   return (
     <div data-testid={testid} className="flex min-w-0 flex-col gap-1 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
       <span className="text-sm text-[color:var(--color-muted)]">{label}</span>
-      <b className="text-2xl tabular-nums text-[color:var(--color-ink)] [overflow-wrap:anywhere]">{value}</b>
+      <b className={`${kpiSize(value)} whitespace-nowrap font-bold leading-tight tabular-nums text-[color:var(--color-ink)]`}>{value}</b>
       <div className="flex min-w-0 flex-col gap-0.5 text-sm text-[color:var(--color-ink-soft)] [overflow-wrap:anywhere]">{children}</div>
     </div>
   );
@@ -74,14 +91,17 @@ export default function ManifestScreen({ unitSlug, vm, channels, printedBy }: { 
         setExportError(codeText(r.code, t("manifest.export.error")));
         return;
       }
-      const url = URL.createObjectURL(new Blob([r.value.csv], { type: "text/csv;charset=utf-8" }));
+      // BOM ใส่ตอนสร้างไฟล์ฝั่งเบราว์เซอร์ (ตัวถอดรหัสคำตอบของ server action ตัด BOM นำหน้าทิ้ง) — Excel จึงอ่านภาษาไทยได้เมื่อดับเบิลคลิก
+      const body = r.value.csv.startsWith(BOM) ? r.value.csv.slice(BOM.length) : r.value.csv;
+      const url = URL.createObjectURL(new Blob([BOM, body], { type: "text/csv;charset=utf-8" }));
       const a = document.createElement("a");
       a.href = url;
       a.download = r.value.filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      // ปล่อยหน่วยความจำหลังเบราว์เซอร์เริ่มดาวน์โหลดแล้ว (คืนทันทีทำให้บางเบราว์เซอร์ยกเลิกการดาวน์โหลด)
+      window.setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
       setExported({ rows: r.value.rows, truncated: r.value.truncated });
     } catch {
       setExportError(t("manifest.export.error"));
@@ -93,6 +113,7 @@ export default function ManifestScreen({ unitSlug, vm, channels, printedBy }: { 
   const ratio = (a: number | null, b: number | null) => (a === null || b === null ? "—" : t("manifest.kpi.ratio", { a, b }));
   const names = (list: readonly { name: string }[]) => list.map((r) => r.name).join(", ");
   const partial = vm.truncated || vm.paxTruncated;
+  const cutParts = CUT_KEYS.filter((k) => tot.cuts[k]).map((k) => t(`manifest.cut.${k}`));
 
   return (
     <div data-testid="trips-mf" className="flex min-w-0 flex-col gap-4">
@@ -203,10 +224,11 @@ export default function ManifestScreen({ unitSlug, vm, channels, printedBy }: { 
             {vm.prep.extras.map((x) => (
               <span key={x.extraId}>{X.extraText(x)}</span>
             ))}
-            {vm.prep.finSizes.map((f) => (
-              <span key={f.size}>{t("manifest.kpi.fins", { size: f.size, n: f.n })}</span>
+            {vm.prep.finSizes === null ? <span>{t("manifest.kpi.finPartial")}</span> : null}
+            {(vm.prep.finSizes ?? []).map((f) => (
+              <span key={`fin:${f.size}`}>{t("manifest.kpi.fins", { size: f.size, n: f.n })}</span>
             ))}
-            {vm.prep.finMissing > 0 ? <span>{t("manifest.kpi.finMissing", { n: vm.prep.finMissing })}</span> : null}
+            {vm.prep.finMissing !== null && vm.prep.finMissing > 0 ? <span>{t("manifest.kpi.finMissing", { n: vm.prep.finMissing })}</span> : null}
             <span>
               {tot.healthProvided === null ? "—" : t("manifest.kpi.healthProvided", { n: tot.healthProvided })}
               {tot.healthMissing === null ? "" : ` · ${t("manifest.kpi.healthMissing", { n: tot.healthMissing })}`}
@@ -221,8 +243,14 @@ export default function ManifestScreen({ unitSlug, vm, channels, printedBy }: { 
           </p>
         ) : null}
         {partial ? (
-          <p data-testid="trips-mf-truncated" role="status" className={`${NOTE} font-medium`}>
-            {vm.truncated ? t("manifest.note.truncated", { shown: vm.bookingsShown, total: vm.bookingsTotal }) : t("manifest.note.paxTruncated", { shown: vm.paxShown, total: vm.paxTotal })}
+          <div data-testid="trips-mf-truncated" role="status" className={`${NOTE} flex flex-col gap-1 font-medium`}>
+            {vm.truncated ? <p>{t("manifest.note.truncated", { shown: vm.bookingsShown, total: vm.bookingsTotal })}</p> : null}
+            {vm.paxTruncated ? <p>{t("manifest.note.paxTruncated", { shown: vm.paxShown, total: vm.paxTotal })}</p> : null}
+          </div>
+        ) : null}
+        {cutParts.length > 0 ? (
+          <p data-testid="trips-mf-limits-note" role="status" className={`${NOTE} font-medium`}>
+            {t("manifest.note.cuts", { parts: cutParts.join(", ") })}
           </p>
         ) : null}
         {tot.pickup.staleStops > 0 ? (

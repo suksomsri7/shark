@@ -168,7 +168,7 @@ async function build(e: Entered, view: ManifestView, now: Date): Promise<Loaded 
   const canSeeHealth = canSeeSensitive(g.member, HEALTH_KEY, g.unitId);
 
   // ── รอบ 1: สินค้า · การจองที่แสดง (เพดานใน SQL) · ยอดรวมทั้งชุด · รถ · ทรัพยากรของรอบ ──
-  const [product, option, bookings, bookingAgg, pendingBookings, itemAgg, paxTypes, runs, uses, paxAll] = await Promise.all([
+  const [product, option, bookings, bookingAgg, pendingBookings, itemAggRaw, paxTypesRaw, runsRaw, usesRaw, paxAll] = await Promise.all([
     g.db.tripProduct.findFirst({ where: { ...scope, id: dep.productId }, select: { id: true, title: true, crossBorder: true, deepDive: true } }),
     dep.optionId ? g.db.tripOption.findFirst({ where: { ...scope, id: dep.optionId }, select: { name: true } }) : Promise.resolve(null),
     g.db.$queryRawUnsafe<BookingRow[]>(
@@ -192,14 +192,19 @@ async function build(e: Entered, view: ManifestView, now: Date): Promise<Loaded 
        WHERE i."tenantId" = $1 AND i."unitId" = $2 AND ${M_WHERE} AND i."active" = true AND (i."kind" = 'SEAT' OR (i."kind" = 'EXTRA' AND i."passThrough" = false))
        GROUP BY i."kind", i."paxTypeId", i."extraId" ORDER BY i."kind", i."paxTypeId", i."extraId" LIMIT $5::int`,
       ...mArgs(e),
-      ITEM_GROUP_CAP,
+      ITEM_GROUP_CAP + 1,
     ),
-    g.db.tripPaxType.findMany({ where: { ...scope, productId: dep.productId }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], take: PAX_TYPE_CAP, select: { id: true, code: true, label: true, sortOrder: true } }),
-    g.db.tripVehicleRun.findMany({ where: { ...scope, departureId: dep.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: RUN_CAP, select: { id: true, resourceId: true, stops: true, createdAt: true } }),
-    g.db.tripResourceUse.findMany({ where: { ...scope, departureId: dep.id, active: true }, orderBy: [{ id: "asc" }], take: RESOURCE_USE_CAP, select: { resourceId: true } }),
+    g.db.tripPaxType.findMany({ where: { ...scope, productId: dep.productId }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], take: PAX_TYPE_CAP + 1, select: { id: true, code: true, label: true, sortOrder: true } }),
+    g.db.tripVehicleRun.findMany({ where: { ...scope, departureId: dep.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: RUN_CAP + 1, select: { id: true, resourceId: true, stops: true, createdAt: true } }),
+    g.db.tripResourceUse.findMany({ where: { ...scope, departureId: dep.id, active: true }, orderBy: [{ id: "asc" }], take: RESOURCE_USE_CAP + 1, select: { resourceId: true } }),
     paxAggOfM(e),
   ]);
   if (!product) return tripsFail("NOT_FOUND");
+  // เพดานรอง: อ่านเกิน 1 แถวเพื่อรู้ว่าถูกตัด แล้วรายงานใน totals.cuts (ไม่ตัดเงียบ)
+  const itemAgg = itemAggRaw.slice(0, ITEM_GROUP_CAP);
+  const paxTypes = paxTypesRaw.slice(0, PAX_TYPE_CAP);
+  const runs = runsRaw.slice(0, RUN_CAP);
+  const uses = usesRaw.slice(0, RESOURCE_USE_CAP);
 
   const ids = bookings.map((b) => b.id);
   const shown = new Set(ids);
@@ -213,10 +218,10 @@ async function build(e: Entered, view: ManifestView, now: Date): Promise<Loaded 
   const partyIds = [...new Set(bookings.filter((b) => b.piiPurgedAt === null && b.bookerPartyId).map((b) => String(b.bookerPartyId)))];
 
   // ── รอบ 2: ของการจองที่แสดง (รายการ · ผู้เดินทาง · ยอดต่อการจอง) + ชื่อ/ทรัพยากร/ค่าตั้งแบบฟอร์ม ──
-  const [cfg, items, paxRows, paxCount, perBooking, briefs, extras, resources, inM] = await Promise.all([
+  const [cfg, itemsRaw, paxRows, paxCount, perBooking, briefs, extras, resources, inM] = await Promise.all([
     loadCfg(u, { productId: product.id, crossBorder: product.crossBorder, deepDive: product.deepDive }, now),
     ids.length
-      ? g.db.tripBookingItem.findMany({ where: { ...scope, bookingId: { in: ids }, active: true }, orderBy: [{ id: "asc" }], take: ITEM_ROW_CAP, select: { id: true, bookingId: true, kind: true, paxTypeId: true, extraId: true, qty: true, passThrough: true } })
+      ? g.db.tripBookingItem.findMany({ where: { ...scope, bookingId: { in: ids }, active: true }, orderBy: [{ id: "asc" }], take: ITEM_ROW_CAP + 1, select: { id: true, bookingId: true, kind: true, paxTypeId: true, extraId: true, qty: true, passThrough: true } })
       : Promise.resolve<ItemRow[]>([]),
     ids.length
       ? g.db.$queryRawUnsafe<PaxSelect[]>(
@@ -245,6 +250,8 @@ async function build(e: Entered, view: ManifestView, now: Date): Promise<Loaded 
       : Promise.resolve<{ id: string }[]>([]),
   ]);
   if (isFailure(cfg)) return fail("VALIDATION");
+  const items = itemsRaw.slice(0, ITEM_ROW_CAP);
+  const cuts = { runs: runsRaw.length > RUN_CAP, itemGroups: itemAggRaw.length > ITEM_GROUP_CAP, items: itemsRaw.length > ITEM_ROW_CAP, resourceUses: usesRaw.length > RESOURCE_USE_CAP, paxTypes: paxTypesRaw.length > PAX_TYPE_CAP };
   const paxIds = paxRows.map((p) => p.id);
 
   // ── รอบ 3: จำนวนไฟล์ต่อผู้เดินทาง (นับเท่านั้น — ไม่อ่านรหัสไฟล์) · "รอลบ" = นิยาม PENDING_OBJ_SQL ของ T0.8 ──
@@ -375,22 +382,33 @@ async function build(e: Entered, view: ManifestView, now: Date): Promise<Loaded 
     const travellers = loaded.map((x) => x.vm);
     const live = travellers.filter((t) => !t.purged);
     const agg = aggOf.get(b.id) ?? ZERO_AGG;
+    // แถวผู้เดินทางของการจองนี้โหลดไม่ครบ (เกินเพดานผู้เดินทาง) ⇒ ตัวนับที่มาจากแถวที่โหลดเป็น null (ไม่แสดงตัวเลขที่ไม่ครบ)
+    const paxCut = loaded.length < agg.slots;
+    const counts = {
+      waiverRequired: live.filter((t) => t.waiver !== "NOT_REQUIRED").length,
+      waiverSigned: live.filter((t) => t.waiver === "SIGNED").length,
+      healthProvided: live.filter((t) => t.health === "PROVIDED").length,
+      healthMissing: live.filter((t) => t.health === "MISSING" || t.health === "GUARDIAN_REQUIRED").length,
+    };
+    const fins = live.map((t) => (t.finSize ? t.finSize.trim() : "")).filter((x) => x.length > 0);
     const doc = {
       state: manifestDocState({ seats, slots: agg.slots, purged: agg.purged, named: agg.named, formComplete: agg.formComplete }),
       slots: agg.slots,
       named: agg.named,
       missingNames: Math.max(0, seats - agg.named),
       formComplete: agg.formComplete,
-      waiverRequired: live.filter((t) => t.waiver !== "NOT_REQUIRED").length,
-      waiverSigned: live.filter((t) => t.waiver === "SIGNED").length,
-      healthProvided: live.filter((t) => t.health === "PROVIDED").length,
-      healthMissing: live.filter((t) => t.health === "MISSING" || t.health === "GUARDIAN_REQUIRED").length,
+      paxCut,
+      waiverRequired: paxCut ? null : counts.waiverRequired,
+      waiverSigned: paxCut ? null : counts.waiverSigned,
+      healthProvided: paxCut ? null : counts.healthProvided,
+      healthMissing: paxCut ? null : counts.healthMissing,
       needsFix: agg.needsFix,
+      finSizes: paxCut ? null : fins,
     };
-    waiverRequired += doc.waiverRequired;
-    waiverSigned += doc.waiverSigned;
-    healthProvided += doc.healthProvided;
-    healthMissing += doc.healthMissing;
+    waiverRequired += counts.waiverRequired;
+    waiverSigned += counts.waiverSigned;
+    healthProvided += counts.healthProvided;
+    healthMissing += counts.healthMissing;
     for (const t of live) {
       if (t.finSize && t.finSize.trim()) add(finCount, t.finSize.trim(), 1);
       else finMissing++;
@@ -429,15 +447,17 @@ async function build(e: Entered, view: ManifestView, now: Date): Promise<Loaded 
     const res = resourceOf.get(r.resourceId);
     const route: string[] = [];
     for (const s of r.stops) if (route[route.length - 1] !== s.place) route.push(s.place);
-    return { key: `run:${r.id}`, kind: "RUN", run: { id: r.id, resourceId: r.resourceId, vehicleName: res?.name ?? null, vehicleSeats: res?.seats ?? null, driverName: null, route }, people: peopleOf(list), rows: list };
+    const people = peopleOf(list);
+    const vehicleSeats = res?.seats ?? null;
+    return { key: `run:${r.id}`, kind: "RUN", run: { id: r.id, resourceId: r.resourceId, vehicleName: res?.name ?? null, vehicleSeats, driverName: null, route }, people, overSeats: vehicleSeats !== null && people > vehicleSeats, rows: list };
   });
   const unassigned = rows.filter((r) => !stopOf.has(r.bookingId));
   const groups: ManifestGroupVM[] =
     view === "booking"
       ? rows.length
-        ? [{ key: "all", kind: "ALL", run: null, people: peopleOf(rows), rows }]
+        ? [{ key: "all", kind: "ALL", run: null, people: peopleOf(rows), overSeats: false, rows }]
         : []
-      : [...runGroups, ...(unassigned.length ? [{ key: "unassigned", kind: "UNASSIGNED" as const, run: null, people: peopleOf(unassigned), rows: unassigned }] : [])];
+      : [...runGroups, ...(unassigned.length ? [{ key: "unassigned", kind: "UNASSIGNED" as const, run: null, people: peopleOf(unassigned), overSeats: false, rows: unassigned }] : [])];
 
   // ── ยอดรวม ──
   const paxTotals = new Map<string, number>();
@@ -492,11 +512,12 @@ async function build(e: Entered, view: ManifestView, now: Date): Promise<Loaded 
       agentCollectBookings: canSeeMoney ? (bookingAgg[0]?.agentCollect ?? 0) : null,
       pickup: { assignedPeople, vehicles: runGroups.length, unassignedPeople: Math.max(0, people - assignedPeople), staleStops },
       pendingBookings,
+      cuts,
     },
     prep: {
       extras: extraQtyVm(extraTotals),
-      finSizes: [...finCount.entries()].map(([size, n]) => ({ size, n })).sort((x, y) => x.size.localeCompare(y.size, "en", { numeric: true })),
-      finMissing,
+      finSizes: partial ? null : [...finCount.entries()].map(([size, n]) => ({ size, n })).sort((x, y) => x.size.localeCompare(y.size, "en", { numeric: true })),
+      finMissing: partial ? null : finMissing,
       meals: { travellers: people, guides: guides.length },
     },
     groups,
@@ -533,6 +554,8 @@ const who = (g: TripsUnitGate) => ({ kind: "USER" as const, userId: g.actorUserI
 type Dict = Record<string, string>;
 const TEXT = { th: thMessages, en: enMessages } as const;
 const word = (d: Dict, code: string | null): string => (code ? (d[code] ?? "") : "");
+/** แทน {ชื่อ} ในข้อความด้วยตัวเลข (ข้อความจาก messages · ค่าเป็นจำนวนเท่านั้น) */
+const fill = (tpl: string, vars: Record<string, number>): string => tpl.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 export type ManifestCsvOut = { filename: string; csv: string; rows: number; truncated: boolean; purgedSkipped: number };
 /**
  * ส่งออก CSV — 1 แถวต่อผู้เดินทางที่ยังไม่ถูกลบ (เรียง กลุ่มตามรถ → แถว → ลำดับคน) · การจองที่ไม่มีแถวผู้เดินทางเหลือ ⇒ 1 แถว (ช่องรายคนว่าง)
@@ -552,24 +575,40 @@ export async function exportManifestCsv(ctx: TripsScreenCtx, input: unknown, opt
     const M = TEXT[locale].manifest;
     const channels: Dict = TEXT[locale].bookings.channel;
     const head: Dict = M.csv;
-    const lines: (string | number | null)[][] = [];
+    // แต่ละบรรทัดจำว่าเป็นของการจองใด และเป็นแถวผู้เดินทางจริงหรือไม่ (ใช้นับในบรรทัดแจ้งเมื่อไฟล์ถูกตัด)
+    const lines: { bookingId: string; traveller: boolean; cells: (string | number | null)[] }[] = [];
     for (const grp of vm.groups) {
       const groupName = grp.run ? (grp.run.vehicleName ?? M.group.vehicleRemoved) : M.group.unassigned;
       for (const row of grp.rows) {
         const lead = [groupName, row.pickup.time, row.pickup.place, row.code, row.bookerPurged ? null : row.bookerName, word(channels, row.channel)];
         const live = row.travellers.filter((t) => !t.purged);
-        if (!live.length) lines.push([...lead, null, null, null, null, null, null, null, null, null, null]);
+        // ไม่มีแถวผู้เดินทางเหลือ ⇒ 1 บรรทัดช่องรายคนว่าง · แถวผู้เดินทางไม่ได้โหลดเพราะเกินเพดาน ⇒ บอกในช่องผู้เดินทาง (ไม่ปนกับ "ยังไม่มีผู้เดินทาง")
+        if (!live.length) lines.push({ bookingId: row.bookingId, traveller: false, cells: [...lead, null, row.doc.paxCut ? M.pax.notLoaded : null, null, null, null, null, null, null, null, null] });
         for (const t of live) {
-          lines.push([...lead, t.no, t.fullName, locale === "en" ? (t.paxTypeEn ?? t.paxTypeTh) : t.paxTypeTh, t.nationality, word(M.docType, t.docType), t.docMasked, word(M.formStatus, t.formStatus), word(M.waiver, t.waiver), word(M.health, t.health), t.finSize]);
+          lines.push({ bookingId: row.bookingId, traveller: true, cells: [...lead, t.no, t.fullName, locale === "en" ? (t.paxTypeEn ?? t.paxTypeTh) : t.paxTypeTh, t.nationality, word(M.docType, t.docType), t.docMasked, word(M.formStatus, t.formStatus), word(M.waiver, t.waiver), word(M.health, t.health), t.finSize] });
         }
       }
     }
     const kept = lines.slice(0, TRIPS_MANIFEST_PAX_CAP);
+    const truncated = vm.truncated || vm.paxTruncated || kept.length < lines.length;
+    // ไฟล์ถูกตัด ⇒ บรรทัดแรก (ก่อนหัวคอลัมน์) บอกว่ามีผู้เดินทาง/การจองในไฟล์กี่รายการจากทั้งหมดกี่รายการ
+    const notice = truncated
+      ? fill(M.export.fileNotice, {
+          pax: kept.filter((x) => x.traveller).length,
+          paxTotal: Math.max(0, vm.totals.slots - vm.totals.purged),
+          bookings: new Set(kept.map((x) => x.bookingId)).size,
+          bookingsTotal: vm.bookingsTotal,
+        })
+      : null;
     const out: ManifestCsvOut = {
       filename: manifestFileName(vm.departure.localDate, vm.departure.id),
-      csv: manifestCsv(MANIFEST_CSV_COLUMNS.map((c) => head[c] ?? ""), kept),
+      csv: manifestCsv(
+        MANIFEST_CSV_COLUMNS.map((c) => head[c] ?? ""),
+        kept.map((x) => x.cells),
+        notice,
+      ),
       rows: kept.length,
-      truncated: vm.truncated || vm.paxTruncated || kept.length < lines.length,
+      truncated,
       purgedSkipped: vm.totals.purged,
     };
     const w = await inTx(e.u, (tx) => auditTx(tx, e.u, who(e.g), A_EXPORTED, "TripDeparture", e.dep.id, { departureId: e.dep.id, format: "CSV", purpose: "MANIFEST", rows: out.rows, truncated: out.truncated, purgedSkipped: out.purgedSkipped }));

@@ -1136,7 +1136,8 @@
       "extraItem": "{label} × {qty}",
       "partial": "This figure is incomplete because the list was cut",
       "namesDone": "Everyone named",
-      "noPrep": "No extras"
+      "noPrep": "No extras",
+      "finPartial": "Fins: — (traveller list incomplete)"
     },
     "col": {
       "time": "Pickup time",
@@ -1219,7 +1220,12 @@
       "healthMissing": "Health not answered: {n}",
       "outstanding": "Outstanding {amount}",
       "pickupPaid": "Pickup service purchased",
-      "docLine": "{type} {masked}"
+      "docLine": "{type} {masked}",
+      "notLoaded": "Not loaded — over the list limit",
+      "partialList": "Showing {shown} of {slots} — the rest were not loaded (over the list limit)",
+      "countsPartial": "Waiver/health: — (not fully loaded)",
+      "colCheck": "Here",
+      "colNote": "Notes/fins"
     },
     "contact": {
       "viaAgent": "Contact through the agency",
@@ -1234,9 +1240,17 @@
     },
     "note": {
       "pending": "{n} unconfirmed bookings are not on this manifest",
-      "truncated": "Showing the first {shown} of {total} bookings — waiver and health figures are incomplete; export the file instead",
-      "paxTruncated": "Showing the first {shown} of {total} travellers — bookings at the end may have no traveller rows",
-      "stale": "{n} pickup stops refer to bookings no longer on this manifest"
+      "truncated": "Showing the first {shown} of {total} bookings — waiver, health and fin figures show — because the data is incomplete",
+      "paxTruncated": "Showing the first {shown} of {total} travellers — bookings whose travellers were not loaded say \"Not loaded — over the list limit\"",
+      "stale": "{n} pickup stops refer to bookings no longer on this manifest",
+      "cuts": "Some data is over the limit of this screen: {parts} — related figures may be incomplete"
+    },
+    "cut": {
+      "runs": "vehicles of the departure",
+      "itemGroups": "item groups of the departure",
+      "items": "booking items",
+      "resourceUses": "resources of the departure",
+      "paxTypes": "traveller types"
     },
     "empty": "No confirmed bookings on this departure yet",
     "actions": {
@@ -1252,7 +1266,8 @@
     "export": {
       "truncated": "The file holds the first {rows} rows only — this departure has more data than one file can carry",
       "error": "Export failed — try again",
-      "done": "Exported {rows} rows (the export was logged)"
+      "done": "Exported {rows} rows (the export was logged)",
+      "fileNotice": "This file is incomplete (cut at the limit): {pax} of {paxTotal} travellers · {bookings} of {bookingsTotal} bookings"
     },
     "print": {
       "printedAt": "Printed {time} by {name}",

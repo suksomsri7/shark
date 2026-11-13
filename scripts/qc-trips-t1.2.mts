@@ -644,11 +644,11 @@ try {
   });
   await st("PV-8", "รอบที่ผ่านแล้ว (พ. 11): state PAST · ไม่มีปุ่มทำรายการเลย", async () => {
     const v = await panelVM(SEED, { unitId: U0, departureId: did("racha", "2026-11-11") });
-    eq([asRec(v.departure)?.state, actOf(v)], ["PAST", allFalse], "ผ่านแล้ว");
+    eq([asRec(v.departure)?.state, actOf(v)], ["PAST", { ...allFalse, manifest: true }], "ผ่านแล้ว"); // ORACLE-EDIT PV-8 (T1.4a มติ M2): ใบรายชื่อยังเปิดได้หลังรอบออก
   });
   await st("PV-9", "รอบยกเลิก (ศ. 13): เหตุผล คลื่นลม · ไม่มีปุ่มทำรายการเลย", async () => {
     const v = await panelVM(SEED, { unitId: U0, departureId: did("racha", "2026-11-13") });
-    eq([asRec(v.departure)?.cancelReason, actOf(v)], [FX.TRIPS_SEED_CANCEL_REASON, allFalse], "ยกเลิก");
+    eq([asRec(v.departure)?.cancelReason, actOf(v)], [FX.TRIPS_SEED_CANCEL_REASON, { ...allFalse, manifest: true }], "ยกเลิก"); // ORACLE-EDIT PV-9 (T1.4a มติ M2)
   });
   await st("PV-10", "จ. 16 ราชา ต่ำกว่าขั้นต่ำ (:62): ออกขาดทุน/รวม/ยกเลิก · เป้ารวม = พีพี 16 + ดำน้ำลึก 16 (วันเดียวกัน · ไม่ใช่ตัวเอง)", async () => {
     const v = await panelVM(SEED, { unitId: U0, departureId: did("racha", "2026-11-16") });

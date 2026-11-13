@@ -41,10 +41,10 @@ export function useMfText(channels: readonly string[]) {
   const paxName = (p: Pick<ManifestPaxVM, "fullName" | "purged">) => (p.purged ? t("manifest.pax.purged") : (p.fullName ?? t("manifest.pax.noName")));
   const paxType = (p: Pick<ManifestPaxVM, "paxTypeTh" | "paxTypeEn">) => (p.paxTypeTh ? T(p.paxTypeTh, p.paxTypeEn) : "");
   const docLine = (p: Pick<ManifestPaxVM, "docType" | "docMasked">) => (p.docType || p.docMasked ? t("manifest.pax.docLine", { type: docType(p.docType), masked: p.docMasked ?? "" }).trim() : "");
-  /** บรรทัดหมายเหตุของแถว: รายการเสริม · ขนาดตีนกบ · ซื้อรับส่ง (สถานะ ไม่ใช่เนื้อหา) */
-  const noteParts = (row: Pick<ManifestRowVM, "extras" | "travellers" | "pickup">) => {
-    const fins = row.travellers.filter((p) => !p.purged && p.finSize).map((p) => p.finSize);
-    return [...row.extras.map(extraText), ...(fins.length ? [t("manifest.pax.fin", { size: fins.join(", ") })] : []), ...(row.pickup.paid ? [t("manifest.pax.pickupPaid")] : [])];
+  /** บรรทัดหมายเหตุของแถว: รายการเสริม · ขนาดตีนกบ (รายการจากตัวโหลด) · ซื้อรับส่ง (สถานะ ไม่ใช่เนื้อหา) */
+  const noteParts = (row: Pick<ManifestRowVM, "extras" | "doc" | "pickup">) => {
+    const fins = row.doc.finSizes;
+    return [...row.extras.map(extraText), ...(fins && fins.length ? [t("manifest.pax.fin", { size: fins.join(", ") })] : []), ...(row.pickup.paid ? [t("manifest.pax.pickupPaid")] : [])];
   };
   return { t, D, T, formStatus, waiver, health, docType, depStatus, channel, money, paxLine, extraText, booker, contact, paxName, paxType, docLine, noteParts };
 }
@@ -85,11 +85,14 @@ export function DocBadge({ doc, X }: { doc: ManifestRowVM["doc"]; X: MfText }) {
   );
 }
 
-/** ป้ายรอง ๆ ของคอลัมน์รายชื่อ·เอกสาร: เซ็นแล้ว a/b · ต้องแก้ n */
+/** ป้ายรอง ๆ ของคอลัมน์รายชื่อ·เอกสาร: เซ็นแล้ว a/b · ต้องแก้ n · รายชื่อโหลดไม่ครบ ⇒ ไม่แสดงตัวเลขลงนาม/สุขภาพ (บอกตรง ๆ) */
 export function DocExtras({ doc, X }: { doc: ManifestRowVM["doc"]; X: MfText }) {
   return (
     <>
-      {doc.waiverRequired > 0 ? <span className="text-sm text-[color:var(--color-ink-soft)]">{X.t("manifest.pax.signed", { a: doc.waiverSigned, b: doc.waiverRequired })}</span> : null}
+      {doc.paxCut ? <span className="text-sm font-medium text-[color:var(--color-ink-soft)]">{X.t("manifest.pax.countsPartial")}</span> : null}
+      {doc.waiverRequired !== null && doc.waiverSigned !== null && doc.waiverRequired > 0 ? (
+        <span className="text-sm text-[color:var(--color-ink-soft)]">{X.t("manifest.pax.signed", { a: doc.waiverSigned, b: doc.waiverRequired })}</span>
+      ) : null}
       {doc.needsFix > 0 ? <span className="text-sm font-medium text-[color:var(--color-danger)]">{X.t("manifest.pax.needsFix", { n: doc.needsFix })}</span> : null}
     </>
   );
@@ -99,58 +102,63 @@ export function DocExtras({ doc, X }: { doc: ManifestRowVM["doc"]; X: MfText }) 
 export function HealthCounts({ doc, X }: { doc: ManifestRowVM["doc"]; X: MfText }) {
   return (
     <>
-      {doc.healthProvided > 0 ? <span className="text-sm text-[color:var(--color-ink)]">{X.t("manifest.pax.healthProvided", { n: doc.healthProvided })}</span> : null}
-      {doc.healthMissing > 0 ? <span className="text-sm text-[color:var(--color-ink-soft)]">{X.t("manifest.pax.healthMissing", { n: doc.healthMissing })}</span> : null}
+      {doc.healthProvided !== null && doc.healthProvided > 0 ? <span className="text-sm text-[color:var(--color-ink)]">{X.t("manifest.pax.healthProvided", { n: doc.healthProvided })}</span> : null}
+      {doc.healthMissing !== null && doc.healthMissing > 0 ? <span className="text-sm text-[color:var(--color-ink-soft)]">{X.t("manifest.pax.healthMissing", { n: doc.healthMissing })}</span> : null}
     </>
   );
 }
 
 /**
- * รายชื่อรายคนของการจอง (รายการ ไม่ใช่ตาราง — ใช้ได้ทั้งในแถวตาราง การ์ดมือถือ และผังพิมพ์)
- * print = ผังพิมพ์: ไม่แสดงจำนวนไฟล์ที่รอลบ (ข้อมูลของจอร้านเท่านั้น)
+ * รายชื่อรายคนของการจอง (รายการ ไม่ใช่ตาราง — ใช้ในแถวตารางและการ์ดมือถือ · ผังพิมพ์ใช้ตารางของ ManifestPrint)
+ * รายชื่อโหลดไม่ครบเพราะเกินเพดาน ⇒ บอกตรง ๆ (ไม่ใช่ "ยังไม่มีแถวผู้เดินทาง")
  */
-export function PaxList({ row, X, print, testid }: { row: ManifestRowVM; X: MfText; print?: boolean; testid?: string }) {
+export function PaxList({ row, X, testid }: { row: ManifestRowVM; X: MfText; testid?: string }) {
   const { t } = X;
   if (row.travellers.length === 0) {
     return (
-      <p data-testid={testid} className="text-sm text-[color:var(--color-muted)]">
-        {t("manifest.pax.none")}
+      <p data-testid={testid} data-pax-cut={row.doc.paxCut ? "true" : undefined} className={`text-sm ${row.doc.paxCut ? "font-medium text-[color:var(--color-ink)]" : "text-[color:var(--color-muted)]"}`}>
+        {row.doc.paxCut ? t("manifest.pax.notLoaded") : t("manifest.pax.none")}
       </p>
     );
   }
   return (
-    <ol data-testid={testid} aria-label={t("manifest.pax.listAria", { code: row.code })} className="flex min-w-0 flex-col gap-1.5">
-      {row.travellers.map((p) => (
-        <li key={p.passengerId} data-purged={p.purged ? "true" : undefined} className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm text-[color:var(--color-ink)]">
-          <span className="tabular-nums text-[color:var(--color-muted)]">{p.no}.</span>
-          <b className={`min-w-0 [overflow-wrap:anywhere] ${p.purged || !p.fullName ? "font-medium text-[color:var(--color-muted)]" : ""}`}>{X.paxName(p)}</b>
-          {p.purged ? null : (
-            <>
-              {X.paxType(p) ? <span>{X.paxType(p)}</span> : null}
-              {p.isMinor ? <span>{t("manifest.pax.minor")}</span> : null}
-              {p.nationality ? <span className="[overflow-wrap:anywhere]">{p.nationality}</span> : null}
-              {X.docLine(p) ? <span className="whitespace-nowrap tabular-nums">{X.docLine(p)}</span> : null}
-              <span>
-                {t("manifest.pax.colForm")}: {X.formStatus(p.formStatus)}
-              </span>
-              <span>
-                {t("manifest.pax.colWaiver")}: {X.waiver(p.waiver)}
-              </span>
-              <span>
-                {t("manifest.pax.colHealth")}: {X.health(p.health)}
-              </span>
-              {p.finSize ? <span className="[overflow-wrap:anywhere]">{t("manifest.pax.fin", { size: p.finSize })}</span> : null}
-            </>
-          )}
-          {print ? null : (
+    <div data-testid={testid} className="flex min-w-0 flex-col gap-1.5">
+      {row.doc.paxCut ? (
+        <p data-pax-cut="true" className="text-sm font-medium text-[color:var(--color-ink)]">
+          {t("manifest.pax.partialList", { shown: row.travellers.length, slots: row.doc.slots })}
+        </p>
+      ) : null}
+      <ol aria-label={t("manifest.pax.listAria", { code: row.code })} className="flex min-w-0 flex-col gap-1.5">
+        {row.travellers.map((p) => (
+          <li key={p.passengerId} data-purged={p.purged ? "true" : undefined} className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm text-[color:var(--color-ink)]">
+            <span className="tabular-nums text-[color:var(--color-muted)]">{p.no}.</span>
+            <b className={`min-w-0 [overflow-wrap:anywhere] ${p.purged || !p.fullName ? "font-medium text-[color:var(--color-muted)]" : ""}`}>{X.paxName(p)}</b>
+            {p.purged ? null : (
+              <>
+                {X.paxType(p) ? <span>{X.paxType(p)}</span> : null}
+                {p.isMinor ? <span>{t("manifest.pax.minor")}</span> : null}
+                {p.nationality ? <span className="[overflow-wrap:anywhere]">{p.nationality}</span> : null}
+                {X.docLine(p) ? <span className="whitespace-nowrap tabular-nums">{X.docLine(p)}</span> : null}
+                <span>
+                  {t("manifest.pax.colForm")}: {X.formStatus(p.formStatus)}
+                </span>
+                <span>
+                  {t("manifest.pax.colWaiver")}: {X.waiver(p.waiver)}
+                </span>
+                <span>
+                  {t("manifest.pax.colHealth")}: {X.health(p.health)}
+                </span>
+                {p.finSize ? <span className="[overflow-wrap:anywhere]">{t("manifest.pax.fin", { size: p.finSize })}</span> : null}
+              </>
+            )}
             <span className="text-[color:var(--color-ink-soft)]">
               {t("manifest.pax.files", { n: p.docs.live })}
               {p.docs.pendingDeletion > 0 ? ` · ${t("manifest.pax.pendingDeletion", { n: p.docs.pendingDeletion })}` : ""}
             </span>
-          )}
-        </li>
-      ))}
-    </ol>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

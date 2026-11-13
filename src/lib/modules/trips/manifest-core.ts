@@ -85,15 +85,18 @@ export function csvCell(v: string | number | null | undefined): string {
   if (s.length > 0 && FORMULA_LEAD.has(s[0])) s = `'${s}`;
   return s.includes('"') || s.includes(",") ? `"${s.replace(/"/g, '""')}"` : s;
 }
-/** ไฟล์ CSV: BOM + บรรทัดหัว + บรรทัดข้อมูล · ทุกเซลล์ผ่าน csvCell · คั่น , · จบทุกบรรทัดด้วย CRLF · แถวสั้น/ยาวถูกปรับให้เท่าหัว */
-export function manifestCsv(header: readonly string[], rows: readonly (readonly (string | number | null)[])[]): string {
+/**
+ * ไฟล์ CSV: BOM + [บรรทัดแจ้ง] + บรรทัดหัว + บรรทัดข้อมูล · ทุกเซลล์ผ่าน csvCell · คั่น , · จบทุกบรรทัดด้วย CRLF · แถวสั้น/ยาวถูกปรับให้เท่าหัว
+ * notice (ไม่บังคับ) = บรรทัดแรกก่อนหัว (เซลล์แรก · ที่เหลือว่าง) — ใช้บอกว่าไฟล์ถูกตัดที่เพดาน
+ */
+export function manifestCsv(header: readonly string[], rows: readonly (readonly (string | number | null)[])[], notice?: string | null): string {
   const width = header.length;
   const line = (cells: readonly (string | number | null)[]): string => {
     const out: string[] = [];
     for (let i = 0; i < width; i++) out.push(csvCell(cells[i] ?? null));
     return out.join(",");
   };
-  return `﻿${[header, ...rows].map((r) => `${line(r)}\r\n`).join("")}`;
+  return `\uFEFF${[...(notice ? [[notice]] : []), header, ...rows].map((r) => `${line(r)}\r\n`).join("")}`;
 }
 const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 /** วันที่ล้วนที่มีจริงในปฏิทิน */
@@ -151,7 +154,24 @@ export type ManifestRowVM = {
   extras: ManifestExtraQty[];
   seats: number;
   pickup: { time: string | null; place: string | null; note: string | null; hint: string | null; paid: boolean };
-  doc: { state: ManifestDocState; slots: number; named: number; missingNames: number; formComplete: number; waiverRequired: number; waiverSigned: number; healthProvided: number; healthMissing: number; needsFix: number };
+  /**
+   * slots/named/formComplete/needsFix = คิวรีรวมต่อการจอง (ครบเสมอ) · paxCut = แถวผู้เดินทางของการจองนี้โหลดไม่ครบเพราะเกินเพดานผู้เดินทาง
+   * waiver·health (4 ตัว) และ finSizes นับจากแถวที่โหลด ⇒ null เมื่อ paxCut (ไม่แสดงตัวเลขที่ไม่ครบ) · finSizes = ขนาดตีนกบของผู้เดินทางที่ยังไม่ถูกลบตามลำดับคน
+   */
+  doc: {
+    state: ManifestDocState;
+    slots: number;
+    named: number;
+    missingNames: number;
+    formComplete: number;
+    paxCut: boolean;
+    waiverRequired: number | null;
+    waiverSigned: number | null;
+    healthProvided: number | null;
+    healthMissing: number | null;
+    needsFix: number;
+    finSizes: string[] | null;
+  };
   /** null เมื่อผู้ดูไม่มีสิทธิ์ดูการจอง */
   outstandingSatang: number | null;
   phoneMasked: string | null;
@@ -163,8 +183,12 @@ export type ManifestGroupVM = {
   kind: "RUN" | "UNASSIGNED" | "ALL";
   run: { id: string; resourceId: string; vehicleName: string | null; vehicleSeats: number | null; driverName: null; route: string[] } | null;
   people: number;
+  /** คนในรถเกินที่นั่งของรถ (ตัดสินในตัวโหลด) */
+  overSeats: boolean;
   rows: ManifestRowVM[];
 };
+/** เพดานรองที่ตัดข้อมูลไปแล้ว (จริง = ตัวเลข/กลุ่มที่เกี่ยวข้องอาจไม่ครบ · จอแสดงแถบแจ้ง) */
+export type ManifestCuts = { runs: boolean; itemGroups: boolean; items: boolean; resourceUses: boolean; paxTypes: boolean };
 export type ManifestVM = {
   unit: { id: string; slug: string; name: string; tz: string; today: string; nowIso: string; nowLocal: string };
   flags: { canSeeMoney: boolean; canSeeHealth: boolean; canExport: true; canPrint: true; canEditRuns: false; canSend: false };
@@ -204,8 +228,10 @@ export type ManifestVM = {
     agentCollectBookings: number | null;
     pickup: { assignedPeople: number; vehicles: number; unassignedPeople: number; staleStops: number };
     pendingBookings: number;
+    cuts: ManifestCuts;
   };
-  prep: { extras: ManifestExtraQty[]; finSizes: { size: string; n: number }[]; finMissing: number; meals: { travellers: number; guides: number } };
+  /** finSizes/finMissing นับจากผู้เดินทางที่โหลด ⇒ null เมื่อรายการถูกตัด */
+  prep: { extras: ManifestExtraQty[]; finSizes: { size: string; n: number }[] | null; finMissing: number | null; meals: { travellers: number; guides: number } };
   groups: ManifestGroupVM[];
   bookingsTotal: number;
   bookingsShown: number;

@@ -1882,7 +1882,7 @@
         "type": "navigate",
         "target": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
         "state": "navigates",
-        "note": "ใบรายชื่อของรอบ — ลิงก์จริง แสดงเมื่อ actions.manifest (ผู้ไม่มีสิทธิ์ดูผู้เดินทาง/รอบที่เริ่มแล้วหรือยกเลิก ⇒ ไม่แสดง)"
+        "note": "ใบรายชื่อของรอบ — ลิงก์จริง แสดงเมื่อ actions.manifest (มีสิทธิ์ดูผู้เดินทาง · รวมรอบที่ออกแล้วและรอบที่ยกเลิก · ไม่มีสิทธิ์ ⇒ ไม่แสดง)"
       },
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-4",
@@ -4856,6 +4856,28 @@
       },
       "wo": "T1.4",
       "oracle": "qc-trips-t1.4#BT-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/manifest",
+      "testid": "trips-mf-limits-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-mf-limits-note",
+        "state": "conditional",
+        "note": "เพดานรองตัดข้อมูล (totals.cuts มีค่าจริง: รถ/กลุ่มรายการ/รายการ/ทรัพยากร/ประเภทผู้เดินทาง)"
+      },
+      "wo": "T1.4",
+      "oracle": "",
       "system": "TRIPS",
       "needs": "trips.departure.view+trips.passenger.view"
     },
