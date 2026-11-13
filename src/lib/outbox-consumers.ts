@@ -1581,6 +1581,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.booking.paid": withAutomation(async () => {}),
   "trips.refund.requested": withAutomation(async () => {}),
   "trips.refund.approved": withAutomation(async () => {}),
+  "trips.refund.requoted": withAutomation(async () => {}), // TRIPS T0.7 ▸ มติ r2 W2: คำนวณใหม่หลังอนุมัติ (คีย์ …:<requestId>:g<รุ่น>) ◂
   "trips.refund.done": withAutomation(async () => {}),
   // ── /T0.7 money ──
 };

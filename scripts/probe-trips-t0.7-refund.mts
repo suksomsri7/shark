@@ -60,7 +60,7 @@ async function wlC(sh: Shop, shD: Shop) {
     opAdd("C", 6);
     const row = asRec((await reqsOf(b.id))[0]);
     const okN = rs.filter((x) => x.ok === true).length;
-    const ap = Number(asRec((await q(`SELECT count(*)::int n FROM "OutboxEvent" WHERE "idempotencyKey" = $1`, [`trips.refund.approved:${id}`]))[0]).n);
+    const ap = Number(asRec((await q(`SELECT count(*)::int n FROM "OutboxEvent" WHERE "idempotencyKey" LIKE $1`, [`trips.refund.approved:${id}:g%`]))[0]).n); // ผู้คุม 13 พ.ย.: มติ W2
     const aud = (await q<{ action: string }>(`SELECT action FROM "AuditLog" WHERE "targetId" = $1 AND action IN ('trips.refund.approve','trips.refund.reject','trips.refund.withdraw')`, [id])).map((x) => x.action);
     out("C3", { rep, codes: rs.map(code), final: row.status, approvedEvt: ap, audit: aud });
     if (okN !== 1 || aud.length !== 1 || (row.status === "APPROVED") !== (ap === 1)) finding("C3-decide-race", "MAJOR", "decide/withdraw race not exactly-one", { codes: rs.map(code), final: row.status, ap, aud });

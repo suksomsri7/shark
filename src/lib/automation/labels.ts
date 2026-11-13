@@ -436,6 +436,7 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "trips.booking.paid", label: "เมื่อการจองทัวร์ชำระครบ" },
   { value: "trips.refund.requested", label: "เมื่อมีคำขอคืนเงินทัวร์" },
   { value: "trips.refund.approved", label: "เมื่ออนุมัติคำขอคืนเงินทัวร์" },
+  { value: "trips.refund.requoted", label: "เมื่อคำขอคืนเงินทัวร์ถูกคำนวณใหม่หลังอนุมัติ" },
   { value: "trips.refund.done", label: "เมื่อบันทึกการโอนคืนเงินทัวร์" },
   // ── /T0.7 money ──
 ];

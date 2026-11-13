@@ -42,6 +42,19 @@ export const TRIP_REFUND_TRANSITIONS: readonly (readonly [TripRefundStatus, Trip
 export function canTransitionRefund(from: string, to: string): boolean {
   return TRIP_REFUND_TRANSITIONS.some(([a, b]) => a === from && b === to);
 }
+/**
+ * ผังที่โค้ดใช้จริง = ตารางสัญญา (CC :709 · คงไว้ตรงตัวข้างบน) + ทางออกของคำขอที่อนุมัติแล้ว (มติผู้คุม r1 V4 · r2 W1 W7):
+ * APPROVED → QUOTED (ข้อเท็จจริงเงินเปลี่ยนหลังอนุมัติ ⇒ คำนวณใหม่ ณ วันที่ยื่นเดิม · ต้องอนุมัติใหม่) ·
+ * APPROVED → WITHDRAWN (ผู้มีสิทธิ์อนุมัติถอนคำขอที่บันทึกโอนคืนไม่ได้)
+ */
+export const TRIP_REFUND_TRANSITIONS_OPS: readonly (readonly [TripRefundStatus, TripRefundStatus])[] = [
+  ...TRIP_REFUND_TRANSITIONS,
+  ["APPROVED", "QUOTED"],
+  ["APPROVED", "WITHDRAWN"],
+];
+export function canTransitionRefundOps(from: string, to: string): boolean {
+  return TRIP_REFUND_TRANSITIONS_OPS.some(([a, b]) => a === from && b === to);
+}
 /** entityType ของคำอนุมัติแก้ยอดคืนมือ */
 export const TRIP_REFUND_ENTITY = "trips.refund";
 /** เลขอ้างอิงธนาคาร/อนุมัติบัตร — ข้อความล้วน (เก็บใน audit after.reference เท่านั้น · ใบสั่ง §6 · §17 ข้อ 5) */

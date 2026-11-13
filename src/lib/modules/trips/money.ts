@@ -307,6 +307,9 @@ export type TripDueDTO = {
 };
 /** สถานะการจองที่ยังมียอดให้จ่าย (นอกจากนี้ยอดค้างของทุกงวด = 0 · มติ r1 V3) */
 const OWES: ReadonlySet<string> = new Set(["HOLD", "PENDING", "CONFIRMED", "PART_PAID"]);
+/** การจองที่จบโดยไม่ค้างจ่ายอีก (มติ r2 W6) */
+const ENDED: ReadonlySet<string> = new Set(["EXPIRED", "CANCELLED"]);
+const OPEN_DUE_SET: ReadonlySet<string> = new Set(TRIP_DUE_OPEN_STATUSES);
 /**
  * งวดที่แสดง (มติ r1 V3): ไม่มีแถวงวดเลย (การจองก่อน T0.7) ⇒ ร่างจาก snapshot (id null · ไม่เขียนฐาน) ·
  * มีแถว ⇒ งวดของ snapshot ปัจจุบัน (ไม่ CANCELLED) หรือถ้าทุกแถว CANCELLED ⇒ แถวทั้งหมดตามจริง (ประวัติ) ·
@@ -347,7 +350,8 @@ async function duesView(db: Tx, g: Gate, b: MoneyBooking): Promise<TripDueDTO[] 
     paidSatang: r.paidSatang,
     paidPassThroughSatang: pt.get(r.id) ?? 0,
     outstandingSatang: owes && r.status !== "CANCELLED" ? r.amountSatang - r.paidSatang : 0,
-    status: r.status,
+    // มติ r2 W6: การจองที่หมดเวลา/ยกเลิกแล้ว — งวดที่ยังเปิดในแถว (T0.6 ไม่ปิดงวดตอนหมดเวลา/ยกเลิกก่อนจ่าย) แสดงเป็น CANCELLED (ระดับมุมมอง · ไม่เขียนแถวประวัติ)
+    status: ENDED.has(b.status) && OPEN_DUE_SET.has(r.status) ? "CANCELLED" : r.status,
   }));
 }
 const readerGate = (c: Ctx): Failure | null => (c.actor.kind === "STAFF" || c.actor.kind === "SYSTEM" ? null : sellFail("FORBIDDEN"));
@@ -783,16 +787,40 @@ export async function tripCashDay(ctx: unknown, input: unknown): Promise<SellRes
 }
 // ═══════════════════════ §13 งาน trips.paymentDue (ส่วนต่อร้าน · jobs.ts เป็นทางเข้าข้ามร้าน) ═══════════════════════
 export type DueTickRow = { id: string; bookingId: string; dueAt: Date; amountSatang: number; paidSatang: number };
-/** เตือนงวด: ทุก d ใน T16 ที่ dueAt − d วัน ≤ now < dueAt ⇒ trips.payment.due_soon คีย์ <dueId>:<d> (ซ้ำ = ไม่ยิง) · ไม่เปลี่ยนแถว — คืนจำนวนที่ยิงใหม่ */
-export async function emitDueReminders(g: Gate, due: DueTickRow, days: readonly number[], now: Date): Promise<number> {
-  const at = new Date(due.dueAt).getTime();
+/**
+ * วันเตือนที่ใช้ ณ now (มติ r2 W9): d ที่เล็กที่สุดใน T16 ที่ dueAt − d วัน ≤ now < dueAt — งวดที่เห็นครั้งแรกในช่วงใกล้ ⇒ ได้เตือนเดียว (ไม่ยิง d=7 กับ d=1 พร้อมกัน) · ไม่มี ⇒ null
+ */
+export function reminderDayOf(dueAt: Date, days: readonly number[], now: Date): number | null {
+  const at = new Date(dueAt).getTime();
   const t = now.getTime();
   const hit = [...new Set(days)].filter((d) => Number.isInteger(d) && d >= 0 && at - d * MS_PER_DAY <= t && t < at);
-  if (!hit.length) return 0;
-  const payload = { dueId: due.id, bookingId: due.bookingId, amountSatang: due.amountSatang - due.paidSatang, dueAt: new Date(due.dueAt).toISOString() };
-  return emitOutboxMany(unitClient(g), hit.map((d) => ({ tenantId: g.tenantId, unitId: g.unitId, type: "trips.payment.due_soon", idempotencyKey: `trips.payment.due_soon:${due.id}:${d}`, payload })));
+  return hit.length ? Math.min(...hit) : null;
 }
-export type DueOverdueValue = { overdue: boolean; dueStatus: string | null; overdueAction: string | null; bookingStatus: string; bookingVersion: number; autoReleased: boolean };
+/**
+ * เตือนงวดของหน่วยหนึ่ง (ไม่มีธุรกรรม · ไม่ล็อก · ไม่เปลี่ยนแถวงวด): คีย์ `trips.payment.due_soon:<dueId>:<d>` — ตรวจคีย์ที่มีแล้วในคำสั่งเดียว
+ * (ดัชนี unique OutboxEvent (tenantId, idempotencyKey) · มติ r2 W8) แล้ว INSERT เฉพาะที่ยังไม่มี — คืนจำนวนที่ยิงใหม่
+ */
+export async function emitDueReminders(g: Gate, items: readonly { due: DueTickRow; d: number }[]): Promise<number> {
+  if (!items.length) return 0;
+  const keyOf = (x: { due: DueTickRow; d: number }) => `trips.payment.due_soon:${x.due.id}:${x.d}`;
+  const db = unitClient(g);
+  const have = await db.$queryRaw<{ k: string }[]>`
+    SELECT "idempotencyKey" AS "k" FROM "OutboxEvent" WHERE "tenantId" = ${g.tenantId} AND "idempotencyKey" = ANY(${items.map(keyOf)}::text[])`;
+  const seen = new Set(have.map((r) => r.k));
+  const todo = items.filter((x) => !seen.has(keyOf(x)));
+  if (!todo.length) return 0;
+  return emitOutboxMany(
+    db,
+    todo.map((x) => ({
+      tenantId: g.tenantId,
+      unitId: g.unitId,
+      type: "trips.payment.due_soon",
+      idempotencyKey: keyOf(x),
+      payload: { dueId: x.due.id, bookingId: x.due.bookingId, amountSatang: x.due.amountSatang - x.due.paidSatang, dueAt: new Date(x.due.dueAt).toISOString() },
+    })),
+  );
+}
+export type DueOverdueValue = { overdue: boolean; dueStatus: string | null; overdueAction: string | null; bookingStatus: string; bookingVersion: number; autoReleased: boolean; autoReleaseFailed?: string | null };
 /** ยื่นคำขอคืนเงินอัตโนมัติ (T17 AUTO_RELEASE) ในธุรกรรมเดียวกับ CAS → OVERDUE — ผู้เรียก (jobs.ts) ส่งตัวยื่นของ refund.ts เข้ามา (ไม่มีเส้น import money → refund) */
 export type AutoReleaseInTx = (tx: Tx, b: MoneyBooking, dueId: string) => Promise<boolean>;
 /**
@@ -834,8 +862,42 @@ export async function markTripDueOverdue(g: Gate, due: { id: string; bookingId: 
       outstandingSatang: d.amountSatang - d.paidSatang,
       overdueAction: action,
     }, { status: d.status });
-    const released = action === "AUTO_RELEASE" && autoRelease ? await autoRelease(tx, b, d.id) : false;
-    return { overdue: true, dueStatus: "OVERDUE", overdueAction: action, ...base, autoReleased: released };
+    // มติ r2 W5: ยื่นคำขอใต้ SAVEPOINT — ยื่นไม่สำเร็จ ⇒ ย้อนเฉพาะการยื่น · การเปลี่ยนเป็น OVERDUE + event ยัง commit (คิวลองยื่นซ้ำของงานจับได้ภายหลัง)
+    let released = false;
+    let autoReleaseFailed: string | null = null;
+    if (action === "AUTO_RELEASE" && autoRelease) {
+      await tx.$executeRaw`SAVEPOINT trips_t07_autorelease`;
+      try {
+        released = await autoRelease(tx, b, d.id);
+        await tx.$executeRaw`RELEASE SAVEPOINT trips_t07_autorelease`;
+      } catch (e) {
+        await tx.$executeRaw`ROLLBACK TO SAVEPOINT trips_t07_autorelease`;
+        await tx.$executeRaw`RELEASE SAVEPOINT trips_t07_autorelease`;
+        autoReleaseFailed = e instanceof BookingAbort ? e.code : "UNEXPECTED";
+      }
+    }
+    return { overdue: true, dueStatus: "OVERDUE", overdueAction: action, ...base, autoReleased: released, autoReleaseFailed };
+  });
+}
+/**
+ * ลองยื่น AUTO_RELEASE ซ้ำของงวด OVERDUE ที่ยังไม่มีคำขอของงวดนั้น (มติ r2 W5 · ไม่เปลี่ยนสถานะงวดอีก): หนึ่ง tx · 2b การจอง → งวดยัง OVERDUE และค้างจ่าย ·
+ * ไม่มีคำขอเปิด · T17 = AUTO_RELEASE ⇒ autoRelease(tx, …) — ยื่นไม่ได้ ⇒ rollback (ผู้เรียกนับความล้ม · รอบหน้าลองใหม่ตามเพดานต่อรอบ)
+ */
+export async function retryTripAutoRelease(g: Gate, due: { id: string; bookingId: string }, autoRelease: AutoReleaseInTx): Promise<SellResult<boolean>> {
+  return runTripsTx(g, async (tx): Promise<boolean> => {
+    const b = await lockMoneyBookingInTx(tx, g, due.bookingId);
+    if (!b || (b.status !== "CONFIRMED" && b.status !== "PART_PAID")) return false;
+    const rows = await tx.$queryRaw<DueRow[]>`SELECT ${DUE_COLS} FROM "TripPaymentDue" WHERE "id" = ${due.id} AND "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`;
+    const d = rows[0];
+    if (!d || d.status !== "OVERDUE" || d.paidSatang >= d.amountSatang) return false;
+    if (await openRefundOf(tx, g, b.id)) return false;
+    let action: unknown;
+    try {
+      action = snapshotValue(b.policySnapshot, "trips", "trips.pay.overdueAction");
+    } catch {
+      return false;
+    }
+    return action === "AUTO_RELEASE" ? autoRelease(tx, b, d.id) : false;
   });
 }
 // ── /T0.7 money ──

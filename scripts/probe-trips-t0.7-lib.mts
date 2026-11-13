@@ -437,9 +437,9 @@ export async function invMoney(tenantId: string): Promise<string[]> {
         if (rr !== r.amountSatang) bad.push(`M7-done-ref ${r.id} ΣREF ${rr} ≠ ${r.amountSatang}`);
         if (rr + rt !== b.paidSatang) bad.push(`M7-done-sum ${r.id} ${rr}+${rt}≠${b.paidSatang}`);
         if (b.status !== "CANCELLED") bad.push(`M7-done-notcancelled ${tag}`);
-        if ((obCount.get(`trips.refund.done:${r.id}`) ?? 0) !== 1) bad.push(`M5-refund-done-evt ${r.id}`);
+        if ([...obCount.entries()].filter(([k]) => k.startsWith(`trips.refund.done:${r.id}:g`)).reduce((n, [, v]) => n + v, 0) !== 1) bad.push(`M5-refund-done-evt ${r.id}`); // ผู้คุม 13 พ.ย.: มติ W2 — กุญแจ event มีเลขรุ่น :g<n>
       }
-      if (["QUOTED", "APPROVED"].includes(r.status) && (obCount.get(`trips.refund.requested:${r.id}`) ?? 0) !== 1) bad.push(`M5-refund-req-evt ${r.id}`);
+      if (["QUOTED", "APPROVED"].includes(r.status) && (obCount.get(`trips.refund.requested:${r.id}:g0`) ?? 0) !== 1) bad.push(`M5-refund-req-evt ${r.id}`);
     }
     if (b.status === "CANCELLED" && E.length && sF + sT !== b.paidSatang) bad.push(`M2-cancel-sum ${tag} ${sF}+${sT}≠${b.paidSatang}`);
   }
