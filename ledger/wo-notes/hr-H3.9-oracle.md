@@ -75,3 +75,7 @@ Base: origin/session/hr now contains H3.4 (9e8ad6386) ⇒ default base resolves 
 - **S4.9** + payAll tax-month / tax-year exports stay masked with full-ID ON; export audits 5 → 7.
 - New **S3.12** register as-of (F2e) · **S4.11** XLSX of the 27 non-owner allowed cells (F2c) · **S4.12** settings lost-update race (F1: report setting ∥ clock policy ×20 both orders, ∥ judge cursor ×10, own tenant) · **S5.5** HEAD/POST 405 (reports + bank helper) and injected source cap `__takeCap` ⇒ LIMIT, no audit (F2a/F2b).
 - qc-hr-h3.5 **S6.6** + HEAD ⇒ 405, no count, no audit (F2a).
+
+## 9. ORACLE-EDITs fix round 2 (builder H3.9 · controller 13 Nov)
+- **S3.12** + `lastDay` (as-of = endDate ⇒ ทำงาน, end date shown — endDate is the last employed day, payroll-run-rules.ts:329–332) + `endedNoDate` (ENDED, no endDate ⇒ สิ้นสุด, blank end date; employee on system B).
+- **S4.12** replaced by the deterministic lock check (raw tx holds hr:clockpolicy + stale read; the setting write must block; both keys survive ×3). Red on the old lock: blocked=false off=false (3/3). Judge-cursor timing part dropped.

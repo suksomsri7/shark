@@ -517,7 +517,10 @@ async function registerRows(ctx: Ctx, asOf: string, emps: Map<string, Emp>, full
     const pt = p ? String(p.payType) : "";
     const rate = !p ? null : pt === "DAILY" ? p.dailyRateSatang : pt === "HOURLY" ? p.hourlyRateSatang : p.baseSalarySatang;
     const birth = dayOf(e.birthDate);
-    const ended = !!e.endDate && dayOf(e.endDate) <= asOf;
+    // fix r2 ▸ วันสิ้นสุด = วันสุดท้ายที่ยังจ้าง (payroll-run-rules.ts:329–332 นับวันนั้นเป็นวันจ่าย · judge.ts ทำงานถึงวันนั้น) ⇒ สิ้นสุดเมื่อ endDate < วันที่ของทะเบียน ·
+    //   ไม่มีวันสิ้นสุดแต่สถานะ ENDED ⇒ สิ้นสุด (วันสิ้นสุดว่าง) · มีวันสิ้นสุดหลังวันนั้น ⇒ ยังทำงาน ณ วันนั้น
+    const end = dayOf(e.endDate);
+    const ended = end ? end < asOf : e.employmentStatus === "ENDED";
     const age = birth ? ageOn(birth, asOf) : null;
     return {
       emp: e,
@@ -532,7 +535,7 @@ async function registerRows(ctx: Ctx, asOf: string, emps: Map<string, Emp>, full
         payType: pt ? (REPORT_LABELS.payType[pt] ?? "") : "",
         rate: rate === null || rate === undefined || !Number.isSafeInteger(rate) ? "" : bahtText(rate),
         otherBenefits: r?.otherBenefits ?? "",
-        endDate: ended ? dayOf(e.endDate) : "",
+        endDate: end && end <= asOf ? end : "",
         status: ended ? REPORT_LABELS.status.ENDED! : e.employmentStatus === "ENDED" ? REPORT_LABELS.status.ACTIVE! : e.employmentStatus ? (REPORT_LABELS.status[e.employmentStatus] ?? "") : "",
         citizenId: fullId ? (typeof e.citizen === "string" ? e.citizen.trim() : "") : maskCitizenId(e.citizen),
       },

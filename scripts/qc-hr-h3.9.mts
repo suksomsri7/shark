@@ -89,7 +89,7 @@ S3.7|R3g|C|R|[db] register 2031-10-31 owner: page + export (setting OFF ⇒ IDs 
 S3.8|R10|C|R|[db] saveRegisterFields: gates (owner · hr-admin in branch · benefits needs payroll) · out of branch/other ⇒ NO · limits ⇒ registerInput · audit fields only · loadRegisterFields keys by gate
 S3.10|A|C|R|[db] revoked OT (ruling A): APPROVED+revokedAt and CANCELLED+revokedAt never in approved count/minutes · kept HOLIDAY_WORK minutes only in keptHolidayWorkMin (฿ only for money viewers)
 S3.11|B|C|R|[db] register "10 or more" note (ruling B): all-branch viewers get duty/under-10 · branch-limited payroll viewer gets neither (no shop-wide count signal)
-S3.12|F2e|C|R|[db] fix r1: register as of a date — hired after the date not listed · end date / status as of that date (derived from dates)
+S3.12|F2e|C|R|[db] fix r1/r2: register as of a date — hired after the date not listed · end date = last employed day (ended only when endDate < as-of) · ENDED without endDate = ended, blank end date
 S3.9|R7|C|R|[db] owner exports: time CSV + register CSV = independent CSV text of golden · XLSX = same table · file names · content types
 S4.1|R4|C|R|[db] gate matrix 10 viewers × 9 reports × page/export = design matrix (ok ⇔ allowed · NO otherwise)
 S4.2|R4|C|R|[db] column sets: DTO keys + export header = columnsFor(viewer access) for every allowed cell of the matrix
@@ -100,7 +100,7 @@ S4.6|X11|C|R|[db] forbidden keys absent from every DTO (HR_FORBIDDEN_DTO_KEYS + 
 S4.7|X2|C|R|[db] cross-tenant / cross-system ctx ⇒ NO with identical bytes · own empty system ⇒ ok rows []
 S4.10|X2|C|R|[db] membership gate on every entry point: non-member (other tenant owner) and role-claim mismatch ⇒ NO for loadReport · exportReport · reportExportGet (404) · get/setReportSettings · load/saveRegisterFields · nothing written
 S4.11|F2c|C|R|[db] fix r1: XLSX exports of every non-owner allowed cell parsed — no full ID · no secret · managers/hr-admin/leave reader: no ฿ strings
-S4.12|F1|C|R|[db] fix r1: settings lost update — setReportSettings OFF ∥ saveClockPolicy ×20 both orders and ∥ judge-job cursor write ×10: registerFullId OFF and earlyInMin both survive · cursor written
+S4.12|F1|C|R|[db] fix r1/r2: settings lost update, deterministic — raw tx holds hr:clockpolicy + reads; setReportSettings(OFF) blocks; raw tx writes stale settings + another key; OFF and the other key both survive (×3)
 S4.8|Q2|C|R|[db] ruling Q2 setting "full national ID in register export": owner only (others settingOwner) · ON needs acknowledge (ackFullId) · default OFF · other settings keys kept · audit hr.report.setting
 S4.9|Q2|C|R|[db] setting ON: register export full for owner / all-branch payroll only · branch payroll masked · pages + tax exports masked · export audit fullId true/false · OFF again ⇒ masked
 S5.1|R9|C|R|[db] export audit: 1 row hr.report.export · targetType HrReport · after keys exactly {report period format rowCount columns unitId fullId} · no values · refusals not audited
@@ -859,7 +859,20 @@ async function runDb(): Promise<void> {
     const e5 = row(E.e5);
     const now = await load(V.owner, "register", "2031-10-31");
     const e5n = ((now.value?.rows ?? []) as Any[]).find((x) => x.employeeId === E.e5)?.values;
-    ck("S3.12", { ok: r.ok, notHired: !row(E.e2) && !!row(E.e1) && !!row(E.e3) && !!row(E.e4), e5: !!e5 && e5.endDate === "" && e5.status === "ทำงาน" && e5.age === "35", later: e5n?.endDate === "2031-09-30" && e5n?.status === "สิ้นสุด" }, "as of the date", short(e5, 160));
+    // ORACLE-EDIT (builder H3.9 fix r2 · controller 13 Nov) ruling 3(b)(c): endDate is the last employed day (payroll-run-rules proration counts it) ⇒ on that day still working · ENDED with no endDate = ended ◂
+    const last = await load(V.owner, "register", "2031-09-30");
+    const e5l = ((last.value?.rows ?? []) as Any[]).find((x) => x.employeeId === E.e5)?.values;
+    const eNoEnd = await fx.mkEmp(TT, sB, "QC39 จบไม่มีวัน", { code: "Z01", startDate: "2030-01-01", status: "ENDED", active: false });
+    const nb = await load(V.owner, "register", "2031-10-31", {}, cB);
+    const nbe = ((nb.value?.rows ?? []) as Any[]).find((x) => x.employeeId === eNoEnd)?.values;
+    ck("S3.12", {
+      ok: r.ok,
+      notHired: !row(E.e2) && !!row(E.e1) && !!row(E.e3) && !!row(E.e4),
+      e5: !!e5 && e5.endDate === "" && e5.status === "ทำงาน" && e5.age === "35",
+      later: e5n?.endDate === "2031-09-30" && e5n?.status === "สิ้นสุด",
+      lastDay: e5l?.endDate === "2031-09-30" && e5l?.status === "ทำงาน",
+      endedNoDate: nbe?.status === "สิ้นสุด" && nbe?.endDate === "",
+    }, "as of the date", `${short(e5, 120)} last=${short(e5l, 120)} noEnd=${short(nbe, 120)}`);
   }
   // ── S4 matrix ──
   const ALLOW: Record<string, string[]> = {
@@ -1306,44 +1319,44 @@ async function runDb(): Promise<void> {
       }, "finalized v2 + all v1", `py=${py.value?.totals?.net} ty=${ty.value?.totals?.income}`);
     }
   }
-  // S4.12 ORACLE-EDIT (builder H3.9 fix r1 · controller 13 Nov) F1: AppSystem.settings lost update (hunter probe hunt-h3.9-race) — own tenant, both orders ×20 + judge cursor ×10 ◂
+  // S4.12 ORACLE-EDIT (builder H3.9 fix r2 · controller 13 Nov) ruling 4 (replaces the timing race): deterministic lost-update check — a raw transaction holds hr:clockpolicy:<sys> (the key
+  //   every clock-policy writer incl. the judge cursor takes), reads settings, then setReportSettings(OFF) starts and must BLOCK; the raw transaction writes the
+  //   stale settings + another key and commits; afterwards OFF and the other key must both be there. Judge-cursor part dropped (cannot be made deterministic
+  //   without a hook in frozen judge.ts — the raw transaction is the same lock + read-modify-write protocol). ◂
   {
-    const CS = (await import("@/lib/modules/hr/clock-settings")) as Any;
-    const JG = (await import("@/lib/modules/hr/judge")) as Any;
     const T3 = await fx.newTenant("-race", "QC HR H3.9 race");
     const sR = await sys("ทีม race", T3);
     const cR = { tenantId: T3, systemId: sR };
     const oR = vOf(await fx.mkUser(T3, "race-owner", `QC39 race owner ${tag}`, "OWNER", [], {}));
-    for (let i = 0; i < 3; i++) await fx.mkEmp(T3, sR, `QC39 race ${i}`, { code: `R${i}` });
     const sl = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const st = async () => ((await P.appSystem.findFirst({ where: { id: sR }, select: { settings: true } }))?.settings ?? {}) as Any;
-    let offLost = 0;
-    let clockLost = 0;
-    let judgeOffLost = 0;
-    let cursorSeen = 0;
-    const N = 20;
-    for (let k = 0; k < N; k++) {
+    const out: string[] = [];
+    let ok = true;
+    for (let k = 0; k < 3; k++) {
       await S("setReportSettings", cR, oR, { registerFullId: true, acknowledge: true });
-      const clockFirst = k % 2 === 0;
-      const [a, b] = await Promise.all([
-        sl(clockFirst ? (k % 5) * 15 : 0).then(() => S("setReportSettings", cR, oR, { registerFullId: false })),
-        sl(clockFirst ? 0 : (k % 5) * 15).then(() => CS.saveClockPolicy(cR, oR, { earlyInMin: 10 + k })),
-      ]);
-      const s = await st();
-      if (a.ok && s?.hrReports?.registerFullId !== false) offLost++;
-      if (b?.ok && s?.hrClock?.earlyInMin !== 10 + k) clockLost++;
+      let settled = false;
+      let call: Promise<RO> | null = null;
+      let blocked = false;
+      try {
+        await P.$transaction(async (tx: Any) => {
+          await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, `hr:clockpolicy:${sR}`);
+          const rows = (await tx.$queryRawUnsafe(`SELECT "settings" FROM "AppSystem" WHERE "id" = $1`, sR)) as Any[];
+          const stale = (rows[0]?.settings ?? {}) as Any;
+          call = S("setReportSettings", cR, oR, { registerFullId: false }).then((x) => ((settled = true), x));
+          await sl(400);
+          blocked = !settled;
+          await tx.$executeRawUnsafe(`UPDATE "AppSystem" SET "settings" = $1::jsonb WHERE "id" = $2`, JSON.stringify({ ...stale, qc39Other: k }), sR);
+        }, { timeout: 20_000, maxWait: 10_000 });
+      } catch (e) {
+        out.push(`tx:${errText(e).slice(0, 60)}`);
+      }
+      const r = call ? await (call as Promise<RO>) : null;
+      const s1 = await st();
+      const round = !!r?.ok && blocked && s1?.hrReports?.registerFullId === false && s1?.qc39Other === k;
+      if (!round) ok = false;
+      out.push(`r${k}:blocked=${blocked} off=${s1?.hrReports?.registerFullId === false} other=${s1?.qc39Other === k}`);
     }
-    for (let k = 0; k < 10; k++) {
-      await S("setReportSettings", cR, oR, { registerFullId: true, acknowledge: true });
-      const [, a] = await Promise.all([
-        JG.runAttendanceJobs({ now: new Date(Date.UTC(2040, 0, 1 + k, 3)), tenantId: T3, pageSize: 1, maxPages: 1 }).catch(() => null),
-        sl((k % 5) * 10).then(() => S("setReportSettings", cR, oR, { registerFullId: false })),
-      ]);
-      const s = await st();
-      if (typeof s?.hrAttendanceCursor === "string") cursorSeen++;
-      if (a.ok && s?.hrReports?.registerFullId !== false) judgeOffLost++;
-    }
-    ck("S4.12", { off: offLost === 0, clock: clockLost === 0, judge: judgeOffLost === 0, cursor: cursorSeen > 0 }, "no lost update", `offLost=${offLost} clockLost=${clockLost} judgeOffLost=${judgeOffLost} cursor=${cursorSeen}/10`);
+    ck("S4.12", { deterministic: ok }, "setting write waits for the clock-policy lock · no lost update", out.join(" "));
   }
 }
 
