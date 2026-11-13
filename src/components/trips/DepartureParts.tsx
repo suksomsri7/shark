@@ -2,6 +2,7 @@
 // TRIPS T1.2 ▸ ชิ้นส่วนร่วมของจอปฏิทินรอบ (ภาพ 11): ลิงก์ของจอ · วันที่สั้น · ป้ายสถานะ/รูปทรงช่อง · ข้อความช่อง
 //   🔴 แสดงผลเท่านั้น — สถานะ/ที่ว่าง/ปุ่ม มาจากตัวโหลด · วันที่จาก VM (คิดตามเขตเวลาร้านแล้ว) · ไม่อ่านนาฬิกาเครื่อง · ตัวอักษร ≥ 14 px
 import { useLocale, useTranslations } from "next-intl";
+import { parseReason } from "@/lib/modules/trips/departure-view-core";
 import type { DepartureCellState, DepartureCellVM } from "@/lib/modules/trips";
 
 export type CalView = "week" | "month" | "trips";
@@ -92,9 +93,9 @@ export const CANCEL_STRIPES = { backgroundImage: "repeating-linear-gradient(135d
 export const cellStyle = (state: DepartureCellState) => (state === "CANCELLED" ? CANCEL_STRIPES : undefined);
 
 /** บรรทัด 1 + 2 ของช่อง (ใบสั่ง §5) */
-export function useCellText() {
+export function useCellText(titles?: Record<string, { th: string; en: string | null }>) {
   const t = useTranslations("trips");
-  const reasonText = useReasonText();
+  const reasonText = useReasonText(titles);
   const line1 = (c: Pick<DepartureCellVM, "state" | "used" | "capacity">) => (c.state === "CANCELLED" ? t("departures.cellShort.CANCELLED") : t("departures.cell.used", { used: c.used, cap: c.capacity }));
   const line2 = (c: Pick<DepartureCellVM, "state" | "seatsLeft" | "minPax" | "waitlist" | "cancelReason" | "used">) => {
     switch (c.state) {
@@ -119,29 +120,30 @@ export function useCellText() {
     }
   };
   /** ข้อความเต็มของช่อง (tooltip · ชื่อสถานะเต็ม + บรรทัด 2) */
-  const full = (c: Pick<DepartureCellVM, "state" | "used" | "capacity" | "seatsLeft" | "minPax" | "waitlist" | "cancelReason">) => `${t(`departures.state.${c.state}`)} · ${line1(c)} · ${line2(c)}`;
+  const full = (c: Pick<DepartureCellVM, "state" | "used" | "capacity" | "seatsLeft" | "minPax" | "waitlist" | "cancelReason">) => [...new Set([t(`departures.state.${c.state}`), line1(c), line2(c)])].join(" · ");
   return { line1, line2, full };
 }
 
 /**
- * เหตุผลยกเลิก → ข้อความตามภาษาผู้ดู: "preset:<WEATHER|BELOW_MIN|VEHICLE>[|หมายเหตุ]" · "merge:<HH:MM>|<ชื่อเป้า>[|หมายเหตุ]"
- * ค่าอื่น (ร้านพิมพ์เอง · ข้อมูลเดิม เช่น "คลื่นลม") ⇒ แสดงตรงตัว
+ * เหตุผลยกเลิก → ข้อความตามภาษาผู้ดู (ตัวถอดเดียวกับบริการ: parseReason ของ departure-view-core)
+ * preset ⇒ ป้ายจาก messages · merge ⇒ ชื่อเป้าจาก productId (titles จากตัวโหลด · ไม่มี ⇒ ชื่อสำรองที่เก็บไว้) · ค่าอื่น ⇒ ตรงตัว
  */
-export function useReasonText() {
+export function useReasonText(titles?: Record<string, { th: string; en: string | null }>) {
   const t = useTranslations("trips");
+  const T = useTitle();
   return (raw: string | null): string | null => {
     if (raw === null) return null;
-    const withNote = (reason: string, note: string | undefined) => (note ? t("departures.reason.withNote", { reason, note }) : reason);
-    const p = /^preset:(WEATHER|BELOW_MIN|VEHICLE)(?:\|([\s\S]*))?$/.exec(raw);
-    if (p) return withNote(t(`departures.reason.${p[1]}`), p[2]);
-    const m = /^merge:(\d{2}:\d{2})\|([^|]*)(?:\|([\s\S]*))?$/.exec(raw);
-    if (m) return withNote(t("departures.reason.merge", { title: m[2], time: m[1] }), m[3]);
-    return raw;
+    const x = parseReason(raw);
+    const withNote = (reason: string, note: string | null) => (note ? t("departures.reason.withNote", { reason, note }) : reason);
+    if (x.kind === "preset") return withNote(t(`departures.reason.${x.code}`), x.note);
+    if (x.kind === "merge") {
+      const n = titles?.[x.productId];
+      const title = n ? T(n.th, n.en) : x.title;
+      return withNote(title ? t("departures.reason.merge", { title, time: x.time }) : t("departures.reason.mergeNoTitle", { time: x.time }), x.note);
+    }
+    return x.text;
   };
 }
-/** รหัสเหตุผลสำเร็จรูป (เก็บลงคอลัมน์ข้อความอิสระของ T0.3 — จอแปลตอนแสดง) */
-export const REASON_PRESETS = ["WEATHER", "BELOW_MIN", "VEHICLE"] as const;
-export const reasonCode = (preset: (typeof REASON_PRESETS)[number], note: string): string => `preset:${preset}${note.trim() ? `|${note.trim().replace(/\|/g, "/")}` : ""}`;
 
 /** ชื่อสินค้าตามภาษาผู้ดู (ไม่มีอังกฤษ ⇒ ชื่อไทยที่ร้านกรอก) */
 export function useTitle() {

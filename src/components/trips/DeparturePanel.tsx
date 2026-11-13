@@ -38,7 +38,7 @@ export function DeparturePanel({ unitSlug, vm, base, q, resources, openDecide }:
   const unit = t(`departures.unit.${d.productType === "LIVEABOARD" ? "BERTH" : "SEAT"}`);
   const a = vm.actions;
   const T = useTitle();
-  const reasonText = useReasonText();
+  const reasonText = useReasonText(vm.reasonTitles);
   const title = T(d.productTitle, d.productTitleEn);
 
   // กดรายการ "ต้องตัดสินใจ" ของรอบที่เปิดแผงอยู่แล้ว (URL ไม่เปลี่ยน) ⇒ เปิดกล่องตัดสิน
@@ -56,7 +56,8 @@ export function DeparturePanel({ unitSlug, vm, base, q, resources, openDecide }:
     if (!window.matchMedia("(max-width: 767px)").matches) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    sheetRef.current?.querySelector<HTMLElement>('[data-testid="trips-dep-panel-close"]')?.focus();
+    // กล่องโต้ตอบเปิดอยู่แล้ว (เช่น ?decide=1 เปิดกล่องตัดสินตอนเปิดแผง) ⇒ ไม่ย้ายโฟกัสออกจากกล่อง
+    if (!document.querySelector('[role="dialog"]')) sheetRef.current?.querySelector<HTMLElement>('[data-testid="trips-dep-panel-close"]')?.focus();
     return () => {
       document.body.style.overflow = prev;
     };
@@ -252,10 +253,18 @@ export function DecisionsCard({ vm, base, q }: { vm: DepartureCalendarVM; base: 
   const D = useDepDates();
   const T = useTitle();
   const titleOf = new Map(vm.products.map((p) => [p.id, T(p.titleTh, p.titleEn)]));
-  if (!vm.decisions.length) return null;
+  // ชิปนับทั้งช่วง (counts.belowMin) ⇒ การ์ดแสดงเมื่อชิป > 0 เสมอ (ชิปไม่ชี้ไปที่ว่าง) · ถูกตัดที่เพดาน ⇒ บอกว่าแสดงกี่รายการถึงวันไหน
+  const total = Math.max(vm.counts.belowMin, vm.decisions.length);
+  if (total === 0) return null;
+  const partial = vm.decisions.length < total;
   return (
     <section id="trips-decisions" data-testid="trips-decisions" className={CARD}>
-      <h2 className="text-base font-bold text-[color:var(--color-ink)]">{t("departures.decisions.title", { n: vm.decisions.length })}</h2>
+      <h2 className="text-base font-bold text-[color:var(--color-ink)]">{t("departures.decisions.title", { n: total })}</h2>
+      {partial ? (
+        <p role="status" className="rounded-lg border border-dashed border-[color:var(--color-line)] px-3 py-2 text-sm text-[color:var(--color-ink-soft)]">
+          {t("departures.decisions.partial", { shown: vm.decisions.length, total, date: vm.shownUntil ? D.full(vm.shownUntil) : "" })}
+        </p>
+      ) : null}
       <ul className="flex min-w-0 flex-col">
         {vm.decisions.map((x, i) => (
           <li key={x.departureId} className={i ? "border-t border-[color:var(--color-line)]" : ""}>
@@ -277,7 +286,7 @@ export function DecisionsCard({ vm, base, q }: { vm: DepartureCalendarVM; base: 
                   {x.hasPeople
                     ? t("departures.decisions.hasPeople", { run: t("departures.decide.run") })
                     : t("departures.decisions.propose", {
-                        list: [x.firstTargetTitle ? t("departures.decisions.mergeWith", { title: x.firstTargetTitle }) : null, t("departures.decide.run"), t("departures.decide.cancel")].filter(Boolean).join(" / "),
+                        list: [x.firstTargetTitle ? t("departures.decisions.mergeWith", { title: T(x.firstTargetTitle, x.firstTargetTitleEn) }) : null, t("departures.decide.run"), t("departures.decide.cancel")].filter(Boolean).join(" / "),
                       })}
                 </span>
               </span>

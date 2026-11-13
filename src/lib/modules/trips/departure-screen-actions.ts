@@ -6,11 +6,11 @@
 // ─────────────────────────────────────────────────────────────
 import { requireUnit } from "@/lib/core/context";
 import { assertCan, evaluate, type MembershipCtx } from "@/lib/core/rbac";
-import { setDepartureStopSell } from "./departures";
+import { cancelDeparture, setDepartureStopSell } from "./departures";
 import { assignResource, gateUnit, isFail, unitDb } from "./resources";
 import { hhmm, localToUtc, utcToLocal } from "./departures-core";
 import { decideBelowMin } from "./departure-desk";
-import { isCalendarYmd } from "./departure-view-core";
+import { isCalendarYmd, looksLikeReasonCode, parseReason } from "./departure-view-core";
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 const EDIT = ["trips.departure.edit"] as const;
@@ -37,6 +37,16 @@ async function enter(unitSlug: string, input: unknown, actions: readonly string[
 export async function decideBelowMinAction(unitSlug: string, input: unknown) {
   const e = await enter(unitSlug, input, STATUS);
   return decideBelowMin(e.ctx, e.input);
+}
+
+/** ยกเลิกรอบจากจอ: เหตุผล = รหัสสำเร็จรูป (preset:…) หรือข้อความอิสระที่ไม่ปลอมรหัส แล้วเรียก cancelDeparture ของ T0.3 */
+export async function cancelDepartureScreenAction(unitSlug: string, input: unknown) {
+  const e = await enter(unitSlug, input, STATUS);
+  const reason = e.input.reason;
+  if (typeof reason === "string" && looksLikeReasonCode(reason) && parseReason(reason.trim()).kind !== "preset") {
+    return { ok: false as const, code: "VALIDATION", message: "เหตุผลที่พิมพ์เองขึ้นต้นด้วย \"preset:\" หรือ \"merge:\" ไม่ได้ — เลือกเหตุผลสำเร็จรูปหรือพิมพ์ข้อความอื่น" };
+  }
+  return cancelDeparture(e.ctx, e.input);
 }
 
 /**

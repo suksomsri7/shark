@@ -9,7 +9,7 @@ import { z } from "zod";
 import { cancelDeparture, setDepartureStatus } from "./departures";
 import { hhmm, utcToLocal } from "./departures-core";
 import { gateUnit, isFail, unitDb, type TripCtx, type TripOpts } from "./resources";
-import { departureCellState, isMergeTarget } from "./departure-view-core";
+import { departureCellState, encodeMergeReason, isMergeTarget, looksLikeReasonCode, parseReason } from "./departure-view-core";
 
 export const DEPARTURE_DESK_ERROR_CODES = ["NOT_BELOW_MIN", "MERGE_NEEDS_BOOKINGS", "MERGE_TARGET_INVALID"] as const;
 export type DepartureDeskErrorCode = (typeof DEPARTURE_DESK_ERROR_CODES)[number];
@@ -19,10 +19,11 @@ export const DEPARTURE_DESK_MESSAGES: Record<DepartureDeskErrorCode, string> = {
   MERGE_TARGET_INVALID: "รอบที่เลือกรับรวมไม่ได้ — ต้องเป็นรอบวันเดียวกันที่ยังเปิดขายและมีที่ว่างพอ",
 };
 type DeskFail = { ok: false; code: string; message: string; used?: number };
-const deskFail = (code: DepartureDeskErrorCode | "INVALID_INPUT" | "NOT_FOUND", message?: string): DeskFail => ({
+const REASON_SPOOF = "เหตุผลที่พิมพ์เองขึ้นต้นด้วย \"preset:\" หรือ \"merge:\" ไม่ได้ — เลือกเหตุผลสำเร็จรูปหรือพิมพ์ข้อความอื่น";
+const deskFail = (code: DepartureDeskErrorCode | "INVALID_INPUT" | "NOT_FOUND" | "VALIDATION", message?: string): DeskFail => ({
   ok: false,
   code,
-  message: message ?? (code === "INVALID_INPUT" ? "ข้อมูลไม่ถูกต้อง" : code === "NOT_FOUND" ? "ไม่พบรายการ" : DEPARTURE_DESK_MESSAGES[code]),
+  message: message ?? (code === "INVALID_INPUT" || code === "VALIDATION" ? "ข้อมูลไม่ถูกต้อง" : code === "NOT_FOUND" ? "ไม่พบรายการ" : DEPARTURE_DESK_MESSAGES[code]),
 });
 
 const ID = z.string().trim().min(1).max(128);
@@ -41,12 +42,6 @@ const INPUT = z
 const DEP_SELECT = { id: true, productId: true, localDate: true, startsAt: true, status: true, capacity: true, sold: true, held: true, reserved: true, minPax: true } as const;
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
-/** รหัสเหตุผลรวมรอบ (ตัด "|" ในชื่อ/หมายเหตุ · ยาวไม่เกิน 500) */
-export function mergeReasonCode(hm: string, title: string, note?: string): string {
-  const clean = (x: string) => x.replace(/\|/g, "/").trim();
-  return `merge:${hm}|${clean(title)}${note ? `|${clean(note)}` : ""}`.slice(0, 500);
-}
-
 export type DecideBelowMinResult = { ok: true; decision: "RUN" | "CANCEL" | "MERGE"; status: string } | DeskFail;
 
 /** ตัดสินรอบต่ำกว่าขั้นต่ำ — ด่าน gateUnit "status" ของ T0.3 (ไม่มี trips.departure.status ⇒ FORBIDDEN) */
@@ -57,6 +52,8 @@ export async function decideBelowMin(ctx: TripCtx, input: unknown, opts?: TripOp
   const p = INPUT.safeParse(input);
   if (!p.success) return deskFail("INVALID_INPUT", p.error.issues[0]?.message);
   const v = p.data;
+  // เหตุผลอิสระห้ามปลอมรหัส: CANCEL รับรหัสสำเร็จรูปที่ถอดได้ หรือข้อความที่ไม่ขึ้นต้นด้วย preset:/merge: · MERGE = หมายเหตุอิสระเท่านั้น
+  if (v.reason !== undefined && looksLikeReasonCode(v.reason) && (v.decision !== "CANCEL" || parseReason(v.reason).kind !== "preset")) return deskFail("VALIDATION", REASON_SPOOF);
   const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
   const today = utcToLocal(g.tz, now).ymd;
   const db = unitDb(g);
@@ -82,8 +79,8 @@ export async function decideBelowMin(ctx: TripCtx, input: unknown, opts?: TripOp
   const tgtView = { ...tgt, localDate: ymd(tgt.localDate) };
   if (!product || product.status === "ARCHIVED" || !isMergeTarget(src, tgtView, { now, today })) return deskFail("MERGE_TARGET_INVALID");
   const title = typeof product.title === "object" && product.title !== null && !Array.isArray(product.title) && typeof (product.title as { th?: unknown }).th === "string" ? String((product.title as { th: string }).th) : "";
-  // เหตุผลเก็บเป็นรหัสที่จอแปลตามภาษาผู้ดู: "merge:<HH:MM>|<ชื่อเป้า>[|<หมายเหตุ>]" (คอลัมน์ T0.3 เป็นข้อความอิสระ · ค่าที่จอไม่รู้จัก ⇒ แสดงตรงตัว)
-  const reason = mergeReasonCode(hhmm(utcToLocal(g.tz, tgt.startsAt).minutes), title, v.reason);
+  // รหัส "merge:<HH:MM>|<productId เป้า>|<ชื่อไทยสำรอง>|<หมายเหตุ>" — จอแปลชื่อจาก productId ตามภาษาผู้ดู (departure-view-core)
+  const reason = encodeMergeReason(hhmm(utcToLocal(g.tz, tgt.startsAt).minutes), tgt.productId, title, v.reason);
   const r = await cancelDeparture(ctx, { unitId: g.unitId, departureId: row.id, reason }, opts);
   return r.ok ? { ok: true, decision: "MERGE", status: r.status } : r;
 }

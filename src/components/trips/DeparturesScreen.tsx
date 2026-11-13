@@ -27,7 +27,7 @@ export default function DeparturesScreen({
 }) {
   const t = useTranslations("trips");
   const D = useDepDates();
-  const reasonText = useReasonText();
+  const reasonText = useReasonText(cal.reasonTitles);
   const base = `/app/u/${unitSlug}/trips/departures`;
   const q: CalQuery = {
     view: cal.view,
@@ -78,6 +78,7 @@ export default function DeparturesScreen({
         {cal.view !== "trips" && cal.counts.belowMin > 0 ? (
           <Link data-testid="trips-cal-attention" href="#trips-decisions" className="inline-flex min-h-11 items-center rounded-lg border-2 border-dashed border-[color:var(--color-danger)] px-3 text-sm font-bold text-[color:var(--color-danger)]">
             {t("departures.attention", { n: cal.counts.belowMin })}
+            {cal.truncated ? ` (${t("departures.countsPartial")})` : ""}
           </Link>
         ) : cal.view !== "trips" ? (
           <span data-testid="trips-cal-attention" className="inline-flex min-h-11 items-center rounded-lg border border-[color:var(--color-line)] px-3 text-sm text-[color:var(--color-muted)]">

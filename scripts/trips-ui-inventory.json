@@ -1732,7 +1732,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#S-7",
       "system": "TRIPS",
-      "needs": "trips.departure.edit; trips.departure.edit"
+      "needs": "trips.departure.edit"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -1754,7 +1754,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#CT-14",
       "system": "TRIPS",
-      "needs": "trips.departure.edit; trips.departure.edit"
+      "needs": "trips.departure.edit"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -1952,7 +1952,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#S-7",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม; status CLOSED · trips.departure.status"
+      "needs": "trips.departure.status; status CLOSED · trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -1974,7 +1974,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#S-7",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม; OPEN ไม่ต่ำกว่าขั้นต่ำ"
+      "needs": "trips.departure.status; OPEN ไม่ต่ำกว่าขั้นต่ำ"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -1996,7 +1996,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-4",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม; GUARANTEED"
+      "needs": "trips.departure.status; GUARANTEED"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2018,7 +2018,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#CT-10",
       "system": "TRIPS",
-      "needs": "trips.departure.edit; trips.departure.edit"
+      "needs": "trips.departure.edit"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2040,7 +2040,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#CT-12",
       "system": "TRIPS",
-      "needs": "trips.departure.edit; trips.departure.edit"
+      "needs": "trips.departure.edit"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2062,7 +2062,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-7",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม; trips.price.edit"
+      "needs": "trips.price.edit"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2084,7 +2084,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#CT-16",
       "system": "TRIPS",
-      "needs": "trips.departure.edit; trips.departure.edit"
+      "needs": "trips.departure.edit"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2106,7 +2106,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-4",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม; status GUARANTEED"
+      "needs": "trips.departure.status; status GUARANTEED"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2128,7 +2128,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-4",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม; trips.departure.status"
+      "needs": "trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2150,7 +2150,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-10",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม; state BELOW_MIN"
+      "needs": "trips.departure.status; state BELOW_MIN"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2238,7 +2238,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#DA-1",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2260,7 +2260,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#DA-1",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2282,7 +2282,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#DA-7",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2304,7 +2304,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#DA-3",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2326,7 +2326,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#DA-1",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2348,7 +2348,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-4",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2370,7 +2370,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-9",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2458,7 +2458,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#CT-13",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.price.edit"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2700,7 +2700,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-10",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.departure.status"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
@@ -2722,7 +2722,7 @@
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#CT-13",
       "system": "TRIPS",
-      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม"
+      "needs": "trips.price.edit"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",

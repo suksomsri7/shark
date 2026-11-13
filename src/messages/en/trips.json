@@ -157,7 +157,7 @@
     "depTitle": "Departure prices",
     "depNote": "Set from the departures calendar (screen 11) or here",
     "depAdd": "Add departure price",
-    "depPickHint": "Departures listed in the table; others from the calendar (T1.2)",
+    "depPickHint": "Departures listed in the table; set others from the Departures tab",
     "colDeparture": "Departure",
     "colSold": "Sold",
     "colSource": "Price source",
@@ -170,7 +170,7 @@
     "to": "To",
     "adultPrice": "Adult price (THB)",
     "childHint": "The child price follows the “default child price” setting automatically",
-    "depTruncated": "Showing the next {n} of {total} departures with their own price — see the departures calendar (T1.2) for the rest"
+    "depTruncated": "Showing the next {n} of {total} departures with their own price — see the Departures tab for the rest"
   },
   "extras": {
     "title": "Extras",
@@ -496,7 +496,7 @@
       "dive": "Diving"
     },
     "attention": "Needs decision {n}",
-    "cancelledChip": "Cancelled {n} departures",
+    "cancelledChip": "Called off {n} departures",
     "productCol": "Product",
     "empty": "No tour products in this filter yet — add a product on the Products tab first",
     "truncated": "Showing {shown} of {total} departures (until {date}) — too many for one screen; pick a shorter range or filter products",
@@ -505,18 +505,18 @@
     "legend": {
       "number": "Number = sold/capacity (incl. held)",
       "full": "Thick border = full",
-      "belowMin": "Red dashed = below minimum, decide",
-      "cancelled": "Stripes = cancelled",
+      "belowMin": "Red dashed = below min, decide",
+      "cancelled": "Stripes = called off",
       "past": "Grey = past"
     },
     "state": {
-      "CANCELLED": "Cancelled",
-      "PAST": "Travelled",
+      "CANCELLED": "Called off",
+      "PAST": "Past",
       "DEPARTED_TODAY": "Departed",
       "FULL": "Full",
       "CLOSED": "Closed",
-      "BELOW_MIN": "Below minimum",
-      "GUARANTEED": "Guaranteed",
+      "BELOW_MIN": "Below min",
+      "GUARANTEED": "Will run",
       "LOW": "Few left",
       "OPEN": "On sale"
     },
@@ -611,7 +611,8 @@
       "noTime": "No decision time",
       "propose": "Options: {list}",
       "mergeWith": "merge with {title}",
-      "hasPeople": "Has bookings · merge/cancel not possible here yet · option: {run}"
+      "hasPeople": "Has bookings · merge/cancel not possible here yet · option: {run}",
+      "partial": "Showing the first {shown} of {total} (until {date}) — too many departures for one screen; pick a shorter range to see the rest"
     },
     "notYet": {
       "bookings": "Not available yet: bookings split by channel/agent and adults/children will show here once bookings are live",
@@ -646,7 +647,8 @@
       "otherText": "Reason (at least 3 characters)",
       "blocked": "This departure has bookings/holds and cannot be cancelled yet",
       "blockedLong": "This departure has {n} sold/held/reserved seats — departures with people cannot be cancelled here yet (moving or refunding a whole departure is not available yet)",
-      "confirm": "Cancel this departure"
+      "confirm": "Cancel this departure",
+      "spoof": "A typed reason cannot start with \"preset:\" or \"merge:\""
     },
     "capacityDialog": {
       "title": "Change capacity",
@@ -757,12 +759,13 @@
       "BELOW_MIN": "Below minimum",
       "VEHICLE": "Boat/van breakdown",
       "merge": "Merged with {title} {time}",
-      "withNote": "{reason} · {note}"
+      "withNote": "{reason} · {note}",
+      "mergeNoTitle": "Merged with another departure {time}"
     },
     "unguaranteeDialog": {
       "title": "Remove guarantee {date} · {title}",
-      "body": "The departure goes back to \"On sale\" — customers and agents no longer see the \"Guaranteed\" label",
-      "belowMin": "Sold {sold} of a {min} minimum ⇒ the departure becomes \"Below minimum\" and returns to the decision list",
+      "body": "The departure goes back to \"On sale\" — customers and agents no longer see the \"Will run\" label",
+      "belowMin": "Sold {sold} of a {min} minimum ⇒ the departure becomes \"Below min\" and returns to the decision list",
       "confirm": "Remove guarantee"
     },
     "month": {

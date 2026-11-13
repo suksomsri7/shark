@@ -6,7 +6,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { DeparturePanelVM, DepartureSchedulesVM, ScheduleItemVM } from "@/lib/modules/trips";
 import {
-  cancelDepartureAction,
   createDepartureAction,
   createScheduleAction,
   materializeScheduleAction,
@@ -18,10 +17,11 @@ import {
   updateScheduleAction,
 } from "@/lib/modules/trips/departure-actions";
 import { removePriceAction, setPriceAction } from "@/lib/modules/trips/pricing-actions";
-import { assignResourceForScreenAction, decideBelowMinAction, setStopSellLocalAction } from "@/lib/modules/trips/departure-screen-actions";
+import { assignResourceForScreenAction, cancelDepartureScreenAction, decideBelowMinAction, setStopSellLocalAction } from "@/lib/modules/trips/departure-screen-actions";
 import { BTN, BTN_PRIMARY, Dialog, ErrorLine, Field, INPUT, bahtToSatang, intOrNull, useRunner } from "./ProductsScreenParts";
 import { formatBahtShort } from "./trips-shared";
-import { BTN_DANGER, reasonCode, useDepDates, useReasonText, useTitle } from "./DepartureParts";
+import { BTN_DANGER, useDepDates, useReasonText, useTitle } from "./DepartureParts";
+import { CANCEL_REASON_MAX, encodePresetReason, looksLikeReasonCode } from "@/lib/modules/trips/departure-view-core";
 
 const INT4_MAX = 2_147_483_647;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -80,8 +80,10 @@ function useReason() {
   const [text, setText] = useState("");
   const reasonText = useReasonText();
   // สำเร็จรูป ⇒ เก็บรหัส (preset:CODE[|หมายเหตุ]) ให้จอแปลตามภาษาผู้ดู · อื่น ๆ ⇒ ข้อความที่พิมพ์ตรงตัว
-  const reason = preset === "other" ? text.trim() : reasonCode(PRESET_CODE[preset], text);
-  const valid = reason.length >= 3 && reason.length <= 500;
+  const reason = preset === "other" ? text.trim() : encodePresetReason(PRESET_CODE[preset], text);
+  // ข้อความอิสระห้ามขึ้นต้นด้วย preset:/merge: (กันปลอมรหัส · เซิร์ฟเวอร์ปฏิเสธซ้ำ) · ยาวไม่เกินคอลัมน์ของ T0.3
+  const spoof = preset === "other" ? looksLikeReasonCode(text) : looksLikeReasonCode(text.trim());
+  const valid = !spoof && reason.length >= 3 && reason.length <= CANCEL_REASON_MAX;
   const shown = reasonText(reason) ?? reason;
   const ui = () => (
     <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
@@ -97,6 +99,7 @@ function useReason() {
       <Field label={preset === "other" ? t("departures.cancelDialog.otherText") : t("departures.cancelDialog.note")}>
         <input className={INPUT} value={text} maxLength={400} onChange={(e) => setText(e.target.value)} />
       </Field>
+      {spoof ? <p className="text-sm text-[color:var(--color-danger)] sm:col-span-2">{t("departures.cancelDialog.spoof")}</p> : null}
     </div>
   );
   return { reason, shown, valid, ui, dirty: text.trim() !== "" || preset !== "weather" };
@@ -120,7 +123,7 @@ export function DecideDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
     choice === "RUN"
       ? t("departures.decide.summaryRun", { sold: d.sold, min: d.minPax ?? 0 })
       : choice === "MERGE" && tgt
-        ? t("departures.decide.summaryMerge", { title: tgt.titleTh, time: tgt.timeText.split("–")[0] ?? "" })
+        ? t("departures.decide.summaryMerge", { title: T(tgt.titleTh, tgt.titleEn), time: tgt.timeText.split("–")[0] ?? "" })
         : choice === "CANCEL" && R.valid
           ? t("departures.decide.summaryCancel", { reason: R.shown })
           : null;
@@ -188,7 +191,7 @@ export function DecideDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
             <label key={x.departureId} data-testid={`trips-merge-target-${x.departureId}`} className={`flex min-h-11 min-w-0 cursor-pointer items-start gap-2 rounded-lg px-3 py-2 text-sm ${target === x.departureId ? "border-2 border-[color:var(--color-ink)]" : "border border-[color:var(--color-line)]"}`}>
               <input type="radio" name="merge-target" className="mt-1" checked={target === x.departureId} onChange={() => setTarget(x.departureId)} />
               <span className="min-w-0 [overflow-wrap:anywhere]">
-                <b>{x.titleTh}</b> · {x.timeText} · {t("departures.decide.targetSeats", { used: x.used, cap: x.capacity, left: x.seatsLeft, unit })}
+                <b>{T(x.titleTh, x.titleEn)}</b> · {x.timeText} · {t("departures.decide.targetSeats", { used: x.used, cap: x.capacity, left: x.seatsLeft, unit })}
                 {x.resourceClash ? <span className="block text-[color:var(--color-danger)]">{t("departures.decide.clash")}</span> : null}
               </span>
             </label>
@@ -216,7 +219,7 @@ export function CancelDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
   const R = useReason();
   const d = vm.departure;
   const close = useGuardedClose(onClose, busy, R.dirty);
-  const submit = () => run(() => cancelDepartureAction(unitSlug, { departureId: d.departureId, reason: R.reason }), onClose);
+  const submit = () => run(() => cancelDepartureScreenAction(unitSlug, { departureId: d.departureId, reason: R.reason }), onClose);
   return (
     <DepDialog
       data-testid="trips-cancel-dialog"

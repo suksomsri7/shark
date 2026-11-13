@@ -88,8 +88,8 @@ function useHeaderLine() {
 }
 
 /** ช่องของรอบ (ลิงก์เปิดแผง) */
-function CellLink({ c, base, q, compact }: { c: DepartureCellVM; base: string; q: CalQuery; compact?: boolean }) {
-  const T = useCellText();
+function CellLink({ c, base, q, compact, titles }: { c: DepartureCellVM; base: string; q: CalQuery; compact?: boolean; titles: DepartureCalendarVM["reasonTitles"] }) {
+  const T = useCellText(titles);
   const selected = q.dep === c.departureId;
   return (
     <Link
@@ -196,7 +196,7 @@ function WeekTable({ vm, base, q }: Props) {
                       {list.length ? (
                         <div className="flex flex-col gap-1">
                           {list.map((c) => (
-                            <CellLink key={c.departureId} c={c} base={base} q={q} />
+                            <CellLink key={c.departureId} c={c} base={base} q={q} titles={vm.reasonTitles} />
                           ))}
                         </div>
                       ) : vm.shownUntil !== null && d > vm.shownUntil ? null : (
@@ -239,7 +239,7 @@ function DayList({ vm, base, q }: Props) {
                 <span className="text-sm text-[color:var(--color-ink-soft)] [overflow-wrap:anywhere]">
                   {titleOf.get(c.productId) ?? ""} · {c.timeText}
                 </span>
-                <CellLink c={c} base={base} q={q} />
+                <CellLink c={c} base={base} q={q} titles={vm.reasonTitles} />
               </div>
             ))}
             {skips.map((e) => (
@@ -262,14 +262,16 @@ function DayList({ vm, base, q }: Props) {
 // ═══════════════ เดือน ═══════════════
 function MonthGrid({ vm, base, q }: Props) {
   const D = useDepDates();
-  const T = useCellText();
+  const T = useCellText(vm.reasonTitles);
   const t = useTranslations("trips");
   const month = vm.range.days[Math.floor(vm.range.days.length / 2)]?.slice(0, 7) ?? "";
   const TT = useTitle();
   const titleOf = new Map(vm.products.map((p) => [p.id, TT(p.titleTh, p.titleEn)]));
+  // เครื่องหมายสินค้า (จอกว้าง): เลขลำดับแถว + สีวนจากโทเคนของแอป · ชื่อเต็มอยู่ใน title และคำอธิบายใต้ตาราง (ไม่ตัดชื่อไทยกลางคำ)
+  const markOf = new Map(vm.products.map((p, i) => [p.id, i + 1]));
   const MAX = 3;
   return (
-    <div data-testid="trips-cal-month" className="relative min-w-0 overflow-x-auto">
+    <div data-testid="trips-cal-month" className="relative flex min-w-0 flex-col gap-2 overflow-x-auto">
       <div className="grid min-w-0 grid-cols-7 gap-1">
         {D.mondayFirst.map((w) => (
           <div key={w} className="px-1 py-1 text-sm font-medium text-[color:var(--color-muted)]">
@@ -309,13 +311,12 @@ function MonthGrid({ vm, base, q }: Props) {
                     scroll={false}
                     data-testid={`trips-cal-cell-${c.departureId}`}
                     data-state={c.state}
-                    title={titleOf.get(c.productId) ?? ""}
-                    className={`${cellShape(c.state, q.dep === c.departureId)} min-h-7 py-0.5 text-sm`}
+                    title={`${titleOf.get(c.productId) ?? ""} · ${T.full(c)}`}
+                    className={`${cellShape(c.state, q.dep === c.departureId)} min-h-7 flex-row items-center gap-1.5 py-0.5 text-sm`}
                     style={cellStyle(c.state)}
                   >
-                    <span className="block min-w-0 truncate">
-                      <b>{T.line1(c)}</b> {titleOf.get(c.productId) ?? ""}
-                    </span>
+                    <ProductMark n={markOf.get(c.productId) ?? 0} />
+                    <b className="min-w-0 truncate">{T.line1(c)}</b>
                   </Link>
                 ))}
                 {list.length > MAX ? <span className="text-sm text-[color:var(--color-muted)]">{t("departures.cell.more", { n: list.length - MAX })}</span> : null}
@@ -324,7 +325,24 @@ function MonthGrid({ vm, base, q }: Props) {
           );
         })}
       </div>
+      <ul className="hidden flex-wrap gap-x-4 gap-y-1 px-1 text-sm text-[color:var(--color-ink-soft)] md:flex">
+        {vm.products.map((p) => (
+          <li key={p.id} className="inline-flex min-w-0 items-center gap-1.5">
+            <ProductMark n={markOf.get(p.id) ?? 0} />
+            <span className="[overflow-wrap:break-word]">{titleOf.get(p.id) ?? ""}</span>
+          </li>
+        ))}
+      </ul>
     </div>
+  );
+}
+const MARK_COLORS = ["var(--color-tag-blue)", "var(--color-tag-green)", "var(--color-tag-amber)", "var(--color-tag-purple)", "var(--color-tag-slate)", "var(--color-tag-red)"];
+/** เครื่องหมายสินค้าในเดือน: เลขแถว (อ่านได้โดยไม่พึ่งสี) บนพื้นสีวน */
+function ProductMark({ n }: { n: number }) {
+  return (
+    <span aria-hidden="true" className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 text-sm font-bold leading-none text-[color:var(--color-accent-fg)]" style={{ backgroundColor: MARK_COLORS[(n - 1 + MARK_COLORS.length) % MARK_COLORS.length] }}>
+      {n}
+    </span>
   );
 }
 function dotShape(state: DepartureCellVM["state"]): string {

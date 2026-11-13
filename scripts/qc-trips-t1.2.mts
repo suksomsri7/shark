@@ -235,7 +235,7 @@ try {
     const w = seedDeps.filter((x) => x.d >= WEEK_DAYS[0] && x.d <= WEEK_DAYS[6] && [pid("racha"), pid("phiphi"), pid("deep3")].includes(x.productId));
     eq(w.length, 20, "รอบในสัปดาห์");
     const c = await q<{ n: number; used: number }>(`SELECT count(*) FILTER (WHERE status = 'CANCELLED' AND "localDate" = '2026-11-13')::int AS n, coalesce(sum(sold + held + reserved), 0)::int AS used FROM "TripDeparture" WHERE id = ANY($1::text[])`, [w.map((x) => x.id)]);
-    eq([c[0]?.n, c[0]?.used], [3, 0], "ยกเลิก/ตัวนับ");
+    eq([c[0]?.n, c[0]?.used], [3, 6], "ยกเลิก/ตัวนับ"); // ORACLE-EDIT (ผู้คุม 13 พ.ย.): seed ของ T0.6 ขายตรง 6 ที่ในราชา ส. 14 พ.ย.
     did("similan", SIM.start);
     const d = await q<{ status: string; minPax: number | null }>(`SELECT status, "minPax" FROM "TripDeparture" WHERE id = $1`, [did("racha", DEC31.date)]);
     eq([d[0]?.status, d[0]?.minPax], ["OPEN", FX.PRODUCT_RACHA.minPax], "ราชา 31 ธ.ค.");
@@ -369,7 +369,9 @@ try {
   await st("S-13", `ขอบเขต (เทียบ ${BASE_COMMIT}): ไฟล์ T0.x ของโมดูลไม่เปลี่ยนเลย · index/permissions/seed/ฟิกซ์เจอร์ เพิ่มอย่างเดียว · settings กลาง/SettingsForm ไม่แตะ`, () => {
     let out = "";
     try { out = execFileSync("git", ["diff", "--numstat", BASE_COMMIT, "--", ...T0X_FILES, ...ADDITIVE_ONLY, ...FROZEN_DIRS], { cwd: ROOT, encoding: "utf8" }); } catch (e) { throw new AssertFail(`git diff ไม่ได้: ${errMsg(e)}`); }
-    const rows = out.trim().split("\n").filter(Boolean).map((l) => l.split("\t"));
+    // ORACLE-EDIT S-13 (ผู้คุม 13 พ.ย.): ไฟล์ที่ตรงกับ session/trips ไม่นับ (ใบที่รับภายหลัง เช่น T0.6 แก้ capacity/pricing/sellable-impl/snapshot)
+    const sameAsSession = (f: string) => { try { execFileSync("git", ["diff", "--quiet", "session/trips", "--", f], { cwd: ROOT }); return true; } catch { return false; } };
+    const rows = out.trim().split("\n").filter(Boolean).map((l) => l.split("\t")).filter(([, , f]) => !sameAsSession(f));
     const t0 = rows.filter(([, , f]) => T0X_FILES.includes(f)).map(([a, d, f]) => `${f} +${a}/−${d}`);
     const del = rows.filter(([, d, f]) => ADDITIVE_ONLY.includes(f) && Number(d) > 0).map(([, d, f]) => `${f} −${d}`);
     const frozen = rows.filter(([, , f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir))).map(([a, d, f]) => `${f} +${a}/−${d}`);
@@ -515,7 +517,10 @@ try {
   await st("CV-5", "ช่องในสัปดาห์ = 20 รอบ seed · ทุกช่อง sold/held/reserved 0 · used 0 · seatsLeft = ความจุ · timeText ราชา 08:00–16:30", () => {
     const cells = asArr(wk.cells);
     eq(cells.length, 20, "จำนวนช่อง");
-    ok(cells.every((c) => c.sold === 0 && c.held === 0 && c.reserved === 0 && c.used === 0 && c.seatsLeft === c.capacity), `ตัวนับ: ${fmt(cells.find((c) => c.sold !== 0 || c.seatsLeft !== c.capacity))}`);
+    const r14 = did("racha", "2026-11-14"); // ORACLE-EDIT (ผู้คุม 13 พ.ย.): seed ของ T0.6 ขายตรง 6 ที่ในราชา ส. 14 พ.ย.
+    const want = (c: Rec) => (c.departureId === r14 ? 6 : 0);
+    ok(cells.every((c) => c.sold === want(c) && c.held === 0 && c.reserved === 0 && c.used === want(c) && c.seatsLeft === Number(c.capacity) - want(c)), `ตัวนับ: ${fmt(cells.find((c) => c.sold !== want(c) || c.seatsLeft !== Number(c.capacity) - want(c)))}`);
+    eq([cellOf(wk, r14).sold, cellOf(wk, r14).seatsLeft, cellOf(wk, r14).state], [6, 18, "GUARANTEED"], "ราชา ส. 14");
     eq(cellOf(wk, did("racha", "2026-11-14")).timeText, "08:00–16:30", "เวลา");
   });
   await st("CV-6", "สถานะช่อง (:18–:24 :26–:39): 11 PAST · 12 DEPARTED_TODAY · 13 CANCELLED คลื่นลม · 14 ราชา/พีพี GUARANTEED · ดำน้ำลึก 14 + ที่เหลือ OPEN ⇒ BELOW_MIN", () => {
@@ -610,7 +615,7 @@ try {
   });
   await st("PV-2", "ตัวเลข (:50 :55): ความจุ 24 · ขาย 0 · ถือ 0 · โควตา 0 · ว่าง 24 · รายการรอ 0/0", () => {
     const c = asRec(p14.counts) ?? {};
-    eq([c.capacity, c.sold, c.held, c.reserved, c.used, c.seatsLeft, c.waitlistWaiting, c.waitlistOffered], [24, 0, 0, 0, 0, 24, 0, 0], "counts");
+    eq([c.capacity, c.sold, c.held, c.reserved, c.used, c.seatsLeft, c.waitlistWaiting, c.waitlistOffered], [24, 6, 0, 0, 6, 18, 0, 0], "counts"); // ORACLE-EDIT (ผู้คุม 13 พ.ย.): seed ของ T0.6 ขายตรง 6 ที่ในราชา ส. 14 พ.ย.
   });
   await st("PV-3", "ปิดรับต่อช่องทาง: หน้าร้าน ส. 14 07:00 (00:00Z · ปรับที่หน่วย) · เว็บ ศ. 13 18:00 (11:00Z) · กลุ่มครบ 12 ช่องทาง", () => {
     const g = asArr(asRec(p14.departure)?.cutoffGroups);
@@ -620,7 +625,7 @@ try {
   });
   await st("PV-4", "ปุ่มเจ้าของบนรอบ GUARANTEED อนาคต: ปิดรับ/ถอนยืนยัน/ยกเลิก/ความจุ/ทรัพยากร/ราคา/หยุดขาย · ไม่มี ยืนยัน/ออกขาดทุน/รวม · ใบรายชื่อ/จองให้ลูกค้า false", () => {
     eq(actOf(p14), { close: true, reopen: false, guarantee: false, unguarantee: true, run: false, merge: false, cancel: true, capacity: true, resources: true, price: true, stopSell: true, manifest: false, book: false }, "actions");
-    eq(p14.cancelBlocked, false, "cancelBlocked");
+    eq(p14.cancelBlocked, true, "cancelBlocked"); // ORACLE-EDIT (ผู้คุม 13 พ.ย.): seed ของ T0.6 ขายตรง 6 ที่ในราชา ส. 14 พ.ย. ⇒ มีผู้จอง ยกเลิกที่นี่ไม่ได้
   });
   await st("PV-5", "ไม่แต่งข้อมูลการจอง/เงิน: bookings = null · money = null (T1.3/T1.7)", () => {
     eq([p14.bookings, p14.money], [null, null], "null");

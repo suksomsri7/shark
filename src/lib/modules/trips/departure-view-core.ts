@@ -100,3 +100,47 @@ export function isMergeTarget(
   if (!MERGE_TARGET_STATES.includes(st)) return false;
   return publicLeftOf(tgt) >= src.sold + src.held + src.reserved;
 }
+
+// ═══════════════ เหตุผลยกเลิก/รวมรอบแบบรหัส (คอลัมน์ cancelReason ของ T0.3 = ข้อความอิสระ ≤ 500) ═══════════════
+// หนึ่งตัวเข้ารหัส + หนึ่งตัวถอด ใช้ทั้งบริการ (departure-desk · action) และจอ (แปลตามภาษาผู้ดู)
+//   "preset:<WEATHER|BELOW_MIN|VEHICLE>[|หมายเหตุ]"
+//   "merge:<HH:MM>|<productId ของเป้า>|<ชื่อไทยของเป้า (สำรองให้ผู้อ่านที่ไม่มีตารางสินค้า)>|<หมายเหตุ>"
+//   ค่าอื่น = ข้อความที่ร้านพิมพ์ (แสดงตรงตัว) — ข้อความอิสระห้ามขึ้นต้นด้วย "preset:" / "merge:" (กันปลอมรหัส)
+// "|" ในชื่อ/หมายเหตุถูกแทนด้วย "/" ⇒ ถอดได้ไม่กำกวม · ยาวรวมไม่เกิน CANCEL_REASON_MAX (ตัดหมายเหตุก่อน แล้วชื่อ)
+export const CANCEL_REASON_MAX = 500;
+export const REASON_PRESETS = ["WEATHER", "BELOW_MIN", "VEHICLE"] as const;
+export type ReasonPreset = (typeof REASON_PRESETS)[number];
+export type ParsedReason =
+  | { kind: "preset"; code: ReasonPreset; note: string | null }
+  | { kind: "merge"; time: string; productId: string; title: string; note: string | null }
+  | { kind: "text"; text: string };
+const clean = (x: string): string => x.replace(/\|/g, "/").replace(/\s+/g, " ").trim();
+/** ข้อความอิสระที่ดูเหมือนรหัส (ห้ามใช้เป็นเหตุผลพิมพ์เอง) */
+export const looksLikeReasonCode = (text: string): boolean => /^\s*(preset|merge)\s*:/i.test(text);
+export function encodePresetReason(code: ReasonPreset, note?: string | null): string {
+  const head = `preset:${code}`;
+  const n = note ? clean(note) : "";
+  return n ? `${head}|${n}`.slice(0, CANCEL_REASON_MAX) : head;
+}
+export function encodeMergeReason(time: string, productId: string, title: string, note?: string | null): string {
+  const head = `merge:${time}|${clean(productId)}|`;
+  let t = clean(title);
+  let n = note ? clean(note) : "";
+  const room = CANCEL_REASON_MAX - head.length - 1;
+  if (t.length > room) t = t.slice(0, Math.max(0, room));
+  if (t.length + n.length > room) n = n.slice(0, Math.max(0, room - t.length));
+  return `${head}${t}|${n}`;
+}
+export function parseReason(raw: string): ParsedReason {
+  const p = /^preset:(WEATHER|BELOW_MIN|VEHICLE)(?:\|([^|]*))?$/.exec(raw);
+  if (p) return { kind: "preset", code: p[1] as ReasonPreset, note: p[2] ? p[2] : null };
+  const m = /^merge:(\d{2}:\d{2})\|([^|]+)\|([^|]*)\|([^|]*)$/.exec(raw);
+  if (m) return { kind: "merge", time: m[1], productId: m[2], title: m[3], note: m[4] ? m[4] : null };
+  return { kind: "text", text: raw };
+}
+/** productId ของเป้าในรหัสรวมรอบ (ให้ตัวโหลดอ่านชื่อสองภาษาเป็นชุด) */
+export function mergeReasonProductIds(reasons: readonly (string | null)[]): string[] {
+  const out = new Set<string>();
+  for (const r of reasons) if (r) { const x = parseReason(r); if (x.kind === "merge") out.add(x.productId); }
+  return [...out];
+}

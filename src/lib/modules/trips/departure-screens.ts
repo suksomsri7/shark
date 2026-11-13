@@ -26,6 +26,7 @@ import {
   isCalendarMonth,
   isCalendarYmd,
   isMergeTarget,
+  mergeReasonProductIds,
   nextMonthOf,
   prevMonthOf,
   type DepartureCellState,
@@ -163,6 +164,7 @@ export type DecisionVM = {
   mergeTargets: number;
   /** ชื่อไทยของเป้าแรก (บรรทัด "เสนอ: รวมกับ …") — null เมื่อรอบมีคน (รวม/ยกเลิกไม่ได้) */
   firstTargetTitle: string | null;
+  firstTargetTitleEn: string | null;
   /** ขาย + ถือ + โควตา > 0 ⇒ รวมรอบ/ยกเลิกที่จอนี้ยังทำไม่ได้ เสนอได้แค่ "ออกขาดทุน" */
   hasPeople: boolean;
 };
@@ -181,6 +183,8 @@ export type DepartureCalendarVM = {
   decisions: DecisionVM[];
   /** นับจากทั้งช่วง (คิวรีนับแยก เมื่อถูกตัดที่เพดาน) ไม่ใช่จากช่องที่ถูกตัด */
   counts: { belowMin: number; cancelled: { departures: number; pax: number; reasons: { text: string; n: number }[] } };
+  /** ชื่อสินค้าเป้าที่อ้างในรหัสเหตุผลรวมรอบ (productId → ชื่อ) */
+  reasonTitles: ReasonTitles;
   trips: { departureId: string; productId: string; titleTh: string; localDate: string; endDate: string; capacity: number; sold: number; held: number; seatsLeft: number; state: DepartureCellState }[];
   tripsTruncated: boolean;
   shown: number;
@@ -254,6 +258,15 @@ async function productPolicyOf(g: TripsUnitGate, productIds: string[], now: Date
   const rs = await resolveSettingsMany({ tenantId: g.tenantId }, [LOW_KEY, MIN_KEY], productIds.map((productId) => ({ unitId: g.unitId, productId })), now);
   productIds.forEach((p, i) => out.set(p, { low: lowOf(rs[i]?.[LOW_KEY]?.value), minPax: minPaxOf(rs[i]?.[MIN_KEY]?.value) }));
   return out;
+}
+
+/** ชื่อสองภาษาของสินค้าที่อ้างในรหัสเหตุผลรวมรอบ (คิวรีเดียว · จอแปลชื่อตามภาษาผู้ดู) */
+type ReasonTitles = Record<string, { th: string; en: string | null }>;
+async function reasonTitlesOf(g: TripsUnitGate, reasons: readonly (string | null)[]): Promise<ReasonTitles> {
+  const ids = mergeReasonProductIds(reasons).slice(0, 100);
+  if (!ids.length) return {};
+  const rows = await g.db.tripProduct.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId, id: { in: ids } }, take: 100, select: { id: true, title: true } });
+  return Object.fromEntries(rows.map((r) => [r.id, { th: i18nTh(r.title), en: i18nEn(r.title) }]));
 }
 
 // ═══════════════ 1. ปฏิทิน ═══════════════
@@ -392,6 +405,7 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
   const cells = items.map((d) => cellOf(d, extras, tz, now, today, policies.get(d.productId)?.low ?? null));
   const shownUntil = view === "trips" ? null : (cutTo ?? to);
   const titleOf = new Map<string, string>([...prodRows.map((r) => [r.id, i18nTh(r.title)] as const), ...otherProducts.map((r) => [r.id, i18nTh(r.title)] as const)]);
+  const titleEnOf = new Map<string, string | null>([...prodRows.map((r) => [r.id, i18nEn(r.title)] as const), ...otherProducts.map((r) => [r.id, i18nEn(r.title)] as const)]);
   const archived = new Set(otherProducts.filter((r) => r.status === "ARCHIVED").map((r) => r.id));
 
   // ── วันงดตามกฎ (สัปดาห์เท่านั้น) ──
@@ -434,6 +448,7 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
         overdue: c.needsDecision,
         mergeTargets: targets.length,
         firstTargetTitle: targets.length ? (titleOf.get(targets[0].productId) ?? null) : null,
+        firstTargetTitleEn: targets.length ? (titleEnOf.get(targets[0].productId) ?? null) : null,
         hasPeople,
       };
     });
@@ -448,7 +463,7 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
         WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "productId" = ANY(${shownIds}::text[])
           AND "localDate" BETWEEN ${from}::date AND ${to}::date
           AND "status" IN ('OPEN', 'FULL') AND "minPax" IS NOT NULL AND "sold" < "minPax"
-          AND "startsAt" > ${now} AND "capacity" - "sold" - "held" - "reserved" > 0`,
+          AND "startsAt" > ${now.toISOString()}::timestamp AND "capacity" - "sold" - "held" - "reserved" > 0`,
       g.db.$queryRaw<{ n: number; pax: number }[]>`
         SELECT count(*)::int AS n, coalesce(sum("sold" + "held"), 0)::int AS pax FROM "TripDeparture"
         WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "productId" = ANY(${shownIds}::text[])
@@ -563,6 +578,7 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
       cap: TRIPS_CALENDAR_DEPARTURE_CAP,
       truncated: cells.length < total,
       shownUntil,
+      reasonTitles: await reasonTitlesOf(g, [...cells.map((c) => c.cancelReason), ...counts.cancelled.reasons.map((r) => r.text)]),
     },
   };
 }
@@ -571,7 +587,7 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
 const PANEL_IN = z.strictObject({ unitId: ID, departureId: ID });
 export type PanelActions = { close: boolean; reopen: boolean; guarantee: boolean; unguarantee: boolean; run: boolean; merge: boolean; cancel: boolean; capacity: boolean; resources: boolean; price: boolean; stopSell: boolean; manifest: boolean; book: boolean };
 export type PriceRowVM = { paxTypeId: string; code: string; labelTh: string; satang: number | null; source: "RETAIL" | "SEASON" | "DEPARTURE" | "MISSING"; departurePriceId: string | null };
-export type MergeTargetVM = { departureId: string; productId: string; titleTh: string; timeText: string; capacity: number; used: number; seatsLeft: number; resourceClash: boolean };
+export type MergeTargetVM = { departureId: string; productId: string; titleTh: string; titleEn: string | null; timeText: string; capacity: number; used: number; seatsLeft: number; resourceClash: boolean };
 export type DeparturePanelVM = {
   unit: { id: string; slug: string; tz: string; today: string };
   departure: DepartureCellVM & {
@@ -589,6 +605,8 @@ export type DeparturePanelVM = {
   counts: { capacity: number; sold: number; held: number; reserved: number; used: number; seatsLeft: number; waitlistWaiting: number; waitlistOffered: number };
   /** ต้องมีการจอง (T0.6) — ใบนี้ไม่เติมตัวเลข */
   bookings: null;
+  /** ชื่อสินค้าเป้าที่อ้างในรหัสเหตุผลรวมรอบของรอบนี้ */
+  reasonTitles: ReasonTitles;
   /** ต้องมีเงิน (T0.7/T1.7) — ใบนี้ไม่เติมตัวเลข */
   money: null;
   actions: PanelActions;
@@ -681,6 +699,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
         departureId: t.id,
         productId: t.productId,
         titleTh: i18nTh(metaBy.get(t.productId)?.title),
+        titleEn: i18nEn(metaBy.get(t.productId)?.title),
         timeText: timeTextOf(tz, t.startsAt, t.endsAt),
         capacity: t.capacity,
         used: t.sold + t.held,
@@ -765,10 +784,12 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
       },
       counts: { capacity: d.capacity, sold: d.sold, held: d.held, reserved: d.reserved, used: d.sold + d.held, seatsLeft: publicLeftOf(d), waitlistWaiting: wlOf("WAITING"), waitlistOffered: wlOf("OFFERED") },
       bookings: null,
+      reasonTitles: await reasonTitlesOf(g, [cell.cancelReason]),
       money: null,
       actions,
       cancelBlocked: people > 0,
-      unguaranteeToBelowMin: d.status === "GUARANTEED" && d.minPax !== null && d.sold < d.minPax,
+      // ผลหลังถอน = สถานะช่องของรอบเดียวกันเมื่อเป็น OPEN (ลำดับตัดสินเดียวกัน: เต็มชนะต่ำกว่าขั้นต่ำ)
+      unguaranteeToBelowMin: d.status === "GUARANTEED" && departureCellState({ ...d, status: "OPEN" }, { now, today, lowAtOrBelow: null }) === "BELOW_MIN",
       channels: [...DEPARTURE_SELL_CHANNELS],
       mergeTargets,
       price,
