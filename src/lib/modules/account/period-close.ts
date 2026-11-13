@@ -324,7 +324,7 @@ export async function markVatFiled(
 export async function unmarkVatFiled(
   ctx: PeriodCtx,
   periodKey: string,
-  opts: { userId?: string | null; reason?: string | null } = {},
+  opts: { userId?: string | null; reason?: string | null; actorType?: "USER" | "PLATFORM_USER" | "SYSTEM" | "API_KEY" } = {},
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const db = tenantDb(ctx);
   const row = await db.accountVatFiling.findFirst({ where: { periodKey, unmarkedAt: null } });
@@ -339,7 +339,7 @@ export async function unmarkVatFiled(
     await tx.auditLog.create({
       data: {
         tenantId: ctx.tenantId,
-        actorType: "USER",
+        actorType: opts.actorType ?? "USER",
         actorId: opts.userId ?? null,
         action: FILING_AUDIT.vatUnmark,
         targetType: "AccountVatFiling",

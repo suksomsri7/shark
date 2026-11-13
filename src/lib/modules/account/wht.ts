@@ -871,7 +871,7 @@ export async function markFiled(
 export async function unmarkFiled(
   tenantId: string,
   systemId: string,
-  input: { form: 3 | 53; periodKey: string; userId?: string | null; reason?: string | null },
+  input: { form: 3 | 53; periodKey: string; userId?: string | null; reason?: string | null; actorType?: "USER" | "PLATFORM_USER" | "SYSTEM" | "API_KEY" },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const key = `${input.form}:${input.periodKey}`;
   const reason = (input.reason ?? "").trim().slice(0, 500) || null;
@@ -891,7 +891,7 @@ export async function unmarkFiled(
       await tx.auditLog.create({
         data: {
           tenantId,
-          actorType: "USER",
+          actorType: input.actorType ?? "USER",
           actorId: input.userId ?? null,
           action: FILING_AUDIT.whtUnmark,
           targetType: "AccountWhtFiling",

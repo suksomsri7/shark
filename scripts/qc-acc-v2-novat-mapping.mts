@@ -190,6 +190,10 @@ try {
     eq(`N4.${s.key}.2`, `ร้าน ${s.key}: รายงานภาษีขายแยก "รายการปรับปรุงมือ" 1 แถว −3,000 · รายงานภาษีซื้อแถวปรับปรุงมือ +2,000`, [f.manualSales, f.manualInput], [[1, -3_000, [-3_000]], [2_000]]);
     eq(`N4.${s.key}.3`, `ร้าน ${s.key}: กระทบยอด ภ.พ.30 แสดงส่วนปรับปรุงมือ (ขาย −3,000 ×1 · ซื้อ +2,000 ×1) · ยอดยังตรง · คำเตือน MANUAL_JV`, [f.recon, f.warnManual], [[-3_000, 1, 2_000, 1, true, true], true]);
     eq(`N4.${s.key}.4`, `ร้าน ${s.key}: รายได้ไม่มี VAT: 0% 200,000 · ยกเว้น 340,000 · ไม่คิด VAT 185,000 · รวม 725,000 · 4 ใบ · ไม่คิด VAT รายเดือน [125,000, 60,000] · POS 25,000`, [f.novat, f.posRow], [[200_000, 340_000, 185_000, 725_000, 4, [125_000, 60_000]], [["UNTAXED", 25_000]]]);
+    // ภาพจอ T1.7/T1.9: แถว JV มือเคยได้ "ฐาน" เดาจากยอดภาษี (−30 → ฐาน 30) ⇒ ยอดขายใน ภ.พ.30 เพี้ยน + ข้อตรวจฐาน×อัตราแดง
+    //   เฉลยมือ: ยอดขายรวม M = 1,000,000 + 200,000 + 300,000 = 1,500,000 (JV ไม่มีมูลค่าขาย) · ภาษีซื้อแยกกลุ่ม "ปรับปรุงมือ" 2,000
+    const manualRow = st.rows.find((r: Any) => r.manual);
+    eq(`N4.${s.key}.6`, `ร้าน ${s.key}: แถวปรับปรุงมือฐาน 0 · ข้อตรวจฐาน×อัตราผ่าน · ยอดขายรวม 1,500,000 · ภาษีซื้อกลุ่มปรับปรุงมือ (−2) 2,000`, [manualRow?.base, st.checks.find((c: Any) => c.key === "BASE_VAT")?.ok, pp.ret.lines.salesTotal, pp.input.byRate.filter((g: Any) => g.rateBp === -2).map((g: Any) => [g.base, g.vat])], [0, true, 1_500_000, [[0, 2_000]]]);
     const ledgerShown = st.outputLedger?.code;
     chk(`N4.${s.key}.5`, `ร้าน ${s.key}: หัวรายงาน/ข้อตรวจแสดงบัญชีตาม mapping (${s.out.code})`, ledgerShown === s.out.code && st.checks.find((c: Any) => c.key === "GL_2200")?.label.includes(s.out.code), s.out.code, { ledgerShown, label: st.checks[0]?.label });
   }

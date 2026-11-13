@@ -60,7 +60,7 @@ import {
 import { NUMBERED_DOC_TYPES } from "../../settings-schema";
 import { fileVatAdditional, setVatCreditCarry } from "../../pp30-filing";
 import { PP30_EXCESS_CHOICES } from "../../pp30-shared";
-import { actorAuditId, actorCan, type ApiActor } from "../actor";
+import { actorAuditId, actorAuditType, actorCan, type ApiActor } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError, type ApiErrorDetail } from "../respond";
 import {
@@ -649,7 +649,7 @@ const periodsVatUnfiled = defineOp({
   async handler({ actor, params, input }) {
     const key = periodParam(params.key);
     // ACC T1.7 ▸ ไม่ลบแถว — เก็บใคร/เมื่อไร/เหตุผล ◂
-    const res = await unmarkVatFiled(ctxOf(actor), key, { userId: actorAuditId(actor), reason: input.reason });
+    const res = await unmarkVatFiled(ctxOf(actor), key, { userId: actorAuditId(actor), reason: input.reason, actorType: actorAuditType(actor) });
     if (!res.ok) {
       if (res.reason.includes("ยังไม่ได้ทำเครื่องหมาย")) throw notFound(res.reason);
       failWith(res.reason);

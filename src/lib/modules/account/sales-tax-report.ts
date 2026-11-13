@@ -315,6 +315,9 @@ export async function salesTaxReport(
       // ACC T1.3 ▸ ใบ 0%/ยกเว้น ที่ถูกยกเลิกข้ามเดือน: ไม่มียอดภาษีให้กลับทิศ ⇒ กลับทิศฐานเอง ◂
       if (s.zeroOnly && laterMonthCancel) parts = parts.map((x) => ({ ...x, base: -x.base }));
     }
+    // ACC T1.9 ▸ รายการบัญชีที่ไม่มีเอกสาร (JV มือ ฯลฯ) = ปรับยอดภาษีอย่างเดียว ไม่มีมูลค่าขาย ⇒ ฐาน 0
+    //   (เดิมเดาฐานจากยอดภาษี → ยอดขายใน ภ.พ.30 เพี้ยน + ข้อตรวจฐาน×อัตราแดง — ภาพจอ T1.7: JV −50 ได้ฐาน 50) ◂
+    if (s.refType === "JOURNAL") parts = [{ rateBp: stdRateBp, base: 0, vat: s.vat }];
 
     // หมายเหตุ
     const cancelReason = doc?.voidReason ? ` (${doc.voidReason})` : "";
@@ -357,7 +360,7 @@ export async function salesTaxReport(
       posHasDeposit: meta?.hasDeposit ?? false,
       ...(s.manual ? { manual: true, buyerName: "รายการปรับปรุงมือ" } : {}),
     };
-    const bad = parts.find((p) => !partConsistent(p, baseVatTolerance(row)));
+    const bad = row.kind === "JOURNAL" ? undefined : parts.find((p) => !partConsistent(p, baseVatTolerance(row)));
     if (bad) row.flag = `ฐาน ${(bad.base / 100).toFixed(2)} × อัตรา ไม่ตรงกับภาษี ${(bad.vat / 100).toFixed(2)}`;
     if (row.kind === "ABB") abbBills.push(row);
     else docRows.push(row);

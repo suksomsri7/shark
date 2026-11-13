@@ -47,7 +47,7 @@ export default async function RevenueNoVatPage({
       <section className="flex flex-col gap-2" data-testid="revenue-novat-months">
         <h2 className="text-sm font-medium">สรุปรายเดือน</h2>
         <TableWrap>
-          <table className="w-full text-sm">
+          
             <thead>
               <tr className="text-left text-[color:var(--color-muted)]">
                 <th className="px-3 py-2">เดือน</th>
@@ -75,14 +75,14 @@ export default async function RevenueNoVatPage({
                 <td className="px-3 py-1.5 text-right tabular-nums"><MoneyText satang={r.totals.total} decimals /></td>
               </tr>
             </tbody>
-          </table>
+          
         </TableWrap>
       </section>
 
       <section className="flex flex-col gap-2" data-testid="revenue-novat-rows">
         <h2 className="text-sm font-medium">รายการ ({r.rows.length} บรรทัด · {r.totals.docCount} ใบ)</h2>
         <TableWrap>
-          <table className="w-full text-sm">
+          
             <thead>
               <tr className="text-left text-[color:var(--color-muted)]">
                 <th className="px-3 py-2">วันที่</th>
@@ -109,7 +109,7 @@ export default async function RevenueNoVatPage({
                 </tr>
               ))}
             </tbody>
-          </table>
+          
         </TableWrap>
       </section>
     </div>

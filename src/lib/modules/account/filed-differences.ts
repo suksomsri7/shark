@@ -66,17 +66,20 @@ async function ledgerIds(ctx: Ctx): Promise<Partial<Record<FiledKey, string>>> {
 export async function namesOf(ctx: Ctx, ids: (string | null)[]): Promise<Map<string, string>> {
   const uniq = [...new Set(ids.filter((x): x is string => !!x))];
   if (uniq.length === 0) return new Map();
-  const users = await tenantDb(ctx).user.findMany({ where: { id: { in: uniq } }, select: { id: true, name: true } });
-  return new Map(users.map((u) => [u.id, u.name ?? ""]));
+  const users = await tenantDb(ctx).user.findMany({ where: { id: { in: uniq.filter((x) => !x.startsWith("apikey:")) } }, select: { id: true, name: true } });
+  const m = new Map(users.map((u) => [u.id, u.name ?? ""]));
+  for (const x of uniq) if (x.startsWith("apikey:")) m.set(x, "คีย์ API");
+  return m;
 }
 
 async function ackers(ctx: Ctx, targetType: string, ids: string[]): Promise<Map<string, string | null>> {
   if (ids.length === 0) return new Map();
   const rows = await tenantDb(ctx).auditLog.findMany({
     where: { action: LEGAL_ACK_ACTION, targetType, targetId: { in: ids } },
-    select: { targetId: true, actorId: true },
+    select: { targetId: true, actorId: true, actorType: true },
   });
-  return new Map(rows.map((r) => [r.targetId ?? "", r.actorId]));
+  // คีย์ API/เลขา: actorId = id ของคีย์ (ไม่ใช่ผู้ใช้) ⇒ ใส่คำนำหน้าให้ตัวหาชื่อแยกได้
+  return new Map(rows.map((r) => [r.targetId ?? "", r.actorType === "API_KEY" ? `apikey:${r.actorId ?? ""}` : r.actorId]));
 }
 
 export async function vatFiledDifferences(ctx: Ctx, periodKey: string): Promise<VatDifferences> {

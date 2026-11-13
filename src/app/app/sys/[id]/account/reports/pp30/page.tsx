@@ -54,7 +54,7 @@ function sideBlock(title: string, s: Pp30Side) {
       <tbody>
         {s.byRate.map((g) => (
           <tr key={g.rateBp} className="border-b bg-[color:var(--color-surface-2)] text-xs font-medium">
-            <td className="sticky left-0 z-10 bg-[color:var(--color-surface-2)] px-3 py-1" colSpan={2}>อัตรา {g.rateBp / 100}%</td>
+            <td className="sticky left-0 z-10 bg-[color:var(--color-surface-2)] px-3 py-1" colSpan={2}>{g.rateBp === -2 ? "รายการปรับปรุงมือ (JV ที่บันทึกเอง)" : `อัตรา ${g.rateBp / 100}%`}</td>
             <td className="px-3 py-1 text-right"><MoneyText satang={g.base} decimals /></td>
             <td className="px-3 py-1 text-right"><MoneyText satang={g.vat} decimals /></td>
           </tr>
@@ -440,7 +440,7 @@ export default async function Pp30Page({
       ...st.groups.flatMap((g) =>
         g.rows.map(({ row: r, part, seq }) => ["ภาษีขาย", seq, r.date, r.docNo, r.docNoTo ?? "", r.buyerName, r.buyerTaxId, r.buyerBranchCode, part.rateBp < 0 ? "ยกเว้น" : part.rateBp / 100, part.base / 100, part.vat / 100, r.notes.join(" · ")] as (string | number)[]),
       ),
-      ...pp.input.rows.map((r) => ["ภาษีซื้อ", "", r.date.toISOString().slice(0, 10), r.docNo, "", r.contactName, r.taxId, r.branchCode, r.rateBp / 100, r.base / 100, r.vat / 100, ""] as (string | number)[]),
+      ...pp.input.rows.map((r) => ["ภาษีซื้อ", "", r.date.toISOString().slice(0, 10), r.docNo, "", r.contactName, r.taxId, r.branchCode, r.rateBp === -2 ? "ปรับปรุงมือ" : r.rateBp / 100, r.base / 100, r.vat / 100, ""] as (string | number)[]),
       // ACC T1.3 ▸ ช่อง ภ.พ.30 ครบ ◂
       ...PP30_LINE_KEYS.map((k) => ["ภ.พ.30", "", "", "", "", PP30_LINE_LABEL_TH[k], "", "", "", PP30_AMOUNT_KEYS.includes(k) ? L[k] / 100 : "", PP30_AMOUNT_KEYS.includes(k) ? "" : L[k] / 100, ""] as (string | number)[]),
     ],
@@ -601,7 +601,7 @@ export default async function Pp30Page({
             <p className="text-xs text-[color:var(--color-muted)]" data-testid="pp30-filed-diffs-empty">ไม่มีรายการที่ลงเดือนนี้หลังทำเครื่องหมายยื่น</p>
           ) : (
             <TableWrap>
-              <table className="w-full text-xs">
+              
                 <thead>
                   <tr className="text-left text-[color:var(--color-muted)]">
                     <th className="py-1 pr-2">ลงเมื่อ</th>
@@ -631,7 +631,7 @@ export default async function Pp30Page({
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              
             </TableWrap>
           )}
           {diffs.rows.length > 0 && (
@@ -655,7 +655,7 @@ export default async function Pp30Page({
           <ul className="flex flex-col gap-0.5">
             {filingHist.map((h, i) => (
               <li key={i} data-testid="pp30-filing-history-row">
-                {bkkDay(h.at)} · {h.action === "MARK" ? "ทำเครื่องหมายยื่น" : h.action === "REFILE" ? "ทำเครื่องหมายยื่นใหม่" : "ยกเลิกเครื่องหมาย"} · โดย {h.actorId ? (histNames.get(h.actorId) ?? "ผู้ใช้") : "ระบบ"}
+                {bkkDay(h.at)} · {h.action === "MARK" ? "ทำเครื่องหมายยื่น" : h.action === "REFILE" ? "ทำเครื่องหมายยื่นใหม่" : "ยกเลิกเครื่องหมาย"} · โดย {h.actorType === "API_KEY" ? "คีย์ API" : h.actorId ? (histNames.get(h.actorId) ?? "ผู้ใช้") : "ระบบ"}
                 {h.reason ? ` · เหตุผล: ${h.reason}` : ""}
               </li>
             ))}

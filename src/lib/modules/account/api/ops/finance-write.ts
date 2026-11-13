@@ -49,7 +49,7 @@ import {
 } from "../../finance";
 import { reimbursePettyCash, topUpPettyCash } from "../../finance-overview";
 import { issueWhtCert, markFiled, unmarkFiled } from "../../wht";
-import { actorAuditId, actorRefId, type ApiActor } from "../actor";
+import { actorAuditId, actorAuditType, actorRefId, type ApiActor } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError } from "../respond";
 import { chequeRowView, financeAccountWriteView } from "../serialize-finance";
@@ -727,7 +727,7 @@ const whtUnmarkFiled = defineOp({
       throw new ApiError(422, "validation", "งวดต้องเป็นเดือนรูปแบบ YYYY-MM (01-12)", "The period must be a month in `YYYY-MM` form.");
     }
     // ACC T1.7 ▸ ไม่ลบแถว — เก็บใคร/เมื่อไร/เหตุผล ◂
-    const res = await unmarkFiled(actor.tenantId, actor.systemId, { form: rawForm === "3" ? 3 : 53, periodKey: period, userId: actorAuditId(actor), reason: input.reason });
+    const res = await unmarkFiled(actor.tenantId, actor.systemId, { form: rawForm === "3" ? 3 : 53, periodKey: period, userId: actorAuditId(actor), reason: input.reason, actorType: actorAuditType(actor) });
     if (!res.ok) {
       if (res.reason.includes("ยังไม่ได้ทำเครื่องหมาย")) throw notFound(res.reason);
       failWith(res.reason);

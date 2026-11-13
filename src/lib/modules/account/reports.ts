@@ -476,6 +476,8 @@ export type Pp30Row = {
 };
 
 export type Pp30RateGroup = { rateBp: number; base: number; vat: number };
+/** ACC T1.9 ▸ rateBp ของกลุ่ม "รายการปรับปรุงมือ" (JV ที่บันทึกเอง ไม่มีฐาน) ในรายงานภาษีซื้อ ◂ */
+export const MANUAL_ADJUST_RATE_BP = -2;
 
 export type Pp30Side = {
   total: number; // Σ ภาษี (สตางค์)
@@ -573,7 +575,8 @@ async function pp30Side(
     const rawBase = doc ? doc.subTotal - doc.discountAmount : 0;
     const base = agg.vat < 0 ? -rawBase : rawBase;
     // อัตรา: derive จาก vat/base (700 = 7%) — SME ส่วนใหญ่อัตราเดียว (ทั้งบวก/ลบให้ได้ 700)
-    const rateBp = base !== 0 ? Math.round((agg.vat / base) * 10000) : 0;
+    // ACC T1.9 ▸ JV มือ (ไม่มีเอกสาร) ไม่มีฐาน ⇒ กลุ่มของตัวเอง (MANUAL_ADJUST_RATE_BP) ไม่ปนกับอัตรา 0% ◂
+    const rateBp = agg.manual && !doc ? MANUAL_ADJUST_RATE_BP : base !== 0 ? Math.round((agg.vat / base) * 10000) : 0;
 
     rows.push({
       docNo: doc?.docNo ?? agg.journalNo,
@@ -753,7 +756,7 @@ export async function pp30Csv(
   lines.push(header.map(pp30Cell).join(","));
   for (const x of r.input.rows) {
     lines.push(
-      [ "ภาษีซื้อ", x.date.toISOString().slice(0, 10), x.docNo, x.contactName, x.taxId, x.branchCode, (x.rateBp / 100).toFixed(2), pp30Cell(x.base), pp30Cell(x.vat)]
+      [ "ภาษีซื้อ", x.date.toISOString().slice(0, 10), x.docNo, x.contactName, x.taxId, x.branchCode, x.rateBp === MANUAL_ADJUST_RATE_BP ? "ปรับปรุงมือ" : (x.rateBp / 100).toFixed(2), pp30Cell(x.base), pp30Cell(x.vat)]
         .map((v) => pp30Cell(v as string))
         .join(","),
     );

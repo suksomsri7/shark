@@ -983,7 +983,7 @@ export async function DocDetailPage({
           { tenantId, systemId },
           {
             date: data.issueDate,
-            ref: `${labelOf(dt)}${data.docNo ? ` ${data.docNo}` : " (ร่าง)"}`,
+            ref: `${labelOf(dt)}${data.docNo ? ` ${data.docNo}` : " ฉบับร่าง"}`,
             ...(side === "revenue" ? { output: data.vatAmount } : { input: data.vatAmount }),
           },
         )
