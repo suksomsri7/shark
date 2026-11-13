@@ -10,6 +10,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับสะพานบัญชี (R1) ◂
 import { splitIncludedVat } from "@/lib/money/vat";
+import { isVatTreatment, productVatTreatment, splitBillVat, type VatTreatment } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
 import { parsePosPaymentSettings, tipLedgerOk } from "./payment-settings";
 // POS P1.9 ▸ ค่าตั้งกะ (otherSources) — ตัวอ่านเดียวกับ shift.ts ◂
 import { parseShiftSettings } from "./shift";
@@ -115,6 +116,8 @@ export type CreateSaleInput = {
     // SVC B.10 ▸ ผู้ให้บริการของบรรทัด (HrEmployee.id · id หลวม · บิลจากคิวส่งมา) → PosSaleLine.performerEmployeeId ·
     //   เพิ่มล้วน · ไม่ส่ง = null · ไม่อยู่ใน samePayload (ความหมายคีย์ซ้ำเดิมทุกไบต์) ◂
     performerEmployeeId?: string;
+    // ACC T1.8 ▸ ชนิด VAT ของบรรทัด (เพิ่มล้วน · ไม่ส่ง = null = มาตรฐาน — โรงแรม/หอพัก/บริการ/ผู้เรียกเดิมทุกไบต์) · ledger/wo-notes/T1.8.md ◂
+    vatTreatment?: VatTreatment;
   }[];
   billDiscountSatang?: number;
   // คูปอง (contract 2.3) — ต้องมาคู่กันเสมอ · ระบุแล้วใช้ไม่ได้ = โยน error (ห้ามขายต่อเงียบ ๆ)
@@ -293,6 +296,7 @@ function validateSaleInput(input: CreateSaleInput): void {
     }
     // POS P2.2 ▸ R7: ตรวจเฉพาะเมื่อส่งมา (ผู้เรียกเดิมไม่ส่ง = ไม่ถูกตรวจเพิ่ม) ◂
     if (l.priceSource !== undefined && l.priceSource !== null && !(PRICE_SOURCES as readonly unknown[]).includes(l.priceSource)) throw bad("ที่มาของราคาไม่ถูกต้อง");
+    if (l.vatTreatment !== undefined && l.vatTreatment !== null && !isVatTreatment(l.vatTreatment)) throw bad("ชนิด VAT ของรายการไม่ถูกต้อง"); // ACC T1.8 ◂
     if (l.priceRuleId !== undefined && l.priceRuleId !== null && (typeof l.priceRuleId !== "string" || !l.priceRuleId || l.priceRuleId.length > PRICE_RULE_ID_MAX)) throw bad("รหัสโปรราคาไม่ถูกต้อง");
     if (l.listPriceSatang !== undefined && l.listPriceSatang !== null && !(isNonNegInt(l.listPriceSatang) && l.listPriceSatang <= 2_147_483_647)) throw bad("ราคาปกติต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ");
   }
@@ -916,8 +920,14 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     // POS P3.6 ▸ R5 R6 R13: ลูกค้าองค์กร · วางบิล (ล็อกวงเงิน + ภาพหนี้) · แนบสมาชิกเฉย ๆ — ก่อนล็อกสินค้า/ตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีอะไรถูกเขียน) ◂
     const p36 = await saleP36(tx as Prisma.TransactionClient, input, offlineSoldAt);
 
+    // ACC T1.8 ▸ ชนิด VAT: ผู้เรียกส่งมา > สินค้า POS (vatRateBp เดิม + ธงเก็บแทน) > null (มาตรฐาน) — บรรทัดที่ไม่มี productId = ตามที่ส่ง ◂
+    const t18Ids = [...new Set(input.lines.filter((l) => !l.vatTreatment && l.productId).map((l) => l.productId!))];
+    const t18Prod = t18Ids.length
+      ? new Map((await tx.posProduct.findMany({ where: { tenantId: input.tenantId, id: { in: t18Ids } }, select: { id: true, vatRateBp: true, collectedOnBehalf: true } })).map((p) => [p.id, productVatTreatment(p)]))
+      : new Map<string, VatTreatment>();
     const lines = input.lines.map((l) => ({
       ...l,
+      vatTreatment: l.vatTreatment ?? (l.productId ? t18Prod.get(l.productId) : undefined),
       discountSatang: l.discountSatang ?? 0,
       lineTotalSatang: l.unitPriceSatang * l.qty - (l.discountSatang ?? 0),
     }));
@@ -1017,7 +1027,18 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     const deposits = await lockSaleDeposits(tx, input, depositRows, vatRateBp); // POS P2.9b ▸ fix1 มติ 1: อัตราของบิล (เพดาน VAT ต่อแถว) ◂
     const depositVat = deposits.reduce((t, d) => t + d.vatSatang, 0);
     // R5: VAT ของบิล = VAT(ยอด) − Σ VAT ของมัดจำที่ใช้ (เฉพาะบิลที่มีแถวอ้างใบรับ · บิลอื่นเหมือนเดิมทุกไบต์)
-    const billVat = (gross: number) => (deposits.length ? Math.max(0, splitIncludedVat(gross, vatRateBp).vatSatang - depositVat) : splitIncludedVat(gross, vatRateBp).vatSatang);
+    // ACC T1.8 ▸ บิลที่มีบรรทัดไม่ใช่มาตรฐาน: VAT = ถอดจากยอดกลุ่มมาตรฐาน (ส่วนลดระดับบิลเกลี่ยก่อน · เก็บแทนลดไม่ได้) + ยอดกลุ่ม 0%/ยกเว้น/เก็บแทน ·
+    //   ไม่มีชนิด/มาตรฐานล้วน = สูตรเดิมทุกไบต์ ◂
+    const t18Mixed = lines.some((l) => l.vatTreatment && l.vatTreatment !== "STANDARD");
+    const t18Split = (gross: number) => splitBillVat({ lines: lines.map((l) => ({ lineTotalSatang: l.lineTotalSatang, treatment: l.vatTreatment ?? null })), serviceChargeSatang: serviceCharge, grandTotalSatang: gross, rateBp: vatRateBp });
+    const t18Groups = (gross: number) => {
+      if (!t18Mixed) return {};
+      const g = t18Split(gross);
+      if (g.unallocatedDiscount > 0) throw new PosSaleError("VALIDATION", "ส่วนลดใช้กับรายการเก็บแทนไม่ได้ — ส่วนลดรวมมากกว่ายอดรายการที่ลดได้");
+      return { zeroRatedSatang: g.zeroRated, exemptSatang: g.exempt, onBehalfSatang: g.onBehalf };
+    };
+    const vatOfGross = (gross: number) => (t18Mixed ? t18Split(gross).vat : splitIncludedVat(gross, vatRateBp).vatSatang);
+    const billVat = (gross: number) => (deposits.length ? Math.max(0, vatOfGross(gross) - depositVat) : vatOfGross(gross));
 
     const sale = await tx.posSale.create({
       data: {
@@ -1034,6 +1055,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         subtotalSatang: subtotal,
         discountSatang: billDiscount + couponDiscount,
         vatSatang: billVat(beforeMember), // POS P2.9b ▸ R5 ◂
+        ...t18Groups(beforeMember), // ACC T1.8 ◂
         grandTotalSatang: beforeMember,
         serviceChargeSatang: serviceCharge,
         tipSatang: tip,
@@ -1079,6 +1101,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         priceRuleId: l.priceRuleId ?? null,
         listPriceSatang: l.listPriceSatang ?? null,
         ...(typeof l.performerEmployeeId === "string" && l.performerEmployeeId ? { performerEmployeeId: l.performerEmployeeId.slice(0, 200) } : {}), // SVC B.10 ▸ ผู้ให้บริการ ◂
+        ...(l.vatTreatment ? { vatTreatment: l.vatTreatment } : {}), // ACC T1.8 ◂
       })),
     });
     const optionRows = lines.flatMap((l, i) =>
@@ -1165,6 +1188,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
           discountSatang: billDiscount + couponDiscount + memberDiscount,
           grandTotalSatang: grandTotal,
           vatSatang: billVat(grandTotal), // POS P2.9b ▸ R5 ◂
+          ...t18Groups(grandTotal), // ACC T1.8 ◂
           tierDiscountSatang,
           voucherUseIds,
           giftCardTxnId,

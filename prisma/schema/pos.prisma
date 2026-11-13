@@ -43,6 +43,14 @@ enum SalesChannelPayout {
 }
 
 // P1.8 — ชนิดเอกสารของ PosSale (enum ใหม่ ⇒ ไม่มี ALTER TYPE … ADD VALUE) · ใบคืนเงิน = เอกสารใหม่ ไม่ใช่แก้บิลเดิม (มติ R1)
+// ACC T1.8 — ชนิด VAT ของบรรทัดบิล (สำเนาตอนขาย) · null บนบรรทัด = บิลเก่า = STANDARD (ledger/wo-notes/T1.8.md)
+enum PosVatTreatment {
+  STANDARD // อัตราของสมุดตอนขาย
+  ZERO_RATED // อัตรา 0% (ม.80/1)
+  EXEMPT // ยกเว้น (ม.81)
+  ON_BEHALF // เก็บแทนบุคคลอื่น — นอกฐาน VAT · ไม่ใช่รายได้ (VAT §3)
+}
+
 enum PosSaleDocType {
   SALE
   REFUND
@@ -131,6 +139,11 @@ model PosSale {
   channelCommissionSatang    Int                 @default(0)
   channelCommissionVatSatang Int                 @default(0)
 
+  // ── ACC T1.8 ▸ ยอดตามกลุ่ม VAT (รวมในราคา · หลังเกลี่ยส่วนลดระดับบิล) · บิลเก่า = 0 ⇒ ยอดที่เสีย VAT = grandTotal (อ่านเหมือนเดิม) · ใบ REFUND = ส่วนที่คืน ──
+  zeroRatedSatang            Int                 @default(0)
+  exemptSatang               Int                 @default(0)
+  onBehalfSatang             Int                 @default(0)
+
   // ── POS P3.4 ▸ ออฟไลน์ (R1 · มติ 3) · เพิ่มคอลัมน์ล้วน (บิลเดิม = null = บิลออนไลน์) ──
   // offlineRef = เลขชั่วคราวของเครื่อง "OFF-C1-0007" (ผู้เขียนเดียว = createSale ผ่าน input.offline ที่ pos/offline-sync.ts ส่งมา)
   //   unique (unitId, offlineRef) WHERE offlineRef IS NOT NULL = partial unique เขียนมือใน migration (prisma แสดง WHERE ไม่ได้)
@@ -189,6 +202,8 @@ model PosSaleLine {
   // SVC B.0 ▸ ผู้ให้บริการของบรรทัด (HrEmployee.id · id หลวม ไม่มี FK) — รายงานค่าคอมฯ ตามผู้ให้บริการ (B.10) ·
   //   🔴 ไม่มีดัชนีในตารางนี้ (ตารางใหญ่) — ถ้าใบหลังต้องการ = CREATE INDEX CONCURRENTLY นอก migrate แบบ P6.1 ◂
   performerEmployeeId String?
+  // ACC T1.8 ▸ ชนิด VAT ตอนขาย (null = บิลเก่า/ผู้เรียกที่ไม่ส่ง = STANDARD) · ใบ REFUND คัดลอกจากบรรทัดเดิม ◂
+  vatTreatment    PosVatTreatment?
   options         PosSaleLineOption[]
 
   @@index([saleId])
@@ -316,6 +331,7 @@ model PosProduct {
   category           PosCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   basePriceSatang    Int? // สตางค์ · null = ยังไม่ตั้งราคา (ไม่ใช้ต้นทุนแทน) · 0 = ตั้งใจให้ฟรี
   vatRateBp          Int? // สำเนาจาก AccountProduct.vatRateBp · null = ไม่มีบัญชีผูก
+  collectedOnBehalf  Boolean        @default(false) // ACC T1.8: เก็บแทนบุคคลอื่น (นอกฐาน VAT · ไม่ใช่รายได้ · ลดไม่ได้) — ชนะ vatRateBp
   barcode            String? // บาร์โค้ดของแถวนี้เอง (แถวที่ผูกคลังใช้ InvItem.barcode — ไม่คัดลอก)
   images             Json           @default("[]") // ["url", …] index 0 = ปก
   sortOrder          Int            @default(0)
