@@ -21,6 +21,12 @@ import { CapacityAbort, type Gate, type SweepGroup } from "./capacity";
 import { expireHoldsBatch, jobGate, sweepPolicies } from "./capacity-service";
 import { offerWaitlistForDeparture } from "./waitlist";
 // ── /T0.4 capacity ──
+// ── T0.7 money ── (งาน trips.paymentDue)
+import { resolveSettings } from "@/lib/core/settings";
+import { unitClient } from "./capacity-service";
+import { emitDueReminders, markTripDueOverdue, openRefundOf, readMoneyBooking } from "./money";
+import { requestTripRefund } from "./refund";
+// ── /T0.7 money ──
 
 export type TripJobOpts = { tenantIds?: string[]; signal?: AbortSignal };
 export type TripJobFailure = { tenantId: string; unitId?: string; scheduleId?: string; departureId?: string; code: string };
@@ -247,3 +253,84 @@ export async function runWaitlistOffers(
   return { ...out, failed };
 }
 // ── /T0.4 capacity ──
+
+// ── T0.7 money ──
+// TRIPS T0.7 ▸ งาน trips.paymentDue (ใบสั่ง T0.7 §13 · CC :926) — อ่านไม่ล็อกข้ามร้านด้วย prisma ดิบ (ดัชนี TripPaymentDue_status_dueAt_idx · หน้าละ 200 · keyset)
+//   แล้วเขียนต่อร้านผ่าน money.ts (tenantDb · ต่องวดหนึ่ง tx) · AUTO_RELEASE = ยื่นคำขอคืนเงิน SYSTEM ผ่าน refund.ts (ไม่บันทึกโอนคืน/ไม่ปล่อยที่เอง) ◂
+type PayDueRow = { id: string; tenantId: string; unitId: string; bookingId: string; productId: string; dueAt: Date; status: string; amountSatang: number; paidSatang: number };
+/** ขอบเขตการเตือนล่วงหน้า (T16 สูงสุด 365 วันตามสคีมาค่าตั้ง + 1 · ค่าทางเทคนิคของการสแกน ไม่ใช่ตัวเลขธุรกิจ) */
+const REMINDER_HORIZON_MS = 366 * 86_400_000;
+const K_REMINDER_DAYS = "trips.pay.reminderDaysBefore"; // T16 (ค่าปัจจุบันของหน่วย/สินค้า · นโยบาย ไม่ใช่ยอด)
+const OVERDUE_REASON = "เลยกำหนดชำระ";
+/**
+ * งวดค้าง (OPEN/PARTLY_PAID/OVERDUE) ของการจอง CONFIRMED/PART_PAID: เตือนตาม T16 · เลยกำหนด + X11 ⇒ OVERDUE (+ AUTO_RELEASE ตาม T17 ของ snapshot)
+ * idempotent (คีย์ outbox · CAS · คีย์คำขอ sys:trips.paymentDue:due_<dueId>) · เคารพ signal/deadline · ล้มรายแถว = นับใน failed ไม่หยุดงาน
+ */
+export async function runPaymentDue(
+  now: Date,
+  opts?: CapacityJobOpts,
+): Promise<{ reminders: number; overdue: number; autoReleased: number; failed: CapacityJobFailure[] }> {
+  const out = { reminders: 0, overdue: 0, autoReleased: 0 };
+  const tally = new FailureTally();
+  const gates = new Map<string, Gate | null>();
+  const daysOf = new Map<string, number[]>();
+  const horizon = new Date(now.getTime() + REMINDER_HORIZON_MS).toISOString();
+  let cursor: { at: string; id: string } | null = null;
+  while (!stopped(opts)) {
+    const tenantFilter = opts?.tenantIds ? Prisma.sql`AND d."tenantId" = ANY(${opts.tenantIds}::text[])` : Prisma.empty;
+    const after = cursor ? Prisma.sql`AND (d."dueAt", d."id") > (${cursor.at}::timestamp, ${cursor.id})` : Prisma.empty;
+    const rows: PayDueRow[] = await prisma.$queryRaw<PayDueRow[]>`
+      SELECT d."id", d."tenantId", d."unitId", d."bookingId", b."productId", d."dueAt", d."status", d."amountSatang", d."paidSatang"
+      FROM "TripPaymentDue" d JOIN "TripBooking" b ON b."id" = d."bookingId" AND b."tenantId" = d."tenantId"
+      WHERE d."status" IN ('OPEN', 'PARTLY_PAID', 'OVERDUE') AND d."dueAt" <= ${horizon}::timestamp AND b."status" IN ('CONFIRMED', 'PART_PAID') ${tenantFilter} ${after}
+      ORDER BY d."dueAt", d."id" LIMIT ${SWEEP_PAGE_SIZE}`;
+    if (!rows.length) break;
+    const last = rows[rows.length - 1];
+    cursor = last ? { at: new Date(last.dueAt).toISOString(), id: last.id } : null;
+    for (const d of rows) {
+      if (stopped(opts)) break;
+      try {
+        const uk = `${d.tenantId}|${d.unitId}`;
+        if (!gates.has(uk)) gates.set(uk, await jobGate(d.tenantId, d.unitId));
+        const g = gates.get(uk);
+        if (!g) {
+          tally.add(d.tenantId, d.unitId, "UNIT_NOT_TRIPS");
+          continue;
+        }
+        const pk = `${uk}|${d.productId}`;
+        if (!daysOf.has(pk)) {
+          const r = await resolveSettings({ tenantId: d.tenantId }, [K_REMINDER_DAYS], { unitId: d.unitId, productId: d.productId }, now);
+          const v = r[K_REMINDER_DAYS]?.value;
+          daysOf.set(pk, Array.isArray(v) ? v.filter((x): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0) : []);
+        }
+        out.reminders += await emitDueReminders(g, { id: d.id, bookingId: d.bookingId, dueAt: d.dueAt, amountSatang: d.amountSatang, paidSatang: d.paidSatang }, daysOf.get(pk) ?? [], now);
+        const ov = await markTripDueOverdue(g, { id: d.id, bookingId: d.bookingId }, now);
+        if (!ov.ok) {
+          tally.add(d.tenantId, d.unitId, ov.code);
+          continue;
+        }
+        if (ov.value.overdue) out.overdue++;
+        if (ov.value.overdueAction !== "AUTO_RELEASE" || ov.value.dueStatus !== "OVERDUE") continue;
+        // AUTO_RELEASE: ยื่นคำขอคืนเงิน SYSTEM ครั้งเดียวต่องวด (คีย์เดิม = ผลเดิม) · มีคำขอเปิดอยู่แล้ว ⇒ ข้าม
+        const db = unitClient(g);
+        if (await openRefundOf(db, g, d.bookingId)) continue;
+        const b = await readMoneyBooking(db, g, d.bookingId);
+        if (!b || (b.status !== "CONFIRMED" && b.status !== "PART_PAID")) continue;
+        const rq = await requestTripRefund(
+          { tenantId: g.tenantId, unitId: g.unitId, channel: "COUNTER", actor: { kind: "SYSTEM", job: "trips.paymentDue" }, now },
+          { bookingId: d.bookingId, expectedVersion: b.version, reasonKind: "CUSTOMER", choice: "MONEY", reason: OVERDUE_REASON, idempotencyKey: `due_${d.id}` },
+        );
+        if (rq.ok) {
+          if (!rq.value.replayed) out.autoReleased++;
+        } else if (!(rq.code === "STATE_CONFLICT" && rq.details?.reason === "REFUND_IN_PROGRESS")) tally.add(d.tenantId, d.unitId, rq.code);
+      } catch (e) {
+        tally.add(d.tenantId, d.unitId, capCodeOf(e));
+      }
+    }
+    if (rows.length < SWEEP_PAGE_SIZE) break;
+  }
+  const failed = tally.list();
+  await reportFailures("trips.paymentDue", failed);
+  return { ...out, failed };
+}
+// ── /T0.7 money ──

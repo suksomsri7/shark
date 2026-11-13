@@ -72,7 +72,10 @@ import { PricingAbort } from "./pricing-core";
 import { TripProductNotSellableError, assertProductSellableInTx } from "./products";
 import { redeemPromosInTx, releasePromoInTx } from "./promo";
 import { recomputeFromSnapshot, type TripsBookingSnapshot } from "./snapshot";
-import { BOOKING_SOLD_STATUSES, canTransitionBooking, initialBookingStatus, isBookingStatus, type BookingStatus, type InitialHoldMode } from "./state";
+import { canTransitionBooking, initialBookingStatus, isBookingStatus, type BookingStatus, type InitialHoldMode } from "./state";
+// TRIPS T0.7 ▸ เงินฝั่ง trips: งวดในธุรกรรมยืนยัน · ยกเลิก/แก้การจองที่ขายแล้ว (ใบสั่ง T0.7 §9) ◂
+import { currentDues, duesShapeUnchanged, ensureTripDuesInTx, openRefundOf, readMoneyBooking, replaceTripDuesInTx, retimeTripDuesInTx } from "./money";
+import { requestTripRefundForCancel, tripRefundQuote } from "./refund";
 
 // ── T0.6 booking ──
 /** อาร์กิวเมนต์ที่ 3 ของบริการ — ตั้งได้จาก booking-actions หลัง assertCan("trips.price.override") เท่านั้น */
@@ -92,7 +95,8 @@ const CONFIRM_MODES: ReadonlySet<string> = new Set(["AUTO", "SHOP_CONFIRMS"]);
 const PREFIX_RE = /^[A-Z]{1,4}$/;
 const PROMO_REASONS: ReadonlySet<string> = new Set(["PROMO_EXHAUSTED", "PROMO_PER_CONTACT", "PROMO_INACTIVE", "PROMO_EXPIRED"]);
 const UNPAID: ReadonlySet<string> = new Set(["HOLD", "PENDING"]);
-const SOLD: ReadonlySet<string> = new Set(BOOKING_SOLD_STATUSES);
+/** TRIPS T0.7 ▸ สถานะที่ยกเลิกได้ด้วยคำขอคืนเงิน G.3 (ใบสั่ง T0.7 §8.1 · §9.1) ◂ */
+const REFUNDABLE_SOLD: ReadonlySet<string> = new Set(["CONFIRMED", "PART_PAID", "PAID"]);
 /** entityType ของคำขออนุมัติราคาแก้มือ (มติ R1) */
 export const TRIP_PRICE_OVERRIDE_ENTITY = "trips.price_override";
 
@@ -1051,6 +1055,8 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
     }
     done.push({ line: l, code, token, items: cols.items });
   }
+  // TRIPS T0.7 ▸ 2d งวดจ่ายของทุกการจองในธุรกรรมยืนยัน (ใบสั่ง T0.7 §5 · ทุกเส้นทาง confirm · bookNow · REHOLD) ◂
+  for (const d of done) await ensureTripDuesInTx(t, sc, { bookingId: d.line.bookingId });
   // โค้ดส่วนลดทั้งตะกร้าเรียง ruleId (แล้ว id การจอง) — ยอดจาก snapshot (R13)
   const redeems = done.filter((d) => d.line.promo).map((d) => ({ ruleId: d.line.promo?.ruleId ?? "", bookingId: d.line.bookingId, discountSatang: d.line.promo?.discountSatang ?? 0 }));
   if (redeems.length && !P.contactKey) throw new BookingAbort("VALIDATION", { reason: "CONTACT_REQUIRED" });
@@ -1400,11 +1406,28 @@ async function cancelImpl(ctx: unknown, input: unknown): Promise<SellResult<Canc
   const p = cancelRequestSchema.safeParse(input);
   if (!p.success) return invalidInput(p.error);
   const v = p.data;
+  // TRIPS T0.7 ▸ เลื่อนวัน = changeTripBooking (§9.1) · ทุกกรณี ◂
+  if (v.moveToSlotId !== undefined) return sellFail("VALIDATION", { reason: "MOVE_DATE_VIA_CHANGE" });
   const g = await gateOf(c);
   if (!g) return NF();
   const b = await readBooking(unitDb(g), g, v.bookingId);
   if (!b) return NF();
   const sc = sellCtxOf(c, ctx);
+  // TRIPS T0.7 ▸ การจองที่ขายแล้ว: QUOTE = ใบเสนอคืนเงินจาก snapshot (รวมหลักฐานเก็บแทน · ไม่เขียน) · EXECUTE = ยื่นคำขอคืนเงิน G.3 (คีย์ cancel:<bookingId>:…) ◂
+  if (REFUNDABLE_SOLD.has(b.status)) {
+    if (v.mode === "QUOTE") {
+      const mb = await readMoneyBooking(unitDb(g), g, b.id);
+      if (!mb) return NF();
+      const q = await tripRefundQuote(unitDb(g), g, mb, c.clock.iso, v.reasonKind ?? "CUSTOMER", 0);
+      if (!q.ok) return q;
+      return { ok: true, value: { computed: { refundSatang: q.value.refundSatang, feeSatang: q.value.keptSatang, ladderStep: q.value.step, source: "SNAPSHOT" }, status: b.status } };
+    }
+    const rq = await requestTripRefundForCancel(c, { bookingId: b.id, expectedVersion: b.version, reasonKind: v.reasonKind ?? "CUSTOMER", choice: v.choice ?? "MONEY", reason: v.reason, idempotencyKey: v.idempotencyKey });
+    if (!rq.ok) return rq;
+    const step = isRec(rq.value.computed.step) ? { daysBefore: Number(rq.value.computed.step.daysBefore), refundBp: Number(rq.value.computed.step.refundBp) } : null;
+    const kept = Number(rq.value.computed.keptSatang ?? 0);
+    return { ok: true, value: { computed: { refundSatang: rq.value.amountSatang, feeSatang: kept, ladderStep: step, source: "SNAPSHOT" }, requestId: rq.value.requestId, status: rq.value.status } };
+  }
   if (v.mode === "QUOTE") {
     try {
       const r = recomputeFromSnapshot(b.policySnapshot, { kind: "CANCEL", at: c.clock.iso, reasonKind: v.reasonKind ?? "CUSTOMER", paidSatang: b.paidSatang });
@@ -1424,8 +1447,7 @@ async function cancelImpl(ctx: unknown, input: unknown): Promise<SellResult<Canc
   };
   const pre = replay(await idemAudits(unitDb(g), g.tenantId, "trips.booking.cancel", b, keyHash));
   if (pre) return pre;
-  if (SOLD.has(b.status)) return sellFail("STATE_CONFLICT", { reason: "REFUND_REQUIRED" });
-  if (!UNPAID.has(b.status)) return sellFail("STATE_CONFLICT");
+  if (!UNPAID.has(b.status)) return sellFail("STATE_CONFLICT"); // TRIPS T0.7 ▸ ขายแล้ว = คำขอคืนเงิน (ข้างบน) · TRAVELLED/NO_SHOW = T1.5 ◂
   const policies = await optionalPolicies(sc, b.departureId);
   const r = await runBooking(g, async (tx): Promise<SellResult<CancelResult> | "DONE"> => {
     let version: number;
@@ -1496,6 +1518,7 @@ async function approveImpl(ctx: unknown, input: unknown): Promise<SellResult<{ b
       }
       const tr = await transitionBookingInTx(tx, sc, { bookingId: b.id, from: "PENDING", to, expectedVersion: v.expectedVersion });
       if (!tr.ok) throw new BookingAbort(tr.code, tr.details);
+      await ensureTripDuesInTx(tx, sc, { bookingId: b.id }); // TRIPS T0.7 ▸ งวด (ซ้ำ = ไม่เขียน · การจองก่อน T0.7 ได้งวดที่นี่) ◂
       if (confirmNow) await emitBooking(tx, g, "trips.booking.confirmed", b.id, { id: b.id, departureId: b.departureId, status: "CONFIRMED", channel: b.channel, amountSatang: payableOf(b) });
       await auditBooking(tx, a, "trips.booking.approve", b.id, { status: to, version: tr.value.version }, { status: b.status, version: b.version });
       return tr.value.version;
@@ -1554,9 +1577,10 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
   const pre = replay(await idemAudits(db, g.tenantId, "trips.booking.change", b, keyHash));
   if (pre) return pre;
   if (UNPAID.has(b.status)) return sellFail("STATE_CONFLICT", { reason: "CHANGE_BEFORE_CONFIRM" });
-  if (b.status === "PART_PAID" || b.status === "PAID") return sellFail("STATE_CONFLICT", { reason: "NOT_SUPPORTED" });
-  if (b.status !== "CONFIRMED") return sellFail("STATE_CONFLICT");
+  // TRIPS T0.7 ▸ PART_PAID/PAID แก้ได้เมื่อยอดและงวดไม่เปลี่ยน (เลื่อนวัน · §9.2) · มีคำขอคืนเงินเปิด ⇒ REFUND_IN_PROGRESS ◂
+  if (!REFUNDABLE_SOLD.has(b.status)) return sellFail("STATE_CONFLICT");
   if (b.version !== v.expectedVersion) return sellFail("STATE_CONFLICT");
+  if (await openRefundOf(db, g, b.id)) return sellFail("STATE_CONFLICT", { reason: "REFUND_IN_PROGRESS" });
   if (v.line.productId !== b.productId) return sellFail("VALIDATION", { fields: ["line.productId"] });
   const old = isRec(b.policySnapshot) ? (b.policySnapshot as unknown as TripsBookingSnapshot) : null;
   if (!old || !Array.isArray(old.lines)) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
@@ -1583,6 +1607,11 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
     : { ...built.value, cancelLadder: old.cancelLadder, cancelMinimumLadder: old.cancelMinimumLadder, shopCancelRefundBpByReason: old.shopCancelRefundBpByReason };
   const cols = bookingColumnsFromSnapshot(snap as unknown as SnapshotShape);
   if (!cols) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+  // TRIPS T0.7 ▸ การจองที่มีเงินแล้ว: payable ใหม่ = เดิม และงวดใหม่ตรงงวดเดิมทุกแถว (ต่างได้เฉพาะ dueAt) ไม่งั้นไม่เขียน ◂
+  const paidChange = b.status !== "CONFIRMED";
+  if (paidChange && (snap.totals.payableSatang !== payableOf(b) || !duesShapeUnchanged(await currentDues(db, g, b.id), snap))) {
+    return sellFail("STATE_CONFLICT", { reason: "PRICE_CHANGED_AFTER_PAYMENT" });
+  }
   const newSeats = seatsOfSnapshot(snap as unknown as SnapshotShape);
   const oldSeats = seatsOfSnapshot(old as unknown as SnapshotShape);
   if (newSeats < 1 || newSeats > QTY_MAX) return sellFail("VALIDATION", { fields: ["line.pax"] });
@@ -1652,6 +1681,10 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
       RETURNING "version"`;
     const nv = upd[0]?.version;
     if (nv === undefined) throw new BookingAbort("STATE_CONFLICT");
+    // TRIPS T0.7 ▸ 2b′ คำขอคืนเงินเปิด (อ่านใต้ล็อกแถวการจองของ UPDATE) → 2d งวด: CONFIRMED แทนงวดใหม่ (seq ต่อ) · จ่ายแล้ว = ย้าย dueAt เท่านั้น ◂
+    if (await openRefundOf(tx, g, b.id)) throw new BookingAbort("STATE_CONFLICT", { reason: "REFUND_IN_PROGRESS" });
+    if (paidChange) await retimeTripDuesInTx(tx, g, b.id, snap);
+    else await replaceTripDuesInTx(tx, g, b.id, snap, c.clock.now);
     await tx.$queryRaw`UPDATE "TripBookingItem" SET "active" = false, "updatedAt" = now() WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "active" RETURNING "id"`;
     const items = await insertItems(tx, g.tenantId, g.unitId, b.id, to, cols.items);
     for (const pt of [...new Set(items.filter((x) => x.kind === "SEAT" && x.paxTypeId).map((x) => x.paxTypeId as string))]) {
@@ -1700,3 +1733,8 @@ export async function onTripBookingExpired(input: unknown): Promise<SellResult<{
   });
 }
 // ── /T0.6 booking ──
+
+// TRIPS T0.7 ▸ ตัวห่อของ T0.6 ที่บริการเงิน (money.ts · refund.ts) ใช้ร่วม — safely (ผลมีชื่อ · ข้อผิดพลาดอื่น ⇒ BUSY UNEXPECTED + log ตัดข้อความ) ·
+//   runBooking (40P01 ลองใหม่ · unique ชน ⇒ ลองใหม่/IDEMPOTENCY_CONFLICT) — ไม่ส่งออกทาง trips/index.ts ◂
+export const tripsSafely = safely;
+export const runTripsTx = runBooking;

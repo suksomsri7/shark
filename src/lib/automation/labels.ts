@@ -427,6 +427,17 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "trips.booking.cancelled", label: "เมื่อยกเลิกการจองทัวร์" },
   { value: "trips.booking.changed", label: "เมื่อแก้ไข/เลื่อนวันการจองทัวร์" },
   // ── /T0.6 booking ──
+  // ── T0.7 money ── TRIPS T0.7 ▸ เงินฝั่ง trips — ตัวยิง `trips/money.ts` · `trips/refund.ts` · payload {dueId, bookingId, amountSatang, dueAt} /
+  //   ชุดการจองของ T0.6 / {requestId, bookingId, amountSatang, choice} (ไม่มีข้อมูลบุคคล) · เว็บฮุคได้จาก spread ◂
+  { value: "trips.payment.received", label: "เมื่อรับเงินการจองทัวร์" },
+  { value: "trips.payment.due_soon", label: "เมื่องวดจ่ายทัวร์ใกล้ครบกำหนด" },
+  { value: "trips.payment.overdue", label: "เมื่องวดจ่ายทัวร์เลยกำหนด" },
+  { value: "trips.booking.part_paid", label: "เมื่อการจองทัวร์ชำระบางส่วน" },
+  { value: "trips.booking.paid", label: "เมื่อการจองทัวร์ชำระครบ" },
+  { value: "trips.refund.requested", label: "เมื่อมีคำขอคืนเงินทัวร์" },
+  { value: "trips.refund.approved", label: "เมื่ออนุมัติคำขอคืนเงินทัวร์" },
+  { value: "trips.refund.done", label: "เมื่อบันทึกการโอนคืนเงินทัวร์" },
+  // ── /T0.7 money ──
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

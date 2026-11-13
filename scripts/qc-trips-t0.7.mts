@@ -506,7 +506,8 @@ try {
       await setV(tA, [unitSet(uA, "trips.tax.vatRegistered", VATREG), unitSet(uA2, "trips.tax.vatRegistered", VATREG), unitSet(uD, "trips.tax.vatRegistered", VATREG),
         unitSet(uD, "trips.pay.depositPct", 30), unitSet(uD, "trips.pay.balanceDueDaysBefore", 20),
         unitSet(uA2, "trips.cancel.ladder", [{ fromDaysBefore: 60, refundPct: 100 }, { fromDaysBefore: 0, refundPct: 0 }]),
-        unitSet(uA, "payments.receiver", { promptpayId: "0812345678", displayName: "ร้านทดสอบ T0.7" })], "oa");
+        unitSet(uA, "payments.receiver", { promptpayId: "0812345678", displayName: "ร้านทดสอบ T0.7" }),
+        unitSet(uD, "payments.receiver", { promptpayId: "0812345678", displayName: "ร้านทดสอบ T0.7" })], "oa"); // ORACLE-EDIT QR-2 (ผู้คุม 13 พ.ย.): หน่วย uD ต้องมีผู้รับ (uA2 ไม่มี = QR-4)
       await setV(tB, [unitSet(uB, "trips.tax.vatRegistered", VATREG)], "ob");
       await setV(tJ, [unitSet(uJ, "trips.tax.vatRegistered", VATREG), unitSet(uJD, "trips.tax.vatRegistered", VATREG), unitSet(uJD, "trips.pay.depositPct", 30), unitSet(uJD, "trips.pay.balanceDueDaysBefore", 20),
         unitSet(uJD, "trips.pay.overdueAction", "AUTO_RELEASE"), unitSet(uJD, "trips.pay.reminderDaysBefore", [7, 1])], "oj");
@@ -623,7 +624,7 @@ try {
   await st("MC-4", "receiptVatSatang ต่อเอกสาร: 995,000 ⇒ 65,093 (13ค) · 298,500 ⇒ 19,528 · 696,500 ⇒ 45,565 · 990,655 ⇒ 64,810 · 4,345 ⇒ 284 · ไม่จด VAT ⇒ 0", () => {
     const c = { vatRegistered: true, vatRateBp: 700, vat7Satang: VATABLE, nonPtSatang: VATABLE };
     const f = fn("receiptVatSatang");
-    eq([VATABLE, DEP30, 696_500, 990_655, 4_345].map((x) => f(x, c)), [VAT_DOC, 19_528, 45_565, 64_810, 284], "VAT");
+    eq([VATABLE, DEP30, 696_500, 990_655, 4_345].map((x) => f(x, c)), [VAT_DOC, 19_528, 45_565, 64_809, 284], "VAT"); // ORACLE-EDIT MC-4 (ผู้คุม 13 พ.ย.): 990,655 × 7/107 = 64,809.21 ⇒ 64,809 (เดิม 64,810 คิดผิด · Σ = 65,093 ตรงเอกสาร)
     eq(f(VATABLE, { ...c, vatRegistered: false }), 0, "ไม่จด");
   });
   await st("MC-5", "receiptVatSatang: บรรทัดไม่ใช่เก็บแทนที่ยกเว้น VAT ไม่มี VAT — VAT7 ครึ่งหนึ่งของ 200,000 ⇒ VAT ของ 100,000 = 6,542 (7/107 × 1,000 บาท)", () => {
@@ -756,7 +757,7 @@ try {
     await needDb(); const b = await mkBooking(); const v0 = num((await bk(b.id)).version);
     const a = await payOk(b, SHORT, { tender: "TRANSFER" }); const a2 = await payOk(b, TOTAL - SHORT, { tender: "CASH" });
     eq([a.status, a2.status, a.outstandingSatang, a2.outstandingSatang, num((await bk(b.id)).version) - v0], ["PART_PAID", "PAID", TOTAL - SHORT, 0, 2], "สถานะ");
-    eq((await evs(b.id)).map((x) => [x.amountSatang, x.passThroughSatang, x.vatSatang, x.tender]), [[SHORT, 149_345, 64_810, "TRANSFER"], [TOTAL - SHORT, 655, 284, "CASH"]], "ใบรับ");
+    eq((await evs(b.id)).map((x) => [x.amountSatang, x.passThroughSatang, x.vatSatang, x.tender]), [[SHORT, 149_345, 64_809, "TRANSFER"], [TOTAL - SHORT, 655, 284, "CASH"]], "ใบรับ"); // ORACLE-EDIT PY-2 (ผู้คุม 13 พ.ย.)
     await moneyOk(b.id, "PY-2");
   });
   await st("PY-3", "HOLD + รับบางส่วน 1,140,000 ⇒ PART_PAID และที่นั่งแปลงเป็นขาย (hold CONVERTED) — ใบสั่ง §17 ข้อ 2", async () => {

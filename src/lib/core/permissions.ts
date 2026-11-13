@@ -881,6 +881,12 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "trips.booking.approve": "อนุมัติหรือปฏิเสธคำขอจองทัวร์",
       "trips.booking.cancel": "ยกเลิกการจองทัวร์ที่ยังไม่ชำระ",
       // ── /T0.6 booking ──
+      // ── T0.7 money ── TRIPS T0.7 ▸ รับเงิน · คำขอคืนเงินทัวร์ (ใบสั่ง T0.7 §14) ◂
+      "trips.payment.record": "บันทึกรับเงินการจองทัวร์",
+      "trips.refund.request": "ยื่นคำขอคืนเงินทัวร์",
+      "trips.refund.approve": "อนุมัติหรือปฏิเสธคำขอคืนเงินทัวร์",
+      "trips.refund.execute": "บันทึกการโอนคืนเงินทัวร์",
+      // ── /T0.7 money ──
     },
   },
 ] as const;
