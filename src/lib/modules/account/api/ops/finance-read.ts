@@ -17,7 +17,7 @@
 
 import { z } from "zod";
 import type { AccountChequeStatus } from "@prisma/client";
-import { csvRow } from "@/lib/core/csv";
+import { csvCell, csvRow } from "@/lib/core/csv";
 import { dayKeyBkk, periodKeyBkk, cashCalendar } from "../../dashboard";
 import { ERR } from "../../errors";
 import {
@@ -39,12 +39,17 @@ import {
   listWhtCredits,
   listWhtFilings,
   pnd,
+  pnd1kAnnual,
+  pnd1kCsv,
   pndCsv,
   whtCreditsCsv,
   whtCreditYearTotal,
 } from "../../wht";
+import { isPndFormNumber, type PndFormNumber } from "../../wht-forms"; // ACC T3.4 ◂
+import { whtFilingState } from "../../wht-filing"; // ACC T3.4 ◂
+import { whtCreditsOwed } from "../../wht-cert"; // ACC T3.5 ◂
 import { defineOp, type ApiOp } from "../op";
-import { paged, withExtra, type PagedInfo } from "../respond";
+import { ApiError, paged, withExtra, type PagedInfo } from "../respond";
 import {
   calendarView,
   chequeRowView,
@@ -423,7 +428,11 @@ const whtCert = defineOp({
 
 const pndInput = z
   .object({
-    type: z.coerce.number().int().refine((v) => v === 3 || v === 53, 'type ต้องเป็น 3 หรือ 53'),
+    type: z.coerce
+      .number()
+      .int()
+      .refine((v) => isPndFormNumber(v), "type ต้องเป็น 1, 2, 3, 53 หรือ 54")
+      .describe("PND form: 1 salary/commission to individuals (section 50(1)), 2 interest/dividends/royalties to individuals, 3 other payments to individuals, 53 companies, 54 payments abroad."),
     period: z.string().regex(YM, "period ต้องเป็นเดือนรูปแบบ YYYY-MM"),
   })
   .strict();
@@ -435,17 +444,19 @@ const whtPnd = defineOp({
   kind: "read",
   action: "account.tax.view",
   rate: "report",
-  summary: "Monthly withholding tax filing summary (PND 3 for individuals, PND 53 for companies). Supports CSV.",
-  label: "สรุป ภ.ง.ด.3/53 รายเดือน",
+  summary:
+    "Monthly withholding tax return list for one PND form (1, 2, 3, 53 or 54), grouped by the month the money was paid. Includes payments where tax was withheld but no certificate was issued yet (hasCert false). The CSV is a helper for filling the form, not a Revenue Department upload file.",
+  label: "รายการ ภ.ง.ด. รายเดือน (1 / 2 / 3 / 53 / 54)",
+  tool: { name: "account_wht_pnd_report", hint: "Use for 'what goes on PND 3/53 this month', missing 50 tawi certificates, or which form a payment belongs to." },
   input: pndInput,
   test: "B3-F6.4",
   async handler({ actor, input }) {
-    const type = input.type as 3 | 53;
+    const type = input.type as PndFormNumber;
     const report = await pnd(actor.tenantId, actor.systemId, { type, period: input.period });
     return pndView(report, type, input.period);
   },
   async csv(ctx) {
-    const input = ctx.input as { type: 3 | 53; period: string };
+    const input = ctx.input as { type: PndFormNumber; period: string };
     return pndCsv(ctx.actor.tenantId, ctx.actor.systemId, { type: input.type, period: input.period });
   },
 });
@@ -495,6 +506,104 @@ const whtFilings = defineOp({
   },
 });
 
+// ── ACC T3.4 ภ.ง.ด.1ก รายปี · สถานะนำส่ง/แบบเพิ่มเติม ── ACC T3.5 ค้างรับ 50 ทวิ ──
+const pnd1kInput = z.object({ year: z.coerce.number().int().min(2000).max(2100).describe("Calendar year (A.D.), for example 2026.") }).strict();
+
+const whtPnd1k = defineOp({
+  id: "wht.pnd1k",
+  method: "GET",
+  path: "/wht/pnd1k",
+  kind: "read",
+  action: "account.tax.view",
+  rate: "report",
+  summary: "Yearly PND 1A (ภ.ง.ด.1ก) list: everything on PND 1 in the year, totalled per payee. Supports CSV (a helper for filling the form).",
+  label: "ภ.ง.ด.1ก รายปี",
+  input: pnd1kInput,
+  test: "T3.4-R2",
+  async handler({ actor, input }) {
+    const r = await pnd1kAnnual(actor.tenantId, actor.systemId, { year: input.year });
+    return {
+      year: r.year,
+      rows: r.rows.map((x) => ({ seq: x.seq, recipientName: x.recipientName, recipientTaxId: x.recipientTaxId, recipientAddress: x.recipientAddress, baseSatang: x.base, whtSatang: x.whtAmount, payments: x.count, withoutCertificate: x.uncertified })),
+      grandBaseSatang: r.grandBase,
+      grandWhtSatang: r.grandWht,
+    };
+  },
+  async csv(ctx) {
+    const input = ctx.input as { year: number };
+    return pnd1kCsv(ctx.actor.tenantId, ctx.actor.systemId, { year: input.year });
+  },
+});
+
+const whtFilingStateOp = defineOp({
+  id: "wht.filing-state",
+  method: "GET",
+  path: "/wht/filings/{form}/{period}",
+  kind: "read",
+  action: "account.tax.view",
+  summary:
+    "Filing state of one PND form and month: the original filed mark, additional filings, the tax filed last time vs the report now, and the certificates issued or cancelled after filing (the adjustment list).",
+  label: "สถานะนำส่ง ภ.ง.ด. + รายการปรับ",
+  input: noQuery,
+  test: "T3.4-R3",
+  async handler({ actor, params }) {
+    const formNo = Number(params.form ?? "");
+    const period = params.period ?? "";
+    if (!isPndFormNumber(formNo)) throw new ApiError(422, "validation", "แบบ ภ.ง.ด. ต้องเป็น 1, 2, 3, 53 หรือ 54", "The form must be 1, 2, 3, 53 or 54.");
+    if (!YM.test(period)) throw new ApiError(422, "validation", "งวดต้องเป็นเดือนรูปแบบ YYYY-MM (01-12)", "The period must be a month in `YYYY-MM` form.");
+    const st = await whtFilingState({ tenantId: actor.tenantId, systemId: actor.systemId }, formNo, period);
+    const row = (r: (typeof st.changes)[number]) => ({ certId: r.certId, certNo: r.certNo, contactName: r.contactName, change: r.change, at: r.at.toISOString(), whtSatang: r.whtDelta, acknowledged: r.acknowledged });
+    return {
+      form: st.form,
+      period: st.periodKey,
+      filed: st.filed ? { filedAt: st.filed.filedAt.toISOString(), totalTaxSatang: st.filed.totalTaxSatang, rows: st.filed.certCount } : null,
+      additional: st.additional.map((a) => ({ seq: a.seq, filedAt: a.filedAt.toISOString(), totalTaxSatang: a.totalTaxSatang, deltaTaxSatang: a.deltaTaxSatang, note: a.note })),
+      lastFiledTaxSatang: st.latestTaxSatang,
+      reportTaxSatang: st.currentTaxSatang,
+      differenceSatang: st.deltaTaxSatang,
+      changes: st.changes.map(row),
+      notYetFiled: st.pending.map(row),
+    };
+  },
+});
+
+const owedInput = z.object({ contactId: z.string().max(64).optional().describe("Only this customer.") }).strict();
+
+const whtCreditsOwedOp = defineOp({
+  id: "wht.credits-owed",
+  method: "GET",
+  path: "/wht/credits/owed",
+  kind: "read",
+  action: "account.tax.view",
+  rate: "report",
+  summary:
+    "Withholding tax certificates (50 tawi) still owed by customers: tax a customer withheld from the shop where nobody has marked the certificate as received yet. Attachments do not count as received. Supports CSV.",
+  label: "ค้างรับ 50 ทวิ จากลูกค้า",
+  tool: { name: "account_wht_credits_owed", hint: "Use for 'which customers still owe us a 50 tawi certificate'." },
+  input: owedInput,
+  test: "T3.5-R3",
+  async handler({ actor, input }) {
+    const r = await whtCreditsOwed({ tenantId: actor.tenantId, systemId: actor.systemId }, { contactId: input.contactId ?? null });
+    return {
+      rows: r.rows.map((x) => ({ certId: x.certId, certNo: x.certNo, paidDate: ymdOf(x.paidAt), contactId: x.contactId, contactName: x.contactName, contactTaxId: x.contactTaxId, sourceDocId: x.sourceDocId, sourceDocNo: x.sourceDocNo, baseSatang: x.base, rateBp: x.whtRateBp, whtSatang: x.whtAmount, daysOwed: x.daysOwed, hasAttachment: x.hasAttachment })),
+      byContact: r.byContact.map((b) => ({ contactId: b.contactId, contactName: b.contactName, count: b.count, whtSatang: b.whtAmount })),
+      totalWhtSatang: r.totalWht,
+      totalBaseSatang: r.totalBase,
+      warnings: r.warnings,
+    };
+  },
+  async csv(ctx) {
+    const input = ctx.input as { contactId?: string };
+    const r = await whtCreditsOwed({ tenantId: ctx.actor.tenantId, systemId: ctx.actor.systemId }, { contactId: input.contactId ?? null });
+    const head = ["วันที่รับเงิน", "เอกสารภาษีถูกหัก", "ลูกค้า (ผู้หัก)", "เลขประจำตัวผู้เสียภาษี", "เอกสารต้นทาง", "ฐานเงินได้", "อัตรา (%)", "ภาษีถูกหัก", "ค้างมา (วัน)"];
+    const b = (v: number) => (v / 100).toFixed(2);
+    const lines = r.rows.map((x) => [ymdOf(x.paidAt), x.certNo ?? "", x.contactName, x.contactTaxId ?? "", x.sourceDocNo ?? "", b(x.base), x.whtRateBp != null ? (x.whtRateBp / 100).toFixed(2) : "", b(x.whtAmount), x.daysOwed].map(csvCell).join(","));
+    return "\uFEFF" + [head.map(csvCell).join(","), ...lines, ["", "", "", "รวม", "", b(r.totalBase), "", b(r.totalWht), ""].map(csvCell).join(",")].join("\n");
+  },
+});
+
+const ymdOf = (d: Date) => new Date(d.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+
 export const FINANCE_READ_OPS: ApiOp[] = [
   financeAccountsList,
   financeAccountsGet,
@@ -512,4 +621,7 @@ export const FINANCE_READ_OPS: ApiOp[] = [
   whtPnd,
   whtCredits,
   whtFilings,
+  whtPnd1k,
+  whtFilingStateOp,
+  whtCreditsOwedOp,
 ];
