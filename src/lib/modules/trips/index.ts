@@ -297,6 +297,44 @@ export type {
 export { saveTripsSettings, resetTripsSetting } from "./trips-settings";
 // ◂ TRIPS T1.1
 // ── /T1.1 screens ──
+// ── T0.6 booking ──
+// TRIPS T0.6 ▸ การจอง: ถือผ่านตะกร้า · ยืนยันในธุรกรรมเดียว · ผังสถานะ · เลขจอง · อนุมัติ/ยกเลิกก่อนจ่าย · แก้คน/เลื่อนวัน (ใบสั่ง ledger/trips-briefs/T0.6.md) ◂
+export {
+  BOOKING_STATUSES,
+  BOOKING_TERMINAL_STATUSES,
+  BOOKING_SOLD_STATUSES,
+  BOOKING_UNPAID_STATUSES,
+  BOOKING_TRANSITIONS,
+  canTransitionBooking,
+  initialBookingStatus,
+  isBookingStatus,
+} from "./state";
+export type { BookingStatus, BookingActorKind, BookingTransition, InitialHoldMode, InitialStatusInput, InitialStatusResult } from "./state";
+export { contactKeyOf, phoneE164, bookingColumnsFromSnapshot, seatsOfSnapshot, dueNowOfSnapshot } from "./booking-core";
+export type { TripHoldRequest, TripConfirmRequest, TripBookNowRequest, TripChangeRequest, BookingColumns, BookingItemColumns } from "./booking-core";
+export { BOOKING_CODE_RE, bookingPeriodOf, formatBookingCode, nextSeqInTx, nextBookingCodeInTx } from "./numbering";
+export {
+  BookingAbort,
+  TRIP_PRICE_OVERRIDE_ENTITY,
+  tripPriceOverrideEntityId,
+  tripsUnexpectedCount,
+  bookingPublicToken,
+  holdTrips,
+  prepareTripConfirm,
+  confirmTrips,
+  finalizeTripsInTx,
+  bookTripsNow,
+  getTripBooking,
+  listTripBookings,
+  transitionBookingInTx,
+  cancelTripBooking,
+  approveTripBooking,
+  changeTripBooking,
+  onTripBookingExpired,
+} from "./booking";
+export type { BookingOpts, PreparedConfirm, PreparedLine, TripBookingDTO } from "./booking";
+// ◂ TRIPS T0.6
+// ── /T0.6 booking ──
 
 // ── T1.2 departures-screen ──
 // TRIPS T1.2 ▸ ปฏิทินรอบและที่ว่าง ฝั่งร้าน (ภาพ 11) · แผงรอบ · ต่ำกว่าขั้นต่ำ → ออกขาดทุน/รวมรอบ/ยกเลิก (ใบสั่ง ledger/trips-briefs/T1.2.md) ◂

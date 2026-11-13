@@ -819,13 +819,17 @@ const withOfferFailures = <T extends object>(v: T, c: Ctx): T & { offerFailures?
 export const holdRefInput = z.strictObject({ holdId: ID, capKey: CAP_KEY.optional() });
 export type ConvertValue = { holdId: string; departureId: string; qty: number; sold: number };
 /** อ่าน hold ไม่ล็อก → 1a ล็อกรอบ → CAS hold ACTIVE → CONVERTED (expiresAt > now) → held − q, sold + q ด้วย q ของแถว → ข้อเสนอ ⇒ ACCEPTED */
-export async function convertCoreTx(tx: Tx, g: Gate, c: Ctx, holdId: string, capKey: string | undefined): Promise<ConvertValue> {
+export async function convertCoreTx(tx: Tx, g: Gate, c: Ctx, holdId: string, capKey: string | undefined, forBookingId?: string): Promise<ConvertValue> {
   const h0 = await readHold(tx, g, holdId);
   if (!h0) throw new CapacityAbort("HOLD_NOT_FOUND");
   assertHoldOwner(c, h0, capKey);
+  // T0.6 S1 ▸ hold ที่ผูกการจองแล้วแปลงได้เฉพาะผ่านการจองนั้น (booking.ts ส่ง forBookingId) — ก่อนและหลังล็อกรอบ ◂
+  if (h0.bookingId !== null && h0.bookingId !== forBookingId) throw new CapacityAbort("STATE_CONFLICT", { reason: "HOLD_HAS_BOOKING" });
   if (h0.qtyAllot > 0) throw new CapacityAbort("STATE_CONFLICT", { reason: "AGENCY_NOT_ENABLED" });
   const d = await lockDeparture(tx, g, h0.departureId); // 1a
   if (!d) throw new CapacityAbort("HOLD_NOT_FOUND");
+  const h1 = await readHold(tx, g, holdId);
+  if (h1 && h1.bookingId !== null && h1.bookingId !== forBookingId) throw new CapacityAbort("STATE_CONFLICT", { reason: "HOLD_HAS_BOOKING" });
   if (d.status === "CANCELLED") throw new CapacityAbort("SLOT_CLOSED");
   const cas = await tx.$queryRaw<{ qtyPublic: number; qtyAllot: number; purpose: string }[]>`
     UPDATE "TripHold" SET "status" = 'CONVERTED', "updatedAt" = now()
@@ -848,6 +852,16 @@ export async function convertCoreTx(tx: Tx, g: Gate, c: Ctx, holdId: string, cap
  * ไม่ถือล็อกรอบอื่นที่ id มากกว่าไว้ก่อน · ผู้กระทำสาธารณะส่ง capKey ของตะกร้า · ยกเลิก (T0.7): คืน/ปล่อยที่ (returnSoldInTx/releaseHoldInTx) ก่อนปล่อยโค้ดส่วนลด
  */
 export async function convertHoldInTx(tx: unknown, ctx: unknown, input: unknown): Promise<SellResult<ConvertValue>> {
+  return convertHoldTx(tx, ctx, input, undefined);
+}
+/**
+ * T0.6 F4 ▸ แปลง hold ที่ผูกการจอง `forBookingId` (เฉพาะ trips/booking.ts — import ตรงจาก ./capacity · ไม่ส่งออกทาง trips/index.ts) ◂
+ * hold ที่ผูกการจองอื่น/ไม่ผูก ก็ผ่านกติกาเดียวกับ convertHoldInTx (ผูกการจองอื่น ⇒ HOLD_HAS_BOOKING)
+ */
+export async function convertHoldForBookingInTx(tx: unknown, ctx: unknown, input: unknown, forBookingId: string): Promise<SellResult<ConvertValue>> {
+  return convertHoldTx(tx, ctx, input, forBookingId);
+}
+async function convertHoldTx(tx: unknown, ctx: unknown, input: unknown, forBookingId: string | undefined): Promise<SellResult<ConvertValue>> {
   const t = asTx(tx);
   const pc = parseCtx(ctx);
   if (!pc.ok) abortOf(pc);
@@ -855,7 +869,7 @@ export async function convertHoldInTx(tx: unknown, ctx: unknown, input: unknown)
   if (!p.success) abortOf(invalidInput(p.error));
   const g = await gateOfTx(t, pc.c);
   if (!g) throw new CapacityAbort("HOLD_NOT_FOUND");
-  return { ok: true, value: await convertCoreTx(t, g, pc.c, p.data.holdId, p.data.capKey) };
+  return { ok: true, value: await convertCoreTx(t, g, pc.c, p.data.holdId, p.data.capKey, forBookingId) };
 }
 
 // ═══════════════════════ ปล่อย (D.1(4)) ═══════════════════════
@@ -879,10 +893,12 @@ async function releaseLockedHold(tx: Tx, g: Gate, c: Ctx, d: DepRow, holdId: str
   return { dep: withCounters(d, counters), released: true, current: "RELEASED" };
 }
 
-export async function releaseCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof releaseInput>, policies: CapacityPolicies | undefined): Promise<ReleaseValue> {
+export async function releaseCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof releaseInput>, policies: CapacityPolicies | undefined, forBookingId?: string): Promise<ReleaseValue> {
   const h0 = await readHold(tx, g, v.holdId);
   if (!h0) throw new CapacityAbort("HOLD_NOT_FOUND");
   assertHoldOwner(c, h0, v.capKey);
+  // T0.6 R9 ▸ hold ที่ผูกการจองแล้วปล่อยได้เฉพาะผ่านการยกเลิก/ปฏิเสธการจองนั้น (booking.ts ส่ง forBookingId) ◂
+  if (h0.bookingId !== null && h0.bookingId !== forBookingId) throw new CapacityAbort("STATE_CONFLICT", { reason: "HOLD_HAS_BOOKING" });
   if (h0.status === "RELEASED") return { holdId: v.holdId, status: "RELEASED", duplicated: true };
   if (h0.status === "CONVERTED") throw new CapacityAbort("STATE_CONFLICT");
   if (h0.status === "EXPIRED") throw new CapacityAbort("HOLD_EXPIRED");
@@ -890,6 +906,8 @@ export async function releaseCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof r
   const pol = departurePolicyOf(policies, g, h0.departureId); // ไม่มี ⇒ ไม่เสนอ (งาน 5 นาทีเป็นตัวสำรอง)
   const d = await lockDeparture(tx, g, h0.departureId); // 1a
   if (!d) throw new CapacityAbort("HOLD_NOT_FOUND");
+  const h1 = await readHold(tx, g, v.holdId); // T0.6 R9 ▸ อ่านซ้ำใต้ล็อกรอบ (การผูกการจองทำใต้ล็อกรอบเดียวกัน) ◂
+  if (h1 && h1.bookingId !== null && h1.bookingId !== forBookingId) throw new CapacityAbort("STATE_CONFLICT", { reason: "HOLD_HAS_BOOKING" });
   const r = await releaseLockedHold(tx, g, c, d, v.holdId, v.reason, "CANCELLED"); // 2a (+2a′)
   if (!r.released) {
     if (r.current === "RELEASED") return { holdId: v.holdId, status: "RELEASED", duplicated: true };
@@ -903,6 +921,13 @@ export async function releaseCoreTx(tx: Tx, g: Gate, c: Ctx, v: z.infer<typeof r
  * ปล่อยในธุรกรรมของผู้เรียก · `policies` (ไม่บังคับ) ใช้เสนอที่ให้รายการรอในทีเดียวกัน — ไม่ส่ง (และแคชไม่มี) ⇒ ปล่อยได้ แต่ไม่เสนอ
  */
 export async function releaseHoldInTx(tx: unknown, ctx: unknown, input: unknown, policies?: CapacityPolicies): Promise<SellResult<ReleaseValue>> {
+  return releaseHoldTx(tx, ctx, input, policies, undefined);
+}
+/** T0.6 F4 ▸ ปล่อย hold ที่ผูกการจอง `forBookingId` (ยกเลิก/ปฏิเสธการจองนั้น · เฉพาะ trips/booking.ts — ไม่ส่งออกทาง trips/index.ts) ◂ */
+export async function releaseHoldForBookingInTx(tx: unknown, ctx: unknown, input: unknown, policies: CapacityPolicies | undefined, forBookingId: string): Promise<SellResult<ReleaseValue>> {
+  return releaseHoldTx(tx, ctx, input, policies, forBookingId);
+}
+async function releaseHoldTx(tx: unknown, ctx: unknown, input: unknown, policies: CapacityPolicies | undefined, forBookingId: string | undefined): Promise<SellResult<ReleaseValue>> {
   const t = asTx(tx);
   const pc = parseCtx(ctx);
   if (!pc.ok) abortOf(pc);
@@ -910,7 +935,7 @@ export async function releaseHoldInTx(tx: unknown, ctx: unknown, input: unknown,
   if (!p.success) abortOf(invalidInput(p.error));
   const g = await gateOfTx(t, pc.c);
   if (!g) throw new CapacityAbort("HOLD_NOT_FOUND");
-  return { ok: true, value: withOfferFailures(await releaseCoreTx(t, g, pc.c, p.data, policies), pc.c) };
+  return { ok: true, value: withOfferFailures(await releaseCoreTx(t, g, pc.c, p.data, policies, forBookingId), pc.c) };
 }
 
 // ═══════════════════════ ต่ออายุ (r2 m13) ═══════════════════════
@@ -919,6 +944,8 @@ export async function extendCoreTx(tx: Tx, g: Gate, c: Ctx, holdId: string, capK
   const h = await readHold(tx, g, holdId);
   if (!h) throw new CapacityAbort("HOLD_NOT_FOUND");
   assertHoldOwner(c, h, capKey);
+  // T0.6 S1 ▸ hold ที่ผูกการจองแล้วต่ออายุไม่ได้ (เวลาของการจองเปลี่ยนผ่านอนุมัติ/T0.7 เท่านั้น) ◂
+  if (h.bookingId !== null) throw new CapacityAbort("STATE_CONFLICT", { reason: "HOLD_HAS_BOOKING" });
   if (h.purpose === "PAYMENT" || h.purpose === "WAITLIST_OFFER") throw new CapacityAbort("STATE_CONFLICT", { reason: "PURPOSE_NOT_EXTENDABLE" });
   const pol = requirePolicy(policies, g, h.departureId);
   const exp = holdExpiresAt(h.purpose, pol.durations, c.clock.now);

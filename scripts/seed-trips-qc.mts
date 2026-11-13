@@ -54,6 +54,10 @@ import {
   TRIPS_SEED_SHOP_PARK_RATES,
   TRIPS_SEED_SIMILAN_PAY,
   // ── /T1.1 screens ──
+  // ── T0.6 booking ──
+  BOOKING_TR_0142,
+  DEPARTURE_RACHA_1114,
+  // ── /T0.6 booking ──
 } from "./trips-fixture.mjs";
 
 const TRIPS_EXPECTED_PATH = "scripts/trips-expected.json";
@@ -646,6 +650,48 @@ console.log(`T0.3: รอบ ${Object.keys(tripsDepartures.departureIds).length}
   console.log(`T1.1: โซนรับส่ง ${TRIPS_SEED_PICKUP_ZONES.length} · ค่าตั้ง ${changes.length ? `เขียน ${changes.length}` : "ตรงแล้ว"}`);
 }
 // ── /T1.1 screens ──
+// ── T0.6 booking ──
+// TRIPS T0.6 ▸ การจองตรง 3 รายการของรอบราชา ส. 14 พ.ย. (จอ 18 · fixture DEPARTURE_RACHA_1114 · ไม่รวมเอเจนซี่ = A1.x) ◂
+//   ผ่าน bookTripsNow ของ facade (STAFF เจ้าของ · COUNTER · PAY_LATER ⇒ CONFIRMED · now = TRIPS_AS_OF) · ผู้จอง = Party ของฟิกซ์เจอร์ (ชื่อตรงกัน)
+//   คีย์ seed-tr-<เลขท้าย> · รันซ้ำ: ตะกร้าของคีย์นี้ CHECKED_OUT แล้ว ⇒ ไม่เรียก ไม่เขียน · เลขจองจริงมาจาก SellCounter (ไม่ตั้งให้ตรงภาพ) · ไม่ seed hold
+{
+  const unitId = D.units.trips.id;
+  const racha = tripProducts["racha-yai-day-trip"];
+  const depId = tripsDepartures.departureIds[`racha:${DEPARTURE_RACHA_1114.date}`];
+  const adultPt = racha?.paxTypes.ADULT;
+  const childPt = racha?.paxTypes.CHILD;
+  const camera = racha?.extras.EQUIPMENT;
+  const joinOpt = racha?.options["ร่วมกลุ่ม"];
+  if (!racha || !depId || !adultPt || !childPt || !camera || !joinOpt) throw new Error("seed T0.6: ไม่พบสินค้าราชา/รอบ 14 พ.ย./ประเภทคน/กล้อง (seed T0.2/T0.3 ยังไม่ลง)");
+  const sctx = { tenantId: D.tenant.id, unitId, channel: "COUNTER" as const, actor: { kind: "STAFF" as const, userId: diveOwner.userId }, now: new Date(TRIPS_AS_OF), locale: "th" as const };
+  for (const bk of DEPARTURE_RACHA_1114.bookings.filter((b) => b.agency === null)) {
+    const key = `seed-tr-${bk.ref.slice(-4)}`;
+    // คีย์ตะกร้า = st:<ผู้ใช้>:<คีย์>@<หน่วย> (มติ R12) · รุ่นก่อน r1 ไม่มี @<หน่วย> — ยอมรับทั้งสองรูปเพื่อให้ seed รอบสองไม่เขียน
+    const done = await prisma.sellBasket.findFirst({ where: { tenantId: D.tenant.id, idempotencyKey: { in: [`st:${diveOwner.userId}:${key}@${unitId}`, `st:${diveOwner.userId}:${key}`] } }, select: { status: true } });
+    if (done?.status === "CHECKED_OUT") continue;
+    const party = DIVE_PARTIES.find((x) => x.name === bk.customer);
+    if (!party) throw new Error(`seed T0.6: ไม่มี Party ของ ${bk.ref}`);
+    const line = {
+      productKind: "TRIP" as const,
+      unitId,
+      productId: racha.productId,
+      slotId: depId,
+      optionId: joinOpt,
+      pax: [{ paxTypeId: adultPt, qty: bk.adults }, ...(bk.children > 0 ? [{ paxTypeId: childPt, qty: bk.children }] : [])],
+      extras: bk.ref === BOOKING_TR_0142.ref ? [{ extraId: camera, qty: 1 }] : [],
+    };
+    const q = await trips.quoteTrips(sctx, { lines: [line] });
+    if (!q.ok) throw new Error(`seed T0.6 quote ${bk.ref}: ${q.code} ${q.messageTh}`);
+    const r = await trips.bookTripsNow(
+      sctx,
+      { quote: { lines: [line] }, quoteId: q.value.quoteId, quoteExpiresAt: q.value.expiresAt, idempotencyKey: key, booker: { name: bk.customer, partyId: party.id }, pay: { method: "PAY_LATER" } },
+      {},
+    );
+    if (!r.ok) throw new Error(`seed T0.6 bookTripsNow ${bk.ref}: ${r.code} ${r.messageTh} ${JSON.stringify(r.details ?? {})}`);
+    bump(created, "tripBooking");
+  }
+}
+// ── /T0.6 booking ──
 
 // ═══════════════ สรุป (ต้องเหมือนเดิมทุกตัวอักษรเมื่อรันซ้ำ) ═══════════════
 async function countsOf(tenantId: string) {
@@ -696,6 +742,9 @@ const expected = {
 // ── T0.3 departures ──
 Object.assign(expected.dive, { departureIds: tripsDepartures.departureIds, resourceIds: tripsDepartures.resourceIds });
 // ── /T0.3 departures ──
+// ── T0.6 booking ── ข้อสอบ T0.6 (SD) อ่านรอบที่ `dive.departures` — ชื่อเดียวกับ departureIds (ค่าเดียวกัน) ◂
+Object.assign(expected.dive, { departures: tripsDepartures.departureIds });
+// ── /T0.6 booking ──
 writeFileSync(TRIPS_EXPECTED_PATH, JSON.stringify(expected, null, 2) + "\n");
 
 const wrote = has(created) || has(updated);

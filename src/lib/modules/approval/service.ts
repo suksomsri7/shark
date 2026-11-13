@@ -484,3 +484,16 @@ export async function requestStatuses(ctx: Ctx, requestIds: string[]): Promise<R
   return Object.fromEntries(rows.map((r) => [r.id, String(r.status)]));
 }
 // ◂ CRM C3.3
+// TRIPS T0.6 ▸ การผูกคำขอ (อ่านล้วน · ผูกร้าน · ไม่แก้ฟังก์ชันเดิม) — ผู้เรียก: trips/booking.ts (คำอนุมัติราคาแก้มือต้องตรงกับรายการที่ขอ · มติผู้คุม T0.6 R1) ◂
+export type RequestBinding = { status: string; entityType: string; entityId: string; unitId: string | null; amountSatang: number | null };
+export async function requestBindings(ctx: Ctx, requestIds: string[]): Promise<Record<string, RequestBinding>> {
+  const ids = [...new Set(requestIds.filter(Boolean))].slice(0, 500);
+  if (ids.length === 0) return {};
+  const rows = await tenantDb(ctx).approvalRequest.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, status: true, entityType: true, entityId: true, unitId: true, amountSatang: true },
+    take: ids.length,
+  });
+  return Object.fromEntries(rows.map((r) => [r.id, { status: String(r.status), entityType: r.entityType, entityId: r.entityId, unitId: r.unitId, amountSatang: r.amountSatang }]));
+}
+// ◂ TRIPS T0.6

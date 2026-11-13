@@ -446,7 +446,7 @@ try {
     const v = asRec(t.value) ?? {};
     ok(t.ok === true && v.kind === "TRIP" && ["availability", "capacityRowsOf", "reserveInTx", "hold"].every((k) => typeof v[k] === "function"), `TRIP: ${fmt(t)}`);
     for (const k of ["HOTEL", "TICKET"]) codeR(asRec(await sf!(k)) ?? {}, "KIND_NOT_SUPPORTED", k);
-    codeR(asRec(await (v.hold as AnyFn)({ tenantId: "x", unitId: "x", channel: "WEB", actor: { kind: "SYSTEM", job: "qc" } }, {})) ?? {}, "KIND_NOT_SUPPORTED", "TRIP.hold");
+    codeR(asRec(await (v.hold as AnyFn)({ tenantId: "x", unitId: "x", channel: "WEB", actor: { kind: "SYSTEM", job: "qc" } }, {})) ?? {}, "FORBIDDEN", "TRIP.hold"); // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย.): T0.6 สร้าง hold จริงแล้ว (SYSTEM ⇒ FORBIDDEN) — เดิมคาด stub
   });
   await st("S-13", "zod strict ใน capacity.ts + waitlist.ts · CAS ล็อกรอบด้วย FOR UPDATE ก่อน CAS hold (ลำดับ §D.5)", () => {
     const c = srcOf("src/lib/modules/trips/capacity.ts"), w = srcOf("src/lib/modules/trips/waitlist.ts");

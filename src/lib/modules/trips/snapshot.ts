@@ -89,6 +89,9 @@ type PricedIn = {
   cancelMinimumLadder: Step2[] | null;
   shopCancelRefundBpByReason: { EXTERNAL: number; MIN_NOT_MET: number; SHOP_FAULT: number };
   warnings: { code: string }[];
+  // TRIPS T0.6 ▸ ส่วนลดที่ให้จริงหลังขั้น 8 (PricedQuote.promo/providers) — จดลง snapshot ให้ T0.6 ตัดสิทธิ์ด้วยยอดจาก snapshot (มติ §16 ข้อ 2) ◂
+  promo?: null | { ruleId: string; discountSatang: number };
+  providers?: { key: string; ref: string; discountSatang: number }[];
 };
 type InputIn = {
   now: string;
@@ -125,6 +128,9 @@ export type TripsBookingSnapshot = {
   warnings: string[];
   /** ใบเสนอราคาที่การจองนี้ยืนยัน (buildTripBookingSnapshot ใส่ · ช่องเพิ่ม v1) */
   quote?: { fingerprint: string; policyAt: string | null };
+  // TRIPS T0.6 ▸ ช่องเพิ่ม v1 (ใบสั่ง T0.6 §11 ข้อ 1 · มติ §16 ข้อ 2): โค้ดส่วนลด/แต้มที่ให้จริง — ยอดตัดสิทธิ์ของการจอง ◂
+  promo?: null | { ruleId: string; discountSatang: number };
+  providers?: { key: string; ref: string; discountSatang: number }[];
 };
 export type SnapshotFlags = Partial<TripsBookingSnapshot["flags"]>;
 
@@ -196,6 +202,9 @@ export function toTripsSnapshot(args: { input: InputIn; priced: PricedIn; policy
     deckPlanVersionId: input.departure.deckPlanVersionId,
     flags: { marketingEligible: false, messageMode: "SHOP", contactRoute: "SHOP", hidePriceOnVoucher: false, ...(args.flags ?? {}) },
     warnings: priced.warnings.map((w) => w.code),
+    // TRIPS T0.6 ▸ ◂
+    promo: priced.promo ?? null,
+    providers: priced.providers ?? [],
   };
   if (!Number.isInteger(snap.tax.vatRateBp)) throw new SnapshotKeyMissing("trips.tax.vatRate");
   return json(snap);

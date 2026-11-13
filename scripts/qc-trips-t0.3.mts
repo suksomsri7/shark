@@ -1218,7 +1218,7 @@ try {
     for (const k of ["racha", "phiphi", "deep3"] as const) {
       const rows = await seedWeek(k);
       ok(rows.length > 0, `${k}: ไม่มีรอบ`);
-      const bad = rows.filter((r) => r.capacity !== want[k][0] || r.minPax !== want[k][1] || r.sold + r.held + r.reserved !== 0);
+      const bad = rows.filter((r) => r.capacity !== want[k][0] || r.minPax !== want[k][1] || r.held + r.reserved !== 0 || r.sold !== (k === "racha" && String(r.localDate).slice(0, 10) === "2026-11-14" ? 6 : 0)); // ORACLE-EDIT R-2 (ผู้คุม 12 พ.ย.): seed ของ T0.6 ขายตรง 6 ที่ในราชา ส. 14 พ.ย. (ใบสั่ง T0.6 §10 · SD-2)
       ok(bad.length === 0, `${k}: ${fmt(bad.map((r) => [r.localDate, r.capacity, r.minPax, r.sold, r.held, r.reserved]))}`);
     }
   });

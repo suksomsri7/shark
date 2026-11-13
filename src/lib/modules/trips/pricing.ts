@@ -86,13 +86,16 @@ const LINE = z.strictObject({
 const OPTS = z.strictObject({
   overrides: z.array(z.strictObject({ itemRef: z.string().min(1).max(200), unitMinor: NN, reason: z.string().max(500) })).max(200).optional(),
   canOverride: z.boolean().optional(),
-  overrideApprovals: z.array(z.strictObject({ approvalId: ID, itemRef: z.string().min(1).max(200), unitMinor: NN })).max(200).optional(),
+  // TRIPS T0.6 ▸ มติผู้คุม T0.6 §16 ข้อ 3: resolvedMinor (int4) ส่งต่อถึง pricing-core (ตรวจราคาระบบ ณ ตอนอนุมัติ) · ลายนิ้วมือไม่รวมคำอนุมัติ ◂
+  overrideApprovals: z.array(z.strictObject({ approvalId: ID, itemRef: z.string().min(1).max(200), unitMinor: NN, resolvedMinor: NN.optional() })).max(200).optional(),
   agentDiscountSatang: NN.optional(),
   partyId: ID.optional(),
   linkId: ID.optional(),
   flags: z.record(z.string(), z.unknown()).optional(),
 });
 export type QuoteLineOpts = z.input<typeof OPTS>;
+/** TRIPS T0.6 ▸ ชื่อเดิมของ T0.6 (เท่ากับ QuoteLineOpts) ◂ */
+export type TripQuoteOpts = QuoteLineOpts;
 /**
  * ค่าตั้ง: อ่าน "ครั้งเดียว" ด้วย snapshotPolicy("trips.booking") — 35 คีย์ที่จดลง snapshot = ชุดเดียวกับที่ใช้คิดบรรทัด/ยอด/ตารางยกเลิก/งวด (มติ r2 ข้อ 6)
  * + คีย์ที่ไม่จดและไม่กระทบยอดเงิน: T11 (เพดานแก้มือ) · T12 (คำเตือนต้นทุน) · T5 (เวลาถือ → expiresAt) อ่านที่เวลาเดียวกัน
