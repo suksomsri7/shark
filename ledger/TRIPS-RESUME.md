@@ -1,3 +1,9 @@
+## ⏸ หยุดรอเจ้าของ 13 พ.ย. ~03:4xZ — 10/72 (14%) · 3 เลน
+- **เจ้าของสั่งหยุด**: session บัญชีกำลังปรับ `scripts/with-gate-lock.sh` (typecheck 2 ตัวพร้อมกัน) — **ห้ามแก้ไฟล์นี้เอง · ห้ามสั่งงานหนัก (typecheck/build/ชุดทดสอบ) จนเจ้าของแจ้ง** · เมื่อแจ้ง: merge origin/main เข้า session/trips หนึ่งครั้ง แล้วทำต่อ
+- เลน l2 · T1.2 @cfb6338bc (r2 commit แล้ว · ORACLE-EDIT PC-2 CV-5 PV-2 PV-4 S-13 ยังไม่เคยรัน) → หลังได้สัญญาณ: merge session/trips เข้าเลน → `/root/trips-runs/gate-build-t1.2.sh` → serve + `visual-trips.mts t1.2` → ดูภาพ (มุมมองเดือนใหม่ · กล่องถอนยืนยัน · ข้อความปลอมรหัส) → merge → wo-notes (ร่างของผู้สร้างอยู่ในเลน) → 11/72
+- เลน l1 (wip/trips-t0.7) และ l3 (wip/trips-t0.8): ผู้ร่างถูกหยุดกลางคัน ไม่มีไฟล์ที่ใช้ได้ → เปิดผู้ร่างใหม่ทั้งสองใบ (พรอมป์เดิมอยู่ใน transcript: ค้น "brief + oracle writer for work order T0.7" / "T0.8")
+- (บล็อกด้านล่างเป็นของเก่า)
+
 ## ▶️ จุดต่อ 13 พ.ย. 03:1xZ — 10/72 (14%) · 3 เลน
 - T0.6 ✅ merge e49aaa1cb · main 4d6ef6ee7 รวมแล้ว (6f63a531d) · ฐานหลักเขียวครบ
 - เลน l1 ว่าง → T0.7 (เงิน · อ่าน `wo-notes/trips-T0.6.md` "ข้อบังคับสำหรับใบถัดไป" + OQ9/OQ12/OQ17)
