@@ -27,6 +27,7 @@ const text = (max: number) =>
     .string()
     .transform((s) => s.replace(STRIP_SOFT, "").normalize("NFC").trim())
     .pipe(z.string().max(max).refine(noCtl, { message: "มีอักขระควบคุม" }));
+export { text }; // TRIPS T0.8 ▸ ข้อความอิสระของผู้เดินทางใช้กติกาเดียวกันตัวนี้ (มติผู้คุม r1 P7 · ส่งออกอย่างเดียว ไม่แก้ตัวฟังก์ชัน) ◂
 const ID = z.string().trim().min(1).max(128).refine(noCtl, { message: "มีอักขระควบคุม" });
 const NN = z.number().int().min(0).max(INT4_MAX);
 /** คีย์กันซ้ำของผู้เรียก (CC §C ข้อ 3) — สั้นกว่า 100 เพื่อเผื่อส่วนต่อท้ายของ hold ต่อบรรทัด (`_<i>`) */

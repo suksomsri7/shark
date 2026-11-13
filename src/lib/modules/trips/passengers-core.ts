@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────
-// trips/passengers-core.ts — แกนบริสุทธิ์ของผู้เดินทาง: แบบฟอร์มต่อสินค้า · อายุ/ผู้เยาว์ · ปิดบัง · กำหนดลบ · รูป JSON ที่เก็บ · zod ของคำขอ · RUN TRIPS T0.8
-// ใบสั่ง ledger/trips-briefs/T0.8.md §2 §3 §4 §5 §6 §8 (§17 มติผู้คุมชนะ)
+// trips/passengers-core.ts — แกนบริสุทธิ์ของผู้เดินทาง: แบบฟอร์มต่อสินค้า · อายุ/ผู้เยาว์ · ปิดบัง · รูป JSON ที่เก็บ · สถานะเอกสารรับทราบความเสี่ยง · RUN TRIPS T0.8
+// ใบสั่ง ledger/trips-briefs/T0.8.md §2 §3 §4 §6 §8 (§17 มติผู้คุมชนะ · รอบแก้ r1 P3 P4 P5 P9)
 //
 // 🔴 บริสุทธิ์: import ได้แค่ zod · node:crypto (แฮช) · import type — ไม่มี I/O · ไม่อ่านนาฬิกา (ผู้เรียกส่งเวลาเข้ามา) · ไม่ throw
-// 🔴 ข้อความอิสระ = กติกาเดียวกับ booking-core.ts (คัดลอกมา · ห้ามแก้ booking-core) · จำนวนเต็มทุกช่องจำกัด int4 · ทุกอินพุต z.strictObject
+// 🔴 ข้อความอิสระ · zod ของคำขอ · เขตเวลา (purgeInstant) อยู่ที่ passengers.ts (ใช้ text() ของ booking-core และ localToUtc ของ departures-core — r1 P7 P8)
 // ─────────────────────────────────────────────────────────────
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -11,25 +11,6 @@ import { z } from "zod";
 // ── T0.8 passengers ──
 export const INT4_MAX = 2_147_483_647;
 const sha256hex = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
-
-// ═══════════════ ข้อความอิสระ (สำเนากติกา booking-core.ts :13–:29) ═══════════════
-const BAD_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u2028-\u202e\u2066-\u2069\ufeff]/;
-const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
-const noCtl = (s: string) => !BAD_CHARS.test(s) && !LONE_SURROGATE.test(s);
-const STRIP_SOFT = /[\u200b\ufeff]/g;
-/** ข้อความอิสระ: ตัด ZWSP/BOM → NFC → trim แล้วตรวจความยาว + อักขระต้องห้าม */
-export const text = (max: number) =>
-  z
-    .string()
-    .max(max * 4 + 64)
-    .transform((s) => s.replace(STRIP_SOFT, "").normalize("NFC").trim())
-    .pipe(z.string().max(max).refine(noCtl, { message: "มีอักขระควบคุม" }));
-export const ID = z.string().trim().min(1).max(128).refine(noCtl, { message: "มีอักขระควบคุม" });
-export const NN = z.number().int().min(0).max(INT4_MAX);
-/** คีย์กันซ้ำ (รูปเดียวกับ IDEM_KEY ของ booking-core) */
-export const IDEM_KEY = z.string().regex(/^[A-Za-z0-9_-]{8,90}$/);
-export const TOKEN = z.string().min(1).max(4096);
-const HEX64 = z.string().regex(/^[0-9a-f]{64}$/);
 
 // ═══════════════ วันที่ ═══════════════
 const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -44,38 +25,6 @@ export function addDaysYmd(ymd: string, n: number): string {
   const m = YMD_RE.exec(ymd);
   if (!m) return ymd;
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + n)).toISOString().slice(0, 10);
-}
-const fmtCache = new Map<string, Intl.DateTimeFormat | null>();
-function formatterOf(tz: string): Intl.DateTimeFormat | null {
-  if (fmtCache.has(tz)) return fmtCache.get(tz) ?? null;
-  let f: Intl.DateTimeFormat | null = null;
-  try {
-    f = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  } catch {
-    f = null;
-  }
-  if (fmtCache.size < 200) fmtCache.set(tz, f);
-  return f;
-}
-/** เวลาผนัง (ms ที่อ่านเป็น UTC) ของ instant ในเขตเวลา tz · เขตเวลาผิด ⇒ เวลาไทย (+7 ไม่มีออมแสง) */
-function wallMs(tz: string, utcMs: number): number {
-  const f = formatterOf(tz);
-  if (!f) return utcMs + 7 * 3_600_000;
-  const p: Record<string, number> = {};
-  for (const x of f.formatToParts(new Date(utcMs))) if (x.type !== "literal") p[x.type] = Number(x.value);
-  return Date.UTC(p.year ?? 1970, (p.month ?? 1) - 1, p.day ?? 1, p.hour ?? 0, p.minute ?? 0, p.second ?? 0);
-}
-/** วันที่ (YYYY-MM-DD) ของ instant ตามเขตเวลาหน่วย */
-export function localYmdOf(d: Date, tz: string): string {
-  return new Date(wallMs(tz, d.getTime())).toISOString().slice(0, 10);
-}
-/** ต้นวันถัดจาก dueYmd ตามเวลาหน่วย (เก็บถึงสิ้นวัน dueYmd) */
-export function purgeInstant(dueYmd: string, tz: string): Date {
-  const m = YMD_RE.exec(dueYmd);
-  const wall = m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1) : 0;
-  let t = wall - (wallMs(tz, wall) - wall);
-  t = wall - (wallMs(tz, t) - t);
-  return new Date(t);
 }
 /** endYmd + days · days = null ⇒ ไม่ลบ (null) */
 export function retentionDueYmd(endYmd: string, days: number | null): string | null {
@@ -92,6 +41,7 @@ export function ageAt(dobYmd: string, onYmd: string): number | null {
   return age >= 0 && age <= 200 ? age : null;
 }
 export type MinorRule = { parentOnlyAtOrBelow: number; minorBelow: number };
+/** อายุจาก dob ก่อน · ไม่มี dob ⇒ คำประกาศ · ไม่มีทั้งคู่ ⇒ known=false (isMinor=false ใช้ไม่ได้เป็นหลักฐานว่าเป็นผู้ใหญ่ — ดู ageBasis) */
 export function minorStatus(i: { dob: string | null; declaredMinor: boolean | null; travelYmd: string; rule: MinorRule }): { known: boolean; isMinor: boolean; guardianOnly: boolean; age: number | null } {
   const age = i.dob ? ageAt(i.dob, i.travelYmd) : null;
   if (age !== null) return { known: true, isMinor: age < i.rule.minorBelow, guardianOnly: age <= i.rule.parentOnlyAtOrBelow, age };
@@ -213,12 +163,14 @@ export const DOC_LIMIT_PER_KIND = 3;
 /** ช่องที่ปิดรับหลังวันปิดรับข้อมูลเอกสาร (T30) — ผู้ถือลิงก์เท่านั้น */
 export const PASSPORT_CUTOFF_KEYS: readonly PaxFieldKey[] = ["docType", "docNumber", "docExpiry", "nationality", "birthPlace"];
 
-// ═══════════════ รูป JSON ที่เก็บ (§4) ═══════════════
-export type HealthConsent = { version: string; textHash: string; at: string; via: "LINK" | "STAFF_RECORDED"; signerRole: "SELF" | "GUARDIAN" | "SELF_AND_GUARDIAN" };
+// ═══════════════ รูป JSON ที่เก็บ (§4 + r1) ═══════════════
+export type HealthConsent = { version: string; textHash: string; locale: "th" | "en"; at: string; via: "LINK" | "STAFF_RECORDED"; signerRole: "SELF" | "GUARDIAN" | "SELF_AND_GUARDIAN" };
+/** r1 P4: GUARDIAN_REQUIRED = เคยให้ด้วยตัวเองแล้วกลายเป็นผู้เยาว์ที่รู้อายุ ⇒ กล่องถูกลบแบบถอน รอผู้ปกครองให้ความยินยอม */
 export type HealthState =
   | { status: "PROVIDED"; box: string; consent: HealthConsent }
   | { status: "DECLINED"; at: string }
   | { status: "WITHDRAWN"; at: string }
+  | { status: "GUARDIAN_REQUIRED"; at: string }
   | { status: "PURGED"; at: string };
 export type Answers = {
   v: 1;
@@ -230,17 +182,22 @@ export type Answers = {
   submittedVia?: "LINK" | "STAFF";
   fixReason?: FixReason;
   purged?: { at: string; stages: string[] };
+  /** วันจบทริป (เวลาหน่วย) ที่ใช้คิด retainUntil ครั้งล่าสุด — รอบเลื่อนเร็วขึ้น ⇒ งานลบคิดใหม่ (r1 P9) */
+  retE?: string;
+  /** r1 P4: ผู้ลงนามเองกลายเป็นผู้เยาว์ ⇒ ผู้ปกครองต้องลงนามใหม่ */
+  waiverResign?: { reason: "MINOR"; at: string };
 };
 const CONSENT_SHAPE = z.object({
   version: z.string(),
   textHash: z.string(),
+  locale: z.enum(["th", "en"]).optional(),
   at: z.string(),
   via: z.enum(["LINK", "STAFF_RECORDED"]),
   signerRole: z.enum(["SELF", "GUARDIAN", "SELF_AND_GUARDIAN"]),
 });
 const HEALTH_SHAPE = z.union([
   z.object({ status: z.literal("PROVIDED"), box: z.string(), consent: CONSENT_SHAPE }),
-  z.object({ status: z.enum(["DECLINED", "WITHDRAWN", "PURGED"]), at: z.string() }),
+  z.object({ status: z.enum(["DECLINED", "WITHDRAWN", "GUARDIAN_REQUIRED", "PURGED"]), at: z.string() }),
 ]);
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 /** answers ของแถว (แถวจาก T0.6 = {} ⇒ rev 0 · ช่องผิดรูปถูกทิ้ง ไม่ throw) */
@@ -253,17 +210,36 @@ export function parseAnswers(raw: unknown): Answers {
   if (typeof f.pickupHotel === "string") fields.pickupHotel = f.pickupHotel;
   const out: Answers = { v: 1, rev, fields };
   const h = HEALTH_SHAPE.safeParse(o.health);
-  if (h.success) out.health = h.data.status === "PROVIDED" ? { status: "PROVIDED", box: h.data.box, consent: h.data.consent } : { status: h.data.status, at: h.data.at };
+  if (h.success) {
+    if (h.data.status === "PROVIDED") {
+      const c = h.data.consent;
+      out.health = { status: "PROVIDED", box: h.data.box, consent: { version: c.version, textHash: c.textHash, locale: c.locale ?? "th", at: c.at, via: c.via, signerRole: c.signerRole } };
+    } else out.health = { status: h.data.status, at: h.data.at };
+  }
   if (typeof o.isMinorDeclared === "boolean") out.isMinorDeclared = o.isMinorDeclared;
   if (typeof o.submittedAt === "string") out.submittedAt = o.submittedAt;
   if (o.submittedVia === "LINK" || o.submittedVia === "STAFF") out.submittedVia = o.submittedVia;
   if (typeof o.fixReason === "string" && (FIX_REASONS as readonly string[]).includes(o.fixReason)) out.fixReason = o.fixReason as FixReason;
   if (isRec(o.purged) && typeof o.purged.at === "string" && Array.isArray(o.purged.stages)) out.purged = { at: o.purged.at, stages: o.purged.stages.filter((x): x is string => typeof x === "string") };
+  if (typeof o.retE === "string" && isRealYmd(o.retE)) out.retE = o.retE;
+  if (isRec(o.waiverResign) && o.waiverResign.reason === "MINOR" && typeof o.waiverResign.at === "string") out.waiverResign = { reason: "MINOR", at: o.waiverResign.at };
   return out;
 }
 export const isPurgedAll = (a: Answers) => a.purged?.stages.includes("ALL") === true;
 
-export type GuardianConsent = { v: 1; name: string; relation: "PARENT" | "LEGAL_GUARDIAN"; at: string; via: "LINK" | "STAFF_RECORDED"; scopes: ("HEALTH" | "WAIVER")[] };
+// ── ผู้ปกครอง: บันทึกต่อขอบเขต (r1 P3) — ช่องบนสุด (name/relation/at/via/scopes) = ผู้ให้ความยินยอมหลัก (HEALTH ก่อน ไม่งั้น WAIVER) เพื่อความเข้ากันได้ ──
+export type GuardianScope = "HEALTH" | "WAIVER";
+export type GuardianGrant = { name: string; relation: "PARENT" | "LEGAL_GUARDIAN"; at: string; via: "LINK" | "STAFF_RECORDED"; version: string | null };
+export type GuardianConsent = {
+  v: 1;
+  name: string;
+  relation: "PARENT" | "LEGAL_GUARDIAN";
+  at: string;
+  via: "LINK" | "STAFF_RECORDED";
+  scopes: GuardianScope[];
+  grants: Partial<Record<GuardianScope, GuardianGrant>>;
+};
+const GRANT_SHAPE = z.object({ name: z.string(), relation: z.enum(["PARENT", "LEGAL_GUARDIAN"]), at: z.string(), via: z.enum(["LINK", "STAFF_RECORDED"]), version: z.string().nullable().optional() });
 const GUARDIAN_SHAPE = z.object({
   v: z.literal(1),
   name: z.string(),
@@ -271,13 +247,38 @@ const GUARDIAN_SHAPE = z.object({
   at: z.string(),
   via: z.enum(["LINK", "STAFF_RECORDED"]),
   scopes: z.array(z.enum(["HEALTH", "WAIVER"])),
+  grants: z.object({ HEALTH: GRANT_SHAPE.optional(), WAIVER: GRANT_SHAPE.optional() }).optional(),
 });
+const grantOf = (g: z.infer<typeof GRANT_SHAPE>): GuardianGrant => ({ name: g.name, relation: g.relation, at: g.at, via: g.via, version: g.version ?? null });
+/** ประกอบรูปที่เก็บจากการให้ความยินยอมต่อขอบเขต (ไม่มีขอบเขต ⇒ null) */
+export function guardianFromGrants(grants: Partial<Record<GuardianScope, GuardianGrant>>): GuardianConsent | null {
+  const primary = grants.HEALTH ?? grants.WAIVER;
+  if (!primary) return null;
+  const same = (g: GuardianGrant | undefined) => !!g && g.name === primary.name && g.relation === primary.relation;
+  const scopes = (["HEALTH", "WAIVER"] as const).filter((s) => same(grants[s]));
+  return { v: 1, name: primary.name, relation: primary.relation, at: primary.at, via: primary.via, scopes, grants: { ...grants } };
+}
 export function parseGuardian(raw: unknown): GuardianConsent | null {
   const p = GUARDIAN_SHAPE.safeParse(raw);
-  return p.success ? { v: 1, name: p.data.name, relation: p.data.relation, at: p.data.at, via: p.data.via, scopes: [...p.data.scopes] } : null;
+  if (!p.success) return null;
+  const d = p.data;
+  if (d.grants && (d.grants.HEALTH || d.grants.WAIVER)) {
+    const grants: Partial<Record<GuardianScope, GuardianGrant>> = {};
+    if (d.grants.HEALTH) grants.HEALTH = grantOf(d.grants.HEALTH);
+    if (d.grants.WAIVER) grants.WAIVER = grantOf(d.grants.WAIVER);
+    return guardianFromGrants(grants);
+  }
+  // รูปเดิม (ไม่มี grants): ทุกขอบเขตเป็นของผู้ปกครองบนสุด
+  const g: GuardianGrant = { name: d.name, relation: d.relation, at: d.at, via: d.via, version: null };
+  const grants: Partial<Record<GuardianScope, GuardianGrant>> = {};
+  for (const s of d.scopes) grants[s] = g;
+  return guardianFromGrants(grants) ?? { v: 1, name: d.name, relation: d.relation, at: d.at, via: d.via, scopes: [], grants: {} };
 }
 
 export type IdentityProofRequired = "OTP_PHONE" | "LINE_LOGIN" | "LINE_IF_AVAILABLE_ELSE_OTP";
+/** r1 P5: หลักฐานอายุของผู้ลงนาม — SELF ได้เฉพาะ DOB (ผู้ใหญ่) หรือ DECLARED_ADULT · GUARDIAN อาจเป็น UNKNOWN (isMinor null) */
+export type AgeBasis = "DOB" | "DECLARED_ADULT" | "DECLARED_MINOR" | "UNKNOWN";
+export type WaiverHistoryItem = { templateHash: string; textHash: string; signedAt: string; method: "LINK" | "STAFF_WITNESSED"; signerRole: "SELF" | "GUARDIAN" };
 export type WaiverEvidence = {
   v: 1;
   templateHash: string;
@@ -288,11 +289,15 @@ export type WaiverEvidence = {
   method: "LINK" | "STAFF_WITNESSED";
   identityProof: { required: IdentityProofRequired; used: "LINK_POSSESSION" | "STAFF_WITNESSED"; verified: boolean };
   signer: { role: "SELF" | "GUARDIAN"; name: string };
-  minor: { isMinor: boolean; age: number | null };
+  minor: { isMinor: boolean | null; age: number | null; ageBasis?: AgeBasis };
   staffUserId?: string;
   signatureDocumentId?: string;
+  /** การลงนามก่อนหน้า (แฮชเท่านั้น · ไม่เกิน 5 รายการ · r1 P9) */
+  previous?: WaiverHistoryItem[];
 };
+export const WAIVER_HISTORY_MAX = 5;
 export type PurgedWaiverEvidence = { v: 1; purged: true; templateHash: string; textHash: string; signedAt: string; method: "LINK" | "STAFF_WITNESSED" };
+const HISTORY_ITEM = z.object({ templateHash: z.string(), textHash: z.string(), signedAt: z.string(), method: z.enum(["LINK", "STAFF_WITNESSED"]), signerRole: z.enum(["SELF", "GUARDIAN"]) });
 const WAIVER_FULL = z.object({
   v: z.literal(1),
   templateHash: z.string(),
@@ -303,9 +308,10 @@ const WAIVER_FULL = z.object({
   method: z.enum(["LINK", "STAFF_WITNESSED"]),
   identityProof: z.object({ required: z.enum(["OTP_PHONE", "LINE_LOGIN", "LINE_IF_AVAILABLE_ELSE_OTP"]), used: z.enum(["LINK_POSSESSION", "STAFF_WITNESSED"]), verified: z.boolean() }),
   signer: z.object({ role: z.enum(["SELF", "GUARDIAN"]), name: z.string() }),
-  minor: z.object({ isMinor: z.boolean(), age: z.number().int().nullable() }),
+  minor: z.object({ isMinor: z.boolean().nullable(), age: z.number().int().nullable(), ageBasis: z.enum(["DOB", "DECLARED_ADULT", "DECLARED_MINOR", "UNKNOWN"]).optional() }),
   staffUserId: z.string().optional(),
   signatureDocumentId: z.string().optional(),
+  previous: z.array(HISTORY_ITEM).max(50).optional(),
 });
 const WAIVER_PURGED = z.object({ v: z.literal(1), purged: z.literal(true), templateHash: z.string(), textHash: z.string(), signedAt: z.string(), method: z.enum(["LINK", "STAFF_WITNESSED"]) });
 export function parseWaiver(raw: unknown): { kind: "NONE" } | { kind: "FULL"; e: WaiverEvidence } | { kind: "PURGED"; e: PurgedWaiverEvidence } {
@@ -318,12 +324,16 @@ export function parseWaiver(raw: unknown): { kind: "NONE" } | { kind: "FULL"; e:
 export function purgedWaiverOf(e: WaiverEvidence | PurgedWaiverEvidence): PurgedWaiverEvidence {
   return { v: 1, purged: true, templateHash: e.templateHash, textHash: e.textHash, signedAt: e.signedAt, method: e.method };
 }
-/** สถานะเอกสารรับทราบความเสี่ยง (คำนวณ · ไม่เก็บ · Q4: แม่แบบเปลี่ยนก่อนเริ่มทริป ⇒ ต้องเซ็นใหม่เสมอ) */
-export function waiverStatusOf(spec: FormSpec, raw: unknown, nowMs: number, startsAtMs: number): "NOT_REQUIRED" | "MISSING" | "SIGNED" | "NEEDS_RESIGN" {
+/**
+ * สถานะเอกสารรับทราบความเสี่ยง (คำนวณ · ไม่เก็บ · Q4: แม่แบบเปลี่ยนก่อนเริ่มทริป ⇒ ต้องเซ็นใหม่เสมอ)
+ * r1 P4: ผู้ลงนาม SELF แต่ผู้เดินทางเป็นผู้เยาว์ที่รู้อายุ (หรือมีธง waiverResign) ⇒ NEEDS_RESIGN เสมอ
+ */
+export function waiverStatusOf(spec: FormSpec, raw: unknown, nowMs: number, startsAtMs: number, ctx?: { knownMinor: boolean; answers: Answers }): "NOT_REQUIRED" | "MISSING" | "SIGNED" | "NEEDS_RESIGN" {
   if (!spec.waiver.required) return "NOT_REQUIRED";
   const w = parseWaiver(raw);
   if (w.kind === "NONE") return "MISSING";
   if (w.kind === "PURGED") return "SIGNED";
+  if (w.e.signer.role === "SELF" && (ctx?.knownMinor === true || ctx?.answers.waiverResign)) return "NEEDS_RESIGN";
   if (w.e.templateHash === spec.waiver.templateHash) return "SIGNED";
   return nowMs < startsAtMs ? "NEEDS_RESIGN" : "SIGNED";
 }
@@ -345,7 +355,7 @@ export type PaxValues = {
   finSize: string | null;
   pickupHotel: string | null;
 };
-export type HealthView = "NOT_COLLECTED" | "MISSING" | "PROVIDED" | "DECLINED" | "WITHDRAWN" | "PURGED";
+export type HealthView = "NOT_COLLECTED" | "MISSING" | "PROVIDED" | "DECLINED" | "WITHDRAWN" | "GUARDIAN_REQUIRED" | "PURGED";
 export function healthViewOf(spec: FormSpec, a: Answers): HealthView {
   if (a.health) return a.health.status;
   return spec.health.enabled ? "MISSING" : "NOT_COLLECTED";
@@ -370,6 +380,10 @@ export function missingFields(spec: FormSpec, v: PaxValues, a: Answers): PaxFiel
   };
   return PAX_FIELD_KEYS.filter((k) => spec.fields[k] === "REQUIRED" && !has(k));
 }
+/** สถานะแบบฟอร์มหลังการเขียน: ครบ ⇒ SUBMITTED · ไม่ครบ ⇒ คง NEEDS_FIX ไม่งั้น PENDING */
+export function nextFormStatus(prev: string, complete: boolean): string {
+  return complete ? "SUBMITTED" : prev === "NEEDS_FIX" ? "NEEDS_FIX" : "PENDING";
+}
 
 // ═══════════════ อายุเก็บ (§8) ═══════════════
 export type Retention = { passportImageDays: number | null; medicalFormDays: number | null; riskAckDays: number | null; consentAccessLogDays: number | null; manifestDays: number | null; taxDocsDays: number | null };
@@ -381,11 +395,6 @@ export const PAX_STAGE_DAYS: Record<PaxStage, keyof Retention> = { HEALTH_ANSWER
 export function docRetentionKey(kind: string): keyof Retention {
   return kind === "MEDICAL" ? "medicalFormDays" : kind === "WAIVER" ? "riskAckDays" : "passportImageDays";
 }
-/** เวลาที่ลบได้ของชั้นหนึ่ง · null = ไม่ลบ */
-export function stageDue(endYmd: string, days: number | null, tz: string): Date | null {
-  const due = retentionDueYmd(endYmd, days);
-  return due ? purgeInstant(due, tz) : null;
-}
 /** ชั้นที่ยังมีข้อมูลอยู่ของแถว */
 export function presentStages(a: Answers, row: { docNumberEnc: string | null; waiverEvidence: unknown; guardianConsent: unknown }): PaxStage[] {
   const out: PaxStage[] = [];
@@ -394,193 +403,5 @@ export function presentStages(a: Answers, row: { docNumberEnc: string | null; wa
   if (parseWaiver(row.waiverEvidence).kind === "FULL") out.push("WAIVER_EVIDENCE");
   if (row.guardianConsent !== null && row.guardianConsent !== undefined) out.push("GUARDIAN_CONSENT");
   return out;
-}
-/** TripPassenger.retainUntil = ค่าน้อยสุดของชั้นที่ยังมีข้อมูล (null = ไม่มีอะไรรอลบ) */
-export function paxRetainUntil(stages: readonly PaxStage[], endYmd: string, tz: string, r: Retention): Date | null {
-  let min: number | null = null;
-  for (const s of stages) {
-    const d = stageDue(endYmd, r[PAX_STAGE_DAYS[s]], tz);
-    if (d && (min === null || d.getTime() < min)) min = d.getTime();
-  }
-  return min === null ? null : new Date(min);
-}
-
-// ═══════════════ zod ของคำขอ ═══════════════
-const FIELD_VAL = z.union([z.string().max(8_000), z.number(), z.null()]).optional();
-export const fieldsInputSchema = z.strictObject(Object.fromEntries(PAX_FIELD_KEYS.map((k) => [k, FIELD_VAL])) as Record<PaxFieldKey, typeof FIELD_VAL>);
-export type FieldsInput = z.infer<typeof fieldsInputSchema>;
-export const guardianInputSchema = z.strictObject({ name: text(200).pipe(z.string().min(1)), relation: z.enum(["PARENT", "LEGAL_GUARDIAN"]) });
-export type GuardianInput = z.infer<typeof guardianInputSchema>;
-/** HealthInput — รูปหลวมพอให้คืนเหตุย่อย (ไม่มี consent ⇒ HEALTH_CONSENT_REQUIRED ไม่ใช่ VALIDATION เปล่า) */
-export const healthInputSchema = z.strictObject({
-  consent: z.strictObject({ accepted: z.literal(true), textHash: HEX64, locale: z.enum(["th", "en"]) }).optional(),
-  allergies: z.union([text(500), z.null()]).optional(),
-  conditions: z.union([text(2000), z.null()]).optional(),
-  declined: z.literal(true).optional(),
-});
-export type HealthInput = z.infer<typeof healthInputSchema>;
-const writeBase = {
-  idempotencyKey: IDEM_KEY,
-  expectedRev: NN,
-  fields: fieldsInputSchema.optional(),
-  health: healthInputSchema.optional(),
-  isMinorDeclared: z.boolean().optional(),
-  guardian: guardianInputSchema.optional(),
-};
-export const submitSchema = z.strictObject({ token: TOKEN, ...writeBase });
-export const updateSchema = z.strictObject({ passengerId: ID, ...writeBase });
-export type WriteRequest = { idempotencyKey: string; expectedRev: number; fields?: FieldsInput; health?: HealthInput; isMinorDeclared?: boolean; guardian?: GuardianInput };
-export const openSchema = z.strictObject({ token: TOKEN });
-const signBase = {
-  idempotencyKey: IDEM_KEY,
-  templateHash: HEX64,
-  locale: z.enum(["th", "en"]),
-  signerName: text(200).pipe(z.string().min(1)),
-  signerRole: z.enum(["SELF", "GUARDIAN"]),
-  guardian: guardianInputSchema.optional(),
-};
-export const signSchema = z.strictObject({ token: TOKEN, accept: z.literal(true), ...signBase });
-const BYTES = z.instanceof(Uint8Array);
-export const witnessedSchema = z.strictObject({ passengerId: ID, ...signBase, signatureImage: z.strictObject({ contentType: z.string().min(1).max(100), data: BYTES }).optional() });
-export type SignRequest = { idempotencyKey: string; templateHash: string; locale: "th" | "en"; signerName: string; signerRole: "SELF" | "GUARDIAN"; guardian?: GuardianInput };
-export const uploadPublicSchema = z.strictObject({ token: TOKEN, idempotencyKey: IDEM_KEY, kind: z.enum(PUBLIC_DOC_KINDS), contentType: z.string().min(1).max(100), data: BYTES });
-export const uploadStaffSchema = z.strictObject({ passengerId: ID, idempotencyKey: IDEM_KEY, kind: z.enum(DOC_KINDS), contentType: z.string().min(1).max(100), data: BYTES });
-export const withdrawPublicSchema = z.strictObject({ token: TOKEN, idempotencyKey: IDEM_KEY, mode: z.enum(["PREVIEW", "EXECUTE"]) });
-export const withdrawStaffSchema = z.strictObject({ passengerId: ID, idempotencyKey: IDEM_KEY, mode: z.enum(["PREVIEW", "EXECUTE"]) });
-export const customerUrlSchema = z.strictObject({ token: TOKEN, documentId: ID, purpose: z.literal("CUSTOMER_SELF") });
-export const bookingIdSchema = z.strictObject({ bookingId: ID });
-export const passengerIdSchema = z.strictObject({ passengerId: ID });
-export const formStatusSchema = z.strictObject({ passengerId: ID, expectedRev: NN, status: z.enum(["VERIFIED", "NEEDS_FIX"]), fixReason: z.enum(FIX_REASONS).optional() });
-export const staffUrlSchema = z.strictObject({ documentId: ID, purpose: z.enum(PURPOSES) });
-export const revealSchema = z.strictObject({ passengerId: ID, what: z.enum(["DOC_NUMBER", "HEALTH"]), purpose: z.enum(PURPOSES) });
-export const publicCtxSchema = z.strictObject({ clientKey: z.string().regex(/^[A-Za-z0-9_:.-]{8,128}$/), now: z.date().optional(), locale: z.enum(["th", "en"]).optional() });
-export type PublicFormCtx = { clientKey: string; now?: Date; locale?: "th" | "en" };
-
-// ── ค่าของช่องที่ส่งมา (§6.2 รูปต่อช่อง) ──
-export type FieldValues = Partial<{
-  fullName: string;
-  nationality: string | null;
-  dob: string | null;
-  sex: string | null;
-  docType: string | null;
-  docNumber: string | null;
-  docExpiry: string | null;
-  phone: string | null;
-  birthPlace: string | null;
-  certLevel: string | null;
-  diveCount: number | null;
-  lastDiveAt: string | null;
-  finSize: string | null;
-  pickupHotel: string | null;
-}>;
-/**
- * ตรวจค่าต่อช่อง (ไม่รวมสิทธิ์/ช่อง OFF/วันปิดรับ — ผู้เรียกตรวจ) · `phone` คืนข้อความที่ตัดแล้ว (ผู้เรียกแปลง E.164)
- * ผิด ⇒ ชื่อช่องที่ผิด (ไม่มีค่าที่ผู้ใช้ส่งในผล)
- */
-export function checkFieldValues(raw: FieldsInput, todayYmd: string): { ok: true; values: FieldValues } | { ok: false; fields: string[] } {
-  const bad: string[] = [];
-  const out: FieldValues = {};
-  const str = (k: PaxFieldKey, max: number): string | null | undefined => {
-    const v = raw[k];
-    if (v === undefined) return undefined;
-    if (v === null) return null;
-    if (typeof v !== "string") {
-      bad.push(k);
-      return undefined;
-    }
-    const p = text(max).safeParse(v);
-    if (!p.success) {
-      bad.push(k);
-      return undefined;
-    }
-    return p.data.length ? p.data : null;
-  };
-  const oneOf = (k: PaxFieldKey, set: readonly string[]): string | null | undefined => {
-    const v = str(k, 40);
-    if (v === undefined || v === null) return v;
-    if (!set.includes(v)) {
-      bad.push(k);
-      return undefined;
-    }
-    return v;
-  };
-  const ymd = (k: PaxFieldKey, min?: string, max?: string): string | null | undefined => {
-    const v = str(k, 10);
-    if (v === undefined || v === null) return v;
-    if (!isRealYmd(v) || (min && v < min) || (max && v > max)) {
-      bad.push(k);
-      return undefined;
-    }
-    return v;
-  };
-  if (raw.fullName !== undefined) {
-    const v = str("fullName", 200);
-    if (v !== undefined) out.fullName = v ?? "";
-  }
-  if (raw.nationality !== undefined) {
-    const v = str("nationality", 2);
-    if (v !== undefined) {
-      if (v !== null && !/^[A-Z]{2}$/.test(v)) bad.push("nationality");
-      else out.nationality = v;
-    }
-  }
-  if (raw.dob !== undefined) {
-    const v = ymd("dob", "1900-01-01", todayYmd);
-    if (v !== undefined) out.dob = v;
-  }
-  if (raw.sex !== undefined) {
-    const v = oneOf("sex", SEXES);
-    if (v !== undefined) out.sex = v;
-  }
-  if (raw.docType !== undefined) {
-    const v = oneOf("docType", DOC_TYPES);
-    if (v !== undefined) out.docType = v;
-  }
-  if (raw.docNumber !== undefined) {
-    const v = str("docNumber", 64);
-    if (v !== undefined) {
-      if (v === null) out.docNumber = null;
-      else {
-        const n = normalizeDocNumber(v);
-        if (n === null) bad.push("docNumber");
-        else out.docNumber = n;
-      }
-    }
-  }
-  if (raw.docExpiry !== undefined) {
-    const v = ymd("docExpiry", "1900-01-01", "2199-12-31");
-    if (v !== undefined) out.docExpiry = v;
-  }
-  if (raw.phone !== undefined) {
-    const v = str("phone", 40);
-    if (v !== undefined) out.phone = v;
-  }
-  if (raw.birthPlace !== undefined) {
-    const v = str("birthPlace", 100);
-    if (v !== undefined) out.birthPlace = v;
-  }
-  if (raw.certLevel !== undefined) {
-    const v = oneOf("certLevel", CERT_LEVELS);
-    if (v !== undefined) out.certLevel = v;
-  }
-  if (raw.diveCount !== undefined) {
-    const v = raw.diveCount;
-    if (v === null) out.diveCount = null;
-    else if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0 || v > 100_000) bad.push("diveCount");
-    else out.diveCount = v;
-  }
-  if (raw.lastDiveAt !== undefined) {
-    const v = ymd("lastDiveAt", "1900-01-01", "2199-12-31");
-    if (v !== undefined) out.lastDiveAt = v;
-  }
-  if (raw.finSize !== undefined) {
-    const v = str("finSize", 20);
-    if (v !== undefined) out.finSize = v;
-  }
-  if (raw.pickupHotel !== undefined) {
-    const v = str("pickupHotel", 200);
-    if (v !== undefined) out.pickupHotel = v;
-  }
-  return bad.length ? { ok: false, fields: [...new Set(bad)] } : { ok: true, values: out };
 }
 // ── /T0.8 passengers ──

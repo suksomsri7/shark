@@ -179,6 +179,9 @@ async function handle(
   if (lv !== null && FILE_ASSET_ID_RE.test(lv)) viewers.push({ kind: "LINK_CUSTOMER", id: lv });
   const primary = viewers[0];
   if (!primary) return deny(403);
+  // TRIPS T0.8 r1 ▸ ผู้ดู LINK_CUSTOMER ที่ไม่มี cookie: ตรวจลายเซ็นก่อนแตะถังอัตรา (lv สุ่มต้องไม่สร้างแถวถังใหม่ · ความล้มนับที่ถัง IP ข้อ 0 เท่านั้น) ◂
+  if (primary.kind === "LINK_CUSTOMER" && ID_LOOKS_LIKE_PATH.test(typeof rawId === "string" ? rawId.trim() : "")) return deny(404);
+  if (primary.kind === "LINK_CUSTOMER" && !privateFileSignatureOk(typeof rawId === "string" ? rawId.trim() : "", new URL(req.url).searchParams.get("exp"), new URL(req.url).searchParams.get("sig"), primary)) return deny(403);
 
   // ── 2) เพดานอัตราต่อผู้ดู (X7) — นับก่อนตรวจลายเซ็น จึงครอบคลุมคำขอที่เดาลายเซ็น ──
   const verdict = await checkRateLimitDb(

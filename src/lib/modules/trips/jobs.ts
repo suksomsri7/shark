@@ -269,7 +269,8 @@ export async function runPdpaPurge(
       UNION SELECT "tenantId", "unitId" FROM "TripPassenger" WHERE "retainUntil" <= ${iso}::timestamp ${tf(`"tenantId"`)}
       UNION SELECT "tenantId", "unitId" FROM "TripBooking" WHERE "status" = 'EXPIRED' AND "piiPurgedAt" IS NULL AND "paidSatang" = 0 ${tf(`"tenantId"`)}
     ) x ORDER BY x."tenantId", x."unitId"`;
-  const limit = Number.isInteger(opts?.limitPerUnit) && (opts?.limitPerUnit ?? 0) >= 1 ? Math.min(200, opts?.limitPerUnit ?? 200) : 200;
+  // เพดานต่อหน่วยต่อขั้นต่อรอบงาน (ชุดละ ≤ 200 วนต่อในรอบเดียวกัน · r1 P8) — ค่าเริ่ม 2,000
+  const limit = Number.isInteger(opts?.limitPerUnit) && (opts?.limitPerUnit ?? 0) >= 1 ? Math.min(2000, opts?.limitPerUnit ?? 2000) : 2000;
   for (const u of units) {
     if (opts?.signal?.aborted || (typeof opts?.deadline === "number" && Date.now() >= opts.deadline)) {
       out.more = true;
@@ -278,7 +279,7 @@ export async function runPdpaPurge(
     try {
       const g = await systemGate(u.tenantId, u.unitId);
       if (!g) continue;
-      const r = await purgeTripPersonalDataForUnit({ tenantId: u.tenantId, unitId: u.unitId, now, limit, ...(opts?.storage ? { storage: opts.storage } : {}) });
+      const r = await purgeTripPersonalDataForUnit({ tenantId: u.tenantId, unitId: u.unitId, now, limit, ...(typeof opts?.deadline === "number" ? { deadline: opts.deadline } : {}), ...(opts?.storage ? { storage: opts.storage } : {}) });
       out.units++;
       out.documents += r.documents;
       out.passengerStages += r.passengerStages;

@@ -1,16 +1,18 @@
 // ─────────────────────────────────────────────────────────────
 // trips/passengers.ts — ผู้เดินทาง: ช่องตามที่นั่ง · ร้านแก้/ตรวจ/ขอแก้ · ลิงก์กรอกเอง · ความยินยอมสุขภาพ · เอกสารรับทราบความเสี่ยง · ไฟล์ส่วนตัว · เปิดดู · RUN TRIPS T0.8
-// ใบสั่ง ledger/trips-briefs/T0.8.md §2 §4 §5 §6 (§17 มติผู้คุมชนะ) · CC §J.1 §J.3 §J.4
+// ใบสั่ง ledger/trips-briefs/T0.8.md §2 §4 §5 §6 (§17 มติผู้คุมชนะ · รอบแก้ r1 P1–P9) · CC §J.1 §J.3 §J.4
 //
 // 🔴 tenantDb เท่านั้น (ไม่มี prisma ดิบ) · SQL ดิบใส่ "tenantId" (+ "unitId") เองทุกคำสั่ง · ไม่ลบแถว Trip* · ไม่ส่ง object ผู้เรียกเข้า Prisma data
 // 🔴 นอก tx เท่านั้น: resolveSettings · uploadFile · deleteFileAsset · checkRateLimitDb · privateFileUrl (หลัง commit) — ใน tx = คำสั่งผ่าน tx ตัวเดียว (runTx ของ T0.4)
 // 🔴 ข้อมูลสุขภาพ · เลขเอกสาร · token ห้ามอยู่ใน event · audit · ops · error · URL · path — กล่องปิดผนึก (secret-box + AAD ผูกแถว) เท่านั้น
+// 🔴 r1 P1: แฮชของคำขอ (keyHash · bodyHash · guardianRef) = HMAC-SHA256 ด้วยกุญแจติดป้าย "trips.t08.body.v1:" + SESSION_SECRET · ไม่มีกุญแจ ⇒ BUSY SERVER_KEY_MISSING
+// 🔴 r1 P2: ลบไฟล์ MEDICAL (ปฏิเสธ/ถอน/กลายเป็นผู้เยาว์) = ล็อก t08.doc → CAS rev → ทำเครื่องหมาย deletedAt ใน tx → commit → ลบวัตถุ (ล้ม ⇒ งานลบลองใหม่) — ผู้แพ้ CAS ไม่ทำลายอะไร
 // 🔴 ทุกการเขียนแถวผู้เดินทาง = CAS answers.rev + ตรวจจำนวนแถว · ส่งซ้ำ = ผลเดิม (แถว audit keyHash + bodyHash)
-// 🔴 ลิงก์: signLink (HMAC · SESSION_SECRET ติดป้าย · ไม่มีกุญแจสำรอง) · เก็บเฉพาะ sha256(token) ในแถว audit link_issued · ล้มทุกแบบ = NOT_FOUND ข้อความเดียว
-// 🔴 advisory lock ช่องกุญแจสองอาร์กิวเมนต์ hashtext('trips.booking.v1') · คำนำหน้าย่อยใหม่ "t08.link:" "t08.doc:"
+// 🔴 advisory lock ช่องกุญแจสองอาร์กิวเมนต์ hashtext('trips.booking.v1') · คำนำหน้าย่อยใหม่ "t08.link:" "t08.doc:" "t08.pdpareq:" "t08.pdpasub:"
 // ─────────────────────────────────────────────────────────────
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import { integrationSecretKeyConfigured, openIntegrationSecret, sealIntegrationSecret } from "@/lib/core/integrations/secret-box";
 import { logOps } from "@/lib/core/ops";
@@ -22,68 +24,66 @@ import { resolveSettings } from "@/lib/core/settings";
 import { SIGNED_LINK_MAX_MIN, signLink, verifyLink } from "@/lib/core/signed-link";
 import { deleteFileAsset, privateFileUrl, storageEnabled, uploadFile, type DeleteDeps, type UploadDeps } from "@/lib/storage/service";
 import { sniffedAttachmentType } from "@/lib/storage/sniff";
-import { phoneE164 } from "./booking-core";
-import { CapacityAbort, holdRequestHash, parseCtx, sellFail, type Failure, type Tx } from "./capacity";
+import { phoneE164, text } from "./booking-core";
+import { CapacityAbort, parseCtx, sellFail, type Failure, type Tx } from "./capacity";
 import { runTx } from "./capacity-service";
-import { normalizeTimezone } from "./departures-core";
+import { localToUtc, normalizeTimezone, utcToLocal } from "./departures-core";
 import {
+  CERT_LEVELS,
+  DOC_KINDS,
   DOC_LIMIT_PER_KIND,
+  DOC_TYPES,
+  FIX_REASONS,
   HEALTH_CONSENT_V1,
+  INT4_MAX,
+  NEVER_PURGE_ISO,
   PASSPORT_CUTOFF_KEYS,
+  PAX_FIELD_KEYS,
+  PAX_STAGE_DAYS,
+  PUBLIC_DOC_KINDS,
+  PURPOSES,
   RETENTION_SCHEMA,
+  SEXES,
   UPLOAD_EXT,
   UPLOAD_MAX_BYTES,
   UPLOAD_TYPES,
+  WAIVER_HISTORY_MAX,
   addDaysYmd,
-  bookingIdSchema,
+  ageAt,
   canSeeSensitive,
-  checkFieldValues,
-  customerUrlSchema,
   docLast4Of,
   docRetentionKey,
-  formStatusSchema,
+  guardianFromGrants,
   healthViewOf,
   isPurgedAll,
-  localYmdOf,
+  isRealYmd,
   maskDob,
   maskDoc,
   minorStatus,
   missingFields,
-  NEVER_PURGE_ISO,
-  openSchema,
+  nextFormStatus,
+  normalizeDocNumber,
   parseAnswers,
   parseGuardian,
   parseWaiver,
-  passengerIdSchema,
-  paxRetainUntil,
   presentStages,
   resolveFormSpec,
-  revealSchema,
-  signSchema,
-  stageDue,
-  staffUrlSchema,
-  submitSchema,
-  updateSchema,
-  uploadPublicSchema,
-  uploadStaffSchema,
+  retentionDueYmd,
   waiverStatusOf,
-  withdrawPublicSchema,
-  withdrawStaffSchema,
-  witnessedSchema,
-  publicCtxSchema,
+  type AgeBasis,
   type Answers,
-  type FieldValues,
   type FormSpec,
   type GuardianConsent,
+  type GuardianGrant,
   type HealthState,
   type HealthView,
   type IdentityProofRequired,
   type PaxFieldKey,
+  type PaxStage,
   type PaxValues,
   type Retention,
-  type SignRequest,
   type WaiverEvidence,
-  type WriteRequest,
+  type WaiverHistoryItem,
 } from "./passengers-core";
 
 // ── T0.8 passengers ──
@@ -102,6 +102,7 @@ export const A = {
   purged: "trips.passenger.purged",
   exported: "trips.passenger.exported",
   waiverSigned: "trips.waiver.signed",
+  waiverResign: "trips.waiver.resign_required",
   docUploaded: "trips.document.uploaded",
   docPurged: "trips.document.purged",
   bookingPiiPurged: "trips.booking.pii_purged",
@@ -112,12 +113,15 @@ export const EVT_FORM_COMPLETED = "trips.passenger.form_completed";
 export const EVT_DOC_PURGED = "trips.document.purged";
 /** อายุลิงก์ไฟล์ (วินาที) — เพดาน route 900 */
 const URL_TTL_SEC = 300;
-/** ช่วงเผื่อนาฬิกาคลาดของการค้นแถว audit (ค่าทางเทคนิค · แบบ T0.6) */
+/** ช่วงเผื่อนาฬิกาคลาดของการค้นแถว audit (ค่าทางเทคนิค · แบบ T0.6) — ค้นตั้งแต่ (สร้างแถวผู้เดินทาง − 24 ชม.) ถึง (ตอนนี้ + 24 ชม.) */
 export const IDEM_SKEW_MS = 24 * 60 * 60 * 1000;
 const TOKEN_WINDOW_MS = 3_600_000;
-/** เพดานของ token ผิด = เพดานใน schema ของ tokenPerHourPerDevice (defs/trips.ts) */
+/** เพดานของ token ที่ตรวจลายเซ็นไม่ผ่าน (ยังไม่รู้ร้าน) = เพดานใน schema ของ tokenPerHourPerDevice (defs/trips.ts) */
 const TOKEN_GUESS_LIMIT = 60;
+/** r1 P6: การใช้ลิงก์ที่ถูกต้อง นับต่อลิงก์ = 10 × tokenPerHourPerDevice ของหน่วย (ค่าเริ่ม 30 ⇒ 300 ครั้ง/ชม./ลิงก์) — ไม่มีคีย์ค่าตั้งแยก */
+const LINK_USE_FACTOR = 10;
 const LOCK_CLASS = "trips.booking.v1";
+const BODY_KEY_LABEL = "trips.t08.body.v1:";
 const K = {
   fields: "trips.pax.fields",
   health: "trips.pdpa.healthDataProducts",
@@ -134,9 +138,55 @@ const K = {
 export const sha256hex = (s: string | Uint8Array) => createHash("sha256").update(s).digest("hex");
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 export const ymdOf = (d: Date | string | null | undefined): string | null => (d ? (typeof d === "string" ? d.slice(0, 10) : d.toISOString().slice(0, 10)) : null);
-const serverKeyOk = () => typeof process.env.SESSION_SECRET === "string" && process.env.SESSION_SECRET.length >= 32;
+export const serverKeyOk = () => typeof process.env.SESSION_SECRET === "string" && process.env.SESSION_SECRET.length >= 32;
 /** ทุก instant ที่บริการคืนเป็น ISO */
 const iso = (d: Date) => d.toISOString();
+
+// ═══════════════════════ เวลา · อายุเก็บ (r1 P8: ตัวช่วยเขตเวลาของโมดูล) ═══════════════════════
+/** วันที่ (YYYY-MM-DD) ของ instant ตามเขตเวลาหน่วย */
+export const localYmdOf = (d: Date, tz: string): string => utcToLocal(tz, d).ymd;
+/** ต้นวันถัดจาก dueYmd ตามเวลาหน่วย (เก็บถึงสิ้นวัน dueYmd) — localToUtc: เที่ยงคืนที่ไม่มีจริง (DST) ⇒ ขยับไปข้างหน้า = วินาทีแรกของวันถัดไป */
+export function purgeInstant(dueYmd: string, tz: string): Date {
+  return localToUtc(tz, addDaysYmd(dueYmd, 1), 0);
+}
+export function stageDue(endYmd: string, days: number | null, tz: string): Date | null {
+  const due = retentionDueYmd(endYmd, days);
+  return due ? purgeInstant(due, tz) : null;
+}
+/** TripPassenger.retainUntil = ค่าน้อยสุดของชั้นที่ยังมีข้อมูล (null = ไม่มีอะไรรอลบ) */
+export function paxRetainUntil(stages: readonly PaxStage[], endYmd: string, tz: string, r: Retention): Date | null {
+  let min: number | null = null;
+  for (const s of stages) {
+    const d = stageDue(endYmd, r[PAX_STAGE_DAYS[s]], tz);
+    if (d && (min === null || d.getTime() < min)) min = d.getTime();
+  }
+  return min === null ? null : new Date(min);
+}
+/** retainUntil ของไฟล์ = ต้นวันถัดจาก E + N ของชั้น (เวลาหน่วย) · N = null ⇒ 9999-12-31 */
+export function docRetainUntil(kind: string, endYmd: string, tz: string, r: Retention): Date {
+  return stageDue(endYmd, r[docRetentionKey(kind)], tz) ?? new Date(NEVER_PURGE_ISO);
+}
+
+// ═══════════════════════ แฮชที่มีกุญแจ (r1 P1) ═══════════════════════
+function canonical(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v !== null && typeof v === "object" && !(v instanceof Date)) {
+    const o = v as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(o)
+        .filter((k) => o[k] !== undefined)
+        .sort()
+        .map((k) => [k, canonical(o[k])]),
+    );
+  }
+  return v;
+}
+/** HMAC-SHA256(กุญแจ "trips.t08.body.v1:" + SESSION_SECRET, canonical JSON) — ไม่มีกุญแจ ⇒ throw CapacityAbort BUSY SERVER_KEY_MISSING (ผ่าน safely) */
+export function mac(x: unknown): string {
+  const s = process.env.SESSION_SECRET;
+  if (typeof s !== "string" || s.length < 32) throw new CapacityAbort("BUSY", { reason: "SERVER_KEY_MISSING" });
+  return createHmac("sha256", `${BODY_KEY_LABEL}${s}`).update(JSON.stringify(canonical(x))).digest("hex");
+}
 
 // ═══════════════════════ ผลพลาด ═══════════════════════
 const REASON_TH: Record<string, string> = {
@@ -168,6 +218,7 @@ const REASON_TH: Record<string, string> = {
   STORAGE_NOT_CONFIGURED: "ยังไม่ได้ตั้งค่าที่เก็บไฟล์",
   UPLOAD_FAILED: "อัปโหลดไฟล์ไม่สำเร็จ กรุณาลองใหม่",
   STORAGE_DELETE_FAILED: "ลบไฟล์ที่ที่เก็บไม่สำเร็จ กรุณาลองใหม่",
+  RECEIVED_AT_OUT_OF_RANGE: "วันที่รับคำขอต้องไม่อยู่ในอนาคตและไม่ก่อนวันที่มีข้อมูล",
   UNEXPECTED: "ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง",
 };
 export function fail(code: SellErrorCode, details?: Record<string, unknown>): Failure {
@@ -175,6 +226,7 @@ export function fail(code: SellErrorCode, details?: Record<string, unknown>): Fa
   return sellFail(code, details, r);
 }
 export const NF = (): Failure => fail("NOT_FOUND");
+export const KEY_MISSING = (): Failure => fail("BUSY", { reason: "SERVER_KEY_MISSING" });
 export const isFailure = (x: unknown): x is Failure => isRec(x) && x.ok === false;
 export function invalid(e: { issues: readonly { path: readonly PropertyKey[] }[] }): Failure {
   return fail("VALIDATION", { fields: [...new Set(e.issues.map((i) => i.path.map(String).join(".") || "(root)"))].slice(0, 10) });
@@ -221,6 +273,195 @@ export const abort = (code: SellErrorCode, details?: Record<string, unknown>): n
 };
 export const ro = (tenantId: string) => tenantDb({ tenantId }) as unknown as Tx;
 export const lockKey = (tx: Tx, sub: string) => tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext(${LOCK_CLASS}), hashtext(${sub}))`;
+
+// ═══════════════════════ zod ของคำขอ (ข้อความอิสระ = text() ของ booking-core · r1 P7) ═══════════════════════
+const ID = z.string().trim().min(1).max(128);
+const NN = z.number().int().min(0).max(INT4_MAX);
+const IDEM_KEY = z.string().regex(/^[A-Za-z0-9_-]{8,90}$/);
+const TOKEN = z.string().min(1).max(4096);
+const HEX64 = z.string().regex(/^[0-9a-f]{64}$/);
+const BYTES = z.instanceof(Uint8Array);
+const FIELD_VAL = z.union([z.string().max(8_000), z.number(), z.null()]).optional();
+const fieldsInputSchema = z.strictObject(Object.fromEntries(PAX_FIELD_KEYS.map((k) => [k, FIELD_VAL])) as Record<PaxFieldKey, typeof FIELD_VAL>);
+type FieldsInput = z.infer<typeof fieldsInputSchema>;
+const guardianInputSchema = z.strictObject({ name: text(200).pipe(z.string().min(1)), relation: z.enum(["PARENT", "LEGAL_GUARDIAN"]) });
+type GuardianInput = z.infer<typeof guardianInputSchema>;
+/** HealthInput — รูปหลวมพอให้คืนเหตุย่อย (ไม่มี consent ⇒ HEALTH_CONSENT_REQUIRED ไม่ใช่ VALIDATION เปล่า) */
+const healthInputSchema = z.strictObject({
+  consent: z.strictObject({ accepted: z.literal(true), textHash: HEX64, locale: z.enum(["th", "en"]) }).optional(),
+  allergies: z.union([text(500), z.null()]).optional(),
+  conditions: z.union([text(2000), z.null()]).optional(),
+  declined: z.literal(true).optional(),
+});
+type HealthInput = z.infer<typeof healthInputSchema>;
+const writeBase = {
+  idempotencyKey: IDEM_KEY,
+  expectedRev: NN,
+  fields: fieldsInputSchema.optional(),
+  health: healthInputSchema.optional(),
+  isMinorDeclared: z.boolean().optional(),
+  guardian: guardianInputSchema.optional(),
+};
+const submitSchema = z.strictObject({ token: TOKEN, ...writeBase });
+const updateSchema = z.strictObject({ passengerId: ID, ...writeBase });
+type WriteRequest = { idempotencyKey: string; expectedRev: number; fields?: FieldsInput; health?: HealthInput; isMinorDeclared?: boolean; guardian?: GuardianInput };
+const openSchema = z.strictObject({ token: TOKEN });
+const signBase = {
+  idempotencyKey: IDEM_KEY,
+  templateHash: HEX64,
+  locale: z.enum(["th", "en"]),
+  signerName: text(200).pipe(z.string().min(1)),
+  signerRole: z.enum(["SELF", "GUARDIAN"]),
+  guardian: guardianInputSchema.optional(),
+  /** r1 P5: SELF ที่ไม่มีวันเกิด ต้องประกาศว่าไม่ใช่ผู้เยาว์ในคำขอนี้ (false) */
+  isMinorDeclared: z.boolean().optional(),
+};
+const signSchema = z.strictObject({ token: TOKEN, accept: z.literal(true), ...signBase });
+const witnessedSchema = z.strictObject({ passengerId: ID, ...signBase, signatureImage: z.strictObject({ contentType: z.string().min(1).max(100), data: BYTES }).optional() });
+type SignRequest = { idempotencyKey: string; templateHash: string; locale: "th" | "en"; signerName: string; signerRole: "SELF" | "GUARDIAN"; guardian?: GuardianInput; isMinorDeclared?: boolean };
+const uploadPublicSchema = z.strictObject({ token: TOKEN, idempotencyKey: IDEM_KEY, kind: z.enum(PUBLIC_DOC_KINDS), contentType: z.string().min(1).max(100), data: BYTES });
+const uploadStaffSchema = z.strictObject({ passengerId: ID, idempotencyKey: IDEM_KEY, kind: z.enum(DOC_KINDS), contentType: z.string().min(1).max(100), data: BYTES });
+const withdrawPublicSchema = z.strictObject({ token: TOKEN, idempotencyKey: IDEM_KEY, mode: z.enum(["PREVIEW", "EXECUTE"]) });
+const withdrawStaffSchema = z.strictObject({ passengerId: ID, idempotencyKey: IDEM_KEY, mode: z.enum(["PREVIEW", "EXECUTE"]) });
+const customerUrlSchema = z.strictObject({ token: TOKEN, documentId: ID, purpose: z.literal("CUSTOMER_SELF") });
+const bookingIdSchema = z.strictObject({ bookingId: ID });
+const passengerIdSchema = z.strictObject({ passengerId: ID });
+const formStatusSchema = z.strictObject({ passengerId: ID, expectedRev: NN, status: z.enum(["VERIFIED", "NEEDS_FIX"]), fixReason: z.enum(FIX_REASONS).optional() });
+const staffUrlSchema = z.strictObject({ documentId: ID, purpose: z.enum(PURPOSES) });
+const revealSchema = z.strictObject({ passengerId: ID, what: z.enum(["DOC_NUMBER", "HEALTH"]), purpose: z.enum(PURPOSES) });
+export type PublicFormCtx = { clientKey: string; now?: Date; locale?: "th" | "en" };
+const publicCtxSchema = z.strictObject({ clientKey: z.string().regex(/^[A-Za-z0-9_:.-]{8,128}$/), now: z.date().optional(), locale: z.enum(["th", "en"]).optional() });
+
+type FieldValues = Partial<{
+  fullName: string;
+  nationality: string | null;
+  dob: string | null;
+  sex: string | null;
+  docType: string | null;
+  docNumber: string | null;
+  docExpiry: string | null;
+  phone: string | null;
+  birthPlace: string | null;
+  certLevel: string | null;
+  diveCount: number | null;
+  lastDiveAt: string | null;
+  finSize: string | null;
+  pickupHotel: string | null;
+}>;
+/** ตรวจค่าต่อช่อง (§6.2) — ผิด ⇒ ชื่อช่องที่ผิด (ไม่มีค่าที่ผู้ใช้ส่งในผล) */
+function checkFieldValues(raw: FieldsInput, todayYmd: string): { ok: true; values: FieldValues } | { ok: false; fields: string[] } {
+  const bad: string[] = [];
+  const out: FieldValues = {};
+  const str = (k: PaxFieldKey, max: number): string | null | undefined => {
+    const v = raw[k];
+    if (v === undefined) return undefined;
+    if (v === null) return null;
+    if (typeof v !== "string") {
+      bad.push(k);
+      return undefined;
+    }
+    const p = text(max).safeParse(v);
+    if (!p.success) {
+      bad.push(k);
+      return undefined;
+    }
+    return p.data.length ? p.data : null;
+  };
+  const oneOf = (k: PaxFieldKey, set: readonly string[]): string | null | undefined => {
+    const v = str(k, 40);
+    if (v === undefined || v === null) return v;
+    if (!set.includes(v)) {
+      bad.push(k);
+      return undefined;
+    }
+    return v;
+  };
+  const ymd = (k: PaxFieldKey, min?: string, max?: string): string | null | undefined => {
+    const v = str(k, 10);
+    if (v === undefined || v === null) return v;
+    if (!isRealYmd(v) || (min && v < min) || (max && v > max)) {
+      bad.push(k);
+      return undefined;
+    }
+    return v;
+  };
+  if (raw.fullName !== undefined) {
+    const v = str("fullName", 200);
+    if (v !== undefined) out.fullName = v ?? "";
+  }
+  if (raw.nationality !== undefined) {
+    const v = str("nationality", 2);
+    if (v !== undefined) {
+      if (v !== null && !/^[A-Z]{2}$/.test(v)) bad.push("nationality");
+      else out.nationality = v;
+    }
+  }
+  if (raw.dob !== undefined) {
+    const v = ymd("dob", "1900-01-01", todayYmd);
+    if (v !== undefined) out.dob = v;
+  }
+  if (raw.sex !== undefined) {
+    const v = oneOf("sex", SEXES);
+    if (v !== undefined) out.sex = v;
+  }
+  if (raw.docType !== undefined) {
+    const v = oneOf("docType", DOC_TYPES);
+    if (v !== undefined) out.docType = v;
+  }
+  if (raw.docNumber !== undefined) {
+    const v = str("docNumber", 64);
+    if (v !== undefined) {
+      if (v === null) out.docNumber = null;
+      else {
+        const n = normalizeDocNumber(v);
+        if (n === null) bad.push("docNumber");
+        else out.docNumber = n;
+      }
+    }
+  }
+  if (raw.docExpiry !== undefined) {
+    const v = ymd("docExpiry", "1900-01-01", "2199-12-31");
+    if (v !== undefined) out.docExpiry = v;
+  }
+  if (raw.phone !== undefined) {
+    const v = str("phone", 40);
+    if (v !== undefined) {
+      if (v === null) out.phone = null;
+      else {
+        const e164 = phoneE164(v);
+        if (!e164) bad.push("phone");
+        else out.phone = e164;
+      }
+    }
+  }
+  if (raw.birthPlace !== undefined) {
+    const v = str("birthPlace", 100);
+    if (v !== undefined) out.birthPlace = v;
+  }
+  if (raw.certLevel !== undefined) {
+    const v = oneOf("certLevel", CERT_LEVELS);
+    if (v !== undefined) out.certLevel = v;
+  }
+  if (raw.diveCount !== undefined) {
+    const v = raw.diveCount;
+    if (v === null) out.diveCount = null;
+    else if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0 || v > 100_000) bad.push("diveCount");
+    else out.diveCount = v;
+  }
+  if (raw.lastDiveAt !== undefined) {
+    const v = ymd("lastDiveAt", "1900-01-01", "2199-12-31");
+    if (v !== undefined) out.lastDiveAt = v;
+  }
+  if (raw.finSize !== undefined) {
+    const v = str("finSize", 20);
+    if (v !== undefined) out.finSize = v;
+  }
+  if (raw.pickupHotel !== undefined) {
+    const v = str("pickupHotel", 200);
+    if (v !== undefined) out.pickupHotel = v;
+  }
+  return bad.length ? { ok: false, fields: [...new Set(bad)] } : { ok: true, values: out };
+}
 
 // ═══════════════════════ ด่านฝั่งร้าน ═══════════════════════
 export type Unit = { tenantId: string; unitId: string; tz: string };
@@ -282,6 +523,7 @@ export type PaxRow = {
   checkinAt: Date | null;
   bookingStatus: string;
   piiPurgedAt: Date | null;
+  bookingCreatedAt: Date;
   productId: string;
   departureId: string;
   localDate: Date | string;
@@ -293,7 +535,7 @@ export type PaxRow = {
 };
 const PAX_COLS = Prisma.sql`p."id", p."unitId", p."bookingId", p."itemId", p."createdAt", p."fullName", p."nationality", p."dob", p."sex", p."docType", p."docNumberEnc",
   p."docLast4", p."docExpiry", p."phone", p."birthPlace", p."certLevel", p."diveCount", p."lastDiveAt", p."isMinor", p."guardianConsent", p."answers", p."formStatus",
-  p."waiverSignedAt", p."waiverEvidence", p."retainUntil", p."checkinAt", b."status" AS "bookingStatus", b."piiPurgedAt", b."productId", b."departureId",
+  p."waiverSignedAt", p."waiverEvidence", p."retainUntil", p."checkinAt", b."status" AS "bookingStatus", b."piiPurgedAt", b."createdAt" AS "bookingCreatedAt", b."productId", b."departureId",
   d."localDate", d."startsAt", d."endsAt", pr."crossBorder", pr."deepDive", pr."title"`;
 const PAX_FROM = Prisma.sql`FROM "TripPassenger" p
   JOIN "TripBooking" b ON b."id" = p."bookingId" AND b."tenantId" = p."tenantId" AND b."unitId" = p."unitId"
@@ -310,7 +552,7 @@ async function loadBookingPax(db: Tx, s: Unit, bookingId: string): Promise<PaxRo
     WHERE p."bookingId" = ${bookingId} AND p."tenantId" = ${s.tenantId} AND p."unitId" = ${s.unitId} ORDER BY p."createdAt", p."id"`;
 }
 export const travelYmdOf = (p: PaxRow) => ymdOf(p.localDate) ?? "";
-export const endYmdOf = (p: PaxRow, tz: string) => localYmdOf(new Date(p.endsAt), tz);
+export const endYmdOf = (p: { endsAt: Date }, tz: string) => localYmdOf(new Date(p.endsAt), tz);
 export function valuesOf(p: PaxRow, a: Answers): PaxValues {
   return {
     fullName: p.fullName,
@@ -384,11 +626,15 @@ export const purgedEvt = (key: string, bookingId: string, passengerId: string | 
   key: `${EVT_DOC_PURGED}:${key}`,
   payload: { bookingId, passengerId, kind },
 });
-/** แถว audit กันซ้ำ (ค้นผ่านดัชนี AuditLog(tenantId, createdAt) จากเวลาสร้างแถวผู้เดินทาง − 24 ชม. · หนี้ดัชนี (tenantId, targetId) แบบ T0.6) */
+/**
+ * แถว audit กันซ้ำ — ดัชนี AuditLog_tenantId_createdAt_idx: tenantId + createdAt ∈ [สร้างแถวผู้เดินทาง − 24 ชม., ตอนนี้ + 24 ชม.] แล้วกรอง targetId/action/keyHash
+ * (หนี้ดัชนี (tenantId, targetId) แบบ T0.6 · กรณีเลวสุด = ทุกแถว audit ของร้านตั้งแต่สร้างการจอง)
+ */
 export async function idemFind(db: Tx, tenantId: string, action: string, targetId: string, since: Date, keyHash: string): Promise<Record<string, unknown> | null> {
+  const until = new Date(Date.now() + IDEM_SKEW_MS);
   const rows = await db.$queryRaw<{ after: unknown }[]>`
-    SELECT "after" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "createdAt" >= ${iso(since)}::timestamp AND "targetId" = ${targetId} AND "action" = ${action}
-      AND "after"->>'keyHash' = ${keyHash} LIMIT 1`;
+    SELECT "after" FROM "AuditLog" WHERE "tenantId" = ${tenantId} AND "createdAt" >= ${iso(since)}::timestamp AND "createdAt" <= ${iso(until)}::timestamp
+      AND "targetId" = ${targetId} AND "action" = ${action} AND "after"->>'keyHash' = ${keyHash} LIMIT 1`;
   const a = rows[0]?.after;
   return isRec(a) ? a : null;
 }
@@ -402,44 +648,56 @@ export async function liveDocs(db: Tx, u: Unit, passengerId: string, kind?: stri
     WHERE "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "passengerId" = ${passengerId} AND "deletedAt" IS NULL ${kind ? Prisma.sql`AND "kind" = ${kind}` : Prisma.empty}
     ORDER BY "createdAt", "id"`;
 }
-/** ลบวัตถุ + แถว FileAsset ของไฟล์ชุดหนึ่ง (นอก tx) — คืน id เอกสารที่ลบสำเร็จ · ล้มอย่างน้อยหนึ่ง ⇒ failed > 0 */
-export async function deleteFiles(u: Unit, docs: readonly DocRow[], deps?: DeleteDeps): Promise<{ ok: string[]; failed: number }> {
-  const ok: string[] = [];
+/** ลบวัตถุ + แถว FileAsset (นอก tx) — คืนจำนวนที่ล้ม (แถว TripDocument ที่ทำเครื่องหมายแล้วรอให้งานลบลองใหม่) */
+export async function deleteObjects(u: Unit, fileIds: readonly string[], deps?: DeleteDeps): Promise<number> {
   let failed = 0;
-  for (const d of docs) {
-    const r = await deleteFileAsset({ tenantId: u.tenantId }, d.fileId, deps);
-    if (r.ok) ok.push(d.id);
-    else failed++;
+  for (const f of fileIds) {
+    const r = await deleteFileAsset({ tenantId: u.tenantId }, f, deps);
+    if (!r.ok) failed++;
   }
-  return { ok, failed };
+  return failed;
 }
-/** ตั้ง deletedAt (CAS deletedAt IS NULL) + audit + event ต่อชิ้น — นับเฉพาะแถวที่เปลี่ยนจริง (รันซ้อนกันได้ = ครั้งเดียวต่อชิ้น) */
-export async function markDocsDeletedInTx(tx: Tx, u: Unit, who: Who, docIds: readonly string[], bookingId: string, now: Date, stage: string): Promise<{ id: string; kind: string }[]> {
-  const out: { id: string; kind: string }[] = [];
+/**
+ * ตั้ง deletedAt (CAS deletedAt IS NULL) + retainUntil = now + audit + event ต่อชิ้น — นับเฉพาะแถวที่เปลี่ยนจริง (รันซ้อนกันได้ = ครั้งเดียวต่อชิ้น)
+ * คืน fileId ของแถวที่เปลี่ยน — ผู้เรียกลบวัตถุหลัง commit (r1 P2) หรือก่อนหน้า (งานลบตามอายุ: วัตถุก่อน แล้วค่อยแถว)
+ */
+export async function markDocsDeletedInTx(tx: Tx, u: Unit, who: Who, docIds: readonly string[], bookingId: string, now: Date, stage: string): Promise<{ id: string; kind: string; fileId: string }[]> {
+  const out: { id: string; kind: string; fileId: string }[] = [];
   for (const id of [...docIds].sort()) {
-    const rows = await tx.$queryRaw<{ id: string; kind: string; passengerId: string }[]>`
-      UPDATE "TripDocument" SET "deletedAt" = ${iso(now)}::timestamp, "updatedAt" = ${iso(now)}::timestamp
-      WHERE "id" = ${id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "deletedAt" IS NULL RETURNING "id", "kind", "passengerId"`;
+    const rows = await tx.$queryRaw<{ id: string; kind: string; passengerId: string; fileId: string }[]>`
+      UPDATE "TripDocument" SET "deletedAt" = ${iso(now)}::timestamp, "retainUntil" = LEAST("retainUntil", ${iso(now)}::timestamp), "updatedAt" = ${iso(now)}::timestamp
+      WHERE "id" = ${id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "deletedAt" IS NULL RETURNING "id", "kind", "passengerId", "fileId"`;
     const r = rows[0];
     if (!r) continue;
     await auditTx(tx, u, who, A.docPurged, "TripDocument", r.id, { documentId: r.id, passengerId: r.passengerId, kind: r.kind, stage });
     await emitTx(tx, u, [purgedEvt(r.id, bookingId, r.passengerId, r.kind)]);
-    out.push({ id: r.id, kind: r.kind });
+    out.push({ id: r.id, kind: r.kind, fileId: r.fileId });
   }
   return out;
 }
-/** retainUntil ของไฟล์ = ต้นวันถัดจาก E + N ของชั้น (เวลาหน่วย) · N = null ⇒ 9999-12-31 */
-export function docRetainUntil(kind: string, endYmd: string, tz: string, r: Retention): Date {
-  return stageDue(endYmd, r[docRetentionKey(kind)], tz) ?? new Date(NEVER_PURGE_ISO);
+/** ไฟล์ MEDICAL ทั้งหมดของผู้เดินทาง ⇒ ทำเครื่องหมายลบ (ในธุรกรรมที่ถือ t08.doc แล้วชนะ CAS) */
+async function markMedicalInTx(tx: Tx, u: Unit, who: Who, passengerId: string, bookingId: string, now: Date, stage: string) {
+  const live = await liveDocs(tx, u, passengerId, "MEDICAL");
+  return markDocsDeletedInTx(tx, u, who, live.map((d) => d.id), bookingId, now, stage);
+}
+
+// ═══════════════════════ อัตรา (r1 P6) ═══════════════════════
+/** ถังของเครื่องเกินเพดานความผิดพลาดแล้วหรือยัง (อ่านอย่างเดียว · ไม่เพิ่มตัวนับ) */
+async function deviceOverLimit(db: Tx, key: string, limit: number): Promise<boolean> {
+  const rows = await db.$queryRaw<{ count: number; windowStart: Date }[]>`SELECT "count", "windowStart" FROM "ChatRateBucket" WHERE "key" = ${key}`;
+  const r = rows[0];
+  return !!r && new Date(r.windowStart).getTime() > Date.now() - TOKEN_WINDOW_MS && r.count > limit;
 }
 
 // ═══════════════════════ ลิงก์ (§5) ═══════════════════════
 type LinkRow = { id: string; action: string; after: unknown; createdAt: Date };
-/** แถวลิงก์ล่าสุดของผู้เดินทาง (issued/revoked · เรียงตาม after.seq ที่จัดใต้ advisory lock) */
+/** แถวลิงก์ล่าสุดของผู้เดินทาง (issued/revoked · เรียงตาม after.seq ที่จัดใต้ advisory lock) — ดัชนี/ช่วงเวลาเดียวกับ idemFind */
 async function latestLinkRow(db: Tx, tenantId: string, passengerId: string, since: Date): Promise<LinkRow | null> {
+  const until = new Date(Date.now() + IDEM_SKEW_MS);
   const rows = await db.$queryRaw<LinkRow[]>`
     SELECT "id", "action", "after", "createdAt" FROM "AuditLog"
-    WHERE "tenantId" = ${tenantId} AND "createdAt" >= ${iso(since)}::timestamp AND "targetId" = ${passengerId} AND "action" IN (${A.linkIssued}, ${A.linkRevoked})
+    WHERE "tenantId" = ${tenantId} AND "createdAt" >= ${iso(since)}::timestamp AND "createdAt" <= ${iso(until)}::timestamp
+      AND "targetId" = ${passengerId} AND "action" IN (${A.linkIssued}, ${A.linkRevoked})
     ORDER BY COALESCE(("after"->>'seq')::int, 0) DESC, "createdAt" DESC, "id" DESC LIMIT 1`;
   return rows[0] ?? null;
 }
@@ -456,45 +714,44 @@ const bookingOpen = (p: PaxRow) => p.bookingStatus !== "EXPIRED" && p.bookingSta
 
 type LinkCtx = { u: Unit; P: PaxRow; a: Answers; cfg: Cfg; linkId: string; tokenHash: string; now: Date; locale: "th" | "en" };
 /**
- * ตรวจลิงก์ (ลำดับบังคับ §5): (1) verifyLink (2) อัตรา trips:token:<clientKey> (ผิด ⇒ 60 · ถูก ⇒ ค่าตั้งหน่วย) (3) ผู้เดินทางของร้าน · หน่วย TRIPS
- * (4) แถว issued ล่าสุด tokenHash ตรง · ไม่ถูกเพิกถอน · ยังไม่หมดอายุ (5) การจองเปิด · ไม่ถูกลบ · ก่อนจบทริป — ล้มข้อใด ⇒ NOT_FOUND ข้อความเดียว
- * หมายเหตุ: (2) ของ token ที่ลายเซ็นถูกต้องต้องรู้หน่วยก่อน (อ่าน unitId ของผู้เดินทางหนึ่งคำสั่ง) จึงอ่านเพดานของหน่วยได้
+ * ตรวจลิงก์ (ลำดับ §5 + r1 P6): ไม่มีกุญแจเซิร์ฟเวอร์ ⇒ BUSY SERVER_KEY_MISSING (ไม่นับเป็นการเดา) → verifyLink →
+ * token ใช้ไม่ได้ (ลายเซ็นผิด / ไม่รู้ผู้เดินทาง / ไม่ใช่ลิงก์ล่าสุด / หมดอายุ / การจองปิด / ถูกลบ) ⇒ นับถังเครื่อง trips:token:<clientKey> (เพดาน: ไม่รู้ร้าน 60 · รู้หน่วย = tokenPerHourPerDevice) แล้ว NOT_FOUND ข้อความเดียว
+ * token ใช้ได้ ⇒ เครื่องที่เดาเกินเพดานแล้วถูกปฏิเสธ (อ่านถังไม่เพิ่ม) → นับถังของลิงก์ trips:link:<linkId> (10 × ค่าตั้ง)
  */
 async function openLink(pctx: unknown, token: string): Promise<LinkCtx | Failure> {
   const pc = publicCtxSchema.safeParse(pctx);
   if (!pc.success) return fail("VALIDATION", { fields: ["ctx"] });
+  if (!serverKeyOk()) return KEY_MISSING();
   const now = pc.data.now ?? new Date();
   if (!Number.isFinite(now.getTime())) return fail("VALIDATION", { fields: ["ctx"] });
   const locale = pc.data.locale === "en" ? "en" : "th";
-  const rlKey = `trips:token:${pc.data.clientKey}`;
-  const v = verifyLink(token, LINK_PURPOSE);
-  if (!v) {
-    const rl = await checkRateLimitDb(rlKey, { limit: TOKEN_GUESS_LIMIT, windowMs: TOKEN_WINDOW_MS });
+  const devKey = `trips:token:${pc.data.clientKey}`;
+  const guess = async (limit: number): Promise<Failure> => {
+    const rl = await checkRateLimitDb(devKey, { limit, windowMs: TOKEN_WINDOW_MS });
     return rl.ok ? NF() : fail("RATE_LIMITED", { retryAfterSec: rl.retryAfterSec ?? 60 });
-  }
+  };
+  const v = verifyLink(token, LINK_PURPOSE);
+  if (!v) return guess(TOKEN_GUESS_LIMIT);
   const db = ro(v.tenantId);
   const us = await db.$queryRaw<{ unitId: string; type: string; settings: unknown }[]>`
     SELECT p."unitId", bu."type"::text AS "type", bu."settings" FROM "TripPassenger" p JOIN "BusinessUnit" bu ON bu."id" = p."unitId" AND bu."tenantId" = p."tenantId"
     WHERE p."id" = ${v.subjectId} AND p."tenantId" = ${v.tenantId}`;
   const urow = us[0];
-  let limit = TOKEN_GUESS_LIMIT;
-  if (urow && urow.type === "TRIPS") {
-    const r = await resolveSettings({ tenantId: v.tenantId }, [K.rate], { unitId: urow.unitId }, now);
-    const x = r[K.rate]?.value;
-    const n = isRec(x) ? x.tokenPerHourPerDevice : undefined;
-    if (typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= TOKEN_GUESS_LIMIT) limit = n;
-  }
-  const rl = await checkRateLimitDb(rlKey, { limit, windowMs: TOKEN_WINDOW_MS });
-  if (!rl.ok) return fail("RATE_LIMITED", { retryAfterSec: rl.retryAfterSec ?? 60 });
-  if (!urow || urow.type !== "TRIPS") return NF();
+  if (!urow || urow.type !== "TRIPS") return guess(TOKEN_GUESS_LIMIT);
+  const r = await resolveSettings({ tenantId: v.tenantId }, [K.rate], { unitId: urow.unitId }, now);
+  const x = r[K.rate]?.value;
+  const n = isRec(x) ? x.tokenPerHourPerDevice : undefined;
+  const limit = typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= TOKEN_GUESS_LIMIT ? n : TOKEN_GUESS_LIMIT;
   const u: Unit = { tenantId: v.tenantId, unitId: urow.unitId, tz: normalizeTimezone(isRec(urow.settings) ? urow.settings.timezone : null) };
   const P = await loadPax(db, u.tenantId, u.unitId, v.subjectId);
-  if (!P) return NF();
+  if (!P) return guess(limit);
   const tokenHash = sha256hex(token);
   const L = activeLink(await latestLinkRow(db, u.tenantId, P.id, sinceOf(P.createdAt)), now);
-  if (!L || L.tokenHash !== tokenHash) return NF();
   const a = parseAnswers(P.answers);
-  if (!bookingOpen(P) || isPurgedAll(a) || now.getTime() >= new Date(P.endsAt).getTime()) return NF();
+  if (!L || L.tokenHash !== tokenHash || !bookingOpen(P) || isPurgedAll(a) || now.getTime() >= new Date(P.endsAt).getTime()) return guess(limit);
+  if (await deviceOverLimit(db, devKey, limit)) return fail("RATE_LIMITED", { retryAfterSec: 60 });
+  const rl = await checkRateLimitDb(`trips:link:${L.id}`, { limit: limit * LINK_USE_FACTOR, windowMs: TOKEN_WINDOW_MS });
+  if (!rl.ok) return fail("RATE_LIMITED", { retryAfterSec: rl.retryAfterSec ?? 60 });
   const cfg = await loadCfg(u, P, now);
   if (isFailure(cfg)) return cfg;
   return { u, P, a, cfg, linkId: L.id, tokenHash, now, locale };
@@ -525,7 +782,7 @@ export async function linkCustomerMayOpenFile(i: { viewerId: string; fileId: str
   }
 }
 
-/** ออกลิงก์ในธุรกรรม: advisory ต่อผู้เดินทาง → seq ถัดไป → แถว link_issued (แฮชเท่านั้น) — token ดิบคืนผู้เรียกครั้งเดียว */
+/** ออกลิงก์ในธุรกรรม: advisory ต่อผู้เดินทาง → seq ถัดไป → แถว link_issued (sha256 ของ token ที่ระบบออกเอง) — token ดิบคืนผู้เรียกครั้งเดียว */
 async function issueLinkInTx(tx: Tx, u: Unit, who: Who, P: PaxRow, now: Date): Promise<{ passengerId: string; token: string; expiresAt: string }> {
   await lockKey(tx, `t08.link:${P.id}`);
   const last = await latestLinkRow(tx, u.tenantId, P.id, sinceOf(P.createdAt));
@@ -554,8 +811,10 @@ async function revokeLinkInTx(tx: Tx, u: Unit, who: Who, P: PaxRow, now: Date): 
 // ═══════════════════════ ผู้เขียน (ลูกค้าผ่านลิงก์ / พนักงาน) ═══════════════════════
 type Writer = { via: "LINK"; tokenHash: string } | { via: "STAFF"; userId: string; m: MembershipCtx };
 const whoOf = (w: Writer): Who => (w.via === "STAFF" ? { kind: "USER", userId: w.userId } : { kind: "SYSTEM" });
-const keyHashOf = (w: Writer, key: string) => sha256hex(w.via === "LINK" ? `pubform:${w.tokenHash}:${key}` : `st:${w.userId}:${key}`);
+const keyHashOf = (w: Writer, key: string) => mac(["trips.t08.key", w.via === "LINK" ? `pubform:${w.tokenHash}` : `st:${w.userId}`, key]);
 const consentVia = (w: Writer): "LINK" | "STAFF_RECORDED" => (w.via === "LINK" ? "LINK" : "STAFF_RECORDED");
+/** อ้างอิงผู้ปกครองแบบมีกุญแจ (audit ไม่มีชื่อ · r1 P3) */
+const guardianRef = (u: Unit, pid: string, g: { name: string; relation: string }) => mac(["trips.t08.guardian", u.tenantId, pid, g.name, g.relation]);
 const healthAad = (u: Unit, pid: string) => `trips.pax.health.v1:${u.tenantId}:${pid}`;
 const docAad = (u: Unit, pid: string) => `trips.pax.doc.v1:${u.tenantId}:${pid}`;
 export function openDocNumber(u: Unit, pid: string, box: string | null): string | null | "LOCKED" {
@@ -569,12 +828,16 @@ export function openHealth(u: Unit, pid: string, h: HealthState | undefined): { 
   if (!o) return "LOCKED";
   return { allergies: typeof o.allergies === "string" ? o.allergies : null, conditions: typeof o.conditions === "string" ? o.conditions : null };
 }
-const unionScopes = (a: readonly ("HEALTH" | "WAIVER")[], b: readonly ("HEALTH" | "WAIVER")[]) => (["HEALTH", "WAIVER"] as const).filter((s) => a.includes(s) || b.includes(s));
+const grantsOf = (g: GuardianConsent | null): Partial<Record<"HEALTH" | "WAIVER", GuardianGrant>> => ({ ...(g?.grants ?? {}) });
+/** ลบไฟล์วัตถุหลัง commit — ล้ม ⇒ แถวถูกทำเครื่องหมายแล้ว งานลบตามอายุลองใหม่ (pdpa.ts ขั้นวัตถุค้าง) */
+async function afterCommitDelete(u: Unit, fileIds: readonly string[], deps?: DeleteDeps): Promise<void> {
+  if (fileIds.length) await deleteObjects(u, fileIds, deps);
+}
 
 type WriteOut = { rev: number; formStatus: string; replayed?: true };
 /**
- * แกนการเขียนแบบฟอร์ม (ลูกค้า §6.2 submit · ร้าน §6.1 update) — ลำดับ: กันซ้ำ → rev → ช่อง (OFF · รูป) → วันปิดรับ (ลูกค้า) → สุขภาพ/ผู้เยาว์ →
- * กุญแจกล่อง → (ปฏิเสธสุขภาพที่เคยให้: ลบไฟล์ MEDICAL นอก tx) → tx: CAS rev → audit/event — 0 แถว ⇒ ผู้ชนะคีย์เดียวกัน = ผลเดิม ไม่งั้น STATE_CONFLICT
+ * แกนการเขียนแบบฟอร์ม (ลูกค้า §6.2 submit · ร้าน §6.1 update) — กันซ้ำ → rev → ช่อง (OFF · รูป) → วันปิดรับ (ลูกค้า) → สุขภาพ/ผู้เยาว์ (r1 P3 P4) → กุญแจกล่อง →
+ * tx: ล็อก t08.doc → CAS rev → (ปฏิเสธ/กลายเป็นผู้เยาว์: ทำเครื่องหมายไฟล์ MEDICAL) → audit/event → commit → ลบวัตถุ (r1 P2)
  */
 async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequest, now: Date, deps?: DeleteDeps): Promise<SellResult<WriteOut>> {
   const db = ro(u.tenantId);
@@ -582,7 +845,7 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
   if (isPurgedAll(a)) return fail("NOT_FOUND", { reason: "PURGED" });
   const spec = cfg.spec;
   const keyHash = keyHashOf(w, req.idempotencyKey);
-  const bodyHash = holdRequestHash({ op: "trips.pax.write.v1", expectedRev: req.expectedRev, fields: req.fields ?? null, health: req.health ?? null, isMinorDeclared: req.isMinorDeclared ?? null, guardian: req.guardian ?? null });
+  const bodyHash = mac({ op: "trips.pax.write.v1", expectedRev: req.expectedRev, fields: req.fields ?? null, health: req.health ?? null, isMinorDeclared: req.isMinorDeclared ?? null, guardian: req.guardian ?? null });
   const replay = (x: Record<string, unknown>): SellResult<WriteOut> =>
     x.bodyHash === bodyHash ? { ok: true, value: { rev: Number(x.rev), formStatus: String(x.formStatus), replayed: true } } : fail("IDEMPOTENCY_CONFLICT");
   const pre = await idemFind(db, u.tenantId, A.updated, P.id, sinceOf(P.createdAt), keyHash);
@@ -598,11 +861,6 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
     const cv = checkFieldValues(req.fields, localYmdOf(now, u.tz));
     if (!cv.ok) return fail("VALIDATION", { fields: cv.fields });
     vals = cv.values;
-    if (typeof vals.phone === "string") {
-      const e164 = phoneE164(vals.phone);
-      if (!e164) return fail("VALIDATION", { fields: ["phone"] });
-      vals.phone = e164;
-    }
   }
   const cur = valuesOf(P, a);
   // ── วันปิดรับข้อมูลเอกสาร (T30 · ลูกค้าเท่านั้น · แก้ค่าเดิมซ้ำได้) ──
@@ -639,10 +897,12 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
   };
   const declaredMinor = req.isMinorDeclared !== undefined ? req.isMinorDeclared : (a.isMinorDeclared ?? null);
   const minor = minorStatus({ dob: nv.dob, declaredMinor, travelYmd: travelYmdOf(P), rule: spec.minor });
-  let guardian = parseGuardian(P.guardianConsent);
+  const g0 = parseGuardian(P.guardianConsent);
+  let grants = grantsOf(g0);
   let health: HealthState | undefined = a.health;
   let consentAudit: AuditVal | null = null;
-  let eraseHealth = false;
+  let eraseCause: "DECLINED" | "BECAME_MINOR" | null = null;
+  let healthGivenNow = false;
 
   // ── สุขภาพ (ม.26 · ม.19 · ม.20) ──
   if (req.health) {
@@ -650,7 +910,7 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
     if (!spec.health.enabled) return fail("VALIDATION", { reason: "HEALTH_NOT_COLLECTED" });
     if (h.declined === true) {
       if (h.consent || h.allergies !== undefined || h.conditions !== undefined) return fail("VALIDATION", { fields: ["health"] });
-      eraseHealth = a.health?.status === "PROVIDED";
+      eraseCause = "DECLINED";
       health = { status: "DECLINED", at: iso(now) };
     } else {
       if (typeof h.conditions === "string" && h.conditions && !spec.health.conditions) return fail("VALIDATION", { reason: "HEALTH_NOT_COLLECTED" });
@@ -668,13 +928,28 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
       health = {
         status: "PROVIDED",
         box: sealIntegrationSecret({ v: 1, allergies, conditions }, healthAad(u, P.id)),
-        consent: { version: HEALTH_CONSENT_V1.version, textHash: HEALTH_CONSENT_V1.hash, at: iso(now), via: consentVia(w), signerRole },
+        consent: { version: HEALTH_CONSENT_V1.version, textHash: HEALTH_CONSENT_V1.hash, locale: h.consent.locale, at: iso(now), via: consentVia(w), signerRole },
       };
-      consentAudit = { passengerId: P.id, scope: "HEALTH", version: HEALTH_CONSENT_V1.version, textHash: HEALTH_CONSENT_V1.hash, signerRole, via: consentVia(w) };
-      if (minor.isMinor && req.guardian) guardian = { v: 1, name: req.guardian.name, relation: req.guardian.relation, at: iso(now), via: consentVia(w), scopes: unionScopes(guardian?.scopes ?? [], ["HEALTH"]) };
+      healthGivenNow = true;
+      consentAudit = { passengerId: P.id, scope: "HEALTH", version: HEALTH_CONSENT_V1.version, textHash: HEALTH_CONSENT_V1.hash, locale: h.consent.locale, signerRole, via: consentVia(w), guardianRef: null };
+      // ผู้ปกครองของขอบเขต HEALTH เท่านั้น (ไม่แตะผู้ลงนาม WAIVER · r1 P3)
+      if (minor.isMinor && req.guardian) {
+        grants = { ...grants, HEALTH: { name: req.guardian.name, relation: req.guardian.relation, at: iso(now), via: consentVia(w), version: HEALTH_CONSENT_V1.version } };
+        consentAudit.guardianRef = guardianRef(u, P.id, req.guardian);
+      }
     }
   }
-  if (!req.health && req.guardian && minor.isMinor) guardian = { v: 1, name: req.guardian.name, relation: req.guardian.relation, at: iso(now), via: consentVia(w), scopes: guardian?.scopes ?? [] };
+  // ผู้ปกครองที่ไม่ได้ให้ความยินยอมขอบเขตใดในคำขอนี้ ⇒ ไม่บันทึก (ไม่เปลี่ยนผู้ให้ความยินยอมเดิม · r1 P3)
+
+  // ── r1 P4: กลายเป็นผู้เยาว์ที่รู้อายุ ขณะสุขภาพ PROVIDED โดย SELF ⇒ ลบแบบถอน รอผู้ปกครอง · เอกสารลงนามโดย SELF ⇒ ต้องลงนามใหม่โดยผู้ปกครอง ──
+  if (!healthGivenNow && minor.known && minor.isMinor && health?.status === "PROVIDED" && health.consent.signerRole === "SELF") {
+    health = { status: "GUARDIAN_REQUIRED", at: iso(now) };
+    eraseCause = "BECAME_MINOR";
+  }
+  const wv = parseWaiver(P.waiverEvidence);
+  const needResign = minor.known && minor.isMinor && wv.kind === "FULL" && wv.e.signer.role === "SELF" && !a.waiverResign;
+  const eraseHealth = eraseCause !== null && a.health?.status === "PROVIDED";
+  const guardian = guardianFromGrants(grants);
 
   // ── เลขเอกสาร (กล่องปิดผนึก) ──
   let docEnc = P.docNumberEnc;
@@ -686,28 +961,19 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
     }
   }
 
-  // ── ปฏิเสธสุขภาพหลังเคยให้ = ลบเหมือนถอน (กล่อง + ไฟล์ MEDICAL · ไฟล์ลบนอก tx ก่อน) ──
-  let medDeleted: string[] = [];
-  if (req.health?.declined === true) {
-    const meds = await liveDocs(db, u, P.id, "MEDICAL");
-    if (meds.length) {
-      const del = await deleteFiles(u, meds, deps);
-      if (del.failed) return fail("BUSY", { reason: "STORAGE_DELETE_FAILED" });
-      medDeleted = del.ok;
-    }
-  }
-
   // ── answers ใหม่ · สถานะ ──
   const fields: Answers["fields"] = {};
   if (nv.finSize) fields.finSize = nv.finSize;
   if (nv.pickupHotel) fields.pickupHotel = nv.pickupHotel;
-  const next: Answers = { v: 1, rev: a.rev + 1, fields };
+  const E = endYmdOf(P, u.tz);
+  const next: Answers = { v: 1, rev: a.rev + 1, fields, retE: E };
   if (health) next.health = health;
   if (declaredMinor !== null) next.isMinorDeclared = declaredMinor;
   if (a.purged) next.purged = a.purged;
-  const missing = missingFields(spec, nv, next);
-  const complete = missing.length === 0;
-  const status = complete ? "SUBMITTED" : P.formStatus === "NEEDS_FIX" ? "NEEDS_FIX" : "PENDING";
+  if (a.waiverResign) next.waiverResign = a.waiverResign;
+  if (needResign) next.waiverResign = { reason: "MINOR", at: iso(now) };
+  const complete = missingFields(spec, nv, next).length === 0;
+  const status = nextFormStatus(P.formStatus, complete);
   if (complete) {
     next.submittedAt = iso(now);
     next.submittedVia = w.via === "LINK" ? "LINK" : "STAFF";
@@ -718,7 +984,7 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
   }
   const transitioned = complete && (P.formStatus === "PENDING" || P.formStatus === "NEEDS_FIX");
   const isMinor = minor.known ? minor.isMinor : P.isMinor;
-  const retainUntil = paxRetainUntil(presentStages(next, { docNumberEnc: docEnc, waiverEvidence: P.waiverEvidence, guardianConsent: guardian }), endYmdOf(P, u.tz), u.tz, cfg.retention);
+  const retainUntil = paxRetainUntil(presentStages(next, { docNumberEnc: docEnc, waiverEvidence: P.waiverEvidence, guardianConsent: guardian }), E, u.tz, cfg.retention);
   const changedNames = [
     ...(req.fields ? (Object.keys(req.fields) as PaxFieldKey[]).filter((k) => req.fields?.[k] !== undefined) : []),
     ...(req.health ? ["health"] : []),
@@ -727,7 +993,8 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
   ].sort();
   const who = whoOf(w);
 
-  const r = await inTx(u, async (tx): Promise<WriteOut> => {
+  const r = await inTx(u, async (tx): Promise<{ out: WriteOut; fileIds: string[] }> => {
+    await lockKey(tx, `t08.doc:${P.id}`);
     const done = await tx.$queryRaw<{ id: string }[]>`
       UPDATE "TripPassenger" SET "fullName" = ${nv.fullName}, "nationality" = ${nv.nationality}, "dob" = ${nv.dob}::date, "sex" = ${nv.sex}, "docType" = ${nv.docType},
         "docNumberEnc" = ${docEnc}, "docLast4" = ${nv.docLast4}, "docExpiry" = ${nv.docExpiry}::date, "phone" = ${nv.phone}, "birthPlace" = ${nv.birthPlace},
@@ -739,35 +1006,29 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
       RETURNING "id"`;
     if (done.length !== 1) {
       const again = await idemFind(tx, u.tenantId, A.updated, P.id, sinceOf(P.createdAt), keyHash);
-      if (again && again.bodyHash === bodyHash) return { rev: Number(again.rev), formStatus: String(again.formStatus), replayed: true };
+      if (again && again.bodyHash === bodyHash) return { out: { rev: Number(again.rev), formStatus: String(again.formStatus), replayed: true }, fileIds: [] };
       if (again) return abort("IDEMPOTENCY_CONFLICT");
       const curRows = await tx.$queryRaw<{ rev: number | null }[]>`
         SELECT COALESCE(("answers"->>'rev')::int, 0) AS "rev" FROM "TripPassenger" WHERE "id" = ${P.id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId}`;
       return abort("STATE_CONFLICT", { rev: curRows[0]?.rev ?? null });
     }
-    await auditTx(tx, u, who, A.updated, "TripPassenger", P.id, {
-      bookingId: P.bookingId,
-      rev: next.rev,
-      formStatus: status,
-      fieldsChanged: changedNames.join(","),
-      keyHash,
-      bodyHash,
-      via: w.via,
-    });
+    await auditTx(tx, u, who, A.updated, "TripPassenger", P.id, { bookingId: P.bookingId, rev: next.rev, formStatus: status, fieldsChanged: changedNames.join(","), keyHash, bodyHash, via: w.via });
     if (consentAudit) await auditTx(tx, u, who, A.consentGiven, "TripPassenger", P.id, consentAudit);
-    if (req.health?.declined === true && (eraseHealth || medDeleted.length)) {
-      if (eraseHealth) {
-        await auditTx(tx, u, who, A.consentWithdrawn, "TripPassenger", P.id, { passengerId: P.id, healthAnswers: true, medicalDocuments: medDeleted.length, via: w.via, cause: "DECLINED" });
-        await emitTx(tx, u, [purgedEvt(`${P.id}:HEALTH_ANSWERS:w${next.rev}`, P.bookingId, P.id, "HEALTH_ANSWERS")]);
-      }
-      await markDocsDeletedInTx(tx, u, who, medDeleted, P.bookingId, now, "DECLINED");
+    // ไฟล์ MEDICAL: ทำเครื่องหมายหลังชนะ CAS (ใต้ t08.doc · อัปโหลดที่มาทีหลังเห็นสุขภาพใหม่แล้วถูกปฏิเสธ)
+    const marked = eraseCause ? await markMedicalInTx(tx, u, who, P.id, P.bookingId, now, eraseCause) : [];
+    if (eraseHealth || marked.length) {
+      await auditTx(tx, u, who, A.consentWithdrawn, "TripPassenger", P.id, { passengerId: P.id, healthAnswers: eraseHealth, medicalDocuments: marked.length, via: w.via, cause: eraseCause ?? "DECLINED" });
+      if (eraseHealth) await emitTx(tx, u, [purgedEvt(`${P.id}:HEALTH_ANSWERS:w${next.rev}`, P.bookingId, P.id, "HEALTH_ANSWERS")]);
     }
+    if (needResign) await auditTx(tx, u, who, A.waiverResign, "TripPassenger", P.id, { passengerId: P.id, reason: "MINOR", templateHash: wv.kind === "FULL" ? wv.e.templateHash : null });
     if (transitioned) {
       await emitTx(tx, u, [{ type: EVT_FORM_COMPLETED, key: `${EVT_FORM_COMPLETED}:${P.id}:${next.rev}`, payload: { bookingId: P.bookingId, passengerId: P.id, kind: "FORM" } }]);
     }
-    return { rev: next.rev, formStatus: status };
+    return { out: { rev: next.rev, formStatus: status }, fileIds: marked.map((m) => m.fileId) };
   });
-  return r;
+  if (!r.ok) return r;
+  await afterCommitDelete(u, r.value.fileIds, deps);
+  return { ok: true, value: r.value.out };
 }
 
 // ═══════════════════════ บริการสาธารณะ (ผู้ถือลิงก์ · §6.2) ═══════════════════════
@@ -844,7 +1105,7 @@ export async function openPassengerForm(pctx: unknown, input: unknown): Promise<
         health: healthViewOf(cfg.spec, a),
         consentText: HEALTH_CONSENT_V1,
         waiver: {
-          status: waiverStatusOf(cfg.spec, P.waiverEvidence, now.getTime(), new Date(P.startsAt).getTime()),
+          status: waiverStatusOf(cfg.spec, P.waiverEvidence, now.getTime(), new Date(P.startsAt).getTime(), { knownMinor: minor.known && minor.isMinor, answers: a }),
           templateHash: cfg.spec.waiver.templateHash,
           template: cfg.spec.waiver.template,
           signedAt: w.kind === "NONE" ? null : w.e.signedAt,
@@ -869,21 +1130,48 @@ export async function submitPassengerForm(pctx: unknown, input: unknown, deps?: 
   });
 }
 
-// ═══════════════════════ เอกสารรับทราบความเสี่ยง (§6.2 · T-SIGN-01) ═══════════════════════
+// ═══════════════════════ เอกสารรับทราบความเสี่ยง (§6.2 · T-SIGN-01 · r1 P5) ═══════════════════════
 type SignOut = { signedAt: string; templateHash: string; documentId: string | null; replayed?: true };
 type Signature = { contentType: string; data: Uint8Array };
+/**
+ * หลักฐานอายุของผู้ลงนาม (r1 P5): dob ⇒ DOB · ไม่มี dob + คำขอประกาศว่าไม่ใช่ผู้เยาว์ (false) ⇒ DECLARED_ADULT ·
+ * ประกาศ/บันทึกว่าเป็นผู้เยาว์ ⇒ DECLARED_MINOR · ไม่มีทั้งคู่ ⇒ UNKNOWN (SELF ⇒ AGE_UNKNOWN · GUARDIAN ลงนามแทนได้)
+ */
+function signerBasis(spec: FormSpec, dob: string | null, stored: boolean | null, req: SignRequest, travelYmd: string): { isMinor: boolean | null; age: number | null; ageBasis: AgeBasis } | Failure {
+  const age = dob ? ageAt(dob, travelYmd) : null;
+  let isMinor: boolean | null;
+  let ageBasis: AgeBasis;
+  if (age !== null) {
+    isMinor = age < spec.minor.minorBelow;
+    ageBasis = "DOB";
+  } else if (req.isMinorDeclared === false) {
+    isMinor = false;
+    ageBasis = "DECLARED_ADULT";
+  } else if ((req.isMinorDeclared ?? stored) === true) {
+    isMinor = true;
+    ageBasis = "DECLARED_MINOR";
+  } else {
+    isMinor = null;
+    ageBasis = "UNKNOWN";
+  }
+  if (req.signerRole === "GUARDIAN" && !req.guardian) return fail("VALIDATION", { reason: "GUARDIAN_REQUIRED" });
+  if (req.signerRole === "SELF" && isMinor === true) return fail("VALIDATION", { reason: "GUARDIAN_REQUIRED" });
+  if (req.signerRole === "SELF" && isMinor === null) return fail("VALIDATION", { reason: "AGE_UNKNOWN" });
+  return { isMinor, age, ageBasis };
+}
 async function signCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: SignRequest, now: Date, sig: Signature | null, deps?: UploadDeps & DeleteDeps): Promise<SellResult<SignOut>> {
   const db = ro(u.tenantId);
   const a = parseAnswers(P.answers);
   if (isPurgedAll(a)) return fail("NOT_FOUND", { reason: "PURGED" });
   const keyHash = keyHashOf(w, req.idempotencyKey);
-  const bodyHash = holdRequestHash({
+  const bodyHash = mac({
     op: "trips.waiver.sign.v1",
     templateHash: req.templateHash,
     locale: req.locale,
     signerName: req.signerName,
     signerRole: req.signerRole,
     guardian: req.guardian ?? null,
+    isMinorDeclared: req.isMinorDeclared ?? null,
     signature: sig ? { contentType: sig.contentType, sha256: sha256hex(sig.data) } : null,
   });
   const replay = (x: Record<string, unknown>): SellResult<SignOut> =>
@@ -895,14 +1183,17 @@ async function signCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: SignReques
   const spec = cfg.spec;
   if (!spec.waiver.required || !spec.waiver.template || !spec.waiver.templateHash) return fail("VALIDATION", { reason: "WAIVER_NOT_REQUIRED" });
   if (req.templateHash !== spec.waiver.templateHash) return fail("VALIDATION", { reason: "TEMPLATE_CHANGED", templateHash: spec.waiver.templateHash });
-  const cw = parseWaiver(P.waiverEvidence);
-  if (cw.kind === "FULL" && cw.e.templateHash === spec.waiver.templateHash) return fail("STATE_CONFLICT", { reason: "WAIVER_ALREADY_SIGNED" });
-  const minor = minorStatus({ dob: ymdOf(P.dob), declaredMinor: a.isMinorDeclared ?? null, travelYmd: travelYmdOf(P), rule: spec.minor });
-  if ((minor.isMinor && req.signerRole !== "GUARDIAN") || (req.signerRole === "GUARDIAN" && !req.guardian)) return fail("VALIDATION", { reason: "GUARDIAN_REQUIRED" });
+  const templateHash = spec.waiver.templateHash;
+  const alreadySigned = (raw: unknown, ans: Answers, isMinorRow: boolean) => {
+    const x = parseWaiver(raw);
+    return x.kind === "FULL" && x.e.templateHash === templateHash && !(x.e.signer.role === "SELF" && (isMinorRow || ans.waiverResign));
+  };
+  if (alreadySigned(P.waiverEvidence, a, P.isMinor)) return fail("STATE_CONFLICT", { reason: "WAIVER_ALREADY_SIGNED" });
+  const pb = signerBasis(spec, ymdOf(P.dob), a.isMinorDeclared ?? null, req, travelYmdOf(P));
+  if (isFailure(pb)) return pb;
   const tpl = spec.waiver.template;
   const locale: "th" | "en" = req.locale === "en" && typeof tpl.en === "string" && tpl.en ? "en" : "th";
   const shown = locale === "en" ? (tpl.en ?? tpl.th) : tpl.th;
-  const templateHash = spec.waiver.templateHash;
   const witnessed = w.via === "STAFF";
 
   // รูปลายเซ็น (พนักงานเซ็นต่อหน้า): ตรวจชนิด/ขนาด → อัปโหลดนอก tx
@@ -933,17 +1224,25 @@ async function signCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: SignReques
       if (again.bodyHash !== bodyHash) return abort("IDEMPOTENCY_CONFLICT");
       return { signedAt: String(again.signedAt), templateHash: String(again.templateHash), documentId: typeof again.documentId === "string" ? again.documentId : null, replayed: true };
     }
-    const lw = parseWaiver(L.waiverEvidence);
-    if (lw.kind === "FULL" && lw.e.templateHash === templateHash) return abort("STATE_CONFLICT", { reason: "WAIVER_ALREADY_SIGNED" });
+    if (alreadySigned(L.waiverEvidence, la, L.isMinor)) return abort("STATE_CONFLICT", { reason: "WAIVER_ALREADY_SIGNED" });
+    // อายุอ่านจากแถวที่ล็อกแล้ว (r1 P9 · ไม่ใช้ค่าที่อ่านก่อน tx)
+    const basis = signerBasis(spec, ymdOf(L.dob), la.isMinorDeclared ?? null, req, travelYmdOf(L));
+    if (isFailure(basis)) return abort(basis.code, basis.details);
     let documentId: string | null = null;
+    const E = endYmdOf(L, u.tz);
     if (fileId) {
       const doc = await tx.tripDocument.create({
-        data: { tenantId: u.tenantId, unitId: u.unitId, passengerId: P.id, kind: "WAIVER", fileId, consent: Prisma.JsonNull, retainUntil: docRetainUntil("WAIVER", endYmdOf(L, u.tz), u.tz, cfg.retention) },
+        data: { tenantId: u.tenantId, unitId: u.unitId, passengerId: P.id, kind: "WAIVER", fileId, consent: { retE: E }, retainUntil: docRetainUntil("WAIVER", E, u.tz, cfg.retention) },
         select: { id: true },
       });
       documentId = doc.id;
       await auditTx(tx, u, who, A.docUploaded, "TripPassenger", P.id, { documentId: doc.id, passengerId: P.id, kind: "WAIVER", bytes: sigBytes, contentType: sigType, via: w.via });
     }
+    const prev = parseWaiver(L.waiverEvidence);
+    const history: WaiverHistoryItem[] =
+      prev.kind === "FULL"
+        ? [{ templateHash: prev.e.templateHash, textHash: prev.e.textHash, signedAt: prev.e.signedAt, method: prev.e.method, signerRole: prev.e.signer.role }, ...(prev.e.previous ?? [])].slice(0, WAIVER_HISTORY_MAX)
+        : [];
     const evidence: WaiverEvidence = {
       v: 1,
       templateHash,
@@ -954,19 +1253,21 @@ async function signCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: SignReques
       method: witnessed ? "STAFF_WITNESSED" : "LINK",
       identityProof: { required: cfg.identityProof, used: witnessed ? "STAFF_WITNESSED" : "LINK_POSSESSION", verified: witnessed },
       signer: { role: req.signerRole, name: req.signerName },
-      minor: { isMinor: minor.isMinor, age: minor.age },
+      minor: { isMinor: basis.isMinor, age: basis.age, ageBasis: basis.ageBasis },
       ...(w.via === "STAFF" ? { staffUserId: w.userId } : {}),
       ...(documentId ? { signatureDocumentId: documentId } : {}),
+      ...(history.length ? { previous: history } : {}),
     };
-    const g0 = parseGuardian(L.guardianConsent);
-    const guardian: GuardianConsent | null =
-      req.signerRole === "GUARDIAN" && req.guardian
-        ? { v: 1, name: req.guardian.name, relation: req.guardian.relation, at: iso(now), via: consentVia(w), scopes: unionScopes(g0?.scopes ?? [], ["WAIVER"]) }
-        : g0;
-    const next: Answers = { ...la, rev: la.rev + 1 };
-    const retainUntil = paxRetainUntil(presentStages(next, { docNumberEnc: L.docNumberEnc, waiverEvidence: evidence, guardianConsent: guardian }), endYmdOf(L, u.tz), u.tz, cfg.retention);
+    // ผู้ปกครองของขอบเขต WAIVER เท่านั้น (r1 P3)
+    let grants = grantsOf(parseGuardian(L.guardianConsent));
+    if (req.signerRole === "GUARDIAN" && req.guardian) grants = { ...grants, WAIVER: { name: req.guardian.name, relation: req.guardian.relation, at: iso(now), via: consentVia(w), version: templateHash } };
+    const guardian = guardianFromGrants(grants);
+    const { waiverResign: _wr, ...rest } = la;
+    const next: Answers = { ...rest, rev: la.rev + 1, retE: E, ...(req.isMinorDeclared !== undefined ? { isMinorDeclared: req.isMinorDeclared } : {}) };
+    const retainUntil = paxRetainUntil(presentStages(next, { docNumberEnc: L.docNumberEnc, waiverEvidence: evidence, guardianConsent: guardian }), E, u.tz, cfg.retention);
+    const isMinorCol = basis.isMinor === null ? L.isMinor : basis.isMinor;
     const done = await tx.$queryRaw<{ id: string }[]>`
-      UPDATE "TripPassenger" SET "waiverEvidence" = ${JSON.stringify(evidence)}::jsonb, "waiverSignedAt" = ${iso(now)}::timestamp,
+      UPDATE "TripPassenger" SET "waiverEvidence" = ${JSON.stringify(evidence)}::jsonb, "waiverSignedAt" = ${iso(now)}::timestamp, "isMinor" = ${isMinorCol},
         "guardianConsent" = ${guardian ? JSON.stringify(guardian) : null}::jsonb, "answers" = ${JSON.stringify(next)}::jsonb,
         "retainUntil" = ${retainUntil ? iso(retainUntil) : null}::timestamp, "updatedAt" = ${iso(now)}::timestamp
       WHERE "id" = ${P.id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND COALESCE(("answers"->>'rev')::int, 0) = ${la.rev}
@@ -978,6 +1279,8 @@ async function signCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: SignReques
       textHash: evidence.textHash,
       method: evidence.method,
       signerRole: req.signerRole,
+      ageBasis: basis.ageBasis,
+      guardianRef: req.signerRole === "GUARDIAN" && req.guardian ? guardianRef(u, P.id, req.guardian) : null,
       signedAt: evidence.signedAt,
       documentId,
       keyHash,
@@ -997,7 +1300,15 @@ export async function signPassengerWaiver(pctx: unknown, input: unknown): Promis
     const L = await openLink(pctx, p.data.token);
     if (isFailure(L)) return L;
     const d = p.data;
-    const r = await signCore(L.u, L.P, L.cfg, { via: "LINK", tokenHash: L.tokenHash }, { idempotencyKey: d.idempotencyKey, templateHash: d.templateHash, locale: d.locale, signerName: d.signerName, signerRole: d.signerRole, ...(d.guardian ? { guardian: d.guardian } : {}) }, L.now, null);
+    const r = await signCore(
+      L.u,
+      L.P,
+      L.cfg,
+      { via: "LINK", tokenHash: L.tokenHash },
+      { idempotencyKey: d.idempotencyKey, templateHash: d.templateHash, locale: d.locale, signerName: d.signerName, signerRole: d.signerRole, ...(d.guardian ? { guardian: d.guardian } : {}), ...(d.isMinorDeclared !== undefined ? { isMinorDeclared: d.isMinorDeclared } : {}) },
+      L.now,
+      null,
+    );
     if (!r.ok) return r;
     return { ok: true, value: { signedAt: r.value.signedAt, templateHash: r.value.templateHash, ...(r.value.replayed ? { replayed: true as const } : {}) } };
   });
@@ -1012,13 +1323,14 @@ function fileCheck(contentTypeRaw: string, data: Uint8Array): { type: (typeof UP
   return { type: t, ext: UPLOAD_EXT[t] };
 }
 type UploadOut = { documentId: string; kind: string; replayed?: true };
+/** อัปโหลด: วัตถุนอก tx → tx: ล็อก t08.doc → ตรวจกันซ้ำ/เพดาน/สุขภาพ (MEDICAL ต้อง PROVIDED ใต้ล็อกเดียวกับการปฏิเสธ/ถอน · r1 P2) → INSERT */
 async function uploadCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: { idempotencyKey: string; kind: string; contentType: string; bytes: Uint8Array }, deps?: UploadDeps & DeleteDeps): Promise<SellResult<UploadOut>> {
   const db = ro(u.tenantId);
   const bytes = req.bytes;
   const a = parseAnswers(P.answers);
   if (isPurgedAll(a)) return fail("NOT_FOUND", { reason: "PURGED" });
   const keyHash = keyHashOf(w, req.idempotencyKey);
-  const bodyHash = holdRequestHash({ op: "trips.doc.upload.v1", kind: req.kind, contentType: req.contentType, bytes: bytes.length, sha256: sha256hex(bytes) });
+  const bodyHash = mac({ op: "trips.doc.upload.v1", kind: req.kind, contentType: req.contentType, bytes: bytes.length, sha256: sha256hex(bytes) });
   const replay = (x: Record<string, unknown>): SellResult<UploadOut> =>
     x.bodyHash === bodyHash ? { ok: true, value: { documentId: String(x.documentId), kind: String(x.kind), replayed: true } } : fail("IDEMPOTENCY_CONFLICT");
   const pre = await idemFind(db, u.tenantId, A.docUploaded, P.id, sinceOf(P.createdAt), keyHash);
@@ -1055,29 +1367,13 @@ async function uploadCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: { idempo
     const n = await tx.$queryRaw<{ n: number }[]>`
       SELECT count(*)::int AS "n" FROM "TripDocument" WHERE "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "passengerId" = ${P.id} AND "kind" = ${req.kind} AND "deletedAt" IS NULL`;
     if ((n[0]?.n ?? 0) >= DOC_LIMIT_PER_KIND) return abort("VALIDATION", { reason: "DOC_LIMIT" });
-    const consent = req.kind === "MEDICAL" && la.health?.status === "PROVIDED" ? { version: la.health.consent.version, textHash: la.health.consent.textHash } : null;
+    const E = endYmdOf(L, u.tz);
+    const consent = req.kind === "MEDICAL" && la.health?.status === "PROVIDED" ? { version: la.health.consent.version, textHash: la.health.consent.textHash, retE: E } : { retE: E };
     const doc = await tx.tripDocument.create({
-      data: {
-        tenantId: u.tenantId,
-        unitId: u.unitId,
-        passengerId: P.id,
-        kind: req.kind,
-        fileId,
-        consent: consent ? { version: consent.version, textHash: consent.textHash } : Prisma.JsonNull,
-        retainUntil: docRetainUntil(req.kind, endYmdOf(L, u.tz), u.tz, cfg.retention),
-      },
+      data: { tenantId: u.tenantId, unitId: u.unitId, passengerId: P.id, kind: req.kind, fileId, consent, retainUntil: docRetainUntil(req.kind, E, u.tz, cfg.retention) },
       select: { id: true },
     });
-    await auditTx(tx, u, who, A.docUploaded, "TripPassenger", P.id, {
-      documentId: doc.id,
-      passengerId: P.id,
-      kind: req.kind,
-      bytes: bytes.length,
-      contentType: chk.type,
-      keyHash,
-      bodyHash,
-      via: w.via,
-    });
+    await auditTx(tx, u, who, A.docUploaded, "TripPassenger", P.id, { documentId: doc.id, passengerId: P.id, kind: req.kind, bytes: bytes.length, contentType: chk.type, keyHash, bodyHash, via: w.via });
     return { documentId: doc.id, kind: req.kind };
   });
   if (!r.ok || r.value.replayed) await deleteFileAsset({ tenantId: u.tenantId }, fileId, deps?.del ? { del: deps.del } : undefined);
@@ -1094,9 +1390,10 @@ export async function uploadPassengerDocument(pctx: unknown, input: unknown, dep
   });
 }
 
-// ═══════════════════════ ถอนความยินยอม (ม.19 วรรคห้า · Q13 ลบทันที) ═══════════════════════
+// ═══════════════════════ ถอนความยินยอม (ม.19 วรรคห้า · Q13 ลบทันที · r1 P2) ═══════════════════════
 type WithdrawOut = { effects: { healthAnswers: boolean; medicalDocuments: number }; done: boolean; replayed?: true };
-async function withdrawCore(u: Unit, P: PaxRow, w: Writer, req: { idempotencyKey: string; mode: "PREVIEW" | "EXECUTE" }, now: Date, deps?: DeleteDeps): Promise<SellResult<WithdrawOut>> {
+/** ล็อก t08.doc → แถว FOR UPDATE → กันซ้ำ → CAS rev (WITHDRAWN + สถานะแบบฟอร์มใหม่) → ทำเครื่องหมายไฟล์ MEDICAL → commit → ลบวัตถุ */
+async function withdrawCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: { idempotencyKey: string; mode: "PREVIEW" | "EXECUTE" }, now: Date, deps?: DeleteDeps): Promise<SellResult<WithdrawOut>> {
   const db = ro(u.tenantId);
   const a = parseAnswers(P.answers);
   if (isPurgedAll(a)) return fail("NOT_FOUND", { reason: "PURGED" });
@@ -1105,50 +1402,47 @@ async function withdrawCore(u: Unit, P: PaxRow, w: Writer, req: { idempotencyKey
     return { ok: true, value: { effects: { healthAnswers: a.health?.status === "PROVIDED", medicalDocuments: meds.length }, done: false } };
   }
   const keyHash = keyHashOf(w, req.idempotencyKey);
-  const bodyHash = holdRequestHash({ op: "trips.consent.withdraw.v1", scope: "HEALTH" });
+  const bodyHash = mac({ op: "trips.consent.withdraw.v1", scope: "HEALTH" });
   const replay = (x: Record<string, unknown>): SellResult<WithdrawOut> =>
     x.bodyHash === bodyHash ? { ok: true, value: { effects: { healthAnswers: x.healthAnswers === true, medicalDocuments: Number(x.medicalDocuments) || 0 }, done: true, replayed: true } } : fail("IDEMPOTENCY_CONFLICT");
   const pre = await idemFind(db, u.tenantId, A.consentWithdrawn, P.id, sinceOf(P.createdAt), keyHash);
   if (pre) return replay(pre);
   const who = whoOf(w);
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const meds = await liveDocs(db, u, P.id, "MEDICAL");
-    const del = await deleteFiles(u, meds, deps);
-    if (del.failed) return fail("BUSY", { reason: "STORAGE_DELETE_FAILED" });
-    const deleted = new Set(del.ok);
-    const r = await inTx(u, async (tx): Promise<WithdrawOut | "RETRY"> => {
-      await lockKey(tx, `t08.doc:${P.id}`);
-      const L = await loadPax(tx, u.tenantId, u.unitId, P.id, "UPDATE");
-      if (!L) return abort("NOT_FOUND");
-      const again = await idemFind(tx, u.tenantId, A.consentWithdrawn, P.id, sinceOf(P.createdAt), keyHash);
-      if (again) {
-        if (again.bodyHash !== bodyHash) return abort("IDEMPOTENCY_CONFLICT");
-        return { effects: { healthAnswers: again.healthAnswers === true, medicalDocuments: Number(again.medicalDocuments) || 0 }, done: true, replayed: true };
-      }
-      const la = parseAnswers(L.answers);
-      if (isPurgedAll(la)) return abort("NOT_FOUND", { reason: "PURGED" });
-      const live = await liveDocs(tx, u, P.id, "MEDICAL");
-      if (live.some((d) => !deleted.has(d.id))) return "RETRY";
-      const hadHealth = la.health?.status === "PROVIDED";
-      let rev = la.rev;
-      if (hadHealth) {
-        const next: Answers = { ...la, rev: la.rev + 1, health: { status: "WITHDRAWN", at: iso(now) } };
-        const done = await tx.$queryRaw<{ id: string }[]>`
-          UPDATE "TripPassenger" SET "answers" = ${JSON.stringify(next)}::jsonb, "updatedAt" = ${iso(now)}::timestamp
-          WHERE "id" = ${P.id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND COALESCE(("answers"->>'rev')::int, 0) = ${la.rev}
-          RETURNING "id"`;
-        if (done.length !== 1) return abort("STATE_CONFLICT", { rev: la.rev });
-        rev = next.rev;
-      }
-      const marked = await markDocsDeletedInTx(tx, u, who, [...deleted], P.bookingId, now, "WITHDRAWN");
-      await auditTx(tx, u, who, A.consentWithdrawn, "TripPassenger", P.id, { passengerId: P.id, healthAnswers: hadHealth, medicalDocuments: marked.length, keyHash, bodyHash, via: w.via });
-      if (hadHealth) await emitTx(tx, u, [purgedEvt(`${P.id}:HEALTH_ANSWERS:w${rev}`, P.bookingId, P.id, "HEALTH_ANSWERS")]);
-      return { effects: { healthAnswers: hadHealth, medicalDocuments: marked.length }, done: true };
-    });
-    if (!r.ok) return r;
-    if (r.value !== "RETRY") return { ok: true, value: r.value };
-  }
-  return fail("BUSY");
+  const r = await inTx(u, async (tx): Promise<{ out: WithdrawOut; fileIds: string[] }> => {
+    await lockKey(tx, `t08.doc:${P.id}`);
+    const L = await loadPax(tx, u.tenantId, u.unitId, P.id, "UPDATE");
+    if (!L) return abort("NOT_FOUND");
+    const again = await idemFind(tx, u.tenantId, A.consentWithdrawn, P.id, sinceOf(P.createdAt), keyHash);
+    if (again) {
+      if (again.bodyHash !== bodyHash) return abort("IDEMPOTENCY_CONFLICT");
+      return { out: { effects: { healthAnswers: again.healthAnswers === true, medicalDocuments: Number(again.medicalDocuments) || 0 }, done: true, replayed: true }, fileIds: [] };
+    }
+    const la = parseAnswers(L.answers);
+    if (isPurgedAll(la)) return abort("NOT_FOUND", { reason: "PURGED" });
+    const hadHealth = la.health?.status === "PROVIDED";
+    let rev = la.rev;
+    if (hadHealth) {
+      const next: Answers = { ...la, rev: la.rev + 1, health: { status: "WITHDRAWN", at: iso(now) } };
+      const complete = missingFields(cfg.spec, valuesOf(L, next), next).length === 0;
+      const status = complete ? L.formStatus : nextFormStatus(L.formStatus, false);
+      const E = endYmdOf(L, u.tz);
+      const retainUntil = paxRetainUntil(presentStages(next, { docNumberEnc: L.docNumberEnc, waiverEvidence: L.waiverEvidence, guardianConsent: L.guardianConsent }), E, u.tz, cfg.retention);
+      const done = await tx.$queryRaw<{ id: string }[]>`
+        UPDATE "TripPassenger" SET "answers" = ${JSON.stringify({ ...next, retE: E })}::jsonb, "formStatus" = ${status},
+          "retainUntil" = ${retainUntil ? iso(retainUntil) : null}::timestamp, "updatedAt" = ${iso(now)}::timestamp
+        WHERE "id" = ${P.id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND COALESCE(("answers"->>'rev')::int, 0) = ${la.rev}
+        RETURNING "id"`;
+      if (done.length !== 1) return abort("STATE_CONFLICT", { rev: la.rev });
+      rev = next.rev;
+    }
+    const marked = await markMedicalInTx(tx, u, who, P.id, P.bookingId, now, "WITHDRAWN");
+    await auditTx(tx, u, who, A.consentWithdrawn, "TripPassenger", P.id, { passengerId: P.id, healthAnswers: hadHealth, medicalDocuments: marked.length, keyHash, bodyHash, via: w.via });
+    if (hadHealth) await emitTx(tx, u, [purgedEvt(`${P.id}:HEALTH_ANSWERS:w${rev}`, P.bookingId, P.id, "HEALTH_ANSWERS")]);
+    return { out: { effects: { healthAnswers: hadHealth, medicalDocuments: marked.length }, done: true }, fileIds: marked.map((m) => m.fileId) };
+  });
+  if (!r.ok) return r;
+  await afterCommitDelete(u, r.value.fileIds, deps);
+  return { ok: true, value: r.value.out };
 }
 
 export async function withdrawHealthConsent(pctx: unknown, input: unknown, deps?: { del?: DeleteDeps["del"] }): Promise<SellResult<WithdrawOut>> {
@@ -1157,7 +1451,7 @@ export async function withdrawHealthConsent(pctx: unknown, input: unknown, deps?
     if (!p.success) return invalid(p.error);
     const L = await openLink(pctx, p.data.token);
     if (isFailure(L)) return L;
-    return withdrawCore(L.u, L.P, { via: "LINK", tokenHash: L.tokenHash }, { idempotencyKey: p.data.idempotencyKey, mode: p.data.mode }, L.now, deps?.del ? { del: deps.del } : undefined);
+    return withdrawCore(L.u, L.P, L.cfg, { via: "LINK", tokenHash: L.tokenHash }, { idempotencyKey: p.data.idempotencyKey, mode: p.data.mode }, L.now, deps?.del ? { del: deps.del } : undefined);
   });
 }
 
@@ -1169,7 +1463,6 @@ export async function customerDocumentUrl(pctx: unknown, input: unknown): Promis
     const L = await openLink(pctx, p.data.token);
     if (isFailure(L)) return L;
     const { u, P, now } = L;
-    if (!serverKeyOk()) return fail("BUSY", { reason: "SERVER_KEY_MISSING" });
     const rows = await ro(u.tenantId).$queryRaw<DocRow[]>`
       SELECT "id", "passengerId", "kind", "fileId", "retainUntil", "deletedAt", "createdAt" FROM "TripDocument"
       WHERE "id" = ${p.data.documentId} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "passengerId" = ${P.id}`;
@@ -1255,10 +1548,12 @@ export async function getTripPassengers(ctx: unknown, input: unknown): Promise<S
           WHERE "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} AND "passengerId" = ANY(${ids}::text[]) ORDER BY "createdAt", "id"`
       : [];
     const since = rows.length ? sinceOf(new Date(Math.min(...rows.map((r) => new Date(r.createdAt).getTime())))) : s.now;
+    const until = new Date(Date.now() + IDEM_SKEW_MS);
     const links = ids.length
       ? await db.$queryRaw<(LinkRow & { targetId: string })[]>`
           SELECT "id", "action", "after", "createdAt", "targetId" FROM "AuditLog"
-          WHERE "tenantId" = ${s.tenantId} AND "createdAt" >= ${iso(since)}::timestamp AND "targetId" = ANY(${ids}::text[]) AND "action" IN (${A.linkIssued}, ${A.linkRevoked})`
+          WHERE "tenantId" = ${s.tenantId} AND "createdAt" >= ${iso(since)}::timestamp AND "createdAt" <= ${iso(until)}::timestamp
+            AND "targetId" = ANY(${ids}::text[]) AND "action" IN (${A.linkIssued}, ${A.linkRevoked})`
       : [];
     const seqOf = (r: LinkRow) => {
       const x = linkAfter(r).seq;
@@ -1277,11 +1572,12 @@ export async function getTripPassengers(ctx: unknown, input: unknown): Promise<S
       const act = activeLink(last, s.now);
       const issued = mine.find((x) => x.action === A.linkIssued) ?? null;
       const ia = linkAfter(issued);
-      let docNumber: string | null | undefined;
+      let docNumber: string | null = null;
       if (unmasked) {
         const n = openDocNumber(s, r.id, r.docNumberEnc);
-        docNumber = n === "LOCKED" ? null : n;
-        if (typeof n === "string" && n !== "LOCKED") revealed++;
+        if (n === "LOCKED") return fail("BUSY", { reason: "SECRET_KEY_MISSING" });
+        docNumber = n;
+        if (n !== null) revealed++;
       }
       out.push({
         id: r.id,
@@ -1294,7 +1590,7 @@ export async function getTripPassengers(ctx: unknown, input: unknown): Promise<S
         sex: v.sex,
         docType: v.docType,
         docMasked: maskDoc(v.docLast4),
-        ...(unmasked ? { docNumber: docNumber ?? null } : {}),
+        ...(unmasked ? { docNumber } : {}),
         docExpiry: v.docExpiry,
         phone: v.phone,
         birthPlace: v.birthPlace,
@@ -1309,7 +1605,7 @@ export async function getTripPassengers(ctx: unknown, input: unknown): Promise<S
         missing: missingFields(cfg.spec, v, a),
         fixReason: a.fixReason ?? null,
         waiver: {
-          status: waiverStatusOf(cfg.spec, r.waiverEvidence, s.now.getTime(), new Date(r.startsAt).getTime()),
+          status: waiverStatusOf(cfg.spec, r.waiverEvidence, s.now.getTime(), new Date(r.startsAt).getTime(), { knownMinor: r.isMinor, answers: a }),
           signedAt: w.kind === "NONE" ? (r.waiverSignedAt ? iso(new Date(r.waiverSignedAt)) : null) : w.e.signedAt,
           method: w.kind === "NONE" ? null : w.e.method,
           identityVerified: w.kind === "FULL" ? w.e.identityProof.verified : false,
@@ -1331,7 +1627,7 @@ export async function getTripPassengers(ctx: unknown, input: unknown): Promise<S
       formComplete: out.filter((x) => x.formStatus === "SUBMITTED" || x.formStatus === "VERIFIED").length,
       waiverRequired: cfg.spec.waiver.required ? out.length : 0,
       waiverSigned: out.filter((x) => x.waiver.status === "SIGNED").length,
-      healthMissing: out.filter((x) => x.health === "MISSING").length,
+      healthMissing: out.filter((x) => x.health === "MISSING" || x.health === "GUARDIAN_REQUIRED").length,
     };
     return { ok: true, value: { bookingId: b.id, passengers: out, summary } };
   });
@@ -1377,6 +1673,7 @@ export async function updateTripPassenger(ctx: unknown, input: unknown, deps?: {
   return safely("updateTripPassenger", ctx, async () => {
     const p = updateSchema.safeParse(input);
     if (!p.success) return invalid(p.error);
+    if (!serverKeyOk()) return KEY_MISSING();
     const x = await staffPax(ctx, P_EDIT, p.data.passengerId);
     if (isFailure(x)) return x;
     if (p.data.health && !sensitiveOk(x.s, "trips.passenger.health")) return SENSITIVE();
@@ -1422,7 +1719,7 @@ export async function issuePassengerFormLink(ctx: unknown, input: unknown): Prom
   return safely("issuePassengerFormLink", ctx, async () => {
     const p = passengerIdSchema.safeParse(input);
     if (!p.success) return invalid(p.error);
-    if (!serverKeyOk()) return fail("BUSY", { reason: "SERVER_KEY_MISSING" });
+    if (!serverKeyOk()) return KEY_MISSING();
     const x = await staffPax(ctx, P_EDIT, p.data.passengerId);
     if (isFailure(x)) return x;
     const bad = await linkable(x);
@@ -1435,7 +1732,7 @@ export async function issueBookingFormLinks(ctx: unknown, input: unknown): Promi
   return safely("issueBookingFormLinks", ctx, async () => {
     const p = bookingIdSchema.safeParse(input);
     if (!p.success) return invalid(p.error);
-    if (!serverKeyOk()) return fail("BUSY", { reason: "SERVER_KEY_MISSING" });
+    if (!serverKeyOk()) return KEY_MISSING();
     const s = await staffGate(ctx, P_EDIT);
     if (isFailure(s)) return s;
     const rows = await loadBookingPax(ro(s.tenantId), s, p.data.bookingId);
@@ -1469,20 +1766,20 @@ export async function recordWitnessedWaiver(ctx: unknown, input: unknown, deps?:
   return safely("recordWitnessedWaiver", ctx, async () => {
     const p = witnessedSchema.safeParse(input);
     if (!p.success) return invalid(p.error);
+    if (!serverKeyOk()) return KEY_MISSING();
     const x = await staffPax(ctx, P_EDIT, p.data.passengerId);
     if (isFailure(x)) return x;
     const d = p.data;
-    const r = await signCore(
+    return signCore(
       x.s,
       x.P,
       x.cfg,
       { via: "STAFF", userId: x.s.userId, m: x.s.m },
-      { idempotencyKey: d.idempotencyKey, templateHash: d.templateHash, locale: d.locale, signerName: d.signerName, signerRole: d.signerRole, ...(d.guardian ? { guardian: d.guardian } : {}) },
+      { idempotencyKey: d.idempotencyKey, templateHash: d.templateHash, locale: d.locale, signerName: d.signerName, signerRole: d.signerRole, ...(d.guardian ? { guardian: d.guardian } : {}), ...(d.isMinorDeclared !== undefined ? { isMinorDeclared: d.isMinorDeclared } : {}) },
       x.s.now,
       d.signatureImage ? { contentType: d.signatureImage.contentType, data: d.signatureImage.data } : null,
       deps,
     );
-    return r;
   });
 }
 
@@ -1490,6 +1787,7 @@ export async function uploadPassengerDocumentStaff(ctx: unknown, input: unknown,
   return safely("uploadPassengerDocumentStaff", ctx, async () => {
     const p = uploadStaffSchema.safeParse(input);
     if (!p.success) return invalid(p.error);
+    if (!serverKeyOk()) return KEY_MISSING();
     const x = await staffPax(ctx, P_EDIT, p.data.passengerId);
     if (isFailure(x)) return x;
     if (p.data.kind === "MEDICAL" && !sensitiveOk(x.s, "trips.passenger.health")) return SENSITIVE();
@@ -1504,7 +1802,7 @@ export async function passengerDocumentUrl(ctx: unknown, input: unknown): Promis
     if (!p.success) return invalid(p.error);
     const s = await staffGate(ctx, P_VIEW);
     if (isFailure(s)) return s;
-    if (!serverKeyOk()) return fail("BUSY", { reason: "SERVER_KEY_MISSING" });
+    if (!serverKeyOk()) return KEY_MISSING();
     const r = await inTx(s, async (tx) => {
       const rows = await tx.$queryRaw<DocRow[]>`
         SELECT "id", "passengerId", "kind", "fileId", "retainUntil", "deletedAt", "createdAt" FROM "TripDocument"
@@ -1541,7 +1839,7 @@ export async function revealPassengerData(ctx: unknown, input: unknown): Promise
       if (n === "LOCKED") return fail("BUSY", { reason: "SECRET_KEY_MISSING" });
       value = { docNumber: n };
     } else {
-      if (a.health?.status === "PURGED" || a.health?.status === "WITHDRAWN") return fail("NOT_FOUND", { reason: "PURGED" });
+      if (a.health && a.health.status !== "PROVIDED" && a.health.status !== "DECLINED") return fail("NOT_FOUND", { reason: "PURGED" });
       const h = openHealth(s, P.id, a.health);
       if (h === "LOCKED") return fail("BUSY", { reason: "SECRET_KEY_MISSING" });
       value = { health: h ?? { allergies: null, conditions: null } };
@@ -1556,10 +1854,10 @@ export async function withdrawHealthConsentStaff(ctx: unknown, input: unknown, d
   return safely("withdrawHealthConsentStaff", ctx, async () => {
     const p = withdrawStaffSchema.safeParse(input);
     if (!p.success) return invalid(p.error);
+    if (!serverKeyOk()) return KEY_MISSING();
     const x = await staffPax(ctx, P_EDIT, p.data.passengerId);
     if (isFailure(x)) return x;
-    return withdrawCore(x.s, x.P, { via: "STAFF", userId: x.s.userId, m: x.s.m }, { idempotencyKey: p.data.idempotencyKey, mode: p.data.mode }, x.s.now, deps?.del ? { del: deps.del } : undefined);
+    return withdrawCore(x.s, x.P, x.cfg, { via: "STAFF", userId: x.s.userId, m: x.s.m }, { idempotencyKey: p.data.idempotencyKey, mode: p.data.mode }, x.s.now, deps?.del ? { del: deps.del } : undefined);
   });
 }
-
 // ── /T0.8 passengers ──

@@ -349,10 +349,9 @@ export {
   maskDoc,
   maskDob,
   retentionDueYmd,
-  purgeInstant,
   canSeeSensitive,
 } from "./passengers-core";
-export type { PaxFieldKey, FieldReq, FormSpec, PublicFormCtx, Purpose as TripPassengerPurpose, HealthView as TripPassengerHealthView } from "./passengers-core";
+export type { PaxFieldKey, FieldReq, FormSpec, Purpose as TripPassengerPurpose, HealthView as TripPassengerHealthView } from "./passengers-core";
 export {
   getTripPassengers,
   ensurePassengerSlots,
@@ -374,8 +373,9 @@ export {
   customerDocumentUrl,
   linkCustomerMayOpenFile,
   passengersUnexpectedCount,
+  purgeInstant,
 } from "./passengers";
-export type { PassengerDTO, PublicFormView } from "./passengers";
+export type { PassengerDTO, PublicFormView, PublicFormCtx } from "./passengers";
 export { purgeTripPersonalDataForUnit, recordPdpaRequest, listPdpaRequests, resolvePdpaRequest, exportPassengerData } from "./pdpa";
 export type { PdpaRequestItem, PurgeUnitResult } from "./pdpa";
 export { runPdpaPurge } from "./jobs";
