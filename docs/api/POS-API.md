@@ -95,6 +95,7 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 | `unprocessable` | 422 | The request was understood but cannot be completed as asked. | Read `message_en` and `message_th`; the Thai message is safe to show to the shop owner. |
 | `upstream_unavailable` | 503 | The POS is busy saving another change for the shop, or an external service is not reachable. Nothing was written. | Retry with the same `Idempotency-Key` shortly. |
 | `idempotency_outcome_unknown` | 409 | A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. | Read the record (for a sale: `GET /sales?unitId=...&date=...`). If it does not exist, send the request again with a NEW `Idempotency-Key`. |
+| `legal_ack_required` | 409 | The action has legal warnings that a person must read and accept first. Nothing was written. `error.warnings[]` lists code, messageTh, citation, tag and checkedAt. | Show the warnings to the user; if they accept, resend with `acknowledge` listing the codes (same `Idempotency-Key` is fine). |
 | `internal` | 500 | The POS had an unexpected problem (POS only). | Retry; if it keeps failing, report the `requestId`. |
 
 ### POS refusal reasons

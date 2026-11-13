@@ -11,6 +11,7 @@ import type {
 } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, mc, writeAudit } from "./access";
+import { ackCodesOf } from "./legal-gate";
 import { isEntityKind, loadBookLegal, saveBookTax } from "./legal-values";
 import {
   createDocument,
@@ -155,14 +156,15 @@ export async function issueDocumentAction(formData: FormData) {
   const id = str(formData, "id");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.doc.issue");
-  const res = await issueDocument(tenantId, systemId, id);
+  // T0.4 — รหัสคำเตือนกฎหมายที่ผู้ใช้ติ๊กยืนยันในฟอร์ม (LegalWarnings ackName="ack")
+  const res = await issueDocument(tenantId, systemId, id, { ack: { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" } });
   await writeAudit({
     tenantId,
     actorId: userId,
     action: "account.doc.issue",
     targetType: "AccountDocument",
     targetId: id,
-    after: res.ok ? { docNo: res.docNo } : { error: res.reason },
+    after: res.ok ? { docNo: res.docNo } : { error: res.reason, ...(res.legal ? { legal: res.legal.warnings.map((w) => w.code) } : {}) },
   });
   const path = `${docPath(systemId, docType)}/${id}`;
   revalidatePath(path);

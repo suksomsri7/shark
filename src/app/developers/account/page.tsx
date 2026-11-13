@@ -43,6 +43,7 @@ const ERROR_CODE_SUMMARY: Record<ApiErrorCode, string> = {
   idempotency_conflict: "The same Idempotency-Key was reused with a different body.",
   idempotency_in_progress: "A request with this key is still running.",
   idempotency_outcome_unknown: "The write was cut by a temporary failure after it started; check whether it took effect, then retry with a new key.",
+  legal_ack_required: "The action has legal warnings a person must accept first; nothing was written. Show error.warnings, then resend with acknowledge listing the codes.",
   confirm_required: "A danger operation was called without confirm: true.",
   customer_session_required: "A member self-service operation was called with a shop API key (member module only).",
   customer_scope: "A customer session called a shop operation (member module only).",

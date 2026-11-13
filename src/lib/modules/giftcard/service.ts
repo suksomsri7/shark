@@ -23,6 +23,8 @@ import * as account from "@/lib/modules/account";
 import * as pos from "@/lib/modules/pos";
 import { hasMemberPerm, memberRefs, type MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { recordLegalAckInTx } from "@/lib/core/legal-ack";
+import { LegalAckRequiredError, legalWarning, unacknowledged } from "@/lib/core/settings/legal/warnings";
 import {
   GiftCardForbiddenError,
   GiftCardInputError,
@@ -44,8 +46,14 @@ export type GiftCardCtx = {
 
 // ───────────────────────── ค่าคงที่ของกติกา (§11.6) ─────────────────────────
 
-/** หมดอายุขั้นต่ำตามกฎหมาย — ร้านตั้งสั้นกว่านี้ไม่ได้ */
-export const GIFTCARD_MIN_EXPIRY_MONTHS = 12;
+/**
+ * อายุบัตรค่าเริ่มต้นของระบบ (เดือน) — T0.4: เดิมเขียนว่า "ขั้นต่ำตามกฎหมาย" แล้วบล็อก แต่ skill ไม่พบกฎหมายกำหนดขั้นต่ำ
+ *   (consumer §4: บัตรกำนัลไม่อยู่ในธุรกิจควบคุมสัญญา สคบ. — อายุบัตร = ค่าตั้งของร้าน ใต้ พ.ร.บ.ข้อสัญญาที่ไม่เป็นธรรม ม.4)
+ *   ⇒ ร้านตั้งสั้นกว่านี้ได้หลังกดยืนยันคำเตือน `GIFTCARD_EXPIRY_BELOW_DEFAULT` (บันทึกผู้ยืนยันใน AuditLog)
+ */
+export const GIFTCARD_DEFAULT_EXPIRY_MONTHS = 12;
+/** @deprecated ชื่อเดิม (ไม่ใช่ขั้นต่ำตามกฎหมาย) — ใช้ GIFTCARD_DEFAULT_EXPIRY_MONTHS */
+export const GIFTCARD_MIN_EXPIRY_MONTHS = GIFTCARD_DEFAULT_EXPIRY_MONTHS;
 /** ใส่ PIN ผิดกี่ครั้งจึงระงับ */
 export const GIFTCARD_PIN_MAX_FAIL = 5;
 /** ระงับนานกี่นาทีเมื่อ PIN ผิดครบ */
@@ -174,16 +182,21 @@ export async function setSettings(
   ctx: GiftCardCtx,
   actor: MemberActor,
   patch: Partial<GiftCardSettingsDto>,
+  opts: { ack?: readonly string[] | null } = {},
 ): Promise<GiftCardSettingsDto> {
   assertManage(actor);
   const current = await getSettings(ctx);
   const next: GiftCardSettingsDto = { ...current, ...patch, denominations: [...(patch.denominations ?? current.denominations)] };
 
-  if (!Number.isInteger(next.expiryMonths) || next.expiryMonths < GIFTCARD_MIN_EXPIRY_MONTHS) {
-    throw new GiftCardInputError(
-      `อายุบัตรกำนัลต้องไม่ต่ำกว่า ${GIFTCARD_MIN_EXPIRY_MONTHS} เดือน (ขั้นต่ำตามกฎหมาย) — ตั้งค่าใหม่อีกครั้ง`,
-    );
+  if (!Number.isInteger(next.expiryMonths) || next.expiryMonths < 1) {
+    throw new GiftCardInputError("อายุบัตรกำนัลต้องเป็นจำนวนเดือนเต็มตั้งแต่ 1 เดือนขึ้นไป — ตั้งค่าใหม่อีกครั้ง");
   }
+  // T0.4 ▸ อายุสั้นกว่าค่าเริ่มต้น = คำเตือน (ไม่บล็อก) · เตือนเฉพาะตอน "เปลี่ยน" อายุบัตรลงมาต่ำกว่าค่าเริ่ม (แก้ช่องอื่นไม่ต้องยืนยันซ้ำ) ◂
+  const legal =
+    patch.expiryMonths !== undefined && next.expiryMonths !== current.expiryMonths && next.expiryMonths < GIFTCARD_DEFAULT_EXPIRY_MONTHS
+      ? [legalWarning("GIFTCARD_EXPIRY_BELOW_DEFAULT", { months: next.expiryMonths, default: GIFTCARD_DEFAULT_EXPIRY_MONTHS })]
+      : [];
+  if (unacknowledged(legal, opts.ack).length > 0) throw new LegalAckRequiredError(legal);
   if (!Array.isArray(next.denominations) || next.denominations.some((d) => !Number.isInteger(d) || d <= 0)) {
     throw new GiftCardInputError("มูลค่าบัตรที่ตั้งไว้ต้องเป็นจำนวนเงินที่มากกว่า 0 บาททุกช่อง — แก้ค่าที่ผิดแล้วบันทึกใหม่");
   }
@@ -196,10 +209,24 @@ export async function setSettings(
     transferable: next.transferable,
     reloadable: next.reloadable,
   };
-  await prisma.giftCardSettings.upsert({
-    where: { systemId: ctx.systemId },
-    create: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...data },
-    update: data,
+  await prisma.$transaction(async (tx) => {
+    await tx.giftCardSettings.upsert({
+      where: { systemId: ctx.systemId },
+      create: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...data },
+      update: data,
+    });
+    await recordLegalAckInTx(tx, {
+      tenantId: ctx.tenantId,
+      ack: {
+        codes: opts.ack ?? [],
+        actorId: actor.apiRole ? (actor.keyId ?? null) : actor.userId,
+        actorType: actor.apiRole ? "API_KEY" : "USER",
+      },
+      op: "giftcard.settings.update",
+      targetType: "GiftCardSettings",
+      targetId: ctx.systemId,
+      warnings: legal,
+    });
   });
   return next;
 }
@@ -448,7 +475,7 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
     );
   }
 
-  // อายุบัตร: ไม่ระบุ = ตามที่ร้านตั้ง · ระบุเองต้องไม่สั้นกว่านั้น (กติกาขั้นต่ำตามกฎหมาย §11.6)
+  // อายุบัตร: ไม่ระบุ = ตามที่ร้านตั้ง · ระบุเองต้องไม่สั้นกว่านั้น (กติกาของร้านเอง §11.6 — T0.4: ไม่ใช่ขั้นต่ำตามกฎหมาย)
   const now = new Date();
   const minExpiry = addMonths(now, settings.expiryMonths);
   const wanted = toDate(input.expiresAt);

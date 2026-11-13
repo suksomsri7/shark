@@ -47,6 +47,7 @@ const ERROR_CODE_TH: Record<ApiErrorCode, string> = {
   idempotency_conflict: "ใช้ Idempotency-Key เดิมกับเนื้อคำขอที่ต่างออกไป",
   idempotency_in_progress: "คำขอที่ใช้คีย์กันซ้ำใบนี้ยังทำงานค้างอยู่",
   idempotency_outcome_unknown: "คำขอเขียนที่ใช้คีย์นี้สะดุดกลางทาง ไม่รู้ว่าบันทึกแล้วหรือยัง — ตรวจรายการก่อน แล้วส่งใหม่ด้วยคีย์ใหม่",
+  legal_ack_required: "มีคำเตือนตามกฎหมายที่ต้องกดยืนยันก่อน (ยังไม่ได้บันทึกอะไร) — แสดง error.warnings แล้วส่งซ้ำพร้อม acknowledge",
   confirm_required: "คำสั่งอันตรายที่ไม่ได้ส่ง confirm: true มาด้วย",
   customer_session_required: "เส้นทาง /me เป็นของลูกค้าเอง (เข้าผ่านไลน์/แอป) — คีย์ของร้านใช้ไม่ได้ ไม่มี scope ไหนเปิดให้",
   customer_scope: "token ของลูกค้า (cs_…) เรียก operation ของร้าน — เลนลูกค้าใช้ได้เฉพาะ /me",

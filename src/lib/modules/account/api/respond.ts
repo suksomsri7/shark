@@ -8,6 +8,7 @@ export {
   csvResponse,
   fail,
   failBody,
+  legalAckApiError, // T0.4 ▸ 409 legal_ack_required + error.warnings ◂
   mapError,
   newRequestId,
   nothingWritten, // CRM C5.5 ▸ fix3a: ธง "ยังไม่ได้เขียนอะไร" ของ RV-2 (import.run / reports.email 429) ◂

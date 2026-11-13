@@ -11,6 +11,7 @@
 // 🔴 pure ล้วน: ไม่ import db/prisma/next · ไม่อ่านนาฬิกา (ผู้เรียกส่งวันที่มา) — ฝั่ง client import ได้
 // 🔴 นี่คือค่าเริ่มต้นจากผลค้นคว้า ไม่ใช่คำรับรองทางกฎหมาย — ข้อความทุกจุดห้ามเขียนว่า "ถูกกฎหมาย"
 // ─────────────────────────────────────────────────────────────
+import { CHECK_WITH_ACCOUNTANT_TH, legalWarning, type LegalWarning, type LegalWarningCode } from "./warnings";
 
 // ═══════════════════ T0.1 ประเภทผู้ประกอบการ ═══════════════════
 
@@ -252,19 +253,8 @@ export const SYSTEM_ROWS: { [K in LegalTableKind]: readonly LegalRowOf<K>[] } = 
 
 // ═══════════════════ ตัวเลือกแถว (pure) ═══════════════════
 
-export type LegalWarningCode =
-  | "SHOP_DIFFERS_FROM_DEFAULT"
-  | "UNVERIFIED_DEFAULT"
-  | "NO_ROW_FOR_DATE"
-  | "NO_ROW"
-  | "EWHT_NOT_IN_EFFECT"
-  | "ENTITY_KIND_UNSET"
-  | "RECIPIENT_ASSUMED";
-
-export type LegalWarning = { code: LegalWarningCode; messageTh: string; citation?: string };
-
-/** ข้อความกลางสำหรับค่าที่ไม่ได้มาจากเอกสารทางการ (กติกาข้อ 1 ของ ACCOUNT-TAX-PLAN) */
-export const CHECK_WITH_ACCOUNTANT_TH = "โปรดตรวจกับนักบัญชีของร้าน";
+// T0.4: ชนิด/รหัส/ข้อความคำเตือนย้ายไปทะเบียนกลาง `./warnings` (ที่เดียว) — re-export ชื่อเดิมให้ผู้เรียก T0.2
+export { CHECK_WITH_ACCOUNTANT_TH, legalWarning, type LegalWarning, type LegalWarningCode };
 
 const covers = (r: { from: Ymd | null; to: Ymd | null }, ymd: Ymd): boolean => (r.from === null || r.from <= ymd) && (r.to === null || ymd <= r.to);
 
@@ -344,11 +334,7 @@ export function shopRowWarnings<K extends LegalTableKind>(kind: K, shopRow: Lega
     if (!dimsOf(kind).every((d) => (s as Record<string, unknown>)[d] === q[d] || (s as Record<string, unknown>)[d] === "ANY")) continue;
     const overlap = (shopRow.from === null || s.to === null || shopRow.from <= s.to) && (shopRow.to === null || s.from === null || s.from <= shopRow.to);
     if (!overlap || sameValue(shopRow, s)) continue;
-    out.push({
-      code: "SHOP_DIFFERS_FROM_DEFAULT",
-      messageTh: `ค่าที่ร้านตั้ง (${fmtVal(kind, shopRow)}) ต่างจากค่าเริ่มต้นของระบบ (${fmtVal(kind, s)}) — ระบบใช้ค่าของร้าน ${CHECK_WITH_ACCOUNTANT_TH}`,
-      citation: s.source,
-    });
+    out.push(legalWarning("SHOP_DIFFERS_FROM_DEFAULT", { shop: fmtVal(kind, shopRow), system: fmtVal(kind, s) }, { citation: s.source }));
   }
   return out;
 }
@@ -361,19 +347,15 @@ export function pickWarnings<K extends LegalTableKind>(kind: K, pick: LegalPick<
   const out: LegalWarning[] = [];
   const r = pick.row;
   if (!r) {
-    out.push({ code: "NO_ROW", messageTh: `ไม่มีค่าในตารางค่ากฎหมายสำหรับกรณีนี้ — กรอกเองหรือเพิ่มแถวในตั้งค่า ${CHECK_WITH_ACCOUNTANT_TH}` });
+    out.push(legalWarning("NO_ROW"));
     return out;
   }
   if (pick.nearest) {
-    out.push({ code: "NO_ROW_FOR_DATE", messageTh: `ไม่มีค่าในตารางที่มีผลวันที่ ${ymd} — ระบบใช้ค่าใกล้ที่สุด (${fmtVal(kind, r)}) ไปก่อน ${CHECK_WITH_ACCOUNTANT_TH}`, citation: r.source });
+    out.push(legalWarning("NO_ROW_FOR_DATE", { ymd, value: fmtVal(kind, r) }, { citation: r.source }));
   }
-  if (r.tag === "S" || r.tag === "U") out.push({ code: "UNVERIFIED_DEFAULT", messageTh: `ค่าเริ่มต้นนี้ยังไม่ได้ยืนยันจากเอกสารทางการ — ${CHECK_WITH_ACCOUNTANT_TH}`, citation: r.source });
+  if (r.tag === "S" || r.tag === "U") out.push(legalWarning("UNVERIFIED_DEFAULT", {}, { citation: r.source }));
   if (pick.origin === "SHOP" && systemAlt && (systemAlt.tag === "V" || systemAlt.tag === "V2") && !sameValue(r, systemAlt)) {
-    out.push({
-      code: "SHOP_DIFFERS_FROM_DEFAULT",
-      messageTh: `ค่าที่ร้านตั้ง (${fmtVal(kind, r)}) ต่างจากค่าเริ่มต้นของระบบ (${fmtVal(kind, systemAlt)}) — ระบบใช้ค่าของร้าน ${CHECK_WITH_ACCOUNTANT_TH}`,
-      citation: systemAlt.source,
-    });
+    out.push(legalWarning("SHOP_DIFFERS_FROM_DEFAULT", { shop: fmtVal(kind, r), system: fmtVal(kind, systemAlt) }, { citation: systemAlt.source }));
   }
   return out;
 }

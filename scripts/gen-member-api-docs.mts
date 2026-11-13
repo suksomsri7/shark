@@ -101,6 +101,11 @@ const ERROR_CODE_DOCS: Record<ApiErrorCode, CodeDoc> = {
     meaning: "A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again.",
     action: "Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry.",
   },
+  legal_ack_required: {
+    status: 409,
+    meaning: "The action has legal warnings (Thai tax or consumer rules) that a person must read and accept first. Nothing was written. `error.warnings[]` lists each warning: `code`, `messageTh`, `citation`, `tag` (V, V2, S or U confidence) and `checkedAt`. Warnings are system defaults based on research, not legal advice.",
+    action: "Show the warnings to the user. If they accept, resend the same request with `acknowledge` listing the warning codes (the same `Idempotency-Key` is fine). Who accepted is recorded in the audit log.",
+  },
   confirm_required: {
     status: 409,
     meaning: "A danger operation was called without `confirm: true`.",

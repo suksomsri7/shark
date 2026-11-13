@@ -10,6 +10,7 @@
 //      (migration 20260913000000_account_v2_policy backfill ให้) — อ่าน docConfig เป็น "ทางถอย" เท่านั้น
 //      ห้ามเขียนกลับลง docConfig อีก ไม่งั้นจะมี 2 แหล่งความจริงแล้ววันหนึ่งไม่ตรงกัน
 
+import { accountNow } from "./clock";
 import type { Prisma, AccountPriceMode, AccountVatTiming, AccountWhtIncomeType } from "@prisma/client";
 import { safeReason } from "./errors";
 import { tenantDb } from "@/lib/core/db";
@@ -408,7 +409,7 @@ export async function getPolicy(ctx: Ctx): Promise<AccountPolicy> {
     where: { systemId: ctx.systemId },
     select: POLICY_SELECT,
   });
-  return parsePolicy(row as PolicyRow | null, await vatRateBpAt(ctx, new Date()));
+  return parsePolicy(row as PolicyRow | null, await vatRateBpAt(ctx, accountNow()));
 }
 
 /**
@@ -556,7 +557,7 @@ export async function savePolicy(ctx: Ctx, patch: PolicyPatch): Promise<PolicySa
   if (bad) return { ok: false, reason: bad };
   // ACC T0.2 ▸ อัตรา VAT อยู่ที่ "ตารางค่ากฎหมาย" ที่เดียว — ส่งค่าเท่าเดิมมา = ผ่าน (ไม่เขียนคอลัมน์) · ค่าต่าง = ชี้ไปที่ตาราง ◂
   if (patch.vatRateBp !== undefined) {
-    const current = await vatRateBpAt(ctx, new Date());
+    const current = await vatRateBpAt(ctx, accountNow());
     if (patch.vatRateBp !== current) return { ok: false, reason: VAT_RATE_VIA_TABLE_TH };
   }
 

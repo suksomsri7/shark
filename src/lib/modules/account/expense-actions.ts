@@ -10,6 +10,7 @@ import type {
 } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, writeAudit, mc } from "./access";
+import { ackCodesOf } from "./legal-gate";
 import { permissionValue } from "@/lib/core/rbac";
 // WO 8.3 (§9.4): เพดานอนุมัติ + ส่งต่อให้ผู้มีอำนาจสูงกว่า
 import { checkApprovalCap } from "./approval-cap";
@@ -166,14 +167,15 @@ export async function issueExpenseDocAction(formData: FormData) {
   const id = str(formData, "id");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.doc.issue");
-  const res = await issueExpenseDoc(tenantId, systemId, id);
+  // T0.4 — รหัสคำเตือนกฎหมายที่ผู้ใช้ติ๊กยืนยันในฟอร์ม
+  const res = await issueExpenseDoc(tenantId, systemId, id, { ack: { codes: ackCodesOf(formData.getAll("ack")), actorId: userId, via: "screen" } });
   await writeAudit({
     tenantId,
     actorId: userId,
     action: "account.doc.issue",
     targetType: "AccountDocument",
     targetId: id,
-    after: res.ok ? { docNo: res.docNo } : { error: res.reason },
+    after: res.ok ? { docNo: res.docNo } : { error: res.reason, ...(res.legal ? { legal: res.legal.warnings.map((w) => w.code) } : {}) },
   });
   const path = `${pathFor(systemId, docType)}/${id}`;
   revalidatePath(path);

@@ -142,7 +142,7 @@ export async function withIdempotency(
       result = await run(ctl);
     } catch (e) {
       const m = mapError(e);
-      result = { status: m.status, body: failBody(m.code, m.message_th, m.message_en, requestId, { hint: m.hint }) };
+      result = { status: m.status, body: failBody(m.code, m.message_th, m.message_en, requestId, { hint: m.hint, warnings: m.warnings }) };
     }
     return new Response(JSON.stringify(result.body), {
       status: result.status,
@@ -304,7 +304,7 @@ export async function withIdempotency(
       result = { status: 409, body: failBody("idempotency_outcome_unknown", OUTCOME_UNKNOWN_TH, OUTCOME_UNKNOWN_EN, requestId) };
     } else {
       const m = mapError(e);
-      result = { status: m.status, body: failBody(m.code, m.message_th, m.message_en, requestId, { hint: m.hint }) };
+      result = { status: m.status, body: failBody(m.code, m.message_th, m.message_en, requestId, { hint: m.hint, warnings: m.warnings }) };
     }
   }
   const mineNow = owned as { id: string; createdAt: Date } | null;

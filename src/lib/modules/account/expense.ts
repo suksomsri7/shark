@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/core/db";
 import { safeReason } from "./errors";
 import { accountNow } from "./clock";
+import { issueLegalWarnings, legalAckResult, legalGateInTx } from "./legal-gate";
+import { isLegalAckRequiredError, type LegalAck, type LegalAckRequired } from "@/lib/core/settings/legal/warnings";
 import type {
   AccountDocType,
   AccountDocStatus,
@@ -937,7 +939,8 @@ export async function issueExpenseDoc(
   tenantId: string,
   systemId: string,
   id: string,
-): Promise<{ ok: true; docNo: string } | { ok: false; reason: string }> {
+  opts: { ack?: LegalAck | null } = {},
+): Promise<{ ok: true; docNo: string } | { ok: false; reason: string; legal?: LegalAckRequired }> {
   try {
     let docNo = "";
     await prisma.$transaction(async (tx) => {
@@ -951,11 +954,10 @@ export async function issueExpenseDoc(
       if (doc.status !== "DRAFT") throw new Error("เอกสารนี้ออกแล้ว");
       if (doc.lines.length === 0) throw new Error("ต้องมีรายการอย่างน้อย 1 รายการ");
 
-      // ── CNR/DNR (WO 1.6, mirror F4 ฝั่งขาย): เหตุผลบังคับเสมอ · อ้างอิงเอกสารเดิมเป็นทางเลือก ──
-      //    CNR cap ≤ คงเหลือของเอกสารเดิม (PUR/EXP) **เฉพาะเมื่อมีการอ้างอิง**
+      // ── CNR/DNR (WO 1.6, mirror F4 ฝั่งขาย): ไม่มีสาเหตุ = คำเตือน ADJUST_NOTE_REASON_MISSING (T0.4 · กดยืนยันผ่านได้) ·
+      //    อ้างอิงเอกสารเดิมเป็นทางเลือก · CNR cap ≤ คงเหลือของเอกสารเดิม (PUR/EXP) **เฉพาะเมื่อมีการอ้างอิง**
+      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, null), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
       if (doc.docType === "CREDIT_NOTE_RECEIVED" || doc.docType === "DEBIT_NOTE_RECEIVED") {
-        if (!doc.adjustReason || doc.adjustReason.trim().length === 0)
-          throw new Error("ต้องระบุเหตุผลการออก (ตามประกาศสรรพากร)");
         if (doc.docType === "CREDIT_NOTE_RECEIVED" && doc.sourceDocId) {
           const cap = await creditAvailableExpense(tx, systemId, doc.sourceDocId, id);
           if (doc.grandTotal > cap + 1)
@@ -1025,6 +1027,7 @@ export async function issueExpenseDoc(
     });
     return { ok: true, docNo };
   } catch (e) {
+    if (isLegalAckRequiredError(e)) return legalAckResult(e);
     return { ok: false, reason: safeReason(e, "ออกเอกสารไม่สำเร็จ") };
   }
 }

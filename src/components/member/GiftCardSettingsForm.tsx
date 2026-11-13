@@ -1,7 +1,8 @@
 // GiftCardSettingsForm.tsx — หน้า "ตั้งค่า Gift Card" (M2.6 · ภาพ 20)
 //
 // 6 ค่าตามสัญญา: เปิดใช้ · ผูกกับโมดูลบัญชี · อายุบัตร (เดือน) · มูลค่าที่ให้เลือก · โอนเจ้าของได้ · เติมเงินได้
-// 🔴 อายุบัตรขั้นต่ำ 12 เดือนตามกฎหมาย — service เป็นคนบังคับ หน้าจอแค่บอกล่วงหน้าเพื่อไม่ให้เสียเวลากรอก
+// 🔴 T0.4: อายุบัตร 12 เดือน = ค่าเริ่มต้นของระบบ (ไม่ใช่ขั้นต่ำตามกฎหมาย) — ตั้งสั้นกว่าได้หลังกดยืนยันคำเตือน
+//    คำเตือนแสดงด้วยคอมโพเนนต์กลาง LegalWarnings (ทะเบียนกลาง src/lib/core/settings/legal/warnings.ts)
 // 🔴 ไม่มีอีโมจิ/สีฮาร์ดโค้ด · error ภาษาไทยจาก server action (ไม่แต่งข้อความเองที่นี่)
 "use client";
 
@@ -10,6 +11,8 @@ import { formatBaht } from "@/lib/ui/money";
 import type { GiftCardSettingsDto } from "@/lib/modules/giftcard/service";
 import { setGiftCardSettingsAction } from "@/lib/modules/giftcard/giftcard-actions";
 import { MemberIcon } from "./MemberIcon";
+import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 function Row({
   title,
@@ -74,17 +77,27 @@ export function GiftCardSettingsForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [legal, setLegal] = useState<LegalWarning[]>([]);
+  const [ack, setAck] = useState<string[]>([]);
 
   const save = async (patch: Partial<GiftCardSettingsDto>) => {
     setBusy(true);
     setError(null);
     setSaved(null);
-    const res = await setGiftCardSettingsAction({ systemId, ...patch });
+    const res = await setGiftCardSettingsAction({ systemId, ...patch, ack });
     setBusy(false);
     if (!res.ok) {
+      // T0.4 — คำเตือนกฎหมาย: แสดงคำเตือน + ช่องติ๊ก แล้วกดบันทึกซ้ำ (ไม่ใช่ error)
+      if (res.legal) {
+        setLegal(res.legal.warnings);
+        setAck([]);
+        return;
+      }
       setError(res.reason);
       return;
     }
+    setLegal([]);
+    setAck([]);
     setSettings(res.data);
     setMonths(String(res.data.expiryMonths));
     setDenoms(res.data.denominations.map((d) => String(d / 100)).join(", "));
@@ -135,7 +148,7 @@ export function GiftCardSettingsForm({
           />
         </Row>
 
-        <Row title="อายุบัตร (เดือน)" desc="หมดอายุขั้นต่ำตามกฎหมาย 12 เดือน — ตั้งสั้นกว่านี้ระบบจะไม่รับ">
+        <Row title="อายุบัตร (เดือน)" desc="ค่าเริ่มต้นของระบบ 12 เดือน — ตั้งสั้นกว่านี้ได้หลังอ่านคำเตือนและกดยืนยัน (โปรดตรวจกับนักบัญชีของร้าน)">
           <input
             className="input"
             style={{ maxWidth: 120 }}
@@ -175,6 +188,11 @@ export function GiftCardSettingsForm({
           </span>
         </div>
 
+        {legal.length > 0 && (
+          <div className="pt-3">
+            <LegalWarnings warnings={legal} onAckChange={setAck} testId="giftcards-legal-warnings" />
+          </div>
+        )}
         {error && (
           <p data-testid="giftcards-settings-error" className="pt-2 text-sm" style={{ color: "var(--color-danger)" }}>
             {error}

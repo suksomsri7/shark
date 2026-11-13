@@ -12,6 +12,7 @@
 //
 // ไฟล์นี้ห้าม import `./proposals` (proposals ต้อง import ที่นี่เพื่อ derive KIND_ACCESS — จะเป็นวงกลม)
 
+import { accountNow } from "@/lib/modules/account/clock";
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import type { MembershipCtx } from "@/lib/core/rbac";
@@ -456,7 +457,7 @@ export async function fillDocVatDefaults(opId: string, tenantId: string, systemI
   if (!needLine && input.vatMode !== undefined) return input;
   const st = await tenantDb({ tenantId, systemId }).accountSettings.findFirst({ where: { systemId }, select: { vatRegistered: true } });
   const registered = st?.vatRegistered ?? true;
-  const stdBp = registered ? await vatRateBpAt({ tenantId, systemId }, new Date()) : 0;
+  const stdBp = registered ? await vatRateBpAt({ tenantId, systemId }, accountNow()) : 0;
   return {
     ...input,
     ...(input.vatMode === undefined ? { vatMode: registered ? "EXCLUDE" : "NONE" } : {}),
@@ -860,8 +861,17 @@ export async function runAccountTool(
     });
     return { mode: "read", result: renderResult(prepared.op, env) };
   } catch (e) {
-    return { mode: "error", error: mapError(e).message_th };
+    return { mode: "error", error: aiErrorTh(e) };
   }
+}
+
+/**
+ * ข้อความไทยของ error ถึงเลขา — T0.4: 409 legal_ack_required ต่อท้ายทางทำต่อ (รหัสที่ต้องยืนยัน) ให้เลขาแสดงคำเตือนแล้วเสนอใหม่พร้อม `acknowledge`
+ *   ข้อความคำเตือน/มาตรามาจากทะเบียนกลางชุดเดียวกับจอและ REST
+ */
+function aiErrorTh(e: unknown): string {
+  const m = mapError(e);
+  return m.code === "legal_ack_required" && m.hint ? `${m.message_th} — ${m.hint}` : m.message_th;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -914,7 +924,7 @@ export async function dispatchAccountKind(
     if (out && op.id === "documents.create" && typeof created.id === "string" && created.id) out.entity = { type: "account.document", id: created.id }; // R-Z45 ◂
     return noteOf(op, env.data);
   } catch (e) {
-    throw new Error(mapError(e).message_th);
+    throw new Error(aiErrorTh(e));
   }
 }
 
@@ -940,7 +950,7 @@ export async function issueDocumentAsApprover(m: MembershipCtx, tenantId: string
       audit: { proposalId, actor: "ai-assistant" },
     });
   } catch (e) {
-    throw new Error(mapError(e).message_th);
+    throw new Error(aiErrorTh(e));
   }
 }
 
