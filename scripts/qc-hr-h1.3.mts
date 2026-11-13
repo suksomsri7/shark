@@ -114,7 +114,7 @@ const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";
 /** sha256 of the `  // S8.4\n … \n  }\n` block of qc-hr-h0.6.mts on 13a0601b (the freeze check itself must not drift) */
 // ORACLE-EDIT (H2.5 r3 · controller-authorized): re-pinned after the h0.6 S8.4 block learned to strip the 3 marked markPaid lines (was 5f15f5f4a478…)
-const H06_S84_BLOCK_SHA = "341f1a8fb7dc2ef877b56fff0d97bf681f867c673e04d794508b00cf6031f767"; // ORACLE-EDIT (H3.4 fix round 2 G5): re-taken after qc-hr-h0.6 S8.4 learned to strip the one marked HR H3.4 markPaid guard line (was d9eac3d5…)
+const H06_S84_BLOCK_SHA = "28daf076c1287d1b384ec8c44638139b9d3ebc76b4409d6abe64df92d4584c81"; // ORACLE-EDIT (H3.4 fix rounds 2/3 · G5/H4): re-taken after qc-hr-h0.6 S8.4 learned the exact one-line strip of the HR H3.4 markPaid dispatch line (was d9eac3d5…)
 /** sha256 of payroll.prisma from "  // crm_v2_c (CRM C3.0/C3.3)" through "  crmCommissionId String?\n" on 13a0601b (R4 · S1.7) */
 const CRM_BLOCK_SHA = "119baf15b3a29a75460343dbd42bbc8285bd84872e9ec0ff0706b5e4654b3221";
 /** pg_indexes.indexdef on QC4 at the base (S1.10 · byte-equal) */
