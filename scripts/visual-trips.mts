@@ -107,7 +107,7 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
   // TRIPS W1.1 ▸ หน้าจองสาธารณะ /book/[shop] (ภาพ 19 จอใหญ่อังกฤษ · ภาพ 01 จอ ก มือถือไทย) — ทุกฉาก 1440 + 390 · ไม่มีคุกกี้ · เดือน/วันปักด้วย --book-month/--book-date (หน้าใช้นาฬิกาจริง) ◂
   "w1.1": [
     { name: "book-index", mockup: "19", public: true, path: (i) => `/book/${i.shopSlug}` },
-    { name: "book-product", mockup: "01", public: true, path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?m=${i.bookMonth}&d=${i.bookDate}` },
+    { name: "book-product", mockup: "01", public: true, path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=th&m=${i.bookMonth}&d=${i.bookDate}` },
     { name: "book-product-en", mockup: "19", public: true, path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=en&m=${i.bookMonth}&d=${i.bookDate}` },
     // Liveaboard ที่เผยแพร่แล้วยังไม่เปิดหน้าสาธารณะ ⇒ ต้องได้ 404 จริง
     { name: "book-not-found", mockup: "19", public: true, expectStatus: 404, path: (i) => `/book/${i.shopSlug}/t/similan-4-nights` },
