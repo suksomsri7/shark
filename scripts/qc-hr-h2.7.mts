@@ -1636,7 +1636,12 @@ async function runH212Pure(): Promise<void> {
   const inv = ((jsonOf("scripts/hr-ui-inventory.json")?.rows ?? []) as Any[]).filter((r) => r.page === "/app/sys/[id]/hr/settings").map((r) => String(r.testid));
   let prismaDiff = "";
   try {
-    prismaDiff = git(["diff", "--name-only", process.env.QC_H212_BASE ?? "30f83b99a", "--", "prisma"]);
+    // ORACLE-EDIT (controller · H2.12 postmerge): hard-coded base 30f83b99a made every later migration (H3.5 …) look like "H2.12 changed prisma".
+    //   Use baseRef(); once the leave presets are in the base the diff part is n/a (same in-base guard as qc-hr-h4.1 S1.4).
+    const b212 = baseRef();
+    let in212 = false;
+    try { git(["cat-file", "-e", `${b212}:src/lib/modules/hr/leave-presets.ts`]); in212 = true; } catch { in212 = false; }
+    prismaDiff = in212 ? "" : git(["diff", "--name-only", b212, "--", "prisma"]);
   } catch (e) {
     prismaDiff = `git ${errText(e).slice(0, 40)}`;
   }
