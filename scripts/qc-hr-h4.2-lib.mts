@@ -1,0 +1,162 @@
+// QC — HR V2 · H4.2 oracle helper (pure vectors S2.x) — imported by scripts/qc-hr-h4.2.mts only · goldens hand-derived (ledger/wo-notes/hr-H4.2-oracle.md §2)
+// ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
+import { type Any, errText, canon, jsonOf, isThai } from "./qc-hr-lib.mjs";
+
+type Chk = (id: string, ok: unknown, expected: unknown, actual: unknown) => boolean;
+type Ck = (id: string, r: Record<string, unknown>, exp: string, extra?: string) => boolean;
+
+// ═════════════════════════ pure ═════════════════════════
+export const FX34 = jsonOf("scripts/fixtures/hr-h3.4-vectors.json") as Any;
+export const LAW = FX34?.law ?? {};
+export async function runPure(R: Any, E: Any, chk: Chk, ck: Ck): Promise<void> {
+  const has = (n: string) => typeof R?.[n] === "function";
+  const t = (f: () => unknown) => {
+    try {
+      return f();
+    } catch (e) {
+      return `throw ${errText(e)}`;
+    }
+  };
+  const miss = (ns: string[]) => ns.filter((n) => !has(n)).join(",");
+  const MS = (base: number, day: string, s?: string | null, e?: string | null) => R.monthlyShare({ baseSatang: base, day, startDate: s ?? null, endDate: e ?? null });
+  const monthDays = (ym: string) => {
+    const [y, m] = ym.split("-").map(Number);
+    const n = new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+    return Array.from({ length: n }, (_, i) => `${ym}-${String(i + 1).padStart(2, "0")}`);
+  };
+  const sumMonth = (base: number, ym: string, s?: string, e?: string) => monthDays(ym).reduce((a, d) => a + Number(MS(base, d, s, e)), 0);
+  // S2.1
+  if (!has("monthlyShare")) chk("S2.1", false, "monthlyShare", "missing");
+  else {
+    const r = t(() => ({
+      d28: sumMonth(1_550_003, "2027-02") === 1_550_003, d29: sumMonth(1_000_000, "2028-02") === 1_000_000, d30: sumMonth(999_999, "2027-04") === 999_999, d31: sumMonth(1_000_000, "2027-01") === 1_000_000,
+      v31: MS(1_000_000, "2027-01-01") === 32_259 && MS(1_000_000, "2027-01-02") === 32_259 && MS(1_000_000, "2027-01-03") === 32_258 && MS(1_000_000, "2027-01-31") === 32_258,
+      leap: MS(1_000_000, "2028-02-22") === 34_483 && MS(1_000_000, "2028-02-23") === 34_482 && MS(1_000_000, "2028-02-29") === 34_482,
+      ex: MS(1_550_000, "2027-01-16") === 50_000 && MS(3_100_000, "2027-01-16") === 100_000,
+    }));
+    ck("S2.1", typeof r === "object" ? (r as Any) : { ok: false }, "÷ calendar days, Σ = base", typeof r === "string" ? r : "");
+  }
+  // S2.2
+  if (!has("monthlyShare")) chk("S2.2", false, "Q4b", "missing");
+  else {
+    const r = t(() => ({
+      joinSum: sumMonth(1_550_000, "2027-03", "2027-03-11") === 1_085_000,
+      joinDays: MS(1_550_000, "2027-03-10", "2027-03-11") === 0 && MS(1_550_000, "2027-03-11", "2027-03-11") === 51_667 && MS(1_550_000, "2027-03-24", "2027-03-11") === 51_667 && MS(1_550_000, "2027-03-25", "2027-03-11") === 51_666 && MS(1_550_000, "2027-03-31", "2027-03-11") === 51_666,
+      leaveSum: sumMonth(1_000_000, "2027-03", undefined, "2027-03-20") === 666_667,
+      leaveDays: MS(1_000_000, "2027-03-07", null, "2027-03-20") === 33_334 && MS(1_000_000, "2027-03-08", null, "2027-03-20") === 33_333 && MS(1_000_000, "2027-03-20", null, "2027-03-20") === 33_333 && MS(1_000_000, "2027-03-21", null, "2027-03-20") === 0,
+      capSum: sumMonth(1_550_000, "2027-01", "2027-01-02") === 1_550_000 && MS(1_550_000, "2027-01-01", "2027-01-02") === 0 && MS(1_550_000, "2027-01-21", "2027-01-02") === 51_667 && MS(1_550_000, "2027-01-22", "2027-01-02") === 51_666,
+      fullStart: sumMonth(1_550_000, "2027-02", "2027-02-01") === 1_550_000 && MS(1_550_000, "2027-02-01", "2027-02-01") === 55_358,
+    }));
+    ck("S2.2", typeof r === "object" ? (r as Any) : { ok: false }, "engine proration spread evenly", typeof r === "string" ? r : "");
+  }
+  const DW = (payType: string, o: Any) => R.dayWage({ payType, baseSatang: 0, dailySatang: null, hourlySatang: null, day: "2027-01-16", normalMin: 480, startDate: null, endDate: null, ...o });
+  if (!has("dayWage")) chk("S2.3", false, "dayWage", "missing");
+  else {
+    const r = t(() => ({
+      d420: DW("DAILY", { dailySatang: 40_000, paidMin: 420 }) === 35_000, d600: DW("DAILY", { dailySatang: 40_000, paidMin: 600 }) === 40_000, d0: DW("DAILY", { dailySatang: 40_000, paidMin: 0 }) === 0,
+      h480: DW("HOURLY", { hourlySatang: 6_000, paidMin: 480 }) === 48_000, h95: DW("HOURLY", { hourlySatang: 6_000, paidMin: 95 }) === 9_500, h360: DW("HOURLY", { hourlySatang: 6_003, paidMin: 480 }) === 48_024,
+      m: DW("MONTHLY", { baseSatang: 1_550_000, paidMin: 420 }) === 50_000 && DW("MONTHLY", { baseSatang: 3_100_000, paidMin: 0 }) === 100_000,
+    }));
+    ck("S2.3", typeof r === "object" ? (r as Any) : { ok: false }, "day wage vectors", typeof r === "string" ? r : "");
+  }
+  const HP = (payType: string, rate: number, m: number, kind: string, bp: number | null = 10_000) => R.holidayPremium({ payType, rateSatang: rate, paidMin: m, normalMin: 480, kind, holidayWorkPaidBp: bp });
+  if (!has("holidayPremium") || !has("dayWage")) chk("S2.4", false, "holidayPremium", `missing ${miss(["holidayPremium", "dayWage"])}`);
+  else {
+    const r = t(() => ({
+      pubDaily: HP("DAILY", 40_000, 480, "PUBLIC") === 40_000 && DW("DAILY", { dailySatang: 40_000, paidMin: 480 }) + HP("DAILY", 40_000, 480, "PUBLIC") === 80_000,
+      shopDaily: HP("DAILY", 40_000, 480, "SHOP") === 0, shopHourly: HP("HOURLY", 6_000, 480, "SHOP") === 0,
+      pubMonthly: HP("MONTHLY", 3_000_000, 480, "PUBLIC") === 100_000, shopMonthly: HP("MONTHLY", 3_000_000, 300, "SHOP") === 62_500,
+      pubHourly: HP("HOURLY", 6_000, 480, "PUBLIC") === 48_000, noLaw: HP("DAILY", 40_000, 480, "PUBLIC", null) === 0,
+    }));
+    ck("S2.4", typeof r === "object" ? (r as Any) : { ok: false }, "premium vectors", typeof r === "string" ? r : "");
+  }
+  // S2.5 engine parity
+  if (!has("holidayPremium") || !has("dayWage") || typeof E?.computeRunItemV2 !== "function") chk("S2.5", false, "engine parity", `missing ${miss(["holidayPremium", "dayWage"])}${typeof E?.computeRunItemV2 !== "function" ? " engine" : ""}`);
+  else {
+    const lawSet = { SSO: { id: "fx-sso", json: LAW.SSO }, TAX_BRACKET: { id: "fx-tax", json: LAW.TAX_BRACKET }, DEDUCTION: { id: "fx-ded", json: LAW.DEDUCTION } };
+    const eng = (pt: string, rate: number, day: Any, codeW: string) => {
+      const o = E.computeRunItemV2({ ...(FX34?._meta?.defaults ?? {}), payType: pt, baseSalarySatang: pt === "MONTHLY" ? rate : 0, dailyRateSatang: pt === "DAILY" ? rate : null, hourlyRateSatang: pt === "HOURLY" ? rate : null, periodKey: "2027-01", monthIndex: 1, normalDayMin: 480, days: [{ workDayId: "w1", day: "2027-01-16", ...day }], adjustments: [] }, lawSet);
+      return (o?.lines ?? []).filter((l: Any) => l.code === codeW).reduce((a: number, l: Any) => a + l.amountSatang, 0);
+    };
+    const V: [string, string, number, Any, string, () => number][] = [
+      ["dw420", "DAILY", 40_000, { dayClass: "WORKDAY", workMin: 420 }, "DAY_WAGE", () => DW("DAILY", { dailySatang: 40_000, paidMin: 420 })],
+      ["dw480", "DAILY", 40_000, { dayClass: "WORKDAY", workMin: 480 }, "DAY_WAGE", () => DW("DAILY", { dailySatang: 40_000, paidMin: 480 })],
+      ["hw480", "HOURLY", 6_000, { dayClass: "WORKDAY", workMin: 480 }, "HOUR_WAGE", () => DW("HOURLY", { hourlySatang: 6_000, paidMin: 480 })],
+      ["hw95", "HOURLY", 6_003, { dayClass: "WORKDAY", workMin: 95 }, "HOUR_WAGE", () => DW("HOURLY", { hourlySatang: 6_003, paidMin: 95 })],
+      ["hwD", "DAILY", 40_000, { dayClass: "HOLIDAY", holidayKind: "PUBLIC", holidayWorkMin: 480 }, "HOLIDAY_WORK", () => HP("DAILY", 40_000, 480, "PUBLIC")],
+      ["hwM", "MONTHLY", 3_000_000, { dayClass: "HOLIDAY", holidayKind: "PUBLIC", holidayWorkMin: 480 }, "HOLIDAY_WORK", () => HP("MONTHLY", 3_000_000, 480, "PUBLIC")],
+      ["hwMS", "MONTHLY", 3_000_000, { dayClass: "HOLIDAY", holidayKind: "SHOP", holidayWorkMin: 300 }, "HOLIDAY_WORK", () => HP("MONTHLY", 3_000_000, 300, "SHOP")],
+    ];
+    const out = V.map(([n, pt, rate, day, c, f]) => {
+      const a = t(() => eng(pt, rate, day, c));
+      const b = t(f);
+      return [n, typeof a === "number" && a > 0 && a === b, `${n}:${a}/${b}`] as const;
+    });
+    chk("S2.5", out.every((x) => x[1]), "7 vectors = engine", out.filter((x) => !x[1]).map((x) => x[2]).join(" ") || "ok");
+  }
+  const SS = (w: number, D = 31) => R.ssoEstimate({ wageSatang: w, daysInMonth: D, rateBp: 500, maxBaseSatang: 1_750_000 });
+  if (!has("ssoEstimate")) chk("S2.6", false, "ssoEstimate", "missing");
+  else {
+    const r = t(() => ({ a: SS(50_000) === 2_500, d: SS(100_000) === 2_823, b: SS(40_000) === 2_000, c: SS(48_000) === 2_400, feb: SS(55_358, 28) === 2_768 && SS(110_715, 28) === 3_125, leap: SS(106_896, 29) === 3_017 && SS(53_448, 29) === 2_672, zero: SS(0) === 0 }));
+    ck("S2.6", typeof r === "object" ? (r as Any) : { ok: false }, "SSO pro-rata", typeof r === "string" ? r : "");
+  }
+  if (!has("largestRemainder")) chk("S2.7", false, "largestRemainder", "missing");
+  else {
+    const LR = (n: number, w: number[]) => canon(R.largestRemainder(n, w));
+    const r = t(() => ({
+      a: LR(52_500, Array(8).fill(60)) === canon([6563, 6563, 6563, 6563, 6562, 6562, 6562, 6562]),
+      b: LR(42_000, Array(9).fill(60)) === canon([4667, 4667, 4667, 4667, 4667, 4667, 4666, 4666, 4666]),
+      tie: LR(10, [1, 1, 1]) === canon([4, 3, 3]), units: LR(100_001, [240, 240]) === canon([50_001, 50_000]), frac: LR(7, [3, 1]) === canon([5, 2]), big: LR(1, [1, 3]) === canon([0, 1]),
+      month: LR(2_087_500, [6_000, 3_000]) === canon([1_391_667, 695_833]),
+    }));
+    ck("S2.7", typeof r === "object" ? (r as Any) : { ok: false }, "largest remainder", typeof r === "string" ? r : "");
+  }
+  if (!has("hourSlots")) chk("S2.8", false, "hourSlots", "missing");
+  else {
+    const HS = (s: number, e: number, x: boolean, c: number) => canon((R.hourSlots({ day: "2027-01-31", startMin: s, endMin: e, crossesMidnight: x, cutoffMin: c }) as Any[]).map((o) => [o.date, o.hour, o.minutes]));
+    const d = "2027-01-31";
+    const r = t(() => ({
+      day: HS(420, 900, false, 0) === canon([7, 8, 9, 10, 11, 12, 13, 14].map((h) => [d, h, 60])),
+      half: HS(450, 555, false, 0) === canon([[d, 7, 30], [d, 8, 60], [d, 9, 15]]),
+      c0: HS(1200, 120, true, 0) === canon([[d, 20, 60], [d, 21, 60], [d, 22, 60], [d, 23, 60], ["2027-02-01", 0, 60], ["2027-02-01", 1, 60]]),
+      c240: HS(1200, 120, true, 240) === canon([20, 21, 22, 23, 24, 25].map((h) => [d, h, 60])),
+    }));
+    ck("S2.8", typeof r === "object" ? (r as Any) : { ok: false }, "hour keys = reportHourly keys", typeof r === "string" ? r : "");
+  }
+  if (!has("forecastHour")) chk("S2.9", false, "forecastHour", "missing");
+  else {
+    const vals: Record<string, number> = { "2027-01-16": 9_999_999, "2027-01-09": 380_000, "2027-01-02": 420_000, "2026-12-26": 410_000, "2026-12-19": 390_000, "2026-12-12": 7_777_777 };
+    const FH = (day: string, today: string, m: Record<string, number>) => R.forecastHour({ day, today, valueOf: (x: string) => m[x] ?? 0 });
+    const r = t(() => ({
+      skip: FH("2027-01-23", "2027-01-16", vals) === 400_000, past: FH("2027-01-16", "2027-01-17", vals) === 400_000, incl: FH("2027-01-23", "2027-01-17", vals) === Math.floor((9_999_999 + 380_000 + 420_000 + 410_000 + 2) / 4),
+      halfDown: FH("2027-01-23", "2027-01-17", { "2027-01-16": 1 }) === 0, halfUp: FH("2027-01-23", "2027-01-17", { "2027-01-16": 1, "2027-01-09": 1 }) === 1, none: FH("2027-01-23", "2027-01-17", {}) === 0,
+    }));
+    ck("S2.9", typeof r === "object" ? (r as Any) : { ok: false }, "4 latest same weekdays < today", typeof r === "string" ? r : "");
+  }
+  if (!has("pctTenths") || !has("needed") || !has("scheduledAt")) chk("S2.10", false, "pct/needed/scheduled", `missing ${miss(["pctTenths", "needed", "scheduledAt"])}`);
+  else {
+    const N = (f: number, s: number | null, m: number) => R.needed({ forecastSatang: f, splhSatang: s, minStaff: m });
+    const slots = [
+      ...[7, 8, 9, 10, 11, 12, 13, 14].map((h) => ({ employeeId: "A", hour: h, minutes: 60 })), ...[11, 12, 13, 14, 15, 16, 17, 18, 19].map((h) => ({ employeeId: "B", hour: h, minutes: 60 })),
+      { employeeId: "X", hour: 12, minutes: 29 }, { employeeId: "Y", hour: 13, minutes: 30 }, { employeeId: "Z", hour: 13, minutes: 15 }, { employeeId: "Z", hour: 13, minutes: 15 },
+    ];
+    const r = t(() => ({
+      pct: R.pctTenths(247_723, 1_000_000) === 248 && R.pctTenths(1, 2_000) === 1 && R.pctTenths(0, 100) === 0 && R.pctTenths(5, 0) === null && R.pctTenths(1_391_667, 1_870_000) === 744,
+      needed: N(400_000, 150_000, 1) === 3 && N(450_000, 150_000, 1) === 3 && N(450_001, 150_000, 1) === 4 && N(100_000, 150_000, 2) === 2 && N(0, 150_000, 2) === 0 && N(-5, 150_000, 2) === 0 && N(100_000, null, 1) === null,
+      sched: R.scheduledAt(slots, 12) === 2 && R.scheduledAt(slots, 13) === 4 && R.scheduledAt(slots, 8) === 1 && R.scheduledAt(slots, 23) === 0,
+    }));
+    ck("S2.10", typeof r === "object" ? (r as Any) : { ok: false }, "D12 D13", typeof r === "string" ? r : "");
+  }
+  {
+    const T = R?.LABOR_TEXT ?? {};
+    const TE = R?.LABOR_TEXT_EN ?? {};
+    const r = {
+      defaults: canon(R?.LABOR_DEFAULTS) === canon({ targetTenths: 280, splhSatang: null, minStaff: 1 }),
+      keys: Object.keys(T).length > 0 && canon(Object.keys(T).sort()) === canon(Object.keys(TE).sort()),
+      th: Object.values(T).every((v) => typeof v === "string" && v.trim() !== "") && Object.values(T).some((v) => isThai(String(v))),
+      pick: has("laborTextFor") && R.laborTextFor("en") === TE && R.laborTextFor("th") === T && R.laborTextFor(null) === T,
+    };
+    ck("S2.11", r, "defaults + texts");
+  }
+}
+
