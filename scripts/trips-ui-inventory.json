@@ -1271,6 +1271,1546 @@
       "oracle": "qc-trips-t1.1#SET-10",
       "system": "TRIPS",
       "needs": "ค่าตั้งที่บันทึกแล้วขึ้นคำเตือน"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal",
+        "state": "appears",
+        "note": "ปฏิทินรอบ (ภาพ 11)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status; สิทธิ์รอบ view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-range",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-range",
+        "state": "appears",
+        "note": "ช่วงวัน 11–17 พ.ย. 2569"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-prev",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-prev",
+        "state": "navigates",
+        "note": "ช่วงก่อนหน้า (nav.prev)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-19",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-next",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-next",
+        "state": "navigates",
+        "note": "ช่วงถัดไป (nav.next)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-19",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-today",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-today",
+        "state": "navigates",
+        "note": "กลับช่วงของวันนี้ (nav.today)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-19",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-view-week",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-view-week",
+        "state": "navigates",
+        "note": "มุมมองสัปดาห์"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-view-month",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-view-month",
+        "state": "navigates",
+        "note": "มุมมองเดือน"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-view-trips",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-view-trips",
+        "state": "navigates",
+        "note": "มุมมองทริปหลายวัน"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-16",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-filter-all",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-filter-all",
+        "state": "navigates",
+        "note": "ทุกสินค้า"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-3",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-filter-tour",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-filter-tour",
+        "state": "navigates",
+        "note": "ทัวร์ (TOUR ไม่ดำน้ำลึก)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-13",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-filter-dive",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-filter-dive",
+        "state": "navigates",
+        "note": "ดำน้ำ (deepDive)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-13",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-attention",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-attention",
+        "state": "appears",
+        "note": "ชิป ต้องตัดสินใจ N (counts.belowMin)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-8",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-cancelled",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-cancelled",
+        "state": "appears",
+        "note": "ชิป ยกเลิก N รอบ · เหตุผล"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-11",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status; มีรอบยกเลิกในช่วง"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-week",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-week",
+        "state": "appears",
+        "note": "ตารางสินค้า × วัน (ซ่อนใต้ md)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-daylist",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-daylist",
+        "state": "appears",
+        "note": "รายการต่อวันของมือถือ (ใต้ md)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#S-18",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-month",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-month",
+        "state": "appears",
+        "note": "ตารางเดือน 7 คอลัมน์แบบจุด/จำนวน"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-trips",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-trips",
+        "state": "appears",
+        "note": "รายการทริปหลายวัน"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-16",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-legend",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-legend",
+        "state": "appears",
+        "note": "คำอธิบายสัญลักษณ์ 5 ข้อ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-truncated",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-truncated",
+        "state": "appears",
+        "note": "ข้อความเมื่อถูกตัดที่เพดาน"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status; รอบเกินเพดาน"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-empty",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-empty",
+        "state": "appears",
+        "note": "ไม่มีสินค้าในตัวกรอง"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status; ไม่มีสินค้า"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-add",
+        "state": "opens",
+        "note": "+ เพิ่มรอบ (createDepartureAction)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-schedules",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-schedules",
+        "state": "opens",
+        "note": "กฎซ้ำ (create/update/pause/resume/materialize)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-panel",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-panel",
+        "state": "appears",
+        "note": "แผงรอบ ?dep="
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-panel-close",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-dep-panel-close",
+        "state": "navigates",
+        "note": "ปิดแผง"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-status",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-status",
+        "state": "appears",
+        "note": "ป้ายสถานะช่อง (แยกรูปทรง)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-counts",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-counts",
+        "state": "appears",
+        "note": "ใช้แล้ว/ความจุ · ว่าง · ถือที่/รายการรอ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-actions",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-actions",
+        "state": "appears",
+        "note": "ปุ่มแผง กริด 2 คอลัมน์"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#S-18",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-manifest",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-manifest",
+        "state": "disabled",
+        "note": "ใบรายชื่อ ยังไม่เปิดใช้ (T1.4)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-book",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-book",
+        "state": "disabled",
+        "note": "จองให้ลูกค้า ยังไม่เปิดใช้ (T1.3)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-close",
+        "state": "opens",
+        "note": "ปิดรับจอง (ปิดทุกช่องทาง/หยุดขายบางช่องทาง)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit; status OPEN|GUARANTEED|FULL"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-reopen",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-dep-reopen",
+        "state": "submits",
+        "note": "เปิดรับคืน (setDepartureStatusAction OPEN)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.status; status CLOSED · trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-guarantee",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-dep-guarantee",
+        "state": "submits",
+        "note": "ยืนยันออก (GUARANTEED)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.status; OPEN ไม่ต่ำกว่าขั้นต่ำ"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-unguarantee",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-unguarantee",
+        "state": "opens",
+        "note": "ถอนการยืนยัน ⇒ กล่องยืนยัน (OPEN)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.status; GUARANTEED"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-capacity",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-capacity",
+        "state": "opens",
+        "note": "เปลี่ยนความจุ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-resources",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-resources",
+        "state": "opens",
+        "note": "เปลี่ยนเรือ/รถ/ไกด์"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-12",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-price",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-price",
+        "state": "opens",
+        "note": "ราคาเฉพาะรอบ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-7",
+      "system": "TRIPS",
+      "needs": "trips.price.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-stopsell",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-dep-stopsell",
+        "state": "submits",
+        "note": "หยุดขายช่องทางที่เลือก (ในกล่องปิดรับ)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-16",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-unguarantee-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-unguarantee-dialog",
+        "state": "opens",
+        "note": "ยืนยันถอนการยืนยัน + ผล (กลับเป็นต่ำกว่าขั้นต่ำ)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.status; status GUARANTEED"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-cancel",
+        "state": "opens",
+        "note": "ยกเลิกรอบ (สีอันตราย)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-decide",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-decide",
+        "state": "opens",
+        "note": "ตัดสินรอบต่ำกว่าขั้นต่ำ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.status; state BELOW_MIN"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-bookings-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-bookings-note",
+        "state": "appears",
+        "note": "ยังไม่มีข้อมูลการจอง (T1.3)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money-note",
+        "state": "appears",
+        "note": "สรุปเงินเปิดใช้ใน T1.7"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-decisions",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-decisions",
+        "state": "appears",
+        "note": "การ์ดต้องตัดสินใจ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-8",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status; มีรอบต่ำกว่าขั้นต่ำในช่วง"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-decide-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-decide-dialog",
+        "state": "opens",
+        "note": "กล่องตัดสิน 3 ทางเลือก"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#DA-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-decide-run",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-decide-run",
+        "state": "appears",
+        "note": "ออกขาดทุน"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#DA-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-decide-merge",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-decide-merge",
+        "state": "appears",
+        "note": "รวมรอบ (เฉพาะรอบว่าง)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#DA-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-decide-cancel",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-decide-cancel",
+        "state": "appears",
+        "note": "ยกเลิก + เหตุผล"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#DA-3",
+      "system": "TRIPS",
+      "needs": "trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-decide-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-decide-confirm",
+        "state": "submits",
+        "note": "decideBelowMinAction"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#DA-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cancel-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-cancel-dialog",
+        "state": "opens",
+        "note": "กล่องยกเลิกรอบ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cancel-reason",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cancel-reason",
+        "state": "appears",
+        "note": "เหตุผลสำเร็จรูป"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-9",
+      "system": "TRIPS",
+      "needs": "trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-capacity-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-capacity-dialog",
+        "state": "opens",
+        "note": "กล่องความจุ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-capacity-input",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-capacity-input",
+        "state": "appears",
+        "note": "ความจุใหม่ (CAPACITY_BELOW_USED แสดงจำนวนที่ใช้)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-resource-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-resource-dialog",
+        "state": "opens",
+        "note": "กล่องเรือ/รถ/ไกด์ (RESOURCE_CLASH แสดงรอบที่ชน)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-12",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-price-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-price-dialog",
+        "state": "opens",
+        "note": "กล่องราคาเฉพาะรอบ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-13",
+      "system": "TRIPS",
+      "needs": "trips.price.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-stopsell-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-stopsell-dialog",
+        "state": "opens",
+        "note": "กล่องปิดรับ/หยุดขาย"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-16",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-create-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-dep-create-dialog",
+        "state": "opens",
+        "note": "กล่องเพิ่มรอบ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#S-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-schedule-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-schedule-dialog",
+        "state": "opens",
+        "note": "กล่องกฎซ้ำ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-schedule-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-schedule-add",
+        "state": "appears",
+        "note": "เพิ่มกฎซ้ำ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-row",
+        "state": "appears",
+        "note": "แถวสินค้า (TOUR → LIVEABOARD → ATTRACTION)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-3",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-cell-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-cal-cell",
+        "state": "navigates",
+        "note": "ช่องรอบ data-state · กดเปิดแผง"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-none-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-none",
+        "state": "appears",
+        "note": "ไม่มีรอบ (+ งดตามกฎ)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-day-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-day",
+        "state": "appears",
+        "note": "หัววัน/ช่องวันของเดือน"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-cal-next-trip-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cal-next-trip",
+        "state": "appears",
+        "note": "ไม่มีทริปช่วงนี้ · ทริปถัดไป"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-12",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-decision-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "trips-decision",
+        "state": "navigates",
+        "note": "รายการต้องตัดสินใจ ⇒ เปิดแผง + กล่องตัดสิน"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CV-8",
+      "system": "TRIPS",
+      "needs": "trips.departure.view|edit|status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-merge-target-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-merge-target",
+        "state": "appears",
+        "note": "เป้ารวมรอบ (วันเดียวกัน)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.status"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-price-row-*",
+      "kind": "form",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-price-row",
+        "state": "submits",
+        "note": "ราคาต่อประเภทคน (setPriceAction/removePriceAction)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-13",
+      "system": "TRIPS",
+      "needs": "trips.price.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-resource-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-resource-row",
+        "state": "submits",
+        "note": "ทรัพยากรที่มอบให้ + เอาออก"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-11",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-schedule-row-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-schedule-row",
+        "state": "appears",
+        "note": "แถวกฎซ้ำ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-schedule-materialize-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-schedule-materialize",
+        "state": "submits",
+        "note": "สร้างรอบล่วงหน้า (≤ 2 ช่วงต่อคำขอ)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-schedule-pause-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "trips-schedule-pause",
+        "state": "submits",
+        "note": "พัก/ทำต่อกฎ"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#CT-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.edit"
     }
   ]
 }

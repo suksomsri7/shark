@@ -157,7 +157,7 @@
     "depTitle": "Departure prices",
     "depNote": "Set from the departures calendar (screen 11) or here",
     "depAdd": "Add departure price",
-    "depPickHint": "Departures listed in the table; others from the calendar (T1.2)",
+    "depPickHint": "Departures listed in the table; set others from the Departures tab",
     "colDeparture": "Departure",
     "colSold": "Sold",
     "colSource": "Price source",
@@ -170,7 +170,7 @@
     "to": "To",
     "adultPrice": "Adult price (THB)",
     "childHint": "The child price follows the “default child price” setting automatically",
-    "depTruncated": "Showing the next {n} of {total} departures with their own price — see the departures calendar (T1.2) for the rest"
+    "depTruncated": "Showing the next {n} of {total} departures with their own price — see the Departures tab for the rest"
   },
   "extras": {
     "title": "Extras",
@@ -437,7 +437,24 @@
     "AGE_RANGE": "The age range is invalid — the minimum cannot exceed the maximum",
     "AGE_OVERLAP": "The age range overlaps another traveller type — adjust it",
     "LAST_ACTIVE_OPTION": "At least one option must stay on",
-    "LAST_SEAT_PAX_TYPE": "At least one seat-using traveller type must stay on"
+    "LAST_SEAT_PAX_TYPE": "At least one seat-using traveller type must stay on",
+    "NOT_BELOW_MIN": "This departure is no longer below its minimum — reload and check again",
+    "MERGE_NEEDS_BOOKINGS": "Departures with bookings cannot be merged yet — the bookings would have to move to another departure, which is not available yet",
+    "MERGE_TARGET_INVALID": "The selected departure cannot take the merge — it must be the same day, on sale and have enough free seats",
+    "HAS_BOOKINGS": "This departure has bookings or holds and cannot be cancelled",
+    "CAPACITY_BELOW_USED": "Capacity cannot be less than the seats already sold/held",
+    "RESOURCE_CLASH": "This boat/van/guide is busy with another departure at the same time",
+    "PAST_DEPARTURE": "This departure has already started",
+    "FORBIDDEN_TRANSITION": "This status change is not allowed — reload and check again",
+    "DUPLICATE_DEPARTURE": "A departure for this product and option already exists at this time",
+    "RESOURCE_INACTIVE": "This boat/van/guide is switched off",
+    "NO_DURATION": "This option has no duration — enter the departure duration",
+    "OPTION_INACTIVE": "This option is switched off; departures cannot be created",
+    "PRODUCT_ARCHIVED": "This product is archived; departures cannot be created",
+    "SCHEDULE_PAUSED": "This rule is paused — resume it first",
+    "HORIZON_OFF": "This product creates departures one trip at a time (not ahead from rules)",
+    "STATE_CONFLICT": "This item was changed at the same time — reload and try again",
+    "CURRENCY_NOT_ALLOWED": "The price must use the product's currency"
   },
   "dates": {
     "wd0": "Sun",
@@ -460,5 +477,301 @@
     "mon11": "Nov",
     "mon12": "Dec",
     "yearOffset": "0"
+  },
+  "departures": {
+    "title": "Departures & availability",
+    "today": "Today",
+    "prev": "Previous",
+    "next": "Next",
+    "viewAria": "Calendar view",
+    "filterAria": "Filter products",
+    "view": {
+      "week": "Week",
+      "month": "Month",
+      "trips": "Multi-day trips"
+    },
+    "filter": {
+      "all": "All products",
+      "tour": "Tours",
+      "dive": "Diving"
+    },
+    "attention": "Needs decision {n}",
+    "cancelledChip": "Called off {n} departures",
+    "productCol": "Product",
+    "empty": "No tour products in this filter yet — add a product on the Products tab first",
+    "truncated": "Showing {shown} of {total} departures (until {date}) — too many for one screen; pick a shorter range or filter products",
+    "productsTruncated": "Showing {shown} of {total} products — filter tours/diving to see the rest",
+    "tripsTruncated": "Showing the first {n} trips",
+    "legend": {
+      "number": "Number = sold/capacity (incl. held)",
+      "full": "Thick border = full",
+      "belowMin": "Red dashed = below min, decide",
+      "cancelled": "Stripes = called off",
+      "past": "Grey = past"
+    },
+    "state": {
+      "CANCELLED": "Called off",
+      "PAST": "Past",
+      "DEPARTED_TODAY": "Departed",
+      "FULL": "Full",
+      "CLOSED": "Closed",
+      "BELOW_MIN": "Below min",
+      "GUARANTEED": "Will run",
+      "LOW": "Few left",
+      "OPEN": "On sale"
+    },
+    "cell": {
+      "used": "{used}/{cap}",
+      "left": "{n} free · will run",
+      "leftLow": "{n} left",
+      "belowMin": "Below min {n}",
+      "shortBy": "{n} more needed",
+      "waitlist": "{n} waiting",
+      "noDeparture": "No departure",
+      "skipped": "Skipped by rule",
+      "nextTrip": "No trips in this range · next trip {dates} sold {sold}/{cap} {unit}",
+      "noTrip": "No trips in this range",
+      "cancelledPax": "{n} people",
+      "more": "+{n}",
+      "held": "held {n}"
+    },
+    "unit": {
+      "SEAT": "seats",
+      "BERTH": "berths"
+    },
+    "header": {
+      "boatsN": "{n} boats",
+      "cap": "{n} {unit}",
+      "minPax": "min {n}"
+    },
+    "channel": {
+      "WEB": "Website",
+      "LIFF": "LINE",
+      "EMBED": "Booking widget",
+      "COUNTER": "Front desk",
+      "POS": "Point of sale",
+      "AGENT_PORTAL": "Agent portal",
+      "AGENT_LINK": "Agent link",
+      "AGENT_API": "Agent system",
+      "OTA": "Online travel agency",
+      "API": "External system",
+      "IMPORT": "Import",
+      "CHAT_AI": "AI chat assistant"
+    },
+    "resourceKind": {
+      "BOAT": "Boat",
+      "VAN": "Van",
+      "GUIDE": "Guide",
+      "OTHER": "Other"
+    },
+    "actions": {
+      "close": "Close bookings",
+      "reopen": "Reopen bookings",
+      "guarantee": "Guarantee",
+      "unguarantee": "Remove guarantee",
+      "cancel": "Cancel departure",
+      "capacity": "Change capacity",
+      "resources": "Change boat/van/guide",
+      "price": "Departure price",
+      "stopSell": "Stop some channels",
+      "manifest": "Manifest",
+      "book": "Book for customer",
+      "decide": "Decide this departure",
+      "add": "+ Add departure",
+      "schedules": "Create from rules",
+      "notYet": "Not available yet"
+    },
+    "decide": {
+      "run": "Run at a loss",
+      "merge": "Merge",
+      "cancel": "Cancel",
+      "confirm": "Confirm decision",
+      "title": "Decide {date} · {title}",
+      "lead": "Sold {sold} · minimum {min} · {short} more needed",
+      "runHint": "Guarantee even below the minimum",
+      "mergeHint": "Move into another departure the same day",
+      "cancelHint": "Cancel this departure with a reason",
+      "mergeBlocked": "Departures with bookings cannot be merged yet (bookings must move — comes with the booking system)",
+      "noTargets": "No departure the same day can take it",
+      "pickTarget": "Pick the departure to merge into",
+      "mergeOnlyEmpty": "Merging works only for departures without bookings — this departure is cancelled with a reason naming the target; the target is not changed",
+      "targetSeats": "used {used}/{cap} · {left} {unit} free",
+      "clash": "This departure's boat/van/guide is busy at that time (for information)",
+      "summaryRun": "This departure will be guaranteed with {sold} sold of a {min} minimum",
+      "summaryMerge": "This departure will be cancelled · reason: merged with {title} {time}",
+      "summaryCancel": "This departure will be cancelled · reason: {reason}",
+      "held": "held {n}",
+      "peopleOnly": "This departure already has bookings — departures with bookings cannot be merged or cancelled here yet; only \"Run at a loss\" is possible"
+    },
+    "decisions": {
+      "title": "Needs decision ({n})",
+      "item": "{date} {title} {n} people",
+      "by": "Decide by {when}",
+      "overdue": "Decision time passed",
+      "noTime": "No decision time",
+      "propose": "Options: {list}",
+      "mergeWith": "merge with {title}",
+      "hasPeople": "Has bookings · merge/cancel not possible here yet · option: {run}",
+      "partial": "Showing the first {shown} of {total} (until {date}) — too many departures for one screen; pick a shorter range to see the rest"
+    },
+    "notYet": {
+      "bookings": "Not available yet: bookings split by channel/agent and adults/children will show here once bookings are live",
+      "money": "Not available yet: the departure money summary (bookings, park fees, cost, commission, gross profit) will show here"
+    },
+    "panel": {
+      "aria": "Departure {date} · {title}",
+      "guides": "{n} guides",
+      "vans": "{n} vans",
+      "of": "of {cap} {unit} · {left} free",
+      "holdWait": "Held / waitlist",
+      "reserved": "Reserved quota",
+      "minPax": "Minimum",
+      "cutoff": "Booking cut-off by channel",
+      "stopSell": "Stopped: {channels} · {reason}",
+      "allChannels": "all channels",
+      "until": "until {date}",
+      "overSeats": "Capacity {cap} is more than the seats of {name} ({seats}) — check the assigned boat",
+      "cancelledReason": "Cancelled · reason: {text}",
+      "empty": "Pick a cell in the calendar to see the departure, seats and actions"
+    },
+    "cancelReasons": {
+      "weather": "Weather/sea",
+      "belowMin": "Below minimum",
+      "vehicle": "Boat/van breakdown",
+      "other": "Other"
+    },
+    "cancelDialog": {
+      "title": "Cancel {date} · {title}",
+      "reason": "Reason",
+      "note": "More detail (optional)",
+      "otherText": "Reason (at least 3 characters)",
+      "blocked": "This departure has bookings/holds and cannot be cancelled yet",
+      "blockedLong": "This departure has {n} sold/held/reserved seats — departures with people cannot be cancelled here yet (moving or refunding a whole departure is not available yet)",
+      "confirm": "Cancel this departure",
+      "spoof": "A typed reason cannot start with \"preset:\" or \"merge:\""
+    },
+    "capacityDialog": {
+      "title": "Change capacity",
+      "label": "New capacity",
+      "used": "{n} seats used (sold + held + reserved) — capacity cannot go below this",
+      "belowUsed": "Capacity cannot be less than the {n} seats already sold/held"
+    },
+    "resourceDialog": {
+      "title": "Change boat/van/guide",
+      "assigned": "Assigned to this departure",
+      "none": "None yet",
+      "add": "Add",
+      "addBtn": "Assign",
+      "pick": "Pick a boat/van/guide",
+      "remove": "Remove",
+      "seats": "{n} seats",
+      "clash": "Busy on {date} · {title} · {time} — pick another or change the time"
+    },
+    "priceDialog": {
+      "title": "Departure price {date} · {title}",
+      "note": "Price per person before promotions/codes · prices set here apply to this departure only (instead of the regular/season price) · removing needs a reason",
+      "readOnly": "View only — editing prices needs the price permission",
+      "src": {
+        "RETAIL": "Regular price",
+        "SEASON": "Season price",
+        "DEPARTURE": "This departure's price",
+        "MISSING": "No price"
+      },
+      "newPrice": "New price ({currency})",
+      "save": "Save price",
+      "remove": "Remove departure price",
+      "removeReason": "Reason for removing",
+      "reasonHint": "At least 10 characters",
+      "removeConfirm": "Confirm remove",
+      "paxUnknown": "Other traveller type"
+    },
+    "stopSellDialog": {
+      "title": "Close bookings {date} · {title}",
+      "closeAll": "Close all channels",
+      "closeAllHint": "The departure stops taking bookings; you can reopen later",
+      "closeAllBtn": "Close all channels",
+      "partTitle": "Stop some channels",
+      "channels": "Channels to stop",
+      "reason": "Reason",
+      "untilDate": "Until date (optional)",
+      "untilTime": "Time",
+      "untilHint": "Shop time · enter both date and time · both empty = until cleared",
+      "save": "Stop selected channels",
+      "clear": "Clear stop",
+      "untilNeedsBoth": "Enter both the date and the time, or leave both empty"
+    },
+    "create": {
+      "title": "Add departure",
+      "product": "Product",
+      "option": "Option",
+      "date": "Date",
+      "time": "Departure time",
+      "capacity": "Capacity",
+      "minPax": "Minimum",
+      "minPaxHint": "Empty = product setting",
+      "duration": "Duration (minutes)",
+      "resources": "Boat/van/guide",
+      "submit": "Create departure"
+    },
+    "schedules": {
+      "title": "Repeat rules (create ahead)",
+      "add": "+ Add rule",
+      "edit": "Edit rule",
+      "empty": "No repeat rules yet",
+      "rule": {
+        "DAILY": "Every day",
+        "WEEKLY": "Weekly",
+        "DATES": "Specific dates",
+        "INVALID": "Unreadable rule"
+      },
+      "datesN": "{n} specific dates",
+      "capLine": "{cap} seats",
+      "noEnd": "From {from}, no end",
+      "generatedUntil": "Created up to {date}",
+      "paused": "Paused",
+      "pause": "Pause",
+      "resume": "Resume",
+      "materialize": "Create departures ahead",
+      "materialized": "Created {n} new departures",
+      "partial": "Created {n} new departures up to {date} · the daily job continues the rest",
+      "kind": "Pattern",
+      "weekdays": "Weekdays",
+      "from": "From",
+      "to": "To",
+      "toHint": "Empty = no end",
+      "exceptionsNote": "Skipped/special days of a rule cannot be edited on this screen yet",
+      "truncated": "Showing the first {n} rules"
+    },
+    "tripsView": {
+      "empty": "No multi-day trips from today",
+      "range": "From {from} (1 year)"
+    },
+    "cellShort": {
+      "PAST": "Past",
+      "DEPARTED_TODAY": "Departed",
+      "CANCELLED": "Called off",
+      "FULL": "Full",
+      "CLOSED": "Closed",
+      "OPEN": "On sale"
+    },
+    "reason": {
+      "WEATHER": "Weather/sea",
+      "BELOW_MIN": "Below minimum",
+      "VEHICLE": "Boat/van breakdown",
+      "merge": "Merged with {title} {time}",
+      "withNote": "{reason} · {note}",
+      "mergeNoTitle": "Merged with another departure {time}"
+    },
+    "unguaranteeDialog": {
+      "title": "Remove guarantee {date} · {title}",
+      "body": "The departure goes back to \"On sale\" — customers and agents no longer see the \"Will run\" label",
+      "belowMin": "Sold {sold} of a {min} minimum ⇒ the departure becomes \"Below min\" and returns to the decision list",
+      "confirm": "Remove guarantee"
+    },
+    "month": {
+      "dayAria": "{date}: {n} departures — see this day"
+    },
+    "attentionNone": "Needs decision 0",
+    "countsPartial": "whole range"
   }
 }

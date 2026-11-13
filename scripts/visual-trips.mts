@@ -6,6 +6,8 @@
 //   … t1.1 --list                       # พิมพ์สเปกของใบ (ไม่ต่อ server · ไม่ mint session)
 //   … t1.1 --only settings-unit         # ถ่ายฉากเดียว
 //   … t1.1 --ex-date 2026-12-31         # ปักรอบตัวอย่างของราชา (ปริยาย = รอบ ส. 14 พ.ย. ของฟิกซ์เจอร์ · ไม่ขึ้นกับวันนี้)
+//   … t1.2 --week 2026-11-11 --month 2026-11 --dec-date 2026-12-31   # T1.2: ปักสัปดาห์/เดือน/รอบราชาของฉากแผง (ปริยาย = ค่าในฟิกซ์เจอร์ · ไม่ขึ้นกับวันนี้)
+//   ⚠️ T1.2: สถานะ "เดินทางแล้ว/ออกเรือแล้ว/ต่ำกว่าขั้นต่ำ" ของช่องคิดจากนาฬิกาจริงของ server (หน้าไม่รับเวลา) — ฉากแผง/กล่องตัดสินใช้รอบ 31 ธ.ค. ที่ต่ำกว่าขั้นต่ำจนถึงวันนั้น
 // ⚠️ ตัวโหลดใช้นาฬิกาจริง (ตั้งใจ — production): รอบตัวอย่าง/ลูกค้าจะเห็น ปักผ่าน ?ex= ได้เสมอ แต่ "2 รอบถัดไป" และป้าย "ใช้อยู่" ของฤดูกาลขึ้นกับวันที่ถ่าย
 //   หรือส่ง base ทาง env: QC_BASE=http://127.0.0.1:<port>
 // ภาพคู่: bash scripts/parity-trips.sh <16|17> .qc-shots/trips/t1.1/<ฉาก>-desktop.png .qc-shots/trips/t1.1/<ฉาก>-PARITY.png
@@ -20,7 +22,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTripsQcEnv } from "./trips-qc-env.mjs";
-import { DEPARTURE_RACHA_1114, SHOP_DIVE, TRIPS_VISUAL_SIMILAN_LADDER } from "./trips-fixture.mjs";
+import { CALENDAR_WEEK_1111, DEPARTURE_RACHA_1114, RACHA_DEPARTURE_PRICE_1231, SHOP_DIVE, TRIPS_VISUAL_SIMILAN_LADDER } from "./trips-fixture.mjs";
 
 loadTripsQcEnv("visual-trips");
 
@@ -35,14 +37,14 @@ const DEVICES = [
 ] as const;
 
 // ═══════════════ สเปกภาพ (คีย์ = ใบงาน) ═══════════════
-type Ids = { unitSlug: string; racha: string; similan: string; racha1114: string };
+type Ids = { unitSlug: string; racha: string; similan: string; racha1114: string; racha1231: string; week: string; month: string; decWeek: string };
 type Action =
   | { click: { selector: string; text?: string } }
   | { fill: { selector: string; nth?: number; value: string } }
   | { waitFor: string }
   | { reveal: string }
   | { pause: number };
-type Spec = { name: string; mockup: "16" | "17"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean };
+type Spec = { name: string; mockup: "11" | "16" | "17"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean };
 // ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
 const LADDER = '[role="dialog"] [data-setting-key="trips.cancel.ladder"]';
 const LADDER_DAYS = `${LADDER} [data-table-cell="fromDaysBefore"] input`;
@@ -73,6 +75,29 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       ],
     },
   ],
+  // TRIPS T1.2 ▸ ปฏิทินรอบ (ภาพ 11) — ทุกฉาก 1440 + 390 · วันที่ปักด้วย --week/--month/--dec-date (ไม่พึ่งวันนี้) · กล่องโต้ตอบถ่ายแบบ viewport ◂
+  "t1.2": [
+    // ภาพ 11 ทั้งหน้า: สัปดาห์ 11–17 พ.ย. + แผงรอบราชา ส. 14 เปิด
+    { name: "calendar-week", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}&dep=${i.racha1114}` },
+    // เดือน พ.ย. 2569 (ตาราง 7 คอลัมน์ · มือถือ = จุด/จำนวน)
+    { name: "calendar-month", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=month&month=${i.month}` },
+    // แผงราชา 31 ธ.ค. → กล่องราคาเฉพาะรอบ 4,500/3,150
+    {
+      name: "departure-panel",
+      mockup: "11",
+      path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.decWeek}&dep=${i.racha1231}`,
+      fullPage: false,
+      actions: [{ waitFor: '[data-testid="trips-dep-price"]' }, { click: { selector: '[data-testid="trips-dep-price"]' } }, { waitFor: '[data-testid="trips-price-dialog"]' }, { pause: 500 }],
+    },
+    // แผงราชา 31 ธ.ค. (ต่ำกว่าขั้นต่ำจนถึงวันนั้น) → กล่องตัดสิน 3 ทางเลือก · ไม่กดยืนยัน
+    {
+      name: "belowmin-decision",
+      mockup: "11",
+      path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.decWeek}&dep=${i.racha1231}`,
+      fullPage: false,
+      actions: [{ waitFor: '[data-testid="trips-dep-decide"]' }, { click: { selector: '[data-testid="trips-dep-decide"]' } }, { waitFor: '[data-testid="trips-decide-dialog"]' }, { pause: 500 }],
+    },
+  ],
 };
 
 const argv = process.argv.slice(2);
@@ -92,13 +117,22 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(EX_DATE)) {
   console.error(`❌ --ex-date ต้องเป็น YYYY-MM-DD: ${EX_DATE}`);
   process.exit(2);
 }
+const WEEK = argOf("--week") ?? CALENDAR_WEEK_1111.rows.racha[0].date;
+const MONTH = argOf("--month") ?? WEEK.slice(0, 7);
+const DEC_DATE = argOf("--dec-date") ?? RACHA_DEPARTURE_PRICE_1231.date;
+for (const [flag, v, re] of [["--week", WEEK, /^\d{4}-\d{2}-\d{2}$/], ["--month", MONTH, /^\d{4}-\d{2}$/], ["--dec-date", DEC_DATE, /^\d{4}-\d{2}-\d{2}$/]] as const) {
+  if (!re.test(v)) {
+    console.error(`❌ ${flag} รูปแบบผิด: ${v}`);
+    process.exit(2);
+  }
+}
 const specs = only ? allSpecs.filter((s) => s.name === only) : allSpecs;
 if (!specs.length) {
   console.error(`❌ --only ${only} ไม่มีในสเปก ${WO}: ${allSpecs.map((s) => s.name).join(" · ")}`);
   process.exit(2);
 }
 if (argv.includes("--list")) {
-  console.log(`VISUAL_SPECS ${JSON.stringify(specs.map((s) => ({ name: s.name, mockup: s.mockup, actions: s.actions?.length ?? 0, fullPage: s.fullPage !== false, devices: DEVICES.map((d) => `${d.width}x${d.height}`) })))} · exDate ${EX_DATE}`);
+  console.log(`VISUAL_SPECS ${JSON.stringify(specs.map((s) => ({ name: s.name, mockup: s.mockup, actions: s.actions?.length ?? 0, fullPage: s.fullPage !== false, devices: DEVICES.map((d) => `${d.width}x${d.height}`) })))} · exDate ${EX_DATE} · week ${WEEK} · month ${MONTH} · decDate ${DEC_DATE}`);
   process.exit(0);
 }
 const BASE = (argOf("--base") ?? process.env.QC_BASE ?? "").replace(/\/+$/, "");
@@ -160,7 +194,10 @@ async function idsFromSeed(): Promise<Ids> {
   const similan = await prod("similan-4-nights");
   const dep = await prisma.tripDeparture.findFirst({ where: { tenantId, unitId: unit.id, productId: racha, localDate: new Date(`${EX_DATE}T00:00:00.000Z`), status: { not: "CANCELLED" } }, select: { id: true } });
   if (!dep) throw new Fatal(`ไม่พบรอบราชา ${EX_DATE} (ที่ไม่ยกเลิก) — รัน seed ก่อน หรือส่ง --ex-date ของรอบที่มีจริง`);
-  return { unitSlug: unit.slug, racha, similan, racha1114: dep.id };
+  const dec = await prisma.tripDeparture.findFirst({ where: { tenantId, unitId: unit.id, productId: racha, localDate: new Date(`${DEC_DATE}T00:00:00.000Z`), status: { not: "CANCELLED" } }, select: { id: true } });
+  if (!dec && WO === "t1.2") throw new Fatal(`ไม่พบรอบราชา ${DEC_DATE} (ที่ไม่ยกเลิก) — รัน seed ก่อน หรือส่ง --dec-date ของรอบที่มีจริง`);
+  const decWeek = new Date(Date.parse(`${DEC_DATE}T00:00:00.000Z`) - 86_400_000).toISOString().slice(0, 10);
+  return { unitSlug: unit.slug, racha, similan, racha1114: dep.id, racha1231: dec?.id ?? "", week: WEEK, month: MONTH, decWeek };
 }
 
 type Page = {
