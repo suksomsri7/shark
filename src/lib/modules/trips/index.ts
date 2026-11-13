@@ -297,3 +297,27 @@ export type {
 export { saveTripsSettings, resetTripsSetting } from "./trips-settings";
 // ◂ TRIPS T1.1
 // ── /T1.1 screens ──
+
+// ── T1.2 departures-screen ──
+// TRIPS T1.2 ▸ ปฏิทินรอบและที่ว่าง ฝั่งร้าน (ภาพ 11) · แผงรอบ · ต่ำกว่าขั้นต่ำ → ออกขาดทุน/รวมรอบ/ยกเลิก (ใบสั่ง ledger/trips-briefs/T1.2.md) ◂
+export { DEPARTURE_CELL_STATES, departureCellState, calendarWeekDays, calendarMonthDays, defaultWeekStart } from "./departure-view-core";
+export type { DepartureCellState } from "./departure-view-core";
+export { loadDepartureCalendarVM, loadDeparturePanelVM, loadDepartureSchedulesVM, TRIPS_CALENDAR_DEPARTURE_CAP, TRIPS_CALENDAR_PRODUCT_CAP } from "./departure-screens";
+export type {
+  DepartureCalendarVM,
+  DeparturePanelVM,
+  DepartureSchedulesVM,
+  DepartureCellVM,
+  CalendarProductVM,
+  DecisionVM,
+  PanelActions,
+  PriceRowVM,
+  MergeTargetVM,
+  ScheduleItemVM,
+  CalendarView,
+  CalendarFilter,
+} from "./departure-screens";
+export { decideBelowMin, DEPARTURE_DESK_ERROR_CODES } from "./departure-desk";
+export type { DepartureDeskErrorCode, DecideBelowMinResult } from "./departure-desk";
+// ◂ TRIPS T1.2
+// ── /T1.2 departures-screen ──

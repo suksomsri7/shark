@@ -533,9 +533,9 @@ try {
   });
   await st("CV-8", "ต้องตัดสินใจ = 8 รอบ (ภาพ 3 — ขายแล้วจาก T0.6) เรียงเวลาตัดสินแล้วเวลาออก · ไม่มีรอบเลยเวลาตัดสิน ณ 12 พ.ย. 18:00", () => {
     const d = asArr(wk.decisions);
-    const want = [["deep3", "2026-11-15"], ["racha", "2026-11-15"], ["phiphi", "2026-11-15"], ["deep3", "2026-11-16"], ["racha", "2026-11-16"], ["phiphi", "2026-11-16"], ["racha", "2026-11-17"], ["phiphi", "2026-11-17"]] as const;
+    const want = [["deep3", "2026-11-14"] /* ORACLE-EDIT CV-8 (ผู้คุม 13 พ.ย.): ดำน้ำลึก ส. 14 เป็น BELOW_MIN ตาม CV-6 (seed ขาย 0) ⇒ 9 รอบ */, ["deep3", "2026-11-15"], ["racha", "2026-11-15"], ["phiphi", "2026-11-15"], ["deep3", "2026-11-16"], ["racha", "2026-11-16"], ["phiphi", "2026-11-16"], ["racha", "2026-11-17"], ["phiphi", "2026-11-17"]] as const;
     eq(d.map((x) => x.departureId), want.map(([k, day]) => did(k, day)), "ลำดับ");
-    eq(asRec(wk.counts)?.belowMin, 8, "counts.belowMin");
+    eq(asRec(wk.counts)?.belowMin, 9, "counts.belowMin");
     ok(d.every((x) => x.overdue === false), "overdue");
   });
   await st("CV-9", "เวลาตัดสิน จ. 16 ราชา = อา. 15 18:00 (2026-11-15T11:00Z · ภาพ :62) · used 0 · shortBy 8", () => {
@@ -570,7 +570,7 @@ try {
   await st("CV-14", "เดือน 2026-11: 42 วัน 26 ต.ค.–6 ธ.ค. · ช่อง 20 · decisions เดียวกับสัปดาห์", async () => {
     const m = await calVM(SEED, { unitId: U0, view: "month", month: "2026-11" });
     const days = (asRec(m.range)?.days as string[] | undefined) ?? [];
-    eq([m.view, days.length, days[0], days[41], asArr(m.cells).length, asArr(m.decisions).length], ["month", 42, "2026-10-26", "2026-12-06", 20, 8], "เดือน");
+    eq([m.view, days.length, days[0], days[41], asArr(m.cells).length, asArr(m.decisions).length], ["month", 42, "2026-10-26", "2026-12-06", 20, 9], "เดือน"); // ORACLE-EDIT CV-14 (ผู้คุม 13 พ.ย.)
   });
   await st("CV-15", "เดือน 2026-12: ราชา 31 ธ.ค. BELOW_MIN · hasDeparturePrice (4,500 ราคารอบ) · ขั้นต่ำ 8", async () => {
     const m = await calVM(SEED, { unitId: U0, view: "month", month: "2026-12" });

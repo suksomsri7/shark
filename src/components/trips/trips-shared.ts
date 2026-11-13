@@ -10,7 +10,7 @@ export type TripsNavKey = (typeof TRIPS_NAV_KEYS)[number];
 /** path ต่อท้าย /app/u/<slug> · available = มีหน้าจริงแล้ว · wo = ใบที่สร้าง/จะเปิดหน้า · ป้าย = i18n `trips.nav.<key>` */
 export const TRIPS_NAV: readonly { key: TripsNavKey; path: string; available: boolean; wo: string }[] = [
   { key: "products", path: "/trips/products", available: true, wo: "T1.1" },
-  { key: "departures", path: "/trips/departures", available: false, wo: "T1.2" },
+  { key: "departures", path: "/trips/departures", available: true, wo: "T1.2" },
   { key: "bookings", path: "/trips/bookings", available: false, wo: "T1.3" },
   { key: "agents", path: "/trips/agents", available: false, wo: "A1.2" },
   { key: "channels", path: "/trips/channels", available: false, wo: "W1.1" },
