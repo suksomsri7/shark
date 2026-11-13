@@ -439,7 +439,7 @@
     "LAST_ACTIVE_OPTION": "At least one option must stay on",
     "LAST_SEAT_PAX_TYPE": "At least one seat-using traveller type must stay on",
     "NOT_BELOW_MIN": "This departure is no longer below its minimum — reload and check again",
-    "MERGE_NEEDS_BOOKINGS": "Merging a departure with bookings needs the bookings moved — available with the booking system (T1.6)",
+    "MERGE_NEEDS_BOOKINGS": "Departures with bookings cannot be merged yet — the bookings would have to move to another departure, which is not available yet",
     "MERGE_TARGET_INVALID": "The selected departure cannot take the merge — it must be the same day, on sale and have enough free seats",
     "HAS_BOOKINGS": "This departure has bookings or holds and cannot be cancelled",
     "CAPACITY_BELOW_USED": "Capacity cannot be less than the seats already sold/held",
@@ -522,9 +522,9 @@
     },
     "cell": {
       "used": "{used}/{cap}",
-      "left": "{n} free · guaranteed",
+      "left": "{n} free · will run",
       "leftLow": "{n} left",
-      "belowMin": "Below minimum {n}",
+      "belowMin": "Below min {n}",
       "shortBy": "{n} more needed",
       "waitlist": "{n} waiting",
       "noDeparture": "No departure",
@@ -532,7 +532,8 @@
       "nextTrip": "No trips in this range · next trip {dates} sold {sold}/{cap} {unit}",
       "noTrip": "No trips in this range",
       "cancelledPax": "{n} people",
-      "more": "+{n}"
+      "more": "+{n}",
+      "held": "held {n}"
     },
     "unit": {
       "SEAT": "seats",
@@ -586,7 +587,7 @@
       "cancel": "Cancel",
       "confirm": "Confirm decision",
       "title": "Decide {date} · {title}",
-      "lead": "Sold {used} · minimum {min} · {short} more needed",
+      "lead": "Sold {sold} · minimum {min} · {short} more needed",
       "runHint": "Guarantee even below the minimum",
       "mergeHint": "Move into another departure the same day",
       "cancelHint": "Cancel this departure with a reason",
@@ -596,9 +597,11 @@
       "mergeOnlyEmpty": "Merging works only for departures without bookings — this departure is cancelled with a reason naming the target; the target is not changed",
       "targetSeats": "used {used}/{cap} · {left} {unit} free",
       "clash": "This departure's boat/van/guide is busy at that time (for information)",
-      "summaryRun": "This departure will be guaranteed with {used} sold of a {min} minimum",
+      "summaryRun": "This departure will be guaranteed with {sold} sold of a {min} minimum",
       "summaryMerge": "This departure will be cancelled · reason: merged with {title} {time}",
-      "summaryCancel": "This departure will be cancelled · reason: {reason}"
+      "summaryCancel": "This departure will be cancelled · reason: {reason}",
+      "held": "held {n}",
+      "peopleOnly": "This departure already has bookings — departures with bookings cannot be merged or cancelled here yet; only \"Run at a loss\" is possible"
     },
     "decisions": {
       "title": "Needs decision ({n})",
@@ -607,11 +610,12 @@
       "overdue": "Decision time passed",
       "noTime": "No decision time",
       "propose": "Options: {list}",
-      "mergeWith": "merge with {title}"
+      "mergeWith": "merge with {title}",
+      "hasPeople": "Has bookings · merge/cancel not possible here yet · option: {run}"
     },
     "notYet": {
-      "bookings": "No booking data yet (T1.3) — split by channel/agent and adults/children appears once bookings are live",
-      "money": "Departure money summary (bookings, park fees, cost, commission, profit) comes in T1.7"
+      "bookings": "Not available yet: bookings split by channel/agent and adults/children will show here once bookings are live",
+      "money": "Not available yet: the departure money summary (bookings, park fees, cost, commission, gross profit) will show here"
     },
     "panel": {
       "aria": "Departure {date} · {title}",
@@ -641,7 +645,7 @@
       "note": "More detail (optional)",
       "otherText": "Reason (at least 3 characters)",
       "blocked": "This departure has bookings/holds and cannot be cancelled yet",
-      "blockedLong": "This departure has {n} sold/held/reserved seats — departures with people cannot be cancelled yet (moving/refunding a whole departure comes in T1.6)",
+      "blockedLong": "This departure has {n} sold/held/reserved seats — departures with people cannot be cancelled here yet (moving or refunding a whole departure is not available yet)",
       "confirm": "Cancel this departure"
     },
     "capacityDialog": {
@@ -663,7 +667,7 @@
     },
     "priceDialog": {
       "title": "Departure price {date} · {title}",
-      "note": "Prices set here apply to this departure only (instead of the regular/season price) · removing needs a reason",
+      "note": "Price per person before promotions/codes · prices set here apply to this departure only (instead of the regular/season price) · removing needs a reason",
       "readOnly": "View only — editing prices needs the price permission",
       "src": {
         "RETAIL": "Regular price",
@@ -676,7 +680,8 @@
       "remove": "Remove departure price",
       "removeReason": "Reason for removing",
       "reasonHint": "At least 10 characters",
-      "removeConfirm": "Confirm remove"
+      "removeConfirm": "Confirm remove",
+      "paxUnknown": "Other traveller type"
     },
     "stopSellDialog": {
       "title": "Close bookings {date} · {title}",
@@ -688,9 +693,10 @@
       "reason": "Reason",
       "untilDate": "Until date (optional)",
       "untilTime": "Time",
-      "untilHint": "Shop time · empty = until cleared",
+      "untilHint": "Shop time · enter both date and time · both empty = until cleared",
       "save": "Stop selected channels",
-      "clear": "Clear stop"
+      "clear": "Clear stop",
+      "untilNeedsBoth": "Enter both the date and the time, or leave both empty"
     },
     "create": {
       "title": "Add departure",
@@ -737,6 +743,32 @@
     "tripsView": {
       "empty": "No multi-day trips from today",
       "range": "From {from} (1 year)"
-    }
+    },
+    "cellShort": {
+      "PAST": "Past",
+      "DEPARTED_TODAY": "Departed",
+      "CANCELLED": "Called off",
+      "FULL": "Full",
+      "CLOSED": "Closed",
+      "OPEN": "On sale"
+    },
+    "reason": {
+      "WEATHER": "Weather/sea",
+      "BELOW_MIN": "Below minimum",
+      "VEHICLE": "Boat/van breakdown",
+      "merge": "Merged with {title} {time}",
+      "withNote": "{reason} · {note}"
+    },
+    "unguaranteeDialog": {
+      "title": "Remove guarantee {date} · {title}",
+      "body": "The departure goes back to \"On sale\" — customers and agents no longer see the \"Guaranteed\" label",
+      "belowMin": "Sold {sold} of a {min} minimum ⇒ the departure becomes \"Below minimum\" and returns to the decision list",
+      "confirm": "Remove guarantee"
+    },
+    "month": {
+      "dayAria": "{date}: {n} departures — see this day"
+    },
+    "attentionNone": "Needs decision 0",
+    "countsPartial": "whole range"
   }
 }

@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { DepartureCalendarVM, DepartureCellVM } from "@/lib/modules/trips";
-import { calHref, cellShape, cellStyle, useCellText, useDepDates, UsedBar, type CalQuery } from "./DepartureParts";
+import { calHref, cellShape, cellStyle, useCellText, useDepDates, useTitle, UsedBar, type CalQuery } from "./DepartureParts";
 
 type Props = { vm: DepartureCalendarVM; base: string; q: CalQuery };
 
@@ -13,7 +13,7 @@ export default function DeparturesCalendar({ vm, base, q }: Props) {
   const t = useTranslations("trips");
   const D = useDepDates();
   return (
-    <section data-testid="trips-cal" className="flex min-w-0 flex-col gap-3 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-3.5">
+    <section data-testid="trips-cal" className="flex min-w-0 flex-col gap-3 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-3">
       {vm.products.length === 0 ? (
         <p data-testid="trips-cal-empty" className="p-2 text-sm text-[color:var(--color-muted)]">
           {t("departures.empty")}
@@ -98,11 +98,12 @@ function CellLink({ c, base, q, compact }: { c: DepartureCellVM; base: string; q
       data-testid={`trips-cal-cell-${c.departureId}`}
       data-state={c.state}
       aria-current={selected ? "true" : undefined}
+      title={T.full(c)}
       className={`${cellShape(c.state, selected)} min-h-11 hover:bg-[color:var(--color-surface-2)]`}
       style={cellStyle(c.state)}
     >
       <b className={`text-base leading-tight ${c.state === "CANCELLED" ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-ink)]"}`}>{T.line1(c)}</b>
-      <span className={`text-sm leading-snug [overflow-wrap:anywhere] ${c.state === "BELOW_MIN" ? "font-bold text-[color:var(--color-danger)]" : c.state === "CANCELLED" ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-ink-soft)]"}`}>{T.line2(c)}</span>
+      <span className={`text-sm leading-snug [overflow-wrap:break-word] ${c.state === "BELOW_MIN" ? "font-bold text-[color:var(--color-danger)]" : c.state === "CANCELLED" ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-ink-soft)]"}`}>{T.line2(c)}</span>
       {c.state !== "CANCELLED" && !compact ? <UsedBar used={c.used} capacity={c.capacity} /> : null}
     </Link>
   );
@@ -125,7 +126,8 @@ function useNextTripText() {
     const n = p.nextTrip;
     if (!n) return t("departures.cell.noTrip");
     const dates = n.endDate !== n.localDate ? D.range(n.localDate, n.endDate) : D.full(n.localDate);
-    return t("departures.cell.nextTrip", { dates, sold: n.sold, cap: n.capacity, unit: t(`departures.unit.${p.header.unitWord}`) });
+    const base = t("departures.cell.nextTrip", { dates, sold: n.sold, cap: n.capacity, unit: t(`departures.unit.${p.header.unitWord}`) });
+    return n.held > 0 ? `${base} · ${t("departures.cell.held", { n: n.held })}` : base;
   };
 }
 
@@ -138,10 +140,10 @@ function WeekTable({ vm, base, q }: Props) {
   const skipped = new Set(vm.emptyDays.map((e) => `${e.productId}|${e.localDate}`));
   const byKey = new Map<string, DepartureCellVM[]>();
   for (const c of vm.cells) byKey.set(`${c.productId}|${c.localDate}`, [...(byKey.get(`${c.productId}|${c.localDate}`) ?? []), c]);
-  const rowHas = new Set(vm.cells.map((c) => c.productId));
+  const TT = useTitle();
   return (
     <div data-testid="trips-cal-week" className="relative hidden md:block min-w-0 overflow-x-auto">
-      <table className="w-full min-w-[700px] table-fixed border-separate border-spacing-0.5">
+      <table className="w-full min-w-[704px] table-fixed border-separate border-spacing-0.5">
         <colgroup>
           <col className="w-[152px]" />
           {vm.range.days.map((d) => (
@@ -171,10 +173,10 @@ function WeekTable({ vm, base, q }: Props) {
           {vm.products.map((p) => (
             <tr key={p.id} data-testid={`trips-cal-row-${p.id}`}>
               <th scope="row" className="rounded-lg border border-[color:var(--color-line)] p-2 text-left align-top">
-                <span className="block text-sm font-bold leading-snug text-[color:var(--color-ink)] [overflow-wrap:anywhere]">{p.titleTh}</span>
+                <span className="block text-sm font-bold leading-snug text-[color:var(--color-ink)] [overflow-wrap:break-word]">{TT(p.titleTh, p.titleEn)}</span>
                 <span className="block text-sm font-normal leading-snug text-[color:var(--color-muted)] [overflow-wrap:anywhere]">{headerLine(p)}</span>
               </th>
-              {!rowHas.has(p.id) && vm.emptyDays.every((e) => e.productId !== p.id) ? (
+              {!p.inRange && vm.emptyDays.every((e) => e.productId !== p.id) ? (
                 <td colSpan={vm.range.days.length} className="align-middle">
                   <div data-testid={`trips-cal-next-trip-${p.id}`} className="flex min-h-[52px] items-center justify-center rounded-lg border border-dashed border-[color:var(--color-line)] px-3 py-2 text-center text-sm text-[color:var(--color-ink-soft)]">
                     {p.nextTrip ? (
@@ -217,8 +219,9 @@ function DayList({ vm, base, q }: Props) {
   const t = useTranslations("trips");
   const D = useDepDates();
   const nextText = useNextTripText();
-  const titleOf = new Map(vm.products.map((p) => [p.id, p.titleTh]));
-  const withoutCells = vm.products.filter((p) => !vm.cells.some((c) => c.productId === p.id));
+  const TT = useTitle();
+  const titleOf = new Map(vm.products.map((p) => [p.id, TT(p.titleTh, p.titleEn)]));
+  const withoutCells = vm.products.filter((p) => !p.inRange);
   return (
     <div data-testid="trips-cal-daylist" className="flex min-w-0 flex-col gap-4 md:hidden">
       {vm.range.days.map((d) => {
@@ -249,7 +252,7 @@ function DayList({ vm, base, q }: Props) {
       })}
       {withoutCells.map((p) => (
         <p key={p.id} className="rounded-lg border border-dashed border-[color:var(--color-line)] px-3 py-2 text-sm text-[color:var(--color-ink-soft)] [overflow-wrap:anywhere]">
-          <b className="text-[color:var(--color-ink)]">{p.titleTh}</b> · {nextText(p)}
+          <b className="text-[color:var(--color-ink)]">{TT(p.titleTh, p.titleEn)}</b> · {nextText(p)}
         </p>
       ))}
     </div>
@@ -262,7 +265,8 @@ function MonthGrid({ vm, base, q }: Props) {
   const T = useCellText();
   const t = useTranslations("trips");
   const month = vm.range.days[Math.floor(vm.range.days.length / 2)]?.slice(0, 7) ?? "";
-  const titleOf = new Map(vm.products.map((p) => [p.id, p.titleTh]));
+  const TT = useTitle();
+  const titleOf = new Map(vm.products.map((p) => [p.id, TT(p.titleTh, p.titleEn)]));
   const MAX = 3;
   return (
     <div data-testid="trips-cal-month" className="relative min-w-0 overflow-x-auto">
@@ -282,16 +286,19 @@ function MonthGrid({ vm, base, q }: Props) {
               className={`flex min-h-[64px] min-w-0 flex-col gap-1 rounded-lg border p-1 md:min-h-[96px] ${d === vm.unit.today ? "border-2 border-[color:var(--color-ink)]" : "border-[color:var(--color-line)]"} ${out ? "bg-[color:var(--color-surface-2)]" : ""}`}
             >
               <span className={`text-sm ${out ? "text-[color:var(--color-muted)]" : "font-bold text-[color:var(--color-ink)]"}`}>{Number(d.slice(8))}</span>
-              {/* มือถือ: จุดแยกรูปทรงต่อรอบ + จำนวน */}
+              {/* มือถือ: จุดแยกรูปทรงต่อรอบ + จำนวน · ทั้งช่องเป็นปุ่มเดียว (≥ 44 px สูง) ไปรายการต่อวันของวันนั้น */}
               {list.length ? (
-                <span className="flex flex-wrap items-center gap-1 md:hidden">
+                <Link
+                  href={calHref(base, q, { view: "week", start: d, month: null, dep: null })}
+                  scroll={false}
+                  aria-label={t("departures.month.dayAria", { date: D.short(d), n: list.length })}
+                  className="flex min-h-11 flex-wrap content-start items-start gap-1 md:hidden"
+                >
                   {list.slice(0, 4).map((c) => (
-                    <Link key={c.departureId} href={calHref(base, q, { dep: c.departureId, decide: false })} scroll={false} aria-label={`${titleOf.get(c.productId) ?? ""} ${T.line1(c)}`} className="inline-flex min-h-6 min-w-6 items-center justify-center">
-                      <span aria-hidden="true" className={`block h-3 w-3 rounded-full ${dotShape(c.state)}`} style={c.state === "CANCELLED" ? { backgroundImage: "repeating-linear-gradient(135deg, var(--color-surface) 0px, var(--color-surface) 2px, var(--color-ink-soft) 2px, var(--color-ink-soft) 3px)" } : undefined} />
-                    </Link>
+                    <span key={c.departureId} aria-hidden="true" className={`block h-3 w-3 rounded-full ${dotShape(c.state)}`} style={c.state === "CANCELLED" ? { backgroundImage: "repeating-linear-gradient(135deg, var(--color-surface) 0px, var(--color-surface) 2px, var(--color-ink-soft) 2px, var(--color-ink-soft) 3px)" } : undefined} />
                   ))}
-                  {list.length > 4 ? <span className="text-sm text-[color:var(--color-muted)]">{t("departures.cell.more", { n: list.length - 4 })}</span> : null}
-                </span>
+                  {list.length > 4 ? <span className="text-sm leading-none text-[color:var(--color-muted)]">{t("departures.cell.more", { n: list.length - 4 })}</span> : null}
+                </Link>
               ) : null}
               {/* จอกว้าง: ช่องย่อ ใช้แล้ว/ความจุ */}
               <span className="hidden min-w-0 flex-col gap-1 md:flex">
@@ -306,8 +313,8 @@ function MonthGrid({ vm, base, q }: Props) {
                     className={`${cellShape(c.state, q.dep === c.departureId)} min-h-7 py-0.5 text-sm`}
                     style={cellStyle(c.state)}
                   >
-                    <span className="truncate">
-                      <b>{T.line1(c)}</b> {(titleOf.get(c.productId) ?? "").slice(0, 10)}
+                    <span className="block min-w-0 truncate">
+                      <b>{T.line1(c)}</b> {titleOf.get(c.productId) ?? ""}
                     </span>
                   </Link>
                 ))}

@@ -14,7 +14,7 @@ import { listDepartures, getDeparture, listSchedules, type DepartureDTO } from "
 import { listResources } from "./resources";
 import { loadPricingInput } from "./pricing";
 import { resolveTripPrice, type PricedItem, type TripPricingInput } from "./pricing-core";
-import { addDaysYmd, hhmm, normalizeTimezone, utcToLocal, ymdOf } from "./departures-core";
+import { DEPARTURE_SELL_CHANNELS, addDaysYmd, hhmm, normalizeTimezone, utcToLocal, ymdOf } from "./departures-core";
 import { publicLeftOf } from "./capacity-core";
 import { tripScheduleExceptionsSchema, tripScheduleRuleSchema } from "./json-schemas";
 import { TRIPS_PRODUCT_VIEW_ANY, tripsFail, tripsUnitGate, type TripsFail, type TripsScreenCtx, type TripsUnitGate } from "./pickup";
@@ -80,7 +80,13 @@ async function tzOf(g: TripsUnitGate): Promise<string> {
 const passFail = (r: { code: string; message: string }): Fail => ({ ok: false, code: r.code, message: r.message });
 
 const hmOf = (tz: string, iso: string): string => hhmm(utcToLocal(tz, new Date(iso)).minutes);
-const timeTextOf = (tz: string, startsAt: string, endsAt: string): string => `${hmOf(tz, startsAt)}–${hmOf(tz, endsAt)}`;
+/** "08:00–16:30" ตามเวลาร้าน · จบคนละวัน ⇒ ต่อท้าย " (+N)" (N = จำนวนวันที่ข้าม · ไม่มีคำ ใช้ได้ทุกภาษา) */
+const timeTextOf = (tz: string, startsAt: string, endsAt: string): string => {
+  const s = utcToLocal(tz, new Date(startsAt));
+  const e = utcToLocal(tz, new Date(endsAt));
+  const days = Math.round((Date.parse(`${e.ymd}T00:00:00.000Z`) - Date.parse(`${s.ymd}T00:00:00.000Z`)) / DAY_MS);
+  return `${hhmm(s.minutes)}–${hhmm(e.minutes)}${days > 0 ? ` (+${days})` : ""}`;
+};
 const localOf = (tz: string, iso: string | null): { ymd: string; hm: string } | null => {
   if (!iso) return null;
   const l = utcToLocal(tz, new Date(iso));
@@ -138,6 +144,8 @@ export type CalendarProductVM = {
   status: string;
   header: { boats: string[]; vans: number; guides: number; capacity: number | null; minPax: number | null; unitWord: "SEAT" | "BERTH" };
   nextTrip: { departureId: string; localDate: string; endDate: string; capacity: number; sold: number; held: number } | null;
+  /** มีรอบในช่วงที่ดู (นับทั้งช่วง ไม่ขึ้นกับการตัดที่เพดาน) */
+  inRange: boolean;
 };
 export type DecisionVM = {
   departureId: string;
@@ -153,8 +161,10 @@ export type DecisionVM = {
   decisionLocal: { ymd: string; hm: string } | null;
   overdue: boolean;
   mergeTargets: number;
-  /** ชื่อไทยของเป้าแรก (บรรทัด "เสนอ: รวมกับ …") */
+  /** ชื่อไทยของเป้าแรก (บรรทัด "เสนอ: รวมกับ …") — null เมื่อรอบมีคน (รวม/ยกเลิกไม่ได้) */
   firstTargetTitle: string | null;
+  /** ขาย + ถือ + โควตา > 0 ⇒ รวมรอบ/ยกเลิกที่จอนี้ยังทำไม่ได้ เสนอได้แค่ "ออกขาดทุน" */
+  hasPeople: boolean;
 };
 export type DepartureCalendarVM = {
   unit: { id: string; slug: string; tz: string; today: string; nowIso: string };
@@ -169,6 +179,7 @@ export type DepartureCalendarVM = {
   cells: DepartureCellVM[];
   emptyDays: { productId: string; localDate: string; reason: "SKIPPED" }[];
   decisions: DecisionVM[];
+  /** นับจากทั้งช่วง (คิวรีนับแยก เมื่อถูกตัดที่เพดาน) ไม่ใช่จากช่องที่ถูกตัด */
   counts: { belowMin: number; cancelled: { departures: number; pax: number; reasons: { text: string; n: number }[] } };
   trips: { departureId: string; productId: string; titleTh: string; localDate: string; endDate: string; capacity: number; sold: number; held: number; seatsLeft: number; state: DepartureCellState }[];
   tripsTruncated: boolean;
@@ -406,7 +417,8 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
     .sort((a, b) => (a.decisionAt ?? "9999").localeCompare(b.decisionAt ?? "9999") || a.startsAt.localeCompare(b.startsAt) || a.departureId.localeCompare(b.departureId))
     .map((c) => {
       const src = { id: c.departureId, localDate: c.localDate, sold: c.sold, held: c.held, reserved: c.reserved };
-      const targets = targetPool.filter((t) => isMergeTarget(src, t, { now, today }));
+      const hasPeople = c.sold + c.held + c.reserved > 0;
+      const targets = hasPeople ? [] : targetPool.filter((t) => isMergeTarget(src, t, { now, today }));
       return {
         departureId: c.departureId,
         productId: c.productId,
@@ -422,21 +434,45 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
         overdue: c.needsDecision,
         mergeTargets: targets.length,
         firstTargetTitle: targets.length ? (titleOf.get(targets[0].productId) ?? null) : null,
+        hasPeople,
       };
     });
 
-  // ── ยกเลิก ──
-  const cx = cells.filter((c) => c.state === "CANCELLED");
-  const reasons = new Map<string, number>();
-  for (const c of cx) if (c.cancelReason) reasons.set(c.cancelReason, (reasons.get(c.cancelReason) ?? 0) + 1);
-  const counts: DepartureCalendarVM["counts"] = {
-    belowMin: decisions.length,
-    cancelled: {
-      departures: cx.length,
-      pax: cx.reduce((s, c) => s + c.used, 0),
-      reasons: [...reasons.entries()].map(([text, n]) => ({ text, n })).sort((a, b) => b.n - a.n || a.text.localeCompare(b.text)),
-    },
-  };
+  // ── ชิป: ต่ำกว่าขั้นต่ำ + ยกเลิก — ไม่ถูกตัด ⇒ จากช่อง · ถูกตัด ⇒ คิวรีนับทั้งช่วง (มีเพดานแถวเหตุผล) ──
+  let counts: DepartureCalendarVM["counts"];
+  if (cells.length < total && shownIds.length) {
+    const [bm, cxAgg, cxReasons] = await Promise.all([
+      // เกณฑ์เดียวกับ departureCellState: ยังไม่เริ่ม · มีที่ว่าง · สถานะ OPEN (หรือ FULL ที่มีที่) · ขาย < ขั้นต่ำ
+      g.db.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM "TripDeparture"
+        WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "productId" = ANY(${shownIds}::text[])
+          AND "localDate" BETWEEN ${from}::date AND ${to}::date
+          AND "status" IN ('OPEN', 'FULL') AND "minPax" IS NOT NULL AND "sold" < "minPax"
+          AND "startsAt" > ${now} AND "capacity" - "sold" - "held" - "reserved" > 0`,
+      g.db.$queryRaw<{ n: number; pax: number }[]>`
+        SELECT count(*)::int AS n, coalesce(sum("sold" + "held"), 0)::int AS pax FROM "TripDeparture"
+        WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "productId" = ANY(${shownIds}::text[])
+          AND "localDate" BETWEEN ${from}::date AND ${to}::date AND "status" = 'CANCELLED'`,
+      g.db.$queryRaw<{ text: string; n: number }[]>`
+        SELECT "cancelReason" AS text, count(*)::int AS n FROM "TripDeparture"
+        WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "productId" = ANY(${shownIds}::text[])
+          AND "localDate" BETWEEN ${from}::date AND ${to}::date AND "status" = 'CANCELLED' AND "cancelReason" IS NOT NULL
+        GROUP BY "cancelReason" ORDER BY n DESC, "cancelReason" LIMIT 20`,
+    ]);
+    counts = { belowMin: bm[0]?.n ?? 0, cancelled: { departures: cxAgg[0]?.n ?? 0, pax: cxAgg[0]?.pax ?? 0, reasons: cxReasons.map((r) => ({ text: r.text, n: r.n })) } };
+  } else {
+    const cx = cells.filter((c) => c.state === "CANCELLED");
+    const reasons = new Map<string, number>();
+    for (const c of cx) if (c.cancelReason) reasons.set(c.cancelReason, (reasons.get(c.cancelReason) ?? 0) + 1);
+    counts = {
+      belowMin: decisions.length,
+      cancelled: {
+        departures: cx.length,
+        pax: cx.reduce((s, c) => s + c.used, 0),
+        reasons: [...reasons.entries()].map(([text, n]) => ({ text, n })).sort((a, b) => b.n - a.n || a.text.localeCompare(b.text)),
+      },
+    };
+  }
 
   // ── ทริปถัดไปของสินค้าที่ไม่มีรอบในช่วง (คิวรีเดียว DISTINCT ON) ──
   const noneIds = view === "trips" ? [] : shownIds.filter((id) => !productsInRange.has(id));
@@ -458,7 +494,7 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
       SELECT "id", "productId", "localDate", "startsAt", "endsAt", "status", "capacity", "sold", "held", "reserved", "minPax"
       FROM "TripDeparture"
       WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "productId" = ANY(${shownIds}::text[])
-        AND "status" <> 'CANCELLED' AND "localDate" >= ${today}::date
+        AND "status" <> 'CANCELLED' AND "localDate" BETWEEN ${today}::date AND ${to}::date
         AND "endsAt" - "startsAt" >= interval '24 hours'
       ORDER BY "startsAt", "id"
       LIMIT ${TRIPS_LIST_CAP + 1}`;
@@ -499,6 +535,7 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
         minPax: policies.get(r.id)?.minPax ?? null,
         unitWord: r.productType === "LIVEABOARD" ? "BERTH" : "SEAT",
       },
+      inRange: productsInRange.has(r.id),
       nextTrip: n ? { departureId: n.id, localDate: ymdOf(n.localDate), endDate: utcToLocal(tz, n.endsAt).ymd, capacity: n.capacity, sold: n.sold, held: n.held } : null,
     };
   });
@@ -539,6 +576,7 @@ export type DeparturePanelVM = {
   unit: { id: string; slug: string; tz: string; today: string };
   departure: DepartureCellVM & {
     productTitle: string;
+    productTitleEn: string | null;
     productType: string;
     optionName: string | null;
     resources: { resourceId: string; kind: string; name: string; seats: number | null }[];
@@ -555,6 +593,10 @@ export type DeparturePanelVM = {
   money: null;
   actions: PanelActions;
   cancelBlocked: boolean;
+  /** ถอนการยืนยันแล้วรอบจะกลับเป็น "ต่ำกว่าขั้นต่ำ" (ขาย < ขั้นต่ำ) — กล่องยืนยันบอกผล */
+  unguaranteeToBelowMin: boolean;
+  /** ทุกช่องทางขาย (กล่องหยุดขาย) */
+  channels: SellChannel[];
   mergeTargets: MergeTargetVM[];
   price: { canEdit: boolean; currency: string; productId: string; rows: PriceRowVM[] } | null;
   warnings: { code: "CAPACITY_OVER_SEATS"; resourceName: string; seats: number }[];
@@ -632,7 +674,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
           ? await g.db.tripResourceUse.findMany({
               where: { tenantId: g.tenantId, unitId: g.unitId, resourceId: { in: resIds }, active: true, departureId: { not: d.id }, startsAt: { lt: new Date(Math.max(...live.map((t) => Date.parse(t.endsAt)))) }, endsAt: { gt: new Date(Math.min(...live.map((t) => Date.parse(t.startsAt)))) } },
               take: 500,
-              select: { startsAt: true, endsAt: true },
+              select: { departureId: true, startsAt: true, endsAt: true },
             })
           : [];
       mergeTargets = live.map((t) => ({
@@ -643,7 +685,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
         capacity: t.capacity,
         used: t.sold + t.held,
         seatsLeft: publicLeftOf(t),
-        resourceClash: uses.some((u) => u.startsAt.getTime() < Date.parse(t.endsAt) && u.endsAt.getTime() > Date.parse(t.startsAt)),
+        resourceClash: uses.some((u) => u.departureId !== t.id && u.startsAt.getTime() < Date.parse(t.endsAt) && u.endsAt.getTime() > Date.parse(t.startsAt)),
       }));
     }
   }
@@ -690,7 +732,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
       return {
         paxTypeId: x.id,
         code: x.code,
-        labelTh: i18nTh(x.label) || x.code,
+        labelTh: i18nTh(x.label),
         satang: it && it.qty > 0 ? Math.round(it.amountSatang / it.qty) : null,
         source: src === "RETAIL" || src === "SEASON" || src === "DEPARTURE" ? src : "MISSING",
         departurePriceId: own?.id ?? null,
@@ -711,6 +753,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
       departure: {
         ...cell,
         productTitle: i18nTh(prod.title),
+        productTitleEn: i18nEn(prod.title),
         productType: prod.productType,
         optionName: opt ? i18nTh(opt.name) || null : null,
         resources,
@@ -725,6 +768,8 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
       money: null,
       actions,
       cancelBlocked: people > 0,
+      unguaranteeToBelowMin: d.status === "GUARANTEED" && d.minPax !== null && d.sold < d.minPax,
+      channels: [...DEPARTURE_SELL_CHANNELS],
       mergeTargets,
       price,
       warnings,
@@ -776,7 +821,8 @@ export async function loadDepartureSchedulesVM(ctx: TripsScreenCtx, input: unkno
   if (!ls.ok) return passFail(ls);
   if (!lr.ok) return passFail(lr);
   const all = ls.items;
-  const sched = all.slice(0, SCHEDULE_CAP);
+  // เก็บกฎใหม่สุด SCHEDULE_CAP ตัว (listSchedules เรียงเก่า→ใหม่) · แสดงใหม่สุดก่อน · เกิน ⇒ itemsTruncated (ข้อความบนจอ)
+  const sched = all.slice(-SCHEDULE_CAP).reverse();
   const prodIds = [...new Set([...prods.map((x) => x.id), ...sched.map((s) => s.productId)])];
   const [options, gen, extraProds] = await Promise.all([
     prodIds.length

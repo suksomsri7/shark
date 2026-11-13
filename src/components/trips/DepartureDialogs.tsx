@@ -21,7 +21,7 @@ import { removePriceAction, setPriceAction } from "@/lib/modules/trips/pricing-a
 import { assignResourceForScreenAction, decideBelowMinAction, setStopSellLocalAction } from "@/lib/modules/trips/departure-screen-actions";
 import { BTN, BTN_PRIMARY, Dialog, ErrorLine, Field, INPUT, bahtToSatang, intOrNull, useRunner } from "./ProductsScreenParts";
 import { formatBahtShort } from "./trips-shared";
-import { BTN_DANGER, useDepDates } from "./DepartureParts";
+import { BTN_DANGER, reasonCode, useDepDates, useReasonText, useTitle } from "./DepartureParts";
 
 const INT4_MAX = 2_147_483_647;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -73,13 +73,16 @@ function useGuardedClose(onClose: () => void, busy: boolean, dirty: boolean) {
 // ═══════════════ เหตุผลยกเลิกสำเร็จรูป ═══════════════
 const PRESETS = ["weather", "belowMin", "vehicle", "other"] as const;
 type Preset = (typeof PRESETS)[number];
+const PRESET_CODE = { weather: "WEATHER", belowMin: "BELOW_MIN", vehicle: "VEHICLE" } as const;
 function useReason() {
   const t = useTranslations("trips");
   const [preset, setPreset] = useState<Preset>("weather");
   const [text, setText] = useState("");
-  const label = t(`departures.cancelReasons.${preset}`);
-  const reason = preset === "other" ? text.trim() : text.trim() ? `${label} · ${text.trim()}` : label;
+  const reasonText = useReasonText();
+  // สำเร็จรูป ⇒ เก็บรหัส (preset:CODE[|หมายเหตุ]) ให้จอแปลตามภาษาผู้ดู · อื่น ๆ ⇒ ข้อความที่พิมพ์ตรงตัว
+  const reason = preset === "other" ? text.trim() : reasonCode(PRESET_CODE[preset], text);
   const valid = reason.length >= 3 && reason.length <= 500;
+  const shown = reasonText(reason) ?? reason;
   const ui = () => (
     <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
       <Field label={t("departures.cancelDialog.reason")}>
@@ -96,12 +99,13 @@ function useReason() {
       </Field>
     </div>
   );
-  return { reason, valid, ui, dirty: text.trim() !== "" || preset !== "weather" };
+  return { reason, shown, valid, ui, dirty: text.trim() !== "" || preset !== "weather" };
 }
 
 // ═══════════════ ตัดสินต่ำกว่าขั้นต่ำ ═══════════════
 export function DecideDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: DeparturePanelVM; onClose: () => void }) {
   const t = useTranslations("trips");
+  const T = useTitle();
   const D = useDepDates();
   const { busy, error, run } = useRunner(t("common.failed"));
   const [choice, setChoice] = useState<"RUN" | "MERGE" | "CANCEL" | null>(null);
@@ -114,11 +118,11 @@ export function DecideDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
   const cancelOff = !vm.actions.cancel || vm.cancelBlocked;
   const summary =
     choice === "RUN"
-      ? t("departures.decide.summaryRun", { used: d.used, min: d.minPax ?? 0 })
+      ? t("departures.decide.summaryRun", { sold: d.sold, min: d.minPax ?? 0 })
       : choice === "MERGE" && tgt
         ? t("departures.decide.summaryMerge", { title: tgt.titleTh, time: tgt.timeText.split("–")[0] ?? "" })
         : choice === "CANCEL" && R.valid
-          ? t("departures.decide.summaryCancel", { reason: R.reason })
+          ? t("departures.decide.summaryCancel", { reason: R.shown })
           : null;
   const ready = choice === "RUN" ? vm.actions.run : choice === "MERGE" ? !mergeOff && !!tgt : choice === "CANCEL" ? !cancelOff && R.valid : false;
   const submit = () =>
@@ -138,7 +142,7 @@ export function DecideDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
   return (
     <DepDialog
       data-testid="trips-decide-dialog"
-      title={t("departures.decide.title", { date: D.short(d.localDate), title: d.productTitle })}
+      title={t("departures.decide.title", { date: D.short(d.localDate), title: T(d.productTitle, d.productTitleEn) })}
       busy={busy}
       dirty={choice !== null}
       onClose={onClose}
@@ -154,10 +158,16 @@ export function DecideDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
       }
     >
       <p className="text-sm text-[color:var(--color-ink-soft)]">
-        {t("departures.decide.lead", { used: d.used, min: d.minPax ?? 0, short: d.shortBy ?? 0 })}
+        {t("departures.decide.lead", { sold: d.sold, min: d.minPax ?? 0, short: d.shortBy ?? 0 })}
+        {d.held > 0 ? ` · ${t("departures.decide.held", { n: d.held })}` : ""}
         {d.decisionLocal ? ` · ${d.needsDecision ? t("departures.decisions.overdue") : t("departures.decisions.by", { when: `${D.short(d.decisionLocal.ymd)} ${d.decisionLocal.hm}` })}` : ""}
       </p>
-      <div role="radiogroup" aria-label={t("departures.decide.title", { date: D.short(d.localDate), title: d.productTitle })} className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
+      {vm.cancelBlocked ? (
+        <p role="note" className="rounded-lg border border-dashed border-[color:var(--color-danger)] px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {t("departures.decide.peopleOnly")}
+        </p>
+      ) : null}
+      <div role="radiogroup" aria-label={t("departures.decide.title", { date: D.short(d.localDate), title: T(d.productTitle, d.productTitleEn) })} className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
         <button type="button" role="radio" aria-checked={choice === "RUN"} data-testid="trips-decide-run" className={opt(choice === "RUN", !vm.actions.run)} disabled={!vm.actions.run} onClick={() => setChoice("RUN")}>
           <span>{t("departures.decide.run")}</span>
           <span className="font-normal text-[color:var(--color-muted)]">{t("departures.decide.runHint")}</span>
@@ -200,6 +210,7 @@ export function DecideDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
 // ═══════════════ ยกเลิกรอบ ═══════════════
 export function CancelDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: DeparturePanelVM; onClose: () => void }) {
   const t = useTranslations("trips");
+  const T = useTitle();
   const D = useDepDates();
   const { busy, error, run } = useRunner(t("common.failed"));
   const R = useReason();
@@ -209,7 +220,7 @@ export function CancelDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
   return (
     <DepDialog
       data-testid="trips-cancel-dialog"
-      title={t("departures.cancelDialog.title", { date: D.short(d.localDate), title: d.productTitle })}
+      title={t("departures.cancelDialog.title", { date: D.short(d.localDate), title: T(d.productTitle, d.productTitleEn) })}
       busy={busy}
       dirty={R.dirty}
       onClose={onClose}
@@ -232,7 +243,7 @@ export function CancelDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
       <div data-testid="trips-cancel-reason">{R.ui()}</div>
       {R.valid && !vm.cancelBlocked ? (
         <p role="status" className="rounded-lg border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-3 py-2 text-sm text-[color:var(--color-ink)]">
-          {t("departures.decide.summaryCancel", { reason: R.reason })}
+          {t("departures.decide.summaryCancel", { reason: R.shown })}
         </p>
       ) : null}
       <ErrorLine text={error} />
@@ -358,6 +369,7 @@ export function ResourceDialog({ unitSlug, vm, resources, onClose }: { unitSlug:
 // ═══════════════ ราคาเฉพาะรอบ ═══════════════
 export function PriceDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: DeparturePanelVM; onClose: () => void }) {
   const t = useTranslations("trips");
+  const T = useTitle();
   const D = useDepDates();
   const { busy, error, run } = useRunner(t("common.failed"));
   const price = vm.price;
@@ -385,7 +397,7 @@ export function PriceDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: D
   return (
     <DepDialog
       data-testid="trips-price-dialog"
-      title={t("departures.priceDialog.title", { date: D.short(d.localDate), title: d.productTitle })}
+      title={t("departures.priceDialog.title", { date: D.short(d.localDate), title: T(d.productTitle, d.productTitleEn) })}
       busy={busy}
       dirty={dirty}
       onClose={onClose}
@@ -404,7 +416,7 @@ export function PriceDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: D
           return (
             <li key={r.paxTypeId} data-testid={`trips-price-row-${r.code}`} className="flex min-w-0 flex-col gap-2 rounded-lg border border-[color:var(--color-line)] p-3">
               <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2 text-sm">
-                <b className="text-[color:var(--color-ink)]">{r.labelTh}</b>
+                <b className="text-[color:var(--color-ink)]">{r.labelTh || (["ADULT", "CHILD", "INFANT"].includes(r.code) ? t(`pax.codes.${r.code}`) : t("departures.priceDialog.paxUnknown"))}</b>
                 <span className="text-[color:var(--color-ink-soft)]">
                   {r.satang !== null ? `${formatBahtShort(r.satang)} ${price.currency}` : "—"} · {t(`departures.priceDialog.src.${r.source}`)}
                 </span>
@@ -450,10 +462,11 @@ export function PriceDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: D
 // ═══════════════ ปิดรับจอง + หยุดขายบางช่องทาง ═══════════════
 export function StopSellDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: DeparturePanelVM; onClose: () => void }) {
   const t = useTranslations("trips");
+  const T = useTitle();
   const D = useDepDates();
   const { busy, error, run } = useRunner(t("common.failed"));
   const d = vm.departure;
-  const allChannels = d.cutoffGroups.flatMap((g) => g.channels);
+  const allChannels = vm.channels;
   const cur = d.stopSellInfo;
   const [chs, setChs] = useState<string[]>(cur?.channels ?? []);
   const [reason, setReason] = useState(cur?.reason ?? "");
@@ -462,16 +475,20 @@ export function StopSellDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm
   const dirty = chs.join() !== (cur?.channels ?? []).join() || reason !== (cur?.reason ?? "") || untilDate !== (cur?.untilLocal?.ymd ?? "") || untilTime !== (cur?.untilLocal?.hm ?? "");
   const close = useGuardedClose(onClose, busy, dirty);
   const untilMin = hmToMin(untilTime);
-  const canSave = chs.length > 0 && reason.trim().length > 0 && (untilDate === "" || /^\d{4}-\d{2}-\d{2}$/.test(untilDate)) && (untilTime === "" || untilMin !== null);
+  // "ถึงเมื่อ": ทั้งวันและเวลา หรือว่างทั้งคู่ (เซิร์ฟเวอร์ตรวจวันที่มีจริงซ้ำ)
+  const untilBoth = untilDate !== "" && untilTime !== "";
+  const untilNone = untilDate === "" && untilTime === "";
+  const untilOk = untilNone || (untilBoth && /^\d{4}-\d{2}-\d{2}$/.test(untilDate) && untilMin !== null);
+  const canSave = chs.length > 0 && reason.trim().length > 0 && untilOk;
   const save = () =>
     run(
-      () => setStopSellLocalAction(unitSlug, { departureId: d.departureId, stopSell: { channels: chs, reason: reason.trim(), ...(untilDate ? { untilDate, untilMin: untilMin ?? 0 } : {}) } }),
+      () => setStopSellLocalAction(unitSlug, { departureId: d.departureId, stopSell: { channels: chs, reason: reason.trim(), ...(untilBoth && untilMin !== null ? { untilDate, untilMin } : {}) } }),
       onClose,
     );
   return (
     <DepDialog
       data-testid="trips-stopsell-dialog"
-      title={t("departures.stopSellDialog.title", { date: D.short(d.localDate), title: d.productTitle })}
+      title={t("departures.stopSellDialog.title", { date: D.short(d.localDate), title: T(d.productTitle, d.productTitleEn) })}
       busy={busy}
       dirty={dirty}
       onClose={onClose}
@@ -518,6 +535,7 @@ export function StopSellDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm
               <input type="time" className={INPUT} value={untilTime} onChange={(e) => setUntilTime(e.target.value)} />
             </Field>
           </div>
+          {!untilOk ? <p className="text-sm text-[color:var(--color-danger)]">{t("departures.stopSellDialog.untilNeedsBoth")}</p> : null}
           <div className="flex flex-wrap gap-2">
             <button type="button" data-testid="trips-dep-stopsell" className={BTN_PRIMARY} disabled={busy || !canSave} onClick={() => void save()}>
               {t("departures.stopSellDialog.save")}
@@ -931,5 +949,42 @@ function ScheduleForm({ unitSlug, sched, form, setForm, busy, run }: { unitSlug:
         </button>
       </div>
     </div>
+  );
+}
+
+// ═══════════════ ถอนการยืนยัน (ยืนยันก่อนทำ · บอกผล) ═══════════════
+export function UnguaranteeDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: DeparturePanelVM; onClose: () => void }) {
+  const t = useTranslations("trips");
+  const T = useTitle();
+  const D = useDepDates();
+  const { busy, error, run } = useRunner(t("common.failed"));
+  const d = vm.departure;
+  const close = useGuardedClose(onClose, busy, false);
+  return (
+    <DepDialog
+      data-testid="trips-unguarantee-dialog"
+      title={t("departures.unguaranteeDialog.title", { date: D.short(d.localDate), title: T(d.productTitle, d.productTitleEn) })}
+      busy={busy}
+      dirty={false}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className={BTN_DANGER} disabled={busy} onClick={() => void run(() => setDepartureStatusAction(unitSlug, { departureId: d.departureId, status: "OPEN" }), onClose)}>
+            {t("departures.unguaranteeDialog.confirm")}
+          </button>
+          <button type="button" className={BTN} onClick={close}>
+            {t("common.cancel")}
+          </button>
+        </>
+      }
+    >
+      <p className="text-sm text-[color:var(--color-ink)]">{t("departures.unguaranteeDialog.body")}</p>
+      {vm.unguaranteeToBelowMin ? (
+        <p role="note" className="rounded-lg border-2 border-dashed border-[color:var(--color-danger)] px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {t("departures.unguaranteeDialog.belowMin", { sold: d.sold, min: d.minPax ?? 0 })}
+        </p>
+      ) : null}
+      <ErrorLine text={error} />
+    </DepDialog>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 // TRIPS T1.2 ▸ ชิ้นส่วนร่วมของจอปฏิทินรอบ (ภาพ 11): ลิงก์ของจอ · วันที่สั้น · ป้ายสถานะ/รูปทรงช่อง · ข้อความช่อง
 //   🔴 แสดงผลเท่านั้น — สถานะ/ที่ว่าง/ปุ่ม มาจากตัวโหลด · วันที่จาก VM (คิดตามเขตเวลาร้านแล้ว) · ไม่อ่านนาฬิกาเครื่อง · ตัวอักษร ≥ 14 px
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { DepartureCellState, DepartureCellVM } from "@/lib/modules/trips";
 
 export type CalView = "week" | "month" | "trips";
@@ -94,19 +94,20 @@ export const cellStyle = (state: DepartureCellState) => (state === "CANCELLED" ?
 /** บรรทัด 1 + 2 ของช่อง (ใบสั่ง §5) */
 export function useCellText() {
   const t = useTranslations("trips");
-  const line1 = (c: Pick<DepartureCellVM, "state" | "used" | "capacity">) => (c.state === "CANCELLED" ? t("departures.state.CANCELLED") : t("departures.cell.used", { used: c.used, cap: c.capacity }));
+  const reasonText = useReasonText();
+  const line1 = (c: Pick<DepartureCellVM, "state" | "used" | "capacity">) => (c.state === "CANCELLED" ? t("departures.cellShort.CANCELLED") : t("departures.cell.used", { used: c.used, cap: c.capacity }));
   const line2 = (c: Pick<DepartureCellVM, "state" | "seatsLeft" | "minPax" | "waitlist" | "cancelReason" | "used">) => {
     switch (c.state) {
       case "PAST":
-        return t("departures.state.PAST");
+        return t("departures.cellShort.PAST");
       case "DEPARTED_TODAY":
-        return t("departures.state.DEPARTED_TODAY");
+        return t("departures.cellShort.DEPARTED_TODAY");
       case "CANCELLED":
-        return [c.cancelReason ?? t("departures.state.CANCELLED"), c.used > 0 ? t("departures.cell.cancelledPax", { n: c.used }) : null].filter(Boolean).join(" · ");
+        return [reasonText(c.cancelReason) ?? t("departures.cellShort.CANCELLED"), c.used > 0 ? t("departures.cell.cancelledPax", { n: c.used }) : null].filter(Boolean).join(" · ");
       case "FULL":
-        return [t("departures.state.FULL"), c.waitlist > 0 ? t("departures.cell.waitlist", { n: c.waitlist }) : null].filter(Boolean).join(" · ");
+        return [t("departures.cellShort.FULL"), c.waitlist > 0 ? t("departures.cell.waitlist", { n: c.waitlist }) : null].filter(Boolean).join(" · ");
       case "CLOSED":
-        return t("departures.state.CLOSED");
+        return t("departures.cellShort.CLOSED");
       case "BELOW_MIN":
         return t("departures.cell.belowMin", { n: c.minPax ?? 0 });
       case "GUARANTEED":
@@ -114,10 +115,38 @@ export function useCellText() {
       case "LOW":
         return t("departures.cell.leftLow", { n: c.seatsLeft });
       default:
-        return t("departures.state.OPEN");
+        return t("departures.cellShort.OPEN");
     }
   };
-  return { line1, line2 };
+  /** ข้อความเต็มของช่อง (tooltip · ชื่อสถานะเต็ม + บรรทัด 2) */
+  const full = (c: Pick<DepartureCellVM, "state" | "used" | "capacity" | "seatsLeft" | "minPax" | "waitlist" | "cancelReason">) => `${t(`departures.state.${c.state}`)} · ${line1(c)} · ${line2(c)}`;
+  return { line1, line2, full };
+}
+
+/**
+ * เหตุผลยกเลิก → ข้อความตามภาษาผู้ดู: "preset:<WEATHER|BELOW_MIN|VEHICLE>[|หมายเหตุ]" · "merge:<HH:MM>|<ชื่อเป้า>[|หมายเหตุ]"
+ * ค่าอื่น (ร้านพิมพ์เอง · ข้อมูลเดิม เช่น "คลื่นลม") ⇒ แสดงตรงตัว
+ */
+export function useReasonText() {
+  const t = useTranslations("trips");
+  return (raw: string | null): string | null => {
+    if (raw === null) return null;
+    const withNote = (reason: string, note: string | undefined) => (note ? t("departures.reason.withNote", { reason, note }) : reason);
+    const p = /^preset:(WEATHER|BELOW_MIN|VEHICLE)(?:\|([\s\S]*))?$/.exec(raw);
+    if (p) return withNote(t(`departures.reason.${p[1]}`), p[2]);
+    const m = /^merge:(\d{2}:\d{2})\|([^|]*)(?:\|([\s\S]*))?$/.exec(raw);
+    if (m) return withNote(t("departures.reason.merge", { title: m[2], time: m[1] }), m[3]);
+    return raw;
+  };
+}
+/** รหัสเหตุผลสำเร็จรูป (เก็บลงคอลัมน์ข้อความอิสระของ T0.3 — จอแปลตอนแสดง) */
+export const REASON_PRESETS = ["WEATHER", "BELOW_MIN", "VEHICLE"] as const;
+export const reasonCode = (preset: (typeof REASON_PRESETS)[number], note: string): string => `preset:${preset}${note.trim() ? `|${note.trim().replace(/\|/g, "/")}` : ""}`;
+
+/** ชื่อสินค้าตามภาษาผู้ดู (ไม่มีอังกฤษ ⇒ ชื่อไทยที่ร้านกรอก) */
+export function useTitle() {
+  const locale = useLocale();
+  return (th: string, en: string | null | undefined) => (locale === "en" && en ? en : th);
 }
 
 /** แถบความคืบหน้า ใช้แล้ว/ความจุ (ไม่แสดงในรอบยกเลิก) */

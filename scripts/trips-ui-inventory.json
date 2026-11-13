@@ -1988,10 +1988,10 @@
         "viewer"
       ],
       "expect": {
-        "type": "mutation",
+        "type": "modal",
         "target": "trips-dep-unguarantee",
-        "state": "submits",
-        "note": "ถอนการยืนยัน (OPEN)"
+        "state": "opens",
+        "note": "ถอนการยืนยัน ⇒ กล่องยืนยัน (OPEN)"
       },
       "wo": "T1.2",
       "oracle": "qc-trips-t1.2#PV-4",
@@ -2085,6 +2085,28 @@
       "oracle": "qc-trips-t1.2#CT-16",
       "system": "TRIPS",
       "needs": "trips.departure.edit; trips.departure.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-unguarantee-dialog",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "trips-unguarantee-dialog",
+        "state": "opens",
+        "note": "ยืนยันถอนการยืนยัน + ผล (กลับเป็นต่ำกว่าขั้นต่ำ)"
+      },
+      "wo": "T1.2",
+      "oracle": "qc-trips-t1.2#PV-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.status หรือ trips.price.edit ตามปุ่ม; status GUARANTEED"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",

@@ -10,6 +10,7 @@ import { setDepartureStopSell } from "./departures";
 import { assignResource, gateUnit, isFail, unitDb } from "./resources";
 import { hhmm, localToUtc, utcToLocal } from "./departures-core";
 import { decideBelowMin } from "./departure-desk";
+import { isCalendarYmd } from "./departure-view-core";
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 const EDIT = ["trips.departure.edit"] as const;
@@ -40,7 +41,7 @@ export async function decideBelowMinAction(unitSlug: string, input: unknown) {
 
 /**
  * หยุดขายบางช่องทาง (กล่องปิดรับ): channels + reason + ถึงเมื่อ (วัน/นาทีของวันตามเวลาร้าน — แปลงเป็นเวลา UTC ที่นี่) · stopSell null = ล้าง
- * input: { departureId, stopSell: { channels, reason, untilDate?, untilMin? } | null }
+ * input: { departureId, stopSell: { channels, reason, untilDate?, untilMin? } | null } — untilDate/untilMin มาคู่กันเท่านั้น
  */
 export async function setStopSellLocalAction(unitSlug: string, input: unknown) {
   const e = await enter(unitSlug, input, EDIT);
@@ -48,11 +49,16 @@ export async function setStopSellLocalAction(unitSlug: string, input: unknown) {
   if (raw === null) return setDepartureStopSell(e.ctx, { unitId: e.unitId, departureId: e.input.departureId, stopSell: null });
   const s = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   let until: string | undefined;
-  if (typeof s.untilDate === "string" && s.untilDate) {
+  const hasDate = s.untilDate !== undefined && s.untilDate !== null && s.untilDate !== "";
+  const hasMin = s.untilMin !== undefined && s.untilMin !== null;
+  if (hasDate || hasMin) {
+    // "ถึงเมื่อ" ต้องมีทั้งวัน (วันที่มีจริง) และเวลา (นาทีของวัน 0–1439) — ไม่เดาเที่ยงคืน ไม่ทิ้งค่าเงียบ ๆ
+    const min = s.untilMin;
+    if (!isCalendarYmd(s.untilDate) || typeof min !== "number" || !Number.isInteger(min) || min < 0 || min >= 1440) {
+      return { ok: false as const, code: "INVALID_INPUT", message: "วันและเวลา \"ถึงเมื่อ\" ต้องเป็นวันที่มีจริงและระบุเวลา" };
+    }
     const g = await gateUnit(e.ctx, e.unitId, "edit");
     if (isFail(g)) return g;
-    const min = typeof s.untilMin === "number" && Number.isInteger(s.untilMin) && s.untilMin >= 0 && s.untilMin < 1440 ? s.untilMin : 0;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s.untilDate)) return { ok: false as const, code: "INVALID_INPUT", message: "วันที่ไม่ถูกต้อง" };
     until = localToUtc(g.tz, s.untilDate, min).toISOString();
   }
   return setDepartureStopSell(e.ctx, {

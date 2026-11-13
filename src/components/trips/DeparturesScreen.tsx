@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { DepartureCalendarVM, DeparturePanelVM, DepartureSchedulesVM } from "@/lib/modules/trips";
 import { BTN, BTN_PRIMARY } from "./ProductsScreenParts";
-import { SEG_OFF, SEG_ON, SEG_WRAP, calHref, useDepDates, type CalFilter, type CalQuery, type CalView } from "./DepartureParts";
+import { SEG_OFF, SEG_ON, SEG_WRAP, calHref, useDepDates, useReasonText, type CalFilter, type CalQuery, type CalView } from "./DepartureParts";
 import DeparturesCalendar from "./DeparturesCalendar";
 import { DecisionsCard, DeparturePanel, PanelHint } from "./DeparturePanel";
 import { CreateDepartureDialog, SchedulesDialog } from "./DepartureDialogs";
@@ -27,6 +27,7 @@ export default function DeparturesScreen({
 }) {
   const t = useTranslations("trips");
   const D = useDepDates();
+  const reasonText = useReasonText();
   const base = `/app/u/${unitSlug}/trips/departures`;
   const q: CalQuery = {
     view: cal.view,
@@ -74,19 +75,19 @@ export default function DeparturesScreen({
           <SegLink data-testid="trips-cal-view-trips" href={viewHref("trips")} on={cal.view === "trips"} label={t("departures.view.trips")} />
         </nav>
         <span className="hidden flex-1 @min-[900px]:block" />
-        {cal.view !== "trips" ? (
-          <Link
-            data-testid="trips-cal-attention"
-            href="#trips-decisions"
-            className={`inline-flex min-h-11 items-center rounded-lg px-3 text-sm ${cal.counts.belowMin > 0 ? "border-2 border-dashed border-[color:var(--color-danger)] font-bold text-[color:var(--color-danger)]" : "border border-[color:var(--color-line)] text-[color:var(--color-muted)]"}`}
-          >
+        {cal.view !== "trips" && cal.counts.belowMin > 0 ? (
+          <Link data-testid="trips-cal-attention" href="#trips-decisions" className="inline-flex min-h-11 items-center rounded-lg border-2 border-dashed border-[color:var(--color-danger)] px-3 text-sm font-bold text-[color:var(--color-danger)]">
             {t("departures.attention", { n: cal.counts.belowMin })}
           </Link>
+        ) : cal.view !== "trips" ? (
+          <span data-testid="trips-cal-attention" className="inline-flex min-h-11 items-center rounded-lg border border-[color:var(--color-line)] px-3 text-sm text-[color:var(--color-muted)]">
+            {t("departures.attentionNone")}
+          </span>
         ) : null}
         {cx.departures > 0 ? (
           <span data-testid="trips-cal-cancelled" className="inline-flex min-h-11 max-w-full items-center rounded-lg border border-[color:var(--color-line)] px-3 text-sm text-[color:var(--color-ink-soft)] [overflow-wrap:anywhere]">
             {t("departures.cancelledChip", { n: cx.departures })}
-            {cx.reasons[0] ? ` · ${cx.reasons[0].text}` : ""}
+            {cx.reasons[0] ? ` · ${reasonText(cx.reasons[0].text) ?? ""}` : ""}
             {cx.pax > 0 ? ` · ${t("departures.cell.cancelledPax", { n: cx.pax })}` : ""}
           </span>
         ) : null}
@@ -108,9 +109,10 @@ export default function DeparturesScreen({
       </div>
 
       {/* ── เนื้อหา: ตาราง | แผง ── */}
-      <div className="grid min-w-0 grid-cols-1 items-start gap-5 @min-[1100px]:grid-cols-[minmax(0,1fr)_356px]">
+      {/* 2 คอลัมน์เมื่อเนื้อหา ≥ 1060px (1440 + แถบซ้าย = 1104 · มีแถบเลื่อน ≈ 1087): ตาราง ≥ 1087 − 340 − 16 = 731 → ในกรอบ 705 ≥ ตาราง 704 */}
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 @min-[1060px]:grid-cols-[minmax(0,1fr)_340px]">
         <DeparturesCalendar vm={cal} base={base} q={q} />
-        <div className="flex min-w-0 flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-4">
           {panel ? <DeparturePanel key={panel.departure.departureId} unitSlug={unitSlug} vm={panel} base={base} q={q} resources={sched?.resources ?? null} openDecide={openDecide} /> : <PanelHint />}
           <DecisionsCard vm={cal} base={base} q={q} />
         </div>
