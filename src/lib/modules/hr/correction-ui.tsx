@@ -47,11 +47,21 @@ export async function CorrectionForm({
 }) {
   const t = await getTranslations("hr.correction");
   return (
-    <details className="relative">
-      <summary data-testid="hr-corr-open" className={`${ghost} cursor-pointer list-none`}>
-        {self ? t("openSelf") : t("open")}
+    <details className="group">
+      {/* HR H2.12 ▸ VIS-2: ฟอร์มไม่กางในช่องการกระทำของตาราง (กว้าง ≈140 px) — เปิดแล้วเป็นแผ่นเต็มกว้างติดล่างจอ (มือถือ) / กล่องกลางจอ (≥ sm)
+           ปุ่มเปิดกลายเป็นฉากหลังทั้งจอ (แตะนอกแผ่น = ปิด) · z ทับแถบบน (z-40) และเมนู (z-50) · CSS ล้วน ไม่มี JS ◂ */}
+      <summary data-testid="hr-corr-open" className={`${ghost} cursor-pointer list-none group-open:fixed group-open:inset-0 group-open:z-[60] group-open:m-0 group-open:h-full group-open:w-full group-open:max-w-none group-open:rounded-none group-open:border-0 group-open:bg-[color:var(--color-ink)]/40 group-open:p-0`}>
+        <span className="group-open:sr-only">{self ? t("openSelf") : t("open")}</span>
+        <span className="sr-only hidden group-open:block">{t("close")}</span>
       </summary>
-      <form action={onSubmit} data-testid="hr-corr-form" className="mt-2 flex w-80 max-w-[85vw] flex-col gap-2 rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-3 text-left text-sm">
+      <form
+        action={onSubmit}
+        data-testid="hr-corr-form"
+        aria-label={self ? t("openSelf") : t("open")}
+        className="fixed inset-x-0 bottom-0 z-[61] flex max-h-[85vh] w-full flex-col gap-2 overflow-y-auto rounded-t-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 pb-6 text-left text-sm shadow-lg sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[28rem] sm:max-w-[calc(100vw-2rem)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl"
+      >
+        <b className="text-base">{self ? t("openSelf") : t("open")}</b>
+        <p className={`text-xs ${muted}`}>{t("closeHint")}</p>
         <input type="hidden" name="systemId" value={systemId} />
         {employeeId && <input type="hidden" name="employeeId" value={employeeId} />}
         <label className="flex flex-col gap-1 text-xs">

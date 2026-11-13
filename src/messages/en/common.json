@@ -278,6 +278,42 @@
         "alertsOn": "Alert managers",
         "alertEmployee": "Also alert the employee",
         "save": "Save judgement rules"
+      },
+      "lawPresets": {
+        "open": "Add statutory leave types",
+        "desc": "Starting set from the Labour Protection Act — add one at a time, every value can be changed before adding · nothing is created automatically · research, not legal advice",
+        "values": "{quota} · {paid}{service}{attach}",
+        "quotaN": "{n} days/year",
+        "noQuota": "unlimited days",
+        "serviceN": " · eligible after {n} days of service",
+        "attachN": " · medical certificate from day {n}",
+        "ref": "See {ref} of the Labour Protection Act",
+        "neutral": "No section sets this directly — please check with the shop's accountant or legal adviser",
+        "perEvent": "The law counts per event (per pregnancy / within 90 days of the birth) — the system can only set a yearly quota",
+        "exists": "Already set: {name}",
+        "unsupported": "Not supported yet (50% pay)",
+        "unsupportedNote": "Up to 15 more days of child-care leave at 50% pay — the system cannot pay part of a leave day yet; add it yourself as an \"Other\" type and check the pay in the payroll run",
+        "add": "Add this type",
+        "k": {
+          "sick": "Sick leave",
+          "personal": "Personal business leave",
+          "annual": "Annual leave",
+          "maternityPaid": "Maternity leave (paid part)",
+          "maternityUnpaid": "Maternity leave (unpaid part)",
+          "paternity": "Leave to support a spouse giving birth",
+          "military": "Military service leave",
+          "unpaid": "Unpaid leave",
+          "childcare": "Child-care leave"
+        }
+      },
+      "lawWarn": {
+        "fewerV": "{kind}: the law gives {law} days ({ref} Labour Protection Act) — this type is set to {set} days · saved, but please check again",
+        "unpaidV": "{kind}: the law requires pay ({ref} Labour Protection Act) — this type is set as unpaid · saved, but please check again",
+        "fewerN": "{kind}: the recommended value is {law} days — this type is set to {set} days · please check with the shop's accountant or legal adviser",
+        "unpaidN": "{kind}: the recommended value is paid — please check with the shop's accountant or legal adviser",
+        "serviceN": "{kind}: the recommended eligibility is after {law} days of service — this type is set to {set} days · please check with the shop's accountant or legal adviser",
+        "maternityTotal": "Maternity leave: all of the shop's maternity types add up to {set} days — the law allows up to {law} days per pregnancy ({ref} Labour Protection Act) · saved, but please check again",
+        "maternityPaidDays": "Maternity leave: the paid part adds up to {set} days — the law requires the employer to pay up to {law} days of the leave ({ref} Labour Protection Act) · saved, but please check again"
       }
     },
     "kiosk": {
@@ -792,7 +828,9 @@
         "m11": "Nov",
         "m12": "Dec"
       },
-      "selfApplied": "Fixed by the owner on their own record"
+      "selfApplied": "Fixed by the owner on their own record",
+      "close": "Close",
+      "closeHint": "Tap outside to close"
     },
     "ot": {
       "title": "OT requests",
@@ -1125,7 +1163,20 @@
         "openEmployees": "Open employees",
         "noBoard": "No shifts today"
       },
-      "mine": "My requests"
+      "mine": "My requests",
+      "adjKinds": {
+        "OT": "Overtime (OT)",
+        "COMMISSION": "Commission",
+        "BONUS": "Bonus",
+        "ALLOWANCE": "Allowance/travel",
+        "DEDUCTION": "Deduction",
+        "ADVANCE": "Advance repayment"
+      },
+      "sum": {
+        "none": "Cannot summarise this request — open it in Requests before deciding",
+        "open": "Open to decide",
+        "hoursN": "{n} h"
+      }
     },
     "self": {
       "tabsLabel": "My menu",

@@ -105,7 +105,7 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   //   พนักงาน "ขอแก้เวลา" บนปฏิทินของตัวเอง + รายการของฉัน · ผู้ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404 ◂
   "2.6": [
     { key: "corr-day", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day&day=${addDays(i.today, -1)}`, why: "ทีมรายวันเมื่อวาน: ปุ่ม \"แก้เวลา\" ต่อแถว (H2.6 04A)", expect: { owner: 200, "manager-branch": 200 }, users: ["owner", "manager-branch"] },
-    { key: "corr-day-form", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day&day=${addDays(i.today, -1)}`, click: '[data-testid="hr-corr-open"]', why: "ฟอร์มแก้เวลา: ชนิดคำขอ · ชนิด · เวลาเดิม · วันเวลา · เหตุผล (H2.6)", expect: { owner: 200 }, users: ["owner"] },
+    { key: "corr-day-form", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day&day=${addDays(i.today, -1)}`, click: '[data-testid="hr-corr-open"]', why: "ฟอร์มแก้เวลา: ชนิดคำขอ · ชนิด · เวลาเดิม · วันเวลา · เหตุผล — แผ่นเต็มกว้างติดล่าง (390) / กล่องกลางจอ (≥ sm) + ฉากหลังปิดได้ ไม่อยู่ในช่องการกระทำ (H2.12 VIS-2) (H2.6)", expect: { owner: 200 }, users: ["owner"] },
     { key: "corr-list", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "การ์ดคำขอแก้เวลา: ชิป · ชื่อ · ยื่น · ลืมลงเวลาออก · หลักฐาน POS · ขอซ้ำ · อนุมัติ/ปฏิเสธ (H2.6 mockup 05)", expect: { owner: 200, manager: 200, "manager-branch": 200 }, users: ["owner", "manager", "manager-branch"] },
     { key: "corr-self-form", path: (i) => `/app/sys/${i.hr}/hr/attendance`, click: '[data-testid="hr-corr-open"]', why: "พนักงาน (น้ำฝน): \"ขอแก้เวลา\" บนปฏิทินของตัวเอง (H2.6 04B)", expect: { staff: 200 }, users: ["staff"] },
     { key: "corr-self-daylist", path: (i) => `/app/sys/${i.hr}/hr/attendance`, click: '[data-testid^="hr-att-dayrow-"]', why: "พนักงาน 390: แถวรายวัน (VIS-1 A3) มีปุ่ม \"ขอแก้เวลา\" ของวันนั้น (H2.6)", expect: { staff: 200 }, users: ["staff"] },
@@ -115,8 +115,8 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   // HR H2.11 ▸ brief §5 (mockup 01 + 05): ภาพรวมทีมบน HrHub · กล่องคำขอรวม (ทุกชนิด · type=OT · ผลชุด · โควตา) · ผู้ไม่เห็นคำขอชนิดใด = 404 ·
   //   seed มีคำขอรอครบ 5 ชนิด (ลา · OT · สลับกะ · แก้เวลา · เบิกล่วงหน้า + หักค่าของ) · HQC ไม่มีผู้ถือคีย์ hr.employee.create ⇒ "key-holder" = manager (ทุกสาขา) ◂
   "2.11": [
-    { key: "hub-overview", path: (i) => `/app/sys/${i.hr}`, users: ["owner", "manager-branch", "manager", "payroll", "staff"], why: "ภาพรวมทีม 01: อยู่กะวันนี้ · คำขอที่ตัดสินได้ · วันที่ต้องคิดผลใหม่ · ใกล้ครบกำหนด + ตัวอย่างคำขอ 5 รายการ (staff = ไม่มีส่วนนี้) (H2.11)" },
-    { key: "inbox", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["owner", "manager-branch", "manager", "payroll"], expect: { owner: 200, "manager-branch": 200, manager: 200, payroll: 200 }, why: "กล่องคำขอรวม 05: ชิปชนิด+ตัวนับ · การ์ดมีป้าย · ผลกระทบ · แถบเลือกติดล่าง · ตารางโควตา (payroll = OT/เงิน อ่านอย่างเดียว ไม่มีโควตา) (H2.11)" },
+    { key: "hub-overview", path: (i) => `/app/sys/${i.hr}`, users: ["owner", "manager-branch", "manager", "payroll", "staff"], why: "ภาพรวมทีม 01: อยู่กะวันนี้ · คำขอที่ตัดสินได้ · วันที่ต้องคิดผลใหม่ · ใกล้ครบกำหนด + ตัวอย่างคำขอ 5 รายการ — การ์ดย่อมีสรุป hr-inbox-summary-* (วัน/ช่วง · ชม./วัน · ฿ เฉพาะผู้ดูเงินเดือน) · รายการเงิน = ลิงก์ hr-inbox-open-* ไม่มีปุ่มอนุมัติ (H2.12 VIS-2) (staff = ไม่มีส่วนนี้) (H2.11)" },
+    { key: "inbox", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["owner", "manager-branch", "manager", "payroll"], expect: { owner: 200, "manager-branch": 200, manager: 200, payroll: 200 }, why: "กล่องคำขอรวม 05: ชิปชนิด+ตัวนับ · การ์ดมีป้าย (ไม่มีรหัสดิบ — H2.12 VIS-2) · ผลกระทบ · แถบเลือกบนสุด พื้นทึบ ติดใต้แถบบน (H2.12 VIS-2) · ตารางโควตา (payroll = OT/เงิน อ่านอย่างเดียว ไม่มีโควตา) (H2.11)" },
     { key: "inbox-ot", path: (i) => `/app/sys/${i.hr}/hr/requests?type=OT`, users: ["owner", "manager-branch"], why: "type=OT: นาที × อัตรา ไม่มี ฿ ถึงผู้จัดการ · ตัวนับไม่เปลี่ยน (H2.11)" },
     { key: "inbox-adj", path: (i) => `/app/sys/${i.hr}/hr/requests?type=ADJUSTMENT`, users: ["owner", "payroll"], why: "เพิ่ม/หักเงิน: ยอด · ที่มา · หนังสือยินยอมของหักค่าของ · ตัดสินทีละรายการ (H2.11)" },
     { key: "inbox-batch-result", path: (i) => `/app/sys/${i.hr}/hr/requests?type=SWAP`, click: '[data-testid^="hr-inbox-approve-"]', users: ["owner"], why: "ผลการตัดสิน (hr-inbox-result) ต่อรายการ — ⚠ กดจริง: ถ่ายหลังภาพอื่น แล้ว seed ใหม่ (H2.11)" },
@@ -158,6 +158,8 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   "2.7": [
     { key: "leave", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager", "manager-branch", "staff", "member"], why: "หน้าใบลา: ฟอร์ม · ยอดคงเหลือ · รออนุมัติ (H2.7)" },
     { key: "leave-settings", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner"], expect: { owner: 200 }, why: "การ์ดประเภทการลา (ครึ่งวัน/รายชั่วโมง/แนบไฟล์) + วันหยุด + preset (H2.7/H2.8)" },
+    // HR H2.12 ▸ F1/F5: ส่วนพับ "เพิ่มประเภทลาตามกฎหมาย" (ค่า · มาตรา/ถ้อยคำกลาง · มีแล้ว · ยังไม่รองรับ 50%) + คำเตือนใต้ประเภทที่ต่ำกว่า (ไม่บล็อก) ◂
+    { key: "leave-law-presets", path: (i) => `/app/sys/${i.hr}/hr/settings`, click: '[data-testid="hr-settings-law-presets-open"]', users: ["owner"], expect: { owner: 200 }, why: "รายการประเภทลาตามกฎหมาย hr-settings-law-preset-* · ฟอร์มแก้ค่าได้ · มีแล้ว = ชื่อที่ตรง · ลาเลี้ยงดูบุตร = ปุ่มปิด (H2.12 F1)" },
   ],
   // HR VISUAL batch1 ▸ H4.1 บรรทัดผลกระทบบนการ์ดใบลา hr-leave-impact* (mockup 05) — staff ต้องไม่เห็น ◂
   // HR H2.10 ▸ "ของฉัน" (mockup 07a/07b · มือถือก่อน): staff (น้ำฝน) = 5 แท็บ + ฟอร์มยื่นลา · payrollSelf (ก้อย ผูกบัญชี) = หน้าเดียวกันของตัวเอง ·

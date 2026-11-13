@@ -36,6 +36,9 @@ import { WorkSettingsCard, WE_MSG } from "@/lib/modules/hr/work-entries-ui"; // 
 import { saveNormalMinutesAction } from "@/lib/modules/hr/work-entries-actions"; // HR H3.1 ◂
 import { AttendancePayPolicyCard, ATT_MSG } from "@/lib/modules/hr/attendance-pay-ui"; // HR H3.2 ◂ กฎหักสาย/ขาด (เจ้าของร้าน)
 import { saveAttendancePayPolicyAction } from "@/lib/modules/hr/attendance-pay-actions"; // HR H3.2 ◂
+import { LEAVE_PRESET_TEXT } from "@/lib/modules/hr/leave-presets"; // HR H2.12 ▸ F1 ◂
+import { addLeavePresetAction } from "@/lib/modules/hr/leave-presets-actions"; // HR H2.12 ▸ F1 ◂
+import { LeavePolicyWarningLines, LeavePresetSection } from "@/lib/modules/hr/leave-presets-ui"; // HR H2.12 ▸ F1 + F5 ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -56,6 +59,7 @@ const MSG_TEXTS: Record<string, string> = {
   ...WE_MSG, // HR H3.1 ◂
   ...ATT_MSG, // HR H3.2 ◂
   ...Object.fromEntries((["sAfter", "sAhead", "sRound"] as const).map((k) => [`o.${k}`, OT_TEXT[k]])), // HR H2.9 ◂
+  ...Object.fromEntries(Object.entries(LEAVE_PRESET_TEXT).map(([k, v]) => [`lp.${k}`, v])), // HR H2.12 ▸ F1 ◂
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
 /** กลับหน้าเดิมพร้อมรหัสผลการกด (redirect โยนเพื่อจบ action) */
@@ -106,6 +110,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const onCreatePolicy = async (fd: FormData) => {
     "use server";
     back(path, year, await createLeavePolicyAction(fd));
+  };
+  // HR H2.12 ▸ F1 เพิ่มประเภทลาตามกฎหมาย 1 รายการ (ด่านเดียวกับเพิ่มประเภทการลา) ◂
+  const onAddLeavePreset = async (fd: FormData) => {
+    "use server";
+    back(path, year, await addLeavePresetAction(fd));
   };
   const onArchivePolicy = async (fd: FormData) => {
     "use server";
@@ -258,6 +267,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
                   {p.attachmentAfterDays ? ` · ${t("policies.attachmentAfterDays")} ${p.attachmentAfterDays}` : ""}
                   {p.allowHalfDay ? "" : ` · ${t("policies.noHalfDay")}`}
                 </span>
+                {/* HR H2.12 ▸ F5 คำเตือน (ไม่บล็อก) ◂ */}
+                <LeavePolicyWarningLines policies={policies} id={p.id} />
                 {(all || p.unitId) && (
                   <form action={onArchivePolicy}>
                     <input type="hidden" name="systemId" value={id} />
@@ -337,6 +348,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
             {t("policies.add")}
           </button>
         </form>
+        {/* HR H2.12 ▸ F1 ประเภทลาตามกฎหมาย (ประเภททั้งร้าน ⇒ เพิ่มได้เฉพาะผู้ดูแลทุกสาขา — เหมือนฟอร์มด้านบนเลือก "ทั้งร้าน") ◂ */}
+        <LeavePresetSection systemId={id} policies={policies} onAdd={onAddLeavePreset} canAdd={all} />
       </Section>
 
       <Section title={`${t("holidays.title")} ${year + 543}`} card>

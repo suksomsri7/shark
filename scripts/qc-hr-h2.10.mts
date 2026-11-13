@@ -205,14 +205,16 @@ async function runStatic(): Promise<void> {
     const hunks = IN_BASE ? null : diffHunks(BASE, F.layout);
     const mine = (hunks ?? []).filter((h) => /HR H2\.10 ▸/.test(h.added.join("\n")));
     const foreign = (hunks ?? []).filter((h) => !/▸/.test(h.added.join("\n")));
-    ck("S7.2", { wrap: /hrNavFilter\(/.test(cur), labels: srt(labels(cur)) === srt(labels(base)) && labels(cur).length > 0, marked: IN_BASE || (mine.length >= 1 && !foreign.length), drawer: /\/app\/me\/hr/.test(L) }, "wrap · labels · hunk", IN_BASE ? "in base" : `${hunks?.length}/${mine.length}`);
+    // ORACLE-EDIT (H2.12 sweep): "labels = base" describes H2.10's own diff — n/a once H2.10 (me/hr self page) is in the base (later WOs / main syncs may add nav labels) · non-empty still checked
+    ck("S7.2", { wrap: /hrNavFilter\(/.test(cur), labels: (IN_BASE || srt(labels(cur)) === srt(labels(base))) && labels(cur).length > 0, marked: IN_BASE || (mine.length >= 1 && !foreign.length), drawer: /\/app\/me\/hr/.test(L) }, "wrap · labels · hunk", IN_BASE ? "in base" : `${hunks?.length}/${mine.length}`);
   }
   {
     // ORACLE-EDIT (H2.11 lands second · controller r3): hrTabs = base except the one marked `HR H2.11` line ◂
     const tabs = (src: string) => block(src, "export function hrTabs(").split("\n").filter((l) => !/HR H2\.11\b/.test(l)).join("\n");
     const cur = rd(F.hrUi);
     const pages = files("src/app/app/sys/[id]/hr").filter((f) => /hrTabs\(/.test(stripComments(rd(f))));
-    ck("S7.3", { same: tabs(cur) === tabs(fileAt(BASE, F.hrUi) ?? "") && tabs(cur).length > 0, forFn: /export\s+(async\s+)?function\s+hrTabsFor\(/.test(cur), pages: !pages.length, hub: !/<ModuleTabs items=\{hrTabs\(/.test(cur) }, "hrTabs kept · hrTabsFor used", pages.join(","));
+    // ORACLE-EDIT (H2.12 sweep): "hrTabs = base" is n/a once H2.10 is in the base (later WOs may add tabs) · non-empty + hrTabsFor still checked
+    ck("S7.3", { same: (IN_BASE || tabs(cur) === tabs(fileAt(BASE, F.hrUi) ?? "")) && tabs(cur).length > 0, forFn: /export\s+(async\s+)?function\s+hrTabsFor\(/.test(cur), pages: !pages.length, hub: !/<ModuleTabs items=\{hrTabs\(/.test(cur) }, "hrTabs kept · hrTabsFor used", pages.join(","));
   }
   {
     const p = rd(F.profile);
