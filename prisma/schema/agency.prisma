@@ -1,0 +1,630 @@
+// ─────────────────────────────────────────────────────────────
+// agency.prisma — ชั้นเอเจนซี่ (ตัวตนระดับแพลตฟอร์ม · เอเจนซี่ต่อร้าน · เงินเอเจนซี่) · RUN TRIPS A1.1 (26 ตาราง)
+// สัญญา: ledger/TRIPS-CORE-CONTRACT.md §B.2 §I §J.3.1 · ใบสั่ง ledger/trips-briefs/A1.1.md §2.1–§2.3 · มติผู้คุม R1–R11
+// อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core)
+// 🔴 ไม่มี FK เข้า/ออกตารางเหล่านี้ (id หลวม · ใบสั่ง T0.1 §7 ข้อ 21) ⇒ ไม่มี cascade ใดลงสมุด · บัตรราคา archive ห้ามลบ ·
+//    หา session ต้อง join สถานะ AgentUser + AgentIdentity เสมอ · ไม่มี Prisma enum (สถานะ = String + CHECK)
+// 🔴 CHECK ทุกตัว + unique NULLS NOT DISTINCT / partial + trigger สมุด = SQL มือท้าย migration «agency» (20270201000200_agency)
+//    ชื่อ CHECK = "<Table>_<col>_check" (ชุดค่า · ตัวเลข) หรือชื่อตรงตัวของใบสั่ง §3.3 (ข้ามคอลัมน์)
+//    ฝั่ง Prisma ห้ามประกาศ @@unique ซ้ำกับ SQL มือ (ใช้ @@index ค้นได้)
+// เงินต่อการจอง/ต่อรายการ = Int (int4 สตางค์ · OQ19) · ยอดรวมจากหลายการจอง = BigInt (มติ R4 · โค้ดใช้ bigint ของ JS)
+// วันท้องถิ่น = @db.Date · อัตรา = basis point Int
+// ⚠️ `prisma migrate diff` (ฐาน → schema) เสนอ DROP INDEX "AgentRate_dims_key" (NULLS NOT DISTINCT) เสมอ — ห้ามรับ · ลบบรรทัดทิ้ง
+// ─────────────────────────────────────────────────────────────
+
+// ═════════════ 2.1 ตัวตนเอเจนซี่ระดับแพลตฟอร์ม — แกน global (ไม่มี tenantId · อ้างได้เฉพาะ agency/entry.ts + platform/agent-auth.ts · fitness F17.1) ═════════════
+
+// ตัวตนบริษัทเอเจนซี่ (ห้ามคอลัมน์อื่น — ข้อมูลภาษี/ธนาคาร/ติดต่ออยู่ที่ AgentAccount ต่อร้าน)
+// SQL มือ: AgentIdentity_status_check · AgentIdentity_publicCode_format_check · AgentIdentity_taxIdHash_format_check (v1:<64hex>) · AgentIdentity_displayName_len_check
+// taxIdHash = ดัชนีธรรมดา ไม่ unique (มติ R1 — ความเป็นเจ้าของเลขภาษียืนยันใน A1.2)
+model AgentIdentity {
+  id          String   @id @default(cuid())
+  displayName String
+  publicCode  String
+  taxIdHash   String?
+  status      String   @default("ACTIVE") // ACTIVE | SUSPENDED | CLOSED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([publicCode])
+  @@index([taxIdHash])
+}
+
+// ผู้ใช้ฝั่งเอเจนซี่ (ไม่ใช้ตาราง User) · 🔴 lastLoginAt ห้ามแสดงให้ร้าน (เผยกิจกรรมที่ร้านอื่น · มติ R5)
+// SQL มือ: AgentUser_role_check · AgentUser_status_check (ACTIVE DISABLED ERASED) · AgentUser_displayName_len_check
+model AgentUser {
+  id          String    @id @default(cuid())
+  identityId  String
+  displayName String
+  role        String // OWNER | ADMIN | SALES | ACCOUNTING
+  status      String    @default("ACTIVE")
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([identityId])
+}
+
+// วิธีล็อกอิน (ผู้ใช้หนึ่งคนมีได้หลายวิธี) · 🔴 providerId ห้ามแสดงให้ร้าน (LINE provider ของ OA ร้านอื่น · มติ R5)
+// SQL มือ: AgentLogin_kind_check · AgentLogin_email_norm_check
+model AgentLogin {
+  id          String    @id @default(cuid())
+  agentUserId String
+  kind        String // EMAIL | LINE
+  providerId  String // EMAIL = "email" · LINE = provider/channel id
+  subject     String // อีเมล normalize หรือ LINE userId
+  verifiedAt  DateTime
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([kind, providerId, subject])
+  @@index([agentUserId])
+}
+
+// เก็บแฮชเท่านั้น · 🔴 activeAgentAccountId ห้ามแสดงให้ร้าน (มติ R5) · SQL มือ: AgentSession_idle_check
+model AgentSession {
+  id                   String    @id @default(cuid())
+  agentUserId          String
+  tokenHash            String
+  activeAgentAccountId String?
+  expiresAt            DateTime
+  idleExpiresAt        DateTime
+  revokedAt            DateTime?
+  ipHash               String?
+  uaHash               String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([tokenHash])
+  @@index([agentUserId])
+  @@index([expiresAt])
+}
+
+// รหัสล็อกอินครั้งเดียว (แฮชเท่านั้น) · SQL มือ: AgentLoginCode_attempts_check
+model AgentLoginCode {
+  id        String    @id @default(cuid())
+  target    String
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([target, expiresAt])
+  @@index([expiresAt]) // ตัวล้างรหัสหมดอายุ (มติ R9 · O4)
+}
+
+// ═════════════ 2.2 เอเจนซี่ต่อร้าน — แกน tenant ═════════════
+
+// SQL มือ: AgentTier_code_check (A B C) · AgentTier_sortOrder_check
+model AgentTier {
+  id        String   @id @default(cuid())
+  tenantId  String
+  code      String
+  name      String
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+}
+
+// บัญชีเอเจนซี่ของร้าน (ข้อมูลภาษี/เงินของร้านนี้) · identityId null ได้เฉพาะ INVITED/CLOSED
+// SQL มือ: AgentAccount_kind_check · _status_check · _payeeType_check · AgentAccount_identity_check · AgentAccount_last4_check · AgentAccount_country_check · AgentAccount_branchCode_check
+// @@unique([tenantId, identityId]) = NULLS DISTINCT ตั้งใจ (INVITED หลายแถวไม่มีตัวตนได้)
+model AgentAccount {
+  id               String    @id @default(cuid())
+  tenantId         String
+  identityId       String?
+  kind             String    @default("AGENT") // AGENT | OTA | PEER
+  code             String
+  status           String // INVITED | PENDING | ACTIVE | SUSPENDED | CLOSED
+  tierId           String?
+  partyId          String
+  crmCompanyId     String?
+  accountContactId String?
+  unitIds          String[]
+  legalName        String
+  payeeType        String // TH_JURISTIC | TH_FOUNDATION | TH_PERSON | FOREIGN
+  taxIdEnc         String?
+  taxIdLast4       String?
+  branchCode       String?
+  country          String    @default("TH")
+  treaty           Boolean?
+  vatRegistered    Boolean   @default(false)
+  bankAccountEnc   String?
+  bankLast4        String?
+  contact          Json?
+  licenceNo        String?
+  licenceExpiry    DateTime? @db.Date
+  logoFileId       String?
+  inviteTokenHash  String?
+  inviteExpiresAt  DateTime?
+  approvedById     String?
+  approvedAt       DateTime?
+  suspendedAt      DateTime?
+  statusReason     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, identityId])
+  @@unique([inviteTokenHash])
+  @@index([identityId])
+  @@index([tenantId, status])
+}
+
+// สมาชิกของบัญชี (สร้างได้เฉพาะฝั่งเอเจนซี่) · SQL มือ: AgentAccountMember_role_check
+model AgentAccountMember {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  agentAccountId     String
+  agentUserId        String
+  role               String // OWNER | ADMIN | SALES | ACCOUNTING
+  active             Boolean  @default(true)
+  addedByAgentUserId String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([agentAccountId, agentUserId])
+  @@index([agentUserId])
+}
+
+// SQL มือ: AgentContract_status_check · AgentContract_version_check (>= 1) · AgentContract_dates_check
+model AgentContract {
+  id             String    @id @default(cuid())
+  tenantId       String
+  agentAccountId String
+  version        Int
+  status         String    @default("DRAFT") // DRAFT | ACTIVE | SUPERSEDED
+  validFrom      DateTime  @db.Date
+  validTo        DateTime? @db.Date
+  fileId         String?
+  signedAt       DateTime?
+  signEvidence   Json?
+  termsSnapshot  Json
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([agentAccountId, version])
+}
+
+// บัตรราคา (archive ห้ามลบ — ไม่มี FK) · SQL มือ: AgentRateCard_ownerKind_check · _status_check · _version_check · _priority_check · AgentRateCard_dates_check · AgentRateCard_owner_check
+model AgentRateCard {
+  id             String    @id @default(cuid())
+  tenantId       String
+  ownerKind      String // TIER | AGENT
+  tierId         String?
+  agentAccountId String?
+  name           String
+  status         String    @default("DRAFT") // DRAFT | ACTIVE | ARCHIVED
+  validFrom      DateTime? @db.Date
+  validTo        DateTime? @db.Date
+  version        Int       @default(1)
+  priority       Int       @default(0)
+  label          Json?
+  conditions     Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId, ownerKind])
+  @@index([tierId])
+  @@index([agentAccountId])
+}
+
+// SQL มือ: AgentRate_dims_key UNIQUE ("rateCardId","productKind","productId","optionId","paxTypeId","cabinTypeId","bookFrom","travelFrom") NULLS NOT DISTINCT
+//   (ไม่ใช่ตัวกันช่วงซ้อน — ตัวคิดราคาเรียงตาม priority) · AgentRate_productKind_check · _mode_check · ตัวเลข (valueBp 0–10000 · valueMinor minSellMinor markupCapBp priority >= 0)
+//   AgentRate_dates_check · AgentRate_value_check · AgentRate_currency_check · AgentRate_fixed_currency_check
+model AgentRate {
+  id           String    @id @default(cuid())
+  tenantId     String
+  rateCardId   String
+  productKind  String // TRIP | TICKET | HOTEL
+  productId    String
+  optionId     String?
+  paxTypeId    String?
+  cabinTypeId  String?
+  mode         String // COMMISSION_PCT | COMMISSION_FIXED | NET | MARKUP
+  valueBp      Int?
+  valueMinor   Int?
+  currency     String    @default("THB")
+  minSellMinor Int?
+  markupCapBp  Int?
+  bookFrom     DateTime? @db.Date
+  bookTo       DateTime? @db.Date
+  travelFrom   DateTime? @db.Date
+  travelTo     DateTime? @db.Date
+  priority     Int       @default(0)
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([rateCardId])
+  @@index([tenantId, productKind, productId])
+}
+
+// คำขอของเอเจนซี่ · expiresAt null เมื่อมี hold (เวลาหมดแหล่งเดียว = TripHold.expiresAt · TC5)
+// SQL มือ: AgentRequest_expiresAt_pending_idx ("expiresAt") WHERE status='PENDING' AND "holdId" IS NULL · AgentRequest_kind_check · _status_check · _productKind_check · _qty_check
+//   AgentRequest_hold_check · AgentRequest_expiry_check
+model AgentRequest {
+  id                     String    @id @default(cuid())
+  tenantId               String
+  agentAccountId         String
+  requestedByAgentUserId String?
+  kind                   String // BOOKING | PRICE_OVERRIDE | CREDIT_INCREASE | ALLOTMENT
+  payload                Json
+  holdId                 String?
+  bookingId              String?
+  productKind            String?
+  productId              String?
+  slotId                 String?
+  qty                    Int?
+  status                 String    @default("PENDING") // PENDING | APPROVED | REJECTED | EXPIRED | CANCELLED
+  expiresAt              DateTime?
+  approvalId             String?
+  decidedById            String?
+  decidedAt              DateTime?
+  decisionNote           String?
+  idempotencyKey         String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status, expiresAt])
+  @@index([agentAccountId])
+  @@index([holdId])
+  @@index([tenantId, productKind, slotId])
+}
+
+// ลิงก์ขาย (?a=) · SQL มือ: AgentLink_productKind_check · _discountBp_check · AgentLink_product_check · AgentLink_code_check
+model AgentLink {
+  id             String   @id @default(cuid())
+  tenantId       String
+  agentAccountId String
+  code           String
+  salesUserId    String?
+  productKind    String?
+  productId      String?
+  showBrand      Boolean  @default(true)
+  discountBp     Int?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([agentAccountId])
+}
+
+// เก็บแฮชเท่านั้น · SQL มือ: AgentApiKey_last4_check
+model AgentApiKey {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  agentAccountId       String
+  name                 String
+  keyHash              String
+  last4                String
+  scopes               String[]
+  createdByAgentUserId String?
+  lastUsedAt           DateTime?
+  expiresAt            DateTime?
+  revokedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([keyHash])
+  @@index([agentAccountId])
+}
+
+// แม่แบบโควตาต่อสินค้า · SQL มือ: AgentAllotmentBlock_productKind_check · ตัวเลข (qtyPerSlot releaseDaysBefore >= 0 · holdHours >= 1) · AgentAllotmentBlock_dates_check
+model AgentAllotmentBlock {
+  id                String    @id @default(cuid())
+  tenantId          String
+  agentAccountId    String
+  productKind       String
+  productId         String
+  optionId          String?
+  qtyPerSlot        Int
+  releaseDaysBefore Int?
+  requestFirst      Boolean?
+  freeSale          Boolean?
+  holdHours         Int?
+  validFrom         DateTime? @db.Date
+  validTo           DateTime? @db.Date
+  active            Boolean   @default(true)
+  createdById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tenantId, agentAccountId])
+  @@index([productKind, productId])
+}
+
+// โควตาต่อรอบ · SQL มือ: AgentAllotment_releaseAt_open_idx ("releaseAt") WHERE "releasedAt" IS NULL · AgentAllotment_productKind_check · ตัวเลข >= 0
+//   AgentAllotment_counters_check (used + held + returnedToPublic <= qty) · AgentAllotment_released_check
+model AgentAllotment {
+  id               String    @id @default(cuid())
+  tenantId         String
+  agentAccountId   String
+  productKind      String
+  slotId           String
+  unitId           String
+  productId        String
+  slotDate         DateTime  @db.Date
+  qty              Int
+  used             Int       @default(0)
+  held             Int       @default(0)
+  returnedToPublic Int       @default(0)
+  releaseAt        DateTime?
+  releasedAt       DateTime?
+  releasedQty      Int?
+  blockId          String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([agentAccountId, productKind, slotId])
+  @@index([productKind, slotId])
+  @@index([tenantId, agentAccountId, slotDate])
+}
+
+// หยุดขาย (agentAccountId null = ทุกเอเจนซี่) · SQL มือ: AgentStopSell_productKind_check · AgentStopSell_channel_check (SELL_CHANNELS) · AgentStopSell_window_check
+//   AgentStopSell_tenantId_productKind_productId_open_idx (…) WHERE "liftedAt" IS NULL (มติ R9 · O4)
+model AgentStopSell {
+  id             String    @id @default(cuid())
+  tenantId       String
+  agentAccountId String?
+  productKind    String
+  slotId         String?
+  productId      String?
+  channel        String?
+  from           DateTime
+  to             DateTime?
+  reason         String
+  createdById    String?
+  liftedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId, productKind, slotId])
+}
+
+// SQL มือ: AgentWebhook_failCount_check · AgentWebhook_url_check (https://)
+model AgentWebhook {
+  id              String    @id @default(cuid())
+  tenantId        String
+  agentAccountId  String
+  url             String
+  secretBox       String
+  events          String[]
+  active          Boolean   @default(true)
+  failCount       Int       @default(0)
+  lastDeliveredAt DateTime?
+  disabledAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([agentAccountId])
+}
+
+// บันทึกการส่ง webhook (มติ R1) · SQL มือ: AgentWebhookDelivery_nextAttemptAt_open_idx ("nextAttemptAt") WHERE status IN ('PENDING','FAILED')
+//   AgentWebhookDelivery_status_check · _attempts_check · _responseCode_check (100–599)
+model AgentWebhookDelivery {
+  id            String    @id @default(cuid())
+  tenantId      String
+  webhookId     String
+  eventId       String
+  eventType     String
+  status        String    @default("PENDING") // PENDING | OK | FAILED | DEAD
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime?
+  lastError     String?
+  responseCode  Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([webhookId, eventId])
+  @@index([tenantId, status])
+}
+
+// SQL มือ: AgentMediaAsset_productKind_check · _sortOrder_check · AgentMediaAsset_product_check
+model AgentMediaAsset {
+  id          String   @id @default(cuid())
+  tenantId    String
+  productKind String?
+  productId   String?
+  fileId      String
+  title       Json
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, productId])
+}
+
+// ═════════════ 2.3 เงินเอเจนซี่ — แกน tenant (CC §I) ═════════════
+
+// 🔴 ต่อท้ายอย่างเดียว — SQL มือ: trigger AgentLedgerEntry_append_only BEFORE UPDATE OR DELETE (ฟังก์ชัน agent_ledger_entry_guard · มติ R1)
+//   ปฏิเสธ UPDATE/DELETE (23001 AGENT_LEDGER_APPEND_ONLY) ยกเว้น: ผูก statementId ครั้งแรก · ย้าย/ปลด statementId เมื่อใบเดิม VOID ·
+//   ตั้ง settledAt / whtCertDocId / accountDocId จาก null ครั้งเดียว · DELETE เมื่อ GUC shark.ledger_purge = 'on' หรือร้าน PENDING_DELETE
+//   ฟังก์ชันเทียบทั้งแถว ⇒ 🔴 ห้ามเพิ่มคอลัมน์ Json ในตารางนี้ (json ไม่มีตัวเทียบเท่า) · ไม่มี updatedAt
+//   CHECK: AgentLedgerEntry_kind_check · _bookingKind_check · _seq_check (>= 1) · AgentLedgerEntry_currency_check · AgentLedgerEntry_sign_check
+//   AgentLedgerEntry_booking_check · AgentLedgerEntry_unit_check · AgentLedgerEntry_refs_check · AgentLedgerEntry_settles_check
+model AgentLedgerEntry {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  agentAccountId     String
+  unitId             String?
+  seq                Int
+  kind               String
+  amountSatang       Int
+  currency           String    @default("THB")
+  bookingKind        String?
+  bookingId          String?
+  statementId        String?
+  settlesStatementId String?
+  commissionId       String?
+  entitledAt         DateTime?
+  settledAt          DateTime?
+  dueAt              DateTime?
+  refEntryId         String?
+  requestId          String?
+  approvalId         String?
+  accountDocId       String?
+  slipId             String?
+  runId              String?
+  whtCertDocId       String?
+  reason             String?
+  idempotencyKey     String
+  actorId            String
+  createdAt          DateTime  @default(now())
+
+  @@unique([agentAccountId, seq])
+  @@unique([tenantId, idempotencyKey])
+  @@index([agentAccountId, statementId])
+  @@index([agentAccountId, unitId])
+  @@index([settlesStatementId])
+  @@index([bookingId])
+}
+
+// หัวสมุด (ไม่มี trigger · มติ R6 — ใบ A1.5 ดูแลด้วย UPDATE เดียวที่มีเงื่อนไข) · balanceSatang = BigInt (มติ R4)
+// SQL มือ: AgentBalance_lastSeq_check · AgentBalance_version_check
+model AgentBalance {
+  agentAccountId String   @id
+  tenantId       String
+  balanceSatang  BigInt   @default(0)
+  lastSeq        Int      @default(0)
+  version        Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ใบแจ้งยอด — BIGINT ทุกช่องเงิน (มติ R4) · ยอดบนใบ = Σ amountSatang ของรายการที่ statementId = ใบนี้ (ใบสั่ง §2.3)
+// SQL มือ: AgentStatement_agentAccountId_periodKey_key UNIQUE ("agentAccountId","periodKey") WHERE status <> 'VOID'
+//   AgentStatement_dueAt_open_idx ("dueAt") WHERE status IN ('ISSUED','PARTIAL') (มติ R9 · O4)
+//   AgentStatement_status_check · ตัวเลข >= 0 · AgentStatement_total_check (สูตร §2.3) · AgentStatement_period_check
+model AgentStatement {
+  id                     String    @id @default(cuid())
+  tenantId               String
+  agentAccountId         String
+  code                   String
+  periodKey              String
+  periodFrom             DateTime  @db.Date
+  periodTo               DateTime  @db.Date
+  status                 String    @default("DRAFT") // DRAFT | ISSUED | PARTIAL | PAID | VOID
+  version                Int       @default(0)
+  openingSatang          BigInt    @default(0)
+  salesSatang            BigInt
+  passThroughSatang      BigInt
+  commissionSatang       BigInt
+  commissionVatSatang    BigInt
+  whtSatang              BigInt
+  cancelledSatang        BigInt
+  adjustmentSatang       BigInt    @default(0)
+  otherSatang            BigInt    @default(0)
+  paidDuringPeriodSatang BigInt
+  totalSatang            BigInt
+  paidSatang             BigInt    @default(0)
+  whtCertSatang          BigInt?
+  billingNoteDocId       String?
+  whtCertDocId           String?
+  receiveUnitId          String
+  dueAt                  DateTime
+  issuedAt               DateTime?
+  overdueAt              DateTime?
+  voidedAt               DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([agentAccountId, periodKey])
+  @@index([tenantId, status, dueAt])
+}
+
+// คอมมิชชันต่อการจอง (int4 · OQ19) · SQL มือ: AgentCommission_bookingKind_check · _status_check · _settleMode_check · _whtMode_check · ตัวเลข
+//   AgentCommission_clawbackSatang_check (0 ≤ x ≤ commission + vat) · AgentCommission_wht_check · AgentCommission_currency_check
+model AgentCommission {
+  id               String    @id @default(cuid())
+  tenantId         String
+  agentAccountId   String
+  bookingKind      String
+  bookingId        String
+  bookingUnitId    String
+  baseSatang       Int
+  rateBp           Int?
+  commissionSatang Int
+  vatSatang        Int       @default(0)
+  whtMode          String    @default("NONE") // FLAT | M50_1 | NONE
+  whtRateBp        Int       @default(0)
+  whtSatang        Int? // null = ม.50(1) ยังไม่กรอก (W10)
+  clawbackSatang   Int       @default(0)
+  clawbackRunId    String?
+  currency         String    @default("THB")
+  fxRateMicros     Int?
+  status           String    @default("PENDING") // PENDING | EARNED | SETTLING | SETTLED | CLAWED_BACK | VOID
+  earnedAt         DateTime?
+  settledAt        DateTime?
+  settleMode       String // PAYOUT | NETTED
+  runId            String?
+  whtCertDocId     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([bookingKind, bookingId, agentAccountId])
+  @@index([agentAccountId, status, earnedAt])
+  @@index([runId])
+  @@index([tenantId, status, earnedAt]) // ตัวอย่างรอบจ่ายทั้งร้าน (มติ R9 · O4)
+}
+
+// รอบจ่ายคอมฯ — ยอดรวม BigInt (มติ R4) · SQL มือ: AgentCommissionRun_status_check · ตัวเลข >= 0
+model AgentCommissionRun {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  code                  String
+  cutoffAt              DateTime
+  status                String    @default("DRAFT") // DRAFT | SETTLING | PAID | VOID
+  totalCommissionSatang BigInt    @default(0)
+  totalVatSatang        BigInt    @default(0)
+  totalWhtSatang        BigInt    @default(0)
+  totalPaidSatang       BigInt    @default(0)
+  paidAt                DateTime?
+  idempotencyKey        String?
+  createdById           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, idempotencyKey])
+}
+
+// การจ่ายคอมฯ ต่อเอเจนซี่ต่อสมุดหน่วยในรอบ (มติ R1) — ยอด BigInt (มติ R4)
+// SQL มือ: AgentCommissionPayout_status_check · _whtMode_check · ตัวเลข >= 0 · _whtRateBp_check (0–10000)
+model AgentCommissionPayout {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  runId                String
+  agentAccountId       String
+  unitId               String
+  financeAccountId     String?
+  commissionSatang     BigInt
+  vatSatang            BigInt
+  whtSatang            BigInt
+  clawbackNettedSatang BigInt
+  paidSatang           BigInt
+  whtMode              String
+  whtRateBp            Int
+  accountDocId         String?
+  whtCertDocId         String?
+  status               String    @default("PENDING") // PENDING | PAID | FAILED | VOID
+  paidAt               DateTime?
+  idempotencyKey       String
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([runId, agentAccountId, unitId])
+  @@unique([tenantId, idempotencyKey])
+  @@index([agentAccountId])
+}

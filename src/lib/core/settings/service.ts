@@ -84,7 +84,7 @@ const CONSUMED_ACTION = "settings.legal_override.consumed";
 const PROPOSAL_TARGET = "SettingProposal";
 
 /** ชั้นที่มีตารางให้ตรวจความเป็นเจ้าของ — ชั้นอื่น (LEASE RATE_PLAN RESOURCE DEVICE COURSE) ปฏิเสธจนกว่าใบที่สร้างตารางยื่นขอเพิ่ม */
-const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE", "RATE_PLAN", "PRODUCT", "DEPARTURE"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂ · SVC H.0 ▸ RATE_PLAN = HotelRatePlan ◂ · TRIPS T0.1 ▸ PRODUCT = TripProduct · DEPARTURE = TripDeparture (VESSEL = L1.1 · AGENT_TIER/AGENT = A1.1 · Ticket* = K1.1) ◂
+const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE", "RESOURCE", "RATE_PLAN", "PRODUCT", "DEPARTURE", "AGENT_TIER", "AGENT"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂ · SVC B.13 ▸ RESOURCE = SvcResource ◂ · SVC H.0 ▸ RATE_PLAN = HotelRatePlan ◂ · TRIPS T0.1 ▸ PRODUCT = TripProduct · DEPARTURE = TripDeparture (VESSEL = L1.1 · AGENT_TIER/AGENT = A1.1 · Ticket* = K1.1) ◂
 const REF_FIELD: Record<ScopeKind, keyof ScopeRefs | null> = {
   TENANT: null,
   UNIT: "unitId",
@@ -306,6 +306,19 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
               known: { TENANT: T, UNIT: r.unitId, VESSEL: r.vesselId ?? pv.get(r.productId) ?? null, PRODUCT: r.productId, DEPARTURE: r.id },
             });
         }),
+    );
+  // TRIPS A1.1 ▸ ชั้น AGENT_TIER = AgentTier · AGENT = AgentAccount ของร้าน (ไม่มีหน่วยของตัวเอง ⇒ unitId null · ผู้เรียกส่ง ScopeRefs เต็มเอง · CC §E.1 L-4) ◂
+  if (by.has("AGENT_TIER"))
+    jobs.push(
+      db.agentTier.findMany({ where: { tenantId: T, id: { in: ids("AGENT_TIER") } }, select: { id: true } }).then((rs) => {
+        for (const r of rs) out.set(`AGENT_TIER|${r.id}`, { unitId: null, known: { TENANT: T, AGENT_TIER: r.id } });
+      }),
+    );
+  if (by.has("AGENT"))
+    jobs.push(
+      db.agentAccount.findMany({ where: { tenantId: T, id: { in: ids("AGENT") } }, select: { id: true, tierId: true } }).then((rs) => {
+        for (const r of rs) out.set(`AGENT|${r.id}`, { unitId: null, known: { TENANT: T, AGENT_TIER: r.tierId ?? null, AGENT: r.id } });
+      }),
     );
   await Promise.all(jobs); // ชั้นที่ยังไม่มีตาราง — คง null (fail closed)
   return out;

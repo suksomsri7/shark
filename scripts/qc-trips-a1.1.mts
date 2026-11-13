@@ -608,7 +608,7 @@ try {
     const notNull = [...migNoFn.matchAll(/ALTER TABLE "(\w+)" ([^;]+);/gi)].filter((m) => !created.has(m[1])).flatMap((m) => m[2].split(/,(?![^()]*\))/)).filter((cl) => /ADD COLUMN/i.test(cl) && /NOT NULL/i.test(cl));
     ok(notNull.length === 0, `คอลัมน์ NOT NULL บนตารางเดิม: ${notNull.join(" | ").slice(0, 160)}`);
     const idxOld = [...migCode.matchAll(/CREATE (?:UNIQUE )?INDEX "\w+" ON "(\w+)"/gi)].map((m) => m[1]).filter((t) => !created.has(t));
-    ok(idxOld.every((t) => t === "TripMoneyEvent" || t === "SellBasket"), `ดัชนีบนตารางเดิมอื่น: ${idxOld.join(", ")}`);
+    ok(idxOld.every((t) => t === "TripMoneyEvent" || t === "SellBasket" || t === "TripHold" /* ORACLE-EDIT M-3 (ผู้คุม 13 พ.ย.): มติ R9 — ดัชนี O4 รวม TripHold_agentAccountId_active_idx */), `ดัชนีบนตารางเดิมอื่น: ${idxOld.join(", ")}`);
     const moved = MOVED_OUT.filter((t) => created.has(t));
     ok(moved.length === 0, `ตารางที่ย้ายไป L1.1 (มติ R2) ยังอยู่: ${moved.join(", ")}`);
   });
@@ -1013,18 +1013,20 @@ try {
     const out = await inTx(async (c) => {
       const qf = (sql: string, p?: unknown[]) => c.query(sql, p);
       const a = rid("a"), b = rid("b"), s = rid("st");
+      // ORACLE-EDIT L-10 (ผู้คุม 13 พ.ย.): ข้อสอบข้ออื่นทิ้งแถวสมุดของ tA ที่ไม่มีหัวสมุดไว้ ⇒ นับเฉพาะแถวของบัญชี/ใบแจ้งยอดที่ข้อนี้สร้าง
+      const mine = (rows: unknown): Rec[] => (rows as Rec[]).filter((x) => { const t = JSON.stringify(x); return t.includes(a) || t.includes(b) || t.includes(s); });
       await ins("AgentBalance", { agentAccountId: a, tenantId: tA, balanceSatang: 700_000, lastSeq: 1 }, c);
       await ins("AgentLedgerEntry", { ...valid("AgentLedgerEntry", tA, uA), agentAccountId: a, seq: 1, amountSatang: 700_000, statementId: s }, c);
       await ins("AgentStatement", stRowOf({ id: s, agentAccountId: a, salesSatang: 700_000, passThroughSatang: 0, commissionSatang: 0, whtSatang: 0, cancelledSatang: 0, paidDuringPeriodSatang: 0 }), c);
-      const r0 = [((await bal(qf, [tA])) as unknown[]).length, ((await sd(qf, [tA])) as unknown[]).length];
+      const r0 = [mine(await bal(qf, [tA])).length, mine(await sd(qf, [tA])).length];
       await c.query(`UPDATE "AgentBalance" SET "balanceSatang" = 1 WHERE "agentAccountId" = $1`, [a]);
-      const r1 = ((await bal(qf, [tA])) as Rec[]).map((x) => x.rule);
+      const r1 = mine(await bal(qf, [tA])).map((x) => x.rule);
       await c.query(`UPDATE "AgentBalance" SET "balanceSatang" = 1400000, "lastSeq" = 3 WHERE "agentAccountId" = $1`, [a]);
       await ins("AgentLedgerEntry", { ...valid("AgentLedgerEntry", tA, uA), agentAccountId: a, seq: 3, amountSatang: 700_000, statementId: s }, c);
-      const r2 = ((await bal(qf, [tA])) as Rec[]).map((x) => x.rule);
+      const r2 = mine(await bal(qf, [tA])).map((x) => x.rule);
       await ins("AgentLedgerEntry", { ...valid("AgentLedgerEntry", tA, uA), agentAccountId: b, seq: 1 }, c);
-      const r3 = ((await bal(qf, [tA])) as Rec[]).map((x) => x.rule).sort();
-      const r4 = ((await sd(qf, [tA])) as unknown[]).length;
+      const r3 = mine(await bal(qf, [tA])).map((x) => x.rule).sort();
+      const r4 = mine(await sd(qf, [tA])).length;
       return [r0, r1, r2, r3, r4];
     });
     eq(out, [[0, 0], ["B2_BALANCE_NE_SUM"], ["B3_SEQ"], ["B1_NO_BALANCE_ROW", "B3_SEQ"], 1], "ผล");
@@ -1707,7 +1709,7 @@ try {
       const s = summary(`${r.stdout ?? ""}`);
       ok(s, `ไม่มี JSON_SUMMARY (exit ${r.status})`);
       const failed = ((s?.failed as string[]) ?? []).filter((x) => !["M-1", "M-6", "RS-5"].includes(x));
-      ok(failed.length === 0 && ((s?.skipped as string[]) ?? []).length === 0, `ไม่ผ่านนอกรายการ: ${failed.join(", ")} · skip ${fmt(s?.skipped)}`);
+      ok(failed.length === 0 && ((s?.skipped as string[]) ?? []).filter((x) => x !== "G-1" /* ORACLE-EDIT G-1 (ผู้คุม 13 พ.ย.): --no-regression ทำให้ t0.1 ข้าม G-1 ของตัวเอง */).length === 0, `ไม่ผ่านนอกรายการ: ${failed.join(", ")} · skip ${fmt(s?.skipped)}`);
     });
     await st("G-2", "qc-trips-p0.1 (seed/ฟิกซ์เจอร์/แยกร้าน) exit 0 หลัง migration", async () => {
       await needTable("AgentIdentity");

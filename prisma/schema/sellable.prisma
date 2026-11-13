@@ -16,6 +16,10 @@ model SellBasket {
   publicTokenHash String?
   idempotencyKey  String
   requestHash     String? // มติผู้คุม 12 พ.ย. (CC §C ข้อ 3) ▸ คู่กับ idempotencyKey: คีย์เดิม+แฮชต่าง = IDEMPOTENCY_CONFLICT ◂
+  // TRIPS A1.1 ▸ หนี้ T0.6 R12: คีย์ถือที่ของตะกร้า (ค่า = nsKey แบบ booking.ts:524) + แฮชคำขอ — มีทั้งคู่หรือไม่มีเลย
+  //   SQL มือ: SellBasket_holdKey_pair_check · SellBasket_tenantId_holdIdempotencyKey_key UNIQUE ("tenantId","holdIdempotencyKey") WHERE "holdIdempotencyKey" IS NOT NULL ◂
+  holdIdempotencyKey String?
+  holdRequestHash    String?
   attribution     Json?
   unitIds         String[]
   createdAt       DateTime @default(now())

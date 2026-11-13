@@ -231,7 +231,7 @@ console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet
 // SVC R0.8 rooms/occupancy.ts (46 → 47): `expireHolds` ไล่ hold หมดเวลา "ข้ามร้าน" จาก minute-job ก่อนรู้ tenant (เหมือน inventory sweep ·
 //   UPDATE มีเงื่อนไข active + FOR UPDATE SKIP LOCKED) + `withRoomTx` เปิดธุรกรรมให้ rooms/service.ts — ไฟล์เดียวของโมดูล rooms ที่ import prisma ดิบ
 //   (service.ts/index.ts ใช้ tenantDb) · ทุกคำสั่งเขียนอื่นผูก tenantId+unitId ตรง (X1 · oracle qc-svc-r0.8 C-8/C-9/R-2/R-9)
-const BASELINE = { f5RawPrisma: 51 }; // TRIPS T0.3 (ผู้คุม 12 พ.ย. 2569): trips/jobs.ts — งานสร้างรอบ/ตรวจขั้นต่ำไล่ข้ามร้านก่อนรู้ tenant (แบบ inventory sweep · where ผูก tenantId ทุกตัว) (50→51) · SVC B.6: booking/devices.ts deviceByToken (resolve token ก่อนรู้ tenant · แบบ forms/getPublicForm) (49→50) · SVC B.4: queue-line.ts + planner-run.ts need FOR UPDATE SKIP LOCKED / advisory locks / cross-tenant tick (47→49) · 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+const BASELINE = { f5RawPrisma: 52 }; // TRIPS A1.1 (ผู้คุม 13 พ.ย. 2569): agency/entry.ts — ตารางตัวตนเอเจนซี่ระดับแพลตฟอร์ม (ไม่มี tenantId · เข้าถึงได้เฉพาะไฟล์นี้ + platform/agent-auth.ts · คุมด้วย F17.1) · เดิม: // TRIPS T0.3 (ผู้คุม 12 พ.ย. 2569): trips/jobs.ts — งานสร้างรอบ/ตรวจขั้นต่ำไล่ข้ามร้านก่อนรู้ tenant (แบบ inventory sweep · where ผูก tenantId ทุกตัว) (50→51) · SVC B.6: booking/devices.ts deviceByToken (resolve token ก่อนรู้ tenant · แบบ forms/getPublicForm) (49→50) · SVC B.4: queue-line.ts + planner-run.ts need FOR UPDATE SKIP LOCKED / advisory locks / cross-tenant tick (47→49) · 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
@@ -630,6 +630,31 @@ chk(
     : `${rawPrismaFiles.length} ไฟล์ (จะเป็น 0 หลัง port Phase 3)`,
   "MAJOR",
 );
+
+// TRIPS A1.1 ▸ F17 — ตาราง global ของตัวตนเอเจนซี่ (AgentIdentity · AgentUser · AgentLogin · AgentLoginCode · AgentSession) ไม่มี tenantId
+//   และ tenantDb ไม่กรองแกน global ⇒ อ้างได้เฉพาะทางเข้าที่ใบสั่ง A1.1 §5.3 ระบุตรงตัว (มติผู้คุม R5) · ไฟล์อื่นอ้าง = แถวข้ามร้าน/ข้อมูลเอเจนซี่รั่ว
+//   สแกนทุกไฟล์ src/**/*.{ts,tsx} หลังตัดคอมเมนต์ · จับ `.agentIdentity` (delegate ของ client) และ "AgentIdentity" (ชื่อโมเดลในสตริง เช่น $queryRaw/scopeOf)
+{
+  const F17_ALLOWED = new Set(["src/lib/modules/agency/entry.ts", "src/lib/platform/agent-auth.ts"]);
+  const F17_DELEGATE_RE = /\.(agentIdentity|agentUser|agentLogin|agentLoginCode|agentSession)\b/;
+  const F17_NAME_RE = /"(AgentIdentity|AgentUser|AgentLogin|AgentLoginCode|AgentSession)"/;
+  const f17Strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+  const f17Bad: string[] = [];
+  for (const f of walk(join(ROOT, "src"), (p) => p.endsWith(".ts") || p.endsWith(".tsx"))) {
+    const r = rel(f).replace(/\\/g, "/");
+    if (F17_ALLOWED.has(r)) continue;
+    const code = f17Strip(readFileSync(f, "utf8"));
+    if (F17_DELEGATE_RE.test(code) || F17_NAME_RE.test(code)) f17Bad.push(r);
+  }
+  chk(
+    "F17.1",
+    "ตาราง global ของเอเจนซี่อ้างได้เฉพาะทางเข้าที่อนุญาต",
+    f17Bad.length === 0,
+    f17Bad.length ? `อ้างนอก ${[...F17_ALLOWED].join(" · ")}: ${f17Bad.join(", ")}` : "ครบ",
+    "CRITICAL",
+  );
+}
+// ◂ TRIPS A1.1 F17
 
 // ═══════════════════════════════════════════════════════════════
 // F6 — authz coverage: ทุกไฟล์ server actions ต้องมีการตรวจสิทธิ์
