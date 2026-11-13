@@ -133,13 +133,26 @@ async function guard<T>(where: string, fn: () => Promise<T | AgencyFail>): Promi
 // ═══════════════ meta · rate limit · จดหมาย ═══════════════
 type Meta = { clientKey: string; ip: string; ipBucket: string; ua: string | null; now: Date; deps: AgentAuthDeps | undefined };
 /**
- * §5.4: clientKey ตรวจรูป (VALIDATION) · ไม่มี IP/ผิดรูป ⇒ RATE_LIMITED NO_CLIENT (ไม่มีถัง "unknown" ร่วม)
+ * §5.4: clientKey ตรวจรูป (VALIDATION) · ไม่มี IP/ผิดรูป (และบน production: IP ที่ไม่ใช่ของลูกค้าจริง · r4) ⇒ RATE_LIMITED NO_CLIENT (ไม่มีถัง "unknown" ร่วม)
  * r2 (มติ §10 ข้อ 16): IP ทำรูปมาตรฐานก่อน — ip = ที่อยู่เต็มรูปเดียว (แฮชลง session) · ipBucket = คีย์ถัง (IPv6 = /64)
  */
+/** ที่อยู่รูปมาตรฐาน (canonicalAgentIp.addr) ที่ลูกค้าจริงบนอินเทอร์เน็ตมีไม่ได้: IPv4 0/8 · 10/8 · 127/8 · 169.254/16 · 172.16/12 · 192.168/16 — IPv6 :: · ::1 · fc00::/7 · fe80::/10 */
+function isNonClientIp(addr: string): boolean {
+  if (addr.includes(":")) {
+    if (addr === "0000:0000:0000:0000:0000:0000:0000:0000" || addr === "0000:0000:0000:0000:0000:0000:0000:0001") return true;
+    const head = parseInt(addr.slice(0, 4), 16);
+    return (head & 0xfe00) === 0xfc00 || (head & 0xffc0) === 0xfe80;
+  }
+  const [a, b] = addr.split(".").map(Number);
+  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
 function metaOf(meta: unknown): Meta | AgencyFail {
   if (!isRec(meta) || typeof meta.clientKey !== "string" || !AGENT_CLIENT_KEY_RE.test(meta.clientKey)) return agencyFail("VALIDATION", { reason: "CLIENT_KEY" });
   const ip = canonicalAgentIp(meta.ip);
   if (!ip) return agencyFail("RATE_LIMITED", { reason: "NO_CLIENT", retryAfterSec: 60 });
+  // r4 (มติ §12 ข้อ 5 · N3): บน production ที่อยู่ที่ไม่ใช่ของลูกค้าจริง (unspecified/loopback/private/link-local) ไม่ใช้เป็นคีย์ถัง —
+  //   route อ่าน header ผิดจะไม่ทำให้ทุกคนตกถังเดียวกัน (ถัง "unknown" ในชื่ออื่น) · นอก production (dev/QC ใช้ 10.x) รับตามเดิม
+  if (process.env.NODE_ENV === "production" && isNonClientIp(ip.addr)) return agencyFail("RATE_LIMITED", { reason: "NO_CLIENT", retryAfterSec: 60 });
   const now = meta.now instanceof Date && !Number.isNaN(meta.now.getTime()) ? meta.now : new Date();
   const ua = typeof meta.userAgent === "string" && meta.userAgent.length > 0 ? meta.userAgent.slice(0, 512) : null;
   return { clientKey: meta.clientKey, ip: ip.addr, ipBucket: ip.bucket, ua, now, deps: isRec(meta.deps) ? (meta.deps as AgentAuthDeps) : undefined };

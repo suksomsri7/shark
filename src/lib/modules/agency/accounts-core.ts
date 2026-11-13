@@ -235,14 +235,17 @@ export function cleanAgencyText(raw: unknown, max: number): string | null {
 
 // ═══════════════ อีเมล / IP / รหัส error ของฐาน (r2 · มติ §10 ข้อ 16–18 · บริสุทธิ์) ═══════════════
 const EMAIL_BAD_CHARS = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/;
+// r4 (มติ §12 ข้อ 4 · R2-F7): อักขระที่ "ไม่แสดงผล" ทั้งชุด (Default_Ignorable_Code_Point ของ Unicode) + ระบุช่วงที่มติเอ่ยชื่อไว้ตรงตัว (ไม่พึ่งรุ่นตาราง Unicode ของ runtime):
+//   U+034F · ตัวเติมฮันกึล U+115F/U+1160/U+3164/U+FFA0 · variation selectors U+FE00–FE0F / U+E0100–E01EF · tag characters U+E0000–E007F (รวมทั้งบล็อก U+E0000–E0FFF)
+const EMAIL_INVISIBLE = /[\p{Default_Ignorable_Code_Point}\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u3164\ufe00-\ufe0f\uffa0\ufff0-\ufff8\u{1bca0}-\u{1bca3}\u{1d173}-\u{1d17a}\u{e0000}-\u{e0fff}]/u;
 /**
  * ด่านอีเมลชุดเดียวของทั้งฝั่งล็อกอินและฝั่งร้าน (ก่อน normalizeAgentLogin): ตัดช่องว่างธรรมดาหัวท้าย → NFC ·
- * อักขระควบคุม (C0 รวม NUL/TAB/LF/CR · DEL · C1) / zero-width / ตัวกลับทิศ / BOM / soft hyphen / surrogate เดี่ยว ⇒ null (**ปฏิเสธ ไม่ตัดทิ้ง**) · ยาวเกิน 254 ⇒ null
+ * อักขระควบคุม (C0 รวม NUL/TAB/LF/CR · DEL · C1) / zero-width / ตัวกลับทิศ / BOM / soft hyphen / surrogate เดี่ยว / อักขระไม่แสดงผลทั้งชุด (r4 · EMAIL_INVISIBLE) ⇒ null (**ปฏิเสธ ไม่ตัดทิ้ง**) · ยาวเกิน 254 ⇒ null
  */
 export function cleanAgentEmailInput(raw: unknown): string | null {
   if (typeof raw !== "string" || raw.length > 320) return null;
   const s = raw.replace(/^ +| +$/g, "");
-  if (s.length === 0 || EMAIL_BAD_CHARS.test(s) || LONE_SURROGATE.test(s)) return null;
+  if (s.length === 0 || EMAIL_BAD_CHARS.test(s) || LONE_SURROGATE.test(s) || EMAIL_INVISIBLE.test(s)) return null;
   const n = s.normalize("NFC");
   return n.length > 254 ? null : n;
 }

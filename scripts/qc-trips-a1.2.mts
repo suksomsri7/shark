@@ -8,6 +8,7 @@
 //   P ความเป็นส่วนตัวสองร้าน (เครื่องหมายฝังที่ร้าน B · สแกน DTO/รายการ/audit/outbox/ops/ผล error ของร้าน A) · PY Party/CRM
 //   C พร้อมกัน · CAP เพดานใบสมัคร/คำเชิญ · H งานบ้าน (ag_ · ออกทุกเครื่อง · 20 session · งานกวาด) · I ค่าคงที่ · G regression (fitness · qc-trips-a1.1 --no-regression)
 //   RU (ORACLE-ADD r3) มติผู้คุม §10 ข้อ 1–19 + §11 ข้อ 1–3 + หัวข้อที่ผู้ตรวจโค้ดขอเพิ่ม (CODE-REVIEW T-1…T-19) — ร้าน/ตัวตนของตัวเอง · ลำดับกำหนดได้ (ไม่พึ่งการแข่งเวลา)
+//   RU-33…RU-41 (ORACLE-ADD r4) มติ §12 ข้อ 1–5 + ข้อ 7 (CODE-REVIEW-R2 F1 F2 F4 F5 F6 F7 · N2 N7 N8) · ORACLE-EDIT r4: RU-3 (ข)(ค) · RU-9 · RU-18 · RU-19 (กลับข้อ) · underHeldTx
 //
 // 🔴 ร้านชั่วคราว slug `trips-a12-*` (A: หน่วย TRIPS 2 · B: TRIPS + A36=false · C: หน่วย SHOP เท่านั้น · D: TRIPS ใช้ทดสอบพร้อมกัน)
 //    ตัวตน/ผู้ใช้ติดป้าย "QCA12" · อีเมล `qca12-*@example.test` · ลบใน finally + กวาดค้างตอนเริ่ม · แถวสมุดลบด้วย `SET LOCAL shark.ledger_purge = 'on'`
@@ -1647,24 +1648,34 @@ try {
     try { const val = await fn(); await new Promise((r) => setTimeout(r, 400)); return { out: buf.join("\n"), val }; } finally { Object.assign(console, keep); }
   };
   /**
-   * บังคับลำดับแบบกำหนดได้: ข้อสอบเปิด tx ของตัวเอง ทำ hold (ถือล็อก/เขียนแถวที่ยังไม่ commit) → ยิงบริการ → รอจนบริการ "ติดรอล็อก" (pg_locks มีแถว granted = false)
-   * หรือจบไปเอง → commit → คืนผลของบริการ · ข้อที่ใช้ตัวนี้ตัดสินจาก "สถานะสุดท้าย" ซึ่งต้องถูกทั้งสองทาง (ไม่ตัดสินจากว่ารอหรือไม่)
+   * บังคับลำดับแบบกำหนดได้: ข้อสอบเปิด tx ของตัวเอง ทำ hold (ถือล็อก/เขียนแถวที่ยังไม่ commit) → ยิงบริการ → รอจนบริการ "ติดรอล็อกของ tx นี้" หรือจบไปเอง → commit → คืนผลของบริการ
+   * ORACLE-EDIT r4 (มติ §12 ข้อ 7 · R2-F4): "ติดรอ" นับเฉพาะ backend อื่นที่ **ถูก backend ของ tx นี้บล็อกอยู่** (pg_blocking_pids ชี้ pid ของ tx ที่ข้อสอบถือ · ฐานเดียวกัน ·
+   *   เลือกชนิดล็อกได้) — ล็อกที่ค้างรอของ suite/ฐานอื่นใน cluster ไม่นับ · waited = เห็นการรอนั้น **และ** บริการยังไม่จบ ณ ก่อน commit (จบก่อน commit = ไม่ได้รอ) ·
+   *   ผู้เรียกต้อง assert waited เอง (ไม่รอ = ข้อนั้นไม่ได้พิสูจน์ทางที่ต้องการ ⇒ ไม่ผ่าน ไม่ใช่ผ่านเงียบ ๆ) · `how` = ชนิดล็อกที่เห็น (ไว้พิมพ์ตอนไม่ผ่าน)
    */
-  const underHeldTx = async (hold: (c: pg.PoolClient) => Promise<void>, call: () => Promise<unknown>): Promise<{ res: Rec; waited: boolean }> => {
+  const underHeldTx = async (hold: (c: pg.PoolClient) => Promise<void>, call: () => Promise<unknown>, o: { locktype?: string } = {}): Promise<{ res: Rec; waited: boolean; how: string }> => {
     const c = await pool.connect();
-    let waited = false, settled = false;
+    let waited = false, settled = false, how = "ไม่เห็น backend ใดรอ tx ของข้อสอบ";
     let p: Promise<Rec> = Promise.resolve({});
     try {
       await c.query("BEGIN");
+      const myPid = Number((await c.query<{ pid: number }>(`SELECT pg_backend_pid() AS pid`)).rows[0]?.pid);
+      ok(Number.isInteger(myPid) && myPid > 0, "อ่าน pid ของ tx ข้อสอบไม่ได้");
       await hold(c);
       p = safe(call).finally(() => { settled = true; });
       for (let i = 0; i < 400 && !settled; i++) {
-        if ((await count(`SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted`)) > 0) { waited = true; break; }
+        const w = await q<{ locktype: string }>(
+          `SELECT l.locktype FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+            WHERE NOT l.granted AND l.pid <> $1::int AND a.datname = current_database() AND $1::int = ANY(pg_blocking_pids(l.pid))`, [myPid]);
+        const seen = [...new Set(w.map((x) => x.locktype))];
+        if (seen.length) how = `รอล็อกชนิด ${seen.join("+")}`;
+        if (seen.length && (!o.locktype || seen.includes(o.locktype))) { waited = !settled; break; }
         await new Promise((r) => setTimeout(r, 50));
       }
+      if (settled) { waited = false; how = `บริการจบก่อนข้อสอบ commit (${how})`; }
       await c.query("COMMIT");
     } catch (e) { try { await c.query("ROLLBACK"); } catch { /* ignore */ } throw e; } finally { c.release(); }
-    return { res: await p, waited };
+    return { res: await p, waited, how };
   };
   const inviteMate = async (by: { token: string }, email: string, role: string): Promise<string> => {
     const ti = R(await AU("createTeammateInvite")(by.token, { email, role }, mo()));
@@ -1757,7 +1768,8 @@ try {
     const j1b = await redeem(e1, tok1b);
     const again = await redeem(e1, tok1b);
     ok(j1b.ok === true && j1b.created === "TEAMMATE", `token ใหม่ต้องใช้ได้: ${fmt(j1b)}`);
-    ok(again.ok !== true && ["INVITE_INVALID", "LOGIN_UNAVAILABLE"].includes(String(again.code)) && (await loginRows(e1)) === 1, `ใช้ครั้งที่สอง: ${fmt(again)}`);
+    // ORACLE-EDIT r4 (มติ §12 ข้อ 7 · R2-F5): ต้องเป็น INVITE_INVALID พอดี — LOGIN_UNAVAILABLE คือคำตอบของ r1 (ไม่มี jti · ล้มเพราะอีเมลมีล็อกอินแล้ว) จึงไม่พิสูจน์ "ใช้ครั้งเดียว"
+    eq([again.ok === true, again.code, await loginRows(e1)], [false, "INVITE_INVALID", 1], `ใช้ครั้งที่สอง (jti ต้องถูกตรวจก่อนดูว่าอีเมลมีล็อกอิน): ${fmt(again)}`);
     // (ค) ปิดผู้ถูกเชิญ
     const e2 = mail("ru3b");
     const tok2 = await inviteMate(o, e2, "SALES");
@@ -1767,7 +1779,7 @@ try {
     ok(R(await AS("disableAgentUser")({ agentUserId: o.agentUserId }, { targetUserId: u2 })).ok === true, "ปิดผู้ใช้");
     const n2 = await usersOf();
     const r2 = await redeem(e2, tok2);
-    ok(r2.ok !== true && ["INVITE_INVALID", "LOGIN_UNAVAILABLE"].includes(String(r2.code)) && (await usersOf()) === n2 && (await loginRows(e2)) === 1, `เล่นซ้ำหลังปิดผู้ถูกเชิญ: ${fmt(r2)}`);
+    eq([r2.ok === true, r2.code, await usersOf(), await loginRows(e2)], [false, "INVITE_INVALID", n2, 1], `เล่นซ้ำหลังปิดผู้ถูกเชิญ (ต้อง INVITE_INVALID พอดี): ${fmt(r2)}`);
     // (ง) ผู้เชิญถูกลดบทบาทแล้วคืน (ผู้เชิญกลับมา "ใช้ได้") + ผู้ถูกเชิญถูกลบ ⇒ token ที่เคยใช้ยังใช้ไม่ได้
     const ez = mail("ru3z"), e3 = mail("ru3c");
     const jz = await redeem(ez, await inviteMate(o, ez, "ADMIN"));
@@ -1968,7 +1980,7 @@ try {
   });
 
   // ─────────────────── มติ §10 ข้อ 6 — login แข่ง disable (ลำดับกำหนดได้) ───────────────────
-  await st("RU-9", "มติ §10 ข้อ 6 (RV-F6 · T-6): ผู้ใช้ถูกปิดระหว่างเข้าระบบ — ข้อสอบถือล็อกตัวตน + ปิดผู้ใช้ + เพิกถอน session ใน tx ที่ยังไม่ commit แล้วยิงยืนยันรหัสที่ถูก รอจนติดรอ/จบ จึง commit ⇒ ยืนยันไม่สำเร็จ · ไม่มี session ที่ยังไม่ถูกเพิกถอนของผู้ใช้ DISABLED", async () => {
+  await st("RU-9", "มติ §10 ข้อ 6 (RV-F6 · T-6): ผู้ใช้ถูกปิดระหว่างเข้าระบบ — ข้อสอบถือล็อกตัวตน + ปิดผู้ใช้ + เพิกถอน session ใน tx ที่ยังไม่ commit แล้วยิงยืนยันรหัสที่ถูก · ต้องเห็นบริการติดรอล็อก advisory ที่ tx ของข้อสอบถือ (เฉพาะ backend ที่ถูก tx นี้บล็อก) แล้วจึง commit ⇒ ยืนยันไม่สำเร็จ · ไม่มี session ที่ยังไม่ถูกเพิกถอนของผู้ใช้ DISABLED", async () => {
     needBuilt();
     const v = await mkIdent("ru9");
     const e = mail("ru9");
@@ -1980,10 +1992,11 @@ try {
       await c.query(`SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext($2::text))`, ["agency.identity.v1", v.identityId]);
       await c.query(`UPDATE "AgentUser" SET status = 'DISABLED' WHERE id = $1`, [v.agentUserId]);
       await c.query(`UPDATE "AgentSession" SET "revokedAt" = now() WHERE "agentUserId" = $1 AND "revokedAt" IS NULL`, [v.agentUserId]);
-    }, () => AU("verifyAgentLoginCode")({ email: e, codeId: r1.codeId, code }, mo()));
+    }, () => AU("verifyAgentLoginCode")({ email: e, codeId: r1.codeId, code }, mo()), { locktype: "advisory" });
     if (out.res.ok === true) allTokens.push(String(out.res.token));
     const status = (await q<{ status: string }>(`SELECT status FROM "AgentUser" WHERE id = $1`, [v.agentUserId]))[0]?.status;
-    eq([out.res.threw, out.res.ok === true, await liveSessions(v.agentUserId), status, await AU("resolveAgentSession")(before.token)], [undefined, false, 0, "DISABLED", null], `ผล (ติดรอล็อก=${out.waited} · ${fmt(out.res)})`);
+    // ORACLE-EDIT r4 (มติ §12 ข้อ 7): ต้อง "รอล็อกตัวตนที่ข้อสอบถือ" จริง — ไม่รอ = บริการไม่ได้สร้าง session ใต้ล็อกเดียวกับ disable (หรือข้อนี้ไม่ได้พิสูจน์อะไร) ⇒ ไม่ผ่าน
+    eq([out.waited, out.res.threw, out.res.ok === true, await liveSessions(v.agentUserId), status, await AU("resolveAgentSession")(before.token)], [true, undefined, false, 0, "DISABLED", null], `ผล [ติดรอล็อก advisory ของ tx ข้อสอบ, throw, ok, session สด, สถานะ, session เดิม] (${out.how} · ${fmt(out.res)})`);
   });
 
   // ─────────────────── มติ §10 ข้อ 7 — now ของผู้เรียกไม่มีผลกับอายุ session ───────────────────
@@ -2254,7 +2267,7 @@ try {
     const pz = await patch({ legalName: `${QC_MARK} after close` });
     eq([cl.status, pz.code], ["CLOSED", "BAD_STATE"], "แก้บัญชีที่ปิดแล้ว");
   });
-  await st("RU-18", "มติ §10 ข้อ 13 (RV-F13 จ): unique ของวิธีล็อกอินชนระหว่างสมัคร (ข้อสอบแทรกแถว AgentLogin ของอีเมลเดียวกันใน tx ที่ยังไม่ commit · รอจนยืนยันรหัสติดรอ แล้ว commit) ⇒ LOGIN_UNAVAILABLE ไม่ใช่ BUSY · ไม่มี ops ERROR · ไม่มีตัวตนใหม่ · ล็อกอินของอีเมลนั้นมีแถวเดียว", async () => {
+  await st("RU-18", "มติ §10 ข้อ 13 (RV-F13 จ): unique ของวิธีล็อกอินชนระหว่างสมัคร (ข้อสอบแทรกแถว AgentLogin ของอีเมลเดียวกันใน tx ที่ยังไม่ commit · ต้องเห็นการยืนยันรหัสติดรอ tx ของข้อสอบจริง แล้วจึง commit) ⇒ LOGIN_UNAVAILABLE ไม่ใช่ BUSY · ไม่มี ops ERROR · ไม่มีตัวตนใหม่ · ล็อกอินของอีเมลนั้นมีแถวเดียว", async () => {
     needBuilt();
     const holder = await mkIdent("ru18h");
     const e = mail("ru18");
@@ -2268,25 +2281,52 @@ try {
       () => verify({ email: e, codeId: r1.codeId, code, signup: { agencyName: name, ownerName: `${QC_MARK} owner ru18` } }, mo()),
     );
     const owners = (await q<{ u: string }>(`SELECT "agentUserId" AS u FROM "AgentLogin" WHERE subject = $1`, [e])).map((r) => r.u);
-    eq([out.res.threw, out.res.code, await count(`SELECT count(*)::int AS n FROM "AgentIdentity" WHERE "displayName" = $1`, [name]), owners, (await opsErrors()) - n0], [undefined, "LOGIN_UNAVAILABLE", 0, [holder.agentUserId], 0], `ผล (ติดรอ=${out.waited} · ${fmt(out.res)})`);
+    eq([out.waited, out.res.threw, out.res.code, await count(`SELECT count(*)::int AS n FROM "AgentIdentity" WHERE "displayName" = $1`, [name]), owners, (await opsErrors()) - n0], [true, undefined, "LOGIN_UNAVAILABLE", 0, [holder.agentUserId], 0], `ผล [ติดรอแถวที่ tx ข้อสอบยังไม่ commit, throw, code, ตัวตนใหม่, เจ้าของล็อกอิน, ops ERROR] (${out.how} · ${fmt(out.res)})`); // ORACLE-EDIT r4 (มติ §12 ข้อ 7): ไม่รอ = ไม่ได้ผ่านทาง unique ชน (23505) ⇒ ไม่ผ่าน
   });
 
   // ─────────────────── มติ §10 ข้อ 14 + §11 ข้อ 3 — หนีการพักด้วยการปิดตัวตนแล้วสมัครใหม่ ───────────────────
-  await st("RU-19", "มติ §10 ข้อ 14 (H-F3 · ส่วนอีเมลผู้ติดต่อ): ร้านอนุมัติอัตโนมัติพักบัญชีที่มีอีเมลผู้ติดต่อ C → ตัวตนอื่น (อีเมลล็อกอินอื่น) สมัครด้วยอีเมลผู้ติดต่อ C ⇒ PENDING (ผลรูปปกติ ไม่บอกเหตุ) · อีเมลผู้ติดต่ออื่น ⇒ ACTIVE · หลังร้านปิดบัญชีนั้น (CLOSED_BY_SHOP) ก็ยัง ⇒ PENDING", async () => {
+  // ORACLE-EDIT r4 (มติ §12 ข้อ 1 · R2-F1 · N8): กลับข้อ — กติกา "อีเมลผู้ติดต่อตรง ⇒ PENDING" ของ §10.14 ถูกยกเลิก (ผู้สมัครคุมค่านี้เอง + ใช้ลองได้ว่าอีเมลใดเป็นของเอเจนซี่ที่ร้านบล็อก) · คงเฉพาะแท็กผู้สมัคร (§11.3) + sticky (§10.1)
+  await st("RU-19", "มติ §12 ข้อ 1 (R2-F1 · N8 · กลับข้อจาก §10.14): ร้านอนุมัติอัตโนมัติพักบัญชีที่มีอีเมลผู้ติดต่อ C → ตัวตนอื่น (อีเมลล็อกอินอื่น) สมัครด้วยอีเมลผู้ติดต่อ C (รวมตัวสะกดตัวใหญ่) ⇒ ACTIVE เหมือนอีเมลผู้ติดต่ออื่นทุกประการ (ลองอีเมลผู้ติดต่อไม่บอกอะไร) · หลังร้านปิดบัญชีนั้นก็ยัง ACTIVE · คนแปลกหน้ารับคำเชิญอีเมลแล้วถูกปฏิเสธ ⇒ ผู้ถูกเชิญตัวจริงสมัครด้วยอีเมลตัวเองยัง ACTIVE · แต่กติกาแท็กยังอยู่: เจ้าของบัญชีที่ถูกปิดปิดตัวตน สมัครใหม่ด้วยอีเมลล็อกอินเดิม + อีเมลผู้ติดต่ออื่น ⇒ PENDING", async () => {
     needBuilt();
     const s = await mkShop2("ru19", { auto: true });
     const c = mail("ru19-contact");
     const withContact = (email: string) => app({ contact: { name: `${QC_MARK} ru19 contact`, email } });
-    const a = await signup(mail("ru19a"), "RU19A");
+    const ea = mail("ru19a");
+    const a = await signup(ea, "RU19A");
     const a1 = await applyAs(a, s.slug, withContact(c));
     ok(a1.status === "ACTIVE", `ตัวควบคุม: ร้านอนุมัติอัตโนมัติ — ${fmt(a1)}`);
-    const sus = await shopDo("suspendAgentAccount", s.ctx, { agentAccountId: a1.agentAccountId });
-    const b = await signup(mail("ru19b"), "RU19B"), d = await signup(mail("ru19d"), "RU19D"), g = await signup(mail("ru19g"), "RU19G");
+    const idA = String(a1.agentAccountId);
+    const sus = await shopDo("suspendAgentAccount", s.ctx, { agentAccountId: idA });
+    eq([sus.status, R((await acc(idA))?.contact).email], ["SUSPENDED", c], "ตัวควบคุม: บัญชีที่ถูกพักเก็บอีเมลผู้ติดต่อ C จริง (ข้อนี้จึงไม่ว่างเปล่า)");
+    const b = await signup(mail("ru19b"), "RU19B"), d = await signup(mail("ru19d"), "RU19D"), u = await signup(mail("ru19u"), "RU19U"), g = await signup(mail("ru19g"), "RU19G");
     const b1 = await applyAs(b, s.slug, withContact(c));
     const d1 = await applyAs(d, s.slug, withContact(mail("ru19-other")));
-    const cl = await shopDo("closeAgentAccount", s.ctx, { agentAccountId: a1.agentAccountId });
+    const u1 = await applyAs(u, s.slug, withContact(`  ${c.toUpperCase()} `));
+    const shape = (r: Rec) => [r.ok, r.status, r.replayed, sortedKeys(r)];
+    eq([shape(b1), shape(u1), R(await AU("agentScope")(b.token, { shopSlug: s.slug })).agentAccountId === b1.agentAccountId], [shape(d1), shape(d1), true], "อีเมลผู้ติดต่อตรงกับบัญชีที่ถูกพัก ⇒ ผลเดียวกับอีเมลผู้ติดต่ออื่น (ไม่มีผล · ลองไม่ได้)");
+    eq([d1.ok, d1.status, sortedKeys(d1)], [true, "ACTIVE", RESULT_KEYS], "อีเมลผู้ติดต่ออื่น");
+    const cl = await shopDo("closeAgentAccount", s.ctx, { agentAccountId: idA });
     const g1 = await applyAs(g, s.slug, withContact(c));
-    eq([sus.status, b1.status, sortedKeys(b1), await AU("agentScope")(b.token, { shopSlug: s.slug }), d1.status, cl.status, g1.status], ["SUSPENDED", "PENDING", RESULT_KEYS, null, "ACTIVE", "CLOSED", "PENDING"], "ผล");
+    eq([cl.status, (await acc(idA))?.statusReason, g1.status], ["CLOSED", "CLOSED_BY_SHOP", "ACTIVE"], "หลังร้านปิดบัญชีนั้น (CLOSED_BY_SHOP) อีเมลผู้ติดต่อ C ก็ยังไม่มีผล");
+    // N8: คนแปลกหน้ารับคำเชิญอีเมลที่รั่ว แล้วถูกปฏิเสธ ⇒ แถว sticky ถืออีเมลของผู้ถูกเชิญตัวจริง — ต้องไม่ทำให้ผู้ถูกเชิญตัวจริงถูกบังคับ PENDING
+    const ei = mail("ru19-invitee");
+    const inv = await shopDo("inviteAgent", s.ctx, invEmail(ei, `qca12-${STAMP}-ru19-inv`));
+    ok(inv.ok === true && typeof inv.inviteToken === "string", `เชิญอีเมล: ${fmt(inv)}`);
+    allTokens.push(String(inv.inviteToken));
+    const stranger = await signup(mail("ru19s"), "RU19S");
+    const sa = R(await AU("agentAcceptInvite")(stranger.token, { shopSlug: s.slug, inviteToken: inv.inviteToken }, mo()));
+    const rj = await shopDo("rejectAgentAccount", s.ctx, { agentAccountId: inv.agentAccountId });
+    const rowI = await acc(String(inv.agentAccountId));
+    eq([sa.status, rj.status, rowI?.statusReason, R(rowI?.contact).email], ["PENDING", "CLOSED", "REJECTED", ei], "ตัวควบคุม N8: แถวที่ถูกปฏิเสธถืออีเมลของผู้ถูกเชิญตัวจริง");
+    const real = await signup(ei, "RU19 invitee");
+    const real1 = await applyAs(real, s.slug, withContact(ei));
+    eq([real1.ok, real1.status], [true, "ACTIVE"], "ผู้ถูกเชิญตัวจริงสมัครเอง (อีเมลล็อกอิน = อีเมลผู้ติดต่อ = อีเมลที่ถูกเชิญ)");
+    // กติกาแท็ก (§11.3) ยังทำงาน — อีเมลล็อกอินเดิม อีเมลผู้ติดต่อไม่ตรงใครเลย
+    const ci = R(await AU("closeMyIdentity")(a.token, { confirm: true }));
+    ok(ci.ok === true, `ปิดตัวตน: ${fmt(ci)}`);
+    const a2 = await signup(ea, "RU19A again");
+    const a3 = await applyAs(a2, s.slug, withContact(mail("ru19-fresh")));
+    eq([a2.identityId !== a.identityId, a3.ok, a3.status, sortedKeys(a3), await AU("agentScope")(a2.token, { shopSlug: s.slug })], [true, true, "PENDING", RESULT_KEYS, null], "แท็กผู้สมัครยังบังคับ PENDING");
   });
   await st("RU-20", "มติ §11 ข้อ 3 (H-F3 T3 · ปิดให้ครบ): บัญชีถูกพัก (ไม่กรอกอีเมลผู้ติดต่อ) → ร้านแก้ผู้ติดต่อ → เอเจนซี่ปิดตัวตน → สมัครตัวตนใหม่ด้วยอีเมลล็อกอินเดิม → สมัครร้านอนุมัติอัตโนมัติเดิม ⇒ PENDING (ผลรูปปกติ · ประตู null) · อีเมลล็อกอินอื่นที่ร้านเดิม ⇒ ACTIVE · อีเมลเดิมที่ร้านอื่น ⇒ ACTIVE · แถวบัญชีเก็บแท็ก agentAuthHash('applicant-tag', tenantId:อีเมล) ผูกร้าน (ต่างร้านต่างค่า · อยู่รอดหลังปิดตัวตน) ไม่เก็บอีเมลดิบ · แท็กอยู่ใน NEVER_SHOW และไม่ออก DTO/รายการ/audit/outbox/ops", async () => {
     needBuilt();
@@ -2682,6 +2722,355 @@ try {
     let gone = left;
     for (let i = 0; i < 30 && gone > 0; i++) { await AU("sweepAgentAuth")({ now: t0 }); gone = await count(`SELECT count(*)::int AS n FROM "AgentSession" WHERE id = $1`, [sx]); }
     eq([r.sessions, left, gone], [0, 1, 0], "ผล");
+  });
+
+  // ═══════════════ RU (ต่อ) — ORACLE-ADD r4 · มติ §12 (หลังผู้ตรวจรอบ 2 · CODE-REVIEW-R2 F1 F2 F5 F6 F7 · N2 N7 N8) ═══════════════
+  //   ข้อ §12.1–§12.5 แดงได้จนกว่าผู้สร้างแก้ครบ (ตั้งใจ) · ทุกข้อใช้ร้าน/ตัวตนของตัวเอง · ลำดับกำหนดได้ · หมดอายุคำเชิญตั้งด้วย SQL (นาฬิกาจริง)
+  const tagOf = (tenantId: string, email: string) => authHash("applicant-tag", `${tenantId}:${email}`);
+  const contactJson = async (id: string): Promise<string> => JSON.stringify(R((await acc(id))?.contact));
+  const tagsIn = (json: string): string[] => [...new Set(json.match(/v1:[0-9a-f]{64}/g) ?? [])];
+  const ownerMembers = (id: string) => count(`SELECT count(*)::int AS n FROM "AgentAccountMember" WHERE "agentAccountId" = $1 AND active AND role = 'OWNER'`, [id]);
+  const rowsOf = (tenantId: string, identityId: string) => count(`SELECT count(*)::int AS n FROM "AgentAccount" WHERE "tenantId" = $1 AND "identityId" = $2`, [tenantId, identityId]);
+  const codeInvite = async (s: Shop2, who: { publicCode: string }, tag: string): Promise<Rec> => shopDo("inviteAgent", s.ctx, { mode: "CODE", publicCode: who.publicCode, legalName: `${QC_MARK} ${tag}`, payeeType: "TH_JURISTIC", idempotencyKey: `qca12-${STAMP}-${tag}` });
+  /** ทำให้คำเชิญของแถวหมดอายุตามนาฬิกาจริง (ไม่แตะ updatedAt) */
+  const expireInvite = async (id: unknown): Promise<void> => {
+    const n = await pool.query(`UPDATE "AgentAccount" SET "inviteExpiresAt" = now() - interval '1 minute' WHERE id = $1 AND status = 'INVITED'`, [String(id)]);
+    ok(n.rowCount === 1, "ตั้งคำเชิญให้หมดอายุไม่ได้ (ไม่ใช่แถว INVITED)");
+  };
+  const acceptAs = async (w: { token: string }, slug: string, inviteToken?: unknown): Promise<Rec> => R(await AU("agentAcceptInvite")(w.token, { shopSlug: slug, ...(inviteToken !== undefined ? { inviteToken } : {}) }, mo()));
+  /** เพื่อนร่วมทีมใหม่ผ่านบริการจริง (ตัวจำกัดผ่านเสมอ) */
+  const joinTeam = async (by: { token: string }, email: string, role: string): Promise<{ token: string; agentUserId: string }> => {
+    const j = await redeem(email, await inviteMate(by, email, role));
+    ok(j.ok === true && j.created === "TEAMMATE", `เพื่อนร่วมทีม ${role}: ${fmt(j)}`);
+    return { token: String(j.token), agentUserId: await userOfToken(j.token) };
+  };
+
+  await st("RU-33", "มติ §12 ข้อ 7 (R2-F5): รับคำเชิญเพื่อนที่ล้ม ไม่เผา token — อีเมลที่ถูกเชิญมีล็อกอินของตัวตนอื่นอยู่ ⇒ LOGIN_UNAVAILABLE และไม่มีแถว jti · รหัสผิด ⇒ INVALID_CODE ไม่มีแถว jti · เจ้าของอีเมลปิดตัวตนเดิมแล้วใช้ token เดิม ⇒ เข้าทีมได้ (TEAMMATE · ตัวตนของผู้เชิญ) + แถว jti 1 แถว · ใช้อีกครั้ง ⇒ INVITE_INVALID", async () => {
+    needBuilt();
+    const o = await signup(mail("ru33"), "RU33");
+    const e = mail("ru33m");
+    const holder = await signup(e, "RU33H"); // อีเมล e มีล็อกอินอยู่แล้ว (ตัวตนอื่น)
+    const tok = await inviteMate(o, e, "SALES");
+    const jti = teammateJti(tok);
+    ok(jti, "token ไม่มี jti (n)");
+    const jrows = () => count(`SELECT count(*)::int AS n FROM "AgentLoginCode" WHERE target = $1`, [authHash("tm-jti", String(jti))]);
+    const identOfLogin = async () => (await q<{ i: string }>(`SELECT u."identityId" AS i FROM "AgentLogin" l JOIN "AgentUser" u ON u.id = l."agentUserId" WHERE l.subject = $1`, [e])).map((r) => r.i);
+    const f1 = await redeem(e, tok);
+    eq([f1.ok === true, f1.code, await jrows(), await identOfLogin()], [false, "LOGIN_UNAVAILABLE", 0, [holder.identityId]], "รับขณะอีเมลมีล็อกอินอื่น ⇒ ล้ม · ไม่มีแถว jti");
+    const rq = await reqCode(e, mo());
+    const good = lastMail(e, "LOGIN_CODE")?.code ?? "";
+    ok(rq.ok === true && /^\d{6}$/.test(good), `ขอรหัส: ${fmt(rq)}`);
+    const wrong = String((Number(good) + 1) % 1_000_000).padStart(6, "0");
+    const f2 = await verify({ email: e, codeId: rq.codeId, code: wrong, teammateInvite: tok, teammateName: `${QC_MARK} ru33` }, mo());
+    eq([f2.ok === true, f2.code, await jrows()], [false, "INVALID_CODE", 0], "รหัสผิดพร้อม token ⇒ ไม่มีแถว jti");
+    const ci = R(await AU("closeMyIdentity")(holder.token, { confirm: true }));
+    eq([ci.ok, await loginRows(e)], [true, 0], "เจ้าของอีเมลปิดตัวตนเดิม (อีเมลว่าง)");
+    const j = await redeem(e, tok);
+    ok(j.ok === true && j.created === "TEAMMATE", `token ที่เคยรับล้มต้องยังใช้ได้ (ไม่ถูกเผา): ${fmt(j)}`);
+    const again = await redeem(e, tok);
+    eq([await identOfLogin(), await jrows(), again.ok === true, again.code, await loginRows(e)], [[o.identityId], 1, false, "INVITE_INVALID", 1], "รับสำเร็จครั้งเดียว แล้ว token จึงตาย");
+  });
+
+  await st("RU-34", "มติ §12 ข้อ 7 (R2-F5 · §10 ข้อ 1): ใบสมัครซ้ำที่ยัง PENDING ของบัญชีที่ร้านเคยปิด/ปฏิเสธ แล้วเอเจนซี่ปิดตัวตน ⇒ แถวกลับ CLOSED เหตุเดิม (CLOSED_BY_SHOP / REJECTED ไม่ใช่ IDENTITY_CLOSED · DTO closeReason เดิม) · สมัครตัวตนใหม่ด้วยอีเมลล็อกอินเดิมแล้วสมัครร้านอนุมัติอัตโนมัติเดิม ⇒ PENDING (ผู้สมัครใหม่จริง ⇒ ACTIVE) · ร้านบล็อกใบสมัครซ้ำ (PENDING → SUSPENDED) แล้วคืนสิทธิ์ ⇒ BAD_STATE · ปิด ⇒ CLOSED_BY_SHOP · สมัครอีก ⇒ PENDING", async () => {
+    needBuilt();
+    const out: unknown[] = [];
+    for (const reason of ["CLOSED_BY_SHOP", "REJECTED"]) {
+      const tag = `ru34${reason === "REJECTED" ? "r" : "c"}`;
+      const s = await mkShop2(tag, { auto: reason === "CLOSED_BY_SHOP" });
+      const e = mail(tag);
+      const k = await signup(e, tag.toUpperCase());
+      const a1 = await applyAs(k, s.slug);
+      const id = String(a1.agentAccountId);
+      const shut = reason === "REJECTED" ? await shopDo("rejectAgentAccount", s.ctx, { agentAccountId: id }) : await shopDo("closeAgentAccount", s.ctx, { agentAccountId: id });
+      ok(a1.status === (reason === "REJECTED" ? "PENDING" : "ACTIVE") && shut.status === "CLOSED" && (await acc(id))?.statusReason === reason, `ตั้งต้น ${reason}: ${fmt([a1, shut])}`);
+      if (reason === "REJECTED") await setRequireApproval(s, false);
+      const re = await applyAs(k, s.slug, app(), cooled());
+      const pend = await acc(id);
+      ok(re.status === "PENDING" && re.agentAccountId === id && pend?.status === "PENDING", `สมัครซ้ำหลังช่วงรอต้อง PENDING: ${fmt(re)}`);
+      const ci = R(await AU("closeMyIdentity")(k.token, { confirm: true }));
+      const row = await acc(id);
+      const dto = await detail(s, id);
+      const k2 = await signup(e, `${tag} again`);
+      const a2 = await applyAs(k2, s.slug);
+      const fresh = await applyAs(await signup(mail(`${tag}f`), `${tag}F`), s.slug);
+      out.push([ci.ok, row?.status, row?.statusReason, row?.approvedAt ?? null, dto.status, dto.closeReason, k2.identityId !== k.identityId, a2.ok, a2.status, a2.agentAccountId !== id, await AU("agentScope")(k2.token, { shopSlug: s.slug }), fresh.status]);
+    }
+    const one = (reason: string) => [true, "CLOSED", reason, null, "CLOSED", reason, true, true, "PENDING", true, null, "ACTIVE"];
+    eq(out, [one("CLOSED_BY_SHOP"), one("REJECTED")], "sticky PENDING → ปิดตัวตน → สมัครใหม่ด้วยอีเมลเดิม [ปิดตัวตน, สถานะ, เหตุ, approvedAt, DTO สถานะ, DTO เหตุ, ตัวตนใหม่, ok, สถานะใบใหม่, แถวใหม่, ประตู, ตัวควบคุม]");
+    // ร้านบล็อกใบสมัครซ้ำ แล้วพยายามคืนสิทธิ์
+    const s = await mkShop2("ru34s", { auto: true });
+    const k = await signup(mail("ru34s"), "RU34S");
+    const a1 = await applyAs(k, s.slug);
+    const id = String(a1.agentAccountId);
+    const cl = await shopDo("closeAgentAccount", s.ctx, { agentAccountId: id });
+    const at = cooled();
+    const re = await applyAs(k, s.slug, app(), at);
+    const sus = await shopDo("suspendAgentAccount", s.ctx, { agentAccountId: id });
+    const rein = await shopDo("reinstateAgentAccount", s.ctx, { agentAccountId: id });
+    const mid = await acc(id);
+    const scope = await AU("agentScope")(k.token, { shopSlug: s.slug });
+    const cl2 = await shopDo("closeAgentAccount", s.ctx, { agentAccountId: id });
+    const fin = await acc(id);
+    const re2 = await applyAs(k, s.slug, app(), at);
+    eq([a1.status, cl.status, re.status, sus.status, rein.code, mid?.status, mid?.approvedAt ?? null, scope, cl2.status, fin?.statusReason, re2.status, (await acc(id))?.approvedAt ?? null],
+      ["ACTIVE", "CLOSED", "PENDING", "SUSPENDED", "BAD_STATE", "SUSPENDED", null, null, "CLOSED", "CLOSED_BY_SHOP", "PENDING", null], "บล็อกใบสมัครซ้ำ → คืนสิทธิ์ไม่ได้ → ปิด → สมัครอีกยัง PENDING");
+  });
+
+  await st("RU-35", "มติ §12 ข้อ 7 (R2-F5 · §11 ข้อ 3): แท็กหลังสมัครซ้ำบนแถวเดิม — ผู้สมัครคนแรก (อีเมล E1) ถอน แล้วถูกลบออกจากตัวตน · เจ้าของอีกคน (E2) สมัครซ้ำบนแถวเดิม ⇒ แท็กหลัก = E2 และแท็กของ E1 ยังอยู่ในแถว · ร้านปฏิเสธ แล้วเปลี่ยนเป็นอนุมัติอัตโนมัติ ⇒ E1 สมัครตัวตนใหม่แล้วสมัคร ⇒ PENDING (ตรงผ่านแท็กร่วมเท่านั้น) · ผู้สมัครใหม่จริง ⇒ ACTIVE · เจ้าของร่วม ณ ตอนสมัคร (ไม่ใช่ผู้กดสมัคร) ของบัญชีที่ถูกพัก ออกไปตั้งตัวตนใหม่ ⇒ PENDING เช่นกัน · แท็กไม่ออก DTO", async () => {
+    needBuilt();
+    // (ก) สมัครซ้ำบนแถวเดิมโดยอีกคน
+    const s = await mkShop2("ru35");
+    const e1 = mail("ru35a"), e2 = mail("ru35b");
+    const o1 = await signup(e1, "RU35");
+    const a1 = await applyAs(o1, s.slug);
+    const id = String(a1.agentAccountId);
+    const t1 = tagOf(s.id, e1), t2 = tagOf(s.id, e2);
+    eq([a1.status, R((await acc(id))?.contact).applicantTag], ["PENDING", t1], "ใบสมัครแรก: แท็กหลัก = อีเมลล็อกอินของผู้สมัคร");
+    const o2 = await joinTeam(o1, e2, "OWNER");
+    const w = await withdrawAs(o1, s.slug);
+    const er = R(await AS("eraseAgentUser")({ agentUserId: o2.agentUserId }, { targetUserId: o1.agentUserId }));
+    eq([w.status, er.ok, await loginRows(e1)], ["CLOSED", true, 0], "ถอน + ลบผู้สมัครคนแรกออกจากตัวตน");
+    const re = await applyAs(o2, s.slug);
+    const cj = await contactJson(id);
+    eq([re.status, re.agentAccountId, R((await acc(id))?.contact).applicantTag, cj.includes(t1), cj.includes(e1) || cj.includes(e2)], ["PENDING", id, t2, true, false], "สมัครซ้ำบนแถวเดิม: แท็กหลัก = ผู้สมัครคนใหม่ · แท็กของผู้สมัครคนก่อนยังอยู่ · ไม่มีอีเมลล็อกอินดิบ");
+    const rj = await shopDo("rejectAgentAccount", s.ctx, { agentAccountId: id });
+    await setRequireApproval(s, false);
+    const ctl = await applyAs(await signup(mail("ru35c"), "RU35C"), s.slug);
+    const n1 = await signup(e1, "RU35 again");
+    const b1 = await applyAs(n1, s.slug);
+    eq([rj.status, ctl.status, n1.identityId !== o1.identityId, b1.ok, b1.status, sortedKeys(b1), await AU("agentScope")(n1.token, { shopSlug: s.slug })], ["CLOSED", "ACTIVE", true, true, "PENDING", RESULT_KEYS, null], "ผู้สมัครคนก่อนกลับมาด้วยตัวตนใหม่ ⇒ ตรงผ่านแท็กร่วม");
+    // (ข) เจ้าของร่วม ณ ตอนสมัคร
+    const sb = await mkShop2("ru35x", { auto: true });
+    const e3 = mail("ru35d"), e4 = mail("ru35e");
+    const p1 = await signup(e3, "RU35X");
+    const p2 = await joinTeam(p1, e4, "OWNER");
+    const pa = await applyAs(p1, sb.slug);
+    const idB = String(pa.agentAccountId);
+    const sus = await shopDo("suspendAgentAccount", sb.ctx, { agentAccountId: idB });
+    const cjB = await contactJson(idB);
+    const self = R(await AS("eraseAgentUser")({ agentUserId: p2.agentUserId }, { targetUserId: p2.agentUserId }));
+    const q2 = await signup(e4, "RU35X again");
+    const qa = await applyAs(q2, sb.slug);
+    const ctlB = await applyAs(await signup(mail("ru35f"), "RU35F"), sb.slug);
+    eq([pa.status, sus.status, R((await acc(idB))?.contact).applicantTag, cjB.includes(tagOf(sb.id, e4)), self.ok, q2.identityId !== p1.identityId, qa.status, await AU("agentScope")(q2.token, { shopSlug: sb.slug }), ctlB.status],
+      ["ACTIVE", "SUSPENDED", tagOf(sb.id, e3), true, true, true, "PENDING", null, "ACTIVE"], "เจ้าของร่วมของบัญชีที่ถูกพัก ตั้งตัวตนใหม่ ⇒ PENDING");
+    const shown = JSON.stringify([await shopDo("getAgentAccount", s.ctx, { agentAccountId: id }), await shopDo("listAgentAccounts", s.ctx, {}), await shopDo("getAgentAccount", sb.ctx, { agentAccountId: idB }), await shopDo("getAgentAccount", sb.ctx, { agentAccountId: qa.agentAccountId })]);
+    eq([leaks(shown, [t1.slice(3), t2.slice(3), tagOf(sb.id, e3).slice(3), tagOf(sb.id, e4).slice(3)]), /applicant/i.test(shown)], [[], false], "แท็ก/แท็กร่วมไม่ออก DTO/รายการ");
+  });
+
+  await st("RU-36", "มติ §12 ข้อ 3 (R2-F6): ลำดับแท็กร่วมเมื่อเกินเพดาน 10 — ผู้สมัครคนแรก (E0) ถอนแล้วถูกลบ · ตัวตนมีเจ้าของ 11 คน · เจ้าของ M1 สมัครซ้ำบนแถวเดิม ⇒ แท็กของ E0 (ผู้ที่เคยยื่นจริง) ยังอยู่ในแถว ไม่ถูกแท็กของเจ้าของร่วมปัจจุบันเบียดตก · แท็กทั้งแถว ≤ 1 + 10 · M1 ถอน M2 สมัครซ้ำ ⇒ แท็กของ E0 และ M1 ยังอยู่ · ร้านปฏิเสธ แล้วอนุมัติอัตโนมัติ ⇒ E0 ตัวตนใหม่สมัคร ⇒ PENDING (ผู้สมัครใหม่จริง ⇒ ACTIVE)", async () => {
+    needBuilt();
+    const s = await mkShop2("ru36");
+    const e0 = mail("ru36-0");
+    const o0 = await signup(e0, "RU36");
+    const a1 = await applyAs(o0, s.slug);
+    const id = String(a1.agentAccountId);
+    const w0 = await withdrawAs(o0, s.slug);
+    const N = 11;
+    const ms: { token: string; agentUserId: string; email: string }[] = [];
+    for (let i = 1; i <= N; i++) { const email = mail(`ru36-m${i}`); ms.push({ ...(await joinTeam(o0, email, "OWNER")), email }); }
+    const er = R(await AS("eraseAgentUser")({ agentUserId: ms[0].agentUserId }, { targetUserId: o0.agentUserId }));
+    const owners = await count(`SELECT count(*)::int AS n FROM "AgentUser" WHERE "identityId" = $1 AND status = 'ACTIVE' AND role = 'OWNER'`, [o0.identityId]);
+    eq([a1.status, w0.status, er.ok, owners, await loginRows(e0)], ["PENDING", "CLOSED", true, N, 0], "ตั้งต้น: ผู้สมัครคนแรกออกแล้ว · เจ้าของ 11 คน (แท็กของผู้กด 1 + เจ้าของร่วม 10 = เต็มเพดานพอดีก่อนนับประวัติ)");
+    const t0 = tagOf(s.id, e0), tm = (i: number) => tagOf(s.id, ms[i].email);
+    const re1 = await applyAs(ms[0], s.slug);
+    const c1 = await contactJson(id);
+    eq([re1.status, re1.agentAccountId, R((await acc(id))?.contact).applicantTag, c1.includes(t0), tagsIn(c1).length <= 11], ["PENDING", id, tm(0), true, true], `สมัครซ้ำโดย M1 [สถานะ, แถวเดิม, แท็กหลัก = M1, แท็กของ E0 ยังอยู่, แท็กทั้งแถว ≤ 11] (มี ${tagsIn(c1).length} แท็ก)`);
+    const w1 = await withdrawAs(ms[0], s.slug);
+    const re2 = await applyAs(ms[1], s.slug);
+    const c2 = await contactJson(id);
+    eq([w1.status, re2.status, R((await acc(id))?.contact).applicantTag, c2.includes(t0), c2.includes(tm(0)), tagsIn(c2).length <= 11], ["CLOSED", "PENDING", tm(1), true, true, true], `สมัครซ้ำรอบสองโดย M2 [ถอน, สถานะ, แท็กหลัก = M2, E0 ยังอยู่, M1 ยังอยู่, ≤ 11] (มี ${tagsIn(c2).length} แท็ก)`);
+    const rj = await shopDo("rejectAgentAccount", s.ctx, { agentAccountId: id });
+    await setRequireApproval(s, false);
+    const ctl = await applyAs(await signup(mail("ru36c"), "RU36C"), s.slug);
+    const n0 = await signup(e0, "RU36 again");
+    const b = await applyAs(n0, s.slug);
+    eq([rj.status, ctl.status, b.ok, b.status, await AU("agentScope")(n0.token, { shopSlug: s.slug })], ["CLOSED", "ACTIVE", true, "PENDING", null], "ผู้สมัครคนแรกกลับมาด้วยตัวตนใหม่ ⇒ ยังตรงแท็ก");
+  });
+
+  await st("RU-37", "มติ §12 ข้อ 2 (R2-F2) ฝั่งเอเจนซี่: คำเชิญด้วยรหัสที่ยังไม่หมด ⇒ สมัครเอง BAD_STATE (คงเดิม) · หมดอายุแล้ว ⇒ รับคำเชิญ INVITE_INVALID (ไม่เขียนอะไร) แต่สมัครเองได้: แถวเดิมกลายเป็นใบสมัครตามกติกาปกติ (ร้านต้องอนุมัติ ⇒ PENDING + สมาชิก OWNER + event applied + แท็กผู้สมัคร · ร้านอนุมัติอัตโนมัติ ⇒ ACTIVE + ยอด) · หลังสมัครแล้วรับคำเชิญเดิมยังไม่ได้ · กติกาแท็ก/sticky ยังใช้: ตัวตนใหม่ของอีเมลที่ร้านพักไว้ + คำเชิญหมดอายุ ⇒ PENDING · ร้านปฏิเสธ ⇒ ติดช่วงรอ · หลังช่วงรอ ⇒ PENDING", async () => {
+    needBuilt();
+    const s = await mkShop2("ru37"), sa = await mkShop2("ru37a", { auto: true });
+    const e = mail("ru37");
+    const k = await signup(e, "RU37");
+    const i1 = await codeInvite(s, k, "ru37-1");
+    const id1 = String(i1.agentAccountId);
+    const live = await applyAs(k, s.slug);
+    eq([i1.status, live.code, (await acc(id1))?.status], ["INVITED", "BAD_STATE", "INVITED"], "คำเชิญยังไม่หมดอายุ ⇒ สมัครเองไม่ได้ (คงเดิม)");
+    await expireInvite(id1);
+    const before = await rowJson(id1);
+    const x1 = await acceptAs(k, s.slug);
+    eq([x1.ok === true, x1.code, (await rowJson(id1)) === before, await ownerMembers(id1)], [false, "INVITE_INVALID", true, 0], "รับคำเชิญที่หมดอายุ ⇒ ปฏิเสธ ไม่เขียนอะไร");
+    const legal = `${QC_MARK} RU37 applied ${STAMP}`;
+    const ap = await applyAs(k, s.slug, app({ legalName: legal }));
+    const row = await acc(id1);
+    eq([ap.ok, ap.status, ap.agentAccountId, ap.replayed, sortedKeys(ap)], [true, "PENDING", id1, false, RESULT_KEYS], "สมัครเองหลังคำเชิญหมดอายุ (แถวเดิมถูกใช้ต่อ)");
+    eq([row?.status, row?.identityId, row?.legalName, row?.inviteTokenHash ?? null, row?.approvedAt ?? null, R(row?.contact).consentVersion, R(row?.contact).applicantTag, await ownerMembers(id1), await rowsOf(s.id, k.identityId), (await events(s.id, "agency.account.applied")).filter((x) => R(x.payload).agentAccountId === id1).length, await AU("agentScope")(k.token, { shopSlug: s.slug })],
+      ["PENDING", k.identityId, legal, null, null, "agency-apply-v1", tagOf(s.id, e), 1, 1, 1, null], "แถวหลังสมัคร [สถานะ, ตัวตน, ชื่อจากใบสมัคร, token, approvedAt, ความยินยอม, แท็ก, สมาชิก OWNER, แถวของตัวตนที่ร้าน, event applied, ประตู]");
+    const x2 = await acceptAs(k, s.slug);
+    const apv = await shopDo("approveAgentAccount", s.ctx, { agentAccountId: id1 });
+    eq([x2.ok === true, x2.code, apv.status, R(await AU("agentScope")(k.token, { shopSlug: s.slug })).agentAccountId], [false, "INVITE_INVALID", "ACTIVE", id1], "รับคำเชิญเดิมหลังสมัคร ⇒ ไม่ได้ · ร้านอนุมัติตามปกติ");
+    // ร้านอนุมัติอัตโนมัติ
+    const k2 = await signup(mail("ru37b"), "RU37B");
+    const i2 = await codeInvite(sa, k2, "ru37-2");
+    await expireInvite(i2.agentAccountId);
+    const ap2 = await applyAs(k2, sa.slug);
+    eq([ap2.ok, ap2.status, ap2.agentAccountId, await count(`SELECT count(*)::int AS n FROM "AgentBalance" WHERE "agentAccountId" = $1`, [String(i2.agentAccountId)]), R(await AU("agentScope")(k2.token, { shopSlug: sa.slug })).agentAccountId, (await acceptAs(k2, sa.slug)).ok === true],
+      [true, "ACTIVE", i2.agentAccountId, 1, i2.agentAccountId, false], "ร้านอนุมัติอัตโนมัติ: คำเชิญหมดอายุ + สมัครเอง ⇒ ACTIVE ตามกติกาปกติ");
+    // กติกาแท็ก + sticky กับแถวคำเชิญที่หมดอายุ
+    const et = mail("ru37t");
+    const x = await signup(et, "RU37T");
+    const xa = await applyAs(x, sa.slug);
+    const sus = await shopDo("suspendAgentAccount", sa.ctx, { agentAccountId: xa.agentAccountId });
+    const ci = R(await AU("closeMyIdentity")(x.token, { confirm: true }));
+    const y = await signup(et, "RU37T again");
+    const i3 = await codeInvite(sa, y, "ru37-3");
+    ok(xa.status === "ACTIVE" && sus.status === "SUSPENDED" && ci.ok === true && i3.status === "INVITED", `ตั้งต้นแท็ก: ${fmt([xa.status, sus.status, ci.ok, i3])}`);
+    const id3 = String(i3.agentAccountId);
+    await expireInvite(id3);
+    const ap3 = await applyAs(y, sa.slug);
+    const rj = await shopDo("rejectAgentAccount", sa.ctx, { agentAccountId: id3 });
+    const rjReason = (await acc(id3))?.statusReason;
+    const soon = await applyAs(y, sa.slug);
+    const later = await applyAs(y, sa.slug, app(), cooled());
+    eq([ap3.ok, ap3.status, ap3.agentAccountId, rj.status, rjReason, soon.code, later.status, later.agentAccountId, await AU("agentScope")(y.token, { shopSlug: sa.slug })],
+      [true, "PENDING", id3, "CLOSED", "REJECTED", "BAD_STATE", "PENDING", id3, null], "คำเชิญหมดอายุไม่ใช่ทางเลี่ยงกติกาแท็ก/sticky");
+  });
+
+  await st("RU-38", "มติ §12 ข้อ 2 (R2-F2) ฝั่งร้าน: คำเชิญด้วยรหัสยังไม่หมด ⇒ เชิญซ้ำ ALREADY_REGISTERED และเอเจนซี่รับได้ ACTIVE (คงเดิม) · หมดอายุแล้ว ⇒ ร้านเชิญใหม่ด้วยรหัสได้ (INVITED · วันหมดอายุใหม่ในอนาคต · ตัวตนมีแถวเดียวที่ร้าน) แล้วเอเจนซี่รับ ⇒ ACTIVE · ร้านเพิกถอนคำเชิญ ⇒ เอเจนซี่รับไม่ได้ · ร้านเชิญใหม่ด้วยรหัสได้ แล้วรับ ⇒ ACTIVE · บัญชีที่ ACTIVE แล้วเชิญอีก ⇒ ALREADY_REGISTERED", async () => {
+    needBuilt();
+    const s = await mkShop2("ru38");
+    // (ก) หมดอายุ
+    const k = await signup(mail("ru38"), "RU38");
+    const i1 = await codeInvite(s, k, "ru38-1");
+    const dupLive = await codeInvite(s, k, "ru38-1b");
+    eq([i1.status, dupLive.code, await rowsOf(s.id, k.identityId)], ["INVITED", "ALREADY_REGISTERED", 1], "คำเชิญยังไม่หมดอายุ ⇒ เชิญซ้ำไม่ได้ (คงเดิม)");
+    await expireInvite(i1.agentAccountId);
+    const i2 = await codeInvite(s, k, "ru38-2");
+    const id2 = String(i2.agentAccountId);
+    const r2 = await acc(id2);
+    eq([i2.ok, i2.status, i2.replayed, r2?.status, r2?.identityId, r2?.inviteExpiresAt instanceof Date && r2.inviteExpiresAt.getTime() > Date.now(), await rowsOf(s.id, k.identityId)], [true, "INVITED", false, "INVITED", k.identityId, true, 1], "เชิญใหม่ด้วยรหัสหลังคำเชิญหมดอายุ");
+    const ac = await acceptAs(k, s.slug);
+    eq([ac.ok, ac.status, ac.agentAccountId, R(await AU("agentScope")(k.token, { shopSlug: s.slug })).agentAccountId, await rowsOf(s.id, k.identityId)], [true, "ACTIVE", id2, id2, 1], "รับคำเชิญใหม่");
+    const dupActive = await codeInvite(s, k, "ru38-3");
+    eq(dupActive.code, "ALREADY_REGISTERED", "บัญชี ACTIVE แล้ว ⇒ เชิญอีกไม่ได้");
+    // (ข) เพิกถอน
+    const k2 = await signup(mail("ru38b"), "RU38B");
+    const j1 = await codeInvite(s, k2, "ru38-4");
+    const rv = await shopDo("revokeAgentInvite", s.ctx, { agentAccountId: j1.agentAccountId });
+    const dead = await acceptAs(k2, s.slug);
+    eq([j1.status, rv.status, dead.ok === true, dead.code], ["INVITED", "CLOSED", false, "INVITE_INVALID"], "เพิกถอน ⇒ รับไม่ได้");
+    const j2 = await codeInvite(s, k2, "ru38-5");
+    const ac2 = await acceptAs(k2, s.slug);
+    eq([j2.ok, j2.status, ac2.ok, ac2.status, ac2.agentAccountId === j2.agentAccountId, await rowsOf(s.id, k2.identityId), R(await AU("agentScope")(k2.token, { shopSlug: s.slug })).agentAccountId === j2.agentAccountId], [true, "INVITED", true, "ACTIVE", true, 1, true], "เชิญใหม่ด้วยรหัสหลังเพิกถอน แล้วรับ");
+    // (ค) ตัวควบคุม: คำเชิญที่ยังไม่หมดอายุทำงานเหมือนเดิม
+    const k3 = await signup(mail("ru38c"), "RU38C");
+    const l1 = await codeInvite(s, k3, "ru38-6");
+    const ac3 = await acceptAs(k3, s.slug);
+    eq([l1.status, ac3.status, ac3.agentAccountId], ["INVITED", "ACTIVE", l1.agentAccountId], "คำเชิญที่ยังไม่หมดอายุ ⇒ รับได้ตามเดิม");
+  });
+
+  await st("RU-39", "มติ §12 ข้อ 4 (R2-F7): อีเมลที่มีอักขระมองไม่เห็น (default-ignorable: U+034F · ตัวเติมฮันกึล U+115F/U+1160/U+3164/U+FFA0 · variation selectors U+FE00–FE0F/U+E0100–E01EF · tag characters U+E0000–E007F · ที่เหลือของชุด) ⇒ VALIDATION ทุกทางเข้า: ขอรหัส (ก่อนถามตัวจำกัด · ไม่มีแถว/จดหมาย) · ยืนยัน · เชิญเพื่อน · ร้านเชิญอีเมล · อีเมลผู้ติดต่อในใบสมัคร · ร้านแก้อีเมลผู้ติดต่อ — ทั้งในส่วนชื่อและส่วนโดเมน · อีเมลที่ไม่ใช่ ASCII แบบปกติ (ละติน/ไทย/จีน/ฮันกึล/ซีริลลิก/กรีก) ยังใช้ได้ทุกทางเข้า", async () => {
+    needBuilt();
+    const s = await mkShop2("ru39"), s2 = await mkShop2("ru39b", { auto: true });
+    const o = await signup(mail("ru39o"), "RU39");
+    const mine = await applyAs(o, s2.slug);
+    ok(mine.status === "ACTIVE", `บัญชีสำหรับทางร้านแก้ผู้ติดต่อ: ${fmt(mine)}`);
+    const patchContact = async (email: string): Promise<Rec> => safe(async () => shopDo("updateAgentAccountProfile", s2.ctx, { agentAccountId: mine.agentAccountId, expectedUpdatedAt: (await detail(s2, String(mine.agentAccountId))).updatedAt, patch: { contact: { email } } }));
+    const base = mail("ru39");
+    const cp = (n: number) => String.fromCodePoint(n);
+    const named: [string, number][] = [["U+034F CGJ", 0x34f], ["U+115F", 0x115f], ["U+1160", 0x1160], ["U+3164", 0x3164], ["U+FFA0", 0xffa0], ["U+FE00", 0xfe00], ["U+FE0F", 0xfe0f], ["U+E0100", 0xe0100], ["U+E01EF", 0xe01ef], ["U+E0000", 0xe0000], ["U+E0041", 0xe0041], ["U+E007F", 0xe007f]];
+    const rest: [string, number][] = [["U+17B4", 0x17b4], ["U+17B5", 0x17b5], ["U+180B", 0x180b], ["U+180F", 0x180f], ["U+FFF0", 0xfff0], ["U+FFF8", 0xfff8], ["U+1BCA0", 0x1bca0], ["U+1D173", 0x1d173], ["U+E0080", 0xe0080], ["U+E0FFF", 0xe0fff]];
+    const bad: [string, string][] = [
+      ...[...named, ...rest].map(([name, n]): [string, string] => [name, base.replace("-ru39-", `-ru${cp(n)}39-`)]),
+      ...named.slice(0, 6).map(([name, n]): [string, string] => [`${name} (โดเมน)`, base.replace("@example.", `@exam${cp(n)}ple.`)]),
+      ["U+3164 ท้ายส่วนชื่อ", base.replace("@", `${cp(0x3164)}@`)], ["U+FE0F หน้าสุด", `${cp(0xfe0f)}${base}`],
+    ];
+    ok(bad.every(([, em]) => em !== base && em.includes("@")), "ตัวสร้างอีเมลทดสอบผิด");
+    const codes0 = await count(`SELECT count(*)::int AS n FROM "AgentLoginCode"`);
+    const m0 = mails.length, n0 = await opsErrors();
+    const lines: string[] = [];
+    for (const [name, em] of bad) {
+      const seen: Seen[] = [];
+      const rq = await safe(() => AU("requestAgentLoginCode")({ email: em }, meta(undefined, undefined, undefined, recRate(seen))));
+      if (rq.ok === true) createdCodeIds.push(String(rq.codeId)); // โค้ดที่ยังไม่แก้รับอีเมลนี้ ⇒ มีแถวรหัส — จดไว้ลบ
+      const vf = await safe(() => AU("verifyAgentLoginCode")({ email: em, codeId: `alc_${hex(12)}`, code: "123456" }, mo()));
+      const tm = await safe(() => AU("createTeammateInvite")(o.token, { email: em, role: "SALES" }, mo()));
+      const iv = await safe(() => AG("inviteAgent")(s.ctx, invEmail(em, `qca12-${STAMP}-ru39-${hex(3)}`), { deps: OPEN_DEPS }));
+      const ap = await safe(() => AU("agentApply")(o.token, { shopSlug: s.slug, application: app({ contact: { name: `${QC_MARK} c`, email: em } }) }, mo()));
+      const pc = await patchContact(em);
+      const got = [rq.code, vf.code, tm.code, iv.code, ap.code, pc.code, seen.length].join("/");
+      if (got !== "VALIDATION/VALIDATION/VALIDATION/VALIDATION/VALIDATION/VALIDATION/0") lines.push(`${name}: ${got}`);
+    }
+    eq([lines, (await count(`SELECT count(*)::int AS n FROM "AgentLoginCode"`)) - codes0, mails.length - m0, await accountOf(s.id, o.identityId), await count(`SELECT count(*)::int AS n FROM "AgentAccount" WHERE "tenantId" = $1`, [s.id]), (await opsErrors()) - n0], [[], 0, 0, null, 0, 0],
+      "อีเมลที่มีอักขระมองไม่เห็น [ทางเข้าที่ไม่ตอบ VALIDATION (ขอรหัส/ยืนยัน/เชิญเพื่อน/ร้านเชิญ/ใบสมัคร/ร้านแก้ · จำนวนครั้งที่ถามตัวจำกัด), แถวรหัสใหม่, จดหมาย, บัญชีของผู้สมัคร, แถวที่ร้าน, ops ERROR]");
+    // อีเมลที่ไม่ใช่ ASCII แบบปกติ ยังใช้ได้ (ตัวตรวจเดิมรับ — ต้องไม่ถูกกวาดทิ้งไปด้วย)
+    const plain = ["ñandú", "ทดสอบ", "日本語", "한국어", "почта", "ελληνικά"].map((w) => mail(`ru39-${w}`).normalize("NFC"));
+    const okLines: string[] = [];
+    for (const [i, em] of plain.entries()) {
+      const rq = await reqCode(em, mo());
+      const tm = await safe(() => AU("createTeammateInvite")(o.token, { email: em, role: "SALES" }, mo()));
+      if (tm.ok === true) allTokens.push(String(tm.teammateToken));
+      const iv = await safe(() => AG("inviteAgent")(s.ctx, invEmail(em, `qca12-${STAMP}-ru39-ok${i}`), { deps: OPEN_DEPS }));
+      if (typeof iv.inviteToken === "string") allTokens.push(iv.inviteToken);
+      const pc = await patchContact(em);
+      const got = [rq.ok, tm.ok, iv.status, pc.ok].join("/");
+      if (got !== "true/true/INVITED/true") okLines.push(`${em.split("@")[0]}: ${got} ${fmt([rq.code, tm.code, iv.code, pc.code])}`);
+    }
+    const th = await safe(() => signup(plain[1], "RU39 thai"));
+    const withContact = await applyAs(o, s.slug, app({ contact: { name: `${QC_MARK} c`, email: plain[0] } }));
+    eq([okLines, th.threw, typeof th.identityId === "string" && th.identityId.length > 0, withContact.ok, withContact.status], [[], undefined, true, true, "PENDING"], "อีเมลที่ไม่ใช่ ASCII แบบปกติ [ทางเข้าที่ไม่รับ (ขอรหัส/เชิญเพื่อน/ร้านเชิญ/ร้านแก้), สมัครตัวตนด้วยอีเมลไทย, อีเมลผู้ติดต่อในใบสมัคร]");
+  });
+
+  await st("RU-40", "มติ §12 ข้อ 5 (N2): ตรวจ STALE ก่อนตอบ replayed — ร้านเปิดดูใบสมัคร GOOD · เอเจนซี่ถอนแล้วสมัครใหม่เป็น OTHER · เพื่อนร่วมงานอนุมัติ OTHER ด้วยตราปัจจุบัน ⇒ ACTIVE · คนแรกกดอนุมัติด้วยตราของ GOOD ⇒ STALE reason STATE_CONFLICT (ไม่ใช่ ok/replayed) ไม่เขียนอะไร · อนุมัติซ้ำด้วยตราปัจจุบัน ⇒ ok replayed · ทางปฏิเสธเหมือนกัน", async () => {
+    needBuilt();
+    const s = await mkShop2("ru40");
+    const call = async (fn: string, input: Rec): Promise<Rec> => R(await AG(fn)(s.ctx, input, { deps: OPEN_DEPS })); // ไม่ผ่านตัวช่วยที่เติมตราให้
+    const out: unknown[] = [];
+    for (const [fn, goal, verb] of [["approveAgentAccount", "ACTIVE", "agency.account.approve"], ["rejectAgentAccount", "CLOSED", "agency.account.reject"]] as const) {
+      const k = await signup(mail(`ru40${goal === "ACTIVE" ? "a" : "r"}`), `RU40 ${goal}`);
+      const a1 = await applyAs(k, s.slug, app({ legalName: `${QC_MARK} RU40 GOOD ${goal}` }));
+      const id = String(a1.agentAccountId);
+      const view = await detail(s, id); // ร้านเปิดดู GOOD
+      const w = await withdrawAs(k, s.slug), re = await applyAs(k, s.slug, app({ legalName: `${QC_MARK} RU40 OTHER ${goal}` }));
+      ok(a1.status === "PENDING" && w.status === "CLOSED" && re.status === "PENDING" && re.agentAccountId === id, `สลับใบสมัคร: ${fmt([a1, w, re])}`);
+      const first = await call(fn, { agentAccountId: id, expectedUpdatedAt: (await detail(s, id)).updatedAt });
+      const writes = async () => [(await audits(s.id)).filter((x) => x.targetId === id && x.action === verb).length, (await events(s.id, "agency.account.approved")).filter((x) => R(x.payload).agentAccountId === id).length];
+      const snap = async () => { const a = await acc(id); return [a?.status, a?.updatedAt instanceof Date ? a.updatedAt.getTime() : null]; };
+      const s0 = await snap(), w0 = await writes();
+      const stale = await call(fn, { agentAccountId: id, expectedUpdatedAt: view.updatedAt });
+      const cur = await call(fn, { agentAccountId: id, expectedUpdatedAt: (await detail(s, id)).updatedAt });
+      out.push([first.ok, first.status, first.replayed, view.updatedAt !== (await detail(s, id)).updatedAt, stale.ok === true, stale.code, stale.reason, cur.ok, cur.status, cur.replayed, isDeepStrictEqual(await snap(), s0), isDeepStrictEqual(await writes(), w0), w0[0]]);
+    }
+    const one = (goal: string) => [true, goal, false, true, false, "STALE", "STATE_CONFLICT", true, goal, true, true, true, 1];
+    eq(out, [one("ACTIVE"), one("CLOSED")], "ผล [ครั้งแรก ok, สถานะ, replayed, ตราเก่า ≠ ตราปัจจุบัน, ตราเก่า ok?, code, reason, ตราปัจจุบัน ok, สถานะ, replayed, แถวไม่เปลี่ยน, audit/event ไม่เพิ่ม, audit ของการตัดสิน]");
+  });
+
+  await st("RU-41", "มติ §12 ข้อ 5 (N7): ถอนใบสมัครซ้ำของบัญชีที่ร้านเคยปิด/ปฏิเสธ สองครั้ง ⇒ ครั้งที่สอง ok replayed (ไม่ใช่ BAD_STATE) · ไม่เขียนอะไร (updatedAt/เหตุ/audit เดิม ⇒ ช่วงรอไม่ถูกเลื่อน) · ยังติด sticky: สมัครทันที ⇒ BAD_STATE · หลังช่วงรอ ⇒ PENDING ไม่ ACTIVE", async () => {
+    needBuilt();
+    const out: unknown[] = [];
+    for (const reason of ["CLOSED_BY_SHOP", "REJECTED"]) {
+      const tag = `ru41${reason === "REJECTED" ? "r" : "c"}`;
+      const s = await mkShop2(tag, { auto: reason === "CLOSED_BY_SHOP" });
+      const k = await signup(mail(tag), tag.toUpperCase());
+      const a1 = await applyAs(k, s.slug);
+      const id = String(a1.agentAccountId);
+      const shut = reason === "REJECTED" ? await shopDo("rejectAgentAccount", s.ctx, { agentAccountId: id }) : await shopDo("closeAgentAccount", s.ctx, { agentAccountId: id });
+      if (reason === "REJECTED") await setRequireApproval(s, false);
+      const at = cooled();
+      const re = await applyAs(k, s.slug, app(), at);
+      ok(shut.status === "CLOSED" && re.status === "PENDING", `ตั้งต้น ${reason}: ${fmt([a1, shut, re])}`);
+      const w1 = await withdrawAs(k, s.slug, at);
+      const snap = async () => { const a = await acc(id); return [a?.status, a?.statusReason, a?.updatedAt instanceof Date ? a.updatedAt.getTime() : null, (await audits(s.id)).filter((x) => x.targetId === id).length]; };
+      const s1 = await snap();
+      const w2 = await withdrawAs(k, s.slug, at);
+      const s2 = await snap();
+      const soon = await applyAs(k, s.slug);
+      const later = await applyAs(k, s.slug, app(), at);
+      out.push([[w1.ok, w1.status, w1.replayed], [w2.ok, w2.status, w2.replayed, w2.agentAccountId === id, sortedKeys(w2)], s1.slice(0, 2), isDeepStrictEqual(s1, s2), soon.code, later.status, (await acc(id))?.approvedAt ?? null]);
+    }
+    const one = (reason: string) => [[true, "CLOSED", false], [true, "CLOSED", true, true, RESULT_KEYS], ["CLOSED", reason], true, "BAD_STATE", "PENDING", null];
+    eq(out, [one("CLOSED_BY_SHOP"), one("REJECTED")], "ผล [ถอนครั้งแรก, ถอนครั้งที่สอง (ok/สถานะ/replayed/แถวเดิม/คีย์), แถวหลังถอน, ถอนซ้ำไม่เขียน, สมัครทันที, สมัครหลังช่วงรอ, approvedAt]");
   });
 
   // ═══════════════ I. ค่าคงที่ ═══════════════

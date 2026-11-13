@@ -419,7 +419,11 @@ async function seatMembersInTx(tx: Tx, tenantId: string, agentAccountId: string,
   }
   return actorMemberId;
 }
-const reloadStatus = async (tx: Tx, tenantId: string, id: string) => tx.agentAccount.findFirst({ where: { tenantId, id }, select: { status: true, statusReason: true } });
+/** r4 (มติ §12 ข้อ 2): แถว INVITED ที่เลยเวลาหมด = "เหมือนไม่มี" สำหรับการสมัครเองและการเชิญใหม่ด้วยรหัส (การรับคำเชิญที่หมดอายุยังถูกปฏิเสธ) */
+const isExpiredInvite = (r: { status: string; inviteExpiresAt: Date | null }, now: Date): boolean => r.status === "INVITED" && !!r.inviteExpiresAt && r.inviteExpiresAt.getTime() <= now.getTime();
+/** r4 (มติ §12 ข้อ 2): ร้านเชิญด้วยรหัสซ้ำบนแถวเดิมได้เฉพาะแถวคำเชิญที่ถูกเพิกถอน (CLOSED INVITE_REVOKED — ไม่เคยเป็นบัญชี) หรือคำเชิญที่หมดอายุ */
+const canReinviteByCode = (r: { status: string; statusReason: string | null; inviteExpiresAt: Date | null }, now: Date): boolean => (r.status === "CLOSED" && r.statusReason === "INVITE_REVOKED") || isExpiredInvite(r, now);
+const reloadStatus = async (tx: Tx, tenantId: string, id: string) => tx.agentAccount.findFirst({ where: { tenantId, id }, select: { status: true, statusReason: true, updatedAt: true } });
 
 // ═══════════════════════════════════════════════════════════════
 // §6 ฝั่งเอเจนซี่ที่แตะตาราง tenant (ส่งออกทาง agent-side.ts เท่านั้น)
@@ -445,25 +449,26 @@ const storedApplicantTags = (contact: unknown): { tag: string | null; co: string
   const co = Array.isArray(r[APPLICANT_CO_KEY]) ? (r[APPLICANT_CO_KEY] as unknown[]).filter(isApplicantTag) : [];
   return { tag: isApplicantTag(r[APPLICANT_TAG_KEY]) ? r[APPLICANT_TAG_KEY] : null, co };
 };
-/** ส่วนของ contact ที่เป็นแท็ก: แท็กหลัก = ของผู้กระทำครั้งนี้ (ไม่มี ⇒ คงของเดิม) · แท็กร่วม = ของใหม่ + ของเดิมทั้งหมด (ไม่ทิ้งประวัติ) ตัดซ้ำ ≤ APPLICANT_CO_MAX */
+/**
+ * ส่วนของ contact ที่เป็นแท็ก: แท็กหลัก = ของผู้กระทำครั้งนี้ (ไม่มี ⇒ คงของเดิม) · แท็กร่วม ตัดซ้ำ ≤ APPLICANT_CO_MAX
+ * r4 (มติ §12 ข้อ 3): ลำดับ = **ประวัติของแถวก่อน** (แท็กหลักเดิม → แท็กร่วมเดิม ซึ่งหัวแถวคือผู้ยื่นจริงรุ่นก่อน ๆ) แล้วจึงล็อกอินอื่นของผู้กระทำ + OWNER ร่วมปัจจุบัน
+ *   ⇒ เกินเพดานแล้วสิ่งที่ตกคือเจ้าของร่วมปัจจุบัน ไม่ใช่ผู้ที่เคยยื่นจริง
+ */
 const applicantTagFields = (prev: unknown, tags: AgentApplicantTags | null): Record<string, string | string[]> => {
   const old = storedApplicantTags(prev);
   const tag = tags?.own[0] ?? old.tag;
-  const co = [...new Set([...(tags ? [...tags.own.slice(1), ...tags.owners] : []), ...(old.tag ? [old.tag] : []), ...old.co])].filter((t) => t !== tag).slice(0, APPLICANT_CO_MAX);
+  const co = [...new Set([...(old.tag ? [old.tag] : []), ...old.co, ...(tags ? [...tags.own.slice(1), ...tags.owners] : [])])].filter((t) => t !== tag).slice(0, APPLICANT_CO_MAX);
   return { ...(tag ? { [APPLICANT_TAG_KEY]: tag } : {}), ...(co.length ? { [APPLICANT_CO_KEY]: co } : {}) };
 };
 /**
  * ใบสมัครนี้ตรงกับ "บัญชีอื่นของร้านเดียวกัน" ที่ร้านพัก/ปิด/ปฏิเสธไว้ไหม — ใช้เฉพาะข้อมูลในแถวของร้านนี้ (ไม่อ่านตาราง global · ไม่ข้ามร้าน)
- *  r2 (มติ §10 ข้อ 14 · H-F3): อีเมลผู้ติดต่อของใบสมัคร = contact.email ของบัญชีนั้น (ช่องไม่บังคับ)
  *  r3 (มติ §11 ข้อ 3): แท็กผู้สมัครของตัวตนนี้ (ผู้กระทำ + ผู้ใช้ ACTIVE ทุกคน ≤ APPLICANT_MATCH_MAX) ตรงกับ applicantTag/applicantCoTags ของบัญชีนั้น
+ *  r4 (มติ §12 ข้อ 1): **ไม่เทียบอีเมลผู้ติดต่อ** (กติกา r2 ถูกถอด — ผู้สมัครพิมพ์ค่านี้เอง: เว้นว่างก็หลุด และใช้ลองได้ว่าอีเมลใดเป็นของเอเจนซี่ที่ร้านบล็อก)
  * บัญชีที่นับ: SUSPENDED · CLOSED เหตุ STICKY · PENDING ที่มีเหตุ STICKY ค้าง · CLOSED IDENTITY_CLOSED ที่ถูกพักอยู่ตอนตัวตนปิด (suspendedAt ไม่ null — ปิดตัวตนไม่ล้างคอลัมน์นี้)
  */
-async function matchesBlockedInTx(tx: Tx, tenantId: string, email: string | null, tags: AgentApplicantTags, selfId: string | null): Promise<boolean> {
+async function matchesBlockedInTx(tx: Tx, tenantId: string, tags: AgentApplicantTags, selfId: string | null): Promise<boolean> {
   const cand = [...new Set([...tags.own, ...tags.owners, ...tags.team])].slice(0, APPLICANT_MATCH_MAX);
-  const same: Prisma.AgentAccountWhereInput[] = [
-    ...(email ? [{ contact: { path: ["email"], equals: email } }] : []),
-    ...cand.flatMap((t) => [{ contact: { path: [APPLICANT_TAG_KEY], equals: t } }, { contact: { path: [APPLICANT_CO_KEY], array_contains: [t] } }]),
-  ];
+  const same: Prisma.AgentAccountWhereInput[] = cand.flatMap((t) => [{ contact: { path: [APPLICANT_TAG_KEY], equals: t } }, { contact: { path: [APPLICANT_CO_KEY], array_contains: [t] } }]);
   if (!same.length) return false;
   const sticky = [...STICKY_CLOSE_REASONS];
   const hit = await tx.agentAccount.findFirst({
@@ -489,7 +494,7 @@ async function matchesBlockedInTx(tx: Tx, tenantId: string, email: string | null
 
 /**
  * สมัครกับร้าน (§6) — OWNER/ADMIN · zod + cleanAgencyText → rate limit ตัวตน → ร้าน → ร้าน (ไม่ผ่านไม่นับ) → ร้านขายทริป/ตั๋ว → A36/A2 →
- * แถวเดิม (PENDING replayed · ACTIVE ALREADY_REGISTERED · SUSPENDED/INVITED BAD_STATE · CLOSED: STICKY ช่วงรอ ⇒ BAD_STATE / หลังนั้น PENDING เสมอ) →
+ * แถวเดิม (PENDING replayed · ACTIVE ALREADY_REGISTERED · SUSPENDED/INVITED ที่ยังไม่หมดอายุ BAD_STATE · INVITED หมดอายุ = เหมือนไม่มีแถว (r4) · CLOSED: STICKY ช่วงรอ ⇒ BAD_STATE / หลังนั้น PENDING เสมอ) →
  * Party ชื่ออย่างเดียว (ครั้งแรก) → ล็อกตัวตน → ล็อกบัญชี → อ่านผู้กระทำซ้ำ → INSERT/CAS + สมาชิก + balance + audit + event
  */
 export async function applyToShop(actor: AgentActor, input: { tenantId: string; application: AgentApplication }, opts: AgencyOpts = {}): Promise<AccountWriteResult> {
@@ -511,14 +516,16 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
     const shop = await sellingShop(tenantId);
     if (!shop) return agencyFail("NOT_FOUND");
     const db = tenantDb({ tenantId });
-    const existing = await db.agentAccount.findFirst({ where: { tenantId, identityId: pre.identityId }, select: { id: true, status: true, statusReason: true, updatedAt: true, partyId: true } });
+    const existing = await db.agentAccount.findFirst({ where: { tenantId, identityId: pre.identityId }, select: { id: true, status: true, statusReason: true, updatedAt: true, partyId: true, inviteExpiresAt: true } });
     const cooldownOver = (r: { updatedAt: Date }) => now.getTime() >= r.updatedAt.getTime() + AGENT_AUTH_LIMITS.reapplyCooldownDays * DAY_MS;
     if (existing) {
       if (existing.status === "PENDING") return { ok: true as const, agentAccountId: existing.id, status: "PENDING" as const, replayed: true };
       if (existing.status === "ACTIVE") return agencyFail("ALREADY_REGISTERED");
-      if (existing.status !== "CLOSED") return agencyFail("BAD_STATE");
+      // r4 (มติ §12 ข้อ 2): คำเชิญด้วยรหัสที่หมดอายุ = เหมือนไม่มีแถว (สมัครเองได้) · คำเชิญที่ยังไม่หมด = BAD_STATE เหมือนเดิม
+      if (existing.status !== "CLOSED" && !isExpiredInvite(existing, now)) return agencyFail("BAD_STATE");
       if (isStickyCloseReason(existing.statusReason) && !cooldownOver(existing)) return agencyFail("BAD_STATE");
-    } else if ((await db.agentAccount.count({ where: { tenantId, status: "PENDING" } })) >= AGENT_AUTH_LIMITS.openPendingPerShop) {
+    }
+    if ((!existing || existing.status === "INVITED") && (await db.agentAccount.count({ where: { tenantId, status: "PENDING" } })) >= AGENT_AUTH_LIMITS.openPendingPerShop) {
       return agencyFail("RATE_LIMITED", { retryAfterSec: 3600 });
     }
     const rlShop = await bucket(opts.deps, "agent:apply:s:", tenantId, AGENT_AUTH_LIMITS.applyPerShop, now);
@@ -535,16 +542,18 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
       await lockAccountPair(tx, pre.identityId, tenantId);
       const who = await agentActorInTx(tx, a.data.agentUserId);
       if (!isAgentWriter(who) || who.identityId !== pre.identityId) return agencyFail("FORBIDDEN");
-      const row = await tx.agentAccount.findFirst({ where: { tenantId, identityId: who.identityId }, select: { id: true, status: true, statusReason: true, updatedAt: true, partyId: true, contact: true } });
+      const row = await tx.agentAccount.findFirst({ where: { tenantId, identityId: who.identityId }, select: { id: true, status: true, statusReason: true, updatedAt: true, partyId: true, contact: true, inviteExpiresAt: true } });
       // r3 (มติ §11 ข้อ 3): แท็กผู้สมัคร (ค่าทึบจาก entry.ts · อ่านใต้ล็อกตัวตน · ไม่มีกุญแจ ⇒ โยน AgentKeyMissing ⇒ BUSY SERVER_KEY_MISSING)
       const tags = await agentApplicantTagsInTx(tx, tenantId, who);
       // r2 (มติ §10 ข้อ 1): แถวที่เคยถูกร้านปิด/ปฏิเสธ = เหตุ STICKY ค้างอยู่ใน statusReason ตลอด (รอดจากสมัครซ้ำ/ถอนทุกรอบ) ⇒ REAPPLY เสมอ ไม่มีวัน REAPPLY_AUTO
       const sticky = !!row && isStickyCloseReason(row.statusReason);
-      // r2 (มติ §10 ข้อ 14) + r3 (มติ §11 ข้อ 3): ร้านอนุมัติอัตโนมัติ แต่อีเมลผู้ติดต่อ **หรือ** แท็กผู้สมัคร ตรงกับบัญชีอื่นของร้านนี้ที่ร้านพัก/ปิด/ปฏิเสธไว้
+      // r3 (มติ §11 ข้อ 3) · r4 (มติ §12 ข้อ 1 — เลิกเทียบอีเมลผู้ติดต่อ): ร้านอนุมัติอัตโนมัติ แต่แท็กผู้สมัครตรงกับบัญชีอื่นของร้านนี้ที่ร้านพัก/ปิด/ปฏิเสธไว้
       //   ⇒ รอร้านอนุมัติ (ผลรูปเดียวกับ PENDING ปกติ · ไม่บอกเหตุ · ไม่มีอะไรใน audit/event บอกว่าตรง)
-      const auto = !policy.requireApproval && !sticky && !(await matchesBlockedInTx(tx, tenantId, app.contact.email, tags, row?.id ?? null));
+      const auto = !policy.requireApproval && !sticky && !(await matchesBlockedInTx(tx, tenantId, tags, row?.id ?? null));
+      // r4 (มติ §12 ข้อ 2): คำเชิญด้วยรหัสที่หมดอายุ = เหมือนไม่มีแถว ⇒ ผังเดียวกับใบสมัครแรก (null → APPLY/AUTO_APPROVE) บนแถวเดิม
+      const lapsed = !!row && isExpiredInvite(row, now);
       let action: AgentAccountAction;
-      if (!row) action = auto ? "AUTO_APPROVE" : "APPLY";
+      if (!row || lapsed) action = auto ? "AUTO_APPROVE" : "APPLY";
       else if (row.status === "PENDING") return { ok: true as const, agentAccountId: row.id, status: "PENDING" as const, replayed: true };
       else if (row.status === "ACTIVE") return agencyFail("ALREADY_REGISTERED");
       else if (row.status !== "CLOSED") return agencyFail("BAD_STATE");
@@ -552,7 +561,7 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
         if (!cooldownOver(row)) return agencyFail("BAD_STATE");
         action = "REAPPLY";
       } else action = auto ? "REAPPLY_AUTO" : "REAPPLY";
-      const t = agentAccountTransition(row ? asStatus(row.status) : null, action);
+      const t = agentAccountTransition(row && !lapsed ? asStatus(row.status) : null, action);
       if (!t) return agencyFail("BAD_STATE");
       const id = row?.id ?? newId;
       const active = t.to === "ACTIVE";
@@ -582,12 +591,21 @@ export async function applyToShop(actor: AgentActor, input: { tenantId: string; 
       } else {
         // r2 (มติ §10 ข้อ 11): สมัครซ้ำล้างเงื่อนไขการค้าของยุคก่อน — tierId = ค่าเริ่มต้นของร้าน (ACTIVE ทันที) หรือว่าง (ร้านตั้งตอนอนุมัติ) · unitIds ว่าง ·
         //   คง code · ลิงก์ CRM · ข้อมูลธนาคาร
-        const n = await tx.agentAccount.updateMany({ where: { tenantId, id: row.id, status: "CLOSED", updatedAt: row.updatedAt }, data: { status: t.to, ...fields, tierId: active ? policy.tierId : null, unitIds: [] } });
+        // r4 (มติ §12 ข้อ 2): แถวคำเชิญที่หมดอายุถูกใช้ต่อเป็นใบสมัคร — นับเพดาน PENDING แบบแถวใหม่ (ใต้ล็อกระดับร้านเดียวกัน) · ล้างเวลาหมด/แฮช token ·
+        //   เงื่อนไขที่ร้านตั้งไว้ตอนเชิญ (unitIds) ล้างเหมือนสมัครซ้ำ · CAS ด้วย updatedAt ⇒ ร้านออกคำเชิญใหม่/เพิกถอนแข่งกัน = BUSY RACE ไม่เขียนทับ
+        if (lapsed) {
+          await lockAgencyKeyInTx(tx, "agency.account.v1", `pending:${tenantId}`);
+          if ((await tx.agentAccount.count({ where: { tenantId, status: "PENDING" } })) >= AGENT_AUTH_LIMITS.openPendingPerShop) return agencyFail("RATE_LIMITED", { retryAfterSec: 3600 });
+        }
+        const n = await tx.agentAccount.updateMany({
+          where: { tenantId, id: row.id, status: lapsed ? "INVITED" : "CLOSED", updatedAt: row.updatedAt },
+          data: { status: t.to, ...fields, tierId: active ? policy.tierId : null, unitIds: [], ...(lapsed ? { inviteExpiresAt: null, inviteTokenHash: null } : {}) },
+        });
         if (n.count !== 1) return stop("BUSY", "RACE");
       }
       const memberId = await seatMembersInTx(tx, tenantId, id, who);
       if (active) await ensureBalanceInTx(tx, tenantId, id);
-      await auditInTx(tx, { tenantId, actorType: "SYSTEM", actorId: memberId, action: row ? "agency.account.reapply" : "agency.account.apply", targetId: id, after: { from: row?.status ?? null, to: t.to, actorKind: "AGENT" } });
+      await auditInTx(tx, { tenantId, actorType: "SYSTEM", actorId: memberId, action: row && !lapsed ? "agency.account.reapply" : "agency.account.apply", targetId: id, after: { from: row?.status ?? null, to: t.to, actorKind: "AGENT" } });
       await emitInTx(tx, tenantId, "agency.account.applied", id, now);
       if (active) await emitInTx(tx, tenantId, "agency.account.approved", id, new Date(now.getTime() + 1));
       return { ok: true as const, agentAccountId: id, status: t.to, replayed: false };
@@ -660,8 +678,9 @@ export async function acceptShopInvite(actor: AgentActor, input: { tenantId: str
 /**
  * ถอนใบสมัคร (PENDING → CLOSED WITHDRAWN · ไม่มีช่วงรอ) — OWNER/ADMIN · ซ้ำ ⇒ replayed
  * r2 (มติ §10 ข้อ 1): ใบสมัครซ้ำของบัญชีที่ร้านเคยปิด/ปฏิเสธ (เหตุ STICKY ค้าง) ⇒ กลับไป CLOSED พร้อมเหตุเดิม (ไม่ใช่ WITHDRAWN) — ช่วงรอนับใหม่จากตอนถอน ·
- *   ถอนซ้ำในกรณีนี้ = BAD_STATE (แยกไม่ได้จากแถวที่ร้านปิดเอง — ตั้งใจ)
+ * r4 (มติ §12 ข้อ 5 · N7): ถอนซ้ำของแถว STICKY ⇒ replayed — แยกจากแถวที่ร้านปิดเองด้วย audit การปิดล่าสุดของแถว (ล่าสุด = withdraw ⇒ เล่นซ้ำ · อื่น ⇒ BAD_STATE)
  */
+const CLOSING_AUDIT_ACTIONS = ["agency.account.withdraw", "agency.account.reject", "agency.account.close", "agency.account.revoke", "agency.account.identity_closed"];
 export async function withdrawApplication(actor: AgentActor, input: { tenantId: string }, _opts: AgencyOpts = {}): Promise<AccountWriteResult> {
   const a = ACTOR.safeParse(actor);
   const p = z.object({ tenantId: ID }).strict().safeParse(input);
@@ -677,6 +696,10 @@ export async function withdrawApplication(actor: AgentActor, input: { tenantId: 
       const row = await tx.agentAccount.findFirst({ where: { tenantId, identityId: who.identityId }, select: { id: true, status: true, statusReason: true } });
       if (!row) return agencyFail("NOT_FOUND");
       if (row.status === "CLOSED" && row.statusReason === "WITHDRAWN") return { ok: true as const, agentAccountId: row.id, status: "CLOSED" as const, replayed: true };
+      if (row.status === "CLOSED" && isStickyCloseReason(row.statusReason)) {
+        const last = await tx.auditLog.findFirst({ where: { tenantId, targetType: "AgentAccount", targetId: row.id, action: { in: CLOSING_AUDIT_ACTIONS } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { action: true } });
+        if (last?.action === "agency.account.withdraw") return { ok: true as const, agentAccountId: row.id, status: "CLOSED" as const, replayed: true };
+      }
       const t = agentAccountTransition(asStatus(row.status), "WITHDRAW");
       if (!t) return agencyFail("BAD_STATE");
       const reason = closeReasonKeepingSticky(row.statusReason, t.reason ?? "WITHDRAWN");
@@ -907,9 +930,14 @@ async function shopTransition(where: string, ctx: ShopCtx, input: unknown, opts:
     const t0 = agentAccountTransition(asStatus(row.status), action);
     const goal = SHOP_GOAL[action];
     const replay = (s: string, r: string | null) => !!goal && s === goal.to && (goal.reason === null || r === goal.reason);
-    if (!t0) return replay(row.status, row.statusReason) ? { ok: true as const, agentAccountId: row.id, status: asStatus(row.status), replayed: true } : agencyFail("BAD_STATE");
+    // r4 (มติ §12 ข้อ 5 · N2): ตรวจ STALE **ก่อน** ตอบ replayed — แถวอยู่ในสถานะเป้าหมายแล้วแต่ไม่ใช่ฉบับที่ร้านเปิดดู ⇒ ให้โหลดใหม่ (ไม่ตอบว่า "ทำแล้ว")
+    const stale = (at: Date) => !!expected && at.getTime() !== expected.getTime();
+    if (!t0) {
+      if (!replay(row.status, row.statusReason)) return agencyFail("BAD_STATE");
+      return stale(row.updatedAt) ? agencyFail("STALE", { reason: "STATE_CONFLICT" }) : { ok: true as const, agentAccountId: row.id, status: asStatus(row.status), replayed: true };
+    }
     if (action === "REINSTATE" && row.approvedAt === null) return agencyFail("BAD_STATE");
-    if (expected && row.updatedAt.getTime() !== expected.getTime()) return agencyFail("STALE", { reason: "STATE_CONFLICT" });
+    if (stale(row.updatedAt)) return agencyFail("STALE", { reason: "STATE_CONFLICT" });
     let tierId: string | null = null;
     if (action === "APPROVE") {
       if (data.unitIds && !(await unitsValid(g.db, g.tenantId, data.unitIds))) return agencyFail("VALIDATION");
@@ -936,7 +964,7 @@ async function shopTransition(where: string, ctx: ShopCtx, input: unknown, opts:
       const n = await tx.agentAccount.updateMany({ where: { tenantId: g.tenantId, id: row.id, status: row.status, ...(expected ? { updatedAt: expected } : {}) }, data: upd });
       if (n.count !== 1) {
         const cur = await reloadStatus(tx, g.tenantId, row.id);
-        if (cur && replay(cur.status, cur.statusReason)) return { ok: true as const, agentAccountId: row.id, status: asStatus(cur.status), replayed: true };
+        if (cur && replay(cur.status, cur.statusReason)) return stale(cur.updatedAt) ? agencyFail("STALE", { reason: "STATE_CONFLICT" }) : { ok: true as const, agentAccountId: row.id, status: asStatus(cur.status), replayed: true };
         // สถานะยังเดิมแต่แถวถูกแก้/สมัครใหม่ระหว่างที่ร้านเปิดดู ⇒ ให้ร้านโหลดใหม่ก่อนตัดสิน
         return expected && cur && cur.status === row.status ? agencyFail("STALE", { reason: "STATE_CONFLICT" }) : agencyFail("BAD_STATE");
       }
@@ -997,7 +1025,7 @@ async function inviteReplay(db: Db | Tx, tenantId: string, key: string, bodyHash
 
 /**
  * เชิญเอเจนซี่ (§7.4) — EMAIL: INVITED identityId null + token (HMAC) + จดหมายลิงก์จาก origin แพลตฟอร์มคงที่ · ไม่อ่านตาราง global ·
- * CODE: rate limit (ผู้กระทำ) → หาตัวตนจากรหัสสาธารณะ (ไม่พบ/ไม่ ACTIVE = NOT_FOUND) → มีแถวที่ร้านนี้ = ALREADY_REGISTERED → คำเชิญค้างของตัวตน ≥ เพดาน = RATE_LIMITED ·
+ * CODE: rate limit (ผู้กระทำ) → หาตัวตนจากรหัสสาธารณะ (ไม่พบ/ไม่ ACTIVE = NOT_FOUND) → มีแถวที่ร้านนี้ = ALREADY_REGISTERED (เว้นคำเชิญที่เพิกถอน/หมดอายุ ⇒ เชิญใหม่บนแถวเดิม · r4) → คำเชิญค้างของตัวตน ≥ เพดาน = RATE_LIMITED ·
  * กันซ้ำด้วย idempotencyKey (ล็อก agency.invite.v1 · audit after.idem/body ย้อน 24 ชม.)
  */
 export async function inviteAgent(ctx: ShopCtx, input: InviteAgentInput, opts: AgencyOpts = {}): Promise<InviteResult> {
@@ -1025,24 +1053,28 @@ export async function inviteAgent(ctx: ShopCtx, input: InviteAgentInput, opts: A
     const early = await inviteReplay(g.db, tenantId, key, bodyHash, now);
     if (early) return early;
     let identityId: string | null = null;
+    let reuseId: string | null = null;
     if (v.mode === "CODE") {
       const rl = await bucket(opts.deps, "agent:lookup:", `${tenantId}:${g.userId}`, AGENT_AUTH_LIMITS.lookupByCodePerActor, now);
       if (rl) return rl;
       const ident = await findAgentIdentityByCode(publicCode ?? "");
       if (!ident || ident.status !== "ACTIVE") return agencyFail("NOT_FOUND");
       identityId = ident.id;
-      if (await g.db.agentAccount.findFirst({ where: { tenantId, identityId }, select: { id: true } })) return agencyFail("ALREADY_REGISTERED");
+      // r4 (มติ §12 ข้อ 2): มีแถวของตัวตนนี้ = ALREADY_REGISTERED เว้นแต่เป็นคำเชิญที่ถูกเพิกถอน/หมดอายุ ⇒ เชิญใหม่บนแถวเดิม
+      const prev = await g.db.agentAccount.findFirst({ where: { tenantId, identityId }, select: { id: true, status: true, statusReason: true, inviteExpiresAt: true } });
+      if (prev && !canReinviteByCode(prev, now)) return agencyFail("ALREADY_REGISTERED");
+      reuseId = prev?.id ?? null;
       if ((await countOpenCodeInvitesOfIdentity(identityId, now)) >= AGENT_AUTH_LIMITS.openCodeInvitesPerIdentity) return agencyFail("RATE_LIMITED", { retryAfterSec: 3600 });
     }
     if (!(await unitsValid(g.db, tenantId, unitIds))) return agencyFail("VALIDATION");
-    if (code && (await g.db.agentAccount.findFirst({ where: { tenantId, code }, select: { id: true } }))) return agencyFail("CODE_TAKEN");
+    if (code && (await g.db.agentAccount.findFirst({ where: { tenantId, code, ...(reuseId ? { id: { not: reuseId } } : {}) }, select: { id: true } }))) return agencyFail("CODE_TAKEN");
     if (email) {
       // r2 (มติ §10 ข้อ 3): เพดานจดหมายเชิญของร้าน — ต่ออีเมลปลายทางต่อร้าน/วัน → ต่อร้าน/วัน (รวมออกใหม่) · ตัวจำกัดล้ม = ปฏิเสธ · ก่อนสร้าง Party/แถว
       const rl = await shopInviteMailBuckets(opts.deps, tenantId, email, now);
       if (rl) return rl;
     }
-    const party = await import("@/lib/modules/party");
-    const partyId = (await party.findOrCreate(tenantId, { name: legalName, kind: partyKindOf(v.payeeType) })).id;
+    // เชิญใหม่บนแถวเดิม ⇒ ใช้ Party ของแถวนั้น (ไม่สร้าง Party ใหม่)
+    const partyId: string | null = reuseId ? null : (await (await import("@/lib/modules/party")).findOrCreate(tenantId, { name: legalName, kind: partyKindOf(v.payeeType) })).id;
     const id = newAgentRowId("aa_");
     const inviteExpiresAt = new Date(now.getTime() + AGENT_AUTH_LIMITS.shopInviteTtlDays * DAY_MS);
     const token = v.mode === "EMAIL" ? shopInviteToken(tenantId, id, inviteExpiresAt) : null;
@@ -1058,9 +1090,21 @@ export async function inviteAgent(ctx: ShopCtx, input: InviteAgentInput, opts: A
       if (again) return again;
       if (identityId) {
         if (!(await agentIdentityActiveInTx(tx, identityId))) return agencyFail("NOT_FOUND");
-        if (await tx.agentAccount.findFirst({ where: { tenantId, identityId }, select: { id: true } })) return agencyFail("ALREADY_REGISTERED");
+        const cur = await tx.agentAccount.findFirst({ where: { tenantId, identityId }, select: { id: true, status: true, statusReason: true, inviteExpiresAt: true, updatedAt: true, contact: true } });
+        if (cur && !canReinviteByCode(cur, now)) return agencyFail("ALREADY_REGISTERED");
         if ((await countOpenCodeInvitesOfIdentityInTx(tx, identityId, now)) >= AGENT_AUTH_LIMITS.openCodeInvitesPerIdentity) return agencyFail("RATE_LIMITED", { retryAfterSec: 3600 });
+        if (cur) {
+          // r4 (มติ §12 ข้อ 2): เชิญใหม่ด้วยรหัสหลังเพิกถอน/หมดอายุ — แถวเดิมกลับเป็น INVITED ด้วยข้อมูลของคำเชิญใหม่ (CAS updatedAt · คง code เดิมถ้าร้านไม่ส่งใหม่ · คง Party)
+          const n = await tx.agentAccount.updateMany({
+            where: { tenantId, id: cur.id, status: cur.status, updatedAt: cur.updatedAt },
+            data: { status: "INVITED", statusReason: null, legalName, payeeType: v.payeeType, unitIds, ...(code ? { code } : {}), contact: { email: null, source: "SHOP", ...applicantTagFields(cur.contact, null) }, inviteExpiresAt, inviteTokenHash: null },
+          });
+          if (n.count !== 1) return stop("BUSY", "RACE");
+          await auditInTx(tx, { tenantId, actorType: "USER", actorId: g.userId, action: "agency.account.invite", targetId: cur.id, after: { from: cur.status, to: "INVITED", actorKind: "SHOP", idem: key, body: bodyHash } });
+          return { ok: true, agentAccountId: cur.id, status: "INVITED", inviteToken: null, inviteExpiresAt: inviteExpiresAt.toISOString(), replayed: false };
+        }
       }
+      if (!partyId) return stop("BUSY", "RACE");
       const shopCode = code ?? (await uniqueShopCodeInTx(tx, tenantId));
       await tx.agentAccount.create({
         data: {
