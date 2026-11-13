@@ -149,15 +149,19 @@ export async function findAgentIdentityByCode(publicCode: string): Promise<Agent
   return r ? toPublic(r) : null;
 }
 
-/** หาผู้ใช้จากวิธีล็อกอิน (normalize ก่อน · อีเมลตัวใหญ่ = ตัวเดิม) · ไม่พบ/ผิดรูป ⇒ null */
+/**
+ * หาผู้ใช้ที่ล็อกอินได้จากวิธีล็อกอิน (normalize ก่อน · อีเมลตัวใหญ่ = ตัวเดิม)
+ * r1 (ผลตรวจ m8) ▸ คืนเฉพาะผู้ใช้ ACTIVE ที่ตัวตน ACTIVE (status = "ACTIVE" เสมอ) — DISABLED/ERASED/ตัวตนไม่ ACTIVE/ไม่พบ/ผิดรูป ⇒ null
+ *   (ผู้เรียกลืมตรวจสถานะไม่ได้) ◂
+ */
 export async function agentUserByLogin(login: AgentLoginInput): Promise<{ agentUserId: string; identityId: string; role: AgentRole; status: string } | null> {
   const n = normalizeAgentLogin(login);
   if (!n) return null;
   const l = await prisma.agentLogin.findUnique({ where: { kind_providerId_subject: { kind: n.kind, providerId: n.providerId, subject: n.subject } }, select: { agentUserId: true } });
   if (!l) return null;
-  const u = await prisma.agentUser.findUnique({ where: { id: l.agentUserId }, select: { id: true, identityId: true, role: true, status: true } });
-  if (!u || !isRole(u.role)) return null;
-  return { agentUserId: u.id, identityId: u.identityId, role: u.role, status: u.status };
+  const who = await loadActor(l.agentUserId);
+  if (!who) return null;
+  return { agentUserId: who.id, identityId: who.identityId, role: who.role, status: ACTIVE };
 }
 
 /** แก้ชื่อแสดงของตัวตน — OWNER เท่านั้น */

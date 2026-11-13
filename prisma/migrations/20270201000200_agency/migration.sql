@@ -11,27 +11,6 @@
 
 SET lock_timeout = '5s';
 
--- AlterTable
-ALTER TABLE "SellBasket" ADD COLUMN     "holdIdempotencyKey" TEXT,
-ADD COLUMN     "holdRequestHash" TEXT;
-
--- AlterTable
-ALTER TABLE "TripPickupZone" ADD COLUMN     "active" BOOLEAN,
-ADD COLUMN     "areas" JSONB,
-ADD COLUMN     "basis" TEXT,
-ADD COLUMN     "kind" TEXT,
-ADD COLUMN     "nameEn" TEXT,
-ADD COLUMN     "windowMin" INTEGER;
-
--- AlterTable
-ALTER TABLE "TripBooking" ADD COLUMN     "agentRef" TEXT,
-ADD COLUMN     "voucherOptions" JSONB;
-
--- AlterTable
-ALTER TABLE "TripMoneyEvent" ADD COLUMN     "receivedAt" TIMESTAMP(3),
-ADD COLUMN     "refEventId" TEXT,
-ADD COLUMN     "reference" TEXT;
-
 -- CreateTable
 CREATE TABLE "AgentIdentity" (
     "id" TEXT NOT NULL,
@@ -911,12 +890,6 @@ CREATE INDEX "TripPassengerLink_expiresAt_idx" ON "TripPassengerLink"("expiresAt
 -- CreateIndex
 CREATE UNIQUE INDEX "TripPassengerLink_tokenHash_key" ON "TripPassengerLink"("tokenHash");
 
--- CreateIndex
-CREATE INDEX "TripMoneyEvent_tenantId_unitId_createdAt_idx" ON "TripMoneyEvent"("tenantId", "unitId", "createdAt");
-
--- CreateIndex
-CREATE INDEX "TripMoneyEvent_tenantId_unitId_receivedAt_idx" ON "TripMoneyEvent"("tenantId", "unitId", "receivedAt");
-
 
 
 -- ═════════════════════════ SQL มือ (ใบสั่ง A1.1 §3 ข้อ 3 · CC §B.0) — 🔴 ห้ามลบ · Prisma ประกาศ CHECK/partial/NULLS NOT DISTINCT/trigger ไม่ได้ ═════════════════════════
@@ -965,8 +938,6 @@ ALTER TABLE "TripSupplierRequest" ADD CONSTRAINT "TripSupplierRequest_status_che
 ALTER TABLE "TripSupplierPayable" ADD CONSTRAINT "TripSupplierPayable_status_check" CHECK ("status" IN ('ACCRUED', 'BILLED', 'PAID', 'VOID'));
 ALTER TABLE "TripPassengerLink" ADD CONSTRAINT "TripPassengerLink_purpose_check" CHECK ("purpose" IN ('PAX_FORM'));
 ALTER TABLE "TripPassengerLink" ADD CONSTRAINT "TripPassengerLink_issuedByKind_check" CHECK ("issuedByKind" IN ('STAFF', 'AGENT', 'SYSTEM'));
-ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_kind_check" CHECK ("kind" IS NULL OR "kind" IN ('ZONE', 'SELF'));
-ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_basis_check" CHECK ("basis" IS NULL OR "basis" IN ('PER_BOOKING'));
 
 -- CHECK ตัวเลข (ใบสั่ง §3.2 · ชื่อ "<Table>_<col>_check" · nullable = IS NULL OR …) — >= 0
 ALTER TABLE "AgentLoginCode" ADD CONSTRAINT "AgentLoginCode_attempts_check" CHECK ("attempts" >= 0);
@@ -1030,8 +1001,7 @@ ALTER TABLE "AgentCommissionPayout" ADD CONSTRAINT "AgentCommissionPayout_whtRat
 ALTER TABLE "TripSupplierCost" ADD CONSTRAINT "TripSupplierCost_valueBp_check" CHECK ("valueBp" IS NULL OR ("valueBp" >= 0 AND "valueBp" <= 10000));
 -- ช่วงอื่น
 ALTER TABLE "AgentWebhookDelivery" ADD CONSTRAINT "AgentWebhookDelivery_responseCode_check" CHECK ("responseCode" IS NULL OR ("responseCode" >= 100 AND "responseCode" <= 599));
-ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_windowMin_check" CHECK ("windowMin" IS NULL OR ("windowMin" >= 0 AND "windowMin" <= 720));
-ALTER TABLE "AgentCommission" ADD CONSTRAINT "AgentCommission_clawbackSatang_check" CHECK ("clawbackSatang" >= 0 AND "clawbackSatang" <= "commissionSatang" + "vatSatang");
+ALTER TABLE "AgentCommission" ADD CONSTRAINT "AgentCommission_clawbackSatang_check" CHECK ("clawbackSatang" >= 0 AND "clawbackSatang"::bigint <= "commissionSatang"::bigint + "vatSatang"::bigint);
 
 -- CHECK ข้ามคอลัมน์ (ใบสั่ง §3.3 · ชื่อตรงตัว · แต่ละตัวตั้งให้แถวที่ผิด "ข้อเดียว" ไม่ชนข้ออื่น)
 ALTER TABLE "AgentIdentity" ADD CONSTRAINT "AgentIdentity_publicCode_format_check" CHECK ("publicCode" ~ '^AG-[23456789ABCDEFGHJKMNPQRSTVWXYZ]{6}$');
@@ -1059,7 +1029,7 @@ ALTER TABLE "AgentLink" ADD CONSTRAINT "AgentLink_product_check" CHECK (("produc
 ALTER TABLE "AgentLink" ADD CONSTRAINT "AgentLink_code_check" CHECK ("code" ~ '^[A-Za-z0-9_-]{2,32}$');
 ALTER TABLE "AgentMediaAsset" ADD CONSTRAINT "AgentMediaAsset_product_check" CHECK (("productKind" IS NULL) = ("productId" IS NULL));
 ALTER TABLE "AgentStopSell" ADD CONSTRAINT "AgentStopSell_window_check" CHECK ("to" IS NULL OR "to" > "from");
-ALTER TABLE "AgentAllotment" ADD CONSTRAINT "AgentAllotment_counters_check" CHECK ("used" + "held" + "returnedToPublic" <= "qty");
+ALTER TABLE "AgentAllotment" ADD CONSTRAINT "AgentAllotment_counters_check" CHECK ("used"::bigint + "held"::bigint + "returnedToPublic"::bigint <= "qty");
 ALTER TABLE "AgentAllotment" ADD CONSTRAINT "AgentAllotment_released_check" CHECK (("releasedAt" IS NULL) = ("releasedQty" IS NULL));
 ALTER TABLE "AgentLedgerEntry" ADD CONSTRAINT "AgentLedgerEntry_currency_check" CHECK ("currency" = 'THB');
 -- เครื่องหมาย: บวก = CHARGE CHARGE_PASS_THROUGH WHT_GROSSUP COMMISSION_PAID WHT_WITHHELD COMMISSION_CLAWBACK REFUND_TO_AGENT · ลบ = COMMISSION_NETTED COMMISSION_VAT PAYMENT WALLET_TOPUP COMMISSION_EARNED · CANCELLATION/ADJUSTMENT ไม่บังคับ (≠ 0) · ไม่ลงยอด 0
@@ -1078,16 +1048,12 @@ ALTER TABLE "AgentApiKey" ADD CONSTRAINT "AgentApiKey_last4_check" CHECK (char_l
 ALTER TABLE "TripSupplierCost" ADD CONSTRAINT "TripSupplierCost_value_check" CHECK (("mode" <> 'NET' OR "valueMinor" IS NOT NULL) AND ("mode" <> 'PCT_OF_RETAIL' OR "valueBp" IS NOT NULL));
 ALTER TABLE "TripSupplierPayable" ADD CONSTRAINT "TripSupplierPayable_paid_check" CHECK ("paidSatang" <= "amountSatang");
 -- ตารางเดิม (คอลัมน์ใหม่ nullable ⇒ แถวเดิมผ่าน)
-ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_v2_check" CHECK ("kind" IS NULL OR ("windowMin" IS NOT NULL AND "active" IS NOT NULL AND "basis" IS NOT NULL));
-ALTER TABLE "TripBooking" ADD CONSTRAINT "TripBooking_agentRef_check" CHECK ("agentRef" IS NULL OR char_length("agentRef") BETWEEN 1 AND 64);
-ALTER TABLE "SellBasket" ADD CONSTRAINT "SellBasket_holdKey_pair_check" CHECK (("holdIdempotencyKey" IS NULL) = ("holdRequestHash" IS NULL));
 
 -- UNIQUE NULLS NOT DISTINCT (PG ≥ 15) — 🔴 `prisma migrate diff` เสนอ DROP ทั้งสองตัวเสมอ ห้ามรับ (มติ R7)
 CREATE UNIQUE INDEX "AgentRate_dims_key" ON "AgentRate"("rateCardId", "productKind", "productId", "optionId", "paxTypeId", "cabinTypeId", "bookFrom", "travelFrom") NULLS NOT DISTINCT;
 CREATE UNIQUE INDEX "TripSupplierCost_dims_key" ON "TripSupplierCost"("supplierId", "productId", "optionId", "paxTypeId", "travelFrom") NULLS NOT DISTINCT;
 
 -- partial unique: กุญแจถือที่ของตะกร้า (หนี้ T0.6 R12) · ใบแจ้งยอดต่อ (เอเจนซี่, งวด) ไม่นับใบ VOID (มติ R1)
-CREATE UNIQUE INDEX "SellBasket_tenantId_holdIdempotencyKey_key" ON "SellBasket"("tenantId", "holdIdempotencyKey") WHERE "holdIdempotencyKey" IS NOT NULL;
 CREATE UNIQUE INDEX "AgentStatement_agentAccountId_periodKey_key" ON "AgentStatement"("agentAccountId", "periodKey") WHERE "status" <> 'VOID';
 
 -- partial index: คำขอหมดอายุที่ไม่มี hold (TC5) · โควตาที่ยังไม่คืน · webhook ที่ต้องส่งซ้ำ
@@ -1096,25 +1062,29 @@ CREATE INDEX "AgentAllotment_releaseAt_open_idx" ON "AgentAllotment"("releaseAt"
 CREATE INDEX "AgentWebhookDelivery_nextAttemptAt_open_idx" ON "AgentWebhookDelivery"("nextAttemptAt") WHERE "status" IN ('PENDING', 'FAILED');
 
 -- ดัชนีเส้นทางร้อน (มติผู้คุม R9 · DESIGN-REVIEW O4 · trips ไม่มี migration อีกจน L1.1) — ส่วน partial (ที่เหลือของ O4 ประกาศเป็น @@index ใน schema)
-CREATE INDEX "TripHold_agentAccountId_active_idx" ON "TripHold"("agentAccountId") WHERE "status" = 'ACTIVE' AND "agentAccountId" IS NOT NULL;
 CREATE INDEX "AgentStopSell_tenantId_productKind_productId_open_idx" ON "AgentStopSell"("tenantId", "productKind", "productId") WHERE "liftedAt" IS NULL;
 CREATE INDEX "AgentStatement_dueAt_open_idx" ON "AgentStatement"("dueAt") WHERE "status" IN ('ISSUED', 'PARTIAL');
 CREATE INDEX "TripSupplierPayable_dueAt_open_idx" ON "TripSupplierPayable"("dueAt") WHERE "status" IN ('ACCRUED', 'BILLED');
 
 -- สมุดเอเจนซี่ต่อท้ายอย่างเดียว (ใบสั่ง §3.4 · CC §I.2 · มติ R1) — ป้องกันบั๊ก ไม่ใช่ผู้ประสงค์ร้าย (role ของแอปเป็นเจ้าของตาราง)
 --   เทียบทั้งแถว ⇒ คอลัมน์ในอนาคตถูกคุมอัตโนมัติ (ห้ามเพิ่มคอลัมน์ json ในตารางนี้) · ไม่ guard TRUNCATE · Prisma ไม่เห็น trigger ⇒ ไม่เกิด drift
-CREATE FUNCTION "agent_ledger_entry_guard"() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE n "AgentLedgerEntry";
+--   r1: search_path ตรึง pg_catalog, public + อ้างตาราง/ชนิดแบบ public."…" (แบบฟังก์ชัน plpgsql อื่นของ repo) · ผูก/ย้าย statementId ได้เฉพาะใบที่ agentAccountId + tenantId ตรงกับรายการ
+CREATE FUNCTION "agent_ledger_entry_guard"() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+DECLARE n public."AgentLedgerEntry";
 BEGIN
   IF TG_OP = 'DELETE' THEN
     IF current_setting('shark.ledger_purge', true) = 'on' THEN RETURN OLD; END IF;                 -- ล้างฐาน QC (SET LOCAL ใน tx)
-    IF EXISTS (SELECT 1 FROM "Tenant" t WHERE t."id" = OLD."tenantId" AND t."status" = 'PENDING_DELETE') THEN RETURN OLD; END IF;  -- platform/pdpa.ts purgeTenantRows
+    IF EXISTS (SELECT 1 FROM public."Tenant" t WHERE t."id" = OLD."tenantId" AND t."status" = 'PENDING_DELETE') THEN RETURN OLD; END IF;  -- platform/pdpa.ts purgeTenantRows
     RAISE EXCEPTION 'AGENT_LEDGER_APPEND_ONLY' USING ERRCODE = '23001';
+  END IF;
+  IF NEW."statementId" IS NOT NULL AND NEW."statementId" IS DISTINCT FROM OLD."statementId"
+     AND NOT EXISTS (SELECT 1 FROM public."AgentStatement" s WHERE s."id" = NEW."statementId" AND s."agentAccountId" = OLD."agentAccountId" AND s."tenantId" = OLD."tenantId") THEN
+    RAISE EXCEPTION 'AGENT_LEDGER_APPEND_ONLY' USING ERRCODE = '23001';                            -- ผูก/ย้ายได้เฉพาะใบของบัญชีและร้านเดียวกัน (r1)
   END IF;
   n := NEW;
   IF OLD."statementId" IS NULL THEN n."statementId" := OLD."statementId";                         -- ผูกใบครั้งแรก
   ELSIF NEW."statementId" IS DISTINCT FROM OLD."statementId"
-        AND EXISTS (SELECT 1 FROM "AgentStatement" s WHERE s."id" = OLD."statementId" AND s."status" = 'VOID') THEN
+        AND EXISTS (SELECT 1 FROM public."AgentStatement" s WHERE s."id" = OLD."statementId" AND s."status" = 'VOID') THEN
     n."statementId" := OLD."statementId";                                                        -- ใบเดิม VOID ⇒ ย้าย/ปลดได้
   END IF;
   IF OLD."settledAt" IS NULL THEN n."settledAt" := OLD."settledAt"; END IF;                       -- ตั้งครั้งเดียว (หักกลบ)
@@ -1124,5 +1094,33 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER "AgentLedgerEntry_append_only" BEFORE UPDATE OR DELETE ON "AgentLedgerEntry" FOR EACH ROW EXECUTE FUNCTION "agent_ledger_entry_guard"();
+
+-- ═════════════════════════ ตารางเดิม (r1 · ย้ายมาท้ายไฟล์: ล็อกบนตารางที่มีข้อมูลถือสั้นที่สุดก่อน commit) ═════════════════════════
+-- ADD COLUMN nullable ไม่มี default (metadata อย่างเดียว) · CHECK อ่านเฉพาะคอลัมน์ใหม่ ⇒ แถวเดิม (NULL) ผ่าน · ดัชนี TripMoneyEvent ×2 · SellBasket partial unique · TripHold partial (O4)
+ALTER TABLE "SellBasket" ADD COLUMN     "holdIdempotencyKey" TEXT,
+ADD COLUMN     "holdRequestHash" TEXT;
+ALTER TABLE "TripPickupZone" ADD COLUMN     "active" BOOLEAN,
+ADD COLUMN     "areas" JSONB,
+ADD COLUMN     "basis" TEXT,
+ADD COLUMN     "kind" TEXT,
+ADD COLUMN     "nameEn" TEXT,
+ADD COLUMN     "windowMin" INTEGER;
+ALTER TABLE "TripBooking" ADD COLUMN     "agentRef" TEXT,
+ADD COLUMN     "voucherOptions" JSONB;
+ALTER TABLE "TripMoneyEvent" ADD COLUMN     "receivedAt" TIMESTAMP(3),
+ADD COLUMN     "refEventId" TEXT,
+ADD COLUMN     "reference" TEXT;
+
+ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_kind_check" CHECK ("kind" IS NULL OR "kind" IN ('ZONE', 'SELF'));
+ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_basis_check" CHECK ("basis" IS NULL OR "basis" IN ('PER_BOOKING'));
+ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_windowMin_check" CHECK ("windowMin" IS NULL OR ("windowMin" >= 0 AND "windowMin" <= 720));
+ALTER TABLE "TripPickupZone" ADD CONSTRAINT "TripPickupZone_v2_check" CHECK ("kind" IS NULL OR ("windowMin" IS NOT NULL AND "active" IS NOT NULL AND "basis" IS NOT NULL));
+ALTER TABLE "TripBooking" ADD CONSTRAINT "TripBooking_agentRef_check" CHECK ("agentRef" IS NULL OR char_length("agentRef") BETWEEN 1 AND 64);
+ALTER TABLE "SellBasket" ADD CONSTRAINT "SellBasket_holdKey_pair_check" CHECK (("holdIdempotencyKey" IS NULL) = ("holdRequestHash" IS NULL));
+
+CREATE INDEX "TripMoneyEvent_tenantId_unitId_createdAt_idx" ON "TripMoneyEvent"("tenantId", "unitId", "createdAt");
+CREATE INDEX "TripMoneyEvent_tenantId_unitId_receivedAt_idx" ON "TripMoneyEvent"("tenantId", "unitId", "receivedAt");
+CREATE UNIQUE INDEX "SellBasket_tenantId_holdIdempotencyKey_key" ON "SellBasket"("tenantId", "holdIdempotencyKey") WHERE "holdIdempotencyKey" IS NOT NULL;
+CREATE INDEX "TripHold_agentAccountId_active_idx" ON "TripHold"("agentAccountId") WHERE "status" = 'ACTIVE' AND "agentAccountId" IS NOT NULL;
 
 RESET lock_timeout;

@@ -418,7 +418,7 @@ function permissionIssue(actor: SettingsActor, def: SettingDef, scope: ScopeKind
   if (isOwnerOnly(def) && actor.role !== "OWNER") {
     return { key: def.key, code: "OWNER_ONLY", messageTh: `«${def.labelTh}» แก้ได้เฉพาะเจ้าของกิจการ` };
   }
-  if (scope === "TENANT" && !isUnrestricted(actor)) {
+  if ((scope === "TENANT" || scope === "AGENT_TIER" || scope === "AGENT") && !isUnrestricted(actor)) { // TRIPS A1.1 r1 ▸ ชั้นเอเจนซี่ = ระดับทั้งร้าน (ไม่มีหน่วย) ◂
     return { key: def.key, code: "TENANT_SCOPE_FORBIDDEN", messageTh: `ค่าระดับทั้งร้านของ «${def.labelTh}» แก้ได้เฉพาะเจ้าของหรือผู้ดูแลทุกสาขา` };
   }
   const module = def.editPermission.split(".")[0];

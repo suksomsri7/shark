@@ -633,11 +633,12 @@ chk(
 
 // TRIPS A1.1 ▸ F17 — ตาราง global ของตัวตนเอเจนซี่ (AgentIdentity · AgentUser · AgentLogin · AgentLoginCode · AgentSession) ไม่มี tenantId
 //   และ tenantDb ไม่กรองแกน global ⇒ อ้างได้เฉพาะทางเข้าที่ใบสั่ง A1.1 §5.3 ระบุตรงตัว (มติผู้คุม R5) · ไฟล์อื่นอ้าง = แถวข้ามร้าน/ข้อมูลเอเจนซี่รั่ว
-//   สแกนทุกไฟล์ src/**/*.{ts,tsx} หลังตัดคอมเมนต์ · จับ `.agentIdentity` (delegate ของ client) และ "AgentIdentity" (ชื่อโมเดลในสตริง เช่น $queryRaw/scopeOf)
+//   สแกนทุกไฟล์ src/**/*.{ts,tsx} หลังตัดคอมเมนต์ · r1 (ผลตรวจ m4): delegate ผ่าน `.x` · `["x"]`/`['x']` · destructuring `{ x } = …`
+//   ชื่อโมเดลจับเฉพาะบริบท SQL/ทะเบียน (FROM/JOIN/INTO/UPDATE/TABLE "X" · Prisma.ModelName.X · scopeOf("X")) ⇒ สตริงทั่วไปเช่น AuditLog.targetType "AgentUser" ไม่ถูกจับ
 {
   const F17_ALLOWED = new Set(["src/lib/modules/agency/entry.ts", "src/lib/platform/agent-auth.ts"]);
-  const F17_DELEGATE_RE = /\.(agentIdentity|agentUser|agentLogin|agentLoginCode|agentSession)\b/;
-  const F17_NAME_RE = /"(AgentIdentity|AgentUser|AgentLogin|AgentLoginCode|AgentSession)"/;
+  const F17_DELEGATE_RE = /(\.|\[\s*["'`])(agentIdentity|agentUser|agentLogin|agentLoginCode|agentSession)\b|\{[^}]*\b(agentIdentity|agentUser|agentLogin|agentLoginCode|agentSession)\b[^}]*\}\s*=\s*\w+/;
+  const F17_NAME_RE = /\b(FROM|JOIN|INTO|UPDATE|TABLE|from|join|into|update|table)\s+(\w+\.)?["'`]?(AgentIdentity|AgentUser|AgentLogin|AgentLoginCode|AgentSession)\b|ModelName(\.|\[\s*["'`])(AgentIdentity|AgentUser|AgentLogin|AgentLoginCode|AgentSession)\b|scopeOf\(\s*["'`](AgentIdentity|AgentUser|AgentLogin|AgentLoginCode|AgentSession)["'`]/;
   const f17Strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
   const f17Bad: string[] = [];
   for (const f of walk(join(ROOT, "src"), (p) => p.endsWith(".ts") || p.endsWith(".tsx"))) {

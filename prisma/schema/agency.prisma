@@ -342,7 +342,7 @@ model AgentAllotmentBlock {
 }
 
 // โควตาต่อรอบ · SQL มือ: AgentAllotment_releaseAt_open_idx ("releaseAt") WHERE "releasedAt" IS NULL · AgentAllotment_productKind_check · ตัวเลข >= 0
-//   AgentAllotment_counters_check (used + held + returnedToPublic <= qty) · AgentAllotment_released_check
+//   AgentAllotment_counters_check (used + held + returnedToPublic <= qty · คิดแบบ bigint) · AgentAllotment_released_check
 model AgentAllotment {
   id               String    @id @default(cuid())
   tenantId         String
@@ -446,7 +446,8 @@ model AgentMediaAsset {
 // ═════════════ 2.3 เงินเอเจนซี่ — แกน tenant (CC §I) ═════════════
 
 // 🔴 ต่อท้ายอย่างเดียว — SQL มือ: trigger AgentLedgerEntry_append_only BEFORE UPDATE OR DELETE (ฟังก์ชัน agent_ledger_entry_guard · มติ R1)
-//   ปฏิเสธ UPDATE/DELETE (23001 AGENT_LEDGER_APPEND_ONLY) ยกเว้น: ผูก statementId ครั้งแรก · ย้าย/ปลด statementId เมื่อใบเดิม VOID ·
+//   ปฏิเสธ UPDATE/DELETE (23001 AGENT_LEDGER_APPEND_ONLY) ยกเว้น: ผูก statementId ครั้งแรก · ย้าย/ปลด statementId เมื่อใบเดิม VOID
+//   (ผูก/ย้ายได้เฉพาะใบที่ agentAccountId + tenantId ตรงกับรายการ · ฟังก์ชันตรึง search_path = pg_catalog, public) ·
 //   ตั้ง settledAt / whtCertDocId / accountDocId จาก null ครั้งเดียว · DELETE เมื่อ GUC shark.ledger_purge = 'on' หรือร้าน PENDING_DELETE
 //   ฟังก์ชันเทียบทั้งแถว ⇒ 🔴 ห้ามเพิ่มคอลัมน์ Json ในตารางนี้ (json ไม่มีตัวเทียบเท่า) · ไม่มี updatedAt
 //   CHECK: AgentLedgerEntry_kind_check · _bookingKind_check · _seq_check (>= 1) · AgentLedgerEntry_currency_check · AgentLedgerEntry_sign_check
@@ -545,7 +546,7 @@ model AgentStatement {
 }
 
 // คอมมิชชันต่อการจอง (int4 · OQ19) · SQL มือ: AgentCommission_bookingKind_check · _status_check · _settleMode_check · _whtMode_check · ตัวเลข
-//   AgentCommission_clawbackSatang_check (0 ≤ x ≤ commission + vat) · AgentCommission_wht_check · AgentCommission_currency_check
+//   AgentCommission_clawbackSatang_check (0 ≤ x ≤ commission + vat · คิดแบบ bigint) · AgentCommission_wht_check · AgentCommission_currency_check
 model AgentCommission {
   id               String    @id @default(cuid())
   tenantId         String

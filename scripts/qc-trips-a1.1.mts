@@ -965,7 +965,11 @@ try {
   });
   await st("L-4", "statementId: null → ค่า ได้ · เปลี่ยน (ใบเดิมไม่ VOID) ⇒ 23001 · ค่าเดิมซ้ำได้ · กลับ null ⇒ 23001", async () => {
     needLedger();
-    eq(await codes([upd(`"statementId" = 'st1'`), upd(`"statementId" = 'st2'`), upd(`"statementId" = 'st1'`), upd(`"statementId" = NULL`)]), ["", "23001", "", "23001"], "รหัส");
+    // ORACLE-EDIT L-4 (ผู้คุม 13 พ.ย.): รอบแก้ F6 — ผูกได้เฉพาะใบแจ้งยอดของบัญชี+ร้านเดียวกัน ⇒ สร้างใบจริงสองใบของบัญชีนี้ก่อน · เพิ่ม: ใบของบัญชีอื่น ⇒ 23001
+    const acc4 = String((await q<{ agentAccountId: string }>(`SELECT "agentAccountId" FROM "AgentLedgerEntry" WHERE id = $1`, [ledgerId]))[0]?.agentAccountId);
+    const st1 = rid("st"), st2 = rid("st"), stX = rid("st");
+    await ins("AgentStatement", stRowOf({ id: st1, agentAccountId: acc4 })); await ins("AgentStatement", stRowOf({ id: st2, agentAccountId: acc4 })); await ins("AgentStatement", stRowOf({ id: stX }));
+    eq(await codes([upd(`"statementId" = '${stX}'`), upd(`"statementId" = '${st1}'`), upd(`"statementId" = '${st2}'`), upd(`"statementId" = '${st1}'`), upd(`"statementId" = NULL`)]), ["23001", "", "23001", "", "23001"], "รหัส");
   });
   await st("L-5", "settledAt · whtCertDocId · accountDocId: null → ค่า ได้ครั้งเดียว · เปลี่ยนซ้ำ ⇒ 23001 · พ่วงคอลัมน์อื่น ⇒ 23001", async () => {
     needLedger();
@@ -995,7 +999,11 @@ try {
     const id = rid("ple");
     await (d.create as AnyFn).call(d, { data: { id, ...valid("AgentLedgerEntry", tA, uA), idempotencyKey: `prisma:${STAMP}` } });
     const u = (data: Rec) => pErr(() => (d.update as AnyFn).call(d, { where: { id }, data }) as Promise<unknown>);
-    eq([await u({ amountSatang: 1 }), await u({ statementId: "stP1" }), await u({ accountDocId: "docP1" }), await u({ statementId: "stP2" }), await u({ accountDocId: "docP2" }), await u({ statementId: "stP1" }), await u({ kind: "CHARGE" })],
+    // ORACLE-EDIT L-8 (ผู้คุม 13 พ.ย.): รอบแก้ F6 — ใบแจ้งยอดต้องมีจริงและเป็นของบัญชีเดียวกัน
+    const acc8 = String((await q<{ agentAccountId: string }>(`SELECT "agentAccountId" FROM "AgentLedgerEntry" WHERE id = $1`, [id]))[0]?.agentAccountId);
+    const stP1 = rid("st"), stP2 = rid("st");
+    await ins("AgentStatement", stRowOf({ id: stP1, agentAccountId: acc8 })); await ins("AgentStatement", stRowOf({ id: stP2, agentAccountId: acc8 }));
+    eq([await u({ amountSatang: 1 }), await u({ statementId: stP1 }), await u({ accountDocId: "docP1" }), await u({ statementId: stP2 }), await u({ accountDocId: "docP2" }), await u({ statementId: stP1 }), await u({ kind: "CHARGE" })],
       ["APPEND_ONLY", "", "", "APPEND_ONLY", "APPEND_ONLY", "", ""], "ผล");
   });
   await st("L-9", "ใบแจ้งยอด VOID → ย้ายรายการไปใบใหม่งวดเดิม: ใบซ้ำงวด ⇒ 23505 · VOID ใบเดิม · ออกใบใหม่ · ย้าย statementId ได้ · ย้ายออกจากใบที่ไม่ VOID ⇒ 23001", async () => {
