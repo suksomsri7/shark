@@ -5,9 +5,10 @@
 import { getLocale } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
-import { bankFileGet, isRouterFetch } from "@/lib/modules/hr/bank-files/download-route";
+import { bankFileGet, isRouterFetch, notGet, notGetResponse } from "@/lib/modules/hr/bank-files/download-route"; // HR H3.9 ▸ notGet ◂
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string; fileId: string }> }) {
+  if (notGet(req)) return notGetResponse(); // HR H3.9 fix r1 F2a ▸ HEAD = 405 ก่อนอ่านผู้ใช้ ◂
   if (isRouterFetch(req)) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
   const { id, fileId } = await params;
   const auth = await requireTenant();

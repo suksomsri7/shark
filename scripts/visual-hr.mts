@@ -104,6 +104,13 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   ],
   // HR H3.4 ▸ รอบจ่ายรุ่น 2 (ภาพ 06) — seed อยู่รุ่น 1 ⇒ ส่วน hr-run2 ไม่แสดงจนผู้ควบคุมเปิดรุ่น 2 (ต้องมีแถวกฎหมาย ACTIVE) + สร้างรอบก่อนถ่าย ·
   //   การ์ดรุ่นเครื่องบนหน้าตั้งค่า (เจ้าของแก้ · ผู้จัดการอ่าน) แสดงเสมอ ◂
+  // HR H3.9 ▸ รายงาน HR + ทะเบียนลูกจ้าง (ไม่มีแท็บใหม่ — เข้าจากภาพรวม) — เจ้าของ: ทะเบียน + การ์ดตั้งค่าเลขเต็ม · ผู้ดูเงินเดือน: เงินเดือนรายงวด ·
+  //   ผู้จัดการ: รายงานเวลา (ไม่มี ฿) · ผู้จัดการขอรายงานเงินเดือน = เห็นรายงานแรกที่เปิดได้แทน (ไม่มีชิปเงินเดือน) · 3 ขนาดจอตามชุดปกติ ◂
+  "3.9": [
+    { key: "report-register", path: (i) => `/app/sys/${i.hr}/hr/reports?report=register`, users: ["owner", "payroll"], why: "ทะเบียนลูกจ้าง: ตาราง · เลขประจำตัว •••4 · คำเตือนช่องว่าง · หมายเหตุ ม.112/115 · การ์ดเลขเต็ม (เจ้าของ) (H3.9 R10 R10b)" },
+    { key: "report-payroll", path: (i) => `/app/sys/${i.hr}/hr/reports?report=payroll-month&period=${i.today.slice(0, 7)}`, users: ["owner", "payroll", "manager"], why: "สรุปเงินเดือนรายงวด: ฿ มีตัวคั่น · แถวรวมจากแถวที่เห็น (ผู้จัดการ = ไม่มีชิปเงินเดือน) (H3.9 R4 R12)" },
+    { key: "report-time", path: (i) => `/app/sys/${i.hr}/hr/reports?report=time&period=${i.today.slice(0, 7)}`, users: ["owner", "manager-branch"], why: "รายงานเวลาทำงานรายเดือน (ภาพ 01 การ์ดเดือน) · ปุ่มไฟล์ CSV/Excel (H3.9 R12)" },
+  ],
   "3.4": [
     { key: "run2-engine", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-run2-engine`, users: ["owner", "manager"], why: "การ์ดรุ่นเครื่องคิดเงินเดือน + เพดานหัก ม.76 + ช่วงที่กฎหักสาย/ขาดมีผล (H3.4 R3)" },
     { key: "run2-run", path: (i) => `/app/sys/${i.hr}/hr/payroll?period=${i.today.slice(0, 7)}#hr-run2`, users: ["owner", "payroll", "manager-branch"], why: "รอบจ่ายรุ่น 2: ขั้น · ไทล์ · ตาราง + ที่มา · ต้องตรวจ · ยืนยันสาขา (ผู้จัดการ = นาทีเท่านั้น) (H3.4 06)" },

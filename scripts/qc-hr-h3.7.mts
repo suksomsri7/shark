@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import {
   type Any, type Base, type Sev, ROOT, rd, errText, short, canon, stripComments, loadOpt, modState, baseRef, diffHunks, fileAt, makeRegistry, qc4Env,
-  makeFixtures, cleanupFx, residueOf, vOf, fitnessNoEnv, importsOf, tagOf, srcFiles,
+  makeFixtures, cleanupFx, residueOf, vOf, fitnessNoEnv, importsOf, tagOf, srcFiles, commitInBase, pathInBase,
 } from "./qc-hr-lib.mjs";
 import {
   VEC, T, TX, type Amounts, type Row, type VItem, type VBound, oracleAmounts, oracleRows, rowsFrom, rowsEq, sumSide, vectorsSelfCheck,
@@ -116,7 +116,19 @@ if (!existsSync(join(ROOT, F.pure))) skipReasons.push(`${F.pure} absent (H3.7 no
 if (skipReasons.length && !FORCE) skipExit(skipReasons);
 const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") =>
   chk(id, Object.values(r).every(Boolean), exp, `${Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "all"}${extra ? ` ${extra}` : ""}`);
-const BASE = baseRef("QC_H37_BASE");
+// ORACLE-EDIT (H3.7 builder, merge of H3.9 · controller order): base-aware like qc-hr-h3.9 — session/hr may hold merges not pushed to origin yet; when
+//   merge-base(HEAD, session/hr) descends from the origin-derived base it is the newer base (an env override wins) ◂
+const BASE0 = baseRef("QC_H37_BASE");
+const LOCAL_MB = (() => {
+  try {
+    return execFileSync("git", ["merge-base", "HEAD", "session/hr"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+})();
+const BASE = !process.env.QC_H37_BASE && LOCAL_MB && LOCAL_MB !== BASE0 && (!BASE0 || commitInBase(BASE0, LOCAL_MB)) ? LOCAL_MB : BASE0;
+// in-base guard: once H3.7 itself is in the base, the "diff vs base" statics (S1.1 · S1.2 hunks · S1.3 · S1.6) have nothing of H3.7 left to judge ⇒ n/a (pass, noted)
+const H37_IN_BASE = !!BASE && pathInBase("src/lib/modules/hr/payroll-journal-rules.ts", BASE);
 const GROUP_FAIL: string[] = [];
 async function blk(ids: string[], fn: () => Promise<void> | void): Promise<void> {
   try {
@@ -162,13 +174,14 @@ function listChanged(dir: string): string[] {
 }
 function runStatic(): void {
   const gl = hunksMarked(F.gl, false);
-  ck("S1.1", { base: !!BASE, hunks: gl.any, marked: gl.all, additive: gl.removed === 0 }, "marked additive hunks", `removed=${gl.removed}`);
+  if (H37_IN_BASE) chk("S1.1", true, "marked additive hunks", "n/a — H3.7 in base");
+  else ck("S1.1", { base: !!BASE, hunks: gl.any, marked: gl.all, additive: gl.removed === 0 }, "marked additive hunks", `removed=${gl.removed}`);
   const cn = hunksMarked(F.conn, true);
   const ix = hunksMarked(F.idx, false);
   const idx = stripComments(rd(F.idx));
   const names = ["payrollBookOf", "linkPayrollBook", "ensurePayrollLedgersInTx", "postPayrollAccrualJV", "postPayrollPayJV", "payrollAccrualTemplate", "PAYROLL_ACCOUNTS"];
   const missing = names.filter((n) => !new RegExp(`\\b${n}\\b`).test(idx));
-  ck("S1.2", { conn: cn.any && cn.all, idx: ix.any && ix.all && ix.removed === 0, exports: missing.length === 0 }, "marked + exports", missing.join(","));
+  ck("S1.2", { conn: H37_IN_BASE || (cn.any && cn.all), idx: H37_IN_BASE || (ix.any && ix.all && ix.removed === 0), exports: missing.length === 0 }, "marked + exports", `${missing.join(",")}${H37_IN_BASE ? " (hunks n/a — H3.7 in base)" : ""}`);
   const changed = listChanged(A_);
   // ORACLE-EDIT (H3.7 builder · fix round 1): + account/journal-v2.ts (controller authorised ONE marked additive hunk — F3) · coa.ts may also hold one
   //   marked block (first added line carries "HR H3.7", last carries "◂ HR H3.7") for the payroll-mapping guard (F7)
@@ -180,7 +193,8 @@ function runStatic(): void {
   const coaOk = coaH.every((h) => (h.removed.length === 0 && h.added.every((l) => MARK.test(l) || /^\s*PAYROLL_[A-Z_]+: "/.test(l))) || block(h));
   const jvH = changed.includes(JV2) ? (diffHunks(BASE, JV2) ?? []) : [];
   const jvOk = jvH.length <= 1 && jvH.every((h) => h.removed.length === 0 && nb(h.added).every((l) => MARK.test(l)));
-  ck("S1.3", { subset: changed.every((f) => allowed.has(f)), coa: coaOk, journalV2: jvOk, some: [F.gl, F.conn, F.idx].some((f) => changed.includes(f)) }, "⊆ 4 files", changed.join(","));
+  if (H37_IN_BASE) chk("S1.3", true, "⊆ 4 files", "n/a — H3.7 in base");
+  else ck("S1.3", { subset: changed.every((f) => allowed.has(f)), coa: coaOk, journalV2: jvOk, some: [F.gl, F.conn, F.idx].some((f) => changed.includes(f)) }, "⊆ 4 files", changed.join(","));
   const hrFiles = srcFiles("src/lib/modules/hr").filter((f) => /\.(ts|tsx)$/.test(f));
   const badImp: string[] = [];
   const badTbl: string[] = [];
@@ -201,7 +215,8 @@ function runStatic(): void {
   const migNow = existsSync(join(ROOT, "prisma/migrations")) ? readdirSync(join(ROOT, "prisma/migrations")) : [];
   const migChanged = migNow.length ? listChanged("prisma/migrations") : ["(no migrations dir)"];
   const schemaChanged = listChanged("prisma/schema");
-  ck("S1.6", { mig: migChanged.length === 0, schema: schemaChanged.length === 0 }, "no migration", `${migChanged.join(",")} ${schemaChanged.join(",")}`);
+  if (H37_IN_BASE) chk("S1.6", true, "no migration", "n/a — H3.7 in base");
+  else ck("S1.6", { mig: migChanged.length === 0, schema: schemaChanged.length === 0 }, "no migration", `${migChanged.join(",")} ${schemaChanged.join(",")}`);
   const pb = BASE ? fileAt(BASE, F.payroll) : null;
   const pn = rd(F.payroll);
   const gb = BASE ? fileAt(BASE, F.gl) : null;

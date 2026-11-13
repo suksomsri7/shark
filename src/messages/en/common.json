@@ -1706,6 +1706,31 @@
       "untestedRd": "Not yet tested with the real e-Filing",
       "contribTotal": "Total contribution (employee + employer) ฿{amount}",
       "stopped": "Stopped part-way — {issued} issued · {skipped} skipped: {reason}"
+    },
+    "report": {
+      "title": "Reports",
+      "link": "Reports",
+      "linkDesc": "Time · leave · OT · payroll · tax · employee register",
+      "export": "Export",
+      "picker": "Choose a report",
+      "period": "Period",
+      "unit": "Branch",
+      "allUnits": "All branches you can see",
+      "show": "Show",
+      "exportCsv": "CSV file",
+      "exportXlsx": "Excel file",
+      "empty": "No data for this period",
+      "warnings": "Register fields still empty (people)",
+      "fullIdTitle": "National ID in the employee register file",
+      "fullIdAck": "I acknowledge the warning above",
+      "save": "Save",
+      "saved": "Saved",
+      "registerCard": "Employee register details (s.113)",
+      "registerHint": "Used in the employee register report — may be left empty",
+      "nationality": "Nationality",
+      "benefits": "Other agreed benefits",
+      "onlyData": "Time and OT reports list only employees with data in the chosen period",
+      "fullIdCsvHint": "Full national IDs are on — 13-digit numbers display fully in the Excel file; spreadsheet programs may show them as 1.1E+12 in the CSV file"
     }
   }
 }

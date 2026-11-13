@@ -9,11 +9,12 @@
 // Base for statics = baseRef("QC_H36_BASE") (merge-base HEAD origin/session/hr) · no "newest migration" assertion
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.6.mts
 import { existsSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process"; // ORACLE-EDIT (builder H3.9 merge round) ◂
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import {
   type Any, type Base, type Sev, ROOT, rd, short, errText, textOf, srt, failedKeys, stripComments, canon, sha, keysDeep, jsonOf, loadOpt, modState,
-  PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, fileAt, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf,
+  PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, commitInBase, pathInBase, changedVsBase, diffHunks, fileAt, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf,
   vOf, fitnessNoEnv, importsOf, tagOf, HR_FORBIDDEN_DTO_KEYS, msgParity, testidsOf,
 } from "./qc-hr-lib.mjs";
 import { T, TX, gold, runPure, eqBytes, firstDiff, bufOf, pdfPagesText, thNorm, digitsOf, fillText } from "./qc-hr-h3.6-lib.mjs";
@@ -132,7 +133,17 @@ if (!existsSync(join(ROOT, F.build))) skipReasons.push(`${F.build} absent (H3.6 
 if (skipReasons.length && !FORCE) skipExit(skipReasons);
 const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") => chk(id, Object.values(r).every(Boolean), exp, `${failedKeys(r)}${extra ? ` ${extra}` : ""}`);
 // base = merge-base with origin/session/hr when it already holds H3.5 (bank-files/service.ts); else the brief's base 5d7bcf0c4 (session/hr merges not pushed yet)
-const MB = baseRef("QC_H36_BASE");
+// ORACLE-EDIT (builder H3.9 merge round · controller 13 Nov): base-aware — the local integration branch session/hr can hold merges not pushed to origin yet
+//   (postmerge pushes later); when merge-base(HEAD, session/hr) is a descendant of the origin-derived base it is the newer base and is used (an env override wins) ◂
+const LOCAL_MB = (() => {
+  try {
+    return execFileSync("git", ["merge-base", "HEAD", "session/hr"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+})();
+const MB0 = baseRef("QC_H36_BASE");
+const MB = !process.env.QC_H36_BASE && MB0 && LOCAL_MB && LOCAL_MB !== MB0 && commitInBase(MB0, LOCAL_MB) ? LOCAL_MB : MB0;
 const BASE = MB && pathInBase("src/lib/modules/hr/bank-files/service.ts", MB) ? MB : "5d7bcf0c4";
 const IN_BASE = pathInBase(F.svc, BASE);
 const listDir = (d: string): string[] => (existsSync(join(ROOT, d)) ? readdirSync(join(ROOT, d)).map((n) => `${d}${n}`) : []);
@@ -174,7 +185,8 @@ function runStatic(): void {
       models: MODELS.every((m) => new RegExp(`^model ${m} \\{`, "m").test(cur)),
       runSame: !!base && modelBlock(cur, "HrPayrollRun") === modelBlock(base, "HrPayrollRun") && modelBlock(cur, "HrPayrollItem") === modelBlock(base, "HrPayrollItem"),
       // ORACLE-EDIT (H3.6 builder, 13 Nov): the strip left each back-relation line's own "\n" behind, so any added relation line made the block differ ⇒ strip the line WITH its newline
-      empSame: !!hrBase && modelBlock(rd(F.hrSchema), "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, "") === modelBlock(hrBase, "HrEmployee"),
+      // ORACLE-EDIT (builder H3.9 merge round · controller 13 Nov): base-aware — when the base already holds H3.6 its back-relation lines are in the base block too ⇒ strip them on both sides ◂
+      empSame: !!hrBase && modelBlock(rd(F.hrSchema), "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, "") === modelBlock(hrBase, "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, ""),
       scope: MODELS.every((m) => new RegExp(`\\b${m}:\\s*sys\\(\\)`).test(scope)),
       env: MODELS.every((m) => new RegExp(`model:\\s*"${m}"`).test(env)),
     }, "models · frozen blocks · scope · env");
@@ -219,16 +231,18 @@ function runStatic(): void {
     const bankDir = `${H}bank-files`;
     //   + (fix r1 F8) ONLY the frozen oracle edits listed in wo-notes/hr-H3.6.md: file → check ids; every hunk must carry "ORACLE-EDIT (H3.6" + one listed id
     const ORACLE_EDITS: Record<string, string[]> = { "scripts/qc-hr-h3.5.mts": ["S1.2"] };
-    const oracleEdited = (f: string) => !!ORACLE_EDITS[f] && (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && ORACLE_EDITS[f]!.some((id) => l.includes(id))));
+    // ORACLE-EDIT (builder H3.9 merge round · controller 13 Nov): base-aware — once H3.6 is in the base (IN_BASE), the remaining diff belongs to later tickets:
+    //   their hunks are accepted when marked with their own ticket ("HR H<n>.<n>" / "ORACLE-EDIT … H<n>.<n>"); an unmarked hunk still fails ◂
+    const laterMarked = (h: { added: string[] }, re: RegExp) => IN_BASE && h.added.some((l) => re.test(l));
+    const oracleEdited = (f: string) =>
+      (!!ORACLE_EDITS[f] || IN_BASE) &&
+      (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+/));
     const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
-    // ORACLE-EDIT (H3.7 builder, merge of H3.6 into wip/hr-h3.7 — controller order "both frozen checks pass after the merge"): a frozen file that H3.7 touched
-    //   passes when EVERY hunk vs base carries "HR H3.7" (src) or "ORACLE-EDIT (H3.7" (oracles) in an added line — any unmarked change still fails
-    const h37Marked = (f: string) => (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR H3\.7|ORACLE-EDIT \(H3\.7/.test(l)));
-    const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f) && !h37Marked(f)) : [];
+    const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f)) : [];
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;
     const bankChanged = changedVsBase(BASE, [bankDir]);
     const bankFiles = bankChanged.startsWith("changed: ") ? bankChanged.slice(9).split(",") : [];
-    const bankUnmarked = bankFiles.filter((f) => !(diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H3\.6/.test(l))));
+    const bankUnmarked = bankFiles.filter((f) => !(diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H3\.6/.test(l)) || laterMarked(h, /HR H\d+\.\d+/)));
     ck("S1.6", { shaOk, frozen: d === "unchanged", bank: bankChanged === "unchanged" || (bankChanged.startsWith("changed: ") && bankUnmarked.length === 0) }, "unchanged (bank-files: HR H3.6 hunks only)", `${d} · bank ${bankChanged}${bankUnmarked.length ? ` unmarked ${bankUnmarked.join(",")}` : ""}`);
   }
   {
