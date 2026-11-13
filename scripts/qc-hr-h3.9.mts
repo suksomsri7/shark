@@ -8,6 +8,7 @@
 //   (hr/payroll-run-rules.ts) — on a base without H3.4 they print "n/a — H3.4 absent" and FAIL by design (presence guard, no crash).
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h3.9.mts
 import { existsSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import {
   type Any, type Base, type Sev, ROOT, rd, short, errText, textOf, srt, failedKeys, stripComments, canon, sha, keysDeep, jsonOf, loadOpt, modState,
@@ -132,7 +133,17 @@ const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") => 
 // base = merge-base with origin/session/hr; when that is older than the tip this WO was cut from (session/hr merged locally, not yet
 //   pushed: 5d7bcf0c4 = H3.5 merge), the cut point is used instead — statics never see earlier merged WOs as "changed"
 const BASE_CUT = "5d7bcf0c4";
-const BASE = ((b: string) => (b && commitInBase(BASE_CUT, b) ? b : BASE_CUT))(baseRef("QC_H39_BASE"));
+const BASE0 = ((b: string) => (b && commitInBase(BASE_CUT, b) ? b : BASE_CUT))(baseRef("QC_H39_BASE"));
+// ORACLE-EDIT (builder H3.9 merge round · controller 13 Nov): base-aware — the local integration branch session/hr can hold merges not pushed to origin yet
+//   (postmerge pushes later); when merge-base(HEAD, session/hr) is a descendant of the origin-derived base it is the newer base and is used (an env override wins) ◂
+const LOCAL_MB = (() => {
+  try {
+    return execFileSync("git", ["merge-base", "HEAD", "session/hr"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+})();
+const BASE = !process.env.QC_H39_BASE && LOCAL_MB && LOCAL_MB !== BASE0 && commitInBase(BASE0, LOCAL_MB) ? LOCAL_MB : BASE0;
 const IN_BASE = pathInBase(F.svc, BASE);
 const HAS_H34 = existsSync(join(ROOT, F.runRules));
 const code = (p: string) => stripComments(rd(p));

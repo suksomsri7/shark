@@ -79,3 +79,7 @@ Base: origin/session/hr now contains H3.4 (9e8ad6386) ⇒ default base resolves 
 ## 9. ORACLE-EDITs fix round 2 (builder H3.9 · controller 13 Nov)
 - **S3.12** + `lastDay` (as-of = endDate ⇒ ทำงาน, end date shown — endDate is the last employed day, payroll-run-rules.ts:329–332) + `endedNoDate` (ENDED, no endDate ⇒ สิ้นสุด, blank end date; employee on system B).
 - **S4.12** replaced by the deterministic lock check (raw tx holds hr:clockpolicy + stale read; the setting write must block; both keys survive ×3). Red on the old lock: blocked=false off=false (3/3). Judge-cursor timing part dropped.
+
+## 10. Merge round with H3.6 (session/hr d295e6d09) — base-aware ORACLE-EDITs (marked "ORACLE-EDIT (builder H3.9 merge round …")
+- **qc-hr-h3.9 base**: when `merge-base(HEAD, session/hr)` (local integration branch, merges not yet pushed) descends from the origin-derived base, it is used (`QC_H39_BASE` still wins). Without it S1.2/S1.5 counted H3.6's merged hunks (bank-files build/encode/generic, payroll.prisma blocks) as this ticket's.
+- **qc-hr-h3.6** (same base rule, `QC_H36_BASE` wins) · **S1.6**: once H3.6 is in the base (IN_BASE), remaining hunks in bank-files / the frozen oracle list belong to later tickets and pass when marked with their own ticket (`HR H<n>.<n>` / `ORACLE-EDIT … H<n>.<n>`); unmarked hunks still fail · **S1.2 empSame**: H3.6's HrEmployee back-relation lines are stripped from the base block too (they are in the base now).
