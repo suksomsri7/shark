@@ -115,7 +115,8 @@ function pickFrom<K extends LegalTableKind>(kind: K, legal: BookLegal, query: Re
   const shop = legal.shop[kind] as unknown as LegalRowOf<K>[];
   const sys = SYSTEM_ROWS[kind] as readonly LegalRowOf<K>[];
   const pick = pickLegalRow(kind, shop, sys, query, ymd, { allowNearest });
-  const sysAlt = pick.origin === "SHOP" ? pickLegalRow(kind, [], sys, query, ymd).row : null;
+  // เทียบ "ต่างจากค่าเริ่มต้น" เฉพาะแถวระบบที่มีผลวันเดียวกันจริง (แถวร้านที่เติมช่วงที่ระบบไม่มีแถว ≠ ต่างจากค่าเริ่ม)
+  const sysAlt = pick.origin === "SHOP" ? pickLegalRow(kind, [], sys, query, ymd, { allowNearest: false }).row : null;
   return { pick, warnings: pickWarnings(kind, pick, ymd, sysAlt) };
 }
 
