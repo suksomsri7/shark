@@ -438,3 +438,83 @@ export async function runPaymentDue(
   return { ...out, failed, more: { reminders: !remDone, overdue: !ovDone, retry: retryMore } };
 }
 // ── /T0.7 money ──
+// ── T0.8 pdpa ──
+// ใบสั่ง ledger/trips-briefs/T0.8.md §7 · CC §A.4 :114 · §J.2 :931 · §D.4 ข้อ 5 — สแกนข้ามร้านแบบอ่านอย่างเดียวด้วย prisma ดิบ (หาหน่วยที่มีของครบกำหนด)
+// แล้วเขียนผ่าน pdpa.ts (tenantDb · ต่อหน่วย) เท่านั้น · ล้มต่อหน่วย = จดรหัสสั้นใน failed แล้วไปต่อ · เคารพ signal/deadline ก่อนเริ่มหน่วยถัดไป
+// r3 X4: ตัวจัดตารางไม่มีทาง "ขอรอบเร็วขึ้น" ⇒ ลงทะเบียนรายชั่วโมง (minute-jobs.ts) · งานเดิมทำซ้ำได้ (idempotent) · ยังเหลือ = value.more (รอบถัดไปทำต่อ)
+import { purgeTripPersonalDataForUnit } from "./pdpa";
+import type { SellResult } from "@/lib/core/sellable";
+export type PdpaPurgeResult = { units: number; documents: number; passengerStages: number; bookers: number; more: boolean; failed: TripJobFailure[] };
+/** ผลเป็น SellResult (รูปเดียวกับบริการของใบ · ข้อสอบ RT อ่าน value) — ล้มต่อหน่วยไม่ทำให้ทั้งงานล้ม (อยู่ใน value.failed) */
+export type PdpaPurgeOpts = TripJobOpts & { deadline?: number; limitPerUnit?: number; storage?: { del?: (path: string) => Promise<number> } };
+export async function runPdpaPurge(
+  now: Date,
+  opts?: PdpaPurgeOpts,
+): Promise<SellResult<PdpaPurgeResult>> {
+  const out: PdpaPurgeResult = { units: 0, documents: 0, passengerStages: 0, bookers: 0, more: false, failed: [] };
+  const iso = now.toISOString();
+  const tf = (col: string) => (opts?.tenantIds ? Prisma.sql`AND ${Prisma.raw(col)} = ANY(${opts.tenantIds}::text[])` : Prisma.empty);
+  // r3 X3: หน่วยที่มีงาน = (ก) ไฟล์ครบกำหนด (ข) แถวผู้เดินทางครบกำหนด (ค) ผู้จองหมดเวลาไม่มีเงิน (ง) วัตถุที่ทำเครื่องหมายแล้วแต่ยังไม่ยืนยันว่าหาย
+  //   (จ) รอบเลื่อนเร็วขึ้น: retE ที่เก็บ > วันจบตามเวลาหน่วยปัจจุบัน (เขตเวลาที่ Postgres ไม่รู้จัก ⇒ Asia/Bangkok) (ฉ) คำขอ ERASE ที่ IN_PROGRESS
+  //   ดัชนี: (ก)(ง) TripDocument_retainUntil_deletedAt_idx (retainUntil ≤ now · แถวที่ทำเครื่องหมายมี retainUntil ≤ เวลาทำเครื่องหมาย) · (ข) TripPassenger_retainUntil_idx ·
+  //   (ค) TripBooking_tenantId_unitId_status_travelDate_idx (มีตัวกรองร้าน) · (จ) TripPassenger_retainUntil_idx (IS NOT NULL) / TripDocument_retainUntil_deletedAt_idx + PK ของการจอง/รอบ ·
+  //   (ฉ) TripPdpaRequest_tenantId_status_dueAt_idx (มีตัวกรองร้าน)
+  //   (ช · r4 F1) การจองที่ลบผู้จองแล้วแต่ยังไม่มี event BOOKER (ผู้เดินทางยังค้าง หรือขั้นปิดงานล้ม) — TripBooking_tenantId_unitId_status_travelDate_idx + OutboxEvent unique (tenantId, idempotencyKey)
+  //   (ซ · r5) คำขอ ERASE ที่ RECEIVED/IN_PROGRESS เลย dueAt — พาหน่วยไปถึงขั้นแจ้ง ops ใน pdpa.ts เท่านั้น (งานไม่แตะคำขอ RECEIVED · คนเท่านั้นที่ย้ายสถานะ) ·
+  //     ดัชนี TripPdpaRequest_tenantId_status_dueAt_idx (status IN + dueAt เป็นช่วง · ใช้ได้เต็มเมื่อมีตัวกรองร้าน) · ไม่มีตัวกรองร้าน = ไม่มีดัชนีนำด้วย (status, dueAt)
+  //     ⇒ อ่านทั้งตารางคำขอ (ตารางเล็ก: 1 แถวต่อคำขอของเจ้าของข้อมูล · ผล DISTINCT ต่อหน่วย) — หนี้ดัชนีจดใน ledger/wo-notes/trips-T0.8.md r5
+  // r3 X4: ลำดับหน่วยหมุนทุกชั่วโมง (md5(unitId ‖ ช่วง) แบบงานรายการรอ T0.4) · แต่ละหน่วยได้ส่วนแบ่งเวลาที่เหลือ
+  const bucket = String(Math.floor(now.getTime() / 3_600_000));
+  const units = await prisma.$queryRaw<{ tenantId: string; unitId: string }[]>`
+    WITH tz AS (
+      SELECT bu."id", CASE WHEN n."name" IS NOT NULL THEN n."name" ELSE 'Asia/Bangkok' END AS "tz"
+      FROM "BusinessUnit" bu LEFT JOIN pg_timezone_names n ON n."name" = bu."settings"->>'timezone'
+      WHERE bu."type"::text = 'TRIPS' ${tf(`bu."tenantId"`)}
+    )
+    SELECT x."tenantId", x."unitId" FROM (
+      SELECT "tenantId", "unitId" FROM "TripDocument" WHERE "deletedAt" IS NULL AND "retainUntil" <= ${iso}::timestamp ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripPassenger" WHERE "retainUntil" <= ${iso}::timestamp ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripBooking" WHERE "status" = 'EXPIRED' AND "piiPurgedAt" IS NULL AND "paidSatang" = 0 ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripDocument" WHERE "retainUntil" <= ${iso}::timestamp AND "deletedAt" IS NOT NULL
+        AND ("consent"->'objDel') IS DISTINCT FROM 'true'::jsonb ${tf(`"tenantId"`)}
+      UNION SELECT p."tenantId", p."unitId" FROM "TripPassenger" p JOIN tz ON tz."id" = p."unitId"
+        JOIN "TripBooking" b ON b."id" = p."bookingId" AND b."tenantId" = p."tenantId" JOIN "TripDeparture" d ON d."id" = b."departureId" AND d."tenantId" = b."tenantId"
+        WHERE p."retainUntil" IS NOT NULL AND (p."answers"->>'retE') > ((((d."endsAt") AT TIME ZONE 'UTC') AT TIME ZONE tz."tz")::date)::text ${tf(`p."tenantId"`)}
+      UNION SELECT doc."tenantId", doc."unitId" FROM "TripDocument" doc JOIN tz ON tz."id" = doc."unitId"
+        JOIN "TripPassenger" p ON p."id" = doc."passengerId" AND p."tenantId" = doc."tenantId"
+        JOIN "TripBooking" b ON b."id" = p."bookingId" AND b."tenantId" = p."tenantId" JOIN "TripDeparture" d ON d."id" = b."departureId" AND d."tenantId" = b."tenantId"
+        WHERE doc."deletedAt" IS NULL AND (doc."consent"->>'retE') > ((((d."endsAt") AT TIME ZONE 'UTC') AT TIME ZONE tz."tz")::date)::text ${tf(`doc."tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripPdpaRequest" WHERE "kind" = 'ERASE' AND "status" = 'IN_PROGRESS' ${tf(`"tenantId"`)}
+      UNION SELECT "tenantId", "unitId" FROM "TripPdpaRequest" WHERE "kind" = 'ERASE' AND "status" IN ('RECEIVED', 'IN_PROGRESS') AND "dueAt" < ${iso}::timestamp ${tf(`"tenantId"`)}
+      UNION SELECT b."tenantId", b."unitId" FROM "TripBooking" b WHERE b."status" = 'EXPIRED' AND b."piiPurgedAt" IS NOT NULL ${tf(`b."tenantId"`)}
+        AND NOT EXISTS (SELECT 1 FROM "OutboxEvent" o WHERE o."tenantId" = b."tenantId" AND o."idempotencyKey" = 'trips.document.purged:booking:' || b."id")
+    ) x ORDER BY md5(x."unitId" || ${bucket}), x."tenantId", x."unitId"`;
+  // เพดานต่อหน่วยต่อขั้นต่อรอบงาน (ชุดละ ≤ 200 วนต่อในรอบเดียวกัน · r1 P8) — ค่าเริ่ม 2,000
+  const limit = Number.isInteger(opts?.limitPerUnit) && (opts?.limitPerUnit ?? 0) >= 1 ? Math.min(2000, opts?.limitPerUnit ?? 2000) : 2000;
+  for (let k = 0; k < units.length; k++) {
+    const u = units[k];
+    if (!u) continue;
+    if (opts?.signal?.aborted || (typeof opts?.deadline === "number" && Date.now() >= opts.deadline)) {
+      out.more = true;
+      break;
+    }
+    try {
+      const g = await systemGate(u.tenantId, u.unitId);
+      if (!g) continue;
+      // ส่วนแบ่งเวลา: เวลาที่เหลือ ÷ หน่วยที่เหลือ (อย่างน้อย 2 วิ · ไม่เกิน deadline รวม)
+      const unitDeadline = typeof opts?.deadline === "number" ? Math.min(opts.deadline, Date.now() + Math.max(2000, (opts.deadline - Date.now()) / (units.length - k))) : undefined;
+      const r = await purgeTripPersonalDataForUnit({ tenantId: u.tenantId, unitId: u.unitId, now, limit, ...(unitDeadline !== undefined ? { deadline: unitDeadline } : {}), ...(opts?.storage ? { storage: opts.storage } : {}) });
+      out.units++;
+      out.documents += r.documents;
+      out.passengerStages += r.passengerStages;
+      out.bookers += r.bookers;
+      out.more = out.more || r.more;
+      for (const f of r.failed) out.failed.push({ tenantId: f.tenantId, unitId: f.unitId, code: f.code });
+    } catch (e) {
+      out.failed.push({ tenantId: u.tenantId, unitId: u.unitId, code: errorCodeOf(e) });
+    }
+  }
+  await reportFailures("trips.pdpaPurge", out.failed);
+  return { ok: true, value: out };
+}
+// ── /T0.8 pdpa ──

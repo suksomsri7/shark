@@ -135,7 +135,7 @@ const I18N_REQUIRED = [
   ...["HOLD_EXPIRED", "IDEMPOTENCY_CONFLICT", "STATE_CONFLICT", "CURRENCY_NOT_ALLOWED", "BUSY"].map((k) => `errors.${k}`),
 ];
 const VISUAL_SCENES = ["bookings-list", "booking-detail", "payment-dialog", "money-docs"];
-const TRIPS_FORBIDDEN_FILES = ["booking.ts", "booking-core.ts", "booking-actions.ts", "state.ts", "numbering.ts", "money.ts", "money-core.ts", "money-math.ts", "money-actions.ts", "refund.ts", "snapshot.ts",
+const TRIPS_FORBIDDEN_FILES = ["booking.ts", "booking-core.ts", "booking-actions.ts", "state.ts", "numbering.ts", /* ORACLE-EDIT S-13 (ผู้คุม 13 พ.ย.): money.ts ออก — มติ V1 เก็บ reference (จำกัด 2/2 ใน LIMITED) */ "money-core.ts", "money-math.ts", "money-actions.ts", "refund.ts", "snapshot.ts",
   "pricing.ts", "pricing-core.ts", "pricing-actions.ts", "prices.ts", "promo.ts", "capacity.ts", "capacity-core.ts", "capacity-service.ts", "capacity-actions.ts", "waitlist.ts", "products.ts",
   "products-core.ts", "product-actions.ts", "departures.ts", "departures-core.ts", "departure-actions.ts", "departure-view-core.ts", "departure-screens.ts", "departure-desk.ts",
   "departure-screen-actions.ts", "resources.ts", "jobs.ts", "json-schemas.ts", "sellable-impl.ts", "pickup.ts", "pickup-core.ts", "pickup-actions.ts", "trips-settings.ts", "screen-actions.ts"].map((f) => MOD + f);
@@ -144,7 +144,7 @@ const FORBIDDEN_PATHS = ["prisma", "src/lib/core/settings", "src/lib/core/sellab
   ...["p0.1", "t0.1", "t0.2", "t0.3", "t0.4", "t0.5", "t0.6", "t0.7", "t1.1", "t1.2", "a1.1"].map((w) => `scripts/qc-trips-${w}.mts`), "scripts/fitness.mts", "scripts/with-gate-lock.sh",
   "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts"];
 /** ไฟล์ที่แก้ได้แบบจำกัด: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด (null = ไม่จำกัด)] */
-const LIMITED: [string, number, number | null][] = [[MOD + "index.ts", 0, null], [MOD + "screens.ts", 3, 6], [SHARED, 1, null], [`${COMP}/ProductsScreenParts.tsx`, 3, null],
+const LIMITED: [string, number, number | null][] = [[MOD + "money.ts", 2, 2], [MOD + "index.ts", 0, null], [MOD + "screens.ts", 3, 6], [SHARED, 1, null], [`${COMP}/ProductsScreenParts.tsx`, 3, null],
   ["src/messages/th/trips.json", 2, null], ["src/messages/en/trips.json", 2, null], ["scripts/trips-ui-inventory.json", 2, null], ["scripts/visual-trips.mts", 12, null], ["scripts/parity-trips.sh", 8, null]];
 // seed / ภาพ 18
 const AS_OF = new Date(FX.TRIPS_AS_OF);

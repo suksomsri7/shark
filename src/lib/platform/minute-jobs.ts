@@ -801,6 +801,15 @@ registerMinuteJob({
   run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runPaymentDue(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
 });
 // ── /T0.7 money ──
+// ── T0.8 pdpa ── TRIPS T0.8 ▸ ลบข้อมูลส่วนบุคคลของผู้เดินทางตามอายุเก็บ (ใบสั่ง T0.8 §7) — ข้ามร้าน (ทางเข้า `trips/jobs.ts`) · ต่อหน่วยเป็นชุดจำกัด · ซ้อนกัน = ลบครั้งเดียวต่อชิ้น ◂
+//   r3 X4: รายชั่วโมง (ตัวจัดตารางขอรอบเร็วขึ้นไม่ได้) — งบต่อรอบเท่าเดิม (20 วิ) · งานค้าง (more) ทำต่อในรอบถัดไป
+registerMinuteJob({
+  name: "trips.pdpaPurge",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runPdpaPurge(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+// ── /T0.8 pdpa ──
 
 function errorText(e: unknown): string {
   let s: string;
