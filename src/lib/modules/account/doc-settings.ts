@@ -12,6 +12,9 @@
 //   · AccountDocTag  — ทะเบียนแท็ก (ชื่อ/สี/ชนิดที่ใช้ได้) · การผูกกับเอกสารยังเป็น AccountDocument.tags[]
 //   · AccountMapping key `DOC:<docType>` — บัญชีรายวันต่อชนิด (gl.resolveLine อ่านคีย์นี้อยู่แล้ว)
 import { tenantDb } from "@/lib/core/db";
+import { recordLegalAckInTx } from "@/lib/core/legal-ack"; // ACC T2.10 ◂
+import { LegalAckRequiredError, legalWarning, unacknowledged, type LegalAck, type LegalAckRequired } from "@/lib/core/settings/legal/warnings";
+import { legalAckResult } from "./legal-gate";
 import type { AccountDocType, Prisma } from "@prisma/client";
 import {
   DUE_BASIS_LABEL,
@@ -125,13 +128,13 @@ export async function docNumberingRows(
 
 // ─────────────────── เขียน ───────────────────
 
-export type SaveResult = { ok: true } | { ok: false; reason: string };
+export type SaveResult = { ok: true } | { ok: false; reason: string; legal?: LegalAckRequired };
 
 /**
  * บันทึกตั้งค่าเอกสารทีละบล็อก (หน้าตั้งค่า 1 หน้า = 1 บล็อก)
  * 🔴 ด่านสิทธิ์ (`account.settings.manage`) อยู่ที่ server action ที่เรียกตัวนี้ — ที่นี่ตรวจ "ความถูกต้องของค่า"
  */
-export async function saveDocSettings(ctx: SettingsCtx, patch: DocSettingsPatch): Promise<SaveResult> {
+export async function saveDocSettings(ctx: SettingsCtx, patch: DocSettingsPatch, opts?: { ack?: LegalAck | null }): Promise<SaveResult> {
   const bad = validateDocSettingsPatch(patch);
   if (bad) return { ok: false, reason: bad };
 
@@ -140,6 +143,12 @@ export async function saveDocSettings(ctx: SettingsCtx, patch: DocSettingsPatch)
     where: { systemId: ctx.systemId },
     select: { id: true, docConfig: true },
   });
+  // ACC T2.10 ▸ บังคับพิมพ์ "ออกตามมาตรา 86/4" ทุกใบ = คำเตือน [V] ต้องกดยืนยัน (ไม่บล็อก) · บันทึกผู้ยืนยัน ◂
+  if (patch.print?.section864 === "ALWAYS" && parseDocSettings(existing?.docConfig ?? null).print.section864 !== "ALWAYS") {
+    const ws = [legalWarning("TAX_INVOICE_SECTION_TEXT_FORCED")];
+    if (unacknowledged(ws, opts?.ack?.codes).length > 0) return legalAckResult(new LegalAckRequiredError(ws));
+    await recordLegalAckInTx(db as unknown as Prisma.TransactionClient, { tenantId: ctx.tenantId, ack: opts!.ack!, op: "account.settings.doc", targetType: "AccountSettings", targetId: ctx.systemId, warnings: ws });
+  }
   const docConfig = mergeDocSettings(existing?.docConfig ?? null, patch);
   // T0.3d ▸ ตรวจบนค่าที่รวมแล้ว (patch อาจส่งมาแค่ pattern หรือแค่ reset) — เลขซ้ำ = ความถูกต้องของข้อมูล ปฏิเสธ
   const mergedSeqs = parseDocSettings(docConfig).sequences as Record<string, { pattern?: string; reset?: unknown }>;

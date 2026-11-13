@@ -115,7 +115,9 @@ console.log("\n── P0 ตัวคิดบริสุทธิ์ (splitBil
   eq("P0.8", "ค่าคอมฯ พนักงาน: บรรทัดเก็บแทนฐาน 0 · บิลไม่มีเก็บแทน = lineNets เดิม", [commission.staffCommissionBases([21_400, 10_000, 5_000], 0, 33_260, ["STANDARD", "EXEMPT", "ON_BEHALF"]), commission.staffCommissionBases([21_400, 10_000], 0, 28_260)], [[19_260, 9_000, 0], [19_260, 9_000]]);
   const w = W.legalWarning("VAT_COLLECTED_ON_BEHALF", { name: "ค่าอุทยาน" });
   chk("P0.9", "ทะเบียนคำเตือน VAT_COLLECTED_ON_BEHALF: ป้าย V · ต้องกดยืนยัน · อ้าง กค 0706/พ./625 + §3 · ข้อความ 4 ข้อ", w.tag === "V" && w.ack === true && w.citation.includes("กค 0706/พ./625") && w.citation.includes("§3") && /\(1\)[\s\S]*\(2\)[\s\S]*\(3\)[\s\S]*\(4\)/.test(w.messageTh), "V/ack", w);
-  eq("P0.10", "รหัสใหม่ต่อท้ายรายการเดิม", W.LEGAL_WARNING_CODES[W.LEGAL_WARNING_CODES.length - 1], "VAT_COLLECTED_ON_BEHALF", "MAJOR");
+  // ORACLE-EDIT (T2.7/T2.3/T2.10 เลน 2): รหัสใหม่ของเฟส T2 ต่อท้ายหลัง VAT_COLLECTED_ON_BEHALF ⇒ "ตัวสุดท้าย" ไม่ใช่รหัสนี้อีกแล้ว ·
+  //   เจตนาเดิม = รหัส T1.8 ต่อท้าย (ไม่แทรกกลาง) ⇒ ตรวจว่าอยู่ถัดจากรหัสสุดท้ายของ T1.5 ทันที
+  eq("P0.10", "รหัสใหม่ต่อท้ายรายการเดิม (ถัดจาก INPUT_VAT_PENDING_PAST_WINDOW)", W.LEGAL_WARNING_CODES[W.LEGAL_WARNING_CODES.indexOf("INPUT_VAT_PENDING_PAST_WINDOW") + 1], "VAT_COLLECTED_ON_BEHALF", "MAJOR");
 }
 
 try {

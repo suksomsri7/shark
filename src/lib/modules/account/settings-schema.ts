@@ -180,6 +180,8 @@ export type DocSettings = {
     template: PrintTemplate;
     language: PrintLanguage;
     fields: Record<PrintField, boolean>;
+    /** ACC T2.10 — ข้อความ "ใบกำกับภาษีนี้ออกตามมาตรา 86/4": AUTO = เฉพาะใบที่ครบรายการ ม.86/4 · ALWAYS = ทุกใบ (คำเตือน) · NEVER = ไม่พิมพ์ */
+    section864: "AUTO" | "ALWAYS" | "NEVER";
   };
   /** ลิงก์ให้ลูกค้าขอใบกำกับภาษีเอง (QR ท้ายใบเสร็จ) */
   taxRequest: {
@@ -211,8 +213,13 @@ export const TAG_COLOR_LABEL: Record<TagColor, string> = {
 
 // ─────────────────── ค่าเริ่มต้น ───────────────────
 
-export const DEFAULT_LEGAL_TEXT =
-  "เอกสารออกเป็นชุด ต้นฉบับ/สำเนา · ใบกำกับภาษีนี้ออกตามมาตรา 86/4 แห่งประมวลรัษฎากร";
+/**
+ * ACC T2.10 ▸ ค่าเริ่มต้นใหม่ = ว่าง — ป้ายต้นฉบับ/สำเนา/"เอกสารออกเป็นชุด" พิมพ์จากระบบตามประวัติการพิมพ์ (T2.7) ·
+ *   "ออกตามมาตรา 86/4" พิมพ์เฉพาะใบที่ครบรายการ (print.section864 · print-shared.ts) — ไม่ยืนยันโดยปริยายอีกต่อไป
+ */
+export const DEFAULT_LEGAL_TEXT = "";
+/** ค่าเริ่มต้นเดิม (ก่อน T2.10) — ร้านที่ค่ายังเป็นข้อความนี้ทุกตัวอักษร = ไม่ได้ตั้งเอง ⇒ อ่านเป็นค่าเริ่มต้นใหม่ */
+export const LEGACY_DEFAULT_LEGAL_TEXT = "เอกสารออกเป็นชุด ต้นฉบับ/สำเนา · ใบกำกับภาษีนี้ออกตามมาตรา 86/4 แห่งประมวลรัษฎากร";
 
 export const DEFAULT_TAX_REQUEST_TEXT = "ต้องการใบกำกับภาษีเต็มรูป? สแกน QR แล้วกรอกข้อมูลได้เลย";
 
@@ -242,6 +249,7 @@ export function defaultDocSettings(): DocSettings {
         paymentTerms: true,
         paymentChannels: true,
       },
+      section864: "AUTO",
     },
     taxRequest: {
       enabled: true,
@@ -344,7 +352,7 @@ export function parseDocSettings(docConfig: unknown): DocSettings {
           : d.autoTaxInvoice.mode,
       goodsOnIssue: bool(auto.goodsOnIssue, d.autoTaxInvoice.goodsOnIssue),
       posAbbreviated: bool(auto.posAbbreviated, d.autoTaxInvoice.posAbbreviated),
-      legalText: str(auto.legalText, d.autoTaxInvoice.legalText),
+      legalText: ((v) => (v === LEGACY_DEFAULT_LEGAL_TEXT ? d.autoTaxInvoice.legalText : v))(str(auto.legalText, d.autoTaxInvoice.legalText)), // ACC T2.10 ◂
     },
     print: {
       template:
@@ -353,6 +361,7 @@ export function parseDocSettings(docConfig: unknown): DocSettings {
           : d.print.template,
       language: print.language === "EN" ? "EN" : "TH",
       fields,
+      section864: print.section864 === "ALWAYS" || print.section864 === "NEVER" ? print.section864 : "AUTO", // ACC T2.10 ◂
     },
     taxRequest: {
       enabled: bool(taxRequest.enabled, d.taxRequest.enabled),
@@ -369,7 +378,9 @@ export function parseDocSettings(docConfig: unknown): DocSettings {
 }
 
 /** ส่วนที่แก้ได้ทีละก้อน (หน้าตั้งค่า 1 หน้า = 1 คีย์) */
-export type DocSettingsPatch = Partial<Omit<DocSettings, "sequences" | "notes" | "autoTaxInvoice">> & {
+export type DocSettingsPatch = Partial<Omit<DocSettings, "sequences" | "notes" | "autoTaxInvoice" | "print">> & {
+  /** ACC T2.10 — `section864` ไม่ส่ง = คงค่าเดิมของร้าน */
+  print?: Omit<DocSettings["print"], "section864"> & { section864?: DocSettings["print"]["section864"] };
   /** ACC T1.2 — `goodsOnIssue` ไม่ส่ง = คงค่าเดิมของร้าน (ผู้เรียกเดิมส่งบล็อกนี้โดยไม่รู้จักช่องใหม่) */
   autoTaxInvoice?: Omit<DocSettings["autoTaxInvoice"], "goodsOnIssue"> & { goodsOnIssue?: boolean };
   sequences?: Record<string, Partial<SeqConfig>>;
@@ -412,7 +423,8 @@ export function mergeDocSettings(
     }
     next.notes = notes;
   }
-  for (const key of ["due", "channels", "publicView", "print", "taxRequest", "rules", "inputVat"] as const) {
+  if (patch.print !== undefined) next.print = { ...patch.print, section864: patch.print.section864 ?? current.print.section864 }; // ACC T2.10 ◂
+  for (const key of ["due", "channels", "publicView", "taxRequest", "rules", "inputVat"] as const) {
     if (patch[key] !== undefined) next[key] = patch[key];
   }
   if (patch.autoTaxInvoice !== undefined)

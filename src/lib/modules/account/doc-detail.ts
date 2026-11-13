@@ -7,6 +7,8 @@ import type { AccountDocStatus, AccountDocType } from "@prisma/client";
 import { getExpenseDoc, EXP_DOC_LABEL } from "./expense";
 import { DOC_LABEL, STATUS_LABEL, isOverdue, listDocPayments, getDocRef, type DocPaymentRow } from "./service";
 import { listJournalEntriesForDocument } from "./gl";
+import { originalPrinted } from "./print-log"; // ACC T2.7 ◂
+import { computeTotals } from "./totals"; // ACC T2.3 ◂
 import { LIST_TABS } from "./list-tabs";
 import { listDocumentAttachmentFiles, humanSize } from "./attachment";
 import { viewableAttachmentUrl } from "./attachment-shared"; // CRM C3.5 ◂
@@ -260,6 +262,8 @@ export type DocDetailData = {
     /** ACC T1.2 — ชนิดบรรทัด สินค้า/บริการ (null = แถวก่อน T1.2 → ตามจุดรับรู้ของทั้งใบ) */
     lineKind: "GOODS" | "SERVICE" | null;
     account: { code: string; name: string } | null;
+    /** ACC T2.3 (จอนอกข้อ 8) — มูลค่าก่อน VAT ของบรรทัดหลังส่วนลดทุกชั้น (ใบรวม VAT: ถอด VAT ออกแล้ว) */
+    netBeforeVat: number;
   }[];
   subTotal: number;
   discountAmount: number;
@@ -292,6 +296,10 @@ export type DocDetailData = {
   groupChip: GroupMembershipChip | null;
   /** WO 5.5 — คำขอชำระเงิน (ลิงก์+QR PromptPay) ของเอกสารนี้ · ชนิดที่ยังไม่รองรับ = [] */
   paymentRequests: PaymentRequestView[];
+  /** ACC T2.7 — พิมพ์ต้นฉบับไปแล้วหรือยัง (ปุ่มพิมพ์บอกว่าครั้งนี้เป็นต้นฉบับหรือสำเนา) */
+  originalPrinted: boolean;
+  /** ACC T2.3 — รหัสเหตุผลของใบลด/เพิ่มหนี้ */
+  adjustReasonCode: string | null;
 };
 
 /** โหลด+ประกอบข้อมูลหน้าเอกสาร 1 ใบ — ใช้ร่วมทั้งฝั่งรายรับและรายจ่าย (getExpenseDoc คิวรีได้ทั้งคู่) */
@@ -319,6 +327,14 @@ export async function getDocDetailData(
   const paymentRequests = PAYMENT_REQUEST_DOC_TYPES.includes(doc.docType)
     ? await listPaymentRequests({ tenantId, systemId }, docId)
     : [];
+  // ACC T2.3 ▸ มูลค่าก่อน VAT ต่อบรรทัด (ตัวคิดเดียวกับฟอร์ม · ใบรวม VAT ถอด VAT ออก) — คอลัมน์ "ก่อนภาษี" ◂
+  const lineNets = computeTotals({
+    lines: doc.lines.map((l) => ({ description: "", qty: 1, unitPrice: l.amount, vatRateBp: l.vatRateBp })),
+    discountAmount: 0,
+    vatMode: doc.vatMode,
+    vatRegistered: doc.vatMode !== "NONE",
+    vatRateBp: 700,
+  }).lines.map((b) => b.net);
   const timeline = timelineStepsFor({
     docType: doc.docType,
     status: doc.status,
@@ -340,7 +356,7 @@ export async function getDocDetailData(
     contact: doc.contact
       ? { id: doc.contact.id, name: doc.contact.name, taxId: doc.contact.taxId, email: doc.contact.email }
       : null,
-    lines: doc.lines.map((l) => ({
+    lines: doc.lines.map((l, i) => ({
       id: l.id,
       description: l.description,
       qty: Number(l.qty),
@@ -351,6 +367,7 @@ export async function getDocDetailData(
       amount: l.amount,
       lineKind: l.lineKind ?? null,
       account: l.account ? { code: l.account.code, name: l.account.name } : null,
+      netBeforeVat: lineNets[i] ?? l.amount,
     })),
     subTotal: doc.subTotal,
     discountAmount: doc.discountAmount,
@@ -383,6 +400,8 @@ export async function getDocDetailData(
     groupChildren: groupPanel?.children ?? null,
     groupChip,
     paymentRequests,
+    originalPrinted: await originalPrinted({ tenantId, systemId }, doc.id),
+    adjustReasonCode: doc.adjustReasonCode ?? null,
   };
 }
 
