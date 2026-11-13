@@ -13,3 +13,4 @@
 | H2.12 + H3.5 | 29/44 | merged b2c4a8ea8 · H2.12: sweep+visual agent, fix builder · H3.5: oracle writer, builder 2 rounds, reviewer 2 passes, hunter 1 pass · controls FULL/lean (tsc step starved → postmerge clean tsc) | 2026-11-13 |
 | H3.4 | 30/44 | merged · oracle writer 3 rounds · builder phase A+B + 3 fix rounds + merge round · reviewer 5 passes · hunter 3 passes · control FULL + postmerge clean tsc | 2026-11-13 |
 | H3.6 | 31/44 | merged d295e6d09 · oracle writer · builder 2 rounds (build + r1 F1–F9) · reviewer 2 passes · hunter 1 pass · control FULL (57 green, 2 known reds, h2.6 S1.3 oracle false positive fixed) + postmerge clean tsc | 2026-11-13 |
+| H3.9 | 32/44 | merged 13c9eae57 · oracle writer · builder 4 rounds (build + r1 + r2 + merge round) · reviewer 2 passes · hunter 1 pass · control FULL (57 green; h3.5 S1.2 base guard fixed) + postmerge clean tsc (h3.9 S1.10 in-base guard added) | 2026-11-13 |

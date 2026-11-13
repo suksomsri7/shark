@@ -407,9 +407,8 @@ function runStatic(): void {
     const all = [...files, ...hub, ...emp];
     const bad = all.filter((f) => !markedOk(f) && !/\.json$/.test(f));
     const jsonTouched = [F.th, F.en, F.inv].every((f) => (diffHunks(BASE, f) ?? []).length > 0);
-    // ORACLE-EDIT (H3.7 builder, merge of H3.9): in-base guard — once H3.9 is in the base its own hunks are not in the diff any more ⇒ n/a ◂
-    if (IN_BASE) chk("S1.10", true, "every hunk marked", "n/a — H3.9 in base");
-    else ck("S1.10", { marked: bad.length === 0, hub: hub.length > 0, json: jsonTouched }, "every hunk marked", `unmarked=${bad.join(",") || "0"}`);
+    // ORACLE-EDIT (controller 13 Nov · S1.10): base-diff n/a once H3.9 is in the base (diff vs base is empty / belongs to later tickets)
+    ck("S1.10", { marked: IN_BASE || bad.length === 0, hub: IN_BASE || hub.length > 0, json: IN_BASE || jsonTouched }, "every hunk marked", `unmarked=${bad.join(",") || "0"}`);
   }
 }
 
