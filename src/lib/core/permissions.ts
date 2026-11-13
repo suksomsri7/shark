@@ -874,6 +874,13 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "trips.seat.sell": "ถือ/ขายที่นั่งหน้าร้าน",
       "trips.seat.manage": "คืน/ย้ายที่นั่ง และจัดการรายการรอ",
       // ── /T0.4 capacity ──
+      // ── T0.6 booking ── TRIPS T0.6 ▸ การจองทัวร์ (ใบสั่ง T0.6 §7) ◂
+      "trips.booking.view": "ดูการจองทัวร์",
+      "trips.booking.create": "สร้างการจองทัวร์หน้าร้าน",
+      "trips.booking.edit": "แก้ไข/เลื่อนวันการจองทัวร์",
+      "trips.booking.approve": "อนุมัติหรือปฏิเสธคำขอจองทัวร์",
+      "trips.booking.cancel": "ยกเลิกการจองทัวร์ที่ยังไม่ชำระ",
+      // ── /T0.6 booking ──
     },
   },
 ] as const;

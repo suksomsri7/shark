@@ -25,6 +25,9 @@ export { cancelRequests } from "./service";
 
 // CRM C3.3 ▸ ผู้ตัดสินขั้นสุดท้ายของคำขอ (อ่านล้วน) — ผู้เรียก: crm/commissions.ts (ห้ามอนุมัติคอมมิชชันของตัวเองผ่านสายอนุมัติ) ◂ CRM C3.3
 export { lastDecisionOf, requestStatuses } from "./service";
+// TRIPS T0.6 ▸ การผูกคำขอ (สถานะ · entityType · entityId · หน่วย · ยอด) — ผู้เรียก: trips/booking.ts (มติผู้คุม T0.6 R1) ◂
+export { requestBindings } from "./service";
+export type { RequestBinding } from "./service";
 
 // POS P1.15 ▸ เลือกกติกาที่เข้าเงื่อนไข (อ่านล้วน · ไม่ยื่นอะไร) — ผู้เรียก: pos/pos-approval.ts (ส่วนลดเกินสิทธิ์ต้องรู้ก่อนพักบิล · มติผู้คุมงาน 7) ◂
 // CRM C5.5 ▸ RV-6 (fix1 r2): นโยบายที่ "จะ" จับคำขอนี้ (อ่านล้วน · ไม่มี = ต้นทางจะ autoApprove) — ผู้เรียก: point/adjust.ts ·

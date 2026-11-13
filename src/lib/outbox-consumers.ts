@@ -1558,8 +1558,20 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.hold.created": withAutomation(async () => {}),
   "trips.hold.expired": withAutomation(async (evt) => (await import("@/lib/modules/trips")).onWaitlistTrigger(evt)),
   "trips.waitlist.offered": withAutomation(async () => {}),
-  "trips.booking.expired": withAutomation(async () => {}),
+  "trips.booking.expired": withAutomation(async (evt) => {
+    // ── T0.6 booking ── คืนสิทธิ์โค้ดส่วนลดของการจองที่หมดเวลา (ตัวกวาด T0.4 ไม่ปล่อยโค้ด · ใบสั่ง T0.6 §11 ข้อ 6 · ซ้ำ = ไม่ลดอีก)
+    const r = await (await import("@/lib/modules/trips")).onTripBookingExpired(evt);
+    // BUSY (รวม reason UNEXPECTED) ⇒ throw ให้ outbox ลองใหม่ — จำกัดด้วย MAX_ATTEMPTS = 5 ของ core/outbox.ts (backoff 2–32 นาที แล้ว FAILED · S8)
+    if (!r.ok && r.retryable) throw new Error(`trips.booking.expired: ${r.code}${typeof r.details?.reason === "string" ? `/${r.details.reason}` : ""}`);
+  }),
   // ── /T0.4 capacity ──
+  // ── T0.6 booking ── TRIPS T0.6 ▸ การจองทัวร์ (ใบสั่ง T0.6 §8) — ยิงจาก `trips/booking.ts` ในธุรกรรมเดียวกับการเขียน · payload id/สถานะ/ช่องทาง/สตางค์ล้วน (X8)
+  //   งานหลัก no-op (เขียนครบในบริการแล้ว) + กฎอัตโนมัติ/เว็บฮุค ◂
+  "trips.booking.created": withAutomation(async () => {}),
+  "trips.booking.confirmed": withAutomation(async () => {}),
+  "trips.booking.cancelled": withAutomation(async () => {}),
+  "trips.booking.changed": withAutomation(async () => {}),
+  // ── /T0.6 booking ──
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —

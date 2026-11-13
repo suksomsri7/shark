@@ -420,6 +420,13 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "trips.waitlist.offered", label: "เมื่อเสนอที่ให้คนในรายการรอ" },
   { value: "trips.booking.expired", label: "เมื่อการจองหมดเวลา" },
   // ── /T0.4 capacity ──
+  // ── T0.6 booking ── TRIPS T0.6 ▸ การจองทัวร์ — ตัวยิง `trips/booking.ts` ในธุรกรรมเดียวกับการเขียน · payload {bookingId, unitId, departureId, status, channel, amountSatang}
+  //   (ไม่มีชื่อ/เบอร์/อีเมล/เลขจอง · X8) · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks) ◂
+  { value: "trips.booking.created", label: "เมื่อมีการจองทัวร์ใหม่" },
+  { value: "trips.booking.confirmed", label: "เมื่อยืนยันการจองทัวร์" },
+  { value: "trips.booking.cancelled", label: "เมื่อยกเลิกการจองทัวร์" },
+  { value: "trips.booking.changed", label: "เมื่อแก้ไข/เลื่อนวันการจองทัวร์" },
+  // ── /T0.6 booking ──
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม
