@@ -57,3 +57,22 @@ D-1…D-7 as design §6 (name split · rate history · orphan rows · self expor
 - B (reports.ts:598–600): duty/under-10 note (and its count query) only for all-branch viewers.
 - Help text hr.report.onlyData (th/en) on time/OT reports.
 - qc-hr-h3.4 on the default base: 83/85 — S1.7/S1.10 are H3.4's own "hunks vs base" statics, empty now that H3.4 is in the base; 85/85 with QC_H34_BASE=8e52db009. Not an H3.9 effect; needs an H3.4 base pin (controller).
+
+## Fix round 1 (reviewer + hunter on 39c67154d)
+- **F1 lost update** — `setReportSettings` (reports.ts:718–736): `pg_advisory_xact_lock(hr:clockpolicy:<sys>)` → `SELECT … FROM "AppSystem" … FOR UPDATE` → re-read → change only `hrReports.registerFullId` → write. Lock order = the other clock-policy writers (they take the same advisory key first and then read/write the row; none takes another lock before it — attendance-pay takes `hr:clockpolicy` then `hr:attpay:policy`, so ours (clockpolicy → row) never waits in the opposite order). Oracle S4.12 + hunter race probe.
+- **Writers of AppSystem.settings in hr/** (file:line of the write · lock key)** — for the cross-ticket fix:
+  - `clock-settings.ts:253` (hrClock) · `hr:clockpolicy:<sys>`
+  - `clock-settings.ts:335` (hrAttendance) · `hr:clockpolicy:<sys>`
+  - `judge.ts:704` (hrAttendanceCursor, background job) · `hr:clockpolicy:<sys>`
+  - `work-entries.ts:119` (normal minutes/day) · `hr:clockpolicy:<sys>`
+  - `payroll.ts:2310` (payroll engine setting) · `hr:clockpolicy:<sys>`
+  - `attendance-pay.ts:144` (attendance-pay policy + in-force) · `hr:clockpolicy:<sys>` then `hr:attpay:policy:<sys>`
+  - `reports.ts:728` (hrReports.registerFullId) · `hr:clockpolicy:<sys>` + row `FOR UPDATE` (this ticket)
+  - `ot.ts:183` (hrOt) · **`hr:otpolicy:<sys>`** — different key ⇒ can lose/revive other keys
+  - `lifecycle.ts:276` (hrLifecycle) · **`hr:lifepolicy:<sys>`** — different key ⇒ same risk
+  (none of these besides reports.ts takes a row lock; all spread the whole settings object.)
+- **F2a** HEAD/any non-GET ⇒ 405 before reading: `bank-files/download-route.ts` (`notGet`/`notGetResponse`, marked HR H3.9, also used by `bankFileGet`), `reports-route.ts`, both route.ts files.
+- **F2b** every source read takes cap+1 rows and refuses `LIMIT` when over (judge days · corrections · OT · payroll items); leave refuses when active employees > 1000 (teamLeaveBalances' TEAM_MAX in frozen leave.ts). Test hook `__takeCap` (oracle only). Remaining internal caps inside frozen leave.ts (`take: 100_000` balance txns) = debt.
+- **F2d** CSV hint when the viewer's register file carries full IDs; acknowledgement only when switching OFF → ON.
+- **F2e** register as-of: start after the date ⇒ not listed; end date shown only when ≤ date; status = ENDED when ended by the date, ACTIVE when ended only later, else stored status.
+- **F2f** stale "revoked OT counts as approved" line removed.

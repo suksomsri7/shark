@@ -50,3 +50,27 @@ fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"f
 fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
 typecheck exit=0 errors=0
 qc-hr-h3.4 with QC_H34_BASE=8e52db009 (pre-H3.4 parent of its merge) exit=0 passed 85/85 — the 2 default-base fails (S1.7 marked hunks · S1.10) are H3.4's own vs-base statics now that H3.4 is in origin/session/hr
+
+# fix round 1 · default base · HEAD 025f59c82 + notes · 2026-11-13T15:48:59Z
+seed exit=0 ===== seed-hr-qc ===== ผ่าน 34/34 JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":34,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"A
+h39-forced1 exit=0   ✅ [H3.9-Z1] no residue (HrEmployeeRegister included) ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":fa
+h39-forced2 exit=0   ✅ [H3.9-Z1] no residue (HrEmployeeRegister included) ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":fa
+h39-unforced exit=0   ✅ [H3.9-Z1] no residue (HrEmployeeRegister included) ===== qc-hr-h3.9 ===== passed 60/60 JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missi
+qc-hr-h3.5 exit=0   ✅ [H3.5-Z1] no residue (3 new tables included) ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.5","total":53,"passed":53,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"m
+qc-hr-h3.4 exit=0   ✅ [H3.4-Z1] no residue · ACTIVE law count restored ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.4","total":85,"passed":85,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":fal
+qc-hr-h2.9 exit=0   ✅ [H2.9-Z1] [db] no residue ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.9","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed
+qc-hr-h2.5 exit=0   ✅ [H2.5-Z1] residue: qc-hr-h25-* tenants/rows/users/sessions/new tables gone ===== qc-hr-h2.5 ===== passed 79/79 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.5","total":79,"passed":79,"failed":[],"findings":[],"skipped":false,"f
+qc-hr-h2.4 exit=0   ✅ [H2.4-Z1] residue: qc-hr-h24-* tenants, users, buckets, rows gone ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.4","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":tr
+qc-hr-h1.1 exit=0   ✅ [H1.1-Z1] residue: tenants qc-hr-h1.1-* gone · no row of ours in HR/payroll/borrowing/audit/outbox · users/sessions gone · no rate rows ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.1","to
+qc-hr-h1.2 exit=0   ✅ [H1.2-Z1] residue: tenants qc-hr-h1.2-* gone · no row of ours in the 8 new tables + HR/payroll/audit/outbox · users/sessions gone ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73
+qc-hr-h1.3 exit=0   ✅ [H1.3-Z1] residue: tenants qc-hr-h1.3-* gone · 0 rows of ours in any tenantId table (incl. the 3 new + H1.2 tables) · law rows qc-h1.3-<stamp>* gone · users gone ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) JSON_SUMMARY
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]} 
+qc-audit-trail exit=0 ✅ PASS — 21/21 
+hunt-race exit=0 rounds=20 OFF-write lost (full ID stays ON after owner turned it OFF, both writes ok)=0 · clock-write lost=0 residue: clean 
+hunt-leak exit=0 residue: clean 
+hunt-figs exit=0 residue: clean 
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+typecheck exit=0 errors=0
