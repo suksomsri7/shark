@@ -54,6 +54,7 @@ import {
   stageDue,
   staffGate,
   valuesOf,
+  PENDING_OBJ_SQL,
   type DocRow,
   type Unit,
   type Who,
@@ -92,7 +93,7 @@ const PER_RUN_MAX = 2000;
  */
 export const PENDING_ALERT_MS = 24 * 60 * 60 * 1000;
 /** เงื่อนไข SQL "ไฟล์ที่ทำเครื่องหมายลบแล้ว แต่ยังไม่ยืนยันว่าวัตถุหาย" */
-const PENDING_DOC = Prisma.sql`"deletedAt" IS NOT NULL AND COALESCE(("consent"->>'objDel')::boolean, false) = false`;
+const PENDING_DOC = Prisma.sql`"deletedAt" IS NOT NULL AND ("consent"->'objDel') IS DISTINCT FROM 'true'::jsonb`;
 
 // ═══════════════════════ ลบทั้งคน (§8 แถว "ลบทั้งคน") ═══════════════════════
 /**
@@ -127,15 +128,17 @@ async function pendingDocsOf(db: Prisma.TransactionClient, u: Unit, passengerId:
 }
 /**
  * r3 X2: ปิดงานลบทั้งคนเมื่อวัตถุหมด — ผู้เดินทางถูกลบทั้งคน และไม่มีไฟล์ค้าง ⇒ event PASSENGER_ALL · คำขอ ERASE ที่ IN_PROGRESS ของคนนี้ ⇒ DONE (+ audit) ·
- * การจองที่ลบผู้จองแล้วและผู้เดินทางทุกคนเสร็จ ⇒ event BOOKER — ซ้ำได้ (คีย์ outbox · CAS สถานะ) · คืน true ถ้าคนนี้เสร็จ
+ * การจองที่ลบผู้จองแล้วและผู้เดินทางทุกคนเสร็จ ⇒ event BOOKER — ซ้ำได้ (คีย์ outbox · CAS สถานะ)
+ * r4 F5: คืน DONE (เสร็จ) · PENDING (ยังมีไฟล์ค้าง/ยังไม่ถูกลบทั้งคน) · FAILED (ธุรกรรมล้ม — ผู้เรียกรายงานใน failed · รอบหน้าค้นพบใหม่ผ่านขั้น 5)
  */
-async function finishErasure(u: Unit, who: Who, passengerId: string, now: Date): Promise<boolean> {
-  const r = await inTx(u, async (tx) => {
+type FinishResult = "DONE" | "PENDING" | "FAILED";
+async function finishErasure(u: Unit, who: Who, passengerId: string, now: Date): Promise<FinishResult> {
+  const r = await inTx(u, async (tx): Promise<FinishResult> => {
     const rows = await tx.$queryRaw<{ id: string; bookingId: string; answers: unknown }[]>`
       SELECT "id", "bookingId", "answers" FROM "TripPassenger" WHERE "id" = ${passengerId} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} FOR UPDATE`;
     const p = rows[0];
-    if (!p || !isPurgedAll(parseAnswers(p.answers))) return false;
-    if ((await pendingDocsOf(tx, u, p.id)).length) return false;
+    if (!p || !isPurgedAll(parseAnswers(p.answers))) return "PENDING";
+    if ((await pendingDocsOf(tx, u, p.id)).length) return "PENDING";
     await emitTx(tx, u, [purgedEvt(`${p.id}:ALL`, p.bookingId, p.id, "PASSENGER_ALL")]);
     const reqs = await tx.$queryRaw<{ id: string }[]>`
       UPDATE "TripPdpaRequest" SET "status" = 'DONE', "doneAt" = ${iso(now)}::timestamp, "updatedAt" = ${iso(now)}::timestamp
@@ -146,13 +149,13 @@ async function finishErasure(u: Unit, who: Who, passengerId: string, now: Date):
         SELECT 1 FROM "TripPassenger" x WHERE x."bookingId" = b."id" AND x."tenantId" = b."tenantId"
           AND (NOT (COALESCE(x."answers"->'purged'->'stages', '[]'::jsonb) ? 'ALL')
             OR EXISTS (SELECT 1 FROM "TripDocument" d WHERE d."passengerId" = x."id" AND d."tenantId" = x."tenantId" AND d."deletedAt" IS NOT NULL
-                       AND COALESCE((d."consent"->>'objDel')::boolean, false) = false))
+                       AND (d."consent"->'objDel') IS DISTINCT FROM 'true'::jsonb))
       )) AS "ok"
       FROM "TripBooking" b WHERE b."id" = ${p.bookingId} AND b."tenantId" = ${u.tenantId} AND b."unitId" = ${u.unitId}`;
     if (bk[0]?.ok === true) await emitTx(tx, u, [purgedEvt(`booking:${p.bookingId}`, p.bookingId, null, "BOOKER")]);
-    return true;
+    return "DONE";
   });
-  return r.ok && r.value;
+  return r.ok ? r.value : "FAILED";
 }
 
 // ═══════════════════════ คิวคำขอเจ้าของข้อมูล (§11.1 · L-48 · T64) ═══════════════════════
@@ -345,7 +348,7 @@ export async function resolvePdpaRequest(ctx: unknown, input: unknown, deps?: { 
       });
       if (!r1.ok) return r1;
       const pending = await deleteAndConfirm(s, who, r1.value, deps?.del ? { del: deps.del } : undefined);
-      if (pending === 0 && (await finishErasure(s, who, pid, s.now))) return { ok: true, value: { requestId: q.id, status: "DONE" } };
+      if (pending === 0 && (await finishErasure(s, who, pid, s.now)) === "DONE") return { ok: true, value: { requestId: q.id, status: "DONE" } };
       return { ok: true, value: { requestId: q.id, status: "IN_PROGRESS", pendingObjects: pending } };
     }
     const doneAt = d.decision === "IN_PROGRESS" ? null : s.now;
@@ -381,8 +384,8 @@ export async function exportPassengerData(ctx: unknown, input: unknown): Promise
     const doc = openDocNumber(s, P.id, P.docNumberEnc);
     const health = openHealth(s, P.id, a.health);
     if (doc === "LOCKED" || health === "LOCKED") return fail("BUSY", { reason: "SECRET_KEY_MISSING" });
-    const docs = await db.$queryRaw<DocRow[]>`
-      SELECT "id", "passengerId", "kind", "fileId", "retainUntil", "deletedAt", "createdAt" FROM "TripDocument"
+    const docs = await db.$queryRaw<(DocRow & { pendingDeletion: boolean })[]>`
+      SELECT "id", "passengerId", "kind", "fileId", "retainUntil", "deletedAt", "createdAt", ${PENDING_OBJ_SQL} FROM "TripDocument"
       WHERE "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} AND "passengerId" = ${P.id} ORDER BY "createdAt", "id"`;
     const v = valuesOf(P, a);
     const w = parseWaiver(P.waiverEvidence);
@@ -402,7 +405,7 @@ export async function exportPassengerData(ctx: unknown, input: unknown): Promise
         waiver: w.kind === "NONE" ? null : w.e,
         waiverSignedAt: P.waiverSignedAt ? iso(new Date(P.waiverSignedAt)) : null,
         formStatus: P.formStatus,
-        documents: docs.map((x) => ({ id: x.id, kind: x.kind, uploadedAt: iso(new Date(x.createdAt)), retainUntil: iso(new Date(x.retainUntil)), deletedAt: x.deletedAt ? iso(new Date(x.deletedAt)) : null })),
+        documents: docs.map((x) => ({ id: x.id, kind: x.kind, uploadedAt: iso(new Date(x.createdAt)), retainUntil: iso(new Date(x.retainUntil)), deletedAt: x.deletedAt ? iso(new Date(x.deletedAt)) : null, pendingDeletion: x.pendingDeletion === true })),
         purged: a.purged ?? null,
       },
     };
@@ -438,12 +441,15 @@ export async function purgeTripPersonalDataForUnit(i: { tenantId: string; unitId
     return out;
   }
   const st = unit.settings !== null && typeof unit.settings === "object" && !Array.isArray(unit.settings) ? (unit.settings as Record<string, unknown>) : {};
-  const u: Unit = { tenantId: i.tenantId, unitId: unit.id, tz: normalizeTimezone(st.timezone) };
+  // r4 F6: เขตเวลาเดียวต่อหน่วยสำหรับ SQL และ JS — Postgres ไม่รู้จัก ⇒ Asia/Bangkok (fallback เดียวกับตัวสแกนใน jobs.ts) + รายงาน TIMEZONE_UNKNOWN_TO_DB
+  const intlTz = normalizeTimezone(st.timezone);
+  const known = await ro(i.tenantId).$queryRaw<{ ok: boolean }[]>`SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE "name" = ${intlTz}) AS "ok"`;
+  const tzOk = known[0]?.ok === true;
+  if (!tzOk) failAdd("TIMEZONE_UNKNOWN_TO_DB");
+  const u: Unit = { tenantId: i.tenantId, unitId: unit.id, tz: tzOk ? intlTz : "Asia/Bangkok" };
+  // r4 F4: ค่าตั้งอายุเก็บเสีย ⇒ ข้ามเฉพาะขั้นที่ใช้อายุเก็บ (2 ชั้นข้อมูล · 3 ไฟล์ครบกำหนด) · ขั้น 1 (X22 ของตัวเอง) 4 (วัตถุค้าง) 5 (ปิดงานลบ) ยังทำ
   const retention = await loadRetention(u, now);
-  if (!retention) {
-    failAdd("SETTINGS_INVALID");
-    return out;
-  }
+  if (!retention) failAdd("SETTINGS_INVALID_RETENTION");
   const ab = await resolveSettings({ tenantId: u.tenantId }, [K_ABANDONED], { unitId: u.unitId }, now);
   const abDays = ab[K_ABANDONED]?.value;
   const del = i.storage?.del ? { del: i.storage.del } : undefined;
@@ -513,6 +519,8 @@ export async function purgeTripPersonalDataForUnit(i: { tenantId: string; unitId
           const docs: { id: string; fileId: string }[] = [];
           for (const x of pax) docs.push(...(await erasePassengerInTx(tx, u, SYSTEM, x.id, now)));
           await auditTx(tx, u, SYSTEM, A.bookingPiiPurged, "TripBooking", b.id, { bookingId: b.id, passengers: pax.length });
+          // r4 F1: ไม่มีผู้เดินทาง (กรณีปกติของการถือที่หมดเวลา) ⇒ ไม่มีอะไรค้าง ⇒ event BOOKER ในธุรกรรมเดียวกับการตัดผู้จอง
+          if (!pax.length) await emitTx(tx, u, [purgedEvt(`booking:${b.id}`, b.id, null, "BOOKER")]);
           return { n: 1, docs, pax: pax.map((x) => x.id) };
         });
         if (!r.ok) {
@@ -527,7 +535,8 @@ export async function purgeTripPersonalDataForUnit(i: { tenantId: string; unitId
     out.more = out.more || m1;
   } else failAdd("SETTINGS_INVALID");
 
-  // ── (2) ชั้นข้อมูลในแถวผู้เดินทาง ──
+  // ── (2) ชั้นข้อมูลในแถวผู้เดินทาง · (3) ไฟล์ครบกำหนด — ต้องมีค่าตั้งอายุเก็บ (r4 F4) ──
+  if (retention) {
   const m2 = await phase<{ id: string }>(
     2,
     "PASSENGER_PURGE_FAILED",
@@ -564,7 +573,7 @@ export async function purgeTripPersonalDataForUnit(i: { tenantId: string; unitId
       const due = isPurgedAll(parseAnswers(c.answers)) ? now : docRetainUntil(c.kind, E, u.tz, retention);
       if (due.getTime() > now.getTime()) {
         await inTx(u, (tx) => tx.$executeRaw`
-          UPDATE "TripDocument" SET "retainUntil" = ${iso(due)}::timestamp, "consent" = COALESCE("consent", '{}'::jsonb) || jsonb_build_object('retE', ${E}::text),
+          UPDATE "TripDocument" SET "retainUntil" = ${iso(due)}::timestamp, "consent" = (CASE WHEN jsonb_typeof("consent") = 'object' THEN "consent" ELSE '{}'::jsonb END) || jsonb_build_object('retE', ${E}::text),
             "updatedAt" = ${nowIso}::timestamp
           WHERE "id" = ${c.id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "deletedAt" IS NULL`);
         return;
@@ -579,6 +588,7 @@ export async function purgeTripPersonalDataForUnit(i: { tenantId: string; unitId
     },
   );
   out.more = out.more || m3;
+  }
 
   // ── (4) วัตถุค้าง: แถวที่ทำเครื่องหมายแล้ว (ลบทั้งคน/ปฏิเสธ/ถอน) แต่วัตถุยังไม่ยืนยันว่าหาย — ลองใหม่ทุกรอบ ไม่จำกัดเวลา (r3 X2) ──
   const m4 = await phase<{ id: string; fileId: string; passengerId: string; deletedAt: Date }>(
@@ -595,34 +605,77 @@ export async function purgeTripPersonalDataForUnit(i: { tenantId: string; unitId
     },
   );
   out.more = out.more || m4;
-  // วัตถุค้างนานเกินเกณฑ์ ⇒ ops ERROR (จำนวนเท่านั้น · ไม่มีข้อมูลบุคคล)
-  const stale = await db.$queryRaw<{ n: number }[]>`
-    SELECT count(*)::int AS "n" FROM "TripDocument" doc
-    WHERE doc."tenantId" = ${u.tenantId} AND doc."unitId" = ${u.unitId} AND doc."retainUntil" <= ${nowIso}::timestamp AND doc.${PENDING_DOC}
-      AND doc."deletedAt" < ${iso(new Date(now.getTime() - PENDING_ALERT_MS))}::timestamp`;
-  if ((stale[0]?.n ?? 0) > 0) {
-    await logOps("ERROR", "trips.pdpa", `ไฟล์ที่ต้องลบตามข้อมูลส่วนบุคคลยังลบที่ที่เก็บไม่สำเร็จเกิน ${PENDING_ALERT_MS / 3_600_000} ชม.`, {
-      tenantId: u.tenantId,
-      detail: JSON.stringify({ unitId: u.unitId, pendingObjects: stale[0]?.n ?? 0 }),
-    }).catch(() => undefined);
+  // วัตถุค้างนานเกินเกณฑ์ / คำขอ ERASE เลยกำหนด ⇒ ops ERROR (จำนวนเท่านั้น · ไม่มีข้อมูลบุคคล)
+  // r4 F10: ไม่เกินวันละครั้งต่อหน่วย — เครื่องหมายที่เก็บอยู่แล้ว = แถว OpsEvent ล่าสุดของ source "trips.pdpa" ของหน่วยนี้ใน 24 ชม. (ดัชนี OpsEvent(source, createdAt))
+  const stale = await db.$queryRaw<{ n: number; overdue: number }[]>`
+    SELECT
+      (SELECT count(*)::int FROM "TripDocument" doc
+        WHERE doc."tenantId" = ${u.tenantId} AND doc."unitId" = ${u.unitId} AND doc."retainUntil" <= ${nowIso}::timestamp AND doc.${PENDING_DOC}
+          AND doc."deletedAt" < ${iso(new Date(now.getTime() - PENDING_ALERT_MS))}::timestamp) AS "n",
+      (SELECT count(*)::int FROM "TripPdpaRequest" q
+        WHERE q."tenantId" = ${u.tenantId} AND q."unitId" = ${u.unitId} AND q."kind" = 'ERASE' AND q."status" IN ('RECEIVED', 'IN_PROGRESS') AND q."dueAt" < ${nowIso}::timestamp) AS "overdue"`;
+  const pendingN = stale[0]?.n ?? 0;
+  const overdueN = stale[0]?.overdue ?? 0;
+  if (pendingN > 0 || overdueN > 0) {
+    const marker = JSON.stringify({ unitId: u.unitId }).slice(1, -1);
+    const recent = await db.$queryRaw<{ x: number }[]>`
+      SELECT 1 AS "x" FROM "OpsEvent" WHERE "source" = 'trips.pdpa' AND "createdAt" >= ${iso(new Date(Date.now() - PENDING_ALERT_MS))}::timestamp
+        AND "tenantId" = ${u.tenantId} AND "detail" LIKE ${`%${marker}%`} LIMIT 1`;
+    if (!recent.length) {
+      await logOps("ERROR", "trips.pdpa", `งานลบข้อมูลส่วนบุคคลค้าง: ไฟล์ลบที่ที่เก็บไม่สำเร็จเกิน ${PENDING_ALERT_MS / 3_600_000} ชม. หรือคำขอลบเลยกำหนด`, {
+        tenantId: u.tenantId,
+        detail: JSON.stringify({ unitId: u.unitId, pendingObjects: pendingN, overdueEraseRequests: overdueN }),
+      }).catch(() => undefined);
+    }
   }
 
-  // ── (5) ปิดงานลบทั้งคนที่ค้าง: คำขอ ERASE IN_PROGRESS ที่ผู้เดินทางถูกลบแล้ว + ผู้เดินทางที่วัตถุเพิ่งหมดในรอบนี้ ──
-  const m5 = await phase<{ id: string }>(
+  // ── (5) ปิดงานลบทั้งคน (r3 X2 · r4 F1 F5): ค้นพบใหม่ทุกรอบ —
+  //   (ก) คำขอ ERASE ที่ IN_PROGRESS ซึ่งผู้เดินทางถูกลบแล้ว
+  //   (ข) ผู้เดินทางของการจองที่ลบผู้จองแล้ว ซึ่งถูกลบทั้งคนแต่ยังไม่มี event PASSENGER_ALL (ตรวจคีย์ outbox · unique (tenantId, idempotencyKey))
+  //   (ค) การจองที่ลบผู้จองแล้วแต่ไม่มีผู้เดินทางและยังไม่มี event BOOKER ⇒ ออก event ตรงนี้
+  //   ดัชนี: TripPdpaRequest_tenantId_status_dueAt_idx · TripBooking_tenantId_unitId_status_travelDate_idx (status EXPIRED) + TripPassenger_bookingId_idx · OutboxEvent unique
+  const m5 = await phase<{ id: string; kind: string; ref: string }>(
     5,
     "ERASE_FINISH_FAILED",
-    (n, skip) => db.$queryRaw<{ id: string }[]>`
-      SELECT DISTINCT q."passengerId" AS "id" FROM "TripPdpaRequest" q
-        JOIN "TripPassenger" p ON p."id" = q."passengerId" AND p."tenantId" = q."tenantId"
-      WHERE q."tenantId" = ${u.tenantId} AND q."unitId" = ${u.unitId} AND q."kind" = 'ERASE' AND q."status" = 'IN_PROGRESS'
-        AND (COALESCE(p."answers"->'purged'->'stages', '[]'::jsonb) ? 'ALL') ${skipSql(`q."passengerId"`, skip)}
-      LIMIT ${n}`,
+    (n, skip) => db.$queryRaw<{ id: string; kind: string; ref: string }[]>`
+      SELECT x."id", x."kind", x."ref" FROM (
+        SELECT DISTINCT 'p:' || q."passengerId" AS "id", 'PAX' AS "kind", q."passengerId" AS "ref" FROM "TripPdpaRequest" q
+          JOIN "TripPassenger" p ON p."id" = q."passengerId" AND p."tenantId" = q."tenantId"
+        WHERE q."tenantId" = ${u.tenantId} AND q."unitId" = ${u.unitId} AND q."kind" = 'ERASE' AND q."status" = 'IN_PROGRESS'
+          AND (COALESCE(p."answers"->'purged'->'stages', '[]'::jsonb) ? 'ALL')
+        UNION
+        SELECT 'p:' || p."id", 'PAX', p."id" FROM "TripBooking" b
+          JOIN "TripPassenger" p ON p."bookingId" = b."id" AND p."tenantId" = b."tenantId"
+        WHERE b."tenantId" = ${u.tenantId} AND b."unitId" = ${u.unitId} AND b."status" = 'EXPIRED' AND b."piiPurgedAt" IS NOT NULL
+          AND (COALESCE(p."answers"->'purged'->'stages', '[]'::jsonb) ? 'ALL')
+          AND NOT EXISTS (SELECT 1 FROM "OutboxEvent" o WHERE o."tenantId" = p."tenantId" AND o."idempotencyKey" = 'trips.document.purged:' || p."id" || ':ALL')
+        UNION
+        SELECT 'b:' || b."id", 'BOOKER', b."id" FROM "TripBooking" b
+        WHERE b."tenantId" = ${u.tenantId} AND b."unitId" = ${u.unitId} AND b."status" = 'EXPIRED' AND b."piiPurgedAt" IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM "TripPassenger" p WHERE p."bookingId" = b."id" AND p."tenantId" = b."tenantId")
+          AND NOT EXISTS (SELECT 1 FROM "OutboxEvent" o WHERE o."tenantId" = b."tenantId" AND o."idempotencyKey" = 'trips.document.purged:booking:' || b."id")
+      ) x WHERE true ${skipSql(`x."id"`, skip)}
+      ORDER BY x."id" LIMIT ${n}`,
     async (c) => {
-      finishSet.add(c.id);
+      if (c.kind === "PAX") {
+        finishSet.add(c.ref);
+        return;
+      }
+      const r = await inTx(u, (tx) => emitTx(tx, u, [purgedEvt(`booking:${c.ref}`, c.ref, null, "BOOKER")]));
+      if (!r.ok) failAdd("ERASE_FINISH_FAILED");
     },
   );
   out.more = out.more || m5;
-  for (const pid of finishSet) await finishErasure(u, SYSTEM, pid, now);
+  // ปิดงานของผู้เดินทางที่รวบรวมไว้ — ตรวจ deadline ทุกคน (ที่เหลือ ⇒ more · ค้นพบใหม่รอบหน้าด้วยขั้น 5) · ล้ม ⇒ failed + นับ
+  let finishFailed = 0;
+  for (const pid of finishSet) {
+    if (typeof i.deadline === "number" && Date.now() >= i.deadline) {
+      out.more = true;
+      break;
+    }
+    if ((await finishErasure(u, SYSTEM, pid, now)) === "FAILED") finishFailed++;
+  }
+  if (finishFailed > 0) for (let k = 0; k < finishFailed; k++) failAdd("ERASE_FINISH_FAILED");
   return out;
 }
 

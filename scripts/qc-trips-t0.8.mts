@@ -492,7 +492,7 @@ try {
     const ours = changed.filter((f) => git(["diff", "--name-only", "session/trips", "--", f]).trim() !== "" || git(["ls-files", "--others", "--exclude-standard", "--", f]).trim() !== "");
     const allowed = new Set(["src/app/api/files/[id]/route.ts", "src/lib/storage/private-links.ts", "src/lib/modules/trips/booking-core.ts" /* ORACLE-EDIT S-8 (ผู้คุม 13 พ.ย.): มติ P7 — export text เพิ่ม 1 บรรทัด */]);
     ok(ours.filter((f) => !allowed.has(f)).length === 0, `แตะ: ${ours.filter((f) => !allowed.has(f)).slice(0, 6).join(", ")}`);
-    const rows = git(["diff", "--numstat", BASE_SHA, "--", "src/app/api/files/[id]/route.ts", "src/lib/storage/private-links.ts", "src/lib/modules/trips/booking-core.ts"]).split("\n").filter(Boolean).map((l) => l.split("\t"));
+    const rows = [git(["diff", "--numstat", BASE_SHA, "--", "src/app/api/files/[id]/route.ts", "src/lib/storage/private-links.ts"]), git(["diff", "--numstat", "session/trips", "--", "src/lib/modules/trips/booking-core.ts"]) /* ORACLE-EDIT S-8 (ผู้คุม 13 พ.ย.): booking-core เทียบ session/trips (T0.7a ที่รับแล้วแก้ไฟล์นี้ด้วย) */].join("\n").split("\n").filter(Boolean).map((l) => l.split("\t"));
     const del = rows.filter((r) => Number(r[1]) > (r[2].endsWith("private-links.ts") ? 2 : 0)).map((r) => `${r[2]} −${r[1]}`);
     ok(del.length === 0, `route ไฟล์กลางลบ/แก้บรรทัดเกินที่อนุญาต: ${del.join(", ")}`);
   });

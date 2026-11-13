@@ -459,6 +459,7 @@ export async function runPdpaPurge(
   //   ดัชนี: (ก)(ง) TripDocument_retainUntil_deletedAt_idx (retainUntil ≤ now · แถวที่ทำเครื่องหมายมี retainUntil ≤ เวลาทำเครื่องหมาย) · (ข) TripPassenger_retainUntil_idx ·
   //   (ค) TripBooking_tenantId_unitId_status_travelDate_idx (มีตัวกรองร้าน) · (จ) TripPassenger_retainUntil_idx (IS NOT NULL) / TripDocument_retainUntil_deletedAt_idx + PK ของการจอง/รอบ ·
   //   (ฉ) TripPdpaRequest_tenantId_status_dueAt_idx (มีตัวกรองร้าน)
+  //   (ช · r4 F1) การจองที่ลบผู้จองแล้วแต่ยังไม่มี event BOOKER (ผู้เดินทางยังค้าง หรือขั้นปิดงานล้ม) — TripBooking_tenantId_unitId_status_travelDate_idx + OutboxEvent unique (tenantId, idempotencyKey)
   // r3 X4: ลำดับหน่วยหมุนทุกชั่วโมง (md5(unitId ‖ ช่วง) แบบงานรายการรอ T0.4) · แต่ละหน่วยได้ส่วนแบ่งเวลาที่เหลือ
   const bucket = String(Math.floor(now.getTime() / 3_600_000));
   const units = await prisma.$queryRaw<{ tenantId: string; unitId: string }[]>`
@@ -472,7 +473,7 @@ export async function runPdpaPurge(
       UNION SELECT "tenantId", "unitId" FROM "TripPassenger" WHERE "retainUntil" <= ${iso}::timestamp ${tf(`"tenantId"`)}
       UNION SELECT "tenantId", "unitId" FROM "TripBooking" WHERE "status" = 'EXPIRED' AND "piiPurgedAt" IS NULL AND "paidSatang" = 0 ${tf(`"tenantId"`)}
       UNION SELECT "tenantId", "unitId" FROM "TripDocument" WHERE "retainUntil" <= ${iso}::timestamp AND "deletedAt" IS NOT NULL
-        AND COALESCE(("consent"->>'objDel')::boolean, false) = false ${tf(`"tenantId"`)}
+        AND ("consent"->'objDel') IS DISTINCT FROM 'true'::jsonb ${tf(`"tenantId"`)}
       UNION SELECT p."tenantId", p."unitId" FROM "TripPassenger" p JOIN tz ON tz."id" = p."unitId"
         JOIN "TripBooking" b ON b."id" = p."bookingId" AND b."tenantId" = p."tenantId" JOIN "TripDeparture" d ON d."id" = b."departureId" AND d."tenantId" = b."tenantId"
         WHERE p."retainUntil" IS NOT NULL AND (p."answers"->>'retE') > ((((d."endsAt") AT TIME ZONE 'UTC') AT TIME ZONE tz."tz")::date)::text ${tf(`p."tenantId"`)}
@@ -481,6 +482,8 @@ export async function runPdpaPurge(
         JOIN "TripBooking" b ON b."id" = p."bookingId" AND b."tenantId" = p."tenantId" JOIN "TripDeparture" d ON d."id" = b."departureId" AND d."tenantId" = b."tenantId"
         WHERE doc."deletedAt" IS NULL AND (doc."consent"->>'retE') > ((((d."endsAt") AT TIME ZONE 'UTC') AT TIME ZONE tz."tz")::date)::text ${tf(`doc."tenantId"`)}
       UNION SELECT "tenantId", "unitId" FROM "TripPdpaRequest" WHERE "kind" = 'ERASE' AND "status" = 'IN_PROGRESS' ${tf(`"tenantId"`)}
+      UNION SELECT b."tenantId", b."unitId" FROM "TripBooking" b WHERE b."status" = 'EXPIRED' AND b."piiPurgedAt" IS NOT NULL ${tf(`b."tenantId"`)}
+        AND NOT EXISTS (SELECT 1 FROM "OutboxEvent" o WHERE o."tenantId" = b."tenantId" AND o."idempotencyKey" = 'trips.document.purged:booking:' || b."id")
     ) x ORDER BY md5(x."unitId" || ${bucket}), x."tenantId", x."unitId"`;
   // เพดานต่อหน่วยต่อขั้นต่อรอบงาน (ชุดละ ≤ 200 วนต่อในรอบเดียวกัน · r1 P8) — ค่าเริ่ม 2,000
   const limit = Number.isInteger(opts?.limitPerUnit) && (opts?.limitPerUnit ?? 0) >= 1 ? Math.min(2000, opts?.limitPerUnit ?? 2000) : 2000;

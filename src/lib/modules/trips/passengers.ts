@@ -645,6 +645,8 @@ export const sinceOf = (createdAt: Date) => new Date(new Date(createdAt).getTime
 
 // ═══════════════════════ ไฟล์ ═══════════════════════
 export type DocRow = { id: string; passengerId: string; kind: string; fileId: string; retainUntil: Date; deletedAt: Date | null; createdAt: Date };
+/** r4 F12: ไฟล์ถูกทำเครื่องหมายลบแล้วแต่วัตถุยังไม่ยืนยันว่าหาย (consent.objDel ไม่ใช่ true) */
+export const PENDING_OBJ_SQL = Prisma.sql`("deletedAt" IS NOT NULL AND ("consent"->'objDel') IS DISTINCT FROM 'true'::jsonb) AS "pendingDeletion"`;
 export async function liveDocs(db: Tx, u: Unit, passengerId: string, kind?: string): Promise<DocRow[]> {
   return db.$queryRaw<DocRow[]>`
     SELECT "id", "passengerId", "kind", "fileId", "retainUntil", "deletedAt", "createdAt" FROM "TripDocument"
@@ -670,7 +672,7 @@ export async function markDocsDeletedInTx(tx: Tx, u: Unit, who: Who, docIds: rea
   for (const id of [...docIds].sort()) {
     const rows = await tx.$queryRaw<{ id: string; kind: string; passengerId: string; fileId: string }[]>`
       UPDATE "TripDocument" SET "deletedAt" = ${iso(now)}::timestamp, "retainUntil" = LEAST("retainUntil", ${iso(now)}::timestamp), "updatedAt" = ${iso(now)}::timestamp,
-        "consent" = COALESCE("consent", '{}'::jsonb) || jsonb_build_object('purgeStage', ${stage}::text, 'objDel', ${objectGone}::boolean)
+        "consent" = (CASE WHEN jsonb_typeof("consent") = 'object' THEN "consent" ELSE '{}'::jsonb END) || jsonb_build_object('purgeStage', ${stage}::text, 'objDel', ${objectGone}::boolean)
       WHERE "id" = ${id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "deletedAt" IS NULL RETURNING "id", "kind", "passengerId", "fileId"`;
     const r = rows[0];
     if (!r) continue;
@@ -687,10 +689,10 @@ export async function confirmDocsInTx(tx: Tx, u: Unit, who: Who, docIds: readonl
   let n = 0;
   for (const id of [...docIds].sort()) {
     const rows = await tx.$queryRaw<{ id: string; kind: string; passengerId: string; bookingId: string; stage: string | null }[]>`
-      UPDATE "TripDocument" doc SET "consent" = COALESCE(doc."consent", '{}'::jsonb) || jsonb_build_object('objDel', true), "updatedAt" = doc."updatedAt"
+      UPDATE "TripDocument" doc SET "consent" = (CASE WHEN jsonb_typeof(doc."consent") = 'object' THEN doc."consent" ELSE '{}'::jsonb END) || jsonb_build_object('objDel', true), "updatedAt" = doc."updatedAt"
       FROM "TripPassenger" p
       WHERE doc."id" = ${id} AND doc."tenantId" = ${u.tenantId} AND doc."unitId" = ${u.unitId} AND doc."deletedAt" IS NOT NULL
-        AND COALESCE((doc."consent"->>'objDel')::boolean, false) = false AND p."id" = doc."passengerId" AND p."tenantId" = doc."tenantId"
+        AND (doc."consent"->'objDel') IS DISTINCT FROM 'true'::jsonb AND p."id" = doc."passengerId" AND p."tenantId" = doc."tenantId"
       RETURNING doc."id", doc."kind", doc."passengerId", p."bookingId", doc."consent"->>'purgeStage' AS "stage"`;
     const r = rows[0];
     if (!r) continue;
@@ -721,6 +723,28 @@ export async function deleteAndConfirm(u: Unit, who: Who, docs: readonly { id: s
 async function markMedicalInTx(tx: Tx, u: Unit, who: Who, passengerId: string, bookingId: string, now: Date, stage: string) {
   const live = await liveDocs(tx, u, passengerId, "MEDICAL");
   return markDocsDeletedInTx(tx, u, who, live.map((d) => d.id), bookingId, now, stage, false);
+}
+
+/**
+ * r4 F11: วัตถุที่อัปโหลดแล้วแต่ธุรกรรมไม่สำเร็จ (หรือแพ้กันซ้ำ) — ลบทันที · ลบไม่สำเร็จ ⇒ บันทึกแถว TripDocument ที่ทำเครื่องหมายลบแล้ว
+ * (objDel=false · purgeStage ABORTED) ให้ขั้น "วัตถุค้าง" ของงานลบลองใหม่ — ไม่มีวัตถุที่ไม่มีใครตาม · บันทึกแถวไม่ได้ ⇒ ops ERROR (id ไฟล์เท่านั้น)
+ */
+async function dropUploadedObject(u: Unit, passengerId: string, kind: string, fileId: string, now: Date, deps?: DeleteDeps): Promise<void> {
+  const d = await deleteFileAsset({ tenantId: u.tenantId }, fileId, deps);
+  if (d.ok) return;
+  const r = await inTx(u, async (tx) => {
+    await tx.tripDocument.create({
+      data: { tenantId: u.tenantId, unitId: u.unitId, passengerId, kind, fileId, consent: { purgeStage: "ABORTED", objDel: false }, retainUntil: now, deletedAt: now },
+      select: { id: true },
+    });
+    return true;
+  });
+  if (!r.ok) {
+    await logOps("ERROR", "trips.passengers", "ลบไฟล์ที่อัปโหลดค้าง (ธุรกรรมไม่สำเร็จ) ไม่ได้ และบันทึกให้งานลบลองใหม่ไม่ได้", {
+      tenantId: u.tenantId,
+      detail: JSON.stringify({ unitId: u.unitId, fileAssetId: fileId }),
+    }).catch(() => undefined);
+  }
 }
 
 // ═══════════════════════ อัตรา (r1 P6) ═══════════════════════
@@ -884,7 +908,7 @@ export function openHealth(u: Unit, pid: string, h: HealthState | undefined): { 
 const grantsOf = (g: GuardianConsent | null): Partial<Record<"HEALTH" | "WAIVER", GuardianGrant>> => ({ ...(g?.grants ?? {}) });
 
 /** r3 X5c: healthErased = การเขียนนี้ลบข้อมูลสุขภาพ (ปฏิเสธ หรือกลายเป็นผู้เยาว์) — จอต้องเตือนผู้ใช้ */
-type WriteOut = { rev: number; formStatus: string; healthErased: boolean; replayed?: true };
+type WriteOut = { rev: number; formStatus: string; healthErased: boolean; pendingObjects?: number; replayed?: true };
 /**
  * แกนการเขียนแบบฟอร์ม (ลูกค้า §6.2 submit · ร้าน §6.1 update) — กันซ้ำ → rev → ช่อง (OFF · รูป) → วันปิดรับ (ลูกค้า) → สุขภาพ/ผู้เยาว์ (r1 P3 P4) → กุญแจกล่อง →
  * tx: ล็อก t08.doc → CAS rev → (ปฏิเสธ/กลายเป็นผู้เยาว์: ทำเครื่องหมายไฟล์ MEDICAL) → audit/event → commit → ลบวัตถุ (r1 P2)
@@ -982,6 +1006,12 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
       };
       healthGivenNow = true;
       consentAudit = { passengerId: P.id, scope: "HEALTH", version: HEALTH_CONSENT_V1.version, textHash: HEALTH_CONSENT_V1.hash, locale: h.consent.locale, signerRole, via: consentVia(w), guardianRef: null };
+      // r4 F9: ผู้ใหญ่ให้ความยินยอมเอง ⇒ ปลดผู้ปกครองของขอบเขต HEALTH (เหลือเป็นประวัติใน audit: retiredGuardianRef) · ไม่แตะ WAIVER
+      if (!minor.isMinor && grants.HEALTH) {
+        consentAudit.retiredGuardianRef = guardianRef(u, P.id, grants.HEALTH);
+        const { HEALTH: _retired, ...restGrants } = grants;
+        grants = restGrants;
+      }
       // ผู้ปกครองของขอบเขต HEALTH เท่านั้น (ไม่แตะผู้ลงนาม WAIVER · r1 P3)
       if (minor.isMinor && req.guardian) {
         grants = { ...grants, HEALTH: { name: req.guardian.name, relation: req.guardian.relation, at: iso(now), via: consentVia(w), version: HEALTH_CONSENT_V1.version } };
@@ -1081,8 +1111,9 @@ async function writeCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: WriteRequ
     return { out: { rev: next.rev, formStatus: status, healthErased: eraseHealth }, docs: marked.map((m) => ({ id: m.id, fileId: m.fileId })) };
   });
   if (!r.ok) return r;
-  await deleteAndConfirm(u, who, r.value.docs, deps);
-  return { ok: true, value: r.value.out };
+  const pendingObjects = await deleteAndConfirm(u, who, r.value.docs, deps);
+  // r4 F8: ปฏิเสธ/กลายเป็นผู้เยาว์ ⇒ บอกจำนวนไฟล์ที่ทำเครื่องหมายแล้วแต่วัตถุยังลบไม่สำเร็จ (งานลบลองใหม่)
+  return { ok: true, value: r.value.docs.length ? { ...r.value.out, pendingObjects } : r.value.out };
 }
 
 // ═══════════════════════ บริการสาธารณะ (ผู้ถือลิงก์ · §6.2) ═══════════════════════
@@ -1209,6 +1240,8 @@ function signerBasis(spec: FormSpec, dob: string | null, stored: boolean | null,
   // ผู้เยาว์ตามข้อมูลที่เก็บ + SELF ⇒ GUARDIAN_REQUIRED ก่อน (เหตุที่ผู้ใช้แก้ได้) · ผู้ปกครองที่ประกาศว่าไม่ใช่ผู้เยาว์ขัดกับที่เก็บ ⇒ AGE_CONFLICT
   if (storedMinor === true && req.signerRole === "SELF") return fail("VALIDATION", { reason: "GUARDIAN_REQUIRED" });
   if (storedMinor === true && req.isMinorDeclared === false) return fail("VALIDATION", { reason: "AGE_CONFLICT" });
+  // r4 F7: ที่เก็บบอกผู้ใหญ่ (dob หรือคำประกาศที่เก็บ) + คำขอประกาศว่าเป็นผู้เยาว์ ⇒ AGE_CONFLICT (ไม่บันทึกอะไร)
+  if (storedMinor === false && req.isMinorDeclared === true) return fail("VALIDATION", { reason: "AGE_CONFLICT" });
   let isMinor: boolean | null;
   let ageBasis: AgeBasis;
   if (age !== null) {
@@ -1280,7 +1313,7 @@ async function signCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: SignReques
     sigType = chk.type;
   }
   const dropOwnFile = async () => {
-    if (fileId) await deleteFileAsset({ tenantId: u.tenantId }, fileId, deps?.del ? { del: deps.del } : undefined);
+    if (fileId) await dropUploadedObject(u, P.id, "WAIVER", fileId, now, deps?.del ? { del: deps.del } : undefined);
   };
   const who = whoOf(w);
   const r = await inTx(u, async (tx): Promise<SignOut> => {
@@ -1448,7 +1481,7 @@ async function uploadCore(u: Unit, P: PaxRow, cfg: Cfg, w: Writer, req: { idempo
     await auditTx(tx, u, who, A.docUploaded, "TripPassenger", P.id, { documentId: doc.id, passengerId: P.id, kind: req.kind, bytes: bytes.length, contentType: chk.type, keyHash, bodyHash, via: w.via });
     return { documentId: doc.id, kind: req.kind };
   });
-  if (!r.ok || r.value.replayed) await deleteFileAsset({ tenantId: u.tenantId }, fileId, deps?.del ? { del: deps.del } : undefined);
+  if (!r.ok || r.value.replayed) await dropUploadedObject(u, P.id, req.kind, fileId, new Date(), deps?.del ? { del: deps.del } : undefined);
   return r;
 }
 
@@ -1603,7 +1636,8 @@ export type PassengerDTO = {
   missing: PaxFieldKey[];
   fixReason: string | null;
   waiver: { status: "NOT_REQUIRED" | "MISSING" | "SIGNED" | "NEEDS_RESIGN"; signedAt: string | null; method: string | null; identityVerified: boolean };
-  documents: { id: string; kind: string; uploadedAt: string; deleted: boolean }[];
+  /** deleted = ทำเครื่องหมายลบแล้ว · pendingDeletion = วัตถุยังไม่ยืนยันว่าหาย (r4 F12 · จอร้านเท่านั้น) */
+  documents: { id: string; kind: string; uploadedAt: string; deleted: boolean; pendingDeletion: boolean }[];
   link: { active: boolean; issuedAt: string; expiresAt: string } | null;
   purged: boolean;
 };
@@ -1627,8 +1661,8 @@ export async function getTripPassengers(ctx: unknown, input: unknown): Promise<S
     const seats = await db.$queryRaw<{ n: number }[]>`
       SELECT COALESCE(sum("qty"), 0)::int AS "n" FROM "TripBookingItem" WHERE "bookingId" = ${b.id} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} AND "kind" = 'SEAT' AND "active" = true`;
     const docs = ids.length
-      ? await db.$queryRaw<DocRow[]>`
-          SELECT "id", "passengerId", "kind", "fileId", "retainUntil", "deletedAt", "createdAt" FROM "TripDocument"
+      ? await db.$queryRaw<(DocRow & { pendingDeletion: boolean })[]>`
+          SELECT "id", "passengerId", "kind", "fileId", "retainUntil", "deletedAt", "createdAt", ${PENDING_OBJ_SQL} FROM "TripDocument"
           WHERE "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} AND "passengerId" = ANY(${ids}::text[]) ORDER BY "createdAt", "id"`
       : [];
     const since = rows.length ? sinceOf(new Date(Math.min(...rows.map((r) => new Date(r.createdAt).getTime())))) : s.now;
@@ -1694,7 +1728,7 @@ export async function getTripPassengers(ctx: unknown, input: unknown): Promise<S
           method: w.kind === "NONE" ? null : w.e.method,
           identityVerified: w.kind === "FULL" ? w.e.identityProof.verified : false,
         },
-        documents: docs.filter((d) => d.passengerId === r.id).map((d) => ({ id: d.id, kind: d.kind, uploadedAt: iso(new Date(d.createdAt)), deleted: d.deletedAt !== null })),
+        documents: docs.filter((d) => d.passengerId === r.id).map((d) => ({ id: d.id, kind: d.kind, uploadedAt: iso(new Date(d.createdAt)), deleted: d.deletedAt !== null, pendingDeletion: d.pendingDeletion === true })),
         link: issued
           ? { active: act !== null, issuedAt: iso(new Date(issued.createdAt)), expiresAt: typeof ia.expiresAt === "string" ? ia.expiresAt : iso(new Date(r.endsAt)) }
           : null,
