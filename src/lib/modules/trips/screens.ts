@@ -53,7 +53,7 @@ function visibleOf(g: TripsUnitGate): Record<TripsNavKey, boolean> {
   return {
     products: g.canAny(TRIPS_PRODUCT_VIEW_ANY),
     departures: g.canAny(DEPARTURE_ANY),
-    bookings: anyTrips,
+    bookings: g.can("trips.booking.view"), // TRIPS T1.3 ▸ เห็นแท็บการจอง ⇔ สิทธิ์ดูการจอง ◂
     agents: anyTrips,
     channels: anyTrips,
     settings: g.canAny(SETTINGS_ANY),

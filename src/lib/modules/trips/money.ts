@@ -495,9 +495,9 @@ async function payTx(tx: Tx, c: Ctx, g: Gate, v: PayInput, base: string, keyHash
     const id = newId("tme_");
     await tx.$queryRaw`
       INSERT INTO "TripMoneyEvent" ("id", "tenantId", "unitId", "bookingId", "kind", "amountSatang", "vatSatang", "passThroughSatang", "dueId", "tender",
-        "postingStatus", "postingAttempts", "slipId", "idempotencyKey", "createdAt", "updatedAt")
+        "postingStatus", "postingAttempts", "slipId", "idempotencyKey", "reference", "createdAt", "updatedAt")
       VALUES (${id}, ${g.tenantId}, ${g.unitId}, ${b.id}, 'RECEIVED', ${s.amountSatang}, ${vat}, ${s.passThroughSatang}, ${s.dueId}, ${v.tender},
-        'UNPOSTED', 0, ${v.slipId ?? null}::text, ${`${base}:${i + 1}`}, ${iso}::timestamp, ${iso}::timestamp)
+        'UNPOSTED', 0, ${v.slipId ?? null}::text, ${`${base}:${i + 1}`}, ${v.reference?.trim() || null}::text, ${iso}::timestamp, ${iso}::timestamp)
       RETURNING "id"`;
     events.push({ id, dueId: s.dueId, amountSatang: s.amountSatang, vatSatang: vat, passThroughSatang: s.passThroughSatang, dueAt: upd[0]?.dueAt ?? new Date(iso) });
   }

@@ -184,6 +184,9 @@ const ERROR_CODES = new Set([
   "HORIZON_OFF",
   "STATE_CONFLICT",
   "CURRENCY_NOT_ALLOWED",
+  // TRIPS T1.3 ▸ รหัสของจอการจอง (บริการ T0.6/T0.7a) ◂
+  "HOLD_EXPIRED",
+  "IDEMPOTENCY_CONFLICT",
 ]);
 
 /** เรียก server action ทีละครั้ง: สำเร็จ ⇒ รีเฟรชข้อมูลจอจากเซิร์ฟเวอร์ · ไม่สำเร็จ ⇒ ข้อความไทยของบริการ */
