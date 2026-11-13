@@ -74,3 +74,13 @@ fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"fin
 fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
 fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
 typecheck exit=0 errors=0
+
+# fix round 2 · HEAD 1b575fa5a · 2026-11-13T16:05:34Z (session/hr not re-merged per controller)
+h39-forced exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":
+h39-unforced exit=0 ===== qc-hr-h3.9 ===== passed 60/60 JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":55,"baseGr
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":
+qc-audit-trail exit=0 ✅ PASS — 21/21 
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+typecheck exit=0 errors=0
+S4.12 red on old lock (working copy, hr:reports:settings + no row lock): 59/60 · r0:blocked=false off=false other=true (3/3)
