@@ -9292,3 +9292,28 @@ export async function dormDocsDead(tenantId: string, ids: string[]): Promise<Set
   return new Set(rows.map((r) => r.id));
 }
 // ◂ SVC D.10
+
+// ACC T2.11 ▸ ผู้ติดต่อของผู้ซื้อใบกำกับเต็มรูปจาก POS/โรงแรมที่ "ไม่มีเลขผู้เสียภาษี" (ผู้บริโภค)
+//   กติกาจับคู่ (ค่าเริ่มต้นของระบบ — ไม่รวมคนละคนเข้าด้วยกัน): ใช้ผู้ติดต่อเดิมเฉพาะเมื่อ ชื่อ + ที่อยู่ ตรงตัว · อีเมลเท่ากัน (ว่างทั้งคู่ก็นับว่าเท่า)
+//   และผู้ติดต่อเดิม "ไม่มีเลข" (กันผูกผู้ซื้อไม่มีเลขเข้ากับนิติบุคคล/คนที่มีเลขซึ่งชื่อซ้ำ) · ไม่ตรง = สร้างใหม่ไม่มีเลข
+//   ไม่ใช้ findOrCreateCustomerContact เพราะข้อ (3) ชื่อ+อีเมล จะจับผู้ติดต่อที่มีเลขของคนชื่อซ้ำได้
+export async function findOrCreateNoTaxIdBuyerContact(
+  ctx: { tenantId: string; systemId: string },
+  b: { name: string; address: string; email: string | null; legalType: AccountLegalType },
+): Promise<{ id: string }> {
+  const email = (b.email ?? "").trim();
+  const hit = await prisma.accountContact.findFirst({
+    where: {
+      systemId: ctx.systemId,
+      archivedAt: null,
+      name: b.name,
+      address: b.address,
+      AND: [{ OR: [{ taxId: null }, { taxId: "" }] }, email ? { email } : { OR: [{ email: null }, { email: "" }] }],
+    },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (hit) return hit;
+  return createContact({ tenantId: ctx.tenantId, systemId: ctx.systemId, kind: "CUSTOMER", name: b.name, taxId: null, email: email || null, address: b.address, legalType: b.legalType } as Parameters<typeof createContact>[0]);
+}
+// ◂ ACC T2.11

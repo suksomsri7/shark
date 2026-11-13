@@ -185,7 +185,7 @@ export type BillDetail = {
     buyerName?: string;
     requestId?: string;
     /** POS P1.13U มติ 4: ข้อมูลที่ลูกค้ากรอกในคำขอ (REQUESTED เท่านั้น) — เติมฟอร์ม 15A ก่อนออก · fix F2: เฉพาะผู้มีสิทธิ์ pos.taxinvoice.issue ที่สาขา ◂ */
-    request?: { name: string; taxId: string; branchCode: string; address: string; email: string | null };
+    request?: { name: string; taxId: string | null /* ACC T2.11 ◂ */; branchCode: string; address: string; email: string | null };
   };
   refunds: { id: string; receiptNo: string | null; grandTotalSatang: number; time: string; reasonCode: string | null; reason: string | null; byName: string; accounting: { docNo: string | null } | null }[];
   /** POS P1.18U ▸ มติ 9 (บิล drawer en): kind + params = ประโยคที่จอแปลตามภาษา (text ไทยเดิมคงไว้ · เพิ่มอย่างเดียว) ◂ */

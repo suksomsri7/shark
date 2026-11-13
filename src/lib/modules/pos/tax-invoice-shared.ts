@@ -4,6 +4,11 @@
 // 🔴 ผู้ซื้อ (R1) = {kind, name, taxId, branchCode, address, email, source} — คีย์อื่น = VALIDATION · เลขผู้เสียภาษีผิดทุกแบบ = TAX_ID_INVALID (มติ 6)
 //    ตัดช่องว่างหัวท้ายทุกช่อง · branchCode ปริยาย "00000" (สำนักงานใหญ่) · email ปริยาย null · source ปริยาย "MANUAL"
 // 🔴 เลขผู้เสียภาษีไทย 13 หลัก ตรวจหลักตรวจ mod-11 ตามกรมสรรพากร: Σ(หลักที่ i × (13 − i)) i = 0..11 → (11 − Σ mod 11) mod 10 = หลักที่ 13
+// ACC T2.11 ▸ เลขผู้ซื้อว่างได้ (taxId = null) — ประกาศ VAT ฉ.39 ข้อ 7 บังคับเฉพาะผู้ซื้อที่เป็นผู้ประกอบการจดทะเบียน [V] ⇒ ไม่บล็อก
+//   ว่าง = คำเตือน BUYER_TAX_ID_MISSING (ทะเบียนกลาง) · ขั้น "ขอ" (ลูกค้า/ใบเสร็จออนไลน์) = แจ้งให้ทราบ · ขั้น "ออก" (พนักงาน/REST) = ต้องกดยืนยัน
+//   เลขที่กรอกมาแต่ผิดรูป/หลักตรวจผิด = TAX_ID_INVALID เหมือนเดิม (ว่าง ≠ ผิด) ◂
+
+import { legalWarning, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings"; // ACC T2.11 ◂
 
 export type TaxInvoiceBuyerKind = "PERSON" | "JURISTIC";
 export type TaxInvoiceBuyerSource = "MANUAL" | "DBD" | "PROFILE";
@@ -12,7 +17,8 @@ export type TaxInvoiceBuyerSource = "MANUAL" | "DBD" | "PROFILE";
 export type TaxInvoiceBuyer = {
   kind: TaxInvoiceBuyerKind;
   name: string;
-  taxId: string;
+  /** ACC T2.11: null = ผู้ซื้อไม่ให้เลข (ผู้บริโภค) — ใบกำกับออกได้ + คำเตือน BUYER_TAX_ID_MISSING */
+  taxId: string | null;
   branchCode: string;
   address: string;
   email: string | null;
@@ -22,7 +28,8 @@ export type TaxInvoiceBuyer = {
 export type TaxInvoiceBuyerInput = {
   kind: TaxInvoiceBuyerKind;
   name: string;
-  taxId: string;
+  /** ACC T2.11: ว่าง/ไม่ส่ง = ไม่มีเลข */
+  taxId?: string | null;
   branchCode?: string | null;
   address: string;
   email?: string | null;
@@ -48,9 +55,10 @@ export const TAX_INVOICE_REFUSAL_CODES = [
   "DBD_UNAVAILABLE",
   "RATE_LIMITED",
   "INTERNAL",
+  "LEGAL_ACK_REQUIRED", // ACC T2.11 ▸ มีคำเตือนกฎหมายที่ต้องกดยืนยันก่อนออก (ไม่มีเลขผู้ซื้อ) — ยังไม่ได้เขียนอะไร ◂
 ] as const;
 export type TaxInvoiceRefusalCode = (typeof TAX_INVOICE_REFUSAL_CODES)[number];
-export type TaxInvoiceRefusal = { ok: false; code: TaxInvoiceRefusalCode; message: string };
+export type TaxInvoiceRefusal = { ok: false; code: TaxInvoiceRefusalCode; message: string; /** ACC T2.11: มีเฉพาะ LEGAL_ACK_REQUIRED */ legal?: LegalAckRequired };
 
 /** ข้อความไทยของเซิร์ฟเวอร์ (ไว้ดูใน log/AI) — จอใช้ taxInvoiceRefusalKey(code) → pos.taxInvoice.errors.* */
 export const TAX_INVOICE_MESSAGES: Readonly<Record<TaxInvoiceRefusalCode, string>> = {
@@ -69,6 +77,7 @@ export const TAX_INVOICE_MESSAGES: Readonly<Record<TaxInvoiceRefusalCode, string
   DBD_UNAVAILABLE: "ตอนนี้ค้นข้อมูลจากกรมพัฒนาธุรกิจการค้าไม่ได้ — กรอกข้อมูลผู้ซื้อเองไปก่อน",
   RATE_LIMITED: "ค้นหาบ่อยเกินไป — รอสักครู่แล้วลองใหม่",
   INTERNAL: "ระบบใบกำกับภาษีขัดข้องชั่วคราว — ลองอีกครั้ง",
+  LEGAL_ACK_REQUIRED: "ผู้ซื้อไม่มีเลขประจำตัวผู้เสียภาษี — อ่านคำเตือนแล้วกดรับทราบก่อนออกใบกำกับภาษีเต็มรูป",
 };
 
 export const taxInvoiceRefuse = (code: TaxInvoiceRefusalCode, message?: string): TaxInvoiceRefusal => ({ ok: false, code, message: message ?? TAX_INVOICE_MESSAGES[code] });
@@ -112,7 +121,8 @@ export function maskTaxId(id: unknown): string {
 }
 
 /** ชนิดผู้ซื้อจากเลข (คำขอ P1.11 ไม่มี kind — มติ 7): นิติบุคคลไทยขึ้นต้นด้วย 0 */
-export const buyerKindFromTaxId = (taxId: string): TaxInvoiceBuyerKind => (taxId.startsWith("0") ? "JURISTIC" : "PERSON");
+//   ACC T2.11: ไม่มีเลข = บุคคลธรรมดา (ค่าเริ่มต้นของระบบ — คำขอจากใบเสร็จออนไลน์ไม่มีช่องชนิด) ◂
+export const buyerKindFromTaxId = (taxId: string | null | undefined): TaxInvoiceBuyerKind => (taxId && taxId.startsWith("0") ? "JURISTIC" : "PERSON");
 
 type ParseResult = { ok: true; buyer: TaxInvoiceBuyer } | { ok: false; code: "VALIDATION" | "TAX_ID_INVALID"; message: string };
 
@@ -161,15 +171,81 @@ export function parseTaxInvoiceBuyer(input: unknown): ParseResult {
     source = input.source as TaxInvoiceBuyerSource;
   }
 
-  const taxId = typeof input.taxId === "string" ? digitsOnly(input.taxId) : null;
-  if (!taxId || !isValidThaiTaxIdChecksum(taxId)) return { ok: false, code: "TAX_ID_INVALID", message: TAX_INVOICE_MESSAGES.TAX_ID_INVALID };
+  // ACC T2.11: ไม่ส่ง/null/ว่าง (หลังตัดช่องว่าง-ขีด) = ไม่มีเลข (null) · มีค่าแต่ผิด = TAX_ID_INVALID · ชนิดอื่น = TAX_ID_INVALID เหมือนเดิม
+  let taxId: string | null = null;
+  if (input.taxId !== undefined && input.taxId !== null) {
+    if (typeof input.taxId !== "string") return { ok: false, code: "TAX_ID_INVALID", message: TAX_INVOICE_MESSAGES.TAX_ID_INVALID };
+    const t = digitsOnly(input.taxId);
+    if (t !== "" && !isValidThaiTaxIdChecksum(t)) return { ok: false, code: "TAX_ID_INVALID", message: TAX_INVOICE_MESSAGES.TAX_ID_INVALID };
+    taxId = t || null;
+  }
 
   return { ok: true, buyer: { kind, name, taxId, branchCode, address, email, source } };
 }
 
-/** ผู้ซื้อคนเดียวกันไหม (มติ 5 — ยิงซ้ำ = คืนเอกสารเดิม) · ไม่นับ source/requestedAt */
+/** ผู้ซื้อคนเดียวกันไหม (มติ 5 — ยิงซ้ำ = คืนเอกสารเดิม) · ไม่นับ source/requestedAt · ACC T2.11: เลข null เทียบตรงตัว (ทุกช่องต้องตรง) */
 export function sameTaxInvoiceBuyer(a: Pick<TaxInvoiceBuyer, "kind" | "name" | "taxId" | "branchCode" | "address" | "email">, b: Pick<TaxInvoiceBuyer, "kind" | "name" | "taxId" | "branchCode" | "address" | "email">): boolean {
-  return a.kind === b.kind && a.name === b.name && a.taxId === b.taxId && a.branchCode === b.branchCode && a.address === b.address && (a.email ?? null) === (b.email ?? null);
+  return a.kind === b.kind && a.name === b.name && (a.taxId ?? null) === (b.taxId ?? null) && a.branchCode === b.branchCode && a.address === b.address && (a.email ?? null) === (b.email ?? null);
+}
+
+// ═══════════ ACC T2.11 — ไม่มีเลขผู้ซื้อ ═══════════
+
+/** รหัสคำเตือนของทะเบียนกลาง (ประกาศ VAT ฉ.39 ข้อ 7, 9 · [V]) */
+export const BUYER_TAX_ID_MISSING = "BUYER_TAX_ID_MISSING" as const;
+
+/**
+ * คำเตือนของผู้ซื้อที่ไม่มีเลข — ข้อความ/มาตรา/ป้าย จากทะเบียนกลางเท่านั้น
+ *   stage "request" = ลูกค้าส่งคำขอ (แจ้งให้ทราบ · ไม่มีช่องติ๊กสำหรับลูกค้า) · "issue" = พนักงาน/REST ออกใบจริง (ต้องกดยืนยัน — ack:true)
+ *   ทะเบียนกลางตั้ง ack:false (ฝั่งบัญชีใช้เป็นข้อมูลบนคำขอ) — ขั้นออกของ POS/โรงแรมยกเป็นต้องยืนยันที่นี่ที่เดียว (ค่าเริ่มต้นของระบบ · บันทึกใน wo-notes/T2.11)
+ */
+export function buyerTaxIdWarnings(buyer: { taxId?: string | null } | null | undefined, stage: "request" | "issue"): LegalWarning[] {
+  if (!buyer || (typeof buyer.taxId === "string" && buyer.taxId.trim() !== "")) return [];
+  const w = legalWarning(BUYER_TAX_ID_MISSING);
+  return [{ ...w, ack: stage === "issue" }];
+}
+
+/** ขั้นออก: คำเตือนที่ยังไม่ได้ยืนยัน ([] = ผ่าน) */
+export function buyerTaxIdUnacked(buyer: { taxId?: string | null } | null | undefined, ackCodes: readonly string[] | null | undefined): LegalWarning[] {
+  const acked = new Set(ackCodes ?? []);
+  return buyerTaxIdWarnings(buyer, "issue").filter((w) => !acked.has(w.code));
+}
+
+/** คำปฏิเสธมาตรฐานเมื่อยังไม่ยืนยัน (ไม่ throw · ยังไม่ได้เขียนอะไร) */
+export function taxInvoiceAckRefusal(warnings: LegalWarning[]): TaxInvoiceRefusal {
+  return { ok: false, code: "LEGAL_ACK_REQUIRED", message: TAX_INVOICE_MESSAGES.LEGAL_ACK_REQUIRED, legal: { code: "LEGAL_ACK_REQUIRED", warnings } };
+}
+
+/** รหัสยืนยันจากผู้เรียก (อาร์เรย์สตริง ≤ 10 ตัว · ตัวละ ≤ 64) — อื่น = null (VALIDATION) · ไม่ส่ง = [] */
+export function parseAckCodes(v: unknown): string[] | null {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > 10) return null;
+  const out: string[] = [];
+  for (const c of v) {
+    if (typeof c !== "string" || c.length === 0 || c.length > 64) return null;
+    out.push(c);
+  }
+  return out;
+}
+
+const normName = (s: string) => s.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+
+/**
+ * ACC T2.11 — คำขอของลูกค้ากับผู้ซื้อที่ออกจริง "เป็นคนเดียวกัน" ไหม (ปิดคำขอที่ยังเปิดตอนออกทีหลัง · fix F5 เดิม)
+ *   มีเลขฝั่งใดฝั่งหนึ่ง ⇒ เลขต้องตรงกัน (มีเลขกับไม่มีเลข = คนละคน) — กติกาเดิม
+ *   ไม่มีเลขทั้งคู่ ⇒ ชื่อตรงกัน (ตัดช่องว่างซ้ำ · ไม่สนตัวพิมพ์) และอีเมลไม่ขัดกัน (มีทั้งคู่ต้องตรง)
+ *   ค่าเริ่มต้นของระบบ: ไม่รวมคนละคนที่ชื่อซ้ำกันแต่ให้อีเมลต่างกัน · ชื่อต่าง = คนละคนเสมอ
+ */
+export function sameBuyerParty(
+  a: { taxId?: string | null; name: string; email?: string | null },
+  b: { taxId?: string | null; name: string; email?: string | null },
+): boolean {
+  const ta = a.taxId || null;
+  const tb = b.taxId || null;
+  if (ta || tb) return ta === tb;
+  if (normName(a.name) !== normName(b.name)) return false;
+  const ea = (a.email ?? "").trim().toLowerCase();
+  const eb = (b.email ?? "").trim().toLowerCase();
+  return !ea || !eb || ea === eb;
 }
 
 /** สำเนาบนบิล (PosSale.taxInvoice) ที่อ่านกลับมา → ผู้ซื้อ (รูปผิด = null) */

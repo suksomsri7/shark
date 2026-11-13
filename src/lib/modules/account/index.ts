@@ -33,6 +33,7 @@ import { baht, familyCreditByInvoice } from "./service";
 import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty, posCreditInvoiceState as posCreditInvoiceStateOf, posCreditRefundRoomInTx, ensureAccountContact as ensurePartyContact, normalizeTaxId as normTaxId } from "./service"; // POS P3.6 fix2 F1 ▸ ผู้ติดต่อตาม partyId เท่านั้น ◂
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
+import { findOrCreateNoTaxIdBuyerContact } from "./service"; // ACC T2.11 ◂
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับบิล POS ◂
 import { splitIncludedVat } from "@/lib/money/vat";
 import { docRateOfTreatment, treatmentOf } from "@/lib/money/vat-lines"; // ACC T1.8 ◂
@@ -509,6 +510,9 @@ async function resolveBuyerContact(
   ctx: GlCtx,
   buyer: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null },
 ): Promise<string> {
+  // ACC T2.11 ▸ ไม่มีเลขผู้ซื้อ = กติกาจับคู่ของผู้ซื้อไม่มีเลข (ชื่อ+ที่อยู่+อีเมล · เฉพาะผู้ติดต่อที่ไม่มีเลข) ◂
+  if (normTaxId(buyer.taxId) === "")
+    return (await findOrCreateNoTaxIdBuyerContact({ tenantId: ctx.tenantId, systemId: ctx.systemId }, { name: buyer.name, address: buyer.address, email: buyer.email ?? null, legalType: buyer.kind === "PERSON" ? "PERSON" : "COMPANY" })).id;
   const contact = await findOrCreateCustomerContact(
     { tenantId: ctx.tenantId, systemId: ctx.systemId },
     {

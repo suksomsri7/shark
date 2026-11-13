@@ -4,13 +4,17 @@
 // 🔴 ขอได้เมื่อ: บิล SALE สถานะ PAID (คืนบางส่วนยังขอได้ — P1.13 ตัดสินยอด) · จ่ายภายใน 7 วัน · ชนิดใบเสร็จ TAX_INVOICE_ABB (สมุดจด VAT)
 //    อื่น = NOT_ELIGIBLE · คำขอที่ยังเปิด (REQUESTED/ISSUED) ต่อบิลได้ 1 ใบ = ALREADY_REQUESTED (ตัดสินใต้ล็อกแถวบิล FOR UPDATE)
 // 🔴 taxId 13 หลัก (ตรวจรูปแบบอย่างเดียว · DBD = P1.13) · branchCode 5 หลัก ปริยาย "00000"
+// 🔴 ACC T2.11: taxId ว่าง/ไม่ส่ง = null (ผู้บริโภค) — รับคำขอ + คำเตือน BUYER_TAX_ID_MISSING แบบแจ้งให้ทราบ (ลูกค้าไม่ต้องติ๊ก ·
+//    พนักงานกดรับทราบตอนออกใบ — tax-invoice.ts) · มีค่าแต่ไม่ใช่ 13 หลัก = VALIDATION เหมือนเดิม
 // 🔴 แถว + outbox pos.receipt.taxInvoiceRequested อยู่ใน tx เดียวกัน (consumer ยังว่าง — P1.13 เติม)
 import type { Prisma, PosTaxInvoiceRequestStatus } from "@prisma/client";
 import { emitOutbox } from "@/lib/core/outbox";
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings"; // ACC T2.11 ◂
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { prisma } from "./db";
 import { receiptForSale } from "./receipt";
 import { saleForToken, type TokenSale } from "./receipt-token";
+import { buyerTaxIdWarnings } from "./tax-invoice-shared"; // ACC T2.11 ◂
 import {
   RECEIPT_EMAIL_RE,
   RECEIPT_ONLINE_MESSAGES,
@@ -34,7 +38,7 @@ const refuse = (code: PublicReceiptRefusalCode, message?: string): ReceiptRefusa
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const NO_CTRL = /[\u0000-\u0009\u000B-\u001F\u007F]/;
 
-type CleanRequest = { name: string; taxId: string; branchCode: string; address: string; email: string | null };
+type CleanRequest = { name: string; taxId: string | null; branchCode: string; address: string; email: string | null };
 
 /** ตรวจ/ทำความสะอาดคำขอ — false = VALIDATION */
 function cleanInput(input: unknown): CleanRequest | false {
@@ -45,7 +49,8 @@ function cleanInput(input: unknown): CleanRequest | false {
   const taxId = str(input.taxId);
   if (!name || textLength(name) > NAME_MAX || NO_CTRL.test(name)) return false;
   if (!address || textLength(address) > ADDRESS_MAX || NO_CTRL.test(address)) return false;
-  if (!taxId || !/^\d{13}$/.test(taxId)) return false;
+  if (taxId === null && input.taxId !== undefined && input.taxId !== null) return false; // ชนิดผิด
+  if (taxId && !/^\d{13}$/.test(taxId)) return false; // ACC T2.11: ว่าง = ไม่มีเลข ◂
   let branchCode = "00000";
   if (input.branchCode !== undefined && input.branchCode !== null) {
     const b = str(input.branchCode);
@@ -61,7 +66,7 @@ function cleanInput(input: unknown): CleanRequest | false {
       email = e;
     }
   }
-  return { name, taxId, branchCode, address, email };
+  return { name, taxId: taxId || null, branchCode, address, email };
 }
 
 /** บิลนี้ขอใบกำกับเต็มรูปได้ไหม (ไม่ดูคำขอเดิม) — kind มาจากตัวประกอบใบเสร็จ (สูตรเดียวกับใบที่พิมพ์) */
@@ -88,7 +93,7 @@ export async function taxInvoiceActionOf(sale: TokenSale, kind: string, client?:
  * ขอใบกำกับภาษีเต็มรูป (R5) — {ok:true, requestId} | ปฏิเสธเป็นข้อมูล (TOKEN_NOT_FOUND · VALIDATION · NOT_ELIGIBLE · ALREADY_REQUESTED · INTERNAL)
  * ไม่ throw
  */
-export async function requestFullTaxInvoice(token: string, input: unknown): Promise<FullTaxInvoiceRequestResult> {
+export async function requestFullTaxInvoice(token: string, input: unknown): Promise<FullTaxInvoiceRequestResult & { warnings?: LegalWarning[] }> {
   try {
     const clean = cleanInput(input);
     if (!clean) return refuse("VALIDATION");
@@ -119,7 +124,8 @@ export async function requestFullTaxInvoice(token: string, input: unknown): Prom
       return { ok: true, requestId: row.id };
     });
     if (res.ok) scheduleDrain();
-    return res;
+    // ACC T2.11 ▸ ไม่มีเลข = คำเตือนแบบแจ้งให้ทราบ (ack:false) — ลิงก์สาธารณะส่งถึงเบราว์เซอร์แค่ {ok:true} (okOnly) · หน้าแสดงหมายเหตุของตัวเองก่อนส่ง ◂
+    return res.ok ? { ...res, warnings: buyerTaxIdWarnings(clean, "request") } : res;
   } catch (e) {
     console.error("[pos/receipt-tax-request] INTERNAL", e instanceof Error ? e.name : "Error");
     return refuse("INTERNAL");

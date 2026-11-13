@@ -441,7 +441,7 @@ import { priceRuleActiveUntil, type PriceSource } from "./price-shared";
 import { createHash } from "node:crypto";
 import { writeAudit } from "@/lib/core/audit";
 import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
-import { TAX_INVOICE_MESSAGES, parseTaxInvoiceBuyer, type TaxInvoiceBuyer } from "./tax-invoice-shared"; // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
+import { TAX_INVOICE_MESSAGES, buyerTaxIdUnacked, parseAckCodes, parseTaxInvoiceBuyer, type TaxInvoiceBuyer } from "./tax-invoice-shared"; // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂ · ACC T2.11 ▸ ไม่มีเลขผู้ซื้อ ◂
 import { rememberBuyerForMember, taxInvoiceEligibleAtPay, taxInvoiceEligibleForSystem } from "./tax-invoice"; // POS P1.13 ▸ R6 · follow-up 3 · P1.13U มติ 2 ◂
 import {
   POS_APPROVAL_MESSAGE,
@@ -573,6 +573,7 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   ALREADY_SET: "ตั้ง PIN ไว้แล้ว — เปลี่ยน PIN ได้ที่ ตั้งค่า → พนักงาน", // POS P1.15U F1 (staff-pin.ts)
   // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
   TAX_ID_INVALID: TAX_INVOICE_MESSAGES.TAX_ID_INVALID,
+  LEGAL_ACK_REQUIRED: TAX_INVOICE_MESSAGES.LEGAL_ACK_REQUIRED, // ACC T2.11 ◂
   NOT_ELIGIBLE: "ร้านนี้ยังออกใบกำกับภาษีไม่ได้ · ตรวจการเชื่อมบัญชี/เลขผู้เสียภาษี",
   // POS P1.12 ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (R16) ◂
   MEMBER_SYSTEM_MISSING: "สาขานี้ยังไม่ได้เปิดใช้ระบบสมาชิก — ขายแบบไม่แนบสมาชิก",
@@ -1391,6 +1392,7 @@ const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
   ...REG_QUOTE_KEYS, "idempotencyKey", "payMethods", "cashReceivedSatang", "expectedGrandTotalSatang", "tipSatang", "note", "expectedSplitVersion", // POS P2.5 ▸ R4 ◂
   "staffToken", "managerPin", "managerUserId", "heldCartId", // POS P1.15 ▸ R3 R4 R6 ◂
   "taxInvoice", "rememberBuyer", // POS P1.13 ▸ R2 R6 ◂
+  "taxInvoiceAck", // ACC T2.11 ▸ รหัสคำเตือนที่ติ๊กรับทราบ (ผู้ซื้อไม่มีเลข) ◂
   "channelRef", // POS P2.1 ▸ R10 ◂
   "expectedTableItemsHash", // POS P2.4 ▸ R7 แฮชชุดรายการจาก quote ของโต๊ะ ◂
   "customerPartyId", "crmDealId", "creditOverride", // POS P3.6 ▸ R5 R10 CD-1: บริษัทของบิล · ดีล · PIN ผู้จัดการอนุญาตเกินวงเงิน (ตรวจใน submitRegisterSale) ◂
@@ -2407,6 +2409,8 @@ type RegParsedSubmit = {
   /** POS P1.13: ผู้ซื้อใบกำกับเต็มรูป (แกะแล้ว · null = ไม่ขอ) · จำผู้ซื้อไว้กับสมาชิกของบิล */
   taxInvoice: TaxInvoiceBuyer | null;
   rememberBuyer: boolean;
+  /** ACC T2.11: รหัสคำเตือนที่ติ๊กรับทราบ (ผ่านด่านแล้ว) ◂ */
+  taxInvoiceAck: string[];
   /** POS P2.1 ▸ R10: เลขออเดอร์แพลตฟอร์ม (แกะแล้ว · null = ไม่มี) ◂ */
   channelRef: string | null;
   /** POS P2.4 ▸ R7: แฮชชุดรายการจาก quote ของโต๊ะ (บังคับเมื่อมี tableSessionId) · แฮชของรายการที่ผูกบิลเดิม (เทียบคำขอซ้ำ) ◂ */
@@ -2530,6 +2534,13 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     if (!b.ok) return regRefuse(b.code, b.message);
     taxInvoice = b.buyer;
   }
+  // ACC T2.11 ▸ ผู้ซื้อไม่มีเลข = คำเตือน BUYER_TAX_ID_MISSING ต้องติ๊กรับทราบ (taxInvoiceAck) — ไม่ติ๊ก = LEGAL_ACK_REQUIRED ก่อนเขียนอะไร (ไม่บล็อกถาวร) ◂
+  const taxInvoiceAck = parseAckCodes(raw.taxInvoiceAck);
+  if (!taxInvoiceAck) return regRefuse("VALIDATION", "รหัสรับทราบคำเตือนไม่ถูกต้อง");
+  if (taxInvoice) {
+    const unacked = buyerTaxIdUnacked(taxInvoice, taxInvoiceAck);
+    if (unacked.length) return { ...regRefuse("LEGAL_ACK_REQUIRED"), legal: { code: "LEGAL_ACK_REQUIRED", warnings: unacked } };
+  }
   if (raw.rememberBuyer !== undefined && raw.rememberBuyer !== null && typeof raw.rememberBuyer !== "boolean") return regRefuse("VALIDATION", "ค่าจำผู้ซื้อไม่ถูกต้อง");
   const rememberBuyer = raw.rememberBuyer === true;
   // POS P2.1 ▸ R10: เลขออเดอร์แพลตฟอร์ม (ตัดช่องว่าง · ≤ 40 · ว่าง = null) ◂
@@ -2575,6 +2586,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     rawCart,
     taxInvoice,
     rememberBuyer,
+    taxInvoiceAck, // ACC T2.11 ◂
     channelRef, // POS P2.1 ◂
     expectedTableItemsHash, // POS P2.4 ◂
     expectedSplitVersion, // POS P2.5 ◂
@@ -3031,6 +3043,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       soldByUserId: actor.userId, // POS P1.17 ▸ R6 · ผู้ขาย = ผู้ใช้ของ session ◂ · POS P1.15 ▸ R3 = คนในโทเคนเมื่อส่งโทเคน (actor ถูกแทนด้านบน) ◂
       // POS P1.13 ▸ R1 R2: สำเนาผู้ซื้อเขียนใน tx ของบิล (createSale) · requestedAt = เวลาที่ขอ ◂
       ...(req.taxInvoice ? { taxInvoice: { ...req.taxInvoice, requestedAt: new Date().toISOString() } } : {}),
+      // ACC T2.11 ▸ รอยรับทราบ "ไม่มีเลขผู้ซื้อ" เขียนใน tx ของบิล (createSale) ◂
+      ...(req.taxInvoice && !req.taxInvoice.taxId ? { taxInvoiceLegalAck: { codes: req.taxInvoiceAck, actorId: actor.userId, actorType: "USER" as const, via: "screen" } } : {}),
     };
     if (off) saleInput.offline = { ref: off.ref, soldAt: off.soldAt }; // POS P3.4 ▸ R7 มติ 3: offlineRef · paidAt = soldAt · เลขใบเสร็จเดือนของ soldAt ◂
     Object.assign(saleInput, p36.sale); // POS P3.6 ▸ customerPartyId · crmDealId · creditOverrideByUserId (ส่งเฉพาะที่มี) ◂

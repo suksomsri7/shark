@@ -8,7 +8,8 @@
 // 🔴 message_th = ข้อความไทยของ facade (เขียนสำหรับเจ้าของร้านอยู่แล้ว) · message_en = ตารางนี้ (ASCII) · ไม่แตะแกน `mapError`
 // 🔴 คำปฏิเสธที่ "คืนค่า" = facade ปฏิเสธก่อนเขียน ⇒ 409/429/503 ติดธง nothingWritten (ปล่อยการจองกันซ้ำ ให้ลองใหม่ด้วยคีย์เดิมได้)
 
-import { ApiError, nothingWritten, type ApiErrorCode, type ApiErrorDetail } from "@/lib/api/respond";
+import { ApiError, legalAckApiError, nothingWritten, type ApiErrorCode, type ApiErrorDetail } from "@/lib/api/respond";
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings"; // ACC T2.11 ◂
 import type { BillsRefusalCode } from "../bills-shared";
 import type { CatalogErrorCode } from "../catalog";
 import type { ChannelRefusalCode } from "../channel-shared";
@@ -48,6 +49,7 @@ export const POS_REFUSAL_HTTP: Record<PosRefusalCode, PosRefusalHttp> = {
   ACCOUNT_PENDING: { status: 409, code: "state_conflict", en: "The accounting link of this shop is not ready yet, so this cannot be done now." },
   ALREADY_CLOCKED: { status: 409, code: "state_conflict", en: "This clock in/out was already recorded today." }, // POS P3.5 ▸ R13 (REST ไม่มี op ลงเวลา — ครบรหัสตาม Record) ◂
   ALREADY_ISSUED: { status: 409, code: "state_conflict", en: "A full tax invoice was already issued for this bill." },
+  LEGAL_ACK_REQUIRED: { status: 409, code: "legal_ack_required", en: "This action has legal warnings that must be acknowledged first. Show them to the user, then resend with `acknowledge` listing the warning codes." }, // ACC T2.11 ◂
   ALREADY_RECALLED: { status: 409, code: "state_conflict", en: "This held bill was already recalled by another device." },
   ALREADY_RECOUNTED: { status: 409, code: "state_conflict", en: "This shift was already recounted." },
   ALREADY_SET: { status: 409, code: "state_conflict", en: "This value is already set." },
@@ -230,6 +232,12 @@ export function toPosApiError(e: unknown): unknown {
   const r: Record<string, unknown> = isRecord(e) ? e : thrown ? (e as unknown as Record<string, unknown>) : {};
   const code = r.code;
   if (!(returned || thrown) || !isPosRefusalCode(code)) return e;
+  // ACC T2.11 ▸ คำเตือนกฎหมายที่ยังไม่ยืนยัน = ซองกลาง 409 legal_ack_required + error.warnings (รูปเดียวกับโมดูลบัญชี) ◂
+  if (code === "LEGAL_ACK_REQUIRED") {
+    const legal = isRecord(r.legal) ? r.legal : null;
+    const ws = legal && Array.isArray(legal.warnings) ? (legal.warnings as LegalWarning[]) : [];
+    if (ws.length) return legalAckApiError(ws);
+  }
   const row = POS_REFUSAL_HTTP[code];
   const raw = returned ? r.message : thrown ? (e as Error).message : undefined;
   const th = isThai(raw) ? raw : (FALLBACK_TH[row.status] ?? FALLBACK_TH[422]!);

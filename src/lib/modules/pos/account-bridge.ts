@@ -205,7 +205,7 @@ export async function bridgePosSalePaid(
     ...(p36Credit && sale.customerPartyId ? { onAccount: { partyId: sale.customerPartyId, dueDate: p36Credit.dueDate, termDays: p36Credit.termDays } } : {}), // POS P3.6 ▸ R7 ◂
     receiptNo: sale.receiptNo ?? null,
     // POS P1.13 ▸ R2: บิลที่มีผู้ซื้อขอใบกำกับเต็มรูป → เอกสาร TAX_INVOICE แทน ABB (GL เดิม) ◂
-    ...(buyer ? { buyer: { kind: buyer.kind, name: buyer.name, taxId: buyer.taxId, branchCode: buyer.branchCode, address: buyer.address, email: buyer.email } } : {}),
+    ...(buyer ? { buyer: { kind: buyer.kind, name: buyer.name, taxId: buyer.taxId ?? "" /* ACC T2.11: ไม่มีเลข = "" ◂ */, branchCode: buyer.branchCode, address: buyer.address, email: buyer.email } } : {}),
     ...(depositUse ? { depositVatSatang: depositUse.vatSatang, depositGrossSatang: depositUse.satang } : {}), // POS P2.9b ▸ R5 มติ 1 15 ◂
   })); // POS P3.6 ◂
   if (buyer && res.fullTaxInvoice && res.docId) await recordPayTimeTaxInvoice(sale, res.docId);

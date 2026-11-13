@@ -461,6 +461,7 @@ export async function quoteExtendBookingAction(unitSlug: string, input: unknown)
 //   รับประกัน = hotel.reservation.checkIn หรือ hotel.folio.post · คืนประกัน = hotel.reservation.checkOut หรือ hotel.booking.manage · ริบ = hotel.booking.manage
 const FOLIO_INPUT_KEYS = new Set([
   "reservationId", "groupId", "type", "description", "qty", "unitAmountSatang", "itemId", "reason", "payMethods", "shiftId", "taxInvoice",
+  "acknowledge", // ACC T2.11 ▸ รหัสคำเตือนที่รับทราบ (ผู้ซื้อใบกำกับไม่มีเลข) ◂
   "securityDeposit", "forfeitReason", "note", "amountSatang", "payType", "reference", "saleId",
 ]);
 function folioInputOf(input: unknown, unitId: string): Record<string, unknown> {

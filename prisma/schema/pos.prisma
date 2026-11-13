@@ -701,7 +701,7 @@ model PosTaxInvoiceRequest {
   unitId       String
   saleId       String // PosSale.id (SALE)
   name         String // ชื่อผู้ซื้อ/บริษัท
-  taxId        String // 13 หลัก
+  taxId        String? // 13 หลัก · ACC T2.11: null = ลูกค้าไม่ให้เลข (ผู้บริโภค · ฉ.39 ข้อ 7 บังคับเฉพาะผู้ซื้อที่จด VAT) — พนักงานกดรับทราบตอนออก
   branchCode   String                     @default("00000") // 5 หลัก
   address      String
   email        String?
@@ -723,7 +723,7 @@ model PosBuyerProfile {
   customerId String   @unique // Customer.id (สมาชิก)
   kind       String // "PERSON" | "JURISTIC"
   name       String
-  taxId      String // 13 หลัก (ผ่าน mod-11 แล้ว)
+  taxId      String? // 13 หลัก (ผ่าน mod-11 แล้ว) · ACC T2.11: null = ผู้ซื้อไม่มีเลข
   branchCode String   @default("00000")
   address    String
   email      String?

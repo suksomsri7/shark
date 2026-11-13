@@ -11,6 +11,9 @@
 //    ตรวจสาขา↔ระบบ POS ก่อน · 30 ครั้ง/นาที/สาขา + 100/นาที/ร้าน (ตรวจก่อนเขียน audit ใด ๆ) นับจาก AuditLog pos.taxinvoice.dbd_lookup (targetId = สาขา) · audit ทุกครั้งด้วยเลขที่ปิดแล้ว (ห้ามเลขดิบ)
 import type { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
+import { recordLegalAckInTx } from "@/lib/core/legal-ack"; // ACC T2.11 ◂
+import { legalAmbient, notePendingLegal } from "@/lib/core/legal-ambient"; // ACC T2.11 ◂
+import type { LegalAck } from "@/lib/core/settings/legal/warnings"; // ACC T2.11 ◂
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import { evaluate } from "@/lib/core/rbac";
@@ -25,6 +28,10 @@ import {
   TAX_INVOICE_DBD_PER_MINUTE_TENANT,
   TAX_INVOICE_LATE_DAYS,
   buyerKindFromTaxId,
+  buyerTaxIdUnacked,
+  parseAckCodes,
+  sameBuyerParty,
+  taxInvoiceAckRefusal,
   isValidThaiTaxIdChecksum,
   maskTaxId,
   parseTaxInvoiceBuyer,
@@ -43,7 +50,7 @@ export type TaxInvoiceIssueResult = { ok: true; docId: string; docNo: string | n
 export type TaxInvoiceRejectResult = { ok: true } | TaxInvoiceRefusal;
 export type DbdBuyer = { kind: "JURISTIC"; name: string; taxId: string; branchCode: "00000"; address: string; status: string | null };
 export type TaxInvoiceLookupResult = { ok: true; found: true; buyer: DbdBuyer } | { ok: true; found: false } | TaxInvoiceRefusal;
-export type BuyerProfile = { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null };
+export type BuyerProfile = { kind: "PERSON" | "JURISTIC"; name: string; taxId: string | null; branchCode: string; address: string; email: string | null };
 export type BuyerProfileResult = { ok: true; profile: BuyerProfile | null } | TaxInvoiceRefusal;
 type DbdLookup = (taxId: string) => Promise<account.DbdLookupResult>;
 
@@ -65,7 +72,17 @@ const canRead = (a: RegisterActor, unitId: string) =>
   evaluate(a, { module: "pos", action: "pos.sale.read", unitId }) || evaluate(a, { module: "pos", action: "pos.sale.create", unitId });
 /** สิทธิ์ออก/ปฏิเสธใบกำกับเต็มรูป (R3 R4): อ่านบิล + pos.taxinvoice.issue ที่สาขานี้ (เจ้าของ/ผู้จัดการได้โดยปริยาย) */
 const canIssue = (a: RegisterActor, unitId: string) => canRead(a, unitId) && evaluate(a, { module: "pos", action: PERM_ISSUE, unitId });
-const toBuyerArg = (b: TaxInvoiceBuyer) => ({ kind: b.kind, name: b.name, taxId: b.taxId, branchCode: b.branchCode, address: b.address, email: b.email });
+// ACC T2.11: ฝั่งบัญชีรับเลขเป็นสตริง — ไม่มีเลข = "" (normalizeTaxId ว่าง ⇒ ไม่จับคู่ด้วยเลข · ผู้ติดต่อใหม่ไม่มีเลข) ◂
+const toBuyerArg = (b: TaxInvoiceBuyer) => ({ kind: b.kind, name: b.name, taxId: b.taxId ?? "", branchCode: b.branchCode, address: b.address, email: b.email });
+
+/**
+ * ACC T2.11 — รหัสยืนยันของการออก: ผู้เรียกส่งมาเอง (จอ) ก่อน · ไม่ส่ง = บริบทของคำขอ (REST/เลขา AI — runner เปิด withLegalAck จาก `acknowledge`)
+ * ผู้ยืนยัน: จอ = ผู้ใช้ของ session · REST/AI = ผู้กระทำของบริบท
+ */
+function issueAck(explicit: string[], actorUserId: string): LegalAck {
+  if (explicit.length) return { codes: explicit, actorId: actorUserId, actorType: "USER", via: "screen" };
+  return legalAmbient()?.ack ?? { codes: [], actorId: actorUserId, actorType: "USER", via: "screen" };
+}
 
 function internal(where: string, e: unknown): TaxInvoiceRefusal {
   console.error(`[pos/tax-invoice] ${where} INTERNAL`, e instanceof Error ? e.name : "Error");
@@ -118,7 +135,7 @@ async function docNoOf(ctx: TaxInvoiceCtx, saleId: string, docId: string): Promi
   return ref && ref.docId === docId ? ref.docNo : null;
 }
 
-type IssueCore = { ctx: TaxInvoiceCtx; actor: RegisterActor; saleId: string; buyer: TaxInvoiceBuyer; requestId: string | null; rememberBuyer: boolean; via: "LATER" | "REQUEST"; /** POS P2.14 ▸ API-5 คีย์บริการของ REST (pos-api:<keyId>:<saleId>) ◂ */ serviceKey?: string | null };
+type IssueCore = { ctx: TaxInvoiceCtx; actor: RegisterActor; saleId: string; buyer: TaxInvoiceBuyer; requestId: string | null; rememberBuyer: boolean; via: "LATER" | "REQUEST"; /** POS P2.14 ▸ API-5 คีย์บริการของ REST (pos-api:<keyId>:<saleId>) ◂ */ serviceKey?: string | null; /** ACC T2.11 ▸ รหัสคำเตือนที่ผู้ใช้รับทราบ ◂ */ ack: LegalAck };
 
 /** แกนของ R3 (ผ่านด่านสิทธิ์ + ตัวแกะผู้ซื้อมาแล้ว) */
 async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
@@ -140,6 +157,12 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
   if (sale.status !== "PAID") return taxInvoiceRefuse("NOT_ELIGIBLE");
   if ((sale.paidAt ?? sale.createdAt).getTime() < Date.now() - TAX_INVOICE_LATE_DAYS * DAY_MS) return taxInvoiceRefuse("TOO_LATE");
   if (!(await abbEligible(ctx.tenantId, ctx.systemId, sale.vatSatang))) return taxInvoiceRefuse("NOT_ELIGIBLE");
+  // ACC T2.11 ▸ ไม่มีเลขผู้ซื้อ = คำเตือน BUYER_TAX_ID_MISSING ต้องกดยืนยัน (ไม่บล็อก) — ยังไม่ยืนยัน ⇒ ปฏิเสธก่อนเขียนอะไร + จดไว้ที่บริบท (REST = 409 legal_ack_required) ◂
+  const unacked = buyerTaxIdUnacked(buyer, x.ack.codes);
+  if (unacked.length) {
+    notePendingLegal(unacked);
+    return taxInvoiceAckRefusal(unacked);
+  }
 
   let request: { id: string } | null = null;
   if (x.requestId) {
@@ -158,7 +181,7 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
   if (!conv.created && conv.buyerMatches === false) return taxInvoiceRefuse("ALREADY_ISSUED");
 
   const snapshot: TaxInvoiceSnapshot = { ...buyer, requestedAt: new Date().toISOString() };
-  const autoRejected: { id: string; taxId: string }[] = [];
+  const autoRejected: { id: string; taxId: string | null }[] = [];
   // ธุรกรรมเดียว: สำเนา + เลขเอกสาร (เฉพาะเมื่อยังว่าง — แข่งกันได้ผู้ชนะคนเดียว) · คำขอ P1.11 → ISSUED · event
   const won = await prisma.$transaction(async (tx) => {
     const n = await tx.posSale.updateMany({
@@ -169,14 +192,22 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
     if (n.count !== 1) return false;
     // คำขอจากใบเสร็จออนไลน์ (มติ 8: เลขเอกสารอยู่ที่ accountDocId) — ออกจากคำขอ = คำขอนั้น ISSUED
     //   fix F5: ออกทีหลังโดยไม่ระบุคำขอ = คำขอที่ยังเปิดของบิล ISSUED เฉพาะเมื่อเลขผู้เสียภาษีตรงผู้ซื้อที่ออก · ไม่ตรง = REJECTED (เหตุผลของระบบ + audit)
-    const open = request ? [{ id: request.id, taxId: buyer.taxId }] : await tx.posTaxInvoiceRequest.findMany({ where: { tenantId: ctx.tenantId, saleId: sale.id, status: "REQUESTED" }, select: { id: true, taxId: true } });
+    //   ACC T2.11: "คนเดียวกัน" = sameBuyerParty (มีเลข = เลขตรง · ไม่มีเลขทั้งคู่ = ชื่อตรง + อีเมลไม่ขัด) — ไม่รวมคนละคนที่ไม่มีเลขเข้าด้วยกัน
+    const open = request
+      ? [{ id: request.id, taxId: buyer.taxId, name: buyer.name, email: buyer.email, explicit: true }]
+      : (await tx.posTaxInvoiceRequest.findMany({ where: { tenantId: ctx.tenantId, saleId: sale.id, status: "REQUESTED" }, select: { id: true, taxId: true, name: true, email: true } })).map((r) => ({ ...r, explicit: false }));
     for (const r of open) {
-      const same = r.taxId === buyer.taxId;
+      const same = r.explicit || sameBuyerParty(r, buyer);
       const u = await tx.posTaxInvoiceRequest.updateMany({
         where: { id: r.id, tenantId: ctx.tenantId, status: "REQUESTED" },
         data: same ? { status: "ISSUED", accountDocId: conv.docId } : { status: "REJECTED" },
       });
       if (!same && u.count === 1) autoRejected.push({ id: r.id, taxId: r.taxId });
+    }
+    // ACC T2.11 ▸ รอยรับทราบคำเตือน (ธุรกรรมเดียวกับการยึดเลขเอกสาร) — เฉพาะใบที่ไม่มีเลขผู้ซื้อ ◂
+    if (!buyer.taxId) {
+      const warnings = buyerTaxIdUnacked(buyer, []);
+      await recordLegalAckInTx(tx, { tenantId: ctx.tenantId, ack: x.ack, op: "pos.taxinvoice.issue", targetType: "PosSale", targetId: sale.id, warnings });
     }
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
@@ -209,7 +240,7 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
     action: AUDIT_ISSUED,
     targetType: "PosSale",
     targetId: sale.id,
-    after: { saleId: sale.id, unitId: sale.unitId, docId: conv.docId, docNo: conv.docNo, kind: buyer.kind, buyerName: buyer.name, taxId: maskTaxId(buyer.taxId), branchCode: buyer.branchCode, via: x.via, ...(request ? { requestId: request.id } : {}), ...(x.serviceKey ? { serviceKey: x.serviceKey } : {}) /* POS P2.14 ▸ API-5 ◂ */ },
+    after: { saleId: sale.id, unitId: sale.unitId, docId: conv.docId, docNo: conv.docNo, kind: buyer.kind, buyerName: buyer.name, taxId: buyer.taxId ? maskTaxId(buyer.taxId) : null, branchCode: buyer.branchCode, via: x.via, ...(request ? { requestId: request.id } : {}), ...(x.serviceKey ? { serviceKey: x.serviceKey } : {}) /* POS P2.14 ▸ API-5 ◂ */ },
   });
   for (const r of autoRejected)
     await writeAudit({
@@ -219,7 +250,7 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
       targetType: "PosTaxInvoiceRequest",
       targetId: r.id,
       before: { status: "REQUESTED" },
-      after: { status: "REJECTED", saleId: sale.id, unitId: sale.unitId, reason: AUTO_REJECT_REASON, system: true, docId: conv.docId, taxId: maskTaxId(r.taxId) },
+      after: { status: "REJECTED", saleId: sale.id, unitId: sale.unitId, reason: AUTO_REJECT_REASON, system: true, docId: conv.docId, taxId: r.taxId ? maskTaxId(r.taxId) : null },
     });
   if (x.rememberBuyer && sale.memberId) await rememberBuyerForMember(ctx.tenantId, sale.memberId, buyer);
   scheduleDrain();
@@ -233,20 +264,22 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
 // POS P2.14 ▸ API-5: คีย์บริการของผู้เรียกผ่าน REST — ผูกคีย์ API + บิล (pos-api:<keyId>:<saleId>) · ลง audit pos.taxinvoice.issued (after.serviceKey) ·
 //   บิลเดียวมีใบเต็มรูปเดียว (ผู้ซื้อเดิม = เอกสารเดิม) ⇒ ยิงซ้ำด้วย Idempotency-Key ใหม่ = เอกสารเดิม · หน้าจอไม่ส่ง = ทางเดิม ◂
 const SERVICE_KEY_RE = /^pos-api:[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}$/;
-export async function issueFullTaxInvoice(ctx: TaxInvoiceCtx, actor: RegisterActor, input: { saleId: string; buyer: unknown; requestId?: string; rememberBuyer?: boolean; serviceKey?: string }): Promise<TaxInvoiceIssueResult> {
+export async function issueFullTaxInvoice(ctx: TaxInvoiceCtx, actor: RegisterActor, input: { saleId: string; buyer: unknown; requestId?: string; rememberBuyer?: boolean; serviceKey?: string; /** ACC T2.11 ▸ รหัสคำเตือนที่ผู้ใช้รับทราบ (จอ) ◂ */ acknowledge?: string[] }): Promise<TaxInvoiceIssueResult> {
   try {
     const c = ctxOf(ctx);
     const a = receiptActorOf(actor);
     if (!c) return taxInvoiceRefuse("SALE_NOT_FOUND");
     if (!a || !canIssue(a, c.unitId)) return taxInvoiceRefuse("PERMISSION_DENIED");
-    if (!isRecord(input) || !onlyKeys(input, ["saleId", "buyer", "requestId", "rememberBuyer", "serviceKey"])) return taxInvoiceRefuse("VALIDATION");
+    if (!isRecord(input) || !onlyKeys(input, ["saleId", "buyer", "requestId", "rememberBuyer", "serviceKey", "acknowledge"])) return taxInvoiceRefuse("VALIDATION");
+    const ackCodes = parseAckCodes(input.acknowledge); // ACC T2.11 ◂
+    if (!ackCodes) return taxInvoiceRefuse("VALIDATION");
     if (input.serviceKey !== undefined && !(typeof input.serviceKey === "string" && SERVICE_KEY_RE.test(input.serviceKey) && input.serviceKey.endsWith(`:${String(input.saleId)}`))) return taxInvoiceRefuse("VALIDATION"); // POS P2.14 ▸ API-5 ◂
     if (input.rememberBuyer !== undefined && input.rememberBuyer !== null && typeof input.rememberBuyer !== "boolean") return taxInvoiceRefuse("VALIDATION");
     if (input.requestId !== undefined && input.requestId !== null && !isId(input.requestId)) return taxInvoiceRefuse("NOT_FOUND");
     const b = parseTaxInvoiceBuyer(input.buyer);
     if (!b.ok) return taxInvoiceRefuse(b.code, b.message);
     if (!isId(input.saleId)) return taxInvoiceRefuse("SALE_NOT_FOUND");
-    return await issueCore({ ctx: c, actor: a, saleId: input.saleId, buyer: b.buyer, requestId: isId(input.requestId) ? input.requestId : null, rememberBuyer: input.rememberBuyer === true, via: "LATER", serviceKey: input.serviceKey ?? null });
+    return await issueCore({ ctx: c, actor: a, saleId: input.saleId, buyer: b.buyer, requestId: isId(input.requestId) ? input.requestId : null, rememberBuyer: input.rememberBuyer === true, via: "LATER", serviceKey: input.serviceKey ?? null, ack: issueAck(ackCodes, a.userId) });
   } catch (e) {
     return internal("issueFullTaxInvoice", e);
   }
@@ -268,14 +301,16 @@ async function requestOf(ctx: TaxInvoiceCtx, requestId: unknown) {
  * R4 — ออกเต็มรูปจากคำขอของลูกค้า (ผู้ซื้อ = แถวคำขอ · kind จากเลข: ขึ้นต้น 0 = นิติบุคคล · source MANUAL — มติ 7)
  * {ok:true, docId, docNo} | NOT_FOUND (สาขาอื่น/มั่ว) | ปฏิเสธของ R3 · ไม่ throw
  */
-export async function issueFromTaxInvoiceRequest(ctx: TaxInvoiceCtx, actor: RegisterActor, input: { requestId: string; rememberBuyer?: boolean }): Promise<TaxInvoiceIssueResult> {
+export async function issueFromTaxInvoiceRequest(ctx: TaxInvoiceCtx, actor: RegisterActor, input: { requestId: string; rememberBuyer?: boolean; /** ACC T2.11 ◂ */ acknowledge?: string[] }): Promise<TaxInvoiceIssueResult> {
   try {
     const c = ctxOf(ctx);
     const a = receiptActorOf(actor);
     if (!c) return taxInvoiceRefuse("NOT_FOUND");
     if (!a || !canIssue(a, c.unitId)) return taxInvoiceRefuse("PERMISSION_DENIED");
-    if (!isRecord(input) || !onlyKeys(input, ["requestId", "rememberBuyer"])) return taxInvoiceRefuse("VALIDATION");
+    if (!isRecord(input) || !onlyKeys(input, ["requestId", "rememberBuyer", "acknowledge"])) return taxInvoiceRefuse("VALIDATION");
     if (input.rememberBuyer !== undefined && input.rememberBuyer !== null && typeof input.rememberBuyer !== "boolean") return taxInvoiceRefuse("VALIDATION");
+    const ackCodes = parseAckCodes(input.acknowledge); // ACC T2.11 ◂
+    if (!ackCodes) return taxInvoiceRefuse("VALIDATION");
     const found = await requestOf(c, input.requestId);
     if (!found) return taxInvoiceRefuse("NOT_FOUND");
     const { req, sale } = found;
@@ -283,7 +318,7 @@ export async function issueFromTaxInvoiceRequest(ctx: TaxInvoiceCtx, actor: Regi
     if (!b.ok) return taxInvoiceRefuse(b.code, b.message);
     // คำขอที่ออกแล้ว = ยิงซ้ำ (ได้เอกสารเดิมเมื่อผู้ซื้อตรง) · ถูกปฏิเสธแล้ว = ออกจากคำขอนี้ไม่ได้
     if (req.status === "REJECTED") return taxInvoiceRefuse("NOT_ELIGIBLE", "คำขอนี้ถูกปฏิเสธไปแล้ว — ให้ลูกค้าส่งคำขอใหม่");
-    return await issueCore({ ctx: c, actor: a, saleId: sale.id, buyer: b.buyer, requestId: req.status === "REQUESTED" ? req.id : null, rememberBuyer: input.rememberBuyer === true, via: "REQUEST" });
+    return await issueCore({ ctx: c, actor: a, saleId: sale.id, buyer: b.buyer, requestId: req.status === "REQUESTED" ? req.id : null, rememberBuyer: input.rememberBuyer === true, via: "REQUEST", ack: issueAck(ackCodes, a.userId) });
   } catch (e) {
     return internal("issueFromTaxInvoiceRequest", e);
   }
@@ -312,7 +347,7 @@ export async function rejectTaxInvoiceRequest(ctx: TaxInvoiceCtx, actor: Registe
       targetType: "PosTaxInvoiceRequest",
       targetId: req.id,
       before: { status: "REQUESTED" },
-      after: { status: "REJECTED", saleId: req.saleId, unitId: req.unitId, reason, taxId: maskTaxId(req.taxId) },
+      after: { status: "REJECTED", saleId: req.saleId, unitId: req.unitId, reason, taxId: req.taxId ? maskTaxId(req.taxId) : null },
     });
     return { ok: true };
   } catch (e) {
