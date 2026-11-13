@@ -23,6 +23,11 @@ import { unmarkFiledAction as unmarkPndAction, issueWhtCertAction } from "../wht
 
 const pct = (bp: number | null) => (bp != null ? `${(bp / 100).toFixed(bp % 100 ? 2 : 0)}%` : "—");
 
+// ตัวช่วยระดับโมดูล (ไม่ใช่ closure ของหน้า) — server action แบบ inline จับได้เฉพาะค่าที่ serialize ได้ ห้ามจับฟังก์ชัน
+function backHref(self: string, r: { ok: boolean; reason?: string }, okText: string): string {
+  return `${self}&${r.ok ? `ok=${encodeURIComponent(okText)}` : `err=${encodeURIComponent(r.reason ?? "")}`}`;
+}
+
 function defaultPeriod(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -70,7 +75,6 @@ export default async function TaxPage({
   const canUnmark = accountCan(auth, "account.wht.unmark");
   const canManage = accountCan(auth, "account.wht.manage");
   const self = `${base}/tax?type=${type}&period=${period}`;
-  const back = (r: { ok: boolean; reason?: string }, okText: string) => `${self}&${r.ok ? `ok=${encodeURIComponent(okText)}` : `err=${encodeURIComponent(r.reason ?? "")}`}`;
 
   async function unmarkAction(fd: FormData) {
     "use server";
@@ -79,7 +83,7 @@ export default async function TaxPage({
     assertAccountCan(a, "account.wht.unmark");
     const r = await unmarkPndAction(id, { form: type, periodKey: period, reason: String(fd.get("reason") ?? "") });
     revalidatePath(`${base}/tax`);
-    redirect(back(r, "ยกเลิกเครื่องหมายนำส่งแล้ว"));
+    redirect(backHref(self, r, "ยกเลิกเครื่องหมายนำส่งแล้ว"));
   }
 
   async function markAction() {
@@ -89,7 +93,7 @@ export default async function TaxPage({
     const r = await markFiled(tenantId, systemId, { form: type, periodKey: period, filedById: userId });
     if (r.ok) await writeAudit({ tenantId, actorId: userId, action: "account.wht.manage", targetType: "AccountWhtFiling", targetId: `${systemId}:${type}:${period}`, after: { form: type, periodKey: period, certCount: r.certCount } });
     revalidatePath(`${base}/tax`);
-    redirect(back(r.ok ? { ok: true } : r, `ทำเครื่องหมายนำส่ง ${label} งวด ${period} แล้ว`));
+    redirect(backHref(self, r.ok ? { ok: true } : r, `ทำเครื่องหมายนำส่ง ${label} งวด ${period} แล้ว`));
   }
 
   async function additionalAction(fd: FormData) {
@@ -98,7 +102,7 @@ export default async function TaxPage({
     assertAccountCan(a, "account.wht.manage");
     const r = await recordWhtAdditionalFiling(ctx, { form: type, periodKey: period, note: String(fd.get("note") ?? ""), actorId: userId, ack: screenAck(fd.getAll("ack"), userId) });
     revalidatePath(`${base}/tax`);
-    redirect(back(r.ok ? { ok: true } : r, r.ok ? `บันทึกแบบยื่นเพิ่มเติมครั้งที่ ${r.seq} แล้ว` : ""));
+    redirect(backHref(self, r.ok ? { ok: true } : r, r.ok ? `บันทึกแบบยื่นเพิ่มเติมครั้งที่ ${r.seq} แล้ว` : ""));
   }
 
   type SummaryRow = { key: string; label: string; count: number; base: number; wht: number; total?: boolean };
@@ -374,7 +378,7 @@ export default async function TaxPage({
             <span className="text-sm text-[color:var(--color-muted)]">
               รวม <MoneyText satang={creditYear.totalWht} decimals />
             </span>
-            <Link href={`${base}/wht?tab=credit&owed=1`} className="btn btn-ghost text-sm" data-testid="pnd-credits-owed-link">
+            <Link href={`${base}/wht?tab=credit&owed=1`} className="btn btn-ghost whitespace-nowrap text-sm" data-testid="pnd-credits-owed-link">
               ค้างรับ 50 ทวิ
             </Link>
             <a href={`${base}/tax/export?kind=credits&year=${year}`} className="btn btn-ghost text-sm">

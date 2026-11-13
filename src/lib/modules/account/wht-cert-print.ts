@@ -83,7 +83,8 @@ export function buildCertPrint(x: CertPrintInput, incomeLabelTh: (t: string | nu
     name: x.contact.name,
     taxId: x.contact.taxId ?? "",
     address: x.contact.address ?? "",
-    branch: x.contact.legalType === "PERSON" && !x.contact.taxId ? "" : branchLabel(x.contact.branchCode, x.contact.branchName),
+    // สาขาเป็นเรื่องของผู้ประกอบการ (นิติบุคคล) — บุคคลธรรมดาไม่พิมพ์ "สำนักงานใหญ่"
+    branch: x.contact.legalType === "PERSON" ? "" : branchLabel(x.contact.branchCode, x.contact.branchName),
     kindTh: partyKindTh(x.contact.legalType),
   };
   const shopParty: CertParty = { name: x.shop.name, taxId: x.shop.taxId ?? "", address: x.shop.address ?? "", branch: x.shop.branch, kindTh: partyKindTh(x.shop.entityLegalType) };

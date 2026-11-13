@@ -41,7 +41,7 @@ export default async function WhtCertPrintPage({
     if (!entry) {
       const rec = await recordDocPrint(ctx, certId, { request: "SET", channel: "SCREEN", actorId: userId });
       if (!rec.ok) notFound();
-      redirect(`${base}?p=${rec.printId}&part=${partQ}${sp.auto === "1" ? "&auto=1" : ""}`);
+      redirect(`${base}?p=${rec.printId}&part=${partQ}${sp.auto === "1" ? "&auto=1" : ""}${sp.err ? `&err=${encodeURIComponent(sp.err)}` : ""}`);
     }
     if (entry.kind === "COPY") {
       const rows = await listDocPrints(ctx, certId);
@@ -132,7 +132,8 @@ export default async function WhtCertPrintPage({
           </details>
         )}
       </div>
-      <div data-print-root className="flex flex-col gap-4">
+      {/* มือถือ: แบบทางการคงความกว้าง A4 แล้วเลื่อนแนวนอน (บีบแล้วอ่านไม่ได้) */}
+      <div data-print-root className="flex flex-col gap-4 overflow-x-auto print:overflow-visible" data-testid="wht-print-scroll">
         <WhtCertForm m={m} parts={parts} money={(s) => baht(s)} fmtDate={fmtDate} />
       </div>
     </>

@@ -37,7 +37,7 @@ function Party({ title, p, testId }: { title: string; p: CertPrintModel["payer"]
 export function WhtCertPage({ m, part, money, fmtDate }: { m: CertPrintModel; part: CertPart | null; money: (satang: number) => string; fmtDate: (d: Date) => string }) {
   return (
     <div
-      className="relative mx-auto flex max-w-[210mm] flex-col gap-2 bg-white p-6 text-[11px] leading-snug text-black print:break-after-page"
+      className="relative mx-auto flex min-w-[720px] max-w-[210mm] flex-col gap-2 bg-white p-6 text-[11px] leading-snug text-black print:break-after-page"
       data-testid="wht-cert-page"
       data-part={part ?? "record"}
       data-cancelled={m.cancelled ? "1" : "0"}

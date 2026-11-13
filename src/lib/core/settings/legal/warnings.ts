@@ -635,7 +635,7 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
   WHT_FORM_UNVERIFIED: {
     code: "WHT_FORM_UNVERIFIED",
     titleTh: "แบบ ภ.ง.ด. ของรายการนี้ยังไม่ยืนยัน",
-    messageTh: (p) => `รายการนี้จัดเข้า ${s(p, "form")}${p.note ? ` (${s(p, "note")})` : ""} ตามค่าเริ่มต้นของตาราง — แหล่งที่ระบบค้นไม่ได้ระบุแบบของผู้รับประเภทนี้ไว้ตรง ๆ`,
+    messageTh: (p) => `มีรายการที่จัดเข้า ${s(p, "form")} ตามค่าเริ่มต้นของตาราง${p.note ? ` (${s(p, "note")})` : ""} — ผู้รับประเภทนี้ (เช่น มูลนิธิ/สมาคม หรือผู้รับต่างประเทศ) แหล่งที่ระบบค้นไม่ได้ระบุแบบไว้ตรง ๆ`,
     citation: "references/common-withholding-tax.md §1 §5 §10 · ตาราง SYSTEM_WHT_FORM_ROWS (th-tax-2569.ts)",
     tag: "U",
     checkedAt: "2026-11-13",

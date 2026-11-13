@@ -558,7 +558,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         page({ label: "งบกำไรขาดทุน", href: `${base}/reports/profit-loss`, status: "ready", icon: "chart", testId: "PROFIT_LOSS" }),
         page({ label: "งบกระแสเงินสด", href: `${base}/reports/cash-flow`, status: "ready", icon: "chart", testId: "CASH_FLOW" }),
         { ...page({ label: "ภ.พ.30", href: `${base}/reports/pp30`, status: "ready", icon: "pct", testId: "PP30" }), sep: true },
-        page({ label: "ภ.ง.ด.3/53", href: `${base}/tax`, status: "ready", icon: "pct", testId: "WHT_FILING" }),
+        page({ label: "ภ.ง.ด.", href: `${base}/tax`, status: "ready", icon: "pct", testId: "WHT_FILING" }),
         // WO 6.1: ลำดับ/ป้าย 3 รายการท้ายให้ตรง f8-chart-of-accounts-menu.png (ปิดงวด → ทะเบียนสินทรัพย์ → อายุหนี้)
         { ...page({ label: "ปิดงวดบัญชี", href: `${base}/periods`, status: "ready", icon: "lock", testId: "PERIOD_CLOSE" }), sep: true },
         page({ label: "ทะเบียนสินทรัพย์", href: `${base}/assets`, status: "ready", icon: "asset", testId: "ASSETS" }),
