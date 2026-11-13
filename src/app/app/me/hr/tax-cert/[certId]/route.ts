@@ -3,14 +3,13 @@
 import { getLocale } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { selfActorOf } from "@/lib/modules/hr/self";
-import { isRouterFetch } from "@/lib/modules/hr/bank-files/download-route";
 import { myTaxCertGet } from "@/lib/modules/hr/filings/download-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ certId: string }> }) {
-  if (isRouterFetch(req)) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+  if (req.headers.has("rsc") || req.headers.has("next-router-prefetch")) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
   const { certId } = await params;
   const auth = await requireTenant();
   return myTaxCertGet(req, selfActorOf(auth), certId, { locale: await getLocale() });
