@@ -82,6 +82,7 @@ export default async function AccountDocSettingsPage({
       todayIso={now.toISOString()}
       branchCode={settings.branchCode || "00000"}
       settings={docSettings}
+      vatRegistered={settings.vatRegistered}
       rows={rows.map((r) => ({
         docType: r.docType,
         label: r.label,

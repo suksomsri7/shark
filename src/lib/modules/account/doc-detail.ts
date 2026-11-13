@@ -5,6 +5,8 @@
 // ─────────────────────────────────────────────────────────────
 import type { AccountDocStatus, AccountDocType } from "@prisma/client";
 import { getExpenseDoc, EXP_DOC_LABEL } from "./expense";
+import { taxInvoiceBuyerOf, type TaxInvoiceBuyerCheck } from "./legal-gate"; // ACC T2.1 ◂
+import { readSellerSnapshot } from "./seller-snapshot"; // ACC T2.9 ◂
 import { DOC_LABEL, STATUS_LABEL, isOverdue, listDocPayments, getDocRef, type DocPaymentRow } from "./service";
 import { listJournalEntriesForDocument } from "./gl";
 import { originalPrinted } from "./print-log"; // ACC T2.7 ◂
@@ -252,6 +254,8 @@ export type DocDetailData = {
   contact: { id: string; name: string; taxId: string | null; email: string | null } | null;
   /** ACC T2.2 — ผู้ซื้อตามที่พิมพ์บนเอกสาร (contactSnapshot) + ที่มา — ฟอร์ม "ยกเลิกและออกแทน" เติมค่าเดิม */
   buyerSnapshot?: { name: string; taxId: string; branchCode: string; address: string };
+  /** ACC T2.1 — ผู้ซื้อที่ใช้ตรวจใบกำกับเต็มรูป (snapshot → ผู้ติดต่อ · เหมือนหน้าพิมพ์) */
+  taxBuyer: TaxInvoiceBuyerCheck;
   docSource?: string;
   replacedById?: string | null;
   lines: {
@@ -306,6 +310,10 @@ export type DocDetailData = {
   adjustReasonCode: string | null;
   reference: string | null;
   vendorInvoiceDate: Date | null;
+  /** ACC T2.9 — ผู้ขายที่ตรึงไว้ตอนออก (null = ยังไม่ตรึง — ร่าง/ใบเก่า) */
+  seller: { name: string; address: string | null; taxId: string | null; branch: string; frozenAt: string; via: "ISSUE" | "SETTINGS_CHANGE" } | null;
+  /** T2c A3 — เอกสารของเงินที่รับแล้ว (ใบเสร็จที่ออก · ใบรับมัดจำรับครบ · ใบกำกับของงวดรับเงิน) ⇒ ป้ายยอดท้าย "(ได้รับชำระแล้ว)" */
+  moneyReceived: boolean;
 };
 
 /** โหลด+ประกอบข้อมูลหน้าเอกสาร 1 ใบ — ใช้ร่วมทั้งฝั่งรายรับและรายจ่าย (getExpenseDoc คิวรีได้ทั้งคู่) */
@@ -382,6 +390,8 @@ export async function getDocDetailData(
       const t = (k: string, d = "") => (typeof sn[k] === "string" ? (sn[k] as string) : d);
       return { name: t("name", doc.contact?.name ?? ""), taxId: t("taxId", doc.contact?.taxId ?? ""), branchCode: t("branchCode"), address: t("address") };
     })(),
+    taxBuyer: taxInvoiceBuyerOf(doc.contactSnapshot, doc.contact),
+    seller: ((sn) => (sn ? { name: sn.seller.name, address: sn.seller.address, taxId: sn.seller.taxId, branch: sn.seller.branch, frozenAt: sn.frozenAt, via: sn.via } : null))(readSellerSnapshot((doc as { sellerSnapshot?: unknown }).sellerSnapshot)),
     docSource: doc.source,
     replacedById: doc.replacedById,
     lines: doc.lines.map((l, i) => ({
@@ -404,6 +414,10 @@ export async function getDocDetailData(
     depositDeducted: doc.depositDeducted,
     grandTotal: doc.grandTotal,
     paidTotal: doc.paidTotal,
+    moneyReceived:
+      (doc.docType === "RECEIPT" && doc.status !== "DRAFT" && doc.status !== "VOIDED" && doc.status !== "CANCELLED") ||
+      (doc.docType === "DEPOSIT_RECEIPT" && doc.grandTotal > 0 && doc.paidTotal >= doc.grandTotal) ||
+      (doc.docType === "TAX_INVOICE" && !!(doc as { sourcePaymentId?: string | null }).sourcePaymentId),
     note: doc.note,
     adjustReason: doc.adjustReason ?? null,
     vatMode: doc.vatMode,
@@ -428,7 +442,8 @@ export async function getDocDetailData(
     groupChildren: groupPanel?.children ?? null,
     groupChip,
     paymentRequests,
-    originalPrinted: await originalPrinted({ tenantId, systemId }, doc.id),
+    // merge (งบ query หน้ารายละเอียด ≤ 19 · qc-acc-v2-perf) ▸ ป้ายต้นฉบับ/สำเนามีเฉพาะใบกำกับภาษี (T2.7) — ชนิดอื่นไม่ต้องอ่านประวัติการพิมพ์ ◂
+    originalPrinted: doc.docType === "TAX_INVOICE" ? await originalPrinted({ tenantId, systemId }, doc.id) : false,
     adjustReasonCode: doc.adjustReasonCode ?? null,
     reference: doc.reference ?? null,
     vendorInvoiceDate: doc.vendorInvoiceDate ?? null,

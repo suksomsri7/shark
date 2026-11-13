@@ -18,6 +18,7 @@ import { dedupeNotes, realPaymentTerms, section864Text, stripSection864, taxInvo
 import { DOC_LABEL, baht, getDocument, getSettings, orgDisplayName } from "./service";
 import { docVatRateGroups, vatSummaryRows } from "./totals";
 import { loadPrintNotes, stripReplacementNote } from "./print-notes"; // merge T2.7 × เลน 1 (T2.8/T2.2) ◂
+import { readSellerSnapshot } from "./seller-snapshot"; // ACC T2.9 ◂
 
 type Doc = NonNullable<Awaited<ReturnType<typeof getDocument>>>;
 
@@ -50,7 +51,8 @@ export async function adjustBlockOf(doc: Doc): Promise<PrintAdjustBlock | null> 
   }
   return {
     sectionText: ADJUST_NOTE_SECTIONS[group].sectionTh,
-    origKindLabel: orig ? labelOf(orig.docType) : purchase && doc.reference ? "เอกสารของผู้ขาย" : null,
+    // T2c A2 ▸ ศัพท์ตามกฎหมาย "เลขที่ใบกำกับภาษีเดิม" (ม.86/10 · §16) — ไม่ใช่ป้ายในระบบ "ใบกำกับภาษีขาย" · ชนิดอื่นใช้ป้ายจริงของใบเดิม ◂
+    origKindLabel: orig ? (orig.docType === "TAX_INVOICE" ? "ใบกำกับภาษี" : labelOf(orig.docType)) : purchase && doc.reference ? "เอกสารของผู้ขาย" : null,
     origDocNo: orig ? orig.docNo : purchase ? doc.reference : null,
     origDate: orig ? formatThaiDateLong(orig.issueDate) : purchase && doc.vendorInvoiceDate ? formatThaiDateLong(doc.vendorInvoiceDate) : null,
     reasonText,
@@ -86,8 +88,17 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
     address: str(snap?.address) || doc.contact?.address || "",
     branch: buyerBranchName || (buyerBranchCode === "00000" ? "สำนักงานใหญ่" : buyerBranchCode ? `สาขา ${buyerBranchCode}` : ""),
   };
-  const sellerBranch = s.branchName || (s.branchCode === "00000" ? "สำนักงานใหญ่" : s.branchCode ? `สาขา ${s.branchCode}` : "");
-  const sellerName = orgDisplayName(s) || "กิจการของคุณ";
+  // ACC T2.9 ▸ ผู้ขาย + ข้อความท้ายใบ = ที่ตรึงไว้ตอนออก (sellerSnapshot) · ยังไม่ตรึง (ร่าง/ใบเก่า) = ค่าตั้งปัจจุบัน ◂
+  const frozen = doc.status !== "DRAFT" ? readSellerSnapshot(doc.sellerSnapshot) : null;
+  const sellerNow = { name: orgDisplayName(s) || "กิจการของคุณ", address: s.address, taxId: s.taxId, branch: s.branchName || (s.branchCode === "00000" ? "สำนักงานใหญ่" : s.branchCode ? `สาขา ${s.branchCode}` : ""), phone: s.phone, logoUrl: s.logoUrl ?? branding.logoUrl ?? null };
+  const seller = frozen ? { name: frozen.seller.name, address: frozen.seller.address, taxId: frozen.seller.taxId, branch: frozen.seller.branch, phone: frozen.seller.phone, logoUrl: frozen.seller.logoUrl ?? branding.logoUrl ?? null } : sellerNow;
+  if (frozen) {
+    po.footerNote = frozen.text.footerNote;
+    po.paymentTerms = frozen.text.paymentTerms;
+    po.legalText = frozen.text.legalText;
+  }
+  const sellerBranch = seller.branch;
+  const sellerName = seller.name;
 
   // T1.8b ▸ VAT ตามกลุ่มอัตรา · เอกสาร VAT 0 (ใบรับมัดจำ ฯลฯ) = ไม่มีแถว/คอลัมน์ "7%" (จอนอกข้อ 7)
   const noVatDoc = doc.vatMode === "NONE" || doc.vatAmount === 0;
@@ -104,8 +115,8 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
   const missing = isTaxInvoice
     ? taxInvoiceMissing({
         sellerName,
-        sellerAddress: s.address,
-        sellerTaxId: s.taxId,
+        sellerAddress: seller.address,
+        sellerTaxId: seller.taxId,
         sellerBranch,
         buyerName: buyer.name,
         buyerAddress: buyer.address,
@@ -116,6 +127,9 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
         vatShown: s.vatRegistered,
       })
     : [];
+  // ACC T2.1 ▸ ใบกำกับเต็มรูปต้องมีที่อยู่ผู้ซื้อ (ม.86/4(3)) และเลข/สาขาของผู้ซื้อที่จด VAT (ฉ.39 ข้อ 7–9) ⇒ ปิด "ที่อยู่ลูกค้า"/"เลขผู้เสียภาษีลูกค้า"
+  //   ในเทมเพลตพิมพ์ไม่มีผลกับใบกำกับภาษี (เอกสารชนิดอื่นยังซ่อนตามค่าตั้ง) — หน้าตั้งค่าบอกไว้ใต้ช่อง ◂
+  if (isTaxInvoice) po.show = { ...po.show, buyerAddress: true, buyerTaxId: true };
   const view: PrintView = {
     po,
     docTitle: isGroup && doc.docType === "COMBINED_PAYMENT" ? "ใบสำคัญจ่าย (ใบรวมจ่าย)" : labelOf(doc.docType),
@@ -129,7 +143,8 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
     dueDateText: po.show.dueDate && doc.dueDate && !isAdjust ? dueText : null,
     validUntilText: po.show.dueDate && doc.validUntil ? formatThaiDateLong(doc.validUntil) : null,
     reference: po.show.reference ? (doc.reference ?? null) : null,
-    seller: { name: sellerName, address: s.address, branch: sellerBranch, taxId: s.taxId, phone: s.phone, logoUrl: s.logoUrl ?? branding.logoUrl ?? null },
+    seller,
+    sellerFrozenAt: frozen ? formatThaiDateLong(new Date(frozen.frozenAt)) : null,
     buyer,
     lines: doc.lines.map((l) => ({
       id: l.id,
@@ -139,6 +154,8 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
       unitPrice: baht(l.unitPrice),
       vatCell: vatCell(l.vatRateBp),
       amount: baht(l.amount),
+      // ACC T2.1 ▸ ส่วนลดรายบรรทัด (B12 — ส่วนลดแสดงชัด · VAT คิดหลังส่วนลด) · ไม่มีส่วนลดสักบรรทัด = ไม่มีคอลัมน์ ◂
+      discount: l.discount > 0 ? baht(l.discount) : null,
       imageUrl: l.product?.imageUrl ?? null,
       sku: l.product?.sku ?? "",
     })),

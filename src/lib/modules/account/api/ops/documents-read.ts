@@ -17,6 +17,7 @@ import { z } from "zod";
 import { dayKeyBkk, dashboardSnapshot, monthEndExclusive, monthlySeries } from "../../dashboard";
 import { issuableDocTypes } from "../../dashboard-home";
 import { getDocDetailData } from "../../doc-detail";
+import { issueLegalWarnings, saleWithoutVatWarnings } from "../../legal-gate"; // ACC T2.1 ◂
 import { sideOf } from "../../doc-editor-config";
 import { ERR } from "../../errors";
 import { LIST_TABS, tabToFilter } from "../../list-tabs";
@@ -25,6 +26,7 @@ import { loadOverview } from "../../overview";
 import { parseQuickCreateQuery } from "../../quick-create-parse";
 import {
   computeListTabCounts,
+  depositSettlePreview,
   getDocFavorites,
   getDocRef,
   getRecurringRule,
@@ -452,7 +454,68 @@ const overviewGet = defineOp({
   },
 });
 
+// ═══ ACC T2.1 ▸ คำเตือนกฎหมายของเอกสาร (เหมือนกล่องคำเตือนบนหน้าร่าง) · T2.4 ▸ ดูก่อนคืน/ริบมัดจำ ═══
+const documentsLegalWarnings = defineOp({
+  id: "documents.legal-warnings",
+  method: "GET",
+  path: "/documents/{id}/legal-warnings",
+  kind: "read",
+  action: "account.doc.view",
+  summary:
+    "Legal warnings of one sales document as the screen shows them before issuing: registry code, Thai message, citation, tag (V verified, U unsettled) and whether issuing needs `acknowledge`. For a full tax invoice this includes missing buyer name or address (s.86/4) and a business buyer without a 13-digit tax id; a walk-in buyer without a tax id gets a full tax invoice with no warning.",
+  label: "คำเตือนกฎหมายของเอกสาร",
+  tool: { name: "account_document_legal_warnings", hint: "Use before issuing or when asked whether a tax invoice is complete: lists the legal warnings of the document (missing buyer address, buyer tax id, ...)." },
+  input: noQuery,
+  test: "T2.1-B7",
+  async handler({ actor, params }) {
+    const { tenantId, systemId } = actor;
+    const [d, settings] = await Promise.all([getDocDetailData(tenantId, systemId, params.id ?? ""), getSettings(tenantId, systemId)]);
+    if (!d) throw new Error(ERR.DOC_NOT_FOUND);
+    const revenue = sideOf(d.docType) === "revenue";
+    const ws = [
+      ...issueLegalWarnings(
+        { docType: d.docType, adjustReason: d.adjustReason, vatAmount: d.vatAmount, adjustReasonCode: d.adjustReasonCode, sourceDocId: d.sourceDocId, reference: d.reference, vendorInvoiceDate: d.vendorInvoiceDate, buyer: d.docType === "TAX_INVOICE" ? d.taxBuyer : null },
+        revenue ? settings : null,
+      ),
+      ...(revenue && d.status === "DRAFT" ? saleWithoutVatWarnings({ docType: d.docType, vatMode: d.vatMode, sourceDocId: d.sourceDocId, lines: d.lines }, settings) : []),
+    ];
+    return { documentId: d.id, docType: d.docType, status: d.status, warnings: ws.map((w) => ({ code: w.code, message_th: w.messageTh, citation: w.citation, tag: w.tag, checkedAt: w.checkedAt, needsAcknowledge: w.ack })) };
+  },
+});
+
+const documentsDepositSettlement = defineOp({
+  id: "documents.deposit-settlement",
+  method: "GET",
+  path: "/documents/{id}/deposit-settlement",
+  kind: "read",
+  action: "account.doc.view",
+  summary:
+    "What refunding or forfeiting a sales deposit receipt would do: the deposit's tax invoice number, the amount not yet deducted (with its VAT and base), the book's forfeit mode, whether it was already forfeited, and the legal warnings of each action.",
+  label: "ดูก่อนคืน/ริบเงินมัดจำ",
+  tool: { name: "account_deposit_settlement", hint: "Read before proposing account_refund_deposit or account_forfeit_deposit: amount left, VAT, whether a credit note will be issued." },
+  input: noQuery,
+  test: "T2.4-D8",
+  async handler({ actor, params }) {
+    const p = await depositSettlePreview(actor.tenantId, actor.systemId, params.id ?? "");
+    if (!p) throw new Error(ERR.DOC_NOT_FOUND);
+    const wv = (ws: typeof p.refundWarnings) => ws.map((w) => ({ code: w.code, message_th: w.messageTh, citation: w.citation, tag: w.tag, needsAcknowledge: w.ack }));
+    return {
+      taxInvoiceNo: p.taxInvoiceNo,
+      remainingSatang: p.gross,
+      vatSatang: p.vat,
+      baseSatang: p.base,
+      creditNoteOnRefund: !!p.taxInvoiceNo,
+      forfeitMode: p.forfeitMode,
+      forfeited: p.forfeited,
+      refundWarnings: wv(p.refundWarnings),
+      forfeitWarnings: wv(p.forfeitWarnings),
+    };
+  },
+});
+
 export const DOCUMENTS_READ_OPS: ApiOp[] = [
+  documentsLegalWarnings,
+  documentsDepositSettlement,
   documentsList,
   documentsGet,
   documentsAttachments,

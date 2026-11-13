@@ -53,7 +53,9 @@ import {
 } from "../../connections";
 import { listApiKeys } from "@/lib/api-keys/service";
 import { bundleLabelForScopes } from "@/lib/api-keys/scopes";
-import { actorRefId, type ApiActor } from "../actor";
+import { actorAuditId, actorAuditType, actorRefId, type ApiActor } from "../actor";
+import { ackField } from "../ack-field"; // ACC T2c ◂
+import { legalAckApiError } from "../respond"; // ACC T2c ◂
 import { bookTaxView, ENTITY_KINDS, saveBookTax, type BookTaxPatch } from "../../legal-values";
 import {
   FILING_CHANNELS,
@@ -227,6 +229,19 @@ const docSettingsUpdateInput = z
       .describe("Purchase input VAT settings of the whole book (same card as the tax invoice settings on screen)."),
     printTemplate: z.enum(["STANDARD", "COMPACT", "WITH_IMAGES"]).optional(),
     channels: z.array(z.string().min(1).max(60)).max(50).optional().describe("Money channel ids, in the order printed on documents."),
+    depositTaxInvoiceOnReceipt: z
+      .boolean()
+      .optional()
+      .describe("Book-wide. Issue the tax invoice of a deposit receipt automatically when the deposit is fully received, dated the payment date (default true)."),
+    autoReceiptOnPayment: z
+      .boolean()
+      .optional()
+      .describe("Book-wide. Issue a receipt automatically for every payment received against an invoice, including payments through a billing note (default true). Turning it off returns 409 legal_ack_required with RECEIPT_AUTO_OFF (receipt duty thresholds); send again with acknowledge."),
+    depositForfeit: z
+      .enum(["KEEP_VAT", "CREDIT_NOTE"])
+      .optional()
+      .describe("Book-wide. When a deposit that already has a tax invoice is forfeited: `KEEP_VAT` (default: no credit note, output VAT stays) or `CREDIT_NOTE` (credit note, the kept money is booked as damages without VAT). Unsettled rule - check with the shop's accountant."),
+    acknowledge: ackField,
   })
   .strict();
 
@@ -286,8 +301,13 @@ const settingsDocumentsUpdate = defineOp({
     if (input.inputVat !== undefined) patch.inputVat = { ...cur.inputVat, ...input.inputVat };
     if (input.printTemplate !== undefined) patch.print = { ...cur.print, template: input.printTemplate };
     if (input.channels !== undefined) patch.channels = { order: input.channels };
+    // ACC T2c A6 · T2.4 · T2.6 ▸ ใบกำกับมัดจำ · ใบเสร็จอัตโนมัติ · ริบมัดจำ ◂
+    if (input.depositTaxInvoiceOnReceipt !== undefined) patch.autoTaxInvoice = { ...(patch.autoTaxInvoice ?? cur.autoTaxInvoice), depositOnReceipt: input.depositTaxInvoiceOnReceipt };
+    if (input.autoReceiptOnPayment !== undefined) patch.receipt = { autoOnPayment: input.autoReceiptOnPayment };
+    if (input.depositForfeit !== undefined) patch.deposit = { forfeit: input.depositForfeit };
 
-    const res = await saveDocSettings(ctx, patch);
+    const res = await saveDocSettings(ctx, patch, { ack: { codes: input.acknowledge ?? [], actorId: actorAuditId(actor), actorType: actorAuditType(actor), via: actor.kind === "apikey" ? "rest" : "ai-proposal" } });
+    if (!res.ok && "legal" in res && res.legal) throw legalAckApiError(res.legal.warnings);
     if (!res.ok) throw invalid(res.reason);
 
     const now = new Date();

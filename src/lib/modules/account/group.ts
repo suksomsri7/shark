@@ -14,6 +14,7 @@ import {
   openGroupOfChild,
   recordPaymentBatchInOneTx,
   recordPaymentInTx,
+  afterRevenuePaymentInTx,
   syncGroupHead,
   voidPaymentBatchInOneTx,
   voidPaymentInTx,
@@ -620,6 +621,8 @@ export async function recordGroupPayment(
               ? await recordVendorPaymentInTx(tx, tenantId, systemId, r.childDocId, common)
               : await recordPaymentInTx(tx, tenantId, systemId, r.childDocId, common, settings!);
           if (one.duplicate) throw new Error("รายการชำระของใบนี้ถูกบันทึกไปแล้ว — รีเฟรชหน้าแล้วตรวจสอบอีกครั้ง");
+          // ACC T2.8 ค้าง (T2c A5) ▸ รับเงินผ่านใบวางบิล = รับเงินของใบแจ้งหนี้ลูกทีละใบ ⇒ ใบเสร็จอัตโนมัติต่องวดของใบลูก (ค่าตั้งเดียวกับทางรับชำระปกติ) ◂
+          if (def.side === "revenue") await afterRevenuePaymentInTx(tx, tenantId, systemId, r.childDocId, one as { paymentId: string; duplicate: boolean }, {}, settings!);
           paymentOf.set(r.childDocId, one.paymentId);
           const certId = (one as { whtCertDocId?: string }).whtCertDocId;
           if (certId) certIds.push(certId);

@@ -140,7 +140,9 @@ try {
   {
     const cur = await DS.getDocSettings(ctx);
     chk("R6.0", "ค่าเริ่ม autoOnPayment = เปิด", cur.receipt.autoOnPayment === true, true, cur.receipt);
-    await DS.saveDocSettings(ctx, { receipt: { autoOnPayment: false } });
+    // ORACLE-EDIT (T2c A6): ปิดใบเสร็จอัตโนมัติต้องยืนยันคำเตือน RECEIPT_AUTO_OFF (เกณฑ์ใบรับ ม.105) — ข้อสอบนี้ยืนยันแล้วตรวจพฤติกรรมเดิม · การตอบ 409/คำเตือนตรวจใน qc-acc-v2-t2c-leftovers
+    const off = await DS.saveDocSettings(ctx, { receipt: { autoOnPayment: false } }, { ack: { codes: ["RECEIPT_AUTO_OFF"], actorType: "SYSTEM", via: "qc" } });
+    if (!off.ok) throw new Error(`ปิดใบเสร็จอัตโนมัติไม่สำเร็จ: ${JSON.stringify(off)}`);
     const a = await mk("INVOICE", D(8, 8), [L1]);
     await acc.issueDocument(tid, S, a.id);
     await acc.recordPayment(tid, S, a.id, { paidAt: D(8, 9), financeAccountId: bank.id, channel: "TRANSFER", amount: 1_070_000, createdById: owner.id, idempotencyKey: `r6a-${stamp}` });

@@ -56,7 +56,8 @@ try {
 
   // 🔴 หน้าที่พิมพ์เอกสารต้องใช้ตัวประกอบชื่อ ไม่ใช่ orgName ดิบ
   const printPages: [string, string][] = [
-    ["ใบกำกับ/เอกสารพิมพ์", "src/app/app/sys/[id]/account/print/[docId]/page.tsx"],
+    // ORACLE-EDIT (merge T2.7 เลน 2): หน้าพิมพ์แยกเป็น page.tsx + print-view.ts (ข้อมูล) + PrintDocument.tsx — ชื่อผู้ขายประกอบที่ print-view.ts
+    ["ใบกำกับ/เอกสารพิมพ์", "src/lib/modules/account/print-view.ts"],
     ["หนังสือรับรองหัก ณ ที่จ่าย", "src/app/app/sys/[id]/account/wht/[certId]/print/page.tsx"],
   ];
   for (const [label, path] of printPages) {

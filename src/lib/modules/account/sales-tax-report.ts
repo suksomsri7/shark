@@ -318,6 +318,31 @@ export async function salesTaxReport(
         orderBy: { createdAt: "asc" },
       })
     : [];
+  // ACC T2c A7 ▸ ใบกำกับที่เกิดจากใบเสร็จขายสด/ใบรับมัดจำ (ไม่มี JV ของตัวเอง — แถวรายงานเป็นของใบต้นทาง) ที่ถูก "ยกเลิกและออกแทน" (T2.2):
+  //   หมายเหตุการยกเลิก + "ออกแทนฉบับเดิม" ต้องขึ้นในแถวของใบต้นทาง (ป.86/2542 ข้อ 25 · skill §14 [V]) — ไม่เปลี่ยนยอด ◂
+  const tiSrcIds = docs.filter((d) => d.docType === "DEPOSIT_RECEIPT" || (d.docType === "RECEIPT" && !d.sourceDocId)).map((d) => d.id);
+  const srcTis = tiSrcIds.length
+    ? await db.accountDocument.findMany({
+        where: { docType: "TAX_INVOICE", sourceDocId: { in: tiSrcIds }, docNo: { not: null } },
+        select: { id: true, sourceDocId: true, docNo: true, replacedById: true, voidReason: true, note: true, status: true, issueDate: true },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  const srcTiNoOf = new Map(srcTis.map((t) => [t.id, t.docNo]));
+  const missingRepl = srcTis.map((t) => t.replacedById).filter((x): x is string => !!x && !srcTiNoOf.has(x));
+  if (missingRepl.length)
+    for (const r of await db.accountDocument.findMany({ where: { id: { in: missingRepl } }, select: { id: true, docNo: true } })) srcTiNoOf.set(r.id, r.docNo);
+  const replNotesOfSrc = new Map<string, string[]>();
+  const receiptSrc = new Set(docs.filter((d) => d.docType === "RECEIPT").map((d) => d.id));
+  for (const t of srcTis) {
+    const arr = replNotesOfSrc.get(t.sourceDocId!) ?? [];
+    // ACC T2.5 ▸ ใบเต็มรูปที่ออกจากใบเสร็จ (ขอผ่านลิงก์/ออกเอง) — ภาษีอยู่ในแถวของใบเสร็จนี้แล้ว ⇒ บอกเลขใบกำกับ ไม่นับซ้ำ (skill CASE §1.5) ◂
+    if (receiptSrc.has(t.sourceDocId!) && t.status !== "VOIDED" && t.status !== "CANCELLED" && t.status !== "DRAFT")
+      arr.push(`ออกใบกำกับภาษีเต็มรูปเลขที่ ${t.docNo} ลงวันที่ ${fmtThDate(t.issueDate)} ตามใบเสร็จนี้ (ภาษีอยู่ในแถวนี้ ไม่นับซ้ำ)`);
+    if (t.replacedById) arr.push(`ใบกำกับภาษีเลขที่ ${t.docNo} ยกเลิก — ออกใบกำกับภาษีฉบับใหม่แทนแล้ว เลขที่ ${srcTiNoOf.get(t.replacedById) ?? "-"}${t.voidReason ? ` (${t.voidReason})` : ""}`);
+    if (t.note?.startsWith("ออกแทนใบกำกับภาษีฉบับเดิมเลขที่")) arr.push(`ใบกำกับภาษีเลขที่ ${t.docNo}: ${t.note}`);
+    replNotesOfSrc.set(t.sourceDocId!, arr);
+  }
   const depTiOf = new Map<string, (typeof depTis)[number]>();
   for (const t of depTis) {
     const cur = depTiOf.get(t.sourceDocId!);
@@ -402,6 +427,7 @@ export async function salesTaxReport(
       const src = refDocMap.get(doc.sourceDocId);
       notes.push(`${DOC_TYPE_TH[doc.docType]} อ้างอิง${DOC_TYPE_TH[src?.docType ?? ""] ?? "เอกสาร"}เลขที่ ${src?.docNo ?? "-"}${src ? ` ลงวันที่ ${fmtThDate(src.issueDate)}` : ""}${doc.adjustReason ? ` · ${doc.adjustReason}` : ""}`);
     }
+    if (doc) for (const n of replNotesOfSrc.get(doc.id) ?? []) notes.push(n); // ACC T2c A7 ◂
     const replacedAbb = doc ? abbOfTx.get(doc.id) : undefined;
     if (replacedAbb) notes.push(`ออกใบกำกับภาษีเต็มรูปแทนใบกำกับภาษีอย่างย่อเลขที่ ${replacedAbb.docNo ?? "-"} (ใบย่อไม่นับซ้ำ)`);
     if (doc?.docType === "DEPOSIT_RECEIPT")
@@ -439,6 +465,10 @@ export async function salesTaxReport(
     else docRows.push(row);
   }
 
+  // ── 4) ACC T2c A1 ▸ ใบแทน (ม.86/12 + ประกาศ VAT ฉ.36 · skill §14 [V]): "บันทึกในรายงานภาษีขายเดือนที่ออก" ⇒ แถวหมายเหตุในเดือนของวันที่ออกใบแทน
+  //   ไม่มีฐาน/ภาษี (ยอดอยู่ในเดือนของใบกำกับเดิม) ⇒ ยอดรวม · กลุ่มอัตรา · ข้อตรวจ ไม่เปลี่ยน ◂
+  docRows.push(...(await substituteNoteRows(db, periodKey, buyerOf as (d: unknown) => ReturnType<typeof buyerOf>)));
+
   const rows = sortRows([...docRows, ...summarizeAbb(abbBills, abbMode)]);
   for (const r of rows) {
     if (r.kind !== "ABB_SUMMARY" || r.flag) continue;
@@ -454,6 +484,47 @@ export async function salesTaxReport(
     outputLedger,
     manualAdjustments: { count: manualRows.length, vat: manualRows.reduce((n, r) => n + r.vat, 0) },
   };
+}
+
+/** ACC T2c A1 ▸ แถวหมายเหตุของใบแทนที่ออกในเดือน (อ่านจากประวัติการพิมพ์ T2.7 · kind SUBSTITUTE) */
+async function substituteNoteRows(
+  db: ReturnType<typeof tenantDb>,
+  periodKey: string,
+  buyerOf: (d: unknown) => { buyerName: string; buyerTaxId: string; buyerBranchCode: string },
+): Promise<SalesTaxRow[]> {
+  const from = new Date(`${periodKey}-01T00:00:00+07:00`);
+  if (Number.isNaN(from.getTime())) return [];
+  const to = new Date(from);
+  to.setUTCMonth(to.getUTCMonth() + 1);
+  const subs = await db.accountDocumentPrint.findMany({
+    where: { kind: "SUBSTITUTE", substituteDate: { gte: from, lt: to } },
+    select: {
+      id: true,
+      substituteSeq: true,
+      substituteReason: true,
+      substituteDate: true,
+      document: { select: { id: true, docNo: true, docType: true, issueDate: true, contactSnapshot: true, contact: { select: { name: true, taxId: true, branchCode: true } } } },
+    },
+    orderBy: [{ substituteDate: "asc" }, { createdAt: "asc" }],
+  });
+  return subs
+    .filter((p) => p.document.docType === "TAX_INVOICE")
+    .map((p) => ({
+      key: `SUBSTITUTE:${p.id}`,
+      kind: "DOC" as const,
+      date: bkkYmd(p.substituteDate!),
+      docNo: p.document.docNo ?? "-",
+      docType: "TAX_INVOICE",
+      ...buyerOf(p.document),
+      parts: [],
+      base: 0,
+      vat: 0,
+      notes: [
+        `ใบแทน ครั้งที่ ${p.substituteSeq ?? 1} ของใบกำกับภาษีเลขที่ ${p.document.docNo ?? "-"} ลงวันที่ ${fmtThDate(p.document.issueDate)}${p.substituteReason ? ` · สาเหตุ: ${p.substituteReason}` : ""} (ม.86/12 — ยอดภาษีอยู่ในเดือนของใบเดิม ไม่นับซ้ำ)`,
+      ],
+      noteOnly: true,
+      docId: p.document.id,
+    }));
 }
 
 /**

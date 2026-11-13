@@ -6,6 +6,7 @@ import { AccountIcon } from "./AccountIcon";
 import { Modal } from "./Modal";
 import { LegalWarnings } from "./LegalWarnings"; // ACC T2.10 ◂
 import { legalWarning } from "@/lib/core/settings/legal/warnings";
+import { receiptAutoOffWarning } from "@/lib/modules/account/receipt-duty"; // ACC T2c A6 ◂
 import { previewExample } from "@/lib/modules/account/doc-numbering";
 import { useSetBreadcrumbTail } from "./breadcrumb-tail";
 import {
@@ -66,6 +67,8 @@ export type DocSettingsPanelProps = {
   todayIso: string;
   branchCode: string;
   settings: DocSettings;
+  /** ACC T2c A6 — ร้านจด VAT ไหม (เกณฑ์ใบรับ ม.105 ในคำเตือนปิดใบเสร็จอัตโนมัติ · ส่วนของใบกำกับซ่อนเมื่อไม่จด) */
+  vatRegistered?: boolean;
   rows: NumberingRow[];
   docLabels: Record<string, string>;
   tags: TagRow[];
@@ -736,10 +739,21 @@ function AutoTaxSection(p: DocSettingsPanelProps) {
           defaultChecked={a.posAbbreviated}
         />
       </div>
+      {/* ACC T2.6 ▸ ใบกำกับของเงินมัดจำเมื่อรับครบ (ค่าเริ่มเปิด — จุดรับผิดของมัดจำ = วันรับเงิน) ◂ */}
+      <div className="divide-y border-t pt-2">
+        <ToggleRow
+          name="depositOnReceipt"
+          title="เงินมัดจำ: ออกใบกำกับภาษีเมื่อรับเงินมัดจำครบ"
+          desc="ภาษีของเงินมัดจำ/เงินรับล่วงหน้าเกิดเมื่อได้รับชำระ (ป.73/2541 ข้อ 2(3)(ข) · ม.78(1)(ข)) — ระบบออกใบกำกับลงวันที่รับเงิน · ปิด = ออกเองจากหน้าใบรับมัดจำ"
+          defaultChecked={a.depositOnReceipt}
+        />
+      </div>
+      <DepositForfeitField value={p.settings.deposit.forfeit} />
       <label className={label}>
         ข้อความตามกฎหมายท้ายใบกำกับ
         <textarea name="legalText" defaultValue={a.legalText} rows={3} maxLength={500} className={input} />
       </label>
+      <ReceiptAutoField defaultOn={p.settings.receipt.autoOnPayment} vatRegistered={p.vatRegistered ?? true} />
       {/* ACC T1.4 — ภาษีซื้อ (ค่าตั้ง docConfig.inputVat) */}
       <h3 className="mt-2 border-t pt-3 text-sm font-medium" data-testid="inputvat-settings">ภาษีซื้อ</h3>
       <label className={label}>
@@ -760,6 +774,38 @@ function AutoTaxSection(p: DocSettingsPanelProps) {
       </label>
       <CardFooter systemId={p.systemId} reset={p.actions.reset} />
     </section>
+  );
+}
+
+/** ACC T2c A6 ▸ ใบเสร็จอัตโนมัติ (ทุกร้าน — ม.105 ใช้กับร้านไม่จด VAT ด้วย) · ปิด = คำเตือนเกณฑ์ใบรับ + ติ๊กยืนยัน ◂ */
+function ReceiptAutoField({ defaultOn, vatRegistered }: { defaultOn: boolean; vatRegistered: boolean }) {
+  const [on, setOn] = useState(defaultOn);
+  return (
+    <div className="flex flex-col gap-2 border-t pt-2" data-testid="receipt-auto-field">
+      <h3 className="pt-1 text-sm font-medium">ใบเสร็จรับเงิน</h3>
+      <ToggleRow
+        name="receiptAutoOnPayment"
+        title="ออกใบเสร็จทุกครั้งที่รับเงินตามใบแจ้งหนี้"
+        desc="ใบรับต้องออกในทันทีทุกคราวที่รับเงิน (ม.105) — ระบบออกให้ทุกงวดที่รับ (รวมรับผ่านใบวางบิล) · เปลี่ยนต่อใบได้ที่ฟอร์มใบแจ้งหนี้"
+        defaultChecked={defaultOn}
+        onChange={setOn}
+      />
+      {!on && defaultOn && <LegalWarnings warnings={[receiptAutoOffWarning(vatRegistered)]} ackName="ack" testId="receipt-auto-off-warning" />}
+    </div>
+  );
+}
+
+/** ACC T2.4 ▸ ริบเงินมัดจำที่ออกใบกำกับแล้ว [U] — ค่าเริ่มไม่ออกใบลดหนี้ (skill §7) ◂ */
+function DepositForfeitField({ value }: { value: "KEEP_VAT" | "CREDIT_NOTE" }) {
+  return (
+    <label className={label} data-testid="deposit-forfeit-field">
+      เงินมัดจำที่ออกใบกำกับแล้วถูกริบ
+      <select name="depositForfeit" defaultValue={value} className={`${input} w-96`} data-testid="deposit-forfeit-mode">
+        <option value="KEEP_VAT">ไม่ออกใบลดหนี้ — ภาษีขายคงไว้ (ค่าเริ่มต้น)</option>
+        <option value="CREDIT_NOTE">ออกใบลดหนี้ — เงินที่ริบเป็นค่าเสียหาย ไม่มี VAT</option>
+      </select>
+      <span>กรมสรรพากรยังไม่มีแนวทางเรื่องนี้ — ค่าเริ่มต้นเป็นทางที่ระมัดระวัง (ไม่ลดภาษีขาย) · โปรดตรวจกับนักบัญชีของร้าน</span>
+    </label>
   );
 }
 
@@ -824,6 +870,10 @@ function PrintSection(p: DocSettingsPanelProps) {
             </label>
           ))}
         </div>
+        {/* ACC T2.1 ▸ ใบกำกับเต็มรูปต้องมีที่อยู่ผู้ซื้อ (ม.86/4(3)) + เลข/สาขาของผู้ซื้อที่จด VAT (ฉ.39 ข้อ 7–9) — ปิดช่องไม่มีผลกับใบกำกับภาษี ◂ */}
+        <span className="text-xs text-[color:var(--color-muted)]" data-testid="print-taxinvoice-buyer-note">
+          ใบกำกับภาษีพิมพ์ที่อยู่และเลขผู้เสียภาษีของผู้ซื้อเสมอ (ม.86/4 · ประกาศ VAT ฉ.39) — การปิดสองช่องนี้มีผลกับเอกสารชนิดอื่นเท่านั้น
+        </span>
       </fieldset>
       {preview && p.printSampleDocId && (
         <Modal open size="lg" title="ตัวอย่างเอกสารพิมพ์" onClose={() => setPreview(false)} testId="print-preview-modal">
@@ -892,6 +942,7 @@ function ToggleRow({
   defaultChecked,
   disabled,
   readOnlyHint,
+  onChange,
 }: {
   name: string;
   title: string;
@@ -899,6 +950,8 @@ function ToggleRow({
   defaultChecked: boolean;
   disabled?: boolean;
   readOnlyHint?: string;
+  /** ACC T2c — ผู้เรียกที่ต้องรู้ค่าปัจจุบัน (แสดงคำเตือนเมื่อปิด) */
+  onChange?: (on: boolean) => void;
 }) {
   const [on, setOn] = useState(defaultChecked);
   return (
@@ -914,7 +967,11 @@ function ToggleRow({
         aria-checked={on}
         aria-label={title}
         disabled={disabled}
-        onClick={() => !disabled && setOn(!on)}
+        onClick={() => {
+          if (disabled) return;
+          setOn(!on);
+          onChange?.(!on);
+        }}
         className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
           disabled ? "opacity-50" : ""
         }`}

@@ -4,6 +4,7 @@ import { safeReason } from "./errors";
 import { recordLegalAckInTx } from "@/lib/core/legal-ack";
 import { legalAmbient } from "@/lib/core/legal-ambient";
 import { accountNow } from "./clock";
+import { freezeUnsnappedDocs, sellerSnapshotOf, snapshotSettingsFromRow } from "./seller-snapshot"; // ACC T2.9 ◂
 import { issueLegalWarnings, legalAckResult, legalGateInTx, saleWithoutVatWarnings } from "./legal-gate";
 import { ambientLegalGateInTx, pndCertGuardInTx } from "./filed-guard";
 import { isLegalAckRequiredError, legalWarning, unacknowledged, type LegalAck, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings";
@@ -85,6 +86,7 @@ import {
   postPayment,
   postChequeEntry,
   postTaxInvoice,
+  postDepositSettlement, // ACC T2.4 ◂
   parkedVatOf,
   resolveMapping,
   reverseFor,
@@ -643,6 +645,8 @@ export async function saveSettings(
     docConfig: docConfig as Prisma.InputJsonValue,
   };
   if (existing) {
+    // ACC T2.9 ▸ ก่อนเปลี่ยนชื่อ/ที่อยู่/เลขผู้เสียภาษี/สาขา: ตรึงใบที่ออกแล้วแต่ยังไม่ตรึงด้วยค่าเดิม (สำเนาเก่าไม่เปลี่ยนตามค่าใหม่) ◂
+    await freezeUnsnappedDocs(prisma as unknown as Prisma.TransactionClient, systemId, snapshotSettingsFromRow(existing));
     const updated = await prisma.accountSettings.update({ where: { id: existing.id }, data });
     await ensureJournalSequences(systemId); // CRM C5.4-N r2 ▸ ตั้งค่าระบบ = จุดสร้าง sequence เลขที่ใบสำคัญ (autocommit) ◂
     return updated;
@@ -2599,6 +2603,8 @@ export async function issueDocumentInTx(
           docNo,
           status: ISSUE_STATUS[doc.docType],
           contactSnapshot: snapshot ?? undefined,
+          // ACC T2.9 ▸ ตรึงผู้ขาย + ข้อความท้ายใบ ณ วันออก (แก้ค่าตั้งภายหลัง สำเนาเก่าไม่เปลี่ยน · K4) ◂
+          sellerSnapshot: sellerSnapshotOf(settings, doc.docType, "ISSUE") as unknown as Prisma.InputJsonValue,
         },
       });
       // ── A5/A2: โพสต์บัญชีเงียบใน tx เดียวกัน (posting ล้ม = เอกสาร rollback) ──
@@ -4171,14 +4177,109 @@ export async function syncGroupHeadsOfDocsInTx(tx: Prisma.TransactionClient, ten
  *
  * 🔴 ห้ามคืนถ้าใบมัดจำถูกหักไปในเอกสารอื่นแล้ว (ต้องแก้ที่ปลายทางก่อน)
  */
+/** ACC T2.4 ▸ ตัวเลือกของการคืน/ริบมัดจำ — วันที่ (ปฏิทินไทย · ไม่ส่ง = วันนี้) · ผู้ทำรายการ */
+export type DepositSettleOpts = { date?: Date | null; createdById?: string | null };
+export type DepositRefundResult =
+  | { ok: true; refunded: number; creditNoteId?: string; creditNoteNo?: string | null; warnings?: LegalWarning[] }
+  | { ok: false; reason: string; legal?: LegalAckRequired };
+
+const ymdUtc = (d: Date) => new Date(`${new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10)}T00:00:00.000Z`);
+const satangTxt = (v: number) => (v / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** ACC T2.4 ▸ ใบกำกับภาษีของเงินมัดจำที่ยังมีผล (ออกตอนรับเงิน T2.6 หรือออกเอง) — ไม่มี = null */
+async function liveDepositTaxInvoiceInTx(tx: Prisma.TransactionClient, systemId: string, depositId: string) {
+  return tx.accountDocument.findFirst({
+    where: { systemId, docType: "TAX_INVOICE", sourceDocId: depositId, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } },
+    include: { lines: { orderBy: { sortOrder: "asc" } } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/** ACC T2.4 ▸ ยอดที่คืน/ริบได้ของใบรับมัดจำ (ยอดใบ − ส่วนที่ถูกหัก/คืนไปแล้วในเอกสารที่ยังมีผล) แยกฐาน/VAT ตามสัดส่วนของใบ */
+async function depositSettlePartsInTx(tx: Prisma.TransactionClient, systemId: string, dep: { id: string; grandTotal: number; vatAmount: number }) {
+  const gross = await depositAvailable(tx, systemId, dep.id);
+  const vat = gross === dep.grandTotal ? dep.vatAmount : dep.grandTotal > 0 ? Math.round((dep.vatAmount * gross) / dep.grandTotal) : 0;
+  return { gross, vat, base: gross - vat, full: gross === dep.grandTotal };
+}
+
+/**
+ * ACC T2.4 ▸ ใบลดหนี้ของเงินมัดจำ (คืน หรือ ริบตามค่าตั้ง CREDIT_NOTE) — อ้างใบกำกับของเงินมัดจำ (ม.86/10 ต้องมีเลขใบกำกับเดิม)
+ *   ยอด = ส่วนที่ยังไม่ถูกหัก · ทั้งใบ = ยกบรรทัดของใบกำกับ · บางส่วน = 1 บรรทัด · เหตุผล CN_DEPOSIT_REFUND (ฉ.82 ข้อ 2(2)) / อื่น ๆ (ริบ)
+ *   ผูก DEPOSIT_APPLY (ใบรับมัดจำ → ใบลดหนี้) ⇒ ยอดคงเหลือของมัดจำลด · ยกเลิกใบลดหนี้ = คืนสถานะมัดจำ (releaseDepositDeductionsInTx)
+ *   JV ของใบลดหนี้ลงวันที่ที่เลือก (postDepositSettlement) · เลขที่จองท้ายธุรกรรม ◂
+ */
+async function depositCreditNoteInTx(
+  tx: Prisma.TransactionClient,
+  ctx: { tenantId: string; systemId: string },
+  dep: { id: string; docNo: string | null; contactId: string | null; contactSnapshot: Prisma.JsonValue; grandTotal: number; vatAmount: number },
+  ti: NonNullable<Awaited<ReturnType<typeof liveDepositTaxInvoiceInTx>>>,
+  o: { mode: "REFUND" | "FORFEIT"; reason: string; date: Date; createdById: string | null },
+): Promise<{ cnId: string; gross: number; vat: number; base: number }> {
+  const { tenantId, systemId } = ctx;
+  const p = await depositSettlePartsInTx(tx, systemId, dep);
+  if (p.gross <= 0) throw new Error("ใบมัดจำนี้ไม่มียอดคงเหลือให้คืน/ริบ — ถูกหักในเอกสารอื่นหรือคืนไปแล้ว");
+  const rate = ti.lines.find((l) => l.vatRateBp > 0)?.vatRateBp ?? 0;
+  const refund = o.mode === "REFUND";
+  const what = refund ? "คืนเงินมัดจำ" : "ริบเงินมัดจำ";
+  const cn = await tx.accountDocument.create({
+    data: {
+      tenantId, systemId, docType: "CREDIT_NOTE", status: "ISSUED", direction: "OUT", docNo: null,
+      issueDate: o.date, contactId: dep.contactId,
+      contactSnapshot: (ti.contactSnapshot ?? dep.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
+      vatMode: p.full ? ti.vatMode : p.vat > 0 ? "EXCLUDE" : "NONE", vatTiming: ti.vatTiming, taxPointBasis: ti.taxPointBasis,
+      discountAmount: p.full ? ti.discountAmount : 0,
+      subTotal: p.full ? ti.subTotal : p.base, vatAmount: p.vat, grandTotal: p.gross,
+      sourceDocId: ti.id, reference: ti.docNo,
+      adjustReasonCode: refund ? "CN_DEPOSIT_REFUND" : "OTHER",
+      adjustReason: refund ? o.reason : `${what} — ${o.reason}`,
+      refType: refund ? "DepositRefund" : "DepositForfeit", refId: dep.id,
+      note: `${what}ตามใบรับเงินมัดจำเลขที่ ${dep.docNo ?? "-"} · อ้างใบกำกับภาษีเลขที่ ${ti.docNo ?? "-"}`,
+      createdById: o.createdById,
+      lines: {
+        create: p.full
+          ? ti.lines.map((l, i) => ({
+              tenantId, systemId, sortOrder: i, description: l.description, qty: l.qty, unitName: l.unitName, unitPrice: l.unitPrice,
+              discount: l.discount, vatRateBp: l.vatRateBp, amount: l.amount, productId: l.productId, lineKind: l.lineKind,
+            }))
+          : [{ tenantId, systemId, sortOrder: 0, description: `${what} (ส่วนที่ยังไม่ได้หัก) ตามใบรับเงินมัดจำเลขที่ ${dep.docNo ?? "-"}`, qty: 1, unitPrice: p.base, discount: 0, vatRateBp: p.vat > 0 ? rate : 0, amount: p.base }],
+      },
+    },
+  });
+  deferDocNo(tx, { docId: cn.id, tenantId, systemId, date: o.date, series: { kind: "configured", docType: "CREDIT_NOTE", fallbackPrefix: docNoFallbackPrefix("CREDIT_NOTE") } });
+  await tx.accountDocumentRelation.createMany({
+    data: [
+      { tenantId, systemId, fromId: ti.id, toId: cn.id, type: "ADJUST", amount: p.gross },
+      { tenantId, systemId, fromId: dep.id, toId: cn.id, type: "DEPOSIT_APPLY", amount: p.gross },
+    ],
+  });
+  await postDepositSettlement(ctx, { mode: refund ? "REFUND" : "FORFEIT_CN", refId: cn.id, depositId: dep.id, date: o.date, base: p.base, vat: p.vat, memo: `${what} — ใบลดหนี้ (ใบรับมัดจำ ${dep.docNo ?? "-"})` }, tx);
+  const left = await depositAvailable(tx, systemId, dep.id);
+  if (left <= 0) await tx.accountDocument.update({ where: { id: dep.id }, data: { status: "DEDUCTED" } });
+  return { cnId: cn.id, ...p };
+}
+
+/** ACC T2.4 ▸ ริบมัดจำไปแล้วหรือยัง (แบบไม่ออกใบลดหนี้ = JV event FORFEIT ของใบรับมัดจำที่ยังมีผล) */
+async function depositForfeitedInTx(tx: Prisma.TransactionClient, systemId: string, depositId: string): Promise<boolean> {
+  return (await tx.accountJournalEntry.count({ where: { systemId, refType: "AccountDocument", refId: depositId, idempotencyKey: `AccountDocument#${depositId}#FORFEIT`, status: "POSTED", reversalOfId: null } })) > 0; // คีย์เดียวกับ alreadyPosted ของ postDepositSettlement
+}
+
+/**
+ * คืนมัดจำ
+ *   ACC T2.4 ▸ ใบรับมัดจำ (ฝั่งขาย) ที่ออกใบกำกับภาษีแล้ว (รับครบ) ⇒ **ใบลดหนี้อ้างใบกำกับของเงินมัดจำ** (ประกาศ VAT ฉ.82 ข้อ 2(2) · skill §7 §16 [V])
+ *     ใบรับมัดจำและใบกำกับเดิมคงอยู่ · คืนได้เฉพาะส่วนที่ยังไม่ถูกหัก (คืนบางส่วนได้) · วันที่ = ที่เลือก (ไม่ส่ง = วันนี้)
+ *   ไม่มีใบกำกับ (ร้านไม่จด VAT · ปิดใบกำกับมัดจำ · รับยังไม่ครบ · ใบมัดจำจ่าย) ⇒ เดิม: ยกเลิกใบ + กลับรายการ JV + ยกเลิกใบกำกับที่ค้าง ◂
+ */
 export async function refundDeposit(
   tenantId: string,
   systemId: string,
   id: string,
   reason: string,
-): Promise<{ ok: true; refunded: number } | { ok: false; reason: string }> {
+  opts: DepositSettleOpts = {},
+): Promise<DepositRefundResult> {
   try {
-    const refunded = await prisma.$transaction(async (tx) => {
+    const out = await prisma.$transaction(async (tx) => {
+      openDocNumbering(tx);
+      await lockDocumentRow(tx, tenantId, systemId, id);
       const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (doc.docType !== "DEPOSIT_RECEIPT" && doc.docType !== "DEPOSIT_PAYMENT")
@@ -4186,6 +4287,18 @@ export async function refundDeposit(
       if (doc.status === "VOIDED" || doc.status === "CANCELLED") throw new Error("เอกสารถูกยกเลิกแล้ว");
       if (doc.status === "DRAFT") throw new Error("ใบมัดจำที่ยังเป็นร่าง ให้ใช้ยกเลิกร่าง");
       if (doc.paidTotal <= 0) throw new Error("ใบมัดจำนี้ยังไม่มีเงินให้คืน");
+      if (await depositForfeitedInTx(tx, systemId, id)) throw new Error("ใบมัดจำนี้ถูกริบไปแล้ว — คืนเงินไม่ได้");
+
+      // ── ACC T2.4 ▸ มีใบกำกับของเงินมัดจำ (รับครบ) ⇒ ใบลดหนี้ ──
+      const ti = doc.docType === "DEPOSIT_RECEIPT" && (doc.status === "AWAITING_DEDUCT" || doc.status === "DEDUCTED") ? await liveDepositTaxInvoiceInTx(tx, systemId, id) : null;
+      if (ti) {
+        const date = ymdUtc(opts.date ?? accountNow());
+        const r = await depositCreditNoteInTx(tx, { tenantId, systemId }, doc, ti, { mode: "REFUND", reason, date, createdById: opts.createdById ?? null });
+        const nos = await finalizeDocNos(tx);
+        const w = legalWarning("DEPOSIT_REFUND_CREDIT_NOTE", { tiNo: ti.docNo ?? "-", gross: satangTxt(r.gross), vat: satangTxt(r.vat), date: thDate(date) });
+        return { refunded: r.gross, creditNoteId: r.cnId, creditNoteNo: nos.get(r.cnId) ?? null, warnings: [w] };
+      }
+
       const applied = await tx.accountDocumentRelation.findMany({
         where: { systemId, fromId: id, type: "DEPOSIT_APPLY" },
         include: { to: { select: { status: true } } },
@@ -4204,17 +4317,89 @@ export async function refundDeposit(
       });
       // JV ของใบมัดจำอยู่ที่ "ตัวเอกสาร" → กลับรายการทั้งใบ = จ่ายเงินคืน/รับเงินคืนพอดี
       await reverseFor({ tenantId, systemId }, "AccountDocument", id, `คืนมัดจำ: ${reason}`, tx);
-      // ACC T2.6 ▸ ใบกำกับของเงินมัดจำ (ออกให้เองตอนรับครบ · ไม่มี JV ของตัวเอง) ต้องไม่ค้างมีผลหลัง VAT ถูกกลับ ⇒ ยกเลิกตาม
-      //   (ทางที่ถูกตาม skill = ใบลดหนี้ของการคืนเงินมัดจำ ประกาศ VAT ฉ.82 ข้อ 2(2) — งาน T2.4 · ที่นี่แค่ไม่ทิ้งใบกำกับลอย) ◂
+      // ACC T2.6 ▸ ใบกำกับของเงินมัดจำที่ยังไม่ได้ลงบัญชีครบ (รับไม่ครบ/ออกเองตอนรับบางส่วน) ไม่ทิ้งลอย ⇒ ยกเลิกตาม ◂
       await tx.accountDocument.updateMany({
         where: { systemId, docType: "TAX_INVOICE", sourceDocId: id, status: { notIn: ["VOIDED", "CANCELLED"] } },
         data: { status: "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามการคืนเงินมัดจำ: ${reason}` },
       });
-      return amount;
+      await finalizeDocNos(tx);
+      return { refunded: amount };
     });
-    return { ok: true, refunded };
+    return { ok: true, ...out };
   } catch (e) {
+    if (isLegalAckRequiredError(e)) return legalAckResult(e);
     return { ok: false, reason: safeReason(e, "คืนมัดจำไม่สำเร็จ") };
+  }
+}
+
+/** ACC T2.4 ▸ คำเตือนก่อนคืน/ริบมัดจำ (หน้าจอแสดงล่วงหน้า · REST คืนในผล) — ไม่มีใบกำกับ = [] */
+export async function depositSettlePreview(
+  tenantId: string,
+  systemId: string,
+  id: string,
+): Promise<{ taxInvoiceNo: string | null; gross: number; vat: number; base: number; forfeitMode: "KEEP_VAT" | "CREDIT_NOTE"; forfeited: boolean; refundWarnings: LegalWarning[]; forfeitWarnings: LegalWarning[] } | null> {
+  const doc = await prisma.accountDocument.findFirst({ where: { id, tenantId, systemId }, select: { id: true, docType: true, status: true, grandTotal: true, vatAmount: true } });
+  if (!doc || doc.docType !== "DEPOSIT_RECEIPT") return null;
+  const tx = prisma as unknown as Prisma.TransactionClient;
+  const ti = doc.status === "AWAITING_DEDUCT" || doc.status === "DEDUCTED" ? await liveDepositTaxInvoiceInTx(tx, systemId, id) : null;
+  const p = await depositSettlePartsInTx(tx, systemId, doc);
+  const mode = (await getSettings(tenantId, systemId)).doc.deposit.forfeit;
+  const today = thDate(ymdUtc(accountNow()));
+  const params = { tiNo: ti?.docNo ?? "-", gross: satangTxt(p.gross), vat: satangTxt(p.vat), base: satangTxt(p.base), date: today, mode };
+  return {
+    taxInvoiceNo: ti?.docNo ?? null,
+    ...p,
+    forfeitMode: mode,
+    forfeited: await depositForfeitedInTx(tx, systemId, id),
+    refundWarnings: ti ? [legalWarning("DEPOSIT_REFUND_CREDIT_NOTE", params)] : [],
+    forfeitWarnings: ti && p.vat > 0 ? [legalWarning("DEPOSIT_FORFEIT_VAT", params)] : [],
+  };
+}
+
+/**
+ * ACC T2.4 ▸ ริบเงินมัดจำ (ลูกค้าผิดนัด/ยกเลิก — เงินมัดจำกลายเป็นค่าเสียหายของร้าน)
+ *   skill §7 [U] "ออกใบกำกับมัดจำแล้วต่อมาริบ": ค่าเริ่ม = **ไม่ออกใบลดหนี้** (VAT คงไว้) · ค่าตั้งร้าน `deposit.forfeit = CREDIT_NOTE` = ออกใบลดหนี้
+ *   + รับรู้เงินที่ริบเป็นรายได้อื่น (ค่าปรับ/ค่าเสียหายไม่อยู่ในบังคับ VAT ม.77/2 [V]) · คำเตือน DEPOSIT_FORFEIT_VAT [U] (ไม่ต้องยืนยัน · ไม่บล็อก)
+ *   ริบได้เฉพาะส่วนที่ยังไม่ถูกหัก · ไม่มีใบกำกับ (ร้านไม่จด VAT ฯลฯ) = รับรู้รายได้ส่วนฐานอย่างเดียว · ใบรับมัดจำ → หักครบ (DEDUCTED) ◂
+ */
+export async function forfeitDeposit(
+  tenantId: string,
+  systemId: string,
+  id: string,
+  reason: string,
+  opts: DepositSettleOpts = {},
+): Promise<DepositRefundResult & { forfeited?: number; mode?: "KEEP_VAT" | "CREDIT_NOTE" }> {
+  try {
+    const settings = await getSettings(tenantId, systemId);
+    const mode = settings.doc.deposit.forfeit;
+    const out = await prisma.$transaction(async (tx) => {
+      openDocNumbering(tx);
+      await lockDocumentRow(tx, tenantId, systemId, id);
+      const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
+      if (!doc) throw new Error("ไม่พบเอกสาร");
+      if (doc.docType !== "DEPOSIT_RECEIPT") throw new Error("ริบมัดจำได้เฉพาะใบรับเงินมัดจำ");
+      if (doc.status !== "AWAITING_DEDUCT" && doc.status !== "DEDUCTED") throw new Error("ริบได้เฉพาะใบรับมัดจำที่รับเงินครบแล้ว");
+      if (await depositForfeitedInTx(tx, systemId, id)) throw new Error("ใบมัดจำนี้ถูกริบไปแล้ว");
+      const date = ymdUtc(opts.date ?? accountNow());
+      const ti = await liveDepositTaxInvoiceInTx(tx, systemId, id);
+      const params = (r: { gross: number; vat: number; base: number }) => ({ tiNo: ti?.docNo ?? "-", gross: satangTxt(r.gross), vat: satangTxt(r.vat), base: satangTxt(r.base), mode });
+      if (ti && mode === "CREDIT_NOTE") {
+        const r = await depositCreditNoteInTx(tx, { tenantId, systemId }, doc, ti, { mode: "FORFEIT", reason, date, createdById: opts.createdById ?? null });
+        const nos = await finalizeDocNos(tx);
+        return { forfeited: r.gross, creditNoteId: r.cnId, creditNoteNo: nos.get(r.cnId) ?? null, warnings: r.vat > 0 ? [legalWarning("DEPOSIT_FORFEIT_VAT", params(r))] : [] };
+      }
+      const p = await depositSettlePartsInTx(tx, systemId, doc);
+      if (p.gross <= 0) throw new Error("ใบมัดจำนี้ไม่มียอดคงเหลือให้ริบ — ถูกหักในเอกสารอื่นแล้ว");
+      // ไม่ออกใบลดหนี้: VAT ของมัดจำคงอยู่ใน 2200 · ฐานที่ค้างใน 2110 → รายได้อื่น (JV event FORFEIT ของใบรับมัดจำ — ยกเลิกใบรับมัดจำ = กลับพร้อมกัน)
+      await postDepositSettlement({ tenantId, systemId }, { mode: "FORFEIT_KEEP_VAT", refId: id, depositId: id, date, base: p.base, vat: p.vat, memo: `ริบเงินมัดจำ ใบรับมัดจำ ${doc.docNo ?? "-"} — ${reason}` }, tx);
+      await tx.accountDocument.update({ where: { id }, data: { status: "DEDUCTED", internalNote: [doc.internalNote, `ริบเงินมัดจำ ฿${satangTxt(p.gross)} เมื่อ ${thDate(date)} — ${reason}`].filter(Boolean).join("\n") } });
+      await finalizeDocNos(tx);
+      return { forfeited: p.gross, warnings: ti && p.vat > 0 ? [legalWarning("DEPOSIT_FORFEIT_VAT", params(p))] : [] };
+    });
+    return { ok: true, refunded: 0, mode, ...out };
+  } catch (e) {
+    if (isLegalAckRequiredError(e)) return legalAckResult(e);
+    return { ok: false, reason: safeReason(e, "ริบมัดจำไม่สำเร็จ") };
   }
 }
 
@@ -4657,6 +4842,24 @@ export async function voidDocument(
       for (const c of clearedAttached) await reverseClearedChequeLegInTx(tx, { tenantId, systemId }, c.chequeId, c.paymentId, reason);
       // round 11 · R10-7 (a): เอกสารที่หักมัดจำถูกยกเลิก ⇒ คืนสถานะใบมัดจำในธุรกรรมเดียวกัน
       if (doc.docType === "INVOICE" || doc.docType === "RECEIPT") await releaseDepositDeductionsInTx(tx, tenantId, systemId, id);
+      // ACC T2.4 ▸ ยกเลิกใบลดหนี้ของการคืน/ริบมัดจำ ⇒ ยอดมัดจำกลับมาหักได้ (JV ของใบลดหนี้ถูกกลับข้างบนแล้ว) ◂
+      if (doc.docType === "CREDIT_NOTE" && (doc.refType === "DepositRefund" || doc.refType === "DepositForfeit")) await releaseDepositDeductionsInTx(tx, tenantId, systemId, id);
+      // ACC T2.4 ▸ ยกเลิกใบรับมัดจำ ⇒ ใบกำกับของเงินมัดจำที่ยังค้างมีผล (ออกเอง/ออกตอนรับบางส่วน) ยกเลิกตาม + กลับ JV (ถ้ามี) — ไม่ทิ้งใบกำกับลอย ◂
+      if (wasIssued && doc.docType === "DEPOSIT_RECEIPT") {
+        const tis = await tx.accountDocument.findMany({
+          where: { tenantId, systemId, docType: "TAX_INVOICE", sourceDocId: id, status: { notIn: ["VOIDED", "CANCELLED"] } },
+          select: { id: true, docType: true, docNo: true, status: true },
+          orderBy: { id: "asc" },
+        });
+        for (const t of tis) {
+          await lockDocumentRow(tx, tenantId, systemId, t.id);
+          await tx.accountDocument.update({ where: { id: t.id }, data: { status: t.status === "DRAFT" ? "CANCELLED" : "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามใบรับเงินมัดจำ ${doc.docNo ?? ""}${reason ? ` — ${reason}` : ""}`.trim() } });
+          if (t.status !== "DRAFT") {
+            await reverseFor({ tenantId, systemId }, "AccountDocument", t.id, reason || "ยกเลิกตามใบรับเงินมัดจำ", tx);
+            await emitDocumentVoided(tx, { tenantId, systemId }, { id: t.id, docType: t.docType, docNo: t.docNo, reason });
+          }
+        }
+      }
       // CRM C5.4-C ▸ (review B1) ยกเลิกใบลดหนี้ ⇒ หนี้ของต้นทางกลับมา: PAID → PARTIAL/AWAITING_PAYMENT (ฟังก์ชันสถานะเดียว) ◂
       if (wasIssued && doc.docType === "CREDIT_NOTE" && doc.sourceDocId) {
         await rederiveInvoiceStatusInTx(tx, tenantId, systemId, doc.sourceDocId);
@@ -5041,14 +5244,30 @@ export async function issuePublicTaxInvoice(
       email: buyer.email?.trim() || null,
     };
 
+    // ACC T2.5 ▸ ใบกำกับเต็มรูปที่ขอจากใบเสร็จ/ใบรับมัดจำ: ลงวันที่ของบิลเดิม (จุดที่ภาษีเกิดและลงบัญชีไปแล้ว) · อ้างเลขบิลเดิม ·
+    //   ไม่มี JV ของตัวเอง (postTaxInvoice ข้ามต้นทางใบเสร็จ/มัดจำ) ⇒ ภาษีขายไม่ย้ายเดือนแม้ขอข้ามเดือน
+    //   skill domain-shark-accounting-cases.md §1.5 [V] (ใบย่อ → เต็มรูป: "ลงวันเดือนปีให้ตรงกับ…ฉบับเดิม" + หมายเหตุอ้างเลขเดิม · กค 0706/พ./8612)
+    //   ใบเสร็จขายสดของสมุด (ไม่ใช่ใบกำกับอย่างย่อ) ใช้กติกาเดียวกัน = ค่าเริ่มของระบบ (skill ไม่ได้พูดตรง) · ใบรับมัดจำ = วันที่รับเงินครบ (JV ภาษีของมัดจำ — T2.6)
+    //   ใบแจ้งหนี้คงเดิม (วันนี้ — จุดรับผิดของบริการ/สินค้าตามกติกา T1.2) ◂
+    const srcLabel = DOC_LABEL[source.docType as keyof typeof DOC_LABEL] ?? "เอกสาร";
+    let tiDate = new Date();
+    if (source.docType === "RECEIPT") tiDate = source.issueDate;
+    if (source.docType === "DEPOSIT_RECEIPT") {
+      const lastPay = await prisma.accountDocumentPayment.findFirst({ where: { documentId: source.id, systemId, voidedAt: null }, orderBy: [{ paidAt: "desc" }, { id: "desc" }], select: { paidAt: true } });
+      tiDate = lastPay?.paidAt ?? source.issueDate;
+    }
+    const fromBill = source.docType === "RECEIPT" || source.docType === "DEPOSIT_RECEIPT";
+    const citeNote = fromBill ? `ออกตามคำขอใบกำกับภาษีเต็มรูปของ${srcLabel}เลขที่ ${source.docNo ?? "-"} ลงวันที่ ${thDate(source.issueDate)}` : null;
+
     // บันทึกเป็นคำขอ DRAFT — staff ตรวจแล้วกด "ออกใบกำกับ" (issueDocument) เพื่อจองเลข+โพสต์ GL
     await prisma.accountDocument.create({
       data: {
         tenantId, systemId, docType: "TAX_INVOICE", status: "DRAFT", direction: "OUT",
-        issueDate: new Date(), contactId: source.contactId,
+        issueDate: tiDate, contactId: source.contactId,
         vatMode: source.vatMode, vatTiming: source.vatTiming, taxPointBasis: source.taxPointBasis,
         subTotal: tiSubTotal, vatAmount: tiVatAmount, grandTotal: tiGrandTotal,
-        discountAmount: source.discountAmount, note: source.note, sourceDocId: source.id,
+        discountAmount: source.discountAmount, note: citeNote ? [citeNote, source.note].filter(Boolean).join("\n") : source.note, sourceDocId: source.id,
+        ...(fromBill ? { reference: (source.docNo ?? "").slice(0, 35) || null } : {}),
         contactSnapshot: snapshot as Prisma.InputJsonValue,
         // T0.4 — คำเตือนของคำขอให้ผู้อนุมัติเห็นในหมายเหตุภายใน (ทะเบียนกลาง)
         ...(warnings.length ? { internalNote: warnings.map((w) => `คำเตือน: ${w.messageTh}`).join("\n") } : {}),

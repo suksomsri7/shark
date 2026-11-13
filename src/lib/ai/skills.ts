@@ -81,6 +81,8 @@ export const SKILLS: Skill[] = [
       "account_revenue_without_vat", // ACC T1.9 ▸ รายได้ที่ไม่มี VAT ต่อเดือน (ยกเว้น / 0% / ไม่คิด VAT) (อ่าน) ◂
       "account_pending_input_vat", // ACC T1.5 ▸ ใบกำกับภาษีซื้อรอรับ + เพดานเดือนที่ยังเคลมได้ (อ่าน) ◂
       "account_purchase_tax_report", // ACC T1.6 ▸ รายงานภาษีซื้อ (ลำดับที่ต่อเดือน · หักไม่ได้ · รอใบกำกับ · ข้อตรวจ) (อ่าน) ◂
+      "account_document_legal_warnings", // ACC T2.1 ▸ คำเตือนกฎหมายของเอกสาร (ใบกำกับเต็มรูปขาดชื่อ/ที่อยู่ผู้ซื้อ ฯลฯ) (อ่าน) ◂
+      "account_deposit_settlement", // ACC T2.4 ▸ ดูก่อนคืน/ริบเงินมัดจำ (ยอดคงเหลือ · VAT · ใบลดหนี้ไหม) (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",
@@ -95,6 +97,7 @@ export const SKILLS: Skill[] = [
       "account_input_vat_not_claimable", // ACC T1.4 ▸ ใบกำกับภาษีซื้อไม่มา → ภาษีซื้อไม่ขอคืน (ข้อเสนอ) ◂
       // อันตราย (ยืนยัน 2 ชั้น)
       "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",
+      "account_refund_deposit", "account_forfeit_deposit", // ACC T2.4 ▸ คืนมัดจำ (ใบลดหนี้เมื่อมีใบกำกับ) · ริบมัดจำ (ค่าตั้ง [U]) ◂
     ],
     systems: ["ACCOUNT"],
   },

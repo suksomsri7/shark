@@ -465,3 +465,32 @@ export function adjustReasonsFor(docType: string): AdjustNoteReason[] {
   return ADJUST_NOTE_REASONS.filter((r) => r.group === "ANY" || r.group === g);
 }
 
+
+// ═══════════════════ T2c A6 ใบรับ (ใบเสร็จ) ม.105 — เกณฑ์ที่ต้องออกใบรับ (แถวระบบ — ร้านไม่ทับ) ═══════════════════
+// skill domain-accounting-books.md §ง1 [V]: ประกาศอธิบดีฯ เกี่ยวกับอากรแสตมป์ ฉ.34 แก้โดย ฉ.49 — ออกใบรับเมื่อรับแต่ละครั้ง "เกิน" จำนวนนี้
+//   ผู้จด VAT ที่เป็นกิจการรายย่อยตาม ม.86/8 เกิน 1,000 บาท · ผู้จด VAT อื่น เกิน 100 บาท · ผู้ได้รับยกเว้น VAT ตาม ม.81/ม.81/1 (ร้านไม่จด VAT) เกิน 100 บาท
+//   (ผู้เสียภาษีตาม ม.82/16 เกิน 500 — สถานะ ม.82/16 [U] ไม่ใส่) · value = สตางค์ · ใช้ในคำเตือน RECEIPT_AUTO_OFF (ปิดใบเสร็จอัตโนมัติ)
+const BOOKS_REF = "references/domain-accounting-books.md";
+export type ReceiptDutyWho = "VAT_SMALL_86_8" | "VAT_OTHER" | "NON_VAT";
+export type ReceiptDutyRow = RowBase & { who: ReceiptDutyWho; labelTh: string };
+const RD_SRC = `${BOOKS_REF} §ง1 — ม.105 · ประกาศอธิบดีฯ เกี่ยวกับอากรแสตมป์ ฉ.34 (https://www.rd.go.th/3435.html) แก้โดย ฉ.49 (https://www.rd.go.th/23375.html)`;
+export const SYSTEM_RECEIPT_DUTY_ROWS: readonly ReceiptDutyRow[] = [
+  { id: "sys-receipt-duty-vat-small", who: "VAT_SMALL_86_8", labelTh: "ผู้จด VAT ที่เป็นกิจการรายย่อยตาม ม.86/8", value: 100_000, from: null, to: null, source: RD_SRC, tag: "V", checkedAt: "2026-11-13" },
+  { id: "sys-receipt-duty-vat-other", who: "VAT_OTHER", labelTh: "ผู้จดทะเบียน VAT", value: 10_000, from: null, to: null, source: RD_SRC, tag: "V", checkedAt: "2026-11-13" },
+  { id: "sys-receipt-duty-non-vat", who: "NON_VAT", labelTh: "ผู้ได้รับยกเว้น VAT (ม.81 / ม.81/1 — ร้านที่ไม่จด VAT)", value: 10_000, from: null, to: null, source: RD_SRC, tag: "V", checkedAt: "2026-11-13" },
+];
+export function receiptDutyRowOf(who: ReceiptDutyWho, ymd: Ymd): ReceiptDutyRow | null {
+  return SYSTEM_RECEIPT_DUTY_ROWS.find((r) => r.who === who && covers(r, ymd)) ?? null;
+}
+
+// ═══════════════════ T2c Job C เงินมัดจำที่ถูกริบ (skill common-vat-invoice.md §7 [U]) ═══════════════════
+/**
+ * "ออกใบกำกับมัดจำแล้วต่อมาริบ" [U] — ค่าเริ่มต้นปลอดภัย = ไม่ออกใบลดหนี้ (VAT คงไว้) · ทางเลือก = ใบลดหนี้ + ใบรับค่าเสียหาย ตามนักบัญชี
+ * ค่าเงินที่ริบ (ค่าปรับ/ค่าเสียหาย) ไม่อยู่ในบังคับ VAT (ม.77/2 · กค 0811/11473 ข้อ 3.3(1) · กค 0702/530 — §7 [V])
+ */
+export const DEPOSIT_FORFEIT_RULE = {
+  defaultMode: "KEEP_VAT" as const,
+  source: `${VAT_REF} §7 — "ออกใบกำกับมัดจำแล้วต่อมาริบ [U]: ค่าเริ่มต้นปลอดภัย = ไม่ออกใบลดหนี้ (VAT คงไว้)" · ค่าปรับ/ค่าเสียหายไม่อยู่ในบังคับ VAT (ม.77/2 · กค 0811/11473 ข้อ 3.3(1)) [V]`,
+  tag: "U" as LegalTag,
+  checkedAt: "2026-11-13",
+};

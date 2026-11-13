@@ -15,6 +15,8 @@ import { tenantDb } from "@/lib/core/db";
 import { recordLegalAckInTx } from "@/lib/core/legal-ack"; // ACC T2.10 ◂
 import { LegalAckRequiredError, legalWarning, unacknowledged, type LegalAck, type LegalAckRequired } from "@/lib/core/settings/legal/warnings";
 import { legalAckResult } from "./legal-gate";
+import { receiptAutoOffWarning } from "./receipt-duty"; // ACC T2c A6 ◂
+import { freezeUnsnappedDocs, SNAPSHOT_SETTINGS_SELECT, snapshotSettingsFromRow } from "./seller-snapshot"; // ACC T2.9 ◂
 import type { AccountDocType, Prisma } from "@prisma/client";
 import {
   DUE_BASIS_LABEL,
@@ -151,13 +153,18 @@ export async function saveDocSettings(ctx: SettingsCtx, patch: DocSettingsPatch,
   const db = dbOf(ctx);
   const existing = await db.accountSettings.findFirst({
     where: { systemId: ctx.systemId },
-    select: { id: true, docConfig: true },
+    select: { id: true, vatRegistered: true, ...SNAPSHOT_SETTINGS_SELECT },
   });
+  const before = parseDocSettings(existing?.docConfig ?? null);
   // ACC T2.10 ▸ บังคับพิมพ์ "ออกตามมาตรา 86/4" ทุกใบ = คำเตือน [V] ต้องกดยืนยัน (ไม่บล็อก) · บันทึกผู้ยืนยัน ◂
-  if (patch.print?.section864 === "ALWAYS" && parseDocSettings(existing?.docConfig ?? null).print.section864 !== "ALWAYS") {
-    const ws = [legalWarning("TAX_INVOICE_SECTION_TEXT_FORCED")];
-    if (unacknowledged(ws, opts?.ack?.codes).length > 0) return legalAckResult(new LegalAckRequiredError(ws));
-    await recordLegalAckInTx(db as unknown as Prisma.TransactionClient, { tenantId: ctx.tenantId, ack: opts!.ack!, op: "account.settings.doc", targetType: "AccountSettings", targetId: ctx.systemId, warnings: ws });
+  // ACC T2c A6 ▸ ปิดใบเสร็จอัตโนมัติ = คำเตือนเกณฑ์ใบรับ ม.105 [V] ต้องกดยืนยัน (ตัวเลขจากตารางค่ากฎหมาย) ◂
+  const gateWs = [
+    ...(patch.print?.section864 === "ALWAYS" && before.print.section864 !== "ALWAYS" ? [legalWarning("TAX_INVOICE_SECTION_TEXT_FORCED")] : []),
+    ...(patch.receipt && patch.receipt.autoOnPayment === false && before.receipt.autoOnPayment ? [receiptAutoOffWarning(existing?.vatRegistered ?? true)] : []),
+  ];
+  if (gateWs.length > 0) {
+    if (unacknowledged(gateWs, opts?.ack?.codes).length > 0) return legalAckResult(new LegalAckRequiredError(gateWs));
+    await recordLegalAckInTx(db as unknown as Prisma.TransactionClient, { tenantId: ctx.tenantId, ack: opts!.ack!, op: "account.settings.doc", targetType: "AccountSettings", targetId: ctx.systemId, warnings: gateWs });
   }
   const docConfig = mergeDocSettings(existing?.docConfig ?? null, patch);
   // T0.3d ▸ ตรวจบนค่าที่รวมแล้ว (patch อาจส่งมาแค่ pattern หรือแค่ reset) — เลขซ้ำ = ความถูกต้องของข้อมูล ปฏิเสธ
@@ -174,6 +181,8 @@ export async function saveDocSettings(ctx: SettingsCtx, patch: DocSettingsPatch,
       : { defaultValidDays: patch.due.quotationValidDays, defaultDueDays: patch.due.invoiceCreditDays };
 
   if (existing) {
+    // ACC T2.9 ▸ ข้อความท้ายใบ/หมายเหตุของชนิดเอกสารเปลี่ยน ⇒ ตรึงใบที่ออกแล้วแต่ยังไม่ตรึงด้วยค่าเดิมก่อน ◂
+    await freezeUnsnappedDocs(db as unknown as Prisma.TransactionClient, ctx.systemId, snapshotSettingsFromRow(existing));
     await db.accountSettings.update({
       where: { id: existing.id },
       data: { ...dueCols, docConfig: docConfig as Prisma.InputJsonValue },

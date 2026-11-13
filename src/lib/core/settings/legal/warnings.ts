@@ -77,6 +77,12 @@ export const LEGAL_WARNING_CODES = [
   "PAYMENT_TAX_INVOICE_EARLIER_MONTH",
   "RECEIPT_SELLER_TAX_ID_MISSING",
   "TAX_INVOICE_REPLACE",
+  // ── ใบกำกับเต็มรูปครบรายการ · ใบเสร็จอัตโนมัติ · มัดจำ (T2.1 · T2c A6 · T2.4 — เลน 1) ──
+  "TAX_INVOICE_BUYER_NAME_MISSING",
+  "TAX_INVOICE_BUYER_ADDRESS_MISSING",
+  "RECEIPT_AUTO_OFF",
+  "DEPOSIT_REFUND_CREDIT_NOTE",
+  "DEPOSIT_FORFEIT_VAT",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -562,6 +568,62 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     tag: "V",
     checkedAt: "2026-11-13",
     ack: true,
+  },
+
+  TAX_INVOICE_BUYER_NAME_MISSING: {
+    code: "TAX_INVOICE_BUYER_NAME_MISSING",
+    titleTh: "ใบกำกับภาษีไม่มีชื่อผู้ซื้อ",
+    messageTh: () =>
+      "ใบกำกับภาษีเต็มรูปต้องมีชื่อและที่อยู่ของผู้ซื้อ (ม.86/4(3)) — ใบนี้ยังไม่มีชื่อผู้ซื้อ · เลือกผู้ติดต่อหรือกรอกชื่อผู้ซื้อก่อนออก (ออกได้ แต่ใบจะไม่ครบรายการ ม.86/4 และระบบจะไม่พิมพ์ \"ออกตามมาตรา 86/4\")",
+    citation: "ประมวลรัษฎากร ม.86/4(3) · references/common-vat-invoice.md §5 · audit-checklist-accounting.md B1",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  TAX_INVOICE_BUYER_ADDRESS_MISSING: {
+    code: "TAX_INVOICE_BUYER_ADDRESS_MISSING",
+    titleTh: "ใบกำกับภาษีไม่มีที่อยู่ผู้ซื้อ",
+    messageTh: (p) =>
+      `ใบกำกับภาษีเต็มรูปต้องมีชื่อและที่อยู่ของผู้ซื้อ (ม.86/4(3))${p.name ? ` — ผู้ซื้อ "${s(p, "name")}" ยังไม่มีที่อยู่` : " — ใบนี้ยังไม่มีที่อยู่ผู้ซื้อ"} · กรอกที่อยู่ที่ผู้ติดต่อหรือบนเอกสารก่อนออก (ออกได้ แต่ใบจะไม่ครบรายการ ม.86/4)`,
+    citation: "ประมวลรัษฎากร ม.86/4(3) · references/common-vat-invoice.md §5 · audit-checklist-accounting.md B1",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  RECEIPT_AUTO_OFF: {
+    code: "RECEIPT_AUTO_OFF",
+    titleTh: "ปิดการออกใบเสร็จอัตโนมัติ",
+    messageTh: (p) =>
+      `ปิดแล้วระบบจะไม่ออกใบเสร็จให้เองเมื่อรับเงินตามใบแจ้งหนี้ — ร้านยังต้องออกใบรับ (ใบเสร็จ) "ในทันทีทุกคราวที่รับเงิน" เมื่อรับแต่ละครั้งเกิน ฿${s(p, "threshold")} (${s(p, "who")}) (ม.105)` +
+      `${p.small ? ` · ${s(p, "small")}` : ""} · ต่ำกว่าเกณฑ์ ผู้จด VAT ต้องรวมยอดสิ้นวันทำบันทึกรายวัน (ม.105 ตรี) · ไม่ออกใบรับมีโทษตาม ม.127 ทวิ · ออกใบเสร็จเองได้ที่หน้าใบแจ้งหนี้ (แปลงเป็นใบเสร็จ) · กดยืนยันเพื่อปิด`,
+    citation: "ประมวลรัษฎากร ม.105, ม.105 ตรี, ม.127 ทวิ · ประกาศอธิบดีฯ เกี่ยวกับอากรแสตมป์ ฉ.34 แก้โดย ฉ.49 · references/domain-accounting-books.md §ง1 · audit-checklist-accounting.md B9",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  DEPOSIT_REFUND_CREDIT_NOTE: {
+    code: "DEPOSIT_REFUND_CREDIT_NOTE",
+    titleTh: "คืนเงินมัดจำที่ออกใบกำกับภาษีแล้ว = ออกใบลดหนี้",
+    messageTh: (p) =>
+      `เงินมัดจำนี้ออกใบกำกับภาษีเลขที่ ${s(p, "tiNo")} แล้ว — การคืนเงินมัดจำตามข้อตกลงเป็นเหตุออกใบลดหนี้ (ประกาศ VAT ฉ.82 ข้อ 2(2)) ระบบจะออกใบลดหนี้อ้างใบกำกับนั้น ยอด ฿${s(p, "gross")} (ภาษีที่ลดลง ฿${s(p, "vat")}) ลงวันที่ ${s(p, "date")} ` +
+      `· ภาษีขายลดลงในเดือนภาษีที่ออกใบลดหนี้ (ม.82/10 · ม.86/10) · ใบรับเงินมัดจำและใบกำกับเดิมคงอยู่ (ไม่ยกเลิก)`,
+    citation: "ประมวลรัษฎากร ม.82/10, ม.86/10 · ประกาศ VAT ฉ.82 ข้อ 2(2) · references/common-vat-invoice.md §7, §16 · domain-shark-accounting-cases.md §2.1 · audit-checklist-accounting.md I3",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  DEPOSIT_FORFEIT_VAT: {
+    code: "DEPOSIT_FORFEIT_VAT",
+    titleTh: "ริบเงินมัดจำที่ออกใบกำกับภาษีแล้ว",
+    messageTh: (p) =>
+      (p.mode === "CREDIT_NOTE"
+        ? `ร้านตั้งให้ออกใบลดหนี้เมื่อริบมัดจำ — ระบบจะออกใบลดหนี้อ้างใบกำกับเลขที่ ${s(p, "tiNo")} (ภาษีขายลดลง ฿${s(p, "vat")}) และบันทึกเงินที่ริบ ฿${s(p, "gross")} เป็นรายได้ค่าเสียหายที่ไม่มี VAT`
+        : `ค่าเริ่มต้น: ไม่ออกใบลดหนี้ — ภาษีขาย ฿${s(p, "vat")} ของใบกำกับเลขที่ ${s(p, "tiNo")} คงไว้ และบันทึกเงินมัดจำที่ริบ (ฐาน ฿${s(p, "base")}) เป็นรายได้`) +
+      ` · กรมสรรพากรยังไม่มีแนวทางเรื่องริบมัดจำที่ออกใบกำกับแล้ว (ค่าปรับ/ค่าเสียหายไม่อยู่ในบังคับ VAT — ม.77/2) · เปลี่ยนวิธีได้ที่ ตั้งค่า › เอกสาร › ใบกำกับภาษีอัตโนมัติ`,
+    citation: "references/common-vat-invoice.md §7 (ริบมัดจำ [U] · ค่าปรับ/ค่าเสียหาย ม.77/2 · กค 0811/11473 ข้อ 3.3(1) [V]) · audit-checklist-accounting.md I3",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
   },
 };
 

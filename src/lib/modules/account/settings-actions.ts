@@ -210,7 +210,13 @@ export async function saveAutoTaxInvoiceAction(formData: FormData): Promise<Acti
   const res = await saveDocSettings(
     { tenantId, systemId },
     {
-      autoTaxInvoice: { mode, goodsOnIssue: on(formData, "goodsOnIssue"), posAbbreviated: on(formData, "posAbbreviated"), legalText: s(formData, "legalText") },
+      autoTaxInvoice: {
+        mode, goodsOnIssue: on(formData, "goodsOnIssue"), posAbbreviated: on(formData, "posAbbreviated"), legalText: s(formData, "legalText"),
+        ...(formData.has("depositOnReceipt") ? { depositOnReceipt: on(formData, "depositOnReceipt") } : {}), // ACC T2.6 (จอ — T2c) ◂
+      },
+      // ACC T2c A6 · T2.4 ▸ ใบเสร็จอัตโนมัติ (ปิด = คำเตือน RECEIPT_AUTO_OFF ต้องยืนยัน) · ริบมัดจำ ◂
+      ...(formData.has("receiptAutoOnPayment") ? { receipt: { autoOnPayment: on(formData, "receiptAutoOnPayment") } } : {}),
+      ...(formData.has("depositForfeit") ? { deposit: { forfeit: s(formData, "depositForfeit") === "CREDIT_NOTE" ? ("CREDIT_NOTE" as const) : ("KEEP_VAT" as const) } } : {}),
       // ACC T1.4 — ภาษีซื้อ (การ์ดเดียวกัน) · ไม่ส่งช่อง = คงค่าเดิม
       ...(formData.has("nonClaimPosting")
         ? {
@@ -221,9 +227,10 @@ export async function saveAutoTaxInvoiceAction(formData: FormData): Promise<Acti
           }
         : {}),
     },
+    { ack: { codes: formData.getAll("ack").filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 64), actorId: userId, actorType: "USER", via: "screen" } },
   );
   if (!res.ok) return res;
-  await audit(tenantId, userId, systemId, "ใบกำกับภาษีอัตโนมัติ", { mode, goodsOnIssue: on(formData, "goodsOnIssue") });
+  await audit(tenantId, userId, systemId, "ใบกำกับภาษีอัตโนมัติ", { mode, goodsOnIssue: on(formData, "goodsOnIssue"), receiptAutoOnPayment: formData.has("receiptAutoOnPayment") ? on(formData, "receiptAutoOnPayment") : undefined, depositForfeit: s(formData, "depositForfeit") || undefined });
   revalidatePath(SETTINGS_PATH(systemId));
   return { ok: true };
 }

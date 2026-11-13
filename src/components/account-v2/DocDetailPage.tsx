@@ -38,7 +38,9 @@ import {
   rejectPOAction,
   convertPOAction,
 } from "@/lib/modules/account/expense-actions";
-import { refundDepositFormAction } from "@/lib/modules/account/payment-actions";
+import { refundDepositFormAction, forfeitDepositFormAction } from "@/lib/modules/account/payment-actions";
+import { depositSettlePreview } from "@/lib/modules/account/service"; // ACC T2.4 ◂
+import { DepositSettleDialog } from "./DepositSettleDialog"; // ACC T2.4 ◂
 import { accountPermFlags, type AccountPermFlags } from "@/lib/modules/account/guard";
 // WO 1.9 — ⋯ "เตือนชำระ" (ส่งอีเมลจริง) + "ตั้งเป็นเอกสารประจำ"
 import { sendPaymentReminderAction } from "@/lib/modules/account/recurring-actions";
@@ -68,6 +70,9 @@ import { formatThaiDateLong as fmtDateLong, formatDateTh as fmtDate } from "@/li
 // อ้างเฟรม g4-invoice-detail.png (เดสก์ท็อป) + f14-m-doc-detail.png (มือถือ)
 // แทนที่ src/app/.../docs/[docType]/[docId]/page.tsx (ฝั่งรายรับ) และ ExpenseDetail (ฝั่งรายจ่าย)
 // ─────────────────────────────────────────────────────────────
+
+/** T2c A3 ▸ ชนิดที่ยอดท้ายเป็น "จำนวนเงินรวมทั้งสิ้น" (ไม่ใช่ยอดที่ลูกค้าต้องชำระ) */
+const GRAND_RECEIVED_TYPES = new Set<string>(["TAX_INVOICE", "RECEIPT", "DEPOSIT_RECEIPT", "CREDIT_NOTE", "DEBIT_NOTE"]);
 
 function Hidden({ systemId, docType, id }: { systemId: string; docType: string; id: string }) {
   return (
@@ -110,7 +115,10 @@ function ActionRow({
   perm,
   legalWarnings = [],
   cashSale = null,
+  depositSettle = null,
 }: {
+  /** ACC T2.4 — ใบรับมัดจำ: ข้อมูลก่อนคืน/ริบ (null = ไม่ใช่/ยังรับไม่ครบ) */
+  depositSettle?: (NonNullable<Awaited<ReturnType<typeof depositSettlePreview>>> & { todayIso: string }) | null;
   /** T0.4 — คำเตือนกฎหมายของการออกเอกสารร่างนี้ (ช่องติ๊กยืนยันอยู่ในฟอร์มออกเอกสาร) */
   legalWarnings?: LegalWarning[];
   /** ACC T2.8 — ร่างใบเสร็จขายสด: ช่องทางรับเงินให้เลือกตอนออก (ใบเสร็จ = มีรายการรับเงินเสมอ) */
@@ -240,6 +248,28 @@ function ActionRow({
         autoOpenOnQuery
       />
     );
+  } else if (canRefundDeposit && dt === "DEPOSIT_RECEIPT" && depositSettle && !depositSettle.forfeited && depositSettle.gross > 0) {
+    // ACC T2.4 ▸ ใบรับมัดจำ: มีใบกำกับ = ใบลดหนี้อ้างใบกำกับ (ใบเดิมคงอยู่) · ไม่มี = ยกเลิกใบ + กลับรายการ (เดิม) ◂
+    primary = (
+      <DepositSettleDialog
+        action={refundDepositFormAction}
+        fields={{ systemId, docType: dt, id: data.id }}
+        triggerLabel="คืนมัดจำ"
+        triggerClassName="btn btn-primary h-11 w-full text-sm md:h-9 md:w-auto"
+        title="คืนเงินมัดจำใบนี้?"
+        detail={
+          depositSettle.taxInvoiceNo
+            ? `ออกใบลดหนี้อ้างใบกำกับภาษีเลขที่ ${depositSettle.taxInvoiceNo} ยอด ฿${(depositSettle.gross / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} (ส่วนที่ยังไม่ได้หัก) และจ่ายเงินคืนจากบัญชีที่รับมัดจำ — ใบรับมัดจำและใบกำกับเดิมคงอยู่`
+            : "ระบบจะกลับรายการบัญชีของใบมัดจำทั้งใบและปิดใบนี้เป็นยกเลิก"
+        }
+        confirmLabel="ยืนยันคืนมัดจำ"
+        reasonLabel="เหตุผลการคืนมัดจำ"
+        todayIso={depositSettle.todayIso}
+        warnings={depositSettle.refundWarnings}
+        danger
+        testId="deposit-refund"
+      />
+    );
   } else if (canRefundDeposit) {
     primary = (
       <ConfirmDialog
@@ -273,6 +303,21 @@ function ActionRow({
         <Link href={editPath} className="btn btn-ghost text-sm">
           แก้ไข
         </Link>
+      )}
+      {dt === "DEPOSIT_RECEIPT" && perm.void && depositSettle && !depositSettle.forfeited && depositSettle.gross > 0 && (
+        <DepositSettleDialog
+          action={forfeitDepositFormAction}
+          fields={{ systemId, docType: dt, id: data.id }}
+          triggerLabel="ริบมัดจำ"
+          title="ริบเงินมัดจำใบนี้?"
+          detail={`เงินมัดจำส่วนที่ยังไม่ได้หัก ฿${(depositSettle.gross / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} จะเป็นรายได้อื่น (ค่าเสียหาย) — ${depositSettle.taxInvoiceNo ? (depositSettle.forfeitMode === "CREDIT_NOTE" ? "ร้านตั้งให้ออกใบลดหนี้อ้างใบกำกับ" : "ไม่ออกใบลดหนี้ ภาษีขายคงไว้ (ค่าตั้งของร้าน)") : "ใบนี้ไม่มีใบกำกับภาษี"}`}
+          confirmLabel="ยืนยันริบมัดจำ"
+          reasonLabel="เหตุผล (เช่น ลูกค้ายกเลิกการจอง)"
+          todayIso={depositSettle.todayIso}
+          warnings={depositSettle.forfeitWarnings}
+          danger
+          testId="deposit-forfeit"
+        />
       )}
       {dt === "QUOTATION" && data.status === "AWAITING_ACCEPT" && (
         <form action={quotationResponseAction}>
@@ -615,6 +660,15 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
         <div className="text-xs text-[color:var(--color-muted)]">ผู้ติดต่อ</div>
         <div className="font-medium">{data.contact?.name ?? "ไม่ระบุ"}</div>
         {data.contact?.taxId && <div className="text-xs text-[color:var(--color-muted)]">เลขภาษี {data.contact.taxId}</div>}
+        {/* ACC T2.9 ▸ ผู้ขายที่พิมพ์บนเอกสาร = ค่าที่ตรึงไว้ตอนออก (แก้ค่าตั้งกิจการภายหลัง ใบนี้ไม่เปลี่ยน) ◂ */}
+        {data.seller && (
+          <div className="mt-2 border-t pt-2 text-xs text-[color:var(--color-muted)]" data-testid="detail-seller-frozen">
+            ผู้ขายบนเอกสาร: {data.seller.name}
+            {data.seller.taxId ? ` · เลขผู้เสียภาษี ${data.seller.taxId}` : ""}
+            {data.seller.branch ? ` · ${data.seller.branch}` : ""}
+            {` · ตรึงไว้เมื่อ${data.seller.via === "ISSUE" ? "ออกเอกสาร" : "แก้ค่าตั้ง"} ${fmtDate(new Date(data.seller.frozenAt))}`}
+          </div>
+        )}
       </div>
       {data.groupChildren ? <GroupChildrenTable data={data} base={base} /> : (
       <div className="card">
@@ -680,8 +734,9 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
               {vatRegistered && <TotalRow label="ภาษีมูลค่าเพิ่ม" satang={data.vatAmount} />}
               {data.whtAmount > 0 && <TotalRow label="หัก ณ ที่จ่าย" satang={-data.whtAmount} />}
               {data.depositDeducted > 0 && <TotalRow label="หักเงินมัดจำ" satang={-data.depositDeducted} />}
-              <div className="flex w-full justify-between border-t pt-1 font-semibold">
-                <span>ยอดที่ต้องชำระ</span>
+              <div className="flex w-full justify-between border-t pt-1 font-semibold" data-testid="detail-grand-label">
+                {/* T2c A3 ▸ ใบกำกับ/ใบเสร็จ/ใบรับมัดจำ = เอกสารของเงินที่รับแล้ว (หรือมูลค่าตามใบ) — ไม่ใช่ "ยอดที่ต้องชำระ" ◂ */}
+                <span>{GRAND_RECEIVED_TYPES.has(data.docType) ? `จำนวนเงินรวมทั้งสิ้น${data.moneyReceived ? " (ได้รับชำระแล้ว)" : ""}` : "ยอดที่ต้องชำระ"}</span>
                 <span><MoneyText satang={data.grandTotal} decimals /></span>
               </div>
             </>
@@ -1061,6 +1116,11 @@ export async function DocDetailPage({
           return { channels, defaultId: cash?.id ?? null, paidAt: new Date(data.issueDate.getTime() + 7 * 3_600_000).toISOString().slice(0, 10) };
         })()
       : null;
+  // ACC T2.4 — ใบรับเงินมัดจำที่รับครบ: ดูก่อนคืน/ริบ (ใบลดหนี้ไหม · ยอดคงเหลือ · คำเตือน) — โหลดเฉพาะชนิดนี้
+  const depositSettle =
+    dt === "DEPOSIT_RECEIPT" && (data.status === "AWAITING_DEDUCT" || data.status === "DEDUCTED")
+      ? await depositSettlePreview(tenantId, systemId, data.id).then((p) => (p ? { ...p, todayIso: new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10) } : null))
+      : null;
   // T0.4 — ร่างที่จะออก: แสดงคำเตือนกฎหมายล่วงหน้า (ทะเบียนกลาง) · ด่านจริงอยู่ที่ service (ไม่เชื่อจอ)
   // ACC T1.2 — จุดรับผิดของใบแจ้งหนี้/ใบเสร็จ: ร่าง = คำเตือนของใบกำกับที่จะออกพร้อมกัน · ออกแล้ว = VAT ที่ยังพัก + คำเตือนข้ามเดือน
   const taxPoint = dt === "INVOICE" || dt === "RECEIPT" ? await invoiceTaxPointView({ tenantId, systemId }, data.id) : null;
@@ -1083,7 +1143,7 @@ export async function DocDetailPage({
   const legalWarnings =
     data.status === "DRAFT" && !PO_TYPES.includes(dt)
       ? [
-          ...issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason, vatAmount: data.vatAmount, adjustReasonCode: data.adjustReasonCode, sourceDocId: data.sourceDocId, reference: data.reference, vendorInvoiceDate: data.vendorInvoiceDate }, side === "revenue" ? settings : null), // ACC T2.3 ◂
+          ...issueLegalWarnings({ docType: dt, adjustReason: data.adjustReason, vatAmount: data.vatAmount, adjustReasonCode: data.adjustReasonCode, sourceDocId: data.sourceDocId, reference: data.reference, vendorInvoiceDate: data.vendorInvoiceDate, buyer: dt === "TAX_INVOICE" ? data.taxBuyer : null }, side === "revenue" ? settings : null), // ACC T2.3 · T2.1 ผู้ซื้อ ◂
           ...(side === "revenue" ? saleWithoutVatWarnings({ docType: dt, vatMode: data.vatMode, sourceDocId: data.sourceDocId, lines: data.lines }, settings) : []),
           ...(taxPoint?.draftWarnings ?? []),
           ...filedPreview,
@@ -1164,7 +1224,7 @@ export async function DocDetailPage({
         {/* WO 9.4 §0.3 ข้อ 8/9 — แท็กเอกสาร: ลบทีละแท็กได้ (เลิกทำได้ภายใน 5 นาที) — ไม่มีแท็ก = ไม่แสดงอะไร */}
         {data.tags.length > 0 && <DocTagsBlock systemId={systemId} docId={data.id} tags={data.tags} />}
 
-        <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} perm={perm} legalWarnings={legalWarnings} cashSale={cashSale} />
+        <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} perm={perm} legalWarnings={legalWarnings} cashSale={cashSale} depositSettle={depositSettle} />
       </div>
 
       {taxPoint?.parked && (

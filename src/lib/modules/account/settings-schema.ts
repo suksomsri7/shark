@@ -186,6 +186,11 @@ export type DocSettings = {
    * ม.105 "ในทันทีทุกคราวที่รับเงิน" · checklist B9) · ปิด = ร้านออกเอง (+ คำเตือนเกณฑ์ 100/1,000 บาท) · ต่อเอกสารสั่งทับได้ (`autoReceipt`)
    */
   receipt: { autoOnPayment: boolean };
+  /**
+   * ACC T2.4 — เงินมัดจำที่ออกใบกำกับแล้วถูกริบ (skill common-vat-invoice.md §7 [U]): `KEEP_VAT` (ค่าเริ่ม — ไม่ออกใบลดหนี้ VAT คงไว้ · ค่าเริ่มที่ skill ว่าปลอดภัย)
+   *   · `CREDIT_NOTE` (ออกใบลดหนี้ + เงินที่ริบเป็นค่าเสียหายไม่มี VAT — ตามนักบัญชีของร้าน) · ทั้งสองแบบมีคำเตือน DEPOSIT_FORFEIT_VAT
+   */
+  deposit: { forfeit: "KEEP_VAT" | "CREDIT_NOTE" };
   /** เทมเพลตพิมพ์ */
   print: {
     template: PrintTemplate;
@@ -243,6 +248,7 @@ export function defaultDocSettings(): DocSettings {
     publicView: { enabled: true, showOutstanding: true, promptPayButton: true, expiryDays: 0 },
     autoTaxInvoice: { mode: "ON_PAYMENT", goodsOnIssue: true, depositOnReceipt: true, posAbbreviated: true, legalText: DEFAULT_LEGAL_TEXT },
     receipt: { autoOnPayment: true },
+    deposit: { forfeit: "KEEP_VAT" },
     print: {
       template: "STANDARD",
       language: "TH",
@@ -368,6 +374,7 @@ export function parseDocSettings(docConfig: unknown): DocSettings {
       legalText: ((v) => (v === LEGACY_DEFAULT_LEGAL_TEXT ? d.autoTaxInvoice.legalText : v))(str(auto.legalText, d.autoTaxInvoice.legalText)), // ACC T2.10 ◂
     },
     receipt: { autoOnPayment: bool(obj(raw.receipt).autoOnPayment, d.receipt.autoOnPayment) },
+    deposit: { forfeit: obj(raw.deposit).forfeit === "CREDIT_NOTE" ? "CREDIT_NOTE" : "KEEP_VAT" }, // ACC T2.4 ◂
     print: {
       template:
         print.template === "COMPACT" || print.template === "WITH_IMAGES" || print.template === "STANDARD"
@@ -438,7 +445,7 @@ export function mergeDocSettings(
     next.notes = notes;
   }
   if (patch.print !== undefined) next.print = { ...patch.print, section864: patch.print.section864 ?? current.print.section864 }; // ACC T2.10 ◂
-  for (const key of ["due", "channels", "publicView", "taxRequest", "rules", "inputVat", "receipt"] as const) {
+  for (const key of ["due", "channels", "publicView", "taxRequest", "rules", "inputVat", "receipt", "deposit"] as const) {
     if (patch[key] !== undefined) next[key] = patch[key];
   }
   if (patch.autoTaxInvoice !== undefined)

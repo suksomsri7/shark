@@ -29,6 +29,31 @@ const satangTh = (s: number) => (s / 100).toLocaleString("en-US", { minimumFract
 /** เดียวกับด่านเดิม (normalizeTaxId ว่าง = ไม่มีเลข) */
 const noTaxId = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "").length === 0;
 
+/** ACC T2.1 ▸ ผู้ซื้อของใบกำกับเต็มรูป (จาก snapshot บนเอกสาร → ผู้ติดต่อ) */
+export type TaxInvoiceBuyerCheck = { name?: string | null; address?: string | null; taxId?: string | null; business?: boolean | null };
+
+/** ACC T2.1 ▸ ผู้ซื้อบนใบกำกับเต็มรูป: snapshot ของเอกสารชนะ · ไม่มีค่าใน snapshot = ผู้ติดต่อ (เหมือนหน้าพิมพ์) */
+export function taxInvoiceBuyerOf(snapshot: unknown, contact: { name?: string | null; address?: string | null; taxId?: string | null; legalType?: string | null } | null | undefined): TaxInvoiceBuyerCheck {
+  const sn = (snapshot && typeof snapshot === "object" && !Array.isArray(snapshot) ? snapshot : {}) as Record<string, unknown>;
+  const t = (k: string) => (typeof sn[k] === "string" ? (sn[k] as string).trim() : "");
+  const legal = t("legalType") || contact?.legalType || "";
+  return {
+    name: t("name") || contact?.name || "",
+    address: t("address") || contact?.address || "",
+    taxId: t("taxId") || contact?.taxId || "",
+    business: legal ? legal !== "PERSON" : null,
+  };
+}
+
+/** ACC T2.1 ▸ คำเตือนผู้ซื้อของใบกำกับเต็มรูป (pure) */
+export function taxInvoiceBuyerWarnings(b: TaxInvoiceBuyerCheck): LegalWarning[] {
+  const out: LegalWarning[] = [];
+  if (blank(b.name)) out.push(legalWarning("TAX_INVOICE_BUYER_NAME_MISSING"));
+  if (blank(b.address)) out.push(legalWarning("TAX_INVOICE_BUYER_ADDRESS_MISSING", b.name ? { name: b.name.trim() } : {}));
+  if (b.business === true && noTaxId(b.taxId)) out.push(legalWarning("BUYER_TAX_ID_MISSING"));
+  return out;
+}
+
 /** คำเตือนตอนออกเอกสาร (ขาย/ซื้อ) — pure */
 export function issueLegalWarnings(
   /** `vatAmount` (สตางค์) = ยอด VAT ของใบ — ใส่ในข้อความ TAX_INVOICE_NOT_VAT_REGISTERED (T0.4b) */
@@ -41,6 +66,8 @@ export function issueLegalWarnings(
     sourceDocId?: string | null;
     reference?: string | null;
     vendorInvoiceDate?: Date | string | null;
+    /** ACC T2.1 ▸ ผู้ซื้อบนใบกำกับเต็มรูป (ชื่อ · ที่อยู่ · เลข · เป็นกิจการไหม) — ไม่ส่ง = ไม่ตรวจข้อนั้น ◂ */
+    buyer?: TaxInvoiceBuyerCheck | null;
   },
   /** null = ฝั่งซื้อ (ไม่มีด่านของผู้ขาย) */
   settings: { vatRegistered: boolean; taxId?: string | null } | null,
@@ -51,6 +78,9 @@ export function issueLegalWarnings(
       out.push(legalWarning("TAX_INVOICE_NOT_VAT_REGISTERED", typeof doc.vatAmount === "number" ? { vat: satangTh(doc.vatAmount) } : {}));
     if (noTaxId(settings.taxId)) out.push(legalWarning("TAX_INVOICE_SELLER_TAX_ID_MISSING"));
   }
+  // ACC T2.1 ▸ ใบกำกับเต็มรูป: ชื่อ/ที่อยู่ผู้ซื้อ (ม.86/4(3) [V]) · ผู้ซื้อที่เป็นกิจการไม่มีเลข 13 หลัก (ฉ.39 ข้อ 7 [V]) — แจ้งให้ทราบ ไม่บล็อก
+  //   ผู้ซื้อทั่วไป (บุคคล) ไม่มีเลข = ไม่เตือน (ออกใบเต็มรูปได้ตามปกติ) ◂
+  if (settings && doc.docType === "TAX_INVOICE" && doc.buyer) out.push(...taxInvoiceBuyerWarnings(doc.buyer));
   // ACC T2.8 ▸ ใบเสร็จ (ใบรับ ม.105 ทวิ) ต้องแสดงเลขผู้เสียภาษีของผู้ออก — ร้านยังไม่กรอก = แจ้งให้ทราบ (ack=false · ไม่บล็อก) ◂
   if (settings && doc.docType === "RECEIPT" && noTaxId(settings.taxId)) out.push(legalWarning("RECEIPT_SELLER_TAX_ID_MISSING"));
   if (ADJUST_TYPES.has(doc.docType)) {
