@@ -90,7 +90,7 @@ try {
   const V1 = await acc.createContact({ tenantId: tid, systemId: S, kind: "VENDOR", legalType: "COMPANY", name: "ผู้ขายมีเลข", taxId: "0105561000001", branchCode: "00000" });
   const V0 = await acc.createContact({ tenantId: tid, systemId: S, kind: "VENDOR", legalType: "COMPANY", name: "ผู้ขายไม่มีเลข" });
   const L = async (code: string) => (await prisma.accountLedger.findFirst({ where: { systemId: S, code }, select: { id: true, vatTreatment: true } }))!;
-  const A = { e6900: (await L("6900")).id, e6910: (await L("6910")).id, e6920: (await L("6920")).id, v1150: (await L("1150")).id, v1155: (await L("1155")).id, n6950: (await L("6950")).id, n6960: (await L("6960")).id, ap: (await L("2100")).id };
+  const A = { e6900: (await L("6900")).id, e6930: (await L("6930")).id, e6940: (await L("6940")).id, v1150: (await L("1150")).id, v1155: (await L("1155")).id, n6950: (await L("6950")).id, n6960: (await L("6960")).id, ap: (await L("2100")).id };
   /** Σ(เดบิต − เครดิต) ของบัญชีในรายการของเอกสารชุดหนึ่ง (รวมรายการกลับ) */
   const net = async (acct: string, refIds: string[]) => {
     const ls = await prisma.accountJournalLine.findMany({ where: { systemId: S, accountId: acct, entry: { refType: "AccountDocument", refId: { in: refIds } } }, select: { debit: true, credit: true } });
@@ -106,7 +106,7 @@ try {
   const issue = (id: string, codes?: string[]) => exp.issueExpenseDoc(tid, S, id, codes ? { ack: { codes, actorId: owner.id, via: "screen" } } : {});
   const ptxOf = (id: string) => prisma.accountDocument.findFirst({ where: { systemId: S, docType: "PURCHASE_TAX_INVOICE", sourceDocId: id }, orderBy: { createdAt: "desc" } });
   const docOf = (id: string) => prisma.accountDocument.findFirst({ where: { id }, include: { lines: { orderBy: { sortOrder: "asc" } } } });
-  chk("F0", "ผังบัญชี: 6910 ค่ารับรอง (ธงค่ารับรอง) · 6920 รถยนต์นั่ง (ธงรถนั่ง) · 6950/6960 ภาษีซื้อไม่ขอคืน 2 ชนิด · mapping VAT_INPUT_NONCLAIM*", (await L("6910")).vatTreatment === "NON_CLAIMABLE_ENTERTAINMENT" && (await L("6920")).vatTreatment === "NON_CLAIMABLE_PASSENGER_CAR" && !!(await prisma.accountMapping.findFirst({ where: { systemId: S, key: "VAT_INPUT_NONCLAIM", accountId: A.n6950 } })) && !!(await prisma.accountMapping.findFirst({ where: { systemId: S, key: "VAT_INPUT_NONCLAIM_DISALLOWED", accountId: A.n6960 } })), "ครบ", null);
+  chk("F0", "ผังบัญชี: 6930 ค่ารับรอง (ธงค่ารับรอง) · 6940 รถยนต์นั่ง (ธงรถนั่ง) · 6950/6960 ภาษีซื้อไม่ขอคืน 2 ชนิด · mapping VAT_INPUT_NONCLAIM*", (await L("6930")).vatTreatment === "NON_CLAIMABLE_ENTERTAINMENT" && (await L("6940")).vatTreatment === "NON_CLAIMABLE_PASSENGER_CAR" && !!(await prisma.accountMapping.findFirst({ where: { systemId: S, key: "VAT_INPUT_NONCLAIM", accountId: A.n6950 } })) && !!(await prisma.accountMapping.findFirst({ where: { systemId: S, key: "VAT_INPUT_NONCLAIM_DISALLOWED", accountId: A.n6960 } })), "ครบ", null);
   chk("F1", "นาฬิกาเครื่อง = พ.ย. 2569 (oracle ของเดือนวันนี้คำนวณไว้กับ 2026-11)", NOW_MONTH === "2026-11", "2026-11", NOW_MONTH, "MAJOR");
 
   // ═══ B — T1.4 สถานะ ═══
@@ -153,15 +153,15 @@ try {
   }
   {
     // IV5 — บัญชีค่ารับรอง (ธง) ไม่เลือก ⇒ เคลมไม่ได้ เหตุค่ารับรอง ⇒ 6950 (รายจ่ายได้)
-    const d = await mk(V1.id, [line(A.e6910)]);
+    const d = await mk(V1.id, [line(A.e6930)]);
     IVid.IV5 = d.id;
     const r = await issue(d.id);
     const doc = await docOf(d.id);
-    chk("B5.1", "IV5 บัญชี 6910 ค่ารับรอง ⇒ บรรทัด NO_CLAIM/ENTERTAINMENT อัตโนมัติ · Dr 6910 1,000,000 · Dr 6950 70,000 · ไม่ต้องยืนยัน", r.ok && doc?.lines[0]?.inputVatStatus === "NO_CLAIM" && doc?.lines[0]?.inputVatReason === "ENTERTAINMENT" && (await net(A.e6910, [d.id])) === 1_000_000 && (await net(A.n6950, [d.id])) === 70_000 && (await net(A.v1150, [d.id])) === 0, "6950", { r, l: doc?.lines[0] && { s: doc.lines[0].inputVatStatus, r: doc.lines[0].inputVatReason } });
+    chk("B5.1", "IV5 บัญชี 6930 ค่ารับรอง ⇒ บรรทัด NO_CLAIM/ENTERTAINMENT อัตโนมัติ · Dr 6930 1,000,000 · Dr 6950 70,000 · ไม่ต้องยืนยัน", r.ok && doc?.lines[0]?.inputVatStatus === "NO_CLAIM" && doc?.lines[0]?.inputVatReason === "ENTERTAINMENT" && (await net(A.e6930, [d.id])) === 1_000_000 && (await net(A.n6950, [d.id])) === 70_000 && (await net(A.v1150, [d.id])) === 0, "6950", { r, l: doc?.lines[0] && { s: doc.lines[0].inputVatStatus, r: doc.lines[0].inputVatReason } });
   }
   {
     // IV6 — บัญชีค่ารับรองแต่เลือกเคลมที่บรรทัด ⇒ ต้องยืนยัน (หมวดต้องห้าม)
-    const d = await mk(V1.id, [line(A.e6910, 1_000_000, { inputVatStatus: "CLAIM" })]);
+    const d = await mk(V1.id, [line(A.e6930, 1_000_000, { inputVatStatus: "CLAIM" })]);
     IVid.IV6 = d.id;
     const r0 = await issue(d.id);
     chk("B6.1", "IV6 เคลมบนหมวดค่ารับรอง ⇒ ขอยืนยัน INPUT_VAT_CLAIM_PROHIBITED_CATEGORY (อ้าง ม.82/5(4) ฉ.17)", !r0.ok && r0.legal?.warnings?.some((x: Any) => x.code === "INPUT_VAT_CLAIM_PROHIBITED_CATEGORY" && /82\/5\(4\)/.test(x.messageTh)), "ack required", r0);
@@ -169,13 +169,13 @@ try {
     chk("B6.2", "IV6 ยืนยันแล้ว ⇒ Dr 1150 70,000 (ร้านเลือกเอง)", r1.ok && (await net(A.v1150, [d.id])) === 70_000, 70_000, r1);
   }
   {
-    // IV7 — ใบผสม: 6900 เคลม 1,000,000 · 6920 รถนั่ง 500,000 · บรรทัดรอใบกำกับ 200,000
-    const d = await mk(V1.id, [line(A.e6900), line(A.e6920, 500_000), line(A.e6900, 200_000, { inputVatStatus: "PENDING" })]);
+    // IV7 — ใบผสม: 6900 เคลม 1,000,000 · 6940 รถนั่ง 500,000 · บรรทัดรอใบกำกับ 200,000
+    const d = await mk(V1.id, [line(A.e6900), line(A.e6940, 500_000), line(A.e6900, 200_000, { inputVatStatus: "PENDING" })]);
     IVid.IV7 = d.id;
     const r = await issue(d.id);
     const doc = await docOf(d.id);
     const p = await ptxOf(d.id);
-    chk("B7.1", "IV7 ใบผสม: VAT 119,000 · Dr 1150 70,000 · Dr 6950 35,000 (รถนั่ง ม.82/5(6)) · Dr 1155 14,000 · Dr 6900 1,200,000 · Dr 6920 500,000 · Cr 2100 1,819,000", r.ok && doc?.vatAmount === 119_000 && (await net(A.v1150, [d.id])) === 70_000 && (await net(A.n6950, [d.id])) === 35_000 && (await net(A.v1155, [d.id])) === 14_000 && (await net(A.e6900, [d.id])) === 1_200_000 && (await net(A.e6920, [d.id])) === 500_000 && (await net(A.ap, [d.id])) === -1_819_000, "ตามนั้น", { v: doc?.vatAmount, c: await net(A.v1150, [d.id]), n: await net(A.n6950, [d.id]), u: await net(A.v1155, [d.id]) });
+    chk("B7.1", "IV7 ใบผสม: VAT 119,000 · Dr 1150 70,000 · Dr 6950 35,000 (รถนั่ง ม.82/5(6)) · Dr 1155 14,000 · Dr 6900 1,200,000 · Dr 6940 500,000 · Cr 2100 1,819,000", r.ok && doc?.vatAmount === 119_000 && (await net(A.v1150, [d.id])) === 70_000 && (await net(A.n6950, [d.id])) === 35_000 && (await net(A.v1155, [d.id])) === 14_000 && (await net(A.e6900, [d.id])) === 1_200_000 && (await net(A.e6940, [d.id])) === 500_000 && (await net(A.ap, [d.id])) === -1_819_000, "ตามนั้น", { v: doc?.vatAmount, c: await net(A.v1150, [d.id]), n: await net(A.n6950, [d.id]), u: await net(A.v1155, [d.id]) });
     chk("B7.2", "IV7 ใบกำกับภาษีซื้อรอรับ = เฉพาะส่วนที่รอ 14,000 (ไม่ใช่ VAT ทั้งใบ)", p?.status === "AWAITING_RECEIVE" && p.vatAmount === 14_000, 14_000, p?.vatAmount);
     const v = await IV.inputVatDocView(ctx, d.id);
     chk("B7.3", "แผงหน้าเอกสาร: แยก เคลม 70,000 · รอ 14,000 · ไม่ได้ 35,000 · สรุป 'หลายสถานะ' · เหตุ รถยนต์นั่ง", v.split.claim === 70_000 && v.split.pending === 14_000 && v.split.noClaim === 35_000 && v.summary === "MIXED" && v.noClaimReasons.some((x: string) => /รถยนต์นั่ง/.test(x)) && v.pendingPtx?.vat === 14_000, "split", v);
@@ -315,7 +315,7 @@ try {
     const p = (await ptxOf(IVid.IV7!))!;
     const v = await exp.voidExpenseDoc(tid, S, IVid.IV7!, "ยกเลิกทดสอบ");
     const ids = [IVid.IV7!, p.id];
-    chk("F1", "ยกเลิก IV7 ⇒ ทุกบัญชีสุทธิ 0 (1150 1155 6950 6900 6920 2100) · ใบกำกับรอรับถูกยกเลิกด้วย", v.ok && (await net(A.v1150, ids)) === 0 && (await net(A.v1155, ids)) === 0 && (await net(A.n6950, ids)) === 0 && (await net(A.e6900, ids)) === 0 && (await net(A.e6920, ids)) === 0 && (await net(A.ap, ids)) === 0 && (await docOf(p.id))?.status === "VOIDED", "0", { v, s: (await docOf(p.id))?.status });
+    chk("F1", "ยกเลิก IV7 ⇒ ทุกบัญชีสุทธิ 0 (1150 1155 6950 6900 6940 2100) · ใบกำกับรอรับถูกยกเลิกด้วย", v.ok && (await net(A.v1150, ids)) === 0 && (await net(A.v1155, ids)) === 0 && (await net(A.n6950, ids)) === 0 && (await net(A.e6900, ids)) === 0 && (await net(A.e6940, ids)) === 0 && (await net(A.ap, ids)) === 0 && (await docOf(p.id))?.status === "VOIDED", "0", { v, s: (await docOf(p.id))?.status });
   }
 
   // ═══ G — ภ.พ.30 / รายงานภาษีซื้อ ═══

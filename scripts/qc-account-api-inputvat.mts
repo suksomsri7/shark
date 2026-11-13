@@ -47,7 +47,7 @@ try {
   const W = kW.rawKey;
   const R = kR.rawKey;
   const V0 = await acc.createContact({ tenantId: tid, systemId: SYS, kind: "VENDOR", legalType: "COMPANY", name: "ผู้ขายไม่มีเลข API" });
-  const ent = (await prisma.accountLedger.findFirst({ where: { systemId: SYS, code: "6910" }, select: { id: true } }))!.id;
+  const ent = (await prisma.accountLedger.findFirst({ where: { systemId: SYS, code: "6930" }, select: { id: true } }))!.id;
   const n6950 = (await prisma.accountLedger.findFirst({ where: { systemId: SYS, code: "6950" }, select: { id: true } }))!.id;
   const net = async (acct: string, refIds: string[]) => (await prisma.accountJournalLine.findMany({ where: { systemId: SYS, accountId: acct, entry: { refType: "AccountDocument", refId: { in: refIds } } }, select: { debit: true, credit: true } })).reduce((a, l) => a + l.debit - l.credit, 0);
   const L = (extra: Any = {}) => ({ description: "ค่าใช้จ่าย", qty: 1, unitPriceSatang: 1_000_000, vatRateBp: 700, ...extra });

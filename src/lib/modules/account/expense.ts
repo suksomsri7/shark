@@ -1094,7 +1094,7 @@ export async function issueExpenseDoc(
         doc.lines.map((l) => ({ ...l, accountTreatment: l.accountId ? treat.get(l.accountId) : null })),
         doc.contact ? { name: doc.contact.name, taxId: doc.contact.taxId } : null,
       );
-      await legalGateInTx(tx, tenantId, [...issueLegalWarnings(doc, null), ...ivWarnings], opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
+      await legalGateInTx(tx, tenantId, issueLegalWarnings(doc, null).concat(ivWarnings), opts.ack, { op: "account.doc.issue", targetType: "AccountDocument", targetId: id });
       if (doc.docType === "CREDIT_NOTE_RECEIVED" || doc.docType === "DEBIT_NOTE_RECEIVED") {
         if (doc.docType === "CREDIT_NOTE_RECEIVED" && doc.sourceDocId) {
           const cap = await creditAvailableExpense(tx, systemId, doc.sourceDocId, id);

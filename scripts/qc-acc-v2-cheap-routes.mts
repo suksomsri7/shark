@@ -145,7 +145,9 @@ try {
   const ctx = { tenantId, systemId };
   await acc.saveSettings(tenantId, systemId, { orgName: "QC 1.2", vatRegistered: true, vatRateBp: 700 });
   await gl.ensureAccounting(ctx);
-  const vendor = (await acc.createContact({ tenantId, systemId, name: "ผู้ขาย QC 1.2", kind: "VENDOR" })) as { id: string };
+  // ORACLE-EDIT (ACC T1.4): ข้อสอบนี้ "เคลม" ภาษีซื้อ (CLAIM) — ตั้งแต่ T1.4 การเคลมจากคู่ค้าไม่มีเลขผู้เสียภาษีต้องกดยืนยัน
+  //   (INPUT_VAT_CLAIM_WITHOUT_VENDOR_TAX_ID · ม.82/5) ⇒ ฟิกซ์เจอร์ให้ผู้ขายมีเลข 13 หลัก (เจตนาเดิม = ผู้ขายจด VAT มีใบกำกับ) — เฉลยยอดเงินไม่เปลี่ยน
+  const vendor = (await acc.createContact({ tenantId, systemId, name: "ผู้ขาย QC 1.2", kind: "VENDOR", taxId: "0105561000012", branchCode: "00000" })) as { id: string };
   console.log(`\n[seed] tenant ${tenantId} · system ${systemId}\n`);
 
   // ═══════════════ R2 — ใบจ่ายเงินมัดจำ (DP) ═══════════════
