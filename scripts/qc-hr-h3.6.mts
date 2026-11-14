@@ -235,10 +235,12 @@ function runStatic(): void {
     // ORACLE-EDIT (builder H3.9 merge round · controller 13 Nov): base-aware — once H3.6 is in the base (IN_BASE), the remaining diff belongs to later tickets:
     //   their hunks are accepted when marked with their own ticket ("HR H<n>.<n>" / "ORACLE-EDIT … H<n>.<n>"); an unmarked hunk still fails ◂
     const laterMarked = (h: { added: string[] }, re: RegExp) => IN_BASE && h.added.some((l) => re.test(l));
+    // ORACLE-EDIT (HR HF-SSO · controller fix2) S1.6: "HF-SSO" marks count only in the HF-SSO files this FROZEN list covers ◂
+    const HF_SSO_FILES = new Set([`${H}payroll.ts`, `${H}payroll-actions.ts`, `${H}law.ts`, "scripts/qc-hr-lib.mts", "scripts/qc-hr-h1.2.mts", "scripts/qc-hr-h1.3.mts"]);
     const oracleEdited = (f: string) =>
       (!!ORACLE_EDITS[f] || IN_BASE) &&
       // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.6: in-base only — a later fix ticket's code hunks marked "HR-SET-<n>" are accepted too · unmarked still fails ◂
-      (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+|HR H\d+\.\d+|HR-SET-\d+|HF-SSO|HR MONEY-2|HR PRIV-\d+/)); // ORACLE-EDIT (H3.7 builder, merge of H3.9): later tickets' src hunks marked "HR H<n>.<n>" accepted too (controller rule) ◂ // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised): + hunks marked "HR HF-SSO" / "HF-SSO ORACLE-EDIT" ◂ // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" ◂ // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.4): + "HR PRIV-<n>" ◂
+      (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+|HR H\d+\.\d+|HR-SET-\d+|HR MONEY-2|HR PRIV-\d+/) || (HF_SSO_FILES.has(f) && laterMarked(h, /HF-SSO/))); // ORACLE-EDIT (H3.7 builder, merge of H3.9): later tickets' src hunks marked "HR H<n>.<n>" accepted too (controller rule) ◂ // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised): + hunks marked "HR HF-SSO" / "HF-SSO ORACLE-EDIT" ◂ // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" ◂ // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.4): + "HR PRIV-<n>" ◂ // ORACLE-EDIT (HR HF-SSO · controller fix2) ◂
     const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
     const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f)) : [];
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;

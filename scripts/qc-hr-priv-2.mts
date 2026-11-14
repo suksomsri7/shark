@@ -107,6 +107,8 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  const ch = changedVsBase(BASE, FROZEN), oc = changedVsBase(BASE, OLD);
  const bad = oc === "unchanged" ? [] : !oc.startsWith("changed: ") ? [oc] : oc.slice(9).split(",").filter((f) => {
   const hs = diffHunks(BASE, f) ?? [];
+  // ORACLE-EDIT (HR HF-SSO · controller fix2) S4: once PRIV-2 is in base, the HF-SSO fix2 allowlist conversions in these exact oracle files are accepted when every hunk carries that marker ◂
+  if (["scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts"].includes(f) && hs.length > 0 && hs.every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR HF-SSO · controller fix2)")))) return false;
   return f === F.h43 ? hs.some((h) => !h.added.some((l) => l.includes("ORACLE-EDIT (HR-PRIV-2"))) : !hs.some((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*PRIV-2/.test(l)));
  });
  const r = { frozen: ch === "unchanged", oracles: !bad.length, sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA };

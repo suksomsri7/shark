@@ -189,7 +189,9 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const frozen = [`${AI}actor.ts`, `${AI}service.ts`, `${AI}persona.ts`, "src/lib/modules/pos", "src/lib/modules/account", "src/lib/modules/crm", "prisma", "src/lib/core/permissions.ts", "scripts/qc-hr-lib.mts", "package.json"];
     // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.6: once H4.3 is in the base, a file whose every hunk carries "HF-SSO" on an ADDED line
     //   (hotfix HF-SSO-2569 — payroll*.ts · qc-hr-lib · ORACLE-EDITs in older oracles) is a later ticket's change · unmarked hunks still fail ◂
-    const hfOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HF-SSO/.test(l)));
+    // ORACLE-EDIT (HR HF-SSO · controller fix2) S1.6: explicit allowlist (as M2_ALLOW / P2_ALLOW) — HF-SSO product files this check covers + the oracles HF-SSO edited + its own oracle ◂
+    const HF_ALLOW = new Set([`${H}payroll.ts`, `${H}payroll-actions.ts`, `${H}payroll-opening.ts`, `${H}payroll-rules-sso.ts`, "scripts/qc-hr-lib.mts", ...["h0.1", "h0.2", "h0.6", "h1.1", "h1.2", "h1.3", "h2.1", "h3.2", "h3.3", "h3.4-ytd", "h3.4-lib", "h3.6", "h3.7", "h3.9", "set-1", "payadjust", "hf-sso", "priv-2"].map((n) => `scripts/qc-hr-${n}.mts`), "scripts/qc-payroll.mts"]); // ORACLE-EDIT (HR HF-SSO · controller fix2): + qc-hr-priv-2 (its S4 fix2 acceptance) ◂
+    const hfOk = (f: string) => IN_BASE && HF_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HF-SSO/.test(l)));
     // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised · narrowed by controller F1): in base only — exactly these files may differ, and only when every
     //   hunk carries "HR MONEY-2" on an added line (new oracle files = one hunk): hr leave.ts · payroll.ts · payroll-run-ui.tsx (ruling R7) · the six older oracles it edited · its own oracle ◂
     const M2_ALLOW = new Set([`${H}leave.ts`, `${H}payroll.ts`, `${H}payroll-run-ui.tsx`, "scripts/qc-hr-h1.3.mts", "scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-money-2.mts", "scripts/qc-hr-money-2-lib.mts"]);
@@ -213,7 +215,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const marked = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
     const need = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
     const bad: string[] = [];
-    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT|HR HF-SSO|HR MONEY-2/; // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.7: + "HR HF-SSO" (labor.ts ssoLawForPeriod) ◂ // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" (in base only) ◂
+    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT|HR MONEY-2/; // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.7: + "HR HF-SSO" (labor.ts ssoLawForPeriod) ◂ // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" (in base only) ◂ // ORACLE-EDIT (HR HF-SSO · controller fix2) ◂
     const judge = (f: string, re: RegExp, mustHave: boolean) => {
       const hs = diffHunks(BASE, f);
       if (!hs) return void bad.push(`${f.split("/").pop()}:git`);
@@ -221,7 +223,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
       hs.forEach((h, i) => {
         // ORACLE-EDIT (HR-PRIV-2 · controller) S1.7: in base only — labor.ts hunks carrying "HR PRIV-2" (pay-scope helper) are accepted; no other file, unmarked still fails ◂
         if (IN_BASE && f === F.labor && h.added.some((l) => /HR PRIV-2/.test(l))) return; // ORACLE-EDIT (HR-PRIV-2 · controller) ◂
-        if (!h.added.some((l) => (IN_BASE ? anyMark : re).test(l))) bad.push(`${f.split("/").pop()}#${i}:unmarked`);
+        if (!h.added.some((l) => (IN_BASE ? anyMark : re).test(l) || (IN_BASE && f === F.labor && /HR HF-SSO/.test(l)))) bad.push(`${f.split("/").pop()}#${i}:unmarked`); // ORACLE-EDIT (HR HF-SSO · controller fix2) S1.7: "HR HF-SSO" counts only in labor.ts (was: any judged file via anyMark) ◂
       });
     };
     for (const f of marked) judge(f, MARK, need.includes(f));

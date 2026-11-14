@@ -339,8 +339,10 @@ function runStatic(): void {
     // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised) S1.5: "HR MONEY-2" counts as a later-ticket mark like "HR-SET-<n>" ◂
     // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.3): laterMark also accepts "HR PRIV-<n>" (fix ticket after the H5.2 hunt) — an unmarked hunk still fails ◂
     const laterMark = (l: string) =>
-      /HF-SSO/.test(l) || /HR-SET-\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9"); // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.3) ◂
-    const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some(laterMark));
+      /HR-SET-\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9"); // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.3) ◂ // ORACLE-EDIT (HR HF-SSO · controller fix2) ◂
+    // ORACLE-EDIT (HR HF-SSO · controller fix2) S1.5: "HF-SSO" marks count only in the HF-SSO files this FROZEN list covers (was: any file) ◂
+    const HF_SSO_FILES = new Set([`${H}payroll.ts`, `${H}payroll-actions.ts`, `${H}law.ts`, "scripts/qc-hr-lib.mts", "scripts/qc-hr-h1.2.mts", "scripts/qc-hr-h1.3.mts"]);
+    const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => laterMark(l) || (HF_SSO_FILES.has(f) && /HF-SSO/.test(l))));
     const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
     const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
     const h35Hunks = diffHunks(BASE, H35) ?? [];
