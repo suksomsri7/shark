@@ -50,6 +50,9 @@ import { LineSettingsCard } from "@/lib/modules/hr/line-ui"; // HR H4.5 ▸ แ�
 import { linePolicyOf } from "@/lib/modules/hr/line-link"; // HR H4.5 ◂
 import { lineSentThisMonth } from "@/lib/modules/hr/line-notify"; // HR H4.5 ◂
 import { saveLinePolicyAction } from "@/lib/modules/hr/line-actions"; // HR H4.5 ▸ service ตรวจสิทธิ์ซ้ำจากแถว Membership ◂
+import { LaborSettingsCard } from "@/lib/modules/hr/labor-ui"; // HR H4.2 ▸ ค่าตั้งค่าแรงต่อยอดขาย (เป้า % · ยอดขายต่อคนต่อชั่วโมง · คนขั้นต่ำ) ◂
+import { saveLaborSettingsAction } from "@/lib/modules/hr/labor-actions"; // HR H4.2 ◂
+import { LABOR_TEXT } from "@/lib/modules/hr/labor-rules"; // HR H4.2 ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -72,6 +75,7 @@ const MSG_TEXTS: Record<string, string> = {
   ...BANK_MSG, // HR H3.5 ◂
   ...Object.fromEntries((["sAfter", "sAhead", "sRound"] as const).map((k) => [`o.${k}`, OT_TEXT[k]])), // HR H2.9 ◂
   ...Object.fromEntries(Object.entries(LEAVE_PRESET_TEXT).map(([k, v]) => [`lp.${k}`, v])), // HR H2.12 ▸ F1 ◂
+  ...Object.fromEntries(Object.entries(LABOR_TEXT).map(([k, v]) => [`lab.${k}`, v])), // HR H4.2 ▸ ผลการกดการ์ดค่าแรงต่อยอดขาย (รหัสสั้นเท่านั้น) ◂
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
 /** กลับหน้าเดิมพร้อมรหัสผลการกด (redirect โยนเพื่อจบ action) */
@@ -174,6 +178,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     "use server";
     back(path, year, await saveNormalMinutesAction(fd));
   };
+  // HR H4.2 ▸ บันทึกค่าตั้งค่าแรงต่อยอดขาย → ?msg= รหัสจาก allowlist (lab.*) ◂
+  const onSaveLabor = async (fd: FormData) => {
+    "use server"; // HR H4.2 ◂
+    back(path, year, await saveLaborSettingsAction(fd)); // HR H4.2 ◂
+  }; // HR H4.2 ◂
   // HR H3.2 ▸ ◂
   const onSaveAttPay = async (fd: FormData) => {
     "use server"; // HR H3.2 ◂
@@ -637,6 +646,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <LineSettingsCard systemId={id} policy={linePolicy} sentThisMonth={lineSent} units={units} canSave={isAllBranches(scope)} saveAction={saveLinePolicyAction} /> {/* HR H4.5 ◂ */}
       {/* HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน — ทุกผู้ตั้งค่าเห็น · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <WorkSettingsCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveNormalMinutes : null} />
+      {/* HR H4.2 ▸ ค่าแรงต่อยอดขาย — ผู้ตั้งค่า HR ทุกสาขาแก้ได้ · ผู้อ่านอื่นเห็นค่า (service ตัดสิน) ◂ */}
+      <LaborSettingsCard systemId={id} onSave={isAllBranches(scope) ? onSaveLabor : null} />
       {/* HR H3.2 ▸ กฎหักสาย/ขาด — ทุกผู้ตั้งค่าเห็น (ข้อความ ม.76 เสมอ) · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <AttendancePayPolicyCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveAttPay : null} />
       {/* HR H3.4 ▸ รุ่นเครื่องคิดเงินเดือน + เพดานหัก ม.76 + ช่วงที่กฎหักสาย/ขาดมีผล — แก้ได้เฉพาะเจ้าของร้าน ◂ */}
