@@ -509,7 +509,10 @@ function runStatic(): void {
     }
     let callers: string[] = [];
     try {
-      callers = git(["grep", "-lE", "\\bnow\\s*:", "--", "src/app", `${HRD}actions.ts`, `${HRD}clock-actions.ts`, `${HRD}pos-seam.ts`, `${HRD}settings-actions.ts`]).split("\n").filter(Boolean);
+      // ORACLE-EDIT (H4.2 merge gate · controller ruling): the rule is about clock call sites. A line that passes `now:` to the
+      //   read-only labour readers of H4.2 (laborDay / laborWeek / laborMonth) is not a clock caller; every other `now:` line still fails.
+      const hits = git(["grep", "-nE", "\\bnow\\s*:", "--", "src/app", `${HRD}actions.ts`, `${HRD}clock-actions.ts`, `${HRD}pos-seam.ts`, `${HRD}settings-actions.ts`]).split("\n").filter(Boolean);
+      callers = [...new Set(hits.filter((h) => !/\blabor(Day|Week|Month)\(/.test(h.split(":").slice(2).join(":"))).map((h) => h.split(":")[0]))];
     } catch {
       /* none */
     }

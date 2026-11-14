@@ -18,6 +18,8 @@ for s in seed-hr-qc "qc-hr-$WO" "${ORACLES[@]}" qc-payroll qc-payroll-reverse qc
   [ -n "${SEEN[$s]:-}" ] && continue; SEEN[$s]=1
   $Q env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx "scripts/$s.mts" > "$LOG/$s.log" 2>&1; sum "$s" "$LOG/$s.log" $?
 done
+# drift (CI step `pnpm drift`): DB vs prisma/schema. QC4 is shared with other RUNs, so non-HR tables may differ — the controller reads the table list.
+$Q pnpm drift > "$LOG/drift.log" 2>&1; echo "drift rc=$? (0 = none) tables: $(grep -aE '^\[[*+-]\]' "$LOG/drift.log" | tr '\n' ' ' | cut -c1-300) [$(date -u +%H:%MZ)]" >> "$OUT"
 for f in fitness fitness-hr; do l="$LOG/$f-noenv.log"; bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL pnpm exec tsx "scripts/$f.mts" > "$l" 2>&1; sum "$f noenv" "$l" $?; l="$LOG/$f-env.log"; bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx "scripts/$f.mts" > "$l" 2>&1; sum "$f env" "$l" $?; done
 if [ "${TYPECHECK:-1}" = 1 ]; then
   for i in $(seq 1 18); do avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo); [ "$avail" -ge 10000 ] && break; sleep 300; done
