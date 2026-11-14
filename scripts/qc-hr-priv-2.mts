@@ -107,12 +107,16 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  // ORACLE-EDIT (HR H4.9 · controller) S4: explicit files — skills.ts when every hunk adds "HR H4.9" · the oracles H4.9-FIX1 edited when every hunk adds "ORACLE-EDIT (HR H4.9 · controller)" ◂
  const H49_MARK: Record<string, string> = { "src/lib/ai/skills.ts": "HR H4.9", "scripts/qc-nav-functions.mts": "ORACLE-EDIT (HR H4.9 · controller)", "scripts/qc-hr-h4.3.mts": "ORACLE-EDIT (HR H4.9 · controller)", "scripts/qc-hr-h4.3-lib.mts": "ORACLE-EDIT (HR H4.9 · controller)" }; // ORACLE-EDIT (HR H4.9 · controller) ◂
  const h49Ok = (f: string) => f in H49_MARK && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes(H49_MARK[f]!))); // ORACLE-EDIT (HR H4.9 · controller) ◂
+ // ORACLE-EDIT (HR VIS-5b · controller) S4: explicit oracle files of HR VIS-5b/5c (tests first + the allowlist edits) — accepted when every hunk adds "HR VIS-5b" or "HR VIS-5c" ◂
+ const VIS5_ORACLES = ["scripts/qc-hr-vis-5b.mts", "scripts/qc-hr-vis-5c.mts", "scripts/qc-hr-vis-5-lib.mts", "scripts/qc-hr-priv-2.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-h2.11.mts"]; // ORACLE-EDIT (HR VIS-5b · controller) ◂
+ const vis5Ok = (f: string) => VIS5_ORACLES.includes(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR VIS-5[bc]/.test(l))); // ORACLE-EDIT (HR VIS-5b · controller) ◂
  const ch0 = changedVsBase(BASE, FROZEN), oc = changedVsBase(BASE, OLD); // ORACLE-EDIT (HR H4.9 · controller): ch0 → ch below drops h49Ok files ◂
  const chLeft = ch0.startsWith("changed: ") ? ch0.slice(9).split(",").filter((f) => !h49Ok(f)) : null; // ORACLE-EDIT (HR H4.9 · controller) ◂
  const ch = chLeft === null ? ch0 : chLeft.length ? `changed: ${chLeft.join(",")}` : "unchanged"; // ORACLE-EDIT (HR H4.9 · controller) ◂
  const bad = oc === "unchanged" ? [] : !oc.startsWith("changed: ") ? [oc] : oc.slice(9).split(",").filter((f) => {
   const hs = diffHunks(BASE, f) ?? [];
   if (h49Ok(f)) return false; // ORACLE-EDIT (HR H4.9 · controller) S4 ◂
+  if (vis5Ok(f)) return false; // ORACLE-EDIT (HR VIS-5b · controller) S4 ◂
   // ORACLE-EDIT (HR HF-SSO · controller fix2) S4: once PRIV-2 is in base, the HF-SSO fix2 allowlist conversions in these exact oracle files are accepted when every hunk carries that marker ◂
   if (["scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts"].includes(f) && hs.length > 0 && hs.every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR HF-SSO · controller fix2)")))) return false;
   return f === F.h43 ? hs.some((h) => !h.added.some((l) => l.includes("ORACLE-EDIT (HR-PRIV-2"))) : !hs.some((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*PRIV-2/.test(l)));
@@ -125,7 +129,10 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  const ok = (f: string) => MARKED.includes(f) || /^src\/messages\/(th|en)\/common\.json$/.test(f) || (f.startsWith(H) && fileAt(BASE, f) === null && /HR PRIV-2/.test(rd(f).split("\n").slice(0, 3).join("\n")));
  const H49_SRC = ["src/lib/ai/skills.ts", "src/lib/pages/registry.ts"]; // ORACLE-EDIT (HR H4.9 · controller) S5: explicit files, every hunk must add "HR H4.9" ◂
  const h49Src = (f: string) => H49_SRC.includes(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR H4.9"))); // ORACLE-EDIT (HR H4.9 · controller) ◂
- const out = ch.filter((f) => !ok(f) && !h49Src(f)), bad = unmarkedHunks(BASE, ch.filter((f) => MARKED.includes(f)));
+ // ORACLE-EDIT (HR VIS-5b · controller) S5: explicit src files of HR VIS-5b — every hunk (new file: the whole file) must add "HR VIS-5b" · VIS-5c adds its own files here ◂
+ const VIS5_SRC = ["src/app/app/sys/[id]/page.tsx", "src/components/module-tabs.tsx", `${H}ui.tsx`, `${H}overview-ui.tsx`, `${H}InboxBatch.tsx`, `${H}hub-ui.tsx`, `${H}hub-rules.ts`]; // ORACLE-EDIT (HR VIS-5b · controller) ◂
+ const vis5Src = (f: string) => VIS5_SRC.includes(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR VIS-5b"))); // ORACLE-EDIT (HR VIS-5b · controller) ◂
+ const out = ch.filter((f) => !ok(f) && !h49Src(f) && !vis5Src(f)), bad = unmarkedHunks(BASE, ch.filter((f) => MARKED.includes(f))); // ORACLE-EDIT (HR VIS-5b · controller) ◂ + vis5Src
  chk("S5", !out.length && !bad.length, "", `outside=${out.join(",") || "none"} hunks=${bad.join(",") || "ok"}`);
 }
 {
