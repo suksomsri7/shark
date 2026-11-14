@@ -17,7 +17,9 @@ import { SecTopBar } from "@/src/components/secretary/SecTopBar";
 import { AgendaRow } from "@/src/components/calendar/AgendaRow";
 import { WeekStrip } from "@/src/components/calendar/WeekStrip";
 import { MonthGrid } from "@/src/components/calendar/MonthGrid";
-import { calApi, deepLinkRoute, deviceAgenda, sortAgenda, useCalFixture, type AgendaItem, type AgendaResult, type ColorKey } from "@/src/api/calendar";
+import { RemindList } from "@/src/components/calendar/RemindList";
+import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
+import { calApi, deepLinkRoute, deviceAgenda, sortAgenda, useCalFixture, type AgendaItem, type AgendaResult, type CalItemDto, type ColorKey } from "@/src/api/calendar";
 import { apiErrorText } from "@/src/api/client";
 import { scheduleZoneBadges } from "@/src/api/secretary";
 import { addDays, addMonths, dayOfMs, isDay, monthName, monthYear, shortDate, weekDays, yearLabel, ymOf } from "@/src/lib/cal-date";
@@ -47,6 +49,7 @@ export default function CalendarScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [note, setNote] = useState<string | null>(null);
+  const [ask, setAsk] = useState<{ it: CalItemDto; run: () => void } | null>(null);
   const dayRef = useRef(day);
   dayRef.current = day;
 
@@ -158,6 +161,9 @@ export default function CalendarScreen() {
       });
     }
   };
+
+  // แตะแถวเตือนในแท็บเตือนฉัน = แก้ไข (AddCalSheet · CAL2.6)
+  const editItem = (it: CalItemDto) => router.setParams({ item: it.id });
 
   // หัวจอ
   const rel = day === today ? "today" : day === addDays(today, 1) ? "tomorrow" : day === addDays(today, -1) ? "yesterday" : null;
@@ -276,8 +282,23 @@ export default function CalendarScreen() {
               </View>
             ) : null}
           </>
-        ) : null}
+        ) : (
+          <RemindList onEdit={editItem} onAskDelete={(it, run) => setAsk({ it, run })} />
+        )}
       </ScrollView>
+      <ConfirmSheet
+        testID="cal-rem-ask"
+        visible={!!ask}
+        title={t("cal.rem.deleteAsk", { title: ask?.it.title ?? "" })}
+        body={t("cal.rem.deleteBody")}
+        yes={t("cal.rem.deleteYes")}
+        no={t("cal.rem.deleteNo")}
+        onClose={() => setAsk(null)}
+        onYes={() => {
+          ask?.run();
+          setAsk(null);
+        }}
+      />
     </AiryScreen>
   );
 }

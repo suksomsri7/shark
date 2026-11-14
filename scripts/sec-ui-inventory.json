@@ -1897,6 +1897,83 @@
    "screen": "ปฏิทิน · มุมมองเดือน (จอ 4)",
    "action": "แตะแถว = deepLink · -check = ติ๊กเสร็จ",
    "wo": "CAL2.3"
+  },
+  {
+   "testID": "cal-rem-tab-today",
+   "file": "apps/mobile/src/components/calendar/RemindList.tsx",
+   "screen": "ปฏิทิน · แท็บเตือนฉัน",
+   "action": "GET calendar/items?tab=today",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-tab-upcoming",
+   "file": "apps/mobile/src/components/calendar/RemindList.tsx",
+   "screen": "ปฏิทิน · แท็บเตือนฉัน",
+   "action": "GET calendar/items?tab=upcoming",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-tab-done",
+   "file": "apps/mobile/src/components/calendar/RemindList.tsx",
+   "screen": "ปฏิทิน · แท็บเตือนฉัน",
+   "action": "GET calendar/items?tab=done",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-<itemId>",
+   "file": "apps/mobile/src/components/calendar/RemindList.tsx",
+   "screen": "ปฏิทิน · แท็บเตือนฉัน",
+   "action": "แตะ = แก้ไข (AddCalSheet โหมดแก้)",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-<itemId>-check",
+   "file": "apps/mobile/src/components/calendar/RemindList.tsx",
+   "screen": "ปฏิทิน · แท็บเตือนฉัน",
+   "action": "POST items/[id]/done (แท็บเสร็จแล้ว = reopen)",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-swipe-<itemId>-delete",
+   "file": "apps/mobile/src/components/customers/SwipeRow.tsx",
+   "screen": "ปฏิทิน · แท็บเตือนฉัน (ปัดซ้าย)",
+   "action": "ถามยืนยัน → DELETE items/[id]",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-swipe-<itemId>-done",
+   "file": "apps/mobile/src/components/customers/SwipeRow.tsx",
+   "screen": "ปฏิทิน · แท็บเตือนฉัน (ปัดขวา)",
+   "action": "POST items/[id]/done",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-ask-yes",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "ปฏิทิน · ยืนยันลบเตือน",
+   "action": "DELETE items/[id]",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-ask-no",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "ปฏิทิน · ยืนยันลบเตือน",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-ask-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ปฏิทิน · ยืนยันลบเตือน",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-rem-error-retry",
+   "file": "apps/mobile/src/components/airy/LoadState.tsx",
+   "screen": "ปฏิทิน · แท็บเตือนฉัน (โหลดล้ม)",
+   "action": "โหลดใหม่",
+   "wo": "CAL2.4"
   }
  ]
 }
