@@ -20,29 +20,19 @@ import {
   baseRef, commitInBase, pathInBase, changedVsBase, diffHunks, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, vOf, fitnessNoEnv, tagOf, dbDate,
   HR_FORBIDDEN_DTO_KEYS, testidsOf, inventoryParity, msgParity, tokensOnly,
 } from "./qc-hr-lib.mjs";
-import { runPure, LAW } from "./qc-hr-h4.2-lib.mjs";
+import { runPure, runStatic, baseOf, LAW, F, H } from "./qc-hr-h4.2-lib.mjs";
 
 const SUITE = "qc-hr-h4.2";
 const ARGV = process.argv.slice(2);
 const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
 const SLUG_PREFIX = "qc-hr-h42-";
-const H = "src/lib/modules/hr/";
-const PO = "src/lib/modules/pos/";
-const APP = "src/app/app/sys/[id]/hr/";
-const F = {
-  rules: `${H}labor-rules.ts`, svc: `${H}labor.ts`, act: `${H}labor-actions.ts`, ui: `${H}labor-ui.tsx`,
-  posRep: `${PO}reports.ts`, posIdx: `${PO}index.ts`, fit: "scripts/fitness.mts", ov: `${H}overview-ui.tsx`, ros: `${H}roster-ui.tsx`,
-  rosPage: `${APP}roster/page.tsx`, setPage: `${APP}settings/page.tsx`, th: "src/messages/th/common.json", en: "src/messages/en/common.json",
-  inv: "scripts/hr-ui-inventory.json", vis: "scripts/visual-hr.mts",
-};
-const MARK = /HR H4\.2/;
 const SEV: Record<string, Sev> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
 const CHECKS = `
 S1.1|§8|C|R|[static] new files labor-rules.ts · labor.ts · labor-actions.ts · labor-ui.tsx exist
 S1.2|R1|C|R|[static] POS seam: pos/reports.ts exports salesByHour · pos/index.ts exports salesFacts = { salesByHour } · pos/** diff ⊆ {reports.ts, index.ts} · every pos hunk marked HR H4.2 · no removed line in reports.ts
 S1.3|R2|C|R|[static] fitness ALLOWED_EDGES has "hr→pos" · the only hr/** importer of @/lib/modules/pos is labor.ts, via await import("@/lib/modules/pos") (no static import, no subpath) · no posSale/PosSale in hr/**
 S1.4|R3|C|R|[static] labor-rules.ts pure: imports type-only or ./*-rules · no prisma/tenantDb/clock/random/env/await/"use server"
-S1.5|R6|C|R|[static] setLaborSettings: lockHrSettings + writeHrSettingsKeys({hrLabor}) + canManageHrSettings + audit "hr.labor.settings" · no own appSystem write in labor*.ts · labor.ts has no raw prisma import and reads Membership (DB gate)
+S1.5|R6|C|R|[static] setLaborSettings: lockHrSettings + writeHrSettingsKeys({hrLabor}) + canManageHrSettings + audit "hr.labor.settings" · no own appSystem write in labor*.ts · labor.ts: every core/db value import is exactly import { tenantDb } from "@/lib/core/db" (per statement · R5 review), no @prisma/client, no dynamic core/db and reads Membership (DB gate)
 S1.6|§8|C|G|[static] [control] frozen files unchanged vs base (other pos/** · payroll* · law.ts · work-entries* · roster.ts · roster-rules.ts · roster-board* · reports* · privacy* · scope.ts · settings-lock.ts · inbox* · account/approval/core · prisma/ · qc-hr-lib.mts · other oracles · package.json)
 S1.7|§8|C|R|[static] marked hunks: every hunk vs base in pos/reports.ts · pos/index.ts · fitness.mts · overview-ui.tsx · roster-ui.tsx · roster + settings page.tsx · visual-hr.mts carries "HR H4.2" · reports.ts/index.ts/fitness/overview/roster-ui each ≥ 1 hunk (in base: every hunk carries some ticket mark)
 S1.8|§7|M|R|[static] UI: testids (card · pct · cost · forecast · sofar · hours · shift-* · month · note · roster demand-* · labor-foot · demand-panel · settings · save) · inventory rows wo H4.2 · th/en hr.labor parity incl. estimateNote/smallGroup + "ยอดขายสุทธิตามรายงาน POS" · visual-hr "4.2" · tokens · ?msg= not free text
@@ -74,12 +64,16 @@ S4.10|Q4b X8|C|R|[db] U3 (no POS) March: 03-05 35,001 · 03-16 89,250 · 03-21 5
 S4.11|D9 S4|C|R|[db] month: U1 2027-01 actual 1,391,667 (REVERSED ignored) · sales 1,870,000 · pct 744 · U2 695,833 · U1 2027-02 ESTIMATE 4,815,004 · prev 1,391,667 · U3 2027-03 ESTIMATE 1,839,250
 S4.12|R5|M|R|[db] no unitId = all units in scope (owner 01-16 = 281,594 incl. leaver N at U3) · tenant with 21 units ⇒ UNIT_REQUIRED
 S4.13|P4|C|R|[db] no per-person money: owner day/week/month carry no employee id/name, no "employeeId"/"name" key, none of HR_FORBIDDEN_DTO_KEYS
+S4.14|R3 review|C|R|[db] current-month % = completed days only (U5: 30,000 ฿/month from 04-01, 10,000 ฿ sales/day): now 2027-04-16 10:00 ⇒ (15 × 102,917) ÷ (15 × 1,000,000) ⇒ 103 · now 04-01 ⇒ null + label "ยังไม่มีข้อมูลครบวัน" · past month (now 05-10) ⇒ 3,087,510 ÷ 16,000,000 ⇒ 193
+S4.15|R4 review|M|R|[db] row caps never understate silently: opts.__takeCap 2 (H3.9 seam) ⇒ day/week/month carry truncated:true · without the seam no truncated · labor-ui.tsx renders a truncated warning
 S5.1|P1|C|R|[db] owner + payroll all-branch: day/week/month money · demand · settings read
-S5.2|P2 Q9|C|R|[db] payroll [U2]: U1 ⇒ NO · borrowed-in alone (01-12) ⇒ all money null + suppressed ≥ 1 + no J numbers (also no unitId) · 3 contributors (01-13) shown 110,250 · home 1-person (01-19) shown 36,750 · month U2 (borrowed E) suppressed
+S5.2|R1 review|C|R|[db] payroll [U2] (ruling R1 replaces P2/Q9): U1 ⇒ NO · money only from home-U2 staff (K, L): 01-12 J alone ⇒ cost 0 · excludedHeadcount 1 · partial · no J numbers (also no unitId) · 01-13 ⇒ 73,500 (Σ hours = cost) · pct 70 partial · 01-19 K ⇒ 36,750 not partial · week 01-11 footer 73,500 excl 1 · month Jan actual (E) 0 excl 1 · Feb estimate (J) 0 excl 1
 S5.3|Q10|C|R|[db] manager without payroll: money null · no *Satang/*Tenths key on day/week/month · demand hour 12 = 2/3
 S5.4|P3|C|R|[db] payroll viewer without pos.report.view: cost 247,723 · sales "NO_PERMISSION" · pct null · hour sales/forecast null · needed null · scheduled 2
 S5.5|P5|C|R|[db] refusals (HR-key staff · plain member · employee self · other tenant · role spoof · [U2] on U1/unknown/other-tenant unit) on day/week/month = one identical Thai {ok:false, code:"NO", reason} · no ids/numbers · permission spoof read from DB
 S5.6|P1|M|R|[db] unitAccess [] payroll manager = all branches (U1 247,723 · U2 01-19 36,750)
+S5.7|R2 review|C|R|[db] outsider-pay invariance for payroll [U2]: J daily ×2, G hourly ×2, E run item ×2 ⇒ canon of day U2 01-12/13/19/26 · day no-unit 01-12 · week U2 01-11/01-25 · month U2 Jan (actual) / Feb (estimate) byte-identical · positive control: owner U2 outputs change
+S5.8|R2 review|C|R|[db] manager without payroll key: every pay ×2 (all profiles + run item) ⇒ day U1 01-16 · U2 01-13 · week U1/U2 · month U1 Jan/Feb byte-identical (or identical NO) · positive control: owner U1 01-16 changes
 S6.1|R6|C|R|[db] settings: owner · payroll MANAGER · STAFF with hr.employee.create save + read · HR-key staff · member · self · other tenant refused, nothing written
 S6.2|R4|C|R|[db] bounds: targetTenths 50–600 · splhSatang null or 10,000–100,000,000 · minStaff 0–20 · integers only · refusal writes nothing
 S6.3|R6|M|R|[db] audit: one "hr.labor.settings" row per successful save · none for refusals or reads
@@ -101,152 +95,7 @@ if (!existsSync(join(ROOT, F.rules))) skipReasons.push(`${F.rules} absent (H4.2 
 if (skipReasons.length && !FORCE) skipExit(skipReasons);
 const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") => chk(id, Object.values(r).every(Boolean), exp, `${failedKeys(r)}${extra ? ` ${extra}` : ""}`);
 
-const BASE0 = baseRef("QC_H42_BASE");
-const LOCAL_MB = (() => {
-  try {
-    return execFileSync("git", ["merge-base", "HEAD", "session/hr"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  } catch {
-    return "";
-  }
-})();
-const BASE = !process.env.QC_H42_BASE && LOCAL_MB && (!BASE0 || (LOCAL_MB !== BASE0 && commitInBase(BASE0, LOCAL_MB))) ? LOCAL_MB : BASE0;
-const IN_BASE = pathInBase(F.rules, BASE);
-const code = (p: string) => stripComments(rd(p));
-const fnBody = (src: string, name: string) => {
-  const i = src.search(new RegExp(`(async\\s+)?function\\s+${name}\\s*\\(`));
-  if (i < 0) return "";
-  const j = src.indexOf("\nexport ", i + 1);
-  return src.slice(i, j < 0 ? undefined : j);
-};
-const git = (a: string[]) => {
-  try {
-    return execFileSync("git", a, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  } catch {
-    return "∅git";
-  }
-};
-
-// ═════════════════════════ static ═════════════════════════
-function runStatic(): void {
-  console.log(`── [static] base ${BASE.slice(0, 9)}${IN_BASE ? " (H4.2 in base)" : ""} ──`);
-  ck("S1.1", Object.fromEntries([F.rules, F.svc, F.act, F.ui].map((p) => [p.replace(H, ""), existsSync(join(ROOT, p))])), "4 files");
-  // S1.2
-  {
-    const rep = code(F.posRep);
-    const idx = code(F.posIdx);
-    const posDiff = git(["diff", "--name-only", BASE, "--", "src/lib/modules/pos"]).split("\n").filter(Boolean);
-    const hunks = [F.posRep, F.posIdx].flatMap((f) => diffHunks(BASE, f) ?? [{ added: [], removed: ["∅git"] }]);
-    const r = {
-      fn: /export\s+async\s+function\s+salesByHour\s*\(/.test(rep),
-      facade: /export\s+const\s+salesFacts\s*=\s*\{[^}]*\bsalesByHour\b/.test(idx),
-      onlyTwo: IN_BASE || posDiff.every((f) => f === F.posRep || f === F.posIdx),
-      marked: IN_BASE || (hunks.length > 0 && hunks.every((h) => h.added.some((l) => MARK.test(l)))),
-      noRemoved: IN_BASE || (diffHunks(BASE, F.posRep) ?? [{ removed: ["x"] }]).every((h) => h.removed.length === 0),
-    };
-    ck("S1.2", r, "seam + R1 only pos diff", `posDiff=${posDiff.join(",") || "∅"}`);
-  }
-  // S1.3
-  {
-    const fit = rd(F.fit);
-    const allowed = fit.slice(fit.indexOf("const ALLOWED_EDGES"), fit.indexOf("]);", fit.indexOf("const ALLOWED_EDGES")));
-    const importers = srcFiles(H.replace(/\/$/, "")).filter((f) => /@\/lib\/modules\/pos\b/.test(code(f)));
-    const svc = code(F.svc);
-    const posMention = srcFiles(H.replace(/\/$/, "")).filter((f) => /\bposSale\b|"PosSale"|\bPosSale\b/.test(code(f)));
-    const r = {
-      edge: /"hr→pos"/.test(allowed),
-      onlyLabor: importers.length === 1 && importers[0] === F.svc,
-      lazy: /await\s+import\(\s*["']@\/lib\/modules\/pos["']\s*\)/.test(svc) && !/from\s+["']@\/lib\/modules\/pos/.test(svc) && !/@\/lib\/modules\/pos\//.test(svc),
-      noPosSale: posMention.length === 0,
-    };
-    ck("S1.3", r, "hr→pos lazy from labor.ts only", `importers=${importers.map((f) => f.replace(H, "")).join(",") || "∅"} posSale=${posMention.map((f) => f.replace(H, "")).join(",") || "0"}`);
-  }
-  // S1.4
-  {
-    const src = code(F.rules);
-    const imps = importsOf(rd(F.rules));
-    const r = {
-      exists: src.length > 0,
-      imports: imps.every((i) => i.type || /^\.\/[a-z-]*rules(-v2)?$/.test(i.spec)),
-      noIo: !/\bprisma\b|tenantDb|Date\.now|new Date\(\s*\)|Math\.random|process\.|fetch\(|"use server"|readFileSync|\bawait\b/.test(src),
-    };
-    ck("S1.4", r, "pure", `imports=${imps.map((i) => i.spec).join(",") || "∅"}`);
-  }
-  // S1.5
-  {
-    const svc = code(F.svc);
-    const set = fnBody(svc, "setLaborSettings");
-    const labor = [F.svc, F.act, F.ui, F.rules].map(code).join("\n");
-    const r = {
-      lock: /\blockHrSettings\s*\(/.test(set),
-      write: /\bwriteHrSettingsKeys\s*\([^)]*hrLabor/.test(set),
-      gate: /\bcanManageHrSettings\s*\(/.test(set),
-      audit: /["']hr\.labor\.settings["']/.test(svc),
-      noOwnWrite: !/appSystem\s*\.\s*(update|updateMany|upsert)\s*\(|UPDATE\s+"AppSystem"/i.test(labor),
-      // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (e): intent = no raw prisma client; tenantDb (house rule C.8) is allowed only as a static named import { tenantDb } from core/db · dynamic import of core/db rejected ◂
-      noPrisma: importsOf(rd(F.svc)).every((i) => i.type || (!/^@prisma\/client$/.test(i.spec) && (!/\/core\/db$/.test(i.spec) || /^\s*import\s*\{\s*tenantDb\s*\}\s*from\s*["']@\/lib\/core\/db["']/m.test(rd(F.svc))))) && !/\bprisma\s*\./.test(svc) && !/import\(\s*["']@\/lib\/core\/db["']\s*\)/.test(svc),
-      dbGate: /\bmembership\s*\.\s*findFirst\s*\(/.test(svc),
-    };
-    ck("S1.5", r, "settings via HR-SET-1 helper · DB gate");
-  }
-  // S1.6
-  {
-    const posOthers = git(["diff", "--name-only", BASE, "--", "src/lib/modules/pos"]).split("\n").filter((f) => f && f !== F.posRep && f !== F.posIdx);
-    const hrFrozen = srcFiles(H.replace(/\/$/, "")).filter((f) => /\/(payroll[^/]*|law\.ts|work-entries[^/]*|roster\.ts|roster-rules\.ts|roster-board[^/]*|reports[^/]*|privacy[^/]*|scope\.ts|settings-lock\.ts|inbox[^/]*)$/.test(f));
-    // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (d): exactly one allowed oracle hunk set — scripts/qc-hr-h2.2.mts, every hunk carrying "ORACLE-EDIT (H4.2 · controller ruling)" ◂
-    const h22ok = (diffHunks(BASE, "scripts/qc-hr-h2.2.mts") ?? [{ added: [], removed: ["∅git"] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H4\.2 · controller ruling\)/.test(l)));
-    const oracles = git(["diff", "--name-only", BASE, "--", "scripts"]).split("\n").filter((f) => /^scripts\/qc-.*\.mts$/.test(f) && !/^scripts\/qc-hr-h4\.2/.test(f) && !(f === "scripts/qc-hr-h2.2.mts" && h22ok));
-    const r = {
-      pos: posOthers.length === 0,
-      hr: changedVsBase(BASE, hrFrozen) === "unchanged",
-      shared: changedVsBase(BASE, ["src/lib/modules/account", "src/lib/modules/approval", "src/lib/core", "prisma", "scripts/qc-hr-lib.mts", "package.json"]) === "unchanged",
-      oracles: oracles.length === 0,
-    };
-    ck("S1.6", r, "frozen", `pos=${posOthers.join(",") || "0"} hr=${changedVsBase(BASE, hrFrozen)} oracles=${oracles.join(",") || "0"}`);
-  }
-  // S1.7
-  {
-    const files = [F.posRep, F.posIdx, F.fit, F.ov, F.ros, F.rosPage, F.setPage, F.vis];
-    const need = [F.posRep, F.posIdx, F.fit, F.ov, F.ros];
-    const bad: string[] = [];
-    for (const f of files) {
-      const hs = diffHunks(BASE, f);
-      if (!hs) {
-        bad.push(`${f}:git`);
-        continue;
-      }
-      if (!IN_BASE && need.includes(f) && hs.length === 0) bad.push(`${f.split("/").pop()}:noHunk`);
-      hs.forEach((h, i) => {
-        if (!h.added.some((l) => (IN_BASE ? /HR H\d+\.\d+|HR-SET-\d+|POS P\d|HR H4\.2/ : MARK).test(l))) bad.push(`${f.split("/").pop()}#${i}:unmarked`);
-      });
-    }
-    chk("S1.7", bad.length === 0, "marked hunks", bad.join(" ") || "ok");
-  }
-  // S1.8
-  {
-    const srcs = [F.ui, F.ov, F.ros, F.rosPage, F.setPage].map(rd).join("\n");
-    const ids = new Set([...testidsOf(srcs, "hr-labor-"), ...testidsOf(srcs, "hr-roster-")]);
-    const want = ["hr-labor-card", "hr-labor-pct", "hr-labor-cost", "hr-labor-forecast", "hr-labor-sofar", "hr-labor-hours", "hr-labor-shift-*", "hr-labor-month", "hr-labor-note", "hr-roster-demand-*", "hr-roster-labor-foot", "hr-roster-demand-panel", "hr-labor-settings", "hr-labor-save"];
-    const th = jsonOf(F.th)?.hr?.labor ?? {};
-    const en = jsonOf(F.en)?.hr?.labor ?? {};
-    const mp = msgParity(th, en, ["estimateNote", "smallGroup"]);
-    const invIds = new Set(want.filter((t) => ids.has(t)));
-    const inv = [inventoryParity("/app/sys/[id]", new Set([...invIds].filter((t) => t.startsWith("hr-labor-") && t !== "hr-labor-settings" && t !== "hr-labor-save")), "H4.2", "qc-hr-h4.2"), inventoryParity("/hr/roster", new Set([...invIds].filter((t) => t.startsWith("hr-roster-"))), "H4.2", "qc-hr-h4.2")];
-    const h42Rows = ((jsonOf(F.inv)?.rows ?? []) as Any[]).filter((x) => x.wo === "H4.2" && /(\/app\/sys\/\[id\]|\/hr\/roster|\/hr\/settings)$/.test(String(x.page ?? ""))); // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (c) ◂
-    const tk = tokensOnly(code(F.ui));
-    const act = code(F.act);
-    const r = {
-      testids: want.every((t) => ids.has(t)),
-      inventory: inv.every((x) => x.codeNoRow.length === 0) && h42Rows.length > 0 && h42Rows.every((x) => x.oracle === "qc-hr-h4.2"), // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (c): wo/oracle judged on the H4.2 rows only ◂
-      msg: Object.values(mp).every(Boolean),
-      posLabel: JSON.stringify(th).includes("ยอดขายสุทธิตามรายงาน POS"),
-      visual: /"4\.2":\s*\[/.test(rd(F.vis)),
-      tokens: rd(F.ui).length > 0 && Object.values(tk).every(Boolean),
-      msgAllow: /setLaborSettings\s*\(/.test(act) && !/msg=\$\{[^}]*(reason|message)/.test(act),
-    };
-    ck("S1.8", r, "ui contract", `missing=${want.filter((t) => !ids.has(t)).join(",") || "0"}`);
-  }
-}
-
+const { BASE, IN_BASE } = baseOf();
 // ═════════════════════════ db ═════════════════════════
 const { P, coreHash } = await qc4Env(SUITE);
 if (FORCE && skipReasons.length) console.log(`⚠️ QC_FORCE=1 — running although: ${skipReasons.join(" · ")}`);
@@ -293,6 +142,7 @@ async function runDb(): Promise<void> {
   const U2 = await fx.newUnit(T, "QC H42 สาขาสอง", "u2");
   const U3 = await fx.newUnit(T, "QC H42 สาขาไม่มี POS", "u3");
   const U4 = await fx.newUnit(T, "QC H42 สาขาตัดวันตีสี่", "u4");
+  const U5 = await fx.newUnit(T, "QC H42 สาขาเดือนเมษา", "u5"); // ORACLE-EDIT (H4.2 review · controller ruling) R3 ◂
   const UX = await fx.newUnit(T2, "QC H42 ร้านอื่น", "ux");
   const HRS = (await sysSvc.createSystem(T, "HR", `HR ${tag}`)).id as string;
   const HRX = (await sysSvc.createSystem(T2, "HR", `HR2 ${tag}`)).id as string;
@@ -300,7 +150,8 @@ async function runDb(): Promise<void> {
   const POSB = (await sysSvc.createSystem(T, "POS", `POS B ${tag}`)).id as string;
   for (const u of [U1, U2, U3, U4]) await sysSvc.linkUnit(T, HRS, u);
   await sysSvc.linkUnit(T2, HRX, UX);
-  for (const u of [U1, U2]) await sysSvc.linkUnit(T, POSA, u);
+  for (const u of [U1, U2, U5]) await sysSvc.linkUnit(T, POSA, u); // ORACLE-EDIT (H4.2 review · controller ruling) R3: + U5 ◂
+  await sysSvc.linkUnit(T, HRS, U5);
   await sysSvc.linkUnit(T, POSB, U4);
   await P.appSystem.update({ where: { id: POSB }, data: { settings: { pos: { reports: { dayCutoffMinutes: 240 } } } } });
   const ctx = { tenantId: T, systemId: HRS };
@@ -341,7 +192,8 @@ async function runDb(): Promise<void> {
     A: await emp("A", U1, ["MONTHLY", 1_550_000], { linkedUserId: W.self.id }), B: await emp("B", U1, ["DAILY", 40_000]), C: await emp("C", U1, ["HOURLY", 6_000]), D: await emp("D", U1, ["MONTHLY", 3_100_000]),
     E: await emp("E", U1, null), F: await emp("F", U1, ["DAILY", 40_000]), G: await emp("G", U1, ["HOURLY", 6_003]), H2: await emp("H2", U1, ["HOURLY", 6_000]), J: await emp("J", U1, ["DAILY", 40_000]),
     K: await emp("K", U2, ["DAILY", 40_000]), L: await emp("L", U2, ["DAILY", 40_000]), Mj: await emp("M", U3, ["MONTHLY", 1_550_000], { startDate: "2027-03-11" }),
-    Nl: await emp("N", U3, ["MONTHLY", 1_000_000], { endDate: "2027-03-20", active: false }), H: await emp("H", U4, ["HOURLY", 6_000]), Pd: await emp("P", U4, ["DAILY", 40_000]),
+    Nl: await emp("N", U3, ["MONTHLY", 1_000_000], { endDate: "2027-03-20", active: false }), H: await emp("H", U4, ["HOURLY", 6_000]), Pd: await emp("P", U4, ["DAILY", 40_000]), Q: await emp("Q", U5, ["MONTHLY", 3_000_000], { startDate: "2027-04-01" }), // ORACLE-EDIT (H4.2 review · controller ruling) R3 ◂
+
   };
   const entry = async (e: string, date: string, sh: string, unitId: string, published = true) => {
     const s = shRow.get(sh);
@@ -360,6 +212,7 @@ async function runDb(): Promise<void> {
   await entry(EM.K, "2027-01-19", SH.X, U2);
   await entry(EM.Pd, "2027-01-20", SH.P, U4);
   await entry(EM.Pd, "2027-01-21", SH.P, U4);
+  await entry(EM.J, "2027-02-10", SH.X, U2); // ORACLE-EDIT (H4.2 review · controller ruling) R2: outsider in an ESTIMATE month at U2 ◂
   await P.hrHoliday.create({ data: { tenantId: T, systemId: HRS, unitId: null, date: dbDate("2027-01-20"), name: `QC วันหยุดราชการ ${tag}`, kind: "PUBLIC" } });
   await P.hrHoliday.create({ data: { tenantId: T, systemId: HRS, unitId: U4, date: dbDate("2027-01-21"), name: `QC วันหยุดร้าน ${tag}`, kind: "SHOP" } });
   // ── payroll runs + work days (E) ──
@@ -384,6 +237,9 @@ async function runDb(): Promise<void> {
   await sale(U1, POSA, bkkUtc("2027-01-31", "23:59"), 70_000);
   await sale(U1, POSA, bkkUtc("2027-02-01", "01:30"), 100_000);
   await sale(U4, POSB, bkkUtc("2027-02-01", "01:30"), 100_000);
+  // ORACLE-EDIT (H4.2 review · controller ruling) R1/R3: U2 sales 01-13 (pct of the limited viewer) · U5 10,000 ฿ every day 04-01..04-16 (04-16 09:00 = today at now 10:00) ◂
+  await sale(U2, POSA, bkkUtc("2027-01-13", "12:00"), 1_050_000);
+  for (let i = 1; i <= 16; i++) await sale(U5, POSA, bkkUtc(`2027-04-${String(i).padStart(2, "0")}`, i === 16 ? "09:00" : "12:00"), 1_000_000);
 
   // ═══ S3 POS seam ═══
   const actor = (w: Any) => ({ userId: w.id, role: w.role, unitAccess: w.unitAccess, permissions: w.permissions });
@@ -535,6 +391,19 @@ async function runDb(): Promise<void> {
     const bad = [...empIds.filter((id) => blobs.some((b) => b.includes(id))).map(() => "empId"), ...empNames.filter((nm) => blobs.some((b) => b.includes(nm))).map((nm) => `name:${nm.slice(7, 10)}`), ...["employeeId", "name", ...HR_FORBIDDEN_DTO_KEYS].filter((k) => keys.has(k))];
     chk("S4.13", okR(d16) && okR(wk) && bad.length === 0, "no per-person money", `${bad.join(",") || "no leak"} day=${why(d16)} week=${why(wk)}`);
   }
+  // ORACLE-EDIT (H4.2 review · controller ruling) R3: current month % on completed days only · R4: caps flag truncation ◂
+  {
+    const mo = (now: Date) => call(M.svc, "laborMonth", ctx, owner, { unitId: U5, periodKey: "2027-04" }, O(now));
+    const mid = await mo(new Date("2027-04-16T03:00:00Z"));
+    const d1 = await mo(new Date("2027-04-01T03:00:00Z"));
+    const past = await mo(new Date("2027-05-10T03:00:00Z"));
+    const lbl = JSON.stringify(jsonOf(F.th)?.hr?.labor ?? {}) + JSON.stringify(M.rules?.LABOR_TEXT ?? {});
+    ck("S4.14", { mid: okR(mid) && mv(mid, "pctTenths") === 103, day1: okR(d1) && mv(d1, "pctTenths") === null, label: lbl.includes("ยังไม่มีข้อมูลครบวัน"), past: okR(past) && mv(past, "pctTenths") === 193 && mv(past, "costSatang") === 3_087_510 && mv(past, "salesSatang") === 16_000_000 }, "completed days", `mid=${mv(mid, "pctTenths")} d1=${mv(d1, "pctTenths")} past=${mv(past, "costSatang")}/${mv(past, "salesSatang")}/${mv(past, "pctTenths")}`);
+    const tr = (r: Any) => r?.truncated === true || r?.flags?.truncated === true || r?.money?.truncated === true || r?.footer?.truncated === true;
+    const cap = { ...O(), __takeCap: 2 };
+    const t = [await call(M.svc, "laborDay", ctx, owner, { unitId: U1, day: "2027-01-16" }, cap), await call(M.svc, "laborWeek", ctx, owner, { unitId: U1, week: "2027-01-11" }, cap), await call(M.svc, "laborMonth", ctx, owner, { unitId: U1, periodKey: "2027-02" }, cap)];
+    ck("S4.15", { capped: t.every((x) => okR(x) && tr(x)), plain: !tr(d16) && !tr(wk), ui: /\btruncated\b/.test(stripComments(rd(F.ui))) }, "truncated flag", t.map((x) => `${why(x)}:${tr(x)}`).join(" "));
+  }
 
   // ═══ S5 privacy matrix ═══
   {
@@ -547,22 +416,30 @@ async function runDb(): Promise<void> {
     const u = V.payU2;
     const out = await day(u, U1, "2027-01-16");
     NOs.push(["payU2:U1", out]);
+    // ORACLE-EDIT (H4.2 review · controller ruling) R1: money only from employees whose pay [U2] may see (home U2: K, L) · outsiders (J, E, G — home U1) = 0 + excludedHeadcount · no threshold hiding ◂
+    const xh = (r: Any, ...ks: string[]) => ks.map((k) => (k === "footer" ? r?.footer : k === "money" ? r?.money : r)).find((o) => o && o.excludedHeadcount !== undefined)?.excludedHeadcount;
+    const part = (r: Any) => r?.money?.partial ?? r?.footer?.partial ?? r?.partial;
     const jAlone = await day(u, U2, "2027-01-12");
     const jAll = await day(u, undefined, "2027-01-12");
     const three = await day(u, U2, "2027-01-13");
     const home1 = await day(u, U2, "2027-01-19");
     const own12 = await day(owner, U2, "2027-01-12");
+    const own13 = await day(owner, U2, "2027-01-13");
+    const wU2 = await week(u, U2);
     const mU2 = await month(u, U2, "2027-01");
-    const hidden = (r: Any) => {
-      const m = mon(r) ?? {};
-      const leak = /\b(36750|35000|1750|4594|4593)\b/.test(JSON.stringify(r ?? null));
-      return okR(r) && m.costSatang === null && m.wageSatang == null && m.ssoSatang == null && m.pctTenths == null && (m.suppressed ?? 0) >= 1 && ((m.hours ?? []) as Any[]).every((h) => h.costSatang == null) && ((m.shifts ?? []) as Any[]).every((h) => h.costSatang == null) && !leak;
-    };
+    const fU2 = await month(u, U2, "2027-02");
+    const noJ = (r: Any) => !/\b(36750|35000|1750|4594|4593)\b/.test(JSON.stringify(r ?? null));
+    const sumH = (r: Any) => ((mon(r)?.hours ?? []) as Any[]).reduce((x, h) => x + (h.costSatang ?? NaN), 0) + (mon(r)?.unallocatedSatang ?? 0);
     ck("S5.2", {
-      u1: out?.ok === false && out?.code === "NO", alone: hidden(jAlone), aloneAll: hidden(jAll), owner: cost(own12) === 36_750,
-      three: cost(three) === 110_250 && (mon(three)?.suppressed ?? 0) === 0, home1: cost(home1) === 36_750 && (mon(home1)?.suppressed ?? 0) === 0,
-      month: okR(mU2) && mv(mU2, "costSatang") === null && (mv(mU2, "suppressed") ?? 0) >= 1 && !/695833/.test(JSON.stringify(mU2)),
-    }, "small group", `alone=${short(mon(jAlone), 80)} three=${cost(three)} home1=${cost(home1)} month=${short(mU2, 60)}`);
+      u1: out?.ok === false && out?.code === "NO", owner: cost(own12) === 36_750 && cost(own13) === 110_250 && mon(own13)?.pctTenths === 105,
+      alone: okR(jAlone) && cost(jAlone) === 0 && xh(jAlone, "money", "top") === 1 && part(jAlone) === true && mon(jAlone)?.pctTenths === null && noJ(jAlone),
+      aloneAll: okR(jAll) && cost(jAll) === 0 && xh(jAll, "money", "top") === 1 && noJ(jAll),
+      three: cost(three) === 73_500 && sumH(three) === 73_500 && hr(three, 10).costSatang === 9_188 && mon(three)?.pctTenths === 70 && xh(three, "money", "top") === 1 && part(three) === true,
+      home1: cost(home1) === 36_750 && (xh(home1, "money", "top") ?? 0) === 0 && !part(home1),
+      week: wU2?.footer?.costSatang === 73_500 && xh(wU2, "footer", "top") === 1,
+      month: okR(mU2) && mv(mU2, "costSatang") === 0 && xh(mU2, "top", "money") === 1 && !/695833|2087500/.test(JSON.stringify(mU2)),
+      monthEst: okR(fU2) && mv(fU2, "costSatang") === 0 && xh(fU2, "top", "money") === 1 && noJ(fU2),
+    }, "R1 visible-pay set only", `alone=${short(mon(jAlone), 70)} three=${cost(three)}/${mon(three)?.pctTenths} week=${short(wU2?.footer, 60)} month=${mv(mU2, "costSatang")}/${mv(fU2, "costSatang")}`);
     NOs.push(["payU2:unknown", await day(u, "c0000000000000000000000000", "2027-01-16")], ["payU2:UX", await day(u, UX, "2027-01-16")], ["payU2:weekU1", await week(u, U1)], ["payU2:monthU1", await month(u, U1, "2027-01")]);
   }
   {
@@ -595,6 +472,38 @@ async function runDb(): Promise<void> {
     const a = await day(V.payEmpty, U1, "2027-01-16");
     const b = await day(V.payEmpty, U2, "2027-01-19");
     ck("S5.6", { u1: cost(a) === 247_723, u2: cost(b) === 36_750 }, "[] = all branches", `${cost(a)} ${cost(b)}`);
+  }
+  // ORACLE-EDIT (H4.2 review · controller ruling) R2: nothing withheld may be derivable — outsider pay changes no byte of what the viewer gets (reader DTOs = the client props of 01/03) ◂
+  {
+    const outsiders = async (k: number) => {
+      await P.hrSalaryProfile.updateMany({ where: { employeeId: EM.J }, data: { dailyRateSatang: 40_000 * k } });
+      await P.hrSalaryProfile.updateMany({ where: { employeeId: EM.G }, data: { hourlyRateSatang: 6_003 * k } });
+      await P.hrPayrollItem.updateMany({ where: { employeeId: EM.E, grossSatang: { in: [2_000_000, 4_000_000] } }, data: { grossSatang: 2_000_000 * k, ssoEmployerSatang: 87_500 * k } });
+    };
+    const lim = async (v: Any) => canon([await day(v, U2, "2027-01-12"), await day(v, U2, "2027-01-13"), await day(v, U2, "2027-01-19"), await day(v, U2, "2027-01-26"), await day(v, undefined, "2027-01-12"), await week(v, U2), await week(v, U2, "2027-01-25"), await month(v, U2, "2027-01"), await month(v, U2, "2027-02")]);
+    const a1 = await lim(V.payU2);
+    const o1 = await lim(owner);
+    await outsiders(2);
+    const a2 = await lim(V.payU2);
+    const o2 = await lim(owner);
+    await outsiders(1);
+    const okAll = /"ok":true/.test(a1) && !/__throw/.test(a1);
+    ck("S5.7", { readers: okAll, identical: a1 === a2, control: o1 !== o2 && !/__throw/.test(o1) }, "outsider pay invisible", `len=${a1.length}/${a2.length} ${short(a1, 80)}`);
+    const all = async (k: 1 | 2) => {
+      const op = k === 2 ? "* 2" : "/ 2";
+      await P.$executeRawUnsafe(`UPDATE "HrSalaryProfile" SET "baseSalarySatang" = "baseSalarySatang" ${op}, "dailyRateSatang" = "dailyRateSatang" ${op}, "hourlyRateSatang" = "hourlyRateSatang" ${op} WHERE "tenantId" = $1`, T);
+      await P.hrPayrollItem.updateMany({ where: { employeeId: EM.E, grossSatang: { in: [2_000_000, 4_000_000] } }, data: { grossSatang: 2_000_000 * k, ssoEmployerSatang: 87_500 * k } });
+    };
+    const g = V.mgr;
+    const rd2 = async (v: Any) => canon([await day(v, U1, "2027-01-16"), await day(v, U2, "2027-01-13"), await week(v, U1), await week(v, U2), await month(v, U1, "2027-01"), await month(v, U1, "2027-02")]);
+    const m1 = await rd2(g);
+    const c1 = canon(await day(owner, U1, "2027-01-16"));
+    await all(2);
+    const m2 = await rd2(g);
+    const c2 = canon(await day(owner, U1, "2027-01-16"));
+    await all(1);
+    const c3 = canon(await day(owner, U1, "2027-01-16"));
+    ck("S5.8", { readers: /"ok":true/.test(m1) && !/__throw/.test(m1), identical: m1 === m2, control: c1 !== c2 && c1 === c3 }, "no money for non-payroll", `len=${m1.length}/${m2.length}`);
   }
 
   // ═══ S6 settings ═══
@@ -705,7 +614,7 @@ async function runDb(): Promise<void> {
 
 // ═════════════════════════ main ═════════════════════════
 let crashed = "";
-runStatic();
+runStatic(chk, ck, BASE, IN_BASE);
 await runPure(M.rules ?? {}, M.eng, chk, ck);
 try {
   await runDb();

@@ -1,9 +1,175 @@
 // QC — HR V2 · H4.2 oracle helper (pure vectors S2.x) — imported by scripts/qc-hr-h4.2.mts only · goldens hand-derived (ledger/wo-notes/hr-H4.2-oracle.md §2)
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
-import { type Any, errText, canon, jsonOf, isThai } from "./qc-hr-lib.mjs";
+import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+import {
+  type Any, ROOT, rd, errText, canon, jsonOf, isThai, stripComments, srcFiles, importsOf, baseRef, commitInBase, pathInBase, changedVsBase, diffHunks,
+  testidsOf, inventoryParity, msgParity, tokensOnly,
+} from "./qc-hr-lib.mjs";
 
 type Chk = (id: string, ok: unknown, expected: unknown, actual: unknown) => boolean;
 type Ck = (id: string, r: Record<string, unknown>, exp: string, extra?: string) => boolean;
+
+export const H = "src/lib/modules/hr/";
+const PO = "src/lib/modules/pos/";
+const APP = "src/app/app/sys/[id]/hr/";
+export const F = {
+  rules: `${H}labor-rules.ts`, svc: `${H}labor.ts`, act: `${H}labor-actions.ts`, ui: `${H}labor-ui.tsx`,
+  posRep: `${PO}reports.ts`, posIdx: `${PO}index.ts`, fit: "scripts/fitness.mts", ov: `${H}overview-ui.tsx`, ros: `${H}roster-ui.tsx`,
+  rosPage: `${APP}roster/page.tsx`, setPage: `${APP}settings/page.tsx`, th: "src/messages/th/common.json", en: "src/messages/en/common.json",
+  inv: "scripts/hr-ui-inventory.json", vis: "scripts/visual-hr.mts",
+};
+const MARK = /HR H4\.2/;
+export function baseOf(): { BASE: string; IN_BASE: boolean } {
+const BASE0 = baseRef("QC_H42_BASE");
+const LOCAL_MB = (() => {
+  try {
+    return execFileSync("git", ["merge-base", "HEAD", "session/hr"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+})();
+const BASE = !process.env.QC_H42_BASE && LOCAL_MB && (!BASE0 || (LOCAL_MB !== BASE0 && commitInBase(BASE0, LOCAL_MB))) ? LOCAL_MB : BASE0;
+const IN_BASE = pathInBase(F.rules, BASE);
+return { BASE, IN_BASE };
+}
+const code = (p: string) => stripComments(rd(p));
+const fnBody = (src: string, name: string) => {
+  const i = src.search(new RegExp(`(async\\s+)?function\\s+${name}\\s*\\(`));
+  if (i < 0) return "";
+  const j = src.indexOf("\nexport ", i + 1);
+  return src.slice(i, j < 0 ? undefined : j);
+};
+const git = (a: string[]) => {
+  try {
+    return execFileSync("git", a, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "∅git";
+  }
+};
+
+// ═════════════════════════ static ═════════════════════════
+export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): void {
+  console.log(`── [static] base ${BASE.slice(0, 9)}${IN_BASE ? " (H4.2 in base)" : ""} ──`);
+  ck("S1.1", Object.fromEntries([F.rules, F.svc, F.act, F.ui].map((p) => [p.replace(H, ""), existsSync(join(ROOT, p))])), "4 files");
+  // S1.2
+  {
+    const rep = code(F.posRep);
+    const idx = code(F.posIdx);
+    const posDiff = git(["diff", "--name-only", BASE, "--", "src/lib/modules/pos"]).split("\n").filter(Boolean);
+    const hunks = [F.posRep, F.posIdx].flatMap((f) => diffHunks(BASE, f) ?? [{ added: [], removed: ["∅git"] }]);
+    const r = {
+      fn: /export\s+async\s+function\s+salesByHour\s*\(/.test(rep),
+      facade: /export\s+const\s+salesFacts\s*=\s*\{[^}]*\bsalesByHour\b/.test(idx),
+      onlyTwo: IN_BASE || posDiff.every((f) => f === F.posRep || f === F.posIdx),
+      marked: IN_BASE || (hunks.length > 0 && hunks.every((h) => h.added.some((l) => MARK.test(l)))),
+      noRemoved: IN_BASE || (diffHunks(BASE, F.posRep) ?? [{ removed: ["x"] }]).every((h) => h.removed.length === 0),
+    };
+    ck("S1.2", r, "seam + R1 only pos diff", `posDiff=${posDiff.join(",") || "∅"}`);
+  }
+  // S1.3
+  {
+    const fit = rd(F.fit);
+    const allowed = fit.slice(fit.indexOf("const ALLOWED_EDGES"), fit.indexOf("]);", fit.indexOf("const ALLOWED_EDGES")));
+    const importers = srcFiles(H.replace(/\/$/, "")).filter((f) => /@\/lib\/modules\/pos\b/.test(code(f)));
+    const svc = code(F.svc);
+    const posMention = srcFiles(H.replace(/\/$/, "")).filter((f) => /\bposSale\b|"PosSale"|\bPosSale\b/.test(code(f)));
+    const r = {
+      edge: /"hr→pos"/.test(allowed),
+      onlyLabor: importers.length === 1 && importers[0] === F.svc,
+      lazy: /await\s+import\(\s*["']@\/lib\/modules\/pos["']\s*\)/.test(svc) && !/from\s+["']@\/lib\/modules\/pos/.test(svc) && !/@\/lib\/modules\/pos\//.test(svc),
+      noPosSale: posMention.length === 0,
+    };
+    ck("S1.3", r, "hr→pos lazy from labor.ts only", `importers=${importers.map((f) => f.replace(H, "")).join(",") || "∅"} posSale=${posMention.map((f) => f.replace(H, "")).join(",") || "0"}`);
+  }
+  // S1.4
+  {
+    const src = code(F.rules);
+    const imps = importsOf(rd(F.rules));
+    const r = {
+      exists: src.length > 0,
+      imports: imps.every((i) => i.type || /^\.\/[a-z-]*rules(-v2)?$/.test(i.spec)),
+      noIo: !/\bprisma\b|tenantDb|Date\.now|new Date\(\s*\)|Math\.random|process\.|fetch\(|"use server"|readFileSync|\bawait\b/.test(src),
+    };
+    ck("S1.4", r, "pure", `imports=${imps.map((i) => i.spec).join(",") || "∅"}`);
+  }
+  // S1.5
+  {
+    const svc = code(F.svc);
+    const set = fnBody(svc, "setLaborSettings");
+    const labor = [F.svc, F.act, F.ui, F.rules].map(code).join("\n");
+    const r = {
+      lock: /\blockHrSettings\s*\(/.test(set),
+      write: /\bwriteHrSettingsKeys\s*\([^)]*hrLabor/.test(set),
+      gate: /\bcanManageHrSettings\s*\(/.test(set),
+      audit: /["']hr\.labor\.settings["']/.test(svc),
+      noOwnWrite: !/appSystem\s*\.\s*(update|updateMany|upsert)\s*\(|UPDATE\s+"AppSystem"/i.test(labor),
+      // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (e): intent = no raw prisma client; tenantDb (house rule C.8) is allowed only as a static named import { tenantDb } from core/db · dynamic import of core/db rejected ◂
+      // ORACLE-EDIT (H4.2 review · controller ruling) R5: judged per import statement — every value import from core/db must be exactly `import { tenantDb } from "@/lib/core/db"` (no alias, no other name) · no @prisma/client value import · no dynamic core/db ◂
+      noPrisma: [...rd(F.svc).matchAll(/^\s*import\s+(type\s+)?([^;]*?)\s*from\s*["']([^"']+)["']/gm)].every((m) => !!m[1] || (m[3] !== "@prisma/client" && (!/\/core\/db$/.test(m[3]!) || (m[3] === "@/lib/core/db" && /^\{\s*tenantDb\s*\}$/.test(m[2]!.trim()))))) && !/\bprisma\s*\./.test(svc) && !/import\(\s*["'][^"']*core\/db["']\s*\)/.test(svc),
+      dbGate: /\bmembership\s*\.\s*findFirst\s*\(/.test(svc),
+    };
+    ck("S1.5", r, "settings via HR-SET-1 helper · DB gate");
+  }
+  // S1.6
+  {
+    const posOthers = git(["diff", "--name-only", BASE, "--", "src/lib/modules/pos"]).split("\n").filter((f) => f && f !== F.posRep && f !== F.posIdx);
+    const hrFrozen = srcFiles(H.replace(/\/$/, "")).filter((f) => /\/(payroll[^/]*|law\.ts|work-entries[^/]*|roster\.ts|roster-rules\.ts|roster-board[^/]*|reports[^/]*|privacy[^/]*|scope\.ts|settings-lock\.ts|inbox[^/]*)$/.test(f));
+    // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (d): exactly one allowed oracle hunk set — scripts/qc-hr-h2.2.mts, every hunk carrying "ORACLE-EDIT (H4.2 · controller ruling)" ◂
+    const h22ok = (diffHunks(BASE, "scripts/qc-hr-h2.2.mts") ?? [{ added: [], removed: ["∅git"] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H4\.2 · controller ruling\)/.test(l)));
+    const oracles = git(["diff", "--name-only", BASE, "--", "scripts"]).split("\n").filter((f) => /^scripts\/qc-.*\.mts$/.test(f) && !/^scripts\/qc-hr-h4\.2/.test(f) && !(f === "scripts/qc-hr-h2.2.mts" && h22ok));
+    const r = {
+      pos: posOthers.length === 0,
+      hr: changedVsBase(BASE, hrFrozen) === "unchanged",
+      shared: changedVsBase(BASE, ["src/lib/modules/account", "src/lib/modules/approval", "src/lib/core", "prisma", "scripts/qc-hr-lib.mts", "package.json"]) === "unchanged",
+      oracles: oracles.length === 0,
+    };
+    ck("S1.6", r, "frozen", `pos=${posOthers.join(",") || "0"} hr=${changedVsBase(BASE, hrFrozen)} oracles=${oracles.join(",") || "0"}`);
+  }
+  // S1.7
+  {
+    const files = [F.posRep, F.posIdx, F.fit, F.ov, F.ros, F.rosPage, F.setPage, F.vis];
+    const need = [F.posRep, F.posIdx, F.fit, F.ov, F.ros];
+    const bad: string[] = [];
+    for (const f of files) {
+      const hs = diffHunks(BASE, f);
+      if (!hs) {
+        bad.push(`${f}:git`);
+        continue;
+      }
+      if (!IN_BASE && need.includes(f) && hs.length === 0) bad.push(`${f.split("/").pop()}:noHunk`);
+      hs.forEach((h, i) => {
+        if (!h.added.some((l) => (IN_BASE ? /HR H\d+\.\d+|HR-SET-\d+|POS P\d|HR H4\.2/ : MARK).test(l))) bad.push(`${f.split("/").pop()}#${i}:unmarked`);
+      });
+    }
+    chk("S1.7", bad.length === 0, "marked hunks", bad.join(" ") || "ok");
+  }
+  // S1.8
+  {
+    const srcs = [F.ui, F.ov, F.ros, F.rosPage, F.setPage].map(rd).join("\n");
+    const ids = new Set([...testidsOf(srcs, "hr-labor-"), ...testidsOf(srcs, "hr-roster-")]);
+    const want = ["hr-labor-card", "hr-labor-pct", "hr-labor-cost", "hr-labor-forecast", "hr-labor-sofar", "hr-labor-hours", "hr-labor-shift-*", "hr-labor-month", "hr-labor-note", "hr-roster-demand-*", "hr-roster-labor-foot", "hr-roster-demand-panel", "hr-labor-settings", "hr-labor-save"];
+    const th = jsonOf(F.th)?.hr?.labor ?? {};
+    const en = jsonOf(F.en)?.hr?.labor ?? {};
+    const mp = msgParity(th, en, ["estimateNote", "smallGroup"]);
+    const invIds = new Set(want.filter((t) => ids.has(t)));
+    const inv = [inventoryParity("/app/sys/[id]", new Set([...invIds].filter((t) => t.startsWith("hr-labor-") && t !== "hr-labor-settings" && t !== "hr-labor-save")), "H4.2", "qc-hr-h4.2"), inventoryParity("/hr/roster", new Set([...invIds].filter((t) => t.startsWith("hr-roster-"))), "H4.2", "qc-hr-h4.2")];
+    const h42Rows = ((jsonOf(F.inv)?.rows ?? []) as Any[]).filter((x) => x.wo === "H4.2" && /(\/app\/sys\/\[id\]|\/hr\/roster|\/hr\/settings)$/.test(String(x.page ?? ""))); // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (c) ◂
+    const tk = tokensOnly(code(F.ui));
+    const act = code(F.act);
+    const r = {
+      testids: want.every((t) => ids.has(t)),
+      inventory: inv.every((x) => x.codeNoRow.length === 0) && h42Rows.length > 0 && h42Rows.every((x) => x.oracle === "qc-hr-h4.2"), // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (c): wo/oracle judged on the H4.2 rows only ◂
+      msg: Object.values(mp).every(Boolean),
+      posLabel: JSON.stringify(th).includes("ยอดขายสุทธิตามรายงาน POS"),
+      visual: /"4\.2":\s*\[/.test(rd(F.vis)),
+      tokens: rd(F.ui).length > 0 && Object.values(tk).every(Boolean),
+      msgAllow: /setLaborSettings\s*\(/.test(act) && !/msg=\$\{[^}]*(reason|message)/.test(act),
+    };
+    ck("S1.8", r, "ui contract", `missing=${want.filter((t) => !ids.has(t)).join(",") || "0"}`);
+  }
+}
 
 // ═════════════════════════ pure ═════════════════════════
 export const FX34 = jsonOf("scripts/fixtures/hr-h3.4-vectors.json") as Any;

@@ -161,3 +161,86 @@ No check passed by accident. Missing modules and functions are caught per check,
 - Compile proof: `env NODE_OPTIONS=--max-old-space-size=12000 ISO_MEM=14000M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm exec tsc --noEmit --skipLibCheck -p scratchpad/h42/tsconfig.json`
   - The temp tsconfig extended the root and included only the two oracle files + next-env.d.ts.
   - Result: exit 0, 0 errors. The temp tsconfig was deleted afterwards.
+
+## Round 2 (review rulings R1–R5, 14 Nov) — `ORACLE-EDIT (H4.2 review · controller ruling)`
+OWNER goldens are unchanged (247,723 · 281,594 · 1,391,667 …).
+
+**Structure.** To stay under 60 KB, the statics moved into `qc-hr-h4.2-lib.mts`; the check logic is unchanged.
+- Oracle: 58.0 KB.
+- Lib: 24.2 KB.
+- Checks: 53 (+4).
+
+**New fixtures** (none of them touches an OWNER golden):
+- **U5** (on POS A, linked to HR) with **Q**: MONTHLY 3,000,000, start 2027-04-01. On 2027-01-16 Q counts 0, so the all-units total stays 281,594.
+- **U5 sales:** 1,000,000 at 12:00 every day 04-01..04-15, plus 04-16 09:00.
+- **U2 sale:** 01-13 12:00 1,050,000.
+- **J entry:** 2027-02-10 10–18 br60 @U2, so an outsider works in an ESTIMATE month.
+
+### R1 (S5.2 changed). Visible pay set of payroll MANAGER [U2]
+- The set is home unit U2 = {K, L}. J, E and G have home U1 and no HrEmployeeUnit borrowing rows, so H1.1 `unitWhere` (home or today's borrowing) and H3.8 Q2 (home only) give the same set on this fixture.
+- Outsiders add 0 to every money figure. They are reported as `excludedHeadcount`, read from `money.` / `footer.` / top level.
+- `partial` is read from `money.` / `footer.` / top level.
+
+| figure | derivation | golden |
+|---|---|---|
+| day U2 01-12 | J only (outsider) | cost 0 · excl 1 · partial · pct null (sales 0) · none of 36750/35000/1750/4594/4593 anywhere |
+| day (no unitId) 01-12 | scope = U2 only | cost 0 · excl 1 |
+| day U2 01-13 | K + L = 2 × (35,000 + 1,750) | **73,500**. Hours 10–15: 2 × 4,594 = 9,188; hours 16–17: 2 × 4,593 = 9,186; Σ = 6 × 9,188 + 2 × 9,186 = 73,500 = cost. pct = 73,500 × 1000 / 1,050,000 = **70** · partial · excl 1 |
+| owner U2 01-13 (control) | J + K + L | 110,250 · pct 110,250 × 1000 / 1,050,000 = **105** |
+| day U2 01-19 | K (home) | 36,750 · excl 0 · not partial |
+| week U2 01-11 footer | K + L on 01-13 (J's 01-12 and 01-13 excluded) | **73,500** · excl 1 |
+| month U2 2027-01 (ACTUAL) | only item = E (outsider) | **0** · excl 1 · no 695833 / 2087500 |
+| month U2 2027-02 (ESTIMATE) | only J on 02-10 | **0** · excl 1 |
+
+### R2 (S5.7, S5.8 new). Byte invariance
+**S5.7, payroll [U2]:**
+- Mutation: J daily 40,000 → 80,000, G hourly 6,003 → 12,006, E's APPROVED item gross 2,000,000 → 4,000,000 and ssoEr 87,500 → 175,000. Restored afterwards.
+- Readers: day U2 01-12/13/19/26 · day no-unit 01-12 · week U2 01-11/01-25 · month U2 Jan (actual) / Feb (estimate).
+- Required: `canon()` byte-identical.
+- Positive control: the same readers as OWNER must change.
+
+**S5.8, MANAGER without the payroll key:**
+- Mutation: every profile's pay ×2 (raw `UPDATE … * 2`, then `/ 2`) plus E's item ×2.
+- Readers: day U1 01-16 · U2 01-13 · week U1/U2 · month U1 Jan/Feb.
+- Required: identical.
+- Control: OWNER U1 01-16 changes, and is restored afterwards.
+
+**Client props.** Pages hand these reader DTOs to the client unchanged (01 card = server component; roster page passes the week/day DTOs). The oracle therefore compares the reader output, not a rendered payload. **The oracle does not render the RSC payload.**
+
+### R3 (S4.14 new). Current-month % on completed days only
+- Q: 30,000 ฿/month = 3,000,000 satang. April has D = 30.
+- Daily cost: ⌊3,000,000 / 30⌋ = 100,000, plus SSO (D5) = halfUp(min(100,000 × 30, 1,750,000) × 500 / (10,000 × 30)) = halfUp(2,916.67) = 2,917 ⇒ **102,917 per day**.
+- **Mid-month** (now 2027-04-16 10:00 BKK; completed days 1..15):
+  - Cost = 15 × 102,917 = 1,543,755.
+  - Sales = 15 × 1,000,000 = 15,000,000 (the 04-16 09:00 sale is today, so excluded).
+  - pct = halfUp(1,543,755 × 1000 / 15,000,000) = halfUp(102.92) = **103** (10.3 %).
+  - The whole-month cost ÷ sales-to-date basis the reviewer found gives 193 at this point (oracle output).
+  - The reviewer's ≈10.3 % matches. Their "≈30,750 with SSO" used a monthly SSO cap of 750 ฿; brief D5 pro-rates per day, giving 875.10 ฿ for the month.
+- **Day 1** (now 2027-04-01 10:00): no completed day ⇒ pct null. The label "ยังไม่มีข้อมูลครบวัน" must exist in th `hr.labor` or `LABOR_TEXT`.
+- **Past month** (now 2027-05-10): cost 30 × 102,917 = 3,087,510; sales 16,000,000; pct = halfUp(192.97) = **193**. Unchanged by R3.
+
+### R4 (S4.15 new). Truncation flag
+- The code has no test seam. The oracle therefore fixes one using the H3.9 precedent (`reports.ts __takeCap`): `opts.__takeCap: 2` lowers every list cap.
+- Required with the seam:
+  - day U1 01-16, week U1 01-11 and month U1 2027-02 return `truncated: true` (top level, `flags.`, `money.` or `footer.`).
+  - The same calls without the seam carry no `truncated`.
+  - `labor-ui.tsx` references `truncated` (the warning).
+- Chosen because a static "every `take:` sets the flag" check cannot be made reliable.
+
+### R5 (S1.5 changed)
+- Judged per import statement: every value import from `@/lib/core/db` must be exactly `{ tenantDb }` (no alias, no second name).
+- No `@prisma/client` value import, no dynamic core/db import.
+
+**Accepted (controller):**
+- the `hr/ui.tsx` labour-card slot (builder D-1);
+- 2 marked hunks in `scripts/fitness.mts` (edge + F2.1h).
+
+### Run (forced, lane DB, head c9051a793 code)
+- Result: exit 1, 49/53, RESIDUE none.
+- RED: S4.14 (mid = 193, day1 = 193, label missing) · S4.15 (no truncated flag, no UI warning) · S5.2 (01-13 shows 110,250; week, month and excl missing) · S5.7 (limited outputs change when outsider pay doubles).
+- S5.8 (new) is green on the current code: the manager already gets no money.
+- S1.5 (changed) is green: labor.ts has exactly `import { tenantDb } from "@/lib/core/db"`.
+- Targeted tsc over the two oracle files: exit 0.
+
+### Open for the controller
+- Pay set when an HrEmployeeUnit **borrowing row** exists: H1.1/H3.9 `unitWhere` includes today's borrowings; H3.8 Q2 says borrowings do not widen pay. R1 cites H1.x/H3.9. The fixture has no borrowing rows, so it does not decide this case.
