@@ -25,7 +25,7 @@ V5.4|V5|M|G|approving a split leave outdates the month's work entries · rebuilt
 V5.5|V5|M|G|payroll page: REFUND_BEHIND row of a u2 employee hidden from the [u1] viewer · shown to owner · in-scope row shown
 V7.1|V7b|C|G|(V7b) OT 1 h filed by [u1] viewer for borrowed home-u2 employees: success reply without amount, byte-identical for 45,600 ฿ · 91,200 ฿ · no salary profile ⇒ NON-success fixed Thai text (no digits, ≠ success) · nothing written
 V7.4|V7b|M|G|(V7b) pay-neutral refusal passes through: OT into a period with an APPROVED run — [u1] viewer's reply = all-branch viewer's reply, not ok, nothing written
-V7.2|V7|M|G|the requester's adjustment list (pay scope [u1]) and payroll page show none of those rows / amounts
+V7.2|V7|M|G|the requester's adjustment list (pay scope [u1]) has none of those rows · page visible text shows no ฿285 / ฿570 · control: in-scope ฿187.50 row listed and found by the same matcher
 V7.3|V7|M|G|control: in-scope employee reply "ยื่นแล้ว 187.5 บาท — รออนุมัติ" · all-branch viewer still gets 285 บาท for the borrowed employee
 V8.1|V8|C|G|(V8b) January sick leave (28.0) revoked ⇒ March 2/3 re-split: original USE −2.0 kept · appended USE −3.0 'resplit;unpaid:0.0' · split 5/0 · Σ 25.0 · no UNPAID_LEAVE in the March v2 run
 V8.2|V8|C|G|positive writer carry-top: 2030 leave (28.0) revoked after 2.0 carried into 2031 (carry max 5) ⇒ carry-top +3.0 ⇒ March 0/5 re-split to 3 / 2 · appended USE −3.0 'resplit;unpaid:2.0;from:2031-03-13' · −200,000 · Σ 2031 0.0 (quota raise writes no ledger row — no V8.2 quota check)
@@ -333,10 +333,16 @@ try {
       const [l, a] = [await fileP(K.U.lim, eB), await fileP(K.U.all, eB)];
       ck("V7.4", { setup: fa?.ok === true, same: canon(l) === canon(a), refused: l?.status !== "ok", nothing: (await nOf(eB, "2031-02")) === n0 }, "pass-through", short({ l, a }, 200));
     }
+    const rA = await file(K.U.lim, eA); // in-scope row (OT 1 h of 30,000 ฿ = 187.50 ฿) — positive control of the page matcher
     const mine = ((await safe(() => PAY.listAdjustments(K.c(s), undefined, 200, { unitIds: [K.u1] }))) ?? []) as Any[];
     const pg = await page(K.U.lim, s);
-    ck("V7.2", { list: Array.isArray(mine) && !mine.some((x) => [eB, eD, eN].includes(x.employeeId)), page: !pg.startsWith("THROW") && !/285|570/.test(pg) }, "not shown", short({ n: mine.length, pg: pg.slice(0, 80) }, 160));
-    const [rA, rAll] = [await file(K.U.lim, eA), await file(K.U.all, eB)];
+    // visible text only (tags, attributes = ids/testids, script payloads removed) · money as rendered: ฿<n>[.dd] or <n>[.dd] บาท, n with th-TH grouping
+    const text = pg.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]*>/g, " ").replace(/&nbsp;|\s+/g, " ");
+    const money = (satang: number) => { const b = satang / 100, ns = [...new Set([b.toLocaleString("th-TH"), b.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })])].map((x) => x.replace(/[.,]/g, "\\$&"));
+      return new RegExp(`(?:฿\\s?(?:${ns.join("|")})(?![\\d.,]*\\d)|(?<![\\d.,])(?:${ns.join("|")})\\s?บาท)`); };
+    ck("V7.2", { list: Array.isArray(mine) && !mine.some((x) => [eB, eD, eN].includes(x.employeeId)), rendered: !pg.startsWith("THROW"), hidden: !money(28_500).test(text) && !money(57_000).test(text), control: mine.some((x) => x.employeeId === eA) && money(18_750).test(text) },
+      "not shown · in-scope amount shown", short({ n: mine.length, hit: [money(28_500).exec(text)?.[0], money(57_000).exec(text)?.[0], money(18_750).exec(text)?.[0]] }, 160));
+    const rAll = await file(K.U.all, eB);
     ck("V7.3", { inScope: rA?.status === "ok" && rA?.message === "ยื่นแล้ว 187.5 บาท — รออนุมัติ", all: rAll?.status === "ok" && /285/.test(String(rAll?.message)) }, "amounts kept", short({ rA, rAll }, 200));
   });
 
