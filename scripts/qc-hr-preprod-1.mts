@@ -1,7 +1,7 @@
 // QC — HR V2 · fix ticket HR-PREPROD-1 (six pre-prod debts) · brief ledger/hr-briefs/hr-brief-PREPROD-1.md · notes ledger/wo-notes/hr-PREPROD-1-oracle.md
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-preprod-1.mts  (--list)
-// Registry re-based to f3955bdc1 (V8b round): every check GREEN there · V1–V9 review checks live in scripts/qc-hr-preprod-1b.mts (same lib)
+// Registry re-based to e8e3b24f4: every check GREEN there · V1–V9 review checks live in scripts/qc-hr-preprod-1b.mts (same lib)
 // Own tenants qc-hr-pp1-* (3 per run) · 2031 dates · own ACTIVE law rows removed in finally · money = integer satang, literals derived in the notes ·
 //   base = QC_PP1_BASE || merge-base(HEAD, session/hr) · diff statics are n/a once the base already carries `HR PREPROD-1` (in-base guard)
 import { execFileSync } from "node:child_process";
@@ -110,7 +110,7 @@ const atBase = (p: string) => {
 const IN_BASE = !!BASE && atBase(`${H}payroll.ts`).includes("HR PREPROD-1");
 
 // ═════════════════════════ statics ═════════════════════════
-const OWN = ["scripts/qc-hr-preprod-1.mts", "scripts/qc-hr-preprod-1-lib.mts", "scripts/qc-hr-preprod-1b.mts"];
+const OWN = ["scripts/qc-hr-preprod-1.mts", "scripts/qc-hr-preprod-1-lib.mts", "scripts/qc-hr-preprod-1b.mts", "scripts/qc-hr-preprod-1c.mts"];
 const ALLOWED_SRC = ["payroll.ts", "payroll-actions.ts", "payroll-ui.tsx", "scope.ts", "leave.ts", "leave-rules.ts", "service.ts", "work-entries.ts", "work-entries-rules.ts", "privacy.ts", "ui.tsx", "self.ts", "self-ui.tsx", "settings.ts", "stock-charge.ts"].map((f) => `${H}${f}`).concat(["src/messages/th/common.json", "src/messages/en/common.json"]);
 /** explicit ORACLE-EDIT allowlist (brief §ORACLE-EDIT + "possibly money-2 ST3 and priv-2 statics") — every hunk must carry ORACLE-EDIT …PREPROD-1 */
 const ORACLE_ALLOW = ["h1.3", "h3.2", "h3.4-lib", "h3.6", "h3.8", "h3.9", "h4.3-lib", "money-2", "priv-2", "priv-2-lib"].map((x) => `scripts/qc-hr-${x}.mts`);

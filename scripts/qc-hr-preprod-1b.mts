@@ -1,9 +1,9 @@
 // QC — HR V2 · fix ticket HR-PREPROD-1 · review round (controller rulings V1–V9, brief "CONTROLLER RULINGS (review)") · second suite file, shares qc-hr-preprod-1-lib.mts
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-preprod-1b.mts  (--list)
-// Registry base = f3955bdc1 (V8b round: RED = V8.1 V8.2 V8.3 V8.5 V8.6 — re-split updates the USE row in place) · own tenants qc-hr-pp1-*-{a,b} · 2031 dates · money = integer satang ·
+// Registry base = e8e3b24f4 (RED there: V7.1 no-profile reply ok · V7.4 closed-period refusal masked as ok); V1b · V8c checks live in scripts/qc-hr-preprod-1c.mts · own tenants qc-hr-pp1-*-{a,b} · 2031 dates · money = integer satang ·
 //   numbers: base 3,000,000 st, N = 480 ⇒ 100,000 st per unpaid day, 10,000 st per unpaid tenth of a day (notes §review)
-import { type Any, type Base, short, errText, failedKeys, canon, makeRegistry } from "./qc-hr-lib.mjs";
+import { type Any, type Base, short, errText, failedKeys, canon, isThai, makeRegistry } from "./qc-hr-lib.mjs";
 import { setupPP1, nextScope, bk, dd, nowOf } from "./qc-hr-preprod-1-lib.mjs";
 
 const SUITE = "qc-hr-preprod-1b";
@@ -23,15 +23,16 @@ V5.2|V5|M|G|malformed USE note ⇒ fully paid: no split · no split fields · no
 V5.3|V5|M|G|half-day AM with 0.0 left ⇒ USE 0.0 · unpaid:0.5;from:2031-03-19 · −50,000
 V5.4|V5|M|G|approving a split leave outdates the month's work entries · rebuilt current · split note change outdates them again
 V5.5|V5|M|G|payroll page: REFUND_BEHIND row of a u2 employee hidden from the [u1] viewer · shown to owner · in-scope row shown
-V7.1|V7|C|G|OT 1 h filed by [u1] viewer for borrowed home-u2 employees: reply has no amount and is byte-identical for 45,600 ฿ · 91,200 ฿ · no salary profile
+V7.1|V7b|C|R|(V7b) OT 1 h filed by [u1] viewer for borrowed home-u2 employees: success reply without amount, byte-identical for 45,600 ฿ · 91,200 ฿ · no salary profile ⇒ NON-success fixed Thai text (no digits, ≠ success) · nothing written
+V7.4|V7b|M|R|(V7b) pay-neutral refusal passes through: OT into a period with an APPROVED run — [u1] viewer's reply = all-branch viewer's reply, not ok, nothing written
 V7.2|V7|M|G|the requester's adjustment list (pay scope [u1]) and payroll page show none of those rows / amounts
 V7.3|V7|M|G|control: in-scope employee reply "ยื่นแล้ว 187.5 บาท — รออนุมัติ" · all-branch viewer still gets 285 บาท for the borrowed employee
-V8.1|V8|C|R|(V8b) January sick leave (28.0) revoked ⇒ March 2/3 re-split: original USE −2.0 kept · appended USE −3.0 'resplit;unpaid:0.0' · split 5/0 · Σ 25.0 · no UNPAID_LEAVE in the March v2 run
-V8.2|V8|C|R|positive writer carry-top: 2030 leave (28.0) revoked after 2.0 carried into 2031 (carry max 5) ⇒ carry-top +3.0 ⇒ March 0/5 re-split to 3 / 2 · appended USE −3.0 'resplit;unpaid:2.0;from:2031-03-13' · −200,000 · Σ 2031 0.0 (quota raise writes no ledger row — no V8.2 quota check)
-V8.3|V8|C|R|partial return 1.5 ⇒ paid 3.5 / unpaid 1.5 · appended USE −1.5 'resplit;unpaid:1.5;from:2031-03-13' · −50,000 −100,000 = −150,000 · Σ 0.0
+V8.1|V8|C|G|(V8b) January sick leave (28.0) revoked ⇒ March 2/3 re-split: original USE −2.0 kept · appended USE −3.0 'resplit;unpaid:0.0' · split 5/0 · Σ 25.0 · no UNPAID_LEAVE in the March v2 run
+V8.2|V8|C|G|positive writer carry-top: 2030 leave (28.0) revoked after 2.0 carried into 2031 (carry max 5) ⇒ carry-top +3.0 ⇒ March 0/5 re-split to 3 / 2 · appended USE −3.0 'resplit;unpaid:2.0;from:2031-03-13' · −200,000 · Σ 2031 0.0 (quota raise writes no ledger row — no V8.2 quota check)
+V8.3|V8|C|G|partial return 1.5 ⇒ paid 3.5 / unpaid 1.5 · appended USE −1.5 'resplit;unpaid:1.5;from:2031-03-13' · −50,000 −100,000 = −150,000 · Σ 0.0
 V8.4|V8|M|G|control: March run APPROVED ⇒ split unchanged after the return (single USE −2.0 · unpaid:3.0;from:2031-03-12 · Σ 28.0)
-V8.5|V8|C|R|two later split leaves re-split in date order: 3.0 back ⇒ March appended −3.0 'resplit;unpaid:0.0' (5/0) · April single USE 0.0 stays 0/5 · Σ 0.0
-V8.6|V8b|C|R|append-only: re-splits update/delete no ledger row (every earlier row of the system byte-same) · row count grows
+V8.5|V8|C|G|two later split leaves re-split in date order: 3.0 back ⇒ March appended −3.0 'resplit;unpaid:0.0' (5/0) · April single USE 0.0 stays 0/5 · Σ 0.0
+V8.6|V8b|C|G|append-only: re-splits update/delete no ledger row (every earlier row of the system byte-same) · row count grows
 V8.7|V8b|M|G|revoking a re-split leave reverts Σ of its USE rows: use-revert +5.0 · Σ 30.0
 V9.1|V9|C|G|leaver (end 31 Oct) refund behind approved Sep with Oct DRAFT ⇒ moved to 2031-10 · Oct run carries REFUND:+50,000 exactly once · approved
 Z1|house|C|G|no residue
@@ -320,8 +321,18 @@ try {
       for (const [k, v] of Object.entries({ employeeId: e, periodKey: "2031-05", kind: "OT", hours: "1", note: "qc" })) f.set(k, v);
       return inS(w.cookie, `/app/sys/${s}/hr/payroll`, () => ACT.requestAdjustmentAction(s, { status: "idle" }, f)).catch((x: unknown) => ({ __throw: errText(x) }));
     };
+    const nOf = async (e: string, pk = "2031-05") => Number((await rows(`SELECT count(*)::int AS n FROM "HrPayAdjustment" WHERE "employeeId" = $1 AND "periodKey" = $2`, e, pk))[0]?.n ?? -1);
     const [rB, rD, rN] = [await file(K.U.lim, eB), await file(K.U.lim, eD), await file(K.U.lim, eN)];
-    ck("V7.1", { noAmount: !/\d/.test(String(rB?.message ?? "∅")), same: canon(rB) === canon(rD) && canon(rB) === canon(rN) }, "generic · identical ×3", short({ rB, rD, rN }, 300));
+    const msgN = String(rN?.message ?? "");
+    ck("V7.1", { success: rB?.status === "ok" && !/\d/.test(String(rB?.message ?? "∅")) && canon(rB) === canon(rD), noProfile: !!rN && rN.status !== "ok" && isThai(msgN) && !/\d/.test(msgN) && msgN !== rB?.message, nothing: (await nOf(eN)) === 0 }, "neutral ok ×2 · fixed refusal", short({ rB, rD, rN }, 300));
+    {
+      const feb = await K.create(s, "2031-02");
+      const fa = feb?.id ? await K.approve(s, feb.id) : feb;
+      const fileP = (w: Any, e: string): Promise<Any> => { const f = new FormData(); for (const [k, v] of Object.entries({ employeeId: e, periodKey: "2031-02", kind: "OT", hours: "1", note: "qc" })) f.set(k, v); return inS(w.cookie, `/app/sys/${s}/hr/payroll`, () => ACT.requestAdjustmentAction(s, { status: "idle" }, f)).catch((x: unknown) => ({ __throw: errText(x) })); };
+      const n0 = await nOf(eB, "2031-02");
+      const [l, a] = [await fileP(K.U.lim, eB), await fileP(K.U.all, eB)];
+      ck("V7.4", { setup: fa?.ok === true, same: canon(l) === canon(a), refused: l?.status !== "ok", nothing: (await nOf(eB, "2031-02")) === n0 }, "pass-through", short({ l, a }, 200));
+    }
     const mine = ((await safe(() => PAY.listAdjustments(K.c(s), undefined, 200, { unitIds: [K.u1] }))) ?? []) as Any[];
     const pg = await page(K.U.lim, s);
     ck("V7.2", { list: Array.isArray(mine) && !mine.some((x) => [eB, eD, eN].includes(x.employeeId)), page: !pg.startsWith("THROW") && !/285|570/.test(pg) }, "not shown", short({ n: mine.length, pg: pg.slice(0, 80) }, 160));
