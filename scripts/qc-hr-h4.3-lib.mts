@@ -203,7 +203,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const H49_ALLOW = new Set(["scripts/qc-nav-functions.mts", "scripts/qc-hr-priv-2.mts"]); // ORACLE-EDIT (HR H4.9 · controller) ◂
     const h49Ok = (f: string) => H49_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR H4.9 · controller)"))); // ORACLE-EDIT (HR H4.9 · controller) ◂
     // ORACLE-EDIT (HR PRIV-3 · controller) S1.6: explicit allowlist — hr privacy.ts (page gates) · the older oracles PRIV-3 edited · its own two oracle files; every hunk must add "HR PRIV-3" on an ADDED line ◂
-    const P3_ALLOW = new Set([`${H}privacy.ts`, "scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.8.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-priv-2.mts"]); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
+    const P3_ALLOW = new Set([`${H}privacy.ts`, "scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-priv-2.mts"]); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
     const p3Ok = (f: string) => P3_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR PRIV-3"))); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
     const frozenLeft = frozen.filter((f) => !(/\.(ts|mts|json)$/.test(f) && hfOk(f)));
     const hrLeft = hrFrozen.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f) && !p3Ok(f)); // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂ // ORACLE-EDIT (HR PRIV-3 · controller): + p3Ok ◂

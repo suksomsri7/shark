@@ -104,7 +104,7 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  chk("S3", !miss.length && docs, "", `missing=${miss.join(",") || "none"} docs=${docs}`);
 }
  // ORACLE-EDIT (HR PRIV-3 · controller) S4/S5: explicit allowlist — the older oracles PRIV-3 edited + its own two oracle files (S4) and its seven product files (S5); every hunk must add "HR PRIV-3" on an ADDED line ◂
- const P3_FILES = new Set(["scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.8.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", `${H}privacy.ts`, `${H}nav.ts`, `${H}ui.tsx`, `${H}actions.ts`, "src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/leave/page.tsx", "src/app/app/sys/[id]/hr/payroll/page.tsx"]); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
+ const P3_FILES = new Set(["scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", `${H}privacy.ts`, `${H}nav.ts`, `${H}ui.tsx`, `${H}actions.ts`, "src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/leave/page.tsx", "src/app/app/sys/[id]/hr/payroll/page.tsx"]); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
  const p3Ok = (f: string) => P3_FILES.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR PRIV-3"))); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
 {
  // ORACLE-EDIT (HR H4.9 · controller) S4: explicit files — skills.ts when every hunk adds "HR H4.9" · the oracles H4.9-FIX1 edited when every hunk adds "ORACLE-EDIT (HR H4.9 · controller)" ◂

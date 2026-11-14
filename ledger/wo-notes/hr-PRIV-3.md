@@ -54,7 +54,7 @@ SD (STAFF `*`, `hr.leave.request/read/decide`, no pay key) on `/hr/payroll` toda
 
 It has no work-entries panel, no stock section, no run/bank/filing/cert/YTD section. The render is byte-for-byte the same text as K/N/S. So no real section is lost, and SD gets not-found (oracle P3).
 
-## Import cycle (ruling 3) — OPEN
+## Import cycle (ruling 3) — RULED: keep the direct import, recorded as a debt
 R1/S1 require `privacy.ts` to import `./work-entries` and `./stock-charge`. work-entries was already in privacy's import cycle on base. stock-charge was not, and it now joins it through `stock-charge → payroll → work-entries → judge → roster-board → privacy`.
 
 The true strongly-connected set was judge, payroll, roster-board, work-entries. It is now those four + stock-charge (checked with a full reachability script, `/tmp/hr-ctl/priv3-build/scc.mjs`).
@@ -78,13 +78,13 @@ Runtime risk is low: privacy only calls stock-charge functions at call time, and
 ## Older-oracle acceptances (explicit allowlists, every hunk marked `ORACLE-EDIT (HR PRIV-3 · controller)`)
 Each acceptance lists exact files, and a file is accepted only if every diff hunk adds a line containing `HR PRIV-3`.
 - `scripts/qc-hr-priv-2.mts` S4/S5 — `P3_FILES` + `p3Ok`:
-  - S4 (oracles): the priv-3 oracle and its lib, h2.10, h3.8, h3.9, h4.3-lib.
+  - S4 (oracles): the priv-3 oracle and its lib, h2.10, h3.9, h4.3-lib.
   - S5 (product files): privacy, nav, ui, actions and the 3 pages. privacy and actions are also dropped from the PRIV-2 unmarked-hunk scan.
-- `scripts/qc-hr-h4.3-lib.mts` S1.6 — `P3_ALLOW` + `p3Ok`: hr `privacy.ts`, plus the oracles priv-3, priv-3-lib, h2.10, h3.8, h3.9 and priv-2.
+- `scripts/qc-hr-h4.3-lib.mts` S1.6 — `P3_ALLOW` + `p3Ok`: hr `privacy.ts`, plus the oracles priv-3, priv-3-lib, h2.10, h3.9 and priv-2.
 - `scripts/qc-hr-h3.9.mts`:
   - S1.8 (nav.ts unchanged): `PRIV3_ALLOW`, nav.ts accepted with marker `HR PRIV-3`. There is still no "รายงาน" tab.
   - S1.10 (shared files marked): visual-hr.mts accepted with marker `ORACLE-EDIT (HR PRIV-3`.
-- `scripts/qc-hr-h3.8.mts` S1.13 — privacy.ts sha pin re-taken: `ea0017fa…` → `a5a3cabc…`. This is a conscious re-take, the same convention the H4.8 and PRIV-2 re-takes used. self.ts pin unchanged.
+- `scripts/qc-hr-h3.8.mts` S1.13 (privacy.ts sha pin): **not re-taken**. Per the controller ruling (head `de35dec45` follow-up), re-taking this pin waits on the owner. The pinned value is restored exactly as on base, and h3.8 is expected to stay at **77/78 with only S1.13 red** (privacy.ts sha = `a5a3cabc…` against pin `ea0017fa…`). `qc-hr-h3.8.mts` was removed from the PRIV-3 allowlists in priv-2 and h4.3-lib. No code was moved out of privacy.ts to dodge the pin.
 
 Statics the brief expected to trip but that stayed green, with no edit:
 - frozen-file lists in h2.11, h2.5, h3.1, h4.6 S14.1
@@ -93,6 +93,7 @@ Statics the brief expected to trip but that stayed green, with no edit:
 They were not touched.
 
 ## Debts / observations
+- **privacy.ts ↔ stock-charge joins the existing cycle; S5 passes only by search order.** Controller ruling: keep the direct `./stock-charge` import (no copy of the rule). Functions are called only at call time, and privacy.ts is already in this cycle on base.
 - reports/export answers 400 for an invalid period on a real system but 404 on an unknown one (oracle doubt 5). Out of scope (ruling 4).
 - The hub "ลงเวลา" card is still shown to everyone (attendance has its own gate; P/PB/SR/SD/K/N get 404 there). Out of scope (brief: nothing else in HrHub).
 - The hub still runs `listEmployees` for every viewer (only the count is hidden). Removing the read would be a second hunk in the VIS-5b area.
@@ -110,3 +111,15 @@ They were not touched.
 - `qc-nav-functions`: S5 red on HOTEL (3/17) and BOOKING (5/10) routes. The same red reproduces on the committed HEAD snapshot (`git archive HEAD`), so it is not caused by PRIV-3. HR lines are fine (HR 10/11 routes, nothing missing). This is a non-HR oracle and was not edited.
 - Clean typecheck (`rm -rf .next/types tsconfig.tsbuildinfo`, ISO_MEM=14000M, MemAvailable 20 GB): exit 0.
 - `qc-hr-h0.4` has no suite file (its checks live in fitness-hr).
+
+## Rulings follow-up (after de35dec45)
+- h3.8 S1.13 edit reverted. `scripts/qc-hr-h3.8.mts` is identical to base, and it was removed from the PRIV-3 allowlists in priv-2 and h4.3-lib.
+- A stray `sed` hit while removing that entry also touched h4.3-lib `P2_ALLOW`. That line was restored byte-for-byte from base.
+- Reruns:
+  - h3.8 **77/78**, only S1.13 red (left red on purpose: waiting on the owner)
+  - qc-hr-priv-3 26/26, residue none
+  - priv-2 47/47
+  - h4.3 45/45
+  - h3.9 60/60
+  - fitness-hr 9/9
+- The two earlier lines in "Runs" ("h3.8 78/78" and "h3.8 S1.13 fixed by acceptances") describe the old head. They are superseded by this section.
