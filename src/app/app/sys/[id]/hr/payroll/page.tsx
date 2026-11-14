@@ -173,7 +173,7 @@ export default async function HrPayrollPage({
       {payViewer && <PayrollSection systemId={id} parts={["attendance"]} />}
       </>)}{/* HR VIS-5a ◂ */}
       {view === "run" && (<>{/* HR VIS-5a ▸ run view ◂ */}
-      <PayrollRunSection systemId={id} periodKey={period} runId={runSel} flash={r2Flash} flashOk={r2Ok} actions={run2Actions} /> {/* HR H3.4 ▸ รอบจ่ายรุ่น 2 (payroll-run-ui) ◂ */}
+      <PayrollRunSection systemId={id} periodKey={period} runId={runSel} flash={r2Flash} flashOk={r2Ok} actions={run2Actions} emp={/^[A-Za-z0-9_-]{1,64}$/.test(one(sp.emp) ?? "") ? one(sp.emp)! : ""} /> {/* HR H3.4 ▸ รอบจ่ายรุ่น 2 (payroll-run-ui) ◂ */}{/* HR VIS-5a ▸ ?emp= drawer (run-ui shows it only for a row of the viewer's own preview) ◂ */}
       </>)}{/* HR VIS-5a ◂ */}
       {view === "adjust" && (<>{/* HR VIS-5a ▸ adjust = additions/deductions part + stock charges ◂ */}
       {payViewer && <PayrollSection systemId={id} parts={["adjust"]} />}

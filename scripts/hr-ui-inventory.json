@@ -10295,6 +10295,32 @@
   {
    "page": "/app/sys/[id]/hr/payroll",
    "testid": "hr-run2-lines-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีรอบที่เลือก · ผู้ดูเงินเดือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?view=run&period=*&run=*&emp=*#hr-run2-drawer"
+   },
+   "wo": "H3.4",
+   "oracle": "qc-hr-h3.4",
+   "note": "ชื่อพนักงานในแถว (* = id พนักงาน) → เปิดลิ้นชัก \"ที่มาทุกบรรทัด\" (?emp=) · VIS-5a: เดิมเป็น <details> ในแถว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-totals",
    "kind": "display",
    "interactive": false,
    "file": "src/lib/modules/hr/payroll-run-ui.tsx",
@@ -10311,12 +10337,137 @@
     "manager"
    ],
    "expect": {
-    "type": "ui",
-    "target": "ที่มาของเงินต่อบรรทัด"
+    "type": "display"
    },
-   "wo": "H3.4",
-   "oracle": "qc-hr-h3.4",
-   "note": "ที่มาต่อคน (* = id พนักงาน)"
+   "wo": "VIS-5a",
+   "oracle": "qc-hr-vis-5a",
+   "note": "แถวรวมท้ายตาราง (ยอดของรอบ = ยอดของแถวที่ผู้ดูเห็น)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-drawer",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "?emp= เป็นแถวในรอบที่ผู้ดูเห็น",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5a",
+   "oracle": "qc-hr-vis-5a",
+   "note": "ลิ้นชักที่มาทุกบรรทัดของพนักงานหนึ่งคน (≥1280 ด้านขวาตาราง · จอเล็กอยู่ใต้ตาราง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-excluded",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือนที่จำกัดสาขา และรอบมีคนนอกขอบเขต",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5a",
+   "oracle": "qc-hr-vis-5a",
+   "note": "หมายเหตุจำนวนคนที่ไม่รวม (PAY_SCOPE_EXCLUDED_TEXT) — ไม่มีชื่อ/ยอด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-bar",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีรอบที่เลือก · ผู้ดูเงินเดือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5a",
+   "oracle": "qc-hr-vis-5a",
+   "note": "แถบปุ่มของสถานะ (อนุมัติ · จ่าย · กลับรายการ) — 390: รอบร่างติดขอบล่าง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-doclink-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "รอบอนุมัติ/จ่ายแล้ว · ผ่านด่านไฟล์โอน/แบบยื่น",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?view=docs&bank=*#hr-bank | ?view=docs&fk=PND1&fp=*#hr-filing | ?view=docs&fk=SSO110&frun=*#hr-filing"
+   },
+   "wo": "VIS-5a",
+   "oracle": "qc-hr-vis-5a",
+   "note": "ลิงก์เอกสารของรอบ (* = bank | pnd1 | sso110)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-jv",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีรอบที่เลือก (ไม่ใช่กลับรายการ) · ผู้ดูเงินเดือน",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf",
+    "manager"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5a",
+   "oracle": "qc-hr-vis-5a",
+   "note": "กล่องลงบัญชีอัตโนมัติ — ถ้อยคำเท่านั้น ไม่มียอด (Q3)"
   },
   {
    "page": "/app/sys/[id]/hr/payroll",
