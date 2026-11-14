@@ -15,6 +15,7 @@
 //   ปุ่ม user-plus + เมนู ⋯ "เพิ่มคน" (canManage = OWNER/ผู้เปิดห้อง) → AddMemberSheet (D3)
 // S2.10 (RESOLUTIONS §S): ย้อนต่อแถว + ชีตยืนยัน (canUndo ของเซิร์ฟเวอร์) · โหลดซ้อนระหว่าง poll = ตั้งธงวิ่งซ้ำ (ไม่ทิ้ง) · สำเร็จ = เอาการ์ดออกทันที ·
 //   หยุด poll เมื่อแอปอยู่เบื้องหลัง (AppState) + ถอยห่างเมื่อออฟไลน์ · clientMessageId ใหม่เมื่อแก้ร่างหลังส่งล้ม + แจ้งเมื่อซ้ำ · ปิดห้องมีชีตยืนยัน · กดซ้ำกันด้วย ref
+// B1 (cal-review-b): calendarCards ของผู้ดู → RoomCalCard (AGENDA = agenda ของช่วงวัน · LIST = เตือนวันนี้+ต่อไป) วางตาม createdAt
 // CAL2.7 (แบบ cal-2.png จอ 5): การ์ดเตือน/นัดที่ผู้ดูสั่งในห้องนี้ (RoomDetail.reminders) วางตาม createdAt · แก้ไข = AddCalSheet โหมดแก้ ·
 //   ยกเลิก = ถามยืนยัน → DELETE calendar/items/[id] · DRAFT = ฟองยืนยัน "เตือนประจำ" + ใช่ ตั้งเลย (POST confirm) / แก้เวลา
 //   RoomStatus ตามเซิร์ฟเวอร์ (OPEN|RUNNING|WAITING|DONE · DONE = ปิดห้อง) · แผนของห้องที่ยัง PENDING แสดงเป็นการ์ดอนุมัติใบเดียว (ไม่ซ้ำ)
@@ -32,6 +33,7 @@ import { MemberBubble, SystemMsg } from "@/src/components/secretary/MemberBubble
 import { DoneCard, type DoneIds } from "@/src/components/secretary/DoneCard";
 import { StepList } from "@/src/components/secretary/StepCard";
 import { ReminderCard } from "@/src/components/calendar/ReminderCard";
+import { RoomCalCard } from "@/src/components/calendar/RoomCalCard";
 import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
 import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
 import { calApi, calChanged, onCalChanged, type CalItemDto } from "@/src/api/calendar";
@@ -461,6 +463,10 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
           </View>
         ),
       });
+    }
+    // B1: การ์ดปฏิทิน/รายการเตือนของผู้ดู (เซิร์ฟเวอร์ส่งเฉพาะของผู้เรียก) — แอปดึงรายละเอียดเอง
+    for (const cc of room?.calendarCards ?? []) {
+      out.push({ key: `calc-${cc.id}`, at: at(cc.createdAt), order: seq++, node: <View style={styles.indent}><RoomCalCard card={cc} /></View> });
     }
     const lastAp = approvals.length - 1;
     approvals.forEach((a, i) => {

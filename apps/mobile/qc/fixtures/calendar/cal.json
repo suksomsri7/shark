@@ -179,7 +179,8 @@
      "createdAt": "2026-11-16T11:44:05.000Z",
      "updatedAt": "2026-11-16T11:44:05.000Z"
     }
-   ]
+   ],
+   "calendarCards": []
   },
   "GET /api/mobile/secretary/rooms/r1/messages": {
    "items": [
@@ -222,6 +223,139 @@
    "items": []
   },
   "GET /api/mobile/secretary/log": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/rooms/r2": {
+   "id": "r2",
+   "conversationId": "c-r2",
+   "title": "ดูตารางพรุ่งนี้",
+   "status": "OPEN",
+   "systems": [
+    "crm"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [],
+   "canManage": true,
+   "createdAt": "2026-11-16T11:42:00.000Z",
+   "updatedAt": "2026-11-16T11:46:00.000Z",
+   "closedAt": null,
+   "plans": [],
+   "reminders": [],
+   "calendarCards": [
+    {
+     "id": "cc1",
+     "kind": "AGENDA",
+     "fromDay": "2026-11-17",
+     "toDay": "2026-11-17",
+     "createdAt": "2026-11-16T01:06:05.000Z"
+    },
+    {
+     "id": "cc2",
+     "kind": "LIST",
+     "fromDay": "2026-11-16",
+     "toDay": "2026-11-16",
+     "createdAt": "2026-11-16T01:08:05.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/rooms/r2/messages": {
+   "items": [
+    {
+     "id": "n1",
+     "role": "USER",
+     "content": "พรุ่งนี้มีอะไรบ้าง",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-16T01:06:00.000Z"
+    },
+    {
+     "id": "n2",
+     "role": "ASSISTANT",
+     "content": "พรุ่งนี้มี 5 รายการครับ ดูการ์ดด้านล่าง",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-16T01:06:04.000Z"
+    },
+    {
+     "id": "n3",
+     "role": "USER",
+     "content": "เตือนอะไรไว้บ้าง",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-16T01:08:00.000Z"
+    },
+    {
+     "id": "n4",
+     "role": "ASSISTANT",
+     "content": "มี 4 รายการครับ ดูการ์ดด้านล่าง",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-16T01:08:04.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r2/proposals": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/rooms/r3": {
+   "id": "r3",
+   "conversationId": "c-r3",
+   "title": "ดูตารางพรุ่งนี้",
+   "status": "OPEN",
+   "systems": [
+    "crm"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [],
+   "canManage": true,
+   "createdAt": "2026-11-16T11:42:00.000Z",
+   "updatedAt": "2026-11-16T11:46:00.000Z",
+   "closedAt": null,
+   "plans": [],
+   "reminders": [],
+   "calendarCards": []
+  },
+  "GET /api/mobile/secretary/rooms/r3/messages": {
+   "items": [
+    {
+     "id": "n1",
+     "role": "USER",
+     "content": "พรุ่งนี้มีอะไรบ้าง",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-16T01:06:00.000Z"
+    },
+    {
+     "id": "n2",
+     "role": "ASSISTANT",
+     "content": "พรุ่งนี้มี 5 รายการครับ ดูการ์ดด้านล่าง",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-16T01:06:04.000Z"
+    },
+    {
+     "id": "n3",
+     "role": "USER",
+     "content": "เตือนอะไรไว้บ้าง",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-16T01:08:00.000Z"
+    },
+    {
+     "id": "n4",
+     "role": "ASSISTANT",
+     "content": "มี 4 รายการครับ ดูการ์ดด้านล่าง",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-16T01:08:04.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r3/proposals": {
    "items": []
   }
  },
@@ -488,6 +622,31 @@
     },
     {
      "sleep": 500
+    }
+   ]
+  },
+  {
+   "name": "room-cards",
+   "route": "/secretary/room/r2",
+   "steps": [
+    {
+     "wait": "cal-card-cc2"
+    },
+    {
+     "sleep": 1200
+    }
+   ],
+   "height": 1500
+  },
+  {
+   "name": "room-cards-other",
+   "route": "/secretary/room/r3",
+   "steps": [
+    {
+     "wait": "sec-room-bubble"
+    },
+    {
+     "sleep": 1000
     }
    ]
   }

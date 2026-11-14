@@ -141,4 +141,11 @@ export const calEn: Record<keyof typeof calTh, string> = {
   "cal.g.noneBody": "Connecting Google arrives in the next app update",
   "cal.g.needReconnect": "Google needs to be reconnected",
   "cal.g.mine": "Mine",
+  "cal.room.agenda": "Your calendar · {range}",
+  "cal.room.list": "Your reminders",
+  "cal.room.open": "Open in calendar ›",
+  "cal.room.more": "and {n} more",
+  "cal.room.empty": "Nothing in this period",
+  "cal.room.private": "Only you can see this",
+  "cal.g.shared": "Shared with you",
 };

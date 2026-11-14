@@ -115,7 +115,7 @@ export type PrefsPut = {
 export type GoogleLinkDto = {
   status: "NONE" | "ACTIVE" | "NEEDS_RECONNECT";
   email?: string | null;
-  calendars?: { id: string; name: string; color: string; primary: boolean; import: boolean; sub?: string | null }[];
+  calendars?: { id: string; name: string; color: string | null; primary: boolean; import: boolean; accessRole?: string; sub?: string | null }[];
   exportKinds?: ("EVENT" | "REMINDER" | "BOOKING")[];
   exportCalendarId?: string | null;
   exportCalendarName?: string | null;
