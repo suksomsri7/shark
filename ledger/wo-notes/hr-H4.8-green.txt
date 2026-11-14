@@ -94,3 +94,52 @@ typecheck run1: exit=2 secs=442 TS2739 ConnectionsPanel BUNDLE_HELP_TH
 typecheck run2: exit=0 secs=406 (clean)
 seed-hr-qc:   ❌ [X0] seed ทำงานจนจบ — expected จบ | actual Error: setPin keng: ระบบยังไม่ได้ตั้งค่าคว�
 h1.1:   ❌ [H1.1-S9.2] [db read] seeded qc-hr-v2: every employee's unitId = the HQC home unit (by slug) · jay has one open borrowing to huahin — expected 14 home units · jay → huahin open | actual ba
+
+## FIX ROUND + merge of session/hr 292bc5b7e (15 Nov) — head before this log commit: f4381c937
+seed exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+h48f1 exit=0 ===== qc-hr-h4.8 ===== passed 47/47 (QC_FORCE)
+h48f2 exit=0 ===== qc-hr-h4.8 ===== passed 47/47 (QC_FORCE)
+h48f3 exit=0 ===== qc-hr-h4.8 ===== passed 47/47 (QC_FORCE)
+h48u exit=0 ===== qc-hr-h4.8 ===== passed 47/47
+h11 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+h22 exit=0 ===== qc-hr-h2.2 ===== passed 60/60 (QC_FORCE)
+h27 exit=0 ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+h210 exit=0 ===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE)
+h38 exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+h39 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+h42 exit=0 ===== qc-hr-h4.2 ===== passed 53/53
+ytd exit=0 ===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+h01 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+set1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+h24 exit=0 ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+hfpriv exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+audit exit=0 
+acckeys exit=0 ===== QC Account API Keys (A1) =====
+acccore exit=0 ===== QC Account API Core (A3) =====
+apiv1 exit=0 ===== QC HF-APIV1 scope =====
+pubapi exit=0 ===== QC Public API =====
+posp02 exit=0 ===== QC: POS P0.2 ทะเบียน op =====
+DONE
+hfpriv: JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+audit: ✅ PASS — 21/21
+acckeys: JSON_SUMMARY {"total":51,"passed":51,"findings":[]}
+acccore: JSON_SUMMARY {"total":64,"passed":64,"findings":[]}
+apiv1: JSON_SUMMARY {"total":143,"passed":143,"findings":[]}
+pubapi: JSON_SUMMARY {"total":18,"passed":18,"findings":[]}
+posp02: JSON_SUMMARY {"total":56,"passed":56,"skipped":[],"findings":[]}
+r2-fitness-noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+r2-fitness-hr-noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+r2-fitness-env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+r2-fitness-hr-env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+typecheck (clean, once): exit=0 secs=424
+prisma migrate status: Database schema is up to date! (225 migrations)
+
+### qc-hr-h4.8 final forced run
+  ✅ [H4.8-F1] [db] ORACLE-EDIT (H4.8 fix round · controller ruling 1): OT report with a pay key ⇒ money columns + exactly 1 hr.api.report.read row · hr-read key ⇒ no money column, no row
+  ✅ [H4.8-F2] [db] ORACLE-EDIT (H4.8 fix round · controller ruling 2): hr.employee.read / hr.roster.read are API-key only — not in the staff editor · refused by validatePermissionInput · a huma
+  ✅ [H4.8-F3] [db] ORACLE-EDIT (H4.8 fix round · controller ruling 3): impossible dates/periods (2026-02-31 · 2026-06-31 · 0000-00-00 · 2026-13) ⇒ 422 validation on every date parameter (no fa
+  ✅ [H4.8-F4] [db] ORACLE-EDIT (H4.8 fix round · controller ruling 4): key names with control / bidi / line-separator / NUL characters ⇒ refused VALIDATION (Thai), nothing written
+  ✅ [H4.8-F5] [db] ORACLE-EDIT (H4.8 fix round · controller ruling 5): ended employee ≡ unknown id — GET /employees/{id} · attendance month · payslip history · POST /leaves ⇒ same 404 byte
+  ✅ [H4.8-F6] [db] ORACLE-EDIT (H4.8 fix round · controller ruling 6): POST /leaves non-JSON Content-Type ⇒ 415 invalid_json · __proto__ / constructor key ⇒ 422 validation · nothing written �
+RESIDUE none (tenants=2 users=5)
+===== qc-hr-h4.8 ===== passed 47/47 (QC_FORCE)

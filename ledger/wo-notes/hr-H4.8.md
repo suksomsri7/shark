@@ -5,7 +5,8 @@
 
 ## 0. Checkpoint
 - done: build + docs + skill; qc-hr-h4.8 forced 41/41 (×3) + unforced; regression list in §5; fitness both modes; clean typecheck.
-- next: controller full regression, reviewer + hunter (privacy WO).
+- done (fix round): rulings 1–11 applied, merged session/hr 292bc5b7e, all listed suites green, typecheck clean.
+- next: controller re-run + merge.
 
 ## 1. Files
 | file | new/edited | what |
@@ -45,7 +46,7 @@
 7. [x] Issuer/owner guards are read-only checks before the service; the write itself is `requestLeave` (own tx + lock).
 8. [x] Rate limits = core DB buckets (`hr:api:<kind>:<keyId>`), count-first in core.
 9. [x] No new outbox event (requestLeave emits its existing ones).
-10. [x] Files ⊆ brief §5 list; hot files touched only as marked hunks (`permissions.ts`, messages).
+10. [x] Files ⊆ brief §5 list **+1 forced hunk, disclosed** (`src/components/account-v2/ConnectionsPanel.tsx`, typecheck — accepted by the controller) and, in the fix round, `src/lib/staff/service.ts` (ruling 2 server-side refusal, marked); hot files touched only as marked hunks (`permissions.ts`, messages).
 
 ## 4. Other key-issuing paths (task: can anything else mint a key the HR dispatcher accepts?)
 Callers of `createApiKey`/`rotateApiKey`: account `connections-actions.ts` (scopes ⊆ `ACCOUNT_SCOPE_KEYS`, ACCOUNT system; rotate limited to ACCOUNT-bound account-only keys), CRM `settings/api/actions.ts` (crm bundles, CRM system), kanban `settings-actions.ts` (kanban bundles/keys, KANBAN system), member `api-actions.ts` + member REST `apikeys.create` (member bundles, bound to the member system), POS `api-key-actions.ts` (pos bundles, POS system), platform `/app/settings/api` (`createApiKey(ctx,name)` → unbound, scopes `[]`). **None can bind a key to an HR system, and none can grant hr.* scopes** (an hr.* scope on a non-HR-bound key is useless under ruling 4). No change needed outside HR; nothing in the frozen core needed.
@@ -67,3 +68,18 @@ Callers of `createApiKey`/`rotateApiKey`: account `connections-actions.ts` (scop
 - D-H48-envgen: `gen-hr-api-docs` needs app env at import (payslip.ts import chain); `--check` inside the oracle is fine.
 - Left out on purpose (brief §4): decisions/approvals, clock, edits/PIN/docs, payroll actions, bank files, filings, certificates, PDF/CSV/XLSX, register, labour cost (H4.2), opening YTD, webhooks, `hr.filter.unit:`.
 - **O1 (owner)**: may an external system read payslips at all? Shipped behind the OWNER consent checkbox, default off; if the owner says no, remove ops `payslips.*` + pay reports from the registry and the `hr-payroll-read` bundle.
+
+
+## 7. Fix round (review MERGE WITH NOTES + hunt 1 MAJOR / 3 MINOR · controller rulings 1–11, 15 Nov)
+| ruling | what was done |
+|---|---|
+| 1 (hunt F1 = review M2) | `reports.get` audits `hr.api.report.read` whenever the serialized answer carries `$` columns (`serialize.reportCarriesMoney(report, pay)`), i.e. OT/time/… read with a pay key too, not by the report's scope. Payslip ops always audit. No other op returns money. |
+| 2 (review M1) | `API_KEY_ONLY_PERMISSIONS` in `permissions.ts` (marked): kept in `PERMISSIONS` (scope registry) but removed from `PERMISSION_MODULES` (staff editor + level presets); `staff/service.ts validatePermissionInput` refuses them with a Thai reason (marked hunk); the 3 reader OR-terms now also require `userId` starting `apikey:` (only the synthetic key viewer) ⇒ a human member holding either key gains nothing. Labels now start "คีย์ API:" and say what is left out. ConnectionsPanel hunk accepted; §F.10 corrected. |
+| 3 (F2) | `op.ts HR_DAY / HR_MONTH / HR_PERIOD` = real calendar values, years 2000–2600 (period also accepts a real day so `register` still answers 404). Used by roster from/to, attendance day/month, POST from/to, report period ⇒ 422 `validation`; `judge.ts` fallback-to-today is unreachable from the API. |
+| 4 (F3) | `keys.ts` refuses names containing C0/C1 controls (incl. NUL), bidi marks/overrides/isolates and U+2028/2029 with a Thai VALIDATION; the card list shows `displayKeyName` (same set stripped). Core audit `after.keyName` comes from names issued by this path only. |
+| 5 (F4) | ended (`active=false`) employees hidden: `GET /employees/{id}`, attendance month, payslip history, payslip, `POST /leaves` ⇒ the same 404 bytes as an unknown id; removed from the attendance day board (totals recomputed) and from `GET /leaves`. **Payslips: the brief does not document ended employees ⇒ 404 too** (final-pay payslips stay in the app). |
+| 6 (I1 + N1) | HR dispatcher, after the key verifies: a write op needs `Content-Type: application/json` (else 415 `invalid_json`; POS has no house rule, `invalid_json` is the closest core code) and any `__proto__`/`constructor`/`prototype` key ⇒ 422 `validation`, before idempotency. `POST /leaves` answers the stored status (read back with `leaveDetailsMany`). |
+| 7 (M3) | OpenAPI description, HR-API.md error table and SKILL.md: shop-wide key ⇒ 400 `system_required` without the header, 403 `scope_missing` with it, other system ⇒ 403 `system_mismatch`. `/developers/account` lists `API_SCOPE_BUNDLES` of every module (kanban/member/crm/pos too) ⇒ hr-* kept there. |
+| 8 | oracle F1–F6 + S6/A14 edits (see oracle notes §5); RED with the fix reverted 40/47; hunter probes in `hr-H4.8-hunt-probes/`. |
+| 9–10 | seed re-run; merged `session/hr` 292bc5b7e: settings page imports both cards; inventory rows 3-way by page+testid (516 base, +17 ours, +24 theirs = 557, 0 lost); messages auto-merged, all keys of both sides present; `prisma generate` + `prisma migrate status` = up to date (225 migrations, nothing pending); qc-hr-h3.8 S1.13 pin re-taken (bbf7604b…). |
+Open: leaves of ended employees still count toward the 100-row reader cap before filtering (a full page can come back shorter, with `truncated:true`).
