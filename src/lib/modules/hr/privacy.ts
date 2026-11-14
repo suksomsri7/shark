@@ -13,6 +13,7 @@ import { hasPin } from "./pin"; // HR H0.5 ▸ ◂
 import type { EmployeeBorrowingDto, EmployeeDocDto, EmployeeProfileDto, LeaveItemDto } from "./privacy-shared";
 // HR H1.1 ▸ ขอบเขตสาขา = ตัวกรองเพิ่มบนด่านเดิม (ไม่เคยขยายสิทธิ์ · ไม่ให้สิทธิ์เงินเดือน) ◂
 import { employeeInScope, hrScopeOf, inPayScope, isAllBranches, unitNamesOf } from "./scope"; // HR PRIV-2 ▸ + inPayScope (ข้อมูลอ่อนไหวด้านค่าจ้าง = สาขาประจำเท่านั้น) ◂
+import { leaveSplitOf } from "./leave"; // HR PREPROD-1 ▸ R3: ส่วนได้/ไม่ได้ค่าจ้างของใบลาป่วยเกินวันที่เหลือ ◂
 import { finalizedOf, slipState } from "./payslip-rules"; // HR H3.8 ▸ สถานะสลิป (pure) ◂
 
 export type HrViewer = MembershipCtx & { userId: string };
@@ -158,10 +159,12 @@ export async function loadPayslipForViewer(ctx: Ctx, v: HrViewer, runId: string,
 }
 
 /** รายการใบลาของหน้าจอ — เหตุผลการลาใส่เฉพาะผู้มี hr.leave.read */
+/** HR PREPROD-1 ▸ R3: + paidDays/unpaidDays เฉพาะใบลาป่วยที่แบ่งส่วนไม่ได้ค่าจ้าง (ใบอื่นรูปเดิมทุกคีย์) ◂ */
+export type LeaveItemSplitDto = LeaveItemDto & { paidDays?: number; unpaidDays?: number };
 export async function leaveItemsForViewer(
   ctx: Ctx,
   v: HrViewer,
-): Promise<{ pending: LeaveItemDto[]; history: LeaveItemDto[]; canReadReason: boolean }> {
+): Promise<{ pending: LeaveItemSplitDto[]; history: LeaveItemSplitDto[]; canReadReason: boolean }> { // HR PREPROD-1 ◂
   const canReadReason = hrAccessOf(v).readLeave;
   // HR H0.7 R10 ▸ ขอบเขตแถว: ผู้อ่าน/ผู้ตัดสินใบลา/OWNER/MANAGER = ทุกแถว · คนอื่น = เฉพาะของตัวเอง (กรองใน where) ◂
   // HR H1.1 ▸ + ขอบเขตสาขา (แถวของตัวเองไม่ถูกกรองด้วยสาขา — service.leaveScopeWhere) ◂
@@ -172,7 +175,9 @@ export async function leaveItemsForViewer(
   const filers = filerIds.length
     ? new Map((await tenantDb({ tenantId: ctx.tenantId }).user.findMany({ where: { id: { in: filerIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
     : new Map<string, string | null>();
-  const toItem = (l: (typeof history)[number]): LeaveItemDto => ({
+  const splits = await leaveSplitOf(ctx, history.filter((l) => String(l.status) === "APPROVED").map((l) => l.id)); // HR PREPROD-1 ▸ R3 ◂
+  const splitOf = (id: string) => { const x = splits[id]; return x && x.unpaidDays > 0 ? { paidDays: x.paidDays, unpaidDays: x.unpaidDays } : {}; }; // HR PREPROD-1 ◂
+  const toItem = (l: (typeof history)[number]): LeaveItemSplitDto => ({
     id: l.id,
     employeeName: l.employee.name,
     type: String(l.type),
@@ -181,6 +186,7 @@ export async function leaveItemsForViewer(
     status: String(l.status),
     ...(canReadReason ? { reason: l.reason } : {}),
     ...(canReadReason && l.filedById ? { filedBy: `ยื่นโดย ${filers.get(l.filedById) || "ผู้ใช้ในร้าน"}` } : {}),
+    ...splitOf(l.id), // HR PREPROD-1 ◂
   });
   return { pending: pending.map(toItem), history: history.map(toItem), canReadReason };
 }

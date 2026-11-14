@@ -24,6 +24,7 @@ import { clockPolicyOf } from "./clock-rules";
 import { unitOfDay } from "./roster";
 import { holidayOfDay } from "./holidays";
 import { addDays } from "./time-rules";
+import { leaveSplitsIn } from "./leave"; // HR PREPROD-1 ▸ R3: ส่วนไม่ได้ค่าจ้างของลาป่วยเกินวันที่เหลือ (ตัวอ่านเดียว) ◂
 import {
   buildWorkDays,
   isBlocking,
@@ -153,7 +154,9 @@ function employedDays(e: Pick<Emp, "startDate" | "endDate">, periodKey: string):
 }
 
 // ═══════════════════════════ สถานะของข้อมูลต้นทาง (R5 — อ่านถูก ไม่ตัดสินใหม่) ═══════════════════════════
-type HashLeave = { id: string; employeeId: string; from: string; to: string; status: string; halfDay: string | null; hours: string | null; policyId: string | null; paid: boolean | null };
+type HashLeave = { id: string; employeeId: string; from: string; to: string; status: string; halfDay: string | null; hours: string | null; policyId: string | null; paid: boolean | null; unpaidFrom?: string; unpaidHalf?: boolean }; // HR PREPROD-1 ▸ + ส่วนไม่ได้ค่าจ้าง (มีเฉพาะใบที่แบ่งส่วน) ◂
+/** HR PREPROD-1 ▸ R3: สิบส่วนของวันนั้นที่ไม่ได้ค่าจ้าง (ใบที่แบ่งส่วน): ก่อนวันแรกที่ไม่ได้ค่าจ้าง = 0 · วันนั้น = 5 (ครึ่งวัน) หรือ 10 · หลังจากนั้น = 10 ◂ */
+const unpaidTenthsOf = (l: Pick<HashLeave, "unpaidFrom" | "unpaidHalf">, day: string): number => (!l.unpaidFrom || day < l.unpaidFrom ? 0 : day === l.unpaidFrom && l.unpaidHalf ? 5 : 10);
 type HashData = { hashes: Map<string, string>; leaves: HashLeave[] };
 const mondayOf = (day: string) => addDays(day, -((new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7));
 const BKK_MS = 7 * 3_600_000;
@@ -207,6 +210,7 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
     db.hrHoliday.findMany({ where: { ...scope, date: { gte: dbDate(b.first), lte: dbDate(b.last) } }, select: { id: true, unitId: true, date: true, name: true, kind: true, shopOpen: true, updatedAt: true }, take: 5000 }),
     allRows((a) => workEntryPunchesInTx(db, ctx, ids, pFrom, pTo, a, TAKE)), // แถวลงเวลาที่ยังมีผล (H2.6 — ยกเลิกแล้วไม่นับ · อ่านผ่าน judge.ts)
   ]);
+  const splits = await leaveSplitsIn(db, lv.filter((l) => String(l.status) === "APPROVED").map((l) => l.id)); // HR PREPROD-1 ▸ R3 ◂
   const leaves: HashLeave[] = lv.map((l) => ({
     id: l.id,
     employeeId: l.employeeId,
@@ -217,6 +221,7 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
     hours: l.hours === null ? null : String(l.hours),
     policyId: l.policyId,
     paid: l.policy ? l.policy.paid : null,
+    ...(splits.get(l.id)?.unpaidFrom ? { unpaidFrom: splits.get(l.id)!.unpaidFrom!, unpaidHalf: splits.get(l.id)!.half } : {}), // HR PREPROD-1 ◂
   }));
   const ts = (d: Date | null | undefined) => (d ? d.toISOString() : null);
   const grace = new Map(shifts.map((x) => [x.id, x.graceMin]));
@@ -249,7 +254,7 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
           punches: [addDays(day, -1), day, addDays(day, 1)].flatMap((d) => (punchBy.get(`${e.id}|${d}`) ?? []).map((r) => [r.id, r.kind, ts(r.at), r.rosterEntryId])).sort(),
           roster: (entBy.get(`${e.id}|${mondayOf(day)}`) ?? []).map((r) => [r.id, dayOf(r.date), ts(r.updatedAt), ts(r.publishedAt), r.breakMin, r.shiftId, grace.get(r.shiftId) ?? null]).sort(),
           sched: (schedBy.get(`${e.id}|${wd}`) ?? []).map((r) => [r.dayOff, r.startMin, r.endMin, r.graceMin, ts(r.createdAt), ts(r.updatedAt)]).sort(),
-          leaves: (leaveBy.get(e.id) ?? []).filter((l) => l.from <= day && day <= l.to).map((l) => [l.id, l.status, l.halfDay, l.hours, l.policyId, l.paid]).sort(),
+          leaves: (leaveBy.get(e.id) ?? []).filter((l) => l.from <= day && day <= l.to).map((l) => [l.id, l.status, l.halfDay, l.hours, l.policyId, l.paid, ...(l.unpaidFrom ? [unpaidTenthsOf(l, day)] : [])]).sort(), // HR PREPROD-1 ▸ ส่วนไม่ได้ค่าจ้างของวันอยู่ในลายนิ้วมือ (เฉพาะใบที่แบ่งส่วน — ใบอื่นค่าเดิม) ◂
           holiday: hol ? [hol.id, ts(hol.updatedAt), hol.shopOpen] : null,
         }),
       );
@@ -405,7 +410,7 @@ export async function buildWorkEntrySnapshot(
               slots: d.slots,
               leaves: d.leaves.map((l): WorkLeave => {
                 const h = lvById.get(l.id);
-                return { id: l.id, status: l.status, halfDay: l.halfDay, hours: l.hours === null ? null : Math.round(l.hours), paid: h?.paid ?? true, legacy: !h?.policyId };
+                return { id: l.id, status: l.status, halfDay: l.halfDay, hours: l.hours === null ? null : Math.round(l.hours), paid: h?.paid ?? true, legacy: !h?.policyId, ...(h?.unpaidFrom ? { unpaidTenths: unpaidTenthsOf(h, d.day) } : {}) }; // HR PREPROD-1 ▸ R3 ◂
               }),
             })),
           });

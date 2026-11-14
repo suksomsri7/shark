@@ -195,7 +195,7 @@ export async function planLeaveRequest(ctx: Ctx, input: LeaveRequestFields): Pro
 }
 
 // ═══════════════════════════ นับวัน (R4) — ใน tx ของผู้เรียก ═══════════════════════════
-async function leaveDaysInTx(tx: Tx, emp: Pick<EmpRow, "id" | "unitId" | "units">, from: string, to: string, half: HrHalfDay | null, hours: number | null): Promise<string> {
+async function leaveDaysInTx(tx: Tx, emp: Pick<EmpRow, "id" | "unitId" | "units">, from: string, to: string, half: HrHalfDay | null, hours: number | null, meta?: { counted: string[] }): Promise<string> { // HR PREPROD-1 ▸ meta.counted = วันที่นับเป็นวันลา (เรียงวัน) — ใช้แบ่งส่วนได้/ไม่ได้ค่าจ้าง ◂
   const days: string[] = [];
   for (let d = from; d <= to && days.length < 367; d = addDays(d, 1)) days.push(d);
   const unitByDay = new Map(days.map((d) => [d, unitOfDay(emp, d)]));
@@ -214,6 +214,7 @@ async function leaveDaysInTx(tx: Tx, emp: Pick<EmpRow, "id" | "unitId" | "units"
   const sched = await tx.hrWorkSchedule.findMany({ where: { employeeId: emp.id }, select: { weekday: true, dayOff: true } });
   const offWd = new Set(sched.filter((s) => s.dayOff).map((s) => s.weekday));
   const daysOff = new Set(days.filter((d) => !holidays.has(d) && !rostered.has(d) && (rosterWeeks.has(weekStartOf(d)) || offWd.has(weekdayOfDay(d)))));
+  if (meta) meta.counted = days.filter((d) => !holidays.has(d) && !daysOff.has(d)); // HR PREPROD-1 ◂
   return countLeaveDays({ from, to, halfDay: half, hours, holidays, daysOff });
 }
 
@@ -365,7 +366,7 @@ export async function reserveLeaveInTx(
         all += tenthsOf(p.days);
         if (!carryEligible(dayOf(p.toDate), thaiDateKey(p.createdAt), st)) late += tenthsOf(p.days);
       }
-      if (all > st.sum || late > st.nonCarry) throw new LeaveRuleError(LEAVE_TEXT.balance);
+      if ((all > st.sum || late > st.nonCarry) && !sickSplits(live, plan.hours)) throw new LeaveRuleError(LEAVE_TEXT.balance); // HR PREPROD-1 ▸ R3: ลาป่วยเกินวันที่เหลือ = รับ (ส่วนเกินไม่ได้ค่าจ้าง ตัดสินตอนอนุมัติ) ◂
     }
   }
   return { days, fields: { policyId: plan.policy?.id ?? null, days, halfDay: plan.halfDay, hours: plan.hours } };
@@ -387,6 +388,8 @@ export type LeaveLedgerRow = {
   lastDay: string | null;
   filedOn: string;
   emp: Pick<EmpRow, "id" | "unitId" | "units">;
+  /** HR PREPROD-1 ▸ R3: ลาป่วยเกินวันที่เหลือ — ส่วนได้ค่าจ้าง/ไม่ได้ (สิบส่วน) · วันแรกที่ไม่ได้ค่าจ้างเต็มวัน · half = วันนั้นได้ค่าจ้างครึ่งวัน (ไม่มี = ได้ค่าจ้างทั้งใบ) ◂ */
+  split?: { paid: number; unpaid: number; from: string; half: boolean };
 };
 /** ใบลา (ใน tx) สำหรับสมุด/ล็อก/event — null = ไม่พบในระบบนี้ */
 export async function leaveRowInTx(tx: Tx, leaveId: string): Promise<LeaveLedgerRow | null> {
@@ -444,6 +447,7 @@ export async function leaveApprovalCheckInTx(tx: Tx, ctx: Ctx, row: LeaveLedgerR
     r = { ...r, days };
   }
   if (!r.policy || r.days === null || isUnlimited(r.policy)) return { ok: true, row: r };
+  if (sickSplits(r.policy, r.hours)) return { ok: true, row: await sickSplitInTx(tx, ctx, r) }; // HR PREPROD-1 ▸ R3: ลาป่วยไม่มี BALANCE — ส่วนเกินวันที่เหลือ = ไม่ได้ค่าจ้าง ◂
   const year = leaveYearOf(r.fromDate, ysmOf(r.policy));
   await ensureGrantInTx(tx, ctx, { id: r.employeeId, startDate: r.startDate }, r.policy, year);
   const st = await leaveYearStateInTx(tx, r.employeeId, r.policy.id, year);
@@ -463,7 +467,7 @@ export async function leaveLedgerInTx(tx: Tx, ctx: Ctx, row: LeaveLedgerRow, fro
     if (!row.policy || row.days === null) return; // ใบรุ่นเก่า (Q18)
     const year = leaveYearOf(row.fromDate, ysmOf(row.policy));
     const base = { employeeId: row.employeeId, policyId: row.policy.id, leaveYear: year, effectiveDate: row.fromDate, leaveId: row.id };
-    await insertTxn(tx, ctx, { ...base, kind: "USE", tenths: -tenthsOf(row.days), sourceKey: `use:${row.id}` }); // r4: ไม่มี expire-use (ใบที่ยื่นหลังหมดอายุไม่ใช้วันสะสม)
+    await insertTxn(tx, ctx, { ...base, kind: "USE", tenths: -(row.split ? row.split.paid : tenthsOf(row.days)), sourceKey: `use:${row.id}`, note: row.split ? splitNote(row.split) : null }); // r4: ไม่มี expire-use (ใบที่ยื่นหลังหมดอายุไม่ใช้วันสะสม) // HR PREPROD-1 ▸ R3: USE = ส่วนได้ค่าจ้างเท่านั้น (0.0 ได้) + note ส่วนไม่ได้ค่าจ้าง ◂
     return;
   }
   if (from === "APPROVED" && (to === "REJECTED" || to === "CANCELLED")) {
@@ -548,6 +552,10 @@ export async function applyLeaveDecision(input: { tenantId: string; systemId: st
         return c.count === 1 ? { kind: "refused", code: chk.code } : { kind: "noop" };
       }
       row = chk.row;
+      if (await leaveUnpaidPartRefusalInTx(tx, ctx, row)) { // HR PREPROD-1 ▸ R3: ส่วนไม่ได้ค่าจ้างตกในเดือนที่อนุมัติเงินเดือนแล้ว ⇒ CANCELLED + รหัส PAID (แบบ MONEY-2) ◂
+        const c = await tx.hrLeave.updateMany({ where: { id, status: "PENDING" }, data: { status: "CANCELLED" } }); // HR PREPROD-1 ◂
+        return c.count === 1 ? { kind: "refused", code: "PAID" } : { kind: "noop" }; // HR PREPROD-1 ◂
+      } // HR PREPROD-1 ◂
     }
     const status = approved ? "APPROVED" : "REJECTED";
     const u = await tx.hrLeave.updateMany({ where: { id, status: "PENDING" }, data: { status, decidedById: ENGINE, ...(approved && row.days !== null ? { days: row.days } : {}) } });
@@ -1173,3 +1181,83 @@ export async function leavePaidRunRefusalInTx(tx: Tx, ctx: Ctx, leaveId: string,
   return onDay ? CORRECTION_TEXT.paid : null;
 }
 // ◂ HR MONEY-2
+
+// ═══════════════════════════ HR PREPROD-1 ▸ R3 ลาป่วยเกินวันที่เหลือ = ส่วนเกินไม่ได้ค่าจ้าง · R5 สลับ "ได้รับค่าจ้าง" ของประเภทการลา ═══════════════════════════
+//   brief ledger/hr-briefs/hr-brief-PREPROD-1.md (มติ Q1 note บนแถว USE · Q2 เพดาน = วันที่เหลือของประเภทการลา · Q3 SICK เท่านั้น · Q4 เครื่องรุ่น 1 ไม่หัก)
+//   ใบลาป่วยแบบนับวัน (ไม่ใช่รายชั่วโมง) ของประเภทที่มีโควตา: ยื่นได้แม้เกินวันที่เหลือ · อนุมัติ ⇒ ได้ค่าจ้าง = min(วันลา, วันที่ใช้ได้ (L3) ปัดลงทีละครึ่งวัน) ·
+//   USE = −ส่วนได้ค่าจ้าง (0.0 ได้ ⇒ ยอดคงเหลือไม่ติดลบ · use-revert คืนเฉพาะส่วนนี้) · note "unpaid:<d.d>;from:<YYYY-MM-DD>[;half]" ·
+//   from = วันแรก (ในชุดวันที่นับเป็นวันลา) ที่ไม่ได้ค่าจ้างเต็มวัน · half = วันนั้นได้ค่าจ้างครึ่งวัน · ได้ค่าจ้างทั้งใบ = note null
+const SPLIT_NOTE = /^unpaid:(\d+\.\d);from:(\d{4}-\d{2}-\d{2})(;half)?$/;
+/** ประเภทการลาที่แบ่งส่วนได้/ไม่ได้ค่าจ้าง: ลาป่วย · มีโควตา · ไม่ใช่ใบรายชั่วโมง */
+function sickSplits(p: Pick<PolicyRow, "category" | "quotaDays"> | null | undefined, hours: number | null): boolean {
+  return !!p && String(p.category) === "SICK" && !isUnlimited(p) && hours === null;
+}
+const splitNote = (sp: NonNullable<LeaveLedgerRow["split"]>): string => `unpaid:${fmtTenths(sp.unpaid)};from:${sp.from}${sp.half ? ";half" : ""}`;
+/** ผู้เรียกถือ hr-leave → emp → กุญแจตารางกะ + แถวประเภทการลา FOR SHARE แล้ว · row.days = จำนวนวันที่นับใหม่ · ได้ค่าจ้างทั้งใบ = row เดิม */
+export async function sickSplitInTx(tx: Tx, ctx: Ctx, row: LeaveLedgerRow): Promise<LeaveLedgerRow> {
+  if (!row.policy || row.days === null || !sickSplits(row.policy, row.hours)) return row;
+  const year = leaveYearOf(row.fromDate, ysmOf(row.policy));
+  await ensureGrantInTx(tx, ctx, { id: row.employeeId, startDate: row.startDate }, row.policy, year);
+  const st = await leaveYearStateInTx(tx, row.employeeId, row.policy.id, year);
+  const need = tenthsOf(row.days);
+  const avail = Math.max(0, carryEligible(row.toDate, row.filedOn, st) ? st.sum : st.nonCarry);
+  if (need <= avail) return row;
+  const paid = Math.floor(avail / 5) * 5;
+  const meta = { counted: [] as string[] };
+  await leaveDaysInTx(tx, row.emp, row.fromDate, row.toDate, row.halfDay, row.hours, meta);
+  const w = row.halfDay ? 5 : 10;
+  let cum = 0;
+  let from = meta.counted[meta.counted.length - 1] ?? row.toDate;
+  let half = false;
+  for (const d of meta.counted) {
+    if (cum + w > paid) {
+      from = d;
+      half = paid - cum === 5 && w === 10;
+      break;
+    }
+    cum += w;
+  }
+  return { ...row, split: { paid, unpaid: need - paid, from, half } };
+}
+/** ส่วนไม่ได้ค่าจ้าง (วัน from … วันสุดท้ายของใบ) ตกในเดือนที่ระบบ HR นี้มีรอบ APPROVED/PAID ⇒ CORRECTION_TEXT.paid (ตัวตัดสินรอบที่สองหลังแบ่งส่วน — ลำดับเดิมคงไว้) */
+export async function leaveUnpaidPartRefusalInTx(tx: Tx, ctx: Ctx, row: Pick<LeaveLedgerRow, "toDate" | "split">): Promise<string | null> {
+  if (!row.split || row.split.unpaid <= 0) return null;
+  const months = monthsOfRange(row.split.from, row.toDate);
+  if (!months.length) return null;
+  const run = await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: { in: months }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } });
+  return run ? CORRECTION_TEXT.paid : null;
+}
+export type LeaveSplit = { paidDays: number; unpaidDays: number; unpaidFrom: string | null };
+type SplitDb = { hrLeaveBalanceTxn: Pick<Tx["hrLeaveBalanceTxn"], "findMany"> };
+/** ตัวอ่านเดียวของส่วนได้/ไม่ได้ค่าจ้าง (จากแถว USE ของใบที่อนุมัติ) — คืนเฉพาะใบที่มีแถว USE · + half ของวันแรกที่ไม่ได้ค่าจ้าง (ใช้ภายใน) */
+export async function leaveSplitsIn(db: SplitDb, ids: string[]): Promise<Map<string, LeaveSplit & { half: boolean }>> {
+  const out = new Map<string, LeaveSplit & { half: boolean }>();
+  const list = [...new Set(ids.filter((x) => typeof x === "string" && x))];
+  if (!list.length) return out;
+  const rows = await db.hrLeaveBalanceTxn.findMany({ where: { sourceKey: { in: list.map((id) => `use:${id}`) } }, select: { sourceKey: true, days: true, note: true } });
+  for (const r of rows) {
+    const m = SPLIT_NOTE.exec(r.note ?? "");
+    out.set(r.sourceKey.slice(4), { paidDays: -tenthsOf(r.days) / 10, unpaidDays: m ? tenthsOf(m[1]) / 10 : 0, unpaidFrom: m ? m[2]! : null, half: !!m?.[3] });
+  }
+  return out;
+}
+/** ruling 1: ต่อ id ใบลา → { paidDays, unpaidDays, unpaidFrom } (ใบที่ยังไม่อนุมัติ/ไม่มีแถว USE = ไม่มีคีย์) */
+export async function leaveSplitOf(ctx: Ctx, ids: string[]): Promise<Record<string, LeaveSplit>> {
+  const m = await leaveSplitsIn(tenantDb(ctx) as unknown as SplitDb, Array.isArray(ids) ? ids : []);
+  return Object.fromEntries([...m].map(([id, v]) => [id, { paidDays: v.paidDays, unpaidDays: v.unpaidDays, unpaidFrom: v.unpaidFrom }]));
+}
+/** R5: ประเภทการลานี้มีใบ APPROVED ที่ครอบเดือนที่ระบบ HR ของใบมีรอบ APPROVED/PAID ⇒ ห้ามสลับ "ได้รับค่าจ้าง" (เดือนตามกติกาเดียวกับ leavePaidRunRefusalInTx) */
+export async function leavePolicyPaidLockedInTx(tx: Tx, ctx: Ctx, policyId: string): Promise<boolean> {
+  const ls = await tx.hrLeave.findMany({ where: { tenantId: ctx.tenantId, policyId, status: "APPROVED" }, select: { systemId: true, fromDate: true, toDate: true } });
+  const bySys = new Map<string, Set<string>>();
+  for (const l of ls) {
+    const set = bySys.get(l.systemId) ?? new Set<string>();
+    for (const m of monthsOfRange(dayOf(l.fromDate), dayOf(l.toDate))) set.add(m);
+    bySys.set(l.systemId, set);
+  }
+  for (const [systemId, months] of bySys) {
+    if (await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId, periodKey: { in: [...months] }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } })) return true;
+  }
+  return false;
+}
+// ◂ HR PREPROD-1
