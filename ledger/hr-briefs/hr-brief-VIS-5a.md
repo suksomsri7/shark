@@ -122,3 +122,9 @@ Create only when `!runs.some(r => r.periodKey===periodKey && r.status!=="REVERSE
 
 ## NOT IN THIS TICKET (owner list)
 Bulk slips PDF · per-line formula text + POS bill numbers · calc history · vs last month · employer SSO per person (Run2PayRow frozen) · masked bank account (sensitive) · step dates/approver · "last pulled" time · equation line + shop labour cost · law effective-date line.
+
+## CONTROLLER RULINGS (15 Nov) — drafter defaults ACCEPTED for Q1–Q7
+- Q1 yes (server-side sum of stored line amounts; shown only where it equals the stored additions total) · Q2 yes · Q3 no amounts in the accounting callout · Q4 current month + "latest run" link · Q5 old hard-coded Thai in moved sections is left to VIS-5e · Q6 engine column hidden on screen, kept in CSV · Q7 builder may add walk-matrix states for the new views.
+- No business logic, action semantics, privacy rule or money computation changes. Acceptances in older oracles: explicit allowlist (`VIS5A_ALLOW`), every hunk marked `HR VIS-5a`.
+- Verification of pictures is done by the controller (build + `walk-hr.mts --only`), not by the builder.
+- "Owner list" items are NOT built.
