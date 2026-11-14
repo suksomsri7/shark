@@ -2173,6 +2173,20 @@ async function pp1ResplitAfterReverse(ctx: Ctx, runId: string, periodKey: string
   }
 }
 // ◂ HR PREPROD-1
+// HR PREPROD-1 ▸ V8d: ก่อนสร้าง/ดึงข้อมูลใหม่ร่างรุ่น 2 ของงวด P — แบ่งส่วนลาป่วยใหม่ (ทางลองซ้ำของ V8c) · เรียกก่อนสร้างชั่วโมงทำงานและก่อนล็อกงวด ·
+//   ไม่ถือล็อกใด (ล็อกต่อพนักงานใน tx ของตัวเอง commit ก่อนกลับ) ⇒ ไม่มีวงล็อกกับการกลับรายการ/อนุมัติ/ตัดสินใบลา · ล้ม = ปฏิเสธการสร้าง/ดึงใหม่ (ไม่หักเงินเงียบ ๆ) ◂
+const PP1_RESPLIT_FAILED = "แบ่งส่วนวันลาป่วยใหม่ไม่สำเร็จ — ยังไม่สร้าง/ดึงข้อมูลรอบนี้ ลองอีกครั้ง";
+async function pp1ResplitForDraft(ctx: Ctx, periodKey: string): Promise<string | null> {
+  try {
+    const { resplitForDraft } = await import("./leave");
+    await resplitForDraft(ctx, periodKey);
+    return null;
+  } catch (e) {
+    await logOps("WARN", "hr-payroll", "ก่อนสร้างร่างรอบจ่าย แบ่งส่วนลาป่วยใหม่ไม่สำเร็จ", { tenantId: ctx.tenantId, detail: `periodKey=${periodKey} systemId=${ctx.systemId} error=${reverseErrorCode(e)}` }).catch(() => undefined);
+    return PP1_RESPLIT_FAILED;
+  }
+}
+// ◂ HR PREPROD-1
 // HR PREPROD-1 ▸ R4: ผู้ดูที่จำกัดสาขาแตะรายการเงินของพนักงานนอกขอบเขตค่าจ้างไม่ได้ (ตัวตัดสินเดียว scope.inPayScope — สาขาประจำเท่านั้น ยืมตัวไม่นับ) ·
 //   ไม่มีแถว/ไม่มีพนักงาน = นอกขอบเขต (ผู้เรียกตอบเหมือน "ไม่พบ") · ทุกสาขา = ไม่ตรวจที่นี่ (ข้อความเดิม) ◂
 export async function payScopeBlocked(ctx: Ctx, scope: PayScope, employeeId: string | null | undefined): Promise<boolean> {
@@ -2777,6 +2791,8 @@ export async function createPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: { 
   if (bad) return { ok: false, ...bad };
   if ((await getPayrollEngine(ctx)).engineVersion !== 2) return { ok: false, code: "ENGINE_V1", reason: RUN2_TEXT.engineV1 };
   const now = opts.now ?? new Date();
+  const rs = await pp1ResplitForDraft(ctx, periodKey); // HR PREPROD-1 ▸ V8d: แบ่งส่วนลาป่วยใหม่ก่อนสร้างชั่วโมงทำงาน/ล็อกงวด ◂
+  if (rs) return { ok: false, code: "BUILD", reason: rs }; // HR PREPROD-1 ▸ V8d ◂
   const b = await buildAllWorkEntries(ctx, viewer, periodKey, now);
   if (!b.ok) return { ok: false, code: "BUILD", reason: b.reason };
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
@@ -2817,8 +2833,9 @@ export type RecomputeV2Opts = { viewer?: Run2Viewer; now?: Date };
 /** R5 ดึงข้อมูลใหม่ของรอบร่างรุ่น 2 = สร้างซ้ำบนรอบเดิม · ผู้กดเป็น "ผู้สร้าง" คนใหม่ · ล้างขั้นยืนยันสาขา */
 async function recomputeDraftRunV2(ctx: Ctx, id: string, actor: PayrollActor, opts: RecomputeV2Opts): Promise<{ ok: true; note: string } | { ok: false; reason: string; code?: Run2Code }> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  const pre = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { ...scope, id }, select: { periodKey: true } });
+  const pre = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { ...scope, id }, select: { periodKey: true, status: true } }); // HR PREPROD-1 ▸ + status (V8d) ◂
   if (!pre) return { ok: false, reason: RUN_NOT_FOUND };
+  if (pre.status === "DRAFT") { const rs = await pp1ResplitForDraft(ctx, pre.periodKey); if (rs) return { ok: false, reason: rs, code: "BUILD" }; } // HR PREPROD-1 ▸ V8d: แบ่งส่วนลาป่วยใหม่ก่อนดึงข้อมูลใหม่ (ไม่ใช่ร่าง = tx ด้านล่างปฏิเสธเหมือนเดิม) ◂
   if (opts.viewer) {
     const b = await buildAllWorkEntries(ctx, opts.viewer, pre.periodKey, opts.now ?? new Date());
     if (!b.ok) return { ok: false, reason: b.reason, code: "BUILD" };

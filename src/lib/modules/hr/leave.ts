@@ -1355,12 +1355,20 @@ export async function leavePolicyPaidLockedInTx(tx: Tx, ctx: Ctx, policyId: stri
 // HR PREPROD-1 ▸ V8c: กลับรายการรอบจ่ายแล้ว (เรียกหลัง commit ของการกลับรายการ) ⇒ ใบลาป่วยที่แบ่งส่วนของพนักงานในรอบนั้นที่มีวันในงวดนั้น
 //   แบ่งใหม่ (เพิ่มแถว · กติกาเดียวกับ V8) — ต่อพนักงานหนึ่ง tx ใต้ hr-leave-emp:<sys>:<emp> (ไม่ถือล็อกงวด/แถวรอบของการกลับรายการ ⇒ ไม่มีวงล็อก) ◂
 export async function resplitAfterReverse(ctx: Ctx, employeeIds: string[], periodKey: string): Promise<void> {
+  if (employeeIds.length) await resplitSickOfPeriod(ctx, employeeIds, periodKey);
+}
+// HR PREPROD-1 ▸ V8d: สร้าง/ดึงข้อมูลใหม่ร่างรอบรุ่น 2 ของงวด P ⇒ แบ่งใหม่ก่อน (ทางลองซ้ำของ V8c ที่พลาด) — ใบลาป่วยที่แบ่งส่วนของทุกพนักงานในระบบที่มีวันใน P ·
+//   กติกาเดียวกัน (เพิ่มแถวเมื่อส่วนได้ค่าจ้างโตขึ้นเท่านั้น ⇒ ซ้ำได้ · ใบที่มีวันในเดือน APPROVED/PAID คงเดิม) · ผู้เรียกเรียกก่อนล็อกงวด ไม่ถือล็อกใด ◂
+export async function resplitForDraft(ctx: Ctx, periodKey: string): Promise<void> {
+  await resplitSickOfPeriod(ctx, null, periodKey);
+}
+// HR PREPROD-1 ▸ V8c/V8d: employeeIds = null ⇒ ทุกพนักงานของระบบ HR นี้ · ต่อพนักงานหนึ่ง tx ใต้ hr-leave-emp (ล็อกเดียว ไม่ซ้อนล็อกอื่น) ◂
+async function resplitSickOfPeriod(ctx: Ctx, employeeIds: string[] | null, periodKey: string): Promise<void> {
   const first = `${periodKey}-01`;
   const [y, m] = periodKey.split("-").map(Number);
   const last = new Date(Date.UTC(y!, m!, 0)).toISOString().slice(0, 10);
-  const ls = employeeIds.length
-    ? await tenantDb(ctx).hrLeave.findMany({ where: { employeeId: { in: employeeIds }, status: "APPROVED", policyId: { not: null }, fromDate: { lte: dbDate(last) }, toDate: { gte: dbDate(first) } }, select: { employeeId: true, policyId: true, fromDate: true, policy: { select: { yearStartMonth: true, category: true } } }, take: 5000 })
-    : [];
+  const who = employeeIds ? { employeeId: { in: employeeIds } } : { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const ls = await tenantDb(ctx).hrLeave.findMany({ where: { ...who, status: "APPROVED", policyId: { not: null }, fromDate: { lte: dbDate(last) }, toDate: { gte: dbDate(first) } }, select: { employeeId: true, policyId: true, fromDate: true, policy: { select: { yearStartMonth: true, category: true } } }, take: 5000 });
   const byEmp = new Map<string, Map<string, Set<number>>>();
   for (const l of ls) {
     if (!l.policyId || String(l.policy?.category) !== "SICK") continue;
