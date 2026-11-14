@@ -1144,7 +1144,7 @@ const monthsOfRange = (from: string, to: string): string[] => {
 };
 /**
  * R5/R6 ข้อความปฏิเสธ (null = ผ่าน):
- *   (a) ใบลาไม่รับค่าจ้าง (paid === false) — หรือ `revoke` (ถอน/ยกเลิกใบที่อนุมัติแล้ว) ของใบลาที่มีประเภทการลา — ในเดือนที่มีรอบ APPROVED/PAID ·
+ *   (a) ใบลาไม่รับค่าจ้าง (paid === false) — หรือ `revoke` (ถอน/ยกเลิกใบที่อนุมัติแล้ว) ของใบลาใดก็ได้ (D2) — ในเดือนที่มีรอบ APPROVED/PAID ·
  *   (b) ใบลาใดก็ได้ (รับ/ไม่รับค่าจ้าง · ใบรุ่นเก่า) ที่ครอบวันที่มีรายการหักสาย/ขาด (HrAttendanceDeduction.linesJson วันนั้น) ผูกอยู่กับรอบ APPROVED/PAID
  */
 export async function leavePaidRunRefusalInTx(tx: Tx, ctx: Ctx, leaveId: string, opts: { revoke?: boolean } = {}): Promise<string | null> {
@@ -1154,20 +1154,22 @@ export async function leavePaidRunRefusalInTx(tx: Tx, ctx: Ctx, leaveId: string,
   const to = dayOf(l.toDate);
   const months = monthsOfRange(from, to);
   if (!months.length) return null;
-  if (l.policy && (l.policy.paid === false || opts.revoke === true)) {
+  if (l.policy?.paid === false || opts.revoke === true) { // D2: ถอน/ยกเลิกใบที่อนุมัติแล้ว — ทุกใบ (มีหรือไม่มีประเภทการลา)
     const run = await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: { in: months }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } });
     if (run) return CORRECTION_TEXT.paid;
   }
-  const heads = await tx.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: l.employeeId, workPeriodKey: { in: months }, kind: "DEDUCTION" }, select: { adjustmentId: true, linesJson: true }, take: 1000 });
-  const onDay = heads.filter((h) => (Array.isArray(h.linesJson) ? (h.linesJson as unknown[]) : []).some((x) => {
+  // D1: เริ่มจากรายการหักสาย/ขาดของพนักงานที่ผูกรอบแล้ว (ชุดเล็กโดยธรรมชาติ) → รอบ APPROVED/PAID → หัวรายการของเดือนที่ลา — ไม่มีเพดานแถวที่ตัดแถวสำคัญทิ้ง
+  const bound = await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: l.employeeId, kind: "DEDUCTION", sourceType: { in: ["ABSENT_RULE", "LATE_RULE"] }, runId: { not: null } }, select: { id: true, runId: true } });
+  const runIds = [...new Set(bound.map((b) => b.runId).filter((x): x is string => !!x))];
+  if (!runIds.length) return null;
+  const paidRuns = new Set((await tx.hrPayrollRun.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: runIds }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } })).map((r) => r.id));
+  const ids = bound.filter((b) => !!b.runId && paidRuns.has(b.runId)).map((b) => b.id);
+  if (!ids.length) return null;
+  const heads = await tx.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: l.employeeId, adjustmentId: { in: ids }, workPeriodKey: { in: months } }, select: { linesJson: true } });
+  const onDay = heads.some((h) => (Array.isArray(h.linesJson) ? (h.linesJson as unknown[]) : []).some((x) => {
     const ln = (x && typeof x === "object" ? x : {}) as { day?: unknown; amountSatang?: unknown };
     return typeof ln.day === "string" && ln.day >= from && ln.day <= to && Number(ln.amountSatang) > 0;
   }));
-  if (!onDay.length) return null;
-  const bound = await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: onDay.map((h) => h.adjustmentId) }, runId: { not: null } }, select: { runId: true } });
-  const runIds = [...new Set(bound.map((b) => b.runId).filter((x): x is string => !!x))];
-  if (!runIds.length) return null;
-  const paidRun = await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: runIds }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } });
-  return paidRun ? CORRECTION_TEXT.paid : null;
+  return onDay ? CORRECTION_TEXT.paid : null;
 }
 // ◂ HR MONEY-2
