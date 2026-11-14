@@ -1,0 +1,89 @@
+# HR VIS-5a — builder notes (payroll area to mockup 06, layout only)
+
+Branch `wip/hr-vis-5a` (lane 3) · base = merge-base with `session/hr` 09713f430 · oracle `scripts/qc-hr-vis-5a.mts` @ 1e0a6a210 (38 checks, rulings r2).
+Commits: step 1 `3399895b5` · step 2 `32b80204c` · step 3 `669eb83e4` · oracle-edit / fix commits listed at the end.
+
+## Pre-build finding (reported, ruled r2)
+Base page, rendered through the suite's shim, sections per viewer: OWNER all 8 · branch-limited payroll (STAFF [U1] + hr.payroll.read) = run2 · we · stock · PayrollSection (profiles/attendance/adjust/create/runs) · MANAGER [U1] (no keys) = no-access notice · run2 (minutes) · we · **stock + request form** (`rbac.evaluate()` gives MANAGER every unit-less action ⇒ `canRequestStockCharge`). Ruling r2: manager nav = run + hours + adjust.
+
+## Step 1 — views + move
+Files: `src/app/app/sys/[id]/hr/payroll/page.tsx`, `payroll-ui.tsx` (`parts`), `pay-run-view.ts` (new: `PAY_VIEWS`, `payViewOf`), `payroll-run-ui.tsx` (ytd link → `?view=ytd#hr-ytd-card`), messages `hr.payview.*`, inventory row `hr-pay-view-*`, walk matrix states `11v-payroll-view-*`.
+
+| view | sections rendered (moved, not rewritten) | nav gate (existing functions) | O | P | PB | M |
+|---|---|---|---|---|---|---|
+| run (default) | `PayrollRunSection` · no-access notice (viewer without `canViewPayroll`) · engine-1 shop: PayrollSection create + runs | always | ✓ | ✓ | ✓ | ✓ |
+| hours | `WorkEntriesPanel` + PayrollSection `attendance` (payroll viewers) | `canReadWorkEntries ∨ canViewPayroll` | ✓ | ✓ | ✓ | ✓ |
+| adjust | PayrollSection `adjust` (payroll viewers) + `StockChargeSection` | `canViewPayroll ∨ canRequestStockCharge ∨ canSeeStockCharges` | ✓ | ✓ | ✓ | ✓ |
+| profiles | PayrollSection `profiles` | `canViewPayroll` | ✓ | ✓ | ✓ | – |
+| docs | `BankFileSection` · `FilingSection` · `SalaryCertSection` | `canUseBankFiles ∨ canUseFilings ∨ canUseSalaryCerts` | ✓ | per keys | – | – |
+| ytd | `OpeningYtdCard` | `canUseFilings` | ✓ | per keys | – | – |
+| history | PayrollSection `create` + `runs` (v1 list, exclusions, stranded, slip chips) | `canViewPayroll` ∧ engine 2 (engine-1: run view lists runs; `?view=history` still renders) | ✓ | ✓ | ✓ | – |
+
+- `payViewOf(sp)`: an explicit valid `view` wins. Otherwise the view is inferred from the params: bank*/f*/ty/sc → docs · yty/ymsg/yn → ytd · stock* → adjust · we → hours · anything else → run. The frozen actions' redirects therefore land on the right view without changes.
+- Both `we=` redirects of the page now carry `view=hours`. `back2` is unchanged (run).
+- Width: run · hours · docs `max-w-[1200px]` · profiles · adjust · ytd · history `max-w-2xl`.
+- Page desc is now `hr.payview.desc`.
+- PayrollSection `parts?: ("profiles"|"attendance"|"adjust"|"create"|"runs")[]`. Omitting it gives the old output. Reads that feed only hidden parts are skipped: `monthlyAttendance`, `stockConsentByAdjustment`, `giveBackPeriodOf`. The Thai section titles are unchanged (W2 finds them by title; Q5).
+- Every section keeps its own gate inside. A view the nav hides still renders whatever the section gates allow.
+
+## Step 2 — run screen (mockup 06)
+Files: `payroll-run-ui.tsx` · `pay-run-view.ts` (`runFigures`, `workedDaysOf`) · `period-label.ts` (new: `periodLabel`, `dayLabel`; month names read from the message files) · messages · inventory.
+- Header: breadcrumb · `h2` "รอบจ่าย {period}" · sub-line (pay date · N people) · excluded note `hr-run2-excluded` (limited viewer) · buttons on the right: sync, rebuild (DRAFT), and a link to `?view=adjust`. The section uses `aria-label`, because heading ids that start with `hr-run2-` are counted as test ids by N1.
+- Period chips `hr-run2-row-*`: compact, wrapping, 44 px, at most 12 plus the selected run.
+- Stepper `hr-run2-steps` (≥ md): circles with connecting lines. The current step uses the accent colour, and the review step shows "review N". At 390 it is the line "ขั้น 2/5 · ตรวจ".
+- Tiles `hr-run2-tiles`, row 1: net (hero, ink), gross (pay-type counts), OT (Σ OT lines; footnote "all additions ฿X"), commission. Row 2: deduct, SSO employee, SSO employer (footnote: shop cost), WHT. OT and commission come from `runFigures`: Σ of stored lines, null ("—") when a row's addition lines ≠ its stored `addSatang` (Q1).
+- Table `hr-run2-table`: one `<table>`, no `min-w`, no scroller. Columns: name (link `hr-run2-lines-*` → `?emp=`) · base · worked days (Q2: HrWorkDay `workMin>0` of the run period, visible ids only) · OT · add (stored `addSatang`, code labels below) · deduct (code labels below) · SSO · WHT · net · status (ready / review + first reason).
+  - Visibility: `md:table-cell` for base / add / deduct / SSO / status. Days / OT / WHT appear only from `xl` (`2xl` while the drawer is open). At 390 the table shows name (+ status chip) and net.
+  - Totals row `hr-run2-totals` = the tile values (already scoped). Base total = Σ stored wage lines, shown only when every row reconciles.
+- Money cells keep the old expressions, now in one place (`cellsOf`). The tile array lines are unchanged and the totals row reuses them, so there is no new `*Satang` arithmetic in tsx (S5).
+- Drawer `hr-run2-drawer` (`?emp=` only if it is a row of the viewer's own preview): earnings / deductions lines (label · day · minutes · requested · amount), totals of each group, SSO and WHT of the row, net, flags. Links: attendance month, slip, additions/deductions view. Placement: side column at ≥1280, after the table below that.
+- Review `hr-run2-review` is one `<details>` (collapsed). It holds `hr-run2-warn` and the review items grouped by code, plus `hr-run2-ytd-link` → `?view=ytd#hr-ytd-card`.
+- Bar `hr-run2-bar`: approve / pay (+ PayFields) / reverse. At 390 it is sticky at the bottom only in DRAFT (approve). Doc links `hr-run2-doclink-{bank,pnd1,sso110}` follow in normal flow, only for APPROVED/PAID runs and only where the docs gates pass.
+- Accounting callout `hr-run2-jv`: wording only, no amounts (Q3).
+
+## Step 3 — states, labels, 13b
+- Runs list: every engine (v1 too). `pick` falls back to the newest REVERSED run of the period.
+- Create shows only when the period has no live run (a count of non-REVERSED runs of the period).
+- `hr-run2-banner`: DRAFT "review N" · APPROVED · PAID (pay date) · REVERSED (danger, read-only, stepper hidden, no actions, create shown) · engine-1 run ("classic payroll" + link `?view=history`; none of rebuild / approve / pay / reverse / branch confirm / doc links / JV; sync stays).
+- Labels: `hr.run2.title` "รอบจ่ายเงินเดือน" / "Pay run" · `runs` without engine wording · chips, heading, create and the PayFields date hint use `periodLabel`.
+- 13b (`reports-ui.tsx`, screen only): the status cell of payroll-month uses `hr.run2.st_*`, the engine column is filtered out on screen (DTO/CSV unchanged, B2), and the `net` th/td are `sticky right-0`.
+
+## Test ids
+Added: `hr-pay-view-*` (page.tsx), `hr-run2-banner`, `-drawer`, `-excluded`, `-totals`, `-bar`, `-doclink-*`, `-jv` (all in payroll-run-ui.tsx). Moved/changed: `hr-run2-lines-*` (`<details>` → link, inventory `kind: link`), `hr-run2-review` (`<details>`), `hr-run2-sync` and `hr-run2-rebuild` (header), `hr-run2-steps` (hidden below md). Nothing removed. The id `hr-run2-engine-title` (settings card heading) was dropped in favour of `aria-label`.
+
+## ORACLE-EDIT list (commit `702ba0bac`, every hunk marked `ORACLE-EDIT (HR VIS-5a · controller)`)
+| file | check | acceptance |
+|---|---|---|
+| `scripts/qc-hr-h3.6.mts` | S1.6 frozen | `VIS5A_ALLOW` = payroll-ui · payroll-run-ui · reports-ui, in base only, every hunk adds `HR VIS-5a` |
+| `scripts/qc-hr-h3.9.mts` | S1.5 frozen | same |
+| `scripts/qc-hr-h4.3-lib.mts` | S1.6 hrFrozen + other oracles | `VIS5A_ALLOW` = the 3 product files + qc-hr-h3.6 / h3.9 / priv-2 + qc-hr-vis-5a(.mts, -lib.mts); every hunk adds `HR VIS-5a` (the new oracle files carry it in line 1) |
+| `scripts/qc-hr-priv-2.mts` | S4 oracle edits · S5 allowed files / marked hunks | S4: `VIS5A_ORACLES` (h3.6 · h3.9 · h4.3-lib · vis-5a · vis-5a-lib); S5: `VIS5A_SRC` (page · pay-run-view · period-label · payroll-ui · payroll-run-ui · reports-ui) accepted when every hunk adds `HR VIS-5a` + `◂` — this also covers the "removes-other" moved `HR H3.4` / `HR PRIV-2` lines; their privacy content is pinned verbatim by qc-hr-vis-5a S4 |
+
+Not edited: h3.3, h3.7, h3.8, money-2, hf-sso, h4.6 S14, h3.1, h3.4(-lib), h3.4-ytd(-lib) stayed green as they are. `hr-run2-*` ids stay in payroll-run-ui.tsx (h3.4-lib S1.9).
+
+## Open item — qc-hr-vis-5a N1 (oracle question)
+N1 `codeRows` requires a `/hr/payroll` inventory row for every `hr-run2-*` string in payroll-run-ui.tsx. That includes `hr-run2-engine` and `hr-run2-engine-save` of `PayrollEngineCard`, which renders on **/hr/settings**. The inventory already has those two rows, under the settings page. K3 forbids moving the card out of payroll-run-ui.tsx. Adding payroll-page rows for them would be false, because the walker would then expect them on /hr/payroll. I left N1 red (37/38): it needs a controller ORACLE-EDIT, e.g. N1 ignores ids that have an inventory row on another page.
+
+## Re-shoot list (controller walk · `walk-hr.mts --only`) — above the fold
+Walker states: `11a-payroll-open` (O P PB M MB S), `11b-payroll-bank` (now lands on ?view=docs via payViewOf), `x1-payroll-approved`, `x2-payroll-paid`, `x3-payroll-reversed`, `x4-payroll-v1-paid`, `13b-report-payroll`, the new `11v-payroll-view-{hours,adjust,profiles,docs,ytd,history}`, plus one drawer state by hand: `?view=run&period={period.DRAFT}&run={run.DRAFT}&emp={emp.namfon}#hr-run2-drawer` (O).
+- **1440, DRAFT (11a O):** module tabs, the payroll sub-nav (7 tabs), breadcrumb + "รอบจ่าย <ก.ย. 2569>" + sub-line, sync / rebuild / add-deduct on the right, period chips, banner "ร่าง · ต้องตรวจ N", stepper with step 2 in accent, both tile rows (hero net black), table header. Page height without the drawer ≲ 2,300 px (14 people, rows ~56 px, review collapsed).
+- **1024:** title, stepper, tile row 1 (tiles are 4 columns from `lg`). Table without days / OT / WHT and without a horizontal scroller.
+- **390:** title, banner, the "ขั้น 2/5 · ตรวจ" line, net tile full width, then 2-column tiles. Table = name (+ status chip) and net. The approve bar is sticky at the bottom in DRAFT, and all controls are ≥ 44 px. Expected height ≲ 3,000 px (needs a picture; the chips can wrap up to 12).
+- **x1 APPROVED / x2 PAID:** no create form · banner (approved / paid + pay date) · doc links bank / ภงด.1 / สปส.1-10 (owner) in the bar row · x2 PB: in-scope rows only + `hr-run2-excluded` note in the header.
+- **x3 REVERSED:** red banner (role=note) · no stepper · table read-only · create form shown · no bar.
+- **x4 v1:** banner "รุ่นเดิม …" + link to ?view=history · table · title with the v1 period · only sync in the header.
+- **13b:** status cells in words, no engine column, net pinned right inside the declared scroller.
+- **Manager (11a M/MB):** nav run · hours · adjust; the run view shows the no-access notice + minutes list + branch confirm, no ฿.
+- **Drawer (≥1280):** side column 400 px beside the table; days / OT / WHT columns only from 2xl while it is open. Below 1280 the drawer sits under the table.
+
+## Could not verify without pictures
+Above-the-fold positions and page heights · the sticky bar at 390 (`max-md:contents` wrapper + sticky child) · that the 1024 / 1280 tables fit without clipping (`overflow-hidden` on the rounded table frame would clip rather than scroll if a long name or code label is too wide) · stepper connector look · selected-row tint (`--color-accent-soft` + inset bar) · chip wrapping at 390 · EN-THAI in moved legacy sections (Q5, expected) · `PAY_SCOPE_EXCLUDED_TEXT` is Thai on en (frozen constant in scope.ts).
+
+## Runs (lane 3 DB, iso.sh + qc-hr.sh + gate lock, QC_H06_BASE as ordered)
+- seed-hr-qc 34/34.
+- qc-hr-vis-5a: forced ×3 → **37/38** each (N1 only, see open item) · unforced 37/38 · RESIDUE none every run.
+- Green: h3.1 58/58 · h3.3 51/51 · h3.4 85/85 · h3.4-ytd 44/44 · h3.5 53/53 · h3.6 62/62* · h3.7 68/68 · h3.8 78/78 · h3.9 60/60* · h4.2 57/57 · h4.3 45/45* · h4.6 69/69 · h4.8 48/48 · h1.3 63/63 · h2.4 68/68 · h0.6 55/55 · set-1 25/25 · money-2 57/57 · priv-2 47/47* · hf-sso 41/41 · qc-hf-hr-privacy 194/194 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-audit-trail 21/21 · qc-hr 9/9 · qc-pages 31/31. (* = after the ORACLE-EDITs. Before them, h3.6 S1.6, h3.9 S1.5, h4.3 S1.6 and priv-2 S4/S5 failed as the brief expected.)
+- qc-nav-functions: 10/11. S5 fails only on HOTEL / BOOKING accordion completeness (not HR; untouched here). The HR lines are clean.
+- fitness 54/54 and fitness-hr 9/9, both with env and with `env -u DATABASE_URL -u DIRECT_URL`.
+- Clean typecheck (`rm -rf .next/types tsconfig.tsbuildinfo`, ISO_MEM=14000M, started at MemAvailable 14.7 GB) → exit 0.
+- Process note: one earlier typecheck was started by mistake at MemAvailable 8.5 GB. I stopped it (its iso unit) after ~7 min, before it finished.
