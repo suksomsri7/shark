@@ -1312,6 +1312,17 @@
       "ytdLink": "Enter opening figures",
       "rv_YTD_REBUILD": "Needs recalculation — the opening year-to-date changed after the draft was made; press 'Refresh data' before approving"
     },
+    "payview": {
+      "run": "Pay run",
+      "hours": "Work hours",
+      "adjust": "Additions & deductions",
+      "profiles": "Pay setup",
+      "docs": "Bank file · filings",
+      "ytd": "Opening YTD",
+      "history": "Run history",
+      "nav": "Payroll views",
+      "desc": "Pay run · work hours · additions and deductions · bank file and filings"
+    },
     "attpay": {
       "policyTitle": "Late / early-out / absence deductions",
       "policyDesc": "Off by default · deducts pro rata for time not worked: monthly salary ÷ 30 ÷ normal minutes per day × minutes (satang rounded down, per day) · an absence never exceeds one day's wage · monthly staff only",

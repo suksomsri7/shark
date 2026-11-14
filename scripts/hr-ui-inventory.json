@@ -14321,6 +14321,30 @@
    "note": "แจ้งว่าแสดงเฉพาะ 500 คนแรก (ไม่ตัดเงียบ — fix round F3)"
   },
   {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-pay-view-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/payroll/page.tsx",
+   "conditional": "แท็บที่ด่านเดิมของส่วนนั้นผ่าน (run เสมอ · hours · adjust · profiles · docs · ytd · history)",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "?view=*"
+   },
+   "wo": "VIS-5a",
+   "oracle": "qc-hr-vis-5a",
+   "note": "แถบมุมมองหน้าเงินเดือน (* = run|hours|adjust|profiles|docs|ytd|history) · aria-current = มุมมองที่เปิด"
+  },
+  {
    "page": "/app/sys/[id]/hr/settings",
    "testid": "hr-apikeys-card",
    "kind": "display",

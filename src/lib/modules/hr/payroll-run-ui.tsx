@@ -209,7 +209,8 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                     {pv.review.map((x, i) => (
                       <li key={i}>
                         {x.name} · {x.day ?? t("wholePeriod")} · {t(`rv_${x.code}`)}
-                        {x.code === "YTD_OPENING" ? <> · <a href="#hr-ytd-card" data-testid="hr-run2-ytd-link" className="inline-flex min-h-[44px] items-center underline-offset-2 hover:underline">{t("ytdLink")}</a></> : null} {/* HR H3.4-YTD ▸ ไปการ์ดยอดยกมา ◂ */}
+                        {/* HR VIS-5a ▸ opening card lives in ?view=ytd ◂ */}
+                        {x.code === "YTD_OPENING" ? <> · <a href="?view=ytd#hr-ytd-card" data-testid="hr-run2-ytd-link" className="inline-flex min-h-[44px] items-center underline-offset-2 hover:underline">{t("ytdLink")}</a></> : null} {/* HR H3.4-YTD ▸ ไปการ์ดยอดยกมา ◂ */}
                       </li>
                     ))}
                   </ul>
