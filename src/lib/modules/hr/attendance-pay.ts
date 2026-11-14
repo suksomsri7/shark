@@ -18,7 +18,7 @@ import { tenantDb } from "@/lib/core/db";
 import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET-1 ◂
 import { writeAudit } from "@/lib/core/audit";
 import { employeeOfUser } from "./service";
-import { hrScopeOf, type HrScope } from "./scope";
+import { hrScopeOf, inPayScope, type HrScope } from "./scope"; // HR PRIV-2 ▸ + inPayScope ◂
 import { canBuildWorkEntries, canReadWorkEntries, normalMinutesOf, workEntrySourceEmployeesInTx, workEntryStatesInTx, type WorkEntryState, type WorkEntryViewer } from "./work-entries";
 import { AttendanceAdjustmentConflict, writeAttendanceDeductionInTx } from "./payroll";
 import { leaverDraftPeriodInTx } from "./payroll"; // HR H3.4 ◂ fix r3 H5
@@ -70,7 +70,7 @@ const obj = (raw: unknown): Record<string, unknown> => (raw && typeof raw === "o
 const permsOf = (v: WorkEntryViewer) => obj(v?.permissions);
 const hasKey = (v: WorkEntryViewer, k: string) => permsOf(v)[k] === true || permsOf(v)["hr.*"] === true;
 const scopeOf = (v: WorkEntryViewer): HrScope => hrScopeOf({ role: v.role, unitAccess: v.unitAccess });
-const covers = (s: HrScope, unitId: string | null) => s.unitIds === "*" || (!!unitId && s.unitIds.includes(unitId));
+const covers = (s: HrScope, unitId: string | null) => inPayScope(s, unitId); // HR PRIV-2 ▸ R1 ตัวตัดสินเดียว (เงินหักสาย/ขาด = สาขาประจำ) ◂
 const isAtt = (r: string | null | undefined): r is AttRule => r === "LATE_RULE" || r === "ABSENT_RULE";
 /** ผู้คำนวณ = OWNER · หรือ hr.payroll.read + hr.payadjust.request (ในขอบเขตสาขาของตัวเอง) */
 export const canSyncAttendancePay = (v: WorkEntryViewer | null | undefined): boolean => !!v && (v.role === "OWNER" || (hasKey(v, "hr.payroll.read") && hasKey(v, "hr.payadjust.request")));

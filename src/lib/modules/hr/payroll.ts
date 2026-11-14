@@ -12,10 +12,10 @@ import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1):
 import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจากตัวช่วยกลางของ HR (ไม่บวก +7 เองซ้ำ) ◂
 import { payrollItemsDigest, PAYROLL_DIGEST_SELECT } from "./payroll-digest";
 import { bindWorkEntriesToRunInTx, workEntriesApproveCheckInTx, WE_TEXT } from "./work-entries"; // HR H3.1 ▸ ด่านอนุมัติรอบรุ่น 2 + แช่แข็งชั่วโมงทำงาน ◂
-import { scopedEmployeeIds, type HrScope } from "./scope"; // HR H1.1 ▸ ขอบเขตสาขาของตัวอ่านรายการเพิ่ม/หัก ◂ // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
+import { type HrScope } from "./scope"; // HR H1.1 ▸ ขอบเขตสาขาของตัวอ่านรายการเพิ่ม/หัก ◂ // HR PRIV-2 ▸ scopedEmployeeIds → payScopeEmployeeIds ◂ // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
 import type { StockAdjustmentSource } from "./stock-charge"; // HR H4.6 ▸ ชนิดของแหล่งที่มา (type ล้วน — ไม่มีวงโหลด) ◂
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H2.11 ▸ ด่านของ decideAdjustmentAs (ตัวเดียวกับ decideAdjustmentAction) ◂
-import { employeeIdOfAdjustment, employeeUnitsOf, hrScopeOf, unitTargetOf } from "./scope"; // HR H2.11 ▸ สาขาของเจ้าของรายการ (แบบ payTarget) ◂
+import { employeeIdOfAdjustment, employeeUnitsOf, hrScopeOf, unitTargetOf, inPayScope, isAllBranches, payScopeEmployeeIds } from "./scope"; // HR H2.11 ▸ สาขาของเจ้าของรายการ (แบบ payTarget) ◂ // HR PRIV-2 ▸ + ขอบเขตค่าจ้าง ◂
 import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ◂
 import {
   ssoContribution,
@@ -432,7 +432,8 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
 
 // HR H1.1 ▸ scope (ไม่บังคับ) = ขอบเขตสาขาของผู้ดู — เฉพาะรายการของพนักงานในสาขา (วันนี้) · ไม่ส่ง = ทุกแถว ◂
 export async function listAdjustments(ctx: Ctx, periodKey?: string, take = 200, scope?: HrScope) {
-  const emps = await scopedEmployeeIds(ctx, scope);
+  // HR PRIV-2 ▸ R1(c)/(d): รายการเพิ่ม/หัก = เงิน ⇒ ขอบเขตค่าจ้าง (สาขาประจำ · ยืมตัวไม่นับ) — ผู้เรียกมีแค่หน้าเงินเดือน + กล่องคำขอ (ชนิด ADJUSTMENT = ผู้ดูเงินเดือน) ◂
+  const emps = await payScopeEmployeeIds(ctx, scope); // HR PRIV-2 ◂
   if (emps && emps.length === 0) return [];
   // HR H2.11 ▸ กล่องคำขอรวม: scope ที่มี pendingUnbound = เฉพาะรายการรออนุมัติที่ยังไม่ผูกรอบ ไม่รวมแถวจากคำขอ OT (ตัดสินที่คำขอ OT) · ใหม่สุดก่อน ไม่เกิน take ◂
   if ((scope as { pendingUnbound?: unknown } | undefined)?.pendingUnbound === true)
@@ -3061,11 +3062,12 @@ export type Run2PayRow = { employeeId: string; name: string; unitId: string | nu
 export type Run2MgrRow = { employeeId: string; name: string; unitId: string | null; days: number; workMin: number; paidLeaveMin: number; unpaidLeaveMin: number; holidayWorkMin: number; holidayPaidMin: number; unplannedMin: number; review: { day: string | null; code: string }[] };
 export type Run2Review = { employeeId: string; name: string; day: string | null; code: string };
 const unitsOfViewer = (v: Run2Viewer): "*" | string[] => (v.role === "OWNER" || (Array.isArray(v.unitAccess) && v.unitAccess.includes("*")) ? "*" : Array.isArray(v.unitAccess) ? (v.unitAccess as unknown[]).filter((x): x is string => typeof x === "string") : []);
-export async function previewPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: { runId: string }): Promise<
+// HR PRIV-2 ▸ ชนิดผลลัพธ์ตั้งชื่อแยก (ไม่เปลี่ยนรูป) — หัวฟังก์ชันอยู่บรรทัดเดียว ให้ตัวตรวจ static อ่านเนื้อฟังก์ชันได้ (ตัวตัดสินขอบเขตค่าจ้างอยู่ในเนื้อ) ◂
+export type Run2Preview = // HR PRIV-2 ◂
   | { ok: true; run: Record<string, unknown>; rows: Run2PayRow[]; review: Run2Review[] }
   | { ok: true; run: { id: string; periodKey: string; status: string }; rows: Run2MgrRow[] }
-  | { ok: false; reason: string }
-> {
+  | { ok: false; reason: string };
+export async function previewPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: { runId: string }): Promise<Run2Preview> { // HR PRIV-2 ◂
   const NO = { ok: false as const, reason: RUN2_TEXT.no };
   const id = typeof input?.runId === "string" ? input.runId.trim() : "";
   if (!id || !viewer) return NO;
@@ -3077,9 +3079,11 @@ export async function previewPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: {
   if (!run) return NO;
   const items = await db.hrPayrollItem.findMany({ where: { runId: id, systemId: ctx.systemId }, select: { employeeId: true, grossSatang: true, ssoEmployeeSatang: true, ssoEmployerSatang: true, whtSatang: true, netSatang: true, addSatang: true, deductSatang: true, snapshotJson: true }, orderBy: { employeeId: "asc" } });
   const emps = new Map((await db.hrEmployee.findMany({ where: { id: { in: items.map((i) => i.employeeId) } }, select: { id: true, name: true, unitId: true } })).map((e) => [e.id, e]));
-  const units = unitsOfViewer(viewer);
-  const mine = items.filter((i) => units === "*" || units.includes(emps.get(i.employeeId)?.unitId ?? "\u0000"));
-  if (mgr && units === "*") return NO;
+  // HR PRIV-2 ▸ R1(c): แถวของรอบ = ขอบเขตค่าจ้าง (scope.inPayScope · unitAccess [] = ทุกสาขา ตามมติ D-1 — เดิมไฟล์นี้นับ [] เป็นไม่มีสาขา) ◂
+  const scope = hrScopeOf({ role: viewer.role as "STAFF", unitAccess: viewer.unitAccess }); // HR PRIV-2 ◂
+  const allUnits = isAllBranches(scope); // HR PRIV-2 ◂
+  const mine = items.filter((i) => inPayScope(scope, emps.get(i.employeeId)?.unitId ?? null)); // HR PRIV-2 ◂
+  if (mgr && allUnits) return NO; // HR PRIV-2 ◂
   const wd = await db.hrWorkDay.findMany({ where: { systemId: ctx.systemId, periodKey: run.periodKey, employeeId: { in: mine.map((i) => i.employeeId) } }, select: { employeeId: true, date: true, review: true, workMin: true, paidLeaveMin: true, unpaidLeaveMin: true, holidayWorkMin: true, holidayPaidMin: true, unplannedMin: true } });
   const reviewOf = (emp: string) =>
     wd.filter((d) => d.employeeId === emp).flatMap((d) => d.review.filter((c) => (H34_REVIEW_CODES as readonly string[]).includes(c)).map((code) => ({ day: dayOf(d.date), code }))).concat(wd.filter((d) => d.employeeId === emp && d.unplannedMin > 0 && !d.review.includes("UNPLANNED")).map((d) => ({ day: dayOf(d.date), code: "UNPLANNED" })));
@@ -3128,12 +3132,12 @@ export async function previewPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: {
   const review = rows.flatMap((r) => r.review.map((x) => ({ employeeId: r.employeeId, name: r.name, day: x.day, code: x.code })));
   // fix r1 F8: ผู้ดูที่เห็นบางสาขา ⇒ ยอดรวมจากแถวที่เห็นเท่านั้น (ไม่ส่งยอดทั้งรอบ)
   const sumOf = (k: "grossSatang" | "netSatang" | "ssoEmployeeSatang" | "ssoEmployerSatang" | "whtSatang" | "addSatang" | "deductSatang") => mine.reduce((x, i) => x + i[k], 0);
-  const totals = units === "*"
+  const totals = allUnits // HR PRIV-2 ◂
     ? { grossSatang: run.totalGrossSatang, netSatang: run.totalNetSatang, ssoEmployeeSatang: run.totalSsoEmployeeSatang, ssoEmployerSatang: run.totalSsoEmployerSatang, whtSatang: run.totalWhtSatang, addSatang: run.totalAddSatang, deductSatang: run.totalDeductSatang }
     : { grossSatang: sumOf("grossSatang"), netSatang: sumOf("netSatang"), ssoEmployeeSatang: sumOf("ssoEmployeeSatang"), ssoEmployerSatang: sumOf("ssoEmployerSatang"), whtSatang: sumOf("whtSatang"), addSatang: sumOf("addSatang"), deductSatang: sumOf("deductSatang") };
   return {
     ok: true,
-    run: { id: run.id, periodKey: run.periodKey, payDate: run.payDate, status: run.status, engineVersion: run.engineVersion, createdById: run.createdById, approvedById: run.approvedById, stepsJson: run.stepsJson, totals, scope: units === "*" ? "ALL" : "UNITS" },
+    run: { id: run.id, periodKey: run.periodKey, payDate: run.payDate, status: run.status, engineVersion: run.engineVersion, createdById: run.createdById, approvedById: run.approvedById, stepsJson: run.stepsJson, totals, scope: allUnits ? "ALL" : "UNITS", excludedHeadcount: items.length - mine.length }, // HR PRIV-2 ▸ จำนวนแถวของรอบที่ผู้ดูไม่มีสิทธิ์ดูค่าจ้าง (ทุกสาขา = 0) — ตัวเลขเดียวที่บอกเรื่องคนนอกขอบเขต ◂
     rows,
     review,
   };

@@ -12,7 +12,7 @@ import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
 import { reserveSeq } from "@/lib/modules/account/doc-numbering";
 import { bankGateOf } from "./bank-files/service";
-import { hrScopeOf, type HrScope } from "./scope";
+import { hrScopeOf, inPayScope } from "./scope"; // HR PRIV-2 ▸ สาขาประจำ = inPayScope ตัวเดียว ◂
 import { resolveSelf, type SelfActor } from "./self";
 import {
   SLIP_TEXT,
@@ -134,8 +134,8 @@ export async function canUseSalaryCerts(ctx: Ctx, viewer: PayslipViewer | null |
 }
 /** สาขาประจำอยู่ในขอบเขตของผู้ดู (ทั้งในฐานและที่ส่งมา) — ไม่ระบุสาขาประจำ = ผู้ดูทุกสาขาเท่านั้น · ยืมตัวไม่นับ (Q2) */
 function homeInScope(m: Member, viewer: PayslipViewer, unitId: string | null): boolean {
-  const ok = (sc: HrScope) => sc.unitIds === "*" || (!!unitId && sc.unitIds.includes(unitId));
-  return ok(hrScopeOf({ role: m.role as "STAFF", unitAccess: m.unitAccess })) && ok(hrScopeOf({ role: viewer.role as "STAFF", unitAccess: viewer.unitAccess }));
+  // HR PRIV-2 ▸ R1: ตัวตัดสินเดียว scope.inPayScope (ความหมายเดิม: "*" = ทุกคน · รายการ = สาขาประจำในรายการ · ไม่ระบุสาขา = ทุกสาขาเท่านั้น) ◂
+  return inPayScope(hrScopeOf({ role: m.role as "STAFF", unitAccess: m.unitAccess }), unitId) && inPayScope(hrScopeOf({ role: viewer.role as "STAFF", unitAccess: viewer.unitAccess }), unitId); // HR PRIV-2 ◂
 }
 
 // ═════════════ อ่านสลิปในธุรกรรม (R15) ═════════════
