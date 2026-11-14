@@ -128,3 +128,10 @@ Bulk slips PDF · per-line formula text + POS bill numbers · calc history · vs
 - No business logic, action semantics, privacy rule or money computation changes. Acceptances in older oracles: explicit allowlist (`VIS5A_ALLOW`), every hunk marked `HR VIS-5a`.
 - Verification of pictures is done by the controller (build + `walk-hr.mts --only`), not by the builder.
 - "Owner list" items are NOT built.
+
+## CONTROLLER RULINGS r2 (14 Nov) — binding: each viewer sees exactly the sections they see today, distributed across views
+1. W1: MANAGER nav = run + hours + adjust (a MANAGER passes `canRequestStockCharge` via `rbac.ts evaluate()` and sees `hr-stock` + request form today, no amounts).
+2. A viewer without payroll access sees PayrollSection's no-access notice once, in the run view only; other views render PayrollSection only when `canViewPayroll`.
+3. Engine-1 shops: history tab hidden in the nav (run view already lists runs); explicit `?view=history` still renders.
+4. Nav gates (existing functions, no new gate): run always · hours `canReadWorkEntries ∨ canViewPayroll` · adjust `canViewPayroll ∨ canRequestStockCharge ∨ canSeeStockCharges` · profiles, history `canViewPayroll` · docs `canUseBankFiles ∨ canUseFilings ∨ canUseSalaryCerts` · ytd `canUseFilings`. Branch-limited payroll viewer ⇒ run, hours, adjust, profiles, history.
+- Oracle: W2 (GREEN control) pins section roots per viewer (OWNER / branch-limited payroll / MANAGER) recorded from the base page; after the build the union over that viewer's nav views must equal the base set.

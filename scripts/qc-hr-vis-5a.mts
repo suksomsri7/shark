@@ -40,6 +40,17 @@ const V2BTN = /^hr-run2-(approve|pay|reverse|rebuild|branch-.+|sync)$/;
 /** one signature per view (brief §3 table) — a view shows its own, none of the others */
 const SIG: Record<string, RegExp> = { run: /^hr-run2$/, hours: /^hr-we-panel$/, adjust: /^hr-stock$/, profiles: /^hr-salary-ot-rate/, docs: /^hr-(bank-|filing-|salarycert)/, ytd: /^hr-ytd-card$/, history: /^hr-payroll-(create$|run-)/ };
 
+/** CONTROLLER RULINGS r2 — nav per viewer (existing gates) · section roots per viewer recorded from the base page (fixture below) */
+const NAV_WANT: Record<string, string[]> = { owner: [...VIEWS], payU1: ["run", "hours", "adjust", "profiles", "history"], mgr: ["run", "hours", "adjust"] };
+const NOACCESS = "ข้อมูลเงินเดือนจำกัดเฉพาะเจ้าของกิจการ";
+const ROOT_ID: Record<string, RegExp> = { run2: /^hr-run2$/, we: /^hr-we-panel$/, stock: /^hr-stock$/, stockForm: /^hr-stock-form$/, bank: /^hr-bank-/, filing: /^hr-(filing|taxcert)-/, salarycert: /^hr-salarycert/, ytd: /^hr-ytd-card$/ };
+const ROOT_TXT: Record<string, RegExp> = { noaccess: new RegExp(NOACCESS), attendance: /การเข้างานประกอบการจ่าย/, adjust: /OT · คอมมิชชั่น · หักเงิน/, create: /สร้างรอบจ่ายเงินเดือน/, runs: /รอบจ่ายเงินเดือน \(\d+\)/ };
+const rootsOf = (h: string): string[] => { const ids = [...idsIn(h).keys()], t = textOfHtml(h), out = Object.keys(ROOT_ID).filter((k) => ids.some((i) => ROOT_ID[k]!.test(i))).concat(Object.keys(ROOT_TXT).filter((k) => ROOT_TXT[k]!.test(t))); if (/เงินเดือนพนักงาน/.test(t) && !ROOT_TXT.noaccess!.test(t)) out.push("profiles"); return out; };
+const BASE_ROOTS: Record<string, string[]> = { // recorded from the base page dc478e07b with this fixture (forced run 14 Nov) — ORACLE-EDIT only
+ owner: ["adjust", "attendance", "bank", "create", "filing", "profiles", "run2", "runs", "salarycert", "stock", "stockForm", "we", "ytd"],
+ payU1: ["adjust", "attendance", "create", "profiles", "run2", "runs", "stock", "we"],
+ mgr: ["noaccess", "run2", "stock", "stockForm", "we"],
+};
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
 const CHECKS: Def[] = [
  D("S1", "§7 untouched", "CG", "payroll-rules sha · payroll-run-rules byte-identical · untouched files = base"),
@@ -56,7 +67,8 @@ const CHECKS: Def[] = [
  D("K3", "§7 h3.4 S1.9", "MG", "hr-run2-* written only in payroll-run-ui.tsx · base hr-run2 ids kept"),
  D("K4", "§4 §7 new ids", "MR", "new run-screen ids in payroll-run-ui.tsx (banner · drawer · excluded · doclink · totals · bar · jv)"),
  D("K5", "§6", "MR", "run table: no min-w-[ · md:table-cell · one table"),
- D("W1", "§3 views", "MR", "page per view: own sections only · no id in 2 views · every legacy id in a view · nav (manager: run+hours)"),
+ D("W1", "§3 views r2", "MR", "page per view: own sections only · no id in 2 views · every legacy id in a view · nav per viewer (r2) · no-access notice in run only · engine-1 history"),
+ D("W2", "r2 sections", "MG", "[control] sections per viewer (owner · branch payroll · manager): union over nav views = base set"),
  D("R0", "§5 none", "mG", "[control] period without run: create shown"),
  D("R1", "§5 x1/x2", "MR", "live run in period: no create control"),
  D("R2", "§5 x3", "MR", "REVERSED: banner + read-only table + create · no run buttons"),
@@ -273,6 +285,7 @@ try {
  const run2 = (h: string) => elById(h, "hr-run2");
  const ok = (h: string) => !h.startsWith("THROW") && h.length > 500;
  const idList = (h: string) => [...idsIn(h).keys()];
+ const navOf = async (w: Any) => idList(await page(w, `period=${PER.DRAFT}`)).filter((i) => i.startsWith("hr-pay-view-")).map((i) => i.slice(12));
  // ── W1 views ──
  {
   const w1: string[] = [], where = new Map<string, string[]>();
@@ -289,9 +302,27 @@ try {
   if (dup.length) w1.push(`in 2+ views: ${dup.slice(0, 3).join(" ")}`);
   const legacy = idList(await inScope(W.owner.cookie, base, async () => { mute(); try { return await renderHtml(await M.ui.PayrollSection({ systemId: HRS })); } finally { unmute(); } }).catch(() => "")).filter((i) => !where.has(i));
   if (legacy.length) w1.push(`legacy ids in no view: ${legacy.slice(0, 3).join(",")}`);
-  const mnav = idList(await page(W.mgr, `period=${PER.DRAFT}`)).filter((i) => i.startsWith("hr-pay-view-")).sort().join(",");
-  if (mnav !== "hr-pay-view-hours,hr-pay-view-run") w1.push(`manager nav=${mnav || "none"}`);
+  for (const [n, w] of [["owner", W.owner], ["payU1", W.payU1], ["mgr", W.mgr]] as const) { const got = (await navOf(w)).sort().join(","), want = [...NAV_WANT[n]!].sort().join(","); if (got !== want) w1.push(`${n} nav=${got || "none"}≠${want}`); } // r2 ruling 1 + 4
+  const na = [] as string[];
+  for (const v of VIEWS) if (textOfHtml(await page(W.mgr, `view=${v}&period=${PER.DRAFT}`)).includes(NOACCESS)) na.push(v);
+  if (na.join(",") !== "run") w1.push(`mgr no-access notice in ${na.join("/") || "none"}≠run`); // r2 ruling 2
+  // r2 ruling 3: engine-1 shop — history hidden in nav, explicit ?view=history still renders
+  const s1 = (await P.appSystem.findUnique({ where: { id: HRS } }))?.settings ?? {};
+  await P.appSystem.update({ where: { id: HRS }, data: { settings: { ...(s1 as object), hrPayroll: { engineVersion: 1 } } } });
+  const e1nav = idList(await page(W.owner, `period=${PER.DRAFT}&e1=1`)), e1h = idList(await page(W.owner, `view=history&period=${PER.DRAFT}&e1=1`));
+  await P.appSystem.update({ where: { id: HRS }, data: { settings: { ...(s1 as object), hrPayroll: { engineVersion: 2 } } } });
+  if (!e1nav.some((i) => i.startsWith("hr-pay-view-")) || e1nav.includes("hr-pay-view-history")) w1.push("engine-1 nav: history shown / no nav");
+  if (!e1h.some((i) => SIG.history!.test(i))) w1.push("engine-1 ?view=history empty");
   chk("W1", !w1.length, "", L(w1, 7));
+  // ── W2 (r2): sections visible per viewer — union over the viewer's nav views = base set (nothing gained, nothing lost) ──
+  const w2: string[] = [];
+  for (const [n, w] of [["owner", W.owner], ["payU1", W.payU1], ["mgr", W.mgr]] as const) {
+   const views = await navOf(w), got = new Set<string>();
+   for (const q of views.length ? views.map((v) => `view=${v}&period=${PER.DRAFT}`) : [`period=${PER.DRAFT}`]) for (const r of rootsOf(await page(w, q))) got.add(r);
+   const want = BASE_ROOTS[n]!, lost = want.filter((r) => !got.has(r)), gained = [...got].filter((r) => !want.includes(r));
+   if (lost.length || gained.length) w2.push(`${n}: lost=${lost.join("/") || "-"} gained=${gained.join("/") || "-"} (got ${[...got].sort().join(",")})`);
+  }
+  chk("W2", !w2.length, "", L(w2, 3));
  }
  // ── K1 parts ──
  {

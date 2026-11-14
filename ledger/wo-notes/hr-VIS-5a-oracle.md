@@ -13,7 +13,7 @@ Without `QC_FORCE=1` the suite skips until `payroll-run-ui.tsx` or the page carr
 - Rendered pages: the real `/hr/payroll` and `/hr/reports` page modules render with `renderToStaticMarkup` inside a Next request scope, the same way priv-2 C1 renders `PayrollSection`. The difference is that the run screen and the reports screen call `next-intl/server`, which only works under Next. The lib therefore serves `next-intl/server` through a CJS `Module._load` shim. The shim uses `use-intl` `createTranslator` with the real `src/messages/{th,en}` files (the same assembly as `src/i18n/request.ts`). The shim does not change any src module. A message key that is missing at render time fails Z1.
 - Fixture: own tenant `qc-hr-vis5a-*` on the lane DB. Engine v2 is set in `AppSystem.settings.hrPayroll`. The fixture has 2 branches and 3 employees with ASCII names (Anna and Ben in U1, Cara in U2). Runs are written directly, as priv-2 does: v2 DRAFT (this month), PAID (−1) and APPROVED (−2), both with `stepsJson.finalized` so the reports can read them, REVERSED (−3), and a v1 PAID run (−4). Month −6 has no run. v2 rows carry BASE, OT and COMMISSION lines, and `addSatang` = OT + COMMISSION, so the figures reconcile (Q1). Viewers: owner, payU1 (STAFF [U1] with `hr.payroll.read`, branch-limited) and mgr (MANAGER [U1]). Cleanup: sweepTenants + cleanupFx. Z1 checks residue and outbound requests.
 
-## Registry — forced run on base dc478e07b: BASE-EXPECTATION 37/37 · RESIDUE none
+## Registry — forced run on base dc478e07b: BASE-EXPECTATION 38/38 (r2) · RESIDUE none
 | id | sev | base | contract |
 |---|---|---|---|
 | S1 | C | G | payroll-rules sha; payroll-run-rules byte-identical; payroll.ts, privacy*.ts, scope.ts, bank-files/**, filings/**, reports.ts, reports-rules.ts, src/lib/core/**, prisma and every hr `*actions.ts` are unchanged |
@@ -30,7 +30,8 @@ Without `QC_FORCE=1` the suite skips until `payroll-run-ui.tsx` or the page carr
 | K3 | M | G | `hr-run2-*` strings appear only in payroll-run-ui.tsx; every base hr-run2 id is kept |
 | K4 | M | R | payroll-run-ui.tsx has hr-run2-banner, -drawer, -excluded (on the PAY_SCOPE_EXCLUDED_TEXT note), -doclink-*, -totals, -bar, -jv |
 | K5 | M | R | exactly one `hr-run2-table`, without `min-w-[`; `md:table-cell` is used; one `<table>` |
-| W1 | M | R | owner, each `?view=`: the view's own section signature only (run=hr-run2 · hours=hr-we-panel · adjust=hr-stock · profiles=hr-salary-ot-rate · docs=hr-bank-/hr-filing-/hr-salarycert · ytd=hr-ytd-card · history=hr-payroll-create/run-*). No id appears in 2 views. Every id of the legacy PayrollSection appears in some view. Nav `hr-pay-view-*` is on every view. Manager nav is exactly run + hours |
+| W1 | M | R | owner, each `?view=`: the view's own section signature only (run=hr-run2 · hours=hr-we-panel · adjust=hr-stock · profiles=hr-salary-ot-rate · docs=hr-bank-/hr-filing-/hr-salarycert · ytd=hr-ytd-card · history=hr-payroll-create/run-*). No id appears in 2 views. Every id of the legacy PayrollSection appears in some view. Nav `hr-pay-view-*` is on every view. Nav per viewer per CONTROLLER RULINGS r2: owner = all 7, branch-limited payroll = run+hours+adjust+profiles+history, manager = run+hours+adjust. Manager no-access notice only in the run view. Engine-1 shop: history hidden in nav, `?view=history` still renders |
+| W2 | M | G | [control, r2] section roots per viewer (owner / payU1 / mgr: ids hr-run2, hr-we-panel, hr-stock, hr-stock-form, hr-bank-, hr-filing-/taxcert-, hr-salarycert, hr-ytd-card + PayrollSection titles profiles/attendance/adjust/create/runs + no-access notice) — union over the viewer's nav views = `BASE_ROOTS` recorded from base (nothing gained, nothing lost) |
 | R0 | m | G | [control] month without a run: create shown, no run buttons |
 | R1 | M | R | APPROVED, PAID and DRAFT months: no `hr-run2-create`; table shown |
 | R2 | M | R | REVERSED month: `hr-run2-banner` (text has st_REVERSED or "กลับรายการ"), table, create; no approve/pay/reverse/rebuild/branch |
@@ -54,7 +55,7 @@ Without `QC_FORCE=1` the suite skips until `payroll-run-ui.tsx` or the page carr
 | N2 | m | R | walk matrix: a payroll state whose path has `view=hours|adjust|profiles|docs|ytd|history` (presence only) |
 | Z1 | C | G | residue none · no outbound request · intl shim used · no missing message at render |
 
-RED-by-design 18 · GREEN controls 19. The registry is honest: R7 and R10 are GREEN on base only because the elements do not exist yet. They stay meaningful after the build.
+RED-by-design 18 · GREEN controls 20 (W2 added in r2). The registry is honest: R7 and R10 are GREEN on base only because the elements do not exist yet. They stay meaningful after the build.
 
 ## Names the oracle pins (the brief left them open)
 - `payViewOf` must be **exported from `pay-run-view.ts`**. A Next page file cannot export extra names, so "in page" is not testable.
@@ -78,5 +79,5 @@ These come from brief §7. They were not re-run here; the builder confirms them 
 2. Under the strict reading, a removal-only hunk (the old location of moved code) also needs an added marker line. That forces marker comments at the old sites.
 3. §8(e) says "static/pure". This suite also renders the pages through an intl shim, a new technique under the established `renderToStaticMarkup` method. The controller should accept or reject the shim.
 4. Sync on REVERSED and v1 months is allowed: §5 does not say whether it is hidden.
-5. For a manager, the `adjust` view's gate ("D key holders") is read as "no stock key ⇒ hidden".
+5. ~~manager adjust hidden~~ — superseded by CONTROLLER RULINGS r2 (manager sees adjust).
 6. Q2 (worked-days column) has no figure check, only the picture.
