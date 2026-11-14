@@ -85,3 +85,29 @@ Contract §2.5/§2.6 says leaving the shop deletes them, but only the mobile `re
 - Migration `20261228000300_calendar_a`: only CREATE TYPE/TABLE/INDEX on new empty tables plus one FK between new tables. No locks on existing tables. CalItem has no FK to User/Tenant, by design; deletion goes through `deleteUserTraces` / tenant purge / `removeStaff`.
 - Indexes: the fire claim uses `(status, nextFireAt)`; the agenda and reminders tabs use `(userId, tenantId, status, occursAt)`; room cards use `(userId, roomId)`.
 - `deleteUserTraces` runs inside `$transaction` and the CalLink → CalExternalEvent cascade works. Revoking the Google token is deferred to CAL1.8, as noted.
+
+---
+
+## Review response (lane a · 14 Nov 2026)
+
+Branch `wip/cal-a` (merged `wip/sec-calendar` @ bfa252cb1 first). Fix commits: **A = a70751de3** (next-fire/items/links/staff) · **B = 4a78330b1** (push/fire/jobs) · docs = this commit. Contract §15 rows D-A25…D-A36.
+Gates: qc-cal-1.1 15/15 · 1.2 115/115 · 1.4 42/42 · 1.5 24/24 · 1.6 32/32 (each ×2) · 1.9 17/17 · seed rerun writes 0 · server typecheck (iso.sh 14G) green · fitness green.
+
+| # | Fix | Commit | Test |
+|---|---|---|---|
+| B1 | `firstAfter` scans from max(after+1, day of startAt) | A | qc-cal-1.2 P10-1 (+71d/+100d/+1y/+2y × NONE/DAILY/WEEKLY/MONTHLY + validate + EVENT) |
+| M1 | `timeChanged` by value vs stored row (kind/startAt/allDay/repeat/repeatDays); lead/end-only keeps firedOccAt/snooze/nag | A | 1.2 D11-1…5 (app sends every key: title edit of fired one-off OK, no re-fire in lead window, lead-only, real time change, past) |
+| M2 | `expoPost` 4s `AbortSignal.timeout` + caller signal; `ctrl.signal` passed into `runCalendarFire` → `sendPushEach`; abort = transport error → retry; leases released | B | 1.4 F17-1 (hung transport aborted in <5s, retried, lease null) · F16-3 · F14-3 |
+| M3 | claim ≤100 oldest-due, commit ×8 concurrency until deadline−1.5s, release unprocessed leases, link lookup per (user,tenant), batched `push.sendPushEach` (≤100/Expo POST) | B | 1.4 F18-1 (300 due rows → all sent in 3 runs, exact due order) · F18-2 (deadline → leases released) · F16-1/2 |
+| M4 | `membershipCan(crm.contact.read / crm.deal.read)` before CRM row filters | A | 1.2 D13-1/2 |
+| M5 | no active membership ⇒ `nextFireAt = now+1h` (not null); `restoreStaffAccess` → `wakeMemberCalendar` | A+B | 1.4 F10-1…3 (suspend → deferred → restore → late fire) |
+| m1 | accepted, documented (at-most-once; 4s send cap narrows the window) | docs | — (D-A35) |
+| m2 | non-2xx Expo HTTP throws ⇒ retry | B | 1.4 F16-2/3 |
+| m3 | no-member/no-reason branches always release lease | B | 1.4 F19-1 |
+| m4 | web `revokeStaffAccessAction` purges CalItem/CalPref; app suspend keeps (restorable) | A | 1.2 D10-3 (structural) |
+| m5 | documented risk only (shared device) | docs | — (D-A36) |
+| m6 | snooze of un-fired one-off moves the fire (one push + one nag); repeats unchanged | A | 1.2 D12-1/2 · 1.4 F19-2 |
+| m7 | sweep hourly (minute :07 BKK); no new index | B | 1.4 F12-0 (no sweep at :00) / F12-1/2 (sweepNow) |
+| m8 | accepted, documented (soft cap) | docs | — (D-A35) |
+
+Not touched (lane b files): agenda.ts · ai tools · google.ts.

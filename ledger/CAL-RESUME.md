@@ -35,3 +35,5 @@
 - เลน a `/root/projects/shark-cal-a` branch `wip/cal-a`: CAL1.1 → 1.2 → 1.4 → 1.5 → 1.6 → 1.9
 - เลน c `/root/projects/shark-cal-c` branch `wip/cal-c`: CAL2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 2.6 → 2.7 → 2.9 → 2.12 (fixture ก่อน API)
 - เลน b เริ่มหลัง CAL1.1 merge: CAL1.3 → 1.7 → 1.8
+
+- 14 พ.ย. เลน a แก้ตามรีวิวอิสระ `ledger/cal-briefs/cal-review-a.md` (B1 · M1–M5 · m2–m4 · m6 · m7 · m1/m5/m8 บันทึก) — a70751de3 · 4a78330b1 · สัญญา §15 D-A25…36
