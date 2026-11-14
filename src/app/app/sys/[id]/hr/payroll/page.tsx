@@ -15,7 +15,7 @@ import { ModuleTabs } from "@/components/module-tabs";
 import { WorkEntriesPanel, WE_MSG, weMsgCode } from "@/lib/modules/hr/work-entries-ui";
 import { buildWorkEntriesAction, finalizeWorkEntriesAction } from "@/lib/modules/hr/work-entries-actions";
 import { thaiDateKey } from "@/lib/ui/date";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server"; // HR VIS-5a ▸ getLocale (F9) ◂
 // HR H3.4 ▸ รอบจ่ายรุ่น 2 (ภาพ 06) — ส่วน payroll-run-ui · ผลการกด ?r2= รหัสคงที่ (RUN2_MSG) · ?run= รอบที่เลือก ◂
 import { PayrollRunSection, RUN2_MSG, run2MsgCode } from "@/lib/modules/hr/payroll-run-ui";
 import { approveRunV2Action, confirmBranchHoursAction, createPayrollRunV2Action, payRunV2Action, recomputeRunV2Action, reverseRunV2Action } from "@/lib/modules/hr/payroll-actions";
@@ -150,11 +150,12 @@ export default async function HrPayrollPage({
     history: payViewer && v2, // engine-1 shops: the run view already lists runs (ruling r2 §3) — ?view=history still renders
   };
   const tView = await getTranslations("hr.payview");
+  const loc = await getLocale(); // HR VIS-5a ▸ F9: period labels in the legacy parts ◂
   const wide = view === "run" || view === "hours" || view === "docs";
   const tabCls = (on: boolean) => `inline-flex min-h-[44px] items-center rounded-[10px] px-3.5 text-sm ${on ? "bg-[color:var(--color-surface)] font-semibold shadow-sm" : "text-[color:var(--color-muted)]"}`;
 
   return (
-    <div className={`flex w-full flex-col gap-5 ${wide ? "max-w-[1200px]" : "max-w-2xl"}`}>{/* HR VIS-5a ▸ wide views ~1200 px · forms keep max-w-2xl ◂ */}
+    <div className="flex w-full max-w-[1200px] flex-col gap-5">{/* HR VIS-5a ▸ F8: header + sub-nav always use the full content width; only the forms of narrow views stay max-w-2xl (below) ◂ */}
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={tView("desc")} />
       {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
       <ModuleTabs items={await hrTabsFor(id)} />
@@ -166,17 +167,18 @@ export default async function HrPayrollPage({
           </a>
         ))}
       </nav>
+      <div className={wide ? "contents" : "flex w-full max-w-2xl flex-col gap-5"}>{/* HR VIS-5a ▸ F8 ◂ */}
       {/* HR VIS-5a ▸ run view: viewer without payroll access sees the PayrollSection no-access notice here only · engine-1 shop = legacy create + runs ◂ */}
-      {view === "run" && (!payViewer || !v2) && <PayrollSection systemId={id} parts={["create", "runs"]} />}
+      {view === "run" && (!payViewer || !v2) && <PayrollSection systemId={id} locale={loc} parts={["create", "runs"]} />}
       {view === "hours" && (<>{/* HR VIS-5a ▸ hours = work-entry panel + attendance part ◂ */}
       <WorkEntriesPanel systemId={id} periodKey={period} flash={weFlash} onBuild={onBuild} after={weAfter} onFinalize={onFinalize} /> {/* HR H3.1 ◂ */}
-      {payViewer && <PayrollSection systemId={id} parts={["attendance"]} />}
+      {payViewer && <PayrollSection systemId={id} locale={loc} parts={["attendance"]} />}
       </>)}{/* HR VIS-5a ◂ */}
       {view === "run" && (<>{/* HR VIS-5a ▸ run view ◂ */}
       <PayrollRunSection systemId={id} periodKey={period} runId={runSel} flash={r2Flash} flashOk={r2Ok} actions={run2Actions} emp={/^[A-Za-z0-9_-]{1,64}$/.test(one(sp.emp) ?? "") ? one(sp.emp)! : ""} /> {/* HR H3.4 ▸ รอบจ่ายรุ่น 2 (payroll-run-ui) ◂ */}{/* HR VIS-5a ▸ ?emp= drawer (run-ui shows it only for a row of the viewer's own preview) ◂ */}
       </>)}{/* HR VIS-5a ◂ */}
       {view === "adjust" && (<>{/* HR VIS-5a ▸ adjust = additions/deductions part + stock charges ◂ */}
-      {payViewer && <PayrollSection systemId={id} parts={["adjust"]} />}
+      {payViewer && <PayrollSection systemId={id} locale={loc} parts={["adjust"]} />}
       {/* HR H4.6 ▸ ฟอร์ม = ผู้ถือคีย์ยื่นรายการ · รายการ/ยอด = ผู้ดูเงินเดือน (ด่านในตัว) ◂ */}
       <StockChargeSection systemId={id} msg={one(sp.stock)} q={one(sp.stockq)} inv={one(sp.stockinv)} />
       </>)}{/* HR VIS-5a ◂ */}
@@ -194,8 +196,9 @@ export default async function HrPayrollPage({
       {/* HR H3.8 ▸ หนังสือรับรองเงินเดือน — คำขอ (ออก/ไม่อนุมัติ) · ออกใหม่ · ใบที่ออก (ดาวน์โหลด/ยกเลิก) · ?sc=<รหัสผล> (allowlist ใน payslip-ui) ◂ */}
       <SalaryCertSection systemId={id} sc={one(sp.sc)} />
       </>)}{/* HR VIS-5a ◂ */}
-      {view === "profiles" && payViewer && <PayrollSection systemId={id} parts={["profiles"]} />}{/* HR VIS-5a ▸ profiles ◂ */}
-      {view === "history" && payViewer && <PayrollSection systemId={id} parts={["create", "runs"]} />}{/* HR VIS-5a ▸ history = create + run list (v1 runs, exclusions, stranded, slip chips) ◂ */}
+      {view === "profiles" && payViewer && <PayrollSection systemId={id} locale={loc} parts={["profiles"]} />}{/* HR VIS-5a ▸ profiles ◂ */}
+      {view === "history" && payViewer && <PayrollSection systemId={id} locale={loc} parts={["create", "runs"]} />}{/* HR VIS-5a ▸ history = create + run list (v1 runs, exclusions, stranded, slip chips) ◂ */}
+      </div>{/* HR VIS-5a ▸ F8 ◂ */}
     </div>
   );
 }
