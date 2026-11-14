@@ -8,6 +8,7 @@ import { StockChargeSection } from "@/lib/modules/hr/stock-charge-ui"; // HR H4.
 import { BankFileSection } from "@/lib/modules/hr/bank-files/ui"; // HR H3.5 ▸ ไฟล์โอนเงินเดือน (ด่านในตัว: OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา) ◂
 import { FilingSection } from "@/lib/modules/hr/filings/ui"; // HR H3.6 ▸ ยื่นภาษี/ประกันสังคม (ด่านเดียวกับไฟล์โอน) ◂
 import { SalaryCertSection } from "@/lib/modules/hr/payslip-ui"; // HR H3.8 ▸ หนังสือรับรองเงินเดือน (ด่านในตัว: OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา) ◂
+import { OpeningYtdCard } from "@/lib/modules/hr/payroll-opening-ui"; // HR H3.4-YTD ▸ ยอดยกมาต้นปี (ด่านเดียวกับแบบยื่น) ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 // HR H3.1 ▸ แผงชั่วโมงทำงานของงวด (ภาพ 06) — ?period=YYYY-MM (ค่าปริยาย = เดือนนี้ตามเวลาไทย) · ผลการกด ?we= รหัสสั้นจาก WE_MSG เท่านั้น ◂
@@ -133,6 +134,8 @@ export default async function HrPayrollPage({
       {/* HR H3.5 ▸ ไฟล์โอนเงินเดือน — ?bank=<รอบ> · ?bfmt= · ?beff= · ?benc= · ?bmode= · ?bera= · ?bbranch= · ?bmsg=<รหัสสั้น> (allowlist ใน ui) · ?bfile=<ไฟล์ที่เพิ่งสร้าง> ◂ */}
       <BankFileSection systemId={id} sp={{ bank: one(sp.bank), bfmt: one(sp.bfmt), beff: one(sp.beff), benc: one(sp.benc), bmode: one(sp.bmode), bera: one(sp.bera), bbranch: one(sp.bbranch), bmsg: one(sp.bmsg), bfile: one(sp.bfile) }} /> {/* HR H3.5 ◂ */}
       {/* HR H3.6 ▸ ยื่นภาษี/ประกันสังคม — ?fk=<แบบ> · ?fp=<งวด> · ?frun=<รอบ> · ?ty=<ปีภาษี> · ?fperson= · ?fmsg=<รหัสผล> (allowlist ใน ui) · ?ffile=<ไฟล์ที่เพิ่งสร้าง> ◂ */}
+      {/* HR H3.4-YTD ▸ ยอดยกมาต้นปี (ก่อนใช้ระบบ) — ?yty=<ปีภาษี> · ?ymsg=<รหัสผล> (allowlist ใน ui) · ?yn=<จำนวนที่บันทึก> ◂ */}
+      <OpeningYtdCard systemId={id} sp={{ yty: one(sp.yty), ymsg: one(sp.ymsg), yn: one(sp.yn) }} /> {/* HR H3.4-YTD ◂ */}
       <FilingSection systemId={id} sp={{ fk: one(sp.fk), fp: one(sp.fp), frun: one(sp.frun), fmsg: one(sp.fmsg), fflds: one(sp.fflds), fdoc: one(sp.fdoc), fbi: one(sp.fbi), fbs: one(sp.fbs), ffile: one(sp.ffile), ty: one(sp.ty), fperson: one(sp.fperson), fstop: one(sp.fstop) }} /> {/* HR H3.6 ◂ */}
       {/* HR H3.8 ▸ หนังสือรับรองเงินเดือน — คำขอ (ออก/ไม่อนุมัติ) · ออกใหม่ · ใบที่ออก (ดาวน์โหลด/ยกเลิก) · ?sc=<รหัสผล> (allowlist ใน payslip-ui) ◂ */}
       <SalaryCertSection systemId={id} sc={one(sp.sc)} />
