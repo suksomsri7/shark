@@ -58,6 +58,7 @@ S3.14|A14 Q2|C|R|[db] engine-v1 shop: save ok · v1 WHT 17,083 (golden) · 50 �
 S3.15|A15 R8|C|R|[db] viewer matrix list/save/bulk/clear: owner + gate holder ([] read+pay) ok · unit list · no pay · manager · staff HR key · member · the employee · other tenant · role claim ≠ DB ⇒ NO identical, nothing written · own row ⇒ OWN
 S3.16|A16 R9|C|R|[db] DTO keys exact · no sensitive keys · manager preview without YTD_OPENING / opening amounts · no outbox event
 S3.17|A17 R10|C|R|[db] audits save {employeeId, taxYear, rev, by ONE|BULK} · clear {employeeId, taxYear, rev} · refused {code} · no ฿ in any opening audit · refused bulk writes none
+S3.19|Q12|C|R|[db] ORACLE-EDIT (H3.4-YTD · controller ruling Q12): H3.8 slip history 2031 = 50 ทวิ (income · tax · SSO incl. the opening) · one "opening" line (asOf · months · amounts) · slips/count/net unchanged · payroll reader ✓ · manager / member / other tenant refused · never on a single slip · no key without an opening · gone after clear
 S3.18|Q9|C|R|[db] bulk: all-or-nothing (one bad row ⇒ nothing) · 301 rows refused · 2 rows ⇒ 2 live rows rev 1
 S4.1|A19|C|R|[race] save ∥ create: period lock held ⇒ save first ⇒ item holds {id, rev} · hr50 held ⇒ create first ⇒ approve INPUTS_CHANGED · free run ⇒ one of the two
 S4.2|A20|C|R|[race] save ∥ 50 ทวิ issue (both wait on hr50): cert includes the opening, or save ⇒ CERT_ISSUED
@@ -108,6 +109,7 @@ const FS = (await import("@/lib/modules/hr/filings/service")) as Any;
 const REP = (await import("@/lib/modules/hr/reports")) as Any;
 const RR = (await import("@/lib/modules/hr/reports-rules")) as Any;
 const SYS = (await import("@/lib/modules/system/service")) as Any;
+const PS = (await import("@/lib/modules/hr/payslip").catch(() => ({}))) as Any; // ORACLE-EDIT (H3.4-YTD · controller ruling Q12): H3.8 slip history ◂
 console.log(`[${SUITE}] pure=${modState(R, F.pure)} · svc=${modState(OPM, F.svc)} · base=${BASE.slice(0, 9)}${IN_BASE ? " (H3.4-YTD in base)" : ""}`);
 const LAWJ = (jsonOf("scripts/fixtures/hr-h3.4-vectors.json")?.law ?? {}) as Any;
 const tag = tagOf(String(Date.now())) + Math.random().toString(36).slice(2, 5).replace(/\d/g, "q");
@@ -225,7 +227,7 @@ async function runDb(): Promise<void> {
 
   // ── S3.2 · S3.3 · S3.11 · S4.2 · S3.12 · S3.13 (system B: one year) ──
   const runB: Record<string, string> = {};
-  await blk(["S3.2", "S3.3", "S3.11", "S4.2", "S3.12", "S3.13"], async () => {
+  await blk(["S3.2", "S3.3", "S3.11", "S4.2", "S3.12", "S3.13", "S3.19"], async () => { // ORACLE-EDIT (H3.4-YTD · controller ruling Q12): + S3.19 ◂
     need("saveOpeningYtd", "listOpeningYtd", "clearOpeningYtd");
     const cr = await create("B", "2031-09");
     runB["2031-09"] = cr?.id;
@@ -296,10 +298,31 @@ async function runDb(): Promise<void> {
       };
     };
     const W = await snap();
+    // ORACLE-EDIT (H3.4-YTD · controller ruling Q12) ▸ S3.19 slip history (H3.8) carries the opening once and equals the live 50 ทวิ
+    const hist = (v: Any, e: string) => (typeof PS.slipHistory === "function" ? PS.slipHistory(c("B"), v, { employeeId: e, taxYear: 2031 }).catch((x: unknown) => ({ ok: false, code: "THROW", reason: errText(x) })) : Promise.resolve({ ok: false, code: "MISSING" }));
+    const hB = await hist(V.owner, E.eB);
+    const liveCert = ((await P.hrTaxCertificate.findFirst({ where: { tenantId: TT, systemId: S.B, employeeId: E.eB, taxYear: 2031, voidedAt: null } })) as Any)?.contentJson;
+    const hR = await hist(V.readOnly, E.eB);
+    const hRefused = [await hist(V.mgr, E.eB), await hist(V.member, E.eB), await hist(V.other, E.eB)];
+    const hB3 = await hist(V.owner, E.eB3);
+    const one = typeof PS.slipForViewer === "function" ? await PS.slipForViewer(c("B"), V.owner, { runId: runB["2031-10"], employeeId: E.eB }).catch(() => null) : null;
+    const yB = hB?.year ?? {};
+    const q12 = {
+      fifty: hB?.ok === true && !!liveCert && yB.incomeSatang === liveCert.totalSatang && yB.taxSatang === liveCert.totalTaxSatang && yB.ssoSatang === liveCert.funds?.ssoSatang,
+      line: canon(yB.opening) === canon({ asOfDay: OPEN.asOfDay, months: OPEN.months, incomeSatang: OPEN.incomeSatang + 100, taxSatang: OPEN.whtSatang, ssoSatang: OPEN.ssoSatang }),
+      once: JSON.stringify(hB ?? {}).split('"opening"').length === 2 && yB.count === 4 && (yB.slips ?? []).length === 4,
+      reader: hR?.ok === true && canon(hR?.year?.opening) === canon(yB.opening),
+      refused: hRefused.every((x: Any) => x?.ok === false && !JSON.stringify(x).includes(String(OPEN.incomeSatang + 100))),
+      notOnSlip: one?.ok === true && !JSON.stringify(one).includes("opening") && !JSON.stringify(one).includes(String(OPEN.incomeSatang + 100)),
+      absent: hB3?.ok === true && !("opening" in (hB3?.year ?? {})),
+    };
+    // ◂ ORACLE-EDIT (H3.4-YTD · controller ruling Q12)
     for (const x of ((await P.hrTaxCertificate.findMany({ where: { tenantId: TT, systemId: S.B, voidedAt: null } })) as Any[])) await FS.voidTaxCertificate(c("B"), V.owner, { certId: x.id, reason: "ทดสอบล้างยอดยกมา" }, NOWC);
     const clr: Any[] = [];
     for (const e of [E.eB, E.eB2, E.eL]) for (const r of await liveOf(e)) clr.push(await op("clearOpeningYtd", c("B"), V.owner, { employeeId: e, taxYear: 2031, expectRev: r.rev }, NOWC));
     const O = await snap();
+    const hO = await hist(V.owner, E.eB); // ORACLE-EDIT (H3.4-YTD · controller ruling Q12) ▸ after clear: no opening line, items only ◂
+    ck("S3.19", { ...q12, cleared: hO?.ok === true && !("opening" in (hO?.year ?? {})) && hO?.year?.incomeSatang === 12 * M - OPEN.incomeSatang }, "slip history = 50 ทวิ · one opening line · gated", short({ y: { ...yB, slips: undefined }, cert: [liveCert?.totalSatang, liveCert?.totalTaxSatang] }, 300)); // ORACLE-EDIT (H3.4-YTD · controller ruling Q12) ◂
     const sumOf = (p: Any, e: string, k: string) => ((p?.rows ?? []) as Any[]).filter((r) => r.employeeId === e).reduce((t, r) => t + Number(r[k] ?? 0), 0);
     ck("S3.12", {
       leaverSaved: svL?.ok === true, p1a: sumOf(W.p1a, E.eB, "amountSatang") === 12 * M + 100 && sumOf(W.p1a, E.eB, "taxSatang") === LIT.annual, leaver: sumOf(W.p1a, E.eL, "amountSatang") === 15_000_000,
