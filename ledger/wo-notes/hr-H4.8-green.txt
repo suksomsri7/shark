@@ -143,3 +143,16 @@ prisma migrate status: Database schema is up to date! (225 migrations)
   ✅ [H4.8-F6] [db] ORACLE-EDIT (H4.8 fix round · controller ruling 6): POST /leaves non-JSON Content-Type ⇒ 415 invalid_json · __proto__ / constructor key ⇒ 422 validation · nothing written �
 RESIDUE none (tenants=2 users=5)
 ===== qc-hr-h4.8 ===== passed 47/47 (QC_FORCE)
+
+## FIX ROUND 2 (15 Nov)
+h48f1 exit=0 ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+h48f2 exit=0 ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+h48u exit=0 ===== qc-hr-h4.8 ===== passed 48/48
+apiv1 exit=0 ===== QC HF-APIV1 scope =====
+acccore exit=0 ===== QC Account API Core (A3) =====
+DONE
+scratchpad/h48b/r3/acccore.txt:JSON_SUMMARY {"total":64,"passed":64,"findings":[]}
+scratchpad/h48b/r3/apiv1.txt:JSON_SUMMARY {"total":143,"passed":143,"findings":[]}
+fitness-hr noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+typecheck (clean, once): exit=0 secs=426
