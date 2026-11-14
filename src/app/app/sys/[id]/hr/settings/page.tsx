@@ -46,6 +46,7 @@ import { LeavePolicyWarningLines, LeavePresetSection } from "@/lib/modules/hr/le
 import { BankSettingsCard, BANK_MSG, bankMsgText } from "@/lib/modules/hr/bank-files/ui"; // HR H3.5 ▸ ไฟล์โอนเงินเดือน: บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ ◂
 import { deleteBankPresetAction, saveBankPresetAction, saveBankProfileAction } from "@/lib/modules/hr/bank-files/actions"; // HR H3.5 ◂
 import { FilingSettingsCard } from "@/lib/modules/hr/filings/ui"; // HR H3.6 ▸ ข้อมูลผู้จ่ายเงินของแบบยื่น (เจ้าของร้านแก้) ◂
+import { ApiKeysCard } from "./ApiKeysCard"; // HR H4.8 ▸ คีย์ API ของระบบงานบุคคล (เจ้าของร้านเท่านั้น) ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -640,6 +641,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <BankSettingsCard systemId={id} onSaveProfile={auth.active.role === "OWNER" ? onSaveBankProfile : null} onSavePreset={onSaveBankPreset} onDeletePreset={onDeleteBankPreset} />
       {/* HR H3.6 ▸ แบบยื่นภาษี/ประกันสังคม — การ์ดแสดงเฉพาะผู้ผ่านด่าน · บันทึกได้เฉพาะเจ้าของร้าน · ผล ?fmsg= (allowlist ใน ui) ◂ */}
       <FilingSettingsCard systemId={id} msg={{ fmsg: str3(sp, "fmsg"), fflds: str3(sp, "fflds"), fdoc: str3(sp, "fdoc") }} /> {/* HR H3.6 ◂ */}
+      {/* HR H4.8 ▸ คีย์ API ของระบบงานบุคคล — เจ้าของร้านเท่านั้น (ออก/เพิกถอนตรวจซ้ำที่ hr/api/keys.ts) · ชุดเงินเดือนต้องติ๊กยินยอม (O1) ◂ */}
+      {auth.active.role === "OWNER" && <ApiKeysCard systemId={id} />}
     </div>
   );
 }

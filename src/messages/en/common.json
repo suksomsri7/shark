@@ -24,6 +24,50 @@
     "cancel": "Cancel"
   },
   "hr": {
+    "apiKeys": {
+      "title": "HR API keys",
+      "desc": "Let an outside app or AI agent read the staff list, roster, attendance and leave of this HR system (no national id, address, bank account, phone, PIN or photos). Only the shop owner can issue keys.",
+      "loading": "Loading…",
+      "empty": "No HR API keys yet",
+      "name": "Key name (for example: roster app)",
+      "bundleLabel": "What the key can do",
+      "bundle": {
+        "hr-read": "Read only",
+        "hr-leave": "Read + file leave",
+        "hr-payroll-read": "Read + pay data",
+        "custom": "Custom"
+      },
+      "bundleDesc": {
+        "hr-read": "Staff list, roster, attendance, leave (no pay data)",
+        "hr-leave": "Read only, plus filing leave for employees (always waits for normal approval)",
+        "hr-payroll-read": "Read only, plus payslips and pay reports (every read is logged)"
+      },
+      "ttl": "Key lifetime",
+      "days": "{n} days",
+      "noExpiry": "Never expires",
+      "consent": "Pay data will leave SHARK — I confirm that the outside system using this key can read the payslips, pay totals, withholding tax and social security of employees",
+      "issue": "Create key",
+      "rawOnce": "Copy this key now — it will not be shown again",
+      "done": "Done",
+      "payBadge": "Pay data",
+      "created": "Created {date}",
+      "expires": "Expires {date}",
+      "status": {
+        "active": "Active",
+        "expired": "Expired",
+        "revoked": "Revoked"
+      },
+      "revoke": "Revoke",
+      "revokeConfirm": "Confirm revoke",
+      "cancel": "Cancel",
+      "docs": "HR API guide for developers (/developers/hr.md)",
+      "refusal": {
+        "denied": "Only the shop owner can manage HR API keys",
+        "validation": "Something is missing or invalid — check the name, scope, lifetime and confirmation",
+        "notFound": "Not found — refresh the page and try again",
+        "unknown": "Something went wrong — try again"
+      }
+    },
     "roster": {
       "titleFull": "Roster · {range} · {unit}",
       "allUnits": "All branches",
