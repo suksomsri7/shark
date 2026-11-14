@@ -190,9 +190,13 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.6: once H4.3 is in the base, a file whose every hunk carries "HF-SSO" on an ADDED line
     //   (hotfix HF-SSO-2569 — payroll*.ts · qc-hr-lib · ORACLE-EDITs in older oracles) is a later ticket's change · unmarked hunks still fail ◂
     const hfOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HF-SSO/.test(l)));
+    // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised · narrowed by controller F1): in base only — exactly these files may differ, and only when every
+    //   hunk carries "HR MONEY-2" on an added line (new oracle files = one hunk): hr leave.ts · payroll.ts · payroll-run-ui.tsx (ruling R7) · the six older oracles it edited · its own oracle ◂
+    const M2_ALLOW = new Set([`${H}leave.ts`, `${H}payroll.ts`, `${H}payroll-run-ui.tsx`, "scripts/qc-hr-h1.3.mts", "scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-money-2.mts", "scripts/qc-hr-money-2-lib.mts"]);
+    const m2Marked = (f: string) => IN_BASE && M2_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR MONEY-2/.test(l)));
     const frozenLeft = frozen.filter((f) => !(/\.(ts|mts|json)$/.test(f) && hfOk(f)));
-    const hrLeft = hrFrozen.filter((f) => !hfOk(f));
-    const oraclesLeft = oracles.filter((f) => !hfOk(f));
+    const hrLeft = hrFrozen.filter((f) => !hfOk(f) && !m2Marked(f)); // HR-MONEY-2 ORACLE-EDIT ◂
+    const oraclesLeft = oracles.filter((f) => !hfOk(f) && !m2Marked(f)); // HR-MONEY-2 ORACLE-EDIT ◂
     const r = {
       ai: changedVsBase(BASE, frozenLeft) === "unchanged", // HF-SSO ORACLE-EDIT
       hr: hrLeft.length === 0 || changedVsBase(BASE, hrLeft) === "unchanged", // HF-SSO ORACLE-EDIT
@@ -206,7 +210,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const marked = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
     const need = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
     const bad: string[] = [];
-    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT|HR HF-SSO/; // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.7: + "HR HF-SSO" (labor.ts ssoLawForPeriod) ◂
+    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT|HR HF-SSO|HR MONEY-2/; // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.7: + "HR HF-SSO" (labor.ts ssoLawForPeriod) ◂ // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" (in base only) ◂
     const judge = (f: string, re: RegExp, mustHave: boolean) => {
       const hs = diffHunks(BASE, f);
       if (!hs) return void bad.push(`${f.split("/").pop()}:git`);

@@ -878,7 +878,8 @@ function runStatic(): void {
     //   fix round 1 F5: + 6 in h37RefundClaimsInTx (refund rows: filter · slice · claim row type · SELECT · map ×2 — the class of the claim a refund gives back) = 10
     // ORACLE-EDIT (controller · H3.4-YTD merge gate): "HR H3.4-YTD" is its own tag (declared first; exact tag matching below) and carries 0 tracked
     //   tokens — the opening is read through payroll-opening-read.ts, not through ytdJson in payroll.ts
-    const PAY_MARKED: Record<string, number> = { "HR H3.4-YTD": 0, "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6, "HR H3.4": 16, "HR H3.7": 12 };
+    // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): HR MONEY-2 = 10 (sourceRef: give-back refunds held/voided by their claim + the accrual inputs read for labour ACTUAL)
+    const PAY_MARKED: Record<string, number> = { "HR H3.4-YTD": 0, "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6, "HR H3.4": 16, "HR H3.7": 12, "HR MONEY-2": 10 };
     // ORACLE-EDIT (controller · H3.4-YTD merge gate): tags match EXACTLY — "HR H3.4" must not match inside "HR H3.4-YTD" (a YTD hunk nested in an
     //   H3.4 block used to close that block early at "◂ HR H3.4-YTD" and push the rest of the block's tokens outside)
     const hasTag = (line: string, t: string) => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?!-YTD|\\d)").test(line);

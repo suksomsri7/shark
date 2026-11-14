@@ -227,7 +227,8 @@ function runStatic(): void {
       const hs = diffHunks(BASE, f);
       // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.8: a later fix ticket's hunks ("HR-SET-<n>") count as marked like "HR H<n>" ones · unmarked still fails ◂
       // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.8: + hotfix hunks marked "HR HF-SSO" (law.ts ssoDay) ◂
-      return !hs || hs.some((h) => h.added.concat(h.removed).some((l) => /HR H3\.2/.test(l)) || !h.added.concat(h.removed).some((l) => /HR H\d|HR-SET-\d|HR HF-SSO/.test(l)));
+      // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised) S1.8: "HR MONEY-2" hunks count as marked like "HR-SET-<n>" ones · unmarked still fails ◂
+      return !hs || hs.some((h) => h.added.concat(h.removed).some((l) => /HR H3\.2/.test(l)) || !h.added.concat(h.removed).some((l) => /HR H\d|HR-SET-\d|HR HF-SSO|HR MONEY-2/.test(l)));
     }) : [ch];
     ck("S1.8", { sha: shaOk, frozen: bad.length === 0 }, "unchanged", bad.join(","));
   }

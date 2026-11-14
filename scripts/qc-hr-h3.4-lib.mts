@@ -241,7 +241,8 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
     // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.6: base-aware — once H3.4 is in the base (payroll-run-rules.ts there), a frozen file may differ only by hunks
     //   marked with a later ticket ("HR H<n>.<n>" other than H3.4 · "HR-SET-<n>"); any unmarked hunk still fails ◂
     // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.6: + hotfix hunks marked "HR HF-SSO" (law.ts ssoDay) count as later-ticket hunks ◂
-    const laterOnly = (p: string) => pathInBase(F.rules, BASE) && (diffHunks(BASE, p) ?? []).length > 0 && (diffHunks(BASE, p) ?? []).every((h) => h.added.some((l) => /HR-SET-\d+|HR H\d+\.\d+|HR HF-SSO/.test(l) && !/HR H3\.4/.test(l)));
+    // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): "HR MONEY-2" counts as a later-ticket mark like "HR-SET-<n>" · unmarked still fails ◂
+    const laterOnly = (p: string) => pathInBase(F.rules, BASE) && (diffHunks(BASE, p) ?? []).length > 0 && (diffHunks(BASE, p) ?? []).every((h) => h.added.some((l) => /HR-SET-\d+|HR H\d+\.\d+|HR HF-SSO|HR MONEY-2/.test(l) && !/HR H3\.4/.test(l)));
     const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !laterOnly(p) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p)) && !(p === `${H}attendance-pay.ts` && apOnlyLeaver(p))));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
   }
