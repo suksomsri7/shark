@@ -13,6 +13,7 @@
 | CAL0.3 ภาพมืด | ✅ เจ้าของผ่าน 14 พ.ย. | cal-dark-{1,2,3}.png |
 | CAL1.1 migration calendar_a (เลน a) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | prisma/schema/calendar.prisma ตรงสัญญา §2 · migration 20261228000300_calendar_a ลงฐาน QC เลขาแล้ว · scope 4 แถว · R-CAL-33 export ยกเว้น CalItem/CalPref · deleteUserTraces 3 ตาราง · seed รอบ 2 เขียน 0 · qc-cal-1.1 15/15 ×2 · typecheck ✅ |
 | CAL1.2 items + nextFire (เลน a) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | modules/calendar/{next-fire,items,links,push-msg}.ts · removeStaff ลบของส่วนตัว · qc-cal-1.2 103/103 ×2 (P บริสุทธิ์ next-fire.ts บรรทัด 100% · กิ่ง 99.4% — กิ่งเดียวที่เหลือเป็นเงาของ tsx ที่บรรทัดหัวฟังก์ชัน) · ส่วนต่าง D-A1…A8 ในสัญญา §15 |
+| CAL1.4 job calendar.fire (เลน a) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | modules/calendar/{fire,jobs}.ts · push.ts +categoryId +transportErrors (additive) · import ใน crm-cron.mts + api/cron/outbox · F5 baseline 50→51 (fire.ts ข้ามผู้ใช้ตาม §3.3) · qc-cal-1.4 30/30 ×2 · ⚠️ push ถึงเครื่องจริงยังไม่พิสูจน์ (CAL3.2) |
 
 ## จุดต่อ
 - ถ้า session ตาย: อ่านไฟล์นี้ → ดูใบที่ ▶️ → ดู ledger/cal-briefs/ ว่ามีผลค้างไหม

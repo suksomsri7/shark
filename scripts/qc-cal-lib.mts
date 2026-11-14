@@ -2,11 +2,13 @@
 //   ด่านฐาน (ฐาน QC เลขาเท่านั้น · exit 4) · chk/สรุป JSON_SUMMARY แบบชุด qc-sec · ร้าน/ผู้ใช้ทดสอบชั่วคราว + ลบทิ้ง · transport push ปลอม
 // รัน (ทุกไฟล์): bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-cal-<ใบ>.mts
 import { loadSecQcEnv } from "./sec-qc-env.mjs";
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 
 export type AnyMod = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 export function guard(label: string): void {
   loadSecQcEnv(label);
+  loadLegacyQcEnv(label); // ค่า env อื่นของ .env.qc-sec (SESSION_SECRET ฯลฯ — route ที่ import session ต้องใช้) แบบชุด qc-sec
 }
 
 type Res = "PASS" | "FAIL";
