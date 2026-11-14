@@ -154,7 +154,7 @@ function employedDays(e: Pick<Emp, "startDate" | "endDate">, periodKey: string):
 }
 
 // ═══════════════════════════ สถานะของข้อมูลต้นทาง (R5 — อ่านถูก ไม่ตัดสินใหม่) ═══════════════════════════
-type HashLeave = { id: string; employeeId: string; from: string; to: string; status: string; halfDay: string | null; hours: string | null; policyId: string | null; paid: boolean | null; unpaidByDay?: Map<string, number> }; // HR PREPROD-1 ▸ + สิบส่วนไม่ได้ค่าจ้างต่อวัน (มีเฉพาะใบที่แบ่งส่วน) ◂
+type HashLeave = { id: string; employeeId: string; from: string; to: string; status: string; halfDay: string | null; hours: string | null; policyId: string | null; paid: boolean | null; unpaidByDay?: Map<string, number>; splitSig?: string }; // HR PREPROD-1 ▸ + สิบส่วนไม่ได้ค่าจ้างต่อวัน + ลายเซ็นสมุด (มีเฉพาะใบที่แบ่งส่วน) ◂
 /** HR PREPROD-1 ▸ R3/V1: สิบส่วนของวันนั้นที่ไม่ได้ค่าจ้าง (ใบที่แบ่งส่วน · ไม่มีในแผนที่ = 0) ◂ */
 const unpaidTenthsOf = (l: Pick<HashLeave, "unpaidByDay">, day: string): number => l.unpaidByDay?.get(day) ?? 0;
 type HashData = { hashes: Map<string, string>; leaves: HashLeave[] };
@@ -221,7 +221,7 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
     hours: l.hours === null ? null : String(l.hours),
     policyId: l.policyId,
     paid: l.policy ? l.policy.paid : null,
-    ...(splits.get(l.id) ? { unpaidByDay: splits.get(l.id)! } : {}), // HR PREPROD-1 ◂
+    ...(splits.get(l.id) ? { unpaidByDay: splits.get(l.id)!.byDay, splitSig: splits.get(l.id)!.sig } : {}), // HR PREPROD-1 ◂
   }));
   const ts = (d: Date | null | undefined) => (d ? d.toISOString() : null);
   const grace = new Map(shifts.map((x) => [x.id, x.graceMin]));
@@ -254,7 +254,7 @@ async function hashDataOf(db: Db, ctx: Ctx, emps: Emp[], periodKey: string): Pro
           punches: [addDays(day, -1), day, addDays(day, 1)].flatMap((d) => (punchBy.get(`${e.id}|${d}`) ?? []).map((r) => [r.id, r.kind, ts(r.at), r.rosterEntryId])).sort(),
           roster: (entBy.get(`${e.id}|${mondayOf(day)}`) ?? []).map((r) => [r.id, dayOf(r.date), ts(r.updatedAt), ts(r.publishedAt), r.breakMin, r.shiftId, grace.get(r.shiftId) ?? null]).sort(),
           sched: (schedBy.get(`${e.id}|${wd}`) ?? []).map((r) => [r.dayOff, r.startMin, r.endMin, r.graceMin, ts(r.createdAt), ts(r.updatedAt)]).sort(),
-          leaves: (leaveBy.get(e.id) ?? []).filter((l) => l.from <= day && day <= l.to).map((l) => [l.id, l.status, l.halfDay, l.hours, l.policyId, l.paid, ...(l.unpaidByDay ? [unpaidTenthsOf(l, day)] : [])]).sort(), // HR PREPROD-1 ▸ ส่วนไม่ได้ค่าจ้างของวันอยู่ในลายนิ้วมือ (เฉพาะใบที่แบ่งส่วน — ใบอื่นค่าเดิม) ◂
+          leaves: (leaveBy.get(e.id) ?? []).filter((l) => l.from <= day && day <= l.to).map((l) => [l.id, l.status, l.halfDay, l.hours, l.policyId, l.paid, ...(l.unpaidByDay ? [unpaidTenthsOf(l, day), l.splitSig ?? ""] : [])]).sort(), // HR PREPROD-1 ▸ ส่วนไม่ได้ค่าจ้างของวันอยู่ในลายนิ้วมือ (เฉพาะใบที่แบ่งส่วน — ใบอื่นค่าเดิม) ◂
           holiday: hol ? [hol.id, ts(hol.updatedAt), hol.shopOpen] : null,
         }),
       );

@@ -235,10 +235,10 @@ export async function requestAdjustment(
   let rate: number | null = null;
   if (input.kind === "OT" && input.hours && input.hours > 0) {
     rate = await otRateFor(ctx, input.employeeId);
-    if (rate <= 0) return { ok: false, reason: "ตั้งเงินเดือนของพนักงานคนนี้ก่อน จึงคิดค่า OT ได้" };
+    if (rate <= 0) return { ok: false, code: "PAY_NO_RATE", reason: "ตั้งเงินเดือนของพนักงานคนนี้ก่อน จึงคิดค่า OT ได้" }; // HR PREPROD-1 ▸ V7b: + code (เหตุที่มาจากข้อมูลค่าจ้าง) ◂
     amount = otAmountSatang(input.hours, rate);
   }
-  if (amount <= 0) return { ok: false, reason: "ระบุจำนวนเงิน (หรือชั่วโมง OT) ให้มากกว่า 0" };
+  if (amount <= 0) return { ok: false, reason: "ระบุจำนวนเงิน (หรือชั่วโมง OT) ให้มากกว่า 0", ...(rate !== null ? { code: "PAY_OT_ZERO" } : {}) }; // HR PREPROD-1 ▸ V7b: ยอด OT ตามชั่วโมงปัดเป็น 0 = มาจากอัตราค่าจ้าง ◂
 
   const row = await tenantDb(ctx).hrPayAdjustment.create({
     data: {
@@ -1342,6 +1342,7 @@ export async function reverseRun(
   }
   if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
   await money2VoidAudits(ctx, actor?.userId ?? null, m2Void, "DEDUCTION_REVERSED", id); // HR MONEY-2 ▸ R1 ◂
+  await pp1ResplitAfterReverse(ctx, id, periodKey); // HR PREPROD-1 ▸ V8c: หลัง commit — ใบลาป่วยที่แบ่งส่วนของพนักงานในรอบนี้ที่มีวันในงวดนี้ แบ่งใหม่ (ล็อกต่อพนักงาน) ◂
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: actor?.userId ? "USER" : "SYSTEM",
@@ -2160,6 +2161,18 @@ const ATT_APPROVE_TEXT: Record<string, string> = { ATTENDANCE_STALE: ATT_TEXT.ru
 // ─────────── HR H2.11 ▸ ตัดสินรายการเพิ่ม/หัก 1 รายการในนามผู้ดู (กล่องคำขอรวม) — เนื้อของ decideAdjustmentAction ทุกขั้น: ด่าน hr.payadjust.approve +
 //   canViewPayroll → สาขาของเจ้าของรายการ (แบบ payTarget) → decideAdjustment (กติกาเดิมทั้งหมด รวมกติกาที่จะเพิ่มภายในในอนาคต) → audit
 //   hr.payadjust.approve|reject รูปเดียวกับ action · ไม่คัดลอกกติกาใด ๆ (Q4: action เดิมไม่เปลี่ยน — หนี้ D1) ───────────
+// HR PREPROD-1 ▸ V8c: เรียกหลังการกลับรายการ commit แล้วเท่านั้น (ทุกทาง: รุ่น 1 มี JV · รุ่น 2 ไม่มีสมุด · รุ่น 2 ลงสมุด/H3.7) — ไม่ซ้อนในล็อกงวด/แถวรอบของการกลับรายการ ·
+//   กลับรายการล้ม/ย้อน = ไม่ถูกเรียก · แบ่งใหม่ล้ม = การกลับรายการยังสำเร็จ (log WARN · วันลาคงแบ่งเดิม = ไม่จ่ายเกิน — แถวเพิ่มวันครั้งถัดไปแบ่งให้) ◂
+async function pp1ResplitAfterReverse(ctx: Ctx, runId: string, periodKey: string): Promise<void> {
+  try {
+    const emps = [...new Set((await tenantDb(ctx).hrPayrollItem.findMany({ where: { runId, systemId: ctx.systemId }, select: { employeeId: true }, take: 10_000 })).map((i) => i.employeeId))];
+    const { resplitAfterReverse } = await import("./leave");
+    await resplitAfterReverse(ctx, emps, periodKey);
+  } catch (e) {
+    await logOps("WARN", "hr-payroll", "กลับรายการรอบจ่ายแล้ว แต่แบ่งส่วนลาป่วยใหม่ไม่สำเร็จ", { tenantId: ctx.tenantId, detail: `runId=${runId} systemId=${ctx.systemId} error=${reverseErrorCode(e)}` }).catch(() => undefined);
+  }
+}
+// ◂ HR PREPROD-1
 // HR PREPROD-1 ▸ R4: ผู้ดูที่จำกัดสาขาแตะรายการเงินของพนักงานนอกขอบเขตค่าจ้างไม่ได้ (ตัวตัดสินเดียว scope.inPayScope — สาขาประจำเท่านั้น ยืมตัวไม่นับ) ·
 //   ไม่มีแถว/ไม่มีพนักงาน = นอกขอบเขต (ผู้เรียกตอบเหมือน "ไม่พบ") · ทุกสาขา = ไม่ตรวจที่นี่ (ข้อความเดิม) ◂
 export async function payScopeBlocked(ctx: Ctx, scope: PayScope, employeeId: string | null | undefined): Promise<boolean> {
@@ -3637,6 +3650,7 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
   }
   if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
   await money2VoidAudits(ctx, actor?.userId ?? null, m2Void, "DEDUCTION_REVERSED", id); // HR MONEY-2 ▸ R1 ◂
+  await pp1ResplitAfterReverse(ctx, id, periodKey); // HR PREPROD-1 ▸ V8c: หลัง commit — ใบลาป่วยที่แบ่งส่วนของพนักงานในรอบนี้ที่มีวันในงวดนี้ แบ่งใหม่ (ล็อกต่อพนักงาน) ◂
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: actor?.userId ? "USER" : "SYSTEM",

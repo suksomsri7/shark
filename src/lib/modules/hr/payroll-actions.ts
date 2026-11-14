@@ -328,7 +328,7 @@ export async function requestAdjustmentAction(
     },
   );
   // HF-HR-0: ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือน ไม่เห็นยอดที่คิดจากเงินเดือน และไม่รู้ว่ามีโปรไฟล์เงินเดือนไหม
-  const reply = inPay ? adjustmentReplyForViewer(payView, res, { byHours: kind === "OT" && hours !== undefined }) : adjustmentReplyOutOfPayScope(res, kind === "OT" && hours !== undefined); // HF-HR-0 ▸ รอบ 4 (R4.6) ◂ // HR PREPROD-1 ▸ V7: นอกขอบเขตค่าจ้าง = คำตอบกลางไม่มียอด ◂
+  const reply = inPay ? adjustmentReplyForViewer(payView, res, { byHours: kind === "OT" && hours !== undefined }) : adjustmentReplyOutOfPayScope(res); // HF-HR-0 ▸ รอบ 4 (R4.6) ◂ // HR PREPROD-1 ▸ V7/V7b: นอกขอบเขตค่าจ้าง = สำเร็จกลางไม่มียอด · เหตุจากค่าจ้าง (รหัส PAY_*) = ข้อความคงที่ · เหตุอื่นส่งผ่าน ◂
   if (res.ok) revalidatePath(`/app/sys/${systemId}/hr/payroll`);
   return reply;
 }

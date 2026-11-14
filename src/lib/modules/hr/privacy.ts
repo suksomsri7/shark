@@ -242,15 +242,18 @@ export function employeeProfileInputFromForm(form: FormData, v: HrViewer): Emplo
 
 // ข้อความปฏิเสธกลาง (ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือน) — ใช้ร่วมกันเพื่อให้ทุกทางปฏิเสธได้ไบต์เดียวกัน
 const ADJUST_REFUSED_GENERIC = "ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้";
-const ADJUST_OUT_OF_PAY_SCOPE = "ผลการยื่นของพนักงานนอกขอบเขตค่าจ้างของคุณไม่แสดงที่นี่ — ผู้ดูแลเงินเดือนของสาขาประจำของพนักงานเป็นผู้ตรวจยอดและแจ้งผล"; // HR PREPROD-1 ▸ V7 ◂
+const ADJUST_OUT_OF_PAY_SCOPE = "ยื่นแล้ว — รออนุมัติ (ยอดของพนักงานนอกขอบเขตค่าจ้างของคุณ ผู้ดูแลเงินเดือนของสาขาประจำของพนักงานเป็นผู้ตรวจ)"; // HR PREPROD-1 ▸ V7/V7b: สำเร็จ — ไม่มียอด ◂
+const ADJUST_OUT_OF_PAY_SCOPE_REFUSED = "ยื่นรายการนี้ไม่ได้ — ติดต่อผู้ดูแลเงินเดือนของสาขาประจำของพนักงานคนนี้"; // HR PREPROD-1 ▸ V7b: ยื่นไม่ได้ด้วยเหตุจากข้อมูลค่าจ้าง ◂
 /**
  * คำตอบของการยื่นรายการเพิ่ม/หักเงิน — ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือนต้องไม่รู้ยอดที่ระบบคิดจากเงินเดือน (OT)
  * และไม่รู้ว่าพนักงานคนนั้นมีโปรไฟล์เงินเดือนหรือไม่ · ผู้ดูเงินเดือน = คำตอบเดิมทุกตัวอักษร
  */
-/** HR PREPROD-1 ▸ V7: ผู้ยื่นที่พนักงานอยู่นอกขอบเขตค่าจ้างของตน (ยืมตัว) — สำเร็จ หรือปฏิเสธด้วยเหตุที่ขึ้นกับเงินเดือน (มี/ไม่มีโปรไฟล์ · OT ตามชั่วโมง)
- *  ⇒ คำตอบเดียวกันทุกไบต์ ไม่มียอด · เหตุจากข้อมูลที่ผู้ยื่นกรอกเอง (งวด/ยอด/ชนิด) แสดงตามเดิม ◂ */
-export function adjustmentReplyOutOfPayScope(res: { ok: boolean; reason?: string }, byHours: boolean): { status: "ok" | "error"; message: string } {
-  if (res.ok || byHours || /เงินเดือน/.test(res.reason ?? "")) return { status: "ok", message: ADJUST_OUT_OF_PAY_SCOPE };
+/** HR PREPROD-1 ▸ V7/V7b: ผู้ยื่นที่พนักงานอยู่นอกขอบเขตค่าจ้างของตน (ยืมตัว) — สำเร็จ ⇒ คำตอบสำเร็จกลาง ไม่มียอด (เหมือนกันทุกเงินเดือน) ·
+ *  ยื่นไม่ได้ด้วยเหตุที่มาจากข้อมูลค่าจ้าง (รหัส PAY_* — ไม่มีโปรไฟล์ · ยอด OT ปัดเป็น 0) ⇒ ไม่สำเร็จ ข้อความคงที่ให้ติดต่อผู้ดูแลเงินเดือนของสาขาประจำ ·
+ *  เหตุอื่น (ไม่มีข้อมูลค่าจ้าง เช่น งวดมีรอบแล้ว) ⇒ ส่งผ่านตามจริง (เหมือนผู้ดูทุกสาขา) · จัดกลุ่มด้วยรหัส ไม่ใช้คำในข้อความ ◂ */
+export function adjustmentReplyOutOfPayScope(res: { ok: boolean; reason?: string; code?: string }): { status: "ok" | "error"; message: string } {
+  if (res.ok) return { status: "ok", message: ADJUST_OUT_OF_PAY_SCOPE };
+  if (typeof res.code === "string" && res.code.startsWith("PAY_")) return { status: "error", message: ADJUST_OUT_OF_PAY_SCOPE_REFUSED };
   return { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
 }
 // ◂ HR PREPROD-1

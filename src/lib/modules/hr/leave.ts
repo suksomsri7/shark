@@ -1300,25 +1300,34 @@ function splitsOf(rows: UseRow[]): Map<string, { paidT: number; unpaidT: number;
   return out;
 }
 // ◂ HR PREPROD-1
+/** HR PREPROD-1 ▸ V1b: ใบที่แบ่งส่วน — ไล่ "วันที่นับตอนนี้" ตามลำดับวัน ให้ส่วนได้ค่าจ้างจนครบ Σ USE (ยอดที่สมุดหักไปจริง) · ที่เหลือ = ไม่ได้ค่าจ้าง ·
+ *  วันหยุด/กะที่เปลี่ยนหลังอนุมัติจึงเลื่อนแต่ส่วนไม่ได้ค่าจ้าง ไม่แตะยอดที่จ่าย · ไม่แตะสมุด ◂ */
+async function splitDaysIn(db: Tx, id: string, paidT: number): Promise<[string, number][] | null> {
+  const l = await db.hrLeave.findFirst({ where: { id }, select: { fromDate: true, toDate: true, halfDay: true, hours: true, employeeId: true, employee: { select: { unitId: true, units: EMP_SELECT.units } } } });
+  if (!l) return null;
+  const meta = { counted: [] as string[] };
+  await leaveDaysInTx(db, { id: l.employeeId, unitId: l.employee.unitId, units: l.employee.units }, dayOf(l.fromDate), dayOf(l.toDate), l.halfDay, l.hours === null ? null : Number(String(l.hours)), meta);
+  return unpaidDaysOf(meta.counted, l.halfDay ? 5 : 10, paidT);
+}
 export async function leaveSplitsIn(db: SplitDb, ids: string[]): Promise<Map<string, LeaveSplit>> {
   const out = new Map<string, LeaveSplit>();
   const list = [...new Set(ids.filter((x) => typeof x === "string" && x))];
   if (!list.length) return out;
-  for (const [id, x] of splitsOf(await leaveUseRowsIn(db, list))) out.set(id, { paidDays: x.paidT / 10, unpaidDays: x.unpaidT / 10, unpaidFrom: x.from }); // HR PREPROD-1 ▸ V8b: แถวล่าสุด + Σ · note ผิดรูป/รุ่นเก่า = ได้ค่าจ้างทั้งใบ (V5) ◂
+  for (const [id, x] of splitsOf(await leaveUseRowsIn(db, list))) {
+    // HR PREPROD-1 ▸ V8b/V1b: ส่วนได้ค่าจ้าง = −Σ แถว USE · ใบที่แบ่งส่วน (note ล่าสุดมีส่วนไม่ได้ค่าจ้าง) ⇒ นับวันใหม่ (V1b) · note ผิดรูป/รุ่นเก่า = ได้ค่าจ้างทั้งใบ (V5) ◂
+    const days = x.unpaidT > 0 ? await splitDaysIn(db as unknown as Tx, id, x.paidT) : null;
+    const unpaid = days ? days.reduce((a, [, u]) => a + u, 0) : 0;
+    out.set(id, { paidDays: x.paidT / 10, unpaidDays: unpaid / 10, unpaidFrom: days?.find(([, u]) => u > 0)?.[0] ?? null });
+  }
   return out;
 }
 /** V1: สิบส่วนไม่ได้ค่าจ้างต่อวันของใบที่แบ่งส่วน (work-entries) — ชุดวันที่นับคิดใหม่ (leaveDaysInTx) · ส่วนได้ค่าจ้าง = วันลา − unpaid ไล่จากวันแรก */
-export async function leaveUnpaidByDayIn(db: Tx, ids: string[]): Promise<Map<string, Map<string, number>>> {
-  const out = new Map<string, Map<string, number>>();
-  const sp = await leaveSplitsIn(db, ids);
-  for (const [id, x] of sp) {
-    if (!(x.unpaidDays > 0) || !x.unpaidFrom) continue;
-    const l = await db.hrLeave.findFirst({ where: { id }, select: { fromDate: true, toDate: true, halfDay: true, hours: true, employeeId: true, employee: { select: { unitId: true, units: EMP_SELECT.units } } } });
-    if (!l) continue;
-    const meta = { counted: [] as string[] };
-    const days = await leaveDaysInTx(db, { id: l.employeeId, unitId: l.employee.unitId, units: l.employee.units }, dayOf(l.fromDate), dayOf(l.toDate), l.halfDay, l.hours === null ? null : Number(String(l.hours)), meta);
-    const unpaid = Math.round(x.unpaidDays * 10);
-    out.set(id, new Map(unpaidDaysOf(meta.counted, l.halfDay ? 5 : 10, Math.max(0, tenthsOf(days) - unpaid)).filter(([, u]) => u > 0)));
+export async function leaveUnpaidByDayIn(db: Tx, ids: string[]): Promise<Map<string, { byDay: Map<string, number>; sig: string }>> {
+  const out = new Map<string, { byDay: Map<string, number>; sig: string }>();
+  for (const [id, x] of splitsOf(await leaveUseRowsIn(db, [...new Set(ids)]))) {
+    if (!(x.unpaidT > 0)) continue;
+    const days = await splitDaysIn(db, id, x.paidT); // HR PREPROD-1 ▸ V1b: ยึดส่วนได้ค่าจ้าง (Σ USE) ไม่ใช่จำนวนวันไม่ได้ค่าจ้างที่จดไว้ ◂
+    if (days) out.set(id, { byDay: new Map(days.filter(([, u]) => u > 0)), sig: `${x.paidT}|${x.seq}|${x.unpaidT}|${x.from ?? ""}` }); // sig = สมุดของใบ (ส่วนได้ค่าจ้าง · แถวล่าสุด · note) ⇒ ลายนิ้วมือวันทำงานเปลี่ยนเมื่อสมุดเปลี่ยน (V5.4)
   }
   return out;
 }
@@ -1340,5 +1349,33 @@ export async function leavePolicyPaidLockedInTx(tx: Tx, ctx: Ctx, policyId: stri
     if (await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId, periodKey: { in: [...months] }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } })) return true;
   }
   return false;
+}
+// ◂ HR PREPROD-1
+
+// HR PREPROD-1 ▸ V8c: กลับรายการรอบจ่ายแล้ว (เรียกหลัง commit ของการกลับรายการ) ⇒ ใบลาป่วยที่แบ่งส่วนของพนักงานในรอบนั้นที่มีวันในงวดนั้น
+//   แบ่งใหม่ (เพิ่มแถว · กติกาเดียวกับ V8) — ต่อพนักงานหนึ่ง tx ใต้ hr-leave-emp:<sys>:<emp> (ไม่ถือล็อกงวด/แถวรอบของการกลับรายการ ⇒ ไม่มีวงล็อก) ◂
+export async function resplitAfterReverse(ctx: Ctx, employeeIds: string[], periodKey: string): Promise<void> {
+  const first = `${periodKey}-01`;
+  const [y, m] = periodKey.split("-").map(Number);
+  const last = new Date(Date.UTC(y!, m!, 0)).toISOString().slice(0, 10);
+  const ls = employeeIds.length
+    ? await tenantDb(ctx).hrLeave.findMany({ where: { employeeId: { in: employeeIds }, status: "APPROVED", policyId: { not: null }, fromDate: { lte: dbDate(last) }, toDate: { gte: dbDate(first) } }, select: { employeeId: true, policyId: true, fromDate: true, policy: { select: { yearStartMonth: true, category: true } } }, take: 5000 })
+    : [];
+  const byEmp = new Map<string, Map<string, Set<number>>>();
+  for (const l of ls) {
+    if (!l.policyId || String(l.policy?.category) !== "SICK") continue;
+    const pm = byEmp.get(l.employeeId) ?? new Map<string, Set<number>>();
+    const ys = pm.get(l.policyId) ?? new Set<number>();
+    ys.add(leaveYearOf(dayOf(l.fromDate), l.policy?.yearStartMonth || 1));
+    pm.set(l.policyId, ys);
+    byEmp.set(l.employeeId, pm);
+  }
+  for (const [emp, pm] of byEmp) {
+    await tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Tx;
+      await lockLeaveEmployeeInTx(tx, ctx.systemId, emp);
+      for (const [pol, ys] of pm) await resplitSickInTx(tx, ctx, emp, pol, [...ys]);
+    }, LEAVE_TX_OPTS);
+  }
 }
 // ◂ HR PREPROD-1
