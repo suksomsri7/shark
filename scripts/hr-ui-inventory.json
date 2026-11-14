@@ -13658,7 +13658,7 @@
    "testid": "hr-emp-line-chip",
    "kind": "display",
    "interactive": false,
-   "file": "src/lib/modules/hr/line-ui.tsx",
+   "file": "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx",
    "conditional": "ผู้ดูถือ hr.employee.create + พนักงานในสาขา",
    "roles": [
     "owner",
@@ -13679,7 +13679,7 @@
    "testid": "hr-emp-line-unlink",
    "kind": "button",
    "interactive": true,
-   "file": "src/lib/modules/hr/line-ui.tsx",
+   "file": "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx",
    "conditional": "พนักงานผูก LINE อยู่",
    "roles": [
     "owner",

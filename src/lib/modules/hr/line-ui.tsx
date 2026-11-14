@@ -2,7 +2,7 @@
 // HR H4.5 ▸ ส่วนที่กดได้ของ LINE พนักงาน (brief hr-brief-H4.5 R11 · ไม่มี mockup — ตามการ์ดของหน้า "ของฉัน"/หน้าตั้งค่า HR)
 //   การ์ด "LINE ของฉัน" (/app/me/hr/profile): สถานะ · ขอรหัสผูก (แสดงครั้งเดียว + เวลาหมดอายุ + ลิงก์เปิดแชท OA) · ยกเลิกผูก · ประโยค PDPA
 //   การ์ดค่าตั้ง (หน้าตั้งค่า HR): เปิด/ปิด · ชนิดเหตุการณ์ · ทันที/สรุป · เวลาสรุป · เพดาน/เดือน · OA สำรอง · "ส่งเดือนนี้ N / เพดาน" · ป้ายยังไม่ได้ทดสอบกับ OA จริง
-//   ชิปหน้าโปรไฟล์พนักงาน (ผู้ดูแล): สถานะ + วันที่ผูกเท่านั้น (ไม่มีชื่อ/รหัส LINE · Q14) + ปุ่มยกเลิกผูก
+//   (ชิปหน้าโปรไฟล์พนักงานเรนเดอร์ฝั่ง server ในหน้าเอง — หน้าโปรไฟล์มี client component ได้ตัวเดียว: qc-hf-hr-privacy S-2)
 //   🔴 ไฟล์นี้ไม่ import อะไรที่ถึงฐาน/แชท/แพลตฟอร์ม — ข้อมูลมาจากหน้า server · action ส่งมาเป็น prop · รหัสผูกอยู่ใน state ของจอเท่านั้น ◂
 import { useActionState, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
@@ -187,44 +187,5 @@ export function LineSettingsCard({
         )}
       </form>
     </section>
-  );
-}
-
-/** ชิปสถานะ LINE ของพนักงาน (ผู้ดูแล) — สถานะ + วันที่ผูกเท่านั้น */
-export function LineEmployeeChip({
-  systemId,
-  employeeId,
-  status,
-  unlinkAction,
-}: {
-  systemId: string;
-  employeeId: string;
-  status: { state: "ACTIVE" | "PENDING" | "NONE"; linkedAt: string | null };
-  unlinkAction: (fd: FormData) => Promise<Res>;
-}) {
-  const t = useTranslations("hr.line");
-  const [state, run, pending] = useActionState<Res, FormData>((_p, fd) => unlinkAction(fd), null);
-  const active = status.state === "ACTIVE" && !state?.ok;
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="rounded-full border px-2 py-1 text-xs" data-testid="hr-emp-line-chip">
-        {active ? t("chipActive") : status.state === "PENDING" && !state?.ok ? t("chipPending") : t("chipNone")}
-        {active && status.linkedAt ? ` · ${t("linkedAt", { date: bkkDate(status.linkedAt) })}` : ""}
-      </span>
-      {active && (
-        <form action={run}>
-          <input type="hidden" name="systemId" value={systemId} />
-          <input type="hidden" name="employeeId" value={employeeId} />
-          <button type="submit" className={ghost} disabled={pending} data-testid="hr-emp-line-unlink">
-            {t("adminUnlink")}
-          </button>
-        </form>
-      )}
-      {state && !state.ok && (
-        <span role="alert" className={danger}>
-          {state.reason}
-        </span>
-      )}
-    </div>
   );
 }
