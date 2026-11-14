@@ -9,6 +9,8 @@
 //   ไอคอนกิจการเป็น "วงกลม" ทุกที่ (แถบบน/ชีต/รายการ) · แตะ = ชีตกิจการ (BusinessSwitcherSheet: เปิดระบบ ⚙ ⇄) — เข้าระบบของเว็บจากตารางในชีตนั้น
 //   zone="systems" = หน้าระบบ (WebView) ⇒ ไม่มีปุ่มโซนใดทึบ และไม่มีปุ่ม +
 // ไม่มีรูปโปรไฟล์ · ไอคอน Feather เท่านั้น (R-UI2) · badges ไม่ส่งมา ⇒ อ่าน store กลาง useZoneBadgeCounts (src/api/secretary.ts) พลาด = 0
+// CAL2.1 (มติ M1 · แบบ cal-1.png จอ 2): ปุ่มปฏิทิน (calendar → /secretary/calendar) ถัดจาก "ทีม" · badge แดง = badges.calendar (เรื่องวันนี้ที่ยังไม่เสร็จ)
+//   zone="calendar" = จอปฏิทิน (ปุ่มปฏิทินทึบสี accent แบบเดียวกับเลขา) · ช่องปุ่มซ้ายแคบลงเป็น 6 (จอ ≥ 375 ไม่ล้น)
 // S2.14 badge 3 ไอคอนจาก `GET secretary/badges` เส้นเดียว: เลขา = approvals (กิจการนี้) · ลูกค้า = customers (ห้องที่ยังไม่อ่าน) ·
 //   ทีม = team.invites + team.help + team.support · โหลดที่ layout ของโซน (focus/foreground) + หลัง action (scheduleZoneBadges) · ปุ่ม ? ทุกจอที่มีแถบนี้
 import { Image, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
@@ -21,14 +23,16 @@ import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme, type ZoneKey } from "@/src/theme/index";
 import { size, type as T } from "@/src/theme/tokens";
 import { useBusinessSwitcher } from "./BusinessSwitcherSheet";
+import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
 
-export type SecZone = ZoneKey | "systems"; // "secretary" | "customers" | "team" | "systems" (หน้าระบบ WebView · ไม่มีปุ่มโซนใดทึบ)
-export type ZoneBadges = { secretary?: number; customers?: number; team?: number };
+export type SecZone = ZoneKey | "systems" | "calendar"; // "secretary" | "customers" | "team" | "systems" (หน้าระบบ WebView · ไม่มีปุ่มโซนใดทึบ) | "calendar" (CAL2.1)
+export type ZoneBadges = { secretary?: number; customers?: number; team?: number; calendar?: number };
 
-const ZONES: { zone: ZoneKey; icon: IconName; path: string; label: I18nKey }[] = [
+const ZONES: { zone: ZoneKey | "calendar"; icon: IconName; path: string; label: I18nKey }[] = [
   { zone: "secretary", icon: "user", path: "/secretary", label: "sec.zone.secretary" },
   { zone: "customers", icon: "inbox", path: "/customers", label: "sec.zone.customers" },
   { zone: "team", icon: "users", path: "/secretary/staff", label: "sec.zone.team" },
+  { zone: "calendar", icon: "calendar", path: "/secretary/calendar", label: "cal.zone" },
 ];
 
 /** ปุ่ม + ของแต่ละโซน (ลูกค้า/ระบบ = ไม่มี) */
@@ -36,6 +40,7 @@ const PLUS: Record<SecZone, { path: string; label: I18nKey } | null> = {
   secretary: { path: "/secretary/new", label: "sec.top.new" },
   customers: null,
   systems: null,
+  calendar: { path: "/secretary/calendar", label: "cal.plus.cal" },
   team: { path: "/secretary/staff/invite", label: "sec.top.invite" },
 };
 
@@ -68,9 +73,10 @@ export function SecTopBar({
   const t = useT();
   const router = useRouter();
   const switcher = useBusinessSwitcher();
+  const calSheet = useCalSheet(); // CAL2.6: + ของโซนเลขา = แผ่นเลือก (สั่งงาน / เพิ่มเตือน/นัด) · โซนปฏิทิน = แผ่นเพิ่มเตือนตรง · นอก Host = เส้นเดิม
   const shared = useZoneBadgeCounts(); // R-S2.1e: store กลาง (โหลดที่ layout ของโซน) ไม่ยิงต่อ mount
   const counts = badges ?? shared;
-  // 5 ปุ่มซ้าย × 44 + ช่อง 4 ช่อง + ปุ่ม + ขวา 44: ช่อง 8 = 296 · จอแคบกว่า 360 (เช่น 320 − ขอบ 36 = 284) ช่อง 4 = 280 ⇒ ไม่ล้นขอบ 18
+  // CAL2.1: 6 ปุ่มซ้าย × 44 + ช่อง 5 ช่อง + ปุ่ม + ขวา 44: ช่อง 6 = 338 ≤ 390 − 36 · จอแคบกว่า 360 ช่อง 2 (iPhone รุ่นเล็กสุดที่รองรับ = 375)
   const narrow = useWindowDimensions().width < 360;
   const plus = showPlus ? PLUS[zone] : null;
   // S2.17: ไม่มีสิทธิ์ดูแชทลูกค้า (inbox 403) ⇒ ไม่มีไอคอน "ลูกค้า" ทุกโซน (จอ /customers แสดง "ไม่มีสิทธิ์" เอง)
@@ -85,12 +91,25 @@ export function SecTopBar({
         <BizIcon testID="sec-top-biz" onPress={() => switcher.open()} />
         {zones.map((z) => {
         const n = badgeText(counts[z.zone]);
+        if (z.zone === "calendar") {
+          const on = !helpOn && zone === "calendar";
+          return (
+            <View key="calendar" style={styles.slot}>
+              <IconBtn testID="sec-top-calendar" icon="calendar" zone="secretary" on={on} label={t("cal.zone")} onPress={() => router.navigate("/secretary/calendar")} />
+              {n ? (
+                <View testID="sec-top-calendar-badge" pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
+                  <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        }
         return (
           <View key={z.zone} style={styles.slot}>
             <IconBtn
               testID={`sec-top-${z.zone}`}
               icon={z.icon}
-              zone={z.zone}
+              zone={z.zone as ZoneKey}
               on={!helpOn && z.zone === zone}
               label={t(z.label)}
               onPress={() => router.navigate(z.path)}
@@ -107,7 +126,20 @@ export function SecTopBar({
         </View>
       }
       center={center === "tenant" ? <TenantTitle onPress={() => switcher.open()} /> : undefined}
-      right={plus ? <IconBtn testID="sec-top-new" icon="plus" label={t(plus.label)} onPress={() => router.push(plus.path)} /> : undefined}
+      right={
+        plus ? (
+          <IconBtn
+            testID="sec-top-new"
+            icon="plus"
+            label={t(plus.label)}
+            onPress={() => {
+              if (calSheet && zone === "secretary") calSheet.openPlus();
+              else if (calSheet && zone === "calendar") calSheet.openAdd();
+              else if (zone !== "calendar") router.push(plus.path);
+            }}
+          />
+        ) : undefined
+      }
     />
   );
 }
@@ -185,8 +217,8 @@ export function TenantTitle({ onPress, big = false, testID }: { onPress?: () => 
 
 const styles = StyleSheet.create({
   slot: { width: size.iconBtn, height: size.iconBtn },
-  left: { flexDirection: "row", alignItems: "center", gap: 8 },
-  leftNarrow: { gap: 4 },
+  left: { flexDirection: "row", alignItems: "center", gap: 6 },
+  leftNarrow: { gap: 2 },
   biz: { alignItems: "center", justifyContent: "center", overflow: "hidden" },
   bizT: { fontWeight: "800", letterSpacing: 0.3 },
   bizChev: { position: "absolute", right: -3, bottom: -3, width: 17, height: 17, borderRadius: 9, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },

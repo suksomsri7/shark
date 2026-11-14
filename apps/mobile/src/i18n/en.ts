@@ -1,8 +1,10 @@
 // English strings for the AI secretary screens (WO S2.1) - same key set as th.ts (enforced by the type below + oracle I-1).
 // Keep this file free of Thai characters, comments included (oracle I-1).
 import type { I18nKey } from "./th";
+import { calEn } from "./cal-en";
 
 const en: Record<I18nKey, string> = {
+  ...calEn,
   "sec.zone.secretary": "Secretary",
   "sec.zone.customers": "Customers",
   "sec.zone.team": "Team",

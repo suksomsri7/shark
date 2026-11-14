@@ -1,9 +1,10 @@
 // โซนเลขา AI (ใบ S2.1) — Stack ซ้อนใน Drawer ของกิจการ · ห้องงาน/ตั้งค่า/ทีม/ช่วยเหลือ/ตั้งชื่อเลขา
 // ไม่มีแถบล่าง (ไม่ใช้ navigator แบบแท็บ) · ปุ่มกลับย้อนตาม stack จริง (แบบเดียวกับ crm/member ของ 1.0)
-// BusinessSwitcherHost = ชีตสลับกิจการชั้นบนสุดของโซน · useSecretaryZone = secretary/me ต่อผู้ใช้ + badge กลาง
+// BusinessSwitcherHost = ชีตสลับกิจการชั้นบนสุดของโซน · CAL2.6: CalSheetHost = แผ่นเพิ่ม/แก้เตือน + แผ่นเลือกของปุ่ม + · useSecretaryZone = secretary/me ต่อผู้ใช้ + badge กลาง
 // S2.13: StatusBar ตามธีม (ThemedStatusBar — useTheme · ถอดเมื่อโซนหลุด focus ⇒ จอ 1.0 กลับเป็น style="dark")
 import { Stack } from "expo-router";
 import { BusinessSwitcherHost } from "@/src/components/secretary/BusinessSwitcherSheet";
+import { CalSheetHost } from "@/src/components/calendar/AddCalSheet";
 import { useSecretaryZone } from "@/src/api/secretary";
 import { useTheme } from "@/src/theme/index";
 import { ThemedStatusBar } from "@/src/components/airy/ThemedStatusBar";
@@ -16,8 +17,10 @@ export default function SecretaryLayout() {
   useSecretaryZone(); // R-S2.1b/e: secretary/me ต่อ user.id + badge ของโซน (focus/foreground)
   return (
     <BusinessSwitcherHost>
-      <ThemedStatusBar />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg.base }, animation: "slide_from_right" }} />
+      <CalSheetHost>
+        <ThemedStatusBar />
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg.base }, animation: "slide_from_right" }} />
+      </CalSheetHost>
     </BusinessSwitcherHost>
   );
 }

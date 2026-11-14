@@ -15,6 +15,8 @@
 //   ปุ่ม user-plus + เมนู ⋯ "เพิ่มคน" (canManage = OWNER/ผู้เปิดห้อง) → AddMemberSheet (D3)
 // S2.10 (RESOLUTIONS §S): ย้อนต่อแถว + ชีตยืนยัน (canUndo ของเซิร์ฟเวอร์) · โหลดซ้อนระหว่าง poll = ตั้งธงวิ่งซ้ำ (ไม่ทิ้ง) · สำเร็จ = เอาการ์ดออกทันที ·
 //   หยุด poll เมื่อแอปอยู่เบื้องหลัง (AppState) + ถอยห่างเมื่อออฟไลน์ · clientMessageId ใหม่เมื่อแก้ร่างหลังส่งล้ม + แจ้งเมื่อซ้ำ · ปิดห้องมีชีตยืนยัน · กดซ้ำกันด้วย ref
+// CAL2.7 (แบบ cal-2.png จอ 5): การ์ดเตือน/นัดที่ผู้ดูสั่งในห้องนี้ (RoomDetail.reminders) วางตาม createdAt · แก้ไข = AddCalSheet โหมดแก้ ·
+//   ยกเลิก = ถามยืนยัน → DELETE calendar/items/[id] · DRAFT = ฟองยืนยัน "เตือนประจำ" + ใช่ ตั้งเลย (POST confirm) / แก้เวลา
 //   RoomStatus ตามเซิร์ฟเวอร์ (OPEN|RUNNING|WAITING|DONE · DONE = ปิดห้อง) · แผนของห้องที่ยัง PENDING แสดงเป็นการ์ดอนุมัติใบเดียว (ไม่ซ้ำ)
 // ข้อความทั้งหมดผ่าน i18n (sec.room.*) · สีจากธีม · สเกล R-UI1 (ระยะแนวตั้ง × F · ตัวอักษร tokens.type)
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -29,6 +31,11 @@ import { AttachSheet, AttachTray, localAttachments, useSecAttach, type PendingAt
 import { MemberBubble, SystemMsg } from "@/src/components/secretary/MemberBubble";
 import { DoneCard, type DoneIds } from "@/src/components/secretary/DoneCard";
 import { StepList } from "@/src/components/secretary/StepCard";
+import { ReminderCard } from "@/src/components/calendar/ReminderCard";
+import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
+import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
+import { calApi, calChanged, onCalChanged, type CalItemDto } from "@/src/api/calendar";
+import { apiErrorText } from "@/src/api/client";
 import { ApiError } from "@/src/api/client";
 import {
   DEFAULT_SECRETARY_NAME,
@@ -123,6 +130,11 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
   const [offline, setOffline] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [focused, setFocused] = useState(false);
+  // CAL2.7 การ์ดเตือนในห้อง (จอ 5)
+  const calSheet = useCalSheet();
+  const [remAsk, setRemAsk] = useState<CalItemDto | null>(null);
+  const [remBusy, setRemBusy] = useState<string | null>(null);
+  const [remNote, setRemNote] = useState<string | null>(null);
   const [active, setActive] = useState(() => AppState.currentState !== "background");
   const [draft, setDraft] = useState("");
   /** ฟองของเราที่กำลังส่ง (ข้อความ+ไฟล์) — ออกเมื่อโหลดรอบถัดไปเสร็จ · ล้ม = ออกทันที */
@@ -209,6 +221,22 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
 
   const loadRef = useRef(load);
   loadRef.current = load;
+  // แผ่นเพิ่ม/แก้เตือนบันทึกแล้ว ⇒ การ์ดในห้องอัปเดต
+  useEffect(() => onCalChanged(() => void loadRef.current()), []);
+  const remAct = useCallback(async (it: CalItemDto, kind: "confirm" | "cancel") => {
+    setRemBusy(it.id);
+    setRemNote(null);
+    try {
+      if (kind === "confirm") await calApi.confirm(it.id);
+      else await calApi.remove(it.id);
+      calChanged();
+    } catch (e) {
+      setRemNote(apiErrorText(e));
+    } finally {
+      setRemBusy(null);
+      void loadRef.current();
+    }
+  }, []);
 
   // โหลดทุกครั้งที่จอได้ focus · polling เฉพาะตอนจออยู่และแอปอยู่หน้า (5 วิ ขณะทำงาน · 15 วิ อื่น ๆ · ออฟไลน์ถอยห่าง) · blur/เบื้องหลัง = หยุด
   useFocusEffect(
@@ -422,6 +450,18 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
       if (pendingIds.has(p.id) || p.pending) continue; // แผน PENDING = การ์ดอนุมัติอยู่แล้ว
       out.push({ key: `p-${p.id}`, at: at(p.at), order: seq++, node: <View style={styles.indent}><StepList steps={p.steps} testID="sec-room-steps" stepTestID="sec-room-step" /></View> });
     }
+    for (const r of room?.reminders ?? []) {
+      out.push({
+        key: `cal-${r.id}`,
+        at: at(r.createdAt),
+        order: seq++,
+        node: (
+          <View style={styles.indent}>
+            <ReminderCard item={r} busy={remBusy === r.id} onEdit={(x) => calSheet?.openEdit(x)} onCancel={setRemAsk} onConfirm={(x) => void remAct(x, "confirm")} />
+          </View>
+        ),
+      });
+    }
     const lastAp = approvals.length - 1;
     approvals.forEach((a, i) => {
       out.push({
@@ -489,7 +529,7 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
       });
     }
     return out;
-  }, [shown, typing, room, approvals, logs, nowMs, name, myId, people, flow, approverOf, undoBusyId, undoNote, c, t]);
+  }, [shown, typing, room, approvals, logs, nowMs, name, myId, people, flow, approverOf, undoBusyId, undoNote, c, t, remBusy, calSheet, remAct]);
 
   // เลื่อนครั้งแรก: มีการ์ดรออนุมัติ ⇒ ไปที่การ์ดแรก (สิ่งที่ต้องทำ) · ไม่มี ⇒ ท้ายสุด · ต่อจากนั้น = ท้ายเมื่อมีของใหม่และอยู่ใกล้ท้าย
   const scroll = useRef<ScrollView>(null);
@@ -672,6 +712,26 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
         {menuNote ? <Text style={[styles.menuNote, { color: c.textMuted }]}>{menuNote}</Text> : null}
       </Sheet>
 
+      <ConfirmSheet
+        testID="cal-rc-ask"
+        visible={!!remAsk}
+        title={t("cal.rc.cancelAsk")}
+        body={remAsk?.title}
+        yes={t("cal.rc.cancel")}
+        no={t("cal.g.keep")}
+        onClose={() => setRemAsk(null)}
+        onYes={() => {
+          const it = remAsk;
+          setRemAsk(null);
+          if (it) void remAct(it, "cancel");
+        }}
+      />
+      {remNote ? (
+        <Pressable testID="cal-rc-note" onPress={() => setRemNote(null)} style={[glassStyle(c, 16), styles.remNote]}>
+          <Text style={{ color: c.bad.fg, fontSize: 13 }}>{remNote}</Text>
+        </Pressable>
+      ) : null}
+
       <Sheet visible={confirmClose} onClose={() => setConfirmClose(false)} testID="sec-room-close-confirm" top={500}>
         <Text style={[styles.menuH, { color: c.text }]}>{t("sec.room.close.title")}</Text>
         <Text style={[styles.sheetB, { color: c.textMuted }]}>{t("sec.room.close.body", { title: room?.title ?? "" })}</Text>
@@ -761,6 +821,7 @@ const styles = StyleSheet.create({
   status: { fontSize: T.cap, lineHeight: 16 },
   page: { paddingHorizontal: spacing.page, paddingBottom: cardGap * 2 },
   indent: { marginLeft: ROOM_INDENT },
+  remNote: { position: "absolute", left: 16, right: 16, top: 110, paddingVertical: 10, paddingHorizontal: 14 },
   bg: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: F.v(22) },
   bgT: { flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 19 },
   offline: { fontSize: T.cap, textAlign: "center", marginTop: spacing.lg },

@@ -12,6 +12,7 @@ import { getTenantId, getToken } from "@/src/lib/session";
 import { useAuth } from "@/src/lib/auth-context";
 import { langFrom, setLang } from "@/src/i18n";
 import { resetInboxState } from "@/src/api/inbox";
+import type { CalItemDto } from "@/src/api/calendar";
 
 // ───────── ตารางเส้น (ชื่อที่จอใช้ → path จริง) ─────────
 const PATH = {
@@ -150,7 +151,7 @@ export type Frequent = { title: string; instruction: string };
 export type AccessItem = { module: string; level: "OFF" | "READ" | "DRAFT" | "AUTO" | string };
 export type InboxCount = { total: number; canApprove: number };
 /** GET secretary/badges (S1.14c) — approvals = รออนุมัติของกิจการนี้ · customers = ห้องลูกค้าที่ยังไม่อ่าน · team = คำเชิญ + ขอให้ช่วย + เรื่องช่วยเหลือ */
-export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number }; total: number };
+export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number }; total: number; /** CAL (R-CAL-19 · สัญญา 32 §8.1): เรื่องวันนี้ที่ยังไม่เสร็จ · ไม่รวมใน total · เซิร์ฟเวอร์เก่าไม่ส่ง = 0 */ calendar?: number };
 
 /** GET secretary/systems — 1 แถว = 1 ระบบในเมนูเว็บ (ลำดับเดียวกัน) · href ขึ้นต้น /app (เปิดใน WebView หน้าระบบ) · badge = แชทลูกค้าที่ยังไม่อ่าน (ระบบแชท) */
 export type NavSystemRow = { key: string; kind: "unit" | "system" | "fixed"; code: string; href: string; label: string; badge: number };
@@ -623,6 +624,8 @@ export type RoomDetail = {
   members: { userId: string; name: string | null; role: string; seeHistory: boolean }[];
   /** ความคืบหน้าของแผนที่กำลังทำ (ถ้าเซิร์ฟเวอร์ส่ง `plans`) */
   plans: PlanItem[];
+  /** CAL2.7 (สัญญา 32 §8.1 · R-CAL-20): เตือน/นัดที่ผู้เรียกสั่งในห้องนี้ (เซิร์ฟเวอร์ส่งเฉพาะของผู้เรียก) · เซิร์ฟเวอร์เก่า = [] */
+  reminders: CalItemDto[];
 };
 export function normalizeRoomDetail(v: unknown): RoomDetail {
   const o = rec(rec(v).room ?? v);
@@ -643,6 +646,7 @@ export function normalizeRoomDetail(v: unknown): RoomDetail {
       .map((m) => ({ userId: str(m.userId), name: str(m.name) || null, role: str(m.role), seeHistory: m.seeHistory === true })),
     // แผนของห้อง (S1.14: PENDING + RUNNING) — แผน PENDING ซ้ำกับการ์ดอนุมัติ จอกรองออกด้วย id
     plans: (Array.isArray(o.plans) ? o.plans : []).map((p) => planOf(rec(p), str(rec(p).status).toUpperCase() === "PENDING")).filter((p) => p.id && p.steps.length > 0),
+    reminders: (Array.isArray(o.reminders) ? o.reminders : []).filter((x): x is CalItemDto => !!x && typeof rec(x).id === "string" && typeof rec(x).title === "string" && typeof rec(x).startAt === "string"),
   };
 }
 
@@ -711,8 +715,8 @@ export function useSecretaryMe(): SecretaryMe | null {
 }
 
 // ───────── badge 3 โซน — store กลาง (R-S2.1e) · โหลดที่ layout ของโซน (focus/foreground) ─────────
-export type ZoneCounts = { secretary: number; customers: number; team: number };
-const ZERO: ZoneCounts = { secretary: 0, customers: 0, team: 0 };
+export type ZoneCounts = { secretary: number; customers: number; team: number; calendar: number };
+const ZERO: ZoneCounts = { secretary: 0, customers: 0, team: 0, calendar: 0 };
 let badges: ZoneCounts = ZERO;
 const badgeListeners = new Set<() => void>();
 
@@ -726,7 +730,7 @@ const nonNeg = (v: unknown) => Math.max(0, Math.floor(Number(v ?? 0) || 0));
 export function zoneCountsOf(r: Partial<ZoneBadgesRes> | null | undefined): ZoneCounts {
   if (!r) return ZERO;
   const team = r.team ?? { invites: 0, help: 0, support: 0 };
-  return { secretary: nonNeg(r.approvals), customers: nonNeg(r.customers), team: nonNeg(team.invites) + nonNeg(team.help) + nonNeg(team.support) };
+  return { secretary: nonNeg(r.approvals), customers: nonNeg(r.customers), team: nonNeg(team.invites) + nonNeg(team.help) + nonNeg(team.support), calendar: nonNeg(r.calendar) };
 }
 export async function refreshZoneBadges(): Promise<void> {
   const seq = ++badgeSeq;
