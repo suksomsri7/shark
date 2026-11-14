@@ -8,6 +8,7 @@ import { WHT_TYPE_OPTIONS } from "./doc-editor-types";
 import { evaluateWhtRow, type WhtPanelContext } from "@/lib/modules/account/wht-panel";
 import { grossUp, instalmentWhtBase, whtForCash, whtOf } from "@/lib/modules/account/wht-calc";
 import { WHT_CONDITION_LABEL_TH, WHT_GROSS_UP_FORMULA_LABEL_TH, type WhtCondition } from "@/lib/core/settings/legal/th-tax-2569";
+import { legalWarningRefTh } from "@/lib/core/settings/legal/warnings"; // ACC T4 Job 0 ◂
 
 // ─────────────────────────────────────────────────────────────
 // PaymentSection — ส่วน F ของ DESIGN-SPEC-V2 §5.2 "รับชำระเงิน / บันทึกจ่าย"
@@ -607,7 +608,7 @@ function WhtInfo({ ctx, box, index, tieOff, paidBefore, shopPays }: { ctx: WhtPa
           {ev.warnings.map((w) => (
             <li key={w.code} style={{ color: w.ack ? "var(--color-danger)" : "var(--color-ink)" }} data-testid={`pay-wht-warning-${w.code}`}>
               ⚠ {w.messageTh}
-              {w.citation ? <span className="text-[color:var(--color-muted)]"> (อ้างอิง: {w.citation})</span> : null}
+              {legalWarningRefTh(w) ? <span className="text-[color:var(--color-muted)]"> ({legalWarningRefTh(w)})</span> : null /* ACC T4 Job 0 ◂ */}
             </li>
           ))}
         </ul>

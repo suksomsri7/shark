@@ -15,6 +15,7 @@
 //   W6  REST: 409 legal_ack_required + error.warnings[] รูปเดียวกับทะเบียน · ส่งซ้ำ (คีย์เดิม) พร้อม acknowledge = 200 + ผู้ยืนยัน API key
 //   W7  จอ/เลขา: คอมโพเนนต์กลางตัวเดียวใช้ทุกจุด · ข้อความถึงเลขามีรหัสให้ส่งซ้ำ · ไม่ใช้ emoji
 //   W8  ค้างจาก T0.2: ตัวอ่านค่ากฎหมายในโมดูลบัญชีใช้นาฬิกาโมดูล (accountNow) ไม่ใช่ new Date()
+//   W9  (T4 Job 0) สิ่งที่ผู้ใช้เห็น — กล่องคำเตือนกลาง · ข้อความรวม · อ้างอิงต่อรายการ · ผลเลขา · ตารางค่ากฎหมาย: ไม่มี references/ .md skill [V]/[U]/[S]
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-acc-v2-warnings");
 import { readFileSync } from "node:fs";
@@ -64,6 +65,36 @@ console.log("\nW1 ทะเบียนคำเตือน:");
   const v = LV.legalValueFrom({ entityKind: "UNSET", shop: { vat: [], wht: [], deadline: [] } }, "wht.rate", new Date("2026-11-13T05:00:00Z"), { incomeType: "M40_2" });
   const reg = v.warnings.every((w: Any) => W.isLegalWarningCode(w.code) && w.tag && w.checkedAt);
   chk("W1.12", "คำเตือนจากตัวอ่าน T0.2 (ENTITY_KIND_UNSET/RECIPIENT_ASSUMED) มาจากทะเบียน (มีป้าย+วันตรวจ)", v.warnings.length >= 2 && reg, "มาจากทะเบียน", v.warnings);
+}
+
+// ═══ W9 (ACC T4 Job 0) สิ่งที่ผู้ใช้เห็นไม่มี path ภายใน / ชื่อ skill / ป้ายตัวอักษร ═══
+console.log("\nW9 ข้อความที่ผู้ใช้เห็น (จอ · ข้อความ REST/เลขา · CSV):");
+{
+  const FORBID = /references\/|\.md\b|skill|\[(?:V2|V|S|U)\]/i;
+  const all: string[] = [...W.LEGAL_WARNING_CODES];
+  const params = { shop: "2%", system: "3%", ymd: "2026-11-13", value: "7%", months: 6, default: 12, form: "ภ.ง.ด.3", period: "2026-10", count: 2, amount: "1,000.00" };
+  const built = all.map((c) => W.legalWarning(c, params));
+  const React = (await import("react")) as Any;
+  const { renderToStaticMarkup } = (await import("react-dom/server")) as Any;
+  const { LegalWarnings } = (await import("@/components/account-v2/LegalWarnings" as string)) as Any;
+  const visible = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/g, " ");
+  const html = visible(renderToStaticMarkup(React.createElement(LegalWarnings, { warnings: built, ackName: "ack" })));
+  const htmlC = visible(renderToStaticMarkup(React.createElement(LegalWarnings, { warnings: built, compact: true, collapsible: true })));
+  chk("W9.1", "กล่องคำเตือนกลาง (LegalWarnings) ทุกรหัส: ไม่มี references/ · .md · skill · [V]/[U]/[S]", !FORBID.test(html) && !FORBID.test(htmlC) && html.includes("อ้างอิง:"), "สะอาด", (html.match(FORBID) ?? [])[0]);
+  const txt = W.legalWarningsText(built);
+  chk("W9.2", "ข้อความรวม (reason ของ service · error REST · ข้อความถึงเลขา) สะอาด", !FORBID.test(txt), "สะอาด", (txt.match(FORBID) ?? [])[0]);
+  const refs = built.map((w: Any) => W.legalWarningRefTh(w)).join(" | ");
+  chk("W9.3", "อ้างอิงต่อรายการ (CSV/รายงาน/แผงจ่าย) สะอาด", !FORBID.test(refs), "สะอาด", (refs.match(FORBID) ?? [])[0]);
+  const su = built.filter((w: Any) => w.tag === "S" || w.tag === "U");
+  chk("W9.4", "ป้าย [S]/[U]: ผู้ใช้เห็น \"โปรดตรวจกับนักบัญชีของร้าน\" (ข้อความหรืออ้างอิง)", su.every((w: Any) => `${w.messageTh} ${W.legalWarningRefTh(w)}`.includes(W.CHECK_WITH_ACCOUNTANT_TH)), "ครบ", su.map((w: Any) => w.code));
+  const lw = W.legalWarning("OUTPUT_VAT_PARKED_PAST_MONTH", params);
+  chk("W9.5", "ช่องเครื่องยังเก็บแหล่งภายใน (citation/tag/checkedAt) · ช่องผู้ใช้ lawTh = มาตราไทย", /references\//.test(lw.citation) && lw.tag === "V" && /^\d{4}-/.test(lw.checkedAt) && lw.lawTh === "ประมวลรัษฎากร ม.78(1), ม.86", "แยกช่อง", lw);
+  const rowW = W.legalWarning("UNVERIFIED_DEFAULT", {}, { citation: "references/common-withholding-tax.md §6 — กฎกระทรวง ฉบับที่ 402 (พ.ศ. 2569) [U]" });
+  chk("W9.6", "คำเตือนจากแถวตาราง (citation = ที่มาของแถว) → lawTh ตัดเหลือกฎหมาย", rowW.lawTh === "กฎกระทรวง ฉบับที่ 402 (พ.ศ. 2569)" && !FORBID.test(W.legalWarningsText([rowW])), "กฎกระทรวง ฉบับที่ 402 (พ.ศ. 2569)", rowW.lawTh);
+  const AO = src("src/lib/ai/account-ops.ts");
+  chk("W9.7", "ผลเครื่องมือเลขา: คำเตือนตัด citation/tag/checkedAt ดิบ แทนด้วยอ้างอิงกฎหมาย", /isWarning/.test(AO) && /"citation", "tag", "checkedAt"/.test(AO) && /อ้างอิงกฎหมาย/.test(AO), "มี", "ไม่มี");
+  const LVP = src("src/components/account-v2/LegalValuesPanel.tsx");
+  chk("W9.8", "ตารางค่ากฎหมายบนจอไม่แสดง path/ป้ายตัวอักษร (ใช้ publicCitationTh · ไม่มี 'ป้าย {r.tag}')", /publicCitationTh\(r\.source\)/.test(LVP) && !/ป้าย \{r\.tag\}/.test(LVP), "ตามนั้น", "ไม่ตรง");
 }
 
 // ═══ W7/W8 แหล่งโค้ด (ไม่แตะฐาน) ═══

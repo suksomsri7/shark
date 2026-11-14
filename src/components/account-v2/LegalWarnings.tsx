@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 // LegalWarnings — ที่แสดงคำเตือนกฎหมายแบบเดียวกันทุกหน้า (T0.4)
 //   ข้อมูลมาจากทะเบียนกลาง `src/lib/core/settings/legal/warnings.ts` เท่านั้น (รูป LegalWarning ชุดเดียวกับ REST/AI)
-//   แต่ละรายการ: ข้อความ · อ้างอิง · ป้ายความมั่นใจ · วันที่ตรวจ · ไอคอน warn ของ AccountIcon (ไม่ใช้ emoji)
+//   แต่ละรายการ: ข้อความ · อ้างอิงกฎหมาย (ภาษาไทยล้วน — T4 Job 0) · ไอคอน warn ของ AccountIcon (ไม่ใช้ emoji)
 //   ถ้ามีรายการที่ต้องกดยืนยัน → ช่องติ๊ก "รับทราบคำเตือนและทำต่อ"
 //     - ในฟอร์ม server action: ติ๊กแล้วส่ง <input name={ackName} value=code> ทุกรหัสที่ต้องยืนยัน
 //     - แบบควบคุมเอง: onAckChange(codes | [])
@@ -11,8 +11,7 @@
 // ─────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { AccountIcon } from "./AccountIcon";
-import { formatDateTh } from "@/lib/ui/date";
-import { LEGAL_TAG_SHORT_TH, type LegalWarning } from "@/lib/core/settings/legal/warnings";
+import { legalWarningRefTh, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 export function LegalWarnings({
   warnings,
@@ -63,11 +62,10 @@ export function LegalWarnings({
                   {open ? "ย่อ" : "อ่านเพิ่ม"}
                 </button>
               ) : null}
-              {(!compact || (collapsible && open)) && (w.citation || w.tag || w.checkedAt) ? (
-                <span className="text-xs text-[color:var(--color-muted)]">
-                  {w.citation ? <>อ้างอิง: {w.citation}</> : null}
-                  {w.tag ? <> · {LEGAL_TAG_SHORT_TH[w.tag]}</> : null}
-                  {w.checkedAt ? <> · ตรวจแหล่งเมื่อ {formatDateTh(w.checkedAt)}</> : null}
+              {/* ACC T4 Job 0 ▸ ผู้ใช้เห็นเฉพาะมาตรา/ประกาศภาษาไทย + "โปรดตรวจกับนักบัญชีของร้าน" ของป้าย [S]/[U] — ไม่มี path ภายใน/ป้ายตัวอักษร/วันที่ตรวจ ◂ */}
+              {(!compact || (collapsible && open)) && legalWarningRefTh(w) ? (
+                <span className="text-xs text-[color:var(--color-muted)]" data-testid={`${testId}-ref`}>
+                  {legalWarningRefTh(w)}
                 </span>
               ) : null}
             </span>

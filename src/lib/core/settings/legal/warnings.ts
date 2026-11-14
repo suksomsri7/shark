@@ -102,6 +102,29 @@ export const LEGAL_WARNING_CODES = [
   "WHT_CERT_REPLACE",
   "WHT_ADDITIONAL_FILING",
   "WHT_CREDIT_CERT_OWED",
+  // ── ลบร้าน/ยกเลิกบริการ (T4.5 — เลน 1) ──
+  "SHOP_RECORDS_RETENTION_DUTY",
+  "SHOP_DELETE_WITHIN_RETENTION",
+  "PAPER_ORIGINALS_KEEP",
+  // ── POS ↔ บัญชี (T4.7 — เลน 1) ──
+  "POS_TIP_REVENUE_VAT",
+  "POS_TIP_LIABILITY_REVIEW",
+  "POS_TIP_STAFF_DIRECT",
+  "POS_SHIFT_CASH_VARIANCE",
+  "POS_CASH_REGISTER_APPROVAL",
+  "POS_BILLS_NOT_POSTED",
+  // ── คลัง · เงินประกันหอ · แต้ม (T4.8 — เลน 1) ──
+  "STOCK_ISSUE_GIVEAWAY",
+  "STOCK_ISSUE_SAMPLE",
+  "STOCK_ISSUE_STAFF_MEAL",
+  "STOCK_ISSUE_PERSONAL_USE",
+  "STOCK_ISSUE_WASTE",
+  "STOCK_ISSUE_SHORTAGE",
+  "STOCK_ISSUE_APPROVER_SAME",
+  "DORM_DEPOSIT_OVER_MULTIPLE",
+  "DORM_DEPOSIT_LONG_CONTRACT",
+  "DORM_DEPOSIT_UNVERIFIED_CASE",
+  "LOYALTY_POINTS_OUTSTANDING",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -117,6 +140,11 @@ export type LegalWarning = {
   checkedAt?: string;
   /** true = ต้องกดยืนยันก่อนทำต่อ */
   ack?: boolean;
+  /**
+   * ACC T4 Job 0 ▸ ข้อความอ้างอิงที่ผู้ใช้เห็น: มาตรา/ประกาศเป็นภาษาไทยล้วน (ไม่มี path ภายใน ชื่อ skill หรือป้าย V/U/S)
+   *   `citation` / `tag` / `checkedAt` = ช่องเครื่องของทะเบียน/REST (เก็บไว้ตรวจย้อน) · จอ/ข้อความถึงผู้ใช้/เลขา AI ใช้ช่องนี้เท่านั้น ◂
+   */
+  lawTh?: string;
 };
 
 export type LegalWarningDef = {
@@ -128,7 +156,97 @@ export type LegalWarningDef = {
   tag: LegalTag;
   checkedAt: string;
   ack: boolean;
+  /** ACC T4 Job 0 ▸ อ้างอิงที่ผู้ใช้เห็น (ไม่ใส่ = ตัดจาก `citation` ด้วย `publicCitationTh`) ◂ */
+  lawTh?: string;
 };
+
+// ─────────────────────────────────────────────────────────────
+// ACC T4 Job 0 ▸ อ้างอิงที่ผู้ใช้เห็น — ผู้ใช้ต้องไม่เห็น path ภายใน (references/… .md · src/… · ledger/…) ชื่อ skill หรือป้าย [V]/[U]/[S]
+//   ตัดเอาเฉพาะชิ้นที่เป็นกฎหมาย (มาตรา · ประกาศ · คำสั่ง · ข้อหารือ กค · พ.ร.บ. · กฎกระทรวง) · ชิ้นภายในที่มีกฎหมายในวงเล็บ/หลัง "—" ⇒ เก็บเฉพาะส่วนกฎหมาย
+// ─────────────────────────────────────────────────────────────
+const INTERNAL_RE = /references\/|[A-Za-z0-9_-]+\.(?:md|ts|tsx|mts)\b|ledger\/|src\/|test-rules|audit-checklist|SYSTEM_[A-Z_]+|ตารางค่ากฎหมาย|skill|T-ACC|§/i;
+const LAWISH_RE = /ม\.\s?\d|มาตรา|ประมวลรัษฎากร|ประกาศ|คำสั่ง|กค\s?0\d|พ\.ร\.บ|พ\.ร\.ฎ|กฎกระทรวง|ท\.ป\.|ป\.\d|ฉ\.\s?\d|ฉบับที่|NPAEs|ระเบียบ|ข้อหารือ|หนังสือตอบ/;
+/** ป้ายความมั่นใจ / หมายเหตุภายในที่ห้ามหลุดถึงผู้ใช้ */
+const TAG_TOKEN_RE = /\s*\[(?:V2|V|S|U)\]|\s*—?\s*(?:เทียบเคียง|แหล่งขัดกัน[^·)]*|สูตรในวงการ|สูตรทางการไม่พบ)/g;
+
+/** แยกที่ตัวคั่นระดับบนสุด (ไม่ตัดในวงเล็บ) */
+function splitTop(s: string, seps: readonly string[]): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    const sep = depth === 0 ? seps.find((x) => s.startsWith(x, i)) : undefined;
+    if (sep) {
+      out.push(cur);
+      cur = "";
+      i += sep.length - 1;
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+/** วงเล็บระดับบนสุดของข้อความ (เนื้อในเท่านั้น) */
+function topParens(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "(") {
+      if (depth === 0) start = i + 1;
+      depth++;
+    } else if (s[i] === ")" && depth > 0) {
+      depth--;
+      if (depth === 0 && start >= 0) out.push(s.slice(start, i));
+    }
+  }
+  return out;
+}
+
+/** ACC T4 Job 0 ▸ อ้างอิงทางกฎหมายภาษาไทยล้วนจากข้อความที่มาภายใน (ไม่มีชิ้นกฎหมาย = "") ◂ */
+export function publicCitationTh(citation: string | null | undefined, depth = 0): string {
+  if (!citation || depth > 3) return "";
+  const cleaned = citation.replace(TAG_TOKEN_RE, "");
+  const out: string[] = [];
+  for (const raw of splitTop(cleaned, [" · ", " ; ", "; "])) {
+    const p = raw.trim().replace(/^[—–-]\s*/, "").trim();
+    if (!p) continue;
+    if (INTERNAL_RE.test(p)) {
+      // ชิ้นภายใน: เก็บกฎหมายในวงเล็บ / หลังขีดยาว
+      const inner = p.includes(" — ") ? [p.slice(p.indexOf(" — ") + 3)] : topParens(p);
+      for (const x of inner) {
+        const sub = publicCitationTh(x, depth + 1);
+        if (sub) out.push(sub);
+      }
+      continue;
+    }
+    if (!LAWISH_RE.test(p)) continue;
+    // ตัดคำอธิบายหลัง ":" (เช่น "ม.83: ภายในวันที่ 15…") ให้เหลือชื่อกฎหมาย
+    const law = splitTop(p, [": "])[0]!.trim().replace(/\s*\(\s*\)\s*/g, "");
+    if (law) out.push(law);
+  }
+  const seen = new Set<string>();
+  return out
+    .flatMap((x) => x.split(" · "))
+    .map((x) => x.trim())
+    .filter((x) => x && !INTERNAL_RE.test(x) && !seen.has(x) && (seen.add(x), true))
+    .join(" · ");
+}
+
+/** ACC T4 Job 0 ▸ ข้อความอ้างอิงบรรทัดเดียวที่ผู้ใช้เห็นของคำเตือน 1 รายการ: กฎหมาย + (ป้าย [S]/[U]) "โปรดตรวจกับนักบัญชีของร้าน" ◂ */
+export function legalWarningRefTh(w: Pick<LegalWarning, "lawTh" | "citation" | "tag" | "messageTh">): string {
+  const law = w.lawTh ?? publicCitationTh(w.citation);
+  const parts: string[] = [];
+  if (law) parts.push(`อ้างอิง: ${law}`);
+  if ((w.tag === "S" || w.tag === "U") && !(w.messageTh ?? "").includes(CHECK_WITH_ACCOUNTANT_TH_)) parts.push(CHECK_WITH_ACCOUNTANT_TH_);
+  return parts.join(" · ");
+}
+const CHECK_WITH_ACCOUNTANT_TH_ = "โปรดตรวจกับนักบัญชีของร้าน";
 
 /** ข้อความกลางสำหรับค่าที่ไม่ได้มาจากเอกสารทางการ (กติกาข้อ 1 ของ ACCOUNT-TAX-PLAN) */
 export const CHECK_WITH_ACCOUNTANT_TH = "โปรดตรวจกับนักบัญชีของร้าน";
@@ -803,6 +921,222 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     checkedAt: "2026-11-13",
     ack: false,
   },
+  // ── ลบร้าน/ยกเลิกบริการ (T4.5 — เลน 1) ──
+  SHOP_RECORDS_RETENTION_DUTY: {
+    code: "SHOP_RECORDS_RETENTION_DUTY",
+    titleTh: "หน้าที่เก็บบัญชีและเอกสารเป็นของร้าน",
+    messageTh: (p) =>
+      `ร้านต้องเก็บบัญชีและเอกสารประกอบการลงบัญชีไว้ไม่น้อยกว่า ${s(p, "years", "5")} ปีนับแต่วันปิดบัญชี (รายงานภาษีมูลค่าเพิ่มนับจากวันยื่นแบบ · สำเนาใบรับนับจากวันออก) แม้เลิกใช้บริการ SHARK แล้ว — หน้าที่นี้เป็นของร้าน ไม่ใช่ของ SHARK · ส่งออกสมุดบัญชีที่พิมพ์ได้และไฟล์แนบเก็บไว้ก่อนลบร้าน · กิจการที่เลิกโดยไม่ชำระบัญชีต้องส่งมอบบัญชีและเอกสารภายใน 90 วัน`,
+    citation: "references/domain-accounting-books.md §ก4 — พ.ร.บ.การบัญชี พ.ศ. 2543 ม.14 · ม.17 · ประมวลรัษฎากร ม.87/3 · ม.105 ทวิ",
+    lawTh: "พ.ร.บ.การบัญชี พ.ศ. 2543 ม.14, ม.17 · ประมวลรัษฎากร ม.87/3, ม.105 ทวิ",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  SHOP_DELETE_WITHIN_RETENTION: {
+    code: "SHOP_DELETE_WITHIN_RETENTION",
+    titleTh: "ลบร้านก่อนครบระยะเก็บเอกสาร",
+    messageTh: (p) =>
+      `สมุด${p.book ? ` "${s(p, "book")}"` : ""} มีรายการบัญชีล่าสุดวันที่ ${s(p, "last")} — ยังต้องเก็บถึงอย่างน้อย ${s(p, "until")} (${s(p, "years", "5")} ปีนับแต่วันปิดบัญชี) · เมื่อลบร้าน ข้อมูลบัญชีในระบบจะถูกลบถาวรเมื่อครบช่วงรอ ร้านต้องเก็บสำเนาที่ส่งออกและต้นฉบับกระดาษไว้เอง · กดยืนยันเพื่อขอลบร้าน`,
+    citation: "references/domain-accounting-books.md §ก4 — พ.ร.บ.การบัญชี พ.ศ. 2543 ม.14 · ม.38 (ทำลาย/ทำให้สูญหาย)",
+    lawTh: "พ.ร.บ.การบัญชี พ.ศ. 2543 ม.14, ม.38",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  PAPER_ORIGINALS_KEEP: {
+    code: "PAPER_ORIGINALS_KEEP",
+    titleTh: "เก็บต้นฉบับกระดาษไว้จนครบอายุ",
+    messageTh: () =>
+      "เก็บต้นฉบับกระดาษของเอกสารที่ได้รับ (ใบกำกับภาษีซื้อ ใบเสร็จ สัญญา) ไว้จนครบระยะเก็บ — เจ้าพนักงานเรียกดูเอกสารกระดาษได้ และระบบไม่พบตัวบทหรือข้อหารือที่รับรองว่าสแกนแล้วทำลายต้นฉบับได้ · ไฟล์ในระบบเป็นสำเนาเพื่อความสะดวก",
+    citation: "references/domain-accounting-books.md §ง3 — คำสั่ง ป.121/2545 ข้อ 3",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  // ── POS ↔ บัญชี (T4.7 — เลน 1) ──
+  POS_TIP_REVENUE_VAT: {
+    code: "POS_TIP_REVENUE_VAT",
+    titleTh: "ทิปลงเป็นรายได้ของร้าน (คิด VAT)",
+    messageTh: () =>
+      `ทิปที่ลูกค้าจ่ายผ่านร้าน (เงินสด บัตร QR รวมในบิล) ลงเป็นรายได้ของร้านและคิดภาษีขาย · ส่วนที่ร้านแบ่งจ่ายพนักงานเป็นเงินได้ของพนักงาน · ข้อหารือที่พบเป็นเรื่องภาษีของพนักงาน ไม่ได้ชี้ตรงว่าทิปต้องเสียภาษีมูลค่าเพิ่ม — ${CHECK_WITH_ACCOUNTANT_TH}`,
+    citation: "references/domain-shark-accounting-cases.md §1.8 — หนังสือตอบข้อหารือ กค 0702/3278",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  POS_TIP_LIABILITY_REVIEW: {
+    code: "POS_TIP_LIABILITY_REVIEW",
+    titleTh: "ทิปลงเป็นเงินรับแทนพนักงาน",
+    messageTh: () =>
+      "ทิปลงเป็นหนี้สิน \"รอจ่ายพนักงาน\" ไม่คิดภาษีขาย — ข้อหารือที่พบระบุว่ากิจการนำทิปที่จ่ายเข้ากิจการไปเสียภาษีมูลค่าเพิ่ม วิธีนี้จึงควรทบทวน (ทางเลือก: รายได้ของร้านคิด VAT)",
+    citation: "references/domain-shark-accounting-cases.md §1.8 — หนังสือตอบข้อหารือ กค 0702/3278 (บัญชีพักทิปแบบหนี้สินต้องทบทวน)",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  POS_TIP_STAFF_DIRECT: {
+    code: "POS_TIP_STAFF_DIRECT",
+    titleTh: "ทิปเงินสดที่พนักงานรับตรง",
+    messageTh: () =>
+      "ทิปเงินสดถือว่าพนักงานรับตรงจากลูกค้า ไม่ผ่านบัญชีร้าน (ไม่ลงเงินสดและไม่ลงรายได้) · ทิปที่เข้าบัญชีร้าน (บัตร QR โอน) ยังลงเป็นเงินรับแทนพนักงาน · ไม่พบข้อหารือเรื่องทิปที่ลูกค้าให้พนักงานโดยตรง",
+    citation: "references/domain-shark-accounting-cases.md §1.8 (ทิปตรงถึงพนักงาน — ไม่พบข้อหารือ)",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  POS_SHIFT_CASH_VARIANCE: {
+    code: "POS_SHIFT_CASH_VARIANCE",
+    titleTh: "เงินขาด/เกินปิดกะลงบัญชี",
+    messageTh: (p) =>
+      `${p.count ? `${s(p, "count")} กะ ` : ""}ผลต่างเงินสดจากการนับปิดกะลงบัญชี "เงินขาดจากการนับเงินสด" / "เงินเกินจากการนับเงินสด" ผูกกะ เครื่อง และพนักงาน ไม่หักกลบข้ามกะ · เงินขาดที่เรียกคืนจากพนักงานให้ตั้งเป็นลูกหนี้พนักงาน · ไม่มีตัวบท/ข้อหารือตรงเรื่องนี้ (แนวปฏิบัติทางบัญชี)`,
+    citation: "references/domain-shark-accounting-cases.md §1.9 — ประมวลรัษฎากร ม.65 ตรี (13)(18) · กค 0702/8080 (แนวผลเสียหายจากทุจริต)",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  POS_CASH_REGISTER_APPROVAL: {
+    code: "POS_CASH_REGISTER_APPROVAL",
+    titleTh: "เครื่องบันทึกการเก็บเงินต้องขออนุมัติ",
+    messageTh: (p) =>
+      `ร้านจดภาษีมูลค่าเพิ่มที่ใช้เครื่องบันทึกการเก็บเงินออกใบกำกับภาษีอย่างย่อต้องยื่นคำขออนุมัติต่ออธิบดี (แบบ ภ.พ.06) ต่อสถานประกอบการ และพิมพ์เลขรหัสประจำเครื่องบนใบ · ใช้โดยไม่ได้รับอนุมัติมีโทษตาม ม.90/3${p.devices ? ` · เครื่องที่ยังไม่มีเลขรหัสประจำเครื่อง: ${s(p, "devices")}` : ""} · ไม่พบแนวทางว่าแอปขายบนแท็บเล็ตเข้าข่ายเครื่องบันทึกการเก็บเงินหรือไม่`,
+    citation: "references/domain-shark-accounting-cases.md §1.4 — ประมวลรัษฎากร ม.86/6 ว.หก · ม.90/3(2) · ประกาศ VAT ฉ.46 ข้อ 3 (การปรับใช้กับแท็บเล็ต [U])",
+    lawTh: "ประมวลรัษฎากร ม.86/6, ม.90/3 · ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 46",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  POS_BILLS_NOT_POSTED: {
+    code: "POS_BILLS_NOT_POSTED",
+    titleTh: "บิลขายหน้าร้านที่ยังไม่ลงบัญชี",
+    messageTh: (p) =>
+      `มีบิลขายหน้าร้าน ${s(p, "count")} บิล (${s(p, "amount")} บาท) ที่ยังไม่ลงสมุดบัญชี — ใบกำกับภาษีอย่างย่อต้องลงรายงานภาษีขายเป็นยอดรวมรายวันภายใน 3 วันทำการ · ตรวจการเชื่อมจุดขายกับสมุด`,
+    citation: "references/domain-shark-accounting-cases.md §1.3 — ประกาศ VAT ฉ.89 ข้อ 7(2)",
+    lawTh: "ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 89 ข้อ 7(2)",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  // ── คลัง · เงินประกันหอ · แต้ม (T4.8 — เลน 1) ──
+  STOCK_ISSUE_GIVEAWAY: {
+    code: "STOCK_ISSUE_GIVEAWAY",
+    titleTh: "ของแถม",
+    messageTh: () =>
+      "ของแถมไม่ถือเป็นการขายเมื่อแถมพร้อมกับการขายในใบกำกับภาษีใบเดียวกัน และมูลค่าของแถมไม่เกินมูลค่าสินค้าที่ขาย — แถมคนละบิล/คนละวัน หรือเกินมูลค่า อาจถือเป็นการขายที่ต้องเสียภาษี · ควรออกของแถมผ่านบิลขาย",
+    citation: "references/domain-shark-accounting-cases.md §5.1 — ประกาศ VAT ฉ.40 ข้อ 2(1) · คำสั่ง ป.86/2542 ข้อ 13",
+    lawTh: "ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 40 ข้อ 2(1) · คำสั่ง ป.86/2542 ข้อ 13",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  STOCK_ISSUE_SAMPLE: {
+    code: "STOCK_ISSUE_SAMPLE",
+    titleTh: "สินค้าตัวอย่าง",
+    messageTh: () => "สินค้าตัวอย่างที่แจกในกิจกรรมส่งเสริมการขายไม่ถือเป็นการขาย — เก็บหลักฐานกิจกรรม (วันที่ สถานที่ จำนวน) ไว้กับใบเบิก",
+    citation: "references/domain-shark-accounting-cases.md §5.2 — ประกาศ VAT ฉ.40 ข้อ 2(7)",
+    lawTh: "ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 40 ข้อ 2(7)",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  STOCK_ISSUE_STAFF_MEAL: {
+    code: "STOCK_ISSUE_STAFF_MEAL",
+    titleTh: "อาหารพนักงาน",
+    messageTh: () =>
+      "อาหารและเครื่องดื่มที่ร้านจัดให้พนักงานระหว่างเวลาทำงานตามระเบียบสวัสดิการ ในราคาที่ไม่เกินสมควร ไม่ถือเป็นการขาย — ควรมีระเบียบสวัสดิการเป็นลายลักษณ์อักษร · ลงบัญชีเป็นค่าสวัสดิการพนักงาน",
+    citation: "references/domain-shark-accounting-cases.md §5.2 — ประกาศ VAT ฉ.40 ข้อ 2(8)",
+    lawTh: "ประกาศอธิบดีฯ เรื่อง VAT ฉบับที่ 40 ข้อ 2(8)",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  STOCK_ISSUE_PERSONAL_USE: {
+    code: "STOCK_ISSUE_PERSONAL_USE",
+    titleTh: "เจ้าของนำไปใช้ส่วนตัว",
+    messageTh: (p) =>
+      `เจ้าของหรือผู้อื่นนำสินค้าไปใช้ที่ไม่ใช่เพื่อกิจการโดยตรงถือเป็นการขาย — ร้านจดภาษีมูลค่าเพิ่มต้องคิดภาษีขายจากราคาตลาด${p.vat ? ` (ประมาณ ${s(p, "vat")} บาท)` : ""} และออกใบกำกับภาษี · ใบเบิกนี้ลงต้นทุนเข้าบัญชีถอนใช้ส่วนตัว ไม่ใช่ค่าใช้จ่ายของกิจการ · กดยืนยันเพื่ออนุมัติ`,
+    citation: "references/domain-shark-accounting-cases.md §5.3 — ประมวลรัษฎากร ม.77/1(8)(ง) · ม.79/3",
+    lawTh: "ประมวลรัษฎากร ม.77/1(8)(ง), ม.79/3",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  STOCK_ISSUE_WASTE: {
+    code: "STOCK_ISSUE_WASTE",
+    titleTh: "ของเสีย/ทำลาย",
+    messageTh: () =>
+      "สินค้าเน่าเสียหรือทำลาย: บันทึกวันที่ รายการ ปริมาณ ต้นทุน สาเหตุ ผู้อนุมัติ และพยาน (รูปถ่ายถ้ามี) — ของที่เก็บไม่ได้ (เช่นอาหาร) ต้องตรวจสภาพโดยผู้มีอำนาจอนุมัติและมีพยานลงชื่อ ไม่ต้องแจ้งสรรพากร · ผลทางภาษีมูลค่าเพิ่มของการทำลายยังไม่ยืนยัน",
+    citation: "references/domain-shark-accounting-cases.md §5.5 — คำสั่ง ป.79/2541 ข้อ 3(3.1) (ผลทาง VAT [S])",
+    lawTh: "คำสั่ง ป.79/2541 ข้อ 3(3.1)",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  STOCK_ISSUE_SHORTAGE: {
+    code: "STOCK_ISSUE_SHORTAGE",
+    titleTh: "สินค้าขาดไม่ทราบสาเหตุ",
+    messageTh: () =>
+      "สินค้าที่ขาดจากรายงานสินค้าและวัตถุดิบถือเป็นการขาย ความรับผิดภาษีเกิดเมื่อตรวจพบ — ร้านจดภาษีมูลค่าเพิ่มควรคิดภาษีขายของสินค้าที่ขาด · การนับเองของร้านถือเป็น \"ตรวจพบ\" หรือไม่ยังไม่ยืนยัน",
+    citation: "references/domain-shark-accounting-cases.md §5.4 — คำสั่ง ป.86/2542 ข้อ 3(3) · ประมวลรัษฎากร ม.89(10)",
+    lawTh: "คำสั่ง ป.86/2542 ข้อ 3(3) · ประมวลรัษฎากร ม.89(10)",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  STOCK_ISSUE_APPROVER_SAME: {
+    code: "STOCK_ISSUE_APPROVER_SAME",
+    titleTh: "ผู้อนุมัติคนเดียวกับผู้ทำใบเบิก",
+    messageTh: () =>
+      "ใบเบิกนี้อนุมัติโดยคนเดียวกับผู้สร้าง — เอกสารภายในควรมีลายมือชื่อผู้อนุมัติ และการทำลายสินค้าควรมีผู้มีอำนาจอนุมัติแยกจากผู้ทำและมีพยาน",
+    citation: "references/domain-accounting-books.md §ก2 — ประกาศกรมทะเบียนการค้า พ.ศ. 2544 ข้อ 11 · domain-shark-accounting-cases.md §5.5",
+    lawTh: "ประกาศกรมทะเบียนการค้า เรื่อง กำหนดชนิดของบัญชีที่ต้องจัดทำ พ.ศ. 2544 ข้อ 11 · คำสั่ง ป.79/2541 ข้อ 3(3.1)",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  DORM_DEPOSIT_OVER_MULTIPLE: {
+    code: "DORM_DEPOSIT_OVER_MULTIPLE",
+    titleTh: "เงินประกันหอพักเกินเพดานที่ไม่ถือเป็นรายได้",
+    messageTh: (p) =>
+      `${p.lease ? `${s(p, "lease")}: ` : ""}เงินประกัน ${s(p, "deposit")} บาท เกิน ${s(p, "max", "6")} เท่าของค่าเช่ารายเดือน (${s(p, "rent")} บาท) — เงินประกันการเช่าที่อยู่อาศัยไม่ถือเป็นรายได้ของผู้ให้เช่าเฉพาะเมื่อเป็นธรรมเนียมของธุรกิจ ต้องคืนทันทีที่สัญญาสิ้นสุดโดยไม่มีเงื่อนไข ไม่เกิน ${s(p, "max", "6")} เท่าของค่าเช่ารายเดือน และสัญญาไม่เกิน ${s(p, "years", "3")} ปี — ไม่ครบเงื่อนไขถือเป็นรายได้`,
+    citation: "references/domain-shark-accounting-cases.md §2.2 — คำสั่ง ป.73/2541 ข้อ 2(3)(ง), 3(2)",
+    lawTh: "คำสั่งกรมสรรพากร ที่ ป.73/2541 ข้อ 3(2)",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  DORM_DEPOSIT_LONG_CONTRACT: {
+    code: "DORM_DEPOSIT_LONG_CONTRACT",
+    titleTh: "สัญญาเช่าหอพักยาวเกินเพดาน",
+    messageTh: (p) =>
+      `${p.lease ? `${s(p, "lease")}: ` : ""}สัญญาเช่ายาว ${s(p, "months")} เดือน เกิน ${s(p, "years", "3")} ปี — เงินประกันของสัญญาที่เกิน ${s(p, "years", "3")} ปีไม่เข้าเงื่อนไข "ไม่ถือเป็นรายได้" และอาจถือเป็นรายได้ของผู้ให้เช่า`,
+    citation: "references/domain-shark-accounting-cases.md §2.2 — คำสั่ง ป.73/2541 ข้อ 3(2)",
+    lawTh: "คำสั่งกรมสรรพากร ที่ ป.73/2541 ข้อ 3(2)",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  DORM_DEPOSIT_UNVERIFIED_CASE: {
+    code: "DORM_DEPOSIT_UNVERIFIED_CASE",
+    titleTh: "กรณีเงินประกันหอพักที่ยังไม่มีแนวทาง",
+    messageTh: () =>
+      "ผู้ให้เช่าที่เป็นบุคคลธรรมดา และสัญญาที่ต่ออายุจนรวมกันเกิน 3 ปี — ยังไม่พบแนวทางว่าใช้เงื่อนไขเงินประกันข้างต้นอย่างไร",
+    citation: "references/domain-shark-accounting-cases.md §2.2 (บุคคลธรรมดา/ต่ออายุ [U]) — คำสั่ง ป.73/2541 ข้อ 3(2)",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  LOYALTY_POINTS_OUTSTANDING: {
+    code: "LOYALTY_POINTS_OUTSTANDING",
+    titleTh: "แต้มสะสมคงค้าง ณ วันสิ้นงวด",
+    messageTh: (p) =>
+      `แต้มคงค้าง ณ ${s(p, "asOf")} รวม ${s(p, "points")} แต้ม มูลค่าตามอัตราแลก ${s(p, "amount")} บาท — มาตรฐาน NPAEs ให้เลือกตั้งเป็นหนี้สินหรือรับรู้เป็นส่วนลดเมื่อลูกค้าใช้แต้ม · ทางภาษี ประมาณการหนี้สินเข้าข่าย "เงินสำรอง" ที่หักเป็นรายจ่ายไม่ได้จนกว่าจะใช้จริง (การปรับใช้กับแต้มยังไม่ยืนยัน)`,
+    citation: "references/domain-shark-accounting-cases.md §3.4 — TFRS for NPAEs 18.31 · ประมวลรัษฎากร ม.65 ตรี (1)",
+    lawTh: "มาตรฐาน TFRS for NPAEs ย่อหน้า 18.31 · ประมวลรัษฎากร ม.65 ตรี (1)",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
 };
 
 export function isLegalWarningCode(v: unknown): v is LegalWarningCode {
@@ -814,7 +1148,10 @@ export function legalWarning(code: LegalWarningCode, params: Record<string, stri
   const d = LEGAL_WARNINGS[code];
   const base = d.messageTh(params);
   const messageTh = d.tag === "S" || d.tag === "U" ? `${base} — ${SYSTEM_DEFAULT_SUFFIX_TH}` : base;
-  return { code, messageTh, citation: opts.citation ?? d.citation, tag: d.tag, checkedAt: d.checkedAt, ack: d.ack };
+  const citation = opts.citation ?? d.citation;
+  // ACC T4 Job 0 ▸ อ้างอิงที่ผู้ใช้เห็น: แถวตาราง (opts.citation) ตัดจากที่มาของแถว · ไม่งั้นค่าที่ทะเบียนเขียนไว้ / ตัดจาก citation ของทะเบียน ◂
+  const lawTh = (opts.citation ? publicCitationTh(opts.citation) : "") || d.lawTh || publicCitationTh(d.citation);
+  return { code, messageTh, citation, tag: d.tag, checkedAt: d.checkedAt, ack: d.ack, ...(lawTh ? { lawTh } : {}) };
 }
 
 /** คำเตือนที่ต้องกดยืนยันแต่ยังไม่อยู่ในรหัสที่ผู้ใช้ยืนยันมา */
@@ -833,7 +1170,13 @@ export const LEGAL_ACK_REASON_TH = "มีคำเตือนตามกฎ�
 
 /** ข้อความไทยบรรทัดเดียวของคำเตือนชุดหนึ่ง (ใช้ใน reason / ข้อความถึงเลขา AI) */
 export function legalWarningsText(warnings: readonly LegalWarning[]): string {
-  return warnings.map((w) => `[${w.code}] ${w.messageTh}${w.citation ? ` (อ้างอิง: ${w.citation})` : ""}`).join(" · ");
+  // ACC T4 Job 0 ▸ ข้อความถึงผู้ใช้/เลขา: กฎหมายภาษาไทยเท่านั้น (ไม่มี path ภายใน/ป้าย) — citation ดิบอยู่ในช่องเครื่องของ REST ◂
+  return warnings
+    .map((w) => {
+      const ref = legalWarningRefTh(w);
+      return `[${w.code}] ${w.messageTh}${ref ? ` (${ref})` : ""}`;
+    })
+    .join(" · ");
 }
 
 /** โยนข้ามชั้นภายใน service (ในธุรกรรม) แล้วผู้เรียกแปลงเป็น `{ ok:false, legal }` — ห้ามหลุดถึงผู้ใช้เป็น error ดิบ */

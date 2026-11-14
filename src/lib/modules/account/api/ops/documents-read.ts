@@ -485,7 +485,7 @@ const documentsLegalWarnings = defineOp({
       ),
       ...(revenue && d.status === "DRAFT" ? saleWithoutVatWarnings({ docType: d.docType, vatMode: d.vatMode, sourceDocId: d.sourceDocId, lines: d.lines }, settings) : []),
     ];
-    return { documentId: d.id, docType: d.docType, status: d.status, warnings: ws.map((w) => ({ code: w.code, message_th: w.messageTh, citation: w.citation, tag: w.tag, checkedAt: w.checkedAt, needsAcknowledge: w.ack })) };
+    return { documentId: d.id, docType: d.docType, status: d.status, warnings: ws.map((w) => ({ code: w.code, message_th: w.messageTh, law_th: w.lawTh ?? null, citation: w.citation, tag: w.tag, checkedAt: w.checkedAt, needsAcknowledge: w.ack })) };
   },
 });
 
@@ -545,7 +545,7 @@ const documentsDepositSettlement = defineOp({
   async handler({ actor, params }) {
     const p = await depositSettlePreview(actor.tenantId, actor.systemId, params.id ?? "");
     if (!p) throw new Error(ERR.DOC_NOT_FOUND);
-    const wv = (ws: typeof p.refundWarnings) => ws.map((w) => ({ code: w.code, message_th: w.messageTh, citation: w.citation, tag: w.tag, needsAcknowledge: w.ack }));
+    const wv = (ws: typeof p.refundWarnings) => ws.map((w) => ({ code: w.code, message_th: w.messageTh, law_th: w.lawTh ?? null, citation: w.citation, tag: w.tag, needsAcknowledge: w.ack }));
     return {
       taxInvoiceNo: p.taxInvoiceNo,
       remainingSatang: p.gross,

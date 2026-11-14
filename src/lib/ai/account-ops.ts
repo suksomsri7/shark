@@ -30,6 +30,7 @@ import type { ApiOp } from "@/lib/modules/account/api/op";
 import { ACCOUNT_OPS } from "@/lib/modules/account/api/registry";
 import { mapError } from "@/lib/modules/account/api/respond";
 import { vatRateBpAt } from "@/lib/modules/account/legal-values";
+import { publicCitationTh } from "@/lib/core/settings/legal/warnings"; // ACC T4 Job 0 ◂
 import { detailsMessageTh, runOpAsActor, validateOpInput, validateWith } from "@/lib/modules/account/api/run";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -626,9 +627,33 @@ function thaiify(value: unknown, depth = 0): unknown {
   }
   if (!isRecord(value)) return value;
   const out: Record<string, unknown> = {};
+  // ACC T4 Job 0 ▸ คำเตือนกฎหมาย (มี code + ข้อความ): เลขาเห็นเฉพาะกฎหมายภาษาไทย — ตัด citation ดิบ (path ภายใน) · ป้าย V/U/S · วันที่ตรวจ ◂
+  const isWarning = typeof value.code === "string" && (typeof value.messageTh === "string" || typeof value.message_th === "string");
+  if (isWarning) {
+    const law = typeof value.lawTh === "string" ? value.lawTh : typeof value.law_th === "string" ? value.law_th : publicCitationTh(typeof value.citation === "string" ? value.citation : "");
+    const tagged = value.tag === "S" || value.tag === "U";
+    const o: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (["citation", "tag", "checkedAt", "lawTh", "law_th"].includes(k) || DROP_KEYS.has(k) || v === null || v === undefined) continue;
+      o[thaiKey(k)] = typeof v === "object" ? thaiify(v, depth + 1) : v;
+    }
+    if (law) o["อ้างอิงกฎหมาย"] = law;
+    if (tagged) o["หมายเหตุ"] = "ค่าเริ่มต้นของระบบ — โปรดตรวจกับนักบัญชีของร้าน";
+    return o;
+  }
   for (const [k, v] of Object.entries(value)) {
     if (DROP_KEYS.has(k)) continue;
     if (v === null || v === undefined) continue;
+    // ACC T4 Job 0 ▸ ที่มาของแถวค่ากฎหมาย/ป้ายความมั่นใจ: เลขาเห็นเฉพาะกฎหมายภาษาไทย (ไม่มี path ภายใน · ไม่มีป้าย V/U/S) ◂
+    if ((k === "source" || k === "citation") && typeof v === "string" && /references\/|\.md\b|§/.test(v)) {
+      const law = publicCitationTh(v);
+      if (law) out["อ้างอิงกฎหมาย"] = law;
+      continue;
+    }
+    if (k === "tag" && typeof v === "string" && ["V", "V2", "S", "U"].includes(v)) {
+      if (v === "S" || v === "U") out["หมายเหตุ"] = "ค่าเริ่มต้นของระบบ — โปรดตรวจกับนักบัญชีของร้าน";
+      continue;
+    }
     if (k.endsWith("Satang") && typeof v === "number") {
       out[thaiKey(k)] = baht(v);
       continue;

@@ -6,6 +6,7 @@ import { purchaseTaxReport, type PurchaseTaxReport } from "./purchase-tax-report
 import { rateLabelTh, SALES_TAX_ABB_MODE_LABEL_TH, type SalesTaxAbbMode } from "./sales-tax-shared";
 import { pp30ReturnOf, vatLedgers, type Pp30Return } from "./pp30-return";
 import { PP30_CARRY_SOURCE_LABEL_TH, PP30_EXCESS_CHOICE_LABEL_TH, PP30_LINE_KEYS, PP30_LINE_LABEL_TH, PP30_AMOUNT_KEYS, type Pp30ExcessChoice } from "./pp30-shared";
+import { legalWarningRefTh } from "@/lib/core/settings/legal/warnings"; // ACC T4 Job 0 ◂
 
 // ─────────────────────────────────────────────────────────────
 // reports.ts — งบการเงิน + รายงาน (P3) · READ-ONLY (ไม่โพสต์ GL)
@@ -701,7 +702,7 @@ export function purchaseTaxCsv(pt: PurchaseTaxReport, row: (cells: (string | num
   row(["สถานประกอบการ", h.branchLabel, "รหัสสาขา", h.branchCode]);
   row(["เดือนภาษี", h.monthLabel, "งวด", pt.periodKey]);
   if (pt.inputLedger) row(["บัญชีภาษีซื้อ", `${pt.inputLedger.code} ${pt.inputLedger.name}`]);
-  for (const w of h.warnings) row(["คำเตือน", w.messageTh, w.citation ?? ""]);
+  for (const w of h.warnings) row(["คำเตือน", w.messageTh, legalWarningRefTh(w)]); // ACC T4 Job 0 ◂
   row([]);
   row(["ลำดับ", "วันที่ได้รับ", "วันที่ใบกำกับ", "เลขที่ใบกำกับ", "เลขที่เอกสาร", "ชื่อผู้ขาย", "เลขผู้เสียภาษีผู้ขาย", "สาขาผู้ขาย", "มูลค่า(บาท)", "ภาษี(บาท)", "หมายเหตุ"]);
   for (const x of pt.rows)
@@ -753,7 +754,7 @@ function pp30ReturnCsv(ret: Pp30Return, row: (cells: (string | number)[]) => voi
   row(["สถานะยื่น", ret.filed.filed ? `ยื่นแล้ว ${ret.filed.records.length} ครั้ง` : "ยังไม่ได้ทำเครื่องหมายยื่น"]);
   for (const x of ret.filed.records) row([x.kind === "ORIGINAL" ? "แบบปกติ" : `แบบเพิ่มเติมครั้งที่ ${x.seq}`, new Date(x.filedAt.getTime() + 7 * 3600_000).toISOString().slice(0, 10), "ภาษีสุทธิ", (x.lines.netPayable ?? 0) - (x.lines.netExcess ?? 0)]);
   if (ret.amendmentNeeded) row(["ยอดในสมุดต่างจากที่ยื่นล่าสุด — อาจต้องยื่นแบบเพิ่มเติม"]);
-  for (const w of ret.warnings) row(["คำเตือน", w.messageTh, w.citation ?? ""]);
+  for (const w of ret.warnings) row(["คำเตือน", w.messageTh, legalWarningRefTh(w)]); // ACC T4 Job 0 ◂
 }
 
 export async function pp30Csv(
@@ -774,7 +775,7 @@ export async function pp30Csv(
   row(["สถานประกอบการ", st.header.branchLabel, "รหัสสาขา", st.header.branchCode]);
   row(["เดือนภาษี", st.header.monthLabel, "งวด", st.periodKey]);
   row(["ใบกำกับภาษีอย่างย่อ", SALES_TAX_ABB_MODE_LABEL_TH[st.abbMode]]);
-  for (const w of st.header.warnings) row(["คำเตือน", w.messageTh, w.citation ?? ""]);
+  for (const w of st.header.warnings) row(["คำเตือน", w.messageTh, legalWarningRefTh(w)]); // ACC T4 Job 0 ◂
   lines.push("");
   row(["ลำดับ", "วันที่", "เลขที่", "ถึงเลขที่", "จำนวนใบ", "ชื่อผู้ซื้อ", "เลขผู้เสียภาษีผู้ซื้อ", "สาขาผู้ซื้อ", "อัตรา", "มูลค่า(บาท)", "ภาษี(บาท)", "หมายเหตุ"]);
   for (const g of st.groups) {

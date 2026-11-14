@@ -33,6 +33,7 @@ import {
   type LegalWarning,
 } from "@/lib/core/settings/legal/th-tax-2569";
 import type { BookTaxView, LegalRowView, UpcomingDeadline } from "@/lib/modules/account/legal-values";
+import { publicCitationTh } from "@/lib/core/settings/legal/warnings"; // ACC T4 Job 0 ◂
 
 type Kind = "vat" | "wht" | "deadline";
 type SaveFn = (systemId: string, kind: Kind, rows: unknown) => Promise<{ ok: true; warnings: LegalWarning[] } | { ok: false; reason: string }>;
@@ -278,9 +279,10 @@ function TableCard({ kind, rows, systemId, save }: { kind: Kind; rows: LegalRowV
                 <td className="py-2 pr-3 whitespace-nowrap">{r.valueLabel}</td>
                 <td className="py-2 pr-3 whitespace-nowrap">{rangeText(r)}</td>
                 <td className="py-2 pr-3">
-                  <div className="text-xs">{r.source}</div>
+                  {/* ACC T4 Job 0 ▸ ที่มาที่ผู้ใช้เห็น = มาตรา/ประกาศภาษาไทยล้วน (แถวระบบ) · ข้อความที่ร้านพิมพ์เอง (แถวร้าน) · ไม่มี path ภายใน/ป้ายตัวอักษร ◂ */}
+                  <div className="text-xs">{r.origin === "SHOP" ? publicCitationTh(r.source) || r.source.replace(/references\/\S+/g, "").trim() : publicCitationTh(r.source)}</div>
                   <div className={helpCls}>
-                    ป้าย {r.tag} — {r.tagLabel}
+                    {r.tag === "S" || r.tag === "U" ? "ค่าเริ่มต้นของระบบ — โปรดตรวจกับนักบัญชีของร้าน" : r.origin === "SHOP" ? "ร้านตั้งเอง" : "จากแหล่งทางการ"}
                     {r.checkedAt ? ` · ตรวจ ${formatDateTh(r.checkedAt)}` : ""}
                   </div>
                   {r.note ? <div className={helpCls}>{r.note}</div> : null}
