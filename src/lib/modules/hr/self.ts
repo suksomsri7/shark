@@ -16,6 +16,7 @@ import { employeeOfUser, requestLeave, cancelLeave, HrLeaveRequestError, leaveCa
 import { CLOCK_TEXT, mobileClock, myClockState } from "./clock";
 import { mobileClockPayloadOf } from "./clock-rules";
 import { activeLeavePolicies, leaveRefusalText, myLeaveBalances, type LeaveBalanceItem } from "./leave";
+import { leaveSplitOf } from "./leave"; // HR PREPROD-1 ▸ R3: ส่วนไม่ได้ค่าจ้างของใบลาป่วยเกินวันที่เหลือ ◂
 import { countLeaveDays, fmtTenths, tenthsOf } from "./leave-rules";
 import { leaveDaysBetween } from "./time-rules";
 import { cancelOtRequest, myOtRequests, otCancelOpen, requestOt } from "./ot";
@@ -269,6 +270,8 @@ export type MyLeaveItem = {
   statusText: string;
   canCancel: boolean;
   createdAt: string;
+  /** HR PREPROD-1 ▸ R3: ลาป่วยเกินวันที่เหลือ — วันที่ไม่ได้ค่าจ้าง ("d.d") · ไม่มี = ได้ค่าจ้างทั้งใบ ◂ */
+  unpaidDays?: string;
 };
 export type MyOtItem = { id: string; date: string; start: string; end: string; minutes: number; status: string; timing: string; amountSatang: number | null; canCancel: boolean };
 export type MySwapItem = {
@@ -318,6 +321,7 @@ export async function myRequests(actor: SelfActor, opts: Opts = {}): Promise<MyR
     : [];
   const codeOf = new Map(refused.map((a) => [a.targetId ?? "", String(((a.after ?? {}) as Record<string, unknown>).code ?? "")]));
   const owner = me.role === "OWNER";
+  const splits = await leaveSplitOf(me.ctx, leaveRows.filter((l) => l.status === "APPROVED").map((l) => l.id)); // HR PREPROD-1 ▸ R3 ◂
   const leaves: MyLeaveItem[] = leaveRows.map((l) => ({
     id: l.id,
     policyName: l.policy?.name ?? LEAVE_TYPE_TEXT[l.type] ?? LEAVE_TYPE_TEXT.OTHER,
@@ -332,6 +336,7 @@ export async function myRequests(actor: SelfActor, opts: Opts = {}): Promise<MyR
     // ใบรออนุมัติ · ใบของเจ้าของร้านที่อนุมัติทันทีและยังไม่ถึงวันลา (H0.7 R5 — service ตัดสินซ้ำตอนกด)
     canCancel: leaveCancelOpen({ status: l.status, decidedById: l.decidedById, fromDate: dayOf(l.fromDate) }, { isOwner: owner, today }),
     createdAt: l.createdAt.toISOString(),
+    ...(splits[l.id]?.unpaidDays ? { unpaidDays: fmtTenths(Math.round(splits[l.id]!.unpaidDays * 10)) } : {}), // HR PREPROD-1 ◂
   }));
   const otItems: MyOtItem[] = (ot.ok ? ot.items : []).map((o) => ({
     id: o.id,

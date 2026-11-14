@@ -16,6 +16,7 @@ import { type HrScope } from "./scope"; // HR H1.1 ▸ ขอบเขตสา�
 import type { StockAdjustmentSource } from "./stock-charge"; // HR H4.6 ▸ ชนิดของแหล่งที่มา (type ล้วน — ไม่มีวงโหลด) ◂
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H2.11 ▸ ด่านของ decideAdjustmentAs (ตัวเดียวกับ decideAdjustmentAction) ◂
 import { employeeIdOfAdjustment, employeeUnitsOf, hrScopeOf, unitTargetOf, inPayScope, isAllBranches, payScopeEmployeeIds } from "./scope"; // HR H2.11 ▸ สาขาของเจ้าของรายการ (แบบ payTarget) ◂ // HR PRIV-2 ▸ + ขอบเขตค่าจ้าง ◂
+import { PAY_SCOPE_NO_ACCESS_TEXT, type HrScope as PayScope } from "./scope"; // HR PREPROD-1 ▸ R4: ไม่พบ = นอกขอบเขตค่าจ้าง (ข้อความเดียว) ◂
 import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ◂
 import {
   // HR HF-SSO ▸ ssoContribution / monthlyWhtSatang ไม่ import แล้ว — รุ่น 1 ใช้ payroll-rules-sso.ts (payroll-rules.ts คง FREEZE ไว้ให้ประวัติ/ข้อสอบ) ◂
@@ -234,10 +235,10 @@ export async function requestAdjustment(
   let rate: number | null = null;
   if (input.kind === "OT" && input.hours && input.hours > 0) {
     rate = await otRateFor(ctx, input.employeeId);
-    if (rate <= 0) return { ok: false, reason: "ตั้งเงินเดือนของพนักงานคนนี้ก่อน จึงคิดค่า OT ได้" };
+    if (rate <= 0) return { ok: false, code: "PAY_NO_RATE", reason: "ตั้งเงินเดือนของพนักงานคนนี้ก่อน จึงคิดค่า OT ได้" }; // HR PREPROD-1 ▸ V7b: + code (เหตุที่มาจากข้อมูลค่าจ้าง) ◂
     amount = otAmountSatang(input.hours, rate);
   }
-  if (amount <= 0) return { ok: false, reason: "ระบุจำนวนเงิน (หรือชั่วโมง OT) ให้มากกว่า 0" };
+  if (amount <= 0) return { ok: false, reason: "ระบุจำนวนเงิน (หรือชั่วโมง OT) ให้มากกว่า 0", ...(rate !== null ? { code: "PAY_OT_ZERO" } : {}) }; // HR PREPROD-1 ▸ V7b: ยอด OT ตามชั่วโมงปัดเป็น 0 = มาจากอัตราค่าจ้าง ◂
 
   const row = await tenantDb(ctx).hrPayAdjustment.create({
     data: {
@@ -1341,6 +1342,7 @@ export async function reverseRun(
   }
   if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
   await money2VoidAudits(ctx, actor?.userId ?? null, m2Void, "DEDUCTION_REVERSED", id); // HR MONEY-2 ▸ R1 ◂
+  await pp1ResplitAfterReverse(ctx, id, periodKey); // HR PREPROD-1 ▸ V8c: หลัง commit — ใบลาป่วยที่แบ่งส่วนของพนักงานในรอบนี้ที่มีวันในงวดนี้ แบ่งใหม่ (ล็อกต่อพนักงาน) ◂
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: actor?.userId ? "USER" : "SYSTEM",
@@ -1441,6 +1443,8 @@ export type StrandedAdjustment = {
   amountSatang: number;
   note: string | null;
   crmCommissionId: string | null;
+  /** HR PREPROD-1 ▸ R2: เงินคืน (refund:<claim>) ในงวดที่ไม่มีรอบ แต่พนักงานมีรอบงวดหลังที่อนุมัติแล้ว ⇒ จะไม่มีวันถูกจ่ายถ้าไม่ย้าย · ไม่มีคีย์ = รายการค้างแบบเดิม ◂ */
+  reason?: "REFUND_BEHIND";
 };
 /**
  * R2: รายการ "ค้าง" ของระบบ HR นี้ — ปกติ + CRM · PENDING/APPROVED · ยังไม่เข้ารอบ (`runId IS NULL`) · งวดของมันมีรอบจ่ายที่ยังมีผล (ทุกสถานะยกเว้น REVERSED — H0.6)
@@ -1451,14 +1455,39 @@ export async function strandedAdjustments(ctx: Ctx, limit = 200): Promise<Strand
   const db = tenantDb(ctx);
   const runs = (await db.hrPayrollRun.findMany({ where: { systemId: ctx.systemId, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey); // HR H0.6 ▸ OQ-4 ◂
   if (runs.length === 0) return [];
+  const take = Math.max(1, Math.min(limit, 1_000)); // HR PREPROD-1 ◂
   const rows = await db.hrPayAdjustment.findMany({
     where: { systemId: ctx.systemId, runId: null, status: { in: ["PENDING", "APPROVED"] }, periodKey: { in: runs } },
     select: { id: true, employeeId: true, periodKey: true, kind: true, status: true, amountSatang: true, note: true, crmCommissionId: true },
     orderBy: [{ periodKey: "asc" }, { id: "asc" }],
-    take: Math.max(1, Math.min(limit, 1_000)),
+    take, // HR PREPROD-1 ◂
   });
-  return rows.map((r) => ({ ...r, kind: String(r.kind), status: String(r.status) }));
+  const behind = await refundsBehindOf(ctx, runs, take); // HR PREPROD-1 ▸ R2: + เงินคืนที่ค้างในงวดไม่มีรอบ หลังรอบงวดหลังของพนักงานอนุมัติแล้ว ◂
+  return [...rows.map((r) => ({ ...r, kind: String(r.kind), status: String(r.status) })), ...behind].slice(0, take); // HR PREPROD-1 ◂
 }
+// HR PREPROD-1 ▸ R2: เงินคืน (REFUND · refund:<claim>) · PENDING/APPROVED · ยังไม่เข้ารอบ · งวดไม่มีรอบที่ยังมีผล · งวด ≤ งวดล่าสุดที่รอบครอบพนักงานแล้ว
+//   (giveBackWindowInTx.lastCovered) ⇒ รอบงวดนั้นจะไม่ถูกสร้างดึงมันเข้าอีก (งวดก่อนรอบล่าสุด) — ติดป้าย REFUND_BEHIND ◂
+async function refundsBehindOf(ctx: Ctx, runs: string[], take: number): Promise<StrandedAdjustment[]> {
+  const db = tenantDb(ctx);
+  const cand = await db.hrPayAdjustment.findMany({
+    where: { systemId: ctx.systemId, runId: null, kind: "REFUND", status: { in: ["PENDING", "APPROVED"] }, sourceRef: { startsWith: REFUND_OF_PREFIX }, periodKey: { notIn: runs } },
+    select: { id: true, employeeId: true, periodKey: true, kind: true, status: true, amountSatang: true, note: true, crmCommissionId: true },
+    orderBy: [{ periodKey: "asc" }, { id: "asc" }],
+    take: 5_000, // (c) เพดานอ่านก่อนกรอง · `take` ของหน้าใช้หลังกรอง
+  });
+  const emps = [...new Set(cand.map((r) => r.employeeId))];
+  if (!emps.length) return [];
+  // (c) คิวรีเดียวต่อหน้า (เงื่อนไขเดียวกับ giveBackWindowInTx.lastCovered) แทนการอ่านทีละคน
+  const last = new Map((await (db as unknown as Prisma.TransactionClient).$queryRaw<{ e: string; p: string | null }[]>`
+    SELECT i."employeeId" AS "e", MAX(r."periodKey") AS "p" FROM "HrPayrollRun" r JOIN "HrPayrollItem" i ON i."runId" = r."id" AND i."tenantId" = r."tenantId" AND i."systemId" = r."systemId"
+    WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId} AND i."employeeId" IN (${Prisma.join(emps)})
+      AND (r."status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") OR COALESCE((r."stepsJson"->>'finalized')::boolean, false) = true) AND r."status" <> 'REVERSED'::"PayrollRunStatus"
+    GROUP BY i."employeeId"`).map((x) => [x.e, x.p]));
+  return cand.filter((r) => { const l = last.get(r.employeeId); return !!l && r.periodKey <= l; }).slice(0, take).map((r) => ({ ...r, kind: String(r.kind), status: String(r.status), reason: "REFUND_BEHIND" as const }));
+}
+/** HR PREPROD-1 ▸ R2: ปลายทางของเงินคืนที่ค้าง = งวดแรกที่ไม่มีรอบหลัง max(งวดเดิม, lastCovered) (แบบ giveBackPeriodOf) · หลังงวดที่พ้นสภาพ = ย้ายไม่ได้ (จ่ายนอกระบบเงินเดือน) ◂ */
+const REFUND_BEHIND_ENDED = "ย้ายเงินคืนรายการนี้ไม่ได้ เพราะพนักงานพ้นสภาพก่อนงวดที่ยังไม่มีรอบจ่าย — ให้คืนเงินนอกระบบเงินเดือน";
+// ◂ HR PREPROD-1
 
 /**
  * R2: ปุ่ม "ย้ายไปงวดถัดไป" ของรายการค้าง **ปกติ** (ไม่ผูกคอมมิชชัน — ของ CRM ตัวกวาดของ CRM ย้ายเอง · moveCommissionAdjustmentPeriod)
@@ -1468,7 +1497,7 @@ export async function strandedAdjustments(ctx: Ctx, limit = 200): Promise<Strand
  */
 export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: PayrollActor): Promise<{ ok: boolean; reason?: string; movedFrom?: string; movedTo?: string }> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id }, select: { id: true, employeeId: true, periodKey: true, status: true, runId: true, crmCommissionId: true } });
+  const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id }, select: { id: true, employeeId: true, periodKey: true, status: true, runId: true, crmCommissionId: true, kind: true, sourceRef: true } }); // HR PREPROD-1 ▸ + ชนิด/ที่มา (เงินคืนที่ค้าง R2) ◂
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
   if (row.crmCommissionId) return { ok: false, reason: "รายการคอมมิชชันจาก CRM ระบบ CRM ย้ายงวดให้เอง" };
   { const stockLock = await stockChargeAdjustmentLock(ctx, row.id); if (stockLock) return { ok: false, reason: stockLock }; } // HR H4.6 ▸ ย้ายงวดก็ไม่ได้ (ดูที่ส่วน "หักค่าของ") ◂
@@ -1485,11 +1514,29 @@ export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: Payrol
     const tx = t as unknown as Prisma.TransactionClient;
     await lockRunPeriod(tx, ctx, row.periodKey);
     const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey)); // HR H0.6 ▸ OQ-4 ◂
-    if (!runs.has(row.periodKey)) return { ok: false as const, reason: "งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย" };
-    const to = nextRunlessPeriod(row.periodKey, runs);
+    let intoDraft = false; // HR PREPROD-1 ▸ V9: ปลายทางมีรอบร่าง (คนที่ออก) ◂
+    let behindTo: string | null = null; // HR PREPROD-1 ▸ R2: เงินคืนที่ค้างหลังรอบงวดหลัง — ปลายทาง = งวดแรกที่ไม่มีรอบหลัง max(งวดเดิม, lastCovered) · เกินงวดพ้นสภาพ = ปฏิเสธ (ไม่เขียนอะไร) ◂
+    if (!runs.has(row.periodKey) && String(row.kind) === "REFUND" && String(row.sourceRef ?? "").startsWith(REFUND_OF_PREFIX)) { // HR PREPROD-1 ◂
+      const win = await giveBackWindowInTx(tx, ctx, row.employeeId); // HR PREPROD-1 ◂
+      if (win.lastCovered && row.periodKey <= win.lastCovered) { // HR PREPROD-1 ◂
+        let p = nextPeriodOf(win.lastCovered > row.periodKey ? win.lastCovered : row.periodKey); // HR PREPROD-1 ◂
+        const first = p; // HR PREPROD-1 ▸ V9 ◂
+        for (let i = 0; i < 240 && runs.has(p); i += 1) p = nextPeriodOf(p); // HR PREPROD-1 ◂
+        if (win.endPeriod && p > win.endPeriod) { // HR PREPROD-1 ▸ V9: คนที่ออก — งวดถัดไปที่ยังไม่เกินงวดพ้นสภาพและมีรอบร่าง ⇒ ย้ายเข้างวดนั้น (รอบร่างดึงเข้าเมื่อดึงข้อมูลใหม่ — จ่ายครั้งเดียว) · ไม่มี = ปฏิเสธ ◂
+          const drafts = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, status: "DRAFT", periodKey: { gte: first, lte: win.endPeriod } }, select: { periodKey: true }, take: 240 })).map((r) => r.periodKey)); // HR PREPROD-1 ◂
+          const d = [...drafts].sort()[0]; // HR PREPROD-1 ◂
+          if (!d) return { ok: false as const, reason: REFUND_BEHIND_ENDED }; // HR PREPROD-1 ◂
+          p = d; // HR PREPROD-1 ◂
+          intoDraft = true; // HR PREPROD-1 ◂
+        } // HR PREPROD-1 ◂
+        behindTo = p; // HR PREPROD-1 ◂
+      } // HR PREPROD-1 ◂
+    } // HR PREPROD-1 ◂
+    if (!runs.has(row.periodKey) && !behindTo) return { ok: false as const, reason: "งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย" }; // HR PREPROD-1 ▸ + เงินคืนที่ค้าง ◂
+    const to = behindTo ?? nextRunlessPeriod(row.periodKey, runs); // HR PREPROD-1 ◂
     if (!to) return { ok: false as const, reason: `หางวดถัดไปที่ยังไม่มีรอบจ่ายหลังงวด ${row.periodKey} ไม่พบ — ตรวจรอบจ่ายเงินเดือน` };
     await lockRunPeriod(tx, ctx, to);
-    if (await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to, ...liveRunWhere() }, select: { id: true } })) return { ok: false as const, reason: "รอบจ่ายเพิ่งเปลี่ยน — กรุณาลองอีกครั้ง" };
+    if (intoDraft ? !(await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to, status: "DRAFT" }, select: { id: true } })) : await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to, ...liveRunWhere() }, select: { id: true } })) return { ok: false as const, reason: "รอบจ่ายเพิ่งเปลี่ยน — กรุณาลองอีกครั้ง" }; // HR PREPROD-1 ▸ V9: ปลายทางรอบร่าง = ต้องยังเป็นร่าง ◂
     const n = await tx.hrPayAdjustment.updateMany({
       where: { ...scope, id, runId: null, crmCommissionId: null, periodKey: row.periodKey, status: { in: ["PENDING", "APPROVED"] } },
       data: { periodKey: to },
@@ -2114,6 +2161,40 @@ const ATT_APPROVE_TEXT: Record<string, string> = { ATTENDANCE_STALE: ATT_TEXT.ru
 // ─────────── HR H2.11 ▸ ตัดสินรายการเพิ่ม/หัก 1 รายการในนามผู้ดู (กล่องคำขอรวม) — เนื้อของ decideAdjustmentAction ทุกขั้น: ด่าน hr.payadjust.approve +
 //   canViewPayroll → สาขาของเจ้าของรายการ (แบบ payTarget) → decideAdjustment (กติกาเดิมทั้งหมด รวมกติกาที่จะเพิ่มภายในในอนาคต) → audit
 //   hr.payadjust.approve|reject รูปเดียวกับ action · ไม่คัดลอกกติกาใด ๆ (Q4: action เดิมไม่เปลี่ยน — หนี้ D1) ───────────
+// HR PREPROD-1 ▸ V8c: เรียกหลังการกลับรายการ commit แล้วเท่านั้น (ทุกทาง: รุ่น 1 มี JV · รุ่น 2 ไม่มีสมุด · รุ่น 2 ลงสมุด/H3.7) — ไม่ซ้อนในล็อกงวด/แถวรอบของการกลับรายการ ·
+//   กลับรายการล้ม/ย้อน = ไม่ถูกเรียก · แบ่งใหม่ล้ม = การกลับรายการยังสำเร็จ (log WARN · วันลาคงแบ่งเดิม = ไม่จ่ายเกิน — แถวเพิ่มวันครั้งถัดไปแบ่งให้) ◂
+async function pp1ResplitAfterReverse(ctx: Ctx, runId: string, periodKey: string): Promise<void> {
+  try {
+    const emps = [...new Set((await tenantDb(ctx).hrPayrollItem.findMany({ where: { runId, systemId: ctx.systemId }, select: { employeeId: true }, take: 10_000 })).map((i) => i.employeeId))];
+    const { resplitAfterReverse } = await import("./leave");
+    await resplitAfterReverse(ctx, emps, periodKey);
+  } catch (e) {
+    await logOps("WARN", "hr-payroll", "กลับรายการรอบจ่ายแล้ว แต่แบ่งส่วนลาป่วยใหม่ไม่สำเร็จ", { tenantId: ctx.tenantId, detail: `runId=${runId} systemId=${ctx.systemId} error=${reverseErrorCode(e)}` }).catch(() => undefined);
+  }
+}
+// ◂ HR PREPROD-1
+// HR PREPROD-1 ▸ V8d: ก่อนสร้าง/ดึงข้อมูลใหม่ร่างรุ่น 2 ของงวด P — แบ่งส่วนลาป่วยใหม่ (ทางลองซ้ำของ V8c) · เรียกก่อนสร้างชั่วโมงทำงานและก่อนล็อกงวด ·
+//   ไม่ถือล็อกใด (ล็อกต่อพนักงานใน tx ของตัวเอง commit ก่อนกลับ) ⇒ ไม่มีวงล็อกกับการกลับรายการ/อนุมัติ/ตัดสินใบลา · ล้ม = ปฏิเสธการสร้าง/ดึงใหม่ (ไม่หักเงินเงียบ ๆ) ◂
+const PP1_RESPLIT_FAILED = "แบ่งส่วนวันลาป่วยใหม่ไม่สำเร็จ — ยังไม่สร้าง/ดึงข้อมูลรอบนี้ ลองอีกครั้ง";
+async function pp1ResplitForDraft(ctx: Ctx, periodKey: string): Promise<string | null> {
+  try {
+    const { resplitForDraft } = await import("./leave");
+    await resplitForDraft(ctx, periodKey);
+    return null;
+  } catch (e) {
+    await logOps("WARN", "hr-payroll", "ก่อนสร้างร่างรอบจ่าย แบ่งส่วนลาป่วยใหม่ไม่สำเร็จ", { tenantId: ctx.tenantId, detail: `periodKey=${periodKey} systemId=${ctx.systemId} error=${reverseErrorCode(e)}` }).catch(() => undefined);
+    return PP1_RESPLIT_FAILED;
+  }
+}
+// ◂ HR PREPROD-1
+// HR PREPROD-1 ▸ R4: ผู้ดูที่จำกัดสาขาแตะรายการเงินของพนักงานนอกขอบเขตค่าจ้างไม่ได้ (ตัวตัดสินเดียว scope.inPayScope — สาขาประจำเท่านั้น ยืมตัวไม่นับ) ·
+//   ไม่มีแถว/ไม่มีพนักงาน = นอกขอบเขต (ผู้เรียกตอบเหมือน "ไม่พบ") · ทุกสาขา = ไม่ตรวจที่นี่ (ข้อความเดิม) ◂
+export async function payScopeBlocked(ctx: Ctx, scope: PayScope, employeeId: string | null | undefined): Promise<boolean> {
+  if (isAllBranches(scope)) return false;
+  const emp = employeeId ? await employeeUnitsOf(ctx, employeeId) : null;
+  return !emp || !inPayScope(scope, emp.unitId);
+}
+// ◂ HR PREPROD-1
 export async function decideAdjustmentAs(
   ctx: Ctx,
   v: { role: MembershipCtx["role"] | string; unitAccess: unknown; permissions: unknown; userId?: string | null },
@@ -2125,6 +2206,7 @@ export async function decideAdjustmentAs(
   if (!uid || !evaluate(m, { module: "hr", action: "hr.payadjust.approve" }) || !canViewPayroll(m)) return { ok: false, reason: INBOX_TEXT.noRight };
   if (status !== "APPROVED" && status !== "REJECTED") return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
   const empId = typeof id === "string" && id ? await employeeIdOfAdjustment(ctx, id) : null;
+  if (await payScopeBlocked(ctx, hrScopeOf(m), empId)) return { ok: false, reason: PAY_SCOPE_NO_ACCESS_TEXT }; // HR PREPROD-1 ▸ R4: ผู้ดูจำกัดสาขา — ไม่พบ / ยืมตัว / สาขาอื่น = คำตอบเดียวกันทุกไบต์ (ทุกสาขา = ข้อความเดิม) ◂
   if (!empId) return { ok: false, reason: "ไม่พบรายการ" };
   // r2 (hunter F2 · กันซ้อน): แถวจากคำขอ OT ตัดสินที่คำขอ OT เท่านั้น — ข้อความเดียวกับ cancelAdjustment/moveStrandedAdjustment (H2.9 r2.3)
   if (await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id, sourceType: "OT_REQUEST" }, select: { id: true } })) return { ok: false, reason: OT_TEXT.otRow };
@@ -2709,6 +2791,8 @@ export async function createPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: { 
   if (bad) return { ok: false, ...bad };
   if ((await getPayrollEngine(ctx)).engineVersion !== 2) return { ok: false, code: "ENGINE_V1", reason: RUN2_TEXT.engineV1 };
   const now = opts.now ?? new Date();
+  const rs = await pp1ResplitForDraft(ctx, periodKey); // HR PREPROD-1 ▸ V8d: แบ่งส่วนลาป่วยใหม่ก่อนสร้างชั่วโมงทำงาน/ล็อกงวด ◂
+  if (rs) return { ok: false, code: "BUILD", reason: rs }; // HR PREPROD-1 ▸ V8d ◂
   const b = await buildAllWorkEntries(ctx, viewer, periodKey, now);
   if (!b.ok) return { ok: false, code: "BUILD", reason: b.reason };
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
@@ -2749,8 +2833,9 @@ export type RecomputeV2Opts = { viewer?: Run2Viewer; now?: Date };
 /** R5 ดึงข้อมูลใหม่ของรอบร่างรุ่น 2 = สร้างซ้ำบนรอบเดิม · ผู้กดเป็น "ผู้สร้าง" คนใหม่ · ล้างขั้นยืนยันสาขา */
 async function recomputeDraftRunV2(ctx: Ctx, id: string, actor: PayrollActor, opts: RecomputeV2Opts): Promise<{ ok: true; note: string } | { ok: false; reason: string; code?: Run2Code }> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  const pre = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { ...scope, id }, select: { periodKey: true } });
+  const pre = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { ...scope, id }, select: { periodKey: true, status: true } }); // HR PREPROD-1 ▸ + status (V8d) ◂
   if (!pre) return { ok: false, reason: RUN_NOT_FOUND };
+  if (pre.status === "DRAFT") { const rs = await pp1ResplitForDraft(ctx, pre.periodKey); if (rs) return { ok: false, reason: rs, code: "BUILD" }; } // HR PREPROD-1 ▸ V8d: แบ่งส่วนลาป่วยใหม่ก่อนดึงข้อมูลใหม่ (ไม่ใช่ร่าง = tx ด้านล่างปฏิเสธเหมือนเดิม) ◂
   if (opts.viewer) {
     const b = await buildAllWorkEntries(ctx, opts.viewer, pre.periodKey, opts.now ?? new Date());
     if (!b.ok) return { ok: false, reason: b.reason, code: "BUILD" };
@@ -3096,6 +3181,7 @@ export async function setAdjustmentConsent(ctx: Ctx, viewer: Run2Viewer, input: 
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id, systemId: ctx.systemId }, select: { employeeId: true, kind: true, runId: true, status: true } });
   if (!row || row.kind !== "DEDUCTION" || row.runId !== null || row.status === "REJECTED") return { ok: false, reason: NO };
   if (viewer.role !== "OWNER") {
+    if (await payScopeBlocked(ctx, hrScopeOf({ role: viewer.role as MembershipCtx["role"], unitAccess: viewer.unitAccess }), row.employeeId)) return { ok: false, reason: NO }; // HR PREPROD-1 ▸ R4: นอกขอบเขตค่าจ้าง (ไม่มีสาขาประจำ · สาขาอื่น) = คำตอบ "ไม่พบ" เดิม ◂
     const m = { role: viewer.role, permissions: objH34(viewer.permissions), unitAccess: viewer.unitAccess } as unknown as MembershipCtx;
     const unitId = (await tenantDb(ctx).hrEmployee.findFirst({ where: { id: row.employeeId }, select: { unitId: true } }))?.unitId ?? undefined;
     if (!canViewPayroll(m) || !evaluate(m, { module: "hr", action: "hr.payadjust.approve", ...(unitId ? { unitId } : {}) } as never)) return { ok: false, reason: NO };
@@ -3581,6 +3667,7 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
   }
   if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
   await money2VoidAudits(ctx, actor?.userId ?? null, m2Void, "DEDUCTION_REVERSED", id); // HR MONEY-2 ▸ R1 ◂
+  await pp1ResplitAfterReverse(ctx, id, periodKey); // HR PREPROD-1 ▸ V8c: หลัง commit — ใบลาป่วยที่แบ่งส่วนของพนักงานในรอบนี้ที่มีวันในงวดนี้ แบ่งใหม่ (ล็อกต่อพนักงาน) ◂
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: actor?.userId ? "USER" : "SYSTEM",
@@ -3725,6 +3812,7 @@ export async function giveBackClaim(ctx: Ctx, viewer: { userId?: string | null }
     // fix r3 (4): branch rule = the adjustment request path (payroll-actions.ts payTarget → scope.ts unitTargetOf): a branch-limited requester is refused
     //   for an employee of another branch AND for an employee without a unit (only OWNER / all-branch viewers reach those)
     const mc = { role: m.role, unitAccess: (Array.isArray(m.unitAccess) ? m.unitAccess : []) as string[], permissions: (m.permissions ?? {}) as Record<string, unknown> } as MembershipCtx;
+    if (await payScopeBlocked(ctx, hrScopeOf({ role: m.role, unitAccess: m.unitAccess }), claim.employeeId)) return NO; // HR PREPROD-1 ▸ R4: ยืมตัวไม่ขยายขอบเขตค่าจ้าง — คำตอบ "ไม่พบ" เดิม ◂
     const emp = await employeeUnitsOf(ctx, claim.employeeId);
     const tgt = emp ? unitTargetOf(hrScopeOf({ role: m.role, unitAccess: m.unitAccess }), emp, new Date()) : { ok: false as const };
     if (!tgt.ok || !canViewPayroll(mc) || !evaluate(mc, { module: "hr", action: "hr.payadjust.request", ...("unitId" in tgt && tgt.unitId ? { unitId: tgt.unitId } : {}) } as never)) return NO;
