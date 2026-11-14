@@ -35,8 +35,9 @@ function Tile({ testId, label, value, sub, href, danger, wide }: { testId: strin
   );
 }
 const hhmm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`; // HR VIS-5b ◂
-// HR VIS-5b ▸ แถวของตาราง 2 คอลัมน์ (≥ xl): ซ้าย = บอร์ด · ค่าแรง · ขวา = คำขอ · เดือน — จอแคบเรียง บอร์ด → คำขอ → ค่าแรง → เดือน ◂
-const COL_AT: Record<string, string> = { "1-1": "xl:col-start-1 xl:row-start-1", "1-2": "xl:col-start-1 xl:row-start-2", "2-1": "xl:col-start-2 xl:row-start-1", "2-2": "xl:col-start-2 xl:row-start-2" };
+// HR VIS-5b r2 (F2) ▸ สองคอลัมน์ไหลอิสระ (≥ xl): ซ้าย = บอร์ด → ค่าแรง → ใกล้ครบกำหนด · ขวา = คำขอ → เดือน ·
+//   จอแคบ (คอลัมน์เป็น display:contents) เรียงตาม order: บอร์ด → คำขอ → ค่าแรง → เดือน → ใกล้ครบกำหนด ◂
+const ORDER = ["order-1", "order-2", "order-3", "order-4", "order-5"] as const;
 
 /** ภาพรวมทีม (ภาพ 01) — ตัวอ่านเดิมทั้งหมด (บอร์ดวันนี้ · ตัวนับคำขอ · วันที่ต้องคิดผลใหม่ · ใกล้ครบกำหนด) + ตัวอย่างคำขอ 5 รายการ */
 // HR H3.9 ▸ reports = ลิงก์ "รายงาน" ของการ์ดเดือน (ภาพ 01) — ส่งมาเฉพาะผู้ดูที่เปิดรายงานได้ (ui.tsx ตัดสินด้วย reportAccessOf) ◂
@@ -99,14 +100,27 @@ export async function HrTeamOverviewSection({ systemId, overview, preview, repor
       {month}
     </section>
   );
-  const left = [boardCard, labor].filter(Boolean) as ReactNode[];
-  const right = [inboxCard, monthCard].filter(Boolean) as ReactNode[];
+  const dueCard = due && overview.lifecycleDue !== null && (
+    <section data-testid="hr-hub-due" className="card flex min-w-0 flex-col gap-3 p-4 md:p-5">
+      <div className={head}>
+        <h2 className="text-base font-semibold">{t("overview.due")}</h2>
+        <span className={`text-xs ${muted}`}>{th("due.sub")}</span>
+        <Link href={`${s}/hr/employees`} data-testid="hr-overview-due" className={`${link} ml-auto`}>
+          {t("overview.openEmployees")} <span className="ml-1 tabular-nums">({overview.lifecycleDue})</span>
+        </Link>
+      </div>
+      {due /* HR VIS-5b ◂ */}
+    </section>
+  );
+  const pick = (xs: [ReactNode, number][]) => xs.filter(([n]) => !!n);
+  const left = pick([[boardCard, 0], [labor, 2], [dueCard, 4]]);
+  const right = pick([[inboxCard, 1], [monthCard, 3]]);
   const two = left.length > 0 && right.length > 0;
-  const cells: { key: string; node: ReactNode; at: string }[] = [];
-  for (let i = 0; i < Math.max(left.length, right.length); i++) {
-    if (left[i]) cells.push({ key: `l${i}`, node: left[i], at: two ? (COL_AT[`1-${i + 1}`] ?? "") : "" });
-    if (right[i]) cells.push({ key: `r${i}`, node: right[i], at: two ? (COL_AT[`2-${i + 1}`] ?? "") : "" });
-  }
+  const col = (xs: [ReactNode, number][]) => xs.map(([n, o]) => (
+    <div key={o} className={`flex min-w-0 flex-col ${ORDER[o]}`}>
+      {n}
+    </div>
+  ));
   const kpiSub = (xs: string[]) => xs.filter(Boolean).join(" · ");
   return (
     <section data-testid="hr-overview" className="flex flex-col gap-4">
@@ -127,26 +141,11 @@ export async function HrTeamOverviewSection({ systemId, overview, preview, repor
           <Tile testId="hr-hub-kpi-leave" label={ta("count.LEAVE")} value={String(kpis.leave)} wide sub={kpiSub((facts?.leaveWho ?? []).map((x) => (x.label ? `${x.name} ${x.label}` : x.name)))} />
         </div>
       )}
-      {cells.length > 0 && (
-        <div className={`grid grid-cols-1 gap-4 ${two ? "xl:grid-cols-[minmax(0,1fr)_400px]" : ""}`}>
-          {cells.map((c) => (
-            <div key={c.key} className={`flex min-w-0 flex-col ${c.at}`}>
-              {c.node}
-            </div>
-          ))}
+      {left.length + right.length > 0 && (
+        <div className={two ? "flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_400px] xl:items-start" : "flex flex-col gap-4"}>
+          <div className={two ? "contents xl:flex xl:min-w-0 xl:flex-col xl:gap-4" : "contents"}>{col(left)}</div>
+          <div className={two ? "contents xl:flex xl:min-w-0 xl:flex-col xl:gap-4" : "contents"}>{col(right)}</div>
         </div>
-      )}
-      {due && overview.lifecycleDue !== null && (
-        <section data-testid="hr-hub-due" className="card flex min-w-0 flex-col gap-3 p-4 md:p-5">
-          <div className={head}>
-            <h2 className="text-base font-semibold">{t("overview.due")}</h2>
-            <span className={`text-xs ${muted}`}>{th("due.sub")}</span>
-            <Link href={`${s}/hr/employees`} data-testid="hr-overview-due" className={`${link} ml-auto`}>
-              {t("overview.openEmployees")} <span className="ml-1 tabular-nums">({overview.lifecycleDue})</span>
-            </Link>
-          </div>
-          {due /* HR VIS-5b ◂ */}
-        </section>
       )}
     </section>
   );

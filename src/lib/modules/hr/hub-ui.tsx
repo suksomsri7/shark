@@ -235,8 +235,8 @@ export async function HrTodayBoard({ board }: { board: AttendanceBoardDto }) {
             {t("board.now")}
           </span>
         )}
-        {off.length > 0 && <span className="md:ml-auto">{t("board.off", { names: off.join(" · ") })}</span>}
       </div>
+      {off.length > 0 && <p className="text-sm text-[color:var(--color-ink)]">{t("board.off", { names: off.join(" · ") })}</p> /* r2 (F4): บรรทัดของตัวเอง ขนาดปกติ */}
       {rows.length > 0 && (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-[color:var(--color-line)] pt-3 md:grid-cols-4">
           <Fact label={t("board.planned")} value={hoursText(t, facts.plannedMin)} sub={t("board.plannedSub", { n: facts.plannedPeople })} />
