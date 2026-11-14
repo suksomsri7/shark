@@ -447,6 +447,49 @@
      "sleep": 600
     }
    ]
+  },
+  {
+   "name": "tomorrow-full",
+   "route": "/secretary/calendar?day=2026-11-17",
+   "steps": [
+    {
+     "wait": "cal-day-list"
+    },
+    {
+     "sleep": 800
+    }
+   ],
+   "height": 1240
+  },
+  {
+   "name": "room-edit",
+   "route": "/secretary/room/r1",
+   "steps": [
+    {
+     "wait": "cal-rc-rem1"
+    },
+    {
+     "tap": "cal-rc-rem1-edit"
+    },
+    {
+     "sleep": 600
+    }
+   ]
+  },
+  {
+   "name": "set-time",
+   "route": "/secretary/calendar/settings",
+   "steps": [
+    {
+     "wait": "cal-set-morning"
+    },
+    {
+     "tap": "cal-set-morning-time"
+    },
+    {
+     "sleep": 500
+    }
+   ]
   }
  ]
 }

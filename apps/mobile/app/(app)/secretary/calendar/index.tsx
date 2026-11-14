@@ -5,6 +5,7 @@
 //     ดึงลง = โหลดใหม่ + google/sync แบบไม่รอ · ว่าง = ข้อความว่าง · notes ของเซิร์ฟเวอร์ใต้หัว · การ์ดนัดชน (CAL2.12) ท้ายรายการ
 //   เดือน (CAL2.3): ตาราง 7 คอลัมน์เริ่มอาทิตย์ · จุดสี ≤ 3 · ‹ › เปลี่ยนเดือน (ปี พ.ศ.) · แตะวัน = รายการของวันนั้นด้านล่าง
 //   เตือนฉัน (CAL2.4): RemindList
+//   นัดชน (CAL2.12 · จอ 10): AgendaResult.conflicts + คู่ที่มีนัดในเครื่อง (cal-conflicts.ts) → ConflictCard ท้ายรายการวัน · ไม่ต้อง = จำในเครื่อง
 //   params: ?day=YYYY-MM-DD (push/การ์ดวันนี้/ลิงก์ของเตือน) · ?item=<id> (เปิดแผ่นแก้ไขของเตือนนั้น · CAL2.6) · ?view=month|remind
 // ข้อมูลผ่าน src/api/calendar.ts (dev/QC = fixture เมื่อเซิร์ฟเวอร์ยังไม่มีเส้น) · ไม่มีสีฝัง (ธีม c.cal)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,7 +21,9 @@ import { MonthGrid } from "@/src/components/calendar/MonthGrid";
 import { RemindList } from "@/src/components/calendar/RemindList";
 import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
 import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
-import { calApi, deepLinkRoute, deviceAgenda, onCalChanged, sortAgenda, useCalFixture, type AgendaItem, type AgendaResult, type CalItemDto, type ColorKey } from "@/src/api/calendar";
+import { ConflictCard, loadSkipped, skipConflict } from "@/src/components/calendar/ConflictCard";
+import { conflicts as localConflicts } from "@/src/lib/cal-conflicts";
+import { calApi, calChanged, deepLinkRoute, deviceAgenda, onCalChanged, sortAgenda, useCalFixture, type AgendaItem, type AgendaResult, type CalItemDto, type ColorKey, type ConflictNote } from "@/src/api/calendar";
 import { apiErrorText } from "@/src/api/client";
 import { scheduleZoneBadges } from "@/src/api/secretary";
 import { addDays, addMonths, dayOfMs, isDay, monthName, monthYear, shortDate, weekDays, yearLabel, ymOf } from "@/src/lib/cal-date";
@@ -52,6 +55,16 @@ export default function CalendarScreen() {
   const [note, setNote] = useState<string | null>(null);
   const [ask, setAsk] = useState<{ it: CalItemDto; run: () => void } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // CAL2.12 นัดชน: "ไม่ต้อง" ที่จำในเครื่อง + เวลาเดินทางของผู้ใช้ (prefs · ใช้คำนวณคู่ที่มีนัดในเครื่อง)
+  const [skipped, setSkipped] = useState<Set<string>>(new Set());
+  const [travel, setTravel] = useState(0);
+  useEffect(() => {
+    void loadSkipped().then((s) => setSkipped(new Set(s)));
+    calApi
+      .prefs()
+      .then((p) => setTravel(Math.max(0, Number(p.travelMinutes) || 0)))
+      .catch(() => {});
+  }, []);
   const sheet = useCalSheet();
   const dayRef = useRef(day);
   dayRef.current = day;
@@ -137,6 +150,28 @@ export default function CalendarScreen() {
   };
 
   const items = useMemo(() => (data && data.day === day ? sortAgenda([...data.res.items, ...data.device]) : null), [data, day]);
+  const conflictNotes = useMemo<ConflictNote[]>(() => {
+    if (!data || data.day !== day) return [];
+    const server = data.res.conflicts ?? [];
+    // นัดในเครื่องไม่เคยถึงเซิร์ฟเวอร์ ⇒ แอปคำนวณคู่ที่มี device เอง (สำเนา §11)
+    const local = data.device.length ? localConflicts([...data.res.items, ...data.device], travel, new Date()).notes.filter((n) => n.earlierId.startsWith("device:") || n.laterId.startsWith("device:")) : [];
+    const seen = new Set<string>();
+    return [...server, ...local].filter((n) => !skipped.has(n.key) && !seen.has(n.key) && !!seen.add(n.key));
+  }, [data, day, travel, skipped]);
+  const remindConflict = async (n: ConflictNote) => {
+    const later = items?.find((i) => i.id === n.laterId);
+    if (!n.suggestRemindAt) return;
+    try {
+      await calApi.create({ kind: "REMINDER", title: `ออกไป${later?.title ?? ""}`.slice(0, 200), startAt: n.suggestRemindAt, origin: "conflict" });
+      skipConflict(n.key);
+      setSkipped((s) => new Set(s).add(n.key));
+      setNote(t("cal.conflict.made"));
+      scheduleZoneBadges();
+      calChanged();
+    } catch (e) {
+      setNote(apiErrorText(e));
+    }
+  };
   const allDay = (items ?? []).filter((i) => i.allDay);
   const timed = (items ?? []).filter((i) => !i.allDay);
   const dotsOf = (d: string) => (months[ymOf(d)]?.[d] ?? []).length > 0 || (d === day && !!items && items.length > 0);
@@ -250,7 +285,7 @@ export default function CalendarScreen() {
         />
         {fixture && __DEV__ ? <Text style={[styles.note, { color: c.warn.fg }]}>{t("cal.sample")}</Text> : null}
         {note ? (
-          <Text testID="cal-note" style={[styles.note, { color: c.bad.fg }]}>
+          <Text testID="cal-note" style={[styles.note, { color: note === t("cal.conflict.made") ? c.sys.acc : c.bad.fg }]}>
             {note}
           </Text>
         ) : null}
@@ -281,6 +316,17 @@ export default function CalendarScreen() {
                 {list(allDay, "cal-row")}
                 {timed.length ? <Text style={[styles.sect, { color: c.textFaint }]}>{t("cal.sect.timed")}</Text> : null}
                 {list(timed, "cal-row")}
+                {conflictNotes.map((n) => (
+                  <ConflictCard
+                    key={n.key}
+                    note={n}
+                    onRemind={remindConflict}
+                    onSkip={(x) => {
+                      skipConflict(x.key);
+                      setSkipped((s) => new Set(s).add(x.key));
+                    }}
+                  />
+                ))}
               </View>
             )}
           </>
