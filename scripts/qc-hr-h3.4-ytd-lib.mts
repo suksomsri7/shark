@@ -28,7 +28,7 @@ export const FROZEN = [
   ...["build", "rd", "sso", "figures", "cert", "texts", "actions", "ui", "cert-pdf", "download-route"].map((n) => `${H}filings/${n}.ts${n === "ui" || n === "cert-pdf" ? "x" : ""}`),
 ];
 /** other oracles: frozen, except ORACLE-EDIT hunks naming H3.4-YTD in the files the brief/rulings authorise (h3.7 part B · h0.1 S4.2 re-take · h3.8 S3.7 Q12) */
-const ORACLE_EDIT_OK = /^scripts\/(qc-hr-h3\.7\.mts|qc-hr-h0\.1\.mts|qc-hr-h3\.8[\w.-]*\.mts)$/;
+const ORACLE_EDIT_OK = /^scripts\/(qc-hr-h3\.7\.mts|qc-hr-h0\.1\.mts|qc-hr-h3\.8[\w.-]*\.mts|qc-hr-h4\.2-lib\.mts)$/; // ORACLE-EDIT (H3.4-YTD · merge with H4.2 in base): + qc-hr-h4.2-lib (S1.6 IN_BASE guard, pre-authorised) ◂
 const MARK = /HR H3\.4-YTD/;
 
 // ═════════════ worked example (brief §6) — literals ═════════════
