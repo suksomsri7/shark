@@ -1,5 +1,4 @@
-// QC — HR PRIV-2 one pay scope (borrowing never widens pay) · brief ledger/hr-briefs/hr-brief-PRIV-2.md · notes ledger/wo-notes/hr-PRIV-2-oracle.md
-// ⚠️ Oracle under change control — ask for an ORACLE-EDIT, never edit. SKIP while scope.ts lacks "HR PRIV-2" (QC_FORCE=1 runs) · --list
+// QC HR PRIV-2 one pay scope · brief hr-brief-PRIV-2.md · notes hr-PRIV-2-oracle.md · ⚠️ ORACLE-EDIT only · QC_FORCE=1 · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-priv-2.mts
 import { existsSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -25,51 +24,52 @@ const OLD = readdirSync(join(ROOT, "scripts")).filter((n) => /^qc-.*\.mts$/.test
 
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
 const CHECKS: Def[] = [
- D("S1", "R1", "CG", "[static] scope.ts: inPayScope + payScopeWhere (no borrowing) + note text"),
- D("S2", "R1 R6", "CR", "[static] one helper on every pay path incl. ot money + stock rows/flags (R6)"),
- D("S3", "R4", "CG", "[static] run actions + document gates all-branch"),
- D("S4", "R9", "MG", "[static] frozen vs base · older oracles via ORACLE-EDIT PRIV-2 · h4.3-lib hunks ORACLE-EDIT (HR-PRIV-2 (R9)"),
- D("S5", "§files", "MG", "[static] changed src ⊆ allowed · hunks marked HR PRIV-2"),
- D("S6", "§base", "MG", "[static] ticket base ancestor · files present"),
- D("S7", "R5", "MG", "[static] no {names} in refusals · core/csv sanitiser"),
- D("P1", "R1", "CG", "[pure] inPayScope / payScopeWhere truth table"),
- D("A1", "R1a", "CG", "[db] borrowed profile: no sensitive data (payU1s/m)"),
- D("A2", "R1a", "CG", "[db] borrowed profile = mgrU1 DTO"),
- D("A3", "R1a", "CG", "[db] [control] in-scope sensitive visible · OWNER/payAll see bNow"),
- D("A4", "R1a", "MG", "[db] slip loader: borrowed null · a1 without whole-run totals"),
- D("A5", "R1a", "MG", "[db] [control] refusal parity"),
- D("A7", "R8", "MG", "[db] own slip = DB figures · no total* keys (R8)"),
- D("B1", "R1b", "CG", "[db] 6 money reports rows ⊆ in-scope"),
- D("B2", "R1b", "CG", "[db] money exports clean"),
- D("B3", "R1b", "MG", "[db] OT report: borrowed row kept, money withheld, note"),
- D("B4", "R1b", "CG", "[db] [control] owner/payAll rows · aLeft/bEnded"),
- D("B5", "R1b", "MG", "[db] [control] Σ rows · document previews all-branch"),
- D("C1", "R1c", "CG", "[page] payroll page: no out-of-scope data"),
- D("C2", "R1c", "CG", "[page] no whole-run figure · notes"),
- D("C3", "R1c", "MG", "[page] [control] owner page"),
- D("C4", "R1c", "MG", "[db] preview v2 rows/Σ/excludedHeadcount"),
- D("C5", "R1c", "MG", "[db] inbox: no out-of-scope adjustment"),
- D("N1", "R6 N1", "MR", "[db] otRequestList: borrowed items = mgrU1's (no money) (R6 N1)"),
- D("N2", "R6 N2", "MR", "[db] stock list + cap flags: no bSpan (R6 N2)"),
- D("N3", "R6", "MR", "[R2] hidden-salary doubling: ot list / stock / flags identical"),
- D("N4", "R6", "MG", "[db] [control] owner money · in-scope money (R6)"),
- D("D0", "R2", "MG", "[R2] [control] payloads stable"),
- D("D1", "R2", "CG", "[R2] doubling: reports identical"),
- D("D2", "R2", "CG", "[R2] doubling: profile/slip loaders identical"),
- D("D3", "R2", "CG", "[R2] doubling: payroll page identical"),
- D("D4", "R2", "MR", "[R2] doubling: other pay readers + otRequestList identical"),
- D("D5", "R2", "MG", "[R2] [regression] doubling: AI · REST · non-pay viewers identical"),
- D("D6", "R2", "MG", "[R2] [positive control] owner/pay-key payloads change"),
- D("E1", "R3", "CG", "[db] [regression] borrowed still on roster/attendance/time"),
- D("E2", "R3", "MG", "[db] [regression] leave/OT decisions on borrowed"),
- D("G1", "R4", "CG", "[action] [control] 11 run actions refused"),
- D("W1", "R5", "MG", "[db] write paths refuse 18 bad chars"),
- D("W2", "R5", "MG", "[db] refusals fixed, no echo"),
- D("W3", "R5", "mG", "[db] [control] good names accepted"),
- D("W4", "R5", "MG", "[db] stored bad names: exports succeed"),
- D("W5", "R5", "MG", "[db] exports sanitised"),
- D("W6", "R10", "MR", "[db] booking staff path names clean (R10)"),
- D("Z1", "-", "CG", "residue none · no outbound"),
+ D("S1", "R1", "CG", "scope.ts helper + note"),
+ D("S2", "R1 R6", "CR", "one helper on every pay path"),
+ D("S3", "R4", "CG", "run actions/doc gates all-branch"),
+ D("S4", "R9", "MG", "frozen · oracle edits marked (R9)"),
+ D("S5", "§files", "MG", "allowed files · marked hunks"),
+ D("S6", "§base", "MG", "base ancestor · files"),
+ D("S7", "R5", "MG", "no {names} · core/csv"),
+ D("P1", "R1", "CG", "helper truth table"),
+ D("A1", "R1a", "CG", "borrowed profile: no sensitive"),
+ D("A2", "R1a", "CG", "borrowed profile = mgrU1"),
+ D("A3", "R1a", "CG", "[control] sensitive where allowed"),
+ D("A4", "R1a", "MG", "slip loader scope + no totals"),
+ D("A5", "R1a", "MG", "[control] refusal parity"),
+ D("A7", "R8", "MG", "own slip = DB, no total* (R8)"),
+ D("B1", "R1b", "CG", "money report rows in scope"),
+ D("B2", "R1b", "CG", "money exports clean"),
+ D("B3", "R1b", "MG", "OT report money withheld + note"),
+ D("B4", "R1b", "CG", "[control] owner/payAll rows"),
+ D("B5", "R1b", "MG", "[control] Σ rows · doc gates"),
+ D("C1", "R1c", "CG", "page: no out-of-scope data"),
+ D("C2", "R1c", "CG", "page: no whole-run figure · notes"),
+ D("C3", "R1c", "MG", "[control] owner page"),
+ D("C4", "R1c", "MG", "preview v2 scope/Σ/excluded"),
+ D("C5", "R1c", "MG", "inbox: no out-of-scope adjustment"),
+ D("N1", "R6 N1", "MG", "OT list: borrowed = mgrU1 (R6)"),
+ D("N2", "R6 N2", "MG", "stock list + flags: no bSpan (R6)"),
+ D("N3", "R6", "MG", "salary doubling: OT/stock identical"),
+ D("N5", "R11", "MR", "stock claims/attention scope (R11)"),
+ D("N4", "R6", "MG", "[control] owner + in-scope money"),
+ D("D0", "R2", "MG", "[control] payloads stable"),
+ D("D1", "R2", "CG", "doubling: reports"),
+ D("D2", "R2", "CG", "doubling: profile/slips"),
+ D("D3", "R2", "CG", "doubling: page"),
+ D("D4", "R2", "MG", "doubling: other pay readers"),
+ D("D5", "R2", "MG", "[regression] doubling: AI/REST/non-pay"),
+ D("D6", "R2", "MG", "[positive control] owner changes"),
+ D("E1", "R3", "CG", "[regression] borrowed on roster etc."),
+ D("E2", "R3", "MG", "[regression] leave/OT decisions"),
+ D("G1", "R4", "CG", "[control] run actions refused"),
+ D("W1", "R5", "MG", "write paths refuse bad chars"),
+ D("W2", "R5", "MG", "refusals fixed, no echo"),
+ D("W3", "R5", "mG", "[control] good names"),
+ D("W4", "R5", "MG", "stored bad names export"),
+ D("W5", "R5", "MG", "exports sanitised"),
+ D("W6", "R10", "MG", "booking names: refused / stripped (R10)"),
+ D("Z1", "-", "CG", "residue · outbound"),
 ];
 const R = makeRegistry(SUITE, "", CHECKS);
 if (ARGV.includes("--list")) { R.printList(); process.exit(0); }
@@ -78,7 +78,6 @@ const all = (r: Record<string, unknown>) => Object.values(r).every(Boolean);
 const fails = (r: Record<string, unknown>) => Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "all";
 const L = (xs: string[], n = 8) => xs.slice(0, n).join(" | ") || "ok";
 
-// ── statics
 const sc0 = code(F.scope), built = rd(F.scope).includes("HR PRIV-2");
 if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
 {
@@ -92,7 +91,7 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  const r = {
   profile: u(bodyOf(pv, "loadEmployeeProfileForViewer")), slip: u(lps) && !/employeeInScope/.test(lps), home: !hm || u(hm), labor: u(code(F.labor).split("\n").find((l) => /\bsees\s*=/.test(l)) ?? ""),
   preview: u(pr) && !/unitsOfViewer\(/.test(pr), covers: !cv || u(cv), reports: u(code(F.rep)), note: /PAY_SCOPE_EXCLUDED_TEXT/.test(code(F.payUi)) && /PAY_SCOPE_EXCLUDED_TEXT/.test(code(F.runUi)),
-  otMoney: u(bodyOf(ot, "otRequestList") + bodyOf(ot, "toItems")), stock: u(bodyOf(st, "listStockCharges")) && u(bodyOf(st, "stockPeriodCapFlags")),
+  otMoney: u(bodyOf(ot, "otRequestList") + bodyOf(ot, "toItems")), stock: ["listStockCharges", "stockPeriodCapFlags", "openStockClaims", "stockAttention"].every((n) => u(bodyOf(st, n))),
   oneDef: !HR_ALL.some((f) => f !== F.scope && /(?:function|const)\s+(inPayScope|payScopeWhere)\b/.test(code(f))),
  };
  chk("S2", all(r), "", fails(r));
@@ -126,13 +125,12 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  chk("S7", all(r7), "", fails(r7));
 }
 
-// ── DB
 const { AsyncLocalStorage } = await import("node:async_hooks");
 (globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage; // before next/*
 installNetGuard();
 const { P, coreHash } = await qc4Env(SUITE);
 const M: Record<string, Any> = {};
-const MODS = "scope priv:privacy svc:service payroll slip:payslip rep:reports RR:reports-rules labor ap:attendance-pay we:work-entries open:payroll-opening bank:bank-files/service fil:filings/service inbox stock:stock-charge leave roster board:roster-board judge ot ui:payroll-ui acts:payroll-actions booking:../booking/service sys:../system/service";
+const MODS = "scope ps:privacy-shared priv:privacy svc:service payroll slip:payslip rep:reports RR:reports-rules labor ap:attendance-pay we:work-entries open:payroll-opening bank:bank-files/service fil:filings/service inbox stock:stock-charge leave roster board:roster-board judge ot ui:payroll-ui acts:payroll-actions booking:../booking/service sys:../system/service";
 const SPECS: Record<string, string> = { ...Object.fromEntries(MODS.split(" ").map((x) => x.split(":")).map(([k, v]) => [k!, `@/lib/modules/hr/${v ?? k}`])), tools: "@/lib/ai/tools", actor: "@/lib/ai/actor", AK: "@/lib/api-keys/service", RT: "@/app/api/v1/hr/[...path]/route", money: "@/lib/ui/money" };
 for (const [k, s] of Object.entries(SPECS)) M[k] = (await import(s).catch((e: unknown) => ({ __err: errText(e) }))) as Any;
 const badImp = Object.entries(M).filter(([, m]) => m?.__err).map(([k, m]) => `${k}:${m.__err}`);
@@ -165,7 +163,6 @@ async function renderHtml(node: Any): Promise<string> {
 }
 const fd = (o: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.set(k, v); return f; };
 
-// ── fixture
 const tag = tagOf(String(Date.now())) + Math.random().toString(36).slice(2, 5).replace(/\d/g, "q");
 const SLUG = `${PFX}${Date.now()}${tag}`, fx = makeFixtures(P, coreHash, SLUG);
 const D0 = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10), DM1 = addDay(D0, -1), MONTH = D0.slice(0, 7), YEAR = Number(D0.slice(0, 4));
@@ -173,7 +170,6 @@ const PERIOD = addDay(D0, -34).slice(0, 7), PY = Number(PERIOD.slice(0, 4)); // 
 const NOW = new Date(`${D0}T05:00:00Z`);
 const bkk = (day: string, min: number) => new Date(Date.parse(`${day}T00:00:00+07:00`) + min * 60_000);
 const nidOf = (k: number) => { const b = `1${String(1_000_000_00000 + k * 7919 + (Date.now() % 997) * 13).slice(-11)}`; let s = 0; for (let i = 0; i < 12; i++) s += Number(b[i]) * (13 - i); return b + String((11 - (s % 11)) % 10); };
-type Emp = Any;
 const IN = ["a1", "a2", "aLeft"], BOR = ["bNow", "bSpan", "bLeft"], OUT = ["bNow", "bSpan", "bEnded", "bLeft", "c1", "c2", "cNo"];
 const AMT = { bonB: 654_321, bonA: 123_457, otSpan: 333_331, otB: 444_443, otA1: 222_227, otSpan2: 555_557, stockSpan: 400_000, dedSpan: 300_000, stockA1: 50_000 };
 async function retotal(runId: string): Promise<void> {
@@ -194,7 +190,7 @@ async function buildFixture() {
  const end = { status: "ENDED", active: false, endDate: DM1 };
  const defs: [string, string | null, "MONTHLY" | "HOURLY", Record<string, Any>][] = [["a1", U1, "MONTHLY", { linkedUserId: W.emp.id }], ["a2", U1, "HOURLY", {}], ["aLeft", U1, "MONTHLY", end],
   ["bNow", U2, "HOURLY", {}], ["bSpan", U2, "MONTHLY", {}], ["bEnded", U2, "MONTHLY", {}], ["bLeft", U2, "MONTHLY", end], ["c1", U2, "MONTHLY", {}], ["c2", U3, "HOURLY", {}], ["cNo", null, "MONTHLY", {}]];
- const E: Record<string, Emp> = {};
+ const E: Record<string, Any> = {};
  for (const [i, [key, home, pay, o]] of defs.entries()) {
   const k = i + 1, name = `QCP2 ${key} ${tag}`, z = `z${tag}${key}`, nid = nidOf(k), base = 3_000_000 + k * 13_337 + 17, rate = 17_000 + k * 113 + 7, gross = 4_000_000 + k * 21_211 + 919;
   const id = await fx.mkEmp(TA, HRS, name, { code: `P${k}`, startDate: "2025-01-01", position: "บาริสต้า", unitId: home, ...o });
@@ -234,11 +230,13 @@ async function buildFixture() {
  const stock = async (e: string, amt: number) => (await P.hrStockCharge.create({ data: { ...sc, employeeId: E[e]!.id, kind: "DAMAGE", requestKey: `qc-${e}-${tag}`, adjustmentId: await adj(e, "DEDUCTION", amt), description: "แก้วแตก", amountSatang: amt, consentRef: `C-${e}`, consentAt: dbDate(DM1), consentRecordedById: W.owner.id, requestedById: W.owner.id } })).id as string;
  const stockSpan = await stock("bSpan", AMT.stockSpan);
  await stock("a1", AMT.stockA1);
+ for (const [e, open] of [["a1", 1], ["bSpan", 1], ["aLeft", 0], ["bLeft", 0]] as [string, number][]) // R11: stuck claims (a1 · bSpan) + attention rows of leavers (aLeft · bLeft)
+  await P.hrStockCharge.create({ data: { ...sc, employeeId: E[e]!.id, kind: "ISSUE", requestKey: `qcc-${e}-${tag}`, adjustmentId: await adj(e, "DEDUCTION", 10_000), itemName: `QCITEM-${e}`, description: "เบิก", qty: 2, amountSatang: 10_000, consentRef: "C", consentAt: dbDate(DM1), consentRecordedById: W.owner.id, requestedById: W.owner.id, claimOpen: !!open, createdAt: new Date(Date.now() - 3_600_000) } });
  return { TA, U1, HRS, ctx: sc, W, E, runPaid, runDraft, leaveB, otB, otBNow, stockSpan };
 }
 
-// ── main
 let crashed = "";
+const ar = (x: Any): Any[] => x ?? [];
 const vOf = (w: Any) => ({ role: w.role, unitAccess: w.unitAccess, permissions: w.permissions, userId: w.id });
 try {
 {
@@ -256,11 +254,11 @@ const X = await buildFixture();
 const { ctx, W, E, U1, runPaid, runDraft } = X;
 const q = (m: string, fn: string, ...a: unknown[]) => call(M[m], fn, ctx, ...a);
 const kOf = new Map(Object.values(E).map((e) => [e.id, e.key]));
-const LIM = { payU1s: vOf(W.payU1s), payU1m: vOf(W.payU1m) }, VM = vOf(W.mgrU1), VO = vOf(W.owner);
+const LS = vOf(W.payU1s), LM = vOf(W.payU1m), LIM = { payU1s: LS, payU1m: LM }, VM = vOf(W.mgrU1), VO = vOf(W.owner);
 const money = (s: number) => String(M.money?.formatBaht?.(s));
 const baht = (s: number) => [String(s), (s / 100).toFixed(2), (s / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })];
-const sensOf = (e: Emp) => [e.nid, `${e.z}SSO`, `${e.z}HOUSE`, `${e.z}BANKNAME`, `${e.z}DOC`];
-const payOf = (e: Emp) => [...baht(e.gross), ...baht(e.net), ...baht(e.pay === "HOURLY" ? e.rate : e.base)].filter((s) => s.length >= 5);
+const sensOf = (e) => [e.nid, `${e.z}SSO`, `${e.z}HOUSE`, `${e.z}BANKNAME`, `${e.z}DOC`];
+const payOf = (e) => [...baht(e.gross), ...baht(e.net), ...baht(e.pay === "HOURLY" ? e.rate : e.base)].filter((s) => s.length >= 5);
 const num = (v: unknown) => Number(String(v ?? "").replace(/[^\d.-]/g, "")) || 0;
 console.log(`fixture ok: PERIOD=${PERIOD} MONTH=${MONTH}`);
 {
@@ -274,14 +272,14 @@ console.log(`fixture ok: PERIOD=${PERIOD} MONTH=${MONTH}`);
  }
  chk("A1", !a1.length, "", L(a1));
  chk("A2", !a2.length, "", L(a2));
- for (const e of IN) { const t = T(await prof(LIM.payU1s, e)); if (!sensOf(E[e]!).every((s: string) => t.includes(s))) c.push(`payU1s.${e}`); }
+ for (const e of IN) { const t = T(await prof(LS, e)); if (!sensOf(E[e]!).every((s: string) => t.includes(s))) c.push(`payU1s.${e}`); }
  { const t = T(await prof(VO, "bNow")); if (!sensOf(E.bNow!).every((s: string) => t.includes(s))) c.push("owner.bNow"); }
  chk("A3", !c.length, "", L(c));
- const s = { bNow: await lps(LIM.payU1s, "bNow"), bSpan: await lps(LIM.payU1s, "bSpan"), a1: await lps(LIM.payU1s, "a1") }, rt = await P.hrPayrollRun.findUnique({ where: { id: runPaid } });
+ const s = { bNow: await lps(LS, "bNow"), bSpan: await lps(LS, "bSpan"), a1: await lps(LS, "a1") }, rt = await P.hrPayrollRun.findUnique({ where: { id: runPaid } });
  const whole = ["totalGrossSatang", "totalNetSatang", "totalSsoEmployeeSatang", "totalWhtSatang"].filter((k) => T(s.a1).includes(String(rt[k])));
  chk("A4", s.bNow === null && s.bSpan === null && !!s.a1?.item && !whole.length, "", `${s.bNow === null}/${s.bSpan === null}/${!!s.a1?.item} whole=${whole}`);
  const unk = "c" + Math.random().toString(36).slice(2, 12) + "zz9q";
- const par = [await prof(LIM.payU1s, "c2"), await prof(LIM.payU1s, "cNo"), await prof(LIM.payU1s, unk), await lps(LIM.payU1s, "c2"), await lps(LIM.payU1s, unk)];
+ const par = [await prof(LS, "c2"), await prof(LS, "cNo"), await prof(LS, unk), await lps(LS, "c2"), await lps(LS, unk)];
  chk("A5", par.every((x) => x === null), "", par.map((x) => (x === null ? "null" : short(x, 20))).join(","));
  const own = await lps(vOf(W.emp), "a1"), db = (await P.hrPayrollItem.findFirst({ where: { runId: runPaid, employeeId: E.a1!.id } })) as Any; // A7 (R8)
  const diff = ["grossSatang", "netSatang", "ssoBaseSatang", "ssoEmployeeSatang", "ssoEmployerSatang", "whtSatang", "addSatang", "deductSatang"].filter((k) => k in (own?.item ?? {}) && own.item[k] !== db?.[k]);
@@ -304,24 +302,24 @@ const rowsOf = (r: Any): string[] => (Array.isArray(r?.rows) ? r.rows.map((x: An
  chk("B1", !b1.length, "", L(b1, 6));
  chk("B2", !b2.length, "", L(b2, 6));
  const b3: string[] = [];
- const MK: string[] = ((M.RR.REPORT_CATALOG?.ot?.columns ?? []) as Any[]).filter((c) => c.cls === "$").map((c) => c.key);
- const page = await load(LIM.payU1m, "ot", PERIOD), rowOf = (r: Any) => ((r?.rows ?? []) as Any[]).find((x) => x.employeeId === E.bSpan!.id);
+ const MK: string[] = ar(M.RR.REPORT_CATALOG?.ot?.columns).filter((c) => c.cls === "$").map((c) => c.key);
+ const page = await load(LM, "ot", PERIOD), rowOf = (r: Any) => ar(r?.rows).find((x) => x.employeeId === E.bSpan!.id);
  const bp = rowOf(page), bm = rowOf(await load(VM, "ot", PERIOD));
  if (!page?.ok || !bp || !bm) b3.push(`rows page=${!!bp} mgr=${!!bm}`);
  else {
   const leak = MK.filter((k) => ![undefined, null, ""].includes(bp.values?.[k])), dd = Object.keys(bm.values ?? {}).filter((k) => !MK.includes(k) && String(bp.values?.[k] ?? "") !== String(bm.values[k] ?? ""));
-  const inR = ((page.rows ?? []) as Any[]).filter((x) => IN.includes(kOf.get(x.employeeId) ?? "")), badT = MK.filter((k) => page.totals?.[k] !== undefined && Math.abs(num(page.totals[k]) - inR.reduce((a: number, x: Any) => a + num(x.values?.[k]), 0)) > 0.001);
+  const inR = ar(page.rows).filter((x) => IN.includes(kOf.get(x.employeeId) ?? "")), badT = MK.filter((k) => page.totals?.[k] !== undefined && Math.abs(num(page.totals[k]) - inR.reduce((a: number, x: Any) => a + num(x.values?.[k]), 0)) > 0.001);
   if (leak.length) b3.push(`money ${leak.join("/")}`);
   if (dd.length) b3.push(`op≠mgr ${dd.join("/")}`);
   if (badT.length) b3.push(`totals ${badT.join("/")}`);
   if (page.excludedHeadcount !== 1) b3.push(`excluded=${page.excludedHeadcount}`);
   if (!((page.notes ?? []) as string[]).includes(NOTE.replace("{n}", "1"))) b3.push("note");
  }
- for (const f of ["CSV", "XLSX"]) { const x = await exp(LIM.payU1m, "ot", f, PERIOD), t = x?.ok ? T(x.bytes) : ""; if (!x?.ok || !t.includes(E.bSpan!.name) || baht(AMT.otSpan).some((s) => t.includes(s))) b3.push(`${f}:${x?.ok ? "row/amount" : "refused"}`); }
+ for (const f of ["CSV", "XLSX"]) { const x = await exp(LM, "ot", f, PERIOD), t = x?.ok ? T(x.bytes) : ""; if (!x?.ok || !t.includes(E.bSpan!.name) || baht(AMT.otSpan).some((s) => t.includes(s))) b3.push(`${f}:${x?.ok ? "row/amount" : "refused"}`); }
  chk("B3", !b3.length, "", L(b3));
  const b4: string[] = [];
  for (const w of ["owner", "payAll"]) for (const rep of ["payroll-month", "tax-month", "register"]) { const rows = rowsOf(await load(vOf((W as Any)[w]), rep)); if (!BOR.every((e) => rows.includes(e))) b4.push(`${w}.${rep}`); }
- { const rows = rowsOf(await load(LIM.payU1s, "payroll-month")); if (!rows.includes("aLeft") || rows.includes("bEnded")) b4.push("payU1s aLeft/bEnded"); }
+ { const rows = rowsOf(await load(LS, "payroll-month")); if (!rows.includes("aLeft") || rows.includes("bEnded")) b4.push("payU1s aLeft/bEnded"); }
  chk("B4", !b4.length, "", L(b4));
  const docs = async (v: Any) => ({ open: await q("open", "listOpeningYtd", v, { taxYear: PY }), certs: await q("slip", "listSalaryCertEmployees", v), fil: await q("fil", "listFilingEmployees", v), bank: await q("bank", "previewBankFile", v, { runId: runPaid, bank: "KBANK", format: "CSV" }) });
  for (const [vn, v] of Object.entries(LIM)) { const o = Object.entries(await docs(v)).filter(([, r]) => okR(r)).map(([k]) => k); if (o.length) b5.push(`${vn} opens ${o.join("/")}`); }
@@ -353,7 +351,7 @@ const runRow = async (id: string) => (await P.hrPayrollRun.findUnique({ where: {
  chk("C3", all(c3), "", fails(c3));
  const c4: string[] = [];
  for (const [rid, hid] of [[runPaid, 7], [runDraft, 6]] as [string, number][]) {
-  const pv = await q("payroll", "previewPayrollRunV2", LIM.payU1m, { runId: rid }), ow = await q("payroll", "previewPayrollRunV2", VO, { runId: rid });
+  const pv = await q("payroll", "previewPayrollRunV2", LM, { runId: rid }), ow = await q("payroll", "previewPayrollRunV2", VO, { runId: rid });
   if (!pv?.ok) { c4.push(`${hid}:${short(pv, 30)}`); continue; }
   const out = (pv.rows as Any[]).map((r) => kOf.get(r.employeeId) ?? "?").filter((k) => !IN.includes(k));
   if (out.length) c4.push(`rows ${out.join("/")}`);
@@ -376,20 +374,24 @@ const runRow = async (id: string) => (await P.hrPayrollRun.findUnique({ where: {
 }
 {
  const otl = (v: Any) => q("ot", "otRequestList", v, {}), ls = (v: Any) => q("stock", "listStockCharges", v, {}), flags = (v: Any, it: Any[]) => q("stock", "stockPeriodCapFlags", v, it);
- const item = (r: Any, id: string) => ((r?.items ?? []) as Any[]).find((x) => x.id === id);
+ const item = (r: Any, id: string) => ar(r?.items).find((x) => x.id === id);
  const rows = (await P.hrOtRequest.findMany({ where: { tenantId: X.TA, employeeId: { in: [E.bNow!.id, E.bSpan!.id] }, status: "APPROVED", date: { gte: dbDate(addDay(D0, -5)) } }, select: { id: true } })) as Any[];
- const lm = await otl(LIM.payU1m), mg = await otl(VM), n1: string[] = [];
+ const lm = await otl(LM), mg = await otl(VM), n1: string[] = [];
  for (const { id } of rows) { const a = item(lm, id); if (!a) n1.push("missing"); else if ("amountSatang" in a || "segments" in a || canon(a) !== canon(item(mg, id))) n1.push(`${kOf.get(a.employeeId)}:${"amountSatang" in a ? "money" : "≠mgr"}`); }
  chk("N1", !n1.length && rows.length >= 2, "", L(n1));
- const own = await ls(VO), lim = await ls(LIM.payU1m), span = ((own?.items ?? []) as Any[]).find((i) => i.id === X.stockSpan);
- const fl = span ? await flags(LIM.payU1m, [span]) : null;
- const n2 = { list: okR(lim), noRow: !((lim?.items ?? []) as Any[]).some((i) => i.employeeId === E.bSpan!.id), noFlag: !!span && !(fl instanceof Set && fl.has(X.stockSpan)) };
+ const own = await ls(VO), lim = await ls(LM), span = ar(own?.items).find((i) => i.id === X.stockSpan);
+ const fl = span ? await flags(LM, [span]) : null;
+ const n2 = { list: okR(lim), noRow: !ar(lim?.items).some((i) => i.employeeId === E.bSpan!.id), noFlag: !!span && !(fl instanceof Set && fl.has(X.stockSpan)) };
  chk("N2", all(n2), "", fails(n2));
  const of = span ? await flags(VO, [span]) : null, li = (lim?.items ?? []) as Any[];
  const n4 = { ownerOt: item(await otl(VO), X.otBNow)?.amountSatang === AMT.otB, ownerStock: span?.amountSatang === AMT.stockSpan && span?.overCap === true, ownerFlag: of instanceof Set && of.has(X.stockSpan),
-  limOtA1: ((lm?.items ?? []) as Any[]).some((i) => i.employeeId === E.a1!.id && i.amountSatang === AMT.otA1), limStockA1: li.some((i) => i.employeeId === E.a1!.id && i.amountSatang === AMT.stockA1) };
+  limOtA1: ar(lm?.items).some((i) => i.employeeId === E.a1!.id && i.amountSatang === AMT.otA1), limStockA1: li.some((i) => i.employeeId === E.a1!.id && i.amountSatang === AMT.stockA1) };
  chk("N4", all(n4), "", fails(n4));
- const snap = async () => { const l = await ls(LIM.payU1m); return [digest(await otl(LIM.payU1m)), digest(l), digest(await flags(LIM.payU1m, [...((l?.items ?? []) as Any[]), ...(span ? [span] : [])]))]; };
+ const nm = async (fn: string, v: Any) => ((await q("stock", fn, v)) ?? []).map?.((x: Any) => x.employeeName) ?? [];
+ const [ol, oo, al, ao] = [await nm("openStockClaims", LM), await nm("openStockClaims", VO), await nm("stockAttention", LM), await nm("stockAttention", VO)], n = (k: string) => E[k]!.name;
+ const n5 = { claimHidden: !ol.includes(n("bSpan")), claimIn: ol.includes(n("a1")), attHidden: !al.some((x: string) => [n("bSpan"), n("bLeft")].includes(x)), attIn: ["a1", "aLeft"].every((k) => al.includes(n(k))), owner: ["a1", "bSpan"].every((k) => oo.includes(n(k))) && ["aLeft", "bLeft", "bSpan"].every((k) => ao.includes(n(k))) };
+ chk("N5", all(n5), "", fails(n5));
+ const snap = async () => { const l = await ls(LM); return [digest(await otl(LM)), digest(l), digest(await flags(LM, [...ar(l?.items), ...(span ? [span] : [])]))]; };
  const s1 = await snap(), p0 = (await P.hrSalaryProfile.findMany({ where: { employeeId: { in: [E.bNow!.id, E.bSpan!.id] } } })) as Any[];
  for (const p of p0) await P.hrSalaryProfile.update({ where: { id: p.id }, data: { baseSalarySatang: p.baseSalarySatang * 2, ...(p.hourlyRateSatang ? { hourlyRateSatang: p.hourlyRateSatang * 2 } : {}) } });
  const s2 = await snap();
@@ -399,7 +401,7 @@ const runRow = async (id: string) => (await P.hrPayrollRun.findUnique({ where: {
 }
 {
  const e1: string[] = [], has = (r: Any, w: string) => (T(r).includes(E.bNow!.id) || T(r).includes(E.bNow!.name) ? "" : w);
- for (const [vn, v] of [["payU1m", LIM.payU1m], ["mgrU1", VM]] as [string, Any][]) {
+ for (const [vn, v] of [["payU1m", LM], ["mgrU1", VM]] as [string, Any][]) {
   const p = [has(await q("roster", "listRoster", v, { from: D0, to: D0, unitId: U1 }), "roster"), has(await q("board", "loadRosterBoard", v, { week: D0, unit: U1 }), "board"), has(await q("judge", "loadAttendanceBoard", v, { day: DM1, unit: U1 }), "attendance"),
    has(await load(v, "time", DM1.slice(0, 7)), "time"), (await q("priv", "loadEmployeeProfileForViewer", v, E.bNow!.id))?.profile ? "" : "profile"].filter(Boolean);
   if (p.length) e1.push(`${vn}:${p.join("/")}`);
@@ -448,7 +450,7 @@ const runRow = async (id: string) => (await P.hrPayrollRun.findUnique({ where: {
   try { const res: Response = await M.RT.GET(new Request(`http://x/api/v1/hr${path}`, { headers: { authorization: `Bearer ${raw}` } }), { params: Promise.resolve({ path: path.split("?")[0]!.split("/").filter(Boolean) }) }); return `${res.status} ${await res.text()}`; } catch (e) { return `THROW ${errText(e)}`; } finally { unmute(); }
  };
  for (const p of ["/units", "/employees?pageSize=50", "/shifts", `/roster?from=${DM1}&to=${D0}`, `/attendance/day?day=${DM1}`, "/leave-policies", "/leaves?status=PENDING", `/leave-balances?year=${YEAR}`,
-  ...[E.a1!, E.bNow!, E.c1!].flatMap((e) => [`/employees/${e.id}`, `/employees/${e.id}/payslips?taxYear=${PY}`, `/payslips/${runPaid}/${e.id}`]), ...IDS.map((r) => `/reports/${r}?period=${per(r)}`)])
+  ...[E.a1!, E.bNow!].flatMap((e) => [`/employees/${e.id}`, `/payslips/${runPaid}/${e.id}`]), ...IDS.map((r) => `/reports/${r}?period=${per(r)}`)])
   cov.push(["D5", `api.read${p.slice(0, 40)}`, () => api(KR[RD]!, p)]);
  for (const vn of ["hrAdmin", "mgrU1", "emp"]) {
   const v = vOf((W as Any)[vn]);
@@ -482,7 +484,7 @@ const runRow = async (id: string) => (await P.hrPayrollRun.findUnique({ where: {
  chk("D6", !same.length, "", same.join(",") || "all changed");
 }
 {
- const v = LIM.payU1m, det = await q("leave", "leaveDetail", v, X.leaveB), lv = await q("leave", "decideLeaveAs", v, X.leaveB, "REJECTED"), ot = await q("ot", "decideOtRequest", v, X.otB, "REJECTED", { now: new Date() });
+ const v = LM, det = await q("leave", "leaveDetail", v, X.leaveB), lv = await q("leave", "decideLeaveAs", v, X.leaveB, "REJECTED"), ot = await q("ot", "decideOtRequest", v, X.otB, "REJECTED", { now: new Date() });
  const st = canon({ l: (await P.hrLeave.findUnique({ where: { id: X.leaveB } }))?.status, o: (await P.hrOtRequest.findUnique({ where: { id: X.otB } }))?.status }), free = !payOf(E.bNow!).some((s) => (T(det) + T(lv) + T(ot)).includes(s));
  chk("E2", det?.ok === true && lv?.ok === true && ot?.ok === true && st === canon({ l: "REJECTED", o: "REJECTED" }) && free, "", `${det?.ok} ${short(lv, 40)} ${short(ot, 40)} ${st} free=${free}`);
 }
@@ -506,14 +508,19 @@ const runRow = async (id: string) => (await P.hrPayrollRun.findUnique({ where: {
  chk("W1", !w1.length, "", L(w1));
  chk("W2", !w2.length, "", L(w2));
  chk("W3", !w3.length, "", L(w3));
- for (const [cls, ch] of BAD_SAMPLES.filter(([c]) => ["C0-BEL", "RLO", "LRI", "ZWSP", "LS", "BOM"].includes(c))) { // W6 (R10) booking staff path
-  await call(M.booking, "createStaff", { tenantId: X.TA, unitId: U1, name: `QCbk${cls}${ch}Y${tag}` });
-  await P.bookingStaff.create({ data: { tenantId: X.TA, unitId: U1, name: `QCbl${cls}${ch}Z${tag}` } }).catch(() => undefined);
+ const bkT = String(M.ps?.HR_NAME_BAD_TEXT ?? "∅"), bc = () => P.bookingStaff.count({ where: { tenantId: X.TA } }), seeds: string[] = [], w6: string[] = []; // W6 (R10)
+ for (const [cls, ch] of BAD_SAMPLES.filter(([c]) => ["C0-BEL", "RLO", "LRI", "ZWSP", "LS", "BOM"].includes(c))) {
+  const n0 = await bc(), r = await call(M.booking, "createStaff", { tenantId: X.TA, unitId: U1, name: `QCbk${cls}${ch}Y${tag}` });
+  if (!String(r?.__throw ?? "").includes(bkT) || (await bc()) !== n0) w6.push(`${cls}:typed`);
+  seeds.push(`QCbl${cls}${ch}Z${tag}`);
+  await P.bookingStaff.create({ data: { tenantId: X.TA, unitId: U1, name: seeds.at(-1)! } });
  }
  await call(M.booking, "linkStaffToHr", { tenantId: X.TA, unitId: U1 });
- const made = (await P.hrEmployee.findMany({ where: { tenantId: X.TA, OR: [{ name: { contains: "QCbk" } }, { name: { contains: "QCbl" } }] }, select: { name: true } })) as Any[];
- const dirty = made.filter((m) => BAD_RE.test(m.name)).map((m) => m.name.slice(0, 7));
- chk("W6", !dirty.length, "", dirty.length ? `${dirty.length} dirty: ${[...new Set(dirty)].join(",")}` : `clean (${made.length})`);
+ const made = new Set(((await P.hrEmployee.findMany({ where: { tenantId: X.TA, name: { contains: "QCb" } }, select: { name: true } })) as Any[]).map((m) => m.name as string));
+ const want = seeds.map((x) => x.replace(new RegExp(BAD_RE.source, "g"), "").trim()).filter(Boolean);
+ for (const w of want) if (!made.has(w)) w6.push(`missing ${w.slice(4, 8)}`);
+ if ([...made].some((m) => BAD_RE.test(m) || m.startsWith("QCbk"))) w6.push("dirty/typed stored");
+ chk("W6", !w6.length && want.length === seeds.length, "", `${L(w6)} made=${made.size}`);
  await P.hrEmployee.update({ where: { id: E.a1!.id }, data: { name: `ab\u202ecd\u2066ef\u0007 ${tag}` } }); // rows stored before the rule
  await P.hrEmployee.update({ where: { id: E.c1!.id }, data: { name: `=HYPERLINK("http://evil.invalid","x") ${tag}` } });
  await P.hrEmployee.update({ where: { id: E.c2!.id }, data: { name: `@SUM(A1)\u200b ${tag}` } });

@@ -53,3 +53,6 @@ Size: oracle + lib 59.9 KB (compacted, same checks).
     ck("S3.22", { stat, borrowOpen: !!bor && !!prof6, control: hotfixE6 === null, e6: isNo(r6), e5: isNo(r5) }, …
 ```
 S4 accepts it (file carries `ORACLE-EDIT …PRIV-2`).
+
+## 8. Oracle r3 — controller R11 + W6 tightened (tip 6d71bd87c)
+Run `scratchpad/priv2/run8.log` (lane wrapper, forced, own tenant, residue none): 44/46 pass. RED as expected: S2 (`openStockClaims`/`stockAttention` not on the helper) · N5 (payU1m sees bSpan's stuck claim and bSpan/bLeft attention rows). N1/N2/N3/D4 now pass (builder fix) ⇒ registry re-based to 6d71bd87c: **46 checks · 2 RED-by-design · 44 GREEN**. W6 (tightened: 6 typed bad names each refused with `HR_NAME_BAD_TEXT`, bookingStaff count unchanged; `linkStaffToHr` stores each of the 6 stripped seed names, none dirty) is **GREEN** on 6d71bd87c. New seeds: stuck claims (claimOpen, 1 h old) for a1 + bSpan, leaver attention rows for aLeft + bLeft. Oracle + lib 59.7 KB.

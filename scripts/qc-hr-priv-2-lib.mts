@@ -1,11 +1,9 @@
-// QC — HR PRIV-2 helpers (pure): bytes → text · stable digests (R2) · bad-character set (R5) · statics. Used by qc-hr-priv-2.mts only.
-// ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT, never edit.
+// QC HR PRIV-2 helpers (pure) · ⚠️ ORACLE-EDIT only
 import { inflateRawSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { type Any, ROOT, diffHunks, stripComments, rd } from "./qc-hr-lib.mjs";
 
-/** every zip (XLSX) entry inflated, in central-directory order */
 export function unzipText(buf: Buffer): string {
  let e = -1;
  for (let i = buf.length - 22; i >= 0; i--) if (buf.readUInt32LE(i) === 0x06054b50) { e = i; break; }
@@ -19,7 +17,7 @@ export function unzipText(buf: Buffer): string {
  }
  return out;
 }
-/** value → searchable text; `props` = React element tree mode (every prop handed to children, incl. never-printed ones) */
+/** value → text; props mode = every prop of a React tree */
 function walkText(v: unknown, props: boolean): string {
  const out: string[] = [], seen = new WeakSet<object>();
  const w = (x: unknown, d: number) => {
@@ -39,7 +37,7 @@ function walkText(v: unknown, props: boolean): string {
 }
 export const propsText = (n: unknown) => walkText(n, true);
 export const textOfAny = (v: unknown) => walkText(v, false);
-/** R2 digest input: zips unpacked · ISO timestamps / requestIds / xlsx dates blanked — nothing else normalised */
+/** R2: timestamps/requestIds/xlsx dates blanked only */
 export const stableText = (v: unknown) => (typeof v === "string" ? v : textOfAny(v))
  .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})/g, "‹ts›").replace(/"requestId"\s*:\s*"[^"]*"/g, '"requestId":"‹id›"').replace(/<dcterms:(created|modified)[^>]*>[^<]*<\/dcterms:\1>/g, "‹d›");
 export const digest = (v: unknown) => createHash("sha256").update(stableText(v)).digest("hex").slice(0, 16);
@@ -51,7 +49,6 @@ export const BAD_SAMPLES: [string, string][] = [
 ];
 export const BAD_RE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\u2028\u2029\ufeff]/;
 export const GOOD_NAMES = ["น้ำฝน ศรีสุข", "O'Brien Jr.", "ก-ข สมใจ", "Somchai 😀", "พนักงาน 2"];
-/** text cell a spreadsheet reads as a formula (plain numbers like -12.50 are not) */
 export const formulaCell = (c: string) => /^"?[=+\-@\t\r]/.test(c) && !/^"?-?[\d,]+(\.\d+)?"?$/.test(c);
 
 const git = (a: string[]) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 << 20 }).trim();
@@ -61,7 +58,6 @@ export function changedFiles(base: string): string[] {
 export function fileAt(base: string, path: string): string | null {
  try { return execFileSync("git", ["show", `${base}:${path}`], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 << 20 }); } catch { return null; }
 }
-/** every hunk carries "HR PRIV-2" and "◂" on an added line · no bare removal · no other ticket's marker removed */
 export function unmarkedHunks(base: string, files: string[]): string[] {
  const bad: string[] = [];
  for (const f of files) {
@@ -75,7 +71,7 @@ export function unmarkedHunks(base: string, files: string[]): string[] {
  return bad;
 }
 export const code = (p: string) => stripComments(rd(p));
-/** body of a function / const arrow by name ("" when absent) — skips braces in parameter and return types */
+/** function/arrow body by name (skips type braces) */
 export function bodyOf(src: string, name: string): string {
  const m = new RegExp(`(?:function\\s+${name}\\s*[(<]|const\\s+${name}\\s*=)`).exec(src);
  const p0 = m ? src.indexOf("(", m.index) : -1;

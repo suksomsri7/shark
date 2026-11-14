@@ -25,15 +25,16 @@ Likely: `scope.ts` · `privacy.ts` · `payslip.ts` · `labor.ts` · `reports.ts`
 **Frozen** (S4): `prisma/**` · `src/lib/core/**` · `src/lib/ai/**` · `hr/api/**` · `hr/filings/**` · `hr/bank-files/**` · payroll-rules*/payroll-run-rules/payslip-rules/labor-rules · roster*/judge*/leave*/ot*/inbox-*/swap*/correction*/lifecycle*/self*/clock*/pin/work-entries*/settings*/law*/ai*/payroll-opening*/stock-charge*/line-* · `qc-hr-lib.mts` + h3.8/h4.3 libs · every older oracle · `package.json`.
 
 ## Run list (lane wrapper, one at a time)
-`qc-hr-priv-2` · `qc-hr-h0.6` · `qc-hr-h1.1` · `qc-hr-h1.2` · `qc-hr-h1.3` · `qc-hr-h2.4` · `qc-hr-h3.4-ytd` · `qc-hr-h3.5` · `qc-hr-h3.6` · `qc-hr-h3.7` · `qc-hr-h3.8` · `qc-hr-h3.9` · `qc-hr-h4.2` · `qc-hr-h4.3` · `qc-hr-h4.8` · `qc-hf-hr-privacy` · `qc-audit-trail` · targeted tsc of touched files. Expected older-suite changes (ORACLE-EDIT requests, not builder edits): see notes §4.
+`qc-hr-`: priv-2 · h0.6 · h1.1 · h1.2 · h1.3 · h2.4 · h3.4-ytd · h3.5 · h3.6 · h3.7 · h3.8 · h3.9 · h4.2 · h4.3 · h4.8 · `qc-hf-hr-privacy` · `qc-audit-trail` · tsc (touched). Expected older-suite changes (ORACLE-EDIT requests, not builder edits): see notes §4.
 
 ## Debts
 D-PRIV-reader-trust (F5, ~35 readers) · D-PRIV-home-history (pay scope = current home; a moved employee's past pay follows the new home) · D-PRIV-workentries (work-entries `covers` stays a minutes-only copy) · D-PRIV-service-run-guard (approveRun/markPaidRun/reverseRun services take no viewer; the all-branch rule lives in actions only).
 
 ## CONTROLLER RULINGS (oracle r2 · controller numbering; brief R6 above unchanged)
 R6 `ot.ts` + `stock-charge.ts` unfrozen (marked hunks). N1 `otRequestList` money (`amountSatang`, `segments`, any rate field) only when `inPayScope(home)`; rows/minutes keep the borrowing rule; `myOtRequests`, owner, all-branch unchanged (oracle N1/N3/N4, D4 `otList`). N2 `listStockCharges` + `stockPeriodCapFlags`: out-of-pay-scope rows/flags not returned to a limited viewer (`payScopeWhere`) (N2/N3/N4, D4 `stock`).
-R7 h3.8 S3.22 positive control: borrowing row exists AND `loadEmployeeProfileForViewer(payBranch, e6)` non-null — marked `ORACLE-EDIT (HR-PRIV-2 · controller R7)` (patch: notes §7).
+R7 h3.8 S3.22 positive control: borrowing row exists AND `loadEmployeeProfileForViewer(payBranch, e6)` non-null (applied, `ORACLE-EDIT (HR-PRIV-2 · controller R7)`).
 R8 own slip: `loadPayslipForViewer` for the employee = item figures equal the DB row, run object without `total*` keys (A7).
-R9 statics base = merge-base(HEAD, session/hr) (env `QC_PRIV2_BASE` wins); older oracles may differ only in files carrying `ORACLE-EDIT …PRIV-2`; `qc-hr-h4.3-lib.mts` only in hunks each carrying `ORACLE-EDIT (HR-PRIV-2` (S4).
-R10 booking staff path (`booking/service.ts` createStaff ~655, linkStaffToHr ~690) obeys the R5 name rule or stores the name clean (W6); `booking/service.ts` allowed (marked hunks).
+R9 statics base = merge-base(HEAD, session/hr) older oracles may differ only in files carrying `ORACLE-EDIT …PRIV-2`; `qc-hr-h4.3-lib.mts` only in hunks each carrying `ORACLE-EDIT (HR-PRIV-2` (S4).
+R10 booking staff path obeys the R5 name rule or stores the name clean (W6); `booking/service.ts` allowed (marked hunks).
+R11 `openStockClaims` + `stockAttention` (stock-charge.ts): no out-of-pay-scope row for a limited viewer; all-branch unchanged (N5, S2). W6 tightened: typed bad name ⇒ `HR_NAME_BAD_TEXT`; `linkStaffToHr` stores each stripped name.
 Controller debts (out of ticket): register position/nationality formula cells · bank-files `{names}` · `confirmBranchHours` unitsOfViewer · blind approve `decideAdjustmentAs` · more invisible code points.
