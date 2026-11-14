@@ -2135,6 +2135,223 @@
    "screen": "แผ่นเพิ่มเตือน (จอ 6)",
    "action": "POST calendar/items (เพิ่ม) / PATCH items/[id] (แก้)",
    "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-rc-<itemId>-edit",
+   "file": "apps/mobile/src/components/calendar/ReminderCard.tsx",
+   "screen": "ห้องเลขา (จอ 5) การ์ดเตือน",
+   "action": "AddCalSheet โหมดแก้ → PATCH items/[id]",
+   "wo": "CAL2.7"
+  },
+  {
+   "testID": "cal-rc-<itemId>-cancel",
+   "file": "apps/mobile/src/components/calendar/ReminderCard.tsx",
+   "screen": "ห้องเลขา (จอ 5) การ์ดเตือน",
+   "action": "ถามยืนยัน cal-rc-ask → DELETE items/[id]",
+   "wo": "CAL2.7"
+  },
+  {
+   "testID": "cal-rc-<itemId>-confirm",
+   "file": "apps/mobile/src/components/calendar/ReminderCard.tsx",
+   "screen": "ห้องเลขา (จอ 5) เตือนประจำ DRAFT",
+   "action": "POST items/[id]/confirm (ใช่ ตั้งเลย)",
+   "wo": "CAL2.7"
+  },
+  {
+   "testID": "cal-rc-<itemId>-retime",
+   "file": "apps/mobile/src/components/calendar/ReminderCard.tsx",
+   "screen": "ห้องเลขา (จอ 5) เตือนประจำ DRAFT",
+   "action": "AddCalSheet โหมดแก้ (แก้เวลา)",
+   "wo": "CAL2.7"
+  },
+  {
+   "testID": "cal-rc-ask-yes",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "ห้องเลขา · ยืนยันยกเลิกเตือน",
+   "action": "DELETE items/[id]",
+   "wo": "CAL2.7"
+  },
+  {
+   "testID": "cal-rc-ask-no",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "ห้องเลขา · ยืนยันยกเลิกเตือน",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.7"
+  },
+  {
+   "testID": "cal-rc-ask-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ห้องเลขา · ยืนยันยกเลิกเตือน",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.7"
+  },
+  {
+   "testID": "cal-rc-note",
+   "file": "apps/mobile/src/components/secretary/RoomView.tsx",
+   "screen": "ห้องเลขา · ข้อความผิดพลาดของการ์ดเตือน",
+   "action": "แตะ = ปิดข้อความ",
+   "wo": "CAL2.7"
+  },
+  {
+   "testID": "cal-set-back",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน (จอ 8)",
+   "action": "กลับ",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-morning",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน (จอ 8)",
+   "action": "PUT prefs morning.on",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-morning-time",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน (จอ 8)",
+   "action": "แผ่นเลือกเวลา (cal-set-hour-<h> · cal-set-min-<m> → PUT prefs morning.minute)",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-evening",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน (จอ 8)",
+   "action": "PUT prefs evening.on",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-evening-time",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน (จอ 8)",
+   "action": "แผ่นเลือกเวลา → PUT prefs evening.minute",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-src-<key>",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน (จอ 8)",
+   "action": "PUT prefs sources[key]",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-google",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน (จอ 8)",
+   "action": "router.push /secretary/calendar/google (จอ 9)",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-iphone",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน (จอ 8)",
+   "action": "ข้อความ: เชื่อมได้ในแอปรุ่นถัดไป (CAL2.11)",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-hour-<h>",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน · แผ่นเลือกเวลา",
+   "action": "PUT prefs <which>.minute (ชั่วโมง)",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-min-<m>",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน · แผ่นเลือกเวลา",
+   "action": "PUT prefs <which>.minute (นาที)",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-pick-done",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน · แผ่นเลือกเวลา",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-pick-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ตั้งค่าปฏิทิน · แผ่นเลือกเวลา",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-set-error-retry",
+   "file": "apps/mobile/src/components/airy/LoadState.tsx",
+   "screen": "ตั้งค่าปฏิทิน (โหลดล้ม)",
+   "action": "โหลดใหม่",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-g-back",
+   "file": "apps/mobile/app/(app)/secretary/calendar/google.tsx",
+   "screen": "Google Calendar (จอ 9)",
+   "action": "กลับ",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-g-cal-<id>",
+   "file": "apps/mobile/app/(app)/secretary/calendar/google.tsx",
+   "screen": "Google Calendar (จอ 9)",
+   "action": "PUT google calendars[].import",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-g-ex-<EVENT|REMINDER|BOOKING>",
+   "file": "apps/mobile/app/(app)/secretary/calendar/google.tsx",
+   "screen": "Google Calendar (จอ 9)",
+   "action": "PUT google exportKinds",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-g-disconnect",
+   "file": "apps/mobile/app/(app)/secretary/calendar/google.tsx",
+   "screen": "Google Calendar (จอ 9)",
+   "action": "ถามยืนยัน cal-g-ask → DELETE google",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-g-ask-yes",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "Google Calendar · ยืนยันยกเลิกเชื่อม",
+   "action": "DELETE calendar/google",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-g-ask-no",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "Google Calendar · ยืนยันยกเลิกเชื่อม",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-g-ask-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "Google Calendar · ยืนยันยกเลิกเชื่อม",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-g-error-retry",
+   "file": "apps/mobile/src/components/airy/LoadState.tsx",
+   "screen": "Google Calendar (โหลดล้ม)",
+   "action": "โหลดใหม่",
+   "wo": "CAL2.9"
+  },
+  {
+   "testID": "cal-conflict-<key>-remind",
+   "file": "apps/mobile/src/components/calendar/ConflictCard.tsx",
+   "screen": "ปฏิทินวัน (จอ 10) การ์ดนัดชน",
+   "action": "POST items {REMINDER, origin conflict}",
+   "wo": "CAL2.12"
+  },
+  {
+   "testID": "cal-conflict-<key>-skip",
+   "file": "apps/mobile/src/components/calendar/ConflictCard.tsx",
+   "screen": "ปฏิทินวัน (จอ 10) การ์ดนัดชน",
+   "action": "ไม่ต้อง = จำ key ในเครื่อง (ไม่ส่งเซิร์ฟเวอร์)",
+   "wo": "CAL2.12"
   }
  ]
 }
