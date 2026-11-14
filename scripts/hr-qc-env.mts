@@ -92,6 +92,7 @@ export const HR_TABLES = {
   hrFilingFile: { model: "HrFilingFile", file: "payroll.prisma", tenantId: true, role: "ใบกำกับไฟล์ ภ.ง.ด.1/1ก/สปส.1-10 ที่สร้าง (sha · ยอด · ไม่มีไบต์/เลขประจำตัว) (HR H3.6)" },
   hrTaxCertificate: { model: "HrTaxCertificate", file: "payroll.prisma", tenantId: true, role: "หนังสือรับรอง 50 ทวิ ที่ออกแล้ว (เนื้อหาแช่แข็ง + sha) (HR H3.6)" },
   hrEmployeeRegister: { model: "HrEmployeeRegister", file: "hr.prisma", tenantId: true, role: "ทะเบียนลูกจ้าง: สัญชาติ + ประโยชน์ตอบแทนอย่างอื่น 1 แถว/พนักงาน (HR H3.9 · seed ไม่เขียน)" }, // HR H3.9 ◂
+  hrPayrollOpeningYtd: { model: "HrPayrollOpeningYtd", file: "payroll.prisma", tenantId: true, role: "ยอดยกมาต้นปีก่อนใช้ระบบ ต่อพนักงานต่อปีภาษี (append-only rev · seed ไม่เขียน) (HR H3.4-YTD)" }, // HR H3.4-YTD ◂
   hrReviewNote: { model: "HrReviewNote", file: "hr.prisma", tenantId: true, role: "บันทึก/ตักเตือน/ประเมิน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
   hrOnboardingTask: { model: "HrOnboardingTask", file: "hr.prisma", tenantId: true, role: "งานรับเข้า/ออกจากงาน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
   hrLawTable: { model: "HrLawTable", file: "payroll.prisma", tenantId: false, role: "ตารางกฎหมายกลางของทั้ง SHARK — ไม่ลบตามร้าน · แถว v1:* จาก hr-seed-law-draft (HR H1.3)" },
@@ -133,6 +134,7 @@ export const HR_DELETE_ORDER = [
   "hrBankFile", "hrBankExportPreset", "hrBankProfile", // HR H3.5 ▸ ไฟล์โอนเงินเดือน (ไม่มี FK) ◂
   "hrTaxCertificate", "hrFilingFile", "hrFilingPerson", "hrFilingProfile", // HR H3.6 ▸ แบบยื่น (FK RESTRICT ไป hrEmployee ⇒ ก่อนพนักงาน) ◂
   "hrEmployeeRegister", // HR H3.9 ▸ ทะเบียนลูกจ้าง (ไม่มี FK) ◂
+  "hrPayrollOpeningYtd", // HR H3.4-YTD ▸ ยอดยกมาต้นปี (FK RESTRICT ไป hrEmployee ⇒ ก่อนพนักงาน) ◂
   // สายอนุมัติ / ประวัติ / คิว / แจ้งเตือน
   "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
   "auditLog", "outboxEvent", "appNotification", "automationRun", "automationRule",
