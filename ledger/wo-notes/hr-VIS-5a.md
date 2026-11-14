@@ -87,3 +87,13 @@ Above-the-fold positions and page heights · the sticky bar at 390 (`max-md:cont
 - fitness 54/54 and fitness-hr 9/9, both with env and with `env -u DATABASE_URL -u DIRECT_URL`.
 - Clean typecheck (`rm -rf .next/types tsconfig.tsbuildinfo`, ISO_MEM=14000M, started at MemAvailable 14.7 GB) → exit 0.
 - Process note: one earlier typecheck was started by mistake at MemAvailable 8.5 GB. I stopped it (its iso unit) after ~7 min, before it finished.
+
+## Ruling r3 (add vs OT) — commit `93895540d`
+- `pay-run-view.ts`: per row `addNoOtSatang` = stored `addSatang` − Σ stored OT lines. When a row does not reconcile, it stays the stored `addSatang` and that row's OT cell shows "—". The totals are `addNoOtSatang` = Σ rows and `otRowsSatang` = Σ row OT cells. All of this is server-side; the tsx only displays the values.
+- Table: there are two "เพิ่ม" header/cell pairs.
+  - `hidden xl:table-cell` (or `2xl` while the drawer is open): additions excluding OT, beside the OT column. The code labels drop OT.
+  - `hidden md:table-cell xl:hidden` (or `2xl:hidden`): the stored additions total, with the hint `hr.run2.addInclOt` ("รวม OT" / "incl. OT") when the person has OT.
+  - The totals row follows the same pattern. A row without OT shows the same value in both variants.
+- Re-shoot: 11a O at 1440 and 1024 — check that the add/OT cells read as in the mockup (≥1280: add excludes OT) and that the hint sits under the stored total at 1024.
+- Runs after r3: listed in the controller report.
+- N1 was fixed by the oracle author (55478f5d1). The Thai excluded-staff note on the English page is deferred to VIS-5e.
