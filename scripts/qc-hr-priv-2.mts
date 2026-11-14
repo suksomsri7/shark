@@ -450,7 +450,7 @@ const runRow = async (id: string) => (await P.hrPayrollRun.findUnique({ where: {
   try { const res: Response = await M.RT.GET(new Request(`http://x/api/v1/hr${path}`, { headers: { authorization: `Bearer ${raw}` } }), { params: Promise.resolve({ path: path.split("?")[0]!.split("/").filter(Boolean) }) }); return `${res.status} ${await res.text()}`; } catch (e) { return `THROW ${errText(e)}`; } finally { unmute(); }
  };
  for (const p of ["/units", "/employees?pageSize=50", "/shifts", `/roster?from=${DM1}&to=${D0}`, `/attendance/day?day=${DM1}`, "/leave-policies", "/leaves?status=PENDING", `/leave-balances?year=${YEAR}`,
-  ...[E.a1!, E.bNow!].flatMap((e) => [`/employees/${e.id}`, `/payslips/${runPaid}/${e.id}`]), ...IDS.map((r) => `/reports/${r}?period=${per(r)}`)])
+  ...[E.a1!, E.bNow!, E.c1!].flatMap((e) => [`/employees/${e.id}`, `/employees/${e.id}/payslips?taxYear=${PY}`, `/payslips/${runPaid}/${e.id}`]), ...IDS.map((r) => `/reports/${r}?period=${per(r)}`)])
   cov.push(["D5", `api.read${p.slice(0, 40)}`, () => api(KR[RD]!, p)]);
  for (const vn of ["hrAdmin", "mgrU1", "emp"]) {
   const v = vOf((W as Any)[vn]);
