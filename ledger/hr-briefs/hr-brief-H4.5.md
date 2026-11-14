@@ -97,3 +97,10 @@ D1 H4.5b AI/KB leave intake · D2 approver LINE · D3 follow/unfollow → link s
 - Q6 is a privacy rule: message bodies carry the event kind + outcome word only — never names of other people, dates of leave, amounts, branch names. The oracle asserts the exact bodies byte for byte (th + en).
 - Owner-only O1–O3: work proceeds on the safe defaults (feature OFF per shop, cap 200/month, fixed PDPA sentence, LINE faked in the oracle). Label on the settings card: "ยังไม่ได้ทดสอบกับ LINE OA จริง" until the owner runs a pilot.
 - Settings via lockHrSettings + writeHrSettingsKeys; qc-hr-set-1 in the run list. Migration name 20270111000000_hr_line_link (schema hunks marked `HR H4.5`).
+
+## CONTROLLER RULINGS 2 (after the oracle, 0b938bb8a)
+- Retries: 1 try + 3 retries = 4 attempts (backoff 5 m / 30 m / 2 h, then FAILED). 429 ⇒ QUOTA final.
+- Message wording: the oracle's `MSG` table (th/en; kind + outcome word, fixed "log in to view" footer, one button) is the contract for now; owner copy review = follow-up (wording changes then need a marked ORACLE-EDIT).
+- Names: use `employeeLineStatus` (keys ok/state/linkedAt) and `saveLineNotifyPolicy`; other shapes as pinned in `ledger/wo-notes/hr-H4.5-oracle.md`. "Admin" = holds `hr.employee.create`. End reason `ACCOUNT` as pinned.
+- Pre-existing chat in-app notes (`/chat?c=`) are out of scope; S1.3 flags only NEW hr→chat/platform imports.
+- Builder may not change oracle expectations; impossible contract ⇒ stop and ask. Never satisfy a static check by changing the syntactic form of what it forbids.
