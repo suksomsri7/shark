@@ -73,3 +73,32 @@ Render dumps used for self-check (shim HTML): `/tmp/hr-ctl/vis5b-build/html-*.ht
 7. Steps 1–3 landed as one build commit (written together), not three.
 8. qc-hr-vis-5c S1 (GREEN control) goes red once VIS-5b's files exist on `wip/hr-vis-5bc` — not editable by me (vis-5 oracles frozen); ruling needed (accept the other ticket's marked files in S1, as ui.tsx already does by range).
 9. `hr.inbox.overview.title/today/noBoard/inbox/inboxTotal` are no longer rendered by the hub (kept in messages; S5 forbids touching other keys).
+
+## Round 2 (controller findings F1–F4 · 15 Nov) — head after `8890205cc`
+- F1: the hub batch bar is now a plain row (`border-t pt-3`) at the end of the approvals card — no sticky, nothing floats over cards. Left: select-all checkbox + "ยังไม่ได้เลือก" / "เลือกแล้ว n รายการ". Right: ไม่อนุมัติที่เลือก (n) · อนุมัติที่เลือก (n). Both buttons stay disabled until something is selected; the reason is shown as visible text, `title` and `aria-describedby`. The requests page keeps its original sticky-top bar element, byte-for-byte (h2.11 VIS2.1).
+- F2: the columns flow independently. At ≥ xl there are two flex columns in a `xl:grid-cols-[minmax(0,1fr)_400px] xl:items-start` grid: left = board → labour card → due strip, right = approvals → month card. Below xl both columns become `display: contents` and the `order-1…5` classes give the order board → approvals → labour → month → due. Because the due strip is now in the left column, at 1440 it is ~690 px wide (3 cards across).
+- F4: "หยุดวันนี้: …" is on its own line under the legend, `text-sm`, ink colour.
+- F3: walk states in `scripts/walk-hr-matrix.json` (all use `?day={yesterday}` = seed today − 1):
+  - `01-hub-rostered`: O at 1440/1024/390 th.
+  - `01-hub-rostered-en`: O at 1440 en.
+  - `01-hub-rostered-branch`: MB and PB at 1440 th; PB keeps the limited-note check.
+- Expected on that day: on the lane-1 DB, seed today is 2026-11-15, so the day is 2026-11-14 (ส.). This was read through `loadAttendanceBoard` + `kpisOf` (scratch `board-probe.mts`):
+  - tiles: อยู่กะ 9 (จาก 9 คน) · มาแล้ว 9 · สาย 1 (namfon 18 นาที) · ยังไม่มา 0 · ลา 0.
+  - board: 9 rows.
+    - กะเช้า: ton, namfon (สาย 18 นาที), por, keng, prae, bow.
+    - กะบ่าย: nat, jay.
+    - กะปิดร้าน: mint.
+    - All except namfon read "ปกติ".
+  - footer:
+    - ชั่วโมงตามกะ 72 ชม. (9 คน).
+    - ทำแล้ว 72 ชม. 47 น.
+    - ช่วงคนน้อยสุด 20:00–23:00, อยู่ร้าน 1 คน, in red.
+    - ลงเวลาจาก "—": the seed's punches carry no source.
+  - no now-line, because the day is not today.
+  - MB (manager-branch) sees the same 9 people: the seed gives them both branches' staff on this day.
+  - The seed has no single day with late + absent + leave together:
+    - absent: nat on today − 3.
+    - leave: prae on today − 5 and today − 6.
+    - early-out: ton on today − 2.
+  - The walker only offers `{today}`/`{yesterday}`, so those days need a new placeholder in `walk-hr.mts`, which I am not authorised to edit.
+- Scratchpad rename (controller request): I tried to rename `scratchpad/h53l|h52m/*.mts` → `.mts.txt`. The session's permission classifier denied it, so the files are untouched. The clean typecheck stays red only because of them.
