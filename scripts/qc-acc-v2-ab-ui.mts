@@ -154,10 +154,10 @@ console.log("\nAB8 ป้ายคู่ค้าบนใบพิมพ์:");
   chk("AB8.3", "buildPrintOptions ของใบสั่งซื้อใช้ป้ายฝั่งซื้อ", po.buildPrintOptions(settings, "PURCHASE_ORDER").labels.buyer === "ผู้ขาย / ผู้รับเงิน");
   const E0 = JSON.parse(src("scripts/acc-v2-expected.json"));
   const pv: Any = await import("@/lib/modules/account/print-view");
-  const pur = await prisma.accountDocument.findFirst({ where: { systemId: E0.systemId, docType: "PURCHASE", status: { not: "DRAFT" } }, select: { id: true } });
-  const inv = await prisma.accountDocument.findFirst({ where: { systemId: E0.systemId, docType: "INVOICE", status: "AWAITING_PAYMENT" }, select: { id: true } });
-  const vp = await pv.loadPrintView(E0.tenantId, E0.systemId, pur!.id);
-  const vi = await pv.loadPrintView(E0.tenantId, E0.systemId, inv!.id);
+  const purDoc = await prisma.accountDocument.findFirst({ where: { systemId: E0.systemId, docType: "PURCHASE", status: { not: "DRAFT" } }, select: { id: true } });
+  const invDoc = await prisma.accountDocument.findFirst({ where: { systemId: E0.systemId, docType: "INVOICE", status: "AWAITING_PAYMENT" }, select: { id: true } });
+  const vp = await pv.loadPrintView(E0.tenantId, E0.systemId, purDoc!.id);
+  const vi = await pv.loadPrintView(E0.tenantId, E0.systemId, invDoc!.id);
   chk("AB8.4", "ใบพิมพ์บันทึกซื้อไม่พิมพ์ช่องทางรับเงินของร้าน (ใบแจ้งหนี้ยังพิมพ์)", vp.view.channels.length === 0 && vi.view.channels.length > 0, { pur: vp.view.channels.length, inv: vi.view.channels.length });
   chk("AB8.5", "หัวใบพิมพ์มีชื่ออังกฤษ/อีเมลของกิจการ (ข้อมูลกิจการที่เดิมไม่มีผล)", !!vi.view.sellerExtra && "nameEn" in vi.view.sellerExtra, vi.view.sellerExtra);
 }
