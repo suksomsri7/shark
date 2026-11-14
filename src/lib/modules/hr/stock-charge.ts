@@ -836,7 +836,7 @@ export async function openStockClaims(ctx: Ctx, viewer: StockViewer, opts: { now
   const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const before = new Date(nowOf(opts).getTime() - 10 * 60_000);
   const rows = await tenantDb(ctx).hrStockCharge.findMany({
-    where: { ...sc, claimOpen: true, createdAt: { lt: before }, employee: { is: unitWhere(scope) } },
+    where: { ...sc, claimOpen: true, createdAt: { lt: before }, employee: { is: payScopeWhere(scope) } }, // HR PRIV-2 ▸ R11: ผู้ดูเงินเดือนที่จำกัดสาขา = สาขาประจำเท่านั้น (ทุกสาขา = เดิม) ◂
     select: { id: true, employeeId: true, itemName: true, description: true, qty: true, takeStock: true, createdAt: true },
     orderBy: { createdAt: "asc" },
     take: 50,
@@ -858,7 +858,7 @@ export async function stockAttention(ctx: Ctx, viewer: StockViewer, opts: { now?
   const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const db = tenantDb(ctx);
   const rows = await db.hrStockCharge.findMany({
-    where: { ...sc, claimOpen: false, withdrawnAt: null, employee: { is: { AND: [unitWhere(scope), { OR: [{ active: false }, { employmentStatus: "ENDED" }, { endDate: { not: null } }] }] } } },
+    where: { ...sc, claimOpen: false, withdrawnAt: null, employee: { is: { AND: [payScopeWhere(scope), { OR: [{ active: false }, { employmentStatus: "ENDED" }, { endDate: { not: null } }] }] } } }, // HR PRIV-2 ▸ R11 ◂
     select: { id: true, employeeId: true, adjustmentId: true, itemName: true, description: true, qty: true, createdAt: true },
     take: 200,
   });
