@@ -81,7 +81,7 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u20
 const cleanText = (v: string | null | undefined): string =>
   String(v ?? "")
     .replace(/[\t\n\r\u000b\u000c\u2028\u2029]+/g, " ")
-    .replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "") // fix round 3: + U+061C (ALM)
     .replace(/ {2,}/g, " ")
     .trim();
 const cleanOrNull = (v: string | null | undefined) => cleanText(v) || null;
@@ -326,12 +326,16 @@ export async function listSalaryCertificates(ctx: Ctx, viewer: PayslipViewer, in
   const st = obj(input).status;
   const status = ([...CERT_STATUSES, "FULFILLED"] as readonly string[]).includes(st as string) ? (st as string) : null;
   const db = tenantDb(ctx) as unknown as Db;
+  // ruling 2 + fix round 3 (NOTE-3): ตัวกรอง "ยกเลิก" ไม่นับคำขอที่ได้ใบแล้ว — ตัดในคิวรีก่อน take 200 (คำขอที่ได้ใบไม่เบียดคำขอที่ยกเลิกจริง)
+  const realCancelled = status === "CANCELLED"
+    ? (await db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "HrSalaryCertificate" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "status" = 'CANCELLED' AND ("contentJson" IS NULL OR NOT ("contentJson" ? 'fulfilledBy')) ORDER BY "createdAt" DESC, "id" DESC LIMIT 200`).map((x) => x.id)
+    : null;
   const base = status === "FULFILLED" ? [] : ((await db.hrSalaryCertificate.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...(status ? { status } : { status: { not: "CANCELLED" } }) },
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...(realCancelled ? { id: { in: realCancelled } } : status ? { status } : { status: { not: "CANCELLED" } }) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 200,
     select: CERT_SELECT,
-  })) as CertRow[]).filter((r) => !fulfilledBy(r)); // ruling 2: ตัวกรอง "ยกเลิก" ไม่นับคำขอที่ได้ใบแล้ว
+  })) as CertRow[]).filter((r) => !fulfilledBy(r));
   const ful = !status || status === "FULFILLED" ? await fulfilledRows(db, ctx) : [];
   const tgt = await targetsOf(db, ctx, ful);
   const rows = [...base, ...ful.filter((r) => tgt.has(fulfilledBy(r)))].sort((a, c) => ((c.requestedAt ?? c.issuedAt ?? new Date(0)).getTime() - (a.requestedAt ?? a.issuedAt ?? new Date(0)).getTime()) || (a.id < c.id ? 1 : -1));
@@ -362,7 +366,7 @@ export async function listSalaryCertEmployees(ctx: Ctx, viewer: PayslipViewer): 
 
 type IssueOk = { ok: true; certId: string; docNo: string };
 /** ผลภายในของธุรกรรมออกใบ — audit = แถวประวัติที่ต้องเขียน (null = ไม่มีอะไรเปลี่ยน: คืนใบเดิม) */
-type IssueTx = IssueOk & { audit: { certId: string; docNo: string; requestedById?: string | null } | null };
+type IssueTx = IssueOk & { audit: { certId: string; docNo: string; requestedById?: string | null; requestId?: string } | null };
 const lockEmp = (tx: Db, ctx: Ctx, employeeId: string) => tx.$queryRaw`SELECT 1 AS "x" FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`hrsc:${ctx.systemId}:${employeeId}`}, 38))) AS "l"`;
 /** สลิปที่ออกแล้วล่าสุดของพนักงาน (ตามวันที่จ่าย) — ถือแถวรอบ FOR SHARE */
 async function latestIssued(tx: Db, ctx: Ctx, employeeId: string, now: Date): Promise<{ run: RunRow; item: Record<string, unknown> } | null> {
@@ -415,7 +419,8 @@ export async function issueSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, in
     // fix round 2 (ruling D): คำขอที่รออยู่ของพนักงานคนนี้ — ทางคำขอ = แถวที่ระบุ · ทางออกตรง = คำขอที่รออยู่ (ถ้ามี) ถูกปิดในธุรกรรมเดียวกัน
     const reqRows = requestId
       ? await tx.$queryRaw<{ id: string; status: string; requestedById: string | null }[]>`SELECT "id", "status", "requestedById" FROM "HrSalaryCertificate" WHERE "id" = ${requestId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`
-      : await tx.$queryRaw<{ id: string; status: string; requestedById: string | null }[]>`SELECT "id", "status", "requestedById" FROM "HrSalaryCertificate" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "employeeId" = ${emp.id} AND "status" = 'REQUESTED' ORDER BY "id" FOR UPDATE`;
+      : // fix round 3 (MINOR-1): ออกตรงปิดได้เฉพาะคำขอที่วัตถุประสงค์ตรงกัน — คำขอวัตถุประสงค์อื่นค้างไว้ไม่แตะ (อนุมัติภายหลังเป็นใบของตัวเองได้)
+        await tx.$queryRaw<{ id: string; status: string; requestedById: string | null }[]>`SELECT "id", "status", "requestedById" FROM "HrSalaryCertificate" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "employeeId" = ${emp.id} AND "status" = 'REQUESTED' AND "purpose" = ${purpose} ORDER BY "id" FOR UPDATE`;
     if (requestId && reqRows[0]?.status !== "REQUESTED") return refuse("NOT_DECIDABLE", "notDecidable");
     const open = reqRows.find((r) => r.status === "REQUESTED") ?? null;
     const src = await latestIssued(tx, ctx, emp.id, now);
@@ -425,13 +430,18 @@ export async function issueSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, in
     const base = v.earnings.find((l) => l.code === "BASE");
     if (!base || base.amountSatang <= 0) return refuse("CERT_NO_BASE", "certNoBase");
     // fix round 2 (ruling C): ใบที่ยังใช้ได้ (ISSUED · ไม่ถูกยกเลิก) ของพนักงานคนเดิม อ้างรอบเดิม วัตถุประสงค์เดิม = คืนใบเดิม ไม่ออกเลขใหม่ (กดซ้ำ/ส่งซ้ำ)
-    const dup = (
+    // fix round 3 (MINOR-2): ล็อกแถวใบเดิม FOR UPDATE แล้วตรวจซ้ำว่ายังใช้ได้ — ยกเลิกที่เพิ่ง commit = ไม่ใช่ใบเดิม (ออกใหม่) · ไม่คืน/ไม่ปิดคำขอไปที่ใบที่ถูกยกเลิก
+    //   ลำดับล็อก: advisory พนักงาน → คำขอ → รอบ (FOR SHARE) → แถวใบเดิม → reserveSeq · ยกเลิก/ดาวน์โหลดถือแค่แถวใบ (ไม่รออะไรต่อ) · กลับรายการไม่แตะแถวใบ ⇒ ไม่มีวงล็อก
+    const dup0 = (
       await tx.$queryRaw<{ id: string; docNo: string }[]>`
         SELECT "id", "docNo" FROM "HrSalaryCertificate"
         WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "employeeId" = ${emp.id} AND "status" = 'ISSUED' AND "voidedAt" IS NULL
           AND "purpose" = ${purpose} AND "contentJson"->'salary'->>'runId' = ${src.run.id}
-        ORDER BY "issuedAt" DESC, "id" DESC LIMIT 1`
+        ORDER BY "issuedAt" DESC, "id" DESC LIMIT 1 FOR UPDATE`
     )[0];
+    const dup = dup0
+      ? (await tx.$queryRaw<{ id: string; docNo: string }[]>`SELECT "id", "docNo" FROM "HrSalaryCertificate" WHERE "id" = ${dup0.id} AND "status" = 'ISSUED' AND "voidedAt" IS NULL`)[0]
+      : undefined;
     if (dup) {
       if (!open) return { ok: true, certId: dup.id, docNo: dup.docNo, audit: null };
       // คำขอที่รออยู่ = ได้ใบเดิมแล้ว ⇒ ปิดคำขอ (ผู้ตัดสิน = ผู้ออก · เนื้อหาชี้ไปใบเดิม) — อนุมัติซ้ำภายหลังไม่ได้อีก
@@ -440,7 +450,7 @@ export async function issueSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, in
         data: { status: "CANCELLED", decidedById: m.userId, decidedAt: now, contentJson: { fulfilledBy: dup.id, docNo: dup.docNo } as Prisma.InputJsonValue },
       });
       if (u.count !== 1) return refuse("NOT_DECIDABLE", "notDecidable");
-      return { ok: true, certId: dup.id, docNo: dup.docNo, audit: { certId: dup.id, docNo: dup.docNo, requestedById: open.requestedById } };
+      return { ok: true, certId: dup.id, docNo: dup.docNo, audit: { certId: dup.id, docNo: dup.docNo, requestedById: open.requestedById, requestId: open.id } };
     }
     const prof = await tx.hrFilingProfile.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employerName: true, employerAddress: true, signerName: true } });
     const employerName = cleanText(prof?.employerName);
@@ -472,7 +482,7 @@ export async function issueSalaryCertificate(ctx: Ctx, viewer: PayslipViewer, in
     return { ok: true, certId: row.id, docNo: content.docNo, audit: { certId: row.id, docNo: content.docNo } };
   });
   if (!out.ok) return out;
-  if (out.audit) await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "hr.salarycert.issue", targetType: "HrSalaryCertificate", targetId: out.audit.certId, after: { certId: out.audit.certId, docNo: out.audit.docNo, employeeId, ...(out.audit.requestedById !== undefined ? { requestedById: out.audit.requestedById, issuedById: m.userId } : {}) } }); // ruling 3: คำขอ ⇒ ผู้ขอ + ผู้ออก
+  if (out.audit) await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "hr.salarycert.issue", targetType: "HrSalaryCertificate", targetId: out.audit.certId, after: { certId: out.audit.certId, docNo: out.audit.docNo, employeeId, ...(out.audit.requestedById !== undefined ? { requestedById: out.audit.requestedById, issuedById: m.userId } : {}), ...(out.audit.requestId ? { requestId: out.audit.requestId } : {}) } }); // ruling 3: คำขอ ⇒ ผู้ขอ + ผู้ออก
   return { ok: true, certId: out.certId, docNo: out.docNo };
 }
 

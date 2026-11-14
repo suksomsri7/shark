@@ -191,3 +191,16 @@ fitness-hr-noenv rc=0 ::  JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":
 totals: hf-hr-privacy 194/194 · audit-trail 21/21 · fitness 53/53 · fitness-hr 9/9 (env + no env)
 qc-hr-set-1 red: SET-1-S1.6 [control] 'prisma/ unchanged vs base' — actual prisma=changed: 20270110000000_hr_payslip_salary_cert/migration.sql, hr.prisma, payroll.prisma (H3.8's own migration; S1.6 has no in-base / later-ticket rule) — STOP, ORACLE-EDIT request to controller, not edited · typecheck NOT run (one at the very end after the ruling)
 qc-hr-set-1 (after S1.6 ORACLE-EDIT, controller ruling) rc=0 :: ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE) · clean typecheck (gate lock, .next/types + tsbuildinfo removed) rc=0 · 485 s
+
+## fix round 3 (review r3 rulings) — 2026-11-14T00:26:51Z
+h38f1 rc=0 :: ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+h38f2 rc=0 :: ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+h38u rc=0 :: ===== qc-hr-h3.8 ===== passed 78/78
+qc-hr-h2.11 rc=0 :: ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+qc-hr-h2.10 rc=0 :: ===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE)
+qc-hf-hr-privacy rc=0 :: ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-audit-trail rc=0 :: 
+fitness-hr-env rc=0 :: ===== FITNESS-HR =====
+fitness-hr-noenv rc=0 ::  JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+totals: hf-hr-privacy 194/194 · audit-trail 21/21 · fitness-hr 9/9 (env + no env) · clean typecheck rc=0 408 s
+RED with fix reverted (payslip.ts = 8c807aa6e): qc-hr-h3.8 75/78 — S7.12 'req=ISSUED/OTHER direct=OTHER ap=notDecidable' · S7.13 'blocked=false res=ok same=true' · S7.11 (requestId audit)

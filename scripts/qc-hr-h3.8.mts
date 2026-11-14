@@ -119,6 +119,8 @@ S7.7|review m3|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): fai
 S7.8|review m4|M|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): myDocuments issued predicate in the query — 36 newer unfinalized runs do not push the issued slip out of the list
 S7.9|hunter P3d|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): cancel ∥ approve ×4 on the same request ⇒ never both, never neither · system A numbers contiguous from 1
 S7.11|ruling 2|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling 2): request closed by an existing live certificate ⇒ employee + HR lists show FULFILLED with that docNo (no "cancelled"), CANCELLED filter excludes it, its id downloads that certificate, not in the inbox
+S7.12|ruling r3-1|C|R|[db] ORACLE-EDIT (H3.8 fix round 3 · controller ruling): direct issue with another purpose ⇒ own certificate with the issuer's purpose · the open request stays REQUESTED with its purpose · approving it later ⇒ its own certificate
+S7.13|ruling r3-2|C|R|[db] ORACLE-EDIT (H3.8 fix round 3 · controller ruling): void ∥ direct issue (live certificate row held FOR UPDATE, holder voids + commits) ⇒ the issue waits (pg_blocking_pids) and never returns the voided certificate
 S7.10|hunter P2|C|R|[db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): run states (self view/PDF NO · gate PDF WITHDRAWN/NOT_ISSUED/NOT_FINAL · gate state) · only future-paid + reversed ⇒ certNoSlip · corrupt latest issued ⇒ slipData, no number
 S4.2|X6|C|R|[db] 5 parallel self requests ⇒ 1 REQUESTED + 4 certReqOpen · 4 parallel issues of that request ⇒ 1 ISSUED HRSC-2032-0005 + 3 notDecidable (0004 = S5.1) · counter lastNo 5 · numbers 0001–0005 contiguous
 S5.1|R13|C|R|[db] route helpers: rsc / prefetch ⇒ 204, nothing audited · GET ⇒ 200 application/pdf attachment no-store nosniff safe file name · refusal ⇒ 404/409 fixed text (th/en) no bytes · self + certificate helpers
@@ -993,7 +995,7 @@ async function runDb(): Promise<void> {
     const rq = await S("requestSalaryCertificate", a, { purpose: "BANK" }, NOW);
     const rid = String(rq.value?.certId ?? "x");
     const n0 = await seqA();
-    const d = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e4, purpose: "VISA" }, NOW);
+    const d = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e4, purpose: "BANK" }, NOW); // ORACLE-EDIT (H3.8 fix round 3 · controller ruling 1): same purpose as the open request (BANK) — only a matching request is fulfilled ◂
     // ORACLE-EDIT (H3.8 fix round 2 · controller ruling 3): the issue audit of a consumed request names requester + issuer · the employee's view shows the issued certificate ◂
     const audD = (await raw(`SELECT "after", "actorId" FROM "AuditLog" WHERE "tenantId" = $1 AND "action" = 'hr.salarycert.issue' AND "targetId" = $2 ORDER BY "createdAt" DESC LIMIT 1`, TT, rid))[0];
     const myD = ((await S("listMySalaryCertificates", a)).value?.items ?? []).find((x: Any) => x.id === rid);
@@ -1001,16 +1003,17 @@ async function runDb(): Promise<void> {
     const ap = await S("issueSalaryCertificate", cA, V.owner, { requestId: rid }, NOW);
     const n1 = await seqA();
     const rrow = await certRow(rid);
-    const rq2 = await S("requestSalaryCertificate", a, { purpose: "VISA" }, NOW);
+    const rq2 = await S("requestSalaryCertificate", a, { purpose: "BANK" }, NOW);
     const rid2 = String(rq2.value?.certId ?? "x");
     const ap2 = await S("issueSalaryCertificate", cA, V.owner, { requestId: rid2 }, NOW);
     const r2 = await certRow(rid2);
     const mine = await S("listMySalaryCertificates", a);
-    const visa = (mine.value?.items ?? []).filter((x: Any) => x.status === "ISSUED" && x.purpose === "VISA");
+    const visa = (mine.value?.items ?? []).filter((x: Any) => x.status === "ISSUED" && x.purpose === "BANK");
     ck("S7.3", {
       audit: audD?.after?.requestedById === U.self.id && audD?.after?.issuedById === U.owner.id && audD?.actorId === U.owner.id, myView: myD?.status === "ISSUED" && myD?.docNo === d.value?.docNo,
-      direct: d.ok && n1 === n0 + 1, closed: open === 0 && (rrow?.status !== "REQUESTED") && (d.value?.certId === rid || rrow?.status === "CANCELLED"), approve: codeIs(ap, "NOT_DECIDABLE", "notDecidable") || (ap.ok && ap.value?.certId === d.value?.certId),
-      dupReturns: rq2.ok && ap2.ok && ap2.value?.certId === d.value?.certId && ap2.value?.docNo === d.value?.docNo && (await seqA()) === n1, reqClosed: !!r2 && r2.status !== "REQUESTED" && r2.status !== "ISSUED", oneVisa: visa.length === 1,
+      direct: d.ok && n1 === n0 + 1, // ORACLE-EDIT (H3.8 fix round 3 · controller ruling): exact expected values (no permissive ORs) ◂
+      closed: open === 0 && d.value?.certId === rid && rrow?.status === "ISSUED" && rrow?.purpose === "BANK", approve: codeIs(ap, "NOT_DECIDABLE", "notDecidable"),
+      dupReturns: rq2.ok && ap2.ok && ap2.value?.certId === d.value?.certId && ap2.value?.docNo === d.value?.docNo && (await seqA()) === n1, reqClosed: r2?.status === "CANCELLED" && r2?.contentJson?.fulfilledBy === d.value?.certId && r2?.decidedById === U.owner.id, oneVisa: visa.length === 1,
     }, "request fulfilled · no 2nd number", `open=${open} req=${rrow?.status} ap=${shown(ap)} ap2=${shown(ap2)} r2=${r2?.status} seq ${n0}→${n1}`);
   }
   // S7.11 ORACLE-EDIT (H3.8 fix round 2 · controller ruling 2): a request closed because a live certificate already existed (S7.3 second request) is shown as
@@ -1026,13 +1029,36 @@ async function runDb(): Promise<void> {
     const dl = await S("downloadMySalaryCertificate", actorOf(U.self), { certId: String(fr?.id ?? "x") });
     const gdl = await S("downloadSalaryCertificate", cA, V.owner, { certId: String(fr?.id ?? "x") });
     const inbox = await callMod(INBOX, "listInbox", [cA, V.owner, { type: "CERT" }, NOW]);
-    ck("S7.11", {
+    // ORACLE-EDIT (H3.8 fix round 3 · controller ruling 3): the fulfilled-path audit carries requestId + requestedById + issuedById ◂
+    const audF = (await raw(`SELECT "after" FROM "AuditLog" WHERE "tenantId" = $1 AND "action" = 'hr.salarycert.issue' AND "after"->>'requestId' = $2 LIMIT 1`, TT, String(fr?.id ?? "x")))[0];
+    ck("S7.11", { audit: audF?.after?.certId === live?.id && audF?.after?.requestedById === U.self.id && audF?.after?.issuedById === U.owner.id,
       row: !!fr && !!live && live.status === "ISSUED" && !live.voidedAt,
       mine: m?.status === "FULFILLED" && m?.docNo === live?.docNo && m?.canCancel === false && srt(Object.keys(m ?? {})) === K.myCert,
       gate: g?.status === "FULFILLED" && g?.docNo === live?.docNo && g?.voided === false,
       notCancelled: gCan.ok && !(gCan.value?.items ?? []).some((x: Any) => x.id === fr?.id) && ![...mine, ...gAll].some((x) => x.status === "CANCELLED"),
       download: pdfText(dl.value?.bytes).pages >= 1 && pdfText(gdl.value?.bytes).text.includes(String(live?.docNo ?? "∅")), inbox: inbox.ok && !(inbox.value?.items ?? []).some((x: Any) => x.id === fr?.id),
     }, "FULFILLED · never 'cancelled'", `mine=${short(m, 120)} gate=${short(g, 120)} dl=${shown(dl)}`);
+  }
+  // ═════ ORACLE-EDIT (H3.8 fix round 3 · controller ruling) ═════
+  // S7.12 direct issue with a different purpose leaves the open request untouched
+  {
+    const a = actorOf(U.self);
+    const rq = await S("requestSalaryCertificate", a, { purpose: "RENTAL" }, NOW);
+    const rid = String(rq.value?.certId ?? "x");
+    const d = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e4, purpose: "OTHER" }, NOW);
+    const after = await certRow(rid);
+    const dRow = await certRow(String(d.value?.certId ?? "x"));
+    const ap = await S("issueSalaryCertificate", cA, V.owner, { requestId: rid }, NOW);
+    const apRow = await certRow(rid);
+    ck("S7.12", { req: rq.ok, direct: d.ok && d.value?.certId !== rid && dRow?.purpose === "OTHER" && dRow?.status === "ISSUED", open: after?.status === "REQUESTED" && after?.purpose === "RENTAL", approve: ap.ok && ap.value?.certId === rid && apRow?.status === "ISSUED" && apRow?.purpose === "RENTAL" && ap.value?.docNo !== d.value?.docNo }, "other purpose ⇒ request stays open", `req=${after?.status}/${after?.purpose} direct=${dRow?.purpose} ap=${shown(ap)}`);
+  }
+  // S7.13 void ∥ direct issue: the live certificate row is held, the holder voids it ⇒ the issue never returns the voided certificate
+  {
+    const c = await S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e5, purpose: "VISA" }, NOW);
+    const cId = String(c.value?.certId ?? "x");
+    const h = await holdRows(P, LOCK_CERT, [cId], () => S("issueSalaryCertificate", cA, V.owner, { employeeId: E.e5, purpose: "VISA" }, NOW), { until: "blocked", during: voidIn(cId) });
+    const got = await certRow(String(h.res.value?.certId ?? "x"));
+    ck("S7.13", { first: c.ok, holder: !h.holderErr, blocked: h.blocked, notVoided: h.res.ok && h.res.value?.certId !== cId && got?.status === "ISSUED" && !got?.voidedAt, voided: !!(await certRow(cId))?.voidedAt }, "never the voided certificate", `blocked=${h.blocked} res=${shown(h.res)} same=${h.res.value?.certId === cId}`);
   }
   // S7.1 void ∥ download (self · gate)
   {
@@ -1099,9 +1125,11 @@ async function runDb(): Promise<void> {
     const LOCK_DRAFTS = `SELECT "id" FROM "HrPayrollRun" WHERE "id" = ANY($1::text[]) ORDER BY "id" FOR UPDATE`;
     const hm = await holdRows(P, LOCK_DRAFTS, [[rdr, RA.r5]], () => S("mySlips", actorOf(U.self)), { until: "settled" });
     const hh = await holdRows(P, LOCK_DRAFTS, [[rdr, RA.r5]], () => hist(V.owner, E.e1, 2031), { until: "settled" });
+    // ORACLE-EDIT (H3.8 fix round 3 · controller ruling): positive control — a held APPROVED run row (RA2, e4) DOES block the slip list (the m6 lock stays) ◂
+    const hp = await holdRows(P, LOCK_DRAFTS, [[RA.r2]], () => S("mySlips", actorOf(U.self)), { until: "settled" });
     await P.hrPayrollItem.deleteMany({ where: { runId: rdr } });
     await P.hrPayrollRun.deleteMany({ where: { id: rdr } });
-    ck("S7.6", { mine: hm.res.ok && hm.settledWhileHeld && !hm.blocked, hist: hh.res.ok && hh.settledWhileHeld && !hh.blocked, holder: !hm.holderErr && !hh.holderErr }, "not blocked by drafts", `mine blocked=${hm.blocked} settled=${hm.settledWhileHeld} · hist blocked=${hh.blocked} settled=${hh.settledWhileHeld}`);
+    ck("S7.6", { mine: hm.res.ok && hm.settledWhileHeld && !hm.blocked, hist: hh.res.ok && hh.settledWhileHeld && !hh.blocked, holder: !hm.holderErr && !hh.holderErr && !hp.holderErr, control: hp.blocked && !hp.settledWhileHeld && hp.res.ok }, "not blocked by drafts · blocked by APPROVED", `mine blocked=${hm.blocked} settled=${hm.settledWhileHeld} · hist blocked=${hh.blocked} settled=${hh.settledWhileHeld} · control blocked=${hp.blocked}`);
   }
   // S7.7 failed audit ⇒ no file, no counter
   {
