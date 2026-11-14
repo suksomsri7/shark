@@ -191,9 +191,9 @@ export async function hrLateReport(tc: ToolCtxLike, args: unknown): Promise<HrTo
       employeeId: r.employeeId,
       name: fenceUntrusted(r.values.name),
       unit: fenceOrNull(r.values.unit),
-      ...Object.fromEntries(T2_COLS.map((c) => [c, n0(r.values[c])])),
+      ...(Object.fromEntries(T2_COLS.map((c) => [c, n0(r.values[c])])) as Record<(typeof T2_COLS)[number], number>),
     }))
-    .sort((x, y) => (y.lateCount as number) - (x.lateCount as number));
+    .sort((x, y) => y.lateCount - x.lateCount);
   const rows = all.slice(0, HR_AI_CAPS.report);
   const tot = rep.totals ? Object.fromEntries(T2_COLS.map((c) => [c, n0(rep.totals?.[c])])) : null;
   return {

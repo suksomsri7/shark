@@ -1,0 +1,114 @@
+# H4.3 green run — head after merge of session/hr 0a0691c7d · Sat Nov 14 03:29:17 UTC 2026
+## qc-hr-h4.3 (forced ×4 incl. post-typecheck-fix run, unforced ×1): 34/37 — M2 · C1 · V1 need ORACLE-EDIT (see hr-H4.3.md §4)
+### final-h43-f1
+RESIDUE none (tenants=3 users=14)
+===== qc-hr-h4.3 ===== passed 34/37
+JSON_SUMMARY {"suite":"qc-hr-h4.3","total":37,"passed":34,"failed":["H43-M2","H43-C1","H43-V1"],"findings":[{"id":"H43-M2","sev":"CRITICAL"},{"id":"H43-C1","sev":"MAJOR"},{"id":"H43-V1","sev":"CRITICAL"}],"skipped":false,"forced":false,"crashed":false,"missing
+### final-h43-f2
+RESIDUE none (tenants=3 users=14)
+===== qc-hr-h4.3 ===== passed 34/37
+JSON_SUMMARY {"suite":"qc-hr-h4.3","total":37,"passed":34,"failed":["H43-M2","H43-C1","H43-V1"],"findings":[{"id":"H43-M2","sev":"CRITICAL"},{"id":"H43-C1","sev":"MAJOR"},{"id":"H43-V1","sev":"CRITICAL"}],"skipped":false,"forced":false,"crashed":false,"missing
+### final-h43-f3
+RESIDUE none (tenants=3 users=14)
+===== qc-hr-h4.3 ===== passed 34/37
+JSON_SUMMARY {"suite":"qc-hr-h4.3","total":37,"passed":34,"failed":["H43-M2","H43-C1","H43-V1"],"findings":[{"id":"H43-M2","sev":"CRITICAL"},{"id":"H43-C1","sev":"MAJOR"},{"id":"H43-V1","sev":"CRITICAL"}],"skipped":false,"forced":false,"crashed":false,"missing
+### final-h43-f4
+RESIDUE none (tenants=3 users=14)
+===== qc-hr-h4.3 ===== passed 34/37
+JSON_SUMMARY {"suite":"qc-hr-h4.3","total":37,"passed":34,"failed":["H43-M2","H43-C1","H43-V1"],"findings":[{"id":"H43-M2","sev":"CRITICAL"},{"id":"H43-C1","sev":"MAJOR"},{"id":"H43-V1","sev":"CRITICAL"}],"skipped":false,"forced":false,"crashed":false,"missing
+### final-h43-u
+RESIDUE none (tenants=3 users=14)
+===== qc-hr-h4.3 ===== passed 34/37
+JSON_SUMMARY {"suite":"qc-hr-h4.3","total":37,"passed":34,"failed":["H43-M2","H43-C1","H43-V1"],"findings":[{"id":"H43-M2","sev":"CRITICAL"},{"id":"H43-C1","sev":"MAJOR"},{"id":"H43-V1","sev":"CRITICAL"}],"skipped":false,"forced":false,"crashed":false,"missing
+### final-h42-f1
+RESIDUE none (tenants=3 users=11)
+===== qc-hr-h4.2 ===== passed 53/56
+JSON_SUMMARY {"suite":"qc-hr-h4.2","total":56,"passed":53,"failed":["H42-S4.11","H42-S5.1","H42-S5.2"],"findings":[{"id":"H42-S4.11","sev":"CRITICAL"},{"id":"H42-S5.1","sev":"CRITICAL"},{"id":"H42-S5.2","sev":"CRITICAL"}],"skipped":false,"forced":false,"crashe
+### final-h42-f2
+RESIDUE none (tenants=3 users=11)
+===== qc-hr-h4.2 ===== passed 53/56
+JSON_SUMMARY {"suite":"qc-hr-h4.2","total":56,"passed":53,"failed":["H42-S4.11","H42-S5.1","H42-S5.2"],"findings":[{"id":"H42-S4.11","sev":"CRITICAL"},{"id":"H42-S5.1","sev":"CRITICAL"},{"id":"H42-S5.2","sev":"CRITICAL"}],"skipped":false,"forced":false,"crashe
+### final-qc-hr-h2.4
+===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.4","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":62,"baseGreen":6,"offBase":["H2.4-S5.10(RED→pass)","H2.4-S6.6(RED→pass)","H2.4-S10.2(RED→pass)","H2.4
+### final-qc-hr-roster
+===== QC: ทะเบียนพนักงานแหล่งเดียว + ใครรับคิว =====
+ผ่าน 24/24
+JSON_SUMMARY {"total":24,"passed":24,"findings":[]}
+### final-qc-ai-plan
+===== QC AI Plan =====
+ผ่าน 7/7
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+### seed-hr-qc
+===== seed-hr-qc ===== ผ่าน 34/34
+JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":34,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppNotification":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":90,"Busines
+### qc-hr-h0.3
+RESIDUE none (tenant=สร้างแล้ว users=5)
+===== qc-hr-h0.3 ===== ผ่าน 37/37 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.3","total":37,"passed":37,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
+### qc-ai-tools
+===== QC AI Tools (Phase 3 v1) =====
+ผ่าน 18/18
+JSON_SUMMARY {"total":18,"passed":18,"findings":[]}
+### qc-ai-proposals
+===== QC AI Proposals (Phase 3.5) =====
+ผ่าน 16/16
+JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+### qc-hr-h3.9
+RESIDUE none (tenants=3 users=11)
+===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":55,"baseGreen":5,"offBase":["H3.9-S1.1(RED→pass)","H3.9-S1.2(RED→pass)","H3.9-S1.3(RED→pass)","H3.9-S
+### qc-hr-h2.2
+RESIDUE none (tenants=3 users=16)
+===== qc-hr-h2.2 ===== passed 60/60 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.2","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":54,"baseGreen":6,"offBase":["H2.2-S1.1(RED→pass)","H2.2-S1.3(RED→pass)","H2.2-S2.8(RED→pass)","H2.2-S
+### qc-hr-h2.10
+RESIDUE none (tenants=2 users=11)
+===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.10","total":57,"passed":57,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":54,"baseGreen":3,"offBase":["H2.10-S1.1(RED→pass)","H2.10-S1.2(RED→pass)","H2.10-S1.3(RED→pass)","H2
+### qc-hr-h2.11
+RESIDUE none (tenants=2 users=13)
+===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.11","total":70,"passed":70,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":64,"baseGreen":6,"offBase":["H2.11-S1.1(RED→pass)","H2.11-S1.2(RED→pass)","H2.11-S1.3(RED→pass)","H2
+### qc-hr-h2.7
+RESIDUE none (tenants=2 users=17)
+===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.7","total":94,"passed":94,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":87,"baseGreen":7,"offBase":["H2.7-S1.1(RED→pass)","H2.7-S1.3(RED→pass)","H2.7-S1.4(RED→pass)","H2.7-S
+### qc-hr-h1.1
+RESIDUE none (tenants=3 users=14)
+===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":64,"baseGreen":17,"offBase":["H1.1-S1.1(RED→pass)","H1.1-S1.2(RED→pass)","H1.1-S1.3(RED→pass)","H1.1-
+### qc-hr-set-1
+RESIDUE none (tenants=1 users=4)
+===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":17,"baseGreen":8,"offBase":["SET-1-S1.1(RED→pass)","SET-1-S1.2(RED→pass)","SET-1-S1.3(RED→pass)","SE
+### qc-hf-hr-privacy
+===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+ผ่าน 194/194
+JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+### fitness-env
+===== FITNESS =====
+ผ่าน 54/54
+JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+### fitness-noenv
+===== FITNESS =====
+ผ่าน 54/54
+JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+### fitness-hr-env
+===== FITNESS-HR =====
+ผ่าน 9/9
+JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+### fitness-hr-noenv
+===== FITNESS-HR =====
+ผ่าน 9/9
+JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+### qc-audit-trail
+✅ PASS — 21/21
+### proposed-edit verification (/tmp copies)
+dbg-edit2.txt:===== qc-hr-h4.3 ===== passed 37/37
+h42-dbg.txt:===== qc-hr-h4.2 ===== passed 55/56
+### typecheck
+> shark-in-th@0.1.0 typecheck /root/projects/shark-hr-b
+> tsc --noEmit
+
+EXIT 0 · 405 s · clean (.next/types + tsbuildinfo removed)
