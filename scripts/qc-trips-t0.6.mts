@@ -479,7 +479,7 @@ try {
   await st("S-15", "snapshot.ts + pricing.ts แก้ได้แบบเพิ่มอย่างเดียว (git diff --numstat เทียบ BASE_SHA: ลบ 0 บรรทัด)", () => {
     ok(git(["cat-file", "-t", BASE_SHA]).trim() === "commit", "หา BASE_SHA ไม่เจอ");
     const rows = git(["diff", "--numstat", BASE_SHA, "--", D + "snapshot.ts", D + "pricing.ts"]).split("\n").filter(Boolean).map((l) => l.split("\t"));
-    const del = rows.filter((r) => Number(r[1]) > (r[2].endsWith("pricing.ts") ? 1 : 0)).map( /* ORACLE-EDIT S-15 (ผู้คุม 13 พ.ย.): pricing.ts แก้ได้ 1 บรรทัด (OPTS.overrideApprovals รับ resolvedMinor · มติ R14) */ (r) => `${r[2]} −${r[1]}`);
+    const del = rows.filter((r) => Number(r[1]) > (r[2].endsWith("pricing.ts") ? 3 : 0)).map( /* ORACLE-EDIT S-15 (ผู้คุม 13 พ.ย.): pricing.ts แก้ได้ 1 บรรทัด (OPTS.overrideApprovals รับ resolvedMinor · มติ R14) · รอบ 2 (ผู้คุม 14 พ.ย.): +2 บรรทัดของ A1.3a มติ Z1 (ชนิด AgencyPricingQuery.currency + จุดเรียก port) ⇒ รวม 3 */ (r) => `${r[2]} −${r[1]}`);
     ok(del.length === 0, `ลบ/แก้บรรทัดเดิม: ${del.join(", ")}`);
   });
   await st("S-16", "Sellable: sellableFor(\"TRIP\") hold/confirm/cancel/finalizeInTx ไม่ใช่ตัวปิด NOT_IMPLEMENTED_YET แล้ว · platform/basket.ts ส่งออก basketHold + basketConfirm", async () => {
