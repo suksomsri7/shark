@@ -21,6 +21,9 @@ F3.3|F|C|R|[db] digest = own day window: a 3-day-old HELD row is not counted (di
 F3.4|G hunt-F4|C|R|[db] tenant SUSPENDED ⇒ retry 0 pushes (SKIPPED/TENANT) · hr.menu gets no answer
 F3.5|H|C|R|[db] claim lost before the push (lease re-taken) ⇒ sender pushes nothing and leaves the row to its new owner · job budget checked before digests
 F3.6|I|C|R|[db] planHrNotices failing ⇒ consumer throws (event retried) · retry ⇒ 1 notice + 1 in-app
+F3.8|r2 mi-1|C|R|[db] claim made by a run whose \`now\` is 10 min old still holds a fresh lease (wall clock) ⇒ not re-claimable now · an expired lease is re-claimable
+F3.9|r2 mi-2|C|R|[db] planHrNotices in bounded chunks (seam chunk=2): failure in chunk 2 keeps chunk 1 · retry ⇒ exactly one notice + one in-app per recipient
+Z2|ruling 9|C|R|[db] a QC tenant deleted the way qc-hr-lib does (cleanupFx) leaves 0 HrNotice / HrLineLink rows (no Tenant FK · explicit cleanup) · RESIDUE sees them
 F3.7|J|C|R|[db] re-link · admin unlink · LINE unlink ⇒ +1 in-app "บัญชี LINE ที่เชื่อมไว้ถูกเปลี่ยน/ยกเลิก" each · no LINE name in bodies
 `;
 export const CHANGED_NOTE = "บัญชี LINE ที่เชื่อมไว้ถูกเปลี่ยน/ยกเลิก";
@@ -224,5 +227,69 @@ export async function runFixDb(h: Any): Promise<void> {
     const names = [...fake.names.values()].filter((x: string) => x.length > 4);
     ck("F3.7", { relink: c1 === c0 + 1, admin: c2 === c1 + 1, line: c3 === c2 + 1, noName: !names.some((x: string) => blob.includes(x)) }, "+1 ×3 · no LINE name", `${c0}→${c1}→${c2}→${c3}`);
   }
+  // ── r2 mi-1: lease from the wall clock ──
+  {
+    for (const n of ["42", "43", "44", "45", "46", "47"]) await emp(n, h.u1);
+    await contact("42", "c1");
+    await linkVia("42", "42");
+    const p = await plan(roster(["42"]));
+    const id = (p.value?.ids ?? [])[0] ?? "∅";
+    const old = new Date(Date.now() - 10 * MIN); // the run started 10 min ago in `now` terms
+    const mine = await LN.claimLineNotices({ tenantId: TT, ids: [id], now: old });
+    const again = (await LN.claimLineNotices({ tenantId: TT, now: new Date(), limit: 20 })) as Any[];
+    const heldFresh = mine.length === 1 && !again.some((r: Any) => r.id === id);
+    await exq(`UPDATE "HrNotice" SET "nextAttemptAt" = $2 WHERE "id" = $1`, id, new Date(Date.now() - 3 * MIN)); // truly expired lease
+    const again2 = (await LN.claimLineNotices({ tenantId: TT, now: new Date(), limit: 20 })) as Any[];
+    const reclaimed = again2.some((r: Any) => r.id === id);
+    const others = [...again, ...again2].filter((r: Any) => r.id !== id);
+    if (others.length) await HL.sendClaimedLineNotices(others, { now: new Date() });
+    await exq(`UPDATE "HrNotice" SET "line" = 'SKIPPED', "skipCode" = 'QC' WHERE "id" = $1`, id);
+    ck("F3.8", { claimed: mine.length === 1, heldFresh, reclaimed }, "fresh lease held · expired reclaimable", `lease=${mine[0]?.lease ? new Date(mine[0].lease).toISOString() : "-"} heldFresh=${heldFresh} reclaimed=${reclaimed}`);
+  }
+  // ── r2 mi-2: planner in bounded chunks (seam opts.chunk) ──
+  {
+    const five = ["43", "44", "45", "46", "47"];
+    const sorted = five.map((n) => E[n]!).sort();
+    const failOn = sorted[2]!;
+    const ev = roster(five);
+    const fn = `qc45_chunk_${h.tag}`, trg = `qc45_chunk_trg_${h.tag}`;
+    let first: Any = null, mid = -1;
+    await exq(`CREATE OR REPLACE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'qc45 forced chunk failure'; END $f$`);
+    await exq(`CREATE TRIGGER ${trg} BEFORE INSERT ON "HrNotice" FOR EACH ROW WHEN (NEW."employeeId" = '${failOn}') EXECUTE FUNCTION ${fn}()`);
+    try {
+      first = await call(LN, "planHrNotices", ev, { chunk: 2 });
+      mid = Number((await h.raw(`SELECT count(*)::int AS n FROM "HrNotice" WHERE "tenantId" = $1 AND "refId" = $2`, TT, ev.payload.publishId))[0]?.n ?? -1);
+    } finally {
+      await exq(`DROP TRIGGER IF EXISTS ${trg} ON "HrNotice"`);
+      await exq(`DROP FUNCTION IF EXISTS ${fn}()`);
+    }
+    const second = await call(LN, "planHrNotices", ev, { chunk: 2 });
+    const per = await h.raw(`SELECT "employeeId", count(*)::int AS n FROM "HrNotice" WHERE "tenantId" = $1 AND "refId" = $2 GROUP BY 1`, TT, ev.payload.publishId);
+    const notes = await Promise.all(five.map((n) => notesOf(n)));
+    ck("F3.9", { failed: !first.ok, kept: mid === 2, retried: second.ok, one: per.length === 5 && per.every((r: Any) => Number(r.n) === 1), inapp: notes.every((x: number) => x === 1) }, "chunk 1 kept · retry ⇒ 1 each", `first=${short(first.text, 40)} mid=${mid} per=${per.map((r: Any) => r.n).join(",")} inapp=${notes.join(",")}`);
+  }
   void C; void K; void sA; void failedKeys; void chk;
+}
+
+/** ORACLE-EDIT (H4.5 fix round · controller ruling 9): throwaway tenant with one HrNotice + one HrLineLink ⇒ residueOf lists them ⇒ cleanupFx ⇒ 0 rows */
+export async function runCleanupCheck(g: { P: Any; coreHash: Any; slug: string; chk: (id: string, ok: unknown, e: unknown, a: unknown) => boolean; lib: Any }): Promise<void> {
+  const { P, coreHash, slug, chk, lib } = g;
+  const fx2 = lib.makeFixtures(P, coreHash, `${slug}z`);
+  let seen = "", left = "∅";
+  try {
+    const tid = await fx2.newTenant("-z", "QC HR H4.5 cleanup");
+    const sys = await P.appSystem.create({ data: { tenantId: tid, type: "HR", name: `${slug}z hr` } });
+    const u = await fx2.mkUser(tid, "zs", `QC45 z ${slug}`, "STAFF", [], {});
+    const e = await fx2.mkEmp(tid, sys.id, `พนักงานz ${slug}`, { linkedUserId: u.id });
+    await P.$executeRawUnsafe(`INSERT INTO "HrLineLink" ("id","tenantId","systemId","employeeId","issuedForUserId","status","expiresAt") VALUES ($1,$2,$3,$4,$5,'PENDING', now())`, `${slug}zl`, tid, sys.id, e, u.id);
+    await P.$executeRawUnsafe(`INSERT INTO "HrNotice" ("id","tenantId","systemId","employeeId","kind","refId","dedupeKey","line") VALUES ($1,$2,$3,$4,'ROSTER','z',$5,'NONE')`, `${slug}zn`, tid, sys.id, e, `hr:ROSTER:z:${e}`);
+    seen = (await lib.residueOf(P, fx2, `${slug}z`, `${slug}z`)).filter((r: string) => /^Hr(Notice|LineLink)=/.test(r)).join(",");
+  } catch (x) {
+    seen = `THROW ${errText(x)}`;
+  }
+  await lib.cleanupFx(P, fx2, `${slug}z`);
+  const ids = fx2.tenants.length ? fx2.tenants : ["∅"];
+  const r = (await P.$queryRawUnsafe(`SELECT (SELECT count(*) FROM "HrNotice" WHERE "tenantId" = ANY($1::text[]))::int AS n, (SELECT count(*) FROM "HrLineLink" WHERE "tenantId" = ANY($1::text[]))::int AS l, (SELECT count(*) FROM "Tenant" WHERE "id" = ANY($1::text[]))::int AS t`, ids)) as Any[];
+  left = `notice=${r[0]?.n} link=${r[0]?.l} tenant=${r[0]?.t}`;
+  chk("Z2", /HrNotice=1/.test(seen) && /HrLineLink=1/.test(seen) && Number(r[0]?.n) === 0 && Number(r[0]?.l) === 0 && Number(r[0]?.t) === 0, "RESIDUE lists both · 0 after cleanupFx", `seen=${seen || "-"} after: ${left}`);
 }

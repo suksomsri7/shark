@@ -203,7 +203,7 @@ S1.3|F6 P|C|R|[static] boundaries: no hr/** file imports chat or platform · pla
 S1.4|§5|C|G|[static] [control] frozen unchanged vs base: webhook route · chat/** except link-code.ts · notify-customer · approval · account · settings-lock · roster/leave/ot/swap/service/lifecycle · payroll*/payslip* · qc-hr-lib · package.json · lockfile · webhook labels · other oracles only "ORACLE-EDIT (H4.5" hunks
 S1.5|R4|C|R|[static] chat/link-code.ts: one marked hunk, LINK_PURPOSES = base + "HR_EMPLOYEE" only
 S1.6|§5|M|R|[static] marked hunks "HR H4.5" (opened + closed ◂, never removing another ticket's marker) in hr/index · hr.prisma · scope · hr-qc-env · link-code · postback-routes · consumers · minute-jobs · 3 pages · visual-hr
-S1.7|R8|C|R|[static] no new outbox type: consumer key set = base · new files emit nothing · 7 events wrapped with onHrEventForLine via compose
+S1.7|R8|C|R|[static] no new outbox type: consumer key set = base · new files emit nothing · 7 events wrapped with onHrEventForLine via bothMain (ORACLE-EDIT (H4.5 fix round · controller ruling I): title only)
 S1.8|R8|M|R|[static] minute job "hr.line" everyMinutes 5 → runHrLineJobs(now, {budgetMs, signal})
 S1.9|R9|C|R|[static] lineNotify written only via lockHrSettings(…"hr:linepolicy:"…) + writeHrSettingsKeys · no own appSystem update · audit hr.line.settings
 S1.10|R3 C.7|C|R|[static] self fns (myLineStatus · beginLineLink · unlinkMyLine · issueHrLineCode) call resolveSelf and read no input employeeId · issueMyLineCodeAction + line-actions "use server" → requireTenant()
@@ -315,7 +315,9 @@ export function runStatic(g: Reg & { BASE: string; IN_BASE: boolean }): void {
   {
     const hrDir = exists(H) ? readdirSync(join(ROOT, H)).filter((n) => /^(payroll|payslip)/.test(n)).map((n) => `${H}${n}`) : [];
     const chatChanged = BASE ? changedVsBase(BASE, ["src/lib/modules/chat"]).replace(/^changed: /, "").split(",").filter((f) => f && f !== "unchanged" && f !== F.code) : [];
-    const diff = BASE ? changedVsBase(BASE, [...FROZEN_FILES, ...hrDir]) : "no base";
+    // ORACLE-EDIT (H4.5 fix round · controller ruling 9): qc-hr-lib.mts may change only by hunks marked "ORACLE-EDIT (H4.5 fix round · controller ruling 9)"
+    const libOk = !BASE || (diffHunks(BASE, "scripts/qc-hr-lib.mts") ?? [{ added: [], removed: ["∅git"] }]).every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (H4.5 fix round · controller ruling 9)")));
+    const diff = BASE ? (libOk ? changedVsBase(BASE, [...FROZEN_FILES.filter((f) => f !== "scripts/qc-hr-lib.mts"), ...hrDir]) : "changed: scripts/qc-hr-lib.mts (unmarked)") : "no base"; // ORACLE-EDIT (H4.5 fix round · controller ruling 9)
     let oracleBad: string[] = [];
     try {
       const ch = execFileSync("git", ["diff", "--name-only", BASE, "--", "scripts"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter((f) => /^scripts\/qc-.*\.mts$/.test(f) && !/qc-hr-h4\.5/.test(f));

@@ -17,7 +17,8 @@ import {
   sentence, HREF, bodyOk, flexParts, startFake, evText, evPostback, signedBody, repliesOf, ADVISORY_SQL, CHECKS_SRC, runStatic, runPure, exists,
   F, NEW, AUDIT, LINK_COLS, NOTICE_COLS, STATUS_FNS, SAVE_FNS,
 } from "./qc-hr-h4.5-lib.mjs";
-import { CHECKS_FIX, runFixStatic, runFixDb, driftOfLine } from "./qc-hr-h4.5-fix-lib.mjs"; // ORACLE-EDIT (H4.5 fix round · controller ruling) — checks after review + hunt
+import { CHECKS_FIX, runFixStatic, runFixDb, driftOfLine, runCleanupCheck } from "./qc-hr-h4.5-fix-lib.mjs";
+import * as HRLIB from "./qc-hr-lib.mjs"; // ORACLE-EDIT (H4.5 fix round · controller ruling 9): Z2 uses the lib's own cleanup // ORACLE-EDIT (H4.5 fix round · controller ruling) — checks after review + hunt
 
 const SUITE = "qc-hr-h4.5";
 const ARGV = process.argv.slice(2);
@@ -723,7 +724,7 @@ async function runDb(): Promise<void> {
     chk("F1.2", d.ok, "no HrLineLink/HrNotice drift", d.note);
   }
   try {
-    await runFixDb({ P, chk, ck, call, fake, TT, sA, cA, C, U, E, K, EXT, actor, V, issue, type, press, links, active, notices, notesOf, pushes, roster, plan, send, job, noticeOne, row, setPol, linkVia, consume, HL, LN, LL, STAFF, emp, contact, exq, MIN, SLUG, u1, mk, tag });
+    await runFixDb({ P, chk, ck, call, fake, TT, sA, cA, C, U, E, K, EXT, actor, V, issue, type, press, links, active, notices, notesOf, pushes, roster, plan, send, job, noticeOne, row, setPol, linkVia, consume, HL, LN, LL, STAFF, emp, contact, exq, MIN, SLUG, u1, mk, tag, raw }); // ORACLE-EDIT (H4.5 fix round · controller ruling r2): + raw
   } catch (e) {
     console.log(`💥 fix round: ${errText(e)}`);
   }
@@ -757,6 +758,7 @@ try {
   const r = await fitnessNoEnv().catch((e: unknown) => ({ ok: false, note: errText(e) }));
   chk("X1", r.ok, "exit 0 ×2", r.note);
 }
+await runCleanupCheck({ P, coreHash, slug: SLUG, chk, lib: HRLIB }).catch((e: unknown) => chk("Z2", false, "ran", errText(e))); // ORACLE-EDIT (H4.5 fix round · controller ruling 9)
 await cleanMine();
 await cleanupFx(P, fx, SLUG);
 {
