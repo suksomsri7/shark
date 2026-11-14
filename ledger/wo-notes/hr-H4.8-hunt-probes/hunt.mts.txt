@@ -1,0 +1,361 @@
+// H4.8 bug hunt — probes P1..P6 against the lane DB (own tenants qc-h48hunt-*), route handlers in-process (as qc-hr-h4.8.mts)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
+import { makeFixtures, cleanupFx, qc4Env, authOf, canon, errText, tagOf } from "../../scripts/qc-hr-lib.mjs";
+import { seedH48 } from "../../scripts/qc-hr-h4.8-lib.mjs";
+
+const { P, coreHash } = await qc4Env("h48-hunt");
+const RT = (await import("@/app/api/v1/hr/[...path]/route")) as Any;
+const AK = (await import("@/lib/api-keys/service")) as Any;
+const KEYS = (await import("@/lib/modules/hr/api/keys")) as Any;
+const sysSvc = (await import("@/lib/modules/system/service")) as Any;
+
+const tag = tagOf(String(Date.now())) + Math.random().toString(36).slice(2, 5).replace(/\d/g, "q");
+const SLUG = `qc-h48hunt-${Date.now()}${tag}`;
+const fx = makeFixtures(P, coreHash, SLUG);
+const OUT: string[] = [];
+const log = (s: string) => {
+  OUT.push(s);
+  console.log(s);
+};
+let n = 0;
+type Res = { status: number; body: Any; text: string; headers: Headers };
+async function api(method: string, path: string, raw: string | null, o: { body?: unknown; idem?: string | false; headers?: Record<string, string>; rawBody?: string } = {}): Promise<Res> {
+  const fn = RT[method];
+  if (typeof fn !== "function") return { status: 0, body: null, text: "no-method", headers: new Headers() };
+  const headers: Record<string, string> = { ...(raw ? { authorization: `Bearer ${raw}` } : {}), ...(o.headers ?? {}) };
+  if (method !== "GET" && o.idem !== false) headers["idempotency-key"] = o.idem ?? `hunt-${tag}-${++n}`;
+  const b = o.rawBody ?? (o.body === undefined ? undefined : JSON.stringify(o.body));
+  if (b) headers["content-type"] = "application/json";
+  try {
+    const pathOnly = path.split("?")[0]!;
+    const res: Response = await fn(new Request(`http://x/api/v1/hr${path}`, { method, headers, body: b }), { params: Promise.resolve({ path: pathOnly.split("/").filter(Boolean).map((s) => decodeURIComponent(s)) }) });
+    const text = await res.text();
+    let body: Any = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { _raw: text };
+    }
+    return { status: res.status, body, text, headers: res.headers };
+  } catch (e) {
+    return { status: -1, body: { error: { code: "THROW", message: errText(e) } }, text: errText(e), headers: new Headers() };
+  }
+}
+const sc = (r: Res) => `${r.status}${r.body?.error?.code ? `:${r.body.error.code}` : ""}`;
+const strip = (r: Res) => canon({ ...(r.body ?? {}), requestId: undefined });
+const raw = async (sql: string, ...p: unknown[]) => ((await fx.rawRows(sql, ...p)) ?? []) as Any[];
+
+const R3 = ["hr.employee.read", "hr.roster.read", "hr.leave.read"];
+const LEAVE = [...R3, "hr.leave.request", "hr.leave.decide"];
+const PAY = [...R3, "hr.payroll.read"];
+
+async function main() {
+  const S = await seedH48(P, fx, sysSvc, tag);
+  const { TA, TB, u1, uB, sA, sA2, sPos, sB, U, SEC, E, polP, polPg, lX, runA, runD, runB, RAND } = S;
+  const mkKey = async (name: string, scopes: string[], o: { sys?: string | null; tid?: string; by?: string; exp?: Date | null } = {}) => {
+    const k = await AK.createApiKey({ tenantId: o.tid ?? TA }, `${name} ${tag}`, { scopes, systemId: o.sys === undefined ? sA : (o.sys ?? undefined), createdById: o.by ?? U.owner.id, ...(o.exp !== undefined ? { expiresAt: o.exp } : {}) });
+    return k.rawKey as string;
+  };
+  const K = {
+    read: await mkKey("read", R3), leave: await mkKey("leave", LEAVE), pay: await mkKey("pay", PAY), all: await mkKey("all", [...LEAVE, "hr.payroll.read"]),
+    unbound: await mkKey("unbound", [], { sys: null }), unboundHr: await mkKey("unboundhr", [...LEAVE, "hr.payroll.read"], { sys: null }),
+    pos: await mkKey("pos", ["pos.sale.read", "pos.report.view"], { sys: sPos }), posHr: await mkKey("poshr", [...R3, "hr.payroll.read"], { sys: sPos }),
+    sA2: await mkKey("sA2", [...LEAVE, "hr.payroll.read"], { sys: sA2 }),
+    B: await mkKey("B", [...LEAVE, "hr.payroll.read"], { tid: TB, sys: sB, by: U.ownerB.id }),
+  };
+  const ALLPATHS = (emp: string, run: string) => [
+    ["GET", "/units"], ["GET", "/employees"], ["GET", `/employees/${emp}`], ["GET", "/shifts"], ["GET", "/roster?from=2026-06-01&to=2026-06-30"],
+    ["GET", "/attendance/day?day=2026-06-10"], ["GET", `/attendance/month?employeeId=${emp}&month=2026-06`], ["GET", "/leave-policies"], ["GET", "/leaves?status=HISTORY"],
+    ["GET", "/leave-balances?year=2026"], ["POST", "/leaves"], ["GET", "/reports/time?period=2026-06"], ["GET", `/employees/${emp}/payslips?taxYear=2026`], ["GET", `/payslips/${run}/${emp}`],
+  ] as const;
+  const postBody = (emp: string, d = "2031-03-03") => ({ employeeId: emp, type: "PERSONAL", fromDate: d, toDate: d });
+
+  // ───────── P1 key confusion ─────────
+  log("## P1 key confusion");
+  const lv0 = Number((await raw(`SELECT count(*)::int n FROM "HrLeave" WHERE "tenantId"=$1`, TA))[0]?.n);
+  for (const [lab, key, hdr] of [
+    ["unbound-noscope+hdr", K.unbound, sA], ["unbound-hr+hdr", K.unboundHr, sA], ["pos-key+hdr", K.pos, sA], ["pos-key(nohdr)", K.pos, null], ["posHr-key(nohdr)", K.posHr, null], ["posHr+hdr", K.posHr, sA],
+    ["sA2-key+hdr sA", K.sA2, sA], ["B-key+hdr sA", K.B, sA],
+  ] as const) {
+    const res: string[] = [];
+    let any2 = false;
+    for (const [m, p] of ALLPATHS(E.e1, runA)) {
+      const r = await api(m, p, key, { headers: hdr ? { "x-shark-system": hdr } : {}, body: m === "POST" ? postBody(E.e1) : undefined });
+      if (r.status >= 200 && r.status < 300) any2 = true;
+      res.push(sc(r));
+    }
+    log(`P1a ${lab}: ${any2 ? "🔴 2xx!" : "no 2xx"} · ${[...new Set(res)].join(",")}`);
+  }
+  // foreign ids with a correct key (sA, all scopes) — every place an id goes; compare bytes with a random id
+  const foreign: [string, string, string][] = [
+    ["empGet", `/employees/${E.eB}`, `/employees/${RAND}`], ["empGet-sA2", `/employees/${E.eX}`, `/employees/${RAND}`],
+    ["month-B", `/attendance/month?employeeId=${E.eB}&month=2026-06`, `/attendance/month?employeeId=${RAND}&month=2026-06`],
+    ["month-sA2", `/attendance/month?employeeId=${E.eX}&month=2026-06`, `/attendance/month?employeeId=${RAND}&month=2026-06`],
+    ["day-unitB", `/attendance/day?day=2026-06-10&unitId=${uB}`, `/attendance/day?day=2026-06-10&unitId=${RAND}`],
+    ["hist-B", `/employees/${E.eB}/payslips?taxYear=2026`, `/employees/${RAND}/payslips?taxYear=2026`],
+    ["hist-sA2", `/employees/${E.eX}/payslips?taxYear=2026`, `/employees/${RAND}/payslips?taxYear=2026`],
+    ["slip-runB", `/payslips/${runB}/${E.eB}`, `/payslips/${RAND}/${RAND}`], ["slip-runA-empB", `/payslips/${runA}/${E.eB}`, `/payslips/${runA}/${RAND}`],
+    ["report-unitB", `/reports/time?period=2026-06&unitId=${uB}`, `/reports/time?period=2026-06&unitId=${RAND}`],
+    ["report-pay-unitB", `/reports/payroll-month?period=2026-06&unitId=${uB}`, `/reports/payroll-month?period=2026-06&unitId=${RAND}`],
+    ["bal-unitB", `/leave-balances?year=2026&unitId=${uB}`, `/leave-balances?year=2026&unitId=${RAND}`],
+    ["roster-unitB", `/roster?from=2026-06-01&to=2026-06-30&unitId=${uB}`, `/roster?from=2026-06-01&to=2026-06-30&unitId=${RAND}`],
+    ["emps-unitB", `/employees?unitId=${uB}`, `/employees?unitId=${RAND}`], ["shifts-unitB", `/shifts?unitId=${uB}`, `/shifts?unitId=${RAND}`],
+  ];
+  for (const [lab, a, b] of foreign) {
+    const ra = await api("GET", a, K.all), rb = await api("GET", b, K.all);
+    const st = (r: Res) => canon({ ...(r.body ?? {}), requestId: undefined, data: r.body?.data && !Array.isArray(r.body.data) ? { ...r.body.data, unitId: undefined } : r.body?.data });
+    const same = st(ra) === st(rb);
+    if (lab.startsWith("report")) log(`P1c ${lab} rows foreign=${(ra.body?.data?.rows ?? []).length} random=${(rb.body?.data?.rows ?? []).length} unrestricted=${((await api("GET", a.replace(/&unitId=[^&]+/, ""), K.all)).body?.data?.rows ?? []).length}`);
+    log(`P1c ${lab}: foreign=${sc(ra)} random=${sc(rb)} ${same ? "same bytes" : "🔴 DIFFERENT"}${!same ? ` · ${ra.text.slice(0, 160)} || ${rb.text.slice(0, 160)}` : ""}`);
+  }
+  // POST body ids
+  for (const [lab, body] of [
+    ["post-empB", postBody(E.eB)], ["post-empX(sA2)", postBody(E.eX)], ["post-rand", postBody(RAND)], ["post-ended", postBody(E.eEnd)], ["post-owner", postBody(E.eOwn)],
+    ["post-policy-sA2", { ...postBody(E.e1), type: undefined, policyId: polPg }], ["post-policy-rand", { ...postBody(E.e1), type: undefined, policyId: RAND }],
+  ] as const) {
+    const r = await api("POST", "/leaves", K.all, { body: body });
+    log(`P1d ${lab}: ${sc(r)} · ${r.body?.error?.message_th ?? ""}`);
+  }
+  // revoked / expired / issuer demoted / issuer deleted
+  {
+    const rv = await mkKey("rv", R3);
+    const rvId = (await P.apiKey.findFirst({ where: { tenantId: TA, name: `rv ${tag}` } })).id;
+    await AK.revokeApiKey({ tenantId: TA }, rvId);
+    const ex = await mkKey("ex", R3);
+    await P.apiKey.updateMany({ where: { tenantId: TA, name: `ex ${tag}` }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    const own2 = await fx.mkUser(TA, "own2", `QC48H own2 ${tag}`, "OWNER", [], {});
+    const k2 = await mkKey("own2", [...LEAVE, "hr.payroll.read"], { by: own2.id });
+    const before = (await api("GET", "/units", k2)).status;
+    await P.membership.updateMany({ where: { tenantId: TA, userId: own2.id }, data: { role: "MANAGER" } });
+    const dem = await api("GET", `/payslips/${runA}/${E.e1}`, k2);
+    const demPost = await api("POST", "/leaves", k2, { body: postBody(E.e2, "2031-04-04") });
+    await P.membership.deleteMany({ where: { tenantId: TA, userId: own2.id } });
+    await P.session.deleteMany({ where: { userId: own2.id } });
+    let userDel = "n/a";
+    try {
+      await P.user.delete({ where: { id: own2.id } });
+      const kk = await P.apiKey.findFirst({ where: { tenantId: TA, name: `own2 ${tag}` }, select: { createdById: true } });
+      userDel = `user deleted · key.createdById=${kk?.createdById === null ? "null" : kk ? "kept" : "key gone"}`;
+    } catch (e) {
+      userDel = `user delete blocked: ${errText(e).slice(0, 80)}`;
+    }
+    const del = await api("GET", "/units", k2);
+    log(`P1e revoked=${sc(await api("GET", "/units", rv))} expired=${sc(await api("GET", "/units", ex))} issuerOwner=${before} demoted:slip=${sc(dem)} post=${sc(demPost)} · ${userDel} → ${sc(del)}`);
+  }
+  const lv1 = Number((await raw(`SELECT count(*)::int n FROM "HrLeave" WHERE "tenantId"=$1`, TA))[0]?.n);
+  log(`P1 leaves written during P1: ${lv1 - lv0} (expected 0)`);
+
+  // ───────── P2 scope escalation + sentinel scan ─────────
+  log("## P2 scope escalation / sentinels");
+  // extra sentinels: SICK leave reason already · salary amounts 3_000_000 satang in run · medical reason
+  const extraSec: Record<string, string> = { ...SEC, salary: "3000000", salaryB: "30000.00", net: "2875000" };
+  const scan: { lab: string; text: string; headers: string }[] = [];
+  const cells: [string, string, string][] = [];
+  const paths = [
+    "/units", "/employees", "/employees?pageSize=50", `/employees/${E.e1}`, `/employees/${E.eOwn}`, `/employees/${E.eEnd}`, "/shifts", "/roster?from=2026-06-01&to=2026-06-30",
+    "/attendance/day?day=2026-06-10", `/attendance/month?employeeId=${E.e1}&month=2026-06`, "/leave-policies", "/leaves", "/leaves?status=HISTORY", "/leave-balances?year=2026", "/leave-balances?year=2031",
+    ...["time", "ot", "leave", "payroll-month", "payroll-year", "wages", "tax-month", "tax-year", "register", "REGISTER", "register%20", "time%2F..%2Fregister", "__proto__", "constructor"].map((r) => `/reports/${r}?period=${["leave", "payroll-year", "tax-year", "register"].includes(r) ? "2026" : "2026-06"}`),
+    `/employees/${E.e1}/payslips?taxYear=2026`, `/payslips/${runA}/${E.e1}`, `/payslips/${runD}/${E.e1}`,
+    "/employees?include=bank", "/employees?fields=nationalId", "/employees?expand=docs", "/employees?format=csv", "/employees?sort=salary", "/employees/", "/EMPLOYEES", `/employees/${E.e1}/`, `/employees/${E.e1}/docs`, `/employees/${E.e1}/profile`,
+    "/leaves?status=ALL", "/leaves?status=pending",
+  ];
+  for (const [kl, key] of [["read", K.read], ["leave", K.leave], ["pay", K.pay]] as const) {
+    for (const p of paths) {
+      const r = await api("GET", p, key);
+      cells.push([kl, p, sc(r)]);
+      scan.push({ lab: `${kl} ${p}`, text: r.text, headers: JSON.stringify([...r.headers.entries()]) });
+    }
+    for (const m of ["PUT", "PATCH", "DELETE"]) {
+      const r = await api(m, "/employees", key, { body: {} });
+      cells.push([kl, `${m} /employees`, sc(r)]);
+    }
+  }
+  const hits: string[] = [];
+  for (const s of scan) for (const [k, v] of Object.entries(extraSec)) if (s.text.includes(v) || s.headers.includes(v)) hits.push(`${s.lab}~${k}`);
+  log(`P2 cells: ${cells.length} · non-200 under read: ${cells.filter((c) => c[0] === "read" && !c[2].startsWith("200")).map((c) => `${c[1]}=${c[2]}`).join(" | ")}`);
+  log(`P2 2xx under read: ${cells.filter((c) => c[0] === "read" && c[2].startsWith("200")).map((c) => c[1]).join(" | ")}`);
+  log(`P2 sentinel hits: ${hits.join(" | ") || "none"}`);
+  // read key: anything that looks like money?
+  const readMoney = scan.filter((s) => s.lab.startsWith("read ") && /Satang|"amount|"net"|"gross"|"wage|"rate"|Amt"/.test(s.text)).map((s) => s.lab);
+  log(`P2 money-looking keys in hr-read bodies: ${readMoney.join(" | ") || "none"}`);
+  // ot report with pay key: $ columns + audit?
+  {
+    const before = Number((await raw(`SELECT count(*)::int n FROM "AuditLog" WHERE "tenantId"=$1 AND action='hr.api.report.read'`, TA))[0]?.n);
+    const r = await api("GET", "/reports/ot?period=2026-06", K.pay);
+    const after = Number((await raw(`SELECT count(*)::int n FROM "AuditLog" WHERE "tenantId"=$1 AND action='hr.api.report.read'`, TA))[0]?.n);
+    const cols = (r.body?.data?.columns ?? []).map((c: Any) => c.key);
+    const rp = await api("GET", "/reports/payroll-month?period=2026-06", K.pay);
+    const after2 = Number((await raw(`SELECT count(*)::int n FROM "AuditLog" WHERE "tenantId"=$1 AND action='hr.api.report.read'`, TA))[0]?.n);
+    log(`P2 ot+pay key: ${sc(r)} cols=${cols.join(",")} · pay-audit rows +${after - before} (payroll-month control: ${sc(rp)} +${after2 - after})`);
+    const rr = await api("GET", "/reports/ot?period=2026-06", K.read);
+    log(`P2 ot+read key: ${sc(rr)} cols=${(rr.body?.data?.columns ?? []).map((c: Any) => c.key).join(",")}`);
+  }
+  // employee detail of ended employee vs list
+  {
+    const g = await api("GET", `/employees/${E.eEnd}`, K.read);
+    const l = await api("GET", "/employees?pageSize=50", K.read);
+    const inList = (l.body?.data ?? []).some((x: Any) => x.id === E.eEnd);
+    log(`P2 ended employee: get=${sc(g)} active=${g.body?.data?.active} status=${g.body?.data?.employmentStatus} · in list=${inList}`);
+  }
+
+  // ───────── P3 issuing ─────────
+  log("## P3 issuing");
+  const keyStaffMgr = await fx.mkUser(TA, "mgrkey", `QC48H mgrkey ${tag}`, "MANAGER", ["*"], { "api.key.create": true, "api.key.revoke": true });
+  const payViewer = await fx.mkUser(TA, "payv", `QC48H payv ${tag}`, "STAFF", ["*"], { "hr.payroll.read": true, "api.key.create": true });
+  const k0 = await P.apiKey.count({ where: { tenantId: TA } });
+  const iss = async (lab: string, who: Any, inp: Any, spoofRole?: string) => {
+    const a: Any = authOf(who);
+    if (spoofRole) a.active.role = spoofRole;
+    let r: Any;
+    try {
+      r = await KEYS.issueHrApiKey(a, inp);
+    } catch (e) {
+      r = { thrown: errText(e).slice(0, 120) };
+    }
+    log(`P3 ${lab}: ${r?.ok ? `🟢 ISSUED ${r.keyId}` : r?.thrown ? `THROW ${r.thrown}` : `${r?.code} ${String(r?.message ?? "").slice(0, 70)}`}`);
+    return r;
+  };
+  const base = { systemId: sA, name: "hunt", ttlDays: 30 };
+  await iss("manager hr-read", keyStaffMgr, { ...base });
+  await iss("manager spoofed session role OWNER", keyStaffMgr, { ...base }, "OWNER");
+  await iss("staff(api perms) pay", U.keyStaff, { ...base, bundle: "hr-payroll-read", payConsent: true });
+  await iss("payroll viewer pay", payViewer, { ...base, bundle: "hr-payroll-read", payConsent: true });
+  await iss("owner pay no consent", U.owner, { ...base, bundle: "hr-payroll-read" });
+  await iss("owner raw payroll.read no consent", U.owner, { ...base, scopes: ["hr.payroll.read"] });
+  await iss("owner payConsent:'true' (string)", U.owner, { ...base, scopes: ["hr.payroll.read"], payConsent: "true" });
+  await iss("owner hr.payroll.create", U.owner, { ...base, scopes: ["hr.payroll.create"], payConsent: true });
+  await iss("owner arbitrary scope", U.owner, { ...base, scopes: ["*"] });
+  await iss("owner scopes ['hr.*']", U.owner, { ...base, scopes: ["hr.*"] });
+  await iss("owner pos bundle", U.owner, { ...base, bundle: "pos-read" });
+  await iss("owner pos scope", U.owner, { ...base, scopes: ["pos.report.view"] });
+  await iss("owner TTL 100000", U.owner, { ...base, ttlDays: 100000 });
+  await iss("owner TTL 0 + pay", U.owner, { ...base, bundle: "hr-payroll-read", payConsent: true, ttlDays: 0 });
+  await iss("owner TTL -1", U.owner, { ...base, ttlDays: -1 });
+  await iss("owner POS systemId", U.owner, { ...base, systemId: sPos });
+  await iss("owner tenant-B HR systemId", U.owner, { ...base, systemId: sB });
+  await iss("owner scopes [] + bundle pay no consent", U.owner, { ...base, scopes: [], bundle: "hr-payroll-read" });
+  const cc = await iss("owner name with control chars", U.owner, { ...base, name: "a\u0000b‮c\u001b[31m\nX" });
+  if (cc?.ok) {
+    const row = await P.apiKey.findFirst({ where: { id: cc.keyId }, select: { name: true } });
+    log(`P3 stored name = ${JSON.stringify(row?.name)}`);
+  }
+  // other modules' issuers: list callers and scope gates statically (not executed — Next "use server" + requireTenant)
+  const k1 = await P.apiKey.count({ where: { tenantId: TA } });
+  log(`P3 keys created by issuer probes: ${k1 - k0}`);
+
+  // ───────── P4 POST /leaves ─────────
+  log("## P4 POST /leaves");
+  const lvBefore = Number((await raw(`SELECT count(*)::int n FROM "HrLeave" WHERE "tenantId"=$1`, TA))[0]?.n);
+  const post = async (lab: string, body: Any, o: Any = {}) => {
+    const r = await api("POST", "/leaves", o.key ?? K.leave, { body, idem: o.idem, rawBody: o.rawBody, headers: o.headers });
+    log(`P4 ${lab}: ${sc(r)} ${r.body?.data ? JSON.stringify(r.body.data) : (r.body?.error?.message_th ?? "").slice(0, 80)}`);
+    return r;
+  };
+  await post("reason", { ...postBody(E.e2, "2031-05-05"), reason: "ป่วย มะเร็ง" });
+  await post("status APPROVED", { ...postBody(E.e2, "2031-05-05"), status: "APPROVED" });
+  await post("decidedBy", { ...postBody(E.e2, "2031-05-05"), decidedById: U.owner.id });
+  await post("__proto__ status", undefined, { rawBody: `{"employeeId":"${E.e2}","type":"PERSONAL","fromDate":"2031-05-06","toDate":"2031-05-06","__proto__":{"status":"APPROVED"}}` });
+  await post("invalid date 2031-02-31", postBody(E.e2, "2031-02-31"));
+  await post("invalid date 2031-13-45", postBody(E.e2, "2031-13-45"));
+  await post("toDate<fromDate", { ...postBody(E.e2), fromDate: "2031-06-10", toDate: "2031-06-01" });
+  await post("10-year range", { ...postBody(E.e2), fromDate: "2031-01-01", toDate: "2040-12-31" });
+  await post("past date", postBody(E.e2, "2020-01-06"));
+  await post("halfDay+hours", { ...postBody(E.e2, "2031-05-07"), halfDay: "AM", hours: 3 });
+  await post("hours=1.5", { ...postBody(E.e2, "2031-05-07"), hours: 1.5 });
+  await post("ended employee", postBody(E.eEnd, "2031-05-08"));
+  await post("owner-linked", postBody(E.eOwn, "2031-05-08"));
+  await post("staff-linked eS", postBody(E.eS, "2031-05-08"));
+  await post("text/plain body", undefined, { rawBody: JSON.stringify(postBody(E.e2, "2031-05-09")), headers: { "content-type": "text/plain" } });
+  const idem = `hunt-shared-${tag}`;
+  const a1 = await post("idem key X via key leave", postBody(E.e2, "2031-07-01"), { idem });
+  const a2 = await post("idem key X via key all (other API key, other body)", postBody(E.e2, "2031-07-02"), { idem, key: K.all });
+  const a3 = await post("idem key X via key leave, other body", postBody(E.e2, "2031-07-03"), { idem });
+  await post("overlap", postBody(E.e2, "2031-07-01"));
+  const rows = await raw(`SELECT status, reason, "filedById" FROM "HrLeave" WHERE "tenantId"=$1 AND "createdAt" > now() - interval '30 minutes' AND "employeeId" <> $2`, TA, E.e1);
+  const lvAfter = Number((await raw(`SELECT count(*)::int n FROM "HrLeave" WHERE "tenantId"=$1`, TA))[0]?.n);
+  log(`P4 rows written: ${lvAfter - lvBefore} · statuses ${[...new Set(rows.map((r) => r.status))].join(",")} · reasons non-null ${rows.filter((r) => r.reason).length} · a1=${sc(a1)} a2=${sc(a2)} a3=${sc(a3)}`);
+  // mass creation via write bucket
+  {
+    let last = "";
+    let ok = 0;
+    for (let i = 0; i < 64; i++) {
+      const d = new Date(Date.UTC(2032, 0, 1 + i * 2)).toISOString().slice(0, 10);
+      const r = await api("POST", "/leaves", K.leave, { body: postBody(E.e2, d) });
+      if (r.status === 200 || r.status === 201) ok++;
+      last = sc(r);
+      if (r.status === 429) {
+        log(`P4 mass: ${ok} created then 429 at #${i + 1} Retry-After=${r.headers.get("retry-after")}`);
+        break;
+      }
+    }
+    if (!last.startsWith("429")) log(`P4 mass: ${ok} created, no 429 (last ${last})`);
+  }
+
+  // ───────── P5 readers ─────────
+  log("## P5 readers vs brief");
+  {
+    const ro = await api("GET", "/roster?from=2026-06-01&to=2026-06-30", K.read);
+    const ids = (ro.body?.data ?? []).map((x: Any) => x.id);
+    log(`P5 roster: ${sc(ro)} entries=${ids.length} unpublished present=${ids.includes(S.R.u)}`);
+    const d = await api("GET", "/attendance/day?day=2026-06-11", K.read);
+    log(`P5 attendance day of unpublished entry (06-11): ${sc(d)} rows=${(d.body?.data?.rows ?? []).length} slots=${JSON.stringify((d.body?.data?.rows ?? []).map((r: Any) => r.slots?.length))}`);
+    const m = await api("GET", `/attendance/month?employeeId=${E.e1}&month=2026-06`, K.read);
+    const d11 = (m.body?.data?.days ?? []).find((x: Any) => x.day === "2026-06-11");
+    log(`P5 attendance month 06-11 (unpublished roster day) slots=${JSON.stringify(d11?.slots ?? null)?.slice(0, 200)}`);
+    const sd = await api("GET", `/payslips/${runD}/${E.e1}`, K.pay);
+    log(`P5 DRAFT slip: ${sc(sd)}`);
+    await P.hrPayrollRun.update({ where: { id: runA }, data: { status: "REVERSED" } }).catch(async (e: unknown) => log(`P5 (cannot set REVERSED: ${errText(e).slice(0, 80)})`));
+    const sr = await api("GET", `/payslips/${runA}/${E.e1}`, K.pay);
+    const hr = await api("GET", `/employees/${E.e1}/payslips?taxYear=2026`, K.pay);
+    const rep = await api("GET", "/reports/payroll-month?period=2026-06", K.pay);
+    log(`P5 reversed run: slip=${sc(sr)} history count=${hr.body?.data?.year?.count} report rows=${(rep.body?.data?.rows ?? []).length}`);
+    await P.hrPayrollRun.update({ where: { id: runA }, data: { status: "APPROVED" } }).catch(() => null);
+    const eo = await api("GET", `/attendance/month?employeeId=${E.eEnd}&month=2026-06`, K.read);
+    log(`P5 ended employee attendance month: ${sc(eo)}`);
+    const lb = await api("GET", "/leave-balances?year=2026", K.read);
+    log(`P5 leave balances rows include ended=${(lb.body?.data?.rows ?? []).some((r: Any) => r.employeeId === E.eEnd)} owner=${(lb.body?.data?.rows ?? []).some((r: Any) => r.employeeId === E.eOwn)}`);
+    const lvH = await api("GET", "/leaves?status=HISTORY", K.read);
+    log(`P5 leaves HISTORY includes other-system leave=${(lvH.body?.data ?? []).some((x: Any) => x.id === lX)}`);
+  }
+
+  // ───────── P6 abuse ─────────
+  log("## P6 abuse");
+  for (const q of ["pageSize=1000", "pageSize=-1", "pageSize=NaN", "pageSize=20abc", "pageSize=1e1", "pageSize=20.0", "pageSize=%2020", "page=0", "page=-1", "page=999999", "page=100000", "page=1&page=2", "pageSize=10&pageSize=50", "unitId="]) {
+    const r = await api("GET", `/employees?${q}`, K.read);
+    log(`P6 employees?${q}: ${sc(r)} n=${Array.isArray(r.body?.data) ? r.body.data.length : "-"} page=${JSON.stringify(r.body?.page ?? null)}`);
+  }
+  for (const q of ["/roster?from=2016-01-01&to=2026-01-01", "/roster?from=2026-06-30&to=2026-06-01", "/roster?from=2026-02-31&to=2026-03-01", "/attendance/day?day=2026-02-31", "/attendance/day?day=0000-00-00", "/leave-balances?year=2600", "/reports/time?period=2016", "/reports/time?period=2026-13", "/reports/tax-year?period=99999", "/reports/time?period=2026-06-01x"]) {
+    const r = await api("GET", q, K.all);
+    log(`P6 ${q}: ${sc(r)} ${(r.body?.error?.message_th ?? "").slice(0, 60)}`);
+  }
+  // rate bucket: header case variation doesn't matter (bucket per key) — report bucket 31st
+  {
+    const keyR = await mkKey("rl", R3);
+    let first429 = 0;
+    for (let i = 1; i <= 33; i++) {
+      const p = i % 3 === 0 ? "/REPORTS/time?period=2026-06" : i % 3 === 1 ? "/reports/time?period=2026-06" : "/reports/time/?period=2026-06";
+      const r = await api("GET", p, keyR, { headers: i % 2 ? { Authorization: `bearer ${keyR}` } : {} });
+      if (r.status === 429 && !first429) first429 = i;
+    }
+    log(`P6 report bucket with path/header-case variants: first 429 at request #${first429 || "none"}`);
+  }
+}
+
+async function cleanMine(): Promise<void> {
+  const ids = (((await fx.rawRows(`SELECT "id" FROM "ApiKey" WHERE "tenantId" = ANY($1::text[])`, fx.tenants)) ?? []) as Any[]).map((r) => String(r.id));
+  for (const id of ids) await fx.rawRows(`DELETE FROM "ChatRateBucket" WHERE "key" LIKE $1`, `%:${id}`);
+  for (const t of ["ApiIdempotency", "ApiKey"]) await fx.rawRows(`DELETE FROM "${t}" WHERE "tenantId" = ANY($1::text[])`, fx.tenants);
+}
+try {
+  await main();
+} catch (e) {
+  log(`💥 ${errText(e)}`);
+} finally {
+  await cleanMine();
+  await cleanupFx(P, fx, SLUG);
+  const left = (await fx.rawRows(`SELECT count(*)::int n FROM "Tenant" WHERE slug LIKE 'qc-h48hunt-%'`)) as Any[];
+  const keysLeft = (await fx.rawRows(`SELECT count(*)::int n FROM "ApiKey" WHERE "tenantId" = ANY($1::text[])`, fx.tenants)) as Any[];
+  log(`CLEANUP tenants qc-h48hunt-* left=${left?.[0]?.n} · my keys left=${keysLeft?.[0]?.n} · tenants created=${fx.tenants.length}`);
+  await P.$disconnect?.();
+}

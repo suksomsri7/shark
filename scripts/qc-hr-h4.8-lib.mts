@@ -371,3 +371,112 @@ export function serializerProblems(SER: Any, CAT: Record<string, Any>): string[]
   }
   return p;
 }
+
+// ═════════ ORACLE-EDIT (H4.8 fix round · controller ruling 1–6) ▸ F1–F6 = ports of the hunter's F1–F4 + I1 probes (ledger/wo-notes/hr-H4.8-hunt-probes) ◂ ═════════
+// Res/Key shapes as in qc-hr-h4.8.mts · every helper comes from the caller (no DB access at import)
+export async function runFixRound(c: Any): Promise<void> {
+  const { P, TA, sA, cA, polP, E, U, K, RAND, tag, HR_PAY, CAT, PERM, ROS, BRD, PRIV, KEYS, RT, REFUSED, mkKey, api, sc, strip, nOf, fresh, ck, chk, authOf, isThai, errText, ok } = c;
+  type Res = { status: number; body: Any; text: string; headers: Headers };
+  type Key = Any;
+  // ═════════ ORACLE-EDIT (H4.8 fix round · controller ruling 1–6) ▸ ports of the hunter's F1–F4 + I1 probes (scratchpad/h48-hunt → ledger/wo-notes/hr-H4.8-hunt-probes) ◂ ═════════
+  {
+    const kp = await mkKey("otpay", HR_PAY);
+    const rows = async (kid: string) => P.auditLog.count({ where: { tenantId: TA, actorId: kid, action: "hr.api.report.read" } });
+    const money = (r: Res) => ((r.body?.data?.columns ?? []) as Any[]).some((c) => (CAT.ot.columns as Any[]).find((x) => x.key === c.key)?.cls === "$");
+    const r1 = await api("GET", "/reports/ot?period=2026-06", kp, { label: "fix1 ot pay" });
+    const n1 = kp ? await rows(kp.id) : -1;
+    const r2 = await api("GET", "/reports/ot?period=2026-06", K.read, { label: "fix1 ot read" });
+    const n2 = K.read ? await rows(K.read.id) : -1;
+    ck("F1", { pay: r1.status === 200 && money(r1) && n1 === 1, read: r2.status === 200 && !money(r2) && n2 === 0 }, "audit by money returned", `${sc(r1)} money=${money(r1)} rows=${n1} · ${sc(r2)} money=${money(r2)} rows=${n2}`);
+  }
+  {
+    const STF = (await import("@/lib/staff/service")) as Any;
+    const hrMod = (PERM.PERMISSION_MODULES as Any[]).find((m) => m.module === "hr");
+    const editor = !hrMod?.actions?.some((a: Any) => a.key === "hr.employee.read" || a.key === "hr.roster.read");
+    const refuse = ["hr.employee.read", "hr.roster.read"].every((k) => STF.validatePermissionInput({ [k]: true })?.ok === false);
+    const cells: string[] = [];
+    for (const k of ["hr.employee.read", "hr.roster.read"]) {
+      const h = { role: "STAFF", unitAccess: [], permissions: { [k]: true }, userId: U.staff.id };
+      const lr = await ROS.listRoster(cA, h, { from: "2026-06-10", to: "2026-06-10" }).catch(() => ({ ok: "x" }));
+      const pr = await PRIV.loadEmployeeProfileForViewer(cA, h, E.e1).catch(() => null);
+      cells.push(`${k.slice(3)}:${+!!BRD.canReadRoster(h)}${+!!PRIV.hrAccessOf(h).openProfile}${+!!PRIV.hrAccessOf(h).seeSensitive}${+!!PRIV.hrAccessOf(h).readLeave}${lr.ok === true ? 1 : 0}${pr ? 1 : 0}`);
+    }
+    ck("F2", { editor, refuse, human: cells.join(" ") === "employee.read:000000 roster.read:000000" }, "API-key only", cells.join(" "));
+  }
+  {
+    const bad: string[] = [];
+    const q = async (path: string) => {
+      const r = await api("GET", path, K.all, { label: `fix3 ${path}` });
+      if (sc(r) !== "422:validation") bad.push(`${path}=${sc(r)}`);
+    };
+    for (const d of ["2026-02-31", "2026-06-31", "0000-00-00"]) await q(`/attendance/day?day=${d}`);
+    await q("/roster?from=2026-02-31&to=2026-03-02");
+    await q(`/attendance/month?employeeId=${E.e1}&month=2026-13`);
+    await q("/reports/time?period=2026-13");
+    const rp = await api("POST", "/leaves", K.leave, { body: { employeeId: E.eS, policyId: polP, fromDate: "2031-02-30", toDate: "2031-02-30" }, label: "fix3 post" });
+    if (sc(rp) !== "422:validation") bad.push(`post=${sc(rp)}`);
+    chk("F3", bad.length === 0, "422 validation", bad.slice(0, 4).join(" ") || "ok");
+  }
+  {
+    const before = await P.apiKey.count({ where: { tenantId: TA } });
+    const outs: string[] = [];
+    for (const nm of ["a\u202eb", "a\u001b[31mc", "a\nb", "a\u2028b", "a\u2066b", "a\u0000b"]) {
+      let r: Any;
+      try {
+        r = ok(KEYS) ? await KEYS.issueHrApiKey(authOf(U.owner), { systemId: sA, name: `QC48 ${nm} ${tag}`, ttlDays: 30 }) : { ok: false, code: "MISSING" };
+      } catch (e) {
+        r = { ok: false, code: "THROW", message: errText(e) };
+      }
+      outs.push(r?.ok === false && r?.code === "VALIDATION" && isThai(String(r?.message ?? "")) ? "ok" : `${r?.ok}:${r?.code}`);
+    }
+    const after = await P.apiKey.count({ where: { tenantId: TA } });
+    ck("F4", { refused: outs.every((x) => x === "ok"), nothing: before === after }, "names refused", outs.join(","));
+  }
+  {
+    const pair = async (a: string, b: string, k: Key) => {
+      const ra = await api("GET", a, k);
+      const rb = await api("GET", b, k);
+      return sc(ra) === "404:not_found" && strip(ra) === strip(rb) ? "" : `${sc(ra)}|${sc(rb)}`;
+    };
+    const postBody = (id: string) => ({ employeeId: id, type: "PERSONAL", fromDate: "2031-07-01", toDate: "2031-07-01" });
+    const pa = await api("POST", "/leaves", K.leave, { body: postBody(E.eEnd) });
+    const pb = await api("POST", "/leaves", K.leave, { body: postBody(RAND) });
+    const lv = await api("GET", "/leaves?status=HISTORY", K.read);
+    await P.hrLeave.create({ data: { tenantId: TA, systemId: sA, employeeId: E.eEnd, policyId: polP, type: "PERSONAL", fromDate: new Date("2025-03-03T00:00:00Z"), toDate: new Date("2025-03-03T00:00:00Z"), status: "APPROVED", days: 1 } });
+    const lv2 = await api("GET", "/leaves?status=HISTORY", K.read);
+    const p = {
+      get: await pair(`/employees/${E.eEnd}`, `/employees/${RAND}`, K.read),
+      month: await pair(`/attendance/month?employeeId=${E.eEnd}&month=2026-06`, `/attendance/month?employeeId=${RAND}&month=2026-06`, K.read),
+      hist: await pair(`/employees/${E.eEnd}/payslips?taxYear=2026`, `/employees/${RAND}/payslips?taxYear=2026`, K.pay),
+      post: sc(pa) === "404:not_found" && strip(pa) === strip(pb) ? "" : `${sc(pa)}|${sc(pb)}`,
+      list: lv2.status === 200 && !((lv2.body?.data ?? []) as Any[]).some((x) => x.employeeId === E.eEnd) && lv.status === 200 ? "" : "listed",
+    };
+    const okP = Object.entries(p).filter(([, v]) => v !== "");
+    chk("F5", okP.length === 0, "ended ≡ unknown", okP.map(([k, v]) => `${k}=${v}`).join(" ") || "ok");
+  }
+  {
+    const send2 = async (ct: string, text: string) => {
+      const res: Response = await RT.POST(new Request("http://x/api/v1/hr/leaves", { method: "POST", headers: { authorization: `Bearer ${K.leave?.raw}`, "idempotency-key": fresh(), "content-type": ct }, body: text }), { params: Promise.resolve({ path: ["leaves"] }) });
+      const t = await res.text();
+      let b: Any = null;
+      try {
+        b = JSON.parse(t);
+      } catch {
+        b = null;
+      }
+      const r = { status: res.status, body: b, text: t, headers: res.headers };
+      REFUSED.push({ label: `fix6 ${ct}`, r });
+      return r;
+    };
+    const d = "2031-08-04";
+    const n0 = await nOf(`SELECT count(*)::int AS n FROM "HrLeave" WHERE "employeeId" = $1 AND "fromDate" = $2::date`, E.eS, d);
+    const good = JSON.stringify({ employeeId: E.eS, policyId: polP, fromDate: d, toDate: d });
+    const r1 = await send2("text/plain", good);
+    const r2 = await send2("application/json", `{"employeeId":"${E.eS}","policyId":"${polP}","fromDate":"${d}","toDate":"${d}","__proto__":{"status":"APPROVED"}}`);
+    const r3 = await send2("application/json", `{"employeeId":"${E.eS}","policyId":"${polP}","fromDate":"${d}","toDate":"${d}","constructor":1}`);
+    const n1 = await nOf(`SELECT count(*)::int AS n FROM "HrLeave" WHERE "employeeId" = $1 AND "fromDate" = $2::date`, E.eS, d);
+    const r4 = await api("POST", "/leaves", K.leave, { body: { employeeId: E.eS, policyId: polP, fromDate: "2031-08-06", toDate: "2031-08-06" } });
+    const row = r4.body?.data?.id ? await P.hrLeave.findFirst({ where: { id: r4.body.data.id } }) : null;
+    ck("F6", { ct: sc(r1) === "415:invalid_json", proto: sc(r2) === "422:validation", ctor: sc(r3) === "422:validation", nothing: n0 === 0 && n1 === 0, stored: r4.status === 200 && !!row && r4.body?.data?.status === row.status }, "json only · stored status", `${sc(r1)} ${sc(r2)} ${sc(r3)} rows=${n0}/${n1} ${sc(r4)} ${r4.body?.data?.status}/${row?.status}`);
+  }
+}

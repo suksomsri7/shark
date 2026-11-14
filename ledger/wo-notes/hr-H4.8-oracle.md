@@ -59,3 +59,8 @@ GREEN on base, and why that is right:
 - Q1 human-gate golden recorded on the base: `owner:11111 mgrAll:11011 mgrU1:11011 staff:00000 employee.create:11001 leave.read:01010 leave.decide:00000 leave.request:00000 payroll.read:01100 attendance.clock:00000 payadjust.request:00000` (canReadRoster · openProfile · seeSensitive · readLeave · listRoster ok). Must stay identical after the build (ruling Q1).
 - Z1 no residue.
 - Also confirmed on the base: the service refusal used by A8d is Thai (`ประเภทการลานี้ลาเป็นชั่วโมงไม่ได้`).
+
+## 5. ORACLE-EDIT (H4.8 fix round · controller rulings 1–6, 15 Nov) — builder, controller-authorised
+- New checks F1–F6 (lib `runFixRound`, size limit G): F1 OT report + pay key ⇒ money columns + 1 `hr.api.report.read` row, hr-read key ⇒ none · F2 the two read keys are API-key only (not in `PERMISSION_MODULES`, refused by `validatePermissionInput`, human STAFF holding either key: gates `000000`) · F3 impossible dates/periods ⇒ 422 validation (attendance day ×3, roster, month, report period, POST) · F4 key names with bidi/ESC/LF/U+2028/U+2066/NUL ⇒ VALIDATION, no key row · F5 ended employee ≡ unknown id (profile, attendance month, payslip history, POST) + absent from `/leaves?status=HISTORY` · F6 POST `text/plain` ⇒ 415 `invalid_json`, `__proto__`/`constructor` ⇒ 422, nothing written, answer status = stored row status.
+- S6: labels now `startsWith("คีย์ API:")` (ruling 2 relabel) · A14: the key holder is the synthetic viewer `userId "apikey:qc-newkey"` (ruling 2: humans gain nothing).
+- RED with the fix reverted in the working copy: 40/47 (S6 F1–F6) — `hr-H4.8-red.txt` § FIX ROUND. Hunter probes kept as `ledger/wo-notes/hr-H4.8-hunt-probes/*.mts.txt`.
