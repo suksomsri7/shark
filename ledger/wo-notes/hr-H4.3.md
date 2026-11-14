@@ -29,7 +29,7 @@
 
 ## 3. Decisions
 - D-a Fingerprint uses `rosterKeyStateInTx` both at propose (short read tx) and confirm (under lock) so both sides read the same shape (all entries of the key, all branches + APPROVED leave).
-- D-b `addEntry` tx mode writes no `hr.roster.entry.add` audit (would need a second connection under the lock); the confirm audit lists `entryIds`.
+- D-b (withdrawn in the fix round, ruling 3): AI rows now get a per-entry `hr.roster.entry.add` audit inside the tx.
 - D-c T6 stale compares employee facts only (lateCount · lateMin · absentDays · topWeekday), not teamAvgLate (depends on confirmer scope).
 - D-d Draft entries failing addEntry gates are `skipped` with one code `INVALID` (unknown ≡ out of scope); existing slot `EXISTS`; approved leave `LEAVE`; pending leave = warning.
 - D-e T3 `prev` carries `partial`/`excludedHeadcount` too (privacy-neutral, helps the model say "partial").
@@ -44,7 +44,34 @@
 1. no new page/route ☑ · 2. tx bodies use only the tx client (`confirmDraft`: lock/state/addEntry on `tx`; audits after commit) ☑ · 3. unit list [] = all branches via `hrScopeOf` in every wrapped reader ☑ · 4. refusals Thai fixed text, no ids/dev text ☑ · 5. TX_OPTS 15 s/30 s (server actions/chat, no route maxDuration below) ☑ · 6. no migration ☑ · 7. no privileged link paths ☑ · 8. no rate limit added ☑ · 9. no outbox events ☑ · 10. files ⊆ brief list + labor FIX1 + oracle lib (marked) ☑
 
 ## 6. Debts
-- T1 row has no per-row `unit` (board DTO has none; only `borrowed`). · AI-drafted roster rows have no per-entry `hr.roster.entry.add` audit (D-b). · Brief §9 debts unchanged.
+- T1 row has no per-row `unit` (board DTO has none; only `borrowed`). · Brief §9 debts unchanged.
 
 ## 7. Owner item
 - O1 (verbal warning suggestion) — default kept: private NOTE only.
+
+## 8. Fix round (review FIX FIRST + hunt F1/F2 · controller rulings 1–9, 14 Nov)
+| ruling | change | where | oracle |
+|---|---|---|---|
+| 1 MAJOR (review MAJOR-1 = hunt F1) | T5 propose: `checkEntryDraft` first (INVALID), then ONE `rosterKeyStateInTx` read (all branches) → `EXISTS` (any entry of the employee that day, any branch, + listRoster-visible) / `LEAVE` (approved) and `basis` from the same state; confirm re-reads under the roster lock ⇒ any shift/leave added in between ⇒ stale, nothing written | `hr/ai.ts` hrDraftRoster/keyStateOf | FX1 (owner unitId:A + hidden-B for branch-A payroll MANAGER ≡ visible-A bytes · later shift / approved leave ⇒ stale) |
+| **skip-code decision** | one generic `{employeeId, date, code:"EXISTS"}` for a taken slot whether the blocking shift is in a visible or hidden branch — no unit, shift or entry id | | FX1 `hiddenB`/`sameBytes` |
+| 2 (MINOR-3) | pre-claim refuses (PENDING, `hr.ai.proposal.refused`) only for `checkEntryDraft` refusals flagged `scope` (no permission · other branch · unassigned); left/past/shift closed/slot taken ⇒ claim → dispatch ⇒ `addEntry` refusal ⇒ stale FAILED (terminal, rollback) | `roster.ts` checkEntryDraft `scope` · `hr/ai.ts` confirmBlock/confirmDraft | FX2 |
+| 3 (MINOR-4) | `addEntry` AI mode writes `hr.roster.entry.add` per row via `tx.auditLog.create` in the same tx (like `hr.roster.publish`), `after.via:"AI"` + `proposalId`; confirm audit keeps `entryIds`. D-b withdrawn | `roster.ts` addEntry write() | L2 `perEntry` |
+| 4 (hunt F2) · **F2 decision** | refuse with fixed text `HR_AI_TEXT.alreadyNoted` (same bytes for every caller) when an AI pattern NOTE for (employee, month) exists (read via `listReviewNotes`, title from the template `… เดือน YYYY-MM (จากผู้ช่วย AI)`) or a PENDING unexpired `hr_flag_pattern` proposal for the same pair exists; confirm re-checks the note ⇒ FAILED with that text | `hr/ai.ts` patternNoted · `ai-rules.ts` | FX4 (2nd proposal by owner + lifeMgr same bytes · confirming a copied PENDING row ⇒ no 2nd note) |
+| 5 (MINOR-1 + hunt I1) | `fenceUntrusted` also strips U+200B–U+200F, U+2060–U+2069, U+FEFF; `plainText` (summaries) replaces `< > [ ] { } \` * _ # \| ~ \\` with spaces, ≤ 60 chars | `ai-rules.ts` | FX5 |
+| 6 (MINOR-2) | T1 `truncated` also when alerts > 20 | `hr/ai.ts` | FX6 |
+- RED once with the fix reverted in the working copy (ai.ts · ai-rules.ts · roster.ts at 113fd7b4c, oracle at fix-round): `qc-hr-h4.3 passed 36/42` — failing L2 (perEntry) · FX1 · FX2 · FX4 · FX5 · FX6. Green with the fix: 42/42.
+- Remaining race (accepted, documented): two `hr_flag_pattern` proposals created concurrently in the same instant can both exist; confirming both concurrently could still add two notes (no lock across `addReviewNote`, lifecycle.ts frozen). Sequential cases are covered.
+
+## 9. Debts (ruling 7)
+- D-ai-suspended-tenant: AI tools for a member of a suspended tenant rely on session-entry enforcement (`core/context.ts`) — pre-existing, all AI tools (hunt I2).
+- D-H43-brief-cache: Daily Brief line recomputed uncached per secretary turn (board + laborDay).
+- Borrowing cap in labor.ts keeps the OLDEST 200 rows (fromDate asc) and sets `truncated` (review NOTE-3).
+- Brief line uses the oldest HR system (review NOTE-2).
+
+## 10. Merge of session/hr 292bc5b7e (H3.4-YTD)
+- Conflict only in `scripts/qc-hr-h4.2-lib.mts` S1.6 ⇒ session/hr's IN_BASE form kept; my earlier S1.6 hunk dropped (not needed).
+- `scripts/hr-ui-inventory.json` rows: ours 530 (= base 530, unchanged) · theirs 540 · merged 540 — no row lost. Messages unchanged on this branch.
+- `prisma generate` · lane `prisma migrate deploy` ⇒ applied `20270110000001_hr_opening_ytd` (ep-orange-dust lane).
+
+## 11. Fix-round run (head after merge) — see hr-H4.3-green.txt
+seed 34/34 · qc-hr-h4.3 42/42 forced ×3 + unforced ×1 (no residue) · qc-hr-h4.2 57/57 ×2 · h3.4-ytd 44/44 · h0.3 37/37 · ai-tools 18/18 · ai-proposals 16/16 · ai-plan 7/7 · roster 24/24 · h2.2 60 · h2.3 79 · h2.7 94 · h2.10 57 · h2.11 70 · h3.8 78 · h3.9 60 · h1.1 81 · h2.4 68 · set-1 25 · hf-hr-privacy 194 · audit-trail 21/21 · fitness 54/54 + fitness-hr 9/9 both modes · typecheck clean (426 s).
