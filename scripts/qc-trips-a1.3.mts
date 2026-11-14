@@ -100,6 +100,10 @@ const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const deepFreeze = <T,>(v: T): T => { if (v && typeof v === "object") { for (const k of Object.keys(v as object)) deepFreeze((v as Rec)[k]); Object.freeze(v); } return v; };
 const addDaysYmd = (ymd: string, n: number) => new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10) + n)).toISOString().slice(0, 10);
 const BKK = (ymd: string, hm: string) => new Date(`${ymd}T${hm}:00+07:00`);
+/** ORACLE-EDIT T-4 TP-13 (มติ V4): เวลาเดียวกันเขียนแบบโซน +07:00 (ISO 8601 ±hh:mm) */
+const plus7 = (iso: string) => new Date(new Date(iso).getTime() + 7 * 3_600_000).toISOString().replace("Z", "+07:00");
+/** มติ V4: รูปที่ไม่ใช่ ISO 8601 วันที่+เวลา+โซน (Date.parse เดาได้หลายตัว) + ปีนอก 1900–2200 (มติ Z8) */
+const NOT_INSTANTS = ["1/1/2000", "Jan 10 2027", "2027-01-10", "2027-01-10T00:00:00", "2027-02-30T00:00:00Z", "2027-01-10T24:00:00Z", "1899-12-31T23:59:59Z"];
 const NEVER_SHOW = ["identityId", "agentUserId", "lastLoginAt", "providerId", "subject", "activeAgentAccountId", "taxIdHash", "taxIdEnc", "bankAccountEnc", "inviteTokenHash", "tokenHash", "codeHash", "target", "tenantIds", "otherAccounts"];
 
 // ═══════════════ ตัวเลขอ้างอิง (ฟิกซ์เจอร์ · ภาพ 10 · CC §H.4) ═══════════════
@@ -126,7 +130,9 @@ function refLayer(layer: "TIER" | "CONTRACT", f: Rec): Rec | null {
     && (layer === "TIER" ? c.ownerKind === "TIER" && acc.tierId !== null && c.tierId === acc.tierId : c.ownerKind === "AGENT" && c.agentAccountId === acc.id));
   const rows: { r: Rec; c: Rec }[] = [];
   for (const c of cards) for (const r of A(c.rates)) {
-    if (r.active === true && r.productKind === "TRIP" && r.productId === prod.id && (r.optionId === null || r.optionId === prod.optionId) && r.cabinTypeId === null && r.currency === f.currency
+    // ORACLE-EDIT KF-1 refLayer (มติ V1): กรองสกุลเฉพาะแถวจำนวนเงิน (NET · MARKUP · COMMISSION_FIXED) · แถว COMMISSION_PCT เข้าเกณฑ์ทุกสกุลของการจอง
+    const moneyRow = r.mode === "NET" || r.mode === "MARKUP" || r.mode === "COMMISSION_FIXED";
+    if (r.active === true && r.productKind === "TRIP" && r.productId === prod.id && (r.optionId === null || r.optionId === prod.optionId) && r.cabinTypeId === null && (!moneyRow || r.currency === f.currency)
       && inR(String(f.bookYmd), r.bookFrom, r.bookTo) && inR(String(f.travelYmd), r.travelFrom, r.travelTo)) rows.push({ r, c });
   }
   // ORACLE-EDIT KF-1 (มติ Z5 ค): "แถวแรก" — ก่อนตัดสินด้วย id: แถวไม่ระบุประเภทคนมาก่อนแถวรายประเภท · แถวรายประเภทเสมอกันตัดสินด้วยรหัสประเภทคน
@@ -148,10 +154,13 @@ function refLayer(layer: "TIER" | "CONTRACT", f: Rec): Rec | null {
   if (mode === "COMMISSION_PCT") return { refId, mode, rateBp: first.r.valueBp, fixedSatang: null, unitMinorByPaxCode: null, minSellMinor: null, markupCapBp: null };
   if (mode === "COMMISSION_FIXED") return { refId, mode, rateBp: null, fixedSatang: first.r.valueMinor, unitMinorByPaxCode: null, minSellMinor: null, markupCapBp: null };
   const map: Rec = {};
-  // ORACLE-EDIT KF-1 (มติ Z5 ข): ราคาต่อประเภทคน — priority → ช่วงพิเศษ → ความเจาะจงของประเภทคน → ลำดับเดิม (แถวช่วงพิเศษไม่ระบุประเภท priority สูงกว่าชนะแถวปกติรายประเภท)
+  // ORACLE-EDIT KF-1 refLayer (มติ V2 · แทน Z5 ข): ราคาต่อประเภทคน = §5.2 (1) rate.priority มากก่อน → (2) ช่วงพิเศษก่อน → (3) ตัวเลือกเจาะจงก่อน → (4) card.priority มากก่อน
+  //   → แถวระบุประเภทคนก่อนแถวไม่ระบุ → (5) travelFrom หลังสุดก่อน (null ท้าย) แล้ว bookFrom → (6) id น้อยก่อน — เขียนจากมติ ไม่ใช้ order() ของ "แถวแรก" (Z5 ค)
+  const paxOrder = (x: { r: Rec; c: Rec }, y: { r: Rec; c: Rec }) => (Number(y.r.priority) - Number(x.r.priority)) || (Number(isSpecial(y.r)) - Number(isSpecial(x.r)))
+    || (Number(y.r.optionId !== null) - Number(x.r.optionId !== null)) || (Number(y.c.priority) - Number(x.c.priority)) || (Number(y.r.paxTypeId !== null) - Number(x.r.paxTypeId !== null))
+    || descNullLast(x.r.travelFrom, y.r.travelFrom) || descNullLast(x.r.bookFrom, y.r.bookFrom) || cmpS(x.r.id, y.r.id);
   for (const pt of A(prod.paxTypes)) {
-    const cand = same.filter((x) => x.r.paxTypeId === pt.id || x.r.paxTypeId === null)
-      .sort((x, y) => (Number(y.r.priority) - Number(x.r.priority)) || (Number(isSpecial(y.r)) - Number(isSpecial(x.r))) || (Number(y.r.paxTypeId !== null) - Number(x.r.paxTypeId !== null)) || order(x, y));
+    const cand = same.filter((x) => x.r.paxTypeId === pt.id || x.r.paxTypeId === null).sort(paxOrder);
     if (cand.length) map[String(pt.code)] = cand[0].r.valueMinor;
   }
   // ORACLE-EDIT KF-1 (มติ Z5 ง): ขั้นต่ำมาจากแถวไม่ระบุประเภทคนเท่านั้น (แถวแรกตามลำดับที่ paxTypeId null) · ไม่มี/เป็น null ⇒ A7 (เฉพาะสกุลการจอง THB)
@@ -545,7 +554,7 @@ try {
     eq(CO("AGENT_RATE_AUDIT_KEYS"), ["cardId", "rateId", "version", "from", "to", "fields", "before", "after", "ownerKind", "tierCode", "agentAccountId", "copiedFrom", "count"], "AGENT_RATE_AUDIT_KEYS");
     const reasons = CO("AGENT_RATE_REASONS") as string[];
     eq(["BAD_INPUT", "BAD_RANGE", "MODE_VALUE_MISMATCH", "PAX_RATE_COMMISSION", "CABIN_RATE_NOT_SUPPORTED", "KIND_NOT_SUPPORTED", "PRODUCT_NOT_FOUND", "CURRENCY_MISMATCH", "MIN_SELL_BELOW_NET", "RATE_OVERLAP", "CARD_OVERLAP", "CARD_ARCHIVED", "LIMIT_REACHED", "TIER_NOT_FOUND", "ACCOUNT_NOT_ACTIVE", "SETTINGS_INVALID", "STATE_CONFLICT",
-      "MIXED_MODES", "ACCOUNT_NOT_IN_UNIT"].filter((x) => !reasons.includes(x)), [], "เหตุผลที่ขาด"); // ORACLE-EDIT K-1 (มติ Z5 ก · Z3): เพิ่ม MIXED_MODES · ACCOUNT_NOT_IN_UNIT
+      "MIXED_MODES", "ACCOUNT_NOT_IN_UNIT", "PAX_RATE_MIN_SELL"].filter((x) => !reasons.includes(x)), [], "เหตุผลที่ขาด"); // ORACLE-EDIT K-1 (มติ Z5 ก · Z3): เพิ่ม MIXED_MODES · ACCOUNT_NOT_IN_UNIT · ORACLE-EDIT K-1 (มติ V3): เพิ่ม PAX_RATE_MIN_SELL
     ok(![...(CO("SHOP_RATE_CARD_KEYS") as string[]), ...(CO("SHOP_RATE_KEYS") as string[]), ...(CO("AGENT_RATE_AUDIT_KEYS") as string[])].some((k) => NEVER_SHOW.includes(k)), "มีคีย์ต้องห้ามในรายการคีย์");
   });
   await st("K-2", "rateCardTransition: DRAFT→ACTIVE · DRAFT→ARCHIVED · ACTIVE→ARCHIVED · ACTIVE+ACTIVATE / ARCHIVED+ใด ๆ = null", () => {
@@ -558,8 +567,13 @@ try {
     ok(a.ok === true, `PCT: ${fmt(a)}`);
     eq(R(a.rate), { productKind: "TRIP", productId: PID, optionId: null, paxTypeId: null, cabinTypeId: null, mode: "COMMISSION_PCT", valueBp: 1500, valueMinor: null, currency: "THB", minSellMinor: null, markupCapBp: null, bookFrom: null, bookTo: null, travelFrom: null, travelTo: null, priority: 0, active: true }, "PCT เติมค่า");
     for (const [what, raw] of [["0%", { ...base, mode: "COMMISSION_PCT", valueBp: 0 }], ["100%", { ...base, mode: "COMMISSION_PCT", valueBp: 10_000 }], ["FIXED", { ...base, mode: "COMMISSION_FIXED", valueMinor: 20_000 }],
-      ["NET ต่อประเภทคน + ขั้นต่ำ = เน็ต", { ...base, mode: "NET", valueMinor: 280_000, paxTypeId: "pt_a", minSellMinor: 280_000 }], ["NET ช่วงพิเศษวันเดียว", { ...base, mode: "NET", valueMinor: 1, travelFrom: "2027-01-01", travelTo: "2027-01-01", bookTo: "2026-12-31" }],
+      // ORACLE-EDIT K-3 (มติ V3): แถวรายประเภทคน + ขั้นต่ำ ไม่ใช่แถวถูกต้องแล้ว (⇒ PAX_RATE_MIN_SELL ด้านล่าง) — ขั้นต่ำ = เน็ต ย้ายไปแถวไม่ระบุประเภท · แถวรายประเภทไม่มีขั้นต่ำยังถูกต้อง
+      ["NET ไม่ระบุประเภทคน + ขั้นต่ำ = เน็ต", { ...base, mode: "NET", valueMinor: 280_000, minSellMinor: 280_000 }], ["NET ต่อประเภทคน (ไม่มีขั้นต่ำ)", { ...base, mode: "NET", valueMinor: 280_000, paxTypeId: "pt_a" }], ["NET ช่วงพิเศษวันเดียว", { ...base, mode: "NET", valueMinor: 1, travelFrom: "2027-01-01", travelTo: "2027-01-01", bookTo: "2026-12-31" }],
       ["MARKUP เพดานเท่าขีด", { ...base, mode: "MARKUP", valueMinor: 300_000, markupCapBp: 100_000 }], ["MARKUP เพดาน 0", { ...base, mode: "MARKUP", valueMinor: 300_000, markupCapBp: 0, optionId: OPT, priority: 1000, active: false }]] as const) ok(norm(raw).ok === true, `${what}: ${fmt(norm(raw))}`);
+    // ORACLE-EDIT K-3 (มติ V3): แถวรายประเภทคนที่มีขั้นต่ำ (NET · MARKUP · ขั้นต่ำ = เน็ตพอดีก็ตาม) ⇒ PAX_RATE_MIN_SELL
+    normBad({ ...base, mode: "NET", valueMinor: 280_000, paxTypeId: "pt_a", minSellMinor: 280_000 }, "PAX_RATE_MIN_SELL", "NET ต่อประเภทคน + ขั้นต่ำ = เน็ต");
+    normBad({ ...base, mode: "NET", valueMinor: 280_000, paxTypeId: "pt_c", minSellMinor: 330_000, travelFrom: "2027-01-01" }, "PAX_RATE_MIN_SELL", "NET ต่อประเภทคน + ขั้นต่ำ ช่วงพิเศษ");
+    normBad({ ...base, mode: "MARKUP", valueMinor: 300_000, markupCapBp: 2_000, paxTypeId: "pt_a", minSellMinor: 300_000 }, "PAX_RATE_MIN_SELL", "MARKUP ต่อประเภทคน + ขั้นต่ำ");
   });
   await st("K-4", "normalizeAgentRate ปฏิเสธพร้อมเหตุ: ผิดคู่ช่อง · คอมฯ ใส่ประเภทคน · เคบิน · TICKET/HOTEL · ขั้นต่ำต่ำกว่าเน็ต · ช่วงกลับด้าน · FIXED สกุลอื่น · MARKUP เป็น % · ทศนิยม/NaN/สตริง/ติดลบ/เกินขีด/วันที่ไม่มีจริง/ช่องแปลก — ไม่ throw", () => {
     const n = COF("normalizeAgentRate");
@@ -637,13 +651,14 @@ try {
     eq(at("2027-01-06", [rrow("r5", { valueBp: 900, travelFrom: "2027-01-01", travelTo: "2027-01-31" })]), 800, "ซ้อน priority เท่า: travelFrom หลังสุดชนะ");
   });
   await st("K-11", "ราคาเน็ต/บวกเพิ่ม: แถวต่อประเภทคนชนะแถวไม่ระบุ · ประเภทที่ไม่มีแถวใช้แถวไม่ระบุ · ไม่มีเลย = ไม่อยู่ใน map · ขั้นต่ำจากแถว ไม่มีใช้ A7 (เฉพาะบาท) · MARKUP ส่งเพดาน · rateBp/fixedSatang = null", () => {
-    const l = lvl("CONTRACT", facts({ cards: [agentCard([net("n0", 250_000), net("na", 280_000, { paxTypeId: "pt_a", minSellMinor: 330_000 })])] }));
+    // ORACLE-EDIT K-11 (มติ V3): แถวรายประเภทคนที่มีขั้นต่ำบันทึก/ร่างไม่ได้แล้ว (normalizeAgentRate ⇒ PAX_RATE_MIN_SELL) — ฟิกซ์เจอร์ใช้แถวรายประเภทไม่มีขั้นต่ำ · ขั้นต่ำอยู่บนแถวไม่ระบุประเภท หรือ A7
+    normBad({ productKind: "TRIP", productId: PID, mode: "NET", valueMinor: 280_000, paxTypeId: "pt_a", minSellMinor: 330_000 }, "PAX_RATE_MIN_SELL", "แถวรายประเภท + ขั้นต่ำ (V3)");
+    const l = lvl("CONTRACT", facts({ cards: [agentCard([net("n0", 250_000), net("na", 280_000, { paxTypeId: "pt_a" })])] }));
     eq(l, { refId: l?.refId, mode: "NET", rateBp: null, fixedSatang: null, unitMinorByPaxCode: { ADULT: 280_000, CHILD: 250_000, INFANT: 250_000 }, minSellMinor: l?.minSellMinor, markupCapBp: null }, "NET map");
-    const only = lvl("CONTRACT", facts({ cards: [agentCard([net("na", 280_000, { paxTypeId: "pt_a", minSellMinor: 330_000 })])] }));
-    // ORACLE-EDIT K-11 (มติ Z5 ง): ขั้นต่ำของแถวรายประเภทคนไม่ใช้ (Level ของ T0.5 มีขั้นต่ำค่าเดียวทุกที่นั่ง) — ใช้เฉพาะของแถวไม่ระบุประเภท แล้วถอยไป A7
-    eq([only?.unitMinorByPaxCode, only?.minSellMinor, only?.refId], [{ ADULT: 280_000 }, null, "na@3"], "เฉพาะผู้ใหญ่ (ขั้นต่ำรายประเภทไม่ใช้ · A7 ไม่ตั้ง)");
-    eq(lvl("CONTRACT", facts({ cards: [agentCard([net("na", 280_000, { paxTypeId: "pt_a", minSellMinor: 330_000 })])], policy: pol({ "agency.price.minResalePrice": 300_000 }) }))?.minSellMinor, 300_000, "เฉพาะผู้ใหญ่ + A7 ⇒ A7 (ไม่ใช่ 330,000 ของแถวรายประเภท)");
-    eq([l?.minSellMinor, lvl("CONTRACT", facts({ cards: [agentCard([net("n0", 250_000, { minSellMinor: 260_000 }), net("na", 280_000, { paxTypeId: "pt_a", minSellMinor: 330_000 })])] }))?.minSellMinor], [null, 260_000], "ขั้นต่ำจากแถวไม่ระบุประเภทเท่านั้น");
+    const only = lvl("CONTRACT", facts({ cards: [agentCard([net("na", 280_000, { paxTypeId: "pt_a" })])] }));
+    eq([only?.unitMinorByPaxCode, only?.minSellMinor, only?.refId], [{ ADULT: 280_000 }, null, "na@3"], "เฉพาะผู้ใหญ่ (A7 ไม่ตั้ง ⇒ ไม่มีขั้นต่ำ)");
+    eq(lvl("CONTRACT", facts({ cards: [agentCard([net("na", 280_000, { paxTypeId: "pt_a" })])], policy: pol({ "agency.price.minResalePrice": 300_000 }) }))?.minSellMinor, 300_000, "เฉพาะผู้ใหญ่ + A7 ⇒ A7");
+    eq([l?.minSellMinor, lvl("CONTRACT", facts({ cards: [agentCard([net("n0", 250_000, { minSellMinor: 260_000 }), net("na", 280_000, { paxTypeId: "pt_a" })])] }))?.minSellMinor], [null, 260_000], "ขั้นต่ำจากแถวไม่ระบุประเภทเท่านั้น");
     const a7 = facts({ cards: [agentCard([net("n0", 250_000)])], policy: pol({ "agency.price.minResalePrice": 300_000 }) });
     eq([lvl("CONTRACT", a7)?.minSellMinor, lvl("CONTRACT", facts({ cards: [agentCard([net("n0", 250_000)])] }))?.minSellMinor, lvl("CONTRACT", facts({ cards: [agentCard([net("n0", 250_000, { minSellMinor: 260_000 })])], policy: pol({ "agency.price.minResalePrice": 300_000 }) }))?.minSellMinor], [300_000, null, 260_000], "A7");
     eq(lvl("CONTRACT", facts({ currency: "USD", cards: [agentCard([net("n0", 9_000, { currency: "USD" })])], policy: pol({ "agency.price.minResalePrice": 300_000 }) }))?.minSellMinor, null, "A7 ไม่ใช้กับสกุลอื่น");
@@ -656,7 +671,7 @@ try {
   });
   await st("K-12", "ไม่ใช้ของคนอื่น/ผิดมิติ แม้ถูกส่งเข้ามา: card เอเจนซี่อื่น · card ระดับอื่น · สินค้าอื่น · ตัวเลือกอื่น · เคบิน · สกุลอื่น · productKind อื่น — ตัวเลือกเจาะจงชนะไม่ระบุ", () => {
     const bad = [agentCard([rrow("x1", { valueBp: 9999 })], { id: "c_other_agent", agentAccountId: "acc_2" }), tierCard([rrow("x2", { valueBp: 9998 })], { id: "c_other_tier", tierId: "tier_A" }),
-      tierCard([rrow("x3", { valueBp: 9997, productId: "other" }), rrow("x4", { valueBp: 9996, optionId: OPT_OTHER }), rrow("x5", { valueBp: 9995, cabinTypeId: "cab" }), rrow("x6", { valueBp: 9994, currency: "USD" }), rrow("x7", { valueBp: 9993, productKind: "TICKET" })], { id: "c_dims" }),
+      tierCard([rrow("x3", { valueBp: 9997, productId: "other" }), rrow("x4", { valueBp: 9996, optionId: OPT_OTHER }), rrow("x5", { valueBp: 9995, cabinTypeId: "cab" }), net("x6", 9994, { currency: "USD" }) /* ORACLE-EDIT K-12 (มติ V1): "สกุลอื่น" = แถวจำนวนเงิน (แถว % เข้าเกณฑ์ทุกสกุล — ดู K-21) */, rrow("x7", { valueBp: 9993, productKind: "TICKET" })], { id: "c_dims" }),
       kcard("c_agent_as_tier", { ownerKind: "AGENT", tierId: "tier_B", agentAccountId: "acc_2" }, [rrow("x8", { valueBp: 9992 })])];
     const b = built(facts({ cards: bad }));
     eq([R(R(b.input).tier).rateBp, R(b.input).contract, R(R(b.trace).tier).source], [1500, null, "TIER_DEFAULT"], "ไม่ใช้");
@@ -697,7 +712,7 @@ try {
     eq([t.collector, t.sellerOfRecord, t.earnedAt, t.clawbackOnCancel, t.discountFromCommission, t.actualSaleSatang], ["SHOP_COLLECTS", "SHOP_PRINCIPAL", "ON_CONFIRM", false, { enabled: true, capPct: 7 }, null], "ส่งตรง");
     const schema = need(TRM, "trips").agencyPricingInputSchema as { safeParse(v: unknown): { success: boolean; error?: unknown } };
     const variants = [facts(), facts({ account: { tierId: null, tierCode: null } }), facts({ account: { payeeType: "TH_PERSON", vatRegistered: true } }), facts({ account: { payeeType: "FOREIGN" } }),
-      facts({ cards: [agentCard([net("n0", 250_000), net("na", 280_000, { paxTypeId: "pt_a", minSellMinor: 330_000 })])] }), facts({ cards: [agentCard([rrow("m0", { mode: "MARKUP", valueBp: null, valueMinor: 300_000, markupCapBp: 2000 })]), tierCard([rrow("f0", { mode: "COMMISSION_FIXED", valueBp: null, valueMinor: 20_000 })])] })];
+      facts({ cards: [agentCard([net("n0", 250_000, { minSellMinor: 260_000 }), net("na", 280_000, { paxTypeId: "pt_a" })])] }) /* ORACLE-EDIT K-15 (มติ V3): ขั้นต่ำย้ายไปแถวไม่ระบุประเภท */, facts({ cards: [agentCard([rrow("m0", { mode: "MARKUP", valueBp: null, valueMinor: 300_000, markupCapBp: 2000 })]), tierCard([rrow("f0", { mode: "COMMISSION_FIXED", valueBp: null, valueMinor: 20_000 })])] })];
     for (const [i, f] of variants.entries()) { const p = schema.safeParse({ ...R(built(f).input), policySnapshot: null }); ok(p.success, `แบบที่ ${i}: ไม่ผ่าน schema ของ trips ${fmt(p.error)}`); }
     eq(sortedKeys(built(facts()).input), ["agentAccountId", "agentTierId", "contract", "terms", "tier", "vatRegistered"], "คีย์ของ input");
   });
@@ -715,7 +730,7 @@ try {
     ok(R(a).ok === true, fmt(a));
   });
   // ═══ ข้อสอบที่มติ Z1–Z9 สั่งเพิ่ม (ผู้เขียนข้อสอบแยก · r1) — ค่าคาดหวังคิดจากฟิกซ์เจอร์/มติ ไม่เรียกโค้ดที่ตรวจเป็นคำตอบ ═══
-  await st("K-18", "มติ Z5 (ข)(ค) ราคาต่อประเภทคน + แถวแรก: แถวช่วงพิเศษไม่ระบุประเภท priority สูงกว่าชนะแถวปกติรายประเภท · priority เท่ากัน ช่วงพิเศษไม่ระบุชนะแถวปกติรายประเภท · ช่วงพิเศษทั้งคู่ รายประเภทชนะ · priority ของรายประเภทสูงกว่าชนะ · เสมอกันทุกชั้น ⇒ แถวไม่ระบุประเภทเป็น \"แถวแรก\" (เพดาน/refId) ไม่ว่า id", () => {
+  await st("K-18", "มติ V2 (แทน Z5 ข) + Z5 (ค) ราคาต่อประเภทคน + แถวแรก: card priority สูงแถวไม่ระบุชนะแถวเด็กใน card priority ต่ำ (150,000) · ตัวเลือกเจาะจงไม่ระบุชนะแถวเด็กของทั้งสินค้า (300,000) · card/priority เดียวกัน แถวเด็กชนะแถวไม่ระบุ (200,000 / ผู้ใหญ่ 300,000) ·แถวช่วงพิเศษไม่ระบุประเภท priority สูงกว่าชนะแถวปกติรายประเภท · priority เท่ากัน ช่วงพิเศษไม่ระบุชนะแถวปกติรายประเภท · ช่วงพิเศษทั้งคู่ รายประเภทชนะ · priority ของรายประเภทสูงกว่าชนะ · เสมอกันทุกชั้น ⇒ แถวไม่ระบุประเภทเป็น \"แถวแรก\" (เพดาน/refId) ไม่ว่า id", () => {
     const sp = { travelFrom: "2027-03-01", travelTo: "2027-03-31" };
     const m = (rates: Rec[], travelYmd = DEP_DATE) => lvl("CONTRACT", facts({ cards: [agentCard(rates)], travelYmd }))?.unitMinorByPaxCode;
     eq(m([net("na", 280_000, { paxTypeId: "pt_a" }), net("sg", 200_000, { priority: 1, ...sp })]), { ADULT: 200_000, CHILD: 200_000, INFANT: 200_000 }, "ช่วงพิเศษไม่ระบุ priority 1 ชนะรายประเภท priority 0");
@@ -728,6 +743,21 @@ try {
       const l = lvl("CONTRACT", facts({ cards: [agentCard(mk(ip, ig))] }));
       eq([l?.refId, l?.markupCapBp, l?.minSellMinor, l?.unitMinorByPaxCode], [`${ig}@3`, 2_000, 320_000, { ADULT: 300_000, CHILD: 310_000, INFANT: 310_000 }], `เสมอกัน id ${ip}/${ig}: แถวไม่ระบุประเภทเป็นแถวแรก`);
     }
+    // ORACLE-EDIT K-18 (มติ V2): ความเจาะจงของประเภทคนตัดสินหลัง (3) ตัวเลือกเจาะจง และ (4) card.priority เท่านั้น — ตัวเลขตรึงจากผู้ตรวจรอบ 2 (scratchpad/a1.3-review-r2/out.txt)
+    //   (ก) card priority 10 แถวไม่ระบุประเภท NET 150,000 · card priority 0 แถวเด็ก NET 200,000 ⇒ เด็ก = 150,000 (card โปรมีผลกับทุกประเภทคน)
+    const vA = lvl("CONTRACT", facts({ cards: [agentCard([net("g10", 150_000)], { id: "c_hi10", priority: 10 }), agentCard([net("c0", 200_000, { paxTypeId: "pt_c" })], { id: "c_lo0", priority: 0 })] }));
+    eq([vA?.unitMinorByPaxCode, vA?.refId], [{ ADULT: 150_000, CHILD: 150_000, INFANT: 150_000 }, "g10@3"], "V2 (ก) card priority 10 ไม่ระบุ ชนะ card priority 0 แถวเด็ก");
+    //   (ข) แถวตัวเลือกเจาะจง ไม่ระบุประเภท 300,000 · แถวเด็กของทั้งสินค้า 200,000 ⇒ เด็กในตัวเลือกนั้น = 300,000 · รอบของตัวเลือกอื่น ⇒ เด็ก 200,000 เท่านั้น
+    const optRows = [net("og", 300_000, { optionId: OPT }), net("pc", 200_000, { paxTypeId: "pt_c" })];
+    eq(lvl("CONTRACT", facts({ cards: [agentCard(optRows)] }))?.unitMinorByPaxCode, { ADULT: 300_000, CHILD: 300_000, INFANT: 300_000 }, "V2 (ข) ตัวเลือกเจาะจงไม่ระบุ ชนะแถวเด็กของทั้งสินค้า");
+    eq(lvl("CONTRACT", facts({ cards: [agentCard(optRows)], product: { optionId: OPT_OTHER } }))?.unitMinorByPaxCode, { CHILD: 200_000 }, "V2 (ข) รอบตัวเลือกอื่น: เหลือแถวเด็ก");
+    //   (ค) card เดียว priority เดียว ไม่มีช่วงพิเศษ: แถวเด็ก 200,000 กับแถวไม่ระบุ 300,000 ⇒ เด็ก 200,000 · ผู้ใหญ่ (และทารก) 300,000 — id ของแถวไม่มีผล
+    for (const [ic, ig] of [["a_child", "z_gen"], ["z_child", "a_gen"]] as const) {
+      eq(lvl("CONTRACT", facts({ cards: [agentCard([net(ic, 200_000, { paxTypeId: "pt_c" }), net(ig, 300_000)])] }))?.unitMinorByPaxCode, { ADULT: 300_000, CHILD: 200_000, INFANT: 300_000 }, `V2 (ค) แถวเด็กชนะแถวไม่ระบุ (id ${ic}/${ig})`);
+    }
+    //   ขั้นต่ำความเจาะจง: rate.priority ยังมาก่อน card.priority — แถวเด็ก priority 1 ใน card priority 0 ชนะแถวไม่ระบุ priority 0 ใน card priority 10
+    eq(lvl("CONTRACT", facts({ cards: [agentCard([net("g10", 150_000)], { id: "c_hi10", priority: 10 }), agentCard([net("c1", 200_000, { paxTypeId: "pt_c", priority: 1 })], { id: "c_lo0", priority: 0 })] }))?.unitMinorByPaxCode,
+      { ADULT: 150_000, CHILD: 200_000, INFANT: 150_000 }, "V2 rate.priority มาก่อน card.priority");
   });
   await st("K-19", "มติ Z6 ⚖️ e-WHT: มูลนิธิ + เปิด e-WHT ⇒ อัตรายัง 10% (eWht false) · นิติบุคคลไทย ⇒ อัตราจากค่าตั้ง A28 จนถึงวันสิ้นมาตรการของค่าตั้ง (เปลี่ยนค่าตั้งแล้วผลเปลี่ยนตาม — ไม่ฝังโค้ด) · ปิด e-WHT ⇒ 3%", () => {
     const w = (payee: string, e: Rec, bookYmd = TODAY) => { const x = R(terms(facts({ account: { payeeType: payee }, policy: pol({ "agency.wht.eWht": e }), bookYmd })).wht); return [x.mode, x.rateBp, x.eWht]; };
@@ -743,6 +773,32 @@ try {
     eq([warn("EXCLUSIVE", "TEMPLATE"), warn("INCLUSIVE", "FALLBACK"), warn("EXCLUSIVE", "UNIT"), warn("INCLUSIVE", "AGENT"), warn("NONE", "UNIT")], [false, false, true, true, false], "คำเตือน VAT");
     for (const d of ["0000-01-01", "1899-12-31", "2201-01-01"]) for (const k of ["travelFrom", "bookTo"]) normBad({ ...base, mode: "NET", valueMinor: 1, [k]: d }, "BAD_INPUT", `${k} ${d}`);
     for (const d of ["1900-01-01", "2200-12-31"]) ok(norm({ ...base, mode: "NET", valueMinor: 1, travelFrom: d, travelTo: d }).ok === true, `ปี ${d} ต้องรับ`);
+  });
+  // ═══ ข้อสอบที่มติ V1–V4 สั่งเพิ่ม (ผู้เขียนข้อสอบแยก · หลัง r2) ═══
+  // ORACLE-EDIT K-21 (มติ V1): ข้อใหม่ — ตัวกรองสกุลใช้กับแถวจำนวนเงินเท่านั้น
+  await st("K-21", "มติ V1 (บริสุทธิ์): สัญญา % (แถวสกุล THB ของสินค้า) กับการจอง USD ⇒ ได้ % ตามสัญญา (applied CONTRACT · ไม่ถอยไปค่าเริ่มของระดับ) · แถว % สกุลอื่นกับการจอง THB ⇒ ใช้ · แถว COMMISSION_FIXED / NET / MARKUP สกุล THB กับการจอง USD ⇒ ไม่ถูกเลือก (ถอยไประดับ / ค่าเริ่ม)", () => {
+    const pct = agentCard([rrow("cp", { valueBp: 2000 })]);
+    const bU = built(facts({ currency: "USD", cards: [pct] }));
+    eq([R(R(bU.input).contract).rateBp, R(R(bU.input).contract).refId, R(bU.trace).applied, R(R(bU.input).tier).rateBp], [2000, "cp@3", "CONTRACT", 1500], "สัญญา % + จอง USD");
+    eq(lvl("TIER", facts({ cards: [tierCard([rrow("tu", { valueBp: 1100, currency: "USD" })])] }))?.rateBp, 1100, "แถว % สกุล USD + จอง THB ⇒ ใช้");
+    const fixed = agentCard([rrow("cf", { mode: "COMMISSION_FIXED", valueBp: null, valueMinor: 15_000 })]);
+    const bF = built(facts({ currency: "USD", cards: [fixed] }));
+    eq([R(bF.input).contract, R(bF.trace).applied, R(R(bF.input).tier).rateBp, R(R(bF.trace).tier).source], [null, "TIER", 1500, "TIER_DEFAULT"], "สัญญา FIXED THB + จอง USD ⇒ ไม่ถูกเลือก");
+    eq(R(R(built(facts({ cards: [fixed] })).input).contract).fixedSatang, 15_000, "positive control: FIXED THB + จอง THB ⇒ ถูกเลือก");
+    eq([lvl("CONTRACT", facts({ currency: "USD", cards: [agentCard([net("cn", 280_000)])] })), lvl("CONTRACT", facts({ currency: "USD", cards: [agentCard([rrow("cm", { mode: "MARKUP", valueBp: null, valueMinor: 300_000, markupCapBp: 2000 })])] }))], [null, null], "NET/MARKUP THB + จอง USD ⇒ ไม่ถูกเลือก");
+    // ชั้นเดียวกัน: แถว FIXED priority สูงสกุลไม่ตรงถูกข้าม แถว % priority ต่ำกว่าถูกใช้
+    eq(lvl("CONTRACT", facts({ currency: "USD", cards: [agentCard([rrow("hf", { mode: "COMMISSION_FIXED", valueBp: null, valueMinor: 15_000, priority: 5 }), rrow("lp", { valueBp: 1700 })])] }))?.rateBp, 1700, "FIXED ถูกข้าม % ใช้");
+  });
+  // ORACLE-EDIT K-22 (มติ V4): ข้อใหม่ — isAgentRateInstant รับเฉพาะ ISO 8601 วันที่+เวลา+โซน
+  await st("K-22", "มติ V4 (บริสุทธิ์): isAgentRateInstant รับ ISO 8601 มีเวลา+โซน (…Z · ±hh:mm · มี/ไม่มีวินาที · เศษวินาที) · ปฏิเสธ 1/1/2000 · Jan 10 2027 · วันที่อย่างเดียว · ไม่มีโซน · 30 ก.พ. · ชั่วโมง 24 · นาที 60 · ปี 1899 · ชนิดอื่น — ไม่ throw", () => {
+    const f = COF("isAgentRateInstant");
+    const good = ["2027-01-10T00:00:00Z", "2027-01-10T07:00:00+07:00", "2027-01-10T00:00:00.123Z", "2027-01-09T19:00-05:00", "2026-11-12T18:00:00.000+07:00", "1900-01-01T00:00:00Z", "2200-12-31T23:59:59Z"];
+    const bad: unknown[] = ["1/1/2000", "Jan 10 2027", "2027-01-10", "2027-01-10T00:00:00", "2027-01-10 00:00:00Z", "2027-02-30T00:00:00Z", "2027-01-10T24:00:00Z", "2027-01-10T23:60:00Z", "1899-12-31T12:00:00Z", "2201-01-01T00:00:00Z",
+      "", null, 1_700_000_000_000, new Date(0), {}];
+    eq(good.filter((s) => f(s) !== true), [], "ต้องรับ");
+    const wrong: string[] = [];
+    for (const s of bad) { let r: unknown; try { r = f(s); } catch (e) { throw new AssertFail(`throw กับ ${fmt(s)}: ${errMsg(e)}`); } if (r !== false) wrong.push(fmt(s)); }
+    eq(wrong, [], "ต้องปฏิเสธ");
   });
   groupLine("K");
 
@@ -822,7 +878,8 @@ try {
         const owner = A(f.cards).find((c) => A(c.rates).some((r) => r.id === rateId));
         const row = A(owner?.rates).find((r) => r.id === rateId);
         ok(owner && row, `ชุด ${i}: refId ${String(got.refId)} ไม่มีจริง`);
-        ok(owner?.status === "ACTIVE" && String(owner?.version) === ver && row?.active === true && row?.productId === PID && row?.currency === "THB" && row?.cabinTypeId === null && inR(String(f.travelYmd), row?.travelFrom, row?.travelTo) && inR(String(f.bookYmd), row?.bookFrom, row?.bookTo) && inR(String(f.bookYmd), owner?.validFrom, owner?.validTo)
+        // ORACLE-EDIT KF-4 (มติ V1): สกุลตรงเฉพาะแถวจำนวนเงิน — แถว COMMISSION_PCT สกุลใดก็เข้าเกณฑ์
+        ok(owner?.status === "ACTIVE" && String(owner?.version) === ver && row?.active === true && row?.productId === PID && (row?.mode === "COMMISSION_PCT" || row?.currency === "THB") && row?.cabinTypeId === null && inR(String(f.travelYmd), row?.travelFrom, row?.travelTo) && inR(String(f.bookYmd), row?.bookFrom, row?.bookTo) && inR(String(f.bookYmd), owner?.validFrom, owner?.validTo)
           && (l === "TIER" ? owner?.tierId === "tier_B" && owner?.ownerKind === "TIER" : owner?.agentAccountId === "acc_1" && owner?.ownerKind === "AGENT"), `ชุด ${i} ชั้น ${l}: เลือกแถวไม่เข้าเกณฑ์ ${fmt(row)}`);
         const bumped = { ...f, cards: A(f.cards).map((c) => ({ ...c, priority: Number(c.priority) + 1, rates: A(c.rates).map((r) => ({ ...r, priority: Number(r.priority) + 1 })) })) };
         const low = l === "TIER" ? tierCard([rrow("zz_low", { valueBp: 1, priority: 0 })], { id: "zz_c", priority: 0 }) : agentCard([rrow("zz_low", { valueBp: 1, priority: 0 })], { id: "zz_c", priority: 0 });
@@ -854,7 +911,10 @@ try {
   };
   // ORACLE-EDIT S-6 S-7 (ผู้คุม): ไม่นับไฟล์ที่ผู้คุมแก้เอง (ORACLE-EDIT ของ a1.1 / t0.1 · probe ของนักล่า) และไฟล์ทดลองใน scratchpad/ (ไม่ใช่โค้ด · untracked)
   const SUPERVISOR_FILES = new Set(["scripts/qc-trips-a1.1.mts", "scripts/qc-trips-t0.1.mts"]);
-  const notOurs = (f: string): boolean => f === ORACLE_FILE || /^scripts\/probe-trips-a1\.3-/.test(f) || SUPERVISOR_FILES.has(f) || f.startsWith("scratchpad/");
+  // ORACLE-EDIT S-6 S-7 (มติหลังตรวจรอบ 2 · ข้อสอบ): ไฟล์ของผู้คุมยกเว้นได้เฉพาะเมื่อยังตรงกับ commit ที่ผู้คุมแก้ (c25f03185) ทุกไบต์ — `git diff c25f03185 -- <ไฟล์>` ว่าง และไม่ใช่ไฟล์ untracked · แก้ต่อจากนั้น = นับเป็นการแตะ
+  const SUPERVISOR_PIN = "c25f03185";
+  const supervisorPinned = (f: string): boolean => SUPERVISOR_FILES.has(f) && hasRef(SUPERVISOR_PIN) && gitOk(["diff", "--quiet", SUPERVISOR_PIN, "--", f]) && !git(["ls-files", "--others", "--exclude-standard", "--", f]).trim();
+  const notOurs = (f: string): boolean => f === ORACLE_FILE || /^scripts\/probe-trips-a1\.3-/.test(f) || supervisorPinned(f) || f.startsWith("scratchpad/");
   const SVC_FNS = ["ensureAgentTiers", "listAgentTiers", "setAgentAccountTier", "listAgentRateCards", "getAgentRateCard", "createAgentRateCard", "updateAgentRateCard", "setAgentRateCardStatus", "upsertAgentRate", "setAgentRateActive", "installAgencyPricingPort", "tryAgentPrice"];
   const CORE_FNS = ["rateCardTransition", "normalizeAgentRate", "dateRangesOverlap", "rateRowsConflict", "resolveAgentLayer", "decideCommissionVatMode", "buildAgencyPricingInput"];
   const CORE_CONSTS = ["AGENT_TIER_CODES", "AGENT_RATE_MODES", "AGENT_RATE_CARD_STATUSES", "AGENT_RATE_CARD_ACTIONS", "AGENT_RATE_LIMITS", "AGENT_RATE_REASONS", "SHOP_RATE_CARD_KEYS", "SHOP_RATE_KEYS", "AGENT_RATE_AUDIT_KEYS"];
@@ -903,6 +963,9 @@ try {
     needBuilt();
     const ch = changedSinceBase(["."]).filter((f) => !f.startsWith("ledger/") && !notOurs(f) && !withinRuling(f) && !sameAsSession(f)); // ORACLE-EDIT S-6 (มติ Z1 Z4)
     eq(ch.filter((f) => !OWNED.has(f)), [], "ไฟล์นอกขอบเขต");
+    // ORACLE-EDIT S-6 (ข้อสอบหลัง r2): positive control ของตัวตรึง — ไฟล์ที่เปลี่ยนหลัง c25f03185 (ไฟล์ข้อสอบนี้) ตัวตรวจ diff ต้องเห็น · ไฟล์ของผู้คุมทั้งสองยังตรง pin
+    ok(hasRef(SUPERVISOR_PIN) && !gitOk(["diff", "--quiet", SUPERVISOR_PIN, "--", ORACLE_FILE]), "ตัวตรวจ diff เทียบ pin ไม่เห็นไฟล์ที่เปลี่ยน (positive control)");
+    eq([...SUPERVISOR_FILES].filter((f) => !supervisorPinned(f)), [], "ไฟล์ของผู้คุมเปลี่ยนหลัง pin");
   });
   await st("S-7", "ไม่แตะไฟล์ต้องห้าม: modules/{trips,ticket,pos,hotel,rooms,dorm,booking,queue,account,party,crm,member} · agency/{entry,identity-core,accounts,accounts-core,tokens,agent-side} · platform/agent-auth · core/settings · core/{db,scope,audit,outbox,session,rbac} · prisma · app · components · messages · scripts", () => {
     needBuilt();
@@ -981,6 +1044,19 @@ try {
     okR(await shop("setAgentAccountTier", cA(), { agentAccountId: acc("T1").id, tierCode: null, expectedUpdatedAt: await upd("T1") }), "ล้าง");
     eq(await tierOf("T1"), null, "ล้างระดับ");
   });
+  // ORACLE-EDIT T-4 (มติ V4 + Z8): ข้อใหม่ — expectedUpdatedAt ผ่านทางเข้าจริง
+  await st("T-4", "มติ V4 + Z8: setAgentAccountTier · expectedUpdatedAt = 1/1/2000 · Jan 10 2027 · วันที่อย่างเดียว · ไม่มีโซน · 30 ก.พ. · ชั่วโมง 24 · ปี 1899 · updatedAt จริงที่ตัดโซน/ตัดเวลา ⇒ VALIDATION BAD_INPUT ไม่เขียน (ระดับ/updatedAt/audit เท่าเดิม) · updatedAt จริงเขียนเป็น +07:00 ⇒ รับ (เวลาเดียวกัน)", async () => {
+    needBuilt(); needDb(); const t = await tiers();
+    await mkAccount("V4", tA);
+    const state = async () => (await q<{ tierId: string | null; u: string }>(`SELECT "tierId", to_char("updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS u FROM "AgentAccount" WHERE id = $1`, [acc("V4").id]))[0];
+    const s0 = await state(), a0 = (await auditRows(tA)).length;
+    for (const bad of [...NOT_INSTANTS, s0.u.slice(0, 10), s0.u.replace("Z", "")]) {
+      failR(await shop("setAgentAccountTier", cA(), { agentAccountId: acc("V4").id, tierCode: "B", expectedUpdatedAt: bad }), "VALIDATION", `expectedUpdatedAt ${bad}`, "BAD_INPUT");
+    }
+    eq([await state(), (await auditRows(tA)).length], [s0, a0], "ไม่เขียน");
+    const okr = okR(await shop("setAgentAccountTier", cA(), { agentAccountId: acc("V4").id, tierCode: "B", expectedUpdatedAt: plus7(s0.u) }), `+07:00 ${plus7(s0.u)}`);
+    eq([okr.replayed, (await state()).tierId], [false, t.B], "เวลาเดียวกันแบบ +07:00 ใช้ได้");
+  });
   groupLine("T");
 
   // ═══════════════ R. rate card + แถวราคา ═══════════════
@@ -1035,16 +1111,21 @@ try {
     okR(await upsert({ productKind: "TRIP", productId: PRD.A2.id, mode: "COMMISSION_FIXED", valueMinor: 20_000 }), "FIXED");
     // ORACLE-EDIT R-4 (มติ Z5 ก): สินค้า/ตัวเลือก/priority เดียวกันใน card เดียว ต้องโหมดเดียว — NET ข้าง FIXED (A2 · ตัวเลือก null · priority 0) ⇒ VALIDATION MIXED_MODES ไม่เขียน
     const vMix = cardR.version;
-    failR(await upsert({ productKind: "TRIP", productId: PRD.A2.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A2.pt.ADULT, minSellMinor: 330_000, travelFrom: "2028-01-01", travelTo: "2028-01-31" }), "VALIDATION", "NET ปนกับ FIXED priority เดียวกัน", "MIXED_MODES");
-    eq(await cardVer(cardR.id), vMix, "version หลัง MIXED_MODES");
+    // ORACLE-EDIT R-4 (มติ V3): แถวรายประเภทคนที่มีขั้นต่ำ ⇒ VALIDATION PAX_RATE_MIN_SELL ไม่เขียน (ตรวจรูปก่อนตรวจโหมดปน) — เพื่อยังพิสูจน์ MIXED_MODES ได้ แถวทดสอบโหมดปนจึงไม่มีขั้นต่ำ
+    const nRates = async () => (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "AgentRate" WHERE "rateCardId" = $1`, [cardR.id]))[0]?.n;
+    const nr0 = await nRates(), au0 = (await auditRows(tA)).length;
+    failR(await upsert({ productKind: "TRIP", productId: PRD.A2.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A2.pt.ADULT, minSellMinor: 330_000, travelFrom: "2028-01-01", travelTo: "2028-01-31", priority: 1 }), "VALIDATION", "NET รายประเภท + ขั้นต่ำ", "PAX_RATE_MIN_SELL");
+    eq([await cardVer(cardR.id), await nRates(), (await auditRows(tA)).length], [vMix, nr0, au0], "PAX_RATE_MIN_SELL ไม่เขียน (version/แถว/audit)");
+    failR(await upsert({ productKind: "TRIP", productId: PRD.A2.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A2.pt.ADULT, travelFrom: "2028-01-01", travelTo: "2028-01-31" }), "VALIDATION", "NET ปนกับ FIXED priority เดียวกัน", "MIXED_MODES");
+    eq([await cardVer(cardR.id), await nRates(), (await auditRows(tA)).length], [vMix, nr0, au0], "version/แถว/audit หลัง MIXED_MODES");
     // priority ต่างกัน ⇒ ไม่ถือว่าปน (ตัว priority สูงชนะตอนเลือก) ⇒ รับ
-    okR(await upsert({ productKind: "TRIP", productId: PRD.A2.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A2.pt.ADULT, minSellMinor: 330_000, travelFrom: "2028-01-01", travelTo: "2028-01-31", priority: 1 }), "NET priority ต่าง");
+    okR(await upsert({ productKind: "TRIP", productId: PRD.A2.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A2.pt.ADULT, travelFrom: "2028-01-01", travelTo: "2028-01-31", priority: 1 }), "NET priority ต่าง");
     okR(await upsert({ productKind: "TRIP", productId: PRD.A2.id, optionId: PRD.A2.opt, mode: "MARKUP", valueMinor: 300_000, markupCapBp: 2000, travelFrom: "2028-02-01", travelTo: "2028-02-28" }), "MARKUP");
     eq([cardR.version, await cardVer(cardR.id)], [v0 + 5, v0 + 5], "version");
     const db = await q<{ mode: string; valueBp: number | null; valueMinor: number | null; tenantId: string }>(`SELECT mode, "valueBp", "valueMinor", "tenantId" FROM "AgentRate" WHERE "rateCardId" = $1 ORDER BY mode, "valueBp"`, [cardR.id]);
     eq(db.map((x) => [x.mode, x.valueBp, x.valueMinor, x.tenantId]), [["COMMISSION_FIXED", null, 20_000, tA], ["COMMISSION_PCT", 1000, null, tA], ["COMMISSION_PCT", 1200, null, tA], ["MARKUP", null, 300_000, tA], ["NET", null, 280_000, tA]], "ฐาน");
     for (const [rate, reason] of [[rateOf({ valueBp: 15.5 }), "BAD_INPUT"], [rateOf({ valueBp: undefined, valueMinor: 5 }), "MODE_VALUE_MISMATCH"], [rateOf({ paxTypeId: PRD.A.pt.ADULT, travelFrom: "2029-01-01" }), "PAX_RATE_COMMISSION"],
-      [{ productKind: "HOTEL", productId: PRD.A.id, mode: "NET", valueMinor: 1 }, "KIND_NOT_SUPPORTED"], [{ productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 500, minSellMinor: 499, travelFrom: "2029-01-01" }, "MIN_SELL_BELOW_NET"]] as const) failR(await upsert(rate), "VALIDATION", `แถวผิด ${reason}`, reason);
+      [{ productKind: "HOTEL", productId: PRD.A.id, mode: "NET", valueMinor: 1 }, "KIND_NOT_SUPPORTED"], [{ productKind: "TRIP", productId: PRD.A.id, mode: "MARKUP", valueMinor: 300_000, markupCapBp: 2000, paxTypeId: PRD.A.pt.CHILD, minSellMinor: 300_000, travelFrom: "2029-01-01" }, "PAX_RATE_MIN_SELL"] /* ORACLE-EDIT R-4 (มติ V3) */,[{ productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 500, minSellMinor: 499, travelFrom: "2029-01-01" }, "MIN_SELL_BELOW_NET"]] as const) failR(await upsert(rate), "VALIDATION", `แถวผิด ${reason}`, reason);
     eq(await cardVer(cardR.id), v0 + 5, "version หลังคำสั่งที่ล้ม");
     eq(R(okR(await shop("getAgentRateCard", cA(), { cardId: cardR.id }), "get").card).rateCount, 5, "rateCount");
   });
@@ -1225,6 +1306,87 @@ try {
     const off2 = okR(await shop("setAgentRateActive", cA(), { cardId: c.id, expectedVersion: c.version + 1, rateId: c.rateIds[0], active: false }), "ปิดซ้ำ");
     eq([off2.replayed, R(off2.card).version, await cardVer(c.id), await au()], [true, c.version + 1, c.version + 1, a0 + 1], "ปิดซ้ำ = ผลซ้ำ");
   });
+  // ═══ ข้อใหม่หลัง r2 (มติ V3 · Z5 ก · Z2) ═══
+  /** สภาพของ card: version · แฮชทุกแถว (ทุกคอลัมน์) · จำนวนแถว · จำนวน audit ของร้าน A */
+  const cardState = async (cardId: string) => [await cardVer(cardId), (await q<{ h: string; n: number }>(`SELECT COALESCE(md5(string_agg(row_to_json(r)::text, ',' ORDER BY id)), '') AS h, count(*)::int AS n FROM "AgentRate" r WHERE "rateCardId" = $1`, [cardId]))[0], (await auditRows(tA)).length];
+  // ORACLE-EDIT R-17 (มติ V3): ข้อใหม่ — ขั้นต่ำบนแถวรายประเภทคนถูกปฏิเสธทั้ง 3 ทาง
+  await st("R-17", "มติ V3: แถวรายประเภทคน + ขั้นต่ำ ⇒ VALIDATION PAX_RATE_MIN_SELL ไม่เขียน (version · แถวทุกไบต์ · audit เท่าเดิม) ทั้ง บันทึก (ไม่มี id) · แก้ด้วย id (เติมขั้นต่ำให้แถวรายประเภท · ใส่ประเภทคนให้แถวที่มีขั้นต่ำ) · ร่างในเครื่องลองคิด (ผลเท่ากับตอนบันทึกทุกไบต์ · ฐานไม่เปลี่ยน) — แถวไม่ระบุประเภทที่มีขั้นต่ำยังบันทึก/ร่างได้", async () => {
+    needBuilt(); needDb();
+    await mkAccount("V3", tA); await setTierRaw("V3", "B");
+    const c = await mkCard(agentOwner("V3"), [{ productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A.pt.ADULT }, { productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 250_000, minSellMinor: 300_000 }], { activate: false });
+    const s0 = await cardState(c.id);
+    const paxMin = { productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 200_000, paxTypeId: PRD.A.pt.CHILD, minSellMinor: 250_000 };
+    const saved = await shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: c.version, rate: paxMin });
+    failR(saved, "VALIDATION", "บันทึก", "PAX_RATE_MIN_SELL");
+    failR(await shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: c.version, rate: { id: c.rateIds[0], productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A.pt.ADULT, minSellMinor: 280_000 } }), "VALIDATION", "แก้ด้วย id: เติมขั้นต่ำ", "PAX_RATE_MIN_SELL");
+    failR(await shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: c.version, rate: { id: c.rateIds[1], productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 250_000, paxTypeId: PRD.A.pt.CHILD, minSellMinor: 300_000 } }), "VALIDATION", "แก้ด้วย id: ใส่ประเภทคนให้แถวที่มีขั้นต่ำ", "PAX_RATE_MIN_SELL");
+    failR(await shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: c.version, rate: { productKind: "TRIP", productId: PRD.A.id, mode: "MARKUP", valueMinor: 200_000, markupCapBp: 2000, paxTypeId: PRD.A.pt.CHILD, minSellMinor: 200_000, priority: 1 } }), "VALIDATION", "บันทึก MARKUP", "PAX_RATE_MIN_SELL");
+    eq(await cardState(c.id), s0, "บันทึก/แก้ที่ถูกปฏิเสธไม่เขียน");
+    const w0 = await writeCounts();
+    const tried = await shop("tryAgentPrice", cA(), { agentAccountId: acc("V3").id, unitId: uA, productId: PRD.A.id, slotId: depMain, pax: [{ paxTypeId: PRD.A.pt.ADULT, qty: 2 }], at: NOW.toISOString(), draft: { ownerKind: "AGENT", rates: [paxMin] } });
+    eq(tried, saved, "ร่าง = ตอนบันทึก (ทุกไบต์)");
+    failR(await shop("tryAgentPrice", cA(), { agentAccountId: acc("V3").id, unitId: uA, productId: PRD.A.id, slotId: depMain, pax: [{ paxTypeId: PRD.A.pt.ADULT, qty: 2 }], at: NOW.toISOString(), actualSaleSatang: 700_000, draft: { ownerKind: "AGENT", replacesCardId: c.id, rates: [{ productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 250_000 }, paxMin] } }), "VALIDATION", "ร่างแทน card + ราคาขายจริง", "PAX_RATE_MIN_SELL");
+    eq(await writeCounts(), w0, "ร่างที่ถูกปฏิเสธไม่เขียนฐาน");
+    // positive control: แถวไม่ระบุประเภท + ขั้นต่ำ — ร่างได้ และบันทึกได้
+    const genMin = { productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 200_000, minSellMinor: 260_000, travelFrom: "2027-03-01", travelTo: "2027-03-31" };
+    okR(await shop("tryAgentPrice", cA(), { agentAccountId: acc("V3").id, unitId: uA, productId: PRD.A.id, slotId: depMain, pax: [{ paxTypeId: PRD.A.pt.ADULT, qty: 2 }], at: NOW.toISOString(), draft: { ownerKind: "AGENT", rates: [genMin] } }), "ร่างแถวไม่ระบุ + ขั้นต่ำ");
+    okR(await shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: c.version, rate: genMin }), "บันทึกแถวไม่ระบุ + ขั้นต่ำ");
+  });
+  // ORACLE-EDIT R-18 (มติ Z5 ก · ผู้ตรวจรอบ 2): ข้อใหม่ — MIXED_MODES ผ่านอีก 3 ทางเข้า
+  await st("R-18", "มติ Z5 (ก) ผ่าน 3 ทางเข้าที่เหลือ: แก้ด้วย id (เปลี่ยน priority · เปลี่ยนตัวเลือก · เปลี่ยนโหมด จนชนแถวโหมดอื่นของสินค้า/ตัวเลือก/priority เดียวกัน) · เปิดแถวกลับ (setAgentRateActive) · ร่างในเครื่องลองคิด ⇒ VALIDATION MIXED_MODES ไม่เขียน — priority ต่างกัน ⇒ รับ", async () => {
+    needBuilt(); needDb();
+    await mkAccount("MM", tA); await setTierRaw("MM", "B");
+    const pA = PRD.A;
+    const r1 = { productKind: "TRIP", productId: pA.id, mode: "COMMISSION_PCT", valueBp: 1200 };
+    const r2 = { productKind: "TRIP", productId: pA.id, mode: "NET", valueMinor: 280_000, paxTypeId: pA.pt.ADULT, priority: 1 };
+    const r3 = { productKind: "TRIP", productId: pA.id, optionId: pA.opt, mode: "COMMISSION_PCT", valueBp: 1000, priority: 1, travelFrom: "2027-06-01", travelTo: "2027-06-30" };
+    const c = await mkCard(agentOwner("MM"), [r1, r2, r3], { activate: false });
+    const [id1, id2, id3] = c.rateIds; let v = c.version;
+    const up = (rate: Rec) => shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: v, rate });
+    let s0 = await cardState(c.id);
+    failR(await up({ ...r2, id: id2, priority: 0 }), "VALIDATION", "แก้ด้วย id: priority 1 → 0 (ชน % ของ r1)", "MIXED_MODES");
+    failR(await up({ ...r3, id: id3, optionId: null }), "VALIDATION", "แก้ด้วย id: ตัวเลือก → ทั้งสินค้า (ชนเน็ตของ r2)", "MIXED_MODES");
+    eq(await cardState(c.id), s0, "แก้ด้วย id ที่ปนโหมดไม่เขียน");
+    const u4 = okR(await up({ productKind: "TRIP", productId: pA.id, mode: "NET", valueMinor: 200_000, paxTypeId: pA.pt.CHILD, priority: 1 }), "เพิ่มแถวเน็ตเด็ก priority 1 (โหมดเดียวกับ r2)");
+    v = Number(R(u4.card).version); const id4 = String(R(u4.rate).id);
+    s0 = await cardState(c.id);
+    failR(await up({ productKind: "TRIP", productId: pA.id, mode: "MARKUP", valueMinor: 200_000, markupCapBp: 2000, paxTypeId: pA.pt.CHILD, priority: 1, id: id4 }), "VALIDATION", "แก้ด้วย id: โหมด NET → MARKUP (ชนเน็ตของ r2)", "MIXED_MODES");
+    eq(await cardState(c.id), s0, "แก้โหมดด้วย id ไม่เขียน");
+    for (const rid of [id2, id4]) { const o = okR(await shop("setAgentRateActive", cA(), { cardId: c.id, expectedVersion: v, rateId: rid, active: false }), `ปิด ${rid}`); v = Number(R(o.card).version); }
+    const u5 = okR(await up({ productKind: "TRIP", productId: pA.id, mode: "COMMISSION_PCT", valueBp: 900, priority: 1, travelFrom: "2027-01-01", travelTo: "2027-03-31" }), "เพิ่ม % priority 1 หลังปิดแถวเน็ต");
+    v = Number(R(u5.card).version);
+    s0 = await cardState(c.id);
+    failR(await shop("setAgentRateActive", cA(), { cardId: c.id, expectedVersion: v, rateId: id2, active: true }), "VALIDATION", "เปิดแถวเน็ตกลับข้างแถว % priority เดียวกัน", "MIXED_MODES");
+    eq(await cardState(c.id), s0, "เปิดกลับที่ปนโหมดไม่เขียน");
+    const w0 = await writeCounts();
+    const tryD = (rates: Rec[]) => shop("tryAgentPrice", cA(), { agentAccountId: acc("MM").id, unitId: uA, productId: pA.id, slotId: depMain, pax: [{ paxTypeId: pA.pt.ADULT, qty: 2 }], at: NOW.toISOString(), draft: { ownerKind: "AGENT", rates } });
+    failR(await tryD([r1, { ...r2, priority: 0 }]), "VALIDATION", "ร่างปนโหมด", "MIXED_MODES");
+    failR(await tryD([r1, { productKind: "TRIP", productId: pA.id, mode: "COMMISSION_FIXED", valueMinor: 20_000, travelFrom: "2027-06-01", travelTo: "2027-06-30" }]), "VALIDATION", "ร่างปนโหมด (% กับ FIXED · ช่วงพิเศษ)", "MIXED_MODES");
+    eq(await writeCounts(), w0, "ร่างที่ปนโหมดไม่เขียนฐาน");
+    eq(com(R(okR(await tryD([r1, r2]), "ร่าง priority ต่าง").priced)).mode, "NET", "priority ต่าง ⇒ รับ (priority สูงชนะ)");
+  });
+  // ORACLE-EDIT R-19 (มติ Z2 · ผู้ตรวจรอบ 2): ข้อใหม่ — แก้ด้วย id จนคีย์มิติชนแถวอื่น
+  await st("R-19", "มติ Z2: แก้ด้วย id จนคีย์มิติ (สินค้า · ตัวเลือก · ประเภทคน · เคบิน · bookFrom · travelFrom) ชนแถวอื่นใน card ⇒ VALIDATION RATE_OVERLAP ไม่เขียน (ทั้งแถวเปิดและแถวที่ปิดอยู่) · แก้ช่วงให้คีย์ไม่ชน ⇒ รับ", async () => {
+    needBuilt(); needDb();
+    await mkAccount("ZK", tA);
+    const pA = PRD.A;
+    const g = { productKind: "TRIP", productId: pA.id, mode: "COMMISSION_PCT", valueBp: 1200 };
+    const s = { productKind: "TRIP", productId: pA.id, mode: "COMMISSION_PCT", valueBp: 900, travelFrom: "2027-01-01", travelTo: "2027-03-31" };
+    const na = { productKind: "TRIP", productId: pA.id, mode: "NET", valueMinor: 280_000, paxTypeId: pA.pt.ADULT, priority: 1 };
+    const nc = { productKind: "TRIP", productId: pA.id, mode: "NET", valueMinor: 200_000, paxTypeId: pA.pt.CHILD, priority: 1 };
+    const c = await mkCard(agentOwner("ZK"), [g, s, na, nc], { activate: false });
+    const [, idS, idNa, idNc] = c.rateIds; let v = c.version;
+    const s0 = await cardState(c.id);
+    failR(await shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: v, rate: { ...s, id: idS, travelFrom: null, travelTo: null } }), "VALIDATION", "ช่วงพิเศษ → ไม่มีขอบวัน (คีย์ชนแถวถาวร)", "RATE_OVERLAP");
+    failR(await shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: v, rate: { ...nc, id: idNc, paxTypeId: pA.pt.ADULT } }), "VALIDATION", "เด็ก → ผู้ใหญ่ (คีย์ชนแถวผู้ใหญ่)", "RATE_OVERLAP");
+    eq(await cardState(c.id), s0, "ไม่เขียน");
+    const off = okR(await shop("setAgentRateActive", cA(), { cardId: c.id, expectedVersion: v, rateId: idNa, active: false }), "ปิดแถวผู้ใหญ่"); v = Number(R(off.card).version);
+    const s1 = await cardState(c.id);
+    failR(await shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: v, rate: { ...nc, id: idNc, paxTypeId: pA.pt.ADULT } }), "VALIDATION", "เด็ก → ผู้ใหญ่ (ชนแถวที่ปิดอยู่)", "RATE_OVERLAP");
+    eq(await cardState(c.id), s1, "ชนแถวที่ปิดก็ไม่เขียน");
+    const okS = okR(await shop("upsertAgentRate", cA(), { cardId: c.id, expectedVersion: v, rate: { ...s, id: idS, travelFrom: "2027-01-02" } }), "แก้ช่วงให้คีย์ไม่ชน");
+    eq([R(okS.rate).id, R(okS.rate).travelFrom, Number(R(okS.card).version)], [idS, "2027-01-02", v + 1], "แก้ได้");
+  });
   groupLine("R");
 
   // ═══════════════ PM. สิทธิ์ ═══════════════
@@ -1306,7 +1468,16 @@ try {
   });
   await st("E-4", "ราคาเน็ต (สัญญา · ผู้ใหญ่ 2,800 · เด็กไม่มีแถว): ที่นั่งผู้ใหญ่ราคา 2,800 จากขั้น CONTRACT · เด็กยังราคาปลีก 2,450 · ไม่มีคอมฯ · เอเจนซี่ส่งร้าน = เน็ต + อุทยาน (TA §2.2: 2,800 + 600 ต่อคน)", async () => {
     needBuilt(); needDb(); await setTierRaw("XN", "B");
-    await mkCard(agentOwner("XN"), [{ productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A.pt.ADULT, minSellMinor: 330_000 }]);
+    // ORACLE-EDIT E-4 (มติ V3): แถวผู้ใหญ่ + ขั้นต่ำ 3,300 ⇒ VALIDATION PAX_RATE_MIN_SELL ไม่เขียน · ขั้นต่ำ 3,300 ย้ายไปค่าตั้ง A7 agency.price.minResalePrice ของ XN
+    //   (ไม่ใช้แถวไม่ระบุประเภท เพราะข้อนี้ต้องคง "เด็กไม่มีแถว ⇒ ราคาปลีก") · TP-7 ใช้ขั้นต่ำนี้พิสูจน์ BELOW_MIN_SELL_PRICE
+    const xn = await mkCard(agentOwner("XN"), [], { activate: false });
+    const xnRows = async () => (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "AgentRate" WHERE "rateCardId" = $1`, [xn.id]))[0]?.n;
+    const xa0 = (await auditRows(tA)).length;
+    failR(await shop("upsertAgentRate", cA(), { cardId: xn.id, expectedVersion: xn.version, rate: { productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A.pt.ADULT, minSellMinor: 330_000 } }), "VALIDATION", "แถวผู้ใหญ่ + ขั้นต่ำ", "PAX_RATE_MIN_SELL");
+    eq([await cardVer(xn.id), await xnRows(), (await auditRows(tA)).length], [xn.version, 0, xa0], "PAX_RATE_MIN_SELL ไม่เขียน");
+    const xu = okR(await shop("upsertAgentRate", cA(), { cardId: xn.id, expectedVersion: xn.version, rate: { productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A.pt.ADULT } }), "แถวผู้ใหญ่ (ไม่มีขั้นต่ำ)");
+    okR(await shop("setAgentRateCardStatus", cA(), { cardId: xn.id, expectedVersion: Number(R(xu.card).version), action: "ACTIVATE" }), "ACTIVATE");
+    await setV(tA, [{ key: "agency.price.minResalePrice", scope: "AGENT", scopeId: acc("XN").id, value: 330_000 }]);
     const v = V(await quoteAgent(acc("XN").id, depMain), "quote 2A");
     const seat = A(v.items).find((i) => i.kind === "SEAT" && i.paxTypeCode === "ADULT");
     eq([seat?.unitMinor, seat?.priceSource, com(v).mode, com(v).commissionSatang, wht(v).whtSatang, tot(v).payableSatang, com(v).remitToShopSatang], [280_000, "CONTRACT", "NET", 0, 0, 2 * 280_000 + AC.parkSatang, 2 * (280_000 + RACHA.parkAdultSatang)], "เน็ต");
@@ -1385,6 +1556,21 @@ try {
     const real = V(await quoteAgent(acc("LA").id, dT, { key: "LT", adults: 1 }), "quote THB");
     const seat = A(real.items).find((i) => i.kind === "SEAT");
     eq([seat?.unitMinor, seat?.priceSource, com(real).mode], [300_000, "CONTRACT", "NET"], "quote จริงสกุล THB");
+    // ORACLE-EDIT E-10 (มติ V1): ตัวกรองสกุลใช้กับแถวจำนวนเงินเท่านั้น — ผ่านตัวโหลดจริง (loadPricingInput → port ตัวจริง)
+    //   สัญญา 20% (แถวสกุล THB ของสินค้า) + จอง USD ⇒ ยังได้ 20% ตามสัญญา (ไม่ถอยไปค่าเริ่มของระดับ B) · สัญญาคอมฯ 150 บาทต่อที่นั่ง (THB) + จอง USD ⇒ ไม่ถูกเลือก (ถอยไปค่าเริ่มของระดับ)
+    await mkAccount("LP", tA); await setTierRaw("LP", "B"); await mkAccount("LF", tA); await setTierRaw("LF", "B");
+    const cP = await mkCard(agentOwner("LP"), [{ productKind: "TRIP", productId: PRD.LT.id, mode: "COMMISSION_PCT", valueBp: 2000 }]);
+    const cF = await mkCard(agentOwner("LF"), [{ productKind: "TRIP", productId: PRD.LT.id, mode: "COMMISSION_FIXED", valueMinor: 15_000 }]);
+    const loadAs = async (key: string, currency: string) => V(await callTr("loadPricingInput", agentCtx(acc(key).id), { ...line(dT, { key: "LT", adults: 1 }), currency }), `loadPricingInput ${key} ${currency}`);
+    const tierB = (await tiers()).B;
+    const laPctB = Number(R(R(R(BASEPOL.values)["agency.tier.table"]).B).laPct) * 100;
+    const pU = ag(await loadAs("LP", "USD"));
+    eq([R(pU.contract).mode, R(pU.contract).rateBp, R(pU.contract).refId, R(pU.contract).fixedSatang, R(pU.tier).refId], ["COMMISSION_PCT", 2000, `${cP.rateIds[0]}@${cP.version}`, null, `tier:${tierB}:A1`], "สัญญา % + จอง USD ⇒ ได้ % ตามสัญญา");
+    eq(ag(await loadAs("LP", "THB")).contract, pU.contract, "สัญญา % จอง THB = จอง USD (เปอร์เซ็นต์ไม่มีหน่วยเงิน)");
+    const fU = ag(await loadAs("LF", "USD"));
+    eq([fU.contract, R(fU.tier).mode, R(fU.tier).rateBp, R(fU.tier).refId], [null, "COMMISSION_PCT", laPctB, `tier:${tierB}:A1`], "สัญญา FIXED THB + จอง USD ⇒ ไม่ถูกเลือก (ค่าเริ่มของระดับ B · laPct)");
+    const fT = ag(await loadAs("LF", "THB"));
+    eq([R(fT.contract).mode, R(fT.contract).fixedSatang, R(fT.contract).refId], ["COMMISSION_FIXED", 15_000, `${cF.rateIds[0]}@${cF.version}`], "positive control: สัญญา FIXED จอง THB ⇒ ถูกเลือก");
   });
   groupLine("E");
 
@@ -1599,16 +1785,22 @@ try {
   });
   await st("TP-7", "ราคาขายจริงของเอเจนซี่ราคาเน็ต (ขั้นต่ำ 3,300 ต่อที่นั่ง): ต่ำกว่าขั้นต่ำ ⇒ VALIDATION BELOW_MIN_SELL_PRICE · เท่าขั้นต่ำพอดีผ่าน · เอเจนซี่ได้ส่วนต่าง = ขายจริง − เน็ต × ที่นั่ง · คอมฯ 100% + ส่วนลดจากคอมฯ ที่ปิดอยู่ ⇒ VALIDATION DISCOUNT_OVER_CAP", async () => {
     needBuilt(); needDb();
-    // ORACLE-EDIT TP-7 (มติ Z5 ง): ขั้นต่ำมาจากแถวไม่ระบุประเภทคนเท่านั้น — card ของ XN (E-4) มีขั้นต่ำ 3,300 อยู่บนแถวผู้ใหญ่ ⇒ ไม่ใช้แล้ว (A7 ไม่ตั้ง ⇒ ไม่มีขั้นต่ำ)
-    //   ฟิกซ์เจอร์: ร่างแทน card ของ XN ด้วยแถวเน็ตไม่ระบุประเภท 2,800 ขั้นต่ำ 3,300 เพื่อยังพิสูจน์ BELOW_MIN_SELL_PRICE ได้
+    // ORACLE-EDIT TP-7 (มติ V3): ขั้นต่ำบนแถวรายประเภทคนบันทึก/ร่างไม่ได้ — ร่างแถวผู้ใหญ่ + ขั้นต่ำ ⇒ VALIDATION PAX_RATE_MIN_SELL ไม่เขียนฐาน
+    //   ขั้นต่ำ 3,300 ที่ใช้พิสูจน์ BELOW_MIN_SELL_PRICE มาจากค่าตั้ง A7 ของ XN (E-4 ตั้งไว้) · แถวไม่ระบุประเภทที่มีขั้นต่ำของตัวเอง (3,500) ชนะ A7
     const xnCard = (await q<{ id: string }>(`SELECT id FROM "AgentRateCard" WHERE "agentAccountId" = $1 AND status = 'ACTIVE'`, [acc("XN").id]))[0]?.id;
     ok(xnCard, "ไม่มี card ของ XN (E-4)");
-    const paxOnly = okR(await shop("tryAgentPrice", cA(), tryIn("XN", { actualSaleSatang: 2 * 330_000 - 1 })), "ขั้นต่ำบนแถวรายประเภทไม่ใช้");
-    eq(com(R(paxOnly.priced)).agentEarnsSatang, 2 * 330_000 - 1 - 2 * 280_000, "ไม่มีขั้นต่ำจากแถวรายประเภท");
-    const draftMin = { draft: { ownerKind: "AGENT", replacesCardId: xnCard, rates: [{ productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 280_000, minSellMinor: 330_000 }] } };
-    failR(await shop("tryAgentPrice", cA(), tryIn("XN", { actualSaleSatang: 2 * 330_000 - 1, ...draftMin })), "VALIDATION", "ต่ำกว่าขั้นต่ำ", "BELOW_MIN_SELL_PRICE");
-    const okp = R(okR(await shop("tryAgentPrice", cA(), tryIn("XN", { actualSaleSatang: 2 * 330_000, ...draftMin })), "เท่าขั้นต่ำ").priced);
-    eq([com(okp).agentActualSaleSatang, com(okp).agentEarnsSatang], [660_000, 660_000 - 2 * 280_000], "ส่วนต่าง");
+    const w0 = await writeCounts();
+    const paxDraft = { draft: { ownerKind: "AGENT", replacesCardId: xnCard, rates: [{ productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 280_000, paxTypeId: PRD.A.pt.ADULT, minSellMinor: 330_000 }] } };
+    failR(await shop("tryAgentPrice", cA(), tryIn("XN", { actualSaleSatang: 2 * 330_000, ...paxDraft })), "VALIDATION", "ร่างแถวรายประเภท + ขั้นต่ำ", "PAX_RATE_MIN_SELL");
+    failR(await shop("tryAgentPrice", cA(), tryIn("XN", { draft: { ownerKind: "AGENT", rates: [{ productKind: "TRIP", productId: PRD.A.id, mode: "MARKUP", valueMinor: 280_000, markupCapBp: 2000, paxTypeId: PRD.A.pt.CHILD, minSellMinor: 300_000 }] } })), "VALIDATION", "ร่าง MARKUP รายประเภท + ขั้นต่ำ", "PAX_RATE_MIN_SELL");
+    eq(await writeCounts(), w0, "ร่างที่ถูกปฏิเสธไม่เขียนฐาน");
+    failR(await shop("tryAgentPrice", cA(), tryIn("XN", { actualSaleSatang: 2 * 330_000 - 1 })), "VALIDATION", "ต่ำกว่าขั้นต่ำ A7", "BELOW_MIN_SELL_PRICE");
+    const okA7 = R(okR(await shop("tryAgentPrice", cA(), tryIn("XN", { actualSaleSatang: 2 * 330_000 })), "เท่าขั้นต่ำ A7").priced);
+    eq([com(okA7).agentActualSaleSatang, com(okA7).agentEarnsSatang], [660_000, 660_000 - 2 * 280_000], "ส่วนต่าง");
+    const draftMin = { draft: { ownerKind: "AGENT", replacesCardId: xnCard, rates: [{ productKind: "TRIP", productId: PRD.A.id, mode: "NET", valueMinor: 280_000, minSellMinor: 350_000 }] } };
+    failR(await shop("tryAgentPrice", cA(), tryIn("XN", { actualSaleSatang: 2 * 350_000 - 1, ...draftMin })), "VALIDATION", "ต่ำกว่าขั้นต่ำของแถวไม่ระบุ", "BELOW_MIN_SELL_PRICE");
+    const okp = R(okR(await shop("tryAgentPrice", cA(), tryIn("XN", { actualSaleSatang: 2 * 350_000, ...draftMin })), "เท่าขั้นต่ำของแถวไม่ระบุ").priced);
+    eq([com(okp).agentActualSaleSatang, com(okp).agentEarnsSatang], [700_000, 700_000 - 2 * 280_000], "ส่วนต่าง (แถวไม่ระบุ)");
     failR(await shop("tryAgentPrice", cA(), tryIn("XT", { agentDiscountSatang: 1_000 })), "VALIDATION", "ส่วนลดจากคอมฯ ปิดอยู่", "DISCOUNT_OVER_CAP");
   });
   await st("TP-8", "ขอบเขตของเครื่องลองคิด: บัญชีร้านอื่น ⇒ NOT_FOUND (= id ไม่มี) · รอบของหน่วยอื่น/ไม่มี ⇒ NOT_FOUND · บัญชีถูกพักยังลองคิดได้ (ร้านตั้งราคาก่อนคืนสิทธิ์) ขณะที่เส้นทางจริงยังปิด · บัญชีปิด ⇒ ไม่ผ่าน", async () => {
@@ -1623,7 +1815,7 @@ try {
     ok(q2.ok === false && q2.code === "FORBIDDEN", "เส้นทางจริงของบัญชีถูกพักต้องปิด");
     ok((await shop("tryAgentPrice", cA(), tryIn("CL"))).ok === false, "บัญชีปิดต้องไม่ผ่าน");
   });
-  await st("TP-9", "มติ Z3: บัญชี ACTIVE ผูกหน่วยอื่น ลองคิดที่หน่วยนี้ ⇒ VALIDATION ACCOUNT_NOT_IN_UNIT ทุกกรณี (ไม่มีร่าง · มีร่าง · มีราคาขายจริง) ขณะเส้นทางจริง FORBIDDEN · ที่หน่วยของบัญชีลองคิดได้ · ไม่มีร่าง + ACTIVE ⇒ priced เท่ากับ quote จริงทุกไบต์ (JSON · ตัด cancelMinimumLadder ตาม §9)", async () => {
+  await st("TP-9", "มติ Z3: บัญชี ACTIVE ผูกหน่วยอื่น ลองคิดที่หน่วยนี้ ⇒ VALIDATION ACCOUNT_NOT_IN_UNIT ทุกกรณี (ไม่มีร่าง · มีร่าง · มีราคาขายจริง) ขณะเส้นทางจริง FORBIDDEN · ที่หน่วยของบัญชีลองคิดได้ · ไม่มีร่าง + ACTIVE ⇒ priced เท่ากับ quote จริงทุกไบต์ (JSON · ตัด cancelMinimumLadder ตาม §9) · ตัวดัก port: ไม่มีร่าง + ACTIVE ได้ผลของ port จริง (10%) ไม่ใช่ผลแทนชั้น (15%)", async () => {
     needBuilt(); needDb();
     await mkAccount("OU", tA, { unitIds: [uA2] }); await setTierRaw("OU", "B");
     for (const [what, o] of [["ไม่มีร่าง", {}], ["มีร่าง", { draft: { ownerKind: "AGENT", rates: [rateOf({ valueBp: 1000 })] } }], ["มีราคาขายจริง", { actualSaleSatang: 800_000 }]] as [string, Rec][]) {
@@ -1639,6 +1831,26 @@ try {
       const q2 = V(await quoteAgent(acc(key).id, depMain, { children: 1 }), `quote ${key}`);
       eq(JSON.stringify(noLadder(t.priced)), JSON.stringify(noLadder(q2)), `${key}: try ≠ quote ทุกไบต์`);
     }
+    // ORACLE-EDIT TP-9 (ผู้ตรวจรอบ 2 · มติ Z3): พิสูจน์ว่า "ไม่มีร่าง + ACTIVE + ไม่มีราคาขายจริง" ใช้ port จริง — ไม่ใช่ผลแทนชั้นที่เครื่องลองคิดประกอบเอง
+    //   ตัวดัก: ห่อ port ตัวจริง · ตอนถูกเรียก (ภายใน trips.loadPricingInput — หลังเครื่องลองคิดอ่านข้อเท็จจริงไปแล้ว) เปลี่ยนระดับของบัญชี SP จาก B (15%) เป็น C (10%) แล้วส่งต่อให้ port จริง
+    //   ⇒ ทาง port จริงอ่านระดับ C (10% · คอมฯ 700.00) · ทางแทนชั้นใช้ข้อเท็จจริงที่อ่านก่อนหน้า (ระดับ B 15% · 1,050.00) — สองทางให้ผลต่างกันจริง
+    await mkAccount("SP", tA); const tSP = await tiers(); await setTierRaw("SP", "B");
+    const realPort = R(AGV("agencyPricingPort"));
+    const realLoad = fnOf(realPort, "load", "agencyPricingPort");
+    const calls: string[] = [];
+    const spy = { load: async (c: unknown, qq: unknown) => { calls.push(String(R(qq).agentAccountId)); if (R(qq).agentAccountId === acc("SP").id) await pool.query(`UPDATE "AgentAccount" SET "tierId" = $2 WHERE id = $1`, [acc("SP").id, tSP.C]); return realLoad.call(realPort, c, qq); } };
+    await install();
+    const offSpy = TR("registerAgencyPricingPort")(spy) as () => void;
+    const restore = () => { try { offSpy(); } catch { /* ignore */ } TR("registerAgencyPricingPort")(realPort); };
+    unregister.push(restore);
+    try {
+      const viaPort = okR(await shop("tryAgentPrice", cA(), tryIn("SP")), "ไม่มีร่าง + ACTIVE (ทาง port)");
+      eq([calls.filter((x) => x === acc("SP").id).length >= 1, com(R(viaPort.priced)).rateBp, com(R(viaPort.priced)).commissionSatang, com(R(viaPort.priced)).agentTierId], [true, 1000, refBp(AC.saleSatang, 1000), tSP.C], "ผลมาจาก port จริง (ระดับ C ที่ port อ่านเอง)");
+      await setTierRaw("SP", "B"); calls.length = 0;
+      const viaSub = okR(await shop("tryAgentPrice", cA(), tryIn("SP", { actualSaleSatang: AC.saleSatang })), "มีราคาขายจริง (ทางแทนชั้น)");
+      eq([calls.filter((x) => x === acc("SP").id).length >= 1, com(R(viaSub.priced)).rateBp, com(R(viaSub.priced)).commissionSatang], [true, 1500, AC.commissionSatang], "positive control: ทางแทนชั้นใช้ข้อเท็จจริงก่อนหน้า (ระดับ B)");
+    } finally { restore(); await setTierRaw("SP", "B"); }
+    eq(com(V(await quoteAgent(acc("SP").id, depMain), "หลังคืน port จริง")).rateBp, 1500, "port จริงกลับมาทำงาน (ไม่มีตัวดักค้าง)");
   });
   await st("TP-10", "มติ Z4: คอมฯ บาทต่อที่นั่งรวมเกินฐานคอมฯ ⇒ VALIDATION COMMISSION_EXCEEDS_PAYABLE (ตัวอย่างนักล่า 3,751.90 × ผู้ใหญ่ 11 + เด็ก 4) ทั้งเครื่องลองคิดและ quote จริง · คอมฯ = ฐานพอดี ⇒ ผ่าน (คอมฯ = ฐาน · หัก 3% · ส่งร้าน = เก็บ − คอมฯ + หัก) · เกินฐาน 1 สตางค์ ⇒ ปฏิเสธ", async () => {
     needBuilt(); needDb();
@@ -1684,6 +1896,17 @@ try {
     await mkAccount("NT", tA);
     failR(await shop("tryAgentPrice", cA(), tryIn("NT", { draft: { ownerKind: "TIER", rates: [rateOf({ valueBp: 1300 })] } })), "VALIDATION", "ร่างระดับของบัญชีไม่มีระดับ", "TIER_NOT_FOUND");
     eq(com(R(okR(await shop("tryAgentPrice", cA(), tryIn("NT", { draft: { ownerKind: "AGENT", rates: [rateOf({ valueBp: 1300 })] } })), "ร่างสัญญา").priced)).rateBp, 1_300, "ร่างสัญญา");
+  });
+  // ORACLE-EDIT TP-13 (มติ V4 + Z8): ข้อใหม่ — วันจองสมมติ `at` ผ่านทางเข้าจริง
+  await st("TP-13", "มติ V4 + Z8: tryAgentPrice.at = 1/1/2000 · Jan 10 2027 · วันที่อย่างเดียว · ไม่มีโซน · 30 ก.พ. · ชั่วโมง 24 · ปี 1899 ⇒ VALIDATION BAD_INPUT ไม่เขียนฐาน · เวลาเดียวกับ NOW เขียนแบบ +07:00 ⇒ ผลเท่ากับแบบ Z ทุกไบต์", async () => {
+    needBuilt(); needDb(); await setTierRaw("XT", "B");
+    const w0 = await writeCounts();
+    for (const bad of NOT_INSTANTS) failR(await shop("tryAgentPrice", cA(), tryIn("XT", { at: bad })), "VALIDATION", `at ${bad}`, "BAD_INPUT");
+    failR(await shop("tryAgentPrice", cA(), tryIn("XT", { at: "1/1/2000", draft: { ownerKind: "AGENT", rates: [rateOf({ valueBp: 1300 })] } })), "VALIDATION", "at 1/1/2000 + ร่าง", "BAD_INPUT");
+    eq(await writeCounts(), w0, "ไม่เขียนฐาน");
+    const z = okR(await shop("tryAgentPrice", cA(), tryIn("XT", { at: NOW.toISOString() })), "Z");
+    const p7 = okR(await shop("tryAgentPrice", cA(), tryIn("XT", { at: plus7(NOW.toISOString()) })), `+07:00 ${plus7(NOW.toISOString())}`);
+    eq(JSON.stringify(p7), JSON.stringify(z), "เวลาเดียวกันต่างโซน ⇒ ผลเดียวกัน");
   });
   groupLine("TP");
 
