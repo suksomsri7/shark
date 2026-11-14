@@ -13589,6 +13589,32 @@
    "wo": "H3.4-YTD",
    "oracle": "qc-hr-h3.4-ytd",
    "note": "บรรทัดยอดยกมาครั้งเดียวต่อปี (รวมใน income/tax/sso ของปีแล้ว = 50 ทวิ) — * = taxYear"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-ytd-truncated",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-opening-ui.tsx",
+   "conditional": "รายชื่อของปีเกิน 500 คน (listOpeningYtd truncated)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "แจ้งว่าแสดงเฉพาะ 500 คนแรก (ไม่ตัดเงียบ — fix round F3)"
   }
  ]
 }

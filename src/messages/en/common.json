@@ -1264,7 +1264,8 @@
       "synced": "Work hours pulled and deductions calculated",
       "rv_RECEIVABLE_ATT": "Employee receivable (late/absence deduction not collectable from the final wage)",
       "rv_YTD_OPENING": "Opening year-to-date not entered (warning only — enter it or press \"No income before the system\")",
-      "ytdLink": "Enter opening figures"
+      "ytdLink": "Enter opening figures",
+      "rv_YTD_REBUILD": "Needs recalculation — the opening year-to-date changed after the draft was made; press 'Refresh data' before approving"
     },
     "attpay": {
       "policyTitle": "Late / early-out / absence deductions",
@@ -1881,7 +1882,10 @@
       "err_CERT_ISSUED": "The 50 Tawi for this year is already issued — void it before editing the opening figures",
       "err_REV_CHANGED": "Someone else changed these opening figures — reload and save again",
       "err_YEAR": "The tax year is not valid",
-      "err_empty": "No row has been filled in yet"
+      "err_empty": "No row has been filled in yet",
+      "err_BUSY": "The system is saving other work for this year — wait a moment and save again (nothing was saved)",
+      "err_TOO_MANY": "You can change at most 300 rows at a time — save the first part, then edit the rest",
+      "truncated": "Showing the first {n} people only — this year has more employees"
     }
   }
 }

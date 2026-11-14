@@ -34,6 +34,7 @@ import {
   type YearTotal,
 } from "./payslip-rules";
 import { renderPayslipPdf, renderSalaryCertPdf } from "./payslip-pdf";
+import { liveOpeningsIn } from "./payroll-opening-read"; // HR H3.4-YTD ▸ fix round (NOTE-5): ตัวอ่านยอดยกมาเดียว ◂
 
 type Ctx = { tenantId: string; systemId: string };
 type Opts = { now?: Date };
@@ -282,11 +283,8 @@ const emptyYear = (taxYear: number): YearDto => ({ taxYear, count: 0, grossSatan
 // HR H3.4-YTD ▸ Q12 (controller ruling): ยอดรายปีของสลิป = 50 ทวิ ⇒ บวกยอดยกมาต้นปีที่ยังมีผล (เงินได้ · ภาษี · ประกันสังคม) เข้า income/tax/sso ของปีนั้น
 //   + บรรทัด opening ครั้งเดียวต่อปี · ไม่ใช่สลิปของเดือนใด (ไม่เข้า count/gross/net/slips) · ไม่มียอดยกมา = ไม่มีคีย์ (ทรงเดิมทุกไบต์) · อ่านด้วย tx ของผู้เรียก
 async function openingsOfInTx(tx: Db, ctx: Ctx, employeeId: string, year?: number): Promise<{ taxYear: number; line: OpeningLineDto }[]> {
-  const rows = await tx.hrPayrollOpeningYtd.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, supersededAt: null, ...(year === undefined ? {} : { taxYear: year }) },
-    select: { taxYear: true, asOfDay: true, months: true, incomeSatang: true, whtSatang: true, ssoSatang: true },
-  });
-  return rows.map((r) => ({ taxYear: r.taxYear, line: { asOfDay: r.asOfDay.toISOString().slice(0, 10), months: r.months, incomeSatang: r.incomeSatang, taxSatang: r.whtSatang, ssoSatang: r.ssoSatang } }));
+  const rows = await liveOpeningsIn(tx, ctx, { employeeIds: [employeeId], ...(year === undefined ? {} : { taxYear: year }) });
+  return rows.map((r) => ({ taxYear: r.taxYear, line: { asOfDay: r.asOfDay, months: r.months, incomeSatang: r.incomeSatang, taxSatang: r.whtSatang, ssoSatang: r.ssoSatang } }));
 }
 function withOpenings(years: YearDto[], ops: { taxYear: number; line: OpeningLineDto }[]): YearDto[] {
   for (const o of ops) {

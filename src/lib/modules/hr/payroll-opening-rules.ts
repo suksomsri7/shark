@@ -4,7 +4,7 @@
 //   ใช้ที่: เครื่องคิดรุ่น 2 (withOpening → ytdPriorV2 เดิม) · คำเตือนยังไม่กรอก (openingMissing) · 50 ทวิ / ภ.ง.ด.1ก (openingFilingItem)
 import type { FilingItem } from "./filings/rd";
 
-export type OpeningCode = "NO" | "OWN" | "FIELDS" | "WHT_OVER" | "AS_OF" | "OVERLAP" | "CERT_ISSUED" | "REV_CHANGED" | "YEAR" | "OPENING_OVERLAP";
+export type OpeningCode = "NO" | "OWN" | "FIELDS" | "WHT_OVER" | "AS_OF" | "OVERLAP" | "CERT_ISSUED" | "REV_CHANGED" | "YEAR" | "OPENING_OVERLAP" | "BUSY";
 /** ข้อความคงที่ของทุกคำปฏิเสธ (ไทย · ไม่มีตัวเลข/รหัส/ชื่อ — ผู้ไม่มีสิทธิ์ทุกแบบได้ไบต์เดียวกัน) */
 export const OPENING_TEXT: Record<OpeningCode, string> = {
   NO: "ไม่มีสิทธิ์ใช้งานส่วนนี้",
@@ -17,6 +17,7 @@ export const OPENING_TEXT: Record<OpeningCode, string> = {
   REV_CHANGED: "ยอดยกมานี้ถูกแก้ไปแล้วโดยผู้อื่น — เปิดดูใหม่แล้วบันทึกอีกครั้ง",
   YEAR: "ปีภาษีไม่ถูกต้อง",
   OPENING_OVERLAP: "มีพนักงานที่ยอดยกมาครอบคลุมวันจ่ายของรอบนี้แล้ว — แก้วันที่ยอดถึงของยอดยกมาก่อนสร้างรอบ",
+  BUSY: "ระบบกำลังบันทึกงานอื่นของปีนี้อยู่ — รอสักครู่แล้วบันทึกอีกครั้ง (ยังไม่มีอะไรถูกบันทึก)",
 };
 export type OpeningInput = { asOfDay: string; months: number; incomeSatang: number; whtSatang: number; ssoSatang: number };
 export type OpeningRow = OpeningInput & { id: string; rev: number; employeeId: string; taxYear?: number };
@@ -41,9 +42,9 @@ export const yearOk = (y: unknown): y is number => typeof y === "number" && Numb
 
 /**
  * ตรวจค่าที่กรอก (สตางค์แล้ว) — ลำดับ: ปี → ชนิด/ช่วงของตัวเลข → วันที่ → วันที่อยู่ในปีและไม่เลยวันนี้ → เดือน ≤ เดือนของวันที่ → ภาษี ≤ เงินได้
- * `todayBkk` = วันนี้ตามปฏิทินไทย (ผู้เรียกส่ง — ไฟล์นี้ไม่อ่านนาฬิกา)
+ * `todayBkk` = วันนี้ตามปฏิทินไทย (ผู้เรียกส่ง — ไฟล์นี้ไม่อ่านนาฬิกา) · `startDay` (fix round MINOR-4) = วันเริ่มงาน — วันที่ยอดถึงก่อนวันเริ่มงาน ⇒ FIELDS
  */
-export function parseOpening(raw: unknown, at: { taxYear: unknown; todayBkk: string }): ParseOpening {
+export function parseOpening(raw: unknown, at: { taxYear: unknown; todayBkk: string; startDay?: string | null }): ParseOpening {
   if (!yearOk(at?.taxYear)) return refuse("YEAR");
   const r = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
   const { asOfDay, months, incomeSatang, whtSatang, ssoSatang } = r;
@@ -52,6 +53,7 @@ export function parseOpening(raw: unknown, at: { taxYear: unknown; todayBkk: str
   if (!isDay(asOfDay)) return refuse("FIELDS");
   if (Number(asOfDay.slice(0, 4)) !== at.taxYear || !isDay(at.todayBkk) || asOfDay > at.todayBkk) return refuse("AS_OF");
   if (months > Number(asOfDay.slice(5, 7))) return refuse("FIELDS");
+  if (typeof at.startDay === "string" && isDay(at.startDay) && asOfDay < at.startDay) return refuse("FIELDS");
   if (whtSatang > incomeSatang) return refuse("WHT_OVER");
   return { ok: true, asOfDay, months, incomeSatang, whtSatang, ssoSatang };
 }

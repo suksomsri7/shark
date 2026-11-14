@@ -22,7 +22,7 @@ const label = "flex min-w-[8rem] flex-1 flex-col gap-1 text-sm";
 const baht = (satang: number) => (satang / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** รหัสผลบน URL ที่รู้จัก (allowlist) */
 const OK_CODES = ["saved", "savedWarn", "bulk", "bulkWarn"] as const;
-const ERR_CODES = ["NO", "OWN", "FIELDS", "WHT_OVER", "AS_OF", "OVERLAP", "CERT_ISSUED", "REV_CHANGED", "YEAR", "empty"] as const;
+const ERR_CODES = ["NO", "OWN", "FIELDS", "WHT_OVER", "AS_OF", "OVERLAP", "CERT_ISSUED", "REV_CHANGED", "YEAR", "BUSY", "TOO_MANY", "empty"] as const;
 
 export async function OpeningYtdCard({ systemId, sp }: { systemId: string; sp: { yty?: string; ymsg?: string; yn?: string } }) {
   const auth = await requireTenant();
@@ -68,6 +68,11 @@ export async function OpeningYtdCard({ systemId, sp }: { systemId: string; sp: {
           {errMsg}
         </p>
       ) : null}
+      {res.truncated ? (
+        <p role="note" data-testid="hr-ytd-truncated" className={warnBox}>
+          {t("truncated", { n: res.rows.length })}
+        </p>
+      ) : null}
       {res.rows.length === 0 ? (
         <p className={muted}>{t("none")}</p>
       ) : (
@@ -92,6 +97,8 @@ export async function OpeningYtdCard({ systemId, sp }: { systemId: string; sp: {
               ) : (
                 <>
                   <input type="hidden" name="emp" value={r.employeeId} />
+                  <input type="hidden" name={`orig_${r.employeeId}`} value={r.opening ? [r.opening.asOfDay, String(r.opening.months), baht(r.opening.incomeSatang), baht(r.opening.whtSatang), baht(r.opening.ssoSatang)].join("|") : "||||"} />
+                  {r.startDay ? <input type="hidden" name={`start_${r.employeeId}`} value={r.startDay} /> : null}
                   {r.opening ? <input type="hidden" name={`rev_${r.employeeId}`} value={r.opening.rev} /> : null}
                   <div className="flex flex-wrap gap-2">
                     <label className={label}>

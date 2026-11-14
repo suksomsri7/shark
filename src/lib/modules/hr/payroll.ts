@@ -36,6 +36,7 @@ import { ytdPriorV2, type LawSetV2 } from "./payroll-rules-v2"; // HR H3.4 ▸ �
 import { buildWorkEntrySnapshot, normalMinutesOf, unbindWorkEntriesFromRunInTx, workEntryStatesInTx } from "./work-entries"; // HR H3.4 ▸ ดึงชั่วโมงทำงานจนครบ · ชั่วโมงปกติต่อวัน · สถานะชั่วโมงทำงาน ◂
 import { createHash, randomUUID } from "node:crypto"; // HR H3.4 ▸ ลายนิ้วมือข้อมูลของรอบ (inputDigest) ◂
 import { ATT_TEXT } from "./attendance-pay-rules"; // HR H3.2 ◂ ข้อความคงที่ของรายการหักสาย/ขาด (ไฟล์ pure — ไม่มีวงโหลด)
+import { liveOpeningsIn, lockYtdInTx, type LiveOpeningRow } from "./payroll-opening-read"; // HR H3.4-YTD ▸ fix round (NOTE-5): ตัวอ่าน + ล็อก hr:ytd ที่เดียว (DB ล้วน · ไม่มีวงโหลด) ◂
 import { OPENING_TEXT, openingMissing, withOpening } from "./payroll-opening-rules"; // HR H3.4-YTD ▸ ยอดยกมาต้นปี (ไฟล์ pure — ไม่ import payroll-opening.ts เพื่อไม่ให้เกิดวงโหลดผ่าน filings → self → payroll) ◂
 
 // Payroll ไทย — service ชั้นประกอบ (system-scoped HR) · WO-0036
@@ -2408,16 +2409,11 @@ async function ytdDraftInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: strin
 }
 // HR H3.4-YTD ▸ ยอดยกมาต้นปี (brief R4 R5): ล็อก hr:ytd:<ระบบ>:<ปีภาษี> เป็นล็อกสุดท้าย (หลังงวด/แถวรอบ — ผู้บันทึกยอดยกมาและผู้ออก 50 ทวิ ถือ hr50 → hr:ytd)
 //   แล้วอ่านแถวที่ยังมีผลของคนในรอบ (ปีภาษี = ปีของวันจ่ายเวลาไทย) · ผู้เรียกทุกตัวใช้ tx ของตัวเอง
-type YtdOpening = { id: string; rev: number; employeeId: string; asOfDay: string; incomeSatang: number; whtSatang: number; ssoSatang: number };
+type YtdOpening = LiveOpeningRow;
 async function ytdOpeningsInTx(tx: Prisma.TransactionClient, ctx: Ctx, payDay: string, employeeIds: string[]): Promise<Map<string, YtdOpening>> {
   const taxYear = Number(payDay.slice(0, 4));
-  await tx.$queryRaw`SELECT 1 AS "x" FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`hr:ytd:${ctx.systemId}:${taxYear}`}, 0))) AS "l"`;
-  if (!employeeIds.length) return new Map();
-  const rows = await tx.hrPayrollOpeningYtd.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, taxYear, supersededAt: null, employeeId: { in: employeeIds } },
-    select: { id: true, rev: true, employeeId: true, asOfDay: true, incomeSatang: true, whtSatang: true, ssoSatang: true },
-  });
-  return new Map(rows.map((r) => [r.employeeId, { ...r, asOfDay: dayOf(r.asOfDay)! }]));
+  await lockYtdInTx(tx, ctx, taxYear);
+  return new Map((await liveOpeningsIn(tx, ctx, { taxYear, employeeIds })).map((r) => [r.employeeId, r]));
 }
 /** R5c (Q5): ยอดยกมาที่ครอบคลุมวันจ่ายของรอบ (วันที่ยอดถึง ≥ วันจ่าย) ⇒ นับซ้ำ */
 const ytdOverlap = (m: Map<string, YtdOpening>, payDay: string): boolean => [...m.values()].some((o) => o.asOfDay >= payDay);
@@ -2600,7 +2596,7 @@ async function buildRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, run: { per
       ...(ytdOpening ? { ytdOpening } : {}), // HR H3.4-YTD ▸ R5b ◂
     };
     items.push({ employeeId: p.employeeId, result: r, snapshot });
-    digestIn.push({ input, workDays: myDays.map((d) => [d.id, d.digest]) });
+    digestIn.push({ input, workDays: myDays.map((d) => [d.id, d.digest]), ...(opening ? { ytdOpening: { id: opening.id, rev: opening.rev } } : {}) }); // HR H3.4-YTD ▸ fix round F2: ทุก rev ใหม่ของยอดยกมา (แม้แค่เดือน/วันที่) ⇒ อนุมัติต้องคิดใหม่ · ไม่มียอดยกมา = ลายนิ้วมือเดิม ◂
   }
   const totals = items.reduce(
     (t, { result: i }) => ({ gross: t.gross + i.grossSatang, ssoEmployee: t.ssoEmployee + i.ssoEmployeeSatang, ssoEmployer: t.ssoEmployer + i.ssoEmployerSatang, wht: t.wht + i.whtSatang, net: t.net + i.netSatang, add: t.add + i.addSatang, deduct: t.deduct + i.deductSatang }),
@@ -3105,17 +3101,24 @@ export async function previewPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: {
   const strandedAtt = leavers.size
     ? await db.hrPayAdjustment.findMany({ where: { systemId: ctx.systemId, employeeId: { in: [...leavers] }, sourceType: { in: ["LATE_RULE", "ABSENT_RULE"] }, kind: "DEDUCTION", status: { in: ["PENDING", "APPROVED"] }, runId: null, periodKey: { gt: run.periodKey } }, select: { employeeId: true } })
     : [];
-  // HR H3.4-YTD ▸ R5d (Q3 เตือนเท่านั้น): "ยังไม่กรอกยอดยกมา" — ร่าง = สด (ป้าย MISSING ในแถว ∧ ยังไม่มีแถวยอดยกมาที่มีผล) · หลังอนุมัติ = จากป้ายในแถว · ผู้ดูเงินเดือนเท่านั้น (ผู้จัดการออกไปแล้วข้างบน) ◂
-  const ytdLive = run.status === "DRAFT" && mine.length
-    ? new Set((await db.hrPayrollOpeningYtd.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, taxYear: Number(bkkDay(run.payDate).slice(0, 4)), supersededAt: null, employeeId: { in: mine.map((i) => i.employeeId) } }, select: { employeeId: true } })).map((o) => o.employeeId))
-    : new Set<string>(); // HR H3.4-YTD ◂
+  // HR H3.4-YTD ▸ R5d + fix round (มติ 1a/1b · Q3 เตือนเท่านั้น · ผู้ดูเงินเดือนเท่านั้น — ผู้จัดการออกไปแล้วข้างบน):
+  //   YTD_OPENING = ป้ายในแถว MISSING ∧ ตอนนี้ยังไม่มียอดยกมาที่มีผล (ยอดศูนย์ก็นับ · ทุกสถานะ — ไม่กลับมาหลังอนุมัติ)
+  //   YTD_REBUILD ("ต้องคำนวณใหม่") = ร่าง ∧ ยอดยกมาที่มีผลตอนนี้ (id, rev) ≠ ที่แถวใช้ — บันทึก/แก้/ล้างหลังสร้างร่าง (อนุมัติจะได้ INPUTS_CHANGED) ◂
+  const ytdLive = new Map(mine.length ? (await liveOpeningsIn(db as unknown as Prisma.TransactionClient, ctx, { taxYear: Number(bkkDay(run.payDate).slice(0, 4)), employeeIds: mine.map((i) => i.employeeId) })).map((o) => [o.employeeId, o]) : []);
+  const ytdUsed = (s: Record<string, unknown>): string => { const m = objH34(s.ytdOpening); return typeof m.id === "string" ? `${m.id}:${String(m.rev)}` : ""; };
+  const ytdReview = (empId: string, s: Record<string, unknown>) => {
+    const live = ytdLive.get(empId);
+    if (run.engineVersion < 2) return [];
+    if (run.status === "DRAFT" && ytdUsed(s) !== (live ? `${live.id}:${live.rev}` : "")) return [{ day: null, code: "YTD_REBUILD" }];
+    return s.ytdOpening === "MISSING" && !live ? [{ day: null, code: "YTD_OPENING" }] : [];
+  }; // ◂ HR H3.4-YTD
   const rows: Run2PayRow[] = mine.map((i) => {
     const e = emps.get(i.employeeId);
     const s = objH34(i.snapshotJson);
     const receivable = [
       ...((s.receivable as { cls: string; amountSatang: number }[] | undefined) ?? []).map(() => ({ day: null, code: "RECEIVABLE" })),
       ...strandedAtt.filter((x) => x.employeeId === i.employeeId).map(() => ({ day: null, code: "RECEIVABLE_ATT" })),
-      ...(s.ytdOpening === "MISSING" && !ytdLive.has(i.employeeId) ? [{ day: null, code: "YTD_OPENING" }] : []), // HR H3.4-YTD ◂
+      ...ytdReview(i.employeeId, s), // HR H3.4-YTD ◂
     ];
     return {
       employeeId: i.employeeId, name: e?.name ?? "", unitId: e?.unitId ?? null, payType: String(s.payType ?? "MONTHLY"), lines: run.engineVersion >= 2 ? ((s.lines as unknown[] | undefined) ?? []) : [{ code: "BASE", ref: "profile", day: null, minutes: null, amountSatang: Number(s.baseSalarySatang ?? 0) }], flags: (s.flags as string[] | undefined) ?? [], carry: (s.carry as unknown[] | undefined) ?? [], // fix r1 F9: รอบรุ่น 1 = แถวรุ่น 1 (เงินเดือน + ยอดเดิม)

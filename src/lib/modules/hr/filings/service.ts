@@ -33,6 +33,7 @@ import {
   type TaxCertContent,
 } from "./build";
 import { renderTaxCertPdf } from "./cert-pdf";
+import { liveOpeningsIn, lockYtdInTx } from "../payroll-opening-read"; // HR H3.4-YTD ▸ fix round (NOTE-5): ตัวอ่าน + ล็อก hr:ytd ที่เดียว ◂
 import { openingFilingItem } from "../payroll-opening-rules"; // HR H3.4-YTD ▸ ยอดยกมาต้นปี → แถวแบบยื่นทั้งปี (ไฟล์ pure) ◂
 
 type Ctx = { tenantId: string; systemId: string };
@@ -293,13 +294,9 @@ async function loadItems(tx: Db, ctx: Ctx, runs: RunRow[], employeeFilter?: stri
 // HR H3.4-YTD ▸ R6: ยอดยกมาต้นปีที่ยังมีผล → แถวของแบบยื่น "ทั้งปี" เท่านั้น (50 ทวิ · stale · รายชื่อ · ภ.ง.ด.1ก) — ภ.ง.ด.1 รายเดือน / สปส.1-10 ไม่เรียก ·
 //   คนที่มีแต่ยอดยกมา (ออกก่อนใช้ระบบ — Q6) ถูกเพิ่มในรายชื่อคนด้วย · อ่านด้วย tx ของผู้เรียก ◂
 async function withOpeningsInTx(tx: Db, ctx: Ctx, year: number, L: Loaded, employeeId?: string): Promise<Loaded> {
-  const rows = await tx.hrPayrollOpeningYtd.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, taxYear: year, supersededAt: null, ...(employeeId ? { employeeId } : {}) },
-    select: { id: true, employeeId: true, asOfDay: true, incomeSatang: true, whtSatang: true, ssoSatang: true },
-    orderBy: [{ employeeId: "asc" }],
-  });
+  const rows = await liveOpeningsIn(tx, ctx, { taxYear: year, ...(employeeId ? { employeeIds: [employeeId] } : {}) });
   if (!rows.length) return L;
-  const items = [...rows.map((r) => openingFilingItem({ ...r, asOfDay: r.asOfDay.toISOString().slice(0, 10) })), ...L.items];
+  const items = [...rows.map((r) => openingFilingItem(r)), ...L.items];
   const have = new Set(L.persons.map((p) => p.employeeId));
   const extra = [...new Set(rows.map((r) => r.employeeId))].filter((id) => !have.has(id));
   if (!extra.length) return { ...L, items };
@@ -588,7 +585,7 @@ async function issueOne(ctx: Ctx, actorId: string, employeeId: string, taxYear: 
     const out = await runTx(ctx, async (tx): Promise<IssueOut> => {
       // 1) คิวต่อ (ระบบ, พนักงาน, ปี) — ผู้แพ้รอแล้วเห็นใบของผู้ชนะ (certExists) ไม่กินเลข
       await tx.$queryRaw`SELECT 1 AS "x" FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`hr50:${ctx.systemId}:${employeeId}:${taxYear}`}, 36))) AS "l"`;
-      await tx.$queryRaw`SELECT 1 AS "x" FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`hr:ytd:${ctx.systemId}:${taxYear}`}, 0))) AS "l"`; // HR H3.4-YTD ▸ R4: hr50 → hr:ytd (ลำดับเดียวกับผู้บันทึกยอดยกมา) ◂
+      await lockYtdInTx(tx, ctx, taxYear); // HR H3.4-YTD ▸ R4: hr50 → hr:ytd (ลำดับเดียวกับผู้บันทึกยอดยกมา) ◂
       const emp = await tx.hrEmployee.findFirst({ where: { id: employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, endDate: true } });
       if (!emp) return NO();
       // fix r1 F6: LEAVER = วันสิ้นสุดการจ้างอยู่ในปีภาษีและผ่านมาแล้ว (ออกได้ระหว่างปี — ม.50 ทวิ ภายใน 1 เดือนหลังออก) · ANNUAL = หลังสิ้นปีภาษี (เวลาไทย)

@@ -9,6 +9,7 @@ import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET-1 ◂
 import { writeAudit } from "@/lib/core/audit";
+import { liveOpeningsIn } from "./payroll-opening-read"; // HR H3.4-YTD ▸ fix round (NOTE-5) ◂
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { employeeUnitsOf, hrScopeOf, isAllBranches, unitNamesOf, unitTargetOf, unitWhere, type HrScope } from "./scope";
 import { canReadRoster } from "./roster-board";
@@ -468,7 +469,7 @@ async function taxRows(ctx: Ctx, report: "tax-month" | "tax-year", period: strin
   // HR H3.4-YTD ▸ R7 (Q7): ภาษีทั้งปี = รอบ + ยอดยกมาต้นปีที่ยังมีผล (เงินได้ · ภาษี · ประกันสังคมลูกจ้าง · เดือน) — รายงานอื่นเป็นทะเบียนรอบ ไม่รวม ◂
   const extraMonths = new Map<string, number>();
   if (report === "tax-year" && emps.size) {
-    const ops = await tenantDb(ctx).hrPayrollOpeningYtd.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, taxYear: Number(period), supersededAt: null, employeeId: { in: [...emps.keys()] } }, select: { employeeId: true, months: true, incomeSatang: true, whtSatang: true, ssoSatang: true } });
+    const ops = (await liveOpeningsIn(tenantDb(ctx) as unknown as Prisma.TransactionClient, ctx, { taxYear: Number(period), employeeIds: [...emps.keys()] })).filter((o) => emps.has(o.employeeId)); // HR H3.4-YTD ▸ fix round (NOTE-5): ตัวอ่านเดียว ◂
     for (const o of ops) {
       let s = sums.get(o.employeeId);
       if (!s) sums.set(o.employeeId, (s = { n: 0, months: new Set(), gross: 0, add: 0, deduct: 0, ssoE: 0, ssoR: 0, ssoBase: 0, wht: 0, net: 0, income: 0 }));

@@ -8,7 +8,7 @@ import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
 import { assertCan } from "@/lib/core/rbac";
 import { hrViewerOf } from "./privacy";
-import { saveOpeningYtd, saveOpeningYtdBulk } from "./payroll-opening";
+import { OPENING_BULK_MAX, saveOpeningYtd, saveOpeningYtdBulk } from "./payroll-opening";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 type Auth = Awaited<ReturnType<typeof requireTenant>>;
@@ -43,12 +43,18 @@ async function systemOf(tenantId: string, fd: FormData): Promise<string | null> 
   return sys?.id ?? null;
 }
 const yearOf = (fd: FormData) => (/^\d{4}$/.test(s(fd, "taxYear")) ? Number(s(fd, "taxYear")) : 0);
+/** ค่าที่กรอกของแถว (ข้อความ) — ใช้เทียบกับค่าตั้งต้นที่หน้าใส่ไว้ใน orig_<id> (fix round F3: ส่งเฉพาะแถวที่เปลี่ยน) */
+const fieldsOf = (fd: FormData, id: string) => [s(fd, `asof_${id}`), s(fd, `months_${id}`), s(fd, `inc_${id}`), s(fd, `wht_${id}`), s(fd, `sso_${id}`)];
+const changedRow = (fd: FormData, id: string) => fieldsOf(fd, id).join("|") !== s(fd, `orig_${id}`);
 /** แถวของพนักงาน 1 คนจากฟอร์มตาราง (ชื่อช่อง <ช่อง>_<employeeId>) — null = ช่องว่างทั้งแถว */
 function rowOf(fd: FormData, id: string, zero: boolean) {
   const asOfDay = s(fd, `asof_${id}`);
-  const fields = [asOfDay, s(fd, `months_${id}`), s(fd, `inc_${id}`), s(fd, `wht_${id}`), s(fd, `sso_${id}`)];
+  const fields = fieldsOf(fd, id);
   const expectRev = revOf(s(fd, `rev_${id}`));
-  if (zero) return { employeeId: id, asOfDay: `${yearOf(fd)}-01-01`, months: 0, incomeSatang: 0, whtSatang: 0, ssoSatang: 0, expectRev };
+  // ยอดศูนย์: วันที่ยอดถึง = 1 ม.ค. หรือวันเริ่มงานถ้าเริ่มในปีนั้น (fix round MINOR-4: asOf ต้องไม่ก่อนวันเริ่มงาน)
+  const jan1 = `${yearOf(fd)}-01-01`;
+  const start = s(fd, `start_${id}`);
+  if (zero) return { employeeId: id, asOfDay: /^\d{4}-\d{2}-\d{2}$/.test(start) && start > jan1 ? start : jan1, months: 0, incomeSatang: 0, whtSatang: 0, ssoSatang: 0, expectRev };
   if (fields.every((f) => f === "")) return null;
   return { employeeId: id, asOfDay, months: intOf(s(fd, `months_${id}`)), incomeSatang: satangOf(s(fd, `inc_${id}`)), whtSatang: satangOf(s(fd, `wht_${id}`)), ssoSatang: satangOf(s(fd, `sso_${id}`)), expectRev };
 }
@@ -82,9 +88,11 @@ export async function saveOpeningYtdBulkAction(fd: FormData): Promise<void> {
   if (!systemId) redirect("/app");
   const year = yearOf(fd);
   if (!keyGate(auth)) redirect(back(systemId, year, "ymsg=NO"));
-  const ids = fd.getAll("emp").map(String).filter((x) => ID_RE.test(x));
+  // fix round F3/MINOR-2: ส่งเฉพาะแถวที่ค่าเปลี่ยนจากที่หน้าแสดง (แถวที่ไม่เปลี่ยนไม่สร้าง rev ใหม่ · ไม่ถูกตรวจ OWN) · เกิน 300 แถว = ข้อความคงที่
+  const ids = fd.getAll("emp").map(String).filter((x) => ID_RE.test(x) && changedRow(fd, x));
   const rows = ids.map((id) => rowOf(fd, id, false)).filter((x): x is NonNullable<typeof x> => !!x);
   if (!rows.length) redirect(back(systemId, year, "ymsg=empty"));
+  if (rows.length > OPENING_BULK_MAX) redirect(back(systemId, year, "ymsg=TOO_MANY"));
   const r = await saveOpeningYtdBulk({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), { taxYear: year, rows });
   revalidatePath(`/app/sys/${systemId}/hr/payroll`);
   redirect(back(systemId, year, r.ok ? `ymsg=${r.warnings.length ? "bulkWarn" : "bulk"}&yn=${r.saved.length}` : `ymsg=${encodeURIComponent(r.code)}`));
