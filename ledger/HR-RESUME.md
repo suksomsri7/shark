@@ -642,3 +642,9 @@
 - เอกสาร H4.9 (หนี้ 117 · เจ้าของ 31 ข้อ O-29..31 ใหม่ · นักบัญชี 85) merged — ตาราง "ต้องให้ผู้คุมตัดสินก่อน production" 21 แถว ยังไม่ตัดสิน
 - เหลือ: H4.9 ปิดเฟส H4 (SYNC origin/main · qc:all ทุกชุดบนฐานสุดท้าย · svc/sec env · ตัดสินหนี้ก่อน prod · รัดป้าย HF-SSO ในข้อสอบเก่า h3.2/h3.4-lib/h3.6/h3.9/set-1 เป็นรายชื่อไฟล์ · HANDOVER-H4) → H5.1 เดินหน้าจอ (ผู้คุมรัน) → H5.3 production (รอ GO) · H4.7 ตัด ⇒ จบจริง 43/44
 - เลน 1–4 ว่างทั้งหมด
+
+### 2026-11-14T14:25Z · H4.9 เริ่ม
+- SYNC: origin/main นำ 0 → ไม่ต้อง sync
+- qc:all (ไม่รวม svc/sec) ตัวแทน aa7017dca69c68d75: 3 ส่วน — QC4 (unit hr-qcall-h4-q · pos/hf) · เลน 1 (hr-qcall-h4-a) · เลน 2 (hr-qcall-h4-b) · log /tmp/hr-qcall-h4/ · ผล → ledger/wo-notes/hr-H4-close-qcall.txt (ผู้คุม commit)
+- เลน 3: ผู้สร้าง HF-SSO ac54bf57c6fa09863 รัดป้าย HF-SSO ในข้อสอบเก่าเป็นรายชื่อไฟล์ (สาขา wip/hr-hf-sso-fix2)
+- ค้างผู้คุม: ตัดสินตารางหนี้ 21 แถว · svc/sec (ต้องใช้ฐาน QC ของ RUN อื่น — ถามเจ้าของ) · HANDOVER-H4 · ด่าน pm-full สุดท้าย
