@@ -167,7 +167,7 @@ try {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.message.slice(0, 400)}\n${e.stack?.split("\n").slice(1, 5).join("\n")}` : String(e));
 } finally {
   if (tid && !KEEP) await purgeTenant(tid).catch(() => undefined);
-  await prisma.user.deleteMany({ where: { email: { startsWith: "qc-t47-" } } }).catch(() => undefined);
+  if (!KEEP) await prisma.user.deleteMany({ where: { email: { startsWith: "qc-t47-" } } }).catch(() => undefined);
   await prisma.$disconnect();
 }
 

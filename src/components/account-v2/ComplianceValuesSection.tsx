@@ -1,7 +1,7 @@
 // ComplianceValuesSection — ค่ากฎหมายอื่น (ระยะเก็บเอกสาร · เงินประกันหอ) + วิธีลงทิป · ACC T4.5 · T4.7 · T4.8 (server component)
 //   ค่าที่มีผล = แถวร้าน (ถ้ามี) ไม่งั้นแถวระบบ · ที่มาที่ผู้ใช้เห็น = มาตราภาษาไทยล้วน (publicCitationTh) · ค่าต่างจากค่าเริ่มต้นทางการ = คำเตือน ไม่บล็อก
 import { LegalWarnings } from "./LegalWarnings";
-import { publicCitationTh } from "@/lib/core/settings/legal/warnings";
+import { publicCitationTh, publicNoteTh } from "@/lib/core/settings/legal/warnings";
 import { saveComplianceValueAction, saveTipTreatmentAction } from "@/lib/modules/account/compliance-actions";
 import { TIP_TREATMENTS, TIP_TREATMENT_LABEL_TH, type TipTreatment } from "@/lib/core/settings/defs/account";
 import type { complianceViewFrom } from "@/lib/modules/account/legal-values";
@@ -28,7 +28,7 @@ export function ComplianceValuesSection({ systemId, view, tip, tipWarning, msg, 
             <div className="text-xs text-[color:var(--color-muted)]">
               {publicCitationTh(r.source) || (r.origin === "SHOP" ? r.source : "")}
               {r.tag === "S" || r.tag === "U" ? " · ค่าเริ่มต้นของระบบ — โปรดตรวจกับนักบัญชีของร้าน" : ""}
-              {r.note ? ` · ${r.note}` : ""}
+              {r.note ? ` · ${publicNoteTh(r.note)}` : ""}
             </div>
             {r.warnings.length > 0 && (
               <div className="mt-2">
@@ -57,7 +57,7 @@ export function ComplianceValuesSection({ systemId, view, tip, tipWarning, msg, 
       <form action={saveTipTreatmentAction} className="flex flex-wrap items-end gap-2" data-testid="tip-treatment-form">
         <input type="hidden" name="systemId" value={systemId} />
         <input type="hidden" name="back" value={`/app/sys/${systemId}/account/settings/tax`} />
-        <select name="tipTreatment" defaultValue={tip} className="input h-9" data-testid="tip-treatment-select">
+        <select name="tipTreatment" defaultValue={tip} className="input h-9 w-auto max-w-full" data-testid="tip-treatment-select">
           {TIP_TREATMENTS.map((t) => (
             <option key={t} value={t}>
               {TIP_TREATMENT_LABEL_TH[t]}

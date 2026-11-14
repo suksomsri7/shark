@@ -95,6 +95,9 @@ console.log("\nW9 ข้อความที่ผู้ใช้เห็น (
   chk("W9.7", "ผลเครื่องมือเลขา: คำเตือนตัด citation/tag/checkedAt ดิบ แทนด้วยอ้างอิงกฎหมาย", /isWarning/.test(AO) && /"citation", "tag", "checkedAt"/.test(AO) && /อ้างอิงกฎหมาย/.test(AO), "มี", "ไม่มี");
   const LVP = src("src/components/account-v2/LegalValuesPanel.tsx");
   chk("W9.8", "ตารางค่ากฎหมายบนจอไม่แสดง path/ป้ายตัวอักษร (ใช้ publicCitationTh · ไม่มี 'ป้าย {r.tag}')", /publicCitationTh\(r\.source\)/.test(LVP) && !/ป้าย \{r\.tag\}/.test(LVP), "ตามนั้น", "ไม่ตรง");
+  const sysRows = [...TH.SYSTEM_ROWS.vat, ...TH.SYSTEM_ROWS.wht, ...TH.SYSTEM_ROWS.deadline, ...TH.SYSTEM_COMPLIANCE_ROWS] as Any[];
+  const dirty = sysRows.filter((r) => FORBID.test(W.publicCitationTh(r.source)) || FORBID.test(W.publicNoteTh(r.note ?? "")) || /§/.test(W.publicNoteTh(r.note ?? "")));
+  chk("W9.9", "แถวระบบของตารางค่ากฎหมาย: ที่มา/หมายเหตุที่ผู้ใช้เห็น (publicCitationTh/publicNoteTh) ไม่มี path · skill · § · ป้าย · จอใช้ publicNoteTh", dirty.length === 0 && /publicNoteTh\(r\.note\)/.test(LVP), [], dirty.map((r) => r.id));
 }
 
 // ═══ W7/W8 แหล่งโค้ด (ไม่แตะฐาน) ═══

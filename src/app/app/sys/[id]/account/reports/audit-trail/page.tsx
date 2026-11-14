@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MoneyText } from "@/components/ui/MoneyText";
+import { DateInput } from "@/components/account-v2/DateInput";
 import { AUDIT_TRAIL_KINDS, listAccountChanges, type AuditTrailKind } from "@/lib/modules/account/audit-trail";
 import { loadReport, ReportHeader, TableWrap } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
@@ -36,11 +37,11 @@ export default async function AuditTrailPage({ params, searchParams }: { params:
       <form method="get" className="flex flex-wrap items-end gap-3 print:hidden" data-testid="audit-trail-filter">
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           ตั้งแต่
-          <input type="date" name="from" defaultValue={from} className="input h-9" data-testid="audit-trail-from" />
+          <DateInput name="from" defaultValue={from} testId="audit-trail-from" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           ถึง
-          <input type="date" name="to" defaultValue={to} className="input h-9" data-testid="audit-trail-to" />
+          <DateInput name="to" defaultValue={to} testId="audit-trail-to" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           ประเภท
@@ -63,6 +64,21 @@ export default async function AuditTrailPage({ params, searchParams }: { params:
         <h2 className="text-sm font-medium">
           {res.total} รายการ{res.total > res.rows.length ? ` (แสดง ${res.rows.length})` : ""}
         </h2>
+        {/* มือถือ: การ์ดต่อรายการ (ตารางกว้าง 6 คอลัมน์อ่านไม่ได้บนจอแคบ) */}
+        <ul className="flex flex-col gap-2 md:hidden print:hidden" data-testid="audit-trail-cards">
+          {res.rows.map((r) => (
+            <li key={r.id} className="card flex flex-col gap-0.5 text-sm" data-testid="audit-trail-card" data-category={r.category}>
+              <div className="flex justify-between gap-2">
+                <span className={r.category === "cancel" ? "font-medium text-[color:var(--color-danger)]" : "font-medium"}>{r.actionLabel}</span>
+                {r.amountSatang === null ? null : <span className="tabular-nums"><MoneyText satang={r.amountSatang} decimals /></span>}
+              </div>
+              <div className="text-xs text-[color:var(--color-muted)]">{bkkTime(r.at)} · {r.actorName}{r.ref ? ` · ${r.ref}` : ""}</div>
+              {r.reason ? <div>เหตุผล: {r.reason}</div> : r.category === "cancel" ? <div className="text-[color:var(--color-muted)]">ไม่ได้ระบุเหตุผล</div> : null}
+              {r.detail ? <div className="text-xs text-[color:var(--color-muted)]">{r.detail}</div> : null}
+            </li>
+          ))}
+        </ul>
+        <div className="hidden md:block print:block">
         <TableWrap>
           <thead>
             <tr className="text-left text-[color:var(--color-muted)]">
@@ -100,6 +116,7 @@ export default async function AuditTrailPage({ params, searchParams }: { params:
             )}
           </tbody>
         </TableWrap>
+        </div>
         {res.nextCursor ? (
           <Link href={q({ cursor: res.nextCursor })} className="self-start text-sm underline print:hidden" data-testid="audit-trail-next">
             หน้าถัดไป ›

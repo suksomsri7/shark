@@ -1,4 +1,5 @@
 import { MoneyText } from "@/components/ui/MoneyText";
+import { DateInput } from "@/components/account-v2/DateInput";
 import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
 import { posDailyRecon, posLinkWarnings, posShiftVariances, posUnpostedBills } from "@/lib/modules/account/pos-link";
 import { loadBookLegal } from "@/lib/modules/account/legal-values";
@@ -38,11 +39,11 @@ export default async function PosLinkPage({ params, searchParams }: { params: Pr
       <form method="get" className="flex flex-wrap items-end gap-3 print:hidden" data-testid="pos-link-filter">
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           ตั้งแต่
-          <input type="date" name="from" defaultValue={from} className="input h-9" />
+          <DateInput name="from" defaultValue={from} testId="pos-link-from" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           ถึง
-          <input type="date" name="to" defaultValue={to} className="input h-9" />
+          <DateInput name="to" defaultValue={to} testId="pos-link-to" />
         </label>
         <button type="submit" className="btn btn-primary btn-sm h-9" data-testid="pos-link-apply">
           แสดง
@@ -171,7 +172,7 @@ export default async function PosLinkPage({ params, searchParams }: { params: Pr
         <form action={saveTipTreatmentAction} className="flex flex-wrap items-end gap-2">
           <input type="hidden" name="systemId" value={systemId} />
           <input type="hidden" name="back" value={`${base}/reports/pos-link`} />
-          <select name="tipTreatment" defaultValue={tip} className="input h-9" data-testid="pos-tip-select">
+          <select name="tipTreatment" defaultValue={tip} className="input h-9 w-auto max-w-full" data-testid="pos-tip-select">
             {TIP_TREATMENTS.map((t) => (
               <option key={t} value={t}>{TIP_TREATMENT_LABEL_TH[t]}</option>
             ))}

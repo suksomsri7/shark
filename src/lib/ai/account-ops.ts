@@ -30,7 +30,7 @@ import type { ApiOp } from "@/lib/modules/account/api/op";
 import { ACCOUNT_OPS } from "@/lib/modules/account/api/registry";
 import { mapError } from "@/lib/modules/account/api/respond";
 import { vatRateBpAt } from "@/lib/modules/account/legal-values";
-import { publicCitationTh } from "@/lib/core/settings/legal/warnings"; // ACC T4 Job 0 ◂
+import { publicCitationTh, publicNoteTh } from "@/lib/core/settings/legal/warnings"; // ACC T4 Job 0 ◂
 import { detailsMessageTh, runOpAsActor, validateOpInput, validateWith } from "@/lib/modules/account/api/run";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -648,6 +648,11 @@ function thaiify(value: unknown, depth = 0): unknown {
     if ((k === "source" || k === "citation") && typeof v === "string" && /references\/|\.md\b|§/.test(v)) {
       const law = publicCitationTh(v);
       if (law) out["อ้างอิงกฎหมาย"] = law;
+      continue;
+    }
+    if (k === "note" && typeof v === "string" && /skill|§|references\//i.test(v)) {
+      const n = publicNoteTh(v);
+      if (n) out[thaiKey(k)] = n;
       continue;
     }
     if (k === "tag" && typeof v === "string" && ["V", "V2", "S", "U"].includes(v)) {

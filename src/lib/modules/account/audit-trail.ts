@@ -11,6 +11,7 @@ import type { ActorType, Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { likeStartsWith } from "@/lib/core/ci-equals";
 import { auditActionLabelTh, listSignInLogs } from "./access";
+import { isLegalWarningCode, LEGAL_WARNINGS } from "@/lib/core/settings/legal/warnings";
 
 export type AuditTrailKind = "all" | "cancel" | "legal" | "signin";
 export const AUDIT_TRAIL_KINDS: readonly AuditTrailKind[] = ["all", "cancel", "legal", "signin"];
@@ -72,6 +73,7 @@ const LABELS: Record<string, string> = {
 };
 export const labelOfAuditAction = (a: string): string => LABELS[a] ?? auditActionLabelTh(a);
 
+const SIGNIN_FAIL_TH: Record<string, string> = { invalid: "รหัสไม่ถูกต้อง", locked: "ใส่รหัสผิดเกินกำหนด", expired: "รหัสหมดอายุ" };
 const METHOD_TH: Record<string, string> = {
   otp: "รหัส OTP ทางอีเมล",
   "magic-link": "ลิงก์ทางอีเมล",
@@ -167,6 +169,7 @@ export async function listAccountChanges(ctx: { tenantId: string; systemId: stri
       const reason = str(after.reason) ?? str(before.reason) ?? str(after.unmarkReason) ?? (cancel ? t?.voidReason ?? null : null);
       const codes = Array.isArray(after.codes) ? (after.codes as unknown[]).filter((x): x is string => typeof x === "string") : [];
       const err = str(after.error);
+      if (l.action === "account.doc.void" && l.targetId && !reverseBy.has(`doc:${l.targetId}`)) reverseBy.set(`doc:${l.targetId}`, { actorType: l.actorType, actorId: l.actorId, reason: str(after.reason), auditId: l.id });
       rows.push({
         id: l.id,
         at: l.createdAt,
@@ -182,7 +185,7 @@ export async function listAccountChanges(ctx: { tenantId: string; systemId: stri
         amountSatang: cancel || l.action === "account.payment.record" ? t?.amount ?? null : null,
         reason,
         category,
-        detail: category === "legal" ? (codes.length ? `รหัส ${codes.join(", ")}${str(after.op) ? ` · ${str(after.op)}` : ""}` : null) : err ? `ไม่สำเร็จ: ${err}` : null,
+        detail: category === "legal" ? (codes.length ? `${codes.map((c) => (isLegalWarningCode(c) ? LEGAL_WARNINGS[c].titleTh : c)).join(" · ")}${str(after.op) ? ` (ตอน${labelOfAuditAction(str(after.op)!)})` : ""}` : null) : err ? `ไม่สำเร็จ: ${err}` : null,
       });
     }
   }
@@ -193,10 +196,11 @@ export async function listAccountChanges(ctx: { tenantId: string; systemId: stri
       where: { tenantId: ctx.tenantId, systemId: ctx.systemId, reversalOfId: { not: null }, createdAt, ...(q.actorId ? { postedById: q.actorId } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 5000,
-      select: { id: true, docNo: true, createdAt: true, memo: true, postedById: true, source: true, reversalOfId: true, reversalOf: { select: { docNo: true, memo: true } }, lines: { select: { debit: true } } },
+      select: { id: true, docNo: true, createdAt: true, memo: true, postedById: true, source: true, reversalOfId: true, reversalOf: { select: { docNo: true, memo: true, refType: true, refId: true } }, lines: { select: { debit: true } } },
     });
     for (const r of revs) {
-      const by = r.reversalOfId ? reverseBy.get(r.reversalOfId) : undefined;
+      // ใครกลับรายการ: ผู้ลงใบ → audit กลับรายการของใบเดิม → audit ยกเลิกเอกสารต้นทาง (กลับรายการอัตโนมัติจากการยกเลิก)
+      const by = (r.reversalOfId ? reverseBy.get(r.reversalOfId) : undefined) ?? (r.reversalOf?.refType === "AccountDocument" && r.reversalOf.refId ? reverseBy.get(`doc:${r.reversalOf.refId}`) : undefined);
       const actorId = r.postedById ?? by?.actorId ?? null;
       const actorType: ActorType = r.postedById ? "USER" : by?.actorType ?? "SYSTEM";
       rows.push({
@@ -240,7 +244,7 @@ export async function listAccountChanges(ctx: { tenantId: string; systemId: stri
           targetId: null,
           ref: null,
           amountSatang: null,
-          reason: str(after.reason),
+          reason: SIGNIN_FAIL_TH[str(after.reason) ?? ""] ?? str(after.reason),
           category: "signin",
           detail: [m ? `ทาง ${METHOD_TH[m] ?? m}` : null, l.ip ? `IP ${l.ip}` : null].filter(Boolean).join(" · ") || null,
         });

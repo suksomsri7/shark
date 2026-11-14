@@ -248,6 +248,21 @@ export function legalWarningRefTh(w: Pick<LegalWarning, "lawTh" | "citation" | "
 }
 const CHECK_WITH_ACCOUNTANT_TH_ = "โปรดตรวจกับนักบัญชีของร้าน";
 
+/** ACC T4 Job 0 ▸ หมายเหตุของแถวค่ากฎหมายที่ผู้ใช้เห็น: เอาชื่อ skill / § / ป้ายตัวอักษรออก (ความหมายคงเดิม) ◂ */
+export function publicNoteTh(note: string | null | undefined): string {
+  if (!note) return "";
+  return note
+    .replace(/\(\s*skill\s*:?[^)]*\)/gi, "(ควรตรวจซ้ำกับแหล่งทางการ)")
+    .replace(/skill\s*ให้ค้นซ้ำก่อน/gi, "ควรตรวจซ้ำกับแหล่งทางการก่อน")
+    .replace(/skill\s*บันทึกว่า/gi, "ผลค้นคว้าพบว่า")
+    .replace(/\bskill\b/gi, "ผลค้นคว้าของระบบ")
+    .replace(/\s*\(§[^)]*\)/g, "")
+    .replace(/\s*§\s*\S+/g, "")
+    .replace(/\s*\[(?:V2|V|S|U)\]/g, "")
+    .replace(/references\/\S+/g, "")
+    .trim();
+}
+
 /** ข้อความกลางสำหรับค่าที่ไม่ได้มาจากเอกสารทางการ (กติกาข้อ 1 ของ ACCOUNT-TAX-PLAN) */
 export const CHECK_WITH_ACCOUNTANT_TH = "โปรดตรวจกับนักบัญชีของร้าน";
 /** คำต่อท้ายคำเตือนจากกฎป้าย [S]/[U] */

@@ -1,4 +1,5 @@
 import { MoneyText } from "@/components/ui/MoneyText";
+import { DateInput } from "@/components/account-v2/DateInput";
 import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
 import { pointsOutstandingAt } from "@/lib/modules/account/deposits-points";
 import { loadReport, ReportHeader, TableWrap } from "../_shared";
@@ -26,7 +27,7 @@ export default async function PointsOutstandingPage({ params, searchParams }: { 
       <form method="get" className="flex items-end gap-3 print:hidden">
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           ณ วันที่
-          <input type="date" name="asOf" defaultValue={asOf} className="input h-9" data-testid="points-asof" />
+          <DateInput name="asOf" defaultValue={asOf} testId="points-asof" />
         </label>
         <button type="submit" className="btn btn-primary btn-sm h-9" data-testid="points-apply">แสดง</button>
       </form>

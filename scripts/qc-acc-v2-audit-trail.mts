@@ -203,7 +203,11 @@ try {
   const jr = all.rows.filter((r: Any) => r.source === "journal");
   chk("G5.2", "กลับรายการ 2 แถว · ยอด 107,000 + 50,000 · J1 มีเหตุผล 'ลงผิดบัญชี' + ผู้ทำ", jr.length === 2 && jr.reduce((n: number, r: Any) => n + r.amountSatang, 0) === 157_000 && jr.some((r: Any) => (r.reason ?? "").includes("ลงผิดบัญชี") && r.actorName === "พนักงานบัญชี T4.4"), "2 แถว 157,000", jr.map((r: Any) => ({ a: r.amountSatang, reason: r.reason, by: r.actorName })));
   const lg = all.rows.filter((r: Any) => r.category === "legal");
-  chk("G5.3", "กดยืนยันคำเตือน: แถว legal พร้อมรหัส", lg.length === 1 && /FILED_PERIOD_VAT_CHANGE/.test(lg[0].detail ?? ""), 1, lg);
+  chk("G5.3", "กดยืนยันคำเตือน: แถว legal พร้อมหัวข้อคำเตือนภาษาไทย (ไม่ใช่รหัสดิบ) + ตอนทำอะไร", lg.length === 1 && (lg[0].detail ?? "").includes(W.LEGAL_WARNINGS.FILED_PERIOD_VAT_CHANGE.titleTh) && /ตอนออกเอกสาร/.test(lg[0].detail ?? ""), 1, lg);
+  const r1rev = all.rows.find((r: Any) => r.source === "journal" && r.amountSatang === 107_000);
+  chk("G5.3b", "กลับรายการจากการยกเลิกเอกสาร: ผู้ทำ = ผู้ยกเลิก (จาก audit ยกเลิกเอกสาร) · เหตุผล", r1rev?.actorName === "พนักงานบัญชี T4.4" && r1rev?.reason === "ออกผิดลูกค้า", "พนักงานบัญชี T4.4", r1rev);
+  const fail = all.rows.find((r: Any) => r.action === "auth.signin.failed");
+  chk("G5.3c", "เข้าระบบไม่สำเร็จ: เหตุผลภาษาไทย", fail?.reason === "รหัสไม่ถูกต้อง", "รหัสไม่ถูกต้อง", fail?.reason);
   const si = all.rows.filter((r: Any) => r.category === "signin");
   chk("G5.4", "เข้า/ออก/ไม่สำเร็จ ของสมาชิกร้าน 3 แถว · ทาง OTP · IP", si.length === 3 && si.some((r: Any) => r.action === "auth.signin" && /OTP/.test(r.detail ?? "") && /203\.0\.113\.5/.test(r.detail ?? "")), 3, si.map((r: Any) => [r.action, r.detail]));
   const cancelOnly = await AT.listAccountChanges(ctx, { kind: "cancel" });
@@ -233,7 +237,7 @@ try {
   await setMode("qc").catch(() => undefined);
 } finally {
   if (tid && !KEEP) await purgeTenant(tid).catch(() => undefined);
-  for (const u of users) {
+  for (const u of KEEP ? [] : users) {
     await prisma.authToken.deleteMany({ where: { email: { startsWith: "qc-t44" } } }).catch(() => undefined);
     await prisma.user.delete({ where: { id: u } }).catch(() => undefined);
   }

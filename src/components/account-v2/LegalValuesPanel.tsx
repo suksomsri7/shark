@@ -33,7 +33,7 @@ import {
   type LegalWarning,
 } from "@/lib/core/settings/legal/th-tax-2569";
 import type { BookTaxView, LegalRowView, UpcomingDeadline } from "@/lib/modules/account/legal-values";
-import { publicCitationTh } from "@/lib/core/settings/legal/warnings"; // ACC T4 Job 0 ◂
+import { publicCitationTh, publicNoteTh } from "@/lib/core/settings/legal/warnings"; // ACC T4 Job 0 ◂
 
 type Kind = "vat" | "wht" | "deadline";
 type SaveFn = (systemId: string, kind: Kind, rows: unknown) => Promise<{ ok: true; warnings: LegalWarning[] } | { ok: false; reason: string }>;
@@ -285,7 +285,7 @@ function TableCard({ kind, rows, systemId, save }: { kind: Kind; rows: LegalRowV
                     {r.tag === "S" || r.tag === "U" ? "ค่าเริ่มต้นของระบบ — โปรดตรวจกับนักบัญชีของร้าน" : r.origin === "SHOP" ? "ร้านตั้งเอง" : "จากแหล่งทางการ"}
                     {r.checkedAt ? ` · ตรวจ ${formatDateTh(r.checkedAt)}` : ""}
                   </div>
-                  {r.note ? <div className={helpCls}>{r.note}</div> : null}
+                  {r.note ? <div className={helpCls}>{publicNoteTh(r.note)}</div> : null /* ACC T4 Job 0 ◂ */}
                   <Warnings list={r.warnings} testId={`legal-row-warn-${r.id}`} />
                 </td>
                 <td className="py-2 whitespace-nowrap text-right">
