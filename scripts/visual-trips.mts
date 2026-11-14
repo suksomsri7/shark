@@ -48,7 +48,7 @@ type Action =
   | { reveal: string }
   | { pause: number };
 // TRIPS W1.1 ▸ public = หน้าสาธารณะ: ไม่ใส่คุกกี้ session (บริบทเบราว์เซอร์ใหม่) + ตั้งหัว x-forwarded-for (หน้าต้องรู้ IP) · expectStatus = รหัสสถานะที่ต้องได้ (ปริยาย: ต่ำกว่า 400) ◂
-type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print" };
+type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01" | "07"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print" };
 const PUBLIC_CLIENT_IP = "198.51.100.77";
 const BOOK_RACHA = "racha-yai-day-trip";
 // ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
@@ -183,6 +183,9 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
         { click: { selector: '[data-testid="book-accept"]' } }, { click: { selector: '[data-testid="book-pay-submit"]' } }, { waitFor: '[data-testid="book-res"]' }, { pause: 300 },
       ],
     },
+    // TRIPS W1.2 รอบ 2 (มติ R8) ▸ หน้าการจองหมดเวลา (07 · "ถ้าโอนแล้ว ติดต่อร้าน") — ก่อนถ่าย: การจอง WEB ล่าสุดของร้าน seed (จากฉาก book-pay) ถูกเลื่อนเวลาถือให้หมด
+    //   (เขียนฐานเลนเหมือนฉากอื่นของกลุ่มนี้ · ตัวกวาดปล่อยที่ตามปกติ) · ไม่มีฉาก AWAIT_SHOP ใน a (ย้ายไป W1.2b) ◂
+    { name: "book-expired", mockup: "07", public: true, path: () => `/book/${SHOP_DIVE.tenant.slug}/my/${W12_EXPIRED_TOKEN}?lang=th`, actions: [{ waitFor: '[data-testid="book-res-expired"]' }] },
   ],
 };
 // TRIPS W1.2 ▸ token ของการจอง 0142 (ฉาก book-voucher) — เติมก่อนถ่ายเมื่อใบ = w1.2 · ไม่มีกุญแจเซิร์ฟเวอร์/ไม่พบการจอง ⇒ หยุด ◂
@@ -191,6 +194,18 @@ async function w12VoucherToken(bookingId: string): Promise<string> {
   if (!bookingId) throw new Fatal(`ไม่พบการจองของ ${BOOKING_0142_PARTY} บนรอบราชา ${DEPARTURE_RACHA_1114.date} — รัน scripts/seed-trips-qc.mts ก่อน`);
   const trips = (await import("@/lib/modules/trips")) as { bookingPublicToken?: (id: string) => string | null };
   const t = typeof trips.bookingPublicToken === "function" ? trips.bookingPublicToken(bookingId) : null;
+  if (!t) throw new Fatal("ทำ token การจองไม่ได้ (ไม่มี SESSION_SECRET ใน .env.qc-trips?)");
+  return t;
+}
+// TRIPS W1.2 รอบ 2 ▸ ฉาก book-expired: การจอง WEB สถานะ HOLD ล่าสุดของร้าน seed ⇒ เลื่อนที่ถือ ACTIVE ให้หมด 1 นาทีก่อน (นาฬิกาเครื่อง = นาฬิกาเซิร์ฟเวอร์ที่เปิดหน้า) ⇒ token ◂
+let W12_EXPIRED_TOKEN = "";
+async function w12ExpireLatestWebBooking(): Promise<string> {
+  const tenantId = SHOP_DIVE.tenant.id;
+  const b = await prisma.tripBooking.findFirst({ where: { tenantId, unitId: SHOP_DIVE.units.trips.id, channel: "WEB", status: "HOLD" }, orderBy: { createdAt: "desc" }, select: { id: true } });
+  if (!b) throw new Fatal("ไม่พบการจอง WEB ที่ถืออยู่ของร้าน seed — ฉาก book-expired ต้องรันหลัง book-pay ในกลุ่ม w1.2-flow");
+  await prisma.tripHold.updateMany({ where: { tenantId, bookingId: b.id, status: "ACTIVE" }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+  const trips = (await import("@/lib/modules/trips")) as { bookingPublicToken?: (id: string) => string | null };
+  const t = typeof trips.bookingPublicToken === "function" ? trips.bookingPublicToken(b.id) : null;
   if (!t) throw new Fatal("ทำ token การจองไม่ได้ (ไม่มี SESSION_SECRET ใน .env.qc-trips?)");
   return t;
 }
@@ -381,6 +396,7 @@ try {
   });
   try {
     for (const spec of specs) for (const dev of DEVICES) {
+      if (spec.name === "book-expired" && !W12_EXPIRED_TOKEN) W12_EXPIRED_TOKEN = await w12ExpireLatestWebBooking(); // TRIPS W1.2 รอบ 2 ▸ ◂
       // หน้าสาธารณะ: บริบทใหม่ (ไม่มีคุกกี้ของฉากอื่น) + หัว IP ของผู้ใช้ (ไม่พึ่งว่า server เติมให้)
       const ctx = spec.public && browser.createBrowserContext ? await browser.createBrowserContext() : null;
       const page = await (ctx ?? browser).newPage();
