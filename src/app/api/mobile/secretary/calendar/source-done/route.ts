@@ -15,8 +15,10 @@ async function POST_(req: Request) {
   try {
     const r = await completeSourceItem(g.actor, b.v);
     if (r.ok) return ok({ ok: true });
-    if (r.code === "FORBIDDEN") return fail(403, "forbidden", "บอร์ดนี้คุณดูได้อย่างเดียว");
+    if (r.code === "FORBIDDEN") return fail(403, "forbidden", r.message ?? "บอร์ดนี้คุณดูได้อย่างเดียว");
     if (r.code === "NO_DONE_COLUMN") return fail(409, "no_done_column", "บอร์ดนี้ยังไม่มีคอลัมน์ 'เสร็จ' — ย้ายการ์ดในบอร์ดแทน");
+    // CAL1.3 ▸ D-B2: คอลัมน์ "เสร็จ" เต็มเพดาน WIP — ข้อความไทยของบอร์ดเอง ◂
+    if (r.code === "BLOCKED") return fail(409, "blocked", r.message ?? "ย้ายการ์ดไม่ได้ตอนนี้ — เปิดบอร์ดเพื่อจัดการ");
     return notFound();
   } catch (e) {
     return calThrown(e, "calendar/source-done POST");

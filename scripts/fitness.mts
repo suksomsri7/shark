@@ -503,6 +503,10 @@ const ALLOWED_EDGES = new Set([
   "calendar→crm",
   "calendar→member",
   "calendar→kanban",
+  // CAL1.3 ▸ ตัวรวม agenda (docs/modules/32-secretary-calendar.md §4.3 · R-CAL-5/7): "ผู้ใช้คนนี้คือพนักงาน HR คนไหน" ผ่าน facade
+  //   `hr/index.employeeOfUser` (อ่านอย่างเดียว · dynamic import) — ใช้หา "นัดบัตรคิวของฉัน" (BookingStaff.employeeId) + "ใบลาของฉัน"
+  //   ไม่เขียนกฎผูกพนักงานซ้ำ · ทิศเดียว (hr ไม่รู้จัก calendar ส่วนตัว — เส้น hr→calendar ไม่มี) ◂
+  "calendar→hr",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

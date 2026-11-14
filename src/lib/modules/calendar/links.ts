@@ -18,6 +18,8 @@ export type LinkInfo = {
   phone: string | null;
   /** บรรทัด body ของ push (§7.1 · เบอร์ปิดแล้ว) */
   body: string;
+  /** CAL1.3 ▸ deepLink ของสิ่งที่ผูก (สัญญา §4.5) — แถว agenda ของเตือนที่ผูกและยังอ่านได้ ◂ */
+  deepLink: { kind: "web" | "app"; path: string };
 };
 type Who = { userId: string; tenantId: string; membership: MembershipCtx };
 
@@ -51,7 +53,7 @@ export async function resolveLinks(who: Who, refs: LinkRef[]): Promise<Map<strin
           const rows = await db.crmContact.findMany({ where: { AND: [w, { tenantId, systemId, id: { in: contactIds } }] }, select: { id: true, name: true, phone: true } });
           for (const c of rows) {
             const masked = maskPhone(c.phone);
-            put({ type: "CRM_CONTACT", id: c.id, systemId, label: `${c.name} (CRM)`, phone: c.phone || null, body: masked ? `${c.name} · เบอร์ ${masked}` : c.name });
+            put({ type: "CRM_CONTACT", id: c.id, systemId, label: `${c.name} (CRM)`, phone: c.phone || null, body: masked ? `${c.name} · เบอร์ ${masked}` : c.name, deepLink: { kind: "web", path: `/app/sys/${systemId}/crm/contacts/${c.id}` } });
           }
         }
         if (dealIds.length) {
@@ -63,7 +65,7 @@ export async function resolveLinks(who: Who, refs: LinkRef[]): Promise<Map<strin
           for (const d of rows) {
             const masked = maskPhone(d.contact?.phone);
             const parts = [d.title, d.valueSatang > 0 ? `มูลค่า ${satang(d.valueSatang)}` : "", masked ? `เบอร์ ${masked}` : ""].filter(Boolean);
-            put({ type: "CRM_DEAL", id: d.id, systemId, label: `${d.contact?.name ? `${d.contact.name} (CRM) · ` : ""}${d.title}`, phone: d.contact?.phone || null, body: parts.join(" · ") });
+            put({ type: "CRM_DEAL", id: d.id, systemId, label: `${d.contact?.name ? `${d.contact.name} (CRM) · ` : ""}${d.title}`, phone: d.contact?.phone || null, body: parts.join(" · "), deepLink: { kind: "app", path: `/crm?systemId=${systemId}&dealId=${d.id}` } });
           }
         }
       }
@@ -79,7 +81,7 @@ export async function resolveLinks(who: Who, refs: LinkRef[]): Promise<Map<strin
         for (const systemId of await systemsOf(tenantId, "ACCOUNT")) {
           const rows = await tenantDb({ tenantId, systemId }).accountDocument.findMany({
             where: { tenantId, systemId, id: { in: docIds } },
-            select: { id: true, docNo: true, grandTotal: true, paidTotal: true, dueDate: true, contactSnapshot: true, contact: { select: { name: true } } },
+            select: { id: true, docType: true, docNo: true, grandTotal: true, paidTotal: true, dueDate: true, contactSnapshot: true, contact: { select: { name: true } } },
           });
           for (const d of rows) {
             const snap = (d.contactSnapshot as Record<string, unknown> | null) ?? null;
@@ -88,7 +90,7 @@ export async function resolveLinks(who: Who, refs: LinkRef[]): Promise<Map<strin
             const owe = d.grandTotal - d.paidTotal;
             const dd = d.dueDate ? new Date(+d.dueDate + 7 * 3_600_000) : null;
             const due = dd ? `ครบ ${dd.getUTCDate()}/${dd.getUTCMonth() + 1}` : "";
-            put({ type: "ACCOUNT_DOC", id: d.id, systemId, label: whoName ? `${whoName} · ${no}` : no, phone: null, body: [no, owe > 0 ? `ค้าง ${satang(owe)}` : "", due].filter(Boolean).join(" · ") });
+            put({ type: "ACCOUNT_DOC", id: d.id, systemId, label: whoName ? `${whoName} · ${no}` : no, phone: null, body: [no, owe > 0 ? `ค้าง ${satang(owe)}` : "", due].filter(Boolean).join(" · "), deepLink: { kind: "web", path: `/app/sys/${systemId}/account/docs/${d.docType}/${d.id}` } });
           }
         }
       }
@@ -105,9 +107,9 @@ export async function resolveLinks(who: Who, refs: LinkRef[]): Promise<Map<strin
       for (const systemId of await systemsOf(tenantId, "KANBAN")) {
         const rows = await tenantDb({ tenantId, systemId }).kanbanCard.findMany({
           where: { tenantId, systemId, id: { in: cardIds }, board: { AND: [visibleBoardsWhere(kActor), { tenantId, systemId }] } },
-          select: { id: true, title: true, board: { select: { name: true } } },
+          select: { id: true, title: true, boardId: true, board: { select: { name: true } } },
         });
-        for (const c of rows) put({ type: "KANBAN_CARD", id: c.id, systemId, label: `${c.title} (การ์ด)`, phone: null, body: `การ์ดในบอร์ด "${c.board.name}"` });
+        for (const c of rows) put({ type: "KANBAN_CARD", id: c.id, systemId, label: `${c.title} (การ์ด)`, phone: null, body: `การ์ดในบอร์ด "${c.board.name}"`, deepLink: { kind: "web", path: `/app/sys/${systemId}/kanban/b/${c.boardId}?card=${c.id}` } });
       }
     } catch {
       /* */
