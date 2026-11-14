@@ -1,30 +1,25 @@
-// ตั้งค่า (ใบ S2.7 · เมนูของโซนเลขา) — แถวไปหน้าย่อย B2 B8 B3 B4 B5 B6 B7 G4 + แถว "สลับกิจการ" (B1 = BusinessSwitcherSheet ของ S2.1)
+// ตั้งค่า (ใบ S2.7 · เมนูของโซนเลขา) — แถวไปหน้าย่อยส่วนตัว B2 B5 G4 + แถว "สลับกิจการ" (B1 = BusinessSwitcherSheet ของ S2.1 · ⚙ = ตั้งค่ากิจการ)
 //   แบบไม่มีหน้าเมนูแยก (B2 มีแถวลิงก์ท้ายหน้า) ⇒ จอนี้ไม่มีภาพคู่ (spec pair:false) · ใช้ SecTopBar โซนเลขา
-//   หน้าที่เป็นของเจ้าของ (สิทธิ์ต่อระบบ · ต้องอนุมัติเสมอ · คุยกับลูกค้า) แสดงป้าย "เจ้าของเท่านั้น" เมื่อบทบาทไม่ใช่ OWNER (เปิดดูได้)
-import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { useFocusEffect, useRouter, type Href } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { AiryScreen, type IconName } from "@/src/components/airy";
 import { SecTopBar, TenantTitle } from "@/src/components/secretary/SecTopBar";
 import { SettingRow } from "@/src/components/secretary/SettingRow";
 import { useBusinessSwitcher } from "@/src/components/secretary/BusinessSwitcherSheet";
-import { DEFAULT_SECRETARY_NAME, quotaNumbers, secGet, useActiveRole, useSecretaryMe } from "@/src/api/secretary";
-import { useAuth } from "@/src/lib/auth-context";
+import { DEFAULT_SECRETARY_NAME, useSecretaryMe } from "@/src/api/secretary";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
 import { spacing, type as T } from "@/src/theme/tokens";
 
-type Row = { key: string; icon: IconName; title: I18nKey; sub: I18nKey; path?: Href; owner?: boolean };
+type Row = { key: string; icon: IconName; title: I18nKey; sub: I18nKey; path?: Href };
+// 14 พ.ย. (แบบ bizgear Ⓑ): แถวที่ผูกกับกิจการ (โควตา · สิทธิ์ต่อระบบ · ต้องอนุมัติ · ความรู้ · คุยกับลูกค้า) ย้ายไป "ตั้งค่ากิจการ"
+//   (/business/<id>/settings · ⚙ ในตัวสลับกิจการ) — หน้านี้เหลือของส่วนตัว: เลขาของฉัน · บัญชีของฉัน · ประวัติงานเลขา (+ แถวสลับกิจการ = ทางไป ⚙)
+//   เส้นทางเดิม /secretary/settings/{quota,access,rules,knowledge,customers} ยังอยู่ครบ (ลิงก์ช่วยเหลือ/การแจ้งเตือนยังเปิดได้)
 const ROWS: Row[] = [
   { key: "secretary", icon: "user", title: "sec.title.settingsSecretary", sub: "sec.set.row.secretary", path: "/secretary/settings/secretary" },
-  { key: "quota", icon: "pie-chart", title: "sec.title.settingsQuota", sub: "sec.set.row.quota", path: "/secretary/settings/quota" },
-  { key: "access", icon: "sliders", title: "sec.title.settingsAccess", sub: "sec.set.row.access", path: "/secretary/settings/access", owner: true },
-  { key: "rules", icon: "shield", title: "sec.title.settingsRules", sub: "sec.set.row.rules", path: "/secretary/settings/rules", owner: true },
-  { key: "log", icon: "list", title: "sec.title.settingsLog", sub: "sec.set.row.log", path: "/secretary/settings/log" },
-  { key: "knowledge", icon: "book-open", title: "sec.title.settingsKnowledge", sub: "sec.set.row.knowledge", path: "/secretary/settings/knowledge" },
-  { key: "customers", icon: "message-square", title: "sec.title.settingsCustomers", sub: "sec.set.row.customers", path: "/secretary/settings/customers", owner: true },
   { key: "account", icon: "user-check", title: "sec.title.settingsAccount", sub: "sec.set.row.account", path: "/secretary/settings/account" },
+  { key: "log", icon: "list", title: "sec.title.settingsLog", sub: "sec.set.row.log", path: "/secretary/settings/log" },
   { key: "switch", icon: "repeat", title: "sec.set.row.switchTitle", sub: "sec.set.row.switch" },
 ];
 
@@ -33,31 +28,8 @@ export default function SecretarySettingsScreen() {
   const t = useT();
   const router = useRouter();
   const switcher = useBusinessSwitcher();
-  const role = useActiveRole();
   const sec = useSecretaryMe();
-  const { activeTenantId } = useAuth();
-  const [pct, setPct] = useState<number | null>(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!activeTenantId) return;
-      let live = true;
-      secGet("secretary/quota")
-        .then((q) => live && setPct(quotaNumbers(q).pct))
-        .catch(() => live && setPct(null));
-      return () => {
-        live = false;
-      };
-    }, [activeTenantId]),
-  );
-
-  const owner = role === "OWNER";
-  const valueOf = (r: Row): string | undefined => {
-    if (r.key === "secretary") return sec?.name ?? DEFAULT_SECRETARY_NAME;
-    if (r.key === "quota" && pct !== null) return t("sec.set.pct", { n: pct });
-    if (r.owner && !owner) return t("sec.set.ownerOnlyShort");
-    return undefined;
-  };
+  const valueOf = (r: Row): string | undefined => (r.key === "secretary" ? (sec?.name ?? DEFAULT_SECRETARY_NAME) : undefined);
 
   return (
     <AiryScreen testID="sec-settings">

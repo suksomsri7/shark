@@ -134,7 +134,7 @@ export function BizIcon({ tenantId, onPress, testID, sz = size.iconBtn, chevron 
   const { tenants, activeTenantId } = useAuth();
   const row = tenants.find((x) => x.tenantId === (tenantId ?? activeTenantId));
   const name = row?.name ?? t("sec.tenant.fallback");
-  const logo = row?.branding?.logoUrl ?? null;
+  const logo = row?.branding?.logoUrl ?? row?.logoUrl ?? null; // ธีมมือถือก่อน · ปิดธีม = โลโก้ร้านจาก /me (ตั้งค่ากิจการ)
   const bg = bizColor(name, row?.branding?.accent);
   const fg = row?.branding?.accentFg ?? "#FFFFFF";
   const box = { width: sz, height: sz, borderRadius: Math.round(sz * 0.3) };

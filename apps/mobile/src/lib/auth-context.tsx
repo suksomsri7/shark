@@ -27,6 +27,10 @@ export type TenantRow = {
   tenantId: string;
   name: string;
   role: string;
+  /** โลโก้ร้าน (ตั้งค่ากิจการ 14 พ.ย.) — มีเสมอแม้ร้านปิดธีมมือถือ · เซิร์ฟเวอร์รุ่นเก่าไม่ส่ง = undefined (ใช้ branding.logoUrl) */
+  logoUrl?: string | null;
+  /** ประเภทธุรกิจ (TENANT_TYPES) · null = ยังไม่เลือก */
+  businessType?: string | null;
   branding?: {
     displayName: string;
     logoUrl: string | null;

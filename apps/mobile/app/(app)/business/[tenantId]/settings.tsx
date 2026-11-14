@@ -1,0 +1,489 @@
+// ตั้งค่ากิจการ (14 พ.ย. 2026 · แบบ bizgear Ⓑ /root/mockups/secretary-1114/bizgear.png) — เข้าจาก ⚙ ท้ายแถวกิจการในตัวสลับกิจการ (B1)
+//   หัว: ‹ กลับ · "ตั้งค่ากิจการ" · ชื่อกิจการ · โลโก้ใหญ่ (แตะ = เปลี่ยน/อัปโหลด · ลบได้) + ชื่อ + "คุณเป็นเจ้าของ/ผู้จัดการ"
+//   ข้อมูลกิจการ: ชื่อ·โลโก้·ประเภทธุรกิจ · ที่อยู่·เบอร์·เลขผู้เสียภาษี·สาขา (ใช้บนใบเสร็จ/ใบกำกับ) · เวลาทำการ (รายวัน เปิด/ปิด) — แตะแถว = ชีตแก้ + บันทึก
+//   เลขาในกิจการนี้: ระบบที่เลขาเข้าถึงได้ · งานที่ต้องอนุมัติก่อน · ความรู้ของกิจการ · ตอบลูกค้านอกเวลา → หน้าเดิมใน /secretary/settings/*
+//   แพ็กเกจ: โควตางาน · แพ็กเกจ (ใช้ N%) → /secretary/settings/quota
+// กิจการ = พารามิเตอร์ tenantId (ไม่ใช่กิจการ active) — ข้อมูลกิจการ + ค่าสรุปด้านขวา ยิงด้วย x-tenant-id ของกิจการนี้ (ไม่ต้องสลับ)
+//   หน้าเลขา/แพ็กเกจเดิมทำงานกับกิจการ active ⇒ แตะแถวของกิจการที่ไม่ได้ใช้อยู่ = switchTenant ก่อน แล้วค่อยเปิดหน้า (ป้ายบอกใต้หัวกลุ่ม)
+// สิทธิ์: OWNER/MANAGER (บทบาทจาก /me · เซิร์ฟเวอร์ตรวจซ้ำ 403) · ชื่อกิจการแก้ได้เฉพาะ OWNER
+//   ที่อยู่/เบอร์/เลขภาษี/สาขา = `can.editTax` จากเซิร์ฟเวอร์ (สิทธิ์ตั้งค่าบัญชีแบบเว็บ) · ไม่มี = แถวอ่านอย่างเดียว + คำอธิบาย
+// ที่เก็บจริง (ไม่มีของซ้ำ): ที่อยู่/เบอร์/เลขภาษี/สาขา = ตั้งค่าสมุดบัญชีหลัก · เวลาทำการ = เวลาทำการของระบบแชท (ตัวที่ "ตอบนอกเวลา" ใช้)
+import { useCallback, useRef, useState } from "react";
+import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
+import { Text, TextInput } from "@/src/components/ui/text";
+import { AiryScreen, Chip, Icon, LoadError, Loading, Note, PrimaryButton, SectionLabel, Segment, Sheet, type IconName } from "@/src/components/airy";
+import { SettingRow, SettingsTop, Toggle } from "@/src/components/secretary/SettingRow";
+import { bizColor, bizInitials } from "@/src/components/secretary/SecTopBar";
+import {
+  BIZ_HQ_BRANCH,
+  BIZ_LOGO_MAX_BYTES,
+  BIZ_SETTING_ROLES,
+  TENANT_TYPES,
+  deleteBusinessLogo,
+  getBusiness,
+  hoursSummary,
+  isDenied,
+  isThaiTaxId,
+  patchBusiness,
+  quotaNumbers,
+  secGet,
+  serverNote,
+  uploadBusinessLogo,
+  type BusinessDay,
+  type BusinessPatch,
+  type BusinessProfile,
+} from "@/src/api/secretary";
+import { useAuth } from "@/src/lib/auth-context";
+import { useT, type I18nKey } from "@/src/i18n";
+import { F, useTheme } from "@/src/theme/index";
+import { radii, spacing, type as T } from "@/src/theme/tokens";
+
+const NAME_MIN = 2;
+const NAME_MAX = 60;
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const LOGO_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+/** ลำดับวันบนจอ: จันทร์ → อาทิตย์ (ค่า d ตามเซิร์ฟเวอร์ 0 = อาทิตย์) */
+const WEEK = [1, 2, 3, 4, 5, 6, 0] as const;
+const DAY_KEYS: Record<number, I18nKey> = { 0: "bizset.day.0", 1: "bizset.day.1", 2: "bizset.day.2", 3: "bizset.day.3", 4: "bizset.day.4", 5: "bizset.day.5", 6: "bizset.day.6" };
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+type Edit = "basic" | "docs" | "hours" | null;
+type Summary = { access: number | null; rules: number | null; afterHours: boolean | null; pct: number | null };
+type DayForm = { on: boolean; open: string; close: string };
+const EMPTY_SUMMARY: Summary = { access: null, rules: null, afterHours: null, pct: null };
+
+export default function BusinessSettingsScreen() {
+  const { c } = useTheme();
+  const t = useT();
+  const router = useRouter();
+  const { tenantId: raw } = useLocalSearchParams<{ tenantId: string }>();
+  const tenantId = typeof raw === "string" ? raw : "";
+  const { tenants, activeTenantId, switchTenant, refreshMe } = useAuth();
+  const row = tenants.find((x) => x.tenantId === tenantId) ?? null;
+  const allowed = !!row && BIZ_SETTING_ROLES.includes(row.role);
+  const owner = row?.role === "OWNER";
+  const isActive = tenantId === activeTenantId;
+
+  const [profile, setProfile] = useState<BusinessProfile | null>(null);
+  const [state, setState] = useState<"loading" | "ok" | "error" | "denied">("loading");
+  const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
+  const [canTax, setCanTax] = useState(false);
+  const [tick, setTick] = useState(0);
+  const [edit, setEdit] = useState<Edit>(null);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+
+  // ฟอร์มของชีต (เติมจาก profile ตอนเปิด)
+  const [name, setName] = useState("");
+  const [type, setType] = useState<string | null>(null);
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [hq, setHq] = useState(true);
+  const [branchCode, setBranchCode] = useState("");
+  const [branchName, setBranchName] = useState("");
+  const [days, setDays] = useState<Record<number, DayForm>>({});
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!tenantId || !allowed) return;
+      let live = true;
+      getBusiness(tenantId)
+        .then((r) => {
+          if (!live) return;
+          setProfile(r.profile);
+          setCanTax(!!r.can?.editTax);
+          setState("ok");
+        })
+        .catch((e) => live && setState((cur) => (cur === "ok" ? cur : isDenied(e) ? "denied" : "error")));
+      // ค่าสรุปด้านขวา — ยิงในนามกิจการนี้ · พลาด/ไม่มีสิทธิ์ (เช่น ผู้จัดการอ่านตอบนอกเวลาไม่ได้) = ไม่แสดงค่า
+      const opts = { tenantId };
+      void Promise.all([
+        secGet("secretary/access", undefined, opts).catch(() => null),
+        secGet("secretary/rules", undefined, opts).catch(() => null),
+        secGet("secretary/after-hours", undefined, opts).catch(() => null),
+        secGet("secretary/quota", undefined, opts).catch(() => null),
+      ]).then(([acc, rules, ah, q]) => {
+        if (!live) return;
+        setSummary({
+          access: acc ? (acc.items ?? []).filter((i) => i.level !== "OFF").length : null,
+          rules: rules ? Object.values(rules.rules ?? {}).filter((r) => r?.enabled).length : null,
+          afterHours: ah ? !!ah.reply : null,
+          pct: q ? quotaNumbers(q).pct : null,
+        });
+      });
+      return () => {
+        live = false;
+      };
+    }, [tenantId, allowed, tick]),
+  );
+
+  const back = () => (router.canGoBack() ? router.back() : router.replace("/secretary"));
+  const retry = () => {
+    setState("loading");
+    setTick((x) => x + 1);
+  };
+
+  // ── ชีตแก้ ──
+  const open = (k: Exclude<Edit, null>) => {
+    if (!profile) return;
+    setNote(null);
+    if (k === "basic") {
+      setName(profile.name);
+      setType(profile.businessType);
+    } else if (k === "docs" && profile.docs) {
+      const d = profile.docs;
+      setAddress(d.address ?? "");
+      setPhone(d.phone ?? "");
+      setTaxId(d.taxId ?? "");
+      setHq((d.branchCode || BIZ_HQ_BRANCH) === BIZ_HQ_BRANCH);
+      setBranchCode(d.branchCode === BIZ_HQ_BRANCH ? "" : d.branchCode);
+      setBranchName(d.branchName ?? "");
+    } else if (k === "hours") {
+      const m: Record<number, DayForm> = {};
+      const firstOpen = profile.hours.days[0];
+      for (const d of WEEK) {
+        const hit = profile.hours.days.find((x) => x.d === d);
+        m[d] = hit ? { on: true, open: hit.open, close: hit.close } : { on: profile.hours.days.length === 0, open: firstOpen?.open ?? "09:00", close: firstOpen?.close ?? "18:00" };
+      }
+      setDays(m);
+    }
+    setEdit(k);
+  };
+  const close = () => !busyRef.current && setEdit(null);
+
+  const nameLen = Array.from(name.trim()).length;
+  const nameOk = nameLen >= NAME_MIN && nameLen <= NAME_MAX;
+  const taxDigits = taxId.replace(/[\s-]/g, "");
+  const taxOk = taxDigits === "" || isThaiTaxId(taxDigits);
+  const branchOk = hq || /^\d{5}$/.test(branchCode.trim());
+  const hoursBad = WEEK.find((d) => days[d]?.on && (!TIME_RE.test(days[d].open) || !TIME_RE.test(days[d].close) || days[d].open >= days[d].close));
+  const canSave = edit === "basic" ? nameOk || !owner : edit === "docs" ? taxOk && branchOk : edit === "hours" ? hoursBad === undefined : false;
+
+  const save = async () => {
+    if (!edit || !profile || !canSave || busyRef.current) return;
+    let body: BusinessPatch = {};
+    if (edit === "basic") body = { ...(owner && name.trim() !== profile.name ? { name: name.trim() } : {}), ...(type !== profile.businessType ? { businessType: type } : {}) };
+    else if (edit === "docs")
+      body = {
+        address: address.trim() || null,
+        phone: phone.trim() || null,
+        taxId: taxDigits || null,
+        branchCode: hq ? BIZ_HQ_BRANCH : branchCode.trim(),
+        branchName: hq ? t("bizset.docs.hqName") : branchName.trim() || null,
+      };
+    else if (edit === "hours") body = { hours: { days: WEEK.filter((d) => days[d]?.on).map((d): BusinessDay => ({ d, open: days[d].open, close: days[d].close })) } };
+    if (Object.keys(body).length === 0) {
+      setEdit(null);
+      return;
+    }
+    busyRef.current = true;
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await patchBusiness(tenantId, body);
+      setProfile(r.profile);
+      setCanTax(!!r.can?.editTax);
+      setEdit(null);
+      setNote({ text: t("bizset.saved"), warn: false });
+      if (body.name !== undefined || body.businessType !== undefined) void refreshMe(); // ชื่อ/ประเภทในรายชื่อกิจการ + แถบบน
+    } catch (e) {
+      setNote({ text: serverNote(e) ?? t("sec.set.saveFail"), warn: true });
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  // ── โลโก้ ──
+  const pickLogo = async () => {
+    if (logoBusy) return;
+    setNote(null);
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      setNote({ text: t("help.attach.perm"), warn: true });
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, allowsEditing: true, aspect: [1, 1], exif: false });
+    if (res.canceled || !res.assets[0]) return;
+    const a = res.assets[0];
+    setLogoBusy(true);
+    try {
+      let mime = (a.mimeType ?? "image/jpeg").toLowerCase();
+      const form = new FormData();
+      if (Platform.OS === "web") {
+        const blob = await (await fetch(a.uri)).blob();
+        if (blob.type) mime = blob.type.toLowerCase();
+        if (!LOGO_TYPES.includes(mime)) throw new Error("type");
+        if (blob.size > BIZ_LOGO_MAX_BYTES) throw new Error("big");
+        form.append("file", blob, `logo.${LOGO_EXT[mime]}`);
+      } else {
+        if (!LOGO_TYPES.includes(mime)) mime = "image/jpeg"; // quality < 1 ⇒ เครื่องเข้ารหัส JPEG ใหม่ (HEIC → JPEG) · เซิร์ฟเวอร์ตรวจเนื้อไฟล์ซ้ำ
+        if ((a.fileSize ?? 0) > BIZ_LOGO_MAX_BYTES) throw new Error("big");
+        form.append("file", { uri: a.uri, name: `logo.${LOGO_EXT[mime]}`, type: mime } as unknown as Blob);
+      }
+      const up = await uploadBusinessLogo(tenantId, form);
+      setProfile((p) => (p ? { ...p, logoUrl: up.logoUrl } : p));
+      void refreshMe(); // ไอคอนกิจการ (BizIcon) ทุกที่
+    } catch (e) {
+      const m = e instanceof Error ? e.message : "";
+      setNote({ text: m === "big" ? t("bizset.logo.big") : m === "type" ? t("bizset.logo.type") : (serverNote(e) ?? t("bizset.logo.fail")), warn: true });
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+  const removeLogo = async () => {
+    if (logoBusy) return;
+    setLogoBusy(true);
+    setNote(null);
+    try {
+      await deleteBusinessLogo(tenantId);
+      setProfile((p) => (p ? { ...p, logoUrl: null } : p));
+      void refreshMe();
+    } catch (e) {
+      setNote({ text: serverNote(e) ?? t("bizset.logo.fail"), warn: true });
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  // ── แถวเลขา/แพ็กเกจ: หน้าเดิมทำงานกับกิจการ active ⇒ สลับก่อนถ้ายังไม่ได้ใช้อยู่ ──
+  const goActive = async (path: Href) => {
+    if (!isActive) await switchTenant(tenantId);
+    router.push(path);
+  };
+
+  const name0 = profile?.name ?? row?.name ?? "";
+  const typeLabel = profile?.businessType ? t(`biz.type.${profile.businessType}` as I18nKey) : undefined;
+  const docs = profile?.docs ?? null;
+  const hoursText = profile ? (profile.hours.available ? (hoursSummary(profile.hours.days) ?? t("bizset.hours.unset")) : undefined) : undefined;
+  const secRows: { key: string; icon: IconName; title: I18nKey; path: Href; value?: string }[] = [
+    { key: "access", icon: "key", title: "bizset.sec.access", path: "/secretary/settings/access", value: summary.access === null ? undefined : t("bizset.sec.accessN", { n: summary.access }) },
+    { key: "rules", icon: "shield", title: "bizset.sec.rules", path: "/secretary/settings/rules", value: summary.rules === null ? undefined : t("bizset.sec.rulesN", { n: summary.rules }) },
+    { key: "knowledge", icon: "book-open", title: "bizset.sec.knowledge", path: "/secretary/settings/knowledge" },
+    { key: "customers", icon: "message-square", title: "bizset.sec.customers", path: "/secretary/settings/customers", value: summary.afterHours === null ? undefined : t(summary.afterHours ? "bizset.on" : "bizset.off") },
+  ];
+
+  return (
+    <AiryScreen testID="biz-set">
+      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
+        <SettingsTop testID="biz-set-top" title={t("bizset.title")} subtitle={name0} />
+        {!allowed ? (
+          <LoadError testID="biz-set-denied" denied message={t("bizset.denied")} />
+        ) : state === "loading" ? (
+          <Loading testID="biz-set-loading" />
+        ) : state !== "ok" || !profile ? (
+          <LoadError testID="biz-set-error" denied={state === "denied"} onRetry={retry} />
+        ) : (
+          <>
+            <View style={styles.hero}>
+              <Pressable testID="biz-set-logo" accessibilityRole="button" accessibilityLabel={t("bizset.logo.change")} onPress={() => void pickLogo()} style={styles.logoWrap}>
+                <View style={[styles.logo, { backgroundColor: profile.logoUrl ? c.surface : bizColor(profile.name, row?.branding?.accent) }]}>
+                  {profile.logoUrl ? (
+                    <Image source={{ uri: profile.logoUrl }} style={styles.logoImg} resizeMode="cover" />
+                  ) : (
+                    <Text style={[styles.logoT, { color: row?.branding?.accentFg ?? "#FFFFFF" }]}>{bizInitials(profile.name)}</Text>
+                  )}
+                </View>
+                <View pointerEvents="none" style={[styles.logoEdit, { backgroundColor: c.surface }]}>
+                  <Icon name={logoBusy ? "loader" : "camera"} size={13} color={c.text} />
+                </View>
+              </Pressable>
+              <Text testID="biz-set-name" style={[styles.name, { color: c.text }]} numberOfLines={1}>
+                {profile.name}
+              </Text>
+              <Text style={[styles.role, { color: c.textMuted }]}>{t(owner ? "bizset.youOwner" : "bizset.youManager")}</Text>
+              {profile.logoUrl ? (
+                <Pressable testID="biz-set-logo-remove" accessibilityRole="button" onPress={() => void removeLogo()} hitSlop={8}>
+                  <Text style={[styles.link, { color: c.textMuted }]}>{t("bizset.logo.remove")}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            {note && !edit ? (
+              <Note warn={note.warn} testID="biz-set-note">
+                {note.text}
+              </Note>
+            ) : null}
+
+            <SectionLabel>{t("bizset.group.info")}</SectionLabel>
+            <SettingRow testID="biz-set-row-basic" icon="briefcase" title={t("bizset.row.basic")} value={typeLabel} onPress={() => open("basic")} />
+            <SettingRow
+              testID="biz-set-row-docs"
+              icon="map-pin"
+              title={t("bizset.row.docs")}
+              sub={!docs ? t("bizset.docs.noBook") : canTax ? t("bizset.row.docsSub") : t("bizset.docs.noPerm")}
+              value={docs?.taxId ? t("bizset.docs.taxSet") : undefined}
+              onPress={docs && canTax ? () => open("docs") : undefined}
+            />
+            <SettingRow
+              testID="biz-set-row-hours"
+              icon="clock"
+              title={t("bizset.row.hours")}
+              sub={profile.hours.available ? undefined : t("bizset.hours.noChat")}
+              value={hoursText}
+              onPress={profile.hours.available ? () => open("hours") : undefined}
+            />
+
+            <SectionLabel>{t("bizset.group.sec")}</SectionLabel>
+            {!isActive ? <Text style={[styles.hint, { color: c.textMuted }]}>{t("bizset.switchHint")}</Text> : null}
+            {secRows.map((r) => (
+              <SettingRow key={r.key} testID={`biz-set-row-${r.key}`} icon={r.icon} title={t(r.title)} value={r.value} onPress={() => void goActive(r.path)} />
+            ))}
+
+            <SectionLabel>{t("bizset.group.plan")}</SectionLabel>
+            <SettingRow
+              testID="biz-set-row-quota"
+              icon="pie-chart"
+              title={t("bizset.row.quota")}
+              value={summary.pct === null ? undefined : t("bizset.quotaPct", { n: summary.pct })}
+              onPress={() => void goActive("/secretary/settings/quota")}
+            />
+          </>
+        )}
+      </ScrollView>
+
+      <Sheet testID="biz-set-sheet" visible={edit !== null} onClose={close} top={90}>
+        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetBody}>
+          {edit === "basic" ? (
+            <>
+              <Text style={[styles.sh, { color: c.text }]}>{t("bizset.row.basic")}</Text>
+              <Text style={[styles.label, { color: c.textDim }]}>{t("biz.name")}</Text>
+              <TextInput
+                testID="biz-set-in-name"
+                value={name}
+                onChangeText={setName}
+                editable={owner}
+                maxLength={NAME_MAX + 10}
+                placeholder={t("biz.namePh")}
+                placeholderTextColor={c.placeholder}
+                style={[styles.input, { color: owner ? c.text : c.textMuted, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+              />
+              {!owner ? <Text style={[styles.hint, { color: c.textMuted }]}>{t("bizset.nameOwnerOnly")}</Text> : !nameOk ? <Note warn>{t("bizset.nameRule", { a: NAME_MIN, b: NAME_MAX })}</Note> : null}
+              <Text style={[styles.label, { color: c.textDim }]}>{t("bizset.type")}</Text>
+              <View style={styles.chips}>
+                {TENANT_TYPES.map((k) => (
+                  <Chip key={k} testID={`biz-set-type-${k}`} active={type === k} label={t(`biz.type.${k}` as I18nKey)} onPress={() => setType(k)} />
+                ))}
+              </View>
+              <Text style={[styles.hint, { color: c.textMuted }]}>{t("bizset.logoHint")}</Text>
+            </>
+          ) : edit === "docs" ? (
+            <>
+              <Text style={[styles.sh, { color: c.text }]}>{t("bizset.row.docs")}</Text>
+              <Text style={[styles.hint, { color: c.textMuted }]}>{t("bizset.docs.where", { book: docs?.bookName ?? "" })}</Text>
+              <Text style={[styles.label, { color: c.textDim }]}>{t("bizset.docs.address")}</Text>
+              <TextInput
+                testID="biz-set-in-address"
+                value={address}
+                onChangeText={setAddress}
+                multiline
+                maxLength={500}
+                placeholder={t("bizset.docs.addressPh")}
+                placeholderTextColor={c.placeholder}
+                style={[styles.input, styles.multi, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+              />
+              <Text style={[styles.label, { color: c.textDim }]}>{t("bizset.docs.phone")}</Text>
+              <TextInput testID="biz-set-in-phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={40} placeholderTextColor={c.placeholder} style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]} />
+              <Text style={[styles.label, { color: c.textDim }]}>{t("bizset.docs.taxId")}</Text>
+              <TextInput
+                testID="biz-set-in-tax"
+                value={taxId}
+                onChangeText={setTaxId}
+                keyboardType="number-pad"
+                maxLength={17}
+                placeholder="0000000000000"
+                placeholderTextColor={c.placeholder}
+                style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+              />
+              {!taxOk ? <Note warn testID="biz-set-tax-error">{t("bizset.docs.taxBad")}</Note> : null}
+              <Text style={[styles.label, { color: c.textDim }]}>{t("bizset.docs.branch")}</Text>
+              <Segment
+                testID="biz-set-branch"
+                value={hq ? "hq" : "branch"}
+                onChange={(k) => setHq(k === "hq")}
+                options={[
+                  { key: "hq", label: t("bizset.docs.hq") },
+                  { key: "branch", label: t("bizset.docs.branchOpt") },
+                ]}
+              />
+              {!hq ? (
+                <>
+                  <Text style={[styles.label, { color: c.textDim }]}>{t("bizset.docs.branchCode")}</Text>
+                  <TextInput testID="biz-set-in-branch" value={branchCode} onChangeText={setBranchCode} keyboardType="number-pad" maxLength={5} placeholder="00001" placeholderTextColor={c.placeholder} style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]} />
+                  {!branchOk ? <Note warn>{t("bizset.docs.branchBad")}</Note> : null}
+                  <Text style={[styles.label, { color: c.textDim }]}>{t("bizset.docs.branchName")}</Text>
+                  <TextInput testID="biz-set-in-branch-name" value={branchName} onChangeText={setBranchName} maxLength={120} placeholderTextColor={c.placeholder} style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]} />
+                </>
+              ) : null}
+              <Text style={[styles.hint, { color: c.textMuted }]}>{t("bizset.docs.legal")}</Text>
+            </>
+          ) : edit === "hours" ? (
+            <>
+              <Text style={[styles.sh, { color: c.text }]}>{t("bizset.row.hours")}</Text>
+              <Text style={[styles.hint, { color: c.textMuted }]}>{t("bizset.hours.hint")}</Text>
+              {WEEK.map((d) => {
+                const f = days[d] ?? { on: false, open: "09:00", close: "18:00" };
+                const set = (p: Partial<DayForm>) => setDays((cur) => ({ ...cur, [d]: { ...f, ...p } }));
+                return (
+                  <View key={d} testID={`biz-set-day-${d}`} style={[styles.day, { borderColor: c.divider }]}>
+                    <Text style={[styles.dayT, { color: c.text }]}>{t(DAY_KEYS[d])}</Text>
+                    {f.on ? (
+                      <View style={styles.times}>
+                        <TextInput testID={`biz-set-day-${d}-open`} value={f.open} onChangeText={(v) => set({ open: v })} maxLength={5} keyboardType="numbers-and-punctuation" style={[styles.time, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]} />
+                        <Text style={{ color: c.textMuted }}>–</Text>
+                        <TextInput testID={`biz-set-day-${d}-close`} value={f.close} onChangeText={(v) => set({ close: v })} maxLength={5} keyboardType="numbers-and-punctuation" style={[styles.time, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]} />
+                      </View>
+                    ) : (
+                      <Text style={[styles.closed, { color: c.textMuted }]}>{t("bizset.hours.closed")}</Text>
+                    )}
+                    <Toggle testID={`biz-set-day-${d}-on`} value={f.on} onChange={(v) => set({ on: v })} label={t(DAY_KEYS[d])} />
+                  </View>
+                );
+              })}
+              {hoursBad !== undefined ? <Note warn testID="biz-set-hours-error">{t("bizset.hours.bad", { day: t(DAY_KEYS[hoursBad]) })}</Note> : null}
+            </>
+          ) : null}
+          {note && edit ? (
+            <Note warn={note.warn} testID="biz-set-sheet-note">
+              {note.text}
+            </Note>
+          ) : null}
+          <View style={styles.save}>
+            <PrimaryButton testID="biz-set-save" label={busy ? t("sec.set.saving") : t("sec.set.save")} disabled={!canSave || busy} onPress={() => void save()} />
+          </View>
+        </ScrollView>
+      </Sheet>
+    </AiryScreen>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { paddingHorizontal: spacing.page, paddingTop: 14, paddingBottom: spacing.xxl },
+  hero: { alignItems: "center", marginTop: F.v(8) },
+  logoWrap: { width: 72, height: 72 },
+  logo: { width: 72, height: 72, borderRadius: 24, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  logoImg: { width: 72, height: 72 },
+  logoT: { fontSize: 26, fontWeight: "800", letterSpacing: 0.3 },
+  logoEdit: { position: "absolute", right: -6, bottom: -6, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  name: { fontSize: T.lt - 4, fontWeight: "700", marginTop: 12, lineHeight: 28 },
+  role: { fontSize: T.cap, marginTop: 2 },
+  link: { fontSize: T.cap, marginTop: 6, textDecorationLine: "underline" },
+  hint: { fontSize: T.cap - 0.5, lineHeight: 18, marginTop: 6, marginLeft: 2 },
+  sheetBody: { paddingBottom: spacing.xl },
+  sh: { fontSize: T.lt - 6, fontWeight: "700", lineHeight: 28, marginTop: spacing.xs },
+  label: { fontSize: T.cap, marginTop: F.v(18), marginBottom: 6, marginLeft: 2 },
+  input: { minHeight: 46, borderRadius: radii.segIn + 4, borderWidth: 1, paddingHorizontal: 14, fontSize: T.body, fontWeight: "500" },
+  multi: { minHeight: 84, paddingTop: 12, textAlignVertical: "top" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  day: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  dayT: { width: 64, fontSize: T.body, fontWeight: "600" },
+  times: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6 },
+  time: { width: 70, height: 38, borderRadius: radii.segIn + 2, borderWidth: 1, textAlign: "center", fontSize: T.sub, fontVariant: ["tabular-nums"] },
+  closed: { flex: 1, fontSize: T.sub },
+  save: { marginTop: spacing.lg },
+});

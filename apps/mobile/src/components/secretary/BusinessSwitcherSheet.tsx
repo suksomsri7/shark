@@ -1,6 +1,8 @@
 // ตัวสลับกิจการ (แบบ B1 · sec-b.jpg หน้า 1) — ชีต Airy วางทับทั้งจอ (Sheet absolute · Modal ของ RN-web ไม่เรนเดอร์ headless)
 // รายการกิจการของผู้ใช้จาก /api/mobile/me (useAuth().tenants) · แตะ = switchTenant เดิมของ 1.0 (src/lib/auth-context)
 // แถว "เลขาของฉัน" → /secretary/settings/secretary (B2) · "+ เพิ่มกิจการใหม่" → /business/new (G1) · ไม่มีรูปโปรไฟล์
+// 14 พ.ย. (แบบ bizgear Ⓐ): ไอคอนแถว = BizIcon (โลโก้/ตัวย่อบนสีแบรนด์ แบบเดียวกับแถบบน) · ปุ่มกลม ⚙ (settings) ท้ายแถว (หลัง ✓)
+//   เฉพาะกิจการที่เราเป็น OWNER/MANAGER · แตะ ⚙ = /business/<tenantId>/settings (หน้านั้นอ่าน/แก้ในนามกิจการนั้นเอง ไม่ต้องสลับ) · แตะส่วนอื่นของแถว = สลับเหมือนเดิม
 // BusinessSwitcherHost ครอบ Stack ของโซน (secretary/customers/business _layout) → SecTopBar เรียก useBusinessSwitcher().open()
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -8,7 +10,8 @@ import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon, Sheet } from "@/src/components/airy";
 import { useAuth } from "@/src/lib/auth-context";
-import { DEFAULT_SECRETARY_NAME, quotaNumbers, secGet, useSecretaryMe } from "@/src/api/secretary";
+import { BIZ_SETTING_ROLES, DEFAULT_SECRETARY_NAME, quotaNumbers, secGet, useSecretaryMe } from "@/src/api/secretary";
+import { BizIcon } from "./SecTopBar";
 import { dateBkk } from "./bkk";
 import { useT, type I18nKey } from "@/src/i18n";
 import { glassStyle, useTheme } from "@/src/theme/index";
@@ -102,9 +105,7 @@ export function BusinessSwitcherSheet({ visible, onClose, root = "/secretary" }:
               onPress={() => void pick(row.tenantId)}
               style={[glassStyle(c, radii.sugg), styles.row]}
             >
-              <View style={[styles.mono, { backgroundColor: c.chip.bg }]}>
-                <Text style={[styles.monoT, { color: c.text }]}>{row.name.slice(0, 1).toUpperCase()}</Text>
-              </View>
+              <BizIcon tenantId={row.tenantId} sz={38} chevron={false} />
               <View style={styles.flex}>
                 <Text style={[styles.name, { color: c.text }]} numberOfLines={1}>
                   {row.name}
@@ -114,6 +115,18 @@ export function BusinessSwitcherSheet({ visible, onClose, root = "/secretary" }:
                 </Text>
               </View>
               {on ? <Icon name="check" size={18} color={c.text} /> : null}
+              {BIZ_SETTING_ROLES.includes(row.role) ? (
+                <Pressable
+                  testID={`sec-switch-gear-${row.tenantId}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("bizset.gear", { name: row.name })}
+                  hitSlop={6}
+                  onPress={() => go(`/business/${encodeURIComponent(row.tenantId)}/settings`)}
+                  style={[styles.gear, { backgroundColor: c.chip.bg }]}
+                >
+                  <Icon name="settings" size={18} color={c.textDim} />
+                </Pressable>
+              ) : null}
             </Pressable>
           );
         })}
@@ -161,7 +174,7 @@ const styles = StyleSheet.create({
   rowSlim: { paddingVertical: spacing.md + 2 },
   mono: { width: 36, height: 36, borderRadius: radii.k, alignItems: "center", justifyContent: "center" },
   monoAdd: { borderWidth: 1.5, borderStyle: "dashed" },
-  monoT: { fontSize: T.body, fontWeight: "700" },
+  gear: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   name: { fontSize: T.body, fontWeight: "600", lineHeight: 22 },
   meta: { fontSize: T.cap, lineHeight: 18 },
   note: { fontSize: T.cap, lineHeight: 19, marginTop: spacing.lg },
