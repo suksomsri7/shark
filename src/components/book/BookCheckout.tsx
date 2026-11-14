@@ -2,7 +2,7 @@
 // แสดงผลเท่านั้น · ฟอร์มส่งด้วย <form action={server action}> (ไม่มี JS) · ฟอร์มไม่เติมค่าที่กรอกกลับ (ไม่มีค่าที่ผู้จองกรอกใน URL · มติ R11)
 // เวลาถือที่เป็นข้อความเวลาของร้านจากตัวโหลด (ไม่มีนาฬิกา JS) · ยอดทุกตัวจาก VM
 import { formatYmd } from "@/components/trips/trips-shared";
-import { BOOK_TERMS_VERSION, bookSelectHref, type BookCheckoutVM, type BookErrorCode, type BookFormField, type BookRehold } from "@/lib/platform/trips-book-core";
+import { BOOK_TERMS_VERSION, type BookCheckoutVM, type BookErrorCode, type BookFormField } from "@/lib/platform/trips-book-core";
 import type { BookBrandVM, BookLocale } from "@/lib/platform/trips-public-core";
 import { BookUntranslated } from "./BookContent";
 import { BookError, BookHidden, BookLines, BookShopBox, BookSteps } from "./BookFlowParts";
@@ -117,47 +117,56 @@ export function BookCancelRows({ rows, locale }: { rows: BookCheckoutVM["cancelR
   );
 }
 
-/** หน้ายืนยันที่ใช้ต่อไม่ได้: ราคาเปลี่ยน (ยอดเดิม · ยอดใหม่ · ถือใหม่) / หมดเวลา / ปิดจอง / อื่น — ไม่มีฟอร์ม */
+/**
+ * หน้ายืนยันที่ใช้ต่อไม่ได้: ราคาเปลี่ยน (ยอดเดิม · ยอดใหม่ · ถือใหม่) / เงื่อนไขเปลี่ยนแต่ยอดเท่าเดิม / หมดเวลา / ปิดจอง / อื่น — ไม่มีฟอร์มผู้จอง
+ * ถือใหม่ = ฟอร์ม POST ไป action ที่ปล่อยที่ถือของตะกร้านี้ก่อนพากลับหน้าสินค้า (มติ W2 · ไม่ต้องมี JS)
+ */
 export function BookCheckoutStop({
   code,
   frame,
-  shopSlug,
   rehold,
   heldTotalSatang,
   totalSatang,
 }: {
   code: BookErrorCode;
   frame: Frame;
-  shopSlug: string | null;
-  rehold: BookRehold | null;
+  rehold: ((formData: FormData) => void | Promise<void>) | null;
   heldTotalSatang: number | null;
   totalSatang: number | null;
 }) {
   const t = bookT(frame.locale);
-  const again = shopSlug && rehold ? bookSelectHref(shopSlug, rehold) : null;
+  const again = (label: string, testId?: string) =>
+    rehold ? (
+      <form action={rehold}>
+        <BookHidden q={{ lang: frame.locale }} />
+        <button data-testid={testId} type="submit" className={CTA}>
+          {label}
+        </button>
+      </form>
+    ) : null;
+  const priced = code === "PRICE_CHANGED" && heldTotalSatang !== null && totalSatang !== null;
   return (
     <BookShell brand={frame.brand} locale={frame.locale} homeHref={frame.homeHref} langHrefs={frame.langHrefs}>
       <div data-testid="book-checkout" className="mx-auto flex w-full max-w-[640px] flex-col gap-5">
         <BookSteps current="details" locale={frame.locale} />
-        {code === "PRICE_CHANGED" && heldTotalSatang !== null && totalSatang !== null ? (
+        {priced && heldTotalSatang !== totalSatang ? (
           <section data-testid="book-price-changed" role="alert" className="flex flex-col gap-3 rounded-2xl border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] p-5">
             <h1 className="text-lg font-semibold">{t("priceChanged.title")}</h1>
-            <p className="text-base tabular-nums">{t("priceChanged.old", { amount: bookMoney(t, heldTotalSatang) })}</p>
-            <p className="text-base font-semibold tabular-nums">{t("priceChanged.new", { amount: bookMoney(t, totalSatang) })}</p>
-            {again ? (
-              <a data-testid="book-rehold" href={again} className={CTA}>
-                {t("priceChanged.rehold")}
-              </a>
-            ) : null}
+            <p className="text-base tabular-nums">{t("priceChanged.old", { amount: bookMoney(t, heldTotalSatang ?? 0) })}</p>
+            <p className="text-base font-semibold tabular-nums">{t("priceChanged.new", { amount: bookMoney(t, totalSatang ?? 0) })}</p>
+            {again(t("priceChanged.rehold"), "book-rehold")}
+          </section>
+        ) : priced ? (
+          // ยอดเท่าเดิมแต่ใบเสนอราคาเปลี่ยน (เงื่อนไข/ตารางยกเลิก/รายการ) — ไม่โชว์ยอดเดิม/ใหม่ที่เท่ากัน (มติ W5)
+          <section data-testid="book-price-changed" data-same-total="true" role="alert" className="flex flex-col gap-3 rounded-2xl border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] p-5">
+            <h1 className="text-lg font-semibold">{t("priceChanged.termsTitle")}</h1>
+            <p className="text-base">{t("priceChanged.termsBody")}</p>
+            {again(t("priceChanged.reholdTerms"), "book-rehold")}
           </section>
         ) : (
           <>
             <BookError code={code} locale={frame.locale} />
-            {again ? (
-              <a href={again} className={CTA}>
-                {t("checkout.back")}
-              </a>
-            ) : null}
+            {again(t("checkout.back"))}
           </>
         )}
       </div>

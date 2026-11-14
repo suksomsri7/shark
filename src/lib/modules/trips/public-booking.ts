@@ -45,6 +45,8 @@ export type BookReservationRow = {
   status: string;
   departureId: string;
   paidSatang: number;
+  /** ผู้เก็บเงินของการจอง (SHOP | AGENT) — หน้าการจองออก QR ของร้านเฉพาะ SHOP */
+  collectMode: string;
   policySnapshot: unknown;
   holdExpiresAt: string | null;
   named: number;
@@ -175,8 +177,8 @@ export async function findBookReservation(ref: { tenantId: string; unitIds: stri
   if (!/^[0-9a-f]{64}$/.test(tokenHash) || !ref.unitIds.length) return null;
   const { tenantId } = ref;
   const db = dbOf(tenantId, ref.unitIds[0] ?? "");
-  const rows = await db.$queryRaw<{ id: string; unitId: string; code: string; status: string; departureId: string; paidSatang: number; policySnapshot: unknown }[]>`
-    SELECT "id", "unitId", "code", "status", "departureId", "paidSatang", "policySnapshot" FROM "TripBooking"
+  const rows = await db.$queryRaw<{ id: string; unitId: string; code: string; status: string; departureId: string; paidSatang: number; collectMode: string; policySnapshot: unknown }[]>`
+    SELECT "id", "unitId", "code", "status", "departureId", "paidSatang", "collectMode", "policySnapshot" FROM "TripBooking"
     WHERE "publicTokenHash" = ${tokenHash} AND "tenantId" = ${tenantId} AND "unitId" = ANY(${ref.unitIds}::text[]) LIMIT 1`;
   const b = rows[0];
   if (!b) return null;
@@ -195,6 +197,7 @@ export async function findBookReservation(ref: { tenantId: string; unitIds: stri
     status: b.status,
     departureId: b.departureId,
     paidSatang: Number(b.paidSatang),
+    collectMode: String(b.collectMode),
     policySnapshot: b.policySnapshot,
     holdExpiresAt: exp ? new Date(exp).toISOString() : null,
     named: Number(pax[0]?.named ?? 0),

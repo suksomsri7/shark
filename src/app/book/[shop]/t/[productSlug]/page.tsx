@@ -10,7 +10,7 @@ import { cache } from "react";
 import { BookProduct } from "@/components/book/BookProduct";
 import { BookRateLimited } from "@/components/book/BookRateLimited";
 import type { BookSelectData } from "@/components/book/BookSelect";
-import { issueBookFormNonce, quoteBookSelection } from "@/lib/platform/trips-book";
+import { quoteBookSelection } from "@/lib/platform/trips-book";
 import { bookErrorParam, parseBookSelection, selectionParamsOf } from "@/lib/platform/trips-book-core";
 import { bookRequestFromHeaders, openBookProduct } from "@/lib/platform/trips-public";
 import { parseBookQuery, parseBookSlot } from "@/lib/platform/trips-public-core";
@@ -68,7 +68,7 @@ export default async function BookProductPage(props: Props) {
     }
     if (q.ok) {
       const state = (!error || error.code !== "INVALID" ? parseBookSelection(params) : null) ?? { pax: [], extras: [], zone: null };
-      select = { options: q.options, summary: q.summary, state, nonce: q.summary ? issueBookFormNonce() : null, error, base, shop: vm.shop.slug, productSlug: vm.product.slug, holdAction: startBookHoldAction.bind(null, shop, productSlug) };
+      select = { options: q.options, summary: q.summary, state, nonce: q.summary ? q.nonce : null, error, base, shop: vm.shop.slug, seller: q.shop, productSlug: vm.product.slug, holdAction: startBookHoldAction.bind(null, shop, productSlug) };
     } else if (q.code === "RATE_LIMITED") return <BookRateLimited />;
   }
   return <BookProduct vm={vm} carry={r.carry} select={select} />;

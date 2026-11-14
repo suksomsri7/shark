@@ -24,7 +24,7 @@ import { rateBucketCte } from "@/lib/core/rate-limit-db";
 import { resolveSettings } from "@/lib/core/settings";
 import { getPublicBranding } from "@/lib/branding/service";
 import { storagePathFromCdnUrl } from "@/lib/storage/service";
-import { findPublicProduct, loadPublicCatalog, loadPublicProduct, normalizeTimezone, utcToLocal, type PublicRef } from "@/lib/modules/trips";
+import { findPublicProduct, loadBookDay, loadPublicCatalog, loadPublicProduct, normalizeTimezone, utcToLocal, type PublicRef, type PublicSlot } from "@/lib/modules/trips";
 import {
   BOOK_CODE_RE,
   BOOK_LIMITER_DOWN_RETRY_SEC,
@@ -53,7 +53,6 @@ import {
   parseBookQuery,
   parseBookSlot,
   sellableCountOf,
-  slotTokensOf,
   type BookBrandVM,
   type BookCarry,
   type BookDayVM,
@@ -105,6 +104,35 @@ export function bookClientKey(ip: unknown): string | null {
   const canonical = canonicalClientIp(ip);
   if (!canonical) return null;
   return `pc_${createHmac("sha256", `${CLIENT_KEY_CONTEXT}${secret}`).update(canonical).digest("hex").slice(0, 40)}`;
+}
+
+// ═══════════════ ref สาธารณะ (W1.2a) ═══════════════
+const B32 = "abcdefghijklmnopqrstuvwxyz234567";
+/**
+ * ref สาธารณะของแถว = 12 ตัวแรก base32 ตัวเล็กของ HMAC(กุญแจ, "trips.public.ref.v1:"+ร้าน+":"+ชนิด+":"+id) — ผูกร้าน · ย้อนเป็น id ไม่ได้
+ * ใช้ทั้งเส้นจอง (สินค้า/รายการเสริม/โซน) และตัวอ้างรอบ `t` (ชนิด slot · W1.2a มติ W5)
+ */
+export function bookPublicRef(secret: string, tenantId: string, kind: "product" | "extra" | "zone" | "slot", id: string): string {
+  const buf = createHmac("sha256", secret).update(`trips.public.ref.v1:${tenantId}:${kind}:${id}`).digest();
+  let out = "";
+  let bits = 0;
+  let acc = 0;
+  for (const byte of buf) {
+    acc = ((acc << 8) | byte) & 0xffff;
+    bits += 8;
+    while (bits >= 5 && out.length < 12) {
+      out += B32[(acc >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+/** ตัวอ้างรอบ `t` ของรอบ (ไม่มีกุญแจ ⇒ null — รอบนั้นเลือกด้วยลิงก์ไม่ได้) */
+export function bookSlotToken(tenantId: string, departureId: string): string | null {
+  const secret = process.env.SESSION_SECRET;
+  if (typeof secret !== "string" || secret.length < SECRET_MIN || !tenantId || !departureId) return null;
+  return bookPublicRef(secret, tenantId, "slot", departureId);
 }
 
 /**
@@ -344,6 +372,26 @@ async function shopVM(shop: BookShop, locale: "th" | "en"): Promise<BookShopVM> 
   return { shop: brand, locale, products: cat.products, total: cat.total, shown: cat.products.length, truncated: cat.total > cat.products.length };
 }
 
+/**
+ * ตัวอ้างรอบ `t` ของทุกรอบในวันที่เลือก = ref สาธารณะของ id รอบ (มติ W5 · ไม่อิงลำดับในวัน)
+ * id รอบมาจากตัวอ่านของเส้นจอง (loadBookDay · listAvailability ตัวกรองสาธารณะชุดเดียวกัน เรียง startsAt, id เหมือนกัน) จับคู่ทีละตำแหน่ง
+ * แล้วตรวจเวลาออก/ช่วงเวลาซ้ำทุกแถว — จำนวนไม่เท่า/แถวไม่ตรง (รอบเพิ่ม/หายระหว่างสองคิวรี) ⇒ null ทั้งวัน (เลือกด้วยลิงก์ไม่ได้ · ไม่มีทางชี้ผิดรอบ)
+ */
+async function slotTokensOfDay(shop: BookShop, ask: ProductAsk, date: string, slots: readonly PublicSlot[], now: Date): Promise<(string | null)[]> {
+  const none = slots.map(() => null);
+  try {
+    const rows = await loadBookDay({ tenantId: shop.tenantId, unitId: ask.unit.id, productId: ask.productId, tz: ask.unit.tz }, date, { now, locale: ask.locale });
+    if (!rows || rows.length !== slots.length) return none;
+    for (let k = 0; k < rows.length; k++) {
+      const r = rows[k];
+      const s = slots[k];
+      if (!r || !s || Date.parse(r.startsAt) !== Date.parse(s.startsAt) || r.timeText !== s.timeText) return none;
+    }
+    return rows.map((r) => bookSlotToken(shop.tenantId, r.departureId));
+  } catch {
+    return none;
+  }
+}
 type ProductAsk = { productSlug: string; productId: string; unit: { id: string; tz: string }; locale: "th" | "en"; month: unknown; date: unknown; slot: unknown };
 async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<BookProductVM | null> {
   const tz = ask.unit.tz;
@@ -394,7 +442,7 @@ async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<Bo
       const state: BookSlotState = c.state === "OPEN" || c.state === "LOW" || c.state === "FULL" || c.state === "NOT_RUNNING" ? c.state : "CLOSED";
       return [{ idx, s, state, left: c.left, sellable: state === "OPEN" || state === "LOW" }];
     });
-    const tokens = slotTokensOf(day.map((d) => d.s.startTime));
+    const tokens = await slotTokensOfDay(shop, ask, selectedDate, day.map((d) => d.s), now);
     // เกินเพดาน ⇒ รอบที่ขายได้มาก่อน แล้วเติมรอบอื่นจนเต็ม (ลำดับที่แสดงยังเป็นเวลาออก)
     const keep = new Set<number>();
     day.forEach((d, k) => {

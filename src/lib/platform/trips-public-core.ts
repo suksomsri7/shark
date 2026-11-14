@@ -267,10 +267,11 @@ export function parseBookQuery(sp: unknown): BookQuery {
 }
 
 /**
- * ตัวอ้างรอบในวันเดียวกัน (`?t=`) = เวลาออกของร้านแบบ HHMM + ลำดับเมื่อเวลาซ้ำ (`0700` · `0700-2`) — ไม่ใช่ id ภายใน
- * ผิดรูป ⇒ null (หน้าเลือกรอบแรกที่ขายได้แทน)
+ * ตัวอ้างรอบในวันเดียวกัน (`?t=`) = ref สาธารณะของรอบ 12 ตัว a-z2-7 (HMAC มีกุญแจของ id รอบ · ผูกร้าน — W1.2a มติ W5)
+ * ไม่ใช่ id ภายใน · ไม่อิงลำดับในวัน (รอบเพิ่ม/หายไม่ทำให้ตัวอ้างชี้รอบอื่น) · ผิดรูป ⇒ null (หน้าเลือกรอบแรกที่ขายได้แทน)
+ * (slotTokensOf ข้างล่าง = รูปเดิม HHMM ของ W1.1 — ไม่ใช้เป็นตัวอ้างแล้ว)
  */
-export const BOOK_SLOT_TOKEN_RE = /^([01]\d|2[0-3])[0-5]\d(-[2-9])?$/;
+export const BOOK_SLOT_TOKEN_RE = /^[a-z2-7]{12}$/;
 export function parseBookSlot(sp: unknown): string | null {
   if (!isRec(sp)) return null;
   let v: unknown;
@@ -291,7 +292,7 @@ export function slotTokensOf(startTimes: readonly string[]): (string | null)[] {
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
     const token = n === 1 ? base : `${base}-${n}`;
-    return BOOK_SLOT_TOKEN_RE.test(token) ? token : null;
+    return /^([01]\d|2[0-3])[0-5]\d(-[2-9])?$/.test(token) ? token : null;
   });
 }
 

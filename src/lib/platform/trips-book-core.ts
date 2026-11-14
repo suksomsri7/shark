@@ -11,18 +11,20 @@ import type { BookBrandVM, BookCancelRow, BookLocale, BookText } from "./trips-p
 // ═══════════════ ค่าคงที่ (ที่เดียว) ═══════════════
 /** คน (ที่นั่ง + ทารก) ต่อการถือหนึ่งครั้งของหน้าสาธารณะ (มติ R7) */
 export const BOOK_MAX_SEATS = 10;
-/** ฟอร์มส่งเร็วกว่านี้ (วินาทีนับจากออก nonce) ⇒ TOO_FAST */
-export const BOOK_FORM_MIN_SEC = 2;
+/** ฟอร์มส่งเร็วกว่านี้ (วินาทีนับจากออก nonce) ⇒ TOO_FAST (มติ W5: 1 วิ) */
+export const BOOK_FORM_MIN_SEC = 1;
 /** ฟอร์มเก่ากว่านี้ ⇒ STALE_FORM */
 export const BOOK_FORM_MAX_SEC = 7200;
 /** เหลือเวลาถือน้อยกว่านี้ ⇒ ไม่ออก QR (มติ R8) · "โอนภายใน" = เวลาถือ − ค่านี้ */
 export const BOOK_PAY_MARGIN_SEC = 180;
-/** ถือรอบเดียวกันได้กี่ครั้งต่อเครื่องต่อชั่วโมง (มติ R7) */
-export const BOOK_SLOT_HOLD_PER_HOUR = 2;
+/** เหลือเวลาถือน้อยกว่านี้ ⇒ หน้ายืนยัน/ยืนยันตอบ HOLD_EXPIRED + ถือใหม่ โดยไม่เรียกบริการ (มติ W1: ระยะ "อย่าโอน" + 2 นาทีให้กรอก/โอน) */
+export const BOOK_HOLD_USABLE_SEC = BOOK_PAY_MARGIN_SEC + 120;
+/** ถือรอบเดียวกันได้กี่ครั้งต่อเครื่องต่อชั่วโมง — นับเฉพาะตะกร้าใหม่ (มติ R7 · แก้โดยมติ W2: 3 ครั้ง) */
+export const BOOK_SLOT_HOLD_PER_HOUR = 3;
 /** ยืนยันการจองได้กี่ครั้งต่อเครื่องต่อชั่วโมง (มติ R10) */
 export const BOOK_CONFIRM_PER_HOUR = 20;
 /** รุ่นของข้อความเงื่อนไข/ความเป็นส่วนตัวที่ลูกค้าติ๊กยอมรับ (มติ R14) — เปลี่ยนข้อความใน book.json ⇒ เปลี่ยนค่านี้ */
-export const BOOK_TERMS_VERSION = "2026-11-14";
+export const BOOK_TERMS_VERSION = "2026-11-14.2";
 
 export const BOOK_ERROR_CODES = [
   "NOT_FOUND",
@@ -280,11 +282,14 @@ export function bookerNameOf(v: unknown): string | null {
   if (n < 1 || n > 100 || NAME_BAD.test(s)) return null;
   return s;
 }
-/** เบอร์: ตัดช่องว่าง/ขีด/วงเล็บ → 0 + 8–9 หลัก (ไทย) ⇒ +66… · + 8–15 หลัก ⇒ เดิม · อื่น ⇒ null (E.164 รูปเดียว) */
+/**
+ * เบอร์: ตัดช่องว่าง/ขีด/วงเล็บ → 0 + 8–9 หลัก (ไทย) ⇒ +66… · `+660…` (ใส่ 0 หลังรหัสประเทศ) ⇒ ตัด 0 (มติ W5) · + 8–15 หลัก ⇒ เดิม · อื่น ⇒ null (E.164 รูปเดียว)
+ */
 export function bookerPhoneOf(v: unknown): string | null {
   if (typeof v !== "string" || v.length > 60) return null;
   const s = v.replace(/[\s\-()]/g, "");
   if (/^0\d{8,9}$/.test(s)) return `+66${s.slice(1)}`;
+  if (/^\+660\d{8,9}$/.test(s)) return `+66${s.slice(4)}`;
   if (/^\+\d{8,15}$/.test(s)) return s;
   return null;
 }
@@ -322,6 +327,20 @@ export function bookCheckoutHref(shopSlug: string, basketToken: string, sel: str
 /** หน้าการจองของลูกค้า (`lang` เฉพาะลิงก์สลับภาษาของหน้าเอง) */
 export function bookReservationHref(shopSlug: string, token: string, lang?: BookLocale | null): string {
   return `/book/${enc(shopSlug)}/my/${enc(token)}${lang === "th" || lang === "en" ? `?lang=${lang}` : ""}`;
+}
+const SEL_RE = /^v1\.[A-Za-z0-9_-]{1,1000}\.[A-Za-z0-9_-]{22}$/;
+const SHOP_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+/**
+ * ตรวจรูปก่อนใส่ใน Location ของ redirect (มติ W5): slug ร้าน · token ตะกร้า 43 ตัว · `sel` รูป v1 ยาว ≤ BOOK_SEL_MAX · token การจอง 43 ตัว
+ * ค่าไหนไม่ใช่สตริงหรือผิดรูป ⇒ false (action ไม่ redirect ด้วยค่านั้น)
+ */
+export function bookRedirectOk(v: { shopSlug?: unknown; basketToken?: unknown; sel?: unknown; token?: unknown }): boolean {
+  const okStr = (x: unknown, re: RegExp, max: number): boolean => typeof x === "string" && x.length <= max && re.test(x);
+  if (!okStr(v.shopSlug, SHOP_SLUG_RE, 63)) return false;
+  if ("basketToken" in v && !okStr(v.basketToken, BOOK_BASKET_TOKEN_RE, 43)) return false;
+  if ("sel" in v && !okStr(v.sel, SEL_RE, BOOK_SEL_MAX)) return false;
+  if ("token" in v && !okStr(v.token, BOOK_RES_TOKEN_RE, 43)) return false;
+  return true;
 }
 /** รหัสผิดพลาด/ช่องจากพารามิเตอร์ของหน้า (`e` `f`) — เฉพาะค่าที่อยู่ในรายการ (ไม่สะท้อนค่าอื่น) */
 export function bookErrorParam(sp: unknown): { code: BookErrorCode; fields: BookFormField[] } | null {
@@ -377,7 +396,11 @@ export type BookCheckoutVM = {
   legal: { licenseNo: string | null; termsVersion: string };
   form: { nonce: string };
 };
-export type BookPayVM = null | { amountSatang: number; qrSvgDataUrl: string; receiverName: string } | { unavailable: "NO_RECEIVER" | "TOO_LATE" };
+/**
+ * QR ยอดงวดแรกค้าง (บริการ) · ไม่มี QR พร้อมเหตุ: NO_RECEIVER ร้านยังไม่ตั้งผู้รับเงิน · TOO_LATE ใกล้หมดเวลาถือ (R8)
+ * · NOTHING_DUE ไม่มียอดต้องโอนตอนนี้ · AGENT_COLLECTS เอเจนซี่เป็นผู้เก็บเงิน (มติ W5)
+ */
+export type BookPayVM = null | { amountSatang: number; qrSvgDataUrl: string; receiverName: string } | { unavailable: "NO_RECEIVER" | "TOO_LATE" | "NOTHING_DUE" | "AGENT_COLLECTS" };
 export type BookReservationVM = {
   shop: BookShopInfo;
   brand: BookBrandVM;
@@ -394,6 +417,8 @@ export type BookReservationVM = {
   holdUntil: string | null;
   holdUntilLocal: string | null;
   payByLocal: string | null;
+  /** วันที่ (เวลาร้าน) ของ "โอนภายใน" — คู่กับ payByLocal (มติ W4) */
+  payByDate: string | null;
   pay: BookPayVM;
   voucher: null | { qrSvgDataUrl: string };
   todo: BookTodo[];

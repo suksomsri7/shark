@@ -1114,6 +1114,8 @@ export const TRIPS_SEED_CONFIRMATION = {
   th: "{ร้าน} ยืนยันการจอง {รหัสจอง} · {สินค้า} วันที่ {วันเดินทาง} · รถรับ {เวลารับ} ที่ {จุดนัด} · ทีมงานรอพบนะคะ",
   en: "{ร้าน} confirmed booking {รหัสจอง} · {สินค้า} on {วันเดินทาง} · pick-up {เวลารับ} at {จุดนัด} · see you soon",
 } as const;
+/** TRIPS W1.2 ▸ มติ W6: ผู้รับเงินพร้อมเพย์ทดสอบของร้าน seed (ให้ tripPaymentIntent ออก QR ในฉาก book-pay) — เบอร์สมมติ ไม่ใช่บัญชีจริง ◂ */
+export const TRIPS_SEED_PAYMENT_PROFILE = { promptpayId: "0812345678", displayName: "อันดามันไดฟ์ (ทดสอบ)" } as const;
 /** ชั้นสินค้าสิมิลัน (จอ 17 การ์ด "เงินและงวดจ่าย" · จอ 03) — ไม่บันทึกตารางยกเลิก 50/30/0 (ในภาพเป็น "กำลังแก้" · ฉากภาพทำด้วยการกด) */
 export const TRIPS_SEED_SIMILAN_PAY = {
   depositPct: TRIP_SIMILAN.depositBp / 100,

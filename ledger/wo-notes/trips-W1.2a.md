@@ -66,3 +66,36 @@
 - qc-trips-t0.1 94/96 — R-1 R-2 (คีย์ใหม่ X29 X30 · ORACLE-EDIT §0)
 - fitness 54/54 (มี DB) · 54/54 (`env -u DATABASE_URL`) · CRITICAL 0
 - typecheck: 0 error
+
+## 7. รอบแก้ r1 (14 พ.ย. · ทรี l1 @6c3bf129a→eedb52eb8 · ไม่ commit) — มติ W1–W7
+| มติ | สิ่งที่แก้ |
+|---|---|
+| W1 | `BOOK_HOLD_USABLE_SEC = BOOK_PAY_MARGIN_SEC + 120` (core) · `holdUntilOf` (trips-book) ถือว่าหมดเมื่อเหลือ < 300 วิ ⇒ `loadBookCheckout`/`confirmBookHold` ตอบ HOLD_EXPIRED + rehold ก่อนตรวจฟอร์ม/เรียกบริการ |
+| W2 | `BOOK_SLOT_HOLD_PER_HOUR` 2→3 · `startBookHold` หาตะกร้าของ nonce ก่อน (`findBookBasket`) — มีแล้ว ⇒ ข้ามถังถือ+ถังต่อรอบ วิ่งเส้นผลซ้ำของ `holdTrips` · **ปล่อยที่ถือเดิมทำได้**: `releaseHold` ของ capacity-service รับผู้กระทำ PUBLIC ด้วย capKey `basket:<sha256(token ตะกร้า)>` (สิทธิ์เดียวกับตอนถือ) ⇒ `releaseBookHold` ใหม่ + `reholdBookAction` + ปุ่ม "ถือใหม่" เป็นฟอร์ม POST บนหน้า c/ (ไม่แตะบริการ) · ข้อความถือถี่เกิน `select.holdLimited` (ลองใหม่ภายหลัง + ทางติดต่อร้านจาก `quote.shop`) |
+| W3 | C-12 คงแดง (ไม่แตะ) |
+| W4 | ตัด `summary.noFeesLater` · `summary.vat` ไม่มีอัตรา · `checkout.receiptNote` · `checkout.privacy` ระยะเก็บ "ตามระยะที่ร้านกำหนดภายใต้กฎหมาย" · `res.pay.payBy` มี {date} {time} (VM เพิ่ม `payByDate` · `payByLocal` คง HH:MM) · `BOOK_TERMS_VERSION` → `2026-11-14.2` (ข้อความเงื่อนไขเปลี่ยน) |
+| W5 | (ก) PRICE_CHANGED ยอดเท่า ⇒ `priceChanged.termsTitle/termsBody/reholdTerms` (BookCheckoutStop) (ข) `bookRedirectOk` (core) ตรวจ slug/token ตะกร้า/sel/token การจองก่อนทุก redirect ใน actions.ts (ค) nonce `v2:<hold|confirm>:<tenant>` — หน้าสินค้าได้ nonce จาก `quoteBookSelection.nonce` · หน้ายืนยันออกโดเมน confirm (ง) `+660…` ⇒ ตัด 0 (จ) `pay.unavailable` NOTHING_DUE + การจอง PENDING ⇒ `UNAVAILABLE reason PENDING` → หน้า `book-res-pending` `res.pending` (ฉ) ผล ok/ไม่ ok ของถือ/ยืนยัน/ถือใหม่มี `lang` ที่ตรวจแล้ว ⇒ action ส่งต่อใน href (ช) `BOOK_FORM_MIN_SEC` 1 (ซ) ตัวอ้างรอบ `t` = `bookPublicRef(..,"slot", departureId)` 12 ตัว a-z2-7 (`trips-public.ts`) · หน้าสินค้าจับคู่รอบกับ id ผ่าน `loadBookDay` ทีละตำแหน่ง + ตรวจเวลาออก/ช่วงเวลา (ไม่ตรง ⇒ เลือกด้วยลิงก์ไม่ได้ทั้งวัน) — ไม่แตะ public-catalog.ts (ฌ) `collectMode ≠ SHOP` ⇒ `pay.unavailable AGENT_COLLECTS` ไม่เรียก intent (public-booking คืน `collectMode`) (ญ) ความเห็น actions.ts (อาร์กิวเมนต์ bind ไม่ได้เข้ารหัส — มาจาก URL แก้ได้) |
+| W6 | `TRIPS_SEED_PAYMENT_PROFILE` (fixture) + seed สร้าง PaymentProfile ของร้าน seed เมื่อไม่มี/ไม่มีเลขผู้รับ (มีแล้วไม่แตะ) |
+| W7 | `startBookHold`: ฟอร์มส่ง `t` (ไม่ว่าง) แต่ไม่ตรงรอบใดของวัน/วันไม่มีรอบ ⇒ `SLOT_CLOSED` กลับหน้าสินค้า (รวม `t` รูปเดิม HHMM จากหน้าที่เปิดค้าง) · ตรงแต่ขายไม่ได้ ⇒ blockCode เดิม (CUTOFF_PASSED/SLOT_CLOSED) · ทางสำรองรอบแรกเหลือเฉพาะ GET |
+
+### จุดที่ตัดสินเอง (r1)
+1. **nonce รุ่น 1 (ไม่มี scope) ยังรับทั้งสองฟอร์ม** — หน้าสาธารณะไม่ออกรูปนี้แล้ว (ออกได้เฉพาะโค้ดเซิร์ฟเวอร์ที่เรียก `issueBookFormNonce()` ตรง ๆ = ข้อสอบ `nonceAt`) · ปิดทันทีที่ข้อสอบส่ง scope (ลบ `|| signed(null)` ใน `checkNonce` บรรทัดเดียว) — ถ้าปิดตอนนี้ ข้อสอบแดงเกือบทั้งชุด H/C/R/X
+2. ปล่อยที่ถือเฉพาะเมื่อลูกค้ากด "ถือใหม่" (ไม่ปล่อยตอนเปิดหน้ายืนยันที่ราคาเปลี่ยน — C-8 ตรึง "ที่ถือเดิมไม่หาย") · บริการตอบอื่นนอก HOLD_EXPIRED/HOLD_NOT_FOUND ⇒ BUSY ไม่พาไปถือซ้อน
+3. W2 ข้ามทั้งถังถือ (X8) และถังต่อรอบเมื่อ nonce มีตะกร้าแล้ว (ส่งซ้ำไม่เพิ่มที่ถือ)
+4. PENDING ใช้ `UNAVAILABLE reason "PENDING"` (เพิ่มจาก BOOKING_OFF/SHOP_CONFIRMS) — ไม่เพิ่มสถานะใน BOOK_RES_STATES (R8 · P-5)
+5. หน้าสินค้าคิวรีที่ว่างของวันที่เลือกเพิ่ม 1 ครั้ง (loadBookDay) เพื่อหา id รอบ — ต้นทุน (หนี้ด้านล่าง)
+
+### หนี้ใหม่ (r1)
+- ตัวอ้างรอบควรมาจาก public-catalog เอง (closure แบบ `priceOf`) แทนการจับคู่ตำแหน่งกับ `loadBookDay` — ใบนี้ห้ามแตะ public-catalog.ts
+- ปิดการรับ nonce รุ่น 1 หลังผู้เขียนข้อสอบปรับ `nonceAt`
+- ข้อความ `err.RATE_LIMITED` ทั่วไปยัง "รอสักครู่" (ใช้กับหน้ายืนยัน) — W2 แก้เฉพาะของการถือ
+- typecheck: ไฟล์ `scratchpad/w1.2-hunt/*.4da.ts` (สำเนาของนักล่า) ทำให้ `pnpm typecheck` แดง 14 จุด — ไม่ใช่โค้ดของใบ
+
+### ข้อแย้งต่อข้อสอบ (r1 · ปล่อยแดง)
+- w1.2 **P-1** คาด `BOOK_SLOT_HOLD_PER_HOUR` 2 · มติ W2 เปลี่ยนเป็น 3 ⇒ แก้ค่าคาดเป็น 3
+- w1.2 **RL-4** คาดถือรอบเดียว 3 ครั้ง ⇒ ok ok LIMIT · W2 ⇒ ควรเป็น 4 ครั้ง ⇒ ok ok ok LIMIT (ที่ถือเพิ่ม 3 ครั้ง) + ส่งซ้ำ nonce เดิมไม่นับ
+- w1.2 **LG-1** คาดคีย์ `summary.noFeesLater` · W4 ตัด ⇒ ลบออกจากรายการคีย์ + เพิ่มคีย์ใหม่ r1 ถ้าต้องการตรึง
+- w1.2 **S-10** แตะ seed/fixture ตาม W6 (ORACLE-EDIT ผู้คุม)
+- w1.2 **C-12** คงแดงตาม W3
+- w1.1 **IS-5 XR-6 XR-7 XR-9** ตรึงตัวอ้างรอบรูป HHMM (`0700` `1300` `0700-2`) · W5 เปลี่ยนเป็น ref 12 ตัว ⇒ ตรวจรูป `/^[a-z2-7]{12}$/` + ตัวอ้างต่างกันต่อรอบ + `?t=<ref>` เลือกรอบนั้น แทนค่าตายตัว · ส่วนอื่นของข้อ (ที่ว่าง/ราคา/สถานะ) ผ่าน
+- w1.2 ข้อสอบใหม่ที่ควรเพิ่ม: `nonceAt` ส่ง scope · W7 (ลบรอบหลังเปิดหน้า ⇒ SLOT_CLOSED ไม่มีที่ถือ)

@@ -57,7 +57,7 @@ export function BookReservation({ vm, frame }: { vm: BookReservationVM; frame: F
                 <p className="text-center text-sm">{t("res.pay.receiver", { name: pay.receiverName })}</p>
                 {vm.payByLocal ? (
                   <p data-testid="book-pay-by" className="text-center text-base font-semibold text-[color:var(--color-danger)]">
-                    {t("res.pay.payBy", { time: vm.payByLocal })}
+                    {t("res.pay.payBy", { date: vm.payByDate ? formatYmd(vm.payByDate, names) : "", time: vm.payByLocal })}
                   </p>
                 ) : null}
                 <p className="text-sm text-[color:var(--color-ink-soft)]">{t("res.pay.note")}</p>
@@ -65,6 +65,14 @@ export function BookReservation({ vm, frame }: { vm: BookReservationVM; frame: F
             ) : pay && pay.unavailable === "TOO_LATE" ? (
               <p data-testid="book-pay-too-late" role="alert" className={`${NOTE} border-[color:var(--color-danger)] text-[color:var(--color-danger)]`}>
                 {t("res.pay.tooLate")}
+              </p>
+            ) : pay && pay.unavailable === "NOTHING_DUE" ? (
+              <p data-testid="book-pay-nothing-due" className={NOTE}>
+                {t("res.pay.nothingDue")}
+              </p>
+            ) : pay && pay.unavailable === "AGENT_COLLECTS" ? (
+              <p data-testid="book-pay-agent" className={NOTE}>
+                {t("res.pay.agentCollects")}
               </p>
             ) : (
               <p data-testid="book-pay-unavailable" className={NOTE}>

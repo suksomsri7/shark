@@ -49,6 +49,7 @@ import {
   // ── /T0.3 departures ──
   // ── T1.1 screens ──
   TRIPS_SEED_CONFIRMATION,
+  TRIPS_SEED_PAYMENT_PROFILE,
   TRIPS_SEED_PICKUP_ZONES,
   TRIPS_SEED_RACHA_INFANT_SATANG,
   TRIPS_SEED_SHOP_PARK_RATES,
@@ -647,6 +648,15 @@ console.log(`T0.3: รอบ ${Object.keys(tripsDepartures.departureIds).length}
     bump(updated, "tripSettingsT11", changes.length);
     const r = await settings.setSettings(actor, { tenantId }, changes, { ackLegalWarn: true });
     if (!r.ok) throw new Error(`seed T1.1 setSettings: ${JSON.stringify(r)}`);
+  }
+  // TRIPS W1.2 ▸ มติ W6: ผู้รับเงินพร้อมเพย์ทดสอบของร้าน seed — ไม่มีแถว/ไม่มีเลขผู้รับ ⇒ เขียน · มีเลขอยู่แล้ว ⇒ ไม่แตะ (รอบสองไม่เขียน) ◂
+  const pp = await prisma.paymentProfile.findUnique({ where: { tenantId } });
+  if (!pp) {
+    bump(created, "paymentProfile");
+    await prisma.paymentProfile.create({ data: { tenantId, ...TRIPS_SEED_PAYMENT_PROFILE } });
+  } else if (!pp.promptpayId) {
+    bump(updated, "paymentProfile");
+    await prisma.paymentProfile.update({ where: { tenantId }, data: { ...TRIPS_SEED_PAYMENT_PROFILE } });
   }
   console.log(`T1.1: โซนรับส่ง ${TRIPS_SEED_PICKUP_ZONES.length} · ค่าตั้ง ${changes.length ? `เขียน ${changes.length}` : "ตรงแล้ว"}`);
 }

@@ -10,11 +10,12 @@ import {
   type BookFormField,
   type BookOptionsVM,
   type BookSelection,
+  type BookShopInfo,
   type BookSummaryVM,
 } from "@/lib/platform/trips-book-core";
 import type { BookLocale } from "@/lib/platform/trips-public-core";
 import { BookUntranslated, shopLang } from "./BookContent";
-import { BookError, BookHidden, BookLines } from "./BookFlowParts";
+import { BookError, BookHidden, BookLines, bookContactText } from "./BookFlowParts";
 import { bookMoney } from "./BookPrices";
 import { bookT } from "./book-i18n";
 
@@ -29,6 +30,8 @@ export type BookSelectData = {
   /** พารามิเตอร์ของหน้าที่ต้องพาไปทุกฟอร์ม (lang · m · d · t) */
   base: Record<string, string>;
   shop: string;
+  /** ผู้ขาย (ชื่อ/เบอร์/LINE) — ข้อความถือถี่เกิน (มติ W2) */
+  seller: BookShopInfo;
   productSlug: string;
   holdAction: (formData: FormData) => void | Promise<void>;
 };
@@ -61,7 +64,14 @@ export function BookSelectPanel({ data, locale }: { data: BookSelectData; locale
           {o.slot.timeText} · {t("select.left", { n: o.left })}
         </span>
       </div>
-      {data.error ? <BookError code={data.error.code} fields={data.error.fields} locale={locale} /> : null}
+      {data.error?.code === "RATE_LIMITED" ? (
+        // ถือถี่เกินจากเครื่องนี้ (ถังถือ/ถังต่อรอบ) — ลองใหม่ได้ภายหลัง + ทางติดต่อร้าน (มติ W2 · ไม่สัญญา "รอสักครู่")
+        <div data-testid="book-error" data-code="RATE_LIMITED" role="alert" className="rounded-xl border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-4 py-3 text-sm text-[color:var(--color-danger)]">
+          <p>{t("select.holdLimited", { contact: bookContactText(data.seller) })}</p>
+        </div>
+      ) : data.error ? (
+        <BookError code={data.error.code} fields={data.error.fields} locale={locale} />
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <h3 className="text-base font-semibold">{t("select.pax")}</h3>
@@ -202,7 +212,6 @@ export function BookSummaryPanel({ data, locale }: { data: BookSelectData; local
       </div>
       {s.passThroughSatang > 0 ? <p className="text-sm text-[color:var(--color-ink-soft)]">{t("summary.passThrough", { amount: bookMoney(t, s.passThroughSatang) })}</p> : null}
       <p className="text-sm text-[color:var(--color-ink-soft)]">{t(`price.vat.${s.vatNote}`)}</p>
-      <p className="text-sm text-[color:var(--color-ink-soft)]">{t("summary.noFeesLater")}</p>
       {data.nonce ? (
         <form id={BOOK_HOLD_FORM_ID} action={data.holdAction} className="flex flex-col gap-2">
           <BookHidden q={{ ...data.base, ...selectionQuery(data.state), nonce: data.nonce, seen: String(s.totalSatang) }} />

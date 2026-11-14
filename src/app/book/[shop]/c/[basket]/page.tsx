@@ -13,7 +13,7 @@ import { loadBookCheckout } from "@/lib/platform/trips-book";
 import { bookCheckoutHref, bookErrorParam, bookReservationHref } from "@/lib/platform/trips-book-core";
 import { bookRequestFromHeaders } from "@/lib/platform/trips-public";
 import { bookHref, bookLocaleOf, parseBookQuery } from "@/lib/platform/trips-public-core";
-import { confirmBookHoldAction } from "../../actions";
+import { confirmBookHoldAction, reholdBookAction } from "../../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +56,9 @@ export default async function BookCheckoutPage(props: Props) {
     brand: r.ok ? r.vm.brand : { slug: slug ?? "", name: "", logoUrl: null, brandColor: null, brandFg: null },
   };
   if (!r.ok) {
-    return <BookCheckoutStop code={r.code} frame={frame} shopSlug={slug} rehold={r.rehold ?? null} heldTotalSatang={r.heldTotalSatang ?? null} totalSatang={r.totalSatang ?? null} />;
+    // ถือใหม่ = ฟอร์ม POST (ปล่อยที่ถือของตะกร้านี้ก่อน · มติ W2) — มีเมื่อ platform คืน rehold (ตะกร้า/sel ตรวจลายเซ็นแล้ว)
+    const rehold = r.rehold && sel ? reholdBookAction.bind(null, shop, basket, sel) : null;
+    return <BookCheckoutStop code={r.code} frame={frame} rehold={rehold} heldTotalSatang={r.heldTotalSatang ?? null} totalSatang={r.totalSatang ?? null} />;
   }
   return <BookCheckout vm={r.vm} frame={frame} action={confirmBookHoldAction.bind(null, shop, basket, sel)} error={bookErrorParam(sp)} />;
 }

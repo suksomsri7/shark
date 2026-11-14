@@ -31,6 +31,7 @@ import {
   outstandingOf,
   quoteTripLine,
   quoteTrips,
+  releaseHold,
   tripPaymentIntent,
   tripsHhmm,
   utcToLocal,
@@ -38,14 +39,15 @@ import {
   type BookDaySlot,
   type BookDepartureRow,
 } from "@/lib/modules/trips";
-import { bookBrandOf, bookMiss, bookSaleState, bookVisibleProduct, resolveBookShop, type BookShop } from "./trips-public";
-import { BOOK_LIMITER_DOWN_RETRY_SEC, BOOK_READ_LIMIT, BOOK_SLOT_TOKEN_RE, bookLocaleOf, cancelRowsOf, isBookYmd, slotTokensOf, type BookLocale, type BookText } from "./trips-public-core";
+import { bookBrandOf, bookMiss, bookPublicRef, bookSaleState, bookSlotToken, bookVisibleProduct, resolveBookShop, type BookShop } from "./trips-public";
+import { BOOK_LIMITER_DOWN_RETRY_SEC, BOOK_READ_LIMIT, BOOK_SLOT_TOKEN_RE, bookLocaleOf, cancelRowsOf, isBookYmd, type BookLocale, type BookText } from "./trips-public-core";
 import {
   BOOK_BASKET_TOKEN_RE,
   BOOK_CONFIRM_PER_HOUR,
   BOOK_FORM_FIELDS,
   BOOK_FORM_MAX_SEC,
   BOOK_FORM_MIN_SEC,
+  BOOK_HOLD_USABLE_SEC,
   BOOK_MAX_SEATS,
   BOOK_PAX_CODE_RE,
   BOOK_PAY_MARGIN_SEC,
@@ -94,11 +96,19 @@ export type BookFail = {
   shopSlug?: string;
   /** (ถือไม่สำเร็จ) หน้าสินค้าพร้อมการเลือกเดิม — ค่าที่ตรวจรูปแล้วเท่านั้น */
   back?: BookRehold;
+  /** ภาษาที่ตรวจแล้ว (th/en) จากฟอร์ม — action พาข้าม redirect (มติ W5) */
+  lang?: BookLocale | null;
 };
-export type BookQuoteResult = { ok: true; options: BookOptionsVM; summary: BookSummaryVM | null } | BookFail;
-export type BookHoldResult = { ok: true; basketToken: string; sel: string; expiresAt: string; shopSlug: string } | BookFail;
+/**
+ * `nonce` = nonce ของฟอร์มถือที่ (โดเมน hold ผูกร้าน · มติ W5) — มีเมื่อมีสรุปยอด · ไม่มีกุญแจ ⇒ null
+ * `shop` = ผู้ขาย (ชื่อ/เบอร์/LINE) ให้ข้อความ "ถือถี่เกิน — ลองใหม่ภายหลังหรือติดต่อร้าน" (มติ W2)
+ */
+export type BookQuoteResult = { ok: true; options: BookOptionsVM; summary: BookSummaryVM | null; nonce: string | null; shop: BookShopInfo } | BookFail;
+export type BookHoldResult = { ok: true; basketToken: string; sel: string; expiresAt: string; shopSlug: string; lang: BookLocale | null } | BookFail;
 export type BookCheckoutResult = { ok: true; vm: BookCheckoutVM } | BookFail;
-export type BookConfirmResult = { ok: true; token: string; shopSlug: string } | BookFail;
+export type BookConfirmResult = { ok: true; token: string; shopSlug: string; lang: BookLocale | null } | BookFail;
+/** ถือใหม่จากหน้ายืนยัน (มติ W2): ปล่อยที่ถือของตะกร้าเดิมแล้วพากลับหน้าสินค้าพร้อมการเลือกเดิม */
+export type BookReleaseResult = { ok: true; shopSlug: string; back: BookRehold } | BookFail;
 export type BookReservationResult = { ok: true; vm: BookReservationVM } | BookFail;
 
 // ═══════════════ ค่าคงที่ภายใน ═══════════════
@@ -160,48 +170,48 @@ const secretOf = (): string | null => {
   return typeof s === "string" && s.length >= SECRET_MIN ? s : null;
 };
 const mac = (secret: string, msg: string): Buffer => createHmac("sha256", secret).update(msg).digest();
-const B32 = "abcdefghijklmnopqrstuvwxyz234567";
-function base32(buf: Buffer, len: number): string {
-  let out = "";
-  let bits = 0;
-  let acc = 0;
-  for (const byte of buf) {
-    acc = (acc << 8) | byte;
-    bits += 8;
-    while (bits >= 5 && out.length < len) {
-      out += B32[(acc >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-    acc &= (1 << bits) - 1;
-    if (out.length >= len) break;
-  }
-  return out;
-}
-/** ref สาธารณะของแถว (12 ตัว a-z2-7) — ผูกร้าน + ชนิด · ไม่ย้อนกลับเป็น id ได้ */
-const refOf = (secret: string, tenantId: string, kind: "product" | "extra" | "zone", id: string): string => base32(mac(secret, `trips.public.ref.v1:${tenantId}:${kind}:${id}`), 12);
+/** ref สาธารณะของแถว (12 ตัว a-z2-7) — ผูกร้าน + ชนิด · ไม่ย้อนกลับเป็น id ได้ (สูตรเดียวกับตัวอ้างรอบ `t` ของหน้าสินค้า) */
+const refOf = (secret: string, tenantId: string, kind: "product" | "extra" | "zone", id: string): string => bookPublicRef(secret, tenantId, kind, id);
 const safeEq = (a: string, b: string): boolean => {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
-/** nonce ของฟอร์ม = `<สุ่ม 22>.<วินาที>.<HMAC 22>` · ไม่มีกุญแจ ⇒ null */
-export function issueBookFormNonce(opts?: { now?: Date }): string | null {
+/** ฟอร์มที่ nonce ใช้ได้ (มติ W5: MAC แยกโดเมน ถือ/ยืนยัน + ผูกร้าน) */
+export type BookNonceScope = { tenantId: string; purpose: "hold" | "confirm" };
+const nonceMsg = (rand: string, sec: string, scope: BookNonceScope | null): string =>
+  scope ? `trips.public.nonce.v2:${scope.purpose}:${scope.tenantId}:${rand}.${sec}` : `trips.public.nonce.v1:${rand}.${sec}`;
+/**
+ * nonce ของฟอร์ม = `<สุ่ม 22>.<วินาที>.<HMAC 22>` · ไม่มีกุญแจ ⇒ null
+ * `scope` = ร้าน + ฟอร์ม (หน้า/ตัวโหลดของเส้นจองส่งเสมอ: หน้าสินค้า = hold ผ่าน quoteBookSelection · หน้ายืนยัน = confirm ผ่าน loadBookCheckout)
+ * ไม่ส่ง scope = รูปรุ่น 1 (ช่องทดสอบแบบ opts.now — ไม่มีหน้าสาธารณะใดออกรูปนี้) · ดู checkNonce
+ */
+export function issueBookFormNonce(opts?: { now?: Date; scope?: BookNonceScope }): string | null {
   const secret = secretOf();
   if (!secret) return null;
   const now = opts?.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now : new Date();
+  const sc = opts?.scope;
+  const scope = sc && typeof sc.tenantId === "string" && sc.tenantId && (sc.purpose === "hold" || sc.purpose === "confirm") ? { tenantId: sc.tenantId, purpose: sc.purpose } : null;
   const rand = randomBytes(16).toString("base64url");
-  const sec = Math.floor(now.getTime() / 1000);
-  return `${rand}.${sec}.${mac(secret, `trips.public.nonce.v1:${rand}.${sec}`).toString("base64url").slice(0, 22)}`;
+  const sec = String(Math.floor(now.getTime() / 1000));
+  return `${rand}.${sec}.${mac(secret, nonceMsg(rand, sec, scope)).toString("base64url").slice(0, 22)}`;
 }
 type NonceCheck = { ok: true; nonce: string } | { ok: false; code: "INVALID" | "TOO_FAST" | "STALE_FORM" };
-function checkNonce(secret: string, v: unknown, now: Date): NonceCheck {
+/**
+ * ลายเซ็นต้องตรงโดเมนของฟอร์มนี้ที่ร้านนี้ (nonce ของร้านอื่น/ของอีกฟอร์ม ⇒ INVALID)
+ * รูปรุ่น 1 (ไม่มี scope) ยังรับ — ออกได้เฉพาะโค้ดฝั่งเซิร์ฟเวอร์ที่เรียก issueBookFormNonce ตรง ๆ (ข้อสอบ) · ⚠️ ปิดเมื่อข้อสอบส่ง scope (wo-notes r1)
+ */
+function checkNonce(secret: string, v: unknown, now: Date, scope: BookNonceScope): NonceCheck {
   if (typeof v !== "string" || v.length > 80) return { ok: false, code: "INVALID" };
   const m = /^([A-Za-z0-9_-]{22})\.(\d{1,12})\.([A-Za-z0-9_-]{22})$/.exec(v);
   if (!m) return { ok: false, code: "INVALID" };
-  const want = mac(secret, `trips.public.nonce.v1:${m[1]}.${m[2]}`).toString("base64url").slice(0, 22);
-  if (!safeEq(want, m[3] ?? "")) return { ok: false, code: "INVALID" };
-  const age = Math.floor(now.getTime() / 1000) - Number(m[2]);
+  const rand = m[1] ?? "";
+  const sec = m[2] ?? "";
+  const got = m[3] ?? "";
+  const signed = (sc: BookNonceScope | null): boolean => safeEq(mac(secret, nonceMsg(rand, sec, sc)).toString("base64url").slice(0, 22), got);
+  if (!signed(scope) && !signed(null)) return { ok: false, code: "INVALID" };
+  const age = Math.floor(now.getTime() / 1000) - Number(sec);
   if (age < BOOK_FORM_MIN_SEC) return { ok: false, code: "TOO_FAST" };
   if (age > BOOK_FORM_MAX_SEC) return { ok: false, code: "STALE_FORM" };
   return { ok: true, nonce: v };
@@ -515,10 +525,10 @@ function mapService(r: SellFailLike): BookFail {
 }
 
 // ═══════════════ รอบของวัน ═══════════════
-/** รอบที่หน้าอ้าง: ตัวอ้างตรง ⇒ รอบนั้น · ไม่งั้นรอบแรกที่ขายได้ · ไม่มี ⇒ รอบแรก (ให้บริการตัดสินเหตุ) */
-function chooseSlot(day: BookDaySlot[], token: string | null): { slot: BookDaySlot; token: string | null } | null {
+/** รอบที่หน้าอ้าง: ตัวอ้างตรง (ref ของ id รอบ · มติ W5) ⇒ รอบนั้น · ไม่งั้นรอบแรกที่ขายได้ · ไม่มี ⇒ รอบแรก (ให้บริการตัดสินเหตุ) */
+function chooseSlot(tenantId: string, day: BookDaySlot[], token: string | null): { slot: BookDaySlot; token: string | null } | null {
   if (!day.length) return null;
-  const tokens = slotTokensOf(day.map((s) => s.startTime));
+  const tokens = day.map((s) => bookSlotToken(tenantId, s.departureId));
   const byToken = token === null ? -1 : tokens.findIndex((t) => t === token);
   const sellable = day.findIndex((s) => s.saleBlock === null && s.publicLeft > 0);
   const i = byToken >= 0 ? byToken : sellable >= 0 ? sellable : 0;
@@ -615,7 +625,7 @@ export async function quoteBookSelection(input: { shop: unknown; productSlug: un
     if (!sel) return fail("INVALID", { fields: selectionFieldsOf(plainSelection(q)) });
     const day = await loadBookDay({ tenantId: o.shop.tenantId, unitId: o.unit.id, productId: o.productId, tz: o.unit.tz }, d, { now: o.now, locale });
     if (!day) return fail("UNAVAILABLE");
-    const chosen = chooseSlot(day, slotParam(q));
+    const chosen = chooseSlot(o.shop.tenantId, day, slotParam(q));
     if (!chosen) return fail("INVALID", { fields: ["d"] });
     const cat = await loadBookCatalog({ tenantId: o.shop.tenantId, unitId: o.unit.id, productId: o.productId }, locale);
     const ctx = ctxOf(o, o.unit.id, locale);
@@ -624,10 +634,11 @@ export async function quoteBookSelection(input: { shop: unknown; productSlug: un
     if (sel.pax.length && !selectionSeatsOk(sel, mapped.m.seatCodes, BOOK_MAX_SEATS)) return fail("INVALID", { fields: ["pax"] });
     const options = await optionsOf(o, ctx, { unitId: o.unit.id, productId: o.productId, slot: chosen.slot, token: chosen.token }, cat);
     if (!options) return fail("UNAVAILABLE");
-    if (!sel.pax.length) return { ok: true, options, summary: null };
+    const { info } = await shopInfoOf(o.shop, o.unit.id, o.now);
+    if (!sel.pax.length) return { ok: true, options, summary: null, nonce: null, shop: info };
     const s = await summaryOf(ctx, lineOf(o.unit.id, o.productId, chosen.slot.departureId, chosen.slot.optionId, mapped.m), cat, { date: d, token: chosen.token, timeText: chosen.slot.timeText, tenantId: o.shop.tenantId });
     if (!s.ok) return s.code === "NOT_FOUND" ? NOT_FOUND() : s;
-    return { ok: true, options, summary: s.s };
+    return { ok: true, options, summary: s.s, nonce: issueBookFormNonce({ now: o.now, scope: { tenantId: o.shop.tenantId, purpose: "hold" } }), shop: info };
   } catch {
     return fail("BUSY");
   }
@@ -683,13 +694,14 @@ export async function startBookHold(input: { shop: unknown; productSlug: unknown
       ...(slotParam(form) ? { t: slotParam(form) ?? "" } : {}),
       ...(selRaw ? selectionQuery(selRaw) : {}),
     };
+    const lang: BookLocale | null = form.lang === "th" || form.lang === "en" ? form.lang : null;
     const o = await openProduct(input, opts);
-    if (isFail(o)) return o.back ? { ...o, back: { productSlug: o.back.productSlug, query: backQuery } } : o;
-    const locale = bookLocaleOf(form.lang ?? null, field(input, "acceptLanguage"));
+    if (isFail(o)) return o.back ? { ...o, back: { productSlug: o.back.productSlug, query: backQuery }, lang } : o;
+    const locale = bookLocaleOf(lang, field(input, "acceptLanguage"));
     const back: BookRehold = { productSlug: o.productSlug, query: backQuery };
-    const withBack = (f: BookFail): BookFail => (f.code === "NOT_FOUND" ? NOT_FOUND() : { ...f, shopSlug: o.shop.slug, back });
+    const withBack = (f: BookFail): BookFail => (f.code === "NOT_FOUND" ? NOT_FOUND() : { ...f, shopSlug: o.shop.slug, back, lang });
     // ข้อ 5: ฟอร์ม (ผิด = ไม่กินโควตาถือ ไม่เรียกบริการ)
-    const nc = checkNonce(o.secret, form.nonce, o.now);
+    const nc = checkNonce(o.secret, form.nonce, o.now, { tenantId: o.shop.tenantId, purpose: "hold" });
     if (!nc.ok) return withBack(nc.code === "INVALID" ? fail("INVALID", { fields: ["nonce"] }) : fail(nc.code));
     const seenRaw = form.seen;
     if (typeof seenRaw !== "string" || !/^\d{1,12}$/.test(seenRaw)) return withBack(fail("INVALID", { fields: ["seen"] }));
@@ -700,26 +712,36 @@ export async function startBookHold(input: { shop: unknown; productSlug: unknown
     // ข้อ 6: ref → id
     const day = await loadBookDay({ tenantId: o.shop.tenantId, unitId: o.unit.id, productId: o.productId, tz: o.unit.tz }, d, { now: o.now, locale });
     if (!day) return withBack(fail("UNAVAILABLE"));
-    const chosen = chooseSlot(day, slotParam(form));
-    if (!chosen) return withBack(fail("INVALID", { fields: ["d"] }));
+    const askedSlot = typeof form.t === "string" && form.t !== "" ? form.t : null;
+    const chosen = chooseSlot(o.shop.tenantId, day, slotParam(form));
+    if (!chosen) return withBack(askedSlot !== null ? fail("SLOT_CLOSED") : fail("INVALID", { fields: ["d"] }));
+    // ตัวอ้างรอบที่ส่งมาต้องชี้รอบจริงของวันนั้น — หาไม่เจอ (รอบถูกลบ/ไม่อยู่ในรายการขายแล้ว) ⇒ SLOT_CLOSED กลับหน้าสินค้า
+    // ห้ามถอยไปถือรอบอื่น (มติ W7 · คู่ W5) — ทางสำรอง "รอบแรกที่ขายได้" มีเฉพาะตอนเปิดหน้า (GET · quoteBookSelection) · พบแต่ขายไม่ได้ ⇒ blockCode ข้างล่าง
+    // (ตัวอ้างผิดรูป เช่นรูป HHMM เดิมจากหน้าที่เปิดค้าง ⇒ หาไม่เจอเช่นกัน)
+    if (askedSlot !== null && chosen.token !== askedSlot) return withBack(fail("SLOT_CLOSED"));
     const cat = await loadBookCatalog({ tenantId: o.shop.tenantId, unitId: o.unit.id, productId: o.productId }, locale);
     const mapped = mapSelection(o.secret, o.shop.tenantId, cat, selRaw);
     if (!mapped.ok) return withBack(fail("INVALID", { fields: mapped.fields }));
     if (!selectionSeatsOk(selRaw, mapped.m.seatCodes, BOOK_MAX_SEATS)) return withBack(fail("INVALID", { fields: ["pax"] }));
     const blocked = blockCode(chosen.slot.saleBlock);
     if (blocked) return withBack(fail(blocked));
-    // ข้อ 7: ถังถือต่อเครื่อง (X8) + ถังต่อรอบต่อเครื่อง (R7) — คำสั่งเดียว ปิดเมื่อพัง
-    const lim = await rateLimitsOf(o.shop.tenantId, o.unit.id, o.now);
-    if (!lim) return withBack(limiterDown());
-    const hg = await gate(
-      [
-        { name: "hb", key: `trips:hold:${o.shop.tenantId}:${o.clientKey}`, limit: lim.hold, windowMs: HOUR_MS },
-        { name: "sb", key: `trips:slot:${o.shop.tenantId}:${chosen.slot.departureId}:${o.clientKey}`, limit: BOOK_SLOT_HOLD_PER_HOUR, windowMs: HOUR_MS },
-      ],
-      o.now,
-      opts,
-    );
-    if (hg) return withBack(hg);
+    // ข้อ 7: ถังถือต่อเครื่อง (X8) + ถังต่อรอบต่อเครื่อง (R7 · มติ W2: นับเฉพาะตะกร้าใหม่) — คำสั่งเดียว ปิดเมื่อพัง
+    // nonce ที่มีตะกร้าแล้ว (ส่งซ้ำ/ดับเบิลคลิก) ⇒ ข้ามถัง แล้ววิ่งเส้นผลซ้ำของ holdTrips (คีย์เดิม ⇒ ผลเดิม · คำขอต่าง ⇒ STALE_FORM) — ไม่ถือเพิ่ม
+    const basketToken = mac(o.secret, `trips.public.basket.v1:${o.shop.tenantId}:${nc.nonce}`).toString("base64url");
+    const existing = await findBookBasket({ tenantId: o.shop.tenantId, unitIds: o.shop.units.map((u) => u.id) }, sha256hex(basketToken));
+    if (!existing) {
+      const lim = await rateLimitsOf(o.shop.tenantId, o.unit.id, o.now);
+      if (!lim) return withBack(limiterDown());
+      const hg = await gate(
+        [
+          { name: "hb", key: `trips:hold:${o.shop.tenantId}:${o.clientKey}`, limit: lim.hold, windowMs: HOUR_MS },
+          { name: "sb", key: `trips:slot:${o.shop.tenantId}:${chosen.slot.departureId}:${o.clientKey}`, limit: BOOK_SLOT_HOLD_PER_HOUR, windowMs: HOUR_MS },
+        ],
+        o.now,
+        opts,
+      );
+      if (hg) return withBack(hg);
+    }
     // ข้อ 8: บริการ — ยอดที่ลูกค้าเห็นต้องเท่ายอดของบริการตอนนี้ (มติ R6)
     const ctx = ctxOf(o, o.unit.id, locale);
     const line = lineOf(o.unit.id, o.productId, chosen.slot.departureId, chosen.slot.optionId, mapped.m);
@@ -728,7 +750,6 @@ export async function startBookHold(input: { shop: unknown; productSlug: unknown
     const payable = qt.value.totals.payable.satang;
     if (qt.value.totals.payable.currency !== "THB" || !isInt(payable)) return withBack(fail("UNAVAILABLE"));
     if (payable !== seen) return withBack(fail("PRICE_CHANGED", { totalSatang: payable }));
-    const basketToken = mac(o.secret, `trips.public.basket.v1:${o.shop.tenantId}:${nc.nonce}`).toString("base64url");
     const h = await holdTrips(ctx, { quote: { lines: [line] }, quoteId: qt.value.quoteId, quoteExpiresAt: qt.value.expiresAt, idempotencyKey: `bh_${sha256hex(nc.nonce).slice(0, 64)}`, basketToken });
     if (!h.ok) return withBack(mapService(h));
     const sel = makeSel(o.secret, o.shop.tenantId, o.unit.id, basketToken, {
@@ -740,7 +761,7 @@ export async function startBookHold(input: { shop: unknown; productSlug: unknown
       q: qt.value.quoteId,
       t: payable,
     });
-    return { ok: true, basketToken, sel, expiresAt: h.value.expiresAt, shopSlug: o.shop.slug };
+    return { ok: true, basketToken, sel, expiresAt: h.value.expiresAt, shopSlug: o.shop.slug, lang };
   } catch {
     return fail("BUSY");
   }
@@ -780,10 +801,14 @@ function doneOf(h: Held): BookFail | null {
   const token = id ? bookingPublicToken(id) : null;
   return token ? { ok: false, code: "DONE", token, shopSlug: h.o.shop.slug } : fail("UNAVAILABLE");
 }
-/** ที่ถือยังไม่หมด (ตามนาฬิกา · ตัวกวาดอาจยังไม่วิ่ง) ⇒ เวลาหมด · หมด/ตะกร้าไม่ OPEN ⇒ null */
+/**
+ * ที่ถือยังใช้ยืนยันได้ ⇒ เวลาหมด · หมด/ตะกร้าไม่ OPEN ⇒ null
+ * มติ W1: เหลือเวลาถือ < BOOK_HOLD_USABLE_SEC (ระยะ "อย่าโอน" + เวลากรอก/โอน) ⇒ ถือว่าหมดแล้ว — ไม่สร้างการจองที่จ่ายไม่ทัน
+ */
 function holdUntilOf(h: Held): string | null {
   if (h.basket.status !== "OPEN") return null;
-  const live = h.basket.holds.filter((x) => x.status === "ACTIVE" && Date.parse(x.expiresAt) > h.o.now.getTime());
+  const usableFrom = h.o.now.getTime() + BOOK_HOLD_USABLE_SEC * 1000;
+  const live = h.basket.holds.filter((x) => x.status === "ACTIVE" && Date.parse(x.expiresAt) > usableFrom);
   if (live.length !== h.basket.holds.length || !live.length) return null;
   return live.map((x) => x.expiresAt).sort()[0] ?? null;
 }
@@ -820,7 +845,7 @@ export async function loadBookCheckout(input: { shop: unknown; basketToken: unkn
     const s = await summaryOf(ctx, l.line, l.cat, { date: h.dep.localDate, token: h.payload.s, timeText: h.dep.timeText, tenantId: o.shop.tenantId });
     if (!s.ok) return s.code === "NOT_FOUND" ? NOT_FOUND() : { ...s, shopSlug: o.shop.slug };
     if (s.s.totalSatang !== payable) return fail("PRICE_CHANGED", { heldTotalSatang: h.payload.t, totalSatang: payable, rehold: h.rehold, shopSlug: o.shop.slug });
-    const nonce = issueBookFormNonce({ now: o.now });
+    const nonce = issueBookFormNonce({ now: o.now, scope: { tenantId: o.shop.tenantId, purpose: "confirm" } });
     if (!nonce) return fail("UNAVAILABLE");
     const [{ info, licenseNo }, brand] = await Promise.all([shopInfoOf(o.shop, h.unit.id, o.now), bookBrandOf(o.shop)]);
     return {
@@ -858,18 +883,18 @@ export async function confirmBookHold(
     );
     if (isFail(o)) return o;
     const form = plainForm(field(input, "form"));
-    const lang = form.lang === "th" || form.lang === "en" ? form.lang : null;
+    const lang: BookLocale | null = form.lang === "th" || form.lang === "en" ? form.lang : null;
     const locale = bookLocaleOf(lang, null);
     const h = await heldBasket(o, field(input, "basketToken"), field(input, "sel"), locale, lang);
     if (isFail(h)) return h;
     const done = doneOf(h);
-    if (done) return done;
-    const slug = { shopSlug: o.shop.slug };
+    if (done) return { ...done, lang };
+    const slug = { shopSlug: o.shop.slug, lang };
     const st = await bookSaleState({ tenantId: o.shop.tenantId, unitId: h.unit.id, productId: h.dep.productId }, o.now);
     if (st !== "OPEN") return fail("UNAVAILABLE", { ...slug, ...(st === "BOOKING_OFF" || st === "SHOP_CONFIRMS" ? { reason: st } : {}) });
     if (!holdUntilOf(h)) return fail("HOLD_EXPIRED", { ...slug, rehold: h.rehold });
     // ข้อ 5: ฟอร์ม — ผิด ⇒ ไม่เรียกบริการ (ไม่มีการจอง · ไม่มี Party ใหม่ · มติ R10)
-    const nc = checkNonce(o.secret, form.nonce, o.now);
+    const nc = checkNonce(o.secret, form.nonce, o.now, { tenantId: o.shop.tenantId, purpose: "confirm" });
     if (!nc.ok) return nc.code === "INVALID" ? fail("INVALID", { ...slug, fields: ["nonce"] }) : fail(nc.code, slug);
     const seenRaw = form.seen;
     if (typeof seenRaw !== "string" || !/^\d{1,12}$/.test(seenRaw)) return fail("INVALID", { ...slug, fields: ["seen"] });
@@ -904,19 +929,52 @@ export async function confirmBookHold(
     });
     if (r.ok) {
       const token = r.value[0]?.publicToken;
-      return typeof token === "string" ? { ok: true, token, shopSlug: o.shop.slug } : fail("BUSY", slug);
+      return typeof token === "string" ? { ok: true, token, shopSlug: o.shop.slug, lang } : fail("BUSY", slug);
     }
     // ยืนยันไม่ ok ⇒ อ่านตะกร้าใหม่ก่อนแปลง (มติ R9)
     const again = await heldBasket(o, h.basketToken, field(input, "sel"), locale, lang);
     if (!isFail(again)) {
       const d2 = doneOf(again);
-      if (d2) return d2;
+      if (d2) return { ...d2, lang };
     }
     const m = mapService(r);
     if (m.code === "NOT_FOUND") return m;
     if (m.code === "PRICE_CHANGED") return { ...m, ...slug, heldTotalSatang: h.payload.t, rehold: h.rehold };
     if (m.code === "HOLD_EXPIRED") return { ...m, ...slug, rehold: h.rehold };
     return { ...m, ...slug };
+  } catch {
+    return fail("BUSY");
+  }
+}
+
+// ═══════════════ 4b) ถือใหม่จากหน้ายืนยัน (มติ W2) ═══════════════
+/**
+ * ปุ่ม "ถือใหม่" ของหน้ายืนยัน (ราคาเปลี่ยน/ใกล้หมดเวลา): ปล่อยที่ถือของตะกร้าเดิมด้วยสิทธิ์ของ token ตะกร้า (capKey `basket:<sha256>` ของบริการ)
+ * แล้วคืนหน้าสินค้าพร้อมการเลือกเดิม — ตะกร้ายืนยันแล้ว ⇒ DONE · ที่ถือหมด/ปล่อยแล้ว = ไม่มีอะไรต้องปล่อย · บริการปฏิเสธด้วยเหตุอื่น ⇒ BUSY (ไม่พาไปถือซ้อน)
+ * ไม่มีฟอร์มให้ตรวจ (ไม่มีค่าที่กรอก) · ไม่กินถังถือ (การปล่อยไม่เพิ่มที่ถือ)
+ */
+export async function releaseBookHold(input: { shop: unknown; basketToken: unknown; sel: unknown; lang?: unknown; clientKey: unknown }, opts?: BookFlowOpts): Promise<BookReleaseResult> {
+  try {
+    const o = await openShop(input, opts);
+    if (isFail(o)) return o;
+    const lr = field(input, "lang");
+    const lang: BookLocale | null = lr === "th" || lr === "en" ? lr : null;
+    const locale = bookLocaleOf(lang, null);
+    const h = await heldBasket(o, field(input, "basketToken"), field(input, "sel"), locale, lang);
+    if (isFail(h)) return h;
+    const done = doneOf(h);
+    if (done) return { ...done, lang };
+    const slug = { shopSlug: o.shop.slug, lang };
+    if (h.basket.status === "OPEN") {
+      const ctx = ctxOf(o, h.unit.id, locale);
+      const capKey = `basket:${sha256hex(h.basketToken)}`;
+      for (const x of h.basket.holds) {
+        if (x.status !== "ACTIVE") continue;
+        const r = await releaseHold(ctx, { holdId: x.id, reason: "public.rehold", capKey });
+        if (!r.ok && r.code !== "HOLD_EXPIRED" && r.code !== "HOLD_NOT_FOUND") return fail("BUSY", { ...slug, rehold: h.rehold });
+      }
+    }
+    return { ok: true, shopSlug: o.shop.slug, back: h.rehold };
   } catch {
     return fail("BUSY");
   }
@@ -959,6 +1017,8 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
     const snap = isRec(row.policySnapshot) ? row.policySnapshot : null;
     const items = pricedOf(snap?.lines);
     const totals = totalsOf(snap?.totals);
+    // รอร้านยืนยัน (AWAIT_SHOP = W1.2b) ⇒ ข้อความของตัวเอง ไม่ใช่ "ยังจองออนไลน์ไม่ได้" (มติ W5)
+    if (row.status === "PENDING") return fail("UNAVAILABLE", { reason: "PENDING" });
     const state = reservationStateOf({ status: row.status, holdExpiresAt: row.holdExpiresAt, now: o.now.toISOString() });
     if (!dep || !items || !totals || !state || snap?.currency !== "THB") return fail("UNAVAILABLE");
     const cat = await loadBookCatalog({ tenantId: o.shop.tenantId, unitId: unit.id, productId: dep.productId }, locale);
@@ -980,13 +1040,16 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
     const holdUntil = state === "PAY" ? row.holdExpiresAt : null;
     if (state === "PAY" && holdUntil) {
       // เหลือเวลาถือน้อยกว่าระยะเผื่อ ⇒ ไม่ออก QR (ตัดสินที่ตัวโหลด · มติ R8)
-      if (Date.parse(holdUntil) - o.now.getTime() < BOOK_PAY_MARGIN_SEC * 1000) pay = { unavailable: "TOO_LATE" };
+      // QR เฉพาะการจองที่ร้านเป็นผู้เก็บเงิน — เอเจนซี่เก็บเงินเอง ⇒ ไม่มี QR ของร้าน (มติ W5)
+      if (row.collectMode !== "SHOP") pay = { unavailable: "AGENT_COLLECTS" };
+      else if (Date.parse(holdUntil) - o.now.getTime() < BOOK_PAY_MARGIN_SEC * 1000) pay = { unavailable: "TOO_LATE" };
       else {
         const pi = await tripPaymentIntent(ctx, { publicToken: token });
         if (pi.ok) pay = { amountSatang: pi.value.amountSatang, qrSvgDataUrl: pi.value.svgDataUrl, receiverName: pi.value.displayName };
         else if (pi.code === "STATE_CONFLICT" && pi.details?.reason === "NO_PROMPTPAY_RECEIVER") pay = { unavailable: "NO_RECEIVER" };
+        else if (pi.code === "STATE_CONFLICT" && pi.details?.reason === "NOTHING_DUE") pay = { unavailable: "NOTHING_DUE" };
         else if (pi.code === "HOLD_EXPIRED") finalState = "EXPIRED";
-        else if (!(pi.code === "STATE_CONFLICT" && pi.details?.reason === "NOTHING_DUE")) return fail("BUSY");
+        else return fail("BUSY");
       }
     } else if (state === "VOUCHER") {
       const payload = bookVoucherQrPayload(o.shop.tenantId, row.code);
@@ -1014,6 +1077,7 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
         holdUntil: live ? holdUntil : null,
         holdUntilLocal: live && holdUntil ? localHm(unit.tz, new Date(holdUntil)) : null,
         payByLocal: live && holdUntil ? localHm(unit.tz, new Date(Date.parse(holdUntil) - BOOK_PAY_MARGIN_SEC * 1000)) : null,
+        payByDate: live && holdUntil ? utcToLocal(unit.tz, new Date(Date.parse(holdUntil) - BOOK_PAY_MARGIN_SEC * 1000)).ymd : null,
         pay: finalState === "PAY" ? pay : null,
         voucher,
         todo: bookTodoOf({ status: row.status, outstandingSatang: outstanding, people, named: row.named, waiverRequired, waiversSigned: row.waiversSigned }),

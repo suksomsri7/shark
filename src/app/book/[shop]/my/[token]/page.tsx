@@ -43,6 +43,16 @@ export default async function BookReservationPage(props: Props) {
     if (r.code === "RATE_LIMITED") return <BookRateLimited />;
     const h = await headers();
     const locale = bookLocaleOf(lang, h.get("accept-language"));
+    // รอร้านยืนยัน (PENDING · AWAIT_SHOP = W1.2b) มีข้อความของตัวเอง (มติ W5) — ไม่ใช่ "ยังจองออนไลน์ไม่ได้"
+    if (r.code === "UNAVAILABLE" && r.reason === "PENDING") {
+      return (
+        <BookNoticeFrame testId="book-res-pending">
+          <p role="status" className="text-base">
+            {bookT(locale)("res.pending")}
+          </p>
+        </BookNoticeFrame>
+      );
+    }
     return (
       <BookNoticeFrame testId="book-res-unavailable">
         <BookError code={r.code} locale={locale} />
