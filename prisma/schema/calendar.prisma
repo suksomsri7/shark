@@ -1,0 +1,152 @@
+// calendar.prisma — ปฏิทินส่วนตัวของเลขา AI (CAL1.1 · docs/modules/32-secretary-calendar.md §2)
+// 🔴 M3: ทุกแถวเป็นของ userId คนเดียว · ไม่มีคอลัมน์ "ผู้รับ" · ไม่มี FK ไป User (แบบ PushDevice — ลบใน deleteUserTraces)
+
+enum CalItemKind {
+  REMINDER // เตือนฉัน
+  EVENT // นัดส่วนตัว (มีช่วงเวลา)
+}
+
+enum CalRepeat {
+  NONE
+  DAILY
+  WEEKLY // ตาม repeatDays
+  MONTHLY // วันที่เดียวกับ startAt (29–31 → วันสุดท้ายของเดือนที่สั้นกว่า)
+}
+
+enum CalItemStatus {
+  DRAFT // เตือนประจำจากแชท รอผู้ใช้ยืนยัน (จอ 5) — ไม่ยิง · หมดอายุ 24 ชม.
+  OPEN
+  DONE
+  CANCELLED
+}
+
+enum CalItemSource {
+  APP // แผ่นเพิ่มเตือน (จอ 6)
+  CHAT // เครื่องมือ calendar_add ในห้องเลขา (จอ 5) — มี roomId
+  SUGGEST // ปุ่ม "เตือนเลย" ของการ์ดนัดชน (จอ 10)
+}
+
+enum CalLinkType {
+  CRM_CONTACT
+  CRM_DEAL
+  ACCOUNT_DOC
+  KANBAN_CARD
+}
+
+enum CalProvider {
+  GOOGLE
+}
+
+enum CalLinkStatus {
+  ACTIVE
+  NEEDS_RECONNECT // refresh token ตาย/ถูกถอนสิทธิ์ — หยุดซิงก์ แสดงในจอ 8/9
+}
+
+model CalItem {
+  id           String        @id @default(cuid())
+  userId       String // เจ้าของคนเดียว (ไม่มี FK)
+  tenantId     String // กิจการที่สร้าง (R-CAL-32)
+  kind         CalItemKind   @default(REMINDER)
+  title        String // ≤ 200 (ตรวจใน service)
+  note         String? // ≤ 2,000
+  startAt      DateTime // จุดยึด = เวลาเริ่มของครั้งแรก (UTC) — เวลาของวัน/วันในสัปดาห์/วันที่ของการทำซ้ำอ่านจากนี่ (เวลาไทย)
+  endAt        DateTime? // EVENT เท่านั้น (> startAt) · REMINDER = null
+  allDay       Boolean       @default(false)
+  repeat       CalRepeat     @default(NONE)
+  repeatDays   Int[]         @default([]) // WEEKLY: 0=อา … 6=ส (วันไทย) · ว่าง = วันของ startAt
+  leadMinutes  Int           @default(0) // เตือนล่วงหน้า ∈ {0,5,10,15,30,60,120,1440}
+  linkType     CalLinkType?
+  linkId       String?
+  linkSystemId String? // AppSystem ของสิ่งที่ผูก — ใช้สร้าง deepLink + ตรวจสิทธิ์ซ้ำตอนแสดง (R-CAL-23)
+  status       CalItemStatus @default(OPEN)
+  doneAt       DateTime?
+  cancelledAt  DateTime?
+  occursAt     DateTime // ครั้งปัจจุบัน/ครั้งถัดไป (NONE = startAt) — แถว agenda ของทำซ้ำคำนวณจาก startAt ไม่ใช่จากนี่
+  nextFireAt   DateTime? // เวลาที่ calendar.fire ต้องทำงานกับแถวนี้ = min(ยิงครั้งปกติ, snoozeUntil, nagAt) · null = ไม่มีอะไรรอ
+  firedOccAt   DateTime? // occurrence ที่ยิงครั้งปกติไปแล้ว (กันยิงซ้ำ)
+  lastFiredAt  DateTime?
+  snoozeUntil  DateTime?
+  nagAt        DateTime? // ย้ำ 1 ครั้ง 30 นาทีหลังยิง (เฉพาะ repeat NONE)
+  fireAttempts Int           @default(0) // ส่งล้มด้วยเหตุ transport ซ้ำได้ ≤ 3
+  leaseUntil   DateTime?
+  leaseToken   String?
+  version      Int           @default(0) // +1 ทุกการแก้ของผู้ใช้ (แก้/เสร็จ/เลื่อน/ยกเลิก/ยืนยัน) — job commit แบบมีเงื่อนไข
+  source       CalItemSource @default(APP)
+  roomId       String? // source CHAT: ห้องเลขาที่สั่ง (R-CAL-20) — แนบใน GET rooms/[id] เฉพาะของผู้เรียก
+  externalId   String? // id อีเวนต์ Google ของสำเนาที่ส่งออก
+  externalEtag String?
+  syncDirty    Boolean       @default(false) // ต้องส่งออก/แก้/ลบใน Google รอบถัดไป
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId, tenantId, status, occursAt]) // agenda + แท็บเตือนฉัน + badge
+  @@index([status, nextFireAt]) // calendar.fire
+  @@index([userId, roomId]) // การ์ดในห้องเลขา
+  @@index([userId, syncDirty]) // calendar.google ส่งออก
+  @@index([tenantId]) // purge ร้าน
+}
+
+model CalPref {
+  id             String   @id @default(cuid())
+  userId         String
+  tenantId       String
+  morningOn      Boolean  @default(true) // M2
+  morningMinute  Int      @default(480) // นาทีนับจากเที่ยงคืนไทย 0..1439 (480 = 08:00)
+  eveningOn      Boolean  @default(false) // M2
+  eveningMinute  Int      @default(1140) // 19:00
+  sources        Json     @default("{}") // { booking?, account?, kanban?, crm?, hr?, dorm?, ticket?, trips?: boolean } · ไม่มีคีย์ = เปิด
+  travelMinutes  Int      @default(0) // R-CAL-35 · 0..240
+  lastMorningDay String? // "YYYY-MM-DD" ไทย — จองสรุปเช้าของวันนั้นแล้ว
+  lastEveningDay String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+}
+
+model CalLink {
+  id               String        @id @default(cuid()) // service ออก id เองก่อน seal (AAD ผูก id · R-CAL-16)
+  userId           String // ต่อคน ไม่ต่อร้าน (§2.4)
+  provider         CalProvider   @default(GOOGLE)
+  email            String
+  tokenBox         String // sealIntegrationSecret({refreshToken, accessToken?, expiresAt?}, `cal:${userId}:${id}`)
+  scopes           String[]      @default([])
+  calendars        Json          @default("[]") // [{id, name, color, primary, accessRole, import, syncToken?, lastSyncAt?}]
+  exportCalendarId String? // ปฏิทินปลายทาง (จอ 9 "ไปที่ปฏิทิน") · null = primary
+  exportKinds      String[]      @default(["EVENT"]) // ⊆ {EVENT, REMINDER, BOOKING} — จอ 9 ค่าเริ่ม: นัดส่วนตัว เปิด
+  status           CalLinkStatus @default(ACTIVE)
+  lastSyncAt       DateTime?
+  lastError        String? // ข้อความไทยสั้น (ไม่มี token/ข้อความดิบของ Google)
+  leaseUntil       DateTime? // กัน sync ซ้อน (job + ปุ่มรีเฟรช)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  events CalExternalEvent[]
+
+  @@unique([userId, provider])
+  @@index([status, lastSyncAt])
+}
+
+model CalExternalEvent {
+  id         String    @id @default(cuid())
+  linkId     String
+  link       CalLink   @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  userId     String // ซ้ำจาก link — ทุก query กรอง userId ตรง (M3)
+  calendarId String
+  externalId String
+  title      String
+  location   String?
+  startAt    DateTime // all-day = เที่ยงคืนไทยของวันนั้น
+  endAt      DateTime? // all-day = เที่ยงคืนไทยของวันถัดจากวันสุดท้าย (exclusive ตาม Google)
+  allDay     Boolean   @default(false)
+  etag       String
+  sharkRef   String? // สำเนาที่เราส่งออก "appt:<tenantId>:<id>" (R-CAL-37) — ไม่แสดงใน agenda
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([linkId, calendarId, externalId])
+  @@index([userId, startAt])
+  @@index([linkId, sharkRef])
+}

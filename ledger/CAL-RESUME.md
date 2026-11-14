@@ -11,6 +11,7 @@
 | CAL0.1 สำรวจ | ✅ 14 พ.ย. (เจ้าของตอบ Q1–Q7 = ค่าเริ่ม · Q6 ส่ง RUN บัญชี) | ledger/cal-briefs/cal-brief-RESOLUTIONS.md · R-CAL-1…24 · คำถามเจ้าของ Q1–Q7 (มีค่าเริ่มทุกข้อ) · APNs ของ th.in.shark.ai ยังไม่ได้ตรวจ (R-CAL-14 · ต้องทำก่อน CAL3.2) |
 | CAL0.2 สัญญา | ✅ 14 พ.ย. a89ce9df3 | docs/modules/32-secretary-calendar.md (R-CAL-25…37 · Q8 เวลาเดินทาง · Q9 ชื่อลูกค้าใน Google) · seed รัน 2 รอบบน wo-sec-qc: รอบ 2 เขียน 0 ✅ · ฐาน QC เลขา migrate 4 ไฟล์ค้างแล้ว (svc_h/chat_hide/attachments/bizprofile) |
 | CAL0.3 ภาพมืด | ✅ เจ้าของผ่าน 14 พ.ย. | cal-dark-{1,2,3}.png |
+| CAL1.1 migration calendar_a (เลน a) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | prisma/schema/calendar.prisma ตรงสัญญา §2 · migration 20261228000300_calendar_a ลงฐาน QC เลขาแล้ว · scope 4 แถว · R-CAL-33 export ยกเว้น CalItem/CalPref · deleteUserTraces 3 ตาราง · seed รอบ 2 เขียน 0 · qc-cal-1.1 15/15 ×2 · typecheck ✅ |
 
 ## จุดต่อ
 - ถ้า session ตาย: อ่านไฟล์นี้ → ดูใบที่ ▶️ → ดู ledger/cal-briefs/ ว่ามีผลค้างไหม
