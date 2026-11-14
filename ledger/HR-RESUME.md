@@ -737,3 +737,7 @@
 - R10: migration 1 ตัว (ดัชนีอย่างเดียว ไม่ลบข้อมูล) — HrSalaryProfile unique → (tenantId, systemId, employeeId) · HrPayrollRun_systemId_periodKey_live_key → (tenantId, systemId, periodKey) WHERE status<>'REVERSED' · ไม่มี call site ใช้ compound unique → เข้ารายการ GO ทีละ migration ตอน H5.3 (+ ถ้า hotfix แยก ต้องไปด้วย)
 - ⚠ ห้าม migrate ฐานเลน 5 (ร่วมเลน 2) จนกว่า LEAVE-3 ขั้นสองจบ — h0.6 S2.4 / h1.3 S1.10 ตรึงดัชนีเดิม → ผู้สร้าง PRIV-3 a47766f0e3ed7927e ทำ R6/R7 + เขียน migration ก่อน แล้วรอข้อความจากผู้คุม · หลัง PRIV-3 เข้า session/hr ทุกเลน + QC4 ต้อง migrate deploy
 - R8 จอลงเวลา: ไม่ต้องแก้ (บอกชื่อเฉพาะคนที่หน้าจอลงเวลาแสดงอยู่แล้ว)
+
+### 2026-11-15T08:20Z · เจ้าของตอบ "แก้ไขทั้ง 2 เรื่องเลย"
+- (1) ค่าตรึง h3.8 S1.13: อนุญาตแล้ว → ผู้คุมแก้บน session/hr ในเครื่อง (ค่า privacy.ts หลัง PREPROD-1 = 1847a6a0…) · ทุกใบที่แตะ privacy.ts หลังจากนี้ (PRIV-3, LEAVE-3?) ต้องให้ผู้คุมตรึงค่าใหม่ตอน merge (คำอนุญาตครอบเรื่องนี้) — ตัวแทนยังห้ามแก้เอง
+- (2) hotfix ช่องโหว่ปุ่มเงินเดือนข้ามร้านขึ้น production แยก: อนุมัติให้ทำ → แผน: รอผู้สร้าง PRIV-3 ทำ R6 + R10 เสร็จบน session/hr → เปิดใบ HF-TENANT พอร์ตเฉพาะ R6 (resolver ทุกปุ่มใน payroll action ของ main) + migration R10 ลงสาขา `hotfix/hr-payroll-tenant-guard` จาก origin/main ในทรีใหม่ → ข้อสอบ + ผู้ตรวจ → **ยังต้องขอ GO จากเจ้าของก่อน push main / deploy / ลง migration บน production ทุกครั้ง**
