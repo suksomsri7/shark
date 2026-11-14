@@ -92,3 +92,8 @@ ORACLE-EDITs this round: qc-hr-h4.5 (S1.2 relation field · S3.3/S8.4 name via g
 - S1.7 title says `bothMain` (cosmetic).
 - r2 mi-1: lease = max(now, wall clock) + 2 min + jitter at claim and at each renewal (oracle F3.8). r2 mi-2: planHrNotices plans in chunks of 200 recipients per tx (seam `opts.chunk`), recipients sorted by id; a failure keeps committed chunks and the event retry resumes (F3.9). RED with the fixes absent: `ledger/wo-notes/hr-H4.5-r2-red.txt` (84/86 — F3.8 heldFresh=false; F3.9 mid=0).
 - Debts: D-H45-account-change-lock (endLineLinksForAccountInTx takes no hrline lock; use-time checks cover a race with completeLineLink) · D-H45-read-side-effect (validActive ends stale links from read paths: chip, my status, hr.menu) · D-oracle-later-mark-per-hunk (qc-hr-h4.2 S1.6 laterOk accepts any later-ticket mark per hunk, not the exact ticket) · D-H45-self-core (K).
+
+## 9. Merge of session/hr 292bc5b7e (H3.4-YTD)
+Conflicts: hr.prisma / scope.ts / hr-qc-env.mts registries (both kept) · qc-hr-h4.2-lib S1.6 = session/hr's IN_BASE form (my laterOk edit dropped; no extension needed) · messages via json3way · inventory rows 3-way by page+testid: base 530 · ours 547 · theirs 540 · merged 557 (0 rows lost).
+Lane: prisma generate · migrate deploy applied 20270110000001_hr_opening_ytd.
+Runs: seed-hr-qc 34/34 · qc-hr-h4.5 86/86 forced ×2 · h3.4-ytd 44/44 · h4.2 53/53 · h3.8 78/78 · h2.10 57/57 · h2.11 70/70 · set-1 25/25 · h2.4 68/68 · h0.1 67/67 · qc-hf-hr-privacy 194/194 · fitness 54/54 + fitness-hr 9/9 (both modes) · drift: H4.5 tables clean (exit 2 = DormUtilityRate + HrFilingProfile, other tickets) · typecheck clean 443 s.
