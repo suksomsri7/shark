@@ -23,55 +23,62 @@ const INT4 = 2_147_483_647;
 
 const SEV: Record<string, "CRITICAL" | "MAJOR" | "MINOR"> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
 const CHECKS = `
-ST1|static|C|G|payroll-rules.ts byte-frozen (sha)
-ST2|static|C|G|frozen files unchanged vs base (payroll-run-rules · payroll-journal-rules · labor-rules · judge · work-entries(-rules) · correction(-rules) · ai.ts · account module · prisma)
-ST3|static|M|G|payroll.ts · labor.ts · leave.ts · service.ts change only by hunks whose added lines carry "HR MONEY-2"
-ST4|static|m|R|item flag REFUND_HELD labelled in th + en (hr payroll flags fl_REFUND_HELD)
-ST5|static|m|R|R5 refusal text comes from CORRECTION_TEXT.paid (leave.ts or service.ts references CORRECTION_TEXT.paid — no copy)
-Z0|house|C|G|own law rows: none present before · 3 inserted
-R1.0|R1|M|G|[db] control: give-back accepted · Sep draft (before any reversal) carries REFUND:+50,000 for the claim's employee
-R1.1|R1|C|R|[db] reverse the deduction run (v2, no later run) ⇒ ok · pending refund REJECTED + unbound in the same tx · audit hr.payadjust.refund_void {code DEDUCTION_REVERSED, claimId}
-R1.2|R1|C|R|[db] re-create + approve the deduction run ⇒ claim deducted again (DEDUCTION:-150000) · Sep = BASE:2000000 only, gross 2,000,000 · refund stays REJECTED (nothing restored)
-R1.3|R1|M|R|[db] legacy (pre-fix reversal left refund APPROVED): cancelAdjustment(claim) ⇒ ok · claim gone · refund REJECTED · audit refund_void {code CLAIM_CANCELLED}
-R1.4|R1|C|R|[db] build backstop: refund whose claim is not bound to a live APPROVED/PAID run ⇒ Sep draft has no REFUND line (BASE only) · refund APPROVED unbound · item flag REFUND_HELD
-R1.5|R1|C|R|[db] approve backstop: claim loses its run while the refund is bound to the Sep DRAFT ⇒ approve code INPUTS_CHANGED · Sep stays DRAFT
-R1.6|R1|C|R|[db] reverse while the refund is bound to a later DRAFT ⇒ code REFUND_BOUND + fixed text · deduction run unchanged · refund APPROVED bound to the draft
-R1.7|R1|M|R|[db] after deleting that draft: reverse ok · refund REJECTED unbound
-R1.8|R1|M|G|[db] refund already paid in an APPROVED later run ⇒ reverse refused LATER_RUN (today's rule for dependent paid items) · nothing changed
-R1.9|R1|C|R|[db] race A (refund row locked): create Sep ∥ reverse Aug — both wait · create binds REFUND:+50000 · reverse REFUND_BOUND · Aug APPROVED
-R1.10|R1|C|R|[db] race B (refund row locked): reverse Aug ∥ create Sep — both wait · reverse ok · refund REJECTED · Sep BASE only
-R1.11|R1|M|R|[db] v1 path: reverse a v1 run whose claim has a pending refund ⇒ ok · refund REJECTED · audit refund_void {code DEDUCTION_REVERSED}
-R2.0|R2|C|G|[db] control: Aug accrual journal (hand) Dr 6000 6,800,000 · Dr 6010 262,500 · Dr 4900 40,000
-R2.1|R2|C|R|[db] owner laborMonth Aug all units = ACTUAL 7,062,500 (wage cost before recoveries, refunds excluded, + employer SSO)
-R2.2|R2|C|R|[db] ACTUAL = accrual Dr 6000 + Dr 6010 of the same run, to the satang
-R2.3|R2|M|R|[db] hr_labor_percent (owner, month) costSatang 7,062,500 basis ACTUAL (same reader)
-R2.4|R2|M|R|[db] v1 run (base 15,000 · claim 5,000) ACTUAL = 1,575,000 (earnings 1,500,000 + SSO er 75,000) · v1 approve ok
-R2.5|R2|C|R|[db] limited viewer [u2] month u2: cost 3,975,000 (home-u2 staff only) · excludedHeadcount 1 · partial
-R2.6|R2|C|G|[db] doubling: outsider eM's Aug item ×2 ⇒ limited [u2] laborMonth u2 byte-identical (canon)
-R2.7|R2|M|R|[db] doubling positive control: owner u1 4,116,667 · u2 6,033,333
-R3.0|R3|M|G|[db] control: eM has 3 judged work days in Aug with equal workMin > 0
-R3.1|R3|M|R|[db] owner u1 = 2,058,334 (eM 2 of 3 days at u1 + remainder satang to home u1)
-R3.2|R3|M|R|[db] owner u2 = 5,004,166 · u1 + u2 = all units 7,062,500
-R3.3|R3|M|R|[db] limited viewer [u1] month u1 = 2,058,334 · excludedHeadcount 0
-R3.4|R3|M|R|[db] (ORACLE-EDIT controller Q1) home u3 with NO minutes · 1 day u1 + 2 days u2 ⇒ remainder to the unit with most minutes: u1 1,029,166 · u2 2,058,334 · u3 0 · all 3,087,500
-R4.1|R4|M|G|[db] v2 run totalling exactly 2,147,483,647 is created (boundary accepted)
-R4.2|R4|M|R|[db] v2 recompute that would total 2,147,483,648 ⇒ refused with the fixed text · draft unchanged (totals · digest)
-R4.3|R4|M|R|[db] v2 create over the boundary ⇒ {ok:false, code RUN_LIMIT, reason text} · 0 live runs · 0 items
-R4.4|R4|m|G|[db] v1 run totalling exactly 2,147,483,647 is created
-R4.5|R4|M|R|[db] v1 create over the boundary ⇒ PayrollInputError(text) · 0 runs written
-R4.6|R4|M|R|[db] (ORACLE-EDIT controller Q3) run totals fit int4 but the accrual salary line Σ(gross + recoveries) = 2,200,000,000 does not ⇒ create refused RUN_LIMIT + text · 0 live runs
-R5.1|R5|M|R|[db] approve an UNPAID leave in a month with an APPROVED run ⇒ refused with CORRECTION_TEXT.paid · stays PENDING
-R5.2|R5|m|G|[db] approve a PAID leave in the same month ⇒ ok APPROVED
-R5.3|R5|m|G|[db] approve an UNPAID leave in a month without a run ⇒ ok APPROVED
-R5.4|R5|M|R|[db] owner's own UNPAID leave created-as-approved in the APPROVED month ⇒ refused with CORRECTION_TEXT.paid · no row
-R5.5|R5|m|G|[db] control: same owner leave in September ⇒ created APPROVED
-R5.6|R5|M|R|[db] (ORACLE-EDIT controller Q2) withdraw (decideLeave APPROVED→REJECTED) an approved UNPAID leave in the APPROVED month ⇒ HrLeaveDecisionError(CORRECTION_TEXT.paid) · stays APPROVED
-R5.7|R5|M|R|[db] (ORACLE-EDIT controller Q2) owner cancels own approved UNPAID leave (cancelLeave) in the APPROVED month ⇒ {ok:false, reason CORRECTION_TEXT.paid} · stays APPROVED
-R5.8|R5|m|G|[db] (ORACLE-EDIT controller Q2) control: withdraw an approved PAID leave in the same month ⇒ ok REJECTED
-R5.9|R5|M|R|[db] (ORACLE-EDIT controller Q4) approval chain applyLeaveDecision(approved) of an UNPAID leave in the APPROVED month ⇒ {applied:false, code PAID} · leave CANCELLED · audit hr.leave.apply_refused {code PAID}
-R5.10|R5|m|G|[db] (ORACLE-EDIT controller Q4) control: same chain apply for a September leave ⇒ applied · APPROVED
-Z1|house|C|G|no residue (tenant · users · own law rows · ACTIVE count)
-Z2|house|M|G|no deadlock during the races (pg_stat_database.deadlocks unchanged)
+ST1|static|C|G|payroll-rules.ts sha frozen
+ST2|static|C|G|frozen files unchanged vs base
+ST3|static|M|G|payroll/labor/leave/service: only "HR MONEY-2"-marked hunks
+ST4|static|m|R|fl_REFUND_HELD in th + en
+ST5|static|m|R|R5 text = CORRECTION_TEXT.paid (referenced, not copied)
+Z0|house|C|G|own law rows: none before · 3 inserted
+R1.0|R1|M|G|[db] control: Sep draft carries REFUND:+50,000
+R1.1|R1|C|R|[db] reverse ⇒ unbound refund REJECTED · audit refund_void DEDUCTION_REVERSED
+R1.2|R1|C|R|[db] re-create Aug deducts again · Sep BASE only · refund stays REJECTED
+R1.3|R1|M|R|[db] legacy cancel of claim ⇒ refund REJECTED · audit CLAIM_CANCELLED
+R1.4|R1|C|R|[db] build: refund without standing claim held · REFUND_HELD flag
+R1.5|R1|C|R|[db] approve: claim lost its run under a DRAFT ⇒ INPUTS_CHANGED
+R1.6|R1|C|R|[db] reverse with refund bound to later DRAFT ⇒ REFUND_BOUND + text
+R1.7|R1|M|R|[db] draft deleted ⇒ reverse ok · refund REJECTED
+R1.8|R1|M|G|[db] refund paid in later APPROVED run ⇒ LATER_RUN · unchanged
+R1.9|R1|C|R|[db] race A create ∥ reverse (row lock) ⇒ both wait · REFUND_BOUND
+R1.10|R1|C|R|[db] race B reverse ∥ create ⇒ both wait · refund REJECTED · Sep BASE only
+R1.11|R1|M|R|[db] v1 reverse voids pending refund
+R1.12|R1|C|G|[db] (R6 review b; GREEN at fix tip 8175c1a92, RED at 60659e7c0) reverse voids a PENDING refund too
+R2.0|R2|C|G|[db] control: accrual Dr6000 6,800,000 · Dr6010 262,500 · Dr4900 40,000
+R2.1|R2|C|R|[db] owner ACTUAL all units 7,062,500
+R2.2|R2|C|R|[db] ACTUAL = Dr6000 + Dr6010
+R2.3|R2|M|R|[db] hr_labor_percent 7,062,500 ACTUAL
+R2.4|R2|M|R|[db] v1 ACTUAL 1,575,000
+R2.5|R2|C|R|[db] limited [u2]: 3,975,000 · excl 1 · partial
+R2.6|R2|C|G|[db] doubling outsider ⇒ limited [u2] byte-identical
+R2.7|R2|M|R|[db] doubling control: owner u1 4,116,667 · u2 6,033,333
+R3.0|R3|M|G|[db] control: eM 3 equal worked days
+R3.1|R3|M|R|[db] owner u1 2,058,334
+R3.2|R3|M|R|[db] owner u2 5,004,166 · u1+u2 = all
+R3.3|R3|M|R|[db] limited [u1] u1 2,058,334 · excl 0
+R3.4|R3|M|R|[db] (Q1) home without minutes ⇒ u1 1,029,166 · u2 2,058,334 · u3 0
+R4.1|R4|M|G|[db] v2 total 2,147,483,647 created
+R4.2|R4|M|R|[db] v2 recompute over limit ⇒ text · draft unchanged
+R4.3|R4|M|R|[db] v2 create over limit ⇒ RUN_LIMIT · nothing written
+R4.4|R4|m|G|[db] v1 total 2,147,483,647 created
+R4.5|R4|M|R|[db] v1 create over limit ⇒ PayrollInputError(text)
+R4.6|R4|M|R|[db] (Q3) gross fits, accrual Dr6000 2.2e9 ⇒ RUN_LIMIT
+R4.7|R4|M|G|[db] (R6 review a) recompute: only accrual overflows ⇒ RUN_LIMIT · draft untouched
+R5.1|R5|M|R|[db] approve UNPAID leave in APPROVED month ⇒ paid text · PENDING
+R5.2|R5|m|G|[db] approve PAID leave (no deduction) same month ⇒ ok
+R5.3|R5|m|G|[db] approve UNPAID leave, month without run ⇒ ok
+R5.4|R5|M|R|[db] owner UNPAID leave created-as-approved ⇒ refused · no row
+R5.5|R5|m|G|[db] control: same in September ⇒ APPROVED
+R5.6|R5|M|R|[db] (Q2) withdraw approved UNPAID leave ⇒ refused · APPROVED
+R5.7|R5|M|R|[db] (Q2) owner cancelLeave approved UNPAID ⇒ refused · APPROVED
+R5.8|R5|M|R|[db] (R6, was control) withdraw approved PAID leave in APPROVED month ⇒ refused · APPROVED
+R5.9|R5|M|R|[db] (Q4) chain apply UNPAID ⇒ PAID · CANCELLED · audit
+R5.10|R5|m|G|[db] (Q4) control: chain apply September ⇒ APPROVED
+R6.1|R6|C|R|[db] (R6) ABSENT_RULE −300,000 run: approve PAID leave on 11 Aug ⇒ refused · PENDING · deductions + totals unchanged
+R6.2|R6|C|R|[db] (R6) owner PAID leave created-as-approved on 14 Aug ⇒ refused · no row · unchanged
+R6.3|R6|M|R|[db] (R6) chain apply PAID leave on 29 Aug ⇒ PAID · CANCELLED · unchanged
+R6.4|R6|m|G|[db] (R6) control: PAID leave on worked 5 Aug ⇒ approved
+R6.5|R6|m|G|[db] (R6) control: PAID leave 1 Sep (open month) ⇒ approved
+Z1|house|C|G|no residue
+Z2|house|M|G|no deadlock during races
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
   return [`MONEY-2-${id}`, g, SEV[sv], (b === "R" ? "RED" : "GREEN") as Base, t] as const;
@@ -153,14 +160,14 @@ try {
   ck("Z0", { none: S.lawPresent === 0, inserted: S.lawOk }, "0 present · 3 inserted", `present=${S.lawPresent}`);
 
   // ── R1 helper: claim 1,500 ฿ in Aug on a 20,000 ฿ employee (under the s.76 cap 2,000 ฿ ⇒ no carry) · Aug approved · give back 500 ฿ into Sep (approved) ──
-  const claimFlow = async (name: string) => {
+  const claimFlow = async (name: string, rfApprove = true) => {
     const s = await sys(name);
     const e = await emp(s, `E${name.slice(-2)}`, { salary: 2_000_000 });
     const claim = (await adj(s, e, "2031-08", "DEDUCTION", 150_000)).id;
     const cr = await create(s, "2031-08");
     const ap = cr?.id ? await approve(s, cr.id) : cr;
     const gb = await giveBack(s, claim, 50_000, "2031-09");
-    const da = gb?.id ? await safe(() => PAY.decideAdjustment(c(s), gb.id, "APPROVED", ownA)) : gb;
+    const da = gb?.id && rfApprove ? await safe(() => PAY.decideAdjustment(c(s), gb.id, "APPROVED", ownA)) : gb;
     const ok = cr?.ok === true && ap?.ok === true && gb?.ok === true && da?.ok !== false;
     if (!ok) console.log(`  ⚠ claimFlow ${name}: ${short({ cr, ap, gb, da }, 300)}`);
     return { s, e, claim, aug: (cr?.id ?? "") as string, rf: (gb?.id ?? "") as string, ok };
@@ -240,6 +247,12 @@ try {
     const rv = await reverse(Q.s, Q.aug);
     const rf = await adjOf(Q.rf);
     ck("R1.8", { setup: Q.ok && sa?.ok === true && paidLine, refused: rv?.ok === false && rv?.code === "LATER_RUN", aug: (await runOf(Q.aug))?.status === "APPROVED", refund: rf?.s === "APPROVED" && rf?.r === sep?.id }, "LATER_RUN", short(rv, 160));
+  }
+  { // ORACLE-EDIT (controller R6 review b): refund still PENDING when the deduction run is reversed
+    const Pn = await claimFlow("รอคืน-P12", false);
+    const rv = await reverse(Pn.s, Pn.aug);
+    const rf = await adjOf(Pn.rf);
+    ck("R1.12", { setup: Pn.ok, reverse: rv?.ok === true, voided: rf?.s === "REJECTED" && rf?.r === null, audit: await voidAudit(Pn.rf, "DEDUCTION_REVERSED", Pn.claim) }, "PENDING refund REJECTED", short({ rv: rv?.code ?? rv?.ok, rf: rf?.s }, 120));
   }
   // R1.9 / R1.10 — races on the refund row
   {
@@ -398,6 +411,17 @@ try {
     const za = await adj(s6, z1, "2031-08", "ADVANCE", 500_000_000);
     const zr = await create(s6, "2031-08");
     const zt = zr?.id ? await runOf(zr.id) : null;
+    { // ORACLE-EDIT (controller R6 review a): E 1.0e9 + 1.1e9 = 2.1e9 fits · Z2 raised to 1.2e9 ⇒ E 2.2e9 > int4, gross 1.7e9 fits
+      const s7 = await sys("ขอบบัญชี-B7");
+      const w1 = await emp(s7, "W1", { salary: 1_000_000_000 });
+      const w2 = await emp(s7, "W2", { salary: 1_100_000_000 });
+      const wa = await adj(s7, w1, "2031-08", "ADVANCE", 500_000_000);
+      const wr = await create(s7, "2031-08");
+      const b0 = await runOf(wr?.id ?? "");
+      await P.hrSalaryProfile.updateMany({ where: { systemId: s7, employeeId: w2 }, data: { baseSalarySatang: 1_200_000_000 } });
+      const rc = wr?.id ? await safe(() => PAY.recomputeDraftRun(c(s7), wr.id, { userId: U.pay1.id, isOwner: false }, { viewer: V.pay1, now: NOW["2031-08"] })) : wr;
+      ck("R4.7", { setup: wa.ok && wr?.ok === true, refused: rc?.ok === false && textOf(rc) === TXT.limit, same: canon(await runOf(wr?.id ?? "")) === canon(b0) }, "RUN_LIMIT · untouched", short({ rc: textOf(rc) || rc?.ok, g: b0?.g }, 160));
+    }
     ck("R4.6", { setup: za.ok, refused: zr?.ok === false && zr?.code === "RUN_LIMIT" && zr?.reason === TXT.limit, none: (await liveRuns(s6)) === 0 }, "RUN_LIMIT", short({ zr: zr?.reason ?? zr?.ok, g: zt?.g, n: zt?.n }, 200));
   }
 
@@ -451,7 +475,7 @@ try {
     const cl = await safe(() => SV.cancelLeave(c(s5), oId, { actorUserId: U.owner.id }));
     ck("R5.7", { pre: !!pre3?.id && (await stOf(oId)) !== undefined, refused: cl?.ok === false && cl?.reason === TXT.paid, st: (await stOf(oId)) === "APPROVED" }, "refused · APPROVED", short(cl, 200));
     const wp = await safe(() => SV.decideLeave(c(s5), w2, "REJECTED", U.owner.id, { from: "APPROVED" }));
-    ck("R5.8", { pre: pre2?.ok === true, ok: !wp?.__throw && wp?.ok !== false, st: (await stOf(w2)) === "REJECTED" }, "REJECTED", short({ wp: wp?.reason ?? "ok" }, 200));
+    ck("R5.8", { pre: pre2?.ok === true, refused: wp?.__throw?.message === TXT.paid, st: (await stOf(w2)) === "APPROVED" }, "refused · APPROVED", short({ wp: wp?.reason ?? "ok" }, 200)); // ORACLE-EDIT (controller R6)
     // ORACLE-EDIT (controller Q4) approval-chain effect path (policy + APPROVED request made directly; created last so the direct paths above are not in a chain)
     const pol = (await P.approvalPolicy.create({ data: { tenantId: TT, name: `qc money-2 ${tag}`, entityType: "HrLeave", systemId: s5 } })).id as string;
     const chain = async (d: string) => {
@@ -464,6 +488,51 @@ try {
     ck("R5.9", { refused: ch1.res?.applied === false && ch1.res?.code === "PAID", st: (await stOf(ch1.id)) === "CANCELLED", audit: au.some((a: Any) => a.after?.code === "PAID") }, "PAID · CANCELLED · audit", short(ch1.res, 160));
     const ch2 = await chain("2031-09-10");
     ck("R5.10", { applied: ch2.res?.applied === true, st: (await stOf(ch2.id)) === "APPROVED" }, "applied · APPROVED", short(ch2.res, 160));
+  }
+  { // ORACLE-EDIT (controller R6) · re-hunt q7 fixture
+    const AP = (await import("@/lib/modules/hr/attendance-pay")) as Any;
+    const s = await sys("ลาวันหัก-R6");
+    await P.hrEmployee.updateMany({ where: { tenantId: TT, linkedUserId: U.owner.id }, data: { linkedUserId: null } });
+    const e = await emp(s, "R6", { salary: 3_000_000, linkedUserId: U.owner.id });
+    const sh = (await P.hrShift.create({ data: { tenantId: TT, systemId: s, name: `เช้า ${tag}`, startMin: 540, endMin: 1020, crossesMidnight: false, graceMin: 5 } })).id as string;
+    for (const d of ["2031-08-04", "2031-08-05", "2031-08-06", "2031-08-07", "2031-08-08", "2031-08-11", "2031-08-14", "2031-08-29", "2031-09-01"]) {
+      const re = (await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: s, employeeId: e, date: dd(d), shiftId: sh, unitId: u1, startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-07-01T00:00:00Z"), source: "MANUAL" } })).id as string;
+      if (d < "2031-08-09") for (const [k, hm] of [["IN", "09:00"], ["OUT", "17:00"]] as const) await P.hrAttendance.create({ data: { tenantId: TT, systemId: s, employeeId: e, kind: k, at: bk(d, hm), rosterEntryId: re, source: "KIOSK" } });
+    }
+    const polP = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "SICK", name: `ป่วย ${tag}`, paid: true, allowHours: true } })).id as string;
+    await AP.saveAttendancePayPolicy(c(s), V.owner, { enabled: true });
+    for (const d of ["2031-08-09", "2031-08-16", "2031-08-23", "2031-08-30", "2031-09-05"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT }));
+    await safe(async () => ((await import("@/lib/modules/hr/work-entries")) as Any).buildWorkEntrySnapshot(c(s), V.owner, { periodKey: "2031-08" }, { now: NOW["2031-08"] }));
+    await safe(() => AP.syncAttendanceDeductions(c(s), V.owner, { periodKey: "2031-08" }, { now: NOW["2031-08"] }));
+    for (const r of await rows(`SELECT id FROM "HrPayAdjustment" WHERE "systemId" = $1 AND status::text = 'PENDING'`, s)) await safe(() => PAY.decideAdjustment(c(s), r.id, "APPROVED", ownA));
+    const R = await create(s, "2031-08");
+    const RA = R?.id ? await approve(s, R.id) : R;
+    const snap = async () => canon({ adj: await rows(`SELECT id, status::text AS s, "runId" AS r, "amountSatang" AS a FROM "HrPayAdjustment" WHERE "systemId" = $1 AND "sourceType"::text IN ('ABSENT_RULE','LATE_RULE') ORDER BY id`, s), run: await runOf(R?.id ?? "") });
+    const s0 = await snap();
+    const ab = R?.id ? (await linesOf(R.id, e)).filter((l) => l.startsWith("ABSENT_RULE")) : [];
+    const setup = RA?.ok === true && canon(ab) === canon(["ABSENT_RULE:-300000"]);
+    if (!setup) console.log(`  ⚠ setup R6: ${short({ R, RA, ab }, 300)}`);
+    const lv = async (d: string) => (await P.hrLeave.create({ data: { tenantId: TT, systemId: s, employeeId: e, type: "SICK", fromDate: dd(d), toDate: dd(d), status: "PENDING", policyId: polP, days: 1, reason: `qc ${tag}` } })).id as string;
+    const st = async (id: string) => (await rows(`SELECT status::text AS s FROM "HrLeave" WHERE id = $1`, id))[0]?.s;
+    const dec = (id: string) => safe(() => SV.decideLeave(c(s), id, "APPROVED", U.pay1.id, { from: "PENDING" }).then(() => ({ ok: true })));
+    const l11 = await lv("2031-08-11");
+    const d11 = await dec(l11);
+    ck("R6.1", { setup, refused: d11?.__throw?.message === TXT.paid, st: (await st(l11)) === "PENDING", same: (await snap()) === s0 }, "refused · unchanged", short({ d11: d11?.reason ?? d11 }, 160));
+    const q = await safe(() => SV.requestLeave(c(s), { employeeId: e, type: "SICK", fromDate: "2031-08-14", toDate: "2031-08-14", reason: "qc", actorUserId: U.owner.id, policyId: polP }));
+    const n14 = (await rows(`SELECT id FROM "HrLeave" WHERE "employeeId" = $1 AND "fromDate" = '2031-08-14'::date`, e)).length;
+    ck("R6.2", { setup, refused: !q?.id && (q?.__throw?.message === TXT.paid || q?.reason === TXT.paid), noRow: n14 === 0, same: (await snap()) === s0 }, "refused · no row", short({ q: q?.reason ?? q?.id }, 160));
+    const pol = (await P.approvalPolicy.create({ data: { tenantId: TT, name: `qc r6 ${tag}`, entityType: "HrLeave", systemId: s } })).id as string;
+    const l29 = await lv("2031-08-29");
+    const req = (await P.approvalRequest.create({ data: { tenantId: TT, policyId: pol, entityType: "HrLeave", entityId: l29, systemId: s, status: "APPROVED", requestedById: U.owner.id, idempotencyKey: `approval-HrLeave-${l29}`, decidedAt: new Date() } })).id as string;
+    const ch = await safe(() => LV.applyLeaveDecision({ tenantId: TT, systemId: s, leaveId: l29, requestId: req, approved: true }));
+    ck("R6.3", { setup, refused: ch?.applied === false && ch?.code === "PAID", st: (await st(l29)) === "CANCELLED", same: (await snap()) === s0 }, "PAID · CANCELLED", short(ch, 120));
+    await P.approvalPolicy.update({ where: { id: pol }, data: { active: false } });
+    const l05 = await lv("2031-08-05");
+    const d05 = await dec(l05);
+    ck("R6.4", { setup, ok: d05?.ok === true, st: (await st(l05)) === "APPROVED" }, "approved", short(d05?.reason ?? d05, 160));
+    const l01 = await lv("2031-09-01");
+    const d01 = await dec(l01);
+    ck("R6.5", { ok: d01?.ok === true, st: (await st(l01)) === "APPROVED" }, "approved", short(d01?.reason ?? d01, 160));
   }
 } catch (e) {
   crashed = errText(e);

@@ -1,8 +1,6 @@
 // QC — HR V2 · fix ticket HR-MONEY-2 — fixture + race helpers for scripts/qc-hr-money-2.mts (brief ledger/hr-briefs/hr-brief-MONEY-2.md)
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
-// Adapted from the H5.2 money hunter's scratch fixture (ledger/wo-notes/hr-H5.2-money-probes/common.mts.txt): own tenant (slug qc-hr-money2-*) ·
-//   own ACTIVE law rows (sourceKey qc-hr-money2-<tag>-*, json = scripts/fixtures/hr-h3.4-vectors.json: SSO 5 % max base 17,500 ฿ from 2031-01-01) —
-//   the suite refuses to start when any qc-hr-money2-* law row is already present, and removes its own rows in `finally` · full residue check.
+// From the H5.2 hunter's fixture · own tenant qc-hr-money2-* · own ACTIVE law rows (sourceKey qc-hr-money2-<tag>-*, hr-h3.4-vectors.json) — refuses if any exist, removed in finally
 import { type Any, qc4Env, makeFixtures, vOf, jsonOf, tagOf, errText, sleep } from "./qc-hr-lib.mjs";
 
 export const PREFIX = "qc-hr-money2-";
@@ -113,11 +111,7 @@ export async function setupMoney2(suite: string) {
   return { P, fx, tag, TT, u1, u2, U, V, ownA, payA, c, sys, setV2, book, emp, rows, safe, create, approve, reverse, adj, giveBack, runOf, adjOf, itemOf, linesOf, flagsOf, auditOf, liveRuns, cleanup, PAY, lawOk, lawPresent };
 }
 
-/**
- * Hold a lock in its own tx (advisory key, or a row lock via `rowSql`), start `calls` one at a time — each next call starts only after the
- * previous one is observed waiting (pg_blocking_pids on the holder, or transitively behind an earlier waiter) or after a bounded wait — then
- * release. Returns results + which calls were seen blocked. (hunter H5.2 p3 helper)
- */
+/** hold a row/advisory lock; start calls one by one, each after the previous is seen waiting (pg_blocking_pids, direct or chained); release (hunter p3) */
 export async function underLock<R>(P: Any, lock: { key: string } | { rowSql: string; args: unknown[] }, calls: (() => Promise<R>)[]): Promise<{ res: R[]; blocked: boolean[]; holderErr: string }> {
   let release: () => void = () => {};
   const gate = new Promise<void>((r) => (release = r));

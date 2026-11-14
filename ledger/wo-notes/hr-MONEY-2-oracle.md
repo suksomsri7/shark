@@ -192,3 +192,30 @@ The give-backs on `${gRun}_bDmg` (hG1) stay PENDING. No later step reverses gRun
 
 ### Older-suite list after the rulings
 Still 0 golden changes. The h4.2 E split is re-confirmed under the Q1 rule.
+
+## 10. ORACLE-EDIT — controller R6 (re-hunt N1) + review a/b, 15 Nov
+**Fixture (copied from q7).** System R6, an employee at 30,000 ฿ (1,000 ฿/day), linked to the owner. Rostered 4–8 Aug and punched; 11, 14 and 29 Aug and 1 Sep rostered with no punches. Attendance pay is on. The setup then: judge → build → sync → approve deductions → the Aug run is created and APPROVED with `ABSENT_RULE:-300000`.
+
+| check | action | expected |
+|---|---|---|
+| R6.1 | SICK leave (paid policy) on 11 Aug via `decideLeave` | `HrLeaveDecisionError(CORRECTION_TEXT.paid)`, leave stays PENDING |
+| R6.2 | `requestLeave` of an owner-linked SICK leave on 14 Aug | refused, no row |
+| R6.3 | chain apply on 29 Aug | `{applied:false, code PAID}`, CANCELLED |
+| R6.4 | paid leave on worked 5 Aug | approved (control) |
+| R6.5 | paid leave on 1 Sep, open month | approved (control) |
+
+For R6.1–R6.3, the ABSENT/LATE rows (id, status, runId, amount) and the run row are compared by canon before and after, and must be unchanged.
+
+**R5.8 flipped.** Revoking an approved PAID leave in the APPROVED month is now expected to be refused (ruling: "follow R5").
+
+**Review checks:**
+- R1.12: claimFlow with the refund left PENDING, then reverse ⇒ REJECTED with the DEDUCTION_REVERSED audit.
+- R4.7: salaries 1.0e9 + 1.1e9 with an advance of 5e8. E = 2.1e9 fits int4 → draft created. Raise the second salary to 1.2e9 → E = 2.2e9, gross = 1.7e9 → recompute refused with RUN_LIMIT, run row canon unchanged.
+
+**Run at fix tip 8175c1a92** (forced, lane wrapper):
+- 52/56 pass. Failing: R5.8, R6.1, R6.2, R6.3 — all the builder's R6 work, each RED for the reason stated.
+- R1.12 and R4.7 pass, so they are registered GREEN. Against 60659e7c0 both would be RED.
+- Residue none · no deadlocks · targeted tsc 0 · suite + lib = 59.9 KB.
+
+**No leave date-edit entry point exists in src** (only `updateLeavePolicy`), so "edit onto a deducted day" has no check.
+Open gap: flipping a policy's `paid` flag while approved leaves sit in paid months.

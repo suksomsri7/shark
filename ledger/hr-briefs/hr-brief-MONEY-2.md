@@ -1,6 +1,6 @@
 # HR-MONEY-2 — money fixes from the H5.2 hunt (M1 M2 m3 m4 m5) · mini-brief
 
-Base `session/hr` 60659e7c0 · branch `wip/hr-money-2` · oracle `scripts/qc-hr-money-2.mts` (+ `-lib`) · 49 checks (31 RED on base, 18 GREEN) · hand numbers `ledger/wo-notes/hr-MONEY-2-oracle.md` · hunt `ledger/wo-notes/hr-H5.2-money-hunt.md`.
+Base `session/hr` 60659e7c0 · branch `wip/hr-money-2` · oracle `scripts/qc-hr-money-2.mts` (+ `-lib`) · 56 checks (35 RED-by-design, 21 GREEN) · hand numbers `ledger/wo-notes/hr-MONEY-2-oracle.md` · hunt `ledger/wo-notes/hr-H5.2-money-hunt.md`.
 Mark every hunk `HR MONEY-2` (ST3). No schema/migration.
 
 ## Problem
@@ -61,3 +61,16 @@ R1 mechanism, the three spec choices, and the REFUND_BOUND / RUN_LIMIT texts are
 - Q2 → R5.6 / R5.7 (+ R5.8 control): withdraw or cancel refused.
 - Q3 → R4.6: accrual-line guard.
 - Q4 → R5.9 (+ R5.10 control): approval-chain path pinned.
+- **R6 (re-hunt N1, 15 Nov).** Approving any leave refuses with `CORRECTION_TEXT.paid` and writes nothing when:
+  - the leave is paid or unpaid,
+  - it covers a day carrying an ABSENT_RULE/LATE_RULE deduction,
+  - that deduction is bound to an APPROVED/PAID run.
+
+  This covers `decideLeave`, owner create-as-approved, and the chain `applyLeaveDecision` (→ CANCELLED + code PAID).
+  - Revoking an approved PAID leave in a paid month is refused as for unpaid (R5.8 flipped from control to RED).
+  - A paid leave on a non-deducted day, or in an open month, stays allowed (R6.4/R6.5).
+  - The auto-refund into the next period is out of scope (debt).
+
+  Checks R6.1–R6.5, plus review checks R1.12 (a PENDING refund is voided too; GREEN at fix tip 8175c1a92) and R4.7 (recompute with only the accrual overflowing → RUN_LIMIT, draft untouched; GREEN at the tip).
+
+  There is no leave date-edit entry point in src, so "edit onto a deducted day" has no check.
