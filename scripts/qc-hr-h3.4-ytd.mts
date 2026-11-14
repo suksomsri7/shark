@@ -46,7 +46,7 @@ S3.2|A3 Q3 Q15|C|R|[db] no opening: create not refused · WHT 0 · ytdOpening "M
 S3.3|A4|C|R|[db] catch-up: opening saved after Sept approved at 0 · Oct 22,779 · Nov 22,779 · Dec 22,778 · year WHT 205,000 · Sept item unchanged
 S3.4|A5|C|R|[db] opening WHT 0 ⇒ Sept WHT 51,250
 S3.5|A6|C|R|[db] DRAFT Sept then opening ⇒ approve INPUTS_CHANGED (still DRAFT, item unchanged) · rebuild ⇒ 17,084 + marker · approve ok
-S3.6|A6 Q3|C|R|[db] zero opening on a DRAFT: review gone (live) · digest unchanged · approve ok · row months 0 / amounts 0
+S3.6|A6 Q3|C|R|[db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 1a/1b/2): zero opening on a DRAFT: YTD_OPENING gone · YTD_REBUILD shown · approve INPUTS_CHANGED · rebuild ⇒ marker = zero row · approve ok · after approve no YTD_OPENING · row months 0 / amounts 0
 S3.7|A7 Q5|C|R|[db] OVERLAP vs DRAFT and APPROVED Sept (payDay 09-25 ≤ asOf 09-30) · REVERSED does not count · v2 and v1 create ⇒ OPENING_OVERLAP, no run · refused audits {code}
 S3.8|A8|C|R|[db] BKK boundary in DB: payDate 2031-12-31T16:59:59Z uses the 2031 opening · T17:00:00Z does not · asOf 2032-01-01 / future asOf ⇒ AS_OF, nothing written
 S3.9|A9|C|R|[db] FIELDS (negative · non-int · string) · WHT_OVER · months > month(asOf) ⇒ FIELDS · year ⇒ YEAR · nothing written · SSO 1,000,000 saved + SSO_HIGH
@@ -59,6 +59,10 @@ S3.15|A15 R8|C|R|[db] viewer matrix list/save/bulk/clear: owner + gate holder ([
 S3.16|A16 R9|C|R|[db] DTO keys exact · no sensitive keys · manager preview without YTD_OPENING / opening amounts · no outbox event
 S3.17|A17 R10|C|R|[db] audits save {employeeId, taxYear, rev, by ONE|BULK} · clear {employeeId, taxYear, rev} · refused {code} · no ฿ in any opening audit · refused bulk writes none
 S3.19|Q12|C|R|[db] ORACLE-EDIT (H3.4-YTD · controller ruling Q12): H3.8 slip history 2031 = 50 ทวิ (income · tax · SSO incl. the opening) · one "opening" line (asOf · months · amounts) · slips/count/net unchanged · payroll reader ✓ · manager / member / other tenant refused · never on a single slip · no key without an opening · gone after clear
+S2.6|fix 4 · hunt P3|C|R|[pure] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 4/8): parseOpening asOf before startDay ⇒ FIELDS (= start ok) · over-withheld opening ⇒ whtYtdV2 0 (never negative)
+S3.20|fix 1b 2|C|R|[db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 1b/2): DRAFT + revision of same amounts (months/asOf) ⇒ YTD_REBUILD · approve INPUTS_CHANGED · clear on DRAFT ⇒ YTD_REBUILD · rebuild ⇒ marker = live rev · approve ok · approved marker names the live rev
+S3.21|fix 3|C|R|[db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 3): bulk unchanged rows ⇒ no new rev/audit · own unchanged row passes (changed own row ⇒ OWN, nothing written) · 301 changed ⇒ FIELDS · 300 changed ⇒ ok < 20 s (timed) · list > 500 ⇒ truncated + 500 rows
+S3.22|fix 4|C|R|[db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 4): asOf before the employee's start date ⇒ FIELDS, nothing written · asOf = start date ok
 S3.18|Q9|C|R|[db] bulk: all-or-nothing (one bad row ⇒ nothing) · 301 rows refused · 2 rows ⇒ 2 live rows rev 1
 S4.1|A19|C|R|[race] save ∥ create: period lock held ⇒ save first ⇒ item holds {id, rev} · hr50 held ⇒ create first ⇒ approve INPUTS_CHANGED · free run ⇒ one of the two
 S4.2|A20|C|R|[race] save ∥ 50 ทวิ issue (both wait on hr50): cert includes the opening, or save ⇒ CERT_ISSUED
@@ -157,7 +161,7 @@ async function runDb(): Promise<void> {
     return id;
   };
   const S: Record<string, string> = {};
-  for (const n of ["A", "B", "C", "D", "E", "F", "H1", "H2", "R1", "R2", "R3"]) S[n] = await sys(`ทีม ${n}`);
+  for (const n of ["A", "B", "C", "D", "E", "F", "H1", "H2", "R1", "R2", "R3", "G", "BK"]) S[n] = await sys(`ทีม ${n}`); // ORACLE-EDIT (H3.4-YTD fix round · controller ruling): + G (rebuild) · BK (bulk 300/501) ◂
   for (const n of ["V", "V2"]) S[n] = await sys(`ทีม ${n} รุ่น1`, false);
   const c = (n: string) => ({ tenantId: TT, systemId: S[n]! });
   const ADDR = { subdistrict: "ทุ่งพญาไท", district: "ราชเทวี", province: "กรุงเทพมหานคร", postcode: "10400" };
@@ -174,10 +178,11 @@ async function runDb(): Promise<void> {
     eB: await emp("B", "B01", { nid: "1102000123454" }), eB2: await emp("B", "B02", { nid: "3100600999991" }), eB3: await emp("B", "B03", { start: "2031-09-01" }),
     eL: await emp("B", "B04", { pay: false, nid: "1500100123451", end: "2031-05-31" }),
     eC: await emp("C", "C01"), eD: await emp("D", "D01"), eE: await emp("E", "E01"), eF: await emp("F", "F01"), eH1: await emp("H1", "H01"), eH1b: await emp("H1", "H02", no), eH2: await emp("H2", "H03"),
+    eG1: await emp("G", "G01"), eG2: await emp("G", "G02"), // ORACLE-EDIT (H3.4-YTD fix round · controller ruling) ◂
     eV: await emp("V", "V01", { nid: "3900100123453" }), eV2: await emp("V2", "V02"), eR1: await emp("R1", "R01"), eR2: await emp("R2", "R02"), eR3: await emp("R3", "R03"),
   };
   const act = Number((await rows(`SELECT count(*)::int AS n FROM "HrLawTable" WHERE status = 'ACTIVE' AND "sourceKey" LIKE $1`, `${LAW_KEY}-%`))[0]?.n ?? 0);
-  ck("S3.0", { tenants: fx.tenants.length === 2, systems: Object.keys(S).length === 13, law: act === 4, emps: Object.values(E).every(Boolean) }, "fixture", `law=${act}`);
+  ck("S3.0", { tenants: fx.tenants.length === 2, systems: Object.keys(S).length === 15 /* ORACLE-EDIT (H3.4-YTD fix round · controller ruling) ◂ */, law: act === 4, emps: Object.values(E).every(Boolean) }, "fixture", `law=${act}`);
 
   // ── helpers ──
   const save = (s: string, who: Any, e: string, o: Record<string, unknown> = {}, now = N.sep10, expectRev: number | null = null) =>
@@ -365,20 +370,62 @@ async function runDb(): Promise<void> {
       rebuilt: rb?.ok === true && it2?.whtSatang === LIT.a2 && marker(it2)?.id === live?.id, approved: a2?.ok === true,
     }, "INPUTS_CHANGED → rebuild 17,084 → ok", short({ a1, rb, w: it2?.whtSatang, a2: a2?.note }, 300));
   });
-  await blk(["S3.6"], async () => {
+  await blk(["S3.6"], async () => { // ORACLE-EDIT (H3.4-YTD fix round · controller ruling) 1a/1b/2: a zero opening is an opening — on a DRAFT it demands a rebuild; after approve no YTD_OPENING ◂
     need("saveOpeningYtd");
     const cr = await create("E", "2031-09");
     const pv0 = await preview("E", V.owner, cr?.id);
-    const d0 = (await runOf(cr?.id))?.d;
     const sv = await save("E", V.owner, E.eE, { months: 0, incomeSatang: 0, whtSatang: 0, ssoSatang: 0 }, N.oct3);
     const pv1 = await preview("E", V.owner, cr?.id);
+    const a1 = await approve("E", cr?.id);
+    const rb = await PAY.recomputeDraftRun(c("E"), cr?.id, payA, { viewer: V.pay1, now: T("2031-10-03T06:00:00Z") }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const pv2 = await preview("E", V.owner, cr?.id);
     const ap = await approve("E", cr?.id);
+    const pv3 = await preview("E", V.owner, cr?.id);
     const r = await runOf(cr?.id);
     const row = (await liveOf(E.eE))[0];
+    const it = await item(cr?.id, E.eE);
+    const codes = (x: Any) => (Array.isArray(x?.review) ? x.review : []).filter((v: Any) => v?.employeeId === E.eE).map((v: Any) => v.code);
     ck("S3.6", {
-      warned: ytdRev(pv0, E.eE), saved: sv?.ok === true, gone: pv1?.ok === true && !ytdRev(pv1, E.eE), approved: ap?.ok === true && r?.status === "APPROVED" && r?.d === d0,
+      warned: ytdRev(pv0, E.eE), saved: sv?.ok === true, gone: pv1?.ok === true && !ytdRev(pv1, E.eE), rebuildShown: codes(pv1).includes("YTD_REBUILD"), changed: isCode({ ok: a1?.ok, code: a1?.code }, "INPUTS_CHANGED"),
+      rebuilt: rb?.ok === true && marker(it)?.id === row?.id && marker(it)?.rev === row?.rev && codes(pv2).length === 0, approved: ap?.ok === true && r?.status === "APPROVED", noWarnAfter: pv3?.ok === true && codes(pv3).length === 0,
       row: !!row && row.months === 0 && Number(row.incomeSatang) === 0 && Number(row.whtSatang) === 0 && Number(row.ssoSatang) === 0,
-    }, "zero opening clears the warning", short({ sv, ap: ap?.note, d: [d0, r?.d] }, 240));
+    }, "zero opening = opening: rebuild, then quiet", short({ c1: codes(pv1), a1: a1?.code, c2: codes(pv2), c3: codes(pv3), m: marker(it) }, 240));
+  });
+  // ── ORACLE-EDIT (H3.4-YTD fix round · controller ruling) ▸ S3.20 (1b · 2): revision identity is part of the run's inputs ──
+  await blk(["S3.20"], async () => {
+    need("saveOpeningYtd", "clearOpeningYtd");
+    const s1 = await save("G", V.owner, E.eG1);
+    const s2 = await save("G", V.owner, E.eG2);
+    const cr = await create("G", "2031-09");
+    const codes = (x: Any, e: string) => (Array.isArray(x?.review) ? x.review : []).filter((v: Any) => v?.employeeId === e).map((v: Any) => v.code);
+    const pv0 = await preview("G", V.owner, cr?.id);
+    const d0 = (await runOf(cr?.id))?.d;
+    const e1 = await save("G", V.owner, E.eG1, { months: 5, asOfDay: "2031-08-15" }, N.oct3, 1);
+    const cl = await op("clearOpeningYtd", c("G"), V.owner, { employeeId: E.eG2, taxYear: 2031, expectRev: 1 }, { now: N.oct3 });
+    const pv1 = await preview("G", V.owner, cr?.id);
+    const a1 = await approve("G", cr?.id);
+    const r1 = await runOf(cr?.id);
+    const rb = await PAY.recomputeDraftRun(c("G"), cr?.id, payA, { viewer: V.pay1, now: T("2031-10-03T06:00:00Z") }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const pv2 = await preview("G", V.owner, cr?.id);
+    const a2 = await approve("G", cr?.id);
+    const it1 = await item(cr?.id, E.eG1);
+    const live1 = (await liveOf(E.eG1))[0];
+    ck("S3.20", {
+      setup: s1?.ok === true && s2?.ok === true && cr?.ok === true && codes(pv0, E.eG1).length === 0 && codes(pv0, E.eG2).length === 0,
+      revSameAmounts: e1?.ok === true && e1?.rev === 2 && codes(pv1, E.eG1).includes("YTD_REBUILD"), clearedDraft: cl?.ok === true && codes(pv1, E.eG2).includes("YTD_REBUILD"),
+      refused: a1?.ok === false && a1?.code === "INPUTS_CHANGED" && r1?.status === "DRAFT" && r1?.d === d0,
+      rebuilt: rb?.ok === true && !codes(pv2, E.eG1).includes("YTD_REBUILD") && !codes(pv2, E.eG2).includes("YTD_REBUILD") && codes(pv2, E.eG2).includes("YTD_OPENING"),
+      approvedLive: a2?.ok === true && marker(it1)?.id === live1?.id && marker(it1)?.rev === 2 && it1?.whtSatang === LIT.a2,
+    }, "any new rev ⇒ rebuild before approve", short({ c1: [codes(pv1, E.eG1), codes(pv1, E.eG2)], a1: a1?.code, c2: [codes(pv2, E.eG1), codes(pv2, E.eG2)], m: marker(it1) }, 300));
+  });
+  // ── ORACLE-EDIT (H3.4-YTD fix round · controller ruling) ▸ S3.22 (4): asOf before the start date ──
+  await blk(["S3.22"], async () => {
+    need("saveOpeningYtd");
+    const before = await save("B", V.owner, E.eB3, { asOfDay: "2031-08-31", months: 8, incomeSatang: 100, whtSatang: 0, ssoSatang: 0 }, N.sep10);
+    const none = (await openRows(E.eB3)).length === 0;
+    const onStart = await save("B", V.owner, E.eB3, { asOfDay: "2031-09-01", months: 0, incomeSatang: 0, whtSatang: 0, ssoSatang: 0 }, N.sep10);
+    ck("S3.22", { refused: isCode(before, "FIELDS") && textOk(before), none, onStart: onStart?.ok === true }, "asOf < start ⇒ FIELDS", short({ before, onStart }, 200));
+    if (onStart?.ok === true) await op("clearOpeningYtd", c("B"), V.owner, { employeeId: E.eB3, taxYear: 2031, expectRev: onStart.rev }, { now: N.sep10 });
   });
 
   // ── S3.7 A7 overlap ──
@@ -541,6 +588,47 @@ async function runDb(): Promise<void> {
     }, "audit shapes · no ฿", short({ one: one.map((a) => a.after), money: money.map((a) => a.action) }, 240));
   });
 
+  // ── ORACLE-EDIT (H3.4-YTD fix round · controller ruling) ▸ S3.21 (3): bulk saves only changed rows · 300 changed rows fast · list never cut silently ──
+  await blk(["S3.21"], async () => {
+    need("saveOpeningYtdBulk", "listOpeningYtd");
+    const bulkOf = (v: Any, rows: Any[]) => op("saveOpeningYtdBulk", c("A"), v, { taxYear: 2031, rows }, { now: N.sep10 });
+    const same = (e: string, rev: number, o: Record<string, unknown> = {}) => ({ employeeId: e, ...OPEN, expectRev: rev, ...o });
+    const revs = async (e: string) => (await openRows(e)).length;
+    const saveAud = async () => (await audits("hr.payroll.opening.save")).length;
+    // (a) unchanged rows ⇒ no new revision, no audit
+    const r7 = (await liveOf(E.eA7))[0];
+    const n7 = await revs(E.eA7);
+    const a0 = await saveAud();
+    const un = await bulkOf(V.owner, [same(E.eA7, Number(r7?.rev))]);
+    const unchanged = un?.ok === true && (un?.saved ?? []).length === 0 && (await revs(E.eA7)) === n7 && (await saveAud()) === a0;
+    // (b) a non-owner's own row: unchanged passes, changed ⇒ OWN (all-or-nothing)
+    const og = await save("A", V.owner, E.eG);
+    const r6 = (await liveOf(E.eA6))[0];
+    const nG = await revs(E.eG);
+    const ownSame = await bulkOf(V.gateOwn, [same(E.eG, Number(og?.rev)), same(E.eA6, Number(r6?.rev), { ssoSatang: 650_000 })]);
+    const r6b = (await liveOf(E.eA6))[0];
+    const n6 = await revs(E.eA6);
+    const ownChanged = await bulkOf(V.gateOwn, [same(E.eG, Number(og?.rev), { ssoSatang: 650_000 }), same(E.eA6, Number(r6b?.rev), { ssoSatang: 640_000 })]);
+    const ownOk = og?.ok === true && ownSame?.ok === true && r6b?.rev === Number(r6?.rev) + 1 && (await revs(E.eG)) === nG && isCode(ownChanged, "OWN") && (await revs(E.eA6)) === n6 && (await revs(E.eG)) === nG;
+    // (c) 301 changed ⇒ FIELDS · 300 changed ⇒ ok, timed · (d) 501 employees ⇒ list truncated at 500
+    await P.$executeRawUnsafe(`INSERT INTO "HrEmployee" ("id", "tenantId", "systemId", "name", "updatedAt") SELECT 'qc34ybk' || $3 || lpad(g::text, 4, '0'), $1, $2, 'BK ' || g, now() FROM generate_series(1, 501) AS g`, TT, S.BK, tag);
+    const bk = ((await rows(`SELECT "id" FROM "HrEmployee" WHERE "systemId" = $1 ORDER BY "id"`, S.BK)) as Any[]).map((x) => String(x.id));
+    const rowsN = (n: number) => bk.slice(0, n).map((e) => ({ employeeId: e, ...OPEN, expectRev: null }));
+    const bkOp = (rs: Any[]) => op("saveOpeningYtdBulk", c("BK"), V.owner, { taxYear: 2031, rows: rs }, { now: N.sep10 });
+    const over = await bkOp(rowsN(301));
+    const none301 = Number((await rows(`SELECT count(*)::int AS n FROM "HrPayrollOpeningYtd" WHERE "systemId" = $1`, S.BK))[0]?.n ?? -1) === 0;
+    const t0 = Date.now();
+    const b300 = await bkOp(rowsN(300));
+    const ms = Date.now() - t0;
+    const live300 = Number((await rows(`SELECT count(*)::int AS n FROM "HrPayrollOpeningYtd" WHERE "systemId" = $1 AND "supersededAt" IS NULL`, S.BK))[0]?.n ?? -1);
+    const ls = await op("listOpeningYtd", c("BK"), V.owner, { taxYear: 2031 }, { now: N.sep10 });
+    console.log(`[S3.21] bulk 300 changed rows: ${ms} ms`);
+    ck("S3.21", {
+      unchanged, ownOk, over301: isCode(over, "FIELDS") && none301, b300: b300?.ok === true && (b300?.saved ?? []).length === 300 && live300 === 300, fast: ms < 20_000,
+      truncated: ls?.ok === true && ls?.truncated === true && listRows(ls).length === 500, notTruncated: (await op("listOpeningYtd", c("A"), V.owner, { taxYear: 2031 }))?.truncated === false,
+    }, "changed rows only · ≤ 300 · fast · truncated flag", short({ un, ownSame, ownChanged, over, ms, b300: b300?.ok ?? b300 }, 300));
+  });
+
   // ── races ──
   await blk(["S4.1"], async () => {
     need("saveOpeningYtd");
@@ -609,6 +697,11 @@ async function cleanup(): Promise<string[]> {
 try {
   runStatics({ BASE, IN_BASE, ck, fitness: await fitnessNoEnv() });
   runPure({ ck, R, V2, LAW: LAWJ });
+  { // ORACLE-EDIT (H3.4-YTD fix round · controller ruling) ▸ S2.6 (4 · hunt P3): asOf before the start date · over-withheld opening never makes a negative WHT
+    const po = (patch: Record<string, unknown>, startDay: string | null) => { try { return R?.parseOpening?.({ ...OPEN, ...patch }, { taxYear: 2031, todayBkk: "2031-10-01", startDay }); } catch (e) { return { __throw: errText(e) }; } };
+    const w = (() => { try { return V2.whtYtdV2({ monthIndex: 9, currentIncomeSatang: M, regularMonthlySatang: M, ...((p) => ({ priorIncomeSatang: p.incomeSatang, priorWhtSatang: p.whtSatang, priorSsoSatang: p.ssoSatang }))(R.withOpening({ incomeSatang: 0, whtSatang: 0, ssoSatang: 0 }, { ...OPEN, whtSatang: 2_000_000 }, { onDay: "2031-09-25" })), currentSsoSatang: 87_500, regularSsoSatang: 87_500 }, LAWJ.TAX_BRACKET, LAWJ.DEDUCTION)?.whtSatang; } catch (e) { return errText(e); } })();
+    chk("S2.6", po({}, "2031-09-01")?.code === "FIELDS" && po({ asOfDay: "2031-03-10", months: 3 }, "2031-03-10")?.ok === true && po({}, "2030-01-01")?.ok === true && w === 0, "start rule · over-withheld ⇒ 0", short({ a: po({}, "2031-09-01"), w }, 160));
+  }
   await runDb();
 } catch (e) {
   crashed = errText(e);

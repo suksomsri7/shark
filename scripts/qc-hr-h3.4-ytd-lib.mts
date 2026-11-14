@@ -13,13 +13,14 @@ import {
 type Ck = (id: string, r: Record<string, unknown>, exp: string, extra?: string) => void;
 export const H = "src/lib/modules/hr/";
 export const F = {
-  pure: `${H}payroll-opening-rules.ts`, svc: `${H}payroll-opening.ts`, acts: `${H}payroll-opening-actions.ts`, ui: `${H}payroll-opening-ui.tsx`,
+  pure: `${H}payroll-opening-rules.ts`, svc: `${H}payroll-opening.ts`, read: `${H}payroll-opening-read.ts`, // ORACLE-EDIT (H3.4-YTD fix round · controller ruling 5): + read module ◂
+  acts: `${H}payroll-opening-actions.ts`, ui: `${H}payroll-opening-ui.tsx`,
   mig: "prisma/migrations/20270110000001_hr_opening_ytd/migration.sql", schema: "prisma/schema/payroll.prisma", hrSchema: "prisma/schema/hr.prisma",
   payroll: `${H}payroll.ts`, filings: `${H}filings/service.ts`, reports: `${H}reports.ts`, runUi: `${H}payroll-run-ui.tsx`, page: "src/app/app/sys/[id]/hr/payroll/page.tsx",
   scope: "src/lib/core/scope.ts", env: "scripts/hr-qc-env.mts", index: `${H}index.ts`, th: "src/messages/th/common.json", en: "src/messages/en/common.json", inv: "scripts/hr-ui-inventory.json",
 };
 /** new files of the ticket (whole file is the ticket's) */
-export const NEW_FILES = [F.pure, F.svc, F.acts, F.ui, F.mig];
+export const NEW_FILES = [F.pure, F.svc, F.acts, F.ui, F.mig, F.read]; // ORACLE-EDIT (H3.4-YTD fix round · controller ruling 5): + read module ◂
 /** brief §5 frozen (+ seed · fixtures · package.json) — compared byte for byte with the base */
 export const FROZEN = [
   `${H}payroll-rules-v2.ts`, `${H}payroll-run-rules.ts`, `${H}payroll-journal-rules.ts`, `${H}bank-files`, "src/lib/modules/account", `${H}law.ts`, "src/lib/modules/platform/hr-law.ts",
@@ -147,11 +148,14 @@ export function runStatics(E: { BASE: string; IN_BASE: boolean; ck: Ck; fitness:
   {
     const svc = s(F.svc);
     const body = [...svc.matchAll(/\$transaction\(\s*async\s*\(([^)]*)\)\s*=>\s*\{([\s\S]*?)\n\s{0,4}\}\s*,/g)].map((m) => m[2]).join("\n");
+    // ORACLE-EDIT (H3.4-YTD fix round · controller ruling 5): the hr:ytd key lives once in payroll-opening-read.ts (seed 0) — svc locks hr50 (seed 36) then calls lockYtdInTx; payroll.ts + filings call lockYtdInTx ◂
+    const rdm = s(F.read);
     const i50 = svc.search(/hr50:/);
-    const iY = svc.search(/hr:ytd:/);
+    const iY = svc.search(/lockYtdInTx\(tx/);
     const r = {
-      svc: svc.length > 0, hr50: i50 >= 0 && /hr50:[^\n]*\b36\b/.test(svc), ytd: iY >= 0, order: i50 >= 0 && iY > i50,
-      payroll: /hr:ytd:/.test(s(F.payroll)), filings: /hr:ytd:/.test(s(F.filings)), txOnly: body.length > 0 && !/tenantDb\(|\bprisma\./.test(body),
+      svc: svc.length > 0, hr50: i50 >= 0 && /hr50:[^\n]*\b36\b/.test(svc), ytd: iY >= 0 && /hr:ytd:[^\n]*\b0\)\)/.test(rdm), order: i50 >= 0 && iY > i50,
+      payroll: /lockYtdInTx\(/.test(s(F.payroll)), filings: /lockYtdInTx\(/.test(s(F.filings)), txOnly: body.length > 0 && !/tenantDb\(|\bprisma\./.test(body),
+      oneKey: [F.svc, F.payroll, F.filings, `${H}reports.ts`, `${H}payslip.ts`].every((f) => !/hr:ytd:/.test(s(f))), // ORACLE-EDIT (H3.4-YTD fix round · controller ruling 5) ◂
     };
     ck("S1.6", r, "save/clear: hr50 (seed 36) → hr:ytd · payroll.ts + filings issue take hr:ytd · tx client only inside $transaction", "");
   }
