@@ -1757,7 +1757,7 @@
       "monthActual": "Labour {month} from the closed payroll run (incl. employer social security)",
       "monthPct": "Labour % for the month {pct} · {prev} {prevPct}",
       "estimateNote": "Labour is estimated from the roster (wages + holiday pay + employer social security); overtime, commission, bonus, allowances and deductions are not included",
-      "smallGroup": "Some cells are hidden because they include staff borrowed from another branch and fewer than 3 people",
+      "smallGroup": "Excludes {n} staff whose pay you cannot see",
       "noPos": "This branch has no POS linked — labour only",
       "noPermission": "This account cannot see POS sales reports — labour only",
       "demandAria": "{s} scheduled / {n} needed at peak",
@@ -1777,7 +1777,10 @@
       "targetLabel": "Labour % target (at most)",
       "splhLabel": "Sales per staff-hour (baht) — leave empty to skip staff needed",
       "minStaffLabel": "Minimum staff per hour",
-      "save": "Save"
+      "save": "Save",
+      "noCompleteDay": "No completed day yet",
+      "monthToDate": "Estimated labour {month} to {day} (completed days only · incl. employer social security)",
+      "truncated": "Too much data to read at once — this figure is incomplete"
     },
     "slip": {
       "title": "Payslip {period}",

@@ -612,6 +612,8 @@ export function RosterBoard({ board, systemId, basePath, labor }: Props) { // HR
       {lf.costSatang !== undefined && lf.forecastSalesSatang !== undefined && (
         <span>{tl("footPct", { pct: lf.pctTenths === null || lf.pctTenths === undefined ? "—" : lPct(lf.pctTenths), sales: lf.forecastSalesSatang === null ? "—" : lBaht(lf.forecastSalesSatang) })}</span>
       )}
+      {lf.partial && <span>{tl("smallGroup", { n: lf.excludedHeadcount ?? 0 })}</span> /* HR H4.2 ▸ R1 (review) ◂ */}
+      {(lf.truncated || labor?.week.flags.truncated) && <span role="alert" className="font-bold text-[color:var(--color-danger)]">{tl("truncated")}</span> /* HR H4.2 ▸ R4 (review) ◂ */}
     </span>
   ) : null; // HR H4.2 ◂
   const ld = labor?.day ?? null; // HR H4.2 ◂

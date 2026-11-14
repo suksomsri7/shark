@@ -29,11 +29,11 @@ export async function HrLaborCard({ systemId }: { systemId: string }) {
   if (!day.ok || !day.money) return null;
   const month = await laborMonth(ctx, viewer, { periodKey: today.slice(0, 7) }, { now, locale });
   const t = await getTranslations("hr.labor");
-  return <LaborCardView day={day} month={month.ok ? month : null} t={(k, v) => t(k, v)} locale={locale} nowHm={bkkHm(now)} />;
+  return <LaborCardView day={day} month={month.ok ? month : null} t={(k, v) => t(k, v)} locale={locale} nowHm={bkkHm(now)} today={today} />;
 }
 
 type T = (key: string, values?: Record<string, string | number>) => string;
-function LaborCardView({ day, month, t, locale, nowHm }: { day: LaborDayDto; month: LaborMonthDto | null; t: T; locale: string; nowHm: string }) {
+function LaborCardView({ day, month, t, locale, nowHm, today }: { day: LaborDayDto; month: LaborMonthDto | null; t: T; locale: string; nowHm: string; today: string }) {
   const m = day.money!;
   const nowHour = Number(nowHm.slice(0, 2));
   const hours = m.hours.filter((h) => (h.costSatang ?? 0) !== 0 || (h.salesSatang ?? 0) !== 0 || (h.forecastSatang ?? 0) !== 0);
@@ -41,7 +41,11 @@ function LaborCardView({ day, month, t, locale, nowHm }: { day: LaborDayDto; mon
   const hgt = (v: number | null) => `${Math.max(0, Math.round(((v ?? 0) / top) * 100))}%`;
   const over = m.pctTenths !== null && m.pctTenths > m.targetTenths;
   const meterMax = Math.max(400, m.targetTenths + 100);
-  const notes = [t("estimateNote"), ...(day.flags.smallGroup ? [t("smallGroup")] : []), ...(day.sales === "NO_POS" ? [t("noPos")] : []), ...(day.sales === "NO_PERMISSION" ? [t("noPermission")] : [])];
+  const notes = [t("estimateNote"), ...(m.partial ? [t("smallGroup", { n: m.excludedHeadcount })] : []), ...(day.sales === "NO_POS" ? [t("noPos")] : []), ...(day.sales === "NO_PERMISSION" ? [t("noPermission")] : [])];
+  // R4 (review): ตัวเลขที่ถูกตัดเพดานแถว = เตือน ไม่แสดงเหมือนครบ
+  const truncated = day.flags.truncated || !!month?.truncated;
+  // R3 (review): เดือนนี้ยังไม่มีวันที่จบ (วันที่ 1) ⇒ ไม่มี %
+  const noDay = !!month && month.basis === "ESTIMATE" && month.periodKey === today.slice(0, 7) && month.throughDay === null;
   const monthName = (pk: string) => new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "th-TH", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${pk}-01T00:00:00Z`));
   return (
     <section data-testid="hr-labor-card" aria-labelledby="labor-card-title" className={card}>
@@ -151,17 +155,22 @@ function LaborCardView({ day, month, t, locale, nowHm }: { day: LaborDayDto; mon
       {month && (
         <div data-testid="hr-labor-month" className="flex flex-col gap-1 rounded-xl bg-[color:var(--color-surface-2)] px-4 py-3">
           <span className={`text-xs ${muted}`}>
-            {t(month.basis === "ACTUAL" ? "monthActual" : "monthEstimate", { month: monthName(month.periodKey) })}
+            {month.basis === "ACTUAL" ? t("monthActual", { month: monthName(month.periodKey) }) : month.throughDay ? t("monthToDate", { month: monthName(month.periodKey), day: month.throughDay }) : t("monthEstimate", { month: monthName(month.periodKey) })}
           </span>
-          <span className="text-2xl font-semibold tabular-nums">{month.costSatang === null ? dash : laborBaht(month.costSatang)}</span>
+          <span className="text-2xl font-semibold tabular-nums">{noDay || month.costSatang === null ? dash : laborBaht(month.costSatang)}</span>
           <span className={`text-xs ${muted}`}>
-            {t("monthPct", {
+            {noDay ? t("noCompleteDay") : t("monthPct", {
               pct: month.pctTenths === null ? dash : laborPct(month.pctTenths),
               prev: monthName(month.prev.periodKey),
               prevPct: month.prev.pctTenths === null ? dash : laborPct(month.prev.pctTenths),
             })}
           </span>
         </div>
+      )}
+      {truncated && (
+        <p role="alert" className="rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {t("truncated")}
+        </p>
       )}
       <div data-testid="hr-labor-note" role="note" className={`flex flex-col gap-1 text-xs ${muted}`}>
         {notes.map((n) => (

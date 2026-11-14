@@ -43,7 +43,7 @@ export default async function HrRosterPage({ params, searchParams }: { params: P
   const ltoday = thaiDateKey(lnow); // HR H4.2 ◂
   const lpanel = lweek.ok ? (lworst && lgap(lworst) > 0 ? lworst.day : lweek.days.some((d) => d.day === ltoday) ? ltoday : board.monday) : null; // HR H4.2 ◂
   const lday = lpanel ? await laborDay(lctx, viewer, { unitId: lunit, day: lpanel }, { now: lnow, locale, drafts: true }) : null; // HR H4.2 ◂
-  const labor = lweek.ok && lpanel ? { week: lweek, day: lday?.ok ? { ...lday, money: null } : null /* แผงใช้หัวคนเท่านั้น — ไม่ส่งเงินลง client */, dayLabel: locale === "th" ? dayLabel(lpanel) : lpanel } : null; // HR H4.2 ◂
+  const labor = lweek.ok && lpanel ? { week: lweek, day: lday?.ok ? lday : null /* R2 (review): ส่งผลของ reader ของผู้ดูคนนี้ตามที่ได้ ไม่สร้างอ็อบเจกต์อื่น */, dayLabel: locale === "th" ? dayLabel(lpanel) : lpanel } : null; // HR H4.2 ◂
   return (
     <div data-testid="hr-roster-page" className="flex flex-col gap-6">
       {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
