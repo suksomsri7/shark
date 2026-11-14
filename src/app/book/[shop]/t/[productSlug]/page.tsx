@@ -22,10 +22,12 @@ type Props = { params: Promise<{ shop: string; productSlug: string }>; searchPar
 const NO_INDEX: Metadata = { robots: { index: false, follow: false } };
 
 // เปิดหน้า 1 ครั้งต่อคำขอ — อาร์กิวเมนต์เป็นค่าพื้นฐานทั้งหมด เพื่อให้ชื่อหน้าและเนื้อหาได้ผลเดียวกัน (นับเปิดดูครั้งเดียว)
+// เปิดหน้า 1 ครั้งต่อคำขอ และอ่าน "ผู้ใช้คือใคร" จากหัวคำขอจุดเดียว (มติ X1 ของ W1.1) — ตัวคิดราคาของ W1.2 ใช้ req ชุดเดียวกันจากผลนี้
 const openOnce = cache(async (shop: string, productSlug: string, lang: string | null, a: string | null, m: string | null, d: string | null, t: string | null) => {
   const h = await headers();
   const req = bookRequestFromHeaders((name) => h.get(name));
-  return openBookProduct({ shop, productSlug, query: { lang, a, m, d, t }, acceptLanguage: req.acceptLanguage, clientKey: req.clientKey, countView: req.countView });
+  const r = await openBookProduct({ shop, productSlug, query: { lang, a, m, d, t }, acceptLanguage: req.acceptLanguage, clientKey: req.clientKey, countView: req.countView });
+  return { r, req };
 });
 async function opened(props: Props) {
   const { shop, productSlug } = await props.params;
@@ -35,14 +37,14 @@ async function opened(props: Props) {
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
-  const r = await opened(props);
+  const { r } = await opened(props);
   if (!r.ok) return NO_INDEX;
   const title = r.vm.product.title.text;
   return { ...NO_INDEX, title: title ? `${title} · ${r.vm.shop.name}` : r.vm.shop.name };
 }
 
 export default async function BookProductPage(props: Props) {
-  const r = await opened(props);
+  const { r, req } = await opened(props);
   if (!r.ok) {
     if (!("reason" in r)) notFound();
     return <BookRateLimited />;
@@ -53,8 +55,6 @@ export default async function BookProductPage(props: Props) {
   let select: BookSelectData | null = null;
   const chosen = vm.selected?.slots.find((s) => s.selected && s.selectable) ?? null;
   if (vm.cta.enabled && vm.selected && chosen) {
-    const h = await headers();
-    const req = bookRequestFromHeaders((name) => h.get(name));
     const base: Record<string, string> = { ...(r.carry.lang ? { lang: r.carry.lang } : {}), m: vm.month, d: vm.selected.date, ...(chosen.token ? { t: chosen.token } : {}) };
     const params = selectionParamsOf(sp);
     const ask = (withSelection: boolean) =>
