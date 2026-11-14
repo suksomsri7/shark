@@ -1,4 +1,6 @@
 // probe-trips-w1.2-hunt-4 — HTTP: 404 shape normalised for the echoed URL (target 2) · replay/back button · TOO_FAST · seat caps · my/ TOO_LATE + EXPIRED (5/8) · counters after confirm
+// PROBE-EDIT (r1 · มติ W1 W5): TOO_FAST = 1 วิ · W1: ถือที่เหลือ < 300 วิ ⇒ c/ และยืนยัน HOLD_EXPIRED ไม่มีการจอง (เดิม KNOWN) · TOO_LATE/EXPIRED ของ my/ ทำด้วยการเลื่อนเวลาถือในฐาน
+//   (นาฬิกาเครื่องเดียวกับเซิร์ฟเวอร์ · ไม่ใช้ NOW() ของฐาน) แทนสินค้าถือ 1 นาที (ซึ่งตอนนี้จองไม่ได้ตามมติ W1)
 import * as L from "./probe-trips-w1.2-hunt-lib.mjs";
 const { line, known, info, guard, req, submit, kindOf, loc, testid, freshIp, sleep } = L;
 
@@ -15,6 +17,9 @@ try {
   const PB = await L.mkProd(B, "B");
   const dA = await L.mkDep(PA, L.addDays(today, 20), { capacity: 20 });
   const dX = await L.mkDep(PX, L.addDays(today, 20), { capacity: 20 });
+  const dLate = await L.mkDep(PA, L.addDays(today, 22), { capacity: 20 }); // PROBE-EDIT: W1 + TOO_LATE/EXPIRED
+  const dA21 = await L.mkDep(PA, L.addDays(today, 21), { capacity: 20 });
+  void dA21;
   await L.mkDep(PB, L.addDays(today, 20));
 
   // ═══ 2. 404 shape with the echoed URL removed ═══
@@ -57,13 +62,15 @@ try {
     const ip = freshIp();
     const g = await L.openSelect(A, PA, { d: L.addDays(today, 20), n: { ADULT: 2 } }, ip);
     if (!g.form) return;
-    const fast = await submit(g.path, g.form.fields, ip);
-    line("RP-toofast", "hold submitted < 2 s after page ⇒ e=TOO_FAST, no hold", `${/e=([A-Z_]+)/.exec(loc(fast))?.[1] ?? kindOf(fast)}`, loc(fast).includes("e=TOO_FAST"));
-    await sleep(2_200);
+    // PROBE-EDIT (W5): เพดาน 1 วิ — ส่งทันทีหลังเปิดหน้า (อาจข้ามขอบวินาที ⇒ ลองได้ 3 หน้า)
+    let fast = await submit(g.path, g.form.fields, ip);
+    for (let i = 0; i < 2 && !loc(fast).includes("e=TOO_FAST"); i++) { const gg = await L.openSelect(A, PA, { d: L.addDays(today, 21), n: { ADULT: 1 } }, freshIp()); if (gg.form) fast = await submit(gg.path, gg.form.fields, ip); }
+    line("RP-toofast", "hold submitted right after the page (< 1 s) ⇒ e=TOO_FAST, no hold", `${/e=([A-Z_]+)/.exec(loc(fast))?.[1] ?? kindOf(fast)}`, loc(fast).includes("e=TOO_FAST"));
+    await sleep(L.FORM_WAIT);
     const h1 = await submit(g.path, g.form.fields, ip);
     const c = await L.openCheckout(loc(h1), ip);
     if (!c.form) { info("replay", `no checkout ${kindOf(h1)}`); return; }
-    await sleep(2_200);
+    await sleep(L.FORM_WAIT);
     const cf = await submit(loc(h1), L.bookerFields(c.form), ip);
     const my = loc(cf);
     const d0 = await L.depRow(dA);
@@ -90,7 +97,7 @@ try {
         if (!v.form) continue;
         fields.push(...v.form.fields.filter(([k]) => !k.startsWith("n.")), ...Object.entries(n).map(([k, x]): [string, string] => [`n.${k}`, String(x)]));
       }
-      await sleep(2_200);
+      await sleep(L.FORM_WAIT);
       const before = (await L.holdsOf(dA)).length;
       const r = await submit(g.path, fields, ip);
       const after = (await L.holdsOf(dA)).length;
@@ -98,19 +105,52 @@ try {
     }
   });
 
-  // ═══ my/ TOO_LATE then EXPIRED (1-minute hold product) ═══
-  await guard("late", async () => {
+  // ═══ PROBE-EDIT (r1) W1: hold usable only while ≥ 300 s remain · my/ TOO_LATE then EXPIRED (hold time moved in the DB with the machine clock) ═══
+  const moveHold = async (bt: string, msFromNow: number) => L.q(`UPDATE "TripHold" SET "expiresAt" = $2 WHERE "basketId" IN (SELECT id FROM "SellBasket" WHERE "publicTokenHash" = $1) AND status = 'ACTIVE'`, [L.sha256hex(bt), new Date(Date.now() + msFromNow)]);
+  const basketOfLoc = (l: string) => decodeURIComponent(l.split("/c/")[1]?.split("?")[0] ?? "");
+  await guard("w1", async () => {
+    // 1-minute hold product: the hold itself works but can never reach a booking (W1)
     const ip = freshIp();
     const r = await L.bookHttp(A, PX, { d: L.addDays(today, 20), n: { ADULT: 1 } }, ip);
-    if (!r.resPath) { info("late", `booking failed: ${r.why}`); return; }
-    const p = await req(r.resPath, { ip });
-    known("LATE-confirm", "W1: confirm with < margin left should be refused (ruled · fix in progress)", "booked with 1-min hold", false, "M1 already ruled (W1)");
+    line("W1-short", "1-minute hold ⇒ c/ HOLD_EXPIRED (+ rehold) · no booking", `${r.why || "booked"} code=${r.checkout ? L.errCode(r.checkout.body) : "-"} rehold=${r.checkout ? testid(r.checkout.body, "book-rehold") : "-"}`, !r.resPath && !!r.checkout && L.errCode(r.checkout.body) === "HOLD_EXPIRED");
+    void dX;
+    // 15-minute hold, opened c/, then time moved to 290 s left ⇒ c/ and confirm HOLD_EXPIRED · 400 s left ⇒ form back
+    const ip2 = freshIp();
+    const h = await L.holdHttp(A, PA, { d: L.addDays(today, 22), n: { ADULT: 1 } }, ip2);
+    if (!h.location.includes("/c/")) { info("w1", `hold failed ${h.post ? kindOf(h.post) : ""}`); return; }
+    const c = await L.openCheckout(h.location, ip2);
+    if (!c.form) { info("w1", `no checkout form ${kindOf(c.r)}`); return; }
+    await moveHold(basketOfLoc(h.location), 290_000);
+    const c2 = await req(h.location, { ip: ip2 });
+    await sleep(L.FORM_WAIT);
+    const n0 = (await L.bookingsOf(A.tenant)).length;
+    const cf = await submit(h.location, L.bookerFields(c.form), ip2);
+    const n1 = (await L.bookingsOf(A.tenant)).length;
+    line("W1-c", "290 s left ⇒ c/ HOLD_EXPIRED + rehold, no form", `code=${L.errCode(c2.body)} rehold=${testid(c2.body, "book-rehold")} form=${testid(c2.body, "book-pay-submit")}`, L.errCode(c2.body) === "HOLD_EXPIRED" && !testid(c2.body, "book-pay-submit"));
+    line("W1-confirm", "290 s left ⇒ confirm e=HOLD_EXPIRED, no booking", `${kindOf(cf)} bookings +${n1 - n0}`, loc(cf).includes("e=HOLD_EXPIRED") && n1 === n0);
+    await moveHold(basketOfLoc(h.location), 400_000);
+    const c3 = await req(h.location, { ip: ip2 });
+    line("W1-ok", "400 s left ⇒ c/ shows the booker form", `${kindOf(c3)} form=${testid(c3.body, "book-pay-submit")}`, testid(c3.body, "book-pay-submit"));
+  });
+  await guard("late", async () => {
+    const ip = freshIp();
+    const h = await L.holdHttp(A, PA, { d: L.addDays(today, 22), n: { ADULT: 1 } }, ip);
+    const c = h.location.includes("/c/") ? await L.openCheckout(h.location, ip) : null;
+    if (!c?.form) { info("late", `no checkout ${c ? kindOf(c.r) : "-"}`); return; }
+    await sleep(L.FORM_WAIT);
+    const cf = await submit(h.location, L.bookerFields(c.form), ip);
+    const resPath = loc(cf);
+    if (!resPath.includes("/my/")) { info("late", `booking failed ${kindOf(cf)}`); return; }
+    const p0 = await req(resPath, { ip });
+    line("LATE-qr", "right after confirm (≈15 min left) ⇒ PAY with QR (not TOO_LATE)", `qr=${testid(p0.body, "book-pay-qr")} tooLate=${testid(p0.body, "book-pay-too-late")}`, testid(p0.body, "book-pay-qr") && !testid(p0.body, "book-pay-too-late"));
+    await moveHold(basketOfLoc(h.location), 120_000);
+    const p = await req(resPath, { ip });
     line("LATE-tooLate", "my/ with < 3 min left ⇒ book-pay-too-late, no QR", `tooLate=${testid(p.body, "book-pay-too-late")} qr=${testid(p.body, "book-pay-qr")}`, testid(p.body, "book-pay-too-late") && !testid(p.body, "book-pay-qr"));
-    await sleep(65_000);
-    const e = await req(r.resPath, { ip });
+    await moveHold(basketOfLoc(h.location), -60_000);
+    const e = await req(resPath, { ip });
     const contact = ["076-555-444", "@w12x"].filter((x) => e.body.includes(x));
     line("LATE-expired", "after hold time ⇒ EXPIRED + shop contact, no QR (sweeper not run)", `expired=${testid(e.body, "book-res-expired")} contact=[${contact.join(",")}] qr=${testid(e.body, "book-pay-qr")}`, testid(e.body, "book-res-expired") && contact.length === 2 && !testid(e.body, "book-pay-qr"));
-    void dX;
+    void dLate;
   });
 } catch (e) {
   console.log(`ERROR top: ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);

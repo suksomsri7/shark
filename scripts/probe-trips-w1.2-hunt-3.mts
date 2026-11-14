@@ -1,4 +1,6 @@
 // probe-trips-w1.2-hunt-3 — HTTP: races (target 9) · same-time slots / stale slot ref (10) · dangerous booker input (11) · rate gates (13)
+// PROBE-EDIT (r1 · มติ W2 W5 W7): ตัวอ้างรอบ `t` = ref ของ id รอบ (W5) แทน "0800-2" · ลบรอบหลังเปิดหน้า ⇒ คาด SLOT_CLOSED (W7) · เพดานถือต่อรอบ 3 + ส่งซ้ำไม่นับ (W2) ·
+//   R9c-back เป็น KNOWN (เซิร์ฟเวอร์ QC ไม่รันงานรายนาที trips.expireHolds — หนี้ที่รับในมติ)
 import * as L from "./probe-trips-w1.2-hunt-lib.mjs";
 const { line, known, info, guard, req, submit, kindOf, loc, testid, freshIp, sleep } = L;
 
@@ -7,7 +9,7 @@ const LABEL = "hunt-3";
 try {
   await L.sweepStale();
   const today = L.ymdBkk(new Date());
-  const A = await L.mkShop("a");
+  const A = await L.mkShop("a", { contact: { phone: "076-333-777", line: "@w12h3", address: null } }); // PROBE-EDIT: ข้อความถือถี่เกินต้องมีทางติดต่อร้าน (W2)
   const PA = await L.mkProd(A, "A");
   const PX = await L.mkProd(A, "X"); // 1-minute hold product
   await L.setV(A.tenant, [{ key: "trips.sell.holdMinutes", scope: "PRODUCT", scopeId: PX.id, value: 1 }]);
@@ -27,6 +29,8 @@ try {
   const s3 = await L.mkDep(PO, DS, { opt: PO.opts[2] });
   const t8 = await L.mkDep(PO, DT, { hm: "08:00" });
   const t13 = await L.mkDep(PO, DT, { hm: "13:00" });
+  const dSlot = await L.mkDep(PA, L.addDays(today, 40), { capacity: 40 }); // PROBE-EDIT: ถังต่อรอบ (W2)
+  const DSL = L.addDays(today, 40);
 
   // ═══ 9a. 10 concurrent confirms on one basket ═══
   for (const flavor of ["same-nonce", "distinct-nonces"] as const) {
@@ -36,7 +40,7 @@ try {
       if (!h.location.includes("/c/")) { line(`R9a-${flavor}`, "hold", h.post ? kindOf(h.post) : "", false); return; }
       const forms: L.Form[] = [];
       for (let i = 0; i < (flavor === "same-nonce" ? 1 : 10); i++) { const c = await L.openCheckout(h.location, ip); if (c.form) forms.push(c.form); }
-      await sleep(2_300);
+      await sleep(L.FORM_WAIT);
       const phone = L.freshPhone();
       const before = (await L.bookingsOf(A.tenant)).length;
       const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => submit(h.location, L.bookerFields(forms[flavor === "same-nonce" ? 0 : i] as L.Form, { name: "แข่ง ยืนยัน", phone }), freshIp())));
@@ -49,7 +53,7 @@ try {
   await guard("race-hold", async () => {
     const ips = Array.from({ length: 30 }, () => freshIp());
     const pages = await Promise.all(ips.map((ip) => L.openSelect(A, PA, { d: L.addDays(today, 21), n: { ADULT: 1 } }, ip)));
-    await sleep(2_300);
+    await sleep(L.FORM_WAIT);
     const rs = await Promise.all(pages.map((p, i) => (p.form ? submit(p.path, p.form.fields, ips[i] ?? null) : Promise.resolve(null))));
     const okN = rs.filter((r) => r && loc(r).includes("/c/")).length;
     const codes = rs.map((r) => (r ? (loc(r).includes("/c/") ? "OK" : /e=([A-Z_]+)/.exec(loc(r))?.[1] ?? `${r.status}`) : "noform"));
@@ -74,30 +78,76 @@ try {
     line("R9c-c", "c/ of expired hold ⇒ HOLD_EXPIRED", `code=${L.errCode(c.body)}`, L.errCode(c.body) === "HOLD_EXPIRED");
     const again = await L.holdHttp(A, PX, { d: L.addDays(today, 20), n: { ADULT: 3 } }, freshIp());
     const d = await L.depRow(dExp);
-    line("R9c-back", "after expiry a new device can hold all 3 seats again", `${again.post ? kindOf(again.post) : kindOf(again.sel)} held=${d?.held}`, again.location.includes("/c/"));
+    known("R9c-back", "after expiry a new device can hold all 3 seats again", `${again.post ? kindOf(again.post) : kindOf(again.sel)} held=${d?.held}`, again.location.includes("/c/"), "QC server does not run the per-minute trips.expireHolds job (accepted debt in rulings) — seats return when the sweeper runs");
   });
 
-  // ═══ 10. same-time slots / stale slot reference ═══
+  // ═══ 10. same-time slots / stale slot reference — PROBE-EDIT (มติ W5 W7): t = ref ของ id รอบ · ห้ามถอยไปถือรอบอื่น ═══
   await guard("slots", async () => {
     const ip = freshIp();
-    const g = await L.openSelect(A, PO, { d: DS, t: "0800-2", n: { ADULT: 1 } }, ip);
-    info("slots", `select t=0800-2: ${kindOf(g.r)} form=${!!g.form} t=${g.form ? L.fieldOf(g.form, "t") : "-"}`);
+    const ref2 = L.slotRef(A.tenant, s2);
+    const g = await L.openSelect(A, PO, { d: DS, t: ref2, n: { ADULT: 1 } }, ip);
+    const refsOnPage = L.slotRefsIn(g.r.body);
+    info("slots", `select t=ref(s2): ${kindOf(g.r)} form=${!!g.form} t=${g.form ? L.fieldOf(g.form, "t") : "-"} · refs on page ${refsOnPage.length} (s2 listed=${refsOnPage.includes(ref2)})`);
+    line("SL-ref", "slot refs on the page are 12-char a-z2-7, distinct per run · the chosen run's ref is in the form", `refs=${refsOnPage.length} formT=${g.form ? L.fieldOf(g.form, "t") : "-"}`, refsOnPage.length >= 3 && new Set(refsOnPage).size === refsOnPage.length && (!g.form || L.fieldOf(g.form, "t") === ref2));
     if (!g.form) return;
     await L.q(`DELETE FROM "TripDeparture" WHERE id = $1`, [s1]); // shop removes the first 08:00 run between page and hold
-    await sleep(2_200);
+    await sleep(L.FORM_WAIT);
     const r = await submit(g.path, g.form.fields, ip);
     const held = await L.q<{ departureId: string }>(`SELECT "departureId" FROM "TripHold" WHERE "tenantId" = $1 AND "departureId" = ANY($2)`, [A.tenant, [s2, s3]]);
     const where = held.map((h) => (h.departureId === s2 ? "s2 (option 2 = chosen)" : "s3 (option 3 = NOT chosen)")).join(",");
-    line("SL-shift", "hold lands on the run the customer chose (option 2) or is refused", `${kindOf(r)} held on ${where || "none"}`, !held.some((h) => h.departureId === s3));
-    // stale ref: chosen 08:00, shop removes it, 13:00 remains
+    line("SL-shift", "hold lands on the run the customer chose (option 2) even after another run was removed", `${kindOf(r)} held on ${where || "none"}`, held.some((h) => h.departureId === s2) && !held.some((h) => h.departureId === s3));
+    // stale ref: chosen 08:00, shop removes it, 13:00 remains ⇒ SLOT_CLOSED (W7)
     const ip2 = freshIp();
-    const g2 = await L.openSelect(A, PO, { d: DT, t: "0800", n: { ADULT: 1 } }, ip2);
+    const g2 = await L.openSelect(A, PO, { d: DT, t: L.slotRef(A.tenant, t8), n: { ADULT: 1 } }, ip2);
     if (!g2.form) return;
     await L.q(`DELETE FROM "TripDeparture" WHERE id = $1`, [t8]);
-    await sleep(2_200);
+    await sleep(L.FORM_WAIT);
     const r2 = await submit(g2.path, g2.form.fields, ip2);
     const h2 = await L.q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripHold" WHERE "departureId" = $1`, [t13]);
-    line("SL-fallback", "stale slot ref (08:00 removed) ⇒ refused, not silently held on 13:00", `${kindOf(r2)} holds on 13:00=${h2[0]?.n}`, h2[0]?.n === 0);
+    line("SL-fallback", "stale slot ref (08:00 removed) ⇒ e=SLOT_CLOSED back to the product page, not silently held on 13:00", `${kindOf(r2)} holds on 13:00=${h2[0]?.n}`, h2[0]?.n === 0 && loc(r2).includes("e=SLOT_CLOSED"));
+    // old HHMM ref from a page left open before the change ⇒ SLOT_CLOSED (W7)
+    const g3 = await L.openSelect(A, PO, { d: DT, n: { ADULT: 1 } }, ip2);
+    if (g3.form) {
+      await sleep(L.FORM_WAIT);
+      const r3 = await submit(g3.path, g3.form.fields.map(([k, v]): [string, string] => (k === "t" ? [k, "1300"] : [k, v])), ip2);
+      const h3 = await L.q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripHold" WHERE "departureId" = $1`, [t13]);
+      line("SL-hhmm", "old HHMM t=1300 posted ⇒ e=SLOT_CLOSED, no hold", `${kindOf(r3)} holds on 13:00=${h3[0]?.n}`, loc(r3).includes("e=SLOT_CLOSED") && h3[0]?.n === 0);
+    }
+    // GET with an unknown t ⇒ page opens on the first sellable run (no error)
+    const g4 = await L.openSelect(A, PO, { d: DT, t: L.slotRef(A.tenant, t8), n: { ADULT: 1 } }, freshIp());
+    line("SL-get", "GET with a ref that no longer exists ⇒ 200 product page, first sellable run (13:00) selected", `${kindOf(g4.r)} formT=${g4.form ? L.fieldOf(g4.form, "t") : "-"}`, g4.r.status === 200 && !!g4.form && L.fieldOf(g4.form, "t") === L.slotRef(A.tenant, t13));
+  });
+
+  // ═══ PROBE-EDIT (r1) W2: ถังต่อรอบต่อเครื่อง 3/ชม. · ส่งซ้ำ nonce เดิมไม่นับ · ข้อความถือถี่เกินมีทางติดต่อร้าน ═══
+  await guard("slot-bucket", async () => {
+    const ip = freshIp();
+    const first = await L.openSelect(A, PA, { d: DSL, n: { ADULT: 1 } }, ip);
+    if (!first.form) { info("slot-bucket", `no form ${kindOf(first.r)}`); return; }
+    await sleep(L.FORM_WAIT);
+    const r1 = await submit(first.path, first.form.fields, ip);
+    const again = [];
+    for (let i = 0; i < 5; i++) again.push(await submit(first.path, first.form.fields, ip));
+    const d1 = await L.depRow(dSlot);
+    line("SB-resend", "re-POST of the same hold form ×5 ⇒ same /c/ location every time, held stays 1", `held=${d1?.held} same=${again.every((r) => loc(r) === loc(r1))}`, loc(r1).includes("/c/") && again.every((r) => loc(r) === loc(r1)) && d1?.held === 1);
+    const codes: string[] = [];
+    let lastLoc = "";
+    for (let i = 0; i < 3; i++) {
+      const g = await L.openSelect(A, PA, { d: DSL, n: { ADULT: 1 } }, ip);
+      if (!g.form) { codes.push(`noform:${kindOf(g.r)}`); continue; }
+      await sleep(L.FORM_WAIT);
+      const r = await submit(g.path, g.form.fields, ip);
+      lastLoc = loc(r);
+      codes.push(lastLoc.includes("/c/") ? "OK" : /e=([A-Z_]+)/.exec(lastLoc)?.[1] ?? `${r.status}`);
+    }
+    const d2 = await L.depRow(dSlot);
+    line("SB-cap", "after the resends: 3 new holds ⇒ OK,OK,RATE_LIMITED (held 3) — 4th new basket on the same run/device limited", `${codes.join(",")} held=${d2?.held}`, codes.join(",") === "OK,OK,RATE_LIMITED" && d2?.held === 3);
+    if (lastLoc && !lastLoc.includes("/c/")) {
+      const p = await req(lastLoc, { ip });
+      const txt = p.body.replace(/<[^>]*>/g, " ");
+      line("SB-msg", "rate-limited hold page: 'try again later' + shop contact, not 'wait a moment'", `${kindOf(p)} contact=${txt.includes("076-333-777") || txt.includes("@w12h3")} later=${/ภายหลัง|later/i.test(txt)} wait=${/รอสักครู่/.test(txt)}`, (txt.includes("076-333-777") || txt.includes("@w12h3")) && /ภายหลัง|later/i.test(txt) && !/รอสักครู่/.test(txt));
+    }
+    const other = await L.holdHttp(A, PA, { d: L.addDays(today, 35), n: { ADULT: 1 } }, ip);
+    line("SB-otherrun", "same device still holds another run", other.post ? kindOf(other.post) : kindOf(other.sel), other.location.includes("/c/"));
   });
 
   // ═══ 11. dangerous booker input ═══
@@ -108,7 +158,7 @@ try {
     if (!h.location.includes("/c/")) return;
     const c = await L.openCheckout(h.location, ip);
     if (!c.form) return;
-    await sleep(2_200);
+    await sleep(L.FORM_WAIT);
     const bad: [string, { name?: string; phone?: string; email?: string }, string][] = [
       ["name RLO", { name: `‮${mark}rlo` }, "name"],
       ["name NUL", { name: `${mark}\u0000nul` }, "name"],
@@ -173,7 +223,7 @@ try {
     }
     const g = await L.openSelect(A, PA, { d: L.addDays(today, 31), n: { ADULT: 1 } }, freshIp());
     if (g.form) {
-      await sleep(2_200);
+      await sleep(L.FORM_WAIT);
       const before = (await L.holdsOf(dRl[1] ?? "")).length;
       const r = await submit(g.path, g.form.fields, null);
       const after = (await L.holdsOf(dRl[1] ?? "")).length;
@@ -182,7 +232,7 @@ try {
     if (h.location.includes("/c/")) {
       const c = await L.openCheckout(h.location, ip);
       if (c.form) {
-        await sleep(2_200);
+        await sleep(L.FORM_WAIT);
         const before = (await L.bookingsOf(A.tenant)).length;
         const r = await submit(h.location, L.bookerFields(c.form), null);
         line("RL-noip-confirm", "POST confirm without IP header ⇒ no booking", `${kindOf(r)} +${(await L.bookingsOf(A.tenant)).length - before}`, (await L.bookingsOf(A.tenant)).length === before);
@@ -194,7 +244,7 @@ try {
     const plan = Array.from({ length: 11 }, (_, i) => L.addDays(today, 30 + Math.floor(i / 2)));
     const pages = [];
     for (const d of plan) pages.push(await L.openSelect(A, PA, { d, n: { ADULT: 1 } }, ip));
-    await sleep(2_200);
+    await sleep(L.FORM_WAIT);
     const rs = [];
     for (const p of pages) rs.push(p.form ? await submit(p.path, p.form.fields, ip) : null);
     const codes = rs.map((r) => (r ? (loc(r).includes("/c/") ? "OK" : /e=([A-Z_]+)/.exec(loc(r))?.[1] ?? `${r.status}`) : "noform"));
@@ -207,7 +257,7 @@ try {
     const h = await L.holdHttp(A, PA, { d: L.addDays(today, 22), n: { ADULT: 1 } }, ip);
     const c = h.location ? await L.openCheckout(h.location, ip) : null;
     if (!c?.form) return;
-    await sleep(2_200);
+    await sleep(L.FORM_WAIT);
     const codes: string[] = [];
     for (let i = 0; i < 21; i++) { const r = await submit(h.location, L.bookerFields(c.form, { accept: false }), ip); codes.push(/e=([A-Z_]+)/.exec(loc(r))?.[1] ?? kindOf(r)); }
     line("RL-confirm-20", "21 confirms from one device ⇒ 20 × ACCEPT_REQUIRED then RATE_LIMITED", `${codes.slice(0, 2).join(",")}…${codes.slice(-2).join(",")} (${codes.filter((x) => x === "RATE_LIMITED").length} limited)`, codes.slice(0, 20).every((x) => x === "ACCEPT_REQUIRED") && codes[20] === "RATE_LIMITED");

@@ -1,5 +1,6 @@
 // probe-trips-w1.2-hunt-2 — HTTP: money to the satang (target 7) · X29 off / SHOP_CONFIRMS (6) · slot closed / stop-sell / cutoff between hold and confirm (8) · staff booking on my/ (12)
 // QR byte check + staff booking call @/lib/modules/trips directly (src at run time — noted in the report)
+// PROBE-EDIT (r1 · มติ W2 W5): + ถือใหม่จากหน้าราคาเปลี่ยนปล่อยที่ถือเดิม (W2) · PRICE_CHANGED ยอดเท่าเดิม = "เงื่อนไขเปลี่ยน" (W5) · QR เฉพาะร้านเก็บเงิน (W5) · PENDING มีข้อความของตัวเอง (W5)
 import * as L from "./probe-trips-w1.2-hunt-lib.mjs";
 const { line, known, info, guard, req, submit, kindOf, loc, testid, freshIp, sleep } = L;
 
@@ -33,6 +34,9 @@ try {
   const dStop = await L.mkDep(PA, L.addDays(today, 23), { capacity: 30 });
   const dCut = await L.mkDep(PA, L.addDays(today, 24), { capacity: 30 });
   const dStaff = await L.mkDep(PA, L.addDays(today, 25), { capacity: 30 });
+  const PTC = await L.mkProd(A, "TC"); // PROBE-EDIT: ร้านแก้ตารางยกเลิกหลังถือ (ยอดไม่เปลี่ยน · W5)
+  const dTc = await L.mkDep(PTC, D20, { capacity: 30 });
+  const dRh = await L.mkDep(PA, L.addDays(today, 26), { capacity: 30 }); // PROBE-EDIT: ถือใหม่ (W2)
 
   // ═══ 7. money ═══
   await guard("money-vat", async () => {
@@ -48,7 +52,7 @@ try {
     line("M-select-sum", "select page Σ lines = total = seen", `Σ=${sum} total=${selTotal} seen=${seen}`, sum === selTotal && selTotal === seen);
     line("M-select-vatline", "VAT-added shop shows one VAT line + pickup + 2 extras + park", selLines.map((l) => l.kind).join(","), selLines.filter((l) => l.kind === "VAT").length === 1 && selLines.some((l) => l.kind === "PICKUP"));
     if (!g.form) return;
-    await sleep(2_200);
+    await sleep(L.FORM_WAIT);
     const post = await submit(g.path, g.form.fields, ip);
     const hl = loc(post);
     if (!hl.includes("/c/")) { line("M-hold", "hold ok", kindOf(post), false); return; }
@@ -58,7 +62,7 @@ try {
     const cSum = cLines.reduce((s, l) => s + (l.satang ?? NaN), 0);
     line("M-checkout-sum", "checkout Σ lines = total = select total", `Σ=${cSum} total=${cTotal} select=${selTotal}`, cSum === cTotal && cTotal === selTotal);
     if (!c.form) return;
-    await sleep(2_200);
+    await sleep(L.FORM_WAIT);
     const cf = await submit(hl, L.bookerFields(c.form), ip);
     const rp = loc(cf);
     if (!rp.includes("/my/")) { line("M-confirm", "confirm ok", kindOf(cf), false); return; }
@@ -97,7 +101,7 @@ try {
     if (!c.form) return;
     await L.q(`UPDATE "TripPrice" SET "amountMinor" = "amountMinor" + 10000 WHERE "productId" = $1 AND "paxTypeId" = $2`, [PA.id, PA.pt.ADULT]);
     try {
-      await sleep(2_200);
+      await sleep(L.FORM_WAIT);
       const before = (await L.bookingsOf(A.tenant)).length;
       const cf = await submit(h.location, L.bookerFields(c.form), ip);
       const after = (await L.bookingsOf(A.tenant)).length;
@@ -123,7 +127,7 @@ try {
       const c2 = await req(h.location, { ip });
       line("X29-c", "c/ while booking off ⇒ UNAVAILABLE (no form)", `${kindOf(c2)} code=${L.errCode(c2.body)} form=${!!L.postForm(c2.body)}`, L.errCode(c2.body) === "UNAVAILABLE" && !L.postForm(c2.body));
       if (c.form) {
-        await sleep(2_200);
+        await sleep(L.FORM_WAIT);
         const before = (await L.bookingsOf(A.tenant)).length;
         const cf = await submit(h.location, L.bookerFields(c.form), ip);
         const after = (await L.bookingsOf(A.tenant)).length;
@@ -147,7 +151,7 @@ try {
     const ip2 = freshIp();
     const g = await L.openSelect(A, PA, { d: D20, n: { ADULT: 1 } }, ip2);
     if (!g.form) return;
-    await sleep(2_200);
+    await sleep(L.FORM_WAIT);
     const key = g.form.fields.find(([k]) => /^\$ACTION_\d+:1$/.test(k))?.[0] ?? "";
     const fields = g.form.fields.map(([k, v]): [string, string] => (k === key ? [k, JSON.stringify([A.slug, PSC.slug])] : [k, v]));
     const before = (await L.holdsOf(dSc)).length;
@@ -177,7 +181,7 @@ try {
       await act();
       try {
         if (!c.form) return;
-        await sleep(2_200);
+        await sleep(L.FORM_WAIT);
         const cf = await submit(h.location, L.bookerFields(c.form), ip);
         const c1 = await counters(dep);
         line(`G-${tag}`, `confirm after ${tag} ⇒ e=${want}, no TripBooking`, `${kindOf(cf)} bookings=${c1.bookings}`, loc(cf).includes(`e=${want}`) && c1.bookings === 0);
@@ -187,6 +191,68 @@ try {
       } finally { await undo(); }
     });
   }
+
+  // ═══ PROBE-EDIT (r1) W2: ถือใหม่จากหน้าราคาเปลี่ยน ⇒ ปล่อยที่ถือของตะกร้าเดิมก่อน ═══
+  await guard("rehold", async () => {
+    const ip = freshIp();
+    const h = await L.holdHttp(A, PA, { d: L.addDays(today, 26), n: { ADULT: 2 } }, ip);
+    if (!h.location.includes("/c/")) { line("RH-hold", "hold", h.post ? kindOf(h.post) : kindOf(h.sel), false); return; }
+    await L.q(`UPDATE "TripPrice" SET "amountMinor" = "amountMinor" + 10000 WHERE "productId" = $1 AND "paxTypeId" = $2`, [PA.id, PA.pt.ADULT]);
+    try {
+      const c = await req(h.location, { ip });
+      const f = L.postForm(c.body);
+      line("RH-page", "c/ after price raise: book-price-changed + rehold form (POST)", `${kindOf(c)} form=${!!f}`, testid(c.body, "book-price-changed") && !!f);
+      if (!f) return;
+      const d0 = await L.depRow(dRh);
+      const r = await submit(h.location, f.fields, ip);
+      const d1 = await L.depRow(dRh);
+      const act = await L.q<{ n: number }>(`SELECT COALESCE(sum("qtyPublic"),0)::int AS n FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE'`, [dRh]);
+      line("RH-release", "rehold POST ⇒ redirect to the product page with the same selection · old basket's seats released (held 2 → 0)", `${kindOf(r)} held ${d0?.held}→${d1?.held} active=${act[0]?.n}`, loc(r).includes(`/t/${PA.slug}`) && /n\.ADULT=2/.test(loc(r)) && d1?.held === 0 && act[0]?.n === 0);
+      const again = await L.holdHttp(A, PA, { d: L.addDays(today, 26), n: { ADULT: 2 } }, ip);
+      const d2 = await L.depRow(dRh);
+      line("RH-again", "hold again (same device) ⇒ held = the new hold only (2)", `${again.post ? kindOf(again.post) : "-"} held=${d2?.held}`, again.location.includes("/c/") && d2?.held === 2);
+      // ตะกร้าคนอื่น: POST ปุ่มถือใหม่ของตะกร้านี้แต่ผูก sel ของตะกร้าอื่น ⇒ ไม่ปล่อย
+      const ipX = freshIp();
+      const hx = await L.holdHttp(A, PA, { d: L.addDays(today, 26), n: { ADULT: 1 } }, ipX);
+      const cx = hx.location.includes("/c/") ? await req(hx.location, { ip: ipX }) : null;
+      const fx = cx ? L.postForm(cx.body) : null;
+      if (fx && again.location) {
+        const key = fx.fields.find(([k]) => /^\$ACTION_\d+:1$/.test(k))?.[0] ?? "";
+        const bound = JSON.parse(L.fieldOf(fx, key) ?? "[]") as string[];
+        const otherBasket = decodeURIComponent(again.location.split("/c/")[1]?.split("?")[0] ?? "");
+        const d3 = await L.depRow(dRh);
+        const rr = await submit(hx.location, fx.fields.map(([k, v]): [string, string] => (k === key ? [k, JSON.stringify([bound[0], otherBasket, bound[2]])] : [k, v])), ipX);
+        const d4 = await L.depRow(dRh);
+        line("RH-foreign", "rehold bound to another customer's basket (sel not matching) ⇒ 404, nothing released", `${kindOf(rr)} held ${d3?.held}→${d4?.held}`, rr.status === 404 && d4?.held === d3?.held);
+      } else info("rehold", `foreign: no form (${cx ? kindOf(cx) : "-"})`);
+    } finally {
+      await L.q(`UPDATE "TripPrice" SET "amountMinor" = "amountMinor" - 10000 WHERE "productId" = $1 AND "paxTypeId" = $2`, [PA.id, PA.pt.ADULT]);
+    }
+  });
+  // ═══ PROBE-EDIT (r1) W5: ร้านแก้เงื่อนไข (ตารางยกเลิก) หลังถือ · ยอดเท่าเดิม ⇒ หน้า "เงื่อนไขการจองเปลี่ยน" ไม่โชว์ยอดเดิม/ใหม่ ═══
+  await guard("terms-change", async () => {
+    const ip = freshIp();
+    const h = await L.holdHttp(A, PTC, { d: D20, n: { ADULT: 1 } }, ip);
+    if (!h.location.includes("/c/")) { line("TC-hold", "hold", h.post ? kindOf(h.post) : kindOf(h.sel), false); return; }
+    await L.setV(A.tenant, [{ key: "trips.cancel.ladder", scope: "PRODUCT", scopeId: PTC.id, value: [{ fromDaysBefore: 7, refundPct: 100 }, { fromDaysBefore: 0, refundPct: 0 }] }]);
+    const c = await req(h.location, { ip });
+    const amounts = (c.body.match(/ยอดตอนถือที่|ยอดตอนนี้/g) ?? []).length;
+    line("TC-page", "c/ ⇒ book-price-changed with the terms message (เงื่อนไข) · no old/new totals · rehold form", `${kindOf(c)} terms=${/เงื่อนไขการจองเปลี่ยน/.test(c.body)} oldNew=${amounts} form=${!!L.postForm(c.body)}`, testid(c.body, "book-price-changed") && /เงื่อนไข/.test(c.body) && amounts === 0 && !!L.postForm(c.body));
+    void dTc;
+  });
+  // ═══ PROBE-EDIT (r1) W5: QR เฉพาะร้านเก็บเงิน · PENDING มีข้อความของตัวเอง ═══
+  await guard("collect-pending", async () => {
+    const ip = freshIp();
+    const r = await L.bookHttp(A, PA, { d: L.addDays(today, 25), n: { ADULT: 1 } }, ip);
+    if (!r.resPath) { info("collect", `booking failed ${r.why}`); return; }
+    const tok = decodeURIComponent(r.resPath.split("/my/")[1]?.split("?")[0] ?? "");
+    await L.q(`UPDATE "TripBooking" SET "collectMode" = 'AGENT' WHERE "publicTokenHash" = $1`, [L.sha256hex(tok)]);
+    const p = await req(r.resPath, { ip });
+    line("CM-agent", "agent-collected booking (collectMode AGENT · planted) ⇒ my/ has no PromptPay QR and not the 'no payment account' text", `${kindOf(p)} qr=${testid(p.body, "book-pay-qr")} noAccount=${testid(p.body, "book-pay-unavailable")}`, p.status === 200 && !testid(p.body, "book-pay-qr") && !testid(p.body, "book-pay-unavailable"));
+    await L.q(`UPDATE "TripBooking" SET status = 'PENDING', "collectMode" = 'SHOP' WHERE "publicTokenHash" = $1`, [L.sha256hex(tok)]);
+    const pp = await req(r.resPath, { ip });
+    line("PD-page", "PENDING booking ⇒ its own notice (book-res-pending), not 'online booking unavailable'", `${kindOf(pp)} pending=${testid(pp.body, "book-res-pending")} unavailable=${testid(pp.body, "book-res-unavailable")}`, testid(pp.body, "book-res-pending") && !testid(pp.body, "book-res-unavailable") && !testid(pp.body, "book-pay-qr"));
+  });
 
   // ═══ 12. staff booking opened on my/ ═══
   await guard("staff", async () => {

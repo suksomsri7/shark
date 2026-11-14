@@ -1,6 +1,7 @@
 // probe-trips-w1.2-hunt-lib.mts — shared helpers of the W1.2a bug-hunter probes (untracked · hunter · not an oracle)
 // Temp shops: slug/email prefix `trips-w12h-` · everything removed in cleanup() (tenant rows · users · buckets of every probe IP)
-// HTTP target: the controller's QC server (read-only use) at 127.0.0.1:3241 (build of 4da03d0dc) — every request carries an IP header unless the scenario is "no header"
+// HTTP target: the controller's QC server (read-only use) at 127.0.0.1:3241 — every request carries an IP header unless the scenario is "no header"
+// PROBE-EDIT (มติ W1–W7 · r1): server = build ใหม่ของผู้คุม (หลัง 1dd97156b) · รอฟอร์ม FORM_WAIT (TOO_FAST = 1 วิ · W5) · ตัวอ้างรอบ `t` = ref ชนิด slot (W5) · เพดานถือต่อรอบ 3 (W2)
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
 import pg from "pg";
@@ -17,6 +18,8 @@ export const rid = (p: string) => `w12h_${p}_${Date.now().toString(36)}${randomB
 export const HOUR = 3_600_000;
 export const MIN = 60_000;
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** PROBE-EDIT (มติ W5: TOO_FAST = 1 วิ): รอหลังเปิดหน้าก่อนส่งฟอร์ม (nonce นับเป็นวินาทีเต็ม ⇒ > 1 วิ เสมอ) */
+export const FORM_WAIT = 1_300;
 export const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
 export const BKK = (ymd: string, hm: string) => new Date(`${ymd}T${hm}:00+07:00`);
 export const ymdBkk = (d: Date) => new Date(d.getTime() + 7 * HOUR).toISOString().slice(0, 10);
@@ -232,7 +235,7 @@ export async function openSelect(s: Shop, p: { slug: string }, k: Pick, ip: stri
 export async function holdHttp(s: Shop, p: { slug: string }, k: Pick, ip: string, o: { wait?: boolean; mutate?: (f: [string, string][]) => [string, string][]; origin?: string | null } = {}): Promise<{ sel: Resp; post: Resp | null; location: string; form: Form | null }> {
   const g = await openSelect(s, p, k, ip);
   if (!g.form) return { sel: g.r, post: null, location: "", form: null };
-  if (o.wait !== false) await sleep(2_200);
+  if (o.wait !== false) await sleep(FORM_WAIT);
   const fields = o.mutate ? o.mutate(g.form.fields) : g.form.fields;
   const post = await submit(g.path, fields, ip, { origin: o.origin });
   return { sel: g.r, post, location: loc(post), form: g.form };
@@ -256,20 +259,24 @@ export async function bookHttp(s: Shop, p: { slug: string }, k: Pick, ip: string
   if (!h.location.includes("/c/")) return { holdLoc: h.location, checkout: null, confirm: null, resPath: "", why: `hold ${h.post ? kindOf(h.post) : kindOf(h.sel)}` };
   const c = await openCheckout(h.location, ip);
   if (!c.form) return { holdLoc: h.location, checkout: c.r, confirm: null, resPath: "", why: `checkout ${kindOf(c.r)}` };
-  await sleep(2_200);
+  await sleep(FORM_WAIT);
   const post = await submit(h.location, bookerFields(c.form, b), ip);
   const l = loc(post);
   return { holdLoc: h.location, checkout: c.r, confirm: post, resPath: l.includes("/my/") ? l : "", why: l.includes("/my/") ? "" : `confirm ${kindOf(post)}` };
 }
 
 /** public ref (same formula as the brief §3.2 — the hunter holds the QC secret) */
-export function pubRef(tenantId: string, kind: "product" | "extra" | "zone", id: string): string {
+export function pubRef(tenantId: string, kind: "product" | "extra" | "zone" | "slot", id: string): string {
   const buf = createHmac("sha256", process.env.SESSION_SECRET ?? "").update(`trips.public.ref.v1:${tenantId}:${kind}:${id}`).digest();
   const B32 = "abcdefghijklmnopqrstuvwxyz234567";
   let out = "", bits = 0, acc = 0;
   for (const byte of buf) { acc = (acc << 8) | byte; bits += 8; while (bits >= 5 && out.length < 12) { out += B32[(acc >>> (bits - 5)) & 31]; bits -= 5; } acc &= (1 << bits) - 1; if (out.length >= 12) break; }
   return out;
 }
+/** PROBE-EDIT (มติ W5): ตัวอ้างรอบ `t` = ref สาธารณะชนิด slot ของ id รอบ (12 ตัว a-z2-7) */
+export const slotRef = (tenantId: string, departureId: string) => pubRef(tenantId, "slot", departureId);
+/** ตัวอ้างรอบทั้งหมดที่หน้าสินค้าใส่ในลิงก์ (`t=<ref>`) */
+export const slotRefsIn = (html: string): string[] => [...new Set([...html.replace(/&amp;/g, "&").matchAll(/[?&]t=([a-z2-7]{12})\b/g)].map((m) => m[1] ?? ""))];
 /** satang from the last money text inside the element with data-testid */
 export function moneyOf(html: string, id: string): number | null {
   const i = html.indexOf(`data-testid="${id}"`);

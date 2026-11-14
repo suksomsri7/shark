@@ -1,6 +1,10 @@
 // probe-trips-w1.2-hunt-1 — HTTP: flow smoke · Origin (target 1) · 404 shape (2) · headers (3) · sel tampering (4) · reservation token (5)
-// all requests over HTTP to the QC server (build 4da03d0dc) · rows under temp shops `trips-w12h-*` · removed in finally
+// all requests over HTTP to the QC server (controller's new build) · rows under temp shops `trips-w12h-*` · removed in finally
+// PROBE-EDIT (r1): ผลบวกปลอมของรอบก่อน — (1) Next สะท้อน slug/token ใน URL ลงหน้า 404 (RSC payload) ⇒ ไม่นับ slug เป็นการรั่ว · เทียบรูปหลังตัดค่าที่สะท้อนจาก URL ต่อชนิดเส้นทาง
+//   (2) S-control ใช้ตะกร้าที่ยืนยันแล้ว ⇒ DONE (307 → my/) เป็นผลที่ถูก · ตัวควบคุมใช้ตะกร้าที่ยังไม่ยืนยัน
 import * as L from "./probe-trips-w1.2-hunt-lib.mjs";
+import { createHash } from "node:crypto";
+const createHashHex = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 12);
 const { line, known, info, guard, req, submit, kindOf, loc, testid, titleOf, freshIp, sleep } = L;
 
 L.boot("probe-w1.2-hunt-1");
@@ -56,7 +60,7 @@ try {
       const ip = freshIp();
       const g = await L.openSelect(A, PA, pick, ip);
       if (!g.form) { info("origin", `${name}: no form ${kindOf(g.r)}`); continue; }
-      await sleep(2_200);
+      await sleep(L.FORM_WAIT);
       const before = (await L.holdsOf(dA)).length;
       const r = await submit(g.path, g.form.fields, ip, { origin, headers: hdr });
       const after = (await L.holdsOf(dA)).length;
@@ -75,7 +79,7 @@ try {
       if (!h.location.includes("/c/")) { info("origin", `confirm ${name}: hold failed ${h.post ? kindOf(h.post) : ""}`); continue; }
       const c = await L.openCheckout(h.location, ip);
       if (!c.form) { info("origin", `confirm ${name}: no checkout form ${kindOf(c.r)}`); continue; }
-      await sleep(2_200);
+      await sleep(L.FORM_WAIT);
       const before = (await L.bookingsOf(A.tenant)).length;
       const r = await submit(h.location, L.bookerFields(c.form), ip, { origin });
       const created = (await L.bookingsOf(A.tenant)).length - before;
@@ -90,9 +94,9 @@ try {
   if (resPath) tokA = decodeURIComponent(resPath.split("/my/")[1]?.split("?")[0] ?? "");
   const basketA = holdLoc ? decodeURIComponent(holdLoc.split("/c/")[1]?.split("?")[0] ?? "") : "";
   const selA = holdLoc ? new URL(holdLoc, L.BASE).searchParams.get("sel") ?? "" : "";
+  const randTok = Buffer.from(L.hex(32), "hex").toString("base64url").slice(0, 43);
   await guard("404", async () => {
     const ip = freshIp();
-    const randTok = Buffer.from(L.hex(32), "hex").toString("base64url").slice(0, 43);
     const cases: [string, string][] = [
       ["c/ shop missing", `/book/${L.SLUG}nope-${L.STAMP}/c/${basketA}?sel=${encodeURIComponent(selA)}`],
       ["c/ basket random", `/book/${A.slug}/c/${randTok}?sel=${encodeURIComponent(selA)}`],
@@ -105,22 +109,27 @@ try {
       ["my/ token malformed", `/book/${A.slug}/my/xyz`],
       ["my/ token uppercase-flip", `/book/${A.slug}/my/${tokA.replace(/[a-z]/, (c) => c.toUpperCase())}`],
     ];
-    const shapes = new Map<string, string[]>();
+    // PROBE-EDIT (r1): Next ใส่ path ของคำขอ (slug ร้าน · token/ตะกร้า · sel) ลงหน้า 404 เอง — ไม่ใช่ข้อมูลร้านที่รั่ว ⇒ นับเฉพาะชื่อร้าน/ชื่อสินค้า และเทียบรูปหลังตัดค่าที่มาจาก URL (ต่อชนิดเส้นทาง c/ · my/)
+    const echoed = [A.slug, B.slug, `${L.SLUG}nope-${L.STAMP}`, basketA, encodeURIComponent(basketA), selA, encodeURIComponent(selA), tokA, encodeURIComponent(tokA), randTok, tokA.replace(/[a-z]/, (c) => c.toUpperCase())].filter((x) => x.length >= 3).sort((x, y) => y.length - x.length);
+    const normOf = (b: string) => { let x = b; for (const e of echoed) x = x.split(e).join("§"); return x.replace(/[A-Za-z0-9_-]{30,}/g, "#"); };
+    const shapes = new Map<string, Map<string, string[]>>();
     for (const [name, path] of cases) {
       const r = await req(path, { ip });
-      const norm = r.body.replace(/[A-Za-z0-9_-]{20,}/g, "#").length;
-      const leak = [A.name, B.name, A.slug, B.slug, "ร้านล่า", "ทัวร์ล่า"].filter((s) => r.body.includes(s));
-      const shape = `${r.status}|${titleOf(r.body)}|${testid(r.body, "book-not-found") ? "nf" : "?"}|len≈${Math.round(norm / 50) * 50}`;
-      (shapes.get(shape) ?? shapes.set(shape, []).get(shape))?.push(name);
-      info("404", `${name}: ${r.status} len=${r.body.length} norm=${norm} title="${titleOf(r.body)}" ${r.ms.toFixed(0)}ms leak=[${leak.join(",")}]`);
-      line(`NF-${name}`, "404 · no shop name/slug/product in body", `${r.status} leak=[${leak.join(",")}]`, r.status === 404 && leak.length === 0);
+      const norm = normOf(r.body);
+      const leak = [A.name, B.name, "ร้านล่า", "ทัวร์ล่า", "Hunt tour"].filter((s) => r.body.includes(s));
+      const route = name.startsWith("c/") ? "c" : "my";
+      const g = shapes.get(route) ?? shapes.set(route, new Map()).get(route) ?? new Map<string, string[]>();
+      const key = `${r.status}|${titleOf(r.body)}|${norm.length}|${createHashHex(norm)}`;
+      (g.get(key) ?? g.set(key, []).get(key))?.push(name);
+      info("404", `${name}: ${r.status} len=${r.body.length} norm=${norm.length} title="${titleOf(r.body)}" ${r.ms.toFixed(0)}ms leak=[${leak.join(",")}] echoedSlug=${r.body.includes(A.slug) || r.body.includes(B.slug)}`);
+      line(`NF-${name}`, "404 · no shop name/product in body (slug echoed from the URL by Next is not a leak)", `${r.status} leak=[${leak.join(",")}]`, r.status === 404 && leak.length === 0);
     }
-    line("NF-shape", "one shape for all not-found cases", [...shapes.entries()].map(([k, v]) => `${k}: ${v.length}`).join(" ; "), shapes.size === 1);
+    for (const [route, g] of shapes) line(`NF-shape-${route}`, `one shape for all ${route}/ not-found cases after removing values echoed from the URL`, [...g.entries()].map(([k, v]) => `${k.slice(0, 60)}: ${v.join("/")}`).join(" ; "), g.size === 1);
     // POST action whose bound shop is changed (the bound args are plain JSON in the form)
     const ip2 = freshIp();
     const g = await L.openSelect(A, PA, pick, ip2);
     if (g.form) {
-      await sleep(2_200);
+      await sleep(L.FORM_WAIT);
       const bound = L.fieldOf(g.form, "$ACTION_0:1");
       info("404", `hold form bound args (plain text in HTML): ${bound}`);
       const fields = g.form.fields.map(([k, v]): [string, string] => (k === "$ACTION_0:1" ? [k, JSON.stringify([`${L.SLUG}nope-${L.STAMP}`, PA.slug])] : [k, v]));
@@ -216,14 +225,18 @@ try {
       line(`S-${name}`, "NOT_FOUND (404) one shape, not 500, no checkout", `${kindOf(r)}`, r.status === 404 && !testid(r.body, "book-checkout"));
     }
     info("sel", `shapes: ${[...shapes.entries()].map(([k, v]) => `${k}=${v.length}`).join(" ; ")}`);
-    // legit sel still works (control)
-    const ok = await req(holdLoc, { ip: ip3 });
-    line("S-control", "legit c/ still 200 checkout", kindOf(ok), ok.status === 200 && testid(ok.body, "book-checkout"));
+    // legit sel still works (control) — PROBE-EDIT (r1): ตะกร้า A ยืนยันแล้วใน flow ⇒ DONE (redirect → my/) คือผลที่ถูก · ตัวควบคุม 200 ใช้ตะกร้า A2 ที่ยังไม่ยืนยัน
+    const okDone = await req(holdLoc, { ip: ip3 });
+    line("S-control-done", "legit c/ of the confirmed basket ⇒ DONE redirect to my/", kindOf(okDone), [303, 307, 308].includes(okDone.status) && loc(okDone).includes("/my/"));
+    if (h2.location) {
+      const ok = await req(h2.location, { ip: ip3 });
+      line("S-control", "legit c/ of an open basket still 200 checkout", kindOf(ok), ok.status === 200 && testid(ok.body, "book-checkout"));
+    }
     // confirm action with tampered bound sel (the bound args are plain in the form)
     if (h2.location) {
       const c = await L.openCheckout(h2.location, ip2);
       if (c.form) {
-        await sleep(2_200);
+        await sleep(L.FORM_WAIT);
         const bound = JSON.parse(L.fieldOf(c.form, "$ACTION_0:1") ?? "[]") as string[];
         const t = [bound[0], bound[1], `v1.${reenc({ ...JSON.parse(Buffer.from(sel2.split(".")[1] ?? "", "base64url").toString()), n: [["ADULT", 3]] })}.${sel2.split(".")[2]}`];
         const before = (await L.bookingsOf(A.tenant)).length;

@@ -180,7 +180,8 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       actions: [
         { waitFor: '[data-testid="book-continue"]' }, { pause: 2_500 }, { click: { selector: '[data-testid="book-continue"]' } }, { waitFor: '[data-testid="book-checkout"]' }, { pause: 2_500 },
         { fill: { selector: '[data-testid="book-booker-name"]', value: "ภัทรา ภาพทดสอบ" } }, { fill: { selector: '[data-testid="book-booker-phone"]', value: "0890001180" } },
-        { click: { selector: '[data-testid="book-accept"]' } }, { click: { selector: '[data-testid="book-pay-submit"]' } }, { waitFor: '[data-testid="book-res"]' }, { pause: 300 },
+        { click: { selector: '[data-testid="book-accept"]' } }, { click: { selector: '[data-testid="book-pay-submit"]' } }, { waitFor: '[data-testid="book-res"]' },
+        { waitFor: '[data-testid="book-pay-qr"]' }, { pause: 300 }, // TRIPS W1.2 r1 (มติ W6) ▸ ร้าน seed มีผู้รับเงินพร้อมเพย์แล้ว ⇒ ต้องเห็น QR (ไม่ใช่ "ร้านยังไม่ได้ตั้งบัญชีรับเงิน") ◂
       ],
     },
     // TRIPS W1.2 รอบ 2 (มติ R8) ▸ หน้าการจองหมดเวลา (07 · "ถ้าโอนแล้ว ติดต่อร้าน") — ก่อนถ่าย: การจอง WEB ล่าสุดของร้าน seed (จากฉาก book-pay) ถูกเลื่อนเวลาถือให้หมด
@@ -379,6 +380,7 @@ async function runAction(page: Page, a: Action): Promise<string | null> {
 }
 
 let failures = 0;
+let publicSeq = 0; // TRIPS W1.2 r1 ▸ ลำดับ IP ของฉากสาธารณะ (ฉาก×อุปกรณ์) ◂
 let fatal = "";
 const shots: string[] = [];
 const results: { name: string; device: string; mockup: string; status: number; errors: string[]; overflow: boolean; file: string }[] = [];
@@ -401,7 +403,8 @@ try {
       const ctx = spec.public && browser.createBrowserContext ? await browser.createBrowserContext() : null;
       const page = await (ctx ?? browser).newPage();
       await page.setViewport({ width: dev.width, height: dev.height, deviceScaleFactor: 1, isMobile: dev.mobile, hasTouch: dev.mobile });
-      if (spec.public) await page.setExtraHTTPHeaders({ "x-forwarded-for": PUBLIC_CLIENT_IP });
+      // TRIPS W1.2 r1 (มติ W2 · ผู้คุมทำตอนรับงาน) ▸ ฉากสาธารณะใช้ IP ผู้ใช้ต่างกันต่อฉาก×อุปกรณ์ — ไม่ชนถังถือต่อรอบต่อเครื่อง (3/ชม.) / ถังถือต่อเครื่อง ◂
+      if (spec.public) await page.setExtraHTTPHeaders({ "x-forwarded-for": `${PUBLIC_CLIENT_IP.split(".").slice(0, 3).join(".")}.${(Number(PUBLIC_CLIENT_IP.split(".")[3]) + ++publicSeq) % 250}` });
       else await page.setCookie(...cookies);
       const errors: string[] = [];
       page.on("pageerror", (e: never) => errors.push(String((e as Error).message).slice(0, 120)));
