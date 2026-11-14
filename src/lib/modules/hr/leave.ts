@@ -29,6 +29,7 @@ import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ▸ ข้อควา�
 import { addDays, leaveDaysBetween, TIME_RULE_TEXT, TimeRuleError } from "./time-rules";
 import { holidayOfDay, holidayRowsInRange } from "./holidays";
 import { thaiDateKey } from "@/lib/ui/date"; // r4: วันที่ยื่นใบลา (ตามปฏิทินไทย)
+import { CORRECTION_TEXT } from "./correction-rules"; // HR MONEY-2 ▸ R5: ข้อความ "เดือนนี้อนุมัติเงินเดือนแล้ว" ตัวเดียวกับคำขอแก้เวลา (ไม่คัดลอก) ◂
 import {
   carryDays,
   carryExpiryOf,
@@ -520,13 +521,13 @@ export function leaveDecidedEvent(ctx: Ctx, row: Pick<LeaveLedgerRow, "id" | "em
  * อนุมัติแต่วันลาไม่พอ = ใบลา CANCELLED + audit รหัส BALANCE · นับวันใหม่ได้ 0 = CANCELLED + audit รหัส ZERO_DAYS (ไม่ throw — Q4 · D1) ·
  * ข้อผิดพลาดของฐานข้อมูล = throw ⇒ event retry
  */
-export async function applyLeaveDecision(input: { tenantId: string; systemId: string; leaveId: string; requestId: string; approved: boolean }): Promise<{ applied: boolean; code?: "BALANCE" | "ZERO_DAYS" | "OUT_OF_EMPLOYMENT" }> {
+export async function applyLeaveDecision(input: { tenantId: string; systemId: string; leaveId: string; requestId: string; approved: boolean }): Promise<{ applied: boolean; code?: "BALANCE" | "ZERO_DAYS" | "OUT_OF_EMPLOYMENT" | "PAID" }> { // HR MONEY-2 ▸ R5 + PAID ◂
   const ctx: Ctx = { tenantId: str(input?.tenantId), systemId: str(input?.systemId) };
   const id = str(input?.leaveId);
   const requestId = str(input?.requestId);
   if (!ctx.tenantId || !ctx.systemId || !id || !requestId) return { applied: false };
   const approved = input.approved === true;
-  type Out = { kind: "noop" } | { kind: "refused"; code: "BALANCE" | "ZERO_DAYS" | "OUT_OF_EMPLOYMENT" } | { kind: "done"; status: string };
+  type Out = { kind: "noop" } | { kind: "refused"; code: "BALANCE" | "ZERO_DAYS" | "OUT_OF_EMPLOYMENT" | "PAID" } | { kind: "done"; status: string }; // HR MONEY-2 ▸ + PAID ◂
   const out: Out = await tenantDb(ctx).$transaction(async (t): Promise<Out> => {
     const tx = t as unknown as Tx;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr-leave:${id}`}, 0))`;
@@ -536,6 +537,10 @@ export async function applyLeaveDecision(input: { tenantId: string; systemId: st
     if (!req || req.status !== (approved ? "APPROVED" : "REJECTED")) return { kind: "noop" };
     await lockLeaveEmployeeInTx(tx, ctx.systemId, row.employeeId);
     await lockRosterKeysInTx(tx, ctx.systemId, leaveRosterKeys(row));
+    if (approved && (await leavePaidRunRefusalInTx(tx, ctx, id))) { // HR MONEY-2 ▸ R5: ลาไม่รับค่าจ้างในเดือนที่อนุมัติเงินเดือนแล้ว ⇒ ใบลา CANCELLED + audit รหัส PAID ◂
+      const c = await tx.hrLeave.updateMany({ where: { id, status: "PENDING" }, data: { status: "CANCELLED" } }); // HR MONEY-2 ◂
+      return c.count === 1 ? { kind: "refused", code: "PAID" } : { kind: "noop" }; // HR MONEY-2 ◂
+    } // HR MONEY-2 ◂
     if (approved) {
       const chk = await leaveApprovalCheckInTx(tx, ctx, row);
       if (!chk.ok) {
@@ -1118,3 +1123,30 @@ export async function inboxSubjects(
   };
 }
 // ◂ HR H2.11
+
+// HR MONEY-2 ▸ R5 (H5.2 m4): ใบลาที่มีผลต่อเงิน (ประเภทการลา paid === false) ที่วันลาตกในเดือนที่ระบบ HR นี้มีรอบเงินเดือน APPROVED/PAID แล้ว ⇒
+//   อนุมัติ / ถอนอนุมัติ / ยกเลิก ไม่ได้ (กติกาเดียวกับคำขอแก้เวลา — correction.ts paidMonthsOf: ทุกรอบของระบบในเดือนนั้น ไม่ใช่รายคน) ·
+//   ใบลารับค่าจ้าง / ใบรุ่นเก่าที่ไม่มีประเภทการลา = เหมือนเดิม · ผู้เรียกถือล็อก hr-leave:<id> → พนักงานอยู่แล้ว · คืนข้อความคงที่ (null = ผ่าน)
+const monthsOfRange = (from: string, to: string): string[] => {
+  const out: string[] = [];
+  let y = Number(from.slice(0, 4));
+  let m = Number(from.slice(5, 7));
+  const end = to.slice(0, 7);
+  for (let i = 0; i < 240; i += 1) {
+    const k = `${y}-${String(m).padStart(2, "0")}`;
+    if (k > end) break;
+    out.push(k);
+    m += 1;
+    if (m > 12) ((m = 1), (y += 1));
+  }
+  return out;
+};
+export async function leavePaidRunRefusalInTx(tx: Tx, ctx: Ctx, leaveId: string): Promise<string | null> {
+  const l = await tx.hrLeave.findFirst({ where: { id: leaveId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { fromDate: true, toDate: true, policy: { select: { paid: true } } } });
+  if (!l || !l.policy || l.policy.paid !== false) return null;
+  const months = monthsOfRange(dayOf(l.fromDate), dayOf(l.toDate));
+  if (!months.length) return null;
+  const run = await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: { in: months }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } });
+  return run ? CORRECTION_TEXT.paid : null;
+}
+// ◂ HR MONEY-2

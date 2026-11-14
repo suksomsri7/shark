@@ -416,7 +416,7 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
     if (subject?.linkedUserId === uid && !ownPendingAdd) return { ok: false, reason: "ลบรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ" };
   }
   if (boundDraft) return cancelBoundDraftAdjustment(ctx, row, boundDraft, { userId: uid || null, isOwner: !!actor?.isOwner });
-  const del = await tenantDb(ctx).hrPayAdjustment.deleteMany({ where: { id, runId: null, status: row.status } });
+  const del = row.kind === "DEDUCTION" ? await money2DeleteClaim(ctx, id, row.status, actor ? uid || null : null) : await tenantDb(ctx).hrPayAdjustment.deleteMany({ where: { id, runId: null, status: row.status } }); // HR MONEY-2 ▸ R1: ลบรายการหัก = การคืนเงิน (refund:<id>) ที่ยังไม่เข้ารอบถูกยกเลิกใน tx เดียวกัน (CLAIM_CANCELLED) ◂
   if (del.count === 0) return { ok: false, reason: "รายการนี้เปลี่ยนไปแล้ว กรุณาเปิดดูใหม่" };
   await writeAudit({
     tenantId: ctx.tenantId,
@@ -751,6 +751,7 @@ export async function createPayrollRun(
     if (items.length === 0)
       throw new PayrollInputError(exclusions.length > 0 ? noMembersText(periodKey) : "ยังไม่มีโปรไฟล์เงินเดือน — ตั้งเงินเดือนพนักงานก่อนสร้างรอบจ่าย");
     if (ytdOverlap(await ytdOpeningsInTx(tx, ctx, bkkParts(input.payDate).dateStr, items.map((i) => i.employeeId)), bkkParts(input.payDate).dateStr)) throw new PayrollInputError(OPENING_TEXT.OPENING_OVERLAP); // HR H3.4-YTD ▸ R5c (Q5): งวด → hr:ytd · ยอดยกมาที่ถึงวันจ่ายนี้ = นับซ้ำใน 50 ทวิ ⇒ ไม่สร้าง ◂
+    if (money2OverV1(items, totals)) throw new PayrollInputError(MONEY2_TEXT.runLimit); // HR MONEY-2 ▸ R4: ยอดเกิน int4 ⇒ ปฏิเสธก่อนเขียน (ข้อความคงที่) ◂
 
     const run = await tx.hrPayrollRun.create({
       data: {
@@ -929,6 +930,7 @@ async function rebuildDraftRun(tx: Prisma.TransactionClient, ctx: Ctx, cur: Lock
   // H0.2 ▸ R1: ทุกคนที่มีโปรไฟล์ถูกตัดออกจากงวดนี้ = ไม่มีแถวให้จ่าย ⇒ ไม่คำนวณใหม่ (บอกเหตุผลจริง ไม่ใช่ "ยังไม่มีโปรไฟล์") ◂
   if (items.length === 0) throw new RunRefusal(exclusions.length > 0 ? noMembersText(cur.periodKey) : RECOMPUTE_NO_PROFILE);
   { const pd = await tx.hrPayrollRun.findFirst({ where: { ...scope, id }, select: { payDate: true } }); const day = bkkParts(pd!.payDate).dateStr; if (ytdOverlap(await ytdOpeningsInTx(tx, ctx, day, items.map((i) => i.employeeId)), day)) throw new RunRefusal(OPENING_TEXT.OPENING_OVERLAP); } // HR H3.4-YTD ▸ R4/R5c: งวด → แถวรอบ → hr:ytd ◂
+  if (money2OverV1(items, totals)) throw new RunRefusal(MONEY2_TEXT.runLimit); // HR MONEY-2 ▸ R4: ร่างเดิมไม่ถูกแตะ (ย้อนทั้ง tx) ◂
   await tx.hrPayrollItem.createMany({ data: items.map((i) => ({ ...runItemData(scope, i), runId: id })) });
   const upd = await tx.hrPayrollRun.updateMany({
     where: { ...scope, id, status: "DRAFT", journalEntryId: null },
@@ -1231,6 +1233,7 @@ export async function reverseRun(
   // ระบบบัญชีของกิจการ (type ACCOUNT) — ตัวค้นเดียวกับ approveRun (ระบบที่ลง JV) · ตรวจซ้ำใน tx ก่อนกลับ JV
   const acct = await db.appSystem.findFirst({ where: { type: "ACCOUNT" }, select: { id: true } });
   const why = reason?.trim() || `กลับรายการเงินเดือนงวด ${periodKey}`;
+  let m2Void: Money2Void[] = []; // HR MONEY-2 ▸ R1: การคืนเงินที่ถูกยกเลิกใน tx นี้ (ลงประวัติหลัง commit) ◂
   const work = async (t: unknown): Promise<ReverseOutcome> => {
     const tx = t as Prisma.TransactionClient;
     await lockRunPeriod(tx, ctx, periodKey);
@@ -1248,6 +1251,7 @@ export async function reverseRun(
         AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") AND "journalEntryId" IS NOT NULL`;
     if (claimed !== 1) return { ok: false, code: "ALREADY_REVERSED" };
     await reverseCarryInTx(tx, ctx, id); // HR H3.4 ▸ R7: ยอดยกไปของรอบนี้ — ถูกดึงเข้ารอบถัดไปแล้ว = CARRY_BOUND (ย้อนทั้ง tx) · ไม่งั้น REJECTED ◂
+    m2Void = await money2VoidRefundsInTx(tx, ctx, id); // HR MONEY-2 ▸ R1: คืนเงินของรายการหักในรอบนี้ — ยังไม่เข้ารอบ = REJECTED · อยู่ในร่างงวดหลัง = REFUND_BOUND ◂
     let reversalEntryId: string | null = null;
     const liveAcct = acct ? await tx.appSystem.findFirst({ where: { id: acct.id, tenantId: ctx.tenantId, type: "ACCOUNT" }, select: { id: true } }) : null;
     if (liveAcct) {
@@ -1286,6 +1290,7 @@ export async function reverseRun(
     if (e instanceof H37Reroute) return (await reverseRunH37(ctx, id, reason, actor)) ?? reverseRefused(ctx, actor, id, "TX_FAILED"); // HR H3.7 ◂
     if (e instanceof CarryBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "CARRY_BOUND" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.carryBound }; // HR H3.4 ◂
     if (e instanceof LaterRunRefusal) return { ...(await reverseRefused(ctx, actor, id, "LATER_RUN" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.laterRun }; // HR H3.4 ▸ fix r1 F5 ◂
+    if (e instanceof RefundBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "REFUND_BOUND" as unknown as ReverseRefusalCode)), note: MONEY2_TEXT.refundBound }; // HR MONEY-2 ▸ R1 ◂
     const code: ReverseRefusalCode = e instanceof JvReverseFailed ? "JV_REVERSE_FAILED" : "TX_FAILED";
     await logOps("WARN", "hr-payroll", code === "JV_REVERSE_FAILED" ? "กลับรายการรอบจ่าย: กลับ JV ไม่สำเร็จ — ย้อนทั้งธุรกรรม" : "กลับรายการรอบจ่ายไม่สำเร็จ — ย้อนทั้งธุรกรรม", {
       tenantId: ctx.tenantId,
@@ -1294,6 +1299,7 @@ export async function reverseRun(
     return reverseRefused(ctx, actor, id, code);
   }
   if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
+  await money2VoidAudits(ctx, actor?.userId ?? null, m2Void, "DEDUCTION_REVERSED", id); // HR MONEY-2 ▸ R1 ◂
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: actor?.userId ? "USER" : "SYSTEM",
@@ -2349,7 +2355,8 @@ const H34_REVIEW_CODES = ["WORKED_ON_LEAVE", "UNPLANNED", "HOLIDAY_LEAVE", "PEND
 export type Run2Code =
   | "NO" | "PERIOD" | "PAYDATE" | "ENGINE_V1" | "BUILD" | "DUPLICATE" | "LEGACY" | "LAW_MISSING" | "LAW_AMBIGUOUS" | "LAW_BAD_DAY" | "NO_PROFILE" | "VARIABLE_PAY"
   | "WORK_ENTRIES" | "OT_OPEN" | "ATTENDANCE_STALE" | "ATTENDANCE_SYNC" | "ATTENDANCE_LOCK" | "YTD_DRAFT" | "NO_RATE" | "LAW" | "BIND" | "NOT_FOUND" | "NOT_DRAFT" | "DRAFT_HAS_JV"
-  | "OPENING_OVERLAP"; // HR H3.4-YTD ▸ R5c ◂
+  | "OPENING_OVERLAP" // HR H3.4-YTD ▸ R5c ◂
+  | "RUN_LIMIT"; // HR MONEY-2 ▸ R4: ยอดของรอบ/บรรทัดบัญชีเกิน int4 ◂
 class Run2Refusal extends Error {
   constructor(readonly code: Run2Code, message: string) {
     super(message);
@@ -2462,6 +2469,8 @@ async function buildRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, run: { per
     }
     if (held.size) adjIds = adjIds.filter((x) => !held.has(x)); // คืนเงิน (ALLOWANCE) ที่แถวหักยังไม่ถูกหักจริง ⇒ ค้างไว้รอบถัดไป (H3.2 fix r1 R2b)
   }
+  const m2Held = await money2HeldRefundsInTx(tx, ctx, adjIds); // HR MONEY-2 ▸ R1: คืนเงินที่รายการหักต้นทางไม่ได้หักจริงแล้ว ⇒ ไม่ผูก (คง APPROVED) + ป้าย REFUND_HELD · ตอนอนุมัติ = ลายนิ้วมือต่าง ⇒ INPUTS_CHANGED ◂
+  if (m2Held.size) adjIds = adjIds.filter((x) => !m2Held.has(x)); // HR MONEY-2 ◂
   const inSet = new Set(ids);
   const adjRows = adjIds.length
     ? (await tx.hrPayAdjustment.findMany({ where: { ...scope, id: { in: adjIds } }, select: { id: true, employeeId: true, kind: true, amountSatang: true, sourceType: true, sourceRef: true, consentAt: true }, orderBy: { id: "asc" } })).filter((a) => inSet.has(a.employeeId))
@@ -2581,7 +2590,7 @@ async function buildRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, run: { per
       catCapBp: engine.catCapBp,
       totalCapBp: engine.totalCapBp,
       lines: r.lines,
-      flags: r.flags,
+      flags: [...m2Held.values()].includes(p.employeeId) ? [...r.flags, "REFUND_HELD"] : r.flags, // HR MONEY-2 ▸ R1 ป้ายแถว ◂
       carry: r.carry,
       receivable: r.receivable,
       availableSatang: r.availableSatang,
@@ -2626,6 +2635,7 @@ function v2ItemData(scope: { tenantId: string; systemId: string }, it: V2Item) {
 /** เขียนรอบ (ใหม่หรือร่างเดิม) + แถวพนักงาน + ผูกรายการ (guard runId IS NULL + APPROVED · ต้องครบ) */
 async function writeRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, built: V2Built, run: { id: string | null; periodKey: string; payDate: Date; createdById: string | null }): Promise<string> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  if (await money2OverV2InTx(tx, ctx, built)) throw new Run2Refusal("RUN_LIMIT", MONEY2_TEXT.runLimit); // HR MONEY-2 ▸ R4: ก่อนเขียนอะไร (สร้าง · ดึงข้อมูลใหม่) ◂
   const t = built.totals;
   const totals = { totalGrossSatang: t.gross, totalSsoEmployeeSatang: t.ssoEmployee, totalSsoEmployerSatang: t.ssoEmployer, totalWhtSatang: t.wht, totalNetSatang: t.net, totalAddSatang: t.add, totalDeductSatang: t.deduct };
   let id = run.id;
@@ -3471,6 +3481,7 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
   const why = reason?.trim() || `กลับรายการเงินเดือนงวด ${periodKey}`;
   if (book && !(await h37BookAlive(ctx.tenantId, book))) return { ...(await reverseRefused(ctx, actor, id, "JV_REVERSE_FAILED")), note: H37_TEXT.bookGone }; // fix r1 F2 (D3): inactive or gone book ⇒ fixed text, nothing reversed
   type Out = { ok: false; code: ReverseRefusalCode } | { ok: true; prevStatus: string; journalEntryId: string | null; payEntryId: string | null; reversalEntryIds: string[]; adjustmentIds: string[] };
+  let m2Void: Money2Void[] = []; // HR MONEY-2 ▸ R1 ◂
   const work = async (t: unknown): Promise<Out> => {
     const tx = t as Prisma.TransactionClient;
     await lockRunPeriod(tx, ctx, periodKey);
@@ -3486,7 +3497,8 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
         AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus")`;
     if (claimed !== 1) return { ok: false, code: "ALREADY_REVERSED" };
     await reverseCarryInTx(tx, ctx, id); // H3.4 LATER_RUN / CARRY_BOUND first (rolls everything back)
-    let rv = { payEntryId: null as string | null, accrualEntryId: null as string | null, reversalEntryIds: [] as string[] };
+    m2Void = await money2VoidRefundsInTx(tx, ctx, id); // HR MONEY-2 ▸ R1: claims of this run FOR UPDATE → their live give-backs: unbound ⇒ REJECTED · in a later DRAFT ⇒ REFUND_BOUND ◂
+    let rv ={ payEntryId: null as string | null, accrualEntryId: null as string | null, reversalEntryIds: [] as string[] };
     if (book) {
       if (!(await h37BookAlive(ctx.tenantId, book, tx))) throw new H37Refusal("BOOK_GONE", H37_TEXT.bookGone);
       try {
@@ -3514,6 +3526,7 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
   } catch (e) {
     if (e instanceof CarryBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "CARRY_BOUND" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.carryBound };
     if (e instanceof LaterRunRefusal) return { ...(await reverseRefused(ctx, actor, id, "LATER_RUN" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.laterRun };
+    if (e instanceof RefundBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "REFUND_BOUND" as unknown as ReverseRefusalCode)), note: MONEY2_TEXT.refundBound }; // HR MONEY-2 ▸ R1 ◂
     if (e instanceof H37Refusal) return { ...(await reverseRefused(ctx, actor, id, e.code as unknown as ReverseRefusalCode)), note: e.note };
     const code: ReverseRefusalCode = e instanceof JvReverseFailed ? "JV_REVERSE_FAILED" : "TX_FAILED";
     await logOps("WARN", "hr-payroll", code === "JV_REVERSE_FAILED" ? "กลับรายการรอบจ่าย: กลับ JV ไม่สำเร็จ — ย้อนทั้งธุรกรรม" : "กลับรายการรอบจ่ายไม่สำเร็จ — ย้อนทั้งธุรกรรม", {
@@ -3523,6 +3536,7 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
     return reverseRefused(ctx, actor, id, code);
   }
   if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
+  await money2VoidAudits(ctx, actor?.userId ?? null, m2Void, "DEDUCTION_REVERSED", id); // HR MONEY-2 ▸ R1 ◂
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: actor?.userId ? "USER" : "SYSTEM",
@@ -3715,3 +3729,132 @@ export async function giveBackClaim(ctx: Ctx, viewer: { userId?: string | null }
   return out;
 }
 // ◂ HR H3.7
+
+// ═══════════════════ HR MONEY-2 ▸ แก้เงินจากการล่า H5.2 (M1 คืนเงินที่รายการหักไม่ได้หักจริงแล้ว · m3 ยอดเกิน int4) ═══════════════════
+//   brief ledger/hr-briefs/hr-brief-MONEY-2.md · สัญญา scripts/qc-hr-money-2.mts · ข้อความคงที่ไทยทุกไบต์ (ไม่มีชื่อ/ยอด/id)
+//   R1 รายการหัก "ยังมีผล" = แถวยังอยู่ · DEDUCTION · APPROVED · ผูกรอบ (runId) ที่ APPROVED/PAID — ไม่ตรวจยอดซ้ำกับบรรทัด
+//      คืนเงิน (REFUND · sourceRef "refund:<claimId>#…") ของรายการหักที่ไม่มีผลแล้ว: ไม่ผูกเข้ารอบ (คง APPROVED + ป้าย REFUND_HELD) ·
+//      กลับรายการรอบของรายการหัก / ลบรายการหัก = ยกเลิก (REJECTED) ใน tx เดียวกัน · อยู่ในร่างงวดหลังแล้ว = ปฏิเสธการกลับรายการ (REFUND_BOUND — แบบ CARRY_BOUND)
+//      ลำดับล็อก: P → แถวรอบ → รายการหักของรอบ FOR UPDATE → แถวคืนเงิน FOR UPDATE (สร้างรอบงวดหลังล็อกแถวคืนเงินเท่านั้น ไม่ล็อกรายการหัก ⇒ ไม่มีวงรอ)
+//   R4 ก่อนเขียนรอบ: ยอดรวม · ช่องเงินของแถว · (รุ่น 2) ยอดบรรทัดบัญชีตั้งค้างจ่าย (accrualAmountsV2) ต้อง ≤ 2,147,483,647 สตางค์
+export const MONEY2_TEXT = {
+  refundBound: "การคืนเงินของรายการหักในรอบนี้อยู่ในรอบจ่ายงวดถัดไปแล้ว — ลบร่างหรือกลับรายการรอบงวดถัดไปก่อน แล้วจึงกลับรายการรอบนี้",
+  runLimit: "ยอดรวมของรอบจ่ายนี้เกิน 21,474,836.47 บาท ซึ่งเป็นยอดสูงสุดที่ระบบเงินเดือนรับได้ต่อรอบ — แยกพนักงานไปอีกระบบ HR แล้วสร้างรอบจ่ายแยกกัน",
+} as const;
+const MONEY2_INT4_MAX = 2_147_483_647;
+class RefundBoundRefusal extends Error {}
+type Money2Void = { id: string; claimId: string };
+const money2Over = (vals: number[]): boolean => vals.some((v) => !Number.isSafeInteger(v) || v > MONEY2_INT4_MAX || v < -MONEY2_INT4_MAX - 1);
+
+/** R4 รุ่น 1: ยอดรวมของรอบ + ช่องเงินของทุกแถว */
+function money2OverV1(items: RunItemRow[], totals: RunTotals): boolean {
+  return money2Over([...Object.values(totals), ...items.flatMap((i) => [i.grossSatang, i.ssoBaseSatang, i.ssoEmployeeSatang, i.ssoEmployerSatang, i.whtSatang, i.netSatang, i.addSatang, i.deductSatang])]);
+}
+/** R4 รุ่น 2: ยอดรวม · ช่องเงินของแถว · ยอดบรรทัดบัญชีตั้งค้างจ่ายที่รอบนี้จะลง (มีหรือไม่มีสมุดบัญชี — Dr เงินเดือน = Σ gross + ยอดหักคืนอาจเกินแม้ยอดรวมไม่เกิน) */
+async function money2OverV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, built: V2Built): Promise<boolean> {
+  if (money2Over([...Object.values(built.totals), ...built.items.flatMap(({ result: r }) => [r.grossSatang, r.ssoBaseSatang, r.ssoEmployeeSatang, r.ssoEmployerSatang, r.whtSatang, r.netSatang, r.addSatang, r.deductSatang])])) return true;
+  const bound = built.adjustmentIds.length
+    ? (await tx.$queryRaw<{ id: string; employeeId: string; kind: string; sourceType: string | null; sourceRef: string | null; amountSatang: number }[]>`
+        SELECT "id", "employeeId", "kind"::text AS "kind", "sourceType"::text AS "sourceType", "sourceRef", "amountSatang"
+        FROM "HrPayAdjustment" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(built.adjustmentIds)})`).map((b) => ({ ...b, amountSatang: Number(b.amountSatang) }))
+    : [];
+  const items: AccrualItem[] = built.items.map(({ employeeId, result: r, snapshot }) => ({ employeeId, grossSatang: r.grossSatang, ssoEmployeeSatang: r.ssoEmployeeSatang, ssoEmployerSatang: r.ssoEmployerSatang, whtSatang: r.whtSatang, netSatang: r.netSatang, snapshotJson: snapshot }));
+  const am = accrualAmountsV2(items, bound, await h37RefundClaimsInTx(tx, ctx, bound));
+  return am.ok ? money2Over(Object.values(am.amounts).map(Number)) : false;
+}
+
+/** R1 แถวคืนเงิน (ในชุด ids) ที่รายการหักต้นทางไม่มีผลแล้ว → id แถวคืนเงิน ⇒ id พนักงาน · อ่านอย่างเดียว (ไม่ล็อกรายการหัก) */
+async function money2HeldRefundsInTx(tx: Prisma.TransactionClient, ctx: Ctx, ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+  const rf = await tx.$queryRaw<{ id: string; e: string; ref: string | null }[]>`
+    SELECT "id", "employeeId" AS "e", "sourceRef" AS "ref" FROM "HrPayAdjustment"
+    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(ids)}) AND "kind"::text = 'REFUND' AND "sourceRef" LIKE ${`${REFUND_OF_PREFIX}%`}`;
+  if (!rf.length) return out;
+  const claimIds = [...new Set(rf.map((r) => refundClaimIdOf(r.ref)).filter((x): x is string => !!x))];
+  const standing = new Set(
+    claimIds.length
+      ? (await tx.$queryRaw<{ id: string }[]>`
+          SELECT a."id" FROM "HrPayAdjustment" a JOIN "HrPayrollRun" r ON r."id" = a."runId" AND r."tenantId" = a."tenantId" AND r."systemId" = a."systemId"
+          WHERE a."tenantId" = ${ctx.tenantId} AND a."systemId" = ${ctx.systemId} AND a."id" IN (${Prisma.join(claimIds)})
+            AND a."kind"::text = 'DEDUCTION' AND a."status"::text = 'APPROVED' AND r."status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus")`).map((r) => r.id)
+      : [],
+  );
+  for (const r of rf) {
+    const c = refundClaimIdOf(r.ref);
+    if (!c || !standing.has(c)) out.set(r.id, r.e);
+  }
+  return out;
+}
+/** R1 กลับรายการรอบ: รายการหักของรอบ FOR UPDATE → คืนเงินที่ยังมีผลของรายการเหล่านั้น */
+async function money2VoidRefundsInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: string): Promise<Money2Void[]> {
+  const claims = await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "HrPayAdjustment" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" = ${runId} AND "kind"::text = 'DEDUCTION' ORDER BY "id" FOR UPDATE`;
+  return money2VoidOfClaimsInTx(tx, ctx, claims.map((c) => c.id), true);
+}
+/**
+ * R1 คืนเงินที่ยังมีผล (PENDING/APPROVED) ของรายการหักชุดนี้ — ล็อกแถว FOR UPDATE (ทางเดียวกับที่สร้างรอบงวดหลังล็อก) ·
+ * ยังไม่เข้ารอบ ⇒ REJECTED (runId ว่าง · decidedAt ตอนนี้) · `refuseBound`: อยู่ในรอบที่อนุมัติ/จ่ายแล้ว = LATER_RUN · ในร่าง = REFUND_BOUND ·
+ * UPDATE ได้น้อยกว่าที่อ่าน (ถูกผูกระหว่างนั้น) = REFUND_BOUND (กติกาเดียวกับ reverseCarryInTx)
+ */
+async function money2VoidOfClaimsInTx(tx: Prisma.TransactionClient, ctx: Ctx, claimIds: string[], refuseBound: boolean): Promise<Money2Void[]> {
+  if (!claimIds.length) return [];
+  const rows = await tx.$queryRaw<{ id: string; runId: string | null; ref: string | null }[]>`
+    SELECT "id", "runId", "sourceRef" AS "ref" FROM "HrPayAdjustment"
+    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "kind"::text = 'REFUND' AND "status"::text IN ('PENDING', 'APPROVED')
+      AND split_part("sourceRef", '#', 1) IN (${Prisma.join(claimIds.map((c) => `${REFUND_OF_PREFIX}${c}`))})
+    ORDER BY "id" FOR UPDATE`;
+  const boundRuns = [...new Set(rows.map((r) => r.runId).filter((x): x is string => !!x))];
+  if (boundRuns.length && refuseBound) {
+    const st = await tx.$queryRaw<{ s: string }[]>`SELECT "status"::text AS "s" FROM "HrPayrollRun" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(boundRuns)})`;
+    if (st.some((x) => x.s === "APPROVED" || x.s === "PAID")) throw new LaterRunRefusal("LATER_RUN");
+    throw new RefundBoundRefusal("REFUND_BOUND");
+  }
+  const live = rows.filter((r) => r.runId === null);
+  if (!live.length) return [];
+  const n = await tx.$executeRaw`
+    UPDATE "HrPayAdjustment" SET "status" = 'REJECTED'::"HrPayItemStatus", "runId" = NULL, "decidedAt" = (now() AT TIME ZONE 'UTC')
+    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(live.map((r) => r.id))}) AND "runId" IS NULL AND "status"::text IN ('PENDING', 'APPROVED')`;
+  if (n !== live.length) throw new RefundBoundRefusal("REFUND_BOUND");
+  return live.map((r) => ({ id: r.id, claimId: refundClaimIdOf(r.ref) ?? "" }));
+}
+/** R1 ลบรายการหักที่ยังไม่เข้ารอบ (cancelAdjustment) + ยกเลิกคืนเงินที่ยังไม่เข้ารอบของมัน ใน tx เดียว · คืนเงินที่อยู่ในร่างแล้วคงไว้ (อนุมัติร่างนั้นจะได้ INPUTS_CHANGED) */
+async function money2DeleteClaim(ctx: Ctx, id: string, status: string, actorId: string | null): Promise<{ count: number }> {
+  let voided: Money2Void[] = [];
+  let count = 0;
+  try {
+    count = await tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      const del = await tx.hrPayAdjustment.deleteMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id, runId: null, status: status as "PENDING" | "APPROVED" | "REJECTED" } });
+      if (del.count !== 1) return 0;
+      voided = await money2VoidOfClaimsInTx(tx, ctx, [id], false);
+      return 1;
+    }, H34_TX);
+  } catch (e) {
+    if (e instanceof RefundBoundRefusal) return { count: 0 };
+    throw e;
+  }
+  if (count) await money2VoidAudits(ctx, actorId, voided, "CLAIM_CANCELLED", null);
+  return { count };
+}
+/** R2 (labor.ts): รายการที่ผูกกับรอบ (ต่อรอบ) + รายการหักของการคืนเงิน — ตัวอ่านเดียวกับ h37RunFiguresInTx / h37RefundClaimsInTx (SQL ผูก tenant + ระบบ HR) */
+export async function payrollAccrualInputsOfRuns(ctx: Ctx, runIds: string[]): Promise<{ bound: Map<string, AccrualBound[]>; claims: RefundClaim[] }> {
+  const db = tenantDb(ctx) as unknown as Prisma.TransactionClient;
+  const bound = new Map<string, AccrualBound[]>();
+  if (!runIds.length) return { bound, claims: [] };
+  const rows = await db.$queryRaw<{ id: string; runId: string; employeeId: string; kind: string; sourceType: string | null; sourceRef: string | null; amountSatang: number }[]>`
+    SELECT "id", "runId", "employeeId", "kind"::text AS "kind", "sourceType"::text AS "sourceType", "sourceRef", "amountSatang"
+    FROM "HrPayAdjustment" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" IN (${Prisma.join(runIds)}) ORDER BY "id"`;
+  const all: AccrualBound[] = [];
+  for (const r of rows) {
+    const b = { id: r.id, employeeId: r.employeeId, kind: r.kind, sourceType: r.sourceType, sourceRef: r.sourceRef, amountSatang: Number(r.amountSatang) };
+    all.push(b);
+    bound.set(r.runId, [...(bound.get(r.runId) ?? []), b]);
+  }
+  return { bound, claims: await h37RefundClaimsInTx(db, ctx, all) };
+}
+/** ประวัติ hr.payadjust.refund_void ต่อแถว (หลัง commit · id/รหัสเท่านั้น) */
+async function money2VoidAudits(ctx: Ctx, actorId: string | null, list: Money2Void[], code: "DEDUCTION_REVERSED" | "CLAIM_CANCELLED", runId: string | null): Promise<void> {
+  for (const v of list) await writeAudit({ tenantId: ctx.tenantId, actorType: actorId ? "USER" : "SYSTEM", actorId, action: "hr.payadjust.refund_void", targetType: "HrPayAdjustment", targetId: v.id, after: { code, claimId: v.claimId, runId } });
+}
+// ◂ HR MONEY-2

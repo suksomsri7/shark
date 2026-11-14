@@ -19,6 +19,8 @@ import { normalMinutesOf } from "./work-entries";
 import { loadLawView, pickLawRow } from "./law";
 import { otLawOf } from "./ot-rules";
 import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock";
+import { accrualAmountsV2 } from "./payroll-journal-rules"; // HR MONEY-2 ▸ R2: ค่าจ้างตามบัญชี = สูตรเดียวกับบรรทัด Dr เงินเดือนของการตั้งค้างจ่าย (pure) ◂
+import { payrollAccrualInputsOfRuns } from "./payroll"; // HR MONEY-2 ▸ R2: รายการที่ผูกรอบ + รายการหักของการคืนเงิน อ่านที่ payroll.ts ที่เดียว ◂
 import {
   addDays,
   businessDateAt,
@@ -629,18 +631,20 @@ async function monthPart(ctx: Ctx, g: Gate, view: View, periodKey: string, now: 
   let basis: "ACTUAL" | "ESTIMATE";
   if (runs.length) {
     basis = "ACTUAL";
-    const items = capped(c, await db.hrPayrollItem.findMany({ where: { runId: { in: runs.map((r) => r.id) } }, select: { employeeId: true, grossSatang: true, ssoEmployerSatang: true }, orderBy: { id: "asc" }, take: c.cap(10_000) + 1 }), 10_000);
+    const items = capped(c, await db.hrPayrollItem.findMany({ where: { runId: { in: runs.map((r) => r.id) } }, select: { employeeId: true, runId: true, grossSatang: true, ssoEmployeeSatang: true, ssoEmployerSatang: true, whtSatang: true, netSatang: true, addSatang: true, snapshotJson: true }, orderBy: { id: "asc" }, take: c.cap(10_000) + 1 }), 10_000); // HR MONEY-2 ▸ R2: + ช่องที่ใช้คิดค่าจ้างตามบัญชี ◂
     const ids = [...new Set(items.map((i) => i.employeeId))];
     const [emps, wds0] = await Promise.all([
       db.hrEmployee.findMany({ where: { id: { in: ids } }, select: { id: true, unitId: true } }),
-      db.hrWorkDay.findMany({ where: { periodKey, employeeId: { in: ids } }, select: { employeeId: true, unitId: true, workMin: true }, orderBy: { id: "asc" }, take: c.cap(50_000) + 1 }),
+      db.hrWorkDay.findMany({ where: { periodKey, employeeId: { in: ids } }, select: { employeeId: true, unitId: true, workMin: true, sourcesJson: true }, orderBy: { id: "asc" }, take: c.cap(50_000) + 1 }), // HR MONEY-2 ▸ R3: + กะที่วันนั้นตัดสินเทียบ ◂
     ]);
     const wds = capped(c, wds0, 50_000);
     const home = new Map(emps.map((e) => [e.id, e.unitId]));
     const excluded = new Set<string>();
+    const m2 = await money2WageOf(ctx, runs); // HR MONEY-2 ▸ R2: ค่าจ้างตามบัญชีต่อแถว (ก่อนหักคืน · ไม่รวมคืนเงิน) ◂
+    const m2Unit = await money2DayUnits(db, wds); // HR MONEY-2 ▸ R3: สาขาของวันทำงาน = สาขาของกะที่ตัดสินเทียบ (ไม่มี = HrWorkDay.unitId) ◂
     for (const id of ids) {
       const byUnit = new Map<string, number>();
-      for (const w of wds) if (w.employeeId === id && w.workMin > 0) byUnit.set(w.unitId ?? UNASSIGNED, (byUnit.get(w.unitId ?? UNASSIGNED) ?? 0) + w.workMin);
+      wds.forEach((w, j) => { if (w.employeeId === id && w.workMin > 0) { const u = m2Unit[j] ?? UNASSIGNED; byUnit.set(u, (byUnit.get(u) ?? 0) + w.workMin); } }); // HR MONEY-2 ▸ R3 ◂
       if (!byUnit.size) byUnit.set(home.get(id) ?? UNASSIGNED, 1);
       const keys = [...byUnit.keys()].sort(unitOrder);
       if (!keys.some((k) => inView(k === UNASSIGNED ? null : k))) continue;
@@ -649,8 +653,8 @@ async function monthPart(ctx: Ctx, g: Gate, view: View, periodKey: string, now: 
         excluded.add(id);
         continue;
       }
-      const amount = items.filter((i) => i.employeeId === id).reduce((a, i) => a + i.grossSatang + i.ssoEmployerSatang, 0);
-      const split = largestRemainder(amount, keys.map((k) => byUnit.get(k)!));
+      const amount = items.filter((i) => i.employeeId === id).reduce((a, i) => a + m2(i) + i.ssoEmployerSatang, 0); // HR MONEY-2 ▸ R2 ◂
+      const split = money2Split(amount, keys, byUnit, home.get(id) ?? UNASSIGNED); // HR MONEY-2 ▸ R3: ปัดลงต่อสาขา · เศษเข้าสาขาประจำ (มีนาที) ไม่งั้นสาขาที่นาทีมากสุด ◂
       keys.forEach((k, i) => {
         if (inView(k === UNASSIGNED ? null : k)) cost += split[i] ?? 0;
       });
@@ -737,3 +741,50 @@ export async function setLaborSettings(ctx: Ctx, viewer: LaborViewer, input: unk
   return { ok: true, settings: next };
 }
 // ◂ HR H4.2
+
+// HR MONEY-2 ▸ R2/R3 เดือนจริง (ACTUAL) — brief ledger/hr-briefs/hr-brief-MONEY-2.md
+//   R2 ค่าจ้างตามบัญชีต่อแถว: รุ่น 2 = accrualAmountsV2([แถว], รายการที่ผูกรอบ, รายการหักของการคืนเงิน).salaryExpenseSatang (Σ บรรทัด + หักคืนเงินเบิก/ค่าเสียหาย − คืนเงิน ·
+//      คืนเงินที่กลับเข้าเงินเดือนยังนับ · หักสาย/ขาดยังลด) = Dr เงินเดือนของการตั้งค้างจ่าย · แถวไม่มี lines (ข้อมูลทำมือ) = gross ·
+//      รุ่น 1 = เงินเดือน + รายการเพิ่ม − หักสาย/ขาดที่ผูกรอบ · บวก ปสส. นายจ้างที่ผู้เรียก
+//   R3 แบ่งตามนาทีทำงานต่อสาขา: ปัดลงทุกส่วน · เศษเข้าสาขาประจำเมื่อมีนาที ไม่งั้นสาขาที่นาทีมากสุด (เท่ากัน = รหัสสาขาน้อยก่อน) · ผลรวม = ยอดเต็ม
+type Money2Db = Awaited<ReturnType<typeof dbOf>>;
+type Money2Item = { employeeId: string; runId: string; grossSatang: number; ssoEmployeeSatang: number; ssoEmployerSatang: number; whtSatang: number; netSatang: number; addSatang: number; snapshotJson: unknown };
+const MONEY2_CHUNK = 5000;
+const money2Chunks = <T,>(xs: T[]): T[][] => Array.from({ length: Math.ceil(xs.length / MONEY2_CHUNK) }, (_, i) => xs.slice(i * MONEY2_CHUNK, (i + 1) * MONEY2_CHUNK));
+async function money2WageOf(ctx: Ctx, runs: { id: string; engineVersion: number }[]): Promise<(i: Money2Item) => number> {
+  const engine = new Map(runs.map((r) => [r.id, r.engineVersion]));
+  const { bound: byRun, claims } = await payrollAccrualInputsOfRuns(ctx, runs.map((r) => r.id)); // ตัวอ่านของ payroll.ts (รายการที่ผูกรอบ + รายการหักของการคืนเงิน)
+  return (i) => {
+    const snap = obj(i.snapshotJson);
+    if (Array.isArray(snap.lines)) {
+      const am = accrualAmountsV2([{ employeeId: i.employeeId, grossSatang: i.grossSatang, ssoEmployeeSatang: i.ssoEmployeeSatang, ssoEmployerSatang: i.ssoEmployerSatang, whtSatang: i.whtSatang, netSatang: i.netSatang, snapshotJson: i.snapshotJson }], byRun.get(i.runId) ?? [], claims);
+      return am.ok ? am.amounts.salaryExpenseSatang : i.grossSatang;
+    }
+    const base = snap.baseSalarySatang;
+    if ((engine.get(i.runId) ?? 2) < 2 && typeof base === "number" && Number.isSafeInteger(base)) {
+      const att = (byRun.get(i.runId) ?? []).filter((b) => b.employeeId === i.employeeId && b.kind === "DEDUCTION" && (b.sourceType === "LATE_RULE" || b.sourceType === "ABSENT_RULE")).reduce((a, b) => a + b.amountSatang, 0);
+      return base + i.addSatang - att;
+    }
+    return i.grossSatang;
+  };
+}
+/** สาขาของวันทำงานแต่ละแถว (เรียงตาม wds) = สาขาของกะที่วันนั้นตัดสินเทียบ (sourcesJson.rosterEntryIds ตัวแรกที่มีสาขา) · ไม่มี = HrWorkDay.unitId */
+async function money2DayUnits(db: Money2Db, wds: { unitId: string | null; sourcesJson: unknown }[]): Promise<(string | null)[]> {
+  const idsOf = (w: { sourcesJson: unknown }) => { const r = obj(w.sourcesJson).rosterEntryIds; return Array.isArray(r) ? r.filter((x): x is string => typeof x === "string") : []; };
+  const all = [...new Set(wds.flatMap(idsOf))];
+  const unitOfEntry = new Map<string, string | null>();
+  for (const part of money2Chunks(all)) for (const r of await db.hrRosterEntry.findMany({ where: { id: { in: part } }, select: { id: true, unitId: true } })) unitOfEntry.set(r.id, r.unitId);
+  return wds.map((w) => idsOf(w).map((id) => unitOfEntry.get(id) ?? null).find((u): u is string => !!u) ?? w.unitId);
+}
+/** ปัดลงต่อสาขา · เศษ (ยอด − Σ ส่วนที่ปัดลง) เข้าสาขาประจำเมื่อมีนาที ไม่งั้นสาขาที่นาทีมากสุด (เท่ากัน = รหัสน้อยก่อน) — คืนตามลำดับ keys */
+function money2Split(amount: number, keys: string[], minutes: Map<string, number>, homeKey: string): number[] {
+  const total = keys.reduce((a, k) => a + (minutes.get(k) ?? 0), 0);
+  if (total <= 0 || !keys.length) return keys.map((_, i) => (i === 0 ? amount : 0));
+  const out = keys.map((k) => Number((BigInt(amount) * BigInt(minutes.get(k) ?? 0)) / BigInt(total)));
+  const rest = amount - out.reduce((a, x) => a + x, 0);
+  const pick = (minutes.get(homeKey) ?? 0) > 0 ? homeKey : [...keys].sort((a, b) => (minutes.get(b) ?? 0) - (minutes.get(a) ?? 0) || (a < b ? -1 : a > b ? 1 : 0))[0]!;
+  const at = keys.indexOf(pick);
+  out[at] = (out[at] ?? 0) + rest;
+  return out;
+}
+// ◂ HR MONEY-2

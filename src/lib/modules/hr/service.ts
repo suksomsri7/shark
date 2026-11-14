@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัต
 import { lockRosterKeysInTx } from "./roster"; // HR H2.7 ▸ R8 ลำดับล็อก hr-leave → พนักงาน → ตารางกะ ◂
 // HR H2.7 ▸ เครื่องยนต์การลา (ประเภทการลา · สมุดวันลา · นับวัน · event hr.leave.decided) — ตัวงาน request/decide/cancel ยังอยู่ไฟล์นี้ (Q2) ◂
 import { LEAVE_TEXT, leaveApprovalCheckInTx, leaveDecidedEvent, leaveLedgerInTx, leaveRefusalText, leaveRosterKeys, leaveRowInTx, lockLeaveEmployeeInTx, planLeaveRequest, reserveLeaveInTx, type LeaveRequestFields } from "./leave"; // HR H2.7 ◂
+import { leavePaidRunRefusalInTx } from "./leave"; // HR MONEY-2 ▸ R5: ลาไม่รับค่าจ้างในเดือนที่อนุมัติเงินเดือนแล้ว (ข้อความ CORRECTION_TEXT.paid) ◂
 import type { HrAttendanceJudgement, HrLeaveType, Prisma } from "@prisma/client"; // HR H2.4 ▸ HrAttendanceKind ใช้ที่ clock.ts ◂
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
@@ -501,6 +502,7 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
         },
       });
       if (ownerAuto) {
+        { const paid = await leavePaidRunRefusalInTx(tx, ctx, l.id); if (paid) throw new HrLeaveRequestError(paid); } // HR MONEY-2 ▸ R5: ใบของเจ้าของร้าน (อนุมัติทันที) — ย้อนทั้ง tx ไม่มีแถว ◂
         const row = await leaveRowInTx(tx, l.id);
         if (row) {
           await leaveLedgerInTx(tx, ctx, row, "PENDING", "APPROVED");
@@ -702,6 +704,7 @@ export async function decideLeave(
   if (chains.length > 0) {
     throw new HrLeaveDecisionError("ใบลานี้ตัดสินผ่านสายอนุมัติแล้ว — ผลของใบลามาจากหน้า “อนุมัติ” เท่านั้น (ตัดสินซ้ำทางนี้ไม่ได้) หากต้องเปลี่ยนผล กรุณาติดต่อเจ้าของกิจการ");
   }
+  if ((from === "PENDING" && status === "APPROVED") || (from === "APPROVED" && status === "REJECTED")) { const paid = await leavePaidRunRefusalInTx(tx, ctx, leaveId); if (paid) throw new HrLeaveDecisionError(paid); } // HR MONEY-2 ▸ R5: อนุมัติ/ถอนอนุมัติ ใบลาไม่รับค่าจ้างในเดือนที่อนุมัติเงินเดือนแล้ว ⇒ ปฏิเสธ (ใบคงสถานะเดิม) ◂
   // HR H2.7 ▸ R6 + r2 มติ D1/L3: อนุมัติ = นับวันใหม่ใต้กุญแจตารางกะ (วันหยุด/กะที่ประกาศหลังยื่น) → GRANT → ยอดพอ (วันสะสมใช้ได้เฉพาะใบที่จบภายในวันหมดอายุ) ·
   //   ไม่พอ = ข้อความถึงผู้อนุมัติ ธุรกรรมไม่เขียนอะไร · นับใหม่ได้ 0 วัน = ใบนี้ CANCELLED (ไม่หักวันลา · ไม่มี event) แล้วแจ้งผู้อนุมัติหลัง commit
   let lxd = lx;
@@ -819,6 +822,7 @@ export async function cancelLeave(ctx: Ctx, leaveId: string, opts: { actorUserId
       if (!ownerAuto) return { ok: false, reason: ownsAny ? CANCEL_DECIDED : CANCEL_NOT_MINE };
       const todayTh = toDbDate(thaiDateKey(new Date())); // วันไทยวันนี้ในรูปเดียวกับคอลัมน์ @db.Date
       if (!(leave.fromDate.getTime() > todayTh.getTime())) return { ok: false, reason: CANCEL_STARTED };
+      { const paid = await leavePaidRunRefusalInTx(tx, ctx, leaveId); if (paid) return { ok: false, reason: paid }; } // HR MONEY-2 ▸ R5: ยกเลิกใบที่อนุมัติแล้วในเดือนที่อนุมัติเงินเดือนแล้ว ⇒ ปฏิเสธ ◂
     } else {
       return { ok: false, reason: ownsAny ? `ใบลานี้${LEAVE_STATUS_TH[leave.status] ?? "ตัดสินแล้ว"}` : CANCEL_NOT_MINE };
     }
