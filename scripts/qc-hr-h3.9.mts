@@ -384,12 +384,15 @@ function runStatic(): void {
     ck("S1.7", r, "route + page wired");
   }
   // S1.8
+  // ORACLE-EDIT (HR PRIV-3 · controller): explicit allowlist — exactly these files, and only when every hunk adds the PRIV-3 marker on an ADDED line ◂
+  const PRIV3_ALLOW: Record<string, string> = { [F.nav]: "HR PRIV-3", [F.visual]: "ORACLE-EDIT (HR PRIV-3" }; // ORACLE-EDIT (HR PRIV-3 · controller) ◂
+  const PRIV3_OK = (f: string) => f in PRIV3_ALLOW && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes(PRIV3_ALLOW[f]!))); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
   {
     const hub = code(F.hrUi) + code(F.overview);
     const r = {
       link: /\/hr\/reports/.test(hub) && /hr-overview-reports-link/.test(hub),
       page: existsSync(join(ROOT, F.page)),
-      nav: changedVsBase(BASE, [F.nav]) === "unchanged",
+      nav: changedVsBase(BASE, [F.nav]) === "unchanged" || PRIV3_OK(F.nav), // ORACLE-EDIT (HR PRIV-3 · controller) S1.8: + nav.ts when every hunk adds "HR PRIV-3" (page gates for employees/leave/payroll — still no "รายงาน" tab) ◂
     };
     ck("S1.8", r, "no tab · hub link");
   }
@@ -443,7 +446,7 @@ function runStatic(): void {
     //   marked with some ticket ("HR H<n>.<n>" · "HR-SET-<n>") on an ADDED line (deleting a marked line is not a mark); hub/json presence is n/a · before that
     //   the original rule applies unchanged · controller ruling 13 Nov: this stricter version replaces the b357957e7 "n/a once in base" edit ◂
     const anyMarked = (f: string) => (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H\d+\.\d+|HR-SET-\d+/.test(l)));
-    const bad = IN_BASE ? files.filter((f) => !/\.json$/.test(f) && !anyMarked(f)) : all.filter((f) => !markedOk(f) && !/\.json$/.test(f));
+    const bad = IN_BASE ? files.filter((f) => !/\.json$/.test(f) && !anyMarked(f) && !PRIV3_OK(f)) : all.filter((f) => !markedOk(f) && !/\.json$/.test(f)); // ORACLE-EDIT (HR PRIV-3 · controller) S1.10: + PRIV3_OK (visual-hr.mts :60 staff expectation) ◂
     const jsonTouched = IN_BASE || [F.th, F.en, F.inv].every((f) => (diffHunks(BASE, f) ?? []).length > 0);
     ck("S1.10", { marked: bad.length === 0, hub: IN_BASE || hub.length > 0, json: jsonTouched }, "every hunk marked", `unmarked=${bad.join(",") || "0"}${IN_BASE ? " · H3.9 in base" : ""}`);
   }

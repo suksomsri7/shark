@@ -103,6 +103,9 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  const docs = /isAllBranches\(/.test(bodyOf(code(`${H}bank-files/service.ts`), "bankGateOf")) && /bankGateOf\(m\)/.test(bodyOf(code(`${H}filings/service.ts`), "gate")) && /bankGateOf\(/.test(bodyOf(code(F.slip), "certGate"));
  chk("S3", !miss.length && docs, "", `missing=${miss.join(",") || "none"} docs=${docs}`);
 }
+ // ORACLE-EDIT (HR PRIV-3 · controller) S4/S5: explicit allowlist — the older oracles PRIV-3 edited + its own two oracle files (S4) and its seven product files (S5); every hunk must add "HR PRIV-3" on an ADDED line ◂
+ const P3_FILES = new Set(["scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.8.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", `${H}privacy.ts`, `${H}nav.ts`, `${H}ui.tsx`, `${H}actions.ts`, "src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/leave/page.tsx", "src/app/app/sys/[id]/hr/payroll/page.tsx"]); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
+ const p3Ok = (f: string) => P3_FILES.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR PRIV-3"))); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
 {
  // ORACLE-EDIT (HR H4.9 · controller) S4: explicit files — skills.ts when every hunk adds "HR H4.9" · the oracles H4.9-FIX1 edited when every hunk adds "ORACLE-EDIT (HR H4.9 · controller)" ◂
  const H49_MARK: Record<string, string> = { "src/lib/ai/skills.ts": "HR H4.9", "scripts/qc-nav-functions.mts": "ORACLE-EDIT (HR H4.9 · controller)", "scripts/qc-hr-h4.3.mts": "ORACLE-EDIT (HR H4.9 · controller)", "scripts/qc-hr-h4.3-lib.mts": "ORACLE-EDIT (HR H4.9 · controller)" }; // ORACLE-EDIT (HR H4.9 · controller) ◂
@@ -113,6 +116,7 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  const bad = oc === "unchanged" ? [] : !oc.startsWith("changed: ") ? [oc] : oc.slice(9).split(",").filter((f) => {
   const hs = diffHunks(BASE, f) ?? [];
   if (h49Ok(f)) return false; // ORACLE-EDIT (HR H4.9 · controller) S4 ◂
+  if (p3Ok(f)) return false; // ORACLE-EDIT (HR PRIV-3 · controller) S4 ◂
   // ORACLE-EDIT (HR HF-SSO · controller fix2) S4: once PRIV-2 is in base, the HF-SSO fix2 allowlist conversions in these exact oracle files are accepted when every hunk carries that marker ◂
   if (["scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts"].includes(f) && hs.length > 0 && hs.every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR HF-SSO · controller fix2)")))) return false;
   return f === F.h43 ? hs.some((h) => !h.added.some((l) => l.includes("ORACLE-EDIT (HR-PRIV-2"))) : !hs.some((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*PRIV-2/.test(l)));
@@ -125,7 +129,7 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  const ok = (f: string) => MARKED.includes(f) || /^src\/messages\/(th|en)\/common\.json$/.test(f) || (f.startsWith(H) && fileAt(BASE, f) === null && /HR PRIV-2/.test(rd(f).split("\n").slice(0, 3).join("\n")));
  const H49_SRC = ["src/lib/ai/skills.ts", "src/lib/pages/registry.ts"]; // ORACLE-EDIT (HR H4.9 · controller) S5: explicit files, every hunk must add "HR H4.9" ◂
  const h49Src = (f: string) => H49_SRC.includes(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR H4.9"))); // ORACLE-EDIT (HR H4.9 · controller) ◂
- const out = ch.filter((f) => !ok(f) && !h49Src(f)), bad = unmarkedHunks(BASE, ch.filter((f) => MARKED.includes(f)));
+ const out = ch.filter((f) => !ok(f) && !h49Src(f) && !p3Ok(f)), bad = unmarkedHunks(BASE, ch.filter((f) => MARKED.includes(f) && !p3Ok(f))); // ORACLE-EDIT (HR PRIV-3 · controller) S5: + p3Ok ◂
  chk("S5", !out.length && !bad.length, "", `outside=${out.join(",") || "none"} hunks=${bad.join(",") || "ok"}`);
 }
 {

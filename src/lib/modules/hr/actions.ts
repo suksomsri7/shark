@@ -31,7 +31,7 @@ import { kioskClock } from "./clock"; // HR H2.4 ▸ R9 kiosk · r2 ▸ R1 ช�
 import { canRunKiosk, KIOSK_REFUSED_TEXT } from "./clock-settings"; // VIS-1 C ▸ ด่านจอลงเวลา ◂
 import { offboardEmployee } from "./lifecycle"; // HR H4.4 ▸ R9 ลบ/สถานะสิ้นสุด = สิ้นสุดการจ้างทางเดียว (PIN · สิทธิ์แอป · คำขอค้าง ในธุรกรรมเดียว) ◂
 import { thaiDateKey } from "@/lib/ui/date"; // HR H4.4 ◂
-import { employeeProfileInputFromForm, hrViewerOf } from "./privacy";
+import { employeeProfileInputFromForm, hrPageAccessOf, hrViewerOf } from "./privacy"; // HR PRIV-3 ▸ + hrPageAccessOf (ยื่นใบลาแทน) ◂
 import { activeLeavePolicies, attachLeaveFile, leaveAttachmentLink } from "./leave"; // HR H2.7 ▸ R10 ไฟล์แนบใบลา ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขาของผู้กด — สาขาของเป้าหมายอ่านจากแถวใน DB เสมอ (ไม่เชื่อฟอร์ม) ◂
 import {
@@ -412,13 +412,7 @@ export async function requestLeaveAction(formData: FormData) {
   const auth = await requireTenant();
   // ทุกสาขา: ด่านคีย์ระดับร้าน — ยื่นแทนคนอื่นตรวจสาขา (ณ วันเริ่มลา) ด้วย hrTarget ด้านล่าง · ยื่นของตัวเอง = แถวของตัวเอง
   assertHrCan(auth, "hr.leave.request");
-  const member = {
-    role: auth.active.role,
-    unitAccess: auth.active.unitAccess as string[],
-    permissions: auth.active.permissions as Record<string, unknown>,
-  };
-  const onBehalf =
-    evaluate(member, { module: "hr", action: "hr.employee.create" }) || evaluate(member, { module: "hr", action: "hr.leave.decide" });
+  const onBehalf = hrPageAccessOf(hrViewerOf(auth)).leaveOnBehalf; // HR PRIV-3 ▸ ยื่นแทน = สองคีย์เดิม (hr.employee.create ∨ hr.leave.decide) ย้ายไปที่ privacy.ts ที่เดียว — ฟอร์มหน้าใบลาใช้ค่าเดียวกัน ◂
   let systemId = String(formData.get("systemId") ?? "");
   const posted = onBehalf ? String(formData.get("employeeId") ?? "").trim() : ""; // พนักงานทั่วไป: ไม่อ่านช่องนี้เลย
   const rawType = String(formData.get("type") ?? "PERSONAL");
