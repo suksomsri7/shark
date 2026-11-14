@@ -23,6 +23,7 @@ const PAY_CHANNEL_LABEL_COMPLETE: Record<AccountPayChannel, string> = {
   DEPOSIT_APPLY: RAW.DEPOSIT_APPLY ?? "หักมัดจำ",
   CREDIT_APPLY: RAW.CREDIT_APPLY ?? "หักเครดิต",
   OTHER: RAW.OTHER ?? "อื่น ๆ",
+  BAD_DEBT: RAW.BAD_DEBT ?? "ตัดหนี้สูญ",
 };
 
 /** ป้ายช่องทางชำระภาษาไทย — ไม่พบคีย์ (ไม่ควรเกิด) = "ช่องทางอื่น" (ไม่ใช่ enum ดิบ) */

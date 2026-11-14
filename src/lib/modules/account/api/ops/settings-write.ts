@@ -749,7 +749,7 @@ const taxDeadlineRow = z
     ...rowCommon,
     form: z.enum(FILING_FORMS),
     channel: z.enum(FILING_CHANNELS),
-    value: z.number().int().min(1).max(31).describe("File by this day of the month after the tax month."),
+    value: z.number().int().min(0).max(400).describe("Monthly forms (PP30, PND1/2/3/53/54): file by this day of the month after the tax month. Annual forms: PAPER = days (PND50, from the fiscal year end) or months (PND51 from the half-year end, PND90/PND94 from Dec 31/Jun 30, FS_PARTNERSHIP from the fiscal year end, FS_COMPANY from the shareholders' meeting); ONLINE = extra days after the paper date."),
   })
   .strict();
 

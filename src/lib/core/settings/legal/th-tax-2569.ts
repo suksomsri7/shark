@@ -97,13 +97,64 @@ export type WhtRateRow = RowBase & {
   method: WhtMethod;
 };
 
-export const FILING_FORMS = ["PP30", "PND1", "PND2", "PND3", "PND53", "PND54"] as const;
+// ACC T5.1 (เลน 2) ▸ + แบบรายปี: ภ.ง.ด.50/51 · ภ.ง.ด.90/94 · ยื่นงบการเงิน (ห้างหุ้นส่วนนิติบุคคล / บริษัท) — ความหมายของ value ตาม FILING_FORM_META ◂
+export const FILING_FORMS = ["PP30", "PND1", "PND2", "PND3", "PND53", "PND54", "PND50", "PND51", "PND90", "PND94", "FS_PARTNERSHIP", "FS_COMPANY", "PP36"] as const;
 export type FilingForm = (typeof FILING_FORMS)[number];
 export const FILING_CHANNELS = ["PAPER", "ONLINE"] as const;
 export type FilingChannel = (typeof FILING_CHANNELS)[number];
 
 /** value = "ภายในวันที่ N ของเดือนถัดจากเดือนภาษี" · ช่วง from/to ของแถว ONLINE = ช่วงของ "วันครบกำหนดปกติ" ที่ประกาศขยายเวลาครอบ */
 export type FilingDeadlineRow = RowBase & { form: FilingForm; channel: FilingChannel };
+
+/**
+ * ACC T5.1 ▸ ความหมายของ value ในแถวกำหนดยื่น ต่อแบบ
+ *   MONTHLY: แถวกระดาษ/ออนไลน์ = "ภายในวันที่ N ของเดือนถัดจากเดือนภาษี" (เดิมของ T0.2)
+ *   ANNUAL : แถวกระดาษ = จำนวน (unit) นับจากจุดตั้งต้น (anchor) · แถวออนไลน์ = วันที่ขยายเพิ่มต่อจากวันครบกำหนดกระดาษ
+ *            ช่วง from/to ของแถวออนไลน์ = ช่วงของ "วันครบกำหนดกระดาษ" ที่ประกาศขยายเวลาครอบ (เหมือนแบบรายเดือน)
+ *   anchor: FY_END วันสุดท้ายของรอบบัญชี · FY_HALF_END วันสุดท้ายของ 6 เดือนแรกของรอบ · CAL_YEAR_END 31 ธ.ค. ของปีภาษี ·
+ *           CAL_HALF_END 30 มิ.ย. ของปีภาษี · AGM วันที่ประชุมใหญ่อนุมัติงบ (ระบบไม่รู้วัน — แสดงเป็นข้อความ ไม่คำนวณวันที่)
+ *   unit MONTHS นับแบบสิ้นเดือน (สิ้นเดือน + N เดือน = สิ้นเดือนนั้น เช่น 30 มิ.ย. + 3 = 30 ก.ย. ตรงกับ "ภายในเดือนกันยายน")
+ */
+export type FilingCadence = "MONTHLY" | "ANNUAL";
+export type FilingAnchor = "TAX_MONTH" | "FY_END" | "FY_HALF_END" | "CAL_YEAR_END" | "CAL_HALF_END" | "AGM";
+export const FILING_FORM_META: Record<FilingForm, { cadence: FilingCadence; anchor: FilingAnchor; unit: "DAY_OF_NEXT_MONTH" | "DAYS" | "MONTHS"; min: number; max: number }> = {
+  PP30: { cadence: "MONTHLY", anchor: "TAX_MONTH", unit: "DAY_OF_NEXT_MONTH", min: 1, max: 31 },
+  PND1: { cadence: "MONTHLY", anchor: "TAX_MONTH", unit: "DAY_OF_NEXT_MONTH", min: 1, max: 31 },
+  PND2: { cadence: "MONTHLY", anchor: "TAX_MONTH", unit: "DAY_OF_NEXT_MONTH", min: 1, max: 31 },
+  PND3: { cadence: "MONTHLY", anchor: "TAX_MONTH", unit: "DAY_OF_NEXT_MONTH", min: 1, max: 31 },
+  PND53: { cadence: "MONTHLY", anchor: "TAX_MONTH", unit: "DAY_OF_NEXT_MONTH", min: 1, max: 31 },
+  PND54: { cadence: "MONTHLY", anchor: "TAX_MONTH", unit: "DAY_OF_NEXT_MONTH", min: 1, max: 31 },
+  PND50: { cadence: "ANNUAL", anchor: "FY_END", unit: "DAYS", min: 1, max: 400 },
+  PND51: { cadence: "ANNUAL", anchor: "FY_HALF_END", unit: "MONTHS", min: 1, max: 12 },
+  PND90: { cadence: "ANNUAL", anchor: "CAL_YEAR_END", unit: "MONTHS", min: 1, max: 12 },
+  PND94: { cadence: "ANNUAL", anchor: "CAL_HALF_END", unit: "MONTHS", min: 1, max: 12 },
+  FS_PARTNERSHIP: { cadence: "ANNUAL", anchor: "FY_END", unit: "MONTHS", min: 1, max: 12 },
+  FS_COMPANY: { cadence: "ANNUAL", anchor: "AGM", unit: "MONTHS", min: 1, max: 12 },
+  PP36: { cadence: "MONTHLY", anchor: "TAX_MONTH", unit: "DAY_OF_NEXT_MONTH", min: 1, max: 31 },
+};
+/** ช่วงค่าที่รับได้ของแถวกำหนดยื่น (รูปแบบข้อมูล ไม่ใช่ค่ากฎหมาย) — แถวออนไลน์ของแบบรายปี = วันขยาย 0–60 */
+export function deadlineValueInRange(form: FilingForm, channel: FilingChannel, value: number): boolean {
+  const m = FILING_FORM_META[form];
+  if (!m) return false;
+  if (m.cadence === "ANNUAL" && channel === "ONLINE") return value >= 0 && value <= 60;
+  return value >= m.min && value <= m.max;
+}
+/** ข้อความค่าของแถวกำหนดยื่น */
+export function deadlineValueLabelTh(form: FilingForm, channel: FilingChannel, value: number | null): string {
+  if (value === null) return "-";
+  const m = FILING_FORM_META[form];
+  if (!m || m.cadence === "MONTHLY") return `ภายในวันที่ ${value} ของเดือนถัดไป`;
+  if (channel === "ONLINE") return `ขยายอีก ${value} วันนับจากกำหนดยื่นกระดาษ`;
+  const from: Record<FilingAnchor, string> = {
+    TAX_MONTH: "สิ้นเดือนภาษี",
+    FY_END: "วันสุดท้ายของรอบบัญชี",
+    FY_HALF_END: "วันสุดท้ายของ 6 เดือนแรกของรอบบัญชี",
+    CAL_YEAR_END: "สิ้นปีภาษี (31 ธ.ค.)",
+    CAL_HALF_END: "30 มิ.ย. ของปีภาษี",
+    AGM: "วันที่ประชุมใหญ่อนุมัติงบ",
+  };
+  return `ภายใน ${value} ${m.unit === "DAYS" ? "วัน" : "เดือน"}นับแต่${from[m.anchor]}`;
+}
 
 // ACC T4 (เลน 2) ▸ ตาราง "สมุดบัญชี/ค่าเสื่อม/รอบบัญชี" — ค่าตัวเลขของ T4.1 T4.3 T4.6 (แถวระบบอยู่ท้ายไฟล์ SYSTEM_BOOK_ROWS) ◂
 export const BOOK_RULES = [
@@ -117,10 +168,24 @@ export const BOOK_RULES = [
   "DEP_MAX_RATE_OTHER",
   "DEP_COMPUTER_MIN_PERIODS",
   "DEP_PASSENGER_CAR_COST_CAP",
+  // ACC T5 (เลน 2) ▸ เกณฑ์จด VAT · ค่ารับรอง · หนี้สูญ · อากรแสตมป์ · ตัวเตือนแบบรายปี ◂
+  "VAT_REG_THRESHOLD",
+  "VAT_REG_WITHIN_DAYS",
+  "VAT_REG_NEAR_RATIO",
+  "ENTERTAINMENT_CAP_RATE",
+  "ENTERTAINMENT_CAP_MAX",
+  "ENTERTAINMENT_GIFT_PER_PERSON",
+  "DONATION_CAP_RATE",
+  "BAD_DEBT_TIER1_MAX",
+  "BAD_DEBT_TIER2_MAX",
+  "STAMP_HIRE_PER_1000",
+  "STAMP_LEASE_PER_1000",
+  "STAMP_E_PAY_DAYS",
+  "ANNUAL_FILING_REMIND_DAYS",
 ] as const;
 export type BookRule = (typeof BOOK_RULES)[number];
 /** หน่วยของค่าในแถว: วัน · วันทำการ · เดือน · basis point ต่อปี · รอบบัญชี · สตางค์ */
-export type BookRuleUnit = "DAYS" | "WORKING_DAYS" | "MONTHS" | "BP_PER_YEAR" | "PERIODS" | "SATANG";
+export type BookRuleUnit = "DAYS" | "WORKING_DAYS" | "MONTHS" | "BP_PER_YEAR" | "PERIODS" | "SATANG" | "BP";
 export const BOOK_RULE_META: Record<BookRule, { labelTh: string; unit: BookRuleUnit; min: number; max: number }> = {
   JOURNAL_ENTRY_DAYS: { labelTh: "ลงบัญชีรายวันภายใน (วันนับแต่วันที่รายการเกิด)", unit: "DAYS", min: 1, max: 365 },
   LEDGER_POST_DAYS_AFTER_MONTH: { labelTh: "ผ่านบัญชีแยกประเภทภายใน (วันนับแต่วันสิ้นเดือน)", unit: "DAYS", min: 1, max: 365 },
@@ -132,6 +197,19 @@ export const BOOK_RULE_META: Record<BookRule, { labelTh: string; unit: BookRuleU
   DEP_MAX_RATE_OTHER: { labelTh: "เพดานค่าเสื่อมทางภาษี: ทรัพย์สินอื่น (ต่อปี)", unit: "BP_PER_YEAR", min: 1, max: 10000 },
   DEP_COMPUTER_MIN_PERIODS: { labelTh: "คอมพิวเตอร์/อุปกรณ์/โปรแกรม หักได้ภายใน (รอบบัญชี)", unit: "PERIODS", min: 1, max: 20 },
   DEP_PASSENGER_CAR_COST_CAP: { labelTh: "ฐานค่าเสื่อมทางภาษีของรถยนต์นั่ง ≤10 ที่นั่ง ไม่เกิน (ต่อคัน)", unit: "SATANG", min: 1, max: 100_000_000_000 },
+  VAT_REG_THRESHOLD: { labelTh: "เกณฑ์ต้องจดทะเบียนภาษีมูลค่าเพิ่ม: มูลค่าฐานภาษีต่อปีเกิน", unit: "SATANG", min: 1, max: 100_000_000_000 },
+  VAT_REG_WITHIN_DAYS: { labelTh: "ยื่นจดทะเบียนภาษีมูลค่าเพิ่มภายใน (วันนับแต่วันที่ยอดเกินเกณฑ์)", unit: "DAYS", min: 1, max: 365 },
+  VAT_REG_NEAR_RATIO: { labelTh: "เริ่มเตือนเมื่อยอดขายสะสมถึง (ร้อยละของเกณฑ์จด VAT)", unit: "BP", min: 1, max: 10000 },
+  ENTERTAINMENT_CAP_RATE: { labelTh: "เพดานค่ารับรองทั้งรอบบัญชี (ร้อยละของรายได้หรือทุนชำระแล้ว ที่มากกว่า)", unit: "BP", min: 1, max: 10000 },
+  ENTERTAINMENT_CAP_MAX: { labelTh: "เพดานค่ารับรองทั้งรอบบัญชีสูงสุด", unit: "SATANG", min: 1, max: 100_000_000_000 },
+  ENTERTAINMENT_GIFT_PER_PERSON: { labelTh: "ค่ารับรองที่เป็นสิ่งของ ไม่เกินคนละ (ต่อคราว)", unit: "SATANG", min: 1, max: 100_000_000 },
+  DONATION_CAP_RATE: { labelTh: "บริจาคสาธารณกุศลหักได้ไม่เกิน (ร้อยละของกำไรสุทธิ)", unit: "BP", min: 1, max: 10000 },
+  BAD_DEBT_TIER1_MAX: { labelTh: "หนี้สูญต่อราย ไม่เกินยอดนี้: ทวงถามตามสมควร + ฟ้องไม่คุ้ม", unit: "SATANG", min: 1, max: 100_000_000_000 },
+  BAD_DEBT_TIER2_MAX: { labelTh: "หนี้สูญต่อราย ไม่เกินยอดนี้: ฟ้องแล้วศาลรับคำฟ้อง (เกินนี้ต้องมีหมายบังคับคดี ฯลฯ)", unit: "SATANG", min: 1, max: 100_000_000_000 },
+  STAMP_HIRE_PER_1000: { labelTh: "อากรแสตมป์จ้างทำของ ต่อสินจ้างทุก 1,000 บาทหรือเศษ", unit: "SATANG", min: 1, max: 1_000_000 },
+  STAMP_LEASE_PER_1000: { labelTh: "อากรแสตมป์เช่าที่ดิน/โรงเรือน ต่อค่าเช่าทุก 1,000 บาทหรือเศษ", unit: "SATANG", min: 1, max: 1_000_000 },
+  STAMP_E_PAY_DAYS: { labelTh: "ตราสารอิเล็กทรอนิกส์: ชำระอากรภายใน (วันนับแต่วันถัดจากวันกระทำตราสาร)", unit: "DAYS", min: 1, max: 365 },
+  ANNUAL_FILING_REMIND_DAYS: { labelTh: "เตือนแบบรายปี (ภ.ง.ด.50/51/90/94 · ยื่นงบ) ล่วงหน้า", unit: "DAYS", min: 1, max: 90 },
 };
 export const isBookRule = (v: unknown): v is BookRule => typeof v === "string" && (BOOK_RULES as readonly string[]).includes(v);
 /** แถวตาราง "สมุดบัญชี" — value ตามหน่วยของกฎ (BOOK_RULE_META) */
@@ -166,6 +244,13 @@ export const FILING_FORM_LABEL_TH: Record<FilingForm, string> = {
   PND3: "ภ.ง.ด.3",
   PND53: "ภ.ง.ด.53",
   PND54: "ภ.ง.ด.54",
+  PND50: "ภ.ง.ด.50",
+  PND51: "ภ.ง.ด.51",
+  PND90: "ภ.ง.ด.90",
+  PND94: "ภ.ง.ด.94",
+  FS_PARTNERSHIP: "ยื่นงบการเงิน (ห้างหุ้นส่วนนิติบุคคล)",
+  FS_COMPANY: "ยื่นงบการเงิน (บริษัท)",
+  PP36: "ภ.พ.36",
 };
 export const FILING_CHANNEL_LABEL_TH: Record<FilingChannel, string> = { PAPER: "ยื่นแบบกระดาษ", ONLINE: "ยื่นทางอินเทอร์เน็ต" };
 
@@ -298,6 +383,9 @@ export const SYSTEM_WHT_ROWS: readonly WhtRateRow[] = [
 ];
 
 const dl = (id: string, r: Omit<FilingDeadlineRow, "id">): FilingDeadlineRow => ({ id, ...r });
+const TAX_REF_T5 = "references/domain-business-income-tax.md";
+const BOOKS_REF_T5 = "references/domain-accounting-books.md";
+const MOF_NET_SRC = "ประกาศกระทรวงการคลังเรื่องขยายเวลายื่นทางอินเทอร์เน็ต ฉ.7 รวมแก้ไขถึง ฉ.9 (แบบที่ต้องยื่น 1 ก.พ. 2567 – 31 ม.ค. 2570)";
 const PND_ONLINE_SRC = `${WHT_REF} §8 — ประกาศกระทรวงการคลังเรื่องขยายเวลายื่นทางอินเทอร์เน็ต ฉ.7: 15 วันนับแต่สิ้นเดือน สำหรับแบบที่ต้องยื่น 1 ก.พ. 2567 – 31 ม.ค. 2570`;
 const PND_PAPER_SRC = `${WHT_REF} §8 — ม.52 + ประกาศกระทรวงการคลัง ลว. 24 ก.ค. 2544: ภายใน 7 วันนับแต่วันสิ้นเดือนที่จ่าย`;
 
@@ -318,6 +406,56 @@ export const SYSTEM_DEADLINE_ROWS: readonly FilingDeadlineRow[] = [
       note: "หลัง 31 ม.ค. 2570 skill ยังไม่พบประกาศต่ออายุ — ค้นซ้ำ",
     }),
   ]),
+  // ── ACC T5.1 (เลน 2) ▸ แบบรายปี (references/domain-business-income-tax.md §ก2 §ข · domain-accounting-books.md §ก5) ──
+  //   แถวออนไลน์ = วันที่ขยายต่อจากกำหนดกระดาษ ใช้กับแบบที่ "ต้องยื่น" 1 ก.พ. 2567 – 31 ม.ค. 2570 (ประกาศ กค. ขยายเวลายื่นทางอินเทอร์เน็ต ฉ.7 รวมแก้ไขถึง ฉ.9)
+  //   หลัง 31 ม.ค. 2570 ไม่มีแถว (skill [U] — ภ.ง.ด.90 ปีภาษี 2569 ยื่น มี.ค. 2570 อยู่นอกช่วงแล้ว) ⇒ ไม่มีวันออนไลน์ ไม่เดา
+  dl("sys-dl-pnd50-paper", {
+    form: "PND50", channel: "PAPER", value: 150, from: null, to: null,
+    source: `${TAX_REF_T5} §ก2 — ประมวลรัษฎากร ม.68 ม.69: "ภายในหนึ่งร้อยห้าสิบวันนับแต่วันสุดท้ายของรอบระยะเวลาบัญชี" (นับเป็นวัน)`, tag: "V", checkedAt: "2026-11-13",
+  }),
+  dl("sys-dl-pnd50-online", {
+    form: "PND50", channel: "ONLINE", value: 8, from: "2024-02-01", to: "2027-01-31",
+    source: `${TAX_REF_T5} §ก2 — ${MOF_NET_SRC}: ภ.ง.ด.50 = 158 วัน`, tag: "V", checkedAt: "2026-11-13", note: "หลัง 31 ม.ค. 2570 ยังไม่มีประกาศรองรับ — ค้นซ้ำ",
+  }),
+  dl("sys-dl-pnd51-paper", {
+    form: "PND51", channel: "PAPER", value: 2, from: null, to: null,
+    source: `${TAX_REF_T5} §ก2 — ประมวลรัษฎากร ม.67 ทวิ: ภายใน 2 เดือนนับแต่วันสุดท้ายของ 6 เดือนแรกของรอบระยะเวลาบัญชี`, tag: "V", checkedAt: "2026-11-13",
+  }),
+  dl("sys-dl-pnd51-online", {
+    form: "PND51", channel: "ONLINE", value: 8, from: "2024-02-01", to: "2027-01-31",
+    source: `${TAX_REF_T5} §ก2 — ${MOF_NET_SRC}: ภ.ง.ด.51 = 2 เดือน 8 วัน`, tag: "V", checkedAt: "2026-11-13", note: "หลัง 31 ม.ค. 2570 ยังไม่มีประกาศรองรับ — ค้นซ้ำ",
+  }),
+  dl("sys-dl-pnd90-paper", {
+    form: "PND90", channel: "PAPER", value: 3, from: null, to: null,
+    source: `${TAX_REF_T5} §ข — ประมวลรัษฎากร ม.56: ภายในเดือนมีนาคมของปีถัดไป`, tag: "V", checkedAt: "2026-11-13",
+  }),
+  dl("sys-dl-pnd90-online", {
+    form: "PND90", channel: "ONLINE", value: 8, from: "2024-02-01", to: "2027-01-31",
+    source: `${TAX_REF_T5} §ข — ${MOF_NET_SRC}: ภ.ง.ด.90 ออนไลน์ถึง 8 เม.ย.`, tag: "V", checkedAt: "2026-11-13", note: "ภ.ง.ด.90 ปีภาษี 2569 (ยื่น มี.ค. 2570) อยู่นอกช่วงประกาศ — ค้นซ้ำ",
+  }),
+  dl("sys-dl-pnd94-paper", {
+    form: "PND94", channel: "PAPER", value: 3, from: null, to: null,
+    source: `${TAX_REF_T5} §ข — ประมวลรัษฎากร ม.56 ทวิ: เงินได้ ม.40(5)–(8) ที่ได้รับ ม.ค.–มิ.ย. ยื่นภายในเดือนกันยายน`, tag: "V", checkedAt: "2026-11-13",
+  }),
+  dl("sys-dl-pnd94-online", {
+    form: "PND94", channel: "ONLINE", value: 8, from: "2024-02-01", to: "2027-01-31",
+    source: `${TAX_REF_T5} §ข — ${MOF_NET_SRC}: ภ.ง.ด.94 ออนไลน์ถึง 8 ต.ค.`, tag: "V", checkedAt: "2026-11-13", note: "หลัง 31 ม.ค. 2570 ยังไม่มีประกาศรองรับ — ค้นซ้ำ",
+  }),
+  dl("sys-dl-fs-partnership", {
+    form: "FS_PARTNERSHIP", channel: "PAPER", value: 5, from: null, to: null,
+    source: `${BOOKS_REF_T5} §ก5 — พ.ร.บ.การบัญชี พ.ศ. 2543 ม.11: ห้างหุ้นส่วนจดทะเบียน ยื่นงบภายใน 5 เดือนนับแต่วันปิดบัญชี (DBD e-Filing)`, tag: "V", checkedAt: "2026-11-13",
+  }),
+  dl("sys-dl-fs-company", {
+    form: "FS_COMPANY", channel: "PAPER", value: 1, from: null, to: null,
+    source: `${BOOKS_REF_T5} §ก5 — พ.ร.บ.การบัญชี พ.ศ. 2543 ม.11: บริษัทจำกัด ยื่นงบภายใน 1 เดือนนับแต่วันที่ที่ประชุมใหญ่อนุมัติงบ (DBD e-Filing)`, tag: "V", checkedAt: "2026-11-13",
+    note: "ระบบไม่รู้วันประชุมใหญ่ — ปฏิทินแสดงเป็นข้อความ ไม่คำนวณวันที่",
+  }),
+  // ── ACC T5.6 ▸ ภ.พ.36 — skill บอกเฉพาะวันออนไลน์ (15 วันนับแต่สิ้นเดือน ช่วงประกาศ) · วันกระดาษไม่ระบุ ⇒ ไม่มีแถวกระดาษ (ไม่เดา) ──
+  dl("sys-dl-pp36-online", {
+    form: "PP36", channel: "ONLINE", value: 15, from: "2024-02-01", to: "2027-01-31",
+    source: `${WHT_REF} §8 — ${MOF_NET_SRC}: ภ.ง.ด.1, 2, 3, 53, 54 และ ภ.พ.36 ยื่นทางอินเทอร์เน็ตภายใน 15 วันนับแต่สิ้นเดือน`, tag: "V", checkedAt: "2026-11-13",
+    note: "วันยื่นแบบกระดาษของ ภ.พ.36 skill ไม่ได้ระบุ — ไม่มีแถว",
+  }),
 ];
 
 // ═══════════════════ T1.4 / T1.5 ภาษีซื้อ (แถวระบบ — ร้านไม่ทับ เพราะเป็นตัวบท [V]) ═══════════════════
@@ -402,6 +540,21 @@ export const SYSTEM_BOOK_ROWS: readonly BookRuleRow[] = [
   br("sys-dep-other", "DEP_MAX_RATE_OTHER", 2000, `${TAX_REF_T4} §ก5 — ${RD_145} ม.4: "ทรัพย์สินอย่างอื่น…นอกจากที่ดินและสินค้า ร้อยละ 20"`),
   br("sys-dep-computer", "DEP_COMPUTER_MIN_PERIODS", 3, `${TAX_REF_T4} §ก5 — ${RD_145} ม.4 จัตวา: คอมพิวเตอร์ อุปกรณ์ โปรแกรม หักได้ภายใน 3 รอบระยะเวลาบัญชี`),
   br("sys-dep-car-cap", "DEP_PASSENGER_CAR_COST_CAP", 100_000_000, `${TAX_REF_T4} §ก5 — ${RD_145} ม.5: รถยนต์นั่ง/รถยนต์โดยสารไม่เกิน 10 ที่นั่ง ฐานคิดค่าเสื่อมไม่เกิน 1,000,000 บาท · ม.65 ตรี (20) + พ.ร.ฎ.315`),
+
+  // ── ACC T5 (เลน 2) ▸ T5.3 เกณฑ์จด VAT · T5.5 ค่ารับรอง/บริจาค · T5.7 หนี้สูญ · T5.6 อากรแสตมป์ · T5.1 ตัวเตือนรายปี ──
+  br("sys-vat-reg-threshold", "VAT_REG_THRESHOLD", 180_000_000, `references/common-vat-invoice.md §1 — ม.81/1 + พ.ร.ฎ. (ฉบับที่ 432) พ.ศ. 2548 ม.4: มูลค่าฐานภาษี "ไม่เกินหนึ่งล้านแปดแสนบาทต่อปี" (https://www.rd.go.th/22674.html) · ปี = ปีปฏิทิน (บุคคลธรรมดา) / รอบระยะเวลาบัญชี (นิติบุคคล)`),
+  br("sys-vat-reg-within", "VAT_REG_WITHIN_DAYS", 30, `references/common-vat-invoice.md §1 — ม.85/1(1)(ก): ยื่นจด "ภายในสามสิบวันนับแต่วันที่มูลค่าของฐานภาษีในการประกอบกิจการเกิน"`),
+  { id: "sys-vat-reg-near", rule: "VAT_REG_NEAR_RATIO", value: 8000, from: null, to: null, source: "ค่าเริ่มต้นของระบบ — skill บอกแค่ \"เตือนเมื่อใกล้เกณฑ์\" ไม่กำหนดว่าใกล้แค่ไหน (SKILL.md §4 · audit-checklist A9)", tag: "S", checkedAt: "2026-11-13", note: "ร้านปรับได้" },
+  br("sys-ent-cap-rate", "ENTERTAINMENT_CAP_RATE", 30, `references/domain-business-income-tax.md §ก4 (4) — กฎกระทรวง ฉบับที่ 143: รวมทั้งรอบ "ไม่เกินร้อยละ 0.3" ของรายได้/ยอดขาย หรือของทุนชำระแล้ว ณ สิ้นรอบ แล้วแต่อย่างใดมากกว่า (https://www.rd.go.th/2495.html)`, "ต้องมีผู้อนุมัติและใบรับ · ภาษีซื้อค่ารับรองนับรวมในเพดานไหมยังไม่ยืนยัน"),
+  br("sys-ent-cap-max", "ENTERTAINMENT_CAP_MAX", 1_000_000_000, `references/domain-business-income-tax.md §ก4 (4) — กฎกระทรวง ฉบับที่ 143: สูงสุด 10 ล้านบาท`),
+  br("sys-ent-gift", "ENTERTAINMENT_GIFT_PER_PERSON", 200_000, `references/domain-business-income-tax.md §ก4 (4) — กฎกระทรวง ฉบับที่ 143: สิ่งของ "ไม่เกินคนละ 2,000 บาท ในแต่ละคราว"`),
+  br("sys-donation-cap", "DONATION_CAP_RATE", 200, `references/domain-business-income-tax.md §ก4 (3) — ม.65 ตรี (3): สาธารณกุศลไม่เกินร้อยละ 2 ของกำไรสุทธิ (+ การศึกษา/กีฬา อีกไม่เกินร้อยละ 2)`),
+  br("sys-bad-debt-t1", "BAD_DEBT_TIER1_MAX", 20_000_000, `references/domain-business-income-tax.md §ก6 — กฎกระทรวง ฉบับที่ 186 แก้โดย ฉบับที่ 374 (รอบที่เริ่มในหรือหลัง 1 ม.ค. 2563): ไม่เกิน 200,000 บาทต่อราย มีหลักฐานทวงถามตามสมควรและฟ้องไม่คุ้ม (https://www.rd.go.th/2483.html)`),
+  br("sys-bad-debt-t2", "BAD_DEBT_TIER2_MAX", 200_000_000, `references/domain-business-income-tax.md §ก6 — กฎกระทรวง ฉบับที่ 186/374: ไม่เกิน 2,000,000 บาท ฟ้องแล้วศาลรับคำฟ้อง · เกิน 2,000,000 ต้องมีหมายบังคับคดี ฯลฯ`),
+  br("sys-stamp-hire", "STAMP_HIRE_PER_1000", 100, `references/domain-accounting-books.md §ง5 — บัญชีอัตราอากรแสตมป์ ลักษณะ 4 จ้างทำของ: 1 บาทต่อ 1,000 บาทหรือเศษของสินจ้าง · ผู้รับจ้างเสีย (https://www.rd.go.th/6162.html)`),
+  br("sys-stamp-lease", "STAMP_LEASE_PER_1000", 100, `references/domain-accounting-books.md §ง5 — บัญชีอัตราอากรแสตมป์ ลักษณะ 1 เช่าที่ดิน/โรงเรือน: 1 บาทต่อ 1,000 บาทหรือเศษของค่าเช่าตลอดอายุสัญญา · ผู้ให้เช่าเสีย`),
+  br("sys-stamp-e-days", "STAMP_E_PAY_DAYS", 15, `references/domain-accounting-books.md §ง5 — ประกาศอธิบดีฯ เกี่ยวกับอากรแสตมป์ ฉบับที่ 66 แก้โดยฉบับที่ 68: ตราสารอิเล็กทรอนิกส์ชำระ (อ.ส.9) "ก่อนกระทำตราสาร หรือภายในสิบห้าวัน นับแต่วันถัดจากวันกระทำตราสาร"`),
+  { id: "sys-annual-remind", rule: "ANNUAL_FILING_REMIND_DAYS", value: 14, from: null, to: null, source: "ค่าเริ่มต้นของระบบ — skill ไม่กำหนดวันเตือนล่วงหน้าของแบบรายปี (ภ.พ.30/ภ.ง.ด. รายเดือนเตือนล่วงหน้า 5 วันตามเดิม)", tag: "S", checkedAt: "2026-11-13", note: "ร้านปรับได้" },
 ];
 
 export const SYSTEM_ROWS: { [K in LegalTableKind]: readonly LegalRowOf<K>[] } = {
@@ -420,6 +573,7 @@ export function bookRuleValueLabel(rule: BookRule, value: number | null): string
   if (u === "MONTHS") return `${value} เดือน`;
   if (u === "PERIODS") return `${value} รอบบัญชี`;
   if (u === "SATANG") return `${(value / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })} บาท`;
+  if (u === "BP") return `${value / 100}%`;
   return `${value / 100}% ต่อปี`;
 }
 
@@ -489,7 +643,10 @@ export function pickLegalRow<K extends LegalTableKind>(
 }
 
 const fmtVal = (kind: LegalTableKind, r: RowBase & { method?: WhtMethod }): string => {
-  if (kind === "deadline") return `วันที่ ${r.value ?? "-"}`;
+  if (kind === "deadline") {
+    const d = r as unknown as FilingDeadlineRow;
+    return FILING_FORM_META[d.form]?.cadence === "ANNUAL" ? deadlineValueLabelTh(d.form, d.channel, r.value) : `วันที่ ${r.value ?? "-"}`;
+  }
   if (kind === "book") return bookRuleValueLabel((r as unknown as BookRuleRow).rule, r.value);
   if (r.method && r.method !== "RATE") return WHT_METHOD_LABEL_TH[r.method];
   return r.value === null ? "-" : `${r.value / 100}%`;
@@ -727,3 +884,41 @@ export const SYSTEM_WHT_FORM_ROWS: readonly WhtFormRow[] = [
   wf("sys-whtform-fi-50-1", { incomeTypes: ["M40_1", "M40_2"], recipient: "FOREIGN_INDIVIDUAL", form: "PND1", certBox: 1, annualForm: "PND1K", source: `${WHT_REF} §5 (ม.50(1) ว.สี่ ร้อยละ 15 · ค่าเริ่มต้นไม่หัก) — แหล่งไม่ระบุแบบ`, tag: "U", checkedAt: "2026-11-13", note: "ไม่พบแหล่งที่ระบุแบบของผู้รับประเภทนี้" }),
   wf("sys-whtform-fi-any", { incomeTypes: "ANY", recipient: "FOREIGN_INDIVIDUAL", form: "PND3", certBox: 4, source: `${WHT_REF} §1 — แหล่งไม่ระบุแบบของผู้รับบุคคลธรรมดาต่างประเทศ`, tag: "U", checkedAt: "2026-11-13", note: "ไม่พบแหล่งที่ระบุแบบของผู้รับประเภทนี้" }),
 ];
+
+// ═══════════════════ ACC T5.5 (เลน 2) ▸ อนุมาตรารายจ่ายต้องห้าม ม.65 ตรี (ธงต่อบัญชี "อาจต้องบวกกลับ") ═══════════════════
+// skill references/domain-business-income-tax.md §ก4 [V ทั้งตาราง] · scope FULL = บวกกลับทั้งจำนวน · EXCESS = เฉพาะส่วนเกินเพดาน (ระบบคำนวณเฉพาะค่ารับรอง)
+export type TaxAddBackSection = { code: string; labelTh: string; sectionTh: string; scope: "FULL" | "EXCESS"; source: string; tag: LegalTag; checkedAt: Ymd };
+const AB_SRC = "references/domain-business-income-tax.md §ก4";
+export const TAX_ADD_BACK_SECTIONS: readonly TaxAddBackSection[] = [
+  { code: "S65TRI_1", labelTh: "เงินสำรอง / ค่าเผื่อ / ประมาณการหนี้สิน", sectionTh: "ม.65 ตรี (1)", scope: "FULL", source: `${AB_SRC} (1)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_3", labelTh: "รายจ่ายส่วนตัว · ให้โดยเสน่หา · การกุศล (สาธารณกุศลหักได้ไม่เกินเพดาน)", sectionTh: "ม.65 ตรี (3)", scope: "EXCESS", source: `${AB_SRC} (3)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_4", labelTh: "ค่ารับรองส่วนที่เกินเพดาน", sectionTh: "ม.65 ตรี (4) · กฎกระทรวง ฉบับที่ 143", scope: "EXCESS", source: `${AB_SRC} (4)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_5", labelTh: "รายจ่ายลักษณะลงทุน / ต่อเติมปรับปรุง", sectionTh: "ม.65 ตรี (5)", scope: "FULL", source: `${AB_SRC} (5)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_6", labelTh: "เบี้ยปรับ เงินเพิ่มภาษี ค่าปรับอาญา ภาษีเงินได้นิติบุคคล", sectionTh: "ม.65 ตรี (6)", scope: "FULL", source: `${AB_SRC} (6)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_6BIS", labelTh: "ภาษีซื้อต้องห้ามที่เป็นรายจ่ายไม่ได้", sectionTh: "ม.65 ตรี (6 ทวิ)", scope: "FULL", source: `${AB_SRC} (6 ทวิ)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_9", labelTh: "รายจ่ายที่ไม่ได้จ่ายจริง / รายจ่ายของรอบอื่น", sectionTh: "ม.65 ตรี (9)", scope: "FULL", source: `${AB_SRC} (9)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_13", labelTh: "รายจ่ายที่มิใช่เพื่อหากำไรหรือเพื่อกิจการ", sectionTh: "ม.65 ตรี (13)", scope: "FULL", source: `${AB_SRC} (13)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_17", labelTh: "ค่าทรัพย์สินที่ตีราคาต่ำลง (ด้อยค่า)", sectionTh: "ม.65 ตรี (17)", scope: "FULL", source: `${AB_SRC} (17)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_18", labelTh: "รายจ่ายที่พิสูจน์ไม่ได้ว่าใครเป็นผู้รับ", sectionTh: "ม.65 ตรี (18)", scope: "FULL", source: `${AB_SRC} (18)`, tag: "V", checkedAt: "2026-11-13" },
+  { code: "S65TRI_20", labelTh: "รถยนต์นั่ง ≤10 ที่นั่ง ส่วนที่เกินเพดาน (ต้นทุน/ค่าเช่า)", sectionTh: "ม.65 ตรี (20) · พ.ร.ฎ. ฉบับที่ 315", scope: "EXCESS", source: `${AB_SRC} (20)`, tag: "V", checkedAt: "2026-11-13" },
+];
+export const TAX_ADD_BACK_NONE = "NONE";
+export function taxAddBackSectionOf(code: string | null | undefined): TaxAddBackSection | null {
+  return TAX_ADD_BACK_SECTIONS.find((s) => s.code === code) ?? null;
+}
+/** ค่าเริ่มต้นตามรหัสบัญชีของผังบัญชีระบบ (คอลัมน์ taxAddBack = null) — 6970 ภาษีที่ออกแทนผู้รับ [U] ไม่ติดธงอัตโนมัติ */
+export const TAX_ADD_BACK_DEFAULT_BY_CODE: Readonly<Record<string, string>> = {
+  "6930": "S65TRI_4",
+  "6940": "S65TRI_20",
+  "6960": "S65TRI_6BIS",
+  "6710": "S65TRI_1",
+  "6980": "S65TRI_3",
+  "6985": "S65TRI_6",
+  "6990": "S65TRI_6",
+};
+/** ธงที่มีผลของบัญชี: คอลัมน์ (ร้านตั้ง/ปลด) ชนะ · null = ค่าเริ่มต้นตามรหัส */
+export function effectiveTaxAddBack(ledger: { code: string; taxAddBack: string | null }): string | null {
+  if (ledger.taxAddBack === TAX_ADD_BACK_NONE) return null;
+  if (ledger.taxAddBack) return ledger.taxAddBack;
+  return TAX_ADD_BACK_DEFAULT_BY_CODE[ledger.code] ?? null;
+}

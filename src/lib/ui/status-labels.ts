@@ -167,4 +167,5 @@ export const PAY_CHANNEL_LABEL: Record<string, string> = {
   DEPOSIT_APPLY: "หักมัดจำ",
   CREDIT_APPLY: "หักเครดิต",
   OTHER: "อื่นๆ",
+  BAD_DEBT: "ตัดหนี้สูญ",
 };

@@ -82,6 +82,7 @@ enum AccountPayChannel {
   DEPOSIT_APPLY
   CREDIT_APPLY
   OTHER
+  BAD_DEBT // ACC T5.7: ตัดหนี้สูญ (ไม่มีเงินเข้า · ไม่ออกใบเสร็จ)
 }
 
 enum AccountContactKind {
@@ -184,6 +185,7 @@ model AccountDocument {
   pdfUrl          String?
   publicToken     String?               @unique // ลิงก์สาธารณะ
   acceptedAt      DateTime? // ใบเสนอราคา accepted
+  stampDutyRef    String? // ACC T5.6: รหัสรับรองการเสียอากรแสตมป์ (อ.ส.9) ของใบเสนอราคา/ใบสั่งซื้อที่เป็นสัญญาจ้างทำของ
   approvedById    String? // PO/APO: ผู้อนุมัติ
   replacedById    String?               @unique // ใบใหม่ที่ออกแทน (คู่ relation REPLACE)
   voidedAt        DateTime?

@@ -40,6 +40,8 @@ import {
   WHT_GROSS_UP_FORMULAS,
   BOOK_RULE_META,
   bookRuleValueLabel,
+  deadlineValueLabelTh,
+  FILING_FORM_META,
   type BookRule,
   type BookRuleRow,
   type WhtGrossUpFormula,
@@ -415,7 +417,7 @@ function dimsLabelOf(kind: LegalTableKind, r: Record<string, unknown>): string {
 }
 
 function valueLabelOf(kind: LegalTableKind, r: { value: number | null; method?: WhtMethod; rule?: BookRule }): string {
-  if (kind === "deadline") return `ภายในวันที่ ${r.value} ของเดือนถัดไป`;
+  if (kind === "deadline") return deadlineValueLabelTh((r as FilingDeadlineRow).form, (r as FilingDeadlineRow).channel, r.value); // ACC T5.1 ▸ แบบรายปี ◂
   if (kind === "book") return r.rule ? bookRuleValueLabel(r.rule, r.value) : String(r.value);
   if (r.method && r.method !== "RATE") return WHT_METHOD_LABEL_TH[r.method];
   return r.value === null ? "-" : `${r.value / 100}%`;

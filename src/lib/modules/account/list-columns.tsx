@@ -47,6 +47,7 @@ export const PAY_CHANNEL_LABEL: Record<AccountPayChannel, string> = {
   DEPOSIT_APPLY: "หักมัดจำ",
   CREDIT_APPLY: "หักเครดิต",
   OTHER: "อื่น ๆ",
+  BAD_DEBT: "ตัดหนี้สูญ",
 };
 
 export function rowStatusLabel(status: AccountDocStatus, row?: { docType?: string; grandTotal: number; depositOutcome?: unknown }): string {

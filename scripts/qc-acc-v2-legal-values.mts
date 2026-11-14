@@ -38,7 +38,9 @@ const book = (entityKind = "UNSET", shop: Partial<{ vat: Any[]; wht: Any[]; dead
 // ═══ L1 แถวระบบ = skill เท่านั้น ═══
 const SKILL_DIR = "/root/.claude/skills/shark-thai-law/references";
 const allSys: Any[] = [...TH.SYSTEM_VAT_ROWS, ...TH.SYSTEM_WHT_ROWS, ...TH.SYSTEM_DEADLINE_ROWS];
-chk("L1.1", "ทุกแถวระบบมีที่มา references/<ไฟล์>.md §<ข้อ>", allSys.every((r) => /^references\/[a-z-]+\.md §\d+/.test(r.source)), "ครบ", allSys.filter((r) => !/^references\/[a-z-]+\.md §\d+/.test(r.source)).map((r) => r.id));
+// ORACLE-EDIT (ACC T5.1 · เลน 2): ไฟล์บัญชี/ภาษีธุรกิจของ skill ใช้เลขข้อเป็นอักษรไทย (§ก2 · §ข · §ก5) — แถวกำหนดยื่นรายปีอ้างไฟล์เหล่านั้น ⇒ ยอมรับ § ตามด้วยเลขหรืออักษรไทย (เดิมรับเฉพาะตัวเลข)
+const SRC_RE = /^references\/[a-z-]+\.md §[\dก-ฮ]+/;
+chk("L1.1", "ทุกแถวระบบมีที่มา references/<ไฟล์>.md §<ข้อ>", allSys.every((r) => SRC_RE.test(r.source)), "ครบ", allSys.filter((r) => !SRC_RE.test(r.source)).map((r) => r.id));
 chk("L1.2", "ไม่มีแถวระบบป้าย U/S (ค่า [U] ห้าม seed เป็นข้อเท็จจริง)", allSys.every((r) => r.tag === "V" || r.tag === "V2"), "V/V2", allSys.filter((r) => r.tag !== "V" && r.tag !== "V2").map((r) => `${r.id}:${r.tag}`));
 chk("L1.3", "ทุกแถวระบบมีวันที่ตรวจ", allSys.every((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.checkedAt ?? "")), "มี", allSys.filter((r) => !r.checkedAt).map((r) => r.id));
 let skillOk = true;

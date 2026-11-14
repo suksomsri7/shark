@@ -14,6 +14,7 @@ import {
   FILING_CHANNELS,
   FILING_CHANNEL_LABEL_TH,
   FILING_FORMS,
+  deadlineValueInRange,
   FILING_FORM_LABEL_TH,
   LEGAL_TAGS,
   WHT_CHANNELS,
@@ -83,9 +84,11 @@ export const WHT_ROW_SCHEMA = z
   .refine(rangeOk, RANGE_MSG)
   .refine((r) => (r.method === "RATE") === (r.value !== null), "อัตราคงที่ต้องมีตัวเลข · ไม่หัก/อัตราก้าวหน้าไม่มีตัวเลข");
 export const DEADLINE_ROW_SCHEMA = z
-  .object({ ...rowBase, value: z.number().int().min(1).max(31), form: z.enum(FILING_FORMS), channel: z.enum(FILING_CHANNELS) })
+  .object({ ...rowBase, value: z.number().int().min(0).max(400), form: z.enum(FILING_FORMS), channel: z.enum(FILING_CHANNELS) })
   .strict()
-  .refine(rangeOk, RANGE_MSG);
+  .refine(rangeOk, RANGE_MSG)
+  // ACC T5.1 ▸ ช่วงค่าตามชนิดแบบ (รายเดือน = วันที่ 1–31 · รายปี = วัน/เดือนนับจากจุดตั้งต้น · ออนไลน์รายปี = วันขยาย) ◂
+  .refine((r) => deadlineValueInRange(r.form, r.channel, r.value), "ค่าอยู่นอกช่วงของแบบนี้");
 
 /** ACC T4 ▸ แถวตาราง "สมุดบัญชี/ค่าเสื่อม/รอบบัญชี" — ช่วงค่าตามหน่วยของกฎ (รูปแบบข้อมูล ไม่ใช่ค่ากฎหมาย) ◂ */
 export const BOOK_ROW_SCHEMA = z
