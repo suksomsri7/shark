@@ -47,3 +47,7 @@
 - เลน b เริ่มหลัง CAL1.1 merge: CAL1.3 → 1.7 → 1.8
 
 - 14 พ.ย. เลน a แก้ตามรีวิวอิสระ `ledger/cal-briefs/cal-review-a.md` (B1 · M1–M5 · m2–m4 · m6 · m7 · m1/m5/m8 บันทึก) — a70751de3 · 4a78330b1 · สัญญา §15 D-A25…36
+
+| CAL3.1 ถดถอยรวม | ✅ 15 พ.ย. บน a394eddd7 | typecheck server+mobile · qc-cal-1.1…1.9 · qc-ai-skills/tools/eval · qc-sec-s1.2/1.3b/1.5/1.6/1.10/s3a1-r2 · fitness — 21/21 EXIT 0 · log /root/qc/cal/regression-cal3.1.log |
+| CAL3.2 เครื่องจริง | ⏳ รอ build (เจ้าของสั่ง) + ตรวจ APNs th.in.shark.ai (R-CAL-14) + บัญชี Google ทดสอบ | |
+| CAL3.3 คำสั่งเจ้าของ | ⏳ build · push main · migrate prod 5 ไฟล์ · ยื่น Google | |
