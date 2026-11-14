@@ -1,6 +1,6 @@
 // hunt-1 — A1.3a concurrency (≥ 20-way): ensure tiers · create cards vs cardsPerOwner · ACTIVATE overlapping cards · CAS on rates · overlap race · set tier
 // run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-a1.3-hunt-1.mts
-import { huntSetup, NOW, type Rec } from "./probe-trips-a1.3-hunt-lib.mts";
+import { huntSetup, NOW, type Rec } from "./probe-trips-a1.3-hunt-lib.mjs"; // PROBE-EDIT (typecheck): .mts → .mjs (TS5097 · tsx maps .mjs → .mts)
 
 const H = await huntSetup("probe-a1.3-hunt-1");
 const { call, check, fmt, q, R } = H;
@@ -123,7 +123,8 @@ try {
     const rs = await Promise.all(Array.from({ length: N }, (_, i) => call("setAgentRateActive", A.ctx(), { cardId: c.id, expectedVersion: c.version, rateId: c.rateIds[0], active: i % 2 === 0 ? false : true }, { now: NOW })));
     const a1 = await H.auditCount(A.id, "agency.rate.%activate");
     const t = tally(rs);
-    check("C8 setAgentRateActive ×20 same version → 1 ok · 19 STALE · audit 1 · version+1", t.ok === 1 && t["STALE:"] === 19 && a1 - a0 === 1 && (await ver(c.id)) === c.version + 1, "1/19/1/+1", `tally ${fmt(t)} audit +${a1 - a0} version ${await ver(c.id)} from ${c.version}`);
+    // PROBE-EDIT (มติ Z9): ขอค่าเดิม (active เท่าที่เป็นอยู่ ณ ตอนอ่าน) = ผลซ้ำ ไม่เพิ่ม version ไม่เขียน audit ⇒ ที่เหลือ 19 ต้องเป็น STALE หรือ replayed เท่านั้น
+    check("C8 setAgentRateActive ×20 same version → 1 real ok · 19 STALE/replayed · audit 1 · version+1", t.ok === 1 && (t["STALE:"] ?? 0) + (t["ok-replayed"] ?? 0) === 19 && Object.keys(t).every((k) => ["ok", "STALE:", "ok-replayed"].includes(k)) && a1 - a0 === 1 && (await ver(c.id)) === c.version + 1, "1 / 19 STALE|replayed / 1 / +1", `tally ${fmt(t)} audit +${a1 - a0} version ${await ver(c.id)} from ${c.version}`);
   }
 
   // ── 9. ARCHIVE vs upsert vs ACTIVATE on the same version ──

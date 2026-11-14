@@ -1,6 +1,6 @@
 // hunt-3 — A1.3a isolation (shop B ids in every shop-A service · restricted staff · forged ctx) + dangerous input (numbers · extra keys · names · try inputs)
 // run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-a1.3-hunt-3.mts
-import { huntSetup, NOW, type Rec } from "./probe-trips-a1.3-hunt-lib.mts";
+import { huntSetup, NOW, type Rec } from "./probe-trips-a1.3-hunt-lib.mjs"; // PROBE-EDIT (typecheck): .mts → .mjs (TS5097 · tsx maps .mjs → .mts)
 
 const H = await huntSetup("probe-a1.3-hunt-3");
 const { call, check, fmt, R, q } = H;
@@ -155,7 +155,8 @@ try {
     ["bookTo < bookFrom", pct(1, { productId: PA.id, bookFrom: "2027-01-02", bookTo: "2027-01-01" }), "BAD_RANGE"],
     ["productId with SQL", pct(1, { productId: "x' OR '1'='1" }), "BAD_INPUT"],
     ["productId 65 chars", pct(1, { productId: "a".repeat(65) }), "BAD_INPUT"],
-    ["proto-polluted rate", JSON.parse(`{"productKind":"TRIP","productId":"${PA.id}","mode":"COMMISSION_PCT","valueBp":1,"__proto__":{"tenantId":"${SB.id}"}}`) as Rec, "BAD_INPUT|OK"],
+    // PROBE-EDIT (มติ Z2): เดิมคีย์มิติชนแถวตั้งต้นของ card (ไม่มีวัน) ⇒ RATE_OVERLAP ตามมติ — ย้ายไปช่วงของตัวเอง (2030-06-01 · ไม่ซ้อนแถว -0 ที่เปิดปลาย 2031-01-01..) เพื่อยังทดสอบ __proto__ ได้
+    ["proto-polluted rate", JSON.parse(`{"productKind":"TRIP","productId":"${PA.id}","mode":"COMMISSION_PCT","valueBp":1,"travelFrom":"2030-06-01","travelTo":"2030-06-01","__proto__":{"tenantId":"${SB.id}"}}`) as Rec, "BAD_INPUT|OK"],
     ["id unknown (upsert by id)", { id: NOPE, ...pct(1, { productId: PA.id }) }, "NOT_FOUND"],
     ["id number", { id: 5, ...pct(1, { productId: PA.id }) }, "BAD_INPUT"],
   ];
@@ -193,7 +194,8 @@ try {
   }
   for (const [what, inp] of [["card validFrom 0000-01-01", { owner: { kind: "TIER", tierCode: "B" }, name: "y0", validFrom: "0000-01-01" }], ["card validTo 0000-12-31", { owner: { kind: "TIER", tierCode: "B" }, name: "y0b", validTo: "0000-12-31" }]] as const) {
     const r = await call("createAgentRateCard", SA.ctx(), inp, { now: NOW });
-    check(`I ${what} → VALIDATION (not BUSY/ops ERROR)`, r.ok === false && r.code === "VALIDATION" || r.ok === true, "VALIDATION BAD_INPUT (or accepted)", fmt(r));
+    // PROBE-EDIT (มติ Z8): ปี 0000 นอก 1900–2200 ⇒ ต้อง VALIDATION BAD_INPUT (ไม่ยอมรับอีกแล้ว)
+    check(`I ${what} → VALIDATION BAD_INPUT (not BUSY/ops ERROR)`, r.ok === false && r.code === "VALIDATION" && r.reason === "BAD_INPUT", "VALIDATION BAD_INPUT", fmt(r));
   }
   const formula: string[] = [];
   for (const name of ["=HYPERLINK(\"http://evil\",\"x\")", "+cmd|' /C calc'!A0", "@SUM(1+1)", "-2+3"]) {
@@ -210,7 +212,7 @@ try {
     ["pax qty 100000 (amount overflow)", { ...tryBase, pax: [{ paxTypeId: PA.pt.ADULT, qty: 100_000 }] }, "VALIDATION"],
     ["pax empty", { ...tryBase, pax: [] }, "BAD_INPUT"],
     ["at garbage", { ...tryBase, at: "yesterday-ish" }, "BAD_INPUT"],
-    ["at far future 9999", { ...tryBase, at: "9999-12-31T23:59:59Z" }, "OK|VALIDATION"],
+    ["at far future 9999", { ...tryBase, at: "9999-12-31T23:59:59Z" }, "BAD_INPUT"], // PROBE-EDIT (มติ Z8): ปีนอก 1900–2200 ⇒ BAD_INPUT
     ["agentDiscountSatang 2^31", { ...tryBase, agentDiscountSatang: big }, "BAD_INPUT"],
     ["agentDiscountSatang over cap", { ...tryBase, agentDiscountSatang: 2_000_000 }, "VALIDATION"],
     ["actualSaleSatang NaN", { ...tryBase, actualSaleSatang: NaN }, "BAD_INPUT"],

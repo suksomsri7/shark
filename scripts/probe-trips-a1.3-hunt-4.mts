@@ -1,12 +1,13 @@
 // hunt-4 — A1.3a money (seeded random × own reference in integer satang) · try = real path (bytes) · try writes nothing · snapshot stable · try ctx cannot be forged
 // run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-a1.3-hunt-4.mts [cases=1500]
-import { huntSetup, NOW, ADULT, CHILD, PARK_ADULT, PARK_CHILD, type Rec } from "./probe-trips-a1.3-hunt-lib.mts";
+import { huntSetup, NOW, ADULT, CHILD, PARK_ADULT, PARK_CHILD, type Rec } from "./probe-trips-a1.3-hunt-lib.mjs"; // PROBE-EDIT (typecheck): .mts → .mjs (TS5097 · tsx maps .mjs → .mts)
 
 const H = await huntSetup("probe-a1.3-hunt-4");
 const { call, check, fmt, R } = H;
 const CASES = Number(process.argv.find((a) => /^cases=\d+$/.test(a))?.slice(6) ?? 1500);
-const halfUp = (num: bigint, den: bigint) => (2n * num + den) / (2n * den);
-const bp = (amt: number, rate: number) => Number(halfUp(BigInt(amt) * BigInt(rate), 10_000n));
+// PROBE-EDIT (typecheck): BigInt literal → BigInt() (TS2737 target ES2017)
+const halfUp = (num: bigint, den: bigint) => (BigInt(2) * num + den) / (BigInt(2) * den);
+const bp = (amt: number, rate: number) => Number(halfUp(BigInt(amt) * BigInt(rate), BigInt(10_000)));
 const rng = (seed: number) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const rnd = rng(0xa13);
 const ri = (lo: number, hi: number) => lo + Math.floor(rnd() * (hi - lo + 1));
@@ -51,6 +52,7 @@ try {
     const base = seat;
     const C = k.mode === "COMMISSION_PCT" ? bp(base, Number(first.valueBp)) : k.mode === "COMMISSION_FIXED" ? Number(first.valueMinor) * (k.a + k.c) : 0;
     const W = wht.applies === true && wht.mode === "RATE" && typeof wht.rateBp === "number" && (wht.continuous === "EVERY_PAYMENT" || C >= Number(wht.minPerContractSatang)) ? bp(C, wht.rateBp) : 0;
+    if (C > base) return { fail: "COMMISSION_EXCEEDS_PAYABLE" }; // PROBE-EDIT (มติ Z4): คอมฯ รวม > ฐานคอมฯ ⇒ ปฏิเสธ (ตรวจก่อน gross-up)
     const remit = payable - C + (wht.grossUp === true ? W : 0);
     if (remit < 0) return { fail: "COMMISSION_EXCEEDS_PAYABLE" };
     let earns = C;
@@ -58,7 +60,7 @@ try {
       const minSell = first.minSellMinor !== null && first.minSellMinor !== undefined ? Number(first.minSellMinor) : typeof a7 === "number" ? a7 : null;
       if (k.actual !== undefined) {
         if (minSell !== null && BigInt(k.actual) < BigInt(minSell) * BigInt(k.a + k.c)) return { fail: "BELOW_MIN_SELL_PRICE" };
-        if (k.mode === "MARKUP" && BigInt(seat) * BigInt(10_000 + Number(first.markupCapBp)) < BigInt(k.actual) * 10_000n) return { fail: "MARKUP_OVER_CAP" };
+        if (k.mode === "MARKUP" && BigInt(seat) * BigInt(10_000 + Number(first.markupCapBp)) < BigInt(k.actual) * BigInt(10_000)) return { fail: "MARKUP_OVER_CAP" };
       }
       earns = k.actual === undefined ? 0 : Math.max(0, k.actual - seat);
     }

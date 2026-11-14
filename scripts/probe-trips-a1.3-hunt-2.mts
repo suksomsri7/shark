@@ -1,7 +1,7 @@
 // hunt-2 — A1.3a date edges through the REAL port (quoteTripLine as AGENT): first/last day · special over base · 1-day · open-ended ·
 //          book-date in unit timezone (Bangkok vs UTC unit, instants where the two calendars disagree) · card validity edges · port null cases
 // run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-a1.3-hunt-2.mts
-import { huntSetup, NOW, type Rec } from "./probe-trips-a1.3-hunt-lib.mts";
+import { huntSetup, NOW, type Rec } from "./probe-trips-a1.3-hunt-lib.mjs"; // PROBE-EDIT (typecheck): .mts → .mjs (TS5097 · tsx maps .mjs → .mts)
 
 const H = await huntSetup("probe-a1.3-hunt-2");
 const { call, check, fmt, R } = H;
@@ -21,7 +21,8 @@ try {
     pct(1500, { productId: P.id, travelFrom: "2027-03-10", travelTo: "2027-03-20" }),
     pct(1700, { productId: P.id, travelFrom: "2027-04-01", travelTo: "2027-04-01" }),
     pct(1900, { productId: P.id, travelFrom: "2027-06-01" }),
-    pct(800, { productId: P.id, travelTo: "2027-01-31" }), // open start
+    // PROBE-EDIT (มติ Z2): แถว travelTo อย่างเดียวชนคีย์มิติของแถวถาวร ⇒ RATE_OVERLAP · ใช้แถวเปิดต้นแบบ travelFrom 1900-01-01 แทน (ความหมายเดิม: ตั้งแต่ไหนก็ได้ถึง 31 ม.ค.)
+    pct(800, { productId: P.id, travelFrom: "1900-01-01", travelTo: "2027-01-31" }), // open start
   ];
   const card = await H.mkCard(S, { kind: "AGENT", agentAccountId: X }, rows);
   const want: [string, number, string][] = [
@@ -116,9 +117,10 @@ try {
     const sp = await up(pct(2000, { productId: P.id, optionId: P.opt2, travelTo: "2027-02-28" }));
     const after = await H.q<{ n: number }>(`SELECT count(*)::int n FROM "AgentRate" WHERE "rateCardId" = $1 AND "optionId" = $2`, [c.id, P.opt2]);
     const baseStill = await H.q<{ bp: number; t: string | null }>(`SELECT "valueBp" bp, to_char("travelTo",'YYYY-MM-DD') t FROM "AgentRate" WHERE id = $1`, [baseId]);
-    check("D-guard adding 'until 2027-02-28' special next to a permanent base row keeps BOTH rows (else the permanent rate is silently converted)",
-      after[0].n === 2, "2 rows (base 1000 unchanged + special 2000) — or an explicit rejection", `rows ${after[0].n} · base row now ${fmt(baseStill[0])} · upsert result ${fmt({ ok: sp.ok, id: R(sp.rate).id, sameIdAsBase: R(sp.rate).id === baseId })}`);
-    for (const [d, ok] of [["2027-02-29", false], ["2028-02-29", true], ["2027-3-01", false], ["2027-03-01T00:00", false], ["0000-01-01", true]] as const) {
+    // PROBE-EDIT (มติ Z2): คีย์มิติชนแต่ช่องต่าง ⇒ ปฏิเสธชัด ๆ RATE_OVERLAP · แถวถาวรไม่ถูกเขียนทับ
+    check("D-guard adding 'until 2027-02-28' special next to a permanent base row → explicit RATE_OVERLAP · base row untouched (never silently converted)",
+      sp.ok === false && sp.reason === "RATE_OVERLAP" && after[0].n === 1 && baseStill[0]?.bp === 1000 && baseStill[0]?.t === null, "RATE_OVERLAP · 1 row · base 1000 travelTo null", `rows ${after[0].n} · base row now ${fmt(baseStill[0])} · upsert result ${fmt({ ok: sp.ok, reason: sp.reason, id: R(sp.rate).id, sameIdAsBase: R(sp.rate).id === baseId })}`);
+    for (const [d, ok] of [["2027-02-29", false], ["2028-02-29", true], ["2027-3-01", false], ["2027-03-01T00:00", false], ["0000-01-01", false]] as const) { // PROBE-EDIT (มติ Z8): ปี 0000 นอก 1900–2200 ⇒ BAD_INPUT
       const r = await up(pct(5, { productId: P.id, travelFrom: d, travelTo: d, priority: 7 }));
       check(`D-date '${d}' ${ok ? "accepted" : "rejected BAD_INPUT"}`, ok ? r.ok === true : r.ok === false && r.reason === "BAD_INPUT", ok ? "ok" : "BAD_INPUT", fmt(r));
     }
@@ -160,7 +162,9 @@ try {
   {
     const dep = await H.mkDep(P, "2027-03-03");
     const outs: Record<string, Rec> = {};
-    for (const [k, o] of [["SUSPENDED", { status: "SUSPENDED" }], ["PENDING", { status: "PENDING" }], ["CLOSED", { status: "CLOSED" }], ["OTHER_UNIT", { unitIds: [S.units.uz] }]] as const) {
+    // PROBE-EDIT (typecheck): ทูเพิล readonly ส่งเข้า mkAccount ไม่ได้ (TS2345) — ประกาศชนิดแบบแก้ได้
+    const nullCases: [string, { status?: string; unitIds?: string[] }][] = [["SUSPENDED", { status: "SUSPENDED" }], ["PENDING", { status: "PENDING" }], ["CLOSED", { status: "CLOSED" }], ["OTHER_UNIT", { unitIds: [S.units.uz] }]];
+    for (const [k, o] of nullCases) {
       const id = await H.mkAccount(S, k.slice(0, 4), o);
       await H.mkCard(S, { kind: "AGENT", agentAccountId: id }, [pct(999, { productId: P.id })]).catch(() => null);
       outs[k] = await H.quote(S, id, P, dep);
