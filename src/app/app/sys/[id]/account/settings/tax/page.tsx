@@ -1,5 +1,6 @@
 import { requireAccountPage } from "@/lib/modules/account/guard";
-import { bookTaxView, upcomingDeadlines } from "@/lib/modules/account/legal-values";
+import { bookTaxView, upcomingDeadlines, complianceViewFrom, loadBookLegal, tipTreatmentWarning } from "@/lib/modules/account/legal-values";
+import { ComplianceValuesSection } from "@/components/account-v2/ComplianceValuesSection"; // ACC T4.5 T4.7 T4.8 ◂
 import { saveLegalRowsAction, saveWhtSettingsAction } from "@/lib/modules/account/tax-settings-actions";
 import { SettingsNav } from "@/components/account-v2/SettingsNav";
 import { LegalValuesPanel } from "@/components/account-v2/LegalValuesPanel";
@@ -9,11 +10,13 @@ import { LegalValuesPanel } from "@/components/account-v2/LegalValuesPanel";
 // ร้านตั้งค่าที่ต่างจากค่าเริ่มต้นได้เสมอ — ระบบเตือน ไม่บล็อก
 export const dynamic = "force-dynamic";
 
-export default async function AccountTaxSettingsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AccountTaxSettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<{ msg?: string; err?: string }> }) {
   const { id } = await params;
+  const sp = (await searchParams) ?? {};
   const { tenantId, systemId } = await requireAccountPage(id, "account.settings.manage");
   const base = `/app/sys/${id}/account`;
-  const [view, deadlines] = await Promise.all([bookTaxView({ tenantId, systemId }, new Date()), upcomingDeadlines({ tenantId, systemId }, new Date())]);
+  const [view, deadlines, legal] = await Promise.all([bookTaxView({ tenantId, systemId }, new Date()), upcomingDeadlines({ tenantId, systemId }, new Date()), loadBookLegal({ tenantId, systemId })]);
+  const tip = legal.tipTreatment ?? "LIABILITY";
 
   return (
     <div className="flex max-w-[1200px] flex-col gap-4">
@@ -24,6 +27,9 @@ export default async function AccountTaxSettingsPage({ params }: { params: Promi
         <SettingsNav base={base} activeGroup="org" activeSub="tax" />
         <div className="min-w-0 flex-1">
           <LegalValuesPanel systemId={systemId} orgSettingsHref={`${base}/settings`} view={view} save={saveLegalRowsAction} saveWht={saveWhtSettingsAction} deadlines={deadlines} />
+          <div className="mt-4">
+            <ComplianceValuesSection systemId={systemId} view={complianceViewFrom(legal, new Date())} tip={tip} tipWarning={tipTreatmentWarning(tip)} msg={sp.msg} err={sp.err} />
+          </div>
         </div>
       </div>
     </div>

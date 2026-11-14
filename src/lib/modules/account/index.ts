@@ -61,7 +61,7 @@ export {
   type LegalValue,
   type LegalWarning,
 } from "./legal-values";
-import { vatRateBpAt } from "./legal-values";
+import { vatRateBpAt, loadBookLegal } from "./legal-values"; // ACC T4.7 ◂ loadBookLegal (ทิป)
 
 // M3.7 (ระบบสมาชิก v2 · ไทม์ไลน์ประวัติ) — เอกสารขาออกของ party หนึ่ง (อ่านอย่างเดียว · read-through)
 //   ผู้เรียก: `member/history.ts` (dynamic import — account/index อยู่ในวงจรโหลดไฟล์ของโมดูลบัญชีเอง)
@@ -279,10 +279,30 @@ export async function applyExternalSale(input: {
 
   // POS P2.9 ▸ R9: ทิป → Cr บัญชีพักทิป (หนี้สินของสมุดนี้) · ตรวจทุกครั้งก่อนลง (บัญชีถูกเก็บ/ผิดชนิด = โยน ⇒ คิวลองใหม่ ไม่ลงผิดที่) ◂
   let tipCr: { accountId: string; amountSatang: number; note: string }[] | undefined;
+  // ACC T4.7 (J6) ▸ ทิป 3 ทางตามค่าตั้งของสมุด `account.pos.tipTreatment` (skill domain-shark-accounting-cases §1.8 · คำเตือนที่ค่าตั้ง):
+  //   LIABILITY (ค่าเริ่ม = ทางเดิม P2.9 ทุกไบต์) · REVENUE_VAT = Cr รายได้ทิป + ภาษีขาย (ทิปรวม VAT) · STAFF_DIRECT = ทิปส่วนที่เป็นเงินสดไม่ผ่านบัญชีร้าน (ลดขา Dr เงินสด) ส่วนที่เหลือ = ทางเดิม ◂
   if (input.tip && input.tip.satang > 0) {
-    const ledger = await liabilityLedgerOf(ctx, input.tip.ledgerId);
-    if (!ledger) throw new Error("บัญชีพักทิปของจุดขายนี้ใช้ไม่ได้ (ไม่ใช่หนี้สินของสมุดที่ผูก หรือถูกเก็บแล้ว) — แก้ที่ตั้งค่าการชำระเงินของ POS");
-    tipCr = [{ accountId: ledger.id, amountSatang: input.tip.satang, note: "ทิปรอจ่ายพนักงาน" }];
+    const tipMode = (await loadBookLegal(ctx)).tipTreatment ?? "LIABILITY";
+    let liab = input.tip.satang;
+    if (tipMode === "REVENUE_VAT") {
+      await ensureAccounting(ctx);
+      const tv = vatRegistered ? splitIncludedVat(input.tip.satang, vatRateBp).vatSatang : 0;
+      tipCr = [{ accountId: await resolveMapping(ctx, "TIP_REVENUE"), amountSatang: input.tip.satang - tv, note: "รายได้ทิป" }];
+      if (tv > 0) tipCr.push({ accountId: await resolveMapping(ctx, "VAT_OUTPUT"), amountSatang: tv, note: "ภาษีขายของทิป" });
+      liab = 0;
+    } else if (tipMode === "STAFF_DIRECT") {
+      const cashRow = drLines.find((l) => l.key === "CASH");
+      const cut = cashRow ? Math.min(cashRow.amountSatang, liab) : 0;
+      if (cashRow && cut > 0) cashRow.amountSatang -= cut;
+      liab -= cut;
+      tipCr = [];
+    }
+    if (liab > 0) {
+      const ledger = await liabilityLedgerOf(ctx, input.tip.ledgerId);
+      if (!ledger) throw new Error("บัญชีพักทิปของจุดขายนี้ใช้ไม่ได้ (ไม่ใช่หนี้สินของสมุดที่ผูก หรือถูกเก็บแล้ว) — แก้ที่ตั้งค่าการชำระเงินของ POS");
+      tipCr = [...(tipCr ?? []), { accountId: ledger.id, amountSatang: liab, note: "ทิปรอจ่ายพนักงาน" }];
+    }
+    if (tipCr && tipCr.length === 0) tipCr = undefined;
   }
   // ACC T1.8 ▸ เก็บแทน → Cr บัญชีตาม mapping COLLECTED_ON_BEHALF (ผัง 2120 · ไม่ใช่รายได้ ไม่อยู่ในฐาน VAT — VAT §3) ◂
   if (onBehalf > 0) {

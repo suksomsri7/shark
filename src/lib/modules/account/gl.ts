@@ -2182,6 +2182,33 @@ export async function postExternalSale(
   });
 }
 
+/**
+ * ACC T4.7 (J7) ▸ เงินขาด/เกินจากการนับเงินปิดกะ → GL (skill domain-shark-accounting-cases §1.9 [U] — แนวปฏิบัติบัญชี)
+ *   เกิน (variance > 0): Dr CASH / Cr CASH_OVER · ขาด (< 0): Dr CASH_SHORT / Cr CASH · ผูกกะ (refType PosShift / PosShiftRecount) ·
+ *   ไม่หักกลบข้ามกะ (1 กะ = 1 ใบสำคัญ) · idempotent ต่อ (refType, refId, VARIANCE)
+ */
+export async function postCashVariance(
+  ctx: GlCtx,
+  o: { refType: "PosShift" | "PosShiftRecount"; refId: string; date: Date; varianceSatang: number; memo: string; postedById?: string | null; contactNote?: string },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    if (o.varianceSatang === 0) return { skipped: true as const };
+    if (await alreadyPosted(ctx, `${o.refType}#${o.refId}#VARIANCE`, db)) return { skipped: true as const };
+    const b = new Book(ctx, db);
+    const cash = await b.id("CASH");
+    if (o.varianceSatang > 0) {
+      b.dr(cash, o.varianceSatang, o.contactNote);
+      b.cr(await b.id("CASH_OVER"), o.varianceSatang, o.contactNote);
+    } else {
+      b.dr(await b.id("CASH_SHORT"), -o.varianceSatang, o.contactNote);
+      b.cr(cash, -o.varianceSatang, o.contactNote);
+    }
+    const e = await commitEntry(ctx, { book: "GENERAL", journal: "ADJUST", date: o.date, refType: o.refType, refId: o.refId, event: "VARIANCE", memo: o.memo, ...(o.postedById ? { postedById: o.postedById } : {}) }, b, db);
+    return { entryId: e.id };
+  });
+}
+
 /** POS P2.9 ▸ R9 (มติ 7): บัญชีหนี้สินของสมุดนี้ที่ยังไม่ถูกเก็บ (บัญชีพักทิป) — อ่านอย่างเดียว · ไม่ใช่/ไม่พบ = null ◂ */
 export async function liabilityLedgerOf(ctx: GlCtx, ledgerId: string): Promise<{ id: string } | null> {
   if (!ledgerId) return null;

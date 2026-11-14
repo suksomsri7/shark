@@ -58,17 +58,21 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["3000", "EQUITY", "ทุนเจ้าของ/ทุนจดทะเบียน", "Owner's Capital"],
   ["3800", "EQUITY", "กำไรสะสม", "Retained Earnings"],
   ["3999", "EQUITY", "ยอดยกมา/บัญชีคู่เปิดบัญชี", "Opening Balance Equity"], // Gate C ledger-M6 (บัญชีคู่ postOpening)
+  ["3100", "EQUITY", "ถอนใช้ส่วนตัว (เงินถอน)", "Owner's Drawings"], // ACC T4.8 — เจ้าของนำสินค้าไปใช้ส่วนตัว (ม.77/1(8)(ง))
   // 4000-4999 รายได้
   ["4000", "INCOME", "รายได้จากการขายสินค้า", "Sales Revenue - Goods"],
   ["4030", "INCOME", "รายได้ค่าบริการ", "Service Revenue"],
   ["4800", "INCOME", "ส่วนลดจ่าย (contra)", "Discounts Given"],
   ["4900", "INCOME", "รายได้อื่น / กำไรจากการจำหน่ายสินทรัพย์", "Other Income / Disposal Gain"],
   ["4910", "INCOME", "ดอกเบี้ยรับ", "Interest Income"], // V2 (WO 5.3): ดอกเบี้ยเงินฝากจากแถว statement
+  ["4040", "INCOME", "รายได้ทิป", "Tip Revenue"], // ACC T4.7 — ทิปที่ร้านเลือกลงเป็นรายได้ (คิด VAT)
+  ["4920", "INCOME", "เงินเกินจากการนับเงินสด", "Cash Over"], // ACC T4.7 — ผลต่างปิดกะ (domain-shark-accounting-cases §1.9)
   // 5000-5999 ต้นทุน
   ["5000", "COGS", "ซื้อสินค้า/ต้นทุนขาย", "Purchases / COGS"],
   // V2 (WO 4.3 · SPEC §8.4) — เอกสารปรับปรุงสต็อก/ต้นทุน
   ["5300", "COGS", "สินค้าที่เบิกใช้ในกิจการ", "Goods Issued for Internal Use"],
   ["5310", "COGS", "กำไร/ขาดทุนจากการปรับมูลค่าสินค้า", "Inventory Cost Adjustment Gain/Loss"],
+  ["5320", "COGS", "สินค้าเสียหาย/ทำลาย/ขาด", "Inventory Waste and Shrinkage"], // ACC T4.8 — ของเสีย · สินค้าขาด
   ["5800", "COGS", "ส่วนลดรับ (contra)", "Discounts Received"],
   // 6000-6999 ค่าใช้จ่าย
   ["6000", "EXPENSE", "เงินเดือนและค่าแรง", "Salaries & Wages"],
@@ -81,6 +85,9 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["6510", "EXPENSE", "ค่าธรรมเนียมธนาคาร", "Bank Charges"],
   ["6800", "EXPENSE", "ค่าเสื่อมราคา", "Depreciation"],
   ["6900", "EXPENSE", "ค่าใช้จ่ายอื่น", "Other Expenses"],
+  ["6050", "EXPENSE", "สวัสดิการพนักงาน (อาหาร)", "Staff Welfare - Meals"], // ACC T4.8 — อาหารพนักงาน (ฉ.40 ข้อ 2(8))
+  ["6310", "EXPENSE", "ของแถม/สินค้าตัวอย่าง (ส่งเสริมการขาย)", "Promotional Goods and Samples"], // ACC T4.8 — ของแถม · ตัวอย่าง (ฉ.40 ข้อ 2(1)(7))
+  ["6920", "EXPENSE", "เงินขาดจากการนับเงินสด", "Cash Short"], // ACC T4.7 — ผลต่างปิดกะ
   // ACC T1.4 — หมวดที่ภาษีซื้อต้องห้าม (ธงต่อบัญชี) + ภาษีซื้อไม่ขอคืน 2 ชนิด (TAX §ก4 (6 ทวิ))
   ["6930", "EXPENSE", "ค่ารับรอง", "Entertainment"],
   ["6940", "EXPENSE", "ค่าใช้จ่ายรถยนต์นั่ง (ไม่เกิน 10 ที่นั่ง)", "Passenger Car Expenses"],
@@ -131,6 +138,14 @@ const MAPPINGS: [string, string][] = [
   ["CASH", "1000"],
   ["BANK", "1010"],
   ["SUSPENSE", "9999"],
+  // ACC T4.7 · T4.8 (เลน 1)
+  ["TIP_REVENUE", "4040"],
+  ["CASH_OVER", "4920"],
+  ["CASH_SHORT", "6920"],
+  ["OWNER_DRAWINGS", "3100"],
+  ["STAFF_WELFARE", "6050"],
+  ["PROMO_GOODS", "6310"],
+  ["GOODS_WASTE", "5320"],
 ];
 
 /** ACC T1.4 — ธง `vatTreatment` ของบัญชีระบบที่เป็นหมวดภาษีซื้อต้องห้าม (common-vat-invoice.md §17 · checklist C2) */
@@ -223,6 +238,13 @@ export const MAPPING_KEY_LABEL: Record<string, string> = {
   CHEQUE_PAYABLE: "เช็คจ่ายรอเรียกเก็บ",
   DEPRECIATION_EXPENSE: "ค่าเสื่อมราคา",
   ASSET_DISPOSAL_GAIN: "กำไร/ขาดทุนจากการจำหน่ายสินทรัพย์",
+  TIP_REVENUE: "รายได้ทิป",
+  CASH_OVER: "เงินเกินจากการนับเงินสด",
+  CASH_SHORT: "เงินขาดจากการนับเงินสด",
+  OWNER_DRAWINGS: "ถอนใช้ส่วนตัว",
+  STAFF_WELFARE: "สวัสดิการพนักงาน (อาหาร)",
+  PROMO_GOODS: "ของแถม/สินค้าตัวอย่าง",
+  GOODS_WASTE: "สินค้าเสียหาย/ทำลาย/ขาด",
   CASH: "เงินสด (บัญชีเริ่มต้น)",
   BANK: "เงินฝากธนาคาร (บัญชีเริ่มต้น)",
   SUSPENSE: "บัญชีพักรายการ (9999)",
