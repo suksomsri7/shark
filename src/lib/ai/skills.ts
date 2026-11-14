@@ -194,8 +194,9 @@ export const SKILLS: Skill[] = [
   {
     id: "hr",
     label: "พนักงานและการลา",
-    summary: "Staff: pending leave requests, approve or reject leave, add an employee.",
-    tools: ["pending_leaves", "hr_decide_leave", "hr_create_employee"],
+    // HR H4.3 ▸ + 6 เครื่องมือ (อ่าน 4 · เสนอ 2) · ข้อเสนอต้องมีคนยืนยัน ◂
+    summary: "Staff: who is on today, lateness report, labour cost % of sales, leave balances, pending leave requests, approve or reject leave, add an employee, draft a roster or a private attendance note (ข้อเสนอต้องมีคนยืนยัน).",
+    tools: ["pending_leaves", "hr_decide_leave", "hr_create_employee", "hr_who_is_on_today", "hr_late_report", "hr_labor_percent", "hr_leave_balance", "hr_draft_roster", "hr_flag_pattern"],
     systems: ["HR"],
   },
   {
