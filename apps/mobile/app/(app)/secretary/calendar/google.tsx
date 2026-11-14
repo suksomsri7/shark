@@ -78,6 +78,9 @@ export default function CalGoogleScreen() {
   );
   const Row = ({ children, last }: { children: ReactNode; last?: boolean }) => <View style={[styles.r, !last && { borderBottomColor: c.divider, borderBottomWidth: StyleSheet.hairlineWidth }]}>{children}</View>;
 
+  // บรรทัดรอง (จอ 9): primary = "ของฉัน" · ปฏิทินที่คนอื่นแชร์มา (accessRole ไม่ใช่ owner) = "แชร์มา" · วันหยุด/ของตัวเองอื่น = ว่าง
+  const subOf = (x: NonNullable<GoogleLinkDto["calendars"]>[number]): string | null =>
+    x.sub ?? (x.primary ? t("cal.g.mine") : x.accessRole && x.accessRole !== "owner" && !/holiday/i.test(x.id) ? t("cal.g.shared") : null);
   const linked = g && g.status !== "NONE";
   const cals = g?.calendars ?? [];
   const kinds = g?.exportKinds ?? [];
@@ -120,9 +123,9 @@ export default function CalGoogleScreen() {
                 <Row key={x.id} last={i === cals.length - 1}>
                   <View style={[styles.dot, { backgroundColor: x.color || c.cal.google }]} />
                   <Text style={[styles.rt, { color: c.text }]}>{x.name}</Text>
-                  {x.sub || x.primary ? (
+                  {subOf(x) ? (
                     <Text style={[styles.rs, { color: c.textFaint }]} numberOfLines={1}>
-                      {x.sub ?? t("cal.g.mine")}
+                      {subOf(x)}
                     </Text>
                   ) : null}
                   <Toggle

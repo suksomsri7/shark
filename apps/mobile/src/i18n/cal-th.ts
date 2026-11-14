@@ -140,4 +140,11 @@ export const calTh = {
   "cal.g.noneBody": "การเชื่อม Google จะเปิดในแอปรุ่นถัดไป",
   "cal.g.needReconnect": "ต้องเชื่อม Google ใหม่",
   "cal.g.mine": "ของฉัน",
+  "cal.room.agenda": "ปฏิทินของคุณ · {range}",
+  "cal.room.list": "เตือนของคุณ",
+  "cal.room.open": "เปิดในปฏิทิน ›",
+  "cal.room.more": "และอีก {n} รายการ",
+  "cal.room.empty": "ไม่มีรายการในช่วงนี้",
+  "cal.room.private": "เห็นเฉพาะคุณ",
+  "cal.g.shared": "แชร์มา",
 } as const;

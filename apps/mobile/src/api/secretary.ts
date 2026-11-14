@@ -626,6 +626,8 @@ export type RoomDetail = {
   plans: PlanItem[];
   /** CAL2.7 (สัญญา 32 §8.1 · R-CAL-20): เตือน/นัดที่ผู้เรียกสั่งในห้องนี้ (เซิร์ฟเวอร์ส่งเฉพาะของผู้เรียก) · เซิร์ฟเวอร์เก่า = [] */
   reminders: CalItemDto[];
+  /** B1 (cal-review-b · สัญญา §15.2): การ์ดปฏิทินของผู้เรียกในห้องนี้ (เลขาไม่ทวนรายการส่วนตัวในข้อความ · แอปดึงรายละเอียดเอง) · คนอื่นในห้อง = [] */
+  calendarCards: { id: string; kind: "AGENDA" | "LIST"; fromDay: string; toDay: string; createdAt: string }[];
 };
 export function normalizeRoomDetail(v: unknown): RoomDetail {
   const o = rec(rec(v).room ?? v);
@@ -646,6 +648,10 @@ export function normalizeRoomDetail(v: unknown): RoomDetail {
       .map((m) => ({ userId: str(m.userId), name: str(m.name) || null, role: str(m.role), seeHistory: m.seeHistory === true })),
     // แผนของห้อง (S1.14: PENDING + RUNNING) — แผน PENDING ซ้ำกับการ์ดอนุมัติ จอกรองออกด้วย id
     plans: (Array.isArray(o.plans) ? o.plans : []).map((p) => planOf(rec(p), str(rec(p).status).toUpperCase() === "PENDING")).filter((p) => p.id && p.steps.length > 0),
+    calendarCards: (Array.isArray(o.calendarCards) ? o.calendarCards : [])
+      .map((x) => rec(x))
+      .filter((x) => str(x.id) && /^\d{4}-\d{2}-\d{2}$/.test(str(x.fromDay)))
+      .map((x) => ({ id: str(x.id), kind: str(x.kind) === "LIST" ? ("LIST" as const) : ("AGENDA" as const), fromDay: str(x.fromDay), toDay: /^\d{4}-\d{2}-\d{2}$/.test(str(x.toDay)) ? str(x.toDay) : str(x.fromDay), createdAt: isoOf(x.createdAt) })),
     reminders: (Array.isArray(o.reminders) ? o.reminders : []).filter((x): x is CalItemDto => !!x && typeof rec(x).id === "string" && typeof rec(x).title === "string" && typeof rec(x).startAt === "string"),
   };
 }

@@ -82,6 +82,10 @@ export default function CalendarScreen() {
       .catch(() => {});
   }, [params.item, sheet, router]);
 
+  // ?view= (การ์ดเตือนในห้อง → แท็บเตือนฉัน) ขณะจอเปิดอยู่
+  useEffect(() => {
+    if (params.view === "remind" || params.view === "month" || params.view === "day") setView(params.view);
+  }, [params.view]);
   // ลิงก์ใหม่ (?day=) ขณะจอเปิดอยู่ ⇒ ไปวันนั้น
   useEffect(() => {
     if (isDay(params.day)) {
