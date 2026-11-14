@@ -1,6 +1,7 @@
 // HR H2.11 ▸ ส่วนหน้าจอฝั่ง server ของ "ภาพรวมทีม" (ภาพ 01) และ "คำขอรออนุมัติ" (ภาพ 05) — รับ DTO จาก inbox.ts เท่านั้น (ไม่อ่านฐานข้อมูลเอง) ·
 //   ค่าทุกตัวมีป้ายกำกับ · วันที่ พ.ศ. ผ่าน helper กลาง · ปุ่ม/ลิงก์สูง ≥ 44 px · ตารางโควตาเลื่อนในกรอบของตัวเอง (ชื่อค้างซ้าย) ◂
 import Link from "next/link";
+import type { ReactNode } from "react"; // HR H4.2 ◂
 import { getTranslations } from "next-intl/server";
 import { formatThaiDate } from "@/lib/ui/date";
 import InboxBatch from "./InboxBatch";
@@ -32,7 +33,8 @@ function Tile({ testId, label, value, sub, href }: { testId: string; label: stri
 
 /** ภาพรวมทีม (ภาพ 01) — ตัวอ่านเดิมทั้งหมด (บอร์ดวันนี้ · ตัวนับคำขอ · วันที่ต้องคิดผลใหม่ · ใกล้ครบกำหนด) + ตัวอย่างคำขอ 5 รายการ */
 // HR H3.9 ▸ reports = ลิงก์ "รายงาน" ของการ์ดเดือน (ภาพ 01) — ส่งมาเฉพาะผู้ดูที่เปิดรายงานได้ (ui.tsx ตัดสินด้วย reportAccessOf) ◂
-export async function HrTeamOverviewSection({ systemId, overview, preview, reports }: { systemId: string; overview: TeamOverview; preview: InboxList | null; reports?: { label: string; desc: string } | null }) {
+// HR H4.2 ▸ labor = การ์ดค่าแรงต่อยอดขาย (labor-ui HrLaborCard) ที่ผู้เรียกส่งมาเป็น slot — ไฟล์นี้ไม่ import โมดูลค่าแรงเอง (facade-only ของ H2.11) ◂
+export async function HrTeamOverviewSection({ systemId, overview, preview, reports, labor }: { systemId: string; overview: TeamOverview; preview: InboxList | null; reports?: { label: string; desc: string } | null; labor?: ReactNode }) { // HR H4.2 ▸ + labor ◂
   const t = await getTranslations("hr.inbox");
   const ta = await getTranslations("hr.attendance");
   const s = `/app/sys/${systemId}`;
@@ -67,6 +69,7 @@ export async function HrTeamOverviewSection({ systemId, overview, preview, repor
         {overview.lifecycleDue !== null && <Tile testId="hr-overview-due" label={t("overview.due")} value={String(overview.lifecycleDue)} href={`${s}/hr/employees`} />}
         {reports && <Tile testId="hr-overview-reports-link" label={reports.label} value={reports.label} sub={reports.desc} href={`${s}/hr/reports`} /> /* HR H3.9 ◂ */}
       </div>
+      {labor /* HR H4.2 ▸ การ์ดค่าแรงต่อยอดขาย (ภาพ 01) ◂ */}
       {preview && preview.items.length > 0 && (
         <div className="card flex flex-col gap-3 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
