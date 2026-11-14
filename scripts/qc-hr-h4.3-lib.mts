@@ -187,11 +187,15 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const laborOther = srcFiles(H.replace(/\/$/, "")).filter((f) => /\/labor[^/]*$/.test(f) && f !== F.labor && f !== F.laborUi);
     const oracles = git(["diff", "--name-only", BASE, "--", "scripts"]).split("\n").filter((f) => /^scripts\/qc-.*\.mts$/.test(f) && !/^scripts\/qc-hr-h4\.3/.test(f) && f !== F.o42 && f !== F.o42lib);
     const frozen = [`${AI}actor.ts`, `${AI}service.ts`, `${AI}persona.ts`, "src/lib/modules/pos", "src/lib/modules/account", "src/lib/modules/crm", "prisma", "src/lib/core/permissions.ts", "scripts/qc-hr-lib.mts", "package.json"];
+    // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): in base only — a later ticket's hr file / older oracle passes when every hunk carries "HR MONEY-2"
+    //   on an added line; the ticket's own new oracle files qc-hr-money-2(-lib).mts are not "other oracles" · unmarked still fails ◂
+    const m2Marked = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR MONEY-2/.test(l)));
+    const m2Left = (ch: string) => (ch.startsWith("changed: ") ? ch.slice(9).split(",").filter((f) => !m2Marked(f)) : ch === "unchanged" ? [] : [ch]);
     const r = {
       ai: changedVsBase(BASE, frozen) === "unchanged",
-      hr: changedVsBase(BASE, hrFrozen) === "unchanged",
+      hr: m2Left(changedVsBase(BASE, hrFrozen)).length === 0, // ORACLE-EDIT (HR-MONEY-2 builder) ◂
       labor: changedVsBase(BASE, laborOther) === "unchanged",
-      oracles: oracles.length === 0,
+      oracles: oracles.filter((f) => !(IN_BASE && /^scripts\/qc-hr-money-2(-lib)?\.mts$/.test(f)) && !m2Marked(f)).length === 0, // ORACLE-EDIT (HR-MONEY-2 builder) ◂
     };
     ck("S1.6", r, "frozen files unchanged", `ai=${changedVsBase(BASE, frozen)} hr=${changedVsBase(BASE, hrFrozen)} labor=${changedVsBase(BASE, laborOther)} oracles=${oracles.join(",") || "0"}`);
   }
@@ -200,7 +204,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const marked = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
     const need = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
     const bad: string[] = [];
-    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT/;
+    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT|HR MONEY-2/; // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" (in base only) ◂
     const judge = (f: string, re: RegExp, mustHave: boolean) => {
       const hs = diffHunks(BASE, f);
       if (!hs) return void bad.push(`${f.split("/").pop()}:git`);
