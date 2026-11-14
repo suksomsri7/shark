@@ -110,7 +110,8 @@ const H06_ORACLE = "scripts/qc-hr-h0.6.mts";
 /** sha256 of payroll-rules.ts on the base (FREEZE — COMMON §C.4 · F16.2 · same value as qc-hr-h0.6/h1.1) */
 const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7";
 /** qc-hr-h0.6 S8.4 hashes (computeItem body · markPaid block) — values of qc-hr-h0.6.mts :71-72, re-verified on 13a0601b */
-const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13";
+// ORACLE-EDIT (HF-SSO-2569 · controller ruling): computeItem body sha re-taken — computeItem gets the run's law (periodKey + tax year) and calls ssoContributionForPeriod / monthlyWhtForTaxYear (payroll-rules.ts itself unchanged): b151a83c… → 451c72e1…
+const COMPUTE_ITEM_SHA = "451c72e1c04068c45a070528571161b4c283316b91e449ed3311282cc95012ba";
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";
 /** sha256 of the `  // S8.4\n … \n  }\n` block of qc-hr-h0.6.mts on 13a0601b (the freeze check itself must not drift) */
 // ORACLE-EDIT (H2.5 r3 · controller-authorized): re-pinned after the h0.6 S8.4 block learned to strip the 3 marked markPaid lines (was 5f15f5f4a478…)
@@ -124,9 +125,15 @@ const FROZEN_IDX_LIVE = `CREATE UNIQUE INDEX "HrPayrollRun_systemId_periodKey_li
 const FROZEN_BASE_COL_SIG = "554083b36386ce4ea2909fb2d078e9b397ecf4f4eae739d5a1e8194a7f93a4da";
 /** S2.5 — canonical digest of the 4 v1 rows (see ORACLE CONTRACT) · derived by this oracle from payroll-rules.ts on 13a0601b */
 const FROZEN_LAW_DIGEST = "0ed9de8c2c4df9b4b05ce320889318cc4c755527448f56628235960ae38d9470";
+// ORACLE-EDIT (HF-SSO-2569 · controller ruling): S2.5 — the script now exports 10 rows (Q4 dated SSO v1:SSO:2569/2572/2575 · Q1 dated DEDUCTION v1:DEDUCTION:2569/2572/2575 · the 4 1970 rows byte-identical)
+//   ⇒ exported LAW_V1_DIGEST / DB digest of the 10 applied rows 0ed9de8c… → b0aa6c9c… (worked independently: canonical JSON of BRIEF_ALL in kind/effectiveFrom order) · FROZEN_LAW_DIGEST (4 AST rows, S2.2) unchanged
+const FROZEN_LAW_DIGEST_ALL = "b0aa6c9c77a4d8f13e0c5af7bd08a122f210b65c23353aa0c04cdb84d1bcce25";
 /** S5.8 — H0.6 reverse / converge path digests (frozen on 13a0601b by the first forced run) */
-const FROZEN_PATH_REVERSE = "6e0e7a3d231440f3ed0db67ea7c7b08c961149a2c3063e924e1f751e454932a9";
-const FROZEN_PATH_CONVERGE = "f2ff11eaf080ce641cf289cac491fcbc05b62cd8791a77d78fbf5a6344a39fc9";
+// ORACLE-EDIT (HF-SSO-2569 · controller ruling): S5.8 R01 30,000 (single · SSO-eligible) @ 2033-04 ⇒ ceiling 23,000 ⇒ SSO 750 → 1,150 · WHT (tax year 2033 cap 13,800):
+//   360,000 − 100,000 − 60,000 − 13,800 = 186,200 ⇒ 1,810/12 ⇒ 170.83 → 150.83 · net 31,079.17 → 30,699.17 · item digest + totals in the trail change only by these 3 numbers
+//   (control: the new trail with the old 3 numbers substituted back hashes to the old 6e0e7a3d… / f2ff11ea…) ⇒ reverse 6e0e7a3d… → 411a19fb… · converge f2ff11ea… → c4394e6b…
+const FROZEN_PATH_REVERSE = "411a19fb4982cb4bd094b5df410c52aee3af0df19ec750954b472f8245f95aa9";
+const FROZEN_PATH_CONVERGE = "c4394e6b1dd881d1957357086a6eb871bb4d35ea14713b691b2fce0751242876";
 
 // ── fixed texts (today's payroll.ts — R4 "CRM path unchanged") ──
 const T_CRM_DUP = "คอมมิชชันรายการนี้ถูกส่งเข้างวดเงินเดือนไปแล้ว (มีได้รายการเดียว)";
@@ -173,6 +180,16 @@ const BRIEF_ROWS = [
   { kind: "OT", effectiveFrom: SENTINEL, json: { workdayMultiplierBp: 15000, daysPerMonth: 30, hoursPerDay: 8 } },
 ] as const;
 const LAW_KINDS4 = ["SSO", "TAX_BRACKET", "DEDUCTION", "OT"];
+// ORACLE-EDIT (HF-SSO-2569 · controller ruling): Q4 + Q1 dated DRAFT rows (shark-thai-law §ซ [V]: ceiling 17,500 from 1 Jan 2569 · 20,000 from 2572 · 23,000 from 2575 ·
+//   allowance cap = 12 × max monthly contribution: 10,500 (T-HR-10) · 12,000 · 13,800) — every other field = the 1970 row · S2.2/S2.4/S2.5/S2.6/S7.4 4 → 10 rows
+const BRIEF_ROWS_DATED = [
+  ...([["2026-01-01", 1750000], ["2029-01-01", 2000000], ["2032-01-01", 2300000]] as const).map(([d, mx]) => ({ kind: "SSO", effectiveFrom: d, json: { ...BRIEF_ROWS[0].json, maxBaseSatang: mx } })),
+  ...([["2026-01-01", 1050000], ["2029-01-01", 1200000], ["2032-01-01", 1380000]] as const).map(([d, c]) => ({ kind: "DEDUCTION", effectiveFrom: d, json: { ...BRIEF_ROWS[2].json, ssoAllowanceCapSatang: c } })),
+];
+const KIND_ORDER = ["SSO", "TAX_BRACKET", "DEDUCTION", "OT"];
+const BRIEF_ALL = [...BRIEF_ROWS, ...BRIEF_ROWS_DATED].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || (a.effectiveFrom < b.effectiveFrom ? -1 : a.effectiveFrom > b.effectiveFrom ? 1 : 0));
+const beYear = (d: string) => Number(d.slice(0, 4)) + 543;
+const briefKey = (p: string, r: { kind: string; effectiveFrom: string }) => (r.effectiveFrom === SENTINEL ? `${p}:${r.kind}` : `${p}:${r.kind}:${beYear(r.effectiveFrom)}`);
 
 // ── S5.1 MONTHLY fixture (own HR system "M") — copied verbatim from qc-hr-h1.1 :109-132 ──
 const B = (baht: number) => Math.round(baht * 100);
@@ -194,8 +211,9 @@ const MONTHLY_FIXTURE = {
   ],
 } as const;
 /** frozen on 9c5aa1ea by qc-hr-h1.1 (H1.2 §10 confirmed) — payrollItemsDigest with employeeId := code */
-const FROZEN_DIGEST = "72166a3e2a2ebb6a37405a105f7db540b946fda05fe020639bbe79a60b87e5c8";
-const FROZEN_TOTALS = "10725000:195000:195000:100000:10430000:475000:100000";
+// ORACLE-EDIT (HF-SSO-2569 · controller ruling): MONTHLY fixture period 2030-05 ⇒ SSO ceiling 20,000 · M03 52,000 SSO 750 → 1,000 · WHT 916.67 → 891.67 (net income 335,000 → 332,000 · allowance cap 2030 12,000) ⇒ digest 72166a3e… → f7966f99… · totals 10725000:195000:195000:100000:10430000:475000:100000 → 10725000:220000:220000:97500:10407500:475000:100000
+const FROZEN_DIGEST = "f7966f99b8b7384abccce4deabd596e3aee79467580346bf1c51feda7a2f0d3d";
+const FROZEN_TOTALS = "10725000:220000:220000:97500:10407500:475000:100000";
 const FROZEN_FLAGS = "M01=-,M02=-,M03=-,M04=PARTIAL_MONTH";
 
 // ═════════════════════════ registry (id · group · severity · base expectation · title) ═════════════════════════
@@ -222,7 +240,7 @@ const CHECKS: readonly Def[] = [
   D("S2.2", "R3", "CRITICAL", "RED", "[static] verifyAgainstFrozen static leg: the oracle's OWN TS-AST read of payroll-rules.ts (:22-24 · :36-45 · :65-69 · :80 · :104-106) = brief R3 rows = the script's exported LAW_V1_ROWS (canonical JSON) · the script's verifyAgainstFrozen() ⇒ ok"),
   D("S2.3", "R3", "CRITICAL", "RED", "[pure] behavioural leg: the oracle's own evaluator over the script's LAW_V1_ROWS json vs the frozen functions (ssoContribution · annualTaxSatang · monthlyWhtSatang incl. spouse/children/SSO-year · otHourlyRateSatang) on ≥ 2,000 vectors ⇒ 0 mismatches (positive control: same evaluator over the AST rows ⇒ 0)"),
   D("S2.4", "R3", "CRITICAL", "RED", "[run+db] --apply ⇒ exactly 4 rows SSO / TAX_BRACKET / DEDUCTION / OT · all DRAFT · approvedAt/approvedById/approvedByName null · effectiveFrom 1970-01-01 (Q11) · output `created 4`"),
-  D("S2.5", "R3", "CRITICAL", "RED", "[run+db] LAW_V1_DIGEST exported by the script = FROZEN_LAW_DIGEST · digest of the 4 applied DB rows (kind · effectiveFrom · json) = FROZEN_LAW_DIGEST"),
+  D("S2.5", "R3", "CRITICAL", "RED", "[run+db] LAW_V1_DIGEST exported by the script = FROZEN_LAW_DIGEST_ALL · digest of the 10 applied DB rows (kind · effectiveFrom · json) = FROZEN_LAW_DIGEST_ALL (HF-SSO ORACLE-EDIT: was 4 rows / FROZEN_LAW_DIGEST)"),
   D("S2.6", "R3", "MAJOR", "RED", "[run+db] --apply ×2 ⇒ `created 0 · unchanged 4` · row ids and createdAt unchanged"),
   D("S2.7", "R3", "CRITICAL", "RED", "[run+db] tampered row (same sourceKey, different json) ⇒ exit 1 · Thai text · nothing written (no row created for the prefix · tampered row unchanged)"),
   D("S2.8", "R3", "MAJOR", "RED", "[static] script: no write with ACTIVE · no update/delete/upsert on HrLawTable (no UPDATE/DELETE SQL) · ON CONFLICT (\"sourceKey\") DO NOTHING · exports LAW_V1_ROWS / LAW_V1_DIGEST / verifyAgainstFrozen · LAW_V1_ROWS integers only (no float literal)"),
@@ -268,7 +286,7 @@ const CHECKS: readonly Def[] = [
   D("S7.4", "R9", "MAJOR", "RED", "[db read] QC4 has exactly the 4 `v1:*` law rows (SSO · TAX_BRACKET · DEDUCTION · OT), all DRAFT · no ACTIVE row anywhere in HrLawTable"),
   D("S7.5", "R8", "MAJOR", "RED", "[static+db] HR_DELETE_ORDER lists hrWorkEntry · hrReviewNote · hrOnboardingTask before hrEmployee and not hrLawTable · deleting them for our main tenant leaves 0 rows"),
   // X
-  D("X1.1", "X1", "MAJOR", "RED", "[run+db] seed script --apply ×3 on a fresh prefix ⇒ 4 rows · runs 2–3 `created 0 · unchanged 4`"),
+  D("X1.1", "X1", "MAJOR", "RED", "[run+db] seed script --apply ×3 on a fresh prefix ⇒ 10 rows · runs 2–3 `created 0 · unchanged 10` (HF-SSO ORACLE-EDIT: was 4)"),
   D("X2.1", "X2", "CRITICAL", "RED", "[db] source rows: other tenant same (type, ref) ⇒ allowed · same tenant, second HR system sH2 ⇒ 23505 (tenant-scoped by design, Q14)"),
   D("X2.2", "X2", "CRITICAL", "RED", "[db] tenantDb(sH2) on hrWorkEntry / hrReviewNote / hrOnboardingTask reads none of sH's rows · tenantDb(sH) reads them"),
   D("X7.1", "X7", "MAJOR", "GREEN", "[static] [control] no today-dependence: every date literal in this oracle's code ≥ 2030 (except the 1970-01-01 sentinel and the 2028-02-29 leap vector)"),
@@ -568,6 +586,35 @@ async function behaviour(rows: readonly Any[]): Promise<{ n: number; mism: numbe
   for (const s of sal) for (const sp of [false, true]) for (let c = 0; c <= 4; c++) for (const y of ssoYear) cmp(`wht(${s},${y},${sp},${c})`, R.monthlyWhtSatang({ monthlySalarySatang: s, ssoEmployeeYearSatang: y, deductions: { spouse: sp, children: c } }), ev.wht(s, y, sp, c));
   // OT hourly rate
   for (let s = -100; s <= 6_000_000; s += 19_997) cmp(`ot(${s})`, R.otHourlyRateSatang(s), ev.ot(s));
+  return { n, mism, first };
+}
+/** ORACLE-EDIT (HF-SSO-2569 · controller ruling) — S2.3 dated leg: the oracle's evaluator over each dated SSO row vs ssoContributionForPeriod (first + last wage period of the row's band) · dated DEDUCTION cap vs ssoAllowanceCapSatang (first + last year) */
+async function datedBehaviour(rows: readonly Any[]): Promise<{ n: number; mism: number; first: string }> {
+  const S = (await import("@/lib/modules/hr/payroll-rules-sso" as string).catch(() => null)) as Any;
+  if (!S) return { n: 0, mism: -1, first: "∅ payroll-rules-sso" };
+  let n = 0;
+  let mism = 0;
+  let first = "";
+  const cmp = (tag: string, a: unknown, b: unknown) => {
+    n++;
+    if (stable(a) !== stable(b)) {
+      mism++;
+      if (!first) first = `${tag}: rules-sso=${short(a, 60)} json=${short(b, 60)}`;
+    }
+  };
+  for (const kind of ["SSO", "DEDUCTION"]) {
+    const rs = rows.filter((r) => r.kind === kind).sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? -1 : 1));
+    rs.forEach((r, i) => {
+      if (r.effectiveFrom === SENTINEL) return;
+      const y0 = Number(String(r.effectiveFrom).slice(0, 4));
+      const y1 = rs[i + 1] ? Number(String(rs[i + 1].effectiveFrom).slice(0, 4)) - 1 : y0 + 20;
+      if (kind === "DEDUCTION") for (const y of [y0, y1]) cmp(`cap(${y})`, S.ssoAllowanceCapSatang(y), r.json?.ssoAllowanceCapSatang);
+      else {
+        const ev = evaluator([r]);
+        for (const p of [`${y0}-01`, `${y1}-12`]) for (let w = 0; w <= 3_000_000; w += 49_999) cmp(`sso(${w}@${p})`, S.ssoContributionForPeriod(w, p), ev.sso(w));
+      }
+    });
+  }
   return { n, mism, first };
 }
 
@@ -940,7 +987,8 @@ function runStatic(): void {
   {
     const code = stripComments(rd(THIS_FILE)).replace(/D\("[^\n]*\n/g, "");
     const lits = [...code.matchAll(/["'`](\d{4})-(\d{2})(?:-(\d{2}))?/g)].map((m) => m[0].slice(1));
-    const early = lits.filter((l) => Number(l.slice(0, 4)) < 2030 && !["1970-01-01", "2028-02-29"].includes(l) && !/^20261205/.test(l));
+    // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised): + the law band start dates 2026-01-01 / 2029-01-01 of the dated seed rows (BRIEF_ROWS_DATED — fixed law dates, not today)
+    const early = lits.filter((l) => Number(l.slice(0, 4)) < 2030 && !["1970-01-01", "2028-02-29", "2026-01-01", "2029-01-01"].includes(l) && !/^20261205/.test(l));
     chk("X7.1", lits.length > 5 && early.length === 0, "0 literals < 2030 (sentinel/leap excepted)", `literals=${lits.length} early=${[...new Set(early)].slice(0, 6).join(",") || "0"}`);
   }
 }
@@ -1323,13 +1371,16 @@ async function runDb(): Promise<void> {
     const scriptRows: Any[] | null = Array.isArray(exp?.rows) ? exp.rows : null;
     const normRows = scriptRows ? scriptRows.map((r: Any) => ({ kind: r?.kind, effectiveFrom: dayOf(r?.effectiveFrom), json: r?.json })) : null;
     const verifyOk = exp?.verify === true || exp?.verify?.ok === true;
-    chk("S2.2", derivedEqBrief && derivedDigest === FROZEN_LAW_DIGEST && !!normRows && stable(normRows) === stable(BRIEF_ROWS) && verifyOk, "AST = brief = LAW_V1_ROWS · verifyAgainstFrozen ok",
-      `AST=brief:${derivedEqBrief} · script: ${expNote}${normRows ? ` rows=brief:${stable(normRows) === stable(BRIEF_ROWS)}` : ""} · verify=${short(exp?.verify ?? exp?.verifyErr ?? "∅", 60)}`);
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S2.2 script rows = BRIEF_ALL (10: the 4 1970 rows = AST = brief R3 · + 6 dated rows) — was stable(BRIEF_ROWS)
+    chk("S2.2", derivedEqBrief && derivedDigest === FROZEN_LAW_DIGEST && !!normRows && stable(normRows) === stable(BRIEF_ALL) && verifyOk, "AST = brief = LAW_V1_ROWS(1970) · + 6 dated rows · verifyAgainstFrozen ok",
+      `AST=brief:${derivedEqBrief} · script: ${expNote}${normRows ? ` rows=brief:${stable(normRows) === stable(BRIEF_ALL)}` : ""} · verify=${short(exp?.verify ?? exp?.verifyErr ?? "∅", 60)}`);
     // S2.3 behavioural
     const pc = derived.rows ? await behaviour(derived.rows) : { n: 0, mism: -1, first: "no AST rows" };
     console.log(`  ℹ positive control (evaluator over the AST rows): ${pc.n} vectors · ${pc.mism} mismatches${pc.first ? ` · ${pc.first}` : ""}`);
-    const bh = normRows ? await behaviour(normRows) : { n: 0, mism: -1, first: `script rows: ${expNote}` };
-    chk("S2.3", pc.n >= 2000 && pc.mism === 0 && bh.n >= 2000 && bh.mism === 0, "≥2000 vectors · 0 mismatches (control 0)", `script ${bh.n}/${bh.mism}${bh.first ? ` (${bh.first})` : ""} · control ${pc.n}/${pc.mism}`);
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S2.3 frozen functions vs the 1970 rows only (explicit — was the first row of each kind) · dated rows vs payroll-rules-sso.ts (first + last period of each band · DEDUCTION cap vs ssoAllowanceCapSatang of first + last year)
+    const bh = normRows ? await behaviour(normRows.filter((r: Any) => r.effectiveFrom === SENTINEL)) : { n: 0, mism: -1, first: `script rows: ${expNote}` };
+    const dt = normRows ? await datedBehaviour(normRows) : { n: 0, mism: -1, first: `script rows: ${expNote}` };
+    chk("S2.3", pc.n >= 2000 && pc.mism === 0 && bh.n >= 2000 && bh.mism === 0 && dt.n >= 100 && dt.mism === 0, "≥2000 vectors · 0 mismatches (control 0) · dated rows = payroll-rules-sso", `script ${bh.n}/${bh.mism}${bh.first ? ` (${bh.first})` : ""} · control ${pc.n}/${pc.mism} · dated ${dt.n}/${dt.mism}${dt.first ? ` (${dt.first})` : ""}`);
     // S2.8 statics
     const s28 = staticNotes.s28 as Record<string, boolean>;
     const intOnly = normRows ? numLeaves(normRows.map((r: Any) => r.json)).every((x) => Number.isSafeInteger(x)) : false;
@@ -1345,25 +1396,27 @@ async function runDb(): Promise<void> {
     const ap1 = await runSeed(["--apply", "--key-prefix", pA]);
     const rows1 = (await lawRowsOf(pA)) ?? [];
     const c1 = counts(ap1.out);
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S2.4 4 → 10 rows · keys `${pA}:<kind>` + `${pA}:<kind>:2569/2572/2575` · effectiveFrom per row (1970 sentinel for the 4 old rows) · created 4 → 10
     const s24 = {
       exit0: ap1.code === 0,
-      four: rows1.length === 4 && srt(rows1.map((r) => r.kind)) === srt(LAW_KINDS4),
-      keys: srt(rows1.map((r) => r.sourceKey)) === srt(LAW_KINDS4.map((k) => `${pA}:${k}`)),
-      draft: rows1.length === 4 && rows1.every((r) => r.status === "DRAFT"),
-      unsigned: rows1.length === 4 && rows1.every((r) => r.approvedAt === null && r.approvedById === null && r.approvedByName === null),
-      sentinel: rows1.length === 4 && rows1.every((r) => r.effectiveFrom === SENTINEL),
-      created4: c1?.created === 4,
+      four: rows1.length === 10 && srt(rows1.map((r) => r.kind)) === srt(BRIEF_ALL.map((r) => r.kind)), // HF-SSO ORACLE-EDIT
+      keys: srt(rows1.map((r) => r.sourceKey)) === srt(BRIEF_ALL.map((r) => briefKey(pA, r))), // HF-SSO ORACLE-EDIT
+      draft: rows1.length === 10 && rows1.every((r) => r.status === "DRAFT"), // HF-SSO ORACLE-EDIT
+      unsigned: rows1.length === 10 && rows1.every((r) => r.approvedAt === null && r.approvedById === null && r.approvedByName === null), // HF-SSO ORACLE-EDIT
+      sentinel: rows1.length === 10 && srt(rows1.map((r) => `${r.sourceKey}@${dayOf(r.effectiveFrom)}`)) === srt(BRIEF_ALL.map((r) => `${briefKey(pA, r)}@${r.effectiveFrom}`)), // HF-SSO ORACLE-EDIT
+      created4: c1?.created === 10, // HF-SSO ORACLE-EDIT
     };
-    chk("S2.4", Object.values(s24).every(Boolean), "4 DRAFT rows · unsigned · 1970-01-01 · created 4", `${failedKeys(s24)} rows=${rows1.length} · ${outLine(ap1.out)}`);
-    // S2.5 digest
-    const dbDigest = rows1.length === 4 ? lawDigest(rows1) : "∅";
-    chk("S2.5", exp?.digest === FROZEN_LAW_DIGEST && dbDigest === FROZEN_LAW_DIGEST, FROZEN_LAW_DIGEST.slice(0, 16), `exported=${String(exp?.digest ?? "∅").slice(0, 16)} db=${dbDigest.slice(0, 16)}`);
+    chk("S2.4", Object.values(s24).every(Boolean), "10 DRAFT rows · unsigned · 1970-01-01 ×4 + dated ×6 · created 10", `${failedKeys(s24)} rows=${rows1.length} · ${outLine(ap1.out)}`);
+    // S2.5 digest — ORACLE-EDIT (HF-SSO-2569 · controller ruling): 10 rows · FROZEN_LAW_DIGEST_ALL
+    const dbDigest = rows1.length === 10 ? lawDigest(rows1) : "∅";
+    chk("S2.5", exp?.digest === FROZEN_LAW_DIGEST_ALL && dbDigest === FROZEN_LAW_DIGEST_ALL, FROZEN_LAW_DIGEST_ALL.slice(0, 16), `exported=${String(exp?.digest ?? "∅").slice(0, 16)} db=${dbDigest.slice(0, 16)}`);
     // S2.6 apply ×2
     const ap2 = await runSeed(["--apply", "--key-prefix", pA]);
     const rows2 = (await lawRowsOf(pA)) ?? [];
     const c2 = counts(ap2.out);
-    const same = rows1.length === 4 && stable(rows1.map((r) => [r.id, r.createdAt])) === stable(rows2.map((r) => [r.id, r.createdAt]));
-    chk("S2.6", ap2.code === 0 && c2?.created === 0 && c2?.unchanged === 4 && same, "created 0 · unchanged 4 · ids/createdAt same", `exit=${ap2.code} counts=${short(c2)} same=${same} · ${outLine(ap2.out)}`);
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S2.6 unchanged 4 → 10
+    const same = rows1.length === 10 && stable(rows1.map((r) => [r.id, r.createdAt])) === stable(rows2.map((r) => [r.id, r.createdAt]));
+    chk("S2.6", ap2.code === 0 && c2?.created === 0 && c2?.unchanged === 10 && same, "created 0 · unchanged 10 · ids/createdAt same", `exit=${ap2.code} counts=${short(c2)} same=${same} · ${outLine(ap2.out)}`);
     // S2.7 tampered
     const pT = `${LAW_PREFIX}t`;
     let tam = "∅table";
@@ -1387,7 +1440,8 @@ async function runDb(): Promise<void> {
       });
     }
     const minWage = rows1.some((r) => r.kind === "MIN_WAGE");
-    chk("S2.9", a1 === "23514" && a2 === "23505" && rows1.length === 4 && !minWage, "unsigned ACTIVE 23514 · 2nd ACTIVE 23505 · no MIN_WAGE", `unsigned=${a1} second=${a2} minWage=${minWage} rows=${rows1.length}`);
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S2.9 seed rows 4 → 10 (Q4 + Q1 dated rows)
+    chk("S2.9", a1 === "23514" && a2 === "23505" && rows1.length === 10 && !minWage, "unsigned ACTIVE 23514 · 2nd ACTIVE 23505 · no MIN_WAGE", `unsigned=${a1} second=${a2} minWage=${minWage} rows=${rows1.length}`);
     // X1.1 replay ×3
     const pX = `${LAW_PREFIX}x`;
     const outs: string[] = [];
@@ -1396,10 +1450,11 @@ async function runDb(): Promise<void> {
       const r = await runSeed(["--apply", "--key-prefix", pX]);
       const c = counts(r.out);
       outs.push(`#${i + 1}:exit${r.code}/${c ? `${c.created}+${c.unchanged}` : "∅"}`);
-      if (r.code !== 0 || !c || (i === 0 ? c.created !== 4 : c.created !== 0 || c.unchanged !== 4)) x11 = false;
+      if (r.code !== 0 || !c || (i === 0 ? c.created !== 10 : c.created !== 0 || c.unchanged !== 10)) x11 = false; // ORACLE-EDIT (HF-SSO-2569 · controller ruling): X1.1 4 → 10
     }
     const nX = (await lawRowsOf(pX))?.length ?? -1;
-    chk("X1.1", x11 && nX === 4, "4 rows · 4+0 · 0+4 · 0+4", `${outs.join(" ")} rows=${nX}`);
+    chk("X1.1", x11 && nX === 10, "10 rows · 10+0 · 0+10 · 0+10", // ORACLE-EDIT (HF-SSO-2569 · controller ruling): X1.1 4 → 10
+      `${outs.join(" ")} rows=${nX}`);
   });
 
   // ═══ S3 source idempotency + CRM coexistence ═══
@@ -1858,7 +1913,8 @@ async function runDb(): Promise<void> {
         const r = (await colsCached("HrPayrollRun")).has("engineVersion") ? await rawRows(`SELECT "engineVersion" FROM "HrPayrollRun" WHERE "tenantId" = $1`, q) : null;
         live = r ? r.map((x) => Number(x.engineVersion)).join(",") : "∅col";
       }
-      chk("S7.1", ev === 1 && lv === 4 && live === "1", "expected engineVersion 1 · HrLawTable.v1 4 · live 1", `expected engineVersion=${ev ?? "∅"} HrLawTable.v1=${lv ?? "∅"} · live=${q ? live : "qc-hr-v2 not seeded"}`);
+      // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S7.1 HrLawTable.v1 4 → 10 (after `hr-seed-law-draft --apply` + reseed on the lane DB)
+      chk("S7.1", ev === 1 && lv === 10 && live === "1", "expected engineVersion 1 · HrLawTable.v1 10 · live 1", `expected engineVersion=${ev ?? "∅"} HrLawTable.v1=${lv ?? "∅"} · live=${q ? live : "qc-hr-v2 not seeded"}`);
     }
     {
       // ORACLE-EDIT (builder H2.11 · seed ruling): + 2 pending adjustments the H2.11 seed files (เบิกล่วงหน้า · หักค่าของ) ⇒ HrPayAdjustment 7 (was 5)
@@ -1878,8 +1934,9 @@ async function runDb(): Promise<void> {
     {
       const v1 = (await lawRowsOf("v1")) ?? null;
       const active = (await tableExists("HrLawTable")) ? await rawCount("HrLawTable", `status::text = 'ACTIVE'`) : -1;
-      const ok = !!v1 && v1.length === 4 && srt(v1.map((r) => r.kind)) === srt(LAW_KINDS4) && v1.every((r) => r.status === "DRAFT") && active === 0;
-      chk("S7.4", ok, "4 v1 DRAFT rows · 0 ACTIVE", v1 ? `v1=${v1.map((r) => `${r.kind}:${r.status}`).join(",") || "0"} active=${active}` : "∅ HrLawTable");
+      // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S7.4 4 → 10 v1 rows (kinds SSO×4 · TAX · DEDUCTION×4 · OT)
+      const ok = !!v1 && v1.length === 10 && srt(v1.map((r) => r.kind)) === srt(BRIEF_ALL.map((r) => r.kind)) && v1.every((r) => r.status === "DRAFT") && active === 0;
+      chk("S7.4", ok, "10 v1 DRAFT rows · 0 ACTIVE", v1 ? `v1=${v1.map((r) => `${r.kind}:${r.status}`).join(",") || "0"} active=${active}` : "∅ HrLawTable");
     }
   });
 }

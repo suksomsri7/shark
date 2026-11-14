@@ -403,7 +403,8 @@ export const FROZEN_DIGESTS: Record<string, string> = {
   monthlyAttendance: "9a4c6047d670e99934b26da17183246f1c3ce07415ccc1c7f81f66cb09df1fb3",
   unavailable: "840adc0a26e7efd47a1e90cc033305236855d619f8b06aaf42dbb91c3b5e9643",
 };
-export const FROZEN_MONTHLY = { digest: "72166a3e2a2ebb6a37405a105f7db540b946fda05fe020639bbe79a60b87e5c8", totals: "10725000:195000:195000:100000:10430000:475000:100000", flags: "M01=-,M02=-,M03=-,M04=PARTIAL_MONTH" };
+// ORACLE-EDIT (HF-SSO-2569 · controller ruling): MONTHLY fixture period 2030-05 ⇒ SSO ceiling 20,000 · M03 52,000 SSO 750 → 1,000 · WHT 916.67 → 891.67 (net income 335,000 → 332,000 · allowance cap 2030 12,000) ⇒ digest 72166a3e… → f7966f99… · totals 10725000:195000:195000:100000:10430000:475000:100000 → 10725000:220000:220000:97500:10407500:475000:100000
+export const FROZEN_MONTHLY = { digest: "f7966f99b8b7384abccce4deabd596e3aee79467580346bf1c51feda7a2f0d3d", totals: "10725000:220000:220000:97500:10407500:475000:100000", flags: "M01=-,M02=-,M03=-,M04=PARTIAL_MONTH" };
 export const FROZEN_CLOCK = "K1=DAY_OFF:-:-|K2=ON_TIME:0:0|K3=NO_SCHEDULE:-:-";
 // ORACLE-EDIT (H4.4 control, controller): + the 4 additive HrEmployee offboard columns of H4.4 R1 (`employee: true` carries them) — same as qc-hr-h1.2
 const PRIOR_WO_KEYS = new Set(["filedById", "linkApprovedById", "unitId", "employmentStatus", "probationEndAt", "contractEndAt", "filedBy", "offboardedAt", "offboardReason", "offboardNote", "offboardedById"]);

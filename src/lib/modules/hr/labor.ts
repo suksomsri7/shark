@@ -16,7 +16,8 @@ import { canReadRoster } from "./roster-board";
 import { canManageHrSettings } from "./settings";
 import { unitOfDay } from "./roster";
 import { normalMinutesOf } from "./work-entries";
-import { loadLawView, pickLawRow } from "./law";
+import { loadLawView } from "./law";
+import { ssoLawForPeriod } from "./payroll-rules-sso"; // HR HF-SSO ▸ เพดานประกันสังคมตามงวดค่าจ้าง (ไม่อ่านแถว SSO ของตาราง) ◂
 import { otLawOf } from "./ot-rules";
 import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock";
 import {
@@ -338,17 +339,16 @@ function holidayOf(L: Loaded, unitId: string | null, d: string) {
   const same = L.holidays.filter((h) => h.date === d);
   return (unitId ? same.find((h) => h.unitId === unitId) : undefined) ?? same.find((h) => h.unitId === null) ?? null;
 }
-function ssoLawOf(L: Loaded, d: string): { rateBp: number; maxBaseSatang: number } | null {
-  const p = pickLawRow(L.law, "SSO", d);
-  if (!p.ok) return null;
-  const j = obj(p.row.json);
-  return Number.isInteger(j.rateBp) && Number.isInteger(j.maxBaseSatang) ? { rateBp: j.rateBp as number, maxBaseSatang: j.maxBaseSatang as number } : null;
+// HR HF-SSO ▸ R2: งวดค่าจ้างของวัน = เดือนของวันนั้น · อัตรา/เพดานจาก ssoLawForPeriod (ตัวเดียวกับรอบจ่ายรุ่น 1) ◂
+function ssoLawOf(d: string): { rateBp: number; maxBaseSatang: number } | null {
+  const l = ssoLawForPeriod(d.slice(0, 7));
+  return { rateBp: l.rateBp, maxBaseSatang: l.maxBaseSatang };
 }
 function computeDay(L: Loaded, d: string, view: View, cutoffOf: (unit: string | null) => number, sees: (home: string | null) => boolean): DayCalc {
   const c: DayCalc = { day: d, wage: 0, sso: 0, cost: 0, unalloc: 0, hours: new Map(), shifts: new Map(), demand: [], paidMinutes: 0, noProfile: new Set(), excluded: new Set(), lawMissing: false };
   const inView = (u: string | null) => (u ? view.unitIds.includes(u) : view.unassigned);
   const D = daysInMonth(d);
-  const sso = ssoLawOf(L, d);
+  const sso = ssoLawOf(d); // HR HF-SSO ◂
   const ot = otLawOf(L.law, d);
   const bp = ot.ok ? ot.law.holidayWorkPaidBp : null;
   const unitOfEntry = (x: Entry, e: Emp | undefined) => x.unitId ?? (e ? unitOfDay(e, x.date) : null);
