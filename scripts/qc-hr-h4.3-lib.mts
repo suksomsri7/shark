@@ -200,7 +200,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const P2_ALLOW = new Set([`${H}privacy.ts`, `${H}privacy-shared.ts`, `${H}payroll.ts`, `${H}payroll-ui.tsx`, `${H}payroll-run-ui.tsx`, `${H}payslip.ts`, `${H}reports.ts`, `${H}reports-rules.ts`, "scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.8.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-priv-2.mts", "scripts/qc-hr-priv-2-lib.mts"]); // ORACLE-EDIT (HR-PRIV-2 · controller) ◂
     const p2Marked = (f: string) => IN_BASE && P2_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PRIV-2|ORACLE-EDIT \(HR-PRIV-2/.test(l))); // ORACLE-EDIT (HR-PRIV-2 · controller) ◂
     // ORACLE-EDIT (HR LEAVE-3 · controller) S1.6: in base only — exactly these files may differ, and only when every hunk carries "HR LEAVE-3" / "HR-LEAVE-3" / "ORACLE-EDIT (HR LEAVE-3" on an added line: hr judge.ts · the older oracles LEAVE-3 edited (h3.2 · h3.4-lib · h3.9 · priv-2) · its own two oracle files ◂
-    const L3_ALLOW = new Set([`${H}judge.ts`, "scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-priv-2.mts", "scripts/qc-hr-leave-3.mts", "scripts/qc-hr-leave-3-lib.mts"]); // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
+    const L3_ALLOW = new Set([`${H}judge.ts`, "scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-priv-2.mts", "scripts/qc-hr-leave-3.mts", "scripts/qc-hr-leave-3-lib.mts", "scripts/qc-hr-leave-3b.mts"]); // ORACLE-EDIT (HR LEAVE-3 · controller): + qc-hr-leave-3b (r3 W9) ◂
     const l3Marked = (f: string) => IN_BASE && L3_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR[ -]LEAVE-3|ORACLE-EDIT \(HR LEAVE-3/.test(l))); // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
     const frozenLeft = frozen.filter((f) => !(/\.(ts|mts|json)$/.test(f) && hfOk(f)));
     const hrLeft = hrFrozen.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f) && !l3Marked(f)); // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂ // ORACLE-EDIT (HR LEAVE-3 · controller): + l3Marked ◂
@@ -219,6 +219,17 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const need = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
     const bad: string[] = [];
     const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT|HR MONEY-2/; // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.7: + "HR HF-SSO" (labor.ts ssoLawForPeriod) ◂ // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" (in base only) ◂ // ORACLE-EDIT (HR HF-SSO · controller fix2) ◂
+    // ORACLE-EDIT (HR LEAVE-3 · controller · r3 W9): anchored regions — every added line (current file) and removed line (base file) of the hunk lies inside
+    //   tools.ts `const approvalDecide` … `const inventoryConsume` · proposals.ts `type ApprovalDecidePayload` … `type InventoryConsumePayload` and `kind === "approval_decide"` … `kind === "inventory_consume"` ◂
+    const L3_REGIONS: Record<string, [string, string][]> = { [F.tools]: [["const approvalDecide", "const inventoryConsume"]], [F.props]: [["type ApprovalDecidePayload", "type InventoryConsumePayload"], ['kind === "approval_decide"', 'kind === "inventory_consume"']] }; // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
+    const atBaseL3 = (f: string) => { try { return execFileSync("git", ["show", `${BASE}:${f}`], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 << 20 }); } catch { return ""; } }; // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
+    const regionL3 = (src: string, a: string, b: string) => { const i = src.indexOf(a), j = i < 0 ? -1 : src.indexOf(b, i + a.length); return i < 0 || j < 0 ? "" : src.slice(i, j); }; // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
+    const l3InDecide = (f: string, h: { added: string[]; removed: string[] }) => { // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
+      const regs = L3_REGIONS[f];
+      if (!IN_BASE || !regs || !h.added.some((l) => /HR LEAVE-3/.test(l))) return false;
+      const now = regs.map(([a, b]) => regionL3(rd(f), a, b)), was = regs.map(([a, b]) => regionL3(atBaseL3(f), a, b));
+      return h.added.every((l) => now.some((r) => r.includes(l))) && h.removed.every((l) => was.some((r) => r.includes(l)));
+    }; // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
     const judge = (f: string, re: RegExp, mustHave: boolean) => {
       const hs = diffHunks(BASE, f);
       if (!hs) return void bad.push(`${f.split("/").pop()}:git`);
@@ -226,7 +237,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
       hs.forEach((h, i) => {
         // ORACLE-EDIT (HR-PRIV-2 · controller) S1.7: in base only — labor.ts hunks carrying "HR PRIV-2" (pay-scope helper) are accepted; no other file, unmarked still fails ◂
         if (IN_BASE && f === F.labor && h.added.some((l) => /HR PRIV-2/.test(l))) return; // ORACLE-EDIT (HR-PRIV-2 · controller) ◂
-        if (IN_BASE && (f === F.tools || f === F.props) && h.added.some((l) => /HR LEAVE-3/.test(l))) return; // ORACLE-EDIT (HR LEAVE-3 · controller) S1.7: in base only — tools.ts / proposals.ts hunks carrying "HR LEAVE-3" (approval_decide step) accepted; no other file ◂
+        if (l3InDecide(f, h)) return; // ORACLE-EDIT (HR LEAVE-3 · controller) S1.7 (r3 W9): in base only — tools.ts / proposals.ts hunks carrying "HR LEAVE-3" accepted only inside the approval_decide tool / payload type / dispatch; no other file ◂
         if (!h.added.some((l) => (IN_BASE ? anyMark : re).test(l) || (IN_BASE && f === F.labor && /HR HF-SSO/.test(l)))) bad.push(`${f.split("/").pop()}#${i}:unmarked`); // ORACLE-EDIT (HR HF-SSO · controller fix2) S1.7: "HR HF-SSO" counts only in labor.ts (was: any judged file via anyMark) ◂
       });
     };
@@ -237,7 +248,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     judge(F.o42lib, FIX1_ORACLE, false);
     // proposals.ts: only the dispatch branch (+ optional Q3 pre-claim hook) — no removed line outside marked hunks
     const ph = diffHunks(BASE, F.props) ?? [];
-    const propsRemoved = ph.filter((h) => h.removed.length > 0 && !h.added.some((l) => MARK.test(l) || (IN_BASE && /HR LEAVE-3/.test(l)))).length; // ORACLE-EDIT (HR LEAVE-3 · controller): + LEAVE-3-marked hunks (in base only) ◂
+    const propsRemoved = ph.filter((h) => h.removed.length > 0 && !h.added.some((l) => MARK.test(l)) && !l3InDecide(F.props, h)).length; // ORACLE-EDIT (HR LEAVE-3 · controller · r3 W9): + LEAVE-3 hunks inside the approval_decide regions only (in base only) ◂
     chk("S1.7", bad.length === 0 && propsRemoved === 0, "every hunk marked (HR H4.3 · labor H4.2-FIX1 · qc-hr-h4.2 ORACLE-EDIT (H4.2-FIX1 via H4.3)) · each shared file touched", bad.join(" ") || "ok");
   }
 }
