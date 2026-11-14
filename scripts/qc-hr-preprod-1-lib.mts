@@ -136,18 +136,3 @@ export async function nextScope(): Promise<<T,>(cookie: string, pathname: string
     return nw.workAsyncStorage.run(ws, () => nu.workUnitAsyncStorage.run(unit, fn));
   };
 }
-
-/** [paid, unpaid] from any value that carries both (keys …paid… / …unpaid…) — Map, array or object, depth ≤ 6 */
-export function splitIn(v: unknown, d = 0): [unknown, unknown] | null {
-  if (d > 6 || v === null || typeof v !== "object") return null;
-  if (v instanceof Map) { for (const x of v.values()) { const r = splitIn(x, d + 1); if (r) return r; } return null; }
-  if (Array.isArray(v)) { for (const x of v) { const r = splitIn(x, d + 1); if (r) return r; } return null; }
-  const ks = Object.keys(v as object);
-  const uk = ks.find((k) => /unpaid/i.test(k));
-  const pk = ks.find((k) => /paid/i.test(k) && !/unpaid/i.test(k));
-  if (uk && pk) return [(v as Any)[pk], (v as Any)[uk]];
-  for (const k of ks) { const r = splitIn((v as Any)[k], d + 1); if (r) return r; }
-  return null;
-}
-/** a day count given as number, "d.d" text or tenths */
-export const daysEq = (x: unknown, want: number) => { const n = Number(String(x)); return Number.isFinite(n) && (n === want || n === want * 10); };

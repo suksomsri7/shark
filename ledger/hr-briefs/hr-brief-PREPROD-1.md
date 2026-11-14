@@ -121,3 +121,11 @@ All of these go through `inPayScope` (`payTarget` gets a pay mode). `requestAdju
 - R4 scope as drafted (decide / cancel / move on the payroll page, give-back, consent and stock-charge withdraw for employees with no home branch): all in this ticket, one shared pay-scope helper, identical answer for "not found" and "out of scope".
 - Acceptances in older oracles: explicit allowlist style only (see `M2_ALLOW` / `P2_ALLOW` in qc-hr-h4.3-lib.mts) — no "any hunk with the tag passes".
 - Oracle size cap 64 KB (suite + lib). Coverage is never dropped to meet a size cap.
+
+## CONTROLLER RULINGS (oracle doubts) — 14 Nov
+1. Split field names pinned: `leaveSplitOf(ids)` returns per leave id `{ paidDays, unpaidDays, unpaidFrom }` (`unpaidFrom` = first unpaid calendar day or null); leave list items expose `paidDays` and `unpaidDays`. R3.3 checks exactly these.
+2. Fully paid SICK leave: the USE note stays null (no `unpaid:0` note). R3.13 checks null.
+3. `paidLocked` with ASCII quotes as written above — fine.
+4. Leaver's refused move: fixed Thai text, no period/id/name, nothing written — enough.
+5. Not-found parity also for an employee whose home is another branch and who is not borrowed, on all six non-inbox actions (decide · cancel · move · consent · give-back · stock withdraw): the limited viewer gets exactly the same answer as for a non-existent id (R4.2–R4.7).
+6. No dedicated lock-order check; the reviewer covers it.

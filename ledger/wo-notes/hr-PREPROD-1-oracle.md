@@ -6,7 +6,7 @@ Oracle under change control: builder asks for an ORACLE-EDIT (check id · exact 
 Run (lane DB only):
 `bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-preprod-1.mts` (`--list` prints the registry).
 Base = `QC_PP1_BASE` || merge-base(HEAD, `session/hr`) = a4e2fb4ae. Diff statics turn n/a once the base already carries `HR PREPROD-1` (in-base guard, as money-2).
-Size: suite 47.9 KB + lib 14.4 KB = 62.4 KB (< 64 KB, no check dropped). Targeted tsc (temporary tsconfig over the two files, since deleted): exit 0.
+Size: suite 48.7 KB + lib 13.4 KB = 62.1 KB (< 64 KB, no check dropped). Targeted tsc (temporary tsconfig over the two files, since deleted): exit 0.
 
 ## Base result (tip 28699bda3 + these files, forced)
 
@@ -70,3 +70,9 @@ Only these are on ST3's allowlist; every hunk must carry `ORACLE-EDIT …PREPROD
 5. R4 "home other branch, not borrowed" for actions other than the inbox: the brief's table only lists the borrowed / home-less leaks. Today those calls already refuse with `HR_OTHER_BRANCH_TEXT` (≠ not-found). Only the inbox (R4.1) pins other-branch = not-found; the action probes cover borrowed / home-less rows. The controller may want other-branch parity everywhere (one-line addition per probe).
 6. R1 v1 path: the JV is posted to the tenant's only ACCOUNT system (the same one booked for the v2 path); tenant n has none so the v2 no-book path is the finalized-without-entry case (asserted in setup: no book, no JV, `finalized`).
 7. "Lock orders unchanged" has no dedicated check (ST4/ST3 only bound the diff); the R3 second gate is not raced.
+
+## Controller rulings on the doubts (14 Nov) — applied
+- R3.3 now pins `leaveSplitOf` → per id `{ paidDays: 2, unpaidDays: 3, unpaidFrom: "2031-03-12" }` (Map or record keyed by id; days compared as numbers) and leave items `paidDays` / `unpaidDays` (doubt 1 closed).
+- R3.13 now requires the USE note to be null (doubt 2 closed).
+- R4.2–R4.7 also probe an employee whose home is u2 and who is not borrowed (rows dO · xO · mO · kO · clO · chO): answer canon-equal to the missing-id answer, nothing written (doubt 5 closed). On base the other-branch part already matches for consent / give-back / withdraw and differs (HR_OTHER_BRANCH_TEXT) for decide / cancel / move; every R4.2–R4.7 stays RED through the borrowed / home-less part.
+- Doubts 3, 4, 6: unchanged by ruling. Registry unchanged in size: 57 checks, 28 RED · 29 GREEN; forced run 57/57 as registered, residue none.

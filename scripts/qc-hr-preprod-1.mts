@@ -5,7 +5,7 @@
 //   base = QC_PP1_BASE || merge-base(HEAD, session/hr) · diff statics are n/a once the base already carries `HR PREPROD-1` (in-base guard)
 import { execFileSync } from "node:child_process";
 import { type Any, type Base, ROOT, rd, short, errText, failedKeys, canon, sha, isThai, stripComments, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, changedVsBase, diffHunks, makeRegistry, srcFiles } from "./qc-hr-lib.mjs";
-import { setupPP1, nextScope, splitIn, daysEq, bk, dd, nowOf } from "./qc-hr-preprod-1-lib.mjs";
+import { setupPP1, nextScope, bk, dd, nowOf } from "./qc-hr-preprod-1-lib.mjs";
 import { changedFiles, bodyOf } from "./qc-hr-priv-2-lib.mjs";
 
 const SUITE = "qc-hr-preprod-1";
@@ -47,7 +47,7 @@ R2.5|R2|M|G|[db] control: ordinary give-back (period after lastCovered) not list
 R2.6|R2|M|G|[db] control: old stranded BONUS listed unchanged · moves to 2031-04
 R3.1|R3|C|R|[db] SICK 10–14 Mar (5.0) with 28.0 used ⇒ request accepted (PENDING)
 R3.2|R3|C|R|[db] approve ⇒ USE −2.0 · note unpaid:3.0;from:2031-03-12
-R3.3|R3|M|R|[db] split readable: leaveSplitOf + leave DTO paid 2.0 / unpaid 3.0
+R3.3|R3|M|R|[db] (ruling 1) leaveSplitOf → { paidDays 2, unpaidDays 3, unpaidFrom 2031-03-12 } · leave item paidDays / unpaidDays
 R3.4|R3|C|R|[db] balance never negative: used 30.0 · balance 0.0 · available 0.0 · Σ ledger 0
 R3.5|R3|C|R|[db] v2 March: UNPAID_LEAVE 12/13/14 Mar −100,000 each = −300,000 · none on 10/11
 R3.6|R3|C|R|[db] half edge 27.5 used ⇒ USE −2.5 · unpaid:2.5;from:2031-03-12;half · −50,000 −100,000 −100,000 = −250,000
@@ -57,17 +57,17 @@ R3.9|R3|C|R|[db] same, owner auto-approve ⇒ refused · no row
 R3.10|R3|C|R|[db] same, chain apply ⇒ PAID · CANCELLED · no USE
 R3.11|R3|M|R|[db] leave spanning Feb(APPROVED)/Mar: paid 27–28 Feb, unpaid 1–3 Mar ⇒ approved · unpaid:3.0;from:2031-03-01
 R3.12|R3|M|G|[db] control: MONEY-2 gate — unpaid-policy leave in APPROVED Feb still refused
-R3.13|R3|m|G|[db] control: SICK within balance ⇒ USE −2.0 · no unpaid
+R3.13|R3|m|G|[db] control: SICK within balance ⇒ USE −2.0 · note null (ruling 2) · no unpaid
 R3.14|R3|M|G|[db] control: PERSONAL over quota still refused (LEAVE_TEXT.balance) · no row
 R3.15|R3|m|G|[db] control: engine v1 March run unchanged (gross 3,000,000 · no UNPAID_LEAVE)
 R3.16|R3|M|G|[db] positive control: unpaid-policy day on the R3 roster = UNPAID_LEAVE −100,000 (fixture basis N = 480)
 R4.1|R4|C|R|[db] inbox decideAdjustmentAs: borrowed · other-branch · missing ⇒ PAY_SCOPE_NO_ACCESS_TEXT byte-equal · nothing written
-R4.2|R4|C|R|[db] decideAdjustmentAction on borrowed employee's row = not-found answer · nothing written
-R4.3|R4|C|R|[db] cancelAdjustmentAction borrowed = not-found answer · nothing written
-R4.4|R4|C|R|[db] moveStrandedAdjustmentAction borrowed = not-found answer · nothing written
-R4.5|R4|C|R|[db] setAdjustmentConsent home-less employee = not-found answer · nothing written
-R4.6|R4|C|R|[db] giveBackClaim borrowed = not-found answer · nothing written
-R4.7|R4|C|R|[db] withdrawStockCharge borrowed home-less = not-found answer · nothing written
+R4.2|R4|C|R|[db] decideAdjustmentAction on borrowed + other-branch rows = not-found answer · nothing written
+R4.3|R4|C|R|[db] cancelAdjustmentAction borrowed + other-branch = not-found answer · nothing written
+R4.4|R4|C|R|[db] moveStrandedAdjustmentAction borrowed + other-branch = not-found answer · nothing written
+R4.5|R4|C|R|[db] setAdjustmentConsent home-less + other-branch = not-found answer · nothing written
+R4.6|R4|C|R|[db] giveBackClaim borrowed + other-branch = not-found answer · nothing written
+R4.7|R4|C|R|[db] withdrawStockCharge borrowed home-less + other-branch = not-found answer · nothing written
 R4.8|R4|M|G|[db] control: all-branch viewer does all 7 on borrowed / home-less rows
 R4.9|R4|M|G|[db] control: limited viewer, in-scope home: 6 actions ok
 R4.10|R4|m|G|[db] control: inbox decideAdjustmentAs in-scope ok
@@ -356,11 +356,10 @@ try {
       const f = LV.leaveSplitOf;
       let sp: unknown = null;
       if (typeof f === "function") sp = await Promise.resolve().then(() => f(K.c(s3), [l1])).catch(() => Promise.resolve().then(() => f(P, [l1])).catch((x: unknown) => ({ __err: errText(x) })));
-      const a = splitIn(sp);
+      const a = (sp instanceof Map ? sp.get(l1) : (sp as Any)?.[l1]) as Any; // ruling 1: { paidDays, unpaidDays, unpaidFrom } per leave id
       const items = await safe(() => PV.leaveItemsForViewer(K.c(s3), { ...K.V.owner, userId: K.U.owner.id }));
       const it = [...(items?.history ?? []), ...(items?.pending ?? [])].find((x: Any) => x?.id === l1);
-      const b = splitIn(it);
-      ck("R3.3", { reader: !!a && daysEq(a[0], 2) && daysEq(a[1], 3), dto: !!b && daysEq(b[0], 2) && daysEq(b[1], 3) }, "paid 2.0 / unpaid 3.0", short({ sp, it }, 240));
+      ck("R3.3", { reader: !!a && num(a.paidDays) === 2 && num(a.unpaidDays) === 3 && a.unpaidFrom === "2031-03-12", dto: !!it && num(it.paidDays) === 2 && num(it.unpaidDays) === 3 }, "paidDays 2 · unpaidDays 3 · unpaidFrom 12 Mar", short({ sp, it }, 240));
     }
     {
       const bal = await safe(() => LV.leaveBalances(K.c(s3), K.V.owner, { employeeId: E1, year: 2031 }));
@@ -388,7 +387,7 @@ try {
       lines: canon(up2.sort()) === canon(["UNPAID_LEAVE:-100000@2031-03-13", "UNPAID_LEAVE:-100000@2031-03-14", "UNPAID_LEAVE:-50000@2031-03-12"]), total: tot(up2) === -250_000 }, "−250,000", short({ d2: d2?.reason ?? d2, u2, up2 }, 240));
     {
       const u9 = await use((r9?.id ?? "") as string);
-      ck("R3.13", { approved: d9?.ok === true, use: num(u9?.d) === -2 && (u9?.note == null || /^unpaid:0\.0(;|$)/.test(u9.note)), noLines: mar?.id ? (await unpaid(E9)).length === 0 : false }, "USE −2.0 · no unpaid", short({ d9: d9?.reason ?? d9, u9 }, 160));
+      ck("R3.13", { approved: d9?.ok === true, use: num(u9?.d) === -2 && u9?.note === null, noLines: mar?.id ? (await unpaid(E9)).length === 0 : false }, "USE −2.0 · no unpaid", short({ d9: d9?.reason ?? d9, u9 }, 160));
       const q = await req(s3, E9, "2031-03-24", "2031-03-28", pers, "PERSONAL");
       const n = (await rows(`SELECT 1 FROM "HrLeave" WHERE "employeeId" = $1 AND "fromDate" = '2031-03-24'::date`, E9)).length;
       ck("R3.14", { refused: !q?.id && q?.__throw?.message === LV.LEAVE_TEXT?.balance, noRow: n === 0 }, "LEAVE_TEXT.balance", short(q?.reason ?? q?.id, 160));
@@ -459,17 +458,18 @@ try {
     const from = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
     const eB = await K.emp(s, "B", { unit: K.u2 }), eH = await K.emp(s, "H", { unit: null }), eA = await K.emp(s, "A", { unit: K.u1 }), eO = await K.emp(s, "O", { unit: K.u2 });
     for (const e of [eB, eH]) await P.hrEmployeeUnit.create({ data: { tenantId: TT, systemId: s, employeeId: e, unitId: K.u1, fromDate: dd(from), toDate: null } });
-    const clB = (await K.adj(s, eB, "2031-02", "DEDUCTION", 100_000)).id, clA = (await K.adj(s, eA, "2031-02", "DEDUCTION", 100_000)).id;
+    const clB = (await K.adj(s, eB, "2031-02", "DEDUCTION", 100_000)).id, clA = (await K.adj(s, eA, "2031-02", "DEDUCTION", 100_000)).id, clO = (await K.adj(s, eO, "2031-02", "DEDUCTION", 100_000)).id;
     const feb = await K.create(s, "2031-02");
     const febA = feb?.id ? await K.approve(s, feb.id) : feb;
     const pend = async (e: string, kind = "BONUS") => (await K.adj(s, e, "2031-05", kind, 30_000, false)).id;
     const strand = async (e: string) => (await P.hrPayAdjustment.create({ data: { tenantId: TT, systemId: s, employeeId: e, periodKey: "2031-02", kind: "BONUS", amountSatang: 40_000, status: "APPROVED", note: "qc r4", requestedById: K.U.pay1.id } })).id as string;
     const [dB, dA, xB, xA, iB, iO, iA, kH, kA] = [await pend(eB), await pend(eA), await pend(eB), await pend(eA), await pend(eB), await pend(eO), await pend(eA), await pend(eH, "DEDUCTION"), await pend(eA, "DEDUCTION")];
-    const [mB, mA, mB2] = [await strand(eB), await strand(eA), await strand(eB)];
+    const [mB, mA, mB2, mO] = [await strand(eB), await strand(eA), await strand(eB), await strand(eO)];
+    const [dO, xO, kO] = [await pend(eO), await pend(eO), await pend(eO, "DEDUCTION")]; // ruling 5: home other branch, not borrowed
     const [dB2, xB2, iB2, kH2] = [await pend(eB), await pend(eB), await pend(eB), await pend(eH, "DEDUCTION")]; // all-branch control rows (the probed rows stay as the limited call left them)
     const stock = async (e: string, k: string) => (await safe(() => SC.requestStockCharge(c, K.V.owner, { requestKey: `qcpp1${tag}${k}`, employeeId: e, kind: "DAMAGE", amountSatang: 20_000, description: "qc ของเสียหาย", consent: { confirmed: true, ref: "QC-1", at: today } })))?.chargeId ?? "";
-    const [chH, chA, chH2] = [await stock(eH, "hhhh"), await stock(eA, "aaaa"), await stock(eH, "hhh2")];
-    const setup = febA?.ok === true && !!chH && !!chA && !!chH2 && [dB, dA, xB, xA, iB, iO, iA, kH, kA, dB2, xB2, iB2, kH2].every(Boolean);
+    const [chH, chA, chH2, chO] = [await stock(eH, "hhhh"), await stock(eA, "aaaa"), await stock(eH, "hhh2"), await stock(eO, "oooo")];
+    const setup = febA?.ok === true && !!chH && !!chA && !!chH2 && !!chO && [dB, dA, xB, xA, iB, iO, iA, kH, kA, dB2, xB2, iB2, kH2, clO, dO, xO, kO].every(Boolean);
     if (!setup) console.log(`  ⚠ setup R4: ${short({ feb: feb?.reason ?? feb?.id, febA, chH, chA }, 300)}`);
     const MISS = "qcpp1missing000000";
     const fd = (o: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries({ systemId: s, ...o })) f.set(k, v); return f; };
@@ -487,25 +487,26 @@ try {
     const world = async (ids: string[]) => canon([await auditN(TT), ...(await Promise.all(ids.map(async (id) => (await snapRow("HrPayAdjustment", id)) + (await snapRow("HrStockCharge", id))))),
       (await rows(`SELECT count(*)::int AS n FROM "HrPayAdjustment" WHERE "systemId" = $1`, s))[0]?.n]);
     const strip = (r: Any) => (r && typeof r === "object" ? { ...r, __throw: r.__throw ? errText(r.__throw) : undefined } : r);
-    const probe = async (id: string, op: string, row: string, extra: string[] = []) => {
-      const w0 = await world([row, ...extra]);
+    const probe = async (id: string, op: string, row: string, other: string) => {
+      const w0 = await world([row, other]);
       const out = await ops[op]!(K.U.lim, row);
-      const w1 = await world([row, ...extra]);
+      const outO = await ops[op]!(K.U.lim, other);
+      const w1 = await world([row, other]);
       const miss = await ops[op]!(K.U.lim, MISS);
-      const r = { setup, refused: out?.ok === false, sameAsMissing: canon(strip(out)) === canon(strip(miss)), nothing: w0 === w1 };
-      ck(id, r, "= not-found · nothing written", short({ out: strip(out), miss: strip(miss) }, 260));
+      const r = { setup, refused: out?.ok === false, sameAsMissing: canon(strip(out)) === canon(strip(miss)), otherSame: canon(strip(outO)) === canon(strip(miss)), nothing: w0 === w1 };
+      ck(id, r, "= not-found ×2 · nothing written", short({ out: strip(out), outO: strip(outO), miss: strip(miss) }, 300));
     };
     {
       const w0 = await world([iB, iO]);
       const [a, b, m] = [await ops.decideAs!(K.U.lim, iB), await ops.decideAs!(K.U.lim, iO), await ops.decideAs!(K.U.lim, MISS)];
       ck("R4.1", { setup, borrowed: a?.ok === false && a?.reason === TXT.noAccess, other: canon(b) === canon(a), missing: canon(m) === canon(a), nothing: (await world([iB, iO])) === w0 }, "PAY_SCOPE_NO_ACCESS_TEXT ×3", short({ a, b, m }, 260));
     }
-    await probe("R4.2", "decide", dB);
-    await probe("R4.3", "cancel", xB);
-    await probe("R4.4", "move", mB);
-    await probe("R4.5", "consent", kH);
-    await probe("R4.6", "giveBack", clB);
-    await probe("R4.7", "withdraw", chH);
+    await probe("R4.2", "decide", dB, dO);
+    await probe("R4.3", "cancel", xB, xO);
+    await probe("R4.4", "move", mB, mO);
+    await probe("R4.5", "consent", kH, kO);
+    await probe("R4.6", "giveBack", clB, clO);
+    await probe("R4.7", "withdraw", chH, chO);
     const okR = (r: Any) => !!r && r.ok === true;
     const allRes: Record<string, Any> = {};
     for (const [op, id] of [["decideAs", iB2], ["decide", dB2], ["cancel", xB2], ["move", mB2], ["consent", kH2], ["giveBack", clB], ["withdraw", chH2]] as const) allRes[op] = await ops[op]!(K.U.all, id);
