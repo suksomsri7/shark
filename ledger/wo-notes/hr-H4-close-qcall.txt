@@ -1,0 +1,626 @@
+# HR H4 close (H4.9) — whole-system qc:all on the HR head · 14 Nov 2026
+HEAD_SHA a4e2fb4aefbedf4c528008ccfe15daf71fb3a276 (= session/hr at start; origin/main 4d6ef6ee7 is an ancestor, 0 ahead).
+  During the run the controller committed 2c43ce874 (ledger/HR-RESUME.md only, +5 lines) — no code change; result applies to 2c43ce874 too.
+Start 2026-11-14T14:17:15Z · all three shards ended 15:46:43Z (Q 15:23:05Z · A 15:40:29Z · B 15:46:43Z) · triage + reruns until ~16:30Z.
+No product code or oracle changed. Typecheck/build not run (controller does).
+
+## Trees / DBs / prep
+Q  /root/projects/shark-hr-c (session/hr) · QC4 ep-frosty-lab · scripts/qc4.sh · lock /tmp/shark-gate-qc4.lock
+A  /root/projects/shark-hr   (detached a4e2fb4ae, was wip/hr-money-2) · lane 1 ep-nameless-sea-aokjm6d2 · scripts/qc-hr.sh
+B  /root/projects/shark-hr-b (detached a4e2fb4ae, was wip/hr-priv-2)  · lane 2 ep-orange-dust-aotwbyc7 · scripts/qc-hr.sh
+  (no branch moved or deleted; both lane trees had no tracked modifications before checkout)
+Prep (14:0xZ, all exit 0, logs /tmp/hr-qcall-h4/prep-{a,b,q}.log): A/B `iso.sh pnpm exec prisma generate` · per DB through its wrapper:
+  `prisma migrate deploy` (226 migrations, none pending on l1/l2/QC4) · `hr-seed-law-draft.mts --apply` (AST=match, 9145 values diff 0) ·
+  `env QC_FORCE=1 seed-hr-qc.mts` 34/34. (Controller tree: no prisma generate — only the three DB steps, as instructed.)
+
+## Launch (systemd units; command files /tmp/hr-qcall-h4/launch-{q,a,b}.cmd, suite lists q.txt/a.txt/b.txt)
+systemd-run --unit=hr-qcall-h4-{q|a|b} --quiet --setenv=PATH="$PATH" --setenv=HOME=/root /usr/bin/bash -c "cd <tree> && bash scripts/iso.sh bash scripts/<qc4.sh|qc-hr.sh> bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 QC_FORCE=1 pnpm exec tsx scripts/qc-all.mts <files> > /tmp/hr-qcall-h4/qcall-<n>.log 2>&1"
+Suite plan = every scripts/qc-*.mts that qc-all discovers (589) minus qc-svc-* (60) and qc-sec-* (38) = 491 (H2: 465; +26 new qc-hr-* files).
+  Q 65 = all qc-pos-* (60) + qc-hf-fu/fu2/o23/tx + qc-hr-h0.5 (QC4-only per H2 note) · A 271 = all other qc-hr-* (57) + everything not in Q/B ·
+  B 155 = qc-crm-* + qc-acc-v2-* + qc-account-* + qc-member-* (CRM seed builds on the member seed, so they share a DB).
+Per-suite logs (qc-all writes /tmp/claude-0/qc-all/<suite>.log; copied as each suite finished): /tmp/hr-qcall-h4/logs-{q,a,b}/ (65 + 271 + 121; the 34 seed-blocked suites write no log).
+Driver logs /tmp/hr-qcall-h4/qcall-{q,a,b}.log · reruns /tmp/hr-qcall-h4/rerun-*.log · bisect /tmp/hr-qcall-h4/bisect-*.log.
+No shard died early; each unit exited 1 only because it had reds (journalctl: "status=1/FAILURE" after the summary). MemAvailable stayed ≥ 12 GB.
+
+## Totals
+planned 491 · ran 491 · PASS 366 · FAIL 125 · NOT RUN 98 (qc-svc-* 60 + qc-sec-* 38 — "family env not available in HR trees; controller ruling pending";
+  owner ruling recorded meanwhile in HR-RESUME 14:50Z: svc/sec run by the SVC and SEC sessions after session/hr reaches main).
+FAIL by class (suite counted once, at its worst class): a 49 · b 20 · e 49 · c 5 · c0 2 (c0 = caused by HR but landed BEFORE the H2 close; first seen now because the
+  H2 run never reached these suites — not "since H2" by the definition, but not a/b/e either → controller ruling).
+Every qc-hr-* suite green (57 on lane 1 + hr-h0.5 71/71 on QC4), incl. h4.2 57 · h4.3 45 · h4.5 90 · h4.8 48 · hf-sso 41 · money-2 57 · priv-2 47 · set-1 25.
+§2 seams green: pos-p1.15 40/40 · p1.9 53/53 · p1.17 40/40 · p1.18 81/81 · booking-hours-hr 13 · hr-leave-booking 14 · crm-c3.3 · crm-c0.3 · ai-tools 18 · ai-tools2 8 ·
+  ai-proposals 16 · ai-plan 7 · ai-actions · account-cpa 107/107 · audit-trail (A-5.0 now green) · payroll 19 · payroll-reverse · hr-payadjust 27 · hf-hr-privacy 194/194 ·
+  booking-* / catalog-services / chat-* all green. Red in §2: qc-ai-skills (c, below); pos-p3.5 / p3.6 (a, known pins).
+gen-hr-api-docs --check (controller tree): exit 0 "docs/api/HR-API.md + skill endpoints.md ตรงกับทะเบียน (14 op)". Note: plain `pnpm exec tsx … --check` crashes
+  (env.ts needs DATABASE_URL/DIRECT_URL/SESSION_SECRET); ran as `bash scripts/qc4.sh env SESSION_SECRET=<dummy placeholder> pnpm exec tsx scripts/gen-hr-api-docs.mts --check`.
+
+## Class c — caused by HR after the H2 close (STOP list · propose only, nothing edited)
+c1 qc-ai-skills SK-4.2 (22/23) "summary ของสกิลเป็นอังกฤษทั้งหมด" — exp no Thai in any skill summary | act ["hr"].
+   src/lib/ai/skills.ts:198 summary ends "(ข้อเสนอต้องมีคนยืนยัน)" — added by 9ffbbbc8a (H4.3 register 6 HR tools). main: "Staff: pending leave requests, approve or reject leave, add an employee." (green).
+   Proposal: product fix, one string — replace the Thai parenthesis with English, e.g. "(proposals need human confirmation)". Label stays Thai (SK-4.3 green).
+c2 qc-nav-functions S5 (suite also red on main for HOTEL ×14 + BOOKING ×2 paths → b) — HR item: "HR: ขาด /hr/reports".
+   Page src/app/app/sys/[id]/hr/reports/page.tsx added by 4efe7b3e9 (H3.9, 13 Nov, after 1b0898377); its only entry is the overview tile hr-overview-reports-link
+   (src/lib/modules/hr/overview-ui.tsx:70), no accordion entry. Proposal: narrow ORACLE-EDIT — one IN_PAGE_ENTRIES row {type:"HR", rest:"/hr/reports",
+   entryFile:"src/lib/modules/hr/overview-ui.tsx", href:/href=\{`\$\{s\}\/hr\/reports`\}/} (same pattern as G1-A2 booking rows); or product: add the menu line in layout.tsx (owner-gated page → link may 404 for others; oracle-edit preferred).
+c3 qc-pos-p3-skel ST1 "ไม่มี REST op ใหม่ … src/app/api/v1/** ตรงฐาน" — act "ไฟล์ใหม่ใต้ src/app/api/v1/: src/app/api/v1/hr/[...path]/route.ts, src/app/api/v1/hr/openapi.json/route.ts"
+   (only HR files listed) ← 6156bf17f H4.8. Check intent = no new POS REST op. Proposal: narrow ORACLE-EDIT — scope the new-file scan to src/app/api/v1/pos/** (or exclude src/app/api/v1/hr/**).
+   (ST3 of the same suite is b: outbox-consumers "// SVC H.8" hunk + minute-jobs.ts are main content; HR adds scope.ts, hr.prisma and — post-H2 — account/coa.ts + account/connections.ts (H3.7 1a0bff63a/0d3886b57/a6f52ea61).)
+c4 qc-pos-p3.4 ST7 "data-testid ใหม่ที่มีคำ offline|sync มีแถว pos-ui-inventory.json" — act "ไม่มีแถว: hr-attpay-sync, hr-run2-sync".
+   hr-run2-sync ← 2af03994b (H3.4 payroll-run-ui, post-H2); hr-attpay-sync ← dec2edd72 (H3.2, landed before the H2 close). Not POS testids.
+   Proposal: narrow ORACLE-EDIT — limit the scan to POS paths (src/lib/modules/pos/**, src/app/app/sys/[id]/pos/**, POS components) or exclude the `hr-` prefix.
+   (ST1/ST2 of this suite are b: svc_* / secretary_* migrations + outbox-consumers not byte-equal on main too.)
+c5 qc-pos-p6.2 D2 "docs/sds/modules/pos.md AS-BUILT V2 … ทุก export ของ modules/pos/index.ts" — act "ขาด export ของ facade 3/91: SalesByHourDay, SalesByHourResult, salesFacts"
+   ← 540a1008b (HR H4.2 seam salesFacts.salesByHour in src/lib/modules/pos/index.ts). Proposal: docs fix (not an oracle edit) — add the 3 exports to
+   docs/sds/modules/pos.md facade list, marked "HR H4.2 (read-only reader for labour %)". Side note: 540a1008b is a non-(svc) commit on src/lib/modules/pos/index.ts,
+   a file in scripts/lib/svc-pos-carry.mts — the carry exemption for that file no longer applies (rule: every commit after 940e3aca must be `(svc)`), which can turn other POS pins red on it.
+   (H1 = b: ORACLE-EDIT commit count since 71a1f363 is 664 on origin/main alone vs the handover's ±20 window; M1 = b (authz matrix, see p5.2); Z1 = c0/pin, see below.)
+
+## Class c0 — caused by HR, landed before the H2 close, never classified before (ruling needed)
+c0-1 qc-pages RG-1 "ทุกเมนูใน childrenFor มี widget ใน registry" — missing S:HR/hr/roster (H2.2), /hr/requests (H2.11), /hr/settings (H1.2), /hr/settings/law (H3.3 bdeeffb78).
+   origin/main has only attendance/kiosk/leave/employees/payroll in the HR menu (all have widgets). Proposal: product fix — add 4 widget rows in src/lib/pages/registry.ts.
+c0-2 qc-pos-p6.1 Z1 "ขอบเขต … เทียบหมุดเลน (c91d8735)" — out of scope: package.json ("fitness:hr" f312f3dd6 H0.4) + 5 HR migrations 20261201…20261205 (H0.x).
+   Main's own changes after 940e3aca are covered by the svc-pos-carry registry; HR has no carry registry. Proposal: ORACLE-EDIT — an HR carry list (package.json fitness:hr line,
+   prisma/migrations/*_hr_*) in the same style as scripts/lib/svc-pos-carry.mts. Same mechanism makes p6.2 Z1 red ("นอกขอบเขต 43", log prints only the first 6, all HR
+   migrations; whether post-H2 files are among the 43 is NOT proven).
+
+## Triage table (all 125 reds; class · evidence) — "pin" = static check comparing the tree with an old POS/lane pin
+| suite | failing ids | reason (short) | class | evidence |
+|---|---|---|---|---|
+| 29 acc-v2-* + account-api-read-docs/-finance/-gl/-master + account-api-settings (34) | seed | seed-acc-v2-qc.mts "พ้นกำหนด (จาก DB): ได้ 38740000 ต้องการ 12840000" + "วันนี้เลย 2026-10-31" | a (R1) | known list; same text as H2 |
+| acc-v2-schema | S6 drift | DormUtilityRate unique index | b | H2 note; QC4 shows the same single diff |
+| acc-v2-security | S9 ×4, S17 ×2 | positive control needs R1 seed · doc-numbering raw SQL · S17 key-in-repo 1 + hex colour in DocEditorV2.tsx | b | account module + components/account-v2 not in HR diff (HR touches account coa/connections/gl/index/journal-v2 only) — S17 "key in repo" detail not opened: believed b, not proven |
+| account-api-ai-external | CRASH | reading 'slice' | b/e (R1) | as H2 |
+| account-api-ai-skill | E1-K2.1/.3/.5/.6/.8 | "ยังไม่ได้เปิดระบบบัญชี" | b/e (R1) | as H2 |
+| account-api-docs | F2.1–F2.6 | .claude/skills/shark-account-api missing | b | as H2 (skills dir absent in tree) |
+| account-api-openapi | OA-4.5 | endpoints.md stale (0 bytes) | b | as H2 |
+| hardening | HD-5.2 | proxy lacks Permissions-Policy | b | as H2; HR diff has no src/proxy.ts |
+| kanban-k1.15 | S3.2, S3.4 | skill endpoints.md missing | a | known list |
+| kanban-k2.12 | S3.4, S4.4 | skill endpoints.md missing · no screenshots in .qc-shots/kanban/2.12 | a + e | same skills cause as k1.15; shots are builder artefacts |
+| kanban-k2.3 | S3.2, S3.6 | TimelineView.tsx static (handle/actions/no dnd lib incl. package.json) · no screenshots | b + e | `git diff origin/main HEAD -- src/components/kanban src/lib/modules/kanban` empty; HR package.json hunk = one scripts line |
+| migrate-status | MS-2 | lane-1 DB: DormUtilityRate (b) + HrFilingProfile.rdFormFlag default 1 vs schema 2 | e (+b) | migration 20270108000000_hr_filings already says DEFAULT 2 (edited in place by H3.6 fix r1 after l1 had applied it); QC4 rerun: only DormUtilityRate → QC4 clean of HR drift |
+| mobile-app | APP-4.1 | app.json bundle/light | b | HR diff on mobile/ empty |
+| nav-functions | S5 | HOTEL ×14 + BOOKING ×2 missing (main) · HR /hr/reports | b + **c2** | see c2 |
+| pages | RG-1 | 4 HR menus without widget | **c0-1** | see above |
+| sanitize-hotfix | HS-D sanitizeHtml timing 311.9 ms > 200 | perf under 3 parallel shards | e (flaky) | rerun alone on l1: 29/29 (rerun-qc-sanitize-hotfix-l1.log) |
+| systems | Hotel checkIn | "ลงทะเบียนผู้เข้าพักหลักก่อนเช็กอิน … ม.35" | b | main SVC rule; HR diff on src/lib/modules/hotel empty |
+| ai-skills | SK-4.2 | Thai in hr skill summary | **c1** | see c1 |
+| hf-fu | ST1 | prisma changed vs c3c52ef1/adfcee44 · outbox +13 above pos.sale.voided · createSale callers in hotel/* | a (TL-1 pin) | POS HANDOVER-P2 TL-1 lists hf-fu ST1; hotel files are main (22674fe7e) |
+| hf-fu2 | ST1 | pin 72669941: prisma, outbox hunk, src/proxy.ts hunk, package.json, HR migrations | b (pin) | proxy.ts hunk is main content (not in HR diff) → red on main too; HR adds package.json + migrations |
+| pos-p2.10 | ST2 | outbox/proxy hunks, edited oracles | a | TL-1 / pos-P2.14 CD-B1 lane-pin list |
+| pos-p2.11 | ST1, ST4 | HR migrations · lane-A files touched | a | known list |
+| pos-p2.12 | ST1 | same | a | known list |
+| pos-p2.13 | ST5 | same | a | known list |
+| pos-p2.4 | L2 | createSale callers: hotel/booking-sale.ts 0→3 | b | main 22674fe7e; HR diff on hotel empty |
+| pos-p2.7 | ST1 | PosSaleLine fields changed vs base | b | HR diff on prisma/schema = hr.prisma + payroll.prisma only |
+| pos-p3-skel | ST1, ST3 | HR api/v1/hr routes · SVC H.8 outbox, account files, scope.ts | **c3** + b | see c3 |
+| pos-p3.4 | ST1, ST2, ST7 | other migrations (svc_*, secretary_*, hr_*) · outbox not byte-equal · hr-* testids | b + **c4** | see c4 |
+| pos-p3.5 | ST1, ST2 | hr/index.ts edited · pinCode line / HR migrations | a | known list + hr-SYNC.md A' |
+| pos-p3.6 | ST2, ST3 | pinCode line · approval-effects.ts writes accountDocument | a | known list |
+| pos-p3.7 | ST1, ST3 | chat/* writers (main) · prisma/chat/outbox vs 72669941 | a | hr-SYNC.md A' (classified at SYNC 1) |
+| pos-p3.8 | ST2, ST3 | outbox +280/−16 · cron hourly 2 edited lines · migrations incl. secretary_a | b (pin) | HR cron/hourly hunk is +74/−0 (edits are main); svc/secretary migrations are main |
+| pos-p3.9 | ST4 | forbidden files under prisma/ | a | hr-SYNC.md A' |
+| pos-p4.2 | W1–W8 | no readable button-run summary in .qc-shots/pos/buttons ("ยังไม่มีรอบตัวกด (CONTROLLER-RUN)") | e | artefact of a POS controller run, absent in HR tree |
+| pos-p5.2 | M2, M5 | authz matrix evidence lines drifted (11 rows) / gen --check differs | b (+HR pre-H2 drift) | regenerated to /tmp (read-only): drift rows = api/v1/ai/skills, skills/[id], tools/[name] (main SEC 2dcb63e87) + cron/hourly, approvals/page.tsx, approval/actions.ts (HR, all before 1b0898377); no post-H2 file |
+| pos-p6.1 | Z1 | package.json + 5 HR migrations out of scope | **c0-2** | see above |
+| pos-p6.2 | H1, D2, M1, Z1 | ORACLE-EDIT count window · facade exports · authz matrix · scope | b + **c5** + b + c0 | see c5 |
+| crm-buttons | env | answer key crm-expected.json tenant cmuj0szjt… ≠ DB | e | as H2 class |
+| crm-c0.2 | S1.6, S3.6 | facade extra export posSeam (main) · 0 seed rows | b + e | as H2 |
+| crm-c1.1 | S2.2, S2.3, S3.3, S4.1–4.3, S5.3, S5.6, S5.7, S6.2–6.4, S7.1, S7.2 | member regression child + seed rows absent | e | member/CRM answer key ≠ DB (see member); rerun on l2: identical 14 ids |
+| crm-c1.11 | S6.1, S6.3–S6.9, S7.1 | owner of answer key absent → 404/FORBIDDEN | e | as H2 class |
+| crm-c1.3 | S0.3 | crm/pos-seam.ts queries CrmCompany | b | as H2 |
+| crm-c2.0 / c2.1 | S6.1 / S6.2 | regression child qc-member-m1.2 / m3.3 red | e | member key mismatch |
+| crm-c2.5 | S9.1 | sendEmail sha | b | as H2 |
+| crm-c2.7 | F1.2a, S7.3, S7.5, S7.6, S9.2, U.3 | crmDealId columns · void chain · lab createSale → CHANNEL_INVALID (7 of ~21 sells) | b (S7.3/S7.5) + e (S7.6/S9.2/U.3) + flaky (F1.2a) | rerun l2: F1.2a green, other 5 same; **bisect: checked out 1b0898377 (H2-close head, where these were green on 13 Nov) in shark-hr-b, ran on the same l2 DB → same 5 reds + CHANNEL_INVALID** ⇒ not caused by post-H2 code; lane-2 data state (cause of CHANNEL_INVALID not found) |
+| crm-c3.0 | S1.9 | drift (DormUtilityRate) | b | as H2 |
+| crm-c3.1 / c3.4 / c3.7 / c3.9 / crm-forms | K.1 / T0.2 / X / FATAL | seed control: answer key ≠ DB | e | as H2 |
+| crm-c3.8 | K.1, S3.1, S7.1 | seed control · .claude/skills/shark-crm-api missing | e + a | skills-dir class as k1.15 |
+| crm-c5.3 / c51fix-equiv / crm-perf | ENV | need scripts/qc2.sh (QC2) | a | known list |
+| member-* (36: fix-s1…s4, m1.2…m1.12, m2.1…m2.10, m3.1…m3.11) | ERR / actorOf | "ไม่พบ Membership ของ cmuj0t05p…" · null.role | e (m1.11 also a) | read-only diag (tools/member-diag.mts) on l2: member QC shop tenant cmuk7n647… (seeded 27 Sep) vs tracked scripts/member-expected.json tenant cmuj0szjt… — owner user of the key does not exist in the DB; qc-all skips reseed because a member scope exists. Positive control: m1.2 + m2.1 rerun on lane 1 → same errors (same parent seed). Not HR (HR diff has no member module) |
+
+Unproven / not checked: acc-v2-security S17 "key in repo" detail (believed b) · b-classes on DB checks are by reasoning (main == H2 base, unchanged), not by a main run
+(no main worktree created, per instruction) · cause of CHANNEL_INVALID in the c2.7 lab · full list of the 43 p6.2 Z1 items.
+
+## Results changed vs the H2 note
+pass → fail: ai-skills (c1).
+fail → pass: audit-trail (A-5.0 ORACLE-EDIT 13 Nov) · hf-o23 16/16 · hf-tx 22/22 · hr-h0.5 71/71 (now on QC4) · kanban-k1.5 (was interrupted).
+still red, other reason: hf-fu / hf-fu2 (H2: QC4 guard; now ST1 pins on QC4).
+NR in H2 → red now (61): kanban-k2.3, k2.12 · 36 member-* · migrate-status · mobile-app · nav-functions · pages · 17 pos-* (p2.10 p2.11 p2.12 p2.13 p2.4 p2.7 p3-skel p3.4 p3.5 p3.6 p3.7 p3.8 p3.9 p4.2 p5.2 p6.1 p6.2) · sanitize-hotfix · systems.
+New suites (26, all green): hr-h3.4(-lib) · h3.4-ytd(-lib) · h3.6(-lib) · h3.7(-lib) · h3.8(-lib) · h3.9 · h4.2(-lib) · h4.3(-lib) · h4.5(-lib, -fix-lib) · h4.8(-lib) · hf-sso · money-2(-lib) · priv-2(-lib) · set-1.
+
+## Side effect found and undone
+shark-hr-b: the failing seed-acc-v2-qc.mts (shard B start, 14:18Z) rewrote 4 tracked fixtures scripts/fixtures/acc-v2/kbank-2026-0{8,9}.{csv,expected.json} (21+/21−).
+Saved as /tmp/hr-qcall-h4/seed-side-effect/kbank-fixtures.diff, then restored with `git checkout -- <those 4 files>`; all three trees now have no tracked modifications.
+Lane trees are left detached at a4e2fb4ae (shark-hr was on wip/hr-money-2, shark-hr-b on wip/hr-priv-2; branches untouched).
+
+## Per-suite results (✅/❌ · suite · [shard] · qc-all summary · H2 result · class)
+✅ acc-v2-adjust              [B] ผ่านทั้งหมด            13.8s                                 H2:✅
+❌ acc-v2-attachments         [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-cheap-routes        [B] -                      7.5s                                  H2:✅
+❌ acc-v2-coa                 [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-components          [B] ผ่าน 78/78             1.3s                                  H2:✅
+❌ acc-v2-contact-merge       [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-contact-modal       [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-contact-profile     [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-contacts            [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-dashboard           [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-detail              [B] ผ่านทั้งหมด            7.6s                                  H2:✅
+❌ acc-v2-doc-settings        [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-editor              [B] ผ่านทั้งหมด            5.9s                                  H2:✅
+❌ acc-v2-finance             [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-finance-overview    [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-gl-inclvat          [B] -                      8.5s                                  H2:✅
+✅ acc-v2-groups              [B] ผ่านทั้งหมด            20.7s                                 H2:✅
+✅ acc-v2-guard               [B] ผ่านทั้งหมด            5.0s                                  H2:✅
+❌ acc-v2-home                [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-import              [B] ผ่านทั้งหมด            13.2s                                 H2:✅
+❌ acc-v2-inbox               [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-invitem             [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-journal             [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-list                [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-mobile              [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-nav                 [B] ผ่านทั้งหมด            1.3s                                  H2:✅
+❌ acc-v2-overview            [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-party               [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-payments            [B] ผ่านทั้งหมด            19.9s                                 H2:✅
+❌ acc-v2-perf                [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-period-assets       [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-permissions         [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-policy              [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-pos-lines           [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-products            [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-promptpay           [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-reconcile           [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-recurring           [B] ผ่านทั้งหมด            10.7s                                 H2:✅
+❌ acc-v2-reports-drill       [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ acc-v2-schema              [B] -                      15.1s                                 H2:❌  class b
+❌ acc-v2-security            [B] -                      19.9s                                 H2:❌  class b
+❌ acc-v2-seed-check          [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ acc-v2-simplicity          [B] -                      16.0s                                 H2:✅
+❌ acc-v2-wht-cheque          [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ account-api-ai-external    [B] ผ่าน 0/1               4.2s                                  H2:❌  class b
+❌ account-api-ai-skill       [B] ผ่าน 28/33             8.5s                                  H2:❌  class b
+✅ account-api-core           [B] ผ่าน 64/64             14.3s                                 H2:✅
+❌ account-api-docs           [B] ผ่าน 10/17             3.2s                                  H2:❌  class b
+✅ account-api-keys           [B] ผ่าน 51/51             2.8s                                  H2:✅
+❌ account-api-openapi        [B] ผ่าน 25/26             6.9s                                  H2:❌  class b
+❌ account-api-read-docs      [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ account-api-read-finance   [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ account-api-read-gl        [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ account-api-read-master    [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+❌ account-api-settings       [B] seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log  H2:❌  class a
+✅ account-api-webhooks       [B] ผ่าน 22/22             29.2s                                 H2:✅
+✅ account-api-write-docs     [B] ผ่าน 52/52             12.8s                                 H2:✅
+✅ account-api-write-finance  [B] ผ่าน 33/33             13.9s                                 H2:✅
+✅ account-api-write-gl       [B] ผ่าน 35/35             9.5s                                  H2:✅
+✅ account-api-write-master   [B] ผ่าน 44/44             12.7s                                 H2:✅
+✅ account-api-write-ops      [B] ผ่าน 29/29             11.1s                                 H2:✅
+✅ account-api-write-payments [B] ผ่าน 32/32             17.6s                                 H2:✅
+✅ account-api-write-settings [B] ผ่าน 39/39             10.8s                                 H2:✅
+✅ account-cpa                [B] ผ่าน 107/107           13.5s                                 H2:✅
+✅ account-deep               [B] ผ่าน 10/10             25.0s                                 H2:✅
+✅ account-deletion           [B] ผ่าน 18/18             2.4s                                  H2:✅
+✅ account-doc-settings       [B] ผ่าน 23/23             3.8s                                  H2:✅
+✅ account-gatea              [B] ผ่านทั้งหมด            7.8s                                  H2:✅
+✅ account-p2p3               [B] -                      5.4s                                  H2:✅
+✅ account-qc7                [B] -                      20.6s                                 H2:✅
+✅ add-system-modal           [A] -                      1.4s                                  H2:✅
+✅ ai                         [A] ผ่าน 17/17             4.6s                                  H2:✅
+✅ ai-actions                 [A] ผ่าน 11/12             7.4s                                  H2:✅
+✅ ai-analyst                 [A] ผ่าน 7/9               2.8s                                  H2:✅
+✅ ai-automation              [A] -                      4.4s                                  H2:✅
+✅ ai-brain                   [A] ผ่าน 8/8               1.9s                                  H2:✅
+✅ ai-credit                  [A] ผ่าน 32/32             5.5s                                  H2:✅
+✅ ai-eval                    [A] ผ่าน 4/4               3.6s                                  H2:✅
+✅ ai-feedback                [A] ผ่าน 5/5               1.8s                                  H2:✅
+✅ ai-growth                  [A] ผ่าน 8/8               4.6s                                  H2:✅
+✅ ai-interview               [A] ผ่าน 9/9               1.2s                                  H2:✅
+✅ ai-kanban-board            [A] ผ่าน 3/3               4.4s                                  H2:✅
+✅ ai-memory                  [A] ผ่าน 7/7               5.1s                                  H2:✅
+✅ ai-phase-a                 [A] ผ่าน 9/9               7.1s                                  H2:✅
+✅ ai-phase-b1                [A] ผ่าน 9/9               8.6s                                  H2:✅
+✅ ai-phase-b2                [A] ผ่าน 11/11             7.7s                                  H2:✅
+✅ ai-plan                    [A] ผ่าน 7/7               5.0s                                  H2:✅
+✅ ai-proactive               [A] ผ่าน 6/6               26.6s                                 H2:✅
+✅ ai-proposals               [A] ผ่าน 16/16             6.9s                                  H2:✅
+✅ ai-quality                 [A] ผ่าน 5/5               4.5s                                  H2:✅
+✅ ai-schedule                [A] ผ่าน 8/8               4.6s                                  H2:✅
+❌ ai-skills                  [A] ผ่าน 22/23             3.8s                                  H2:✅  class c
+✅ ai-tools                   [A] ผ่าน 18/18             5.7s                                  H2:✅
+✅ ai-tools2                  [A] ผ่าน 8/8               5.1s                                  H2:✅
+✅ ai-tuning                  [A] ผ่าน 7/7               1.9s                                  H2:✅
+✅ ai-usage                   [A] -                      2.4s                                  H2:✅
+✅ ai-vision                  [A] ผ่าน 6/6               5.8s                                  H2:✅
+✅ ai-wave5b                  [A] ผ่าน 24/24             9.8s                                  H2:✅
+✅ all-discovery              [A] -                      1.0s                                  H2:✅
+✅ announce                   [A] ผ่าน 8/8               2.2s                                  H2:✅
+✅ approval                   [A] ผ่าน 16/16             3.6s                                  H2:✅
+✅ approval-edit              [A] ผ่าน 12/12             2.7s                                  H2:✅
+✅ approval-wiring            [A] ผ่าน 7/7               9.5s                                  H2:✅
+✅ appstore-ready             [A] ผ่าน 28/28             1.5s                                  H2:✅
+✅ audit-trail                [A] -                      5.4s                                  H2:❌
+✅ automation                 [A] ผ่าน 13/13             2.4s                                  H2:✅
+✅ automation-authz-hotfix    [A] ผ่าน 12/12             2.4s                                  H2:✅
+✅ backoffice                 [A] ผ่าน 14/14             2.5s                                  H2:✅
+✅ booking-deposit            [A] ผ่าน 18/18             8.2s                                  H2:✅
+✅ booking-edit-schedule      [A] ผ่าน 26/26             6.0s                                  H2:✅
+✅ booking-hours-hr           [A] ผ่าน 13/13             4.6s                                  H2:✅
+✅ booking-race               [A] ผ่าน 8/8               5.9s                                  H2:✅
+✅ branding                   [A] ผ่าน 5/5               4.0s                                  H2:✅
+✅ branding-b1                [A] ผ่าน 21/21             4.5s                                  H2:✅
+✅ branding-b2                [A] ผ่าน 15/16             1.2s                                  H2:✅
+✅ branding-b3                [A] ผ่าน 19/20             1.9s                                  H2:✅
+✅ branding-b4                [A] ผ่าน 7/7               3.6s                                  H2:✅
+✅ branding-b5                [A] ผ่าน 6/6               2.1s                                  H2:✅
+✅ bulk-ops                   [A] ผ่าน 13/13             6.4s                                  H2:✅
+✅ calendar                   [A] ผ่าน 9/9               2.4s                                  H2:✅
+✅ catalog-services           [A] ผ่าน 35/35             6.3s                                  H2:✅
+✅ chat-ai-suggest            [A] ผ่าน 44/44             2.4s                                  H2:✅
+✅ chat-api-v1                [A] ผ่าน 89/89             2.6s                                  H2:✅
+✅ chat-attachments           [A] ผ่าน 37/37             2.4s                                  H2:✅
+✅ chat-business-hours        [A] ผ่าน 73/73             2.3s                                  H2:✅
+✅ chat-core-v2               [A] ผ่าน 47/47             2.5s                                  H2:✅
+✅ chat-inbox-ui              [A] ผ่าน 55/55             1.0s                                  H2:✅
+✅ chat-learning              [A] ผ่าน 32/32             2.4s                                  H2:✅
+✅ chat-member-autolink       [A] ผ่าน 11/11             3.3s                                  H2:✅
+✅ chat-notify                [A] ผ่าน 23 ข้อ            17.0s                                 H2:✅
+✅ chat-notify-v2             [A] ผ่าน 30/30             2.6s                                  H2:✅
+✅ chat-push-badge            [A] ผ่าน 48/48             3.8s                                  H2:✅
+✅ chat-replies               [A] ผ่าน 60/60             2.7s                                  H2:✅
+✅ chat-retention             [A] ผ่าน 50/50             2.8s                                  H2:✅
+✅ chat-security              [A] ผ่าน 38 ข้อ            16.5s                                 H2:✅
+✅ chat-security-scope        [A] ผ่าน 20/20             2.8s                                  H2:✅
+✅ chat-staff-perms           [A] ผ่าน 49/49             2.7s                                  H2:✅
+✅ chat-translate             [A] ผ่าน 34/34             2.4s                                  H2:✅
+✅ chat-v2-composer           [A] ผ่าน 54/54             1.3s                                  H2:✅
+✅ chat-v2-context            [A] ผ่าน 53/53             1.0s                                  H2:✅
+✅ chat-v2-icons              [A] ผ่าน 35/35             1.0s                                  H2:✅
+✅ chat-v2-list               [A] ผ่าน 41/41             1.1s                                  H2:✅
+✅ chat-v2-quickreply         [A] ผ่าน 28/28             1.4s                                  H2:✅
+✅ chat-v2-realtime           [A] ผ่าน 26/26             1.1s                                  H2:✅
+✅ chat-v2-room               [A] ผ่าน 42/42             1.0s                                  H2:✅
+✅ chat-v2-shell              [A] ผ่าน 26/26             1.0s                                  H2:✅
+✅ chat-v2-voice              [A] ผ่าน 50/50             2.7s                                  H2:✅
+✅ cheque-audit               [A] -                      12.4s                                 H2:✅
+✅ clinic                     [A] ผ่าน 8/8               5.3s                                  H2:✅
+✅ clinic-public              [A] ผ่าน 15/15             3.8s                                  H2:✅
+✅ clinic-refund              [A] ผ่าน 13/13             10.7s                                 H2:✅
+✅ connections                [A] -                      2.2s                                  H2:✅
+✅ crm                        [B] ผ่าน 25/25             5.9s                                  H2:✅
+✅ crm-activity               [B] ผ่าน 12/12             3.4s                                  H2:✅
+❌ crm-buttons                [B] -                      3.7s                                  H2:❌  class e
+❌ crm-c0.2                   [B] -                      50.2s                                 H2:❌  class b
+✅ crm-c0.3                   [B] -                      95.5s                                 H2:✅
+✅ crm-c0.4                   [B] -                      34.0s                                 H2:✅
+✅ crm-c0.5                   [B] -                      66.5s                                 H2:✅
+❌ crm-c1.1                   [B] -                      47.4s                                 H2:❌  class e
+✅ crm-c1.10                  [B] -                      139.0s                                H2:✅
+❌ crm-c1.11                  [B] -                      87.0s                                 H2:❌  class e
+✅ crm-c1.2a                  [B] -                      146.1s                                H2:✅
+✅ crm-c1.2b                  [B] -                      159.3s                                H2:✅
+❌ crm-c1.3                   [B] -                      147.9s                                H2:❌  class b
+✅ crm-c1.4                   [B] -                      206.1s                                H2:✅
+✅ crm-c1.5                   [B] -                      227.8s                                H2:✅
+✅ crm-c1.6                   [B] -                      174.3s                                H2:✅
+✅ crm-c1.7                   [B] -                      131.8s                                H2:✅
+✅ crm-c1.8                   [B] -                      174.2s                                H2:✅
+✅ crm-c1.9                   [B] -                      53.8s                                 H2:✅
+❌ crm-c2.0                   [B] -                      52.3s                                 H2:❌  class e
+❌ crm-c2.1                   [B] -                      82.1s                                 H2:❌  class e
+✅ crm-c2.10                  [B] -                      48.0s                                 H2:✅
+✅ crm-c2.11                  [B] -                      35.2s                                 H2:✅
+✅ crm-c2.2                   [B] -                      82.8s                                 H2:✅
+✅ crm-c2.3                   [B] -                      174.1s                                H2:✅
+✅ crm-c2.4                   [B] -                      78.0s                                 H2:✅
+❌ crm-c2.5                   [B] -                      69.2s                                 H2:❌  class b
+✅ crm-c2.6                   [B] -                      156.4s                                H2:✅
+✅ crm-c2.6-web               [B] -                      1.2s                                  H2:✅
+❌ crm-c2.7                   [B] -                      416.2s                                H2:❌  class b
+✅ crm-c2.8                   [B] -                      144.2s                                H2:✅
+✅ crm-c2.9                   [B] -                      58.2s                                 H2:✅
+❌ crm-c3.0                   [B] -                      22.5s                                 H2:❌  class b
+❌ crm-c3.1                   [B] -                      31.9s                                 H2:❌  class e
+✅ crm-c3.2                   [B] -                      96.2s                                 H2:✅
+✅ crm-c3.3                   [B] -                      578.3s                                H2:✅
+❌ crm-c3.4                   [B] -                      48.2s                                 H2:❌  class e
+✅ crm-c3.5                   [B] -                      109.5s                                H2:✅
+✅ crm-c3.6                   [B] -                      33.0s                                 H2:✅
+❌ crm-c3.7                   [B] -                      3.4s                                  H2:❌  class e
+❌ crm-c3.8                   [B] -                      198.0s                                H2:❌  class e
+❌ crm-c3.9                   [B] -                      156.8s                                H2:❌  class e
+❌ crm-c5.3                   [B] -                      1.6s                                  H2:❌  class a
+❌ crm-c51fix-equiv           [B] -                      1.5s                                  H2:❌  class a
+❌ crm-forms                  [B] passed":0,"failures":0,"advisories":0,"skipped":0,"positiveC H2:❌  class e
+❌ crm-perf                   [B] -                      1.4s                                  H2:❌  class a
+✅ crm-v1                     [B] -                      30.5s                                 H2:✅
+✅ cron                       [A] ผ่าน 4/4               21.2s                                 H2:✅
+✅ csv-import                 [A] ผ่าน 25/25             3.6s                                  H2:✅
+✅ dashboard                  [A] ผ่าน 7/7               3.9s                                  H2:✅
+✅ dashboard-builder          [A] ผ่าน 6/6               2.2s                                  H2:✅
+✅ delivery                   [A] ผ่าน 8/8               5.7s                                  H2:✅
+✅ dna                        [A] ผ่าน 27/27             6.7s                                  H2:✅
+✅ dna-review                 [A] ผ่าน 5/5               3.3s                                  H2:✅
+✅ domain                     [A] ผ่าน 9/10              2.7s                                  H2:✅
+✅ env-guard                  [A] -                      1.0s                                  H2:✅
+✅ form                       [A] ผ่าน 10/10             5.1s                                  H2:✅
+✅ forms-notify               [A] -                      14.3s                                 H2:✅
+❌ hardening                  [A] ผ่าน 14/15             3.4s                                  H2:❌  class b
+✅ hardening2                 [A] ผ่าน 14/14             2.3s                                  H2:✅
+✅ help-v2                    [A] ผ่าน 8/8               2.6s                                  H2:✅
+✅ hf-apiv1-scope             [A] ผ่าน 143/143           75.5s                                 H2:✅
+❌ hf-fu                      [Q] ผ่าน 28/29             126.9s                                H2:❌  class a
+❌ hf-fu2                     [Q] ผ่าน 30/31             30.8s                                 H2:❌  class b
+✅ hf-hr-privacy              [A] ผ่าน 194/194           161.7s                                H2:✅
+✅ hf-inventory-atomic        [A] ผ่าน 143/143           254.0s                                H2:✅
+✅ hf-inventory-authz         [A] ผ่าน 118/118           9.8s                                  H2:✅
+✅ hf-o23                     [Q] ผ่าน 16/16             7.0s                                  H2:❌
+✅ hf-pos-page-authz          [A] ผ่าน 87/87             7.8s                                  H2:✅
+✅ hf-reports-authz           [A] ผ่าน 79/79             8.8s                                  H2:✅
+✅ hf-tx                      [Q] ผ่าน 22/22             35.3s                                 H2:❌
+✅ host-routing               [A] ผ่าน 5/5               2.7s                                  H2:✅
+✅ hotel-money                [A] ผ่าน 5/5               9.3s                                  H2:✅
+✅ hotel-public               [A] ผ่าน 15/15             7.4s                                  H2:✅
+✅ hotel-refund               [A] ผ่าน 15/15             8.3s                                  H2:✅
+✅ hr                         [A] ผ่าน 9/9               3.0s                                  H2:✅
+✅ hr-attendance              [A] ผ่าน 31/31             4.7s                                  H2:✅
+✅ hr-h0.1                    [A] passed 67/67           206.7s                                H2:✅
+✅ hr-h0.2                    [A] ผ่าน 58/58             114.3s                                H2:✅
+✅ hr-h0.3                    [A] ผ่าน 37/37             56.5s                                 H2:✅
+✅ hr-h0.5                    [Q] ผ่าน 71/71             92.4s                                 H2:❌
+✅ hr-h0.6                    [A] passed 55/55           115.8s                                H2:✅
+✅ hr-h0.7                    [A] passed 74/74           35.6s                                 H2:✅
+✅ hr-h1.1                    [A] passed 81/81           31.2s                                 H2:✅
+✅ hr-h1.2                    [A] passed 73/73           26.3s                                 H2:✅
+✅ hr-h1.3                    [A] passed 63/63           63.1s                                 H2:✅
+✅ hr-h2.1                    [A] passed 90/90           60.0s                                 H2:✅
+✅ hr-h2.10                   [A] passed 57/57           22.5s                                 H2:✅
+✅ hr-h2.11                   [A] passed 70/70           29.3s                                 H2:✅
+✅ hr-h2.2                    [A] passed 60/60           51.1s                                 H2:✅
+✅ hr-h2.3                    [A] passed 79/79           129.2s                                H2:✅
+✅ hr-h2.4                    [A] passed 68/68           31.3s                                 H2:✅
+✅ hr-h2.5                    [A] passed 79/79           101.2s                                H2:✅
+✅ hr-h2.6                    [A] passed 56/56           94.7s                                 H2:✅
+✅ hr-h2.7                    [A] passed 94/94           147.8s                                H2:✅
+✅ hr-h2.9                    [A] passed 58/58           134.7s                                H2:✅
+✅ hr-h3.1                    [A] passed 58/58           68.5s                                 H2:✅
+✅ hr-h3.2                    [A] passed 64/64           152.7s                                H2:✅
+✅ hr-h3.3                    [A] passed 51/51           43.2s                                 H2:✅
+✅ hr-h3.4                    [A] passed 85/85           201.0s                                H2:new
+✅ hr-h3.4-lib                [A] -                      1.7s                                  H2:new
+✅ hr-h3.4-ytd                [A] passed 44/44           106.6s                                H2:new
+✅ hr-h3.4-ytd-lib            [A] -                      1.3s                                  H2:new
+✅ hr-h3.5                    [A] passed 53/53           43.8s                                 H2:✅
+✅ hr-h3.6                    [A] passed 62/62           48.2s                                 H2:new
+✅ hr-h3.6-lib                [A] -                      1.1s                                  H2:new
+✅ hr-h3.7                    [A] passed 68/68           107.0s                                H2:new
+✅ hr-h3.7-lib                [A] -                      1.0s                                  H2:new
+✅ hr-h3.8                    [A] passed 78/78           64.5s                                 H2:new
+✅ hr-h3.8-lib                [A] -                      1.5s                                  H2:new
+✅ hr-h3.9                    [A] passed 60/60           66.7s                                 H2:new
+✅ hr-h4.1                    [A] passed 47/47           89.5s                                 H2:✅
+✅ hr-h4.2                    [A] passed 57/57           68.3s                                 H2:new
+✅ hr-h4.2-lib                [A] -                      1.2s                                  H2:new
+✅ hr-h4.3                    [A] passed 45/45           103.8s                                H2:new
+✅ hr-h4.3-lib                [A] -                      1.4s                                  H2:new
+✅ hr-h4.4                    [A] passed 86/86           59.6s                                 H2:✅
+✅ hr-h4.5                    [A] passed 90/90           121.1s                                H2:new
+✅ hr-h4.5-fix-lib            [A] -                      1.1s                                  H2:new
+✅ hr-h4.5-lib                [A] -                      1.0s                                  H2:new
+✅ hr-h4.6                    [A] passed 69/69           27.9s                                 H2:✅
+✅ hr-h4.8                    [A] passed 48/48           34.2s                                 H2:new
+✅ hr-h4.8-lib                [A] -                      1.3s                                  H2:new
+✅ hr-hf-sso                  [A] passed 41/41           28.2s                                 H2:new
+✅ hr-leave-booking           [A] ผ่าน 14/14             5.1s                                  H2:✅
+✅ hr-lib                     [A] -                      1.1s                                  H2:✅
+✅ hr-money-2                 [A] passed 57/57           104.5s                                H2:new
+✅ hr-money-2-lib             [A] -                      1.2s                                  H2:new
+✅ hr-payadjust               [A] ผ่าน 27/27             5.5s                                  H2:✅
+✅ hr-priv-2                  [A] passed 47/47           81.0s                                 H2:new
+✅ hr-priv-2-lib              [A] -                      1.2s                                  H2:new
+✅ hr-roster                  [A] ผ่าน 24/24             5.2s                                  H2:✅
+✅ hr-set-1                   [A] passed 25/25           66.6s                                 H2:new
+✅ i18n                       [A] ผ่าน 7/7               1.2s                                  H2:✅
+✅ i18n2                      [A] ผ่าน 6/6               1.1s                                  H2:✅
+✅ i18n3                      [A] ผ่าน 19/19             1.0s                                  H2:✅
+✅ inventory                  [A] ผ่าน 12/12             3.3s                                  H2:✅
+✅ inventory-account          [A] ผ่าน 23/23             5.8s                                  H2:✅
+✅ inventory-item             [A] ผ่าน 11/11             3.5s                                  H2:✅
+✅ kanban-k1.1                [A] ผ่าน 30/30             9.0s                                  H2:✅
+✅ kanban-k1.10               [A] ผ่าน 16/16             6.8s                                  H2:✅
+✅ kanban-k1.11               [A] ผ่าน 20/21             4.0s                                  H2:✅
+✅ kanban-k1.12               [A] ผ่าน 18/18             7.6s                                  H2:✅
+✅ kanban-k1.13               [A] ผ่าน 16/16             5.9s                                  H2:✅
+✅ kanban-k1.14               [A] ผ่าน 15/15             4.7s                                  H2:✅
+❌ kanban-k1.15               [A] ผ่าน 28/30             9.9s                                  H2:❌  class a
+✅ kanban-k1.2                [A] ผ่าน 25/25             9.5s                                  H2:✅
+✅ kanban-k1.3                [A] ผ่าน 29/29             4.6s                                  H2:✅
+✅ kanban-k1.4                [A] ผ่าน 30/30             89.8s                                 H2:✅
+✅ kanban-k1.5                [A] ผ่าน 17/17             3.2s                                  H2:❌
+✅ kanban-k1.6                [A] ผ่าน 20/20             5.9s                                  H2:NR
+✅ kanban-k1.7                [A] ผ่าน 21/21             8.4s                                  H2:NR
+✅ kanban-k1.8                [A] ผ่าน 18/18             4.8s                                  H2:NR
+✅ kanban-k1.9                [A] ผ่าน 18/18             6.6s                                  H2:NR
+✅ kanban-k2.1                [A] ผ่าน 21/22             12.4s                                 H2:NR
+✅ kanban-k2.10               [A] ผ่าน 21/22             5.1s                                  H2:NR
+✅ kanban-k2.11               [A] ผ่าน 29/30             21.6s                                 H2:NR
+❌ kanban-k2.12               [A] ผ่าน 11/13             7.1s                                  H2:NR  class a
+✅ kanban-k2.2                [A] ผ่าน 15/16             5.1s                                  H2:NR
+❌ kanban-k2.3                [A] ผ่าน 15/17             5.2s                                  H2:NR  class b
+✅ kanban-k2.4                [A] ผ่าน 11/12             4.9s                                  H2:NR
+✅ kanban-k2.5                [A] ผ่าน 14/15             5.3s                                  H2:NR
+✅ kanban-k2.6                [A] ผ่าน 16/17             9.5s                                  H2:NR
+✅ kanban-k2.7                [A] ผ่าน 30/31             8.3s                                  H2:NR
+✅ kanban-k2.8                [A] ผ่าน 16/17             8.3s                                  H2:NR
+✅ kanban-k2.9                [A] ผ่าน 25/26             8.4s                                  H2:NR
+✅ kanban-k3.1                [A] ผ่าน 19/20             6.4s                                  H2:NR
+✅ kanban-k3.2                [A] ผ่าน 18/19             5.4s                                  H2:NR
+✅ kanban-k3.3                [A] ผ่าน 14/15             13.2s                                 H2:NR
+✅ kanban-k3.4                [A] ผ่าน 11/11             6.7s                                  H2:NR
+✅ kanban-k3.5                [A] ผ่าน 20/21             8.0s                                  H2:NR
+✅ kanban-k3.6                [A] ผ่าน 9/10              4.3s                                  H2:NR
+✅ kanban-k3.7                [A] ผ่าน 13/14             7.0s                                  H2:NR
+✅ kanban-k3.8                [A] ผ่าน 10/11             3.8s                                  H2:NR
+✅ kanban-k3.9                [A] ผ่าน 12/13             7.6s                                  H2:NR
+✅ kanban-notify              [A] -                      15.2s                                 H2:NR
+✅ kb                         [A] ผ่าน 12/12             5.4s                                  H2:NR
+✅ kb-auto                    [A] -                      5.9s                                  H2:NR
+✅ kb-search                  [A] -                      13.6s                                 H2:NR
+✅ kernel-guard               [A] ผ่าน 19/19             2.4s                                  H2:NR
+✅ lot                        [A] ผ่าน 13/13             23.6s                                 H2:NR
+✅ marketing                  [A] ผ่าน 8/8               2.6s                                  H2:NR
+✅ marketplace                [A] ผ่าน 7/7               4.2s                                  H2:NR
+✅ meeting-invite             [A] ผ่าน 22/22             3.3s                                  H2:NR
+❌ member-fix-s1              [B] -                      4.6s                                  H2:NR  class e
+❌ member-fix-s2              [B] -                      5.0s                                  H2:NR  class e
+❌ member-fix-s3              [B] -                      4.0s                                  H2:NR  class e
+❌ member-fix-s4              [B] -                      3.7s                                  H2:NR  class e
+❌ member-m1.10               [B] -                      2.1s                                  H2:NR  class e
+❌ member-m1.11               [B] -                      6.0s                                  H2:NR  class a
+❌ member-m1.12               [B] -                      3.8s                                  H2:NR  class e
+❌ member-m1.2                [B] -                      4.8s                                  H2:NR  class e
+❌ member-m1.3                [B] -                      2.2s                                  H2:NR  class e
+❌ member-m1.4                [B] -                      3.8s                                  H2:NR  class e
+❌ member-m1.5                [B] -                      5.1s                                  H2:NR  class e
+❌ member-m1.6                [B] -                      4.0s                                  H2:NR  class e
+❌ member-m1.7                [B] -                      3.9s                                  H2:NR  class e
+❌ member-m1.8                [B] -                      3.8s                                  H2:NR  class e
+❌ member-m1.9                [B] -                      3.8s                                  H2:NR  class e
+❌ member-m2.1                [B] -                      4.1s                                  H2:NR  class e
+❌ member-m2.10               [B] -                      4.2s                                  H2:NR  class e
+❌ member-m2.2                [B] -                      3.9s                                  H2:NR  class e
+❌ member-m2.3                [B] -                      3.7s                                  H2:NR  class e
+❌ member-m2.4                [B] -                      3.7s                                  H2:NR  class e
+❌ member-m2.5                [B] -                      4.1s                                  H2:NR  class e
+❌ member-m2.6                [B] -                      4.1s                                  H2:NR  class e
+❌ member-m2.7                [B] -                      4.2s                                  H2:NR  class e
+❌ member-m2.8                [B] -                      3.8s                                  H2:NR  class e
+❌ member-m2.9                [B] -                      12.0s                                 H2:NR  class e
+❌ member-m3.1                [B] -                      5.6s                                  H2:NR  class e
+❌ member-m3.10               [B] -                      39.3s                                 H2:NR  class e
+❌ member-m3.11               [B] -                      5.4s                                  H2:NR  class e
+❌ member-m3.2                [B] -                      6.7s                                  H2:NR  class e
+❌ member-m3.3                [B] -                      5.0s                                  H2:NR  class e
+❌ member-m3.4                [B] -                      4.7s                                  H2:NR  class e
+❌ member-m3.5                [B] -                      4.5s                                  H2:NR  class e
+❌ member-m3.6                [B] -                      4.5s                                  H2:NR  class e
+❌ member-m3.7                [B] -                      4.9s                                  H2:NR  class e
+❌ member-m3.8                [B] -                      4.2s                                  H2:NR  class e
+❌ member-m3.9                [B] -                      3.9s                                  H2:NR  class e
+✅ member-public              [B] ผ่าน 19/19             3.4s                                  H2:NR
+✅ member-tier                [B] -                      3.0s                                  H2:NR
+❌ migrate-status             [A] ผ่าน 2/3               10.5s                                 H2:NR  class e
+❌ mobile-app                 [A] -                      27.7s                                 H2:NR  class b
+✅ mobile-auth                [A] -                      5.2s                                  H2:NR
+✅ mobile-authz-hotfix        [A] ผ่าน 12/12             7.2s                                  H2:NR
+✅ mobile-chat                [A] -                      10.6s                                 H2:NR
+✅ mobile-help                [A] -                      7.9s                                  H2:NR
+✅ money-mapping              [A] ผ่าน 5/5               9.7s                                  H2:NR
+❌ nav-functions              [A] -                      1.2s                                  H2:NR  class c
+✅ onboarding-drip            [A] ผ่าน 6/6               20.7s                                 H2:NR
+✅ ops                        [A] ผ่าน 7/7               2.9s                                  H2:NR
+✅ owner-guard                [A] -                      1.3s                                  H2:NR
+❌ pages                      [A] ผ่าน 30/31             3.9s                                  H2:NR  class c0
+✅ payment                    [A] ผ่าน 16/16             2.9s                                  H2:NR
+✅ payment-authz-hotfix       [A] ผ่าน 8/8               2.4s                                  H2:NR
+✅ payroll                    [A] ผ่าน 19/19             6.3s                                  H2:NR
+✅ payroll-reverse            [A] -                      6.2s                                  H2:NR
+✅ pdpa                       [A] ผ่าน 0/1               7.1s                                  H2:NR
+✅ point                      [A] ผ่าน 18/18             4.6s                                  H2:NR
+✅ pos-account                [Q] ผ่าน 16/16             8.3s                                  H2:NR
+✅ pos-api-skill              [Q] ผ่าน 12/12             19.7s                                 H2:NR
+✅ pos-buttons                [Q] -                      5.1s                                  H2:NR
+✅ pos-closeday               [Q] ผ่าน 22/22             5.5s                                  H2:NR
+✅ pos-coupon                 [Q] ผ่าน 8/8               5.2s                                  H2:NR
+✅ pos-inventory              [Q] ผ่าน 25/25             6.8s                                  H2:NR
+✅ pos-p0.2                   [Q] ผ่าน 56/56             6.3s                                  H2:NR
+✅ pos-p1.1                   [Q] ผ่าน 180/180           185.0s                                H2:NR
+✅ pos-p1.10                  [Q] ผ่าน 40/40             19.3s                                 H2:NR
+✅ pos-p1.10u-print           [Q] ผ่าน 8/8               1.6s                                  H2:NR
+✅ pos-p1.11                  [Q] ผ่าน 38/38             44.9s                                 H2:NR
+✅ pos-p1.12                  [Q] ผ่าน 72/72             97.3s                                 H2:NR
+✅ pos-p1.13                  [Q] ผ่าน 33/33             36.9s                                 H2:NR
+✅ pos-p1.14                  [Q] ผ่าน 30/30             22.5s                                 H2:NR
+✅ pos-p1.15                  [Q] ผ่าน 40/40             52.3s                                 H2:NR
+✅ pos-p1.16                  [Q] ผ่าน 28/28             35.6s                                 H2:NR
+✅ pos-p1.17                  [Q] ผ่าน 40/40             10.9s                                 H2:NR
+✅ pos-p1.18                  [Q] ผ่าน 81/81             51.7s                                 H2:NR
+✅ pos-p1.2                   [Q] ผ่าน 55/55             34.2s                                 H2:NR
+✅ pos-p1.3                   [Q] ผ่าน 128/128           157.4s                                H2:NR
+✅ pos-p1.4                   [Q] ผ่าน 21/21             8.2s                                  H2:NR
+✅ pos-p1.5                   [Q] ผ่าน 21/21             14.5s                                 H2:NR
+✅ pos-p1.6                   [Q] ผ่าน 48/48             49.3s                                 H2:NR
+✅ pos-p1.7                   [Q] ผ่าน 33/33             30.8s                                 H2:NR
+✅ pos-p1.8                   [Q] ผ่าน 49/49             78.7s                                 H2:NR
+✅ pos-p1.9                   [Q] ผ่าน 53/53             23.1s                                 H2:NR
+✅ pos-p1.9b                  [Q] ผ่าน 22/22             13.9s                                 H2:NR
+✅ pos-p2.1                   [Q] ผ่าน 55/55             63.5s                                 H2:NR
+❌ pos-p2.10                  [Q] ผ่าน 12/13             37.8s                                 H2:NR  class a
+❌ pos-p2.11                  [Q] ผ่าน 32/34             90.1s                                 H2:NR  class a
+❌ pos-p2.12                  [Q] ผ่าน 32/33             92.5s                                 H2:NR  class a
+❌ pos-p2.13                  [Q] ผ่าน 53/54             130.7s                                H2:NR  class a
+✅ pos-p2.14                  [Q] ผ่าน 60/60             89.9s                                 H2:NR
+✅ pos-p2.2                   [Q] ผ่าน 42/42             69.1s                                 H2:NR
+✅ pos-p2.3                   [Q] ผ่าน 46/46             109.3s                                H2:NR
+❌ pos-p2.4                   [Q] ผ่าน 49/50             85.3s                                 H2:NR  class b
+✅ pos-p2.5                   [Q] ผ่าน 49/49             186.4s                                H2:NR
+✅ pos-p2.6                   [Q] ผ่าน 67/67             126.0s                                H2:NR
+❌ pos-p2.7                   [Q] ผ่าน 41/42             111.5s                                H2:NR  class b
+✅ pos-p2.8                   [Q] ผ่าน 61/61             125.1s                                H2:NR
+✅ pos-p2.9                   [Q] ผ่าน 62/62             151.0s                                H2:NR
+✅ pos-p2.9b                  [Q] ผ่าน 53/53             163.1s                                H2:NR
+❌ pos-p3-skel                [Q] ผ่าน 39/41             46.3s                                 H2:NR  class c
+✅ pos-p3.12                  [Q] ผ่าน 22/22             5.0s                                  H2:NR
+❌ pos-p3.4                   [Q] ผ่าน 48/51             116.1s                                H2:NR  class c
+❌ pos-p3.5                   [Q] ผ่าน 53/55             57.7s                                 H2:NR  class a
+❌ pos-p3.6                   [Q] ผ่าน 50/52             88.7s                                 H2:NR  class a
+❌ pos-p3.7                   [Q] ผ่าน 40/42             94.4s                                 H2:NR  class a
+❌ pos-p3.8                   [Q] ผ่าน 32/34             50.6s                                 H2:NR  class b
+❌ pos-p3.9                   [Q] ผ่าน 47/48             61.1s                                 H2:NR  class a
+✅ pos-p4.1                   [Q] -                      37.2s                                 H2:NR
+❌ pos-p4.2                   [Q] -                      13.0s                                 H2:NR  class e
+✅ pos-p4.3                   [Q] ผ่าน 30/30             26.4s                                 H2:NR
+✅ pos-p5.1                   [Q] ผ่าน 28/28             155.7s                                H2:NR
+❌ pos-p5.2                   [Q] ผ่าน 53/55             217.6s                                H2:NR  class b
+✅ pos-p5.3                   [Q] ผ่าน 11/11             1.2s                                  H2:NR
+❌ pos-p6.1                   [Q] ผ่าน 30/31             3.4s                                  H2:NR  class c0
+❌ pos-p6.2                   [Q] ผ่าน 12/16             8.6s                                  H2:NR  class c
+✅ pos-products               [Q] ผ่าน 24/24             5.5s                                  H2:NR
+✅ pos-register               [Q] ผ่าน 42/42             11.4s                                 H2:NR
+✅ procurement                [A] ผ่าน 12/12             3.7s                                  H2:NR
+✅ public-api                 [A] ผ่าน 18/18             4.7s                                  H2:NR
+✅ public-links               [A] ผ่าน 11/11             2.0s                                  H2:NR
+✅ push                       [A] -                      3.3s                                  H2:NR
+✅ pwa                        [A] ผ่าน 5/5               2.5s                                  H2:NR
+✅ queue-public               [A] ผ่าน 20/20             4.3s                                  H2:NR
+✅ rental                     [A] ผ่าน 11/11             10.6s                                 H2:NR
+✅ rental-public              [A] ผ่าน 16/16             9.8s                                  H2:NR
+✅ rental-race                [A] ผ่าน 6/6               5.7s                                  H2:NR
+✅ rental-refund              [A] ผ่าน 11/11             10.7s                                 H2:NR
+✅ report-builder             [A] ผ่าน 9/9               3.4s                                  H2:NR
+✅ restaurant                 [A] -                      4.5s                                  H2:NR
+✅ restaurant-money           [A] ผ่าน 6/6               9.0s                                  H2:NR
+✅ restaurant-pay             [A] ผ่าน 19/19             8.0s                                  H2:NR
+✅ restaurant-void            [A] ผ่าน 11/11             9.1s                                  H2:NR
+✅ reward                     [A] ผ่าน 20/20             5.7s                                  H2:NR
+❌ sanitize-hotfix            [A] -                      25.7s                                 H2:NR  class e
+✅ school                     [A] ผ่าน 7/7               6.7s                                  H2:NR
+✅ school-public              [A] ผ่าน 18/18             8.3s                                  H2:NR
+✅ school-refund              [A] ผ่าน 11/11             9.6s                                  H2:NR
+✅ security-hotfix            [A] -                      1.3s                                  H2:NR
+✅ shop                       [A] ผ่าน 15/15             12.7s                                 H2:NR
+✅ shop-refund                [A] ผ่าน 12/12             9.4s                                  H2:NR
+✅ storage                    [A] ผ่าน 11/11             3.8s                                  H2:NR
+✅ subscription               [A] ผ่าน 11/11             4.6s                                  H2:NR
+✅ subscription-money         [A] ผ่าน 14/14             9.3s                                  H2:NR
+✅ support                    [A] ผ่าน 12/12             3.4s                                  H2:NR
+✅ support-ai                 [A] ผ่าน 7/7               3.7s                                  H2:NR
+❌ systems                    [A] -                      8.4s                                  H2:NR  class b
+✅ systems-manage             [A] ผ่าน 12/12             2.9s                                  H2:NR
+✅ tax-print-audit            [A] -                      4.0s                                  H2:NR
+✅ ticket-cancel              [A] ผ่าน 10/10             9.2s                                  H2:NR
+✅ ticket-money               [A] ผ่าน 6/6               9.6s                                  H2:NR
+✅ ticket-public              [A] ผ่าน 24/24             9.9s                                  H2:NR
+✅ unit-location              [A] ผ่าน 40/40             1.6s                                  H2:NR
+✅ vendor-portal              [A] ผ่าน 6/6               3.5s                                  H2:NR
+✅ warehouse                  [A] ผ่าน 15/15             4.5s                                  H2:NR
+✅ webhook                    [A] ผ่าน 15/15             2.3s                                  H2:NR
+✅ webhook-ui                 [A] ผ่าน 11/11             1.2s                                  H2:NR

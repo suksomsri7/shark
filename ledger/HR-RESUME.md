@@ -648,3 +648,30 @@
 - qc:all (ไม่รวม svc/sec) ตัวแทน aa7017dca69c68d75: 3 ส่วน — QC4 (unit hr-qcall-h4-q · pos/hf) · เลน 1 (hr-qcall-h4-a) · เลน 2 (hr-qcall-h4-b) · log /tmp/hr-qcall-h4/ · ผล → ledger/wo-notes/hr-H4-close-qcall.txt (ผู้คุม commit)
 - เลน 3: ผู้สร้าง HF-SSO ac54bf57c6fa09863 รัดป้าย HF-SSO ในข้อสอบเก่าเป็นรายชื่อไฟล์ (สาขา wip/hr-hf-sso-fix2)
 - ค้างผู้คุม: ตัดสินตารางหนี้ 21 แถว · svc/sec (ต้องใช้ฐาน QC ของ RUN อื่น — ถามเจ้าของ) · HANDOVER-H4 · ด่าน pm-full สุดท้าย
+
+### 2026-11-14T14:50Z · คำตัดสินเจ้าของ: ชุด svc (60) + sec (38) **ไม่รันโดย HR**
+- เหตุ: ต้องใช้ env/ฐาน QC ของ RUN อื่น (ระบบสิทธิ์ปฏิเสธการอ่าน env ของทรี svc/sec) · เจ้าของเลือกให้ session ของ SVC และ SEC รันเองหลัง session/hr เข้า main
+- ต้องเขียนใน HANDOVER-H4: รายชื่อไฟล์ที่ HR แก้และอาจกระทบสองกลุ่มนี้ — `src/lib/modules/booking/service.ts` (HR-PRIV-2: createStaff ปฏิเสธชื่อมีอักขระต้องห้าม · linkStaffToHr ล้างชื่อ; ข้อสอบ qc-svc-b.16 S-2 / qc-svc-d.10 S-2 แช่แข็งไฟล์นี้) · โค้ด LINE/แชทของ H4.5 (qc-svc-b.0…b.17 import) · `ai/secretary/digest` บรรทัด HR ของ H4.3 (qc-sec-s3a1-s2 · qc-sec-s1.11)
+- ใบแก้ก่อน production HR-PREPROD-1: ใบสั่ง + คำตัดสิน Q1–Q8 ที่ `wip/hr-preprod-1` 28699bda3 (เลน 4) · ผู้เขียนข้อสอบ a7ddd71638716ff4e กำลังทำ · ตารางหนี้ 21 แถว = รับข้อเสนอผู้เขียนเอกสารทั้งหมด (ยังต้องติ๊กในไฟล์ HR-DEBTS.md) · ค้างจัดงาน: ล่าบั๊ก H2.7-chain/H2.6 (อนุมัติลาหลายขั้น · ลารายชั่วโมงทับเต็มวัน)
+
+### 2026-11-14T16:40Z · H4.9 qc:all จบ — ผล `ledger/wo-notes/hr-H4-close-qcall.txt`
+- 491 ชุด: ผ่าน 366 · แดง 125 (a 49 · b 20 · e 49 · **c 5 · c0 2**) · qc-hr-* เขียวทุกชุด · svc/sec ไม่รันโดย HR (คำตัดสินเจ้าของ)
+- คำตัดสินผู้คุมต่อ class c: (1) ai-skills SK-4.2 ข้อความไทยใน skills.ts:198 → แก้โค้ดเป็นอังกฤษ (2) nav-functions S5 /hr/reports → ORACLE-EDIT เพิ่มแถว IN_PAGE_ENTRIES (5) pos-p6.2 D2 → เติม export ใน docs/sds/modules/pos.md (c0) qc-pages RG-1 → เพิ่ม 4 แถวใน pages/registry.ts · (3) pos-p3-skel ST1 (4) pos-p3.4 ST7 (c0) pos-p6.1/p6.2 Z1 = หมุดสถิตของ POS ชนกับไฟล์ HR → จัดชั้น a ไม่แก้ข้อสอบ POS (ตามแบบ SYNC 1) เขียนใน HANDOVER-H4 ให้เจ้าของ POS
+- e ที่ต้องจด: member 36 ชุด (เฉลย member-expected.json ไม่ตรงร้านทดสอบในฐานเลน) · crm-c2.7 CHANNEL_INVALID (แดงบนหัว H2 เหมือนกัน) · เลน 1 migrate-status: HrFilingProfile.rdFormFlag default 1 ในฐาน vs 2 ใน schema (migration hr_filings ถูกแก้ในที่หลังเลน 1 ลงแล้ว — QC4 ตรง · ต้องเช็กก่อน H5.3 ว่า prod ยังไม่เคยลง)
+- HF-SSO fix2 (e314704ad) merged เข้า session/hr ในเครื่อง · ใบแก้ H4.9-FIX1 (ข้อ 1,2,5,RG-1) เลน 3 · HR-PREPROD-1 ผู้สร้าง a7878aeefb74368f3 เลน 4
+- ทรีเลน 1, 2 ค้าง detached ที่ a4e2fb4ae (สาขา wip เดิมไม่ถูกแตะ)
+
+### 2026-11-14T17:45Z · จุดต่อ (4 เลนทำงาน)
+- เลน 1 `/root/projects/shark-hr` (detached 72bf1db1b): นักล่า a90f9f6dd84939a75 ล่า HR-PREPROD-1 · ก่อนหน้านี้ล่าเรื่องการลาเจอ F1–F4 (โพรบ scratchpad/h53l/) → ใบ HR-LEAVE-3
+- เลน 2 `/root/projects/shark-hr-b` `wip/hr-leave-3` 0af86c805: ใบสั่ง + คำตัดสิน Q1–Q10 · ผู้เขียนข้อสอบ aceb1aa709a1b580c กำลังทำ
+- เลน 3 `/root/projects/shark-hr-l3` `wip/hr-h4.9-fix1` de5bc2252+: ผู้สร้าง ae1d5d0fe57a43ab8 ใส่ข้อยกเว้นข้อสอบเก่า (h4.3 S1.3 ตรึงวลีอังกฤษ · H49_ALLOW · priv-2 S4/S5) แล้วรันซ้ำ → เสร็จแล้ว merge ได้เลย
+- เลน 4 `/root/projects/shark-hr-l4` `wip/hr-preprod-1` 72bf1db1b: ผู้สร้าง a7878aeefb74368f3 เสร็จ (57/57) · ผู้ตรวจ a1b65619da02eb50b · ค้างตัดสิน h3.8 S1.13 ตรึง sha ใหม่ของ privacy.ts/self.ts (รอผู้ตรวจยืนยัน)
+- ลำดับ merge: H4.9-FIX1 → PREPROD-1 → LEAVE-3 (re-merge ก่อน) → ด่าน pm-full สุดท้าย → HANDOVER-H4 → นับ H4.9 = 41/44
+- รายการเจ้าของเพิ่ม: F5 ลาบางส่วนของวันปิดคิวจองทั้งวัน · หนี้เพิ่ม: ลาป่วยรายชั่วโมงเกินสิทธิ์ยังถูกปฏิเสธ · เลขขั้นอนุมัติไม่ต่อเนื่อง
+
+### 2026-11-14T19:10Z · จุดต่อ
+- session/hr ในเครื่อง = 0b53a13d5 (+HF-SSO fix2 +H4.9-FIX1 · ยังไม่ push · ยังไม่ผ่านด่านรวม) · origin = 40/44
+- HR-PREPROD-1 (เลน 4 `wip/hr-preprod-1` 491779afd): ข้อสอบ 2 ไฟล์ `qc-hr-preprod-1` 57 + `qc-hr-preprod-1b` 22 (ด่านต้องรันทั้งคู่ → EXTRA="qc-hr-preprod-1b") · คำตัดสิน V1–V9 ในใบสั่ง · ผู้สร้าง a7878aeefb74368f3 อยู่รอบแก้รวม (เลิกปัดครึ่งวัน · ส่วนแบ่งเฉพาะผู้มีสิทธิ์ · race นโยบายลา · คำตอบยื่น OT · แบ่งใหม่เมื่อสิทธิ์กลับ · เงินคืนคนลาออก · ตรึง sha h3.8 ใหม่) แล้วรวม session/hr → ต้องส่วนต่างให้ผู้ตรวจ a1b65619da02eb50b + นักล่า a90f9f6dd84939a75 (เลน 1 โพรบ scratchpad/h53l/)
+- HR-LEAVE-3 (เลน 2 `wip/hr-leave-3` c6764057f): ข้อสอบ 53 (แดง 28) · R3 แคบลง = ปฏิเสธเฉพาะการแก้ที่ทำให้คำขอค้างไม่มีขั้น (qc-svc-r0.3 RV-2 อ่านแล้วควรเขียว) · ผู้สร้าง a872228a4f774f395 กำลังทำ · ผู้เขียนข้อสอบ aceb1aa709a1b580c
+- H5.1: ลงข้อมูลเดินหน้าจอบน QC4 แล้ว (seed-hr-walk · มีแถวกฎหมาย ACTIVE `qc-hr-walk:*` → ต้อง `--down` ก่อนด่าน pm-full) · unit `hr-walk-build` build ที่ทรีผู้คุม (log /tmp/hr-ctl/walk/build.log · รอ gate lock) → serve :3226 → `walk-hr.mts --dry` → เดินจริง (wrapper ใช้ qc4.sh แทน qc-hr.sh) · ผลที่ /root/qc/hr-h5.1
+- ห้ามรัน pm-full ขณะ serve เปิด/ข้อมูลเดินหน้าจอยังอยู่

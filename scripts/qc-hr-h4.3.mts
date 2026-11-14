@@ -25,7 +25,7 @@ const SEV: Record<string, Sev> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
 const CHECKS = `
 S1.1|§4|C|R|[static] new files tools-hr.ts · hr/ai.ts · hr/ai-rules.ts exist
 S1.2|§3 §7.1|C|R|[ai] registry: exactly the 6 tools once (T1–T4 read, T5–T6 action) · toolIsMapped · HAND_TOOL_ACCESS T1–T4 = {needs:[], needsPerson, scopedData} · HAND_ACTION_KIND T5/T6 · module hr · toolIsWrite read/propose · no other new hr_* tool
-S1.3|§3 §7.1|C|R|[ai] kinds hr_draft_roster/hr_flag_pattern → {hr, hr.employee.create} · not DESTRUCTIVE · plan human-only · skill hr lists the 6 (+ the 3 old) + "ข้อเสนอต้องมีคนยืนยัน" · registry complete
+S1.3|§3 §7.1|C|R|[ai] kinds hr_draft_roster/hr_flag_pattern → {hr, hr.employee.create} · not DESTRUCTIVE · plan human-only · skill hr lists the 6 (+ the 3 old) + "proposals need a human to confirm" (ORACLE-EDIT (HR H4.9 · controller): English summary per qc-ai-skills SK-4.2 — was the Thai phrase) · registry complete
 S1.4|R3 D4|C|R|[static] tools-hr.ts adapter only (no prisma/core-db/env) · hr/ai.ts tenantDb-only, DB membership gate, calls the §3 readers, no own query of pay/attendance/notes/balances · no model call
 S1.5|§4|M|R|[static] ai-rules.ts pure + exports fenceUntrusted · capHrToolResult · patternFacts · rosterFingerprint · briefLine · HR_AI_TEXT
 S1.6|§4|C|G|[static] [control] frozen unchanged vs base (ai/actor · service · persona · pos/account/crm · prisma · permissions · hr reports/judge/leave/lifecycle/inbox/privacy/self/payroll/payslip · labor-rules/actions · qc-hr-lib · other oracles · package.json)
@@ -151,7 +151,7 @@ function runRegistry(): void {
       access: PROP_TOOLS.every((k) => canon(M.props?.kindAccessOf?.(k)) === canon({ module: "hr", action: "hr.employee.create" })),
       notDestructive: PROP_TOOLS.every((k) => M.props?.DESTRUCTIVE_KINDS?.has?.(k) === false),
       plan: PROP_TOOLS.every((k) => M.plans?.isPlanHumanOnly?.(k) === true),
-      skill: !!hrSkill && [...ALL_TOOLS, "pending_leaves", "hr_decide_leave", "hr_create_employee"].every((n) => hrSkill.tools.includes(n)) && String(hrSkill.summary).includes("ข้อเสนอต้องมีคนยืนยัน"),
+      skill: !!hrSkill && [...ALL_TOOLS, "pending_leaves", "hr_decide_leave", "hr_create_employee"].every((n) => hrSkill.tools.includes(n)) && String(hrSkill.summary).includes("proposals need a human to confirm"), // ORACLE-EDIT (HR H4.9 · controller): SK-4.2 (skill summaries English) outranks the H4.3 Thai pin ◂
       complete,
     }, "kinds + plan + skill", `skillTools=${short(hrSkill?.tools, 120)}`);
   }

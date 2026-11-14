@@ -318,6 +318,10 @@ const IN_PAGE_ENTRIES: { type: string; rest: string; entryFile: string; href: Re
   { type: "BOOKING", rest: "/booking/mine", entryFile: "src/app/app/u/[unitSlug]/booking/layout.tsx", href: /href:\s*`\$\{base\}\/mine`/ },
   { type: "BOOKING", rest: "/booking/devices", entryFile: "src/components/booking/TodayLine.tsx", href: /href=\{`\/app\/u\/\$\{unitSlug\}\/booking\/devices`\}/ },
   { type: "BOOKING", rest: "/booking/settings/messages", entryFile: "src/components/booking/settings/BookingPolicySettings.tsx", href: /href:\s*`\$\{basePath\}\/settings\/messages(#[a-z]+)?`/ },
+  // ORACLE-EDIT (HR H4.9 · controller): รายงาน HR (H3.9) เข้าทางไทล์ "รายงาน" บนภาพรวม HR (HrTeamOverviewSection บน HrHub)
+  //   src/lib/modules/hr/overview-ui.tsx:70 `<Tile testId="hr-overview-reports-link" … href={`${s}/hr/reports`} />` (s = `/app/sys/${systemId}`) ·
+  //   ไทล์โชว์เฉพาะผู้ที่เปิดรายงานได้ (reportAccessOf) ⇒ ไม่ใส่เมนูข้างคงที่
+  { type: "HR", rest: "/hr/reports", entryFile: "src/lib/modules/hr/overview-ui.tsx", href: /href=\{`\$\{s\}\/hr\/reports`\}/ },
 ];
 const inPageOk = new Map<string, Set<string>>();
 for (const e of IN_PAGE_ENTRIES) {
