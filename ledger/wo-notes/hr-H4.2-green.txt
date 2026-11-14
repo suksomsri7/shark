@@ -1,0 +1,35 @@
+# H4.2 builder green summary (lane DB via scripts/qc-hr.sh · 14 Nov 2026) — head = commit containing this file
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-h4.2-f1 exit=1 ===== qc-hr-h4.2 ===== passed 46/49
+qc-hr-h4.2-f2 exit=1 ===== qc-hr-h4.2 ===== passed 46/49
+qc-hr-h4.2-f3 exit=1 ===== qc-hr-h4.2 ===== passed 46/49
+qc-hr-h4.2-u exit=1 ===== qc-hr-h4.2 ===== passed 46/49
+qc-hr-h3.9 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-set-1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-hr-h3.4 exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h3.1 exit=0 ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE)
+qc-hr-h2.2 exit=1 ===== qc-hr-h2.2 ===== passed 59/60 (QC_FORCE)
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h4.1 exit=0 ===== qc-hr-h4.1 ===== passed 47/47 (QC_FORCE)
+qc-hr-h4.4 exit=0 ===== qc-hr-h4.4 ===== passed 86/86 (QC_FORCE)
+qc-hr-h4.6 exit=0 ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE)
+qc-audit-trail exit=0 
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+qc-pos-p1.17 exit=4 
+qc-pos-p1.18 exit=4 
+qc-pos-p2.12 exit=4 
+qc-pos-p2.11 exit=4 
+qc-pos-p3.5 exit=4 
+qc-pos-p3.6 exit=4 
+qc-pos-p1.8 exit=4 
+qc-pos-p2.9b exit=4 
+qc-hr-h4.2-f4 (after BigInt-literal fix) ===== qc-hr-h4.2 ===== passed 46/49
+qc-audit-trail: ✅ PASS — 21/21
+qc-hf-hr-privacy: JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+qc-hr-h4.2 fails (all 4 runs, same 3): S1.8 inventory(meta only) · S3.1 sameHours (repNz string length) · S4.12 all=281594 — ORACLE-EDIT §6 of hr-H4.2.md
+qc-hr-h2.2 fail: S6.2 meta=false (H4.2 /hr/roster rows) — codeNoRow/rowNoCode empty
+POS suites exit 4 = QC4-only write guard on lane DB; statics: p1.17 7/7 p1.18 16/16 p1.8 9/9 p2.9b 8/8 green; p2.11 ST1+ST4, p2.12 ST1, p3.5 ST1+ST2, p3.6 ST2+ST3 red — identical ids red on base ae33a9fc3 (pre-existing pin diffs: prisma/ HR migrations, hr/index.ts, account files)
+fitness env: JSON_SUMMARY {"total":54,"passed":54,"findings":[]} · noenv: JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness-hr env: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} · noenv: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+typecheck #1 exit=2 (TS2737 BigInt literals in labor-rules.ts, 19) → fixed → typecheck #2 exit=0, 390 s, 0 errors
