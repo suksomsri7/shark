@@ -40,14 +40,17 @@ const DEVICES = [
 ] as const;
 
 // ═══════════════ สเปกภาพ (คีย์ = ใบงาน) ═══════════════
-type Ids = { unitSlug: string; racha: string; similan: string; racha1114: string; racha1231: string; week: string; month: string; decWeek: string; booking0142: string };
+type Ids = { unitSlug: string; racha: string; similan: string; racha1114: string; racha1231: string; week: string; month: string; decWeek: string; shopSlug: string; bookMonth: string; bookDate: string; booking0142: string };
 type Action =
   | { click: { selector: string; text?: string } }
   | { fill: { selector: string; nth?: number; value: string } }
   | { waitFor: string }
   | { reveal: string }
   | { pause: number };
-type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "18"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean };
+// TRIPS W1.1 ▸ public = หน้าสาธารณะ: ไม่ใส่คุกกี้ session (บริบทเบราว์เซอร์ใหม่) + ตั้งหัว x-forwarded-for (หน้าต้องรู้ IP) · expectStatus = รหัสสถานะที่ต้องได้ (ปริยาย: ต่ำกว่า 400) ◂
+type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print" };
+const PUBLIC_CLIENT_IP = "198.51.100.77";
+const BOOK_RACHA = "racha-yai-day-trip";
 // ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
 const LADDER = '[role="dialog"] [data-setting-key="trips.cancel.ladder"]';
 const LADDER_DAYS = `${LADDER} [data-table-cell="fromDaysBefore"] input`;
@@ -101,6 +104,14 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       actions: [{ waitFor: '[data-testid="trips-dep-decide"]' }, { click: { selector: '[data-testid="trips-dep-decide"]' } }, { waitFor: '[data-testid="trips-decide-dialog"]' }, { pause: 500 }],
     },
   ],
+  // TRIPS W1.1 ▸ หน้าจองสาธารณะ /book/[shop] (ภาพ 19 จอใหญ่อังกฤษ · ภาพ 01 จอ ก มือถือไทย) — ทุกฉาก 1440 + 390 · ไม่มีคุกกี้ · เดือน/วันปักด้วย --book-month/--book-date (หน้าใช้นาฬิกาจริง) ◂
+  "w1.1": [
+    { name: "book-index", mockup: "19", public: true, path: (i) => `/book/${i.shopSlug}` },
+    { name: "book-product", mockup: "01", public: true, path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=th&m=${i.bookMonth}&d=${i.bookDate}` },
+    { name: "book-product-en", mockup: "19", public: true, path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=en&m=${i.bookMonth}&d=${i.bookDate}` },
+    // Liveaboard ที่เผยแพร่แล้วยังไม่เปิดหน้าสาธารณะ ⇒ ต้องได้ 404 จริง
+    { name: "book-not-found", mockup: "19", public: true, expectStatus: 404, path: (i) => `/book/${i.shopSlug}/t/similan-4-nights` },
+  ],
   // TRIPS T1.3 ▸ การจองฝั่งร้าน (ภาพ 18) — ทุกฉาก 1440 + 390 · วันปักด้วย when=all (ไม่พึ่งวันนี้) · booking0142 = การจองของภัทรา (Party tripsqc-party-dive-pattra) บนรอบราชา ส. 14 พ.ย. หาจาก seed ตอนรัน ◂
   "t1.3": [
     // ภาพ 18 ส่วนตาราง: รายการการจองทั้งหมด (seed 3 ใบ)
@@ -124,6 +135,27 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
     // คิวเอกสารเงินรอออก (seed ว่าง ⇒ ข้อความถาวร + สถานะว่าง)
     { name: "money-docs", mockup: "18", path: (i) => `/app/u/${i.unitSlug}/trips/bookings?view=docs` },
   ],
+  // TRIPS T1.4 ▸ ใบรายชื่อรายวัน (ภาพ 12 ส่วนจอใหญ่) — ทุกฉาก 1440 + 390 · รอบราชา ส. 14 พ.ย. (racha1114) · ฉากพิมพ์ถ่ายด้วยสื่อ print (ไม่กดปุ่มพิมพ์ ⇒ ไม่เขียนฐาน) ◂
+  "t1.4": [
+    // มุมมองตามรถรับส่ง (seed ยังไม่จัดรถ ⇒ กลุ่มเดียว "ยังไม่จัดรถ / มาเอง")
+    { name: "manifest-pickup", mockup: "12", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/manifest`, actions: [{ waitFor: '[data-testid="trips-mf"]' }] },
+    // มุมมองตามการจอง + ขยายรายชื่อรายคนของการจองแรก
+    {
+      name: "manifest-booking",
+      mockup: "12",
+      path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/manifest?view=booking`,
+      actions: [{ waitFor: '[data-testid^="trips-mf-pax-toggle-"]' }, { click: { selector: '[data-testid^="trips-mf-pax-toggle-"]' } }, { waitFor: '[data-testid^="trips-mf-pax-"]:not([data-testid^="trips-mf-pax-toggle-"])' }, { pause: 300 }],
+    },
+    // ผังพิมพ์ของฉากแรก: สื่อ print (emulateMediaType) ถ่ายทั้งหน้า — ต้องเห็นเฉพาะใบรายชื่อ ไม่มีเปลือกแอป/แถบทัวร์/ปุ่ม
+    { name: "manifest-print", mockup: "12", media: "print", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/manifest`, actions: [{ waitFor: '[data-print-root="trips-manifest"]' }] },
+    // แผงรอบในปฏิทิน: ปุ่ม "ใบรายชื่อ" เป็นลิงก์จริง
+    {
+      name: "manifest-panel-link",
+      mockup: "12",
+      path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}&dep=${i.racha1114}`,
+      actions: [{ waitFor: 'a[data-testid="trips-dep-manifest"]' }],
+    },
+  ],
 };
 
 const argv = process.argv.slice(2);
@@ -146,7 +178,9 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(EX_DATE)) {
 const WEEK = argOf("--week") ?? CALENDAR_WEEK_1111.rows.racha[0].date;
 const MONTH = argOf("--month") ?? WEEK.slice(0, 7);
 const DEC_DATE = argOf("--dec-date") ?? RACHA_DEPARTURE_PRICE_1231.date;
-for (const [flag, v, re] of [["--week", WEEK, /^\d{4}-\d{2}-\d{2}$/], ["--month", MONTH, /^\d{4}-\d{2}$/], ["--dec-date", DEC_DATE, /^\d{4}-\d{2}-\d{2}$/]] as const) {
+const BOOK_DATE = argOf("--book-date") ?? RACHA_DEPARTURE_PRICE_1231.date;
+const BOOK_MONTH = argOf("--book-month") ?? BOOK_DATE.slice(0, 7);
+for (const [flag, v, re] of [["--week", WEEK, /^\d{4}-\d{2}-\d{2}$/], ["--month", MONTH, /^\d{4}-\d{2}$/], ["--dec-date", DEC_DATE, /^\d{4}-\d{2}-\d{2}$/], ["--book-date", BOOK_DATE, /^\d{4}-\d{2}-\d{2}$/], ["--book-month", BOOK_MONTH, /^\d{4}-\d{2}$/]] as const) {
   if (!re.test(v)) {
     console.error(`❌ ${flag} รูปแบบผิด: ${v}`);
     process.exit(2);
@@ -230,20 +264,22 @@ async function idsFromSeed(): Promise<Ids> {
     select: { id: true },
   });
   if (!bk0142 && WO === "t1.3") throw new Fatal(`ไม่พบการจองของ ${BOOKING_0142_PARTY} บนรอบราชา ${DEPARTURE_RACHA_1114.date} — รัน scripts/seed-trips-qc.mts ก่อน`);
-  return { unitSlug: unit.slug, racha, similan, racha1114: dep.id, racha1231: dec?.id ?? "", week: WEEK, month: MONTH, decWeek, booking0142: bk0142?.id ?? "" };
+  return { unitSlug: unit.slug, racha, similan, racha1114: dep.id, racha1231: dec?.id ?? "", week: WEEK, month: MONTH, decWeek, shopSlug: SHOP_DIVE.tenant.slug, bookMonth: BOOK_MONTH, bookDate: BOOK_DATE, booking0142: bk0142?.id ?? "" };
 }
 
 type Page = {
   setViewport(v: object): Promise<void>;
   setCookie(...c: Cookie[]): Promise<void>;
+  setExtraHTTPHeaders(h: Record<string, string>): Promise<void>;
   on(ev: string, f: (x: never) => void): void;
   goto(url: string, o: object): Promise<{ status(): number } | null>;
   evaluate<R, A>(f: (a: A) => R, a?: A): Promise<R>;
   waitForSelector(sel: string, o: object): Promise<unknown>;
   screenshot(o: object): Promise<unknown>;
+  emulateMediaType(type?: string): Promise<void>;
   close(): Promise<void>;
 };
-type Browser = { newPage(): Promise<Page>; close(): Promise<void> };
+type Browser = { newPage(): Promise<Page>; close(): Promise<void>; createBrowserContext?(): Promise<{ newPage(): Promise<Page>; close(): Promise<void> }> };
 type Pptr = { default: { launch(o: object): Promise<Browser> } };
 
 /** ขั้นกด/กรอกก่อนถ่าย — หาเป้าไม่เจอ ⇒ ข้อความผิดพลาด (ฉากนั้น ❌) */
@@ -297,7 +333,7 @@ const results: { name: string; device: string; mockup: string; status: number; e
 const profile = `/tmp/chr-trips-${process.pid}`;
 try {
   const ids = await idsFromSeed();
-  const cookies = await mintSession();
+  const cookies = specs.some((s) => !s.public) ? await mintSession() : [];
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e})`);
   })) as Pptr;
@@ -307,11 +343,15 @@ try {
   });
   try {
     for (const spec of specs) for (const dev of DEVICES) {
-      const page = await browser.newPage();
+      // หน้าสาธารณะ: บริบทใหม่ (ไม่มีคุกกี้ของฉากอื่น) + หัว IP ของผู้ใช้ (ไม่พึ่งว่า server เติมให้)
+      const ctx = spec.public && browser.createBrowserContext ? await browser.createBrowserContext() : null;
+      const page = await (ctx ?? browser).newPage();
       await page.setViewport({ width: dev.width, height: dev.height, deviceScaleFactor: 1, isMobile: dev.mobile, hasTouch: dev.mobile });
-      await page.setCookie(...cookies);
+      if (spec.public) await page.setExtraHTTPHeaders({ "x-forwarded-for": PUBLIC_CLIENT_IP });
+      else await page.setCookie(...cookies);
       const errors: string[] = [];
       page.on("pageerror", (e: never) => errors.push(String((e as Error).message).slice(0, 120)));
+      if (spec.media) await page.emulateMediaType(spec.media);
       const resp = await page.goto(`${BASE}${spec.path(ids)}`, { waitUntil: "networkidle2", timeout: 90_000 }).catch(() => null);
       await new Promise((r) => setTimeout(r, 1200));
       for (const a of spec.actions ?? []) {
@@ -322,16 +362,19 @@ try {
         }
       }
       if (!spec.actions?.length) await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
-      const overflow = await page.evaluate((vw: number) => document.documentElement.scrollWidth > vw + 2, dev.width).catch(() => false);
+      // T1.4a มติ M6: ผังพิมพ์เป็นตารางคอลัมน์ขนาดกระดาษ (~148 มม.) — เครื่องพิมพ์จัดหน้าตามความกว้างกระดาษ ไม่ใช่ความกว้างจอ ⇒ ไม่ตรวจล้นที่ 390 ของสื่อพิมพ์
+      const overflow = spec.media === "print" && dev.width < 600 ? false : await page.evaluate((vw: number) => document.documentElement.scrollWidth > vw + 2, dev.width).catch(() => false);
       const file = join(OUT, `${spec.name}-${dev.device}.png`);
       await page.screenshot({ path: file, fullPage: spec.fullPage !== false });
       shots.push(file);
       const status = resp?.status() ?? 0;
-      const ok = status > 0 && status < 400 && !overflow && errors.length === 0;
+      const statusOk = spec.expectStatus !== undefined ? status === spec.expectStatus : status > 0 && status < 400;
+      const ok = statusOk && !overflow && errors.length === 0;
       if (!ok) failures++;
       results.push({ name: spec.name, device: dev.device, mockup: spec.mockup, status, errors, overflow, file });
       console.log(`  ${ok ? "✅" : "❌"} ${spec.name} [${dev.device} ${dev.width}] (↔ ภาพ ${spec.mockup}) HTTP ${status} → ${file}${overflow ? " · ล้นแนวนอน" : ""}${errors.length ? ` · ${errors.length} ข้อผิดพลาด: ${errors[0]}` : ""}`);
       await page.close();
+      await ctx?.close();
     }
   } finally {
     await browser.close();

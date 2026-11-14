@@ -1,0 +1,149 @@
+{
+  "shell": {
+    "langTh": "ไทย",
+    "langEn": "English",
+    "brandHome": "All tours from this shop",
+    "langLabel": "Choose language"
+  },
+  "index": {
+    "title": "Tours you can book",
+    "empty": "This shop has no tours open for booking yet",
+    "truncated": "Showing {shown} of {total} tours",
+    "view": "See dates and prices"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "The link may be wrong, or this page is not open for booking yet. Check the link or contact the shop directly."
+  },
+  "rate": {
+    "title": "Too many requests",
+    "body": "This page was opened too often. Please wait a moment and try again."
+  },
+  "product": {
+    "chooseDate": "Choose a date",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "prices": "Price per person",
+    "fees": "Fees paid on top",
+    "extras": "Optional extras",
+    "itinerary": "Itinerary",
+    "includes": "Included",
+    "meeting": "Meeting point",
+    "untranslated": "Not yet translated by the shop — shown in Thai",
+    "capacity": "max {n} guests",
+    "noDates": "No dates are open this month. Try the next month.",
+    "summary": "Selected date",
+    "calendarCaption": "Daily availability calendar"
+  },
+  "day": {
+    "PAST": "Past",
+    "NONE": "No departure",
+    "NOT_RUNNING": "Not running",
+    "CLOSED": "Closed",
+    "FULL": "Full",
+    "LOW": "{n} left",
+    "OPEN": "{n} seats"
+  },
+  "legend": {
+    "selected": "Selected date",
+    "low": "Few seats left",
+    "notRunning": "Not running that day",
+    "real": "Numbers are real seats you can book now"
+  },
+  "slot": {
+    "guaranteed": "Confirmed to run",
+    "closesAt": "Booking closes {at}",
+    "title": "Departures on this date",
+    "from": "From {amount} per person",
+    "choose": "Choose the {time} departure",
+    "chosen": "Selected departure",
+    "more": "{n} more departures not shown",
+    "count": "{n} trips"
+  },
+  "pax": {
+    "ageRange": "age {min}–{max}",
+    "ageFrom": "age {min} and over",
+    "ageUnder": "up to age {max}",
+    "noSeat": "no seat",
+    "free": "Free"
+  },
+  "price": {
+    "from": "From, per person",
+    "passThrough": "Collected on behalf of a third party · paid with your booking",
+    "unavailable": "Prices are not available right now — please contact the shop",
+    "vat": {
+      "INCLUDED": "Prices in Thai baht, VAT included",
+      "ADDED": "Prices in Thai baht, VAT included — this is the amount you pay",
+      "NONE": "Prices in Thai baht, no VAT applies"
+    },
+    "amount": "THB {amount}",
+    "group": "Group prices apply when you book for more people — prices shown are for one person"
+  },
+  "cancel": {
+    "title": "Cancellation",
+    "row": "{days} days or more before departure — {pct}% refund",
+    "rowLast": "After that — {pct}% refund",
+    "noRefund": "After that, no refund"
+  },
+  "tz": {
+    "note": "All times are shop local time ({zone} · GMT{offset})"
+  },
+  "cta": {
+    "continue": "Continue to payment",
+    "notYet": "Online booking is not open yet — contact the shop to book"
+  },
+  "unavailable": {
+    "requested": "The date you picked is not open for booking. Showing the next available date."
+  },
+  "weekday": {
+    "0": "Sun",
+    "1": "Mon",
+    "2": "Tue",
+    "3": "Wed",
+    "4": "Thu",
+    "5": "Fri",
+    "6": "Sat"
+  },
+  "month": {
+    "1": "Jan",
+    "2": "Feb",
+    "3": "Mar",
+    "4": "Apr",
+    "5": "May",
+    "6": "Jun",
+    "7": "Jul",
+    "8": "Aug",
+    "9": "Sep",
+    "10": "Oct",
+    "11": "Nov",
+    "12": "Dec"
+  },
+  "monthLong": {
+    "1": "January",
+    "2": "February",
+    "3": "March",
+    "4": "April",
+    "5": "May",
+    "6": "June",
+    "7": "July",
+    "8": "August",
+    "9": "September",
+    "10": "October",
+    "11": "November",
+    "12": "December"
+  },
+  "slotState": {
+    "OPEN": "{n} seats available",
+    "LOW": "{n} seats left",
+    "FULL": "Fully booked",
+    "CLOSED": "Booking closed",
+    "NOT_RUNNING": "Not running"
+  },
+  "basis": {
+    "PER_PAX": "per person",
+    "PER_BOOKING": "per booking",
+    "PER_DAY": "per day",
+    "PER_PAX_DAY": "per person per day",
+    "PER_BOAT_NIGHT": "per boat per night"
+  }
+}
