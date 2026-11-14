@@ -3,7 +3,7 @@
 //   คำตอบผ่าน serializer (ไม่มี bankMasked · ไม่มีลิงก์) · สลิปที่ยังไม่ออก/ถูกถอน = 409 state_conflict · ไม่พบ/ไม่มีสิทธิ์ = 404 เดียวกัน
 //   ถังเพดาน report · ทุกการอ่านที่ส่งข้อมูลออก = ประวัติ 1 แถว (R8: id + ปีภาษีเท่านั้น) ก่อนตอบ
 import { z } from "zod";
-import { auditPayRead, hrIssuerViewer } from "../actor";
+import { auditPayRead, endedEmployeeIds, hrIssuerViewer } from "../actor";
 import { hrNotFound, hrStateConflict } from "../http-errors";
 import { defineHrOp, type ApiOp } from "../op";
 import { serializeHistory, serializeSlip } from "../serialize";
@@ -19,7 +19,7 @@ const history = defineHrOp({
   kind: "read",
   rate: "report",
   action: "hr.payroll.read",
-  summary: "Issued payslips of one employee in one tax year with the yearly totals (satang). Audited. No bank details and no links.",
+  summary: "Issued payslips of one employee in one tax year with the yearly totals (satang). Audited. No bank details and no links. An ended employee answers 404 not_found like an unknown id.",
   label: "ประวัติสลิปเงินเดือนรายปี",
   test: TEST,
   input: z.object({ taxYear: z.coerce.number().int().min(2000).max(2400).describe("Tax year (Gregorian), e.g. 2026.") }).strict(),
@@ -27,6 +27,8 @@ const history = defineHrOp({
     const viewer = await hrIssuerViewer(actor);
     if (!viewer) throw hrNotFound();
     const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
+    // brief ไม่ได้เปิดสลิปของพนักงานที่พ้นสภาพ ⇒ 404 เหมือน id ที่ไม่มี (มติรอบแก้ ข้อ 5)
+    if ((await endedEmployeeIds(ctx)).has(params.employeeId ?? "")) throw hrNotFound();
     const h = await slipHistory(ctx, viewer, { employeeId: params.employeeId ?? "", taxYear: input.taxYear });
     if (!h.ok) throw hrNotFound();
     await auditPayRead(actor, "hr.api.payslip.history", "HrEmployee", h.employeeId, { employeeId: h.employeeId, taxYear: input.taxYear });
@@ -43,7 +45,7 @@ const slipGet = defineHrOp({
   kind: "read",
   rate: "report",
   action: "hr.payroll.read",
-  summary: "One issued payslip (earnings, deductions, net, SSO, satang). A run that is still a draft, not finished or reversed answers 409 state_conflict. Audited. No bank details.",
+  summary: "One issued payslip (earnings, deductions, net, SSO, satang). A run that is still a draft, not finished or reversed answers 409 state_conflict. Audited. No bank details. An ended employee answers 404 not_found like an unknown id.",
   label: "สลิปเงินเดือน",
   test: TEST,
   input: z.object({}).strict(),
@@ -51,6 +53,7 @@ const slipGet = defineHrOp({
     const viewer = await hrIssuerViewer(actor);
     if (!viewer) throw hrNotFound();
     const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
+    if ((await endedEmployeeIds(ctx)).has(params.employeeId ?? "")) throw hrNotFound();
     const s = await slipForViewer(ctx, viewer, { runId: params.runId ?? "", employeeId: params.employeeId ?? "" });
     if (!s.ok) {
       if (s.code === "SLIP_DATA") throw hrStateConflict(s.reason);

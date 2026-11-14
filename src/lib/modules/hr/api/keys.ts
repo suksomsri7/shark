@@ -25,6 +25,10 @@ export const HR_KEY_TTL_DAYS: readonly number[] = [30, 90, 365, 0];
 const PAY_SCOPE = "hr.payroll.read";
 const NAME_MAX = 60;
 const DAY_MS = 86_400_000;
+/** อักขระที่ห้ามอยู่ในชื่อคีย์ (มติรอบแก้ ข้อ 4): ควบคุม C0/C1 รวม NUL · bidi override/isolate/mark · ตัวแบ่งบรรทัด/ย่อหน้า Unicode */
+const NAME_BAD = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029]/;
+/** ชื่อที่แสดงผล (คีย์รุ่นก่อนกติกานี้) — ตัดอักขระต้องห้ามทิ้ง */
+export const displayKeyName = (name: string): string => name.replace(new RegExp(NAME_BAD.source, "g"), "").trim();
 
 const refuse = (code: HrKeyRefusal["code"], message: string): HrKeyRefusal => ({ ok: false, code, message });
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -53,6 +57,7 @@ export async function issueHrApiKey(auth: HrKeyAuth, input: IssueHrApiKeyInput):
   if ("ok" in g) return g;
   const name = str(input.name);
   if (!name || name.length > NAME_MAX) return refuse("VALIDATION", `ตั้งชื่อคีย์ให้จำง่าย (ไม่เกิน ${NAME_MAX} ตัวอักษร) เช่น แอปตารางกะของร้าน`);
+  if (NAME_BAD.test(name)) return refuse("VALIDATION", "ชื่อคีย์มีอักขระพิเศษที่ใช้ไม่ได้ (ตัวควบคุม · ตัวกลับทิศทาง · ขึ้นบรรทัดใหม่) — พิมพ์ชื่อใหม่ด้วยตัวอักษรธรรมดา");
   let scopes: string[];
   if (Array.isArray(input.scopes) && input.scopes.length > 0) {
     scopes = [...new Set(input.scopes.map(str).filter(Boolean))];
@@ -106,7 +111,7 @@ export async function listHrApiKeys(auth: HrKeyAuth, input: { systemId: string }
     const hit = API_SCOPE_BUNDLES.find((b) => HR_BUNDLE_IDS.includes(b.id) && [...b.scopes].sort().join(",") === sorted);
     return {
       id: r.id,
-      name: r.name,
+      name: displayKeyName(r.name),
       prefix: r.prefix,
       bundle: hit ? hit.id : "custom",
       pay: scopes.includes(PAY_SCOPE),

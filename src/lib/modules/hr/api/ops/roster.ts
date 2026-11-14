@@ -2,9 +2,9 @@
 //   ตัวอ่านเดียวกับหน้าจอ: settings.ts listShifts · roster.ts listRoster · judge.ts loadAttendanceBoard / loadAttendanceMonth
 //   ไม่มีพิกัด · รูป · อุปกรณ์ · หมายเหตุ · คำเตือนของตารางร่าง (serializer R4)
 import { z } from "zod";
-import { hrKeyViewer } from "../actor";
+import { endedEmployeeIds, hrKeyViewer } from "../actor";
 import { hrNotFound, hrUnprocessable } from "../http-errors";
-import { defineHrOp, type ApiOp } from "../op";
+import { defineHrOp, HR_DAY, HR_MONTH, type ApiOp } from "../op";
 import { serializeAttendanceDay, serializeAttendanceMonth, serializeRosterEntry, serializeShift } from "../serialize";
 import { loadAttendanceBoard, loadAttendanceMonth } from "../../judge";
 import { listRoster } from "../../roster";
@@ -13,7 +13,7 @@ import { listShifts } from "../../settings";
 
 const TEST = "qc-hr-h4.8";
 const ID = z.string().min(1).max(64);
-const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const DAY = HR_DAY;
 
 const shiftsList = defineHrOp({
   id: "shifts.list",
@@ -77,7 +77,18 @@ const attendanceDay = defineHrOp({
     if (!b) throw hrNotFound();
     // สาขาที่ขอแต่บอร์ดไม่รู้จัก (สาขาของร้านอื่น/ไม่มีจริง) = ไม่พบ — ไม่ตกไปเป็น "ทุกสาขา" เงียบ ๆ
     if (input.unitId && b.unitSel !== input.unitId) throw hrNotFound();
-    return serializeAttendanceDay(b, input.unitId ?? null);
+    const ended = await endedEmployeeIds(ctx);
+    const out = serializeAttendanceDay(b, input.unitId ?? null);
+    // พนักงานที่พ้นสภาพแล้วไม่อยู่ในคำตอบ (มติรอบแก้ ข้อ 5) — ยอดรวมคิดใหม่จากแถวที่เหลือ
+    out.rows = out.rows.filter((r) => !ended.has(r.employeeId));
+    const counts: Record<string, number> = {};
+    let workedMin = 0;
+    for (const r of out.rows) for (const sl of r.slots) {
+      if (sl.status) counts[sl.status] = (counts[sl.status] ?? 0) + 1;
+      workedMin += sl.workedMin ?? 0;
+    }
+    out.totals = { workedMin, counts };
+    return out;
   },
 });
 
@@ -87,17 +98,18 @@ const attendanceMonth = defineHrOp({
   path: "/attendance/month",
   kind: "read",
   action: "hr.roster.read",
-  summary: "Attendance calendar of one employee for one month (YYYY-MM) with the monthly summary. An employee of another HR system or shop answers 404 not_found like an unknown id.",
+  summary: "Attendance calendar of one employee for one month (YYYY-MM) with the monthly summary. An ended employee or an employee of another HR system or shop answers 404 not_found like an unknown id.",
   label: "การมาทำงานรายเดือนของพนักงาน",
   test: TEST,
   input: z
     .object({
       employeeId: ID.describe("Employee id (from GET /employees)."),
-      month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).describe("YYYY-MM (Asia/Bangkok)."),
+      month: HR_MONTH.describe("YYYY-MM (Asia/Bangkok)."),
     })
     .strict(),
   async handler({ actor, input }) {
     const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
+    if ((await endedEmployeeIds(ctx)).has(input.employeeId)) throw hrNotFound();
     const m = await loadAttendanceMonth(ctx, hrKeyViewer(actor), { employeeId: input.employeeId, month: input.month });
     if (!m) throw hrNotFound();
     return serializeAttendanceMonth(m);

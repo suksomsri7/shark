@@ -3,7 +3,7 @@
 //   ผู้ดู = ผู้ดูสังเคราะห์ของคีย์ (ทุกสาขา · ไม่เห็นข้อมูลอ่อนไหว) · คำตอบผ่าน serializeEmployee (allow-list R4)
 import { z } from "zod";
 import { paged } from "@/lib/api/respond";
-import { hrKeyViewer } from "../actor";
+import { hrKeyViewer, isEndedEmployee } from "../actor";
 import { hrNotFound } from "../http-errors";
 import { defineHrOp, type ApiOp } from "../op";
 import { serializeEmployee, serializeUnit } from "../serialize";
@@ -88,14 +88,15 @@ const employeesGet = defineHrOp({
   path: "/employees/{employeeId}",
   kind: "read",
   action: "hr.employee.read",
-  summary: "One employee (same fields as the list). An employee of another HR system or shop, and an unknown id, answer the same 404 not_found.",
+  summary: "One working employee (same fields as the list). An ended employee, an employee of another HR system or shop, and an unknown id answer the same 404 not_found.",
   label: "พนักงานรายคน",
   test: TEST,
   input: z.object({}).strict(),
   async handler({ actor, params }) {
     const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
     const r = await loadEmployeeProfileForViewer(ctx, hrKeyViewer(actor), params.employeeId ?? "");
-    if (!r) throw hrNotFound();
+    // พนักงานที่พ้นสภาพแล้ว = 404 ไบต์เดียวกับ id ที่ไม่มี (รายการก็ไม่แสดง — มติรอบแก้ ข้อ 5)
+    if (!r || isEndedEmployee(r.profile)) throw hrNotFound();
     return serializeEmployee(r.profile);
   },
 });

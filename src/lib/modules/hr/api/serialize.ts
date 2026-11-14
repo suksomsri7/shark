@@ -261,6 +261,11 @@ function keptColumns(report: unknown, pay: boolean): { key: string; sum: boolean
   if (!def) return [];
   return def.columns.filter((c) => c.cls === "P" || (pay && c.cls === "$")).map((c) => ({ key: c.key, sum: c.sum }));
 }
+/** คำตอบรายงานนี้มีคอลัมน์เงิน (ชั้น $) ไหม — ตัดสินจากสิ่งที่ส่งออกจริง (มติรอบแก้ ข้อ 1: มีเงิน = ลงประวัติการอ่านข้อมูลเงินเดือน) */
+export function reportCarriesMoney(report: unknown, pay: boolean): boolean {
+  const def = typeof report === "string" ? REPORT_CATALOG[report as ReportId] : undefined;
+  return pay === true && !!def && def.columns.some((c) => c.cls === "$");
+}
 export function serializeReport(raw: unknown, opts: { pay: boolean }) {
   const r = obj(raw);
   const kept = keptColumns(r.report, opts.pay === true);

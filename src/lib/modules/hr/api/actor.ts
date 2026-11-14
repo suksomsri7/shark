@@ -12,6 +12,7 @@
 import { membershipFromScopes, type ApiActor } from "@/lib/api/actor";
 import { ApiError, nothingWritten } from "@/lib/api/respond";
 import { tenantDb } from "@/lib/core/db";
+import { listRemovedEmployees } from "../service";
 
 /** ข้อความไทยเมื่อคีย์ไม่มีสิทธิ์ทำ op ของระบบงานบุคคล */
 export const HR_DENY_TH = "คีย์นี้ไม่มีสิทธิ์ทำรายการนี้ในระบบงานบุคคล";
@@ -103,3 +104,11 @@ export async function isShopOwner(tenantId: string, userId: string | null): Prom
 export async function auditPayRead(actor: ApiActor, action: string, targetType: string, targetId: string, after: Record<string, string | number | null>): Promise<void> {
   await tenantDb({ tenantId: actor.tenantId }).auditLog.create({ data: { tenantId: actor.tenantId, actorType: "API_KEY", actorId: actor.keyId ?? null, action, targetType, targetId, after } });
 }
+
+/** พนักงานที่พ้นสภาพแล้ว (active=false) ของระบบนี้ — API รอบแรกซ่อนทุกที่ (มติรอบแก้ ข้อ 5): รายคน · การมาทำงาน · ใบลา · สลิป · ยื่นใบลา = 404 เหมือน id ที่ไม่มี */
+const ENDED_CAP = 10_000;
+export async function endedEmployeeIds(ctx: { tenantId: string; systemId: string }): Promise<Set<string>> {
+  return new Set((await listRemovedEmployees(ctx, ENDED_CAP)).map((e) => e.id));
+}
+/** แถวพนักงาน (รูปใดก็ได้) พ้นสภาพแล้วไหม */
+export const isEndedEmployee = (e: { active?: unknown; employmentStatus?: unknown } | null | undefined): boolean => !e || e.active === false || e.employmentStatus === "ENDED";

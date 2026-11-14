@@ -30,8 +30,9 @@ API at all: tell the user to do them in the SHARK HR app.
   `hr-leave` (adds filing leave), `hr-payroll-read` (adds payslips and pay
   reports; the owner must confirm that pay data will leave SHARK).
 - Every HR key is bound to one HR system, so you never need `X-Shark-System`.
-  The HR API accepts no other key: a shop-wide key or a key of another system
-  gets 403 `scope_missing` on every call, whatever scopes it carries.
+  The HR API accepts no other key, whatever scopes it carries: a shop-wide key
+  gets 400 `system_required` without `X-Shark-System` and 403 `scope_missing`
+  with it; a key of another system gets 403 `system_mismatch`.
 - Machine readable contract (no key needed):
   `GET https://shark.in.th/api/v1/hr/openapi.json`. Human readable contract with
   field tables and a curl example per operation:
@@ -55,7 +56,8 @@ API at all: tell the user to do them in the SHARK HR app.
 - Success is `{ data, page?, truncated?, requestId }`. Failure is
   `{ error: { code, message_th, message_en, hint?, details? }, requestId }`.
   Branch on `error.code`; `message_th` is already worded for a Thai owner.
-- `POST /leaves` needs an `Idempotency-Key` header (one UUID per attempt). On a
+- `POST /leaves` needs `Content-Type: application/json` (415 otherwise) and an
+  `Idempotency-Key` header (one UUID per attempt). On a
   timeout retry with the SAME key: you get the first answer back with the
   header `Idempotent-Replayed: true` and no second leave. A different body with
   a used key fails with 409 `idempotency_conflict`.
@@ -75,8 +77,8 @@ API at all: tell the user to do them in the SHARK HR app.
   Read only what the user asked for, and do not copy pay data into other
   systems, files or messages unless the user explicitly asks.
 - A filed leave is a request, never an approval. After `POST /leaves` say that
-  the leave is waiting for approval (`status: PENDING`); never say it was
-  approved. Approving or rejecting leave, overtime, corrections or pay, payroll
+  the leave is waiting for approval (`status: PENDING`, the stored status);
+  never say it was approved. Approving or rejecting leave, overtime, corrections or pay, payroll
   runs, bank files, tax and social security filings and salary certificates
   are done in the SHARK HR app only.
 - 404 `not_found` means "not found or not allowed" - the answer is identical

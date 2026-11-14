@@ -5,9 +5,9 @@
 //   🔴 ไม่มีช่องเหตุผล (อาจเป็นข้อมูลสุขภาพ — Q5) · ไม่มีไฟล์แนบ · ช่องที่ไม่รู้จัก = 422 · ต้องมี Idempotency-Key (แกน)
 import { z } from "zod";
 import { withExtra } from "@/lib/api/respond";
-import { hrIssuerId, hrKeyCan, hrKeyViewer, isShopOwner } from "../actor";
+import { endedEmployeeIds, hrIssuerId, hrKeyCan, hrKeyViewer, isEndedEmployee, isShopOwner } from "../actor";
 import { hrForbidden, hrNotFound, hrScopeMissing, hrValidation, leaveRefusalHttp } from "../http-errors";
-import { defineHrOp, type ApiOp } from "../op";
+import { defineHrOp, HR_DAY, type ApiOp } from "../op";
 import { serializeLeave, serializeLeavePolicy, serializeLeaveBalances } from "../serialize";
 import { leaveDetailsMany, teamLeaveBalances, LEAVE_TEXT } from "../../leave";
 import { leaveItemsForViewer } from "../../privacy";
@@ -17,7 +17,7 @@ import { listLeavePolicies } from "../../settings";
 
 const TEST = "qc-hr-h4.8";
 const ID = z.string().min(1).max(64);
-const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const DAY = HR_DAY;
 /** เพดานของตัวอ่าน leaveItemsForViewer (pendingLeaves/listLeaves take 100) — เต็มเพดาน = อาจมีมากกว่านี้ */
 const LEAVE_CAP = 100;
 /** เพดานของ teamLeaveBalances (TEAM_MAX ใน leave.ts) */
@@ -46,7 +46,7 @@ const leavesList = defineHrOp({
   path: "/leaves",
   kind: "read",
   action: "hr.leave.read",
-  summary: "Leave requests. status=PENDING (default): the requests waiting for a decision. status=HISTORY: the 100 most recently filed requests of any status. Ordered by fromDate (newest first) then id. Reasons, who filed and attachments are never returned. truncated: true when the list hit its limit of 100.",
+  summary: "Leave requests. status=PENDING (default): the requests waiting for a decision. status=HISTORY: the 100 most recently filed requests of any status. Ordered by fromDate (newest first) then id. Leave of ended employees, reasons, who filed and attachments are never returned. truncated: true when the list hit its limit of 100.",
   label: "ใบลา",
   test: TEST,
   input: z.object({ status: z.enum(["PENDING", "HISTORY"]).optional().describe("PENDING (default) or HISTORY.") }).strict(),
@@ -56,9 +56,10 @@ const leavesList = defineHrOp({
     const all = await leaveItemsForViewer(ctx, viewer);
     const items = input.status === "HISTORY" ? all.history : all.pending;
     const details = await leaveDetailsMany(ctx, viewer, items.map((i) => i.id));
+    const ended = await endedEmployeeIds(ctx);
     const out = items.flatMap((i) => {
       const d = details.get(i.id);
-      return d && d.ok ? [serializeLeave(i, d.item)] : [];
+      return d && d.ok && !ended.has(d.item.employeeId) ? [serializeLeave(i, d.item)] : [];
     });
     out.sort((a, b) => ((a.fromDate ?? "") > (b.fromDate ?? "") ? -1 : (a.fromDate ?? "") < (b.fromDate ?? "") ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     return items.length >= LEAVE_CAP ? withExtra(out, { truncated: true }) : out;
@@ -113,7 +114,7 @@ const leavesCreate = defineHrOp({
   path: "/leaves",
   kind: "write",
   action: "hr.leave.request",
-  summary: "File a leave request for an employee. It is always created PENDING and goes through the shop's normal approval; nothing is approved here. Needs hr.leave.request and hr.leave.decide (the app's rule for filing on someone's behalf). No reason field: medical details stay out of the API. Requires Idempotency-Key.",
+  summary: "File a leave request for an employee. It is created PENDING (the answer carries the stored status) and goes through the shop's normal approval; nothing is approved here. Needs hr.leave.request and hr.leave.decide (the app's rule for filing on someone's behalf). No reason field: medical details stay out of the API. Requires Idempotency-Key and Content-Type: application/json (415 otherwise).",
   label: "ยื่นใบลาแทนพนักงาน",
   test: TEST,
   input: createInput,
@@ -128,7 +129,8 @@ const leavesCreate = defineHrOp({
     const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
     const issuer = hrIssuerId(actor);
     const emp = await getEmployee(ctx, input.employeeId);
-    if (!emp) throw hrNotFound();
+    // พ้นสภาพแล้ว = 404 เหมือน id ที่ไม่มี (มติรอบแก้ ข้อ 5 — ไม่ใช่ 422 "พ้นสภาพ")
+    if (!emp || isEndedEmployee(emp)) throw hrNotFound();
     if (emp.linkedUserId && (emp.linkedUserId === issuer || (await isShopOwner(actor.tenantId, emp.linkedUserId)))) throw hrForbidden(OWNER_TH, OWNER_EN);
     const units = await employeeUnitsOf(ctx, emp.id);
     if (!units) throw hrNotFound();
@@ -153,7 +155,9 @@ const leavesCreate = defineHrOp({
         reason: null,
         actorUserId: issuer,
       });
-      return { id: made.id, status: "PENDING" as const };
+      // สถานะที่บันทึกจริง (ไม่ใช่ค่าคงที่ — มติรอบแก้ ข้อ 6) · ผู้ดูสังเคราะห์ถือ hr.leave.decide ⇒ เห็นแถวนี้เสมอ
+      const stored = (await leaveDetailsMany(ctx, hrKeyViewer(actor), [made.id])).get(made.id);
+      return { id: made.id, status: stored && stored.ok ? String(stored.item.status) : "PENDING" };
     } catch (e) {
       if (e instanceof HrLeaveRequestError) throw leaveRefusalHttp(e.message);
       throw e;

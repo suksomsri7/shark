@@ -38,7 +38,7 @@ export function hrAccessOf(v: HrViewer): { seeSensitive: boolean; readLeave: boo
     seeSensitive,
     readLeave: can("hr.leave.read"),
     // ผู้แก้ทะเบียน · ผู้อ่านข้อมูล HR (คีย์เดียวกับลิงก์การ์ดพนักงานบนบอร์ดงาน) · ผู้ดูเงินเดือน
-    openProfile: can("hr.employee.create") || can("hr.leave.read") || seeSensitive || can("hr.employee.read"), // HR H4.8 ▸ + คีย์อ่านรายชื่อ (OR เพิ่มอย่างเดียว · ไม่ให้ seeSensitive) ◂
+    openProfile: can("hr.employee.create") || can("hr.leave.read") || seeSensitive || (String(v.userId ?? "").startsWith("apikey:") && can("hr.employee.read")), // HR H4.8 ▸ + คีย์อ่านรายชื่อ เฉพาะผู้ดูสังเคราะห์ของคีย์ API (คนที่ถือคีย์นี้ไม่ได้อะไรเพิ่ม · ไม่ให้ seeSensitive) ◂
   };
 }
 

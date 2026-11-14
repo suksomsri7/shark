@@ -6,8 +6,8 @@
 import { z } from "zod";
 import { auditPayRead, hrIssuerViewer, hrKeyCan } from "../actor";
 import { hrNotFound, hrScopeMissing, hrUnprocessable } from "../http-errors";
-import { defineHrOp, type ApiOp } from "../op";
-import { serializeReport } from "../serialize";
+import { defineHrOp, HR_PERIOD, type ApiOp } from "../op";
+import { reportCarriesMoney, serializeReport } from "../serialize";
 import { loadReport } from "../../reports";
 
 const TEST = "qc-hr-h4.8";
@@ -24,12 +24,12 @@ const reportsGet = defineHrOp({
   kind: "read",
   rate: "report",
   action: "hr.employee.read",
-  summary: "One HR report as JSON: time, ot, leave, payroll-month, payroll-year, wages, tax-month or tax-year. period is YYYY-MM for monthly reports and YYYY for yearly ones (leave, payroll-year, tax-year). time and ot also need hr.roster.read, leave needs hr.leave.read, the pay reports need hr.payroll.read. Money columns appear only for keys with hr.payroll.read; statutory id columns never. Pay reports are audited.",
+  summary: "One HR report as JSON: time, ot, leave, payroll-month, payroll-year, wages, tax-month or tax-year. period is YYYY-MM for monthly reports and YYYY for yearly ones (leave, payroll-year, tax-year). time and ot also need hr.roster.read, leave needs hr.leave.read, the pay reports need hr.payroll.read. Money columns appear only for keys with hr.payroll.read; statutory id columns never. Every answer that carries money columns is audited.",
   label: "รายงานงานบุคคล",
   test: TEST,
   input: z
     .object({
-      period: z.string().min(4).max(10).describe("YYYY-MM (monthly reports) or YYYY (leave, payroll-year, tax-year)."),
+      period: HR_PERIOD.describe("YYYY-MM (monthly reports) or YYYY (leave, payroll-year, tax-year)."),
       unitId: z.string().min(1).max(64).optional().describe("Only this branch."),
     })
     .strict(),
@@ -46,8 +46,11 @@ const reportsGet = defineHrOp({
       if (r.code === "LIMIT" || r.code === "INPUT") throw hrUnprocessable(r.reason);
       throw hrNotFound();
     }
-    if (need === "hr.payroll.read") await auditPayRead(actor, "hr.api.report.read", "HrReport", report, { report, period: r.period, unitId: r.unitId });
-    return serializeReport(r, { pay: hrKeyCan(actor, "hr.payroll.read") });
+    const pay = hrKeyCan(actor, "hr.payroll.read");
+    const out = serializeReport(r, { pay });
+    // ลงประวัติเมื่อคำตอบ "มีเงินจริง" (คอลัมน์ชั้น $) — รวม OT/เวลาที่อ่านด้วยคีย์ข้อมูลเงินเดือน ไม่ใช่ตาม scope ของรายงาน (มติรอบแก้ ข้อ 1)
+    if (reportCarriesMoney(report, pay)) await auditPayRead(actor, "hr.api.report.read", "HrReport", report, { report, period: r.period, unitId: r.unitId });
+    return out;
   },
 });
 

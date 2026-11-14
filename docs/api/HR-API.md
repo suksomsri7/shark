@@ -28,14 +28,14 @@ These are the rules of the module, copied verbatim from the contract description
 REST API for the SHARK HR system (staff list, shifts, published roster, attendance, leave, and - with a pay key - payslips and pay reports). One API key works inside one HR system (AppSystem of type HR). This first version is read-mostly: the only write is filing a leave request, which always waits for the shop's normal approval.
 
 Conventions that apply to every operation:
-1. Authentication is `Authorization: Bearer <api key>`. Only the shop owner can issue HR keys, from HR > Settings > API keys, and every key is bound to that one HR system. A key not bound to this HR system (a shop-wide key, or a key of another system) is refused on every operation with 403 `scope_missing`, even if it carries hr.* scopes. If the person who issued the key is no longer the shop owner, every operation answers 403 `forbidden`; ask the owner for a new key.
+1. Authentication is `Authorization: Bearer <api key>`. Only the shop owner can issue HR keys, from HR > Settings > API keys, and every key is bound to that one HR system. A key not bound to this HR system is refused on every operation, even if it carries hr.* scopes: a shop-wide (unbound) key answers 400 `system_required` without `X-Shark-System` and 403 `scope_missing` with it; a key bound to another system answers 403 `system_mismatch`. If the person who issued the key is no longer the shop owner, every operation answers 403 `forbidden`; ask the owner for a new key.
 2. Bundles: `hr-read` (default: staff list, shifts, roster, attendance, leave - no pay data), `hr-leave` (adds filing a leave request), `hr-payroll-read` (adds payslips and pay reports; the owner must confirm that pay data will leave SHARK). An operation returns 403 `scope_missing` when the key lacks the scope listed as `x-shark-scope` (the missing scope is in `hint`). Reports and filing a leave re-check a second scope inside the operation and answer the same way.
-3. Privacy. The API never returns national id or social security numbers, addresses, bank details, phone numbers or e-mail, PINs, photos, GPS positions, devices, notes, leave reasons or who filed a leave. Report columns with statutory ids are always left out; money columns appear only for keys with `hr.payroll.read`. Every payslip, payslip history and pay report read is written to the shop's audit log. Never put names or other personal data in a URL: paths and query strings carry ids, dates and filters only.
-4. Not found and not allowed look the same: an id of another HR system or shop, an id the key may not see and an unknown id all answer 404 `not_found` with identical bodies. Do not guess ids; read them from the list operations.
-5. Dates are `YYYY-MM-DD` and months `YYYY-MM` in the Asia/Bangkok calendar. Clock in/out times are ISO-8601 strings in UTC. Times of day in shifts and roster entries are minutes after midnight (`startMin`, `endMin`). Leave days and balances are decimal strings (`"1.0"`, `"0.5"`).
+3. Privacy. The API never returns national id or social security numbers, addresses, bank details, phone numbers or e-mail, PINs, photos, GPS positions, devices, notes, leave reasons or who filed a leave. Report columns with statutory ids are always left out; money columns appear only for keys with `hr.payroll.read`. Every payslip and payslip history read, and every report answer that carries money columns (pay reports, and the OT report read with a pay key), is written to the shop's audit log. Never put names or other personal data in a URL: paths and query strings carry ids, dates and filters only.
+4. Not found and not allowed look the same: an id of another HR system or shop, an id the key may not see and an unknown id all answer 404 `not_found` with identical bodies. Ended (former) employees are hidden the same way in this version: their profile, attendance, leave and payslips answer 404 and they are not in any list. Do not guess ids; read them from the list operations.
+5. Dates are `YYYY-MM-DD` and months `YYYY-MM` in the Asia/Bangkok calendar; a date that does not exist (2026-02-31) answers 422 `validation`. Clock in/out times are ISO-8601 strings in UTC. Times of day in shifts and roster entries are minutes after midnight (`startMin`, `endMin`). Leave days and balances are decimal strings (`"1.0"`, `"0.5"`).
 6. Money is an integer number of satang (1 baht = 100 satang) in every field ending in `Satang`. Report cells are display strings, the same as the report screen.
 7. Paging: `GET /employees` pages with `page` and `pageSize` (10, 20 or 50; default 20) ordered by name then id, and answers `page` next to `data`. Lists that reach the limit of the screen they come from answer `truncated: true` at the top level (`GET /leaves` 100 requests, `GET /employees` 500 working employees); other lists return the whole set.
-8. Filing a leave (`POST /leaves`) requires an `Idempotency-Key` header. Retrying with the same key and body replays the stored answer with header `Idempotent-Replayed: true`; the same key with another body fails with 409 `idempotency_conflict`. The body is strict: unknown fields (including `reason`) fail with 422 `validation`. Overlapping leave answers 409 `duplicate`; other refusals of the HR rules answer 422 `unprocessable` with the app's Thai message in `message_th`. Leave of the shop owner cannot be filed through the API (403 `forbidden`).
+8. Filing a leave (`POST /leaves`) requires `Content-Type: application/json` (415 `invalid_json` otherwise) and an `Idempotency-Key` header. The answer carries the stored status of the new request. Retrying with the same key and body replays the stored answer with header `Idempotent-Replayed: true`; the same key with another body fails with 409 `idempotency_conflict`. The body is strict: unknown fields (including `reason`) fail with 422 `validation`. Overlapping leave answers 409 `duplicate`; other refusals of the HR rules answer 422 `unprocessable` with the app's Thai message in `message_th`. Leave of the shop owner cannot be filed through the API (403 `forbidden`).
 9. Success is `{ data, page?, truncated?, requestId }`. Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }` - branch on `error.code`; `message_th` is already worded for a Thai shop owner.
 10. Rate limits are per key: 300 reads, 60 writes and 30 report-class reads (reports, payslips, payslip history) per minute (namespace hr, separate from other SHARK modules). A 429 response carries `Retry-After`.
 11. Not available through the API on purpose: approving or rejecting anything, clocking in or out, editing employees, PINs and documents, payroll runs, bank transfer files, tax and social security filings, salary certificates, PDFs and CSV/XLSX exports, and the statutory employee register. Those stay in the HR app.
@@ -48,9 +48,9 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 | --- | --- | --- | --- |
 | `unauthorized` | 401 | No `Authorization: Bearer` header, or the key is unknown or revoked. | Check the header; ask the shop owner whether the key was revoked. |
 | `key_expired` | 401 | The key was valid but its expiry date has passed. | Ask the shop owner for a new key. |
-| `system_required` | 400 | The key is not bound to any system and no `X-Shark-System` header was sent. | Use a key issued from the HR settings page; those are always bound. |
+| `system_required` | 400 | The key is a shop-wide key (not bound to any system) and no `X-Shark-System` header was sent. Shop-wide keys cannot use the HR API at all. | Use a key issued from the HR settings page; those are always bound. |
 | `system_mismatch` | 403 | `X-Shark-System` points at another system than the key is bound to, or at a system that is not an HR system of this shop. | Drop the header. |
-| `scope_missing` | 403 | The key does not hold the scope this operation (or this report, or filing a leave) needs - or the key is not bound to this HR system at all. | Read `hint` for the scope, then ask the owner for a key with the right bundle (`hr-leave`, `hr-payroll-read`). |
+| `scope_missing` | 403 | The key does not hold the scope this operation (or this report, or filing a leave) needs - or a shop-wide key sent `X-Shark-System` (keys not bound to this HR system can do nothing). | Read `hint` for the scope, then ask the owner for a key with the right bundle (`hr-leave`, `hr-payroll-read`). |
 | `invalid_json` | 400 | The request body is not parseable JSON. | Send valid JSON and `Content-Type: application/json`. |
 | `validation` | 422 | The query or body did not match the schema (unknown fields such as `reason` are rejected on purpose, `pageSize` other than 10/20/50, bad dates). `details[]` lists the fields. | Fix the fields in `details[]`. |
 | `idempotency_required` | 400 | `POST /leaves` was sent without the `Idempotency-Key` header. | Generate one key per logical attempt (a UUID) and send it. |
@@ -105,7 +105,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/hr/employees" \
 
 #### `employees.get`
 
-**GET /employees/{employeeId}** - One employee (same fields as the list). An employee of another HR system or shop, and an unknown id, answer the same 404 not_found. · scope: `hr.employee.read` · read
+**GET /employees/{employeeId}** - One working employee (same fields as the list). An ended employee, an employee of another HR system or shop, and an unknown id answer the same 404 not_found. · scope: `hr.employee.read` · read
 
 Path parameters: `employeeId` (required).
 
@@ -160,12 +160,12 @@ curl -sS -X GET "https://shark.in.th/api/v1/hr/attendance/day" \
 
 #### `attendance.month`
 
-**GET /attendance/month** - Attendance calendar of one employee for one month (YYYY-MM) with the monthly summary. An employee of another HR system or shop answers 404 not_found like an unknown id. · scope: `hr.roster.read` · read
+**GET /attendance/month** - Attendance calendar of one employee for one month (YYYY-MM) with the monthly summary. An ended employee or an employee of another HR system or shop answers 404 not_found like an unknown id. · scope: `hr.roster.read` · read
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
 | `employeeId` | string | yes | Employee id (from GET /employees). |
-| `month` | string | yes | YYYY-MM (Asia/Bangkok). · pattern `^\d{4}-(0[1-9]/1[0-2])$` |
+| `month` | string | yes | YYYY-MM (Asia/Bangkok). · pattern `^\d{4}-\d{2}$` |
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/hr/attendance/month?employeeId=emp_123&month=2026-12" \
@@ -185,7 +185,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/hr/leave-policies" \
 
 #### `leaves.list`
 
-**GET /leaves** - Leave requests. status=PENDING (default): the requests waiting for a decision. status=HISTORY: the 100 most recently filed requests of any status. Ordered by fromDate (newest first) then id. Reasons, who filed and attachments are never returned. truncated: true when the list hit its limit of 100. · scope: `hr.leave.read` · read
+**GET /leaves** - Leave requests. status=PENDING (default): the requests waiting for a decision. status=HISTORY: the 100 most recently filed requests of any status. Ordered by fromDate (newest first) then id. Leave of ended employees, reasons, who filed and attachments are never returned. truncated: true when the list hit its limit of 100. · scope: `hr.leave.read` · read
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -212,13 +212,13 @@ curl -sS -X GET "https://shark.in.th/api/v1/hr/leave-balances" \
 
 #### `reports.get`
 
-**GET /reports/{report}** - One HR report as JSON: time, ot, leave, payroll-month, payroll-year, wages, tax-month or tax-year. period is YYYY-MM for monthly reports and YYYY for yearly ones (leave, payroll-year, tax-year). time and ot also need hr.roster.read, leave needs hr.leave.read, the pay reports need hr.payroll.read. Money columns appear only for keys with hr.payroll.read; statutory id columns never. Pay reports are audited. · scope: `hr.employee.read` · read · report rate (30/min)
+**GET /reports/{report}** - One HR report as JSON: time, ot, leave, payroll-month, payroll-year, wages, tax-month or tax-year. period is YYYY-MM for monthly reports and YYYY for yearly ones (leave, payroll-year, tax-year). time and ot also need hr.roster.read, leave needs hr.leave.read, the pay reports need hr.payroll.read. Money columns appear only for keys with hr.payroll.read; statutory id columns never. Every answer that carries money columns is audited. · scope: `hr.employee.read` · read · report rate (30/min)
 
 Path parameters: `report` (required).
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `period` | string | yes | YYYY-MM (monthly reports) or YYYY (leave, payroll-year, tax-year). |
+| `period` | string | yes | YYYY-MM (monthly reports) or YYYY (leave, payroll-year, tax-year). · pattern `^\d{4}(-\d{2}(-\d{2})?)?$` |
 | `unitId` | string | no | Only this branch. |
 
 ```bash
@@ -228,7 +228,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/hr/reports/time?period=2026-11" \
 
 #### `payslips.history`
 
-**GET /employees/{employeeId}/payslips** - Issued payslips of one employee in one tax year with the yearly totals (satang). Audited. No bank details and no links. · scope: `hr.payroll.read` · read · report rate (30/min)
+**GET /employees/{employeeId}/payslips** - Issued payslips of one employee in one tax year with the yearly totals (satang). Audited. No bank details and no links. An ended employee answers 404 not_found like an unknown id. · scope: `hr.payroll.read` · read · report rate (30/min)
 
 Path parameters: `employeeId` (required).
 
@@ -243,7 +243,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/hr/employees/employee_123/payslips?t
 
 #### `payslips.get`
 
-**GET /payslips/{runId}/{employeeId}** - One issued payslip (earnings, deductions, net, SSO, satang). A run that is still a draft, not finished or reversed answers 409 state_conflict. Audited. No bank details. · scope: `hr.payroll.read` · read · report rate (30/min)
+**GET /payslips/{runId}/{employeeId}** - One issued payslip (earnings, deductions, net, SSO, satang). A run that is still a draft, not finished or reversed answers 409 state_conflict. Audited. No bank details. An ended employee answers 404 not_found like an unknown id. · scope: `hr.payroll.read` · read · report rate (30/min)
 
 Path parameters: `runId`, `employeeId` (required).
 
@@ -260,7 +260,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/hr/payslips/run_123/employee_123" \
 
 #### `leaves.create`
 
-**POST /leaves** - File a leave request for an employee. It is always created PENDING and goes through the shop's normal approval; nothing is approved here. Needs hr.leave.request and hr.leave.decide (the app's rule for filing on someone's behalf). No reason field: medical details stay out of the API. Requires Idempotency-Key. · scope: `hr.leave.request` · write
+**POST /leaves** - File a leave request for an employee. It is created PENDING (the answer carries the stored status) and goes through the shop's normal approval; nothing is approved here. Needs hr.leave.request and hr.leave.decide (the app's rule for filing on someone's behalf). No reason field: medical details stay out of the API. Requires Idempotency-Key and Content-Type: application/json (415 otherwise). · scope: `hr.leave.request` · write
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
