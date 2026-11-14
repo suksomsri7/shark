@@ -21,6 +21,8 @@ const TEXT_TH = {
   nothing: "ไม่มีช่องว่างที่ร่างได้ในรายการนี้ — ช่องที่มีกะอยู่แล้ว ลาอนุมัติแล้ว หรือข้อมูลไม่ถูกต้องถูกข้ามทั้งหมด",
   /** ไม่ถึงเกณฑ์รูปแบบการมาสาย/ขาดงาน */
   noPattern: "เดือนนี้ยังไม่ถึงเกณฑ์ที่ควรบันทึกข้อสังเกต",
+  /** HR H4.3 fix round ▸ มติ 4: มีบันทึก/ข้อเสนอของพนักงานคนนี้ในเดือนนี้แล้ว (ไบต์เดียวกันทุกผู้เรียก) ◂ */
+  alreadyNoted: "มีบันทึกข้อสังเกตหรือข้อเสนอที่รอยืนยันของพนักงานคนนี้ในเดือนนี้แล้ว — ไม่สร้างซ้ำ",
 } as const;
 export type HrAiTextKey = keyof typeof TEXT_TH;
 const TEXT_EN: Record<HrAiTextKey, string> = {
@@ -32,12 +34,13 @@ const TEXT_EN: Record<HrAiTextKey, string> = {
   conversation: "A conversation is needed before an action can be proposed",
   nothing: "There is no empty slot to draft — slots with a shift, approved leave or invalid data were all skipped",
   noPattern: "This month does not reach the threshold for a note",
+  alreadyNoted: "A note or a pending proposal for this employee and month already exists — not created again",
 };
 export const HR_AI_TEXT = { th: TEXT_TH, en: TEXT_EN } as const;
 export const hrAiText = (locale?: string | null): Record<HrAiTextKey, string> => (locale === "en" ? TEXT_EN : TEXT_TH);
 
 // ═════════════ เพดาน (R9) ═════════════
-export const HR_AI_CAPS = { board: 50, report: 50, balances: 30, draftEntries: 40, draftDays: 7, bytes: 8000, summaryLines: 10, warnings: 10 } as const;
+export const HR_AI_CAPS = { alerts: 20, board: 50, report: 50, balances: 30, draftEntries: 40, draftDays: 7, bytes: 8000, summaryLines: 10, warnings: 10 } as const;
 /** เกณฑ์ T6 (Q4): สาย ≥ 3 ครั้ง หรือ ขาด ≥ 2 วัน ในเดือน */
 export const HR_PATTERN_THRESHOLD = { lateCount: 3, absentDays: 2 } as const;
 const TEXT_MAX = 60;
@@ -45,7 +48,7 @@ const TEXT_MAX = 60;
 // ═════════════ ข้อความที่ผู้ใช้กรอก (R5) ═════════════
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
-const BIDI = /[؜‎‏‪-‮⁦-⁩]/g;
+const BIDI = /[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g; // HR H4.3 fix round ▸ มติ 5: + zero-width (U+200B–D · U+2060 · U+FEFF) ◂
 /** ตัดอักขระควบคุม + bidi · ยุบช่องว่าง/ขึ้นบรรทัดเป็นช่องเดียว · ≤ 60 ตัว (เกิน = ตัดแล้วต่อ "…") */
 export function fenceUntrusted(s: unknown): string {
   if (s === null || s === undefined) return "";
@@ -178,21 +181,23 @@ const WEEKDAY_TH = ["วันอาทิตย์", "วันจันทร�
 export function patternNote(month: string, f: PatternFacts): { title: string; body: string } {
   const wd = f.topWeekday !== null ? ` · สายบ่อยที่สุด${WEEKDAY_TH[f.topWeekday] ?? ""}` : "";
   return {
-    title: `ข้อสังเกตการมาทำงาน เดือน ${month}`,
+    title: `ข้อสังเกตการมาทำงาน เดือน ${month} (จากผู้ช่วย AI)`, // HR H4.3 fix round ▸ หัวเรื่องคงที่ต่อเดือน = กุญแจกันซ้ำ (มติ 4) ◂
     body: `เดือน ${month}: มาสาย ${f.lateCount} ครั้ง รวม ${f.lateMin} นาที · ขาดงาน ${f.absentDays} วัน${wd} — บันทึกจากข้อเสนอของผู้ช่วย AI ที่ผู้มีสิทธิ์กดยืนยันแล้ว ใช้ประกอบการพูดคุย ไม่ใช่การตักเตือน`,
   };
 }
 
 // ═════════════ T5 สรุปข้อเสนอ (Q7) ═════════════
+/** HR H4.3 fix round ▸ มติ 5: ข้อความล้วนในสรุปข้อเสนอ (เว็บ/แอปมือถือ) — ตัดอักขระ markdown/HTML ออกจากชื่อที่ผู้ใช้กรอก · ≤ 60 ตัว ◂ */
+export const plainText = (s: unknown): string => fenceUntrusted(fenceUntrusted(s).replace(/[<>[\]{}`*_#|~\\]/g, " "));
 /** "ร่างตารางกะ N ช่อง — ยังไม่ประกาศ" + ≤ 10 บรรทัด "ชื่อ · วันที่ · กะ" (ชื่อผ่าน fence แล้ว) */
 export function draftSummary(lines: readonly { name: string; date: string; shift: string }[]): string {
   const head = `ร่างตารางกะ ${lines.length} ช่อง — ยังไม่ประกาศ (ประกาศเองที่หน้าตารางกะ)`;
-  const body = lines.slice(0, HR_AI_CAPS.summaryLines).map((l) => `- ${fenceUntrusted(l.name)} · ${l.date} · ${fenceUntrusted(l.shift)}`);
+  const body = lines.slice(0, HR_AI_CAPS.summaryLines).map((l) => `- ${plainText(l.name)} · ${l.date} · ${plainText(l.shift)}`);
   const more = lines.length > HR_AI_CAPS.summaryLines ? [`- และอีก ${lines.length - HR_AI_CAPS.summaryLines} ช่อง`] : [];
   return [head, ...body, ...more].join("\n");
 }
 export const patternSummary = (name: string, month: string, f: PatternFacts): string =>
-  `บันทึกข้อสังเกต (ส่วนตัว ลูกจ้างไม่เห็น) ของ ${fenceUntrusted(name)} เดือน ${month}: สาย ${f.lateCount} ครั้ง · ขาด ${f.absentDays} วัน`;
+  `บันทึกข้อสังเกต (ส่วนตัว ลูกจ้างไม่เห็น) ของ ${plainText(name)} เดือน ${month}: สาย ${f.lateCount} ครั้ง · ขาด ${f.absentDays} วัน`;
 
 // ═════════════ Daily Brief (Q1 · R10) ═════════════
 export type BriefCounts = { onLeave: number; lateOrNotIn: number; absent: number; short: number };

@@ -431,7 +431,7 @@ async function shiftCheck(ctx: Ctx, shiftId: unknown, unitOfTheDay: string | nul
 // HR H4.3 ▸ พารามิเตอร์ที่ 4 (มติ Q9 — ใช้ด่านเดิมทุกข้อ): `{ source: "AI", tx }` = ร่างจากข้อเสนอของผู้ช่วยที่คนกดยืนยันแล้ว
 //   ทุกคำสั่งใช้ client ของ tx ผู้เรียก (ผู้เรียกล็อกกุญแจของทุกช่องแล้ว — ล็อกซ้ำใน tx เดียวกันได้) · แถว source AI · ยังไม่ประกาศ ·
 //   ไม่เขียน audit ของตัวเอง (ผู้เรียกเขียน hr.ai.proposal.confirm หลัง commit — ไม่มี connection ที่สองใต้ล็อก) · ไม่ส่ง = ทางเดิมทุกไบต์ ◂
-export type AddEntryOpts = { source: "AI"; tx: Tx }; // HR H4.3 ◂
+export type AddEntryOpts = { source: "AI"; tx: Tx; proposalId: string }; // HR H4.3 ◂ · HR H4.3 fix round ▸ proposalId ลง audit ต่อแถว ◂
 export async function addEntry(
   ctx: Ctx,
   viewer: RosterViewer,
@@ -482,6 +482,12 @@ export async function addEntry(
         },
         select: { id: true },
       });
+      // HR H4.3 fix round ▸ มติ 3: แถวจาก AI = audit hr.roster.entry.add ต่อแถวใน tx เดียวกัน (client ของ tx — แบบ hr.roster.publish) + via AI + id ข้อเสนอ ◂
+      if (txDb && aiOpts) {
+        await tx.auditLog.create({
+          data: { tenantId: ctx.tenantId, actorType: viewer.userId ? "USER" : "SYSTEM", actorId: viewer.userId ?? null, action: "hr.roster.entry.add", targetType: "HrRosterEntry", targetId: row.id, after: { entryId: row.id, employeeId, date: day, shiftId: shift.id, unitId, wasPublished: false, via: "AI", proposalId: aiOpts.proposalId } },
+        });
+      }
       return row.id;
     };
     if (txDb) return { ok: true, id: await write(txDb) }; // HR H4.3 ▸ audit โดยผู้เรียกหลัง commit ◂
@@ -1053,21 +1059,22 @@ export async function lockRosterKeysInTx(tx: Tx, systemId: string, keys: LockKey
 }
 
 // HR H4.3 ▸ ตัวช่วยของร่างตารางกะจากผู้ช่วย AI (hr/ai.ts) — อ่านอย่างเดียว · ด่านเดียวกับ addEntry ทุกข้อ ◂
-export type EntryDraftCheck = { ok: true; unitId: string | null; name: string; shiftName: string } | RosterFail;
+export type EntryDraftCheck = { ok: true; unitId: string | null; name: string; shiftName: string } | (RosterFail & { scope: boolean }); // HR H4.3 fix round ▸ scope = ไม่มีสิทธิ์ (ไม่ใช่ข้อมูลเปลี่ยน) ◂
 /** HR H4.3 ▸ ช่องนี้ "เพิ่มได้ไหม" ด้วยสิทธิ์ของผู้ดู (ผู้เขียนตารางกะ · ไม่ย้อนหลัง · พนักงาน/วัน/สาขา/กะ แบบ addEntry) — ไม่เขียนอะไร ◂ */
 export async function checkEntryDraft(ctx: Ctx, viewer: RosterViewer, input: { employeeId: string; date: string; shiftId: string }): Promise<EntryDraftCheck> {
-  if (!canWrite(viewer)) return refuse(ROSTER_TEXT.noPermission);
+  const no = (reason: string) => ({ ok: false as const, reason, scope: reason === ROSTER_TEXT.noPermission || reason === HR_OTHER_BRANCH_TEXT || reason === HR_UNASSIGNED_TEXT }); // HR H4.3 fix round ◂
+  if (!canWrite(viewer)) return no(ROSTER_TEXT.noPermission);
   try {
     const scope = scopeOfViewer(viewer);
     const day = dayKey(input?.date);
-    if (day < todayKey()) return refuse(ROSTER_TEXT.past);
+    if (day < todayKey()) return no(ROSTER_TEXT.past);
     const { emp, unitId } = await employeeDayCheck(ctx, viewer, scope, input?.employeeId, day);
     const shift = await shiftCheck(ctx, input?.shiftId, unitId);
     const db = tenantDb(ctx);
     const [e, sh] = await Promise.all([db.hrEmployee.findFirst({ where: { id: emp.id }, select: { name: true } }), db.hrShift.findFirst({ where: { id: shift.id }, select: { name: true } })]);
     return { ok: true, unitId, name: e?.name ?? "", shiftName: sh?.name ?? "" };
   } catch (e) {
-    return refuse(reasonOf(e));
+    return no(reasonOf(e));
   }
 }
 /**

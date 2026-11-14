@@ -16,7 +16,7 @@ import { myBalances, resolveSelf } from "./self";
 import { addEntry, checkEntryDraft, checkRules, listRoster, lockRosterKeysInTx, rosterKeyStateInTx } from "./roster";
 import { canReadRoster, rosterLeaveOverlay } from "./roster-board";
 import { canManageHrSettings } from "./settings";
-import { addReviewNote, canSeeLifecycle } from "./lifecycle";
+import { addReviewNote, canSeeLifecycle, listReviewNotes } from "./lifecycle";
 import { hrScopeOf, unitsForScope } from "./scope";
 import { bkkDayKey } from "./time-rules";
 import {
@@ -161,9 +161,9 @@ export async function hrWhoIsOnToday(tc: ToolCtxLike, args: unknown): Promise<Hr
       day: board.day,
       unit: sel ? { id: sel.id, name: fenceUntrusted(sel.name) } : null,
       counts: { ...board.totals.counts },
-      alerts: board.alerts.slice(0, 20).map((x) => ({ name: fenceUntrusted(x.name), shift: fenceUntrusted(x.shiftName), start: hm(x.startMin), kind: x.kind })),
+      alerts: board.alerts.slice(0, HR_AI_CAPS.alerts).map((x) => ({ name: fenceUntrusted(x.name), shift: fenceUntrusted(x.shiftName), start: hm(x.startMin), kind: x.kind })),
       rows,
-      truncated: all.length > rows.length,
+      truncated: all.length > rows.length || board.alerts.length > HR_AI_CAPS.alerts, // HR H4.3 fix round ▸ มติ 6: ตัดการเตือนที่ 20 = truncated ◂
       ...fence(["name", "position", "shift", "label"]),
     }),
   };
@@ -291,10 +291,11 @@ export async function hrLeaveBalance(tc: ToolCtxLike, args: unknown): Promise<Hr
 
 // ═════════════ T5 hr_draft_roster (เสนอ) ═════════════
 type DraftPayload = { systemId: string; unitId?: string; from: string; to: string; entries: DraftEntryArg[]; basis: string };
-async function keyBasis(ctx: Ctx, entries: DraftEntryArg[]): Promise<string> {
-  const keys = entries.map((e) => ({ employeeId: e.employeeId, date: e.date }));
-  const state = await tenantDb(ctx).$transaction(async (t) => rosterKeyStateInTx(t as unknown as Parameters<typeof rosterKeyStateInTx>[0], keys), TX_OPTS);
-  return rosterFingerprint(keys, state);
+type KeyState = Awaited<ReturnType<typeof rosterKeyStateInTx>>;
+/** สถานะของช่องทุกสาขา (แถวตารางกะ + ลาอนุมัติ) — อ่านครั้งเดียวใน tx อ่านสั้น ๆ (ชุดเดียวกับตอนกดยืนยันใต้ล็อก) */
+async function keyStateOf(ctx: Ctx, keys: { employeeId: string; date: string }[]): Promise<KeyState> {
+  if (!keys.length) return { entries: [], leaves: [] };
+  return tenantDb(ctx).$transaction(async (t) => rosterKeyStateInTx(t as unknown as Parameters<typeof rosterKeyStateInTx>[0], keys), TX_OPTS);
 }
 export async function hrDraftRoster(tc: ToolCtxLike, args: unknown): Promise<HrToolOut> {
   const p = await prepare(tc, args);
@@ -305,7 +306,6 @@ export async function hrDraftRoster(tc: ToolCtxLike, args: unknown): Promise<HrT
   if (!d) return BAD();
   const listed = await listRoster(ctx, v, { from: d.from, to: d.to, unitId: d.unitId });
   if (!listed.ok) return NO();
-  const taken = new Set(listed.entries.map((e) => `${e.employeeId}|${e.date}`));
   const skipped: { employeeId: string; date: string; code: string }[] = [];
   const keep: (DraftEntryArg & { name: string; shiftName: string })[] = [];
   const seen = new Set<string>();
@@ -316,10 +316,6 @@ export async function hrDraftRoster(tc: ToolCtxLike, args: unknown): Promise<HrT
       continue;
     }
     seen.add(k);
-    if (taken.has(k)) {
-      skipped.push({ employeeId: e.employeeId, date: e.date, code: "EXISTS" }); // มติ Q6: ร่างเฉพาะช่องว่าง — ไม่ทับของเดิม
-      continue;
-    }
     const c = await checkEntryDraft(ctx, v, e);
     if (!c.ok) {
       skipped.push({ employeeId: e.employeeId, date: e.date, code: "INVALID" }); // ไม่รู้จัก ≡ นอกขอบเขต (ไม่บอกเหตุผลที่ต่างกัน)
@@ -327,16 +323,26 @@ export async function hrDraftRoster(tc: ToolCtxLike, args: unknown): Promise<HrT
     }
     keep.push({ ...e, name: c.name, shiftName: c.shiftName });
   }
+  // HR H4.3 fix round ▸ มติ 1 (review MAJOR-1 · hunt F1): ช่องว่าง = ไม่มีกะของพนักงานคนนั้นในวันนั้น "ทุกสาขา" และไม่มีลาอนุมัติ — EXISTS/LEAVE และ basis
+  //   มาจากการอ่านครั้งเดียว (rosterKeyStateInTx เห็นทุกสาขา) · กะในสาขาที่ผู้ถามมองไม่เห็น = EXISTS ไบต์เดียวกับสาขาที่เห็น (ไม่บอกสาขา/กะ) ◂
+  const state = await keyStateOf(ctx, keep.map((e) => ({ employeeId: e.employeeId, date: e.date })));
+  const busy = new Set(state.entries.map((x) => `${x.employeeId}|${x.date}`));
+  for (const x of listed.entries) busy.add(`${x.employeeId}|${x.date}`);
+  const away = new Set(state.leaves.map((x) => `${x.employeeId}|${x.date}`));
   const leaves = await rosterLeaveOverlay(ctx, v, { from: d.from, to: d.to }, [...new Set(keep.map((e) => e.employeeId))]);
-  const leaveOf = new Map(leaves.map((l) => [`${l.employeeId}|${l.day}`, l.status]));
+  const pendingLeave = new Set(leaves.filter((l) => l.status === "PENDING").map((l) => `${l.employeeId}|${l.day}`));
   const warnings: { code: string; employeeId: string; date: string | null }[] = [];
   const draft = keep.filter((e) => {
-    const st = leaveOf.get(`${e.employeeId}|${e.date}`);
-    if (st === "APPROVED") {
+    const k = `${e.employeeId}|${e.date}`;
+    if (busy.has(k)) {
+      skipped.push({ employeeId: e.employeeId, date: e.date, code: "EXISTS" }); // มติ Q6: ร่างเฉพาะช่องว่าง — ไม่ทับของเดิม ไม่เพิ่มกะที่สอง
+      return false;
+    }
+    if (away.has(k)) {
       skipped.push({ employeeId: e.employeeId, date: e.date, code: "LEAVE" });
       return false;
     }
-    if (st === "PENDING") warnings.push({ code: "LEAVE_PENDING", employeeId: e.employeeId, date: e.date });
+    if (pendingLeave.has(k)) warnings.push({ code: "LEAVE_PENDING", employeeId: e.employeeId, date: e.date });
     return true;
   });
   if (!draft.length) return { mode: "json", body: capHrToolResult({ result: "NOTHING_TO_DRAFT", message: T.nothing, skipped: skipped.slice(0, HR_AI_CAPS.draftEntries) }) };
@@ -344,7 +350,8 @@ export async function hrDraftRoster(tc: ToolCtxLike, args: unknown): Promise<HrT
   const ids = new Set(draft.map((e) => e.employeeId));
   if (rules.ok) for (const w of rules.warnings) if (ids.has(w.employeeId)) warnings.push({ code: String(w.rule), employeeId: w.employeeId, date: w.day ?? w.weekStart ?? null });
   const entries = draft.map((e) => ({ employeeId: e.employeeId, date: e.date, shiftId: e.shiftId }));
-  const payload: DraftPayload = { systemId: ctx.systemId, ...(d.unitId ? { unitId: d.unitId } : {}), from: d.from, to: d.to, entries, basis: await keyBasis(ctx, entries) };
+  const basis = rosterFingerprint(entries.map((e) => ({ employeeId: e.employeeId, date: e.date })), state); // ชุดเดียวกับที่ใช้ตัดสิน EXISTS/LEAVE
+  const payload: DraftPayload = { systemId: ctx.systemId, ...(d.unitId ? { unitId: d.unitId } : {}), from: d.from, to: d.to, entries, basis };
   const summary = draftSummary(draft.map((e) => ({ name: e.name, date: e.date, shift: e.shiftName })));
   return { mode: "propose", kind: "hr_draft_roster", summary, payload, extra: { skipped, warnings: warnings.slice(0, HR_AI_CAPS.warnings), ...fence(["summary"]) } };
 }
@@ -356,6 +363,26 @@ async function factsOf(ctx: Ctx, v: HrAiViewer, employeeId: string, month: strin
   const rep = await loadReport(ctx, v, { report: "time", period: month });
   const team = rep.ok ? rep.rows.map((r) => n0(r.values.lateCount)) : [];
   return { facts: patternFacts(mo.summary, mo.days, team), name: mo.employee.name };
+}
+/**
+ * HR H4.3 fix round ▸ มติ 4 (hunt F2): บันทึกข้อสังเกตจาก AI ของ (พนักงาน, เดือน) มีแล้ว (ตัวอ่านบันทึกของหน้าจอ · หัวเรื่องจากแม่แบบ)
+ *   หรือมีข้อเสนอที่ยังรออยู่ของคู่เดียวกัน (ยกเว้นใบที่กำลังกด) ⇒ true ◂
+ */
+async function patternNoted(ctx: Ctx, v: HrAiViewer, employeeId: string, month: string, exceptProposalId: string | null): Promise<boolean> {
+  const title = patternNote(month, { lateCount: 0, lateMin: 0, absentDays: 0, topWeekday: null, teamAvgLate: null }).title;
+  const notes = await listReviewNotes(ctx, v, employeeId);
+  if (notes?.items.some((n) => n.kind === "NOTE" && n.title === title)) return true;
+  const pending = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({
+    where: {
+      kind: "hr_flag_pattern",
+      status: "PENDING",
+      expiresAt: { gt: new Date() },
+      ...(exceptProposalId ? { id: { not: exceptProposalId } } : {}),
+      AND: [{ payload: { path: ["employeeId"], equals: employeeId } }, { payload: { path: ["month"], equals: month } }, { payload: { path: ["systemId"], equals: ctx.systemId } }],
+    },
+    select: { id: true },
+  });
+  return !!pending;
 }
 /** แถวของตัวเอง (บัญชีที่ผูกกับพนักงานคนนี้) — ตัวอ่านเดียวกับหน้าของฉัน */
 async function isOwnRow(ctx: Ctx, v: HrAiViewer, employeeId: string): Promise<boolean> {
@@ -375,6 +402,7 @@ export async function hrFlagPattern(tc: ToolCtxLike, args: unknown): Promise<HrT
   if (!f) return NO();
   const facts = f.facts;
   if (!meetsPattern(facts)) return { mode: "json", body: { result: "NO_PATTERN", message: T.noPattern, facts } };
+  if (await patternNoted(ctx, v, employeeId, a.month, null)) return err(T.alreadyNoted); // HR H4.3 fix round ▸ มติ 4: ซ้ำต่อ (พนักงาน, เดือน) = ข้อความคงที่ ◂
   const payload = { systemId: ctx.systemId, employeeId, month: a.month, basis: factsFingerprint(facts) };
   return { mode: "propose", kind: "hr_flag_pattern", summary: patternSummary(f.name, a.month, facts), payload, extra: { facts, ...fence(["summary"]) } };
 }
@@ -407,7 +435,12 @@ async function confirmBlock(m: MembershipCtx, tenantId: string, kind: string, pa
     if (!canManageHrSettings(c.v)) return "ROLE";
     const es = draftEntriesOf(c.p);
     if (!es.length) return "PAYLOAD";
-    for (const e of es) if (!(await checkEntryDraft(c.ctx, c.v, e)).ok) return "SCOPE";
+    // HR H4.3 fix round ▸ มติ 2: เฉพาะ "ไม่มีสิทธิ์" (สาขา/บทบาท) = ปฏิเสธก่อนจอง (คง PENDING) · ข้อมูลเปลี่ยน (ลาออก · เลยวัน · กะถูกปิด · ช่องไม่ว่าง)
+    //   ปล่อยให้ลงมือแล้วเป็น stale FAILED ครั้งเดียว ◂
+    for (const e of es) {
+      const r = await checkEntryDraft(c.ctx, c.v, e);
+      if (!r.ok && r.scope) return "SCOPE";
+    }
     return null;
   }
   if (kind === "hr_flag_pattern") {
@@ -463,8 +496,8 @@ async function confirmDraft(c: Confirm, proposalId: string): Promise<string> {
       if (rosterFingerprint(keys, await rosterKeyStateInTx(tx, keys)) !== basis) throw new HrAiStale(T.stale);
       const out: string[] = [];
       for (const e of entries) {
-        const r = await addEntry(c.ctx, c.v, e, { source: "AI", tx });
-        if (!r.ok) throw new Error(r.reason);
+        const r = await addEntry(c.ctx, c.v, e, { source: "AI", tx, proposalId });
+        if (!r.ok) throw new HrAiStale(T.stale); // HR H4.3 fix round ▸ มติ 2: ลาออก/เลยวัน/กะถูกปิด/ช่องไม่ว่าง = stale (ทั้งชุดย้อน) ◂
         out.push(r.id);
       }
       return out;
@@ -482,6 +515,7 @@ async function confirmPattern(c: Confirm, proposalId: string): Promise<string> {
   const f = await factsOf(c.ctx, c.v, c.p.employeeId, c.p.month);
   if (!f) throw new Error(T.no);
   if (factsFingerprint(f.facts) !== c.p.basis) throw new Error(T.stale);
+  if (await patternNoted(c.ctx, c.v, c.p.employeeId, c.p.month, proposalId)) throw new Error(T.alreadyNoted); // HR H4.3 fix round ▸ มติ 4 ◂
   const t = patternNote(c.p.month, f.facts);
   const r = await addReviewNote(c.ctx, c.v, { employeeId: c.p.employeeId, kind: "NOTE", title: t.title, body: t.body, visibleToEmployee: false });
   if (!r.ok) throw new Error(r.reason);
