@@ -196,3 +196,42 @@ fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 DONE
 NOT GREEN: qc-hr-h3.8 S1.13 — privacy.ts sha pin (45b20c1b… pinned; actual 1847a6a01c8b… after V7b adjustmentReplyOutOfPayScope). Pin re-take NOT done by builder — awaiting controller ruling.
 typecheck (clean, rm .next/types + tsbuildinfo): rc=0 secs=394 · error TS count 0
+
+## V8d round — full run g2 on 8b577f831 · oracle 83474db49
+seed-hr-qc exit=0 | ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-preprod-1 exit=0 | ===== qc-hr-preprod-1 ===== passed 57/57 (QC_FORCE)
+qc-hr-preprod-1#2 exit=0 | ===== qc-hr-preprod-1 ===== passed 57/57 (QC_FORCE)
+qc-hr-preprod-1#3 exit=0 | ===== qc-hr-preprod-1 ===== passed 57/57 (QC_FORCE)
+qc-hr-preprod-1-unforced exit=0 | ===== qc-hr-preprod-1 ===== passed 57/57
+qc-hr-preprod-1b exit=0 | ===== qc-hr-preprod-1b ===== passed 25/25 (QC_FORCE)
+qc-hr-preprod-1b#2 exit=0 | ===== qc-hr-preprod-1b ===== passed 25/25 (QC_FORCE)
+qc-hr-preprod-1b#3 exit=0 | ===== qc-hr-preprod-1b ===== passed 25/25 (QC_FORCE)
+qc-hr-preprod-1b-unforced exit=1 | ===== qc-hr-preprod-1b ===== passed 24/25
+qc-hr-preprod-1c exit=0 | ===== qc-hr-preprod-1c ===== passed 16/16 (QC_FORCE)
+qc-hr-preprod-1c#2 exit=0 | ===== qc-hr-preprod-1c ===== passed 16/16 (QC_FORCE)
+qc-hr-preprod-1c#3 exit=0 | ===== qc-hr-preprod-1c ===== passed 16/16 (QC_FORCE)
+qc-hr-preprod-1c-unforced exit=0 | ===== qc-hr-preprod-1c ===== passed 16/16
+qc-hr-h3.4 exit=0 | ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h3.4-ytd exit=0 | ===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+qc-hr-h3.7 exit=0 | ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+qc-hr-h2.7 exit=0 | ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+qc-hr-h1.3 exit=0 | ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE)
+qc-hr-money-2 exit=0 | ===== qc-hr-money-2 ===== passed 57/57 (QC_FORCE)
+qc-hr-priv-2 exit=0 | ===== qc-hr-priv-2 ===== passed 47/47 (QC_FORCE)
+qc-hr-hf-sso exit=0 | ===== qc-hr-hf-sso ===== passed 41/41 (QC_FORCE)
+qc-payroll exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-payroll-reverse exit=0 | ✅ PASS — 14/14
+qc-hr-payadjust exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-hr exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+DONE
+re-run g3 (1b unforced ×2):
+qc-hr-preprod-1b-unforced exit=0 | ===== qc-hr-preprod-1b ===== passed 25/25
+qc-hr-preprod-1b-unforced exit=0 | ===== qc-hr-preprod-1b ===== passed 25/25
+DONE
+NOTE: g2 1b-unforced V7.2 failed once (page matched /285|570/; 24/25), green in 3 forced + 2 unforced re-runs — suspected incidental digits in page HTML (flake), oracle not edited.
+h3.8 S1.13 privacy.ts pin: still open (owner decision pending) — h3.8 not in this round's run list.
+typecheck (clean): rc=0 secs=510 · error TS 0 (started at MemAvailable 11.5 GB)
