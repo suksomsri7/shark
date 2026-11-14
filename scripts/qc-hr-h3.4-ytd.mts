@@ -580,7 +580,12 @@ async function runDb(): Promise<void> {
     const one = sv.filter((a) => a.after?.employeeId === E.eA);
     const bulk = sv.filter((a) => [E.eA6, E.eA7].includes(a.after?.employeeId));
     const allOpen = ((await P.auditLog.findMany({ where: { tenantId: TT, action: { startsWith: "hr.payroll.opening" } } })) as Any[]);
-    const money = allOpen.filter((a) => /satang|income|wht|sso|amount/i.test(JSON.stringify([Object.keys(a.before ?? {}), Object.keys(a.after ?? {})])) || /* ORACLE-EDIT (H3.4-YTD fix round · controller ruling 8): test the KEYS — random cuid/tag ids in values matched "sso"/"wht" (flake seen in the unforced run) ◂ */ Object.values(a.after ?? {}).some((v) => typeof v === "number" && v !== a.after?.taxYear && v !== a.after?.rev));
+    // ORACLE-EDIT (H3.4-YTD fix round · controller ruling S3.17) ▸ (a) no audit KEY matches the money pattern · (b) no VALUE anywhere (deep · numbers and numeric strings) equals an opening amount of this fixture (satang or baht) · (c) no number other than taxYear/rev
+    const SENT = [OPEN.incomeSatang, OPEN.incomeSatang + 100, OPEN.whtSatang, OPEN.ssoSatang, 1_000_000, 600_000, 650_000, 640_000, 15_000_000, 437_500, 27_000_000, 153_747, 787_500];
+    const sentinel = new Set(SENT.flatMap((n) => [String(n), String(n / 100), (n / 100).toFixed(2)]));
+    const valuesOf = (v: unknown): unknown[] => (Array.isArray(v) ? v.flatMap(valuesOf) : v && typeof v === "object" ? Object.values(v as Record<string, unknown>).flatMap(valuesOf) : [v]);
+    const keysOf = (v: unknown): string[] => (Array.isArray(v) ? v.flatMap(keysOf) : v && typeof v === "object" ? Object.entries(v as Record<string, unknown>).flatMap(([k, x]) => [k, ...keysOf(x)]) : []);
+    const money = allOpen.filter((a) => /satang|income|wht|sso|amount/i.test(keysOf([a.before, a.after]).join(" ")) || valuesOf([a.before, a.after]).some((v) => (typeof v === "number" || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v))) && sentinel.has(String(v))) || Object.values(a.after ?? {}).some((v) => typeof v === "number" && v !== a.after?.taxYear && v !== a.after?.rev)); // ◂ ORACLE-EDIT (H3.4-YTD fix round · controller ruling S3.17)
     ck("S3.17", {
       one: one.length === 1 && srt(Object.keys(one[0]?.after ?? {})) === k4 && one[0]?.after?.by === "ONE" && one[0]?.after?.rev === 1 && one[0]?.after?.taxYear === 2031,
       bulk: bulk.length === 2 && bulk.every((a) => srt(Object.keys(a.after ?? {})) === k4 && a.after?.by === "BULK"), noMoney: allOpen.length > 0 && money.length === 0,
