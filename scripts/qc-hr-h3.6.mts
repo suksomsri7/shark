@@ -240,7 +240,9 @@ function runStatic(): void {
       // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.6: in-base only — a later fix ticket's code hunks marked "HR-SET-<n>" are accepted too · unmarked still fails ◂
       (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+|HR H\d+\.\d+|HR-SET-\d+|HF-SSO|HR MONEY-2|HR PRIV-\d+/)); // ORACLE-EDIT (H3.7 builder, merge of H3.9): later tickets' src hunks marked "HR H<n>.<n>" accepted too (controller rule) ◂ // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised): + hunks marked "HR HF-SSO" / "HF-SSO ORACLE-EDIT" ◂ // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" ◂ // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.4): + "HR PRIV-<n>" ◂
     const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
-    const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f)) : [];
+    const PP1_S16 = new Set(["leave.ts", "privacy.ts", "self.ts", "self-ui.tsx", "service.ts", "settings.ts", "stock-charge.ts", "work-entries.ts", "work-entries-rules.ts", "payroll.ts", "payroll-actions.ts", "payroll-ui.tsx", "scope.ts", "ui.tsx"].map((x) => `${H}${x}`)); // ORACLE-EDIT (HR PREPROD-1 · controller): brief-allowed files of the later ticket ◂
+    const pp1Only = (f: string) => IN_BASE && PP1_S16.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PREPROD-1/.test(l))); // ORACLE-EDIT (HR PREPROD-1 · controller): explicit file list, every hunk marked ◂
+    const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f) && !pp1Only(f)) : []; // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Only ◂
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;
     const bankChanged = changedVsBase(BASE, [bankDir]);
     const bankFiles = bankChanged.startsWith("changed: ") ? bankChanged.slice(9).split(",") : [];

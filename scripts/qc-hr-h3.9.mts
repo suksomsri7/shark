@@ -341,7 +341,9 @@ function runStatic(): void {
     const laterMark = (l: string) =>
       /HF-SSO/.test(l) || /HR-SET-\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9"); // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.3) ◂
     const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some(laterMark));
-    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
+    const PP1_S15 = new Set(["leave.ts", "privacy.ts", "self.ts", "self-ui.tsx", "service.ts", "settings.ts", "stock-charge.ts", "work-entries.ts", "work-entries-rules.ts", "payroll.ts", "payroll-actions.ts", "payroll-ui.tsx", "scope.ts", "ui.tsx"].map((x) => `${H}${x}`)); // ORACLE-EDIT (HR PREPROD-1 · controller): brief-allowed files of the later ticket ◂
+    const pp1Only = (f: string) => IN_BASE && PP1_S15.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PREPROD-1/.test(l))); // ORACLE-EDIT (HR PREPROD-1 · controller): explicit file list, every hunk marked ◂
+    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f) && !pp1Only(f)) : []; // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Only ◂
     const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
     const h35Hunks = diffHunks(BASE, H35) ?? [];
     const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
