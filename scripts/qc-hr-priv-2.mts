@@ -20,6 +20,10 @@ const MARKED = [F.scope, F.priv, `${H}privacy-shared.ts`, F.slip, F.labor, F.rep
 const HR_ALL = srcFiles("src/lib/modules/hr");
 const FROZEN = ["prisma", "package.json", "src/lib/core", "src/lib/ai", `${H}api`, `${H}filings`, `${H}bank-files`, "scripts/qc-hr-lib.mts", "scripts/qc-hr-h3.8-lib.mts",
  ...HR_ALL.filter((f) => !MARKED.includes(f) && /\/(payroll-(rules|run-rules|rules-v2|opening[^/]*)|payslip-rules|labor-rules|(roster|judge|leave|swap|correction|lifecycle|self|clock|work-entries|settings|law|ai|ot-|inbox-|stock-charge-|line-)[^/]*|pin)\.tsx?$/.test(f))];
+// ORACLE-EDIT (HR LEAVE-3 · controller) S4/S5: explicit allowlist — exactly these files may differ when every hunk carries "HR LEAVE-3" (src) / "ORACLE-EDIT (HR LEAVE-3" or "HR-LEAVE-3" (oracles) on an added line ◂
+const L3_SRC = [`${H}judge.ts`, `${H}work-entries-rules.ts`, `${H}service.ts`, `${H}index.ts`, "src/lib/modules/approval/service.ts", "src/lib/modules/approval/actions.ts", "src/lib/approval-effects.ts", "src/app/app/approvals/page.tsx", "src/app/app/approvals/BulkApprovals.tsx", "src/lib/ai/tools.ts", "src/lib/ai/proposals.ts"]; // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
+const L3_ORACLES = ["scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-leave-3.mts", "scripts/qc-hr-leave-3-lib.mts"]; // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
+const l3Ok = (f: string, re: RegExp) => { const hs = diffHunks(BASE, f) ?? []; return hs.length > 0 && hs.every((h) => h.added.some((l) => re.test(l))); }; // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
 const OLD = readdirSync(join(ROOT, "scripts")).filter((n) => /^qc-.*\.mts$/.test(n) && !/^qc-hr-priv-2|^qc-hr-lib\.mts$|^qc-hr-h3\.8-lib\.mts$/.test(n)).map((n) => `scripts/${n}`);
 
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
@@ -104,9 +108,12 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  chk("S3", !miss.length && docs, "", `missing=${miss.join(",") || "none"} docs=${docs}`);
 }
 {
- const ch = changedVsBase(BASE, FROZEN), oc = changedVsBase(BASE, OLD);
+ const ch0 = changedVsBase(BASE, FROZEN), oc = changedVsBase(BASE, OLD);
+ const chL = ch0.startsWith("changed: ") ? ch0.slice(9).split(",").filter((f) => !(L3_SRC.includes(f) && l3Ok(f, /HR LEAVE-3/))) : null; // ORACLE-EDIT (HR LEAVE-3 · controller) S4 ◂
+ const ch = chL === null ? ch0 : chL.length ? `changed: ${chL.join(",")}` : "unchanged"; // ORACLE-EDIT (HR LEAVE-3 · controller) S4 ◂
  const bad = oc === "unchanged" ? [] : !oc.startsWith("changed: ") ? [oc] : oc.slice(9).split(",").filter((f) => {
   const hs = diffHunks(BASE, f) ?? [];
+  if (L3_ORACLES.includes(f) && l3Ok(f, /ORACLE-EDIT \(HR LEAVE-3|HR-LEAVE-3/) && !(f === F.h43 && hs.some((h) => !h.added.some((l) => l.includes("ORACLE-EDIT (HR LEAVE-3"))))) return false; // ORACLE-EDIT (HR LEAVE-3 · controller) S4 ◂
   // ORACLE-EDIT (HR HF-SSO · controller fix2) S4: once PRIV-2 is in base, the HF-SSO fix2 allowlist conversions in these exact oracle files are accepted when every hunk carries that marker ◂
   if (["scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts"].includes(f) && hs.length > 0 && hs.every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR HF-SSO · controller fix2)")))) return false;
   return f === F.h43 ? hs.some((h) => !h.added.some((l) => l.includes("ORACLE-EDIT (HR-PRIV-2"))) : !hs.some((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*PRIV-2/.test(l)));
@@ -117,7 +124,8 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
 {
  const ch = changedFiles(BASE).filter((f) => f.startsWith("src/"));
  const ok = (f: string) => MARKED.includes(f) || /^src\/messages\/(th|en)\/common\.json$/.test(f) || (f.startsWith(H) && fileAt(BASE, f) === null && /HR PRIV-2/.test(rd(f).split("\n").slice(0, 3).join("\n")));
- const out = ch.filter((f) => !ok(f)), bad = unmarkedHunks(BASE, ch.filter((f) => MARKED.includes(f)));
+ const l3 = (f: string) => L3_SRC.includes(f) && l3Ok(f, /HR LEAVE-3/); // ORACLE-EDIT (HR LEAVE-3 · controller) S5: LEAVE-3 files (service.ts: every hunk "HR LEAVE-3") ◂
+ const out = ch.filter((f) => !ok(f) && !l3(f)), bad = unmarkedHunks(BASE, ch.filter((f) => MARKED.includes(f) && !l3(f))); // ORACLE-EDIT (HR LEAVE-3 · controller) S5: + l3 ◂
  chk("S5", !out.length && !bad.length, "", `outside=${out.join(",") || "none"} hunks=${bad.join(",") || "ok"}`);
 }
 {
