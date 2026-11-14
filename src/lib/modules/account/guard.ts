@@ -158,6 +158,8 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "journal/print/page.tsx": "account.journal.view", // WO 6.2 §11.2 — หน้าพิมพ์สมุดรายวัน
   "journal/page.tsx": "account.journal.view",
   "ledger/page.tsx": "account.journal.view",
+  "ledger/print/page.tsx": "account.journal.view", // ACC T4.2 — ใบพิมพ์/ส่งออกบัญชีแยกประเภท
+  "ledger/subsidiary/page.tsx": "account.journal.view", // ACC T4.2 — บัญชีย่อยลูกหนี้/เจ้าหนี้รายตัว
   // WO 2.3: "ดูภาพรวม" รายรับ/รายจ่าย (§6) — อ่านอย่างเดียว เหมือน page.tsx หลัก
   "overview/expense/page.tsx": "account.doc.view",
   "overview/revenue/page.tsx": "account.doc.view",

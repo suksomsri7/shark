@@ -420,7 +420,9 @@ try {
 
     const reg = await ast.registerAsset(ctx, {
       name: "เก้าอี้ตัดผมไฮดรอลิก", category: "อุปกรณ์ร้าน",
-      acquiredDate: new Date(), startDepDate: new Date(),
+      // ORACLE-EDIT (ACC T4.3 เลน 2): วันเริ่มคิดค่าเสื่อม = วันที่ 1 ของเดือนนี้ (เวลาไทย) — ระบบคิดเดือนแรกตามส่วนของวันแล้ว
+      //   ข้อนี้ตรวจการลงบัญชีเต็มเดือน 330.00 (เดิม new Date() ทำให้เฉลยเปลี่ยนตามวันที่รัน) · การเฉลี่ยตามวันตรวจที่ qc-acc-v2-depreciation
+      acquiredDate: new Date(), startDepDate: new Date(`${new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 8)}01T12:00:00+07:00`),
       cost: 2_000_000, salvageValue: 20_000, usefulLifeMonths: 60,
       assetAccountId: led1610!.id, accumAccountId: led1619!.id, expenseAccountId: led6800!.id,
       sourceDocumentId: ap.id,

@@ -233,7 +233,7 @@ const ADAPTERS: Record<string, ToolAdapter> = {
   "reports.profit-loss": {
     args: reportArgs,
     description:
-      "Financial statements and tax reports of this accounting book: trial balance, profit and loss, balance sheet, cash flow, the monthly VAT PP30 return, receivable/payable aging, the general ledger of one account, the journal book in full form (every line with debit and credit) and the subsidiary ledger of receivables or payables per contact. Pick the report with `kind`; ranges default to the current Thai month. Financial statements from the system are drafts for the bookkeeper/auditor (field draftLabelTh) — say so when quoting them.",
+      "Financial statements and tax reports of this accounting book: trial balance, profit and loss, balance sheet, cash flow, the monthly VAT PP30 return, receivable/payable aging, the general ledger of one account, the journal book in full form (every line with debit and credit) and the subsidiary ledger of receivables or payables per contact. Pick the report with `kind`; ranges default to the current Thai month. Financial statements from the system are drafts for the bookkeeper/auditor (field draftLabelTh); say so when quoting them.",
     toCall: (a) => {
       const kind = String(a.kind) as ReportKind;
       const month = thaiMonthKey();

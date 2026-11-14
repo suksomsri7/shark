@@ -160,7 +160,8 @@ try {
     const jv2 = await JV.createManualEntry(ctx, { dateKey: `${M}-21`, memo: "ปรับภาษีซื้อ", postedById: owner.id, lines: [{ accountId: inp.id, debit: 2_000, credit: 0 }, { accountId: bank.ledgerAccountId, debit: 0, credit: 2_000 }] });
     chk(`N3.${key}.1`, "JV มือแตะบัญชีภาษี → บันทึกได้ (ไม่บล็อก) + คำเตือน MANUAL_JV_VAT_ACCOUNT ระบุรหัสบัญชีตาม mapping", jv1.ok && jv2.ok && jv1.warnings?.[0]?.code === "MANUAL_JV_VAT_ACCOUNT" && jv1.warnings[0].messageTh.includes(out.code) && jv2.warnings?.[0]?.messageTh.includes(inp.code), "ok+warn", { jv1, jv2 });
     const jv3 = await JV.createManualEntry(ctx, { dateKey: `${M}-22`, memo: "โอนเงิน", postedById: owner.id, lines: [{ accountId: expLedger.id, debit: 1_000, credit: 0 }, { accountId: bank.ledgerAccountId, debit: 0, credit: 1_000 }] });
-    chk(`N3.${key}.2`, "JV ที่ไม่แตะบัญชีภาษี → ไม่มีคำเตือน", jv3.ok && jv3.warnings.length === 0, "0", jv3);
+    // ORACLE-EDIT (ACC T4.1 เลน 2): JV มือมีคำเตือนของ T4.1 เพิ่ม (ลงช้า · เอกสารประกอบ · ผู้อนุมัติ) — ข้อนี้ตรวจเฉพาะคำเตือนบัญชีภาษี (T1.9)
+    chk(`N3.${key}.2`, "JV ที่ไม่แตะบัญชีภาษี → ไม่มีคำเตือน MANUAL_JV_VAT_ACCOUNT", jv3.ok && jv3.warnings.filter((w: { code: string }) => w.code === "MANUAL_JV_VAT_ACCOUNT").length === 0, "0", jv3);
     shops.push({ key, SYS, ctx, out, inp, bankLedger: bank.ledgerAccountId, owner, key2: "" });
   }
 

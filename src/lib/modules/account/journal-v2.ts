@@ -506,6 +506,12 @@ export async function createManualEntry(ctx: JournalCtx, input: ManualJvInput): 
 
   // ACC T4.1 ▸ คำอธิบายว่าง = คำเตือนต้องกดยืนยัน (ข้อ 5 · ข้อ 11 [V]) — ด่านก่อนเขียน (โยนในบริบทการยืนยัน · ยังไม่ได้เขียนอะไร) ◂
   const content = jvContentWarnings({ memo: input.memo, hasSupportingDoc: (input.attachmentIds?.length ?? 0) > 0, approved: !!input.approvedById });
+  // งวดปิดแล้ว = ความถูกต้องของข้อมูล (ปฏิเสธ) — ตอบก่อนถามยืนยันคำเตือน (ข้อความเดียวกับ gl.assertPeriodOpen) · ถามเฉพาะเมื่อมีคำเตือนต้องยืนยัน
+  if (content.some((w) => w.ack)) {
+    const pk = input.dateKey.slice(0, 7);
+    const per = await db.accountPeriod.findFirst({ where: { systemId: ctx.systemId, periodKey: pk }, select: { status: true } });
+    if (per?.status === "CLOSED") return { ok: false, reason: `งวด ${pk} ปิดแล้ว — โพสต์บัญชีไม่ได้` };
+  }
   const recordAck = decide(content.filter((w) => w.ack));
 
   // เที่ยงวันเวลาไทย — กันวันเหลื่อมตอนแปลง TZ (แบบเดียวกับ gl.firstDayNextMonth)
