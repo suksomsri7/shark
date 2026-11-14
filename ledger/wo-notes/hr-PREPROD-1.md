@@ -59,3 +59,9 @@ Design limits (for the reviewer): sick split only for day-based leave (hourly SI
 - Leave deciders and time-correction approvers are not pay-scope checked, although their decisions now move UNPAID_LEAVE money.
 - **Accountant list:** on engine v1, sick days beyond the balance are now approved and paid in full — v1 never deducts unpaid leave (Q4).
 - AM+PM pair of one day where only one half is split → HR-LEAVE-3.
+- **Not green — needs rulings (I did not edit these oracles):**
+  1. `qc-hr-preprod-1` ST3: `ORACLE_ALLOW` lacks `h3.8`; the controller-authorised S1.13 pin re-take makes it red. Proposed ORACLE-EDIT: add `"h3.8"` to `ORACLE_ALLOW` (my h3.8 hunks carry `ORACLE-EDIT (HR PREPROD-1 · controller)`).
+  2. `qc-hr-h2.7` S1.5 "append-only": V8 requires updating the USE row (days + note) of a re-split leave (`hrLeaveBalanceTxn.updateMany` in `resplitSickInTx`), which the H2.7 static forbids in all of src. Proposed ORACLE-EDIT: allow exactly that writer (leave.ts, inside `resplitSickInTx`, marked `HR PREPROD-1`). Not done by a raw-SQL rewrite (no syntactic dodge).
+- V7 rework after `qc-hf-hr-privacy` S-15: the out-of-scope reply is a separate builder `adjustmentReplyOutOfPayScope` (privacy.ts); `adjustmentReplyForViewer` and its call keep the H0/HF shape (`{ byHours: … }`).
+- Merge of `session/hr` db19e793f (HF-SSO fix2 · H4.9-FIX1): conflicts only in h3.4-lib S1.6, h3.9 S1.5, h4.3-lib S1.6, priv-2 S4/S5 — every allowlist kept (HF-SSO narrowed files · H4.9 · MONEY-2 · PRIV-2 · PREPROD-1).
+- Typecheck after the merge: 0 errors in tracked files; 23 errors all in the untracked `scratchpad/preprod1-oracle/*.mts` (oracle-author drafts, left alone).
