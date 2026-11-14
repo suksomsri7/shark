@@ -725,11 +725,13 @@ async function runDb(): Promise<void> {
     const bor = await P.hrEmployeeUnit.findFirst({ where: { employeeId: E.e6, unitId: u1 }, select: { id: true, fromDate: true } });
     if (bor) await P.hrEmployeeUnit.update({ where: { id: bor.id }, data: { fromDate: new Date(Date.now() - 86_400_000) } });
     const hotfixE6 = await PRIV.loadPayslipForViewer(cA, V.payBranch, RA.r2, E.e6).catch(() => null);
+    // ORACLE-EDIT (HR-PRIV-2 · controller R7): positive control — the borrowing row exists and is open (the branch viewer opens e6's profile through it) ⇒ `hotfixE6 === null` is the pay-scope refusal, not a never-opened borrowing ◂
+    const prof6 = bor ? await PRIV.loadEmployeeProfileForViewer(cA, V.payBranch, E.e6).catch(() => null) : null;
     const r6 = await slip(V.payBranch, RA.r2, E.e6);
     const r5 = await slip(V.payBranch, RA.r2, E.e5);
     if (bor) await P.hrEmployeeUnit.update({ where: { id: bor.id }, data: { fromDate: bor.fromDate } });
     // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.1): control `!!hotfixE6` → `hotfixE6 === null` — after PRIV-2 the hotfix loader uses the pay scope too (home branch only, borrowing never counts) ⇒ borrowed e6 is refused there as well ◂
-    ck("S3.22", { stat, control: hotfixE6 === null, e6: isNo(r6), e5: isNo(r5) }, "page via slipForViewer · borrowed/other branch refused", `hotfix=${hotfixE6 ? "opens" : "null"} e6=${shown(r6)} e5=${shown(r5)}`);
+    ck("S3.22", { stat, borrowOpen: !!bor && !!prof6, control: hotfixE6 === null, e6: isNo(r6), e5: isNo(r5) }, "page via slipForViewer · borrowed/other branch refused", `hotfix=${hotfixE6 ? "opens" : "null"} e6=${shown(r6)} e5=${shown(r5)}`);
   }
   // S3.12
   {
