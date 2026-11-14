@@ -123,12 +123,20 @@ try {
   const ops = await prisma.opsEvent.findFirst({ where: { source: "calendar", message: "push ล้ม 3 ครั้ง", createdAt: { gte: new Date(Date.now() - 600_000) } }, orderBy: { createdAt: "desc" } });
   chk("F9-2", "logOps WARN: detail มี itemId ไม่มีชื่อเรื่อง", !!ops && String(ops.detail ?? "").includes(it9.id) && !String(ops.detail ?? "").includes("ล้ม 3 ครั้ง"), JSON.stringify(ops)?.slice(0, 200));
 
-  console.log("── F10: สมาชิกถูกถอน ──");
-  const itB = await items.createItem(B, { kind: "REMINDER", title: "ของคนที่ถูกถอน", startAt: new Date(+T8 + 20 * MIN) }, { now: T8 });
+  console.log("── F10: สมาชิกถูกระงับแล้วคืนสิทธิ์ (review M5) ──");
+  const itB = await items.createItem(B, { kind: "REMINDER", title: "ของคนที่ถูกระงับ", startAt: new Date(+T8 + 20 * MIN) }, { now: T8 });
   await prisma.membership.updateMany({ where: { userId: fx.U.b, tenantId: tid }, data: { acceptedAt: null } });
   fp.clear();
   const r10 = await run(new Date(+T8 + 20 * MIN), [itB.id]);
-  chk("F10-1", "Membership ไม่ active = ไม่ยิง · nextFireAt null · แถวยังอยู่", fp.sent.length === 0 && r10.noMember === 1 && (await row(itB.id))?.nextFireAt === null);
+  const rb = await row(itB.id);
+  chk("F10-1", "Membership ไม่ active = ไม่ยิง · ไม่ทิ้งตาราง: nextFireAt = +1 ชม. · lease ปล่อย", fp.sent.length === 0 && r10.noMember === 1 && eq(rb.nextFireAt, new Date(+T8 + 80 * MIN)) && rb.leaseToken === null, JSON.stringify(rb));
+  const mB = await prisma.membership.findFirst({ where: { userId: fx.U.b, tenantId: tid } });
+  const staffSvc = (await import("@/lib/staff/service")) as AnyMod;
+  const rs = await staffSvc.restoreStaffAccess({ tenantId: tid, actorUserId: fx.U.a, membershipId: mB.id });
+  const rb2 = await row(itB.id);
+  chk("F10-2", "restoreStaffAccess ปลุกตาราง (nextFireAt = ตอนคืนสิทธิ์)", rs.ok === true && !!rb2.nextFireAt && +rb2.nextFireAt <= Date.now() + 1000, JSON.stringify(rs));
+  await run(new Date(+T8 + 25 * MIN), [itB.id]);
+  chk("F10-3", "หลังคืนสิทธิ์ รอบถัดไปยิงเตือนที่ค้าง (ช้าดีกว่าหาย)", fp.sent.length === 1 && fp.sent[0].data?.itemId === itB.id);
 
   console.log("── F11: ผูกลูกค้า (seed calqc) ──");
   const SEED_OWNER = { userId: "calqc-owner", tenantId: "calqc-tenant", membership: OWNER_M };
@@ -159,6 +167,8 @@ try {
   const doneRep = await prisma.calItem.create({ data: { userId: fx.U.a, tenantId: tid, title: "r", startAt: nowS, occursAt: nowS, status: "DONE", repeat: "DAILY", doneAt: new Date(+nowS - 91 * 86_400_000) } });
   const doneNew = await prisma.calItem.create({ data: { userId: fx.U.a, tenantId: tid, title: "dn", startAt: nowS, occursAt: nowS, status: "DONE", doneAt: new Date(+nowS - 10 * 86_400_000) } });
   await run(nowS, [dOld.id, dNew.id, cOld.id, doneOld.id, doneRep.id, doneNew.id]);
+  chk("F12-0", "นาทีที่ไม่ใช่ :07 = ไม่เก็บกวาด (review m7 ชั่วโมงละครั้ง)", (await row(dOld.id)).status === "DRAFT" && !!(await row(cOld.id)));
+  await run(nowS, [dOld.id, dNew.id, cOld.id, doneOld.id, doneRep.id, doneNew.id], { sweepNow: true });
   chk("F12-1", "DRAFT > 24 ชม. → CANCELLED · DRAFT ใหม่คงอยู่", (await row(dOld.id)).status === "CANCELLED" && (await row(dNew.id)).status === "DRAFT");
   chk("F12-2", "CANCELLED/DONE(ไม่ทำซ้ำ) > 90 วัน → ลบ · DONE ทำซ้ำ/ใหม่ คงอยู่", (await row(cOld.id)) === null && (await row(doneOld.id)) === null && !!(await row(doneRep.id)) && !!(await row(doneNew.id)));
 
@@ -171,8 +181,79 @@ try {
   const none = await push.sendPushToUser(`qccal14-nobody-${fx.STAMP}`, { title: "t", body: "b" }, { post: cap.post });
   chk("F13-2", "sendPushToUser แยก transportErrors (โยน) กับไม่มีเครื่อง", thr.sent === 0 && thr.transportErrors === 1 && none.sent === 0 && none.transportErrors === 0);
 
+  console.log("── F16: sendPushEach (รวมชุด) ──");
+  {
+    const calls: number[] = [];
+    const rec = async (p: unknown[]) => { calls.push(p.length); return p.map(() => ({ status: "ok" })); };
+    const r = await push.sendPushEach([{ userId: fx.U.a, msg: { title: "1", body: "b" } }, { userId: `qccal14-nobody-${fx.STAMP}`, msg: { title: "2", body: "b" } }, { userId: fx.U.b, msg: { title: "3", body: "b", categoryId: "SEC_CAL" } }], { post: rec });
+    chk("F16-1", "หลายคนคนละข้อความ = ยิง Expo ครั้งเดียว · ผลต่อรายการ · ไม่มีเครื่อง = 0 ไม่ใช่ transport error", calls.length === 1 && calls[0] === 2 && r[0].sent === 1 && r[1].sent === 0 && !r[1].transportError && r[2].sent === 1, JSON.stringify({ calls, r }));
+    const r2 = await push.sendPushEach([{ userId: fx.U.a, msg: { title: "1", body: "b" } }, { userId: `qccal14-nobody-${fx.STAMP}`, msg: { title: "2", body: "b" } }], { post: async () => { throw new Error("Expo HTTP 429"); } });
+    chk("F16-2", "transport โยน (เช่น HTTP 429/5xx) = transportError เฉพาะรายการที่มีเครื่อง", r2[0].transportError && !r2[1].transportError);
+    const ps = readFileSync(join(ROOT, "src/lib/core/push.ts"), "utf8");
+    chk("F16-3", "expoPost: AbortSignal.timeout + รวมสัญญาณผู้เรียก + HTTP ไม่ใช่ 2xx = โยน (review M2/m2)", /AbortSignal\.timeout\(EXPO_TIMEOUT_MS\)/.test(ps) && /AbortSignal\.any\(\[t, signal\]\)/.test(ps) && /if \(!res\.ok\) throw/.test(ps));
+  }
+
+  console.log("── F17: สัญญาณยกเลิก/Expo ค้าง (review M2) ──");
+  {
+    const T17 = T("2027-07-01T09:00");
+    const it17 = await items.createItem(A, { kind: "REMINDER", title: "Expo ค้าง", startAt: T17 }, { now: new Date(+T17 - 3_600_000) });
+    const hang = (_p: unknown[], signal?: AbortSignal) => new Promise((_res, rej) => { signal?.addEventListener("abort", () => rej(new Error("aborted"))); });
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 300);
+    const t0 = Date.now();
+    const r = await fire.runCalendarFire(T17, { deadline: Date.now() + 30_000, signal: ac.signal, deps: { post: hang, scope: { itemIds: [it17.id] } } });
+    const x = await row(it17.id);
+    chk("F17-1", "ส่งค้าง → ยกเลิกตามสัญญาณ (ไม่ค้างทั้งงาน) = transport error → คืนสถานะ ลองใหม่ +60 วิ · lease ปล่อย", Date.now() - t0 < 5_000 && r.retried === 1 && x.firedOccAt === null && eq(x.nextFireAt, new Date(+T17 + MIN)) && x.leaseToken === null, JSON.stringify(r));
+  }
+
+  console.log("── F18: 300 แถวถึงพร้อมกัน (review M3) ──");
+  {
+    const base = T("2027-08-01T08:00");
+    const data = Array.from({ length: 300 }, (_, i) => {
+      const at = new Date(+base + i * 1000); // ถึงก่อน = เวลาน้อยกว่า
+      return { userId: i % 2 ? fx.U.a : fx.U.b, tenantId: tid, title: `แถว ${i}`, startAt: at, occursAt: at, nextFireAt: at };
+    });
+    await prisma.calItem.createMany({ data });
+    const rows300 = await prisma.calItem.findMany({ where: { tenantId: tid, title: { startsWith: "แถว " } }, select: { id: true, nextFireAt: true }, orderBy: [{ nextFireAt: "asc" }, { id: "asc" }] });
+    const ids300 = rows300.map((r: AnyMod) => r.id);
+    const order: string[] = [];
+    fp.clear();
+    const at = new Date(+base + 10 * MIN);
+    let runs = 0;
+    const t0 = Date.now();
+    for (; runs < 6; runs++) {
+      const r = await fire.runCalendarFire(at, { deadline: Date.now() + 5_000, deps: { post: fp.post, scope: { itemIds: ids300 }, onSent: (ids: string[]) => order.push(...ids) } });
+      if (!r.claimed) break;
+    }
+    const sentRows = fp.sent.filter((p) => ids300.includes(p.data?.itemId)).length;
+    chk("F18-1", "300 แถวส่งครบใน ≤ 3 รอบ (งบ 5 วิ/รอบ) · ส่งตามลำดับถึงก่อน", sentRows === 300 && runs <= 3 && JSON.stringify(order) === JSON.stringify(ids300), JSON.stringify({ sentRows, runs, ms: Date.now() - t0, inOrder: JSON.stringify(order) === JSON.stringify(ids300) }));
+    // งบหมดกลางรอบ → แถวที่ไม่ทันปล่อย lease ทันที (ไม่ต้องรอ 2 นาที)
+    await prisma.calItem.updateMany({ where: { id: { in: ids300 } }, data: { firedOccAt: null, nagAt: null, nextFireAt: at, lastFiredAt: null } });
+    const cut = await fire.runCalendarFire(at, { deadline: Date.now() + 1_520, deps: { post: fp.post, scope: { itemIds: ids300 } } });
+    const leased = await prisma.calItem.count({ where: { id: { in: ids300 }, leaseToken: { not: null } } });
+    chk("F18-2", "เลยงบระหว่าง commit = ปล่อย lease แถวที่ไม่ทัน (รอบหน้าหยิบต่อทันที)", cut.claimed === 100 && cut.released > 0 && leased === 0, JSON.stringify(cut));
+  }
+
+  console.log("── F19: m3 · m6 ──");
+  {
+    const T19 = T("2027-09-01T09:00");
+    // แถวที่ nextFireAt ถึงแต่ไม่มีเหตุ + ผู้ใช้แก้ระหว่างจอง → ไม่ทับค่าผู้ใช้ แต่ปล่อย lease
+    const odd = await prisma.calItem.create({ data: { userId: fx.U.a, tenantId: tid, title: "ไม่มีเหตุ", startAt: new Date(+T19 + 5 * 3_600_000), occursAt: new Date(+T19 + 5 * 3_600_000), nextFireAt: T19 } });
+    await run(T19, [odd.id], { afterClaim: async () => { await prisma.calItem.update({ where: { id: odd.id }, data: { version: { increment: 1 } } }); } });
+    const o = await row(odd.id);
+    chk("F19-1", "ไม่มีเหตุ + version เปลี่ยน = ไม่ทับ แต่ปล่อย lease (review m3)", o.leaseToken === null && eq(o.nextFireAt, T19));
+    // เลื่อนก่อนยิงครั้งแรก: ส่ง 1 ตอนเลื่อน + ย้ำ 1 · ไม่ยิงซ้ำตอนเวลาเดิม
+    const one = await items.createItem(A, { kind: "REMINDER", title: "เลื่อนก่อนยิง", startAt: new Date(+T19 + 5 * 3_600_000) }, { now: T19 });
+    await items.snooze(A, one.id, { preset: "1h" }, T19);
+    fp.clear();
+    for (const m of [60, 90, 120, 300, 330, 400]) await run(new Date(+T19 + m * MIN), [one.id]);
+    chk("F19-2", "เลื่อนก่อนยิงครั้งแรก = 2 ข้อความ (เลื่อน + ย้ำ 1) · ไม่ยิงซ้ำตอนเวลาเดิม (review m6)", fp.sent.length === 2 && fp.sent[1].title.startsWith("🔔 ย้ำ:"), fp.sent.map((x) => x.title).join(" | "));
+  }
+
   console.log("── F14/F15: ลงทะเบียน + โครงสร้าง ──");
   await import("@/lib/modules/calendar/jobs");
+  const jobsSrc = readFileSync(join(ROOT, "src/lib/modules/calendar/jobs.ts"), "utf8");
+  chk("F14-3", "jobs.ts ส่ง ctrl.signal ให้ calendar.fire (review M2)", /runCalendarFire\(now, \{ deadline: ctrl\.deadline, signal: ctrl\.signal \}\)/.test(jobsSrc));
   const reg = (globalThis as unknown as Record<symbol, AnyMod>)[Symbol.for("shark.platform.minute-jobs.registry")] as Map<string, AnyMod>;
   const job = reg?.get("calendar.fire");
   chk("F14-1", "registerMinuteJob calendar.fire everyMinutes 1 · ownBudgetMs 5000", job?.everyMinutes === 1 && job?.ownBudgetMs === 5000 && job?.cadence === "minute");
@@ -180,7 +261,7 @@ try {
   const route = readFileSync(join(ROOT, "src/app/api/cron/outbox/route.ts"), "utf8");
   chk("F14-2", "import ใน scripts/crm-cron.mts และ api/cron/outbox/route.ts", /await import\("@\/lib\/modules\/calendar\/jobs"\)/.test(cron) && /import "@\/lib\/modules\/calendar\/jobs"/.test(route));
   const src = readFileSync(join(ROOT, "src/lib/modules/calendar/fire.ts"), "utf8").replace(/\/\/.*$/gm, "");
-  chk("F15-1", "fire.ts แตะเฉพาะ calItem/membership (ไม่ push การ์ด/กิจกรรมระบบอื่น · R-CAL-22) · ไม่ใช้ quiet hours · ไม่ใส่ badge · ไม่ใส่ tenantId ให้ sendPushToUser", !/prisma\.(kanban|crm|appointment|account)/i.test(src) && !/quiet/i.test(src) && !/badge/.test(src) && /sendPushToUser\(row\.userId, msg, deps\?\.post \? \{ post: deps\.post \} : undefined\)/.test(src));
+  chk("F15-1", "fire.ts แตะเฉพาะ calItem/membership (ไม่ push การ์ด/กิจกรรมระบบอื่น · R-CAL-22) · ไม่ใช้ quiet hours · ไม่ใส่ badge · ไม่ใส่ tenantId ให้ sendPushToUser", !/prisma\.(kanban|crm|appointment|account)/i.test(src) && !/quiet/i.test(src) && !/badge/.test(src) && /sendPushEach\(msgs,/.test(src) && !/tenantId: o\.row\.tenantId \}\s*\)\s*;?\s*\/\/ push/.test(src));
 } catch (e) {
   chk("CRASH", "ข้อสอบรันจบ", false, errMsg(e));
 } finally {

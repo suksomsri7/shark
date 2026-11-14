@@ -11,7 +11,7 @@ registerMinuteJob({
   ownBudgetMs: 5_000,
   run: async (now, _budgetMs, ctrl) => {
     const { runCalendarFire } = await import("./fire");
-    return runCalendarFire(now, { deadline: ctrl.deadline });
+    return runCalendarFire(now, { deadline: ctrl.deadline, signal: ctrl.signal });
   },
 });
 

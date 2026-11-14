@@ -13,7 +13,7 @@ import {
 // S1.23 (R-K20) ▸ `badge` = ตัวเลขบนไอคอนแอป (ส่งต่อใน payload เฉพาะเมื่อผู้เรียกใส่ — ไม่ใส่ = payload เดิมทุกไบต์) ◂
 // CAL1.4 ▸ R-CAL-13 `categoryId` = ชุดปุ่มลัดของแจ้งเตือน (iOS category / Android action) — ส่งต่อเฉพาะเมื่อผู้เรียกใส่ (ไม่ใส่ = payload เดิมทุกไบต์) ◂
 type PushMsg = { title: string; body: string; data?: Record<string, unknown>; badge?: number; categoryId?: string };
-type PushDeps = { post?: (payloads: unknown[]) => Promise<unknown> };
+type PushDeps = { post?: (payloads: unknown[], signal?: AbortSignal) => Promise<unknown> };
 
 const CHUNK = 100; // Expo push API รับได้ ≤100/ครั้ง
 
@@ -23,14 +23,45 @@ const CHUNK = 100; // Expo push API รับได้ ≤100/ครั้ง
 type Ticket = { status?: string; message?: string; details?: { error?: string } };
 
 // default transport — ยิง Expo push API จริง (POST JSON array) → คืน data (array of tickets)
-async function expoPost(payloads: unknown[]): Promise<unknown[]> {
+// CAL review M2/m2 ▸ เพดานเวลา 4 วิ (Expo ค้าง = ไม่ขังงานรายนาที 15 นาที) + สัญญาณยกเลิกของผู้เรียก ·
+//   HTTP ไม่ใช่ 2xx (429/5xx) = โยน ⇒ ผู้เรียกนับเป็น transport error (ลองใหม่ได้) แทน "ส่งแล้ว 0 ใบ" ◂
+export const EXPO_TIMEOUT_MS = 4_000;
+async function expoPost(payloads: unknown[], signal?: AbortSignal): Promise<unknown[]> {
+  const t = AbortSignal.timeout(EXPO_TIMEOUT_MS);
   const res = await fetch("https://exp.host/--/api/v2/push/send", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payloads),
+    signal: signal ? AbortSignal.any([t, signal]) : t,
   });
+  if (!res.ok) throw new Error(`Expo HTTP ${res.status}`);
   const json = (await res.json()) as { data?: unknown[] };
   return Array.isArray(json.data) ? json.data : [];
+}
+
+function payloadOf(to: string, msg: PushMsg) {
+  return {
+    to,
+    title: msg.title,
+    body: msg.body,
+    data: msg.data,
+    sound: "default",
+    ...(typeof msg.badge === "number" && Number.isFinite(msg.badge) ? { badge: Math.max(0, Math.floor(msg.badge)) } : {}),
+    ...(typeof msg.categoryId === "string" && msg.categoryId ? { categoryId: msg.categoryId } : {}),
+  };
+}
+
+/** อ่าน tickets จากผล transport (array · `{tickets}` · `{data}`) */
+function ticketsOf(raw: unknown): Ticket[] {
+  return (
+    Array.isArray(raw)
+      ? raw
+      : Array.isArray((raw as { tickets?: unknown })?.tickets)
+        ? (raw as { tickets: unknown[] }).tickets
+        : Array.isArray((raw as { data?: unknown })?.data)
+          ? (raw as { data: unknown[] }).data
+          : []
+  ) as Ticket[];
 }
 
 /**
@@ -51,15 +82,7 @@ async function deliverBatch(
   msg: PushMsg,
   post: (payloads: unknown[]) => Promise<unknown>,
 ): Promise<{ sent: number; dead: string[]; failures: string[]; okIndexes: Set<number> }> {
-  const payloads = batch.map((d) => ({
-    to: d.expoToken,
-    title: msg.title,
-    body: msg.body,
-    data: msg.data,
-    sound: "default",
-    ...(typeof msg.badge === "number" && Number.isFinite(msg.badge) ? { badge: Math.max(0, Math.floor(msg.badge)) } : {}),
-    ...(typeof msg.categoryId === "string" && msg.categoryId ? { categoryId: msg.categoryId } : {}),
-  }));
+  const payloads = batch.map((d) => payloadOf(d.expoToken, msg));
   // S1.23 ▸ transport ที่ฉีดเข้ามาอาจคืน `{ tickets }` / `{ data }` แทน array — อ่านได้ทั้งสามแบบ (ตัวจริงคืน array) ◂
   const raw = await post(payloads);
   const tickets = (
@@ -464,4 +487,54 @@ export async function sendPushToCustomerTokens(
     }
   }
   return { sent, failures };
+}
+
+/**
+ * CAL review M3 ▸ ส่ง "คนละข้อความ" ให้หลายคนในการยิง Expo ชุดละ ≤ 100 ใบ (งานรายนาทีที่มีหลายแถวพร้อมกัน เช่น calendar.fire)
+ *   คืนผลต่อรายการ (ลำดับเดียวกับ `items`): `sent` = ใบที่ Expo ตอบ ok · `transportError` = chunk ที่มีใบของรายการนี้โยน
+ *   (เน็ตพัง/หมดเวลา/HTTP ไม่ใช่ 2xx) และรายการนี้ยังไม่มีใบ ok เลย — ผู้เรียกลองใหม่ได้ · ไม่มีเครื่อง = `{sent:0, transportError:false}`
+ *   ไม่กรองร้าน (แบบ sendPushToUser ที่ไม่ส่ง tenantId · R-CAL-12) · ห้าม throw · ⚠️ เรียกนอกทรานแซกชัน
+ */
+export async function sendPushEach(
+  items: { userId: string; msg: PushMsg }[],
+  opts?: { post?: PushDeps["post"]; signal?: AbortSignal },
+): Promise<{ sent: number; transportError: boolean }[]> {
+  const post = opts?.post ?? expoPost;
+  const out = items.map(() => ({ sent: 0, transportError: false }));
+  if (!items.length) return out;
+  let devices: { userId: string; expoToken: string }[];
+  try {
+    devices = await prisma.pushDevice.findMany({ where: { userId: { in: [...new Set(items.map((i) => i.userId))] } }, select: { userId: true, expoToken: true } });
+  } catch (e) {
+    await logPushError("push หลายรายการพัง (อ่านเครื่อง)", String(e), "");
+    return items.map(() => ({ sent: 0, transportError: true }));
+  }
+  const byUser = new Map<string, string[]>();
+  for (const d of devices) byUser.set(d.userId, [...(byUser.get(d.userId) ?? []), d.expoToken]);
+  const flat: { idx: number; token: string }[] = [];
+  items.forEach((it, idx) => {
+    for (const token of byUser.get(it.userId) ?? []) flat.push({ idx, token });
+  });
+  const threw = new Set<number>();
+  const dead: string[] = [];
+  const failures: string[] = [];
+  for (let i = 0; i < flat.length; i += CHUNK) {
+    const chunk = flat.slice(i, i + CHUNK);
+    try {
+      const tickets = ticketsOf(await post(chunk.map((c) => payloadOf(c.token, items[c.idx]!.msg)), opts?.signal));
+      chunk.forEach((c, k) => {
+        const t = tickets[k];
+        if (t?.status === "error" && t.details?.error === "DeviceNotRegistered") dead.push(c.token);
+        else if (t?.status === "ok") out[c.idx]!.sent += 1;
+        else failures.push(`${t?.details?.error ?? t?.status ?? "unknown"}: ${t?.message ?? ""}`.slice(0, 160));
+      });
+    } catch (e) {
+      for (const c of chunk) threw.add(c.idx);
+      await logPushError(`ส่ง push หลายรายการล้มเหลว (${chunk.length} ใบ)`, String(e), "");
+    }
+  }
+  for (const idx of threw) if (out[idx]!.sent === 0) out[idx]!.transportError = true;
+  if (failures.length) await logPushError(`Expo ปฏิเสธ ${failures.length} ใบ (หลายรายการ)`, failures.slice(0, 5).join(" · "), "");
+  if (dead.length) await prisma.pushDevice.deleteMany({ where: { expoToken: { in: dead } } }).catch(() => undefined);
+  return out;
 }
