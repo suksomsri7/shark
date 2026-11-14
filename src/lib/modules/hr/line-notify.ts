@@ -6,7 +6,7 @@
 //   แล้วตรวจสดรายแถว (ร้านเปิด · ผูก ACTIVE · พนักงานยังทำงาน · บัญชีผูก = ผู้ขอรหัส · สมาชิกภาพ) — ไม่ผ่าน ⇒ ปิดการผูก + แถว SKIPPED
 // เพดานรายเดือน: นับ SENT/SENDING ที่จองเวลาส่งไว้ในเดือนไทย (ไม่นับแถวสมาชิกของสรุป) ใต้ล็อก hr:linecap:<ระบบ> ⇒ ไม่เกินแม้ส่งพร้อมกัน
 // ค่าตั้ง lineNotify: เขียนผ่าน lockHrSettings + writeHrSettingsKeys เท่านั้น (HR-SET-1) · audit hr.line.settings / cap_reached / quota (id ล้วน) ◂
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
@@ -15,13 +15,14 @@ import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock";
 import { SETTINGS_TEXT } from "./settings";
 import { hrScopeOf } from "./scope";
 import { finalizedOf, slipState } from "./payslip-rules";
-import { endLineLinks, type LineEndReason } from "./line-link";
+import { endLineLinks, lineLinkInvalidReason, type LineEndReason } from "./line-link";
 import {
   appNoteOf,
   dayKeyBkk,
   dedupeKeyOf,
   eventOfKind,
   HR_LINE_EVENTS,
+  type HrLineEvent,
   hmToMin,
   isDigestAt,
   LINE_CAP_RANGE,
@@ -40,6 +41,10 @@ type Recipient = { employeeId: string; kind: HrNoticeKind; refId: string; outcom
 
 const TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
 const LEASE_MS = 2 * 60_000;
+/** สัญญาเช่า = now + 2 นาที + ส่วนสุ่ม (มิลลิวินาที) — ค่า nextAttemptAt ของแถวที่จองเป็น "ตั๋ว" ของผู้จอง (H4.5 fix ▸ H) */
+const leaseOf = (now: Date) => new Date(now.getTime() + LEASE_MS + randomInt(1, 30_000));
+/** แถวต่อรอบการจอง (ส่งทีละแถว ≤ 10 วิ/แถว ⇒ จบในสัญญาเช่า · ต่อสัญญาก่อนยิงทุกแถว) */
+export const LINE_CLAIM_BATCH = 20;
 const PENDING_GRACE_MS = 60_000;
 const ID_RE = /^[A-Za-z0-9_-]{1,100}$/;
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -159,8 +164,8 @@ export async function skipPendingNotices(i: { tenantId: string; employeeId: stri
 }
 
 // ═══════════════════════════ จอง + ตรวจสด ═══════════════════════════
-type NoticeRow = { id: string; tenantId: string; systemId: string; employeeId: string; kind: string; refId: string; outcome: string | null; dedupeKey: string; lineAttempts: number };
-export type ClaimedNotice = NoticeRow & { connectionId: string; chatContactId: string; homeUnitId: string | null; policy: LineNotifyPolicy; n: number };
+type NoticeRow = { id: string; tenantId: string; systemId: string; employeeId: string; kind: string; refId: string; outcome: string | null; dedupeKey: string; lineAttempts: number; lease: Date };
+export type ClaimedNotice = NoticeRow & { lease: Date; connectionId: string; chatContactId: string; homeUnitId: string | null; policy: LineNotifyPolicy; n: number };
 
 /**
  * จองแถวที่ถึงเวลาส่ง ⇒ SENDING (สัญญาเช่า 2 นาที) แล้วตรวจสดรายแถว — คืนเฉพาะแถวที่ส่งได้
@@ -168,12 +173,12 @@ export type ClaimedNotice = NoticeRow & { connectionId: string; chatContactId: s
  */
 export async function claimLineNotices(i: { tenantId?: string | null; ids?: string[] | null; now: Date; limit?: number }): Promise<ClaimedNotice[]> {
   const now = i?.now instanceof Date && Number.isFinite(i.now.getTime()) ? i.now : new Date();
-  const limit = Number.isInteger(i?.limit) && (i.limit as number) > 0 ? Math.min(i.limit as number, 200) : 50;
-  const lease = new Date(now.getTime() + LEASE_MS);
+  const limit = Number.isInteger(i?.limit) && (i.limit as number) > 0 ? Math.min(i.limit as number, LINE_CLAIM_BATCH) : LINE_CLAIM_BATCH;
+  const lease = leaseOf(now);
   const tenantId = str(i?.tenantId);
   let rows: NoticeRow[] = [];
   if (Array.isArray(i?.ids)) {
-    const ids = i.ids.filter(isId).slice(0, 200);
+    const ids = i.ids.filter(isId).slice(0, limit);
     if (!tenantId || !ids.length) return [];
     rows = await tenantDb({ tenantId }).$queryRaw<NoticeRow[]>`
       UPDATE "HrNotice" n SET "line" = 'SENDING', "nextAttemptAt" = ${lease}
@@ -181,7 +186,7 @@ export async function claimLineNotices(i: { tenantId?: string | null; ids?: stri
               AND ("line" = 'PENDING' OR ("line" IN ('FAILED', 'HELD', 'SENDING') AND "nextAttemptAt" IS NOT NULL AND "nextAttemptAt" <= ${now}))
             ORDER BY "createdAt", "id" FOR UPDATE SKIP LOCKED) c
       WHERE n."id" = c."id"
-      RETURNING n."id", n."tenantId", n."systemId", n."employeeId", n."kind", n."refId", n."outcome", n."dedupeKey", n."lineAttempts"`;
+      RETURNING n."id", n."tenantId", n."systemId", n."employeeId", n."kind", n."refId", n."outcome", n."dedupeKey", n."lineAttempts", n."nextAttemptAt" AS "lease"`;
   } else {
     const grace = new Date(now.getTime() - PENDING_GRACE_MS);
     rows = await tenantDb({ tenantId: tenantId || "" }).$queryRaw<NoticeRow[]>`
@@ -194,19 +199,20 @@ export async function claimLineNotices(i: { tenantId?: string | null; ids?: stri
                     AND NOT EXISTS (SELECT 1 FROM "AppSystem" s WHERE s."id" = h."systemId" AND s."settings" -> 'lineNotify' ->> 'mode' = 'DIGEST')))
             ORDER BY h."nextAttemptAt" NULLS FIRST, h."createdAt", h."id" LIMIT ${limit} FOR UPDATE SKIP LOCKED) c
       WHERE n."id" = c."id"
-      RETURNING n."id", n."tenantId", n."systemId", n."employeeId", n."kind", n."refId", n."outcome", n."dedupeKey", n."lineAttempts"`;
+      RETURNING n."id", n."tenantId", n."systemId", n."employeeId", n."kind", n."refId", n."outcome", n."dedupeKey", n."lineAttempts", n."nextAttemptAt" AS "lease"`;
   }
   const out: ClaimedNotice[] = [];
   const policies = new Map<string, LineNotifyPolicy | null>();
+  const tenants = new Map<string, boolean>();
   for (const r of rows) {
-    const ready = await precheck(r, now, policies).catch(() => null);
+    const ready = await precheck(r, now, policies, tenants).catch(() => null);
     if (ready) out.push(ready);
   }
   return out;
 }
 
 /** ตรวจสดก่อนส่ง (P6) — ไม่ผ่าน ⇒ แถว SKIPPED (+ ปิดการผูกเมื่อพนักงาน/บัญชีไม่ใช่คนเดิม) · คืน null */
-async function precheck(r: NoticeRow, now: Date, policies: Map<string, LineNotifyPolicy | null>): Promise<ClaimedNotice | null> {
+async function precheck(r: NoticeRow, now: Date, policies: Map<string, LineNotifyPolicy | null>, tenants: Map<string, boolean>): Promise<ClaimedNotice | null> {
   const ctx: Ctx = { tenantId: r.tenantId, systemId: r.systemId };
   const db = tenantDb(ctx);
   if (!policies.has(r.systemId)) {
@@ -219,37 +225,56 @@ async function precheck(r: NoticeRow, now: Date, policies: Map<string, LineNotif
     await finishLineNotice(r, { line: "SKIPPED", skipCode: code }, now);
     return null;
   };
+  // HR H4.5 fix ▸ G: ร้านที่ไม่ใช่ ACTIVE (ระงับ · ปิด · รอลบ) ⇒ ไม่ส่ง ◂
+  if (!tenants.has(r.tenantId)) tenants.set(r.tenantId, (await tenantDb({ tenantId: r.tenantId }).$queryRaw<{ status: string }[]>`SELECT "status"::text AS "status" FROM "Tenant" WHERE "id" = ${r.tenantId}`)[0]?.status === "ACTIVE");
+  if (!tenants.get(r.tenantId)) return skip("TENANT");
   if (!policy?.enabled) return skip("OFF");
+  // HR H4.5 fix ▸ E: ชนิดเหตุการณ์ที่ร้านปิดแล้ว ⇒ แถวที่ค้าง/ส่งซ้ำไม่ยิง ◂
+  const ev = eventOfKind(r.kind) as HrLineEvent | null;
+  if (ev && !policy.events[ev]) return skip("OFF");
   const link = await db.hrLineLink.findFirst({ where: { employeeId: r.employeeId, status: "ACTIVE" }, select: { connectionId: true, chatContactId: true, issuedForUserId: true } });
   if (!link?.connectionId || !link.chatContactId) return skip("NO_LINK");
-  const e = await db.hrEmployee.findFirst({ where: { id: r.employeeId }, select: { active: true, employmentStatus: true, linkedUserId: true, unitId: true } });
-  if (!e || !e.active || e.employmentStatus === "ENDED") return skip("INACTIVE", "OFFBOARD");
-  if (!e.linkedUserId || e.linkedUserId !== link.issuedForUserId) return skip("ACCOUNT", "ACCOUNT");
-  const m = await tenantDb({ tenantId: r.tenantId }).membership.findFirst({ where: { tenantId: r.tenantId, userId: link.issuedForUserId, acceptedAt: { not: null } }, select: { id: true } });
-  if (!m) return skip("ACCOUNT", "ACCOUNT");
+  const why = await lineLinkInvalidReason({ tenantId: r.tenantId, systemId: r.systemId, employeeId: r.employeeId, issuedForUserId: link.issuedForUserId }); // D2 ◂
+  if (why) return skip(why === "OFFBOARD" ? "INACTIVE" : "ACCOUNT", why);
+  const e = await db.hrEmployee.findFirst({ where: { id: r.employeeId }, select: { unitId: true } });
   const n = r.kind === "DIGEST" ? await db.hrNotice.count({ where: { digestOf: r.id } }) : 0;
   if (r.kind === "DIGEST" && n < 1) return skip("EMPTY");
-  return { ...r, connectionId: link.connectionId, chatContactId: link.chatContactId, homeUnitId: e.unitId, policy, n };
+  return { ...r, connectionId: link.connectionId, chatContactId: link.chatContactId, homeUnitId: e?.unitId ?? null, policy, n };
 }
 
 export type LineFinish = { line: "SENT" | "FAILED" | "HELD" | "QUOTA" | "CAP" | "SKIPPED"; skipCode?: string | null; nextAttemptAt?: Date | null; attempted?: boolean };
 const FINAL = new Set(["SENT", "QUOTA", "CAP", "SKIPPED"]);
 /** ปิดรอบส่งของแถวที่จองไว้ (เฉพาะแถวที่ยัง SENDING) · แถวสรุป (DIGEST) ที่จบแล้ว ⇒ แถวสมาชิกตามสถานะเดียวกัน */
-export async function finishLineNotice(r: { id: string; tenantId: string; kind: string }, f: LineFinish, now: Date): Promise<boolean> {
+export async function finishLineNotice(r: { id: string; tenantId: string; kind: string; lease?: Date | null }, f: LineFinish, now: Date): Promise<boolean> {
   const db = tenantDb({ tenantId: r.tenantId });
   const next = f.line === "FAILED" || f.line === "HELD" ? (f.nextAttemptAt ?? null) : null;
   const sentAt = f.line === "SENT" ? now : null;
   const skipCode = f.skipCode ? f.skipCode.slice(0, 40) : null;
   const inc = f.attempted ? 1 : 0;
-  const n = await db.$executeRaw`
-    UPDATE "HrNotice" SET "line" = ${f.line}, "nextAttemptAt" = ${next}, "sentAt" = ${sentAt}, "skipCode" = ${skipCode}, "lineAttempts" = "lineAttempts" + ${inc}
-    WHERE "id" = ${r.id} AND "tenantId" = ${r.tenantId} AND "line" = 'SENDING'`;
+  // H4.5 fix ▸ H: ผู้จองที่ถือตั๋ว (lease) ปิดได้เฉพาะแถวที่ยังเป็นตั๋วของตัวเอง
+  const n = r.lease
+    ? await db.$executeRaw`
+        UPDATE "HrNotice" SET "line" = ${f.line}, "nextAttemptAt" = ${next}, "sentAt" = ${sentAt}, "skipCode" = ${skipCode}, "lineAttempts" = "lineAttempts" + ${inc}
+        WHERE "id" = ${r.id} AND "tenantId" = ${r.tenantId} AND "line" = 'SENDING' AND "nextAttemptAt" = ${r.lease}`
+    : await db.$executeRaw`
+        UPDATE "HrNotice" SET "line" = ${f.line}, "nextAttemptAt" = ${next}, "sentAt" = ${sentAt}, "skipCode" = ${skipCode}, "lineAttempts" = "lineAttempts" + ${inc}
+        WHERE "id" = ${r.id} AND "tenantId" = ${r.tenantId} AND "line" = 'SENDING'`;
   if (n === 1 && r.kind === "DIGEST" && (FINAL.has(f.line) || (f.line === "FAILED" && !next))) {
     await db.$executeRaw`
       UPDATE "HrNotice" SET "line" = ${f.line}, "sentAt" = ${sentAt}, "skipCode" = ${skipCode}, "nextAttemptAt" = NULL
       WHERE "tenantId" = ${r.tenantId} AND "digestOf" = ${r.id} AND "line" = 'HELD'`;
   }
   return n === 1;
+}
+
+/** HR H4.5 fix ▸ H: ต่อสัญญาเช่าก่อนยิง — ยังถือตั๋วเดิม (nextAttemptAt = lease) ⇒ ตั๋วใหม่ · ผู้อื่นจองไปแล้ว ⇒ false (ไม่ยิง ไม่แตะแถว) */
+export async function renewLineClaim(r: { id: string; tenantId: string; lease: Date }, now: Date): Promise<boolean> {
+  const next = leaseOf(now);
+  const n = await tenantDb({ tenantId: r.tenantId }).$executeRaw`
+    UPDATE "HrNotice" SET "nextAttemptAt" = ${next} WHERE "id" = ${r.id} AND "tenantId" = ${r.tenantId} AND "line" = 'SENDING' AND "nextAttemptAt" = ${r.lease}`;
+  if (n !== 1) return false;
+  r.lease = next;
+  return true;
 }
 
 /** จองโควตาเดือนนี้ให้แถวที่กำลังส่ง (sentAt = now) — เต็มเพดาน ⇒ false */
@@ -290,7 +315,7 @@ export const auditLineQuota = (r: { tenantId: string; connectionId: string }, no
  * ถึงเวลา digestAt (เวลาไทย) ของระบบที่เปิดโหมดสรุป ⇒ แถว DIGEST 1 แถวต่อพนักงานต่อวัน (คีย์ hr:DIGEST:<วัน>:<พนักงาน>) ·
  * แถว HELD ที่รอสรุปถูกผูก digestOf · คืน id ของแถวสรุปที่เพิ่งเกิด (ผู้เรียกส่งต่อ)
  */
-export async function buildLineDigests(now: Date, opts: { tenantId?: string | null } = {}): Promise<{ tenantId: string; ids: string[] }[]> {
+export async function buildLineDigests(now: Date, opts: { tenantId?: string | null; deadline?: number } = {}): Promise<{ tenantId: string; ids: string[] }[]> {
   const tid = str(opts.tenantId);
   const systems = await tenantDb({ tenantId: tid }).$queryRaw<{ id: string; tenantId: string; settings: unknown }[]>`
     SELECT "id", "tenantId", "settings" FROM "AppSystem"
@@ -298,9 +323,15 @@ export async function buildLineDigests(now: Date, opts: { tenantId?: string | nu
   const out: { tenantId: string; ids: string[] }[] = [];
   const day = dayKeyBkk(now);
   for (const s of systems) {
+    if (typeof opts.deadline === "number" && Date.now() >= opts.deadline) break; // H4.5 fix ▸ H: งบของงานตามเวลา ◂
     const policy = policyOfSettings(s.settings);
     if (!policy.enabled || policy.mode !== "DIGEST" || minuteOfDayBkk(now) < hmToMin(policy.digestAt)) continue;
     const ctx: Ctx = { tenantId: s.tenantId, systemId: s.id };
+    // H4.5 fix ▸ F: สรุปของวันนี้รวมเฉพาะแจ้งเตือนตั้งแต่เวลาสรุปของเมื่อวาน · ที่เก่ากว่า ⇒ SKIPPED(STALE) (ไม่ส่งของค้างข้ามวัน) ◂
+    const windowStart = new Date(now.getTime() - (minuteOfDayBkk(now) - hmToMin(policy.digestAt)) * 60_000 - 24 * 3_600_000);
+    await tenantDb(ctx).$executeRaw`
+      UPDATE "HrNotice" SET "line" = 'SKIPPED', "skipCode" = 'STALE', "nextAttemptAt" = NULL
+      WHERE "tenantId" = ${s.tenantId} AND "systemId" = ${s.id} AND "line" = 'HELD' AND "nextAttemptAt" IS NULL AND "digestOf" IS NULL AND "kind" <> 'DIGEST' AND "createdAt" < ${windowStart}`;
     const groups = await tenantDb(ctx).$queryRaw<{ employeeId: string }[]>`
       SELECT DISTINCT "employeeId" FROM "HrNotice"
       WHERE "tenantId" = ${s.tenantId} AND "systemId" = ${s.id} AND "line" = 'HELD' AND "nextAttemptAt" IS NULL AND "digestOf" IS NULL AND "kind" <> 'DIGEST' LIMIT 500`;
@@ -389,6 +420,12 @@ export async function saveLineNotifyPolicy(ctx: Ctx, viewer: SaveViewer, input: 
       if (!sys) throw new LineSettingsRefusal(LINE_SETTINGS_TEXT.notFound);
       const r = await writeHrSettingsKeys(tx, ctx, { lineNotify: next }); // HR-SET-1 ▸ เปลี่ยนเฉพาะคีย์ lineNotify ◂
       if (r.count !== 1) throw new LineSettingsRefusal(LINE_SETTINGS_TEXT.notFound);
+      // H4.5 fix ▸ F: ปิด LINE ⇒ แถวที่รอ/พัก/ส่งซ้ำทั้งหมด SKIPPED(OFF) · ปิดชนิดใด ⇒ แถวของชนิดนั้น · เลิกโหมดสรุป ⇒ แถวที่รอสรุป — เปิดใหม่ไม่ส่งของเก่า ◂
+      const offKinds = next.enabled ? HR_LINE_EVENTS.filter((k) => !next.events[k]).flatMap((k) => (k === "SWAP" ? ["SWAP", "SWAP_ASK"] : [k])) : [];
+      await tx.$executeRaw`
+        UPDATE "HrNotice" SET "line" = 'SKIPPED', "skipCode" = 'OFF', "nextAttemptAt" = NULL
+        WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "line" IN ('PENDING', 'HELD', 'FAILED')
+          AND (${!next.enabled} OR "kind" = ANY(${offKinds}::text[]) OR (${next.mode !== "DIGEST"} AND "line" = 'HELD' AND "nextAttemptAt" IS NULL AND "digestOf" IS NULL))`;
     }, TX_OPTS);
     await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: g.userId, action: "hr.line.settings", targetType: "AppSystem", targetId: ctx.systemId, after: { systemId: ctx.systemId, enabled: next.enabled, mode: next.mode, digestAt: next.digestAt, monthlyCap: next.monthlyCap, events: next.events, unitId: next.unitId } });
     return { ok: true, id: ctx.systemId };

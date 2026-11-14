@@ -122,7 +122,7 @@ export { computeRunItemV2, RUN_V2_DEFAULTS } from "./payroll-run-rules"; // HR H
 export type { SelfActor } from "./self";
 export type { HrLineLocale, HrNoticeKind, LineNotifyPolicy } from "./line-rules";
 export { hrefOf, lineTextOf, nextAttemptAt, noticeMessage } from "./line-rules";
-export { abortLineLink, activeLinkOfContact, beginLineLink, cancelExpiredLineLinks, completeLineLink, endLineLinks, LINE_LINK_TEXT } from "./line-link";
+export { abortLineLink, activeLinkOfContact, beginLineLink, cancelExpiredLineLinks, completeLineLink, endLineLinks, endLineLinksForAccountInTx, LINE_LINK_TEXT, myLineContactId, myLineStatus } from "./line-link";
 export type { ClaimedNotice } from "./line-notify";
-export { auditLineCapReached, auditLineQuota, buildLineDigests, claimLineNotices, finishLineNotice, planHrNotices, reserveLineCap, skipPendingNotices } from "./line-notify";
+export { auditLineCapReached, auditLineQuota, buildLineDigests, claimLineNotices, finishLineNotice, LINE_CLAIM_BATCH, planHrNotices, renewLineClaim, reserveLineCap, skipPendingNotices } from "./line-notify";
 // ◂ HR H4.5

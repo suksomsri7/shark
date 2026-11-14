@@ -26,10 +26,14 @@ import {
   finishLineNotice,
   hrefOf,
   lineTextOf,
+  LINE_CLAIM_BATCH,
   LINE_LINK_TEXT,
+  myLineContactId,
+  myLineStatus,
   nextAttemptAt,
   noticeMessage,
   planHrNotices,
+  renewLineClaim,
   reserveLineCap,
   skipPendingNotices,
   type ClaimedNotice,
@@ -58,11 +62,31 @@ function appOrigin(): string | null {
   return null;
 }
 
-/** ภาษา + สถานะบล็อกของผู้ติดต่อ (ร้านเดียวกันเท่านั้น) */
-async function contactOf(tenantId: string, chatContactId: string): Promise<{ locale: HrLineLocale; blocked: boolean } | null> {
-  const c = await prisma.chatContact.findFirst({ where: { id: chatContactId, tenantId }, select: { lang: true, blockedAt: true } });
+/** ภาษา + สถานะบล็อก + ชื่อที่แสดงของผู้ติดต่อ (ร้านเดียวกันเท่านั้น · อ่านแบบ notify-customer — ชั้นแพลตฟอร์ม ไม่ใช่ HR) */
+async function contactOf(tenantId: string, chatContactId: string): Promise<{ locale: HrLineLocale; blocked: boolean; displayName: string | null } | null> {
+  const c = await prisma.chatContact.findFirst({ where: { id: chatContactId, tenantId }, select: { lang: true, blockedAt: true, displayName: true } });
   if (!c) return null;
-  return { locale: (c.lang ?? "").toLowerCase().startsWith("en") ? "en" : "th", blocked: c.blockedAt !== null };
+  return { locale: (c.lang ?? "").toLowerCase().startsWith("en") ? "en" : "th", blocked: c.blockedAt !== null, displayName: c.displayName ?? null };
+}
+/** H4.5 fix ▸ G: ร้านที่ไม่ใช่ ACTIVE ไม่ได้คำตอบเมนู/ไม่ส่ง */
+async function tenantActive(tenantId: string): Promise<boolean> {
+  const t = await prisma.tenant.findFirst({ where: { id: tenantId }, select: { status: true } });
+  return t?.status === "ACTIVE";
+}
+
+/**
+ * HR H4.5 fix ▸ MJ-2: สถานะ LINE ของตัวเองสำหรับหน้า "ของฉัน" = HR myLineStatus (ไม่มีชื่อ) + ชื่อ LINE ของผู้ติดต่อที่ผูกกับตัวเอง (ชั้นแพลตฟอร์มอ่าน · Q14) ·
+ * ไม่คืนรหัสผู้ติดต่อ · การผูกที่ใช้ไม่ได้แล้ว (บัญชี/สมาชิกภาพเปลี่ยน) ⇒ ไม่มีชื่อ
+ */
+export async function myHrLineStatus(actor: SelfActor): Promise<{ ok: true; state: "NONE" | "PENDING" | "ACTIVE" | "NOT_AVAILABLE"; linkedAt: string | null; displayName: string | null; shopEnabled: boolean } | { ok: false; reason: string }> {
+  const s = await myLineStatus(actor);
+  if (!s.ok) return s;
+  let displayName: string | null = null;
+  if (s.state === "ACTIVE") {
+    const c = await myLineContactId(actor);
+    displayName = c ? ((await contactOf(c.tenantId, c.chatContactId))?.displayName ?? null) : null;
+  }
+  return { ok: true, state: s.state, linkedAt: s.linkedAt, displayName, shopEnabled: s.shopEnabled };
 }
 
 // ───────────────────────── R4 รหัสผูก ─────────────────────────
@@ -127,6 +151,7 @@ async function sendClaimed(row: ClaimedNotice, now: Date, t: SendTally): Promise
   const path = hrefOf({ kind: row.kind, refId: row.refId });
   const msg = path ? noticeMessage({ kind: row.kind, outcome: row.outcome, n: row.n }, contact.locale, `${origin}${path}`) : null;
   if (!msg) return skip("KIND");
+  if (!(await renewLineClaim(row, now))) return; // H4.5 fix ▸ H: ตั๋วถูกจองใหม่โดยผู้อื่น (สัญญาเช่าหมด) ⇒ ไม่ยิง ไม่แตะแถว ◂
   if (!(await reserveLineCap(row, row.policy.monthlyCap, now))) {
     t.cap++;
     await finishLineNotice(row, { line: "CAP" }, now);
@@ -173,9 +198,20 @@ export async function sendHrLineNotices(i: { tenantId: string; ids?: string[] },
   try {
     const now = nowOf(opts.now);
     if (!isRec(i) || !isStr(i.tenantId) || !Array.isArray(i.ids) || !i.ids.length) return t;
-    await sendAll(await claimLineNotices({ tenantId: i.tenantId, ids: i.ids, now }), now, t);
+    for (let k = 0; k < i.ids.length; k += LINE_CLAIM_BATCH) await sendAll(await claimLineNotices({ tenantId: i.tenantId, ids: i.ids.slice(k, k + LINE_CLAIM_BATCH), now }), now, t); // H4.5 fix ▸ H: รอบละ ≤ 20 แถว ◂
   } catch {
     /* ไม่ throw — แถวที่ค้างถูกหยิบใหม่โดยงานตามเวลา */
+  }
+  return t;
+}
+
+/** ส่งแถวที่จองไว้แล้ว (ผู้เรียกถือผลของ claimLineNotices) — ไม่ throw */
+export async function sendClaimedLineNotices(rows: ClaimedNotice[], opts: { now?: Date } = {}): Promise<SendTally> {
+  const t = tally();
+  try {
+    await sendAll(Array.isArray(rows) ? rows : [], nowOf(opts.now), t);
+  } catch {
+    /* ไม่ throw */
   }
   return t;
 }
@@ -192,12 +228,14 @@ export async function runHrLineJobs(now: Date, opts: { budgetMs?: number; signal
   const left = () => (opts.signal?.aborted ? 0 : budget - (Date.now() - t0));
   try {
     await cancelExpiredLineLinks(at);
-    for (const d of await buildLineDigests(at, { tenantId: opts.tenantId ?? null })) {
+    // H4.5 fix ▸ H: ตรวจงบก่อนสรุปรายวัน + ส่งเส้นตายเข้าไป (หยุดระหว่างระบบ) ◂
+    const digests = left() >= 2_000 ? await buildLineDigests(at, { tenantId: opts.tenantId ?? null, deadline: t0 + budget - 2_000 }) : [];
+    for (const d of digests) {
       if (left() < 2_000) break;
-      await sendAll(await claimLineNotices({ tenantId: d.tenantId, ids: d.ids, now: at }), at, t);
+      for (let k = 0; k < d.ids.length && left() >= 2_000; k += LINE_CLAIM_BATCH) await sendAll(await claimLineNotices({ tenantId: d.tenantId, ids: d.ids.slice(k, k + LINE_CLAIM_BATCH), now: at }), at, t);
     }
-    for (let pass = 0; pass < 20 && left() >= 2_000; pass++) {
-      const rows = await claimLineNotices({ tenantId: opts.tenantId ?? null, now: at, limit: 50 });
+    for (let pass = 0; pass < 50 && left() >= 2_000; pass++) {
+      const rows = await claimLineNotices({ tenantId: opts.tenantId ?? null, now: at, limit: LINE_CLAIM_BATCH });
       if (!rows.length) break;
       await sendAll(rows, at, t);
     }
@@ -256,6 +294,7 @@ function menuFlex(locale: HrLineLocale, origin: string): PostbackReply["flex"] {
 export async function onHrPostback(ctx: PostbackCtx, evt: PostbackEvent): Promise<PostbackReply> {
   const action = isRec(evt) && typeof evt.action === "string" ? evt.action : "";
   if (!isRec(ctx) || !isStr(ctx.tenantId) || !isStr(ctx.connectionId) || !isStr(ctx.chatContactId)) return { text: lineTextOf("th").notLinked! };
+  if (!(await tenantActive(ctx.tenantId))) return {}; // H4.5 fix ▸ G: ร้านไม่ ACTIVE ⇒ ไม่ตอบ ◂
   const c = await contactOf(ctx.tenantId, ctx.chatContactId);
   const T = lineTextOf(c?.locale ?? "th");
   const notLinked: PostbackReply = { text: T.notLinked! };

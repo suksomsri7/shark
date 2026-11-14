@@ -36,6 +36,8 @@ export const HR_LINE_TEXT: Record<string, string> = {
   menuPay: "สลิปเงินเดือน",
   appBody: "เปิดดูรายละเอียดได้ที่หน้า ของฉัน ในแอป SHARK",
   appLinked: "บัญชีพนักงานของคุณผูกกับ LINE แล้ว — ถ้าไม่ได้ทำเอง ให้กดยกเลิกการผูกที่หน้า ของฉัน",
+  changedTitle: "บัญชี LINE ที่เชื่อมไว้ถูกเปลี่ยน/ยกเลิก",
+  changedBody: "แจ้งเตือนงานจะไม่ส่งไปยัง LINE เดิมอีก — ถ้าไม่ได้ทำเอง ให้ขอรหัสผูกใหม่ที่หน้า ของฉัน และแจ้งผู้ดูแลร้าน",
 };
 /** ข้อความคงที่ภาษาอังกฤษ (คีย์เดียวกันทุกตัว · ASCII ล้วน) */
 export const HR_LINE_TEXT_EN: Record<string, string> = {
@@ -61,6 +63,8 @@ export const HR_LINE_TEXT_EN: Record<string, string> = {
   menuPay: "Payslips",
   appBody: "Open My page in the SHARK app for details.",
   appLinked: "Your staff account is now linked to LINE. If this was not you, unlink it on My page.",
+  changedTitle: "Your linked LINE account was changed or removed",
+  changedBody: "Work notices no longer go to the previous LINE. If this was not you, get a new link code on My page and tell the shop admin.",
 };
 export const lineTextOf = (locale: HrLineLocale) => (locale === "en" ? HR_LINE_TEXT_EN : HR_LINE_TEXT);
 

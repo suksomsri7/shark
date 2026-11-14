@@ -7,6 +7,7 @@
 // 🔴 ผู้ดูแล (adminUnlinkLine · employeeLineStatus): สิทธิ์อ่านจากแถว Membership ในฐาน (ไม่เชื่อค่าบน viewer นอกจาก userId) + ขอบเขตสาขา (H1.1) ·
 //    ปฏิเสธ = ไบต์เดียวกันทุกกรณี (นอกสาขา · ไม่มี · ร้านอื่น · ไม่มีคีย์) · ผู้ดูแลเห็นสถานะ + เวลาผูกเท่านั้น (ไม่เห็นชื่อ/รหัส LINE · Q14)
 // 🔴 ตารางเก็บ id/สถานะเท่านั้น · audit ไม่มีรหัสผูก/LINE id/ชื่อ/รหัสผู้ติดต่อ · ทุกคำสั่งใน tx ใช้ tx client ◂
+import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { checkRateLimitDb, refundRateLimitDb } from "@/lib/core/rate-limit-db";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
@@ -63,12 +64,63 @@ export async function lineOaOf(tenantId: string, homeUnitId: string | null, poli
 type LinkRow = { id: string; tenantId: string; systemId: string; employeeId: string; issuedForUserId: string; status: string; connectionId: string | null; chatContactId: string | null; expiresAt: Date; linkedAt: Date | null };
 const LINK_SELECT = { id: true, tenantId: true, systemId: true, employeeId: true, issuedForUserId: true, status: true, connectionId: true, chatContactId: true, expiresAt: true, linkedAt: true } as const;
 
-/** ปิดการผูก ACTIVE หนึ่งแถว (ใน tx ของผู้เรียก · ล็อกพนักงานแล้ว) + audit hr.line.unlink {employeeId, reason} */
+/** เหตุที่พนักงานได้แจ้งในแอปว่า LINE ที่ผูกไว้ถูกเปลี่ยน/ยกเลิก (ไม่ใช่การกดเองจากหน้าของฉัน) — มติผู้คุม J */
+const NOTE_REASONS = new Set<LineEndReason>(["RELINK", "ADMIN", "LINE", "CONTACT_REUSED"]);
+/** ปิดการผูก ACTIVE หนึ่งแถว (ใน tx ของผู้เรียก · ล็อกพนักงานแล้ว) + audit hr.line.unlink {employeeId, reason} (+ แจ้งในแอปผู้ที่ขอผูก · ไม่มีชื่อ LINE ใด) */
 async function endActiveInTx(tx: Tx, row: { id: string; tenantId: string; employeeId: string }, reason: LineEndReason, now: Date, actorUserId: string | null): Promise<boolean> {
+  const cur = await tx.hrLineLink.findFirst({ where: { id: row.id, tenantId: row.tenantId }, select: { issuedForUserId: true } });
   const r = await tx.hrLineLink.updateMany({ where: { id: row.id, tenantId: row.tenantId, status: "ACTIVE" }, data: { status: "ENDED", endReason: reason, endedAt: now } });
   if (r.count !== 1) return false;
   await tx.auditLog.create({ data: { tenantId: row.tenantId, actorType: actorUserId ? "USER" : "SYSTEM", actorId: actorUserId, action: "hr.line.unlink", targetType: "HrEmployee", targetId: row.employeeId, after: { employeeId: row.employeeId, reason } } });
+  if (cur?.issuedForUserId && NOTE_REASONS.has(reason)) await tx.appNotification.create({ data: { tenantId: row.tenantId, recipientUserId: cur.issuedForUserId, title: HR_LINE_TEXT.changedTitle!, body: HR_LINE_TEXT.changedBody! } });
   return true;
+}
+
+/**
+ * HR H4.5 fix ▸ D2: การผูก ACTIVE ใช้ได้เฉพาะคู่ (แถวพนักงาน, ผู้ใช้ที่ขอรหัส) — พนักงานยังทำงาน · linkedUserId ปัจจุบัน = issuedForUserId ·
+ * สมาชิกภาพของผู้ใช้นั้นยังรับเชิญ · ไม่ผ่าน ⇒ เหตุสิ้นสุด (OFFBOARD/ACCOUNT) ให้ผู้เรียกปิดการผูก · ผ่าน ⇒ null
+ */
+export async function lineLinkInvalidReason(i: { tenantId: string; systemId: string; employeeId: string; issuedForUserId: string }): Promise<"OFFBOARD" | "ACCOUNT" | null> {
+  const e = await tenantDb({ tenantId: i.tenantId, systemId: i.systemId }).hrEmployee.findFirst({ where: { id: i.employeeId }, select: { active: true, employmentStatus: true, linkedUserId: true } });
+  if (!isActiveEmp(e)) return "OFFBOARD";
+  if (!e?.linkedUserId || e.linkedUserId !== i.issuedForUserId) return "ACCOUNT";
+  const m = await tenantDb({ tenantId: i.tenantId }).membership.findFirst({ where: { tenantId: i.tenantId, userId: i.issuedForUserId, acceptedAt: { not: null } }, select: { id: true } });
+  return m ? null : "ACCOUNT";
+}
+type ActiveRow = { id: string; systemId: string; employeeId: string; issuedForUserId: string; linkedAt: Date | null; chatContactId: string | null };
+/** การผูก ACTIVE ที่ยังใช้ได้จริง — ใช้ไม่ได้ ⇒ ปิด (ACCOUNT/OFFBOARD) แล้วคืน null (การผูกเก่าไม่ฟื้นอีก · D3) */
+async function validActive(tenantId: string, a: ActiveRow | null | undefined): Promise<ActiveRow | null> {
+  if (!a) return null;
+  const why = await lineLinkInvalidReason({ tenantId, systemId: a.systemId, employeeId: a.employeeId, issuedForUserId: a.issuedForUserId });
+  if (!why) return a;
+  await endLineLinks({ tenantId, systemId: a.systemId, employeeId: a.employeeId }, why);
+  return null;
+}
+
+/**
+ * HR H4.5 fix ▸ D1: ปิดการผูกใน tx ของผู้เรียก (ตัวให้/ถอนสิทธิ์บัญชีพนักงาน · staff/service.ts) — แถวพนักงานที่ระบุ และ/หรือ การผูกที่ออกให้ผู้ใช้ที่ระบุ ·
+ * ACTIVE ⇒ ENDED(ACCOUNT) + audit · PENDING ⇒ CANCELLED · keepUserId = ผู้ใช้ใหม่ที่ผูกกับแถวนี้ (การผูกที่ออกให้คนนี้คงไว้) · คืนจำนวนที่ปิด
+ */
+export async function endLineLinksForAccountInTx(
+  tx: Pick<Prisma.TransactionClient, "$queryRaw" | "$executeRaw" | "auditLog">,
+  i: { tenantId: string; employeeIds?: string[]; issuedForUserId?: string | null; keepUserId?: string | null },
+): Promise<number> {
+  const tenantId = str(i?.tenantId);
+  const ids = (i?.employeeIds ?? []).filter((x) => typeof x === "string" && x);
+  const forUser = str(i?.issuedForUserId);
+  const keep = str(i?.keepUserId);
+  if (!tenantId || (!ids.length && !forUser)) return 0;
+  const ended = await tx.$queryRaw<{ id: string; employeeId: string }[]>`
+    UPDATE "HrLineLink" SET "status" = 'ENDED', "endReason" = 'ACCOUNT', "endedAt" = now()
+    WHERE "tenantId" = ${tenantId} AND "status" = 'ACTIVE' AND ("employeeId" = ANY(${ids}::text[]) OR "issuedForUserId" = ${forUser || "∅"})
+      AND (${keep} = '' OR "issuedForUserId" <> ${keep})
+    RETURNING "id", "employeeId"`;
+  await tx.$executeRaw`
+    UPDATE "HrLineLink" SET "status" = 'CANCELLED', "endedAt" = now()
+    WHERE "tenantId" = ${tenantId} AND "status" = 'PENDING' AND ("employeeId" = ANY(${ids}::text[]) OR "issuedForUserId" = ${forUser || "∅"})
+      AND (${keep} = '' OR "issuedForUserId" <> ${keep})`;
+  if (ended.length) await tx.auditLog.createMany({ data: ended.map((r) => ({ tenantId, actorType: "SYSTEM" as const, actorId: null, action: "hr.line.unlink", targetType: "HrEmployee", targetId: r.employeeId, after: { employeeId: r.employeeId, reason: "ACCOUNT" } })) });
+  return ended.length;
 }
 
 // ═══════════════════════════ ผู้ดูแล: ด่านจากฐาน ═══════════════════════════
@@ -109,10 +161,11 @@ export async function activeLinkOfContact(i: { tenantId: string; connectionId: s
   const connectionId = str(i?.connectionId);
   const chatContactId = str(i?.chatContactId);
   if (!tenantId || !connectionId || !chatContactId) return null;
-  const rows = await tenantDb({ tenantId }).$queryRaw<{ employeeId: string; systemId: string }[]>`
-    SELECT "employeeId", "systemId" FROM "HrLineLink"
+  const rows = await tenantDb({ tenantId }).$queryRaw<ActiveRow[]>`
+    SELECT "id", "employeeId", "systemId", "issuedForUserId", "linkedAt", "chatContactId" FROM "HrLineLink"
     WHERE "tenantId" = ${tenantId} AND "connectionId" = ${connectionId} AND "chatContactId" = ${chatContactId} AND "status" = 'ACTIVE' LIMIT 1`;
-  return rows[0] ?? null;
+  const a = await validActive(tenantId, rows[0]); // HR H4.5 fix ▸ D2 — บัญชี/สมาชิกภาพ/สถานะพนักงานเปลี่ยน ⇒ ไม่ถือว่าผูก ◂
+  return a ? { employeeId: a.employeeId, systemId: a.systemId } : null;
 }
 
 /**
@@ -206,8 +259,8 @@ export async function employeeLineStatus(ctx: Ctx, viewer: LineLinkViewer, input
   try {
     const t = await adminTarget(ctx, viewer, input?.employeeId);
     if (!t) return adminRefusal();
-    const rows = await tenantDb(ctx).hrLineLink.findMany({ where: { employeeId: t.employeeId, status: { in: ["ACTIVE", "PENDING"] } }, select: { status: true, linkedAt: true, expiresAt: true }, take: 4 });
-    const a = rows.find((r) => r.status === "ACTIVE");
+    const rows = await tenantDb(ctx).hrLineLink.findMany({ where: { employeeId: t.employeeId, status: { in: ["ACTIVE", "PENDING"] } }, select: { id: true, systemId: true, employeeId: true, issuedForUserId: true, chatContactId: true, status: true, linkedAt: true, expiresAt: true }, take: 4 });
+    const a = await validActive(ctx.tenantId, rows.find((r) => r.status === "ACTIVE")); // HR H4.5 fix ▸ D2 ◂
     if (a) return { ok: true, state: "ACTIVE", linkedAt: a.linkedAt ? a.linkedAt.toISOString() : null };
     const p = rows.find((r) => r.status === "PENDING" && r.expiresAt.getTime() > Date.now());
     return { ok: true, state: p ? "PENDING" : "NONE", linkedAt: null };
@@ -229,23 +282,36 @@ export async function adminUnlinkLine(ctx: Ctx, viewer: LineLinkViewer, input: {
 }
 
 // ═══════════════════════════ ของฉัน (ตัวตนจากเซสชันเท่านั้น) ═══════════════════════════
-export type MyLineStatus = { ok: true; state: "NONE" | "PENDING" | "ACTIVE" | "NOT_AVAILABLE"; linkedAt: string | null; displayName: string | null; shopEnabled: boolean };
+export type MyLineStatus = { ok: true; state: "NONE" | "PENDING" | "ACTIVE" | "NOT_AVAILABLE"; linkedAt: string | null; shopEnabled: boolean };
 
-/** สถานะ LINE ของตัวเอง — ชื่อ LINE ของตัวเองเท่านั้น (ให้ตรวจว่าผูกถูกบัญชี · Q14) */
+/** การผูก ACTIVE ที่ใช้ได้ของตัวเอง (ออกให้บัญชีนี้ + ยังใช้ได้ · D2) — ภายใน: myLineStatus + myLineContactId */
+async function myValidActive(me: { tenantId: string; userId: string; employeeId: string; ctx: Ctx }): Promise<ActiveRow | null> {
+  const a = await tenantDb(me.ctx).hrLineLink.findFirst({ where: { employeeId: me.employeeId, status: "ACTIVE" }, select: { id: true, systemId: true, employeeId: true, issuedForUserId: true, linkedAt: true, chatContactId: true } });
+  if (a && a.issuedForUserId !== me.userId) {
+    await endLineLinks({ tenantId: me.tenantId, systemId: a.systemId, employeeId: a.employeeId }, "ACCOUNT"); // ออกให้บัญชีอื่น (บัญชีของแถวพนักงานถูกเปลี่ยน)
+    return null;
+  }
+  return validActive(me.tenantId, a);
+}
+
+/** HR H4.5 fix ▸ MJ-2: ผู้ติดต่อ LINE ของการผูกที่ใช้ได้ของตัวเอง (id เท่านั้น) — ผู้เรียก = กาวแพลตฟอร์ม (อ่านชื่อ LINE ผ่านฝั่งแชท) · ไม่ส่งถึงหน้า */
+export async function myLineContactId(actor: SelfActor): Promise<{ tenantId: string; chatContactId: string } | null> {
+  const me = await (await import("./self")).resolveSelf(actor); // H2.10 resolveSelf (โหลดตอนเรียก — ดู myLineStatus) ◂
+  if (!me) return null;
+  const a = await myValidActive(me);
+  return a?.chatContactId ? { tenantId: me.tenantId, chatContactId: a.chatContactId } : null;
+}
+
+/** สถานะ LINE ของตัวเอง (ไม่มีชื่อ LINE — กาว platform/hr-line.ts#myHrLineStatus เติมชื่อของตัวเองให้หน้า · Q14) */
 export async function myLineStatus(actor: SelfActor): Promise<MyLineStatus | { ok: false; reason: string }> {
   const me = await (await import("./self")).resolveSelf(actor); // H2.10 resolveSelf — โหลดตอนเรียก (self.ts พา UI สลิป → core/context → env มาด้วย · facade HR ต้องโหลดได้โดยไม่มี env: fitness F10.1) ◂
   if (!me) return { ok: false, reason: LINE_LINK_TEXT.NO_EMPLOYEE };
   const policy = await linePolicyOf(me.ctx);
-  const rows = await tenantDb(me.ctx).hrLineLink.findMany({ where: { employeeId: me.employeeId, status: { in: ["ACTIVE", "PENDING"] } }, select: { status: true, linkedAt: true, expiresAt: true, chatContactId: true }, take: 4 });
-  const a = rows.find((r) => r.status === "ACTIVE");
-  if (a) {
-    // ชื่อ LINE ของผู้ติดต่อที่ผูกกับตัวเอง (อ่านอย่างเดียว · ร้านเดียวกัน) — ไม่ส่งให้ผู้ดูแล
-    const c = a.chatContactId ? await tenantDb({ tenantId: me.tenantId }).$queryRaw<{ displayName: string | null }[]>`SELECT "displayName" FROM "ChatContact" WHERE "id" = ${a.chatContactId} AND "tenantId" = ${me.tenantId}` : [];
-    return { ok: true, state: "ACTIVE", linkedAt: a.linkedAt ? a.linkedAt.toISOString() : null, displayName: c[0]?.displayName ?? null, shopEnabled: policy.enabled };
-  }
-  const pending = rows.some((r) => r.status === "PENDING" && r.expiresAt.getTime() > Date.now());
+  const a = await myValidActive(me); // HR H4.5 fix ▸ D2: ออกให้บัญชีนี้ + พนักงาน/บัญชี/สมาชิกภาพยังตรง ◂
+  if (a) return { ok: true, state: "ACTIVE", linkedAt: a.linkedAt ? a.linkedAt.toISOString() : null, shopEnabled: policy.enabled };
+  const pending = (await tenantDb(me.ctx).hrLineLink.findMany({ where: { employeeId: me.employeeId, status: "PENDING", issuedForUserId: me.userId }, select: { expiresAt: true }, take: 2 })).some((r) => r.expiresAt.getTime() > Date.now());
   const oa = pending ? "x" : await lineOaOf(me.tenantId, me.homeUnitId, policy);
-  return { ok: true, state: pending ? "PENDING" : oa ? "NONE" : "NOT_AVAILABLE", linkedAt: null, displayName: null, shopEnabled: policy.enabled };
+  return { ok: true, state: pending ? "PENDING" : oa ? "NONE" : "NOT_AVAILABLE", linkedAt: null, shopEnabled: policy.enabled };
 }
 
 /** เริ่มผูก: แถว PENDING 10 นาที (ผู้เรียก = platform/hr-line.ts#issueHrLineCode ซึ่งออกรหัสของแชทผูกกับ linkId นี้) */
