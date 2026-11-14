@@ -597,6 +597,9 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     group: "back",
     actions: {
       "hr.employee.create": "เพิ่ม/แก้ทะเบียนพนักงาน",
+      // HR H4.8 ▸ คีย์อ่านอย่างเดียว (เพิ่มอย่างเดียว · ผู้ถือคีย์เดิมไม่ได้/ไม่เสียอะไร) — ใช้เป็น scope ของ REST /api/v1/hr และให้คนได้ทีละคีย์ ◂
+      "hr.employee.read": "ดูรายชื่อพนักงาน (ไม่รวมข้อมูลอ่อนไหว)", // HR H4.8 ◂
+      "hr.roster.read": "ดูตารางกะและการมาทำงาน", // HR H4.8 ◂
       "hr.attendance.clock": "ลงเวลาเข้า-ออกแทนพนักงาน",
       "hr.leave.request": "ยื่นใบลา",
       "hr.leave.read": "ดูข้อมูลการลาของทั้งร้าน",
