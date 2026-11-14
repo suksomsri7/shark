@@ -1834,6 +1834,69 @@
    "screen": "ปฏิทิน (แท็บเตือนฉัน)",
    "action": "สลับเป็นรายการเตือนฉัน",
    "wo": "CAL2.1"
+  },
+  {
+   "testID": "cal-settings",
+   "file": "apps/mobile/app/(app)/secretary/calendar/index.tsx",
+   "screen": "ปฏิทิน (หัวจอ ⚙)",
+   "action": "router.push /secretary/calendar/settings (จอ 8)",
+   "wo": "CAL2.2"
+  },
+  {
+   "testID": "cal-week-<YYYY-MM-DD>",
+   "file": "apps/mobile/src/components/calendar/WeekStrip.tsx",
+   "screen": "ปฏิทิน · มุมมองวัน (จอ 3)",
+   "action": "เลือกวันในแถบสัปดาห์ → โหลด GET calendar/agenda ของวันนั้น",
+   "wo": "CAL2.2"
+  },
+  {
+   "testID": "cal-row-<agendaId>",
+   "file": "apps/mobile/src/components/calendar/AgendaRow.tsx",
+   "screen": "ปฏิทิน · มุมมองวัน (จอ 3/10)",
+   "action": "แตะแถว = deepLink (web → หน้าระบบ ?open · app → router.push)",
+   "wo": "CAL2.2"
+  },
+  {
+   "testID": "cal-row-<agendaId>-check",
+   "file": "apps/mobile/src/components/calendar/AgendaRow.tsx",
+   "screen": "ปฏิทิน · มุมมองวัน (จอ 3/10)",
+   "action": "ติ๊กเสร็จ: เตือนฉัน = POST items/[id]/done|reopen · การ์ด/CRM = POST source-done",
+   "wo": "CAL2.2"
+  },
+  {
+   "testID": "cal-error-retry",
+   "file": "apps/mobile/src/components/airy/LoadState.tsx",
+   "screen": "ปฏิทิน (โหลดล้ม)",
+   "action": "โหลด agenda ใหม่",
+   "wo": "CAL2.2"
+  },
+  {
+   "testID": "cal-month-prev",
+   "file": "apps/mobile/app/(app)/secretary/calendar/index.tsx",
+   "screen": "ปฏิทิน · มุมมองเดือน (จอ 4)",
+   "action": "เดือนก่อน (‹)",
+   "wo": "CAL2.3"
+  },
+  {
+   "testID": "cal-month-next",
+   "file": "apps/mobile/app/(app)/secretary/calendar/index.tsx",
+   "screen": "ปฏิทิน · มุมมองเดือน (จอ 4)",
+   "action": "เดือนถัดไป (›)",
+   "wo": "CAL2.3"
+  },
+  {
+   "testID": "cal-month-<YYYY-MM-DD>",
+   "file": "apps/mobile/src/components/calendar/MonthGrid.tsx",
+   "screen": "ปฏิทิน · มุมมองเดือน (จอ 4)",
+   "action": "แตะวัน → รายการของวันนั้นด้านล่าง",
+   "wo": "CAL2.3"
+  },
+  {
+   "testID": "cal-mrow-<agendaId>",
+   "file": "apps/mobile/src/components/calendar/AgendaRow.tsx",
+   "screen": "ปฏิทิน · มุมมองเดือน (จอ 4)",
+   "action": "แตะแถว = deepLink · -check = ติ๊กเสร็จ",
+   "wo": "CAL2.3"
   }
  ]
 }
