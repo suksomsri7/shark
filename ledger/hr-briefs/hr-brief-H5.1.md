@@ -107,3 +107,9 @@ Native mobile app (Expo) · e-mails and LINE message bodies · PDF layout beyond
 - Q8 Hide tabs that 404 (ORACLE-EDIT h4.4 S13.5/h2.2 S1.3)? **Default yes, in VIS-5d**: no dead ends for staff.
 - Q9 Six fix batches VIS-5a…f, not counted? **Default yes**: same as VIS-1/VIS-2.
 - Q10 Build without `SHARK_TSC_PREBUILD_OK`? **Default try without, fall back with a note**: main removed the cause.
+
+## CONTROLLER RULINGS (14 Nov) — drafter defaults ACCEPTED for Q1–Q10
+- The walk never submits a mutation (open + cancel only). Seed = new additive `scripts/seed-hr-walk.mts` (does not touch seed-hr-qc's 34 pinned checks); adds the `payroll-branch` user. ACTIVE law rows only on lane DB l1, inserted by the walk seed under its own source keys and removed at the end.
+- Build + serve are CONTROLLER-RUN (exclusive on the machine): the walk tooling is written and dry-checked first (script compiles, seed runs, page list resolved); the controller starts the build when H4.3 and H4.8 are merged so the walk covers them.
+- Fix batches VIS-5a…f are fix tickets (not counted in the 44). A defect = page + testid + size + language + screenshot + the mockup expectation.
+- Output: /root/qc/hr-h5.1/<page>/<viewer>-<size>-<lang>.png + one contact sheet per page (3 sizes side by side, MOCKUP | RENDER where a mockup exists).

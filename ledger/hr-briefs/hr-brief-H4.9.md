@@ -55,3 +55,7 @@ Shape of HANDOVER-H2: what shipped per WO (H4.1–H4.6, H4.8; H4.7 cut) · seams
 - Q3 SYNC by a builder or by the controller? **Default controller, as before**: conflicts are few and need rulings.
 - Q4 Is H3.10 a precondition of H4.9? **Default yes**: HANDOVER-H4 needs the ruled `HR-DEBTS.md`.
 - Q5 Park HF-SSO-2569 if not merged? **Default merge into session/hr before the close if its review is done (prod stays gated by owner/accountant)**: live v1 caps SSO at 15,000.
+
+## CONTROLLER RULINGS (14 Nov) — drafter defaults ACCEPTED for Q1–Q5
+- qc:all = all suites again on the final base (not the stale 190). svc/sec families run on one of their own lane QC databases with HR migrations deployed on it (additive only) — controller sets the env at the close.
+- Order: H3.10 docs + HF-SSO-2569 merge first, then H4.3/H4.8, then SYNC main, then this close.
