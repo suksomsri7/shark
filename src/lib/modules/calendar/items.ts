@@ -198,8 +198,6 @@ async function commit(actor: CalActor, r: CalItem, data: Prisma.CalItemUpdateMan
   return own(actor, r.id);
 }
 
-const TIME_KEYS = ["kind", "startAt", "endAt", "allDay", "repeat", "repeatDays", "leadMinutes"] as const;
-
 // ───────── แก้ ─────────
 export async function updateItem(actor: CalActor, id: string, patch: Partial<CalItemInput>, now = new Date()): Promise<CalItemDto> {
   const r = await own(actor, id);
@@ -215,11 +213,16 @@ export async function updateItem(actor: CalActor, id: string, patch: Partial<Cal
     repeatDays: patch.repeatDays ?? (patch.repeat && patch.repeat !== "WEEKLY" ? [] : r.repeatDays),
     leadMinutes: patch.leadMinutes ?? (patch.kind && patch.kind !== r.kind ? undefined : r.leadMinutes),
   });
-  const timeChanged = TIME_KEYS.some((k) => patch[k] !== undefined);
-  // ตรวจเวลาเฉพาะเมื่อแก้เวลา (แก้ชื่อของเตือนที่ยิงแล้วรอย้ำ ต้องไม่ติด past_time)
-  if (timeChanged) check(merged, now);
+  // review M1: แอปส่ง kind/startAt/repeat/leadMinutes ทุกครั้ง ⇒ ตัดสิน "เปลี่ยนเวลา" จากค่า ไม่ใช่จากการมีคีย์
+  const sameDays = (a: number[], b: number[]) => [...a].sort((x, y) => x - y).join() === [...b].sort((x, y) => x - y).join();
+  const occChanged =
+    merged.kind !== r.kind || +merged.startAt !== +r.startAt || merged.allDay !== r.allDay || merged.repeat !== r.repeat || !sameDays(merged.repeatDays, r.repeatDays);
+  const leadChanged = merged.leadMinutes !== r.leadMinutes;
+  const endChanged = +(merged.endAt ?? 0) !== +(r.endAt ?? 0);
+  // ครั้งของการเตือนเปลี่ยน = ตรวจเต็ม (รวม past_time) · ไม่เปลี่ยน = ตรวจค่าอื่นโดยไม่ถาม past_time (แก้ชื่อของเตือนที่ยิงแล้ว/รอย้ำได้)
+  if (occChanged) check(merged, now);
   else {
-    const e = validateWhen({ ...merged, startAt: new Date(+now + 3_600_000), endAt: null, kind: "EVENT" }, now);
+    const e = validateWhen(merged, now, { skipPast: true });
     if (e) throw new CalError(e.status, e.code, e.message);
   }
   let li: LinkInfo | null = null;
@@ -228,10 +231,14 @@ export async function updateItem(actor: CalActor, id: string, patch: Partial<Cal
     li = await checkLink(actor, patch.link);
     Object.assign(data, { linkType: patch.link?.type ?? null, linkId: patch.link?.id ?? null, linkSystemId: li?.systemId ?? null });
   }
-  if (timeChanged) {
+  if (occChanged) {
     const fresh = { ...merged, status: r.status, occursAt: merged.startAt, firedOccAt: null, snoozeUntil: null, nagAt: null };
     const s = schedule(fresh, now);
     Object.assign(data, { ...merged, firedOccAt: null, snoozeUntil: null, nagAt: null, occursAt: s.occursAt, nextFireAt: s.nextFireAt, fireAttempts: 0 });
+  } else if (leadChanged || endChanged) {
+    // ครั้งเดิม: คง firedOccAt/snooze/nag (ไม่ยิงครั้งที่ยิงแล้วซ้ำ) · คำนวณเฉพาะเวลายิงใหม่ตาม lead
+    const s = schedule({ ...r, leadMinutes: merged.leadMinutes }, now);
+    Object.assign(data, { leadMinutes: merged.leadMinutes, endAt: merged.endAt, occursAt: s.occursAt, nextFireAt: s.nextFireAt });
   }
   if (r.externalId || (await exportsKind(actor, merged.kind))) data.syncDirty = true;
   const row = await commit(actor, r, data);
@@ -304,8 +311,12 @@ export async function snooze(actor: CalActor, id: string, to: SnoozeTo, now = ne
   if (!target) throw new CalError(400, "invalid", MSG.snooze);
   const r = await own(actor, id);
   if (r.status !== "OPEN") throw closed();
-  const s = schedule({ ...r, snoozeUntil: target, nagAt: null }, now);
-  const row = await commit(actor, r, { snoozeUntil: target, nagAt: null, nextFireAt: s.nextFireAt, fireAttempts: 0 });
+  // review m6: เตือนครั้งเดียวที่ยังไม่ยิง → เลื่อน = ย้ายเวลายิงไปที่เป้า (ครั้งปกติถูกแทน · ย้ำครั้งเดียวหลังส่งเลื่อน)
+  //   ทำซ้ำ: เลื่อนเฉพาะการแจ้งของครั้งที่เพิ่งยิง (ครั้งถัดไปตามกติกาเดิม · §5.4)
+  const supersede = r.repeat === "NONE" && !(r.firedOccAt && +r.firedOccAt === +r.occursAt);
+  const firedOccAt = supersede ? r.occursAt : r.firedOccAt;
+  const s = schedule({ ...r, firedOccAt, snoozeUntil: target, nagAt: null }, now);
+  const row = await commit(actor, r, { firedOccAt, snoozeUntil: target, nagAt: null, nextFireAt: s.nextFireAt, fireAttempts: 0 });
   return (await dtos(actor, [row]))[0]!;
 }
 
@@ -383,4 +394,17 @@ export async function purgeMemberCalendar(member: { userId: string; tenantId: st
   const db = dbOf(member);
   await db.calItem.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } });
   await db.calPref.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } });
+}
+
+/**
+ * คืนสิทธิ์พนักงาน (restoreStaffAccess) — ปลุกตารางเตือนของ (คนนั้น, ร้านนั้น) ทันที (review M5)
+ *   ระหว่างถูกระงับ job เลื่อนการตรวจทีละ 1 ชม. · ปลุก = ให้ calendar.fire รอบหน้าคิดใหม่ทุกแถว (ถึงเวลาแล้ว = ยิงช้า · ยังไม่ถึง = คำนวณใหม่)
+ *   เรียกจากด่านที่ตรวจสิทธิ์ผู้คืนสิทธิ์แล้วเท่านั้น (แบบ purgeMemberCalendar)
+ */
+export async function wakeMemberCalendar(member: { userId: string; tenantId: string }, now = new Date()): Promise<number> {
+  const r = await dbOf(member).calItem.updateMany({
+    where: { userId: member.userId, tenantId: member.tenantId, status: "OPEN", nextFireAt: { not: null } },
+    data: { nextFireAt: now },
+  });
+  return r.count;
 }

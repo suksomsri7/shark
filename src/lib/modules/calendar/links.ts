@@ -35,8 +35,10 @@ export async function resolveLinks(who: Who, refs: LinkRef[]): Promise<Map<strin
   const put = (i: LinkInfo) => out.set(linkKey(i), i);
   const tenantId = who.tenantId;
 
-  const contactIds = ids("CRM_CONTACT");
-  const dealIds = ids("CRM_DEAL");
+  // review M4: ด่านสิทธิ์โมดูลก่อนตัวกรองแถว — CRM v1 (`visibleWhere` คืนทั้งระบบเมื่อไม่ใช่ v2) ห้ามให้พนักงานที่ไม่มีคีย์อ่าน CRM ผูก/เห็นเบอร์
+  const { membershipCan } = await import("@/lib/ai/tool-access");
+  const contactIds = membershipCan(who.membership, { module: "crm", action: "crm.contact.read" }, who.userId) ? ids("CRM_CONTACT") : [];
+  const dealIds = membershipCan(who.membership, { module: "crm", action: "crm.deal.read" }, who.userId) ? ids("CRM_DEAL") : [];
   if (contactIds.length || dealIds.length) {
     try {
       const { contactWhere, dealWhere } = await import("@/lib/modules/crm");
@@ -73,7 +75,6 @@ export async function resolveLinks(who: Who, refs: LinkRef[]): Promise<Map<strin
   const docIds = ids("ACCOUNT_DOC");
   if (docIds.length) {
     try {
-      const { membershipCan } = await import("@/lib/ai/tool-access");
       if (membershipCan(who.membership, { module: "account", action: "account.doc.view" }, who.userId)) {
         for (const systemId of await systemsOf(tenantId, "ACCOUNT")) {
           const rows = await tenantDb({ tenantId, systemId }).accountDocument.findMany({

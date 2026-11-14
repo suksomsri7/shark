@@ -160,6 +160,25 @@ console.log("── P9: กิ่งขอบ (ค่าที่ไม่ส่
   chk("P9-4", "validateWhen ไม่ส่ง title/repeatDays", nf.validateWhen({ kind: "REMINDER", startAt: T("2026-11-16T11:00"), repeat: "NONE", leadMinutes: 0 }, now)?.message === "ใส่เรื่องที่จะเตือน (ไม่เกิน 200 ตัวอักษร)" && nf.validateWhen({ kind: "REMINDER", title: "x", startAt: T("2026-11-16T11:00"), repeat: "NONE", leadMinutes: 0 }, now) === null);
 }
 
+console.log("── P10: ไกลกว่า 70 วัน (review B1) ──");
+{
+  const now = T("2026-11-14T10:00");
+  const D = 86_400_000;
+  const bad: string[] = [];
+  for (const days of [71, 100, 365, 729]) {
+    const st = new Date(+now + days * D);
+    for (const repeat of ["NONE", "DAILY", "WEEKLY", "MONTHLY"]) {
+      const r = nf.nextFire({ startAt: st, repeat, repeatDays: [] }, now);
+      if (!r || +r.occursAt !== +st) bad.push(`${repeat}+${days}d`);
+    }
+    if (nf.validateWhen({ kind: "REMINDER", title: "ต่อใบอนุญาต", startAt: st, repeat: "NONE", repeatDays: [], leadMinutes: 0 }, now) !== null) bad.push(`validate+${days}d`);
+    const ev = nf.schedule({ startAt: st, endAt: new Date(+st + 3_600_000), repeat: "NONE", leadMinutes: 15, status: "OPEN", occursAt: st, firedOccAt: null }, now);
+    if (!ev.nextFireAt || +ev.nextFireAt !== +st - 15 * 60_000) bad.push(`EVENT+${days}d`);
+  }
+  chk("P10-1", "startAt +71 วัน/+100/+1 ปี/+2 ปี: NONE/DAILY/WEEKLY/MONTHLY ได้ครั้งแรก = startAt · REMINDER ไม่ติด past_time · EVENT มีเวลาเตือน", bad.length === 0, bad.join(","));
+  chk("P10-2", "validateWhen skipPast: ข้าม past_time แต่ยังตรวจค่าอื่น", nf.validateWhen({ kind: "REMINDER", title: "x", startAt: T("2026-11-14T09:00"), repeat: "NONE", leadMinutes: 0 }, now, { skipPast: true }) === null && nf.validateWhen({ kind: "REMINDER", title: "", startAt: T("2026-11-14T09:00"), repeat: "NONE", leadMinutes: 0 }, now, { skipPast: true }) !== null);
+}
+
 if (PURE_ONLY) finish(LABEL, { pureOnly: true });
 
 // ═══════════ D: items.ts บนฐาน QC ═══════════
@@ -320,10 +339,66 @@ try {
   const e16 = await err(items.listItems(A, { tab: "done", before: "bad" }, now));
   chk("D9-4", "cursor เสีย = 400 ไทย", e16?.status === 400 && thai(e16?.message));
 
+  console.log("── D11: แก้จากแอป (ส่งทุกคีย์) · review M1 ──");
+  {
+    const app = (r: AnyMod, extra: AnyMod = {}) => ({ kind: r.kind, title: r.title, note: r.note, startAt: r.startAt, endAt: r.endAt, allDay: r.allDay, repeat: r.repeat, repeatDays: r.repeatDays, leadMinutes: r.leadMinutes, ...extra });
+    const t0 = new Date(+now + 10 * MIN);
+    const f1 = await items.createItem(A, { kind: "REMINDER", title: "ยิงแล้วรอย้ำ", startAt: t0 }, { now });
+    // จำลอง: ยิงเมื่อถึงเวลา แล้วรอย้ำ (ตอนนี้ = เวลาหลังยิง 5 นาที)
+    const later = new Date(+t0 + 5 * MIN);
+    await prisma.calItem.update({ where: { id: f1.id }, data: { firedOccAt: t0, lastFiredAt: t0, nagAt: new Date(+t0 + 30 * MIN), nextFireAt: new Date(+t0 + 30 * MIN) } });
+    const row = await prisma.calItem.findUnique({ where: { id: f1.id } });
+    const u = await items.updateItem(A, f1.id, app(row, { title: "ยิงแล้วรอย้ำ (แก้คำผิด)" }), later);
+    const after = await prisma.calItem.findUnique({ where: { id: f1.id } });
+    chk("D11-1", "เตือนที่ยิงแล้ว: แอปส่งทุกคีย์ (เวลาเดิม) แก้ชื่อ = 200 · ไม่ติด past_time · firedOccAt/nag คงเดิม (ไม่ยิงซ้ำ)", u.title.endsWith("(แก้คำผิด)") && eq(after.firedOccAt, t0) && eq(after.nextFireAt, new Date(+t0 + 30 * MIN)), JSON.stringify(after));
+    // ฉาก B: lead 15 ยิงล่วงหน้าแล้ว (08:45) แล้วแก้บันทึกตอน 08:50 → ต้องไม่ยิงครั้งเดิมซ้ำ
+    const t1 = new Date(+now + 20 * MIN);
+    const f2 = await items.createItem(A, { kind: "REMINDER", title: "lead 15", startAt: t1, leadMinutes: 15 }, { now });
+    const firedAt = new Date(+t1 - 15 * MIN);
+    await prisma.calItem.update({ where: { id: f2.id }, data: { firedOccAt: t1, lastFiredAt: firedAt, nagAt: new Date(+firedAt + 30 * MIN), nextFireAt: new Date(+firedAt + 30 * MIN) } });
+    const row2 = await prisma.calItem.findUnique({ where: { id: f2.id } });
+    await items.updateItem(A, f2.id, app(row2, { note: "เพิ่มบันทึก" }), new Date(+firedAt + 5 * MIN));
+    const a2 = await prisma.calItem.findUnique({ where: { id: f2.id } });
+    chk("D11-2", "แก้บันทึกในช่วงล่วงหน้าหลังยิง: nextFireAt = ย้ำเดิม (ไม่ใช่ now) · firedOccAt คง", eq(a2.firedOccAt, t1) && eq(a2.nextFireAt, new Date(+firedAt + 30 * MIN)), JSON.stringify(a2));
+    await items.updateItem(A, f2.id, app(a2, { leadMinutes: 5 }), new Date(+firedAt + 6 * MIN));
+    const a3 = await prisma.calItem.findUnique({ where: { id: f2.id } });
+    chk("D11-3", "เปลี่ยนเฉพาะ lead หลังยิง: คง firedOccAt (ไม่ยิงครั้งเดิมซ้ำ)", a3.leadMinutes === 5 && eq(a3.firedOccAt, t1) && eq(a3.nextFireAt, new Date(+firedAt + 30 * MIN)));
+    const a4 = await items.updateItem(A, f2.id, app(a3, { startAt: new Date(+now + 3 * H) }), new Date(+firedAt + 7 * MIN));
+    chk("D11-4", "เปลี่ยนเวลาจริง = ตารางใหม่ · ล้าง firedOccAt/nag", eq(new Date(a4.nextFireAt), new Date(+now + 3 * H - 5 * MIN)) && (await prisma.calItem.findUnique({ where: { id: f2.id } })).firedOccAt === null);
+    const e = await err(items.updateItem(A, f2.id, app(a3, { startAt: new Date(+now - H) }), now));
+    chk("D11-5", "เปลี่ยนเวลาเป็นอดีต = 400 past_time", e?.code === "past_time");
+  }
+
+  console.log("── D12: เลื่อนก่อนยิงครั้งแรก · review m6 ──");
+  {
+    const t0 = new Date(+now + 5 * H);
+    const it = await items.createItem(A, { kind: "REMINDER", title: "เลื่อนก่อนถึงเวลา", startAt: t0 }, { now });
+    await items.snooze(A, it.id, { preset: "1h" }, now);
+    const r = await prisma.calItem.findUnique({ where: { id: it.id } });
+    chk("D12-1", "เตือนครั้งเดียวที่ยังไม่ยิง: เลื่อน = ย้ายเวลายิง (firedOccAt = occursAt · nextFireAt = เป้า)", eq(r.firedOccAt, t0) && eq(r.nextFireAt, r.snoozeUntil));
+    const wk = await items.createItem(A, { kind: "REMINDER", title: "ทำซ้ำเลื่อน", startAt: new Date(+now + 5 * H), repeat: "DAILY" }, { now });
+    await items.snooze(A, wk.id, { preset: "1h" }, now);
+    const w = await prisma.calItem.findUnique({ where: { id: wk.id } });
+    chk("D12-2", "ทำซ้ำ: เลื่อนไม่ข้ามครั้งถัดไป", w.firedOccAt === null && eq(w.occursAt, new Date(+now + 5 * H)));
+  }
+
+  console.log("── D13: CRM ต้องมีคีย์อ่าน · review M4 ──");
+  {
+    const noKey = { userId: "calqc-staff-new", tenantId: "calqc-tenant", membership: { role: "STAFF", unitAccess: ["*"], permissions: { "ai.chat.send": true } } };
+    const e1 = await err(items.createItem(noKey, { kind: "REMINDER", title: "x", startAt: new Date(+now + H), link: { type: "CRM_CONTACT", id: "calqc-crm-contact-ek" } }, { now }));
+    chk("D13-1", "STAFF ไม่มีคีย์ crm.contact.read ผูกผู้ติดต่อ = 404 link_not_found", e1?.status === 404 && e1?.code === "link_not_found");
+    const links = (await import("@/lib/modules/calendar/links")) as AnyMod;
+    const m = await links.resolveLinks(noKey, [{ type: "CRM_CONTACT", id: "calqc-crm-contact-ek" }]);
+    chk("D13-2", "resolveLinks ไม่คืนชื่อ/เบอร์ให้คนไม่มีคีย์", m.size === 0);
+  }
+
   console.log("── D10: ออกจากร้าน ──");
   await items.purgeMemberCalendar({ userId: fx.U.b, tenantId: t1 });
   chk("D10-1", "purgeMemberCalendar ลบเฉพาะ (ผู้ใช้,ร้าน) นั้น", (await prisma.calItem.count({ where: { userId: fx.U.b } })) === 0 && (await prisma.calItem.count({ where: { userId: fx.U.a, tenantId: t1 } })) > 0);
   const lv = readFileSync(join(ROOT, "src/lib/staff/levels.ts"), "utf8");
+  const act = readFileSync(join(ROOT, "src/lib/staff/actions.ts"), "utf8");
+  const svc = readFileSync(join(ROOT, "src/lib/staff/service.ts"), "utf8");
+  chk("D10-3", "เว็บถอนสิทธิ์ (revokeStaffAccessAction) ลบปฏิทินส่วนตัว · คืนสิทธิ์ (restoreStaffAccess) ปลุกตาราง (review m4/M5)", /export async function revokeStaffAccessAction[\s\S]*?purgeMemberCalendar\(/.test(act) && /export async function restoreStaffAccess[\s\S]*?wakeMemberCalendar\(/.test(svc));
   chk("D10-2", "removeStaff เรียก purgeMemberCalendar", /export async function removeStaff[\s\S]*?purgeMemberCalendar\(\{ userId, tenantId: ctx\.tenantId \}\)/.test(lv));
 } catch (e) {
   chk("CRASH", "ข้อสอบรันจบ", false, errMsg(e));
@@ -339,8 +414,8 @@ console.log("── S1: โครงสร้าง M3 ──");
   const bad = calls.filter((m) => /where:/.test(m[3]!) && !/where:\s*\{[^}]*userId/.test(m[3]!)).map((m) => `${m[1]}.${m[2]}`);
   chk("S1-1", "ทุก query CAL ใน items.ts มี userId ตรงตัวใน where (ยกเว้น create ที่ใส่ userId จาก actor)", calls.length >= 8 && bad.length === 0, `${calls.length} calls · bad=${bad.join(",")}`);
   const sig = [...src.matchAll(/export async function (\w+)\(([^)]*)\)/g)];
-  const withUser = sig.filter((m) => /\buserId\b/.test(m[2]!) && m[1] !== "purgeMemberCalendar").map((m) => m[1]);
-  chk("S1-2", "ฟังก์ชัน export รับ actor ไม่รับ userId (ยกเว้น purgeMemberCalendar ที่ด่าน removeStaff เรียก)", sig.length >= 10 && withUser.length === 0, withUser.join(","));
+  const withUser = sig.filter((m) => /\buserId\b/.test(m[2]!) && m[1] !== "purgeMemberCalendar" && m[1] !== "wakeMemberCalendar").map((m) => m[1]);
+  chk("S1-2", "ฟังก์ชัน export รับ actor ไม่รับ userId (ยกเว้น purgeMemberCalendar/wakeMemberCalendar ที่ด่านพนักงานเรียก)", sig.length >= 10 && withUser.length === 0, withUser.join(","));
   chk("S1-3", "items.ts ไม่ log title/note", !/logOps\([^)]*(title|note)/.test(src));
 }
 chk("Z-1", "residue 0", residue === 0, String(residue));

@@ -122,11 +122,13 @@ export function occurrences(item: RuleItem, fromUtc: Date, toUtc: Date, cap = OC
   return out;
 }
 
-/** occurrence แรกที่ > after (ไม่สนเพดานช่วง) — null = ไม่มี (NONE ที่ผ่านแล้ว) */
+/** occurrence แรกที่ > after (ไม่สนเพดานช่วง) — null = ไม่มี (NONE ที่ผ่านแล้ว)
+ *  หน้าต่างสแกนเริ่มที่ max(after+1, เที่ยงคืนไทยของวัน startAt) — review B1: startAt ไกลกว่า 70 วันต้องยังเจอครั้งแรก */
 function firstAfter(item: RuleItem, after: number, skip: number | null): number | null {
   // หน้าต่างกว้างพอสำหรับทุกกติกา: DAILY/WEEKLY ≤ 7 วัน · MONTHLY ≤ 31 วัน (+สำรอง)
-  const occ = occurrences(item, new Date(after + 1), new Date(after + 70 * DAY_MS), 8);
-  for (const o of occ) if (+o !== skip) return +o;
+  const from = Math.max(after + 1, dayStartMs(bkkDayNo(item.startAt)));
+  const occ = occurrences(item, new Date(from), new Date(from + 70 * DAY_MS), 8);
+  for (const o of occ) if (o.getTime() > after && +o !== skip) return +o;
   return null;
 }
 
@@ -263,7 +265,7 @@ export const MSG = {
 const bad = (message: string): WhenError => ({ status: 400, code: "invalid", message });
 
 /** ตรวจค่าตามตาราง §5.3 (ไม่รวม link / เพดาน 500 ซึ่งต้องอ่านฐาน) · ผ่าน = null */
-export function validateWhen(i: WhenInput, now: Date): WhenError | null {
+export function validateWhen(i: WhenInput, now: Date, opts: { skipPast?: boolean } = {}): WhenError | null {
   const title = (i.title ?? "").trim();
   if (!title || title.length > TITLE_MAX) return bad(MSG.title);
   if (i.note && i.note.length > NOTE_MAX) return bad(MSG.note);
@@ -278,7 +280,7 @@ export function validateWhen(i: WhenInput, now: Date): WhenError | null {
     if (+i.endAt - +i.startAt > EVENT_MAX_MS) return bad(MSG.tooLong);
   }
   if (+i.startAt > +now + AHEAD_MAX_MS) return bad(MSG.tooFar);
-  if (i.kind === "REMINDER" && nextFire({ ...i, firedOccAt: null }, new Date(+now - PAST_GRACE_MS)) === null) {
+  if (!opts.skipPast && i.kind === "REMINDER" && nextFire({ ...i, firedOccAt: null }, new Date(+now - PAST_GRACE_MS)) === null) {
     return { status: 400, code: "past_time", message: MSG.past };
   }
   return null;
