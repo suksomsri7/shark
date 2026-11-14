@@ -497,6 +497,8 @@ async function runDb(): Promise<void> {
       entryIds: canon([...(((au?.after as Any)?.entryIds ?? []) as string[])].sort()) === canon(((await P.hrRosterEntry.findMany({ where: { tenantId: T, source: "AI", employeeId: { in: [E.A1, E.A2] }, date: { in: [dbDate(FD(30)), dbDate(FD(31))] } }, select: { id: true } })) as Any[]).map((r) => r.id).sort()) && ((au?.after as Any)?.entryIds ?? []).length === 3,
       // ORACLE-EDIT (H4.3 fix round · controller ruling) ruling 3: + one hr.roster.entry.add per AI row (via AI · proposalId · confirmer) ◂
       perEntry: ((await P.auditLog.findMany({ where: { tenantId: T, action: "hr.roster.entry.add", targetId: { in: ((au?.after as Any)?.entryIds ?? ["∅"]) as string[] } } })) as Any[]).filter((a) => a.after?.via === "AI" && a.after?.proposalId === P1 && a.actorId === W.owner.id).length === 3,
+      // ORACLE-EDIT (H4.3 · H4.5 merge · controller ruling): AI rows stay unpublished ⇒ no roster event, no HrNotice ◂
+      noNotice: (await P.outboxEvent.count({ where: { tenantId: T, type: "hr.roster.published" } })) === 0 && (await P.hrNotice.count({ where: { tenantId: T, employeeId: { in: [E.A1, E.A2] } } })) === 0,
     }, "T5 confirm", `x=${short(x, 80)} rows=${rows.map((r) => r.length).join("/")}`);
   }
   {
