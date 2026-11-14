@@ -6,6 +6,7 @@
 // กิจการ = พารามิเตอร์ tenantId (ไม่ใช่กิจการ active) — ข้อมูลกิจการ + ค่าสรุปด้านขวา ยิงด้วย x-tenant-id ของกิจการนี้ (ไม่ต้องสลับ)
 //   หน้าเลขา/แพ็กเกจเดิมทำงานกับกิจการ active ⇒ แตะแถวของกิจการที่ไม่ได้ใช้อยู่ = switchTenant ก่อน แล้วค่อยเปิดหน้า (ป้ายบอกใต้หัวกลุ่ม)
 // สิทธิ์: OWNER/MANAGER (บทบาทจาก /me · เซิร์ฟเวอร์ตรวจซ้ำ 403) · ชื่อกิจการแก้ได้เฉพาะ OWNER
+//   ที่อยู่/เบอร์/เลขภาษี/สาขา = `can.editTax` จากเซิร์ฟเวอร์ (สิทธิ์ตั้งค่าบัญชีแบบเว็บ) · ไม่มี = แถวอ่านอย่างเดียว + คำอธิบาย
 // ที่เก็บจริง (ไม่มีของซ้ำ): ที่อยู่/เบอร์/เลขภาษี/สาขา = ตั้งค่าสมุดบัญชีหลัก · เวลาทำการ = เวลาทำการของระบบแชท (ตัวที่ "ตอบนอกเวลา" ใช้)
 import { useCallback, useRef, useState } from "react";
 import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -68,6 +69,7 @@ export default function BusinessSettingsScreen() {
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "error" | "denied">("loading");
   const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
+  const [canTax, setCanTax] = useState(false);
   const [tick, setTick] = useState(0);
   const [edit, setEdit] = useState<Edit>(null);
   const [busy, setBusy] = useState(false);
@@ -94,6 +96,7 @@ export default function BusinessSettingsScreen() {
         .then((r) => {
           if (!live) return;
           setProfile(r.profile);
+          setCanTax(!!r.can?.editTax);
           setState("ok");
         })
         .catch((e) => live && setState((cur) => (cur === "ok" ? cur : isDenied(e) ? "denied" : "error")));
@@ -184,6 +187,7 @@ export default function BusinessSettingsScreen() {
     try {
       const r = await patchBusiness(tenantId, body);
       setProfile(r.profile);
+      setCanTax(!!r.can?.editTax);
       setEdit(null);
       setNote({ text: t("bizset.saved"), warn: false });
       if (body.name !== undefined || body.businessType !== undefined) void refreshMe(); // ชื่อ/ประเภทในรายชื่อกิจการ + แถบบน
@@ -312,9 +316,9 @@ export default function BusinessSettingsScreen() {
               testID="biz-set-row-docs"
               icon="map-pin"
               title={t("bizset.row.docs")}
-              sub={docs ? t("bizset.row.docsSub") : t("bizset.docs.noBook")}
+              sub={!docs ? t("bizset.docs.noBook") : canTax ? t("bizset.row.docsSub") : t("bizset.docs.noPerm")}
               value={docs?.taxId ? t("bizset.docs.taxSet") : undefined}
-              onPress={docs ? () => open("docs") : undefined}
+              onPress={docs && canTax ? () => open("docs") : undefined}
             />
             <SettingRow
               testID="biz-set-row-hours"

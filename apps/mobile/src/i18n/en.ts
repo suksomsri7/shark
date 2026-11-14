@@ -1146,6 +1146,7 @@ const en: Record<I18nKey, string> = {
   "bizset.nameOwnerOnly": "Only the owner can rename the business",
   "bizset.nameRule": "Business name must be {a}–{b} characters",
   "bizset.docs.noBook": "Accounting isn't enabled — this info lives in the accounting system",
+  "bizset.docs.noPerm": "Printed on receipts/tax invoices · only people with accounting-settings permission can edit (ask the owner)",
   "bizset.docs.taxSet": "Set",
   "bizset.docs.where": "Same details printed on documents of the \"{book}\" book",
   "bizset.docs.address": "Address",

@@ -1333,7 +1333,8 @@ export type BusinessProfile = {
   docs: { systemId: string; bookName: string; bookCount: number; orgName: string; address: string | null; phone: string | null; taxId: string | null; branchCode: string; branchName: string | null } | null;
   hours: { available: boolean; tz: string | null; days: BusinessDay[] };
 };
-export type BusinessProfileRes = { profile: BusinessProfile; role: string };
+/** can: สิทธิ์ของผู้เรียก (เซิร์ฟเวอร์ตรวจซ้ำตอน PATCH) · editTax = `account.settings.manage` แบบเว็บ · รุ่นเก่าไม่ส่ง = ถือว่าไม่ได้ */
+export type BusinessProfileRes = { profile: BusinessProfile; role: string; can?: { editName: boolean; editTax: boolean } };
 export type BusinessPatch = Partial<{
   name: string;
   businessType: string | null;

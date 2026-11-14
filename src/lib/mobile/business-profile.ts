@@ -10,6 +10,8 @@
 //   เวลาทำการ    = ChatSetting.businessHours ของระบบแชทหลัก (ตัวที่ "ตอบลูกค้านอกเวลา" ใช้ตัดสิน) ผ่าน `validateBusinessHours`/`setBusinessHours` เดิม
 //       ร้านไม่มีระบบแชท = แก้ไม่ได้ (hours.available: false) · ส่ง days: [] = ล้างเวลาทำการ (null · ลูกค้าไม่เห็นบรรทัดเวลา)
 // สิทธิ์: ด่านของ route = OWNER/MANAGER ของกิจการนั้น (อื่น ๆ 403) · ชื่อกิจการ = OWNER เท่านั้น (กติกาเดิมของเว็บ)
+//   ช่องบนเอกสาร (ที่อยู่/เบอร์/เลขภาษี/สาขา) = สิทธิ์ `account.settings.manage` ตัวเดียวกับหน้า "ข้อมูลกิจการ" ของเว็บ
+//   (saveSettingsAction · REST settings.update) ผ่าน `accountCanMember` (ตาราง IMPLIES เดียวกัน) — ไม่ผ่าน = 403 · GET ส่ง `can.editTax`
 // เลขผู้เสียภาษี: ตัวเลข 13 หลัก + หลักตรวจ mod-11 (isValidThaiTaxIdChecksum ตัวเดียวกับใบกำกับ POS) · สาขา 5 หลัก (00000 = สำนักงานใหญ่)
 // ห้าม import next/* (ถูกเรียกจาก route + ข้อสอบนอก Next context)
 import { prisma } from "@/lib/core/db";
@@ -19,6 +21,8 @@ import { getSettings, saveSettings, type AccountSettingsView } from "@/lib/modul
 import { setBusinessHours } from "@/lib/modules/chat/service";
 import { readBusinessHours, validateBusinessHours, type BusinessDay } from "@/lib/modules/chat/business-hours";
 import { isValidThaiTaxIdChecksum } from "@/lib/modules/pos/tax-invoice-shared";
+import { accountCanMember } from "@/lib/modules/account/access";
+import type { MembershipCtx } from "@/lib/core/rbac";
 import { TENANT_TYPES, type TenantType } from "@/lib/mobile/tenants";
 
 export const BIZ_NAME_MIN = 2;
@@ -35,6 +39,13 @@ export const BIZ_DENY = "ตั้งค่ากิจการได้เฉ�
 export class BusinessProfileError extends Error {}
 /** ทำได้เฉพาะเจ้าของ (route ตอบ 403) */
 export class BusinessProfileForbidden extends Error {}
+
+/** สิทธิ์ที่หน้าตั้งค่ากิจการใช้เปิด/ปิดช่องแก้ (เซิร์ฟเวอร์ตรวจซ้ำตอน PATCH) */
+export type BusinessProfileCan = { editName: boolean; editTax: boolean };
+export const ACCOUNT_SETTINGS_ACTION = "account.settings.manage";
+export function businessCan(m: MembershipCtx): BusinessProfileCan {
+  return { editName: m.role === "OWNER", editTax: accountCanMember(m, ACCOUNT_SETTINGS_ACTION) };
+}
 
 export type BusinessProfile = {
   tenantId: string;
@@ -123,11 +134,12 @@ export async function getBusinessProfile(tenantId: string): Promise<BusinessProf
  * แก้ข้อมูลกิจการ — ส่งเฉพาะช่องที่แก้ (undefined = ไม่แตะ) · คืนข้อมูลหลังบันทึก
  *   `role` จากด่าน (Membership สด) · ชื่อ = OWNER เท่านั้น · ตรวจทุกช่องก่อนเขียนช่องแรก (ผิดช่องเดียว = ไม่มีอะไรเปลี่ยน)
  */
-export async function updateBusinessProfile(tenantId: string, actor: { userId: string; role: string }, patch: BusinessProfilePatch): Promise<BusinessProfile> {
+export async function updateBusinessProfile(tenantId: string, actor: { userId: string; m: MembershipCtx }, patch: BusinessProfilePatch): Promise<BusinessProfile> {
+  const can = businessCan(actor.m);
   // ── ตรวจทั้งหมดก่อน ──
   let name: string | undefined;
   if (patch.name !== undefined) {
-    if (actor.role !== "OWNER") throw new BusinessProfileForbidden("เปลี่ยนชื่อกิจการได้เฉพาะเจ้าของกิจการ");
+    if (!can.editName) throw new BusinessProfileForbidden("เปลี่ยนชื่อกิจการได้เฉพาะเจ้าของกิจการ");
     name = String(patch.name ?? "").trim();
     const n = Array.from(name).length;
     if (n < BIZ_NAME_MIN || n > BIZ_NAME_MAX) throw new BusinessProfileError(`ชื่อกิจการต้องยาว ${BIZ_NAME_MIN}–${BIZ_NAME_MAX} ตัวอักษร`);
@@ -140,6 +152,7 @@ export async function updateBusinessProfile(tenantId: string, actor: { userId: s
 
   const docKeys = ["address", "phone", "taxId", "branchCode", "branchName"] as const;
   const docsTouched = docKeys.some((k) => patch[k] !== undefined);
+  if (docsTouched && !can.editTax) throw new BusinessProfileForbidden("แก้ที่อยู่/เบอร์/เลขผู้เสียภาษีได้เฉพาะผู้ที่มีสิทธิ์ตั้งค่าระบบบัญชี — ขอสิทธิ์จากเจ้าของกิจการ");
   const docPatch: Partial<AccountSettingsView> = {};
   if (patch.address !== undefined) docPatch.address = clean(patch.address, ADDRESS_MAX);
   if (patch.phone !== undefined) {
