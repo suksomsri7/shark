@@ -43,6 +43,7 @@ import { contactWhere, crmApi } from "@/lib/modules/crm";
 import { visibleCustomerIds } from "@/lib/modules/member/service";
 import { toMemberActor } from "@/lib/modules/member/access";
 import { listPending as approvalListPending } from "@/lib/modules/approval/service";
+import { entityLabel as approvalEntityLabel } from "@/lib/modules/approval/labels"; // HR LEAVE-3 ▸ W10: ป้ายชนิดคำขอแบบหน้าอนุมัติ ◂
 import { actorBranches, membershipCan } from "./tool-access";
 import { levelVerdict, moduleOff, skippedSectionNote, type AccessMap } from "./secretary/access-rules";
 
@@ -1798,7 +1799,9 @@ const approvalDecide: AiTool = {
     if (requestId) {
       const cur = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findFirst({ where: { id: requestId }, select: { currentStepOrder: true } });
       if (cur) payload.expectedStep = cur.currentStepOrder;
-    } else {
+    }
+    let resolved = ""; // HR LEAVE-3 ▸ W10 ◂
+    if (!requestId) {
       // HR LEAVE-3 ▸ W2 (r3): ค้นจากคำค้นตอนเสนอ (ชุดเดียวกับหน้าอนุมัติ = listPending ของผู้เสนอ) — เจอใบเดียว ⇒ จด requestId + ขั้นที่เห็นไว้ในข้อเสนอ ·
       //   กดยืนยันหลังมีคนเลื่อนขั้นไปแล้ว = ไม่ตัดสินอะไร · ไม่เจอ/หลายใบ/ไม่รู้ตัวผู้เสนอ = เหมือนเดิม (ค้นตอนยืนยัน) ◂
       const am = aiActorMembership(ctx.actor), uid = aiActorUserId(ctx.actor);
@@ -1806,12 +1809,13 @@ const approvalDecide: AiTool = {
       if (hit.length === 1) {
         payload.requestId = hit[0].id;
         payload.expectedStep = hit[0].currentStepOrder;
+        resolved = `${approvalEntityLabel(hit[0].entityType)} รหัส ${hit[0].entityId} (ขั้นที่ ${hit[0].currentStepOrder})`; // HR LEAVE-3 ▸ W10: ข้อเสนอเอ่ยชื่อคำขอที่ค้นเจอ (ชนิด + รหัสแบบหน้าอนุมัติ) ไม่ใช่คำค้น ◂
       }
     }
     const note = String(a.note ?? "").trim();
     if (note) payload.note = note;
     const verb = decision === "APPROVED" ? "อนุมัติ" : "ปฏิเสธ";
-    const which = requestId ? `รหัส ${requestId}` : `"${requestSummary}"`;
+    const which = requestId ? `รหัส ${requestId}` : resolved || `"${requestSummary}"`; // HR LEAVE-3 ▸ W10 ◂
     return propose(ctx, "approval_decide", `${verb}คำขอ ${which}`, payload);
   },
 };

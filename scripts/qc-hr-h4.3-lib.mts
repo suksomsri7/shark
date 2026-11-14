@@ -227,6 +227,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const l3InDecide = (f: string, h: { added: string[]; removed: string[] }) => { // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
       const regs = L3_REGIONS[f];
       if (!IN_BASE || !regs || !h.added.some((l) => /HR LEAVE-3/.test(l))) return false;
+      if (f === F.tools && h.removed.length === 0 && h.added.length === 1 && h.added[0]!.startsWith('import { entityLabel as approvalEntityLabel } from "@/lib/modules/approval/labels"; // HR LEAVE-3 ▸ W10')) return true; // ORACLE-EDIT (HR LEAVE-3 · controller W10): exactly this one import line in tools.ts (label of the resolved request in the approval_decide proposal text) ◂
       const now = regs.map(([a, b]) => regionL3(rd(f), a, b)), was = regs.map(([a, b]) => regionL3(atBaseL3(f), a, b));
       return h.added.every((l) => now.some((r) => r.includes(l))) && h.removed.every((l) => was.some((r) => r.includes(l)));
     }; // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
