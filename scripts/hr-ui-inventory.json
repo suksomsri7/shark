@@ -13564,6 +13564,31 @@
    "wo": "H3.4-YTD",
    "oracle": "qc-hr-h3.4-ytd",
    "note": "ไปการ์ดยอดยกมาต้นปี (เตือนเท่านั้น ไม่บล็อกการอนุมัติ)"
+  },
+  {
+   "page": "/app/sys/[id]/payroll/[runId]/slip/[employeeId]",
+   "testid": "hr-slip-opening-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "ปีภาษีที่มียอดยกมาต้นปี (ก่อนใช้ระบบ) — ผู้ดูเงินเดือนของพนักงานคนนั้น (ประวัติรายปี) และพนักงานเอง (สลิปของฉัน /app/me/hr/pay)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "บรรทัดยอดยกมาครั้งเดียวต่อปี (รวมใน income/tax/sso ของปีแล้ว = 50 ทวิ) — * = taxYear"
   }
  ]
 }

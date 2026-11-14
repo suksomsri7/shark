@@ -1822,7 +1822,8 @@
       "mon10": "Oct",
       "mon11": "Nov",
       "mon12": "Dec",
-      "rowProblem": "This period's slip data has a problem"
+      "rowProblem": "This period's slip data has a problem",
+      "yearOpening": "Opening year-to-date (before the system · paid up to {asOf} · {months} months): income ฿{income} · tax ฿{tax} · social security ฿{sso} — included in the totals above"
     },
     "slipLine": {
       "BASE": "Salary",
