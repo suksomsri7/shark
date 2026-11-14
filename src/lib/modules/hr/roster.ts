@@ -430,7 +430,8 @@ async function shiftCheck(ctx: Ctx, shiftId: unknown, unitOfTheDay: string | nul
 
 // HR H4.3 ▸ พารามิเตอร์ที่ 4 (มติ Q9 — ใช้ด่านเดิมทุกข้อ): `{ source: "AI", tx }` = ร่างจากข้อเสนอของผู้ช่วยที่คนกดยืนยันแล้ว
 //   ทุกคำสั่งใช้ client ของ tx ผู้เรียก (ผู้เรียกล็อกกุญแจของทุกช่องแล้ว — ล็อกซ้ำใน tx เดียวกันได้) · แถว source AI · ยังไม่ประกาศ ·
-//   ไม่เขียน audit ของตัวเอง (ผู้เรียกเขียน hr.ai.proposal.confirm หลัง commit — ไม่มี connection ที่สองใต้ล็อก) · ไม่ส่ง = ทางเดิมทุกไบต์ ◂
+//   audit hr.roster.entry.add ต่อแถวเขียนใน tx เดียวกันด้วย client ของ tx (via AI + id ข้อเสนอ — HR H4.3 fix round มติ 3) · ผู้เรียกเขียน hr.ai.proposal.confirm หลัง commit ·
+//   ไม่ส่ง = ทางเดิมทุกไบต์ ◂
 export type AddEntryOpts = { source: "AI"; tx: Tx; proposalId: string }; // HR H4.3 ◂ · HR H4.3 fix round ▸ proposalId ลง audit ต่อแถว ◂
 export async function addEntry(
   ctx: Ctx,
@@ -490,7 +491,7 @@ export async function addEntry(
       }
       return row.id;
     };
-    if (txDb) return { ok: true, id: await write(txDb) }; // HR H4.3 ▸ audit โดยผู้เรียกหลัง commit ◂
+    if (txDb) return { ok: true, id: await write(txDb) }; // HR H4.3 ▸ ทาง AI: audit ต่อแถวเขียนแล้วใน write() (client ของ tx) ◂
     const id = await tenantDb(ctx).$transaction(async (t) => write(t as unknown as Tx)); // HR H4.3 ▸ ทางเดิม ◂
     await audit(ctx, viewer, "hr.roster.entry.add", "HrRosterEntry", id, { entryId: id, employeeId, date: day, shiftId: shift.id, unitId, wasPublished: false });
     return { ok: true, id };

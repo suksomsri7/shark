@@ -471,6 +471,9 @@ export async function hrAiPreClaim(m: MembershipCtx, tenantId: string, proposalI
 }
 
 class HrAiStale extends Error {}
+/** HR H4.3 fix round r2 ▸ ข้อเสนอที่ล้มเพราะข้อมูลเปลี่ยน = audit 1 แถว (คนกด · id ข้อเสนอ · รหัสเหตุผลล้วน ไม่มีชื่อ) นอกจากแถว FAILED ◂ */
+const staleAudit = (c: Confirm, proposalId: string, kind: HrAiKind, code: string) =>
+  writeAudit({ tenantId: c.tenantId, actorType: "USER", actorId: c.v.userId, action: "hr.ai.proposal.stale", targetType: "AiProposal", targetId: proposalId, after: { kind, code } });
 
 /** ลงมือข้อเสนอ (หลังจอง PENDING→EXECUTED ใน executeProposal) — โยน = FAILED + ข้อความไทย (ไม่มีแถวใดถูกเขียน) */
 export async function dispatchHrAiKind(m: MembershipCtx, tenantId: string, proposalId: string, kind: string, payload: unknown, userId: string | null): Promise<string> {
@@ -497,13 +500,16 @@ async function confirmDraft(c: Confirm, proposalId: string): Promise<string> {
       const out: string[] = [];
       for (const e of entries) {
         const r = await addEntry(c.ctx, c.v, e, { source: "AI", tx, proposalId });
-        if (!r.ok) throw new HrAiStale(T.stale); // HR H4.3 fix round ▸ มติ 2: ลาออก/เลยวัน/กะถูกปิด/ช่องไม่ว่าง = stale (ทั้งชุดย้อน) ◂
+        if (!r.ok) throw new HrAiStale(T.stale, { cause: "ENTRY" }); // HR H4.3 fix round ▸ มติ 2: ลาออก/เลยวัน/กะถูกปิด/ช่องไม่ว่าง = stale (ทั้งชุดย้อน) ◂
         out.push(r.id);
       }
       return out;
     }, TX_OPTS);
   } catch (e) {
-    if (e instanceof HrAiStale) throw new Error(T.stale);
+    if (e instanceof HrAiStale) {
+      await staleAudit(c, proposalId, "hr_draft_roster", e.cause === "ENTRY" ? "ENTRY" : "CHANGED");
+      throw new Error(T.stale);
+    }
     throw e instanceof Error && e.message ? e : new Error(T.no);
   }
   await writeAudit({ tenantId: c.tenantId, actorType: "USER", actorId: c.v.userId, action: "hr.ai.proposal.confirm", targetType: "AiProposal", targetId: proposalId, after: { kind: "hr_draft_roster", via: "AI", systemId: c.ctx.systemId, count: ids.length, entryIds: ids } });
@@ -514,10 +520,21 @@ async function confirmPattern(c: Confirm, proposalId: string): Promise<string> {
   if (!canSeeLifecycle(c.v) || !isHrId(c.p.employeeId) || !isMonthArg(c.p.month)) throw new Error(T.no);
   const f = await factsOf(c.ctx, c.v, c.p.employeeId, c.p.month);
   if (!f) throw new Error(T.no);
-  if (factsFingerprint(f.facts) !== c.p.basis) throw new Error(T.stale);
-  if (await patternNoted(c.ctx, c.v, c.p.employeeId, c.p.month, proposalId)) throw new Error(T.alreadyNoted); // HR H4.3 fix round ▸ มติ 4 ◂
+  if (factsFingerprint(f.facts) !== c.p.basis) {
+    await staleAudit(c, proposalId, "hr_flag_pattern", "CHANGED");
+    throw new Error(T.stale);
+  }
   const t = patternNote(c.p.month, f.facts);
-  const r = await addReviewNote(c.ctx, c.v, { employeeId: c.p.employeeId, kind: "NOTE", title: t.title, body: t.body, visibleToEmployee: false });
+  const employeeId = c.p.employeeId;
+  const month = c.p.month;
+  // HR H4.3 fix round ▸ (ติดตาม) กันบันทึกซ้ำเมื่อกดยืนยันพร้อมกัน: ล็อก advisory แบบ xact ใน tx ชั้นนอก คีย์ (ระบบ HR, พนักงาน, เดือน) ถือไว้ตลอด
+  //   การตรวจซ้ำ + addReviewNote · addReviewNote (lifecycle.ts แช่แข็ง) รับ client ของ tx ไม่ได้ ⇒ เขียนด้วย connection ของมันเองใต้ล็อกนี้
+  //   (commit ก่อนปล่อยล็อก — ผู้รอคนถัดไปเห็นบันทึกแล้วได้ alreadyNoted) · รอได้ไม่เกิน TX_OPTS ◂
+  const r = await tenantDb(c.ctx).$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:ai:pattern:${c.ctx.systemId}:${employeeId}:${month}`}, 0))`;
+    if (await patternNoted(c.ctx, c.v, employeeId, month, proposalId)) throw new Error(T.alreadyNoted); // HR H4.3 fix round ▸ มติ 4 ◂
+    return addReviewNote(c.ctx, c.v, { employeeId, kind: "NOTE", title: t.title, body: t.body, visibleToEmployee: false });
+  }, TX_OPTS);
   if (!r.ok) throw new Error(r.reason);
   await writeAudit({ tenantId: c.tenantId, actorType: "USER", actorId: c.v.userId, action: "hr.ai.proposal.confirm", targetType: "AiProposal", targetId: proposalId, after: { kind: "hr_flag_pattern", via: "AI", systemId: c.ctx.systemId, count: 1, noteId: r.id } });
   return "บันทึกข้อสังเกต (ส่วนตัว ลูกจ้างไม่เห็น) แล้ว — ดูได้ที่หน้าพนักงานคนนั้น";
