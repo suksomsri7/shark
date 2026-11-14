@@ -13,7 +13,7 @@ import {
   DOC_LABEL,
 
 } from "./service";
-import { recordVendorPayment, voidVendorPayment } from "./expense";
+import { EXP_DOC_LABEL, recordVendorPayment, voidVendorPayment } from "./expense";
 import { listFinanceAccounts } from "./finance";
 import { attachReceiptPaymentsWithChequesInOneTx, chequeDraftProblem, recordPaymentWithChequeInOneTx } from "./cheque";
 import { issueWhtCreditCertStandalone } from "./wht";
@@ -187,7 +187,8 @@ export async function paymentPanelData(
     docId: doc.id,
     docType: doc.docType,
     docNo: doc.docNo,
-    docLabel: DOC_LABEL[doc.docType] ?? doc.docType,
+    // ACC T3 (ดูจอ) ▸ เอกสารฝั่งจ่ายไม่มีใน DOC_LABEL (ฝั่งขาย) — เดิมขึ้นรหัสดิบ "ยอดEXPENSE" ◂
+    docLabel: DOC_LABEL[doc.docType] ?? EXP_DOC_LABEL[doc.docType] ?? doc.docType,
     direction: target.direction as "IN" | "OUT",
     contactName: doc.contactName ?? "—",
     grandTotal: doc.grandTotal,

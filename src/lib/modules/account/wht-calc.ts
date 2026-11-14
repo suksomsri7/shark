@@ -71,7 +71,8 @@ export function whtParentOf(code: string | null | undefined): WhtParent | null {
 }
 export const whtCodeLabel = (code: string): string => {
   const c = whtIncomeCodeOf(code);
-  return c ? `${c.labelTh} (${c.clauseTh})` : code;
+  // ป้ายสั้นพอสำหรับ dropdown: "ค่าโฆษณา · ข้อ 10" / "ค่าบริการ · ม.40(8)" (ข้อของ ท.ป.4/2528 ย่อ) ◂
+  return c ? `${c.labelTh} · ${c.clauseTh.replace(/^ท\.ป\.4\/2528 /, "").split(" · ")[0]}` : code;
 };
 
 // ═══════════════ ผู้รับ ═══════════════

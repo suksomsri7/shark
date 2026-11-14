@@ -22,6 +22,12 @@ export function SlideOver({
   testId?: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // ACC T3 (ดูจอ) ▸ ผู้เรียกส่ง onClose แบบ inline (ฟังก์ชันใหม่ทุกครั้งที่เรนเดอร์) ⇒ เดิม effect วิ่งซ้ำทุกการพิมพ์แล้ว el.focus() แย่งโฟกัส
+  //   จากช่องกรอก (พิมพ์ได้ทีละตัวอักษร) — เก็บ onClose ใน ref แล้วให้ effect ขึ้นกับ open อย่างเดียว ◂
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -29,7 +35,7 @@ export function SlideOver({
     el?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !el) return;
@@ -49,7 +55,7 @@ export function SlideOver({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

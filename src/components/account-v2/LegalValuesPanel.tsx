@@ -370,6 +370,8 @@ function WhtSettingsCard({ systemId, view, save }: { systemId: string; view: Boo
   );
 }
 
+const leftTxt = (n: number) => (n > 0 ? `อีก ${n} วัน` : n === 0 ? "วันนี้" : `เลยกำหนดมาแล้ว ${-n} วัน`);
+
 /** ACC T3.7 ▸ กำหนดยื่นที่กำลังจะถึง (จากตาราง) ◂ */
 function DeadlinesCard({ deadlines }: { deadlines: UpcomingDeadline[] }) {
   return (
@@ -390,8 +392,8 @@ function DeadlinesCard({ deadlines }: { deadlines: UpcomingDeadline[] }) {
               <tr key={d.form} className="border-t" data-testid={`deadline-${d.form}`}>
                 <td className="py-1.5 pr-3 font-medium">{d.formLabel}</td>
                 <td className="py-1.5 pr-3">{d.taxMonth}</td>
-                <td className="py-1.5 pr-3">{d.paper ? `${formatDateTh(d.paper.date)} (อีก ${d.paper.daysLeft} วัน)` : "-"}</td>
-                <td className="py-1.5 pr-3">{d.online ? `${formatDateTh(d.online.date)} (อีก ${d.online.daysLeft} วัน)` : "ไม่มีช่วงขยายที่มีผล"}</td>
+                <td className="py-1.5 pr-3">{d.paper ? `${formatDateTh(d.paper.date)} (${leftTxt(d.paper.daysLeft)})` : "-"}</td>
+                <td className="py-1.5 pr-3">{d.online ? `${formatDateTh(d.online.date)} (${leftTxt(d.online.daysLeft)})` : "ไม่มีช่วงขยายที่มีผล"}</td>
               </tr>
             ))}
           </tbody>

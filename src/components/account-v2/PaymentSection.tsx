@@ -391,7 +391,7 @@ export function PaymentSection({
                   </span>
                   {b.whtOn && (
                     <>
-                      <Field label="ประเภทเงินได้ / อัตรา" className="w-[220px]">
+                      <Field label="ประเภทเงินได้ / อัตรา" className="w-full sm:w-[260px]">
                         <select
                           className="input"
                           value={b.whtIncomeType}
@@ -513,7 +513,7 @@ export function PaymentSection({
                 )}
 
                 <div className="flex items-center justify-end gap-2 text-sm">
-                  <span className="text-[color:var(--color-muted)]">{t.boxTotal}</span>
+                  <span className="text-[color:var(--color-muted)]">{b.whtOn && (b.whtCondition ?? "WITHHOLD") !== "WITHHOLD" ? "รวมครั้งนี้ที่ตัดหนี้ (ภาษีที่ร้านออกแทนจ่ายเพิ่ม ไม่ตัดหนี้)" : t.boxTotal}</span>
                   <b className="tabular-nums" data-testid={`pay-total-${i + 1}`}>
                     <MoneyText satang={boxTieOff(b)} decimals />
                   </b>
