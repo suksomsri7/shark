@@ -6,7 +6,8 @@
 //   ประมาณค่าแรง = ค่าจ้างธรรมดา + ค่าทำงานวันหยุด + ปสส. ส่วนนายจ้าง (D4–D6) · ไม่รวม OT/ค่าคอมฯ/โบนัส/ค่าเผื่อ/ลาไม่รับค่าจ้าง/รายการหัก
 //   เดือน: มีรอบเงินเดือนที่ปิดงานแล้ว (APPROVED/PAID · รุ่น 2 = finalized) ⇒ gross + ปสส. นายจ้างของรายการ แบ่งตามนาทีทำงานต่อสาขา (D9) · ไม่มี ⇒ ผลรวมรายวัน
 //   ไม่มีเงินรายคน (ไม่มี employeeId/ชื่อข้างตัวเลข) · อ่านไม่ลงประวัติ · ค่าตั้ง hrLabor ผ่าน lockHrSettings + writeHrSettingsKeys เท่านั้น (HR-SET-1)
-//   ฐานข้อมูล = tenantDb เท่านั้น (โหลดแบบ lazy — ไฟล์นี้ไม่มี import หัวไฟล์ของ core/db · ข้อสอบ S1.5) ◂
+//   ฐานข้อมูล = tenantDb เท่านั้น (ไม่มี prisma ดิบ · ข้อสอบ S1.5) ◂
+import { tenantDb } from "@/lib/core/db";
 import type { MembershipCtx } from "@/lib/core/rbac";
 import { canViewPayroll } from "@/lib/core/rbac";
 import { writeAudit } from "@/lib/core/audit";
@@ -96,8 +97,8 @@ const dayOf = (d: Date | null | undefined) => (d instanceof Date && Number.isFin
 const d0 = (day: string) => new Date(`${day}T00:00:00.000Z`);
 const label = (h: number) => String(((h % 24) + 24) % 24).padStart(2, "0");
 const nowOf = (o?: LaborOpts) => (o?.now instanceof Date && Number.isFinite(o.now.getTime()) ? o.now : new Date());
-/** ฐานข้อมูลของร้าน — tenantDb (เติม tenantId/systemId เอง) · lazy import */
-const dbOf = async (c: { tenantId: string; systemId?: string }) => (await import("@/lib/core/db")).tenantDb(c);
+/** ฐานข้อมูลของร้าน — tenantDb (เติม tenantId/systemId เอง) */
+const dbOf = async (c: { tenantId: string; systemId?: string }) => tenantDb(c);
 
 // ═════════════ ด่าน (จุดเดียว) ═════════════
 type Gate = { settings: Record<string, unknown>; m: MembershipCtx; userId: string; scope: HrScope; money: boolean; roster: boolean; manage: boolean; limited: boolean };

@@ -28,14 +28,14 @@
 | `scripts/visual-hr.mts` | hunk | `"4.2"`: labor-card · labor-roster · labor-settings |
 
 ## 2. Decisions (brief/oracle readings)
-1. **D10 day sales:** past = actual; today = whole-day forecast + `soFarSatang` (hours ≤ now hour); future = forecast **unless POS already holds sales for that day** (then actual). Needed by S4.8 (U1 01-31/02-01 at now 01-17 expect actual 70,000/100,000) while S4.5 keeps "today = forecast 400,000". Month sales = actual only (S4.11 1,870,000 includes 01-31).
+1. **Reading of D10 (accepted by controller):** past = actual; today = whole-day forecast + `soFarSatang` (hours ≤ now hour); future = forecast **unless POS already holds sales for that day** (then actual). Needed by S4.8 (U1 01-31/02-01 at now 01-17 expect actual 70,000/100,000) while S4.5 keeps "today = forecast 400,000". Month sales = actual only (S4.11 1,870,000 includes 01-31).
 2. Day hours list: cost keys + sales/forecast keys of the business date; keys of another business date (overnight, cutoff 0) shown as hour+24 (oracle §4.7 left to builder).
 3. Hour split per D8 = unit-day cost over combined span minutes of that unit's entries; shift cost = unit-day cost split by paid minutes per entry (§4.2); wage+premium and SSO split separately with the same weights (wage+sso = cost per unit).
 4. Holiday premium per entry with that entry's unit holiday row (unit row beats shop-wide row); OT law via `otLawOf` over `loadLawView` rows (law.ts stays the only table reader); SSO row via `pickLawRow` — missing ⇒ 0 + `flags.lawMissing`.
 5. P2 small group: cell hidden when viewer is non-OWNER branch-limited payroll viewer, contributors 1–2 and any contributor's home unit is outside scope (null home counts as outside). Hidden cells = `null` (no rounded hint), `suppressed` counts hidden cells, `flags.smallGroup`.
 6. Non-money viewers: day `money: null`; week footer `{paidMinutes}` only (no `*Satang/*Tenths` keys); month = NO.
 7. Settings write needs canManageHrSettings **and** all-branch scope (shop-wide key, same as clock policy). Audit `hr.labor.settings {keys}` after the tx (writeAudit pattern of saveClockPolicy).
-8. `labor.ts` gets `tenantDb` by lazy `await import("@/lib/core/db")` because oracle S1.5 `noPrisma` rejects any value import from `/core/db` (incl. tenantDb). No raw prisma anywhere.
+8. `labor.ts` imports `tenantDb` statically from `@/lib/core/db` (ruling (e): the earlier lazy `await import` was a dodge of S1.5 and was replaced; S1.5 now allows exactly the static tenantDb import). No raw prisma.
 9. Week `scheduledAtPeak` is computed from the forecast peak even when splh is unset; `neededAtPeak` null then.
 
 ## 3. COMMON §F self-check
