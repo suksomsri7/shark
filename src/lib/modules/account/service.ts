@@ -101,6 +101,7 @@ import {
   postDormDepositReceive,
   postDormDepositSettle,
   type DormMoneyChannel,
+  reverseBadDebtVat, // ACC T5.7 ◂
 } from "./gl";
 // WO 1.4: เอกสารภาษีถูกหัก ณ ที่จ่าย ฝั่งขาย (WTI) — ออกอัตโนมัติตอนรับชำระที่ลูกค้าหักภาษี
 import { issueWhtCreditCert, pndFormOfCert } from "./wht";
@@ -192,6 +193,7 @@ import {
   type EntityKind,
   loadBookLegalForRequest,
 } from "./legal-values";
+import { calendarDueWarning, taxCalendarFrom } from "./tax-calendar"; // ACC T5.1 (เลน 2) ◂
 
 // Account (บัญชี P1 — ฝั่งรายรับ) service. scope = tenantId + systemId (feature)
 // เอกสารเงิน immutable: DRAFT แก้ได้ · พ้น DRAFT แก้ไม่ได้ → void/reissue
@@ -4217,6 +4219,8 @@ export async function unwindPaymentInTx(
   });
   // ③ JV ของงวด
   if (mode === "VOID") await reverseFor(ctx, "AccountDocumentPayment", paymentId, reason, tx);
+  // ACC T5.7 (เลน 2) ▸ ตัดหนี้สูญ: JV ส่วน VAT บริการที่พัก (อ้างตัวใบ) กลับด้วย ◂
+  if (mode === "VOID" && pay.channel === "BAD_DEBT") await reverseBadDebtVat(ctx, doc.id, paymentId, reason, tx);
 
   // ④ ใบมัดจำ: JV อยู่ที่ "ตัวเอกสาร" (Dr เงิน/Cr 2110/Cr 2200 · Dr 1130/1150/Cr เงิน) ตอนรับ/จ่ายครบ — ต้องกลับรายการเอกสารด้วย
   //    ไม่งั้นเงินมัดจำ + ภาษีค้างอยู่ในบัญชีตลอดไป (WO 1.4 ปิดรูรั่ว 1.2 §8.1 · round 10 R9-2 ทางเช็คเด้ง)
@@ -8080,7 +8084,8 @@ export type ReminderKind =
   | "PTX_AWAITING"
   | "CHEQUE_DUE"
   | "PP30_DUE"
-  | "PND_DUE";
+  | "PND_DUE"
+  | "TAX_CALENDAR_DUE";
 
 export const REMINDER_TITLE: Record<ReminderKind, string> = {
   DUE_TOMORROW: "ครบกำหนดพรุ่งนี้",
@@ -8089,6 +8094,7 @@ export const REMINDER_TITLE: Record<ReminderKind, string> = {
   CHEQUE_DUE: "เช็คถึงกำหนด",
   PP30_DUE: "ภ.พ.30 ใกล้ครบกำหนดยื่น",
   PND_DUE: "ภ.ง.ด. ใกล้ครบกำหนดยื่น",
+  TAX_CALENDAR_DUE: "แบบภาษีรายปีใกล้ครบกำหนด",
 };
 
 export type ReminderSummary = Record<ReminderKind, number> & { systems: number };
@@ -8101,6 +8107,7 @@ const EMPTY_REMINDER_SUMMARY = (): ReminderSummary => ({
   CHEQUE_DUE: 0,
   PP30_DUE: 0,
   PND_DUE: 0,
+  TAX_CALENDAR_DUE: 0,
 });
 
 /** เอกสารที่ "ครบกำหนดแล้วต้องจ่าย/ต้องเก็บ" — ฝั่งขายเก็บเงิน · ฝั่งซื้อจ่ายเงิน */
@@ -8213,8 +8220,10 @@ export async function runAccountReminders(
       summary.CHEQUE_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.CHEQUE_DUE, body, now);
     }
 
+    // ACC T5.1 (เลน 2) ▸ สถานะ VAT + เดือนเริ่มรอบบัญชีของสมุด (ภ.พ.30 เฉพาะสมุดที่จด VAT · แบบรายปีตามรอบ) ◂
+    const bookRow = await prisma.accountSettings.findFirst({ where: { tenantId, systemId }, select: { vatRegistered: true, fiscalYearStartMonth: true } });
     // (5) ภ.พ.30 — เตือนล่วงหน้า PP30_LEAD_DAYS วันก่อนกำหนดยื่นแบบกระดาษของงวดเดือนก่อน (วันจากตารางค่ากฎหมาย)
-    {
+    if (bookRow?.vatRegistered !== false) {
       const py = today.getUTCMonth() === 0 ? today.getUTCFullYear() - 1 : today.getUTCFullYear();
       const pm = today.getUTCMonth() === 0 ? 12 : today.getUTCMonth();
       const periodKey = `${py}-${String(pm).padStart(2, "0")}`;
@@ -8249,6 +8258,17 @@ export async function runAccountReminders(
             summary.PND_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.PND_DUE, `${w.messageTh} (เหลือ ${PP30_LEAD_DAYS} วัน)`, now);
           }
         }
+      }
+    }
+
+    // (7) ACC T5.1 (เลน 2) ▸ แบบรายปี (ภ.ง.ด.50/51 · 90/94 · ยื่นงบห้าง) ตามประเภทผู้ประกอบการ — เตือนวันเดียวเมื่อเหลือ N วันก่อนกำหนดกระดาษ
+    //   (N = กฎ ANNUAL_FILING_REMIND_DAYS ของตาราง · ปฏิทินตัวเดียวกับหน้าจอ/REST — tax-calendar.taxCalendarFrom) ◂
+    {
+      const cal = taxCalendarFrom(await loadBookLegal({ tenantId, systemId }), { today, vatRegistered: bookRow?.vatRegistered ?? true, fiscalStartMonth: bookRow?.fiscalYearStartMonth ?? 1 });
+      for (const i of cal.items) {
+        if (i.cadence !== "ANNUAL" || !i.paper || i.paper.daysLeft !== cal.remindDays) continue;
+        const w = calendarDueWarning(i);
+        if (w) summary.TAX_CALENDAR_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.TAX_CALENDAR_DUE, `${w.messageTh} (เหลือ ${cal.remindDays} วัน)`, now);
       }
     }
   }

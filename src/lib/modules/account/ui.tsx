@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { AccountDocStatus } from "@prisma/client";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { LegalWarnings } from "@/components/account-v2/LegalWarnings"; // ACC T5.3 ◂
+import { vatThreshold } from "./vat-threshold"; // ACC T5.3 ◂
 import { MoneyText } from "@/components/ui/MoneyText";
 import { formatBaht } from "@/lib/ui/money";
 import { formatDateTh } from "@/lib/ui/date";
@@ -78,9 +80,11 @@ export async function AccountContent({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const base = `/app/sys/${systemId}/account`;
-  const [home, ssrCollapsed] = await Promise.all([
+  const [home, ssrCollapsed, vatTh] = await Promise.all([
     loadDashboardHome({ tenantId, systemId }, searchParams, { base }),
     getDashCollapsed(),
+    // ACC T5.3 (เลน 2) ▸ ยอดขายเทียบเกณฑ์จด VAT — แยกจาก dashboardSnapshot (งบคำสั่งของหน้าหลักไม่เปลี่ยน) · พังไม่ล้มหน้าหลัก ◂
+    vatThreshold({ tenantId, systemId }).catch(() => null),
   ]);
 
   const showChecklist = home.params.forceChecklist || !home.checklist.allDone;
@@ -167,6 +171,17 @@ export async function AccountContent({
 
       {/* ── เช็กลิสต์เริ่มต้น 5 ขั้น (§0.3 ข้อ 2) ── */}
       {showChecklist && <DashChecklist checklist={home.checklist} helpHref={`${base}/help`} />}
+
+      {/* ── ACC T5.3 (เลน 2) ▸ ยอดขายใกล้/เกินเกณฑ์จด VAT — แสดงเฉพาะเมื่อมีเรื่องต้องบอก (ไม่บล็อก) ── */}
+      {vatTh && (vatTh.status === "NEAR" || vatTh.status === "EXCEEDED") && (
+        <section className="card flex flex-col gap-2 p-4" data-testid="dash-vat-threshold">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-semibold">ยอดขายเทียบเกณฑ์จดทะเบียน VAT</h2>
+            <Link href={`${base}/tax/calendar`} className="text-sm underline" data-testid="dash-vat-threshold-link">ปฏิทินภาษีของร้าน</Link>
+          </div>
+          <LegalWarnings warnings={vatTh.warnings.filter((w) => w.code === "VAT_REG_THRESHOLD_NEAR" || w.code === "VAT_REG_THRESHOLD_EXCEEDED")} testId="dash-vat-threshold-warnings" compact />
+        </section>
+      )}
 
       {/* ── KPI 4 การ์ด (§4 ข้อ 2) ── */}
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">

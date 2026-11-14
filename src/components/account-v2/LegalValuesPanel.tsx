@@ -406,7 +406,7 @@ function WhtSettingsCard({ systemId, view, save }: { systemId: string; view: Boo
 const leftTxt = (n: number) => (n > 0 ? `อีก ${n} วัน` : n === 0 ? "วันนี้" : `เลยกำหนดมาแล้ว ${-n} วัน`);
 
 /** ACC T3.7 ▸ กำหนดยื่นที่กำลังจะถึง (จากตาราง) ◂ */
-function DeadlinesCard({ deadlines }: { deadlines: UpcomingDeadline[] }) {
+function DeadlinesCard({ deadlines, calendarHref }: { deadlines: UpcomingDeadline[]; calendarHref?: string }) {
   return (
     <section className="card flex flex-col gap-2 p-5" data-testid="upcoming-deadlines">
       <h2 className="text-base font-semibold">กำหนดยื่นที่กำลังจะถึง</h2>
@@ -432,12 +432,21 @@ function DeadlinesCard({ deadlines }: { deadlines: UpcomingDeadline[] }) {
           </tbody>
         </table>
       </div>
-      <p className={helpCls}>วันที่มาจากตารางกำหนดยื่นด้านล่าง (ขยายเวลายื่นทางอินเทอร์เน็ตมีวันสิ้นสุด — หลังจากนั้นเหลือเฉพาะวันยื่นปกติจนกว่าจะเพิ่มแถวใหม่) · ระบบแจ้งเตือนล่วงหน้า 5 วัน</p>
+      <p className={helpCls}>วันที่มาจากตารางกำหนดยื่นด้านล่าง (ขยายเวลายื่นทางอินเทอร์เน็ตมีวันสิ้นสุด — หลังจากนั้นเหลือเฉพาะวันยื่นปกติจนกว่าจะเพิ่มแถวใหม่) · ระบบแจ้งเตือนล่วงหน้า 5 วัน
+        {calendarHref && (
+          <>
+            {" · "}
+            <Link href={calendarHref} className="underline" data-testid="deadlines-calendar-link">
+              ดูปฏิทินภาษีทั้งปี (ภ.ง.ด.50/51 · 90/94 · ยื่นงบ)
+            </Link>
+          </>
+        )}
+      </p>
     </section>
   );
 }
 
-export function LegalValuesPanel({ systemId, orgSettingsHref, view, save, saveWht, deadlines }: { systemId: string; orgSettingsHref: string; view: BookTaxView; save: SaveFn; saveWht?: WhtSaveFn; deadlines?: UpcomingDeadline[] }) {
+export function LegalValuesPanel({ systemId, orgSettingsHref, view, save, saveWht, deadlines, calendarHref }: { systemId: string; orgSettingsHref: string; view: BookTaxView; save: SaveFn; saveWht?: WhtSaveFn; deadlines?: UpcomingDeadline[]; calendarHref?: string }) {
   return (
     <div className="flex flex-col gap-4" data-testid="legal-values-panel">
       <section className="card flex flex-col gap-2 p-5">
@@ -459,7 +468,7 @@ export function LegalValuesPanel({ systemId, orgSettingsHref, view, save, saveWh
           อัตรา VAT ที่ใช้วันนี้ ({formatDateTh(view.asOf)}): <b data-testid="legal-vat-today">{view.vatRateBp / 100}%</b>
         </p>
       </section>
-      {deadlines && deadlines.length > 0 && <DeadlinesCard deadlines={deadlines} />}
+      {deadlines && deadlines.length > 0 && <DeadlinesCard deadlines={deadlines} calendarHref={calendarHref} />}
       {saveWht && <WhtSettingsCard systemId={systemId} view={view} save={saveWht} />}
       {(["vat", "wht", "deadline", "book"] as const).map((k) => (
         <TableCard key={k} kind={k} rows={view.tables[k]} systemId={systemId} save={save} />

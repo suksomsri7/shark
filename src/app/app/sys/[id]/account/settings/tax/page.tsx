@@ -23,7 +23,7 @@ export default async function AccountTaxSettingsPage({ params }: { params: Promi
       <div className="flex flex-col gap-4 md:flex-row md:items-start">
         <SettingsNav base={base} activeGroup="org" activeSub="tax" />
         <div className="min-w-0 flex-1">
-          <LegalValuesPanel systemId={systemId} orgSettingsHref={`${base}/settings`} view={view} save={saveLegalRowsAction} saveWht={saveWhtSettingsAction} deadlines={deadlines} />
+          <LegalValuesPanel systemId={systemId} orgSettingsHref={`${base}/settings`} view={view} save={saveLegalRowsAction} saveWht={saveWhtSettingsAction} deadlines={deadlines} calendarHref={`${base}/tax/calendar`} />
         </div>
       </div>
     </div>
