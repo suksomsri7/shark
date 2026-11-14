@@ -44,11 +44,10 @@ const formOf = (s: SecretaryIdentity | null): Form => ({
 });
 const same = (a: Form, b: Form) => a.name.trim() === b.name.trim() && a.tone === b.tone && a.suffix === b.suffix && a.languages.join(",") === b.languages.join(",");
 
+// 14 พ.ย. (แบบ bizgear Ⓑ): ลิงก์ท้ายหน้าเหลือของส่วนตัว — สิทธิ์/กฎ/ความรู้/โควตา ย้ายไป "ตั้งค่ากิจการ" (⚙ ในตัวสลับกิจการ · เส้นทางเดิมยังอยู่)
 const LINKS: { key: string; title: I18nKey; path: Href }[] = [
-  { key: "access", title: "sec.title.settingsAccess", path: "/secretary/settings/access" },
-  { key: "rules", title: "sec.title.settingsRules", path: "/secretary/settings/rules" },
-  { key: "knowledge", title: "sec.title.settingsKnowledge", path: "/secretary/settings/knowledge" },
-  { key: "quota", title: "sec.title.settingsQuota", path: "/secretary/settings/quota" },
+  { key: "account", title: "sec.title.settingsAccount", path: "/secretary/settings/account" },
+  { key: "log", title: "sec.title.settingsLog", path: "/secretary/settings/log" },
 ];
 
 export default function SecretaryProfileScreen() {

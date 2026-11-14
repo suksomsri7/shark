@@ -8,10 +8,11 @@ import { PERMISSION_MODULES } from "@/lib/core/permissions";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
 
 // tenant + Membership OWNER ใน tx ที่ผู้เรียกเปิดไว้ (ใช้ร่วม createTenantForUser / createTenantFromApp)
-async function createTenantTx(tx: Prisma.TransactionClient, userId: string, orgName: string): Promise<Tenant> {
+// businessType = ประเภทที่เลือกตอนสร้างจากแอป (ตั้งค่ากิจการ 14 พ.ย.) · เว็บไม่ส่ง = null
+async function createTenantTx(tx: Prisma.TransactionClient, userId: string, orgName: string, businessType: string | null = null): Promise<Tenant> {
   const slug = await uniqueTenantSlug(tx, orgName);
   const t = await tx.tenant.create({
-    data: { name: orgName, slug, status: "ACTIVE", limits: { maxUnits: 10 } },
+    data: { name: orgName, slug, status: "ACTIVE", limits: { maxUnits: 10 }, businessType },
   });
   await tx.membership.create({
     data: { userId, tenantId: t.id, role: "OWNER", unitAccess: ["*"], acceptedAt: new Date() },
@@ -80,7 +81,7 @@ export async function createTenantFromApp(
     if (owned >= TENANT_MAX_OWNED) {
       throw new TenantRuleError(`สร้างกิจการได้สูงสุด ${TENANT_MAX_OWNED} ร้านต่อบัญชี — ถ้าต้องการเพิ่ม ติดต่อทีมงาน`);
     }
-    return createTenantTx(tx, userId, orgName);
+    return createTenantTx(tx, userId, orgName, type);
   });
 
   // ระบบที่เลือก — ชื่อไทยปริยายจากทะเบียนสิทธิ์ (label ของโมดูลชื่อเดียวกัน)

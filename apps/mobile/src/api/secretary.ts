@@ -53,6 +53,9 @@ const PATH = {
   "secretary/account/delete/preview": "/api/mobile/secretary/account/delete/preview",
   // เข้า/ออกเวร (เส้นแชทลูกค้า S1.24 · ไม่ใช่ secretary/*)
   "inbox/shift": "/api/mobile/inbox/shift",
+  // ตั้งค่ากิจการ (14 พ.ย. · แบบ bizgear Ⓑ) — ยิงในนามกิจการที่กด ⚙ (opts.tenantId) · OWNER/MANAGER เท่านั้น
+  "secretary/business": "/api/mobile/secretary/business",
+  "secretary/business/logo": "/api/mobile/secretary/business/logo",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -171,6 +174,7 @@ type GetMap = {
   "secretary/invites/pending": { items?: unknown[] } | unknown[];
   "secretary/notify": { prefs?: Partial<Record<string, string>>; kinds?: string[]; modes?: string[] };
   "secretary/account/delete/preview": DeletePreview;
+  "secretary/business": BusinessProfileRes;
 };
 type PostMap = {
   // S2.19 K3 "สั่ง Shark เรื่องลูกค้านี้": context = รหัสห้องแชทลูกค้า/ผู้ติดต่อ (ไม่ใส่ชื่อ/เบอร์ลูกค้า · เซิร์ฟเวอร์ resolve เอง)
@@ -209,9 +213,9 @@ const USER_LEVEL: ReadonlySet<SecPath> = new Set<SecPath>([
   "secretary/account/delete/preview",
 ]);
 
-/** GET เส้นของเลขา · เส้นระดับผู้ใช้ไม่ส่ง x-tenant-id */
-export function secGet<P extends keyof GetMap>(path: P, q?: Query): Promise<GetMap[P]> {
-  return api<GetMap[P]>(url(path, q), { tenant: !USER_LEVEL.has(path) });
+/** GET เส้นของเลขา · เส้นระดับผู้ใช้ไม่ส่ง x-tenant-id · opts.tenantId = อ่านของกิจการนั้นแทนกิจการ active (ตั้งค่ากิจการ ⚙) */
+export function secGet<P extends keyof GetMap>(path: P, q?: Query, opts?: { tenantId?: string }): Promise<GetMap[P]> {
+  return api<GetMap[P]>(url(path, q), { tenant: !USER_LEVEL.has(path), ...(opts?.tenantId && !USER_LEVEL.has(path) ? { tenantId: opts.tenantId } : {}) });
 }
 
 export function secPost<P extends keyof PostMap>(path: P, body: PostMap[P]["body"]): Promise<PostMap[P]["res"]> {
@@ -1315,3 +1319,76 @@ export function normalizeNotify(v: unknown): NotifyPrefs {
 
 /** ผลกระทบก่อนลบบัญชี (previewAccountDeletion) */
 export type DeletePreview = { tenantsToDelete?: { id: string; name: string }[]; tenantsHandedOver?: { id: string; name: string; newOwner?: string | null }[]; tenantsLeftAlone?: { id: string; name: string }[] };
+
+// ───────── ตั้งค่ากิจการ (14 พ.ย. 2026 · แบบ bizgear Ⓑ) — GET/PATCH secretary/business · POST/DELETE secretary/business/logo ─────────
+// ที่เก็บจริงฝั่งเซิร์ฟเวอร์ (src/lib/mobile/business-profile.ts): ชื่อ = Tenant · โลโก้ = ธีมร้าน · ที่อยู่/เบอร์/เลขภาษี/สาขา = ตั้งค่าสมุดบัญชีหลัก
+//   (ชุดเดียวกับใบเสร็จ/ใบกำกับ · ไม่มีสมุด = docs null) · เวลาทำการ = เวลาทำการของระบบแชท (ไม่มีแชท = hours.available false)
+// ทุกเส้นส่ง x-tenant-id ของกิจการที่กด ⚙ (ไม่ต้องสลับกิจการ) · OWNER/MANAGER เท่านั้น · ชื่อ = OWNER เท่านั้น
+export type BusinessDay = { d: number; open: string; close: string };
+export type BusinessProfile = {
+  tenantId: string;
+  name: string;
+  logoUrl: string | null;
+  businessType: TenantType | null;
+  docs: { systemId: string; bookName: string; bookCount: number; orgName: string; address: string | null; phone: string | null; taxId: string | null; branchCode: string; branchName: string | null } | null;
+  hours: { available: boolean; tz: string | null; days: BusinessDay[] };
+};
+export type BusinessProfileRes = { profile: BusinessProfile; role: string };
+export type BusinessPatch = Partial<{
+  name: string;
+  businessType: string | null;
+  address: string | null;
+  phone: string | null;
+  taxId: string | null;
+  branchCode: string | null;
+  branchName: string | null;
+  hours: { days: BusinessDay[]; tz?: string | null } | null;
+}>;
+/** บทบาทที่เห็น ⚙ / เปิดตั้งค่ากิจการได้ */
+export const BIZ_SETTING_ROLES: readonly string[] = ["OWNER", "MANAGER"];
+export const BIZ_HQ_BRANCH = "00000";
+export const BIZ_LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+export function getBusiness(tenantId: string): Promise<BusinessProfileRes> {
+  return secGet("secretary/business", undefined, { tenantId });
+}
+export function patchBusiness(tenantId: string, body: BusinessPatch): Promise<BusinessProfileRes> {
+  return api<BusinessProfileRes>(PATH["secretary/business"], { method: "PATCH", body, tenantId });
+}
+export function deleteBusinessLogo(tenantId: string): Promise<{ logoUrl: null }> {
+  return api<{ logoUrl: null }>(PATH["secretary/business/logo"], { method: "DELETE", tenantId });
+}
+/** POST secretary/business/logo (multipart `file` · ≤ 2 MB · PNG/JPG/WEBP) — แยกตัวเรียกเพราะ api() ส่ง JSON เท่านั้น */
+export async function uploadBusinessLogo(tenantId: string, form: FormData): Promise<{ logoUrl: string }> {
+  const headers: Record<string, string> = { "x-tenant-id": tenantId };
+  const token = await getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(`${BASE_URL}${PATH["secretary/business/logo"]}`, { method: "POST", headers, body: form });
+  if (!res.ok) {
+    let code = "error";
+    let detail: string | undefined;
+    try {
+      const b = (await res.json()) as { error?: string; message?: string };
+      code = b.error ?? "error";
+      detail = typeof b.message === "string" ? b.message : undefined;
+    } catch {
+      /* body ไม่ใช่ JSON */
+    }
+    throw new ApiError(res.status, code, detail);
+  }
+  return (await res.json()) as { logoUrl: string };
+}
+
+/** เลขผู้เสียภาษีไทย 13 หลัก + หลักตรวจ mod-11 (สูตรเดียวกับเซิร์ฟเวอร์ · ตรวจก่อนส่งให้รู้ทันที) */
+export function isThaiTaxId(v: string): boolean {
+  if (!/^\d{13}$/.test(v)) return false;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(v[i]) * (13 - i);
+  return (11 - (sum % 11)) % 10 === Number(v[12]);
+}
+/** สรุปเวลาทำการ 1 บรรทัด: ทุกวันเท่ากัน = "10:00–20:00" · ต่างกัน = ช่วงของวันแรก + "…" · ไม่มี = null */
+export function hoursSummary(days: BusinessDay[]): string | null {
+  if (!days.length) return null;
+  const first = `${days[0].open}–${days[0].close}`;
+  return days.every((d) => d.open === days[0].open && d.close === days[0].close) ? first : `${first} …`;
+}
