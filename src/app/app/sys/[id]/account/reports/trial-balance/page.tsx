@@ -2,7 +2,7 @@ import Link from "next/link";
 import { trialBalance } from "@/lib/modules/account/reports";
 import { ledgerDrillHref, previousRange } from "@/lib/modules/account/report-drill";
 import { MoneyText } from "@/components/ui/MoneyText";
-import { loadReportWithPolicy, fiscalDefaultRange, ReportHeader, WarnBanner, TableWrap } from "../_shared";
+import { loadReportWithPolicy, fiscalDefaultRange, ReportHeader, WarnBanner, TableWrap, STATEMENT_CSV_PREAMBLE } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
 // งบทดลอง (§11.3) — คลิกยอดของบัญชี = drill-down ไปแยกประเภทของบัญชีนั้นในช่วงเดียวกัน
@@ -39,6 +39,7 @@ export default async function TrialBalancePage({
   const netOf = (r: { closingDebit: number; closingCredit: number }) => r.closingDebit - r.closingCredit;
 
   const csv = {
+    preamble: STATEMENT_CSV_PREAMBLE, // ACC T4.6 ▸ ป้ายร่างบรรทัดแรกของไฟล์ ◂
     headers: [
       "รหัส", "ชื่อบัญชี", "ยกมา-เดบิต", "ยกมา-เครดิต", "เดบิต", "เครดิต", "คงเหลือ-เดบิต", "คงเหลือ-เครดิต",
       ...(compare ? ["คงเหลือสุทธิงวดก่อน"] : []),
@@ -63,7 +64,7 @@ export default async function TrialBalancePage({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <ReportHeader
+        <ReportHeader draft
           base={base}
           title="งบทดลอง"
           subtitle={`${from} ถึง ${to}${compare ? ` · เทียบ ${prev.from} ถึง ${prev.to}` : ""}`}

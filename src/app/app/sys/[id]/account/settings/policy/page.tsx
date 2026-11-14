@@ -2,7 +2,8 @@ import { requireAccountPage } from "@/lib/modules/account/guard";
 import { listLedgers } from "@/lib/modules/account/coa";
 import { WHT_INCOME_LABEL } from "@/lib/modules/account/wht";
 import { regularCustomerContactIds, regularCustomerRuleOf } from "@/lib/modules/account/contacts-list";
-import { fiscalYearOf, getPolicyWithDocConfig } from "@/lib/modules/account/policy";
+import { fiscalInfoOf, fiscalYearOf, getPolicyWithDocConfig } from "@/lib/modules/account/policy";
+import { bookRuleAt } from "@/lib/modules/account/legal-values";
 import {
   DEFAULT_POLICY_SUB,
   POLICY_SETTINGS_SUBS,
@@ -49,6 +50,10 @@ export default async function AccountPolicySettingsPage({
     regularCount = (await regularCustomerContactIds(ctx, rule)).size;
   }
 
+  // ACC T4.6 ▸ รอบบัญชีแรก · สมุดมีรายการไหม · เพดานรอบแรกจากตาราง (เฉพาะหัวข้อปีบัญชี) ◂
+  const fiscal = sub === DEFAULT_POLICY_SUB ? await fiscalInfoOf(ctx, policy) : null;
+  const firstRule = fiscal ? await bookRuleAt(ctx, "FIRST_PERIOD_MAX_MONTHS", new Date()) : null;
+
   const active = ledgers.filter((l) => !l.archivedAt);
   const incomeLedgers = active.filter((l) => l.type === "INCOME").map((l) => ({ code: l.code, name: l.name }));
   const expenseLedgers = active
@@ -75,6 +80,10 @@ export default async function AccountPolicySettingsPage({
       subLabel={policySubLabel(sub)}
       policy={{
         fiscalYearStartMonth: policy.fiscalYearStartMonth,
+        booksStartDate: dateInputValue(policy.booksStartDate),
+        hasEntries: fiscal?.hasEntries ?? false,
+        firstPeriodMaxMonths: fiscal?.firstPeriodMaxMonths ?? null,
+        firstPeriodSource: firstRule?.row?.source,
         periodCloseDay: policy.periodCloseDay,
         fiscalYearLabel: fiscalYearOf(new Date(), policy.fiscalYearStartMonth).label,
         vatRegistered: policy.vatRegistered,

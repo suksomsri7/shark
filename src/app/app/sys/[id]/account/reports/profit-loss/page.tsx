@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import { profitLoss, type ProfitLoss, type PLRow } from "@/lib/modules/account/reports";
 import { ledgerDrillHref } from "@/lib/modules/account/report-drill";
 import { MoneyText } from "@/components/ui/MoneyText";
-import { loadReportWithPolicy, fiscalDefaultRange, ReportHeader, TableWrap } from "../_shared";
+import { loadReportWithPolicy, fiscalDefaultRange, ReportHeader, TableWrap, STATEMENT_CSV_PREAMBLE } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
 export default async function ProfitLossPage({
@@ -63,12 +63,16 @@ export default async function ProfitLossPage({
   }
   csvRows.push(["กำไรขั้นต้น", (pl.grossProfit / 100).toFixed(2), compare ? (p!.grossProfit / 100).toFixed(2) : ""]);
   csvRows.push(["กำไรสุทธิ", (pl.netProfit / 100).toFixed(2), compare ? (p!.netProfit / 100).toFixed(2) : ""]);
-  const csv = { headers: ["รายการ", "งวดนี้", "งวดก่อน"], rows: csvRows };
+  const csv = {
+    preamble: STATEMENT_CSV_PREAMBLE, // ACC T4.6 ▸ ป้ายร่างบรรทัดแรกของไฟล์ ◂
+    headers: ["รายการ", "งวดนี้", "งวดก่อน"],
+    rows: csvRows,
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <ReportHeader base={base} title="งบกำไรขาดทุน" subtitle={`${from} ถึง ${to}`} />
+        <ReportHeader draft base={base} title="งบกำไรขาดทุน" subtitle={`${from} ถึง ${to}`} />
       </div>
       <ReportToolbar
         filename={`งบกำไรขาดทุน-${from}-${to}`}
