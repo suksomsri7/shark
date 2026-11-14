@@ -1,0 +1,70 @@
+# H3.4-YTD — RED on base (wip/hr-h3.4-ytd, base session/hr aa380f6b0) · lane DB ep-ancient-truth · 2026-11-13T23:15:25Z
+# oracle scripts/qc-hr-h3.4-ytd.mts 52111 B + lib 23597 B · 39 checks (34 RED-by-design · 5 GREEN controls)
+
+## unforced
+⏭️  SKIPPED — qc-hr-h3.4-ytd: not built
+   • src/lib/modules/hr/payroll-opening-rules.ts absent (H3.4-YTD not built)
+JSON_SUMMARY {"suite":"qc-hr-h3.4-ytd","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["src/lib/modules/hr/payroll-opening-rules.ts absent (H3.4-YTD not built)"],"registered":39}
+
+## forced run 1 (before part B edits) / run 2 (after) — identical summaries
+BASE-EXPECTATION 39/39 as registered (RED-by-design 34 · GREEN controls 5)
+===== qc-hr-h3.4-ytd ===== passed 5/39 (QC_FORCE)
+RESIDUE none (tenants=2 users=11)
+BASE-EXPECTATION 39/39 as registered (RED-by-design 34 · GREEN controls 5)
+===== qc-hr-h3.4-ytd ===== passed 5/39 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.4-ytd","total":39,"passed":5,"failed":["H3.4Y-S1.1","H3.4Y-S1.2","H3.4Y-S1.3","H3.4Y-S1.4","H3.4Y-S1.6","H3.4Y-S1.7","H3.4Y-S1.8","H3.4Y-S2.1","H3.4Y-S2.2","H3.4Y-S2.3","H3.4Y-S2.4","H3.4Y-S2.5","H3.4Y-S3.1","H3.4Y-S3.2","H3.4Y-S3.3","H3.4Y-S3.11","H3.4Y-S4.2","H3.4Y-S3.12","H3.4Y-S3.13","H3.4Y-S3.4","H3.4Y-S3.5","H3.4Y-S3.6","H3.4Y-S3.7","H3.4Y-S3.8","H3.4Y-S3.9","H3.4Y-S3.10","H3.4Y-S3.14","H3.4Y-S3.15","H3.4Y-S3.16","H3.4Y-S3.18","H3.4Y-S3.17","H3.4Y-S4.1","H3.4Y-S4.3","H3.4Y-S4.4"],"findings":[{"id":"H3.4Y-S1.1","sev":"CRITICAL"},{"id":"H3.4Y-S1.2","sev":"CRITICAL"},{"id":"H3.4Y-S1.3","sev":"CRITICAL"},{"id":"H3.4Y-S1.4","sev":"CRITICAL"},{"id":"H3.4Y-S1.6","sev":"CRITICAL"},{"id":"H3.4Y-S1.7","sev":"CRITICAL"},{"id":"H3.4Y-S1.8","sev":"MINOR"},{"id":"H3.4Y-S2.1","sev":"CRITICAL"},{"id":"H3.4Y-S2.2","sev":"CRITICAL"},{"id":"H3.4Y-S2.3","sev":"CRITICAL"
+
+## per check (run 2) — reason
+❌ [H3.4Y-S1.1] exists,table,cols,date,whtLeIncome,months,year,yearOfAsOf,nonNeg,rev,uniqRev,partial,fk
+❌ [H3.4Y-S1.2] model,backRel,scope,env
+❌ [H3.4Y-S1.3] exists,exports imports=∅
+❌ [H3.4Y-S1.4] payroll,filings,reports,newFiles 0 files
+✅ [H3.4Y-S1.5] pass
+❌ [H3.4Y-S1.6] svc,hr50,ytd,order,payroll,filings,txOnly
+❌ [H3.4Y-S1.7] exists,useServer
+❌ [H3.4Y-S1.8] testids,alert,runUi,page,msgs,thText,inventory,touch ids=∅
+✅ [H3.4Y-S1.9] pass
+✅ [H3.4Y-S2.0] pass
+❌ [H3.4Y-S2.1] withOpening ∅ withOpening
+❌ [H3.4Y-S2.2] withOpening ∅ withOpening
+❌ [H3.4Y-S2.3] parseOpening ∅ parseOpening
+❌ [H3.4Y-S2.4] openingMissing ∅ openingMissing
+❌ [H3.4Y-S2.5] openingFilingItem ∅ openingFilingItem
+✅ [H3.4Y-S3.0] pass
+❌ [H3.4Y-S3.1] group: Error: missing saveOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.2] group: Error: missing saveOpeningYtd,listOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.3] group: Error: missing saveOpeningYtd,listOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.11] group: Error: missing saveOpeningYtd,listOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S4.2] group: Error: missing saveOpeningYtd,listOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.12] group: Error: missing saveOpeningYtd,listOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.13] group: Error: missing saveOpeningYtd,listOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.4] group: Error: missing saveOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.5] group: Error: missing saveOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.6] group: Error: missing saveOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.7] group: Error: missing saveOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.8] group: Error: missing saveOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.9] group: Error: missing saveOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.10] group: Error: missing saveOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.14] group: Error: missing saveOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.15] group: Error: missing saveOpeningYtd,saveOpeningYtdBulk,listOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.16] group: Error: missing saveOpeningYtd,saveOpeningYtdBulk,listOpeningYtd,clearOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.18] group: Error: missing saveOpeningYtdBulk (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S3.17] group: Error: missing saveOpeningYtdBulk (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S4.1] group: Error: missing saveOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S4.3] group: Error: missing saveOpeningYtd (∅ src/lib/modules/hr/payroll-opening.ts)
+❌ [H3.4Y-S4.4] group: Error: missing saveOpeningYtd,saveOpeningYtdBulk (∅ src/lib/modules/hr/payroll-opening.ts)
+✅ [H3.4Y-Z1] pass
+
+## RED reasons by group
+S1.1–S1.4 · S1.6–S1.8 statics: migration / schema / pure / service / UI files absent, no marked hunks (S1.5 frozen control GREEN incl. the part-B h3.7 hunks)
+S2.1–S2.5 pure: payroll-opening-rules.ts absent (∅ withOpening / parseOpening / openingMissing / openingFilingItem) · S2.0 control GREEN (arithmetic = brief)
+S3.1–S3.18 · S4.1–S4.4 DB/races: group guard 'missing saveOpeningYtd … (∅ src/lib/modules/hr/payroll-opening.ts)' — no crash · S3.0 fixture + Z1 residue GREEN
+
+## part B — qc-hr-h3.7.mts (ORACLE-EDIT (H3.4-YTD · controller ruling))
+forced ×2 on base:
+h37-run1.txt:===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+h37-run2.txt:===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+RED proof: scratch edit of src/lib/modules/hr/payroll.ts:3670 removing '(win.lastCovered && p <= win.lastCovered)' (not committed):
+===== qc-hr-h3.7 ===== passed 67/68 (QC_FORCE)
+expected give back | actual gapRefused
+restored: sha256 payroll.ts 640875f9…78de before = after · git diff --stat -- src empty

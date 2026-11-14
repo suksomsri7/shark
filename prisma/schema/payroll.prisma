@@ -610,3 +610,29 @@ model HrSalaryCertificate {
   @@index([systemId, employeeId, status])
   @@index([tenantId])
 }
+// HR H3.4-YTD ▸ ยอดยกมาต้นปีของนายจ้างนี้ (จ่ายก่อนรอบแรกใน SHARK ของปีภาษี) — append-only: แก้ = ปิดแถวเดิม + rev ถัดไป ·
+//   1 แถวที่ยังมีผลต่อ (ระบบ, พนักงาน, ปี) = partial unique ใน migration 20270110000001 · ยอดเงินอยู่ที่แถวเท่านั้น (ประวัติไม่มีบาท) ◂
+model HrPayrollOpeningYtd {
+  id             String     @id @default(cuid())
+  tenantId       String
+  systemId       String
+  employeeId     String
+  employee       HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  taxYear        Int
+  asOfDay        DateTime   @db.Date // วันจ่ายสุดท้ายที่ยอดนี้ครอบคลุม (ปีเดียวกับ taxYear — CHECK)
+  months         Int
+  incomeSatang   Int
+  whtSatang      Int
+  ssoSatang      Int
+  rev            Int
+  createdById    String
+  createdAt      DateTime   @default(now())
+  supersededAt   DateTime?
+  supersededById String?
+
+  @@unique([systemId, employeeId, taxYear, rev])
+  @@index([systemId, taxYear])
+  @@index([employeeId])
+  @@index([tenantId])
+}
+// ◂ HR H3.4-YTD

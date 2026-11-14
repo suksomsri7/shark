@@ -99,7 +99,7 @@ S4.32|F2 F7|C|R|[db] (ORACLE-EDIT fix r1 F2/F7) non-owner connect/disconnect of 
 S4.33|F8|M|R|[db] (ORACLE-EDIT fix r1 F8) markPaidRun on a PAID run ⇒ alreadyPaid text
 S1.12|F1|C|R|[static] (ORACLE-EDIT fix r2 e) markPaidV2's PAID update is guarded by status APPROVED · the booked pay path posts the pay entry then updates PAID guarded by status APPROVED inside the SAME $transaction callback
 S4.34|F1|C|R|[db] (ORACLE-EDIT fix r2 e · r3 5) period lock held in a raw tx ⇒ approve blocked; released ⇒ approve held at __inFinal while pay is observed waiting; released ⇒ pay runs after finalize (booked path, pay entry after the accrual, PAID) · pay ∥ pay exactly one ok / one entry / one event
-S4.35|F5|C|R|[db] (ORACLE-EDIT fix r2 b · r3 3/4) give back a recovered claim: offered = next open period · past period / covered period / leaver after end period refused · REFUND PENDING with sourceRef refund:<claim>#<refund> · branch-limited requester on a unit-less employee refused · over the deducted remainder refused · member of another tenant refused · claim of a reversed run refused
+S4.35|F5|C|R|[db] (ORACLE-EDIT fix r2 b · r3 3/4) give back a recovered claim: offered = next open period · past period / covered period / leaver after end period refused · REFUND PENDING with sourceRef refund:<claim>#<refund> · branch-limited requester on a unit-less employee refused · over the deducted remainder refused · member of another tenant refused · claim of a reversed run refused (+ ORACLE-EDIT H3.4-YTD · controller ruling: refused with code NO · a covered LATER run alone refuses the gap period and moves the offer past it · same branch-limited requester accepted on its own branch)
 S4.24|R1|C|R|[db] (ORACLE-EDIT H3.7 builder · controller ruling H3.5/H3.6) bank file (CSV GENERIC) of a v2-accounting run = Cr "net salaries payable" of its accrual = run net · PAID D and APPROVED-unpaid F2 (accrual only) both exportable
 Z1|house|C|G|no residue
 `.trim().split("\n").map((l) => {
@@ -1159,14 +1159,30 @@ async function runDb(): Promise<void> {
       const leaverOffer = await PAY.giveBackPeriodOf(c1("hC"), `${R.C}_c1Dmg`);
       await setV2(HS.hB!);
       const reversed = await g(1, "2031-11", own1.id, `${R.B}_bDmg`, "hB");
+      // ORACLE-EDIT (H3.4-YTD · controller ruling) part B1 — review r3 MINOR-1: the "≤ latest covered run" rule on its own (claim deducted 2031-09,
+      //   no 2031-10 run, the same employee in an APPROVED finalized 2031-11 run) · control: the same request is accepted before the later run exists
+      const hG2 = await newHr("hG2", BA);
+      await setV2(hG2);
+      const g2Run = await insRun("hG2", VEC.examples.B, { label: "G2" });
+      await approve("hG2", g2Run);
+      const g2 = (pk: string, who = own1.id) => PAY.giveBackClaim(c1("hG2"), { userId: who }, { claimId: `${g2Run}_bDmg`, amountSatang: 1, periodKey: pk });
+      const ctrlOffer = await PAY.giveBackPeriodOf(c1("hG2"), `${g2Run}_bDmg`);
+      const ctrl = await g2("2031-10");
+      await insRun("hG2", null, { label: "G2n", periodKey: "2031-11", payDay: "2031-11-30", steps: { finalized: true }, items: (VEC.examples.E.items as VItem[]).map((i) => ({ ...i, emp: "b1" })), bound: [] });
+      const gap = await g2("2031-10");
+      const gapOffer = await PAY.giveBackPeriodOf(c1("hG2"), `${g2Run}_bDmg`);
+      // ORACLE-EDIT (H3.4-YTD · controller ruling) part B2 — review r3 MINOR-2: positive control — the same branch-limited user on an employee of its own branch ⇒ accepted
+      await P.hrEmployee.update({ where: { id: emps.get("hG2:b1")! }, data: { unitId: uBr } });
+      const ownBranch = await g2("2031-12", brl.id);
       const made = await rows(`SELECT kind::text AS k, status::text AS s, "periodKey" AS p, "amountSatang" AS a FROM "HrPayAdjustment" WHERE "sourceRef" LIKE $1 ORDER BY "amountSatang"`, `refund:${claim}#%`);
       const isP = (x: Any) => x?.ok === false && x?.code === "PERIOD";
       ck("S4.35", {
         offered: offered === "2031-10", past: isP(past), covered: isP(covered), over: over?.ok === false && over?.code === "AMOUNT", ok: ok1?.ok === true && ok2?.ok === true,
         over2: over2?.ok === false && over2?.code === "AMOUNT", rows: made.length === 2 && made.every((x: Any) => x.k === "REFUND" && x.s === "PENDING") && Number(made[0]?.a) === 62_223 && Number(made[1]?.a) === 150_000,
         foreign: foreign?.ok === false && foreign?.code === "NO" && !/\d/.test(String(foreign?.reason)), branchUnitless: branchRef?.ok === false && branchRef?.code === "NO",
-        leaver: isP(leaver) && leaverOffer === null, reversedRun: reversed?.ok === false,
-      }, "give back", short({ offered, past, covered, over, ok1, over2, ok2, foreign, branchRef, leaver, leaverOffer, reversed, made }, 400));
+        leaver: isP(leaver) && leaverOffer === null, reversedRun: reversed?.ok === false && reversed?.code === "NO", // ORACLE-EDIT (H3.4-YTD · controller ruling) part B3 — review r3 NOTE-4: refused for the right reason
+        ctrlOk: ctrlOffer === "2031-10" && ctrl?.ok === true, gapRefused: isP(gap), gapOffered: gapOffer === "2031-12", ownBranch: ownBranch?.ok === true, // ORACLE-EDIT (H3.4-YTD · controller ruling) part B1/B2
+      }, "give back", short({ offered, past, covered, over, ok1, over2, ok2, foreign, branchRef, leaver, leaverOffer, reversed, made, ctrlOffer, ctrl, gap, gapOffer, ownBranch }, 600)); // ORACLE-EDIT (H3.4-YTD · controller ruling)
     }
   });
 }

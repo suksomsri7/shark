@@ -48,6 +48,7 @@ import { formatBaht } from "@/lib/ui/money"; // HR H2.9 ◂
 import { HrTeamOverviewSection } from "./overview-ui"; // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) บนหน้า HrHub ◂
 import { reportAccessOf } from "./reports"; // HR H3.9 ▸ ลิงก์รายงานเฉพาะผู้ที่เปิดรายงานได้ ◂
 import { teamOverviewWithPreview } from "./inbox"; // HR H2.11 ▸ r2: ภาพรวม + ตัวอย่างคำขอจากการอ่านครั้งเดียว ◂
+import { HrLaborCard } from "./labor-ui"; // HR H4.2 ▸ การ์ดค่าแรงต่อยอดขาย (ผู้ดูเงินเท่านั้น — การ์ดตัดสินเอง) ◂
 export { hrViewerOf } from "./privacy"; // HR H2.11 ▸ ผู้ดูของหน้า /hr/requests (หน้านั้น import ได้เฉพาะ facade + ui) ◂
 import { hrNavFilter, type HrNavViewer } from "./nav"; // HR H2.10 ▸ แท็บตามผู้ดู ◂
 import { employeeOfUser } from "./service"; // HR H2.10 ◂
@@ -744,7 +745,7 @@ export async function HrHub({ systemId }: { systemId: string }) {
     <div className="flex flex-col gap-5">
       {/* HR H2.10 ▸ แท็บตามผู้ดู ◂ */}
       <ModuleTabs items={await hrTabsFor(systemId)} />
-      {overview && <HrTeamOverviewSection systemId={systemId} overview={overview} preview={preview} reports={reportsLink} /> /* HR H2.11 ◂ · HR H3.9 ▸ reports ◂ */}
+      {overview && <HrTeamOverviewSection systemId={systemId} overview={overview} preview={preview} reports={reportsLink} labor={<HrLaborCard systemId={systemId} />} /> /* HR H2.11 ◂ · HR H3.9 ▸ reports ◂ · HR H4.2 ▸ labor ◂ */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards.map((c) => (
           <Link

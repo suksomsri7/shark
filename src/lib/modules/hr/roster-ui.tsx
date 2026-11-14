@@ -42,8 +42,11 @@ import {
   type RosterTarget,
   type ShiftKind,
 } from "./roster-board-shared";
+import type { LaborDayDto, LaborWeekDto } from "./labor"; // HR H4.2 ▸ ชนิดข้อมูลค่าแรง/ความต้องการคน (ชนิดเท่านั้น — ข้อมูลมาจาก page) ◂
 
-type Props = { board: RosterBoardDto; systemId: string; basePath: string };
+// HR H4.2 ▸ labor = สัปดาห์ (หัวคอลัมน์ จัด/ต้องการ · แถบท้าย) + วันของแผง "ความต้องการคนรายชั่วโมง" — page โหลดจาก labor.ts (ผู้ดูที่ไม่ผ่าน = null) ◂
+export type RosterLabor = { week: LaborWeekDto; day: LaborDayDto | null; dayLabel: string }; // HR H4.2 ◂
+type Props = { board: RosterBoardDto; systemId: string; basePath: string; labor?: RosterLabor | null }; // HR H4.2 ▸ + labor ◂
 type Flash = { kind: "error" | "ok"; text: string } | null;
 type Drag = { entry: RosterEntryDto; employeeId: string; day: string; x: number; y: number; active: boolean; target: RosterTarget | null };
 type Sheet =
@@ -60,6 +63,9 @@ const subscribeNarrow = (cb: () => void) => {
   return () => m.removeEventListener("change", cb);
 };
 const hrs = (min: number) => String(Math.round((min / 60) * 10) / 10);
+// HR H4.2 ▸ ฿ จำนวนเต็มบาท + ‰ → % (ไม่ใช้ Intl ใน client) ◂
+const lBaht = (s: number) => `${s < 0 ? "−" : ""}฿${String(Math.round(Math.abs(s) / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`; // HR H4.2 ◂
+const lPct = (t: number) => `${Math.floor(t / 10)}.${t % 10}%`; // HR H4.2 ◂
 
 /** แบบชิปตามชนิดกะ (token เท่านั้น) */
 const CHIP: Record<ShiftKind, string> = {
@@ -75,8 +81,9 @@ const LEGEND_SWATCH: Record<"m" | "a" | "c" | "leave", string> = {
   leave: "border-[1.5px] border-dashed border-[color:var(--color-danger)]",
 };
 
-export function RosterBoard({ board, systemId, basePath }: Props) {
+export function RosterBoard({ board, systemId, basePath, labor }: Props) { // HR H4.2 ▸ + labor ◂
   const t = useTranslations("hr.roster");
+  const tl = useTranslations("hr.labor"); // HR H4.2 ◂
   const locale = useLocale();
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -574,6 +581,100 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
       <p className="text-sm text-[color:var(--color-muted)]">{unitLabel}</p>
     );
 
+  // HR H4.2 ▸ ค่าแรง/ความต้องการคน (ภาพ 03): หัวคอลัมน์ จัด/ต้องการ ณ ชั่วโมงพีค (ขาด = สีอำพัน) · แถบท้าย ชม./ค่าแรง/labor % คาด · แผงรายชั่วโมง ◂
+  const demandOf = new Map((labor?.week.days ?? []).map((d) => [d.day, d])); // HR H4.2 ◂
+  const demandChip = (day: string) => { // HR H4.2 ◂
+    const d = demandOf.get(day);
+    if (!d || d.scheduledAtPeak === null || d.neededAtPeak === null) return null;
+    const short = d.scheduledAtPeak < d.neededAtPeak;
+    return (
+      <span
+        data-testid={`hr-roster-demand-${day}`}
+        aria-label={tl("demandAria", { s: d.scheduledAtPeak, n: d.neededAtPeak })}
+        className={`mt-1.5 inline-block rounded-[7px] border px-1.5 text-[12.5px] font-bold tabular-nums ${short ? "border-[color:var(--color-tag-amber)] bg-[color:var(--color-due-soon-bg)] text-[color:var(--color-tag-amber)]" : "border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink-soft)]"}`}
+      >
+        {d.scheduledAtPeak}/{d.neededAtPeak}
+      </span>
+    );
+  }; // HR H4.2 ◂
+  const lf = labor?.week.footer; // HR H4.2 ◂
+  const laborFoot = lf ? ( // HR H4.2 ◂
+    <span data-testid="hr-roster-labor-foot" className="flex flex-wrap items-center gap-x-5 gap-y-1">
+      <span>
+        {tl("footHours", { h: hrs(lf.paidMinutes) })}
+        {lf.costSatang !== undefined && (
+          <>
+            {" · "}
+            {tl("footCost", { cost: lf.costSatang === null ? "—" : lBaht(lf.costSatang) })}
+          </>
+        )}
+      </span>
+      {lf.costSatang !== undefined && lf.forecastSalesSatang !== undefined && (
+        <span>{tl("footPct", { pct: lf.pctTenths === null || lf.pctTenths === undefined ? "—" : lPct(lf.pctTenths), sales: lf.forecastSalesSatang === null ? "—" : lBaht(lf.forecastSalesSatang) })}</span>
+      )}
+      {lf.partial && <span>{tl("smallGroup", { n: lf.excludedHeadcount ?? 0 })}</span> /* HR H4.2 ▸ R1 (review) ◂ */}
+      {(lf.truncated || labor?.week.flags.truncated) && <span role="alert" className="font-bold text-[color:var(--color-danger)]">{tl("truncated")}</span> /* HR H4.2 ▸ R4 (review) ◂ */}
+    </span>
+  ) : null; // HR H4.2 ◂
+  const ld = labor?.day ?? null; // HR H4.2 ◂
+  const demandPanel = labor ? ( // HR H4.2 ◂
+    <section data-testid="hr-roster-demand-panel" className="card flex flex-col !p-5">
+      <h2 className="text-[15px] font-bold">{tl("panelTitle")}</h2>
+      <p className="mt-1 text-[12.5px] text-[color:var(--color-muted)]">{tl("panelSub", { day: labor.dayLabel })}</p>
+      {!ld?.demand ? (
+        <p className="mt-3 text-sm text-[color:var(--color-muted)]">{tl("setSplh")}</p>
+      ) : (
+        (() => {
+          const hs = ld.demand.hours.filter((h) => h.scheduled > 0 || (h.needed ?? 0) > 0);
+          const top = Math.max(1, ...hs.map((h) => Math.max(h.scheduled, h.needed ?? 0)));
+          const shortHs = hs.filter((h) => h.needed !== null && h.scheduled < h.needed);
+          const first = shortHs[0];
+          let last = first;
+          for (const h of shortHs) if (last && h.hour === last.hour + 1) last = h;
+          const run = first && last ? shortHs.filter((h) => h.hour >= first.hour && h.hour <= last.hour) : [];
+          const worst = run.reduce<(typeof run)[number] | null>((a, h) => (!a || (h.needed ?? 0) - h.scheduled > (a.needed ?? 0) - a.scheduled ? h : a), null);
+          return (
+            <>
+              <div className="mt-4 flex h-[120px] items-end gap-1 border-b border-[color:var(--color-line)]" aria-hidden="true">
+                {hs.map((h) => (
+                  <div key={h.hour} className="flex h-full flex-1 items-end gap-px">
+                    <i className="block flex-1 rounded-t-sm bg-[color:var(--color-ink)]" style={{ height: `${Math.round((h.scheduled / top) * 100)}%` }} />
+                    <i
+                      className={`block flex-1 rounded-t-sm border-[1.5px] border-b-0 bg-[color:var(--color-surface)] ${h.needed !== null && h.scheduled < h.needed ? "border-solid border-[color:var(--color-tag-amber)]" : "border-dashed border-[color:var(--color-muted)]"}`}
+                      style={{ height: `${Math.round(((h.needed ?? 0) / top) * 100)}%` }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1.5 flex gap-1" aria-hidden="true">
+                {hs.map((h) => (
+                  <span key={h.hour} className={`flex-1 text-center text-[11px] tabular-nums ${h.needed !== null && h.scheduled < h.needed ? "font-bold text-[color:var(--color-tag-amber)]" : "text-[color:var(--color-muted)]"}`}>
+                    {h.label}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-4 text-[12.5px] text-[color:var(--color-ink-soft)]">
+                <span className="inline-flex items-center gap-1.5">
+                  <i className="inline-block h-3 w-5 rounded bg-[color:var(--color-ink)]" />
+                  {tl("scheduled")}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <i className="inline-block h-3 w-5 rounded border-[1.5px] border-dashed border-[color:var(--color-muted)] bg-[color:var(--color-surface)]" />
+                  {tl("neededLabel")}
+                </span>
+              </div>
+              <p className={`mt-3 text-sm font-bold ${worst ? "text-[color:var(--color-tag-amber)]" : "text-[color:var(--color-muted)]"}`}>
+                {worst && first && last
+                  ? tl("short", { from: first.label, to: String(((last.hour + 1) % 24)).padStart(2, "0"), n: (worst.needed ?? 0) - worst.scheduled, s: worst.scheduled, d: worst.needed ?? 0 })
+                  : tl("noShort")}
+              </p>
+            </>
+          );
+        })()
+      )}
+    </section>
+  ) : null; // HR H4.2 ◂
+
   // ── ตารางสัปดาห์ (≥ 768px) ──
   // r3 V1: ชื่อ + ชม./สัปดาห์ กว้างคงที่ · 7 วันยืดตามกล่อง (≥64px) ⇒ 1440 พอดีกล่อง · แคบกว่า 668px เลื่อนแนวนอนในการ์ด (คอลัมน์ชื่อตรึง)
   const gridCols = { gridTemplateColumns: "136px repeat(7, minmax(64px, 1fr)) 76px" };
@@ -591,6 +692,7 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
                 {t("headcount", { n: d.headcount })}
                 {d.holiday ? ` · ${d.holiday.name}` : ""}
               </span>
+              {demandChip(d.key) /* HR H4.2 ◂ */}
             </div>
           ))}
           <div role="columnheader" className="border-l border-[color:var(--color-line)] px-1 py-3 text-center leading-tight">
@@ -627,6 +729,7 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
         })}
         <div className="flex items-center gap-5 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-4 py-3.5 text-[13.5px] text-[color:var(--color-muted)]">
           <span data-testid="hr-roster-total">{t("total", { n: hrs(b.totalMin) })}</span>
+          {laborFoot /* HR H4.2 ◂ */}
         </div>
       </div>
     </div>
@@ -672,6 +775,7 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
       <p data-testid="hr-roster-total" className="text-sm text-[color:var(--color-muted)]">
         {t("total", { n: hrs(b.totalMin) })}
       </p>
+      {laborFoot && <div className="text-sm text-[color:var(--color-muted)]">{laborFoot}</div> /* HR H4.2 ◂ */}
     </div>
   );
 
@@ -784,6 +888,7 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
           ) : (
             grid
           )}
+          {labor && <p className="text-[13px] text-[color:var(--color-muted)]">{tl("headNote")}</p> /* HR H4.2 ◂ */}
           {b.notes.length > 0 && (
             <div data-testid="hr-roster-note" role="note" className="rounded-xl bg-[color:var(--color-surface-2)] px-4 py-3 text-[13px] text-[color:var(--color-muted)]">
               {b.notes.map((n) => (
@@ -792,7 +897,10 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
             </div>
           )}
         </div>
-        <aside className="flex w-full flex-col gap-5 xl:w-[370px] xl:flex-none">{rules}</aside>
+        <aside className="flex w-full flex-col gap-5 xl:w-[370px] xl:flex-none">
+          {demandPanel /* HR H4.2 ◂ */}
+          {rules}
+        </aside>
       </div>
       {drag?.active && (
         <div

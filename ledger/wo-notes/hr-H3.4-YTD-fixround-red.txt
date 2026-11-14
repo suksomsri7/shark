@@ -1,0 +1,22 @@
+# H3.4-YTD fix round — RED with the fix reverted in the working copy (src of 2f6708d78, oracle 4c5093a07) · forced · lane DB
+  ❌ [H3.4Y-S1.6] [static] save/clear lock hr50 (seed 36) then hr:ytd · payroll.ts and 50 ทวิ issue take hr:ytd · tx client only inside $transaction — expected save/clear: hr50 (seed 36) → hr:ytd · payroll.ts + filings issue take hr:ytd · tx client only inside $transaction | actual payroll,filings,oneKey
+  ❌ [H3.4Y-S2.6] [pure] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 4/8): parseOpening asOf before startDay ⇒ FIELDS (= start ok) · over-withheld opening ⇒ whtYtdV2 0 (never negative) — expected start rule · over-withheld ⇒ 0 | actual {"a":{"ok":true,"asOfDay":"2031-08-31","months":8,"incomeSatang":24000000,"whtSatang":136664,"ssoSatang":700000},"w":0}
+  ❌ [H3.4Y-S3.6] [db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 1a/1b/2): zero opening on a DRAFT: YTD_OPENING gone · YTD_REBUILD shown · approve INPUTS_CHANGED · rebuild ⇒ marker = zero row · approve ok · after approve no YTD_OPENING · row months 0 / amounts 0 — expected zero opening = opening: rebuild, then quiet | actual rebuildShown,changed,rebuilt,approved,noWarnAfter {
+  ❌ [H3.4Y-S3.20] [db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 1b/2): DRAFT + revision of same amounts (months/asOf) ⇒ YTD_REBUILD · approve INPUTS_CHANGED · clear on DRAFT ⇒ YTD_REBUILD · rebuild ⇒ marker = live rev · approve ok · approved marker names the live rev — expected any new rev ⇒ rebuild before approve | actual revSameAmounts,clearedDraft {"c1":[[],[]],"a1"
+  ❌ [H3.4Y-S3.22] [db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 4): asOf before the employee's start date ⇒ FIELDS, nothing written · asOf = start date ok — expected asOf < start ⇒ FIELDS | actual refused,none,onStart {"before":{"ok":true,"rev":1,"warnings":[]},"onStart":{"ok":false,"code":"REV_CHANGED","reason":"ยอดยกมานี้ถูกแก้ไปแล้�
+[S3.21] bulk 300 changed rows: 20106 ms
+  ❌ [H3.4Y-S3.21] [db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 3): bulk unchanged rows ⇒ no new rev/audit · own unchanged row passes (changed own row ⇒ OWN, nothing written) · 301 changed ⇒ FIELDS · 300 changed ⇒ ok < 20 s (timed) · list > 500 ⇒ truncated + 500 rows — expected changed rows only · ≤ 300 · fast · truncated flag | actual unchanged,ownOk,fast,trunca
+RESIDUE none (tenants=2 users=11)
+===== qc-hr-h3.4-ytd ===== passed 38/44 (QC_FORCE)
+failed keys:
+H3.4Y-S1.6 actual payroll,filings,oneKey
+H3.4Y-S2.6 actual 
+H3.4Y-S3.6 actual rebuildShown,changed,rebuilt,approved,noWarnAfter 
+H3.4Y-S3.20 actual revSameAmounts,clearedDraft 
+H3.4Y-S3.22 actual refused,none,onStart 
+H3.4Y-S3.21 actual unchanged,ownOk,fast,truncated,notTruncated 
+
+# GREEN with the fix (6bbafeb1e + 4c5093a07)
+[S3.21] bulk 300 changed rows: 371 ms
+RESIDUE none (tenants=2 users=11)
+===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)

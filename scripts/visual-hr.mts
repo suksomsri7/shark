@@ -142,6 +142,13 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "inbox-batch-result", path: (i) => `/app/sys/${i.hr}/hr/requests?type=SWAP`, click: '[data-testid^="hr-inbox-approve-"]', users: ["owner"], why: "ผลการตัดสิน (hr-inbox-result) ต่อรายการ — ⚠ กดจริง: ถ่ายหลังภาพอื่น แล้ว seed ใหม่ (H2.11)" },
     { key: "inbox-refused", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["staff", "member", "kiosk"], expect: { staff: 404, member: 404, kiosk: 404 }, why: "ไม่เห็นคำขอชนิดใดเลย = 404 (H2.11)" },
   ],
+  // HR H4.2 ▸ brief §7 (mockup 01 การ์ด labor % + เดือน · 03 หัวคอลัมน์ จัด/ต้องการ · แถบท้าย · แผงความต้องการคน) — seed ไม่มียอด POS ⇒ ยอดขาย/คาดการณ์ = 0 ·
+  //   ความต้องการคนแสดงเมื่อตั้ง hrLabor.splhSatang (ผู้ควบคุมตั้งก่อนถ่าย) · ผู้จัดการ/พนักงาน = ไม่มีการ์ด ฿ ◂
+  "4.2": [
+    { key: "labor-card", path: (i) => `/app/sys/${i.hr}`, users: ["owner", "payroll", "manager"], why: "การ์ดค่าแรงต่อยอดขาย: labor % + เป้า · ค่าแรงวันนี้ · ยอดขายคาด · ขายแล้ว · กราฟรายชั่วโมง · กะ · เดือน · หมายเหตุ (manager = ไม่มีการ์ด) (H4.2 01)" },
+    { key: "labor-roster", path: (i) => `/app/sys/${i.hr}/hr/roster`, users: ["owner", "manager-branch"], why: "หัวคอลัมน์ จัด/ต้องการ (ขาด = อำพัน) · แถบท้าย ชม./ค่าแรง/labor % คาด (ผู้จัดการ = ชม. เท่านั้น) · แผงความต้องการคนรายชั่วโมง (H4.2 03)" },
+    { key: "labor-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#labor-settings-title`, users: ["owner", "manager-branch"], why: "การ์ดค่าตั้งค่าแรงต่อยอดขาย (เจ้าของแก้ · ผู้จัดการสาขาอ่าน) (H4.2 R6)" },
+  ],
   // HR H3.8 ▸ สลิป 07c (ของฉัน) · สลิปแยกปีภาษี + หนังสือรับรองของฉัน · สลิปฝั่งผู้ดูเงินเดือน · ส่วนหนังสือรับรองบนหน้าเงินเดือน — ภาพ 07c ที่ 390 = ภาพรับงาน (ผู้ควบคุมถ่าย · seed ไม่เปลี่ยน) ◂
   "3.8": [
     { key: "slip-self", path: (i) => `/app/me/hr/pay/${i.paidRun}`, users: ["staff", "member"], expect: { staff: 200, member: 404 }, why: "สลิปของฉัน 07c: รับสุทธิ · บัญชีที่บันทึกไว้ •••4 ตัวท้าย · รายได้/รายการหัก · PDF · หนังสือรับรอง · ย้อนหลัง (H3.8)" },
