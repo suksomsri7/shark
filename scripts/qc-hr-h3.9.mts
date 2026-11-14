@@ -343,7 +343,10 @@ function runStatic(): void {
     // ORACLE-EDIT (HR HF-SSO · controller fix2) S1.5: "HF-SSO" marks count only in the HF-SSO files this FROZEN list covers (was: any file) ◂
     const HF_SSO_FILES = new Set([`${H}payroll.ts`, `${H}payroll-actions.ts`, `${H}law.ts`, "scripts/qc-hr-lib.mts", "scripts/qc-hr-h1.2.mts", "scripts/qc-hr-h1.3.mts"]);
     const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => laterMark(l) || (HF_SSO_FILES.has(f) && /HF-SSO/.test(l))));
-    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
+    // ORACLE-EDIT (HR VIS-5a · controller) S1.5: explicit allowlist (as M2_ALLOW / P2_ALLOW) — VIS-5a product files in this FROZEN list; in base only; every hunk must add a line with "HR VIS-5a" ◂
+    const VIS5A_ALLOW = new Set([`${H}payroll-ui.tsx`, `${H}payroll-run-ui.tsx`, `${H}reports-ui.tsx`]); // ORACLE-EDIT (HR VIS-5a · controller) ◂
+    const vis5aOk = (f: string) => IN_BASE && VIS5A_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR VIS-5a"))); // ORACLE-EDIT (HR VIS-5a · controller) ◂
+    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f) && !vis5aOk(f)) : []; // ORACLE-EDIT (HR VIS-5a · controller): + vis5aOk ◂
     const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
     const h35Hunks = diffHunks(BASE, H35) ?? [];
     const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
