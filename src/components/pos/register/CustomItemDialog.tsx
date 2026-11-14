@@ -98,6 +98,7 @@ export function CustomItemDialog({ onAdd, onClose }: { onAdd: (name: string, pri
             <LegalWarnings
               testId="pos-reg-custom-warning"
               compact
+              collapsible // ACC T3b A2 ▸ แคชเชียร์เห็น 2 บรรทัด + "อ่านเพิ่ม" ◂
               warnings={[legalWarning("VAT_COLLECTED_ON_BEHALF", { name: name.trim() || "-" })]}
               onAckChange={(codes) => {
                 setAck(codes.includes("VAT_COLLECTED_ON_BEHALF"));

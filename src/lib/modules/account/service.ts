@@ -2607,6 +2607,10 @@ export async function issueDocumentInTx(
             address: doc.contact.address,
             phone: doc.contact.phone,
             email: doc.contact.email,
+            // ACC T3.4 ▸ ตรึงข้อมูลที่ตัวจับแบบ ภ.ง.ด. ใช้ (ต่างประเทศ · มูลนิธิ/สมาคม) ◂
+            ...(doc.contact.taxIdCountry && doc.contact.taxIdCountry !== "TH" ? { taxIdCountry: doc.contact.taxIdCountry } : {}),
+            ...(doc.contact.country && doc.contact.country !== "TH" ? { country: doc.contact.country } : {}),
+            ...(doc.contact.legalEntityType && /มูลนิธิ|สมาคม/.test(doc.contact.legalEntityType) ? { legalEntityType: doc.contact.legalEntityType } : {}),
           }
         : null;
       await tx.accountDocument.update({
@@ -6384,7 +6388,9 @@ export async function supersedeExternalSaleAbb(input: {
           refType: abb.refType,
           refId: abb.refId,
           sourceDocId: abb.id,
-          note: abb.docNo ? `ใบกำกับภาษีเต็มรูป แทนใบกำกับภาษีอย่างย่อ ${abb.docNo}` : "ใบกำกับภาษีเต็มรูป แทนใบกำกับภาษีอย่างย่อ",
+          // ACC T3b A4 (T2.5 ทาง POS) ▸ skill CASE §1.5 [V]: เลขใหม่ · ลงวันที่ใบย่อเดิม (issueDate ข้างบน) · หมายเหตุอ้างเลข+วันที่เดิม · ช่องอ้างอิง = เลขใบย่อ ◂
+          note: `ใบกำกับภาษีเต็มรูป ออกแทนใบกำกับภาษีอย่างย่อเลขที่ ${abb.docNo ?? "-"} ลงวันที่ ${thDate(abb.issueDate)}`,
+          reference: abb.docNo ? abb.docNo.slice(0, 35) : null,
           lines: {
             create: abb.lines.map((l) => ({
               tenantId: l.tenantId,

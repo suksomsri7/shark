@@ -96,6 +96,12 @@ export const LEGAL_WARNING_CODES = [
   "WHT_EWHT_CHANNEL",
   "WHT_ON_FEE",
   "WHT_FILING_DUE",
+  // ── 50 ทวิ ตามแบบ · ภ.ง.ด. แยกแบบ · ค้างรับ 50 ทวิ (T3.3 T3.4 T3.5 · เลน 2) ──
+  "WHT_FORM_UNVERIFIED",
+  "WHT_PAID_WITHOUT_CERT",
+  "WHT_CERT_REPLACE",
+  "WHT_ADDITIONAL_FILING",
+  "WHT_CREDIT_CERT_OWED",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -743,6 +749,56 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     titleTh: "ใกล้ครบกำหนดยื่นแบบ",
     messageTh: (p) => `${s(p, "form")} งวด ${s(p, "period")} — ยื่นแบบกระดาษภายใน ${s(p, "paper")}${s(p, "online", "") ? ` · ยื่นทางอินเทอร์เน็ตภายใน ${s(p, "online")}` : ""} (วันที่จากตารางค่ากฎหมาย) · ยื่นช้ามีเงินเพิ่ม 1.5% ต่อเดือน`,
     citation: "references/common-withholding-tax.md §8, §15 (ม.52 · ประกาศ กค. ขยายเวลายื่นทางอินเทอร์เน็ต ฉ.7 · ม.27) · references/common-vat-invoice.md §19 (ภ.พ.30)",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  // ── 50 ทวิ ตามแบบ · ภ.ง.ด. แยกแบบ · ค้างรับ 50 ทวิ (T3.3 T3.4 T3.5 · เลน 2) ──
+  WHT_FORM_UNVERIFIED: {
+    code: "WHT_FORM_UNVERIFIED",
+    titleTh: "แบบ ภ.ง.ด. ของรายการนี้ยังไม่ยืนยัน",
+    messageTh: (p) => `มีรายการที่จัดเข้า ${s(p, "form")} ตามค่าเริ่มต้นของตาราง${p.note ? ` (${s(p, "note")})` : ""} — ผู้รับประเภทนี้ (เช่น มูลนิธิ/สมาคม หรือผู้รับต่างประเทศ) แหล่งที่ระบบค้นไม่ได้ระบุแบบไว้ตรง ๆ`,
+    citation: "references/common-withholding-tax.md §1 §5 §10 · ตาราง SYSTEM_WHT_FORM_ROWS (th-tax-2569.ts)",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  WHT_PAID_WITHOUT_CERT: {
+    code: "WHT_PAID_WITHOUT_CERT",
+    titleTh: "หักภาษีไว้แล้วแต่ยังไม่ออก 50 ทวิ",
+    messageTh: (p) =>
+      `${p.count ? `${s(p, "count")} รายการ` : "รายการนี้"}หักภาษี ณ ที่จ่ายไว้แล้วแต่ยังไม่ออกหนังสือรับรอง (50 ทวิ) — กรณีตามคำสั่ง ม.3 เตรส ต้องออก "ในทันทีทุกครั้งที่มีการหักภาษี ณ ที่จ่าย" (ม.50 ทวิ (1)) · รายการยังต้องนำส่งในแบบ ภ.ง.ด. ของเดือนที่จ่าย จึงแสดงในรายงานแม้ยังไม่มีใบ`,
+    citation: "ประมวลรัษฎากร ม.50 ทวิ · คำสั่ง ท.ป.4/2528 ข้อ 13 · references/common-withholding-tax.md §7 §15",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  WHT_CERT_REPLACE: {
+    code: "WHT_CERT_REPLACE",
+    titleTh: "ยกเลิก 50 ทวิ แล้วออกใบแทน",
+    messageTh: (p) =>
+      `50 ทวิ${p.docNo ? ` เลขที่ ${s(p, "docNo")}` : ""} จะถูกประทับยกเลิกและเก็บไว้ (ไม่ลบ) · ใบใหม่ได้เลขที่ใหม่ ลงวันที่จ่ายเดิม และหมายเหตุว่าออกแทนฉบับเดิม · เรียกฉบับที่ 1 และ 2 ฉบับเดิมคืนจากผู้ถูกหัก · ไม่พบคำสั่งเฉพาะเรื่องยกเลิก/ออกแทน 50 ทวิ — ระบบใช้หลักเดียวกับการยกเลิกใบกำกับภาษี (ป.86/2542 ข้อ 25) · กดยืนยันเพื่อออกใบแทน`,
+    citation: "references/domain-accounting-books.md §ง2 · common-vat-invoice.md §14 (ป.86/2542 ข้อ 25 — เทียบเคียง)",
+    tag: "U",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  WHT_ADDITIONAL_FILING: {
+    code: "WHT_ADDITIONAL_FILING",
+    titleTh: "บันทึกแบบยื่นเพิ่มเติม ภ.ง.ด.",
+    messageTh: (p) =>
+      `${s(p, "form")} เดือน ${s(p, "period")} ทำเครื่องหมายนำส่งไปแล้ว · บันทึกแบบยื่นเพิ่มเติมครั้งที่ ${s(p, "n")} ด้วยภาษีส่วนต่าง ${s(p, "delta")} บาท · ภาษีที่นำส่งไม่ครบ/ล่าช้ามีเงินเพิ่มร้อยละ 1.5 ต่อเดือนหรือเศษของเดือน (ม.27) · รูปแบบการยื่นเพิ่มเติมของ ภ.ง.ด. ระบบยังไม่พบแหล่งที่ระบุตรง · กดยืนยันเพื่อบันทึก`,
+    citation: "ประมวลรัษฎากร ม.27 · references/common-withholding-tax.md §15 · ledger/wo-notes/T1.7.md (ภ.ง.ด. ยื่นเพิ่มเติม = ค่าเริ่มต้นของระบบ)",
+    tag: "S",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  WHT_CREDIT_CERT_OWED: {
+    code: "WHT_CREDIT_CERT_OWED",
+    titleTh: "ยังไม่ได้รับ 50 ทวิ จากลูกค้า",
+    messageTh: (p) =>
+      `${p.count ? `${s(p, "count")} รายการ ` : ""}ลูกค้าหักภาษี ณ ที่จ่ายไว้${p.amount ? ` รวม ${s(p, "amount")} บาท` : ""} แต่ยังไม่ได้ทำเครื่องหมายว่าได้รับหนังสือรับรอง (50 ทวิ) — ภาษีที่ถูกหักเป็นเครดิตภาษีของร้าน ใช้หนังสือรับรองเป็นหลักฐานตอนยื่นภาษีเงินได้ · ติดตามขอจากลูกค้า`,
+    citation: "ประมวลรัษฎากร ม.50 ทวิ · ม.60 · references/common-withholding-tax.md §15 · audit-checklist-accounting.md F13",
     tag: "V",
     checkedAt: "2026-11-13",
     ack: false,

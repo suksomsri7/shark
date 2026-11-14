@@ -51,7 +51,10 @@ import { reimbursePettyCash, topUpPettyCash } from "../../finance-overview";
 import { issueWhtCert, markFiled, unmarkFiled } from "../../wht";
 import { actorAuditId, actorAuditType, actorRefId, type ApiActor } from "../actor";
 import { defineOp, type ApiOp } from "../op";
-import { ApiError } from "../respond";
+import { ApiError, legalAckApiError } from "../respond";
+import { markWhtCreditReceived, replaceWhtCert } from "../../wht-cert"; // ACC T3.3 T3.5 ◂
+import { recordWhtAdditionalFiling } from "../../wht-filing"; // ACC T3.4 ◂
+import { isPndFormNumber, type PndFormNumber } from "../../wht-forms"; // ACC T3.4 ◂
 import { chequeRowView, financeAccountWriteView } from "../serialize-finance";
 import { toWhtIncomeType, whtIncomeTypeField } from "../wht-income";
 
@@ -659,8 +662,10 @@ const whtIssueCert = defineOp({
 });
 
 const formField = z
-  .union([z.literal(3), z.literal(53)])
-  .describe("Which return the certificates go on: 3 for payments to individuals, 53 for payments to companies.");
+  .union([z.literal(1), z.literal(2), z.literal(3), z.literal(53), z.literal(54)])
+  .describe(
+    "Which monthly return (PND form): 1 = salary or commission paid to individuals (section 50(1)), 2 = interest, dividends or royalties paid to individuals, 3 = other payments to individuals, 53 = payments to companies, 54 = payments abroad (section 70). The report `GET /wht/pnd` shows which form each payment belongs to.",
+  );
 
 const periodField = z
   .string()
@@ -720,19 +725,159 @@ const whtUnmarkFiled = defineOp({
   async handler({ actor, params, input }) {
     const rawForm = params.form ?? "";
     const period = params.period ?? "";
-    if (rawForm !== "3" && rawForm !== "53") {
-      throw new ApiError(422, "validation", "แบบ ภ.ง.ด. ต้องเป็น 3 หรือ 53", "The form must be 3 or 53.");
+    const formNo = Number(rawForm);
+    if (!isPndFormNumber(formNo)) {
+      throw new ApiError(422, "validation", "แบบ ภ.ง.ด. ต้องเป็น 1, 2, 3, 53 หรือ 54", "The form must be 1, 2, 3, 53 or 54.");
     }
     if (!YM.test(period)) {
       throw new ApiError(422, "validation", "งวดต้องเป็นเดือนรูปแบบ YYYY-MM (01-12)", "The period must be a month in `YYYY-MM` form.");
     }
     // ACC T1.7 ▸ ไม่ลบแถว — เก็บใคร/เมื่อไร/เหตุผล ◂
-    const res = await unmarkFiled(actor.tenantId, actor.systemId, { form: rawForm === "3" ? 3 : 53, periodKey: period, userId: actorAuditId(actor), reason: input.reason, actorType: actorAuditType(actor) });
+    const res = await unmarkFiled(actor.tenantId, actor.systemId, { form: formNo, periodKey: period, userId: actorAuditId(actor), reason: input.reason, actorType: actorAuditType(actor) });
     if (!res.ok) {
       if (res.reason.includes("ยังไม่ได้ทำเครื่องหมาย")) throw notFound(res.reason);
       failWith(res.reason);
     }
     return { ok: true };
+  },
+});
+
+// ── ACC T3.3 ยกเลิก 50 ทวิ แล้วออกใบแทน ──
+const replaceCertInput = z
+  .object({
+    acknowledge: ackField.describe("Legal warning codes the user has read and accepted: WHT_CERT_REPLACE (always), FILED_PERIOD_PND_CHANGE when the month is already marked filed."),
+    reason: z.string().min(3).max(300).describe("Why the certificate is replaced, for example a wrong payee name or income type. Printed on the replacement."),
+    whtIncomeType: whtIncomeTypeField.optional(),
+    condition: z
+      .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
+      .optional()
+      .describe("Payer condition box on the certificate: 1 withheld at source, 2 tax paid by the payer every time, 3 tax paid by the payer once, 4 other."),
+    refreshPayee: z.boolean().optional().describe("Take the payee name, address and tax id from the contact as it is now (use after correcting the contact)."),
+  })
+  .strict();
+
+const whtReplaceCert = defineOp({
+  id: "wht.replace-cert",
+  method: "POST",
+  path: "/wht/certs/{id}/replace",
+  kind: "write",
+  action: "account.wht.manage",
+  summary:
+    "Cancel a wrong withholding tax certificate (form 50 tawi) the shop issued and issue a replacement: new number, the original payment date, the same amounts, a note citing the original number. The original stays on file marked cancelled.",
+  label: "ยกเลิกและออก 50 ทวิ แทน",
+  tool: { name: "account_wht_replace_cert", hint: "Use when a 50 tawi certificate has a wrong payee or income type. Proposed for confirmation with the reason." },
+  input: replaceCertInput,
+  test: "T3.3-R1",
+  async handler({ actor, params, input }) {
+    const res = await replaceWhtCert({ tenantId: actor.tenantId, systemId: actor.systemId }, params.id ?? "", {
+      reason: input.reason,
+      whtIncomeType: input.whtIncomeType ? toWhtIncomeType(input.whtIncomeType) : null,
+      whtCondition: input.condition ?? null,
+      refreshPayee: input.refreshPayee ?? false,
+      actorId: actorAuditId(actor),
+    });
+    if (!res.ok) {
+      if (res.legal) throw legalAckApiError(res.legal.warnings);
+      if (res.code === "NOT_FOUND") throw notFound(res.reason);
+      if (res.code === "NOT_LIVE") throw stateConflict(res.reason);
+      failWith(res.reason);
+    }
+    return { certId: res.certId, docNo: res.docNo, replacedCertId: res.replacedId };
+  },
+});
+
+// ── ACC T3.4 แบบยื่นเพิ่มเติม ภ.ง.ด. ──
+const whtAdditionalFiling = defineOp({
+  id: "wht.additional-filing",
+  method: "POST",
+  path: "/wht/filings/{form}/{period}/additional",
+  kind: "write",
+  action: "account.wht.manage",
+  summary:
+    "Record an additional (supplementary) filing for a withholding tax month already marked filed: snapshots the report now, the tax difference from the last filing and the certificates issued or cancelled since. Read the difference first with GET /wht/filings/{form}/{period}.",
+  label: "บันทึกแบบยื่นเพิ่มเติม ภ.ง.ด.",
+  tool: { name: "account_wht_additional_filing", hint: "Use after a payment in a filed withholding tax month was cancelled or added. Proposed for confirmation." },
+  input: z
+    .object({
+      acknowledge: ackField.describe("Legal warning codes the user has read and accepted: WHT_ADDITIONAL_FILING."),
+      note: z.string().max(200).nullish().describe("How it was filed, for example through the e-filing site."),
+    })
+    .strict(),
+  test: "T3.4-A1",
+  async handler({ actor, params, input }) {
+    const formNo = Number(params.form ?? "");
+    const period = params.period ?? "";
+    if (!isPndFormNumber(formNo)) throw new ApiError(422, "validation", "แบบ ภ.ง.ด. ต้องเป็น 1, 2, 3, 53 หรือ 54", "The form must be 1, 2, 3, 53 or 54.");
+    if (!YM.test(period)) throw new ApiError(422, "validation", "งวดต้องเป็นเดือนรูปแบบ YYYY-MM (01-12)", "The period must be a month in `YYYY-MM` form.");
+    const res = await recordWhtAdditionalFiling({ tenantId: actor.tenantId, systemId: actor.systemId }, { form: formNo as PndFormNumber, periodKey: period, note: input.note ?? null, actorId: actorAuditId(actor), actorType: actorAuditType(actor) });
+    if (!res.ok) {
+      if (res.legal) throw legalAckApiError(res.legal.warnings);
+      if (res.code === "NOT_FILED" || res.code === "NO_CHANGE") throw stateConflict(res.reason);
+      failWith(res.reason);
+    }
+    return { id: res.id, seq: res.seq, deltaTaxSatang: res.deltaTaxSatang, totalTaxSatang: res.totalTaxSatang };
+  },
+});
+
+// ── ACC T3.5 ฝั่งถูกหัก: ได้รับ 50 ทวิ จากลูกค้าแล้ว ──
+const whtMarkReceived = defineOp({
+  id: "wht.mark-received",
+  method: "POST",
+  path: "/wht/credits/{id}/received",
+  kind: "write",
+  action: "account.wht.manage",
+  summary:
+    "Mark that the customer's withholding tax certificate (50 tawi) for tax they withheld from the shop has arrived. Only this flag removes it from the owed list (attachments do not count). Sending it again changes nothing.",
+  label: "ทำเครื่องหมายได้รับ 50 ทวิ แล้ว",
+  tool: { name: "account_wht_mark_received", hint: "Use when the owner says a customer's 50 tawi certificate has arrived. Proposed for confirmation." },
+  input: z
+    .object({
+      note: z.string().max(200).nullish().describe("Optional note, for example the book and number printed on the customer's certificate."),
+      receivedOn: z.string().regex(YMD, "receivedOn ต้องเป็นวันที่รูปแบบ YYYY-MM-DD").optional().describe("Day the certificate arrived, `YYYY-MM-DD`. Defaults to today."),
+    })
+    .strict(),
+  test: "T3.5-R1",
+  async handler({ actor, params, input }) {
+    const res = await markWhtCreditReceived({ tenantId: actor.tenantId, systemId: actor.systemId }, params.id ?? "", {
+      received: true,
+      note: input.note ?? null,
+      at: input.receivedOn ? new Date(`${input.receivedOn}T12:00:00+07:00`) : null,
+      actorId: actorAuditId(actor),
+      actorType: actorAuditType(actor),
+    });
+    if (!res.ok) {
+      if (res.code === "NOT_FOUND") throw notFound(res.reason);
+      if (res.code === "NOT_LIVE") throw stateConflict(res.reason);
+      failWith(res.reason);
+    }
+    return { certId: res.certId, receivedAt: res.receivedAt?.toISOString() ?? null, changed: res.changed };
+  },
+});
+
+const whtUnmarkReceived = defineOp({
+  id: "wht.unmark-received",
+  method: "DELETE",
+  path: "/wht/credits/{id}/received",
+  kind: "write",
+  action: "account.wht.manage",
+  summary: "Undo the 'certificate received' mark, for example when it was ticked on the wrong row. The row goes back to the owed list.",
+  label: "ยกเลิกเครื่องหมายได้รับ 50 ทวิ",
+  tool: { name: "account_wht_unmark_received", hint: "Use only to correct a wrong 'received' mark. Proposed for confirmation." },
+  input: z.object({ reason: z.string().min(3).max(200).describe("Why the mark is removed. Kept in the audit log.") }).strict(),
+  test: "T3.5-R2",
+  async handler({ actor, params, input }) {
+    const res = await markWhtCreditReceived({ tenantId: actor.tenantId, systemId: actor.systemId }, params.id ?? "", {
+      received: false,
+      note: input.reason,
+      actorId: actorAuditId(actor),
+      actorType: actorAuditType(actor),
+    });
+    if (!res.ok) {
+      if (res.code === "NOT_FOUND") throw notFound(res.reason);
+      if (res.code === "NOT_LIVE") throw stateConflict(res.reason);
+      failWith(res.reason);
+    }
+    return { certId: res.certId, receivedAt: null, changed: res.changed };
   },
 });
 
@@ -752,4 +897,8 @@ export const FINANCE_WRITE_OPS: ApiOp[] = [
   whtIssueCert,
   whtMarkFiled,
   whtUnmarkFiled,
+  whtReplaceCert,
+  whtAdditionalFiling,
+  whtMarkReceived,
+  whtUnmarkReceived,
 ];

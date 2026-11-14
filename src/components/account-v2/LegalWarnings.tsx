@@ -20,6 +20,7 @@ export function LegalWarnings({
   onAckChange,
   testId = "legal-warnings",
   compact = false,
+  collapsible = false,
 }: {
   warnings: readonly LegalWarning[];
   /** ชื่อช่องในฟอร์มที่ส่งรหัสที่ยืนยัน (server action อ่าน formData.getAll(ackName)) */
@@ -27,8 +28,11 @@ export function LegalWarnings({
   onAckChange?: (codes: string[]) => void;
   testId?: string;
   compact?: boolean;
+  /** ACC T3b A2 ▸ ข้อความยาว (เช่นจอขาย): แสดง 2 บรรทัด + "อ่านเพิ่ม" เปิดข้อความเต็ม/อ้างอิง — ทะเบียนยังเก็บข้อความเต็ม ◂ */
+  collapsible?: boolean;
 }) {
   const [acked, setAcked] = useState(false);
+  const [open, setOpen] = useState(false);
   if (!warnings.length) return null;
   const needAck = warnings.filter((w) => w.ack).map((w) => w.code);
   const canAck = needAck.length > 0 && (ackName !== undefined || onAckChange !== undefined);
@@ -44,9 +48,22 @@ export function LegalWarnings({
             <span className="mt-0.5 shrink-0">
               <AccountIcon name="warn" className="h-4 w-4" />
             </span>
-            <span className="flex flex-col gap-0.5">
-              <span>{w.messageTh}</span>
-              {!compact && (w.citation || w.tag || w.checkedAt) ? (
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className={collapsible && !open ? "line-clamp-2" : undefined} data-testid={`${testId}-text`}>
+                {w.messageTh}
+              </span>
+              {collapsible ? (
+                <button
+                  type="button"
+                  className="self-start text-xs font-medium underline"
+                  aria-expanded={open}
+                  onClick={() => setOpen((v) => !v)}
+                  data-testid={`${testId}-more`}
+                >
+                  {open ? "ย่อ" : "อ่านเพิ่ม"}
+                </button>
+              ) : null}
+              {(!compact || (collapsible && open)) && (w.citation || w.tag || w.checkedAt) ? (
                 <span className="text-xs text-[color:var(--color-muted)]">
                   {w.citation ? <>อ้างอิง: {w.citation}</> : null}
                   {w.tag ? <> · {LEGAL_TAG_SHORT_TH[w.tag]}</> : null}

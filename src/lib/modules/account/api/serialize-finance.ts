@@ -1,3 +1,6 @@
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings"; // ACC T3.4 ◂
+import { pndFormOfCert } from "../wht"; // ACC T3.4 ◂
+import { whtConditionOf } from "../wht-forms"; // ACC T3 merge ▸ รหัสเงื่อนไข → ช่อง 1–4 ◂
 // serialize-finance.ts — ตัวแปลง "ของภายใน" → "ของที่ส่งออกทาง REST" ของการเงิน/เช็ค/WHT (WO B3)
 //
 // กติกาเหมือน `serialize.ts` ของ B1 เป๊ะ (อ่านหัวไฟล์นั้นก่อนแก้ที่นี่):
@@ -284,6 +287,9 @@ export function whtCertRowView(r: WhtCertRow) {
     status: r.cancelled ? "CANCELLED" : "NORMAL",
     filedPeriod: r.filedPeriodKey,
     sourceDocument: r.sourceDocId ? { id: r.sourceDocId, docNo: r.sourceDocNo } : null,
+    // ACC T3.4 ▸ แบบ ภ.ง.ด. (ฝั่งที่ร้านหัก) · ACC T3.5 ▸ วันที่ได้รับ 50 ทวิ จากลูกค้า (ฝั่งถูกหัก) ◂
+    form: r.form,
+    certReceivedAt: r.certReceivedAt ? r.certReceivedAt.toISOString() : null,
   };
 }
 
@@ -329,6 +335,12 @@ export function whtCertDetailView(
     whtSatang: cert.whtAmount,
     sourceDocument: sourceDoc ? { id: sourceDoc.id, docNo: sourceDoc.docNo } : null,
     status: cert.status,
+    // ACC T3.3 ▸ เงื่อนไขผู้จ่าย · ใบแทน/ถูกแทน · ACC T3.4 ▸ แบบ ภ.ง.ด. · ACC T3.5 ▸ ได้รับ 50 ทวิ แล้ว (ฝั่งถูกหัก) ◂
+    condition: whtConditionOf(cert.whtCondition),
+    form: isOut ? null : pndFormOfCert(cert),
+    replacedById: cert.replacedById,
+    voidReason: cert.voidReason,
+    receivedAt: cert.whtCertReceivedAt ? cert.whtCertReceivedAt.toISOString() : null,
   };
 }
 
@@ -348,12 +360,17 @@ function pndRowView(row: PndRow) {
     rateBp: row.whtRateBp,
     whtSatang: row.whtAmount,
     condition: row.condition,
+    // ACC T3.4 ▸ แบบของแถว · การจ่ายที่หักแล้วแต่ยังไม่มีใบ (hasCert false · certId null) ◂
+    form: row.form,
+    hasCert: row.hasCert,
+    paymentId: row.paymentId,
+    documentId: row.documentId,
   };
 }
 
 export function pndView(
-  r: { rows: PndRow[]; byIncomeType: Array<{ incomeType: AccountWhtIncomeType; label: string; base: number; wht: number; count: number }>; grandBase: number; grandWht: number },
-  type: 3 | 53,
+  r: { rows: PndRow[]; byIncomeType: Array<{ incomeType: AccountWhtIncomeType; label: string; base: number; wht: number; count: number }>; grandBase: number; grandWht: number; uncertifiedCount?: number; otherChannels?: Record<"EWHT" | "AGENT", { count: number; base: number; wht: number }>; warnings?: LegalWarning[] },
+  type: number,
   period: string,
 ) {
   return {
@@ -369,6 +386,13 @@ export function pndView(
     })),
     grandBaseSatang: r.grandBase,
     grandWhtSatang: r.grandWht,
+    withoutCertificate: r.uncertifiedCount ?? 0,
+    // ACC T3 merge ▸ หักแล้วแต่นำส่งทางอื่น (ไม่อยู่ในแบบนี้ · ไม่ใช่ "ยังไม่ออก 50 ทวิ"): e-WHT ธนาคารนำส่ง · ตัวแทนหักภาษี ◂
+    notInThisFiling: {
+      ewht: { count: r.otherChannels?.EWHT.count ?? 0, baseSatang: r.otherChannels?.EWHT.base ?? 0, whtSatang: r.otherChannels?.EWHT.wht ?? 0 },
+      withholdingAgent: { count: r.otherChannels?.AGENT.count ?? 0, baseSatang: r.otherChannels?.AGENT.base ?? 0, whtSatang: r.otherChannels?.AGENT.wht ?? 0 },
+    },
+    warnings: r.warnings ?? [],
   };
 }
 
@@ -385,6 +409,10 @@ function whtCreditRowView(row: WhtCreditRow) {
     whtRateBp: row.whtRateBp,
     whtSatang: row.whtAmount,
     hasCertCopy: row.hasCertCopy,
+    // ACC T3.5 ▸ ธงรับแล้วจริง (hasCertCopy = มีไฟล์แนบเท่านั้น) ◂
+    certId: row.certId,
+    certReceived: !!row.certReceivedAt,
+    certReceivedAt: row.certReceivedAt ? row.certReceivedAt.toISOString() : null,
   };
 }
 

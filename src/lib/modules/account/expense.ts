@@ -1065,6 +1065,9 @@ function contactSnapshot(c: {
   address: string | null;
   phone: string | null;
   email: string | null;
+  taxIdCountry?: string | null;
+  country?: string | null;
+  legalEntityType?: string | null;
 } | null) {
   if (!c) return undefined;
   return {
@@ -1076,6 +1079,10 @@ function contactSnapshot(c: {
     address: c.address,
     phone: c.phone,
     email: c.email,
+    // ACC T3.4 ▸ ตรึงข้อมูลที่ตัวจับแบบ ภ.ง.ด. ใช้ (ต่างประเทศ · มูลนิธิ/สมาคม) — แบบของ 50 ทวิ ไม่ขยับย้อนหลัง ◂
+    ...(c.taxIdCountry && c.taxIdCountry !== "TH" ? { taxIdCountry: c.taxIdCountry } : {}),
+    ...(c.country && c.country !== "TH" ? { country: c.country } : {}),
+    ...(c.legalEntityType && /มูลนิธิ|สมาคม/.test(c.legalEntityType) ? { legalEntityType: c.legalEntityType } : {}),
   };
 }
 

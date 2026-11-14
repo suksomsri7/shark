@@ -37,7 +37,8 @@ chk("W1.3", "ไม่มี \"ถูกกฎหมาย\" / \"ขั้นต
 const unsub = readFileSync(join(ROOT, "src/app/u/[token]/page.tsx"), "utf8");
 chk("W1.4", "หน้ายกเลิกรับอีเมล: ไม่อ้างว่ากฎหมายกำหนดให้ส่งใบเสนอราคา", !/ตามที่กฎหมายกำหนด/.test(unsub));
 const wht = readFileSync(join(ROOT, "src/app/app/sys/[id]/account/wht/page.tsx"), "utf8");
-chk("W1.5", "ปุ่มส่งออก ภ.ง.ด. บอกว่าเป็น CSV ช่วยกรอกแบบ · ไม่มีลูกศร emoji", wht.includes("ส่งออกรายการ ภ.ง.ด.3/53 (CSV ช่วยกรอกแบบ)") && !wht.includes("⬇"));
+// ORACLE-EDIT (ACC T3.4 · เลน 2): ปุ่มไม่ผูก "3/53" แล้ว (รายงานแยกแบบ 1/2/3/53/54) — ยังต้องบอกว่าเป็น CSV ช่วยกรอกแบบ
+chk("W1.5", "ปุ่มส่งออก ภ.ง.ด. บอกว่าเป็น CSV ช่วยกรอกแบบ · ไม่มีลูกศร emoji", wht.includes("รายการ ภ.ง.ด. (CSV ช่วยกรอกแบบ)") && !wht.includes("⬇"));
 
 console.log("\n── W2 สำเนาเพื่อความสะดวก (เรนเดอร์) ──");
 const R: Any = await import("@/lib/modules/pos/receipt-render" as string);

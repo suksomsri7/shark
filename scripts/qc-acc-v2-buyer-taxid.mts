@@ -1,4 +1,4 @@
-// QC ACC T2.11 — ใบกำกับภาษีเต็มรูปจาก POS / โรงแรม โดยผู้ซื้อไม่มีเลขผู้เสียภาษี 13 หลัก = คำเตือน BUYER_TAX_ID_MISSING (กดรับทราบ) ไม่ใช่บล็อก
+// QC ACC T2.11 (+ T3b A1 มติผู้คุม 14 พ.ย.: ยืนยันเฉพาะผู้ซื้อนิติบุคคล · T3b A4 T2.5 ทาง POS) — ใบกำกับภาษีเต็มรูปจาก POS / โรงแรม โดยผู้ซื้อไม่มีเลขผู้เสียภาษี 13 หลัก = คำเตือน BUYER_TAX_ID_MISSING (กดรับทราบ) ไม่ใช่บล็อก
 //
 // ใบงาน: ledger/ACCOUNT-TAX-PLAN.md T2.11 (เจ้าของสั่งแยกใบ 13 พ.ย.) · design note ledger/wo-notes/T2.11.md
 // กฎ: skill shark-thai-law common-vat-invoice.md §14 (ประกาศ VAT ฉ.39 ข้อ 7, 9 [V] — เลขผู้ซื้อบังคับเฉพาะผู้ซื้อที่จด VAT) · test-rules T-ACC-04 [V]
@@ -95,7 +95,8 @@ console.log("\n── B0 ตัวอ่านร่วม tax-invoice-shared (�
   const good = SH.parseTaxInvoiceBuyer({ ...base, kind: "JURISTIC", taxId: "0-1055-55018-00-1" });
   eq("B0.3", "เลขถูก (มีขีด) → ตัดขีด เก็บ 13 หลัก", [good.ok, good.buyer?.taxId], [true, VALID_JURISTIC]);
   const wr = SH.buyerTaxIdWarnings({ taxId: null }, "request");
-  const wi = SH.buyerTaxIdWarnings({ taxId: null }, "issue");
+  // ORACLE-EDIT (มติผู้คุม 14 พ.ย.: ต้องยืนยันเฉพาะผู้ซื้อแท็บนิติบุคคลที่ไม่มีเลข · บุคคลธรรมดา = แจ้งให้ทราบ): ขั้นออกต้องยืนยันเมื่อผู้ซื้อเป็นนิติบุคคล — เดิมทดสอบด้วย { taxId: null } (ไม่มี kind = บุคคล)
+  const wi = SH.buyerTaxIdWarnings({ taxId: null, kind: "JURISTIC" }, "issue");
   const reg = W.LEGAL_WARNINGS.BUYER_TAX_ID_MISSING;
   chk(
     "B0.4",
@@ -105,7 +106,10 @@ console.log("\n── B0 ตัวอ่านร่วม tax-invoice-shared (�
     [wr, wi],
   );
   chk("B0.5", "ข้อความไม่มีคำว่า \"ถูกกฎหมาย\"", !/ถูกกฎหมาย/.test(wi[0].messageTh), "ไม่มี", wi[0].messageTh, "MAJOR");
-  eq("B0.6", "มีเลข → ไม่มีคำเตือน · ยืนยันแล้ว → ไม่ค้าง · ยังไม่ยืนยัน → ค้าง 1", [SH.buyerTaxIdWarnings({ taxId: VALID_JURISTIC }, "issue").length, SH.buyerTaxIdUnacked({ taxId: null }, ["BUYER_TAX_ID_MISSING"]).length, SH.buyerTaxIdUnacked({ taxId: null }, []).length], [0, 0, 1]);
+  // ORACLE-EDIT (มติผู้คุม 14 พ.ย.: ต้องยืนยันเฉพาะผู้ซื้อแท็บนิติบุคคลที่ไม่มีเลข · บุคคลธรรมดา = แจ้งให้ทราบ)
+  eq("B0.6", "มีเลข → ไม่มีคำเตือน · นิติบุคคลยืนยันแล้ว → ไม่ค้าง · นิติบุคคลยังไม่ยืนยัน → ค้าง 1", [SH.buyerTaxIdWarnings({ taxId: VALID_JURISTIC }, "issue").length, SH.buyerTaxIdUnacked({ taxId: null, kind: "JURISTIC" }, ["BUYER_TAX_ID_MISSING"]).length, SH.buyerTaxIdUnacked({ taxId: null, kind: "JURISTIC" }, []).length], [0, 0, 1]);
+  // T3b A1 ▸ บุคคลธรรมดา (แท็บบุคคล / ไม่มี kind) = แจ้งให้ทราบ ack:false · ไม่ค้างยืนยัน ◂
+  eq("B0.13", "บุคคลธรรมดาไม่มีเลข: ขั้นออกมีคำเตือน ack:false (แจ้งเงียบ ๆ) · ไม่ค้างยืนยัน · ไม่มี kind = บุคคล", [SH.buyerTaxIdWarnings({ taxId: null, kind: "PERSON" }, "issue").map((w: Any) => [w.code, w.ack]), SH.buyerTaxIdUnacked({ taxId: null, kind: "PERSON" }, []).length, SH.buyerTaxIdUnacked({ taxId: null }, []).length], [[["BUYER_TAX_ID_MISSING", false]], 0, 0]);
   eq("B0.7", "buyerKindFromTaxId(null) = PERSON (ค่าเริ่มต้นของระบบ) · 0… = JURISTIC", [SH.buyerKindFromTaxId(null), SH.buyerKindFromTaxId(VALID_JURISTIC), SH.buyerKindFromTaxId("1234567890121")], ["PERSON", "JURISTIC", "PERSON"]);
   const sp = SH.sameBuyerParty;
   eq(
@@ -176,13 +180,20 @@ try {
   const sContact = sDoc?.contactId ? await prisma.accountContact.findUnique({ where: { id: sDoc.contactId }, select: { taxId: true, name: true, address: true, legalType: true } }) : null;
   eq("B2.3", "ผู้ติดต่อใหม่ไม่มีเลข · บุคคล · ที่อยู่ตามที่กรอก", [sContact?.taxId ?? null, sContact?.legalType, sContact?.address], [null, "PERSON", "22 หมู่ 3 ภูเก็ต"]);
   const sAck = await acksOf(sales.S.id);
-  eq("B2.4", "รอยรับทราบ 1 แถว (op pos.sale.taxInvoice · รหัส BUYER_TAX_ID_MISSING · ผู้ใช้)", sAck.map((a: Any) => [a.actorType, a.actorId === owner.id, a.after?.op, a.after?.codes]), [["USER", true, "pos.sale.taxInvoice", ["BUYER_TAX_ID_MISSING"]]]);
+  // ORACLE-EDIT (มติผู้คุม 14 พ.ย.: ต้องยืนยันเฉพาะผู้ซื้อแท็บนิติบุคคลที่ไม่มีเลข · บุคคลธรรมดา = แจ้งให้ทราบ): ผู้ซื้อ S เป็นบุคคลธรรมดา ⇒ ไม่มีรอยรับทราบ (เดิม 1 แถว)
+  eq("B2.4", "บุคคลธรรมดาไม่มีเลข ตอนชำระ: ไม่ต้องยืนยัน ⇒ ไม่มีรอยรับทราบ (แม้จอส่งรหัสมา)", sAck.length, 0);
+  // T3b A1 ▸ ผู้ซื้อนิติบุคคลไม่มีเลข ตอนชำระ = ต้องยืนยัน · รอยรับทราบ 1 แถว (ย้ายจากเฉลย B2.4 เดิม) ◂
+  const sjBuyer = SH.parseTaxInvoiceBuyer({ kind: "JURISTIC", name: "ห้างตอนชำระ ไม่มีเลข", address: "23 หมู่ 3 ภูเก็ต" }).buyer;
+  await sell("SJ", { taxInvoice: { ...sjBuyer, requestedAt: new Date().toISOString() }, taxInvoiceLegalAck: { codes: ["BUYER_TAX_ID_MISSING"], actorId: owner.id, actorType: "USER", via: "screen" } });
+  const sjAck = await acksOf(sales.SJ.id);
+  eq("B2.5", "นิติบุคคลไม่มีเลข ตอนชำระ: รอยรับทราบ 1 แถว (op pos.sale.taxInvoice · รหัส BUYER_TAX_ID_MISSING · ผู้ใช้)", sjAck.map((a: Any) => [a.actorType, a.actorId === owner.id, a.after?.op, a.after?.codes]), [["USER", true, "pos.sale.taxInvoice", ["BUYER_TAX_ID_MISSING"]]]);
 
   // ═══ L ออกทีหลัง ═══
   console.log("\n── B3 ออกทีหลัง (ABB → เต็มรูป) — ไม่มีเลข ──");
   await sell("L");
   await drain();
-  const lBuyer = { kind: "PERSON", name: "นางสาวออกทีหลัง", address: "33 ถ.ราไวย์ ภูเก็ต", email: "later@buyer.test" };
+  // ORACLE-EDIT (มติผู้คุม 14 พ.ย.: ต้องยืนยันเฉพาะผู้ซื้อแท็บนิติบุคคลที่ไม่มีเลข · บุคคลธรรมดา = แจ้งให้ทราบ): ผู้ซื้อของชุดนี้ = แท็บนิติบุคคลไม่มีเลข (เดิม PERSON) — ชุด B3 ทดสอบทางที่ต้องยืนยัน
+  const lBuyer = { kind: "JURISTIC", name: "นางสาวออกทีหลัง", address: "33 ถ.ราไวย์ ภูเก็ต", email: "later@buyer.test" };
   const lNo = await TI.issueFullTaxInvoice(pctx, ownerActor, { saleId: sales.L.id, buyer: lBuyer });
   const lAfterNo = await prisma.posSale.findUnique({ where: { id: sales.L.id }, select: { taxInvoiceDocId: true } });
   const lDocNo = await docOf(sales.L.id, "TAX_INVOICE");
@@ -205,12 +216,13 @@ try {
   await drain();
   let thrown: Any = null;
   try {
-    await AMB.withLegalAck({ codes: [], actorId: null, actorType: "API_KEY", via: "rest" }, () => TI.issueFullTaxInvoice(pctx, ownerActor, { saleId: sales.A.id, buyer: { kind: "PERSON", name: "ลูกค้า REST", address: "44 ถ.ทดสอบ" } }));
+    // ORACLE-EDIT (มติผู้คุม 14 พ.ย.: ต้องยืนยันเฉพาะผู้ซื้อแท็บนิติบุคคลที่ไม่มีเลข · บุคคลธรรมดา = แจ้งให้ทราบ): ผู้ซื้อนิติบุคคลไม่มีเลข (เดิม PERSON)
+    await AMB.withLegalAck({ codes: [], actorId: null, actorType: "API_KEY", via: "rest" }, () => TI.issueFullTaxInvoice(pctx, ownerActor, { saleId: sales.A.id, buyer: { kind: "JURISTIC", name: "ลูกค้า REST", address: "44 ถ.ทดสอบ" } }));
   } catch (e) {
     thrown = e;
   }
   eq("B4.1", "บริบทไม่มีรหัส → LegalAckRequiredError (runner → 409) · ไม่มีเอกสาร", [W.isLegalAckRequiredError(thrown), thrown?.warnings?.map((w: Any) => w.code), await docOf(sales.A.id, "TAX_INVOICE")], [true, ["BUYER_TAX_ID_MISSING"], null]);
-  const viaCtx = await AMB.withLegalAck({ codes: ["BUYER_TAX_ID_MISSING"], actorId: null, actorType: "API_KEY", via: "rest" }, () => TI.issueFullTaxInvoice(pctx, ownerActor, { saleId: sales.A.id, buyer: { kind: "PERSON", name: "ลูกค้า REST", address: "44 ถ.ทดสอบ" } }));
+  const viaCtx = await AMB.withLegalAck({ codes: ["BUYER_TAX_ID_MISSING"], actorId: null, actorType: "API_KEY", via: "rest" }, () => TI.issueFullTaxInvoice(pctx, ownerActor, { saleId: sales.A.id, buyer: { kind: "JURISTIC", name: "ลูกค้า REST", address: "44 ถ.ทดสอบ" } }));
   const aAck = await acksOf(sales.A.id);
   eq("B4.2", "บริบทมีรหัส → ออกได้ · รอยรับทราบเป็นของคีย์ API (via rest)", [viaCtx.ok, aAck.map((a: Any) => [a.actorType, a.after?.via])], [true, [["API_KEY", "rest"]]]);
 
@@ -238,7 +250,8 @@ try {
       }
       return { status: res.status, body: j };
     };
-    const buyer = { kind: "PERSON", name: "ลูกค้า REST จริง", address: "55 ถ.ทดสอบ" };
+    // ORACLE-EDIT (มติผู้คุม 14 พ.ย.: ต้องยืนยันเฉพาะผู้ซื้อแท็บนิติบุคคลที่ไม่มีเลข · บุคคลธรรมดา = แจ้งให้ทราบ): แท็บนิติบุคคลไม่มีเลข (เดิม PERSON)
+    const buyer = { kind: "JURISTIC", name: "ลูกค้า REST จริง", address: "55 ถ.ทดสอบ" };
     const r1 = await call(`/sales/${sales.H.id}/tax-invoice`, { buyer, unitId: unit.id });
     eq("B5.1", "ไม่มีเลข ไม่ส่ง acknowledge → 409 legal_ack_required + warnings[BUYER_TAX_ID_MISSING]", [r1.status, r1.body?.error?.code, (r1.body?.error?.warnings ?? []).map((w: Any) => w.code)], [409, "legal_ack_required", ["BUYER_TAX_ID_MISSING"]]);
     const r2 = await call(`/sales/${sales.H.id}/tax-invoice`, { buyer: { ...buyer, taxId: "" }, unitId: unit.id, acknowledge: ["BUYER_TAX_ID_MISSING"] });
@@ -257,9 +270,10 @@ try {
   eq("B6.1", "ลูกค้าไม่กรอกเลข → รับคำขอ (ไม่มีช่องติ๊ก) + คำเตือนแจ้งให้ทราบ (ack:false) · แถว taxId null", [pub.ok, pub.warnings?.map((w: Any) => [w.code, w.ack]), req1?.taxId, req1?.status], [true, [["BUYER_TAX_ID_MISSING", false]], null, "REQUESTED"]);
   const pubBad = await RTR.requestFullTaxInvoice(sales.R1.token, { name: "x", address: "y", taxId: "12345" });
   eq("B6.2", "เลขที่กรอกแต่ไม่ครบ 13 หลัก → VALIDATION (positive control)", pubBad.code, "VALIDATION");
+  // ORACLE-EDIT (มติผู้คุม 14 พ.ย.: ต้องยืนยันเฉพาะผู้ซื้อแท็บนิติบุคคลที่ไม่มีเลข · บุคคลธรรมดา = แจ้งให้ทราบ): คำขอของลูกค้าไม่มีเลข = บุคคลธรรมดา (ค่าเริ่มต้น) ⇒ พนักงานออกได้โดยไม่ต้องยืนยัน (เดิม LEGAL_ACK_REQUIRED)
   const fromNo = await TI.issueFromTaxInvoiceRequest(pctx, ownerActor, { requestId: req1.id });
-  eq("B6.3", "พนักงานออกจากคำขอโดยไม่ยืนยัน → LEGAL_ACK_REQUIRED · คำขอยัง REQUESTED", [fromNo.code, (await prisma.posTaxInvoiceRequest.findUnique({ where: { id: req1.id } }))?.status], ["LEGAL_ACK_REQUIRED", "REQUESTED"]);
-  const fromOk = await TI.issueFromTaxInvoiceRequest(pctx, ownerActor, { requestId: req1.id, acknowledge: ["BUYER_TAX_ID_MISSING"] });
+  eq("B6.3", "พนักงานออกจากคำขอ (บุคคลธรรมดาไม่มีเลข) โดยไม่ยืนยัน → ออกได้ · ไม่มีรอยรับทราบ", [fromNo.ok, (await acksOf(sales.R1.id)).length], [true, 0]);
+  const fromOk = fromNo;
   const r1Doc = await docOf(sales.R1.id, "TAX_INVOICE");
   const req1After = await prisma.posTaxInvoiceRequest.findUnique({ where: { id: req1.id } });
   eq("B6.4", "ยืนยันแล้ว → ISSUED · accountDocId = ใบเต็มรูป · ชนิดผู้ซื้อ = บุคคล (ค่าเริ่มต้นเมื่อไม่มีเลข)", [fromOk.ok, req1After?.status, req1After?.accountDocId === r1Doc?.id, (r1Doc?.contactSnapshot as Any)?.legalType], [true, "ISSUED", true, "PERSON"]);
@@ -339,6 +353,31 @@ try {
     eq("B11.1", "quote รายการกำหนดเองชนิดเก็บแทน+ยกเว้น+มาตรฐาน → ok · ยอด 40,700 · VAT 700", [q.ok, q.grandTotalSatang, q.vatSatang], [true, 40_700, 700]);
     const bad = await REG.quoteRegisterCart(pctx, ownerActor, { lines: [{ name: "x", qty: 1, unitPriceSatang: 100, vatTreatment: "WEIRD" }] });
     eq("B11.2", "ชนิดผิดรูป → VALIDATION (positive control ของตัวตรวจ)", bad.code, "VALIDATION");
+  }
+  // ═══ T3b A4 — T2.5 ทาง POS: ขอใบเต็มรูปทีหลังข้ามเดือน (skill CASE §1.5 [V] · T-ACC-30) ═══
+  console.log("\n── B12 ใบเต็มรูปทีหลังของบิล POS ข้ามเดือน: วันที่บิลเดิม · อ้างเลขใบย่อ · VAT ไม่ย้ายเดือน ──");
+  {
+    const accIdx: Any = await import("@/lib/modules/account" as string);
+    await sell("T25");
+    await drain();
+    // เฉลยมือ: ย้ายบิล/ใบย่อไปลงวันที่ 28 ต.ค. 2569 (เดือนก่อน) — ทางของ R3 ปกติจำกัด 7 วัน ⇒ เรียกตัวแทนใบย่อตรง (ตัวเดียวกับที่ R3 ใช้)
+    const OLD = new Date("2026-10-28T10:00:00+07:00");
+    const abb0 = await docOf(sales.T25.id, "TAX_INVOICE_ABB");
+    await prisma.accountDocument.update({ where: { id: abb0!.id }, data: { issueDate: OLD } });
+    await prisma.accountJournalEntry.updateMany({ where: { systemId: SYS, refType: "PosSale", refId: sales.T25.id }, data: { date: OLD, periodKey: "2026-10" } });
+    const jeBefore = await prisma.accountJournalEntry.findMany({ where: { systemId: SYS, refId: { in: [sales.T25.id, abb0!.id] } }, select: { id: true, periodKey: true } });
+    const conv = await accIdx.supersedeAbbWithTaxInvoice({ tenantId: tid, sourceSystemId: posSys.id, refId: sales.T25.id, buyer: { kind: "JURISTIC", name: "บริษัท ขอทีหลัง จำกัด", taxId: VALID_JURISTIC, branchCode: "00000", address: "5 ถ.ทดสอบ", email: null } });
+    const full = conv.ok ? await prisma.accountDocument.findUnique({ where: { id: conv.docId }, select: { issueDate: true, docNo: true, note: true, reference: true, status: true } }) : null;
+    const abb1 = await prisma.accountDocument.findUnique({ where: { id: abb0!.id }, select: { status: true, supersededByDocId: true } });
+    const bkkYmd = (d: Date | undefined) => (d ? new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10) : null);
+    eq("B12.1", "ใบเต็มรูปลงวันที่บิลเดิม (28 ต.ค.) ไม่ใช่วันที่ขอ · ใบย่อ CANCELLED + supersededBy", [conv.ok, bkkYmd(full?.issueDate), abb1?.status, abb1?.supersededByDocId === conv.docId], [true, "2026-10-28", "CANCELLED", true]);
+    chk("B12.2", "หมายเหตุอ้างเลขใบย่อ + วันที่เดิม · ช่องอ้างอิง = เลขใบย่อ", !!full?.note?.includes(`ใบกำกับภาษีอย่างย่อเลขที่ ${abb0!.docNo}`) && /ลงวันที่ 28 ตุลาคม/.test(full?.note ?? "") && full?.reference === abb0!.docNo, "อ้างเลข+วันที่", full);
+    const jeAfter = await prisma.accountJournalEntry.findMany({ where: { systemId: SYS, refId: { in: [sales.T25.id, abb0!.id, conv.docId] } }, select: { id: true, periodKey: true } });
+    eq("B12.3", "ไม่มีรายการบัญชีใหม่ (GL ไม่แตะ) · รายการเดิมยังลงเดือน 2026-10 ⇒ VAT ไม่ย้ายเดือน ไม่นับซ้ำ", [jeAfter.length, jeAfter.every((j: Any) => j.periodKey === "2026-10"), jeBefore.length], [jeBefore.length, true, jeBefore.length]);
+    const STR2: Any = await import("@/lib/modules/account/sales-tax-report" as string);
+    const rOct = await STR2.salesTaxReport({ tenantId: tid, systemId: SYS }, "2026-10", { abbMode: "PER_BILL" });
+    const rowT = rOct.rows.find((x: Any) => x.docNo === full?.docNo);
+    chk("B12.4", "รายงานภาษีขาย ต.ค.: แถวใบเต็มรูป 10,000/700 · หมายเหตุ \"แทนใบกำกับภาษีอย่างย่อ … (ใบย่อไม่นับซ้ำ)\" · ไม่มีแถวใบย่อซ้ำ", !!rowT && (rowT.base ?? rowT.parts?.[0]?.base) === 10_000 && rowT.notes.some((n: string) => n.includes(abb0!.docNo ?? "x") && n.includes("ไม่นับซ้ำ")) && !rOct.rows.some((x: Any) => x.docNo === abb0!.docNo), "1 แถว", rowT);
   }
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.message}\n${e.stack?.split("\n").slice(0, 6).join("\n")}` : String(e));

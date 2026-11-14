@@ -205,8 +205,10 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
       if (!same && u.count === 1) autoRejected.push({ id: r.id, taxId: r.taxId });
     }
     // ACC T2.11 ▸ รอยรับทราบคำเตือน (ธุรกรรมเดียวกับการยึดเลขเอกสาร) — เฉพาะใบที่ไม่มีเลขผู้ซื้อ ◂
-    if (!buyer.taxId) {
-      const warnings = buyerTaxIdUnacked(buyer, []);
+    // ACC T3b A1 ▸ บุคคลธรรมดาไม่ต้องยืนยัน ⇒ ไม่มีรอยรับทราบ ◂
+    const ackWarnings = buyer.taxId ? [] : buyerTaxIdUnacked(buyer, []);
+    if (ackWarnings.length) {
+      const warnings = ackWarnings;
       await recordLegalAckInTx(tx, { tenantId: ctx.tenantId, ack: x.ack, op: "pos.taxinvoice.issue", targetType: "PosSale", targetId: sale.id, warnings });
     }
     await emitOutbox(tx, {

@@ -8,6 +8,7 @@
 import { tenantDb } from "@/lib/core/db";
 import { LEGAL_ACK_ACTION } from "@/lib/core/legal-ack";
 import { FILED_VAT_KEYS, type FiledKey } from "./filed-guard";
+import { pndFormOfCert } from "./wht"; // ACC T3.4 ◂
 
 type Ctx = { tenantId: string; systemId: string };
 
@@ -156,7 +157,8 @@ export async function vatFiledDifferences(ctx: Ctx, periodKey: string): Promise<
 }
 
 export type PndDiffRow = {
-  form: 3 | 53;
+  /** ACC T3.4 ▸ แบบจากตัวจับแบบ (1/2/3/53/54) — เดิม PERSON=3 อื่น=53 ◂ */
+  form: number;
   certId: string;
   certNo: string | null;
   contactName: string;
@@ -170,13 +172,13 @@ export type PndDiffRow = {
   acknowledged: boolean;
 };
 
-export type PndDifferences = { periodKey: string; forms: { form: 3 | 53; filedAt: Date }[]; rows: PndDiffRow[]; totals: Record<"3" | "53", number> };
+export type PndDifferences = { periodKey: string; forms: { form: number; filedAt: Date }[]; rows: PndDiffRow[]; totals: Record<string, number> };
 
 export async function pndFiledDifferences(ctx: Ctx, periodKey: string): Promise<PndDifferences> {
   const db = tenantDb(ctx);
   const filings = await db.accountWhtFiling.findMany({ where: { periodKey, unmarkedAt: null }, select: { form: true, filedAt: true } });
-  const forms = filings.map((f) => ({ form: (f.form === 3 ? 3 : 53) as 3 | 53, filedAt: f.filedAt }));
-  const out: PndDifferences = { periodKey, forms, rows: [], totals: { "3": 0, "53": 0 } };
+  const forms = filings.map((f) => ({ form: f.form, filedAt: f.filedAt }));
+  const out: PndDifferences = { periodKey, forms, rows: [], totals: { "1": 0, "2": 0, "3": 0, "53": 0, "54": 0 } };
   if (forms.length === 0) return out;
   const [y, m] = periodKey.split("-").map(Number);
   const gte = new Date(Date.UTC(y, m - 1, 1) - 7 * 3_600_000);
@@ -184,7 +186,7 @@ export async function pndFiledDifferences(ctx: Ctx, periodKey: string): Promise<
   const earliest = new Date(Math.min(...forms.map((f) => f.filedAt.getTime())));
   const certs = await db.accountDocument.findMany({
     where: { docType: "WHT_CERT", direction: "IN", issueDate: { gte, lt }, OR: [{ createdAt: { gt: earliest } }, { voidedAt: { gt: earliest } }] },
-    select: { id: true, docNo: true, issueDate: true, createdAt: true, voidedAt: true, status: true, whtAmount: true, createdById: true, sourcePaymentId: true, contactSnapshot: true, contact: { select: { name: true, legalType: true } } },
+    select: { id: true, docNo: true, issueDate: true, createdAt: true, voidedAt: true, status: true, whtAmount: true, createdById: true, sourcePaymentId: true, contactSnapshot: true, whtIncomeType: true, contact: { select: { name: true, legalType: true, taxIdCountry: true, country: true, legalEntityType: true } } },
   });
   const acks = await ackers(ctx, "AccountDocument", certs.map((c) => c.id));
   // 50 ทวิ ที่ออกพร้อมการจ่าย: คำเตือนถูกยืนยันที่รายการบัญชีของงวดจ่าย (WHT ค้างนำส่งลงเดือนนั้น) ⇒ ตามไปหาผู้ยืนยันที่นั่น
@@ -200,7 +202,7 @@ export async function pndFiledDifferences(ctx: Ctx, periodKey: string): Promise<
   }
   for (const c of certs) {
     const snap = (c.contactSnapshot ?? null) as { legalType?: string; name?: string } | null;
-    const form: 3 | 53 = (snap?.legalType ?? c.contact?.legalType) === "PERSON" ? 3 : 53;
+    const form = pndFormOfCert(c); // ACC T3.4 ▸ ตัวจับแบบเดียวกับรายงาน ◂
     const f = forms.find((x) => x.form === form);
     if (!f) continue;
     const base = { form, certId: c.id, certNo: c.docNo, contactName: snap?.name ?? c.contact?.name ?? "—", issueDate: c.issueDate, byId: acks.get(c.id) ?? c.createdById ?? null, byName: null as string | null, acknowledged: acks.has(c.id) };
@@ -210,12 +212,12 @@ export async function pndFiledDifferences(ctx: Ctx, periodKey: string): Promise<
   out.rows.sort((a, b) => a.at.getTime() - b.at.getTime());
   const names = await namesOf(ctx, out.rows.map((r) => r.byId));
   for (const r of out.rows) r.byName = r.byId ? (names.get(r.byId) ?? null) : null;
-  for (const r of out.rows) out.totals[String(r.form) as "3" | "53"] += r.whtDelta;
+  for (const r of out.rows) out.totals[String(r.form)] = (out.totals[String(r.form)] ?? 0) + r.whtDelta;
   return out;
 }
 
 /** ACC T1.7 — แถวนำส่ง ภ.ง.ด. ที่ยังมีผลของงวด/แบบ (หน้า ภ.ง.ด.3/53 แสดงสถานะ + ยกเลิกเครื่องหมาย) */
-export async function pndFilingOf(ctx: Ctx, form: 3 | 53, periodKey: string) {
+export async function pndFilingOf(ctx: Ctx, form: number, periodKey: string) {
   return tenantDb(ctx).accountWhtFiling.findFirst({
     where: { periodKey, form, unmarkedAt: null },
     select: { filedAt: true, filedById: true, certCount: true, totalTaxSatang: true },

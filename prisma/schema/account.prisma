@@ -177,7 +177,7 @@ model AccountDocument {
   depositOutcome   Json?
   /// ACC T3.1 — WHT_CERT: ประเภทเงินได้แบบรหัสขยาย (ADVERTISING · TRANSPORT … — wht-calc.ts WHT_INCOME_CODES) · null = ตาม whtIncomeType
   whtIncomeCode    String?
-  /// ACC T3.6 — WHT_CERT: เงื่อนไขบน 50 ทวิ WITHHOLD | PAY_ALWAYS | PAY_ONCE · null = หัก ณ ที่จ่าย
+  /// ACC T3.6 · T3.3 — WHT_CERT: เงื่อนไขบน 50 ทวิ (ช่องร่วมของแผงจ่าย + ใบแทน) WITHHOLD | PAY_ALWAYS | PAY_ONCE | OTHER → ช่อง 1–4 (wht-forms.whtConditionOf) · null = หัก ณ ที่จ่าย
   whtCondition     String?
   etaxStatus      AccountEtaxStatus     @default(NOT_SENT) // P4
   etaxMeta        Json? // P4: {providerId, xmlUrl, sentAt, error}
@@ -210,6 +210,10 @@ model AccountDocument {
   inputVatLateNote  String?
   /// ACC T2.3 — รหัสเหตุผลของใบลด/เพิ่มหนี้ (ตาราง ADJUST_NOTE_REASONS ใน th-tax-2569.ts) · `adjustReason` = ข้อความที่พิมพ์บนใบ · null = ใบก่อน T2.3
   adjustReasonCode  String?
+  /// ACC T3.5 — ฝั่งถูกหัก (WHT_CERT direction OUT): ได้รับหนังสือรับรอง 50 ทวิ จากลูกค้าแล้วจริง (null = ยังไม่ได้รับ · ไม่เดาจากไฟล์แนบ)
+  whtCertReceivedAt   DateTime?
+  whtCertReceivedById String?
+  whtCertReceivedNote String?
   /// ACC T2.7 — ประวัติการพิมพ์ (ต้นฉบับ/สำเนา/ใบแทน)
   prints        AccountDocumentPrint[]
 
@@ -232,6 +236,8 @@ model AccountDocument {
   @@index([tenantId, systemId])
   // WO 5.4: หา WHT_CERT ที่ยังไม่ยื่นของ (systemId, docType) เร็ว — ใช้ตอน markFiled คำนวณผลรวมใหม่
   @@index([systemId, docType, whtFiledPeriodKey])
+  // ACC T3.5: ค้างรับ 50 ทวิ (ฝั่งถูกหัก)
+  @@index([systemId, docType, direction, whtCertReceivedAt])
 }
 
 model AccountDocumentLine {
