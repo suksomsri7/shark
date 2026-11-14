@@ -10,6 +10,8 @@ import {
   sumOutstandingForFilter,
   DOC_LABEL,
   isVisibleDocType,
+  visibleConvertTargets,
+  parseDocSort,
 } from "@/lib/modules/account/service";
 import { LIST_TABS, tabToFilter, activeTabKey, presetRangeBkk } from "@/lib/modules/account/list-tabs";
 import {
@@ -29,10 +31,16 @@ import {
   type ListRow,
 } from "@/lib/modules/account/list-columns";
 import DocEditor from "@/lib/modules/account/DocEditor";
-import { canCreateDirect } from "@/lib/modules/account/doc-editor-config";
+import { canCreateDirect, editorDetailPath, editorEditPath, editorNewPath, isAdjustType } from "@/lib/modules/account/doc-editor-config";
+import { isGroupDocType } from "@/lib/modules/account/group";
+import { accountCan } from "@/lib/modules/account/access";
+import type { AccountPermFlags } from "@/lib/modules/account/guard";
+import { convertDocumentAction, issueDocumentAction, quotationResponseAction, voidDocumentAction } from "@/lib/modules/account/actions";
+import { cancelDraftFormAction } from "@/lib/modules/account/undo-stack";
+import { readPageSize, readSortDir } from "@/components/account-v2/url";
 import { DocListPage } from "@/components/account-v2/DocListPage";
 import { MoneyText } from "@/components/ui/MoneyText";
-import type { RowActionItem } from "@/components/account-v2/RowActions";
+import type { RowActionItem, RowActionsDangerItem } from "@/components/account-v2/RowActions";
 import type { DocColumn } from "@/components/account-v2/DocTable";
 import type { DateRangePreset } from "@/components/account-v2/ListFilters";
 
@@ -92,42 +100,92 @@ function columnsFor(dt: AccountDocType, base: string, refDocNo: Map<string, stri
   }
 }
 
-// §3 "ทำรายการ ▾" ต่อชนิด — ลิงก์ที่ยังไม่มีปลายทางจริง → หน้ารายละเอียด + ป้าย "เร็ว ๆ นี้" (ห้ามลิงก์ตาย)
-function rowActionsFor(dt: AccountDocType, base: string, r: ListRow): RowActionItem[] {
-  const detail = `${base}/docs/${dt}/${r.id}`;
-  const soon = (label: string): RowActionItem => ({ label: `${label} (เร็ว ๆ นี้)`, href: detail });
-  const common: RowActionItem[] = [{ label: "พิมพ์ PDF", href: `${base}/print/${r.id}` }];
-  switch (dt) {
-    case "QUOTATION":
-      return [soon("ลูกค้ายอมรับ"), soon("ปฏิเสธ"), soon("ออกใบแจ้งหนี้"), ...common, soon("แก้ไข"), soon("ยกเลิก")];
-    case "INVOICE":
-      return [soon("รับชำระ"), soon("ออกใบเสร็จ"), soon("ออกใบกำกับ"), soon("ใส่ในใบวางบิล"), ...common, soon("ยกเลิก")];
-    case "RECEIPT":
-      return [soon("ออกใบกำกับ"), ...common, soon("ยกเลิก(กลับรายการ)")];
-    case "TAX_INVOICE":
-      return [{ label: "พิมพ์ต้นฉบับ", href: `${base}/print/${r.id}` }, { label: "พิมพ์สำเนา", href: `${base}/print/${r.id}?copy=1` }, soon("ออกใบลดหนี้"), soon("ยกเลิก")];
-    case "DEPOSIT_RECEIPT":
-      return [soon("รับชำระ"), soon("ออกใบกำกับ"), soon("หักในใบแจ้งหนี้"), ...common, soon("ยกเลิก")];
-    case "BILLING_NOTE":
-      return [soon("รับชำระ (กระจายเข้าใบแจ้งหนี้ลูก)"), ...common, soon("ยกเลิก")];
-    default: // CREDIT_NOTE / DEBIT_NOTE
-      return [soon("คืนเงิน/รับชำระ"), ...common, soon("ยกเลิก")];
+// §3 "ทำรายการ ▾" ต่อแถว — ACCOUNT-FIX A4: ทุกข้อทำงานจริง (ส่งฟอร์มไป action เดียวกับหน้าเอกสาร หรือพาไปหน้าที่ทำต่อได้ทันที)
+//   ข้อที่ไม่มีระบบรองรับเอาออก (ไม่มี "เร็ว ๆ นี้") · ยกเลิกอยู่ท้ายเมนูพร้อมกล่องยืนยัน+เหตุผล (rowDangerFor)
+const PAYABLE: readonly AccountDocType[] = ["INVOICE", "DEPOSIT_RECEIPT", "DEBIT_NOTE"];
+const CN_DN_SOURCE: readonly AccountDocType[] = ["INVOICE", "RECEIPT", "TAX_INVOICE"];
+const CLOSED = new Set(["DRAFT", "VOIDED", "CANCELLED", "REJECTED"]);
+function rowActionsFor(
+  dt: AccountDocType,
+  base: string,
+  systemId: string,
+  r: ListRow,
+  ctx: { perm: AccountPermFlags; vatRegistered: boolean },
+): RowActionItem[] {
+  const detail = editorDetailPath(base, dt, r.id);
+  const f = { systemId, docType: dt, id: r.id };
+  const items: RowActionItem[] = [{ label: "เปิดเอกสาร", href: detail }];
+  if (r.status === "DRAFT") {
+    if (ctx.perm.create) items.push({ label: "แก้ไข", href: editorEditPath(base, dt, r.id) });
+    if (ctx.perm.issue) items.push({ label: "ออกเอกสาร", submit: { action: issueDocumentAction, fields: f } });
+    items.push({ label: "พิมพ์ร่าง", href: `${base}/print/${r.id}` });
+    return items;
   }
+  if (dt === "QUOTATION" && r.status === "AWAITING_ACCEPT") {
+    items.push(
+      { label: "ลูกค้ายอมรับ", submit: { action: quotationResponseAction, fields: { ...f, accepted: "1" } } },
+      { label: "ลูกค้าปฏิเสธ", submit: { action: quotationResponseAction, fields: { ...f, accepted: "0" } } },
+    );
+  }
+  if (!CLOSED.has(r.status)) {
+    const open = r.status === "AWAITING_PAYMENT" || r.status === "PARTIAL";
+    if (ctx.perm.recordPayment && PAYABLE.includes(dt) && open) items.push({ label: "รับชำระ", href: `${detail}?pay=1` });
+    if (ctx.perm.recordPayment && dt === "BILLING_NOTE" && open) items.push({ label: "รับชำระ (กระจายเข้าใบแจ้งหนี้)", href: detail });
+    if (dt !== "QUOTATION" || r.status === "ACCEPTED") {
+      for (const t of visibleConvertTargets(dt, ctx.vatRegistered)) {
+        if (t === "CREDIT_NOTE" || t === "DEBIT_NOTE") continue;
+        items.push({
+          label: t === "TAX_INVOICE" ? "ออกใบกำกับภาษี" : `แปลงเป็น${DOC_LABEL[t] ?? t}`,
+          submit: { action: convertDocumentAction, fields: { ...f, toDocType: t } },
+        });
+      }
+    }
+    if (CN_DN_SOURCE.includes(dt)) {
+      items.push(
+        { label: "ออกใบลดหนี้", href: `${editorNewPath(base, "CREDIT_NOTE")}?ref=${r.id}` },
+        { label: "ออกใบเพิ่มหนี้", href: `${editorNewPath(base, "DEBIT_NOTE")}?ref=${r.id}` },
+      );
+    }
+    if (dt === "INVOICE" && open) items.push({ label: "ใส่ในใบวางบิล", href: `${editorNewPath(base, "BILLING_NOTE")}?ids=${r.id}` });
+  }
+  items.push({ label: "พิมพ์", href: `${base}/print/${r.id}`, sepBefore: true });
+  if (canCreateDirect(dt) && !isGroupDocType(dt) && !isAdjustType(dt) && ctx.perm.create) {
+    items.push({ label: "คัดลอกเป็นร่างใหม่", href: `${editorNewPath(base, dt)}?copy=${r.id}` });
+  }
+  return items;
 }
 
-// §3 bulk ต่อชนิด — ปุ่มที่ยังไม่มีปลายทางจริง = disabled + title อธิบาย
-// WO 1.7: "ออกใบวางบิลรวม" ของ INVOICE ย้ายไปเป็น selectionAction (ต้องรู้ id ที่ติ๊ก) — ดู selectionActionsFor
-function bulkFor(dt: AccountDocType) {
-  const soon = { disabled: true, disabledTitle: "เร็ว ๆ นี้" };
-  if (dt === "QUOTATION") return [{ label: "พิมพ์", ...soon }, { label: "ส่งอีเมล", ...soon }, { label: "ยกเลิก", danger: true, ...soon }];
-  return [{ label: "พิมพ์", ...soon }, { label: "ส่งอีเมล", ...soon }];
+function rowDangerFor(dt: AccountDocType, systemId: string, r: ListRow, perm: AccountPermFlags): RowActionsDangerItem | undefined {
+  const fields = { systemId, docType: dt, id: r.id };
+  if (r.status === "DRAFT" && perm.create) {
+    return { triggerLabel: "ยกเลิกร่าง", title: "ยกเลิกร่างนี้?", detail: "ร่างจะถูกยกเลิก — เลิกทำได้ภายใน 5 นาทีที่หน้าเอกสาร", confirmLabel: "ยืนยันยกเลิก", action: cancelDraftFormAction, fields };
+  }
+  if (!CLOSED.has(r.status) && perm.void) {
+    return {
+      triggerLabel: "ยกเลิกเอกสาร",
+      title: `ยกเลิก ${r.docNo ?? "เอกสารนี้"}?`,
+      detail: "เอกสารจะถูกยกเลิก แก้ไขไม่ได้ และต้องออกใหม่เท่านั้น",
+      confirmLabel: "ยืนยันยกเลิก",
+      action: voidDocumentAction,
+      fields,
+      reasonField: { name: "reason", label: "เหตุผลการยกเลิก", required: true },
+    };
+  }
+  return undefined;
+}
+
+// §3 bulk — ACCOUNT-FIX A4: "พิมพ์ที่เลือก" = ทุกใบที่ติ๊กในหน้าเดียว (print/batch บันทึกประวัติพิมพ์ทีละใบ)
+//   ส่งอีเมล/ยกเลิกหลายใบ ไม่มีระบบรองรับ ⇒ เอาออก (ไม่มีปุ่ม "เร็ว ๆ นี้" ค้าง)
+function printSelectionAction(base: string) {
+  return { label: "พิมพ์ที่เลือก", hrefTemplate: `${base}/print/batch?ids={ids}` };
 }
 
 // WO 1.7 §5.2 K + f3-invoice-list-menu.png — ปุ่ม bulk ที่ใช้ id ที่ติ๊กไว้จริง
 // เปิดใช้เมื่อ: เลือกใบแจ้งหนี้ของ "ลูกค้ารายเดียวกัน" ทั้งหมด และทุกใบยังค้างชำระ (รอชำระ/ชำระบางส่วน)
 function selectionActionsFor(dt: AccountDocType, base: string) {
-  if (dt !== "INVOICE") return undefined;
+  if (dt !== "INVOICE") return [printSelectionAction(base)];
   return [
+    printSelectionAction(base),
     {
       label: "ออกใบวางบิลรวม",
       hrefTemplate: `${base}/docs/BILLING_NOTE/new?ids={ids}`,
@@ -151,6 +209,7 @@ export default async function DocTypeListPage({
     q?: string;
     page?: string;
     size?: string;
+    pageSize?: string;
     contact?: string;
     preset?: string;
     from?: string;
@@ -165,7 +224,15 @@ export default async function DocTypeListPage({
   if (!(docType in DOC_LABEL)) notFound();
   const dt = docType as AccountDocType;
   if (!isVisibleDocType(dt)) notFound();
-  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.view" });
+  const { tenantId, systemId, auth } = await loadAccountSystem(id, { can: "account.doc.view" });
+  // ACCOUNT-FIX A4 — ซ่อนข้อในเมนูที่ผู้ใช้ไม่มีสิทธิ์ (คิดจาก auth ที่โหลดแล้ว ไม่เพิ่ม query) · action ตรวจสิทธิ์ซ้ำเสมอ
+  const perm: AccountPermFlags = {
+    recordPayment: accountCan(auth, "account.payment.record"),
+    approve: accountCan(auth, "account.doc.approve"),
+    void: accountCan(auth, "account.doc.void"),
+    issue: accountCan(auth, "account.doc.issue"),
+    create: accountCan(auth, "account.doc.create"),
+  };
 
   const tabDefs = LIST_TABS[dt] ?? [];
   const tab = activeTabKey(dt, sp.tab);
@@ -174,7 +241,9 @@ export default async function DocTypeListPage({
   const range = preset === "custom" ? { from: sp.from, to: sp.to } : presetRangeBkk(preset);
   const page = Math.max(Number.parseInt(sp.page ?? "1", 10) || 1, 1);
   // 🔴 10.1 (f3): ค่าเริ่มต้นเป็น 8 ตามเฟรม (ตัวเลือก 8/20/50 — DocListPage.tsx ส่ง pageSizeOptions ตรงกัน)
-  const pageSize = Math.min(Math.max(Number.parseInt(sp.size ?? "8", 10) || 8, 1), 100);
+  const pageSize = readPageSize(sp, 8);
+  const sort = parseDocSort(sp.sort);
+  const sortDir = readSortDir(sp.dir);
   const q = (sp.q ?? "").trim();
 
   const [result, tabCounts, contacts, settings] = await Promise.all([
@@ -187,7 +256,8 @@ export default async function DocTypeListPage({
       q: q || undefined,
       page,
       pageSize,
-      sort: sp.sort === "docNo" || sp.sort === "amount" || sp.sort === "issueDate" ? sp.sort : "issueDate",
+      sort,
+      sortDir,
       skipStatusCounts: true, // แท็บนับด้วย computeListTabCounts ด้านล่าง (ตัวกรองเดียวกัน)
     }),
     computeListTabCounts(tenantId, systemId, dt, tabDefs, {
@@ -266,8 +336,10 @@ export default async function DocTypeListPage({
       contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
       cols={columnsFor(dt, base, refDocNo)}
       rows={result.rows}
-      rowActionsFor={(r) => rowActionsFor(dt, base, r)}
-      bulkActions={bulkFor(dt)}
+      rowActionsFor={(r) => rowActionsFor(dt, base, systemId, r, { perm, vatRegistered: settings.vatRegistered })}
+      rowDangerFor={(r) => rowDangerFor(dt, systemId, r, perm)}
+      sort={sort}
+      sortDir={sortDir}
       selectionActions={selectionActionsFor(dt, base)}
       rowGroupKey={(r) => r.contact?.id ?? ""}
       rowEligible={(r) => OPEN_STATUSES.has(r.status) && r.grandTotal - r.paidTotal > 0}

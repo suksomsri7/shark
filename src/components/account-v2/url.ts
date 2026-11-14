@@ -48,6 +48,18 @@ export function buildSortHref(
 export function buildPageHref(pathname: string, current: QueryLike, page: number): string {
   return buildHref(pathname, current, { page: String(page) });
 }
+/** ACCOUNT-FIX A4 — ชื่อพารามิเตอร์ขนาดหน้า "size" ชื่อเดียวทั้งระบบ (เดิมตั้ง `pageSize=` แต่หน้ารายการเอกสารอ่าน `size` ⇒ เลือกแล้วไม่เปลี่ยน)
+ *  · ลบ `pageSize` เดิมทิ้งด้วย กันลิงก์เก่าค้างสองค่า */
+export const PAGE_SIZE_PARAM = "size";
 export function buildPageSizeHref(pathname: string, current: QueryLike, pageSize: number): string {
-  return buildHref(pathname, current, { pageSize: String(pageSize), page: undefined });
+  return buildHref(pathname, current, { [PAGE_SIZE_PARAM]: String(pageSize), pageSize: undefined, page: undefined });
+}
+/** อ่านขนาดหน้าจาก query (รับ `pageSize` ของลิงก์เก่าด้วย) — ไม่ถูกต้อง = ค่าเริ่ม · จำกัด 1–100 */
+export function readPageSize(sp: { size?: string; pageSize?: string }, dflt: number): number {
+  const n = Number.parseInt(sp.size ?? sp.pageSize ?? "", 10);
+  return Math.min(Math.max(Number.isFinite(n) && n > 0 ? n : dflt, 1), 100);
+}
+/** อ่านทิศการเรียงจาก query (`dir=asc|desc`) — ไม่ระบุ = มากไปน้อย (ล่าสุดก่อน) */
+export function readSortDir(v: string | undefined): "asc" | "desc" {
+  return v === "asc" ? "asc" : "desc";
 }

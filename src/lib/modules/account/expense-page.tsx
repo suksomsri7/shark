@@ -2,7 +2,7 @@
 // (purchase/expense/po/asset-buy) เพื่อไม่ซ้ำโค้ด. service+actions+components เสร็จแล้ว
 import type { AccountDocType } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
-import { getSettings, listContacts, computeListTabCounts, sumOutstandingForFilter, DOC_LABEL } from "./service";
+import { getSettings, listContacts, computeListTabCounts, sumOutstandingForFilter, DOC_LABEL, parseDocSort } from "./service";
 import {
   listExpenseDocsPaged,
   listExpenseAccounts,
@@ -27,11 +27,17 @@ import {
   type ListRow,
 } from "./list-columns";
 import ExpenseEditor from "./ExpenseEditor";
-import { canCreateDirect } from "./doc-editor-config";
+import { canCreateDirect, editorDetailPath, editorEditPath, editorNewPath, isAdjustType } from "./doc-editor-config";
+import { isGroupDocType } from "./group";
+import { accountCan } from "./access";
+import type { AccountPermFlags } from "./guard";
+import { issueExpenseDocAction, voidExpenseDocAction, submitApprovalAction, approvePOAction, convertPOAction } from "./expense-actions";
+import { cancelDraftFormAction } from "./undo-stack";
+import { readPageSize, readSortDir } from "@/components/account-v2/url";
 import { DocListPage } from "@/components/account-v2/DocListPage";
 import { DocDetailPage } from "@/components/account-v2/DocDetailPage";
 import { MoneyText } from "@/components/ui/MoneyText";
-import type { RowActionItem } from "@/components/account-v2/RowActions";
+import type { RowActionItem, RowActionsDangerItem } from "@/components/account-v2/RowActions";
 import type { DocColumn } from "@/components/account-v2/DocTable";
 import type { DateRangePreset } from "@/components/account-v2/ListFilters";
 
@@ -69,31 +75,65 @@ function columnsFor(docType: AccountDocType, base: string, slug: string): DocCol
   }
 }
 
-function rowActionsFor(docType: AccountDocType, base: string, slug: string, r: ListRow): RowActionItem[] {
-  const detail = `${base}/${slug}/${r.id}`;
-  const soon = (label: string): RowActionItem => ({ label: `${label} (เร็ว ๆ นี้)`, href: detail });
-  switch (docType) {
-    case "PURCHASE_ORDER":
-    case "ASSET_PURCHASE_ORDER":
-      return [soon("อนุมัติ"), soon("ไม่อนุมัติ"), soon("ออกบันทึกซื้อ"), soon("ส่งให้ผู้ขาย"), soon("พิมพ์"), soon("คัดลอก"), soon("ยกเลิก")];
-    case "PURCHASE_TAX_INVOICE":
-      return [soon("บันทึกรับใบกำกับ"), soon("ยกเลิก")];
-    case "COMBINED_PAYMENT": // WO 1.7 — บันทึกจ่าย/พิมพ์ใบสำคัญจ่าย ทำที่หน้าเอกสาร (แผงกระจายลงใบลูก)
-      return [
-        { label: "บันทึกจ่าย (กระจายให้บิลลูก)", href: detail },
-        { label: "พิมพ์ใบสำคัญจ่าย", href: `${base}/print/${r.id}` },
-        soon("ยกเลิก"),
-      ];
-    default: // PURCHASE / EXPENSE / ASSET_PURCHASE
-      return [soon("บันทึกจ่าย"), soon("รับใบกำกับภาษี"), soon("ออกหนังสือรับรอง 50 ทวิ"), soon("พิมพ์"), soon("คัดลอก"), soon("ยกเลิก")];
+// §3 "ทำรายการ ▾" ฝั่งรายจ่าย — ACCOUNT-FIX A4: ทุกข้อทำงานจริง · ข้อที่ไม่มีระบบรองรับเอาออก (ไม่มี "เร็ว ๆ นี้")
+//   50 ทวิ ออกตอนบันทึกจ่ายที่มีหัก ณ ที่จ่าย (ไม่ใช่ปุ่มแยก) · รับใบกำกับภาษีซื้อทำที่แผงภาษีซื้อของหน้าเอกสาร
+const EXP_PAYABLE: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "ASSET_PURCHASE", "DEPOSIT_PAYMENT", "DEBIT_NOTE_RECEIVED"];
+const EXP_CLOSED = new Set(["DRAFT", "VOIDED", "CANCELLED", "REJECTED"]);
+function rowActionsFor(docType: AccountDocType, base: string, systemId: string, r: ListRow, perm: AccountPermFlags): RowActionItem[] {
+  const detail = editorDetailPath(base, docType, r.id);
+  const f = { systemId, docType, id: r.id };
+  const isPO = docType === "PURCHASE_ORDER" || docType === "ASSET_PURCHASE_ORDER";
+  const items: RowActionItem[] = [{ label: "เปิดเอกสาร", href: detail }];
+  if (r.status === "DRAFT") {
+    if (perm.create && docType !== "COMBINED_PAYMENT") items.push({ label: "แก้ไข", href: editorEditPath(base, docType, r.id) });
+    if (isPO) items.push({ label: "ส่งอนุมัติ", submit: { action: submitApprovalAction, fields: f } });
+    else if (perm.issue) items.push({ label: "บันทึก/ตั้งเจ้าหนี้", submit: { action: issueExpenseDocAction, fields: f } });
   }
+  if (isPO && r.status === "AWAITING_APPROVAL" && perm.approve) {
+    items.push({ label: "อนุมัติ", submit: { action: approvePOAction, fields: f } }, { label: "ไม่อนุมัติ (ใส่เหตุผลที่หน้าเอกสาร)", href: detail });
+  }
+  if (isPO && r.status === "APPROVED") {
+    items.push({ label: docType === "ASSET_PURCHASE_ORDER" ? "แปลงเป็นซื้อสินทรัพย์" : "แปลงเป็นบันทึกซื้อ", submit: { action: convertPOAction, fields: f } });
+  }
+  const open = r.status === "AWAITING_PAYMENT" || r.status === "PARTIAL";
+  if (perm.recordPayment && EXP_PAYABLE.includes(docType) && open) items.push({ label: "บันทึกจ่าย", href: `${detail}?pay=1` });
+  if (docType === "COMBINED_PAYMENT" && open && perm.recordPayment) items.push({ label: "บันทึกจ่าย (กระจายให้บิลลูก)", href: detail });
+  if (docType === "PURCHASE_TAX_INVOICE" && r.status === "AWAITING_RECEIVE") items.push({ label: "บันทึกรับใบกำกับ", href: `${detail}#input-vat-panel` });
+  if (!EXP_CLOSED.has(r.status) && (docType === "PURCHASE" || docType === "EXPENSE")) {
+    items.push(
+      { label: "บันทึกรับใบลดหนี้", href: `${editorNewPath(base, "CREDIT_NOTE_RECEIVED")}?ref=${r.id}` },
+      { label: "บันทึกรับใบเพิ่มหนี้", href: `${editorNewPath(base, "DEBIT_NOTE_RECEIVED")}?ref=${r.id}` },
+    );
+  }
+  items.push({ label: docType === "COMBINED_PAYMENT" ? "พิมพ์ใบสำคัญจ่าย" : "พิมพ์", href: `${base}/print/${r.id}`, sepBefore: true });
+  if (canCreateDirect(docType) && !isGroupDocType(docType) && !isAdjustType(docType) && perm.create) {
+    items.push({ label: "คัดลอกเป็นร่างใหม่", href: `${editorNewPath(base, docType)}?copy=${r.id}` });
+  }
+  return items;
 }
 
-function bulkFor(docType: AccountDocType) {
-  const soon = { disabled: true, disabledTitle: "เร็ว ๆ นี้" };
-  if (docType === "PURCHASE_ORDER" || docType === "ASSET_PURCHASE_ORDER") return [{ label: "อนุมัติ", ...soon }, { label: "พิมพ์", ...soon }];
-  // WO 1.7: "จ่ายรวม" ย้ายไปเป็น selectionAction (ต้องรู้ id ที่ติ๊ก) — ดู selectionActionsFor
-  return [{ label: "อนุมัติ", ...soon }, { label: "พิมพ์", ...soon }];
+function rowDangerFor(docType: AccountDocType, systemId: string, r: ListRow, perm: AccountPermFlags): RowActionsDangerItem | undefined {
+  const fields = { systemId, docType, id: r.id };
+  if (r.status === "DRAFT" && perm.create) {
+    return { triggerLabel: "ยกเลิกร่าง", title: "ยกเลิกร่างนี้?", detail: "ร่างจะถูกยกเลิก — เลิกทำได้ภายใน 5 นาทีที่หน้าเอกสาร", confirmLabel: "ยืนยันยกเลิก", action: cancelDraftFormAction, fields };
+  }
+  if (!EXP_CLOSED.has(r.status) && perm.void) {
+    return {
+      triggerLabel: "ยกเลิกเอกสาร",
+      title: `ยกเลิก ${r.docNo ?? "เอกสารนี้"}?`,
+      detail: "เอกสารจะถูกยกเลิก แก้ไขไม่ได้ และต้องออกใหม่เท่านั้น",
+      confirmLabel: "ยืนยันยกเลิก",
+      action: voidExpenseDocAction,
+      fields,
+      reasonField: { name: "reason", label: "เหตุผลการยกเลิก", required: true },
+    };
+  }
+  return undefined;
+}
+
+// bulk — ACCOUNT-FIX A4: "พิมพ์ที่เลือก" ทำงานจริง (print/batch) · "อนุมัติหลายใบ" ไม่มีระบบรองรับ ⇒ เอาออก
+function printSelectionAction(base: string) {
+  return { label: "พิมพ์ที่เลือก", hrefTemplate: `${base}/print/batch?ids={ids}` };
 }
 
 // WO 1.7 §3 (แถว PUR/EXP/DNR/DP: bulk "จ่ายรวม (→ใบรวมจ่าย)") — เปิดใช้เมื่อเลือกบิลของผู้ขายรายเดียวกัน
@@ -102,8 +142,9 @@ const COMBINABLE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "DEB
 const OPEN_STATUSES = new Set(["AWAITING_PAYMENT", "PARTIAL"]);
 
 function selectionActionsFor(docType: AccountDocType, base: string) {
-  if (!COMBINABLE_TYPES.includes(docType)) return undefined;
+  if (!COMBINABLE_TYPES.includes(docType)) return [printSelectionAction(base)];
   return [
+    printSelectionAction(base),
     {
       label: "จ่ายรวม",
       hrefTemplate: `${base}/combined-payment/new?ids={ids}`,
@@ -130,12 +171,21 @@ export async function ExpenseListPage(props: {
     from?: string;
     to?: string;
     sort?: string;
+    dir?: string;
+    pageSize?: string;
   };
   err?: string;
 }) {
   const { systemId, docType, variant } = props;
   const sp = props.searchParams ?? {};
-  const { tenantId } = await loadAccountSystem(systemId);
+  const { tenantId, auth } = await loadAccountSystem(systemId);
+  const perm: AccountPermFlags = {
+    recordPayment: accountCan(auth, "account.payment.record"),
+    approve: accountCan(auth, "account.doc.approve"),
+    void: accountCan(auth, "account.doc.void"),
+    issue: accountCan(auth, "account.doc.issue"),
+    create: accountCan(auth, "account.doc.create"),
+  };
   const base = `/app/sys/${systemId}/account`;
 
   const tabDefs = LIST_TABS[docType] ?? [];
@@ -145,7 +195,9 @@ export async function ExpenseListPage(props: {
   const range = preset === "custom" ? { from: sp.from, to: sp.to } : presetRangeBkk(preset);
   const page = Math.max(Number.parseInt(sp.page ?? "1", 10) || 1, 1);
   // 🔴 10.1 (f3): ค่าเริ่มต้นเป็น 8 ตามเฟรม (ตัวเลือก 8/20/50 — DocListPage.tsx ส่ง pageSizeOptions ตรงกัน)
-  const pageSize = Math.min(Math.max(Number.parseInt(sp.size ?? "8", 10) || 8, 1), 100);
+  const pageSize = readPageSize(sp, 8);
+  const sort = parseDocSort(sp.sort);
+  const sortDir = readSortDir(sp.dir);
   const q = (sp.q ?? "").trim();
 
   const [result, tabCounts, settings, contacts, accountOptions, deposits] = await Promise.all([
@@ -158,7 +210,8 @@ export async function ExpenseListPage(props: {
       q: q || undefined,
       page,
       pageSize,
-      sort: sp.sort === "docNo" || sp.sort === "amount" || sp.sort === "issueDate" ? sp.sort : "issueDate",
+      sort,
+      sortDir,
       skipStatusCounts: true, // แท็บนับด้วย computeListTabCounts ด้านล่าง (ตัวกรองเดียวกัน)
     }),
     computeListTabCounts(tenantId, systemId, docType, tabDefs, {
@@ -220,8 +273,10 @@ export async function ExpenseListPage(props: {
       contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
       cols={columnsFor(docType, base, slug)}
       rows={result.rows}
-      rowActionsFor={(r) => rowActionsFor(docType, base, slug, r)}
-      bulkActions={bulkFor(docType)}
+      rowActionsFor={(r) => rowActionsFor(docType, base, systemId, r, perm)}
+      rowDangerFor={(r) => rowDangerFor(docType, systemId, r, perm)}
+      sort={sort}
+      sortDir={sortDir}
       selectionActions={selectionActionsFor(docType, base)}
       rowGroupKey={(r) => r.contact?.id ?? ""}
       rowEligible={(r) => OPEN_STATUSES.has(r.status) && r.grandTotal - r.paidTotal > 0}

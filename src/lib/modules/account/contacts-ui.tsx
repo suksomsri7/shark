@@ -52,6 +52,7 @@ type SP = {
   legalType?: string;
   page?: string;
   pageSize?: string;
+  size?: string;
   err?: string;
   bulkIds?: string;
   edit?: string;
@@ -93,7 +94,7 @@ export async function ContactsPage({
   const legalType = searchParams.legalType === "COMPANY" || searchParams.legalType === "PERSON" ? searchParams.legalType : undefined;
   const result = await listContactsPage(
     ctx,
-    { q: searchParams.q, group, legalType, page: Number(searchParams.page) || 1, pageSize: Number(searchParams.pageSize) || 8 },
+    { q: searchParams.q, group, legalType, page: Number(searchParams.page) || 1, pageSize: Number(searchParams.size ?? searchParams.pageSize) || 8 },
     sidebar,
   );
 

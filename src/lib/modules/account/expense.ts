@@ -33,6 +33,7 @@ import {
   type LineInput,
   type DocStatusFilter,
   type DocSort,
+  docSortOrder,
   // CRM C5.4-C ▸ round 10 · มติ A/C: การถอยงวดตัวเดียวของทั้งระบบ + หัวกลุ่มตามใบลูก ◂
   assertDepositNotAppliedInTx,
   unwindPaymentInTx,
@@ -414,6 +415,7 @@ export type ListExpenseDocsInput = {
   page?: number;
   pageSize?: number;
   sort?: DocSort;
+  sortDir?: "asc" | "desc";
   excludeOverdue?: boolean;
   /** ACC T3 merge ▸ ตัดใบมัดจำที่คืน/ริบ (แท็บ "หักมัดจำครบแล้ว") ◂ */
   excludeDepositSettled?: boolean;
@@ -432,12 +434,6 @@ export type ListExpenseDocsPage = {
   tabCounts: ExpDocTabCounts;
 };
 
-const EXP_SORT_ORDER: Record<DocSort, Prisma.AccountDocumentOrderByWithRelationInput[]> = {
-  recent: [{ updatedAt: "desc" }, { id: "desc" }],
-  issueDate: [{ issueDate: "desc" }, { id: "desc" }],
-  docNo: [{ docNo: "desc" }, { id: "desc" }],
-  amount: [{ grandTotal: "desc" }, { id: "desc" }],
-};
 
 export async function listExpenseDocsPaged(
   tenantId: string,
@@ -485,7 +481,7 @@ export async function listExpenseDocsPaged(
     prisma.accountDocument.findMany({
       where,
       include: { contact: { select: { id: true, name: true } } },
-      orderBy: EXP_SORT_ORDER[input.sort ?? "recent"],
+      orderBy: docSortOrder(input.sort, input.sortDir),
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),

@@ -51,6 +51,8 @@ export type AccountPermFlags = {
   void: boolean;
   issue: boolean;
   create: boolean;
+  /** ACCOUNT-FIX B1 — ยกเลิกรายการชำระ (แผงการชำระของใบที่ชำระครบแล้ว) */
+  voidPayment?: boolean;
 };
 
 export async function accountPermFlags(systemId: string): Promise<AccountPermFlags> {
@@ -61,6 +63,7 @@ export async function accountPermFlags(systemId: string): Promise<AccountPermFla
     void: accountCan(auth, "account.doc.void"),
     issue: accountCan(auth, "account.doc.issue"),
     create: accountCan(auth, "account.doc.create"),
+    voidPayment: accountCan(auth, "account.payment.void"),
   };
 }
 

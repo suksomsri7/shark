@@ -113,7 +113,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "ยอมรับแล้ว", href: `${base}/docs/QUOTATION?tab=accepted`, countKey: "QUOTATION:accepted" },
             { label: "พ้นกำหนด", href: `${base}/docs/QUOTATION?tab=overdue`, countKey: "QUOTATION:overdue" },
             { label: "ดูทั้งหมด", href: `${base}/docs/QUOTATION?tab=all`, countKey: "QUOTATION:all" },
-            { label: "ล่าสุด", href: `${base}/docs/QUOTATION?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/docs/QUOTATION?sort=recent` },
           ],
         }),
         doc({
@@ -128,7 +128,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "พ้นกำหนด", href: `${base}/docs/DEPOSIT_RECEIPT?tab=overdue`, countKey: "DEPOSIT_RECEIPT:overdue" },
             { label: "รอหักมัดจำ", href: `${base}/docs/DEPOSIT_RECEIPT?tab=deduct`, countKey: "DEPOSIT_RECEIPT:deduct" },
             { label: "ดูทั้งหมด", href: `${base}/docs/DEPOSIT_RECEIPT?tab=all`, countKey: "DEPOSIT_RECEIPT:all" },
-            { label: "ล่าสุด", href: `${base}/docs/DEPOSIT_RECEIPT?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/docs/DEPOSIT_RECEIPT?sort=recent` },
           ],
         }),
         doc({
@@ -143,7 +143,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "ชำระแล้ว", href: `${base}/docs/INVOICE?tab=paid`, countKey: "INVOICE:paid" },
             { label: "พ้นกำหนด", href: `${base}/docs/INVOICE?tab=overdue`, countKey: "INVOICE:overdue" },
             { label: "ดูทั้งหมด", href: `${base}/docs/INVOICE?tab=all`, countKey: "INVOICE:all" },
-            { label: "ล่าสุด", href: `${base}/docs/INVOICE?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/docs/INVOICE?sort=recent` },
           ],
         }),
         doc({
@@ -155,7 +155,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           flyout: [
             { label: "ชำระแล้ว", href: `${base}/docs/RECEIPT?tab=paid`, countKey: "RECEIPT:paid" },
             { label: "ดูทั้งหมด", href: `${base}/docs/RECEIPT?tab=all`, countKey: "RECEIPT:all" },
-            { label: "ล่าสุด", href: `${base}/docs/RECEIPT?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/docs/RECEIPT?sort=recent` },
           ],
         }),
         ...(vatRegistered
@@ -169,7 +169,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
                 flyout: [
                   { label: "ออกแล้ว", href: `${base}/docs/TAX_INVOICE?tab=issued`, countKey: "TAX_INVOICE:issued" },
                   { label: "ดูทั้งหมด", href: `${base}/docs/TAX_INVOICE?tab=all`, countKey: "TAX_INVOICE:all" },
-                  { label: "ล่าสุด", href: `${base}/docs/TAX_INVOICE?tab=recent` },
+                  { label: "ล่าสุด", href: `${base}/docs/TAX_INVOICE?sort=recent` },
                 ],
               }),
             ]
@@ -187,7 +187,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "เกินเวลารับชำระ", href: `${base}/docs/BILLING_NOTE?tab=overdue`, countKey: "BILLING_NOTE:overdue" },
             { label: "รับชำระแล้ว", href: `${base}/docs/BILLING_NOTE?tab=paid`, countKey: "BILLING_NOTE:paid" },
             { label: "ดูทั้งหมด", href: `${base}/docs/BILLING_NOTE?tab=all`, countKey: "BILLING_NOTE:all" },
-            { label: "ล่าสุด", href: `${base}/docs/BILLING_NOTE?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/docs/BILLING_NOTE?sort=recent` },
           ],
         }),
         doc({
@@ -199,7 +199,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           flyout: [
             { label: "+ สร้างใบลดหนี้", href: `${base}/docs/CREDIT_NOTE/new` },
             { label: "ดูทั้งหมด", href: `${base}/docs/CREDIT_NOTE?tab=all`, countKey: "CREDIT_NOTE:all" },
-            { label: "ล่าสุด", href: `${base}/docs/CREDIT_NOTE?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/docs/CREDIT_NOTE?sort=recent` },
           ],
         }),
         doc({
@@ -211,7 +211,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           flyout: [
             { label: "+ สร้างใบเพิ่มหนี้", href: `${base}/docs/DEBIT_NOTE/new` },
             { label: "ดูทั้งหมด", href: `${base}/docs/DEBIT_NOTE?tab=all`, countKey: "DEBIT_NOTE:all" },
-            { label: "ล่าสุด", href: `${base}/docs/DEBIT_NOTE?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/docs/DEBIT_NOTE?sort=recent` },
           ],
         }),
         { // WO 1.9: เอกสารประจำ (§0.3 ข้อ 7) — หน้าเดียวใช้ร่วมทั้ง 2 หมวด (กรองชนิดในหน้า)
@@ -264,7 +264,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "รออนุมัติ", href: `${base}/po?tab=awaiting_approval`, countKey: "PURCHASE_ORDER:awaiting_approval" },
             { label: "อนุมัติแล้ว", href: `${base}/po?tab=approved`, countKey: "PURCHASE_ORDER:approved" },
             { label: "ดูทั้งหมด", href: `${base}/po?tab=all`, countKey: "PURCHASE_ORDER:all" },
-            { label: "ล่าสุด", href: `${base}/po?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/po?sort=recent` },
           ],
         }),
         doc({ // WO 1.2
@@ -287,7 +287,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "ชำระแล้ว", href: `${base}/purchase?tab=paid`, countKey: "PURCHASE:paid" },
             { label: "พ้นกำหนด", href: `${base}/purchase?tab=overdue`, countKey: "PURCHASE:overdue" },
             { label: "ดูทั้งหมด", href: `${base}/purchase?tab=all`, countKey: "PURCHASE:all" },
-            { label: "ล่าสุด", href: `${base}/purchase?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/purchase?sort=recent` },
           ],
         }),
         doc({
@@ -302,7 +302,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "ชำระแล้ว", href: `${base}/expense?tab=paid`, countKey: "EXPENSE:paid" },
             { label: "พ้นกำหนด", href: `${base}/expense?tab=overdue`, countKey: "EXPENSE:overdue" },
             { label: "ดูทั้งหมด", href: `${base}/expense?tab=all`, countKey: "EXPENSE:all" },
-            { label: "ล่าสุด", href: `${base}/expense?tab=recent` },
+            { label: "ล่าสุด", href: `${base}/expense?sort=recent` },
           ],
         }),
         doc({
@@ -543,13 +543,12 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           testId: "JOURNAL",
           flyout: [
             { label: "+ สร้างสมุดรายวัน", href: `${base}/journal/new` },
-            { label: "ทั้งหมด", href: `${base}/journal?book=ALL` },
-            { label: "ซื้อ", href: `${base}/journal?book=PURCHASES` },
-            { label: "ขาย", href: `${base}/journal?book=SALES` },
-            { label: "จ่าย", href: `${base}/journal?book=PAYMENTS` },
-            { label: "รับ", href: `${base}/journal?book=RECEIPTS` },
-            { label: "ทั่วไป", href: `${base}/journal?book=GENERAL` },
-            { label: "ล่าสุด", href: `${base}/journal?book=recent` },
+            { label: "ทั้งหมด", href: `${base}/journal?tab=ALL` },
+            { label: "ซื้อ", href: `${base}/journal?tab=PURCHASES` },
+            { label: "ขาย", href: `${base}/journal?tab=SALES` },
+            { label: "จ่าย", href: `${base}/journal?tab=PAYMENTS` },
+            { label: "รับ", href: `${base}/journal?tab=RECEIPTS` },
+            { label: "ทั่วไป", href: `${base}/journal?tab=GENERAL` },
           ],
         }),
         page({ label: "บัญชีแยกประเภท", href: `${base}/ledger`, status: "ready", icon: "list", testId: "LEDGER" }),
