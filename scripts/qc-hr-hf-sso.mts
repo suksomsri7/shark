@@ -70,6 +70,7 @@ D2.3|Q3|M|R|[db] the refusal is audited (hr.payroll.approve.refused on that run)
 D2.4|R3|C|R|[db] recomputeDraftRun ⇒ 875/875 · totals literal · marker 1,750,000
 D2.5|R3|C|R|[db] approve after recompute ⇒ ok · APPROVED · rows 875
 D2.6|R3|M|G|[db] DRAFT made before the fix whose numbers are still right (2025-11, 750) approves
+D2.7|R3|M|G|[db] ORACLE-EDIT (HF-SSO-2569 · controller ruling · review MINOR): the RECOMPUTE re-derive is v1-only — a pre-fix 2026-04 run marked engineVersion 2 (no inputDigest) is not refused with RECOMPUTE
 Z1|house|C|G|no residue (tenants/users of this suite)
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -525,6 +526,13 @@ async function runDb(): Promise<void> {
       const run = await runOf(nov.id);
       const r = { ok: ap?.ok === true, status: run?.status === "APPROVED", rows: money(await itemOf(nov.id)) === "1500000/75000/75000/1925000" };
       ck("D2.6", r, "approves · 750", `${ap?.code ?? ""} ${short(ap?.note, 60)}`);
+    }
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling · review MINOR): D2.7 engineVersion 2 rows are left to v2's own INPUTS_CHANGED gate
+    {
+      const apr = await mk("2026-04", "2026-04-30");
+      if (apr.id) await P.hrPayrollRun.update({ where: { id: apr.id }, data: { engineVersion: 2 } });
+      const ap = apr.id ? await pay.approveRun(ctx, apr.id, undefined, ACTOR).catch((e: unknown) => ({ ok: false, note: errText(e), code: "THROW" })) : { ok: false, code: "∅" };
+      chk("D2.7", !!apr.id && ap?.code !== "RECOMPUTE" && ap?.code !== "THROW", "not RECOMPUTE", `${apr.err} ${ap?.ok} ${ap?.code ?? "-"} ${short(ap?.note, 60)}`);
     }
   }
 }

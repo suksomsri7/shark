@@ -286,7 +286,7 @@ const CHECKS: readonly Def[] = [
   D("S7.4", "R9", "MAJOR", "RED", "[db read] QC4 has exactly the 4 `v1:*` law rows (SSO · TAX_BRACKET · DEDUCTION · OT), all DRAFT · no ACTIVE row anywhere in HrLawTable"),
   D("S7.5", "R8", "MAJOR", "RED", "[static+db] HR_DELETE_ORDER lists hrWorkEntry · hrReviewNote · hrOnboardingTask before hrEmployee and not hrLawTable · deleting them for our main tenant leaves 0 rows"),
   // X
-  D("X1.1", "X1", "MAJOR", "RED", "[run+db] seed script --apply ×3 on a fresh prefix ⇒ 4 rows · runs 2–3 `created 0 · unchanged 4`"),
+  D("X1.1", "X1", "MAJOR", "RED", "[run+db] seed script --apply ×3 on a fresh prefix ⇒ 10 rows · runs 2–3 `created 0 · unchanged 10` (HF-SSO ORACLE-EDIT: was 4)"),
   D("X2.1", "X2", "CRITICAL", "RED", "[db] source rows: other tenant same (type, ref) ⇒ allowed · same tenant, second HR system sH2 ⇒ 23505 (tenant-scoped by design, Q14)"),
   D("X2.2", "X2", "CRITICAL", "RED", "[db] tenantDb(sH2) on hrWorkEntry / hrReviewNote / hrOnboardingTask reads none of sH's rows · tenantDb(sH) reads them"),
   D("X7.1", "X7", "MAJOR", "GREEN", "[static] [control] no today-dependence: every date literal in this oracle's code ≥ 2030 (except the 1970-01-01 sentinel and the 2028-02-29 leap vector)"),
@@ -1435,7 +1435,8 @@ async function runDb(): Promise<void> {
       });
     }
     const minWage = rows1.some((r) => r.kind === "MIN_WAGE");
-    chk("S2.9", a1 === "23514" && a2 === "23505" && rows1.length === 4 && !minWage, "unsigned ACTIVE 23514 · 2nd ACTIVE 23505 · no MIN_WAGE", `unsigned=${a1} second=${a2} minWage=${minWage} rows=${rows1.length}`);
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S2.9 seed rows 4 → 10 (Q4 + Q1 dated rows)
+    chk("S2.9", a1 === "23514" && a2 === "23505" && rows1.length === 10 && !minWage, "unsigned ACTIVE 23514 · 2nd ACTIVE 23505 · no MIN_WAGE", `unsigned=${a1} second=${a2} minWage=${minWage} rows=${rows1.length}`);
     // X1.1 replay ×3
     const pX = `${LAW_PREFIX}x`;
     const outs: string[] = [];
@@ -1444,10 +1445,11 @@ async function runDb(): Promise<void> {
       const r = await runSeed(["--apply", "--key-prefix", pX]);
       const c = counts(r.out);
       outs.push(`#${i + 1}:exit${r.code}/${c ? `${c.created}+${c.unchanged}` : "∅"}`);
-      if (r.code !== 0 || !c || (i === 0 ? c.created !== 4 : c.created !== 0 || c.unchanged !== 4)) x11 = false;
+      if (r.code !== 0 || !c || (i === 0 ? c.created !== 10 : c.created !== 0 || c.unchanged !== 10)) x11 = false; // ORACLE-EDIT (HF-SSO-2569 · controller ruling): X1.1 4 → 10
     }
     const nX = (await lawRowsOf(pX))?.length ?? -1;
-    chk("X1.1", x11 && nX === 4, "4 rows · 4+0 · 0+4 · 0+4", `${outs.join(" ")} rows=${nX}`);
+    chk("X1.1", x11 && nX === 10, "10 rows · 10+0 · 0+10 · 0+10", // ORACLE-EDIT (HF-SSO-2569 · controller ruling): X1.1 4 → 10
+      `${outs.join(" ")} rows=${nX}`);
   });
 
   // ═══ S3 source idempotency + CRM coexistence ═══

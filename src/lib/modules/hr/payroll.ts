@@ -1141,10 +1141,12 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpe
     // HR HF-SSO ▸ Q3: แถวที่เก็บไว้ต้องตรงกับกฎของงวด (เพดานประกันสังคมตามงวด · เพดานลดหย่อนตามปีภาษีของวันจ่าย) — ตรวจใต้ล็อกแถวรอบ ·
     //   ไม่ตรง (เช่น ร่างที่สร้างก่อนแก้ของงวดตั้งแต่ 2026-01) = ไม่อนุมัติ ให้กด "คำนวณใหม่" ก่อน · ไม่แก้แถวเอง · ไม่ย้อนเก็บเงินสมทบ ◂
     {
-      const pr = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: runId }, select: { payDate: true } });
-      const law = runLawV1(cur.periodKey, pr!.payDate);
-      const rows = await tx.hrPayrollItem.findMany({ where: { ...scope, runId }, select: { ssoBaseSatang: true, ssoEmployeeSatang: true, ssoEmployerSatang: true, whtSatang: true, snapshotJson: true } });
-      if (rows.some((r) => !storedRowMatchesLaw(r, law))) return { code: "RECOMPUTE", actual: await runActual(tx, ctx, cur) };
+      const pr = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: runId }, select: { payDate: true, engineVersion: true } });
+      if (pr!.engineVersion === 1) { // HR HF-SSO ▸ (review) รุ่น 1 เท่านั้น — รอบรุ่น 2 ใช้ด่าน INPUTS_CHANGED ของตัวเอง ◂
+        const law = runLawV1(cur.periodKey, pr!.payDate);
+        const rows = await tx.hrPayrollItem.findMany({ where: { ...scope, runId }, select: { ssoBaseSatang: true, ssoEmployeeSatang: true, ssoEmployerSatang: true, whtSatang: true, snapshotJson: true } });
+        if (rows.some((r) => !storedRowMatchesLaw(r, law))) return { code: "RECOMPUTE", actual: await runActual(tx, ctx, cur) }; // HR HF-SSO ◂
+      } // HR HF-SSO ◂
     }
     const negative = await tx.hrPayrollItem.count({ where: { ...scope, runId, netSatang: { lt: 0 } } });
     if (negative > 0) return { code: "NEGATIVE_NET", actual: await runActual(tx, ctx, cur), negative };
