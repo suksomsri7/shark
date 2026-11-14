@@ -119,15 +119,12 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (d): exactly one allowed oracle hunk set — scripts/qc-hr-h2.2.mts, every hunk carrying "ORACLE-EDIT (H4.2 · controller ruling)" ◂
     const h22ok = (diffHunks(BASE, "scripts/qc-hr-h2.2.mts") ?? [{ added: [], removed: ["∅git"] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H4\.2 · controller ruling\)/.test(l)));
     const oracles = git(["diff", "--name-only", BASE, "--", "scripts"]).split("\n").filter((f) => /^scripts\/qc-.*\.mts$/.test(f) && !/^scripts\/qc-hr-h4\.2/.test(f) && !(f === "scripts/qc-hr-h2.2.mts" && h22ok));
-    // ORACLE-EDIT (H4.5 builder · pre-authorised frozen-static rule): once H4.2 is in the base (IN_BASE), a later ticket may touch these paths only by
-    //   NEW files (migration folders · its own oracles) or hunks whose ADDED lines carry a later-ticket mark ("HR H<n>.<n>" / "ORACLE-EDIT (H<n>.<n>" ≠ H4.2) — unmarked = fail ◂
-    const laterOk = (files: string[]) => IN_BASE && files.every((f) => !pathInBase(f, BASE) || (diffHunks(BASE, f) ?? [{ added: [], removed: ["∅git"] }]).every((h) => h.added.some((l) => /HR H(?!4\.2\b)\d+\.\d+|ORACLE-EDIT \(H(?!4\.2\b)\d+\.\d+/.test(l)))); // ORACLE-EDIT (H4.5 builder)
-    const sharedFiles = git(["diff", "--name-only", BASE, "--", "src/lib/modules/account", "src/lib/modules/approval", "src/lib/core", "prisma", "scripts/qc-hr-lib.mts", "package.json"]).split("\n").filter(Boolean); // ORACLE-EDIT (H4.5 builder)
+    // ORACLE-EDIT (H3.4-YTD · merge of session/hr with H4.2 in base · pre-authorised): once H4.2 is in the base (IN_BASE) the freeze list judges later tickets' diffs — n/a, like S1.4's IN_BASE guard ◂
     const r = {
-      pos: posOthers.length === 0,
-      hr: changedVsBase(BASE, hrFrozen) === "unchanged",
-      shared: sharedFiles.length === 0 || laterOk(sharedFiles), // ORACLE-EDIT (H4.5 builder): + laterOk
-      oracles: oracles.length === 0 || laterOk(oracles), // ORACLE-EDIT (H4.5 builder): + laterOk
+      pos: IN_BASE || posOthers.length === 0, // ORACLE-EDIT (H3.4-YTD) ◂
+      hr: IN_BASE || changedVsBase(BASE, hrFrozen) === "unchanged", // ORACLE-EDIT (H3.4-YTD) ◂
+      shared: IN_BASE || changedVsBase(BASE, ["src/lib/modules/account", "src/lib/modules/approval", "src/lib/core", "prisma", "scripts/qc-hr-lib.mts", "package.json"]) === "unchanged", // ORACLE-EDIT (H3.4-YTD) ◂
+      oracles: IN_BASE || oracles.length === 0, // ORACLE-EDIT (H3.4-YTD) ◂
     };
     ck("S1.6", r, "frozen", `pos=${posOthers.join(",") || "0"} hr=${changedVsBase(BASE, hrFrozen)} oracles=${oracles.join(",") || "0"}`);
   }

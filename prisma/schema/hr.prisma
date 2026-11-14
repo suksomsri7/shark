@@ -235,6 +235,7 @@ model HrEmployee {
   taxCertificates  HrTaxCertificate[] // HR H3.6 ▸ หนังสือรับรอง 50 ทวิ (back-relation) ◂
   salaryCertificates HrSalaryCertificate[] // HR H3.8 ▸ หนังสือรับรองเงินเดือน (back-relation) ◂
   lineLinks          HrLineLink[] // HR H4.5 ▸ การผูก LINE (back-relation · FK RESTRICT) ◂
+  openingYtd       HrPayrollOpeningYtd[] // HR H3.4-YTD ▸ ยอดยกมาต้นปี (back-relation) ◂
 
   @@index([systemId, active])
   @@index([tenantId])

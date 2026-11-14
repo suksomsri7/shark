@@ -287,6 +287,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrEmployeeRegister: sys(), // HR H3.9 ▸ ทะเบียนลูกจ้าง: สัญชาติ · ประโยชน์ตอบแทนอย่างอื่น (ม.113) ◂
   HrLineLink: sys(), // HR H4.5 ▸ การผูก LINE ของพนักงาน (id/สถานะ) ◂
   HrNotice: sys(), // HR H4.5 ▸ แจ้งเตือนพนักงาน (ในแอป + สถานะส่ง LINE) ◂
+  HrPayrollOpeningYtd: sys(), // HR H3.4-YTD ▸ ยอดยกมาต้นปี (ก่อนใช้ระบบ) ต่อพนักงานต่อปีภาษี ◂
   // HR H1.3 ▸ ตารางกฎหมายเงินเดือนกลางของทั้ง SHARK (ไม่มี tenantId/systemId) ◂
   HrLawTable: g("กฎหมายแรงงาน/ภาษีระดับประเทศ — SHARK ดูแล ร้านอ่านอย่างเดียว · เขียนผ่านสคริปต์/หลังบ้านเท่านั้น"),
   // Subscription (WO-0027) + Procurement (WO-0028)

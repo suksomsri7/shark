@@ -14056,6 +14056,269 @@
    "wo": "H4.2",
    "oracle": "qc-hr-h4.2",
    "note": "บันทึกค่าตั้ง (เป้า · ยอดขายต่อคนต่อชั่วโมง · คนขั้นต่ำ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-ytd-card",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-opening-ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับ 50 ทวิ H3.6)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "การ์ดยอดยกมาต้นปี (ก่อนใช้ระบบ) · id=hr-ytd-card (ลิงก์จากรายการต้องตรวจ YTD_OPENING)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-ytd-year",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-opening-ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับ 50 ทวิ H3.6)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "เลือกปีภาษี (GET ?yty=)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-ytd-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-opening-ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับ 50 ทวิ H3.6)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "แถวพนักงาน · ป้าย ต้องกรอก/กรอกแล้ว/ไม่ต้องกรอก · แถวที่ออก 50 ทวิ แล้วอ่านอย่างเดียว — * = employeeId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-ytd-save-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-opening-ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับ 50 ทวิ H3.6) · แถวที่ยังไม่ออก 50 ทวิ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "saveOpeningYtdAction → ?ymsg=saved#hr-ytd-card"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "บันทึกแถวเดียว (บาท → สตางค์ที่ server) — * = employeeId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-ytd-zero-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-opening-ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับ 50 ทวิ H3.6) · แถวที่ยังไม่ออก 50 ทวิ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "zeroOpeningYtdAction → ?ymsg=saved#hr-ytd-card"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "ไม่มีรายได้ก่อนใช้ระบบ (บันทึกยอดศูนย์ — ลงประวัติ) — * = employeeId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-ytd-bulk-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-opening-ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่น (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา — ด่านเดียวกับ 50 ทวิ H3.6) · มีแถวที่แก้ได้",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "saveOpeningYtdBulkAction → ?ymsg=bulk&yn=<n>#hr-ytd-card"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "บันทึกทั้งหมด ≤ 300 แถว ทั้งหมดหรือไม่มีเลย"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-ytd-alert",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-opening-ui.tsx",
+   "conditional": "ผลการกดไม่สำเร็จ (?ymsg=<รหัส> allowlist)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "inline-error"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "role=alert ข้อความคงที่ (NO OWN FIELDS WHT_OVER AS_OF OVERLAP CERT_ISSUED REV_CHANGED YEAR)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-ytd-link",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือน · รอบรุ่น 2 ที่มีรายการต้องตรวจ YTD_OPENING",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "#hr-ytd-card"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "ไปการ์ดยอดยกมาต้นปี (เตือนเท่านั้น ไม่บล็อกการอนุมัติ)"
+  },
+  {
+   "page": "/app/sys/[id]/payroll/[runId]/slip/[employeeId]",
+   "testid": "hr-slip-opening-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "ปีภาษีที่มียอดยกมาต้นปี (ก่อนใช้ระบบ) — ผู้ดูเงินเดือนของพนักงานคนนั้น (ประวัติรายปี) และพนักงานเอง (สลิปของฉัน /app/me/hr/pay)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "บรรทัดยอดยกมาครั้งเดียวต่อปี (รวมใน income/tax/sso ของปีแล้ว = 50 ทวิ) — * = taxYear"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-ytd-truncated",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-opening-ui.tsx",
+   "conditional": "รายชื่อของปีเกิน 500 คน (listOpeningYtd truncated)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.4-YTD",
+   "oracle": "qc-hr-h3.4-ytd",
+   "note": "แจ้งว่าแสดงเฉพาะ 500 คนแรก (ไม่ตัดเงียบ — fix round F3)"
   }
  ]
 }
