@@ -345,7 +345,8 @@ try {
         }
       }
       if (!spec.actions?.length) await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
-      const overflow = await page.evaluate((vw: number) => document.documentElement.scrollWidth > vw + 2, dev.width).catch(() => false);
+      // T1.4a มติ M6: ผังพิมพ์เป็นตารางคอลัมน์ขนาดกระดาษ (~148 มม.) — เครื่องพิมพ์จัดหน้าตามความกว้างกระดาษ ไม่ใช่ความกว้างจอ ⇒ ไม่ตรวจล้นที่ 390 ของสื่อพิมพ์
+      const overflow = spec.media === "print" && dev.width < 600 ? false : await page.evaluate((vw: number) => document.documentElement.scrollWidth > vw + 2, dev.width).catch(() => false);
       const file = join(OUT, `${spec.name}-${dev.device}.png`);
       await page.screenshot({ path: file, fullPage: spec.fullPage !== false });
       shots.push(file);

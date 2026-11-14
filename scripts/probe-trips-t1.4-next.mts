@@ -746,7 +746,7 @@ try {
       const shell = Array.from(document.querySelectorAll("nav, aside, header, button, [data-testid='trips-mf-actions'], [data-testid='trips-mf-kpis']")).filter((e) => !e.closest("[data-print-root]") && (e as HTMLElement).offsetParent !== null && getComputedStyle(e).visibility !== "hidden").map((e) => `${e.tagName.toLowerCase()}:${((e as HTMLElement).innerText || "").slice(0, 30)}`);
       return { has: !!root, display: root ? getComputedStyle(root).display : "", h: Math.round(rr?.height ?? 0), w: Math.round(rr?.width ?? 0), left: Math.round(rr?.left ?? -1), top: Math.round(rr?.top ?? -1), docH: document.documentElement.scrollHeight, docW: document.documentElement.scrollWidth,
         font: root ? parseFloat(getComputedStyle(root).fontSize) : 0, color: root ? getComputedStyle(root).color : "", clipped, shell: shell.slice(0, 8), body: document.body.innerText,
-        bookings: document.querySelectorAll("[data-print-booking]").length, pax: document.querySelectorAll("[data-print-booking] ol > li").length };
+        bookings: document.querySelectorAll("[data-print-booking]").length, pax: document.querySelectorAll("[data-print-booking] [data-print-pax]").length }; // PROBE-EDIT (มติ M6): แถวผู้เดินทางเป็นตาราง grid ไม่ใช่ ol > li
     });
     check("สื่อพิมพ์: รากผังพิมพ์แสดง (display block)", pm.has && pm.display === "block", "block", pm.display);
     eqc("สื่อพิมพ์: เปลือกแอป/แถบทัวร์/ปุ่ม/การ์ดจอ ซ่อนทั้งหมด", pm.shell, []);
@@ -773,8 +773,9 @@ try {
       const size = /Page size:\s+([^\n]+)/.exec(info)?.[1] ?? "";
       check("PDF: หลายหน้า (≥ 2) ขนาด A4", pages >= 2 && /59[45](\.\d+)? x 84[12]/.test(size), "≥ 2 หน้า · A4", `${pages} หน้า · ${size}`);
       const txt = execFileSync("pdftotext", ["-layout", pdfPath, "-"], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+      const flat = (x: string) => x.replace(/\s+/g, ""); // PROBE-EDIT (มติ M6): ชื่อในคอลัมน์ตารางตัดบรรทัดได้
       const lastPage = execFileSync("pdftotext", ["-f", String(pages), "-l", String(pages), "-layout", pdfPath, "-"], { encoding: "utf8" });
-      check("PDF: การจองท้ายใบ (Bulk14) และผู้เดินทางคนแรกอยู่ครบ — ไม่ถูกตัด", txt.includes("Bulk14 Pax4") && txt.includes("Somchai Probe"), "มีทั้งคู่", [txt.includes("Bulk14 Pax4"), txt.includes("Somchai Probe")]);
+      check("PDF: การจองท้ายใบ (Bulk14) และผู้เดินทางคนแรกอยู่ครบ — ไม่ถูกตัด", flat(txt).includes("Bulk14Pax4") && flat(txt).includes("Somchai"), "มีทั้งคู่", [flat(txt).includes("Bulk14Pax4"), flat(txt).includes("Somchai")]);
       check("PDF: หน้าสุดท้ายมีช่องลงชื่อ/ท้ายกระดาษ", /\.{10,}/.test(lastPage), "มีเส้นลงชื่อ", lastPage.replace(/\s+/g, " ").slice(-160));
       execFileSync("pdftoppm", ["-r", "70", "-png", "-f", "1", "-l", "2", pdfPath, join(OUT, "s3-print-pdf")]);
       execFileSync("pdftoppm", ["-r", "70", "-png", "-f", String(pages), "-l", String(pages), pdfPath, join(OUT, "s3-print-pdf-last")]);
@@ -993,7 +994,7 @@ try {
     await po.page.waitForFunction(() => (window as unknown as { __downloads: unknown[] }).__downloads.length > 0, { timeout: 60_000 }).catch(() => undefined);
     const bytes = Buffer.from((await blobBytes(po, 0))?.bytes ?? []);
     writeFileSync(join(OUT, "s7-export-capped.csv"), bytes);
-    const text = bytes.toString("utf8"); const rows = parseCsv(text).slice(1);
+    const text = bytes.toString("utf8"); const rows = parseCsv(text).slice(2); // PROBE-EDIT (มติ M3): บรรทัดแรก = บรรทัดแจ้งว่าถูกตัด · บรรทัดสอง = หัวตาราง
     check("ไฟล์: แถวข้อมูล ≤ 600", rows.length > 0 && rows.length <= 600, "≤ 600", rows.length);
     check("จอ: หลังส่งออกมีข้อความ role=alert ว่าไฟล์ถูกตัด", (await has(po, "trips-mf-export-truncated")) && (await po.page.evaluate(() => document.querySelector('[data-testid="trips-mf-export-truncated"]')?.getAttribute("role"))) === "alert", "alert", await textOf(po, T("trips-mf-export-truncated")));
     const aud = (await audits("trips.manifest.exported")).filter((x) => x.targetId === depCap);
