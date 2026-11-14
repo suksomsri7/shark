@@ -149,3 +149,22 @@ The 3b suite uses its own tenants `qc-hr-priv3b-*`: our shop plus a foreign shop
   - The unique indexes are cross-tenant: `HrSalaryProfile @@unique([systemId, employeeId])` (prisma/schema/payroll.prisma:93) and `CREATE UNIQUE INDEX "HrPayrollRun_systemId_periodKey_live_key" ON "HrPayrollRun"("systemId", "periodKey") WHERE "status" <> 'REVERSED'` (migration 20261202000000_hr_payroll_run_live_unique; schema keeps only `@@index([systemId, periodKey])`).
   - X6 needs a migration or data-cleanup decision from the controller.
 - 3b at 44a75f37a: 11/11 as registered (RED 6: X1 X2 X3 X4 X6 Y1 · GREEN 5), passed 5/11, residue none in both tenants. tsc 0 errors.
+
+### R10 (tenant-scoped unique keys)
+- **qc-hr-priv-3 S6 (new, RED until built):**
+  - It checks for exactly one new migration folder, named after `20270111000000_hr_line_link`, containing only `migration.sql`.
+  - The SQL may contain only DROP INDEX / CREATE UNIQUE INDEX statements on HrSalaryProfile and HrPayrollRun. The new keys must be (tenantId, systemId, employeeId) and (tenantId, systemId, periodKey) WHERE status <> 'REVERSED', and both old indexes must be dropped.
+  - In the schema, `HrSalaryProfile @@unique` must be swapped, with no other non-comment schema line changed.
+  - No `systemId_employeeId` / `systemId_periodKey_live` call site may remain in src (account excluded).
+  - Positive control: a scratch schema line plus a migration in the expected shape turned S4 and S6 green. It was removed right after and never applied to any DB.
+- **S4:** prisma changes are limited to `prisma/schema/payroll.prisma` plus that new migration folder.
+- **qc-hr-priv-3b, new green controls:**
+  - X7: in the own tenant, a duplicate profile is refused (P2002), and so is a second DRAFT run for the same period.
+  - X8: the foreign squat rows (profile + run on our system) are unchanged after our owner's attempts.
+- **X6** stays as written and RED until the migration is applied.
+- **Counts at 44a75f37a (no migration applied):**
+  - priv-3: 28/28 as registered (RED 1: S6), passed 27/28.
+  - priv-3b: 13/13 as registered (RED 6: X1 X2 X3 X4 X6 Y1 · GREEN 7), passed 7/13.
+  - Residue none, in both tenants for 3b. tsc 0 errors.
+- **Compound-unique call sites:** none (grep in the brief R10 section).
+- **Old code vs the new DB index:** it keeps working. The DB-state oracles `qc-hr-h0.6` S2.4 and `qc-hr-h1.3` S1.10 (index name/def) and `pnpm drift` on other branches will flag the lane DB, so warn lane 2 first.

@@ -1,6 +1,8 @@
 // QC HR PRIV-3 page role gates (employees / leave / payroll) · brief hr-brief-PRIV-3.md (+ CONTROLLER RULINGS) · notes hr-PRIV-3-oracle.md · ⚠️ ORACLE-EDIT only · QC_FORCE=1 · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-priv-3.mts
 //   QC_PRIV3_MEASURE=1 prints the measured goldens (GOLD) — taken on base ea2b41ea1 (r2 cells on 44a75f37a) · registry base column re-based to 44a75f37a (PRIV-3 build): all GREEN · r2 RED items live in qc-hr-priv-3b.mts
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { type Any, type Def, ROOT, rd, errText, canon, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, sha, srcFiles, stripComments, QUERY_COUNTER } from "./qc-hr-lib.mjs";
 import { installNetGuard } from "./qc-hr-h4.3-lib.mjs";
 import { bodyOf } from "./qc-hr-priv-2-lib.mjs";
@@ -11,13 +13,17 @@ const PG = "src/app/app/sys/[id]/hr/";
 const F = { priv: `${H}privacy.ts`, nav: `${H}nav.ts`, ui: `${H}ui.tsx`, acts: `${H}actions.ts`, emp: `${PG}employees/page.tsx`, leave: `${PG}leave/page.tsx`, pay: `${PG}payroll/page.tsx`, kiosk: `${PG}kiosk/page.tsx`, inv: "scripts/hr-ui-inventory.json" };
 const PAGES = { register: F.emp, leave: F.leave, payroll: F.pay } as const;
 const MK = "HR PRIV-3", OE = "ORACLE-EDIT (HR PRIV-3";
+const SCHEMA = "prisma/schema/payroll.prisma", LAST_HR_MIG = "20270111000000_hr_line_link"; // r2 R10: latest HR migration at 44a75f37a
+/** migration folders that exist now but not at BASE */
+const newMigs = () => readdirSync(join(ROOT, "prisma/migrations")).filter((d) => /^\d{14}_/.test(d) && fileAtBase(`prisma/migrations/${d}/migration.sql`) === null);
 
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
 const CHECKS: Def[] = [
  D("S1", "R1", "CG", "[static] one helper hrPageAccessOf/requireHrPage in privacy.ts, built from existing predicates · no copy · no inline evaluate in pages/ui/nav hunks"),
  D("S2", "R2 R7", "CG", "[static] 3 pages import requireHrPage + call it after the system check and before any data read · fitness pageGuard guarded · PAGE_GUARD_BASELINE −3 (kiosk kept)"),
  D("S3", "R3 R4 R5", "MG", "[static] nav gateOf + requestLeaveAction + HrLeaveSection + HrHub use the helper · hrTabs/HrOtSection bodies = base"),
- D("S4", "§files", "MG", "[static] allowed files only (incl. .mts) · ui/actions hunks in their ranges · every src hunk marked HR PRIV-3 · oracle edits marked · payroll-rules sha · no migration"),
+ D("S4", "§files", "MG", "[static] allowed files only (incl. .mts) · ui/actions hunks in their ranges · every src hunk marked HR PRIV-3 · oracle edits marked · payroll-rules sha · prisma only = R10 schema + migration"),
+ D("S6", "r2 R10", "MR", "[static] exactly ONE new migration (after the latest HR migration): only DROP/CREATE UNIQUE INDEX on HrSalaryProfile + HrPayrollRun · keys (tenantId, systemId, employeeId) and (tenantId, systemId, periodKey) WHERE status <> 'REVERSED' · schema @@unique swapped, nothing else · no old compound-key call site"),
  D("S5", "R1", "mG", "[static] no new import cycle through privacy.ts"),
  D("G1", "R1", "CG", "hrPageAccessOf truth table (13 viewers incl. r2 PR/PA + API key) · requireHrPage = table · malformed viewer ⇒ all false — the table qc-hr-h2.10 S7.1 now follows (pinned here)"),
  D("P1", "R2 Q1", "CG", "/hr/employees K N S S0 SR PR PA ⇒ not-found identical to unknown system (digest + SQL count) · nothing rendered"),
@@ -95,7 +101,7 @@ try { fit = await import("./fitness-hr.mjs" as string); } catch (e) { fit = { __
  // r2 (controller): R6 = the 8 payroll action files + payroll.ts (ownership guard only · payroll-rules.ts stays byte-identical below) · R7 = refusal texts in service/ot/swap + their action files
  const R6_FILES = ["payroll-actions", "payroll-opening-actions", "work-entries-actions", "stock-charge-actions", "attendance-pay-actions", "payslip-actions", "bank-files/actions", "filings/actions", "payroll"].map((x) => `${H}${x}.ts`);
  const R7_FILES = ["service", "ot", "swap", "ot-actions", "swap-actions", "self-actions"].map((x) => `${H}${x}.ts`);
- const SRC_OK = [F.priv, F.nav, F.ui, F.acts, F.emp, F.leave, F.pay, ...R6_FILES, ...R7_FILES];
+ const SRC_OK = [F.priv, F.nav, F.ui, F.acts, F.emp, F.leave, F.pay, ...R6_FILES, ...R7_FILES, SCHEMA]; // r2 R10: + prisma/schema/payroll.prisma (the new migration folder is judged by S6)
  const ORACLE_OWN = ["scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-priv-3b.mts"];
  const CTL = ["scripts/fitness-hr.mts", "scripts/qc-hr-h2.10.mts"], DATA = [F.inv, "scripts/walk-hr-matrix.json"]; // DATA = controller-authorised JSON rows (no comment syntax for a marker)
  const marked = (f: string, m: string) => { const hs = hunksOf(f); return hs.length > 0 && hs.every((x) => x.added.some((l) => l.includes(m))); };
@@ -112,11 +118,12 @@ try { fit = await import("./fitness-hr.mjs" as string); } catch (e) { fit = { __
    continue;
   }
   if (f.startsWith(H) && fileAtBase(f) === null) { if (!rd(f).split("\n").slice(0, 3).join("\n").includes(MK)) bad.push(`${f.split("/").pop()}:header`); continue; }
+  if (/^prisma\/migrations\/[^/]+\/migration\.sql$/.test(f) && newMigs().includes(f.split("/")[2]!)) continue; // r2 R10 — content judged by S6
   if (DATA.includes(f)) continue; // brief R7 rows — content judged by fitness F16.8 + the controller walk
   if (CTL.includes(f) || (/^scripts\/[^/]+\.mts$/.test(f) && fileAtBase(f) !== null)) { if (!marked(f, OE)) bad.push(`${f}:oracle-edit unmarked`); continue; }
   outside.push(f);
  }
- const r = { files: !outside.length, hunks: !bad.length, rules: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, noMigration: !ch.some((f) => f.startsWith("prisma/")), base: !!BASE };
+ const r = { files: !outside.length, hunks: !bad.length, rules: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, prisma: ch.filter((f) => f.startsWith("prisma/")).every((f) => f === SCHEMA || newMigs().some((m) => f === `prisma/migrations/${m}/migration.sql`)), base: !!BASE }; // r2 R10: "no migration" → only the R10 schema + migration (S6)
  chk("S4", all(r), "all", `${fails(r)} outside=${L(outside, 6)} bad=${L(bad, 6)} base=${BASE.slice(0, 9)}`);
 }
 {
@@ -124,6 +131,32 @@ try { fit = await import("./fitness-hr.mjs" as string); } catch (e) { fit = { __
  const extra = cyc.filter((f) => !want.includes(f));
  if (MEASURE) console.log(`MEASURE cycle ${JSON.stringify(cyc)}`);
  chk("S5", !extra.length, "⊆ base", `new=${extra.join(",") || "none"} (base ${want.length})`);
+}
+
+// ═════════════ r2 R10: exactly ONE migration — tenant-scoped unique keys of HrSalaryProfile / HrPayrollRun (index swap only) ═════════════
+{
+ const migs = newMigs(), bad: string[] = [];
+ const sqlOf = (m: string) => rd(`prisma/migrations/${m}/migration.sql`);
+ if (migs.length !== 1) bad.push(`folders=${migs.length}`);
+ const m = migs[0] ?? "";
+ if (m && m <= LAST_HR_MIG) bad.push(`name ${m} ≤ ${LAST_HR_MIG}`);
+ if (m && readdirSync(join(ROOT, "prisma/migrations", m)).some((x) => x !== "migration.sql")) bad.push("extra files");
+ const stmts = m ? sqlOf(m).replace(/--[^\n]*/g, "").split(";").map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean) : [];
+ const okStmt = (x: string) => /^DROP INDEX (IF EXISTS )?"(HrSalaryProfile|HrPayrollRun)_[A-Za-z_]+"$/.test(x) || /^CREATE UNIQUE INDEX (IF NOT EXISTS )?"(HrSalaryProfile|HrPayrollRun)_[A-Za-z_]+" ON "(HrSalaryProfile|HrPayrollRun)" ?\([^)]*\)( WHERE .*)?$/.test(x);
+ const other = stmts.filter((x) => !okStmt(x));
+ if (other.length) bad.push(`non-index: ${other[0]!.slice(0, 60)}`);
+ const cols = (x: string) => (/\(([^)]*)\)/.exec(x)?.[1] ?? "").replace(/[\s"]/g, "");
+ const prof = stmts.find((x) => /^CREATE UNIQUE INDEX .* ON "HrSalaryProfile"/.test(x)), run = stmts.find((x) => /^CREATE UNIQUE INDEX .* ON "HrPayrollRun"/.test(x));
+ if (cols(prof ?? "") !== "tenantId,systemId,employeeId") bad.push(`profile key ${cols(prof ?? "") || "none"}`);
+ if (cols(run ?? "") !== "tenantId,systemId,periodKey" || !/WHERE \(?\s*"status" <> 'REVERSED'/.test(run ?? "")) bad.push(`run key ${cols(run ?? "") || "none"}`);
+ if (!stmts.some((x) => /DROP INDEX .*"HrSalaryProfile_systemId_employeeId_key"/.test(x)) || !stmts.some((x) => /DROP INDEX .*"HrPayrollRun_systemId_periodKey_live_key"/.test(x))) bad.push("old keys not dropped");
+ const sc = stripComments(rd(SCHEMA)), model = /model HrSalaryProfile \{[\s\S]*?\n\}/.exec(sc)?.[0] ?? "";
+ if (!/@@unique\(\[\s*tenantId\s*,\s*systemId\s*,\s*employeeId\s*\]/.test(model) || /@@unique\(\[\s*systemId\s*,\s*employeeId\s*\]/.test(model)) bad.push("schema HrSalaryProfile key");
+ const sch = hunksOf(SCHEMA).flatMap((x) => [...x.added, ...x.removed]).filter((l) => !/^\s*(\/\/|$)/.test(l) && !/@@unique|@@index/.test(l));
+ if (sch.length) bad.push(`schema other lines: ${sch[0]!.trim().slice(0, 40)}`);
+ const sites = srcFiles("src").filter((f) => /systemId_employeeId|systemId_periodKey_live/.test(code(f)) && !f.includes("/account/"));
+ if (sites.length) bad.push(`old compound key used: ${sites.join(",")}`);
+ chk("S6", !bad.length, "one index-only migration", L(bad));
 }
 
 // ═════════════ runtime ═════════════

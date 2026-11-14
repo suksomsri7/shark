@@ -143,3 +143,34 @@ Unverified: transitive import-cycle freedom of R1 (builder proves it); whether `
     - `HrSalaryProfile @@unique([systemId, employeeId])`
     - `HrPayrollRun_systemId_periodKey_live_key ("systemId","periodKey") WHERE status <> 'REVERSED'`
   - So X6 cannot turn green without a migration or a data-cleanup decision from the controller. The builder must not design one.
+
+## R10 (controller ruling on X6): tenant-scoped unique keys, no data deleted
+- **ONE migration:** a new folder, with a timestamp after the latest HR migration `20270111000000_hr_line_link`. Nothing else goes in it.
+  - (a) `HrSalaryProfile`: `@@unique([systemId, employeeId])` becomes `@@unique([tenantId, systemId, employeeId])`, in the schema (`prisma/schema/payroll.prisma`) and in the migration (DROP INDEX `"HrSalaryProfile_systemId_employeeId_key"` + CREATE UNIQUE INDEX on (tenantId, systemId, employeeId)).
+  - (b) `HrPayrollRun`: DROP INDEX `"HrPayrollRun_systemId_periodKey_live_key"`, then CREATE the same partial unique index on (`"tenantId"`, `"systemId"`, `"periodKey"`) `WHERE "status" <> 'REVERSED'`. This is raw SQL in the migration, like 20261202000000. The schema keeps its plain `@@index([systemId, periodKey])`.
+  - The migration holds only index statements: no column change, no data change. It must be safe in the usual Prisma sense. `pnpm drift` must show no diff for these tables afterwards; the builder runs it.
+  - Rows already squatting in another tenant stay untouched. They are in nobody's view and no longer block.
+- **Compound-unique call sites:** none.
+  - Grep of `src/` and `scripts/` for `systemId_employeeId`, `upsert`/`createMany` on these models, `ON CONFLICT` on these tables, and raw `INSERT INTO "HrSalaryProfile"/"HrPayrollRun"` found nothing.
+  - `setSalaryProfile` uses `findFirst` + `update`/`create`. Duplicate runs are detected by a `tenantDb` pre-query (`payroll.ts:765`, `dupRunText`).
+  - The `systemId_periodKey` hits in `account/gl.ts` on other branches are `AccountPeriod`, not HR.
+  - So no call site needs changing. If the builder finds one, it uses the new key with the tenant from the caller's ctx.
+- **Allowed files (R10):**
+  - `prisma/schema/payroll.prisma`: the `@@unique` line(s) plus `HR PRIV-3` comments only.
+  - `prisma/migrations/<new>/migration.sql`.
+  - The earlier "no migration" static is replaced by "exactly this one migration" (qc-hr-priv-3 S6).
+- **Lane DB:** the lane-5 QC branch is shared with lane 2. The builder runs `prisma migrate deploy` on it through the lane wrapper.
+  - Old code on other branches keeps working against the new DB.
+    - The Prisma client never enforces DB indexes.
+    - No code uses the compound key in `where`, `upsert`, `connect`, `createMany skipDuplicates`, or `ON CONFLICT` on these tables.
+    - Duplicate-run and existing-profile checks are tenant-scoped pre-queries.
+  - The lane-2 agent must still be warned before the builder migrates:
+    - `qc-hr-h0.6` S2.4 (expects `HrPayrollRun_systemId_periodKey_live_key` on (systemId, periodKey)) will fail on that DB.
+    - `qc-hr-h1.3` S1.10 (byte-equal `pg_indexes.indexdef` of that index) will fail on that DB.
+    - `pnpm drift` on a branch whose schema still has `@@unique([systemId, employeeId])` will show a diff.
+  - These are DB-state oracles, not code breakage.
+- **Oracle:**
+  - 3b X6 stays as written; it should turn green with R10.
+  - X7 (GREEN control): own-tenant uniqueness is kept.
+  - X8 (GREEN control): foreign squat rows are unchanged.
+  - qc-hr-priv-3 S6 (RED until built): exactly one index-only migration plus the schema swap.

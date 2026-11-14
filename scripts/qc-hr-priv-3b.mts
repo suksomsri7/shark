@@ -18,6 +18,8 @@ const CHECKS: Def[] = [
  D("K1", "R8", "mG", "kiosk wrong PIN for employees NOT on the kiosk's list (unknown · inactive · other HR system · other tenant · other branch for a branch kiosk) + wrong PIN of a PIN holder ⇒ exactly \"PIN ไม่ถูกต้อง\", no name"),
  D("K2", "R8", "mG", "[control] on-list employee without PIN: reply names them, and the kiosk page already lists that name to the kiosk account (ruling exception)"),
  D("X6", "R6 r2", "MR", "rightful shop creates the profile / the run although a FOREIGN-tenant row holds the same (systemId, employeeId) / (systemId, periodKey) — the fix must not rely on cross-tenant uniqueness (unique indexes are cross-tenant today ⇒ migration decision)"),
+ D("X7", "R10", "MG", "[control] uniqueness kept in the OWN tenant: a second profile for the same (system, employee) and a second live run for the same (system, period) are refused by the DB"),
+ D("X8", "R10", "MG", "[control] the foreign tenant's squat rows are still there and unchanged after our owner's create (nothing deleted)"),
  D("Z1", "-", "CG", "residue none in both tenants · rate buckets removed"),
 ];
 const R = makeRegistry(SUITE, "", CHECKS);
@@ -165,11 +167,26 @@ try {
   const eC = await fx.mkEmp(X.T, HRS, `QCP3b eC ${tag}`, { code: "BC", startDate: "2024-02-01", unitId: X.U1 });
   await P.hrSalaryProfile.create({ data: { tenantId: X.T2, systemId: HRS, employeeId: eC, payType: "MONTHLY", baseSalarySatang: 1, ssoEligible: true } }).catch((e: unknown) => bad.push(`seed profile ${errText(e).slice(0, 40)}`));
   await P.hrPayrollRun.create({ data: { tenantId: X.T2, systemId: HRS, periodKey: per, payDate: new Date(`${per}-28T12:00:00+07:00`), status: "DRAFT", engineVersion: 1, totalGrossSatang: 0, totalSsoEmployeeSatang: 0, totalSsoEmployerSatang: 0, totalWhtSatang: 0, totalNetSatang: 0, totalAddSatang: 0 } }).catch((e: unknown) => bad.push(`seed run ${errText(e).slice(0, 40)}`));
+  const foreign = async () => canon(await Promise.all([P.hrSalaryProfile.findMany({ where: { tenantId: X.T2, systemId: HRS } }), P.hrPayrollRun.findMany({ where: { tenantId: X.T2, systemId: HRS, periodKey: per } })]));
+  const f0 = await foreign();
   const r1 = await call("O", pth, () => pa.setSalaryProfileAction(fd({ systemId: HRS, employeeId: eC, baseSalaryBaht: "26000" })));
   if ((await P.hrSalaryProfile.findFirst({ where: { tenantId: X.T, systemId: HRS, employeeId: eC } }))?.baseSalarySatang !== 2_600_000) bad.push(`profile: ${r1.slice(0, 70)}`);
   const r2 = await call("O", pth, () => pa.createPayrollRunAction(null, fd({ systemId: HRS, periodKey: per, payDate: `${per}-28` })));
   if (!(await P.hrPayrollRun.count({ where: { tenantId: X.T, systemId: HRS, periodKey: per } }))) bad.push(`run: ${r2.slice(0, 70)}`);
   chk("X6", !bad.length, "both created in our tenant", L(bad));
+  const f1 = await foreign();
+  chk("X8", f0 === f1 && f0.includes(eC) && f0.includes(per), "unchanged", f0 === f1 ? "unchanged" : "CHANGED");
+  // X7: own-tenant uniqueness (fresh employee + period, no foreign row involved)
+  const u7: string[] = [], per2 = prevMonth(MONTH, 6);
+  const eD = await fx.mkEmp(X.T, HRS, `QCP3b eD ${tag}`, { code: "BD", startDate: "2024-02-01", unitId: X.U1 });
+  await P.hrSalaryProfile.create({ data: { tenantId: X.T, systemId: HRS, employeeId: eD, payType: "MONTHLY", baseSalarySatang: 1_000_000, ssoEligible: true } });
+  const dupP = await P.hrSalaryProfile.create({ data: { tenantId: X.T, systemId: HRS, employeeId: eD, payType: "MONTHLY", baseSalarySatang: 1, ssoEligible: true } }).then(() => "created").catch((e: unknown) => ((e as Any)?.code === "P2002" || /unique/i.test(errText(e)) ? "refused" : errText(e).slice(0, 40)));
+  if (dupP !== "refused") u7.push(`profile dup ${dupP}`);
+  const runRow = (status: string) => P.hrPayrollRun.create({ data: { tenantId: X.T, systemId: HRS, periodKey: per2, payDate: new Date(`${per2}-28T12:00:00+07:00`), status, engineVersion: 1, totalGrossSatang: 0, totalSsoEmployeeSatang: 0, totalSsoEmployerSatang: 0, totalWhtSatang: 0, totalNetSatang: 0, totalAddSatang: 0 } });
+  await runRow("DRAFT");
+  const dupR = await runRow("DRAFT").then(() => "created").catch((e: unknown) => ((e as Any)?.code === "P2002" || /unique/i.test(errText(e)) ? "refused" : errText(e).slice(0, 40)));
+  if (dupR !== "refused") u7.push(`live run dup ${dupR}`);
+  chk("X7", !u7.length, "refused", L(u7));
  }
  // ── R7 cancel/respond parity ──
  {
