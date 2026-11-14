@@ -8,11 +8,13 @@
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
+import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
 import { issueHrApiKey, listHrApiKeys, revokeHrApiKey } from "./api/keys";
 
 const PATH = (systemId: string) => `/app/sys/${systemId}/hr/settings`;
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+const DENIED = { ok: false as const, code: "PERMISSION_DENIED" as const, message: "บัญชีนี้ยังไม่มีสิทธิ์จัดการคีย์ API" };
 const UNKNOWN = { ok: false as const, code: "UNKNOWN" as const, message: "เกิดข้อผิดพลาด — ลองอีกครั้ง" };
 
 function unexpected(where: string, e: unknown) {
@@ -21,10 +23,23 @@ function unexpected(where: string, e: unknown) {
   return UNKNOWN;
 }
 
+type Auth = Awaited<ReturnType<typeof requireTenant>>;
+/** ด่านชั้นแรกของ action (แพลตฟอร์ม api.key.*) — ชั้นที่สอง (เจ้าของร้านในฐาน · ระบบ HR · ชุดสิทธิ์) อยู่ใน api/keys.ts */
+function platformGate(auth: Auth, action: "api.key.create" | "api.key.revoke"): boolean {
+  const m = { role: auth.active.role, unitAccess: (Array.isArray(auth.active.unitAccess) ? auth.active.unitAccess : []) as string[], permissions: (auth.active.permissions ?? {}) as Record<string, unknown> } as MembershipCtx;
+  try {
+    assertCan(m, { module: "api", action });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** รายการคีย์ของระบบ HR นี้ (เจ้าของร้านเท่านั้น) */
 export async function listHrApiKeysAction(input: { systemId: string }) {
   try {
     const auth = await requireTenant();
+    if (!platformGate(auth, "api.key.create")) return DENIED;
     return await listHrApiKeys(auth, { systemId: isRecord(input) ? str(input.systemId) : "" });
   } catch (e) {
     return unexpected("list", e);
@@ -36,6 +51,7 @@ export async function issueHrApiKeyAction(input: { systemId: string; name: strin
   try {
     if (!isRecord(input)) return { ok: false as const, code: "VALIDATION" as const, message: "ข้อมูลที่ส่งมาไม่ถูกต้อง" };
     const auth = await requireTenant();
+    if (!platformGate(auth, "api.key.create")) return DENIED;
     const systemId = str(input.systemId);
     const r = await issueHrApiKey(auth, { systemId, name: str(input.name), bundle: str(input.bundle), ttlDays: typeof input.ttlDays === "number" ? input.ttlDays : Number.NaN, payConsent: input.payConsent === true });
     if (r.ok) revalidatePath(PATH(systemId));
@@ -50,6 +66,7 @@ export async function revokeHrApiKeyAction(input: { systemId: string; keyId: str
   try {
     if (!isRecord(input)) return { ok: false as const, code: "VALIDATION" as const, message: "ข้อมูลที่ส่งมาไม่ถูกต้อง" };
     const auth = await requireTenant();
+    if (!platformGate(auth, "api.key.revoke")) return DENIED;
     const systemId = str(input.systemId);
     const r = await revokeHrApiKey(auth, { systemId, keyId: str(input.keyId) });
     if (r.ok) revalidatePath(PATH(systemId));

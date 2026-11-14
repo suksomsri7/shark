@@ -1,0 +1,59 @@
+# WO H4.8 — REST `/api/v1/hr` (first cut, PDPA-first) + guide + skill `shark-hr-api`
+
+> Worktree `/root/projects/shark-hr-l4` · branch `wip/hr-h4.8` cut from `session/hr` 38e3be6fa (oracle commits 2ed0d51b5, 52a3bd5d0) · builder: Claude Opus 5.5 · 14 Nov 2026
+> Brief `ledger/hr-briefs/hr-brief-H4.8.md` (+ CONTROLLER RULINGS 14 Nov) · oracle contract `ledger/wo-notes/hr-H4.8-oracle.md` · oracle **not edited** · DB = lane DB via `scripts/qc-hr.sh` · **no migration**
+
+## 0. Checkpoint
+- done: build + docs + skill; qc-hr-h4.8 forced 41/41 (×3) + unforced; regression list in §5; fitness both modes; clean typecheck.
+- next: controller full regression, reviewer + hunter (privacy WO).
+
+## 1. Files
+| file | new/edited | what |
+|---|---|---|
+| `src/lib/modules/hr/api/{config,actor,op,http-errors,serialize,registry,dispatch,openapi,keys}.ts` | new | module plug-in (POS P2.13 layout) |
+| `src/lib/modules/hr/api/ops/{employees,roster,leave,reports,payslips}.ts` | new | 14 ops |
+| `src/lib/modules/hr/api-key-actions.ts` | new | `"use server"` wrappers → `api/keys.ts` |
+| `src/app/api/v1/hr/[...path]/route.ts` · `…/openapi.json/route.ts` · `src/app/developers/hr.md/route.ts` | new | thin routes |
+| `src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx` | new | owner-only key card, O1 consent checkbox |
+| `scripts/gen-hr-api-docs.mts` · `docs/api/HR-API.md` · `skills/shark-hr-api/{SKILL.md,references/{endpoints,recipes}.md}` | new | generated doc + endpoints, hand-written skill |
+| `src/lib/core/permissions.ts` | marked hunk | `hr.employee.read` / `hr.roster.read` (brief labels) |
+| `src/lib/api-keys/scopes.ts` | marked hunks | `HR_SCOPE_KEYS`, bundle ids, `hr-read` / `hr-leave` / `hr-payroll-read` |
+| `hr/roster.ts canRead` · `hr/roster-board.ts canReadRoster` · `hr/privacy.ts openProfile` | one OR-term each (marked) | ruling Q1 additive |
+| HR settings `page.tsx` (import + owner-only slot) · `developers/page.tsx` (link) · messages th/en `hr.apiKeys.*` · `hr-ui-inventory.json` (17 rows wo H4.8) · `visual-hr.mts` `"4.8"` | marked | UI wiring |
+
+## 2. Decisions (how each brief section was met)
+- **D1/D2 layout**: copy of POS (`defineHrOp` sets `module:"hr"`, `auditAction:"hr.api.<id>"`, no `tool`; `HR_API_CONFIG` module/HR/`hr.`/`hr`). Core `src/lib/api/**` untouched.
+- **Ruling 4 (bound keys only)**: core gives `makeActor` no "bound?" bit, so `hr/api/dispatch.ts` reads the bearer's bound system (`verifyApiKeyDetailed`, read only — 401s still come from core) and builds a per-request config whose actor has `can()` = false for every action unless `key.systemId === resolved systemId`. Result: an unbound key with hr.* + `X-Shark-System` gets exactly the core 403 `scope_missing` of a bound key without hr scopes (A2c). The static `HR_API_CONFIG.makeActor` is fail-closed (unbound).
+- **R2 actor**: synthetic viewer `{STAFF, ["*"], key scopes minus hr.payroll.read, "apikey:<keyId>"}` for scope-only readers; `hrIssuerViewer` (live accepted Membership of `createdById`, OWNER only) used only in `ops/reports.ts` + `ops/payslips.ts`. `defineHrOp` wraps every handler with `assertHrIssuer` → 403 `forbidden` + fixed text when the issuer is not an accepted OWNER (A7b). Issuer membership read once per request (cached on the actor via WeakMap).
+- **R4 serializers**: `serialize.ts` builds every object key by key from a fixed list, never spreads (S8/P1). Employee DTO never carries sensitive fields even with pay scope. Reports keep catalogue columns of class P, + `$` only when the key holds `hr.payroll.read`, never `I`; totals only for kept summed columns; warnings only for kept columns. Slip = SlipDto − ok − bankMasked; history drops `href`.
+- **R5 refusals**: single `hrNotFound()` (same bytes for foreign/unknown); roster/report limits → 422 `unprocessable` with reader text; non-ISSUED slip / slip data problem → 409 `state_conflict`; leave overlap → 409 `duplicate`; other `HrLeaveRequestError` → 422 `unprocessable` with the service's Thai text. All refusals thrown before writes carry `nothingWritten`.
+- **R6**: employees: `listEmployees(ctx, 501, scope)` → sorted (name,id) in code-unit order, page/pageSize ∈ {10,20,50} (zod), `truncated` when >500. Leaves: `leaveItemsForViewer` (cap 100 → `truncated`) enriched by `leaveDetailsMany` (employeeId/policyName/halfDay/hours/days), sorted (fromDate desc, id). Roster ≤ 31 days (reader), published only. Attendance month = 1 employee. Report LIMIT → 422.
+- **POST /leaves**: zod `.strict()` `{employeeId, policyId?, type?, fromDate, toDate, halfDay?, hours?}`; handler re-checks `hr.leave.decide` (403 `scope_missing`), needs policyId or type, employee via `service.getEmployee` (404), employee linked to issuer or to any accepted OWNER → 403 `forbidden` (no auto-approve path), branch check at fromDate (`unitTargetOf`), policyId → category (mismatch 422), then `requestLeave(… reason:null, actorUserId: issuer)` — same validation/lock/chain as the UI. Returns `{id, status:"PENDING"}`; core audit `hr.api.leaves.create` (API_KEY, keyName, target HrLeave), no name/reason. Idempotency (replay, conflict, in-progress race) = core.
+- **R8 pay audit**: `auditPayRead` writes `hr.api.payslip.read {runId, employeeId}` / `hr.api.payslip.history {employeeId, taxYear}` / `hr.api.report.read {report, period, unitId}` via `tenantDb(...).auditLog.create` **before** answering and without swallowing errors (fail closed: no audit row ⇒ no pay data). Pay reads in the `report` bucket.
+- **R3 issuer** (`hr/api/keys.ts`): OWNER in session **and** accepted OWNER row in DB + `api.key.create/revoke`; system must be HR of the tenant; bundle ∈ hr-* (default hr-read) or custom scopes ⊆ ∪hr-*; pay scope ⇒ `payConsent:true` and TTL ≠ 0; TTL ∈ {30,90,365,0}; audit `hr.apikey.issue {keyId, scopes}` / `hr.apikey.revoke {keyId}`; revoke only keys bound to this HR system. Card is rendered for OWNER only; consent checkbox default off with the O1 label.
+- **Docs**: `gen-hr-api-docs.mts` (renderDocs / renderEndpointsReference pure, `--check`). Note: the gen script imports `payslip.ts` → `self.ts` → `payslip-ui` → `core/context` → `env.ts`, so a standalone run needs `SESSION_SECRET` in env (inside the oracle it inherits the QC env; I generated with a dummy value on the command line, nothing stored).
+
+## 3. §F self-check
+1. [x] No new page (card on existing settings page; API routes only) — `qc-nav-functions` not affected.
+2. [x] No `$transaction` / `tenantDb(` inside a tx body in the diff (no tx at all in hr/api).
+3. [x] Scope: key viewer is all-branch (`["*"]`); issuer must be OWNER (all branches). Nothing branch-restricted to leak.
+4. [x] Refusals: Thai fixed texts, identical 404 bytes; no ids/stack in messages; en ASCII (A10).
+5. [x] No new tx options (requestLeave's own).
+6. [x] No migration.
+7. [x] Issuer/owner guards are read-only checks before the service; the write itself is `requestLeave` (own tx + lock).
+8. [x] Rate limits = core DB buckets (`hr:api:<kind>:<keyId>`), count-first in core.
+9. [x] No new outbox event (requestLeave emits its existing ones).
+10. [x] Files ⊆ brief §5 list; hot files touched only as marked hunks (`permissions.ts`, messages).
+
+## 4. Other key-issuing paths (task: can anything else mint a key the HR dispatcher accepts?)
+Callers of `createApiKey`/`rotateApiKey`: account `connections-actions.ts` (scopes ⊆ `ACCOUNT_SCOPE_KEYS`, ACCOUNT system; rotate limited to ACCOUNT-bound account-only keys), CRM `settings/api/actions.ts` (crm bundles, CRM system), kanban `settings-actions.ts` (kanban bundles/keys, KANBAN system), member `api-actions.ts` + member REST `apikeys.create` (member bundles, bound to the member system), POS `api-key-actions.ts` (pos bundles, POS system), platform `/app/settings/api` (`createApiKey(ctx,name)` → unbound, scopes `[]`). **None can bind a key to an HR system, and none can grant hr.* scopes** (an hr.* scope on a non-HR-bound key is useless under ruling 4). No change needed outside HR; nothing in the frozen core needed.
+
+## 5. Runs — see `hr-H4.8-green.txt`
+
+## 6. Debts / owner items
+- **D-H48-cursor**: offset paging on `GET /employees` (an insert sorting before page 1 shifts later pages) — cursor paging later (ruling 1).
+- D-H48-getemp: POST /leaves uses `service.getEmployee` (includes docs) only to read `linkedUserId`/existence; nothing leaves the server. A narrow reader would be cleaner (service.ts frozen here).
+- D-H48-truncated: `leaves.list` cannot tell "exactly 100" from "more than 100" (reader take=100) → `truncated:true` at 100.
+- D-H48-envgen: `gen-hr-api-docs` needs app env at import (payslip.ts import chain); `--check` inside the oracle is fine.
+- Left out on purpose (brief §4): decisions/approvals, clock, edits/PIN/docs, payroll actions, bank files, filings, certificates, PDF/CSV/XLSX, register, labour cost (H4.2), opening YTD, webhooks, `hr.filter.unit:`.
+- **O1 (owner)**: may an external system read payslips at all? Shipped behind the OWNER consent checkbox, default off; if the owner says no, remove ops `payslips.*` + pay reports from the registry and the `hr-payroll-read` bundle.
