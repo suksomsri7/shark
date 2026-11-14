@@ -609,6 +609,8 @@ model AccountSettings {
   // ⇒ ต้อง query/filter ได้จาก SQL ตรง ๆ และห้ามหายเงียบเวลามีคนเขียนทับ docConfig ทั้งก้อน
   /** เดือนเริ่มปีบัญชี 1–12 (1 = ม.ค. = ปีปฏิทิน · 4 = เม.ย.–มี.ค.) */
   fiscalYearStartMonth Int  @default(1)
+  // ACC T4.6 (เลน 2) ▸ วันเริ่มทำบัญชี (พ.ร.บ.การบัญชี ม.10 — ปิดบัญชีครั้งแรกภายใน 12 เดือน) · null = ไม่ระบุ ◂
+  booksStartDate DateTime?
   /** วันของเดือนที่ถือว่า "ปิดงวด" (1–28 · null = ไม่กำหนด) — ใช้กับปิดงวดอัตโนมัติ */
   periodCloseDay       Int?
   /** จุดรับรู้ภาษีขายเริ่มต้น — ย้ายมาจาก docConfig.taxPointBasis (migration backfill ให้แล้ว) */

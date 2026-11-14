@@ -105,14 +105,47 @@ export type FilingChannel = (typeof FILING_CHANNELS)[number];
 /** value = "ภายในวันที่ N ของเดือนถัดจากเดือนภาษี" · ช่วง from/to ของแถว ONLINE = ช่วงของ "วันครบกำหนดปกติ" ที่ประกาศขยายเวลาครอบ */
 export type FilingDeadlineRow = RowBase & { form: FilingForm; channel: FilingChannel };
 
-export type LegalTableKind = "vat" | "wht" | "deadline";
-export type LegalRowOf<K extends LegalTableKind> = K extends "vat" ? VatRateRow : K extends "wht" ? WhtRateRow : FilingDeadlineRow;
+// ACC T4 (เลน 2) ▸ ตาราง "สมุดบัญชี/ค่าเสื่อม/รอบบัญชี" — ค่าตัวเลขของ T4.1 T4.3 T4.6 (แถวระบบอยู่ท้ายไฟล์ SYSTEM_BOOK_ROWS) ◂
+export const BOOK_RULES = [
+  "JOURNAL_ENTRY_DAYS",
+  "LEDGER_POST_DAYS_AFTER_MONTH",
+  "CASH_REPORT_WORKING_DAYS",
+  "FIRST_PERIOD_MAX_MONTHS",
+  "DEP_MAX_RATE_BUILDING",
+  "DEP_MAX_RATE_TEMP_BUILDING",
+  "DEP_MAX_RATE_INTANGIBLE",
+  "DEP_MAX_RATE_OTHER",
+  "DEP_COMPUTER_MIN_PERIODS",
+  "DEP_PASSENGER_CAR_COST_CAP",
+] as const;
+export type BookRule = (typeof BOOK_RULES)[number];
+/** หน่วยของค่าในแถว: วัน · วันทำการ · เดือน · basis point ต่อปี · รอบบัญชี · สตางค์ */
+export type BookRuleUnit = "DAYS" | "WORKING_DAYS" | "MONTHS" | "BP_PER_YEAR" | "PERIODS" | "SATANG";
+export const BOOK_RULE_META: Record<BookRule, { labelTh: string; unit: BookRuleUnit; min: number; max: number }> = {
+  JOURNAL_ENTRY_DAYS: { labelTh: "ลงบัญชีรายวันภายใน (วันนับแต่วันที่รายการเกิด)", unit: "DAYS", min: 1, max: 365 },
+  LEDGER_POST_DAYS_AFTER_MONTH: { labelTh: "ผ่านบัญชีแยกประเภทภายใน (วันนับแต่วันสิ้นเดือน)", unit: "DAYS", min: 1, max: 365 },
+  CASH_REPORT_WORKING_DAYS: { labelTh: "รายงานเงินสดรับ-จ่าย ลงภายใน (วันทำการ)", unit: "WORKING_DAYS", min: 1, max: 60 },
+  FIRST_PERIOD_MAX_MONTHS: { labelTh: "ปิดบัญชีครั้งแรกภายใน (เดือนนับแต่วันเริ่มทำบัญชี)", unit: "MONTHS", min: 1, max: 24 },
+  DEP_MAX_RATE_BUILDING: { labelTh: "เพดานค่าเสื่อมทางภาษี: อาคารถาวร (ต่อปี)", unit: "BP_PER_YEAR", min: 1, max: 10000 },
+  DEP_MAX_RATE_TEMP_BUILDING: { labelTh: "เพดานค่าเสื่อมทางภาษี: อาคารชั่วคราว (ต่อปี)", unit: "BP_PER_YEAR", min: 1, max: 10000 },
+  DEP_MAX_RATE_INTANGIBLE: { labelTh: "เพดานค่าเสื่อมทางภาษี: กู๊ดวิล/เครื่องหมายการค้า/ลิขสิทธิ์ ไม่มีอายุ (ต่อปี)", unit: "BP_PER_YEAR", min: 1, max: 10000 },
+  DEP_MAX_RATE_OTHER: { labelTh: "เพดานค่าเสื่อมทางภาษี: ทรัพย์สินอื่น (ต่อปี)", unit: "BP_PER_YEAR", min: 1, max: 10000 },
+  DEP_COMPUTER_MIN_PERIODS: { labelTh: "คอมพิวเตอร์/อุปกรณ์/โปรแกรม หักได้ภายใน (รอบบัญชี)", unit: "PERIODS", min: 1, max: 20 },
+  DEP_PASSENGER_CAR_COST_CAP: { labelTh: "ฐานค่าเสื่อมทางภาษีของรถยนต์นั่ง ≤10 ที่นั่ง ไม่เกิน (ต่อคัน)", unit: "SATANG", min: 1, max: 100_000_000_000 },
+};
+export const isBookRule = (v: unknown): v is BookRule => typeof v === "string" && (BOOK_RULES as readonly string[]).includes(v);
+/** แถวตาราง "สมุดบัญชี" — value ตามหน่วยของกฎ (BOOK_RULE_META) */
+export type BookRuleRow = RowBase & { rule: BookRule };
+
+export type LegalTableKind = "vat" | "wht" | "deadline" | "book";
+export type LegalRowOf<K extends LegalTableKind> = K extends "vat" ? VatRateRow : K extends "wht" ? WhtRateRow : K extends "deadline" ? FilingDeadlineRow : BookRuleRow;
 
 /** มิติของแต่ละตาราง (ใช้จับคู่แถวร้านกับแถวระบบ) */
 export const LEGAL_DIMS: { [K in LegalTableKind]: readonly string[] } = {
   vat: [],
   wht: ["incomeType", "payer", "recipient", "channel"],
   deadline: ["form", "channel"],
+  book: ["rule"],
 };
 
 export const WHT_PAYER_LABEL_TH: Record<WhtPayer, string> = { JURISTIC: "นิติบุคคล", NON_JURISTIC: "บุคคลธรรมดา/ห้างสามัญ/คณะบุคคล", ANY: "ผู้จ่ายทุกประเภท" };
@@ -351,11 +384,44 @@ export function lateClaimRuleAt(ymd: Ymd): InputVatLateClaimRow | null {
   return SYSTEM_INPUT_VAT_LATE_CLAIM_ROWS.find((r) => (r.from === null || r.from <= ymd) && (r.to === null || ymd <= r.to)) ?? null;
 }
 
+// ═══════════════════ ACC T4 (เลน 2) ▸ สมุดบัญชี · ค่าเสื่อม · รอบบัญชี ═══════════════════
+// skill references/domain-accounting-books.md §ก2 §ก5 §ค · domain-business-income-tax.md §ก5 · design notes ledger/wo-notes/T4.1.md T4.3.md T4.6.md
+const BOOKS_REF_T4 = "references/domain-accounting-books.md";
+const TAX_REF_T4 = "references/domain-business-income-tax.md";
+const DBD_2544 = "ประกาศกรมทะเบียนการค้า เรื่อง กำหนดชนิดของบัญชีที่ต้องจัดทำฯ พ.ศ. 2544 (ฉบับรวม DBD ม.ค. 2563)";
+const RD_145 = "พ.ร.ฎ. (ฉบับที่ 145) พ.ศ. 2527 https://www.rd.go.th/2369.html";
+const br = (id: string, rule: BookRule, value: number, source: string, note?: string): BookRuleRow => ({ id, rule, value, from: null, to: null, source, tag: "V", checkedAt: "2026-11-13", ...(note ? { note } : {}) });
+export const SYSTEM_BOOK_ROWS: readonly BookRuleRow[] = [
+  br("sys-book-journal-days", "JOURNAL_ENTRY_DAYS", 15, `${BOOKS_REF_T4} §ก2 — ${DBD_2544} ข้อ 7: บัญชีรายวัน "ภายในสิบห้าวันนับแต่วันที่รายการนั้นเกิดขึ้น"`, "ใช้กับผู้มีหน้าที่จัดทำบัญชีตาม พ.ร.บ.การบัญชี ม.8 (ห้างหุ้นส่วนจดทะเบียน · บริษัท)"),
+  br("sys-book-ledger-days", "LEDGER_POST_DAYS_AFTER_MONTH", 15, `${BOOKS_REF_T4} §ก2 — ${DBD_2544} ข้อ 7: บัญชีแยกประเภทและบัญชีสินค้า ภายใน 15 วันนับแต่วันสิ้นเดือนของเดือนที่รายการเกิด`),
+  br("sys-book-cash-report-wd", "CASH_REPORT_WORKING_DAYS", 3, `${BOOKS_REF_T4} §ค — ประกาศอธิบดีฯ เกี่ยวกับภาษีเงินได้ (ฉบับที่ 161) ข้อ 3: ลงรายการ "ภายใน 3 วันทำการ นับแต่วันที่มีรายได้หรือรายจ่าย" (https://www.rd.go.th/33300.html)`, "ใช้กับบุคคลธรรมดาที่ไม่จด VAT และมีเงินได้ ม.40(5)–(8) · คณะบุคคลอยู่ในข่ายไหมยังไม่ยืนยัน"),
+  br("sys-book-first-period", "FIRST_PERIOD_MAX_MONTHS", 12, `${BOOKS_REF_T4} §ก5 — พ.ร.บ.การบัญชี พ.ศ. 2543 ม.10: ปิดบัญชีครั้งแรกภายใน 12 เดือนนับแต่วันเริ่มทำบัญชี · ทุกรอบ 12 เดือน · เปลี่ยนรอบต้องได้รับอนุญาต`),
+  br("sys-dep-building", "DEP_MAX_RATE_BUILDING", 500, `${TAX_REF_T4} §ก5 — ม.65 ทวิ (2) + ${RD_145} ม.4: อาคารถาวร ร้อยละ 5 (เพดานต่อปี)`),
+  br("sys-dep-temp-building", "DEP_MAX_RATE_TEMP_BUILDING", 10000, `${TAX_REF_T4} §ก5 — ${RD_145} ม.4: อาคารชั่วคราว ร้อยละ 100`),
+  br("sys-dep-intangible", "DEP_MAX_RATE_INTANGIBLE", 1000, `${TAX_REF_T4} §ก5 — ${RD_145} ม.4: กู๊ดวิล/เครื่องหมายการค้า/ลิขสิทธิ์ ร้อยละ 10 (มีอายุ = 100 ÷ จำนวนปี)`),
+  br("sys-dep-other", "DEP_MAX_RATE_OTHER", 2000, `${TAX_REF_T4} §ก5 — ${RD_145} ม.4: "ทรัพย์สินอย่างอื่น…นอกจากที่ดินและสินค้า ร้อยละ 20"`),
+  br("sys-dep-computer", "DEP_COMPUTER_MIN_PERIODS", 3, `${TAX_REF_T4} §ก5 — ${RD_145} ม.4 จัตวา: คอมพิวเตอร์ อุปกรณ์ โปรแกรม หักได้ภายใน 3 รอบระยะเวลาบัญชี`),
+  br("sys-dep-car-cap", "DEP_PASSENGER_CAR_COST_CAP", 100_000_000, `${TAX_REF_T4} §ก5 — ${RD_145} ม.5: รถยนต์นั่ง/รถยนต์โดยสารไม่เกิน 10 ที่นั่ง ฐานคิดค่าเสื่อมไม่เกิน 1,000,000 บาท · ม.65 ตรี (20) + พ.ร.ฎ.315`),
+];
+
 export const SYSTEM_ROWS: { [K in LegalTableKind]: readonly LegalRowOf<K>[] } = {
   vat: SYSTEM_VAT_ROWS,
   wht: SYSTEM_WHT_ROWS,
   deadline: SYSTEM_DEADLINE_ROWS,
+  book: SYSTEM_BOOK_ROWS,
 };
+
+/** ค่าของกฎในตาราง "สมุดบัญชี" ตามหน่วย → ข้อความไทย */
+export function bookRuleValueLabel(rule: BookRule, value: number | null): string {
+  if (value === null) return "-";
+  const u = BOOK_RULE_META[rule]?.unit;
+  if (u === "DAYS") return `${value} วัน`;
+  if (u === "WORKING_DAYS") return `${value} วันทำการ`;
+  if (u === "MONTHS") return `${value} เดือน`;
+  if (u === "PERIODS") return `${value} รอบบัญชี`;
+  if (u === "SATANG") return `${(value / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })} บาท`;
+  return `${value / 100}% ต่อปี`;
+}
 
 // ═══════════════════ ตัวเลือกแถว (pure) ═══════════════════
 
@@ -424,6 +490,7 @@ export function pickLegalRow<K extends LegalTableKind>(
 
 const fmtVal = (kind: LegalTableKind, r: RowBase & { method?: WhtMethod }): string => {
   if (kind === "deadline") return `วันที่ ${r.value ?? "-"}`;
+  if (kind === "book") return bookRuleValueLabel((r as unknown as BookRuleRow).rule, r.value);
   if (r.method && r.method !== "RATE") return WHT_METHOD_LABEL_TH[r.method];
   return r.value === null ? "-" : `${r.value / 100}%`;
 };

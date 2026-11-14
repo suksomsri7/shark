@@ -14,7 +14,7 @@ import { assertAccountCan, mc } from "./access";
 import { safeReason } from "./errors";
 import { saveBookTax, type BookTaxPatch, type LegalWarning } from "./legal-values";
 
-type Kind = "vat" | "wht" | "deadline";
+type Kind = "vat" | "wht" | "deadline" | "book";
 
 export async function saveLegalRowsAction(
   systemId: string,
@@ -32,7 +32,9 @@ export async function saveLegalRowsAction(
           ? { whtRows: rows as BookTaxPatch["whtRows"] }
           : kind === "deadline"
             ? { deadlineRows: rows as BookTaxPatch["deadlineRows"] }
-            : {};
+            : kind === "book"
+              ? { bookRows: rows as BookTaxPatch["bookRows"] }
+              : {};
     if (Object.keys(patch).length === 0) return { ok: false, reason: "ไม่รู้จักตารางนี้" };
     const res = await saveBookTax({ ...mc(auth), userId }, { tenantId, systemId }, patch);
     if (!res.ok) return { ok: false, reason: res.issues.map((i) => i.messageTh).join(" · ") || "บันทึกไม่สำเร็จ" };

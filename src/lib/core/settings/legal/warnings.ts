@@ -102,6 +102,19 @@ export const LEGAL_WARNING_CODES = [
   "WHT_CERT_REPLACE",
   "WHT_ADDITIONAL_FILING",
   "WHT_CREDIT_CERT_OWED",
+  // ── สมุดบัญชี: JV มือ · รายงานสมุด · ค่าเสื่อม · งบ/รอบบัญชี (T4.1 T4.2 T4.3 T4.6 · เลน 2) ──
+  "JV_DESCRIPTION_MISSING",
+  "JV_LATE_ENTRY",
+  "JV_LATE_ENTRY_ASSUMED",
+  "JV_UNAPPROVED",
+  "JV_NO_SUPPORTING_DOC",
+  "BOOK_REPORT_ORG_NAME_MISSING",
+  "ASSET_LAND_NOT_DEPRECIATED",
+  "ASSET_TAX_RATE_ABOVE_CEILING",
+  "ASSET_PASSENGER_CAR_COST_CAP",
+  "STATEMENT_DRAFT_FOR_ACCOUNTANT",
+  "FISCAL_YEAR_CHANGE",
+  "FIRST_PERIOD_SHORT",
 ] as const;
 
 export type LegalWarningCode = (typeof LEGAL_WARNING_CODES)[number];
@@ -799,6 +812,128 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
     messageTh: (p) =>
       `${p.count ? `${s(p, "count")} รายการ ` : ""}ลูกค้าหักภาษี ณ ที่จ่ายไว้${p.amount ? ` รวม ${s(p, "amount")} บาท` : ""} แต่ยังไม่ได้ทำเครื่องหมายว่าได้รับหนังสือรับรอง (50 ทวิ) — ภาษีที่ถูกหักเป็นเครดิตภาษีของร้าน ใช้หนังสือรับรองเป็นหลักฐานตอนยื่นภาษีเงินได้ · ติดตามขอจากลูกค้า`,
     citation: "ประมวลรัษฎากร ม.50 ทวิ · ม.60 · references/common-withholding-tax.md §15 · audit-checklist-accounting.md F13",
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  // ── ACC T4.1 (เลน 2) ▸ JV มือ ──
+  JV_DESCRIPTION_MISSING: {
+    code: "JV_DESCRIPTION_MISSING",
+    titleTh: "รายการบัญชีที่บันทึกเองไม่มีคำอธิบาย",
+    messageTh: (p) =>
+      p.saved
+        ? "รายการนี้บันทึกโดยไม่มีคำอธิบาย (ผู้บันทึกกดยืนยันแล้ว) — บัญชีรายวันทั่วไปต้องมีคำอธิบายรายการ และเอกสารที่จัดทำขึ้นภายในต้องมีคำอธิบาย/วิธีคำนวณ · แก้ด้วยการกลับรายการแล้วบันทึกใหม่พร้อมคำอธิบาย หรือแนบเอกสารภายในที่อธิบายรายการ"
+        : "รายการนี้ไม่มีคำอธิบาย — บัญชีรายวันทั่วไปต้องมีคำอธิบายรายการ และเอกสารที่จัดทำขึ้นภายในต้องมีคำอธิบาย/วิธีคำนวณ · ใส่คำอธิบายว่ารายการนี้คืออะไร หรือกดยืนยันเพื่อบันทึกโดยไม่มีคำอธิบาย",
+    citation: `ประกาศกรมทะเบียนการค้า เรื่อง กำหนดชนิดของบัญชีที่ต้องจัดทำฯ พ.ศ. 2544 ข้อ 5 · ข้อ 11 · references/domain-accounting-books.md §ก2 · test-rules T-ACC-12`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  JV_LATE_ENTRY: {
+    code: "JV_LATE_ENTRY",
+    titleTh: "ลงรายการช้ากว่ากำหนด",
+    messageTh: (p) =>
+      `รายการวันที่ ${s(p, "date")} บันทึกวันที่ ${s(p, "recorded")} — ช้ากว่ากำหนด ${s(p, "limit")} ${s(p, "rule")} (เกิน ${s(p, "over")}) · ระบบเก็บทั้งวันที่รายการและวันที่บันทึก ใช้ตอบผู้ตรวจได้ · บันทึกต่อได้`,
+    citation: `references/domain-accounting-books.md §ก2 (ประกาศกรมทะเบียนการค้า พ.ศ. 2544 ข้อ 7) · §ค (ประกาศอธิบดีฯ เกี่ยวกับภาษีเงินได้ ฉบับที่ 161 ข้อ 3)`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  JV_LATE_ENTRY_ASSUMED: {
+    code: "JV_LATE_ENTRY_ASSUMED",
+    titleTh: "ลงรายการช้ากว่ากำหนด (ยังไม่ระบุประเภทผู้ประกอบการ)",
+    messageTh: (p) =>
+      `รายการวันที่ ${s(p, "date")} บันทึกวันที่ ${s(p, "recorded")} — ช้ากว่า ${s(p, "limit")} ${s(p, "rule")} (เกิน ${s(p, "over")}) · ระบบใช้กำหนดของนิติบุคคลไปก่อนเพราะยังไม่ได้ระบุประเภทผู้ประกอบการ (ตั้งค่า › ข้อมูลกิจการ)`,
+    citation: `references/domain-accounting-books.md §ก1 §ก2 §ค (กำหนดต่างกันตามประเภทผู้ประกอบการ)`,
+    tag: "S",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  JV_UNAPPROVED: {
+    code: "JV_UNAPPROVED",
+    titleTh: "รายการที่บันทึกเองยังไม่มีผู้อนุมัติ",
+    messageTh: () => "รายการนี้บันทึกเองและยังไม่มีผู้อนุมัติ — เอกสารที่จัดทำขึ้นภายในกิจการต้องมีลายมือชื่อผู้อนุมัติ · กดอนุมัติที่หน้ารายการเมื่อตรวจแล้ว",
+    citation: `ประกาศกรมทะเบียนการค้า พ.ศ. 2544 ข้อ 11 · references/domain-accounting-books.md §ก2 · test-rules T-ACC-12`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  JV_NO_SUPPORTING_DOC: {
+    code: "JV_NO_SUPPORTING_DOC",
+    titleTh: "รายการที่บันทึกเองไม่มีเอกสารประกอบ",
+    messageTh: () => "รายการนี้ไม่มีไฟล์แนบหรือเอกสารอ้างอิง — การลงบัญชีรายวันต้องมีเอกสารประกอบทุกรายการ · แนบใบเสร็จ/ใบสำคัญ/สัญญา หรือเอกสารภายในที่มีคำอธิบายและผู้อนุมัติ",
+    citation: `ประกาศกรมทะเบียนการค้า พ.ศ. 2544 ข้อ 13 · references/domain-accounting-books.md §ก2`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  // ── ACC T4.2 (เลน 2) ▸ รายงานสมุดบัญชี ──
+  BOOK_REPORT_ORG_NAME_MISSING: {
+    code: "BOOK_REPORT_ORG_NAME_MISSING",
+    titleTh: "หัวรายงานสมุดบัญชีไม่มีชื่อกิจการ",
+    messageTh: (p) => `ยังไม่ได้กรอกชื่อกิจการ — หัว${s(p, "report", "รายงานสมุดบัญชี")}จะไม่มีชื่อกิจการ · กรอกได้ที่ ตั้งค่า › ข้อมูลกิจการ`,
+    citation: `references/domain-accounting-books.md §ก2 (ข้อ 5: ทุกบัญชีต้องมีชื่อบัญชี วันที่ เลขที่เอกสารอ้างอิง รายการ จำนวนเงิน · เลขหน้าเรียง) — ชื่อกิจการบนหัวรายงานเป็นค่าเริ่มต้นของระบบ`,
+    tag: "S",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  // ── ACC T4.3 (เลน 2) ▸ ค่าเสื่อม ──
+  ASSET_LAND_NOT_DEPRECIATED: {
+    code: "ASSET_LAND_NOT_DEPRECIATED",
+    titleTh: "ที่ดินไม่คิดค่าเสื่อม",
+    messageTh: (p) => `${p.name ? `${s(p, "name")} ` : ""}เป็นที่ดิน — ระบบไม่คิดค่าเสื่อมราคา (มาตรฐาน NPAEs ย่อหน้า 10.25 · พ.ร.ฎ.145 ม.4 คิดค่าเสื่อมได้ "นอกจากที่ดินและสินค้า") · ถ้ามีอาคารบนที่ดินให้ขึ้นทะเบียนอาคารแยก`,
+    citation: `TFRS for NPAEs (ปรับปรุง 2565) ย่อหน้า 10.25 · references/domain-accounting-books.md §ข · พ.ร.ฎ. (ฉบับที่ 145) ม.4 · references/domain-business-income-tax.md §ก5`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  ASSET_TAX_RATE_ABOVE_CEILING: {
+    code: "ASSET_TAX_RATE_ABOVE_CEILING",
+    titleTh: "อัตราค่าเสื่อมทางบัญชีสูงกว่าเพดานทางภาษี",
+    messageTh: (p) =>
+      `อายุ ${s(p, "life")} = ค่าเสื่อมประมาณ ${s(p, "rate")} ต่อปี สูงกว่าเพดานทางภาษีของ${s(p, "classLabel")} (${s(p, "ceiling")}) — ทางบัญชีคิดตามที่ตั้งได้ แต่ตอนคำนวณกำไรสุทธิทางภาษี ส่วนที่เกินเพดานหักเป็นรายจ่ายไม่ได้ในรอบนั้น (ผลต่างทางภาษีกับทางบัญชี) · ระบบคิดค่าเสื่อมทางบัญชีตามที่ตั้งเหมือนเดิม`,
+    citation: `ประมวลรัษฎากร ม.65 ทวิ (2) · พ.ร.ฎ. (ฉบับที่ 145) พ.ศ. 2527 ม.4 · ม.4 จัตวา · references/domain-business-income-tax.md §ก5`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  ASSET_PASSENGER_CAR_COST_CAP: {
+    code: "ASSET_PASSENGER_CAR_COST_CAP",
+    titleTh: "รถยนต์นั่งราคาเกินฐานค่าเสื่อมทางภาษี",
+    messageTh: (p) =>
+      `รถยนต์นั่ง/รถยนต์โดยสารไม่เกิน 10 ที่นั่ง ราคา ${s(p, "cost")} บาท — ฐานคิดค่าเสื่อมทางภาษีไม่เกิน ${s(p, "cap")} บาทต่อคัน ส่วนเกิน ${s(p, "excess")} บาทหักเป็นรายจ่ายทางภาษีไม่ได้ · ทางบัญชียังคิดค่าเสื่อมเต็มราคาทุน (ผลต่างทางภาษีกับทางบัญชี)`,
+    citation: `พ.ร.ฎ. (ฉบับที่ 145) ม.5 · ประมวลรัษฎากร ม.65 ตรี (20) · พ.ร.ฎ.315 · references/domain-business-income-tax.md §ก4 §ก5`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  // ── ACC T4.6 (เลน 2) ▸ งบการเงิน · รอบบัญชี ──
+  STATEMENT_DRAFT_FOR_ACCOUNTANT: {
+    code: "STATEMENT_DRAFT_FOR_ACCOUNTANT",
+    titleTh: "งบจากระบบเป็นร่าง",
+    messageTh: () =>
+      "งบนี้คำนวณจากสมุดบัญชีในระบบ เป็นร่างสำหรับผู้ทำบัญชี/ผู้สอบบัญชี — กิจการที่มีหน้าที่จัดทำบัญชีต้องมีผู้ทำบัญชีที่มีคุณสมบัติตามประกาศอธิบดี และงบที่ยื่นต้องผ่านการตรวจตามที่กฎหมายกำหนด",
+    citation: `พ.ร.บ.การบัญชี พ.ศ. 2543 ม.11 ม.19 ม.20 · references/domain-accounting-books.md §ก5`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: false,
+  },
+  FISCAL_YEAR_CHANGE: {
+    code: "FISCAL_YEAR_CHANGE",
+    titleTh: "เปลี่ยนรอบปีบัญชี",
+    messageTh: (p) =>
+      `เปลี่ยนเดือนเริ่มปีบัญชีจาก ${s(p, "from")} เป็น ${s(p, "to")} — สมุดนี้มีรายการบัญชีแล้ว · การเปลี่ยนรอบบัญชีต้องได้รับอนุญาตก่อน (พ.ร.บ.การบัญชี ม.10) และรอบระยะเวลาบัญชีทางภาษีเปลี่ยนได้เมื่อได้รับอนุมัติ · งบและรายงานในระบบจะแบ่งปีตามเดือนใหม่ทันที · กดยืนยันเพื่อบันทึก`,
+    citation: `พ.ร.บ.การบัญชี พ.ศ. 2543 ม.10 · references/domain-accounting-books.md §ก5`,
+    tag: "V",
+    checkedAt: "2026-11-13",
+    ack: true,
+  },
+  FIRST_PERIOD_SHORT: {
+    code: "FIRST_PERIOD_SHORT",
+    titleTh: "รอบบัญชีแรกสั้นกว่า 12 เดือน",
+    messageTh: (p) =>
+      `เริ่มทำบัญชี ${s(p, "start")} และปีบัญชีแรกสิ้นสุด ${s(p, "end")} = ${s(p, "months")} เดือน (สั้นกว่า 12 เดือน) — ปิดบัญชีครั้งแรกได้ภายใน ${s(p, "limit")} นับแต่วันเริ่มทำบัญชี · งบปีแรกเป็นรอบไม่เต็มปี และค่าเสื่อมทางภาษีของรอบที่ไม่ถึง 12 เดือนเฉลี่ยตามส่วน`,
+    citation: `พ.ร.บ.การบัญชี พ.ศ. 2543 ม.10 · ประมวลรัษฎากร ม.65 ทวิ (2) · references/domain-accounting-books.md §ก5 · references/domain-business-income-tax.md §ก5`,
     tag: "V",
     checkedAt: "2026-11-13",
     ack: false,

@@ -26,6 +26,8 @@ import {
   WHT_RECIPIENT_LABEL_TH,
   WHT_GROSS_UP_FORMULAS,
   WHT_GROSS_UP_FORMULA_LABEL_TH,
+  BOOK_RULES,
+  BOOK_RULE_META,
 } from "../legal/th-tax-2569";
 
 const EDIT = "account.settings.manage";
@@ -84,6 +86,13 @@ export const DEADLINE_ROW_SCHEMA = z
   .object({ ...rowBase, value: z.number().int().min(1).max(31), form: z.enum(FILING_FORMS), channel: z.enum(FILING_CHANNELS) })
   .strict()
   .refine(rangeOk, RANGE_MSG);
+
+/** ACC T4 ▸ แถวตาราง "สมุดบัญชี/ค่าเสื่อม/รอบบัญชี" — ช่วงค่าตามหน่วยของกฎ (รูปแบบข้อมูล ไม่ใช่ค่ากฎหมาย) ◂ */
+export const BOOK_ROW_SCHEMA = z
+  .object({ ...rowBase, value: z.number().int().min(0), rule: z.enum(BOOK_RULES) })
+  .strict()
+  .refine(rangeOk, RANGE_MSG)
+  .refine((r) => r.value >= BOOK_RULE_META[r.rule].min && r.value <= BOOK_RULE_META[r.rule].max, "ค่าอยู่นอกช่วงของกฎนี้");
 
 const common: Record<string, TableCellSpecTh> = {
   from: { kind: "text", labelTh: "มีผลตั้งแต่", nullTh: "ไม่ระบุ" },
@@ -153,6 +162,15 @@ const DEFS: SettingDef[] = [
     },
   },
   {
+    // ACC T4 (เลน 2) ▸ ค่าตัวเลขของสมุดบัญชี (กำหนดลงรายการ · รอบแรก) และเพดานค่าเสื่อมทางภาษี — แถวระบบ SYSTEM_BOOK_ROWS ◂
+    key: "account.legal.bookRules", domain: "account", group: "legal", type: "table", labelTh: "สมุดบัญชี · ค่าเสื่อม · รอบบัญชี (แถวที่ร้านตั้ง)",
+    helpTh: "กำหนดลงรายการ · เพดานค่าเสื่อมทางภาษี · รอบบัญชีแรก — แถวที่ร้านเพิ่มหรือทับค่าเริ่มต้นของระบบ (ใช้กับคำเตือน ไม่บล็อก)",
+    schema: z.array(BOOK_ROW_SCHEMA).max(MAX_SHOP_ROWS),
+    defaults: { _fallback: [] },
+    chain: CHAIN, editPermission: EDIT,
+    tableTh: { item: { kind: "object", labelTh: "แถว", fields: { rule: { kind: "enum", labelTh: "กฎ", options: Object.fromEntries(BOOK_RULES.map((r) => [r, BOOK_RULE_META[r].labelTh])) }, value: { kind: "int", labelTh: "ค่า (ตามหน่วยของกฎ)" }, ...common } }, emptyTh: "ใช้ค่าเริ่มต้นของระบบทั้งหมด" },
+  },
+  {
     key: "account.report.salesTaxAbbMode", domain: "account", group: "report", type: "enum", labelTh: "รายงานภาษีขาย: ใบกำกับภาษีอย่างย่อ",
     helpTh: "ลงยอดรวมรายวัน (ระบุเลขที่ตั้งแต่…ถึง…) ต่อเครื่องขายหรือต่อสาขา หรือแสดงทุกใบ — โปรดตรวจกับนักบัญชีของร้านว่าเครื่องขายได้รับอนุมัติแยกรายเครื่องหรือไม่",
     schema: z.enum(SALES_TAX_ABB_MODES),
@@ -204,6 +222,7 @@ export const ACCOUNT_SETTING_KEYS = {
   vat: "account.legal.vatRates",
   wht: "account.legal.whtRates",
   deadline: "account.legal.filingDeadlines",
+  bookRules: "account.legal.bookRules",
   salesTaxAbbMode: "account.report.salesTaxAbbMode",
   pp30ExcessChoice: "account.report.pp30ExcessChoice",
   ewhtEnabled: "account.wht.ewhtEnabled",

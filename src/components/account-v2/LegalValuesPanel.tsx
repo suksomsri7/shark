@@ -31,10 +31,12 @@ import {
   WHT_GROSS_UP_FORMULAS,
   WHT_GROSS_UP_FORMULA_LABEL_TH,
   type LegalWarning,
+  BOOK_RULES,
+  BOOK_RULE_META,
 } from "@/lib/core/settings/legal/th-tax-2569";
 import type { BookTaxView, LegalRowView, UpcomingDeadline } from "@/lib/modules/account/legal-values";
 
-type Kind = "vat" | "wht" | "deadline";
+type Kind = "vat" | "wht" | "deadline" | "book";
 type SaveFn = (systemId: string, kind: Kind, rows: unknown) => Promise<{ ok: true; warnings: LegalWarning[] } | { ok: false; reason: string }>;
 
 const labelCls = "flex flex-col gap-1 text-xs text-[color:var(--color-muted)]";
@@ -44,7 +46,14 @@ const TITLE: Record<Kind, { title: string; desc: string }> = {
   vat: { title: "อัตราภาษีมูลค่าเพิ่ม", desc: "อัตรามาตรฐานตามวันที่ความรับผิดเกิด — ใช้เป็นค่าเริ่มของเอกสารและตัวเลือกอัตราในฟอร์ม" },
   wht: { title: "อัตราหัก ณ ที่จ่าย", desc: "ประเภทเงินได้ × ผู้จ่าย × ผู้รับ × ช่องทาง — ใช้เป็นอัตราที่แนะนำตอนเลือกประเภทเงินได้" },
   deadline: { title: "กำหนดยื่นแบบ", desc: "ยื่นภายในวันที่เท่าไรของเดือนถัดจากเดือนภาษี — ใช้กับการแจ้งเตือนกำหนดยื่น" },
+  book: { title: "สมุดบัญชี · ค่าเสื่อม · รอบบัญชี", desc: "กำหนดลงรายการ (เตือนลงช้า) · เพดานค่าเสื่อมทางภาษี (เตือนผลต่างทางภาษี) · รอบบัญชีแรก — ใช้กับคำเตือนเท่านั้น ไม่บล็อก" },
 };
+
+// ACC T4 ▸ ค่าในตาราง "สมุดบัญชี" เก็บตามหน่วยของกฎ: % ต่อปี = basis point · บาท = สตางค์ · วัน/เดือน/รอบ = จำนวนตรง ◂
+type BookUnit = (typeof BOOK_RULE_META)[keyof typeof BOOK_RULE_META]["unit"];
+const bookToInput = (unit: BookUnit, v: number) => (unit === "BP_PER_YEAR" || unit === "SATANG" ? String(v / 100) : String(v));
+const bookFromInput = (unit: BookUnit, n: number) => (unit === "BP_PER_YEAR" || unit === "SATANG" ? Math.round(n * 100) : Math.round(n));
+const bookUnitLabel = (unit: BookUnit) => (unit === "BP_PER_YEAR" ? "% ต่อปี" : unit === "SATANG" ? "บาท" : unit === "DAYS" ? "วัน" : unit === "WORKING_DAYS" ? "วันทำการ" : unit === "MONTHS" ? "เดือน" : "รอบบัญชี");
 
 type Draft = {
   id: string;
@@ -56,6 +65,8 @@ type Draft = {
   recipient: string;
   channel: string;
   form: string;
+  /** ACC T4 ▸ กฎของตาราง "สมุดบัญชี" ◂ */
+  rule: string;
   from: string;
   to: string;
   source: string;
@@ -66,7 +77,15 @@ function draftOf(kind: Kind, r: LegalRowView | null, keepId: boolean): Draft {
   const d = r?.dims ?? {};
   return {
     id: keepId && r ? r.id : "",
-    value: r?.value == null ? "" : kind === "deadline" ? String(r.value) : String(r.value / 100),
+    value:
+      r?.value == null
+        ? ""
+        : kind === "deadline"
+          ? String(r.value)
+          : kind === "book"
+            ? bookToInput(BOOK_RULE_META[(d.rule ?? "JOURNAL_ENTRY_DAYS") as keyof typeof BOOK_RULE_META]?.unit ?? "DAYS", r.value)
+            : String(r.value / 100),
+    rule: d.rule ?? "JOURNAL_ENTRY_DAYS",
     method: r?.method ?? "RATE",
     incomeType: d.incomeType ?? "M40_8",
     payer: d.payer ?? "JURISTIC",
@@ -85,6 +104,7 @@ function payloadOf(kind: Kind, r: LegalRowView): Record<string, unknown> {
   const base = { id: r.id, value: r.value, from: r.from, to: r.to, source: r.source, checkedAt: r.checkedAt, ...(r.note ? { note: r.note } : {}) };
   if (kind === "wht") return { ...base, ...r.dims, method: r.method };
   if (kind === "deadline") return { ...base, ...r.dims };
+  if (kind === "book") return { ...base, ...r.dims };
   return base;
 }
 
@@ -99,6 +119,10 @@ function payloadFromDraft(kind: Kind, d: Draft): Record<string, unknown> {
     ...(d.note.trim() ? { note: d.note.trim() } : {}),
   };
   if (kind === "deadline") return { ...base, value: Math.round(n), form: d.form, channel: d.channel };
+  if (kind === "book") {
+    const unit = BOOK_RULE_META[d.rule as keyof typeof BOOK_RULE_META]?.unit ?? "DAYS";
+    return { ...base, value: Number.isFinite(n) ? bookFromInput(unit, n) : null, rule: d.rule };
+  }
   const bp = Number.isFinite(n) ? Math.round(n * 100) : null;
   if (kind === "vat") return { ...base, value: bp };
   return {
@@ -157,7 +181,16 @@ function Editor({ kind, draft, setDraft, onCancel, onSave, pending }: { kind: Ki
             <Select label="ช่องทาง" value={draft.channel} onChange={(v) => set({ channel: v })} options={pick(FILING_CHANNELS, FILING_CHANNEL_LABEL_TH)} />
           </>
         )}
-        {(kind !== "wht" || draft.method === "RATE") && (
+        {kind === "book" && (
+          <Select label="กฎ" value={draft.rule} onChange={(v) => set({ rule: v })} options={Object.fromEntries(BOOK_RULES.map((r) => [r, BOOK_RULE_META[r].labelTh]))} testId="legal-ed-rule" />
+        )}
+        {kind === "book" && (
+          <label className={labelCls}>
+            ค่า ({bookUnitLabel(BOOK_RULE_META[draft.rule as keyof typeof BOOK_RULE_META]?.unit ?? "DAYS")})
+            <input type="number" step="any" min={0} value={draft.value} onChange={(e) => set({ value: e.target.value })} className="input" data-testid="legal-ed-value" />
+          </label>
+        )}
+        {kind !== "book" && (kind !== "wht" || draft.method === "RATE") && (
           <label className={labelCls}>
             {kind === "deadline" ? "ยื่นภายในวันที่ (ของเดือนถัดไป)" : "อัตรา (%)"}
             <input
@@ -428,7 +461,7 @@ export function LegalValuesPanel({ systemId, orgSettingsHref, view, save, saveWh
       </section>
       {deadlines && deadlines.length > 0 && <DeadlinesCard deadlines={deadlines} />}
       {saveWht && <WhtSettingsCard systemId={systemId} view={view} save={saveWht} />}
-      {(["vat", "wht", "deadline"] as const).map((k) => (
+      {(["vat", "wht", "deadline", "book"] as const).map((k) => (
         <TableCard key={k} kind={k} rows={view.tables[k]} systemId={systemId} save={save} />
       ))}
     </div>
