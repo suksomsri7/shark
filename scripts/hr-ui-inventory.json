@@ -8060,7 +8060,7 @@
    "kind": "display",
    "interactive": false,
    "file": "src/lib/modules/hr/overview-ui.tsx",
-   "conditional": "ผู้ที่ตัวอ่านเดิมอย่างน้อย 1 ตัวคืนค่า (บอร์ดวันนี้ · ตัวนับคำขอ · วันที่ต้องคิดผลใหม่ · ใกล้ครบกำหนด)",
+   "conditional": "ผู้ที่ตัวอ่านเดิมอย่างน้อย 1 ตัวคืนค่า · ไม่ใช่บัญชีจอลงเวลาอย่างเดียว",
    "roles": [
     "owner",
     "manager",
@@ -8078,7 +8078,7 @@
    },
    "wo": "H2.11",
    "oracle": "qc-hr-h2.11",
-   "note": "ส่วนภาพรวมทีม (ภาพ 01) เหนือการ์ดเดิม — teamOverview ไม่ใช่ null"
+   "note": "ส่วนภาพรวมทีม (ภาพ 01) — VIS-5b: หัว · 5 ช่อง · สองคอลัมน์ (บอร์ด·ค่าแรง | คำขอ·เดือน) · ใกล้ครบกำหนด"
   },
   {
    "page": "/app/sys/[id]",
@@ -8105,7 +8105,7 @@
    },
    "wo": "H2.11",
    "oracle": "qc-hr-h2.11",
-   "note": "อยู่กะวันนี้ + สรุปสถานะ (loadAttendanceBoard) → หน้าลงเวลา"
+   "note": "VIS-5b: ช่อง อยู่กะ (คน · kpisOf) + จาก N คน · ลา · หยุด → หน้าลงเวลา"
   },
   {
    "page": "/app/sys/[id]",
@@ -8132,7 +8132,7 @@
    },
    "wo": "H2.11",
    "oracle": "qc-hr-h2.11",
-   "note": "คำขอที่ตัดสินได้/ทั้งหมด (inboxCounts · 500+ เมื่อถึงเพดาน) → /hr/requests"
+   "note": "VIS-5b: ลิงก์ ดูทั้งหมด บนหัวการ์ดคำขอ (ป้ายจำนวนตัดสินได้ข้างชื่อการ์ด) → /hr/requests"
   },
   {
    "page": "/app/sys/[id]",
@@ -8140,7 +8140,7 @@
    "kind": "link",
    "interactive": true,
    "file": "src/lib/modules/hr/overview-ui.tsx",
-   "conditional": "ผู้อ่านตารางกะ",
+   "conditional": "ผู้อ่านตารางกะ · มีวันที่ต้องคิดผลใหม่ > 0",
    "roles": [
     "owner",
     "manager",
@@ -8159,7 +8159,7 @@
    },
    "wo": "H2.11",
    "oracle": "qc-hr-h2.11",
-   "note": "วันที่ต้องคิดผลใหม่ (attendanceNeedsRecompute.count) → หน้าลงเวลา"
+   "note": "VIS-5b: ชิปบนหัวการ์ด กะวันนี้ (attendanceNeedsRecompute.count) → หน้าลงเวลา"
   },
   {
    "page": "/app/sys/[id]",
@@ -8184,7 +8184,7 @@
    },
    "wo": "H2.11",
    "oracle": "qc-hr-h2.11",
-   "note": "ใกล้ครบกำหนด (lifecycleDue.items.length) → ทะเบียน"
+   "note": "VIS-5b: ลิงก์ ดูพนักงาน (จำนวน) บนหัวแถบใกล้ครบกำหนด → ทะเบียน"
   },
   {
    "page": "/app/sys/[id]/hr/requests",
@@ -13307,11 +13307,13 @@
    "kind": "link",
    "interactive": true,
    "file": "src/lib/modules/hr/overview-ui.tsx",
-   "conditional": "มีภาพรวมทีม · ผู้ดูเปิดรายงานได้อย่างน้อย 1 ชนิด",
+   "conditional": "มีภาพรวมทีม · ผู้ดูเปิดรายงานเวลาได้ (การ์ดเดือน)",
    "roles": [
     "owner",
     "manager",
-    "manager-branch"
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "kiosk",
@@ -13324,7 +13326,7 @@
    },
    "wo": "H3.9",
    "oracle": "qc-hr-h3.9",
-   "note": "ลิงก์ \"รายงาน\" ของการ์ดเดือน (ภาพ 01) — ไม่มีแท็บใหม่ (มติ Q7)"
+   "note": "VIS-5b: ลิงก์ รายงาน บนหัวการ์ดสรุปเดือนนี้ (ภาพ 01) — ไม่มีแท็บใหม่ (มติ Q7)"
   },
   {
    "page": "/app/sys/[id]",
@@ -13932,6 +13934,528 @@
    "wo": "H4.2",
    "oracle": "qc-hr-h4.2",
    "note": "หมายเหตุ: ค่าประมาณ · ซ่อนกลุ่มเล็ก · ไม่มี POS · ไม่มีสิทธิ์ดูยอดขาย"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-unit",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/hub-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะที่เห็น > 1 สาขา (บอร์ดของ loadAttendanceBoard)",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]?unit="
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "ตัวเลือกสาขาของหัวภาพรวม — ลิงก์ ?day=&unit= (ตัวโหลดตรวจสาขาเอง)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-day-prev",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/hub-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ (มีบอร์ด)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]?day="
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "วันก่อนหน้า = board.prevDay"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-day-next",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/hub-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ (มีบอร์ด)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]?day="
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "วันถัดไป = board.nextDay"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-roster-link",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/hub-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ (canReadRoster)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/roster"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "จัดตารางกะ → บอร์ดตารางกะ"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-add-employee",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/hub-ui.tsx",
+   "conditional": "มีบอร์ด · ผู้เพิ่มพนักงานได้ (canManageHrSettings: OWNER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/employees?add=1"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "+ พนักงาน → ทะเบียน (VIS-5c เปิดแผงเพิ่มเมื่อ add=1)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-kpi-arrived",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/overview-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ (มีบอร์ด)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "มาแล้ว (คนที่มีเวลาเข้า) — kpisOf"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-kpi-late",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/overview-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ (มีบอร์ด)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "สาย (คนที่มีช่อง LATE) — kpisOf"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-kpi-notin",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/overview-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ (มีบอร์ด)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "ยังไม่มา (เงื่อนไขแถบเตือนของหน้าลงเวลา) — kpisOf"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-kpi-leave",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/overview-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ (มีบอร์ด)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "ลา (คนที่มีช่อง LEAVE) — kpisOf"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-board",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/overview-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ (มีบอร์ด)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "การ์ด กะวันนี้ (คน × ชั่วโมง ≥ md · รายการ < md)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-board-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/hub-ui.tsx",
+   "conditional": "ผู้อ่านตารางกะ · คนที่มีกะในวันนั้น (ไม่รวมหยุด/ไม่มีตาราง)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "* = employeeId · ชื่อ + แท่งกะ + สถานะ"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-month",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/overview-ui.tsx",
+   "conditional": "ผู้เปิดรายงานเวลาได้ (reportAccessOf … time)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "การ์ดสรุปเดือนนี้ (รายงานเวลา + OT · ไม่มีเงิน)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-month-talk-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/hub-ui.tsx",
+   "conditional": "ผู้เปิดรายงานเวลาได้ · คนที่เข้าเกณฑ์ meetsPattern เดือนนี้",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "* = employeeId · ควรคุยรายคน + ลิงก์ปฏิทินรายคน"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-due",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/overview-ui.tsx",
+   "conditional": "ผู้ดูวงจรพนักงาน (lifecycleDue ไม่ใช่ null)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "แถบใกล้ครบกำหนด (3 รายการแรกตามวันที่ + +N)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-due-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/hub-ui.tsx",
+   "conditional": "ผู้ดูวงจรพนักงาน · มีรายการใกล้ครบกำหนด",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member",
+    "payroll"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/employees/[employeeId]"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "* = employeeId-ชนิด · การ์ดวันที่ → โปรไฟล์พนักงาน"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-hub-kiosk-link",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/hub-ui.tsx",
+   "conditional": "บัญชีจอลงเวลาอย่างเดียว (hrTabsFor = [])",
+   "roles": [
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/kiosk"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "การ์ดเดียว เปิดจอลงเวลา (ไม่มีแถบแท็บ ไม่มีตัวนับ)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-inbox-check-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/InboxBatch.tsx",
+   "conditional": "ผู้เห็นคำขอ · มีตัวอย่างคำขอ (การ์ดคำขอบนภาพรวม · selectable) · รายการที่รวมชุดได้ (ADJUSTMENT/CHAIN = disabled)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "* = id คำขอ · ช่องเลือกของการ์ดคำขอบนหน้าภาพรวม"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-inbox-batch",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/InboxBatch.tsx",
+   "conditional": "ผู้เห็นคำขอ · มีรายการที่รวมชุดได้",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "แถบเลือกติดล่างของการ์ดคำขอบนหน้าภาพรวม"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-inbox-batch-approve",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/InboxBatch.tsx",
+   "conditional": "ผู้เห็นคำขอ · มีรายการที่รวมชุดได้",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "server-action",
+    "target": "decideInboxAction"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "อนุมัติที่เลือก (decideInboxAction ตัวเดิม)"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-inbox-batch-reject",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/InboxBatch.tsx",
+   "conditional": "ผู้เห็นคำขอ · มีรายการที่รวมชุดได้",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "server-action",
+    "target": "decideInboxAction"
+   },
+   "wo": "VIS-5b",
+   "oracle": "qc-hr-vis-5b",
+   "note": "ไม่อนุมัติที่เลือก (ต้องใส่เหตุผล · decideInboxAction ตัวเดิม)"
   },
   {
    "page": "/app/sys/[id]/hr/roster",

@@ -194,7 +194,10 @@ function Impact({ it }: { it: InboxItem }) {
   );
 }
 
-export default function InboxBatch({ systemId, items, compact = false, focus = null }: { systemId: string; items: InboxItem[]; compact?: boolean; focus?: string | null }) {
+// HR VIS-5b ▸ selectable = การ์ดย่อแบบ compact + ช่องเลือก + แถบ "อนุมัติที่เลือก" ติดล่าง (การ์ดคำขอบนหน้าภาพรวมทีม ภาพ 01) — ตัดสินผ่าน decideInboxAction ตัวเดิม · หน้าคำขอไม่ส่ง = เหมือนเดิม ◂
+export default function InboxBatch({ systemId, items, compact = false, focus = null, selectable = false }: { systemId: string; items: InboxItem[]; compact?: boolean; focus?: string | null; selectable?: boolean }) {
+  const brief = compact || selectable; // HR VIS-5b ▸ เนื้อการ์ดแบบย่อ ◂
+  const picking = !compact || selectable; // HR VIS-5b ▸ มีช่องเลือก + แถบเลือก ◂
   const t = useTranslations("hr.inbox");
   const router = useRouter();
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -255,6 +258,28 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
           </div>
         </div>
   );
+  // HR VIS-5b ▸ เนื้อแถบเลือก (ใช้ทั้งแถบบนของหน้าคำขอ และแถบล่างของการ์ดบนหน้าภาพรวม) ◂
+  const barBody = (
+    <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] p-3 sm:flex-row sm:items-center">
+    <label className="flex min-h-[44px] items-center gap-2 text-sm font-medium">
+      <input
+        type="checkbox"
+        className="h-5 w-5"
+        checked={selIds.length > 0 && selIds.length === Math.min(batchable.length, INBOX_BATCH_MAX)}
+        onChange={(e) => setSel(e.target.checked ? new Set(batchable.slice(0, INBOX_BATCH_MAX).map((i) => i.id)) : new Set())}
+      />
+      {selIds.length ? t("batch.selected", { n: String(selIds.length) }) : t("batch.selectAll")}
+    </label>
+    <div className="flex flex-wrap gap-2 sm:ml-auto">
+      <button type="button" data-testid="hr-inbox-batch-reject" disabled={!selIds.length || pending} onClick={() => setAsk({ ids: selIds })} className={ghost}>
+        {t("batch.reject", { n: String(selIds.length) })}
+      </button>
+      <button type="button" data-testid="hr-inbox-batch-approve" disabled={!selIds.length || pending} onClick={() => send(selIds, "APPROVED")} className={btn}>
+        {pending ? t("batch.busy") : t("batch.approve", { n: String(selIds.length) })}
+      </button>
+    </div>
+    </div>
+  );
   return (
     <div className="flex flex-col gap-3">
       {out && (
@@ -282,35 +307,17 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
         </div>
       )}
 
-      {!compact && batchable.length > 0 && (
+      {!compact && !selectable /* HR VIS-5b ▸ แถบบนของหน้าคำขอ (เดิม) — การ์ดบนหน้าภาพรวมใช้แถบล่างหลังรายการ ◂ */ && batchable.length > 0 && (
         <div
           data-testid="hr-inbox-batch"
           className="sticky top-14 z-20 rounded-xl bg-[color:var(--color-surface)] shadow-sm"
         >
           {/* HR H2.12 ▸ VIS-2 แถบเลือกอยู่บนสุดของรายการ (ภาพ 05) · ติดใต้แถบบน (top-14 · z-20 < แถบบน z-40) · พื้นทึบ surface ก่อน
                แล้วค่อยทินท์ accent-soft (สีแบรนด์ของร้านเป็น rgba 8% — ทินท์อย่างเดียวโปร่ง การ์ดจึงทะลุ) ◂ */}
-          <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] p-3 sm:flex-row sm:items-center">
-          <label className="flex min-h-[44px] items-center gap-2 text-sm font-medium">
-            <input
-              type="checkbox"
-              className="h-5 w-5"
-              checked={selIds.length > 0 && selIds.length === Math.min(batchable.length, INBOX_BATCH_MAX)}
-              onChange={(e) => setSel(e.target.checked ? new Set(batchable.slice(0, INBOX_BATCH_MAX).map((i) => i.id)) : new Set())}
-            />
-            {selIds.length ? t("batch.selected", { n: String(selIds.length) }) : t("batch.selectAll")}
-          </label>
-          <div className="flex flex-wrap gap-2 sm:ml-auto">
-            <button type="button" data-testid="hr-inbox-batch-reject" disabled={!selIds.length || pending} onClick={() => setAsk({ ids: selIds })} className={ghost}>
-              {t("batch.reject", { n: String(selIds.length) })}
-            </button>
-            <button type="button" data-testid="hr-inbox-batch-approve" disabled={!selIds.length || pending} onClick={() => send(selIds, "APPROVED")} className={btn}>
-              {pending ? t("batch.busy") : t("batch.approve", { n: String(selIds.length) })}
-            </button>
-          </div>
-          </div>
+          {barBody /* HR VIS-5b ▸ เนื้อแถบใช้ร่วมกับแถบล่าง ◂ */}
         </div>
       )}
-      {ask && !ask.at && askBox}
+      {ask && !ask.at && !selectable /* HR VIS-5b ◂ */ && askBox}
 
       {items.map((it) => {
         const checked = sel.has(it.id);
@@ -319,10 +326,10 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
             key={it.id}
             id={`req-${it.id}`}
             data-testid={`hr-inbox-item-${it.id}`}
-            className={`card flex flex-col gap-3 p-4 ${checked || focus === it.id ? "border-[color:var(--color-accent)]" : ""}`}
+            className={`card flex flex-col ${selectable ? "gap-2 p-3" : "gap-3 p-4"} ${checked || focus === it.id ? "border-[color:var(--color-accent)]" : ""}` /* HR VIS-5b ▸ การ์ดเตี้ยลงบนหน้าภาพรวม ◂ */}
           >
             <div className="flex items-start gap-3">
-              {!compact && (
+              {picking /* HR VIS-5b ◂ */ && (
                 <label className="flex h-11 w-11 shrink-0 items-center justify-center">
                   <input
                     type="checkbox"
@@ -346,9 +353,9 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
                 </div>
               </div>
             </div>
-            {compact && <Summary it={it} /> /* HR H2.12 ▸ VIS-2 การ์ดย่อบอกว่ากำลังอนุมัติอะไร ◂ */}
-            {!compact && <Detail it={it} />}
-            {!compact && <Impact it={it} />}
+            {brief && <Summary it={it} /> /* HR H2.12 ▸ VIS-2 การ์ดย่อบอกว่ากำลังอนุมัติอะไร ◂ · HR VIS-5b ▸ brief ◂ */}
+            {!brief && <Detail it={it} /> /* HR VIS-5b ◂ */}
+            {!brief && <Impact it={it} /> /* HR VIS-5b ◂ */}
             {it.blocker && (
               <p className={`text-sm ${muted}`}>
                 {it.blocker === "NO_RIGHT" && it.type === "SWAP" && (it.detail as Any).shape === "SWAP" && (it.detail as Any).to === null ? t("blocker.NO_RIGHT_BRANCH") : t(`blocker.${it.blocker}` as "blocker.CHAIN")}
@@ -362,7 +369,7 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
                 )}
               </p>
             )}
-            {compact && it.canDecide && !inboxInlineDecide(it) && (
+            {brief /* HR VIS-5b ◂ */ && it.canDecide && !inboxInlineDecide(it) && (
               /* HR H2.12 ▸ VIS-2 สรุปไม่ได้/รายการเงิน ⇒ เปิดดูในกล่องคำขอ แทนปุ่มอนุมัติแบบไม่เห็นรายละเอียด ◂ */
               <div className="flex flex-wrap justify-end gap-2">
                 <a href={`/app/sys/${systemId}/hr/requests?type=${it.type}&focus=${encodeURIComponent(it.id)}#req-${it.id}`} data-testid={`hr-inbox-open-${it.id}`} className={ghost}>
@@ -370,7 +377,7 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
                 </a>
               </div>
             )}
-            {it.canDecide && (!compact || inboxInlineDecide(it)) && (
+            {it.canDecide && (!brief || inboxInlineDecide(it)) /* HR VIS-5b ◂ */ && (
               <div className="flex flex-wrap justify-end gap-2">
                 {it.type === "ADJUSTMENT" && <span className={`mr-auto self-center text-xs ${muted}`}>{t("oneByOne")}</span>}
                 <button type="button" data-testid={`hr-inbox-reject-${it.id}`} disabled={pending} onClick={() => setAsk({ ids: [it.id], at: it.id })} className={ghost}>
@@ -385,7 +392,13 @@ export default function InboxBatch({ systemId, items, compact = false, focus = n
           </article>
         );
       })}
-
+      {selectable && batchable.length > 0 && (
+        /* HR VIS-5b ▸ selectable: แถบเลือกติดล่างของการ์ดคำขอ (ภาพ 01 "อนุมัติทั้งหมดที่เลือก") — พื้นทึบ + ทินท์แบบเดียวกับแถบบน ◂ */
+        <div data-testid="hr-inbox-batch" className="sticky bottom-2 z-20 rounded-xl bg-[color:var(--color-surface)] shadow-sm">
+          {barBody}
+        </div>
+      )}
+      {ask && !ask.at && selectable && askBox /* HR VIS-5b ▸ ช่องเหตุผลใต้แถบล่าง ◂ */}
 
     </div>
   );
