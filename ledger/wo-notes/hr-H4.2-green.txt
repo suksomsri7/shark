@@ -33,3 +33,24 @@ POS suites exit 4 = QC4-only write guard on lane DB; statics: p1.17 7/7 p1.18 16
 fitness env: JSON_SUMMARY {"total":54,"passed":54,"findings":[]} · noenv: JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
 fitness-hr env: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} · noenv: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
 typecheck #1 exit=2 (TS2737 BigInt literals in labor-rules.ts, 19) → fixed → typecheck #2 exit=0, 390 s, 0 errors
+
+## Round 2 — after ORACLE-EDIT 96c5d4a33 · ruling (e) static tenantDb · merge session/hr 1725eb106 (H3.8) · lane migrate deploy (20270110000000_hr_payslip_salary_cert) · 14 Nov 2026
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-h4.2-f1 exit=0 ===== qc-hr-h4.2 ===== passed 49/49
+qc-hr-h4.2-f2 exit=0 ===== qc-hr-h4.2 ===== passed 49/49
+qc-hr-h4.2-u exit=0 ===== qc-hr-h4.2 ===== passed 49/49
+qc-hr-h2.2 exit=0 ===== qc-hr-h2.2 ===== passed 60/60 (QC_FORCE)
+qc-hr-h3.9 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-h3.8 exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-set-1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-audit-trail exit=0 
+fitness env exit=0 JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness noenv exit=0 JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness-hr env exit=0 JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+fitness-hr noenv exit=0 JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+qc-audit-trail: ✅ PASS — 21/21 · qc-hf-hr-privacy: 194/194 · qc-hr-h4.2 RESIDUE none ×3
+typecheck (clean, gate lock): exit=0 · 700 s · 0 errors
+POS report suites: not re-run (controller runs them on QC4 at the merge gate); earlier 'red on base' evidence = static parts only.

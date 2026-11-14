@@ -68,3 +68,10 @@ c. **S1.8 `inventory`** — `inventoryParity(...).meta` requires *every* row of 
 ## 7. Runs + incident
 - Results: `hr-H4.2-green.txt` (qc-hr-h4.2 46/49 ×4 incl. unforced — unforced runs fully because labor-rules.ts exists; residue none every run). Typecheck #1 red (19× TS2737 BigInt literals) → fixed with `BigInt(x)` constants → typecheck #2 exit 0 (390 s).
 - POS report suites cannot run on the lane DB (exit 4: "จะเขียนแถวได้เฉพาะ QC4" guard, before any write). To prove their static reds are pre-existing I ran p2.11/p2.12/p3.5/p3.6 in a temporary detached worktree at base ae33a9fc3 with `env -u DATABASE_URL -u DIRECT_URL`: same red ids as on HEAD. **Incident:** without URL vars the POS env loader fell back to `.env.qc` and connected to QC4 (`ep-frosty-lab`), so those 4 suites' DB parts ran there on base code (JSON_SUMMARY residue 0 / tempLeft [] / guardHits 0). Not intended; worktree removed. Controller: please treat QC4 as touched by 4 POS suites (self-cleaning).
+
+## 8. Round 2 (controller rulings after 96c5d4a33)
+- (a)–(d) fixed by the oracle author; (e) `labor.ts` now imports `tenantDb` statically (commit "ruling (e)").
+- Accepted: `hr/ui.tsx` `labor` slot; reading of D10 (§2.1).
+- Incident ruling: DB suites only through the lane wrapper; "red on base" evidence for suites that cannot run on the lane DB = static parts only. POS suites left to the controller (QC4 merge gate).
+- Merged `session/hr` 1725eb106 (H3.8): conflicts visual-hr (kept "4.2" + "3.8") and messages th/en (json3way, clean); prisma generate; lane migrate deploy applied 20270110000000_hr_payslip_salary_cert.
+- Results: `hr-H4.2-green.txt` §Round 2 — qc-hr-h4.2 49/49 ×3 (2 forced + unforced), all listed suites green, typecheck 700 s clean.
