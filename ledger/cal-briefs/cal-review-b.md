@@ -125,3 +125,42 @@ Severity: **BLOCKER** = breaks an owner rule (M3/M4) or loses data by design · 
   - Disconnect deletes copies, revokes, cascades the cache and clears `externalId`. Account deletion revokes first and then deletes the rows.
   - Rate limits: connect 5/min, put 30/min, sync once per 120 s.
 - **Sync:** a 410 clears the calendar cache and runs a full resync (bounded to 2 attempts). All-day dates use Thai midnight with an exclusive end. Export uses Asia/Bangkok and BYSETPOS=-1 for month-end. Booking copies are written over from the shop side. `sharkRef` copies are hidden from the agenda.
+
+---
+
+## Review response (lane b · 15 Nov 2569 · commit `694d49e49` on `wip/cal-b`)
+
+All findings are fixed in `694d49e49`. Contract §15.2 has the details (D-B28…D-B39). Migration `20261228000400_calendar_b` is applied to the secretary QC DB only.
+
+| Finding | Fix | Test |
+|---|---|---|
+| B1 | Calendar tools return only ids, status and counts (no titles, times, notes, leave, payroll or Google). Details are shown in viewer-only cards: `reminders` plus the new `CalRoomCard` → `calendarCards` on GET rooms/[id]. The persona says "ตั้งให้แล้ว/มี N รายการ ดูการ์ดด้านล่าง". Edit/cancel use `match`, resolved on the server (`ambiguous` never names items). **App change needed (lane c), see below.** | qc-cal-1.7 T4-1, T5-1, T5-3, T8-3, T8-7, T9-1, T9-2, T11-3 |
+| B1 / owner default | Google data never reaches the model, not even as counts | T11-1 |
+| M7 | `recordSample` is skipped when any `calendar_*` tool ran in the turn (`turnTouchesCalendar`). The decision is recorded in google-verification-draft.md §4.1. | T11-2, T11-4; positive control T11-5 |
+| M1 | Two streams: display (`singleEvents=true`; skips everything that is ours, by extendedProperties or by id/recurringEventId) and master (`singleEvents=false`, export calendar). An instance never overwrites a series. | qc-cal-1.8 G6b-1…4 (fake now expands instances with `recurringEventId`) |
+| M2 | The master stream matches by the stored `CalItem.externalId` and by `sharkRef` rows. A deleted event carrying only id/status cancels the item, or re-creates the booking copy. | G6-2, G7-2b (fake sends only `{id,status}` for deleted events) |
+| M3 | `CalItem.userEditedAt` is set by every user write and by the Google write-back, and newer-wins compares against it | G6c-1, G6c-2 |
+| M4 | Personal adapter: one-shot items only in the requested range (minus 14 days); repeating items only when OPEN. Account: only docs in the range, plus an overdue `aggregate`. | qc-cal-1.3 S1-14 (1,050 old DONE rows); S1-3/S1-4 still green |
+| M5 | Windowed full sync (timeMin/timeMax). At most 8 pages per stream per run, with `pageToken` resume. Deadline passed into `syncGoogle`. Lease 10 min, renewed per page. One query per page plus `createMany`. | G4-1, G14-1…3 |
+| M6 | NEEDS_RECONNECT only on `invalid_grant`; other refresh errors are transient + ops ERROR. Reconnecting the same account (sub/email) does not revoke. A missing refresh_token keeps the old one. A different account revokes the old grant and clears cache/state. | G9-4, G9-4b, G9-4c, G9-4d, G9-2 |
+| m1 | Calendar tools sit in skill `calendar` and are offered only in secretary rooms (`CALENDAR_ROOM_CORE` on the first round). Rules are added to the prompt only when the tools are offered. | T2-3, T3-1, T11-3, T11-6 |
+| m2 | `HandRule.memberOnly`: API keys and system actors are denied and the tools are not offered | T2-5 |
+| m3 | A chat update from one-shot to repeating creates a new DRAFT and cancels the old item | T5-4 |
+| m4 | Moot: Google content never reaches the model | T11-1 |
+| m5 | Sync results are merged per calendar id into a freshly read list | G15-1 |
+| m6 | Booking export is still off by default (Q9). It respects `canAccessUnit` and booking OFF. Account deletion deletes copies before revoking. PDPA note added (D-B38); a shop-level switch is still an owner decision. | G7-4, G7-5 |
+| m7 | `updateGoogle` makes no Google calls: it marks items `syncDirty` and the sync moves/deletes copies (`externalCalendarId`). Disconnect/deletion copy removal is bounded (8 s, 6 in parallel). | G7-3, G16-1 |
+| m8 | WHT certificates in DRAFT/VOIDED/CANCELLED are not counted. PND1/SSO follow the payment month (payDate), per shark-thai-law common-withholding-tax §8 :68/:129. | qc-cal-1.3 S1-9, S1-12, S1-13 |
+| m9 | Fixed together with M5 | — |
+| m10 | Not changed (noted) | — |
+
+Also fixed: a qc-cal-1.8 G7-3 typo had a string in the condition position, so the check always passed; it is now asserted for real.
+
+### App change needed for B1 (lane c)
+`GET /api/mobile/secretary/rooms/[id]` now also returns `calendarCards: { id, kind: "AGENDA" | "LIST", fromDay: "YYYY-MM-DD", toDay: "YYYY-MM-DD", createdAt }[]`. This list contains only the caller's own cards.
+1. In `RoomView`, place each card in the timeline by `createdAt`, the same way as `reminders`.
+2. AGENDA: render the viewer's own `GET calendar/agenda?from=fromDay&to=toDay`, in the day-list style of screen 3, with a "เปิดในปฏิทิน ›" link to `/secretary/calendar?day=fromDay`.
+3. LIST: render `GET calendar/items?tab=today` + `tab=upcoming`, in the style of the "เตือนฉัน" tab.
+4. Other room members, and an OWNER viewing a staff room, get no card from the server and must see nothing.
+5. The DRAFT confirmation text ("ตั้งเป็นเตือนประจำ ทุกวันจันทร์ 09:00 ใช่ไหมครับ") must come from the ReminderCard (§9.3). The model no longer says it.
+6. Add `calendarCards` to the `RoomDetail` type in `apps/mobile/src/api/secretary.ts`. I have not touched `apps/mobile`.
