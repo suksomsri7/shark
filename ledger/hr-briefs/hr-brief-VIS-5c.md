@@ -92,3 +92,8 @@ VIS-5c: `ui.tsx` 432-678 (+ new exports after it), employee pages, `EmployeeProf
 - Booking "ตั้งเป็นช่าง" and CRM commission rows in Connections — no reader/action.
 - "ยืมตัว → หัวหิน" tag in the register — needs a list reader of borrowings.
 - Audited "reveal number" action (`hr.employee.sensitive_view`).
+
+## CONTROLLER RULINGS (15 Nov)
+- 5c-1 yes: numbers masked server-side by default; the full value appears only in the edit form opened explicitly (`?edit=1`), for viewers already entitled today. An audited reveal action is on the owner list. · 5c-2 pay rate left out of the register · 5c-3 Thai date picker → VIS-5e · 5c-4 no privacy change in this ticket (the walker's PII rule for the current address is being ruled separately) · 5c-5 linked yes/no only.
+- No business logic, action semantics or privacy change. "Owner list" items are NOT built. Pictures are verified by the controller (build + `walk-hr.mts --only 02-employees` / `03-employee-namfon`).
+- Older-oracle acceptances: add this ticket's files to `VIS5_SRC` / `VIS5_ORACLES` (created by VIS-5b); every hunk marked `HR VIS-5c`.

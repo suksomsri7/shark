@@ -82,3 +82,9 @@ Batch approval = existing `decideInboxAction` through InboxBatch, never approval
 - Contract renewal ("ต่อสัญญา") — no flow; the card links to the profile.
 - Document-expiry items — `HrEmployeeDoc` has no expiry field.
 - Month leave breakdown by type — no per-month per-type reader.
+
+## CONTROLLER RULINGS (15 Nov)
+- 5b-1 NO global change: `components/module-tabs.tsx` is shared by every module. Add an opt-in prop (default = today's behaviour, byte-identical markup for other modules) and use it from HR only. A check must prove other modules' markup is unchanged.
+- 5b-2 yes: VIS-5b owns the HR tab strip clipping and hiding the strip for the kiosk role; VIS-5e drops them. · 5b-3 yes (current month only) · 5b-4 yes · 5b-5 keep.
+- No business logic, action semantics or privacy change. Batch approval uses the existing `decideInboxAction` through InboxBatch. "Owner list" items are NOT built. Pictures are verified by the controller (build + `walk-hr.mts --only 01-hub`), not by the builder.
+- Older-oracle acceptances: explicit allowlist (`VIS5_SRC` / `VIS5_ORACLES`), every hunk marked `HR VIS-5b` (this ticket adds the lists; VIS-5c adds its own files to them).
