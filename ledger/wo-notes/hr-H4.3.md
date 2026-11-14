@@ -75,3 +75,14 @@
 
 ## 11. Fix-round run (head after merge) — see hr-H4.3-green.txt
 seed 34/34 · qc-hr-h4.3 42/42 forced ×3 + unforced ×1 (no residue) · qc-hr-h4.2 57/57 ×2 · h3.4-ytd 44/44 · h0.3 37/37 · ai-tools 18/18 · ai-proposals 16/16 · ai-plan 7/7 · roster 24/24 · h2.2 60 · h2.3 79 · h2.7 94 · h2.10 57 · h2.11 70 · h3.8 78 · h3.9 60 · h1.1 81 · h2.4 68 · set-1 25 · hf-hr-privacy 194 · audit-trail 21/21 · fitness 54/54 + fitness-hr 9/9 both modes · typecheck clean (426 s).
+
+## 12. Follow-up (concurrent pattern note) + delta review r2 (MERGE WITH NOTES)
+- **Lock form:** transaction-scoped advisory lock `pg_advisory_xact_lock(hashtextextended('hr:ai:pattern:<systemId>:<employeeId>:<month>',0))` taken in an OUTER `tenantDb(ctx).$transaction` in `confirmPattern`, held through the "note exists" re-check (`patternNoted`) and `addReviewNote`. `addReviewNote` (lifecycle.ts, frozen) cannot take a tx client, so it writes on its own connection under the lock and commits before the lock is released; the next waiter re-checks and gets `alreadyNoted`. A session-scoped lock was not used (pooled client cannot guarantee lock/unlock on the same connection). Waiting is bounded by TX_OPTS (15 s/30 s). Accepted cost: one extra pooled connection per concurrent confirm of the same (employee, month).
+- FX7 (deterministic: `LOCK TABLE "HrReviewNote" IN SHARE ROW EXCLUSIVE MODE` held until 2 backends wait) ⇒ 1 NOTE + `alreadyNoted`. RED with the lock line removed: `❌ [H43-FX7] … waiting=2 notes=2` (42/43).
+- r2 item 1: stale outcomes write one `hr.ai.proposal.stale {kind, code}` (human actor, proposal id; code `CHANGED` | `ENTRY`) besides the FAILED row — FX2 `staleOne`.
+- r2 item 2: roster.ts comments at the AddEntryOpts block and the AI return line now describe the per-entry audit in the tx.
+- r2 item 3: FX8 (two proposals, same slot, held roster key ⇒ 1 AI shift · other FAILED stale) · FX9 (no scope ⇒ refusal bytes identical with/without an AI note; duplicate text unreachable).
+- Debts (r2 item 4):
+  - A draft proposal whose employee moved outside the confirmer's scope stays PENDING until the 24 h expiry (review NOTE-c i).
+  - D-H43-pending-flag-visibility: a pending `hr_flag_pattern` proposal blocks other managers for that employee+month until expiry; they cannot see or reject it (it lives in the proposer's conversation).
+  - Bare URLs remain as plain text in proposal summaries (only `<>[]{}` etc. are stripped) — matters only if a card auto-links.

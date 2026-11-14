@@ -62,6 +62,9 @@ X1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
 FX1|fix 1|C|R|[db] ORACLE-EDIT (H4.3 fix round · controller ruling) T5: slot with a shift in ANY branch ⇒ EXISTS (owner unitId:A · hidden-B ≡ visible-A bytes) · no proposal · shift/leave after propose ⇒ stale
 FX2|fix 2|M|R|[db] ORACLE-EDIT (H4.3 fix round) data change (shift closed) ⇒ FAILED stale once · no refused audit
 FX4|fix 4|M|R|[db] ORACLE-EDIT (H4.3 fix round) T6 one note per employee+month: 2nd proposal (any caller) ⇒ same fixed bytes · confirming a copy ⇒ no 2nd note
+FX7|fix 4b|M|R|[db] ORACLE-EDIT (H4.3 fix round · controller ruling) 2 concurrent T6 confirms (held insert lock + pg_blocking_pids) ⇒ 1 NOTE · other = alreadyNoted
+FX8|r2 3a|C|R|[db] ORACLE-EDIT (H4.3 fix round) 2 proposals race one slot (held roster key) ⇒ 1 AI shift · other FAILED stale
+FX9|r2 3b|C|R|[db] ORACLE-EDIT (H4.3 fix round) T6 without scope: employee with AI note ≡ without ≡ HR_AI_TEXT.no (dup text unreachable)
 FX5|fix 5|M|R|[pure] ORACLE-EDIT (H4.3 fix round) fence strips zero-width · summary has no markdown/HTML chars
 FX6|fix 6|m|R|[db] ORACLE-EDIT (H4.3 fix round) T1 alerts > 20 ⇒ truncated:true
 Z1|house|C|G|no residue (every table with tenantId · users · sessions)
@@ -674,7 +677,7 @@ async function runDb(): Promise<void> {
     const badL = blobs.flatMap((b) => [...sent.filter((x) => b.s.includes(x)).map((x) => `${b.k}:${x.slice(0, 8)}`), ...(!b.t3 && b.s.includes(S.salary) ? [`${b.k}:salary`] : []), ...[...keysDeep(parse(b.s))].filter((k) => forb.has(k)).map((k) => `${b.k}:key ${k}`)]);
     chk("A1", badL.length === 0 && OUT.length > 100 && rows.length >= 8, `${blobs.length} outputs clean`, badL.slice(0, 5).join(" ") || `ok outs=${OUT.length} props=${rows.length}`);
   }
-  await runFixRound({ P, M, E, W, T, HRS, UA, UB, SM, FD, D0, MONTH, TXT, tag, ck, rt, exec, propRow, aiRows, entry, work, dbDate, nProps, call, fx, sysSvc }); // ORACLE-EDIT (H4.3 fix round · controller ruling) ◂
+  await runFixRound({ P, M, E, W, T, HRS, UA, UB, SM, FD, D0, MONTH, TXT, tag, ck, rt, rtA, actorOf, exec, propRow, aiRows, entry, work, dbDate, nProps, call, fx, sysSvc }); // ORACLE-EDIT (H4.3 fix round · controller ruling) ◂
 }
 
 // ═════════════════════════ main ═════════════════════════

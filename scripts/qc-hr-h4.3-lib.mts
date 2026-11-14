@@ -292,7 +292,7 @@ export function runPure(R: Any, chk: Chk, ck: Ck): void {
 // ═════════════════════════ ORACLE-EDIT (H4.3 fix round · controller ruling) — checks FX1 FX2 FX4 FX5 FX6 (FX3 = per-entry audits inside L2) ═════════════════════════
 // Rulings 1 (review MAJOR-1 = hunt F1) · 2 (MINOR-3) · 4 (hunt F2) · 5 (MINOR-1 + hunt I1) · 6 (MINOR-2) · ports the hunter's F1/F2 repro (ledger/wo-notes/hr-H4.3-hunt-probes.mts.txt) ◂
 export async function runFixRound(X: Any): Promise<void> {
-  const { P, M, E, W, T, HRS, UA, UB, SM, FD, D0, MONTH, TXT, tag, ck, rt, exec, propRow, aiRows, entry, work, dbDate, nProps, call, fx, sysSvc } = X;
+  const { P, M, E, W, T, HRS, UA, UB, SM, FD, D0, MONTH, TXT, tag, ck, rt, rtA, actorOf, exec, propRow, aiRows, entry, work, dbDate, nProps, call, fx, sysSvc } = X; // ORACLE-EDIT (H4.3 fix round · controller ruling) r2: + rtA, actorOf ◂
   const T5 = TOOLS.T5;
   const T6 = TOOLS.T6;
   const pid = (s: string) => String(parse(s)?.proposalId ?? "");
@@ -332,7 +332,10 @@ export async function runFixRound(X: Any): Promise<void> {
     const st1 = (await propRow(id))?.status;
     const x2 = await exec("owner", id);
     const refused = await P.auditLog.count({ where: { tenantId: T, action: "hr.ai.proposal.refused", targetId: id || "∅" } });
-    ck("FX2", { proposed: !!id, stale: x1?.ok === false && x1?.note === TXT.stale && st1 === "FAILED", terminal: x2?.ok === false && (await propRow(id))?.status === "FAILED", noRefusal: refused === 0, none: (await aiRows(E.A2, FD(25))).length === 0 }, "data change ⇒ stale FAILED", `x1=${short(x1, 60)} st=${st1} refused=${refused}`);
+    // ORACLE-EDIT (H4.3 fix round · controller ruling) r2 item 1: exactly one hr.ai.proposal.stale (human actor · reason code only) ◂
+    const stA = (await P.auditLog.findMany({ where: { tenantId: T, action: "hr.ai.proposal.stale", targetId: id || "∅" } })) as Any[];
+    const staleOne = stA.length === 1 && stA[0].actorType === "USER" && stA[0].actorId === W.owner.id && canon(Object.keys(stA[0].after ?? {}).sort()) === canon(["code", "kind"]) && !/QC H43/.test(JSON.stringify(stA[0].after));
+    ck("FX2", { proposed: !!id, stale: x1?.ok === false && x1?.note === TXT.stale && st1 === "FAILED", terminal: x2?.ok === false && (await propRow(id))?.status === "FAILED", noRefusal: refused === 0, staleOne, none: (await aiRows(E.A2, FD(25))).length === 0 }, "data change ⇒ stale FAILED", `x1=${short(x1, 60)} st=${st1} refused=${refused} stale=${stA.length}`);
   }
   // FX4 — one pattern note per (employee, month): second proposal / other caller ⇒ same fixed bytes · copy of a pending proposal confirmed ⇒ no 2nd note
   {
@@ -357,6 +360,79 @@ export async function runFixRound(X: Any): Promise<void> {
       dupProposal: typeof TXT.alreadyNoted === "string" && canon(parse(s2)) === fixed && s2 === s3 && s3 === s4 && pNo,
       dupConfirm: !!copy && x2?.ok === false && (await notes()) === 1,
     }, "pattern note idempotent per employee+month", `s2=${short(s2, 60)} x2=${short(x2, 60)} notes=${await notes()}`);
+  }
+  // FX7 — ORACLE-EDIT (H4.3 fix round · controller ruling, follow-up): two confirms for the same employee+month, interleaving forced by holding the note table's insert lock
+  //   (LOCK TABLE … SHARE ROW EXCLUSIVE: reads pass, INSERT waits) until 2 backends wait (pg_blocking_pids) ⇒ exactly one NOTE · the other = HR_AI_TEXT.alreadyNoted ◂
+  {
+    const pq = await fx.mkEmp(T, HRS, `QC H43 Pq ${tag}`, { unitId: UA, startDate: "2026-01-01" });
+    for (const d of ["2026-09-01", "2026-09-02", "2026-09-03"]) await work(pq, d, 440);
+    const id1 = pid(await rt("owner", T6, { employeeId: pq, month: MONTH }));
+    const row = await propRow(id1);
+    const id2 = row ? (await P.aiProposal.create({ data: { tenantId: T, conversationId: row.conversationId, kind: row.kind, summary: row.summary, payload: row.payload, risk: row.risk, expiresAt: new Date(Date.now() + 3_600_000) } })).id : "";
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let held: () => void = () => {};
+    const heldP = new Promise<void>((r) => (held = r));
+    let holderErr = "";
+    const holder = P.$transaction(async (tx: Any) => {
+      await tx.$executeRawUnsafe(`LOCK TABLE "HrReviewNote" IN SHARE ROW EXCLUSIVE MODE`);
+      held();
+      await gate;
+    }, { maxWait: 10_000, timeout: 40_000 }).catch((e: unknown) => ((holderErr = errText(e)), held()));
+    await heldP;
+    const both = Promise.all([exec("owner", id1), exec("owner", id2)]);
+    let waiting = 0;
+    for (let i = 0; i < 100 && waiting < 2; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      const w = (await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND cardinality(pg_blocking_pids(pid)) > 0`).catch(() => [{ n: 0 }])) as Any[];
+      waiting = Number(w?.[0]?.n ?? 0);
+    }
+    release();
+    await holder;
+    const xs = (await both) as Any[];
+    const n = await P.hrReviewNote.count({ where: { tenantId: T, employeeId: pq } });
+    ck("FX7", { held: !holderErr && waiting >= 2, one: n === 1, okOne: xs.filter((x) => x?.ok === true).length === 1, dup: xs.some((x) => x?.ok === false && x?.note === TXT.alreadyNoted) }, "concurrent confirms ⇒ one note", `waiting=${waiting} notes=${n} xs=${short(xs, 120)} ${holderErr}`);
+  }
+  // FX8 — ORACLE-EDIT (H4.3 fix round · controller ruling) r2 item 3a: two different proposals for the same empty slot, both confirms parked on the held roster key
+  //   (pg_blocking_pids ≥ 2), then released ⇒ exactly one AI shift · one ok · the other FAILED stale ◂
+  {
+    const d = FD(27);
+    const ida = pid(await rt("owner", T5, { from: d, to: d, entries: one(E.A3, d) }));
+    const idb = pid(await rt("owner", T5, { from: d, to: d, entries: one(E.A3, d) }));
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let held: () => void = () => {};
+    const heldP = new Promise<void>((r) => (held = r));
+    let holderErr = "";
+    const holder = P.$transaction(async (tx: Any) => {
+      await tx.$queryRawUnsafe(`SELECT count(pg_advisory_xact_lock(hashtextextended($1::text, 0)))::int AS n`, `hr:roster:${HRS}:${E.A3}:${d}`);
+      held();
+      await gate;
+    }, { maxWait: 10_000, timeout: 40_000 }).catch((e: unknown) => ((holderErr = errText(e)), held()));
+    await heldP;
+    const both = Promise.all([exec("owner", ida), exec("owner", idb)]);
+    let waiting = 0;
+    for (let i = 0; i < 100 && waiting < 2; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      const w = (await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND cardinality(pg_blocking_pids(pid)) > 0 AND wait_event = 'advisory'`).catch(() => [{ n: 0 }])) as Any[];
+      waiting = Number(w?.[0]?.n ?? 0);
+    }
+    release();
+    await holder;
+    const xs = (await both) as Any[];
+    const rows = await aiRows(E.A3, d);
+    const sts = [(await propRow(ida))?.status, (await propRow(idb))?.status].sort();
+    ck("FX8", { held: !holderErr && !!ida && !!idb && waiting >= 2, oneShift: rows.length === 1 && rows[0].source === "AI", okOne: xs.filter((x) => x?.ok === true).length === 1, stale: xs.some((x) => x?.ok === false && x?.note === TXT.stale) && canon(sts) === canon(["EXECUTED", "FAILED"]) }, "two proposals race one slot ⇒ one shift", `waiting=${waiting} rows=${rows.length} sts=${sts.join("/")} ${holderErr}`);
+  }
+  // FX9 — ORACLE-EDIT (H4.3 fix round · controller ruling) r2 item 3b: no scope ⇒ the duplicate text is unreachable: refusal bytes for an employee WITH an AI note (FX4's Pt) ≡ one without (A1) ≡ HR_AI_TEXT.no ◂
+  {
+    const pt = ((await P.hrEmployee.findFirst({ where: { tenantId: T, name: `QC H43 Pt ${tag}` }, select: { id: true } })) as Any)?.id ?? "∅";
+    const lb = await fx.mkUser(T, "lifeb", `QC H43 lifeb ${tag}`, "STAFF", [UB], { "hr.employee.create": true });
+    const aB = await actorOf(lb);
+    const no = canon({ error: TXT.no });
+    const outs = [await rt("mgr", T6, { employeeId: pt, month: MONTH }), await rt("mgr", T6, { employeeId: E.A1, month: MONTH }), await rtA(aB, T6, { employeeId: pt, month: MONTH }, {}, "lifeb"), await rtA(aB, T6, { employeeId: E.A1, month: MONTH }, {}, "lifeb")];
+    const notes = await P.hrReviewNote.count({ where: { tenantId: T, employeeId: pt } });
+    ck("FX9", { hasNote: notes === 1, same: outs.every((o) => canon(parse(o)) === no) && new Set(outs).size === 1, noDupText: outs.every((o) => !o.includes(String(TXT.alreadyNoted ?? "∅"))) }, "no scope ⇒ plain refusal", outs.map((o) => short(o, 40)).join(" | "));
   }
   // FX5 — fence strips zero-width · proposal summary = plain text (no markdown/HTML characters)
   {
