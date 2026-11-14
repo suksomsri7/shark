@@ -150,7 +150,7 @@ export type Frequent = { title: string; instruction: string };
 export type AccessItem = { module: string; level: "OFF" | "READ" | "DRAFT" | "AUTO" | string };
 export type InboxCount = { total: number; canApprove: number };
 /** GET secretary/badges (S1.14c) — approvals = รออนุมัติของกิจการนี้ · customers = ห้องลูกค้าที่ยังไม่อ่าน · team = คำเชิญ + ขอให้ช่วย + เรื่องช่วยเหลือ */
-export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number }; total: number };
+export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number }; total: number; /** CAL (R-CAL-19 · สัญญา 32 §8.1): เรื่องวันนี้ที่ยังไม่เสร็จ · ไม่รวมใน total · เซิร์ฟเวอร์เก่าไม่ส่ง = 0 */ calendar?: number };
 
 /** GET secretary/systems — 1 แถว = 1 ระบบในเมนูเว็บ (ลำดับเดียวกัน) · href ขึ้นต้น /app (เปิดใน WebView หน้าระบบ) · badge = แชทลูกค้าที่ยังไม่อ่าน (ระบบแชท) */
 export type NavSystemRow = { key: string; kind: "unit" | "system" | "fixed"; code: string; href: string; label: string; badge: number };
@@ -711,8 +711,8 @@ export function useSecretaryMe(): SecretaryMe | null {
 }
 
 // ───────── badge 3 โซน — store กลาง (R-S2.1e) · โหลดที่ layout ของโซน (focus/foreground) ─────────
-export type ZoneCounts = { secretary: number; customers: number; team: number };
-const ZERO: ZoneCounts = { secretary: 0, customers: 0, team: 0 };
+export type ZoneCounts = { secretary: number; customers: number; team: number; calendar: number };
+const ZERO: ZoneCounts = { secretary: 0, customers: 0, team: 0, calendar: 0 };
 let badges: ZoneCounts = ZERO;
 const badgeListeners = new Set<() => void>();
 
@@ -726,7 +726,7 @@ const nonNeg = (v: unknown) => Math.max(0, Math.floor(Number(v ?? 0) || 0));
 export function zoneCountsOf(r: Partial<ZoneBadgesRes> | null | undefined): ZoneCounts {
   if (!r) return ZERO;
   const team = r.team ?? { invites: 0, help: 0, support: 0 };
-  return { secretary: nonNeg(r.approvals), customers: nonNeg(r.customers), team: nonNeg(team.invites) + nonNeg(team.help) + nonNeg(team.support) };
+  return { secretary: nonNeg(r.approvals), customers: nonNeg(r.customers), team: nonNeg(team.invites) + nonNeg(team.help) + nonNeg(team.support), calendar: nonNeg(r.calendar) };
 }
 export async function refreshZoneBadges(): Promise<void> {
   const seq = ++badgeSeq;

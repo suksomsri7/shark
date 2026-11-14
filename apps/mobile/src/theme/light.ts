@@ -72,6 +72,10 @@ export const light = {
     dorm: "#6a4fd8",
   },
   onSys: "#ffffff",
+  // ปฏิทินเลขา (CAL2.x · ColorKey ของสัญญา §4.1): สีเดียวกับตาราง "เปิดระบบ" ในชีตกิจการ (SYS_LOOK ของ BusinessSwitcherSheet: QUEUE/ACCOUNT/KANBAN/CRM/HR/HOTEL/TICKET)
+  //   + remind/personal/google/device ตามภาพ cal-*.png · มืด = hue เดิมยกความสว่าง (dsys ของ gen.py)
+  cal: { booking: "#3a7bd5", account: "#1e7a8f", kanban: "#b8860b", crm: "#c2456b", hr: "#8a5cd1", dorm: "#6a4fd8", ticket: "#c2456b", trips: "#178a99", remind: "#e07a1f", personal: "#2f9e5b", google: "#4285f4", device: "#ff3b30" },
+  calTagAlpha: "1f", // พื้นป้ายระบบ = สีระบบ + alpha (แบบ 12%)
   sysTag: { bg: "rgba(150,150,185,0.14)", fg: "#55556a" }, // .sysp
   // สีโซนของไอคอนซ้ายบนตอน active (มติ 16) — เลขา = accent · ลูกค้า = เขียว · พนักงาน = คราม (เหมือนกันทั้งสองโหมด)
   zone: {

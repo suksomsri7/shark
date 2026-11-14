@@ -1806,6 +1806,34 @@
    "screen": "สถานะโหลดล้ม (S2.14)",
    "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
    "wo": "S2.14"
+  },
+  {
+   "testID": "sec-top-calendar",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "ทุกจอที่มีแถบบนเลขา (ถัดจาก ทีม)",
+   "action": "router.navigate /secretary/calendar · badge แดง sec-top-calendar-badge = badges.calendar",
+   "wo": "CAL2.1"
+  },
+  {
+   "testID": "cal-seg-day",
+   "file": "apps/mobile/app/(app)/secretary/calendar/index.tsx",
+   "screen": "ปฏิทิน (จอ 3)",
+   "action": "สลับเป็นมุมมองวัน",
+   "wo": "CAL2.1"
+  },
+  {
+   "testID": "cal-seg-month",
+   "file": "apps/mobile/app/(app)/secretary/calendar/index.tsx",
+   "screen": "ปฏิทิน (จอ 4)",
+   "action": "สลับเป็นมุมมองเดือน",
+   "wo": "CAL2.1"
+  },
+  {
+   "testID": "cal-seg-remind",
+   "file": "apps/mobile/app/(app)/secretary/calendar/index.tsx",
+   "screen": "ปฏิทิน (แท็บเตือนฉัน)",
+   "action": "สลับเป็นรายการเตือนฉัน",
+   "wo": "CAL2.1"
   }
  ]
 }
