@@ -1,11 +1,13 @@
 // ฟองข้อความในห้องงาน (ใบ S2.4 · แบบ A3/A4 sec-a.jpg หน้า 3–4 · .ubb .aiw .oth)
 //   ผู้ใช้ (เรา) = ฟองทึบชิดขวา (bubbleUser) · คนอื่นในห้อง = ชื่อเล็ก + ฟองกระจกชิดซ้าย (D2)
 //   เลขา = ลูกแก้ว + ข้อความ (ไม่มีกรอบ) · ข้อความระบบ (🔔/🔁 · authorUserId "system") = ฟองกลางสีจาง (§J R-S1.6b)
+//   14 พ.ย. ▸ ไฟล์แนบ (AttachList: รูปย่อ/ชิปไฟล์) เหนือข้อความในฟอง · ฟองที่กำลังส่ง (msg.pending) จางลงเล็กน้อย ◂
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { Orb } from "@/src/components/airy";
 import type { MsgRow } from "@/src/api/secretary";
+import { AttachList } from "@/src/components/secretary/SecAttach";
 import { bgImage, F, glassStyle, linear, shadow, useTheme } from "@/src/theme/index";
 import { type as T } from "@/src/theme/tokens";
 
@@ -36,8 +38,9 @@ export function Bubble({ msg, mine, authorName, testID }: { msg: MsgRow; mine: b
     return (
       <View
         testID={testID}
-        style={[styles.user, bgImage(linear(c.bubbleUser.from, c.bubbleUser.to)), shadow(c.tabShadow)]}
+        style={[styles.user, bgImage(linear(c.bubbleUser.from, c.bubbleUser.to)), shadow(c.tabShadow), msg.pending && styles.pending]}
       >
+        {msg.attachments?.length ? <AttachList items={msg.attachments} onDark testID={`${testID}-attachments`} /> : null}
         <Text style={[styles.userT, { color: c.bubbleUser.fg }]} selectable>
           {msg.content}
         </Text>
@@ -48,6 +51,7 @@ export function Bubble({ msg, mine, authorName, testID }: { msg: MsgRow; mine: b
     <View testID={testID} style={styles.othWrap}>
       {authorName ? <Text style={[styles.othName, { color: c.textMuted }]}>{authorName}</Text> : null}
       <View style={[glassStyle(c, 20), styles.oth]}>
+        {msg.attachments?.length ? <AttachList items={msg.attachments} testID={`${testID}-attachments`} /> : null}
         <Text style={[styles.userT, { color: c.bubbleOther.fg }]} selectable>
           {msg.content}
         </Text>
@@ -68,6 +72,7 @@ export function AssistantRow({ children, testID, orb = true }: { children?: Reac
 
 const styles = StyleSheet.create({
   user: { alignSelf: "flex-end", maxWidth: "82%", borderRadius: 22, borderBottomRightRadius: 6, paddingVertical: 10, paddingHorizontal: 14, marginTop: F.v(26) },
+  pending: { opacity: 0.85 },
   userT: { fontSize: T.body - 1, lineHeight: 23 },
   othWrap: { alignSelf: "flex-start", maxWidth: "82%", marginTop: F.v(26) },
   othName: { fontSize: T.cap, marginBottom: 4, marginLeft: 4 },

@@ -11,6 +11,9 @@
 // 🔴 rooms.ts ห้าม import ไฟล์นี้ (วงกลม: worker → service → conversations …) · ไฟล์นี้ import rooms ได้ (ตอนนี้ไม่ต้องใช้)
 // 🔴 ข้อความในห้องเดิมไม่นับงาน (R-K6 — ตัวนับอยู่ที่ `startRoom` เท่านั้น)
 //
+// 14 พ.ย. 2026 ▸ ไฟล์แนบ (`./attachments`): `sendRoomMessage` เขียน `AiMessage.attachments` ใน tx เดียวกับข้อความ · `processJob` อ่านไบต์ของไฟล์
+//   (ร้านเจ้าของ · ไฟล์ส่วนตัว) แล้วส่งเป็นรูป/PDF/ข้อความตารางของเทิร์นนั้น — ไม่ persist ไบต์ซ้ำ ◂
+//
 // SEC S3a.1-S1 (RESOLUTIONS §Z.1) ▸
 //   R-Z1 lease คิดจากเวลา claim จริง (ไม่ใช่ `now` ต้นรอบ) · claim = conditional updateMany ที่ `attempts` เดิม ⇒ `attempts+1` คือ fence
 //        (ไม่อ่านแถวซ้ำหลัง claim) · heartbeat ต่ออายุ lease ทุก 30 วิ ระหว่างโมเดลคิด · คำตอบ ASSISTANT + DONE เขียนใน tx เดียวกับการตรวจ fence
@@ -35,6 +38,7 @@ import { NOT_SYSTEM_MESSAGE, roomPushRecipients } from "./members";
 import { notifyUser } from "./notify";
 import { monthKeyBangkok } from "./pack";
 import { ROOM_JOB_GEN, ROOM_JOB_MAX_GENS, attemptsInGen } from "./job-gen";
+import { attachmentsOf, turnAttachments, type SecAttachment } from "./attachments";
 
 export const ROOM_JOB_LEASE_MS = 120_000; // 2 นาที (ต่ออายุด้วย heartbeat ระหว่างทำงาน)
 export const ROOM_JOB_HEARTBEAT_MS = 30_000;
@@ -153,7 +157,7 @@ export async function enqueueRoomJob(tenantId: string, roomId: string, messageId
 export async function sendRoomMessage(
   ctx: { tenantId: string; actor: AiMemberActor },
   roomId: string,
-  input: { text: string; imageUrls?: string[] },
+  input: { text: string; imageUrls?: string[]; attachments?: SecAttachment[] },
 ): Promise<SendRoomMessageResult> {
   const text = typeof input?.text === "string" ? input.text.trim() : "";
   if (!text) return { ok: false, error: "empty", message: MSG_EMPTY };
@@ -169,7 +173,7 @@ export async function sendRoomMessage(
   const userId = ctx.actor.userId;
   const res = await prisma.$transaction(async (tx) => {
     const msg = await tx.aiMessage.create({
-      data: { tenantId, conversationId: room.conversationId, role: "USER", content: text, authorUserId: userId },
+      data: { tenantId, conversationId: room.conversationId, role: "USER", content: text, authorUserId: userId, ...(input.attachments?.length ? { attachments: input.attachments } : {}) },
       select: { id: true },
     });
     const job = await tx.aiRoomJob.create({ data: { tenantId, roomId: room.id, messageId: msg.id, authorUserId: userId }, select: { id: true } });
@@ -230,7 +234,7 @@ async function processJob(job: AiRoomJob, fence: number, deps: RoomJobDeps): Pro
   try {
     const [room, message] = await Promise.all([
       db.aiRoom.findFirst({ where: { id: job.roomId }, select: { id: true, conversationId: true, closedAt: true } }),
-      db.aiMessage.findFirst({ where: { id: job.messageId }, select: { id: true, content: true, conversationId: true } }),
+      db.aiMessage.findFirst({ where: { id: job.messageId }, select: { id: true, content: true, conversationId: true, attachments: true } }),
     ]);
     if (!room || !message || message.conversationId !== room.conversationId) return await fail(ERR_MISSING, false);
     // R-Z9: ห้องปิดแล้ว ⇒ ไม่เรียกโมเดล
@@ -249,9 +253,17 @@ async function processJob(job: AiRoomJob, fence: number, deps: RoomJobDeps): Pro
     // ผู้สั่งยังต้องเห็นห้อง (ถูกเอาออกจากห้องระหว่างรอคิว) — ไม่งั้น sendMessage จะ throw ทุกรอบ
     if (!(await findVisibleConversation(ctx, room.conversationId))) return await fail(ERR_NOT_IN_ROOM);
 
+    // 14 พ.ย. ▸ ไฟล์แนบของข้อความนี้ → รูป (image) · PDF (document) · ตาราง (ข้อความ CSV ต่อท้ายคำสั่ง) — เปิดไม่ได้ = บอกโมเดล ไม่ล้มงาน ◂
+    const atts = attachmentsOf(message.attachments);
+    const turn = atts.length ? await turnAttachments(tenantId, atts) : null;
     const res = await sendMessage(
       ctx,
-      { conversationId: room.conversationId, text: message.content },
+      {
+        conversationId: room.conversationId,
+        text: turn?.text ? `${message.content}\n\n${turn.text}` : message.content,
+        ...(turn?.imageUrls.length ? { imageUrls: turn.imageUrls } : {}),
+        ...(turn?.documents.length ? { documents: turn.documents } : {}),
+      },
       {
         ...(deps.provider ? { provider: deps.provider } : {}),
         source: "CHAT",

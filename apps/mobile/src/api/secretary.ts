@@ -2,7 +2,9 @@
 // ทุกเส้นของ /api/mobile/secretary/* อยู่ในไฟล์นี้ไฟล์เดียว (ตาราง PATH) — ชื่อเส้นเปลี่ยนหลัง S1.14 = แก้ PATH ที่เดียว
 // จอเรียกด้วยชื่อเส้น เช่น secGet("secretary/rooms") · DTO ที่ยังไม่นิ่ง (S1.14 ยังไม่ merge) ผ่านตัว normalize* ที่รับได้หลายรูป
 // ทุกเส้นพลาดได้ — จอใช้ค่าปริยาย/สถานะของตัวเอง (isDenied / startErrorKind)
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+// 14 พ.ย. ▸ ไฟล์แนบของคำสั่ง: secUpload("secretary/attachments") · AttachRef ใน body ของ POST rooms / rooms/[id]/send · MsgRow.attachments (+ pending ของฟองที่กำลังส่ง)
+//   รูปในฟองโหลดผ่านเส้นแอปที่ตรวจสิทธิ์ห้อง (secFileSource + useSecAuthHeaders — ไฟล์ส่วนตัว ไม่มี URL CDN) ◂
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { api, ApiError, BASE_URL } from "@/src/api/client";
@@ -41,6 +43,8 @@ const PATH = {
   // S2.15 ช่วยเหลือ H1/H2 (S1.14 · R-K12 · R-S1.14c) — เรื่องเป็นของกิจการ (ส่ง x-tenant-id)
   "secretary/support/cases": "/api/mobile/secretary/support/cases",
   "secretary/support/upload": "/api/mobile/secretary/support/upload",
+  // 14 พ.ย. ไฟล์แนบของคำสั่ง (ปุ่ม + · รูปภาพ/ถ่ายรูป/ไฟล์) — multipart `file` → {id,name,mimeType,size,kind}
+  "secretary/attachments": "/api/mobile/secretary/attachments",
   // S2.21/S2.22 กิจการ · เชิญพนักงาน · บัญชีของฉัน (ชื่อตาม S1.14 docs/api/SECRETARY-API.md)
   "secretary/tenants/create": "/api/mobile/secretary/tenants/create",
   "secretary/staff/invite": "/api/mobile/secretary/staff/invite",
@@ -174,7 +178,7 @@ type GetMap = {
 };
 type PostMap = {
   // S2.19 K3 "สั่ง Shark เรื่องลูกค้านี้": context = รหัสห้องแชทลูกค้า/ผู้ติดต่อ (ไม่ใส่ชื่อ/เบอร์ลูกค้า · เซิร์ฟเวอร์ resolve เอง)
-  "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string } }; res: { roomId: string; conversationId?: string; status?: string } };
+  "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string }; attachments?: AttachRef[] }; res: { roomId: string; conversationId?: string; status?: string } };
   "secretary/scheduled": { body: ScheduleBody; res: { id: string } };
   "secretary/support/cases": { body: HelpOpenBody; res: { id: string; caseNo: number } };
   "secretary/tenants/create": { body: { name: string; type: string; systems: string[] }; res: TenantCreateRes };
@@ -265,7 +269,7 @@ type GetIdMap = {
   "secretary/support/cases/[id]": { case?: unknown; messages?: unknown[] };
 };
 type PostIdMap = {
-  "secretary/rooms/[id]/send": { body: { text: string; clientMessageId: string }; res: { ok?: boolean; messageId?: string; jobId?: string; duplicate?: boolean } };
+  "secretary/rooms/[id]/send": { body: { text: string; clientMessageId: string; attachments?: AttachRef[] }; res: { ok?: boolean; messageId?: string; jobId?: string; duplicate?: boolean } };
   "secretary/rooms/[id]/close": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/proposals/[id]/approve": { body: { confirm2x?: boolean }; res: ApproveRes };
   "secretary/proposals/[id]/reject": { body: RejectBody; res: { ok: boolean; memoryId?: string } };
@@ -439,7 +443,23 @@ export function moduleOfKind(kind: string): string {
   return (kind.split(/[._]/)[0] ?? "").toLowerCase();
 }
 
-export type MsgRow = { id: string; role: "user" | "assistant" | "system"; content: string; authorId: string | null; at: string };
+/** ไฟล์แนบในฟอง — `url` = path ของเส้นแอป (โหลดด้วย Bearer · secFileSource) หรือ uri ในเครื่อง (`local` · ฟองที่ยังส่งไม่เสร็จ) */
+export type MsgAttachment = { id: string; name: string; mimeType: string; size: number; kind: AttachKind; url: string; local?: boolean };
+/** pending = ฟองของเราที่กำลังส่ง (ยังไม่มีในเซิร์ฟเวอร์ · 14 พ.ย. ส่งแล้วคุยต่อหน้าเดิม) */
+export type MsgRow = { id: string; role: "user" | "assistant" | "system"; content: string; authorId: string | null; at: string; attachments?: MsgAttachment[]; pending?: boolean };
+function attachmentsOfMsg(v: unknown): MsgAttachment[] {
+  return (Array.isArray(v) ? v : [])
+    .map((x) => rec(x))
+    .filter((a) => typeof a.id === "string" && typeof a.url === "string" && a.url)
+    .map((a) => ({
+      id: a.id as string,
+      name: str(a.name) || "file",
+      mimeType: str(a.mimeType),
+      size: Number(a.size) || 0,
+      kind: a.kind === "image" ? "image" : a.kind === "pdf" ? "pdf" : "sheet",
+      url: a.url as string,
+    }));
+}
 export function normalizeMessages(v: unknown): MsgRow[] {
   return listOf(v)
     .map((x) => {
@@ -452,9 +472,10 @@ export function normalizeMessages(v: unknown): MsgRow[] {
         content: typeof o.content === "string" ? o.content : "",
         authorId: typeof o.authorUserId === "string" && o.authorUserId !== "system" ? o.authorUserId : null,
         at: isoOf(o.createdAt),
+        ...(Array.isArray(o.attachments) && o.attachments.length ? { attachments: attachmentsOfMsg(o.attachments) } : {}),
       } as MsgRow;
     })
-    .filter((m) => m.id && m.content.trim());
+    .filter((m) => m.id && (m.content.trim() || (m.attachments?.length ?? 0) > 0));
 }
 
 /** สถานะขั้น (S1.14: PENDING|RUNNING|DONE|FAILED|SKIPPED) → done ✓ · run ● · wait ⏸ · fail ✕ · skip – */
@@ -1222,13 +1243,21 @@ export const HELP_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 export const HELP_UPLOAD_TYPES: readonly string[] = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif"];
 export type HelpUpload = { url: string; name: string; kind: "image"; mimeType: string; size: number };
 
-/** POST secretary/support/upload (multipart `file`) — api() ของ client.ts ส่ง JSON เท่านั้น จึงแยกตัวเรียก */
-export async function secUpload(path: "secretary/support/upload", form: FormData): Promise<HelpUpload> {
+/** หัว Bearer + x-tenant-id (อัปไฟล์ · โหลดไฟล์แนบส่วนตัวของห้อง) */
+export async function secAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
   const token = await getToken();
   if (token) headers.authorization = `Bearer ${token}`;
   const tid = await getTenantId();
   if (tid) headers["x-tenant-id"] = tid;
+  return headers;
+}
+
+/** POST secretary/support/upload · secretary/attachments (multipart `file`) — api() ของ client.ts ส่ง JSON เท่านั้น จึงแยกตัวเรียก */
+export async function secUpload(path: "secretary/support/upload", form: FormData): Promise<HelpUpload>;
+export async function secUpload(path: "secretary/attachments", form: FormData): Promise<SecAttachUpload>;
+export async function secUpload(path: "secretary/support/upload" | "secretary/attachments", form: FormData): Promise<HelpUpload | SecAttachUpload> {
+  const headers = await secAuthHeaders();
   const res = await fetch(`${BASE_URL}${PATH[path]}`, { method: "POST", headers, body: form });
   if (!res.ok) {
     let code = "error";
@@ -1242,7 +1271,37 @@ export async function secUpload(path: "secretary/support/upload", form: FormData
     }
     throw new ApiError(res.status, code, detail);
   }
-  return (await res.json()) as HelpUpload;
+  return (await res.json()) as HelpUpload | SecAttachUpload;
+}
+
+// ───────── ไฟล์แนบของคำสั่ง (14 พ.ย. · ปุ่ม + ของจอเริ่มงานใหม่/ห้องงาน) — เพดานเดียวกับเซิร์ฟเวอร์ (src/lib/ai/secretary/attachments-shared.ts) ─────────
+export const SEC_ATTACH_MAX_FILES = 5;
+export const SEC_ATTACH_MAX_BYTES = 4 * 1024 * 1024;
+export const SEC_ATTACH_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/** ชนิดที่รับ (รูปที่โมเดลอ่านได้ · PDF · xlsx · CSV) — .xls ไม่รับ */
+export const SEC_ATTACH_TYPES: readonly string[] = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf", SEC_ATTACH_XLSX, "text/csv"];
+export type AttachKind = "image" | "pdf" | "sheet";
+export type AttachRef = { id: string; name: string };
+export type SecAttachUpload = { id: string; name: string; mimeType: string; size: number; kind: AttachKind };
+
+/** แหล่งรูปของไฟล์แนบในฟอง — url ของเส้นแอป ⇒ BASE_URL + หัว Bearer · ในเครื่อง ⇒ uri ตรง */
+export function secFileSource(a: Pick<MsgAttachment, "url" | "local">, headers: Record<string, string> | null): { uri: string; headers?: Record<string, string> } {
+  if (a.local) return { uri: a.url };
+  return { uri: `${BASE_URL}${a.url}`, ...(headers ? { headers } : {}) };
+}
+
+/** หัว Bearer สำหรับ <Image> ของไฟล์แนบ (อ่านครั้งเดียวต่อจอ · null = ยังไม่พร้อม) */
+export function useSecAuthHeaders(): Record<string, string> | null {
+  const { activeTenantId } = useAuth();
+  const [h, setH] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+    let live = true;
+    void secAuthHeaders().then((x) => live && setH(x));
+    return () => {
+      live = false;
+    };
+  }, [activeTenantId]);
+  return h;
 }
 // ───────── S2.21 G1 สร้างกิจการ · G2 เชิญพนักงาน · S2.22 G3 สิทธิ์ต่อคน · G4 บัญชีของฉัน (สัญญา S1.14 docs/api/SECRETARY-API.md) ─────────
 /** ประเภทกิจการ (TENANT_TYPES ของ createTenantFromApp · ไม่รู้จัก = other) */

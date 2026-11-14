@@ -1,9 +1,10 @@
 // ห้องร่วม (ใบ S2.10 · แบบ D2 sec-d.jpg หน้า 2) — ฟองของคนอื่นในห้อง + ข้อความระบบ + อวตารตัวอักษร (ใช้ร่วมกับ D1/D3)
 //   คนอื่น = อวตารตัวอักษร + "ชื่อ · บทบาท" เล็ก + ฟองกระจกชิดซ้าย · ข้อความระบบ (🔔 เข้าห้อง/ถอน · authorUserId "system" · §J R-S1.6b) = ป้ายกลางสีจาง + เวลา
-//   สีอวตารมาจากสีระบบของธีม (วนตาม userId) — ไม่มีสีฝัง
+//   สีอวตารมาจากสีระบบของธีม (วนตาม userId) — ไม่มีสีฝัง · 14 พ.ย. ▸ ไฟล์แนบของคนอื่น (AttachList) เหนือข้อความในฟอง ◂
 import { StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import type { MsgRow } from "@/src/api/secretary";
+import { AttachList } from "@/src/components/secretary/SecAttach";
 import { F, glassStyle, useTheme, type SysKey } from "@/src/theme/index";
 import { type as T } from "@/src/theme/tokens";
 
@@ -42,6 +43,7 @@ export function MemberBubble({ msg, name, role, testID }: { msg: MsgRow; name: s
           {role ? `${name} · ${role}` : name}
         </Text>
         <View style={[glassStyle(c, 20), styles.bubble]}>
+          {msg.attachments?.length ? <AttachList items={msg.attachments} testID={`${testID}-attachments`} /> : null}
           <Text style={[styles.t, { color: c.bubbleOther.fg }]} selectable>
             {msg.content}
           </Text>

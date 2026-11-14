@@ -1,11 +1,14 @@
 // GET/POST /api/mobile/secretary/rooms — รายการห้องงาน (cursor คู่ `before=<iso>|<id>` · `pendingProposals` ต่อการ์ด) · เปิดห้องใหม่ (นับงาน 1 · R-K6)
 //   POST = (clientMessageId ⇒ claim กันซ้ำ R-S1.14a) → `startRoom` (ตัวนับงาน + job ใน tx เดียว · S3a.1-S1 R-Z3) → worker ของงานนี้ใน `after()`
 //   (R-K8 · R-Z5: `jobIds:[jobId]` + deadline 240 วิ จากต้นคำขอ · ที่ไม่ทัน = ตัวเก็บตกรายนาที)
+// 14 พ.ย. ▸ `attachments:[{id,name}]` (≤ 5 · รหัสจาก POST secretary/attachments) — ตรวจกับ FileAsset ของร้าน (`resolveAttachmentRefs`) ก่อน claim
+//   ไม่ผ่าน = 400 `attachment` · มีไฟล์แนบ ⇒ ไม่ใช้ R-Z32 (คำสั่งเดียวกันแต่ไฟล์ต่างกัน ≠ ซ้ำ — กันซ้ำด้วย clientMessageId อย่างเดียว) ◂
 import { z } from "zod";
 import { listRooms, recentDuplicateRoom, startRoom, type RoomStatus } from "@/lib/ai/secretary/rooms";
 import { tenantDb } from "@/lib/core/db";
 import { runRoomJobs } from "@/lib/ai/secretary/worker";
 import { roomCardsFor } from "@/lib/ai/secretary/views";
+import { resolveAttachmentRefs, SEC_ATTACH_MAX_FILES } from "@/lib/ai/secretary/attachments";
 import { claimFailed, claimNewRoom, rememberFailed, cursorOf, fail, gate, ID_MAX, ok, pairCursor, readBody, runAfter, takeOf, thrown, withRateLimit, withErrors } from "../_shared";
 
 /** SEC S3a.1-S1 R-Z5: route นี้รัน worker (โมเดล) ใน `after()` — เพดานของแพลตฟอร์ม · worker หยุดหยิบงานที่ 240 วิ */
@@ -21,6 +24,7 @@ const PostBody = z
     systems: z.array(z.string().max(40)).max(20).optional(),
     context: z.object({ chatConversationId: Id.optional(), contactId: Id.optional() }).strict().optional(),
     clientMessageId: Id.refine((v) => !v.includes(":"), "clientMessageId ห้ามมี :").optional(),
+    attachments: z.array(z.object({ id: Id, name: z.string().max(200).optional() }).strict()).max(SEC_ATTACH_MAX_FILES).optional(),
   })
   .strict();
 
@@ -52,7 +56,9 @@ async function POST_(req: Request) {
   if (rl) return rl;
   const b = await readBody(req, PostBody);
   if (!b.ok) return b.res;
-  const { clientMessageId, ...input } = b.v;
+  const { clientMessageId, attachments: refs, ...input } = b.v;
+  const atts = await resolveAttachmentRefs(a.c.tenantId, refs);
+  if (!atts.ok) return fail(400, "attachment", atts.message);
   let claim: Awaited<ReturnType<typeof claimNewRoom>> | null;
   try {
     claim = clientMessageId ? await claimNewRoom(a.c.tenantId, a.c.userId, clientMessageId) : null;
@@ -67,7 +73,7 @@ async function POST_(req: Request) {
     return ok({ duplicate: true, roomId: room.id, conversationId: room.conversationId });
   }
   // SEC S3a.1-S2 ▸ R-Z32: กุญแจถูกคืนหลังห้องเกิด (rememberFailed) ⇒ ครั้งถัดไปได้ first:true — ห้องเดิมที่คำสั่งแรกเท่ากันภายใน 10 นาที = duplicate ◂
-  if (claim?.first) {
+  if (claim?.first && atts.items.length === 0) {
     try {
       const dup = await recentDuplicateRoom(a.c.tenantId, a.c.userId, input.instruction);
       if (dup) {
@@ -81,7 +87,7 @@ async function POST_(req: Request) {
   }
   let created = false; // N1: ห้องเกิดแล้ว ⇒ ห้ามคืน claim (retry ต้องได้ห้องเดิม ไม่ใช่ห้องที่สอง)
   try {
-    const r = await startRoom(a.c.conv, input);
+    const r = await startRoom(a.c.conv, { ...input, ...(atts.items.length ? { attachments: atts.items } : {}) });
     if (!r.ok) {
       try {
         await claim?.release();

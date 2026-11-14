@@ -9,6 +9,8 @@
 // 🔴 ห้าม import `../service` (วงกลม: service → conversations → …) · ข้อความถึงผู้ใช้เป็นไทย · จาก credit.ts ใช้แค่ `balancePeek` (S1.13 · อ่านอย่างเดียว)
 // 🔴 `AiRoom.startedById` = `conversationCreatorOf(conversationId).id` เสมอ (denormalize — ข้อสอบ S1.4 ตรวจ)
 
+// 14 พ.ย. ▸ `startRoom` รับ `attachments` (ตรวจแล้วที่ route) เขียนลงข้อความสั่งงานแรกใน tx เดียวกัน ◂
+import type { SecAttachment } from "./attachments";
 import type { AiRoom, Prisma } from "@prisma/client";
 import { publicNameOf } from "@/lib/core/phone-auth";
 import { prisma, tenantDb } from "@/lib/core/db";
@@ -41,6 +43,8 @@ export type StartRoomInput = {
   title?: string;
   systems?: string[];
   context?: { chatConversationId?: string; contactId?: string };
+  /** 14 พ.ย. ▸ ไฟล์แนบของคำสั่งแรก (ตรวจแล้วด้วย `resolveAttachmentRefs`) — เขียนลง `AiMessage.attachments` ใน tx เดียวกัน ◂ */
+  attachments?: SecAttachment[];
 };
 
 export type StartRoomResult =
@@ -185,7 +189,7 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
       });
       // S1.9 ▸ คืนรหัสข้อความสั่งงานแรก — งานประจำต่อคิว (`enqueueRoomJob`) ด้วยรหัสนี้ ◂
       const msg = await tx.aiMessage.create({
-        data: { tenantId, conversationId, role: "USER", content: instruction, authorUserId: actor.userId },
+        data: { tenantId, conversationId, role: "USER", content: instruction, authorUserId: actor.userId, ...(input.attachments?.length ? { attachments: input.attachments } : {}) },
         select: { id: true },
       });
       // SEC S3a.1-S1 ▸ R-Z3: job ของข้อความสั่งงานแรกใน tx เดียวกัน (เหมือน sendRoomMessage) — ไม่มีห้องที่ไม่มีงาน · ผู้เรียกไม่ต้อง enqueue แยก ◂

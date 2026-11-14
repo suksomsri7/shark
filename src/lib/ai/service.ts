@@ -1,5 +1,6 @@
 // service ผู้ช่วย AI (Phase 1) — guard → provider → persist (docs/AI_LAYER.md)
 // scope: AiConversation/AiMessage/AiUsage เป็น tenant-scoped → tenantDb({ tenantId })
+// 14 พ.ย. 2026 ▸ sendMessage รับ `documents` (PDF แนบของห้องเลขา) คู่กับ `imageUrls` · ประวัติที่มีไฟล์แนบ = ป้าย "[แนบ: …]" (ไม่ส่งไบต์ซ้ำ) ◂
 
 import { prisma, tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
@@ -7,7 +8,8 @@ import { approvedPromptTweaksText } from "@/lib/platform/ai-tuning";
 import { recordSample } from "./dataset";
 import { memoryBlock } from "./memory";
 import { buildSystemPrompt } from "./persona";
-import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
+import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiDocument, type AiProvider } from "./provider";
+import { attachmentMarker, attachmentsOf } from "./secretary/attachments-shared";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
 import { runTool, toolRegistry } from "./tools";
 import type { AiActor } from "./actor";
@@ -148,7 +150,7 @@ export function aiEnabled(): boolean {
  */
 export async function sendMessage(
   ctx: SendCtx,
-  input: { conversationId?: string; text: string; imageUrls?: string[] },
+  input: { conversationId?: string; text: string; imageUrls?: string[]; documents?: AiDocument[] },
   deps?: {
     provider?: AiProvider;
     source?: AiCreditSource;
@@ -182,7 +184,8 @@ export async function sendMessage(
 
   // routing ชั้น 1: เลือกโมเดลตามเนื้อความ (env SHARK_AI_MODEL ตั้งไว้ = คืนตัวนั้นเสมอ)
   // → ชั้น 2: resolveProvider ตาม tier · provider ฉีดได้ (ข้อสอบ) ไม่งั้นเลือกจาก env
-  const hasImages = (input.imageUrls?.length ?? 0) > 0;
+  // 14 พ.ย. ▸ PDF แนบ (ห้องเลขา) นับเป็นงานที่ต้องอ่านไฟล์ ⇒ ใช้เส้นเดียวกับรูป (SMART · ไม่ลดชั้น) — ไม่แตะรหัสโมเดล/ราคา ◂
+  const hasImages = (input.imageUrls?.length ?? 0) > 0 || (input.documents?.length ?? 0) > 0;
   let routedModel = pickModel(text, hasImages);
   let provider = deps?.provider ?? resolveProvider(routedModel === FAST_MODEL ? "fast" : "smart");
   if (!provider) return { ok: false, error: "ai_disabled" };
@@ -323,7 +326,11 @@ export async function sendMessage(
     ...trimHistory(
       history
         .reverse()
-        .map((m) => ({ role: m.role === "USER" ? ("user" as const) : ("assistant" as const), content: m.content })),
+        // 14 พ.ย. ▸ ข้อความเก่าที่มีไฟล์แนบ = ป้าย "[แนบ: …]" ต่อท้าย (ไบต์ส่งเฉพาะเทิร์นปัจจุบัน) ◂
+        .map((m) => {
+          const marker = m.attachments ? attachmentMarker(attachmentsOf(m.attachments)) : "";
+          return { role: m.role === "USER" ? ("user" as const) : ("assistant" as const), content: marker ? `${m.content}\n${marker}` : m.content };
+        }),
       HISTORY_MAX_CHARS,
     ),
     // แนบรูปเข้ากับข้อความ user (ส่งเข้าโมเดล vision inline) — ไม่ persist รูปใน DB
@@ -331,6 +338,7 @@ export async function sendMessage(
       role: "user",
       content: text,
       ...(input.imageUrls && input.imageUrls.length > 0 ? { imageUrls: input.imageUrls } : {}),
+      ...(input.documents && input.documents.length > 0 ? { documents: input.documents } : {}),
     },
   ];
 
