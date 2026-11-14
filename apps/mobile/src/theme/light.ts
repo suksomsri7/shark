@@ -49,6 +49,7 @@ export const light = {
   iconDim: "#8e8e93", // .lt svg (ลูกศรลง)
   accent: "#16161c",
   onAccent: "#ffffff",
+  danger: { bg: "#e5484d", fg: "#ffffff" }, // ปุ่มลบแดง (ปัดซ้าย "ลบแชท" K1 + ปุ่มยืนยันลบ · mock secretary-1114 จอ ③ · 14 พ.ย.)
   accentShadow: "0px 14px 30px rgba(20,20,40,0.22)", // .btn1
   tabShadow: "0px 6px 14px rgba(20,20,40,0.18)", // .tabs .a
   status: {

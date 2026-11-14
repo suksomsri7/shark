@@ -6,18 +6,23 @@
 //   แถว: อวตารตัวอักษร · ป้ายช่องทาง · ชื่อ · แท็ก ("รอคน" เมื่อเซิร์ฟเวอร์ส่ง tags) · ตัวอย่างข้อความ · เวลา · ยังไม่อ่าน · ผู้ดูแล ·
 //     "Shark ร่างคำตอบไว้แล้ว" (aiDraft) · ไม่มีคนรับ = "ยังไม่มีคนรับ · รอ N นาที" (waitingMin) + กฎที่จะใช้
 //   14 พ.ย. (เจ้าของสั่ง): ไม่มีหัวข้อ "ลูกค้า" + บรรทัดนับ (ตัวเลขอยู่บนแท็บแล้ว) · ปัดแถวไปซ้าย = ปุ่มลบแชท (SwipeRow)
+//   ลบแชท (14 พ.ย.): ปัดซ้าย → ปุ่มแดง "ลบแชท" (หรือปัดยาวจนสุด) → ชีตยืนยัน → DELETE inbox/conversations/[id] (ซ่อนระดับร้าน · ข้อมูลไม่หาย · ลูกค้าทักใหม่ = กลับมา)
+//     เฉพาะ canHide ของ inbox/systems (ตอบลูกค้า ∧ ปิดห้องได้ · ไม่ส่ง = ใช้ canReply) · เอาแถวออกทันที + refreshZoneBadges · ล้ม = คืนแถว + note แดง · เปิดได้ทีละแถว · แตะแถวที่เปิดอยู่ = ปิด
 //   ดึงลง + poll 15 วิ (จออยู่ + แอปอยู่หน้า) · หน้าต่อไปด้วย nextBefore · โหลดมากกว่า 1 หน้าแล้ว poll รวมด้วย id (ไม่ทิ้งหน้าที่เลื่อนมา · R-S2.17b) · 403 ⇒ จอ "ไม่มีสิทธิ์" + ซ่อนไอคอนโซนลูกค้า (setCustomersAccess)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, Icon, Loading, Note, Tabs, type TabItem } from "@/src/components/airy";
+import { AiryScreen, Chip, Glass, Icon, Loading, Note, Sheet, Tabs, type TabItem } from "@/src/components/airy";
 import { SecTopBar } from "@/src/components/secretary/SecTopBar";
 import { Avatar, ChannelBadge, firstName, useChannelLabel, useListTime } from "@/src/components/customers/parts";
-import { setCustomersAccess } from "@/src/api/secretary";
+import { SwipeRow } from "@/src/components/customers/SwipeRow";
+import { refreshZoneBadges, setCustomersAccess } from "@/src/api/secretary";
 import {
   WAITING_HUMAN_TAG,
   getCurrentSystem,
+  inboxDeleteId,
   inboxGet,
   isUnanswered,
   setCurrentSystem,
@@ -30,9 +35,11 @@ import {
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { radii, spacing, type as T } from "@/src/theme/tokens";
+import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 const POLL_MS = 15_000;
+/** note หลังลบแชท (สำเร็จ/ล้ม) แสดงค้างไว้เท่านี้ */
+const DEL_NOTE_MS = 3_500;
 type TabKey = "all" | "unanswered" | "mine" | "closed";
 const TABS: { key: TabKey; label: I18nKey; testID: string }[] = [
   { key: "all", label: "cust.tab.all", testID: "cust-tab-all" },
@@ -61,6 +68,7 @@ export default function CustomersScreen() {
   const [systems, setSystems] = useState<InboxSystem[]>([]);
   const [systemId, setSystemId] = useState<string | null>(getCurrentSystem());
   const [canReply, setCanReply] = useState(true);
+  const [canHide, setCanHide] = useState(false);
   const [denied, setDenied] = useState(false);
   const [tab, setTab] = useState<TabKey>("all");
   const [channel, setChannel] = useState<string | null>(null);
@@ -81,6 +89,11 @@ export default function CustomersScreen() {
   /** จำนวนหน้าที่โหลดของตัวกรองปัจจุบัน + คีย์ตัวกรอง (เปลี่ยนตัวกรอง = เริ่มหน้าแรกใหม่) */
   const pages = useRef(1);
   const filterKey = useRef("");
+  /** ลบแชท: แถวที่ถามยืนยันอยู่ · แถวที่ปัดเปิดค้าง (ทีละแถว) · id ที่เพิ่งลบ (poll ระหว่างรอผลไม่เอากลับมา) · note สั้นหลังลบ */
+  const [deleting, setDeleting] = useState<ConvItem | null>(null);
+  const [delNote, setDelNote] = useState<{ ok: boolean } | null>(null);
+  const openRow = useRef<{ id: string; m: SwipeableMethods } | null>(null);
+  const removed = useRef(new Set<string>());
 
   // ค้นหา: รอพิมพ์เสร็จ 400 ms
   useEffect(() => {
@@ -112,6 +125,7 @@ export default function CustomersScreen() {
       const list = sys.items ?? [];
       setSystems(list);
       setCanReply(sys.canReply !== false);
+      setCanHide(sys.canHide ?? sys.canReply !== false);
       setInboxCanReply(sys.canReply !== false);
       setDenied(false);
       setCustomersAccess(true);
@@ -128,7 +142,7 @@ export default function CustomersScreen() {
         inboxGet("inbox/routing", { systemId: sid }).catch(() => null),
       ]);
       if (my !== seq.current) return;
-      const rows = page.items ?? [];
+      const rows = (page.items ?? []).filter((x) => !removed.current.has(x.id));
       const key = JSON.stringify([sid, tab, channel, q]);
       if (key === filterKey.current && pages.current > 1) {
         // poll ขณะเลื่อนดูหลายหน้า: หน้าแรกสด + แถวที่โหลดไว้ (รวมด้วย id) · nextBefore ของหน้าท้ายเดิมคงไว้
@@ -197,7 +211,7 @@ export default function CustomersScreen() {
       if (my !== seq.current) return;
       setItems((cur) => {
         const seen = new Set(cur.map((x) => x.id));
-        return [...cur, ...(page.items ?? []).filter((x) => !seen.has(x.id))];
+        return [...cur, ...(page.items ?? []).filter((x) => !seen.has(x.id) && !removed.current.has(x.id))];
       });
       setNext(page.nextBefore ?? null);
       pages.current += 1;
@@ -228,6 +242,49 @@ export default function CustomersScreen() {
     count: x.key === "unanswered" && counts ? counts.unanswered : x.key === "mine" && counts ? counts.mine : undefined,
     tone: "wait",
   }));
+  // หลังลบแชท: note สั้นแล้วหายเอง
+  useEffect(() => {
+    if (!delNote) return;
+    const h = setTimeout(() => setDelNote(null), DEL_NOTE_MS);
+    return () => clearTimeout(h);
+  }, [delNote]);
+
+  const closeOpenRow = () => {
+    openRow.current?.m.close();
+    openRow.current = null;
+  };
+  /** ยืนยันลบ: เอาแถวออกทันที → DELETE → badge ใหม่ · ล้ม = คืนแถวตำแหน่งเดิม + note แดง */
+  const confirmDelete = async () => {
+    const x = deleting;
+    setDeleting(null);
+    if (!x) return;
+    openRow.current = null;
+    const at = items.findIndex((r) => r.id === x.id);
+    removed.current.add(x.id);
+    setItems((cur) => cur.filter((r) => r.id !== x.id));
+    try {
+      await inboxDeleteId("inbox/conversations/[id]", x.id, { systemId: systemId ?? undefined });
+      setDelNote({ ok: true });
+      void refreshZoneBadges();
+      // โหลดรอบใหม่ (หลังเซิร์ฟเวอร์ซ่อนแล้ว) แทนรอบเก่าที่อาจค้างอยู่ — แล้วค่อยปล่อย id (ลูกค้าทักใหม่ = แถวกลับมาได้)
+      await loadRef.current();
+      removed.current.delete(x.id);
+    } catch {
+      removed.current.delete(x.id);
+      setItems((cur) => {
+        if (cur.some((r) => r.id === x.id)) return cur;
+        const back = [...cur];
+        back.splice(at < 0 ? 0 : Math.min(at, back.length), 0, x);
+        return back;
+      });
+      setDelNote({ ok: false });
+    }
+  };
+  const cancelDelete = () => {
+    setDeleting(null);
+    closeOpenRow();
+  };
+
   const open = (x: ConvItem) => router.push(`/customers/${encodeURIComponent(x.id)}${systemId ? `?s=${encodeURIComponent(systemId)}` : ""}`);
 
   if (denied) {
@@ -288,6 +345,11 @@ export default function CustomersScreen() {
         </ScrollView>
 
         {offline ? <Note warn testID="cust-offline">{t("cust.offline")}</Note> : null}
+        {delNote ? (
+          <Note warn={!delNote.ok} testID={delNote.ok ? "cust-del-done" : "cust-del-err"}>
+            {delNote.ok ? t("cust.del.done") : t("cust.del.err")}
+          </Note>
+        ) : null}
         {/* S2.14: ก่อนผลแรก = Loading · ล้มก่อนได้รายการ = แค่ note ออฟไลน์ (ไม่บอก "ยังไม่มีแชท") */}
         {loading && !offline ? <Loading testID="cust-loading" /> : null}
         {!loading && !(offline && items.length === 0) && shown.length === 0 ? (
@@ -304,59 +366,82 @@ export default function CustomersScreen() {
           const otherTags = tags.filter((g) => g !== WAITING_HUMAN_TAG);
           const rule = unassigned ? ruleFor(x.channel) : null;
           return (
-            <Pressable
-              testID={unassigned ? "cust-row-unassigned" : "cust-row"}
+            <SwipeRow
               key={x.id}
-              onPress={() => open(x)}
-              accessibilityRole="button"
-              accessibilityLabel={name}
-              style={[glassStyle(c, radii.card), styles.row]}
+              testID="cust-row-swipe"
+              enabled={canHide}
+              label={t("cust.del.btn")}
+              onDelete={() => setDeleting(x)}
+              onOpen={(m) => {
+                if (openRow.current && openRow.current.id !== x.id) openRow.current.m.close();
+                openRow.current = { id: x.id, m };
+              }}
+              onClose={() => {
+                if (openRow.current?.id === x.id) openRow.current = null;
+              }}
             >
-              <Avatar name={name} seed={x.contact.id} size={38} />
-              <View style={styles.rowBody}>
-                <View style={styles.nameRow}>
-                  <ChannelBadge channel={x.channel} />
-                  <Text style={[styles.name, { color: c.text }]} numberOfLines={1}>
-                    {name}
-                  </Text>
-                  {otherTags.length ? (
-                    <Text style={[styles.tagT, { color: c.textMuted }]} numberOfLines={1}>
-                      {otherTags.join(" · ")}
+              <Pressable
+                testID={unassigned ? "cust-row-unassigned" : "cust-row"}
+                onPress={() => {
+                  // แตะแถวที่ปัดเปิดค้าง = ปิดก่อน (ไม่เข้าห้อง) · แถวอื่น = ปิดแถวที่เปิดค้าง แล้วเข้าห้องตามปกติ
+                  if (openRow.current?.id === x.id) return closeOpenRow();
+                  closeOpenRow();
+                  open(x);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={name}
+                accessibilityActions={canHide ? [{ name: "delete", label: t("cust.del.btn") }] : undefined}
+                onAccessibilityAction={(e) => {
+                  if (e.nativeEvent.actionName === "delete") setDeleting(x);
+                }}
+                style={[glassStyle(c, radii.card), styles.row]}
+              >
+                <Avatar name={name} seed={x.contact.id} size={38} />
+                <View style={styles.rowBody}>
+                  <View style={styles.nameRow}>
+                    <ChannelBadge channel={x.channel} />
+                    <Text style={[styles.name, { color: c.text }]} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    {otherTags.length ? (
+                      <Text style={[styles.tagT, { color: c.textMuted }]} numberOfLines={1}>
+                        {otherTags.join(" · ")}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {waitingHuman ? (
+                    <View testID="cust-row-waiting" style={[styles.waitTag, { backgroundColor: c.warn.bg }]}>
+                      <Text style={[styles.waitTagT, { color: c.warn.fg }]}>{t("cust.tag.waitingHuman")}</Text>
+                    </View>
+                  ) : null}
+                  {x.lastMessagePreview ? (
+                    <Text style={[styles.preview, { color: c.textDim }]} numberOfLines={1}>
+                      {x.lastMessagePreview}
+                    </Text>
+                  ) : null}
+                  {x.aiDraft ? <Text style={[styles.ai, { color: c.cust.ai }]}>✨ {t("cust.row.aiDraft")}</Text> : null}
+                  {unassigned ? (
+                    <Text style={[styles.wait, { color: c.warn.fg }]}>
+                      {x.waitingMin != null ? t("cust.row.unassignedWait", { n: x.waitingMin }) : t("cust.row.unassigned")}
+                    </Text>
+                  ) : null}
+                  {rule ? (
+                    <Text style={[styles.rule, { color: c.cust.ai }]} numberOfLines={1}>
+                      · {t("cust.row.rule", { rule })}
                     </Text>
                   ) : null}
                 </View>
-                {waitingHuman ? (
-                  <View testID="cust-row-waiting" style={[styles.waitTag, { backgroundColor: c.warn.bg }]}>
-                    <Text style={[styles.waitTagT, { color: c.warn.fg }]}>{t("cust.tag.waitingHuman")}</Text>
-                  </View>
-                ) : null}
-                {x.lastMessagePreview ? (
-                  <Text style={[styles.preview, { color: c.textDim }]} numberOfLines={1}>
-                    {x.lastMessagePreview}
-                  </Text>
-                ) : null}
-                {x.aiDraft ? <Text style={[styles.ai, { color: c.cust.ai }]}>✨ {t("cust.row.aiDraft")}</Text> : null}
-                {unassigned ? (
-                  <Text style={[styles.wait, { color: c.warn.fg }]}>
-                    {x.waitingMin != null ? t("cust.row.unassignedWait", { n: x.waitingMin }) : t("cust.row.unassigned")}
-                  </Text>
-                ) : null}
-                {rule ? (
-                  <Text style={[styles.rule, { color: c.cust.ai }]} numberOfLines={1}>
-                    · {t("cust.row.rule", { rule })}
-                  </Text>
-                ) : null}
-              </View>
-              <View style={styles.right}>
-                <Text style={[styles.time, { color: c.textMuted }]}>{listTime(x.lastMessageAt, nowMs)}</Text>
-                {x.staffUnreadCount > 0 ? (
-                  <View style={[styles.unread, { backgroundColor: c.status.wait }]}>
-                    <Text style={[styles.unreadT, { color: c.zone.onZone }]}>{x.staffUnreadCount > 99 ? "99+" : x.staffUnreadCount}</Text>
-                  </View>
-                ) : null}
-                {x.assigneeUserId ? <Avatar name={x.assigneeName} seed={x.assigneeUserId} size={28} /> : null}
-              </View>
-            </Pressable>
+                <View style={styles.right}>
+                  <Text style={[styles.time, { color: c.textMuted }]}>{listTime(x.lastMessageAt, nowMs)}</Text>
+                  {x.staffUnreadCount > 0 ? (
+                    <View style={[styles.unread, { backgroundColor: c.status.wait }]}>
+                      <Text style={[styles.unreadT, { color: c.zone.onZone }]}>{x.staffUnreadCount > 99 ? "99+" : x.staffUnreadCount}</Text>
+                    </View>
+                  ) : null}
+                  {x.assigneeUserId ? <Avatar name={x.assigneeName} seed={x.assigneeUserId} size={28} /> : null}
+                </View>
+              </Pressable>
+            </SwipeRow>
           );
         })}
 
@@ -366,6 +451,19 @@ export default function CustomersScreen() {
           </Pressable>
         ) : null}
       </ScrollView>
+
+      <Sheet visible={!!deleting} onClose={cancelDelete} testID="cust-del-sheet" top={480}>
+        <Text style={[styles.sh, { color: c.text }]}>{t("cust.del.title")}</Text>
+        <Text style={[styles.sb, { color: c.textMuted }]}>{t("cust.del.body", { name: deleting?.contact.displayName ?? t("cust.noName") })}</Text>
+        <View style={styles.acts}>
+          <Pressable testID="cust-del-sheet-no" accessibilityRole="button" onPress={cancelDelete} style={[glassStyle(c, size.iconBtn / 2), styles.btn]}>
+            <Text style={[styles.btnT, { color: c.text }]}>{t("cust.cancel")}</Text>
+          </Pressable>
+          <Pressable testID="cust-del-sheet-ok" accessibilityRole="button" onPress={() => void confirmDelete()} style={[styles.btn, styles.main, { backgroundColor: c.danger.bg }]}>
+            <Text style={[styles.btnT, { color: c.danger.fg }]}>{t("cust.del.ok")}</Text>
+          </Pressable>
+        </View>
+      </Sheet>
     </AiryScreen>
   );
 }
@@ -381,7 +479,8 @@ const styles = StyleSheet.create({
   tabs: { marginTop: 14 },
   chips: { gap: 8, paddingVertical: 8 },
   empty: { fontSize: T.sub, textAlign: "center", marginTop: 40 },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 14, marginTop: 10 },
+  // ระยะห่างระหว่างแถว (marginTop 10) อยู่ที่ SwipeRow
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 14 },
   rowBody: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   name: { fontSize: T.body - 0.5, fontWeight: "700", flexShrink: 1 },
@@ -401,4 +500,10 @@ const styles = StyleSheet.create({
   denied: { marginTop: F.v(40), alignItems: "center", gap: 8 },
   deniedT: { fontSize: T.h, fontWeight: "700", textAlign: "center" },
   deniedB: { fontSize: T.sub, lineHeight: 21, textAlign: "center" },
+  sh: { fontSize: T.h + 1, fontWeight: "700", lineHeight: 26 },
+  sb: { fontSize: T.sub, lineHeight: 21, marginTop: 6 },
+  acts: { flexDirection: "row", gap: 10, marginTop: spacing.lg },
+  btn: { flex: 1, height: size.iconBtn, borderRadius: size.iconBtn / 2, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
+  main: { flex: 1.6 },
+  btnT: { fontSize: T.sub + 1, fontWeight: "600" },
 });

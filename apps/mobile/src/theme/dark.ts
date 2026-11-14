@@ -47,6 +47,7 @@ export const dark: Palette = {
   iconDim: "#8e8e93",
   accent: "#f2f2f7",
   onAccent: "#16161c",
+  danger: { bg: "#e5484d", fg: "#ffffff" }, // ปุ่มลบแดง (ปัดซ้าย "ลบแชท" K1 · ตัวอักษรขาวทั้งสองโหมด)
   accentShadow: "0px 8px 22px rgba(0,0,0,0.35)",
   tabShadow: "0px 8px 22px rgba(0,0,0,0.35)",
   status: {

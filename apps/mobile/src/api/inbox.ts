@@ -138,7 +138,8 @@ export type TranslateRes = { ok: true; text: string; cached?: boolean; lang?: st
 export type TaskFromChatRes = { cardId: string; cardNo: number | null; cardHref: string; created: boolean };
 
 type GetMap = {
-  "inbox/systems": { items?: InboxSystem[]; canReply?: boolean };
+  /** canHide = ลบแชท (ปัดซ้าย) ได้ = ตอบลูกค้า ∧ ปิดห้อง (14 พ.ย. 2026 · ไม่ส่ง = ถือตาม canReply) */
+  "inbox/systems": { items?: InboxSystem[]; canReply?: boolean; canHide?: boolean };
   "inbox/conversations": { items?: ConvItem[]; nextBefore?: string | null };
   "inbox/quick-replies": { items?: QuickReply[] };
   "inbox/staff": { items?: StaffPick[] };
@@ -174,6 +175,11 @@ type PostIdMap = {
   "inbox/conversations/[id]/task": { body: { systemId?: string; title: string; description?: string; dueAt?: string }; res: TaskFromChatRes };
   "inbox/quick-replies/[id]/apply": { body: { systemId?: string; conversationId: string }; res: { body: string } };
   "inbox/conversations/[id]/translate-draft": { body: { systemId?: string; body: string; targetLang?: string }; res: TranslateRes };
+};
+
+/** DELETE ที่มี [id] — ลบแชทออกจากรายการ (ซ่อนระดับร้าน · ข้อมูลไม่หาย · ลูกค้าทักใหม่ = กลับมา · 14 พ.ย. 2026) */
+type DeleteIdMap = {
+  "inbox/conversations/[id]": { query: { systemId?: string }; res: { ok: boolean } };
 };
 
 type Query = Record<string, string | number | undefined | null>;
@@ -236,6 +242,10 @@ export function inboxGetId<P extends keyof GetIdMap>(path: P, id: string, q?: Qu
 }
 export function inboxPostId<P extends keyof PostIdMap>(path: P, id: string, body: PostIdMap[P]["body"]): Promise<PostIdMap[P]["res"]> {
   return call<PostIdMap[P]["res"]>(idPath(path, id), "POST", body);
+}
+
+export function inboxDeleteId<P extends keyof DeleteIdMap>(path: P, id: string, q?: DeleteIdMap[P]["query"]): Promise<DeleteIdMap[P]["res"]> {
+  return call<DeleteIdMap[P]["res"]>(withQ(idPath(path, id), q), "DELETE");
 }
 
 /** S3a.6 แปลข้อความลูกค้า: POST inbox/conversations/[id]/messages/[mid]/translate {targetLang?} (2 พารามิเตอร์ จึงแยกจาก PATH_ID) */
