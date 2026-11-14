@@ -93,6 +93,8 @@ export const HR_TABLES = {
   hrTaxCertificate: { model: "HrTaxCertificate", file: "payroll.prisma", tenantId: true, role: "หนังสือรับรอง 50 ทวิ ที่ออกแล้ว (เนื้อหาแช่แข็ง + sha) (HR H3.6)" },
   hrSalaryCertificate: { model: "HrSalaryCertificate", file: "payroll.prisma", tenantId: true, role: "คำขอ/หนังสือรับรองเงินเดือนที่ออก (เนื้อหาแช่แข็ง + sha) — seed ไม่เขียน (HR H3.8)" }, // HR H3.8 ◂
   hrEmployeeRegister: { model: "HrEmployeeRegister", file: "hr.prisma", tenantId: true, role: "ทะเบียนลูกจ้าง: สัญชาติ + ประโยชน์ตอบแทนอย่างอื่น 1 แถว/พนักงาน (HR H3.9 · seed ไม่เขียน)" }, // HR H3.9 ◂
+  hrLineLink: { model: "HrLineLink", file: "hr.prisma", tenantId: true, role: "การผูก LINE ของพนักงาน (id/สถานะ · seed ไม่เขียน) (HR H4.5)" }, // HR H4.5 ◂
+  hrNotice: { model: "HrNotice", file: "hr.prisma", tenantId: true, role: "แจ้งเตือนพนักงาน ในแอป + สถานะส่ง LINE (seed ไม่เขียน) (HR H4.5)" }, // HR H4.5 ◂
   hrReviewNote: { model: "HrReviewNote", file: "hr.prisma", tenantId: true, role: "บันทึก/ตักเตือน/ประเมิน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
   hrOnboardingTask: { model: "HrOnboardingTask", file: "hr.prisma", tenantId: true, role: "งานรับเข้า/ออกจากงาน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
   hrLawTable: { model: "HrLawTable", file: "payroll.prisma", tenantId: false, role: "ตารางกฎหมายกลางของทั้ง SHARK — ไม่ลบตามร้าน · แถว v1:* จาก hr-seed-law-draft (HR H1.3)" },
@@ -135,6 +137,7 @@ export const HR_DELETE_ORDER = [
   "hrTaxCertificate", "hrFilingFile", "hrFilingPerson", "hrFilingProfile", // HR H3.6 ▸ แบบยื่น (FK RESTRICT ไป hrEmployee ⇒ ก่อนพนักงาน) ◂
   "hrSalaryCertificate", // HR H3.8 ▸ หนังสือรับรองเงินเดือน (FK RESTRICT ไป hrEmployee ⇒ ก่อนพนักงาน) ◂
   "hrEmployeeRegister", // HR H3.9 ▸ ทะเบียนลูกจ้าง (ไม่มี FK) ◂
+  "hrNotice", "hrLineLink", // HR H4.5 ▸ แจ้งเตือน (ไม่มี FK) · การผูก LINE (FK RESTRICT ไป hrEmployee ⇒ ก่อนพนักงาน) ◂
   // สายอนุมัติ / ประวัติ / คิว / แจ้งเตือน
   "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
   "auditLog", "outboxEvent", "appNotification", "automationRun", "automationRule",

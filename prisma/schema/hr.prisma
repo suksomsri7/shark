@@ -799,3 +799,52 @@ model HrEmployeeRegister {
   @@index([systemId])
   @@index([tenantId])
 }
+
+// HR H4.5 ▸ แจ้งเตือนพนักงานผ่าน LINE (migration 20270111000000_hr_line_link) — id/สถานะเท่านั้น (ไม่มีชื่อ · LINE id · ข้อความ · เงิน)
+//   HrLineLink: รหัสผูกครั้งเดียว (PENDING) → ACTIVE · CHECK สถานะ/เหตุผล/ความครบของ ACTIVE + partial unique 3 ตัวอยู่ใน migration.sql เท่านั้น ·
+//   FK employeeId → HrEmployee ON DELETE RESTRICT อยู่ใน migration.sql (ไม่มี relation ฝั่ง Prisma — บล็อก HrEmployee คงเดิม) ·
+//   HrNotice: 1 แถวต่อ (ร้าน, dedupeKey = hr:<kind>:<refId>:<employeeId>[:<outcome>]) · line = สถานะส่ง LINE · เขียนที่ hr/line-link.ts · hr/line-notify.ts เท่านั้น
+model HrLineLink {
+  id              String    @id @default(cuid())
+  tenantId        String
+  systemId        String
+  employeeId      String
+  issuedForUserId String
+  status          String
+  connectionId    String?
+  chatContactId   String?
+  expiresAt       DateTime
+  linkedAt        DateTime?
+  endedAt         DateTime?
+  endReason       String?
+  createdAt       DateTime  @default(now())
+
+  @@index([systemId, employeeId])
+  @@index([tenantId])
+  @@index([status, expiresAt])
+}
+
+model HrNotice {
+  id            String    @id @default(cuid())
+  tenantId      String
+  systemId      String
+  employeeId    String
+  kind          String
+  refId         String
+  outcome       String?
+  dedupeKey     String
+  appNotified   Boolean   @default(false)
+  line          String    @default("NONE")
+  lineAttempts  Int       @default(0)
+  nextAttemptAt DateTime?
+  sentAt        DateTime?
+  skipCode      String?
+  digestOf      String?
+  createdAt     DateTime  @default(now())
+
+  @@unique([tenantId, dedupeKey])
+  @@index([line, nextAttemptAt])
+  @@index([systemId, employeeId])
+  @@index([tenantId])
+}
+// ◂ HR H4.5
