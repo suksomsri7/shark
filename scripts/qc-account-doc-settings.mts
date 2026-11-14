@@ -58,7 +58,8 @@ try {
   const printPages: [string, string][] = [
     // ORACLE-EDIT (merge T2.7 เลน 2): หน้าพิมพ์แยกเป็น page.tsx + print-view.ts (ข้อมูล) + PrintDocument.tsx — ชื่อผู้ขายประกอบที่ print-view.ts
     ["ใบกำกับ/เอกสารพิมพ์", "src/lib/modules/account/print-view.ts"],
-    ["หนังสือรับรองหัก ณ ที่จ่าย", "src/app/app/sys/[id]/account/wht/[certId]/print/page.tsx"],
+    // ORACLE-EDIT (merge T3 เลน 2 · T3.3): หน้าพิมพ์ 50 ทวิ เขียนใหม่ — ข้อมูลร้าน (ชื่อผู้หัก) ประกอบที่ wht-cert.ts loadCertPrint แล้วส่งผ่าน wht-cert-print.ts/WhtCertForm
+    ["หนังสือรับรองหัก ณ ที่จ่าย", "src/lib/modules/account/wht-cert.ts"],
   ];
   for (const [label, path] of printPages) {
     const src = read(path);
