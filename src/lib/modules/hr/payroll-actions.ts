@@ -30,6 +30,7 @@ import { hrViewerOf } from "./privacy"; // HR H3.4 ◂
 import { giveBackClaim, h37PageText, markPaidRun, setPayrollBook, setPayrollPayAccount, setPayrollPosting } from "./payroll"; // HR H3.7 ▸ จ่าย = ลงบัญชีจ่าย (สมุดของรอบ) · ตั้งสมุด/บัญชีจ่ายเงินเดือน (เจ้าของร้าน) ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขา — สาขาของพนักงานเป้าหมายอ่านจาก DB · รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8) ◂
 import { employeeIdOfAdjustment, employeeUnitsOf, HrBranchError, hrScopeOf, isAllBranches, unitTargetOf } from "./scope";
+import { inPayScope, PAY_SCOPE_NO_ACCESS_TEXT } from "./scope"; // HR PREPROD-1 ▸ R4: รายการเงิน = ขอบเขตค่าจ้าง (สาขาประจำ) ◂
 
 // Actions โมดูล Payroll (system-scoped HR) — assertCan "hr.payroll.<verb>" ทุกจุดที่แตะเงิน
 // convention action = "hr.<entity>.<verb>" · OWNER/MANAGER ผ่าน · STAFF ตาม permission
@@ -56,8 +57,12 @@ function assertRunAllBranches(auth: Awaited<ReturnType<typeof requireTenant>>): 
   if (!isAllBranches(hrScopeOf({ role: auth.active.role, unitAccess: auth.active.unitAccess }))) throw new HrBranchError(RUN_ALL_BRANCHES_TH);
 }
 /** HR H1.1 ▸ สาขาของพนักงานเป้าหมาย (ระดับพนักงาน = สาขาประจำ · `day` = รวมยืมตัวที่ครอบวันนั้น) — นอกสาขา = HrBranchError ◂ */
-async function payTarget(auth: Awaited<ReturnType<typeof requireTenant>>, ctx: Ctx, employeeId: string | null, day?: Date): Promise<{ unitId?: string }> {
+async function payTarget(auth: Awaited<ReturnType<typeof requireTenant>>, ctx: Ctx, employeeId: string | null, day?: Date, pay = false): Promise<{ unitId?: string }> { // HR PREPROD-1 ▸ + pay (R4) ◂
   const emp = employeeId ? await employeeUnitsOf(ctx, employeeId) : null;
+  // HR PREPROD-1 ▸ R4 (`pay` = แตะรายการเงินของแถวที่มีอยู่: ตัดสิน · ลบ · ย้ายงวด): ผู้ดูที่จำกัดสาขา — ไม่พบแถว/พนักงาน หรือสาขาประจำนอกขอบเขต (ยืมตัวไม่นับ)
+  //   ⇒ คำตอบเดียวกัน PAY_SCOPE_NO_ACCESS_TEXT · ผู้ดูทุกสาขา = ทางเดิม ◂
+  const pscope = hrScopeOf({ role: auth.active.role, unitAccess: auth.active.unitAccess }); // HR PREPROD-1 ◂
+  if (pay && !isAllBranches(pscope)) { if (!emp || !inPayScope(pscope, emp.unitId)) throw new HrBranchError(PAY_SCOPE_NO_ACCESS_TEXT); return { unitId: emp.unitId! }; } // HR PREPROD-1 ◂
   if (!emp) return {};
   const t = unitTargetOf(hrScopeOf({ role: auth.active.role, unitAccess: auth.active.unitAccess }), emp, day);
   if (!t.ok) throw new HrBranchError(t.reason);
@@ -340,7 +345,7 @@ export async function decideAdjustmentAction(formData: FormData): Promise<{ ok: 
   if (!systemId || !id || (status !== "APPROVED" && status !== "REJECTED")) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
   try {
     const ctx0: Ctx = { tenantId: auth.active.tenantId, systemId };
-    const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
+    const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date(), true); // HR H1.1 ▸ ◂ // HR PREPROD-1 ▸ R4 ขอบเขตค่าจ้าง ◂
     assertHrCan(auth, decision === "REJECTED" ? "hr.payadjust.reject" : "hr.payadjust.approve", t.unitId); // HR H3.4 ◂
   } catch (e) {
     if (branchText(e)) return { ok: false, reason: branchText(e)! };
@@ -379,7 +384,7 @@ export async function cancelAdjustmentAction(formData: FormData): Promise<{ ok: 
   if (!systemId || !id) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
   try {
     const ctx0: Ctx = { tenantId: auth.active.tenantId, systemId };
-    const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
+    const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date(), true); // HR H1.1 ▸ ◂ // HR PREPROD-1 ▸ R4 ขอบเขตค่าจ้าง ◂
     assertHrCan(auth, "hr.payadjust.approve", t.unitId);
   } catch (e) {
     if (branchText(e)) return { ok: false, reason: branchText(e)! };
@@ -451,7 +456,7 @@ export async function moveStrandedAdjustmentAction(formData: FormData): Promise<
     const id = String(formData.get("id") ?? "");
     if (!systemId || !id) return { ok: false, reason: BAD_REQUEST_TH };
     const ctx0: Ctx = { tenantId: auth.active.tenantId, systemId };
-    const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
+    const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date(), true); // HR H1.1 ▸ ◂ // HR PREPROD-1 ▸ R4 ขอบเขตค่าจ้าง ◂
     assertHrCan(auth, "hr.payadjust.approve", t.unitId);
     const res = await moveStrandedAdjustment({ tenantId: auth.active.tenantId, systemId }, id, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
     revalidatePath(`/app/sys/${systemId}/hr/payroll`);

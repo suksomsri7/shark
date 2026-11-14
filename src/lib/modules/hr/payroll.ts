@@ -16,6 +16,7 @@ import { type HrScope } from "./scope"; // HR H1.1 ▸ ขอบเขตสา�
 import type { StockAdjustmentSource } from "./stock-charge"; // HR H4.6 ▸ ชนิดของแหล่งที่มา (type ล้วน — ไม่มีวงโหลด) ◂
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H2.11 ▸ ด่านของ decideAdjustmentAs (ตัวเดียวกับ decideAdjustmentAction) ◂
 import { employeeIdOfAdjustment, employeeUnitsOf, hrScopeOf, unitTargetOf, inPayScope, isAllBranches, payScopeEmployeeIds } from "./scope"; // HR H2.11 ▸ สาขาของเจ้าของรายการ (แบบ payTarget) ◂ // HR PRIV-2 ▸ + ขอบเขตค่าจ้าง ◂
+import { PAY_SCOPE_NO_ACCESS_TEXT, type HrScope as PayScope } from "./scope"; // HR PREPROD-1 ▸ R4: ไม่พบ = นอกขอบเขตค่าจ้าง (ข้อความเดียว) ◂
 import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ◂
 import {
   // HR HF-SSO ▸ ssoContribution / monthlyWhtSatang ไม่ import แล้ว — รุ่น 1 ใช้ payroll-rules-sso.ts (payroll-rules.ts คง FREEZE ไว้ให้ประวัติ/ข้อสอบ) ◂
@@ -1441,6 +1442,8 @@ export type StrandedAdjustment = {
   amountSatang: number;
   note: string | null;
   crmCommissionId: string | null;
+  /** HR PREPROD-1 ▸ R2: เงินคืน (refund:<claim>) ในงวดที่ไม่มีรอบ แต่พนักงานมีรอบงวดหลังที่อนุมัติแล้ว ⇒ จะไม่มีวันถูกจ่ายถ้าไม่ย้าย · ไม่มีคีย์ = รายการค้างแบบเดิม ◂ */
+  reason?: "REFUND_BEHIND";
 };
 /**
  * R2: รายการ "ค้าง" ของระบบ HR นี้ — ปกติ + CRM · PENDING/APPROVED · ยังไม่เข้ารอบ (`runId IS NULL`) · งวดของมันมีรอบจ่ายที่ยังมีผล (ทุกสถานะยกเว้น REVERSED — H0.6)
@@ -1451,14 +1454,33 @@ export async function strandedAdjustments(ctx: Ctx, limit = 200): Promise<Strand
   const db = tenantDb(ctx);
   const runs = (await db.hrPayrollRun.findMany({ where: { systemId: ctx.systemId, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey); // HR H0.6 ▸ OQ-4 ◂
   if (runs.length === 0) return [];
+  const take = Math.max(1, Math.min(limit, 1_000)); // HR PREPROD-1 ◂
   const rows = await db.hrPayAdjustment.findMany({
     where: { systemId: ctx.systemId, runId: null, status: { in: ["PENDING", "APPROVED"] }, periodKey: { in: runs } },
     select: { id: true, employeeId: true, periodKey: true, kind: true, status: true, amountSatang: true, note: true, crmCommissionId: true },
     orderBy: [{ periodKey: "asc" }, { id: "asc" }],
-    take: Math.max(1, Math.min(limit, 1_000)),
+    take, // HR PREPROD-1 ◂
   });
-  return rows.map((r) => ({ ...r, kind: String(r.kind), status: String(r.status) }));
+  const behind = await refundsBehindOf(ctx, runs, take); // HR PREPROD-1 ▸ R2: + เงินคืนที่ค้างในงวดไม่มีรอบ หลังรอบงวดหลังของพนักงานอนุมัติแล้ว ◂
+  return [...rows.map((r) => ({ ...r, kind: String(r.kind), status: String(r.status) })), ...behind].slice(0, take); // HR PREPROD-1 ◂
 }
+// HR PREPROD-1 ▸ R2: เงินคืน (REFUND · refund:<claim>) · PENDING/APPROVED · ยังไม่เข้ารอบ · งวดไม่มีรอบที่ยังมีผล · งวด ≤ งวดล่าสุดที่รอบครอบพนักงานแล้ว
+//   (giveBackWindowInTx.lastCovered) ⇒ รอบงวดนั้นจะไม่ถูกสร้างดึงมันเข้าอีก (งวดก่อนรอบล่าสุด) — ติดป้าย REFUND_BEHIND ◂
+async function refundsBehindOf(ctx: Ctx, runs: string[], take: number): Promise<StrandedAdjustment[]> {
+  const db = tenantDb(ctx);
+  const cand = await db.hrPayAdjustment.findMany({
+    where: { systemId: ctx.systemId, runId: null, kind: "REFUND", status: { in: ["PENDING", "APPROVED"] }, sourceRef: { startsWith: REFUND_OF_PREFIX }, periodKey: { notIn: runs } },
+    select: { id: true, employeeId: true, periodKey: true, kind: true, status: true, amountSatang: true, note: true, crmCommissionId: true },
+    orderBy: [{ periodKey: "asc" }, { id: "asc" }],
+    take,
+  });
+  const last = new Map<string, string | null>();
+  for (const e of [...new Set(cand.map((r) => r.employeeId))]) last.set(e, (await giveBackWindowInTx(db as unknown as Prisma.TransactionClient, ctx, e)).lastCovered);
+  return cand.filter((r) => { const l = last.get(r.employeeId); return !!l && r.periodKey <= l; }).map((r) => ({ ...r, kind: String(r.kind), status: String(r.status), reason: "REFUND_BEHIND" as const }));
+}
+/** HR PREPROD-1 ▸ R2: ปลายทางของเงินคืนที่ค้าง = งวดแรกที่ไม่มีรอบหลัง max(งวดเดิม, lastCovered) (แบบ giveBackPeriodOf) · หลังงวดที่พ้นสภาพ = ย้ายไม่ได้ (จ่ายนอกระบบเงินเดือน) ◂ */
+const REFUND_BEHIND_ENDED = "ย้ายเงินคืนรายการนี้ไม่ได้ เพราะพนักงานพ้นสภาพก่อนงวดที่ยังไม่มีรอบจ่าย — ให้คืนเงินนอกระบบเงินเดือน";
+// ◂ HR PREPROD-1
 
 /**
  * R2: ปุ่ม "ย้ายไปงวดถัดไป" ของรายการค้าง **ปกติ** (ไม่ผูกคอมมิชชัน — ของ CRM ตัวกวาดของ CRM ย้ายเอง · moveCommissionAdjustmentPeriod)
@@ -1468,7 +1490,7 @@ export async function strandedAdjustments(ctx: Ctx, limit = 200): Promise<Strand
  */
 export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: PayrollActor): Promise<{ ok: boolean; reason?: string; movedFrom?: string; movedTo?: string }> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id }, select: { id: true, employeeId: true, periodKey: true, status: true, runId: true, crmCommissionId: true } });
+  const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id }, select: { id: true, employeeId: true, periodKey: true, status: true, runId: true, crmCommissionId: true, kind: true, sourceRef: true } }); // HR PREPROD-1 ▸ + ชนิด/ที่มา (เงินคืนที่ค้าง R2) ◂
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
   if (row.crmCommissionId) return { ok: false, reason: "รายการคอมมิชชันจาก CRM ระบบ CRM ย้ายงวดให้เอง" };
   { const stockLock = await stockChargeAdjustmentLock(ctx, row.id); if (stockLock) return { ok: false, reason: stockLock }; } // HR H4.6 ▸ ย้ายงวดก็ไม่ได้ (ดูที่ส่วน "หักค่าของ") ◂
@@ -1485,8 +1507,18 @@ export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: Payrol
     const tx = t as unknown as Prisma.TransactionClient;
     await lockRunPeriod(tx, ctx, row.periodKey);
     const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey)); // HR H0.6 ▸ OQ-4 ◂
-    if (!runs.has(row.periodKey)) return { ok: false as const, reason: "งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย" };
-    const to = nextRunlessPeriod(row.periodKey, runs);
+    let behindTo: string | null = null; // HR PREPROD-1 ▸ R2: เงินคืนที่ค้างหลังรอบงวดหลัง — ปลายทาง = งวดแรกที่ไม่มีรอบหลัง max(งวดเดิม, lastCovered) · เกินงวดพ้นสภาพ = ปฏิเสธ (ไม่เขียนอะไร) ◂
+    if (!runs.has(row.periodKey) && String(row.kind) === "REFUND" && String(row.sourceRef ?? "").startsWith(REFUND_OF_PREFIX)) { // HR PREPROD-1 ◂
+      const win = await giveBackWindowInTx(tx, ctx, row.employeeId); // HR PREPROD-1 ◂
+      if (win.lastCovered && row.periodKey <= win.lastCovered) { // HR PREPROD-1 ◂
+        let p = nextPeriodOf(win.lastCovered > row.periodKey ? win.lastCovered : row.periodKey); // HR PREPROD-1 ◂
+        for (let i = 0; i < 240 && runs.has(p); i += 1) p = nextPeriodOf(p); // HR PREPROD-1 ◂
+        if (win.endPeriod && p > win.endPeriod) return { ok: false as const, reason: REFUND_BEHIND_ENDED }; // HR PREPROD-1 ◂
+        behindTo = p; // HR PREPROD-1 ◂
+      } // HR PREPROD-1 ◂
+    } // HR PREPROD-1 ◂
+    if (!runs.has(row.periodKey) && !behindTo) return { ok: false as const, reason: "งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย" }; // HR PREPROD-1 ▸ + เงินคืนที่ค้าง ◂
+    const to = behindTo ?? nextRunlessPeriod(row.periodKey, runs); // HR PREPROD-1 ◂
     if (!to) return { ok: false as const, reason: `หางวดถัดไปที่ยังไม่มีรอบจ่ายหลังงวด ${row.periodKey} ไม่พบ — ตรวจรอบจ่ายเงินเดือน` };
     await lockRunPeriod(tx, ctx, to);
     if (await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to, ...liveRunWhere() }, select: { id: true } })) return { ok: false as const, reason: "รอบจ่ายเพิ่งเปลี่ยน — กรุณาลองอีกครั้ง" };
@@ -2114,6 +2146,14 @@ const ATT_APPROVE_TEXT: Record<string, string> = { ATTENDANCE_STALE: ATT_TEXT.ru
 // ─────────── HR H2.11 ▸ ตัดสินรายการเพิ่ม/หัก 1 รายการในนามผู้ดู (กล่องคำขอรวม) — เนื้อของ decideAdjustmentAction ทุกขั้น: ด่าน hr.payadjust.approve +
 //   canViewPayroll → สาขาของเจ้าของรายการ (แบบ payTarget) → decideAdjustment (กติกาเดิมทั้งหมด รวมกติกาที่จะเพิ่มภายในในอนาคต) → audit
 //   hr.payadjust.approve|reject รูปเดียวกับ action · ไม่คัดลอกกติกาใด ๆ (Q4: action เดิมไม่เปลี่ยน — หนี้ D1) ───────────
+// HR PREPROD-1 ▸ R4: ผู้ดูที่จำกัดสาขาแตะรายการเงินของพนักงานนอกขอบเขตค่าจ้างไม่ได้ (ตัวตัดสินเดียว scope.inPayScope — สาขาประจำเท่านั้น ยืมตัวไม่นับ) ·
+//   ไม่มีแถว/ไม่มีพนักงาน = นอกขอบเขต (ผู้เรียกตอบเหมือน "ไม่พบ") · ทุกสาขา = ไม่ตรวจที่นี่ (ข้อความเดิม) ◂
+export async function payScopeBlocked(ctx: Ctx, scope: PayScope, employeeId: string | null | undefined): Promise<boolean> {
+  if (isAllBranches(scope)) return false;
+  const emp = employeeId ? await employeeUnitsOf(ctx, employeeId) : null;
+  return !emp || !inPayScope(scope, emp.unitId);
+}
+// ◂ HR PREPROD-1
 export async function decideAdjustmentAs(
   ctx: Ctx,
   v: { role: MembershipCtx["role"] | string; unitAccess: unknown; permissions: unknown; userId?: string | null },
@@ -2125,6 +2165,7 @@ export async function decideAdjustmentAs(
   if (!uid || !evaluate(m, { module: "hr", action: "hr.payadjust.approve" }) || !canViewPayroll(m)) return { ok: false, reason: INBOX_TEXT.noRight };
   if (status !== "APPROVED" && status !== "REJECTED") return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
   const empId = typeof id === "string" && id ? await employeeIdOfAdjustment(ctx, id) : null;
+  if (await payScopeBlocked(ctx, hrScopeOf(m), empId)) return { ok: false, reason: PAY_SCOPE_NO_ACCESS_TEXT }; // HR PREPROD-1 ▸ R4: ผู้ดูจำกัดสาขา — ไม่พบ / ยืมตัว / สาขาอื่น = คำตอบเดียวกันทุกไบต์ (ทุกสาขา = ข้อความเดิม) ◂
   if (!empId) return { ok: false, reason: "ไม่พบรายการ" };
   // r2 (hunter F2 · กันซ้อน): แถวจากคำขอ OT ตัดสินที่คำขอ OT เท่านั้น — ข้อความเดียวกับ cancelAdjustment/moveStrandedAdjustment (H2.9 r2.3)
   if (await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id, sourceType: "OT_REQUEST" }, select: { id: true } })) return { ok: false, reason: OT_TEXT.otRow };
@@ -3096,6 +3137,7 @@ export async function setAdjustmentConsent(ctx: Ctx, viewer: Run2Viewer, input: 
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id, systemId: ctx.systemId }, select: { employeeId: true, kind: true, runId: true, status: true } });
   if (!row || row.kind !== "DEDUCTION" || row.runId !== null || row.status === "REJECTED") return { ok: false, reason: NO };
   if (viewer.role !== "OWNER") {
+    if (await payScopeBlocked(ctx, hrScopeOf({ role: viewer.role as MembershipCtx["role"], unitAccess: viewer.unitAccess }), row.employeeId)) return { ok: false, reason: NO }; // HR PREPROD-1 ▸ R4: นอกขอบเขตค่าจ้าง (ไม่มีสาขาประจำ · สาขาอื่น) = คำตอบ "ไม่พบ" เดิม ◂
     const m = { role: viewer.role, permissions: objH34(viewer.permissions), unitAccess: viewer.unitAccess } as unknown as MembershipCtx;
     const unitId = (await tenantDb(ctx).hrEmployee.findFirst({ where: { id: row.employeeId }, select: { unitId: true } }))?.unitId ?? undefined;
     if (!canViewPayroll(m) || !evaluate(m, { module: "hr", action: "hr.payadjust.approve", ...(unitId ? { unitId } : {}) } as never)) return { ok: false, reason: NO };
@@ -3725,6 +3767,7 @@ export async function giveBackClaim(ctx: Ctx, viewer: { userId?: string | null }
     // fix r3 (4): branch rule = the adjustment request path (payroll-actions.ts payTarget → scope.ts unitTargetOf): a branch-limited requester is refused
     //   for an employee of another branch AND for an employee without a unit (only OWNER / all-branch viewers reach those)
     const mc = { role: m.role, unitAccess: (Array.isArray(m.unitAccess) ? m.unitAccess : []) as string[], permissions: (m.permissions ?? {}) as Record<string, unknown> } as MembershipCtx;
+    if (await payScopeBlocked(ctx, hrScopeOf({ role: m.role, unitAccess: m.unitAccess }), claim.employeeId)) return NO; // HR PREPROD-1 ▸ R4: ยืมตัวไม่ขยายขอบเขตค่าจ้าง — คำตอบ "ไม่พบ" เดิม ◂
     const emp = await employeeUnitsOf(ctx, claim.employeeId);
     const tgt = emp ? unitTargetOf(hrScopeOf({ role: m.role, unitAccess: m.unitAccess }), emp, new Date()) : { ok: false as const };
     if (!tgt.ok || !canViewPayroll(mc) || !evaluate(mc, { module: "hr", action: "hr.payadjust.request", ...("unitId" in tgt && tgt.unitId ? { unitId: tgt.unitId } : {}) } as never)) return NO;
