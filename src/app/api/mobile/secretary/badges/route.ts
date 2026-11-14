@@ -39,7 +39,7 @@ async function GET_(req: Request) {
         ? db.staffInvite.count({ where: { tenantId, acceptedAt: null, expiresAt: { gt: now } } })
         : 0;
     const help = (): Promise<number> =>
-      db.chatConversationHelper.count({ where: { tenantId, userId, conversation: { tenantId, status: "OPEN" } } });
+      db.chatConversationHelper.count({ where: { tenantId, userId, conversation: { tenantId, status: "OPEN", hiddenAt: null } } });
 
     const [inbox, cust, inv, hlp, support] = await Promise.all([
       inboxForUser(userId, { tenantId, take: INBOX_TAKE }),

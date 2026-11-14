@@ -100,6 +100,9 @@ function inboxWhere(
   const unitWhere = unitAccessWhere(unitAccess);
   if (Object.keys(unitWhere).length > 0) and.push(unitWhere);
 
+  // ห้องที่ลบแชทแล้ว (ปัดซ้ายในแอป · `hideConversation`) ไม่อยู่ในรายการ/ตัวนับ — ลูกค้าทักใหม่ = กลับมาเอง
+  and.push({ hiddenAt: null });
+
   // "ปิดแล้ว" อยู่หลังไอคอนกรวย (มติ D3) — ค่าตั้งต้นคือซ่อนห้องที่ปิดไปแล้ว เหมือนพฤติกรรมเดิม
   and.push(opts.closed ? { status: "RESOLVED" } : { status: { not: "RESOLVED" } });
 

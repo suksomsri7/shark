@@ -3,14 +3,17 @@
 //           linkedMember = `{ id, name, phoneMasked }` (maskPhone · ไม่มีเบอร์เต็ม — ตั๋ว R-S2.17)
 //   S3a.6: messages + `translatedBody/translatedLang/needsTranslation` · conversation + `staffLang/contactLang/can.translate`
 //   S1.14c (LOW-3): `can.aiSuggest` = คีย์ `chat.ai.suggest` (ด่านเดียวกับ POST …/ai-suggest · R-S1.14b-a)
+// DELETE /api/mobile/inbox/conversations/[id]?systemId — ลบแชทออกจากรายการ (ปัดซ้ายในแอป · 14 พ.ย. 2026 · ห่อ `hideConversation`)
+//   🔴 ซ่อน ไม่ลบข้อมูล (ข้อความ/ประวัติอยู่ครบ · PDPA) · ลูกค้าทักใหม่ = ห้องกลับมา · ด่าน = คีย์ปิดห้อง (SET_STATUS) **และ** ตอบลูกค้า (REPLY)
+//   ขาดอย่างใดอย่างหนึ่ง = 403 · หน่วยอื่น = 404 · 30/นาที · ผล `{ ok: true }` (ซ่อนอยู่แล้ว = ok เหมือนกัน)
 import type { AccessQuery } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
-import { getLinkedMember, getThread } from "@/lib/modules/chat/service";
+import { getLinkedMember, getThread, hideConversation } from "@/lib/modules/chat/service";
 import { listHelpers } from "@/lib/modules/chat/routing";
 import { normalizeLang } from "@/lib/modules/chat/translate";
 import { maskPhone } from "@/lib/modules/member/profile";
 import { contactDto, conversationDto, isoOrNull, messageDto, type InboxConversationDetailDto, type InboxLinkedMemberDto } from "@/lib/mobile/inbox-dto";
-import { ASSIGN, can, convExtras, cursorOf, fail, gate, LINK_CUSTOMER, notFound, parseCursor, READ, REPLY, SET_STATUS, staffNames, systemOf, type RouteCtx, withErrors } from "../../_shared";
+import { ASSIGN, can, convExtras, cursorOf, fail, gate, limited, LINK_CUSTOMER, notFound, parseCursor, READ, REPLY, SET_STATUS, staffNames, systemOf, visibleConv, type RouteCtx, withErrors } from "../../_shared";
 
 const LIMIT_MAX = 100;
 /** คีย์เดียวกับด่านของ POST …/ai-suggest (`assertChatCan(auth, "chat.ai.suggest")` ของเว็บ) */
@@ -68,3 +71,20 @@ async function GET_(req: Request, ctx: RouteCtx) {
 
 // SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
 export const GET = withErrors("inbox/conversations/[id] GET", GET_);
+
+async function DELETE_(req: Request, ctx: RouteCtx) {
+  const a = await gate(req, [SET_STATUS]);
+  if (!a.ok) return a.res;
+  const { c } = a;
+  if (!can(c, REPLY)) return fail(403, "forbidden", "บัญชีนี้ดูได้อย่างเดียว ลบแชทไม่ได้");
+  const { id } = await ctx.params;
+  const sid = await systemOf(c.tenantId, new URL(req.url).searchParams.get("systemId"));
+  if (!sid) return notFound("ไม่พบระบบแชทนี้");
+  if (!(await visibleConv(c, sid, id))) return notFound();
+  const rl = await limited(c, "hide", 30);
+  if (rl) return rl;
+  const r = await hideConversation({ tenantId: c.tenantId, systemId: sid, conversationId: id, actorUserId: c.userId, unitAccess: c.ua });
+  return r.ok ? Response.json({ ok: true }) : fail(422, "invalid", r.reason ?? "ลบแชทไม่สำเร็จ");
+}
+
+export const DELETE = withErrors("inbox/conversations/[id] DELETE", DELETE_);

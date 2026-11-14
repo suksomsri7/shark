@@ -98,7 +98,7 @@ export type RouteCtx = { params: Promise<{ id: string }> };
 export async function unreadFor(c: InboxCtx, systemId: string): Promise<number> {
   if (c.ua.includes("*")) return unreadCount(c.tenantId, systemId);
   return tenantDb({ tenantId: c.tenantId, systemId }).chatConversation.count({
-    where: { tenantId: c.tenantId, systemId, staffUnreadCount: { gt: 0 }, ...unitAccessWhere(c.ua) },
+    where: { tenantId: c.tenantId, systemId, staffUnreadCount: { gt: 0 }, hiddenAt: null, ...unitAccessWhere(c.ua) },
   });
 }
 

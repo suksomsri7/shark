@@ -1446,7 +1446,7 @@ const chatUnreadConversations: AiTool = {
         ? {}
         : (await import("@/lib/modules/chat/service")).unitAccessWhere(cm?.unitAccess ?? []);
     const convs = await prisma.chatConversation.findMany({
-      where: { AND: [{ tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 } }, chatUnitWhere] },
+      where: { AND: [{ tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 }, hiddenAt: null }, chatUnitWhere] },
       orderBy: { lastMessageAt: "desc" },
       take: 50,
       include: { contact: { select: { displayName: true } } }, // SEC S3a.1-S2 ▸ R-Z24: ไม่อ่านเบอร์ (ไม่ถอยไปใช้เบอร์เป็นชื่อ) ◂
