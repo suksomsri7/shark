@@ -718,3 +718,9 @@
 - PRIV-3 (เลน 5 `wip/hr-priv-3` 44a75f37a): ผู้ตรวจ MERGE WITH NOTES · นักล่า a9e849d961b43d3fc กำลังล่า · ค้าง: ผู้เขียนข้อสอบเพิ่มผู้ดูถือกุญแจเดียว (payadjust.request / payadjust.approve) + เซลล์ S0/SR/SD ในตารางเดิน · SD (ถือ hr.leave.read) เห็นทะเบียน = ของเดิม → รายการเจ้าของ
 - VIS-5a (เลน 3 `wip/hr-vis-5a` 815a626aa): 39/39 · รอภาพ · VIS-5b (เลน 1 `wip/hr-vis-5bc`): ผู้สร้าง a538b5242fe7df3d0 แก้ตามภาพ F1–F4 (แถบอนุมัติทับการ์ด · คอลัมน์ซ้ายว่าง · เพิ่มชุดถ่ายวันมีกะ `01-hub-rostered`)
 - ด่านสุดท้ายต้อง EXTRA="qc-hr-preprod-1b qc-hr-preprod-1c qc-hr-leave-3 qc-hr-leave-3b qc-hr-priv-3 qc-hr-vis-5a qc-hr-vis-5b qc-hr-vis-5c" + `seed-hr-walk --down` ก่อน
+
+### 2026-11-15T05:40Z · 🔴 ช่องโหว่ข้ามร้านในปุ่มเงินเดือน (มีบน origin/main = production)
+- นักล่า a9e849d961b43d3fc (โพรบ /tmp/hr-ctl/priv3-hunt/): `setSalaryProfileAction` (payroll-actions.ts) ไม่ตรวจว่า systemId เป็นระบบ HR ของ tenant ผู้เรียก · origin/main มีโค้ดเดียวกัน (ตรวจแล้ว: requireTenant + assertHrCan แล้วเรียก setSalaryProfile ทันที) · ผล: แถว HrSalaryProfile ใน tenant ผู้เรียกชี้ระบบร้านอื่น · unique (systemId, employeeId) ⇒ ตรวจว่ารหัสมีจริง + จองแถวกันร้านเจ้าของตั้งเงินเดือน · markPaid/reverseRun/reverseRunV2 เขียน audit ใน tenant ผู้เรียกสำหรับ run id ร้านอื่น
+- จัดเข้า HR-PRIV-3 เป็น R6 (+ R7 ข้อความยกเลิกแยก "มีแต่ไม่ใช่ของคุณ" · R8 จอลงเวลาบอกชื่อพนักงาน · R9 ช่องว่างข้อสอบ) → ผู้เขียนข้อสอบ a31b21b807884d5a9 กำลังเพิ่ม → ผู้สร้าง a47766f0e3ed7927e
+- ส่ง tg ถามเจ้าของ: ออก hotfix production แยกก่อนหรือไม่ (ยังไม่มีคำตอบ · ห้าม deploy เอง)
+- ผลนักล่าส่วนอื่น: ด่าน 3 หน้าแน่น (K/N/S ได้ not-found เหมือนระบบไม่มีอยู่ทุกไบต์) · 135 ปุ่ม × 8 ผู้ดู ไม่มีการเขียนแถวของคนอื่น · ไม่ได้ทดสอบ: sidebar/layout, เวลาตอบ
