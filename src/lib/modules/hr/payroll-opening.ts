@@ -12,7 +12,7 @@ import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
 import { canUseFilings, type FilingViewer } from "./filings/service";
 import { bkkParts } from "./service";
-import { loadLawSet } from "./law";
+import { ssoLawForPeriod } from "./payroll-rules-sso"; // HR HF-SSO ▸ SSO_HIGH ใช้เพดานตามงวด (ไม่อ่านแถว SSO ของตาราง) ◂
 import { liveOpeningsIn, lockYtdInTx, type LiveOpeningRow } from "./payroll-opening-read";
 import { OPENING_TEXT, isDay, openingMissing, parseOpening, ssoHigh, yearOk, type OpeningCode, type OpeningInput } from "./payroll-opening-rules";
 
@@ -209,13 +209,12 @@ async function writeManyInTx(tx: Db, ctx: Ctx, g: Gate, taxYear: number, plans: 
   });
   return out.map((o) => ({ employeeId: o.employeeId, rev: o.rev }));
 }
-/** เงินสมทบสูงสุดต่อเดือนตามตารางกฎหมาย ณ วันที่ยอดถึง (อ่านนอก tx · ไม่มีตาราง = ไม่เตือน) */
+/** เงินสมทบสูงสุดต่อเดือน ณ งวดของวันที่ยอดถึง — HR HF-SSO ▸ R2: จาก ssoLawForPeriod (ตัวเดียวกับรอบจ่ายรุ่น 1 · งวดทั้ง 12 เดือนของปีภาษีอยู่ช่วงเดียวกัน — ช่วงเริ่ม 1 ม.ค.) ◂ */
 async function ssoWarnings(plans: Planned[]): Promise<Set<string>> {
   const law = new Map<string, { rateBp: number; maxBaseSatang: number } | null>();
   for (const day of new Set(plans.map((p) => p.value.asOfDay))) {
-    const l = await loadLawSet(day).catch(() => null);
-    const j = l && l.ok ? obj((l.set as unknown as { SSO?: { json?: unknown } }).SSO?.json) : {};
-    law.set(day, Number.isSafeInteger(j.rateBp) && Number.isSafeInteger(j.maxBaseSatang) ? { rateBp: j.rateBp as number, maxBaseSatang: j.maxBaseSatang as number } : null);
+    const l = isDay(day) ? ssoLawForPeriod(day.slice(0, 7)) : null; // HR HF-SSO ◂
+    law.set(day, l ? { rateBp: l.rateBp, maxBaseSatang: l.maxBaseSatang } : null);
   }
   return new Set(plans.filter((p) => ssoHigh(p.value, law.get(p.value.asOfDay) ?? null)).map((p) => p.employeeId));
 }

@@ -74,7 +74,8 @@ try {
     const items = await prisma.hrPayrollItem.findMany({ where: { runId: run.id as string } });
     const it1 = items.find((i) => i.employeeId === e1.id);
     chk("PR-4.1", "run สร้าง item ครบ 2 คน", items.length === 2, "2", String(items.length));
-    chk("PR-4.2", "สมชาย 30,000: ปสส. 750 · ภงด.1 170.83 · สุทธิ 29,079.17", it1?.ssoEmployeeSatang === B(750) && it1?.whtSatang === 17083 && it1?.netSatang === B(30000) - B(750) - 17083, "ตรง", JSON.stringify({ s: it1?.ssoEmployeeSatang, w: it1?.whtSatang, n: it1?.netSatang }));
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling): PR-4.2 งวด 2026-07 ⇒ เพดานฐาน 17,500 ⇒ ปสส. B(750) → B(875) · ภงด.1 (ปีภาษี 2026 เพดานลดหย่อน 10,500): 360,000 − 100,000 − 60,000 − 10,500 = 189,500 ⇒ 1,975/12 ⇒ 17083 → 16458 · สุทธิ 29,079.17 → 28,960.42
+    chk("PR-4.2", "สมชาย 30,000: ปสส. 875 · ภงด.1 164.58 · สุทธิ 28,960.42", it1?.ssoEmployeeSatang === B(875) && it1?.whtSatang === 16458 && it1?.netSatang === B(30000) - B(875) - 16458, "ตรง", JSON.stringify({ s: it1?.ssoEmployeeSatang, w: it1?.whtSatang, n: it1?.netSatang }));
     const runRow = await prisma.hrPayrollRun.findUnique({ where: { id: run.id as string } });
     chk("PR-4.3", "ยอดรวม run = ผลรวม items", runRow?.totalNetSatang === items.reduce((s, i) => s + i.netSatang, 0) && runRow?.totalGrossSatang === B(45000), "ตรง", "?");
     let threw = false; try { await svcW.createPayrollRun(ctx, { periodKey: "2026-07", payDate: new Date() }); } catch { threw = true; }

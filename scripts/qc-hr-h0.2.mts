@@ -124,7 +124,8 @@ const ACTIONS = "src/lib/modules/hr/payroll-actions.ts";
 const SIG_STRANDED = "export async function strandedCommissionAdjustments(tenantId: string, limit = 100): Promise<CommissionAdjustmentRef[]> {";
 // hash ของฐาน f85f5455 (= afcb9bc3 สำหรับไฟล์เหล่านี้) — คำนวณด้วย --hashes
 const BASE_HASH = {
-  computeItem: "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13",
+  // ORACLE-EDIT (HF-SSO-2569 · controller ruling): computeItem body sha re-taken — computeItem gets the run's law (periodKey + tax year) and calls ssoContributionForPeriod / monthlyWhtForTaxYear (payroll-rules.ts itself unchanged): b151a83c… → 451c72e1…
+  computeItem: "451c72e1c04068c45a070528571161b4c283316b91e449ed3311282cc95012ba",
   rules: "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7",
   stranded: "bf3c0b6749e36f8dda0c42a0d28fcc495276a96e7d66dfec9442ca71d8ffacf6",
 };

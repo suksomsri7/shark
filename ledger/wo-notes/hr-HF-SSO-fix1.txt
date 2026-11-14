@@ -1,0 +1,33 @@
+# HF-SSO fix1 — wip/hr-hf-sso-fix1 from session/hr 10f20316f · lane DB ep-ancient-truth · 2026-11-14T10:06:17Z
+1. h3.7 S1.7: the RECOMPUTE→note mapping must live in v1 approveRun (only place that turns claim codes into {note, code}; without it the code falls through to NOT_DRAFT and the oracle's RECOMPUTE text is lost) ⇒ ORACLE-EDIT (HR HF-SSO · controller): the one exact HF-SSO line is dropped on BOTH sides (base and head) — base = session/hr now carries it, the earlier one-sided drop failed only post-merge; lane runs before the merge were green (r2/r5 68/68).
+2. hr-expected.json is written by seed-hr-qc from the DB count; seed-hr-qc does not and must not write law rows (h1.3 S7.3 forbids it) — the gate must run hr-seed-law-draft.mts --apply before seed-hr-qc. h1.3 S7.1/S7.4 titles 4 → 10.
+3. fitness-hr F165_EXCLUDE (10f20316f, marked H5.1): all 13 oracles that freeze fitness-hr.mts re-run green — no acceptance needed.
+
+seed-hr-qc #1 exit 0 ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-hf-sso #1 exit 0 ===== qc-hr-hf-sso ===== passed 41/41 (QC_FORCE)
+qc-hr-h0.5 #1 exit 1 ===== qc-hr-h0.5 ===== ผ่าน 67/71 (QC_FORCE)
+qc-hr-h0.6 #1 exit 0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE)
+qc-hr-h1.2 #1 exit 0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE)
+qc-hr-h1.3 #1 exit 0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE)
+qc-hr-h2.4 #1 exit 0 ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+qc-hr-h3.6 #1 exit 0 ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE)
+qc-hr-h3.7 #1 exit 0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+qc-hr-h3.8 #1 exit 0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-h3.4-ytd #1 exit 0 ===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+qc-hr-h4.4 #1 exit 0 ===== qc-hr-h4.4 ===== passed 86/86 (QC_FORCE)
+qc-payroll #1 exit 0 ===== QC Payroll ไทย =====
+fitness env exit 0
+fitness noenv exit 0
+fitness-hr env exit 0
+fitness-hr noenv exit 0
+qc-hr-h2.1 #1 exit 0 ===== qc-hr-h2.1 ===== passed 90/90 (QC_FORCE)
+qc-hr-h2.2 #1 exit 0 ===== qc-hr-h2.2 ===== passed 60/60 (QC_FORCE)
+qc-hr-h2.3 #1 exit 0 ===== qc-hr-h2.3 ===== passed 79/79 (QC_FORCE)
+qc-hr-h2.6 #1 exit 0 ===== qc-hr-h2.6 ===== passed 56/56 (QC_FORCE)
+qc-hr-h2.7 #1 exit 0 ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+qc-hr-h3.3 #1 exit 0 ===== qc-hr-h3.3 ===== passed 51/51 (QC_FORCE)
+qc-hr-h3.5 #1 exit 0 ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE)
+qc-hr-h3.9 #1 exit 0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-hf-sso unforced exit 0 JSON_SUMMARY {"suite":"qc-hr-hf-sso","total":41,"passed":41,"failed":[],"findings":[],"skipped":false,"forced":
+
+h0.5 S6.2/S6.4/S6.5/S6.7 red on lane only: the oracle spawns the backfill via scripts/qc4.sh (QC4) while its fixture is on the lane DB (green on the QC4 gate, where only S8.6 failed — now fixed by 10f20316f).

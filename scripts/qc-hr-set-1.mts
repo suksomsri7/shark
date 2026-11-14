@@ -241,7 +241,8 @@ function runStatic(): void {
     const r = {
       rulesSha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA,
       prisma: changedVsBase(BASE, ["prisma"]) === "unchanged" || prismaLaterOk(),
-      law: changedVsBase(BASE, [`${H}law.ts`]) === "unchanged",
+      // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.6: law.ts may differ only by hunks marked "HR HF-SSO" on an ADDED line (ruling Q2 ssoDay) ◂
+      law: changedVsBase(BASE, [`${H}law.ts`]) === "unchanged" || ((diffHunks(BASE, `${H}law.ts`) ?? []).length > 0 && (diffHunks(BASE, `${H}law.ts`) ?? []).every((h) => h.added.some((l) => /HR HF-SSO/.test(l)))),
       helperNoLaw: !/HrLawTable|hrLawTable|payroll-rules|loadLawSet/.test(helper),
     };
     ck("S1.6", r, "frozen", `prisma=${changedVsBase(BASE, ["prisma"])}`);

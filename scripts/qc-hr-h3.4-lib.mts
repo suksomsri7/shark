@@ -240,8 +240,9 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
     };
     // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.6: base-aware — once H3.4 is in the base (payroll-run-rules.ts there), a frozen file may differ only by hunks
     //   marked with a later ticket ("HR H<n>.<n>" other than H3.4 · "HR-SET-<n>"); any unmarked hunk still fails ◂
+    // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.6: + hotfix hunks marked "HR HF-SSO" (law.ts ssoDay) count as later-ticket hunks ◂
     // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): "HR MONEY-2" counts as a later-ticket mark like "HR-SET-<n>" · unmarked still fails ◂
-    const laterOnly = (p: string) => pathInBase(F.rules, BASE) && (diffHunks(BASE, p) ?? []).length > 0 && (diffHunks(BASE, p) ?? []).every((h) => h.added.some((l) => /HR-SET-\d+|HR H\d+\.\d+|HR MONEY-2/.test(l) && !/HR H3\.4/.test(l)));
+    const laterOnly = (p: string) => pathInBase(F.rules, BASE) && (diffHunks(BASE, p) ?? []).length > 0 && (diffHunks(BASE, p) ?? []).every((h) => h.added.some((l) => /HR-SET-\d+|HR H\d+\.\d+|HR HF-SSO|HR MONEY-2/.test(l) && !/HR H3\.4/.test(l)));
     const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !laterOnly(p) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p)) && !(p === `${H}attendance-pay.ts` && apOnlyLeaver(p))));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
   }
@@ -524,9 +525,10 @@ export async function runFixRound1(X: FixEnv): Promise<void> {
       await back();
     };
     const lawId = `${X.LAW_KEY}-ssoX`;
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S4.27 law leg — under Q2 the SSO row is picked on the wage period's first day, so the activated copy is dated 2031-09-01 (was 2031-09-15, which no longer belongs to period 2031-09)
     await tryIt(
       "law",
-      () => P.$executeRawUnsafe(`INSERT INTO "HrLawTable" (id, kind, "effectiveFrom", json, status, "sourceKey", note, "approvedByName", "approvedAt") SELECT $1, kind, '2031-09-15'::date, json, 'ACTIVE'::"HrLawStatus", $1, 'qc h3.4 law activation', 'QC', now() FROM "HrLawTable" WHERE "sourceKey" = $2`, lawId, `${X.LAW_KEY}-sso`),
+      () => P.$executeRawUnsafe(`INSERT INTO "HrLawTable" (id, kind, "effectiveFrom", json, status, "sourceKey", note, "approvedByName", "approvedAt") SELECT $1, kind, '2031-09-01'::date, json, 'ACTIVE'::"HrLawStatus", $1, 'qc h3.4 law activation', 'QC', now() FROM "HrLawTable" WHERE "sourceKey" = $2`, lawId, `${X.LAW_KEY}-sso`), // HF-SSO ORACLE-EDIT
       () => P.$executeRawUnsafe(`DELETE FROM "HrLawTable" WHERE id = $1`, lawId),
     );
     await tryIt("amount", () => P.$executeRawUnsafe(`UPDATE "HrPayAdjustment" SET "amountSatang" = 10001 WHERE id = $1`, al), () => P.$executeRawUnsafe(`UPDATE "HrPayAdjustment" SET "amountSatang" = 10000 WHERE id = $1`, al));

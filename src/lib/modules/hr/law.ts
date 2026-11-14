@@ -48,6 +48,13 @@ export function lawDayOf(payDate: Date): string {
   return thaiDateKey(payDate);
 }
 
+// HR HF-SSO ▸ Q2: แถวประกันสังคมเลือกตาม "งวดค่าจ้าง" (T-HR-08) = วันแรกของงวด · ชนิดอื่นคงวันจ่าย (lawDayOf) · งวดผิดรูป = throw ◂
+export function ssoLawDayOf(periodKey: string): string {
+  if (typeof periodKey !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey)) throw Object.assign(new Error("LAW_BAD_DAY: periodKey must be YYYY-MM"), { code: "LAW_BAD_DAY" });
+  return `${periodKey}-01`;
+}
+export type LawSetOpts = { ssoDay?: string }; // HR HF-SSO ◂
+
 /** แถวที่มีผลของชนิดหนึ่ง ณ วันหนึ่ง */
 export function pickLawRow<R extends LawRowIn>(rows: readonly R[], kind: HrLawKind | string, onDay: string): PickResult<R> {
   if (!isLawDay(onDay)) return { ok: false, code: "LAW_BAD_DAY" };
@@ -72,13 +79,14 @@ export type LawSetResult<R> =
   | { ok: false; code: "LAW_MISSING" | "LAW_AMBIGUOUS" | "LAW_BAD_DAY"; kinds: string[] };
 
 /** ชุดกฎหมายครบสำหรับเครื่องรุ่น 2 · ขาด/ซ้อน = ปฏิเสธพร้อมรายชื่อชนิด (ไม่มีค่าสำรอง) · ids เรียงตัวอักษร */
-export function pickLawSet<R extends LawRowIn>(rows: readonly R[], onDay: string, kinds: readonly string[] = LAW_KINDS_V2): LawSetResult<R> {
+export function pickLawSet<R extends LawRowIn>(rows: readonly R[], onDay: string, kinds: readonly string[] = LAW_KINDS_V2, opts?: LawSetOpts): LawSetResult<R> { // HR HF-SSO ▸ + opts.ssoDay ◂
   if (!isLawDay(onDay)) return { ok: false, code: "LAW_BAD_DAY", kinds: [...kinds] };
+  if (opts?.ssoDay !== undefined && !isLawDay(opts.ssoDay)) return { ok: false, code: "LAW_BAD_DAY", kinds: [...kinds] }; // HR HF-SSO ◂
   const set: Record<string, R> = {};
   const missing: string[] = [];
   const ambiguous: string[] = [];
   for (const k of kinds) {
-    const p = pickLawRow(rows, k, onDay);
+    const p = pickLawRow(rows, k, k === "SSO" && opts?.ssoDay !== undefined ? opts.ssoDay : onDay); // HR HF-SSO ▸ SSO ตามงวด ◂
     if (p.ok) set[k] = p.row;
     else (p.code === "LAW_AMBIGUOUS" ? ambiguous : missing).push(k);
   }
@@ -96,14 +104,15 @@ const dbOf = (db?: LawDb) => (db ?? tenantDb(LAW_GLOBAL_CTX)) as unknown as Pick
 const toUtcDate = (day: string) => new Date(`${day}T00:00:00.000Z`);
 
 /** ชุดกฎหมายที่มีผล ณ วัน (อ่านแถว ACTIVE ที่ effectiveFrom ≤ วัน) — ใช้ใน tx ของงวดได้ (H3.4) */
-export async function loadLawSet(onDay: string, db?: LawDb) {
-  if (!isLawDay(onDay)) return { ok: false as const, code: "LAW_BAD_DAY" as const, kinds: [...LAW_KINDS_V2] as string[] };
+export async function loadLawSet(onDay: string, db?: LawDb, opts?: LawSetOpts) {
+  if (!isLawDay(onDay) || (opts?.ssoDay !== undefined && !isLawDay(opts.ssoDay))) return { ok: false as const, code: "LAW_BAD_DAY" as const, kinds: [...LAW_KINDS_V2] as string[] }; // HR HF-SSO ▸ + ssoDay ◂
+  const upTo = opts?.ssoDay !== undefined && opts.ssoDay > onDay ? opts.ssoDay : onDay; // HR HF-SSO ▸ อ่านถึงวันที่ช้ากว่า (งวดอาจหลังวันจ่าย) ◂
   const rows = await dbOf(db).hrLawTable.findMany({
-    where: { status: "ACTIVE", kind: { in: [...LAW_KINDS_V2] }, effectiveFrom: { lte: toUtcDate(onDay) } },
+    where: { status: "ACTIVE", kind: { in: [...LAW_KINDS_V2] }, effectiveFrom: { lte: toUtcDate(upTo) } }, // HR HF-SSO ◂
     orderBy: [{ effectiveFrom: "asc" }, { id: "asc" }],
     select: { id: true, kind: true, effectiveFrom: true, status: true, json: true },
   });
-  return pickLawSet(rows, onDay);
+  return pickLawSet(rows, onDay, LAW_KINDS_V2, opts); // HR HF-SSO ▸ ส่ง ssoDay ต่อ ◂
 }
 
 // ═════════════ หน้าแสดง (อ่านอย่างเดียว · ภาพ 08) ═════════════

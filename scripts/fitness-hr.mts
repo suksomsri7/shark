@@ -446,7 +446,8 @@ export const PIN_ALLOWED = new Set([PIN_MODULE, "scripts/hr-backfill-pin-hash.mt
  * oracles that read the column must never print it · มติผู้คุมงาน H0.4 r2 ข้อ 6)
  * และไฟล์นี้เอง (มีชื่อช่องเป็นค่าคงที่) — มติผู้คุมงานได้ปรับ
  */
-const F165_EXCLUDE = (rel: string) => /^scripts\/qc-[^/]*\.mts$/.test(rel) || rel === "scripts/fitness-hr.mts";
+// ORACLE-EDIT (controller · H5.1): scripts/walk-hr.mts ถือชื่อช่องไว้เป็น "คำต้องห้าม" (NEVER_SENTINELS) เพื่อยืนยันว่าไม่โผล่บนหน้าจอ — ไม่อ่านค่าจากฐาน จึงยกเว้นแบบเดียวกับข้อสอบ
+const F165_EXCLUDE = (rel: string) => /^scripts\/qc-[^/]*\.mts$/.test(rel) || rel === "scripts/fitness-hr.mts" || rel === "scripts/walk-hr.mts";
 /**
  * ผู้แตะ pinCode เดิม (ratchet · ใช้เมื่อด่านเปิด) — "<ไฟล์>" → { n: จำนวนจุดแตะ, closes } · นับด้วย --print-pin-readers
  * ณ H0.4: ทั้งหมด "closes in H0.5" (ใบ H0.5 ย้ายเข้า hr/pin.ts แล้วถอดแถว · จำนวนลดแต่ไม่แก้ตัวเลข = แดง)

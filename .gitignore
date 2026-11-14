@@ -48,6 +48,7 @@ next-env.d.ts
 
 # ไฟล์เฉลยของ seed-hr-qc (id เปลี่ยนทุกรอบ · ห้าม commit — hr-brief-COMMON) · RUN อื่นที่ track ไฟล์ของตัวเองอยู่แล้วคงเดิม
 scripts/hr-expected.json
+scripts/hr-walk-expected.json
 # SEC S3a.1-S2 ▸ R-Z27 (L6): ไฟล์ความลับของแอป/ร้านค้าแอป/บริการคลาวด์ — ห้ามเข้ารีโปทุกที่ในทรี
 *.p8
 *.pem

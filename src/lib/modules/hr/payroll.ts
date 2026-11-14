@@ -18,8 +18,7 @@ import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; 
 import { employeeIdOfAdjustment, employeeUnitsOf, hrScopeOf, unitTargetOf } from "./scope"; // HR H2.11 ▸ สาขาของเจ้าของรายการ (แบบ payTarget) ◂
 import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ◂
 import {
-  ssoContribution,
-  monthlyWhtSatang,
+  // HR HF-SSO ▸ ssoContribution / monthlyWhtSatang ไม่ import แล้ว — รุ่น 1 ใช้ payroll-rules-sso.ts (payroll-rules.ts คง FREEZE ไว้ให้ประวัติ/ข้อสอบ) ◂
   otHourlyRateSatang,
   otAmountSatang,
   sumAdjustments,
@@ -27,9 +26,10 @@ import {
   isAddKind,
   type WhtDeductions,
 } from "./payroll-rules";
+import { monthlyWhtForTaxYear, ssoContributionForPeriod, ssoLawForPeriod } from "./payroll-rules-sso"; // HR HF-SSO ▸ เพดานประกันสังคมตามงวดค่าจ้าง + เพดานลดหย่อนตามปีภาษี (payroll-rules.ts คง FREEZE) ◂
 import { OT_LAW_DEFAULT, OT_TEXT, otLawOf, otLegalRateFloor, otText } from "./ot-rules"; // HR H2.9 ▸ #18 ด่านอัตรา OT ที่ตั้งเอง + ข้อความรายการปรับเงินจากคำขอ OT ◂
 import { loadOtLawRows } from "./law"; // HR H2.9 ▸ #18 แถวกฎหมาย OT (law.ts = ผู้อ่านตารางเดียว) ◂
-import { LAW_MSG, lawDayOf, loadLawSet } from "./law"; // HR H3.4 ▸ ชุดกฎหมายของเครื่องรุ่น 2 (law.ts = ผู้อ่านตารางเดียว) ◂
+import { LAW_MSG, lawDayOf, loadLawSet, ssoLawDayOf } from "./law"; // HR HF-SSO ▸ + ssoLawDayOf ◂ // HR H3.4 ▸ ชุดกฎหมายของเครื่องรุ่น 2 (law.ts = ผู้อ่านตารางเดียว) ◂
 import { RUN_V2_DEFAULTS } from "./payroll-run-rules"; // HR H3.4 ▸ ค่าตั้งต้นเพดานหัก ม.76 ◂
 import { computeRunItemV2, type RunItemInputV2, type RunItemResultV2 } from "./payroll-run-rules"; // HR H3.4 ▸ phase B: เครื่องคิด pure ◂
 import { ytdPriorV2, type LawSetV2 } from "./payroll-rules-v2"; // HR H3.4 ▸ ยอดสะสมก่อนงวด (H3.3) ◂
@@ -444,6 +444,29 @@ export async function listAdjustments(ctx: Ctx, periodKey?: string, take = 200, 
   });
 }
 
+// HR HF-SSO ▸ กฎของรอบรุ่น 1: งวดค่าจ้าง (ตัดสินเพดานประกันสังคม · T-HR-08) + ปีภาษี = ปี ค.ศ. ตามปฏิทินกรุงเทพของวันจ่าย (เพดานลดหย่อน) ·
+//   ไม่มีค่าสำรองเป็น "วันนี้" หรือค่าคงที่เดิม · รอบที่สร้าง/คำนวณใหม่หลังแก้ = stepsJson.ssoLaw {periodKey, maxBaseSatang, rateBp} (ไม่มี = รอบก่อนแก้) ◂
+type RunLawV1 = { periodKey: string; taxYear: number };
+function runLawV1(periodKey: string, payDate: Date): RunLawV1 {
+  ssoLawForPeriod(periodKey); // งวดผิดรูป = throw ก่อนคิดอะไร
+  return { periodKey, taxYear: Number(bkkParts(payDate).dateStr.slice(0, 4)) };
+}
+function ssoLawMarker(periodKey: string): { periodKey: string; maxBaseSatang: number; rateBp: number } {
+  const l = ssoLawForPeriod(periodKey);
+  return { periodKey, maxBaseSatang: l.maxBaseSatang, rateBp: l.rateBp };
+}
+/** แถวที่เก็บไว้ยังตรงกับกฎของงวด/ปีภาษีนี้ไหม (คิดจาก snapshot ของแถว: เงินเดือน · สิทธิ์ ปกส. · ค่าลดหย่อน) — แถวที่ไม่มีเงินเดือนใน snapshot ตรวจไม่ได้ = ข้าม */
+function storedRowMatchesLaw(it: { ssoBaseSatang: number; ssoEmployeeSatang: number; ssoEmployerSatang: number; whtSatang: number; snapshotJson: Prisma.JsonValue }, law: RunLawV1): boolean {
+  const snap = (it.snapshotJson && typeof it.snapshotJson === "object" && !Array.isArray(it.snapshotJson) ? it.snapshotJson : {}) as Record<string, unknown>;
+  const base = snap.baseSalarySatang;
+  if (typeof base !== "number" || !Number.isSafeInteger(base)) return true;
+  const sso = snap.ssoEligible === false ? { baseSatang: 0, employeeSatang: 0, employerSatang: 0 } : ssoContributionForPeriod(base, law.periodKey);
+  const d = (snap.deductions ?? {}) as { spouse?: boolean; children?: number };
+  const wht = monthlyWhtForTaxYear({ monthlySalarySatang: base, ssoEmployeeYearSatang: sso.employeeSatang * 12, deductions: { spouse: !!d.spouse, children: Math.max(0, d.children ?? 0) } }, law.taxYear);
+  return it.ssoBaseSatang === sso.baseSatang && it.ssoEmployeeSatang === sso.employeeSatang && it.ssoEmployerSatang === sso.employerSatang && it.whtSatang === wht;
+}
+// ◂ HR HF-SSO
+
 // ── คำนวณ 1 พนักงาน (pure ต่อยอดจาก rules) ──
 function computeItem(profile: {
   employeeId: string;
@@ -453,7 +476,7 @@ function computeItem(profile: {
   addSatang?: number;
   deductSatang?: number;
   adjustDetail?: { kind: string; amountSatang: number; note: string | null }[];
-}): {
+}, law: RunLawV1): { // HR HF-SSO ▸ + กฎของรอบ (งวด · ปีภาษี) ◂
   employeeId: string;
   grossSatang: number;
   ssoBaseSatang: number;
@@ -471,14 +494,14 @@ function computeItem(profile: {
   const base = profile.baseSalarySatang;
   const gross = payableGrossSatang({ baseSalarySatang: base, addSatang, deductSatang });
   const sso = profile.ssoEligible
-    ? ssoContribution(base)
+    ? ssoContributionForPeriod(base, law.periodKey) // HR HF-SSO ▸ เพดานตามงวดค่าจ้าง ◂
     : { baseSatang: 0, employeeSatang: 0, employerSatang: 0 };
 
   const d = (profile.personalDeductionJson ?? {}) as { spouse?: boolean; children?: number };
   const deductions: WhtDeductions = { spouse: !!d.spouse, children: Math.max(0, d.children ?? 0) };
 
   const ssoEmployeeYearSatang = sso.employeeSatang * 12;
-  const wht = monthlyWhtSatang({ monthlySalarySatang: base, ssoEmployeeYearSatang, deductions });
+  const wht = monthlyWhtForTaxYear({ monthlySalarySatang: base, ssoEmployeeYearSatang, deductions }, law.taxYear); // HR HF-SSO ▸ เพดานลดหย่อนตามปีภาษี ◂
   const net = gross - sso.employeeSatang - wht;
 
   return {
@@ -581,6 +604,7 @@ async function buildRunRows(
   tx: Prisma.TransactionClient,
   ctx: Ctx,
   periodKey: string,
+  payDate: Date, // HR HF-SSO ▸ ปีภาษีของเพดานลดหย่อน ◂
 ): Promise<{ items: RunItemRow[]; totals: RunTotals; adjustmentIds: string[]; exclusions: RunExclusion[] }> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const allProfiles = await tx.hrSalaryProfile.findMany({
@@ -625,6 +649,7 @@ async function buildRunRows(
   const adjByEmp = new Map<string, typeof adjustments>();
   for (const a of adjustments) adjByEmp.set(a.employeeId, [...(adjByEmp.get(a.employeeId) ?? []), a]);
 
+  const law = runLawV1(periodKey, payDate); // HR HF-SSO ◂
   const items = profiles.map((p) => {
     const rows = adjByEmp.get(p.employeeId) ?? [];
     const { addSatang, deductSatang } = sumAdjustments(rows);
@@ -634,7 +659,7 @@ async function buildRunRows(
         addSatang,
         deductSatang,
         adjustDetail: rows.map((r) => ({ kind: r.kind, amountSatang: r.amountSatang, note: r.note })),
-      }),
+      }, law), // HR HF-SSO ◂
       member.partial.has(p.employeeId),
     );
   });
@@ -747,7 +772,7 @@ export async function createPayrollRun(
     if (legacy.length > 0) throw new PayrollInputError(LEGACY_REVERSED_BOUND_TH);
 
     // H0.1 ▸ R1: แถว + ยอดรวม + รายการที่ล็อกไว้ มาจาก buildRunRows (ตัวเดียวกับ recomputeDraftRun) — ผลลัพธ์เท่าเดิมทุกไบต์ ◂
-    const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, periodKey);
+    const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, periodKey, input.payDate); // HR HF-SSO ▸ + วันจ่าย (ปีภาษี) ◂
     if (items.length === 0)
       throw new PayrollInputError(exclusions.length > 0 ? noMembersText(periodKey) : "ยังไม่มีโปรไฟล์เงินเดือน — ตั้งเงินเดือนพนักงานก่อนสร้างรอบจ่าย");
     if (ytdOverlap(await ytdOpeningsInTx(tx, ctx, bkkParts(input.payDate).dateStr, items.map((i) => i.employeeId)), bkkParts(input.payDate).dateStr)) throw new PayrollInputError(OPENING_TEXT.OPENING_OVERLAP); // HR H3.4-YTD ▸ R5c (Q5): งวด → hr:ytd · ยอดยกมาที่ถึงวันจ่ายนี้ = นับซ้ำใน 50 ทวิ ⇒ ไม่สร้าง ◂
@@ -760,6 +785,7 @@ export async function createPayrollRun(
         payDate: input.payDate,
         status: "DRAFT",
         ...runTotalsData(totals),
+        stepsJson: { ssoLaw: ssoLawMarker(periodKey) }, // HR HF-SSO ▸ รอบหลังแก้ ◂
         items: { create: items.map((i) => runItemData(scope, i)) },
       },
       select: { id: true },
@@ -829,7 +855,7 @@ async function lockRunRow(tx: Prisma.TransactionClient, ctx: Ctx, runId: string)
 type RunActual = { net: number; items: number; gross: number; digest: string };
 type RunSeen = { net: number; items: number; gross?: number; digest?: string } | null;
 // H0.2 ▸ R3: + NEGATIVE_NET (มีแถวสุทธิติดลบ · `negative` = จำนวนแถว) ◂
-type RunRefused = { code: "NOT_DRAFT" | "DRAFT_HAS_JV" | "STALE" | "NEGATIVE_NET"; actual: RunActual; negative?: number };
+type RunRefused = { code: "NOT_DRAFT" | "DRAFT_HAS_JV" | "STALE" | "NEGATIVE_NET" | "RECOMPUTE"; actual: RunActual; negative?: number }; // HR HF-SSO ▸ + RECOMPUTE ◂
 
 async function runActual(tx: Prisma.TransactionClient, ctx: Ctx, cur: LockedRun): Promise<RunActual> {
   const items = await tx.hrPayrollItem.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, runId: cur.id }, select: PAYROLL_DIGEST_SELECT });
@@ -926,15 +952,17 @@ async function rebuildDraftRun(tx: Prisma.TransactionClient, ctx: Ctx, cur: Lock
   // ปลดรายการทั้งหมดของรอบ (แถวถูกล็อกด้วย UPDATE นี้จน commit) → buildRunRows เห็นมันเป็น "ยังไม่เข้ารอบ" ใน tx เดียวกัน
   await tx.hrPayAdjustment.updateMany({ where: { ...scope, runId: id }, data: { runId: null } });
   await tx.hrPayrollItem.deleteMany({ where: { ...scope, runId: id } });
-  const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, cur.periodKey);
+  const ssoRun = (await tx.hrPayrollRun.findFirst({ where: { ...scope, id }, select: { payDate: true, stepsJson: true } }))!; // HR HF-SSO ▸ วันจ่าย (ปีภาษี) + stepsJson เดิม ◂
+  const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, cur.periodKey, ssoRun.payDate); // HR HF-SSO ◂
   // H0.2 ▸ R1: ทุกคนที่มีโปรไฟล์ถูกตัดออกจากงวดนี้ = ไม่มีแถวให้จ่าย ⇒ ไม่คำนวณใหม่ (บอกเหตุผลจริง ไม่ใช่ "ยังไม่มีโปรไฟล์") ◂
   if (items.length === 0) throw new RunRefusal(exclusions.length > 0 ? noMembersText(cur.periodKey) : RECOMPUTE_NO_PROFILE);
   { const pd = await tx.hrPayrollRun.findFirst({ where: { ...scope, id }, select: { payDate: true } }); const day = bkkParts(pd!.payDate).dateStr; if (ytdOverlap(await ytdOpeningsInTx(tx, ctx, day, items.map((i) => i.employeeId)), day)) throw new RunRefusal(OPENING_TEXT.OPENING_OVERLAP); } // HR H3.4-YTD ▸ R4/R5c: งวด → แถวรอบ → hr:ytd ◂
   if (money2OverV1(items, totals)) throw new RunRefusal(MONEY2_TEXT.runLimit); // HR MONEY-2 ▸ R4: ร่างเดิมไม่ถูกแตะ (ย้อนทั้ง tx) ◂
   await tx.hrPayrollItem.createMany({ data: items.map((i) => ({ ...runItemData(scope, i), runId: id })) });
+  const steps0 = ssoRun.stepsJson && typeof ssoRun.stepsJson === "object" && !Array.isArray(ssoRun.stepsJson) ? (ssoRun.stepsJson as Record<string, unknown>) : {}; // HR HF-SSO ◂
   const upd = await tx.hrPayrollRun.updateMany({
     where: { ...scope, id, status: "DRAFT", journalEntryId: null },
-    data: { ...runTotalsData(totals), note },
+    data: { ...runTotalsData(totals), note, stepsJson: { ...steps0, ssoLaw: ssoLawMarker(cur.periodKey) } as Prisma.InputJsonValue }, // HR HF-SSO ▸ รอบหลังแก้ ◂
   });
   if (upd.count !== 1) throw new RunRefusal(RUN_CHANGED);
   if (adjustmentIds.length > 0) {
@@ -1059,9 +1087,10 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
 const APPROVE_STALE = "ตัวเลขของรอบนี้เปลี่ยนไปแล้ว (มีการคำนวณใหม่) — กรุณาเปิดดูและอนุมัติอีกครั้ง";
 const APPROVE_NOT_DRAFT = "รอบนี้อนุมัติหรือจ่ายไปแล้ว";
 const APPROVE_DRAFT_HAS_JV = "รอบนี้มีเอกสารบัญชีค้างอยู่ ต้องให้ผู้ดูแลตรวจสอบก่อน"; // H0.1 ▸ CR17 ◂
+export const APPROVE_RECOMPUTE = "ต้องคำนวณรอบนี้ใหม่ก่อนอนุมัติ (อัตราประกันสังคมของงวดนี้เปลี่ยน)"; // HR HF-SSO ▸ Q3 ◂
 /** H0.1 ▸ CR12: เหตุที่อนุมัติไม่สำเร็จ (ให้ approvePayrollRunAction เลือกข้อความคงที่ — POST_FAILED = ลงบัญชีล้ม รอบกลับเป็นร่าง) ◂
  *  H0.1 ▸ CR17: DRAFT_HAS_JV = ร่างที่มี journalEntryId ค้าง (ลงบัญชีไปแล้วแต่สถานะถูกคืนเป็นร่าง) ⇒ ไม่ลงบัญชีซ้ำ ◂ */
-export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV" | "NEGATIVE_NET" | "WORK_ENTRIES"; // HR H3.1 ▸ + WORK_ENTRIES (รอบรุ่น ≥ 2 ที่ชั่วโมงทำงานยังไม่พร้อม) ◂
+export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV" | "NEGATIVE_NET" | "WORK_ENTRIES" | "RECOMPUTE"; // HR HF-SSO ▸ + RECOMPUTE ◂ // HR H3.1 ▸ + WORK_ENTRIES (รอบรุ่น ≥ 2 ที่ชั่วโมงทำงานยังไม่พร้อม) ◂
 // H0.2 ▸ R3 (D6): ข้อความคงที่ (N = จำนวนแถวที่สุทธิติดลบ) — action ส่งต่อถึงจอได้ (ไม่มีข้อความดิบของ error) ◂
 export const approveNegativeNetText = (n: number) => `มีพนักงาน ${n} คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'`;
 
@@ -1111,6 +1140,16 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpe
     // H0.2 ▸ R3 (D6): แถวที่สุทธิติดลบ (หักมากกว่าเงินได้) = ไม่อนุมัติ ทั้งทางที่มี/ไม่มี expect — นับใต้ล็อกแถวรอบเดียวกับที่คำนวณใหม่/ลบถือตลอด tx
     //   ⇒ คำนวณใหม่แทรกระหว่างการนับกับ UPDATE ไม่ได้ · UPDATE มี guard "ไม่มีแถวติดลบ" ซ้ำอีกชั้น (เดิม JV ปฏิเสธเฉพาะยอดรวมติดลบ
     //   — แถวเดียวติดลบในยอดรวมบวก ลงบัญชีและจ่ายขาดได้) ◂
+    // HR HF-SSO ▸ Q3: แถวที่เก็บไว้ต้องตรงกับกฎของงวด (เพดานประกันสังคมตามงวด · เพดานลดหย่อนตามปีภาษีของวันจ่าย) — ตรวจใต้ล็อกแถวรอบ ·
+    //   ไม่ตรง (เช่น ร่างที่สร้างก่อนแก้ของงวดตั้งแต่ 2026-01) = ไม่อนุมัติ ให้กด "คำนวณใหม่" ก่อน · ไม่แก้แถวเอง · ไม่ย้อนเก็บเงินสมทบ ◂
+    {
+      const pr = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: runId }, select: { payDate: true, engineVersion: true } });
+      if (pr!.engineVersion === 1) { // HR HF-SSO ▸ (review) รุ่น 1 เท่านั้น — รอบรุ่น 2 ใช้ด่าน INPUTS_CHANGED ของตัวเอง ◂
+        const law = runLawV1(cur.periodKey, pr!.payDate);
+        const rows = await tx.hrPayrollItem.findMany({ where: { ...scope, runId }, select: { ssoBaseSatang: true, ssoEmployeeSatang: true, ssoEmployerSatang: true, whtSatang: true, snapshotJson: true } });
+        if (rows.some((r) => !storedRowMatchesLaw(r, law))) return { code: "RECOMPUTE", actual: await runActual(tx, ctx, cur) }; // HR HF-SSO ◂
+      } // HR HF-SSO ◂
+    }
     const negative = await tx.hrPayrollItem.count({ where: { ...scope, runId, netSatang: { lt: 0 } } });
     if (negative > 0) return { code: "NEGATIVE_NET", actual: await runActual(tx, ctx, cur), negative };
     // HR H3.1 ▸ R6 (ปิดหนี้ D2 ของ H2.6): รอบรุ่น ≥ 2 — ชั่วโมงทำงานของทุกคนในรอบต้องเป็นปัจจุบัน (ดึงหลังข้อมูลต้นทางเปลี่ยนแล้ว · ไม่มีรายการต้องตรวจ) ·
@@ -1159,6 +1198,7 @@ export async function approveRun(
     if ((claimed.code as string) === "WORK_ENTRIES") return { ok: false, note: WE_TEXT.approveBlocked, code: "WORK_ENTRIES" }; // HR H3.1 ◂
     { const att = ATT_APPROVE_TEXT[claimed.code as string]; if (att) return { ok: false, note: att, code: claimed.code as unknown as ApproveFailCode }; } // HR H3.2 ◂ ข้อความคงที่ของด่านหักสาย/ขาด (action แสดง note)
     if (claimed.code === "STALE") return { ok: false, note: APPROVE_STALE, code: "STALE" };
+    if (claimed.code === "RECOMPUTE") return { ok: false, note: APPROVE_RECOMPUTE, code: "RECOMPUTE" }; // HR HF-SSO ◂
     if (claimed.code === "DRAFT_HAS_JV") return { ok: false, note: APPROVE_DRAFT_HAS_JV, code: "DRAFT_HAS_JV" };
     if (claimed.code === "NEGATIVE_NET") return { ok: false, note: approveNegativeNetText(claimed.negative ?? 0), code: "NEGATIVE_NET" };
     return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
@@ -2433,7 +2473,7 @@ const ytdOverlap = (m: Map<string, YtdOpening>, payDay: string): boolean => [...
 async function buildRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, run: { periodKey: string; payDate: Date; runId: string | null; bound?: string; gates: boolean; staleRefuse?: boolean }): Promise<V2Built> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const P = run.periodKey;
-  const law = await loadLawSet(lawDayOf(run.payDate), tx as unknown as Parameters<typeof loadLawSet>[1]);
+  const law = await loadLawSet(lawDayOf(run.payDate), tx as unknown as Parameters<typeof loadLawSet>[1], { ssoDay: ssoLawDayOf(run.periodKey) }); // HR HF-SSO ▸ Q2: แถว SSO ตามงวดค่าจ้าง ◂
   if (!law.ok) throw new Run2Refusal(law.code, LAW_MSG[law.code]);
   const allProfiles = await tx.hrSalaryProfile.findMany({
     where: scope,
