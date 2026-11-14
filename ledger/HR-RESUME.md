@@ -699,3 +699,12 @@
 - ของจริงเข้าชุดแก้หน้าจอ: i18n 240 (แถบแท็บ ui.tsx:93-102 · หัวหน้า page.tsx หลายไฟล์ · วันที่ล็อก th-TH ใน ui/date.ts:13) · PAID ดิบใน 13b · ล้นจอ 11a en 390 · ปุ่มหลัก <44px หน้า 05 · ปุ่มปิดไม่มีเหตุผล · 570 ปุ่มไม่มี testid · 23 แถว inventory ไม่เคยเห็น · hr-holiday-preset ผิดชนิด
 - ลำดับที่ต้องระวัง: PRIV-3 แตะ employees/page.tsx (เพิ่มด่าน) ชนกับข้อสอบ VIS-5c ข้อ "ห้ามเพิ่ม guard import" → PRIV-3 เข้าก่อน VIS-5c
 - HR-PREPROD-1: ผู้สร้างรอบ V1b/V7b/V8c (3 ไฟล์ข้อสอบ preprod-1 57 · 1b 25 · 1c 10 → ด่านต้อง EXTRA="qc-hr-preprod-1b qc-hr-preprod-1c")
+
+### 2026-11-15T01:40Z · จุดต่อ (5 เลน)
+- เลน 5 ใหม่ `/root/projects/shark-hr-l5` (worktree · node_modules ของตัวเอง · ฐาน QC ร่วมกับเลน 2 · .env.qc-hr/.env.qc คัดลอกจากเลน 2) `wip/hr-priv-3` 21cabe3be: ใบสั่ง+คำตัดสิน Q1–Q6 (ledger/hr-briefs/hr-brief-PRIV-3.md บน session/hr ea2b41ea1) · ข้อสอบ qc-hr-priv-3 26 ข้อ (แดง 10) โดย a31b21b807884d5a9 · ผู้สร้าง a47766f0e3ed7927e กำลังทำ · ปุ่มหลังบ้านปฏิเสธ K/N/S อยู่แล้ว (ยืนยันด้วยข้อสอบ) → รั่วเฉพาะ "เห็น"
+- เลน 1 `wip/hr-vis-5bc` fd1531736: ผู้สร้าง VIS-5b a538b5242fe7df3d0 · VIS-5c ยังไม่มีผู้สร้าง (รอ PRIV-3 เข้าก่อน เพราะข้อสอบ vis-5c S8 "ห้ามเพิ่ม guard" ต้องกลับ)
+- เลน 2 `wip/hr-leave-3` 8144d11a7+: ผู้สร้าง a872228a4f774f395 ทำ W3/W4.2 + รันเต็ม · ขั้นสองรอ PREPROD-1
+- เลน 3 `wip/hr-vis-5a` 1e0a6a210: ผู้สร้าง a8a2aaeef4ec7ecc8 (ข้อสอบ 38 · ผู้จัดการเห็น run+hours+adjust)
+- เลน 4 `wip/hr-preprod-1` 681ed7464: ผู้สร้าง a7878aeefb74368f3 รอบ V1b/V7b/V8c (3 ไฟล์ข้อสอบ)
+- ลำดับรวม: H4.9-FIX1 (อยู่ใน session/hr แล้ว) → PREPROD-1 → LEAVE-3 → PRIV-3 → VIS-5a → VIS-5b → VIS-5c → (VIS-5d, 5e ยังไม่ร่าง) → ด่าน pm-full (ต้อง seed-hr-walk --down ก่อน + EXTRA ชุด preprod-1b/1c, leave-3b, priv-3, vis-5a/5b/5c) → HANDOVER-H4 → นับ H4.9 · หลังชุดหน้าจอครบ: build ใหม่ + เดินซ้ำ + ดูภาพคู่ → นับ H5.1
+- หนี้: reports/export ตอบ 400 กับ 404 ต่างกันตาม system id (เล็ก) · ข้อสอบ vis-5b การ์ดสรุปเดือนแดงปลอมถ้ารันวันที่ 1–3
