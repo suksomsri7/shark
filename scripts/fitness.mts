@@ -328,6 +328,7 @@ const ALLOWED_EDGES = new Set([
   "inventory→approval",
   "hr→approval",
   "hr→inventory", // HR H4.6 ▸ เบิกของ/ค่าเสียหาย: hr/stock-charge.ts import ได้เฉพาะ `@/lib/modules/inventory` (index) — getItem + consumeBatch เท่านั้น (ไม่อ่านตารางคลังเอง · ข้อสอบ qc-hr-h4.6 S12.1) ◂
+  "hr→pos", // HR H4.2 ▸ ค่าแรงต่อยอดขาย: hr/labor.ts อ่าน `salesFacts.salesByHour` ของ `@/lib/modules/pos` (index) แบบ lazy (await import) เท่านั้น — ไฟล์ HR อื่นห้าม import POS (F2.1h) ◂
   "pos→hr", // POS P3.5 ▸ C-8 v2 (มติ 5 11): ตารางงาน/ลา/ลงเวลา/ส่งค่าคอมฯ เข้างวดเงินเดือน — import ได้เฉพาะ `@/lib/modules/hr` (index) จาก pos/hr-link.ts + hr-link-actions.ts (ข้อสอบ qc-pos-p3.5 ST1) ◂
   "pos→approval", // POS P1.15 ▸ void/คืนเงิน/ส่วนลดเกินสิทธิ์เข้าสายอนุมัติผ่าน facade `@/lib/modules/approval` เท่านั้น (มติผู้คุมงาน 6) ◂
   "pos→reward", // POS P1.12 ▸ ส่งมอบของรางวัลที่เคาน์เตอร์ (register-member.ts → facade `@/lib/modules/reward` เท่านั้น: resolveRewardCtxForUnit · fulfilV2 · มติผู้คุมงาน 7 · รีวิว F4) ◂
@@ -509,6 +510,18 @@ chk(
   illegalEdges.length ? `เส้นเถื่อน: ${illegalEdges.sort().join(" · ")}` : "ครบ",
   "MAJOR",
 );
+// HR H4.2 ▸ F2.1h: เส้น hr→pos มีผู้ใช้เดียว = hr/labor.ts ผ่าน `await import("@/lib/modules/pos")` (index · ไม่มี import หัวไฟล์ · ไม่ล้วงไฟล์ย่อย) ◂
+{
+  const hrPosBad: string[] = []; // HR H4.2 ◂
+  for (const f of moduleFiles.filter((x) => relative(moduleDir, x).split("/")[0] === "hr")) { // HR H4.2 ◂
+    const src = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1"); // HR H4.2 ◂
+    if (!/@\/lib\/modules\/pos\b/.test(src)) continue; // HR H4.2 ◂
+    const rel = relative(moduleDir, f); // HR H4.2 ◂
+    const lazyOnly = /await\s+import\(\s*["']@\/lib\/modules\/pos["']\s*\)/.test(src) && !/from\s+["']@\/lib\/modules\/pos/.test(src) && !/@\/lib\/modules\/pos\//.test(src); // HR H4.2 ◂
+    if (rel !== "hr/labor.ts" || !lazyOnly) hrPosBad.push(rel); // HR H4.2 ◂
+  } // HR H4.2 ◂
+  chk("F2.1h", "HR → POS: เฉพาะ hr/labor.ts แบบ lazy import ของ facade (HR H4.2)", hrPosBad.length === 0, hrPosBad.length ? `ผู้ import ที่ไม่อนุญาต: ${hrPosBad.join(" · ")}` : "ครบ", "MAJOR"); // HR H4.2 ◂
+} // HR H4.2 ◂
 // chokepoint discipline: pos→account ต้อง import ผ่าน facade index เท่านั้น (ห้ามล้วง service/gl ตรง)
 // ORACLE-EDIT (HR H3.6 builder, 13 Nov — brief hr-brief-H3.6 R2/R11 + oracle qc-hr-h3.6 S1.3/S1.4 prescribe these exact deep specs; account/** is frozen
 //   so the facade cannot re-export them): hr/filings may import ONLY the pure money/number helpers below — bahtText (totals) · formatDocNo/reserveSeq
