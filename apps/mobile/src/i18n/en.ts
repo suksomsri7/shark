@@ -6,6 +6,7 @@ const en: Record<I18nKey, string> = {
   "sec.zone.secretary": "Secretary",
   "sec.zone.customers": "Customers",
   "sec.zone.team": "Team",
+  "sec.zone.systems": "Systems",
   "sec.top.help": "Help",
   "sec.top.new": "New task",
   "sec.top.invite": "Invite staff",

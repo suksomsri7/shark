@@ -19,7 +19,7 @@ import { radii, spacing, type as T } from "@/src/theme/tokens";
 
 type Switcher = { open: () => void; close: () => void; visible: boolean };
 /** รากโซนที่กลับไปหลังสลับกิจการ (R-S2.1c) */
-export type ZoneRoot = "/secretary" | "/customers";
+export type ZoneRoot = "/secretary" | "/customers" | "/"; // "/" = หน้าระบบ (WebView) — 14 พ.ย.
 const Ctx = createContext<Switcher | null>(null);
 const NOOP: Switcher = { open: () => {}, close: () => {}, visible: false };
 

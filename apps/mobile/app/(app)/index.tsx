@@ -1,6 +1,8 @@
 // หน้าแรกหลัง login = dashboard ของกิจการ (WebView /app) — เปิดด้วย one-time code (60 วิ ใช้ครั้งเดียว)
 // ⚠️ ห้ามใส่ Bearer/token ใน URL หรือ header ของ WebView เด็ดขาด — ส่งแค่ ?code=
-// ⚠️ ห้ามมี native header — เว็บมี top bar ของตัวเอง · SafeAreaView กันชนติ่งจอ
+// 14 พ.ย. (เจ้าของสั่ง): แถบบน native แบบหน้าเลขา (SecTopBar zone="systems") อยู่เหนือ WebView · UA เพิ่ม "SharkTopBar/1" ⇒ เว็บไม่วาดแถบบนของตัวเอง
+//   ปุ่มระบบ (ทึบ) แตะซ้ำ = เปิดเมนูระบบของเว็บ (CustomEvent app:drawer-open) · ไม่มีปุ่มลอย "เลขา AI" แล้ว (เข้าเลขาจากแถบบน)
+//   แอปเปิดครั้งแรกไปหน้าเลขา (/secretary) ไม่ใช่จอนี้ (app/_layout.tsx) · SafeAreaView กันชนติ่งจอ
 // UA ต่อท้าย "SharkApp/1" → ฝั่งเว็บซ่อน orb ของตัวเอง (กัน orb ซ้อน) · ปุ่ม orb AI ลอยมุมล่างขวา → /sessions
 // เปลี่ยนกิจการ (activeTenantId) → ขอ code ใหม่ reload อัตโนมัติ
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -13,12 +15,19 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, apiErrorText, BASE_URL } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
 import { C, R, S } from "@/src/theme";
+import { BusinessSwitcherHost } from "@/src/components/secretary/BusinessSwitcherSheet";
+import { SecTopBar } from "@/src/components/secretary/SecTopBar";
+import { refreshZoneBadges, useSecretaryZone } from "@/src/api/secretary";
 
 // M3.11 — จอ native อื่น (สรุปสมาชิก: ใช้สิทธิ์/ให้แต้ม/ออก voucher) ขอให้เปิดหน้าเว็บของร้านใน WebView นี้
 // ด้วย `?open=/app/...&t=<nonce>` · รับเฉพาะพาธใต้ /app ของโดเมนเดียวกัน (กันพาไปเว็บอื่นด้วยพารามิเตอร์)
 const OPEN_PATH_RE = /^\/app\/[A-Za-z0-9_\-/]*(\?[A-Za-z0-9_=&\-]*)?$/;
 
 export default function DashboardScreen() {
+  useSecretaryZone(); // secretary/me + badge ของแถบบน (focus/foreground)
+  useEffect(() => {
+    void refreshZoneBadges();
+  }, []);
   const router = useRouter();
   const { activeTenantId, signOut, switchTenant } = useAuth();
   const { open, t: openNonce } = useLocalSearchParams<{ open?: string; t?: string }>();
@@ -135,13 +144,23 @@ export default function DashboardScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <BusinessSwitcherHost root="/">
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+      {hideOrb ? null : (
+        <View style={styles.bar}>
+          <SecTopBar
+            zone="systems"
+            center="none"
+            onSystems={() => webRef.current?.injectJavaScript("window.dispatchEvent(new CustomEvent('app:drawer-open'));true;")}
+          />
+        </View>
+      )}
       <View style={styles.flex}>
         {uri && (
           <WebView
             ref={webRef}
             source={{ uri }}
-            applicationNameForUserAgent="SharkApp/1"
+            applicationNameForUserAgent="SharkApp/1 SharkTopBar/1"
             onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
             style={styles.webview}
             onMessage={(ev) => {
@@ -203,27 +222,16 @@ export default function DashboardScreen() {
         </Pressable>
         )}
 
-        {/* S2.1 เลขา AI ▸ ทางเข้าเดียวจากหน้าแรก 1.0 → /secretary · ลอยมุมล่างขวา (ที่เดิมของ orb ที่ซ่อนไว้ · ถ้าเปิด orb คืน ปุ่มนี้ขยับขึ้นเหนือ orb)
-            โชว์ตลอด (ระหว่างโหลด/พลาดด้วย) ยกเว้นตอนเว็บขอเต็มจอ (chat-fullscreen) · สีจาก C ของ 1.0 (ไม่ใช้ธีมใหม่ในจอนี้) ◂ */}
-        {!hideOrb && (
-          <Pressable
-            testID="home-open-secretary"
-            onPress={() => router.push("/secretary")}
-            accessibilityRole="button"
-            hitSlop={8}
-            style={[styles.secBtn, !ORB_HIDDEN_FOR_NOW && styles.secBtnAboveOrb]}
-          >
-            <Text style={styles.secText}>เลขา AI</Text>
-          </Pressable>
-        )}
       </View>
     </SafeAreaView>
+    </BusinessSwitcherHost>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
   flex: { flex: 1, backgroundColor: C.bg },
+  bar: { paddingHorizontal: 18, paddingTop: 6, paddingBottom: 4, backgroundColor: C.bg },
   webview: { flex: 1, backgroundColor: C.bg },
   overlay: {
     position: "absolute",
@@ -246,19 +254,6 @@ const styles = StyleSheet.create({
     right: S.lg,
     bottom: S.lg,
   },
-  // S2.1 ปุ่มเข้าเลขา AI (ลอยมุมล่างขวา · แคปซูลทึบ)
-  secBtn: {
-    position: "absolute",
-    right: S.lg,
-    bottom: S.lg,
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: S.lg,
-    borderRadius: R.full,
-    backgroundColor: C.text,
-  },
-  secBtnAboveOrb: { bottom: S.lg + 64 + S.md },
-  secText: { color: C.bg, fontSize: 15, fontFamily: "IBMPlexSansThai_700Bold" },
   // spinner เล็กทับ orb ระหว่างรอ welcome (ห้ามค้างเงียบ)
   orbSpinner: {
     position: "absolute",

@@ -5,6 +5,7 @@ const th = {
   "sec.zone.secretary": "เลขา",
   "sec.zone.customers": "ลูกค้า",
   "sec.zone.team": "ทีม",
+  "sec.zone.systems": "ระบบ",
   "sec.top.help": "ช่วยเหลือ",
   "sec.top.new": "เริ่มงานใหม่",
   "sec.top.invite": "เชิญพนักงาน",

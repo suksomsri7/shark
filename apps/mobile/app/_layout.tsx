@@ -47,7 +47,8 @@ function Gate({ children }: { children: React.ReactNode }) {
       router.replace("/secretary/onboarding/name");
       return;
     }
-    if (atLogin || (!inApp && !atDna)) router.replace("/(app)");
+    // 14 พ.ย. (เจ้าของสั่ง): เปิดแอป/login เสร็จ ⇒ หน้าเลขา (เดิม = หน้าระบบ WebView "/(app)") · หน้าระบบเข้าจากปุ่มระบบบนแถบบน
+    if (atLogin || (!inApp && !atDna)) router.replace("/secretary");
   }, [ready, token, tenants.length, user?.phone, user?.id, segments, router]);
 
   return <>{children}</>;

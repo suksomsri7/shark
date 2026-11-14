@@ -9,7 +9,7 @@ import { AddSystemModal } from "./AddSystemModal";
 import { NavRail, isRailPath } from "./NavRail";
 import { SwipeEdge } from "./SwipeEdge";
 import { IssueReportSheet } from "./IssueReportSheet";
-import { useInApp } from "./use-in-app";
+import { useInApp, useNativeTopBar } from "./use-in-app";
 import { loadNavBadgesAction } from "@/lib/support/actions";
 import { setNavCollapsedAction } from "@/lib/core/preferences-actions";
 
@@ -80,6 +80,8 @@ export function AppShell({
   // เปิดจากแอปมือถือ (WebView ส่ง UA "SharkApp") → ซ่อน orb เว็บ (แอปมีปุ่ม AI native ของตัวเอง — กัน orb ซ้อน)
   // + ไม่ปักแถบเมนูซ้าย (แอปมีเมนูของตัวเอง และจอมือถือไม่มีที่พอ)
   const inApp = useInApp();
+  // แอปรุ่นใหม่มีแถบบน native ของตัวเอง (UA "SharkTopBar") ⇒ ไม่วาด Topbar ของเว็บ · เมนูระบบเปิดจากปุ่มระบบของแอป (app:drawer-open)
+  const nativeTopBar = useNativeTopBar();
   // 🔴 ต้นทุน query ของ badge เมนู — ตั้งใจให้ "ไม่ผูกกับการเรนเดอร์":
   //  · ยิง 1 ครั้งตอน app shell mount (layout ไม่ re-mount ตอนเปลี่ยนหน้า ⇒ ไม่ใช่ต่อหน้า)
   //  · ยิงซ้ำเฉพาะตอนผู้ใช้ "กดเปิดเมนู" เอง (ท่าทางของคน = มีขอบเขต ไม่ใช่ polling)
@@ -139,6 +141,7 @@ export function AppShell({
 
   return (
     <>
+      {nativeTopBar ? null : (
       <Topbar
         branding={branding}
         aiUnread={aiUnread}
@@ -149,6 +152,7 @@ export function AppShell({
         }}
         hideOnMobile={chatFullscreen}
       />
+      )}
       {/* ปัดจากขอบซ้ายไปขวา = เปิดเมนู (จอเล็ก/แอป) — ในแอปไม่มี ☰ แล้ว ท่านี้คือทางเดียว */}
       <SwipeEdge
         alwaysOn={inApp}

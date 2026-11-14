@@ -13,3 +13,13 @@ export function useInApp(): boolean {
   }, []);
   return inApp;
 }
+
+// 14 พ.ย. (เจ้าของสั่ง): แอปรุ่นใหม่วางแถบบน native เอง (แบบหน้าเลขา) เหนือ WebView และส่ง UA เพิ่ม "SharkTopBar"
+//   ⇒ เว็บไม่ต้องวาด Topbar ของตัวเองและไม่เว้นที่ 56px · แอปรุ่นเก่า (ไม่มีคำนี้) = แถบเว็บเหมือนเดิม
+export function useNativeTopBar(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (navigator.userAgent.includes("SharkTopBar")) setOn(true);
+  }, []);
+  return on;
+}
