@@ -2352,6 +2352,20 @@
    "screen": "ปฏิทินวัน (จอ 10) การ์ดนัดชน",
    "action": "ไม่ต้อง = จำ key ในเครื่อง (ไม่ส่งเซิร์ฟเวอร์)",
    "wo": "CAL2.12"
+  },
+  {
+   "testID": "cal-card-<cardId>-open",
+   "file": "apps/mobile/src/components/calendar/RoomCalCard.tsx",
+   "screen": "ห้องเลขา · การ์ดปฏิทินของผู้ดู (B1)",
+   "action": "AGENDA → /secretary/calendar?day=fromDay · LIST → /secretary/calendar?view=remind",
+   "wo": "CAL2.13"
+  },
+  {
+   "testID": "cal-card-<cardId>-row-<n>",
+   "file": "apps/mobile/src/components/calendar/RoomCalCard.tsx",
+   "screen": "ห้องเลขา · การ์ดปฏิทินของผู้ดู (B1)",
+   "action": "AGENDA = deepLink ของแถว · LIST = แผ่นแก้ไขเตือน",
+   "wo": "CAL2.13"
   }
  ]
 }

@@ -30,6 +30,8 @@
 | CAL2.7 การ์ดเตือนในห้อง | ✅ เลน c f4b107470 | ReminderCard + DRAFT ใช่ ตั้งเลย/แก้เวลา · RoomDetail.reminders · pair-room[-dark] |
 | CAL2.9 ตั้งค่าปฏิทิน | ✅ เลน c 144a48cbb | จอ 8 + จอ 9 (ดู/สลับ/ยกเลิกเชื่อม · ไม่มีปุ่มเชื่อม = CAL2.10) · pair-settings / pair-google |
 | CAL2.12 นัดชน | ✅ เลน c a08981278 | ConflictCard + cal-conflicts.ts (สำเนา §11 ฝั่งแอป · ต้องเทียบกับ CAL1.9) · render-tomorrow-full |
+| B1 แอป (cal-review-b) | ✅ เลน c 15 พ.ย. (ดูคอมมิต "B1 room calendar cards") | RoomDetail.calendarCards → RoomCalCard (AGENDA = agenda ของผู้ดู แบบจอ 3 + "เปิดในปฏิทิน ›" · LIST = items today+upcoming แบบแท็บเตือนฉัน) · คนอื่นในห้อง = ไม่มีการ์ด (render-room-cards-other) · ข้อความยืนยันเตือนประจำมาจาก ReminderCard (DRAFT) · source-done 409 blocked/403 = แสดงข้อความเซิร์ฟเวอร์ + คืนวงกลม (โค้ดเดิมรองรับแล้ว) · Google DTO accessRole → "แชร์มา" |
+| CAL2.13 โหมดมืด+ภาพคู่ | ✅ เลน c 15 พ.ย. (fixture/mock) | ภาพคู่ /root/qc/cal/pair-{home,day,month,room,add,settings,google,tomorrow}[-dark].png + render-* (remind, plus, add-custom, add-link, room-edit, set-time, tomorrow-full, room-cards, room-cards-other) ทั้งสองธีม · ยังไม่ได้ถ่ายกับเซิร์ฟเวอร์จริง/ฐาน QC |
 
 ## จุดต่อ
 - เลน c (14 พ.ย.): จอทั้งหมดใช้ fixture ในตัวจนเส้น CAL1.6 ขึ้น · ถ่ายภาพคู่: `QC_PREPARE=1 bash scripts/iso.sh env QC_PREPARE=1 QC_NODE_MODULES=/root/qc-cal-nm/node_modules node apps/mobile/qc/shoot-cal.mjs --both` (นาฬิกาปัก 16 พ.ย. 2569 08:05 · ผล /root/qc/cal/ · /root/qc-cal-nm = node_modules ของ shark-in-th + expo-document-picker)
