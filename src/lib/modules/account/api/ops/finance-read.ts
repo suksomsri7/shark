@@ -516,7 +516,7 @@ const whtPnd1k = defineOp({
   kind: "read",
   action: "account.tax.view",
   rate: "report",
-  summary: "Yearly PND 1A (ภ.ง.ด.1ก) list: everything on PND 1 in the year, totalled per payee. Supports CSV (a helper for filling the form).",
+  summary: "Yearly PND 1A list: everything on PND 1 in the year, totalled per payee. Supports CSV (a helper for filling the form).",
   label: "ภ.ง.ด.1ก รายปี",
   tool: { name: "account_wht_pnd1k", hint: "Use for the yearly PND 1A list (salary/commission paid to individuals, per person)." },
   input: pnd1kInput,

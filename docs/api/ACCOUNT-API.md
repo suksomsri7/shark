@@ -1230,7 +1230,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/wht/filings" \
 
 #### `wht.pnd1k`
 
-**GET /wht/pnd1k** - Yearly PND 1A (ภ.ง.ด.1ก) list: everything on PND 1 in the year, totalled per payee. Supports CSV (a helper for filling the form). · scope: `account.tax.view` · read · AI tool: `account_wht_pnd1k`
+**GET /wht/pnd1k** - Yearly PND 1A list: everything on PND 1 in the year, totalled per payee. Supports CSV (a helper for filling the form). · scope: `account.tax.view` · read · AI tool: `account_wht_pnd1k`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
