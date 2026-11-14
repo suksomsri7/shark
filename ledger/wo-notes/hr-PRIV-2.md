@@ -4,7 +4,7 @@
 
 ## 0. Checkpoint
 - done: product change (12 src files, all hunks `HR PRIV-2 ▸ … ◂`) — commits 5a291458e (helper + 4 former copies + payroll.ts) · c23c0fc6b (surfaces + R5) · ORACLE-EDITs 1c734d9cf (h3.8 ×2 places, h3.9 ×2, h3.6 ×1) · suites + fitness + clean typecheck (tracked code 0 errors; 5 errors only in untracked `scratchpad/h52p/p1-sweep.mts`, another agent's probe) — see `hr-PRIV-2-green.txt`.
-- open (controller): h3.9 S2.1 texts fixture · h4.3 S1.6/S1.7 vs priv-2 S4 (see §4).
+- Q1 applied (fixture). open: h4.3 S1.6/S1.7 red on this branch until HR-MONEY-2 merges (then re-merge session/hr + PRIV-2 equivalent) · priv-2 S4 freeze question with the oracle author.
 
 ## 1. The one helper (`scope.ts`)
 `inPayScope(scope, homeUnitId)` · `payScopeWhere(scope)` (`"*"` ⇒ `{}` · `[]` ⇒ `{id:{in:[]}}` · list ⇒ `{unitId:{in}}`, no `units` term) · `payScopeEmployeeIds(ctx, scope)` (id list for tables without a relation; null = all) · `PAY_SCOPE_EXCLUDED_TEXT`.
@@ -59,13 +59,14 @@ Owner / all-branch viewers / API keys (`*` scope) / AI tools: unchanged (D5/D6).
 | 6 | `qc-hr-h4.2-lib.mts` | not needed (h4.2 57/57 without it) | not edited |
 | 7 | `qc-hr-h1.3.mts:907` | not needed (literal kept, run trimmed) · S6.1 PAY_MARKED: no `HR PRIV-2` entry needed (h1.3 63/63) | not edited |
 | 8 | `qc-hr-h0.2.mts` S5.4 | not needed (guard → ctx → reads order kept; 58/58) | not edited |
-| new | `scripts/fixtures/hr-h3.9-texts.json` (h3.9 S2.1) | th `formula`: "…อาจอ่านเป็นสูตร: {names} — แก้…" → "…อาจอ่านเป็นสูตร — แก้…", th `encoding` same pattern; en `formula`/`encoding` drop ": {names}". Forced by priv-2 S7 (no `{names}` anywhere in reports-rules.ts) | **outside §5 — not edited, controller ruling needed** (h3.9 59/60 until then) |
+| Q1 | `scripts/fixtures/hr-h3.9-texts.json` (h3.9 S2.1) | **ORACLE-EDIT (HR-PRIV-2 · controller Q1)** — JSON carries no marker: th `formula` "…อาจอ่านเป็นสูตร: {names} — แก้ข้อความก่อนส่งออก" → "…อาจอ่านเป็นสูตร — แก้ข้อความก่อนส่งออก", th `encoding` "…เขียนลงไฟล์ไม่ได้: {names} — แก้…" → "…เขียนลงไฟล์ไม่ได้ — แก้…", en `formula`/`encoding` drop ": {names}" (`_meta` line untouched) | applied · h3.9 60/60, priv-2 39/39 |
 
 ## 5. COMMON §F self-check
 1 ☑ no new page/route · 2 ☑ no new transaction; no `tenantDb(`/`prisma.` inside tx bodies added · 3 ☑ `[]` = all branches via `hrScopeOf` everywhere (previewPayrollRunV2 now agrees with D-1; side effect: a MANAGER **without** pay keys and `unitAccess []` gets the fixed `no` there instead of empty rows — the existing `mgr && all-branch ⇒ NO` rule) · 4 ☑ refusals fixed Thai (`HR_NAME_BAD_TEXT`, report texts without names); forbidden vs unknown parity kept (A5) · 5 ☑ n/a (no tx options) · 6 ☑ n/a (no migration) · 7 ☑ n/a · 8 ☑ n/a · 9 ☑ n/a (no events) · 10 ☑ src files ⊆ brief list (scope · privacy · privacy-shared · payslip · labor · reports · reports-rules · payroll · payroll-ui · payroll-run-ui · service · attendance-pay); `inbox.ts` not touched (C5 via `listAdjustments`).
 
-## 6. Decisions for the controller
-- `loadPayslipForViewer` trims `total*` for every viewer that is not an all-branch payroll viewer — including the employee viewing their own slip (ruling 4 names "limited viewer"; self is wider than needed but no consumer reads run totals).
+## 6. Decisions for the controller (rulings 14 Nov: Q1 yes · Q2 h4.3-lib waits for HR-MONEY-2 + oracle author · Q3 ok · Q4 ok)
+- Q3 (ok): `loadPayslipForViewer` trims run `total*` for every viewer that is not an all-branch payroll viewer, incl. the employee on their own slip. The employee's own figures: `item` and `employee` are returned as read by `payslipData` (only `run` is rebuilt — c23c0fc6b, privacy.ts). Checks: priv-2 A4 (limited payroll viewer's a1 slip has `item`, no whole-run total) and D2 (doubling out-of-scope pay leaves the in-scope `loadPayslipForViewer` payloads byte-identical); self still opens: hf-hr-privacy P-8/P-9, h3.8 S6.1. **Gap:** no check pins the self viewer's `item` figures byte-for-byte against base — candidate for the reviewer/oracle author.
+- Q4 (ok): MANAGER without pay keys + `unitAccess []` ⇒ fixed `no` in previewPayrollRunV2 (ruling 5).
 - Name sanitising on export covers the `name` cell only (as notes §5.2 implies); other text cells (position, nationality, policy) keep the H3.9 refusal, now with fixed text.
 - `createEmployee` refusal is a thrown `Error(HR_NAME_BAD_TEXT)` (its return type has no `ok`); AI proposal path surfaces it as the proposal error.
 

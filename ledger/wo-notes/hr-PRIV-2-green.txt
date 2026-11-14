@@ -74,3 +74,8 @@ fitness noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 fitness-hr env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 fitness-hr noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 ## typecheck (clean, 437 s): 0 errors in tracked code · 5 errors all in untracked scratchpad/h52p/p1-sweep.mts (H5.2 hunter probe, not ours, left alone) · exit 2
+
+## Q1 rerun (fixture ORACLE-EDIT · controller Q1)
+qc-hr-h3.9: passed 60/60 (QC_FORCE) RESIDUE none
+qc-hr-priv-2: passed 39/39 (QC_FORCE) RESIDUE none
+qc-hr-h4.3: 43/45 (S1.6/S1.7) expected red until HR-MONEY-2 (controller Q2)
