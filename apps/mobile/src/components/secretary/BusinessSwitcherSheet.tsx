@@ -2,7 +2,8 @@
 // เปิดจากไอคอนกิจการ (BizIcon) ซ้ายสุดของแถบบน (SecTopBar) · มี 2 มุมมองในชีตเดียว (เปิดใหม่ = เริ่มที่ "เปิดระบบ" เสมอ)
 // open("switch") = เริ่มที่มุมมอง ② (แถว "สลับกิจการ" ใน /secretary/settings)
 // ① "เปิดระบบ" (systems): หัว = BizIcon วงกลมใหญ่ + ชื่อกิจการ (2 บรรทัด) + "คุณเป็น<บทบาท>" · ขวา 2 ปุ่มกลม
-//     ⚙ = /business/<tenantId>/settings (เฉพาะ OWNER/MANAGER · BIZ_SETTING_ROLES) · ⇄ = ไปมุมมองเปลี่ยนกิจการ
+//     ⚙ = /business/<tenantId>/settings (OWNER/MANAGER · BIZ_SETTING_ROLES) · บทบาทอื่น (STAFF) ⚙ = /secretary/settings (เลขาของฉัน · 14 พ.ย. เจ้าของสั่ง)
+//     ⇄ = ไปมุมมองเปลี่ยนกิจการ
 //   ตาราง 4 คอลัมน์: ช่องแรก "หน้าหลัก" (/app) แล้วตามด้วยทุกระบบของกิจการ active จาก GET secretary/systems
 //     (ทะเบียนเดียวกับเมนูเว็บ navSystems — ชุด/ลำดับ/ชื่อเดียวกัน) · ไอคอน Feather + สีตามรหัสระบบ (SYS_LOOK) · badge แดง = แชทลูกค้าที่ยังไม่อ่าน
 //   แตะช่อง = ปิดชีต → หน้าระบบ "/" (WebView) ด้วย ?open=<href>&t=<nonce> (M3.11 OPEN_PATH_RE ใน app/(app)/index.tsx)
@@ -171,13 +172,13 @@ export function BusinessSwitcherSheet({ visible, onClose, startView = "systems" 
               </Text>
               {role ? <Text style={[styles.meta, { color: c.textMuted }]}>{t("sec.sheet.youAre", { role })}</Text> : null}
             </View>
-            {canSet && activeTenantId ? (
+            {activeTenantId ? (
               <Pressable
                 testID="sec-sheet-settings"
                 accessibilityRole="button"
-                accessibilityLabel={t("bizset.gear", { name })}
+                accessibilityLabel={canSet ? t("bizset.gear", { name }) : t("sec.switch.mySecretary")}
                 hitSlop={6}
-                onPress={() => go(`/business/${encodeURIComponent(activeTenantId)}/settings`)}
+                onPress={() => go(canSet ? `/business/${encodeURIComponent(activeTenantId)}/settings` : "/secretary/settings")}
                 style={[styles.round, { backgroundColor: c.chip.bg }]}
               >
                 <Icon name="settings" size={19} color={c.textDim} />
