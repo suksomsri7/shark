@@ -18,9 +18,9 @@ export default async function BalanceSheetPage({
   const { tenantId, systemId, policy } = await loadReportWithPolicy(id);
   const base = `/app/sys/${id}/account`;
   const asOf = sp.asOf || sp.to || currentPeriodKey();
-  const compare = sp.cmp === "1";
-  // "งวดก่อน" ของงบฐานะ = ณ สิ้นเดือนก่อนหน้า (งบ ณ วันที่ ⇒ เทียบจุดเวลา ไม่ใช่เทียบช่วง)
-  const prevAsOf = shiftPeriod(asOf, -1);
+  // ACC T5.8 (D9 · NPAEs 4.3) ▸ ตัวเลขเปรียบเทียบเป็นค่าเริ่ม (ปิด = cmp=0) · งวดก่อน = ณ สิ้นเดือนเดียวกันของปีก่อน (cmp=m = สิ้นเดือนก่อนหน้าแบบเดิม) ◂
+  const compare = sp.cmp !== "0";
+  const prevAsOf = shiftPeriod(asOf, sp.cmp === "m" ? -1 : -12);
   // 🔴 WO 8.2 (§9.3): เส้นแบ่ง "กำไรสะสม | กำไรงวดปัจจุบัน" ต้องอยู่ที่ต้น**ปีบัญชี** ไม่ใช่ 1 ม.ค. เสมอ
   //    ของเดิมไม่เคยส่ง opts ⇒ กิจการ เม.ย.–มี.ค. เห็นกำไรสะสมผิดทุกใบ (บั๊กที่ WO นี้ต้องปิด)
   const bsOpts = { fiscalYearEndMonth: fiscalYearEndMonth(policy.fiscalYearStartMonth) };

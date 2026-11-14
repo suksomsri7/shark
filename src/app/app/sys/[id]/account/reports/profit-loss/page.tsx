@@ -23,7 +23,7 @@ export default async function ProfitLossPage({
   const from = sp.from || dflt.from;
   const to = sp.to || (sp.from ? sp.from : dflt.to);
   // WO 6.2: แถบเครื่องมือร่วม (§11.3) ใช้คีย์ `cmp` — รับ `compare` ของเดิมต่อไปด้วย (ลิงก์เก่าไม่พัง)
-  const compare = sp.cmp === "1" || sp.compare === "1";
+  const compare = sp.cmp !== "0" && sp.compare !== "0"; // ACC T5.8 (D9) ▸ เทียบงวดก่อนเป็นค่าเริ่ม (ปิด = cmp=0) ◂
   const pl = await profitLoss({ tenantId, systemId }, from, to, { compare });
 
   // สร้างแถวคู่กัน (ปัจจุบัน + งวดก่อน) ตามรหัสบัญชี

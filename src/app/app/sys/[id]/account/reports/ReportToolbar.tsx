@@ -130,7 +130,7 @@ export default function ReportToolbar({
           <input
             type="checkbox"
             checked={compare}
-            onChange={(e) => go({ cmp: e.target.checked ? "1" : undefined })}
+            onChange={(e) => go({ cmp: e.target.checked ? "1" : "0" /* ACC T5.8 ▸ เทียบงวดก่อนเป็นค่าเริ่ม — ปิด = cmp=0 ◂ */ })}
           />
           เทียบงวดก่อน
         </label>
