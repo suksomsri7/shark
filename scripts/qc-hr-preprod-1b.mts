@@ -27,7 +27,7 @@ V7.1|V7|C|R|OT 1 h filed by [u1] viewer for borrowed home-u2 employees: reply ha
 V7.2|V7|M|G|the requester's adjustment list (pay scope [u1]) and payroll page show none of those rows / amounts
 V7.3|V7|M|G|control: in-scope employee reply "ยื่นแล้ว 187.5 บาท — รออนุมัติ" · all-branch viewer still gets 285 บาท for the borrowed employee
 V8.1|V8|C|R|January sick leave (28.0) revoked ⇒ March split 2/3 re-split to paid 5 / unpaid 0 · USE −5.0 note null · Σ 25.0 · no UNPAID_LEAVE in the March v2 run
-V8.2|V8|C|R|quota raised 30 → 33 ⇒ March split re-split to 5 / 0 · Σ 0.0
+V8.2|V8|C|R|positive writer carry-top: 2030 leave (28.0) revoked after 2.0 carried into 2031 (carry max 5) ⇒ carry-top +3.0 ⇒ March 0/5 re-split to 3 / 2 · unpaid:2.0;from:2031-03-13 · −200,000 · Σ 2031 0.0 (quota raise writes no ledger row — no V8.2 quota check)
 V8.3|V8|C|R|partial return 1.5 ⇒ paid 3.5 / unpaid 1.5 · unpaid:1.5;from:2031-03-13 · −50,000 −100,000 = −150,000 · Σ 0.0
 V8.4|V8|M|G|control: March run APPROVED ⇒ split unchanged after the return (USE −2.0 · unpaid:3.0;from:2031-03-12 · Σ 28.0)
 V8.5|V8|C|R|two later split leaves re-split in date order: 3.0 back ⇒ March 5/0 · April stays 0/5 · Σ 0.0
@@ -232,21 +232,31 @@ try {
 
   // ── V8: paid sick days come back ⇒ later open-month split leaves re-split in date order ──
   await section("V8", async () => {
-    const s = await KA.sys("คืนวันป่วย-V8"), sick = await L.pol(s, "SICK", true, 30), sickQ = await L.pol(s, "SICK", true, 30), sh = await KA.shift(s);
+    const s = await KA.sys("คืนวันป่วย-V8"), sick = await L.pol(s, "SICK", true, 30), sickQ = (await P.hrLeavePolicy.create({ data: { tenantId: KA.TT, systemId: s, category: "SICK", name: `SICK carry ${tag}`, paid: true, quotaDays: 30, carryMaxDays: 5, allowHalfDay: true } })).id as string, sh = await KA.shift(s);
     const [E1, E2, E3, E5] = [await KA.emp(s, "V81"), await KA.emp(s, "V82"), await KA.emp(s, "V83"), await KA.emp(s, "V85")];
     const [j1] = await L.used(s, E1, sick, JAN28);
-    await L.used(s, E2, sickQ, JAN28);
+    // E2 (policy carry max 5): 2030 GRANT 30 · 2030 leave 28.0 · 2.0 carried into 2031 · 2031 GRANT 30 · January 2031 leave 32.0 ⇒ 2031 Σ 0.0
+    const tx2 = (kind: string, days: string, year: number, eff: string, key: string, leaveId: string | null = null) => P.hrLeaveBalanceTxn.create({ data: { tenantId: KA.TT, systemId: s, employeeId: E2, policyId: sickQ, kind, days, leaveYear: year, effectiveDate: dd(eff), sourceKey: key, leaveId } });
+    const j2 = await L.leaveRow(s, E2, "SICK", "2030-06-02", "2030-06-29", sickQ, "28.0", "APPROVED");
+    const j2b = await L.leaveRow(s, E2, "SICK", "2031-01-02", "2031-02-02", sickQ, "32.0", "APPROVED");
+    await tx2("GRANT", "30.0", 2030, "2030-01-01", `grant:${E2}:${sickQ}:2030`);
+    await tx2("USE", "-28.0", 2030, "2030-06-02", `use:${j2}`, j2);
+    await tx2("CARRY", "-2.0", 2030, "2030-12-31", `carry-out:${E2}:${sickQ}:2031`);
+    await tx2("CARRY", "2.0", 2031, "2031-01-01", `carry:${E2}:${sickQ}:2031`);
+    await tx2("GRANT", "30.0", 2031, "2031-01-01", `grant:${E2}:${sickQ}:2031`);
+    await tx2("USE", "-32.0", 2031, "2031-01-02", `use:${j2b}`, j2b);
     const [, j3b] = await L.used(s, E3, sick, [["2031-01-02", "2031-01-28", "26.5"], ["2031-01-29", "2031-01-30", "1.5"]]);
     const [, j5b] = await L.used(s, E5, sick, [["2031-01-02", "2031-01-27", "25.0"], ["2031-01-28", "2031-01-30", "3.0"]]);
     for (const e of [E1, E2, E3, E5]) await L.rosterDays(s, sh, e, MAR);
     const [m1, m2, m3, m5] = [await L.reqDec(s, E1, MAR[0]!, MAR[4]!, sick), await L.reqDec(s, E2, MAR[0]!, MAR[4]!, sickQ), await L.reqDec(s, E3, MAR[0]!, MAR[4]!, sick), await L.reqDec(s, E5, MAR[0]!, MAR[4]!, sick)];
     const a5 = await L.reqDec(s, E5, "2031-04-07", "2031-04-11", sick);
     const pre = canon(await Promise.all([m1, m2, m3, m5].map(async (x) => (await L.use(x.id))?.note)));
-    const setup = [m1, m2, m3, m5, a5].every((x) => x.d?.ok === true) && pre === canon(Array(4).fill("unpaid:3.0;from:2031-03-12"));
+    const setup = [m1, m2, m3, m5, a5].every((x) => x.d?.ok === true) && pre === canon(["unpaid:3.0;from:2031-03-12", "unpaid:5.0;from:2031-03-10", "unpaid:3.0;from:2031-03-12", "unpaid:3.0;from:2031-03-12"]);
     if (!setup) console.log(`  ⚠ setup V8: ${short({ pre, d: [m1, m2, m3, m5, a5].map((x) => x.d?.reason ?? x.d?.ok) }, 300)}`);
     await L.judge();
     const rv1 = await L.dec(s, j1, "REJECTED", "APPROVED");
-    const q = await safe(() => STG.updateLeavePolicy(KA.c(s), KA.V.owner, sickQ, { quotaDays: 33 }));
+    const q = await L.dec(s, j2, "REJECTED", "APPROVED");
+    const top = (await rows(`SELECT days::text AS d, "leaveYear" AS y FROM "HrLeaveBalanceTxn" WHERE "sourceKey" = $1`, `carry-top:${j2}`))[0];
     const rv3 = await L.dec(s, j3b, "REJECTED", "APPROVED");
     const rv5 = await L.dec(s, j5b, "REJECTED", "APPROVED");
     const mar = await KA.create(s, "2031-03");
@@ -258,7 +268,9 @@ try {
     }
     {
       const x = await look(m2.id);
-      ck("V8.2", { setup, quota: q?.ok === true, use: num(x.u?.d) === -5 && x.u?.note === null, sum: (await L.sum(E2, sickQ)) === 0, lines: mar?.ok === true && (await L.unpaid(mar?.id, E2)).length === 0 }, "5 / 0 · Σ 0.0", short({ q, ...x }, 240));
+      const up = await L.unpaid(mar?.id, E2);
+      ck("V8.2", { setup, revoke: q?.ok === true, carryTop: num(top?.d) === 3 && Number(top?.y) === 2031, use: num(x.u?.d) === -3 && x.u?.note === "unpaid:2.0;from:2031-03-13", split: x.eq && num(x.sp?.unpaidDays) === 2, sum: (await L.sum(E2, sickQ)) === 0,
+        lines: canon(up) === canon(["UNPAID_LEAVE:-100000@2031-03-13", "UNPAID_LEAVE:-100000@2031-03-14"]) }, "carry-top +3.0 ⇒ 3 / 2 · −200,000 · Σ 0", short({ q: q?.reason ?? q, top, ...x, up }, 260));
     }
     {
       const x = await look(m3.id), up = await L.unpaid(mar?.id, E3);
