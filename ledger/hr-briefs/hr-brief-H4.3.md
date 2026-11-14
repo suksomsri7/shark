@@ -88,3 +88,8 @@ O1 May the assistant suggest a **verbal warning** for repeated lateness, not onl
 - Q3: a confirmer who may not see the proposal's branch is REFUSED (fixed refusal, no data) and the proposal's state does NOT change — it stays pending for a permitted confirmer. An unpermitted user must not be able to kill a proposal. If this needs a hook in `executeProposal`, a minimal marked hunk (`HR H4.3`) is allowed.
 - Builder starts only after H4.2 is merged into session/hr (T3 wraps labor.ts and must inherit its R1 privacy rule: limited viewers' money = only employees whose pay they may see).
 - Free text returned to the model (notes, leave reasons) is delimited and flagged untrusted; the oracle includes injection cases.
+
+## CONTROLLER RULINGS 2 (after the oracle, 98d5e6e65)
+- Accepted: the split M5/M6 — byte-identical refusals among human (member) callers; API keys / system actors are refused, data-free, no proposal row (texts may be `toolVerdict`'s own). All names/shapes pinned in `ledger/wo-notes/hr-H4.3-oracle.md` are the contract.
+- H4.2-FIX1 is part of this ticket (checks S7.1–S7.3 in qc-hr-h4.2): open month always uses the month-to-date basis even with a finalized run; month/prev-month partial + excludedHeadcount shown per figure on the 01 card; day-1 cost null; nested units cap sets `truncated`; Thai date helper for the MTD label. Hunks in labor.ts / labor-ui.tsx marked `HR H4.2-FIX1`.
+- Builder may not change oracle expectations; impossible contract ⇒ stop and ask. Never satisfy a static check by changing the syntactic form of what it forbids. Lane wrapper only for DB suites.

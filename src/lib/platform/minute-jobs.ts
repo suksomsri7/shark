@@ -685,6 +685,15 @@ registerMinuteJob({
   run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-line")).runDormLineJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
 });
 // ◂ SVC D.9
+// HR H4.5 ▸ แจ้งเตือนพนักงานทาง LINE: รหัสผูกหมดอายุ ⇒ CANCELLED · สรุปรายวันที่ถึงเวลา · ส่งซ้ำ FAILED/HELD/SENDING ค้าง (คีย์ส่งซ้ำเดิม) ·
+//   ซ้อนกันได้ (จองด้วย SKIP LOCKED) · โหลดกาวตอนรันเท่านั้น ◂
+registerMinuteJob({
+  name: "hr.line",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/hr-line")).runHrLineJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ HR H4.5
 // SVC D.18 ▸ หอพัก: พัสดุ — ส่งแจ้งมาถึงซ้ำ (เวลาเงียบ/ล้ม ใน 3 วัน) + เตือนพัสดุค้างวันละครั้ง (วันไทย · ตาม rooms.parcel.holdDays) ·
 //   ซ้อนกันได้ = ข้อความ 1 ต่อ dedupeKey (X5) · โหลด facade หอตอนรันเท่านั้น
 registerMinuteJob({

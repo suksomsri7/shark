@@ -164,6 +164,12 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "stock-payroll", path: (i) => `/app/sys/${i.hr}/hr/payroll#hr-stock`, users: ["payroll"], why: "ผู้ดูเงินเดือน: รายการ/ยอด/หนังสือยินยอม/ชิป hr-pay-src-stock (H4.6)" },
     { key: "stock-staff", path: (i) => `/app/sys/${i.hr}/hr/payroll`, users: ["staff", "member"], why: "พนักงาน/สมาชิก: ไม่มีส่วนหักค่าของ (H4.6)" },
   ],
+  // HR H4.5 ▸ brief R11 (ไม่มี mockup): การ์ด LINE ของฉัน (staff — ร้านยังปิด LINE ⇒ ป้าย shopOff) · การ์ดค่าตั้ง + ป้าย "ยังไม่ได้ทดสอบกับ LINE OA จริง" · ชิปสถานะในโปรไฟล์พนักงาน ◂
+  "4.5": [
+    { key: "line-self", path: () => "/app/me/hr/profile", users: ["staff", "payrollSelf"], why: "ของฉัน: การ์ด LINE (สถานะ · ประโยค PDPA · ปุ่มขอรหัสเมื่อร้านเปิด) (H4.5)" },
+    { key: "line-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-line-settings`, users: ["owner", "manager-branch"], why: "หน้าตั้งค่า: แจ้งเตือนพนักงานทาง LINE · ส่งเดือนนี้/เพดาน · ป้ายนำร่อง (ผู้จัดการสาขา = ปิดแก้) (H4.5)" },
+    { key: "line-chip", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.emp.nat}`, users: ["owner", "manager-branch"], why: "โปรไฟล์นัท: ชิปสถานะ LINE (สถานะ + วันที่ผูกเท่านั้น) (H4.5)" },
+  ], // HR H4.5 ◂
   // HR H4.4 ▸ brief §5 (mockup 02) — ข้อมูลจาก seed (HQC.lifecycle: โบว์ ทดลองงาน + รายการรับเข้า 5/7 · เจ สัญญาถึงสิ้นเดือน · นัท ตักเตือนด้วยวาจา · ฝ้าย ผู้ลาออก) ◂
   "4.4": [
     { key: "life-due", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["owner", "manager-branch", "staff"], why: "ทะเบียน: แผง \"ต้องจัดการ\" 4 ช่อง (ทดลองงาน · สัญญา · รับเข้าค้าง · ออกจากงานค้าง) — staff ไม่เห็นแผง (H4.4)" },

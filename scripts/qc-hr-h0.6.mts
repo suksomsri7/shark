@@ -357,7 +357,9 @@ function runStatic(): void {
   // S8.1
   {
     const cons = rd(CONSUMERS_FILE);
-    const consLine = /"hr\.payroll\.reversed"\s*:\s*crmFirst\(\s*crmCommissionBridge\(\s*"onPayrollReversed"\s*(as\s+\w+\s*)?\)\s*,\s*withAutomation\(\s*async\s*\(\)\s*=>\s*\{\s*\}\s*\)\s*\)/.test(cons);
+    // ORACLE-EDIT (H4.5 gate fix · controller ruling): exactly two accepted forms — original, or the inner handler = bothMain(async () => {}, onHrEventForLine) (CRM bridge stays first)
+    const consLine = /"hr\.payroll\.reversed"\s*:\s*crmFirst\(\s*crmCommissionBridge\(\s*"onPayrollReversed"\s*(as\s+\w+\s*)?\)\s*,\s*withAutomation\(\s*async\s*\(\)\s*=>\s*\{\s*\}\s*\)\s*\)/.test(cons) ||
+      /"hr\.payroll\.reversed"\s*:\s*crmFirst\(\s*crmCommissionBridge\(\s*"onPayrollReversed"\s*\)\s*,\s*withAutomation\(\s*bothMain\(\s*async\s*\(\)\s*=>\s*\{\s*\}\s*,\s*onHrEventForLine\s*\)\s*\)\s*\)/.test(cons); // ORACLE-EDIT (H4.5 gate fix · controller ruling)
     const br = rd(BRIDGE_FILE);
     const brFn = fnBody(br, "onPayrollReversed");
     const bridge = /export async function onPayrollReversed\(\s*evt\s*:\s*BridgeEvent\s*\)/.test(br) && /crm\.commissions\.onPayrollReversed\(/.test(brFn);

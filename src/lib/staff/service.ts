@@ -24,6 +24,7 @@
 import type { Membership, Prisma, Role, User } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit"; // HR H0.7 ▸ audit hr.employee.link ◂
+import { endLineLinksForAccountInTx } from "@/lib/modules/hr"; // HR H4.5 ▸ การผูก LINE ของพนักงานใช้ได้เฉพาะ (แถวพนักงาน, บัญชีที่ขอรหัส) — ปิดในธุรกรรมเดียวกับการเปลี่ยนบัญชี ◂
 import { isPhonePlaceholderEmail } from "@/lib/core/phone-auth";
 import {
   canAssignRole,
@@ -503,6 +504,7 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       if (linked.count !== 1) {
         throw new StaffRuleError(`“${employee.name}” เพิ่งถูกผูกกับบัญชีผู้ใช้อื่น — กรุณารีเฟรชหน้าแล้วตรวจอีกครั้ง`);
       }
+      await endLineLinksForAccountInTx(tx, { tenantId: input.tenantId, employeeIds: [employee.id], keepUserId: user.id }); // HR H4.5 ▸ การผูก LINE ที่ออกให้บัญชีอื่น ⇒ ENDED(ACCOUNT) ◂
 
       return { userId: user.id, membershipId, createdNew, employeeName: employee.name };
     });
@@ -680,6 +682,7 @@ export async function revokeStaffAccess(input: RevokeStaffAccessInput): Promise<
         data: { acceptedAt: null },
       });
     }
+    await endLineLinksForAccountInTx(tx, { tenantId: input.tenantId, employeeIds: rows.map((r) => r.id), issuedForUserId: target.userId }); // HR H4.5 ▸ ถอนสิทธิ์ ⇒ การผูก LINE ENDED(ACCOUNT) ทันที ◂
     return rows.map((r) => r.id);
   });
   for (const employeeId of unlinked) {

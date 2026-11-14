@@ -46,6 +46,10 @@ import { LeavePolicyWarningLines, LeavePresetSection } from "@/lib/modules/hr/le
 import { BankSettingsCard, BANK_MSG, bankMsgText } from "@/lib/modules/hr/bank-files/ui"; // HR H3.5 ▸ ไฟล์โอนเงินเดือน: บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ ◂
 import { deleteBankPresetAction, saveBankPresetAction, saveBankProfileAction } from "@/lib/modules/hr/bank-files/actions"; // HR H3.5 ◂
 import { FilingSettingsCard } from "@/lib/modules/hr/filings/ui"; // HR H3.6 ▸ ข้อมูลผู้จ่ายเงินของแบบยื่น (เจ้าของร้านแก้) ◂
+import { LineSettingsCard } from "@/lib/modules/hr/line-ui"; // HR H4.5 ▸ แจ้งเตือนพนักงานทาง LINE (ค่าตั้งของระบบ · ส่งเดือนนี้/เพดาน) ◂
+import { linePolicyOf } from "@/lib/modules/hr/line-link"; // HR H4.5 ◂
+import { lineSentThisMonth } from "@/lib/modules/hr/line-notify"; // HR H4.5 ◂
+import { saveLinePolicyAction } from "@/lib/modules/hr/line-actions"; // HR H4.5 ▸ service ตรวจสิทธิ์ซ้ำจากแถว Membership ◂
 import { LaborSettingsCard } from "@/lib/modules/hr/labor-ui"; // HR H4.2 ▸ ค่าตั้งค่าแรงต่อยอดขาย (เป้า % · ยอดขายต่อคนต่อชั่วโมง · คนขั้นต่ำ) ◂
 import { saveLaborSettingsAction } from "@/lib/modules/hr/labor-actions"; // HR H4.2 ◂
 import { LABOR_TEXT } from "@/lib/modules/hr/labor-rules"; // HR H4.2 ◂
@@ -109,6 +113,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const [clockSites, clockPolicy] = clockOk ? await Promise.all([listClockSites(ctx, viewer), getClockPolicy(ctx)]) : [null, null];
   const attPolicy = clockOk ? await getAttendancePolicy(ctx) : null; // HR H2.5 ▸ R12 ◂
   const otPolicy = await getOtPolicy(ctx); // HR H2.9 ▸ R14 (แก้ได้เฉพาะผู้ดูแลทุกสาขา — service ตรวจซ้ำ) ◂
+  const [linePolicy, lineSent] = await Promise.all([linePolicyOf(ctx), lineSentThisMonth(ctx)]); // HR H4.5 ◂
   const siteOf = new Map((clockSites?.ok ? clockSites.items : []).map((x) => [x.unitId ?? "all", x]));
   const all = isAllBranches(scope);
   const where = (u: string | null) => (u ? (unitName.get(u) ?? t("unit")) : t("shopWide"));
@@ -637,6 +642,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       {/* HR H4.4 ▸ ค่าตั้งวงจรพนักงาน — ผู้ดูข้อมูลบันทึก (OWNER/คีย์ตรง) เท่านั้น · ผลการกด ?life= (allowlist) ◂ */}
       <LifecycleMsg code={typeof sp.life === "string" ? sp.life : undefined} />
       <LifecycleSettings systemId={id} />
+      {/* HR H4.5 ▸ แจ้งเตือนพนักงานทาง LINE — ทุกผู้ตั้งค่าเห็น · บันทึกได้เฉพาะผู้ดูแลทุกสาขา (service ตรวจซ้ำ) ◂ */}
+      <LineSettingsCard systemId={id} policy={linePolicy} sentThisMonth={lineSent} units={units} canSave={isAllBranches(scope)} saveAction={saveLinePolicyAction} /> {/* HR H4.5 ◂ */}
       {/* HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน — ทุกผู้ตั้งค่าเห็น · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <WorkSettingsCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveNormalMinutes : null} />
       {/* HR H4.2 ▸ ค่าแรงต่อยอดขาย — ผู้ตั้งค่า HR ทุกสาขาแก้ได้ · ผู้อ่านอื่นเห็นค่า (service ตัดสิน) ◂ */}

@@ -281,6 +281,9 @@ export function makeFixtures(P: Any, coreHash: Any, slug: string) {
 }
 export type Fx = ReturnType<typeof makeFixtures>;
 
+// ORACLE-EDIT (H4.5 fix round · controller ruling 9): HR tables with tenantId and no Tenant FK (house pattern b) that every HR event can fill — deleted before
+//   HrEmployee (HrLineLink has FK RESTRICT to it) and counted in RESIDUE · a missing table (DB without the H4.5 migration) = nothing to delete / 0 ◂
+const H45_TABLES = ["HrNotice", "HrLineLink"]; // ORACLE-EDIT (H4.5 fix round · controller ruling 9)
 const NEW_DELETE_ORDER = ["HrShiftSwapRequest", "HrTimeCorrection", "HrOtRequest", "HrLeaveBalanceTxn", "HrRosterEntry", "HrShift", "HrHoliday", "HrLeavePolicy", "HrEmployeeUnit"];
 const MODEL_DELETE_ORDER = [
   "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
@@ -300,6 +303,7 @@ export async function cleanupFx(P: Any, fx: Fx, slug: string): Promise<void> {
   };
   for (let pass = 0; pass < 2; pass++) {
     for (const tid of fx.tenants) {
+      for (const t of H45_TABLES) await P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" = $1`, tid).catch(() => undefined); // ORACLE-EDIT (H4.5 fix round · controller ruling 9)
       for (const t of NEW_DELETE_ORDER) await d(t, () => P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" = $1`, tid));
       for (const m of MODEL_DELETE_ORDER) if (P[m]?.deleteMany) await d(m, () => P[m].deleteMany({ where: { tenantId: tid } }));
       await d("tenant", () => P.tenant.deleteMany({ where: { id: tid } }));
@@ -325,6 +329,10 @@ export async function residueOf(P: Any, fx: Fx, slug: string, slugPrefix: string
       const r = await fx.rawRows(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, tid);
       const n = r ? Number(r[0]?.n ?? -1) : -2;
       if (n !== 0) residue.push(`${t}=${n}`);
+    }
+    for (const t of H45_TABLES) { // ORACLE-EDIT (H4.5 fix round · controller ruling 9): table absent (r = null) = 0
+      const r = await fx.rawRows(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, tid);
+      if (r && Number(r[0]?.n ?? 0) !== 0) residue.push(`${t}=${r[0]?.n}`);
     }
   }
   const leftUsers = await P.user.count({ where: { OR: [{ id: { in: fx.users.length ? fx.users : ["∅"] } }, { email: { startsWith: `${slug}-` } }] } }).catch(() => -1);

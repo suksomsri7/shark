@@ -41,6 +41,8 @@ export type Digest = {
   receivables: { count: number; totalSatang: number; overdueCount: number } | null;
   tomorrow: { appointments: number; firstAt: Date | null } | null;
   pending: { approvalsAged: number; leavesAged: number; shopOrders: number };
+  /** HR H4.3 ▸ มติ Q1: บรรทัดพนักงานวันนี้ของผู้ดูคนนี้ (นับจากบอร์ดลงเวลาของเขา · ไม่มีชื่อ) — null/ไม่มี = ไม่ใช่ผู้อ่านตารางกะ หรือระดับ hr OFF ◂ */
+  hrToday?: { line: string; counts: { onLeave: number; lateOrNotIn: number; absent: number; short: number } } | null;
 };
 
 const DAY_MS = 86_400_000;
@@ -378,6 +380,7 @@ export function digestBlock(d: Digest): string {
     p.shopOrders > 0 ? `ออเดอร์ออนไลน์รอชำระ ${p.shopOrders} รายการ` : "",
   ].filter(Boolean);
   if (pend.length > 0) lines.push(`- งานค้าง: ${pend.join(" · ")}`);
+  if (d.hrToday?.line) lines.push(`- ${d.hrToday.line}`); // HR H4.3 ▸ Q1 ◂
   if (lines.length === 0) return "";
   const out = [`- ข้อมูล ณ ${hm(d.at)} น. (เวลาไทย)`, ...lines].join("\n");
   return out.length > BLOCK_MAX ? `${out.slice(0, BLOCK_MAX - 1)}…` : out;
@@ -412,7 +415,11 @@ export async function cachedDigest(tenantId: string, scope: DigestScope = WHOLE_
 export async function viewerDigest(tenantId: string, m: MembershipCtx, userId: string, access?: AccessMap, now?: Date): Promise<Digest> {
   const scope = await viewerScope(tenantId, m, userId);
   const d = now ? await computeDigest(tenantId, now, scope) : await cachedDigest(tenantId, scope);
-  return digestForViewer(d, m, userId, access);
+  // HR H4.3 ▸ มติ Q1: บรรทัดพนักงานวันนี้ต่อผู้ดู (ไม่ผ่าน cache ของร้าน · ระดับ hr OFF = ไม่มี · ล้ม = ไม่มี) — import ตอนเรียก (โมดูล HR ทั้งชุด) ◂
+  const hrToday = !access || levelVerdict(access, "hr", false).ok
+    ? await import("@/lib/modules/hr/ai").then((x) => x.hrTodayLine(tenantId, { role: m.role, unitAccess: m.unitAccess, permissions: m.permissions, userId }, now ?? new Date())).catch(() => null)
+    : null;
+  return { ...digestForViewer(d, m, userId, access), hrToday };
 }
 
 /**
