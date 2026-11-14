@@ -54,3 +54,22 @@ fitness-hr noenv exit=0 JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,
 qc-audit-trail: ✅ PASS — 21/21 · qc-hf-hr-privacy: 194/194 · qc-hr-h4.2 RESIDUE none ×3
 typecheck (clean, gate lock): exit=0 · 700 s · 0 errors
 POS report suites: not re-run (controller runs them on QC4 at the merge gate); earlier 'red on base' evidence = static parts only.
+
+## Round 3 — review rulings R1–R4 (oracle ce0b4af53, 53 checks) · code 1df2e4a36
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-h4.2-f1 exit=0 ===== qc-hr-h4.2 ===== passed 53/53
+qc-hr-h4.2-f2 exit=0 ===== qc-hr-h4.2 ===== passed 53/53
+qc-hr-h4.2-f3 exit=0 ===== qc-hr-h4.2 ===== passed 53/53
+qc-hr-h4.2-u exit=0 ===== qc-hr-h4.2 ===== passed 53/53
+qc-hr-h2.2 exit=0 ===== qc-hr-h2.2 ===== passed 60/60 (QC_FORCE)
+qc-hr-h3.9 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+qc-hr-set-1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+fitness env exit=0 JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness noenv exit=0 JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness-hr env exit=0 JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+fitness-hr noenv exit=0 JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+qc-hf-hr-privacy: 194/194 · qc-hr-h4.2 RESIDUE none ×4
+typecheck (clean, gate lock): exit=0 · 450 s · 0 errors
