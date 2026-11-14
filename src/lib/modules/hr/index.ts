@@ -117,3 +117,12 @@ export { syncAttendanceDeductions, attendanceDeductionPreview, getAttendancePayP
 // HR H3.4 ▸ รอบจ่ายรุ่น 2 (engineVersion 2) — ตัวเขียนอยู่ที่ payroll.ts เท่านั้น · เครื่องคิด pure = payroll-run-rules.ts ◂
 export { createPayrollRunV2, previewPayrollRunV2, confirmBranchHours, getPayrollEngine, setPayrollEngine, setAdjustmentConsent, RUN2_TEXT, V2_VARIABLE_PAY } from "./payroll"; // HR H3.4 ◂
 export { computeRunItemV2, RUN_V2_DEFAULTS } from "./payroll-run-rules"; // HR H3.4 ◂
+// HR H4.5 ▸ แจ้งเตือนพนักงานผ่าน LINE — re-export ล้วน (ตรรกะอยู่ที่ line-rules.ts · line-link.ts · line-notify.ts) · ผู้เรียก: platform/hr-line.ts (กาว HR ↔ แชท)
+//   HR ไม่ import แชท/แพลตฟอร์ม: ออกรหัส/ส่ง LINE ทำที่กาว · HR ถือการผูก (HrLineLink) + แจ้งเตือน (HrNotice) + ตรวจสดก่อนส่ง ◂
+export type { SelfActor } from "./self";
+export type { HrLineLocale, HrNoticeKind, LineNotifyPolicy } from "./line-rules";
+export { hrefOf, lineTextOf, nextAttemptAt, noticeMessage } from "./line-rules";
+export { abortLineLink, activeLinkOfContact, beginLineLink, cancelExpiredLineLinks, completeLineLink, endLineLinks, LINE_LINK_TEXT } from "./line-link";
+export type { ClaimedNotice } from "./line-notify";
+export { auditLineCapReached, auditLineQuota, buildLineDigests, claimLineNotices, finishLineNotice, planHrNotices, reserveLineCap, skipPendingNotices } from "./line-notify";
+// ◂ HR H4.5
