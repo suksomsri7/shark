@@ -229,7 +229,9 @@ function runStatic(): void {
       // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.8: + hotfix hunks marked "HR HF-SSO" (law.ts ssoDay) ◂
       // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised) S1.8: "HR MONEY-2" hunks count as marked like "HR-SET-<n>" ones · unmarked still fails ◂
       // ORACLE-EDIT (HR-PRIV-2 · controller): S1.8 later-ticket marks `/HR H\d|HR-SET-\d/` → `/HR H\d|HR-SET-\d|HR PRIV-\d/` · unmarked still fails ◂
-      return !hs || hs.some((h) => h.added.concat(h.removed).some((l) => /HR H3\.2/.test(l)) || !h.added.concat(h.removed).some((l) => /HR H\d|HR-SET-\d|HR HF-SSO|HR MONEY-2|HR PRIV-\d/.test(l)));
+      // ORACLE-EDIT (HR HF-SSO · controller fix2): "HR HF-SSO" counts only in the HF-SSO file this list covers (law.ts) — no standing pass elsewhere ◂
+      const hfSso = f === `${H}law.ts`;
+      return !hs || hs.some((h) => h.added.concat(h.removed).some((l) => /HR H3\.2/.test(l)) || !h.added.concat(h.removed).some((l) => /HR H\d|HR-SET-\d|HR MONEY-2|HR PRIV-\d/.test(l) || (hfSso && /HR HF-SSO/.test(l))));
     }) : [ch];
     ck("S1.8", { sha: shaOk, frozen: bad.length === 0 }, "unchanged", bad.join(","));
   }
