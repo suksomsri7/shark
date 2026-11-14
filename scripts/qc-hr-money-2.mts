@@ -53,16 +53,23 @@ R3.0|R3|M|G|[db] control: eM has 3 judged work days in Aug with equal workMin > 
 R3.1|R3|M|R|[db] owner u1 = 2,058,334 (eM 2 of 3 days at u1 + remainder satang to home u1)
 R3.2|R3|M|R|[db] owner u2 = 5,004,166 · u1 + u2 = all units 7,062,500
 R3.3|R3|M|R|[db] limited viewer [u1] month u1 = 2,058,334 · excludedHeadcount 0
+R3.4|R3|M|R|[db] (ORACLE-EDIT controller Q1) home u3 with NO minutes · 1 day u1 + 2 days u2 ⇒ remainder to the unit with most minutes: u1 1,029,166 · u2 2,058,334 · u3 0 · all 3,087,500
 R4.1|R4|M|G|[db] v2 run totalling exactly 2,147,483,647 is created (boundary accepted)
 R4.2|R4|M|R|[db] v2 recompute that would total 2,147,483,648 ⇒ refused with the fixed text · draft unchanged (totals · digest)
 R4.3|R4|M|R|[db] v2 create over the boundary ⇒ {ok:false, code RUN_LIMIT, reason text} · 0 live runs · 0 items
 R4.4|R4|m|G|[db] v1 run totalling exactly 2,147,483,647 is created
 R4.5|R4|M|R|[db] v1 create over the boundary ⇒ PayrollInputError(text) · 0 runs written
+R4.6|R4|M|R|[db] (ORACLE-EDIT controller Q3) run totals fit int4 but the accrual salary line Σ(gross + recoveries) = 2,200,000,000 does not ⇒ create refused RUN_LIMIT + text · 0 live runs
 R5.1|R5|M|R|[db] approve an UNPAID leave in a month with an APPROVED run ⇒ refused with CORRECTION_TEXT.paid · stays PENDING
 R5.2|R5|m|G|[db] approve a PAID leave in the same month ⇒ ok APPROVED
 R5.3|R5|m|G|[db] approve an UNPAID leave in a month without a run ⇒ ok APPROVED
 R5.4|R5|M|R|[db] owner's own UNPAID leave created-as-approved in the APPROVED month ⇒ refused with CORRECTION_TEXT.paid · no row
 R5.5|R5|m|G|[db] control: same owner leave in September ⇒ created APPROVED
+R5.6|R5|M|R|[db] (ORACLE-EDIT controller Q2) withdraw (decideLeave APPROVED→REJECTED) an approved UNPAID leave in the APPROVED month ⇒ HrLeaveDecisionError(CORRECTION_TEXT.paid) · stays APPROVED
+R5.7|R5|M|R|[db] (ORACLE-EDIT controller Q2) owner cancels own approved UNPAID leave (cancelLeave) in the APPROVED month ⇒ {ok:false, reason CORRECTION_TEXT.paid} · stays APPROVED
+R5.8|R5|m|G|[db] (ORACLE-EDIT controller Q2) control: withdraw an approved PAID leave in the same month ⇒ ok REJECTED
+R5.9|R5|M|R|[db] (ORACLE-EDIT controller Q4) approval chain applyLeaveDecision(approved) of an UNPAID leave in the APPROVED month ⇒ {applied:false, code PAID} · leave CANCELLED · audit hr.leave.apply_refused {code PAID}
+R5.10|R5|m|G|[db] (ORACLE-EDIT controller Q4) control: same chain apply for a September leave ⇒ applied · APPROVED
 Z1|house|C|G|no residue (tenant · users · own law rows · ACTIVE count)
 Z2|house|M|G|no deadlock during the races (pg_stat_database.deadlocks unchanged)
 `.trim().split("\n").map((l) => {
@@ -270,6 +277,15 @@ try {
     const re = (await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: sA, employeeId: eM, date: dd(d), shiftId: sh, unitId: u, startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-07-01T00:00:00Z"), source: "MANUAL" } })).id as string;
     for (const [k, hm] of [["IN", "09:00"], ["OUT", "17:00"]] as const) await P.hrAttendance.create({ data: { tenantId: TT, systemId: sA, employeeId: eM, kind: k, at: bk(d, hm), rosterEntryId: re, source: "KIOSK" } });
   }
+  // ORACLE-EDIT (controller Q1) R3.4 fixture: eN home u3 (no minutes there), rostered Mon 4 at u1 and Tue 5 + Wed 6 at u2 — own system sN, no book
+  const u3 = await fx.newUnit(TT, `สาขากลาง ${tag}`, "u3");
+  const sN = await sys("ไม่มีนาทีบ้าน-N");
+  const eN = await emp(sN, "EN", { unit: u3, salary: 3_000_000 });
+  const shN = (await P.hrShift.create({ data: { tenantId: TT, systemId: sN, name: `เช้า ${tag}`, startMin: 540, endMin: 1020, crossesMidnight: false, graceMin: 5 } })).id as string;
+  for (const [d, u] of [["2031-08-04", u1], ["2031-08-05", u2], ["2031-08-06", u2]] as const) {
+    const re = (await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: sN, employeeId: eN, date: dd(d), shiftId: shN, unitId: u, startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-07-01T00:00:00Z"), source: "MANUAL" } })).id as string;
+    for (const [k, hm] of [["IN", "09:00"], ["OUT", "17:00"]] as const) await P.hrAttendance.create({ data: { tenantId: TT, systemId: sN, employeeId: eN, kind: k, at: bk(d, hm), rosterEntryId: re, source: "KIOSK" } });
+  }
   for (const d of ["2031-08-05", "2031-08-06", "2031-08-07", "2031-08-09", "2031-08-12", "2031-09-02"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT }));
   const aug = await create(sA, "2031-08");
   const augA = aug?.id ? await approve(sA, aug.id) : aug;
@@ -296,6 +312,14 @@ try {
   ck("R2.5", { cost: cost(l2) === 3_975_000, excl: l2?.excludedHeadcount === 1, partial: l2?.partial === true }, "3,975,000 · excl 1 · partial", short({ c: l2?.costSatang, x: l2?.excludedHeadcount, p: l2?.partial, r: l2?.reason }, 160));
   const l1 = await LM(V.payU1, u1);
   ck("R3.3", { cost: cost(l1) === 2_058_334, excl: l1?.excludedHeadcount === 0 }, "2,058,334 · excl 0", short({ c: l1?.costSatang, x: l1?.excludedHeadcount, r: l1?.reason }, 160));
+  {
+    const nr = await create(sN, "2031-08");
+    const na = nr?.id ? await approve(sN, nr.id) : nr;
+    const NM = (unitId: string | null) => safe(() => LB.laborMonth(c(sN), V.owner, { unitId, periodKey: "2031-08" }, { now: NOW["2031-08"] }));
+    const [nAll, n1, n2, n3] = [await NM(null), await NM(u1), await NM(u2), await NM(u3)];
+    ck("R3.4", { setup: nr?.ok === true && na?.ok === true, u1: cost(n1) === 1_029_166, u2: cost(n2) === 2_058_334, u3: cost(n3) === 0, all: cost(nAll) === 3_087_500 },
+      "1,029,166 · 2,058,334 · 0 · 3,087,500", `${cost(n1)} · ${cost(n2)} · ${cost(n3)} · ${cost(nAll)} ${short({ nr: nr?.code, na: na?.code }, 80)}`);
+  }
   // doubling eM's Aug item (every money field + every line ×2, consistent) — then restore
   {
     const orig = (await rows(`SELECT id, "grossSatang" AS g, "ssoEmployeeSatang" AS se, "ssoEmployerSatang" AS sr, "whtSatang" AS w, "netSatang" AS n, "addSatang" AS a, "deductSatang" AS d, "snapshotJson" AS j FROM "HrPayrollItem" WHERE "runId" = $1 AND "employeeId" = $2`, AUG, eM))[0];
@@ -367,6 +391,14 @@ try {
     const thrown = v1over?.__throw as Any;
     const nRuns = Number((await rows(`SELECT count(*)::int AS n FROM "HrPayrollRun" WHERE "systemId" = $1`, s1))[0]?.n ?? -1);
     ck("R4.5", { refused: thrown?.name === "PayrollInputError" && thrown?.message === TXT.limit, none: nRuns === 0 }, "PayrollInputError(text)", short({ r: v1over?.reason ?? v1over?.id }, 200));
+    // ORACLE-EDIT (controller Q3): E = 1,100,000,000 + 1,100,000,000 = 2,200,000,000 > int4 · advance 500,000,000 brings run gross under int4 (base run shows the totals)
+    const s6 = await sys("ขอบบัญชี-B6");
+    const z1 = await emp(s6, "Z1", { salary: 1_100_000_000 });
+    await emp(s6, "Z2", { salary: 1_100_000_000 });
+    const za = await adj(s6, z1, "2031-08", "ADVANCE", 500_000_000);
+    const zr = await create(s6, "2031-08");
+    const zt = zr?.id ? await runOf(zr.id) : null;
+    ck("R4.6", { setup: za.ok, refused: zr?.ok === false && zr?.code === "RUN_LIMIT" && zr?.reason === TXT.limit, none: (await liveRuns(s6)) === 0 }, "RUN_LIMIT", short({ zr: zr?.reason ?? zr?.ok, g: zt?.g, n: zt?.n }, 200));
   }
 
   // ── R5: leave decisions in an APPROVED month ──
@@ -374,17 +406,28 @@ try {
     const s5 = await sys("ลา-L5");
     const eL = await emp(s5, "LA", { salary: 2_000_000 });
     const eO = await emp(s5, "LO", { salary: 2_000_000, linkedUserId: U.owner.id });
-    const r = await create(s5, "2031-08");
-    const ra = r?.id ? await approve(s5, r.id) : r;
     const polU = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s5, category: "PERSONAL", name: `ลากิจไม่รับค่าจ้าง ${tag}`, paid: false, allowHours: true } })).id as string;
     const polP = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s5, category: "VACATION", name: `พักร้อน ${tag}`, paid: true, allowHours: true } })).id as string;
     const sh5 = (await P.hrShift.create({ data: { tenantId: TT, systemId: s5, name: `เช้า ${tag}`, startMin: 540, endMin: 1020, crossesMidnight: false, graceMin: 5 } })).id as string;
-    for (const [e, d] of [[eL, "2031-08-14"], [eL, "2031-08-15"], [eL, "2031-09-11"], [eO, "2031-08-20"], [eO, "2031-09-17"]] as const)
-      await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: s5, employeeId: e, date: dd(d), shiftId: sh5, unitId: u1, startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-07-01T00:00:00Z"), source: "MANUAL" } });
+    const roster5 = async (pairs: (readonly [string, string])[]) => {
+      for (const [e, d] of pairs) await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: s5, employeeId: e, date: dd(d), shiftId: sh5, unitId: u1, startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-07-01T00:00:00Z"), source: "MANUAL" } });
+    };
     const lv = async (e: string, type: string, d: string, pol: string) => (await P.hrLeave.create({ data: { tenantId: TT, systemId: s5, employeeId: e, type, fromDate: dd(d), toDate: dd(d), status: "PENDING", policyId: pol, days: 1, reason: `qc ${tag}` } })).id as string;
     const stOf = async (id: string) => (await rows(`SELECT status::text AS s FROM "HrLeave" WHERE id = $1`, id))[0]?.s;
     const own = { ...V.owner, userId: U.owner.id };
+    // ORACLE-EDIT (controller Q2) leaves approved BEFORE the Aug run exists: eL unpaid Thu 7 + paid Fri 8 · eO (owner) unpaid Thu 21 (auto-approved)
+    await roster5([[eL, "2031-08-07"], [eL, "2031-08-08"], [eO, "2031-08-21"]]);
+    const w1 = await lv(eL, "PERSONAL", "2031-08-07", polU);
+    const w2 = await lv(eL, "VACATION", "2031-08-08", polP);
+    const pre1 = await safe(() => LV.decideLeaveAs(c(s5), own, w1, "APPROVED"));
+    const pre2 = await safe(() => LV.decideLeaveAs(c(s5), own, w2, "APPROVED"));
+    const pre3 = await safe(() => SV.requestLeave(c(s5), { employeeId: eO, type: "PERSONAL", fromDate: "2031-08-21", toDate: "2031-08-21", reason: "qc ลา", actorUserId: U.owner.id, policyId: polU }));
+    for (const d of ["2031-08-09", "2031-08-12", "2031-08-23", "2031-08-26", "2031-09-02"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT })); // judge the rostered leave days
+    const r = await create(s5, "2031-08");
+    const ra = r?.id ? await approve(s5, r.id) : r;
+    await roster5([[eL, "2031-08-14"], [eL, "2031-08-15"], [eL, "2031-09-11"], [eO, "2031-08-20"], [eO, "2031-09-17"], [eL, "2031-08-13"], [eL, "2031-09-10"]]);
     const setup = r?.ok === true && ra?.ok === true;
+    if (!setup || pre1?.ok !== true || pre2?.ok !== true || !pre3?.id) console.log(`  ⚠ setup R5: ${short({ r, ra, pre1, pre2, pre3: pre3?.reason ?? pre3?.id }, 400)}`);
     const a1 = await lv(eL, "PERSONAL", "2031-08-14", polU);
     const d1 = await safe(() => LV.decideLeaveAs(c(s5), own, a1, "APPROVED"));
     ck("R5.1", { setup, refused: d1?.ok === false && d1?.reason === TXT.paid, pending: (await stOf(a1)) === "PENDING" }, "refused · PENDING", short(d1, 160));
@@ -401,6 +444,26 @@ try {
     const q2 = await req("2031-09-17");
     const r2 = await rowsOn("2031-09-17");
     ck("R5.5", { created: !!q2?.id, approved: r2.length === 1 && r2[0]?.s === "APPROVED" }, "APPROVED", short({ q2: q2?.reason ?? q2?.id, r2 }, 200));
+    // ORACLE-EDIT (controller Q2) withdraw / cancel an approved leave in the APPROVED month
+    const wd = await safe(() => SV.decideLeave(c(s5), w1, "REJECTED", U.owner.id, { from: "APPROVED" }));
+    ck("R5.6", { pre: pre1?.ok === true, refused: wd?.__throw?.name === "HrLeaveDecisionError" && wd?.__throw?.message === TXT.paid, st: (await stOf(w1)) === "APPROVED" }, "refused · APPROVED", short({ wd: wd?.reason ?? "ok" }, 200));
+    const oId = (pre3?.id ?? "") as string;
+    const cl = await safe(() => SV.cancelLeave(c(s5), oId, { actorUserId: U.owner.id }));
+    ck("R5.7", { pre: !!pre3?.id && (await stOf(oId)) !== undefined, refused: cl?.ok === false && cl?.reason === TXT.paid, st: (await stOf(oId)) === "APPROVED" }, "refused · APPROVED", short(cl, 200));
+    const wp = await safe(() => SV.decideLeave(c(s5), w2, "REJECTED", U.owner.id, { from: "APPROVED" }));
+    ck("R5.8", { pre: pre2?.ok === true, ok: !wp?.__throw && wp?.ok !== false, st: (await stOf(w2)) === "REJECTED" }, "REJECTED", short({ wp: wp?.reason ?? "ok" }, 200));
+    // ORACLE-EDIT (controller Q4) approval-chain effect path (policy + APPROVED request made directly; created last so the direct paths above are not in a chain)
+    const pol = (await P.approvalPolicy.create({ data: { tenantId: TT, name: `qc money-2 ${tag}`, entityType: "HrLeave", systemId: s5 } })).id as string;
+    const chain = async (d: string) => {
+      const id = await lv(eL, "PERSONAL", d, polU);
+      const req = (await P.approvalRequest.create({ data: { tenantId: TT, policyId: pol, entityType: "HrLeave", entityId: id, systemId: s5, status: "APPROVED", requestedById: U.owner.id, idempotencyKey: `approval-HrLeave-${id}`, decidedAt: new Date() } })).id as string;
+      return { id, res: await safe(() => LV.applyLeaveDecision({ tenantId: TT, systemId: s5, leaveId: id, requestId: req, approved: true })) };
+    };
+    const ch1 = await chain("2031-08-13");
+    const au = await rows(`SELECT after FROM "AuditLog" WHERE "tenantId" = $1 AND "targetId" = $2 AND action = 'hr.leave.apply_refused'`, TT, ch1.id);
+    ck("R5.9", { refused: ch1.res?.applied === false && ch1.res?.code === "PAID", st: (await stOf(ch1.id)) === "CANCELLED", audit: au.some((a: Any) => a.after?.code === "PAID") }, "PAID · CANCELLED · audit", short(ch1.res, 160));
+    const ch2 = await chain("2031-09-10");
+    ck("R5.10", { applied: ch2.res?.applied === true, st: (await stOf(ch2.id)) === "APPROVED" }, "applied · APPROVED", short(ch2.res, 160));
   }
 } catch (e) {
   crashed = errText(e);

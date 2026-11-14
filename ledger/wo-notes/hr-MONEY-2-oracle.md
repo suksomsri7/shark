@@ -149,3 +149,46 @@ H5.1 walk fixtures: none touch labour. Not a suite: hunt probe p1 `6.labor` 7,05
 - K1 / NA-12: the leaver's final WHT projects future months.
 
 Not ticketed: the holiday lookup on a borrowed shift uses the home unit (second half of m5).
+
+## 9. ORACLE-EDIT — controller rulings 14 Nov (Q1–Q4)
+After this edit the base run (forced, lane wrapper) gives **BASE-EXPECTATION 49/49 as registered**: 31 RED, 18 GREEN, residue none. The 42 earlier checks are unchanged.
+
+### R3.4 (Q1) — home branch has no minutes
+eN has home u3 and a salary of 30,000. Own system sN, no book. Rostered Mon 4 Aug at u1, Tue 5 and Wed 6 at u2, punches on shift.
+- Cost is 3,087,500.
+- u1 share: 1,029,166.67 → floor 1,029,166.
+- u2 share: 2,058,333.33 → floor 2,058,333.
+- Remainder 1 goes to u2, the unit with the most minutes. Result: **u1 1,029,166 · u2 2,058,334 · u3 0 · all 3,087,500**.
+- Largest-remainder would give the satang to u1 (fraction .67), so the case discriminates.
+- Base: u1 0, u2 0, u3 3,087,500. RED.
+
+h4.2 golden: E (home U1) has minutes in U1 (10 × 600) and U2 (5 × 600). 2,087,500 → floors 1,391,666 / 695,833, remainder to home U1 → **1,391,667 / 695,833**. The golden is unchanged.
+
+### R4.6 (Q3) — a journal line can exceed int4 while every run total fits
+Two employees at 1,100,000,000 each; Z1 also takes an advance of 500,000,000.
+- Base run (seen): totalGross **1,700,000,000**, net 951,526,250. Every run total fits int4.
+- The accrual Dr 6000 = E total = **2,200,000,000** > int4.
+- After the fix: create is refused `RUN_LIMIT`. Base: created. RED.
+
+Proof that the payment entry cannot overflow when run totals fit:
+- Payment Dr 2120 / Cr bank = Σnet ≤ Σgross (net = gross − SSO ee − WHT, each term ≥ 0).
+- Accrual credit lines are each ≤ totalNet, totalDeduct, or SSO.
+- Only the debit expense lines can exceed. Hence one check.
+
+### R5.6–R5.10 (Q2, Q4)
+Fixture in s5:
+- Before the Aug run exists, eL's unpaid 7 Aug and paid 8 Aug leaves are approved, and eO's (owner) unpaid 21 Aug is auto-approved. These days are rostered.
+- The judge jobs run, then the Aug run is created and approved (setup ok on base).
+
+Checks:
+- R5.6: on base the `decideLeave` withdraw of 7 Aug succeeds. RED.
+- R5.7: on base `cancelLeave` of 21 Aug is ok. RED.
+- R5.8: control, paid 8 Aug withdraw = ok. GREEN.
+- R5.9: ApprovalPolicy and an APPROVED ApprovalRequest are made directly. On base `applyLeaveDecision` for the unpaid 13 Aug leave → applied. RED.
+- R5.10: control, 10 Sep → applied. GREEN.
+
+### Watch item h3.7 S4.35 — old → new: unchanged
+The give-backs on `${gRun}_bDmg` (hG1) stay PENDING. No later step reverses gRun, cancels the claim, or builds a 2031-10/11 run in hG1, so R1 never fires. The `reversed` case (`R.B`) is still refused `NO` by giveBackClaim.
+
+### Older-suite list after the rulings
+Still 0 golden changes. The h4.2 E split is re-confirmed under the Q1 rule.
