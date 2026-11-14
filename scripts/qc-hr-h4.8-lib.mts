@@ -375,7 +375,7 @@ export function serializerProblems(SER: Any, CAT: Record<string, Any>): string[]
 // ═════════ ORACLE-EDIT (H4.8 fix round · controller ruling 1–6) ▸ F1–F6 = ports of the hunter's F1–F4 + I1 probes (ledger/wo-notes/hr-H4.8-hunt-probes) ◂ ═════════
 // Res/Key shapes as in qc-hr-h4.8.mts · every helper comes from the caller (no DB access at import)
 export async function runFixRound(c: Any): Promise<void> {
-  const { P, TA, sA, cA, polP, E, U, K, RAND, tag, HR_PAY, CAT, PERM, ROS, BRD, PRIV, KEYS, RT, REFUSED, mkKey, api, sc, strip, nOf, fresh, ck, chk, authOf, isThai, errText, ok } = c;
+  const { P, TA, sA, cA, polP, E, U, K, RAND, runA, R, tag, HR_PAY, CAT, PERM, ROS, BRD, PRIV, KEYS, RT, REFUSED, mkKey, api, sc, strip, nOf, fresh, ck, chk, authOf, isThai, errText, ok } = c;
   type Res = { status: number; body: Any; text: string; headers: Headers };
   type Key = Any;
   // ═════════ ORACLE-EDIT (H4.8 fix round · controller ruling 1–6) ▸ ports of the hunter's F1–F4 + I1 probes (scratchpad/h48-hunt → ledger/wo-notes/hr-H4.8-hunt-probes) ◂ ═════════
@@ -420,7 +420,8 @@ export async function runFixRound(c: Any): Promise<void> {
   {
     const before = await P.apiKey.count({ where: { tenantId: TA } });
     const outs: string[] = [];
-    for (const nm of ["a\u202eb", "a\u001b[31mc", "a\nb", "a\u2028b", "a\u2066b", "a\u0000b"]) {
+    // ORACLE-EDIT (H4.8 fix round 2 · controller ruling 2): + zero-width U+200B–200D · U+2060 · U+FEFF ◂
+    for (const nm of ["a\u202eb", "a\u001b[31mc", "a\nb", "a\u2028b", "a\u2066b", "a\u0000b", "a\u200bb", "a\u200cb", "a\u200db", "a\u2060b", "a\ufeffb"]) {
       let r: Any;
       try {
         r = ok(KEYS) ? await KEYS.issueHrApiKey(authOf(U.owner), { systemId: sA, name: `QC48 ${nm} ${tag}`, ttlDays: 30 }) : { ok: false, code: "MISSING" };
@@ -444,15 +445,27 @@ export async function runFixRound(c: Any): Promise<void> {
     const lv = await api("GET", "/leaves?status=HISTORY", K.read);
     await P.hrLeave.create({ data: { tenantId: TA, systemId: sA, employeeId: E.eEnd, policyId: polP, type: "PERSONAL", fromDate: new Date("2025-03-03T00:00:00Z"), toDate: new Date("2025-03-03T00:00:00Z"), status: "APPROVED", days: 1 } });
     const lv2 = await api("GET", "/leaves?status=HISTORY", K.read);
-    const p = {
+    const p: Record<string, string> = {
       get: await pair(`/employees/${E.eEnd}`, `/employees/${RAND}`, K.read),
       month: await pair(`/attendance/month?employeeId=${E.eEnd}&month=2026-06`, `/attendance/month?employeeId=${RAND}&month=2026-06`, K.read),
       hist: await pair(`/employees/${E.eEnd}/payslips?taxYear=2026`, `/employees/${RAND}/payslips?taxYear=2026`, K.pay),
       post: sc(pa) === "404:not_found" && strip(pa) === strip(pb) ? "" : `${sc(pa)}|${sc(pb)}`,
       list: lv2.status === 200 && !((lv2.body?.data ?? []) as Any[]).some((x) => x.employeeId === E.eEnd) && lv.status === 200 ? "" : "listed",
     };
+    // ORACLE-EDIT (H4.8 fix round 2 · controller ruling 1): history keeps leavers — a published past roster row and a report row of the ended employee are present, with only the documented fields ◂
+    const src = await P.hrRosterEntry.findFirst({ where: { id: R.p1 } });
+    const ent = await P.hrRosterEntry.create({ data: { tenantId: TA, systemId: sA, employeeId: E.eEnd, date: new Date("2026-06-12T00:00:00Z"), shiftId: src.shiftId, unitId: src.unitId, startMin: 480, endMin: 1020, breakMin: 60, crossesMidnight: false, published: true, publishedAt: new Date() } });
+    const ros = await api("GET", "/roster?from=2026-06-12&to=2026-06-12", K.read);
+    const rrow = ((ros.body?.data ?? []) as Any[]).find((x) => x.id === ent.id);
+    const item = await P.hrPayrollItem.findFirst({ where: { runId: runA, employeeId: E.e1 } });
+    const { id: _id, employeeId: _e, createdAt: _c, updatedAt: _u, ...rest } = item as Any;
+    await P.hrPayrollItem.create({ data: { ...rest, employeeId: E.eEnd } });
+    const rep = await api("GET", "/reports/payroll-month?period=2026-06", K.pay);
+    const prow = ((rep.body?.data?.rows ?? []) as Any[]).find((x) => x.employeeId === E.eEnd);
+    p.roster = rrow && shapeBad(rrow, ROSTER, "r", []).length === 0 ? "" : `roster=${ros.status}:${rrow ? shapeBad(rrow, ROSTER, "r", []).slice(0, 2) : "absent"}`;
+    p.report = prow && shapeBad(prow, (reportShape(CAT["payroll-month"].columns, true, false) as Any).rows[0] as Sh, "p", []).length === 0 ? "" : `report=${rep.status}:${prow ? "shape" : "absent"}`;
     const okP = Object.entries(p).filter(([, v]) => v !== "");
-    chk("F5", okP.length === 0, "ended ≡ unknown", okP.map(([k, v]) => `${k}=${v}`).join(" ") || "ok");
+    chk("F5", okP.length === 0, "ended ≡ unknown · history keeps leavers", okP.map(([k, v]) => `${k}=${v}`).join(" ") || "ok");
   }
   {
     const send2 = async (ct: string, text: string) => {
@@ -477,6 +490,27 @@ export async function runFixRound(c: Any): Promise<void> {
     const n1 = await nOf(`SELECT count(*)::int AS n FROM "HrLeave" WHERE "employeeId" = $1 AND "fromDate" = $2::date`, E.eS, d);
     const r4 = await api("POST", "/leaves", K.leave, { body: { employeeId: E.eS, policyId: polP, fromDate: "2031-08-06", toDate: "2031-08-06" } });
     const row = r4.body?.data?.id ? await P.hrLeave.findFirst({ where: { id: r4.body.data.id } }) : null;
+    // ORACLE-EDIT (H4.8 fix round 2 · controller ruling 3): guard order — a key of another system / without the write scope gets the same 403 as on reads, never 415/422 ◂
+    const genHr = await mkKey("f7gen", [...HR_PAY, "hr.leave.request", "hr.leave.decide"], { sys: null });
+    const poison = `{"employeeId":"${E.eS}","policyId":"${polP}","fromDate":"${d}","toDate":"${d}","__proto__":{"x":1}}`;
+    const sendK = async (k: Key, ct: string, text: string, hdr: Record<string, string> = {}) => {
+      const res: Response = await RT.POST(new Request("http://x/api/v1/hr/leaves", { method: "POST", headers: { authorization: `Bearer ${k?.raw}`, "idempotency-key": fresh(), "content-type": ct, ...hdr }, body: text }), { params: Promise.resolve({ path: ["leaves"] }) });
+      const t = await res.text();
+      let b: Any = null;
+      try {
+        b = JSON.parse(t);
+      } catch {
+        b = null;
+      }
+      return { status: res.status, body: b, text: t, headers: res.headers } as Res;
+    };
+    const order = [
+      ["pos/ct", await sendK(K.pos, "text/plain", good), "403:system_mismatch"], ["pos/proto", await sendK(K.pos, "application/json", poison), "403:system_mismatch"],
+      ["read/ct", await sendK(K.read, "text/plain", good), "403:scope_missing"], ["read/proto", await sendK(K.read, "application/json", poison), "403:scope_missing"],
+      ["gen/ct", await sendK(genHr, "text/plain", good, { "x-shark-system": sA }), "403:scope_missing"], ["gen/proto", await sendK(genHr, "application/json", poison, { "x-shark-system": sA }), "403:scope_missing"],
+    ] as [string, Res, string][];
+    const offF7 = order.filter(([, r, want]) => sc(r) !== want).map(([l, r]) => `${l}=${sc(r)}`);
+    chk("F7", offF7.length === 0 && !!genHr, "403 before 415/422", offF7.join(" ") || "ok");
     ck("F6", { ct: sc(r1) === "415:invalid_json", proto: sc(r2) === "422:validation", ctor: sc(r3) === "422:validation", nothing: n0 === 0 && n1 === 0, stored: r4.status === 200 && !!row && r4.body?.data?.status === row.status }, "json only · stored status", `${sc(r1)} ${sc(r2)} ${sc(r3)} rows=${n0}/${n1} ${sc(r4)} ${r4.body?.data?.status}/${row?.status}`);
   }
 }

@@ -66,3 +66,9 @@ JSON_SUMMARY {"suite":"qc-hr-h4.8","total":0,"passed":0,"failed":[],"findings":[
 RESIDUE none (tenants=2 users=5)
 ===== qc-hr-h4.8 ===== passed 40/47 (QC_FORCE)
 JSON_SUMMARY {"suite":"qc-hr-h4.8","total":47,"passed":40,"failed":["H4.8-S6","H4.8-F1","H4.8-F2","H4.8-F3","H4.8-F4","H4.8-F5","H4.8-F6"],"findings":[{"id":"H4.8-S6","sev":"CRITICAL"},{"id":"H4.8-F1","sev":"CRITICAL"},{"id":"H4.8-F2","sev":"CRITICAL"},{"id":"H4.8-F3","sev":"MAJOR"},{"id":"H4.8-F4","sev":"MAJOR"},{"id":"H4.8-F5","sev":"CRITICAL"},{"id":"H4.8-F6","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":42,"baseGreen":5,"offBase":["H4.8-S1(RED→pass)","H4.8-S2(RED→pass)","H4.8-S3(RED→pass)","H4.8-S4(RED→pass)","H4.8-S7(RED→pass)","H4.8-S8(RED
+
+### FIX ROUND 2 (controller rulings 2 + 3) — RED with keys.ts/actor.ts/op.ts/dispatch.ts at c074671ff in the working copy
+  ❌ [H4.8-F4] [db] ORACLE-EDIT (H4.8 fix round · controller ruling 4): key names with control / bidi / line-separator / NUL / zero-width (fix round 2) characters ⇒ refused VALIDATION (Thai), nothing written — expected names refused | actual refused,nothing ok,ok,ok,ok,ok,ok,true:undefined,true:undefined,true:undefined,true:undefined,true:undefined
+  ❌ [H4.8-F7] [db] ORACLE-EDIT (H4.8 fix round 2 · controller ruling 3): write guard order — POS-bound key / key without hr.leave.request / unbound key + header with a non-JSON or __proto__ body ⇒ the same 403 as on reads (never 415/422) — expected 403 before 415/422 | actual pos/ct=415:invalid_json pos/proto=422:validation read/ct=415:invalid_json read/proto=422:validation gen/ct=415:invalid_json gen/proto=422:validation
+RESIDUE none (tenants=2 users=5)
+===== qc-hr-h4.8 ===== passed 46/48 (QC_FORCE)

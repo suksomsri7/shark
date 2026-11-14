@@ -90,9 +90,10 @@ A16|A16|C|R|[db] recipes replay 2xx with $SHARK_API_KEY $SHARK_SYSTEM_ID $UNIT_I
 F1|fix 1|C|R|[db] ORACLE-EDIT (H4.8 fix round · controller ruling 1): OT report with a pay key ⇒ money columns + exactly 1 hr.api.report.read row · hr-read key ⇒ no money column, no row
 F2|fix 2|C|R|[db] ORACLE-EDIT (H4.8 fix round · controller ruling 2): hr.employee.read / hr.roster.read are API-key only — not in the staff editor · refused by validatePermissionInput · a human member holding them gains nothing on the 3 reader gates
 F3|fix 3|M|R|[db] ORACLE-EDIT (H4.8 fix round · controller ruling 3): impossible dates/periods (2026-02-31 · 2026-06-31 · 0000-00-00 · 2026-13) ⇒ 422 validation on every date parameter (no fallback to today)
-F4|fix 4|M|R|[db] ORACLE-EDIT (H4.8 fix round · controller ruling 4): key names with control / bidi / line-separator / NUL characters ⇒ refused VALIDATION (Thai), nothing written
-F5|fix 5|C|R|[db] ORACLE-EDIT (H4.8 fix round · controller ruling 5): ended employee ≡ unknown id — GET /employees/{id} · attendance month · payslip history · POST /leaves ⇒ same 404 bytes · absent from the leaves list
+F4|fix 4|M|R|[db] ORACLE-EDIT (H4.8 fix round · controller ruling 4): key names with control / bidi / line-separator / NUL / zero-width (fix round 2) characters ⇒ refused VALIDATION (Thai), nothing written
+F5|fix 5|C|R|[db] ORACLE-EDIT (H4.8 fix round · controller ruling 5): ended employee ≡ unknown id — GET /employees/{id} · attendance month · payslip history · POST /leaves ⇒ same 404 bytes · absent from the leaves list · fix round 2 ruling 1: present in a past roster row + a report row with only the documented fields
 F6|fix 6|M|R|[db] ORACLE-EDIT (H4.8 fix round · controller ruling 6): POST /leaves non-JSON Content-Type ⇒ 415 invalid_json · __proto__ / constructor key ⇒ 422 validation · nothing written · answer status = stored status
+F7|fix2 3|M|R|[db] ORACLE-EDIT (H4.8 fix round 2 · controller ruling 3): write guard order — POS-bound key / key without hr.leave.request / unbound key + header with a non-JSON or __proto__ body ⇒ the same 403 as on reads (never 415/422)
 Z1|X12|C|G|no residue (tenants · keys · idempotency rows · rate buckets)
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -686,7 +687,7 @@ async function runDb(): Promise<void> {
     ck("A10", { some: REFUSED.length >= 40, env: bad.length === 0, m405: sc(m405) === "405:method_not_allowed" && /GET/.test(m405.headers.get("allow") ?? ""), m404: sc(m404) === "404:not_found" }, "house envelope", `${REFUSED.length} refusals · ${bad.slice(0, 3).join(" ")} ${sc(m405)} ${sc(m404)}`);
   }
   // ORACLE-EDIT (H4.8 fix round · controller ruling 1–6) ▸ checks F1–F6 live in qc-hr-h4.8-lib.mts runFixRound (size limit G) ◂
-  await runFixRound({ P, TA, sA, cA, polP, E, U, K, RAND, tag, HR_PAY, CAT, PERM, ROS, BRD, PRIV, KEYS, RT, REFUSED, mkKey, api, sc, strip, nOf, fresh, ck, chk, authOf, isThai, errText, ok });
+  await runFixRound({ P, TA, sA, cA, polP, E, U, K, RAND, runA, R, tag, HR_PAY, CAT, PERM, ROS, BRD, PRIV, KEYS, RT, REFUSED, mkKey, api, sc, strip, nOf, fresh, ck, chk, authOf, isThai, errText, ok });
   // A7 / A7b (last: they change keys and the issuer)
   {
     if (K.rev) await AK.revokeApiKey({ tenantId: TA }, K.rev.id).catch(() => false);
