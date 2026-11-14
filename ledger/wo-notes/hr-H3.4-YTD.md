@@ -73,3 +73,24 @@ Migrate first, then deploy code. Pre-check (outside the migration): `SELECT to_r
 - AC-a previous-employer income (50 ทวิ of another employer) — may/must the projection include it? (ruling Q1)
 - AC-b rehire = new HrEmployee row; old-row pay is never entered as an opening (double count with the old 50 ทวิ) (ruling Q14)
 - AC-c one combined annual line (pre-system + SHARK) on 1ก/50 ทวิ right? · pre-go-live leaver: on this year's 1ก, who issues the 50 ทวิ? · entered SSO above 9,000 ฿ simply capped? (brief A2–A4)
+
+## 8. Fix round (review MERGE WITH NOTES · hunt F1–F4 · controller rulings 1–9)
+| ruling | fix | where | oracle |
+|---|---|---|---|
+| 1a zero opening counts | `YTD_OPENING` = marker MISSING ∧ no live opening (any status, zero included) — no warning after approve | `payroll.ts` preview `ytdReview` | S3.6 (rewritten) |
+| 1b DRAFT needs rebuild | DRAFT whose live opening (id, rev) ≠ the one the item used (save · revise · clear · zero) ⇒ review `YTD_REBUILD` "ต้องคำนวณใหม่" (`hr.run2.rv_YTD_REBUILD`); approve keeps INPUTS_CHANGED | `payroll.ts` preview | S3.6 · S3.20 |
+| 2 rev identity in digest | `digestIn` carries `{ytdOpening:{id,rev}}` when an opening is used (no opening ⇒ fingerprint unchanged) ⇒ any new rev needs a rebuild; an approved item's marker = the rev live at approve | `buildRunV2InTx` | S3.20 |
+| 3 bulk | service skips rows equal to the live row (same rev + values) before OWN/limits — no rev, no audit; changed rows ≤ 300 (FIELDS), posted rows ≤ 500; action sends only rows whose fields differ from `orig_<id>` and refuses > 300 (`TOO_MANY`); list `truncated` flag + notice `hr-ytd-truncated` (take 501); writer batched (one hr50 lock statement over the sorted keys, one query each for certs/revs/overlap, one updateMany, one createMany, one audit createMany; SSO law read outside the tx); Prisma timeout ⇒ fixed `BUSY` | `payroll-opening.ts` · actions · ui | S3.21 |
+| 4 asOf ≥ start | `parseOpening(…, {startDay})` ⇒ FIELDS; zero button uses max(1 Jan, start) | rules · service · actions | S2.6 · S3.22 |
+| 5 one reader | `payroll-opening-read.ts` (`liveOpeningsIn`, `lockYtdInTx` — only `hr:ytd:` key; Prisma types only, no load cycle) used by payroll.ts · filings · reports · payslip · service | — | S1.6 (edited: svc hr50 → lockYtdInTx · callers use lockYtdInTx · key only in the read module) |
+| 6 Q-A / Q-B | kept: branch-limited payroll readers see the opening line of employees whose pay they already see; the employee sees their own line in mySlips (= their 50 ทวิ). "No self view" now means: no access to the opening card/list/edit | notes | S3.19 |
+Bulk timing on the lane DB: **300 changed rows = 371 ms** (before the fix: 20,106 ms — fixround-red file).
+RED with the fix reverted (src of 2f6708d78, new oracle): `ledger/wo-notes/hr-H3.4-YTD-fixround-red.txt` — S1.6 · S2.6 · S3.6 · S3.20 · S3.21 · S3.22 red, 38/44.
+Hunter probes copied as `ledger/wo-notes/hr-H3.4-YTD-hunt-probes/*.mts.txt`; ported as regressions: P2 (stale basis/zero opening) ⇒ S3.6/S3.20 · P3 (over-withheld ⇒ 0) ⇒ S2.6 · P6 (bulk size/time) ⇒ S3.21 · P1/P4 already covered by S3.7/S3.11/S3.19.
+
+### Debts (ruling 7)
+- F4 entry ceiling: INT columns ⇒ opening income ≤ 21,474,836.47 ฿ (higher ⇒ FIELDS; projection and 50 ทวิ/1ก then lack the pre-system pay) — accountant/controller decision (Decimal migration).
+- An already-FILED ภ.ง.ด.1ก has no guard against a later opening change (stored file ⇒ download CHANGED; amended filing manual).
+- Rehire row accepts an opening while the original row's 50 ทวิ is live (D4/Q14 · AC-b).
+- Extra ORACLE-EDIT in this round: S3.17 `noMoney` tests audit KEYS (+ numeric values as before) — an unforced run matched a random cuid/tag id against /sso|wht/ (false positive, 43/44 once).
+- Fix-round typecheck (clean): exit 0 · 469 s.
