@@ -156,7 +156,44 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       actions: [{ waitFor: 'a[data-testid="trips-dep-manifest"]' }],
     },
   ],
+  // TRIPS W1.2 ▸ ทัวร์ 4 ขั้นฝั่งลูกค้า (ภาพ 01 ข/ค/ง มือถือไทย · 19 จอใหญ่อังกฤษ) — ทุกฉาก public 1440 + 390 · วัน/เดือนปักด้วย --book-month/--book-date (ปริยาย 31 ธ.ค. ของ seed)
+  //   "w1.2" อ่านอย่างเดียว (ไม่เขียนฐาน) · "w1.2-flow" กดผ่านฟอร์มจริง ⇒ เขียนฐานเลน (ถือ 3 ที่บนรอบ 31 ธ.ค. + การจอง HOLD + Party ผู้จองทดสอบ ค้างจนตัวกวาดวิ่ง) — รันหลังข้อสอบ/ก่อน reseed
+  //   วอเชอร์ = การจอง TR-…-0142 ของ seed (ภัทรา · CONFIRMED ยังไม่จ่าย) · token หาจาก bookingPublicToken ตอนรัน (ไม่ฝัง token) ◂
+  "w1.2": [
+    { name: "book-select", mockup: "01", public: true, path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=th&m=${i.bookMonth}&d=${i.bookDate}&n.ADULT=2&n.CHILD=1`, actions: [{ reveal: '[data-testid="book-select"]' }] },
+    { name: "book-select-en", mockup: "19", public: true, path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=en&m=${i.bookMonth}&d=${i.bookDate}&n.ADULT=2&n.CHILD=1` },
+    { name: "book-voucher", mockup: "01", public: true, path: (i) => `/book/${i.shopSlug}/my/${W12_VOUCHER_TOKEN}?lang=th`, actions: [{ waitFor: '[data-testid="book-res"]' }] },
+  ],
+  "w1.2-flow": [
+    {
+      name: "book-checkout",
+      mockup: "01",
+      public: true,
+      path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=th&m=${i.bookMonth}&d=${i.bookDate}&n.ADULT=2&n.CHILD=1`,
+      actions: [{ waitFor: '[data-testid="book-continue"]' }, { pause: 2_500 }, { click: { selector: '[data-testid="book-continue"]' } }, { waitFor: '[data-testid="book-checkout"]' }, { pause: 300 }],
+    },
+    {
+      name: "book-pay",
+      mockup: "01",
+      public: true,
+      path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=th&m=${i.bookMonth}&d=${i.bookDate}&n.ADULT=2&n.CHILD=1`,
+      actions: [
+        { waitFor: '[data-testid="book-continue"]' }, { pause: 2_500 }, { click: { selector: '[data-testid="book-continue"]' } }, { waitFor: '[data-testid="book-checkout"]' }, { pause: 2_500 },
+        { fill: { selector: '[data-testid="book-booker-name"]', value: "ภัทรา ภาพทดสอบ" } }, { fill: { selector: '[data-testid="book-booker-phone"]', value: "0890001180" } },
+        { click: { selector: '[data-testid="book-accept"]' } }, { click: { selector: '[data-testid="book-pay-submit"]' } }, { waitFor: '[data-testid="book-res"]' }, { pause: 300 },
+      ],
+    },
+  ],
 };
+// TRIPS W1.2 ▸ token ของการจอง 0142 (ฉาก book-voucher) — เติมก่อนถ่ายเมื่อใบ = w1.2 · ไม่มีกุญแจเซิร์ฟเวอร์/ไม่พบการจอง ⇒ หยุด ◂
+let W12_VOUCHER_TOKEN = "";
+async function w12VoucherToken(bookingId: string): Promise<string> {
+  if (!bookingId) throw new Fatal(`ไม่พบการจองของ ${BOOKING_0142_PARTY} บนรอบราชา ${DEPARTURE_RACHA_1114.date} — รัน scripts/seed-trips-qc.mts ก่อน`);
+  const trips = (await import("@/lib/modules/trips")) as { bookingPublicToken?: (id: string) => string | null };
+  const t = typeof trips.bookingPublicToken === "function" ? trips.bookingPublicToken(bookingId) : null;
+  if (!t) throw new Fatal("ทำ token การจองไม่ได้ (ไม่มี SESSION_SECRET ใน .env.qc-trips?)");
+  return t;
+}
 
 const argv = process.argv.slice(2);
 const argOf = (flag: string): string | undefined => {
@@ -333,6 +370,7 @@ const results: { name: string; device: string; mockup: string; status: number; e
 const profile = `/tmp/chr-trips-${process.pid}`;
 try {
   const ids = await idsFromSeed();
+  if (WO === "w1.2") W12_VOUCHER_TOKEN = await w12VoucherToken(ids.booking0142); // TRIPS W1.2 ▸ ◂
   const cookies = specs.some((s) => !s.public) ? await mintSession() : [];
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e})`);
