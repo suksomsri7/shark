@@ -448,6 +448,8 @@ export async function ensureAccounting(ctx: GlCtx, tx?: Tx): Promise<void> {
 
 type SaleDoc = {
   id: string;
+  /** ACC T4.2 ▸ ผู้ติดต่อของเอกสาร — ติดบนบรรทัดลูกหนี้/เจ้าหนี้ (บัญชีย่อยรายตัวจาก GL) ◂ */
+  contactId?: string | null;
   docType: string;
   direction: string;
   status: string;
@@ -779,6 +781,7 @@ export async function postDocument(
         inputVatStatus: true,
         inputVatClaimDate: true,
         refType: true, // ACC T2.4 ◂
+        contactId: true, // ACC T4.2 ◂
       },
     })) as SaleDoc | null;
     if (!doc) throw new Error("ไม่พบเอกสาร");
@@ -836,7 +839,7 @@ export async function postDocument(
         // ACC T1.2 ▸ แยกตามชนิดบรรทัด (ม.78 สินค้า · ม.78/1 บริการ): VAT สินค้า → 2205 · VAT บริการ → 2210
         //   ยอดรวมพัก = vatAmount − VAT ส่วนมัดจำ (เท่าเดิม) · แบ่งตาม VAT ต่อบรรทัด (largest remainder · ผลรวมเป๊ะ)
         //   บรรทัดเดิมที่ไม่มีชนิด = ชนิดตามจุดรับรู้ของทั้งใบ ⇒ ใบเดิม JV เหมือนเดิมทุกสตางค์ ◂
-        b.dr(await b.id("AR"), doc.grandTotal);
+        b.dr(await b.id("AR"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         if (dep.base > 0) b.dr(await b.id("DEPOSIT_RECEIVED"), dep.base, "หักมัดจำ");
         await creditIncome(await b.id(incomeKey, doc.docType));
         if (rate > 0) {
@@ -924,14 +927,14 @@ export async function postDocument(
         // Dr รายได้ + Dr 2200 · Cr 1100 AR
         b.dr(await b.id(incomeKey, doc.docType), afterDiscount);
         if (rate > 0) b.dr(await b.id("VAT_OUTPUT"), doc.vatAmount);
-        b.cr(await b.id("AR"), doc.grandTotal);
+        b.cr(await b.id("AR"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         book = "SALES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ใบลดหนี้" };
         break;
       }
       case "DEBIT_NOTE": {
         // Dr 1100 AR · Cr รายได้ + Cr 2200
-        b.dr(await b.id("AR"), doc.grandTotal);
+        b.dr(await b.id("AR"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         await creditIncome(await b.id(incomeKey, doc.docType));
         if (rate > 0) b.cr(await b.id("VAT_OUTPUT"), doc.vatAmount);
         book = "SALES";
@@ -972,7 +975,7 @@ export async function postDocument(
           if (doc.discountAmount > 0) b.cr(await b.id("DISCOUNT_RECEIVED"), doc.discountAmount, "ส่วนลดรับ");
           for (const k of BUCKETS) if (agg[k] !== 0) b.dr(await bucketLedger(b, k, doc.docType), agg[k], k === "CLAIM" || k === "PENDING" ? undefined : "ภาษีซื้อไม่ขอคืน");
           if (dep.base > 0) b.cr(await b.id("DEPOSIT_PAID"), dep.base, "หักมัดจำจ่าย");
-          b.cr(await b.id("AP"), doc.grandTotal);
+          b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
           book = "PURCHASES";
           opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "บันทึกซื้อ/ค่าใช้จ่าย" };
           break;
@@ -996,7 +999,7 @@ export async function postDocument(
         //   (VAT ของมัดจำถูกเคลมไปแล้วตอนออกใบมัดจำ — เคลมซ้ำที่นี่ = ภาษีซื้อเกิน)
         if (rate > 0) b.dr(await b.id(vatInKey), doc.vatAmount - dep.vat);
         if (dep.base > 0) b.cr(await b.id("DEPOSIT_PAID"), dep.base, "หักมัดจำจ่าย");
-        b.cr(await b.id("AP"), doc.grandTotal);
+        b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         book = "PURCHASES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "บันทึกซื้อ/ค่าใช้จ่าย" };
         break;
@@ -1019,14 +1022,14 @@ export async function postDocument(
           b.dr(assetAcct, afterDiscount + cost, "ราคาทุนสินทรัพย์");
           b.dr(await b.id("VAT_INPUT"), claim);
           b.dr(await b.id("VAT_INPUT_UNDUE"), pending);
-          b.cr(await b.id("AP"), doc.grandTotal);
+          b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
           book = "PURCHASES";
           opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ซื้อสินทรัพย์" };
           break;
         }
         b.dr(assetAcct, afterDiscount, "ราคาทุนสินทรัพย์");
         if (rate > 0) b.dr(await b.id("VAT_INPUT"), doc.vatAmount);
-        b.cr(await b.id("AP"), doc.grandTotal);
+        b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         book = "PURCHASES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ซื้อสินทรัพย์" };
         break;
@@ -1084,7 +1087,7 @@ export async function postDocument(
       }
       case "CREDIT_NOTE_RECEIVED": {
         // รับใบลดหนี้จากผู้ขาย: Dr 2100 เจ้าหนี้ · Cr ต้นทุน/ค่าใช้จ่าย + Cr 1150 (กลับภาษีซื้อ)
-        b.dr(await b.id("AP"), doc.grandTotal);
+        b.dr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         // ACC T1.5 §5: VAT ตามสถานะปัจจุบันของใบเดิม (เคลม 1150 · รอ 1155 · ไม่ขอคืน 6950/6960 หรือต้นทุน) · ไม่อ้างใบเดิม = 1150 (เดิม)
         await adjustPurchaseVat(ctx, db, b, doc, rate, afterDiscount, "CR");
         book = "PURCHASES";
@@ -1094,7 +1097,7 @@ export async function postDocument(
       case "DEBIT_NOTE_RECEIVED": {
         // รับใบเพิ่มหนี้จากผู้ขาย: Dr ต้นทุน/ค่าใช้จ่าย + Dr 1150 · Cr 2100 เจ้าหนี้
         await adjustPurchaseVat(ctx, db, b, doc, rate, afterDiscount, "DR");
-        b.cr(await b.id("AP"), doc.grandTotal);
+        b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         book = "PURCHASES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "รับใบเพิ่มหนี้" };
         break;

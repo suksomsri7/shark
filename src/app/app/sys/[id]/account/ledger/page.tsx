@@ -97,6 +97,24 @@ export default async function LedgerPage({
         <button className="btn btn-primary text-sm">แสดง</button>
       </form>
 
+      {/* ACC T4.2 ▸ ใบพิมพ์/ส่งออกบัญชีแยกประเภท (บัญชีนี้ หรือทุกบัญชีที่มียอด) · บัญชีย่อยลูกหนี้/เจ้าหนี้รายตัว ◂ */}
+      <div className="flex flex-wrap gap-2 text-sm" data-testid="ledger-book-links">
+        {accountId && (
+          <Link href={`${base}/ledger/print?account=${accountId}&from=${from}&to=${to}`} className="btn btn-ghost text-sm" data-testid="ledger-print-one">
+            พิมพ์/ส่งออกบัญชีนี้
+          </Link>
+        )}
+        <Link href={`${base}/ledger/print?from=${from}&to=${to}`} className="btn btn-ghost text-sm" data-testid="ledger-print-all">
+          พิมพ์/ส่งออกทุกบัญชี
+        </Link>
+        <Link href={`${base}/ledger/subsidiary?side=AR&from=${from}&to=${to}`} className="btn btn-ghost text-sm" data-testid="ledger-sub-ar">
+          บัญชีย่อยลูกหนี้รายตัว
+        </Link>
+        <Link href={`${base}/ledger/subsidiary?side=AP&from=${from}&to=${to}`} className="btn btn-ghost text-sm" data-testid="ledger-sub-ap">
+          บัญชีย่อยเจ้าหนี้รายตัว
+        </Link>
+      </div>
+
       {!accountId ? (
         <EmptyState text="เลือกบัญชีเพื่อดูการเคลื่อนไหว" />
       ) : (
