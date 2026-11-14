@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { listPending, listMyRequests, listPolicies } from "@/lib/modules/approval/service";
-import { cancelMyRequestAction } from "@/lib/modules/approval/actions";
+import { withdrawMyRequestFormAction } from "@/lib/modules/approval/actions"; // HR LEAVE-3 ▸ W5: ถอนไม่สำเร็จ = แสดงเหตุผลแบบปุ่มยกเลิกอื่นในหน้านี้ ◂
 import { cancelLeaveAction } from "@/lib/modules/hr/actions"; // HR H0.7 ▸ R5 ยกเลิกใบลาของตัวเอง (ใบลา + คำขอพร้อมกัน) ◂
 import { entityLabel } from "@/lib/modules/approval/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -264,7 +264,7 @@ export default async function ApprovalsPage() {
                       detail={`${entityLabel(r.entityType)}${r.amountSatang != null ? ` · ${formatBaht(r.amountSatang)}` : ""} — คำขอจะถูกยกเลิกและออกจากสายอนุมัติ`}
                       confirmLabel="ยืนยันยกเลิก"
                       danger
-                      action={cancelMyRequestAction}
+                      action={withdrawMyRequestFormAction} // HR LEAVE-3 ▸ W5 ◂
                       fields={{ requestId: r.id }}
                     />
                   </div>

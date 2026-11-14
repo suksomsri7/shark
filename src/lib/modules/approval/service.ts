@@ -331,10 +331,18 @@ export async function decide(
 
   const decision: ApprovalDecisionValue = input.decision === "REJECTED" ? "REJECTED" : "APPROVED";
   const note = input.note?.trim() ? input.note.trim() : null;
-  const isFinal = idx === steps.length - 1;
-  const curOrder = req.currentStepOrder;
+  const curOrder = req.currentStepOrder; // HR LEAVE-3 ▸ W1: isFinal คิดจากขั้นสดในธุรกรรม ◂
 
   return prisma.$transaction(async (tx) => {
+    // HR LEAVE-3 ▸ W1 (r3): ล็อกแถวสายแบบ FOR SHARE แล้วอ่านขั้น "สด" ในธุรกรรม — updatePolicy (FOR UPDATE แถวเดียวกัน) แทรกระหว่างอ่านขั้นกับ claim ไม่ได้ ·
+    //   วางแผนการตัดสินบนขั้นสด (ขั้นนี้กลายเป็นขั้นสุดท้าย ⇒ จบ APPROVED) · ขั้นปัจจุบันไม่มีแล้ว/สิทธิ์เปลี่ยน = ไม่ตัดสินอะไร (ผลเดียวกับกดแข่งแพ้) ·
+    //   ลำดับล็อก: แถวสาย (SHARE) → แถวคำขอ (claim) — ไม่มีทางไหนถือแถวคำขอแล้วรอแถวสาย ◂
+    await tx.$queryRaw`SELECT id FROM "ApprovalPolicy" WHERE id = ${req.policyId} AND "tenantId" = ${ctx.tenantId} FOR SHARE`;
+    const live = await tx.approvalStep.findMany({ where: { tenantId: ctx.tenantId, policyId: req.policyId }, orderBy: { order: "asc" } });
+    const li = live.findIndex((s) => s.order === curOrder);
+    const step = live[li]; // ขั้นสด (บังเงา step ที่อ่านนอกธุรกรรม) — HR LEAVE-3 ◂
+    if (!step || !canDecideStep(m, step, req)) return { ok: false, status: "PENDING", note: null };
+    const isFinal = li === live.length - 1; // HR LEAVE-3 ▸ W1 ◂
     // HR LEAVE-3 ▸ R2 (F2) สองคน: ผู้ที่ตัดสินขั้นก่อนหน้าของคำขอนี้แล้ว ตัดสินขั้นถัดไปไม่ได้ (ไม่เขียนอะไร) · ยกเว้น OWNER = เขียนได้ + AuditLog approval.owner_override
     //   ในธุรกรรมเดียวกับการตัดสิน · การตัดสินขั้นก่อนหน้า commit แล้วก่อนคำขอเลื่อนมาขั้นนี้ ⇒ อ่านก่อน claim ได้ (claim เงื่อนไขขั้นเดิมกันกดแข่ง) ·
     //   สายขั้นเดียว: ไม่มีขั้นก่อนหน้า ⇒ ผลเหมือนเดิมทุกไบต์ ◂
@@ -389,7 +397,7 @@ export async function decide(
     }
 
     // ── APPROVED ขั้นกลาง → เลื่อนไป step ถัดไป (ยัง PENDING) ──
-    const next = steps[idx + 1];
+    const next = live[li + 1]; // HR LEAVE-3 ▸ W1: ขั้นถัดไปจากขั้นสด ◂
     const claim = await tx.approvalRequest.updateMany({
       where: { id: requestId, tenantId: ctx.tenantId, status: "PENDING", currentStepOrder: curOrder },
       data: { currentStepOrder: next.order },
@@ -457,9 +465,11 @@ export async function listPending(ctx: Ctx, m: MembershipCtx & { userId: string 
   // โหลด step ปัจจุบันของแต่ละ policy (ครั้งเดียวต่อ policy)
   const policyIds = [...new Set(requests.map((r) => r.policyId))];
   const steps = await tenantDb(ctx).approvalStep.findMany({ where: { policyId: { in: policyIds } } });
+  // HR LEAVE-3 ▸ W6 (r3): ผู้ที่ไม่ใช่ OWNER ซึ่งตัดสินขั้นก่อนหน้าของคำขอแล้ว ไม่เห็นคำขอนั้นในขั้นถัดไป (กติกาสองคนของ decide) · OWNER เห็นเหมือนเดิม ◂
+  const mine = m.role === "OWNER" ? [] : await tenantDb(ctx).approvalDecision.findMany({ where: { requestId: { in: requests.map((r) => r.id) }, decidedById: m.userId }, select: { requestId: true, stepOrder: true } });
   return requests.filter((r) => {
     const step = steps.find((s) => s.policyId === r.policyId && s.order === r.currentStepOrder);
-    return !!step && canDecideStep(m, step, r);
+    return !!step && canDecideStep(m, step, r) && !mine.some((d) => d.requestId === r.id && d.stepOrder < r.currentStepOrder); // HR LEAVE-3 ▸ W6 ◂
   });
 }
 

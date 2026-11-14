@@ -250,7 +250,9 @@ function leavePairOf(onDay: readonly JudgeLeave[], day: string): LeavePair | nul
   const pm = ap.find((l) => l.halfDay === "PM");
   return am && pm ? { am, pm } : null;
 }
-const pairLeaveOf = (windows: readonly { start: Date; end: Date }[], p: LeavePair): JudgeLeave[] => slotLeaves(windows, p.am).map((x) => (x ? p.am : p.pm)); // HR LEAVE-3 ◂
+// HR LEAVE-3 ▸ W4 (r3): ช่องของวันคู่ครึ่งวันบันทึก leaveId = ครึ่งที่ครอบ แต่ leaveHalf = null (ลาทั้งวัน) ◂
+const asFullDay = (l: JudgeLeave): JudgeLeave => ({ ...l, halfDay: null });
+const pairLeaveOf = (windows: readonly { start: Date; end: Date }[], p: LeavePair): JudgeLeave[] => slotLeaves(windows, p.am).map((x) => asFullDay(x ? p.am : p.pm)); // HR LEAVE-3 ◂
 
 /** ช่องคิดสดของพนักงานหนึ่งคนในวันที่ส่งมา (Map วัน → ช่อง เรียงตามเวลาเริ่ม) */
 function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): Map<string, LiveSlot[]> {
@@ -320,7 +322,7 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
           shift = null;
         }
       }
-      list.push({ slotKey: "DAY", day, entry: null, shift, shiftName: shift ? SCHEDULE_NAME_TH : null, dayOff, holidayId: hol?.id ?? null, unitId: unitOf, leave: sl ? (pair?.am ?? approved) : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, shift, dayOff, rest, sl, true) }); // HR LEAVE-3 ▸ R1 ช่อง DAY = ใบครึ่งเช้า ◂
+      list.push({ slotKey: "DAY", day, entry: null, shift, shiftName: shift ? SCHEDULE_NAME_TH : null, dayOff, holidayId: hol?.id ?? null, unitId: unitOf, leave: sl ? (pair ? asFullDay(pair.am) : approved) : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, shift, dayOff, rest, sl, true) }); // HR LEAVE-3 ▸ R1 ช่อง DAY = ใบครึ่งเช้า ◂
     } else if (rest.some((e) => e.kind === "IN")) {
       // รอบที่ไม่เข้ากะใดเลยในวันที่มีกะ — ไม่ทิ้งนาทีทำงาน: ช่อง DAY แบบไม่มีตาราง (วันหยุด = DAY_OFF)
       list.push({ slotKey: "DAY", day, entry: null, shift: null, shiftName: null, dayOff: !!hol, holidayId: hol?.id ?? null, unitId: unitOf, leave: null, slotLeave: null, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, null, !!hol, rest, null, true) });

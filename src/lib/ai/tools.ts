@@ -1798,6 +1798,15 @@ const approvalDecide: AiTool = {
     if (requestId) {
       const cur = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findFirst({ where: { id: requestId }, select: { currentStepOrder: true } });
       if (cur) payload.expectedStep = cur.currentStepOrder;
+    } else {
+      // HR LEAVE-3 ▸ W2 (r3): ค้นจากคำค้นตอนเสนอ (ชุดเดียวกับหน้าอนุมัติ = listPending ของผู้เสนอ) — เจอใบเดียว ⇒ จด requestId + ขั้นที่เห็นไว้ในข้อเสนอ ·
+      //   กดยืนยันหลังมีคนเลื่อนขั้นไปแล้ว = ไม่ตัดสินอะไร · ไม่เจอ/หลายใบ/ไม่รู้ตัวผู้เสนอ = เหมือนเดิม (ค้นตอนยืนยัน) ◂
+      const am = aiActorMembership(ctx.actor), uid = aiActorUserId(ctx.actor);
+      const hit = am && uid ? (await approvalListPending({ tenantId: ctx.tenantId }, { ...am, userId: uid })).filter((r) => r.entityType.includes(requestSummary) || r.entityId.includes(requestSummary)) : [];
+      if (hit.length === 1) {
+        payload.requestId = hit[0].id;
+        payload.expectedStep = hit[0].currentStepOrder;
+      }
     }
     const note = String(a.note ?? "").trim();
     if (note) payload.note = note;

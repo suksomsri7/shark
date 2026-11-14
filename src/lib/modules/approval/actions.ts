@@ -224,22 +224,43 @@ export async function bulkDecideAction(
 }
 
 // ผู้ยื่นยกเลิกคำขอของตัวเอง (หน้า "คำขอของฉัน") — เฉพาะที่ตัวเองยื่น + ยัง PENDING
-export async function cancelMyRequestAction(formData: FormData): Promise<void> {
+// HR LEAVE-3 ▸ W5 (r3): คืนผลเป็นข้อมูล { ok, reason } แบบ decideAction — ถอนไม่สำเร็จ (ไม่ใช่ของฉัน · ตัดสิน/ยกเลิกไปแล้ว · คำขอ HR ไม่มีระบบ) = ok:false + เหตุผลไทยคงที่ ◂
+const WITHDRAW_TEXT = {
+  notMine: "ไม่พบคำขอนี้ในคำขอของคุณ", // HR LEAVE-3 ◂
+  decided: "คำขอนี้ตัดสินหรือยกเลิกไปแล้ว — ถอนไม่ได้", // HR LEAVE-3 ◂
+  failed: "ถอนคำขอนี้ไม่สำเร็จ — กรุณาเปิดหน้านี้ใหม่แล้วลองอีกครั้ง", // HR LEAVE-3 ◂
+} as const;
+export async function cancelMyRequestAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   const requestId = String(formData.get("requestId") ?? "");
-  if (!requestId) return;
+  if (!requestId) return { ok: false, reason: WITHDRAW_TEXT.notMine }; // HR LEAVE-3 ▸ W5 ◂
   const ctx = ctxOf(auth);
   // ownership: ยกเลิกได้เฉพาะคำขอที่ตัวเองเป็นผู้ยื่น (กันยกเลิกของคนอื่น)
   const req = await tenantDb(ctx).approvalRequest.findFirst({ where: { id: requestId } });
-  if (!req || req.requestedById !== auth.active.userId) return;
+  if (!req || req.requestedById !== auth.active.userId) return { ok: false, reason: WITHDRAW_TEXT.notMine }; // HR LEAVE-3 ▸ W5 ◂
+  if (req.status !== "PENDING") return { ok: false, reason: WITHDRAW_TEXT.decided }; // HR LEAVE-3 ▸ W5 ◂
   // HR LEAVE-3 ▸ R4 (F4): คำขอเรื่อง HR (ใบลา · แก้เวลา · สลับกะ) ถอน = ยกเลิกตัว entity ด้วย ผ่าน composition root (ธุรกรรมเดียวของ HR) ·
-  //   ชนิดอื่น = เหมือนเดิม ◂
+  //   ชนิดอื่น = เหมือนเดิม · W5: เหตุผลปฏิเสธของ HR (ข้อความไทยคงที่ของ HR) ส่งต่อ · ไม่มีระบบ = failed ◂
   if (HR_WITHDRAW_TYPES.has(req.entityType)) {
-    if (req.status === "PENDING") await withdrawHrRequest({ tenantId: ctx.tenantId, systemId: req.systemId, entityType: req.entityType, entityId: req.entityId }, membershipOf(auth));
+    const r = await withdrawHrRequest({ tenantId: ctx.tenantId, systemId: req.systemId, entityType: req.entityType, entityId: req.entityId }, membershipOf(auth));
     revalidatePath(APPROVALS_PATH);
-    return;
+    return r.ok ? { ok: true } : { ok: false, reason: r.reason || WITHDRAW_TEXT.failed };
   }
   // ◂ HR LEAVE-3
-  await cancelRequest(ctx, requestId);
+  const done = await cancelRequest(ctx, requestId); // HR LEAVE-3 ▸ W5 ◂
   revalidatePath(APPROVALS_PATH);
+  return done ? { ok: true } : { ok: false, reason: WITHDRAW_TEXT.decided }; // HR LEAVE-3 ▸ W5 ◂
 }
+
+// HR LEAVE-3 ▸ W5: ปุ่มถอนในหน้าอนุมัติ (ConfirmDialog รับ action แบบฟอร์ม) — ถอนไม่สำเร็จ = โยนเหตุผลไทยแบบปุ่มยกเลิกใบลา/สลับกะในหน้าเดียวกัน ◂
+class WithdrawRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WithdrawRefusedError";
+  }
+}
+export async function withdrawMyRequestFormAction(formData: FormData): Promise<void> {
+  const r = await cancelMyRequestAction(formData);
+  if (!r.ok) throw new WithdrawRefusedError(r.reason ?? WITHDRAW_TEXT.failed);
+}
+// ◂ HR LEAVE-3
