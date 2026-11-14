@@ -200,6 +200,7 @@ export const REPORT_TEXT = {
   "registerInput": "สัญชาติยาวได้ไม่เกิน 60 ตัวอักษร และประโยชน์ตอบแทนอย่างอื่นไม่เกิน 500 ตัวอักษร (ไม่มีอักขระพิเศษ)",
   "s114Note": "เอกสารการจ่ายค่าจ้าง (ม.114): วันและเวลาทำงาน อัตราและจำนวนค่าจ้าง ค่าล่วงเวลา และค่าทำงานในวันหยุด — ค่าล่วงเวลาในวันหยุดแยกดูได้ในรายงาน OT · โปรดตรวจกับที่ปรึกษาว่าครบตามที่ต้องเก็บ",
   "taxNote": "ตัวเลขจากรอบเงินเดือนที่อนุมัติแล้ว (ไม่คิดใหม่) — ไฟล์ยื่น ภ.ง.ด.1 / สปส.1-10 อยู่ในงานยื่นแบบ",
+  "ytdNote": "รวมยอดยกมาต้นปี (เงินได้ ภาษี และเงินสมทบที่จ่ายก่อนใช้ระบบ) ตามที่บันทึกในหน้าเงินเดือน", // HR H3.4-YTD ◂
   "timeNote": "เกินเวลาที่วัดได้ = เวลาที่อยู่เกินกะตามการลงเวลา ยังไม่ใช่ OT ที่อนุมัติ",
   "title.time": "รายงานเวลาทำงาน",
   "title.leave": "รายงานวันลา",
@@ -229,6 +230,7 @@ export const REPORT_TEXT_EN = {
   "registerInput": "Nationality can be up to 60 characters and other benefits up to 500 characters (no special characters)",
   "s114Note": "Wage payment record (s.114): working days and hours, wage rate and amount, overtime pay and holiday work pay — holiday overtime is shown in the OT report · please check with an adviser that this covers what you must keep",
   "taxNote": "Figures from approved payroll runs (never recalculated) — PND.1 / SPS.1-10 files are in the filings work",
+  "ytdNote": "Includes the opening year-to-date figures (income, tax and contributions paid before using the system) recorded on the payroll page", // HR H3.4-YTD ◂
   "timeNote": "Measured overtime = time past the shift by the clock records, not approved OT",
   "title.time": "Time report",
   "title.leave": "Leave report",

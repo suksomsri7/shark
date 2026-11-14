@@ -460,14 +460,28 @@ async function payrollYearRows(ctx: Ctx, period: string, emps: Map<string, Emp>,
 }
 
 /** ภาษี/ประกันสังคม: เดือน/ปีตามวันจ่าย (เวลาไทย — แบบเดียวกับยอดสะสมของ H3.4) · เงินได้ 40(1) = whtIncomeOf */
-async function taxRows(ctx: Ctx, report: "tax-month" | "tax-year", period: string, emps: Map<string, Emp>, cap: Cap): Promise<Row[]> {
+async function taxRows(ctx: Ctx, report: "tax-month" | "tax-year", period: string, emps: Map<string, Emp>, cap: Cap, meta: { ytd: boolean } = { ytd: false }): Promise<Row[]> { // HR H3.4-YTD ▸ meta.ytd = รวมยอดยกมาแล้ว (หมายเหตุ) ◂
   const from = report === "tax-month" ? bkk0(`${period}-01`) : bkk0(`${period}-01-01`);
   const to = report === "tax-month" ? bkk0(`${monthBounds(period).next}-01`) : bkk0(`${Number(period) + 1}-01-01`);
   const sums = sumBy(await itemsOf(ctx, [...emps.keys()], { payDate: { gte: from, lt: to } }, cap));
+  // HR H3.4-YTD ▸ R7 (Q7): ภาษีทั้งปี = รอบ + ยอดยกมาต้นปีที่ยังมีผล (เงินได้ · ภาษี · ประกันสังคมลูกจ้าง · เดือน) — รายงานอื่นเป็นทะเบียนรอบ ไม่รวม ◂
+  const extraMonths = new Map<string, number>();
+  if (report === "tax-year" && emps.size) {
+    const ops = await tenantDb(ctx).hrPayrollOpeningYtd.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, taxYear: Number(period), supersededAt: null, employeeId: { in: [...emps.keys()] } }, select: { employeeId: true, months: true, incomeSatang: true, whtSatang: true, ssoSatang: true } });
+    for (const o of ops) {
+      let s = sums.get(o.employeeId);
+      if (!s) sums.set(o.employeeId, (s = { n: 0, months: new Set(), gross: 0, add: 0, deduct: 0, ssoE: 0, ssoR: 0, ssoBase: 0, wht: 0, net: 0, income: 0 }));
+      s.income += o.incomeSatang;
+      s.wht += o.whtSatang;
+      s.ssoE += o.ssoSatang;
+      extraMonths.set(o.employeeId, o.months);
+    }
+    meta.ytd = ops.length > 0;
+  } // ◂ HR H3.4-YTD
   return [...sums.entries()].map(([id, s]) => {
     const emp = emps.get(id)!;
     const common = { citizenId: maskCitizenId(emp.citizen), income: bahtText(s.income), wht: bahtText(s.wht), ssoEmployee: bahtText(s.ssoE), ssoEmployer: bahtText(s.ssoR) };
-    return { emp, values: report === "tax-month" ? { ...common, ssoBase: bahtText(s.ssoBase) } : { ...common, months: String(s.months.size) } };
+    return { emp, values: report === "tax-month" ? { ...common, ssoBase: bahtText(s.ssoBase) } : { ...common, months: String(s.months.size + (extraMonths.get(id) ?? 0)) } }; // HR H3.4-YTD ▸ + เดือนของยอดยกมา ◂
   });
 }
 
@@ -584,6 +598,7 @@ async function buildIn(ctx: Ctx, g: Gate, raw: unknown, o: BuildOpts): Promise<B
   const byId = new Map(emps.map((e) => [e.id, e]));
   const fullId = o.surface === "export" && report === "register" && acc.fullId && fullIdSettingOf(settings);
   let rows: Row[];
+  const ytdMeta = { ytd: false }; // HR H3.4-YTD ◂
   switch (report) {
     case "time":
       rows = await timeRows(ctx, period, byId, cap);
@@ -602,7 +617,7 @@ async function buildIn(ctx: Ctx, g: Gate, raw: unknown, o: BuildOpts): Promise<B
       break;
     case "tax-month":
     case "tax-year":
-      rows = await taxRows(ctx, report, period, byId, cap);
+      rows = await taxRows(ctx, report, period, byId, cap, ytdMeta); // HR H3.4-YTD ◂
       break;
     case "wages":
       rows = await wagesRows(ctx, period, byId, cap);
@@ -635,6 +650,7 @@ async function buildIn(ctx: Ctx, g: Gate, raw: unknown, o: BuildOpts): Promise<B
   } else if (report === "time") notes.push(T.timeNote);
   else if (report === "wages") notes.push(T.s114Note);
   else if (report.startsWith("payroll-") || report.startsWith("tax-")) notes.push(T.taxNote);
+  if (ytdMeta.ytd) notes.push(T.ytdNote); // HR H3.4-YTD ▸ R7 หมายเหตุคงที่เมื่อรวมยอดยกมา ◂
   const en = !def.thaiOnly && o.locale === "en";
   const byKey = new Map(def.columns.map((c) => [c.key, c] as const));
   return {
