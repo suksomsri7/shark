@@ -115,3 +115,9 @@ All of these go through `inPayScope` (`payTarget` gets a pay mode). `requestAdju
 6. `requestAdjustmentAction` for borrowed staff? **Default: unchanged.** Filing is not approving.
 7. R2 refund past `endPeriod`? **Default: listed, move refused.** It is paid outside payroll, like stock `REFUND_OWED`.
 8. Thai line in `docs/modules/18-hr.md` §5.3 too? **Default: no.** The runbook is the activation authority.
+
+## CONTROLLER RULINGS (14 Nov) — drafter defaults ACCEPTED for Q1–Q8
+- Q1 note on the ledger row (no migration) · Q2 paid cap = the policy's remaining balance · Q3 SICK only · Q4 engine v1 unchanged, recorded as a debt (v1 never deducts unpaid leave) · Q5 OT decisions unchanged · Q6 filing unchanged · Q7 listed, move refused · Q8 runbook only.
+- R4 scope as drafted (decide / cancel / move on the payroll page, give-back, consent and stock-charge withdraw for employees with no home branch): all in this ticket, one shared pay-scope helper, identical answer for "not found" and "out of scope".
+- Acceptances in older oracles: explicit allowlist style only (see `M2_ALLOW` / `P2_ALLOW` in qc-hr-h4.3-lib.mts) — no "any hunk with the tag passes".
+- Oracle size cap 64 KB (suite + lib). Coverage is never dropped to meet a size cap.
