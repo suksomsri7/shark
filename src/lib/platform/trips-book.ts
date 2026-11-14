@@ -210,7 +210,7 @@ function checkNonce(secret: string, v: unknown, now: Date, scope: BookNonceScope
   const sec = m[2] ?? "";
   const got = m[3] ?? "";
   const signed = (sc: BookNonceScope | null): boolean => safeEq(mac(secret, nonceMsg(rand, sec, sc)).toString("base64url").slice(0, 22), got);
-  if (!signed(scope) && !signed(null)) return { ok: false, code: "INVALID" };
+  if (!signed(scope)) return { ok: false, code: "INVALID" };
   const age = Math.floor(now.getTime() / 1000) - Number(sec);
   if (age < BOOK_FORM_MIN_SEC) return { ok: false, code: "TOO_FAST" };
   if (age > BOOK_FORM_MAX_SEC) return { ok: false, code: "STALE_FORM" };
