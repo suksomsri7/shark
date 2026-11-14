@@ -424,7 +424,7 @@ export async function setNextNo(
     date: Date;
     nextNo: number;
   },
-): Promise<{ ok: true; nextNo: number } | { ok: false; reason: string }> {
+): Promise<{ ok: true; nextNo: number; skipped?: number } | { ok: false; reason: string }> {
   if (!Number.isInteger(input.nextNo) || input.nextNo < 1 || input.nextNo > 999_999)
     return { ok: false, reason: "เลขถัดไปต้องเป็นจำนวนเต็ม 1–999999" };
   const cfg = await loadNumberingContext(db, input.systemId, input.docType, input.fallbackPrefix);
@@ -450,7 +450,8 @@ export async function setNextNo(
     VALUES (${seqId}, ${input.tenantId}, ${input.systemId}, ${input.docType}::"AccountDocType", ${cfg.prefix}, ${periodKey}, ${lastNo}, NOW(), NOW())
     ON CONFLICT ("systemId","docType","periodKey")
     DO UPDATE SET "lastNo" = ${lastNo}, "updatedAt" = NOW()`;
-  return { ok: true, nextNo: input.nextNo };
+  // ACCOUNT-FIX A6 — จำนวนเลขที่ที่ถูกข้าม (เลขที่ยังไม่ได้ใช้ก่อนเลขถัดไปใหม่) ⇒ ใช้กับกฎ "เตือนเมื่อเลขที่ข้ามลำดับ"
+  return { ok: true, nextNo: input.nextNo, skipped: input.nextNo - (used + 1) };
 }
 
 /**

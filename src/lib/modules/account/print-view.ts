@@ -144,6 +144,8 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
     validUntilText: po.show.dueDate && doc.validUntil ? formatThaiDateLong(doc.validUntil) : null,
     reference: po.show.reference ? (doc.reference ?? null) : null,
     seller,
+    // ACCOUNT-FIX A6 — ชื่ออังกฤษ · อีเมล · เว็บไซต์ จากข้อมูลกิจการ (ค่าปัจจุบัน แบบเดียวกับโลโก้/ตราประทับ) ขึ้นหัวเอกสาร
+    sellerExtra: { nameEn: s.orgNameEn?.trim() || null, email: s.email?.trim() || null, website: s.website?.trim() || null },
     sellerFrozenAt: frozen ? formatThaiDateLong(new Date(frozen.frozenAt)) : null,
     buyer,
     lines: doc.lines.map((l) => ({

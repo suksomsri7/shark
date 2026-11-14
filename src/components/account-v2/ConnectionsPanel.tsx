@@ -260,7 +260,9 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
             {c.status === "linked" && (
               <>
                 <div className="flex flex-col">
-                  {c.toggles.map((t) => {
+                  {/* ACCOUNT-FIX A6 — โชว์เฉพาะตัวเลือกที่มีผลจริง: "รับบิลจากแชทเข้ากล่องขาเข้า" · สร้างผู้ติดต่อ/ซิงก์ราคา/ลงบัญชีอัตโนมัติ
+                      ยังไม่มีตัวอ่านในสะพานเชื่อมระบบ (การลงบัญชีขึ้นกับ "เชื่อม/ตัดการเชื่อม" อย่างเดียว) ⇒ ไม่แสดงให้กดแล้วไม่มีผล */}
+                  {c.toggles.filter((t) => t.key === "inboxFromChat").map((t) => {
                     const on = optionOf(c.key, t.key, t.on);
                     return (
                       <label

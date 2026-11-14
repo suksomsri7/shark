@@ -45,6 +45,8 @@ export type PrintView = {
   validUntilText: string | null;
   reference: string | null;
   seller: { name: string; address: string | null; branch: string; taxId: string | null; phone: string | null; logoUrl: string | null };
+  /** ACCOUNT-FIX A6 — ชื่ออังกฤษ/อีเมล/เว็บไซต์ของกิจการ (ไม่มี = ไม่พิมพ์) */
+  sellerExtra?: { nameEn: string | null; email: string | null; website: string | null };
   /** ACC T2.9 — ผู้ขายตรึงไว้ ณ วันออก (วันที่ตรึง) · null = อ่านจากค่าตั้งปัจจุบัน (ร่าง/ใบเก่าที่ยังไม่ตรึง) */
   sellerFrozenAt?: string | null;
   buyer: { name: string; address: string; taxId: string; branch: string };
@@ -117,6 +119,7 @@ function Page({ v, mark, L }: { v: PrintView; mark: PrintMark; L: PrintLabels })
           )}
           <div>
             <div className="text-lg font-bold">{v.seller.name}</div>
+            {v.sellerExtra?.nameEn && <div className="text-xs font-medium text-neutral-700" data-testid="print-seller-en">{v.sellerExtra.nameEn}</div>}
             {v.seller.address && <div className="text-xs text-neutral-600">{v.seller.address}</div>}
             {v.seller.branch && <div className="text-xs text-neutral-600">{v.seller.branch}</div>}
             {v.seller.taxId && (
@@ -127,6 +130,11 @@ function Page({ v, mark, L }: { v: PrintView; mark: PrintMark; L: PrintLabels })
             {v.seller.phone && (
               <div className="text-xs text-neutral-600">
                 {L.phone} {v.seller.phone}
+              </div>
+            )}
+            {(v.sellerExtra?.email || v.sellerExtra?.website) && (
+              <div className="text-xs text-neutral-600" data-testid="print-seller-contact">
+                {[v.sellerExtra.email, v.sellerExtra.website].filter(Boolean).join(" · ")}
               </div>
             )}
           </div>

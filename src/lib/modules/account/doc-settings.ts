@@ -246,17 +246,41 @@ export function validateDocSettingsPatch(patch: DocSettingsPatch): string | null
 }
 
 /** คืนตั้งค่าเอกสารทั้งชุดกลับเป็นค่าเริ่มต้น (ปุ่ม "คืนค่าเริ่มต้น" ของ f10) — ไม่แตะเลขรันที่ออกไปแล้ว */
-export async function resetDocSettings(ctx: SettingsCtx): Promise<SaveResult> {
+/** ACCOUNT-FIX B5 — ขอบเขตของปุ่ม "คืนค่าเริ่มต้น" = การ์ดที่กด (เดิมล้างทุกหัวข้อพร้อมกันโดยไม่ถาม) */
+export const DOC_SETTINGS_RESET_SCOPES = ["rules", "notes", "public", "due", "channels", "autotax", "print"] as const;
+export type DocSettingsResetScope = (typeof DOC_SETTINGS_RESET_SCOPES)[number];
+export const DOC_SETTINGS_RESET_LABEL: Record<DocSettingsResetScope, string> = {
+  rules: "กฎอัตโนมัติของเอกสาร",
+  notes: "ข้อความท้ายเอกสารและเงื่อนไขการชำระเงิน (ทุกชนิดเอกสาร)",
+  public: "ลิงก์สาธารณะและลิงก์ขอใบกำกับภาษี",
+  due: "วันครบกำหนด",
+  channels: "ลำดับช่องทางรับชำระบนเอกสาร",
+  autotax: "การออกใบกำกับภาษี ใบเสร็จ เงินมัดจำ และภาษีซื้อ",
+  print: "เทมเพลตพิมพ์",
+};
+
+export function resetPatchFor(scope: DocSettingsResetScope, current: DocSettings): DocSettingsPatch {
   const d = defaultDocSettings();
-  return saveDocSettings(ctx, {
-    due: d.due,
-    channels: d.channels,
-    publicView: d.publicView,
-    autoTaxInvoice: d.autoTaxInvoice,
-    print: d.print,
-    taxRequest: d.taxRequest,
-    rules: d.rules,
-  });
+  switch (scope) {
+    case "rules":
+      return { rules: d.rules };
+    case "notes":
+      return { notes: Object.fromEntries(Object.keys(current.notes).map((k) => [k, { footer: "", terms: "" }])) };
+    case "public":
+      return { publicView: d.publicView, taxRequest: d.taxRequest };
+    case "due":
+      return { due: d.due };
+    case "channels":
+      return { channels: d.channels };
+    case "autotax":
+      return { autoTaxInvoice: d.autoTaxInvoice, receipt: d.receipt, deposit: d.deposit, inputVat: d.inputVat };
+    case "print":
+      return { print: d.print };
+  }
+}
+
+export async function resetDocSettings(ctx: SettingsCtx, scope: DocSettingsResetScope): Promise<SaveResult> {
+  return saveDocSettings(ctx, resetPatchFor(scope, await getDocSettings(ctx)));
 }
 
 /** ตั้ง "เลขถัดไป" ของชนิดหนึ่ง (§9.2) */
@@ -265,7 +289,7 @@ export async function setDocNextNo(
   docType: AccountDocType,
   nextNo: number,
   now: Date,
-): Promise<{ ok: true; nextNo: number } | { ok: false; reason: string }> {
+): Promise<{ ok: true; nextNo: number; skipped?: number } | { ok: false; reason: string }> {
   return setNextNo(numberingDb(ctx), {
     tenantId: ctx.tenantId,
     systemId: ctx.systemId,

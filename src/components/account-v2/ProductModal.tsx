@@ -814,9 +814,7 @@ export function ProductModal({
                     <FormField label="วิธีคิดต้นทุน" error={errOf("costMethod")}>
                       <select value={f.costMethod} onChange={(e) => set("costMethod", e.target.value)} className="input" data-testid="product-cost-method">
                         <option value="AVG">ถัวเฉลี่ย (ค่าเริ่มต้นของคลัง SHARK)</option>
-                        <option value="FIFO" disabled>
-                          FIFO 🕓 เร็ว ๆ นี้
-                        </option>
+                        {/* ACCOUNT-FIX — ตัวเลือก FIFO ที่เลือกไม่ได้ ("เร็ว ๆ นี้" + อีโมจิ) เอาออก: คลังคิดต้นทุนแบบถัวเฉลี่ยวิธีเดียว */}
                       </select>
                     </FormField>
                   </>
