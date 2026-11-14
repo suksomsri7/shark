@@ -13,6 +13,7 @@ import { ATT_TEXT, attendanceInForceOf } from "./attendance-pay-rules";
 import { H37_CODE_TEXT, H37_TEXT, getPayrollAccounting, payAccountsOfRun } from "./payroll"; // HR H3.7 ▸ จ่ายรอบที่ลงบัญชี: เลือกบัญชีจ่าย + วันที่จ่าย ◂
 import { DateInput } from "@/components/account-v2/DateInput"; // HR H3.7 ◂
 import { OPENING_TEXT } from "./payroll-opening-rules"; // HR H3.4-YTD ▸ ข้อความคงที่ของ OPENING_OVERLAP (สร้าง/คิดใหม่) ◂
+import { PAY_SCOPE_EXCLUDED_TEXT } from "./scope"; // HR PRIV-2 ▸ หมายเหตุจำนวนคนที่ไม่รวม (ไทล์ยอด = แถวที่เห็นเท่านั้น) ◂
 import { MONEY2_TEXT } from "./payroll"; // HR MONEY-2 ▸ R7: ข้อความปฏิเสธ REFUND_BOUND · refundStuck · RUN_LIMIT ◂
 
 const btn = "btn btn-primary min-h-[44px] text-sm";
@@ -148,6 +149,8 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
               ))}
             </dl>
           )}
+          {/* HR PRIV-2 ▸ R1(c): ผู้ดูที่จำกัดสาขา — ยอดในไทล์มาจากแถวที่เห็นเท่านั้น (previewPayrollRunV2) · บอกจำนวนคนที่ไม่รวม ไม่มีชื่อ/ยอด ◂ */}
+          {canMoney && Number(run.excludedHeadcount ?? 0) > 0 && <p className={muted}>{PAY_SCOPE_EXCLUDED_TEXT.replace("{n}", String(Number(run.excludedHeadcount)))}</p>}
           {canMoney && pv && pv.ok && "review" in pv && (
             <>
               <div className="overflow-x-auto">

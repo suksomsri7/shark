@@ -194,9 +194,12 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     //   hunk carries "HR MONEY-2" on an added line (new oracle files = one hunk): hr leave.ts · payroll.ts · payroll-run-ui.tsx (ruling R7) · the six older oracles it edited · its own oracle ◂
     const M2_ALLOW = new Set([`${H}leave.ts`, `${H}payroll.ts`, `${H}payroll-run-ui.tsx`, "scripts/qc-hr-h1.3.mts", "scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-money-2.mts", "scripts/qc-hr-money-2-lib.mts"]);
     const m2Marked = (f: string) => IN_BASE && M2_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR MONEY-2/.test(l)));
+    // ORACLE-EDIT (HR-PRIV-2 · controller): in base only — exactly these files may differ, and only when every hunk carries "HR PRIV-2" / "ORACLE-EDIT (HR-PRIV-2" on an added line: hr privacy · privacy-shared · payroll · payroll-ui · payroll-run-ui · payslip · reports · reports-rules · the older oracles PRIV-2 edited · its own two oracle files ◂
+    const P2_ALLOW = new Set([`${H}privacy.ts`, `${H}privacy-shared.ts`, `${H}payroll.ts`, `${H}payroll-ui.tsx`, `${H}payroll-run-ui.tsx`, `${H}payslip.ts`, `${H}reports.ts`, `${H}reports-rules.ts`, "scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.8.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-priv-2.mts", "scripts/qc-hr-priv-2-lib.mts"]); // ORACLE-EDIT (HR-PRIV-2 · controller) ◂
+    const p2Marked = (f: string) => IN_BASE && P2_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PRIV-2|ORACLE-EDIT \(HR-PRIV-2/.test(l))); // ORACLE-EDIT (HR-PRIV-2 · controller) ◂
     const frozenLeft = frozen.filter((f) => !(/\.(ts|mts|json)$/.test(f) && hfOk(f)));
-    const hrLeft = hrFrozen.filter((f) => !hfOk(f) && !m2Marked(f)); // HR-MONEY-2 ORACLE-EDIT ◂
-    const oraclesLeft = oracles.filter((f) => !hfOk(f) && !m2Marked(f)); // HR-MONEY-2 ORACLE-EDIT ◂
+    const hrLeft = hrFrozen.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f)); // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂
+    const oraclesLeft = oracles.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f)); // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂
     const r = {
       ai: changedVsBase(BASE, frozenLeft) === "unchanged", // HF-SSO ORACLE-EDIT
       hr: hrLeft.length === 0 || changedVsBase(BASE, hrLeft) === "unchanged", // HF-SSO ORACLE-EDIT
@@ -216,6 +219,8 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
       if (!hs) return void bad.push(`${f.split("/").pop()}:git`);
       if (!IN_BASE && mustHave && hs.length === 0) bad.push(`${f.split("/").pop()}:noHunk`);
       hs.forEach((h, i) => {
+        // ORACLE-EDIT (HR-PRIV-2 · controller) S1.7: in base only — labor.ts hunks carrying "HR PRIV-2" (pay-scope helper) are accepted; no other file, unmarked still fails ◂
+        if (IN_BASE && f === F.labor && h.added.some((l) => /HR PRIV-2/.test(l))) return; // ORACLE-EDIT (HR-PRIV-2 · controller) ◂
         if (!h.added.some((l) => (IN_BASE ? anyMark : re).test(l))) bad.push(`${f.split("/").pop()}#${i}:unmarked`);
       });
     };

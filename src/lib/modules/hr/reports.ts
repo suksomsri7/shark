@@ -11,7 +11,9 @@ import { lockHrSettings, writeHrSettingsKeys } from "./settings-lock"; // HR-SET
 import { writeAudit } from "@/lib/core/audit";
 import { liveOpeningsIn } from "./payroll-opening-read"; // HR H3.4-YTD ▸ fix round (NOTE-5) ◂
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
-import { employeeUnitsOf, hrScopeOf, isAllBranches, unitNamesOf, unitTargetOf, unitWhere, type HrScope } from "./scope";
+import { employeeUnitsOf, hrScopeOf, isAllBranches, unitNamesOf, unitTargetOf, unitWhere, inPayScope, payScopeWhere, PAY_SCOPE_EXCLUDED_TEXT, type HrScope } from "./scope"; // HR PRIV-2 ▸ + ขอบเขตค่าจ้าง ◂
+import { neutralizeFormula } from "@/lib/core/csv"; // HR PRIV-2 ▸ R5 มติ 6: ตัวกันสูตรของบ้าน (ไม่เขียนชุดที่สอง) ◂
+import { HR_NAME_BAD } from "./privacy-shared"; // HR PRIV-2 ▸ R5: ชุดอักขระต้องห้ามเดียวกับชื่อคีย์ H4.8 ◂
 import { canReadRoster } from "./roster-board";
 import { canManageHrSettings } from "./settings";
 import { teamLeaveBalances, type LeaveViewer } from "./leave";
@@ -68,6 +70,8 @@ export type ReportDto = {
   totals: Record<string, string> | null;
   warnings: { field: string; count: number }[];
   notes: string[];
+  /** HR PRIV-2 ▸ มติ 1: จำนวนแถวที่ซ่อนช่องเงิน (พนักงานนอกขอบเขตค่าจ้างของผู้ดูเงินเดือนที่จำกัดสาขา) — มีเฉพาะเมื่อ > 0 ◂ */
+  excludedHeadcount?: number; // HR PRIV-2 ◂
 };
 export type ReportExport = { ok: true; bytes: Uint8Array; fileName: string; contentType: string; rowCount: number; columns: string[] };
 
@@ -165,11 +169,13 @@ const empOrder = (a: Emp, b: Emp) => {
   return cmpStr(ca, cb) || cmpStr(a.name, b.name) || cmpStr(a.id, b.id);
 };
 
+// HR PRIV-2 ▸ R1(b): รายงานเงินล้วน 6 ชนิด = แถวจากขอบเขตค่าจ้าง (สาขาประจำ · ยืมตัวไม่นับ ไม่ว่าเริ่ม/จบเมื่อไร) — คนนอกขอบเขตไม่มีแถวเลยทุกงวด ◂
+const PAY_ONLY_REPORTS: ReadonlySet<ReportId> = new Set<ReportId>(["payroll-month", "payroll-year", "tax-month", "tax-year", "wages", "register"]); // HR PRIV-2 ◂
 async function employeesOf(ctx: Ctx, scope: HrScope, unitId: string | null, report: ReportId): Promise<Emp[] | "LIMIT"> {
   if (unitId && scope.unitIds !== "*" && !scope.unitIds.includes(unitId)) return [];
   const reg = report === "register";
   const idCol = reg || report === "tax-month" || report === "tax-year";
-  const where: Prisma.HrEmployeeWhereInput = { AND: [unitWhere(scope), ...(unitId ? [{ unitId }] : [])] };
+  const where: Prisma.HrEmployeeWhereInput = { AND: [PAY_ONLY_REPORTS.has(report) ? payScopeWhere(scope) : unitWhere(scope), ...(unitId ? [{ unitId }] : [])] }; // HR PRIV-2 ◂
   const rows = await tenantDb(ctx).hrEmployee.findMany({
     where,
     select: {
@@ -632,9 +638,12 @@ async function buildIn(ctx: Ctx, g: Gate, raw: unknown, o: BuildOpts): Promise<B
   const units = await unitNamesOf(ctx.tenantId, rows.map((r) => r.emp.unitId));
   const def = REPORT_CATALOG[report];
   const keys = columnsFor(report, { money: acc.money, fullId }, o.surface);
+  // HR PRIV-2 ▸ มติ 1: รายงานงาน (OT · เวลา) ที่มีช่องเงิน — แถวของคนนอกขอบเขตค่าจ้างยังอยู่ (ช่องที่ไม่ใช่เงิน = ที่ผู้จัดการไม่มีสิทธิ์เงินเห็น) แต่ช่องเงินว่าง ·
+  //   ยอดรวมเงินจึงมาจากแถวในขอบเขตเท่านั้น · excludedHeadcount + หมายเหตุ (จำนวนคน ไม่มีชื่อ) ◂
+  const withheld = new Set(PAY_ONLY_REPORTS.has(report) || !keys.some((k) => isMoneyKey(report, k)) ? [] : rows.filter((r) => !inPayScope(scope, r.emp.unitId)).map((r) => r.emp.id)); // HR PRIV-2 ◂
   const outRows = rows.map((r) => {
     const all: Record<string, string> = { code: r.emp.code ?? "", name: r.emp.name, unit: r.emp.unitId ? (units.get(r.emp.unitId) ?? "") : "", ...r.values };
-    return { employeeId: r.emp.id, values: Object.fromEntries(keys.map((k) => [k, all[k] ?? ""])) };
+    return { employeeId: r.emp.id, values: Object.fromEntries(keys.map((k) => [k, withheld.has(r.emp.id) && isMoneyKey(report, k) ? "" : (all[k] ?? "")])) }; // HR PRIV-2 ◂
   });
   const sumKeys = def.columns.filter((c) => c.sum && keys.includes(c.key)).map((c) => c.key);
   const totals = def.totals ? Object.fromEntries(sumKeys.map((k) => [k, cellOfSum(report, k, outRows.reduce((a, r) => a + cellNum(report, k, r.values[k] ?? ""), 0))])) : null;
@@ -653,6 +662,7 @@ async function buildIn(ctx: Ctx, g: Gate, raw: unknown, o: BuildOpts): Promise<B
   else if (report === "wages") notes.push(T.s114Note);
   else if (report.startsWith("payroll-") || report.startsWith("tax-")) notes.push(T.taxNote);
   if (ytdMeta.ytd) notes.push(o.locale === "en" ? REPORT_YTD_NOTE.en : REPORT_YTD_NOTE.th); // HR H3.4-YTD ▸ R7 หมายเหตุคงที่เมื่อรวมยอดยกมา ◂
+  if (withheld.size) notes.push(PAY_SCOPE_EXCLUDED_TEXT.replace("{n}", String(withheld.size))); // HR PRIV-2 ▸ มติ 1 ◂
   const en = !def.thaiOnly && o.locale === "en";
   const byKey = new Map(def.columns.map((c) => [c.key, c] as const));
   return {
@@ -666,6 +676,7 @@ async function buildIn(ctx: Ctx, g: Gate, raw: unknown, o: BuildOpts): Promise<B
       totals,
       warnings,
       notes,
+      ...(withheld.size ? { excludedHeadcount: withheld.size } : {}), // HR PRIV-2 ◂
     },
     keys,
     names: rows.map((r) => r.emp.name),
@@ -680,6 +691,15 @@ export async function loadReport(ctx: Ctx, viewer: ReportViewer, input: { report
   const b = await build(ctx, g, input, { locale: opts?.locale ?? null, surface: "page", __takeCap: opts?.__takeCap });
   return "dto" in b ? b.dto : b;
 }
+
+// HR PRIV-2 ▸ R5: เซลล์ชื่อในไฟล์ส่งออก = ตัดชุดอักขระต้องห้าม + ตัวแทนคู่ที่ไม่ครบ/U+FFFE–FFFF (เขียนลงไฟล์ไม่ได้) → neutralizeFormula ·
+//   ข้อความที่โปรแกรมตารางยังอ่านเป็นสูตรได้ (เช่น ＝ เต็มความกว้าง) ⇒ นำหน้า ' แบบเดียวกัน ◂
+const UNWRITABLE = new RegExp(`${HR_NAME_BAD.source}|[\\ufffe\\uffff]|[\\ud800-\\udbff](?![\\udc00-\\udfff])|(?<![\\ud800-\\udbff])[\\udc00-\\udfff]`, "g"); // HR PRIV-2 ◂
+const FORMULA_LIKE = /^[\s\u0000-\u001f\u007f]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/; // HR PRIV-2 ◂
+function exportName(c: string): string {
+  const s = neutralizeFormula(String(c ?? "").replace(UNWRITABLE, ""));
+  return /^-?\d+(\.\d+)?$/.test(s) || !FORMULA_LIKE.test(s) ? s : `'${s}`;
+} // ◂ HR PRIV-2
 
 /** ไฟล์ส่งออก (สร้างตามคำขอ ไม่เก็บ) — ตัวเขียน H3.5 · ตรวจเซลล์ก่อน (ENCODING → FORMULA) · สำเร็จ = ประวัติ hr.report.export 1 แถว */
 export async function exportReport(
@@ -696,9 +716,11 @@ export async function exportReport(
   const b = await build(ctx, g, input, { locale: opts?.locale ?? null, surface: "export", __takeCap: opts?.__takeCap });
   if (!("dto" in b)) return b;
   const { dto, keys, names, fullId } = b;
-  const table = reportTable({ report: dto.report, keys, rows: dto.rows.map((r) => r.values), totals: dto.totals, locale: opts?.locale ?? null });
+  // HR PRIV-2 ▸ R5 มติ 6: ชื่อพนักงานที่เก็บไว้ไม่ทำให้ไฟล์ส่งออกล้ม — เซลล์ชื่อตัดอักขระต้องห้าม (ชุด H4.8) แล้วกันสูตรด้วยตัวของบ้าน (@/lib/core/csv) ·
+  //   เซลล์อื่นยังตรวจด้วย exportProblem ตามเดิม (H3.9) — ข้อความปฏิเสธคงที่ ไม่มีชื่อ ◂
+  const table = reportTable({ report: dto.report, keys, rows: dto.rows.map((r) => ("name" in r.values ? { ...r.values, name: exportName(r.values.name ?? "") } : r.values)), totals: dto.totals, locale: opts?.locale ?? null }); // HR PRIV-2 ◂
   const problem = exportProblem(table.slice(1, 1 + dto.rows.length), names);
-  if (problem) return fail(problem.code, (problem.code === "FORMULA" ? T.formula : T.encoding).replace("{names}", problem.names.join(", ")));
+  if (problem) return fail(problem.code, problem.code === "FORMULA" ? T.formula : T.encoding); // HR PRIV-2 ◂
   const bytes = reportBytes(table, format);
   await writeAudit({
     tenantId: ctx.tenantId,

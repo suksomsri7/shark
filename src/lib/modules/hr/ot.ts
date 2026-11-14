@@ -19,7 +19,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import { formatThaiDate } from "@/lib/ui/date";
-import { hrScopeOf, type HrScope } from "./scope";
+import { hrScopeOf, inPayScope, type HrScope } from "./scope"; // HR PRIV-2 ▸ + inPayScope (เงิน OT = สาขาประจำ) ◂
 import { employeeOfUser } from "./service";
 import { unitOfDay } from "./roster";
 import { addDays, bkkDayKey } from "./time-rules";
@@ -632,7 +632,7 @@ export async function settleOtRequests(input: { tenantId?: string | null; system
 
 // ═════════════ ตัวอ่าน (R11) ═════════════
 type ListRow = OtRow & { employee: { name: string } };
-async function toItems(db: Tx, ctx: Ctx, rows: ListRow[], emps: Map<string, EmpRow>, money: boolean): Promise<OtItem[]> {
+async function toItems(db: Tx, ctx: Ctx, rows: ListRow[], emps: Map<string, EmpRow>, money: boolean | ((e: EmpRow | undefined) => boolean)): Promise<OtItem[]> { // HR PRIV-2 ▸ money = ต่อแถวได้ (ขอบเขตค่าจ้างของพนักงาน) ◂
   if (!rows.length) return [];
   const days = rows.map((r) => dayOf(r.date)).sort();
   const from = mondayOf(days[0]!);
@@ -667,7 +667,7 @@ async function toItems(db: Tx, ctx: Ctx, rows: ListRow[], emps: Map<string, EmpR
       settled: !!r.settledAt,
       reason: r.reason ?? null,
     };
-    if (!money) return baseItem;
+    if (!(typeof money === "function" ? money(e) : money)) return baseItem; // HR PRIV-2 ◂
     return { ...baseItem, amountSatang: r.amountSatang ?? null, segments: Array.isArray(r.segmentsJson) ? (r.segmentsJson as unknown as OtSegment[]) : [] };
   });
 }
@@ -698,7 +698,9 @@ export async function otRequestList(ctx: Ctx, viewer: OtViewer, input: { from?: 
     const e = emps.get(r.employeeId);
     return !!e && covers(scope, unitOfDay(e, dayOf(r.date)));
   });
-  return { ok: true, items: await toItems(db, ctx, mine, emps, seesMoney(viewer)), ...(rows.length >= LIST_TAKE ? { capped: true as const } : {}) }; // HR H2.11 ◂
+  // HR PRIV-2 ▸ R6/N1: แถว/นาทียังตามกติกายืมตัวเดิม · เงิน (amountSatang · segments) เฉพาะพนักงานที่สาขาประจำอยู่ในขอบเขตค่าจ้าง (ทุกสาขา = ทุกคน เหมือนเดิม) ◂
+  const pay = seesMoney(viewer); // HR PRIV-2 ◂
+  return { ok: true, items: await toItems(db, ctx, mine, emps, (e) => pay && !!e && inPayScope(scope, e.unitId)), ...(rows.length >= LIST_TAKE ? { capped: true as const } : {}) }; // HR H2.11 ◂ // HR PRIV-2 ◂
 }
 
 /** คำขอ OT ของตัวเอง (พนักงานจากบัญชีผู้ใช้เท่านั้น — ไม่รับ id) พร้อมยอดเงินของตัวเอง */

@@ -1,0 +1,64 @@
+# PRIV-2 — oracle notes (14 Nov 2026)
+
+Branch `wip/hr-priv-2` from `session/hr` 60659e7c0. Oracle `scripts/qc-hr-priv-2.mts` + `scripts/qc-hr-priv-2-lib.mts` · brief `ledger/hr-briefs/hr-brief-PRIV-2.md`.
+Base runs (lane wrapper, QC_FORCE=1): 6 runs (1–4 harness fixes, 5 = r0, 6 = after the coordinator rulings 1–6), last `scratchpad/priv2/run6.log`: **BASE-EXPECTATION 39/39 as registered** (22 RED-by-design fail · 17 GREEN controls pass) · RESIDUE none · outbound 0 · no law rows used.
+
+## 1. Pay-scope helpers found at base (answer to R1)
+| where | name | rule |
+|---|---|---|
+| `payslip.ts:136` | `homeInScope(m, viewer, unitId)` (private) | home ∈ scope of DB member AND of passed viewer; null home ⇒ all-branch only |
+| `labor.ts:121-123` | gate closure `sees(home)` (`limited = role≠OWNER && scope≠"*"`) | same meaning, viewer from DB (`gateOf`) |
+| `payroll.ts:3066,3080` | `unitsOfViewer` + `mine` in `previewPayrollRunV2` | home-only, **but** `unitAccess []` ⇒ no branch (hrScopeOf D-1 says all branches) |
+| `attendance-pay.ts:73` / `work-entries.ts:80` | `covers(scope, unitId)` | home-only copies (money / minutes) |
+| `privacy.ts:57,132` · `reports.ts:172` · `payroll-ui.tsx:93` · `inbox` via `listAdjustments`→`scopedEmployeeIds` | `employeeInScope` / `unitWhere` | home **or borrowing open today** — the leak |
+Payslip (H3.8) and labour (H4.2) agree in meaning but are **two functions** ⇒ S2 requires one `scope.ts inPayScope` (+ `payScopeWhere` for queries).
+
+## 2. Pinned names/shapes
+`scope.ts`: `inPayScope(scope: HrScope, homeUnitId): boolean` · `payScopeWhere(scope): Prisma.HrEmployeeWhereInput` (no `units` term) · `PAY_SCOPE_EXCLUDED_TEXT = "ไม่รวมพนักงานที่คุณไม่มีสิทธิ์ดูค่าจ้าง {n} คน"` (used in payroll-ui.tsx + payroll-run-ui.tsx). `previewPayrollRunV2(...).run.excludedHeadcount: number` (0 for all-branch). No new reader name is pinned for the page: the oracle renders `PayrollSection` in a Next request scope (h1.1 technique) and inspects HTML **and every prop of the returned element tree**.
+Marker: `HR PRIV-2 ▸ … ◂` on every hunk of the allowed files (S5); `inbox.ts` is allowed (ruling 3). OT DTO: `excludedHeadcount: number` + `notes` ∋ note (ruling 1). Export cells reuse `@/lib/core/csv` `neutralizeFormula`/`csvCell` (ruling 6, S7).
+
+## 3. Checks (39) and base evidence
+RED by design (22): S1 S2 P1 (helpers absent) · S7 (`{names}` interpolated; core/csv not reused) · A1 (payU1s/payU1m see nationalId/SSO/house-reg/bank/payType + doc of bNow/bSpan/bLeft) · A2 (≠ mgrU1 DTO) · A4 (loadPayslipForViewer opens bNow/bSpan; a1's result carries whole-run gross/net/SSO/WHT) · B1/B2 (6 money reports page/CSV/XLSX list bNow/bSpan/bLeft — bNow's borrowing started **after** PERIOD 2026-10) · B3 (OT: bSpan row has 5 money cells, totals include it, no excludedHeadcount/note, CSV/XLSX carry 3,333.31) · C1 (page: bNow/bSpan names, salary, 6,543.21 bonus) · C2 (whole-run gross/net/SSO/WHT + "10 คน"; no note) · C4 (`excludedHeadcount` undefined) · C5 (inbox lists bNow's adjustment `amountSatang 654321` to payU1s + payU1m; mgrU1 has none — premise verified) · D1 (42/54) · D2 (12/80) · D3 · D4 (inbox) · W1/W2 (18 bad chars accepted, no reason) · W4/W5 (16/18 owner exports refused ENCODING, reason echoes the raw name).
+GREEN controls (17): S3 S4 S5 S6 · A3 A5 · B4 (bEnded absent, aLeft present) B5 · C3 · D0 (259 payloads stable; REST needs a fresh key per round — limiter is per key) · D5 (AI T1–T4, REST hr-read, non-pay viewers) · D6 · E1 E2 (roster, board, attendance, time report, profile opens, leave + OT reject) · G1 · W3 · Z1.
+Dropped after ruling 2: A6 (stale/forged viewer objects are trusted today by privacy.ts — documented as D-PRIV-reader-trust, not pinned either way).
+
+## 4. R4 — what limited payroll viewers can do to runs today
+All 11 run actions (v1 create/approve/markPaid/reverse/deleteDraft/recompute; v2 create/recompute/approve/pay/reverse) call `assertRunAllBranches` (H1.1 R12.3) — verified live (G1: payU1m with every pay key gets the fixed text 11×, nothing written). Bank file / filings / salary certs / opening YTD use `bankGateOf` (all-branch). Pinned GREEN. Only `confirmBranchHoursAction` is unit-scoped (H3.4, no money). Debt D-PRIV-service-run-guard: services `approveRun/markPaidRun/reverseRun` take no viewer.
+
+## 5. Older suites whose expectations change (builder authorised · old → new) — 8 places
+1. `qc-hr-h3.8.mts:727,731` S3.22 control `!!hotfixE6` (loadPayslipForViewer opens borrowed e6 for the branch payroll viewer) → `hotfixE6 === null`.
+2. `qc-hr-h3.9.mts:1254,1256` S5.4 refusal text `T.formula/encoding.replace("{names}", name)` → fixed text without the name; where the cell is a NAME the export now succeeds sanitised (ruling 6) — re-pin that case as ok + neutralised.
+3. `qc-hr-h3.9.mts:339` (S1.5 `laterMark`) + `:440` (S1.10 `anyMarked`) → also accept `HR PRIV-\d+`.
+4. `qc-hr-h3.6.mts:241` S1.6 `laterMarked` → also accept `HR PRIV-\d+`.
+5. `qc-hr-h4.3-lib.mts:186-192` S1.6 `hrFrozen` (reports*/inbox*/privacy*/payroll*/payslip*, strict) + `:203 anyMark` → accept hunks marked `HR PRIV-\d+`.
+6. `qc-hr-h4.2-lib.mts:144` S1.6 in-base mark regex → + `HR PRIV-\d+` (labor.ts hunk).
+7. `qc-hr-h1.3.mts:907-908` literal `return { run, item, employee };` in loadPayslipForViewer → keep the literal with a trimmed `run` (ruling 4), or accept the new shape; `:896` listRuns/listAdjustments callers only payroll-ui.tsx + inbox.ts (constraint).
+8. `qc-hr-h0.2.mts:336-347` S5.4 PayrollSection shape (guard → `const ctx` → reads after) → keep, or re-pin to the new reader (not in the run list).
+Dropped: qc-hf-hr-privacy (its only reason was R6). Unchanged (checked): h1.1 S4.7/S4.8/S10.6/S10.7 · h3.5/h3.8/h4.8 frozen statics (IN_BASE ⇒ n/a) · h4.8 REST (D5) · h3.9 report matrices (no borrowed fixture).
+
+## 6. Rulings received (coordinator, 14 Nov) — all applied
+1 OT/time rows stay, money withheld + excludedHeadcount + note (B3 re-pinned) · 2 R6 = debt (A6 dropped) · 3 inbox in scope, absent like a manager without payroll (C5) · 4 slip loader: own figures only (A4) · 5 `[]` = all branches OK · 6 formula names neutralised via core/csv, bad chars refused on write (S7, W1–W5).
+Open: none blocking. Note for the builder: time report has no money columns ⇒ no change there; the API-key viewer path through privacy.ts must stay byte-identical (D5).
+
+## 7. Oracle r2 — controller R6–R10 (on builder tip 727ea1bf2)
+Run `scratchpad/priv2/run7.log` (lane wrapper, forced): **BASE-EXPECTATION 45/45 as registered** — registry re-based to 727ea1bf2: 6 RED-by-design (S2 otMoney+stock · N1 bNow/bSpan OT items carry money · N2 bSpan stock row + cap flag returned · N3 listStockCharges changes when only hidden salaries double (overCap) · D4 stock+otList change on doubling · W6 12 dirty HrEmployee names via createStaff/linkStaffToHr), 39 GREEN (incl. new N4 control and A7 own slip, already green on 727ea1bf2). Residue none, outbound 0.
+New seeds: approved settled OT on a borrowed day (bNow D0-2 4,444.43 · bSpan D0-2 5,555.57 · a1 control 2,222.27) · stock charges bSpan 4,000.00 (+ deduction 3,000.00 ⇒ overCap + cap flag) and a1 500.00 · booking staff with 6 bad-character names.
+R9 choice: statics base = merge-base(HEAD, local `session/hr`) (env `QC_PRIV2_BASE` wins) — absorbs HR-MONEY-2 once session/hr is merged into this branch; older oracles (all `scripts/qc-*.mts` now, previously only libs because `srcFiles` skips `.mts`) may differ only in files carrying an `ORACLE-EDIT …PRIV-2` hunk; `qc-hr-h4.3-lib.mts`: every hunk must carry `ORACLE-EDIT (HR-PRIV-2`.
+Size: oracle + lib 59.9 KB (compacted, same checks).
+**R7 not applied by me** — editing `scripts/qc-hr-h3.8.mts` was refused by this session's permission guard (my brief limits me to the PRIV-2 oracle/brief/notes). Exact patch for the builder (S3.22 block, after the `hotfixE6` line, and the `ck` call):
+```
+    // ORACLE-EDIT (HR-PRIV-2 · controller R7): positive control — the borrowing row exists and is open (the branch viewer opens e6's profile through it) ⇒ `hotfixE6 === null` is the pay-scope refusal, not a never-opened borrowing ◂
+    const prof6 = bor ? await PRIV.loadEmployeeProfileForViewer(cA, V.payBranch, E.e6).catch(() => null) : null;
+…
+    ck("S3.22", { stat, borrowOpen: !!bor && !!prof6, control: hotfixE6 === null, e6: isNo(r6), e5: isNo(r5) }, …
+```
+S4 accepts it (file carries `ORACLE-EDIT …PRIV-2`).
+
+## 8. Oracle r3 — controller R11 + W6 tightened (tip 6d71bd87c)
+Run `scratchpad/priv2/run8.log` (lane wrapper, forced, own tenant, residue none): 44/46 pass. RED as expected: S2 (`openStockClaims`/`stockAttention` not on the helper) · N5 (payU1m sees bSpan's stuck claim and bSpan/bLeft attention rows). N1/N2/N3/D4 now pass (builder fix) ⇒ registry re-based to 6d71bd87c: **46 checks · 2 RED-by-design · 44 GREEN**. W6 (tightened: 6 typed bad names each refused with `HR_NAME_BAD_TEXT`, bookingStaff count unchanged; `linkStaffToHr` stores each of the 6 stripped seed names, none dirty) is **GREEN** on 6d71bd87c. New seeds: stuck claims (claimOpen, 1 h old) for a1 + bSpan, leaver attention rows for aLeft + bLeft. Oracle + lib 59.7 KB.
+Correction (r3b): REST regression coverage restored exactly as at e1a81f959 (hr-read key payslip-list path + c1); cap raised to 64 KB. Run scratchpad/priv2/run9.log: 44/46, 46/46 as registered (RED S2, N5), residue none. Oracle + lib 59,795 bytes.
+
+## 9. Oracle r4 (tip 74ba4cf2f, HR-MONEY-2 merged)
+TS7006 fixed (`sensOf`/`payOf` params typed `Any` like the other DB-row helpers). Full clean typecheck (`rm -rf .next/types tsconfig.tsbuildinfo; pnpm typecheck` via iso + gate lock): exit 0, 448 s, 0 errors.
+New L1 (MONEY-2 labour ACTUAL): bSpan (home U2, borrowed) has 2 rostered work days in U1 + 1 in U2 inside the PAID period (HrWorkDay.sourcesJson.rosterEntryIds → U1 roster rows), a1 1 day in U1. Doubling bSpan's pay (items gross/net/SSO-er + v1 snapshot base + profile) leaves payU1m's laborMonth/Day/Week for U1 byte-identical, month basis ACTUAL with excludedHeadcount ≥ 1 + partial; OWNER's U1 month cost rises (split share included). GREEN on 74ba4cf2f — no leak.
+S2 and N5 now pass (builder fix) ⇒ registry re-based: 47 checks, 0 RED-by-design, 47 GREEN. Run `scratchpad/priv2/run11.log`: 47/47, as registered, residue none. Oracle + lib 62,539 bytes (cap 64 KB).

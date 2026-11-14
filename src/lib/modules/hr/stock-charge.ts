@@ -24,7 +24,7 @@ import { thaiDateKey } from "@/lib/ui/date";
 import { consumeBatch, getItem, listItems, searchItems } from "@/lib/modules/inventory";
 import { cancelStockChargeAdjustmentInTx, cancelStockChargeDraftAdjustment, stockChargeTargetPeriod, writeStockChargeAdjustmentInTx } from "./payroll"; // ทางเขียนเดียวของ HrPayAdjustment อยู่ที่ payroll.ts
 import { employeeOfUser } from "./service";
-import { hrScopeOf, unitWhere } from "./scope";
+import { hrScopeOf, unitWhere, isAllBranches, payScopeWhere } from "./scope"; // HR PRIV-2 ▸ + ขอบเขตค่าจ้าง ◂
 
 type Ctx = { tenantId: string; systemId: string };
 type Tx = Prisma.TransactionClient;
@@ -671,7 +671,7 @@ export async function listStockCharges(ctx: Ctx, viewer: StockViewer, filter: { 
   const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const empId = str(filter?.employeeId);
   const rows = await db.hrStockCharge.findMany({
-    where: { ...sc, claimOpen: false, ...(empId ? { employeeId: empId } : {}), employee: { is: unitWhere(scope) } },
+    where: { ...sc, claimOpen: false, ...(empId ? { employeeId: empId } : {}), employee: { is: payScopeWhere(scope) } }, // HR PRIV-2 ▸ R6/N2: เงินหักค่าของ = สาขาประจำในขอบเขตเท่านั้น (ยืมตัวไม่นับ · ทุกสาขา = เดิม) ◂
     select: LIST_SELECT,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 200,
@@ -739,10 +739,15 @@ export async function listStockCharges(ctx: Ctx, viewer: StockViewer, filter: { 
  */
 export async function stockPeriodCapFlags(ctx: Ctx, viewer: StockViewer, items: readonly Pick<StockChargeItem, "id" | "employeeId" | "periodKey" | "status">[]): Promise<Set<string> | null> {
   if (!canSeeStockCharges(viewer)) return null;
-  const live = items.filter((i) => i.periodKey && (i.status === "PENDING" || i.status === "APPROVED" || i.status === "PAID"));
-  if (live.length === 0) return new Set();
+  const live0 = items.filter((i) => i.periodKey && (i.status === "PENDING" || i.status === "APPROVED" || i.status === "PAID")); // HR PRIV-2 ◂
+  if (live0.length === 0) return new Set(); // HR PRIV-2 ◂
   const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const db = tenantDb(ctx);
+  // HR PRIV-2 ▸ R6/N2: ผู้ดูที่จำกัดสาขา — ไม่มีธงของพนักงานนอกขอบเขตค่าจ้าง (ธงบอกสัดส่วนต่อเงินเดือน) · ทุกสาขา = เดิม ◂
+  const scope = hrScopeOf({ role: viewer.role, unitAccess: viewer.unitAccess }); // HR PRIV-2 ◂
+  const payIds = isAllBranches(scope) ? null : new Set((await db.hrEmployee.findMany({ where: { ...sc, id: { in: [...new Set(live0.map((i) => i.employeeId))] }, ...payScopeWhere(scope) }, select: { id: true } })).map((e) => e.id)); // HR PRIV-2 ◂
+  const live = payIds ? live0.filter((i) => payIds.has(i.employeeId)) : live0; // HR PRIV-2 ◂
+  if (live.length === 0) return new Set(); // HR PRIV-2 ◂
   const empIds = [...new Set(live.map((i) => i.employeeId))];
   const periods = [...new Set(live.map((i) => i.periodKey as string))];
   const [adjs, profiles] = await Promise.all([
@@ -831,7 +836,7 @@ export async function openStockClaims(ctx: Ctx, viewer: StockViewer, opts: { now
   const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const before = new Date(nowOf(opts).getTime() - 10 * 60_000);
   const rows = await tenantDb(ctx).hrStockCharge.findMany({
-    where: { ...sc, claimOpen: true, createdAt: { lt: before }, employee: { is: unitWhere(scope) } },
+    where: { ...sc, claimOpen: true, createdAt: { lt: before }, employee: { is: payScopeWhere(scope) } }, // HR PRIV-2 ▸ R11: ผู้ดูเงินเดือนที่จำกัดสาขา = สาขาประจำเท่านั้น (ทุกสาขา = เดิม) ◂
     select: { id: true, employeeId: true, itemName: true, description: true, qty: true, takeStock: true, createdAt: true },
     orderBy: { createdAt: "asc" },
     take: 50,
@@ -853,7 +858,7 @@ export async function stockAttention(ctx: Ctx, viewer: StockViewer, opts: { now?
   const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const db = tenantDb(ctx);
   const rows = await db.hrStockCharge.findMany({
-    where: { ...sc, claimOpen: false, withdrawnAt: null, employee: { is: { AND: [unitWhere(scope), { OR: [{ active: false }, { employmentStatus: "ENDED" }, { endDate: { not: null } }] }] } } },
+    where: { ...sc, claimOpen: false, withdrawnAt: null, employee: { is: { AND: [payScopeWhere(scope), { OR: [{ active: false }, { employmentStatus: "ENDED" }, { endDate: { not: null } }] }] } } }, // HR PRIV-2 ▸ R11 ◂
     select: { id: true, employeeId: true, adjustmentId: true, itemName: true, description: true, qty: true, createdAt: true },
     take: 200,
   });

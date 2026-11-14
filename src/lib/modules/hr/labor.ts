@@ -11,7 +11,7 @@ import { tenantDb } from "@/lib/core/db";
 import type { MembershipCtx } from "@/lib/core/rbac";
 import { canViewPayroll } from "@/lib/core/rbac";
 import { writeAudit } from "@/lib/core/audit";
-import { hrScopeOf, type HrScope } from "./scope";
+import { hrScopeOf, inPayScope, type HrScope } from "./scope"; // HR PRIV-2 ▸ + inPayScope ◂
 import { canReadRoster } from "./roster-board";
 import { canManageHrSettings } from "./settings";
 import { unitOfDay } from "./roster";
@@ -122,8 +122,7 @@ async function gateOf(ctx: Ctx, viewer: LaborViewer | null | undefined): Promise
   const manage = canManageHrSettings(m);
   const roster = canReadRoster(m);
   const limited = m.role !== "OWNER" && scope.unitIds !== "*";
-  const ids = scope.unitIds === "*" ? null : (scope.unitIds as string[]);
-  const sees = (home: string | null) => !limited || (!!home && !!ids && ids.includes(home));
+  const sees = (home: string | null) => inPayScope(scope, home); // HR PRIV-2 ▸ R1 ตัวตัดสินเดียว (OWNER/ทุกสาขา = "*" ⇒ ทุกคน · จำกัดสาขา = สาขาประจำเท่านั้น) ◂
   return { settings: obj(sys.settings), m, userId: viewer.userId, scope, money, roster, manage, limited, sees };
 }
 const viewerOk = (g: Gate) => g.money || g.roster;

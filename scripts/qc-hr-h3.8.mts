@@ -264,7 +264,7 @@ function runStatic(): void {
   {
     // ORACLE-EDIT (H3.8 merge round · review M3): the two hotfix/self files H3.8 had to touch are pinned at the H3.8 tip — any later change re-takes the pin on purpose ◂
     const PIN: Record<string, string> = {
-      [F.priv]: "bbf7604b0b05e280ea6e30f631302b9fd4580440a409030d9499d1c9a84a5acb", // ORACLE-EDIT (H4.8 fix round · after merge of session/hr 292bc5b7e, pre-authorised re-take): ba518b3d… → bbf7604b…: the marked openProfile OR-term now limited to API-key viewers (controller ruling 2) · was ORACLE-EDIT (H4.8 builder): 9b95844d… → ba518b3d… ◂
+      [F.priv]: "ea0017fa16ef63ce61cdae0cbd1bc981da02321eedf19b464dd71ea09ffe7357", // ORACLE-EDIT (HR-PRIV-2 · controller ruling, authorised re-take): bbf7604b… → ea0017fa…: profile sensitive block + loadPayslipForViewer on scope.inPayScope, slip loader returns no whole-run totals to a non-all-branch viewer (marked HR PRIV-2) ◂ // ORACLE-EDIT (H4.8 fix round · after merge of session/hr 292bc5b7e, pre-authorised re-take): ba518b3d… → bbf7604b…: the marked openProfile OR-term now limited to API-key viewers (controller ruling 2) · was ORACLE-EDIT (H4.8 builder): 9b95844d… → ba518b3d… ◂
       [F.self]: "d63dd8899f0974a37b9887e0fb5817fc3ca0be8b36249e07d243ac4099b30a04",
     };
     const bad = Object.entries(PIN).filter(([f, h]) => sha(rd(f)) !== h).map(([f]) => `${f.split("/").pop()}=${sha(rd(f)).slice(0, 12)}`);
@@ -725,10 +725,13 @@ async function runDb(): Promise<void> {
     const bor = await P.hrEmployeeUnit.findFirst({ where: { employeeId: E.e6, unitId: u1 }, select: { id: true, fromDate: true } });
     if (bor) await P.hrEmployeeUnit.update({ where: { id: bor.id }, data: { fromDate: new Date(Date.now() - 86_400_000) } });
     const hotfixE6 = await PRIV.loadPayslipForViewer(cA, V.payBranch, RA.r2, E.e6).catch(() => null);
+    // ORACLE-EDIT (HR-PRIV-2 · controller R7): positive control — the borrowing row exists and is open (the branch viewer opens e6's profile through it) ⇒ `hotfixE6 === null` is the pay-scope refusal, not a never-opened borrowing ◂
+    const prof6 = bor ? await PRIV.loadEmployeeProfileForViewer(cA, V.payBranch, E.e6).catch(() => null) : null;
     const r6 = await slip(V.payBranch, RA.r2, E.e6);
     const r5 = await slip(V.payBranch, RA.r2, E.e5);
     if (bor) await P.hrEmployeeUnit.update({ where: { id: bor.id }, data: { fromDate: bor.fromDate } });
-    ck("S3.22", { stat, control: !!hotfixE6, e6: isNo(r6), e5: isNo(r5) }, "page via slipForViewer · borrowed/other branch refused", `hotfix=${hotfixE6 ? "opens" : "null"} e6=${shown(r6)} e5=${shown(r5)}`);
+    // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.1): control `!!hotfixE6` → `hotfixE6 === null` — after PRIV-2 the hotfix loader uses the pay scope too (home branch only, borrowing never counts) ⇒ borrowed e6 is refused there as well ◂
+    ck("S3.22", { stat, borrowOpen: !!bor && !!prof6, control: hotfixE6 === null, e6: isNo(r6), e5: isNo(r5) }, "page via slipForViewer · borrowed/other branch refused", `hotfix=${hotfixE6 ? "opens" : "null"} e6=${shown(r6)} e5=${shown(r5)}`);
   }
   // S3.12
   {

@@ -152,6 +152,33 @@ export function unitTargetOf(scope: HrScope, emp: EmployeeUnits, day?: Date): Un
   return { ok: false, reason: emp.unitId ? HR_OTHER_BRANCH_TEXT : HR_UNASSIGNED_TEXT };
 }
 
+// HR PRIV-2 ▸ ขอบเขตค่าจ้าง (pay scope) — กติกาเดียวของทุกทางที่แสดงเงิน/ข้อมูลอ่อนไหวด้านค่าจ้าง (สลิป H3.8 Q2 = ค่าแรง H4.2 R1):
+//   เห็นค่าจ้างของพนักงานเมื่อ "สาขาประจำปัจจุบัน" อยู่ในสาขาของผู้ดู · การยืมตัวไม่นับเลย (ไม่ว่ายืมเมื่อไร/ปิดแล้วหรือยัง) ·
+//   ทุกสาขา ("*" — รวม unitAccess [] ตามมติ D-1) ⇒ ทุกคน รวมคนที่ยังไม่ระบุสาขา · ไม่ระบุสาขาประจำ ⇒ เฉพาะผู้ดูทุกสาขา
+//   ห้ามเขียนตัวตัดสินชุดที่สองที่อื่น (payslip/labor/payroll/attendance-pay/reports/privacy/inbox/payroll-ui เรียกที่นี่) ◂
+/** ข้อความหมายเหตุเมื่อมีพนักงานที่ผู้ดูไม่มีสิทธิ์ดูค่าจ้าง (แทน {n} ด้วยจำนวน — ไม่มีชื่อ/id) */
+export const PAY_SCOPE_EXCLUDED_TEXT = "ไม่รวมพนักงานที่คุณไม่มีสิทธิ์ดูค่าจ้าง {n} คน";
+/** ผู้ดูในขอบเขตนี้เห็นค่าจ้างของพนักงานที่มีสาขาประจำนี้ไหม (pure) */
+export function inPayScope(scope: HrScope, homeUnitId: string | null | undefined): boolean {
+  if (!scope) return false;
+  if (scope.unitIds === "*") return true;
+  return Array.isArray(scope.unitIds) && typeof homeUnitId === "string" && homeUnitId !== "" && scope.unitIds.includes(homeUnitId);
+}
+/** ตัวกรอง HrEmployee ตามขอบเขตค่าจ้าง (pure): "*" ⇒ {} · [] ⇒ ไม่มีแถว · รายการ ⇒ สาขาประจำในรายการ (ไม่มีเงื่อนไขยืมตัว) */
+export function payScopeWhere(scope: HrScope): Prisma.HrEmployeeWhereInput {
+  if (scope?.unitIds === "*") return {};
+  const ids = Array.isArray(scope?.unitIds) ? scope.unitIds : [];
+  return ids.length === 0 ? { id: { in: [] } } : { unitId: { in: ids } };
+}
+/** id พนักงานในขอบเขตค่าจ้าง — ใช้กับตารางที่ไม่มี relation ไป HrEmployee (รายการเพิ่ม/หัก) · null = ทุกคน */
+export async function payScopeEmployeeIds(ctx: Ctx, scope: HrScope | undefined): Promise<string[] | null> {
+  if (!scope || scope.unitIds === "*") return null;
+  if (scope.unitIds.length === 0) return [];
+  const rows = await tenantDb(ctx).hrEmployee.findMany({ where: payScopeWhere(scope), select: { id: true }, take: 5000 });
+  return rows.map((r) => r.id);
+}
+// ◂ HR PRIV-2
+
 /** พนักงานคนนี้อยู่ในขอบเขต "วันนี้" ไหม (อ่าน: โปรไฟล์ · สลิป) — สาขาประจำ หรือยืมตัวที่เปิดวันนี้ */
 export async function employeeInScope(ctx: Ctx, scope: HrScope, employeeId: string): Promise<boolean> {
   if (scope.unitIds === "*") return true;

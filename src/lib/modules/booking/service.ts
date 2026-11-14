@@ -6,6 +6,7 @@ import * as member from "@/lib/modules/member/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import * as pos from "@/lib/modules/pos/service";
 import * as hr from "@/lib/modules/hr/service";
+import { HR_NAME_BAD, HR_NAME_BAD_TEXT } from "@/lib/modules/hr/privacy-shared"; // HR PRIV-2 ▸ R10 กติกาชื่อพนักงานเดียวกับ HR (ชุด H4.8) ◂
 import { staffWindows as hrStaffWindows } from "@/lib/modules/hr"; // SVC B.1 ▸ BQ-1 กะรายวัน (facade) ◂
 import { resolveSettingsMany } from "@/lib/core/settings"; // SVC B.1 ▸ ค่าตั้งต่อช่าง (CC §1.4) ◂
 import { getDef, resolveSettings, snapshotPolicy, SNAPSHOT_KEYS } from "@/lib/core/settings"; // SVC B.3 ▸ กติกาจอง + snapshot (CC §1.4 §1.6) ◂
@@ -610,6 +611,7 @@ export async function createStaff(input: {
   employeeId?: string;
 }) {
   const db = tenantDb({ tenantId: input.tenantId, unitId: input.unitId });
+  if (!input.employeeId && HR_NAME_BAD.test(String(input.name ?? ""))) throw new Error(HR_NAME_BAD_TEXT); // HR PRIV-2 ▸ R10: ชื่อที่พิมพ์เอง = กติกาเดียวกับ createEmployee (ข้อความคงที่ ไม่สะท้อนชื่อ) ◂
   let name = (input.name ?? "").trim();
   let employeeId: string | null = null;
 
@@ -681,14 +683,17 @@ export async function linkStaffToHr(ctx: BookingCtx): Promise<{ linked: number; 
   let linked = 0;
   let created = 0;
   for (const st of orphans) {
+    // HR PRIV-2 ▸ R10: ชื่อช่างเดิมในระบบจอง (ก่อนกติกา) — ลงทะเบียน HR ด้วยชื่อที่ตัดอักขระต้องห้ามแล้ว (ไม่บล็อกการผูก) · ตัดแล้วว่าง = ข้าม ◂
+    const clean = st.name.replace(new RegExp(HR_NAME_BAD.source, "g"), "").trim(); // HR PRIV-2 ◂
+    if (!clean) continue; // HR PRIV-2 ◂
     const dup = await prisma.hrEmployee.findFirst({
-      where: { tenantId: ctx.tenantId, systemId: hrSystem.id, name: st.name, active: true },
+      where: { tenantId: ctx.tenantId, systemId: hrSystem.id, name: clean, active: true }, // HR PRIV-2 ◂
       select: { id: true },
     });
     let empId = dup?.id;
     if (!empId) {
       const emp = await prisma.hrEmployee.create({
-        data: { tenantId: ctx.tenantId, systemId: hrSystem.id, name: st.name },
+        data: { tenantId: ctx.tenantId, systemId: hrSystem.id, name: clean }, // HR PRIV-2 ◂
         select: { id: true },
       });
       empId = emp.id;
