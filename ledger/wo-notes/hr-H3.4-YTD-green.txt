@@ -1,0 +1,30 @@
+# H3.4-YTD green run — head before notes commit a8919a018 · lane DB (qc-hr.sh)
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-h3.4-ytd exit=1 ===== qc-hr-h3.4-ytd ===== passed 39/40 (QC_FORCE)
+qc-hr-h3.4-ytd exit=1 ===== qc-hr-h3.4-ytd ===== passed 39/40 (QC_FORCE)
+qc-hr-h3.4 exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h3.6 exit=0 ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE)
+qc-hr-h3.9 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-h3.7 exit=0 ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+qc-hr-h3.5 exit=0 ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE)
+qc-hr-h3.3 exit=0 ===== qc-hr-h3.3 ===== passed 51/51 (QC_FORCE)
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+qc-hr-set-1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-payroll exit=0 ===== QC Payroll ไทย =====
+qc-payroll-reverse exit=0 
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====
+qc-audit-trail exit=0 
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-crm-c3.3 exit=0 
+qc-hr-h3.4-ytd exit=1 ===== qc-hr-h3.4-ytd ===== passed 39/40 (QC_FORCE)
+qc-hr-h3.8 exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-h3.4-ytd (unforced) ===== qc-hr-h3.4-ytd ===== passed 39/40
+only red: H3.4Y-S3.12 (cleared — OE-1, race-dependent; every other S3.12 assertion holds)
+qc-payroll-reverse: ✅ PASS — 14/14
+qc-audit-trail: ✅ PASS — 21/21
+qc-crm-c3.3: JSON_SUMMARY {"total":90,"passed":90,"findings":[]}
+qc-payroll: 19/19 · qc-hr-payadjust: 27/27 · qc-hf-hr-privacy: 194/194 (JSON_SUMMARY findings [])
+fitness 53/53 · fitness-hr 9/9 — with env (qc-hr.sh) and with env -u DATABASE_URL -u DIRECT_URL
+typecheck (clean: rm .next/types tsconfig.tsbuildinfo): exit=0 secs=980
+residue: none (Z1 green every run)
