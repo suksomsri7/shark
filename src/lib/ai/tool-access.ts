@@ -100,6 +100,12 @@ export const HAND_TOOL_ACCESS: Readonly<Record<string, HandRule>> = {
   financial_summary: { needs: [{ module: "account", action: "account.report.view" }], scopedData: true },
   // CRM v1 ไม่มีคีย์อ่าน (CrmHub เดิม) · CRM v2 = crm.contact.read + การมองเห็น — ตัดสินรายระบบในเครื่องมือ
   recent_leads: { needs: [], scopedData: true },
+  // CAL1.7 ▸ ปฏิทินส่วนตัว (สัญญา 32 §9 · R-CAL-18): ไม่มีคีย์ (ของตัวเอง) · เขียนทันที = คีย์ API ใช้ไม่ได้ · ไม่มีพารามิเตอร์ผู้รับ ◂
+  calendar_add: { needs: [], writesNow: true },
+  calendar_update: { needs: [], writesNow: true },
+  calendar_cancel: { needs: [], writesNow: true },
+  calendar_list: OPEN,
+  calendar_agenda: OPEN,
   // ── เขียนทันที ──
   kb_auto_save: { needs: [{ module: "kb", action: "kb.article.create" }], writesNow: true }, // app/kb/actions.ts · คู่ข้อเสนอ kb_create_article
 };
@@ -176,6 +182,12 @@ export const HAND_TOOL_CORE: ReadonlySet<string> = new Set([
   "list_memories",
   "support_open_case",
   "growth_recommendations",
+  // CAL1.7 ▸ ปฏิทินส่วนตัว — ระดับเลขาของร้านไม่ตัด (ข้อมูลของคน ไม่ใช่ของร้าน · M3/M4 · มติ Q2) · calendar_agenda ตัดแหล่งร้านที่ OFF ในตัว ◂
+  "calendar_add",
+  "calendar_update",
+  "calendar_cancel",
+  "calendar_list",
+  "calendar_agenda",
 ]);
 
 /** S1.3b ▸ โมดูลของเครื่องมือที่ไม่มีใครประกาศ — ไม่อยู่ใน AI_MODULES/ALWAYS_ON ⇒ `levelVerdict` ปฏิเสธเสมอ ◂ */

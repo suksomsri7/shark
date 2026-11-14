@@ -22,6 +22,7 @@ import { channelSentenceLabel } from "@/lib/modules/chat/channel-icon";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { accountTools } from "./tools-account";
 import { kanbanTools } from "./tools-kanban";
+import { calendarTools } from "./tools-calendar"; // CAL1.7 ◂
 import { memberTools } from "./tools-member";
 // CRM C1.10 ▸ สกิล crm (14 tool จากทะเบียน op ของ REST CRM · แทน crm_create_lead รุ่นเขียนมือ) ◂
 import { crmTools } from "./tools-crm";
@@ -2728,6 +2729,8 @@ function registryTools(): AiTool[] {
     ...crmTools(),
     // POS P3.9 ▸ R1 มติ 1: สกิล sales จากทะเบียน op ของ REST POS (11 tool · kind `pos.*`) + pos_draft_po ◂
     ...posTools(),
+    // CAL1.7 ▸ ปฏิทินส่วนตัวของผู้ใช้ (เตือนฉัน/นัดส่วนตัว · ไม่มีผู้รับ · ไม่ผ่านด่านอนุมัติ — สัญญา 32 §9) ◂
+    ...calendarTools(),
   ];
 }
 

@@ -47,6 +47,9 @@ export const CORE_TOOLS = [
   "remember_fact",
   "list_memories",
   "support_open_case",
+  // CAL1.7 ▸ "เตือนฉัน…" ต้องไม่ต้องโหลดสกิลก่อน (R-CAL-18) — ที่เหลือ (แก้/ยกเลิก/รายการ) อยู่สกิล calendar ◂
+  "calendar_add",
+  "calendar_agenda",
 ] as const;
 
 export const SKILLS: Skill[] = [
@@ -275,6 +278,13 @@ export const SKILLS: Skill[] = [
     label: "งานประจำและระบบอัตโนมัติ",
     summary: "Automation: schedule a recurring AI task, create an event-triggered rule.",
     tools: ["schedule_task", "automation_create_rule"],
+  },
+  {
+    // CAL1.7 ▸ ปฏิทินส่วนตัว (เตือนฉัน/นัดส่วนตัว) — calendar_add/calendar_agenda อยู่แกนกลาง ◂
+    id: "calendar",
+    label: "ปฏิทินส่วนตัว",
+    summary: "Personal calendar: change, cancel or list the user's own reminders and appointments (confirm a draft repeating reminder).",
+    tools: ["calendar_update", "calendar_cancel", "calendar_list"],
   },
   {
     id: "memory",

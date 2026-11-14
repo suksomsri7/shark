@@ -70,6 +70,64 @@ export const GOLDEN_CASES: GoldenCase[] = [
   { prompt: "เพิ่มผู้ติดต่อใหม่ บริษัท สยามไดฟ์ จำกัด เป็นลูกค้า", expectTool: "account_create_contact" },
   { prompt: "ค้นหาผู้ติดต่อในสมุดบัญชีชื่อสยามไดฟ์", expectTool: "account_search_contacts" },
   { prompt: "ตอนนี้เงินในบัญชีธนาคารกับเงินสดในมือเหลือเท่าไหร่", expectTool: "account_finance_balances" },
+  // ── CAL1.7 ปฏิทินส่วนตัว (เคสบวกที่ระบุเครื่องมือได้ — ชุดเต็มรวมเคสห้ามสร้าง/ถามกลับอยู่ใน CALENDAR_EVAL_CASES) ──
+  { prompt: "เตือนพรุ่งนี้บ่ายสามโทรหาคุณเอก เรื่องมัดจำเรือ", expectTool: "calendar_add" },
+  { prompt: "ทุกวันจันทร์ 9 โมงเตือนเช็กสต็อกอุปกรณ์", expectTool: "calendar_add" },
+  { prompt: "อีกครึ่งชั่วโมงเตือนฉันโอนเงินค่าน้ำมันเรือ", expectTool: "calendar_add" },
+  { prompt: "เตือนฉันจ่ายค่าเช่าท่าเรือวันที่ 5 ทุกเดือน 10 โมง", expectTool: "calendar_add" },
+  { prompt: "เตือนฉันให้โทรหาครูนิวพรุ่งนี้ 10 โมง", expectTool: "calendar_add" },
+  { prompt: "พรุ่งนี้ฉันมีนัดอะไรบ้าง", expectTool: "calendar_agenda" },
+];
+
+/**
+ * CAL1.7 ▸ ข้อสอบปฏิทินส่วนตัว (สัญญา 32 §9.2 · §9.4 · เกณฑ์ ≥ 20 ประโยค ผ่าน ≥ 95%)
+ *   expect: ชื่อเครื่องมือที่ต้องเรียก · "none" = ห้ามเรียก calendar_add และต้องเสนอการ์ดบอร์ดแทน (M3) ·
+ *           "clarify" = ห้ามสร้าง ต้องถามกลับ (ask_clarify หรือคำถามเป็นข้อความ)
+ *   want: ค่าที่ต้องได้ใน args ของ calendar_add — วันนับจากวันนี้ (เวลาไทย) · เวลา HH:MM · ทำซ้ำ · นาทีจากตอนนี้
+ *   ผู้ตรวจ (scripts/qc-cal-1.7-live.mts) ยิงโมเดลจริงตาม routing ของผลิตภัณฑ์ · scripts/qc-cal-1.7.mts ตรวจโครงสร้างชุดนี้
+ */
+export type CalendarEvalCase = {
+  prompt: string;
+  expect: "calendar_add" | "calendar_agenda" | "schedule_task" | "none" | "clarify";
+  want?: {
+    kind?: "REMINDER" | "EVENT";
+    day?: number | "nextMonday" | "nextFriday";
+    time?: string;
+    repeat?: "NONE" | "DAILY" | "WEEKLY" | "MONTHLY";
+    repeatDays?: number[];
+    monthDay?: number;
+    inMinutes?: number;
+    endTime?: string;
+    /** ยอมรับทั้ง "เตือนก่อน N นาที" (leadMinutes) หรือเลื่อนเวลาเอง */
+    leadOrShift?: number;
+  };
+  /** ยอมรับผลอื่นด้วย (เช่น "ทุกวันที่ 31" — ถามกลับ หรือสร้างพร้อมบอกเรื่องเดือนสั้น) */
+  alsoOk?: CalendarEvalCase["expect"][];
+  why: string;
+};
+export const CALENDAR_EVAL_CASES: CalendarEvalCase[] = [
+  { prompt: "เตือนพรุ่งนี้บ่ายสามโทรหาคุณเอก เรื่องมัดจำเรือ", expect: "calendar_add", want: { day: 1, time: "15:00", repeat: "NONE" }, why: "จอ 5 · พรุ่งนี้บ่ายสาม" },
+  { prompt: "ทุกวันจันทร์ 9 โมงเตือนเช็กสต็อกอุปกรณ์", expect: "calendar_add", want: { day: "nextMonday", time: "09:00", repeat: "WEEKLY", repeatDays: [1] }, why: "จอ 5 · ทุกวันจันทร์ 9 โมง (ร่างรอยืนยัน)" },
+  { prompt: "อีกครึ่งชั่วโมงเตือนฉันโอนเงินค่าน้ำมันเรือ", expect: "calendar_add", want: { inMinutes: 30 }, why: "อีกครึ่งชั่วโมง" },
+  { prompt: "เตือนฉันจ่ายค่าเช่าท่าเรือวันที่ 5 ทุกเดือน 10 โมง", expect: "calendar_add", want: { time: "10:00", repeat: "MONTHLY", monthDay: 5 }, why: "วันที่ 5 ทุกเดือน" },
+  { prompt: "เตือนฉันให้โทรหาครูนิวพรุ่งนี้ 10 โมง", expect: "calendar_add", want: { day: 1, time: "10:00" }, why: "§9.4 ผู้รับคือฉัน = สร้าง" },
+  { prompt: "เตือนครูนิวให้เช็กถังด้วย", expect: "none", why: "§9.4 M3 ปฏิเสธ + เสนอการ์ด" },
+  { prompt: "บอกทุกคนว่าพรุ่งนี้ประชุม 9 โมง", expect: "none", why: "§9.4 M3 ทุกคน" },
+  { prompt: "ช่วยเตือนทีมช่างให้ล้างเรือพรุ่งนี้เช้าด้วย", expect: "none", why: "M3 ทีม" },
+  { prompt: "ตั้งเตือนให้ครูบอสไปรับลูกค้าที่สนามบินพรุ่งนี้บ่ายโมง", expect: "none", why: "M3 ใส่ชื่อคนอื่น" },
+  { prompt: "เตือนโทรหาคุณเอก", expect: "clarify", why: "§9.2 ไม่มีเวลา" },
+  { prompt: "ต้นเดือนหน้าเตือนต่อภาษีรถด้วย", expect: "clarify", why: "§9.2 ต้นเดือน กำกวม" },
+  { prompt: "ช่วงบ่ายๆ เตือนฉันเก็บเงินมัดจำลูกค้าด้วย", expect: "clarify", why: "§9.2 ช่วงบ่าย กำกวม" },
+  { prompt: "ทุกเย็นหกโมงช่วยสรุปยอดขายส่งให้หน่อย", expect: "schedule_task", why: "งานประจำของเลขา ไม่ใช่เตือน" },
+  { prompt: "ทุกเช้าแปดโมงช่วยสรุปงานค้างในบอร์ดให้ที", expect: "schedule_task", why: "งานประจำของเลขา" },
+  { prompt: "พรุ่งนี้ฉันมีนัดอะไรบ้าง", expect: "calendar_agenda", why: "อ่าน agenda" },
+  { prompt: "วันนี้ฉันมีอะไรต้องทำบ้าง", expect: "calendar_agenda", why: "อ่าน agenda" },
+  { prompt: "คืนนี้เตือนเช็กพยากรณ์อากาศก่อนออกเรือ", expect: "calendar_add", want: { day: 0, time: "20:00" }, why: "คืนนี้ = 20:00" },
+  { prompt: "นัดทำฟันวันศุกร์นี้บ่ายสองถึงบ่ายสาม", expect: "calendar_add", want: { kind: "EVENT", day: "nextFriday", time: "14:00", endTime: "15:00" }, why: "นัดส่วนตัวมีช่วงเวลา" },
+  { prompt: "เตือนฉันทุกวันตอน 7 โมงเช้าให้เช็กลมยาง", expect: "calendar_add", want: { time: "07:00", repeat: "DAILY" }, why: "ทุกวัน" },
+  { prompt: "อีก 2 ชั่วโมงเตือนฉันโทรกลับลูกค้า", expect: "calendar_add", want: { inMinutes: 120 }, why: "อีก 2 ชั่วโมง" },
+  { prompt: "เตือนฉันทุกวันที่ 31 ตอน 5 โมงเย็นให้ปิดยอดบัญชี", expect: "calendar_add", want: { time: "17:00", repeat: "MONTHLY", monthDay: 31 }, alsoOk: ["clarify"], why: "§9.2 ทุกวันที่ 31 (บอกเรื่องเดือนสั้น)" },
+  { prompt: "พรุ่งนี้ 10 โมงมีนัดกับธนาคาร เตือนก่อนครึ่งชั่วโมงด้วย", expect: "calendar_add", want: { day: 1, time: "10:00", leadOrShift: 30 }, why: "เตือนล่วงหน้า" },
 ];
 
 // ── heuristic keyword rules (เรียงตามลำดับความจำเพาะ — คืน tool ตัวแรกที่ match) ──
@@ -77,6 +135,9 @@ export const GOLDEN_CASES: GoldenCase[] = [
 const KEYWORD_RULES: { re: RegExp; tool: string }[] = [
   // งานหลายขั้น — จับก่อนเพราะประโยคมักมีคำ action ปนอยู่
   { re: /หลายขั้น|เป็นขั้นตอน|ตั้งแต่.*(จน|ถึง)|ทั้งหมดตั้งแต่|วางแผน|แผนงาน/, tool: "propose_plan" },
+  // CAL1.7 ▸ ปฏิทินส่วนตัว — ก่อน schedule_task ("ทุกวันจันทร์ … เตือน" = เตือนผู้ใช้ ไม่ใช่งานประจำของเลขา) ◂
+  { re: /(?<!แจ้ง)เตือน|นัดส่วนตัว|นัดทำฟัน/, tool: "calendar_add" },
+  { re: /(วันนี้|พรุ่งนี้)ฉันมี|ปฏิทินของฉัน|ตารางของฉัน/, tool: "calendar_agenda" },
   // ความจำถาวร — ต้องมาก่อน schedule_task (ประโยค "จำไว้...ทุกวัน" มีคำ "ทุกวัน" ปน)
   { re: /จำไว้|จดจำ|จำว่า|จดไว้|จดว่า|ช่วยจำ/, tool: "remember_fact" },
   { re: /ลืม(ความจำ|เรื่อง)?ที่จำ|ลบความจำ/, tool: "forget_fact" },
