@@ -653,3 +653,10 @@
 - เหตุ: ต้องใช้ env/ฐาน QC ของ RUN อื่น (ระบบสิทธิ์ปฏิเสธการอ่าน env ของทรี svc/sec) · เจ้าของเลือกให้ session ของ SVC และ SEC รันเองหลัง session/hr เข้า main
 - ต้องเขียนใน HANDOVER-H4: รายชื่อไฟล์ที่ HR แก้และอาจกระทบสองกลุ่มนี้ — `src/lib/modules/booking/service.ts` (HR-PRIV-2: createStaff ปฏิเสธชื่อมีอักขระต้องห้าม · linkStaffToHr ล้างชื่อ; ข้อสอบ qc-svc-b.16 S-2 / qc-svc-d.10 S-2 แช่แข็งไฟล์นี้) · โค้ด LINE/แชทของ H4.5 (qc-svc-b.0…b.17 import) · `ai/secretary/digest` บรรทัด HR ของ H4.3 (qc-sec-s3a1-s2 · qc-sec-s1.11)
 - ใบแก้ก่อน production HR-PREPROD-1: ใบสั่ง + คำตัดสิน Q1–Q8 ที่ `wip/hr-preprod-1` 28699bda3 (เลน 4) · ผู้เขียนข้อสอบ a7ddd71638716ff4e กำลังทำ · ตารางหนี้ 21 แถว = รับข้อเสนอผู้เขียนเอกสารทั้งหมด (ยังต้องติ๊กในไฟล์ HR-DEBTS.md) · ค้างจัดงาน: ล่าบั๊ก H2.7-chain/H2.6 (อนุมัติลาหลายขั้น · ลารายชั่วโมงทับเต็มวัน)
+
+### 2026-11-14T16:40Z · H4.9 qc:all จบ — ผล `ledger/wo-notes/hr-H4-close-qcall.txt`
+- 491 ชุด: ผ่าน 366 · แดง 125 (a 49 · b 20 · e 49 · **c 5 · c0 2**) · qc-hr-* เขียวทุกชุด · svc/sec ไม่รันโดย HR (คำตัดสินเจ้าของ)
+- คำตัดสินผู้คุมต่อ class c: (1) ai-skills SK-4.2 ข้อความไทยใน skills.ts:198 → แก้โค้ดเป็นอังกฤษ (2) nav-functions S5 /hr/reports → ORACLE-EDIT เพิ่มแถว IN_PAGE_ENTRIES (5) pos-p6.2 D2 → เติม export ใน docs/sds/modules/pos.md (c0) qc-pages RG-1 → เพิ่ม 4 แถวใน pages/registry.ts · (3) pos-p3-skel ST1 (4) pos-p3.4 ST7 (c0) pos-p6.1/p6.2 Z1 = หมุดสถิตของ POS ชนกับไฟล์ HR → จัดชั้น a ไม่แก้ข้อสอบ POS (ตามแบบ SYNC 1) เขียนใน HANDOVER-H4 ให้เจ้าของ POS
+- e ที่ต้องจด: member 36 ชุด (เฉลย member-expected.json ไม่ตรงร้านทดสอบในฐานเลน) · crm-c2.7 CHANNEL_INVALID (แดงบนหัว H2 เหมือนกัน) · เลน 1 migrate-status: HrFilingProfile.rdFormFlag default 1 ในฐาน vs 2 ใน schema (migration hr_filings ถูกแก้ในที่หลังเลน 1 ลงแล้ว — QC4 ตรง · ต้องเช็กก่อน H5.3 ว่า prod ยังไม่เคยลง)
+- HF-SSO fix2 (e314704ad) merged เข้า session/hr ในเครื่อง · ใบแก้ H4.9-FIX1 (ข้อ 1,2,5,RG-1) เลน 3 · HR-PREPROD-1 ผู้สร้าง a7878aeefb74368f3 เลน 4
+- ทรีเลน 1, 2 ค้าง detached ที่ a4e2fb4ae (สาขา wip เดิมไม่ถูกแตะ)
