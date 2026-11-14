@@ -624,7 +624,7 @@ try {
     eq(g.flatMap((x) => (x.channels as string[]) ?? []).sort(), [...SELL_CHANNELS].sort(), "ช่องทางครบไม่ซ้ำ");
   });
   await st("PV-4", "ปุ่มเจ้าของบนรอบ GUARANTEED อนาคต: ปิดรับ/ถอนยืนยัน/ยกเลิก/ความจุ/ทรัพยากร/ราคา/หยุดขาย · ไม่มี ยืนยัน/ออกขาดทุน/รวม · ใบรายชื่อ/จองให้ลูกค้า false", () => {
-    eq(actOf(p14), { close: true, reopen: false, guarantee: false, unguarantee: true, run: false, merge: false, cancel: true, capacity: true, resources: true, price: true, stopSell: true, manifest: false, book: false }, "actions");
+    eq(actOf(p14), { close: true, reopen: false, guarantee: false, unguarantee: true, run: false, merge: false, cancel: true, capacity: true, resources: true, price: true, stopSell: true, manifest: true /* ORACLE-EDIT PV-4 (ผู้คุม 13 พ.ย. · T1.4a): ปุ่มใบรายชื่อเปิดใช้ */, book: false }, "actions");
     eq(p14.cancelBlocked, true, "cancelBlocked"); // ORACLE-EDIT (ผู้คุม 13 พ.ย.): seed ของ T0.6 ขายตรง 6 ที่ในราชา ส. 14 พ.ย. ⇒ มีผู้จอง ยกเลิกที่นี่ไม่ได้
   });
   await st("PV-5", "ไม่แต่งข้อมูลการจอง/เงิน: bookings = null · money = null (T1.3/T1.7)", () => {
@@ -644,11 +644,11 @@ try {
   });
   await st("PV-8", "รอบที่ผ่านแล้ว (พ. 11): state PAST · ไม่มีปุ่มทำรายการเลย", async () => {
     const v = await panelVM(SEED, { unitId: U0, departureId: did("racha", "2026-11-11") });
-    eq([asRec(v.departure)?.state, actOf(v)], ["PAST", allFalse], "ผ่านแล้ว");
+    eq([asRec(v.departure)?.state, actOf(v)], ["PAST", { ...allFalse, manifest: true }], "ผ่านแล้ว"); // ORACLE-EDIT PV-8 (T1.4a มติ M2): ใบรายชื่อยังเปิดได้หลังรอบออก
   });
   await st("PV-9", "รอบยกเลิก (ศ. 13): เหตุผล คลื่นลม · ไม่มีปุ่มทำรายการเลย", async () => {
     const v = await panelVM(SEED, { unitId: U0, departureId: did("racha", "2026-11-13") });
-    eq([asRec(v.departure)?.cancelReason, actOf(v)], [FX.TRIPS_SEED_CANCEL_REASON, allFalse], "ยกเลิก");
+    eq([asRec(v.departure)?.cancelReason, actOf(v)], [FX.TRIPS_SEED_CANCEL_REASON, { ...allFalse, manifest: true }], "ยกเลิก"); // ORACLE-EDIT PV-9 (T1.4a มติ M2)
   });
   await st("PV-10", "จ. 16 ราชา ต่ำกว่าขั้นต่ำ (:62): ออกขาดทุน/รวม/ยกเลิก · เป้ารวม = พีพี 16 + ดำน้ำลึก 16 (วันเดียวกัน · ไม่ใช่ตัวเอง)", async () => {
     const v = await panelVM(SEED, { unitId: U0, departureId: did("racha", "2026-11-16") });

@@ -176,12 +176,11 @@ export function DeparturePanel({ unitSlug, vm, base, q, resources, openDecide }:
       </p>
 
       <div data-testid="trips-dep-actions" className="grid grid-cols-2 gap-2.5">
-        <button type="button" data-testid="trips-dep-manifest" className={disabledSoon} disabled title={t("departures.actions.notYet")}>
-          <span className="flex flex-col leading-tight">
+        {a.manifest ? (
+          <Link data-testid="trips-dep-manifest" href={`${base}/${encodeURIComponent(d.departureId)}/manifest`} className={`${BTN} w-full`}>
             {t("departures.actions.manifest")}
-            <span className="text-sm text-[color:var(--color-muted)]">{t("departures.actions.notYet")}</span>
-          </span>
-        </button>
+          </Link>
+        ) : null}
         <button type="button" data-testid="trips-dep-book" className={disabledSoon} disabled title={t("departures.actions.notYet")}>
           <span className="flex flex-col leading-tight">
             {t("departures.actions.book")}

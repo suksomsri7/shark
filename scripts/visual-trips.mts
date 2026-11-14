@@ -48,7 +48,7 @@ type Action =
   | { reveal: string }
   | { pause: number };
 // TRIPS W1.1 ▸ public = หน้าสาธารณะ: ไม่ใส่คุกกี้ session (บริบทเบราว์เซอร์ใหม่) + ตั้งหัว x-forwarded-for (หน้าต้องรู้ IP) · expectStatus = รหัสสถานะที่ต้องได้ (ปริยาย: ต่ำกว่า 400) ◂
-type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "18" | "19" | "01"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number };
+type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print" };
 const PUBLIC_CLIENT_IP = "198.51.100.77";
 const BOOK_RACHA = "racha-yai-day-trip";
 // ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
@@ -134,6 +134,27 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
     },
     // คิวเอกสารเงินรอออก (seed ว่าง ⇒ ข้อความถาวร + สถานะว่าง)
     { name: "money-docs", mockup: "18", path: (i) => `/app/u/${i.unitSlug}/trips/bookings?view=docs` },
+  ],
+  // TRIPS T1.4 ▸ ใบรายชื่อรายวัน (ภาพ 12 ส่วนจอใหญ่) — ทุกฉาก 1440 + 390 · รอบราชา ส. 14 พ.ย. (racha1114) · ฉากพิมพ์ถ่ายด้วยสื่อ print (ไม่กดปุ่มพิมพ์ ⇒ ไม่เขียนฐาน) ◂
+  "t1.4": [
+    // มุมมองตามรถรับส่ง (seed ยังไม่จัดรถ ⇒ กลุ่มเดียว "ยังไม่จัดรถ / มาเอง")
+    { name: "manifest-pickup", mockup: "12", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/manifest`, actions: [{ waitFor: '[data-testid="trips-mf"]' }] },
+    // มุมมองตามการจอง + ขยายรายชื่อรายคนของการจองแรก
+    {
+      name: "manifest-booking",
+      mockup: "12",
+      path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/manifest?view=booking`,
+      actions: [{ waitFor: '[data-testid^="trips-mf-pax-toggle-"]' }, { click: { selector: '[data-testid^="trips-mf-pax-toggle-"]' } }, { waitFor: '[data-testid^="trips-mf-pax-"]:not([data-testid^="trips-mf-pax-toggle-"])' }, { pause: 300 }],
+    },
+    // ผังพิมพ์ของฉากแรก: สื่อ print (emulateMediaType) ถ่ายทั้งหน้า — ต้องเห็นเฉพาะใบรายชื่อ ไม่มีเปลือกแอป/แถบทัวร์/ปุ่ม
+    { name: "manifest-print", mockup: "12", media: "print", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/manifest`, actions: [{ waitFor: '[data-print-root="trips-manifest"]' }] },
+    // แผงรอบในปฏิทิน: ปุ่ม "ใบรายชื่อ" เป็นลิงก์จริง
+    {
+      name: "manifest-panel-link",
+      mockup: "12",
+      path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}&dep=${i.racha1114}`,
+      actions: [{ waitFor: 'a[data-testid="trips-dep-manifest"]' }],
+    },
   ],
 };
 
@@ -255,6 +276,7 @@ type Page = {
   evaluate<R, A>(f: (a: A) => R, a?: A): Promise<R>;
   waitForSelector(sel: string, o: object): Promise<unknown>;
   screenshot(o: object): Promise<unknown>;
+  emulateMediaType(type?: string): Promise<void>;
   close(): Promise<void>;
 };
 type Browser = { newPage(): Promise<Page>; close(): Promise<void>; createBrowserContext?(): Promise<{ newPage(): Promise<Page>; close(): Promise<void> }> };
@@ -329,6 +351,7 @@ try {
       else await page.setCookie(...cookies);
       const errors: string[] = [];
       page.on("pageerror", (e: never) => errors.push(String((e as Error).message).slice(0, 120)));
+      if (spec.media) await page.emulateMediaType(spec.media);
       const resp = await page.goto(`${BASE}${spec.path(ids)}`, { waitUntil: "networkidle2", timeout: 90_000 }).catch(() => null);
       await new Promise((r) => setTimeout(r, 1200));
       for (const a of spec.actions ?? []) {
@@ -339,7 +362,8 @@ try {
         }
       }
       if (!spec.actions?.length) await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
-      const overflow = await page.evaluate((vw: number) => document.documentElement.scrollWidth > vw + 2, dev.width).catch(() => false);
+      // T1.4a มติ M6: ผังพิมพ์เป็นตารางคอลัมน์ขนาดกระดาษ (~148 มม.) — เครื่องพิมพ์จัดหน้าตามความกว้างกระดาษ ไม่ใช่ความกว้างจอ ⇒ ไม่ตรวจล้นที่ 390 ของสื่อพิมพ์
+      const overflow = spec.media === "print" && dev.width < 600 ? false : await page.evaluate((vw: number) => document.documentElement.scrollWidth > vw + 2, dev.width).catch(() => false);
       const file = join(OUT, `${spec.name}-${dev.device}.png`);
       await page.screenshot({ path: file, fullPage: spec.fullPage !== false });
       shots.push(file);

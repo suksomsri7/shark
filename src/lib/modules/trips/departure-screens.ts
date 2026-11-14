@@ -710,7 +710,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
   }
   const actions: PanelActions =
     started || d.status === "CANCELLED"
-      ? NO_ACTIONS
+      ? { ...NO_ACTIONS, manifest: g.can("trips.passenger.view") }
       : {
           close: flags.canStatus && ["OPEN", "GUARANTEED", "FULL"].includes(d.status),
           reopen: flags.canStatus && d.status === "CLOSED",
@@ -723,7 +723,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
           resources: flags.canEdit,
           price: flags.canPrice,
           stopSell: flags.canEdit,
-          manifest: false,
+          manifest: g.can("trips.passenger.view"),
           book: false,
         };
 
