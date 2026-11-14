@@ -25,7 +25,7 @@ import * as FX from "./trips-fixture.mjs";
 const LABEL = "qc-trips-a1.3";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NO_REG = process.argv.includes("--no-regression");
-const BASE_SHA = "e60f54c89"; // ปลาย wip/trips-a1.3 ตอนเขียนข้อสอบ (= session/trips หลังรับ A1.2a)
+const BASE_SHA = "8a8c1a070"; // ORACLE-EDIT S-6 S-7 (ผู้คุม 14 พ.ย.): ฐาน = commit ใบสั่ง (ผู้คุมเพิ่มเส้น agency→trips ใน fitness.mts ใน commit นั้นเอง · มติ R2) · เดิม e60f54c89 // ปลาย wip/trips-a1.3 ตอนเขียนข้อสอบ (= session/trips หลังรับ A1.2a)
 const AGENCY_MIG = "20270201000200_agency";
 const ORACLE_FILE = "scripts/qc-trips-a1.3.mts";
 
@@ -1268,7 +1268,9 @@ try {
     needBuilt(); needDb(); await install();
     const got = R(await fnOf(R(AGV("agencyPricingPort")), "load", "agencyPricingPort")(agentCtx(acc("X").id), { agentAccountId: acc("X").id, productId: PRD.A.id, departureId: depMain, travelDate: DEP_DATE, at: NOW }));
     eq(sortedKeys(got), ["agentAccountId", "agentTierId", "contract", "policySnapshot", "terms", "tier", "vatRegistered"], "คีย์");
-    eq([...keysDeep(got)].filter((k) => NEVER_SHOW.includes(k) || /legalName|taxId|bank|contact|licence/i.test(k)), [], "คีย์เกิน");
+    // ORACLE-EDIT X-4 (ผู้คุม 14 พ.ย.): ไม่สแกนชื่อคีย์ค่าตั้งใน policySnapshot.values (เช่น agency.crm.customerContactRoute เป็น 1 ใน 24 คีย์ที่ใบสั่ง §8 บังคับ — ไม่ใช่ข้อมูลติดต่อ)
+    const scan = { ...got, policySnapshot: { ...R(got.policySnapshot), values: Object.values(R(R(got.policySnapshot).values)) } };
+    eq([...keysDeep(scan)].filter((k) => NEVER_SHOW.includes(k) || /legalName|taxId|bank|contact|licence/i.test(k)), [], "คีย์เกิน");
     eq([R(got.policySnapshot).domain, Object.keys(R(R(got.policySnapshot).values)).length], ["agency", 24], "policySnapshot");
     ok(!JSON.stringify(got).includes(QC_MARK), "มีชื่อเอเจนซี่ในผล");
   });

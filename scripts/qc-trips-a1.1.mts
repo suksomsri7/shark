@@ -1095,7 +1095,7 @@ try {
     ok(files.includes("entry.ts"), "ยังไม่มี entry.ts");
     const raw = files.filter((f) => /import\s*\{[^}]*\bprisma\b[^}]*\}\s*from\s+["']@\/lib\/core\/db["']/.test(read(`${AG_DIR}/${f}`)));
     eq(raw, ["entry.ts"], "ไฟล์ที่ import prisma");
-    const cross = files.filter((f) => /from\s+["']@\/lib\/modules\/(?!agency\b)/.test(stripComments(read(`${AG_DIR}/${f}`))));
+    const cross = files.filter((f) => /from\s+["']@\/lib\/modules\/(?!agency\b|trips["'])/.test(stripComments(read(`${AG_DIR}/${f}`)))); // ORACLE-EDIT S-5 (ผู้คุม 14 พ.ย. · A1.3a มติ R2): อนุญาต facade `@/lib/modules/trips` เท่านั้น (ไม่มี path ลึก)
     ok(cross.length === 0, `import ข้ามโมดูล: ${cross.join(", ")}`);
     const glob = files.filter((f) => f !== "entry.ts" && /\.(agentIdentity|agentUser|agentLogin|agentSession|agentLoginCode)\b/.test(stripComments(read(`${AG_DIR}/${f}`))));
     ok(glob.length === 0, `แตะตาราง global นอก entry.ts: ${glob.join(", ")}`);
