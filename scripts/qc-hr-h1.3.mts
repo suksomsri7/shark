@@ -280,10 +280,10 @@ const CHECKS: readonly Def[] = [
   D("S6.5", "R7", "MAJOR", "GREEN", "[static] [control] git diff --name-only vs base (+ untracked) ⊆ migration · prisma/schema · seed-law script · core/scope.ts · hr-qc-env · fitness-hr · seed-hr-qc · hr-expected · this oracle · ledger/** (no page / route / action / message key)"),
   D("S6.6", "R7", "MAJOR", "GREEN", "[static] [control] outbox: consumer event keys = base · no added emitOutbox( line under src/ vs base"),
   // S7 seed / expected (R9 — read-only on qc-hr-v2)
-  D("S7.1", "R9", "MAJOR", "RED", "[db read] hr-expected.json has \"HrPayrollRun.engineVersion\": 1 and \"HrLawTable.v1\": 4 · the seeded qc-hr-v2 paid run has engineVersion 1"),
+  D("S7.1", "R9", "MAJOR", "RED", "[db read] hr-expected.json has \"HrPayrollRun.engineVersion\": 1 and \"HrLawTable.v1\": 10 (HF-SSO ORACLE-EDIT: was 4) · the seeded qc-hr-v2 paid run has engineVersion 1"),
   D("S7.2", "R9", "MAJOR", "GREEN", "[db read] [control] qc-hr-v2 live counts HrPayAdjustment 5 · HrPayrollItem 11 · HrPayrollRun 1 = hr-expected.json"),
   D("S7.3", "R9", "MAJOR", "RED", "[static+db read] seed-hr-qc.mts writes no HrWorkEntry/HrReviewNote/HrOnboardingTask/HrLawTable row · qc-hr-v2 has 0 rows in the 3 tenant tables (seed ×2 itself = builder evidence, not run here)"),
-  D("S7.4", "R9", "MAJOR", "RED", "[db read] QC4 has exactly the 4 `v1:*` law rows (SSO · TAX_BRACKET · DEDUCTION · OT), all DRAFT · no ACTIVE row anywhere in HrLawTable"),
+  D("S7.4", "R9", "MAJOR", "RED", "[db read] QC4 has exactly the 10 `v1:*` law rows (SSO ×4 · TAX_BRACKET · DEDUCTION ×4 · OT — HF-SSO ORACLE-EDIT: was 4), all DRAFT · no ACTIVE row anywhere in HrLawTable"),
   D("S7.5", "R8", "MAJOR", "RED", "[static+db] HR_DELETE_ORDER lists hrWorkEntry · hrReviewNote · hrOnboardingTask before hrEmployee and not hrLawTable · deleting them for our main tenant leaves 0 rows"),
   // X
   D("X1.1", "X1", "MAJOR", "RED", "[run+db] seed script --apply ×3 on a fresh prefix ⇒ 10 rows · runs 2–3 `created 0 · unchanged 10` (HF-SSO ORACLE-EDIT: was 4)"),
