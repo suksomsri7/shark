@@ -1,0 +1,173 @@
+# HR-MONEY-2 green — 2026-11-14T09:39:52Z · lane ep-nameless-sea via scripts/qc-hr.sh + with-gate-lock · code as committed
+
+seed-hr-qc exit=0 | ===== seed-hr-qc ===== ผ่าน 34/34
+money2-forced-1 exit=0 | ===== qc-hr-money-2 ===== passed 49/49 (QC_FORCE)
+money2-forced-2 exit=0 | ===== qc-hr-money-2 ===== passed 49/49 (QC_FORCE)
+money2-forced-3 exit=0 | ===== qc-hr-money-2 ===== passed 49/49 (QC_FORCE)
+money2-unforced exit=0 | ===== qc-hr-money-2 ===== passed 49/49
+qc-payroll exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-payroll-reverse exit=0 | ✅ PASS — 14/14
+qc-hr-payadjust exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-hr-h0.6 exit=0 | ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE)
+qc-hr-h1.1 exit=0 | ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h1.3 exit=0 | ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE)
+qc-hr-h2.4 exit=0 | ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+qc-hr-h2.7 exit=0 | ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+qc-hr-h3.1 exit=0 | ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE)
+qc-hr-h3.2 exit=0 | ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE)
+qc-hr-h3.4 exit=0 | ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h3.4-ytd exit=0 | ===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+qc-hr-h3.5 exit=0 | ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE)
+qc-hr-h3.6 exit=0 | ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE)
+qc-hr-h3.7 exit=0 | ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+qc-hr-h3.8 exit=0 | ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-h3.9 exit=0 | ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-h4.2 exit=0 | ===== qc-hr-h4.2 ===== passed 57/57
+qc-hr-h4.3 exit=0 | ===== qc-hr-h4.3 ===== passed 45/45
+qc-hr-h4.6 exit=0 | ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE)
+qc-hr-h4.8 exit=0 | ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+qc-hr-set-1 exit=0 | ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-account-cpa exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-audit-trail exit=0 | ✅ PASS — 21/21
+qc-hf-hr-privacy exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+typecheck exit=0 · 431 s clean (rm .next/types tsconfig.tsbuildinfo)
+
+## qc-hr-money-2 forced run 1 (full)
+  ✅ [MONEY-2-ST1] payroll-rules.ts byte-frozen (sha)
+  ✅ [MONEY-2-ST2] frozen files unchanged vs base (payroll-run-rules · payroll-journal-rules · labor-rules · judge · work-entries(-rules) · correction(-rules) · ai.ts · account module · prisma)
+  ✅ [MONEY-2-ST3] payroll.ts · labor.ts · leave.ts · service.ts change only by hunks whose added lines carry "HR MONEY-2"
+  ✅ [MONEY-2-ST4] item flag REFUND_HELD labelled in th + en (hr payroll flags fl_REFUND_HELD)
+  ✅ [MONEY-2-ST5] R5 refusal text comes from CORRECTION_TEXT.paid (leave.ts or service.ts references CORRECTION_TEXT.paid — no copy)
+[env] qc-hr-money-2 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-money-2] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-money-2] base=60659e7c0 · tenant cmwg6d91800001ekz4006kaf1
+  ✅ [MONEY-2-Z0] own law rows: none present before · 3 inserted
+  ✅ [MONEY-2-R1.1] [db] reverse the deduction run (v2, no later run) ⇒ ok · pending refund REJECTED + unbound in the same tx · audit hr.payadjust.refund_void {code DEDUCTION_REVERSED, claimId}
+  ✅ [MONEY-2-R1.2] [db] re-create + approve the deduction run ⇒ claim deducted again (DEDUCTION:-150000) · Sep = BASE:2000000 only, gross 2,000,000 · refund stays REJECTED (nothing restored)
+  ✅ [MONEY-2-R1.3] [db] legacy (pre-fix reversal left refund APPROVED): cancelAdjustment(claim) ⇒ ok · claim gone · refund REJECTED · audit refund_void {code CLAIM_CANCELLED}
+  ✅ [MONEY-2-R1.4] [db] build backstop: refund whose claim is not bound to a live APPROVED/PAID run ⇒ Sep draft has no REFUND line (BASE only) · refund APPROVED unbound · item flag REFUND_HELD
+  ✅ [MONEY-2-R1.5] [db] approve backstop: claim loses its run while the refund is bound to the Sep DRAFT ⇒ approve code INPUTS_CHANGED · Sep stays DRAFT
+  ✅ [MONEY-2-R1.0] [db] control: give-back accepted · Sep draft (before any reversal) carries REFUND:+50,000 for the claim's employee
+  ✅ [MONEY-2-R1.6] [db] reverse while the refund is bound to a later DRAFT ⇒ code REFUND_BOUND + fixed text · deduction run unchanged · refund APPROVED bound to the draft
+  ✅ [MONEY-2-R1.7] [db] after deleting that draft: reverse ok · refund REJECTED unbound
+  ✅ [MONEY-2-R1.8] [db] refund already paid in an APPROVED later run ⇒ reverse refused LATER_RUN (today's rule for dependent paid items) · nothing changed
+  ✅ [MONEY-2-R1.9] [db] race A (refund row locked): create Sep ∥ reverse Aug — both wait · create binds REFUND:+50000 · reverse REFUND_BOUND · Aug APPROVED
+  ✅ [MONEY-2-R1.10] [db] race B (refund row locked): reverse Aug ∥ create Sep — both wait · reverse ok · refund REJECTED · Sep BASE only
+  ✅ [MONEY-2-R3.0] [db] control: eM has 3 judged work days in Aug with equal workMin > 0
+  ✅ [MONEY-2-R2.0] [db] control: Aug accrual journal (hand) Dr 6000 6,800,000 · Dr 6010 262,500 · Dr 4900 40,000
+  ✅ [MONEY-2-R2.1] [db] owner laborMonth Aug all units = ACTUAL 7,062,500 (wage cost before recoveries, refunds excluded, + employer SSO)
+  ✅ [MONEY-2-R2.2] [db] ACTUAL = accrual Dr 6000 + Dr 6010 of the same run, to the satang
+  ✅ [MONEY-2-R2.3] [db] hr_labor_percent (owner, month) costSatang 7,062,500 basis ACTUAL (same reader)
+  ✅ [MONEY-2-R3.1] [db] owner u1 = 2,058,334 (eM 2 of 3 days at u1 + remainder satang to home u1)
+  ✅ [MONEY-2-R3.2] [db] owner u2 = 5,004,166 · u1 + u2 = all units 7,062,500
+  ✅ [MONEY-2-R2.5] [db] limited viewer [u2] month u2: cost 3,975,000 (home-u2 staff only) · excludedHeadcount 1 · partial
+  ✅ [MONEY-2-R3.3] [db] limited viewer [u1] month u1 = 2,058,334 · excludedHeadcount 0
+  ✅ [MONEY-2-R3.4] [db] (ORACLE-EDIT controller Q1) home u3 with NO minutes · 1 day u1 + 2 days u2 ⇒ remainder to the unit with most minutes: u1 1,029,166 · u2 2,058,334 · u3 0 · all 3,087,500
+  ✅ [MONEY-2-R2.6] [db] doubling: outsider eM's Aug item ×2 ⇒ limited [u2] laborMonth u2 byte-identical (canon)
+  ✅ [MONEY-2-R2.7] [db] doubling positive control: owner u1 4,116,667 · u2 6,033,333
+  ✅ [MONEY-2-R2.4] [db] v1 run (base 15,000 · claim 5,000) ACTUAL = 1,575,000 (earnings 1,500,000 + SSO er 75,000) · v1 approve ok
+  ✅ [MONEY-2-R1.11] [db] v1 path: reverse a v1 run whose claim has a pending refund ⇒ ok · refund REJECTED · audit refund_void {code DEDUCTION_REVERSED}
+  ✅ [MONEY-2-R4.1] [db] v2 run totalling exactly 2,147,483,647 is created (boundary accepted)
+  ✅ [MONEY-2-R4.2] [db] v2 recompute that would total 2,147,483,648 ⇒ refused with the fixed text · draft unchanged (totals · digest)
+  ✅ [MONEY-2-R4.3] [db] v2 create over the boundary ⇒ {ok:false, code RUN_LIMIT, reason text} · 0 live runs · 0 items
+  ✅ [MONEY-2-R4.4] [db] v1 run totalling exactly 2,147,483,647 is created
+  ✅ [MONEY-2-R4.5] [db] v1 create over the boundary ⇒ PayrollInputError(text) · 0 runs written
+  ✅ [MONEY-2-R4.6] [db] (ORACLE-EDIT controller Q3) run totals fit int4 but the accrual salary line Σ(gross + recoveries) = 2,200,000,000 does not ⇒ create refused RUN_LIMIT + text · 0 live runs
+  ✅ [MONEY-2-R5.1] [db] approve an UNPAID leave in a month with an APPROVED run ⇒ refused with CORRECTION_TEXT.paid · stays PENDING
+  ✅ [MONEY-2-R5.2] [db] approve a PAID leave in the same month ⇒ ok APPROVED
+  ✅ [MONEY-2-R5.3] [db] approve an UNPAID leave in a month without a run ⇒ ok APPROVED
+  ✅ [MONEY-2-R5.4] [db] owner's own UNPAID leave created-as-approved in the APPROVED month ⇒ refused with CORRECTION_TEXT.paid · no row
+  ✅ [MONEY-2-R5.5] [db] control: same owner leave in September ⇒ created APPROVED
+  ✅ [MONEY-2-R5.6] [db] (ORACLE-EDIT controller Q2) withdraw (decideLeave APPROVED→REJECTED) an approved UNPAID leave in the APPROVED month ⇒ HrLeaveDecisionError(CORRECTION_TEXT.paid) · stays APPROVED
+  ✅ [MONEY-2-R5.7] [db] (ORACLE-EDIT controller Q2) owner cancels own approved UNPAID leave (cancelLeave) in the APPROVED month ⇒ {ok:false, reason CORRECTION_TEXT.paid} · stays APPROVED
+  ✅ [MONEY-2-R5.8] [db] (ORACLE-EDIT controller Q2) control: withdraw an approved PAID leave in the same month ⇒ ok REJECTED
+  ✅ [MONEY-2-R5.9] [db] (ORACLE-EDIT controller Q4) approval chain applyLeaveDecision(approved) of an UNPAID leave in the APPROVED month ⇒ {applied:false, code PAID} · leave CANCELLED · audit hr.leave.apply_refused {code PAID}
+  ✅ [MONEY-2-R5.10] [db] (ORACLE-EDIT controller Q4) control: same chain apply for a September leave ⇒ applied · APPROVED
+  ✅ [MONEY-2-Z2] no deadlock during the races (pg_stat_database.deadlocks unchanged)
+RESIDUE none (tenants=1 users=4 activeLaw=0->0)
+  ✅ [MONEY-2-Z1] no residue (tenant · users · own law rows · ACTIVE count)
+BASE-EXPECTATION 18/49 as registered (RED-by-design 31 · GREEN controls 18) · off: MONEY-2-ST4(RED→pass) MONEY-2-ST5(RED→pass) MONEY-2-R1.1(RED→pass) MONEY-2-R1.2(RED→pass) MONEY-2-R1.3(RED→pass) MONEY-2-R1.4(RED→pass) MONEY-2-R1.5(RED→pass) MONEY-2-R1.6(RED→pass) MONEY-2-R1.7(RED→pass) MONEY-2-R1.9(RED→pass) MONEY-2-R1.10(RED→pass) MONEY-2-R2.1(RED→pass) MONEY-2-R2.2(RED→pass) MONEY-2-R2.3(RED→pass) MONEY-2-R3.1(RED→pass) MONEY-2-R3.2(RED→pass) MONEY-2-R2.5(RED→pass) MONEY-2-R3.3(RED→pass) MONEY-2-R3.4(RED→pass) MONEY-2-R2.7(RED→pass) MONEY-2-R2.4(RED→pass) MONEY-2-R1.11(RED→pass) MONEY-2-R4.2(RED→pass) MONEY-2-R4.3(RED→pass) MONEY-2-R4.5(RED→pass) MONEY-2-R4.6(RED→pass) MONEY-2-R5.1(RED→pass) MONEY-2-R5.4(RED→pass) MONEY-2-R5.6(RED→pass) MONEY-2-R5.7(RED→pass) MONEY-2-R5.9(RED→pass)
+===== qc-hr-money-2 ===== passed 49/49 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-money-2","total":49,"passed":49,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":31,"baseGreen":18,"offBase":["MONEY-2-ST4(RED→pass)","MONEY-2-ST5(RED→pass)","MONEY-2-R1.1(RED→pass)","MONEY-2-R1.2(RED→pass)","MONEY-2-R1.3(RED→pass)","MONEY-2-R1.4(RED→pass)","MONEY-2-R1.5(RED→pass)","MONEY-2-R1.6(RED→pass)","MONEY-2-R1.7(RED→pass)","MONEY-2-R1.9(RED→pass)","MONEY-2-R1.10(RED→pass)","MONEY-2-R2.1(RED→pass)","MONEY-2-R2.2(RED→pass)","MONEY-2-R2.3(RED→pass)","MONEY-2-R3.1(RED→pass)","MONEY-2-R3.2(RED→pass)","MONEY-2-R2.5(RED→pass)","MONEY-2-R3.3(RED→pass)","MONEY-2-R3.4(RED→pass)","MONEY-2-R2.7(RED→pass)","MONEY-2-R2.4(RED→pass)","MONEY-2-R1.11(RED→pass)","MONEY-2-R4.2(RED→pass)","MONEY-2-R4.3(RED→pass)","MONEY-2-R4.5(RED→pass)","MONEY-2-R4.6(RED→pass)","MONEY-2-R5.1(RED→pass)","MONEY-2-R5.4(RED→pass)","MONEY-2-R5.6(RED→pass)","MONEY-2-R5.7(RED→pass)","MONEY-2-R5.9(RED→pass)"]}
+
+# fix round 1 — 2026-11-14T10:52:52Z · tip 150877997 (oracle 28dfffbe7, 56 checks)
+seed-hr-qc exit=0 | ===== seed-hr-qc ===== ผ่าน 34/34
+money2-forced-1 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE)
+money2-forced-2 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE)
+money2-forced-3 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE)
+money2-unforced exit=0 | ===== qc-hr-money-2 ===== passed 56/56
+qc-payroll exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-payroll-reverse exit=0 | ✅ PASS — 14/14
+qc-hr-payadjust exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-hr-h0.6 exit=0 | ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE)
+qc-hr-h1.1 exit=0 | ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h1.3 exit=0 | ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE)
+qc-hr-h2.4 exit=0 | ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+qc-hr-h2.7 exit=0 | ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+qc-hr-h3.1 exit=0 | ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE)
+qc-hr-h3.2 exit=0 | ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE)
+qc-hr-h3.4 exit=0 | ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h3.4-ytd exit=0 | ===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+qc-hr-h3.5 exit=0 | ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE)
+qc-hr-h3.6 exit=0 | ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE)
+qc-hr-h3.7 exit=0 | ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+qc-hr-h3.8 exit=0 | ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-h3.9 exit=0 | ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-h4.2 exit=0 | ===== qc-hr-h4.2 ===== passed 57/57
+qc-hr-h4.3 exit=0 | ===== qc-hr-h4.3 ===== passed 45/45
+qc-hr-h4.6 exit=0 | ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE)
+qc-hr-h4.8 exit=0 | ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+qc-hr-set-1 exit=0 | ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-account-cpa exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-audit-trail exit=0 | ✅ PASS — 21/21
+qc-hf-hr-privacy exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+typecheck exit=0 · 420 s clean
+
+# post-merge — 2026-11-14T11:15:03Z · head 5016f64b7 = merge of session/hr 6ebaab7ad (money-2 base = merge-base 6ebaab7ad) · lane law DRAFT rows applied first (hr-seed-law-draft --apply, as pm-full.sh: created 6)
+law-draft exit=0 |  created 6 · u
+seed-hr-qc exit=0 | ===== seed-hr-qc ===== ผ่าน 34/34 
+money2-forced-1 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE) 
+money2-forced-2 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE) 
+money2-forced-3 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE) 
+money2-unforced exit=0 | ===== qc-hr-money-2 ===== passed 56/56 
+qc-hr-hf-sso exit=0 | ===== qc-hr-hf-sso ===== passed 41/41 (QC_FORCE) 
+qc-hr-h1.3 exit=0 | ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) created 0 · u
+qc-hr-h3.7 exit=0 | ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) 
+qc-hr-h4.3 exit=0 | ===== qc-hr-h4.3 ===== passed 45/45 
+qc-hr-h3.2 exit=0 | ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) created 0 · same ids · 5 rows
+qc-hr-h3.4 exit=0 | ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) 
+qc-hr-h3.6 exit=0 | ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) 
+qc-hr-h3.9 exit=0 | ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) 
+fitness-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0 
+fitness-hr-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0 
+fitness-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+# R7 + D1/D2 — 2026-11-14T11:56:20Z · on merged head (session/hr da4cf43a9 in)
+money2-forced-1 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE)
+qc-hr-h1.3 exit=0 | ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE)
+qc-hr-h2.4 exit=0 | ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+qc-hr-h3.3 exit=0 | ===== qc-hr-h3.3 ===== passed 51/51 (QC_FORCE)
+qc-hr-h3.4 exit=0 | ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h3.4-ytd exit=0 | ===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+qc-hr-h3.6 exit=0 | ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE)
+qc-hr-h3.7 exit=0 | ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+qc-hr-h3.8 exit=0 | ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-h4.3 exit=0 | ===== qc-hr-h4.3 ===== passed 45/45
+qc-hr-h4.5 exit=0 | ===== qc-hr-h4.5 ===== passed 90/90 (QC_FORCE)
+qc-hr-h4.8 exit=0 | ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+qc-hr exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-hr-leave-booking exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+typecheck exit=0 · 408 s clean (covers the session/hr merges)

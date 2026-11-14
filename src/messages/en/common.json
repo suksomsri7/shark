@@ -1279,6 +1279,7 @@
       "fl_CAP_NEEDS_CONSENT": "No written consent",
       "fl_CARRY_FORWARD": "Carried to next period",
       "fl_RECEIVABLE": "Employee receivable",
+      "fl_REFUND_HELD": "Refund held (its deduction no longer stands)",
       "review": "{n} items to review",
       "reviewNone": "Nothing to review",
       "wholePeriod": "whole period",

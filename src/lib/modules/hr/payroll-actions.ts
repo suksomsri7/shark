@@ -196,6 +196,7 @@ export async function approvePayrollRunAction(formData: FormData): Promise<{ ok:
     if (res.ok) return { ok: true };
     if (res.code === "WORK_ENTRIES") return { ok: false, reason: res.note }; // HR H3.1 ▸ ข้อความคงที่ WE_TEXT.approveBlocked ของ service ◂
     if (String(res.code ?? "").startsWith("ATTENDANCE_")) return { ok: false, reason: res.note }; // HR H3.2 ◂ ข้อความคงที่ของด่านหักสาย/ขาด (ATT_TEXT)
+    if (res.code === "RECOMPUTE") return { ok: false, reason: res.note }; // HR HF-SSO ▸ ข้อความคงที่ APPROVE_RECOMPUTE ของ service ◂
     const reason =
       res.code === "STALE"
         ? APPROVE_STALE_TH

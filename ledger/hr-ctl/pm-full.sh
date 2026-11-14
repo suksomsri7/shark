@@ -11,6 +11,8 @@ sum() { local s; s=$(grep -aE "^JSON_SUMMARY" "$2" | tail -1 | cut -c1-140); ech
 Q="bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh"
 bash scripts/iso.sh pnpm exec prisma generate > "$LOG/generate.log" 2>&1; echo "prisma generate exit=$? [$(date -u +%H:%MZ)]" >> "$OUT"
 if [ "${MIGRATE:-0}" = 1 ]; then $Q pnpm exec prisma migrate deploy > "$LOG/migrate.log" 2>&1; echo "migrate deploy exit=$? $(grep -aE 'migrations? (have been|found)|No pending' "$LOG/migrate.log" | tail -1) [$(date -u +%H:%MZ)]" >> "$OUT"; fi
+# law DRAFT rows (HF-SSO: 10 rows) — seed-hr-qc only counts them, so apply (idempotent, DRAFT only) before the seed
+$Q pnpm exec tsx scripts/hr-seed-law-draft.mts --apply > "$LOG/law-draft.log" 2>&1; echo "law-draft apply exit=$? $(grep -aE 'created [0-9]+' "$LOG/law-draft.log" | tail -1 | cut -c1-80) [$(date -u +%H:%MZ)]" >> "$OUT"
 mapfile -t ORACLES < <(ls scripts/qc-hr-h[0-9]*.mts scripts/qc-hr-set-*.mts 2>/dev/null | grep -v -- '-lib' | xargs -n1 basename | sed 's/\.mts$//' | sort -V)
 declare -A SEEN
 for s in seed-hr-qc "qc-hr-$WO" "${ORACLES[@]}" qc-payroll qc-payroll-reverse qc-hr-payadjust qc-audit-trail qc-bulk-ops qc-hf-hr-privacy qc-hr qc-hr-attendance qc-hr-roster ${EXTRA:-}; do

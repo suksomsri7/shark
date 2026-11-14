@@ -127,9 +127,11 @@ const MONTHLY_FIXTURE = {
   ],
 } as const;
 /** frozen on 9c5aa1ea (first forced run of this oracle) — payrollItemsDigest with employeeId := code */
-const FROZEN_DIGEST = "72166a3e2a2ebb6a37405a105f7db540b946fda05fe020639bbe79a60b87e5c8";
+// ORACLE-EDIT (HF-SSO-2569 · controller ruling): MONTHLY fixture period 2030-05 ⇒ SSO ceiling 20,000 · M03 52,000 SSO 750 → 1,000 · WHT 916.67 → 891.67 (net income 335,000 → 332,000 · allowance cap 2030 12,000) ⇒ digest 72166a3e… → f7966f99… · totals 10725000:195000:195000:100000:10430000:475000:100000 → 10725000:220000:220000:97500:10407500:475000:100000
+const FROZEN_DIGEST = "f7966f99b8b7384abccce4deabd596e3aee79467580346bf1c51feda7a2f0d3d";
 /** frozen 7 totals gross·ssoEmployee·ssoEmployer·wht·net·add·deduct + flags per code */
-const FROZEN_TOTALS = "10725000:195000:195000:100000:10430000:475000:100000";
+// ORACLE-EDIT (HF-SSO-2569 · controller ruling): MONTHLY fixture period 2030-05 ⇒ SSO ceiling 20,000 · M03 52,000 SSO 750 → 1,000 · WHT 916.67 → 891.67 (net income 335,000 → 332,000 · allowance cap 2030 12,000) ⇒ digest 72166a3e… → f7966f99… · totals 10725000:195000:195000:100000:10430000:475000:100000 → 10725000:220000:220000:97500:10407500:475000:100000
+const FROZEN_TOTALS = "10725000:220000:220000:97500:10407500:475000:100000";
 const FROZEN_FLAGS = "M01=-,M02=-,M03=-,M04=PARTIAL_MONTH";
 
 // ═════════════════════════ registry (id · group · severity · base expectation · title) ═════════════════════════

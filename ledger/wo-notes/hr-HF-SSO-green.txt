@@ -1,0 +1,79 @@
+# HF-SSO-2569 green run — review round · tree shark-hr-l3 · wip/hr-hf-sso after merge of session/hr dace682c8 · lane DB ep-ancient-truth (H4.5 migration applied by controller) · 2026-11-14T07:35:42Z
+# law rows applied (created 6 · unchanged 4) · seed-hr-qc 34/34 · hr-expected.json HrLawTable.v1 10 · ssoEmployee 789900
+
+## r5 full run (final for every suite not re-run below)
+fitness-hr.env.txt: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+fitness-hr.noenv.txt: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+fitness.env.txt: JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness.noenv.txt: JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+qc-account-cpa.1.txt: JSON_SUMMARY {"total":107,"passed":107,"findings":[]}
+qc-ai-proposals.1.txt: JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+qc-ai-tools.1.txt: JSON_SUMMARY {"total":18,"passed":18,"findings":[]}
+qc-audit-trail.1.txt: ✅ PASS — 21/21
+qc-hf-hr-privacy.1.txt: JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+qc-hr-h0.1.1.txt: JSON_SUMMARY {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null}
+qc-hr-h0.2.1.txt: JSON_SUMMARY {"suite":"qc-hr-h0.2","total":58,"passed":58,"failed":[],"skipped":false,"forced":true,"missing":[],"crashed":null}
+qc-hr-h0.3.1.txt: JSON_SUMMARY {"suite":"qc-hr-h0.3","total":37,"passed":37,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
+qc-hr-h0.5.1.txt: JSON_SUMMARY {"suite":"qc-hr-h0.5","total":71,"passed":67,"failed":["H0.5-S6.2","H0.5-S6.4","H0.5-S6.5","H0.5-S6.7"],"findings":[{"id":"H0.5-S6.2","se
+qc-hr-h0.6.1.txt: JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null,"groupCr
+qc-hr-h0.7.1.txt: JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
+qc-hr-h1.1.1.txt: JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h1.2.1.txt: JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h1.3.1.txt: JSON_SUMMARY {"suite":"qc-hr-h1.3","total":63,"passed":63,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"groupCrashes":[],"m
+qc-hr-h2.1.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.1","total":90,"passed":90,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h2.10.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.10","total":57,"passed":57,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseR
+qc-hr-h2.11.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.11","total":70,"passed":70,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseR
+qc-hr-h2.2.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.2","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h2.3.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.3","total":79,"passed":79,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h2.4.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.4","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h2.5.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.5","total":79,"passed":79,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h2.6.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.6","total":56,"passed":56,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h2.7.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.7","total":94,"passed":94,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h2.9.1.txt: JSON_SUMMARY {"suite":"qc-hr-h2.9","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h3.1.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.1","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h3.2.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.2","total":64,"passed":64,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h3.3.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.3","total":51,"passed":51,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h3.4-ytd.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.4-ytd","total":44,"passed":17,"failed":["H3.4Y-S3.0","H3.4Y-S3.1","H3.4Y-S3.2","H3.4Y-S3.3","H3.4Y-S3.4","H3.4Y-S3.5",
+qc-hr-h3.4.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.4","total":85,"passed":29,"failed":["H3.4-Z1","H3.4-S4.1","H3.4-S4.2","H3.4-S4.3","H3.4-S4.4","H3.4-S4.5","H3.4-S4.6",
+qc-hr-h3.5.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.5","total":53,"passed":53,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h3.6.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.6","total":62,"passed":62,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h3.7.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.7","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h3.8.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.8","total":78,"passed":78,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h3.9.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h4.1.1.txt: JSON_SUMMARY {"suite":"qc-hr-h4.1","total":47,"passed":47,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h4.2.1.txt: JSON_SUMMARY {"suite":"qc-hr-h4.2","total":57,"passed":57,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseR
+qc-hr-h4.3.1.txt: JSON_SUMMARY {"suite":"qc-hr-h4.3","total":45,"passed":43,"failed":["H43-S1.6","H43-S1.7"],"findings":[{"id":"H43-S1.6","sev":"CRITICAL"},{"id":"H43-S
+qc-hr-h4.4.1.txt: JSON_SUMMARY {"suite":"qc-hr-h4.4","total":86,"passed":86,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h4.5.1.txt: JSON_SUMMARY {"suite":"qc-hr-h4.5","total":90,"passed":90,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-h4.6.1.txt: JSON_SUMMARY {"suite":"qc-hr-h4.6","total":69,"passed":69,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+qc-hr-hf-sso.1.txt: JSON_SUMMARY {"suite":"qc-hr-hf-sso","total":41,"passed":41,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"base
+qc-hr-hf-sso.2.txt: JSON_SUMMARY {"suite":"qc-hr-hf-sso","total":41,"passed":41,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"base
+qc-hr-hf-sso.3.txt: JSON_SUMMARY {"suite":"qc-hr-hf-sso","total":41,"passed":41,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"base
+qc-hr-hf-sso.unforced.txt: JSON_SUMMARY {"suite":"qc-hr-hf-sso","total":41,"passed":41,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"bas
+qc-hr-payadjust.1.txt: JSON_SUMMARY {"total":27,"passed":27,"findings":[]}
+qc-hr-set-1.1.txt: JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseR
+qc-payroll-reverse.1.txt: ✅ PASS — 14/14
+qc-payroll.1.txt: JSON_SUMMARY {"total":19,"passed":19,"findings":[]}
+
+## r6/r7 re-runs (after the h4.3 static ORACLE-EDIT and the cleanup of the r5 h3.4 crash residue)
+r6/qc-hr-h3.4-ytd.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.4-ytd","total":44,"passed":44,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"ba
+r6/qc-hr-h3.4.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.4","total":85,"passed":85,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+r6/qc-hr-h4.3.1.txt: JSON_SUMMARY {"suite":"qc-hr-h4.3","total":45,"passed":45,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseR
+r7/qc-hr-h3.6.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.6","total":62,"passed":62,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+r7/qc-hr-h3.9.1.txt: JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+r7/qc-hr-h4.2.1.txt: JSON_SUMMARY {"suite":"qc-hr-h4.2","total":57,"passed":57,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseR
+r7/qc-hr-h4.5.1.txt: JSON_SUMMARY {"suite":"qc-hr-h4.5","total":90,"passed":90,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRe
+
+## not green (outside this ticket)
+  ❌ [H0.5-S6.2] [backfill] dry-run exit 0 · JSON_SUMMARY ของร้าน = plain 4 · duplicates 2 · hashed 1 · toUpdate 2 (inactive 1) · changed 0 — expected exit 0 · plain 4 · duplicates 2 · hashed 1 · toUpdate 2 · toUpdateInactive 1 · ch
+  ❌ [H0.5-S6.4] [backfill] --apply exit 0 · changed 4 · ตัวเดี่ยว+พ้นสภาพ = hash ตามสูตร pinCode null · ซ้ำ = pinCode null pinHash null · แถว hash เดิมไม่เปลี่ยน · ไ
+  ❌ [H0.5-S6.5] [backfill] audit hr.pin.backfill ของร้านนั้นพร้อมตัวเลข · ไม่มี PIN/hash — expected ≥1 แถว · มีตัวเลข · ไม่มี PIN/hash | actual rows=0 numbers=false 
+  ❌ [H0.5-S6.7] [backfill] output ทั้ง 3 รอบไม่มี PIN ของ fixture · hash · pepper · ชื่อเต็ม · dry-run ระบุ id ของแถวซ้ำ — expected 0 PIN · 0 hash · ไม่มี pepper · 0 �
+cause: qc-hr-h0.5.mts:595 spawns the backfill through scripts/qc4.sh (QC4 host) while the fixture lives on this lane DB ⇒ the child sees 0 rows; no file of this ticket involved
+
+## typecheck (clean, gate lock) on the merged head: tsc --noEmit exit 0 · 461 s
+
+## r5 h3.4 / h3.4-ytd crash (not reproduced)
+r5 h3.4 crashed at the fixture law activation with 23505 on HrLawTable (partial unique kind+effectiveFrom ACTIVE; its log shows 4 ACTIVE law rows before the run),
+left its own 4 ACTIVE `qc-h34-afbvlfqggie-*` rows + 3 tenants + 17 users (cleanup DELETE did not run through), and h3.4-ytd then crashed on those rows.
+I removed exactly that run's residue (tag afbvlfqggie: 4 law rows · 3 tenants via the suite's own tenantId-table sweep · 17 users) and re-ran: h3.4 85/85 · h3.4-ytd 44/44 (r6).

@@ -110,8 +110,9 @@ try {
   chk("RN-2", "แยกยอดเพิ่ม/หักไว้ในรายการ (3,125 / 500)",
     item?.addSatang === 312_500 && item?.deductSatang === 50_000, "312500/50000",
     JSON.stringify({ add: item?.addSatang, deduct: item?.deductSatang }));
-  chk("RN-3", "🔴 ฐานประกันสังคมยังคิดจากเงินเดือนประจำ (15,000 เพดาน) ไม่ใช่ยอดรวม OT",
-    item?.ssoBaseSatang === 1_500_000, "1500000", String(item?.ssoBaseSatang));
+  // ORACLE-EDIT (HF-SSO-2569 · controller ruling): RN-3 งวด 2026-08 ⇒ เพดานฐาน 15,000 → 17,500 · ssoBaseSatang 1_500_000 → 1_750_000 (เงินเดือนประจำ 30,000 ถูกตัดที่เพดาน — ยังไม่รวม OT)
+  chk("RN-3", "🔴 ฐานประกันสังคมยังคิดจากเงินเดือนประจำ (17,500 เพดาน) ไม่ใช่ยอดรวม OT",
+    item?.ssoBaseSatang === 1_750_000, "1750000", String(item?.ssoBaseSatang));
   const expectedNet = (item?.grossSatang ?? 0) - (item?.ssoEmployeeSatang ?? 0) - (item?.whtSatang ?? 0);
   chk("RN-4", "สุทธิ = gross − ปสส. − ภาษี (ตรงทุกสตางค์)", item?.netSatang === expectedNet, String(expectedNet), String(item?.netSatang));
   chk("RN-5", "ยอดรวมของรอบเก็บยอดเพิ่ม/หักไว้ด้วย",

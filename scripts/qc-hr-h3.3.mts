@@ -227,10 +227,12 @@ function runStatic(): void {
 // ═════════════════════════ pure ═════════════════════════
 async function runPure(R1: Any, v2: Any, law: Any, seed: Any): Promise<void> {
   {
-    const rows = seed?.LAW_V1_ROWS ?? [];
+    // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S1.6 the seed now carries 10 rows (Q4/Q1 dated SSO + DEDUCTION rows; the 4 1970 rows byte-identical) and the fixture is byte-frozen
+    //   ⇒ compare the fixture with the seed's 1970 rows: digest = seed.lawDigest(1970 rows) (was seed.LAW_V1_DIGEST, now the 10-row digest b0aa6c9c…) · json lookup on the 1970 rows
+    const rows = ((seed?.LAW_V1_ROWS ?? []) as Any[]).filter((r: Any) => r.effectiveFrom === "1970-01-01");
     const j = (k: string) => rows.find((r: Any) => r.kind === k)?.json;
     const same = ["SSO", "TAX_BRACKET", "DEDUCTION"].every((k) => st(j(k)) === st(L[k]));
-    const dg = seed?.LAW_V1_DIGEST ?? "∅";
+    const dg = rows.length === 4 && typeof seed?.lawDigest === "function" ? seed.lawDigest(rows) : "∅"; // HF-SSO ORACLE-EDIT
     chk("S1.6", dg === FROZEN_LAW_DIGEST && same && V._meta?.lawDigest === FROZEN_LAW_DIGEST, `${FROZEN_LAW_DIGEST.slice(0, 12)} · fixture = seed`, `${String(dg).slice(0, 12)} · fixture ${same ? "=" : "≠"} seed`);
   }
   const has = (m: Any, n: string) => m && typeof m[n] === "function";

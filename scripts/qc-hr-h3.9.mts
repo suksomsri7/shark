@@ -335,9 +335,11 @@ function runStatic(): void {
     //   LATER ticket passes when every hunk carries that ticket's mark ("HR H<n>.<n>" / "ORACLE-EDIT … H<n>.<n>") — an unmarked hunk still fails ◂
     // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.5: "HR-SET-<n>" counts as a later-ticket mark too; a hunk marked only with H3.9 itself is NOT a later ticket
     //   (same as the h3.2 / h3.4 edits exclude their own ticket) · the mark must be on an ADDED line ◂
+    // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.5: + hunks marked "HR HF-SSO" / "HF-SSO ORACLE-EDIT" ◂
+    // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised) S1.5: "HR MONEY-2" counts as a later-ticket mark like "HR-SET-<n>" ◂
     // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.3): laterMark also accepts "HR PRIV-<n>" (fix ticket after the H5.2 hunt) — an unmarked hunk still fails ◂
     const laterMark = (l: string) =>
-      /HR PRIV-\d+/.test(l) || /HR-SET-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9");
+      /HF-SSO/.test(l) || /HR-SET-\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9");
     const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some(laterMark));
     const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
     const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;

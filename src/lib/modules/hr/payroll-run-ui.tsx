@@ -14,6 +14,7 @@ import { H37_CODE_TEXT, H37_TEXT, getPayrollAccounting, payAccountsOfRun } from 
 import { DateInput } from "@/components/account-v2/DateInput"; // HR H3.7 ◂
 import { OPENING_TEXT } from "./payroll-opening-rules"; // HR H3.4-YTD ▸ ข้อความคงที่ของ OPENING_OVERLAP (สร้าง/คิดใหม่) ◂
 import { PAY_SCOPE_EXCLUDED_TEXT } from "./scope"; // HR PRIV-2 ▸ หมายเหตุจำนวนคนที่ไม่รวม (ไทล์ยอด = แถวที่เห็นเท่านั้น) ◂
+import { MONEY2_TEXT } from "./payroll"; // HR MONEY-2 ▸ R7: ข้อความปฏิเสธ REFUND_BOUND · refundStuck · RUN_LIMIT ◂
 
 const btn = "btn btn-primary min-h-[44px] text-sm";
 const ghost = "btn btn-ghost min-h-[44px] text-sm";
@@ -34,6 +35,7 @@ export const RUN2_MSG: Record<string, string> = Object.fromEntries([
   ...Object.entries(H37_TEXT).map(([k, v]) => [`b.${k}`, v]), // HR H3.7 ◂
   ...Object.entries(H37_CODE_TEXT).map(([k, v]) => [`c.${k}`, v]), // HR H3.7 ◂
   ...Object.entries(OPENING_TEXT).map(([k, v]) => [`y.${k}`, v]), // HR H3.4-YTD ◂
+  ...Object.entries(MONEY2_TEXT).map(([k, v]) => [`m.${k}`, v]), // HR MONEY-2 ▸ R7: กลับรายการ (REFUND_BOUND · refundStuck) · สร้าง/ดึงข้อมูลใหม่ (RUN_LIMIT) ◂
 ]);
 export const run2MsgCode = (reason: string | undefined) => (reason ? (Object.entries(RUN2_MSG).find(([, v]) => v === reason)?.[0] ?? "failed") : "failed");
 

@@ -18,8 +18,7 @@ import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; 
 import { employeeIdOfAdjustment, employeeUnitsOf, hrScopeOf, unitTargetOf, inPayScope, isAllBranches, payScopeEmployeeIds } from "./scope"; // HR H2.11 ▸ สาขาของเจ้าของรายการ (แบบ payTarget) ◂ // HR PRIV-2 ▸ + ขอบเขตค่าจ้าง ◂
 import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ◂
 import {
-  ssoContribution,
-  monthlyWhtSatang,
+  // HR HF-SSO ▸ ssoContribution / monthlyWhtSatang ไม่ import แล้ว — รุ่น 1 ใช้ payroll-rules-sso.ts (payroll-rules.ts คง FREEZE ไว้ให้ประวัติ/ข้อสอบ) ◂
   otHourlyRateSatang,
   otAmountSatang,
   sumAdjustments,
@@ -27,9 +26,10 @@ import {
   isAddKind,
   type WhtDeductions,
 } from "./payroll-rules";
+import { monthlyWhtForTaxYear, ssoContributionForPeriod, ssoLawForPeriod } from "./payroll-rules-sso"; // HR HF-SSO ▸ เพดานประกันสังคมตามงวดค่าจ้าง + เพดานลดหย่อนตามปีภาษี (payroll-rules.ts คง FREEZE) ◂
 import { OT_LAW_DEFAULT, OT_TEXT, otLawOf, otLegalRateFloor, otText } from "./ot-rules"; // HR H2.9 ▸ #18 ด่านอัตรา OT ที่ตั้งเอง + ข้อความรายการปรับเงินจากคำขอ OT ◂
 import { loadOtLawRows } from "./law"; // HR H2.9 ▸ #18 แถวกฎหมาย OT (law.ts = ผู้อ่านตารางเดียว) ◂
-import { LAW_MSG, lawDayOf, loadLawSet } from "./law"; // HR H3.4 ▸ ชุดกฎหมายของเครื่องรุ่น 2 (law.ts = ผู้อ่านตารางเดียว) ◂
+import { LAW_MSG, lawDayOf, loadLawSet, ssoLawDayOf } from "./law"; // HR HF-SSO ▸ + ssoLawDayOf ◂ // HR H3.4 ▸ ชุดกฎหมายของเครื่องรุ่น 2 (law.ts = ผู้อ่านตารางเดียว) ◂
 import { RUN_V2_DEFAULTS } from "./payroll-run-rules"; // HR H3.4 ▸ ค่าตั้งต้นเพดานหัก ม.76 ◂
 import { computeRunItemV2, type RunItemInputV2, type RunItemResultV2 } from "./payroll-run-rules"; // HR H3.4 ▸ phase B: เครื่องคิด pure ◂
 import { ytdPriorV2, type LawSetV2 } from "./payroll-rules-v2"; // HR H3.4 ▸ ยอดสะสมก่อนงวด (H3.3) ◂
@@ -416,7 +416,7 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
     if (subject?.linkedUserId === uid && !ownPendingAdd) return { ok: false, reason: "ลบรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ" };
   }
   if (boundDraft) return cancelBoundDraftAdjustment(ctx, row, boundDraft, { userId: uid || null, isOwner: !!actor?.isOwner });
-  const del = await tenantDb(ctx).hrPayAdjustment.deleteMany({ where: { id, runId: null, status: row.status } });
+  const del = row.kind === "DEDUCTION" ? await money2DeleteClaim(ctx, id, row.status, actor ? uid || null : null) : await tenantDb(ctx).hrPayAdjustment.deleteMany({ where: { id, runId: null, status: row.status } }); // HR MONEY-2 ▸ R1: ลบรายการหัก = การคืนเงิน (refund:<id>) ที่ยังไม่เข้ารอบถูกยกเลิกใน tx เดียวกัน (CLAIM_CANCELLED) ◂
   if (del.count === 0) return { ok: false, reason: "รายการนี้เปลี่ยนไปแล้ว กรุณาเปิดดูใหม่" };
   await writeAudit({
     tenantId: ctx.tenantId,
@@ -445,6 +445,29 @@ export async function listAdjustments(ctx: Ctx, periodKey?: string, take = 200, 
   });
 }
 
+// HR HF-SSO ▸ กฎของรอบรุ่น 1: งวดค่าจ้าง (ตัดสินเพดานประกันสังคม · T-HR-08) + ปีภาษี = ปี ค.ศ. ตามปฏิทินกรุงเทพของวันจ่าย (เพดานลดหย่อน) ·
+//   ไม่มีค่าสำรองเป็น "วันนี้" หรือค่าคงที่เดิม · รอบที่สร้าง/คำนวณใหม่หลังแก้ = stepsJson.ssoLaw {periodKey, maxBaseSatang, rateBp} (ไม่มี = รอบก่อนแก้) ◂
+type RunLawV1 = { periodKey: string; taxYear: number };
+function runLawV1(periodKey: string, payDate: Date): RunLawV1 {
+  ssoLawForPeriod(periodKey); // งวดผิดรูป = throw ก่อนคิดอะไร
+  return { periodKey, taxYear: Number(bkkParts(payDate).dateStr.slice(0, 4)) };
+}
+function ssoLawMarker(periodKey: string): { periodKey: string; maxBaseSatang: number; rateBp: number } {
+  const l = ssoLawForPeriod(periodKey);
+  return { periodKey, maxBaseSatang: l.maxBaseSatang, rateBp: l.rateBp };
+}
+/** แถวที่เก็บไว้ยังตรงกับกฎของงวด/ปีภาษีนี้ไหม (คิดจาก snapshot ของแถว: เงินเดือน · สิทธิ์ ปกส. · ค่าลดหย่อน) — แถวที่ไม่มีเงินเดือนใน snapshot ตรวจไม่ได้ = ข้าม */
+function storedRowMatchesLaw(it: { ssoBaseSatang: number; ssoEmployeeSatang: number; ssoEmployerSatang: number; whtSatang: number; snapshotJson: Prisma.JsonValue }, law: RunLawV1): boolean {
+  const snap = (it.snapshotJson && typeof it.snapshotJson === "object" && !Array.isArray(it.snapshotJson) ? it.snapshotJson : {}) as Record<string, unknown>;
+  const base = snap.baseSalarySatang;
+  if (typeof base !== "number" || !Number.isSafeInteger(base)) return true;
+  const sso = snap.ssoEligible === false ? { baseSatang: 0, employeeSatang: 0, employerSatang: 0 } : ssoContributionForPeriod(base, law.periodKey);
+  const d = (snap.deductions ?? {}) as { spouse?: boolean; children?: number };
+  const wht = monthlyWhtForTaxYear({ monthlySalarySatang: base, ssoEmployeeYearSatang: sso.employeeSatang * 12, deductions: { spouse: !!d.spouse, children: Math.max(0, d.children ?? 0) } }, law.taxYear);
+  return it.ssoBaseSatang === sso.baseSatang && it.ssoEmployeeSatang === sso.employeeSatang && it.ssoEmployerSatang === sso.employerSatang && it.whtSatang === wht;
+}
+// ◂ HR HF-SSO
+
 // ── คำนวณ 1 พนักงาน (pure ต่อยอดจาก rules) ──
 function computeItem(profile: {
   employeeId: string;
@@ -454,7 +477,7 @@ function computeItem(profile: {
   addSatang?: number;
   deductSatang?: number;
   adjustDetail?: { kind: string; amountSatang: number; note: string | null }[];
-}): {
+}, law: RunLawV1): { // HR HF-SSO ▸ + กฎของรอบ (งวด · ปีภาษี) ◂
   employeeId: string;
   grossSatang: number;
   ssoBaseSatang: number;
@@ -472,14 +495,14 @@ function computeItem(profile: {
   const base = profile.baseSalarySatang;
   const gross = payableGrossSatang({ baseSalarySatang: base, addSatang, deductSatang });
   const sso = profile.ssoEligible
-    ? ssoContribution(base)
+    ? ssoContributionForPeriod(base, law.periodKey) // HR HF-SSO ▸ เพดานตามงวดค่าจ้าง ◂
     : { baseSatang: 0, employeeSatang: 0, employerSatang: 0 };
 
   const d = (profile.personalDeductionJson ?? {}) as { spouse?: boolean; children?: number };
   const deductions: WhtDeductions = { spouse: !!d.spouse, children: Math.max(0, d.children ?? 0) };
 
   const ssoEmployeeYearSatang = sso.employeeSatang * 12;
-  const wht = monthlyWhtSatang({ monthlySalarySatang: base, ssoEmployeeYearSatang, deductions });
+  const wht = monthlyWhtForTaxYear({ monthlySalarySatang: base, ssoEmployeeYearSatang, deductions }, law.taxYear); // HR HF-SSO ▸ เพดานลดหย่อนตามปีภาษี ◂
   const net = gross - sso.employeeSatang - wht;
 
   return {
@@ -582,6 +605,7 @@ async function buildRunRows(
   tx: Prisma.TransactionClient,
   ctx: Ctx,
   periodKey: string,
+  payDate: Date, // HR HF-SSO ▸ ปีภาษีของเพดานลดหย่อน ◂
 ): Promise<{ items: RunItemRow[]; totals: RunTotals; adjustmentIds: string[]; exclusions: RunExclusion[] }> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const allProfiles = await tx.hrSalaryProfile.findMany({
@@ -626,6 +650,7 @@ async function buildRunRows(
   const adjByEmp = new Map<string, typeof adjustments>();
   for (const a of adjustments) adjByEmp.set(a.employeeId, [...(adjByEmp.get(a.employeeId) ?? []), a]);
 
+  const law = runLawV1(periodKey, payDate); // HR HF-SSO ◂
   const items = profiles.map((p) => {
     const rows = adjByEmp.get(p.employeeId) ?? [];
     const { addSatang, deductSatang } = sumAdjustments(rows);
@@ -635,7 +660,7 @@ async function buildRunRows(
         addSatang,
         deductSatang,
         adjustDetail: rows.map((r) => ({ kind: r.kind, amountSatang: r.amountSatang, note: r.note })),
-      }),
+      }, law), // HR HF-SSO ◂
       member.partial.has(p.employeeId),
     );
   });
@@ -748,10 +773,11 @@ export async function createPayrollRun(
     if (legacy.length > 0) throw new PayrollInputError(LEGACY_REVERSED_BOUND_TH);
 
     // H0.1 ▸ R1: แถว + ยอดรวม + รายการที่ล็อกไว้ มาจาก buildRunRows (ตัวเดียวกับ recomputeDraftRun) — ผลลัพธ์เท่าเดิมทุกไบต์ ◂
-    const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, periodKey);
+    const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, periodKey, input.payDate); // HR HF-SSO ▸ + วันจ่าย (ปีภาษี) ◂
     if (items.length === 0)
       throw new PayrollInputError(exclusions.length > 0 ? noMembersText(periodKey) : "ยังไม่มีโปรไฟล์เงินเดือน — ตั้งเงินเดือนพนักงานก่อนสร้างรอบจ่าย");
     if (ytdOverlap(await ytdOpeningsInTx(tx, ctx, bkkParts(input.payDate).dateStr, items.map((i) => i.employeeId)), bkkParts(input.payDate).dateStr)) throw new PayrollInputError(OPENING_TEXT.OPENING_OVERLAP); // HR H3.4-YTD ▸ R5c (Q5): งวด → hr:ytd · ยอดยกมาที่ถึงวันจ่ายนี้ = นับซ้ำใน 50 ทวิ ⇒ ไม่สร้าง ◂
+    if (money2OverV1(items, totals)) throw new PayrollInputError(MONEY2_TEXT.runLimit); // HR MONEY-2 ▸ R4: ยอดเกิน int4 ⇒ ปฏิเสธก่อนเขียน (ข้อความคงที่) ◂
 
     const run = await tx.hrPayrollRun.create({
       data: {
@@ -760,6 +786,7 @@ export async function createPayrollRun(
         payDate: input.payDate,
         status: "DRAFT",
         ...runTotalsData(totals),
+        stepsJson: { ssoLaw: ssoLawMarker(periodKey) }, // HR HF-SSO ▸ รอบหลังแก้ ◂
         items: { create: items.map((i) => runItemData(scope, i)) },
       },
       select: { id: true },
@@ -829,7 +856,7 @@ async function lockRunRow(tx: Prisma.TransactionClient, ctx: Ctx, runId: string)
 type RunActual = { net: number; items: number; gross: number; digest: string };
 type RunSeen = { net: number; items: number; gross?: number; digest?: string } | null;
 // H0.2 ▸ R3: + NEGATIVE_NET (มีแถวสุทธิติดลบ · `negative` = จำนวนแถว) ◂
-type RunRefused = { code: "NOT_DRAFT" | "DRAFT_HAS_JV" | "STALE" | "NEGATIVE_NET"; actual: RunActual; negative?: number };
+type RunRefused = { code: "NOT_DRAFT" | "DRAFT_HAS_JV" | "STALE" | "NEGATIVE_NET" | "RECOMPUTE"; actual: RunActual; negative?: number }; // HR HF-SSO ▸ + RECOMPUTE ◂
 
 async function runActual(tx: Prisma.TransactionClient, ctx: Ctx, cur: LockedRun): Promise<RunActual> {
   const items = await tx.hrPayrollItem.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, runId: cur.id }, select: PAYROLL_DIGEST_SELECT });
@@ -926,14 +953,17 @@ async function rebuildDraftRun(tx: Prisma.TransactionClient, ctx: Ctx, cur: Lock
   // ปลดรายการทั้งหมดของรอบ (แถวถูกล็อกด้วย UPDATE นี้จน commit) → buildRunRows เห็นมันเป็น "ยังไม่เข้ารอบ" ใน tx เดียวกัน
   await tx.hrPayAdjustment.updateMany({ where: { ...scope, runId: id }, data: { runId: null } });
   await tx.hrPayrollItem.deleteMany({ where: { ...scope, runId: id } });
-  const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, cur.periodKey);
+  const ssoRun = (await tx.hrPayrollRun.findFirst({ where: { ...scope, id }, select: { payDate: true, stepsJson: true } }))!; // HR HF-SSO ▸ วันจ่าย (ปีภาษี) + stepsJson เดิม ◂
+  const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, cur.periodKey, ssoRun.payDate); // HR HF-SSO ◂
   // H0.2 ▸ R1: ทุกคนที่มีโปรไฟล์ถูกตัดออกจากงวดนี้ = ไม่มีแถวให้จ่าย ⇒ ไม่คำนวณใหม่ (บอกเหตุผลจริง ไม่ใช่ "ยังไม่มีโปรไฟล์") ◂
   if (items.length === 0) throw new RunRefusal(exclusions.length > 0 ? noMembersText(cur.periodKey) : RECOMPUTE_NO_PROFILE);
   { const pd = await tx.hrPayrollRun.findFirst({ where: { ...scope, id }, select: { payDate: true } }); const day = bkkParts(pd!.payDate).dateStr; if (ytdOverlap(await ytdOpeningsInTx(tx, ctx, day, items.map((i) => i.employeeId)), day)) throw new RunRefusal(OPENING_TEXT.OPENING_OVERLAP); } // HR H3.4-YTD ▸ R4/R5c: งวด → แถวรอบ → hr:ytd ◂
+  if (money2OverV1(items, totals)) throw new RunRefusal(MONEY2_TEXT.runLimit); // HR MONEY-2 ▸ R4: ร่างเดิมไม่ถูกแตะ (ย้อนทั้ง tx) ◂
   await tx.hrPayrollItem.createMany({ data: items.map((i) => ({ ...runItemData(scope, i), runId: id })) });
+  const steps0 = ssoRun.stepsJson && typeof ssoRun.stepsJson === "object" && !Array.isArray(ssoRun.stepsJson) ? (ssoRun.stepsJson as Record<string, unknown>) : {}; // HR HF-SSO ◂
   const upd = await tx.hrPayrollRun.updateMany({
     where: { ...scope, id, status: "DRAFT", journalEntryId: null },
-    data: { ...runTotalsData(totals), note },
+    data: { ...runTotalsData(totals), note, stepsJson: { ...steps0, ssoLaw: ssoLawMarker(cur.periodKey) } as Prisma.InputJsonValue }, // HR HF-SSO ▸ รอบหลังแก้ ◂
   });
   if (upd.count !== 1) throw new RunRefusal(RUN_CHANGED);
   if (adjustmentIds.length > 0) {
@@ -1058,9 +1088,10 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
 const APPROVE_STALE = "ตัวเลขของรอบนี้เปลี่ยนไปแล้ว (มีการคำนวณใหม่) — กรุณาเปิดดูและอนุมัติอีกครั้ง";
 const APPROVE_NOT_DRAFT = "รอบนี้อนุมัติหรือจ่ายไปแล้ว";
 const APPROVE_DRAFT_HAS_JV = "รอบนี้มีเอกสารบัญชีค้างอยู่ ต้องให้ผู้ดูแลตรวจสอบก่อน"; // H0.1 ▸ CR17 ◂
+export const APPROVE_RECOMPUTE = "ต้องคำนวณรอบนี้ใหม่ก่อนอนุมัติ (อัตราประกันสังคมของงวดนี้เปลี่ยน)"; // HR HF-SSO ▸ Q3 ◂
 /** H0.1 ▸ CR12: เหตุที่อนุมัติไม่สำเร็จ (ให้ approvePayrollRunAction เลือกข้อความคงที่ — POST_FAILED = ลงบัญชีล้ม รอบกลับเป็นร่าง) ◂
  *  H0.1 ▸ CR17: DRAFT_HAS_JV = ร่างที่มี journalEntryId ค้าง (ลงบัญชีไปแล้วแต่สถานะถูกคืนเป็นร่าง) ⇒ ไม่ลงบัญชีซ้ำ ◂ */
-export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV" | "NEGATIVE_NET" | "WORK_ENTRIES"; // HR H3.1 ▸ + WORK_ENTRIES (รอบรุ่น ≥ 2 ที่ชั่วโมงทำงานยังไม่พร้อม) ◂
+export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV" | "NEGATIVE_NET" | "WORK_ENTRIES" | "RECOMPUTE"; // HR HF-SSO ▸ + RECOMPUTE ◂ // HR H3.1 ▸ + WORK_ENTRIES (รอบรุ่น ≥ 2 ที่ชั่วโมงทำงานยังไม่พร้อม) ◂
 // H0.2 ▸ R3 (D6): ข้อความคงที่ (N = จำนวนแถวที่สุทธิติดลบ) — action ส่งต่อถึงจอได้ (ไม่มีข้อความดิบของ error) ◂
 export const approveNegativeNetText = (n: number) => `มีพนักงาน ${n} คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'`;
 
@@ -1110,6 +1141,16 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpe
     // H0.2 ▸ R3 (D6): แถวที่สุทธิติดลบ (หักมากกว่าเงินได้) = ไม่อนุมัติ ทั้งทางที่มี/ไม่มี expect — นับใต้ล็อกแถวรอบเดียวกับที่คำนวณใหม่/ลบถือตลอด tx
     //   ⇒ คำนวณใหม่แทรกระหว่างการนับกับ UPDATE ไม่ได้ · UPDATE มี guard "ไม่มีแถวติดลบ" ซ้ำอีกชั้น (เดิม JV ปฏิเสธเฉพาะยอดรวมติดลบ
     //   — แถวเดียวติดลบในยอดรวมบวก ลงบัญชีและจ่ายขาดได้) ◂
+    // HR HF-SSO ▸ Q3: แถวที่เก็บไว้ต้องตรงกับกฎของงวด (เพดานประกันสังคมตามงวด · เพดานลดหย่อนตามปีภาษีของวันจ่าย) — ตรวจใต้ล็อกแถวรอบ ·
+    //   ไม่ตรง (เช่น ร่างที่สร้างก่อนแก้ของงวดตั้งแต่ 2026-01) = ไม่อนุมัติ ให้กด "คำนวณใหม่" ก่อน · ไม่แก้แถวเอง · ไม่ย้อนเก็บเงินสมทบ ◂
+    {
+      const pr = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: runId }, select: { payDate: true, engineVersion: true } });
+      if (pr!.engineVersion === 1) { // HR HF-SSO ▸ (review) รุ่น 1 เท่านั้น — รอบรุ่น 2 ใช้ด่าน INPUTS_CHANGED ของตัวเอง ◂
+        const law = runLawV1(cur.periodKey, pr!.payDate);
+        const rows = await tx.hrPayrollItem.findMany({ where: { ...scope, runId }, select: { ssoBaseSatang: true, ssoEmployeeSatang: true, ssoEmployerSatang: true, whtSatang: true, snapshotJson: true } });
+        if (rows.some((r) => !storedRowMatchesLaw(r, law))) return { code: "RECOMPUTE", actual: await runActual(tx, ctx, cur) }; // HR HF-SSO ◂
+      } // HR HF-SSO ◂
+    }
     const negative = await tx.hrPayrollItem.count({ where: { ...scope, runId, netSatang: { lt: 0 } } });
     if (negative > 0) return { code: "NEGATIVE_NET", actual: await runActual(tx, ctx, cur), negative };
     // HR H3.1 ▸ R6 (ปิดหนี้ D2 ของ H2.6): รอบรุ่น ≥ 2 — ชั่วโมงทำงานของทุกคนในรอบต้องเป็นปัจจุบัน (ดึงหลังข้อมูลต้นทางเปลี่ยนแล้ว · ไม่มีรายการต้องตรวจ) ·
@@ -1158,6 +1199,7 @@ export async function approveRun(
     if ((claimed.code as string) === "WORK_ENTRIES") return { ok: false, note: WE_TEXT.approveBlocked, code: "WORK_ENTRIES" }; // HR H3.1 ◂
     { const att = ATT_APPROVE_TEXT[claimed.code as string]; if (att) return { ok: false, note: att, code: claimed.code as unknown as ApproveFailCode }; } // HR H3.2 ◂ ข้อความคงที่ของด่านหักสาย/ขาด (action แสดง note)
     if (claimed.code === "STALE") return { ok: false, note: APPROVE_STALE, code: "STALE" };
+    if (claimed.code === "RECOMPUTE") return { ok: false, note: APPROVE_RECOMPUTE, code: "RECOMPUTE" }; // HR HF-SSO ◂
     if (claimed.code === "DRAFT_HAS_JV") return { ok: false, note: APPROVE_DRAFT_HAS_JV, code: "DRAFT_HAS_JV" };
     if (claimed.code === "NEGATIVE_NET") return { ok: false, note: approveNegativeNetText(claimed.negative ?? 0), code: "NEGATIVE_NET" };
     return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
@@ -1232,6 +1274,7 @@ export async function reverseRun(
   // ระบบบัญชีของกิจการ (type ACCOUNT) — ตัวค้นเดียวกับ approveRun (ระบบที่ลง JV) · ตรวจซ้ำใน tx ก่อนกลับ JV
   const acct = await db.appSystem.findFirst({ where: { type: "ACCOUNT" }, select: { id: true } });
   const why = reason?.trim() || `กลับรายการเงินเดือนงวด ${periodKey}`;
+  let m2Void: Money2Void[] = []; // HR MONEY-2 ▸ R1: การคืนเงินที่ถูกยกเลิกใน tx นี้ (ลงประวัติหลัง commit) ◂
   const work = async (t: unknown): Promise<ReverseOutcome> => {
     const tx = t as Prisma.TransactionClient;
     await lockRunPeriod(tx, ctx, periodKey);
@@ -1249,6 +1292,7 @@ export async function reverseRun(
         AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") AND "journalEntryId" IS NOT NULL`;
     if (claimed !== 1) return { ok: false, code: "ALREADY_REVERSED" };
     await reverseCarryInTx(tx, ctx, id); // HR H3.4 ▸ R7: ยอดยกไปของรอบนี้ — ถูกดึงเข้ารอบถัดไปแล้ว = CARRY_BOUND (ย้อนทั้ง tx) · ไม่งั้น REJECTED ◂
+    m2Void = await money2VoidRefundsInTx(tx, ctx, id); // HR MONEY-2 ▸ R1: คืนเงินของรายการหักในรอบนี้ — ยังไม่เข้ารอบ = REJECTED · อยู่ในร่างงวดหลัง = REFUND_BOUND ◂
     let reversalEntryId: string | null = null;
     const liveAcct = acct ? await tx.appSystem.findFirst({ where: { id: acct.id, tenantId: ctx.tenantId, type: "ACCOUNT" }, select: { id: true } }) : null;
     if (liveAcct) {
@@ -1287,6 +1331,7 @@ export async function reverseRun(
     if (e instanceof H37Reroute) return (await reverseRunH37(ctx, id, reason, actor)) ?? reverseRefused(ctx, actor, id, "TX_FAILED"); // HR H3.7 ◂
     if (e instanceof CarryBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "CARRY_BOUND" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.carryBound }; // HR H3.4 ◂
     if (e instanceof LaterRunRefusal) return { ...(await reverseRefused(ctx, actor, id, "LATER_RUN" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.laterRun }; // HR H3.4 ▸ fix r1 F5 ◂
+    if (e instanceof RefundBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "REFUND_BOUND" as unknown as ReverseRefusalCode)), note: e.note }; // HR MONEY-2 ▸ R1 (ข้อความตามสถานะของรอบที่ผูก — F3) ◂
     const code: ReverseRefusalCode = e instanceof JvReverseFailed ? "JV_REVERSE_FAILED" : "TX_FAILED";
     await logOps("WARN", "hr-payroll", code === "JV_REVERSE_FAILED" ? "กลับรายการรอบจ่าย: กลับ JV ไม่สำเร็จ — ย้อนทั้งธุรกรรม" : "กลับรายการรอบจ่ายไม่สำเร็จ — ย้อนทั้งธุรกรรม", {
       tenantId: ctx.tenantId,
@@ -1295,6 +1340,7 @@ export async function reverseRun(
     return reverseRefused(ctx, actor, id, code);
   }
   if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
+  await money2VoidAudits(ctx, actor?.userId ?? null, m2Void, "DEDUCTION_REVERSED", id); // HR MONEY-2 ▸ R1 ◂
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: actor?.userId ? "USER" : "SYSTEM",
@@ -2350,7 +2396,8 @@ const H34_REVIEW_CODES = ["WORKED_ON_LEAVE", "UNPLANNED", "HOLIDAY_LEAVE", "PEND
 export type Run2Code =
   | "NO" | "PERIOD" | "PAYDATE" | "ENGINE_V1" | "BUILD" | "DUPLICATE" | "LEGACY" | "LAW_MISSING" | "LAW_AMBIGUOUS" | "LAW_BAD_DAY" | "NO_PROFILE" | "VARIABLE_PAY"
   | "WORK_ENTRIES" | "OT_OPEN" | "ATTENDANCE_STALE" | "ATTENDANCE_SYNC" | "ATTENDANCE_LOCK" | "YTD_DRAFT" | "NO_RATE" | "LAW" | "BIND" | "NOT_FOUND" | "NOT_DRAFT" | "DRAFT_HAS_JV"
-  | "OPENING_OVERLAP"; // HR H3.4-YTD ▸ R5c ◂
+  | "OPENING_OVERLAP" // HR H3.4-YTD ▸ R5c ◂
+  | "RUN_LIMIT"; // HR MONEY-2 ▸ R4: ยอดของรอบ/บรรทัดบัญชีเกิน int4 ◂
 class Run2Refusal extends Error {
   constructor(readonly code: Run2Code, message: string) {
     super(message);
@@ -2427,7 +2474,7 @@ const ytdOverlap = (m: Map<string, YtdOpening>, payDay: string): boolean => [...
 async function buildRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, run: { periodKey: string; payDate: Date; runId: string | null; bound?: string; gates: boolean; staleRefuse?: boolean }): Promise<V2Built> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const P = run.periodKey;
-  const law = await loadLawSet(lawDayOf(run.payDate), tx as unknown as Parameters<typeof loadLawSet>[1]);
+  const law = await loadLawSet(lawDayOf(run.payDate), tx as unknown as Parameters<typeof loadLawSet>[1], { ssoDay: ssoLawDayOf(run.periodKey) }); // HR HF-SSO ▸ Q2: แถว SSO ตามงวดค่าจ้าง ◂
   if (!law.ok) throw new Run2Refusal(law.code, LAW_MSG[law.code]);
   const allProfiles = await tx.hrSalaryProfile.findMany({
     where: scope,
@@ -2463,6 +2510,8 @@ async function buildRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, run: { per
     }
     if (held.size) adjIds = adjIds.filter((x) => !held.has(x)); // คืนเงิน (ALLOWANCE) ที่แถวหักยังไม่ถูกหักจริง ⇒ ค้างไว้รอบถัดไป (H3.2 fix r1 R2b)
   }
+  const m2Held = await money2HeldRefundsInTx(tx, ctx, adjIds); // HR MONEY-2 ▸ R1: คืนเงินที่รายการหักต้นทางไม่ได้หักจริงแล้ว ⇒ ไม่ผูก (คง APPROVED) + ป้าย REFUND_HELD · ตอนอนุมัติ = ลายนิ้วมือต่าง ⇒ INPUTS_CHANGED ◂
+  if (m2Held.size) adjIds = adjIds.filter((x) => !m2Held.has(x)); // HR MONEY-2 ◂
   const inSet = new Set(ids);
   const adjRows = adjIds.length
     ? (await tx.hrPayAdjustment.findMany({ where: { ...scope, id: { in: adjIds } }, select: { id: true, employeeId: true, kind: true, amountSatang: true, sourceType: true, sourceRef: true, consentAt: true }, orderBy: { id: "asc" } })).filter((a) => inSet.has(a.employeeId))
@@ -2582,7 +2631,7 @@ async function buildRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, run: { per
       catCapBp: engine.catCapBp,
       totalCapBp: engine.totalCapBp,
       lines: r.lines,
-      flags: r.flags,
+      flags: [...m2Held.values()].includes(p.employeeId) ? [...r.flags, "REFUND_HELD"] : r.flags, // HR MONEY-2 ▸ R1 ป้ายแถว ◂
       carry: r.carry,
       receivable: r.receivable,
       availableSatang: r.availableSatang,
@@ -2627,6 +2676,7 @@ function v2ItemData(scope: { tenantId: string; systemId: string }, it: V2Item) {
 /** เขียนรอบ (ใหม่หรือร่างเดิม) + แถวพนักงาน + ผูกรายการ (guard runId IS NULL + APPROVED · ต้องครบ) */
 async function writeRunV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, built: V2Built, run: { id: string | null; periodKey: string; payDate: Date; createdById: string | null }): Promise<string> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  if (await money2OverV2InTx(tx, ctx, built)) throw new Run2Refusal("RUN_LIMIT", MONEY2_TEXT.runLimit); // HR MONEY-2 ▸ R4: ก่อนเขียนอะไร (สร้าง · ดึงข้อมูลใหม่) ◂
   const t = built.totals;
   const totals = { totalGrossSatang: t.gross, totalSsoEmployeeSatang: t.ssoEmployee, totalSsoEmployerSatang: t.ssoEmployer, totalWhtSatang: t.wht, totalNetSatang: t.net, totalAddSatang: t.add, totalDeductSatang: t.deduct };
   let id = run.id;
@@ -3475,6 +3525,7 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
   const why = reason?.trim() || `กลับรายการเงินเดือนงวด ${periodKey}`;
   if (book && !(await h37BookAlive(ctx.tenantId, book))) return { ...(await reverseRefused(ctx, actor, id, "JV_REVERSE_FAILED")), note: H37_TEXT.bookGone }; // fix r1 F2 (D3): inactive or gone book ⇒ fixed text, nothing reversed
   type Out = { ok: false; code: ReverseRefusalCode } | { ok: true; prevStatus: string; journalEntryId: string | null; payEntryId: string | null; reversalEntryIds: string[]; adjustmentIds: string[] };
+  let m2Void: Money2Void[] = []; // HR MONEY-2 ▸ R1 ◂
   const work = async (t: unknown): Promise<Out> => {
     const tx = t as Prisma.TransactionClient;
     await lockRunPeriod(tx, ctx, periodKey);
@@ -3490,6 +3541,7 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
         AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus")`;
     if (claimed !== 1) return { ok: false, code: "ALREADY_REVERSED" };
     await reverseCarryInTx(tx, ctx, id); // H3.4 LATER_RUN / CARRY_BOUND first (rolls everything back)
+    m2Void = await money2VoidRefundsInTx(tx, ctx, id); // HR MONEY-2 ▸ R1: claims of this run FOR UPDATE → their live give-backs: unbound ⇒ REJECTED · in a later DRAFT ⇒ REFUND_BOUND ◂
     let rv = { payEntryId: null as string | null, accrualEntryId: null as string | null, reversalEntryIds: [] as string[] };
     if (book) {
       if (!(await h37BookAlive(ctx.tenantId, book, tx))) throw new H37Refusal("BOOK_GONE", H37_TEXT.bookGone);
@@ -3518,6 +3570,7 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
   } catch (e) {
     if (e instanceof CarryBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "CARRY_BOUND" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.carryBound };
     if (e instanceof LaterRunRefusal) return { ...(await reverseRefused(ctx, actor, id, "LATER_RUN" as unknown as ReverseRefusalCode)), note: RUN2_TEXT.laterRun };
+    if (e instanceof RefundBoundRefusal) return { ...(await reverseRefused(ctx, actor, id, "REFUND_BOUND" as unknown as ReverseRefusalCode)), note: e.note }; // HR MONEY-2 ▸ R1 (ข้อความตามสถานะของรอบที่ผูก — F3) ◂
     if (e instanceof H37Refusal) return { ...(await reverseRefused(ctx, actor, id, e.code as unknown as ReverseRefusalCode)), note: e.note };
     const code: ReverseRefusalCode = e instanceof JvReverseFailed ? "JV_REVERSE_FAILED" : "TX_FAILED";
     await logOps("WARN", "hr-payroll", code === "JV_REVERSE_FAILED" ? "กลับรายการรอบจ่าย: กลับ JV ไม่สำเร็จ — ย้อนทั้งธุรกรรม" : "กลับรายการรอบจ่ายไม่สำเร็จ — ย้อนทั้งธุรกรรม", {
@@ -3527,6 +3580,7 @@ async function reverseRunH37(ctx: Ctx, id: string, reason: string | undefined, a
     return reverseRefused(ctx, actor, id, code);
   }
   if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
+  await money2VoidAudits(ctx, actor?.userId ?? null, m2Void, "DEDUCTION_REVERSED", id); // HR MONEY-2 ▸ R1 ◂
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: actor?.userId ? "USER" : "SYSTEM",
@@ -3719,3 +3773,145 @@ export async function giveBackClaim(ctx: Ctx, viewer: { userId?: string | null }
   return out;
 }
 // ◂ HR H3.7
+
+// ═══════════════════ HR MONEY-2 ▸ แก้เงินจากการล่า H5.2 (M1 คืนเงินที่รายการหักไม่ได้หักจริงแล้ว · m3 ยอดเกิน int4) ═══════════════════
+//   brief ledger/hr-briefs/hr-brief-MONEY-2.md · สัญญา scripts/qc-hr-money-2.mts · ข้อความคงที่ไทยทุกไบต์ (ไม่มีชื่อ/ยอด/id)
+//   R1 รายการหัก "ยังมีผล" = แถวยังอยู่ · DEDUCTION · APPROVED · ผูกรอบ (runId) ที่ APPROVED/PAID — ไม่ตรวจยอดซ้ำกับบรรทัด
+//      คืนเงิน (REFUND · sourceRef "refund:<claimId>#…") ของรายการหักที่ไม่มีผลแล้ว: ไม่ผูกเข้ารอบ (คง APPROVED + ป้าย REFUND_HELD) ·
+//      กลับรายการรอบของรายการหัก / ลบรายการหัก = ยกเลิก (REJECTED) ใน tx เดียวกัน · อยู่ในร่างงวดหลังแล้ว = ปฏิเสธการกลับรายการ (REFUND_BOUND — แบบ CARRY_BOUND)
+//      ลำดับล็อก: P → แถวรอบ → รายการหักของรอบ FOR UPDATE → แถวคืนเงิน FOR UPDATE (สร้างรอบงวดหลังล็อกแถวคืนเงินเท่านั้น ไม่ล็อกรายการหัก ⇒ ไม่มีวงรอ)
+//   R4 ก่อนเขียนรอบ: ยอดรวม · ช่องเงินของแถว · (รุ่น 2) ยอดบรรทัดบัญชีตั้งค้างจ่าย (accrualAmountsV2) ต้อง ≤ 2,147,483,647 สตางค์
+export const MONEY2_TEXT = {
+  refundBound: "การคืนเงินของรายการหักในรอบนี้อยู่ในรอบจ่ายงวดถัดไปแล้ว — ลบร่างหรือกลับรายการรอบงวดถัดไปก่อน แล้วจึงกลับรายการรอบนี้",
+  /** F3: คืนเงินผูกกับรอบที่ไม่ใช่ร่างและไม่ใช่อนุมัติ/จ่ายแล้ว (เช่น รอบที่กลับรายการไว้ก่อนมีการปลดรายการ) */
+  refundStuck: "การคืนเงินของรายการหักในรอบนี้ยังผูกอยู่กับรอบจ่ายอื่น — ให้ผู้ดูแลระบบตรวจสอบรายการคืนเงินนั้นก่อน แล้วจึงกลับรายการรอบนี้",
+  runLimit: "ยอดรวมของรอบจ่ายนี้เกิน 21,474,836.47 บาท ซึ่งเป็นยอดสูงสุดที่ระบบเงินเดือนรับได้ต่อรอบ — แยกพนักงานไปอีกระบบ HR แล้วสร้างรอบจ่ายแยกกัน",
+} as const;
+const MONEY2_INT4_MAX = 2_147_483_647;
+class RefundBoundRefusal extends Error {
+  constructor(readonly note: string = MONEY2_TEXT.refundBound) {
+    super("REFUND_BOUND");
+  }
+}
+type Money2Void = { id: string; claimId: string };
+const money2Over = (vals: number[]): boolean => vals.some((v) => !Number.isSafeInteger(v) || v > MONEY2_INT4_MAX || v < -MONEY2_INT4_MAX - 1);
+
+/** R4 รุ่น 1: ยอดรวมของรอบ + ช่องเงินของทุกแถว */
+function money2OverV1(items: RunItemRow[], totals: RunTotals): boolean {
+  return money2Over([...Object.values(totals), ...items.flatMap((i) => [i.grossSatang, i.ssoBaseSatang, i.ssoEmployeeSatang, i.ssoEmployerSatang, i.whtSatang, i.netSatang, i.addSatang, i.deductSatang])]);
+}
+/** R4 รุ่น 2: ยอดรวม · ช่องเงินของแถว · ยอดบรรทัดบัญชีตั้งค้างจ่ายที่รอบนี้จะลง (มีหรือไม่มีสมุดบัญชี — Dr เงินเดือน = Σ gross + ยอดหักคืนอาจเกินแม้ยอดรวมไม่เกิน) */
+async function money2OverV2InTx(tx: Prisma.TransactionClient, ctx: Ctx, built: V2Built): Promise<boolean> {
+  if (money2Over([...Object.values(built.totals), ...built.items.flatMap(({ result: r }) => [r.grossSatang, r.ssoBaseSatang, r.ssoEmployeeSatang, r.ssoEmployerSatang, r.whtSatang, r.netSatang, r.addSatang, r.deductSatang])])) return true;
+  const bound = built.adjustmentIds.length
+    ? (await tx.$queryRaw<{ id: string; employeeId: string; kind: string; sourceType: string | null; sourceRef: string | null; amountSatang: number }[]>`
+        SELECT "id", "employeeId", "kind"::text AS "kind", "sourceType"::text AS "sourceType", "sourceRef", "amountSatang"
+        FROM "HrPayAdjustment" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(built.adjustmentIds)})`).map((b) => ({ ...b, amountSatang: Number(b.amountSatang) }))
+    : [];
+  const items: AccrualItem[] = built.items.map(({ employeeId, result: r, snapshot }) => ({ employeeId, grossSatang: r.grossSatang, ssoEmployeeSatang: r.ssoEmployeeSatang, ssoEmployerSatang: r.ssoEmployerSatang, whtSatang: r.whtSatang, netSatang: r.netSatang, snapshotJson: snapshot }));
+  const am = accrualAmountsV2(items, bound, await h37RefundClaimsInTx(tx, ctx, bound));
+  return am.ok ? money2Over(Object.values(am.amounts).map(Number)) : false;
+}
+
+/** R1 แถวคืนเงิน (ในชุด ids) ที่รายการหักต้นทางไม่มีผลแล้ว → id แถวคืนเงิน ⇒ id พนักงาน · อ่านอย่างเดียว (ไม่ล็อกรายการหัก) */
+async function money2HeldRefundsInTx(tx: Prisma.TransactionClient, ctx: Ctx, ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+  const rf = await tx.$queryRaw<{ id: string; e: string; ref: string | null }[]>`
+    SELECT "id", "employeeId" AS "e", "sourceRef" AS "ref" FROM "HrPayAdjustment"
+    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(ids)}) AND "kind"::text = 'REFUND' AND "sourceRef" LIKE ${`${REFUND_OF_PREFIX}%`}`;
+  if (!rf.length) return out;
+  const claimIds = [...new Set(rf.map((r) => refundClaimIdOf(r.ref)).filter((x): x is string => !!x))];
+  const standing = new Set(
+    claimIds.length
+      ? (await tx.$queryRaw<{ id: string }[]>`
+          SELECT a."id" FROM "HrPayAdjustment" a JOIN "HrPayrollRun" r ON r."id" = a."runId" AND r."tenantId" = a."tenantId" AND r."systemId" = a."systemId"
+          WHERE a."tenantId" = ${ctx.tenantId} AND a."systemId" = ${ctx.systemId} AND a."id" IN (${Prisma.join(claimIds)})
+            AND a."kind"::text = 'DEDUCTION' AND a."status"::text = 'APPROVED' AND r."status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus")`).map((r) => r.id)
+      : [],
+  );
+  for (const r of rf) {
+    const c = refundClaimIdOf(r.ref);
+    if (!c || !standing.has(c)) out.set(r.id, r.e);
+  }
+  return out;
+}
+/** R1 กลับรายการรอบ: รายการหักของรอบ FOR UPDATE → คืนเงินที่ยังมีผลของรายการเหล่านั้น */
+async function money2VoidRefundsInTx(tx: Prisma.TransactionClient, ctx: Ctx, runId: string): Promise<Money2Void[]> {
+  const claims = await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "HrPayAdjustment" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" = ${runId} AND "kind"::text = 'DEDUCTION' ORDER BY "id" FOR UPDATE`;
+  return money2VoidOfClaimsInTx(tx, ctx, claims.map((c) => c.id), true);
+}
+/**
+ * R1 คืนเงินที่ยังมีผล (PENDING/APPROVED) ของรายการหักชุดนี้ — ล็อกแถว FOR UPDATE (ทางเดียวกับที่สร้างรอบงวดหลังล็อก) ·
+ * ยังไม่เข้ารอบ ⇒ REJECTED (runId ว่าง · decidedAt ตอนนี้) · `refuseBound`: อยู่ในรอบที่อนุมัติ/จ่ายแล้ว = LATER_RUN · ในร่าง = REFUND_BOUND ·
+ * UPDATE ได้น้อยกว่าที่อ่าน (ถูกผูกระหว่างนั้น) = REFUND_BOUND (กติกาเดียวกับ reverseCarryInTx)
+ */
+async function money2VoidOfClaimsInTx(tx: Prisma.TransactionClient, ctx: Ctx, claimIds: string[], refuseBound: boolean): Promise<Money2Void[]> {
+  if (!claimIds.length) return [];
+  const rows = await tx.$queryRaw<{ id: string; runId: string | null; ref: string | null }[]>`
+    SELECT "id", "runId", "sourceRef" AS "ref" FROM "HrPayAdjustment"
+    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "kind"::text = 'REFUND' AND "status"::text IN ('PENDING', 'APPROVED')
+      AND split_part("sourceRef", '#', 1) IN (${Prisma.join(claimIds.map((c) => `${REFUND_OF_PREFIX}${c}`))})
+    ORDER BY "id" FOR UPDATE`;
+  const boundRuns = [...new Set(rows.map((r) => r.runId).filter((x): x is string => !!x))];
+  if (boundRuns.length && refuseBound) {
+    const st = await tx.$queryRaw<{ s: string }[]>`SELECT "status"::text AS "s" FROM "HrPayrollRun" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(boundRuns)})`;
+    if (st.some((x) => x.s === "APPROVED" || x.s === "PAID")) throw new LaterRunRefusal("LATER_RUN");
+    if (st.length === boundRuns.length && st.every((x) => x.s === "DRAFT")) throw new RefundBoundRefusal();
+    throw new RefundBoundRefusal(MONEY2_TEXT.refundStuck); // F3: รอบที่ผูกไม่ใช่ร่าง/อนุมัติ/จ่าย (หรือหาไม่พบ) ⇒ ยังปฏิเสธ ด้วยข้อความที่จริง
+  }
+  const live = rows.filter((r) => r.runId === null);
+  if (!live.length) return [];
+  const n = await tx.$executeRaw`
+    UPDATE "HrPayAdjustment" SET "status" = 'REJECTED'::"HrPayItemStatus", "runId" = NULL, "decidedAt" = (now() AT TIME ZONE 'UTC')
+    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(live.map((r) => r.id))}) AND "runId" IS NULL AND "status"::text IN ('PENDING', 'APPROVED')`;
+  if (n !== live.length) throw new RefundBoundRefusal();
+  return live.map((r) => ({ id: r.id, claimId: refundClaimIdOf(r.ref) ?? "" }));
+}
+/** R1 ลบรายการหักที่ยังไม่เข้ารอบ (cancelAdjustment) + ยกเลิกคืนเงินที่ยังไม่เข้ารอบของมัน ใน tx เดียว · คืนเงินที่อยู่ในร่างแล้วคงไว้ (อนุมัติร่างนั้นจะได้ INPUTS_CHANGED) */
+async function money2DeleteClaim(ctx: Ctx, id: string, status: string, actorId: string | null): Promise<{ count: number }> {
+  let voided: Money2Void[] = [];
+  let count = 0;
+  try {
+    count = await tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      const del = await tx.hrPayAdjustment.deleteMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id, runId: null, status: status as "PENDING" | "APPROVED" | "REJECTED" } });
+      if (del.count !== 1) return 0;
+      voided = await money2VoidOfClaimsInTx(tx, ctx, [id], false);
+      return 1;
+    }, H34_TX);
+  } catch (e) {
+    if (e instanceof RefundBoundRefusal) return { count: 0 };
+    throw e;
+  }
+  if (count) await money2VoidAudits(ctx, actorId, voided, "CLAIM_CANCELLED", null);
+  return { count };
+}
+/** R2 (labor.ts): รายการที่ผูกกับรอบ (จัดกลุ่มครั้งเดียวต่อ "<runId>|<employeeId>") + รายการหักของการคืนเงิน — ตัวอ่านเดียวกับ h37RunFiguresInTx /
+ *  h37RefundClaimsInTx (SQL ผูก tenant + ระบบ HR) · อ่านไม่เกิน 50,000 แถว (เกิน = truncated ให้ผู้เรียกเตือน) */
+export const PAYROLL_ACCRUAL_INPUTS_CAP = 50_000;
+export async function payrollAccrualInputsOfRuns(ctx: Ctx, runIds: string[]): Promise<{ bound: Map<string, AccrualBound[]>; claims: RefundClaim[]; truncated: boolean }> {
+  const db = tenantDb(ctx) as unknown as Prisma.TransactionClient;
+  const bound = new Map<string, AccrualBound[]>();
+  if (!runIds.length) return { bound, claims: [], truncated: false };
+  const rows = await db.$queryRaw<{ id: string; runId: string; employeeId: string; kind: string; sourceType: string | null; sourceRef: string | null; amountSatang: number }[]>`
+    SELECT "id", "runId", "employeeId", "kind"::text AS "kind", "sourceType"::text AS "sourceType", "sourceRef", "amountSatang"
+    FROM "HrPayAdjustment" WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" IN (${Prisma.join(runIds)}) ORDER BY "id" LIMIT ${PAYROLL_ACCRUAL_INPUTS_CAP + 1}`;
+  const truncated = rows.length > PAYROLL_ACCRUAL_INPUTS_CAP;
+  const all: AccrualBound[] = [];
+  for (const r of rows.slice(0, PAYROLL_ACCRUAL_INPUTS_CAP)) {
+    const b = { id: r.id, employeeId: r.employeeId, kind: r.kind, sourceType: r.sourceType, sourceRef: r.sourceRef, amountSatang: Number(r.amountSatang) };
+    all.push(b);
+    const k = `${r.runId}|${r.employeeId}`;
+    const g = bound.get(k);
+    if (g) g.push(b);
+    else bound.set(k, [b]);
+  }
+  return { bound, claims: await h37RefundClaimsInTx(db, ctx, all), truncated };
+}
+/** ประวัติ hr.payadjust.refund_void ต่อแถว (หลัง commit · id/รหัสเท่านั้น) */
+async function money2VoidAudits(ctx: Ctx, actorId: string | null, list: Money2Void[], code: "DEDUCTION_REVERSED" | "CLAIM_CANCELLED", runId: string | null): Promise<void> {
+  for (const v of list) await writeAudit({ tenantId: ctx.tenantId, actorType: actorId ? "USER" : "SYSTEM", actorId, action: "hr.payadjust.refund_void", targetType: "HrPayAdjustment", targetId: v.id, after: { code, claimId: v.claimId, runId } });
+}
+// ◂ HR MONEY-2

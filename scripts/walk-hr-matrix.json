@@ -1,0 +1,80 @@
+{
+  "$doc": "H5.1 walk matrix — read by scripts/walk-hr.mts. One entry in `states` = one screen state of brief §4 (row = brief row #). cells = viewers × sizes × langs. Path placeholders: {hr} {bogus} {paidRun} {paidRunPeriod} {thisMonth} {today} {yesterday} {rosterWeek} {unit.<key>} {emp.<key>} (seed-hr-qc employees + walk 'view') {run.DRAFT|APPROVED|PAID|REVERSED} {period.DRAFT|APPROVED|PAID|REVERSED} (seed-hr-walk). `page` = inventory page key = route folder. `pathBy` overrides the path per viewer. `expectFinal` = path the browser must end on (redirect). `moneyOk` = viewers allowed to see money on this state (own pay). `limitedNote` = selector that must exist for the listed viewers (partial totals). `allowScroll` = selectors of declared horizontal scrollers (WARN not FAIL). `click` = selector pressed before the shot (state, not a mutation). `extra` = beyond the brief's 84 cells. `todoInventoryPrefix` = state is skipped until the inventory has rows with that testid prefix (tickets not yet merged).",
+  "sizes": [
+    { "id": "1440x900", "w": 1440, "h": 900, "mobile": false, "touch": false },
+    { "id": "1024x768", "w": 1024, "h": 768, "mobile": false, "touch": true },
+    { "id": "390x844", "w": 390, "h": 844, "mobile": true, "touch": true }
+  ],
+  "langs": ["th", "en"],
+  "viewers": {
+    "O": { "key": "owner", "inventoryRole": "owner", "money": true, "pii": "full" },
+    "P": { "key": "payroll", "inventoryRole": "payroll", "money": true, "pii": "payroll" },
+    "PB": { "key": "payroll-branch", "inventoryRole": null, "money": "branch", "pii": "payroll", "homeUnit": "huahin" },
+    "PS": { "key": "payrollSelf", "inventoryRole": "payrollSelf", "money": true, "pii": "payroll", "selfEmployee": "koy" },
+    "M": { "key": "manager", "inventoryRole": "manager", "money": false, "pii": "masked" },
+    "MB": { "key": "manager-branch", "inventoryRole": "manager-branch", "money": false, "pii": "masked" },
+    "S": { "key": "staff", "inventoryRole": "staff", "money": false, "pii": "masked", "selfEmployee": "namfon" },
+    "K": { "key": "kiosk", "inventoryRole": "kiosk", "money": false, "pii": "masked" },
+    "N": { "key": "member", "inventoryRole": "member", "money": false, "pii": "masked" }
+  },
+  "allow": {
+    "enumsTh": ["OT", "PIN", "PDF", "CSV", "GPS", "KBank", "SCB", "BBL", "KTB", "LINE", "AI", "API", "QC", "HR", "POS", "EMP", "SSO", "ID", "JV", "XLSX", "PND", "KBANK", "OA", "URL", "HRSC", "HR50"],
+    "thaiInEnExtra": ["บ้านกาแฟสวนผึ้ง", "วิว", "ภ.ง.ด.", "สปส.", "ทวิ"]
+  },
+  "states": [
+    { "id": "01-hub", "row": "1", "page": "/app/sys/[id]", "path": "/app/sys/{hr}", "viewers": ["O", "P", "PB", "M", "MB", "S"], "mockup": "ledger/design-hr/01-team-overview.png", "pairViewer": "O", "limitedNote": { "viewers": ["PB"], "selector": "[data-testid=\"hr-labor-note\"]" } },
+    { "id": "02-employees", "row": "2", "page": "/app/sys/[id]/hr/employees", "path": "/app/sys/{hr}/hr/employees", "viewers": ["O", "P", "PB", "M", "MB", "S"], "mockup": "ledger/design-hr/02-employees.png", "pairViewer": "O" },
+    { "id": "03-employee-namfon", "row": "3", "page": "/app/sys/[id]/hr/employees/[employeeId]", "path": "/app/sys/{hr}/hr/employees/{emp.namfon}", "viewers": ["O", "P", "PB", "M", "MB", "S"], "mockup": "ledger/design-hr/02-employees.png", "pairViewer": "O", "expectFinal": { "S": "/app/me/hr/profile" } },
+    { "id": "04-roster", "row": "4", "page": "/app/sys/[id]/hr/roster", "path": "/app/sys/{hr}/hr/roster?week={rosterWeek}&unit={unit.huahin}", "viewers": ["O", "M", "MB"], "mockup": "ledger/design-hr/03-roster.png", "pairViewer": "O" },
+    { "id": "05-attendance-day", "row": "5", "page": "/app/sys/[id]/hr/attendance", "path": "/app/sys/{hr}/hr/attendance?view=day&day={yesterday}", "viewers": ["O", "M", "MB"], "mockup": "ledger/design-hr/04-attendance.png", "pairViewer": "O", "allowScroll": ["table", "[data-testid*=\"table\"]"] },
+    { "id": "06-attendance-month", "row": "6", "page": "/app/sys/[id]/hr/attendance", "path": "/app/sys/{hr}/hr/attendance?view=month&employee={emp.namfon}", "pathBy": { "S": "/app/sys/{hr}/hr/attendance" }, "viewers": ["O", "MB", "S"], "mockup": "ledger/design-hr/04-attendance.png", "pairViewer": "O" },
+    { "id": "07-corrections", "row": "7", "page": "/app/sys/[id]/hr/attendance", "path": "/app/sys/{hr}/hr/attendance?view=corrections", "viewers": ["O", "M", "MB", "S"], "mockup": "ledger/design-hr/05-leave-ot.png", "pairViewer": "O" },
+    { "id": "08-kiosk", "row": "8", "page": "/app/sys/[id]/hr/kiosk", "path": "/app/sys/{hr}/hr/kiosk", "viewers": ["K", "O", "MB"], "mockup": "ledger/design-hr/04-attendance.png", "pairViewer": "K" },
+    { "id": "08-kiosk-pin", "row": "8", "page": "/app/sys/[id]/hr/kiosk", "path": "/app/sys/{hr}/hr/kiosk", "click": "[data-testid^=\"hr-kiosk-name-\"]", "viewers": ["K"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "K" },
+    { "id": "09-leave", "row": "9", "page": "/app/sys/[id]/hr/leave", "path": "/app/sys/{hr}/hr/leave", "viewers": ["O", "M", "MB", "S"], "mockup": "ledger/design-hr/05-leave-ot.png", "pairViewer": "O" },
+    { "id": "10-requests", "row": "10", "page": "/app/sys/[id]/hr/requests", "path": "/app/sys/{hr}/hr/requests", "viewers": ["O", "P", "PB", "M", "MB"], "mockup": "ledger/design-hr/05-leave-ot.png", "pairViewer": "O", "allowScroll": ["table"] },
+    { "id": "11a-payroll-open", "row": "11a", "page": "/app/sys/[id]/hr/payroll", "path": "/app/sys/{hr}/hr/payroll?period={period.DRAFT}", "viewers": ["O", "P", "PB", "M", "MB", "S"], "mockup": "ledger/design-hr/06-payroll-run.png", "pairViewer": "O", "limitedNote": { "viewers": ["PB"], "selector": "[data-testid$=\"-partial\"], [data-testid*=\"limited\"], [data-testid*=\"excluded\"]" } },
+    { "id": "11b-payroll-bank", "row": "11b", "page": "/app/sys/[id]/hr/payroll", "path": "/app/sys/{hr}/hr/payroll?bank={run.PAID}#hr-bank", "viewers": ["O", "P", "PB"], "mockup": "ledger/design-hr/06-payroll-run.png", "pairViewer": "O" },
+    { "id": "12-slip-admin", "row": "12", "page": "/app/sys/[id]/payroll/[runId]/slip/[employeeId]", "path": "/app/sys/{hr}/payroll/{run.PAID}/slip/{emp.namfon}", "viewers": ["O", "P", "PB"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "O" },
+    { "id": "13a-report-register", "row": "13a", "page": "/app/sys/[id]/hr/reports", "path": "/app/sys/{hr}/hr/reports?report=register", "viewers": ["O", "P", "PB"], "mockup": "ledger/design-hr/02-employees.png", "pairViewer": "O", "allowScroll": ["table"] },
+    { "id": "13b-report-payroll", "row": "13b", "page": "/app/sys/[id]/hr/reports", "path": "/app/sys/{hr}/hr/reports?report=payroll-month&period={period.PAID}", "viewers": ["O", "P", "PB", "M"], "mockup": "ledger/design-hr/01-team-overview.png", "pairViewer": "O", "allowScroll": ["table"] },
+    { "id": "13c-report-time", "row": "13c", "page": "/app/sys/[id]/hr/reports", "path": "/app/sys/{hr}/hr/reports?report=time&period={thisMonth}", "viewers": ["O", "M", "MB"], "mockup": "ledger/design-hr/01-team-overview.png", "pairViewer": "O", "allowScroll": ["table"] },
+    { "id": "14-settings", "row": "14", "page": "/app/sys/[id]/hr/settings", "path": "/app/sys/{hr}/hr/settings", "viewers": ["O", "M", "MB"], "mockup": "ledger/design-hr/08-settings-ai.png", "pairViewer": "O" },
+    { "id": "15-law", "row": "15", "page": "/app/sys/[id]/hr/settings/law", "path": "/app/sys/{hr}/hr/settings/law", "viewers": ["O", "MB"], "mockup": "ledger/design-hr/08-settings-ai.png", "pairViewer": "O", "allowScroll": ["table"] },
+    { "id": "16-approvals", "row": "16", "page": "/app/approvals", "path": "/app/approvals", "viewers": ["O", "M", "S"], "mockup": null },
+    { "id": "17-me-today", "row": "17", "page": "/app/me/hr", "path": "/app/me/hr", "viewers": ["S", "PS"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "S" },
+    { "id": "18-me-week", "row": "18", "page": "/app/me/hr/week", "path": "/app/me/hr/week", "viewers": ["S"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "S" },
+    { "id": "19a-me-requests", "row": "19", "page": "/app/me/hr/requests", "path": "/app/me/hr/requests", "viewers": ["S"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "S" },
+    { "id": "19b-me-form-leave", "row": "19", "page": "/app/me/hr/requests", "path": "/app/me/hr/requests?form=leave", "viewers": ["S"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "S" },
+    { "id": "19c-me-form-advance", "row": "19", "page": "/app/me/hr/requests", "path": "/app/me/hr/requests?form=advance", "viewers": ["S"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "S" },
+    { "id": "20-me-pay", "row": "20", "page": "/app/me/hr/pay", "path": "/app/me/hr/pay", "viewers": ["S"], "moneyOk": ["S"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "S" },
+    { "id": "21-me-slip", "row": "21", "page": "/app/me/hr/pay/[runId]", "path": "/app/me/hr/pay/{run.PAID}", "viewers": ["S"], "moneyOk": ["S"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "S" },
+    { "id": "22-me-profile", "row": "22", "page": "/app/me/hr/profile", "path": "/app/me/hr/profile", "viewers": ["S", "PS"], "mockup": "ledger/design-hr/07-mobile.png", "pairViewer": "S" },
+
+    { "id": "x1-payroll-approved", "row": "x", "extra": true, "why": "v2 run APPROVED (H3.4 · 3.7 accrual JV)", "page": "/app/sys/[id]/hr/payroll", "path": "/app/sys/{hr}/hr/payroll?period={period.APPROVED}", "viewers": ["O"], "langs": ["th"], "mockup": "ledger/design-hr/06-payroll-run.png", "pairViewer": "O" },
+    { "id": "x2-payroll-paid", "row": "x", "extra": true, "why": "v2 run PAID: slips · filings ภ.ง.ด.1/สปส.1-10/50 ทวิ (H3.6) · pay JV (H3.7) · opening YTD (H3.4-YTD)", "page": "/app/sys/[id]/hr/payroll", "path": "/app/sys/{hr}/hr/payroll?period={period.PAID}", "viewers": ["O", "PB"], "langs": ["th"], "mockup": "ledger/design-hr/06-payroll-run.png", "pairViewer": "O" },
+    { "id": "x3-payroll-reversed", "row": "x", "extra": true, "why": "v2 run REVERSED", "page": "/app/sys/[id]/hr/payroll", "path": "/app/sys/{hr}/hr/payroll?period={period.REVERSED}", "viewers": ["O"], "langs": ["th"], "mockup": null },
+    { "id": "x4-payroll-v1-paid", "row": "x", "extra": true, "why": "seed-hr-qc v1 PAID run (legacy view)", "page": "/app/sys/[id]/hr/payroll", "path": "/app/sys/{hr}/hr/payroll?period={paidRunPeriod}", "viewers": ["O"], "langs": ["th"], "mockup": null },
+    { "id": "x5-me-unlinked", "row": "x", "extra": true, "why": "Q5: ของฉัน for an account not linked to an employee", "page": "/app/me/hr", "path": "/app/me/hr", "viewers": ["O", "N"], "langs": ["th"], "sizes": ["390x844"], "mockup": null },
+    { "id": "x6-todo-h4.3-ai", "row": "x", "extra": true, "why": "TODO H4.3 AI proposals (hr_draft_roster · hr_flag_pattern) — path to confirm at merge", "page": "/app/sys/[id]/hr/roster", "path": "/app/sys/{hr}/hr/roster?week={rosterWeek}&unit={unit.huahin}", "viewers": ["O", "MB"], "mockup": "ledger/design-hr/08-settings-ai.png", "pairViewer": "O", "todoInventoryPrefix": "hr-ai-" },
+    { "id": "x7-todo-h4.8-apikeys", "row": "x", "extra": true, "why": "TODO H4.8 API keys card on settings — path to confirm at merge", "page": "/app/sys/[id]/hr/settings", "path": "/app/sys/{hr}/hr/settings", "viewers": ["O", "MB"], "mockup": "ledger/design-hr/08-settings-ai.png", "pairViewer": "O", "todoInventoryPrefix": "hr-apikey" }
+  ],
+  "refusals": [
+    { "id": "r-employees", "page": "/app/sys/[id]/hr/employees", "path": "/app/sys/{hr}/hr/employees", "unknown": "/app/sys/{bogus}/hr/employees", "viewers": ["K", "N"] },
+    { "id": "r-profile", "page": "/app/sys/[id]/hr/employees/[employeeId]", "path": "/app/sys/{hr}/hr/employees/{emp.prae}", "unknown": "/app/sys/{hr}/hr/employees/{bogus}", "viewers": ["K", "N", "S"] },
+    { "id": "r-roster", "page": "/app/sys/[id]/hr/roster", "path": "/app/sys/{hr}/hr/roster", "unknown": "/app/sys/{bogus}/hr/roster", "viewers": ["S", "P", "K", "N"] },
+    { "id": "r-attendance", "page": "/app/sys/[id]/hr/attendance", "path": "/app/sys/{hr}/hr/attendance", "unknown": "/app/sys/{bogus}/hr/attendance", "viewers": ["P", "K", "N"] },
+    { "id": "r-kiosk", "page": "/app/sys/[id]/hr/kiosk", "path": "/app/sys/{hr}/hr/kiosk", "unknown": "/app/sys/{bogus}/hr/kiosk", "viewers": ["N", "S", "PS"] },
+    { "id": "r-leave", "page": "/app/sys/[id]/hr/leave", "path": "/app/sys/{hr}/hr/leave", "unknown": "/app/sys/{bogus}/hr/leave", "viewers": ["K", "N"] },
+    { "id": "r-requests", "page": "/app/sys/[id]/hr/requests", "path": "/app/sys/{hr}/hr/requests", "unknown": "/app/sys/{bogus}/hr/requests", "viewers": ["S", "K", "N"] },
+    { "id": "r-payroll", "page": "/app/sys/[id]/hr/payroll", "path": "/app/sys/{hr}/hr/payroll", "unknown": "/app/sys/{bogus}/hr/payroll", "viewers": ["K", "N"] },
+    { "id": "r-slip-admin", "page": "/app/sys/[id]/payroll/[runId]/slip/[employeeId]", "path": "/app/sys/{hr}/payroll/{run.PAID}/slip/{emp.namfon}", "pathBy": { "S": "/app/sys/{hr}/payroll/{run.PAID}/slip/{emp.prae}" }, "unknown": "/app/sys/{hr}/payroll/{run.PAID}/slip/{bogus}", "viewers": ["M", "MB", "S"] },
+    { "id": "r-reports", "page": "/app/sys/[id]/hr/reports", "path": "/app/sys/{hr}/hr/reports", "unknown": "/app/sys/{bogus}/hr/reports", "viewers": ["S", "K", "N"] },
+    { "id": "r-settings", "page": "/app/sys/[id]/hr/settings", "path": "/app/sys/{hr}/hr/settings", "unknown": "/app/sys/{bogus}/hr/settings", "viewers": ["S", "K", "N"] },
+    { "id": "r-law", "page": "/app/sys/[id]/hr/settings/law", "path": "/app/sys/{hr}/hr/settings/law", "unknown": "/app/sys/{bogus}/hr/settings/law", "viewers": ["S", "P", "N"] },
+    { "id": "r-me-slip", "page": "/app/me/hr/pay/[runId]", "path": "/app/me/hr/pay/{run.PAID}", "unknown": "/app/me/hr/pay/{bogus}", "viewers": ["N"] }
+  ],
+  "excludedInventoryPages": {
+    "(unmounted · H2.10)": "MobileClock controls not mounted on any route (H2.10 inventory note) — nothing to open; re-check if a route mounts it"
+  }
+}
