@@ -130,3 +130,23 @@ fitness-hr-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 fitness-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 typecheck exit=0 · 420 s clean
+
+# post-merge — 2026-11-14T11:15:03Z · head 5016f64b7 = merge of session/hr 6ebaab7ad (money-2 base = merge-base 6ebaab7ad) · lane law DRAFT rows applied first (hr-seed-law-draft --apply, as pm-full.sh: created 6)
+law-draft exit=0 |  created 6 · u
+seed-hr-qc exit=0 | ===== seed-hr-qc ===== ผ่าน 34/34 
+money2-forced-1 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE) 
+money2-forced-2 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE) 
+money2-forced-3 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE) 
+money2-unforced exit=0 | ===== qc-hr-money-2 ===== passed 56/56 
+qc-hr-hf-sso exit=0 | ===== qc-hr-hf-sso ===== passed 41/41 (QC_FORCE) 
+qc-hr-h1.3 exit=0 | ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) created 0 · u
+qc-hr-h3.7 exit=0 | ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE) 
+qc-hr-h4.3 exit=0 | ===== qc-hr-h4.3 ===== passed 45/45 
+qc-hr-h3.2 exit=0 | ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE) created 0 · same ids · 5 rows
+qc-hr-h3.4 exit=0 | ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE) 
+qc-hr-h3.6 exit=0 | ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE) 
+qc-hr-h3.9 exit=0 | ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) 
+fitness-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0 
+fitness-hr-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0 
+fitness-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
