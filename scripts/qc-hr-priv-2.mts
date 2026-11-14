@@ -107,7 +107,7 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
 //   (every hunk "ORACLE-EDIT (HR PREPROD-1") and its own two oracle files (by name) are accepted · anything else still fails ◂
 const PP1_SRC = new Set(["leave.ts", "privacy.ts", "self.ts", "self-ui.tsx", "service.ts", "settings.ts", "stock-charge.ts", "work-entries.ts", "work-entries-rules.ts", "payroll.ts", "payroll-actions.ts", "payroll-ui.tsx", "scope.ts", "ui.tsx"].map((x) => `${H}${x}`)); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
 const PP1_OR = new Set(["h1.3", "h3.2", "h3.4-lib", "h3.6", "h3.8", "h3.9", "h4.3-lib", "priv-2"].map((x) => `scripts/qc-hr-${x}.mts`)); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
-const PP1_OWN = new Set(["scripts/qc-hr-preprod-1.mts", "scripts/qc-hr-preprod-1b.mts", "scripts/qc-hr-preprod-1-lib.mts"]); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
+const PP1_OWN = new Set(["scripts/qc-hr-preprod-1.mts", "scripts/qc-hr-preprod-1b.mts", "scripts/qc-hr-preprod-1c.mts", "scripts/qc-hr-preprod-1-lib.mts"]); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
 const pp1Ok = (f: string) => PP1_OWN.has(f) || ((PP1_SRC.has(f) || PP1_OR.has(f)) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PREPROD-1/.test(l)))); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
 {
  // ORACLE-EDIT (HR H4.9 · controller) S4: explicit files — skills.ts when every hunk adds "HR H4.9" · the oracles H4.9-FIX1 edited when every hunk adds "ORACLE-EDIT (HR H4.9 · controller)" ◂
