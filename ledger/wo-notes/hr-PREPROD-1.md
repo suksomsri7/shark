@@ -65,3 +65,12 @@ Design limits (for the reviewer): sick split only for day-based leave (hourly SI
 - V7 rework after `qc-hf-hr-privacy` S-15: the out-of-scope reply is a separate builder `adjustmentReplyOutOfPayScope` (privacy.ts); `adjustmentReplyForViewer` and its call keep the H0/HF shape (`{ byHours: … }`).
 - Merge of `session/hr` db19e793f (HF-SSO fix2 · H4.9-FIX1): conflicts only in h3.4-lib S1.6, h3.9 S1.5, h4.3-lib S1.6, priv-2 S4/S5 — every allowlist kept (HF-SSO narrowed files · H4.9 · MONEY-2 · PRIV-2 · PREPROD-1).
 - Typecheck after the merge: 0 errors in tracked files; 23 errors all in the untracked `scratchpad/preprod1-oracle/*.mts` (oracle-author drafts, left alone).
+
+## 6. V8b — append-only re-split (oracle 66b1524d6: main 57 · 1b 24)
+- `resplitSickInTx` no longer updates a ledger row: it appends a USE row for the same leave — `sourceKey use-resplit:<leaveId>:<n>` (n = latest + 1), `leaveId` set, days = −(new paid − paid so far), note `resplit;unpaid:<d.d>;from:<day>` or `resplit;unpaid:0.0`. `hrLeaveBalanceTxn.update*` is gone from src (h2.7 S1.5 untouched, 94/94).
+- One reader for every path: `leaveUseRowsIn` + `splitsOf` (leave.ts) — paid = −Σ USE rows of the leave; unpaid/from = note of the LATEST row by sequence (`use:` = 0, `use-resplit:…:<n>` = n; createdAt is the tx start time, so not used for order). `leaveSplitsIn`/`leaveSplitOf`/`leaveUnpaidByDayIn`/re-split all go through it. `leaveYearStateInTx` counts re-split rows into the leave's consumed days; revoke writes `use-revert` = Σ USE rows (V8.7: +5.0).
+- Second return of balance: the next re-split reads the latest row (paid so far = Σ) and appends `…:<n+1>`.
+- Balance consumed again by an earlier-dated leave after a re-split: that leave's approval splits against the available balance, which already counts the re-split rows (Σ ledger), so its paid part is at most what is left — the ledger never goes negative. Leaves already re-split keep their paid days (no downward re-split: the ledger has no negative correction writer, by ruling). Not covered by the oracle.
+- PAY_MARKED "HR PREPROD-1" stays 3 (payroll.ts unchanged in this round).
+- `session/hr` moved to 81fece63f (docs/notes only) → merged (d858e19cd), no conflicts.
+- Final run (V8b, post-merge d858e19cd): every suite on the list green, typecheck exit 0 with no errors (green.txt).
