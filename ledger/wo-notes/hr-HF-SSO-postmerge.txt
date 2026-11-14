@@ -1,0 +1,9 @@
+# post-merge FULL session/hr @2ed3c1c13 · 2026-11-14T08:32:28Z · load 3.41 2.59 3.06
+prisma generate exit=0 [08:32Z]
+seed-hr-qc exit=1 JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":33,"findings":[{"id":"ML1","title":"เงิน/กฎหมาย (H1.3): รอบ [08:33Z]
+qc-hr-hf-sso exit=0 JSON_SUMMARY {"suite":"qc-hr-hf-sso","total":41,"passed":41,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing [08:33Z]
+qc-hr-h0.1 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":nul [08:37Z]
+qc-hr-h0.2 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.2","total":58,"passed":58,"failed":[],"skipped":false,"forced":true,"missing":[],"crashed":null} [08:39Z]
+qc-hr-h0.3 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.3","total":37,"passed":37,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing": [08:40Z]
+qc-hr-h0.5 exit=1 JSON_SUMMARY {"suite":"qc-hr-h0.5","total":71,"passed":70,"failed":["H0.5-S8.6"],"findings":[{"id":"H0.5-S8.6","sev":"MAJOR"}],"skipped":fal [08:41Z]
+qc-hr-h0.6 exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":nul [08:43Z]
