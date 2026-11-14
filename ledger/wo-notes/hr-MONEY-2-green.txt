@@ -93,3 +93,40 @@ RESIDUE none (tenants=1 users=4 activeLaw=0->0)
 BASE-EXPECTATION 18/49 as registered (RED-by-design 31 · GREEN controls 18) · off: MONEY-2-ST4(RED→pass) MONEY-2-ST5(RED→pass) MONEY-2-R1.1(RED→pass) MONEY-2-R1.2(RED→pass) MONEY-2-R1.3(RED→pass) MONEY-2-R1.4(RED→pass) MONEY-2-R1.5(RED→pass) MONEY-2-R1.6(RED→pass) MONEY-2-R1.7(RED→pass) MONEY-2-R1.9(RED→pass) MONEY-2-R1.10(RED→pass) MONEY-2-R2.1(RED→pass) MONEY-2-R2.2(RED→pass) MONEY-2-R2.3(RED→pass) MONEY-2-R3.1(RED→pass) MONEY-2-R3.2(RED→pass) MONEY-2-R2.5(RED→pass) MONEY-2-R3.3(RED→pass) MONEY-2-R3.4(RED→pass) MONEY-2-R2.7(RED→pass) MONEY-2-R2.4(RED→pass) MONEY-2-R1.11(RED→pass) MONEY-2-R4.2(RED→pass) MONEY-2-R4.3(RED→pass) MONEY-2-R4.5(RED→pass) MONEY-2-R4.6(RED→pass) MONEY-2-R5.1(RED→pass) MONEY-2-R5.4(RED→pass) MONEY-2-R5.6(RED→pass) MONEY-2-R5.7(RED→pass) MONEY-2-R5.9(RED→pass)
 ===== qc-hr-money-2 ===== passed 49/49 (QC_FORCE)
 JSON_SUMMARY {"suite":"qc-hr-money-2","total":49,"passed":49,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":31,"baseGreen":18,"offBase":["MONEY-2-ST4(RED→pass)","MONEY-2-ST5(RED→pass)","MONEY-2-R1.1(RED→pass)","MONEY-2-R1.2(RED→pass)","MONEY-2-R1.3(RED→pass)","MONEY-2-R1.4(RED→pass)","MONEY-2-R1.5(RED→pass)","MONEY-2-R1.6(RED→pass)","MONEY-2-R1.7(RED→pass)","MONEY-2-R1.9(RED→pass)","MONEY-2-R1.10(RED→pass)","MONEY-2-R2.1(RED→pass)","MONEY-2-R2.2(RED→pass)","MONEY-2-R2.3(RED→pass)","MONEY-2-R3.1(RED→pass)","MONEY-2-R3.2(RED→pass)","MONEY-2-R2.5(RED→pass)","MONEY-2-R3.3(RED→pass)","MONEY-2-R3.4(RED→pass)","MONEY-2-R2.7(RED→pass)","MONEY-2-R2.4(RED→pass)","MONEY-2-R1.11(RED→pass)","MONEY-2-R4.2(RED→pass)","MONEY-2-R4.3(RED→pass)","MONEY-2-R4.5(RED→pass)","MONEY-2-R4.6(RED→pass)","MONEY-2-R5.1(RED→pass)","MONEY-2-R5.4(RED→pass)","MONEY-2-R5.6(RED→pass)","MONEY-2-R5.7(RED→pass)","MONEY-2-R5.9(RED→pass)"]}
+
+# fix round 1 — 2026-11-14T10:52:52Z · tip 150877997 (oracle 28dfffbe7, 56 checks)
+seed-hr-qc exit=0 | ===== seed-hr-qc ===== ผ่าน 34/34
+money2-forced-1 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE)
+money2-forced-2 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE)
+money2-forced-3 exit=0 | ===== qc-hr-money-2 ===== passed 56/56 (QC_FORCE)
+money2-unforced exit=0 | ===== qc-hr-money-2 ===== passed 56/56
+qc-payroll exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-payroll-reverse exit=0 | ✅ PASS — 14/14
+qc-hr-payadjust exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-hr-h0.6 exit=0 | ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE)
+qc-hr-h1.1 exit=0 | ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h1.3 exit=0 | ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE)
+qc-hr-h2.4 exit=0 | ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+qc-hr-h2.7 exit=0 | ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+qc-hr-h3.1 exit=0 | ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE)
+qc-hr-h3.2 exit=0 | ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE)
+qc-hr-h3.4 exit=0 | ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h3.4-ytd exit=0 | ===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+qc-hr-h3.5 exit=0 | ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE)
+qc-hr-h3.6 exit=0 | ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE)
+qc-hr-h3.7 exit=0 | ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+qc-hr-h3.8 exit=0 | ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-h3.9 exit=0 | ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-h4.2 exit=0 | ===== qc-hr-h4.2 ===== passed 57/57
+qc-hr-h4.3 exit=0 | ===== qc-hr-h4.3 ===== passed 45/45
+qc-hr-h4.6 exit=0 | ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE)
+qc-hr-h4.8 exit=0 | ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+qc-hr-set-1 exit=0 | ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-account-cpa exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-audit-trail exit=0 | ✅ PASS — 21/21
+qc-hf-hr-privacy exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-env exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+typecheck exit=0 · 420 s clean
