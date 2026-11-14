@@ -629,3 +629,9 @@
 - สคริปต์ด่าน `pm-full.sh` ลงแถวร่างกฎหมาย (`hr-seed-law-draft --apply`) ก่อน seed แล้ว
 - ค้าง: HR-MONEY-2 รอบแก้ (ผู้สร้าง a7878aeefb74368f3 · R6 ลาป่วยย้อนหลัง + F1–F4) → merge → บอกผู้สร้าง PRIV-2 (a6c6b1d2466bb6b68) ทำขั้นสอง (re-merge + h4.3-lib + R11 ตัวอ่าน stock 2 ตัว) · ผู้เขียนข้อสอบ PRIV-2 กำลังเพิ่ม R11 + รัด W6
 - หนี้ใหม่ที่ต้องลง HR-DEBTS ตอน H4.9: คืนเงินอัตโนมัติเมื่อลาป่วยย้อนหลังทับวันถูกหัก (รายการเจ้าของ) · สลับ paid ของนโยบายลาขณะมีใบลาในเดือนจ่ายแล้ว · กะแรกของวันกำหนดสาขา · fallback gross ของ labour · D-PRIV-name-error-text · linkStaffToHr ข้ามเงียบ · ช่องตำแหน่ง/สัญชาติใส่สูตรทำ export ล้ม · bank-files {names} · confirmBranchHours สำเนากฎ · decideAdjustmentAs อนุมัติแบบมองไม่เห็น · reader-trust · qc-hr-h0.5 เรียก qc4.sh จากเลน · qc-svc-b.16/d.10 แช่แข็ง booking/service.ts
+
+### 2026-11-14T13:08Z · HR-MONEY-2 merged (ใบแก้ ไม่นับ) — ยัง 39/44
+- ด่าน QC4 `ledger/wo-notes/hr-MONEY-2-postmerge.txt`: แดง 0 · 58 ชุด exit 0 · typecheck 0 error 453 วิ · drift เฉพาะ DormUtilityRate
+- ผู้ตรวจ MERGE (รอบแรก + ส่วนต่าง) · นักล่า: บั๊กเดิมปิด 4 · N1 ลาป่วยย้อนหลังทับวันถูกหัก → ปิดด้วยการปฏิเสธ (R6) · ข้อสอบ 57 ข้อ
+- ต่อ: HR-PRIV-2 head 74ba4cf2f (รวม session/hr แล้ว เขียวทั้งรายการในเลน) รอผู้เขียนข้อสอบ ad71c146e20e3130d แก้ TS7006 2 จุด + เพิ่มข้อมูลกะของพนักงานยืมตัว → merge → ด่าน `WO=priv-2` → นับ H5.2 = 40/44
+- หนี้เพิ่ม: ย้อนรอบจ่ายรุ่น 1 ไม่แสดงเหตุผลปฏิเสธ (payroll-actions.ts:220) · offboarding ยกเลิกใบลาไม่ผ่านด่านเดือนจ่ายแล้ว (ไม่มีผลเงิน) · labour truncated = ผสม accrual+gross (มีแถบเตือน)
