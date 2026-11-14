@@ -8,6 +8,7 @@
 //   R-S2.14k: OWNER เห็นปุ่มคู่ขอบเขต "ของฉัน / ทุกคนในกิจการ" ท้ายแถวตัวกรอง → rooms?scope=tenant · การ์ดของคนอื่น = "สั่งโดย <startedByName>"
 //     สลับกิจการ = กลับเป็น "ของฉัน" · ค้นหา/ตัวกรองคงค่าเดิมเมื่อสลับขอบเขต
 // 14 พ.ย. (เจ้าของสั่ง): ไม่มีชื่อกิจการใหญ่/บรรทัดสถานะ (ไอคอนกิจการอยู่ซ้ายของแถบบนแล้ว) · ไม่มีช่องสั่งงานล่าง (หน้ารวมห้อง · สั่งใหม่ = ปุ่ม + บนแถบ)
+// CAL2.5 (แบบ cal-1.png จอ 2): การ์ด "วันนี้" ของปฏิทิน (TodayCard · GET calendar/today) ใต้ช่องค้นหา · หน้าว่าง (C3) = บนสุด · ไม่มีเรื่อง = ไม่แสดง
 // ข้อความทั้งหมดผ่าน i18n · สเกล R-UI1: ระยะแนวตั้ง = แบบ × 0.73 (F.v) · ตัวอักษรตาม tokens.type
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
@@ -17,6 +18,7 @@ import { Text, TextInput } from "@/src/components/ui/text";
 import { AiryScreen, Glass, Icon, LoadError, Loading, Orb, SectionLabel, SysBadge } from "@/src/components/airy";
 import { SecTopBar } from "@/src/components/secretary/SecTopBar";
 import { RoomCard, isTodayBkk, sysName } from "@/src/components/secretary/RoomCard";
+import { TodayCard } from "@/src/components/calendar/TodayCard";
 import { RoomFilters, type RoomFilterKey, type RoomFilterOption, type RoomScopeKey, type RoomScopeOption } from "@/src/components/secretary/RoomFilters";
 import { sysColor } from "@/src/components/secretary/sys";
 import {
@@ -227,6 +229,7 @@ export default function SecretaryHome() {
                 style={[styles.searchField, { color: c.text }]}
               />
             </View>
+            <TodayCard />
             <RoomFilters options={filters} value={filter} onChange={setFilter} scope={owner ? { options: scopes, value: reqScope, onChange: setScope } : undefined} />
             {visible.map((r) => (
               <RoomCard key={r.id} testID="sec-home-card" room={r} nowMs={nowMs} onPress={() => router.push(`/secretary/room/${r.id}`)} />
@@ -239,6 +242,7 @@ export default function SecretaryHome() {
           </>
         ) : empty ? (
           <View testID="sec-home-empty">
+            <TodayCard />
             <View style={styles.hero}>
               <Orb size={size.orbHero} testID="sec-orb" />
               <Text style={[styles.h2, { color: c.text }]}>{t("sec.c3.heroTitle")}</Text>

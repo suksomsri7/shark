@@ -1974,6 +1974,20 @@
    "screen": "ปฏิทิน · แท็บเตือนฉัน (โหลดล้ม)",
    "action": "โหลดใหม่",
    "wo": "CAL2.4"
+  },
+  {
+   "testID": "cal-today",
+   "file": "apps/mobile/src/components/calendar/TodayCard.tsx",
+   "screen": "หน้าเลขา (จอ 2) การ์ดวันนี้",
+   "action": "router.navigate /secretary/calendar?day=วันนี้",
+   "wo": "CAL2.5"
+  },
+  {
+   "testID": "cal-today-more",
+   "file": "apps/mobile/src/components/calendar/TodayCard.tsx",
+   "screen": "หน้าเลขา (จอ 2) การ์ดวันนี้",
+   "action": "ดูทั้งหมดในปฏิทิน › → /secretary/calendar",
+   "wo": "CAL2.5"
   }
  ]
 }
