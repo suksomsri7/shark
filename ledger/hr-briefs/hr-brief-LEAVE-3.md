@@ -38,7 +38,7 @@ AM+PM pair = full leave day · no one-person multi-step chain (OWNER audited) ·
 - Still reaching direct-after-cancel: **legacy rows only** — HrLeave `cancelRequest` callers in src = `cancelLeave` and offboarding (`lifecycle.ts:517-521`, cancels the leaves too); pos/crm/dorm pass their own ids. Gate in `decideLeave :696-710`: CANCELLED chain with ≥1 APPROVED decision ⇒ decider must be OWNER (`isTenantOwner(…, tx)`, `:825` pattern), else "ใบลานี้เคยผ่านขั้นอนุมัติบางขั้นแล้วก่อนถูกถอนจากสาย — ให้เจ้าของกิจการเป็นผู้ตัดสิน". CH-4 (no decision, decider U.owner) stays GREEN.
 
 ## Allowed files (all else frozen)
-`hr/judge.ts` · `hr/work-entries-rules.ts` (buildDay) · `hr/service.ts` (decideLeave chain block) · `hr/index.ts` (export) · `ap/service.ts` · `ap/actions.ts` · `src/lib/approval-effects.ts` · `src/app/app/approvals/page.tsx` + `BulkApprovals.tsx` · `src/lib/ai/tools.ts` + `proposals.ts` · new oracle · ORACLE-EDITs below.
+`hr/judge.ts` · `hr/work-entries-rules.ts` (buildDay) · `hr/service.ts` (decideLeave chain block) · `hr/index.ts` (export) · `ap/service.ts` · `ap/actions.ts` · `src/lib/approval-effects.ts` · `src/app/app/approvals/page.tsx` + `BulkApprovals.tsx` · `src/lib/ai/tools.ts` + `proposals.ts` · `hr/ot.ts` (fullDayLeave — r3 W3) + `hr/self.ts` (myWeek — r3 W4.2) [added by controller, r3] · new oracle · ORACLE-EDITs below.
 **`payroll-rules.ts` byte-frozen (sha).** Unchanged: judge-rules · work-entries · leave(-rules) · attendance-pay* · payroll* · rules · correction* · swap* · lifecycle · `prisma/**` · `core/**`. **No migration.**
 
 ## Hard rules

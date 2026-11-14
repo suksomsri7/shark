@@ -1,7 +1,7 @@
 // QC — HR V2 · HR-LEAVE-3 part b (CONTROLLER RULINGS r3: W1–W7) · brief ledger/hr-briefs/hr-brief-LEAVE-3.md · notes ledger/wo-notes/hr-LEAVE-3-oracle.md
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit. Shares scripts/qc-hr-leave-3-lib.mts · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-leave-3b.mts
-// Registry recorded on ed06b0514 (LEAVE-3 fix round 1)
+// Registry re-based to 979674412 (RED: W3.1 W4.2 · was 7 RED on ed06b0514)
 import { type Any, type Base, errText, canon, makeRegistry, failedKeys, textOf } from "./qc-hr-lib.mjs";
 import { setupLeave3, underLock, callAct, shiftOf, entryOf, bk, dist } from "./qc-hr-leave-3-lib.mjs";
 
@@ -10,15 +10,15 @@ const ARGV = process.argv.slice(2);
 const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
 const SEV: Record<string, "CRITICAL" | "MAJOR" | "MINOR"> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
 const CHECKS = `
-W1|R3|C|R|edit [M,O]→[M] ∥ decide(expectedStep 1) under held request row, both orders ⇒ never at a missing step · edit ok ⇒ APPROVED + effect once · edit refused ⇒ PENDING@2 steps [1,2]
-W2|R2|C|R|AI approval_decide by requestSummary: proposal stores requestId + expectedStep · confirm after another manager advanced ⇒ nothing decided, refused
+W1|R3|C|G|edit [M,O]→[M] ∥ decide(expectedStep 1) under held request row, both orders ⇒ never at a missing step · edit ok ⇒ APPROVED + effect once · edit refused ⇒ PENDING@2 steps [1,2]
+W2|R2|C|G|AI approval_decide by requestSummary: proposal stores requestId + expectedStep · confirm after another manager advanced ⇒ nothing decided, refused
 W3.1|R1|M|R|OT on an approved AM+PM pair day ⇒ requestOt refused with the full-day text · OT filed before the 2nd half, approved after ⇒ decideOtRequest refused · PENDING
 W3.2|R1|m|G|control: full-day leave refuses OT (text) · single AM half allows OT
-W4.1|R1|M|R|pair day stored HrAttendanceDay.leaveHalf null (LEAVE, fraction 1.0)
+W4.1|R1|M|G|pair day stored HrAttendanceDay.leaveHalf null (LEAVE, fraction 1.0)
 W4.2|R1|M|R|myWeek shows the pair day as full-day leave (half null)
 W4.3|R1|m|G|control: single AM half ⇒ stored leaveHalf AM · myWeek half AM
-W5|R4|M|R|cancelMyRequestAction returns the HR result: not-mine / decided / no-system ⇒ {ok:false, Thai reason} · own pending ⇒ {ok:true}
-W6|R2|M|R|listPending hides a step-2 request from the MANAGER who decided step 1 · other MANAGER sees it · OWNER who decided step 1 still sees it
+W5|R4|M|G|cancelMyRequestAction returns the HR result: not-mine / decided / no-system ⇒ {ok:false, Thai reason} · own pending ⇒ {ok:true}
+W6|R2|M|G|listPending hides a step-2 request from the MANAGER who decided step 1 · other MANAGER sees it · OWNER who decided step 1 still sees it
 W7|R1|M|G|late second half (approved after the day was judged) is picked up like a late single leave: STALE in the build · recompute ⇒ LEAVE (neither is auto-recomputed)
 Z1|house|C|G|no residue · own law rows
 `.trim().split("\n").map((l) => {

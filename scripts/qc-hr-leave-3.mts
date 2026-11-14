@@ -89,7 +89,7 @@ const at = (src: string, from: number) => { let d = 0; for (let k = from; k < sr
 const callsOf = (src: string, re: RegExp) => [...src.matchAll(re)].map((m) => at(src, m.index! + m[0].length - 1));
 
 // ═════════════════════════ statics ═════════════════════════
-const ALLOWED = [`${H}judge.ts`, `${H}work-entries-rules.ts`, `${H}service.ts`, `${H}index.ts`, `${AP}service.ts`, `${AP}actions.ts`, "src/lib/approval-effects.ts", "src/app/app/approvals/page.tsx", "src/app/app/approvals/BulkApprovals.tsx", "src/lib/ai/tools.ts", "src/lib/ai/proposals.ts"];
+const ALLOWED = [`${H}judge.ts`, `${H}work-entries-rules.ts`, `${H}service.ts`, `${H}index.ts`, `${AP}service.ts`, `${AP}actions.ts`, "src/lib/approval-effects.ts", "src/app/app/approvals/page.tsx", "src/app/app/approvals/BulkApprovals.tsx", "src/lib/ai/tools.ts", "src/lib/ai/proposals.ts", `${H}ot.ts`, `${H}self.ts`];
 const OWN = ["scripts/qc-hr-leave-3.mts", "scripts/qc-hr-leave-3-lib.mts", "scripts/qc-hr-leave-3b.mts"];
 function runStatic(): void {
  ck("ST1", { sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA }, "payroll-rules.ts sha");
