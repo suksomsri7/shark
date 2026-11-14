@@ -202,9 +202,13 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     // ORACLE-EDIT (HR H4.9 · controller) S1.6: explicit allowlist — the oracles H4.9-FIX1 edited (qc-nav-functions IN_PAGE_ENTRIES row · qc-hr-priv-2 S4/S5 acceptances); every hunk must add this marker ◂
     const H49_ALLOW = new Set(["scripts/qc-nav-functions.mts", "scripts/qc-hr-priv-2.mts"]); // ORACLE-EDIT (HR H4.9 · controller) ◂
     const h49Ok = (f: string) => H49_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR H4.9 · controller)"))); // ORACLE-EDIT (HR H4.9 · controller) ◂
+    // ORACLE-EDIT (HR PREPROD-1 · controller): in base only — exactly these files may differ, and only when every hunk carries "HR PREPROD-1" on an added line: hr leave · privacy · self · payroll · payroll-actions · payroll-ui · the older oracles PREPROD-1 edited · its own two oracle files ◂
+    const PP1_ALLOW = new Set([`${H}leave.ts`, `${H}privacy.ts`, `${H}self.ts`, `${H}payroll.ts`, `${H}payroll-actions.ts`, `${H}payroll-ui.tsx`, "scripts/qc-hr-h1.3.mts", "scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.8.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-priv-2.mts"]); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
+    const PP1_OWN = new Set(["scripts/qc-hr-preprod-1.mts", "scripts/qc-hr-preprod-1b.mts", "scripts/qc-hr-preprod-1c.mts", "scripts/qc-hr-preprod-1-lib.mts"]); // ORACLE-EDIT (HR PREPROD-1 · controller): the ticket's own oracle files, by name (the lib carries no source mark) ◂
+    const pp1Marked = (f: string) => IN_BASE && (PP1_OWN.has(f) || (PP1_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PREPROD-1/.test(l))))); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
     const frozenLeft = frozen.filter((f) => !(/\.(ts|mts|json)$/.test(f) && hfOk(f)));
-    const hrLeft = hrFrozen.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f)); // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂
-    const oraclesLeft = oracles.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f) && !h49Ok(f)); // ORACLE-EDIT (HR H4.9 · controller): + h49Ok ◂ // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂
+    const hrLeft = hrFrozen.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f) && !pp1Marked(f)); // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Marked ◂ // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂
+    const oraclesLeft = oracles.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f) && !h49Ok(f) && !pp1Marked(f)); // ORACLE-EDIT (HR H4.9 · controller): + h49Ok ◂ // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Marked ◂ // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂
     const r = {
       ai: changedVsBase(BASE, frozenLeft) === "unchanged", // HF-SSO ORACLE-EDIT
       hr: hrLeft.length === 0 || changedVsBase(BASE, hrLeft) === "unchanged", // HF-SSO ORACLE-EDIT

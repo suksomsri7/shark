@@ -343,7 +343,9 @@ function runStatic(): void {
     // ORACLE-EDIT (HR HF-SSO · controller fix2) S1.5: "HF-SSO" marks count only in the HF-SSO files this FROZEN list covers (was: any file) ◂
     const HF_SSO_FILES = new Set([`${H}payroll.ts`, `${H}payroll-actions.ts`, `${H}law.ts`, "scripts/qc-hr-lib.mts", "scripts/qc-hr-h1.2.mts", "scripts/qc-hr-h1.3.mts"]);
     const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => laterMark(l) || (HF_SSO_FILES.has(f) && /HF-SSO/.test(l))));
-    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
+    const PP1_S15 = new Set(["leave.ts", "privacy.ts", "self.ts", "self-ui.tsx", "service.ts", "settings.ts", "stock-charge.ts", "work-entries.ts", "work-entries-rules.ts", "payroll.ts", "payroll-actions.ts", "payroll-ui.tsx", "scope.ts", "ui.tsx"].map((x) => `${H}${x}`)); // ORACLE-EDIT (HR PREPROD-1 · controller): brief-allowed files of the later ticket ◂
+    const pp1Only = (f: string) => IN_BASE && PP1_S15.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PREPROD-1/.test(l))); // ORACLE-EDIT (HR PREPROD-1 · controller): explicit file list, every hunk marked ◂
+    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f) && !pp1Only(f)) : []; // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Only ◂
     const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
     const h35Hunks = diffHunks(BASE, H35) ?? [];
     const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));

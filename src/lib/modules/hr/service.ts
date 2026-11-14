@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัต
 import { lockRosterKeysInTx } from "./roster"; // HR H2.7 ▸ R8 ลำดับล็อก hr-leave → พนักงาน → ตารางกะ ◂
 // HR H2.7 ▸ เครื่องยนต์การลา (ประเภทการลา · สมุดวันลา · นับวัน · event hr.leave.decided) — ตัวงาน request/decide/cancel ยังอยู่ไฟล์นี้ (Q2) ◂
 import { LEAVE_TEXT, leaveApprovalCheckInTx, leaveDecidedEvent, leaveLedgerInTx, leaveRefusalText, leaveRosterKeys, leaveRowInTx, lockLeaveEmployeeInTx, planLeaveRequest, reserveLeaveInTx, type LeaveRequestFields } from "./leave"; // HR H2.7 ◂
+import { leaveUnpaidPartRefusalInTx, sickSplitInTx } from "./leave"; // HR PREPROD-1 ▸ R3: ลาป่วยเกินวันที่เหลือ — แบ่งส่วนไม่ได้ค่าจ้าง + ด่านเดือนที่อนุมัติเงินเดือนแล้วรอบที่สอง ◂
 import { leavePaidRunRefusalInTx } from "./leave"; // HR MONEY-2 ▸ R5: ลาไม่รับค่าจ้างในเดือนที่อนุมัติเงินเดือนแล้ว (ข้อความ CORRECTION_TEXT.paid) ◂
 import type { HrAttendanceJudgement, HrLeaveType, Prisma } from "@prisma/client"; // HR H2.4 ▸ HrAttendanceKind ใช้ที่ clock.ts ◂
 import * as approval from "@/lib/modules/approval/service";
@@ -507,7 +508,9 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
       });
       if (ownerAuto) {
         { const paid = await leavePaidRunRefusalInTx(tx, ctx, l.id); if (paid) throw new HrLeaveRequestError(paid); } // HR MONEY-2 ▸ R5/R6: ใบของเจ้าของร้าน (อนุมัติทันที) — ย้อนทั้ง tx ไม่มีแถว ◂
-        const row = await leaveRowInTx(tx, l.id);
+        const row0 = await leaveRowInTx(tx, l.id); // HR PREPROD-1 ◂
+        const row = row0 ? await sickSplitInTx(tx, ctx, row0) : null; // HR PREPROD-1 ▸ R3: ใบของเจ้าของร้าน (อนุมัติทันที) แบ่งส่วนเหมือนทางอนุมัติ ◂
+        { const paid = row ? await leaveUnpaidPartRefusalInTx(tx, ctx, row) : null; if (paid) throw new HrLeaveRequestError(paid); } // HR PREPROD-1 ▸ R3: ย้อนทั้ง tx ไม่มีแถว ◂
         if (row) {
           await leaveLedgerInTx(tx, ctx, row, "PENDING", "APPROVED");
           await emitOutbox(tx, leaveDecidedEvent(ctx, row, "APPROVED", null));
@@ -723,6 +726,7 @@ export async function decideLeave(
       return { leave, from };
     }
     lxd = chk.row;
+    { const paid = await leaveUnpaidPartRefusalInTx(tx, ctx, lxd); if (paid) throw new HrLeaveDecisionError(paid); } // HR PREPROD-1 ▸ R3: ส่วนไม่ได้ค่าจ้างในเดือนที่อนุมัติเงินเดือนแล้ว ⇒ ปฏิเสธ (ใบคง PENDING · ไม่มี USE) ◂
   }
   // ◂ HR H2.7
   // เงื่อนไข "สถานะต้นทางที่คาดไว้" ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
