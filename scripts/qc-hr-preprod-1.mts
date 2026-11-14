@@ -1,6 +1,7 @@
 // QC — HR V2 · fix ticket HR-PREPROD-1 (six pre-prod debts) · brief ledger/hr-briefs/hr-brief-PREPROD-1.md · notes ledger/wo-notes/hr-PREPROD-1-oracle.md
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-preprod-1.mts  (--list)
+// Registry re-based to 72bf1db1b (review round): every check GREEN there except R3.6 (V1) · V1–V9 review checks live in scripts/qc-hr-preprod-1b.mts (same lib)
 // Own tenants qc-hr-pp1-* (3 per run) · 2031 dates · own ACTIVE law rows removed in finally · money = integer satang, literals derived in the notes ·
 //   base = QC_PP1_BASE || merge-base(HEAD, session/hr) · diff statics are n/a once the base already carries `HR PREPROD-1` (in-base guard)
 import { execFileSync } from "node:child_process";
@@ -25,10 +26,10 @@ ST2|static|C|G|frozen files unchanged vs base (rules/attendance-pay/judge/ot/lab
 ST3|static|C|G|allowed files only · older oracles changed only by explicit-allowlist ORACLE-EDIT (…PREPROD-1) hunks · covers scripts/*.mts
 ST4|static|M|G|every changed src hunk carries "HR PREPROD-1" · no bare removals
 ST5|static|M|G|no AppSystem settings write outside lockHrSettings + writeHrSettingsKeys
-ST6|static|C|R|R4 one pay-scope predicate: payTarget · decideAdjustmentAs · setAdjustmentConsent · giveBackClaim · chargeGate use inPayScope/payScopeWhere · no second copy
-ST7|static|M|R|texts: PAY_SCOPE_NO_ACCESS_TEXT (scope.ts, one constant) · SETTINGS_TEXT.paidLocked · each literal once in src · leaveSplitOf exported
-ST8|static|m|R|R2 page: REFUND_BEHIND line · PRIV-2 filter on strandedAdjustments kept
-R6.1|R6|m|R|runbook 13a (HF-SSO-M2) under row 13 of HANDOVER-H3.md §3
+ST6|static|C|G|R4 one pay-scope predicate: payTarget · decideAdjustmentAs · setAdjustmentConsent · giveBackClaim · chargeGate use inPayScope/payScopeWhere · no second copy
+ST7|static|M|G|texts: PAY_SCOPE_NO_ACCESS_TEXT (scope.ts, one constant) · SETTINGS_TEXT.paidLocked · each literal once in src · leaveSplitOf exported
+ST8|static|m|G|R2 page: REFUND_BEHIND line · PRIV-2 filter on strandedAdjustments kept
+R6.1|R6|m|G|runbook 13a (HF-SSO-M2) under row 13 of HANDOVER-H3.md §3
 Z0|house|C|G|own law rows: none before · 3 inserted
 R1.1|R1|C|G|[db] v1+JV reverse: REVERSED · LATE/ABSENT rows APPROVED unbound 106,250 · heads unchanged
 R1.2|R1|C|G|[db] v1+JV re-create binds the same rows · sync writes nothing
@@ -39,40 +40,40 @@ R1.6|R1|M|G|[db] v2 no-book leave gate: refuses before · allows after
 R1.7|R1|C|G|[db] v2 booked reverse: REVERSED · rows unbound 106,250 · heads unchanged
 R1.8|R1|C|G|[db] v2 booked re-create: same lines bound · sync writes nothing
 R1.9|R1|M|G|[db] v2 booked leave gate: refuses before · allows after
-R2.1|R2|C|R|[db] refund 50,000 in run-less 2031-04 behind approved 2031-05 ⇒ strandedAdjustments lists it · REFUND_BEHIND
-R2.2|R2|C|R|[db] moveStrandedAdjustment(refund) ⇒ 2031-06 · APPROVED unbound · audit hr.payadjust.move
-R2.3|R2|M|R|[db] 2031-06 draft carries REFUND:+50,000
-R2.4|R2|M|R|[db] (Q7) leaver (end 2031-05) refund listed · move refused fixed text · nothing written
+R2.1|R2|C|G|[db] refund 50,000 in run-less 2031-04 behind approved 2031-05 ⇒ strandedAdjustments lists it · REFUND_BEHIND
+R2.2|R2|C|G|[db] moveStrandedAdjustment(refund) ⇒ 2031-06 · APPROVED unbound · audit hr.payadjust.move
+R2.3|R2|M|G|[db] 2031-06 draft carries REFUND:+50,000
+R2.4|R2|M|G|[db] (Q7) leaver (end 2031-05) refund listed · move refused fixed text · nothing written
 R2.5|R2|M|G|[db] control: ordinary give-back (period after lastCovered) not listed
 R2.6|R2|M|G|[db] control: old stranded BONUS listed unchanged · moves to 2031-04
-R3.1|R3|C|R|[db] SICK 10–14 Mar (5.0) with 28.0 used ⇒ request accepted (PENDING)
-R3.2|R3|C|R|[db] approve ⇒ USE −2.0 · note unpaid:3.0;from:2031-03-12
-R3.3|R3|M|R|[db] (ruling 1) leaveSplitOf → { paidDays 2, unpaidDays 3, unpaidFrom 2031-03-12 } · leave item paidDays / unpaidDays
-R3.4|R3|C|R|[db] balance never negative: used 30.0 · balance 0.0 · available 0.0 · Σ ledger 0
-R3.5|R3|C|R|[db] v2 March: UNPAID_LEAVE 12/13/14 Mar −100,000 each = −300,000 · none on 10/11
-R3.6|R3|C|R|[db] half edge 27.5 used ⇒ USE −2.5 · unpaid:2.5;from:2031-03-12;half · −50,000 −100,000 −100,000 = −250,000
-R3.7|R3|M|R|[db] revoke approved over-balance leave ⇒ use-revert +2.0 only · Σ 2.0
-R3.8|R3|C|R|[db] unpaid part in APPROVED Feb ⇒ decideLeave refused CORRECTION_TEXT.paid · PENDING · no USE
-R3.9|R3|C|R|[db] same, owner auto-approve ⇒ refused · no row
-R3.10|R3|C|R|[db] same, chain apply ⇒ PAID · CANCELLED · no USE
-R3.11|R3|M|R|[db] leave spanning Feb(APPROVED)/Mar: paid 27–28 Feb, unpaid 1–3 Mar ⇒ approved · unpaid:3.0;from:2031-03-01
+R3.1|R3|C|G|[db] SICK 10–14 Mar (5.0) with 28.0 used ⇒ request accepted (PENDING)
+R3.2|R3|C|G|[db] approve ⇒ USE −2.0 · note unpaid:3.0;from:2031-03-12
+R3.3|R3|M|G|[db] (ruling 1) leaveSplitOf → { paidDays 2, unpaidDays 3, unpaidFrom 2031-03-12 } · leave item paidDays / unpaidDays
+R3.4|R3|C|G|[db] balance never negative: used 30.0 · balance 0.0 · available 0.0 · Σ ledger 0
+R3.5|R3|C|G|[db] v2 March: UNPAID_LEAVE 12/13/14 Mar −100,000 each = −300,000 · none on 10/11
+R3.6|R3|C|R|[db] (V1) 27.5 used ⇒ USE −2.5 · unpaid:2.5;from:2031-03-12 (no ;half) · −50,000 −100,000 −100,000 = −250,000
+R3.7|R3|M|G|[db] revoke approved over-balance leave ⇒ use-revert +2.0 only · Σ 2.0
+R3.8|R3|C|G|[db] unpaid part in APPROVED Feb ⇒ decideLeave refused CORRECTION_TEXT.paid · PENDING · no USE
+R3.9|R3|C|G|[db] same, owner auto-approve ⇒ refused · no row
+R3.10|R3|C|G|[db] same, chain apply ⇒ PAID · CANCELLED · no USE
+R3.11|R3|M|G|[db] leave spanning Feb(APPROVED)/Mar: paid 27–28 Feb, unpaid 1–3 Mar ⇒ approved · unpaid:3.0;from:2031-03-01
 R3.12|R3|M|G|[db] control: MONEY-2 gate — unpaid-policy leave in APPROVED Feb still refused
 R3.13|R3|m|G|[db] control: SICK within balance ⇒ USE −2.0 · note null (ruling 2) · no unpaid
 R3.14|R3|M|G|[db] control: PERSONAL over quota still refused (LEAVE_TEXT.balance) · no row
 R3.15|R3|m|G|[db] control: engine v1 March run unchanged (gross 3,000,000 · no UNPAID_LEAVE)
 R3.16|R3|M|G|[db] positive control: unpaid-policy day on the R3 roster = UNPAID_LEAVE −100,000 (fixture basis N = 480)
-R4.1|R4|C|R|[db] inbox decideAdjustmentAs: borrowed · other-branch · missing ⇒ PAY_SCOPE_NO_ACCESS_TEXT byte-equal · nothing written
-R4.2|R4|C|R|[db] decideAdjustmentAction on borrowed + other-branch rows = not-found answer · nothing written
-R4.3|R4|C|R|[db] cancelAdjustmentAction borrowed + other-branch = not-found answer · nothing written
-R4.4|R4|C|R|[db] moveStrandedAdjustmentAction borrowed + other-branch = not-found answer · nothing written
-R4.5|R4|C|R|[db] setAdjustmentConsent home-less + other-branch = not-found answer · nothing written
-R4.6|R4|C|R|[db] giveBackClaim borrowed + other-branch = not-found answer · nothing written
-R4.7|R4|C|R|[db] withdrawStockCharge borrowed home-less + other-branch = not-found answer · nothing written
+R4.1|R4|C|G|[db] inbox decideAdjustmentAs: borrowed · other-branch · missing ⇒ PAY_SCOPE_NO_ACCESS_TEXT byte-equal · nothing written
+R4.2|R4|C|G|[db] decideAdjustmentAction on borrowed + other-branch rows = not-found answer · nothing written
+R4.3|R4|C|G|[db] cancelAdjustmentAction borrowed + other-branch = not-found answer · nothing written
+R4.4|R4|C|G|[db] moveStrandedAdjustmentAction borrowed + other-branch = not-found answer · nothing written
+R4.5|R4|C|G|[db] setAdjustmentConsent home-less + other-branch = not-found answer · nothing written
+R4.6|R4|C|G|[db] giveBackClaim borrowed + other-branch = not-found answer · nothing written
+R4.7|R4|C|G|[db] withdrawStockCharge borrowed home-less + other-branch = not-found answer · nothing written
 R4.8|R4|M|G|[db] control: all-branch viewer does all 7 on borrowed / home-less rows
 R4.9|R4|M|G|[db] control: limited viewer, in-scope home: 6 actions ok
 R4.10|R4|m|G|[db] control: inbox decideAdjustmentAs in-scope ok
-R5.1|R5|C|R|[db] paid→unpaid flip with approved leave in APPROVED Aug ⇒ paidLocked · row byte-same · no audit
-R5.2|R5|C|R|[db] unpaid→paid flip, same ⇒ refused · unchanged
+R5.1|R5|C|G|[db] paid→unpaid flip with approved leave in APPROVED Aug ⇒ paidLocked · row byte-same · no audit
+R5.2|R5|C|G|[db] unpaid→paid flip, same ⇒ refused · unchanged
 R5.3|R5|M|G|[db] control: approved leave only in open month (+ pending in Aug) ⇒ flip allowed
 R5.4|R5|m|G|[db] control: rename + paid unchanged on the locked policy ⇒ allowed
 Z1|house|C|G|no residue
@@ -109,7 +110,7 @@ const atBase = (p: string) => {
 const IN_BASE = !!BASE && atBase(`${H}payroll.ts`).includes("HR PREPROD-1");
 
 // ═════════════════════════ statics ═════════════════════════
-const OWN = ["scripts/qc-hr-preprod-1.mts", "scripts/qc-hr-preprod-1-lib.mts"];
+const OWN = ["scripts/qc-hr-preprod-1.mts", "scripts/qc-hr-preprod-1-lib.mts", "scripts/qc-hr-preprod-1b.mts"];
 const ALLOWED_SRC = ["payroll.ts", "payroll-actions.ts", "payroll-ui.tsx", "scope.ts", "leave.ts", "leave-rules.ts", "service.ts", "work-entries.ts", "work-entries-rules.ts", "privacy.ts", "ui.tsx", "self.ts", "self-ui.tsx", "settings.ts", "stock-charge.ts"].map((f) => `${H}${f}`).concat(["src/messages/th/common.json", "src/messages/en/common.json"]);
 /** explicit ORACLE-EDIT allowlist (brief §ORACLE-EDIT + "possibly money-2 ST3 and priv-2 statics") — every hunk must carry ORACLE-EDIT …PREPROD-1 */
 const ORACLE_ALLOW = ["h1.3", "h3.2", "h3.4-lib", "h3.6", "h3.9", "h4.3-lib", "money-2", "priv-2", "priv-2-lib"].map((x) => `scripts/qc-hr-${x}.mts`);
@@ -383,7 +384,7 @@ try {
     ck("R3.5", { run: mar?.ok === true, lines: canon(up1.sort()) === canon(["UNPAID_LEAVE:-100000@2031-03-12", "UNPAID_LEAVE:-100000@2031-03-13", "UNPAID_LEAVE:-100000@2031-03-14"]), total: tot(up1) === -300_000 },
       "−300,000 on 12–14", short({ mar: mar?.reason ?? mar?.ok, up1 }, 220));
     ck("R3.16", { run: mar?.ok === true, line: canon(await unpaid(E10)) === canon(["UNPAID_LEAVE:-100000@2031-03-20"]) }, "−100,000 @20 Mar", short(await unpaid(E10), 120));
-    ck("R3.6", { approved: d2?.ok === true, use: num(u2?.d) === -2.5 && u2?.note === "unpaid:2.5;from:2031-03-12;half",
+    ck("R3.6", { approved: d2?.ok === true, use: num(u2?.d) === -2.5 && u2?.note === "unpaid:2.5;from:2031-03-12",
       lines: canon(up2.sort()) === canon(["UNPAID_LEAVE:-100000@2031-03-13", "UNPAID_LEAVE:-100000@2031-03-14", "UNPAID_LEAVE:-50000@2031-03-12"]), total: tot(up2) === -250_000 }, "−250,000", short({ d2: d2?.reason ?? d2, u2, up2 }, 240));
     {
       const u9 = await use((r9?.id ?? "") as string);
