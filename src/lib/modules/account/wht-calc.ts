@@ -145,6 +145,9 @@ export function docWhtBase(doc: { lines: readonly WhtBaseLine[]; discountAmount:
   const nets = t.lines.map((b) => b.net);
   const flagged = (l: WhtBaseLine) => !!(l.whtIncomeCode || l.whtIncomeType || (l.whtRateBp ?? 0) > 0);
   const byLineFlags = doc.lines.some(flagged);
+  // ไม่มีธง: ตัดบรรทัดสินค้าเฉพาะใบที่ "ปน" (มีบรรทัดอื่นที่ไม่ใช่สินค้า) — ใบสินค้าล้วน (หรือชนิดบรรทัดที่ระบบเดาให้ทั้งใบ) ที่ผู้จ่ายเลือกหัก = ใช้ทุกบรรทัด
+  //   (ไม่ทำให้ฐานเป็น 0 เงียบ ๆ — ผู้ใช้เห็นคำเตือน/แก้ฐานได้) ◂
+  const mixed = doc.lines.some((l) => l.lineKind === "GOODS") && doc.lines.some((l) => l.lineKind !== "GOODS");
   let base = 0;
   let goodsExcluded = 0;
   const byCodeMap = new Map<string, { code: string; rateBp: number | null; base: number }>();
@@ -163,7 +166,7 @@ export function docWhtBase(doc: { lines: readonly WhtBaseLine[]; discountAmount:
       byCodeMap.set(k, cur);
       return;
     }
-    if (l.lineKind === "GOODS") {
+    if (mixed && l.lineKind === "GOODS") {
       goodsExcluded += n;
       return;
     }

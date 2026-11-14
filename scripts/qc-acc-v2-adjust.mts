@@ -110,7 +110,9 @@ console.log("AJ0 สายไฟ static:");
   // ORACLE-EDIT (ACC T0.4 · 13 พ.ย. 2569): เหตุผล CN/DN เปลี่ยนจากบล็อกเป็นคำเตือนกฎหมายที่ต้องกดยืนยัน (หลัก SHARK ไม่บล็อกด้วยเหตุผลกฎหมาย ·
   //   ACCOUNT-TAX-PLAN กติกาข้อ 2) — ตรวจว่าด่านคำเตือนอยู่ในทางออกเอกสาร แทนการหาข้อความ throw เดิม · AJ6 (ไม่ยืนยัน = ไม่ผ่าน) คงเดิม
   const gateSrc = readFileSync(join(ROOT, "src/lib/modules/account/legal-gate.ts"), "utf8");
-  assert("AJ0.12 service.ts เตือนเหตุผล CN/DN เสมอ (ด่านคำเตือน ADJUST_NOTE_REASON_MISSING)", /legalGateInTx\(tx, tenantId, issueLegalWarnings\(doc, settings\)/.test(serviceSrc) && /ADJUST_NOTE_REASON_MISSING/.test(gateSrc) && /CREDIT_NOTE", "DEBIT_NOTE", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED"/.test(gateSrc));
+  // ORACLE-EDIT (ACC T3 Job A5 · 14 พ.ย. 2569): issueDocumentInTx ส่งผู้ซื้อเข้าด่านเฉพาะใบกำกับภาษี — `issueLegalWarnings(doc.docType === "TAX_INVOICE" ? { ...doc, buyer } : doc, settings)`
+  //   ใบลด/เพิ่มหนี้ยังผ่าน `doc` ตัวเดิม ⇒ ยอมรับทั้งรูปเดิมและรูปใหม่ (พฤติกรรม CN/DN ไม่เปลี่ยน — AJ6 ตรวจผลจริง)
+  assert("AJ0.12 service.ts เตือนเหตุผล CN/DN เสมอ (ด่านคำเตือน ADJUST_NOTE_REASON_MISSING)", /legalGateInTx\(tx, tenantId, issueLegalWarnings\((doc|doc\.docType === "TAX_INVOICE" \? \{ \.\.\.doc, buyer: tiBuyer \} : doc), settings\)/.test(serviceSrc) && /ADJUST_NOTE_REASON_MISSING/.test(gateSrc) && /CREDIT_NOTE", "DEBIT_NOTE", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED"/.test(gateSrc));
   assert("AJ0.13 service.ts เช็ค cap เฉพาะเมื่อมี sourceDocId", /doc\.docType === "CREDIT_NOTE" && doc\.sourceDocId/.test(serviceSrc));
   assert("AJ0.14 createDocument สร้าง relation ADJUST เมื่อมี sourceDocId", /RELATION_FOR\[input\.docType\] === "ADJUST"/.test(serviceSrc));
 

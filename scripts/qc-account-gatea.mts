@@ -75,7 +75,9 @@ try {
       const cv = await acc.convertDocument(tenantId, sA.id, (d as { id: string }).id, "TAX_INVOICE", userId);
       if ((cv as { ok: boolean }).ok === false) throw new Error("convert TAX_INVOICE: " + JSON.stringify(cv));
       txId = (cv as { newId: string }).newId;
-      const ti = await acc.issueDocument(tenantId, sA.id, txId);
+      // ORACLE-EDIT (ACC T3 Job A5 · 14 พ.ย. 2569): ลูกค้าของชุดนี้เป็นกิจการ (legalType ค่าเริ่ม COMPANY) ไม่มีเลข 13 หลัก ⇒ ฝั่งบัญชีขอให้ยืนยัน
+      //   BUYER_TAX_ID_MISSING ก่อนออกใบกำกับ (กติกาเดียว · ไม่บล็อก) — ชุดนี้ตรวจการลงบัญชี จึงส่งรหัสยืนยันไปด้วย · ผลทางบัญชีที่ตรวจไม่เปลี่ยน
+      const ti = await acc.issueDocument(tenantId, sA.id, txId, { ack: { codes: ["BUYER_TAX_ID_MISSING"], actorId: userId, via: "qc" } });
       if ((ti as { ok: boolean }).ok === false) throw new Error("issue TAX_INVOICE: " + JSON.stringify(ti));
     }
     const es2 = await entriesOf(sA.id);
