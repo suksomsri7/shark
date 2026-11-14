@@ -86,6 +86,10 @@ export const SKILLS: Skill[] = [
       "account_wht_context", // ACC T3.1/T3.2 ▸ อัตราหัก ณ ที่จ่ายตามตาราง × ผู้จ่าย × ผู้รับ × ช่องทาง + ฐานรายบรรทัดของเอกสาร (อ่าน) ◂
       "account_tax_deadlines", // ACC T3.7 ▸ กำหนดยื่น ภ.พ.30/ภ.ง.ด. ที่กำลังจะถึง จากตาราง (อ่าน) ◂
       "account_wht_pnd_report", "account_wht_pnd1k", "account_wht_filing_state", "account_wht_credits_owed", // ACC T3.4 ▸ ภ.ง.ด. แยกแบบ 1/2/3/53/54 · T3.5 ▸ ค้างรับ 50 ทวิ จากลูกค้า (อ่าน) ◂
+      "account_audit_changes", // ACC T4.4 ▸ รายงานการแก้ไขของบัญชี (ใคร ยกเลิก/แก้/กลับรายการ อะไร เมื่อไร เหตุผล · log เข้าระบบ) (อ่าน) ◂
+      "account_books_retention", "account_compliance_values", // ACC T4.5 ▸ หน้าที่เก็บบัญชีก่อนลบร้าน · ค่ากฎหมายอื่น + วิธีลงทิป (อ่าน) ◂
+      "account_pos_unposted", "account_pos_daily_recon", "account_pos_shift_variances", // ACC T4.7 ▸ บิลยังไม่ลง · กระทบยอดรายวัน · เงินขาด/เกิน (อ่าน) ◂
+      "account_stock_issue_reasons", "account_dorm_deposit_check", "account_points_outstanding", // ACC T4.8 ▸ สาเหตุเบิก · เงินประกันหอ · แต้มคงค้าง (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",
@@ -99,6 +103,7 @@ export const SKILLS: Skill[] = [
       "account_replace_tax_invoice", // ACC T2.2 ▸ ยกเลิกและออกใบกำกับภาษีแทน (ข้อเสนอ · เลขใหม่ วันที่เดิม) ◂
       "account_input_vat_not_claimable", // ACC T1.4 ▸ ใบกำกับภาษีซื้อไม่มา → ภาษีซื้อไม่ขอคืน (ข้อเสนอ) ◂
       "account_wht_replace_cert", "account_wht_additional_filing", "account_wht_mark_received", "account_wht_unmark_received", // ACC T3.3 ▸ ออก 50 ทวิ แทน · T3.4 ▸ แบบเพิ่มเติม ภ.ง.ด. · T3.5 ▸ ได้รับ 50 ทวิ แล้ว/ยกเลิก (ข้อเสนอ) ◂
+      "account_update_compliance_values", "account_post_shift_variances", // ACC T4.5/T4.7 ▸ แก้ค่ากฎหมายอื่น/วิธีลงทิป · ลงบัญชีเงินขาด/เกินปิดกะ (ข้อเสนอ) ◂
       // อันตราย (ยืนยัน 2 ชั้น)
       "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",
       "account_refund_deposit", "account_forfeit_deposit", // ACC T2.4 ▸ คืนมัดจำ (ใบลดหนี้เมื่อมีใบกำกับ) · ริบมัดจำ (ค่าตั้ง [U]) ◂
