@@ -194,7 +194,10 @@ function runStatic(): void {
   const miss = TESTIDS.filter((t) => ![...ids].some((i) => (t.endsWith("-") ? i.startsWith(t) : i === t)));
   chk("S6.1", ids.size > 0 && !miss.length, `${TESTIDS.length} ids/families`, miss.length ? `missing ${miss}` : "all");
   {
-    const p = inventoryParity("/hr/roster", ids, "H2.2", SUITE);
+    // ORACLE-EDIT (H4.2 · controller ruling): later tickets add their own /hr/roster rows (H4.2) — rowNoCode/meta judged on the H2.2 rows only; codeNoRow unchanged ◂
+    const p0 = inventoryParity("/hr/roster", ids, "H2.2", SUITE);
+    const h22Rows = ((jsonOf("scripts/hr-ui-inventory.json")?.rows ?? []) as Any[]).filter((r) => String(r.page ?? "").endsWith("/hr/roster") && r.wo === "H2.2"); // ORACLE-EDIT (H4.2 · controller ruling) ◂
+    const p = { ...p0, rows: h22Rows.length, rowNoCode: p0.rowNoCode.filter((t) => h22Rows.some((r) => String(r.testid) === t)), meta: h22Rows.length > 0 && h22Rows.every((r) => r.oracle === SUITE) }; // ORACLE-EDIT (H4.2 · controller ruling) ◂
     const f168 = /F16\.8/.test(rd(F.fitHr));
     chk("S6.2", p.rows > 0 && !p.codeNoRow.length && !p.rowNoCode.length && p.meta && f168, "inventory ↔ code · wo/oracle · F16.8", `rows=${p.rows} codeNoRow=${p.codeNoRow.slice(0, 6)} rowNoCode=${p.rowNoCode.slice(0, 6)} meta=${p.meta} F16.8=${f168}`);
   }

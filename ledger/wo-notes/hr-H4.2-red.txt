@@ -1,0 +1,67 @@
+# H4.2 oracle on base 93a0b76ee (+ docs) · lane DB qc-hr (QC4 child) · 2026-11-13T23:50:11Z
+## forced (QC_FORCE=1) — exit 1
+[qc-hr-h4.2] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️ QC_FORCE=1 — running although: src/lib/modules/hr/labor-rules.ts absent (H4.2 not built)
+modules: labor-rules ∅ src/lib/modules/hr/labor-rules.ts · labor ∅ src/lib/modules/hr/labor.ts · salesFacts ∅
+── [static] base 93a0b76ee ──
+  ❌ [H42-S1.1] [static] new files labor-rules.ts · labor.ts · labor-actions.ts · labor-ui.tsx exist — expected 4 files | actual labor-rules.ts,labor.ts,labor-actions.ts,labor-ui.tsx
+  ❌ [H42-S1.2] [static] POS seam: pos/reports.ts exports salesByHour · pos/index.ts exports salesFacts = { salesByHour } · pos/** diff ⊆ {reports.ts, index.ts} · every pos hunk marked HR H4.2 · no removed line in reports.ts — expected seam + R1 only 
+  ❌ [H42-S1.3] [static] fitness ALLOWED_EDGES has "hr→pos" · the only hr/** importer of @/lib/modules/pos is labor.ts, via await import("@/lib/modules/pos") (no static import, no subpath) · no posSale/PosSale in hr/** — expected hr→pos lazy from labo
+  ❌ [H42-S1.4] [static] labor-rules.ts pure: imports type-only or ./*-rules · no prisma/tenantDb/clock/random/env/await/"use server" — expected pure | actual exists imports=∅
+  ❌ [H42-S1.5] [static] setLaborSettings: lockHrSettings + writeHrSettingsKeys({hrLabor}) + canManageHrSettings + audit "hr.labor.settings" · no own appSystem write in labor*.ts · labor.ts has no raw prisma import and reads Membership (DB gate) — expecte
+  ✅ [H42-S1.6] [static] [control] frozen files unchanged vs base (other pos/** · payroll* · law.ts · work-entries* · roster.ts · roster-rules.ts · roster-board* · reports* · privacy* · scope.ts · settings-lock.ts · inbox* · account/approval/core 
+  ❌ [H42-S1.7] [static] marked hunks: every hunk vs base in pos/reports.ts · pos/index.ts · fitness.mts · overview-ui.tsx · roster-ui.tsx · roster + settings page.tsx · visual-hr.mts carries "HR H4.2" · reports.ts/index.ts/fitness/overview/roster-ui e
+  ❌ [H42-S1.8] [static] UI: testids (card · pct · cost · forecast · sofar · hours · shift-* · month · note · roster demand-* · labor-foot · demand-panel · settings · save) · inventory rows wo H4.2 · th/en hr.labor parity incl. estimateNote/sma
+  ❌ [H42-S2.1] [pure] monthlyShare full month: Σ days = base for D 28/29/30/31 · 1,000,000 Jan ⇒ days 1–2 = 32,259, rest 32,258 · 2028-02-29 (D=29) day 29 = 34,482 — expected monthlyShare | actual missing
+  ❌ [H42-S2.2] [pure] ruling Q4b partial month: joiner 2027-03-11 1,550,000 ⇒ engine 1,085,000 over 21 days (51,667 ×14 then 51,666) · leaver 2027-03-20 1,000,000 ⇒ 666,667 over 20 days (33,334 ×7 then 33,333) · joiner 2027-01-02 ⇒ min(base) 1,550,
+  ❌ [H42-S2.3] [pure] dayWage DAILY 40,000 m=420 ⇒ 35,000 · m=600 ⇒ 40,000 (min N) · HOURLY 6,000 m=480 ⇒ 48,000 · MONTHLY = monthlyShare — expected dayWage | actual missing
+  ❌ [H42-S2.4] [pure] holidayPremium PUBLIC DAILY m=480 ⇒ 40,000 (day = 80,000) · SHOP DAILY ⇒ 0 · MONTHLY 3,000,000 PUBLIC m=480 ⇒ 100,000 · MONTHLY SHOP m=300 ⇒ 62,500 · HOURLY PUBLIC ⇒ 48,000 · bp null ⇒ 0 — expected holidayPremium | ac
+  ❌ [H42-S2.5] [pure] DAY_WAGE / HOUR_WAGE / HOLIDAY_WORK equal computeRunItemV2 lines on 7 vectors — expected engine parity | actual missing holidayPremium,dayWage
+  ❌ [H42-S2.6] [pure] ssoEstimate 500 bp cap 1,750,000: 50,000 ⇒ 2,500 · 100,000 ⇒ 2,823 · 40,000 ⇒ 2,000 · 48,000 ⇒ 2,400 · Feb 55,358 (D=28) ⇒ 2,768 — expected ssoEstimate | actual missing
+  ❌ [H42-S2.7] [pure] largestRemainder: 52,500/8 ⇒ 6,563 ×4 + 6,562 ×4 · 42,000/9 ⇒ 4,667 ×6 + 4,666 ×3 · 10/[1,1,1] ⇒ 4,3,3 · 100,001/[240,240] ⇒ 50,001,50,000 · 7/[3,1] ⇒ 5,2 · Σ preserved — expected largestRemainder | actual missing
+  ❌ [H42-S2.8] [pure] hourSlots: 07:00–15:00 ⇒ 8 × 60 · 07:30–09:15 ⇒ 30/60/15 · 20:00–02:00 cutoff 0 ⇒ d 20–23 + d+1 0–1 · cutoff 240 ⇒ d 20–25 — expected hourSlots | actual missing
+  ❌ [H42-S2.9] [pure] forecastHour: 4 latest same weekdays strictly before today (d−7k ≥ today skipped) · 01-23 at today 01-16 ⇒ 400,000 (01-16 value ignored) · halfUp · missing = 0 — expected forecastHour | actual missing
+  ❌ [H42-S2.10] [pure] pctTenths 247,723/1,000,000 ⇒ 248 · sales 0 ⇒ null · needed 400,000/150,000 ⇒ 3 · minStaff floor · f ≤ 0 ⇒ 0 · splh null ⇒ null · scheduledAt ≥ 30 min per employee — expected pct/needed/scheduled | actual missing 
+  ❌ [H42-S2.11] [pure] LABOR_DEFAULTS {280, null, 1} · LABOR_TEXT/LABOR_TEXT_EN same keys, non-empty, TH Thai · laborTextFor("en") = EN, else TH — expected defaults + texts | actual defaults,keys,th,pick
+
+
+law precondition: SSO rateBp 500 cap 1750000 · foreign ACTIVE rows in 2026-12..2028-02: none
+  ✅ [H42-S3.3] [db] [control] existing POS reports on the fixture: reportDailySales net 1,000,000 (void · deposit · tip out, refund −50,000) · reportHourly hours 12/18/19 + forecast 400,000
+  ❌ [H42-S3.1] [db] salesFacts.salesByHour = reportHourly per hour (U1 2027-01-16) and Σ days = reportDailySales over 44 days · sparse · cutoffMin 0 · today = bkkBusinessDate(now) — expected facade = reportHourly/reportDailySales | actual ok,cutoff,tod
+  ❌ [H42-S3.2] [db] salesByHour: unit without POS ⇒ {ok:true, connected:false} · actor without pos.report.view ⇒ PERMISSION_DENIED refusal · 46 days ⇒ VALIDATION · 45 days ok — expected refusals | actual noPos,noPerm,d46,d45 noPos={"__throw":"∅s
+  ❌ [H42-S3.4] [db] salesByHour cutoff 240: U4 2027-01-31 ⇒ cutoffMin 240 · hour 25 = 100,000 / 1 bill — expected hour 25 | actual ok,date,h25 {"__throw":"∅salesFacts.salesByHour"}
+  ❌ [H42-S4.1] [db] worked example U1 Sat 2027-01-16 (now 01-17 10:00): cost 247,723 = wage 238,000 + SSO 9,723 · sales 1,000,000 · pct 248 · target 280 · sales "OK" — expected worked example | actual ok,cost,wage,sso,sales,pct,target,pos money={} ∅l
+  ❌ [H42-S4.2] [db] hours: 07 = 6,563 · 11 = 12 = 11,229 · 15 = 10,967 · 19 = 10,966 · 22 = 6,300 · Σ hours 144,900 + unallocated 102,823 = cost · sales hour 12/18/19 = 600,000/450,000/−50,000 — expected hour split | actual h7,h10,h11,h12,h15,h19,
+  ❌ [H42-S4.3] [db] shifts: A 52,500 · sales 600,000 · 88 ‰ · B 42,000 · 1,000,000 · 42 · C 50,400 · 400,000 · 126 — expected shift cells | actual a,b,c undefined
+  ❌ [H42-S4.4] [db] demand: splh unset ⇒ demand null · splh 150,000 ⇒ hour 12 scheduled 2 needed 3 · hour 8 scheduled 1 needed 0 · peak 12 — expected demand | actual unset,set,h12,h8,peak pre=undefined set=∅setLaborSettings h12={} peak=undefined
+  ❌ [H42-S4.5] [db] forecast: 01-23 at now 01-16 10:00 ⇒ sales 400,000 (pct 388) · at now 01-17 ⇒ 552,500 · today (now 01-16 12:30) ⇒ sales 400,000 · soFar 600,000 · pct 619 — expected forecast + today | actual skip,incl,today a=undefined b=undef
+  ❌ [H42-S4.6] [db] draft vs published: laborDay U1 01-15 = 155,323 (draft F out) · laborWeek 2027-01-11 footer paidMinutes 1,800 · cost 1,216,411 (F in) · day 01-16 scheduled/needed at peak 2/3 — expected Q13 | actual pub,foot,d16,days d15=undefined fo
+  ❌ [H42-S4.7] [db] split across 2 branches (G 2027-01-26, 240/240 min): U1 + U2 = 50,425 · lower unit id gets 25,213 — expected paid-minute split | actual total,tie U1=NaN U2=undefined
+  ❌ [H42-S4.8] [db] Bangkok boundaries: U1 01-31 cost 193,123 sales 70,000 · U1 02-01 cost 171,966 sales 100,000 · U4 (cutoff 240) 01-31 cost 37,800 hours 24/25 = 6,300 · hour 25 sales 100,000 · U4 02-01 cost 0 · U1 2028-02-29 cost 166,033 — expected 
+  ❌ [H42-S4.9] [db] holidays (U4 DAILY 40,000 m=480): PUBLIC 2027-01-20 ⇒ 82,000 · SHOP 2027-01-21 ⇒ 42,000 — expected holiday premium | actual pub,shop undefined undefined
+  ❌ [H42-S4.10] [db] U3 (no POS) March: 03-05 35,001 · 03-16 89,250 · 03-21 54,250 · 03-31 54,249 · sales "NO_POS" · pct null · cost shown — expected Q4b + X8 | actual costs,noPos costs=,,, sales=undefined
+  ❌ [H42-S4.11] [db] month: U1 2027-01 actual 1,391,667 (REVERSED ignored) · sales 1,870,000 · pct 744 · U2 695,833 · U1 2027-02 ESTIMATE 4,815,004 · prev 1,391,667 · U3 2027-03 ESTIMATE 1,839,250 — expected month | actual jan,u2,feb,mar jan={"__thro
+  ❌ [H42-S4.12] [db] no unitId = all units in scope (owner 01-16 = 247,723) · tenant with 21 units ⇒ UNIT_REQUIRED — expected R5 | actual all,unitRequired all=undefined r21=∅laborDay
+  ❌ [H42-S4.13] [db] no per-person money: owner day/week/month carry no employee id/name, no "employeeId"/"name" key, none of HR_FORBIDDEN_DTO_KEYS — expected no per-person money | actual no leak day=∅laborDay week=∅laborWeek
+  ❌ [H42-S5.1] [db] owner + payroll all-branch: day/week/month money · demand · settings read — expected P1 | actual day,demand,week,month,get,ownerMonth ∅laborDay ∅laborWeek ∅laborMonth ∅getLaborSettings ∅getLaborSettings ∅laborMonth
+  ❌ [H42-S5.2] [db] payroll [U2]: U1 ⇒ NO · borrowed-in alone (01-12) ⇒ all money null + suppressed ≥ 1 + no J numbers (also no unitId) · 3 contributors (01-13) shown 110,250 · home 1-person (01-19) shown 36,750 · month U2 (borrowed E) suppressed �
+  ❌ [H42-S5.3] [db] manager without payroll: money null · no *Satang/*Tenths key on day/week/month · demand hour 12 = 2/3 — expected Q10 headcounts only | actual day,demand,spoof keys=0 ∅laborDay ∅laborWeek ∅laborMonth
+  ❌ [H42-S5.4] [db] payroll viewer without pos.report.view: cost 247,723 · sales "NO_PERMISSION" · pct null · hour sales/forecast null · needed null · scheduled 2 — expected P3 | actual cost,sales,hours,needed,week sales=undefined money={}
+  ❌ [H42-S5.5] [db] refusals (HR-key staff · plain member · employee self · other tenant · role spoof · [U2] on U1/unknown/other-tenant unit) on day/week/month = one identical Thai {ok:false, code:"NO", reason} · no ids/numbers · permission spoof read
+  ❌ [H42-S5.6] [db] unitAccess [] payroll manager = all branches (U1 247,723 · U2 01-19 36,750) — expected [] = all branches | actual u1,u2 undefined undefined
+  ❌ [H42-S6.1] [db] settings: owner · payroll MANAGER · STAFF with hr.employee.create save + read · HR-key staff · member · self · other tenant refused, nothing written — expected save/read matrix | actual owner,payAll,payNoPos,staffHr,member,self,ot
+  ❌ [H42-S6.2] [db] bounds: targetTenths 50–600 · splhSatang null or 10,000–100,000,000 · minStaff 0–20 · integers only · refusal writes nothing — expected bounds | actual refused,accepted refused=000000000 accepted=0000000
+  ❌ [H42-S6.3] [db] audit: one "hr.labor.settings" row per successful save · none for refusals or reads — expected audit per save | actual saves,goods Δ=0/0/0/0
+  ❌ [H42-S6.4] [db] lock race: raw tx holding hr:clockpolicy (A) / AppSystem row FOR UPDATE (B) blocks setLaborSettings (pg_blocking_pids) · stale write + marker committed first · hrLabor + marker survive (×2 each) — expected A·B ×2 blocked · hrLabor
+  ❌ [H42-S6.5] [db] 10 lanes × 3 setLaborSettings ∥ 10 saveClockPolicy ⇒ all ok · hrLabor + hrClock both survive with written values — expected both keys survive | actual allOk,labor bad=∅setLaborSettings ∅setLaborSettings ∅setLaborSettings t=u
+  ✅ [H42-X1] [run] fitness + fitness-hr without env ⇒ exit 0
+RESIDUE none (tenants=3 users=11)
+  ✅ [H42-Z1] no residue (PosSale · HrWorkDay · HrLawTable qc-hr-h42-* included)
+BASE-EXPECTATION 49/49 as registered (RED-by-design 45 · GREEN controls 4)
+
+===== qc-hr-h4.2 ===== passed 4/49 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h4.2","total":49,"passed":4,"failed":["H42-S1.1","H42-S1.2","H42-S1.3","H42-S1.4","H42-S1.5","H42-S1.7","H42-S1.8","H42-S2.1","H42-S2.2","H42-S2.3","H42-S2.4","H42-S2.5","H42-S2.6","H42-S2.7","H42-S2.8","H42-S2.9","H42-S2.10","H42-
+## unforced — exit 0
+⏭️  SKIPPED — qc-hr-h4.2: not built
+   • src/lib/modules/hr/labor-rules.ts absent (H4.2 not built)
+JSON_SUMMARY {"suite":"qc-hr-h4.2","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["src/lib/modules/hr/labor-rules.ts absent (H4.2 not built)"],"registered":49}
