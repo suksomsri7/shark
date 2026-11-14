@@ -648,3 +648,8 @@
 - qc:all (ไม่รวม svc/sec) ตัวแทน aa7017dca69c68d75: 3 ส่วน — QC4 (unit hr-qcall-h4-q · pos/hf) · เลน 1 (hr-qcall-h4-a) · เลน 2 (hr-qcall-h4-b) · log /tmp/hr-qcall-h4/ · ผล → ledger/wo-notes/hr-H4-close-qcall.txt (ผู้คุม commit)
 - เลน 3: ผู้สร้าง HF-SSO ac54bf57c6fa09863 รัดป้าย HF-SSO ในข้อสอบเก่าเป็นรายชื่อไฟล์ (สาขา wip/hr-hf-sso-fix2)
 - ค้างผู้คุม: ตัดสินตารางหนี้ 21 แถว · svc/sec (ต้องใช้ฐาน QC ของ RUN อื่น — ถามเจ้าของ) · HANDOVER-H4 · ด่าน pm-full สุดท้าย
+
+### 2026-11-14T14:50Z · คำตัดสินเจ้าของ: ชุด svc (60) + sec (38) **ไม่รันโดย HR**
+- เหตุ: ต้องใช้ env/ฐาน QC ของ RUN อื่น (ระบบสิทธิ์ปฏิเสธการอ่าน env ของทรี svc/sec) · เจ้าของเลือกให้ session ของ SVC และ SEC รันเองหลัง session/hr เข้า main
+- ต้องเขียนใน HANDOVER-H4: รายชื่อไฟล์ที่ HR แก้และอาจกระทบสองกลุ่มนี้ — `src/lib/modules/booking/service.ts` (HR-PRIV-2: createStaff ปฏิเสธชื่อมีอักขระต้องห้าม · linkStaffToHr ล้างชื่อ; ข้อสอบ qc-svc-b.16 S-2 / qc-svc-d.10 S-2 แช่แข็งไฟล์นี้) · โค้ด LINE/แชทของ H4.5 (qc-svc-b.0…b.17 import) · `ai/secretary/digest` บรรทัด HR ของ H4.3 (qc-sec-s3a1-s2 · qc-sec-s1.11)
+- ใบแก้ก่อน production HR-PREPROD-1: ใบสั่ง + คำตัดสิน Q1–Q8 ที่ `wip/hr-preprod-1` 28699bda3 (เลน 4) · ผู้เขียนข้อสอบ a7ddd71638716ff4e กำลังทำ · ตารางหนี้ 21 แถว = รับข้อเสนอผู้เขียนเอกสารทั้งหมด (ยังต้องติ๊กในไฟล์ HR-DEBTS.md) · ค้างจัดงาน: ล่าบั๊ก H2.7-chain/H2.6 (อนุมัติลาหลายขั้น · ลารายชั่วโมงทับเต็มวัน)
