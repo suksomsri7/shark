@@ -1,38 +1,26 @@
-# HF-SSO-2569 — social-security wage ceiling by wage period (mini-brief · oracle `scripts/qc-hr-hf-sso.mts`)
+# HF-SSO-2569 — SSO wage ceiling by wage period (mini-brief rev 2 · oracle `scripts/qc-hr-hf-sso.mts`)
 
-Base `session/hr` 292bc5b7e. Hotfix of engine v1 (live in prod). Out of scope: activating v2 rows, prod deploy (owner GO).
+Base `session/hr` 292bc5b7e · hotfix of engine v1 (live) + v2 alignment. Out of scope: activating v2 rows, prod deploy (owner GO).
 
-## Law (shark-thai-law · domain-labour-payroll §ซ · test-rules T-HR-08) — quoted, not invented
-- Rate ม.33: ลูกจ้าง 5% · นายจ้าง 5% — **[V]**.
-- Base (กฎกระทรวง 2568, ใช้บังคับ 1 ม.ค. 2569): "(๑) ตั้งแต่วันที่ ๑ มกราคม พ.ศ. ๒๕๖๙ ถึงวันที่ ๓๑ ธันวาคม พ.ศ. ๒๕๗๑ …ไม่ต่ำกว่าเดือนละหนึ่งพันหกร้อยห้าสิบบาท และไม่เกินเดือนละหนึ่งหมื่นเจ็ดพันห้าร้อยบาท" · (๒) 2572–2574 ≤ 20,000 · (๓) ตั้งแต่ 1 ม.ค. 2575 ≤ 23,000 — **[V]**.
-- Rounding ม.46: "เศษ…ตั้งแต่ห้าสิบสตางค์ขึ้นไปให้นับเป็นหนึ่งบาท ถ้าน้อยกว่านั้นให้ปัดทิ้ง" — **[V2]**.
-- **Which date decides**: T-HR-08 [V] keys the vectors by **งวด** (wage period): "ประกันสังคม งวด 2569: ค่าจ้าง 20,000 → 875 … งวด ม.ค. 2572 ค่าจ้าง 20,000 → 1,000 โดยไม่แก้โค้ด (แถวตาราง)". The base is a monthly-wage bound ("เดือนละ"), so the month the wage is for decides = `periodKey` (YYYY-MM, Bangkok calendar month). Not the pay date, not "today".
-- Today's rounding `Math.round(base×rateBp/10000/100)×100` **already matches** T-HR-08: 10,010 → 501 · 10,009 → 500 · 1,000 → 83 (floor 1,650). No rounding change; nothing for the accountant on rounding.
+## Law (shark-thai-law §ซ / §ฌ · T-HR-08 · T-HR-10)
+- 5 % / 5 % [V]. Base: "(๑) ตั้งแต่วันที่ ๑ มกราคม พ.ศ. ๒๕๖๙ ถึงวันที่ ๓๑ ธันวาคม พ.ศ. ๒๕๗๑ …ไม่ต่ำกว่าเดือนละหนึ่งพันหกร้อยห้าสิบบาท และไม่เกินเดือนละหนึ่งหมื่นเจ็ดพันห้าร้อยบาท" · (๒) 2572–2574 ≤ 20,000 · (๓) from 1 ม.ค. 2575 ≤ 23,000 [V]. Rounding ม.46 "ตั้งแต่ห้าสิบสตางค์ขึ้นไปให้นับเป็นหนึ่งบาท" [V2].
+- **Date rule**: T-HR-08 [V] keys by **งวด** ⇒ the wage period (`periodKey`) decides, not pay date / today.
+- Today's rounding already matches T-HR-08 (10,010 → 501 · 10,009 → 500 · 1,000 → 83).
+- Tax allowance: "ตามจำนวนที่จ่ายจริง" (ม.47(1)(ฌ)) [V]; T-HR-10 uses 10,500 for 2569.
 
-## R1 — dated table in v1 (`src/lib/modules/hr/payroll-rules.ts`)
-- `ssoLawForPeriod(periodKey) → { rateBp: 500, minBaseSatang: 165000, maxBaseSatang }`: `< 2026-01` ⇒ 1,500,000 · `2026-01…2028-12` ⇒ 1,750,000 · `2029-01…2031-12` ⇒ 2,000,000 · `≥ 2032-01` ⇒ 2,300,000. Malformed period (not `^\d{4}-(0[1-9]|1[0-2])$`, non-string, missing) ⇒ throws.
-- `ssoContribution(monthlySalarySatang, periodKey, cfg?)` — period is **required** (2nd parameter, type `string`); missing/malformed ⇒ throws. `cfg` (rateBp/minBase/maxBase overrides) keeps working as 3rd parameter. Rounding unchanged. No `?? 15000` default left; no `Date`/`now` in the file (pure).
-- Freeze note: payroll-rules.ts is sha-frozen (PAYROLL_RULES_SHA / fitness-hr F16.2 "new rules = new functions + engineVersion"). This hotfix changes it with controller authorisation — the sha pins are ORACLE-EDITs (see note).
+## Rulings (controller, 14 Nov)
+- **Q0** `payroll-rules.ts` stays byte-identical (FREEZE F16.2). New pure file `hr/payroll-rules-sso.ts`: `ssoLawForPeriod(periodKey)` · `ssoContributionForPeriod(wageSatang, periodKey)` · `ssoAllowanceCapSatang(taxYear)` · `monthlyWhtForTaxYear({monthlySalarySatang, ssoEmployeeYearSatang, deductions?}, taxYear)`; missing/malformed period or year ⇒ throws. Old `ssoContribution`/`monthlyWhtSatang`: no caller under src/ (history replay = `scripts/hr-seed-law-draft.mts` verifyAgainstFrozen for the 1970 row, frozen-function tests). engineVersion stays 1; v1 runs built after the fix carry `stepsJson.ssoLaw = {periodKey, maxBaseSatang, rateBp}` (none = pre-fix).
+- **Q1** v1 WHT: SSO allowance = amount paid (`ssoEmployeeYearSatang` = 12 × this period's contribution, as today), capped by `ssoAllowanceCapSatang(taxYear)` = Σ of the 12 monthly max contributions of that year (2025 9,000 · 2026–28 10,500 · 2029–31 12,000 · ≥2032 13,800). Tax year = Bangkok year of payDate. Bands start on 1 January, so no tax year straddles a band. v2 has the same 9,000 cap — data in the DEDUCTION law row (`ssoAllowanceCapSatang: 900000`, seed 1970); oracle V2.2 pins the v2 projection on the seed rows (10,500 / 20,450).
+- **Q2** v2 picks SSO by the wage period: `law.ts ssoLawDayOf(periodKey)` = first day of the period; `pickLawSet/loadLawSet(…, {ssoDay})`; payroll.ts v2 build passes `ssoLawDayOf(run.periodKey)`. Other kinds keep the pay date. If this is more than a small marked hunk in law.ts/payroll.ts the builder stops and asks.
+- **Q3** v1 approve re-derives each stored row's SSO under the run lock; differs ⇒ `{ok:false, code:"RECOMPUTE", note:"ต้องคำนวณรอบนี้ใหม่ก่อนอนุมัติ (อัตราประกันสังคมของงวดนี้เปลี่ยน)"}` + `hr.payroll.approve.refused`. Correct pre-fix drafts (e.g. 2025-11) still approve.
+- **Q4** seed SSO rows: `v1:SSO` 1970-01-01 (byte-identical) · `v1:SSO:2569` 2026-01-01 · `v1:SSO:2572` 2029-01-01 · `v1:SSO:2575` 2032-01-01, all DRAFT.
 
-## R2 — every v1 caller passes the run's period
-- Only src caller: `computeItem` in `payroll.ts` (~474) ← `buildRunRows(tx, ctx, periodKey)` ← `createPayrollRun` and `rebuildDraftRun`/`recomputeDraftRun`. Pass `periodKey` through; no `new Date()`.
-- H4.2 `ssoEstimate` (labor.ts:388) already takes `maxBaseSatang` from the ACTIVE law row picked on the estimate day (`ssoLawOf(L, d)`) — no v1 constant; unchanged. `SSO_HIGH` (payroll-opening.ts `ssoWarnings`) reads the ACTIVE row at `asOfDay` — unchanged (ceilings change only on 1 Jan, so the as-of year decides). Both report "law missing / no warning" while rows are DRAFT — unchanged behaviour.
-- No other caller (reports, filings, payslip, bank files read stored items).
+## Requirements
+- **R1/R2** live v1 paths on the new functions: run build + recompute (`computeItem` gets periodKey + tax year), approve re-derive, H4.2 estimate (`labor.ts` ceiling from `ssoLawForPeriod`, not the SSO law row), opening-YTD `SSO_HIGH` (`payroll-opening.ts` from `ssoLawForPeriod`). No v1 preview exists outside these.
+- **R3** APPROVED/PAID untouched; no automatic back-contribution or adjustment.
+- **R4** seed per Q4; `verifyAgainstFrozen()` still ok. Dated DEDUCTION rows for the v2 cap (V2.2) are the builder's choice (not ruled — keys to be asked).
+- **R5** สปส.1-10, reports, payslips, 50 ทวิ carry stored amounts.
 
-## R3 — no retroactive change
-- APPROVED/PAID runs keep their stored rows (no recompute path exists for them; nothing writes back-contributions or adjustments).
-- v1 approve has no input fingerprint today (guard = viewer's expect: net/items/gross/`payrollItemsDigest` of **stored** rows, H0.1 CR16), so a DRAFT built before the fix would approve with 750. Fix: under the run lock, approve re-derives each item's SSO from `snapshot.baseSalarySatang` + `ssoEligible` + the run period's table; any difference ⇒ refuse (ok:false, Thai note, run stays DRAFT, `hr.payroll.approve.refused` audit). `recomputeDraftRun` rebuilds with the table ⇒ approve passes. Code name: controller's choice (oracle accepts any non-OK code).
-- A pre-fix DRAFT whose numbers are still right (period < 2026-01, or wage ≤ 15,000) must stay approvable.
-- Accountant list: "งวด ม.ค.–พ.ย. 2569 ที่หักด้วยเพดาน 15,000" (employees > 15,000 ฿: 125 ฿/side/month under-deducted) — no automatic back-contribution.
-
-## R4 — v2 law seed (`scripts/hr-seed-law-draft.mts`)
-- SSO rows become 4 DRAFT rows: 1970-01-01 (1,500,000 — the existing `v1:SSO` row, byte-identical), 2026-01-01 (1,750,000), 2029-01-01 (2,000,000), 2032-01-01 (2,300,000); same rate/min/rounding. New rows need distinct `sourceKey`s; re-run stays idempotent; `verifyAgainstFrozen()` becomes period-aware. Activation stays with the accountant.
-- v2 reads rows by effective date already, **but its day is the pay date** (`law.ts` `lawDayOf(payDate)`, Q1/Q2), not the wage period ⇒ v1 and v2 can differ for a run paid in the next year (e.g. period 2028-12 paid 2029-01-05: v1 875, v2 1,000). Flagged as a question; not changed here.
-
-## R5 — documents/filings/reports
-สปส.1-10 (H3.6), reports (H3.7–H3.9), payslips, 50 ทวิ carry what the run stored — no change.
-
-## Open questions (controller)
-- Q1 WHT: `monthlyWhtSatang` caps the SSO tax allowance at 9,000 (`SSO_ALLOWANCE_CAP_SATANG`). Reference §ซ says the allowance is "ตามจำนวนที่จ่ายจริง" [V] and T-HR-10 uses "ประกันสังคม 10,500" (= 875×12). Raise/remove the cap in this hotfix? (oracle check S2.6 registered as Q1-dependent.)
-- Q2 v2 date rule (pay date) vs v1 (wage period) — align now or later?
-- Q3 refusal code for R3 (reuse STALE text, or a new code with its own Thai text?).
+## For the accountant
+- Periods ม.ค.–พ.ย. 2569 already paid with the 15,000 cap: SSO short by up to 125 ฿/side/month for wages > 15,000; WHT allowance capped at 9,000 instead of up to 10,500 (≤ 1,500 ฿ allowance/yr ⇒ ≤ 150 ฿ tax at 10 %). No automatic correction.
+- QC golden FROZEN_MONTHLY (period 2030-05) changes: M03 52,000 SSO 750 → 1,000, WHT 916.67 → 891.67; totals `…:220000:220000:97500:10407500:…`.
