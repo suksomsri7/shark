@@ -575,6 +575,24 @@ export function DocLineTable({
                   </select>
                 </label>
               )}
+              {/* ACCOUNT-FIX B4 — มือถือแก้อัตราหัก ณ ที่จ่ายต่อบรรทัดได้เหมือนเดสก์ท็อป (ตัวเลือกจากตารางค่ากฎหมาย/นโยบายร้าน) */}
+              {!easy && editingLine.whtIncomeType && (
+                <label className="flex flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                  อัตราหัก
+                  <select
+                    className="input"
+                    value={editingLine.whtRateBp ?? 0}
+                    onChange={(e) => onChange(editingLine.key, { whtRateBp: Number(e.target.value) })}
+                    data-testid="line-m-edit-wht-rate"
+                  >
+                    {whtRateChoices(legal.whtRates, editingLine.whtRateBp).map((bp) => (
+                      <option key={bp} value={bp}>
+                        {bp / 100}%
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
             <div className="flex items-center justify-between border-t pt-3 text-sm">
               <span className="text-[color:var(--color-muted)]">ยอด</span>

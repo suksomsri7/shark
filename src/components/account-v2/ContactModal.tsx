@@ -294,6 +294,8 @@ export function ContactModal({
   dbdDisabledReason,
   defaultTab,
   whtRates,
+  onSaved,
+  onClose,
 }: {
   systemId: string;
   /** path หน้ารายการผู้ติดต่อ — ใช้ปิด modal (ถอด ?new/?edit) และทำลิงก์ "เปิด C00012" */
@@ -307,6 +309,10 @@ export function ContactModal({
   defaultTab: "basic" | "advanced";
   /** อัตราหัก ณ ที่จ่ายที่มีผลในตารางค่ากฎหมายของสมุด (bp) */
   whtRates: number[];
+  /** ACCOUNT-FIX B4 — เปิดซ้อนจากฟอร์มเอกสาร: บันทึกแล้วส่งผู้ติดต่อใหม่กลับ (ไม่เปลี่ยนหน้า) */
+  onSaved?: (c: { id: string; name: string }) => void;
+  /** ACCOUNT-FIX B4 — ปิดโดยไม่เปลี่ยนหน้า (ใช้คู่กับ onSaved) */
+  onClose?: () => void;
 }) {
   const router = useRouter();
   const isEdit = !!contact;
@@ -358,7 +364,7 @@ export function ContactModal({
 
   // useCallback: ส่งเข้า <Modal onClose> — identity นิ่งช่วยลด render ที่ไม่จำเป็น
   // (ตัว Modal เองก็ถูกแก้ไม่ให้ผูก effect กับ onClose แล้ว — ดูคอมเมนต์บั๊กใน Modal.tsx)
-  const close = useCallback(() => router.push(contactsPath), [router, contactsPath]);
+  const close = useCallback(() => (onClose ? onClose() : router.push(contactsPath)), [router, contactsPath, onClose]);
 
   const errOf = (k: string) => (showErrors ? errors[k] : undefined);
   const inputStyle = (k: string) =>
@@ -399,6 +405,10 @@ export function ContactModal({
     start(async () => {
       const res = await saveContactAction(systemId, { ...buildPayload(), confirmDuplicate });
       if (res.ok) {
+        if (onSaved) {
+          onSaved({ id: res.id, name: buildPayload().name });
+          return;
+        }
         router.push(contactsPath);
         router.refresh();
         return;
