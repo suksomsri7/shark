@@ -33,6 +33,7 @@ import {
   reportBytes,
   reportTable,
   reportTextFor,
+  REPORT_YTD_NOTE, // HR H3.4-YTD ◂
   tenthsText,
   wagePartsOf,
   whtIncomeOf,
@@ -650,7 +651,7 @@ async function buildIn(ctx: Ctx, g: Gate, raw: unknown, o: BuildOpts): Promise<B
   } else if (report === "time") notes.push(T.timeNote);
   else if (report === "wages") notes.push(T.s114Note);
   else if (report.startsWith("payroll-") || report.startsWith("tax-")) notes.push(T.taxNote);
-  if (ytdMeta.ytd) notes.push(T.ytdNote); // HR H3.4-YTD ▸ R7 หมายเหตุคงที่เมื่อรวมยอดยกมา ◂
+  if (ytdMeta.ytd) notes.push(o.locale === "en" ? REPORT_YTD_NOTE.en : REPORT_YTD_NOTE.th); // HR H3.4-YTD ▸ R7 หมายเหตุคงที่เมื่อรวมยอดยกมา ◂
   const en = !def.thaiOnly && o.locale === "en";
   const byKey = new Map(def.columns.map((c) => [c.key, c] as const));
   return {
