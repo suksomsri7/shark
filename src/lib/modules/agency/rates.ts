@@ -17,7 +17,7 @@ import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { resolveSetting, setSettings, snapshotPolicy, type PolicySnapshot } from "@/lib/core/settings";
 import type { LineRequest, SellCtx, SellResult } from "@/lib/core/sellable";
 import type { AgencyPricingInput, AgencyPricingQuery } from "@/lib/modules/trips";
-import { AGENCY_ID_RE, agencyFail, cleanAgencyText, isPgRetryable, isRealYmd, pgErrorCode, type AgencyErrorCode, type AgencyFail } from "./accounts-core";
+import { AGENCY_ID_RE, agencyFail, cleanAgencyText, isPgRetryable, pgErrorCode, type AgencyErrorCode, type AgencyFail } from "./accounts-core";
 import {
   AGENT_RATE_CARD_ACTIONS,
   AGENT_RATE_CARD_STATUSES,
@@ -26,10 +26,13 @@ import {
   AGENT_TIER_CODES,
   buildAgencyPricingInput,
   dateRangesOverlap,
+  isAgentRateInstant,
+  isAgentRateYmd,
   isSpecialPeriodRate,
   normalizeAgentRate,
   rateCardTransition,
   rateRowsConflict,
+  rateRowsMixModes,
   type AgentRateCardAction,
   type AgentRateCardStatus,
   type AgentRateMode,
@@ -92,7 +95,9 @@ export type TryAgentPriceResult = { ok: true; priced: unknown; trace: RateTrace;
 const TX_OPTS = { maxWait: 10_000, timeout: 30_000 } as const;
 const RUN_TX_TRIES = 3;
 const ID = z.string().regex(AGENCY_ID_RE);
-const YMD = z.string().refine((s) => isRealYmd(s));
+/** มติ Z8: วันที่ทุกช่อง = วันจริงในปี 1900–2200 (ตัวตรวจของ rates-core) */
+const YMD = z.string().refine((s) => isAgentRateYmd(s));
+const INSTANT = z.string().max(40).refine((s) => isAgentRateInstant(s));
 const VERSION = z.number().int().min(1).max(AGENT_RATE_LIMITS.ratesPerCard * AGENT_RATE_LIMITS.priorityMax * AGENT_RATE_LIMITS.listMax);
 const PRIORITY = z.number().int().min(0).max(AGENT_RATE_LIMITS.priorityMax);
 const CTX = z.object({ tenantId: ID, actorUserId: ID }).strict();
@@ -103,8 +108,6 @@ const ACCOUNT_PRICEABLE = ["ACTIVE", "SUSPENDED", "PENDING"];
 const ACCOUNT_NO_CARD = ["CLOSED", "INVITED"];
 /** ชนิดหน่วยที่ขายผ่านเอเจนซี่ (กติกาเดียวกับ accounts.ts signupPolicy) */
 const SELLING_UNIT_TYPES = ["TRIPS", "TICKET"] as const;
-/** มติ R3 ของ A1.1: ระดับ A เทอมเครดิต 30 วัน */
-const TIER_A_CREDIT_DAYS = "30";
 
 class Abort extends Error {
   constructor(readonly fail: AgencyFail) {
@@ -340,7 +343,7 @@ async function seedTierPayDefaults(g: Gate, created: { id: string; code: AgentTi
       const pay = isRec(row) ? row.payDefault : undefined;
       if (typeof pay !== "string") return false;
       changes.push({ key: "agency.money.paymentMethod", scope: "AGENT_TIER", scopeId: t.id, value: pay });
-      if (t.code === "A") changes.push({ key: "agency.money.creditTermDays", scope: "AGENT_TIER", scopeId: t.id, value: TIER_A_CREDIT_DAYS });
+      if (t.code === "A") changes.push({ key: "agency.money.creditTermDays", scope: "AGENT_TIER", scopeId: t.id, value: String(AGENT_RATE_LIMITS.tierACreditDays) });
     }
     const r = await setSettings({ ...g.member, userId: g.userId }, { tenantId: g.tenantId }, changes);
     return r.ok;
@@ -357,7 +360,7 @@ export async function listAgentTiers(ctx: RatesCtx): Promise<{ ok: true; tiers: 
   });
 }
 
-const SET_TIER_INPUT = z.object({ agentAccountId: ID, tierCode: z.enum(AGENT_TIER_CODES).nullable(), expectedUpdatedAt: z.string().max(40).refine((s) => !Number.isNaN(Date.parse(s))) }).strict();
+const SET_TIER_INPUT = z.object({ agentAccountId: ID, tierCode: z.enum(AGENT_TIER_CODES).nullable(), expectedUpdatedAt: INSTANT }).strict();
 /** ตั้ง/ล้างระดับของบัญชี — คำสั่งเดียวมีเงื่อนไข (updatedAt + สถานะ) · 0 แถว ⇒ อ่านใหม่: ค่าตรงแล้ว = replayed · สถานะไม่ได้ = BAD_STATE · อื่น = STALE */
 export async function setAgentAccountTier(
   ctx: RatesCtx,
@@ -420,6 +423,8 @@ export async function listAgentRateCards(
       const accs = await g.db.agentAccount.findMany({ where: { tenantId: g.tenantId, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: g.member.unitAccess } }] }, select: { id: true } });
       Object.assign(where, { OR: [{ ownerKind: "TIER" }, { ownerKind: "AGENT", agentAccountId: { in: accs.map((a) => a.id) } }] });
     }
+    // มติ Z7: cursor ต้องเป็น card ในชุดที่ผู้เรียกเห็น (ร้านเดียวกัน · ตัวกรองเดียวกัน) — ไม่ใช่ ⇒ ผลเดียวกับ cursor ที่ไม่มีจริงทุกไบต์
+    if (i.cursor !== undefined && !(await g.db.agentRateCard.findFirst({ where: { AND: [where, { id: i.cursor }] }, select: { id: true } }))) return { ok: true as const, items: [], nextCursor: null };
     const take = i.limit ?? AGENT_RATE_LIMITS.listMax;
     const rows = await g.db.agentRateCard.findMany({ where, select: CARD_SELECT, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: take + 1, ...(i.cursor ? { cursor: { id: i.cursor }, skip: 1 } : {}) });
     const page = rows.slice(0, take);
@@ -580,6 +585,8 @@ export async function setAgentRateCardStatus(
     if (!pre) return stop("NOT_FOUND");
     const replayed = await runTx(g.tenantId, async (tx) => {
       if (i.action === "ACTIVATE") await lockOwner(tx, g.tenantId, ownerKeyOf(pre));
+      // มติ Z9: สถานะต้นทางของ audit อ่านใน tx ใต้ล็อกแถว (ไม่ใช้ค่าที่อ่านก่อนเปิด tx)
+      const locked = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM "AgentRateCard" WHERE id = ${i.cardId} AND "tenantId" = ${g.tenantId} FOR UPDATE`;
       const n = await tx.agentRateCard.updateMany({ where: { id: i.cardId, tenantId: g.tenantId, version: i.expectedVersion, status: { in: fromStates } }, data: { version: { increment: 1 }, status: target } });
       if (n.count !== 1) {
         const cur = await tx.agentRateCard.findFirst({ where: { id: i.cardId, tenantId: g.tenantId }, select: { status: true } });
@@ -592,7 +599,7 @@ export async function setAgentRateCardStatus(
       const c = await tx.agentRateCard.findFirst({ where: { id: i.cardId, tenantId: g.tenantId }, select: CARD_SELECT });
       if (!c) return stop("NOT_FOUND");
       if (i.action === "ACTIVATE") await assertNoCardOverlap(tx, g.tenantId, c, ymdOf(c.validFrom), ymdOf(c.validTo), c.priority);
-      await auditInTx(tx, g, i.action === "ACTIVATE" ? "agency.rate_card.activate" : "agency.rate_card.archive", "AgentRateCard", c.id, { cardId: c.id, version: c.version, from: pre.status, to: target });
+      await auditInTx(tx, g, i.action === "ACTIVATE" ? "agency.rate_card.activate" : "agency.rate_card.archive", "AgentRateCard", c.id, { cardId: c.id, version: c.version, from: locked[0]?.status ?? null, to: target });
       return false;
     });
     return { ok: true as const, card: await cardDetail(asTx(g.db), g.tenantId, i.cardId), replayed };
@@ -639,15 +646,23 @@ const sameDims = (a: Pick<RateRow, "productKind" | "productId" | "optionId" | "p
   a.productKind === b.productKind && a.productId === b.productId && a.optionId === b.optionId && a.paxTypeId === b.paxTypeId && a.cabinTypeId === b.cabinTypeId && a.bookFrom === b.bookFrom && a.travelFrom === b.travelFrom;
 function assertNoRateOverlap(candidate: RateRow, all: readonly RateRow[]): void {
   if (all.some((o) => o.id !== candidate.id && rateRowsConflict(candidate, o))) stop("VALIDATION", "RATE_OVERLAP");
+  // มติ Z5 (ก): สินค้า/ตัวเลือก/priority เดียวกันใน card เดียว ต้องเป็นโหมดเดียว
+  if (all.some((o) => o.id !== candidate.id && rateRowsMixModes(candidate, o))) stop("VALIDATION", "MIXED_MODES");
 }
+/** ทุกช่องของแถวเท่ากัน (มติ Z2 — การส่งซ้ำ) */
+const sameRate = (a: NormalizedAgentRate | RateRow, b: NormalizedAgentRate | RateRow): boolean => a.cabinTypeId === b.cabinTypeId && AUDIT_RATE_FIELDS.every((k) => a[k] === b[k]);
 
 const UPSERT_INPUT = z.object({ cardId: ID, expectedVersion: VERSION, rate: z.unknown() }).strict();
-/** มี id ⇒ แก้แถวนั้น · ไม่มี id ⇒ คีย์มิติ (NND) ตรงแถวเดิม = แก้ ไม่งั้นสร้าง · ตัวกันช่วงซ้อน + เพดานแถว หลัง CAS ใน tx เดียวกัน · ไม่มีการลบ */
+/**
+ * มี id ⇒ แก้แถวนั้น · ไม่มี id ⇒ สร้าง — คีย์มิติ (NND) ชนแถวเดิม: ทุกช่องเท่ากัน = ส่งซ้ำ (replayed · ไม่เขียน · version ไม่ขยับ) ·
+ * ต่างแม้ช่องเดียว ⇒ RATE_OVERLAP ไม่เขียนทับ (มติ Z2 — แก้แถวเดิมได้ทางเดียวคือส่ง id + expectedVersion) ·
+ * ตัวกันช่วงซ้อน/โหมดปน + เพดานแถว หลัง CAS ใน tx เดียวกัน · ไม่มีการลบ
+ */
 export async function upsertAgentRate(
   ctx: RatesCtx,
   input: { cardId: string; expectedVersion: number; rate: Record<string, unknown> },
   _opts: RatesOpts = {},
-): Promise<{ ok: true; card: { id: string; version: number }; rate: ShopRateDTO } | AgencyFail> {
+): Promise<{ ok: true; card: { id: string; version: number }; rate: ShopRateDTO; replayed: boolean } | AgencyFail> {
   return safely(
     "upsertAgentRate",
     ctx,
@@ -658,12 +673,22 @@ export async function upsertAgentRate(
       const bad = await checkRateAgainstDb(g.db, g.tenantId, rate, new Map());
       if (bad) return stop("VALIDATION", bad);
       return runTx(g.tenantId, async (tx) => {
+        if (rateId === null) {
+          // ส่งซ้ำ (ทุกช่องเท่าแถวเดิม) ⇒ ตอบผลเดิม ไม่เขียน — ไม่ผ่าน CAS (ไม่มีอะไรเปลี่ยน)
+          const cur = await tx.agentRateCard.findFirst({ where: { id: i.cardId, tenantId: g.tenantId }, select: { id: true, status: true, version: true } });
+          if (!cur) return stop("NOT_FOUND");
+          if (cur.status === "ARCHIVED") return stop("BAD_STATE", "CARD_ARCHIVED");
+          const dup = (await tx.agentRate.findMany({ where: { tenantId: g.tenantId, rateCardId: cur.id, productKind: rate.productKind, productId: rate.productId } })).find((r) => sameRate(toRateRow(r), rate));
+          if (dup) return { ok: true as const, card: { id: cur.id, version: cur.version }, rate: rateDTO(dup), replayed: true };
+        }
         const c = await casCard(tx, g.tenantId, i.cardId, i.expectedVersion);
         const rows = await tx.agentRate.findMany({ where: { tenantId: g.tenantId, rateCardId: c.id } });
         const all = rows.map(toRateRow);
         const cand: RateRow = { ...rate, id: "", rateCardId: c.id };
-        const prev = rateId !== null ? all.find((r) => r.id === rateId) : all.find((r) => sameDims(r, cand));
+        const prev = rateId !== null ? all.find((r) => r.id === rateId) : undefined;
         if (rateId !== null && !prev) return stop("NOT_FOUND");
+        // ไม่มี id แต่คีย์มิติชนแถวเดิมที่ช่องอื่นต่าง ⇒ ไม่เขียนทับ
+        if (rateId === null && all.some((r) => sameDims(r, cand))) return stop("VALIDATION", "RATE_OVERLAP");
         if (!prev && rows.length >= AGENT_RATE_LIMITS.ratesPerCard) return stop("VALIDATION", "LIMIT_REACHED");
         cand.id = prev?.id ?? "";
         assertNoRateOverlap(cand, all);
@@ -676,7 +701,7 @@ export async function upsertAgentRate(
         await auditInTx(tx, g, "agency.rate.upsert", "AgentRateCard", c.id, {
           cardId: c.id, rateId: saved.id, version: c.version, fields, before: Object.fromEntries(fields.filter((k) => k in before).map((k) => [k, before[k]])), after: Object.fromEntries(fields.map((k) => [k, after[k]])),
         });
-        return { ok: true as const, card: { id: c.id, version: c.version }, rate: rateDTO(saved) };
+        return { ok: true as const, card: { id: c.id, version: c.version }, rate: rateDTO(saved), replayed: false };
       });
     },
     () => agencyFail("VALIDATION", { reason: "RATE_OVERLAP" }),
@@ -684,16 +709,22 @@ export async function upsertAgentRate(
 }
 
 const ACTIVE_INPUT = z.object({ cardId: ID, expectedVersion: VERSION, rateId: ID, active: z.boolean() }).strict();
-/** ปิด/เปิดแถวราคา (ไม่มีการลบ) · เปิดกลับตอนมีแถวซ้อน ⇒ RATE_OVERLAP */
+/** ปิด/เปิดแถวราคา (ไม่มีการลบ) · เปิดกลับตอนมีแถวซ้อน ⇒ RATE_OVERLAP / โหมดปน ⇒ MIXED_MODES · ค่าเดิม ⇒ replayed (มติ Z9 · ไม่เพิ่ม version ไม่เขียน audit) */
 export async function setAgentRateActive(
   ctx: RatesCtx,
   input: { cardId: string; expectedVersion: number; rateId: string; active: boolean },
   _opts: RatesOpts = {},
-): Promise<{ ok: true; card: { id: string; version: number }; rate: ShopRateDTO } | AgencyFail> {
+): Promise<{ ok: true; card: { id: string; version: number }; rate: ShopRateDTO; replayed: boolean } | AgencyFail> {
   return safely("setAgentRateActive", ctx, async () => {
     const g = await writeGate(ctx);
     const i = parseIn(ACTIVE_INPUT, input);
     return runTx(g.tenantId, async (tx) => {
+      const cur = await tx.agentRateCard.findFirst({ where: { id: i.cardId, tenantId: g.tenantId }, select: { id: true, status: true, version: true } });
+      if (!cur) return stop("NOT_FOUND");
+      if (cur.status === "ARCHIVED") return stop("BAD_STATE", "CARD_ARCHIVED");
+      const now = await tx.agentRate.findFirst({ where: { id: i.rateId, tenantId: g.tenantId, rateCardId: cur.id } });
+      if (!now) return stop("NOT_FOUND");
+      if (now.active === i.active) return { ok: true as const, card: { id: cur.id, version: cur.version }, rate: rateDTO(now), replayed: true };
       const c = await casCard(tx, g.tenantId, i.cardId, i.expectedVersion);
       const rows = await tx.agentRate.findMany({ where: { tenantId: g.tenantId, rateCardId: c.id } });
       const all = rows.map(toRateRow);
@@ -704,7 +735,7 @@ export async function setAgentRateActive(
       await auditInTx(tx, g, i.active ? "agency.rate.reactivate" : "agency.rate.deactivate", "AgentRateCard", c.id, {
         cardId: c.id, rateId: prev.id, version: c.version, fields: ["active"], before: { active: prev.active }, after: { active: i.active },
       });
-      return { ok: true as const, card: { id: c.id, version: c.version }, rate: rateDTO(saved) };
+      return { ok: true as const, card: { id: c.id, version: c.version }, rate: rateDTO(saved), replayed: false };
     });
   });
 }
@@ -712,7 +743,6 @@ export async function setAgentRateActive(
 // ═══════════════════════════════════════════════════════════════
 // §8 ตัวโหลดข้อเท็จจริง + port ตัวจริง
 // ═══════════════════════════════════════════════════════════════
-const TZ_FALLBACK = "Asia/Bangkok"; // กติกาเดียวกับ trips/pricing.ts (TRIP_DEFAULT_TZ)
 function localYmd(at: Date, tz: string): string | null {
   try {
     return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
@@ -728,7 +758,7 @@ type Loaded = { facts: RateFacts; snapshot: PolicySnapshot; status: string; unit
  * ไม่พบ ⇒ null · ค่าตั้งผิดรูป ⇒ "SETTINGS_INVALID"
  */
 async function loadFacts(
-  q: { tenantId: string; unitId: string; agentAccountId: string; productId: string; departureId: string; travelDate: string | null; at: Date },
+  q: { tenantId: string; unitId: string; agentAccountId: string; productId: string; departureId: string; travelDate: string | null; currency: string | null; at: Date },
   admit: (acc: { status: string; unitIds: string[] }) => boolean = () => true,
 ): Promise<Loaded | "SETTINGS_INVALID" | null> {
   const { tenantId, unitId } = q;
@@ -746,7 +776,9 @@ async function loadFacts(
   const tierId = tier?.id ?? null;
   const tierCode = tier && (AGENT_TIER_CODES as readonly string[]).includes(tier.code) ? (tier.code as AgentTierCode) : null;
   const tzRaw = isRec(unit.settings) ? unit.settings.timezone : undefined;
-  const tz = typeof tzRaw === "string" && tzRaw.trim() ? tzRaw.trim() : TZ_FALLBACK;
+  // เขตเวลาสำรองของ trips ผ่าน facade (มติ Z9 · ไม่ประกาศซ้ำ) — ค่าว่าง ⇒ ค่าสำรอง · ค่าที่ตั้งแต่ใช้ไม่ได้ ⇒ SETTINGS_INVALID (กติกาเดียวกับ trips/pricing.ts)
+  const trips: TripsMod = await import("@/lib/modules/trips");
+  const tz = typeof tzRaw === "string" && tzRaw.trim() ? tzRaw.trim() : trips.normalizeTimezone(undefined);
   const bookYmd = localYmd(q.at, tz);
   if (bookYmd === null) return "SETTINGS_INVALID";
   const refs = { unitId, productId: product.id, departureId: dep.id, agentId: acc.id, ...(tierId ? { agentTierId: tierId } : {}) };
@@ -770,7 +802,8 @@ async function loadFacts(
   const facts: RateFacts = {
     account: { id: acc.id, tierId, tierCode, payeeType: acc.payeeType, vatRegistered: acc.vatRegistered },
     product: { id: product.id, productType: product.productType === "LIVEABOARD" ? "LIVEABOARD" : product.productType === "ATTRACTION" ? "ATTRACTION" : "TOUR", optionId: dep.optionId, paxTypes },
-    currency: product.currency,
+    // มติ Z1: สกุลของการจอง (trips ส่งมาใน AgencyPricingQuery) — ไม่ส่ง ⇒ สกุลของสินค้า (กติกาเดียวกับ trips: L.currency ?? product.currency)
+    currency: q.currency ?? product.currency,
     bookYmd,
     travelYmd: q.travelDate ?? ymdOf(dep.localDate) ?? "",
     cards: cards.map(
@@ -800,7 +833,8 @@ export const agencyPricingPort: { load(ctx: SellCtx, q: AgencyPricingQuery): Pro
     const unitId = c.data.unitId;
     // ด่านสถานะ/หน่วยก่อนอ่านค่าตั้ง — บัญชีที่ไม่ควรเปิดได้ null เสมอ (ไม่ throw แม้ค่าตั้งผิดรูป)
     const admit = (a: { status: string; unitIds: string[] }) => a.status === "ACTIVE" && (a.unitIds.length === 0 || a.unitIds.includes(unitId));
-    const loaded = await loadFacts({ tenantId: c.data.tenantId, unitId, agentAccountId: q.agentAccountId, productId: q.productId, departureId: q.departureId, travelDate: q.travelDate, at: q.at }, admit);
+    const currency = typeof q.currency === "string" && /^[A-Z]{3}$/.test(q.currency) ? q.currency : null;
+    const loaded = await loadFacts({ tenantId: c.data.tenantId, unitId, agentAccountId: q.agentAccountId, productId: q.productId, departureId: q.departureId, travelDate: q.travelDate, currency, at: q.at }, admit);
     if (loaded === null) return null;
     if (loaded === "SETTINGS_INVALID") throw new Error("AGENCY_PRICING_SETTINGS_INVALID");
     const built = buildAgencyPricingInput(loaded.facts);
@@ -830,7 +864,7 @@ const TRY_INPUT = z
     slotId: ID,
     pax: z.array(z.object({ paxTypeId: ID, qty: QTY }).strict()).min(1).max(AGENT_RATE_LIMITS.tryPaxLines),
     extras: z.array(z.object({ extraId: ID, qty: QTY }).strict()).max(AGENT_RATE_LIMITS.tryPaxLines).optional(),
-    at: z.string().max(40).refine((s) => !Number.isNaN(Date.parse(s))).optional(),
+    at: INSTANT.optional(),
     agentDiscountSatang: z.number().int().min(0).max(2_147_483_647).optional(),
     actualSaleSatang: z.number().int().min(0).max(2_147_483_647).optional(),
     draft: z
@@ -894,29 +928,38 @@ export async function tryAgentPrice(
         const bad = await checkRateAgainstDb(g.db, g.tenantId, rate, cache);
         if (bad) return stop("VALIDATION", bad);
         const row: RateRow = { ...rate, id: `draft-${String(n).padStart(3, "0")}`, rateCardId: "draft" };
-        if (rows.some((o) => sameDims(o, row))) return stop("VALIDATION", "RATE_OVERLAP");
+        // ร่างเทียบกันเองแบบเดียวกับตอนบันทึก (มติ Z2: คีย์มิติชน ⇒ RATE_OVERLAP · มติ Z5 ก: โหมดปน ⇒ MIXED_MODES)
+        const twin = rows.find((o) => sameDims(o, row));
+        if (twin && sameRate(twin, row)) continue; // ส่งซ้ำทุกช่อง = แถวเดิม (บันทึกจริงก็ได้ replayed)
+        if (twin) return stop("VALIDATION", "RATE_OVERLAP");
         assertNoRateOverlap(row, rows);
         rows.push(row);
       }
       draftCard = { id: "draft", ownerKind: d.ownerKind, tierId: null, agentAccountId: null, status: "ACTIVE", validFrom: d.validFrom ?? null, validTo: d.validTo ?? null, version: 0, priority: d.priority ?? 0, rates: rows };
     }
-    const loaded = await loadFacts({ tenantId: g.tenantId, unitId: i.unitId, agentAccountId: i.agentAccountId, productId: i.productId, departureId: i.slotId, travelDate: null, at });
+    const loaded = await loadFacts({ tenantId: g.tenantId, unitId: i.unitId, agentAccountId: i.agentAccountId, productId: i.productId, departureId: i.slotId, travelDate: null, currency: null, at });
     if (loaded === null) return stop("NOT_FOUND");
     if (loaded === "SETTINGS_INVALID") return stop("VALIDATION", "SETTINGS_INVALID");
+    // มติ Z3: บัญชีที่ไม่ขายที่หน่วยนี้ ⇒ ไม่แสดงราคา (เส้นทางจริงก็ปฏิเสธ) — ทุกกรณี ไม่ว่ามีร่างหรือไม่
+    if (loaded.unitIds.length > 0 && !loaded.unitIds.includes(i.unitId)) return stop("VALIDATION", "ACCOUNT_NOT_IN_UNIT");
     let facts = loaded.facts;
     if (draftCard && i.draft) {
+      // มติ Z9: ร่างชั้นระดับของบัญชีที่ไม่มีระดับ ⇒ ไม่มีเจ้าของให้ใช้
+      if (i.draft.ownerKind === "TIER" && facts.account.tierId === null) return stop("VALIDATION", "TIER_NOT_FOUND");
       const owned: RateCardRow = { ...draftCard, tierId: i.draft.ownerKind === "TIER" ? facts.account.tierId : null, agentAccountId: i.draft.ownerKind === "AGENT" ? facts.account.id : null };
       facts = { ...facts, cards: [...facts.cards.filter((c) => c.id !== i.draft?.replacesCardId), owned] };
     }
     const built = buildAgencyPricingInput(facts);
     if (!built.ok) return stop("VALIDATION", "SETTINGS_INVALID");
     const agency: AgencyPricingInput = { ...built.input, terms: { ...built.input.terms, actualSaleSatang: i.actualSaleSatang ?? null }, policySnapshot: loaded.snapshot };
+    // มติ Z3 (§9 ข้อ 3 ตรงตัว): แทนชั้นเอเจนซี่เฉพาะเมื่อมีร่าง หรือบัญชีไม่ ACTIVE หรือมี actualSaleSatang — กรณีอื่นใช้ port ตัวจริง
+    const substitute = draftCard !== null || loaded.status !== "ACTIVE" || i.actualSaleSatang !== undefined;
     const trips: TripsMod = await import("@/lib/modules/trips");
     await installAgencyPricingPort();
     // ctx ของผู้กระทำ AGENT ตามใบสั่ง §9 — ร้านไม่สร้างตัวตนผู้ใช้เอเจนซี่ (trips ไม่อ่าน agentUserId ตอนคิดราคา)
     const sctx = { tenantId: g.tenantId, unitId: i.unitId, channel: "AGENT_PORTAL", actor: { kind: "AGENT", agentAccountId: i.agentAccountId }, now: at } as unknown as SellCtx;
     const line: LineRequest = { productKind: "TRIP", unitId: i.unitId, productId: i.productId, slotId: i.slotId, pax: i.pax, ...(i.extras ? { extras: i.extras } : {}) };
-    TRY_OVERRIDES.set(sctx, agency);
+    if (substitute) TRY_OVERRIDES.set(sctx, agency);
     let inp: Awaited<ReturnType<TripsMod["loadPricingInput"]>>;
     try {
       inp = await trips.loadPricingInput(sctx, line, i.agentDiscountSatang !== undefined ? { agentDiscountSatang: i.agentDiscountSatang } : undefined);

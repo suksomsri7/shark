@@ -36,6 +36,8 @@ export const AGENT_RATE_LIMITS = {
   draftRatesMax: 200,
   markupCapBpMax: 100_000,
   priorityMax: 1000,
+  /** มติ R3 ของ A1.1: เทอมเครดิตของระดับ A (วัน · A12) — มติ Z9 ย้ายเข้าตารางนี้ */
+  tierACreditDays: 30,
 } as const;
 
 export const AGENT_RATE_REASONS = [
@@ -56,6 +58,8 @@ export const AGENT_RATE_REASONS = [
   "ACCOUNT_NOT_ACTIVE",
   "SETTINGS_INVALID",
   "STATE_CONFLICT",
+  "MIXED_MODES",
+  "ACCOUNT_NOT_IN_UNIT",
 ] as const;
 export type AgentRateReason = (typeof AGENT_RATE_REASONS)[number];
 
@@ -172,28 +176,40 @@ const PCT_MAX = 100;
 const PCT_TO_BP = 100;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** มติ Z8: วันที่ทุกช่องของใบนี้อยู่ในปี 1900–2200 (นอกช่วง ⇒ BAD_INPUT ไม่ถึงฐานข้อมูล) */
+const YEAR_MIN = 1900;
+const YEAR_MAX = 2200;
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const hasOwn = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 const isInt = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
-/** วันจริงรูป YYYY-MM-DD (ไม่อ่านนาฬิกา) */
-function isRealYmd(s: unknown): s is string {
+/** วันจริงรูป YYYY-MM-DD ในปี 1900–2200 (ไม่อ่านนาฬิกา) — ตัวตรวจวันที่ตัวเดียวของใบนี้ (มติ Z8) */
+export function isAgentRateYmd(s: unknown): s is string {
   if (typeof s !== "string") return false;
   const m = YMD_RE.exec(s);
   if (!m) return false;
   const y = Number(m[1]);
   const mo = Number(m[2]);
   const d = Number(m[3]);
+  if (y < YEAR_MIN || y > YEAR_MAX) return false;
   if (mo < 1 || mo > 12 || d < 1) return false;
   const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
   const dim = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
   return d <= dim;
+}
+/** เวลา ISO (เช่น วันจองสมมติ · expectedUpdatedAt) ที่ตกอยู่ในปี 1900–2200 (มติ Z8) */
+export function isAgentRateInstant(s: unknown): s is string {
+  if (typeof s !== "string" || s.length > 40) return false;
+  const ms = Date.parse(s);
+  if (Number.isNaN(ms)) return false;
+  const d = new Date(ms);
+  return isAgentRateYmd(`${String(d.getUTCFullYear()).padStart(4, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`);
 }
 
 // ═══════════════ §4.1 ตรวจรูปแถวราคา ═══════════════
 const Z_ID = z.string().regex(ID_RE);
 const Z_OPT_ID = Z_ID.nullable().optional();
 const zInt = (max: number) => z.number().int().min(0).max(max);
-const Z_YMD = z.string().refine(isRealYmd).nullable().optional();
+const Z_YMD = z.string().refine(isAgentRateYmd).nullable().optional();
 const RAW_RATE = z
   .object({
     productKind: z.enum(["TRIP", "TICKET", "HOTEL"]),
@@ -297,6 +313,15 @@ export function rateRowsConflict(a: RateRow, b: RateRow): boolean {
   if (a.priority !== b.priority) return false;
   return dateRangesOverlap(a.bookFrom, a.bookTo, b.bookFrom, b.bookTo) && dateRangesOverlap(a.travelFrom, a.travelTo, b.travelFrom, b.travelTo);
 }
+/**
+ * มติ Z5 (ก): ใน card เดียว แถวที่เปิดของสินค้า/ตัวเลือก/priority เดียวกันต้องเป็นโหมดเดียว (ทุกช่วงวัน · ทุกประเภทคน)
+ * — คู่ที่ทำให้ปน ⇒ บริการ/เครื่องลองคิดปฏิเสธ VALIDATION MIXED_MODES
+ */
+export function rateRowsMixModes(a: RateRow, b: RateRow): boolean {
+  if (!a.active || !b.active || a.rateCardId !== b.rateCardId) return false;
+  if (a.productKind !== b.productKind || a.productId !== b.productId || a.optionId !== b.optionId || a.priority !== b.priority) return false;
+  return a.mode !== b.mode;
+}
 
 // ═══════════════ §5.1–§5.3 ตัวเลือกชั้นเอเจนซี่ ═══════════════
 type Picked = { r: RateRow; c: RateCardRow };
@@ -304,7 +329,11 @@ const inRange = (d: string, from: string | null, to: string | null): boolean => 
 /** หลังสุดก่อน · null ท้าย */
 const laterFirst = (a: string | null, b: string | null): number => (a === b ? 0 : a === null ? 1 : b === null ? -1 : a > b ? -1 : 1);
 const flag = (b: boolean): number => (b ? 1 : 0);
-/** §5.2 — ตัวแรกชนะ · เรียงครบทุกชั้นจนถึง id จึงไม่ขึ้นกับลำดับอินพุต */
+const cmpStr = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+/**
+ * §5.2 — ตัวแรกชนะ · เรียงครบทุกชั้นจนถึง id จึงไม่ขึ้นกับลำดับอินพุต
+ * มติ Z5 (ค): ก่อนใช้ id — แถวไม่ระบุประเภทคนก่อนแถวรายประเภท แล้วเรียงตามรหัสประเภทคน (ร่างกับหลังบันทึกได้ "แถวแรก" เดียวกัน)
+ */
 function byPrecedence(x: Picked, y: Picked): number {
   return (
     y.r.priority - x.r.priority ||
@@ -313,7 +342,18 @@ function byPrecedence(x: Picked, y: Picked): number {
     y.c.priority - x.c.priority ||
     laterFirst(x.r.travelFrom, y.r.travelFrom) ||
     laterFirst(x.r.bookFrom, y.r.bookFrom) ||
-    (x.r.id < y.r.id ? -1 : x.r.id > y.r.id ? 1 : 0)
+    flag(x.r.paxTypeId !== null) - flag(y.r.paxTypeId !== null) ||
+    cmpStr(x.r.paxTypeId ?? "", y.r.paxTypeId ?? "") ||
+    cmpStr(x.r.id, y.r.id)
+  );
+}
+/** มติ Z5 (ข): ราคาต่อประเภทคน — priority และช่วงพิเศษมาก่อนความเจาะจงของประเภทคน แล้วจึงลำดับ §5.2 ที่เหลือ */
+function byPaxPrecedence(x: Picked, y: Picked): number {
+  return (
+    y.r.priority - x.r.priority ||
+    flag(isSpecialPeriodRate(y.r)) - flag(isSpecialPeriodRate(x.r)) ||
+    flag(y.r.paxTypeId !== null) - flag(x.r.paxTypeId !== null) ||
+    byPrecedence(x, y)
   );
 }
 function eligibleRows(layer: "TIER" | "CONTRACT", f: RateFacts): Picked[] {
@@ -365,10 +405,12 @@ function layerOf(layer: "TIER" | "CONTRACT", f: RateFacts): LayerOut | null {
   if (mode === "COMMISSION_FIXED") return { level: { ...emptyLevel(refId, mode), fixedSatang: first.r.valueMinor }, trace, warnings };
   const unitMinorByPaxCode: Record<string, number> = {};
   for (const pt of f.product.paxTypes) {
-    const hit = same.find((x) => x.r.paxTypeId === pt.id) ?? same.find((x) => x.r.paxTypeId === null);
+    const hit = same.filter((x) => x.r.paxTypeId === pt.id || x.r.paxTypeId === null).sort(byPaxPrecedence)[0];
     if (hit && hit.r.valueMinor !== null) unitMinorByPaxCode[pt.code] = hit.r.valueMinor;
   }
-  let minSellMinor = first.r.minSellMinor;
+  // มติ Z5 (ง): Level ของ T0.5 มีขั้นต่ำค่าเดียวต่อที่นั่งทุกประเภท ⇒ ใช้เฉพาะขั้นต่ำของแถวไม่ระบุประเภทคน (ของแถวรายประเภทไม่ลามไปประเภทอื่น)
+  const generic = same.find((x) => x.r.paxTypeId === null);
+  let minSellMinor = generic ? generic.r.minSellMinor : null;
   if (minSellMinor === null && f.currency === "THB") {
     const a7 = values ? values["agency.price.minResalePrice"] : undefined; // ไม่ตั้ง = ไม่กำหนด
     if (a7 !== null && a7 !== undefined) {
@@ -399,7 +441,9 @@ export function decideCommissionVatMode(i: { value: unknown; source: string; vat
 }
 
 const PAYEE_TYPES = ["TH_JURISTIC", "TH_FOUNDATION", "TH_PERSON", "FOREIGN"] as const;
-const E_WHT_PAYEES: readonly string[] = ["TH_JURISTIC", "TH_FOUNDATION"];
+/** ⚖️ มติ Z6: อัตรา e-WHT ใช้กับผู้รับนิติบุคคลเท่านั้น — มูลนิธิ/สมาคมคงอัตราปกติ (กฎกระทรวง ฉ.402 · skill shark-thai-law common-withholding-tax.md §14)
+ *  อัตราและวันสิ้นมาตรการมาจากค่าตั้ง A28 `agency.wht.eWht` (rateBp · untilPaidOn) ไม่ฝังโค้ด */
+const E_WHT_PAYEES: readonly string[] = ["TH_JURISTIC"];
 const Z_WHT_RULE = z.object({ mode: z.enum(["FLAT", "M50_1", "NONE"]), rateBp: zInt(BP_MAX) });
 const TERMS_POLICY = z.object({
   "agency.money.collector": z.enum(["AGENT_COLLECTS", "SHOP_COLLECTS"]),
@@ -411,7 +455,7 @@ const TERMS_POLICY = z.object({
   "agency.wht.payerType": z.enum(["JURISTIC", "INDIVIDUAL"]).nullable(),
   "agency.wht.ruleByPayee": z.record(z.string(), z.record(z.string(), Z_WHT_RULE)),
   "agency.wht.minPerContract": z.object({ amountSatang: zInt(INT4_MAX), appliesTo: z.record(z.string(), z.boolean()), continuousContract: z.string().min(1).max(40) }),
-  "agency.wht.eWht": z.object({ enabled: z.boolean(), rateBp: zInt(BP_MAX), untilPaidOn: z.string().refine(isRealYmd).nullable() }),
+  "agency.wht.eWht": z.object({ enabled: z.boolean(), rateBp: zInt(BP_MAX), untilPaidOn: z.string().refine(isAgentRateYmd).nullable() }),
   "agency.wht.grossUpOnNetRemit": z.boolean(),
   "agency.wht.remitter": z.enum(["SHOP", "AGENT_ON_BEHALF", "NONE"]),
 });
@@ -442,7 +486,8 @@ export function buildAgencyPricingInput(facts: RateFacts): AgencyPricingBuilt {
   if (contract.level && tier.trace?.specialPeriod === true) warnings.add("TIER_SPECIAL_PERIOD_SHADOWED");
 
   const vat = decideCommissionVatMode({ value: P["agency.comm.vatMode"], source: vatSource, vatRegistered: acc.vatRegistered });
-  if (!acc.vatRegistered && P["agency.comm.vatMode"] !== "NONE") warnings.add("VAT_MODE_IGNORED_NOT_REGISTERED");
+  // มติ Z9: เตือนเฉพาะเมื่อร้านตั้ง X26 เอง (ค่าจากแม่แบบ/ค่าสำรองไม่ใช่สิ่งที่ร้านเลือก)
+  if (!acc.vatRegistered && P["agency.comm.vatMode"] !== "NONE" && vatSource !== "TEMPLATE" && vatSource !== "FALLBACK") warnings.add("VAT_MODE_IGNORED_NOT_REGISTERED");
 
   const payerSet = P["agency.wht.payerType"];
   const payerType = payerSet ?? "JURISTIC";
