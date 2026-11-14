@@ -1,0 +1,54 @@
+# HF-SSO-2569 green run — tree shark-hr-l3 · branch wip/hr-hf-sso · head 0c3414c8a (+ notes commit) · lane DB ep-ancient-truth (qc-hr.sh) · 2026-11-14T05:46:53Z
+# wrapper: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env [QC_FORCE=1] QC_H06_BASE=d350c26c… pnpm exec tsx scripts/<suite>.mts
+
+## own oracle (r2, final code)
+r2/qc-hr-hf-sso.1.txt: ===== qc-hr-hf-sso ===== passed 40/40 (QC_FORCE) · RESIDUE none (tenants=1)
+r2/qc-hr-hf-sso.2.txt: ===== qc-hr-hf-sso ===== passed 40/40 (QC_FORCE) · RESIDUE none (tenants=1)
+r2/qc-hr-hf-sso.3.txt: ===== qc-hr-hf-sso ===== passed 40/40 (QC_FORCE) · RESIDUE none (tenants=1)
+r2/qc-hr-hf-sso.unforced.txt: ===== qc-hr-hf-sso ===== passed 40/40 · RESIDUE none (tenants=1)
+
+## older suites — final result per suite (r2 if re-run after the static/sha edits, else r1)
+qc-payroll (r1): JSON_SUMMARY {"total":19,"passed":19,"findings":[]}
+qc-payroll-reverse (r1): ✅ PASS — 14/14
+qc-hr-payadjust (r1): JSON_SUMMARY {"total":27,"passed":27,"findings":[]}
+qc-hr-h0.1 (r2): JSON_SUMMARY {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null}
+qc-hr-h0.2 (r2): JSON_SUMMARY {"suite":"qc-hr-h0.2","total":58,"passed":58,"failed":[],"skipped":false,"forced":true,"missing":[],"crashed":null}
+qc-hr-h0.6 (r2): JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null,"groupCrashes":[]}
+qc-hr-h1.1 (r1): JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":64,"bas
+qc-hr-h1.2 (r1): JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":56,"bas
+qc-hr-h1.3 (r2): JSON_SUMMARY {"suite":"qc-hr-h1.3","total":63,"passed":58,"failed":["H1.3-S6.1","H1.3-S2.9","H1.3-X1.1","H1.3-S7.1","H1.3-S7.4"],"findings":[{"id":"H1.3-S6.1","
+  ❌ [H1.3-S6.1] [static] [control] no file under hr/** · app/**/{hr,payroll}/** · ai/** · outbox-consumers.ts reads ytdJson|filingJson|bankFileKey|lawRowIds|sourceRef|HrReviewNote|HrOnboardingTask|HrWorkEntry|HrLawT
+  ❌ [H1.3-S2.9] [db] raw ACTIVE row without sign-off ⇒ 23514 · two ACTIVE rows same kind + date (signed off) ⇒ 23505 (both in rolled-back tx) · no MIN_WAGE row seeded (Q4) — expected unsigned ACTIVE 23514 · 2n
+  ❌ [H1.3-X1.1] [run+db] seed script --apply ×3 on a fresh prefix ⇒ 4 rows · runs 2–3 `created 0 · unchanged 4` — expected 4 rows · 4+0 · 0+4 · 0+4 | actual #1:exit0/10+0 #2:exit0/0+10 #3:exit0/0+10 rows=10
+  ❌ [H1.3-S7.1] [db read] hr-expected.json has "HrPayrollRun.engineVersion": 1 and "HrLawTable.v1": 4 · the seeded qc-hr-v2 paid run has engineVersion 1 — expected expected engineVersion 1 · HrLawTable.v1 10 · liv
+  ❌ [H1.3-S7.4] [db read] QC4 has exactly the 4 `v1:*` law rows (SSO · TAX_BRACKET · DEDUCTION · OT), all DRAFT · no ACTIVE row anywhere in HrLawTable — expected 10 v1 DRAFT rows · 0 ACTIVE | actual v1=SSO:DRAFT
+qc-hr-h2.1 (r1): JSON_SUMMARY {"suite":"qc-hr-h2.1","total":90,"passed":90,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":78,"bas
+qc-hr-h2.2 (r1): JSON_SUMMARY {"suite":"qc-hr-h2.2","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":54,"bas
+qc-hr-h2.4 (r1): JSON_SUMMARY {"suite":"qc-hr-h2.4","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":62,"bas
+qc-hr-h2.9 (r1): JSON_SUMMARY {"suite":"qc-hr-h2.9","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":51,"bas
+qc-hr-h3.1 (r1): JSON_SUMMARY {"suite":"qc-hr-h3.1","total":58,"passed":58,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":53,"bas
+qc-hr-h3.2 (r2): JSON_SUMMARY {"suite":"qc-hr-h3.2","total":64,"passed":64,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":60,"bas
+qc-hr-h3.3 (r1): JSON_SUMMARY {"suite":"qc-hr-h3.3","total":51,"passed":51,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":36,"bas
+qc-hr-h3.4 (r2): JSON_SUMMARY {"suite":"qc-hr-h3.4","total":85,"passed":84,"failed":["H3.4-S4.27"],"findings":[{"id":"H3.4-S4.27","sev":"CRITICAL"}],"skipped":false,"forced":tru
+  ❌ [H3.4-S4.27] [db] INPUTS_CHANGED for law activation · adjustment amount · work-day minutes · carry-in row · cap setting · membership (new member) · OT holiday-work minutes (S4.19) — expected INPUTS_CHANGED 
+qc-hr-h3.4-ytd (r1): JSON_SUMMARY {"suite":"qc-hr-h3.4-ytd","total":44,"passed":44,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":39,
+qc-hr-h3.5 (r1): JSON_SUMMARY {"suite":"qc-hr-h3.5","total":53,"passed":53,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":45,"bas
+qc-hr-h3.6 (r2): JSON_SUMMARY {"suite":"qc-hr-h3.6","total":62,"passed":62,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":57,"bas
+qc-hr-h3.7 (r2): JSON_SUMMARY {"suite":"qc-hr-h3.7","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":60,"bas
+qc-hr-h3.8 (r1): JSON_SUMMARY {"suite":"qc-hr-h3.8","total":78,"passed":78,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":73,"bas
+qc-hr-h3.9 (r2): JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":55,"bas
+qc-hr-h4.2 (r1): JSON_SUMMARY {"suite":"qc-hr-h4.2","total":53,"passed":53,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":49,"ba
+qc-hr-set-1 (r2): JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":17,"ba
+qc-account-cpa (r1): JSON_SUMMARY {"total":107,"passed":107,"findings":[]}
+qc-audit-trail (r1): ✅ PASS — 21/21
+qc-hf-hr-privacy (r1): JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+
+## fitness (r1, re-run r4 on final head 0c3414c8a — identical)
+r1/fitness-hr.env.txt: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+r1/fitness-hr.noenv.txt: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+r1/fitness.env.txt: JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+r1/fitness.noenv.txt: JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+
+## typecheck (clean: rm -rf .next/types tsconfig.tsbuildinfo · ISO_MEM=14000M · gate lock) on 0c3414c8a: `tsc --noEmit` exit 0 · 432 s
+## seed-hr-qc: NOT run — see hr-HF-SSO.md §6.1 (shared lane DB with l4)
+## merge probe: session/hr 8fd6f7dc4 merged cleanly (no conflicts) but on this lane DB (no 20270111000000_hr_line_link) qc-hf-hr-privacy (G-2…GA-3) and qc-hr-h0.6 (S10.5–X10.4) fail with P2021 `hrLineLink` missing ⇒ merge reset, left for the gate
