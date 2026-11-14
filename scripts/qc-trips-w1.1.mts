@@ -1512,7 +1512,8 @@ try {
     const opsRows = async (since: Date) => q<{ message: string; detail: string | null; level: string }>(`SELECT message, detail, level::text AS level FROM "OpsEvent" WHERE source = 'trips.public' AND "createdAt" >= $1 AND message LIKE '%ด่านอัตรา%' ORDER BY "createdAt"`, [since]);
     /** รอให้แถวที่คาด (เขียนแบบไม่รอผล) ลงฐาน แล้วรออีกช่วงเพื่อจับแถวเกิน · want 0 = ไม่คาดแถวใหม่ (รอช่วงเดียว) */
     const waitRows = async (since: Date, want: number) => { for (let i = 0; want > 0 && i < 40; i++) { if ((await opsRows(since)).length >= want) break; await sleep(250); } await sleep(2500); return opsRows(since); };
-    const since = new Date((await q<{ t: Date }>(`SELECT NOW() AS t`))[0]?.t ?? Date.now());
+    // ORACLE-EDIT XR-11 (ผู้คุม 14 พ.ย.): createdAt ของ OpsEvent ตั้งจากนาฬิกาเครื่อง (Prisma) แต่ since เดิมมาจากนาฬิกาฐานข้อมูล — ฐานเดินนำเครื่อง ~44 ms ⇒ แถวแรกที่เขียนภายในไม่กี่ ms ถูกกรองทิ้ง (แดง 3/3 รอบวันที่ 14) · ถอย 1 วิ (แถวของ RL-4 ห่างเกินนั้นและเป็นคนละช่วงของข้อสอบ)
+    const since = new Date(new Date((await q<{ t: Date }>(`SELECT NOW() AS t`))[0]?.t ?? Date.now()).getTime() - 1000);
     const realNow = Date.now;
     let offset = 0;
     const down = async (n: number, kind: "throw" | "empty") => {
