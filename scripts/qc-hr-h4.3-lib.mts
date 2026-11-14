@@ -203,7 +203,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const H49_ALLOW = new Set(["scripts/qc-nav-functions.mts", "scripts/qc-hr-priv-2.mts"]); // ORACLE-EDIT (HR H4.9 · controller) ◂
     const h49Ok = (f: string) => H49_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR H4.9 · controller)"))); // ORACLE-EDIT (HR H4.9 · controller) ◂
     // ORACLE-EDIT (HR VIS-5b · controller) S1.6: explicit allowlist — the HR VIS-5b/5c oracle files (tests first) + the older oracles VIS-5b edited; every hunk (new file: the whole file) must add "HR VIS-5b" or "HR VIS-5c" ◂
-    const VIS5_ORACLES = new Set(["scripts/qc-hr-vis-5b.mts", "scripts/qc-hr-vis-5c.mts", "scripts/qc-hr-vis-5-lib.mts", "scripts/qc-hr-priv-2.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-h2.11.mts"]); // ORACLE-EDIT (HR VIS-5b · controller) ◂
+    const VIS5_ORACLES = new Set(["scripts/qc-hr-vis-5b.mts", "scripts/qc-hr-vis-5c.mts", "scripts/qc-hr-vis-5-lib.mts", "scripts/qc-hr-priv-2.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-h2.11.mts", "scripts/qc-hr-h4.2-lib.mts"]); // ORACLE-EDIT (HR VIS-5b · controller) ◂
     const vis5Ok = (f: string) => VIS5_ORACLES.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR VIS-5[bc]/.test(l))); // ORACLE-EDIT (HR VIS-5b · controller) ◂
     const frozenLeft = frozen.filter((f) => !(/\.(ts|mts|json)$/.test(f) && hfOk(f)));
     const hrLeft = hrFrozen.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f)); // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂
