@@ -15,3 +15,13 @@ registerMinuteJob({
   },
 });
 
+// CAL1.5 ▸ สรุปเช้า/เย็น (ไม่เรียกโมเดล) · งบของตัวเอง 6 วิ ◂
+registerMinuteJob({
+  name: "calendar.brief",
+  everyMinutes: 1,
+  ownBudgetMs: 6_000,
+  run: async (now, _budgetMs, ctrl) => {
+    const { runCalendarBrief } = await import("./brief");
+    return runCalendarBrief(now, { deadline: ctrl.deadline });
+  },
+});
