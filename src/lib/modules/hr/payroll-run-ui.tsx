@@ -112,6 +112,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
   const cellsOf = (r: (typeof rows)[number]) => ({ base: r.grossSatang + r.deductSatang - r.addSatang, deduct: -r.deductSatang, sso: -r.ssoEmployeeSatang, wht: -r.whtSatang });
   const md = "hidden md:table-cell";
   const xl = sel ? "hidden 2xl:table-cell" : "hidden xl:table-cell";
+  const mdUntilXl = sel ? "hidden md:table-cell 2xl:hidden" : "hidden md:table-cell xl:hidden"; // HR VIS-5a ▸ r3: stored-additions variant where the OT column is hidden ◂
   const num = "px-3 py-2.5 text-right tabular-nums";
   const amt = (v: number | null) => (v === null ? "—" : baht(v));
   const tone = (v: number) => (v < 0 ? "text-[color:var(--color-danger)]" : "");
@@ -265,7 +266,8 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                         <th className={`${md} ${num}`}>{t("col_gross")}</th>
                         <th className={`${xl} ${num}`}>{t("col_days")}</th>
                         <th className={`${xl} ${num}`}>{t("col_ot")}</th>
-                        <th className={`${md} ${num}`}>{t("col_add")}</th>
+                        <th className={`${xl} ${num}`}>{t("col_add")}</th>
+                        <th className={`${mdUntilXl} ${num}`}>{t("col_add")}</th>{/* HR VIS-5a ▸ r3: add excl. OT beside the OT column (xl) · stored add + "incl. OT" hint below xl ◂ */}
                         <th className={`${md} ${num}`}>{t("col_deduct")}</th>
                         <th className={`${md} ${num}`}>{t("col_sso")}</th>
                         <th className={`${xl} ${num}`}>{t("col_wht")}</th>
@@ -290,8 +292,13 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                             <td className={`${md} ${num}`}>{baht(c.base)}</td>
                             <td className={`${xl} ${num}`}>{days ? t("days", { n: days.get(r.employeeId) ?? 0 }) : "—"}</td>
                             <td className={`${xl} ${num}`}>{f?.otSatang ? baht(f.otSatang) : "—"}</td>
-                            <td className={`${md} ${num}`}>
+                            <td className={`${xl} ${num}`}>
+                              {baht(f?.addNoOtSatang ?? r.addSatang)}
+                              {f?.addCodes.some((k) => k !== "OT" || f.otSatang === null) ? <span className="block text-xs text-[color:var(--color-muted)]">{f.addCodes.filter((k) => k !== "OT" || f.otSatang === null).map((k) => t(`ln_${k}`)).join(" · ")}</span> : null}
+                            </td>
+                            <td className={`${mdUntilXl} ${num}`}>{/* HR VIS-5a ▸ r3 ◂ */}
                               {baht(r.addSatang)}
+                              {f?.otSatang ? <span className="block text-xs text-[color:var(--color-muted)]">{t("addInclOt")}</span> : null}
                               {f?.addCodes.length ? <span className="block text-xs text-[color:var(--color-muted)]">{f.addCodes.map((k) => t(`ln_${k}`)).join(" · ")}</span> : null}
                             </td>
                             <td className={`${md} ${num}`}>
@@ -314,9 +321,13 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                         <th scope="row" className="px-3 py-2.5 text-left">{t("totalsRow", { n: pv.rows.length })}</th>
                         <td className={`${md} ${num}`}>{amt(fig.baseSatang)}</td>
                         <td className={`${xl} ${num}`} />
-                        <td className={`${xl} ${num}`}>{fig.otSatang ? baht(fig.otSatang) : "—"}</td>
-                        <td className={`${md} ${num}`}>{baht(tileOf.add)}</td>
-                        <td className={`${md} ${num}`}>{baht(tileOf.deduct)}</td>
+                        <td className={`${xl} ${num}`}>{fig.otRowsSatang ? baht(fig.otRowsSatang) : "—"}</td>{/* HR VIS-5a ▸ r3: Σ of the row OT cells ◂ */}
+                        <td className={`${xl} ${num}`}>{baht(fig.addNoOtSatang)}</td>{/* HR VIS-5a ▸ r3: Σ add excl. OT (server) ◂ */}
+                        <td className={`${mdUntilXl} ${num}`}>
+                          {baht(tileOf.add)}
+                          {fig.otRowsSatang ? <span className="block text-xs font-normal text-[color:var(--color-muted)]">{t("addInclOt")}</span> : null}
+                        </td>
+                        <td className={`${md} ${num}`}>{baht(tileOf.deduct)}</td>{/* HR VIS-5a ◂ */}
                         <td className={`${md} ${num}`}>{baht(tileOf.ssoEe)}</td>
                         <td className={`${xl} ${num}`}>{baht(tileOf.wht)}</td>
                         <td className={num}>{baht(tileOf.net)}</td>

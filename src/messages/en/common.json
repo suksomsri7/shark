@@ -1352,7 +1352,8 @@
       "banner_PAID": "Paid · pay date {date}",
       "banner_REVERSED": "Reversed — this run is read-only · you can create a new run for this period above",
       "bannerV1": "This run was calculated by the classic payroll — approve, pay or reverse it in Run history",
-      "bannerV1Link": "Open Run history"
+      "bannerV1Link": "Open Run history",
+      "addInclOt": "incl. OT"
     },
     "payview": {
       "run": "Pay run",
