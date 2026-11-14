@@ -79,3 +79,14 @@ Same functions: **`hr/service.ts decideLeave`** (P1: second paid-run gate around
 2. OWNER double click WITHOUT a step moving two steps (audited) is the fallback only; web actions and the AI tool always send the step (owner double click through the actions advances one step).
 3. Names: `decideAction` form field `step` (integer the page rendered) · `bulkDecide(m, ctx, ids, decision, note, steps?: Record<id, number>)` — bulk action sends the map (form fields `step:<id>`) · owner-override audit: action `approval.owner_override`, `targetId` = request id, `after` = `{ step, previousDeciderStep }`.
 4. Q6 corrections/swaps: outcome-only checks.
+
+## CONTROLLER RULINGS r3 (14 Nov, after review MERGE WITH NOTES + re-hunt on ed06b0514) — binding · oracle part b `scripts/qc-hr-leave-3b.mts` (shares the lib)
+- **W1 (MAJOR, race)** chain MANAGER(1)→OWNER(2), request at step 1; the manager's `decide(expectedStep 1)` has read steps [1,2] and waits on the request row; `updatePolicy → [MANAGER(1)]` commits (strand count 0); the decision then sets currentStepOrder = 2 ⇒ stranded 20/20 (hunt N1). Required: `decide` takes the policy row FOR SHARE inside its transaction and re-reads the steps before the claim; a changed step list ⇒ plan on the LIVE steps (step 1 now final ⇒ APPROVED, effects once) — never a request at a non-existent step. Check: row-lock-ordered, both orders.
+- **W2** AI path by request summary: the proposal captures requestId + expectedStep at PROPOSAL time; confirming after someone else advanced the request decides nothing (same answer as a stale step).
+- **W3** an approved AM+PM pair day is a full-day leave for OT: `requestOt` and OT approval on that day are refused exactly as on a full-day leave day (`hr/ot.ts` fullDayLeave). Control: a single half day still allows OT.
+- **W4** pair day stores `leaveHalf = null` and the self week view (`hr/self.ts` myWeek) shows the day as full-day leave, not "AM".
+- **W5** withdrawing through the approvals action returns the HR result: a refused withdrawal (not mine / already decided / no system) is reported as refused, not success.
+- **W6** `listPending` does not offer a step-N request to a non-OWNER who already decided an earlier step of it; OWNER still sees it.
+- **W7** late second half approved after the day was judged must be picked up like a late single leave (measured: both only via STALE in the work-entry build, neither auto-recomputed nor in attendanceNeedsRecompute ⇒ GREEN control, no new rule).
+- **W8** pair + sick-leave split: tested after the merge with HR-PREPROD-1, not now.
+- No tightening of older oracles.

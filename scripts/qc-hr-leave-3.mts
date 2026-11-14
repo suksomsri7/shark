@@ -1,7 +1,7 @@
 // QC — HR V2 · fix ticket HR-LEAVE-3 (H5.3 hunt F1–F4) · brief ledger/hr-briefs/hr-brief-LEAVE-3.md (+ CONTROLLER RULINGS) · notes ledger/wo-notes/hr-LEAVE-3-oracle.md
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit. Tenant qc-hr-leave3-* · 2031 dates · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-leave-3.mts
-// Statics base = QC_LEAVE3_BASE || merge-base(HEAD, session/hr) · registry recorded on 0af86c805
+// Statics base = QC_LEAVE3_BASE || merge-base(HEAD, session/hr) · registry re-based to ed06b0514 (fix round 1: all GREEN; was 28 RED on 0af86c805) · part b = qc-hr-leave-3b.mts
 import { execFileSync } from "node:child_process";
 import { type Any, type Base, ROOT, rd, errText, canon, sha, stripComments, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, diffHunks, makeRegistry, failedKeys, srcFiles } from "./qc-hr-lib.mjs";
 import { setupLeave3, underLock, callAct, shiftOf, entryOf, bk, dist } from "./qc-hr-leave-3-lib.mjs";
@@ -26,54 +26,54 @@ ST1|static|C|G|payroll-rules.ts sha frozen
 ST2|static|C|G|changed ⊆ allowed (+ older qc-*.mts with every hunk ORACLE-EDIT…LEAVE-3) · frozen unchanged
 ST3|static|M|G|src hunks marked HR LEAVE-3 · no bare removal
 ST4|static|M|G|no settings write in changed src
-ST5|static|M|R|fixed texts: TWO_PERSON · R3 count template · R4 OWNER gate
-R1.1|R1|C|R|AM+PM paid no-show ⇒ LEAVE · fraction 1.0
-R1.2|R1|C|R|work day 480/0/0 ld1.0 []
-R1.3|R1|C|R|sync no wait · createPayrollRunV2 ok
-R1.4|R1|C|R|paid+paid: no deduction line · gross 3,000,000
-R1.5|R1|C|R|AM unpaid+PM paid ⇒ 240/240/0 · UNPAID −50,000 only
-R1.6|R1|M|R|mirror (PM unpaid)
-R1.7|R1|M|R|two shifts 09–13/13–17 ⇒ both LEAVE · 480
-R1.8|R1|M|R|base-shape stored row ⇒ STALE ⇒ recompute LEAVE ⇒ 480
+ST5|static|M|G|fixed texts: TWO_PERSON · R3 count template · R4 OWNER gate
+R1.1|R1|C|G|AM+PM paid no-show ⇒ LEAVE · fraction 1.0
+R1.2|R1|C|G|work day 480/0/0 ld1.0 []
+R1.3|R1|C|G|sync no wait · createPayrollRunV2 ok
+R1.4|R1|C|G|paid+paid: no deduction line · gross 3,000,000
+R1.5|R1|C|G|AM unpaid+PM paid ⇒ 240/240/0 · UNPAID −50,000 only
+R1.6|R1|M|G|mirror (PM unpaid)
+R1.7|R1|M|G|two shifts 09–13/13–17 ⇒ both LEAVE · 480
+R1.8|R1|M|G|base-shape stored row ⇒ STALE ⇒ recompute LEAVE ⇒ 480
 R1.9|R1|M|G|AM approved + PM pending ⇒ PENDING_LEAVE
 R1.10|R1|M|G|PM revoked ⇒ ABSENT 240/0/240
 R1.11|R1|M|G|AM half + PM worked ⇒ 240 + work 240
 R1.12|R1|M|G|full day · single AM no-show · 4 h unpaid · run ok
 R1.13|R1|M|G|(Q7) legacy AM+AM ⇒ LEAVE_MISMATCH
 R1.14|R1|M|G|MONEY-2 paid-month gate refuses
-R2.1|R2|C|R|OWNER replay expectedStep 1 ×2 ⇒ lost · step 2
-R2.2|R2|C|R|same MANAGER both steps ⇒ TWO_PERSON · nothing written
-R2.3|R2|C|R|bulkDecide([id,id]) ⇒ done 1 · step 2 · 1 decision
-R2.4|R2|C|R|AI approval_decide: TWO_PERSON · stale expectedStep refused
-R2.5|R2|C|R|OWNER both steps (no step) ⇒ APPROVED · 1 approval.owner_override {step 2, previousDeciderStep 1} · effect once
-R2.6|R2|C|R|stale step: direct · bulkDecide map · bulk action ⇒ lost · decideAction bad step ⇒ text
-R2.15|R2|C|R|OWNER double click via decideAction / bulkDecideAction ⇒ one step
+R2.1|R2|C|G|OWNER replay expectedStep 1 ×2 ⇒ lost · step 2
+R2.2|R2|C|G|same MANAGER both steps ⇒ TWO_PERSON · nothing written
+R2.3|R2|C|G|bulkDecide([id,id]) ⇒ done 1 · step 2 · 1 decision
+R2.4|R2|C|G|AI approval_decide: TWO_PERSON · stale expectedStep refused
+R2.5|R2|C|G|OWNER both steps (no step) ⇒ APPROVED · 1 approval.owner_override {step 2, previousDeciderStep 1} · effect once
+R2.6|R2|C|G|stale step: direct · bulkDecide map · bulk action ⇒ lost · decideAction bad step ⇒ text
+R2.15|R2|C|G|OWNER double click via decideAction / bulkDecideAction ⇒ one step
 R2.7|R2|C|G|held row lock: 2 OWNERs ⇒ 1 ok · same MANAGER ×2 ⇒ 1 step
 R2.8|R2|C|G|single-step chain ± step: literal results/rows
 R2.9|R2|M|G|two managers complete · effect once
 R2.10|R2|M|G|SELF_APPROVAL literal (PO + HrLeave)
-R2.11|R2|M|R|[static] callers pass a step · no other caller
-R2.12|R2|M|R|[static] page step · hidden step:<id>
-R2.13|R2|C|R|same-user double click seq + parallel ×N ⇒ ≤ 1 step
+R2.11|R2|M|G|[static] callers pass a step · no other caller
+R2.12|R2|M|G|[static] page step · hidden step:<id>
+R2.13|R2|C|G|same-user double click seq + parallel ×N ⇒ ≤ 1 step
 R2.14|R2|m|G|PurchaseOrder M→O two users · no override audit
-R3.1|R3|C|R|stranding edit (step 2 → [1]) ⇒ text "1" · unchanged · decidable
+R3.1|R3|C|G|stranding edit (step 2 → [1]) ⇒ text "1" · unchanged · decidable
 R3.2|R3|M|G|non-stranding edits with pending (rename · role of current step · add step) ⇒ allowed · decidable
 R3.3|R3|M|G|no pending ⇒ step change allowed
 R3.4|R3|m|G|same steps reordered ⇒ allowed
 R3.5|R3|m|G|disabled chain still decidable
-R3.6|R3|M|R|count = this policy only ⇒ "2"
-R3.7|R3|M|R|renumber [1,2]→[1,3] at step 2 ⇒ refused
-R4.1|R4|C|R|withdraw HrLeave ⇒ both CANCELLED · audit 1 · 0 events · released
-R4.2|R4|C|R|then decideLeaveAs refused
-R4.3|R4|C|R|(Q5) legacy cancelled+decided ⇒ MANAGER text · OWNER ok
+R3.6|R3|M|G|count = this policy only ⇒ "2"
+R3.7|R3|M|G|renumber [1,2]→[1,3] at step 2 ⇒ refused
+R4.1|R4|C|G|withdraw HrLeave ⇒ both CANCELLED · audit 1 · 0 events · released
+R4.2|R4|C|G|then decideLeaveAs refused
+R4.3|R4|C|G|(Q5) legacy cancelled+decided ⇒ MANAGER text · OWNER ok
 R4.4|R4|M|G|CH-4: cancelled, no decision ⇒ direct works
 R4.5|R4|m|G|PO withdrawal ⇒ CANCELLED
 R4.6|R4|M|G|not-mine withdrawal ⇒ nothing
 R4.7|R4|M|G|cancelLeave ∥ approve (A7b) consistent
 R4.8|R4|M|G|decided request withdrawal ⇒ nothing
-R4.9|R4|C|R|(Q6) withdraw correction ⇒ CANCELLED · direct refused
-R4.10|R4|C|R|(Q6) withdraw swap ⇒ CANCELLED · direct refused
-R4.11|R4|C|R|action withdrawal ∥ approve ⇒ consistent
+R4.9|R4|C|G|(Q6) withdraw correction ⇒ CANCELLED · direct refused
+R4.10|R4|C|G|(Q6) withdraw swap ⇒ CANCELLED · direct refused
+R4.11|R4|C|G|action withdrawal ∥ approve ⇒ consistent
 Z1|house|C|G|no residue · own law rows
 `.trim().split("\n").map((l) => {
  const [id, g, sv, b, t] = l.split("|");
@@ -90,7 +90,7 @@ const callsOf = (src: string, re: RegExp) => [...src.matchAll(re)].map((m) => at
 
 // ═════════════════════════ statics ═════════════════════════
 const ALLOWED = [`${H}judge.ts`, `${H}work-entries-rules.ts`, `${H}service.ts`, `${H}index.ts`, `${AP}service.ts`, `${AP}actions.ts`, "src/lib/approval-effects.ts", "src/app/app/approvals/page.tsx", "src/app/app/approvals/BulkApprovals.tsx", "src/lib/ai/tools.ts", "src/lib/ai/proposals.ts"];
-const OWN = ["scripts/qc-hr-leave-3.mts", "scripts/qc-hr-leave-3-lib.mts"];
+const OWN = ["scripts/qc-hr-leave-3.mts", "scripts/qc-hr-leave-3-lib.mts", "scripts/qc-hr-leave-3b.mts"];
 function runStatic(): void {
  ck("ST1", { sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA }, "payroll-rules.ts sha");
  const changed = [...new Set([...git(["diff", "--name-only", BASE, "--"]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard"]).split("\n")].filter(Boolean))].filter((f) => !/^(ledger|scratchpad)\//.test(f));
