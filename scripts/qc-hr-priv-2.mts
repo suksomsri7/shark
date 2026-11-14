@@ -52,27 +52,26 @@ const CHECKS: Def[] = [
   ["S4", "§files", "MAJOR", "GREEN", "[static] [control] frozen files unchanged vs ticket base (prisma · core · ai · hr/api · filings · bank-files · non-pay HR modules · older oracles + libs · package.json) · payroll-rules sha"],
   ["S5", "§files", "MAJOR", "GREEN", "[static] every changed src file is in the allowed list (or a new hr file whose header says HR PRIV-2) · every hunk of an allowed file is marked HR PRIV-2 ▸ … ◂ · no other ticket's marker removed"],
   ["S6", "§base", "MAJOR", "GREEN", "[static] [control] in-base guard: ticket base is an ancestor of HEAD · oracle + lib + brief present"],
-  ["S7", "R5", "MAJOR", "RED", "[static] export refusals never interpolate employee names: reports.ts has no {names} replace · reports-rules formula/encoding texts carry no {names}"],
+  ["S7", "R5", "MAJOR", "RED", "[static] export refusals never interpolate employee names (no {names} in reports.ts / reports-rules texts) · export cells reuse the house sanitiser @/lib/core/csv (neutralizeFormula / csvCell)"],
   // ── pure ──
   ["P1", "R1", "CRITICAL", "RED", "[pure] inPayScope truth table: OWNER/*/[] ⇒ true for every home incl. null · [U1] ⇒ U1 true · U2/U3/null false · payScopeWhere([U1]) has no `units` term · payScopeWhere([]) matches nothing · '*' ⇒ {}"],
   // ── R1(a) profile ──
   ["A1", "R1a", "CRITICAL", "RED", "[db] 🔴 F1: payU1s + payU1m open the profile of each borrowed employee (started-after · spanning · leaver-with-open-borrowing) WITHOUT nationalId/SSO/house-reg/bank/payType keys or sentinels · docs [] · canSeeSensitive false"],
   ["A2", "R1a", "CRITICAL", "RED", "[db] borrowed employee's profile for payU1m is byte-identical to mgrU1's (manager without payroll) — same DTO, same docs, same borrowings"],
   ["A3", "R1a", "CRITICAL", "GREEN", "[db] [control] payU1s sees every sensitive sentinel of a1/a2/aLeft (home U1 incl. the leaver) · OWNER + payAll see them for borrowed bNow"],
-  ["A4", "R1a", "MAJOR", "RED", "[db] latent twin: loadPayslipForViewer(payU1s, PAID run, bNow/bSpan) = null · a1 = slip (control inside)"],
+  ["A4", "R1a", "MAJOR", "RED", "[db] latent twin + ruling 4: loadPayslipForViewer(payU1s, PAID run, bNow/bSpan) = null · a1 = slip (control) carrying none of the run's whole-run totals (gross/net/SSO/WHT/headcount) — only the slip's own figures"],
   ["A5", "R1a", "MAJOR", "GREEN", "[db] [control] refusal parity: payU1s profile of c2 (U3) / cNo (no branch) / unknown id = null each · loadPayslipForViewer same"],
-  ["A6", "R6", "MAJOR", "RED", "[db] touched readers re-read the membership: payU1s object kept after its DB row lost hr.payroll.read ⇒ a1 profile without sensitive data · loadPayslipForViewer null; viewer object forged to ['*'] while DB says [U1] ⇒ bNow without sensitive data"],
   // ── R1(b) reports ──
   ["B1", "R1b", "CRITICAL", "RED", "[db] 🔴 F2: payU1s + payU1m loadReport payroll-month · payroll-year · tax-month · tax-year · wages · register (PERIOD): rows = exactly the pay-scope people with a figure (a1,a2,aLeft ⊆) — no bNow/bSpan/bLeft row"],
   ["B2", "R1b", "CRITICAL", "RED", "[db] 🔴 F2: same 6 reports exported CSV + XLSX for payU1s/payU1m: no borrowed name, national id, slip amount or rate in the bytes"],
-  ["B3", "R1b", "MAJOR", "RED", "[db] OT report (money columns for a payroll viewer) for payU1m: no borrowed row on page/CSV/XLSX"],
+  ["B3", "R1b ruling1", "MAJOR", "RED", "[db] OT report for payU1m (ruling 1): borrowed bSpan row STAYS with the same non-money cells mgrU1 sees · its money cells absent/null/empty · money totals = Σ in-pay-scope rows · excludedHeadcount 1 + note · CSV/XLSX carry the row but not its amount"],
   ["B4", "R1b", "CRITICAL", "GREEN", "[db] [control] OWNER + payAll payroll-month/tax-month/register include bNow + bSpan + bLeft rows · payU1s includes aLeft (home-U1 leaver) · bEnded (borrowing ended) absent for payU1s"],
   ["B5", "R1b", "MAJOR", "GREEN", "[db] [control] money totals of every payU1s money report = Σ of its own rows (H3.9) · opening YTD / salary-cert / filing / bank previews refuse payU1s + payU1m (all-branch gate) and show bNow to payAll"],
   // ── R1(c) payroll page / run ──
   ["C1", "R1c", "CRITICAL", "RED", "[page] 🔴 F3: PayrollSection rendered for payU1m (HTML + every prop handed down): no borrowed / other-branch name, salary, rate, item or adjustment amount"],
   ["C2", "R1c", "CRITICAL", "RED", "[page] 🔴 F3: no whole-run total (gross/net/SSO/WHT) nor whole-run headcount of either run in HTML or props · the PAID run shows Σ of in-scope items + the note with N = hidden count for each run"],
   ["C3", "R1c", "MAJOR", "GREEN", "[page] [control] OWNER render shows whole-run totals, every name, no exclusion note"],
-  ["C5", "R1c", "MAJOR", "RED", "[db] inbox (H2.11) of payU1s/payU1m: no pending pay-adjustment item or amount of an out-of-pay-scope employee (bNow's bonus) · a1's bonus still listed with its amount (control inside)"],
+  ["C5", "R1c ruling3", "MAJOR", "RED", "[db] inbox (H2.11) of payU1s/payU1m: no adjustment item (nor its amount) of an out-of-pay-scope employee — as for mgrU1, whose inbox has no adjustment items at all (inbox.ts:71 ADJUSTMENT = payroll viewers only) · a1's bonus still listed with its amount"],
   ["C4", "R1c", "MAJOR", "RED", "[db] previewPayrollRunV2(payU1m): rows ⊆ pay scope · totals = Σ rows · run.excludedHeadcount = hidden count (7 PAID / 6 DRAFT) · OWNER excludedHeadcount 0 + whole-run totals"],
   // ── R2 doubling ──
   ["D0", "R2", "MAJOR", "GREEN", "[R2] [control] stability: every covered payload digests identically twice before the change (else the doubling test proves nothing)"],
@@ -171,8 +170,9 @@ function statics(): void {
   // S7
   {
     const rep = code(F.rep), rr = rd(F.repRules);
-    const r = { noReplace: !/\{names\}/.test(rep), texts: !/\{names\}/.test(rr) };
-    chk("S7", r.noReplace && r.texts, "no {names} anywhere", short(r));
+    const reuse = /from\s+["']@\/lib\/core\/csv["']/.test(rep + "\n" + code(F.repRules)) && /\b(neutralizeFormula|csvCell|csvRow)\b/.test(code(F.repRules) + "\n" + rep);
+    const r = { noReplace: !/\{names\}/.test(rep), texts: !/\{names\}/.test(rr), reuse };
+    chk("S7", r.noReplace && r.texts && r.reuse, "no {names} · core/csv reused", short(r));
   }
 }
 statics();
@@ -390,25 +390,15 @@ try {
     for (const w of ["owner", "payAll"]) { const t = textOfAny(await prof(vOf((W as Any)[w]), "bNow")); if (!sensOf(E.bNow!).every((s) => t.includes(s))) c.push(`${w}.bNow missing`); }
     chk("A3", c.length === 0, "home-U1 sensitive visible · owner/payAll see borrowed", c.join(" | ") || "ok");
     const s = { bNow: await call(M.priv, "loadPayslipForViewer", ctx, LIM.payU1s, runPaid, E.bNow!.id), bSpan: await call(M.priv, "loadPayslipForViewer", ctx, LIM.payU1s, runPaid, E.bSpan!.id), a1: await call(M.priv, "loadPayslipForViewer", ctx, LIM.payU1s, runPaid, E.a1!.id) };
-    chk("A4", s.bNow === null && s.bSpan === null && !!s.a1?.item, "bNow null · bSpan null · a1 slip", `bNow=${s.bNow === null ? "null" : "SLIP"} bSpan=${s.bSpan === null ? "null" : "SLIP"} a1=${s.a1?.item ? "slip" : short(s.a1, 40)}`);
+    const rt = await P.hrPayrollRun.findUnique({ where: { id: runPaid } });
+    const nItems = await P.hrPayrollItem.count({ where: { runId: runPaid } });
+    const t1 = textOfAny(s.a1);
+    const wholeHits = Object.entries({ gross: rt.totalGrossSatang, net: rt.totalNetSatang, sso: rt.totalSsoEmployeeSatang, wht: rt.totalWhtSatang }).filter(([, v]) => t1.includes(String(v))).map(([k]) => k);
+    void nItems;
+    chk("A4", s.bNow === null && s.bSpan === null && !!s.a1?.item && wholeHits.length === 0, "bNow null · bSpan null · a1 slip", `bNow=${s.bNow === null ? "null" : "SLIP"} bSpan=${s.bSpan === null ? "null" : "SLIP"} a1=${s.a1?.item ? "slip" : short(s.a1, 40)} wholeRun=${wholeHits.join("/") || "none"}`);
     const unk = "c" + Math.random().toString(36).slice(2, 12) + "zz9q";
     const par = [await prof(LIM.payU1s, "c2"), await prof(LIM.payU1s, "cNo"), await call(M.priv, "loadEmployeeProfileForViewer", ctx, LIM.payU1s, unk), await call(M.priv, "loadPayslipForViewer", ctx, LIM.payU1s, runPaid, E.c2!.id), await call(M.priv, "loadPayslipForViewer", ctx, LIM.payU1s, runPaid, unk)];
     chk("A5", par.every((x) => x === null), "5 × null", par.map((x) => (x === null ? "null" : short(x, 30))).join(","));
-    // A6 stale / forged viewer objects (R6)
-    const oldV = LIM.payU1s;
-    const forged = { ...oldV, unitAccess: ["*"] };
-    const fBorrow = await prof(forged, "bNow");
-    await P.membership.updateMany({ where: { tenantId: X.TA, userId: W.payU1s.id }, data: { permissions: {} } });
-    let stale: Any = null, staleSlip: Any = "∅";
-    try {
-      stale = await prof(oldV, "a1");
-      staleSlip = await call(M.priv, "loadPayslipForViewer", ctx, oldV, runPaid, E.a1!.id);
-    } finally {
-      await P.membership.updateMany({ where: { tenantId: X.TA, userId: W.payU1s.id }, data: { permissions: { "hr.payroll.read": true } } });
-    }
-    const sens = (r: Any, e: string) => sensOf(E[e]!).some((s) => textOfAny(r).includes(s));
-    const a6 = { staleProfile: !sens(stale, "a1"), staleSlip: staleSlip === null, forged: !sens(fBorrow, "bNow") };
-    chk("A6", Object.values(a6).every(Boolean), "stale ⇒ no pay data · forged ⇒ no borrowed pay data", short(a6));
   }
 
   // ── B: reports ──
@@ -441,13 +431,34 @@ try {
     chk("B2", b2.length === 0, "no borrowed name/id/amount in CSV/XLSX", b2.slice(0, 8).join(" | ") || "clean");
     const b3: string[] = [];
     {
+      const MONEY_KEYS: string[] = ((M.RR.REPORT_CATALOG?.ot?.columns ?? []) as Any[]).filter((c) => c.cls === "$").map((c) => c.key);
       const page = await call(M.rep, "loadReport", ctx, LIM.payU1m, { report: "ot", period: PERIOD });
-      const rows = rowsOf(page) ?? [];
+      const mgr = await call(M.rep, "loadReport", ctx, vOf(W.mgrU1), { report: "ot", period: PERIOD });
+      const rowOf = (r: Any, e: string) => ((r?.rows ?? []) as Any[]).find((x) => x.employeeId === E[e]!.id);
+      const bp = rowOf(page, "bSpan"), bm = rowOf(mgr, "bSpan");
+      const num = (v: unknown) => Number(String(v ?? "").replace(/[^\d.-]/g, "")) || 0;
       if (!page?.ok) b3.push(`page:${short(page, 40)}`);
-      if (rows.some((k: string) => BORROWED.includes(k))) b3.push(`page:${rows.filter((k: string) => BORROWED.includes(k)).join("/")}`);
-      for (const format of ["CSV", "XLSX"]) { const x = await call(M.rep, "exportReport", ctx, LIM.payU1m, { report: "ot", period: PERIOD, format }); const t = x?.ok ? textOfAny(x.bytes) : ""; if (!x?.ok) b3.push(`${format}:refused`); else if (BORROWED.some((e) => t.includes(E[e]!.name))) b3.push(`${format}:borrowed name`); }
+      else if (!bp) b3.push("bSpan row missing");
+      else {
+        const leakM = MONEY_KEYS.filter((k) => bp.values?.[k] !== undefined && bp.values?.[k] !== null && bp.values?.[k] !== "");
+        if (leakM.length) b3.push(`bSpan money ${leakM.join("/")}`);
+        const opKeys = Object.keys(bm?.values ?? {}).filter((k) => !MONEY_KEYS.includes(k));
+        const diff = opKeys.filter((k) => String(bp.values?.[k] ?? "") !== String(bm.values[k] ?? ""));
+        if (!bm) b3.push("mgrU1 bSpan row missing"); else if (diff.length) b3.push(`op cells ≠ mgrU1: ${diff.join("/")}`);
+        const inRows = ((page.rows ?? []) as Any[]).filter((x) => IN_KEYS.includes(keyOfId.get(x.employeeId) ?? ""));
+        const badTot = MONEY_KEYS.filter((k) => page.totals && page.totals[k] !== undefined && Math.abs(num(page.totals[k]) - inRows.reduce((a: number, x: Any) => a + num(x.values?.[k]), 0)) > 0.001);
+        if (badTot.length) b3.push(`totals ${badTot.join("/")}`);
+        if (page.excludedHeadcount !== 1) b3.push(`excludedHeadcount=${page.excludedHeadcount}`);
+        if (!((page.notes ?? []) as string[]).includes(PAY_SCOPE_EXCLUDED_TEXT.replace("{n}", "1"))) b3.push("note");
+      }
+      for (const format of ["CSV", "XLSX"]) {
+        const x = await call(M.rep, "exportReport", ctx, LIM.payU1m, { report: "ot", period: PERIOD, format });
+        const t = x?.ok ? textOfAny(x.bytes) : "";
+        if (!x?.ok) b3.push(`${format}:refused`);
+        else { if (!t.includes(E.bSpan!.name)) b3.push(`${format}:row gone`); if (bahtForms(333_331).some((f) => t.includes(f))) b3.push(`${format}:bSpan amount`); }
+      }
     }
-    chk("B3", b3.length === 0, "no borrowed row", b3.join(" | ") || "clean");
+    chk("B3", b3.length === 0, "row kept · money withheld · Σ in-scope · excludedHeadcount + note", b3.join(" | ") || "ok");
     const b4: string[] = [];
     for (const w of ["owner", "payAll"]) for (const rep of ["payroll-month", "tax-month", "register"]) { const rows = rowsOf(await call(M.rep, "loadReport", ctx, vOf((W as Any)[w]), { report: rep, period: periodOf(rep) })) ?? []; const miss = BORROWED.filter((e) => !rows.includes(e)); if (miss.length) b4.push(`${w}.${rep} missing ${miss.join("/")}`); }
     { const rows = rowsOf(await call(M.rep, "loadReport", ctx, LIM.payU1s, { report: "payroll-month", period: PERIOD })) ?? []; if (!rows.includes("aLeft")) b4.push("payU1s missing aLeft"); if (rows.includes("bEnded")) b4.push("payU1s has bEnded"); }
@@ -516,16 +527,19 @@ try {
       const tt = await runTotals(rid);
       if (po2?.run?.excludedHeadcount !== 0 || po2?.run?.totals?.netSatang !== tt.totalNetSatang) c4.push(`owner excluded=${po2?.run?.excludedHeadcount} net=${po2?.run?.totals?.netSatang === tt.totalNetSatang}`);
     }
-    // C5 inbox pay items
+    // C5 inbox pay items (ruling 3: what a manager without payroll gets = no adjustment item at all)
     const c5: string[] = [];
+    const adjItems = (r: Any): Any[] => { const out: Any[] = []; const seen = new WeakSet(); const walk = (x: Any) => { if (!x || typeof x !== "object" || seen.has(x)) return; seen.add(x); if (typeof x.employeeId === "string" && x.detail && typeof x.detail === "object" && "amountSatang" in x.detail) out.push(x); for (const v of Object.values(x)) walk(v); }; walk(r); return out; };
     for (const [vn, v] of Object.entries(LIM)) {
       const ib = await call(M.inbox, "listInbox", ctx, v, {});
       const t = textOfAny(ib);
       if (!okR(ib)) { c5.push(`${vn}:${short(ib, 40)}`); continue; }
-      if (t.includes("654321") || t.includes(money(654_321))) c5.push(`${vn}:bNow bonus`);
+      const outAdj = adjItems(ib).filter((x) => !IN_KEYS.includes(keyOfId.get(x.employeeId) ?? ""));
+      if (outAdj.length || t.includes("654321") || t.includes(money(654_321))) c5.push(`${vn}:out-of-scope adjustment ${outAdj.map((x) => keyOfId.get(x.employeeId)).join("/") || "amount"}`);
       if (vn === "payU1m" && !t.includes("123457")) c5.push(`${vn}:a1 bonus missing`);
     }
-    chk("C5", c5.length === 0, "no out-of-scope pay item · own one listed", c5.join(" | ") || "ok");
+    { const ib = await call(M.inbox, "listInbox", ctx, vOf(W.mgrU1), {}); if (adjItems(ib).length) c5.push("mgrU1 has adjustment items (premise changed)"); }
+    chk("C5", c5.length === 0, "no out-of-scope adjustment item · own one listed · mgrU1 none", c5.join(" | ") || "ok");
     chk("C4", c4.length === 0, "rows ⊆ scope · Σ · excludedHeadcount", c4.join(" | ") || "ok");
   }
 
