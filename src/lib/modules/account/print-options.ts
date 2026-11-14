@@ -100,6 +100,21 @@ export function printLabels(language: PrintLanguage): PrintLabels {
   return LABELS[language];
 }
 
+/**
+ * ACCOUNT-FIX B3 — เอกสารฝั่งซื้อ/จ่าย (ใบสั่งซื้อ · บันทึกซื้อ · ค่าใช้จ่าย · ใบรวมจ่าย ฯลฯ): หัวเอกสารเป็นกิจการเรา (ผู้ซื้อ/ผู้จ่าย)
+ *   คู่ค้าบนกระดาษคือ "ผู้ขาย / ผู้รับเงิน" ไม่ใช่ "ผู้ซื้อ / ลูกค้า" · ช่องลงนามสลับฝั่งตาม
+ */
+export const PURCHASE_SIDE_DOC_TYPES: ReadonlySet<AccountDocType> = new Set<AccountDocType>([
+  "PURCHASE_ORDER", "PURCHASE", "PURCHASE_TAX_INVOICE", "EXPENSE", "DEPOSIT_PAYMENT",
+  "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED", "ASSET_PURCHASE_ORDER", "ASSET_PURCHASE", "COMBINED_PAYMENT",
+]);
+export function partyLabelsFor(base: PrintLabels, docType: AccountDocType, language: PrintLanguage): PrintLabels {
+  if (!PURCHASE_SIDE_DOC_TYPES.has(docType)) return base;
+  return language === "EN"
+    ? { ...base, buyer: "Vendor / Payee", buyerTax: "Vendor / Payee", signature: "Paid by / Authorised signature", buyerSignature: "Vendor / Payee" }
+    : { ...base, buyer: "ผู้ขาย / ผู้รับเงิน", buyerTax: "ผู้ขาย / ผู้รับเงิน", signature: "ผู้จ่ายเงิน / ผู้มีอำนาจลงนาม", buyerSignature: "ผู้ขาย / ผู้รับเงิน" };
+}
+
 /** ระยะ/ขนาดตัวอักษรตามเทมเพลต — "กะทัดรัด" = บีบให้ลงหน้าเดียว */
 export const TEMPLATE_STYLE: Record<PrintTemplate, { page: string; table: string; gapTop: string }> = {
   STANDARD: { page: "max-w-2xl bg-white p-8 text-sm text-black", table: "mt-4 w-full border-collapse text-xs", gapTop: "mt-12" },
@@ -151,7 +166,7 @@ export function buildPrintOptions(
     template,
     isGroup,
     language: settings.print.language,
-    labels: printLabels(settings.print.language),
+    labels: partyLabelsFor(printLabels(settings.print.language), docType, settings.print.language),
     style: TEMPLATE_STYLE[template],
     show,
     footerNote: (note?.footer ?? "").trim() || (fallbackFooterNote ?? "").trim(),
