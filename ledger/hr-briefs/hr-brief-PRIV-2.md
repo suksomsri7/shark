@@ -1,9 +1,9 @@
 # PRIV-2 — one pay scope: borrowing never widens pay (fix after H5.2 hunt F1–F5)
 
-> Base `session/hr` 60659e7c0 · branch `wip/hr-priv-2` · no migration · oracle `scripts/qc-hr-priv-2.mts` (+ `-lib`) · notes `ledger/wo-notes/hr-PRIV-2-oracle.md` · hunt `ledger/wo-notes/hr-H5.2-privacy-hunt.md`. Marker on every hunk: `// HR PRIV-2 ▸ … ◂`.
+> Base `session/hr` 60659e7c0 · branch `wip/hr-priv-2` · no migration · oracle `scripts/qc-hr-priv-2.mts` (+ `-lib`) · notes `ledger/wo-notes/hr-PRIV-2-oracle.md`. Marker on every hunk: `// HR PRIV-2 ▸ … ◂`.
 
 ## Problem
-A payroll viewer limited to branch U1 gets pay data of employees merely **borrowed** into U1 because pay paths use `employeeInScope`/`unitWhere` (home **or borrowing open today**):
+A U1-limited payroll viewer got pay data of employees **borrowed** into U1 (`employeeInScope`/`unitWhere` = home **or borrowing open today**):
 F1 profile sensitive block + docs (`privacy.ts:57,92`; latent twin `loadPayslipForViewer` `:132`) · F2 money reports page/CSV/XLSX for **every past period** (`reports.ts:172`) · F3 payroll page shows borrowed salary/items/adjustments **and whole-run totals + headcount** (`payroll-ui.tsx:93-105,350-362`) ⇒ hidden pay by subtraction · F4 a name with bidi/control/formula blocks every money export of the owner and the refusal echoes the raw name (`reports.ts:700`) · F5 readers trust caller viewer (debt).
 Today two home-only predicates exist with the same meaning: `payslip.ts homeInScope` (private) and `labor.ts` gate `sees` (closure); a third copy `payroll.ts unitsOfViewer`+`mine` (previewPayrollRunV2 — differs: `unitAccess []` = no branch there, = all branches in `hrScopeOf` D-1) and `attendance-pay.ts covers`.
 
@@ -29,3 +29,11 @@ Likely: `scope.ts` · `privacy.ts` · `payslip.ts` · `labor.ts` · `reports.ts`
 
 ## Debts
 D-PRIV-reader-trust (F5, ~35 readers) · D-PRIV-home-history (pay scope = current home; a moved employee's past pay follows the new home) · D-PRIV-workentries (work-entries `covers` stays a minutes-only copy) · D-PRIV-service-run-guard (approveRun/markPaidRun/reverseRun services take no viewer; the all-branch rule lives in actions only).
+
+## CONTROLLER RULINGS (oracle r2 · controller numbering; brief R6 above unchanged)
+R6 `ot.ts` + `stock-charge.ts` unfrozen (marked hunks). N1 `otRequestList` money (`amountSatang`, `segments`, any rate field) only when `inPayScope(home)`; rows/minutes keep the borrowing rule; `myOtRequests`, owner, all-branch unchanged (oracle N1/N3/N4, D4 `otList`). N2 `listStockCharges` + `stockPeriodCapFlags`: out-of-pay-scope rows/flags not returned to a limited viewer (`payScopeWhere`) (N2/N3/N4, D4 `stock`).
+R7 h3.8 S3.22 positive control: borrowing row exists AND `loadEmployeeProfileForViewer(payBranch, e6)` non-null — marked `ORACLE-EDIT (HR-PRIV-2 · controller R7)` (patch: notes §7).
+R8 own slip: `loadPayslipForViewer` for the employee = item figures equal the DB row, run object without `total*` keys (A7).
+R9 statics base = merge-base(HEAD, session/hr) (env `QC_PRIV2_BASE` wins); older oracles may differ only in files carrying `ORACLE-EDIT …PRIV-2`; `qc-hr-h4.3-lib.mts` only in hunks each carrying `ORACLE-EDIT (HR-PRIV-2` (S4).
+R10 booking staff path (`booking/service.ts` createStaff ~655, linkStaffToHr ~690) obeys the R5 name rule or stores the name clean (W6); `booking/service.ts` allowed (marked hunks).
+Controller debts (out of ticket): register position/nationality formula cells · bank-files `{names}` · `confirmBranchHours` unitsOfViewer · blind approve `decideAdjustmentAs` · more invisible code points.

@@ -39,3 +39,17 @@ Dropped: qc-hf-hr-privacy (its only reason was R6). Unchanged (checked): h1.1 S4
 ## 6. Rulings received (coordinator, 14 Nov) — all applied
 1 OT/time rows stay, money withheld + excludedHeadcount + note (B3 re-pinned) · 2 R6 = debt (A6 dropped) · 3 inbox in scope, absent like a manager without payroll (C5) · 4 slip loader: own figures only (A4) · 5 `[]` = all branches OK · 6 formula names neutralised via core/csv, bad chars refused on write (S7, W1–W5).
 Open: none blocking. Note for the builder: time report has no money columns ⇒ no change there; the API-key viewer path through privacy.ts must stay byte-identical (D5).
+
+## 7. Oracle r2 — controller R6–R10 (on builder tip 727ea1bf2)
+Run `scratchpad/priv2/run7.log` (lane wrapper, forced): **BASE-EXPECTATION 45/45 as registered** — registry re-based to 727ea1bf2: 6 RED-by-design (S2 otMoney+stock · N1 bNow/bSpan OT items carry money · N2 bSpan stock row + cap flag returned · N3 listStockCharges changes when only hidden salaries double (overCap) · D4 stock+otList change on doubling · W6 12 dirty HrEmployee names via createStaff/linkStaffToHr), 39 GREEN (incl. new N4 control and A7 own slip, already green on 727ea1bf2). Residue none, outbound 0.
+New seeds: approved settled OT on a borrowed day (bNow D0-2 4,444.43 · bSpan D0-2 5,555.57 · a1 control 2,222.27) · stock charges bSpan 4,000.00 (+ deduction 3,000.00 ⇒ overCap + cap flag) and a1 500.00 · booking staff with 6 bad-character names.
+R9 choice: statics base = merge-base(HEAD, local `session/hr`) (env `QC_PRIV2_BASE` wins) — absorbs HR-MONEY-2 once session/hr is merged into this branch; older oracles (all `scripts/qc-*.mts` now, previously only libs because `srcFiles` skips `.mts`) may differ only in files carrying an `ORACLE-EDIT …PRIV-2` hunk; `qc-hr-h4.3-lib.mts`: every hunk must carry `ORACLE-EDIT (HR-PRIV-2`.
+Size: oracle + lib 59.9 KB (compacted, same checks).
+**R7 not applied by me** — editing `scripts/qc-hr-h3.8.mts` was refused by this session's permission guard (my brief limits me to the PRIV-2 oracle/brief/notes). Exact patch for the builder (S3.22 block, after the `hotfixE6` line, and the `ck` call):
+```
+    // ORACLE-EDIT (HR-PRIV-2 · controller R7): positive control — the borrowing row exists and is open (the branch viewer opens e6's profile through it) ⇒ `hotfixE6 === null` is the pay-scope refusal, not a never-opened borrowing ◂
+    const prof6 = bor ? await PRIV.loadEmployeeProfileForViewer(cA, V.payBranch, E.e6).catch(() => null) : null;
+…
+    ck("S3.22", { stat, borrowOpen: !!bor && !!prof6, control: hotfixE6 === null, e6: isNo(r6), e5: isNo(r5) }, …
+```
+S4 accepts it (file carries `ORACLE-EDIT …PRIV-2`).
