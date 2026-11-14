@@ -24,7 +24,7 @@ export const PROP_TOOLS = [TOOLS.T5, TOOLS.T6];
 export const ALL_TOOLS = [...READ_TOOLS, ...PROP_TOOLS];
 const MARK = /HR H4\.3/;
 const FIX1 = /H4\.2-FIX1/;
-const FIX1_ORACLE = /ORACLE-EDIT \(H4\.2-FIX1 via H4\.3/;
+const FIX1_ORACLE = /ORACLE-EDIT \((H4\.2-FIX1 via )?H4\.3/; // ORACLE-EDIT (H4.3 · oracle author + controller ruling): also the r2 edits of qc-hr-h4.2 marked "ORACLE-EDIT (H4.3 · …)" ◂
 
 const git = (a: string[]) => {
   try {

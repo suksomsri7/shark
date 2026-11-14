@@ -82,6 +82,7 @@ S6.5|S8|C|R|[db] 10 lanes × 3 setLaborSettings ∥ 10 saveClockPolicy ⇒ all o
 S7.1|FIX1-a|C|R|[db] ORACLE-EDIT (H4.2-FIX1 via H4.3 · controller ruling) open month with a finalized run (U6 June, R 30,000 ฿/month, run 30,750 ฿): now 06-28 ⇒ month-to-date basis: cost 27 × 102,917 = 2,778,759 · sales 27,000,000 · pct 103 · throughDay 06-27 (not ACTUAL 3,075,000 ÷ 28,000,000 = 110) · now 07-05 ⇒ ACTUAL 3,075,000 · 28,000,000 · 110 · throughDay null
 S7.2|FIX1-b|M|R|[db+static] payroll [U2] month Feb: excludedHeadcount 1 + partial on the month and on prev (Jan) · labor-ui shows the excluded-pay note per figure (month.partial/excludedHeadcount · month.prev.partial/excludedHeadcount)
 S7.3|FIX1-c|M|R|[db+static] day 1 (U5 now 04-01): month costSatang null with pctTenths null · 201 borrowings on K ⇒ laborDay U2 01-19 truncated:true, cost 36,750 · labor-ui MTD label day through formatThaiDate/formatShortDate of @/lib/ui/date
+S7.4|FIX1-a R1|C|R|[db] ORACLE-EDIT (H4.3 · oracle author + controller ruling) limited viewer on an OPEN month with a finalized run: payroll [U2] laborMonth U2 2027-01 at now 01-17 10:00 ⇒ month-to-date (not ACTUAL) · throughDay 01-16 · cost 73,500 (K + L on 01-13, outsider J excluded) · excludedHeadcount 1 · partial · sales 1,050,000 · pct 70 · no J numbers · owner same month = 147,000 · pct 140
 X1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
 Z1|house|C|G|no residue (PosSale · HrWorkDay · HrLawTable qc-hr-h42-* included)
 `.trim().split("\n").map((l) => {
@@ -311,7 +312,8 @@ async function runDb(): Promise<void> {
   // ═══ S4 figures (owner) ═══
   const day = (v: Any, unitId: string | undefined, d: string, now = NOW) => call(M.svc, "laborDay", ctx, v, unitId ? { unitId, day: d } : { day: d }, O(now));
   const week = (v: Any, unitId: string, w = "2027-01-11") => call(M.svc, "laborWeek", ctx, v, { unitId, week: w }, O());
-  const month = (v: Any, unitId: string, p: string) => call(M.svc, "laborMonth", ctx, v, { unitId, periodKey: p }, O());
+  // ORACLE-EDIT (H4.3 · oracle author + controller ruling) item 3: ruling FIX1-a makes an open month month-to-date even with a finalized run ⇒ month() reads at 2027-04-20 10:00 BKK, where Jan/Feb/Mar have ended (Jan = ACTUAL from the run · Feb/Mar = full ESTIMATE) — every golden of S4.11/S5.1/S5.2/S5.7/S5.8 unchanged (note §H4.2-FIX1 r2) · open-month limited viewer = S7.4 ◂
+  const month = (v: Any, unitId: string, p: string) => call(M.svc, "laborMonth", ctx, v, { unitId, periodKey: p }, O(new Date("2027-04-20T03:00:00Z")));
   const cost = (r: Any) => mon(r)?.costSatang;
   const owner = V.owner;
   const d16pre = await day(owner, U1, "2027-01-16");
@@ -541,6 +543,18 @@ async function runDb(): Promise<void> {
     const trK = k19?.flags?.truncated === true || k19?.money?.truncated === true || k19?.truncated === true;
     const lbl = /\bt\(\s*["']monthToDate["']\s*,\s*\{[^}]*\bday\s*:\s*(formatThaiDate|formatShortDate)\s*\(/.test(ui) && /import\s*\{[^}]*\b(formatThaiDate|formatShortDate)\b[^}]*\}\s*from\s*["']@\/lib\/ui\/date["']/.test(rd(F.ui));
     ck("S7.3", { day1: okR(d1) && mv(d1, "costSatang") === null && mv(d1, "pctTenths") === null, units200: okR(k19) && cost(k19) === 36_750 && trK, label: lbl }, "null on day 1 · nested cap · Thai date label", `d1=${mv(d1, "costSatang")}/${mv(d1, "pctTenths")} k19=${cost(k19)}/${trK}`);
+  }
+  // ORACLE-EDIT (H4.3 · oracle author + controller ruling) item 3: S7.4 ◂
+  {
+    const at = O(new Date("2027-01-17T03:00:00Z"));
+    const lim = await call(M.svc, "laborMonth", ctx, V.payU2, { unitId: U2, periodKey: "2027-01" }, at);
+    const own = await call(M.svc, "laborMonth", ctx, owner, { unitId: U2, periodKey: "2027-01" }, at);
+    ck("S7.4", {
+      mtd: okR(lim) && mv(lim, "basis") !== "ACTUAL" && mv(lim, "throughDay") === "2027-01-16",
+      money: mv(lim, "costSatang") === 73_500 && mv(lim, "salesSatang") === 1_050_000 && mv(lim, "pctTenths") === 70,
+      excl: mv(lim, "excludedHeadcount") === 1 && mv(lim, "partial") === true && !/\b(36750|35000|110250|147000)\b/.test(JSON.stringify(lim ?? null)),
+      owner: okR(own) && mv(own, "basis") !== "ACTUAL" && mv(own, "costSatang") === 147_000 && mv(own, "pctTenths") === 140,
+    }, "open month MTD for [U2]", `lim=${mv(lim, "basis")}/${mv(lim, "costSatang")}/${mv(lim, "pctTenths")}/${mv(lim, "excludedHeadcount")}/${mv(lim, "throughDay")} own=${mv(own, "costSatang")}/${mv(own, "pctTenths")}`);
   }
   // ═══ S6 settings ═══
   const audits = () => P.auditLog.count({ where: { tenantId: T, action: "hr.labor.settings" } });

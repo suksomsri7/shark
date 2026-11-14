@@ -142,3 +142,41 @@ Fixture additions:
 Base run of `qc-hr-h4.2.mts` with the additions (unforced, H4.2 in base):
 - 53/56 pass; only S7.1, S7.2 and S7.3 are RED, for the reasons above;
 - the 53 old checks stay green; no residue.
+
+## r2 — builder ORACLE-EDIT requests (adjudicated by the oracle author · marker `ORACLE-EDIT (H4.3 · oracle author + controller ruling)`)
+1. **M2 + C1 — accepted, with stronger assertions.**
+   - The H3.9 time report reads stored `HrAttendanceDay` rows only.
+   - In production those rows come from the day closer `finalizeSlot`:
+     - the cron window (`runAttendanceJobs`) for recent days;
+     - `finalizeStoredGaps` (judge.ts, called by the payroll pull in `work-entries.ts`) for older days. It uses the same `finalizeSlot` and has no second set of judging rules.
+   - The fixture therefore calls `finalizeStoredGaps`:
+     - tenant T, 2026-09-01..03 (09-04 stays live for L8, D0 stays live for M1/B1);
+     - the cap tenant at D0;
+     - in both cases with now 2026-09-08 10:00.
+   - New assertions:
+     - F0 `stored`: ≥ 10 rows finalized, not truncated, owner report ≥ 4 rows;
+     - C1: `finalizeStoredGaps` = 60 and the reader report = 60 rows, so the T2 cap is judged on a full reader;
+     - M2 already requires `want.length > 0` per permitted viewer, so the comparison is never empty against empty.
+2. **V1 — accepted.** `confirmRead` read the rows after `x2` had executed, so the two conditions could never both pass. The count is now taken before `x2`.
+3. **qc-hr-h4.2 S4.11 / S5.1 / S5.2 — accepted.**
+   - Ruling FIX1-a makes an open month month-to-date even with a finalized run. `month()` now reads at 2027-04-20 10:00, so Jan, Feb and Mar have all ended.
+   - Re-derivation: Jan = ACTUAL from the finalized run, the same path and figures as before:
+     - U1 1,391,667 · U2 695,833;
+     - [U2] viewer 0 with excludedHeadcount 1, partial (E home U1).
+   - Feb and Mar were already full-month ESTIMATE, because now 01-17 put them in the future, and all their days are still counted:
+     - U1 Feb 4,815,004, prev 1,391,667;
+     - U3 Mar 1,839,250;
+     - [U2] Feb 0, excludedHeadcount 1 (J).
+   - No golden changed. S5.7 and S5.8 use the same helper and are invariance checks, so they still exercise the past-month ACTUAL path for [U2].
+   - **New S7.4** covers the limited viewer on an OPEN month with a finalized run: payroll [U2], `laborMonth(U2, 2027-01)` at now 01-17 10:00.
+     - Month-to-date, not ACTUAL; throughDay 01-16.
+     - Cost = K + L on 01-13 = 73,500 (S5.2 golden "three"); J on 01-12/13 is excluded; excludedHeadcount 1 (distinct, as in the week footer); partial.
+     - Sales 1,050,000 (01-13) ⇒ pct = 73,500 × 1000 ÷ 1,050,000 = 70.
+     - No J figure appears in the output.
+     - Owner, same month: 36,750 (01-12) + 110,250 (01-13) = 147,000 ⇒ pct 140.
+     - On the pre-FIX1 code this is ACTUAL with cost 0 ⇒ RED.
+   - h4.3 S1.7 now accepts both `ORACLE-EDIT (H4.2-FIX1 via H4.3` and `ORACLE-EDIT (H4.3` markers in qc-hr-h4.2.
+- **Builder decisions recorded (controller-accepted):**
+  - AI-drafted roster rows get no per-entry `hr.roster.entry.add` audit. L2 now asserts that the `hr.ai.proposal.confirm` audit `after.entryIds` equals exactly the 3 created AI row ids.
+  - The T6 stale check compares only the flagged employee's own facts. L8 changes only that employee's month (09-04 late).
+- **Runs on builder head 62e66867b + these edits (lane DB, forced):** qc-hr-h4.3 37/37 · qc-hr-h4.2 57/57 · no residue.
