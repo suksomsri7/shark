@@ -665,7 +665,7 @@ async function runDb(): Promise<void> {
     const c = row?.contentJson ?? {};
     const y = h31.value?.year ?? {};
     // ORACLE-EDIT (H3.4-YTD · controller ruling): year totals include the opening YTD (Q12) — this fixture has none ⇒ the year carries no "opening" key and the totals are the slips only (with-opening case: qc-hr-h3.4-ytd S3.19) ◂
-    ck("S3.7", { h36: r.ok, total: c.totalSatang === 10_765_000, tax: c.totalTaxSatang === 175_000, sso: c.funds?.ssoSatang === 312_500, slipInc: y.incomeSatang === c.totalSatang, slipTax: y.taxSatang === c.totalTaxSatang, slipSso: y.ssoSatang === c.funds?.ssoSatang, noOpening: !!h31.value?.year && !("opening" in h31.value.year) }, "slips = 50 ทวิ", // ORACLE-EDIT (H3.4-YTD · controller ruling): + noOpening ◂ `h36=${shown(r)} cert=${c.totalSatang}/${c.totalTaxSatang}/${c.funds?.ssoSatang} slip=${y.incomeSatang}/${y.taxSatang}/${y.ssoSatang}`);
+    ck("S3.7", { h36: r.ok, total: c.totalSatang === 10_765_000, tax: c.totalTaxSatang === 175_000, sso: c.funds?.ssoSatang === 312_500, slipInc: y.incomeSatang === c.totalSatang, slipTax: y.taxSatang === c.totalTaxSatang, slipSso: y.ssoSatang === c.funds?.ssoSatang, noOpening: !!h31.value?.year && !("opening" in h31.value.year) }, "slips = 50 ทวิ", `h36=${shown(r)} cert=${c.totalSatang}/${c.totalTaxSatang}/${c.funds?.ssoSatang} slip=${y.incomeSatang}/${y.taxSatang}/${y.ssoSatang}`); // ORACLE-EDIT (H3.4-YTD · controller ruling): + noOpening ◂
   }
   // S3.8
   {
