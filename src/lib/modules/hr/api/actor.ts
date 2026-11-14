@@ -22,9 +22,11 @@ const HR_ISSUER_FORBIDDEN_EN = "This key was issued by someone who is no longer 
 /** scope ที่ผู้ดูสังเคราะห์ไม่ถือ (ข้อมูลเงินเดือนอ่านผ่านผู้ออกคีย์ + serializer เท่านั้น) */
 const NOT_ON_SYNTHETIC = new Set(["hr.payroll.read"]);
 
-type ActorInput = { tenantId: string; systemId: string; keyId: string; keyName: string; scopes: string[]; createdById?: string | null; bound: boolean };
+/** ผลตรวจเนื้อคำขอเขียนที่ dispatch.ts อ่านไว้ก่อน (ยังไม่ปฏิเสธ — ปฏิเสธใน op หลังด่านระบบ/เพดาน/สิทธิ์ของแกน · รอบแก้ 2 ข้อ 3) */
+export type HrWriteVerdict = { badContentType: boolean; poisonKey: string | null } | null;
+type ActorInput = { tenantId: string; systemId: string; keyId: string; keyName: string; scopes: string[]; createdById?: string | null; bound: boolean; write?: HrWriteVerdict };
 type IssuerRow = { role: string; unitAccess: unknown; permissions: unknown } | null;
-type ActorExtra = { issuerId: string | null; bound: boolean; issuer?: Promise<IssuerRow> };
+type ActorExtra = { issuerId: string | null; bound: boolean; issuer?: Promise<IssuerRow>; write: HrWriteVerdict };
 
 /** ข้อมูลที่แกนไม่มีช่องให้ (ผู้ออกคีย์ · ผูกระบบไหม) — ผูกกับ object ของ actor ต่อคำขอ */
 const EXTRA = new WeakMap<ApiActor, ActorExtra>();
@@ -46,7 +48,7 @@ export function hrApiKeyActor(input: ActorInput): ApiActor {
     can: (action) => input.bound && scopes.includes(action),
     denyMessageTh: HR_DENY_TH,
   };
-  EXTRA.set(actor, { issuerId: input.createdById ?? null, bound: input.bound });
+  EXTRA.set(actor, { issuerId: input.createdById ?? null, bound: input.bound, write: input.write ?? null });
   return actor;
 }
 
@@ -112,3 +114,14 @@ export async function endedEmployeeIds(ctx: { tenantId: string; systemId: string
 }
 /** แถวพนักงาน (รูปใดก็ได้) พ้นสภาพแล้วไหม */
 export const isEndedEmployee = (e: { active?: unknown; employmentStatus?: unknown } | null | undefined): boolean => !e || e.active === false || e.employmentStatus === "ENDED";
+
+/**
+ * ด่านเนื้อคำขอเขียน (มติรอบแก้ ข้อ 6 · ลำดับตามรอบแก้ 2 ข้อ 3): เรียกจาก op.ts หลังด่านคีย์/ระบบ/เพดาน/สิทธิ์ของแกนผ่านแล้ว ⇒
+ * คีย์ของระบบอื่น/ไม่มีสิทธิ์เขียนได้ 403 แบบเดียวกับการอ่านเสมอ (ไม่เคยได้ 415/422 ก่อน) · ปฏิเสธก่อนเขียนทุกอย่าง (nothingWritten)
+ */
+export function assertHrWriteBody(actor: ApiActor): void {
+  const w = EXTRA.get(actor)?.write;
+  if (!w) return;
+  if (w.badContentType) throw nothingWritten(new ApiError(415, "invalid_json", "ต้องส่งเนื้อคำขอเป็น JSON พร้อมส่วนหัว Content-Type: application/json", "Send the body as JSON with Content-Type: application/json."));
+  if (w.poisonKey) throw nothingWritten(new ApiError(422, "validation", "ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด", "Request payload failed validation.", undefined, [{ path: w.poisonKey, message: "ช่องนี้ไม่มีในคำขอนี้" }]));
+}

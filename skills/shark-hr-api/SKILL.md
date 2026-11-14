@@ -81,6 +81,9 @@ API at all: tell the user to do them in the SHARK HR app.
   never say it was approved. Approving or rejecting leave, overtime, corrections or pay, payroll
   runs, bank files, tax and social security filings and salary certificates
   are done in the SHARK HR app only.
+- Ended (former) employees are not in the staff list; their profile,
+  attendance month and payslips answer 404 and no new leave can be filed for
+  them. They still appear in past roster rows and in report rows (history).
 - 404 `not_found` means "not found or not allowed" - the answer is identical
   for an id of another shop and for an unknown id. Never guess or enumerate ids.
 - Stop and tell the user on 403 `forbidden`: the key's issuer is no longer the

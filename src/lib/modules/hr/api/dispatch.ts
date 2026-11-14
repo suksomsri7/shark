@@ -4,14 +4,14 @@
 // ที่นี่เพิ่มอย่างเดียว (มติ 14 พ.ย. ข้อ 4): บอก actor ว่าคีย์ "ผูกระบบ HR ที่คำขอนี้ทำงานอยู่" ไหม
 //   คีย์กลาง (ไม่ผูกระบบ) ที่ส่ง X-Shark-System มา และคีย์ของระบบอื่น ⇒ actor ไม่มีสิทธิ์ใดเลย ⇒ แกนตอบ 403 scope_missing
 //   ไบต์เดียวกับคีย์ผูกระบบที่ไม่มี scope ของ HR — คีย์ที่ไม่ได้ออกจากหน้าตั้งค่า HR (เจ้าของร้าน + ยินยอมข้อมูลเงินเดือน) ใช้กับ HR ไม่ได้เลย
-// รอบแก้ (มติ ข้อ 6): คำขอเขียนของคีย์ที่ใช้ได้ต้องเป็น Content-Type: application/json และไม่มีช่อง __proto__/constructor/prototype
+// รอบแก้ (มติ ข้อ 6 · รอบ 2 ข้อ 3): คำขอเขียนต้องเป็น Content-Type: application/json และไม่มีช่อง __proto__/constructor/prototype —
+//   อ่านไว้ที่นี่ แต่ปฏิเสธใน op หลังด่านระบบ/เพดาน/สิทธิ์ของแกน (คีย์ระบบอื่น/ไม่มีสิทธิ์ ได้ 403 เหมือนการอ่านเสมอ)
 // 🔴 ตรวจคีย์ที่นี่แค่ "อ่านว่าผูกระบบไหน" — การยืนยันตัวตน/หมดอายุ/เพิกถอนยังเป็นของแกน (คำตอบ 401 มาจากแกนเท่านั้น)
 import { dispatch as coreDispatch, matchOpIn } from "@/lib/api/dispatch";
 import type { ApiMethod } from "@/lib/api/op";
 import type { ApiModuleConfig } from "@/lib/api/require";
-import { fail, newRequestId } from "@/lib/api/respond";
 import { verifyApiKeyDetailed } from "@/lib/api-keys/service";
-import { hrApiKeyActor } from "./actor";
+import { hrApiKeyActor, type HrWriteVerdict } from "./actor";
 import { HR_API_CONFIG } from "./config";
 import { HR_OPS } from "./registry";
 
@@ -37,37 +37,27 @@ function hasPoisonKey(v: unknown, depth = 0): string | null {
 }
 
 /**
- * ด่านของคำขอเขียน (มติรอบแก้ ข้อ 6) — หลังคีย์ใช้ได้แล้วเท่านั้น (คีย์เสีย = 401 ของแกนมาก่อน):
- *   ต้องส่ง `Content-Type: application/json` (ไม่ใช่ = 415 invalid_json) · ช่อง __proto__/constructor/prototype = 422 validation
+ * อ่านเนื้อคำขอเขียนล่วงหน้า (ไม่ตัดสินที่นี่ — มติรอบแก้ 2 ข้อ 3): ผลไปกับ actor แล้ว op.ts ปฏิเสธหลังด่านของแกน
+ *   Content-Type ไม่ใช่ application/json ⇒ 415 invalid_json · ช่อง __proto__/constructor/prototype ⇒ 422 validation
  */
-async function writeGuard(method: ApiMethod, req: Request, segments: string[]): Promise<Response | null> {
+async function writeVerdict(method: ApiMethod, req: Request, segments: string[]): Promise<HrWriteVerdict> {
   const hit = matchOpIn(HR_OPS, method, segments);
   if (!hit || hit.op.kind === "read") return null;
   const ct = (req.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
-  if (ct !== "application/json") {
-    return fail(415, "invalid_json", "ต้องส่งเนื้อคำขอเป็น JSON พร้อมส่วนหัว Content-Type: application/json", "Send the body as JSON with Content-Type: application/json.", newRequestId());
-  }
   let body: unknown = null;
   try {
     const t = await req.clone().text();
     body = t.trim() ? JSON.parse(t) : null;
   } catch {
-    return null; // JSON เสีย = 400 invalid_json ของแกน
+    body = null; // JSON เสีย = 400 invalid_json ของแกน
   }
-  const bad = hasPoisonKey(body);
-  if (bad) {
-    return fail(422, "validation", "ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด", "Request payload failed validation.", newRequestId(), { details: [{ path: bad, message: "ช่องนี้ไม่มีในคำขอนี้" }] });
-  }
-  return null;
+  return { badContentType: ct !== "application/json", poisonKey: hasPoisonKey(body) };
 }
 
 export async function dispatch(method: ApiMethod, req: Request, params: { path?: string[] }): Promise<Response> {
   const key = await keyOf(req);
-  if (key.ok) {
-    const refused = await writeGuard(method, req, params.path ?? []);
-    if (refused) return refused;
-  }
+  const write = key.ok ? await writeVerdict(method, req, params.path ?? []) : null;
   const bound = key.systemId;
-  const cfg: ApiModuleConfig = { ...HR_API_CONFIG, makeActor: (input) => hrApiKeyActor({ ...input, bound: bound !== null && bound === input.systemId }) };
+  const cfg: ApiModuleConfig = { ...HR_API_CONFIG, makeActor: (input) => hrApiKeyActor({ ...input, bound: bound !== null && bound === input.systemId, write }) };
   return coreDispatch(HR_OPS, method, req, params, cfg);
 }

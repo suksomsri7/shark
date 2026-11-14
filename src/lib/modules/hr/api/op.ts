@@ -6,7 +6,7 @@
 // ⚠️ ห้าม import `./registry` จากที่นี่ (registry → ops/* → op.ts เป็นวงกลม)
 import { z, type ZodType } from "zod";
 import { defineOp, type ApiOp, type ApiOpCtx } from "@/lib/api/op";
-import { assertHrIssuer } from "./actor";
+import { assertHrIssuer, assertHrWriteBody } from "./actor";
 
 export type { ApiOp, ApiOpCtx, ApiOpKind, ApiMethod, ApiRateKind } from "@/lib/api/op";
 
@@ -21,6 +21,7 @@ export function defineHrOp<S extends ZodType | undefined = undefined>(def: HrOpD
     auditAction: `hr.api.${def.id}`,
     handler: async (ctx) => {
       await assertHrIssuer(ctx.actor);
+      if (def.kind !== "read") assertHrWriteBody(ctx.actor);
       return inner(ctx);
     },
   });
