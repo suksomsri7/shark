@@ -20,6 +20,8 @@ import { LifecycleBanner, LifecycleMsg, LifecycleProfile } from "@/lib/modules/h
 import { HrRegisterCard } from "@/lib/modules/hr/reports-ui"; // HR H3.9 ▸ การ์ดทะเบียนลูกจ้าง (สัญชาติ · ประโยชน์ตอบแทนอย่างอื่น) ◂
 import { reportTextFor } from "@/lib/modules/hr/reports-rules"; // HR H3.9 ◂
 import { getLocale, getTranslations } from "next-intl/server"; // HR H3.9 ◂
+import { employeeLineStatus } from "@/lib/modules/hr/line-link"; // HR H4.5 ▸ ชิปสถานะ LINE (สถานะ + วันที่ผูกเท่านั้น · ด่านจากแถว Membership + สาขา) ◂
+import { adminUnlinkLineAction } from "@/lib/modules/hr/line-actions"; // HR H4.5 ◂
 
 // หน้าโปรไฟล์พนักงาน 1 คน (ข้อ 8) — ข้อมูลเต็มรูปแบบ + เอกสารแนบ
 // 🔒 ช่องอ่อนไหว (เลขบัตร/ประกันสังคม/ทะเบียนบ้าน/บัญชี) + เอกสาร = เห็นเฉพาะผู้มีสิทธิ์ดูเงินเดือน
@@ -65,6 +67,12 @@ export default async function HrEmployeeProfilePage({
   const units = await unitsForScope(auth.active.tenantId, scope);
   // HR H4.4 ▸ null = ผู้ดูไม่เห็นข้อมูลบันทึก (ส่วนวงจรพนักงานซ่อนเอง · ปุ่มสิ้นสุดตามด่านปุ่มลบเดิม) ◂
   const life = await loadLifecycleForViewer({ tenantId: auth.active.tenantId, systemId: id }, hrViewerOf(auth), employeeId);
+  const line = await employeeLineStatus({ tenantId: auth.active.tenantId, systemId: id }, hrViewerOf(auth), { employeeId: emp.id }); // HR H4.5 ▸ ไม่ผ่านด่าน = ไม่แสดงชิป ◂
+  const tLine = await getTranslations("hr.line"); // HR H4.5 ◂
+  const onUnlinkLine = async (fd: FormData) => {
+    "use server"; // HR H4.5 ▸ ยกเลิกผูก LINE (service ตรวจสิทธิ์จากแถว Membership + สาขาซ้ำ) ◂
+    await adminUnlinkLineAction(fd); // HR H4.5 ◂
+  }; // HR H4.5 ◂
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -101,6 +109,25 @@ export default async function HrEmployeeProfilePage({
           </label>
         )}
         <EmployeeProfileForm systemId={id} emp={view.profile} canSeeSensitive={sensitive} />
+        {/* HR H4.5 ▸ ชิปสถานะ LINE ของพนักงาน — สถานะ + วันที่ผูกเท่านั้น (ไม่มีชื่อ/รหัส LINE · Q14) · ปุ่มยกเลิกผูกเมื่อผูกอยู่ ◂ */}
+        {line.ok && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="rounded-full border px-2 py-1 text-xs" data-testid="hr-emp-line-chip">
+              {line.state === "ACTIVE" ? tLine("chipActive") : line.state === "PENDING" ? tLine("chipPending") : tLine("chipNone")}
+              {line.state === "ACTIVE" && line.linkedAt ? ` · ${tLine("linkedAt", { date: new Date(line.linkedAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", year: "numeric" }) })}` : ""}
+            </span>
+            {line.state === "ACTIVE" && (
+              <form action={onUnlinkLine}>
+                <input type="hidden" name="systemId" value={id} />
+                <input type="hidden" name="employeeId" value={emp.id} />
+                <button type="submit" className="btn btn-ghost min-h-[44px] text-sm" data-testid="hr-emp-line-unlink">
+                  {tLine("adminUnlink")}
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+        {/* ◂ HR H4.5 */}
         <p className={`mt-2 text-xs ${muted}`}>
           PIN ลงเวลา: {emp.hasPin ? "ตั้งแล้ว" : "ยังไม่ตั้ง"} (ตั้ง/เปลี่ยนได้ที่หน้าพนักงานทั้งหมด)
         </p>

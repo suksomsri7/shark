@@ -17,7 +17,7 @@ import { linkChatContactParty, type ChatPartyCtx } from "./party-bridge";
 export const LINK_CODE_MASK = "[รหัสผูกบัญชี LINE]";
 export const LINK_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const LINK_CODE_LENGTH = 8;
-export const LINK_PURPOSES = ["DORM_LEASE", "QUEUE_TICKET", "APPOINTMENT"] as const;
+export const LINK_PURPOSES = ["DORM_LEASE", "QUEUE_TICKET", "APPOINTMENT", "HR_EMPLOYEE"] as const; // HR H4.5 ▸ + HR_EMPLOYEE (รหัสผูก LINE ของพนักงาน · ผู้ออก = platform/hr-line.ts) ◂
 export type LinkPurpose = (typeof LINK_PURPOSES)[number];
 
 export type IssueLinkCodeInput = { purpose: string; refId: string; ttlMin: number; connectionId?: string | null };

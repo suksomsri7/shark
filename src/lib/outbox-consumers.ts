@@ -609,6 +609,9 @@ const crmCommissionBridge =
     await bridges[name](evt);
   };
 // ◂ CRM C3.3
+// HR H4.5 ▸ แจ้งเตือนพนักงาน (ในแอป + LINE) — งานหลักคู่ (bothMain) ของ 7 เหตุการณ์ HR: วางแผนล้ม = event retry (แจ้งในแอปไม่หาย · มติผู้คุม I) · ส่ง LINE ไม่ throw · ไม่มีชนิดเหตุการณ์/ป้ายใหม่ ·
+//   วางแผนจากฐาน (ON CONFLICT DO NOTHING ⇒ replay กี่รอบก็แถวเดิม) แล้วส่ง id ของตัวเอง · พ้นสภาพ ⇒ ปิดการผูก LINE + แจ้งเตือนค้าง SKIPPED · โหลดตอนใช้ (กันวงโหลด) ◂
+const onHrEventForLine: OutboxHandler = async (evt) => (await import("@/lib/platform/hr-line")).onHrEventForLine(evt); // HR H4.5 ◂
 
 // M2.6 — บัตรกำนัลขายแล้ว/ถูกใช้ → ไทม์ไลน์ของเจ้าของบัตร
 // M3.7 — ตัวเขียนย้ายไป `member-bridges.ts#onLoyaltyEvent` (recordOnce · เจ้าของว่าง/ถูกลบ = จบเงียบเหมือนเดิม)
@@ -1430,25 +1433,25 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   `crm.commission.created|approved|reversed#<commissionId>` — ยิงใน tx เดียวกับการเขียนแถว/เปลี่ยนสถานะ · payload id/สตางค์/งวด ล้วน (X8)
   //   ตัวรับ = ขั้นแรกที่ retry ได้ (ยื่นอนุมัติ/ส่งเงินเดือน/ปิด PAID ต่อจากที่ค้าง · แจ้ง `commission.status`) แล้วจึง automation + เว็บฮุค
   //   ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่เปลี่ยนอะไร (AUDIT-CLASS X4 — guard สถานะ + ล็อกแถว + partial unique ของ HR)
-  "hr.payroll.paid": crmFirst(crmCommissionBridge("onPayrollPaid"), withAutomation(async () => {})),
+  "hr.payroll.paid": crmFirst(crmCommissionBridge("onPayrollPaid"), withAutomation(bothMain(async () => {}, onHrEventForLine))), // HR H4.5 ▸ + สลิปพร้อมดู ◂
   "hr.payroll.reversed": crmFirst(crmCommissionBridge("onPayrollReversed"), withAutomation(async () => {})), // HR H0.6 ▸ hr/payroll.ts#reverseRun {runId, periodKey, adjustmentIds} → CRM คืน PAID→APPROVED ครั้งเดียว ◂
   // HR H2.1 ▸ เผยแพร่ตารางกะ (ยิงใน tx เดียวกับการพลิก published ของ hr/roster.ts#publishRoster · key `hr.roster.published#<publishId>` ·
   //   payload id/ช่วงวันล้วน) — ยังไม่มีผลข้างเคียง (แจ้งพนักงาน = H2.10) ⇒ no-op ปิด event เป็น DONE + จุดให้ automation/เว็บฮุค · ส่งซ้ำได้ ◂
-  "hr.roster.published": withAutomation(async () => {}),
+  "hr.roster.published": withAutomation(bothMain(async () => {}, onHrEventForLine)), // HR H4.5 ▸ + ตารางกะอัปเดต ◂
   // HR H2.3 ▸ คำขอสลับกะ (hr/swap.ts — ยิงใน tx เดียวกับการยื่น / การเขียนตารางกะ · key `<type>#<swapId>` · payload id/วันล้วน) —
   //   ยังไม่มีผลข้างเคียง (แจ้งเพื่อน/พนักงาน = H2.10) ⇒ no-op ปิด event เป็น DONE + จุดให้ automation/เว็บฮุค · ส่งซ้ำได้
-  "hr.shift.swap_requested": withAutomation(async () => {}),
-  "hr.shift.swap_approved": withAutomation(async () => {}),
+  "hr.shift.swap_requested": withAutomation(bothMain(async () => {}, onHrEventForLine)), // HR H4.5 ▸ + แจ้งคู่สลับ ◂
+  "hr.shift.swap_approved": withAutomation(bothMain(async () => {}, onHrEventForLine)), // HR H4.5 ▸ + แจ้งทั้งสองฝั่ง ◂
   // HR H2.7 ▸ ตัดสินใบลา (ยิงใน tx เดียวกับสถานะ + สมุดวันลา — hr/service.ts decideLeave/cancelLeave/requestLeave · hr/leave.ts applyLeaveDecision ·
   //   key `hr.leave.decided#<leaveId>#<status>` · payload id/วัน/สถานะ) · consumer no-op (ปิด DONE + กฎอัตโนมัติ/เว็บฮุค) — ส่งซ้ำไม่มีผล
   // HR H4.1 ▸ R10: ใบลา APPROVED ⇒ แจ้งผู้ดูแล (ผู้ดูคำใบ้ R11 ยกเว้นคนลา) ครั้งเดียวต่อใบ ถ้ามีกะที่ไม่มีคนแทน — กันซ้ำด้วย audit ใต้ล็อก hr-leave-hint:<id> ·
   //   สถานะอื่น (REJECTED/CANCELLED/ถอนอนุมัติ) = ไม่ทำอะไร (ไม่ถอนข้อความ Q10) · ไม่แตะนัดจอง (R13) ◂
-  "hr.leave.decided": withAutomation(async (evt) => {
+  "hr.leave.decided": withAutomation(bothMain(async (evt) => { // HR H4.5 ▸ + ผลใบลา (bothMain — วางแผนล้ม = event retry) ◂
     const p = (evt.payload ?? {}) as { leaveId?: unknown; systemId?: unknown; status?: unknown };
     if (p.status !== "APPROVED" || typeof p.leaveId !== "string") return;
     const sid = typeof p.systemId === "string" ? p.systemId : (evt.systemId ?? "");
     await (await import("@/lib/modules/hr")).leaveDutyNotify({ tenantId: evt.tenantId, systemId: sid, leaveId: p.leaveId });
-  }),
+  }, onHrEventForLine)), // HR H4.5 ◂
   // ◂ HR H2.7
   // ◂ HR H2.3
   // HR H2.5 ▸ การเตือนลงเวลา (hr/judge.ts#runAttendanceJobs — ยิงใน tx เดียวกับแถว HrAttendanceAlert · key `<type>#<alertId>` · payload id ล้วน)
@@ -1460,13 +1463,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // ◂ HR H2.5
   // HR H2.9 ▸ ตัดสินคำขอ OT (hr/ot.ts — ยิงใน tx เดียวกับสถานะ · key `hr.ot.decided#<otId>#<สถานะ>` · payload {otRequestId, systemId, employeeId, status} ล้วน) —
   //   APPROVED · REJECTED · CANCELLED (ยกเลิก OT ที่อนุมัติแล้ว) ⇒ แจ้งพนักงานที่ผูกบัญชี 1 ครั้ง (ไม่มีจำนวนเงิน · กันซ้ำด้วย audit ใต้ล็อก) แล้วจึง automation ◂
-  "hr.ot.decided": withAutomation(async (evt) => (await import("@/lib/modules/hr/ot")).notifyOtDecided(evt)),
+  "hr.ot.decided": withAutomation(bothMain(async (evt) => (await import("@/lib/modules/hr/ot")).notifyOtDecided(evt), onHrEventForLine)), // HR H4.5 ▸ + LINE (ในแอป = notifyOtDecided เดิม) ◂
   // HR H4.4 ▸ วงจรพนักงาน (hr/lifecycle.ts — ยิงใน tx เดียวกับงานหลัก · payload id/วันที่ล้วน): ครบกำหนด `…#<พนักงาน>#<ชนิด>#<วันที่>` ·
   //   เริ่มรายการตรวจ `…#<พนักงาน>#<ชนิด>#<ms ของแถวแรก>` · สิ้นสุดการจ้าง `…#<พนักงาน>#<ms ของ offboardedAt>` — งานหลักไม่มี (no-op) ·
   //   ของแถม = การ์ดบอร์ดงาน (platform/hr-lifecycle-bridges · เปิดเองรายระบบ HR · sourceKey กันซ้ำ ⇒ replay กี่รอบก็ผลเดียว) · โหลดตอนใช้ (กันวงโหลด)
   "hr.employee.milestone_due": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onMilestoneDue(evt))),
   "hr.employee.checklist_started": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onChecklistStarted(evt))),
-  "hr.employee.offboarded": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onOffboarded(evt))),
+  "hr.employee.offboarded": withAutomation(bothMain(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onOffboarded(evt)), onHrEventForLine)), // HR H4.5 ▸ + ปิดการผูก LINE ◂
   // ◂ HR H4.4
   // HR H4.6 ▸ เบิกของ/ค่าเสียหาย → รายการหักที่รออนุมัติ (hr/stock-charge.ts — ยิงใน tx เดียวกับการสร้างรายการ · key `<type>#<chargeId>` ·
   //   payload { chargeId, employeeId } ล้วน) — ตัวรับแจ้งพนักงานในแอปครั้งเดียวต่อรายการ (notifiedAt ใต้ล็อก) แล้วจึง automation/เว็บฮุค ◂
