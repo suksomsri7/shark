@@ -1,4 +1,4 @@
-// ตั้งค่า (ใบ S2.7 · เมนูของโซนเลขา) — แถวไปหน้าย่อยส่วนตัว B2 B5 G4 + แถว "สลับกิจการ" (B1 = BusinessSwitcherSheet ของ S2.1 · ⚙ = ตั้งค่ากิจการ)
+// ตั้งค่า (ใบ S2.7 · เมนูของโซนเลขา) — แถวไปหน้าย่อยส่วนตัว B2 B5 G4 + แถว "สลับกิจการ" (B1 = BusinessSwitcherSheet ของ S2.1 · ⚙ = ตั้งค่ากิจการ) · 14 พ.ย.: แถวนี้เปิดชีตที่มุมมอง "เปลี่ยนกิจการ" ตรง (open("switch"))
 //   แบบไม่มีหน้าเมนูแยก (B2 มีแถวลิงก์ท้ายหน้า) ⇒ จอนี้ไม่มีภาพคู่ (spec pair:false) · ใช้ SecTopBar โซนเลขา
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
@@ -52,7 +52,7 @@ export default function SecretarySettingsScreen() {
               title={t(r.title)}
               sub={t(r.sub)}
               value={valueOf(r)}
-              onPress={() => (r.path ? router.push(r.path) : switcher.open())}
+              onPress={() => (r.path ? router.push(r.path) : switcher.open("switch"))}
             />
           ))}
         </View>

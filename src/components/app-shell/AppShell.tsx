@@ -16,6 +16,7 @@ import { setNavCollapsedAction } from "@/lib/core/preferences-actions";
 // โครงแอปฝั่ง client: จัดการสถานะเปิด/ปิด drawer
 // help-v2: เอาศูนย์ช่วยเหลือออก — แจ้งปัญหาผ่านแชท AI แทน (ทีมงานตอบกลับในห้องเดิม)
 // รับข้อมูลที่ดึงจาก DB มาจาก layout (server) เป็น props — ตัว shell ไม่แตะ DB เอง
+// 14 พ.ย.: ในแอปที่มีแถบบน native (useNativeTopBar) ไม่วาด Topbar และไม่เปิดท่าปัดขอบซ้าย (SwipeEdge) — แอปรุ่นเก่ายังมีครบ
 export function AppShell({
   tenantName,
   userEmail,
@@ -80,7 +81,8 @@ export function AppShell({
   // เปิดจากแอปมือถือ (WebView ส่ง UA "SharkApp") → ซ่อน orb เว็บ (แอปมีปุ่ม AI native ของตัวเอง — กัน orb ซ้อน)
   // + ไม่ปักแถบเมนูซ้าย (แอปมีเมนูของตัวเอง และจอมือถือไม่มีที่พอ)
   const inApp = useInApp();
-  // แอปรุ่นใหม่มีแถบบน native ของตัวเอง (UA "SharkTopBar") ⇒ ไม่วาด Topbar ของเว็บ · เมนูระบบเปิดจากปุ่มระบบของแอป (app:drawer-open)
+  // แอปรุ่นใหม่มีแถบบน native ของตัวเอง (UA "SharkTopBar") ⇒ ไม่วาด Topbar ของเว็บ + ไม่ดักท่าปัดขอบซ้าย (SwipeEdge)
+  //   เปิดระบบจากชีตกิจการของแอป (ตาราง "เปิดระบบ" → ?open=/app/...) · `app:drawer-open` ยังรับไว้ (ปุ่ม ☰ ในหัวรายการแชท)
   const nativeTopBar = useNativeTopBar();
   // 🔴 ต้นทุน query ของ badge เมนู — ตั้งใจให้ "ไม่ผูกกับการเรนเดอร์":
   //  · ยิง 1 ครั้งตอน app shell mount (layout ไม่ re-mount ตอนเปลี่ยนหน้า ⇒ ไม่ใช่ต่อหน้า)
@@ -153,14 +155,18 @@ export function AppShell({
         hideOnMobile={chatFullscreen}
       />
       )}
-      {/* ปัดจากขอบซ้ายไปขวา = เปิดเมนู (จอเล็ก/แอป) — ในแอปไม่มี ☰ แล้ว ท่านี้คือทางเดียว */}
-      <SwipeEdge
-        alwaysOn={inApp}
-        onOpen={() => {
-          setDrawer(true);
-          refreshBadges();
-        }}
-      />
+      {/* ปัดจากขอบซ้ายไปขวา = เปิดเมนู (จอเล็ก/แอปรุ่นเก่า) — แอปรุ่นเก่าไม่มี ☰ ท่านี้คือทางเดียว
+          14 พ.ย. (เจ้าของสั่ง · bizsheet4): แอปที่มีแถบบน native (UA SharkTopBar) ปิดท่านี้ — เปิดระบบจากชีตกิจการของแอปแทน
+          (แอปรุ่นเก่าที่ไม่มี token นี้ยังปัดได้เหมือนเดิม) */}
+      {nativeTopBar ? null : (
+        <SwipeEdge
+          alwaysOn={inApp}
+          onOpen={() => {
+            setDrawer(true);
+            refreshBadges();
+          }}
+        />
+      )}
       <NavDrawer
         open={drawer}
         // ในแอป หรือหน้าที่ใช้ราง (ไม่มีแถบปักซ้ายให้ชน) → overlay ต้องโผล่ทุกความกว้าง
