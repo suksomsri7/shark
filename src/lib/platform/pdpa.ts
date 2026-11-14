@@ -49,21 +49,46 @@ export async function exportTenantData(tenantId: string): Promise<string> {
 // REQUEST / CANCEL — สลับสถานะร้าน (ฝั่งร้าน OWNER เรียกผ่าน action; service ไม่เช็ค role)
 // ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// ACC T4.5 (K2) ▸ log การลบร้าน — ตาราง TenantDeletionLog (ไม่มี FK · อยู่ต่อหลังร้านถูกลบ · trigger กันแก้/ลบ)
+//   ล้มห้ามทำให้การกระทำหลักล้ม (กลืน error เหมือน writeAudit) ◂
+// ─────────────────────────────────────────────────────────────
+export type TenantDeletionEvent = "REQUESTED" | "CANCELLED" | "EXPORTED" | "PURGED" | "PURGE_FAILED";
+
+export async function logTenantDeletion(tenantId: string, event: TenantDeletionEvent, actorUserId: string | null, detail?: Record<string, unknown>): Promise<void> {
+  try {
+    const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true } });
+    await prisma.tenantDeletionLog.create({
+      data: { tenantId, tenantName: t?.name ?? String(detail?.tenantName ?? ""), tenantSlug: t?.slug ?? String(detail?.tenantSlug ?? ""), event, actorUserId, detail: (detail ?? undefined) as never },
+    });
+  } catch {
+    /* log ล้มห้ามทำให้การลบ/ยกเลิกล้ม */
+  }
+}
+
+/** log การลบของร้านหนึ่ง (เก่า → ใหม่) — หน้าความเป็นส่วนตัว + ข้อสอบ */
+export async function listTenantDeletionLog(tenantId: string) {
+  return prisma.tenantDeletionLog.findMany({ where: { tenantId }, orderBy: { createdAt: "asc" } });
+}
+
 // ACTIVE → PENDING_DELETE + ประทับเวลา (เริ่มนับถอยหลัง 30 วัน)
-export async function requestTenantDeletion(tenantId: string): Promise<boolean> {
+//   ACC T4.5 ▸ `actor` (ไม่ส่ง = ระบบ) + `detail` (คำเตือนที่กดยืนยัน · สมุดที่ส่งออกแล้ว) ลง log การลบ ◂
+export async function requestTenantDeletion(tenantId: string, actor: { userId?: string | null; detail?: Record<string, unknown> } = {}): Promise<boolean> {
   const res = await prisma.tenant.updateMany({
     where: { id: tenantId, status: "ACTIVE" },
     data: { status: "PENDING_DELETE", deleteRequestedAt: new Date() },
   });
+  if (res.count > 0) await logTenantDeletion(tenantId, "REQUESTED", actor.userId ?? null, { graceDays: 30, ...(actor.detail ?? {}) });
   return res.count > 0;
 }
 
 // PENDING_DELETE → ACTIVE + ล้างเวลา (ยกเลิกก่อนครบกำหนด)
-export async function cancelTenantDeletion(tenantId: string): Promise<boolean> {
+export async function cancelTenantDeletion(tenantId: string, actorUserId: string | null = null): Promise<boolean> {
   const res = await prisma.tenant.updateMany({
     where: { id: tenantId, status: "PENDING_DELETE" },
     data: { status: "ACTIVE", deleteRequestedAt: null },
   });
+  if (res.count > 0) await logTenantDeletion(tenantId, "CANCELLED", actorUserId); // ACC T4.5 ◂
   return res.count > 0;
 }
 
@@ -78,7 +103,12 @@ async function purgeTenantRows(tenantId: string): Promise<string[]> {
     const failed: string[] = [];
     for (const model of remaining) {
       try {
-        await client[clientKey(model)].deleteMany({ where: { tenantId } });
+        // ACC T4.4 ▸ ด่านฐานข้อมูลของสมุดรายวัน/AuditLog บัญชียอมลบเฉพาะธุรกรรมที่ประกาศว่า "ลบร้านนี้" (shark.ledger_purge = tenantId · SET LOCAL) —
+        //   ตารางอื่นไม่สนค่านี้ · ห่อทุกตารางแบบเดียวกัน (ลบเท่าเดิม ไม่เร็วขึ้น ไม่มากขึ้น) ◂
+        await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('shark.ledger_purge', ${tenantId}, true)`;
+          await (tx as unknown as Record<string, ModelDelegate>)[clientKey(model)].deleteMany({ where: { tenantId } });
+        });
       } catch {
         failed.push(model); // ติด FK — child ยังไม่ถูกลบ → รอรอบถัดไป
       }
@@ -100,6 +130,7 @@ export async function sweepPendingDeletes(now: Date = new Date(), graceDays = 30
 
   let purged = 0;
   for (const { id: tenantId } of due) {
+    const who = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, deleteRequestedAt: true } }); // ACC T4.5 ▸ ชื่อร้านลง log ก่อนแถวหาย ◂
     try {
       // CRM C5.4-N ▸ ลำดับเลขที่ใบสำคัญ (SEQUENCE ต่อระบบบัญชี · ตั้งชื่อตาม systemId) ไม่มี tenantId ⇒ ต้องลบเอง ก่อนแถว AppSystem หาย
       //   (DROP SEQUENCE IF EXISTS · รันซ้ำได้ · ล้ม = ไม่หยุดการลบร้าน — เหลือแค่ลำดับกำพร้าที่ไม่มีใครอ้าง) ◂
@@ -108,7 +139,10 @@ export async function sweepPendingDeletes(now: Date = new Date(), graceDays = 30
         await prisma.$executeRawUnsafe(`SELECT account_jno_drop($1)`, sys.id).catch(() => undefined);
       // 1) ลบข้อมูลทุกตารางของร้าน (children-first วนซ้ำ)
       const leftover = await purgeTenantRows(tenantId);
-      if (leftover.length > 0) continue; // ยังลบไม่หมด → ทิ้งไว้รอบหน้า ไม่ลบ Tenant
+      if (leftover.length > 0) {
+        await logTenantDeletion(tenantId, "PURGE_FAILED", null, { leftover: leftover.slice(0, 50) }); // ACC T4.5 ◂
+        continue; // ยังลบไม่หมด → ทิ้งไว้รอบหน้า ไม่ลบ Tenant
+      }
 
       // 2) ล้าง session ของสมาชิกที่มีร้านนี้ร้านเดียว (บังคับ re-auth · ไม่แตะคนหลายร้าน)
       const memberships = await prisma.membership.findMany({
@@ -127,6 +161,8 @@ export async function sweepPendingDeletes(now: Date = new Date(), graceDays = 30
       await prisma.membership.deleteMany({ where: { tenantId } });
       await prisma.tenant.delete({ where: { id: tenantId } });
       purged++;
+      // ACC T4.5 ▸ แถวร้านหายแล้ว ⇒ ส่งชื่อ/slug ที่จำไว้ ◂
+      await logTenantDeletion(tenantId, "PURGED", null, { tenantName: who?.name ?? "", tenantSlug: who?.slug ?? "", requestedAt: who?.deleteRequestedAt?.toISOString() ?? null });
     } catch {
       // ร้านนี้ลบไม่สำเร็จ (FK ค้าง/ชนกันชั่วคราว) → ข้าม รอบถัดไปค่อยลองใหม่ (idempotent)
     }

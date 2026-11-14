@@ -14,6 +14,10 @@ import {
   cancelTenantDeletion,
 } from "@/lib/platform/pdpa";
 import { deleteAccount } from "@/lib/platform/account-deletion";
+import { prisma } from "@/lib/core/db";
+import { recordLegalAckInTx } from "@/lib/core/legal-ack";
+import { unacknowledged } from "@/lib/core/settings/legal/warnings";
+import { deletionRetentionWarnings } from "@/lib/pdpa/retention";
 
 const PRIVACY_PATH = "/app/settings/privacy";
 
@@ -42,17 +46,31 @@ export async function exportMyDataAction(): Promise<ExportResult> {
   }
 }
 
-// ขอลบร้าน — เข้าสู่ช่วงรอ 30 วัน (ใช้เป็น form action ใน ConfirmDialog)
-export async function requestDeleteAction(): Promise<void> {
+// ขอลบร้าน — เข้าสู่ช่วงรอ 30 วัน
+// ACC T4.5 ▸ สมุดที่ยังไม่ครบระยะเก็บเอกสาร = คำเตือน SHOP_DELETE_WITHIN_RETENTION ต้องติ๊กรับทราบ (ไม่บล็อก) · บันทึกผู้ยืนยัน + log การลบ ◂
+export async function requestDeleteAction(formData?: FormData): Promise<void> {
   const auth = await requireOwner();
-  await requestTenantDeletion(auth.active.tenantId);
+  const tenantId = auth.active.tenantId;
+  const { warnings, books } = await deletionRetentionWarnings(tenantId);
+  const acked = [...(formData?.getAll("ack") ?? []).map(String), ...String(formData?.get("acks") ?? "").split(",")].map((x) => x.trim()).filter(Boolean);
+  if (unacknowledged(warnings, acked).length > 0) redirect(`${PRIVACY_PATH}?err=${encodeURIComponent("ติ๊กรับทราบคำเตือนเรื่องการเก็บเอกสารก่อนขอลบร้าน")}`);
+  const ackWarnings = warnings.filter((w) => w.ack);
+  if (ackWarnings.length > 0) {
+    await prisma.$transaction((tx) =>
+      recordLegalAckInTx(tx, { tenantId, ack: { codes: acked, actorId: auth.user.id, actorType: "USER", via: "screen" }, op: "tenant.delete.request", targetType: "Tenant", targetId: tenantId, warnings: ackWarnings }),
+    );
+  }
+  await requestTenantDeletion(tenantId, {
+    userId: auth.user.id,
+    detail: { acknowledged: ackWarnings.map((w) => w.code), books: books.map((b) => ({ systemId: b.systemId, name: b.name, lastEntryDate: b.lastEntryDate, keepUntil: b.keepUntil, exportedAt: b.exportedAt })) },
+  });
   revalidatePath(PRIVACY_PATH);
 }
 
 // ยกเลิกคำขอลบร้าน — กลับมา ACTIVE ตามเดิม
 export async function cancelDeleteAction(): Promise<void> {
   const auth = await requireOwner();
-  await cancelTenantDeletion(auth.active.tenantId);
+  await cancelTenantDeletion(auth.active.tenantId, auth.user.id); // ACC T4.5 ▸ log การลบ ◂
   revalidatePath(PRIVACY_PATH);
 }
 

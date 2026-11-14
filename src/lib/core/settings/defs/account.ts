@@ -26,6 +26,8 @@ import {
   WHT_RECIPIENT_LABEL_TH,
   WHT_GROSS_UP_FORMULAS,
   WHT_GROSS_UP_FORMULA_LABEL_TH,
+  COMPLIANCE_KEYS,
+  COMPLIANCE_KEY_LABEL_TH,
 } from "../legal/th-tax-2569";
 
 const EDIT = "account.settings.manage";
@@ -80,6 +82,21 @@ export const WHT_ROW_SCHEMA = z
   .strict()
   .refine(rangeOk, RANGE_MSG)
   .refine((r) => (r.method === "RATE") === (r.value !== null), "อัตราคงที่ต้องมีตัวเลข · ไม่หัก/อัตราก้าวหน้าไม่มีตัวเลข");
+/** ACC T4.5 · T4.8 ▸ ค่ากฎหมายอื่น (ระยะเก็บเอกสาร · เงินประกันหอ) — ตัวเลขจำนวนเต็มบวก (ช่วงรูปแบบข้อมูล ไม่ใช่ค่ากฎหมาย) ◂ */
+export const COMPLIANCE_ROW_SCHEMA = z
+  .object({ ...rowBase, value: z.number().int().min(1).max(100), key: z.enum(COMPLIANCE_KEYS) })
+  .strict()
+  .refine(rangeOk, RANGE_MSG);
+
+/** ACC T4.7 ▸ ทิปที่รับผ่านจุดขาย 3 ทาง (skill domain-shark-accounting-cases §1.8) ◂ */
+export const TIP_TREATMENTS = ["LIABILITY", "REVENUE_VAT", "STAFF_DIRECT"] as const;
+export type TipTreatment = (typeof TIP_TREATMENTS)[number];
+export const TIP_TREATMENT_LABEL_TH: Record<TipTreatment, string> = {
+  LIABILITY: "เงินรับแทนพนักงาน (บัญชีพักทิป · ไม่คิด VAT)",
+  REVENUE_VAT: "รายได้ของร้าน (คิด VAT)",
+  STAFF_DIRECT: "พนักงานรับเงินสดตรง (ไม่ผ่านบัญชีร้าน)",
+};
+
 export const DEADLINE_ROW_SCHEMA = z
   .object({ ...rowBase, value: z.number().int().min(1).max(31), form: z.enum(FILING_FORMS), channel: z.enum(FILING_CHANNELS) })
   .strict()
@@ -195,9 +212,28 @@ const DEFS: SettingDef[] = [
     defaults: { _fallback: "GROSS_UP_ONE_STEP" },
     chain: CHAIN, editPermission: EDIT,
   },
+  // ── ACC T4.5 · T4.7 · T4.8 (เลน 1) ──
+  {
+    key: "account.legal.complianceValues", domain: "account", group: "legal", type: "table", labelTh: "ค่ากฎหมายอื่น (แถวที่ร้านตั้ง)",
+    helpTh: "ระยะเก็บบัญชีและเอกสาร · เงินประกันหอพัก — แถวที่ร้านทับค่าเริ่มต้นของระบบ",
+    schema: z.array(COMPLIANCE_ROW_SCHEMA).max(MAX_SHOP_ROWS),
+    defaults: { _fallback: [] },
+    chain: CHAIN, editPermission: EDIT,
+    tableTh: { item: { kind: "object", labelTh: "แถว", fields: { key: { kind: "enum", labelTh: "ค่า", options: COMPLIANCE_KEY_LABEL_TH }, value: { kind: "int", labelTh: "ตัวเลข" }, ...common } }, emptyTh: "ใช้ค่าเริ่มต้นของระบบทั้งหมด" },
+  },
+  {
+    // skill domain-shark-accounting-cases §1.8: ทิปผ่านระบบ เสนอ "รายได้มี VAT" [V ข้อหารือไม่ชี้ตรงว่าต้อง] · ส่งตรงถึงพนักงาน [U] · บัญชีพักทิปแบบหนี้สิน "ต้องทบทวน" [U]
+    //   ค่าเริ่ม = LIABILITY (ทางเดิมของ POS P2.9 — เปลี่ยนค่าเริ่มเป็นรายได้ = เปลี่ยน GL ของบิล POS ทุกร้าน · ให้เจ้าของตัดสิน) + คำเตือน ◂
+    key: "account.pos.tipTreatment", domain: "account", group: "pos", type: "enum", labelTh: "ทิปที่รับผ่านจุดขาย",
+    helpTh: "รายได้ของร้าน (คิด VAT) · เงินรับแทนพนักงาน (บัญชีพักทิป) · พนักงานรับเงินสดตรง (ไม่ผ่านบัญชีร้าน) — โปรดตรวจกับนักบัญชีของร้าน",
+    schema: z.enum(TIP_TREATMENTS),
+    enumLabelsTh: TIP_TREATMENT_LABEL_TH,
+    defaults: { _fallback: "LIABILITY" },
+    chain: CHAIN, editPermission: EDIT,
+  },
 ];
 
-defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน", wht: "หัก ณ ที่จ่าย" } });
+defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน", wht: "หัก ณ ที่จ่าย", pos: "เชื่อมจุดขาย" } });
 
 export const ACCOUNT_SETTING_KEYS = {
   entityKind: "account.entity.kind",
@@ -209,4 +245,6 @@ export const ACCOUNT_SETTING_KEYS = {
   ewhtEnabled: "account.wht.ewhtEnabled",
   grossUpAlways: "account.wht.grossUpAlways",
   grossUpOnce: "account.wht.grossUpOnce",
+  compliance: "account.legal.complianceValues", // ACC T4.5 · T4.8 ◂
+  tipTreatment: "account.pos.tipTreatment", // ACC T4.7 ◂
 } as const;

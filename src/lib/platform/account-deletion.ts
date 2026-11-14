@@ -133,7 +133,7 @@ export async function deleteAccount(userId: string): Promise<DeleteAccountResult
 
   // 2) ร้านที่ไม่เหลือใคร → เข้าช่วงพักลบ 30 วัน (ไม่ลบทันที)
   for (const t of impact.tenantsToDelete) {
-    await requestTenantDeletion(t.id);
+    await requestTenantDeletion(t.id, { userId, detail: { via: "account-deletion" } }); // ACC T4.5 ▸ log การลบ ◂
   }
 
   // 3) ลบ User จริง — Membership/Session cascade ตาม FK ใน core.prisma · + ร่องรอยที่ไม่มี FK (R-Z26) ก่อนลบ

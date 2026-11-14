@@ -60,3 +60,19 @@ model PlatformAuditLog {
 
   @@index([targetType, targetId, createdAt])
 }
+
+// ACC T4.5 (K2) — log การลบร้าน: ขอลบ · ยกเลิกคำขอ · ส่งออกก่อนลบ · ลบจริง · ลบไม่สำเร็จ
+//   🔴 ไม่ผูก FK กับ Tenant และไม่มีแกน tenant (scope = platform) ⇒ แถวอยู่ต่อหลังร้านถูกลบ (การลบร้านกวาดเฉพาะตารางแกน tenant/unit/system)
+//   ผู้เขียนเดียว = src/lib/platform/pdpa.ts · trigger กันแก้/ลบ (migration acc_t45_tenant_deletion_log)
+model TenantDeletionLog {
+  id          String   @id @default(cuid())
+  tenantId    String // id ของร้าน (ไม่มี FK — ร้านถูกลบแล้วแถวยังอยู่)
+  tenantName  String
+  tenantSlug  String
+  event       String // REQUESTED | CANCELLED | EXPORTED | PURGED | PURGE_FAILED
+  actorUserId String? // null = ระบบ (cron)
+  detail      Json?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}

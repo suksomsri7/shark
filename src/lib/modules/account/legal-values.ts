@@ -52,7 +52,15 @@ import {
   type WhtPayer,
   type WhtRateRow,
   type WhtRecipient,
+  pickComplianceRow,
+  COMPLIANCE_KEYS,
+  COMPLIANCE_KEY_LABEL_TH,
+  COMPLIANCE_KEY_UNIT_TH,
+  SYSTEM_COMPLIANCE_ROWS,
+  type ComplianceKey,
+  type ComplianceRow,
 } from "@/lib/core/settings/legal/th-tax-2569";
+import { TIP_TREATMENTS, type TipTreatment } from "@/lib/core/settings/defs/account";
 
 export {
   CHECK_WITH_ACCOUNTANT_TH,
@@ -74,6 +82,10 @@ export type BookLegal = {
   shop: { vat: VatRateRow[]; wht: WhtRateRow[]; deadline: FilingDeadlineRow[] };
   /** ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่ายของสมุด (อ่านในคิวรีเดียวกัน) · ไม่มี = ค่าเริ่ม ◂ */
   wht?: BookWhtSettings;
+  /** ACC T4.5 · T4.8 ▸ แถวค่ากฎหมายอื่นที่ร้านตั้ง (ระยะเก็บเอกสาร · เงินประกันหอ) · ไม่มี = [] ◂ */
+  compliance?: ComplianceRow[];
+  /** ACC T4.7 ▸ ทิปที่รับผ่านจุดขาย · ไม่มี = LIABILITY ◂ */
+  tipTreatment?: TipTreatment;
 };
 
 export type BookWhtSettings = { ewhtEnabled: boolean; grossUpAlways: WhtGrossUpFormula; grossUpOnce: WhtGrossUpFormula };
@@ -90,7 +102,8 @@ export const EMPTY_BOOK_LEGAL: BookLegal = { entityKind: "UNSET", shop: { vat: [
 /** อ่านค่าตั้งทั้ง 4 คีย์ของสมุดในคิวรีเดียว */
 export async function loadBookLegal(ctx: BookCtx): Promise<BookLegal> {
   const K = ACCOUNT_SETTING_KEYS;
-  const r = await resolveBookSettings({ tenantId: ctx.tenantId }, [K.entityKind, KEY_OF.vat, KEY_OF.wht, KEY_OF.deadline, K.ewhtEnabled, K.grossUpAlways, K.grossUpOnce], ctx.systemId);
+  const r = await resolveBookSettings({ tenantId: ctx.tenantId }, [K.entityKind, KEY_OF.vat, KEY_OF.wht, KEY_OF.deadline, K.ewhtEnabled, K.grossUpAlways, K.grossUpOnce, K.compliance, K.tipTreatment], ctx.systemId);
+  const tip = r[K.tipTreatment]?.value;
   const ga = r[K.grossUpAlways]?.value;
   const go = r[K.grossUpOnce]?.value;
   return {
@@ -105,6 +118,42 @@ export async function loadBookLegal(ctx: BookCtx): Promise<BookLegal> {
       grossUpAlways: isFormula(ga) ? ga : DEFAULT_BOOK_WHT.grossUpAlways,
       grossUpOnce: isFormula(go) ? go : DEFAULT_BOOK_WHT.grossUpOnce,
     },
+    compliance: arr<ComplianceRow>(r[K.compliance]?.value),
+    tipTreatment: (TIP_TREATMENTS as readonly string[]).includes(String(tip)) ? (tip as TipTreatment) : "LIABILITY",
+  };
+}
+
+// ═══════════════════ ACC T4.5 · T4.8 ▸ ค่ากฎหมายอื่น (ตัวอ่านเดียวกับตารางค่ากฎหมาย) ═══════════════════
+
+export type ComplianceValue = { key: ComplianceKey; value: number | null; row: ComplianceRow | null; origin: "SHOP" | "SYSTEM" | null; ymd: string; warnings: LegalWarning[] };
+
+/** ค่ากฎหมายอื่น ณ วันที่ — แถวร้านชนะแถวระบบ · ป้าย [S]/[U] = คำเตือน UNVERIFIED_DEFAULT · ร้านต่างจากแถว [V] = SHOP_DIFFERS_FROM_DEFAULT */
+export function complianceValueFrom(legal: BookLegal, key: ComplianceKey, date: Date): ComplianceValue {
+  const ymd = bkkYmd(date);
+  const { row, origin } = pickComplianceRow(legal.compliance ?? [], key, ymd);
+  const warnings: LegalWarning[] = [];
+  if (row && (row.tag === "S" || row.tag === "U")) warnings.push(legalWarning("UNVERIFIED_DEFAULT", {}, { citation: row.source }));
+  if (row && origin === "SHOP") {
+    const sys = pickComplianceRow([], key, ymd).row;
+    if (sys && sys.value !== row.value && (sys.tag === "V" || sys.tag === "V2"))
+      warnings.push(legalWarning("SHOP_DIFFERS_FROM_DEFAULT", { shop: `${row.value} ${COMPLIANCE_KEY_UNIT_TH[key]}`, system: `${sys.value} ${COMPLIANCE_KEY_UNIT_TH[key]}` }, { citation: sys.source }));
+  }
+  return { key, value: row?.value ?? null, row, origin, ymd, warnings };
+}
+
+export async function complianceValueAt(ctx: BookCtx, key: ComplianceKey, date: Date): Promise<ComplianceValue> {
+  return complianceValueFrom(await loadBookLegal(ctx), key, date);
+}
+
+/** ตารางค่ากฎหมายอื่นที่มีผล ณ วันที่ (จอ/REST/เลขา) — ทุกคีย์ · แถวระบบ + แถวร้าน */
+export function complianceViewFrom(legal: BookLegal, date: Date) {
+  return {
+    effective: COMPLIANCE_KEYS.map((k) => {
+      const v = complianceValueFrom(legal, k, date);
+      return { key: k, label: COMPLIANCE_KEY_LABEL_TH[k], unit: COMPLIANCE_KEY_UNIT_TH[k], value: v.value, origin: v.origin, source: v.row?.source ?? "", tag: v.row?.tag ?? null, checkedAt: v.row?.checkedAt ?? null, note: v.row?.note ?? null, warnings: v.warnings };
+    }),
+    systemRows: SYSTEM_COMPLIANCE_ROWS,
+    shopRows: legal.compliance ?? [],
   };
 }
 
@@ -468,6 +517,10 @@ export type BookTaxPatch = {
   ewhtEnabled?: boolean;
   grossUpAlways?: WhtGrossUpFormula;
   grossUpOnce?: WhtGrossUpFormula;
+  /** ACC T4.5 · T4.8 ▸ แถวค่ากฎหมายอื่นของร้าน (แทนทั้งชุด · [] = ใช้ค่าเริ่มต้น) ◂ */
+  complianceRows?: Omit<ComplianceRow, "tag">[];
+  /** ACC T4.7 ▸ ทิปที่รับผ่านจุดขาย ◂ */
+  tipTreatment?: TipTreatment;
 };
 
 export type BookTaxSaveResult = (SetResult & { warnings: LegalWarning[] });
@@ -500,6 +553,16 @@ export async function saveBookTax(actor: SettingsActor, ctx: BookCtx, patch: Boo
   if (patch.ewhtEnabled !== undefined) push(ACCOUNT_SETTING_KEYS.ewhtEnabled, patch.ewhtEnabled);
   if (patch.grossUpAlways !== undefined) push(ACCOUNT_SETTING_KEYS.grossUpAlways, patch.grossUpAlways);
   if (patch.grossUpOnce !== undefined) push(ACCOUNT_SETTING_KEYS.grossUpOnce, patch.grossUpOnce);
+  if (patch.complianceRows !== undefined) {
+    const rows = shopify(patch.complianceRows) as ComplianceRow[];
+    const probe: BookLegal = { ...EMPTY_BOOK_LEGAL, compliance: rows };
+    for (const r of rows) warnings.push(...complianceValueFrom(probe, r.key, new Date(`${r.from ?? bkkYmd(accountNow())}T12:00:00+07:00`)).warnings);
+    push(ACCOUNT_SETTING_KEYS.compliance, rows);
+  }
+  if (patch.tipTreatment !== undefined) {
+    push(ACCOUNT_SETTING_KEYS.tipTreatment, patch.tipTreatment);
+    warnings.push(tipTreatmentWarning(patch.tipTreatment));
+  }
   // ACC T3.6 ▸ สูตรที่ต่างจากค่าเริ่ม (สูตรในวงการ [V2]) = แจ้ง (ไม่บล็อก) · ทุกสูตรเป็น [U] (ไม่มีสูตรทางการ) ◂
   if (patch.grossUpAlways !== undefined || patch.grossUpOnce !== undefined)
     warnings.push(legalWarning("WHT_GROSS_UP", { condition: "ออกให้ตลอดไป/ครั้งเดียว", formula: [patch.grossUpAlways, patch.grossUpOnce].filter(Boolean).join(" · "), tax: "ตามสูตร" }));
@@ -546,4 +609,10 @@ export function upcomingDeadlinesFrom(legal: BookLegal, today: Date, forms: read
 
 export async function upcomingDeadlines(ctx: BookCtx, today: Date = accountNow()): Promise<UpcomingDeadline[]> {
   return upcomingDeadlinesFrom(await loadBookLegal(ctx), today);
+}
+
+// ═══════════════════ ACC T4.7 ▸ ทิป 3 ทาง (skill domain-shark-accounting-cases §1.8) ═══════════════════
+/** คำเตือนของทางที่เลือก — ทุกทางมีคำเตือน (ข้อหารือไม่ชี้ตรง) · ไม่บล็อก */
+export function tipTreatmentWarning(t: TipTreatment): LegalWarning {
+  return legalWarning(t === "REVENUE_VAT" ? "POS_TIP_REVENUE_VAT" : t === "STAFF_DIRECT" ? "POS_TIP_STAFF_DIRECT" : "POS_TIP_LIABILITY_REVIEW");
 }

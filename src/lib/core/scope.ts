@@ -233,6 +233,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   SupportCase: tenant,
   SupportMessage: tenant,
   PlatformAuditLog: { axis: "platform", why: "audit การกระทำฝั่งแพลตฟอร์ม — tenantDb ห้ามแตะ" },
+  TenantDeletionLog: { axis: "platform", why: "ACC T4.5: log การลบร้าน ต้องอยู่ต่อหลังร้านถูกลบ (ไม่อยู่ในชุดที่ purge กวาด) — เขียนผ่าน platform/pdpa.ts" },
   // การเงิน (WO-0023) + storage (WO-0024)
   PaymentProfile: tenant,
   PlatformInvoice: tenant, // ร้านอ่านของตัวเอง · backoffice เขียนผ่าน src/lib/platform (prisma ตรง)

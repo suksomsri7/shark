@@ -660,3 +660,46 @@ export const SYSTEM_WHT_FORM_ROWS: readonly WhtFormRow[] = [
   wf("sys-whtform-fi-50-1", { incomeTypes: ["M40_1", "M40_2"], recipient: "FOREIGN_INDIVIDUAL", form: "PND1", certBox: 1, annualForm: "PND1K", source: `${WHT_REF} §5 (ม.50(1) ว.สี่ ร้อยละ 15 · ค่าเริ่มต้นไม่หัก) — แหล่งไม่ระบุแบบ`, tag: "U", checkedAt: "2026-11-13", note: "ไม่พบแหล่งที่ระบุแบบของผู้รับประเภทนี้" }),
   wf("sys-whtform-fi-any", { incomeTypes: "ANY", recipient: "FOREIGN_INDIVIDUAL", form: "PND3", certBox: 4, source: `${WHT_REF} §1 — แหล่งไม่ระบุแบบของผู้รับบุคคลธรรมดาต่างประเทศ`, tag: "U", checkedAt: "2026-11-13", note: "ไม่พบแหล่งที่ระบุแบบของผู้รับประเภทนี้" }),
 ];
+
+// ═══════════════════ ACC T4.5 · T4.8 (เลน 1) ▸ ค่ากฎหมายที่ไม่ใช่อัตราภาษี ═══════════════════
+// ตัวเลขกฎหมายของการเก็บเอกสาร (ลบร้าน) และเงินประกันหอพัก — แถวระบบจาก skill · ร้านทับได้ (ค่าตั้ง `account.legal.complianceValues`)
+// ตัวอ่าน: legal-values.ts `legalValueAt("compliance", date, ctx, { key })`
+export const COMPLIANCE_KEYS = [
+  "BOOKS_RETENTION_YEARS",
+  "BOOKS_RETENTION_SUGGESTED_YEARS",
+  "DORM_DEPOSIT_MAX_RENT_MULTIPLE",
+  "DORM_DEPOSIT_MAX_CONTRACT_YEARS",
+] as const;
+export type ComplianceKey = (typeof COMPLIANCE_KEYS)[number];
+export const isComplianceKey = (v: unknown): v is ComplianceKey => typeof v === "string" && (COMPLIANCE_KEYS as readonly string[]).includes(v);
+export const COMPLIANCE_KEY_LABEL_TH: Record<ComplianceKey, string> = {
+  BOOKS_RETENTION_YEARS: "ระยะเก็บบัญชีและเอกสารประกอบ (ขั้นต่ำ)",
+  BOOKS_RETENTION_SUGGESTED_YEARS: "ระยะเก็บที่ระบบแนะนำ",
+  DORM_DEPOSIT_MAX_RENT_MULTIPLE: "เงินประกันหอพักไม่เกินกี่เท่าของค่าเช่ารายเดือน",
+  DORM_DEPOSIT_MAX_CONTRACT_YEARS: "สัญญาเช่าหอพักไม่เกินกี่ปี (เงินประกันไม่ถือเป็นรายได้)",
+};
+export const COMPLIANCE_KEY_UNIT_TH: Record<ComplianceKey, string> = {
+  BOOKS_RETENTION_YEARS: "ปี",
+  BOOKS_RETENTION_SUGGESTED_YEARS: "ปี",
+  DORM_DEPOSIT_MAX_RENT_MULTIPLE: "เท่า",
+  DORM_DEPOSIT_MAX_CONTRACT_YEARS: "ปี",
+};
+export type ComplianceRow = RowBase & { key: ComplianceKey };
+const T4_BOOKS_REF = "references/domain-accounting-books.md";
+const CASES_REF = "references/domain-shark-accounting-cases.md";
+export const SYSTEM_COMPLIANCE_ROWS: readonly ComplianceRow[] = [
+  { id: "sys-cmp-retention", key: "BOOKS_RETENTION_YEARS", value: 5, from: null, to: null, source: `${T4_BOOKS_REF} §ก4 — พ.ร.บ.การบัญชี พ.ศ. 2543 ม.14: ไม่น้อยกว่าห้าปีนับแต่วันปิดบัญชี · ประมวลรัษฎากร ม.87/3 (รายงานภาษี) · ม.105 ทวิ (ใบรับ 5 ปีนับแต่วันออก)`, tag: "V", checkedAt: "2026-11-13", note: "จุดเริ่มนับต่างกัน: บัญชี = วันปิดบัญชี · รายงานภาษี = วันยื่นแบบ · ใบรับ = วันออก" },
+  { id: "sys-cmp-retention-suggest", key: "BOOKS_RETENTION_SUGGESTED_YEARS", value: 7, from: null, to: null, source: `${T4_BOOKS_REF} §ก4 — ระบบเสนอ 7 ปี (พ.ร.บ.การบัญชี ม.14 ให้อธิบดีกำหนดเกินห้าปีได้แต่ไม่เกินเจ็ดปี · ไม่พบประกาศที่ใช้อำนาจนี้)`, tag: "U", checkedAt: "2026-11-13", note: "ค่าแนะนำของระบบ ไม่ใช่ข้อกำหนด" },
+  { id: "sys-cmp-dorm-deposit-multiple", key: "DORM_DEPOSIT_MAX_RENT_MULTIPLE", value: 6, from: null, to: null, source: `${CASES_REF} §2.2 — คำสั่ง ป.73/2541 ข้อ 3(2)(ค): ไม่เกิน 6 เท่าของค่าเช่ารายเดือน`, tag: "V", checkedAt: "2026-11-13" },
+  { id: "sys-cmp-dorm-contract-years", key: "DORM_DEPOSIT_MAX_CONTRACT_YEARS", value: 3, from: null, to: null, source: `${CASES_REF} §2.2 — คำสั่ง ป.73/2541 ข้อ 3(2)(ง): สัญญาไม่เกิน 3 ปี`, tag: "V", checkedAt: "2026-11-13" },
+];
+
+/** แถวที่ใช้ ณ วันที่: แถวร้านที่ครอบวันชนะแถวระบบ · from ล่าสุดชนะ */
+export function pickComplianceRow(shop: readonly ComplianceRow[], key: ComplianceKey, ymd: Ymd): { row: ComplianceRow | null; origin: "SHOP" | "SYSTEM" | null } {
+  const covers = (r: ComplianceRow) => r.key === key && (r.from === null || r.from <= ymd) && (r.to === null || r.to >= ymd);
+  const latest = (rows: readonly ComplianceRow[]) => [...rows].filter(covers).sort((a, b) => (b.from ?? "").localeCompare(a.from ?? ""))[0] ?? null;
+  const s = latest(shop);
+  if (s) return { row: s, origin: "SHOP" };
+  const y = latest(SYSTEM_COMPLIANCE_ROWS);
+  return y ? { row: y, origin: "SYSTEM" } : { row: null, origin: null };
+}
