@@ -187,10 +187,11 @@ export const gatedOf = (href: string) => (ROUTE_RE.exec(href)?.[1] === "employee
 
 // ═════════════ goldens measured on base ea2b41ea1 (QC_PRIV3_MEASURE=1 · 2 runs identical) — entitled viewers must keep them ═════════════
 //   pages: "<fixture keys seen>|sha16(testids)|n" · leave cells exclude the filing form (R3 changes it) · control/nav/hub: outcome / sha16 of non-gated hrefs / hub links|first "n คน"
-type Gold = { cycle?: string[]; pages?: Record<string, string>; control?: Record<string, string>; picker?: Record<string, string>; nav?: Record<string, string>; hub?: Record<string, string> };
+type Gold = { xs?: string; cycle?: string[]; pages?: Record<string, string>; control?: Record<string, string>; picker?: Record<string, string>; nav?: Record<string, string>; hub?: Record<string, string> };
 /** "O:ok M:404 …" per page → { "page.O": "ok", "page.M": "NEXT_HTTP_ERROR_FALLBACK;404" } */
 const unpack = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).flatMap(([pg, s]) => s.split(" ").map((x) => { const [v, k] = x.split(":"); return [`${pg}.${v}`, k === "404" ? "NEXT_HTTP_ERROR_FALLBACK;404" : k!]; })));
 export const GOLD: Gold = {
+ xs: "ok|-|form:n", // r2 R9 · 44a75f37a
  cycle: ["src/lib/modules/hr/judge.ts", "src/lib/modules/hr/payroll.ts", "src/lib/modules/hr/roster-board.ts", "src/lib/modules/hr/work-entries.ts"],
  pages: {
   "register.O": "e1e2e3e4e5e6e7|b81b2621bee09a78|8",
@@ -212,18 +213,21 @@ export const GOLD: Gold = {
   "payroll.MB": "e1e2e4e7|0802a8ff261a91a1|18",
   "payroll.P": "e1e2e3e4e5e6e7|07bd63a74da29600|43",
   "payroll.PB": "e1e2e4e7|f92d71370225ba96|21",
+  "leave.PR": "e1e2e3e4e6e7|7ee7d8d31c899a18|3", // r2 R9 · measured on 44a75f37a
+  "leave.PA": "e2e3|69f7236813fcf746|4", // r2 R9 · measured on 44a75f37a
+  "payroll.PR": "e1e2e3e4e6e7|e9f214478c45cc28|15", // r2 R9 · measured on 44a75f37a
  },
  control: unpack({
-  hub: "O:ok M:ok MB:ok P:ok PB:ok S:ok S0:ok SR:ok SD:ok K:ok N:ok",
-  attendance: "O:ok M:ok MB:ok P:404 PB:404 S:ok S0:ok SR:404 SD:404 K:404 N:404",
-  roster: "O:ok M:ok MB:ok P:404 PB:404 S:404 S0:404 SR:404 SD:404 K:404 N:404",
-  kiosk: "O:ok M:ok MB:ok P:404 PB:404 S:404 S0:404 SR:404 SD:404 K:ok N:404",
-  requests: "O:ok M:ok MB:ok P:ok PB:ok S:404 S0:404 SR:404 SD:ok K:404 N:404",
-  reports: "O:ok M:ok MB:ok P:ok PB:ok S:404 S0:404 SR:404 SD:ok K:404 N:404",
-  settings: "O:ok M:ok MB:ok P:404 PB:404 S:404 S0:404 SR:404 SD:404 K:404 N:404",
-  law: "O:ok M:ok MB:ok P:404 PB:404 S:404 S0:404 SR:404 SD:404 K:404 N:404",
+  hub: "O:ok M:ok MB:ok P:ok PB:ok S:ok S0:ok SR:ok SD:ok K:ok N:ok PR:ok PA:ok",
+  attendance: "O:ok M:ok MB:ok P:404 PB:404 S:ok S0:ok SR:404 SD:404 K:404 N:404 PR:404 PA:404",
+  roster: "O:ok M:ok MB:ok P:404 PB:404 S:404 S0:404 SR:404 SD:404 K:404 N:404 PR:404 PA:404",
+  kiosk: "O:ok M:ok MB:ok P:404 PB:404 S:404 S0:404 SR:404 SD:404 K:ok N:404 PR:404 PA:404",
+  requests: "O:ok M:ok MB:ok P:ok PB:ok S:404 S0:404 SR:404 SD:ok K:404 N:404 PR:404 PA:ok",
+  reports: "O:ok M:ok MB:ok P:ok PB:ok S:404 S0:404 SR:404 SD:ok K:404 N:404 PR:404 PA:404",
+  settings: "O:ok M:ok MB:ok P:404 PB:404 S:404 S0:404 SR:404 SD:404 K:404 N:404 PR:404 PA:404",
+  law: "O:ok M:ok MB:ok P:404 PB:404 S:404 S0:404 SR:404 SD:404 K:404 N:404 PR:404 PA:404",
  }),
  picker: {"O": "e1,e2,e3,e4,e6,e7", "M": "e1,e2,e3,e4,e6,e7", "MB": "e1,e2,e4,e7", "P": "e1,e2,e3,e4,e6,e7", "PB": "e1,e2,e4,e7", "S": "e1,e2,e3,e4,e6,e7", "SR": "e1,e2,e3,e4,e6,e7", "SD": "e1,e2,e3,e4,e6,e7"},
- nav: {"O": "cd91126ce675553b", "O+L": "e17fc8d4f5e9d02f", "M": "cd91126ce675553b", "M+L": "e17fc8d4f5e9d02f", "MB": "cd91126ce675553b", "MB+L": "e17fc8d4f5e9d02f", "P": "14f7814f73aa18c5", "P+L": "ddceeb07bd12eb16", "PB": "14f7814f73aa18c5", "PB+L": "ddceeb07bd12eb16", "S": "040a6263c09e16d7", "S+L": "3c0b3a58827a0e37", "S0": "040a6263c09e16d7", "S0+L": "3c0b3a58827a0e37", "SR": "040a6263c09e16d7", "SR+L": "3c0b3a58827a0e37", "SD": "14f7814f73aa18c5", "SD+L": "ddceeb07bd12eb16", "K": "5376633c94c41a21", "K+L": "8e0daf2454570a2d", "N": "040a6263c09e16d7", "N+L": "3c0b3a58827a0e37"},
- hub: {"O": "ac4dfe0d4aed6d66|6", "M": "ac4dfe0d4aed6d66|6", "MB": "ac4dfe0d4aed6d66|4", "P": "6369a38186eee9c8|6", "PB": "ef71fdc31ae76d0e|1", "S": "b0a6102daa942ffa|6", "S0": "b0a6102daa942ffa|6", "SR": "b22af5dae3961cd4|6", "SD": "6369a38186eee9c8|6", "K": "4a8c2bd596c43dd3|6", "N": "b22af5dae3961cd4|6"},
+ nav: {"O": "cd91126ce675553b", "O+L": "e17fc8d4f5e9d02f", "M": "cd91126ce675553b", "M+L": "e17fc8d4f5e9d02f", "MB": "cd91126ce675553b", "MB+L": "e17fc8d4f5e9d02f", "P": "14f7814f73aa18c5", "P+L": "ddceeb07bd12eb16", "PB": "14f7814f73aa18c5", "PB+L": "ddceeb07bd12eb16", "S": "040a6263c09e16d7", "S+L": "3c0b3a58827a0e37", "S0": "040a6263c09e16d7", "S0+L": "3c0b3a58827a0e37", "SR": "040a6263c09e16d7", "SR+L": "3c0b3a58827a0e37", "SD": "14f7814f73aa18c5", "SD+L": "ddceeb07bd12eb16", "K": "5376633c94c41a21", "K+L": "8e0daf2454570a2d", "N": "040a6263c09e16d7", "N+L": "3c0b3a58827a0e37", "PR": "040a6263c09e16d7", "PR+L": "3c0b3a58827a0e37", "PA": "14f7814f73aa18c5", "PA+L": "ddceeb07bd12eb16"},
+ hub: {"O": "ac4dfe0d4aed6d66|6", "M": "ac4dfe0d4aed6d66|6", "MB": "ac4dfe0d4aed6d66|4", "P": "6369a38186eee9c8|6", "PB": "ef71fdc31ae76d0e|1", "S": "b0a6102daa942ffa|6", "S0": "b0a6102daa942ffa|6", "SR": "b22af5dae3961cd4|6", "SD": "6369a38186eee9c8|6", "K": "4a8c2bd596c43dd3|6", "N": "b22af5dae3961cd4|6", "PR": "3ec4c825dc74ba63|", "PA": "1841919fb3ad1957|"},
 };

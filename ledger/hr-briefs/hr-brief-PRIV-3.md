@@ -90,3 +90,25 @@ Unverified: transitive import-cycle freedom of R1 (builder proves it); whether `
 - One shared helper (`hrPageAccessOf` / `requireHrPage`) built only from existing checks; a not-entitled role gets the app's standard not-found response, byte-identical to an unknown system/page, on the page; every server action on these pages keeps refusing (pinned by GREEN controls).
 - Merge order: PRIV-3 → VIS-5a → VIS-5b → VIS-5c. The VIS tickets re-merge session/hr after PRIV-3 lands; their oracle authors update the checks that pin today's unguarded state (vis-5c S8, vis-5b `hrNavFilter` pin).
 - Controller ORACLE-EDITs authorised for the builder, marked `ORACLE-EDIT (HR PRIV-3 · controller)`: `fitness-hr` `PAGE_GUARD_BASELINE` minus the three pages; `qc-hr-h2.10` S7.1 (tabs shown per the helper, not always); inventory `roles`/`hiddenFor` rows; walk matrix. Anything else: explicit allowlist style, listed in notes.
+
+## CONTROLLER RULINGS r2 (review = MERGE WITH NOTES · privacy hunt `/tmp/hr-ctl/priv3-hunt/` A pages/routes · B actions · C other-tenant owner) — added to this ticket
+- **R6 (MAJOR):** `setSalaryProfileAction` (`payroll-actions.ts` ~70–93) never checks that `systemId` is an HR system of the caller's tenant. `payTarget` (~59–61) returns `{}` for an unknown employee, which skips the branch check, and `payroll.ts:94` then creates the row.
+  - A foreign OWNER (or any holder of `hr.payroll.create`) sends our system id with an unknown employee id. The result is an `HrSalaryProfile` row in their own tenant, pointing at our system.
+  - With a real employee id of ours, the unique key `(systemId, employeeId)` throws. This is an existence oracle across tenants. If that employee has no profile yet, the foreign row squats the key and blocks our shop from creating one.
+  - `markPaidAction`, `reverseRunAction` and `reverseRunV2Action` write audit rows in the caller's tenant for a foreign run id.
+  - **Required:** every server action in the payroll action files first resolves the HR system row (`id`, the caller's tenant, type HR). Where an employee, run or adjustment id is given, it then resolves that row inside that system, through `tenantDb(ctx)`.
+  - A missing or foreign row gets ONE fixed refusal, identical for unknown and foreign ids, and nothing is written in ANY tenant (row counts incl. audit, both tenants).
+  - Same-tenant behaviour is unchanged. Our owner can still create the profile after a foreign attempt.
+  - *Oracle (qc-hr-priv-3b X3):* `createPayrollRunAction` also writes for a foreign or unknown system id. A foreign OWNER gets `{ok:true}` and an `HrPayrollRun` plus `HrPayrollItem` rows in their own tenant pointing at our (or a non-existent) system. It is in scope of R6.
+- **R7 (MINOR):** cancel/respond actions answer differently for "exists but not yours" and "unknown id": leave (`service.ts:449/450`), OT (`ot.ts:302`), swap (`swap.ts:393/451`).
+  - **Required:** one fixed text for both cases, for any caller who is not a party or not entitled. Checks for K, N and an unrelated staff member.
+  - *Oracle:* the form paths `cancelLeaveAction`, `cancelOtAction`, `respondSwapAction` and `cancelSwapAction` differ. The self paths (`self*Action`) already answer the same.
+- **R8 (MINOR):** `kioskClockAction` with an arbitrary employee id and a wrong PIN returns the employee's name and "no PIN set" (`pin.ts:36,380`).
+  - **Required:** the same "PIN ไม่ถูกต้อง" for an unknown id, a no-PIN employee and a wrong PIN, with no name in the reply. The exception is employees on the kiosk's own selectable list, whose names the kiosk page already shows.
+  - *Oracle finding:* `kioskRoster` (the kiosk page) lists every active employee in the kiosk's scope, including no-PIN ones (the "ยังไม่มี PIN" section). The name reply happens only for those listed employees.
+  - Off-list ids already answer exactly "PIN ไม่ถูกต้อง": unknown, inactive, another HR system, another tenant, and another branch for a branch kiosk. So does a wrong PIN.
+  - Under this ruling R8 needs no code change; it is pinned GREEN (3b K1/K2).
+- **R9:** oracle gaps from the review.
+  - Add viewers holding exactly one key to the page matrix: `hr.payadjust.request` only (leave ✓ · payroll ✓ via stock charge · register ✗) and `hr.payadjust.approve` only (leave ✓ · payroll ✗ · register ✗).
+  - G1 pins the truth table that `qc-hr-h2.10` S7.1 now follows.
+  - A staff member of ANOTHER HR system in the same shop opening this system's `/hr/leave` gets a render with no data today. This is debt, not fixed here; the current outcome is pinned as a GREEN control.

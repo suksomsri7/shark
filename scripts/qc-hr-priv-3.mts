@@ -1,6 +1,6 @@
 // QC HR PRIV-3 page role gates (employees / leave / payroll) · brief hr-brief-PRIV-3.md (+ CONTROLLER RULINGS) · notes hr-PRIV-3-oracle.md · ⚠️ ORACLE-EDIT only · QC_FORCE=1 · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-priv-3.mts
-//   QC_PRIV3_MEASURE=1 prints the measured goldens (GOLD) — taken on base ea2b41ea1 and pasted below; entitled viewers must keep them after the build
+//   QC_PRIV3_MEASURE=1 prints the measured goldens (GOLD) — taken on base ea2b41ea1 (r2 cells on 44a75f37a) · registry base column re-based to 44a75f37a (PRIV-3 build): all GREEN · r2 RED items live in qc-hr-priv-3b.mts
 import { type Any, type Def, ROOT, rd, errText, canon, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, sha, srcFiles, stripComments, QUERY_COUNTER } from "./qc-hr-lib.mjs";
 import { installNetGuard } from "./qc-hr-h4.3-lib.mjs";
 import { bodyOf } from "./qc-hr-priv-2-lib.mjs";
@@ -14,25 +14,26 @@ const MK = "HR PRIV-3", OE = "ORACLE-EDIT (HR PRIV-3";
 
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
 const CHECKS: Def[] = [
- D("S1", "R1", "CR", "[static] one helper hrPageAccessOf/requireHrPage in privacy.ts, built from existing predicates · no copy · no inline evaluate in pages/ui/nav hunks"),
- D("S2", "R2 R7", "CR", "[static] 3 pages import requireHrPage + call it after the system check and before any data read · fitness pageGuard guarded · PAGE_GUARD_BASELINE −3 (kiosk kept)"),
- D("S3", "R3 R4 R5", "MR", "[static] nav gateOf + requestLeaveAction + HrLeaveSection + HrHub use the helper · hrTabs/HrOtSection bodies = base"),
+ D("S1", "R1", "CG", "[static] one helper hrPageAccessOf/requireHrPage in privacy.ts, built from existing predicates · no copy · no inline evaluate in pages/ui/nav hunks"),
+ D("S2", "R2 R7", "CG", "[static] 3 pages import requireHrPage + call it after the system check and before any data read · fitness pageGuard guarded · PAGE_GUARD_BASELINE −3 (kiosk kept)"),
+ D("S3", "R3 R4 R5", "MG", "[static] nav gateOf + requestLeaveAction + HrLeaveSection + HrHub use the helper · hrTabs/HrOtSection bodies = base"),
  D("S4", "§files", "MG", "[static] allowed files only (incl. .mts) · ui/actions hunks in their ranges · every src hunk marked HR PRIV-3 · oracle edits marked · payroll-rules sha · no migration"),
  D("S5", "R1", "mG", "[static] no new import cycle through privacy.ts"),
- D("G1", "R1", "CR", "hrPageAccessOf truth table (11 viewers + API key) · requireHrPage = table · malformed viewer ⇒ all false"),
- D("P1", "R2 Q1", "CR", "/hr/employees K N S S0 SR ⇒ not-found identical to unknown system (digest + SQL count) · nothing rendered"),
- D("P2", "R2 Q6", "CR", "/hr/leave K N S0 ⇒ not-found identical to unknown system · nothing rendered"),
- D("P3", "R2 Q3", "MR", "/hr/payroll K N S S0 SR SD ⇒ not-found identical to unknown system · nothing rendered"),
+ D("G1", "R1", "CG", "hrPageAccessOf truth table (13 viewers incl. r2 PR/PA + API key) · requireHrPage = table · malformed viewer ⇒ all false — the table qc-hr-h2.10 S7.1 now follows (pinned here)"),
+ D("P1", "R2 Q1", "CG", "/hr/employees K N S S0 SR PR PA ⇒ not-found identical to unknown system (digest + SQL count) · nothing rendered"),
+ D("P2", "R2 Q6", "CG", "/hr/leave K N S0 ⇒ not-found identical to unknown system · nothing rendered"),
+ D("P3", "R2 Q3", "MG", "/hr/payroll K N S S0 SR SD PA ⇒ not-found identical to unknown system · nothing rendered"),
  D("P4", "-", "CG", "[control] /hr/employees/[id]: K N ⇒ not-found = unknown employee · S own ⇒ redirect /app/me/hr/profile · S other ⇒ not-found · entitled open in-scope"),
  D("P5", "R2", "CG", "[control] /hr/employees entitled (O M MB P PB SD): names + testids = base"),
- D("P6", "R2 R3", "CG", "[control] /hr/leave entitled (O M MB P PB S SR SD): names + testids outside the filing form = base"),
- D("P7", "R2", "CG", "[control] /hr/payroll entitled (O M MB P PB): names + testids = base"),
+ D("P6", "R2 R3", "CG", "[control] /hr/leave entitled (O M MB P PB S SR SD PR PA): names + testids outside the filing form = base"),
+ D("P7", "R2", "CG", "[control] /hr/payroll entitled (O M MB P PB PR): names + testids = base"),
  D("P8", "-", "MG", "[control] other HR pages (hub · attendance · roster · kiosk · requests · reports · settings · law) outcome per viewer = base"),
  D("P9", "-", "MG", "[control] unknown system id ⇒ not-found on the 3 pages for every viewer"),
- D("L1", "R3", "CR", "leave picker: S P PB SR ⇒ no employee options · S keeps self form · P PB SR no form · S page/props carry no other employee"),
+ D("P10", "r2 R9", "mG", "[control · debt] staff of another HR system of the same shop on this /hr/leave: outcome = 44a75f37a (renders, no employee of this system)"),
+ D("L1", "R3", "CG", "leave picker: S P PB SR PR PA ⇒ no employee options · S keeps self form · P PB SR PR PA no form · S page/props carry no other employee"),
  D("L2", "R3", "CG", "[control] leave picker O M MB SD = base option set"),
- D("N1", "R4", "MR", "hrNavFilter (tabs + sidebar): employees/leave/payroll iff gate · other items = base"),
- D("N2", "R5", "MR", "hub: no card/tab/link to a gated page · no headcount for K N S"),
+ D("N1", "R4", "MG", "hrNavFilter (tabs + sidebar): employees/leave/payroll iff gate · other items = base"),
+ D("N2", "R5", "MG", "hub: no card/tab/link to a gated page · no headcount for viewers without the register"),
  D("N3", "R5", "MG", "[control] hub entitled (O M MB P PB): links + headcount = base"),
  D("N4", "R4", "mG", "[control] tabs on rendered entitled pages = hrNavFilter of the viewer"),
  D("A1", "§15", "CG", "[control] register actions as K N S: refused · nothing written (rows + audit) · same outcome real vs unknown id"),
@@ -148,12 +149,12 @@ const SLUG = `${PFX}${Date.now()}${tag}`, fx = makeFixtures(P, coreHash, SLUG);
 const D0 = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
 const unk = () => `c${Math.random().toString(36).slice(2, 12)}zq${Math.random().toString(36).slice(2, 10)}`;
 const PAYK = { "hr.payroll.read": true, "hr.payroll.create": true, "hr.payroll.approve": true, "hr.payroll.pay": true, "hr.payroll.reverse": true, "hr.payadjust.request": true, "hr.payadjust.approve": true, "hr.payadjust.reject": true };
-type VK = "O" | "M" | "MB" | "P" | "PB" | "S" | "S0" | "SR" | "SD" | "K" | "N";
-const VKS: VK[] = ["O", "M", "MB", "P", "PB", "S", "S0", "SR", "SD", "K", "N"];
+type VK = "O" | "M" | "MB" | "P" | "PB" | "S" | "S0" | "SR" | "SD" | "PR" | "PA" | "K" | "N";
+const VKS: VK[] = ["O", "M", "MB", "P", "PB", "S", "S0", "SR", "SD", "PR", "PA", "K", "N"]; // r2 R9: PR = only hr.payadjust.request · PA = only hr.payadjust.approve
 //                       register leave payroll onBehalf (brief R1 + rulings Q1/Q3/Q6)
 const TRUTH: Record<VK | "API", [boolean, boolean, boolean, boolean]> = {
  O: [true, true, true, true], M: [true, true, true, true], MB: [true, true, true, true], P: [true, true, true, false], PB: [true, true, true, false],
- S: [false, true, false, false], S0: [false, false, false, false], SR: [false, true, false, false], SD: [true, true, false, true], K: [false, false, false, false], N: [false, false, false, false], API: [true, false, false, false],
+ S: [false, true, false, false], S0: [false, false, false, false], SR: [false, true, false, false], SD: [true, true, false, true], PR: [false, true, true, false], PA: [false, true, false, false], K: [false, false, false, false], N: [false, false, false, false], API: [true, false, false, false],
 };
 const LINKED: Partial<Record<VK, string>> = { S: "e1", S0: "e7" };
 async function buildFixture() {
@@ -163,11 +164,14 @@ async function buildFixture() {
  for (const u of [U1, U2]) await M.sys.linkUnit(T, HRS, u).catch(() => undefined);
  const sc = { tenantId: T, systemId: HRS };
  const mk = (k: string, r: "OWNER" | "MANAGER" | "STAFF", ua: string[], p: Record<string, boolean>) => fx.mkUser(T, k.toLowerCase(), `QCP3 user${k} ${tag}`, r, ua, p);
- const W: Record<VK, Any> = {
+ const W: Record<string, Any> = {
   O: await mk("O", "OWNER", [], {}), M: await mk("M", "MANAGER", ["*"], {}), MB: await mk("MB", "MANAGER", [U1], {}), P: await mk("P", "STAFF", ["*"], PAYK), PB: await mk("PB", "STAFF", [U1], PAYK),
   S: await mk("S", "STAFF", ["*"], { "hr.leave.request": true }), S0: await mk("S0", "STAFF", ["*"], {}), SR: await mk("SR", "STAFF", ["*"], { "hr.leave.request": true }),
   SD: await mk("SD", "STAFF", ["*"], { "hr.leave.request": true, "hr.leave.read": true, "hr.leave.decide": true }), K: await mk("K", "STAFF", ["*"], { "hr.attendance.clock": true }), N: await mk("N", "STAFF", [], {}),
+  PR: await mk("PR", "STAFF", ["*"], { "hr.payadjust.request": true }), PA: await mk("PA", "STAFF", ["*"], { "hr.payadjust.approve": true }), XS: await mk("XS", "STAFF", ["*"], { "hr.leave.request": true }),
  };
+ const HRS3 = (await M.sys.createSystem(T, "HR", `HR3 ${tag}`)).id as string; // r2 R9: another HR system of the same shop · XS = its linked staff
+ const xs = await fx.mkEmp(T, HRS3, `QCP3 xs ${tag}`, { code: "XS1", linkedUserId: W.XS.id });
  const defs: [string, string | null, Record<string, Any>][] = [["e1", U1, { linkedUserId: W.S.id }], ["e2", U1, {}], ["e3", U2, {}], ["e4", U2, {}], ["e5", U1, { active: false }], ["e6", null, {}], ["e7", U1, { linkedUserId: W.S0.id }]];
  const E: Record<string, { k: string; id: string; name: string }> = {};
  for (const [i, [k, u, o]] of defs.entries()) {
@@ -183,7 +187,7 @@ async function buildFixture() {
  const bkk = (day: string, min: number) => new Date(Date.parse(`${day}T00:00:00+07:00`) + min * 60_000);
  const ot = (e: string, day: string, status: string) => P.hrOtRequest.create({ data: { ...sc, employeeId: E[e]!.id, date: dbDate(day), startAt: bkk(day, 1080), endAt: bkk(day, 1140), minutes: 60, timing: "BEFORE", reason: "ปิดร้าน", status } }).then((r: Any) => r.id as string);
  const otP = await ot("e3", addDay(D0, 2), "PENDING"), otA = await ot("e2", addDay(D0, 3), "APPROVED");
- return { T, T2, U1, U2, HRS, HRS2, W, E, x1, doc, leave, otP, otA };
+ return { T, T2, U1, U2, HRS, HRS2, HRS3, xs, W, E, x1, doc, leave, otP, otA };
 }
 
 let crashed = "";
@@ -230,8 +234,8 @@ try {
  const R3: Record<string, Rendered> = {};
  {
   const refuse: Record<string, string[]> = { P1: [], P2: [], P3: [] }, gBad: Record<string, string[]> = { P5: [], P6: [], P7: [] }, p9: string[] = [];
-  const REFUSED: Record<string, VK[]> = { register: ["K", "N", "S", "S0", "SR"], leave: ["K", "N", "S0"], payroll: ["K", "N", "S", "S0", "SR", "SD"] };
-  const ENT: Record<string, VK[]> = { register: ["O", "M", "MB", "P", "PB", "SD"], leave: ["O", "M", "MB", "P", "PB", "S", "SR", "SD"], payroll: ["O", "M", "MB", "P", "PB"] };
+  const REFUSED: Record<string, VK[]> = { register: ["K", "N", "S", "S0", "SR", "PR", "PA"], leave: ["K", "N", "S0"], payroll: ["K", "N", "S", "S0", "SR", "SD", "PA"] };
+  const ENT: Record<string, VK[]> = { register: ["O", "M", "MB", "P", "PB", "SD"], leave: ["O", "M", "MB", "P", "PB", "S", "SR", "SD", "PR", "PA"], payroll: ["O", "M", "MB", "P", "PB", "PR"] };
   const ID: Record<string, [string, string]> = { register: ["P1", "P5"], leave: ["P2", "P6"], payroll: ["P3", "P7"] };
   for (const [pg, [mod, seg]] of Object.entries(MODS)) {
    for (const k of VKS) {
@@ -266,6 +270,14 @@ try {
   for (const k of ["O", "M", "MB", "P", "PB"] as VK[]) { const a = await prof(k, E.e2!.id); if (kind(a) !== "ok" || !a.html.includes(E.e2!.name)) bad.push(`${k}:${kind(a)}`); }
   chk("P4", !bad.length, "as listed", L(bad));
  }
+ // ── P10 (r2 R9 · debt, not fixed here) staff of ANOTHER HR system of the same shop on this system's /hr/leave — current outcome pinned ──
+ {
+  mute();
+  const r = await renderPage(M.leave, W.XS.cookie, pathOf("leave"), { id: HRS }).finally(unmute);
+  const got = `${kind(r)}|${seen(r).join("") || "-"}|form:${leaveForm(r.html) ? "y" : "n"}`;
+  gold.xs = got;
+  chk("P10", got === GOLD.xs, GOLD.xs ?? "measure", got);
+ }
  // ── P8 other HR pages ──
  {
   const CTL: [string, Any, string, Record<string, string>][] = [["hub", M.hub, `/app/sys/${HRS}`, {}], ["attendance", M.att, pathOf("attendance"), {}], ["roster", M.roster, pathOf("roster"), {}], ["kiosk", M.kiosk, pathOf("kiosk"), {}], ["requests", M.req, pathOf("requests"), {}], ["reports", M.rep, pathOf("reports"), {}], ["settings", M.set, pathOf("settings"), {}], ["law", M.law, pathOf("settings/law"), {}]];
@@ -283,10 +295,10 @@ try {
  {
   const l1: string[] = [], l2: string[] = [], opt: Record<string, string> = {};
   const keyOf = (id: string) => keys.find((k) => E[k]!.id === id) ?? "?";
-  for (const k of ["O", "M", "MB", "P", "PB", "S", "SR", "SD"] as VK[]) {
+  for (const k of ["O", "M", "MB", "P", "PB", "S", "SR", "SD", "PR", "PA"] as VK[]) {
    const r = R3[`leave.${k}`]!, form = leaveForm(r.html), o = employeeOptions(form).map(keyOf).sort().join(",");
    opt[k] = o;
-   if (["S", "P", "PB", "SR"].includes(k)) {
+   if (["S", "P", "PB", "SR", "PR", "PA"].includes(k)) {
     if (o) l1.push(`${k}:options ${o}`);
     if (k === "S" && (!form || /name="employeeId"/.test(form))) l1.push(`S:form ${!!form}`);
     if (k !== "S" && form) l1.push(`${k}:form`);
@@ -322,7 +334,7 @@ try {
    const links = hrefsIn(r.html), T = TRUTH[k];
    const dead = links.filter((x) => { const g = gatedOf(x); return g && !T[g === "register" ? 0 : g === "leave" ? 1 : 2]; });
    const head = /(\d+) คน/.exec(textOfHtml(r.html))?.[1] ?? "";
-   if (["K", "N", "S", "S0", "SR"].includes(k)) { if (dead.length) n2.push(`${k}:links ${dead.map((x) => x.replace(/.*\/hr\//, "")).join("/")}`); const hc = /พนักงาน\s*(\d+)\s*คน/.exec(textOfHtml(r.html))?.[1]; if (hc) n2.push(`${k}:count ${hc}`); }
+   if (!T[0]) { if (dead.length) n2.push(`${k}:links ${dead.map((x) => x.replace(/.*\/hr\//, "")).join("/")}`); const hc = /พนักงาน\s*(\d+)\s*คน/.exec(textOfHtml(r.html))?.[1]; if (hc) n2.push(`${k}:count ${hc}`); }
    else if (dead.length) n2.push(`${k}:dead ${dead.join("/")}`);
    const c = `${sha16(links.map((x) => x.replace(HRS, "*")).sort().join(","))}|${head}`;
    hubG[k] = c;

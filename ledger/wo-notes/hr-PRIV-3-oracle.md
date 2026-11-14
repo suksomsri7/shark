@@ -87,3 +87,51 @@ Targeted tsc on the two files: exit 0, 0 errors.
 4. "Every HR page calls the helper": the brief's R2 limits the call to the 3 pages, and the kiosk page stays on `canRunKiosk` (Q4). S2 checks the 3 pages; P8 pins the outcomes of the other pages.
 5. Side observation, out of scope: for an invalid `period`, reports/export answers 400 on a real system but 404 on an unknown one, even for K/N. This is an existence signal about a system id within one's own tenant. Minor.
 6. Actions refuse with a 403-style message that names the key, not not-found bytes. This matches today's behaviour (GREEN), and the outcome is the same for real and unknown ids.
+
+---
+## r2 extension (CONTROLLER RULINGS r2 · registry re-based to 44a75f37a)
+Files:
+- `scripts/qc-hr-priv-3.mts` + `-lib.mts`: 56.6 KB, page matrix + R9.
+- **new `scripts/qc-hr-priv-3b.mts`**: 21.5 KB, R6/R7/R8; the separate file keeps the main pair under 64 KB.
+
+The 3b suite uses its own tenants `qc-hr-priv3b-*`: our shop plus a foreign shop with an OWNER and a STAFF holding the payroll keys. Kiosk rate buckets (`ChatRateBucket` keys containing either tenant id) are removed. Targeted tsc on all 3 files: 0 errors.
+
+### qc-hr-priv-3 at 44a75f37a
+- `27/27 as registered`, all GREEN; passed 27/27; residue none.
+- The former RED rows (S1–S3, G1, P1–P3, L1, N1, N2) pass on the PRIV-3 build and are re-registered GREEN.
+- R9 viewers added:
+  - PR (only `hr.payadjust.request`): register ✗ (P1), leave ✓, payroll ✓ (P7 golden).
+  - PA (only `hr.payadjust.approve`): register ✗ and payroll ✗ (P1/P3), leave ✓ and sees the OT list e2/e3.
+  - Both have no leave form (L1) and no hub headcount (N2 now = "no register ⇒ no count").
+  - G1 now holds 13 viewers + API key and pins the table that `qc-hr-h2.10` S7.1 follows.
+- New P10 (GREEN control, debt): XS = linked staff of another HR system of the same shop, on this system's `/hr/leave`. Today it renders (`ok`) with no employee of this system and no filing form.
+- The goldens for the new cells were measured on 44a75f37a; 2 runs were identical.
+
+### qc-hr-priv-3b at 44a75f37a
+- `10/10 as registered` (RED 5 · GREEN 5); passed 5/10; residue none in both tenants.
+- **RED:**
+  - **X1:** `setSalaryProfileAction` as XO and XP writes `T2:HrSalaryProfile`. It throws a Prisma unique error for our employee who has a profile, which is the existence oracle.
+  - **X2:** `markPaidAction`, `reverseRunAction` and `reverseRunV2Action` write `T2:AuditLog`.
+  - **X3:** **`createPayrollRunAction` (new, not in the hunt) writes `T2:HrPayrollRun` + `T2:HrPayrollItem` for our system id, and for an unknown system id answers `{ok:true}`.** The other 48 actions of the 8 payroll action files give the same outcome as an unknown system and write nothing.
+  - **X4:** squat proven. After the foreign attempts our owner cannot create eA's profile (unique error), and 2 rows sit on our system outside our tenant.
+  - **Y1:** the form paths (`cancelLeaveAction` "ยกเลิกได้เฉพาะใบลาที่คุณยื่นเอง" vs "ไม่พบใบลา…", `cancelOtAction`, `respondSwapAction`, `cancelSwapAction`) differ between real and unknown ids for K, N and unrelated staff U. The self paths already match.
+- **GREEN:**
+  - X5: the same-tenant owner and payroll set a profile, the owner marks paid, and reverse reaches our run with code ≠ NOT_FOUND.
+  - Y2: the filer cancels own leave.
+  - K1: kiosk off-list ids and a wrong PIN give exactly "PIN ไม่ถูกต้อง".
+  - K2: an on-list no-PIN employee is named in the reply, and the kiosk page lists that name.
+  - Z1: residue.
+- Cases per payroll action:
+  - our system × {unknown employee, eA without profile, eB with profile, our APPROVED run + our adjustment, our PAID run};
+  - compared with an unknown system id;
+  - a full tenant-table md5 digest of both tenants before and after.
+- The hunt also saw `mobileClockAction` (XO, unlinked) write `T2:AuditLog`. That is the caller's own refusal audit, not tied to a foreign id, so it is not in R6 and is reported only.
+
+### Older statics this round may trip
+- `qc-hr-priv-2` S4: the new committed `qc-hr-priv-3b.mts` behaves like the other new oracle files, and needs the same allowlist line the builder added.
+- The R6 fix touches `payroll-actions.ts` and maybe `payroll.ts`, so the PRIV-3 allowed-files list in `qc-hr-priv-3` S4 (`SRC_OK`) needs those files via an ORACLE-EDIT once the controller rules on the R6 file list. Today S4 would flag them as outside.
+- Frozen lists that include payroll files:
+  - `qc-hr-priv-2` FROZEN regex (payroll-*-rules only; `payroll-actions.ts` is in its MARKED list, and hunks without `HR PRIV-2` count as unmarked ⇒ trips);
+  - `qc-hr-h3.4`, `qc-hr-h3.7`/`h3.5` statics over `payroll-actions.ts` bodies;
+  - `qc-hr-h0.6` (reverse audit path, `QC_H06_BASE`).
+- For R7: `qc-hr-h0.7`, `qc-hr-h2.9`, `qc-hr-h2.3`/swap oracles that pin the exact refusal texts.
