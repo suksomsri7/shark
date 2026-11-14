@@ -3,7 +3,7 @@
 Tree `/root/projects/shark-hr-l3` · branch `wip/hr-hf-sso` from `session/hr` 292bc5b7e (oracle rev 2 55555fa96) · brief `ledger/hr-briefs/hr-brief-HF-SSO.md` (rulings Q0–Q4) · oracle `scripts/qc-hr-hf-sso.mts` (40 checks, unchanged) · green `hr-HF-SSO-green.txt`.
 
 ## 0. Checkpoint
-- done: product fix d3e70774e + markers 54d049420 · ORACLE-EDITs 0c3414c8a · suites (§5) · clean typecheck · notes.
+- done: product fix d3e70774e + markers 54d049420 · ORACLE-EDITs 0c3414c8a · notes 4832a5d06 · review round 6a1a0e0f8 (RECOMPUTE v1-only · h1.3 S2.9/X1.1 · h3.4 S4.27 · h3.7 S1.7 one-line pin · hf-sso D2.7) · merge of session/hr dace682c8 044f64a0d · law rows applied + reseed on the lane DB (§2) · full run (§5).
 - open: controller items in §6 (lane-DB law rows + reseed · ORACLE-EDIT requests h1.3 S2.9/X1.1 + h3.4 S4.27 · merge of session/hr at the gate).
 
 ## 1. What changed where (product)
@@ -22,11 +22,13 @@ Live v1 callers converted: run build (create) · recompute · cancel-bound-adjus
 Filings / reports / payslip / bank files: untouched — they carry stored amounts (S1.8).
 
 ## 2. Migration / seed
-- **No migration.** No `prisma migrate`/`db push` run.
-- Law rows: the new DRAFT rows are **not applied** to the shared lane DB (see §6.1).
+- **No migration.** No `prisma migrate`/`db push` run. After the merge: `prisma generate` · `prisma migrate status` = "226 migrations found · Database schema is up to date!" (H4.5 migration applied by the controller).
+- Law rows (review round, lane DB free): `hr-seed-law-draft.mts` dry-run "จะสร้าง 6 · มีอยู่แล้วตรงกัน 4 · ไม่ตรง 0" · `--apply` "created 6 · unchanged 4 · mismatched 0" · law digest b0aa6c9c77a4d8f13e0c5af7bd08a122f210b65c23353aa0c04cdb84d1bcce25.
+- `seed-hr-qc` 34/34: paid run 2026-10 net ฿172,416.42 · 11 people · `HrLawTable.v1` 4 → 10 · `ssoEmployee`/`ssoEmployer` 727,400 → 789,900 (+5 × 125 ฿) · hr-expected.json sha 23728923… (not committed).
 
 ## 3. Production runbook note
 No migration. Deploy changes SSO and WHT for every DRAFT and every future v1 run whose wage period is ≥ 2026-01 (ceiling by wage period; WHT allowance cap by Bangkok year of pay date). APPROVED/PAID/REVERSED runs are never recomputed or altered; no back-contribution or adjustment is written. A DRAFT built before the deploy whose numbers no longer match refuses approval with `RECOMPUTE` ("ต้องคำนวณรอบนี้ใหม่ก่อนอนุมัติ (อัตราประกันสังคมของงวดนี้เปลี่ยน)") until "คำนวณใหม่" is pressed. Optional after GO: `hr-seed-law-draft.mts` (dry-run, then `--apply`) adds the 6 dated DRAFT rows (no effect until a platform admin activates rows).
+**v2 law activation (whenever it happens):** the dated SSO and DEDUCTION rows (`v1:SSO:2569/2572/2575` · `v1:DEDUCTION:2569/2572/2575`) must be activated **together with** the 1970 rows — activating only the 1970 rows makes v2 use the 15,000 ceiling and the 9,000 allowance cap for 2026+ periods.
 
 ## 4. ORACLE-EDITs (all marked `ORACLE-EDIT (HF-SSO-2569 · controller ruling)` or `… later-ticket static, pre-authorised`) — every value re-derived here; all equal the oracle note
 | # | file:check | old → new | derivation |
@@ -52,21 +54,31 @@ No migration. Deploy changes SSO and WHT for every DRAFT and every future v1 run
 | 26 | h3.7 S1.7 (pre-authorised static) | v1 approveRun frozen block ignores the one `// HR HF-SSO` line (RECOMPUTE → fixed note) | — |
 | 27 | h3.9 S1.5 (pre-authorised static) | laterMark + `/HF-SSO/` | — |
 | 28 | set-1 S1.6 (pre-authorised static) | law.ts: unchanged OR every hunk carries `HR HF-SSO` on an added line | — |
+| 29 | h1.3 S2.9 (controller ruling, review round) | seed rows 4 → 10 | Q4 + Q1 |
+| 30 | h1.3 X1.1 (controller ruling, review round) | 4 rows · 4+0/0+4 → 10 rows · 10+0/0+10 | Q4 + Q1 |
+| 31 | h3.4 S4.27 law leg (controller ruling, review round) | activated SSO copy `'2031-09-15'` → `'2031-09-01'` | Q2: SSO picked on the wage period's first day |
+| 26′ | h3.7 S1.7 (review MINOR) | the drop is pinned to exactly one byte-exact line (`if (claimed.code === "RECOMPUTE") … // HR HF-SSO ◂`), only when it occurs once | — |
+| 32 | qc-hr-hf-sso + D2.7 (review MINOR · one assertion) | new GREEN-control: a pre-fix 2026-04 run marked engineVersion 2 (no inputDigest) is not refused with RECOMPUTE (re-derive is v1-only) | 41 checks |
+
+h4.2 / h4.3 after the merge (H4.2-FIX1 S7.1–S7.4 · H4.3): **no golden changes.** h4.2 estimates already used 17,500 (its own QC SSO rows 2026-12…2028-02 = the table for 2027: e.g. S7.1 30,000/month ⇒ 1,000 + 875/30 = 1,029.17/day = 102,917) and its ACTUAL figures read run rows the fixture inserts directly (75,000 employer SSO stored, not computed). h4.3 compares the AI tools' output with the readers' own output (no SSO literal).
 
 Every hunk of this ticket (src + scripts, `git diff -U0 292bc5b7e`) carries `HF-SSO` on an added line (checked with a scratch script), so the base-aware frozen statics accept them.
 
 Ids from the note that needed no edit: h1.3 S2.1, S2.7 (tamper key `v1:SSO`-style key still the 1970 key) · h3.3 S8.1, S8.3 · (h0.6 constants edited at the constant line only).
 
 ## 5. Runs — see `hr-HF-SSO-green.txt`
+**Review round (merged head, lane DB with H4.5 migration, law rows applied, reseeded):** every suite 100 % (hf-sso 41/41 forced ×3 + unforced · qc-payroll · reverse · payadjust · all h0.*–h4.* present · set-1 · h3.4-ytd · account-cpa · audit-trail · hf-hr-privacy · ai-tools · ai-proposals · fitness/fitness-hr both modes) except **h0.5 67/71** (S6.2/S6.4/S6.5/S6.7 — the oracle spawns the PIN backfill through `scripts/qc4.sh`, i.e. QC4, while its fixture is on this lane DB; outside this ticket). h3.4/h3.4-ytd crashed once in r5 (foreign ACTIVE law rows at activation), residue of that run removed, re-run green. Clean typecheck 461 s.
+ORACLE-EDIT 33: qc-hr-h4.3 S1.6/S1.7 (later-ticket static, pre-authorised): files/oracles whose every hunk carries `HF-SSO` count as a later ticket's change; `HR HF-SSO` added to the S1.7 mark list (labor.ts).
+Earlier (pre-review) summary below.
 - qc-hr-hf-sso 40/40 forced ×3 + unforced, RESIDUE none.
 - Green: qc-payroll 19/19 · qc-payroll-reverse 14/14 · payadjust 27/27 · h0.1 67/67 · h0.2 58/58 · h0.6 55/55 · h1.1 81/81 · h1.2 73/73 · h2.1 90/90 · h2.2 60/60 · h2.4 68/68 · h2.9 58/58 · h3.1 58/58 · h3.2 64/64 · h3.3 51/51 · h3.4-ytd 44/44 · h3.5 53/53 · h3.6 62/62 · h3.7 68/68 · h3.8 78/78 · h3.9 60/60 · h4.2 53/53 · set-1 25/25 · account-cpa 107/107 · audit-trail 21/21 · hf-hr-privacy 194/194 · fitness 54/54 + fitness-hr 9/9 (env and no env) · typecheck clean.
 - Not green: h1.3 58/63 (S6.1 pre-existing on base · S2.9/X1.1 ORACLE-EDIT requested · S7.1/S7.4 need lane-DB law rows + reseed) · h3.4 84/85 (S4.27 ORACLE-EDIT requested) · seed-hr-qc not run (§6.1).
 - Merge of session/hr 8fd6f7dc4: clean, but P2021 `hrLineLink` on this lane DB (privacy G-2…GA-3, h0.6 S10.x) ⇒ reset; merge at the gate.
 
 ## 6. For the controller
-1. **Lane DB law rows + reseed (not done — shared with l4):** h1.3 S7.1/S7.4 and `seed-hr-qc` ML1 need the 6 new `v1:*` DRAFT rows on the DB (`hr-seed-law-draft.mts --apply`) and a reseed; the seeded paid run is period 2026-10, so a reseed with this code also changes the shared `qc-hr-v2` tenant's SSO/WHT (expected.json ssoEmployee 727400 changes). Doing either from this lane would break l4's runs on base code (its h1.3 S7.4 / seed ML1 expect 4 rows; its hr-expected.json would go stale) ⇒ left for the gate.
-2. **ORACLE-EDIT request (outside the note's list) — h1.3 S2.9 and X1.1:** both count the seeded rows (`rows1.length === 4`; `created 4` / `unchanged 4` / `nX === 4`) — direct consequence of Q4/Q1 (10 rows). Proposed hunks: S2.9 `rows1.length === 4` → `rows1.length === 10`; X1.1 `c.created !== 4` → `!== 10`, `c.unchanged !== 4` → `!== 10`, `nX === 4` → `nX === 10` (+ titles). Not applied (instruction: ask).
-3. **ORACLE-EDIT request (outside the list) — h3.4 S4.27 "law" leg:** the fixture activates a copy of the SSO row effective `2031-09-15` and expects the 2031-09 v2 draft to refuse with INPUTS_CHANGED. Under ruling Q2 the SSO row is picked on the wage period's first day (2031-09-01), so a row effective mid-period no longer belongs to that run ⇒ the approve succeeds (correct per Q2) and the rest of S4.27 then sees NOT_DRAFT. Proposed hunk (qc-hr-h3.4-lib.mts S4.27): `'2031-09-15'::date` → `'2031-09-01'::date` (row in force from the period's first day ⇒ still a law activation the run must notice). Not applied.
+1. (DONE in the review round, lane DB free) **Lane DB law rows + reseed:** h1.3 S7.1/S7.4 and `seed-hr-qc` ML1 need the 6 new `v1:*` DRAFT rows on the DB (`hr-seed-law-draft.mts --apply`) and a reseed; the seeded paid run is period 2026-10, so a reseed with this code also changes the shared `qc-hr-v2` tenant's SSO/WHT (expected.json ssoEmployee 727400 changes). Doing either from this lane would break l4's runs on base code (its h1.3 S7.4 / seed ML1 expect 4 rows; its hr-expected.json would go stale) ⇒ left for the gate.
+2. (APPROVED and applied in the review round) **ORACLE-EDIT request (outside the note's list) — h1.3 S2.9 and X1.1:** both count the seeded rows (`rows1.length === 4`; `created 4` / `unchanged 4` / `nX === 4`) — direct consequence of Q4/Q1 (10 rows). Proposed hunks: S2.9 `rows1.length === 4` → `rows1.length === 10`; X1.1 `c.created !== 4` → `!== 10`, `c.unchanged !== 4` → `!== 10`, `nX === 4` → `nX === 10` (+ titles). Not applied (instruction: ask).
+3. (APPROVED and applied in the review round) **ORACLE-EDIT request (outside the list) — h3.4 S4.27 "law" leg:** the fixture activates a copy of the SSO row effective `2031-09-15` and expects the 2031-09 v2 draft to refuse with INPUTS_CHANGED. Under ruling Q2 the SSO row is picked on the wage period's first day (2031-09-01), so a row effective mid-period no longer belongs to that run ⇒ the approve succeeds (correct per Q2) and the rest of S4.27 then sees NOT_DRAFT. Proposed hunk (qc-hr-h3.4-lib.mts S4.27): `'2031-09-15'::date` → `'2031-09-01'::date` (row in force from the period's first day ⇒ still a law activation the run must notice). Not applied.
 4. h1.3 S6.1 `payroll.ts+4` is pre-existing on 292bc5b7e ("HR H3.4" matched inside "HR H3.4-YTD"); fixed on session/hr by fb6b4fd06 (exact tag matching). My hunks add 0 tracked tokens (no `HR HF-SSO` declaration needed).
 
 ## 7. Accountant list (not in the reference ⇒ not implemented)
@@ -74,4 +86,8 @@ Ids from the note that needed no edit: h1.3 S2.1, S2.7 (tamper key `v1:SSO`-styl
 - WHT allowance for those months used the 9,000 cap instead of up to 10,500 (≤ 1,500 ฿ allowance/yr ⇒ ≤ 150 ฿ tax at 10 %); December/ภ.ง.ด.91 settles — no automatic adjustment.
 - Next-year pay date: a period paid in the next calendar year (e.g. 2028-12 paid 2029-01-05) uses SSO of the wage period and the WHT projection of the pay-date tax year (today's behaviour, 12 × this period's contribution capped by that year's cap). The reference does not state the rule ⇒ kept, to confirm.
 - QC golden FROZEN_MONTHLY (2030-05) changed: M03 SSO 750 → 1,000, WHT 916.67 → 891.67.
+- A v1 run for a 2026+ period that is reversed and re-created (or a pre-fix DRAFT that is recomputed) gets the new amounts (17,500 ceiling, 10,500 allowance cap) — the difference vs what was paid earlier is the shop's to settle.
+- Contributions for ม.ค.–พ.ย. 2569 paid short (15,000 cap): whether สปส. charges a late/short surcharge and how much — **[U]**, ask สปส./the accountant (the reference has the ม.49 wording of 2556 only, marked as possibly amended).
+- Pre-existing v1 gaps NOT fixed by this ticket: a mid-year joiner's WHT is still annualised ×12 (not by remaining months); the annual rounding remainder is not placed in the last period.
+- Visible numbers change for shops: the labour-cost estimate (H4.2) uses the period ceiling (17,500 for 2026–2028) and the opening-YTD `SSO_HIGH` warning uses the period ceiling of the as-of month.
 - The 3 % temporary rate (Dec 2568 – May 2569, 9 southern provinces, reference §ซ [V2]) is not implemented (expired; no per-shop province rule in v1).
