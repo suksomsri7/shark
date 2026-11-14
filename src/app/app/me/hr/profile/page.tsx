@@ -2,11 +2,20 @@
 import { requireTenant } from "@/lib/core/context";
 import { myBalances, myDocuments, mySelf, selfActorOf } from "@/lib/modules/hr/self";
 import { SelfEmpty, SelfProfile } from "@/lib/modules/hr/self-ui";
+import { myLineStatus } from "@/lib/modules/hr/line-link"; // HR H4.5 ▸ การ์ด LINE ของฉัน (สถานะจากเซสชัน · resolveSelf) ◂
+import { unlinkMyLineAction } from "@/lib/modules/hr/line-actions"; // HR H4.5 ◂
+import { LineSelfCard } from "@/lib/modules/hr/line-ui"; // HR H4.5 ◂
+import { issueMyLineCodeAction } from "@/lib/platform/hr-line-actions"; // HR H4.5 ▸ ออกรหัสผูก (กาวแพลตฟอร์ม · ส่งเป็น prop — HR ไม่ import แพลตฟอร์ม) ◂
 
 export default async function MeHrProfilePage() {
   const auth = await requireTenant();
   const a = selfActorOf(auth);
-  const [self, docs, bal] = await Promise.all([mySelf(a), myDocuments(a), myBalances(a, {})]);
+  const [self, docs, bal, line] = await Promise.all([mySelf(a), myDocuments(a), myBalances(a, {}), myLineStatus(a)]); // HR H4.5 ▸ + line ◂
   if (!self.ok || !docs.ok) return <SelfEmpty />;
-  return <SelfProfile self={self} docs={docs} balances={bal.ok ? bal.items : []} canWrite={self.active} />;
+  return (
+    <>
+      <SelfProfile self={self} docs={docs} balances={bal.ok ? bal.items : []} canWrite={self.active} />
+      {line.ok && <LineSelfCard status={{ state: line.state, linkedAt: line.linkedAt, displayName: line.displayName, shopEnabled: line.shopEnabled }} canWrite={self.active} issueAction={issueMyLineCodeAction} unlinkAction={unlinkMyLineAction} />} {/* HR H4.5 ◂ */}
+    </>
+  );
 }

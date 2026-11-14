@@ -13352,6 +13352,352 @@
    "wo": "H3.9",
    "oracle": "qc-hr-h3.9",
    "note": "การ์ดลิงก์รายงานบนหน้าภาพรวม HR"
+  },
+  {
+   "page": "/app/me/hr/profile",
+   "testid": "hr-self-line-card",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "การ์ด LINE ของฉัน (สถานะ · ประโยค PDPA · ปุ่มขอรหัส/ยกเลิกผูก)"
+  },
+  {
+   "page": "/app/me/hr/profile",
+   "testid": "hr-self-line-status",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "สถานะการผูก + ชื่อ LINE ของตัวเอง + วันที่ผูก"
+  },
+  {
+   "page": "/app/me/hr/profile",
+   "testid": "hr-self-line-link",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "conditional": "ร้านเปิด LINE · ยังไม่ผูก · สาขามี OA · ยังทำงาน",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "issueMyLineCodeAction"
+   },
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "ขอรหัสผูก LINE (รหัสแสดงครั้งเดียวในจอ)"
+  },
+  {
+   "page": "/app/me/hr/profile",
+   "testid": "hr-self-line-code",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "conditional": "หลังกดขอรหัสสำเร็จ",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "รหัสผูก 8 ตัว + เวลาหมดอายุ (อยู่ใน state ของจอเท่านั้น)"
+  },
+  {
+   "page": "/app/me/hr/profile",
+   "testid": "hr-self-line-deeplink",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "conditional": "OA มี basicId",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "https://line.me/R/oaMessage/…"
+   },
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "เปิดแชท LINE OA ของร้านพร้อมรหัส"
+  },
+  {
+   "page": "/app/me/hr/profile",
+   "testid": "hr-self-line-unlink",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "conditional": "ผูก LINE อยู่",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "unlinkMyLineAction"
+   },
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "ยกเลิกการผูก LINE ของตัวเอง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-line-settings-card",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "การ์ดค่าตั้งแจ้งเตือนพนักงานทาง LINE"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-line-settings-pilot",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "ป้าย \"ยังไม่ได้ทดสอบกับ LINE OA จริง\" (O1)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-line-settings-sent",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "ส่งเดือนนี้ N / เพดาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-line-settings-enabled",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "เปิด/ปิดแจ้งเตือน LINE (ค่าเริ่มต้น ปิด)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-line-settings-mode",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "ส่งทันที / สรุปวันละครั้ง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-line-settings-digest",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "เวลาส่งสรุป (HH:MM)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-line-settings-cap",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "เพดานต่อเดือน 0–5000"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-line-settings-unit",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "OA สำรองของพนักงานที่สาขาไม่มี OA"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-line-settings-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "conditional": "ผู้ดูแลทุกสาขา",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "saveLinePolicyAction"
+   },
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "บันทึกค่าตั้ง (lockHrSettings + writeHrSettingsKeys)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-emp-line-chip",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "conditional": "ผู้ดูถือ hr.employee.create + พนักงานในสาขา",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "ชิปสถานะ LINE ของพนักงาน (สถานะ + วันที่ผูกเท่านั้น)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-emp-line-unlink",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "conditional": "พนักงานผูก LINE อยู่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "adminUnlinkLineAction"
+   },
+   "wo": "H4.5",
+   "oracle": "qc-hr-h4.5",
+   "note": "ผู้ดูแลยกเลิกการผูก LINE ของพนักงาน"
   }
  ]
 }
