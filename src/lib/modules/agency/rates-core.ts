@@ -45,6 +45,8 @@ export const AGENT_RATE_REASONS = [
   "BAD_RANGE",
   "MODE_VALUE_MISMATCH",
   "PAX_RATE_COMMISSION",
+  /** มติ V3: ขั้นต่ำตั้งได้เฉพาะแถวที่ไม่ระบุประเภทคน — ข้อความ (A1.3b): "ขั้นต่ำการขายตั้งได้ที่แถวราคาที่ไม่ระบุประเภทคน — โปรดย้ายขั้นต่ำไปไว้ที่แถวนั้น" */
+  "PAX_RATE_MIN_SELL",
   "CABIN_RATE_NOT_SUPPORTED",
   "KIND_NOT_SUPPORTED",
   "PRODUCT_NOT_FOUND",
@@ -196,13 +198,31 @@ export function isAgentRateYmd(s: unknown): s is string {
   const dim = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
   return d <= dim;
 }
-/** เวลา ISO (เช่น วันจองสมมติ · expectedUpdatedAt) ที่ตกอยู่ในปี 1900–2200 (มติ Z8) */
+/** มติ V4: ISO 8601 วันที่+เวลาเท่านั้น — `YYYY-MM-DDTHH:mm[:ss[.fff…]]` + โซน `Z` หรือ `±hh:mm` */
+const INSTANT_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+const HOUR_MS = 3_600_000;
+const MINUTE_MS = 60_000;
+/** เวลา ISO (เช่น วันจองสมมติ · expectedUpdatedAt) ที่ตกอยู่ในปี 1900–2200 (มติ Z8) · รูปอื่น (ไม่มีเวลา/ไม่มีโซน/รูปที่ Date.parse เดาได้) ⇒ false (มติ V4) */
 export function isAgentRateInstant(s: unknown): s is string {
   if (typeof s !== "string" || s.length > 40) return false;
-  const ms = Date.parse(s);
-  if (Number.isNaN(ms)) return false;
-  const d = new Date(ms);
-  return isAgentRateYmd(`${String(d.getUTCFullYear()).padStart(4, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`);
+  const m = INSTANT_RE.exec(s);
+  if (!m) return false;
+  const ymd = m[1];
+  const hh = Number(m[2]);
+  const mi = Number(m[3]);
+  const ss = m[4] === undefined ? 0 : Number(m[4]);
+  if (!isAgentRateYmd(ymd) || hh > 23 || mi > 59 || ss > 59) return false;
+  let offsetMs = 0;
+  if (m[5] !== undefined) {
+    const oh = Number(m[6]);
+    const om = Number(m[7]);
+    if (oh > 23 || om > 59) return false;
+    offsetMs = (m[5] === "-" ? -1 : 1) * (oh * HOUR_MS + om * MINUTE_MS);
+  }
+  // วันตาม UTC (ขอบโซนอาจข้ามวัน/ปี) — คิดจากส่วนประกอบเอง ไม่ส่งสตริงให้ Date.parse
+  const localMs = Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10))) + hh * HOUR_MS + mi * MINUTE_MS;
+  const utcDay = new Date(localMs - offsetMs);
+  return isAgentRateYmd(`${String(utcDay.getUTCFullYear()).padStart(4, "0")}-${String(utcDay.getUTCMonth() + 1).padStart(2, "0")}-${String(utcDay.getUTCDate()).padStart(2, "0")}`);
 }
 
 // ═══════════════ §4.1 ตรวจรูปแถวราคา ═══════════════
@@ -234,7 +254,7 @@ const RAW_RATE = z
 
 /**
  * ตรวจ + เติมค่าปริยายของแถวราคา (ไม่ throw) — ช่องแปลก/ชนิดผิด/ทศนิยม/เกินขีด/วันที่ไม่มีจริง ⇒ BAD_INPUT
- * ลำดับเหตุ: BAD_INPUT → KIND_NOT_SUPPORTED → CABIN_RATE_NOT_SUPPORTED → MODE_VALUE_MISMATCH → PAX_RATE_COMMISSION → CURRENCY_MISMATCH → MIN_SELL_BELOW_NET → BAD_RANGE
+ * ลำดับเหตุ: BAD_INPUT → KIND_NOT_SUPPORTED → CABIN_RATE_NOT_SUPPORTED → MODE_VALUE_MISMATCH → PAX_RATE_COMMISSION → PAX_RATE_MIN_SELL → CURRENCY_MISMATCH → MIN_SELL_BELOW_NET → BAD_RANGE
  */
 export function normalizeAgentRate(raw: unknown): { ok: true; rate: NormalizedAgentRate } | { ok: false; reason: AgentRateReason } {
   const bad = (reason: AgentRateReason) => ({ ok: false as const, reason });
@@ -259,6 +279,8 @@ export function normalizeAgentRate(raw: unknown): { ok: true; rate: NormalizedAg
   if (d.mode === "NET" && (valueMinor === null || valueBp !== null || markupCapBp !== null)) return bad("MODE_VALUE_MISMATCH");
   if (d.mode === "MARKUP" && (valueMinor === null || valueBp !== null || markupCapBp === null)) return bad("MODE_VALUE_MISMATCH");
   if (commission && paxTypeId !== null) return bad("PAX_RATE_COMMISSION");
+  // มติ V3: Level ของ T0.5 มีขั้นต่ำค่าเดียวต่อทุกประเภทคน ⇒ ขั้นต่ำต้องอยู่บนแถวไม่ระบุประเภทคน (ครอบบันทึก · ร่าง · แก้ด้วย id — ทุกทางผ่านฟังก์ชันนี้)
+  if (paxTypeId !== null && minSellMinor !== null) return bad("PAX_RATE_MIN_SELL");
   if (d.mode === "COMMISSION_FIXED" && currency !== "THB") return bad("CURRENCY_MISMATCH");
   if (!commission && minSellMinor !== null && valueMinor !== null && minSellMinor < valueMinor) return bad("MIN_SELL_BELOW_NET");
   const bookFrom = d.bookFrom ?? null;
@@ -347,15 +369,25 @@ function byPrecedence(x: Picked, y: Picked): number {
     cmpStr(x.r.id, y.r.id)
   );
 }
-/** มติ Z5 (ข): ราคาต่อประเภทคน — priority และช่วงพิเศษมาก่อนความเจาะจงของประเภทคน แล้วจึงลำดับ §5.2 ที่เหลือ */
+/**
+ * มติ V2 (แทน Z5 ข): ราคาต่อประเภทคน = §5.2 (1) rate.priority → (2) ช่วงพิเศษ → (3) ตัวเลือกเจาะจง → (4) card.priority →
+ * แถวระบุประเภทคนก่อนแถวไม่ระบุ → (5) travelFrom/bookFrom หลังสุด → (6) id น้อย
+ * (ผู้สมัครถูกกรองไว้แล้ว = แถวของประเภทนี้หรือแถวไม่ระบุ จึงไม่ต้องเทียบรหัสประเภทคน)
+ */
 function byPaxPrecedence(x: Picked, y: Picked): number {
   return (
     y.r.priority - x.r.priority ||
     flag(isSpecialPeriodRate(y.r)) - flag(isSpecialPeriodRate(x.r)) ||
+    flag(y.r.optionId !== null) - flag(x.r.optionId !== null) ||
+    y.c.priority - x.c.priority ||
     flag(y.r.paxTypeId !== null) - flag(x.r.paxTypeId !== null) ||
-    byPrecedence(x, y)
+    laterFirst(x.r.travelFrom, y.r.travelFrom) ||
+    laterFirst(x.r.bookFrom, y.r.bookFrom) ||
+    cmpStr(x.r.id, y.r.id)
   );
 }
+/** มติ V1 (แก้ Z1): แถวจำนวนเงิน (NET · MARKUP · COMMISSION_FIXED) ต้องสกุลเดียวกับการจอง · COMMISSION_PCT ไม่มีหน่วยเงิน ⇒ เข้าเกณฑ์ทุกสกุล */
+const currencyFits = (r: RateRow, bookingCurrency: string): boolean => r.mode === "COMMISSION_PCT" || r.currency === bookingCurrency;
 function eligibleRows(layer: "TIER" | "CONTRACT", f: RateFacts): Picked[] {
   const acc = f.account;
   const out: Picked[] = [];
@@ -366,7 +398,7 @@ function eligibleRows(layer: "TIER" | "CONTRACT", f: RateFacts): Picked[] {
     for (const r of c.rates) {
       if (r.active !== true || r.productKind !== "TRIP" || r.productId !== f.product.id) continue;
       if (r.optionId !== null && r.optionId !== f.product.optionId) continue;
-      if (r.cabinTypeId !== null || r.currency !== f.currency) continue;
+      if (r.cabinTypeId !== null || !currencyFits(r, f.currency)) continue;
       if (!inRange(f.bookYmd, r.bookFrom, r.bookTo) || !inRange(f.travelYmd, r.travelFrom, r.travelTo)) continue;
       out.push({ r, c });
     }
