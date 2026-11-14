@@ -7,6 +7,7 @@ import { LEAVE_TEXT, leaveApprovalCheckInTx, leaveDecidedEvent, leaveLedgerInTx,
 import type { HrAttendanceJudgement, HrLeaveType, Prisma } from "@prisma/client"; // HR H2.4 ▸ HrAttendanceKind ใช้ที่ clock.ts ◂
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
+import { HR_NAME_BAD, HR_NAME_BAD_TEXT } from "./privacy-shared"; // HR PRIV-2 ▸ R5 ชุดอักขระต้องห้ามของชื่อพนักงาน (= ชื่อคีย์ H4.8) ◂
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂
 import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
 // WO 3.1 — Party (INTEGRATION-MAP §F.1): จาก name/phone/email เท่านั้น — **ห้ามส่ง nationalId/PDPA อื่น**
@@ -61,6 +62,7 @@ export async function createEmployee(
   ctx: Ctx,
   input: CreateEmployeeInput,
 ): Promise<{ id: string; pinSet?: boolean; reason?: string }> {
+  if (HR_NAME_BAD.test(String(input.name ?? ""))) throw new Error(HR_NAME_BAD_TEXT); // HR PRIV-2 ▸ R5: ปฏิเสธก่อนแตะฐาน/Party · ข้อความคงที่ ไม่สะท้อนชื่อ ◂
   const name = input.name.trim();
   // WO 3.1 (MAP §F.1) — เชื่อม Party จาก name/phone เท่านั้น · ล้มเหลว = partyId null (ไม่ throw)
   const partyId = await party.safeFindOrCreate(ctx.tenantId, {
@@ -116,6 +118,7 @@ export async function updateEmployee(
 ): Promise<{ ok: boolean; reason?: string }> {
   const name = input.name?.trim();
   if (input.name !== undefined && !name) return { ok: false, reason: "ต้องมีชื่อพนักงาน" };
+  if (input.name !== undefined && HR_NAME_BAD.test(String(input.name))) return { ok: false, reason: HR_NAME_BAD_TEXT }; // HR PRIV-2 ▸ R5 ◂
   const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId } });
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
   await tenantDb(ctx).hrEmployee.updateMany({
@@ -214,6 +217,7 @@ export async function saveEmployeeProfile(
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
   const name = input.name?.trim();
   if (input.name !== undefined && !name) return { ok: false, reason: "ต้องมีชื่อพนักงาน" };
+  if (input.name !== undefined && HR_NAME_BAD.test(String(input.name))) return { ok: false, reason: HR_NAME_BAD_TEXT }; // HR PRIV-2 ▸ R5 ◂
   const nid = strOrNull(input.nationalId);
   if (nid && !/^\d{13}$/.test(nid.replace(/\D/g, "")) ) {
     return { ok: false, reason: "เลขบัตรประชาชนต้องเป็นตัวเลข 13 หลัก" };

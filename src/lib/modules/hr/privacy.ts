@@ -12,7 +12,7 @@ import { payslipData } from "./payroll";
 import { hasPin } from "./pin"; // HR H0.5 ▸ ◂
 import type { EmployeeBorrowingDto, EmployeeDocDto, EmployeeProfileDto, LeaveItemDto } from "./privacy-shared";
 // HR H1.1 ▸ ขอบเขตสาขา = ตัวกรองเพิ่มบนด่านเดิม (ไม่เคยขยายสิทธิ์ · ไม่ให้สิทธิ์เงินเดือน) ◂
-import { employeeInScope, hrScopeOf, unitNamesOf } from "./scope";
+import { employeeInScope, hrScopeOf, inPayScope, isAllBranches, unitNamesOf } from "./scope"; // HR PRIV-2 ▸ + inPayScope (ข้อมูลอ่อนไหวด้านค่าจ้าง = สาขาประจำเท่านั้น) ◂
 import { finalizedOf, slipState } from "./payslip-rules"; // HR H3.8 ▸ สถานะสลิป (pure) ◂
 
 export type HrViewer = MembershipCtx & { userId: string };
@@ -55,6 +55,9 @@ export async function loadEmployeeProfileForViewer(
   if (!row) return null;
   // HR H1.1 ▸ R4: ผู้ดูที่จำกัดสาขา เปิดได้เฉพาะพนักงานในสาขาตัวเอง (สาขาประจำ หรือยืมตัวที่เปิดวันนี้) · ไม่ระบุสาขา = เฉพาะผู้ดูทุกสาขา ◂
   if (!(await employeeInScope(ctx, hrScopeOf(v), row.id))) return null;
+  // HR PRIV-2 ▸ R1(a): ส่วนอ่อนไหว (บัตร · ปสส. · ทะเบียนบ้าน · บัญชี · รูปแบบค่าจ้าง · เอกสาร) เฉพาะผู้ดูเงินเดือนที่สาขาประจำของพนักงานอยู่ในขอบเขต —
+  //   พนักงานที่ยืมตัวมา ⇒ DTO เดียวกับผู้จัดการที่ไม่มีสิทธิ์เงินเดือน (canSeeSensitive false) · การเปิดโปรไฟล์ยังตาม employeeInScope (R3) ◂
+  const seeSensitive = access.seeSensitive && inPayScope(hrScopeOf(v), row.unitId); // HR PRIV-2 ◂
   // สร้างทีละช่องจาก whitelist (privacy-shared) — ห้าม spread แถวดิบ
   const profile: EmployeeProfileDto = {
     id: row.id,
@@ -89,7 +92,7 @@ export async function loadEmployeeProfileForViewer(
     probationEndAt: row.probationEndAt,
     contractEndAt: row.contractEndAt,
   };
-  if (access.seeSensitive) {
+  if (seeSensitive) { // HR PRIV-2 ◂
     profile.nationalId = row.nationalId;
     profile.ssoNumber = row.ssoNumber;
     profile.houseRegAddress = row.houseRegAddress;
@@ -100,7 +103,7 @@ export async function loadEmployeeProfileForViewer(
     profile.payType = (await db.hrSalaryProfile.findFirst({ where: { employeeId: row.id }, select: { payType: true } }))?.payType ?? null;
   }
   // เอกสารแนบ (สำเนาบัตร/ทะเบียนบ้าน) = อ่อนไหวทั้งชุด — ไม่มีสิทธิ์ = ไม่โหลดเลย
-  const docs: EmployeeDocDto[] = access.seeSensitive
+  const docs: EmployeeDocDto[] = seeSensitive // HR PRIV-2 ◂
     ? (
         await db.hrEmployeeDoc.findMany({
           where: { employeeId: row.id },
@@ -118,9 +121,11 @@ export async function loadEmployeeProfileForViewer(
   });
   const bNames = await unitNamesOf(ctx.tenantId, bRows.map((b) => b.unitId));
   const borrowings: EmployeeBorrowingDto[] = bRows.map((b) => ({ id: b.id, unitId: b.unitId, unitName: bNames.get(b.unitId) ?? null, fromDate: b.fromDate, toDate: b.toDate }));
-  return { profile, docs, canSeeSensitive: access.seeSensitive, borrowings };
+  return { profile, docs, canSeeSensitive: seeSensitive, borrowings }; // HR PRIV-2 ◂
 }
 
+/** HR PRIV-2 ▸ แถวรอบที่ตัวโหลดสลิปคืน — ไม่มียอดรวมทั้งรอบ (total*) ในชนิด (ผู้ดูทุกสาขายังได้แถวเต็มในค่าจริง) ◂ */
+type SlipRunOwn = Omit<NonNullable<Awaited<ReturnType<typeof payslipData>>["run"]>, `total${string}`>;
 /**
  * สลิปเงินเดือน — ผู้ดูเงินเดือนเห็นทุกคน · ตัวพนักงานเองเห็นเฉพาะของตัวเองในรอบที่อนุมัติ/จ่ายแล้ว
  * (รอบร่างยังคำนวณใหม่ได้ ตัวเลขยังไม่ใช่ของจริง) · อื่น ๆ = null
@@ -129,7 +134,9 @@ export async function loadPayslipForViewer(ctx: Ctx, v: HrViewer, runId: string,
   const payrollViewer = canViewPayroll(v);
   if (!runId || !employeeId) return null;
   // HR H1.1 ▸ R4/มติ 8: ผู้ดูเงินเดือนที่จำกัดสาขา เห็นสลิปเฉพาะพนักงานในสาขาตัวเอง (ตัวกรองเพิ่ม) · สลิปของตัวเอง = ทางเดิม ◂
-  if (payrollViewer && !(await employeeInScope(ctx, hrScopeOf(v), employeeId))) return null;
+  // HR PRIV-2 ▸ R1(a) + มติ 4: ทางผู้ดูเงินเดือน = ขอบเขตค่าจ้าง (สาขาประจำ · ยืมตัวไม่นับ) · ไม่พบ/นอกขอบเขต = null เหมือนกันทุกไบต์ ◂
+  const scope = hrScopeOf(v); // HR PRIV-2 ◂
+  if (payrollViewer && !inPayScope(scope, (await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId }, select: { unitId: true } }))?.unitId ?? null)) return null; // HR PRIV-2 ◂
   if (!payrollViewer) {
     const uid = (v.userId ?? "").trim();
     if (!uid) return null;
@@ -139,8 +146,11 @@ export async function loadPayslipForViewer(ctx: Ctx, v: HrViewer, runId: string,
     });
     if (!own) return null;
   }
-  const { run, item, employee } = await payslipData(ctx, runId, employeeId);
-  if (!run || !item || !employee) return null;
+  const data = await payslipData(ctx, runId, employeeId); // HR PRIV-2 ▸ ◂
+  const { item, employee } = data; // HR PRIV-2 ◂
+  if (!data.run || !item || !employee) return null; // HR PRIV-2 ◂
+  // HR PRIV-2 ▸ มติ 4: ผู้ดูที่ไม่ใช่ผู้ดูเงินเดือนทุกสาขา (จำกัดสาขา · ตัวพนักงานเอง) ได้เฉพาะตัวเลขของสลิปนี้ — ตัดยอดรวมทั้งรอบ (total*) ออกจากแถวรอบ ◂
+  const run: SlipRunOwn = payrollViewer && isAllBranches(scope) ? data.run : (Object.fromEntries(Object.entries(data.run).filter(([k]) => !k.startsWith("total"))) as SlipRunOwn); // HR PRIV-2 ◂
   if (!payrollViewer && run.status !== "APPROVED" && run.status !== "PAID") return null;
   // HR H3.8 ▸ R5: ตัวเองเห็นเฉพาะสลิปที่ออกแล้ว (รุ่น 2 ต้องปิดงาน stepsJson.finalized — ตัวเลือกเดียวกับ H3.6) · ลายเซ็น/คืน null เดิม ◂
   if (!payrollViewer && slipState({ status: run.status, engineVersion: run.engineVersion, finalized: finalizedOf(run.stepsJson) }) !== "ISSUED") return null;

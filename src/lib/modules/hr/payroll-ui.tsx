@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
 import { canViewPayroll } from "@/lib/core/rbac";
-import { hrScopeOf, isAllBranches } from "./scope"; // HR H1.1 R12 ◂
+import { hrScopeOf, isAllBranches, inPayScope, payScopeEmployeeIds, PAY_SCOPE_EXCLUDED_TEXT } from "./scope"; // HR H1.1 R12 ◂ // HR PRIV-2 ▸ ขอบเขตค่าจ้าง + หมายเหตุจำนวนคนที่ไม่รวม ◂
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -92,17 +92,21 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
   //   รอบจ่ายยังเป็นของทั้งระบบ (ยอดรวมของรอบแสดงตามเดิม) แต่ปุ่มสร้าง/อนุมัติ/จ่าย/กลับรายการเฉพาะผู้ดูแลทุกสาขา (action ปฏิเสธซ้ำ) ◂
   const scope = hrScopeOf(membership);
   const allBranches = isAllBranches(scope);
-  const [employees, profiles, runs, scheduled, adjustments] = await Promise.all([
+  // HR PRIV-2 ▸ R1(c): ทั้งหน้า (เงินเดือน · การเข้างาน · รายการเพิ่ม/หัก · รายการค้าง · คนที่ไม่อยู่ในรอบ · แถวในรอบ) = ขอบเขตค่าจ้าง (สาขาประจำ — ยืมตัวไม่นับ) ·
+  //   ต่อรอบ: จำนวนคน + ยอดรวมจากแถวที่แสดงเท่านั้น + หมายเหตุจำนวนคนที่ไม่รวม — ผู้ดูที่จำกัดสาขาไม่ได้ยอดทั้งรอบทั้งใน HTML และ props (ทุกสาขา = เดิม) ◂
+  const [listed, profiles, runs, scheduled, adjustments] = await Promise.all([ // HR PRIV-2 ◂
     listEmployees(ctx, 200, scope),
     listSalaryProfiles(ctx),
     listRuns(ctx),
     employeesWithSchedule(ctx),
     listAdjustments(ctx, undefined, 200, scope),
   ]);
-  const inScope = new Set(employees.map((e) => e.id));
+  const employees = listed.filter((e) => inPayScope(scope, e.unitId)); // HR PRIV-2 ◂
+  const payIds = await payScopeEmployeeIds(ctx, scope); // HR PRIV-2 ▸ id ทุกคนในขอบเขตค่าจ้าง รวมคนที่ออกแล้ว (null = ทุกคน) — แถวในรอบ · รายการค้าง · คนที่ไม่อยู่ในรอบ ◂
+  const inPay = (employeeId: string) => payIds === null || payIds.includes(employeeId); // HR PRIV-2 ◂
   // HR H4.6 ▸ r2 m8: เลขที่/วันที่ลงนามหนังสือยินยอม ของรายการที่มาจากการเบิกของ/ค่าเสียหาย (ผู้ดูเงินเดือน — ผ่านด่านข้างบนแล้ว) ◂
   const stockConsent = await stockConsentByAdjustment(ctx, { ...membership, userId: auth.user.id }, adjustments.filter((a) => a.sourceType === "INVENTORY_ISSUE").map((a) => a.id));
-  const shownItems = (items: (typeof runs)[number]["items"]) => (allBranches ? items : items.filter((it) => inScope.has(it.employeeId)));
+  const shownItems = (items: (typeof runs)[number]["items"]) => (allBranches ? items : items.filter((it) => inPay(it.employeeId))); // HR PRIV-2 ◂
   // การเข้างานเดือนนี้ + เดือนก่อน (งวดที่มักจะกำลังจ่าย) — ใช้ประกอบการตัดสินใจ
   // 🔴 ระบบไม่หักเงินอัตโนมัติจากการสาย/ขาด: เป็นนโยบายของร้าน + มีผลทางกฎหมาย ต้องให้คนตัดสิน
   const [byy, bmm] = bkkParts(new Date()).dateStr.split("-").map(Number);
@@ -122,8 +126,8 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
   // H0.2 ▸ R1: คนที่ไม่อยู่ในรอบร่างแต่ละรอบ (ตัดสินด้วยกติกาเดียวกับตอนสร้าง/คำนวณใหม่) · R2: รายการค้างในงวดที่มีรอบแล้ว ◂
   const draftRunPeriods = runs.filter((r) => r.status === "DRAFT").map((r) => r.periodKey);
   const [exclusionsOfDrafts, stranded] = await Promise.all([
-    Promise.all(draftRunPeriods.map(async (periodKey) => ({ periodKey, list: (await runExclusions(ctx, periodKey)).filter((x) => allBranches || inScope.has(x.employeeId)) }))),
-    strandedAdjustments(ctx).then((xs) => xs.filter((x) => allBranches || inScope.has(x.employeeId))),
+    Promise.all(draftRunPeriods.map(async (periodKey) => ({ periodKey, list: (await runExclusions(ctx, periodKey)).filter((x) => allBranches || inPay(x.employeeId)) }))), // HR PRIV-2 ◂
+    strandedAdjustments(ctx).then((xs) => xs.filter((x) => allBranches || inPay(x.employeeId))), // HR PRIV-2 ◂
   ]);
   const draftRunIds = new Set(runs.filter((r) => r.status === "DRAFT").map((r) => r.id));
   // HR H3.7 ▸ fix r3 (3): period offered by "คืนเงิน" = next open period of that employee (null ⇒ no form — e.g. after the end-date period) ◂
@@ -347,20 +351,28 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
           </div>
         )}
         <DataList
-          items={runs.map((r) => ({
+          items={runs.map((r) => {
+            // HR PRIV-2 ▸ ตัวเลขของแถวรอบ: ทุกสาขา = ยอดของรอบ (เดิม) · จำกัดสาขา = ผลรวมของแถวที่เห็น + หมายเหตุจำนวนคนที่ไม่รวม ◂
+            const shown = shownItems(r.items); // HR PRIV-2 ◂
+            const sum = (k: "netSatang" | "grossSatang" | "ssoEmployeeSatang" | "whtSatang") => shown.reduce((x, it) => x + it[k], 0); // HR PRIV-2 ◂
+            const fig = allBranches ? { net: r.totalNetSatang, gross: r.totalGrossSatang, sso: r.totalSsoEmployeeSatang, wht: r.totalWhtSatang } : { net: sum("netSatang"), gross: sum("grossSatang"), sso: sum("ssoEmployeeSatang"), wht: sum("whtSatang") }; // HR PRIV-2 ◂
+            const hidden = r.items.length - shown.length; // HR PRIV-2 ◂
+            return {
             key: r.id,
             primary: (
               <span>
-                งวด {r.periodKey} · {formatBaht(r.totalNetSatang)}
+                งวด {r.periodKey} · {formatBaht(fig.net)}{/* HR PRIV-2 ◂ */}
               </span>
             ),
             // H0.2 ▸ R1/R3: แถวที่มี flag — NEGATIVE_NET (แดง · อนุมัติไม่ได้) · PARTIAL_MONTH (ต้องตรวจ · ยังไม่คิดตามสัดส่วน) ◂
             secondary: (() => {
-              const neg = r.items.filter((it) => flagsOf(it.snapshotJson).includes("NEGATIVE_NET")).length;
-              const partial = r.items.filter((it) => flagsOf(it.snapshotJson).includes("PARTIAL_MONTH")).length;
+              const neg = shown.filter((it) => flagsOf(it.snapshotJson).includes("NEGATIVE_NET")).length; // HR PRIV-2 ◂
+              const partial = shown.filter((it) => flagsOf(it.snapshotJson).includes("PARTIAL_MONTH")).length; // HR PRIV-2 ◂
               return (
                 <span className="flex flex-col gap-0.5 whitespace-normal">
-                  <span>{`${r.items.length} คน · เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · ปสส. ${formatBaht(r.totalSsoEmployeeSatang)} · ภาษี ${formatBaht(r.totalWhtSatang)}`}</span>
+                  <span>{`${shown.length} คน · เงินเดือนรวม ${formatBaht(fig.gross)} · ปสส. ${formatBaht(fig.sso)} · ภาษี ${formatBaht(fig.wht)}`}</span>{/* HR PRIV-2 ◂ */}
+                  {/* HR PRIV-2 ▸ จำนวนคนในรอบที่ผู้ดูไม่มีสิทธิ์ดูค่าจ้าง (ไม่มีชื่อ · ไม่มียอด) ◂ */}
+                  {hidden > 0 && <span>{PAY_SCOPE_EXCLUDED_TEXT.replace("{n}", String(hidden))}</span>}
                   {neg > 0 && (
                     <span data-testid={`hr-payroll-run-${r.periodKey}-negative`} className="text-[color:var(--color-danger)]">
                       {neg} คน: {NEGATIVE_NET_TEXT}
@@ -418,7 +430,8 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                 )}
               </div>
             ),
-          }))}
+            };
+          }) /* HR PRIV-2 ◂ */}
           empty="ยังไม่มีรอบจ่าย — สร้างรอบจ่ายด้านบนเพื่อคำนวณเงินเดือน/ปสส./ภาษี"
         />
 

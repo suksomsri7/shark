@@ -189,8 +189,8 @@ export const REPORT_CATALOG: Record<ReportId, ReportDef> = {
 export const REPORT_TEXT = {
   "no": "ไม่พบรายงานนี้ หรือคุณไม่มีสิทธิ์ดูรายงานนี้",
   "input": "ช่วงเวลาหรือรูปแบบไฟล์ไม่ถูกต้อง",
-  "formula": "มีข้อความที่โปรแกรมตารางอาจอ่านเป็นสูตร: {names} — แก้ข้อความก่อนส่งออก",
-  "encoding": "มีอักขระพิเศษที่เขียนลงไฟล์ไม่ได้: {names} — แก้ข้อความก่อนส่งออก",
+  "formula": "มีข้อความที่โปรแกรมตารางอาจอ่านเป็นสูตร — แก้ข้อความก่อนส่งออก", // HR PRIV-2 ▸ R5: ข้อความคงที่ ไม่ต่อชื่อพนักงาน ◂
+  "encoding": "มีอักขระพิเศษที่เขียนลงไฟล์ไม่ได้ — แก้ข้อความก่อนส่งออก", // HR PRIV-2 ▸ R5: ข้อความคงที่ ไม่ต่อชื่อพนักงาน ◂
   "limit": "ข้อมูลมากเกินกว่าจะแสดงในรายงานเดียว — เลือกสาขาหรือช่วงเวลาให้แคบลง",
   "total": "รวม",
   "registerDuty": "ทะเบียนลูกจ้างตาม พ.ร.บ.คุ้มครองแรงงาน ม.112–113 (นายจ้างที่มีลูกจ้างตั้งแต่ 10 คน · ทำเป็นภาษาไทย) — อ้างจากฉบับรวมแก้ไข โปรดตรวจกับที่ปรึกษาแรงงาน",
@@ -218,8 +218,8 @@ export const REPORT_TEXT = {
 export const REPORT_TEXT_EN = {
   "no": "Report not found, or you do not have access to this report",
   "input": "The period or file format is not valid",
-  "formula": "Some text could be read as a spreadsheet formula: {names} — fix the text before exporting",
-  "encoding": "Some characters cannot be written to the file: {names} — fix the text before exporting",
+  "formula": "Some text could be read as a spreadsheet formula — fix the text before exporting", // HR PRIV-2 ▸ fixed text, no employee names ◂
+  "encoding": "Some characters cannot be written to the file — fix the text before exporting", // HR PRIV-2 ▸ fixed text, no employee names ◂
   "limit": "Too much data for one report — choose a branch or a shorter period",
   "total": "Total",
   "registerDuty": "Employee register under the Labour Protection Act s.112–113 (employers with 10 or more employees · kept in Thai) — quoted from a consolidated text, please check with a labour adviser",
