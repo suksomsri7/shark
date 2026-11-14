@@ -13,8 +13,11 @@ import { ledgerRunning, type LedgerRunningRow } from "./coa";
 import { postManualJV, reverseEntry, DORM_DEPOSIT_REF_TYPE, DORM_EXCESS_REF_TYPE } from "./gl"; // SVC D.2 F7 ◂
 import { checkNotLocked } from "./policy"; // §9.3 ล็อกข้อมูลก่อนวันที่
 import { safeReason } from "./errors";
-import { filedLedgerIdsInTx } from "./filed-guard";
+import { filedLedgerIdsInTx, decide } from "./filed-guard";
 import { legalWarning, type LegalWarning } from "@/lib/core/settings/legal/warnings";
+import { accountNow } from "./clock";
+import { bookRuleFrom, loadBookLegal } from "./legal-values";
+import { bkkYmdOf, jvContentWarnings, jvLateWarnings, type JvEntityKind, type JvLateRules } from "./jv-rules";
 
 export type JournalCtx = { tenantId: string; systemId: string };
 import { clampSearch } from "./search-input";
@@ -405,11 +408,46 @@ export type ManualJvInput = {
   postedById?: string;
   /** ไฟล์แนบที่อัปโหลดไว้แล้ว (AccountAttachment.id) — ผูกเข้ากับ JV หลังสร้างสำเร็จ */
   attachmentIds?: string[];
+  /** ACC T4.1 ▸ อนุมัติพร้อมบันทึก — ผู้อนุมัติ (ผู้ใช้/คีย์ API) · ไม่ส่ง = ยังไม่อนุมัติ (อนุมัติทีหลังที่ approveJournalEntry) ◂ */
+  approvedById?: string | null;
 };
 
 export type ManualJvResult =
-  | { ok: true; entryId: string; docNo: string; /** ACC T1.9 ▸ คำเตือนแจ้งให้ทราบ (JV แตะบัญชีภาษี) ◂ */ warnings: LegalWarning[] }
+  | {
+      ok: true;
+      entryId: string;
+      docNo: string;
+      /** ACC T1.9 ▸ คำเตือนแจ้งให้ทราบ (JV แตะบัญชีภาษี) · T4.1 ▸ ลงช้า · ไม่มีเอกสารประกอบ · ยังไม่อนุมัติ · คำอธิบาย (ยืนยันแล้ว) ◂ */
+      warnings: LegalWarning[];
+      approved: boolean;
+    }
   | { ok: false; reason: string };
+
+/** ACC T4.1 ▸ ข้อความธงของ "บันทึกร่าง" — อนุมัติแล้วระบบปลดธงนี้ให้ (ธงที่คนติดเองด้วยเหตุผลอื่นไม่แตะ) ◂ */
+export const JV_DRAFT_FLAG_NOTE = "ร่าง — รอตรวจสอบก่อนปิดงวด";
+
+/** ACC T4.1 ▸ ค่ากฎลงรายการช้าของสมุด ณ วันที่ + ประเภทผู้ประกอบการ + สถานะ VAT (คิวรี 2 ครั้ง) ◂ */
+export async function jvRulesOf(ctx: JournalCtx, date: Date): Promise<{ rules: JvLateRules; entityKind: JvEntityKind; vatRegistered: boolean }> {
+  const [legal, settings] = await Promise.all([
+    loadBookLegal(ctx),
+    tenantDb(ctx).accountSettings.findFirst({ where: { systemId: ctx.systemId }, select: { vatRegistered: true } }),
+  ]);
+  const j = bookRuleFrom(legal, "JOURNAL_ENTRY_DAYS", date);
+  const l = bookRuleFrom(legal, "LEDGER_POST_DAYS_AFTER_MONTH", date);
+  const c = bookRuleFrom(legal, "CASH_REPORT_WORKING_DAYS", date);
+  return {
+    rules: {
+      journalDays: j.value,
+      journalSource: j.row?.source,
+      ledgerDays: l.value,
+      ledgerSource: l.row?.source,
+      cashWorkingDays: c.value,
+      cashSource: c.row?.source,
+    },
+    entityKind: legal.entityKind,
+    vatRegistered: settings?.vatRegistered ?? false,
+  };
+}
 
 /** ผลรวมเดบิต/เครดิตของบรรทัดที่ "มีค่า" — ใช้ทั้งฝั่ง client (แถบสมดุล) และฝั่ง server */
 export function jvTotals(lines: ManualJvLineInput[]): { debit: number; credit: number; balanced: boolean } {
@@ -466,6 +504,10 @@ export async function createManualEntry(ctx: JournalCtx, input: ManualJvInput): 
     if (n !== contactIds.length) return { ok: false, reason: "มีบรรทัดที่เลือกผู้ติดต่อนอกร้านนี้" };
   }
 
+  // ACC T4.1 ▸ คำอธิบายว่าง = คำเตือนต้องกดยืนยัน (ข้อ 5 · ข้อ 11 [V]) — ด่านก่อนเขียน (โยนในบริบทการยืนยัน · ยังไม่ได้เขียนอะไร) ◂
+  const content = jvContentWarnings({ memo: input.memo, hasSupportingDoc: (input.attachmentIds?.length ?? 0) > 0, approved: !!input.approvedById });
+  const recordAck = decide(content.filter((w) => w.ack));
+
   // เที่ยงวันเวลาไทย — กันวันเหลื่อมตอนแปลง TZ (แบบเดียวกับ gl.firstDayNextMonth)
   const [y, m, d] = input.dateKey.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d, 5, 0, 0));
@@ -497,13 +539,63 @@ export async function createManualEntry(ctx: JournalCtx, input: ManualJvInput): 
     });
   }
 
+  // ACC T4.1 ▸ อนุมัติพร้อมบันทึก (ผู้อนุมัติ + เวลา) · บันทึกผู้ยืนยันคำเตือนคำอธิบายว่าง ◂
+  const recordedAt = accountNow();
+  if (input.approvedById) {
+    await db.accountJournalEntry.update({ where: { id: entryId }, data: { approvedById: input.approvedById, approvedAt: recordedAt } });
+  }
+  if (recordAck) await recordAck(db as unknown as Prisma.TransactionClient, ctx, { op: "account.journal.adjust", targetType: "AccountJournalEntry", targetId: entryId });
+
   const created = await db.accountJournalEntry.findFirst({ where: { id: entryId }, select: { docNo: true } });
   // ACC T1.9 ▸ JV มือแตะบัญชีภาษี (ตาม mapping) = รายการปรับปรุงมือ — แจ้งให้ทราบ (ไม่บล็อก · ไม่ต้องยืนยัน) ◂
   const tax = await filedLedgerIdsInTx(db as unknown as Prisma.TransactionClient, ctx.systemId);
   const taxIds = new Set(Object.entries(tax).filter(([k]) => k !== "WHT_PAYABLE").map(([, v]) => v));
   const touched = accounts.filter((a) => taxIds.has(a.id));
   const warnings = touched.length ? [legalWarning("MANUAL_JV_VAT_ACCOUNT", { accounts: touched.map((a) => `${a.code} ${a.name}`).join(", ") })] : [];
-  return { ok: true, entryId, docNo: created?.docNo ?? "", warnings };
+  // ACC T4.1 ▸ ลงรายการช้า (ตามประเภทผู้ประกอบการ · ค่าจากตาราง "สมุดบัญชี") + เนื้อหา (คำอธิบาย · เอกสารประกอบ · ผู้อนุมัติ) ◂
+  const r = await jvRulesOf(ctx, date);
+  warnings.push(...jvLateWarnings({ dateYmd: input.dateKey, recordedYmd: bkkYmdOf(recordedAt), ...r }), ...content);
+  return { ok: true, entryId, docNo: created?.docNo ?? "", warnings, approved: !!input.approvedById };
+}
+
+// ─────────────────── ACC T4.1 ▸ อนุมัติ JV มือ ───────────────────
+
+export type ApproveResult = { ok: true; entryId: string; docNo: string; approvedAt: Date; flagCleared: boolean } | { ok: false; reason: string };
+
+/**
+ * อนุมัติใบสำคัญที่บันทึกด้วยมือ — เก็บผู้อนุมัติ + เวลา (ข้อ 11 [V]) · ใบที่ติดธง "ร่าง" ของฟอร์ม = ปลดธงให้
+ * ใบที่ระบบลงอัตโนมัติ (มีเอกสารต้นทาง) · ใบที่ถูกกลับรายการ · ใบที่อนุมัติแล้ว = ปฏิเสธ (ไม่ใช่เหตุผลกฎหมาย — สถานะของข้อมูล)
+ */
+export async function approveJournalEntry(ctx: JournalCtx, entryId: string, approverId: string): Promise<ApproveResult> {
+  const db = tenantDb(ctx);
+  const e = await db.accountJournalEntry.findFirst({
+    where: { id: entryId },
+    select: { id: true, docNo: true, source: true, status: true, approvedAt: true, needsReview: true, flagNote: true },
+  });
+  if (!e) return { ok: false, reason: "ไม่พบใบสำคัญนี้" };
+  if (e.source !== "MANUAL") return { ok: false, reason: `${e.docNo} เป็นรายการที่ระบบลงให้จากเอกสารต้นทาง — อนุมัติที่เอกสารต้นทาง ไม่ใช่ที่สมุดรายวัน` };
+  if (e.status === "REVERSED") return { ok: false, reason: `${e.docNo} ถูกกลับรายการแล้ว — อนุมัติไม่ได้` };
+  if (e.approvedAt) return { ok: false, reason: `${e.docNo} อนุมัติไปแล้ว` };
+  const at = accountNow();
+  const clear = e.needsReview && e.flagNote === JV_DRAFT_FLAG_NOTE;
+  await db.accountJournalEntry.update({
+    where: { id: e.id },
+    data: { approvedById: approverId, approvedAt: at, ...(clear ? { needsReview: false, flagNote: null } : {}) },
+  });
+  return { ok: true, entryId: e.id, docNo: e.docNo, approvedAt: at, flagCleared: clear };
+}
+
+/**
+ * ACC T4.1 ▸ คำเตือนของใบสำคัญ 1 ใบ (หน้ารายละเอียด · REST journal.get ไม่เรียก — งบคิวรีคงเดิม)
+ *   JV มือ: คำอธิบาย · เอกสารประกอบ · ผู้อนุมัติ · ลงช้า (วันที่รายการ เทียบ วันที่บันทึกจริง createdAt) · ระบบลงให้ = ไม่มี
+ */
+export async function journalEntryLegal(ctx: JournalCtx, e: Pick<JournalEntryDetail, "source" | "memo" | "date" | "createdAt" | "approvedAt" | "attachments" | "refType">): Promise<LegalWarning[]> {
+  if (e.source !== "MANUAL") return [];
+  const r = await jvRulesOf(ctx, e.date);
+  return [
+    ...jvContentWarnings({ memo: e.memo, hasSupportingDoc: e.attachments.length > 0 || e.refType === "AccountDocument", approved: !!e.approvedAt, saved: true }),
+    ...jvLateWarnings({ dateYmd: bkkYmdOf(e.date), recordedYmd: bkkYmdOf(e.createdAt), ...r }),
+  ];
 }
 
 /**
@@ -584,6 +676,11 @@ export type JournalEntryDetail = JournalListRow & {
   /** ใบขากลับ (ถ้าใบนี้ถูกกลับไปแล้ว) */
   reversedBy: { id: string; docNo: string } | null;
   attachments: { id: string; fileName: string; fileUrl: string; mimeType: string; sizeBytes: number }[];
+  /** ACC T4.1 ▸ วันที่บันทึกจริง · ผู้อนุมัติ ◂ */
+  createdAt: Date;
+  approvedAt: Date | null;
+  approvedById: string | null;
+  approvedByName: string | null;
 };
 
 export async function journalEntryDetail(ctx: JournalCtx, entryId: string): Promise<JournalEntryDetail | null> {
@@ -603,6 +700,9 @@ export async function journalEntryDetail(ctx: JournalCtx, entryId: string): Prom
       flagNote: true,
       source: true,
       postedById: true,
+      approvedById: true,
+      approvedAt: true,
+      createdAt: true,
       refType: true,
       refId: true,
       reversalOfId: true,
@@ -623,13 +723,15 @@ export async function journalEntryDetail(ctx: JournalCtx, entryId: string): Prom
   });
   if (!e) return null;
 
-  const [doc, user, contacts, attachments] = await Promise.all([
+  // ACC T4.1 ▸ ผู้บันทึก + ผู้อนุมัติในคิวรีเดียว (จำนวนคิวรีเท่าเดิม) ◂
+  const userIds = [e.postedById, e.approvedById].filter((x): x is string => !!x);
+  const [doc, users, contacts, attachments] = await Promise.all([
     e.refType === "AccountDocument" && e.refId
       ? db.accountDocument.findFirst({ where: { id: e.refId }, select: { id: true, docNo: true, docType: true } })
       : Promise.resolve(null),
-    e.postedById
-      ? db.user.findFirst({ where: { id: e.postedById }, select: { name: true } })
-      : Promise.resolve(null),
+    userIds.length
+      ? db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+      : Promise.resolve([] as { id: string; name: string | null }[]),
     db.accountContact.findMany({
       where: { id: { in: e.lines.map((l) => l.contactId).filter((x): x is string => !!x) } },
       select: { id: true, name: true },
@@ -640,6 +742,8 @@ export async function journalEntryDetail(ctx: JournalCtx, entryId: string): Prom
     }),
   ]);
   const contactById = new Map(contacts.map((c) => [c.id, c.name]));
+  const user = e.postedById ? (users.find((u) => u.id === e.postedById) ?? null) : null;
+  const approver = e.approvedById ? (users.find((u) => u.id === e.approvedById) ?? null) : null;
 
   return {
     id: e.id,
@@ -678,6 +782,10 @@ export async function journalEntryDetail(ctx: JournalCtx, entryId: string): Prom
       suspense: l.account.code === "9999",
     })),
     attachments,
+    createdAt: e.createdAt,
+    approvedAt: e.approvedAt,
+    approvedById: e.approvedById,
+    approvedByName: e.approvedById ? (approver?.name ?? "คีย์ API / ผู้ช่วย AI") : null,
   };
 }
 
