@@ -226,6 +226,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // CAL1.1 ▸ ปฏิทินส่วนตัวของเลขา (docs/modules/32-secretary-calendar.md §2.3) — CalItem/CalPref ผูกร้าน (purge ลบ · export ร้านยกเว้น R-CAL-33) ◂
   CalItem: tenant,
   CalPref: tenant,
+  CalRoomCard: tenant, // calendar_b ▸ การ์ด agenda ในห้องเลขา (ส่วนตัว · review b B1) ◂
   CalLink: g("ปฏิทิน Google ของ \"คน\" (1 แถว/user/provider) ใช้ข้ามทุกร้าน — ส่วนตัว M4"),
   CalExternalEvent: g("แคชอีเวนต์ Google ของคน — ผูก CalLink ไม่ผูกร้าน"),
   // Observability (WO-0041) — logger กลางเขียน · backoffice อ่าน (ข้ามร้านโดยเจตนา)

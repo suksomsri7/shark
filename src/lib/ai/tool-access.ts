@@ -56,6 +56,8 @@ type HandRule = {
   needsPerson?: true;
   /** r2 (F7) ตัวเลขรวมทั้งระบบสมาชิก ⇒ ต้องอ่านสมาชิกได้ทั้งร้าน (ผู้ถูกจำกัดสาขาตาม `isUnitScoped` ของโมดูลสมาชิก = ปฏิเสธ) */
   memberWholeShop?: true;
+  /** calendar_b ▸ review b m2: ข้อมูลส่วนตัวของ "คน" (ปฏิทินเลขา) — คีย์ API/งานภายใน = ปฏิเสธ + ไม่ยื่น (ยื่น = ใช้ได้จริง) ◂ */
+  memberOnly?: true;
 };
 
 const BRANCH: HandRule = { needs: [], branchScoped: true };
@@ -101,11 +103,11 @@ export const HAND_TOOL_ACCESS: Readonly<Record<string, HandRule>> = {
   // CRM v1 ไม่มีคีย์อ่าน (CrmHub เดิม) · CRM v2 = crm.contact.read + การมองเห็น — ตัดสินรายระบบในเครื่องมือ
   recent_leads: { needs: [], scopedData: true },
   // CAL1.7 ▸ ปฏิทินส่วนตัว (สัญญา 32 §9 · R-CAL-18): ไม่มีคีย์ (ของตัวเอง) · เขียนทันที = คีย์ API ใช้ไม่ได้ · ไม่มีพารามิเตอร์ผู้รับ ◂
-  calendar_add: { needs: [], writesNow: true },
-  calendar_update: { needs: [], writesNow: true },
-  calendar_cancel: { needs: [], writesNow: true },
-  calendar_list: OPEN,
-  calendar_agenda: OPEN,
+  calendar_add: { needs: [], writesNow: true, memberOnly: true },
+  calendar_update: { needs: [], writesNow: true, memberOnly: true },
+  calendar_cancel: { needs: [], writesNow: true, memberOnly: true },
+  calendar_list: { needs: [], memberOnly: true },
+  calendar_agenda: { needs: [], memberOnly: true },
   // ── เขียนทันที ──
   kb_auto_save: { needs: [{ module: "kb", action: "kb.article.create" }], writesNow: true }, // app/kb/actions.ts · คู่ข้อเสนอ kb_create_article
 };
@@ -292,6 +294,7 @@ function membershipToolVerdict(actor: AiActor, name: string, opts: { crmLegacyLe
       if (extra.length > 0 && !isGeneralKeyActor(actor)) return DENY_KEY;
       return toolAllowedForApiKey(name, actor.scopes, opts) ? OK : DENY_KEY;
     }
+    if (hand?.memberOnly) return DENY_KEY; // calendar_b ▸ review b m2 ◂
     if (hand) return apiKeyHandOk(actor, hand) ? OK : DENY_KEY;
     if (kind) return actorCanConfirmKind(actor, kind) ? OK : DENY_KEY;
     return isGeneralKeyActor(actor) ? OK : DENY_KEY; // propose_plan
@@ -303,6 +306,7 @@ function membershipToolVerdict(actor: AiActor, name: string, opts: { crmLegacyLe
   if (hand?.branchScoped && actorBranches(actor)?.length === 0) {
     return { ok: false, reason: "คุณไม่มีสิทธิ์ดูข้อมูลส่วนนี้: ข้อมูลแยกตามสาขา และบัญชีนี้ยังไม่ได้รับสิทธิ์สาขาใดเลย (ไม่ได้แปลว่าไม่มีข้อมูล) — ขอให้เจ้าของร้านกำหนดสาขาให้ก่อน" };
   }
+  if (hand?.memberOnly && actor.kind !== "member") return { ok: false, reason: "ปฏิทินส่วนตัวใช้ได้เฉพาะสมาชิกในแอป" }; // calendar_b ◂
   if (hand?.needsPerson && actor.kind !== "member") {
     return { ok: false, reason: "งานอัตโนมัติไม่มีสิทธิ์ดูรายการนี้: รายการรออนุมัติขึ้นกับว่าใครเป็นผู้อนุมัติ (ไม่ได้แปลว่าไม่มีรายการรออนุมัติ)" };
   }

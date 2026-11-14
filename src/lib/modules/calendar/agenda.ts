@@ -59,6 +59,8 @@ export const AGENDA_MAX_DAYS = 42;
 export const PER_SOURCE_DAY_CAP = 50;
 
 const DAY_MS = 86_400_000;
+/** นัดส่วนตัวยาวสุด (EVENT_MAX_MS ของ next-fire) — นัดที่เริ่มก่อนช่วงแต่ยังคร่อมช่วง */
+const EVENT_SPAN_MAX_MS = 14 * DAY_MS;
 const dayStart = (d: number) => new Date(d * DAY_MS - BKK_OFFSET_MS);
 /** @db.Date (เที่ยงคืน UTC ของวันนั้น) → เลขวัน */
 const dateDayNo = (d: Date) => Math.floor(+d / DAY_MS);
@@ -247,7 +249,8 @@ async function accountAdapter(c: Ctx): Promise<AgendaItem[]> {
     const base = { tenantId: c.actor.tenantId, systemId: s.id, direction: "OUT" as const, status: { in: ["AWAITING_PAYMENT" as const, "PARTIAL" as const] }, voidedAt: null, docType: { not: "BILLING_NOTE" as const } };
     const dueWin = { gte: c.from, lt: c.toEx };
     const rows = await db.accountDocument.findMany({
-      where: { ...base, OR: [{ dueDate: dueWin }, ...(todayInRange ? [{ dueDate: { lt: today0 } }] : [])] },
+      // calendar_b ▸ review b M4: ใบในช่วงเท่านั้น (ใบเกินกำหนดเก่า ๆ ไม่แย่งเพดาน) · ยอดเกินกำหนดเป็น aggregate แยกข้างล่าง ◂
+      where: { ...base, dueDate: dueWin, grandTotal: { gt: db.accountDocument.fields.paidTotal } },
       select: { id: true, grandTotal: true, paidTotal: true, dueDate: true, contactSnapshot: true, contact: { select: { name: true } } },
       orderBy: [{ dueDate: "asc" }, { id: "asc" }],
       take: 2_000,
@@ -258,16 +261,18 @@ async function accountAdapter(c: Ctx): Promise<AgendaItem[]> {
     };
     const byDay = new Map<number, { n: number; amt: number; names: string[] }>();
     const overdue = { n: 0, amt: 0 };
+    if (todayInRange) {
+      const ag = await db.accountDocument.aggregate({
+        where: { ...base, dueDate: { lt: today0 }, grandTotal: { gt: db.accountDocument.fields.paidTotal } },
+        _count: { _all: true },
+        _sum: { grandTotal: true, paidTotal: true },
+      });
+      overdue.n = ag._count._all;
+      overdue.amt = (ag._sum.grandTotal ?? 0) - (ag._sum.paidTotal ?? 0);
+    }
     for (const r of rows) {
       const owe = r.grandTotal - r.paidTotal;
       if (owe <= 0 || !r.dueDate) continue;
-      if (+r.dueDate < +today0) {
-        if (todayInRange) {
-          overdue.n += 1;
-          overdue.amt += owe;
-        }
-        if (+r.dueDate < +c.from) continue;
-      }
       const d = bkkDayNo(r.dueDate);
       if (d < c.fromDay || d > c.toDay) continue;
       const g = byDay.get(d) ?? byDay.set(d, { n: 0, amt: 0, names: [] }).get(d)!;
@@ -363,18 +368,21 @@ async function taxAdapter(c: Ctx, cut: { account: boolean; hr: boolean }): Promi
     } else if (t.form === "PND3_53" && whtView) {
       for (const s of acc) {
         const n = await tenantDb({ tenantId: c.actor.tenantId, systemId: s.id }).accountDocument.count({
-          where: { tenantId: c.actor.tenantId, systemId: s.id, docType: "WHT_CERT", direction: "IN", voidedAt: null, issueDate: periodRange(t.period) },
+          where: { tenantId: c.actor.tenantId, systemId: s.id, docType: "WHT_CERT", direction: "IN", voidedAt: null, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] }, issueDate: periodRange(t.period) }, // calendar_b ▸ review b m8: ร่างไม่นับ ◂
         });
         if (n > 0) push("PND3_53", t, s.id, `/app/sys/${s.id}/account/wht`, "account", "บัญชี");
       }
     } else if ((t.form === "PND1" || t.form === "SSO") && payroll) {
       for (const s of hr) {
-        const run = await tenantDb({ tenantId: c.actor.tenantId, systemId: s.id }).hrPayrollRun.findFirst({
-          where: { tenantId: c.actor.tenantId, systemId: s.id, periodKey: t.period, status: { notIn: ["DRAFT", "REVERSED"] } },
+        // calendar_b ▸ review b m8: ภ.ง.ด.1/ปกส. ยื่นตาม "เดือนที่จ่าย" (ม.52 · ท.ป.4/2528 ข้อ 13 · ปกส. หักตอนจ่าย — skill shark-thai-law
+        //   common-withholding-tax §8 :68/:129 · domain-labour-payroll :186) ⇒ รอบที่ payDate อยู่ในเดือนงวดของแถว ไม่ใช่ periodKey ◂
+        const runs = await tenantDb({ tenantId: c.actor.tenantId, systemId: s.id }).hrPayrollRun.findMany({
+          where: { tenantId: c.actor.tenantId, systemId: s.id, payDate: periodRange(t.period), status: { notIn: ["DRAFT", "REVERSED"] } },
           select: { totalSsoEmployeeSatang: true },
+          take: 12,
         });
-        if (!run) continue;
-        if (t.form === "SSO" && !(run.totalSsoEmployeeSatang > 0)) continue;
+        if (!runs.length) continue;
+        if (t.form === "SSO" && !runs.some((r) => r.totalSsoEmployeeSatang > 0)) continue;
         push(t.form, t, s.id, `/app/sys/${s.id}/hr/payroll`, "hr", "HR");
       }
     }
@@ -648,8 +656,17 @@ function chatSub(createdAt: Date, now: Date): string {
 }
 
 async function personalAdapter(c: Ctx): Promise<AgendaItem[]> {
+  // calendar_b ▸ review b M4: ครั้งเดียว = ช่วงคำขอ (− เพดานความยาวนัด 14 วัน) · ทำซ้ำ = ที่ยังเปิด — ประวัติเก่าไม่แย่งเพดาน ◂
   const rows = await tenantDb({ tenantId: c.actor.tenantId }).calItem.findMany({
-    where: { userId: c.actor.userId, tenantId: c.actor.tenantId, status: { in: ["OPEN", "DONE"] }, startAt: { lt: c.toEx } },
+    where: {
+      userId: c.actor.userId,
+      tenantId: c.actor.tenantId,
+      startAt: { lt: c.toEx },
+      OR: [
+        { repeat: "NONE", status: { in: ["OPEN", "DONE"] }, startAt: { gte: new Date(+c.from - EVENT_SPAN_MAX_MS), lt: c.toEx } },
+        { repeat: { not: "NONE" }, status: "OPEN" },
+      ],
+    },
     orderBy: [{ startAt: "asc" }, { id: "asc" }],
     take: 1_000,
   });

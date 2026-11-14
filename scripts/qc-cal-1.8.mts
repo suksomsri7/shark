@@ -59,6 +59,9 @@ function fakeGoogle() {
     gone: new Set<string>(),
     scope: `${google.SCOPE_EVENTS} ${google.SCOPE_LIST} openid email`,
     now: Date.now(),
+    pageSize: 0, // > 0 = บังคับขนาดหน้า (ทดสอบ pageToken ข้ามรอบ)
+    badClient: false, // refresh ตอบ invalid_client (ตั้งค่าเซิร์ฟเวอร์ผิด — ต้องไม่ไล่ผู้ใช้ไปเชื่อมใหม่)
+    onGet: null as null | ((cal: string) => Promise<void>),
   };
   const evs = (cal: string) => st.events.get(cal) ?? st.events.set(cal, new Map()).get(cal)!;
   const put = (cal: string, e: AnyMod): Ev => {
@@ -69,7 +72,16 @@ function fakeGoogle() {
     return ev;
   };
   const json = (status: number, o: unknown) => new Response(status === 204 ? null : JSON.stringify(o), { status, headers: { "content-type": "application/json" } });
-  const idTok = (email: string) => `x.${Buffer.from(JSON.stringify({ email })).toString("base64url")}.y`;
+  const idTok = (email: string, sub: string) => `x.${Buffer.from(JSON.stringify({ email, sub })).toString("base64url")}.y`;
+  // อีเวนต์ทำซ้ำ (มี recurrence) ⇒ singleEvents=true ขยายเป็น instance 3 ครั้ง (id_<k> · recurringEventId · สืบ extendedProperties) แบบ Google
+  const expand = (e: Ev): AnyMod[] => {
+    if (!Array.isArray(e.recurrence) || e.status === "cancelled") return [e];
+    const s0 = Date.parse(e.start?.dateTime ?? `${e.start?.date}T00:00:00+07:00`);
+    const dur = Date.parse(e.end?.dateTime ?? `${e.end?.date}T00:00:00+07:00`) - s0;
+    return [0, 1, 2].map((k) => ({ ...e, id: `${e.id}_${k}`, recurringEventId: e.id, recurrence: undefined, etag: `${e.etag}-${k}`, start: { dateTime: new Date(s0 + k * 86_400_000).toISOString() }, end: { dateTime: new Date(s0 + k * 86_400_000 + dur).toISOString() } }));
+  };
+  // อีเวนต์ที่ถูกลบ: Google ส่งแค่ id + status (ไม่มี extendedProperties/summary)
+  const wire = (e: AnyMod) => (e.status === "cancelled" ? { id: e.id, status: "cancelled" } : e);
   const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     const method = (init?.method ?? "GET").toUpperCase();
@@ -89,9 +101,12 @@ function fakeGoogle() {
         st.access.add(at);
         if (code === "noscope") return json(200, { access_token: at, expires_in: 3600, refresh_token: "rt-noscope", scope: google.SCOPE_EVENTS });
         if (code === "norefresh") return json(200, { access_token: at, expires_in: 3600, scope: st.scope });
-        return json(200, { access_token: at, expires_in: 3600, refresh_token: `rt-${code}`, scope: st.scope, id_token: idTok("me@example.com") });
+        if (code?.startsWith("again")) return json(200, { access_token: at, expires_in: 3600, scope: st.scope, id_token: idTok("me@example.com", "sub-me") }); // ยินยอมซ้ำ: Google ไม่ให้ refresh_token ใหม่
+        if (code?.startsWith("other")) return json(200, { access_token: at, expires_in: 3600, refresh_token: `rt-${code}`, scope: st.scope, id_token: idTok("other@example.com", "sub-other") });
+        return json(200, { access_token: at, expires_in: 3600, refresh_token: `rt-${code}`, scope: st.scope, id_token: idTok("me@example.com", "sub-me") });
       }
       if (p.get("grant_type") === "refresh_token") {
+        if (st.badClient) return json(401, { error: "invalid_client" });
         if (st.deadRefresh.has(p.get("refresh_token") ?? "")) return json(400, { error: "invalid_grant" });
         const at = `at-${++st.n}`;
         st.access.add(at);
@@ -109,14 +124,29 @@ function fakeGoogle() {
     const cal = m[1] === "primary" ? "me@example.com" : m[1]!;
     const id = m[2];
     if (method === "GET") {
-      const sync = url.searchParams.get("syncToken");
+      if (st.onGet) await st.onGet(cal);
+      const sp = url.searchParams;
+      const sync = sp.get("syncToken");
+      const single = sp.get("singleEvents") === "true";
       if (sync && st.gone.has(cal)) {
         st.gone.delete(cal);
         return json(410, { error: { code: 410 } });
       }
+      if (sync && (sp.get("timeMin") || sp.get("timeMax"))) return json(400, { error: { message: "syncToken with timeMin" } });
       const since = sync ? Number(sync.split(":")[1]) : 0;
-      const list = [...evs(cal).values()].filter((e) => (sync ? e._v > since : e.status !== "cancelled")).map(({ _v, ...e }) => e);
-      return json(200, { items: list, nextSyncToken: `${cal}:${st.v}` });
+      const tMin = sp.get("timeMin") ? Date.parse(sp.get("timeMin")!) : -Infinity;
+      const tMax = sp.get("timeMax") ? Date.parse(sp.get("timeMax")!) : Infinity;
+      const base = [...evs(cal).values()].filter((e) => (sync ? e._v > since : e.status !== "cancelled"));
+      const list = base.flatMap((e) => (single ? expand(e) : [e])).filter((e) => {
+        if (sync || e.status === "cancelled") return true;
+        const st0 = Date.parse(e.start?.dateTime ?? `${e.start?.date}T00:00:00+07:00`);
+        return !(st0 > tMax) && !(st0 < tMin - 86_400_000 * 400);
+      }).map(({ _v, ...e }) => wire(e));
+      const size = st.pageSize || Number(sp.get("maxResults") ?? 250);
+      const off = Number((sp.get("pageToken") ?? "p0").slice(1));
+      const page = list.slice(off, off + size);
+      const more = off + size < list.length;
+      return json(200, { items: page, ...(more ? { nextPageToken: `p${off + size}` } : { nextSyncToken: `${cal}:${st.v}` }) });
     }
     if (method === "POST") {
       const ev = put(cal, { ...body, id: `g${++st.n}` });
@@ -187,7 +217,7 @@ try {
   const l2 = await linkRow();
   const primarySync = (l2.calendars as AnyMod[]).find((c) => c.primary)?.syncToken;
   const firstGet = g.st.calls.find((c) => c.method === "GET" && c.path.includes("/events"));
-  chk("G4-1", "full sync: timeMin (−30 วัน) + singleEvents · เฉพาะปฏิทินที่ import · บันทึก syncToken ต่อปฏิทิน (R-CAL-26)", s1.ok && ext.length === 2 && ext.every((e: AnyMod) => e.calendarId === "me@example.com") && /timeMin=/.test(firstGet?.path ?? "") && /singleEvents=true/.test(firstGet?.path ?? "") && typeof primarySync === "string", JSON.stringify({ s1, n: ext.length, primarySync }));
+  chk("G4-1", "full sync: timeMin (−30 วัน) + timeMax (+1 ปี · M5) + singleEvents · เฉพาะปฏิทินที่ import · บันทึก syncToken ต่อปฏิทิน (R-CAL-26)", s1.ok && ext.length === 2 && ext.every((e: AnyMod) => e.calendarId === "me@example.com") && /timeMin=/.test(firstGet?.path ?? "") && /timeMax=/.test(firstGet?.path ?? "") && /singleEvents=true/.test(firstGet?.path ?? "") && typeof primarySync === "string", JSON.stringify({ s1, n: ext.length, primarySync }));
   const allDay = ext.find((e: AnyMod) => e.externalId === "e2");
   chk("G4-2", "all-day = เที่ยงคืนไทย · endAt exclusive", allDay?.allDay === true && +allDay.startAt === Date.parse(`${day(2)}T00:00:00+07:00`) && +allDay.endAt === Date.parse(`${day(4)}T00:00:00+07:00`));
   const ag1 = await agenda.agendaFor(A, { from: day(1), to: day(3) }, { access: {} });
@@ -239,7 +269,46 @@ try {
   chk("G6-1", "Google ใหม่กว่า ⇒ เขียน title/startAt/endAt กลับ · version +1 · คำนวณ nextFireAt ใหม่ (lead 15) · ไม่ dirty", afterEdit.title === "ประชุมธนาคาร (เลื่อน)" && +afterEdit.startAt === +T(2, 15) && +afterEdit.endAt === +T(2, 16) && afterEdit.version === before.version + 1 && +afterEdit.nextFireAt === +T(2, 15) - 15 * 60_000 && afterEdit.syncDirty === false, JSON.stringify({ t: afterEdit.title, v: afterEdit.version }));
   g.put("me@example.com", { id: before.externalId, status: "cancelled" });
   await google.syncGoogle(fx.U.a, { deps: D });
-  chk("G6-2", "ลบใน Google ⇒ CalItem CANCELLED (สองทาง)", (await prisma.calItem.findUnique({ where: { id: ev.id } })).status === "CANCELLED");
+  chk("G6-2", "ลบใน Google (อีเวนต์ที่ลบมีแค่ id/status · review b M2) ⇒ CalItem CANCELLED (จับคู่ด้วย externalId ที่เก็บ)", (await prisma.calItem.findUnique({ where: { id: ev.id } })).status === "CANCELLED");
+
+  // ─────────────── G6b ซีรีส์ทำซ้ำ (review b M1) ───────────────
+  console.log("── G6b: เตือนทำซ้ำที่ส่งออก — instance ไม่วนส่งซ้ำ · ไม่ทับซีรีส์ ──");
+  const daily = await items.createItem(A, { kind: "REMINDER", title: "เช็กลมยาง", startAt: T(1, 7), repeat: "DAILY" });
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const dRow = await prisma.calItem.findUnique({ where: { id: daily.id } });
+  const master = g.st.events.get("me@example.com")?.get(dRow.externalId);
+  chk("G6b-1", "ส่งเป็นอีเวนต์ทำซ้ำเดียว (recurrence RRULE:FREQ=DAILY)", !!master && JSON.stringify(master.recurrence) === '["RRULE:FREQ=DAILY"]' && dRow.syncDirty === false);
+  const patchesBefore = g.st.calls.filter((c) => c.method === "PATCH" || c.method === "POST").length;
+  for (let i = 0; i < 3; i++) await google.syncGoogle(fx.U.a, { deps: D });
+  const dRow2 = await prisma.calItem.findUnique({ where: { id: daily.id } });
+  const rowsInst = await prisma.calExternalEvent.count({ where: { userId: fx.U.a, externalId: { startsWith: `${dRow.externalId}_` } } });
+  chk("G6b-2", "ซิงก์ซ้ำ 3 รอบ (instance มี recurringEventId + sharkItemId) = ไม่ PATCH/POST ซ้ำ · ไม่ dirty · ไม่สร้างแถวแสดงผลของ instance", g.st.calls.filter((c) => c.method === "PATCH" || c.method === "POST").length === patchesBefore && dRow2.syncDirty === false && rowsInst === 0 && dRow2.version === dRow.version, JSON.stringify({ patchesBefore, now: g.st.calls.filter((c) => c.method === "PATCH" || c.method === "POST").length, rowsInst }));
+  g.st.now = Date.now() + 120_000;
+  g.put("me@example.com", { id: `${dRow.externalId}_1`, recurringEventId: dRow.externalId, summary: "เช็กลมยาง (ครั้งนี้เลื่อน)", start: { dateTime: T(2, 9).toISOString() }, end: { dateTime: T(2, 9, 15).toISOString() }, extendedProperties: { private: { sharkItemId: daily.id } } });
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const dRow3 = await prisma.calItem.findUnique({ where: { id: daily.id } });
+  chk("G6b-3", "แก้ instance เดียวใน Google = ไม่ทับจุดยึดของซีรีส์ (startAt/title เดิม)", +dRow3.startAt === +T(1, 7) && dRow3.title === "เช็กลมยาง" && dRow3.status === "OPEN");
+  g.put("me@example.com", { id: dRow.externalId, summary: "เช็กลมยาง+น้ำมัน", start: { dateTime: T(1, 8).toISOString(), timeZone: "Asia/Bangkok" }, end: { dateTime: T(1, 8, 15).toISOString() }, recurrence: ["RRULE:FREQ=DAILY"] });
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const dRow4 = await prisma.calItem.findUnique({ where: { id: daily.id } });
+  chk("G6b-4", "แก้ต้นฉบับของซีรีส์ใน Google (ใหม่กว่า) = เขียนกลับซีรีส์ (สตรีม singleEvents=false)", dRow4.title === "เช็กลมยาง+น้ำมัน" && +dRow4.startAt === +T(1, 8) && g.st.calls.some((c) => c.method === "GET" && /singleEvents=false/.test(c.path)));
+
+  // ─────────────── G6c newer-wins ใช้ userEditedAt (review b M3) ───────────────
+  console.log("── G6c: job แตะแถว (updatedAt) ไม่ทำให้การแก้ใน Google หาย ──");
+  const ev3 = await items.createItem(A, { kind: "EVENT", title: "นัดช่าง", startAt: T(3, 10), endAt: T(3, 11) });
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const e3 = await prisma.calItem.findUnique({ where: { id: ev3.id } });
+  await new Promise((r) => setTimeout(r, 1_200)); // ให้การแก้ใน Google ใหม่กว่าการสร้างในแอปชัด ๆ
+  g.st.now = Date.now() - 200 - (g.st.v + 1) * 1000; // updated ของ Google ≈ ตอนนี้ (put บวก v วินาที)
+  g.put("me@example.com", { id: e3.externalId, summary: "นัดช่าง (เลื่อน)", start: { dateTime: T(3, 14).toISOString() }, end: { dateTime: T(3, 15).toISOString() } });
+  await new Promise((r) => setTimeout(r, 1_500));
+  await prisma.calItem.update({ where: { id: ev3.id }, data: { lastFiredAt: new Date(), fireAttempts: 0 } }); // แบบ calendar.fire แตะแถว ⇒ updatedAt ใหม่กว่า Google
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const e3b = await prisma.calItem.findUnique({ where: { id: ev3.id } });
+  chk("G6c-1", "updatedAt ใหม่กว่าเพราะ job แต่ userEditedAt เก่ากว่า ⇒ การแก้ใน Google ชนะ (ไม่ถูกส่งทับ)", e3b.title === "นัดช่าง (เลื่อน)" && +e3b.startAt === +T(3, 14) && g.st.events.get("me@example.com")?.get(e3.externalId)?.summary === "นัดช่าง (เลื่อน)", JSON.stringify({ t: e3b.title }));
+  await items.updateItem(A, ev3.id, { title: "นัดช่างแอร์" });
+  await google.syncGoogle(fx.U.a, { deps: D });
+  chk("G6c-2", "ผู้ใช้แก้ในแอปทีหลัง (userEditedAt ใหม่กว่า) ⇒ ของแอปส่งทับ Google", g.st.events.get("me@example.com")?.get(e3.externalId)?.summary === "นัดช่างแอร์");
 
   // ─────────────── G7 นัดบัตรคิว ───────────────
   console.log("── G7: นัดบัตรคิวของฉัน (R-CAL-37) ──");
@@ -253,8 +322,29 @@ try {
   chk("G7-1", "นัดของครูนิวที่ยังไม่ผ่าน (60 วัน) ส่งไป · sharkRef appt:<tenant>:<id> · ชื่อ <บริการ> · <ลูกค้า> ไม่มีเบอร์ · ไม่มีนัดคนอื่น", copies.length > 0 && copies.every((c: AnyMod) => /^appt:calqc-tenant:calqc-appt-[156]$/.test(c.sharkRef)) && remoteN.every((e) => !/0800000000/.test(JSON.stringify(e)) && / · /.test(e.summary)) && remoteN.length === copies.length, JSON.stringify(copies.map((c: AnyMod) => c.sharkRef)));
   const agN = await agenda.agendaFor({ userId: NEW, tenantId: "calqc-tenant", membership: { role: "STAFF", unitAccess: ["calqc-unit-dive"], permissions: {} } }, { from: day(0), to: day(1) }, { access: {} });
   chk("G7-2", "สำเนา sharkRef ไม่แสดงใน agenda (นัดยังแสดงจากบัตรคิวครั้งเดียว)", !agN.items.some((i: AnyMod) => i.source === "google"));
+  const firstCopy = copies[0];
+  gN.put("me@example.com", { id: firstCopy.externalId, status: "cancelled" });
+  await google.syncGoogle(NEW, { deps: DN });
+  const recreated = await prisma.calExternalEvent.findFirst({ where: { userId: NEW, sharkRef: firstCopy.sharkRef } });
+  chk("G7-2b", "ลบสำเนานัดใน Google (มีแค่ id/status · M2) ⇒ ร้านเป็นต้นฉบับ สร้างใหม่ (id ใหม่)", !!recreated && recreated.externalId !== firstCopy.externalId);
+  const callsBeforeOff = gN.st.calls.length;
   await google.updateGoogle(NEW, { exportKinds: [] }, DN);
-  chk("G7-3", "ปิดตัวเลือก BOOKING = ลบสำเนาทั้งหมด (Google + ตารางจับคู่)", (await prisma.calExternalEvent.count({ where: { userId: NEW, sharkRef: { not: null } } })) === 0 && [...(gN.st.events.get("me@example.com")?.values() ?? [])].every((e) => e.status === "cancelled"));
+  const offNoNet = gN.st.calls.length === callsBeforeOff;
+  await google.syncGoogle(NEW, { deps: DN });
+  chk("G7-3", "ปิดตัวเลือก BOOKING = updateGoogle ไม่ยิง Google (m7) · รอบซิงก์ลบสำเนาทั้งหมด (Google + ตารางจับคู่)", offNoNet && (await prisma.calExternalEvent.count({ where: { userId: NEW, sharkRef: { not: null } } })) === 0 && [...(gN.st.events.get("me@example.com")?.values() ?? [])].every((e) => e.status === "cancelled"));
+  await prisma.aiSystemAccess.upsert({ where: { tenantId_module: { tenantId: "calqc-tenant", module: "booking" } }, create: { tenantId: "calqc-tenant", module: "booking", level: "OFF", setById: "calqc-owner" }, update: { level: "OFF" } });
+  try {
+    await google.updateGoogle(NEW, { exportKinds: ["BOOKING"] });
+    await google.syncGoogle(NEW, { deps: DN });
+    chk("G7-4", "ร้านปิดเลขาระบบบัตรคิว (OFF) = ไม่ส่งนัดลูกค้าไป Google ส่วนตัว (review b m6)", (await prisma.calExternalEvent.count({ where: { userId: NEW, sharkRef: { not: null } } })) === 0);
+  } finally {
+    await prisma.aiSystemAccess.deleteMany({ where: { tenantId: "calqc-tenant", module: "booking" } });
+  }
+  await prisma.calLink.updateMany({ where: { userId: NEW }, data: { leaseUntil: null } });
+  await google.syncGoogle(NEW, { deps: DN });
+  const live = await prisma.calExternalEvent.findMany({ where: { userId: NEW, sharkRef: { not: null } } });
+  await google.revokeGoogleForDeletion(NEW, DN);
+  chk("G7-5", "ลบบัญชี: ลบสำเนาใน Google ก่อน แล้วถอนสิทธิ์ (review b m6)", live.length > 0 && live.every((c: AnyMod) => gN.st.events.get("me@example.com")?.get(c.externalId)?.status === "cancelled") && gN.st.revoked.includes("rt-new"));
   await google.disconnectGoogle(NEW, DN);
 
   // ─────────────── G8 ตั้งค่า ───────────────
@@ -284,10 +374,76 @@ try {
   chk("G9-3", "แคชเดิมยังแสดงระหว่างรอเชื่อมใหม่ · prefs.google.status = NEEDS_RECONNECT", (await agenda.agendaFor(A, { from: day(1), to: day(1) }, { access: {} })).items.some((i: AnyMod) => i.source === "google"));
   g.st.deadRefresh.clear();
   const re = await google.connectGoogle(fx.U.a, "good2", D);
-  chk("G9-4", "เชื่อมใหม่ = ACTIVE · id เดิม · ถอน token เดิม · คงค่า import เดิม", re.status === "ACTIVE" && (await linkRow()).id === l9.id && g.st.revoked.includes("rt-good") && re.calendars.find((c: AnyMod) => c.primary)?.import === true);
+  const tokNow = () => linkRow().then((l: AnyMod) => box.openIntegrationSecret(l.tokenBox, `cal:${fx.U.a}:${l.id}`));
+  chk("G9-4", "เชื่อมใหม่บัญชีเดิม (sub เดิม) = ACTIVE · id เดิม · ไม่ถอนสิทธิ์เดิม (revoke ตัดทั้ง grant · M6) · คงค่า import เดิม", re.status === "ACTIVE" && (await linkRow()).id === l9.id && !g.st.revoked.includes("rt-good") && (await tokNow())?.refreshToken === "rt-good2" && re.calendars.find((c: AnyMod) => c.primary)?.import === true);
+  const again = await google.connectGoogle(fx.U.a, "again1", D);
+  chk("G9-4b", "ยินยอมซ้ำไม่มี refresh_token ใหม่ = ใช้ตัวเดิมต่อ (ไม่ใช่ bad_code · M6)", again.status === "ACTIVE" && (await tokNow())?.refreshToken === "rt-good2");
+  const otherAcc = await google.connectGoogle(fx.U.a, "other1", D);
+  chk("G9-4c", "เปลี่ยนเป็นบัญชี Google อื่น = ถอนสิทธิ์บัญชีเดิม · ล้างแคช/สำเนาเดิม · email ใหม่", otherAcc.email === "other@example.com" && g.st.revoked.includes("rt-good2") && (await prisma.calExternalEvent.count({ where: { userId: fx.U.a } })) === 0 && (await prisma.calItem.count({ where: { userId: fx.U.a, externalId: { not: null } } })) === 0);
+  g.st.badClient = true;
+  g.st.access.clear();
+  await prisma.calLink.updateMany({ where: { userId: fx.U.a }, data: { leaseUntil: null } });
+  const rBad = await google.syncGoogle(fx.U.a, { deps: D });
+  const lBad = await linkRow();
+  const opsBad = await prisma.opsEvent.findFirst({ where: { source: "calendar", level: "ERROR", message: { contains: "refresh token ล้ม" } }, orderBy: { createdAt: "desc" } });
+  chk("G9-4d", "refresh ได้ invalid_client (ตั้งค่าเซิร์ฟเวอร์ผิด) = ไม่ NEEDS_RECONNECT (ACTIVE · ok:false) + แจ้ง ops ERROR (M6)", rBad.ok === false && lBad.status === "ACTIVE" && !!opsBad, JSON.stringify({ rBad, st: lBad.status }));
+  g.st.badClient = false;
   await prisma.calLink.updateMany({ where: { userId: fx.U.a }, data: { tokenBox: box.sealIntegrationSecret({ refreshToken: "x" }, "cal:someone-else:x") } });
   chk("G9-5", "กล่องลับเปิดไม่ได้ (AAD ไม่ตรง) = NEEDS_RECONNECT", (await throwsCode(google.syncGoogle(fx.U.a, { deps: D }))) === "409:needs_reconnect" && (await linkRow()).status === "NEEDS_RECONNECT");
   await google.connectGoogle(fx.U.a, "good3", D);
+
+  // ─────────────── G14 full sync เป็นหน้า + ทำต่อ + deadline (review b M5) ───────────────
+  console.log("── G14: full sync หลายหน้า ทำต่อข้ามรอบ · deadline ──");
+  await google.updateGoogle(fx.U.a, { calendars: [{ id: "family@group.calendar.google.com", import: true }] });
+  for (let k = 0; k < 12; k++) g.put("family@group.calendar.google.com", { id: `fam${k}`, summary: `งานบ้าน ${k}`, start: { dateTime: T(4, 8 + (k % 10)).toISOString() }, end: { dateTime: T(4, 9 + (k % 10)).toISOString() } });
+  g.st.pageSize = 1;
+  await prisma.calLink.updateMany({ where: { userId: fx.U.a }, data: { leaseUntil: null } });
+  const famGets = () => g.st.calls.filter((c) => c.method === "GET" && c.path.includes("family")).length;
+  const gets0 = famGets();
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const st1 = ((await linkRow()).calendars as AnyMod[]).find((c) => c.id.startsWith("family"));
+  const n1 = await prisma.calExternalEvent.count({ where: { userId: fx.U.a, calendarId: "family@group.calendar.google.com" } });
+  chk("G14-1", `หน้าละ 1 · รอบแรกหยุดที่ ${google.PAGES_PER_RUN} หน้า เก็บ pageToken (ยังไม่มี syncToken) · ได้ ${google.PAGES_PER_RUN} แถว`, famGets() - gets0 === google.PAGES_PER_RUN && !!st1?.pageToken && !st1?.syncToken && n1 === google.PAGES_PER_RUN, JSON.stringify({ gets: famGets() - gets0, st1, n1 }));
+  await prisma.calLink.updateMany({ where: { userId: fx.U.a }, data: { leaseUntil: null } });
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const st2 = ((await linkRow()).calendars as AnyMod[]).find((c) => c.id.startsWith("family"));
+  const lastFamGet = [...g.st.calls].reverse().find((c) => c.method === "GET" && c.path.includes("family"));
+  chk("G14-2", "รอบสองทำต่อจาก pageToken (timeMin/timeMax ชุดเดิม) จนจบ = syncToken · ครบ 13 แถว", !!st2?.syncToken && !st2?.pageToken && (await prisma.calExternalEvent.count({ where: { userId: fx.U.a, calendarId: "family@group.calendar.google.com" } })) === 13 && /pageToken=p/.test(lastFamGet?.path ?? "") && /timeMax=/.test(lastFamGet?.path ?? ""), JSON.stringify(st2));
+  g.st.pageSize = 0;
+  const callsDl = g.st.calls.length;
+  await prisma.calLink.updateMany({ where: { userId: fx.U.a }, data: { leaseUntil: null } });
+  const rDl = await google.syncGoogle(fx.U.a, { deps: D, deadline: Date.now() - 1 });
+  chk("G14-3", "deadline หมดแล้ว = ไม่ยิงหน้าใหม่ · ปล่อย lease · สถานะเดิมคงอยู่", rDl.ok && g.st.calls.filter((c, i) => i >= callsDl && c.path.includes("/events")).length === 0 && (await linkRow()).leaseUntil === null && !!((await linkRow()).calendars as AnyMod[]).find((c) => c.id.startsWith("family"))?.syncToken);
+
+  // ─────────────── G15 ปิด import ระหว่างซิงก์ (review b m5) ───────────────
+  console.log("── G15: ปิด import ระหว่างซิงก์ ไม่ถูกทับ ──");
+  g.st.onGet = async (cal: string) => {
+    if (cal.startsWith("family")) {
+      g.st.onGet = null;
+      await google.updateGoogle(fx.U.a, { calendars: [{ id: "family@group.calendar.google.com", import: false }] });
+    }
+  };
+  await prisma.calLink.updateMany({ where: { userId: fx.U.a }, data: { leaseUntil: null } });
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const famAfterToggle = ((await linkRow()).calendars as AnyMod[]).find((c) => c.id.startsWith("family"));
+  chk("G15-1", "ซิงก์ไม่คืน import=true/syncToken ของปฏิทินที่ถูกปิดระหว่างทาง", famAfterToggle?.import === false && !famAfterToggle?.syncToken, JSON.stringify(famAfterToggle));
+  g.st.onGet = null;
+
+  // ─────────────── G16 ย้ายปลายทาง (review b m7) ───────────────
+  console.log("── G16: ย้ายปฏิทินปลายทาง — ลบจากที่เดิม ส่งที่ใหม่ (ในรอบซิงก์) ──");
+  const mv = await items.createItem(A, { kind: "EVENT", title: "นัดย้ายปฏิทิน", startAt: T(5, 10), endAt: T(5, 11) });
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const mv1 = await prisma.calItem.findUnique({ where: { id: mv.id } });
+  const callsMv = g.st.calls.length;
+  await google.updateGoogle(fx.U.a, { exportCalendarId: "family@group.calendar.google.com" });
+  const mvNoNet = g.st.calls.length === callsMv;
+  await prisma.calLink.updateMany({ where: { userId: fx.U.a }, data: { leaseUntil: null } });
+  await google.syncGoogle(fx.U.a, { deps: D });
+  const mv2 = await prisma.calItem.findUnique({ where: { id: mv.id } });
+  chk("G16-1", "updateGoogle ไม่ยิง Google · รอบซิงก์: ลบจาก primary + สร้างใน family · externalCalendarId ใหม่", mvNoNet && mv1.externalCalendarId === "me@example.com" && g.st.events.get("me@example.com")?.get(mv1.externalId)?.status === "cancelled" && mv2.externalCalendarId === "family@group.calendar.google.com" && g.st.events.get("family@group.calendar.google.com")?.get(mv2.externalId)?.summary === "นัดย้ายปฏิทิน", JSON.stringify({ mvNoNet, a: mv1.externalCalendarId, b: mv2.externalCalendarId }));
+  await google.updateGoogle(fx.U.a, { exportCalendarId: null });
+  await prisma.calLink.updateMany({ where: { userId: fx.U.a }, data: { leaseUntil: null } });
+  await google.syncGoogle(fx.U.a, { deps: D });
 
   // ─────────────── G10 job ───────────────
   console.log("── G10: job calendar.google ──");

@@ -45,7 +45,7 @@ const DEFS = {
       "Not for recurring work the assistant should perform or report (that is schedule_task). " +
       "Convert Thai time words yourself using today's date from the system prompt (3 pm = 15:00, this evening = 18:00, tonight = 20:00); use inMinutes for 'in N minutes/hours'. " +
       "If the day or time is missing or vague (e.g. 'early next month', 'in the afternoon', 'next week' without a day) ask with ask_clarify instead of guessing. " +
-      "Repeating reminders are saved as a draft the user confirms on the card. Keep the reply short; do not repeat private details in shared rooms.",
+      "Repeating reminders are saved as a draft the user confirms on the card. The result has no details on purpose: reply only that it is set and the card below shows it.",
     parameters: {
       type: "object",
       required: ["title"],
@@ -62,14 +62,15 @@ const DEFS = {
   calendar_update: {
     name: "calendar_update",
     description:
-      "Change one of the user's own reminders/appointments by itemId (from calendar_add or calendar_list): title, time, repeat, lead time, link (null removes), note. " +
-      "confirm=true turns a draft repeating reminder into an active one after the user says yes.",
+      "Change one of the user's own reminders/appointments: pick it by itemId (from calendar_add) or by match (the user's words for it, e.g. 'call Ek'). " +
+      "Fields: title, time, repeat, lead time, link (null removes), note. confirm=true turns a draft repeating reminder into an active one after the user says yes. " +
+      "Making a one-time reminder repeat creates a new draft the user confirms on the card.",
     parameters: {
       type: "object",
-      required: ["itemId"],
       additionalProperties: false,
       properties: {
         itemId: { type: "string" },
+        match: { type: "string", maxLength: 100, description: "Words from the reminder's title when you have no itemId." },
         title: { type: "string", maxLength: 200 },
         ...WHEN_PROPS,
         link: { anyOf: [LINK_SCHEMA, { type: "null" }] },
@@ -80,22 +81,28 @@ const DEFS = {
   },
   calendar_cancel: {
     name: "calendar_cancel",
-    description: "Cancel one of the user's own reminders/appointments by itemId.",
-    parameters: { type: "object", required: ["itemId"], additionalProperties: false, properties: { itemId: { type: "string" } } },
-  },
-  calendar_list: {
-    name: "calendar_list",
-    description: "List the user's own reminders/appointments in this business (OPEN = upcoming incl. drafts, DONE = finished).",
+    description: "Cancel one of the user's own reminders/appointments, by itemId or by match (words from its title).",
     parameters: {
       type: "object",
       additionalProperties: false,
-      properties: { status: { type: "string", enum: ["OPEN", "DONE"] }, take: { type: "integer", minimum: 1, maximum: 20 } },
+      properties: { itemId: { type: "string" }, match: { type: "string", maxLength: 100 } },
+    },
+  },
+  calendar_list: {
+    name: "calendar_list",
+    description:
+      "Show the user their own reminders/appointments. Returns only counts; the list itself is shown to the user in a private card. Reply with the count and point to the card.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: { status: { type: "string", enum: ["OPEN", "DONE"] } },
     },
   },
   calendar_agenda: {
     name: "calendar_agenda",
     description:
-      "Read the user's day/agenda: their own reminders and appointments plus what the shop systems show them (customer bookings, invoices due, task cards, CRM tasks, payroll, tax deadlines, Google). Up to 14 days.",
+      "Show the user their day/agenda (their reminders and appointments plus what the shop systems show them). Up to 14 days. " +
+      "Returns only counts per system; the items are shown to the user in a private card. Reply with the count and point to the card; never guess item details.",
     parameters: {
       type: "object",
       required: ["fromDate"],
@@ -234,7 +241,8 @@ const linkOf = (v: unknown): { type: "CRM_CONTACT" | "CRM_DEAL" | "ACCOUNT_DOC" 
   return types.includes(r.type as never) && typeof r.id === "string" && r.id.trim() ? { type: r.type as (typeof types)[number], id: r.id.trim().slice(0, 80) } : undefined;
 };
 
-/** AiRoom ของบทสนทนานี้ (การ์ดเตือนในห้อง · D-A19) — ห้องเดิมที่ไม่ใช่ห้องเลขา = null */
+
+/** AiRoom ของบทสนทนานี้ (การ์ดในห้อง · D-A19) — ห้องเดิมที่ไม่ใช่ห้องเลขา = null */
 async function roomIdOf(ctx: ToolCtx): Promise<string | null> {
   if (!ctx.conversationId) return null;
   const { tenantDb } = await import("@/lib/core/db");
@@ -245,15 +253,43 @@ async function roomIdOf(ctx: ToolCtx): Promise<string | null> {
 const REPEATS = ["NONE", "DAILY", "WEEKLY", "MONTHLY"] as const;
 type Repeat = (typeof REPEATS)[number];
 
-function itemShape(i: { id: string; kind: string; title: string; status: string; startAt: string; occursAt: string; allDay: boolean; repeat: string; repeatDays: number[]; link: { label: string | null } | null }) {
-  return {
-    itemId: i.id,
-    kind: i.kind === "EVENT" ? "นัดส่วนตัว" : "เตือนฉัน",
-    title: i.title,
-    status: i.status,
-    when: i.repeat === "NONE" ? whenLabel(new Date(i.occursAt), i.allDay) : `${repeatLabel(i.repeat, i.repeatDays, new Date(i.startAt))} (ครั้งถัดไป ${whenLabel(new Date(i.occursAt), i.allDay)})`,
-    ...(i.link?.label ? { linkedTo: i.link.label } : {}),
-  };
+// ───────── calendar_b ▸ review b B1 (M4): ผลถึงโมเดล = id/สถานะ/จำนวน เท่านั้น ─────────
+//   ห้องเลขา: OWNER (tenantRooms) + สมาชิกห้องอ่านคำตอบที่บันทึก ⇒ ห้ามมีชื่อเรื่อง/วันเวลา/สถานที่/วันลา/Google ในผลเครื่องมือ
+//   รายละเอียดอยู่ในการ์ดที่แอปวาดให้ "เจ้าของ" เท่านั้น (CalItem.roomId → reminders · CalRoomCard → calendarCards ใน GET rooms/[id])
+const SAY_SET = "ตอบสั้น ๆ ว่า \"ตั้งให้แล้ว ดูการ์ดด้านล่าง\" — ห้ามทวนชื่อเรื่อง วัน เวลา หรือรายละเอียด (ห้องเลขามีคนอื่นอ่านได้ · การ์ดเห็นเฉพาะผู้ใช้)";
+const SAY_DRAFT = "ขอให้ผู้ใช้กด \"ใช่ ตั้งเลย\" บนการ์ดด้านล่างเพื่อยืนยันเตือนประจำ (หรือตอบว่าใช่ = calendar_update confirm=true) — ห้ามทวนรายละเอียด · ไม่ยืนยันใน 24 ชม. = ยกเลิกเอง";
+const SAY_UPDATED = "ตอบสั้น ๆ ว่า \"แก้ให้แล้ว\" — การ์ดในห้องอัปเดตเอง · ห้ามทวนรายละเอียด";
+
+/** ผลสำเร็จที่ไม่มีข้อมูลส่วนตัว (ทดสอบได้) */
+export function opaqueItemResult(it: { id: string; status: string; kind: string }, next: string) {
+  return { ok: true, [it.status === "DRAFT" ? "draftId" : "itemId"]: it.id, status: it.status, kind: it.kind === "EVENT" ? "EVENT" : "REMINDER", card: "reminder", next };
+}
+
+/** เครื่องมือปฏิทินในเทิร์นนี้ ⇒ ห้ามเก็บเข้า dataset ฝึกโมเดล (review b M7 · Google Limited Use) */
+export function turnTouchesCalendar(usedTools: readonly { name: string }[]): boolean {
+  return usedTools.some((t) => typeof t?.name === "string" && t.name.startsWith("calendar_"));
+}
+/** สกิลของเครื่องมือปฏิทิน (ห้องเลขาเท่านั้น · review b m1) + ตัวที่ยื่นตั้งแต่รอบแรกในห้องเลขา */
+export const CALENDAR_SKILL_ID = "calendar";
+export const CALENDAR_ROOM_CORE = ["calendar_add", "calendar_agenda"] as const;
+
+type CalActorT = NonNullable<ReturnType<typeof calActorOf>>;
+/** itemId หรือ match → id ของผู้ใช้ (ร้านนี้ · OPEN/DRAFT) · 0 = not_found · > 1 = ambiguous (ไม่บอกชื่อ) */
+async function resolveTarget(actor: CalActorT, a: Record<string, unknown>): Promise<{ id: string } | { error: string }> {
+  const id = typeof a.itemId === "string" ? a.itemId.trim().slice(0, 80) : "";
+  if (id) return { id };
+  const m = typeof a.match === "string" ? a.match.trim().slice(0, 100) : "";
+  if (m.length < 2) return { error: err("invalid", "ต้องระบุ itemId หรือ match (คำจากชื่อเตือน)") };
+  const { tenantDb } = await import("@/lib/core/db");
+  const rows = await tenantDb({ tenantId: actor.tenantId }).calItem.findMany({
+    where: { userId: actor.userId, tenantId: actor.tenantId, status: { in: ["OPEN", "DRAFT"] }, title: { contains: m, mode: "insensitive" } },
+    select: { id: true },
+    orderBy: [{ occursAt: "asc" }],
+    take: 6,
+  });
+  if (rows.length === 0) return { error: err("not_found", "ไม่พบเตือนที่ตรงคำนี้ในปฏิทินของผู้ใช้ — ถามผู้ใช้ให้ชัดขึ้น") };
+  if (rows.length > 1) return { error: err("ambiguous", `มี ${rows.length >= 6 ? "หลาย" : rows.length} รายการตรงคำนี้ — ถามผู้ใช้ให้ระบุให้ชัดขึ้น (เช่น วันหรือคำอื่นในชื่อ) โดยไม่เดารายละเอียด`) };
+  return { id: rows[0]!.id };
 }
 
 // ───────── execute ─────────
@@ -287,17 +323,7 @@ async function add(ctx: ToolCtx, args: unknown): Promise<string> {
       },
       { source: "CHAT", roomId: await roomIdOf(ctx), draft: repeat !== "NONE", now },
     );
-    if (it.status === "DRAFT") {
-      const label = repeatLabel(it.repeat, it.repeatDays, new Date(it.startAt));
-      return JSON.stringify({
-        ok: true,
-        draftId: it.id,
-        status: "DRAFT",
-        summary: label,
-        next: `ถามผู้ใช้ยืนยัน "ตั้งเป็นเตือนประจำ ${label} ใช่ไหม" (แอปแสดงปุ่ม ใช่ ตั้งเลย / แก้เวลา · ผู้ใช้ตอบในแชทว่าใช่ = calendar_update confirm=true) · ไม่ยืนยันใน 24 ชม. = ยกเลิกเอง`,
-      });
-    }
-    return JSON.stringify({ ok: true, ...itemShape(it), next: "การ์ดแสดงในห้องแล้ว — ตอบสั้น ไม่ทวนรายละเอียดเกินจำเป็น (ห้องร่วมมีคนอื่นเห็น)" });
+    return JSON.stringify(opaqueItemResult(it, it.status === "DRAFT" ? SAY_DRAFT : SAY_SET));
   } catch (e) {
     return calErr(e);
   }
@@ -307,8 +333,9 @@ async function update(ctx: ToolCtx, args: unknown): Promise<string> {
   const actor = calActorOf(ctx);
   if (!actor) return JSON.stringify({ error: "ปฏิทินส่วนตัวใช้ได้เฉพาะสมาชิกในแอป" });
   const a = rec(args);
-  const id = typeof a.itemId === "string" ? a.itemId.trim().slice(0, 80) : "";
-  if (!id) return err("invalid", "ต้องระบุ itemId");
+  const target = await resolveTarget(actor, a);
+  if ("error" in target) return target.error;
+  const id = target.id;
   const now = new Date();
   const w = readWhen(a, now, false);
   if (w.err) return w.err;
@@ -327,10 +354,32 @@ async function update(ctx: ToolCtx, args: unknown): Promise<string> {
       ...(typeof a.leadMinutes === "number" ? { leadMinutes: a.leadMinutes } : {}),
       ...(link !== undefined ? { link } : {}),
     };
+    const cur = (await items.getItem(actor, id)).item;
+    // review b m3 (R-CAL-28): เตือนครั้งเดียว → ทำซ้ำ จากแชท = สร้าง DRAFT ใหม่รอยืนยันบนการ์ด แล้วยกเลิกตัวเดิม (ไม่ข้ามขั้นยืนยัน)
+    if (cur.repeat === "NONE" && patch.repeat && patch.repeat !== "NONE" && cur.status === "OPEN") {
+      const draft = await items.createItem(
+        actor,
+        {
+          kind: cur.kind,
+          title: patch.title ?? cur.title,
+          note: patch.note ?? cur.note,
+          startAt: patch.startAt ?? new Date(cur.startAt),
+          endAt: cur.kind === "EVENT" ? (patch.endAt !== undefined ? patch.endAt : cur.endAt ? new Date(cur.endAt) : null) : null,
+          allDay: patch.allDay ?? cur.allDay,
+          repeat: patch.repeat,
+          repeatDays: patch.repeatDays ?? [],
+          leadMinutes: patch.leadMinutes ?? cur.leadMinutes,
+          link: patch.link !== undefined ? patch.link : cur.link ? { type: cur.link.type, id: cur.link.id } : null,
+        },
+        { source: "CHAT", roomId: await roomIdOf(ctx), draft: true, now },
+      );
+      await items.cancelItem(actor, id, now);
+      return JSON.stringify({ ...opaqueItemResult(draft, SAY_DRAFT), replacedItemId: id });
+    }
     let it = Object.keys(patch).length ? await items.updateItem(actor, id, patch, now) : null;
     if (a.confirm === true) it = await items.confirmItem(actor, id, now);
-    if (!it) it = (await items.getItem(actor, id)).item;
-    return JSON.stringify({ ok: true, ...itemShape(it), next: "แก้แล้ว — การ์ดในห้องอัปเดตเอง ตอบสั้น" });
+    if (!it) it = cur;
+    return JSON.stringify(opaqueItemResult(it, a.confirm === true ? SAY_SET : SAY_UPDATED));
   } catch (e) {
     return calErr(e);
   }
@@ -339,30 +388,44 @@ async function update(ctx: ToolCtx, args: unknown): Promise<string> {
 async function cancel(ctx: ToolCtx, args: unknown): Promise<string> {
   const actor = calActorOf(ctx);
   if (!actor) return JSON.stringify({ error: "ปฏิทินส่วนตัวใช้ได้เฉพาะสมาชิกในแอป" });
-  const id = typeof rec(args).itemId === "string" ? String(rec(args).itemId).trim().slice(0, 80) : "";
-  if (!id) return err("invalid", "ต้องระบุ itemId");
+  const target = await resolveTarget(actor, rec(args));
+  if ("error" in target) return target.error;
   const items = await import("@/lib/modules/calendar/items");
   try {
-    await items.cancelItem(actor, id);
-    return JSON.stringify({ ok: true, itemId: id, status: "CANCELLED" });
+    await items.cancelItem(actor, target.id);
+    return JSON.stringify({ ok: true, itemId: target.id, status: "CANCELLED", next: "ตอบสั้น ๆ ว่า \"ยกเลิกให้แล้ว\" — ห้ามทวนรายละเอียด" });
   } catch (e) {
     return calErr(e);
   }
 }
 
+/** วันไทยวันนี้ "YYYY-MM-DD" */
+const todayYmd = (now: Date) => new Date(+now + BKK_MS).toISOString().slice(0, 10);
+
 async function list(ctx: ToolCtx, args: unknown): Promise<string> {
   const actor = calActorOf(ctx);
   if (!actor) return JSON.stringify({ error: "ปฏิทินส่วนตัวใช้ได้เฉพาะสมาชิกในแอป" });
   const a = rec(args);
-  const take = typeof a.take === "number" && Number.isInteger(a.take) ? Math.max(1, Math.min(20, a.take)) : 10;
-  const items = await import("@/lib/modules/calendar/items");
-  if (a.status === "DONE") {
-    const r = await items.listItems(actor, { tab: "done", take });
-    return JSON.stringify({ items: r.items.map(itemShape) });
+  const done = a.status === "DONE";
+  const { tenantDb } = await import("@/lib/core/db");
+  const db = tenantDb({ tenantId: actor.tenantId });
+  const [open, drafts, doneN] = await Promise.all([
+    db.calItem.count({ where: { userId: actor.userId, tenantId: actor.tenantId, status: "OPEN" } }),
+    db.calItem.count({ where: { userId: actor.userId, tenantId: actor.tenantId, status: "DRAFT" } }),
+    db.calItem.count({ where: { userId: actor.userId, tenantId: actor.tenantId, status: "DONE" } }),
+  ]);
+  const roomId = await roomIdOf(ctx);
+  if (roomId) {
+    const { addRoomCard } = await import("@/lib/modules/calendar/room-cards");
+    const d = todayYmd(new Date());
+    await addRoomCard(actor, roomId, { kind: "LIST", fromDay: d, toDay: d });
   }
-  const today = await items.listItems(actor, { tab: "today", take });
-  const rest = today.items.length < take ? await items.listItems(actor, { tab: "upcoming", take: take - today.items.length }) : { items: [] };
-  return JSON.stringify({ items: [...today.items, ...rest.items].map(itemShape) });
+  return JSON.stringify({
+    ok: true,
+    ...(done ? { done: doneN } : { open, drafts }),
+    card: roomId ? "list" : null,
+    next: roomId ? "ตอบจำนวนแล้วชี้ไปที่การ์ดด้านล่าง (เห็นเฉพาะผู้ใช้) — ห้ามเดารายละเอียด" : "ให้ผู้ใช้เปิดแท็บ \"เตือนฉัน\" ในปฏิทินของแอป",
+  });
 }
 
 const AGENDA_MAX_DAYS = 14;
@@ -370,35 +433,32 @@ async function agenda(ctx: ToolCtx, args: unknown): Promise<string> {
   const actor = calActorOf(ctx);
   if (!actor) return JSON.stringify({ error: "ปฏิทินส่วนตัวใช้ได้เฉพาะสมาชิกในแอป" });
   const a = rec(args);
-  const { ymdToDayNo, dayNoToYmd, bkkDayNo } = await import("@/lib/modules/calendar/next-fire");
+  const { ymdToDayNo, dayNoToYmd } = await import("@/lib/modules/calendar/next-fire");
   const f = typeof a.fromDate === "string" ? ymdToDayNo(a.fromDate) : null;
   const t = typeof a.toDate === "string" ? ymdToDayNo(a.toDate) : f;
   if (f === null || t === null || t < f || t - f > AGENDA_MAX_DAYS - 1) return err("invalid", `ช่วงวันไม่ถูกต้อง (YYYY-MM-DD · ไม่เกิน ${AGENDA_MAX_DAYS} วัน)`);
   const { agendaFor } = await import("@/lib/modules/calendar/agenda");
+  // 🔴 Google ไม่เข้าโมเดลเลย (จนผ่านการตรวจ Google · ค่าเริ่มที่เจ้าของแนะนำ) — ตัดก่อนนับ
   const r = await agendaFor(actor, { from: dayNoToYmd(f), to: dayNoToYmd(t) }, ctx.access ? { access: ctx.access } : {});
+  const shown = r.items.filter((i) => i.source !== "google");
+  const bySystem: Record<string, number> = {};
+  for (const i of shown) if (!i.done) bySystem[i.label] = (bySystem[i.label] ?? 0) + (i.summary?.count ?? 1);
+  const roomId = await roomIdOf(ctx);
+  if (roomId) {
+    const { addRoomCard } = await import("@/lib/modules/calendar/room-cards");
+    await addRoomCard(actor, roomId, { kind: "AGENDA", fromDay: dayNoToYmd(f), toDay: dayNoToYmd(t) });
+  }
   const { skippedSectionNote } = await import("./secretary/access-rules");
   const MOD: Record<string, string> = { booking: "booking", account: "account", kanban: "kanban", crm: "crm", hr: "hr", dorm: "dorm", ticket: "ticket" };
-  const hm = (iso: string) => {
-    const x = new Date(Date.parse(iso) + BKK_MS);
-    return `${String(x.getUTCHours()).padStart(2, "0")}:${String(x.getUTCMinutes()).padStart(2, "0")}`;
-  };
   return JSON.stringify({
-    items: r.items.slice(0, 80).map((i) => ({
-      day: dayNoToYmd(bkkDayNo(new Date(i.startAt))),
-      time: i.allDay ? "ทั้งวัน" : `${hm(i.startAt)}${i.endAt ? `–${hm(i.endAt)}` : ""}`,
-      system: i.label,
-      title: i.title,
-      ...(i.sub ? { sub: i.sub } : {}),
-      ...(i.done ? { done: true } : {}),
-      ...(i.ref?.itemId ? { itemId: i.ref.itemId } : {}),
-    })),
-    ...(r.items.length > 80 ? { more: r.items.length - 80 } : {}),
-    ...(r.conflicts.length ? { conflicts: r.conflicts.map((c) => c.text) } : {}),
-    notes: [
-      ...r.notes.filter((n) => n.code === "SECTION_OFF").map((n) => skippedSectionNote(MOD[n.source] ?? n.source)),
-      ...r.notes.filter((n) => n.code !== "SECTION_OFF").map((n) => n.text),
-    ],
+    ok: true,
     period: `${dayNoToYmd(f)}..${dayNoToYmd(t)}`,
+    open: Object.values(bySystem).reduce((s, n) => s + n, 0),
+    bySystem,
+    clashes: r.conflicts.filter((c) => !/google:/.test(`${c.earlierId}|${c.laterId}`)).length,
+    notes: r.notes.filter((n) => n.code === "SECTION_OFF").map((n) => skippedSectionNote(MOD[n.source] ?? n.source)),
+    card: roomId ? "agenda" : null,
+    next: roomId ? "ตอบแค่จำนวน (เช่น \"มี N รายการ ดูในการ์ดด้านล่าง\") — ห้ามเดาหรือแต่งรายละเอียดของรายการ" : "ให้ผู้ใช้เปิดปฏิทินในแอปเพื่อดูรายละเอียด",
   });
 }
 

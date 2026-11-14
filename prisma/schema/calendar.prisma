@@ -76,6 +76,8 @@ model CalItem {
   externalId   String? // id อีเวนต์ Google ของสำเนาที่ส่งออก
   externalEtag String?
   syncDirty    Boolean       @default(false) // ต้องส่งออก/แก้/ลบใน Google รอบถัดไป
+  externalCalendarId String? // calendar_b ▸ ปฏิทิน Google ที่สำเนาอยู่ (ย้ายปลายทาง = ลบจากที่เดิม · review b m7) ◂
+  userEditedAt DateTime? // calendar_b ▸ เวลาแก้ล่าสุดของ "ผู้ใช้" (สร้าง/แก้/เสร็จ/เลื่อน/ยกเลิก/ยืนยัน · Google เขียนกลับ) — ใช้ตัดสินใหม่กว่าชนะกับ Google (review b M3) แทน updatedAt ที่ job แตะ ◂
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -149,4 +151,21 @@ model CalExternalEvent {
   @@unique([linkId, calendarId, externalId])
   @@index([userId, startAt])
   @@index([linkId, sharkRef])
+}
+
+// calendar_b ▸ การ์ด "agenda" ในห้องเลขา (review b B1 · M4): เครื่องมือ calendar_agenda/calendar_list ไม่ส่งรายละเอียดเข้าข้อความของโมเดล
+//   (ห้องเลขา OWNER/สมาชิกห้องอ่านได้) — บันทึกแค่ "ช่วงวัน" ที่ผู้ใช้ถาม แอปวาดการ์ดด้วย GET calendar/agenda ของผู้ดูเอง
+//   แนบใน GET rooms/[id] เฉพาะ userId = ผู้ดู · ไม่มี FK (แบบ CalItem) · ลบตามบัญชี/ร้านแบบ CalItem
+model CalRoomCard {
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String
+  roomId    String // AiRoom.id
+  kind      String   @default("AGENDA") // AGENDA | LIST
+  fromDay   String // "YYYY-MM-DD" ไทย
+  toDay     String
+  createdAt DateTime @default(now())
+
+  @@index([userId, roomId])
+  @@index([tenantId])
 }

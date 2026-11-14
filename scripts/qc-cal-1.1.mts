@@ -20,7 +20,7 @@ let residue = -1;
 try {
   console.log("── M1: ตาราง/enum/index ──");
   const tables = ((await prisma.$queryRawUnsafe(`SELECT table_name AS t FROM information_schema.tables WHERE table_schema = current_schema() AND table_name LIKE 'Cal%'`)) as AnyMod[]).map((r) => String(r.t)).sort();
-  chk("M1-1", "มี 4 ตาราง CalExternalEvent/CalItem/CalLink/CalPref", JSON.stringify(tables) === JSON.stringify(["CalExternalEvent", "CalItem", "CalLink", "CalPref"]), JSON.stringify(tables));
+  chk("M1-1", "มี 5 ตาราง CalExternalEvent/CalItem/CalLink/CalPref/CalRoomCard (calendar_b เพิ่ม CalRoomCard · review b B1)", JSON.stringify(tables) === JSON.stringify(["CalExternalEvent", "CalItem", "CalLink", "CalPref", "CalRoomCard"]), JSON.stringify(tables));
   const enums = ((await prisma.$queryRawUnsafe(`SELECT t.typname AS n, array_agg(e.enumlabel ORDER BY e.enumsortorder)::text AS v FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid WHERE t.typname LIKE 'Cal%' GROUP BY 1 ORDER BY 1`)) as AnyMod[]);
   const em = Object.fromEntries(enums.map((r) => [r.n, r.v]));
   chk("M1-2", "enum ตรงสัญญา (สถานะมี DRAFT · source APP/CHAT/SUGGEST)", em.CalItemStatus === "{DRAFT,OPEN,DONE,CANCELLED}" && em.CalItemSource === "{APP,CHAT,SUGGEST}" && em.CalRepeat === "{NONE,DAILY,WEEKLY,MONTHLY}" && em.CalLinkType === "{CRM_CONTACT,CRM_DEAL,ACCOUNT_DOC,KANBAN_CARD}" && em.CalLinkStatus === "{ACTIVE,NEEDS_RECONNECT}", JSON.stringify(em));
@@ -42,7 +42,7 @@ try {
   await prisma.aiSystemAccess.create({ data: { tenantId: tid, module: "chat", level: "DRAFT", setById: fx.U.owner } }); // positive control (ตาราง tenant ปกติ)
   const exp = JSON.parse(await pdpa.exportTenantData(tid));
   chk("M3-1", "exportTenantData ไม่มี CalItem/CalPref · ตาราง tenant ปกติยังมา (AiSystemAccess)", !("CalItem" in exp.data) && !("CalPref" in exp.data) && "AiSystemAccess" in exp.data, Object.keys(exp.data).join(","));
-  chk("M3-2", "PERSONAL_MODELS = [CalItem, CalPref] (ส่งออกไว้ให้ข้อสอบ/ผู้ตรวจ)", JSON.stringify(pdpa.PERSONAL_MODELS) === JSON.stringify(["CalItem", "CalPref"]));
+  chk("M3-2", "PERSONAL_MODELS = [CalItem, CalPref, CalRoomCard] (ส่งออกไว้ให้ข้อสอบ/ผู้ตรวจ · calendar_b)", JSON.stringify(pdpa.PERSONAL_MODELS) === JSON.stringify(["CalItem", "CalPref", "CalRoomCard"]));
 
   console.log("── M4: deleteUserTraces ──");
   const ad = readFileSync(join(ROOT, "src/lib/platform/account-deletion.ts"), "utf8");

@@ -83,14 +83,16 @@ try {
   }));
   // ภาษี: ช่วง 42 วันจากวันนี้ — คาดตามข้อมูล seed
   const wide = await ag(owner, ymd(0), ymd(41));
-  const periods = await prisma.hrPayrollRun.findMany({ where: { systemId: "calqc-sys-hr", status: { notIn: ["DRAFT", "REVERSED"] } }, select: { periodKey: true, totalSsoEmployeeSatang: true } });
-  const wht = await prisma.accountDocument.findMany({ where: { systemId: "calqc-sys-account", docType: "WHT_CERT", direction: "IN", voidedAt: null }, select: { issueDate: true } });
+  const periods = await prisma.hrPayrollRun.findMany({ where: { systemId: "calqc-sys-hr", status: { notIn: ["DRAFT", "REVERSED"] } }, select: { payDate: true, totalSsoEmployeeSatang: true } });
+  const ymOf = (d: Date) => { const t = new Date(+d + 7 * 3_600_000); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}`; };
+  const wht = await prisma.accountDocument.findMany({ where: { systemId: "calqc-sys-account", docType: "WHT_CERT", direction: "IN", voidedAt: null, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } }, select: { issueDate: true } });
   const whtPeriods = new Set(wht.map((w: AnyMod) => { const t = new Date(+w.issueDate + 7 * 3_600_000); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}`; }));
   const exp: string[] = [];
   for (const t of tax.taxDeadlines(ymd(0), ymd(41))) {
     if (t.form === "PP30") exp.push(`tax:PP30:${t.period}:calqc-sys-account`);
     if (t.form === "PND3_53" && whtPeriods.has(t.period)) exp.push(`tax:PND3_53:${t.period}:calqc-sys-account`);
-    const run = periods.find((p: AnyMod) => p.periodKey === t.period);
+    // review b m8: ภ.ง.ด.1/ปกส. ตามเดือนที่จ่าย (payDate) ไม่ใช่ periodKey
+    const run = periods.find((p: AnyMod) => ymOf(p.payDate) === t.period && (t.form !== "SSO" || p.totalSsoEmployeeSatang > 0));
     if (t.form === "PND1" && run) exp.push(`tax:PND1:${t.period}:calqc-sys-hr`);
     if (t.form === "SSO" && run && run.totalSsoEmployeeSatang > 0) exp.push(`tax:SSO:${t.period}:calqc-sys-hr`);
   }
@@ -98,6 +100,30 @@ try {
   const t1 = wide.items.find((i: AnyMod) => i.source === "tax");
   chk("S1-10", "แถวภาษี all-day · ติ๊กไม่ได้ · ป้ายบัญชี/HR · deepLink pp30/wht/payroll", !!t1 && wide.items.filter((i: AnyMod) => i.source === "tax").every((i: AnyMod) => i.allDay && !i.checkable && ["บัญชี", "HR"].includes(i.label) && /\/(account\/reports\/pp30|account\/wht|hr\/payroll)$/.test(i.deepLink.path)));
   chk("S1-11", "HR: วันจ่ายเงินเดือนงวดนี้ (APPROVED) อยู่ในเดือน · ไม่เห็นใบลาคนอื่น (ไม่ผูก HR เจ้าของ)", (await ag(owner, nf.dayNoToYmd(nf.ymdToDayNo(ymd(0).slice(0, 8) + "01")), nf.dayNoToYmd(nf.ymdToDayNo(ymd(0).slice(0, 8) + "01") + 30))).items.some((i: AnyMod) => i.id === "hr:pay:calqc-payrun-now" && i.allDay) && !ids(wide).some((x: string) => x.startsWith("hr:leave:")));
+
+  // review b m8: ใบ WHT ร่าง ไม่ทำให้ขึ้น ภ.ง.ด.3/53 · ภ.ง.ด.1 ตามเดือนที่จ่าย
+  const whtRow = await prisma.accountDocument.findUnique({ where: { id: "calqc-wht-prev" }, select: { status: true, issueDate: true } });
+  const pndPeriod = whtRow ? ymOf(whtRow.issueDate) : "";
+  await prisma.accountDocument.update({ where: { id: "calqc-wht-prev" }, data: { status: "DRAFT" } });
+  cleanups.push(() => prisma.accountDocument.update({ where: { id: "calqc-wht-prev" }, data: { status: whtRow!.status } }));
+  const wDraft = await ag(owner, ymd(0), ymd(41));
+  await cleanups.pop()!();
+  chk("S1-12", "ใบ 50 ทวิ สถานะ DRAFT = ไม่ขึ้นกำหนดยื่น ภ.ง.ด.3/53 ของงวดนั้น (review b m8)", !ids(wDraft, "tax").includes(`tax:PND3_53:${pndPeriod}:calqc-sys-account`) && (!exp.includes(`tax:PND3_53:${pndPeriod}:calqc-sys-account`) || ids(wide, "tax").includes(`tax:PND3_53:${pndPeriod}:calqc-sys-account`)), JSON.stringify(ids(wDraft, "tax")));
+  const prevRun = await prisma.hrPayrollRun.findUnique({ where: { id: "calqc-payrun-prev" }, select: { payDate: true, periodKey: true } });
+  const nextMonth1 = new Date(Date.UTC(new Date(+prevRun!.payDate + 7 * 3_600_000).getUTCFullYear(), new Date(+prevRun!.payDate + 7 * 3_600_000).getUTCMonth() + 1, 3, 3));
+  await prisma.hrPayrollRun.update({ where: { id: "calqc-payrun-prev" }, data: { payDate: nextMonth1 } });
+  cleanups.push(() => prisma.hrPayrollRun.update({ where: { id: "calqc-payrun-prev" }, data: { payDate: prevRun!.payDate } }));
+  const wPay = await ag(owner, ymd(0), ymd(41));
+  await cleanups.pop()!();
+  chk("S1-13", "งวดเดือนก่อนจ่ายจริงต้นเดือนนี้ = ภ.ง.ด.1 ของงวด periodKey หายไป (ยื่นตามเดือนที่จ่าย · ม.52/ท.ป.4 ข้อ 13)", !ids(wPay, "tax").includes(`tax:PND1:${prevRun!.periodKey}:calqc-sys-hr`), JSON.stringify(ids(wPay, "tax")));
+  // review b M4: ประวัติเก่าจำนวนมากไม่ดันรายการปัจจุบันหลุด
+  const OLD_N = 1_050;
+  const oldStart = new Date(Date.now() - 400 * 86_400_000);
+  await prisma.calItem.createMany({ data: Array.from({ length: OLD_N }, (_, k) => ({ id: `calqc13-old-${k}`, userId: U.new, tenantId: A, kind: "REMINDER" as const, title: `เก่า ${k}`, startAt: new Date(+oldStart + k * 60_000), occursAt: new Date(+oldStart + k * 60_000), status: "DONE" as const, doneAt: oldStart })) });
+  cleanups.push(() => prisma.calItem.deleteMany({ where: { id: { startsWith: "calqc13-old-" } } }));
+  const many = await ag(staffNew, ymd(0), ymd(1));
+  await cleanups.pop()!();
+  chk("S1-14", `ผู้ใช้มีเตือนเก่า ${OLD_N} แถว (DONE) — เตือน/นัดปัจจุบันยังอยู่ครบ (review b M4)`, ids(many).includes("reminder:calqc-cal-new") && ids(many).includes("event:calqc-cal-new-event") && !ids(many).some((x: string) => x.includes("calqc13-old-")));
 
   // ─────────────── S2 ครูนิว ───────────────
   console.log("── S2: ครูนิว (STAFF · ไม่มีคีย์บัญชี) ──");

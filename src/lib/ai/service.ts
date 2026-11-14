@@ -6,6 +6,7 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 import { approvedPromptTweaksText } from "@/lib/platform/ai-tuning";
 import { recordSample } from "./dataset";
+import { CALENDAR_ROOM_CORE, CALENDAR_SKILL_ID, turnTouchesCalendar } from "./tools-calendar"; // calendar_b ◂
 import { memoryBlock } from "./memory";
 import { buildSystemPrompt } from "./persona";
 import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiDocument, type AiProvider } from "./provider";
@@ -264,11 +265,13 @@ export async function sendMessage(
   // CRM C5.5-G1 ▸ ยื่นเฉพาะสิ่งที่ผู้กระทำใช้ได้: สกิลที่ไม่มีเครื่องมือให้ผู้กระทำนี้เลย = ไม่อยู่ในสารบัญ · แกนกลาง/สกิลที่โหลด
   //   = กรองรายเครื่องมือ (runTool ตรวจซ้ำทุกครั้งอยู่แล้ว — ชั้นนี้คือไม่ชวนโมเดลเรียกสิ่งที่จะโดนปฏิเสธ + ประหยัด token) ◂
   const offeredOf = (names: readonly string[]) => toolsOfferedTo(ctx.actor, names, access);
-  const visibleSkills = skillsForTenant(systems.map((s) => s.type)).filter((s) => offeredOf(s.tools).length > 0);
+  // calendar_b ▸ review b m1: ปฏิทินส่วนตัวเฉพาะห้องเลขา (AiRoom) — ห้องเดิม/ไม่มีห้อง = ไม่เห็นสกิล calendar และไม่ยื่นเครื่องมือ ◂
+  const calendarRoom = !!conv?.room && ctx.actor.kind === "member";
+  const visibleSkills = skillsForTenant(systems.map((s) => s.type)).filter((s) => (calendarRoom || s.id !== CALENDAR_SKILL_ID) && offeredOf(s.tools).length > 0);
   // SEC S1.12 ▸ R-S1.12d: กติกาส่งถึงลูกค้าใน prompt เฉพาะเมื่อยื่นเครื่องมือ send_customer_message ได้จริง (skill chat เห็น + ผู้ถามผ่านด่าน) ◂
   const customerChatOffered = visibleSkills.some((s) => s.tools.includes("send_customer_message")) && offeredOf(["send_customer_message"]).length > 0;
   const loadedSkillIds = new Set<string>();
-  const activeToolNames = new Set<string>(offeredOf(CORE_TOOLS));
+  const activeToolNames = new Set<string>([...offeredOf(CORE_TOOLS), ...(calendarRoom ? offeredOf(CALENDAR_ROOM_CORE) : [])]); // calendar_b ▸ "เตือนฉัน…" ไม่ต้องโหลดสกิลในห้องเลขา ◂
   const currentTools = () => {
     const list = [...activeToolNames].map(defOf).filter((d): d is NonNullable<typeof d> => Boolean(d));
     // ยื่น load_skill ต่อเมื่อยังมีสกิลให้โหลด (โหลดครบแล้วยื่นต่อ = ชวนให้ AI เรียกวนเปล่า ๆ)
@@ -319,7 +322,7 @@ export async function sendMessage(
     {
       role: "system",
       content: [
-        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customer ? { customer } : {}), ...(lessons ? { lessons } : {}), ...(customerChatOffered ? { customerChat: true } : {}) }), // SEC S1.12 R-S1.12d ◂
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customer ? { customer } : {}), ...(lessons ? { lessons } : {}), ...(customerChatOffered ? { customerChat: true } : {}), ...(calendarRoom ? { calendar: true } : {}) }), // SEC S1.12 R-S1.12d ◂ · calendar_b ▸ กติกาปฏิทินเมื่อยื่นเครื่องมือปฏิทิน ◂
         skillIndexPrompt(visibleSkills),
       ].filter(Boolean).join("\n\n"),
     },
@@ -532,6 +535,8 @@ export async function sendMessage(
 
   // เก็บ dataset (ฐาน self-host) — best-effort เท่านั้น: ห้ามให้พังการตอบ · gate ด้วย env ภายใน
   try {
+    // calendar_b ▸ review b M7: เทิร์นที่ใช้เครื่องมือปฏิทิน (ข้อมูลส่วนตัว/Google — Limited Use) ไม่เข้า dataset ฝึกโมเดลเด็ดขาด ◂
+    if (!turnTouchesCalendar(usedTools))
     await recordSample({ tenantId: ctx.tenantId }, {
       userText: text,
       toolCalls: usedTools,

@@ -181,6 +181,7 @@ export async function createItem(
       occursAt: s.occursAt,
       nextFireAt: s.nextFireAt,
       source: opts.source ?? "APP",
+      userEditedAt: now, // calendar_b ▸ review b M3 ◂
       roomId: opts.source === "CHAT" ? opts.roomId ?? null : null,
       syncDirty: status === "OPEN" && (await exportsKind(actor, w.kind)),
     },
@@ -192,7 +193,7 @@ export async function createItem(
 async function commit(actor: CalActor, r: CalItem, data: Prisma.CalItemUpdateManyMutationInput): Promise<CalItem> {
   const res = await dbOf(actor).calItem.updateMany({
     where: { id: r.id, userId: actor.userId, tenantId: actor.tenantId, version: r.version },
-    data: { ...data, version: { increment: 1 } },
+    data: { ...data, version: { increment: 1 }, userEditedAt: new Date() }, // calendar_b ▸ review b M3: เวลาแก้ของผู้ใช้ (job ไม่แตะ) ◂
   });
   if (res.count !== 1) throw conflict();
   return own(actor, r.id);
@@ -394,6 +395,7 @@ export async function purgeMemberCalendar(member: { userId: string; tenantId: st
   const db = dbOf(member);
   await db.calItem.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } });
   await db.calPref.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } });
+  await db.calRoomCard.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } }); // calendar_b ◂
 }
 
 /**

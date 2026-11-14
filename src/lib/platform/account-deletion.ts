@@ -117,6 +117,7 @@ async function deleteUserTraces(userId: string): Promise<void> {
     prisma.calItem.deleteMany({ where: { userId } }),
     prisma.calPref.deleteMany({ where: { userId } }),
     prisma.calLink.deleteMany({ where: { userId } }),
+    prisma.calRoomCard.deleteMany({ where: { userId } }), // calendar_b ▸ การ์ด agenda ในห้อง (review b B1) ◂
   ]);
 }
 
