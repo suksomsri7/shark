@@ -9,6 +9,7 @@ import type { Sellable, SellResult } from "@/lib/core/sellable";
 const notSupported = (): SellResult<never> => ({ ok: false, code: "KIND_NOT_SUPPORTED", messageTh: "ยังไม่รองรับรายการชนิดนี้", retryable: false });
 
 export async function sellableFor(kind: string): Promise<SellResult<Sellable>> {
+  if (kind === "TRIP") await (await import("@/lib/modules/agency")).installAgencyPricingPort(); // TRIPS A1.3a ▸ port ราคาเอเจนซี่ (ครั้งเดียวต่อโพรเซส) ◂
   if (kind === "TRIP") return { ok: true, value: (await import("@/lib/modules/trips")).tripSellable };
   return notSupported();
 }

@@ -68,3 +68,53 @@ export {
 } from "./accounts";
 export type { ShopCtx, AgencyOpts, AgencyDeps, AccountWriteResult, ShopAgentAccountDTO, ShopAgentListItem, InviteAgentInput, InviteResult, AgentProfilePatch, AgentPayeeType } from "./accounts";
 // ◂ TRIPS A1.2a
+// TRIPS A1.3a ▸ ระดับ A/B/C · rate card · แถวราคา 3 แบบ + คอมฯ บาทต่อที่นั่ง · ช่วงพิเศษ · ตัวเลือกชั้นเอเจนซี่ · port ราคาเอเจนซี่ · เครื่องลองคิด (ใบสั่ง §3 §6–§9)
+//   ฝั่งร้านเท่านั้น — ไม่มีฟังก์ชันฝั่งเอเจนซี่ · port ลงทะเบียนเข้า trips ผ่าน installAgencyPricingPort (จุดติดตั้ง platform/sellables.ts)
+export {
+  AGENT_TIER_CODES,
+  AGENT_RATE_MODES,
+  AGENT_RATE_CARD_STATUSES,
+  AGENT_RATE_CARD_ACTIONS,
+  AGENT_RATE_LIMITS,
+  AGENT_RATE_REASONS,
+  SHOP_RATE_CARD_KEYS,
+  SHOP_RATE_KEYS,
+  AGENT_RATE_AUDIT_KEYS,
+  rateCardTransition,
+  normalizeAgentRate,
+  dateRangesOverlap,
+  rateRowsConflict,
+  resolveAgentLayer,
+  decideCommissionVatMode,
+  buildAgencyPricingInput,
+} from "./rates-core";
+export type {
+  AgentTierCode,
+  AgentRateMode,
+  AgentRateCardStatus,
+  AgentRateCardAction,
+  AgentRateReason,
+  RateRow,
+  RateCardRow,
+  RateFacts,
+  LayerTrace,
+  RateTrace,
+  AgencyPricingBuilt,
+} from "./rates-core";
+export {
+  ensureAgentTiers,
+  listAgentTiers,
+  setAgentAccountTier,
+  listAgentRateCards,
+  getAgentRateCard,
+  createAgentRateCard,
+  updateAgentRateCard,
+  setAgentRateCardStatus,
+  upsertAgentRate,
+  setAgentRateActive,
+  agencyPricingPort,
+  installAgencyPricingPort,
+  tryAgentPrice,
+} from "./rates";
+export type { RatesCtx, RatesOpts, AgentTierDTO, ShopRateDTO, ShopRateCardDTO, ShopRateCardListItem, TryAgentPriceResult } from "./rates";
+// ◂ TRIPS A1.3a
