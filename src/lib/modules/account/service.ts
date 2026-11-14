@@ -103,8 +103,9 @@ import {
   type DormMoneyChannel,
 } from "./gl";
 // WO 1.4: เอกสารภาษีถูกหัก ณ ที่จ่าย ฝั่งขาย (WTI) — ออกอัตโนมัติตอนรับชำระที่ลูกค้าหักภาษี
-import { issueWhtCreditCert } from "./wht";
-import { liveForfeitKeepCount, recomputeDepositOutcomeInTx } from "./deposit-outcome-db"; // ACC T3 (A2/A3) ◂
+import { issueWhtCreditCert, pndFormOfCert } from "./wht";
+import { PND_FORM_LABEL_TH, PND_FORM_OF_NUMBER } from "./wht-forms"; // ACC T3 merge ▸ ตัวเตือน PND_DUE ใช้ตัวจับแบบเดียวกับรายงาน ◂
+import { depositSettledWhere, liveForfeitKeepCount, recomputeDepositOutcomeInTx } from "./deposit-outcome-db"; // ACC T3 (A2/A3) · merge ▸ แท็บหักมัดจำครบ ◂
 import { depositSettlementView } from "./deposit-outcome";
 import { docWhtBase, instalmentWhtBase, type WhtBaseLine } from "./wht-calc"; // ACC T3.2 ◂
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คของงวดในชุดใบวางบิล/ใบรวมจ่าย (ผูกไว้ที่งวดแรกของชุด) — leaf module ไม่ import วน ◂
@@ -1443,6 +1444,8 @@ export type ListDocumentsInput = {
   sort?: DocSort;
   /** ตัดรายการที่พ้นกำหนดออก (แท็บ "รอชำระ/รอตอบรับ" ที่ไม่รวมพ้นกำหนด) */
   excludeOverdue?: boolean;
+  /** ACC T3 merge ▸ ตัดใบมัดจำที่คืน/ริบ (แท็บ "หักมัดจำครบแล้ว") ◂ */
+  excludeDepositSettled?: boolean;
   /**
    * WO 3.4: ไม่ต้อง include ผู้ติดต่อ/การชำระ (Prisma โหลด relation ด้วย query แยกเสมอ = +2 SQL ต่อครั้ง)
    * ใช้เมื่อผู้เรียกรู้ผู้ติดต่ออยู่แล้ว เช่นแท็บ "เอกสาร" ของโปรไฟล์ 360° ที่กรอง contactId ตัวเดียว
@@ -1579,6 +1582,7 @@ export async function listDocumentsPaged(
       base,
       statusWhere,
       ...(input.excludeOverdue ? [{ NOT: overdueWhere(now) }] : []),
+      ...(input.excludeDepositSettled ? [{ NOT: depositSettledWhere() }] : []),
     ],
   };
 
@@ -1626,7 +1630,7 @@ export async function computeListTabCounts(
   tenantId: string,
   systemId: string,
   docType: AccountDocType,
-  tabs: { key: string; filter: { status: DocStatusFilter; excludeOverdue?: boolean } }[],
+  tabs: { key: string; filter: { status: DocStatusFilter; excludeOverdue?: boolean; excludeDepositSettled?: boolean } }[],
   extra?: { q?: string; contactId?: string; from?: Date | string; to?: Date | string },
 ): Promise<Record<string, number>> {
   const now = accountNow();
@@ -1651,14 +1655,23 @@ export async function computeListTabCounts(
   // WO 9.3: เดิมมี 3 คำสั่ง — คำสั่งที่ 3 คือ count() ของ "พ้นกำหนดทั้งหมด" ซึ่งเป็น **ตัวกรองเดียวกันเป๊ะ**
   // กับ groupBy ตัวที่ 2 ⇒ ผลรวมของ groupBy ตัวที่ 2 = ค่าเดียวกัน (groupBy ครอบทุก status ไม่มี take/skip)
   // ตัดทิ้ง 1 query ต่อการโหลดหน้ารายการทุกหน้า โดยตัวเลขไม่เปลี่ยน
+  // ACC T3 merge ▸ แท็บ "หักมัดจำครบแล้ว" ไม่นับใบที่คืน/ริบ — ไม่เพิ่ม query: groupBy ตัวที่ 2 รวมชุด DEDUCTED+depositOutcome ไปด้วย
+  //   (overdueWhere ไม่มีสถานะ DEDUCTED ⇒ กลุ่ม DEDUCTED ของตัวที่ 2 = ใบที่คืน/ริบล้วน ๆ แยกออกจากพ้นกำหนดได้ตรง) ◂
+  const withSettled = tabs.some((t) => t.filter.excludeDepositSettled);
   const [rawGroup, overdueGroup] = await Promise.all([
     prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
-    prisma.accountDocument.groupBy({ by: ["status"], where: { AND: [base, overdueWhere(now)] }, _count: { _all: true } }),
+    prisma.accountDocument.groupBy({
+      by: ["status"],
+      where: { AND: [base, withSettled ? { OR: [overdueWhere(now), depositSettledWhere()] } : overdueWhere(now)] },
+      _count: { _all: true },
+    }),
   ]);
   const raw = new Map(rawGroup.map((g) => [g.status, g._count._all]));
-  const overdueByStatus = new Map(overdueGroup.map((g) => [g.status, g._count._all]));
+  const settledDeducted = withSettled ? (overdueGroup.find((g) => g.status === "DEDUCTED")?._count._all ?? 0) : 0;
+  const overdueGroupOnly = withSettled ? overdueGroup.filter((g) => g.status !== "DEDUCTED") : overdueGroup;
+  const overdueByStatus = new Map(overdueGroupOnly.map((g) => [g.status, g._count._all]));
   const all = rawGroup.reduce((s, g) => s + g._count._all, 0);
-  const overdueTotal = overdueGroup.reduce((s, g) => s + g._count._all, 0);
+  const overdueTotal = overdueGroupOnly.reduce((s, g) => s + g._count._all, 0);
 
   const out: Record<string, number> = {};
   for (const t of tabs) {
@@ -1672,10 +1685,9 @@ export async function computeListTabCounts(
       continue;
     }
     const statuses = Array.isArray(f.status) ? f.status : [f.status];
-    out[t.key] = statuses.reduce(
-      (n, s) => n + (raw.get(s) ?? 0) - (f.excludeOverdue ? (overdueByStatus.get(s) ?? 0) : 0),
-      0,
-    );
+    out[t.key] =
+      statuses.reduce((n, s) => n + (raw.get(s) ?? 0) - (f.excludeOverdue ? (overdueByStatus.get(s) ?? 0) : 0), 0) -
+      (f.excludeDepositSettled && statuses.includes("DEDUCTED") ? settledDeducted : 0);
   }
   return out;
 }
@@ -8177,8 +8189,8 @@ export async function runAccountReminders(
       }
     }
 
-    // (6) ACC T3.7 ▸ ภ.ง.ด.3/53 (ที่ร้านยื่นเอง) — เตือนล่วงหน้า PP30_LEAD_DAYS วันก่อนกำหนดยื่นกระดาษของเดือนก่อน (วันจากตาราง T0.2)
-    //   เฉพาะเดือนที่มี 50 ทวิ ที่ยังไม่ทำเครื่องหมายนำส่ง · แบบตามผู้รับ (บุคคล = ภ.ง.ด.3 · อื่น = ภ.ง.ด.53 — การแยกแบบละเอียดเป็นงาน T3.4 ของรายงาน) ◂
+    // (6) ACC T3.7 ▸ ภ.ง.ด. (ที่ร้านยื่นเอง) — เตือนล่วงหน้า PP30_LEAD_DAYS วันก่อนกำหนดยื่นกระดาษของเดือนก่อน (วันจากตาราง T0.2)
+    //   เฉพาะเดือนที่มี 50 ทวิ ที่ยังไม่ทำเครื่องหมายนำส่ง · แบบของแต่ละใบจากตัวจับแบบตัวเดียวกับรายงาน ภ.ง.ด. (T3.4 · SYSTEM_WHT_FORM_ROWS ผ่าน pndFormOfCert) ◂
     {
       const py = today.getUTCMonth() === 0 ? today.getUTCFullYear() - 1 : today.getUTCFullYear();
       const pm = today.getUTCMonth() === 0 ? 12 : today.getUTCMonth();
@@ -8187,16 +8199,16 @@ export async function runAccountReminders(
       const toD = new Date(Date.UTC(pm === 12 ? py + 1 : py, pm === 12 ? 0 : pm, 1) - 7 * 3600_000);
       const certs = await prisma.accountDocument.findMany({
         where: { tenantId, systemId, docType: "WHT_CERT", direction: "IN", status: "ISSUED", whtFiledPeriodKey: null, issueDate: { gte: from, lt: toD } },
-        select: { contact: { select: { legalType: true } } },
+        select: { whtIncomeType: true, contactSnapshot: true, contact: { select: { legalType: true, taxIdCountry: true, country: true, legalEntityType: true, whtRecipient: true } } },
         take: 500,
       });
-      const forms = new Set(certs.map((c) => (c.contact?.legalType === "PERSON" ? "PND3" : "PND53") as "PND3" | "PND53"));
+      const forms = new Set(certs.map((c) => pndFormOfCert(c)));
       if (forms.size) {
         const legal = await loadBookLegal({ tenantId, systemId });
-        for (const form of [...forms].sort()) {
-          const dl = filingDeadlineFrom(legal, form, periodKey);
+        for (const n of [...forms].sort((a, b) => a - b)) {
+          const dl = filingDeadlineFrom(legal, PND_FORM_OF_NUMBER[n], periodKey);
           if (dl.paper && today.getTime() === dl.paper.date.getTime() - PP30_LEAD_DAYS * REC_DAY_MS) {
-            const w = legalWarning("WHT_FILING_DUE", { form: form === "PND3" ? "ภ.ง.ด.3" : "ภ.ง.ด.53", period: periodKey, paper: `วันที่ ${dl.paper.day}`, online: dl.online ? `วันที่ ${dl.online.day}` : "" });
+            const w = legalWarning("WHT_FILING_DUE", { form: PND_FORM_LABEL_TH[n], period: periodKey, paper: `วันที่ ${dl.paper.day}`, online: dl.online ? `วันที่ ${dl.online.day}` : "" });
             summary.PND_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.PND_DUE, `${w.messageTh} (เหลือ ${PP30_LEAD_DAYS} วัน)`, now);
           }
         }

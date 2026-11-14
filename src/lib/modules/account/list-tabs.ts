@@ -24,7 +24,8 @@ import type { AccountDocType, AccountDocStatus } from "@prisma/client";
 import type { StatusTabTone } from "@/components/account-v2/StatusTabs";
 import type { DocStatusFilter } from "./service";
 
-export type TabFilter = { status: DocStatusFilter; excludeOverdue?: boolean };
+/** excludeDepositSettled — ACC T3 merge: แท็บ "หักมัดจำครบแล้ว" ไม่นับใบที่คืน/ริบ (depositOutcome · deposit-outcome-db.depositSettledWhere) */
+export type TabFilter = { status: DocStatusFilter; excludeOverdue?: boolean; excludeDepositSettled?: boolean };
 
 export type DocListTabDef = {
   key: string;
@@ -74,7 +75,7 @@ export const LIST_TABS: Partial<Record<AccountDocType, DocListTabDef[]>> = {
     { key: "awaiting", label: "รอชำระ", filter: { status: "AWAITING_PAYMENT", excludeOverdue: true } },
     overdue,
     { key: "deduct", label: "รอหักมัดจำ", filter: { status: "AWAITING_DEDUCT" } },
-    { key: "deducted", label: "หักมัดจำครบแล้ว", filter: { status: "DEDUCTED" } },
+    { key: "deducted", label: "หักมัดจำครบแล้ว", filter: { status: "DEDUCTED", excludeDepositSettled: true } },
     cancelled,
   ],
   // ground truth: f3-invoice-list.png + acc-v2-expected.json.invoiceTabs — ห้ามต่างชุด/ลำดับ/ป้าย
@@ -159,7 +160,7 @@ export const LIST_TABS: Partial<Record<AccountDocType, DocListTabDef[]>> = {
     { key: "awaiting", label: "รอชำระ", filter: { status: "AWAITING_PAYMENT", excludeOverdue: true } },
     overdue,
     { key: "deduct", label: "รอหักมัดจำ", filter: { status: "AWAITING_DEDUCT" } },
-    { key: "deducted", label: "หักมัดจำครบแล้ว", filter: { status: "DEDUCTED" } },
+    { key: "deducted", label: "หักมัดจำครบแล้ว", filter: { status: "DEDUCTED", excludeDepositSettled: true } },
     cancelled,
   ],
   CREDIT_NOTE_RECEIVED: [

@@ -12,6 +12,15 @@
 //   H4 ผู้ขายเป็นตัวแทนหักภาษี: แผงบอก agent · จ่ายพร้อมหัก ⇒ WHT_AGENT_VENDOR · ไม่ออก 50 ทวิ · ช่องทาง AGENT
 //   H5 ค่าธรรมเนียม 1,500 บาท (ร้าน บจ.) ⇒ WHT_ON_FEE · 300 บาท ⇒ ไม่เตือน
 //   H6 ค่าตั้งสูตร: เปลี่ยน "ตลอดไป" เป็น NET_TIMES_RATE ⇒ คำเตือน WHT_GROSS_UP · ออกภาษีให้ 10,000 @3% = 30,000
+//   H7 (merge T3 เลน 1 × เลน 2 — glue 1–3):
+//      H7.1 พิมพ์ 50 ทวิ ของ H2 (ออกให้ตลอดไป): ติ๊กช่องเงื่อนไข (2) · จำนวนเงินที่จ่าย 1,030,928 (เงินได้รวมภาษีที่ออกแทน) · ภาษี 30,928
+//      H7.2 ค่าโฆษณา 5,000 @2% ให้ บจก. (รหัสขยาย ADVERTISING): 50 ทวิ ภาษี 10,000 · แถวแบบ 5 · วงเล็บ "ค่าโฆษณา" · ช่องเงื่อนไข (1)
+//      H7.3 ออกแทนใบ H7.2 เลือกช่อง (4) อื่น ๆ ⇒ ใบใหม่เก็บรหัส OTHER + รหัสขยาย ADVERTISING เดิม · พิมพ์ติ๊ก (4)
+//      H7.4 ภ.ง.ด.53 ก.ย. 69: แถว = H3a (2,400) + H5 (30,000) + H7.3 ใบแทน (10,000) = ภาษี 42,400 · 3 แถว · ไม่มีแถว "ยังไม่ออก 50 ทวิ"
+//           การจ่ายของ H4 (ตัวแทนหักภาษี · ภาษี 30,000 · ฐาน 1,000,000) ไม่อยู่ในแถว → ยอดแยก AGENT 1 รายการ 30,000
+//      H7.5 เปิด e-WHT แล้วจ่ายค่าบริการ 10,000 ผ่าน e-WHT 1% = 10,000 ให้ บจก. ⇒ ภ.ง.ด.53 ยังภาษี 42,400 · ยอดแยก EWHT 1 รายการ ฐาน 1,000,000 ภาษี 10,000
+//      H7.6 ภ.ง.ด.3 ก.ย. 69: H2 (บุคคล · ออกให้ตลอดไป) ภาษี 30,928 · เงื่อนไขในแถว "2"
+//      H7.7 ตัวจับแบบของตัวเตือน PND_DUE = pndFormOfCert (ตารางของเลน 2): ใบ H2 → 3 · ใบ H5 → 53
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-acc-v2-wht-helpers");
 const F = await import("./acc-v2-wht-fixture.mts" as string);
@@ -21,6 +30,12 @@ const { chk, finish } = F.makeChecker();
 const shops: Any[] = [];
 try {
   const WC = (await import("@/lib/modules/account/wht-calc" as string)) as Any;
+  const WCert = (await import("@/lib/modules/account/wht-cert" as string)) as Any;
+  const WH = (await import("@/lib/modules/account/wht" as string)) as Any;
+  const LG = (await import("@/lib/modules/account/legal-gate" as string)) as Any;
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  let h2CertId = "";
+  let h4PaymentId = "";
   const PM = (await import("@/lib/modules/account/payment" as string)) as Any;
   const LV = (await import("@/lib/modules/account/legal-values" as string)) as Any;
   const co = await F.makeShop("help", { entityKind: "COMPANY", vat: false });
@@ -47,6 +62,7 @@ try {
     const je = p ? await co.prisma.accountJournalEntry.findFirst({ where: { systemId: co.S, refType: "AccountDocumentPayment", refId: p.id }, include: { lines: { include: { account: { select: { code: true } } } } } }) : null;
     const net = (code: string) => (je?.lines ?? []).filter((l: Any) => l.account.code === code).reduce((n: number, l: Any) => n + l.debit - l.credit, 0);
     chk("H2.2", "JV: Dr 2100 1,000,000 · Dr 6970 30,928 / Cr ธนาคาร 1,000,000 · Cr 2130 30,928", net("2100") === 1_000_000 && net("6970") === 30_928 && net("2130") === -30_928, "ตามนั้น", (je?.lines ?? []).map((l: Any) => [l.account.code, l.debit, l.credit]));
+    h2CertId = cert?.id ?? "";
     chk("H2.3", "50 ทวิ: ภาษี 30,928 · เงินได้ 1,030,928 · เงื่อนไข PAY_ALWAYS", cert?.whtAmount === 30_928 && cert.subTotal === 1_030_928 && cert.whtCondition === "PAY_ALWAYS", "ตามนั้น", cert && [cert.whtAmount, cert.subTotal, cert.whtCondition]);
     chk("H2.4", "คำเตือน WHT_GROSS_UP [U] ไม่ต้องยืนยัน (มีสูตร + \"โปรดตรวจกับนักบัญชีของร้าน\")", r.ok && r.warnings?.some((w: Any) => w.code === "WHT_GROSS_UP" && w.tag === "U" && !w.ack && w.messageTh.includes("โปรดตรวจกับนักบัญชีของร้าน") && w.messageTh.includes("100 − r")), "warn", r.warnings, "MAJOR");
   }
@@ -72,6 +88,7 @@ try {
     const r = await pay(e, { amountSatang: 970_000, whtIncomeType: "M40_2", whtIncomeCode: "M40_2", whtRateBp: 300, whtAmountSatang: 30_000 }, "h4");
     const p = await co.prisma.accountDocumentPayment.findFirst({ where: { documentId: e } });
     const certs = await co.prisma.accountDocument.count({ where: { systemId: co.S, docType: "WHT_CERT", sourceDocId: e } });
+    h4PaymentId = p?.id ?? "";
     chk("H4.2", "หักทั้งที่ผู้ขายเป็นตัวแทน ⇒ บันทึกได้ + WHT_AGENT_VENDOR · ไม่ออก 50 ทวิ · ช่องทาง AGENT", r.ok && r.warnings?.some((w: Any) => w.code === "WHT_AGENT_VENDOR") && certs === 0 && p?.whtChannel === "AGENT", "AGENT/0", { r, certs, ch: p?.whtChannel });
   }
 
@@ -91,6 +108,36 @@ try {
     const e = await F.makeExpense(co, v.id, [{ description: "ค่าบริการ", amount: 1_000_000 }], { vatMode: "NONE" });
     const panel = await PM.paymentPanelData(co.tid, co.S, e);
     chk("H6.2", "แผงจ่ายได้สูตรใหม่ · ออกภาษีให้ 10,000 @3% = 30,000", panel?.wht?.settings?.grossUpAlways === "NET_TIMES_RATE" && WC.grossUp(1_000_000, 300, panel.wht.settings.grossUpAlways).tax === 30_000, "30000", panel?.wht?.settings, "MAJOR");
+  }
+
+  console.log("\nH7 merge T3 (50 ทวิ × ภ.ง.ด. × ช่องทาง):");
+  {
+    const m2 = h2CertId ? (await WCert.loadCertPrint(co.ctx, h2CertId, { fmtDate: fmt }))?.model : null;
+    chk("H7.1", "พิมพ์ 50 ทวิ ออกให้ตลอดไป: ช่อง (2) · จำนวนเงิน 1,030,928 · ภาษี 30,928", m2?.condition === 2 && m2.amount === 1_030_928 && m2.tax === 30_928, "2/1030928/30928", m2 && [m2.condition, m2.amount, m2.tax]);
+    const ad = await F.makeExpense(co, vCo.id, [{ description: "ค่าโฆษณาออนไลน์", amount: 500_000 }], { vatMode: "NONE" });
+    const ra = await pay(ad, { amountSatang: 490_000, whtIncomeCode: "ADVERTISING", whtIncomeType: "M40_8", whtRateBp: 200, whtAmountSatang: 10_000 }, "h7a");
+    const adCert = await co.prisma.accountDocument.findFirst({ where: { systemId: co.S, docType: "WHT_CERT", sourceDocId: ad } });
+    const ma = adCert ? (await WCert.loadCertPrint(co.ctx, adCert.id, { fmtDate: fmt }))?.model : null;
+    chk("H7.2", "ค่าโฆษณา: 50 ทวิ ภาษี 10,000 · แถว 5 · วงเล็บ \"ค่าโฆษณา\" (รหัสขยาย) · ช่อง (1)", ra.ok && adCert?.whtIncomeCode === "ADVERTISING" && ma?.tax === 10_000 && ma.incomeRow === 5 && ma.incomeDetail.includes("ค่าโฆษณา") && ma.condition === 1, "ตามนั้น", { r: ra.ok, code: adCert?.whtIncomeCode, m: ma && [ma.tax, ma.incomeRow, ma.incomeDetail, ma.condition] });
+    const rp = adCert ? await WCert.replaceWhtCert(co.ctx, adCert.id, { reason: "ทดสอบเงื่อนไขอื่น ๆ", whtCondition: 4, actorId: co.owner.id, ack: LG.screenAck(["WHT_CERT_REPLACE"], co.owner.id) }) : { ok: false };
+    const neu = rp.ok ? await co.prisma.accountDocument.findUnique({ where: { id: rp.certId } }) : null;
+    const mn = rp.ok ? (await WCert.loadCertPrint(co.ctx, rp.certId, { fmtDate: fmt }))?.model : null;
+    chk("H7.3", "ออกแทนเลือกช่อง (4): เก็บ OTHER · รหัสขยาย ADVERTISING ตามใบเดิม · พิมพ์ติ๊ก (4)", rp.ok && neu?.whtCondition === "OTHER" && neu.whtIncomeCode === "ADVERTISING" && mn?.condition === 4 && mn.incomeDetail.includes("ค่าโฆษณา"), "OTHER/4", { rp, n: neu && [neu.whtCondition, neu.whtIncomeCode], m: mn && [mn.condition, mn.incomeDetail] });
+    const r53 = await WH.pnd(co.tid, co.S, { type: 53, period: "2026-09" });
+    chk("H7.4", "ภ.ง.ด.53: 3 แถว ภาษี 42,400 · ยังไม่ออก 0 · การจ่ายตัวแทนหักภาษีไม่อยู่ในแถว → ยอดแยก AGENT 1 / ฐาน 1,000,000 / ภาษี 30,000", r53.rows.length === 3 && r53.grandWht === 42_400 && r53.uncertifiedCount === 0 && !r53.rows.some((x: Any) => x.paymentId === h4PaymentId) && r53.otherChannels.AGENT.count === 1 && r53.otherChannels.AGENT.base === 1_000_000 && r53.otherChannels.AGENT.wht === 30_000, "3/42400/0/AGENT 1", { n: r53.rows.length, w: r53.grandWht, u: r53.uncertifiedCount, oc: r53.otherChannels });
+    const s = await LV.saveBookTax({ role: "OWNER", unitAccess: ["*"], permissions: {}, userId: co.owner.id }, co.ctx, { ewhtEnabled: true });
+    const ew = await F.makeExpense(co, vCo.id, [{ description: "ค่าบริการผ่าน e-WHT", amount: 1_000_000 }], { vatMode: "NONE" });
+    const re = await pay(ew, { amountSatang: 990_000, whtIncomeCode: "M40_8", whtIncomeType: "M40_8", whtRateBp: 100, whtAmountSatang: 10_000, whtChannel: "EWHT", ewhtRef: "KB-MERGE-1" }, "h7e");
+    const r53b = await WH.pnd(co.tid, co.S, { type: 53, period: "2026-09" });
+    chk("H7.5", "e-WHT: ภ.ง.ด.53 ยัง 3 แถว ภาษี 42,400 · ยังไม่ออก 0 · ยอดแยก EWHT 1 / ฐาน 1,000,000 / ภาษี 10,000", s.ok && re.ok && r53b.rows.length === 3 && r53b.grandWht === 42_400 && r53b.uncertifiedCount === 0 && r53b.otherChannels.EWHT.count === 1 && r53b.otherChannels.EWHT.base === 1_000_000 && r53b.otherChannels.EWHT.wht === 10_000, "3/42400/EWHT 1", { re: re.ok, n: r53b.rows.length, w: r53b.grandWht, u: r53b.uncertifiedCount, oc: r53b.otherChannels });
+    const csv = await WH.pndCsv(co.tid, co.S, { type: 53, period: "2026-09" });
+    chk("H7.5b", "CSV ภ.ง.ด.53 ไม่มีแถว e-WHT/ตัวแทน (3 แถวข้อมูล · ไม่มี \"ยังไม่ออก 50 ทวิ\")", typeof csv === "string" ? !csv.includes("ยังไม่ออก 50 ทวิ") && csv.split("\n").filter((l: string) => l.includes("ออกแล้ว")).length === 3 : false, "3 rows", typeof csv === "string" ? csv.split("\n").slice(0, 8) : csv, "MAJOR");
+    const r3 = await WH.pnd(co.tid, co.S, { type: 3, period: "2026-09" });
+    const h2row = r3.rows.find((x: Any) => x.certId === h2CertId);
+    chk("H7.6", "ภ.ง.ด.3: ใบ H2 ภาษี 30,928 · เงื่อนไขในแถว \"2\"", h2row?.whtAmount === 30_928 && h2row.condition === "2", "30928/2", h2row && [h2row.whtAmount, h2row.condition]);
+    const c2 = await co.prisma.accountDocument.findUnique({ where: { id: h2CertId }, include: { contact: true } });
+    const c5 = await co.prisma.accountDocument.findFirst({ where: { systemId: co.S, docType: "WHT_CERT", status: "ISSUED", whtAmount: 30_000, contactId: vCo.id }, include: { contact: true } });
+    chk("H7.7", "ตัวจับแบบเดียวกับรายงาน (ตัวเตือน PND_DUE ใช้ pndFormOfCert): H2 → 3 · H5 → 53", c2 && c5 ? WH.pndFormOfCert(c2) === 3 && WH.pndFormOfCert(c5) === 53 : false, "3/53", { a: c2 && WH.pndFormOfCert(c2), b: c5 && WH.pndFormOfCert(c5) });
   }
 } catch (e) {
   console.error(e);

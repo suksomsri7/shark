@@ -128,6 +128,18 @@ try {
     chk("A3.3", "ริบอีกครั้ง ⇒ JV ใหม่คีย์ FORFEIT:R1 ลงจริง · 4900 สุทธิ 500,000 · ป้าย \"ริบมัดจำแล้ว\" · DEDUCTED", f2.ok && !!je2 && je2.status === "POSTED" && (await net4900(f)) === 500_000 && (await label(f)) === "ริบมัดจำแล้ว" && (await doc(f))?.status === "DEDUCTED", "R1/500000", { f2, je2: je2?.idempotencyKey, n: await net4900(f), l: await label(f) });
     const f3 = await acc.forfeitDeposit(tid, S, f, "ซ้ำ");
     chk("A3.4", "ริบซ้ำทั้งที่ยังมีผล ⇒ ปฏิเสธ", !f3.ok, "ปฏิเสธ", f3, "MAJOR");
+    // ACC T3 merge ▸ แท็บ "หักมัดจำครบแล้ว" ไม่นับใบที่คืน/ริบ (depositOutcome) ◂
+    //   เฉลยมือ: ใบมัดจำ DEDUCTED ของร้าน V = f (ริบ · มีผล) + a3 (หักบางส่วน+คืนส่วนที่เหลือ · มีผล) + g (หักครบด้วยใบแจ้งหนี้ · ไม่มีผล) ⇒ แท็บ = 1 (g)
+    const g = await mkDep(500_000, "g");
+    const invG = await acc.createDocument({ tenantId: tid, systemId: S, docType: "INVOICE", contactId: V.cust.id, vatMode: "EXCLUDE", issueDate: D(9, 2), dueDate: D(9, 30), lines: [{ description: "ทริป", qty: 1, unitPrice: 1_000_000, vatRateBp: 700, lineKind: "SERVICE" }], createdById: owner.id });
+    await acc.setDocDeposits(tid, S, invG.id, [{ depositId: g, amountSatang: 535_000 }]);
+    const ig = await acc.issueDocument(tid, S, invG.id, {});
+    const LT = (await import("@/lib/modules/account/list-tabs" as string)) as Any;
+    const tabsDR = LT.LIST_TABS.DEPOSIT_RECEIPT;
+    const counts = await acc.computeListTabCounts(tid, S, "DEPOSIT_RECEIPT", tabsDR);
+    const listed = await acc.listDocumentsPaged(tid, S, { docType: "DEPOSIT_RECEIPT", ...LT.tabToFilter("DEPOSIT_RECEIPT", "deducted"), skipStatusCounts: true });
+    const rawDeducted = await prisma.accountDocument.count({ where: { systemId: S, docType: "DEPOSIT_RECEIPT", status: "DEDUCTED" } });
+    chk("A3.5", "แท็บ \"หักมัดจำครบแล้ว\" = 1 (เฉพาะใบที่หักครบ ไม่นับคืน/ริบ) · รายการ 1 แถว = ใบนั้น · สถานะ DEDUCTED ดิบ 3", ig.ok && (await doc(g))?.status === "DEDUCTED" && counts.deducted === 1 && listed.total === 1 && listed.rows[0]?.id === g && rawDeducted === 3, "1/1/g/3", { ig: ig.ok ? "ok" : ig, c: counts.deducted, t: listed.total, r: listed.rows.map((x: Any) => x.id), g, rawDeducted });
   }
 
   // ═══ A4 สาขาผู้ซื้อบนใบพิมพ์ ═══

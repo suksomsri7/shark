@@ -309,6 +309,23 @@ export default async function TaxPage({
               empty={`ไม่มีรายการ ${label} ในงวดนี้`}
               rowKey={(r) => r.key}
             />
+            {/* ACC T3 merge ▸ หักแล้วแต่นำส่งทางอื่น — ไม่อยู่ในแบบนี้ ไม่ต้องออก 50 ทวิ (skill WHT §14 · §16) ◂ */}
+            {(report.otherChannels.EWHT.count > 0 || report.otherChannels.AGENT.count > 0) && (
+              <ul className="mt-2 flex flex-col gap-0.5 text-xs text-[color:var(--color-muted)]" data-testid="pnd-other-channels">
+                {report.otherChannels.EWHT.count > 0 && (
+                  <li data-testid="pnd-other-ewht">
+                    ไม่รวมในแบบนี้: นำส่งผ่าน e-WHT ของธนาคาร {report.otherChannels.EWHT.count} รายการ · ฐาน <MoneyText satang={report.otherChannels.EWHT.base} decimals /> · ภาษี{" "}
+                    <MoneyText satang={report.otherChannels.EWHT.wht} decimals /> (หลักฐานธนาคารใช้แทน 50 ทวิ)
+                  </li>
+                )}
+                {report.otherChannels.AGENT.count > 0 && (
+                  <li data-testid="pnd-other-agent">
+                    ไม่รวมในแบบนี้: ผู้ขายเป็นตัวแทนหักภาษี {report.otherChannels.AGENT.count} รายการ · ฐาน <MoneyText satang={report.otherChannels.AGENT.base} decimals /> · ภาษี{" "}
+                    <MoneyText satang={report.otherChannels.AGENT.wht} decimals /> (ผู้ขายยื่นแทน · ไม่ออก 50 ทวิ)
+                  </li>
+                )}
+              </ul>
+            )}
           </Section>
 
           {/* รายการ (ใบแนบ) — รวมการจ่ายที่หักแล้วแต่ยังไม่มีใบ */}

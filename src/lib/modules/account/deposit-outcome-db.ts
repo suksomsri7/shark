@@ -39,3 +39,11 @@ export async function recomputeDepositOutcomeInTx(
   await tx.accountDocument.update({ where: { id: depositId }, data: { depositOutcome: empty ? Prisma.DbNull : (next as unknown as Prisma.InputJsonValue) } });
   return next;
 }
+
+/**
+ * ACC T3 merge ▸ ใบมัดจำ DEDUCTED ที่มีผลคืน/ริบ (depositOutcome ไม่ว่าง) — ไม่ใช่ "หักมัดจำครบแล้ว" จริง
+ *   แท็บ "หักมัดจำครบแล้ว" (list-tabs `excludeDepositSettled`) ตัดชุดนี้ออกทั้งรายการและตัวนับ · ป้ายของแถวมาจาก depositOutcomeLabel
+ */
+export function depositSettledWhere(): Prisma.AccountDocumentWhereInput {
+  return { status: "DEDUCTED", NOT: { depositOutcome: { equals: Prisma.DbNull } } };
+}

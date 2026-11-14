@@ -17,6 +17,7 @@ import type {
 } from "@prisma/client";
 // posting engine (owner = GL-P2P3, ไฟล์ gl.ts) — subagent P2 แค่ import + เรียกตามลายเซ็น
 import { ensureAccounting, pendingInputVatOf, postDocument, postPayment, reverseFor } from "./gl";
+import { depositSettledWhere } from "./deposit-outcome-db"; // ACC T3 merge ▸ แท็บ "หักมัดจำครบแล้ว" ◂
 // reuse (read-only) helper จาก service P1 — ห้ามแก้ service.ts
 import {
   computeTotals,
@@ -414,6 +415,8 @@ export type ListExpenseDocsInput = {
   pageSize?: number;
   sort?: DocSort;
   excludeOverdue?: boolean;
+  /** ACC T3 merge ▸ ตัดใบมัดจำที่คืน/ริบ (แท็บ "หักมัดจำครบแล้ว") ◂ */
+  excludeDepositSettled?: boolean;
   /** ACC T2 ▸ ข้ามการนับ tabCounts (ผู้เรียกนับแท็บเองด้วย computeListTabCounts) — ดู service.ts ListDocumentsInput ◂ */
   skipStatusCounts?: boolean;
 };
@@ -475,7 +478,7 @@ export async function listExpenseDocsPaged(
           : { status };
 
   const where: Prisma.AccountDocumentWhereInput = {
-    AND: [base, statusWhere, ...(input.excludeOverdue ? [{ NOT: overdueWhere(now) }] : [])],
+    AND: [base, statusWhere, ...(input.excludeOverdue ? [{ NOT: overdueWhere(now) }] : []), ...(input.excludeDepositSettled ? [{ NOT: depositSettledWhere() }] : [])],
   };
 
   const [rows, total, grouped, overdueCount] = await Promise.all([

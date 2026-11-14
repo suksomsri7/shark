@@ -145,6 +145,7 @@ const documentsList = defineOp({
       // แท็บชนะ `status` เมื่อส่งมาทั้งคู่ — แท็บคือสิ่งที่ผู้ใช้เห็นบนหน้าจอ
       status: tab ? tab.status : parseStatus(input.status),
       excludeOverdue: tab?.excludeOverdue,
+      excludeDepositSettled: tab?.excludeDepositSettled,
       refType: input.refType,
       refId: input.refId,
       page: input.page,

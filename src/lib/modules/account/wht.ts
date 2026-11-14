@@ -440,14 +440,23 @@ export type PndReport = {
   grandWht: number;
   /** แถวที่ยังไม่มี 50 ทวิ */
   uncertifiedCount: number;
+  /**
+   * ACC T3 merge ▸ การจ่ายที่หักแล้วแต่นำส่งทางอื่น — ไม่อยู่ในรายการ/ยอดของแบบที่ร้านยื่นเอง และไม่นับเป็น "ยังไม่ออก 50 ทวิ"
+   *   EWHT = ธนาคารนำส่งผ่าน e-WHT (หลักฐานธนาคารแทน 50 ทวิ · skill WHT §14 "ไม่เข้าไฟล์ ภ.ง.ด.3/53 ที่ร้านยื่นเอง")
+   *   AGENT = ผู้ขายเป็นตัวแทนหักภาษี (ผู้ขายยื่นแทน · ฉ.457/459 — WHT §16) · ยอดแยกให้เห็นบนจอ/REST
+   */
+  otherChannels: { EWHT: PndChannelTotal; AGENT: PndChannelTotal };
   warnings: LegalWarning[];
 };
+export type PndChannelTotal = { count: number; base: number; wht: number };
+type PndAll = { rows: Omit<PndRow, "seq">[]; channels: Array<{ channel: "EWHT" | "AGENT"; form: PndFormNumber; base: number; wht: number }> };
+const isOtherChannel = (c: string | null | undefined): c is "EWHT" | "AGENT" => c === "EWHT" || c === "AGENT";
 
 type SnapRec = Record<string, unknown> | null;
 const snapRec = (raw: unknown): SnapRec => (raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null);
 const sstr = (v: unknown): string | null => (typeof v === "string" ? v : null);
-const CONTACT_FACTS = { name: true, taxId: true, address: true, legalType: true, branchCode: true, taxIdCountry: true, country: true, legalEntityType: true } as const;
-type ContactFacts = { name: string; taxId: string | null; address: string | null; legalType: AccountLegalType; branchCode: string | null; taxIdCountry: string | null; country: string | null; legalEntityType: string | null };
+const CONTACT_FACTS = { name: true, taxId: true, address: true, legalType: true, branchCode: true, taxIdCountry: true, country: true, legalEntityType: true, whtRecipient: true } as const;
+type ContactFacts = { name: string; taxId: string | null; address: string | null; legalType: AccountLegalType; branchCode: string | null; taxIdCountry: string | null; country: string | null; legalEntityType: string | null; whtRecipient?: string | null };
 
 function factsOf(snap: SnapRec, c: ContactFacts | null): RecipientFacts {
   return {
@@ -455,7 +464,8 @@ function factsOf(snap: SnapRec, c: ContactFacts | null): RecipientFacts {
     taxIdCountry: sstr(snap?.taxIdCountry) ?? c?.taxIdCountry ?? null,
     country: sstr(snap?.country) ?? c?.country ?? null,
     legalEntityType: sstr(snap?.legalEntityType) ?? c?.legalEntityType ?? null,
-    whtRecipient: sstr(snap?.whtRecipient),
+    // ACC T3 merge ▸ ประเภทผู้รับที่ร้านตั้งต่อผู้ติดต่อ (T3.1 AccountContact.whtRecipient) — ตัวเดียวกับแผงจ่าย ◂
+    whtRecipient: sstr(snap?.whtRecipient) ?? c?.whtRecipient ?? null,
   };
 }
 
@@ -466,6 +476,9 @@ export function pndFormOfCert(c: { whtIncomeType: string | null; contactSnapshot
 
 /** รายการทั้งหมดของเดือน (ทุกแบบ) — แล้วผู้เรียกกรองแบบ */
 async function pndAllRows(tenantId: string, systemId: string, period: string): Promise<Omit<PndRow, "seq">[]> {
+  return (await pndAll(tenantId, systemId, period)).rows;
+}
+async function pndAll(tenantId: string, systemId: string, period: string): Promise<PndAll> {
   const { gte, lt } = periodRange(period);
   const [certs, pays] = await Promise.all([
     prisma.accountDocument.findMany({
@@ -501,6 +514,7 @@ async function pndAllRows(tenantId: string, systemId: string, period: string): P
     }),
   ]);
   const out: Omit<PndRow, "seq">[] = [];
+  const channels: PndAll["channels"] = [];
   for (const c of certs) {
     const snap = snapRec(c.contactSnapshot);
     const pick = whtFormOf(c.whtIncomeType, factsOf(snap, c.contact));
@@ -529,10 +543,16 @@ async function pndAllRows(tenantId: string, systemId: string, period: string): P
   for (const p of pays) {
     const d = p.document;
     const snap = snapRec(d.contactSnapshot);
-    const incomeType = d.lines[0]?.whtIncomeType ?? null;
+    // ACC T3 merge ▸ ประเภทเงินได้/ฐานที่แผงจ่าย (T3.1/T3.2) เก็บไว้ที่การจ่ายชนะ · ไม่มี (การจ่ายก่อน T3) = บรรทัดแรกที่ระบุของเอกสาร ◂
+    const incomeType = p.whtIncomeType ?? d.lines[0]?.whtIncomeType ?? null;
     const pick = whtFormOf(incomeType, factsOf(snap, d.contact));
     // ฐานโดยประมาณ: ย้อนจากภาษี/อัตรา (สูตรเดียวกับตอนออกใบ issueWhtCert) · ไม่มีอัตรา = สัดส่วนยอดจ่ายของใบ
-    const base = baseFromWht(p.whtAmountSatang, p.whtRateBp) ?? (d.grandTotal > 0 ? Math.round((d.subTotal * (p.amount + p.whtAmountSatang)) / d.grandTotal) : p.amount + p.whtAmountSatang);
+    const base = p.whtBaseSatang ?? baseFromWht(p.whtAmountSatang, p.whtRateBp) ?? (d.grandTotal > 0 ? Math.round((d.subTotal * (p.amount + p.whtAmountSatang)) / d.grandTotal) : p.amount + p.whtAmountSatang);
+    // ACC T3 merge ▸ e-WHT / ตัวแทนหักภาษี: ไม่มี 50 ทวิ โดยชอบ · ไม่เข้าแบบที่ร้านยื่นเอง → ยอดแยก ◂
+    if (isOtherChannel(p.whtChannel)) {
+      channels.push({ channel: p.whtChannel, form: pick.form, base, wht: p.whtAmountSatang });
+      continue;
+    }
     out.push({
       certId: null,
       certNo: null,
@@ -557,7 +577,7 @@ async function pndAllRows(tenantId: string, systemId: string, period: string): P
   }
   // เรียงนิ่ง: วันที่จ่าย → มีใบก่อน (เลขที่) → id
   out.sort((a, b) => a.paidAt.getTime() - b.paidAt.getTime() || Number(b.hasCert) - Number(a.hasCert) || (a.certNo ?? "").localeCompare(b.certNo ?? "") || (a.certId ?? a.paymentId ?? "").localeCompare(b.certId ?? b.paymentId ?? ""));
-  return out;
+  return { rows: out, channels };
 }
 
 /**
@@ -565,8 +585,16 @@ async function pndAllRows(tenantId: string, systemId: string, period: string): P
  * (เดิม: 3 = ผู้รับบุคคลธรรมดาทุกประเภทเงินได้ · 53 = อื่น ๆ — 40(1)/ดอกเบี้ยให้บุคคลไหลเข้า 3 และการจ่ายที่ไม่มีใบไม่ขึ้น · F9)
  */
 export async function pnd(tenantId: string, systemId: string, input: { type: PndFormNumber; period: string }): Promise<PndReport> {
-  const all = await pndAllRows(tenantId, systemId, input.period);
+  const { rows: all, channels } = await pndAll(tenantId, systemId, input.period);
   const mine = all.filter((r) => r.form === input.type);
+  const otherChannels: PndReport["otherChannels"] = { EWHT: { count: 0, base: 0, wht: 0 }, AGENT: { count: 0, base: 0, wht: 0 } };
+  for (const c of channels) {
+    if (c.form !== input.type) continue;
+    const t = otherChannels[c.channel];
+    t.count += 1;
+    t.base += c.base;
+    t.wht += c.wht;
+  }
   let grandBase = 0;
   let grandWht = 0;
   const byMap = new Map<AccountWhtIncomeType, { base: number; wht: number; count: number }>();
@@ -591,7 +619,7 @@ export async function pnd(tenantId: string, systemId: string, input: { type: Pnd
     const row = SYSTEM_WHT_FORM_ROWS.find((x) => x.id === unverified.formRowId);
     warnings.push(legalWarning("WHT_FORM_UNVERIFIED", { form: PND_FORM_LABEL_TH[input.type], note: row?.note ?? "" }, { citation: row?.source }));
   }
-  return { rows, byIncomeType, grandBase, grandWht, uncertifiedCount, warnings };
+  return { rows, byIncomeType, grandBase, grandWht, uncertifiedCount, otherChannels, warnings };
 }
 
 /** จำนวนรายการต่อแบบของเดือน (ตัวเลือกแบบบนจอ) */

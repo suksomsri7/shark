@@ -69,6 +69,8 @@ const E = JSON.parse(readFileSync(QC.expectedPath, "utf8")) as {
   fixtures: { contactNattapholId: string; contactNattapholDocNo?: string };
 };
 const SYS = E.systemId;
+/** ACC T3 merge ▸ เวลาเริ่มรอบนี้ — cleanupDoc ลบเอกสารลูกเฉพาะที่สร้างในรอบนี้ (ไม่แตะของ seed) ◂ */
+const RUN_STARTED_AT = new Date(Date.now() - 5 * 60_000);
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 // ── กันซากจากรอบที่ล้มกลางคัน (แบบเดียวกับ visual-acc-v2.mts fixture ของ WO 1.3/1.4): ลบเอกสาร/ไฟล์ที่มี
@@ -420,9 +422,18 @@ try {
 }
 
 // ═══════════════════════════ ทำความสะอาด (ลบข้อมูลทดสอบทั้งหมด — ไม่แตะของ seed) ═══════════════════════════
+const cleaned = new Set<string>();
 async function cleanupDoc(id: string) {
-  if (!id) return;
+  if (!id || cleaned.has(id)) return;
   try {
+    // ACC T3 merge ▸ เอกสารลูกที่ระบบออกให้เอง (ใบกำกับภาษี/ใบเสร็จอัตโนมัติ ณ จุดภาษีตอนรับชำระ — T2.8) ต้องลบด้วย
+    //   เดิมลบแค่ใบแจ้งหนี้ ⇒ ใบกำกับค้างในสมุด seed ⇒ seed-check / api-read-gl แดงเมื่อรันหลังชุดนี้ (ผลขึ้นกับลำดับ)
+    //   ลูก = เอกสารที่ผูก relation กับใบนี้ (ทั้งสองทิศ) หรือ sourceDocId ชี้ใบนี้ **และสร้างในรอบนี้** · ลบลูกก่อน · ของ seed ไม่ถูกแตะ ◂
+    const rels = await prisma.accountDocumentRelation.findMany({ where: { systemId: SYS, OR: [{ fromId: id }, { toId: id }] }, select: { fromId: true, toId: true } });
+    const linked = [...new Set([...rels.flatMap((r) => [r.fromId, r.toId]), ...(await prisma.accountDocument.findMany({ where: { systemId: SYS, sourceDocId: id }, select: { id: true } })).map((d) => d.id)])].filter((x) => x !== id && !cleaned.has(x));
+    const kids = (await prisma.accountDocument.findMany({ where: { systemId: SYS, id: { in: linked }, createdAt: { gte: RUN_STARTED_AT } }, select: { id: true } })).map((d) => d.id);
+    cleaned.add(id);
+    for (const k of kids) await cleanupDoc(k);
     // 🔴 บั๊กที่เจอจริงระหว่างพัฒนา WO นี้: JV ของ "การรับชำระ" ผูก refId = **paymentId** ไม่ใช่ documentId
     // (ดู `gl.postPayment` → `commitEntry({ refType: "AccountDocumentPayment", refId: paymentId })`)
     // ⇒ ลบด้วย refId=documentId เฉย ๆ (เหมือนตอนออกเอกสาร) พลาด JV ของการชำระเงินไปเงียบ ๆ — ยอดคงเหลือ
