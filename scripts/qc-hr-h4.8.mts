@@ -14,7 +14,7 @@ import {
 } from "./qc-hr-lib.mjs";
 import {
   OPS, HR_READ, HR_LEAVE, HR_PAY, READ3, QUERY_OK, POST_FIELDS, LEFT_OUT, REPORT_SCOPE, REPORTS8, periodOf, EMP, UNIT, SHIFT, ROSTER, DAY, MONTH, POLICY, LEAVE, BAL, SLIP, HIST, POSTED,
-  reportShape, dataBad, shapeBad, BAD_KEY, type Sh, substitute, parseCurl, recipesOf, zodKeys, seedH48, markedProblems, orTermProblems, skillProblems,
+  reportShape, dataBad, BAD_KEY, type Sh, substitute, parseCurl, recipesOf, zodKeys, seedH48, markedProblems, orTermProblems, skillProblems, serializerProblems,
 } from "./qc-hr-h4.8-lib.mjs";
 
 const SUITE = "qc-hr-h4.8";
@@ -69,6 +69,7 @@ Q1|ruling Q1|C|G|[db] [control] human roles × 3 reader gates (canReadRoster · 
 A14|R1|C|R|[db] holder of hr.roster.read + hr.employee.read: reads roster + profile · publish refused · no seeSensitive · no slip
 A2|A2|C|R|[db] scope matrix 7 keys × 22 requests ⇒ exact status:code (401 / 403 scope_missing / 404 register / 200)
 A2b|A2|C|R|[db] POS-bound key ⇒ 403 system_mismatch on every op · general key ⇒ 400 system_required / 403 scope_missing
+A2c|ruling 14 Nov (4)|C|R|[db] only keys bound to THIS HR system: unbound key with hr scopes + X-Shark-System ⇒ every op refused with the bytes of a bound key without hr scopes · POS-bound key with hr scopes ⇒ 403 · no 2xx, nothing written/audited
 A3|Q2 A3|C|R|[db] allow-list: every 2xx data has EXACTLY the pinned keys per op (reports: P, + $ only with hr.payroll.read, never I)
 A4|A4|C|R|[db] no forbidden key and no seeded secret value in any 2xx body (≥ 25 bodies)
 A5|A5|C|R|[db] other tenant/system: header ⇒ 403 system_mismatch · foreign ids (path + body) ⇒ 404 bytes = unknown id · lists filtered
@@ -249,26 +250,7 @@ function runStatic(): void {
 // ═════════════════════════ pure / no-key routes ═════════════════════════
 async function runPure(): Promise<void> {
   {
-    const p: string[] = [];
-    if (!ok(SER)) p.push(`serialize ${SER?.__err ?? "absent"}`);
-    else {
-      const POISON = { __probe: "x", nationalId: "1", phone: "2", email: "3", addressLine: "4", birthDate: "5", bankAccountNo: "6", hasPin: true, pinHash: "7", note: "8", linkedUserId: "9", tenantId: "t", systemId: "s", ok: true, bankMasked: "•••1" };
-      const row = { ...Object.fromEntries(Object.keys(EMP).map((k) => [k, k === "active" ? true : `v-${k}`])), ...POISON };
-      const run = (fn: string, ...a: unknown[]) => {
-        try {
-          return typeof SER[fn] === "function" ? SER[fn](...a) : `missing ${fn}`;
-        } catch (e) {
-          return `throw ${errText(e)}`;
-        }
-      };
-      const e = run("serializeEmployee", row);
-      p.push(...shapeBad(e, EMP, "emp", []).slice(0, 3));
-      const slipIn = { ...Object.fromEntries(Object.keys(SLIP).map((k) => [k, 1])), employee: { name: "n", position: null, code: null, nationalId: "1" }, earnings: [{ code: "BASE", amountSatang: 1, count: 1, qty: null, __probe: 1 }], deductions: [], flags: [], ...POISON };
-      p.push(...shapeBad(run("serializeSlip", slipIn), SLIP, "slip", []).slice(0, 3));
-      const cols = CAT["tax-month"].columns as Any[];
-      const rep = { ok: true, report: "tax-month", period: "2026-06", unitId: null, columns: [...cols.map((c) => ({ key: c.key, label: c.th })), { key: "__probe", label: "x" }], rows: [{ employeeId: "e", values: { ...Object.fromEntries(cols.map((c) => [c.key, "1"])), __probe: "x" }, __probe: 1 }], totals: null, warnings: [], notes: [], __probe: 1 };
-      for (const pay of [false, true]) p.push(...shapeBad(run("serializeReport", rep, { pay }), reportShape(cols, pay, false), `rep${pay ? "$" : ""}`, []).slice(0, 3));
-    }
+    const p = serializerProblems(SER, CAT);
     chk("P1", p.length === 0, "allow-list survives poisoned rows", p.join(" ") || "ok");
   }
   {
@@ -472,6 +454,26 @@ async function runDb(): Promise<void> {
     const g2 = await api("GET", "/units", K.gen, { headers: { "x-shark-system": sA } });
     if (sc(g1) !== "400:system_required" || sc(g2) !== "403:scope_missing") bad.push(`gen=${sc(g1)}/${sc(g2)}`);
     chk("A2b", !!K.pos && !!K.gen && bad.length === 0, "system binding", bad.slice(0, 5).join(" ") || "ok");
+  }
+  // A2c (ruling 14 Nov, 4): HR ops accept only keys bound to this HR system — an unbound key with hr scopes must not bypass the issuer rules
+  {
+    const genHr = await mkKey("genhr", [...HR_LEAVE, "hr.payroll.read"], { sys: null });
+    const posHr = await mkKey("poshr", [...HR_LEAVE, "hr.payroll.read"], { sys: sPos });
+    const bare = await mkKey("bare", ["account.doc.view"]);
+    const hdr = { headers: { "x-shark-system": sA } };
+    const lv0 = await nOf(`SELECT count(*)::int AS n FROM "HrLeave" WHERE "tenantId" = $1`, TA);
+    const n2xx = OK2.length;
+    const bad: string[] = [];
+    for (const q of REQS.filter((x) => !x.rep || x.rep === "time")) {
+      const rg = await send(q, genHr, hdr);
+      const rb = await send(q, bare);
+      const rp = await send(q, posHr, hdr);
+      if (sc(rg) !== "403:scope_missing" || strip(rg) !== strip(rb)) bad.push(`gen/${q.l}=${sc(rg)}${strip(rg) === strip(rb) ? "" : "≠bare"}`);
+      if (rp.status !== 403) bad.push(`pos/${q.l}=${sc(rp)}`);
+    }
+    const aud = await P.auditLog.count({ where: { tenantId: TA, actorId: { in: [genHr?.id ?? "∅", posHr?.id ?? "∅"] } } });
+    const lv1 = await nOf(`SELECT count(*)::int AS n FROM "HrLeave" WHERE "tenantId" = $1`, TA);
+    ck("A2c", { keys: !!genHr && !!posHr && !!bare, refused: bad.length === 0, no2xx: OK2.length === n2xx, nothing: lv0 === lv1 && aud === 0 }, "bound keys only", bad.slice(0, 4).join(" "));
   }
   // A5 + A6
   {

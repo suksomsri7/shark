@@ -344,3 +344,30 @@ export function skillProblems(md: string, recMd: string, opById: (id: string) =>
     if (!recs.some((r) => task.includes(idOf(r.raw).hit?.id ?? ""))) p.push(`task ${task[0]} missing`);
   return { p, n: recs.length, size: md.length + recMd.length };
 }
+
+/** P1 (ruling Q2): the serializers keep EXACTLY the allow-list of poisoned rows (unknown + sensitive keys dropped) */
+export function serializerProblems(SER: Any, CAT: Record<string, Any>): string[] {
+  const p: string[] = [];
+  const ok = (m: Any) => m !== null && !m?.__err;
+  const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 80);
+  if (!ok(SER)) p.push(`serialize ${SER?.__err ?? "absent"}`);
+  else {
+    const POISON = { __probe: "x", nationalId: "1", phone: "2", email: "3", addressLine: "4", birthDate: "5", bankAccountNo: "6", hasPin: true, pinHash: "7", note: "8", linkedUserId: "9", tenantId: "t", systemId: "s", ok: true, bankMasked: "•••1" };
+    const row = { ...Object.fromEntries(Object.keys(EMP).map((k) => [k, k === "active" ? true : `v-${k}`])), ...POISON };
+    const run = (fn: string, ...a: unknown[]) => {
+      try {
+        return typeof SER[fn] === "function" ? SER[fn](...a) : `missing ${fn}`;
+      } catch (e) {
+        return `throw ${errText(e)}`;
+      }
+    };
+    const e = run("serializeEmployee", row);
+    p.push(...shapeBad(e, EMP, "emp", []).slice(0, 3));
+    const slipIn = { ...Object.fromEntries(Object.keys(SLIP).map((k) => [k, 1])), employee: { name: "n", position: null, code: null, nationalId: "1" }, earnings: [{ code: "BASE", amountSatang: 1, count: 1, qty: null, __probe: 1 }], deductions: [], flags: [], ...POISON };
+    p.push(...shapeBad(run("serializeSlip", slipIn), SLIP, "slip", []).slice(0, 3));
+    const cols = CAT["tax-month"].columns as Any[];
+    const rep = { ok: true, report: "tax-month", period: "2026-06", unitId: null, columns: [...cols.map((c) => ({ key: c.key, label: c.th })), { key: "__probe", label: "x" }], rows: [{ employeeId: "e", values: { ...Object.fromEntries(cols.map((c) => [c.key, "1"])), __probe: "x" }, __probe: 1 }], totals: null, warnings: [], notes: [], __probe: 1 };
+    for (const pay of [false, true]) p.push(...shapeBad(run("serializeReport", rep, { pay }), reportShape(cols, pay, false), `rep${pay ? "$" : ""}`, []).slice(0, 3));
+  }
+  return p;
+}

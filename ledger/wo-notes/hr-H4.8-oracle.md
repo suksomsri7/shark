@@ -1,13 +1,13 @@
 # H4.8 oracle notes — `scripts/qc-hr-h4.8.mts` (+ `scripts/qc-hr-h4.8-lib.mts`)
 
-Brief `ledger/hr-briefs/hr-brief-H4.8.md` (+ CONTROLLER RULINGS 14 Nov). Base 38e3be6fa (`session/hr`). 40 checks (35 RED-by-design · 5 GREEN controls).
+Brief `ledger/hr-briefs/hr-brief-H4.8.md` (+ CONTROLLER RULINGS 14 Nov). Base 38e3be6fa (`session/hr`). 41 checks (36 RED-by-design · 5 GREEN controls).
 Run: `bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-h4.8.mts` (unforced = SKIP while `hr/api/registry.ts` is absent, no DB write) · `--list` prints the ids.
 House pattern: route handlers called in-process (`GET/POST(new Request(...), {params})`, as qc-pos-p2.13) with real keys made by `api-keys/service.createApiKey` (createdById = the OWNER issuer). No server, no network.
 
 ## 1. Checks (id · what)
 Static: S1 thin route + 2 doc routes · S2 the 14 pinned ops · S3 nothing left out, one write · S4 HR_SCOPE_KEYS + 3 bundles · S5 [G] non-HR bundles golden · S6 2 RBAC keys + Thai labels · S7 HR_API_CONFIG · S8 hr/api/** readers only, no raw db, issuer viewer only in reports/payslips ops, serializer never spreads · S9 [G] frozen + payroll-rules sha · S10 marked hunks (8 code files, messages only `hr.apiKeys.*`, inventory only `wo:"H4.8"` rows) · S11 Q1 gate hunks = one OR-term each · S12 key card + O1 label + `"use server"` actions → keys core · S13 developers link.
 No-DB modules: P1 serializer probe (poisoned rows) · P2 openapi.json = 14 · P3 `gen-hr-api-docs --check` + HR-API.md/endpoints.md = 14 · P4 SKILL.md/recipes contract · P5 developers/hr.md.
-DB: D0 [G] seed carries PII (so A3/A4 are not vacuous) · Q1 [G] human-role gate matrix golden · A14 new-key holder is read-only · A2 scope matrix 7 keys × 22 requests · A2b POS key / general key · A3 exact allow-list on every 2xx · A4 no forbidden key / seeded secret in any 2xx · A5 other tenant/system · A6 published roster only, DRAFT slip 409 · A7 revoked/expired · A7b issuer demoted/unaccepted/restored · A8 POST happy path · A8b idempotency · A8c held-lock race · A8d refusals · A9 paging + cap · A10 envelope/405/404 · A11 report bucket + 429 · A12 issuer core · A13 pay audit · A16 recipe replay · Z1 [G] residue.
+DB: D0 [G] seed carries PII (so A3/A4 are not vacuous) · Q1 [G] human-role gate matrix golden · A14 new-key holder is read-only · A2 scope matrix 7 keys × 22 requests · A2b POS key / general key · A2c bound keys only (ruling 14 Nov 4) · A3 exact allow-list on every 2xx · A4 no forbidden key / seeded secret in any 2xx · A5 other tenant/system · A6 published roster only, DRAFT slip 409 · A7 revoked/expired · A7b issuer demoted/unaccepted/restored · A8 POST happy path · A8b idempotency · A8c held-lock race · A8d refusals · A9 paging + cap · A10 envelope/405/404 · A11 report bucket + 429 · A12 issuer core · A13 pay audit · A16 recipe replay · Z1 [G] residue.
 
 ## 2. Names and shapes pinned by the oracle (brief left them open)
 - Registry `src/lib/modules/hr/api/registry.ts` exports `HR_OPS` (ApiOp[]). Op ids: `units.list` `employees.list`(paged) `employees.get` `shifts.list` `roster.list` `attendance.day` `attendance.month` `leavePolicies.list` `leaves.list` `leaveBalances.list` `leaves.create` `reports.get` `payslips.history` `payslips.get`; paths/actions = brief §4; `auditAction = "hr.api.<id>"`; rate `report` for reports/payslips, kind `write` for `leaves.create` only. `reports.get` action = any one of the 3 read scopes (builder's choice); the handler re-checks the per-report scope.
@@ -31,17 +31,17 @@ DB: D0 [G] seed carries PII (so A3/A4 are not vacuous) · Q1 [G] human-role gate
 - Skill: SKILL.md sections `When to use / Setup / Conventions / Privacy and safety`; recipes in `references/recipes.md` (```bash fenced, one curl each, `Authorization: Bearer $SHARK_API_KEY`, `Idempotency-Key: $(uuidgen)` on POST, an `Error branch: <status> <code>` line); variables exactly `$SHARK_API_KEY $SHARK_SYSTEM_ID $UNIT_ID $EMPLOYEE_ID $RUN_ID $FROM $TO`. Replay uses a key with hr-leave + payroll.read, EMPLOYEE_ID = an employee with an ISSUED slip, FROM = TO = 2031-05-04.
 
 ## 3. Ambiguities and how the oracle reads them
-1. Controller asked for "cursor stability under inserts"; brief R6/A9 fix page/pageSize (house `paged()`). Followed the brief: an employee sorting after all others is inserted between page 1 and pages 2–3; union must be exact without duplicates. An insert sorting *before* page 1 would duplicate rows under offset paging — not tested (would need a cursor; controller to rule if wanted).
-2. Controller's "money and ID columns only with the pay scope" vs brief R4/Q8 "class I dropped always": followed the brief (I never, $ only with pay). Employee DTO never carries national id/bank even with pay scope (§7).
+1. RULED 14 Nov (1): page/pageSize stands, total order (name, id) with id as tie-breaker; cursor paging = debt D-H48-cursor. Test: an employee sorting after all others is inserted between page 1 and pages 2–3; union must be exact without duplicates. An insert sorting *before* page 1 would duplicate rows under offset paging — not tested (would need a cursor; controller to rule if wanted).
+2. RULED 14 Nov (2): class I always dropped (brief wins) (I never, $ only with pay). Employee DTO never carries national id/bank even with pay scope (§7).
 3. "Branch scope of the issuer respected": the issuer must be an accepted OWNER (Q2), i.e. all branches, and scope-only readers use the synthetic `["*"]` actor (R2) — nothing branch-restricted to test; covered by A7b (issuer rule) only.
-4. General key (systemId null) holding hr scopes + X-Shark-System of an HR system would pass the frozen core. Brief D3 says HR keys are always bound; the oracle only checks a general key with non-HR scopes (400 system_required / 403 scope_missing). Not a contradiction, but a gap the controller may want to rule on.
+4. RULED 14 Nov (4): HR ops accept only keys bound to this HR system. A2c: an unbound key holding hr-leave + payroll.read and sending `X-Shark-System: <sA>` ⇒ every one of the 14 ops answers 403 `scope_missing` with the same bytes (minus requestId) as a key bound to sA without hr scopes; a POS-bound key with hr scopes + header ⇒ 403; no 2xx, no leave written, no audit row. If the frozen core cannot express it, the HR dispatcher/actor enforces it (no change under `src/lib/api/**`). Note: the oracle's other keys are made with `createApiKey` bound to sA (custom scope sets), so the enforceable criterion is "bound to this HR system" — a builder must not require an issue-time marker that `createApiKey`-made bound keys lack (would need an ORACLE-EDIT).
 5. `listEmployees` cap 500 ⇒ `truncated` is not seeded (cost); the cap is checked on `leaveItemsForViewer` (101 history rows ⇒ 100 + `truncated:true`).
-6. `hr/api/keys.ts` is not in the brief §5 file list; it is needed because `"use server"` files can only export actions and the oracle cannot call `requireTenant()`. Same pattern as POS `pos/api/keys.ts`.
+6. RULED 14 Nov (3): `hr/api/keys.ts` confirmed; it is needed because `"use server"` files can only export actions and the oracle cannot call `requireTenant()`. Same pattern as POS `pos/api/keys.ts`.
 7. "no leave.decide ⇒ 403" code pinned as `scope_missing` (it is a key scope).
 8. A8c race: `holdAdvisory` on `hr-leave-emp:<sys>:<emp>` (the lock `requestLeave` takes); request A blocks inside the handler with its idempotency row claimed, request B (same key/body) is sent while the lock is held ⇒ 409 `idempotency_in_progress` (core semantics); after release A = 200 and a replay returns A's id. The "lock is awaited" signal is pg_stat_activity advisory waits (shared DB ⇒ a foreign waiter could give a false positive; A still blocks).
 
 ## 4. RED on base (38e3be6fa) — full output `hr-H4.8-red.txt`
-Forced: 5/40 pass = exactly the 5 GREEN controls; unforced: SKIPPED (registry absent, exit 0, no DB write). No crash, RESIDUE none.
+Forced: 5/41 pass = exactly the 5 GREEN controls; unforced: SKIPPED (registry absent, exit 0, no DB write). No crash, RESIDUE none.
 
 | group | checks | reason RED on base |
 |---|---|---|
@@ -49,7 +49,7 @@ Forced: 5/40 pass = exactly the 5 GREEN controls; unforced: SKIPPED (registry ab
 | scopes / RBAC | S4 S6 | no `HR_SCOPE_KEYS`, no `hr-*` bundles, no `hr.employee.read`/`hr.roster.read` in PERMISSIONS |
 | marked hunks | S10 S11 | no diff vs base in the 8 files / messages / inventory; no gate hunks |
 | new-key holder | A14 | base gates do not know the new keys (canReadRoster false, openProfile false) |
-| every HTTP check | A2 A2b A3 A4 A5 A6 A7 A7b A8 A8b A8c A8d A9 A10 A11 A13 A16 | route absent ⇒ `0:ROUTE_MISSING`; HR keys cannot even be issued (`createApiKey` rejects `hr.employee.read` as a scope) |
+| every HTTP check | A2 A2b A2c A3 A4 A5 A6 A7 A7b A8 A8b A8c A8d A9 A10 A11 A13 A16 | route absent ⇒ `0:ROUTE_MISSING`; HR keys cannot even be issued (`createApiKey` rejects `hr.employee.read` as a scope) |
 | issuer core | A12 | `hr/api/keys.ts` absent ⇒ `MISSING` |
 
 GREEN on base, and why that is right:
