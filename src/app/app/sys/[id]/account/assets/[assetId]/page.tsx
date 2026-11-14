@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assetDetail } from "@/lib/modules/account/asset-v2";
-import { listFinanceAccounts } from "@/lib/modules/account/asset";
-import { disposeAssetAction } from "../actions";
+import { assetTaxRulesOf, listFinanceAccounts } from "@/lib/modules/account/asset";
+import { disposeAssetAction, setAssetTaxClassAction } from "../actions";
+import { ASSET_TAX_CLASSES, ASSET_TAX_CLASS_LABEL_TH, assetTaxWarnings } from "@/lib/modules/account/asset-tax";
+import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
 import { formatDateTh } from "@/lib/ui/date";
 import MoneyText from "@/components/ui/MoneyText";
 import StatusChip from "@/components/ui/StatusChip";
@@ -38,6 +40,9 @@ export default async function AssetDetailPage({
   const financeAccts = await listFinanceAccounts(ctx);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
   const canDispose = a.status === "ACTIVE" || a.status === "FULLY_DEPRECIATED";
+  // ACC T4.3 ▸ คำเตือนทางภาษี (เพดานอัตรา · รถยนต์นั่ง 1 ล้าน · ที่ดิน) จากตาราง "สมุดบัญชี" ของร้าน — ไม่บล็อก ◂
+  const taxWarnings = assetTaxWarnings({ name: a.name, taxClass: a.taxClass, cost: a.cost, usefulLifeMonths: a.usefulLifeMonths }, await assetTaxRulesOf(ctx, a.acquiredDate));
+  const canEditClass = a.status === "ACTIVE" || a.status === "FULLY_DEPRECIATED";
 
   return (
     <div className="flex max-w-4xl flex-col gap-5">
@@ -55,6 +60,8 @@ export default async function AssetDetailPage({
       {sp.err && <p className="text-sm text-[color:var(--color-danger)]">{sp.err}</p>}
       {sp.ok && <p className="text-sm font-medium">{sp.ok}</p>}
 
+      <LegalWarnings warnings={taxWarnings} testId="asset-tax-warnings" />
+
       {/* สรุปตัวเลข */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Box label="ต้นทุน" value={<MoneyText satang={a.cost} decimals />} />
@@ -66,7 +73,11 @@ export default async function AssetDetailPage({
       {/* ข้อมูลทะเบียน */}
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-xl border p-4 text-sm sm:grid-cols-2" style={{ borderColor: "var(--color-line)" }}>
         <Field k="วันที่ได้มา" v={formatDateTh(a.acquiredDate)} />
-        <Field k="วันเริ่มคิดค่าเสื่อม" v={formatDateTh(a.startDepDate)} />
+        <Field
+          k="วันเริ่มคิดค่าเสื่อม"
+          v={`${formatDateTh(a.startDepDate)}${a.taxClass !== "LAND" && a.firstMonth.prorated ? ` · เดือนแรกคิด ${a.firstMonth.daysUsed}/${a.firstMonth.daysInMonth} วัน (งวดทั้งหมด ${a.usefulLifeMonths + 1})` : ""}`}
+        />
+        <Field k="ประเภททางภาษี" v={<span data-testid="asset-tax-class">{ASSET_TAX_CLASS_LABEL_TH[a.taxClass]}</span>} />
         <Field k="อายุการใช้งาน" v={`${a.usefulLifeMonths} เดือน (คิดแล้ว ${a.monthsDepreciated} งวด)`} />
         <Field k="ค่าเสื่อมงวดถัดไป" v={a.nextAmount > 0 ? <MoneyText satang={a.nextAmount} decimals /> : "— (ครบแล้ว/ยังไม่ถึงงวด)"} />
         <Field k="บัญชีสินทรัพย์" v={a.accounts.asset ? `${a.accounts.asset.code} ${a.accounts.asset.name}` : "—"} />
@@ -80,6 +91,25 @@ export default async function AssetDetailPage({
         )}
         {a.note && <Field k="หมายเหตุ" v={a.note} />}
       </dl>
+
+      {canEditClass && (
+        <form action={setAssetTaxClassAction} className="flex flex-wrap items-end gap-2" data-testid="asset-tax-class-form">
+          <input type="hidden" name="systemId" value={systemId} />
+          <input type="hidden" name="assetId" value={a.id} />
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            เปลี่ยนประเภททางภาษี
+            <select name="taxClass" defaultValue={a.taxClass} className="input" data-testid="asset-tax-class-select">
+              {ASSET_TAX_CLASSES.map((c) => (
+                <option key={c} value={c}>
+                  {ASSET_TAX_CLASS_LABEL_TH[c]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <SubmitButton variant="ghost" data-testid="asset-tax-class-save">บันทึกประเภท</SubmitButton>
+          <span className="w-full text-xs text-[color:var(--color-muted)]">ที่ดินไม่คิดค่าเสื่อม (ค่าเสื่อมที่ลงไปแล้วไม่ถูกแก้) · ประเภทอื่นใช้เทียบเพดานค่าเสื่อมทางภาษีเป็นคำเตือน</span>
+        </form>
+      )}
 
       {/* 🔴 ตารางค่าเสื่อมรายงวด — ของที่ §11.5 บอกว่า "มีข้อมูลแล้วแต่ไม่เคยแสดง" */}
       <section>
