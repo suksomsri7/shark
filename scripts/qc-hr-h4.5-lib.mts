@@ -300,7 +300,7 @@ export function runStatic(g: Reg & { BASE: string; IN_BASE: boolean }): void {
     const p = rd(F.hrSchema);
     const lf = srt(fieldsOf(modelBlock(p, "HrLineLink")));
     const nf = srt(fieldsOf(modelBlock(p, "HrNotice")));
-    ck("S1.2", { link: lf === LINK_COLS, notice: nf === NOTICE_COLS, scope: /HrLineLink:\s*sys\(\)/.test(rd(F.scope)) && /HrNotice:\s*sys\(\)/.test(rd(F.scope)), env: /hrLineLink/.test(rd(F.env)) && /hrNotice/.test(rd(F.env)) }, "schema + registries", `link=${lf.slice(0, 60) || "∅"} notice=${nf.slice(0, 60) || "∅"}`);
+    ck("S1.2", { link: lf === srt([...LINK_COLS.split(","), "employee"]) /* ORACLE-EDIT (H4.5 fix round · controller ruling A): + exactly the relation field `employee` */, notice: nf === NOTICE_COLS, scope: /HrLineLink:\s*sys\(\)/.test(rd(F.scope)) && /HrNotice:\s*sys\(\)/.test(rd(F.scope)), env: /hrLineLink/.test(rd(F.env)) && /hrNotice/.test(rd(F.env)) }, "schema + registries", `link=${lf.slice(0, 60) || "∅"} notice=${nf.slice(0, 60) || "∅"}`);
   }
   {
     const hrFiles = listDir("src/lib/modules/hr");

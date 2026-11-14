@@ -17,6 +17,7 @@ import {
   sentence, HREF, bodyOk, flexParts, startFake, evText, evPostback, signedBody, repliesOf, ADVISORY_SQL, CHECKS_SRC, runStatic, runPure, exists,
   F, NEW, AUDIT, LINK_COLS, NOTICE_COLS, STATUS_FNS, SAVE_FNS,
 } from "./qc-hr-h4.5-lib.mjs";
+import { CHECKS_FIX, runFixStatic, runFixDb, driftOfLine } from "./qc-hr-h4.5-fix-lib.mjs"; // ORACLE-EDIT (H4.5 fix round · controller ruling) — checks after review + hunt
 
 const SUITE = "qc-hr-h4.5";
 const ARGV = process.argv.slice(2);
@@ -24,7 +25,7 @@ const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
 const SLUG_PREFIX = "qc-hr-h45-";
 
 const SEV: Record<string, Sev> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
-const CHECKS = CHECKS_SRC.trim().split("\n").map((l) => {
+const CHECKS = `${CHECKS_SRC.trim()}\n${CHECKS_FIX.trim()}`.split("\n").map((l) => { // ORACLE-EDIT (H4.5 fix round · controller ruling): + CHECKS_FIX
   const [id, g, sv, b, t] = l.split("|");
   return [`H4.5-${id}`, g, SEV[sv], (b === "R" ? "RED" : "GREEN") as Base, t] as const;
 });
@@ -97,6 +98,7 @@ const CONS = ((await import("@/lib/outbox-consumers")) as Any).consumers as Reco
 const LIFE = (await import("@/lib/modules/hr/lifecycle")) as Any;
 const OT = (await import("@/lib/modules/hr/ot")) as Any;
 const sysSvc = (await import("@/lib/modules/system/service")) as Any;
+const STAFF = (await import("@/lib/staff/service")) as Any; // ORACLE-EDIT (H4.5 fix round · controller ruling D1): staff revoke/grant paths
 const tag = tagOf(String(Date.now())) + Math.random().toString(36).slice(2, 5).replace(/\d/g, "q");
 const SLUG = `${SLUG_PREFIX}${Date.now()}${tag}`;
 const fx = makeFixtures(P, coreHash, SLUG);
@@ -171,7 +173,7 @@ async function runDb(): Promise<void> {
   await emp("end", u1, { status: "ENDED", active: false });
   await emp("nouser", u1, { noUser: true });
   const eOther = await fx.mkEmp(T2, sO, `พนักงานอื่น ${tag}`, { code: "O1" });
-  for (const k of ["1", "4", "5", "6", "7a", "7b", "9", "11", "11b", "12", "13", "14", "15", "20", "21", "22", "23", "24a", "24b", "25", "bad", "free"]) await contact(k, "c1");
+  for (const k of ["1", "4", "5", "6", "7a", "7b", "9", "11", "11b", "12", "13", "14", "15", "15b", "20", "21", "22", "23", "24a", "24b", "25", "bad", "free"]) await contact(k, "c1"); // ORACLE-EDIT (H4.5 fix round · controller ruling L): + 15b (S3.7 positive control)
   await contact("2", "c1", "Uqc", "en");
   await contact("3", "c2");
   await contact("11c2", "c2");
@@ -272,7 +274,7 @@ async function runDb(): Promise<void> {
     const conv = await raw(`SELECT m."body" FROM "ChatMessage" m JOIN "ChatConversation" c ON c."id" = m."conversationId" WHERE c."contactId" = $1`, K["1"]);
     const au = await auditsOf("hr.line.link");
     const kc = await P.chatContact.findUnique({ where: { id: K["1"] } });
-    const st = await call(LL, "myLineStatus", actor(U.s1));
+    const st = await call(HL, "myHrLineStatus", actor(U.s1)); // ORACLE-EDIT (H4.5 fix round · controller ruling B): own LINE name comes from the glue (HR myLineStatus has no name)
     const okText = [PB.LINK_OK_TEXT, R?.HR_LINE_TEXT?.linked].filter(Boolean);
     ck("S3.3", {
       status: t.status === 200, active: act.length === 1 && act[0].chatContactId === K["1"] && act[0].connectionId === C.c1 && !!act[0].linkedAt, reply: t.replies.length === 1 && okText.includes(t.replies[0]?.text),
@@ -314,7 +316,9 @@ async function runDb(): Promise<void> {
     for (let i = 0; i < 10; i++) await type("15", `QQ${"23456789"[i % 8]}${"23456789"[(i / 8) | 0]}ZZZZ`);
     const r = await issue("15");
     const t = r.ok ? await type("15", r.value.code) : null;
-    ck("S3.7", { issued: r.ok, refused: !!t && textOf(t.replies) === FAILED, noActive: (await active("15")).length === 0 }, "11th refused");
+    const okOther = r.ok ? await type("15b", r.value.code) : null; // ORACLE-EDIT (H4.5 fix round · controller ruling L): the 10 wrong codes use the real alphabet (counted guesses) · same code from a fresh contact links ⇒ the 11th was refused by the guess limit, not the code
+    const a15 = await active("15");
+    ck("S3.7", { issued: r.ok, refused: !!t && textOf(t.replies) === FAILED, control: !!okOther && textOf(okOther.replies) !== FAILED && a15.length === 1 && a15[0].chatContactId === K["15b"] }, "11th refused · same code from a fresh contact links"); // ORACLE-EDIT (H4.5 fix round · controller ruling L)
   }
   {
     const rs = [];
@@ -684,7 +688,10 @@ async function runDb(): Promise<void> {
     ck("S8.3", { refused: x.value?.ok === false && z.value?.ok === false, same: canon(x.value) === canon(y.value), kept: (await active("3")).length === 1 && (await active("1")).length === 1 }, "refused · unchanged", short(x.value, 80));
     const m1 = await call(LL, "myLineStatus", actor(U.s1));
     const m2 = await call(LL, "myLineStatus", { ...actor(U.s1), employeeId: E["3"] });
-    ck("S8.4", { keys: srt(Object.keys(m1.value ?? {})) === "displayName,linkedAt,ok,shopEnabled,state", own: m1.value?.displayName === fake.names.get(EXT["1"]!) && m1.value?.shopEnabled === true, forged: canon(m1.value) === canon(m2.value) }, "self DTO", short(m1.value, 120));
+    // ORACLE-EDIT (H4.5 fix round · controller ruling B): HR DTO keys without displayName · own name via glue myHrLineStatus (keys + forged id ignored there too)
+    const g1 = await call(HL, "myHrLineStatus", actor(U.s1));
+    const g2 = await call(HL, "myHrLineStatus", { ...actor(U.s1), employeeId: E["3"] });
+    ck("S8.4", { keys: srt(Object.keys(m1.value ?? {})) === "linkedAt,ok,shopEnabled,state" && srt(Object.keys(g1.value ?? {})) === "displayName,linkedAt,ok,shopEnabled,state", own: g1.value?.displayName === fake.names.get(EXT["1"]!) && m1.value?.shopEnabled === true, forged: canon(m1.value) === canon(m2.value) && canon(g1.value) === canon(g2.value) }, "self DTO", short(g1.value, 120)); // ORACLE-EDIT (H4.5 fix round · controller ruling B)
     const before = canon(((await P.appSystem.findUnique({ where: { id: sA } }))?.settings as Any)?.lineNotify);
     const mem = await setPol({ monthlyCap: 100 }, V("member"));
     const big = await setPol({ monthlyCap: 5001 });
@@ -710,6 +717,16 @@ async function runDb(): Promise<void> {
     const audBlob = canon(aud.filter((a) => /^hr\./.test(String(a.action))));
     ck("S9.2", { keys: keysOk && aud.some((a) => a.action === "hr.line.link"), audits: where(audBlob) === 0, inapp: where(notes) === 0, logs: RAW_CODES.filter((c) => CAPTURED.join("\n").includes(c)).length === 0 }, "no secrets", `audits=${where(audBlob)} inapp=${where(notes)} codesInLogs=${RAW_CODES.filter((c) => CAPTURED.join("\n").includes(c)).length}`);
   }
+  // ORACLE-EDIT (H4.5 fix round · controller ruling) ▸ A drift · D1–D3 · E · F · G · H · I · J (scripts/qc-hr-h4.5-fix-lib.mts)
+  {
+    const d = driftOfLine();
+    chk("F1.2", d.ok, "no HrLineLink/HrNotice drift", d.note);
+  }
+  try {
+    await runFixDb({ P, chk, ck, call, fake, TT, sA, cA, C, U, E, K, EXT, actor, V, issue, type, press, links, active, notices, notesOf, pushes, roster, plan, send, job, noticeOne, row, setPol, linkVia, consume, HL, LN, LL, STAFF, emp, contact, exq, MIN, SLUG, u1, mk, tag });
+  } catch (e) {
+    console.log(`💥 fix round: ${errText(e)}`);
+  }
 }
 
 // ═════════════════════════ main ═════════════════════════
@@ -729,6 +746,7 @@ async function cleanMine(): Promise<void> {
 }
 try {
   runStatic({ chk, ck, BASE, IN_BASE });
+  runFixStatic({ ck }); // ORACLE-EDIT (H4.5 fix round · controller ruling A)
   runPure(R, { chk, ck });
   await runDb();
 } catch (e) {
