@@ -1,0 +1,45 @@
+# HR-PREPROD-1 green — 2026-11-14T16:35:20Z · lane 4 (qc-hr.sh + gate lock) · base a4e2fb4ae
+seed-hr-qc exit=0 | ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-preprod-1 exit=0 | ===== qc-hr-preprod-1 ===== passed 57/57 (QC_FORCE)
+qc-hr-preprod-1#2 exit=0 | ===== qc-hr-preprod-1 ===== passed 57/57 (QC_FORCE)
+qc-hr-preprod-1#3 exit=0 | ===== qc-hr-preprod-1 ===== passed 57/57 (QC_FORCE)
+qc-hr-preprod-1-unforced exit=0 | ===== qc-hr-preprod-1 ===== passed 57/57
+qc-hr-money-2 exit=0 | ===== qc-hr-money-2 ===== passed 57/57 (QC_FORCE)
+qc-hr-priv-2 exit=0 | ===== qc-hr-priv-2 ===== passed 47/47 (QC_FORCE)
+qc-hr-hf-sso exit=0 | ===== qc-hr-hf-sso ===== passed 41/41 (QC_FORCE)
+qc-hf-hr-privacy exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-hr-h0.6 exit=0 | ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE)
+qc-hr-h1.1 exit=0 | ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h1.3 exit=0 | ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE)
+qc-hr-h2.4 exit=0 | ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+qc-hr-h2.6 exit=0 | ===== qc-hr-h2.6 ===== passed 56/56 (QC_FORCE)
+qc-hr-h2.7 exit=0 | ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+qc-hr-h2.9 exit=0 | ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE)
+qc-hr-h3.1 exit=0 | ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE)
+qc-hr-h3.2 exit=0 | ===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE)
+qc-hr-h3.4 exit=0 | ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h3.4-ytd exit=0 | ===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+qc-hr-h3.5 exit=0 | ===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE)
+qc-hr-h3.6 exit=0 | ===== qc-hr-h3.6 ===== passed 62/62 (QC_FORCE)
+qc-hr-h3.7 exit=0 | ===== qc-hr-h3.7 ===== passed 68/68 (QC_FORCE)
+qc-hr-h3.8 exit=1 | ===== qc-hr-h3.8 ===== passed 77/78 (QC_FORCE)
+qc-hr-h3.9 exit=0 | ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-h4.2 exit=0 | ===== qc-hr-h4.2 ===== passed 57/57
+qc-hr-h4.3 exit=0 | ===== qc-hr-h4.3 ===== passed 45/45
+qc-hr-h4.4 exit=0 | ===== qc-hr-h4.4 ===== passed 86/86 (QC_FORCE)
+qc-hr-h4.5 exit=0 | ===== qc-hr-h4.5 ===== passed 90/90 (QC_FORCE)
+qc-hr-h4.6 exit=0 | ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE)
+qc-hr-h4.8 exit=0 | ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+qc-hr-set-1 exit=0 | ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-payroll exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-payroll-reverse exit=0 | ✅ PASS — 14/14
+qc-hr-payadjust exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-audit-trail exit=0 | ✅ PASS — 21/21
+qc-hr exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+qc-hr-leave-booking exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-noenv exit=0 | FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+typecheck exit=0 · 1279 s clean (MemAvailable 13.8 GB)
+NOT GREEN: qc-hr-h3.8 S1.13 (privacy.ts + self.ts sha pins) — needs controller ruling (pin re-take): privacy.ts → 6b8e3f05207e687f9e2acf7302e821fddf72cf0d004c68f3db2693eeb0d4d47e · self.ts → 6a54690e198fdb1bf6b24cf2e31b9faa00ad2087caff03cd81feea3afe987fec
