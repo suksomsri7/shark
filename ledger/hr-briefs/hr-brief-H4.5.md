@@ -90,3 +90,10 @@ O3 PDPA wording for employees [safe: R11 fixed sentence; lawyer later].
 
 ## 10. Debts
 D1 H4.5b AI/KB leave intake · D2 approver LINE · D3 follow/unfollow → link state · D4 employee rich menu · D5 tenant switch in links · D6 cert/correction/advance notices · D7 e-mail.
+
+## CONTROLLER RULINGS (14 Nov) — drafter defaults ACCEPTED for Q1–Q15, with these notes
+- Q8: new in-app notices ship to all shops. An older suite that counts AppNotification rows may get a minimal marked ORACLE-EDIT (`ORACLE-EDIT (H4.5 · controller ruling)`) ONLY for the count/filter expectation; the builder lists each one with before/after. Anything else: ask.
+- Q9: free-text AI leave intake from LINE = follow-up H4.5b (owner list). Q10: no approver actions from LINE.
+- Q6 is a privacy rule: message bodies carry the event kind + outcome word only — never names of other people, dates of leave, amounts, branch names. The oracle asserts the exact bodies byte for byte (th + en).
+- Owner-only O1–O3: work proceeds on the safe defaults (feature OFF per shop, cap 200/month, fixed PDPA sentence, LINE faked in the oracle). Label on the settings card: "ยังไม่ได้ทดสอบกับ LINE OA จริง" until the owner runs a pilot.
+- Settings via lockHrSettings + writeHrSettingsKeys; qc-hr-set-1 in the run list. Migration name 20270111000000_hr_line_link (schema hunks marked `HR H4.5`).
