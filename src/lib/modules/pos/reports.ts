@@ -2140,3 +2140,51 @@ export async function posDashboardCard(ctx: ReportCtx, actor: RegisterActor, inp
     };
   });
 }
+
+// HR H4.2 ▸ ตัวเลขยอดขายรายชั่วโมงให้ HR (ค่าแรงต่อยอดขาย · brief hr-brief-H4.2 R1) — อ่านอย่างเดียว · ไม่เปลี่ยนรายงานเดิม
+//   ยอด = กติกาเดียวกับ reportHourly/reportDailySales (ตัดมัดจำ · บิลยกเลิกไม่นับ · ใบคืนหักในชั่วโมงที่คืน · ทิปไม่นับ) · คีย์ชั่วโมงเดียวกับ reportHourly
+//   สิทธิ์ = pos.report.view ที่สาขานั้นของผู้เรียกเอง · POS = ระบบ POS ที่สาขาผูกและเปิดใช้ (นิยามเดียวกับ service-bill posOfUnit) · ไม่มี = connected:false
+//   ช่วง ≤ 45 วัน · ผลแบบเบาบาง (เฉพาะวัน/ชั่วโมงที่มีเอกสาร) ◂
+export const SALES_BY_HOUR_MAX_DAYS = 45; // HR H4.2 ◂
+export type SalesByHourDay = { date: string; hours: { hour: number; netSalesSatang: number; billCount: number }[] }; // HR H4.2 ◂
+export type SalesByHourResult = { ok: true; connected: false } | { ok: true; connected: true; cutoffMin: number; today: string; days: SalesByHourDay[] } | ReportRefusal; // HR H4.2 ◂
+export async function salesByHour(ctx: { tenantId: string; unitId: string }, actor: RegisterActor, input: { from: string; to: string }, client?: Db): Promise<SalesByHourResult> {
+  // HR H4.2 ▸ ลำดับ: ขอบเขต (NOT_FOUND) → สิทธิ์ (PERMISSION_DENIED) → POS ของสาขา → ช่วง (VALIDATION) ◂
+  return guard("salesByHour", async () => {
+    const db = client ?? prisma;
+    if (!isRecord(ctx) || !isId(ctx.tenantId) || !isId(ctx.unitId)) return refuse("NOT_FOUND");
+    const a = actorOf(actor);
+    if (!a) return refuse("PERMISSION_DENIED");
+    const unit = await db.businessUnit.findFirst({ where: { id: ctx.unitId, tenantId: ctx.tenantId }, select: { id: true } });
+    if (!unit || !canAccessUnit(a, ctx.unitId)) return refuse("NOT_FOUND");
+    if (!evaluate(a, { module: "pos", action: REPORT_PERMISSION, unitId: ctx.unitId })) return refuse("PERMISSION_DENIED");
+    const link = await db.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId: ctx.tenantId, unitId: ctx.unitId, type: "POS" } }, select: { systemId: true } });
+    const sys = link ? await db.appSystem.findFirst({ where: { id: link.systemId, tenantId: ctx.tenantId, type: "POS", active: true }, select: { id: true } }) : null;
+    if (!sys) return { ok: true, connected: false };
+    const p = await prepare(db, { tenantId: ctx.tenantId, systemId: sys.id, unitId: ctx.unitId }, a, isRecord(input) ? { from: input.from, to: input.to } : input);
+    if (isRefusal(p)) return p;
+    const { s, r } = p;
+    if (daysOf(r.from, r.to).length > SALES_BY_HOUR_MAX_DAYS) return refuse("VALIDATION");
+    const first = Math.floor(s.cutoffMin / 60);
+    const byDay = new Map<string, Map<number, { net: number; bills: number }>>();
+    for (const x of notDeposit(await loadSales(db, s, r.start, r.end))) {
+      if (x.docType === "SALE" && x.status === "VOIDED") continue;
+      const d = bkkBusinessDate(x.createdAt, s.cutoffMin);
+      let h = Math.floor((x.createdAt.getTime() + BKK_OFFSET_MS - Date.parse(`${d}T00:00:00Z`)) / 3_600_000);
+      if (h > first + 23) h = first;
+      const refund = x.docType === "REFUND";
+      const hours = byDay.get(d) ?? new Map<number, { net: number; bills: number }>();
+      const c = hours.get(h) ?? { net: 0, bills: 0 };
+      c.net += refund ? -x.grandTotalSatang : x.grandTotalSatang;
+      if (!refund) c.bills += 1;
+      hours.set(h, c);
+      byDay.set(d, hours);
+    }
+    const days: SalesByHourDay[] = [...byDay.keys()].sort(cmpStr).map((date) => ({
+      date,
+      hours: [...byDay.get(date)!.entries()].sort((x, y) => x[0] - y[0]).map(([hour, c]) => ({ hour, netSalesSatang: c.net, billCount: c.bills })),
+    }));
+    return { ok: true, connected: true, cutoffMin: s.cutoffMin, today: bkkBusinessDate(new Date(), s.cutoffMin), days };
+  });
+}
+// ◂ HR H4.2

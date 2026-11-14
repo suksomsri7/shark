@@ -261,3 +261,8 @@ export const serviceBills = {
 export type { ServiceBillLineInput, ServiceBillListItem, ServiceBillView, ServiceBillViewLine, PayServiceBillInput, PayServiceBillResult, OpenServiceBillInput } from "./service-bill";
 export { SERVICE_BILL_SALE_PREFIX } from "./service-bill";
 // ◂ SVC B.10
+
+// HR H4.2 ▸ ตัวเลขยอดขายรายชั่วโมงของสาขา (ผู้เรียก: hr/labor.ts แบบ lazy import เท่านั้น · fitness "hr→pos") — อ่านอย่างเดียว · ด่าน pos.report.view ของผู้เรียก ◂
+import { salesByHour as reportsSalesByHour } from "./reports"; // HR H4.2 ◂
+export const salesFacts = { salesByHour: reportsSalesByHour } as const; // HR H4.2 ◂
+export type { SalesByHourResult, SalesByHourDay } from "./reports"; // HR H4.2 ◂
