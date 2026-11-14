@@ -7,40 +7,37 @@
 //   S2.14: ก่อนผลแรก = Loading (ไม่ใช่ C3) · ล้ม (500/เน็ต) ครั้งแรก = LoadError + ลองใหม่ (ไม่ตก C3)
 //   R-S2.14k: OWNER เห็นปุ่มคู่ขอบเขต "ของฉัน / ทุกคนในกิจการ" ท้ายแถวตัวกรอง → rooms?scope=tenant · การ์ดของคนอื่น = "สั่งโดย <startedByName>"
 //     สลับกิจการ = กลับเป็น "ของฉัน" · ค้นหา/ตัวกรองคงค่าเดิมเมื่อสลับขอบเขต
+// 14 พ.ย. (เจ้าของสั่ง): ไม่มีชื่อกิจการใหญ่/บรรทัดสถานะ (ไอคอนกิจการอยู่ซ้ายของแถบบนแล้ว) · ไม่มีช่องสั่งงานล่าง (หน้ารวมห้อง · สั่งใหม่ = ปุ่ม + บนแถบ)
 // ข้อความทั้งหมดผ่าน i18n · สเกล R-UI1: ระยะแนวตั้ง = แบบ × 0.73 (F.v) · ตัวอักษรตาม tokens.type
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, BottomDock, Glass, Icon, InputBar, LoadError, Loading, Orb, SectionLabel, SysBadge } from "@/src/components/airy";
-import { SecTopBar, TenantTitle } from "@/src/components/secretary/SecTopBar";
+import { AiryScreen, Glass, Icon, LoadError, Loading, Orb, SectionLabel, SysBadge } from "@/src/components/airy";
+import { SecTopBar } from "@/src/components/secretary/SecTopBar";
 import { RoomCard, isTodayBkk, sysName } from "@/src/components/secretary/RoomCard";
 import { RoomFilters, type RoomFilterKey, type RoomFilterOption, type RoomScopeKey, type RoomScopeOption } from "@/src/components/secretary/RoomFilters";
 import { sysColor } from "@/src/components/secretary/sys";
 import {
-  DEFAULT_SECRETARY_NAME,
   isDenied,
   normalizeRoom,
   normalizeSuggestions,
   refreshZoneBadges,
   secGet,
   useActiveRole,
-  useSecretaryMe,
   type RoomCard as Room,
   type RoomStatus,
 } from "@/src/api/secretary";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { DOCK_FADE, cardGap, radii, size, spacing, type as T } from "@/src/theme/tokens";
+import { cardGap, radii, size, spacing, type as T } from "@/src/theme/tokens";
 
-/** ระยะล่างของช่องสั่งงาน (เหนือขอบจอ) */
-const INPUT_BOTTOM = 26;
 const POLL_MS = 15_000;
 const SEARCH_H = size.iconBtn;
-/** ระยะท้ายรายการ (A1 + C3) = ความสูงช่องสั่งงาน + ระยะล่างของช่อง + cardGap ⇒ การ์ด/ข้อเสนอสุดท้ายเลื่อนขึ้นพ้นช่องได้ทั้งใบ */
-const LIST_BOTTOM = size.inputH + INPUT_BOTTOM + cardGap;
+/** ระยะท้ายรายการ (ไม่มีช่องสั่งงานล่างแล้ว) */
+const LIST_BOTTOM = cardGap * 2;
 
 /** ข้อเสนอตั้งต้นของ C3 เมื่อ secretary/suggestions ไม่มี/พลาด (ข้อความใน i18n) */
 const FALLBACK: { id: "s1" | "s2" | "s3"; system: string }[] = [
@@ -60,7 +57,6 @@ export default function SecretaryHome() {
   const insets = useSafeAreaInsets();
   const { activeTenantId, user } = useAuth();
   const userId = user?.id ?? null;
-  const name = useSecretaryMe()?.name ?? DEFAULT_SECRETARY_NAME;
   const owner = useActiveRole() === "OWNER";
 
   const [rooms, setRooms] = useState<Room[] | null>(null);
@@ -194,16 +190,8 @@ export default function SecretaryHome() {
     { key: "tenant", testID: "sec-home-scope-tenant", label: t("sec.home.scope.tenant") },
   ];
 
-  const newTask = () => router.push("/secretary/new");
   const startWith = (instruction: string) => router.push({ pathname: "/secretary/new", params: { q: instruction } });
 
-  const subText = denied
-    ? null
-    : hasRooms
-      ? t("sec.home.sub", { name, running: counts.working, waiting: counts.approval, doneToday: counts.doneToday })
-      : rooms
-        ? t("sec.c3.sub", { name })
-        : null;
 
   return (
     <AiryScreen testID="sec-secretary">
@@ -215,10 +203,6 @@ export default function SecretaryHome() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={c.textMuted} />}
       >
         <SecTopBar zone="secretary" center="none" showPlus={access === "ok"} />
-        <View style={styles.tenant}>
-          <TenantTitle big />
-        </View>
-        {subText ? <Text style={[styles.sub, { color: c.textMuted }]}>{subText}</Text> : null}
 
         {denied ? (
           <Glass testID="sec-home-denied" style={styles.denied}>
@@ -283,29 +267,13 @@ export default function SecretaryHome() {
         )}
       </ScrollView>
 
-      {denied ? null : <BottomDock height={INPUT_BOTTOM + insets.bottom + size.inputH + DOCK_FADE} />}
-      {denied ? null : (
-        <Pressable
-          testID="sec-home-new"
-          accessibilityRole="button"
-          accessibilityLabel={t("sec.home.new")}
-          onPress={newTask}
-          style={[styles.input, { bottom: INPUT_BOTTOM + insets.bottom }]}
-        >
-          <View pointerEvents="none">
-            <InputBar testID="sec-input" placeholder={empty ? t("sec.c3.input", { name }) : t("sec.a1.input", { name })} />
-          </View>
-        </Pressable>
-      )}
     </AiryScreen>
   );
 }
 
 const styles = StyleSheet.create({
   page: { paddingHorizontal: spacing.page, paddingTop: 14 },
-  tenant: { marginTop: 14 },
-  sub: { fontSize: F.sub, marginTop: 2, lineHeight: 20 },
-  search: { height: SEARCH_H, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 16, marginTop: F.v(30) },
+  search: { height: SEARCH_H, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 16, marginTop: F.v(22) },
   searchField: { flex: 1, minWidth: 0, fontSize: T.sub, paddingVertical: 0, outlineWidth: 0 },
   none: { fontSize: T.sub, textAlign: "center", marginTop: F.v(40) },
   denied: { marginTop: F.v(40), alignItems: "center", gap: spacing.sm },
@@ -321,5 +289,4 @@ const styles = StyleSheet.create({
   sx: { flex: 1, minWidth: 0 },
   st: { fontSize: F.row, lineHeight: 20 },
   ss: { fontSize: F.rowSub, lineHeight: 17 },
-  input: { position: "absolute", left: spacing.page, right: spacing.page },
 });

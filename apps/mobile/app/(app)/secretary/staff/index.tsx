@@ -2,7 +2,7 @@
 //   ข้อมูล: GET secretary/staff (listStaffAccess includeInvites + staffViewOf · แถว pending = คำเชิญค้าง) ·
 //           GET secretary/rooms (สถานะงานต่อคน: กำลังทำ/รออนุมัติ/ห้องร่วมกับคุณ · OWNER = scope tenant) · GET inbox/staff (onDuty = เข้าเวรอยู่ · พลาด = ไม่แสดง)
 //   ป้ายแชทลูกค้า = ระดับ NONE/VIEW/REPLY (ไม่เห็น/ดูได้/ตอบได้) · หน่วย = unitAccess (ว่าง = ทุกหน่วย)
-//   OWNER/MANAGER: แตะแถว → /secretary/staff/[membershipId] (S2.22) · ปุ่ม "เพิ่มพนักงาน" → /secretary/staff/invite (S2.21) · คำเชิญค้าง: ส่งอีกครั้ง / ยกเลิก (ยืนยัน)
+//   OWNER/MANAGER: แตะแถว → /secretary/staff/[membershipId] (S2.22) · เพิ่มพนักงาน = ปุ่ม + บนแถบ → /secretary/staff/invite (S2.21 · 14 พ.ย. ตัดปุ่มล่าง+หัวข้อตามเจ้าของสั่ง) · คำเชิญค้าง: ส่งอีกครั้ง / ยกเลิก (ยืนยัน)
 //   STAFF: อ่านอย่างเดียว ไม่มีปุ่ม (เซิร์ฟเวอร์ตอบ 403 ⇒ จอ "เฉพาะเจ้าของ/ผู้จัดการ")
 // ข้อความผ่าน i18n (sec.staff.*) · สีจากธีม · สเกล R-UI1
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,8 +10,8 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-n
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, BottomDock, Glass, Icon, LoadError, Loading, PrimaryButton, Sheet } from "@/src/components/airy";
-import { SecTopBar, TenantTitle } from "@/src/components/secretary/SecTopBar";
+import { AiryScreen, Glass, Icon, LoadError, Loading, Sheet } from "@/src/components/airy";
+import { SecTopBar } from "@/src/components/secretary/SecTopBar";
 import { PendingRow, StaffRow, type StaffRowIds, type StaffWork } from "@/src/components/secretary/StaffRow";
 import { dateBkk } from "@/src/components/secretary/bkk";
 import {
@@ -31,7 +31,7 @@ import {
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { radii, size, spacing, type as T, CTA_BOTTOM, DOCK_FADE, LIST_BOTTOM } from "@/src/theme/tokens";
+import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 
 /** testID ของแถว (spec s2.10) — ป้ายแชท = "sec-staff-chat-badge" · ระดับที่แสดง NONE|VIEW|REPLY */
@@ -164,22 +164,15 @@ export default function SecretaryStaffScreen() {
     return d ? t("sec.staff.date", { d: d.date, m: d.month }) : "";
   };
 
-  const count = (people ?? []).length;
   return (
     <AiryScreen testID="sec-staff">
       <ScrollView
-        contentContainerStyle={[styles.page, { paddingBottom: (manage ? LIST_BOTTOM : 40) + insets.bottom }]}
+        contentContainerStyle={[styles.page, { paddingBottom: 40 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={c.textMuted} />}
       >
         <SecTopBar zone="team" center="none" showPlus={manage} />
-        <View style={styles.tenant}>
-          <TenantTitle big />
-        </View>
-        {people !== null && !denied ? (
-          <Text style={[styles.sub, { color: c.textMuted }]}>{manage ? t("sec.staff.sub", { n: count }) : t("sec.staff.subRead", { n: count })}</Text>
-        ) : null}
 
         {denied ? (
           <Glass testID="sec-staff-denied" style={styles.denied}>
@@ -238,12 +231,6 @@ export default function SecretaryStaffScreen() {
         )}
       </ScrollView>
 
-      {manage && !denied ? <BottomDock height={CTA_BOTTOM + insets.bottom + size.btnH + DOCK_FADE} /> : null}
-      {manage && !denied ? (
-        <View style={[styles.cta, { bottom: CTA_BOTTOM + insets.bottom }]}>
-          <PrimaryButton testID="sec-staff-invite" label={t("sec.staff.invite")} onPress={() => router.push("/secretary/staff/invite")} />
-        </View>
-      ) : null}
 
       <Sheet visible={!!cancelling} onClose={() => setCancelling(null)} testID="sec-staff-cancel-sheet" top={520}>
         <Text style={[styles.sh, { color: c.text }]}>{t("sec.staff.cancelTitle", { name: cancelling?.name || t("sec.staff.invitee") })}</Text>
@@ -265,7 +252,7 @@ const styles = StyleSheet.create({
   page: { paddingHorizontal: spacing.page, paddingTop: 14 },
   tenant: { marginTop: 14 },
   sub: { fontSize: F.sub, marginTop: 4, lineHeight: 20 },
-  search: { height: SEARCH_H, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 16, marginTop: F.v(30), marginBottom: 2 },
+  search: { height: SEARCH_H, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 16, marginTop: F.v(22), marginBottom: 2 },
   searchField: { flex: 1, minWidth: 0, fontSize: T.sub, paddingVertical: 0, outlineWidth: 0 },
   note: { fontSize: 13, lineHeight: 19, borderRadius: radii.k + 2, paddingVertical: 8, paddingHorizontal: 12, marginTop: 10, overflow: "hidden", textAlign: "center" },
   sec: { fontSize: 12, fontWeight: "600", letterSpacing: 1, marginTop: spacing.lg, marginLeft: 6 },

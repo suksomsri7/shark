@@ -5,6 +5,7 @@
 //   แท็บ: ทั้งหมด · ยังไม่ตอบ (OPEN ไม่มีคนรับ หรือ staffUnreadCount > 0 — กรองในแอป) · ของฉัน (assignee=me) · ปิดแล้ว (status RESOLVED)
 //   แถว: อวตารตัวอักษร · ป้ายช่องทาง · ชื่อ · แท็ก ("รอคน" เมื่อเซิร์ฟเวอร์ส่ง tags) · ตัวอย่างข้อความ · เวลา · ยังไม่อ่าน · ผู้ดูแล ·
 //     "Shark ร่างคำตอบไว้แล้ว" (aiDraft) · ไม่มีคนรับ = "ยังไม่มีคนรับ · รอ N นาที" (waitingMin) + กฎที่จะใช้
+//   14 พ.ย. (เจ้าของสั่ง): ไม่มีหัวข้อ "ลูกค้า" + บรรทัดนับ (ตัวเลขอยู่บนแท็บแล้ว) · ปัดแถวไปซ้าย = ปุ่มลบแชท (SwipeRow)
 //   ดึงลง + poll 15 วิ (จออยู่ + แอปอยู่หน้า) · หน้าต่อไปด้วย nextBefore · โหลดมากกว่า 1 หน้าแล้ว poll รวมด้วย id (ไม่ทิ้งหน้าที่เลื่อนมา · R-S2.17b) · 403 ⇒ จอ "ไม่มีสิทธิ์" + ซ่อนไอคอนโซนลูกค้า (setCustomersAccess)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
@@ -227,9 +228,6 @@ export default function CustomersScreen() {
     count: x.key === "unanswered" && counts ? counts.unanswered : x.key === "mine" && counts ? counts.mine : undefined,
     tone: "wait",
   }));
-  const subtitle = counts
-    ? [...counts.byChannel.map(([ch, n]) => `${chLabel(ch)} ${n}`), t("cust.sub.unanswered", { n: counts.unanswered }), t("cust.sub.mine", { n: counts.mine })].join(" · ")
-    : "";
   const open = (x: ConvItem) => router.push(`/customers/${encodeURIComponent(x.id)}${systemId ? `?s=${encodeURIComponent(systemId)}` : ""}`);
 
   if (denied) {
@@ -237,7 +235,6 @@ export default function CustomersScreen() {
       <AiryScreen testID="cust-list">
         <View style={styles.pad}>
           <SecTopBar zone="customers" center="none" />
-          <Text style={[styles.title, { color: c.text }]}>{t("cust.title")}</Text>
           <Glass testID="cust-denied" style={styles.denied}>
             <Icon name="lock" size={22} color={c.warn.fg} />
             <Text style={[styles.deniedT, { color: c.text }]}>{t("cust.denied.title")}</Text>
@@ -257,12 +254,6 @@ export default function CustomersScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={c.textMuted} />}
       >
         <SecTopBar zone="customers" center="none" />
-        <Text style={[styles.title, { color: c.text }]}>{t("cust.title")}</Text>
-        {subtitle ? (
-          <Text testID="cust-counts" style={[styles.sub, { color: c.textMuted }]} numberOfLines={2}>
-            {subtitle}
-          </Text>
-        ) : null}
         {!canReply ? <Note testID="cust-readonly">{t("cust.readOnly")}</Note> : null}
 
         {systems.length > 1 ? (
@@ -384,7 +375,7 @@ const styles = StyleSheet.create({
   pad: { paddingHorizontal: spacing.page },
   title: { fontSize: F.title, fontWeight: "700", letterSpacing: -0.8, lineHeight: 38, marginTop: F.v(34) },
   sub: { fontSize: T.sub, lineHeight: 20, marginTop: 4 },
-  search: { flexDirection: "row", alignItems: "center", gap: 8, height: 38, paddingHorizontal: 14, marginTop: F.v(34) },
+  search: { flexDirection: "row", alignItems: "center", gap: 8, height: 38, paddingHorizontal: 14, marginTop: F.v(22) },
   searchTight: { marginTop: 8 },
   searchIn: { flex: 1, minWidth: 0, fontSize: T.sub, paddingVertical: 0, outlineWidth: 0 },
   tabs: { marginTop: 14 },

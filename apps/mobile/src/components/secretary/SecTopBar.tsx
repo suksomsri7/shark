@@ -3,10 +3,11 @@
 //   ปุ่มของโซนปัจจุบัน = พื้นทึบสีโซน (accent / zone.customers / zone.team ใน src/theme) · badge ต่อปุ่ม (≤ 99 · มีจุดเมื่อ > 0)
 // ขวา: ? (help-circle → /secretary/help) + ปุ่ม + ตามโซน: เลขา → /secretary/new · ลูกค้า = ไม่มี + · ทีม → /secretary/staff/invite
 // กลาง: ชื่อกิจการ active (จาก /api/mobile/me) + ลูกศรเล็ก แตะ = ตัวสลับกิจการ (BusinessSwitcherSheet) · `center="none"` = ว่าง (จอ A1/C3 วางชื่อใหญ่เอง)
+// 14 พ.ย. (เจ้าของสั่ง): ชื่อกิจการย้ายเป็นไอคอนกิจการ (BizIcon) ซ้ายสุดของแถบ แตะ = ตัวสลับกิจการ · ไอคอนเลขา = รูปคน (user)
 // ไม่มีรูปโปรไฟล์ · ไอคอน Feather เท่านั้น (R-UI2) · badges ไม่ส่งมา ⇒ อ่าน store กลาง useZoneBadgeCounts (src/api/secretary.ts) พลาด = 0
 // S2.14 badge 3 ไอคอนจาก `GET secretary/badges` เส้นเดียว: เลขา = approvals (กิจการนี้) · ลูกค้า = customers (ห้องที่ยังไม่อ่าน) ·
 //   ทีม = team.invites + team.help + team.support · โหลดที่ layout ของโซน (focus/foreground) + หลัง action (scheduleZoneBadges) · ปุ่ม ? ทุกจอที่มีแถบนี้
-import { Pressable, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon, IconBtn, TopBar, type IconName } from "@/src/components/airy";
@@ -21,7 +22,7 @@ export type SecZone = ZoneKey; // "secretary" | "customers" | "team"
 export type ZoneBadges = { secretary?: number; customers?: number; team?: number };
 
 const ZONES: { zone: SecZone; icon: IconName; path: string; label: I18nKey }[] = [
-  { zone: "secretary", icon: "message-circle", path: "/secretary", label: "sec.zone.secretary" },
+  { zone: "secretary", icon: "user", path: "/secretary", label: "sec.zone.secretary" },
   { zone: "customers", icon: "inbox", path: "/customers", label: "sec.zone.customers" },
   { zone: "team", icon: "users", path: "/secretary/staff", label: "sec.zone.team" },
 ];
@@ -72,7 +73,10 @@ export function SecTopBar({
   return (
     <TopBar
       testID={testID}
-      left={zones.map((z) => {
+      left={[
+        <BizIcon key="biz" testID="sec-top-biz" onPress={switcher.open} />,
+        <View key="sep" style={[styles.sep, { backgroundColor: c.divider }]} />,
+        ...zones.map((z) => {
         const n = badgeText(counts[z.zone]);
         return (
           <View key={z.zone} style={styles.slot}>
@@ -91,7 +95,8 @@ export function SecTopBar({
             ) : null}
           </View>
         );
-      })}
+      }),
+      ]}
       center={center === "tenant" ? <TenantTitle onPress={switcher.open} /> : undefined}
       right={
         <>
@@ -100,6 +105,54 @@ export function SecTopBar({
         </>
       }
     />
+  );
+}
+
+/** สีพื้นไอคอนกิจการ: สีแบรนด์ของร้าน (branding.accent) · ไม่มี = เลือกจากชุดสีตามชื่อ (คงที่ต่อร้าน) */
+const BIZ_COLORS = ["#1E7A8F", "#E07A1F", "#5B5FD6", "#2F9E5B", "#C2456B", "#8A5CD1", "#B8860B", "#3A7BD5"];
+export function bizColor(name: string, accent?: string | null): string {
+  if (accent) return accent;
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return BIZ_COLORS[h % BIZ_COLORS.length];
+}
+/** ตัวย่อ 2 ตัว: หลายคำ = อักษรแรกของ 2 คำแรก ("SIAM DIVE CENTER" → SD) · คำเดียว = 2 ตัวแรก ("GoodFood" → GO) */
+export function bizInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) {
+    const caps = words[0].match(/[A-Z]/g);
+    return (caps && caps.length >= 2 ? caps.slice(0, 2).join("") : Array.from(words[0]).slice(0, 2).join("")).toUpperCase();
+  }
+  return (Array.from(words[0])[0] + Array.from(words[1])[0]).toUpperCase();
+}
+
+/** ไอคอนกิจการ (โลโก้ร้าน หรือ ตัวย่อบนสีแบรนด์) · `tenantId` ไม่ใส่ = กิจการที่ใช้อยู่ · `chevron` = ลูกศรเล็กมุมล่าง (แถบบน) */
+export function BizIcon({ tenantId, onPress, testID, sz = size.iconBtn, chevron = true }: { tenantId?: string; onPress?: () => void; testID?: string; sz?: number; chevron?: boolean }) {
+  const { c } = useTheme();
+  const t = useT();
+  const { tenants, activeTenantId } = useAuth();
+  const row = tenants.find((x) => x.tenantId === (tenantId ?? activeTenantId));
+  const name = row?.name ?? t("sec.tenant.fallback");
+  const logo = row?.branding?.logoUrl ?? null;
+  const bg = bizColor(name, row?.branding?.accent);
+  const fg = row?.branding?.accentFg ?? "#FFFFFF";
+  const box = { width: sz, height: sz, borderRadius: Math.round(sz * 0.3) };
+  const body = (
+    <View style={[styles.biz, box, { backgroundColor: logo ? c.surface : bg }]}>
+      {logo ? <Image source={{ uri: logo }} style={box} resizeMode="cover" /> : <Text style={[styles.bizT, { color: fg, fontSize: Math.round(sz * 0.34) }]}>{bizInitials(name)}</Text>}
+    </View>
+  );
+  if (!onPress) return <View testID={testID}>{body}</View>;
+  return (
+    <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={`${name} · ${t("sec.top.switch")}`} onPress={onPress} style={{ width: sz, height: sz }}>
+      {body}
+      {chevron ? (
+        <View pointerEvents="none" style={[styles.bizChev, { backgroundColor: c.surface }]}>
+          <Icon name="chevron-down" size={11} color={c.text} />
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -128,6 +181,10 @@ export function TenantTitle({ onPress, big = false, testID }: { onPress?: () => 
 
 const styles = StyleSheet.create({
   slot: { width: size.iconBtn, height: size.iconBtn },
+  sep: { width: StyleSheet.hairlineWidth * 2, height: 26, marginHorizontal: -2 },
+  biz: { alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  bizT: { fontWeight: "800", letterSpacing: 0.3 },
+  bizChev: { position: "absolute", right: -3, bottom: -3, width: 17, height: 17, borderRadius: 9, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   badge: { position: "absolute", top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, borderWidth: 1.5, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
   badgeT: { fontSize: 10.5, fontWeight: "700", lineHeight: 13 },
   tenant: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: "100%" },
