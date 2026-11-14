@@ -2588,7 +2588,7 @@ async function shiftPartialRoomCharge(ctx: GlCtx, input: RoomChargePostingInput,
   const rest = rc - parts.reduce((t, x) => t + x.amt, 0);
   const big = parts.reduce((m, x, i) => (x.amt > parts[m]!.amt ? i : m), 0);
   parts[big]!.amt += rest;
-  const out = await gl.postManualJV(ctx, {
+  await gl.postManualJV(ctx, {
     date: new Date(),
     memo: `ปรับส่วนลงห้องของบิลร้าน: ${memo}`,
     book: orig.book,
@@ -2596,9 +2596,10 @@ async function shiftPartialRoomCharge(ctx: GlCtx, input: RoomChargePostingInput,
       { accountId: ar.accountId, debit: 0, credit: rc, ...(ar.contactId ? { contactId: ar.contactId } : {}) },
       ...parts.filter((x) => x.amt > 0).map((x) => ({ accountId: x.accountId, debit: x.amt, credit: 0, ...(x.contactId ? { contactId: x.contactId } : {}) })),
     ],
+    // ผูก JV ปรับกับบิลร้าน (refType PosSale · คีย์ #RCADJ#<n>) ⇒ งบของบิลรวมทุกขา · ตัวกลับ/คืนสภาพหาได้จากบิล
+    //   T5-A: ผูกตั้งแต่ตอนสร้าง — เดิมแก้ refType/refId/idempotencyKey หลังลงบัญชี = ด่านฐานข้อมูลโหมดเข้มปฏิเสธ (คีย์เดิมไม่เคยว่าง)
+    ref: { refType: "PosSale", refId: input.saleId, event: `${RC_ADJ.slice(1)}${adjs.length + 1}` },
   });
-  // ผูก JV ปรับกับบิลร้าน (refType PosSale · คีย์ #RCADJ#<n>) ⇒ งบของบิลรวมทุกขา · ตัวกลับ/คืนสภาพหาได้จากบิล
-  await db.accountJournalEntry.updateMany({ where: { id: out.entryId }, data: { refType: "PosSale", refId: input.saleId, idempotencyKey: `${keyBase}${adjs.length + 1}` } });
   return { posted: true, changed: 1 };
 }
 async function shiftRoomChargePosting(input: RoomChargePostingInput, want: "REVERSED" | "RESTORED"): Promise<{ posted: boolean; changed: number }> {

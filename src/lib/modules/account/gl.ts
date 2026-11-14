@@ -1539,6 +1539,8 @@ export async function postManualJV(
     book?: AccountJournalBook;
     postedById?: string;
     lines: { accountId: string; debit: number; credit: number; contactId?: string; note?: string }[];
+    /** T5-A (strict proof): ผูกที่มาตั้งแต่ตอนสร้าง (คีย์ = `${refType}#${refId}#${event}`) — แทนการแก้ refType/refId หลังลงบัญชี (ด่านฐานข้อมูลปฏิเสธ) */
+    ref?: { refType: string; refId: string; event: string };
   },
   tx?: Tx,
 ): Promise<{ entryId: string }> {
@@ -1569,9 +1571,9 @@ export async function postManualJV(
         book: input.book ?? "GENERAL",
         journal: "ADJUST",
         date: input.date,
-        refType: "AccountManualJV",
-        refId,
-        event: "MANUAL",
+        refType: input.ref?.refType ?? "AccountManualJV",
+        refId: input.ref?.refId ?? refId,
+        event: input.ref?.event ?? "MANUAL",
         memo: input.memo ?? "บันทึกบัญชีด้วยมือ",
         source: "MANUAL",
         postedById: input.postedById,

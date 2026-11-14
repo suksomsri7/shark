@@ -154,6 +154,61 @@ try {
   const modeAfter = (await prisma.$queryRaw`SELECT public.account_ledger_guard_mode() AS m`)[0]?.m;
   chk("G2.21", "โหมด qc (ไม่ตั้ง SET LOCAL) ยังล้างฟิกซ์เจอร์ได้", modeAfter === "qc" && (await prisma.$transaction(async (tx: Any) => { await tx.auditLog.delete({ where: { id: aAcc.id } }); return true; }).catch(() => false)), true, "ลบไม่ได้");
 
+  // ═══ G7 (T5-A) ช่อง INSERT: เพิ่มบรรทัดเข้ารายการที่ลงแล้ว · โหมดเงา (shadow) ═══
+  console.log("\n── G7 (T5-A) เพิ่มบรรทัดเข้ารายการเก่า · โหมดเงา ──");
+  const lineSql = `INSERT INTO "AccountJournalLine" (id, "tenantId", "systemId", "entryId", "accountId", debit, credit) VALUES ($1, $2, $3, $4, $5, $6, $7)`;
+  const a6900 = await ledgerId("6900");
+  chk("G7.1", "SQL ตรง: เพิ่มบรรทัดเข้า JV ที่ลงแล้ว (ธุรกรรมก่อน) = ปฏิเสธ", rejected(await strict((tx) => tx.$executeRawUnsafe(lineSql, `qc-g61-${stamp}`, tid, SYS, e1.id, a6900, 1, 0))), "LEDGER_GUARD", "ผ่าน");
+  chk("G7.2", "Prisma create บรรทัดเข้า JV ที่ลงแล้ว = ปฏิเสธ", rejected(await strict((tx) => tx.accountJournalLine.create({ data: { tenantId: tid, systemId: SYS, entryId: e1.id, accountId: a6900, debit: 0, credit: 1 } }))), "LEDGER_GUARD", "ผ่าน");
+  chk("G7.3", "แก้ธงของ JV เก่าในธุรกรรมนี้แล้วเพิ่มบรรทัด = ยังปฏิเสธ (การแก้ไม่ใช่การสร้าง)", rejected(await strict(async (tx) => {
+    await tx.accountJournalEntry.update({ where: { id: e1.id }, data: { needsReview: true } });
+    await tx.$executeRawUnsafe(lineSql, `qc-g63-${stamp}`, tid, SYS, e1.id, a6900, 1, 0);
+  })), "LEDGER_GUARD", "ผ่าน");
+  const newEntry = (tx: Any, n: string) => tx.accountJournalEntry.create({ data: { tenantId: tid, systemId: SYS, docNo: `QC-G6-${n}-${stamp}`, book: "GENERAL", journal: "ADJUST", date: today, periodKey: "2026-11", source: "MANUAL", lines: { create: [{ tenantId: tid, systemId: SYS, accountId: a6900, debit: 5, credit: 0 }, { tenantId: tid, systemId: SYS, accountId: a6900, debit: 0, credit: 5 }] } } });
+  chk("G7.4", "สร้างหัวใบพร้อมบรรทัด (nested create) ในธุรกรรมเดียวกัน = ยอม", (await strict((tx) => newEntry(tx, "a"))) === "ok", "ok", "ปฏิเสธ");
+  chk("G7.5", "สร้างหัวใบแล้วเพิ่มบรรทัดทีหลังในธุรกรรมเดียวกัน (ผ่าน savepoint) = ยอม", (await strict(async (tx) => {
+    const e = await newEntry(tx, "b");
+    await tx.$executeRawUnsafe(`SAVEPOINT g65`);
+    await tx.$executeRawUnsafe(lineSql, `qc-g65-${stamp}`, tid, SYS, e.id, a6900, 0, 0);
+    await tx.$executeRawUnsafe(`RELEASE SAVEPOINT g65`);
+  })) === "ok", "ok", "ปฏิเสธ");
+  chk("G7.6", "หัวใบที่สร้างใน savepoint ที่ rollback แล้ว ไม่ถูกนับเป็น 'ใบใหม่' (ค่าตั้งย้อนตาม savepoint)", (await strict(async (tx) => {
+    await tx.$executeRawUnsafe(`SAVEPOINT g66`);
+    await newEntry(tx, "c");
+    await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT g66`);
+    const v = (await tx.$queryRawUnsafe(`SELECT coalesce(current_setting('shark.ledger_new_entries', true), '') AS v`))[0]?.v;
+    if (v !== "") throw new Error(`ค่าตั้งค้าง: ${v}`);
+  })) === "ok", "ok", "ค้าง");
+  const shadowTx = async (withTable: boolean): Promise<{ r: string; logged: number }> => {
+    let logged = -1;
+    const r = await (async () => {
+      try {
+        await prisma.$transaction(async (tx: Any) => {
+          if (withTable) await tx.$executeRawUnsafe(`CREATE TABLE public.qc_ledger_guard_shadow (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT clock_timestamp(), op text NOT NULL, tbl text NOT NULL, row_id text, cols text[], msg text, app text, fixture text, query text, xact text)`);
+          await tx.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION public.account_ledger_guard_mode() RETURNS text LANGUAGE sql STABLE AS $$ SELECT 'shadow'::text $$`);
+          await tx.accountJournalLine.update({ where: { id: anyLine.id }, data: { debit: anyLine.debit + 1 } });
+          if (withTable) logged = Number((await tx.$queryRawUnsafe(`SELECT count(*)::int AS n FROM public.qc_ledger_guard_shadow WHERE tbl = 'AccountJournalLine' AND op = 'UPDATE' AND row_id = $1 AND 'debit' = ANY(cols)`, anyLine.id))[0]?.n);
+          throw new Error(ROLLBACK);
+        });
+        return "?";
+      } catch (e) {
+        const m = e instanceof Error ? e.message : String(e);
+        return m.includes(ROLLBACK) ? "ok" : m;
+      }
+    })();
+    return { r, logged };
+  };
+  const hadShadow = (await prisma.$queryRaw`SELECT to_regclass('public.qc_ledger_guard_shadow')::text AS t`)[0]?.t;
+  if (!hadShadow) {
+    const s1 = await shadowTx(true);
+    chk("G7.7", "โหมดเงา + มีตาราง log: แก้เดบิต = ไม่ปฏิเสธ แต่จด 1 แถว (คอลัมน์ debit) · ย้อนทั้งหมด", s1.r === "ok" && s1.logged === 1, "ok/1", s1);
+  } else chk("G7.7", "โหมดเงา (ข้าม — ฐานมีตาราง log เงาจากรอบพิสูจน์อยู่แล้ว)", true, "skip", "skip");
+  const s2 = await shadowTx(false);
+  chk("G7.8", "โหมดเงาแต่ไม่มีตาราง log (เช่น production) = ปฏิเสธเหมือนโหมดเข้ม (fail closed)", hadShadow ? true : rejected(s2.r), "LEDGER_GUARD", s2);
+  chk("G7.9", "โหมดฐานกลับเป็น qc หลังข้อสอบโหมดเงา", (await prisma.$queryRaw`SELECT public.account_ledger_guard_mode() AS m`)[0]?.m === "qc", "qc", "อื่น");
+  chk("G7.10", "ตาราง log เงาไม่อยู่ใน migration ใด · โหมด shadow ตั้งผ่าน acc-ledger-guard-mode.mts (loadQcEnv) เท่านั้น",
+    !/qc_ledger_guard_shadow\s*\(/.test(src("prisma/migrations/20270105100000_acc_t5a_ledger_guard_insert_shadow/migration.sql").replace(/^--.*$/gm, "").replace(/'INSERT INTO public\.qc_ledger_guard_shadow \(/, "")) && /loadQcEnv\(\)/.test(src("scripts/acc-ledger-guard-mode.mts")), "ไม่มี", "มี");
+
   // ═══ G3 ทางจริงของ service ทำงานได้ในโหมด strict (สลับโหมดฐานชั่วคราว) ═══
   console.log("\n── G3 ทางของระบบในโหมด strict ──");
   let r1voided: Any = null;
