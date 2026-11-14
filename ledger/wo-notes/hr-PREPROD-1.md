@@ -74,3 +74,19 @@ Design limits (for the reviewer): sick split only for day-based leave (hourly SI
 - PAY_MARKED "HR PREPROD-1" stays 3 (payroll.ts unchanged in this round).
 - `session/hr` moved to 81fece63f (docs/notes only) → merged (d858e19cd), no conflicts.
 - Final run (V8b, post-merge d858e19cd): every suite on the list green, typecheck exit 0 with no errors (green.txt).
+
+## 7. Delta round (V1b · V7b · V8c · oracle 681ed7464: main 57 · 1b 25 · 1c 10)
+- **V1b** (`leave.ts splitDaysIn` used by `leaveSplitsIn` and `leaveUnpaidByDayIn`): for a split leave (latest USE note has an unpaid part) the leave's CURRENT counted days are walked in date order, paid tenths given until Σ USE rows (what the ledger charged) is used up; the rest is unpaid — the unpaid count, `unpaidFrom`, the DTO and the work-entry minutes all follow the recount; the ledger is never touched. The day hash also carries a split signature (Σ USE · latest row · note) so a ledger change still outdates the month (V5.4).
+- **V7b** (`payroll.ts requestAdjustment` codes + `privacy.ts adjustmentReplyOutOfPayScope(res)`): the two pay-derived refusals now carry codes — `PAY_NO_RATE` (no salary / OT rate) and `PAY_OT_ZERO` (OT by hours rounds to 0). Out-of-pay-scope requester: ok ⇒ neutral success text without amount; code `PAY_*` ⇒ non-success fixed text "ยื่นรายการนี้ไม่ได้ — ติดต่อผู้ดูแลเงินเดือนของสาขาประจำของพนักงานคนนี้" (nothing written — requestAdjustment returns before the insert); any other refusal ⇒ the real reason (same bytes as an all-branch viewer, V7.4). Classified by code only.
+- **V8c** (`payroll.ts pp1ResplitAfterReverse` → `leave.ts resplitAfterReverse`): called after the reversal has COMMITTED on both reverse bodies (v1 `reverseRun` with JV · `reverseRunH37` no-book and booked; the v1 → H3.7 reroute goes through the latter). For the run's employees: approved SICK leaves overlapping the reversed period → one tx per employee: `hr-leave-emp:<sys>:<emp>` then `resplitSickInTx` (same rules: append-only, skips leaves with a day in a month that still has an APPROVED/PAID run).
+  - Lock order: the re-split runs in its own transaction after the reverse transaction has released the period advisory lock and the run row — no nesting, so no cycle between `hr:payroll:run:<sys>:<P>` / run row and `hr-leave-emp`. Inside, the order is the leave paths' own (emp → policy SHARE via reads).
+  - Reverse rolls back / refused ⇒ the hook is never called. Re-split fails after a committed reverse ⇒ the reverse still reports ok, a WARN goes to ops, the leaves keep their old split (unpaid days stay unpaid — never over-pay); the next positive ledger writer re-splits them.
+- PAY_MARKED "HR PREPROD-1" — recounted with h1.3 (see green table).
+- `session/hr` moved to df2073462 with no src change (walk tooling + resume) ⇒ not merged.
+
+### Debts (added)
+- A re-split can race a run approval between the run's freshness check and the approve (the re-split commits after the build read the work entries) — approve's INPUTS/WORK_ENTRIES gate catches a changed hash only if the work entries were rebuilt; not covered by a check.
+- Offboarding (employee end) does not trigger a re-split; not covered by a check.
+- If the post-reverse re-split fails, nothing retries it automatically (ops WARN only).
+- **PAY_MARKED (h1.3):** unchanged at `"HR PREPROD-1": 3` — the delta round adds no sourceRef token in payroll.ts (pp1ResplitAfterReverse + PAY_NO_RATE/PAY_OT_ZERO codes); h1.3 63/63.
+- **Open red:** h3.8 S1.13 privacy.ts sha pin — V7b changed privacy.ts (45b20c1b… → 1847a6a01c8bd85b…); the pin re-take is left to the controller (builder not authorised to edit it this round).
