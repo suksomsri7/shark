@@ -115,3 +115,13 @@ JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
 > shark-in-th@0.1.0 typecheck /root/projects/shark-hr-b
 > tsc --noEmit
 
+
+# Follow-up + review r2 run · Sat Nov 14 04:47:07 UTC 2026
+RED (lock line removed):   ❌ [H43-FX7] [db] ORACLE-EDIT (H4.3 fix round · controller ruling) 2 concurrent T6 confirms (held insert lock + pg_blocking_pids) ⇒ 1 NOTE · other = alreadyNoted — expected concurrent confirm · ===== qc-hr-h4.3 ===== passed 42/43
+h43-f1: JSON_SUMMARY {"suite":"qc-hr-h4.3","total":45,"passed":45,"failed":[],"findings":[],"skipped":false,"forced":false,"cras RESIDUE none (tenants=4 users=16)
+h43-f2: JSON_SUMMARY {"suite":"qc-hr-h4.3","total":45,"passed":45,"failed":[],"findings":[],"skipped":false,"forced":false,"cras RESIDUE none (tenants=4 users=16)
+h43-u: JSON_SUMMARY {"suite":"qc-hr-h4.3","total":45,"passed":45,"failed":[],"findings":[],"skipped":false,"forced":false,"cras RESIDUE none (tenants=4 users=16)
+qc-ai-proposals: JSON_SUMMARY {"total":16,"passed":16,"findings":[]} 
+fhr-env: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+fhr-noenv: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
+typecheck: clean EXIT 0 · 413 s
