@@ -42,7 +42,10 @@ type Recipient = { employeeId: string; kind: HrNoticeKind; refId: string; outcom
 const TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
 const LEASE_MS = 2 * 60_000;
 /** สัญญาเช่า = now + 2 นาที + ส่วนสุ่ม (มิลลิวินาที) — ค่า nextAttemptAt ของแถวที่จองเป็น "ตั๋ว" ของผู้จอง (H4.5 fix ▸ H) */
-const leaseOf = (now: Date) => new Date(now.getTime() + LEASE_MS + randomInt(1, 30_000));
+// H4.5 r2 mi-1: นับจากนาฬิกาจริง ณ ตอนจอง/ต่อสัญญา (ไม่ใช่ now ของรอบที่เริ่มนานแล้ว) — now ในอนาคต (ข้อสอบเวลาคงที่) ใช้ now
+const leaseOf = (now: Date) => new Date(Math.max(now.getTime(), Date.now()) + LEASE_MS + randomInt(1, 30_000));
+/** ขนาดก้อนของการวางแผน (ต่อ tx) — ผู้รับเยอะ (ตารางกะ 1000 คน) ไม่พึ่ง tx ยาวก้อนเดียว · ส่งซ้ำ = ทำต่อจากก้อนที่ค้าง (ON CONFLICT) */
+const PLAN_CHUNK = 200;
 /** แถวต่อรอบการจอง (ส่งทีละแถว ≤ 10 วิ/แถว ⇒ จบในสัญญาเช่า · ต่อสัญญาก่อนยิงทุกแถว) */
 export const LINE_CLAIM_BATCH = 20;
 const PENDING_GRACE_MS = 60_000;
@@ -116,14 +119,22 @@ async function hrSystemOf(evt: Evt): Promise<{ ctx: Ctx; policy: LineNotifyPolic
  * เหตุการณ์ → แถวแจ้งเตือน (1 tx) — คืน id ที่ต้องส่ง LINE ทันที (PENDING) · ไม่ใช่เหตุการณ์ที่รู้จัก = ว่าง
  * ส่งซ้ำ/พร้อมกัน: แถวเดิมไม่ถูกเพิ่ม · แจ้งในแอปเฉพาะแถวที่เพิ่งเกิด
  */
-export async function planHrNotices(evt: Evt): Promise<{ tenantId: string; ids: string[] }> {
+export async function planHrNotices(evt: Evt, opts: { chunk?: number } = {}): Promise<{ tenantId: string; ids: string[] }> {
   const none = { tenantId: str(evt?.tenantId), ids: [] as string[] };
   const sys = await hrSystemOf(evt);
   if (!sys) return none;
   const { ctx, policy } = sys;
-  const rcpts = await recipientsOf(ctx, evt);
-  if (!rcpts.length) return none;
-  const ids = await tenantDb(ctx).$transaction(async (t) => {
+  const all = (await recipientsOf(ctx, evt)).sort((a, b) => (a.employeeId < b.employeeId ? -1 : a.employeeId > b.employeeId ? 1 : 0));
+  if (!all.length) return none;
+  // H4.5 r2 mi-2: ก้อนละ ≤ PLAN_CHUNK ผู้รับต่อ tx (ตัวช่วยทดสอบ opts.chunk) — ก้อนที่ commit แล้วคงอยู่ · ก้อนที่ล้มโยนให้ event ส่งซ้ำ (ON CONFLICT ⇒ ทำต่อ)
+  const size = Number.isInteger(opts.chunk) && (opts.chunk as number) > 0 ? (opts.chunk as number) : PLAN_CHUNK;
+  const ids: string[] = [];
+  for (let k = 0; k < all.length; k += size) ids.push(...(await planChunk(ctx, policy, all.slice(k, k + size))));
+  return { tenantId: ctx.tenantId, ids };
+}
+
+async function planChunk(ctx: Ctx, policy: LineNotifyPolicy, rcpts: Recipient[]): Promise<string[]> {
+  return tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Tx;
     const out: string[] = [];
     const emps = await tx.hrEmployee.findMany({ where: { id: { in: [...new Set(rcpts.map((r) => r.employeeId))] } }, select: { id: true, linkedUserId: true } });
@@ -150,7 +161,6 @@ export async function planHrNotices(evt: Evt): Promise<{ tenantId: string; ids: 
     }
     return out;
   }, TX_OPTS);
-  return { tenantId: ctx.tenantId, ids };
 }
 
 /** พนักงานพ้นสภาพ: แจ้งเตือนที่ยังไม่ส่งของคนนี้ ⇒ SKIPPED (ไม่มีการยิงหลัง commit) */
