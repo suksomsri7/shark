@@ -60,6 +60,9 @@ const PATH = {
   // ตั้งค่ากิจการ (14 พ.ย. · แบบ bizgear Ⓑ) — ยิงในนามกิจการที่กด ⚙ (opts.tenantId) · OWNER/MANAGER เท่านั้น
   "secretary/business": "/api/mobile/secretary/business",
   "secretary/business/logo": "/api/mobile/secretary/business/logo",
+  // ส่วน "อันตราย" (14 พ.ย. · แบบ bizdelete) — OWNER เท่านั้น
+  "secretary/business/deletion": "/api/mobile/secretary/business/deletion",
+  "secretary/business/export": "/api/mobile/secretary/business/export",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -1391,7 +1394,12 @@ export type BusinessProfile = {
   businessType: TenantType | null;
   docs: { systemId: string; bookName: string; bookCount: number; orgName: string; address: string | null; phone: string | null; taxId: string | null; branchCode: string; branchName: string | null } | null;
   hours: { available: boolean; tz: string | null; days: BusinessDay[] };
+  /** จำนวนระบบที่เปิดอยู่ (แถว "ระบบของร้าน") · เซิร์ฟเวอร์รุ่นเก่าไม่ส่ง = undefined */
+  systemCount?: number;
+  /** ขอลบกิจการไว้ (ISO) · null/undefined = ไม่ได้ขอลบ */
+  deletion?: BusinessDeletion | null;
 };
+export type BusinessDeletion = { requestedAt: string; purgeAt: string };
 /** can: สิทธิ์ของผู้เรียก (เซิร์ฟเวอร์ตรวจซ้ำตอน PATCH) · editTax = `account.settings.manage` แบบเว็บ · รุ่นเก่าไม่ส่ง = ถือว่าไม่ได้ */
 export type BusinessProfileRes = { profile: BusinessProfile; role: string; can?: { editName: boolean; editTax: boolean } };
 export type BusinessPatch = Partial<{
@@ -1418,6 +1426,32 @@ export function patchBusiness(tenantId: string, body: BusinessPatch): Promise<Bu
 export function deleteBusinessLogo(tenantId: string): Promise<{ logoUrl: null }> {
   return api<{ logoUrl: null }>(PATH["secretary/business/logo"], { method: "DELETE", tenantId });
 }
+/** ขอลบกิจการ (OWNER · ต้องส่งชื่อที่พิมพ์ยืนยัน · ลบจริงหลัง 30 วัน) */
+export function requestBusinessDeletion(tenantId: string, confirmName: string): Promise<{ deletion: BusinessDeletion | null }> {
+  return api<{ deletion: BusinessDeletion | null }>(PATH["secretary/business/deletion"], { method: "POST", body: { confirmName }, tenantId });
+}
+/** ยกเลิกการขอลบกิจการ (OWNER) */
+export function cancelBusinessDeletion(tenantId: string): Promise<{ deletion: null }> {
+  return api<{ deletion: null }>(PATH["secretary/business/deletion"], { method: "DELETE", tenantId });
+}
+/** ขอลิงก์ดาวน์โหลดข้อมูลร้าน (OWNER · อายุ 5 นาที · แอปเปิดในเบราว์เซอร์ของเครื่อง) */
+export function businessExportLink(tenantId: string): Promise<{ url: string; expiresAt: string }> {
+  return api<{ url: string; expiresAt: string }>(PATH["secretary/business/export"], { method: "POST", tenantId });
+}
+/** วันที่แบบสั้นตามภาษา — ไทย = พ.ศ. ("14 ธ.ค. 2569") · อังกฤษ = "14 Dec 2026" (ไม่พึ่ง Intl ของ Hermes) */
+const TH_MON = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+const EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function shortDate(iso: string, lang: "th" | "en"): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return lang === "th" ? `${d.getDate()} ${TH_MON[d.getMonth()]} ${d.getFullYear() + 543}` : `${d.getDate()} ${EN_MON[d.getMonth()]} ${d.getFullYear()}`;
+}
+/** จำนวนวันที่เหลือก่อนถึงเวลา (ปัดขึ้น · ไม่ต่ำกว่า 0) */
+export function daysUntil(iso: string, now = Date.now()): number {
+  const ms = new Date(iso).getTime() - now;
+  return Number.isFinite(ms) ? Math.max(0, Math.ceil(ms / 86_400_000)) : 0;
+}
+
 /** POST secretary/business/logo (multipart `file` · ≤ 2 MB · PNG/JPG/WEBP) — แยกตัวเรียกเพราะ api() ส่ง JSON เท่านั้น */
 export async function uploadBusinessLogo(tenantId: string, form: FormData): Promise<{ logoUrl: string }> {
   const headers: Record<string, string> = { "x-tenant-id": tenantId };

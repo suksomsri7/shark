@@ -1,15 +1,19 @@
-// ตั้งค่ากิจการ (14 พ.ย. 2026 · แบบ bizgear Ⓑ /root/mockups/secretary-1114/bizgear.png) — เข้าจาก ⚙ ท้ายแถวกิจการในตัวสลับกิจการ (B1)
-//   หัว: ‹ กลับ · "ตั้งค่ากิจการ" · ชื่อกิจการ · โลโก้ใหญ่ (แตะ = เปลี่ยน/อัปโหลด · ลบได้) + ชื่อ + "คุณเป็นเจ้าของ/ผู้จัดการ"
-//   ข้อมูลกิจการ: ชื่อ·โลโก้·ประเภทธุรกิจ · ที่อยู่·เบอร์·เลขผู้เสียภาษี·สาขา (ใช้บนใบเสร็จ/ใบกำกับ) · เวลาทำการ (รายวัน เปิด/ปิด) — แตะแถว = ชีตแก้ + บันทึก
-//   เลขาในกิจการนี้: ระบบที่เลขาเข้าถึงได้ · งานที่ต้องอนุมัติก่อน · ความรู้ของกิจการ · ตอบลูกค้านอกเวลา → หน้าเดิมใน /secretary/settings/*
-//   แพ็กเกจ: โควตางาน · แพ็กเกจ (ใช้ N%) → /secretary/settings/quota
+// ตั้งค่ากิจการ (14 พ.ย. 2026 · แบบ bizgear Ⓑ + bizsheet4 จอ ④ + bizdelete /root/mockups/secretary-1114/) — เข้าจาก ⚙ ท้ายแถวกิจการในตัวสลับกิจการ (B1)
+//   หัว: ‹ กลับ · "ตั้งค่ากิจการ" · ชื่อกิจการ · รูปโปรไฟล์ร้านวงกลมใหญ่ (โลโก้ · ไม่มี = ตัวย่อบนสีร้าน) + ป้ายกล้องดำ + "เปลี่ยนรูปโปรไฟล์ร้าน"
+//     แตะรูป/ลิงก์ = ชีต: ถ่ายรูปใหม่ · เลือกจากคลังรูป · ใช้ตัวย่อ (XX) แทนรูป (แดง · มีโลโก้เท่านั้น) — ครอปจัตุรัส 1:1 → POST โลโก้ → refreshMe (ไอคอนร้านทุกที่)
+//   ขอลบไว้ (PENDING_DELETE): การ์ดแดงบนสุด "⚠ กิจการนี้จะถูกลบ <วัน พ.ศ.>" + อีก N วัน + ปุ่มดำ "ยกเลิกการลบ" (OWNER · ยืนยันก่อน)
+//   ข้อมูลกิจการ: ชื่อ·ประเภทธุรกิจ · ที่อยู่·เบอร์·เลขผู้เสียภาษี·สาขา (ใช้บนใบเสร็จ/ใบกำกับ) · เวลาทำการ (รายวัน เปิด/ปิด) — แตะแถว = ชีตแก้ + บันทึก
+//   ระบบและเลขา: ระบบของร้าน (N ระบบ → หน้าเว็บ /app/settings/systems ในแดชบอร์ด) · ระบบที่เลขาเข้าถึงได้ · งานที่ต้องอนุมัติก่อน ·
+//     ความรู้ของกิจการ · ตอบลูกค้านอกเวลา · โควตางาน·แพ็กเกจ · เลขาของฉัน·ตั้งค่า → หน้าเดิมใน /secretary/settings/*
+//   อันตราย (OWNER เท่านั้น · ตรงกับหน้าเว็บ /app/settings/privacy): ส่งออกข้อมูลร้าน (ลิงก์ดาวน์โหลด 5 นาที เปิดในเบราว์เซอร์) ·
+//     ลบกิจการ → ชีตยืนยัน พิมพ์ชื่อร้านให้ตรงก่อนกด "ขอลบกิจการ" (ลบจริงหลัง 30 วัน · ยกเลิกได้จากหน้านี้)
 // กิจการ = พารามิเตอร์ tenantId (ไม่ใช่กิจการ active) — ข้อมูลกิจการ + ค่าสรุปด้านขวา ยิงด้วย x-tenant-id ของกิจการนี้ (ไม่ต้องสลับ)
 //   หน้าเลขา/แพ็กเกจเดิมทำงานกับกิจการ active ⇒ แตะแถวของกิจการที่ไม่ได้ใช้อยู่ = switchTenant ก่อน แล้วค่อยเปิดหน้า (ป้ายบอกใต้หัวกลุ่ม)
 // สิทธิ์: OWNER/MANAGER (บทบาทจาก /me · เซิร์ฟเวอร์ตรวจซ้ำ 403) · ชื่อกิจการแก้ได้เฉพาะ OWNER
 //   ที่อยู่/เบอร์/เลขภาษี/สาขา = `can.editTax` จากเซิร์ฟเวอร์ (สิทธิ์ตั้งค่าบัญชีแบบเว็บ) · ไม่มี = แถวอ่านอย่างเดียว + คำอธิบาย
 // ที่เก็บจริง (ไม่มีของซ้ำ): ที่อยู่/เบอร์/เลขภาษี/สาขา = ตั้งค่าสมุดบัญชีหลัก · เวลาทำการ = เวลาทำการของระบบแชท (ตัวที่ "ตอบนอกเวลา" ใช้)
 import { useCallback, useRef, useState } from "react";
-import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Text, TextInput } from "@/src/components/ui/text";
@@ -21,6 +25,9 @@ import {
   BIZ_LOGO_MAX_BYTES,
   BIZ_SETTING_ROLES,
   TENANT_TYPES,
+  businessExportLink,
+  cancelBusinessDeletion,
+  daysUntil,
   deleteBusinessLogo,
   getBusiness,
   hoursSummary,
@@ -28,15 +35,17 @@ import {
   isThaiTaxId,
   patchBusiness,
   quotaNumbers,
+  requestBusinessDeletion,
   secGet,
   serverNote,
+  shortDate,
   uploadBusinessLogo,
   type BusinessDay,
   type BusinessPatch,
   type BusinessProfile,
 } from "@/src/api/secretary";
 import { useAuth } from "@/src/lib/auth-context";
-import { useT, type I18nKey } from "@/src/i18n";
+import { useLang, useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
 import { radii, spacing, type as T } from "@/src/theme/tokens";
 
@@ -50,6 +59,9 @@ const DAY_KEYS: Record<number, I18nKey> = { 0: "bizset.day.0", 1: "bizset.day.1"
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 type Edit = "basic" | "docs" | "hours" | null;
+/** ชีตที่สอง: รูปโปรไฟล์ร้าน · ยืนยันลบกิจการ · ยืนยันยกเลิกการลบ */
+type Action = "photo" | "delete" | "undelete" | null;
+const AVATAR = 96;
 type Summary = { access: number | null; rules: number | null; afterHours: boolean | null; pct: number | null };
 type DayForm = { on: boolean; open: string; close: string };
 const EMPTY_SUMMARY: Summary = { access: null, rules: null, afterHours: null, pct: null };
@@ -57,6 +69,7 @@ const EMPTY_SUMMARY: Summary = { access: null, rules: null, afterHours: null, pc
 export default function BusinessSettingsScreen() {
   const { c } = useTheme();
   const t = useT();
+  const lang = useLang();
   const router = useRouter();
   const { tenantId: raw } = useLocalSearchParams<{ tenantId: string }>();
   const tenantId = typeof raw === "string" ? raw : "";
@@ -76,6 +89,11 @@ export default function BusinessSettingsScreen() {
   const busyRef = useRef(false);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
+  const [action, setAction] = useState<Action>(null);
+  const [confirmName, setConfirmName] = useState("");
+  const [dangerBusy, setDangerBusy] = useState(false);
+  const [dangerNote, setDangerNote] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
 
   // ฟอร์มของชีต (เติมจาก profile ตอนเปิด)
   const [name, setName] = useState("");
@@ -200,15 +218,18 @@ export default function BusinessSettingsScreen() {
   };
 
   // ── โลโก้ ──
-  const pickLogo = async () => {
+  const pickLogo = async (from: "camera" | "library") => {
     if (logoBusy) return;
+    setAction(null);
     setNote(null);
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const perm = from === "camera" ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setNote({ text: t("help.attach.perm"), warn: true });
+      setNote({ text: t(from === "camera" ? "bizset.photo.camPerm" : "help.attach.perm"), warn: true });
       return;
     }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, allowsEditing: true, aspect: [1, 1], exif: false });
+    // ครอปจัตุรัส 1:1 (รูปวงกลมทุกที่) · quality < 1 ⇒ เครื่องเข้ารหัสใหม่เป็น JPEG
+    const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], quality: 0.7, allowsEditing: true, aspect: [1, 1], exif: false };
+    const res = from === "camera" ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
     if (res.canceled || !res.assets[0]) return;
     const a = res.assets[0];
     setLogoBusy(true);
@@ -238,6 +259,7 @@ export default function BusinessSettingsScreen() {
   };
   const removeLogo = async () => {
     if (logoBusy) return;
+    setAction(null);
     setLogoBusy(true);
     setNote(null);
     try {
@@ -256,6 +278,63 @@ export default function BusinessSettingsScreen() {
     if (!isActive) await switchTenant(tenantId);
     router.push(path);
   };
+  // ระบบของร้าน = หน้าเว็บ /app/settings/systems ในแดชบอร์ด (WebView ใช้กิจการ active ⇒ สลับก่อน)
+  const openSystems = () => void goActive({ pathname: "/", params: { open: "/app/settings/systems", t: String(Date.now()) } });
+
+  // ── อันตราย (OWNER) ──
+  const deletion = profile?.deletion ?? null;
+  const openAction = (k: Exclude<Action, null>) => {
+    setDangerNote(null);
+    setConfirmName("");
+    setAction(k);
+  };
+  const closeAction = () => !dangerBusy && setAction(null);
+  const nameMatches = !!profile && confirmName.trim() === profile.name.trim() && confirmName.trim() !== "";
+  const doDelete = async () => {
+    if (!profile || !nameMatches || dangerBusy) return;
+    setDangerBusy(true);
+    setDangerNote(null);
+    try {
+      const r = await requestBusinessDeletion(tenantId, confirmName.trim());
+      setProfile((p) => (p ? { ...p, deletion: r.deletion } : p));
+      setAction(null);
+      setNote({ text: t("bizset.del.done"), warn: false });
+    } catch (e) {
+      setDangerNote(serverNote(e) ?? t("bizset.del.fail"));
+    } finally {
+      setDangerBusy(false);
+    }
+  };
+  const doUndelete = async () => {
+    if (dangerBusy) return;
+    setDangerBusy(true);
+    setDangerNote(null);
+    try {
+      await cancelBusinessDeletion(tenantId);
+      setProfile((p) => (p ? { ...p, deletion: null } : p));
+      setAction(null);
+      setNote({ text: t("bizset.del.cancelled"), warn: false });
+    } catch (e) {
+      setDangerNote(serverNote(e) ?? t("bizset.del.fail"));
+    } finally {
+      setDangerBusy(false);
+    }
+  };
+  // ส่งออก = ขอลิงก์ดาวน์โหลดอายุสั้นจากเซิร์ฟเวอร์ แล้วเปิดในเบราว์เซอร์ของเครื่อง (แอปไม่มีโมดูลไฟล์/แชร์ native)
+  const doExport = async () => {
+    if (exportBusy) return;
+    setExportBusy(true);
+    setNote(null);
+    try {
+      const { url } = await businessExportLink(tenantId);
+      await Linking.openURL(url);
+      setNote({ text: t("bizset.export.opened"), warn: false });
+    } catch (e) {
+      setNote({ text: serverNote(e) ?? t("bizset.export.fail"), warn: true });
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   const name0 = profile?.name ?? row?.name ?? "";
   const typeLabel = profile?.businessType ? t(`biz.type.${profile.businessType}` as I18nKey) : undefined;
@@ -266,7 +345,10 @@ export default function BusinessSettingsScreen() {
     { key: "rules", icon: "shield", title: "bizset.sec.rules", path: "/secretary/settings/rules", value: summary.rules === null ? undefined : t("bizset.sec.rulesN", { n: summary.rules }) },
     { key: "knowledge", icon: "book-open", title: "bizset.sec.knowledge", path: "/secretary/settings/knowledge" },
     { key: "customers", icon: "message-square", title: "bizset.sec.customers", path: "/secretary/settings/customers", value: summary.afterHours === null ? undefined : t(summary.afterHours ? "bizset.on" : "bizset.off") },
+    { key: "quota", icon: "pie-chart", title: "bizset.row.quota", path: "/secretary/settings/quota", value: summary.pct === null ? undefined : t("bizset.quotaPct", { n: summary.pct }) },
+    { key: "mysec", icon: "user", title: "bizset.sec.mine", path: "/secretary/settings" },
   ];
+  const initials = bizInitials(name0);
 
   return (
     <AiryScreen testID="biz-set">
@@ -281,30 +363,42 @@ export default function BusinessSettingsScreen() {
         ) : (
           <>
             <View style={styles.hero}>
-              <Pressable testID="biz-set-logo" accessibilityRole="button" accessibilityLabel={t("bizset.logo.change")} onPress={() => void pickLogo()} style={styles.logoWrap}>
+              <Pressable testID="biz-set-logo" accessibilityRole="button" accessibilityLabel={t("bizset.photo.change")} onPress={() => openAction("photo")} style={styles.logoWrap}>
                 <View style={[styles.logo, { backgroundColor: profile.logoUrl ? c.surface : bizColor(profile.name, row?.branding?.accent) }]}>
                   {profile.logoUrl ? (
                     <Image source={{ uri: profile.logoUrl }} style={styles.logoImg} resizeMode="cover" />
                   ) : (
-                    <Text style={[styles.logoT, { color: row?.branding?.accentFg ?? "#FFFFFF" }]}>{bizInitials(profile.name)}</Text>
+                    <Text style={[styles.logoT, { color: row?.branding?.accentFg ?? "#FFFFFF" }]}>{initials}</Text>
                   )}
                 </View>
-                <View pointerEvents="none" style={[styles.logoEdit, { backgroundColor: c.surface }]}>
-                  <Icon name={logoBusy ? "loader" : "camera"} size={13} color={c.text} />
+                <View pointerEvents="none" style={[styles.logoEdit, { backgroundColor: c.accent, borderColor: c.surface }]}>
+                  <Icon name={logoBusy ? "loader" : "camera"} size={14} color={c.onAccent} />
                 </View>
+              </Pressable>
+              <Pressable testID="biz-set-photo-link" accessibilityRole="button" onPress={() => openAction("photo")} hitSlop={8}>
+                <Text style={[styles.link, { color: c.legacy.blue }]}>{t("bizset.photo.change")}</Text>
               </Pressable>
               <Text testID="biz-set-name" style={[styles.name, { color: c.text }]} numberOfLines={1}>
                 {profile.name}
               </Text>
               <Text style={[styles.role, { color: c.textMuted }]}>{t(owner ? "bizset.youOwner" : "bizset.youManager")}</Text>
-              {profile.logoUrl ? (
-                <Pressable testID="biz-set-logo-remove" accessibilityRole="button" onPress={() => void removeLogo()} hitSlop={8}>
-                  <Text style={[styles.link, { color: c.textMuted }]}>{t("bizset.logo.remove")}</Text>
-                </Pressable>
-              ) : null}
             </View>
 
-            {note && !edit ? (
+            {deletion ? (
+              <View testID="biz-set-pending-delete" style={[styles.warnCard, { borderColor: c.danger.bg, backgroundColor: c.legacy.dangerDim }]}>
+                <Text style={[styles.warnT, { color: c.danger.bg }]}>{t("bizset.del.pendingTitle", { date: shortDate(deletion.purgeAt, lang) })}</Text>
+                <Text style={[styles.warnSub, { color: c.danger.bg }]}>{t("bizset.del.pendingSub", { n: daysUntil(deletion.purgeAt) })}</Text>
+                {owner ? (
+                  <Pressable testID="biz-set-undelete" accessibilityRole="button" onPress={() => openAction("undelete")} style={[styles.darkBtn, { backgroundColor: c.accent }]}>
+                    <Text style={[styles.darkBtnT, { color: c.onAccent }]}>{t("bizset.del.cancel")}</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={[styles.warnSub, { color: c.textMuted }]}>{t("bizset.del.ownerCancels")}</Text>
+                )}
+              </View>
+            ) : null}
+
+            {note && !edit && !action ? (
               <Note warn={note.warn} testID="biz-set-note">
                 {note.text}
               </Note>
@@ -331,18 +425,29 @@ export default function BusinessSettingsScreen() {
 
             <SectionLabel>{t("bizset.group.sec")}</SectionLabel>
             {!isActive ? <Text style={[styles.hint, { color: c.textMuted }]}>{t("bizset.switchHint")}</Text> : null}
+            <SettingRow
+              testID="biz-set-row-systems"
+              icon="grid"
+              title={t("bizset.sys.title")}
+              sub={t("bizset.sys.sub")}
+              value={typeof profile.systemCount === "number" ? t("bizset.sec.accessN", { n: profile.systemCount }) : undefined}
+              onPress={openSystems}
+            />
             {secRows.map((r) => (
               <SettingRow key={r.key} testID={`biz-set-row-${r.key}`} icon={r.icon} title={t(r.title)} value={r.value} onPress={() => void goActive(r.path)} />
             ))}
 
-            <SectionLabel>{t("bizset.group.plan")}</SectionLabel>
-            <SettingRow
-              testID="biz-set-row-quota"
-              icon="pie-chart"
-              title={t("bizset.row.quota")}
-              value={summary.pct === null ? undefined : t("bizset.quotaPct", { n: summary.pct })}
-              onPress={() => void goActive("/secretary/settings/quota")}
-            />
+            {owner ? (
+              <>
+                <SectionLabel style={{ color: c.danger.bg }} testID="biz-set-danger-label">
+                  {t("bizset.group.danger")}
+                </SectionLabel>
+                <View testID="biz-set-danger" style={[styles.dangerBox, { borderColor: c.danger.bg }]}>
+                  <SettingRow testID="biz-set-row-export" icon={exportBusy ? "loader" : "package"} title={t("bizset.export.title")} sub={t("bizset.export.sub")} onPress={() => void doExport()} />
+                  {deletion ? null : <SettingRow testID="biz-set-row-delete" icon="trash-2" danger title={t("bizset.del.title")} sub={t("bizset.del.sub")} onPress={() => openAction("delete")} />}
+                </View>
+              </>
+            ) : null}
           </>
         )}
       </ScrollView>
@@ -458,6 +563,86 @@ export default function BusinessSettingsScreen() {
           </View>
         </ScrollView>
       </Sheet>
+      <Sheet testID="biz-set-action" visible={action !== null} onClose={closeAction} top={action === "photo" ? 380 : 150}>
+        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetBody}>
+          {action === "photo" ? (
+            <>
+              <View style={[styles.menu, { backgroundColor: c.surface, borderColor: c.divider }]}>
+                <Pressable testID="biz-set-photo-camera" accessibilityRole="button" onPress={() => void pickLogo("camera")} style={styles.menuRow}>
+                  <Text style={[styles.menuT, { color: c.text }]}>{t("bizset.photo.camera")}</Text>
+                </Pressable>
+                <View style={[styles.menuSep, { backgroundColor: c.divider }]} />
+                <Pressable testID="biz-set-photo-library" accessibilityRole="button" onPress={() => void pickLogo("library")} style={styles.menuRow}>
+                  <Text style={[styles.menuT, { color: c.text }]}>{t("bizset.photo.library")}</Text>
+                </Pressable>
+                {profile?.logoUrl ? (
+                  <>
+                    <View style={[styles.menuSep, { backgroundColor: c.divider }]} />
+                    <Pressable testID="biz-set-photo-initials" accessibilityRole="button" onPress={() => void removeLogo()} style={styles.menuRow}>
+                      <Text style={[styles.menuT, { color: c.danger.bg }]}>{t("bizset.photo.initials", { x: initials })}</Text>
+                    </Pressable>
+                  </>
+                ) : null}
+              </View>
+              <Text style={[styles.hint, { color: c.textMuted }]}>{t("bizset.photo.where")}</Text>
+            </>
+          ) : action === "delete" && profile ? (
+            <>
+              <Text style={[styles.sh, { color: c.text }]}>{t("bizset.del.sheetTitle", { name: profile.name })}</Text>
+              {(["bizset.del.b1", "bizset.del.b2", "bizset.del.b3"] as const).map((k) => (
+                <Text key={k} style={[styles.bullet, { color: c.textDim }]}>
+                  {`•  ${t(k)}`}
+                </Text>
+              ))}
+              <TextInput
+                testID="biz-set-del-name"
+                value={confirmName}
+                onChangeText={setConfirmName}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={200}
+                placeholder={t("bizset.del.typeName")}
+                placeholderTextColor={c.placeholder}
+                style={[styles.input, styles.delInput, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+              />
+              {dangerNote ? (
+                <Note warn testID="biz-set-del-note">
+                  {dangerNote}
+                </Note>
+              ) : null}
+              <Pressable
+                testID="biz-set-del-confirm"
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !nameMatches || dangerBusy }}
+                disabled={!nameMatches || dangerBusy}
+                onPress={() => void doDelete()}
+                style={[styles.redBtn, { backgroundColor: nameMatches && !dangerBusy ? c.danger.bg : c.btnOff.bg }]}
+              >
+                <Text style={[styles.redBtnT, { color: nameMatches && !dangerBusy ? c.danger.fg : c.btnOff.fg }]}>{dangerBusy ? t("bizset.del.busy") : t("bizset.del.confirm")}</Text>
+              </Pressable>
+              <Pressable testID="biz-set-del-keep" accessibilityRole="button" onPress={closeAction} style={styles.ghostBtn}>
+                <Text style={[styles.ghostT, { color: c.textDim }]}>{t("bizset.del.keep")}</Text>
+              </Pressable>
+            </>
+          ) : action === "undelete" && deletion ? (
+            <>
+              <Text style={[styles.sh, { color: c.text }]}>{t("bizset.del.undoTitle")}</Text>
+              <Text style={[styles.bullet, { color: c.textDim }]}>{t("bizset.del.undoBody", { name: profile?.name ?? "" })}</Text>
+              {dangerNote ? (
+                <Note warn testID="biz-set-undel-note">
+                  {dangerNote}
+                </Note>
+              ) : null}
+              <View style={styles.save}>
+                <PrimaryButton testID="biz-set-undel-confirm" label={dangerBusy ? t("bizset.del.busy") : t("bizset.del.cancel")} disabled={dangerBusy} onPress={() => void doUndelete()} />
+              </View>
+              <Pressable testID="biz-set-undel-keep" accessibilityRole="button" onPress={closeAction} style={styles.ghostBtn}>
+                <Text style={[styles.ghostT, { color: c.textDim }]}>{t("bizset.del.back")}</Text>
+              </Pressable>
+            </>
+          ) : null}
+        </ScrollView>
+      </Sheet>
     </AiryScreen>
   );
 }
@@ -465,14 +650,30 @@ export default function BusinessSettingsScreen() {
 const styles = StyleSheet.create({
   page: { paddingHorizontal: spacing.page, paddingTop: 14, paddingBottom: spacing.xxl },
   hero: { alignItems: "center", marginTop: F.v(8) },
-  logoWrap: { width: 72, height: 72 },
-  logo: { width: 72, height: 72, borderRadius: 24, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  logoImg: { width: 72, height: 72 },
-  logoT: { fontSize: 26, fontWeight: "800", letterSpacing: 0.3 },
-  logoEdit: { position: "absolute", right: -6, bottom: -6, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
-  name: { fontSize: T.lt - 4, fontWeight: "700", marginTop: 12, lineHeight: 28 },
+  logoWrap: { width: AVATAR, height: AVATAR },
+  logo: { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  logoImg: { width: AVATAR, height: AVATAR },
+  logoT: { fontSize: 34, fontWeight: "800", letterSpacing: 0.3 },
+  logoEdit: { position: "absolute", right: 0, bottom: 0, width: 32, height: 32, borderRadius: 16, borderWidth: 2.5, alignItems: "center", justifyContent: "center" },
+  name: { fontSize: T.lt - 4, fontWeight: "700", marginTop: 6, lineHeight: 28 },
   role: { fontSize: T.cap, marginTop: 2 },
-  link: { fontSize: T.cap, marginTop: 6, textDecorationLine: "underline" },
+  link: { fontSize: T.cap + 0.5, fontWeight: "600", marginTop: 10 },
+  warnCard: { marginTop: F.v(18), borderWidth: 1.5, borderRadius: radii.sugg, paddingVertical: 14, paddingHorizontal: 16 },
+  warnT: { fontSize: T.body, fontWeight: "700", lineHeight: 22 },
+  warnSub: { fontSize: T.cap, lineHeight: 19, marginTop: 4 },
+  darkBtn: { alignSelf: "flex-start", marginTop: 12, borderRadius: 14, paddingVertical: 9, paddingHorizontal: 18 },
+  darkBtnT: { fontSize: T.sub, fontWeight: "700" },
+  dangerBox: { borderWidth: 1.5, borderRadius: radii.sugg + 4, paddingHorizontal: 4, paddingBottom: 4, marginTop: 6 },
+  menu: { borderRadius: radii.sugg, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden", marginTop: spacing.xs },
+  menuRow: { paddingVertical: 15, paddingHorizontal: 16 },
+  menuT: { fontSize: T.body, fontWeight: "500" },
+  menuSep: { height: StyleSheet.hairlineWidth },
+  bullet: { fontSize: T.sub, lineHeight: 22, marginTop: 6 },
+  delInput: { marginTop: F.v(18) },
+  redBtn: { height: 54, borderRadius: radii.btn, alignItems: "center", justifyContent: "center", marginTop: spacing.lg },
+  redBtnT: { fontSize: 17, fontWeight: "700" },
+  ghostBtn: { alignItems: "center", paddingVertical: 14, marginTop: 4 },
+  ghostT: { fontSize: T.body, fontWeight: "600" },
   hint: { fontSize: T.cap - 0.5, lineHeight: 18, marginTop: 6, marginLeft: 2 },
   sheetBody: { paddingBottom: spacing.xl },
   sh: { fontSize: T.lt - 6, fontWeight: "700", lineHeight: 28, marginTop: spacing.xs },

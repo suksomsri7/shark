@@ -68,7 +68,19 @@ export type BusinessProfile = {
   } | null;
   /** เวลาทำการ (ระบบแชทหลัก) · available false = ร้านไม่มีระบบแชท · days ว่าง = ยังไม่ได้ตั้ง */
   hours: { available: boolean; tz: string | null; days: BusinessDay[] };
+  /** จำนวนระบบที่เปิดอยู่ (ตัวเดียวกับรายการของหน้าเว็บ /app/settings/systems) — แถว "ระบบของร้าน" */
+  systemCount: number;
+  /** ขอลบกิจการไว้ (PENDING_DELETE · ระบบลบจริงเมื่อครบ purgeAt) · null = ไม่ได้ขอลบ */
+  deletion: { requestedAt: string; purgeAt: string } | null;
 };
+
+/** ช่วงพักก่อนลบจริง — ต้องตรงกับ `sweepPendingDeletes` (cron · ค่าปริยาย 30 วัน) และหน้าเว็บ /app/settings/privacy */
+export const DELETE_GRACE_DAYS = 30;
+/** ข้อมูลการขอลบของร้าน (สถานะ + เวลา) → DTO · ไม่ได้ขอลบ = null */
+export function deletionOf(t: { status: string; deleteRequestedAt: Date | null } | null | undefined): BusinessProfile["deletion"] {
+  if (!t || t.status !== "PENDING_DELETE" || !t.deleteRequestedAt) return null;
+  return { requestedAt: t.deleteRequestedAt.toISOString(), purgeAt: new Date(t.deleteRequestedAt.getTime() + DELETE_GRACE_DAYS * 86_400_000).toISOString() };
+}
 
 export type BusinessProfilePatch = {
   name?: string;
@@ -95,11 +107,12 @@ const clean = (v: string | null | undefined, max: number): string | null => {
 const digits = (v: string) => v.replace(/[\s\-‐-―]/g, "");
 
 export async function getBusinessProfile(tenantId: string): Promise<BusinessProfile> {
-  const [tenant, branding, books, chats] = await Promise.all([
-    prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, businessType: true } }),
+  const [tenant, branding, books, chats, systemCount] = await Promise.all([
+    prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, businessType: true, status: true, deleteRequestedAt: true } }),
     getBranding({ tenantId }),
     primarySystems(tenantId, "ACCOUNT"),
     primarySystems(tenantId, "CHAT"),
+    prisma.appSystem.count({ where: { tenantId, active: true } }),
   ]);
   const book = books[0] ?? null;
   const s = book ? await getSettings(tenantId, book.id) : null;
@@ -127,6 +140,8 @@ export async function getBusinessProfile(tenantId: string): Promise<BusinessProf
           }
         : null,
     hours: { available: !!chat, tz: hours?.tz ?? null, days: hours?.days ?? [] },
+    systemCount,
+    deletion: deletionOf(tenant),
   };
 }
 
