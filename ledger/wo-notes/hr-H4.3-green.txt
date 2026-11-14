@@ -125,3 +125,30 @@ qc-ai-proposals: JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
 fhr-env: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
 fhr-noenv: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]} 
 typecheck: clean EXIT 0 · 413 s
+
+# H4.5 merge run (session/hr b6f1d0719) · Sat Nov 14 06:14:43 UTC 2026
+inventory rows: ours 540 · theirs 557 · merged 557 · migration 20270111000000_hr_line_link deployed to lane
+seed-hr-qc: JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":34,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJourna
+h43-f1: JSON_SUMMARY {"suite":"qc-hr-h4.3","total":45,"passed":45,"failed":[],"findings":[],"skipped":false,"forced":false,"cras
+h43-f2: JSON_SUMMARY {"suite":"qc-hr-h4.3","total":45,"passed":45,"failed":[],"findings":[],"skipped":false,"forced":false,"cras
+h43-u: JSON_SUMMARY {"suite":"qc-hr-h4.3","total":45,"passed":45,"failed":[],"findings":[],"skipped":false,"forced":false,"cras
+qc-hr-h4.2: JSON_SUMMARY {"suite":"qc-hr-h4.2","total":57,"passed":57,"failed":[],"findings":[],"skipped":false,"forced":false,"cras
+qc-hr-h4.5: JSON_SUMMARY {"suite":"qc-hr-h4.5","total":90,"passed":90,"failed":[],"findings":[],"skipped":false,"forced":true,"crash
+qc-hr-h0.3: JSON_SUMMARY {"suite":"qc-hr-h0.3","total":37,"passed":37,"failed":[],"findings":[],"skipped":false,"forced":true,"crash
+qc-ai-tools: JSON_SUMMARY {"total":18,"passed":18,"findings":[]}
+qc-ai-proposals: JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+qc-hr-roster: JSON_SUMMARY {"total":24,"passed":24,"findings":[]}
+qc-hr-h2.2: JSON_SUMMARY {"suite":"qc-hr-h2.2","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crash
+qc-hr-h2.10: JSON_SUMMARY {"suite":"qc-hr-h2.10","total":57,"passed":57,"failed":[],"findings":[],"skipped":false,"forced":true,"cras
+qc-hr-h2.11: JSON_SUMMARY {"suite":"qc-hr-h2.11","total":70,"passed":70,"failed":[],"findings":[],"skipped":false,"forced":true,"cras
+qc-hr-h0.6: JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"missi
+qc-hr-h1.3: JSON_SUMMARY {"suite":"qc-hr-h1.3","total":63,"passed":63,"failed":[],"findings":[],"skipped":false,"forced":true,"crash
+qc-hr-h2.4: JSON_SUMMARY {"suite":"qc-hr-h2.4","total":68,"passed":68,"failed":[],"findings":[],"skipped":false,"forced":true,"crash
+qc-hr-set-1: JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced":true,"cras
+qc-hf-hr-privacy: JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+qc-audit-trail: ✅ PASS — 21/21
+fitness-env: JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness-noenv: JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness-hr-env: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+fitness-hr-noenv: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+typecheck: clean EXIT 0 · 414 s

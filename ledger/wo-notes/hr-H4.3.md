@@ -86,3 +86,9 @@ seed 34/34 · qc-hr-h4.3 42/42 forced ×3 + unforced ×1 (no residue) · qc-hr-h
   - A draft proposal whose employee moved outside the confirmer's scope stays PENDING until the 24 h expiry (review NOTE-c i).
   - D-H43-pending-flag-visibility: a pending `hr_flag_pattern` proposal blocks other managers for that employee+month until expiry; they cannot see or reject it (it lives in the proposer's conversation).
   - Bare URLs remain as plain text in proposal summaries (only `<>[]{}` etc. are stripped) — matters only if a card auto-links.
+
+## 13. Merge of session/hr b6f1d0719 (H4.5 LINE notices)
+- Clean merge; `scripts/hr-ui-inventory.json` rows ours 540 / theirs 557 / merged 557 (ours unchanged since the previous base); messages untouched on this branch (theirs taken). `payroll.ts` not touched by H4.3 (no PAY_MARKED tag needed).
+- `prisma generate` · lane `migrate deploy` ⇒ `20270111000000_hr_line_link`.
+- No H4.3 check counts AppNotification/HrNotice (no count re-derivation needed). Added L2 `noNotice` (ORACLE-EDIT, H4.5 merge): AI-drafted rows are unpublished ⇒ 0 `hr.roster.published` outbox events and 0 HrNotice for the drafted employees.
+- Run: all green (see hr-H4.3-green.txt) · typecheck clean 414 s.
