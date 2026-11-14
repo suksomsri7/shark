@@ -23,56 +23,58 @@ const T = {
 const SEV: Record<string, "CRITICAL" | "MAJOR" | "MINOR"> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
 const CHECKS = `
 ST1|static|C|G|payroll-rules.ts sha frozen
-ST2|static|C|G|changed ⊆ allowed (src list · own oracle · older qc-*.mts only if every hunk ORACLE-EDIT…LEAVE-3) · frozen unchanged · untracked counted
-ST3|static|M|G|every changed src hunk carries "HR LEAVE-3" · no bare removal
-ST4|static|M|G|no AppSystem settings write in changed src lines
+ST2|static|C|G|changed ⊆ allowed (+ older qc-*.mts with every hunk ORACLE-EDIT…LEAVE-3) · frozen unchanged
+ST3|static|M|G|src hunks marked HR LEAVE-3 · no bare removal
+ST4|static|M|G|no settings write in changed src
 ST5|static|M|R|fixed texts: TWO_PERSON · R3 count template · R4 OWNER gate
-R1.1|R1|C|R|AM paid + PM paid, no-show ⇒ attendance LEAVE · leaveFraction 1.0 once
-R1.2|R1|C|R|work day pl480 ul0 ab0 ld1.0 review []
-R1.3|R1|C|R|attendance sync: no wait for the system · createPayrollRunV2 ok
-R1.4|R1|C|R|paid+paid employee: no UNPAID_LEAVE / ABSENT_RULE line · gross = 3,000,000
-R1.5|R1|C|R|AM unpaid + PM paid ⇒ pl240 ul240 ab0 ld1.0 [] · UNPAID_LEAVE 240 −50,000 · no ABSENT_RULE
-R1.6|R1|M|R|mirror AM paid + PM unpaid ⇒ same numbers on 2031-08-07
-R1.7|R1|M|R|two shifts 09–13 / 13–17, AM+PM paid ⇒ both slots LEAVE · pl480 ab0 []
-R1.8|R1|M|R|base-shape stored row ⇒ STALE · recompute ⇒ LEAVE · rebuild pl480 ab0 []
+R1.1|R1|C|R|AM+PM paid no-show ⇒ LEAVE · fraction 1.0
+R1.2|R1|C|R|work day 480/0/0 ld1.0 []
+R1.3|R1|C|R|sync no wait · createPayrollRunV2 ok
+R1.4|R1|C|R|paid+paid: no deduction line · gross 3,000,000
+R1.5|R1|C|R|AM unpaid+PM paid ⇒ 240/240/0 · UNPAID −50,000 only
+R1.6|R1|M|R|mirror (PM unpaid)
+R1.7|R1|M|R|two shifts 09–13/13–17 ⇒ both LEAVE · 480
+R1.8|R1|M|R|base-shape stored row ⇒ STALE ⇒ recompute LEAVE ⇒ 480
 R1.9|R1|M|G|AM approved + PM pending ⇒ PENDING_LEAVE
-R1.10|R1|M|G|AM+PM approved then PM revoked + recompute ⇒ ABSENT pl240 ab240 []
-R1.11|R1|M|G|single AM half + PM worked ⇒ pl240 work240 [] · no lines
-R1.12|R1|M|G|full day · single AM no-show ABSENT_RULE −50,000 · 4 h unpaid ul240 ab240 · run ok
-R1.13|R1|M|G|(Q7) legacy AM+AM approved ⇒ LEAVE_MISMATCH stays
-R1.14|R1|M|G|MONEY-2 gate: approve UNPAID leave in APPROVED month ⇒ paid text · PENDING
-R2.1|R2|C|R|OWNER replay expectedStep 1 ×2 ⇒ second = lost claim · step 2 · 1 decision
-R2.2|R2|C|R|same MANAGER both steps ⇒ TWO_PERSON + text · nothing written · other manager completes
+R1.10|R1|M|G|PM revoked ⇒ ABSENT 240/0/240
+R1.11|R1|M|G|AM half + PM worked ⇒ 240 + work 240
+R1.12|R1|M|G|full day · single AM no-show · 4 h unpaid · run ok
+R1.13|R1|M|G|(Q7) legacy AM+AM ⇒ LEAVE_MISMATCH
+R1.14|R1|M|G|MONEY-2 paid-month gate refuses
+R2.1|R2|C|R|OWNER replay expectedStep 1 ×2 ⇒ lost · step 2
+R2.2|R2|C|R|same MANAGER both steps ⇒ TWO_PERSON · nothing written
 R2.3|R2|C|R|bulkDecide([id,id]) ⇒ done 1 · step 2 · 1 decision
-R2.4|R2|C|R|AI approval_decide: same MANAGER refused (TWO_PERSON text) · payload expectedStep stale refused · nothing written
-R2.5|R2|C|R|OWNER both steps ⇒ APPROVED · 1 owner_override audit · effect once
-R2.6|R2|C|R|stale expectedStep: direct lost · bulk step:<id> lost text · decideAction bad step text · nothing written
-R2.7|R2|C|G|held request row lock: two OWNERs ⇒ 1 ok · same MANAGER ×2 ⇒ 1 step
-R2.8|R2|C|G|single-step chain ± expectedStep: results + rows literal (byte-identical)
-R2.9|R2|M|G|two different managers complete a two-step chain · 2 decisions · effect once
-R2.10|R2|M|G|SELF_APPROVAL results unchanged (PurchaseOrder + HrLeave)
-R2.11|R2|M|R|[static] src callers pass a step (actions · AI proposals · tools) · no other caller
-R2.12|R2|M|R|[static] approvals page items carry step · BulkApprovals hidden step:<id>
-R2.13|R2|C|R|same-user double click: sequential refused · unlocked parallel ×N ⇒ ≤ 1 step each
-R2.14|R2|m|G|non-HR subject (PurchaseOrder) MANAGER→OWNER by two users ⇒ APPROVED · no override audit
-R3.1|R3|C|R|steps edit with 1 pending ⇒ text "1" · name + steps byte-same · request still decidable
-R3.2|R3|M|G|name edit, identical steps, with pending ⇒ allowed
+R2.4|R2|C|R|AI approval_decide: TWO_PERSON · stale expectedStep refused
+R2.5|R2|C|R|OWNER both steps (no step) ⇒ APPROVED · 1 approval.owner_override {step 2, previousDeciderStep 1} · effect once
+R2.6|R2|C|R|stale step: direct · bulkDecide map · bulk action ⇒ lost · decideAction bad step ⇒ text
+R2.15|R2|C|R|OWNER double click via decideAction / bulkDecideAction ⇒ one step
+R2.7|R2|C|G|held row lock: 2 OWNERs ⇒ 1 ok · same MANAGER ×2 ⇒ 1 step
+R2.8|R2|C|G|single-step chain ± step: literal results/rows
+R2.9|R2|M|G|two managers complete · effect once
+R2.10|R2|M|G|SELF_APPROVAL literal (PO + HrLeave)
+R2.11|R2|M|R|[static] callers pass a step · no other caller
+R2.12|R2|M|R|[static] page step · hidden step:<id>
+R2.13|R2|C|R|same-user double click seq + parallel ×N ⇒ ≤ 1 step
+R2.14|R2|m|G|PurchaseOrder M→O two users · no override audit
+R3.1|R3|C|R|stranding edit (step 2 → [1]) ⇒ text "1" · unchanged · decidable
+R3.2|R3|M|G|non-stranding edits with pending (rename · role of current step · add step) ⇒ allowed · decidable
 R3.3|R3|M|G|no pending ⇒ step change allowed
-R3.4|R3|m|G|identical steps re-sent in another array order ⇒ allowed
-R3.5|R3|m|G|disabled chain: pending request still decidable
-R3.6|R3|M|R|count = this policy only (2 here, 1 elsewhere ⇒ "2")
-R4.1|R4|C|R|cancelMyRequestAction(HrLeave) ⇒ both CANCELLED · audit 1 · decided event 0 · pending released
-R4.2|R4|C|R|after withdrawal a manager's decideLeaveAs is refused · leave CANCELLED · no USE
-R4.3|R4|C|R|(Q5) legacy cancelled chain with a decision ⇒ MANAGER refused (text) · OWNER decides
-R4.4|R4|M|G|CH-4: cancelled chain without decision ⇒ direct decide works (OWNER · MANAGER)
-R4.5|R4|m|G|PurchaseOrder withdrawal unchanged ⇒ CANCELLED
-R4.6|R4|M|G|not-mine withdrawal ⇒ nothing changes
-R4.7|R4|M|G|cancelLeave ∥ final approve under row lock ⇒ consistent (A7b)
-R4.8|R4|M|G|withdrawal of a decided request ⇒ nothing changes
-R4.9|R4|C|R|(Q6) cancelMyRequestAction(HrTimeCorrection) ⇒ CANCELLED · direct decideCorrection refused
-R4.10|R4|C|R|(Q6) cancelMyRequestAction(HrShiftSwapRequest) ⇒ CANCELLED · direct decideSwap refused
-R4.11|R4|C|R|action withdrawal ∥ final approve under row lock ⇒ consistent both orders
-Z1|house|C|G|no residue · own law rows inserted
+R3.4|R3|m|G|same steps reordered ⇒ allowed
+R3.5|R3|m|G|disabled chain still decidable
+R3.6|R3|M|R|count = this policy only ⇒ "2"
+R3.7|R3|M|R|renumber [1,2]→[1,3] at step 2 ⇒ refused
+R4.1|R4|C|R|withdraw HrLeave ⇒ both CANCELLED · audit 1 · 0 events · released
+R4.2|R4|C|R|then decideLeaveAs refused
+R4.3|R4|C|R|(Q5) legacy cancelled+decided ⇒ MANAGER text · OWNER ok
+R4.4|R4|M|G|CH-4: cancelled, no decision ⇒ direct works
+R4.5|R4|m|G|PO withdrawal ⇒ CANCELLED
+R4.6|R4|M|G|not-mine withdrawal ⇒ nothing
+R4.7|R4|M|G|cancelLeave ∥ approve (A7b) consistent
+R4.8|R4|M|G|decided request withdrawal ⇒ nothing
+R4.9|R4|C|R|(Q6) withdraw correction ⇒ CANCELLED · direct refused
+R4.10|R4|C|R|(Q6) withdraw swap ⇒ CANCELLED · direct refused
+R4.11|R4|C|R|action withdrawal ∥ approve ⇒ consistent
+Z1|house|C|G|no residue · own law rows
 `.trim().split("\n").map((l) => {
  const [id, g, sv, b, t] = l.split("|");
  return [`LEAVE-3-${id}`, g, SEV[sv], (b === "R" ? "RED" : "GREEN") as Base, t] as const;
@@ -173,7 +175,7 @@ const leaveSt = async (id: string) => (await rows(`SELECT status::text AS s FROM
 const useN = (id: string) => n1(`SELECT count(*)::int AS n FROM "HrLeaveBalanceTxn" WHERE "leaveId" = $1 AND kind::text = 'USE'`, id);
 const evN = (type: string, id: string) => n1(`SELECT count(*)::int AS n FROM "OutboxEvent" WHERE "tenantId" = $1 AND type = $2 AND (payload->>'leaveId' = $3 OR payload->>'requestId' = $3)`, TT, type, id);
 const audN = (action: string, id: string) => n1(`SELECT count(*)::int AS n FROM "AuditLog" WHERE "tenantId" = $1 AND action = $2 AND ("targetId" = $3 OR after->>'requestId' = $3 OR before->>'requestId' = $3)`, TT, action, id);
-const overrideRows = (id: string) => rows(`SELECT before, after, "targetId" AS t FROM "AuditLog" WHERE "tenantId" = $1 AND action = 'approval.decide.owner_override' AND ("targetId" = $2 OR after->>'requestId' = $2 OR before->>'requestId' = $2)`, TT, id);
+const overrideRows = (id: string) => rows(`SELECT after, "targetId" AS t FROM "AuditLog" WHERE "tenantId" = $1 AND action = 'approval.owner_override' AND "targetId" = $2`, TT, id);
 const decide = (who: keyof typeof V, reqId: string, decision: "APPROVED" | "REJECTED" = "APPROVED", expectedStep?: number) =>
  safe(() => AP_.decide(V[who], ctxA, reqId, { decision, ...(expectedStep === undefined ? {} : { expectedStep }) }));
 const deliver = async (f: F, entityType = "HrLeave") => {
@@ -265,12 +267,12 @@ try {
   ck("R1.2", { day: wdS(wA) === "480/0/0/0/1.0/[]" }, "480/0/0/0/1.0/[]", wdS(wA));
   const r1 = await runFor(S1.s);
   const waitS1 = ((r1.sy?.wait ?? []) as Any[]).length;
-  ck("R1.3", { synced: r1.sy?.ok === true, noWait: waitS1 === 0, run: r1.R?.ok === true && !!r1.R?.id }, "sync ok no wait · run ok", `wait=${waitS1} run=${r1.R?.ok}:${r1.R?.code ?? ""}`);
+  ck("R1.3", { synced: r1.sy?.ok === true, noWait: waitS1 === 0, run: r1.R?.ok === true && !!r1.R?.id }, "title", `wait=${waitS1} run=${r1.R?.ok}:${r1.R?.code ?? ""}`);
   const lA = await lines(r1.R?.id, eA);
-  ck("R1.4", { noLines: !!r1.R?.id && lA.l.filter((x) => /^(UNPAID_LEAVE|ABSENT_RULE|LATE_RULE)/.test(x)).length === 0, gross: lA.g === 3_000_000 }, "no deduction lines · gross 3,000,000", `g=${lA.g} ${lA.l.join(" ")}`);
+  ck("R1.4", { noLines: !!r1.R?.id && lA.l.filter((x) => /^(UNPAID_LEAVE|ABSENT_RULE|LATE_RULE)/.test(x)).length === 0, gross: lA.g === 3_000_000 }, "title", `g=${lA.g} ${lA.l.join(" ")}`);
   const wB = await wd(eB, "2031-08-06"), lB = await lines(r1.R?.id, eB);
   const dedL = (l: string[]) => l.filter((x) => /^(UNPAID_LEAVE|ABSENT_RULE|LATE_RULE)/.test(x)).join(" ");
-  ck("R1.5", { day: wdS(wB) === "240/240/0/0/1.0/[]", lines: dedL(lB.l) === "UNPAID_LEAVE:2031-08-06:240:-50000" }, "240/240/0 · UNPAID −50,000 only", `${wdS(wB)} lines=${dedL(lB.l) || "none"}`);
+  ck("R1.5", { day: wdS(wB) === "240/240/0/0/1.0/[]", lines: dedL(lB.l) === "UNPAID_LEAVE:2031-08-06:240:-50000" }, "title", `${wdS(wB)} lines=${dedL(lB.l) || "none"}`);
   const wC = await wd(eC, "2031-08-07"), lC = await lines(r1.R?.id, eC);
   ck("R1.6", { day: wdS(wC) === "240/240/0/0/1.0/[]", lines: dedL(lC.l) === "UNPAID_LEAVE:2031-08-07:240:-50000" }, "mirror", `${wdS(wC)} lines=${dedL(lC.l) || "none"}`);
   const wD = await wd(eD, "2031-08-05");
@@ -280,14 +282,14 @@ try {
   const wE = await wd(eE, "2031-08-05"), wK = await wd(eK, "2031-08-05"), wG1 = await wd(eG, "2031-08-04"), wG2 = await wd(eG, "2031-08-08");
   const r3 = await runFor(S3.s);
   const lE = await lines(r3.R?.id, eE), lK = await lines(r3.R?.id, eK), lG = await lines(r3.R?.id, eG);
-  ck("R1.11", { day: wdS(wE) === "240/0/0/240/0.5/[]", lines: !!r3.R?.id && dedL(lE.l) === "" }, "240 paid + 240 worked", `${wdS(wE)} lines=${dedL(lE.l) || "none"} run=${r3.R?.ok}:${r3.R?.code ?? ""}`);
+  ck("R1.11", { day: wdS(wE) === "240/0/0/240/0.5/[]", lines: !!r3.R?.id && dedL(lE.l) === "" }, "title", `${wdS(wE)} lines=${dedL(lE.l) || "none"} run=${r3.R?.ok}:${r3.R?.code ?? ""}`);
   ck("R1.12", { full: wdS(wG1) === "480/0/0/0/1.0/[]", hourly: wdS(wG2) === "0/240/240/0/0.5/[]", single: wdS(wK) === "240/0/240/0/0.5/[]", run: r3.R?.ok === true, kLines: dedL(lK.l) === "ABSENT_RULE:-:-:-50000", gLines: dedL(lG.l).split(" ").sort().join(" ") === "ABSENT_RULE:-:-:-50000 UNPAID_LEAVE:2031-08-08:240:-50000" },
    "controls", `full=${wdS(wG1)} hourly=${wdS(wG2)} single=${wdS(wK)} run=${r3.R?.ok}:${r3.R?.code ?? ""} K=${dedL(lK.l)} G=${dedL(lG.l)}`);
   {
    const ap = r3.R?.id ? await safe(() => PAY.approveRun(c(S3.s), r3.R.id, undefined, ownA)) : null;
    const u = await S3.leave(eK, "2031-08-12", false, { halfDay: "PM" }, false);
    const e = await safe(() => SV.decideLeave(c(S3.s), u, "APPROVED", U.owner.id, { from: "PENDING" }).then(() => ({ ok: true })));
-   ck("R1.14", { approved: ap?.ok !== false && !!ap, refused: e?.ok === false && String(e.reason).includes(T.paid), pending: (await leaveSt(u)) === "PENDING" }, "paid text · PENDING", `approve=${JSON.stringify(ap)?.slice(0, 80)} decide=${String(e?.reason ?? e?.ok).slice(0, 90)}`);
+   ck("R1.14", { approved: ap?.ok !== false && !!ap, refused: e?.ok === false && String(e.reason).includes(T.paid), pending: (await leaveSt(u)) === "PENDING" }, "title", `approve=${JSON.stringify(ap)?.slice(0, 80)} decide=${String(e?.reason ?? e?.ok).slice(0, 90)}`);
   }
   // S2 (blocking controls)
   await build(S2.s);
@@ -306,7 +308,7 @@ try {
   for (const r of jRows) await safe(() => JG.recomputeAttendanceDay(c(S2.s), own, { dayId: r.id, reason: "qc leave-3 คำนวณใหม่หลังแก้คู่ครึ่งวัน" }, { now: NOW }));
   await build(S2.s);
   const aJ = await att(eJ, "2031-08-06"), wJ = await wd(eJ, "2031-08-06");
-  ck("R1.8", { stale: (wJ0?.review ?? []).includes("STALE"), leave: aJ.length === 1 && aJ.every((x) => x.st === "LEAVE"), day: wdS(wJ) === "480/0/0/0/1.0/[]" }, "STALE → LEAVE → 480", `before=${wdS(wJ0)} att=${aJ.map((x) => x.st).join(",")} after=${wdS(wJ)}`);
+  ck("R1.8", { stale: (wJ0?.review ?? []).includes("STALE"), leave: aJ.length === 1 && aJ.every((x) => x.st === "LEAVE"), day: wdS(wJ) === "480/0/0/0/1.0/[]" }, "title", `before=${wdS(wJ0)} att=${aJ.map((x) => x.st).join(",")} after=${wdS(wJ)}`);
  })();
 
  // ═════════════════════════ R2 (F2) expected step + two-person rule ═════════════════════════
@@ -320,7 +322,7 @@ try {
     const r = await reqRow(f.reqId);
     o.push(`${a.ok}/${res3(b) === LOST ? "lost" : res3(b)}→${r.s}@${r.o}·dec=${(await decisions(f.reqId)).length}`);
    }
-   ck("R2.1", { all: o.every((x) => x === "true/lost→PENDING@2·dec=1") }, "true/lost→PENDING@2·dec=1 ×3", dist(o));
+   ck("R2.1", { all: o.every((x) => x === "true/lost→PENDING@2·dec=1") }, "title", dist(o));
   }
   { // 2.2 same MANAGER both steps
    const w = await world("R2.2", MM);
@@ -330,7 +332,7 @@ try {
    const want = canon({ ok: false, status: "PENDING", note: null, code: "TWO_PERSON", reason: T.two });
    const done = await decide("mgr2", f.reqId);
    await deliver(f);
-   ck("R2.2", { first: a.ok === true, refused: res3(b) === want, nothing: nw, other: done.ok === true && done.status === "APPROVED" && (await leaveSt(f.leaveId)) === "APPROVED" }, "TWO_PERSON · nothing · mgr2 completes", `b=${res3(b).slice(0, 140)} done=${done.status}`);
+   ck("R2.2", { first: a.ok === true, refused: res3(b) === want, nothing: nw, other: done.ok === true && done.status === "APPROVED" && (await leaveSt(f.leaveId)) === "APPROVED" }, "title", `b=${res3(b).slice(0, 140)} done=${done.status}`);
   }
   { // 2.3 bulk duplicate id
    const w = await world("R2.3", MM);
@@ -341,7 +343,7 @@ try {
     const q = await reqRow(f.reqId);
     o.push(`done=${r.done}·failed=${(r.failed ?? []).length}·${q.s}@${q.o}·dec=${(await decisions(f.reqId)).length}`);
    }
-   ck("R2.3", { all: o.every((x) => x === "done=1·failed=0·PENDING@2·dec=1") }, "done=1·failed=0·PENDING@2·dec=1 ×3", dist(o));
+   ck("R2.3", { all: o.every((x) => x === "done=1·failed=0·PENDING@2·dec=1") }, "title", dist(o));
   }
   { // 2.4 AI approval_decide
    const w = await world("R2.4", MM);
@@ -353,7 +355,7 @@ try {
    await decide("mgr", g.reqId);
    const s2 = await run("mgr2", { requestId: g.reqId, decision: "APPROVED", expectedStep: 1 }, 3);
    const ns = await nothing(g, 2, 1);
-   ck("R2.4", { first: a.ok, two: !b.ok && b.t.includes(T.two), nothing: nb, stale: !s2.ok && /[฀-๿]/.test(s2.t), staleNothing: ns }, "AI refusals · nothing", `b=${b.t.slice(0, 70)} stale=${s2.t.slice(0, 60)}`);
+   ck("R2.4", { first: a.ok, two: !b.ok && b.t.includes(T.two), nothing: nb, stale: !s2.ok && /[฀-๿]/.test(s2.t), staleNothing: ns }, "title", `b=${b.t.slice(0, 70)} stale=${s2.t.slice(0, 60)}`);
   }
   { // 2.5 OWNER both steps → override audit
    const w = await world("R2.5", MO);
@@ -361,9 +363,9 @@ try {
    const a = await decide("owner", f.reqId), b = await decide("owner", f.reqId);
    await deliver(f); await deliver(f);
    const ov = await overrideRows(f.reqId);
-   const j = { ...(ov[0]?.before ?? {}), ...(ov[0]?.after ?? {}) } as Any;
-   ck("R2.5", { ok: a.ok && b.ok && b.status === "APPROVED", decs: (await decisions(f.reqId)).length === 2, audit: ov.length === 1 && (j.requestId ?? ov[0]?.t) === f.reqId && Number(j.stepOrder) === 2 && JSON.stringify(j.earlierSteps ?? null).includes("1"), effect: (await leaveSt(f.leaveId)) === "APPROVED" && (await useN(f.leaveId)) === 1 && (await evN("hr.leave.decided", f.leaveId)) === 1 },
-    "APPROVED · 1 override audit · effect once", `audit=${ov.length} ${JSON.stringify(j).slice(0, 90)}`);
+   const j = (ov[0]?.after ?? {}) as Any;
+   ck("R2.5", { ok: a.ok && b.ok && b.status === "APPROVED", decs: (await decisions(f.reqId)).length === 2, audit: ov.length === 1 && j.step === 2 && j.previousDeciderStep === 1, effect: (await leaveSt(f.leaveId)) === "APPROVED" && (await useN(f.leaveId)) === 1 && (await evN("hr.leave.decided", f.leaveId)) === 1 },
+    "title", `audit=${ov.length} ${JSON.stringify(j).slice(0, 90)}`);
   }
   { // 2.6 stale expectedStep (direct · bulk action · decideAction bad value)
    const w = await world("R2.6", MM);
@@ -375,12 +377,25 @@ try {
    await decide("mgr", g.reqId);
    const b = await callAct(U.mgr2, act("bulkDecideAction"), { requestIds: [g.reqId], decision: "APPROVED", [`step:${g.reqId}`]: "1" });
    const nbk = await nothing(g, 2, 1);
+   const k = await file(w);
+   await decide("mgr", k.reqId);
+   const m = await safe(() => AP_.bulkDecide(V.mgr2, ctxA, [k.reqId], "APPROVED", null, { [k.reqId]: 1 }));
+   const nm = m.done === 0 && (m.failed ?? [])[0]?.reason === T.lost && (await nothing(k, 2, 1));
    const h = await file(w);
-   const x = await callAct(U.mgr, act("decideAction"), { requestId: h.reqId, decision: "APPROVED", step: "x", [`step:${h.reqId}`]: "x" });
+   const x = await callAct(U.mgr, act("decideAction"), { requestId: h.reqId, decision: "APPROVED", step: "x" });
    const nx = await nothing(h, 1, 0);
    const bf = (b.value?.failed ?? []) as Any[];
-   ck("R2.6", { direct: res3(d) === LOST && nd, bulk: b.value?.status === "done" && b.value?.done === 0 && bf.length === 1 && bf[0]?.reason === T.lost && nbk, badValue: x.value?.ok === false && x.value?.reason === T.bad && nx },
-    "lost · lost text · bad-value text · nothing", `direct=${res3(d).slice(0, 50)} bulk=${b.text.slice(0, 90)} bad=${x.text.slice(0, 60)}`);
+   ck("R2.6", { direct: res3(d) === LOST && nd, map: nm, bulk: b.value?.status === "done" && b.value?.done === 0 && bf.length === 1 && bf[0]?.reason === T.lost && nbk, badValue: x.value?.ok === false && x.value?.reason === T.bad && nx },
+    "title", `direct=${res3(d).slice(0, 50)} bulk=${b.text.slice(0, 90)} bad=${x.text.slice(0, 60)}`);
+  }
+  { // 2.15 OWNER double click through the web actions (step always sent)
+   const w = await world("R2.15", MO);
+   const f = await file(w), g = await file(w);
+   const a1 = await callAct(U.owner, act("decideAction"), { requestId: f.reqId, decision: "APPROVED", step: "1" });
+   const a2 = await callAct(U.owner, act("decideAction"), { requestId: f.reqId, decision: "APPROVED", step: "1" });
+   const bf = { requestIds: [g.reqId], decision: "APPROVED", [`step:${g.reqId}`]: "1" };
+   const b1 = await callAct(U.owner, act("bulkDecideAction"), bf), b2 = await callAct(U.owner, act("bulkDecideAction"), bf);
+   ck("R2.15", { page: a1.value?.ok === true && a2.value?.ok === false && (await nothing(f, 2, 1)), bulk: b1.value?.done === 1 && b2.value?.done === 0 && (await nothing(g, 2, 1)) }, "one step each", `page=${a1.text.slice(0, 30)}/${a2.text.slice(0, 50)} bulk=${b1.value?.done}/${b2.value?.done}`);
   }
   { // 2.7 under held row lock (GREEN)
    const w1 = await world("R2.7a", [{ order: 1, approverRole: "OWNER" }]);
@@ -407,7 +422,7 @@ try {
     const again = await decide("mgr", f.reqId, "APPROVED", st);
     await deliver(f);
     const ds = (await decisions(f.reqId)).map((x: Any) => `${x.o}:${x.d}:${x.by === U.mgr.id ? "mgr" : x.by}`);
-    out.push(`${k}=${res3(r)}|${res3(again)}|${(await reqRow(f.reqId)).s}|${ds.join(",")}|${await leaveSt(f.leaveId)}|ev${await evN(`approval.request.${dec === "APPROVED" ? "approved" : "rejected"}`, f.reqId)}|aud${await audN("approval.decide.owner_override", f.reqId)}`);
+    out.push(`${k}=${res3(r)}|${res3(again)}|${(await reqRow(f.reqId)).s}|${ds.join(",")}|${await leaveSt(f.leaveId)}|ev${await evN(`approval.request.${dec === "APPROVED" ? "approved" : "rejected"}`, f.reqId)}|aud${await audN("approval.owner_override", f.reqId)}`);
    }
    const W8 = (k: string, d: string) => `${k}={"note":null,"ok":true,"status":"${d}"}|{"note":null,"ok":false,"status":"${d}"}|${d}|1:${d}:mgr|${d}|ev1|aud0`;
    const want = [W8("a", "APPROVED"), W8("b", "APPROVED"), W8("c", "REJECTED"), W8("d", "REJECTED")];
@@ -420,7 +435,7 @@ try {
    const a = await decide("mgr", f.reqId), b = await decide("mgr2", f.reqId);
    await deliver(f); await deliver(f);
    const ds = await decisions(f.reqId);
-   ck("R2.9", { ok: a.ok && b.ok && b.status === "APPROVED", decs: ds.length === 2 && new Set(ds.map((x: Any) => x.by)).size === 2, effect: (await leaveSt(f.leaveId)) === "APPROVED" && (await useN(f.leaveId)) === 1 && (await evN("hr.leave.decided", f.leaveId)) === 1 && (await audN("hr.leave.decide", f.leaveId)) === 1 }, "APPROVED · effect once", `${a.ok}/${b.status} decs=${ds.length}`);
+   ck("R2.9", { ok: a.ok && b.ok && b.status === "APPROVED", decs: ds.length === 2 && new Set(ds.map((x: Any) => x.by)).size === 2, effect: (await leaveSt(f.leaveId)) === "APPROVED" && (await useN(f.leaveId)) === 1 && (await evN("hr.leave.decided", f.leaveId)) === 1 && (await audN("hr.leave.decide", f.leaveId)) === 1 }, "title", `${a.ok}/${b.status} decs=${ds.length}`);
   }
   { // 2.10 SELF_* unchanged
    await AP_.createPolicy(ctxA, { name: "สาย PO", entityType: "PurchaseOrder", steps: [{ order: 1, approverRole: "MANAGER" }] });
@@ -431,7 +446,7 @@ try {
    const f = await file(w, U.mgr2.id, e);
    const b = await decide("mgr2", f.reqId);
    const self = { ok: false, status: "PENDING", note: null, code: "SELF_APPROVAL", message: "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน", reason: "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน" };
-   ck("R2.10", { po: canon(a) === canon(self), leave: canon(b) === canon(self) }, "SELF_APPROVAL literal", `${canon(a).slice(0, 80)} | ${canon(b).slice(0, 80)}`);
+   ck("R2.10", { po: canon(a) === canon(self), leave: canon(b) === canon(self) }, "title", `${canon(a).slice(0, 80)} | ${canon(b).slice(0, 80)}`);
   }
   { // 2.11 statics — callers pass a step
    const acts = code(`${AP}actions.ts`), prop = code("src/lib/ai/proposals.ts"), tools = code("src/lib/ai/tools.ts");
@@ -466,7 +481,7 @@ try {
    await AP_.createPolicy(ctxA, { name: "สาย PO2", entityType: "PurchaseOrder", unitId: S.u1, steps: MO });
    const po = await AP_.submitForApproval(ctxA, { entityType: "PurchaseOrder", entityId: `po-${tag}-two`, unitId: S.u1, requestedById: U.staff.id });
    const a = await decide("mgr", po.requestId), b = await decide("owner", po.requestId);
-   ck("R2.14", { ok: a.ok && b.ok && b.status === "APPROVED", decs: (await decisions(po.requestId)).length === 2, noAudit: (await audN("approval.decide.owner_override", po.requestId)) === 0 }, "APPROVED", `${a.ok}/${b.status}`);
+   ck("R2.14", { ok: a.ok && b.ok && b.status === "APPROVED", decs: (await decisions(po.requestId)).length === 2, noAudit: (await audN("approval.owner_override", po.requestId)) === 0 }, "APPROVED", `${a.ok}/${b.status}`);
   }
  })();
 
@@ -477,15 +492,34 @@ try {
   {
    const w = await world("R3.1", MO);
    const f = await file(w);
+   await decide("mgr", f.reqId);
    const before = await pol(w.apId);
    const r = await upd(w, { name: "สาย R3.1 แก้", steps: [{ order: 1, approverRole: "OWNER" }] });
    const after = await pol(w.apId);
-   const d = await decide("mgr", f.reqId);
-   ck("R3.1", { text: r === T.edit(1), same: before === after, decidable: d.ok === true && (await reqRow(f.reqId)).o === 2 }, "text 1 · unchanged · decidable", `r=${r.slice(0, 80)} same=${before === after}`);
-   const r2 = await upd(w, { name: "สาย R3.1 ชื่อใหม่", steps: MO });
-   ck("R3.2", { ok: r2 === "ok", renamed: (await pol(w.apId)).includes("สาย R3.1 ชื่อใหม่") }, "allowed", r2.slice(0, 80));
-   const r4 = await upd(w, { name: "สาย R3.1 ชื่อใหม่", steps: [...MO].reverse() });
-   ck("R3.4", { ok: r4 === "ok", same: (await pol(w.apId)) === (await pol(w.apId)) && (await pol(w.apId)).includes('[1,"MANAGER",null],[2,"OWNER",null]') }, "allowed", r4.slice(0, 80));
+   const d = await decide("owner", f.reqId);
+   ck("R3.1", { text: r === T.edit(1), same: before === after, decidable: d.ok === true && d.status === "APPROVED" }, "title", `r=${r.slice(0, 80)} same=${before === after} d=${res3(d).slice(0, 60)}`);
+  }
+  {
+   const w = await world("R3.2", MO);
+   const f = await file(w), g = await file(w);
+   await decide("mgr", f.reqId); // f at step 2 · g at step 1
+   const r1 = await upd(w, { name: "สาย R3.2 ชื่อใหม่", steps: MO });
+   const r2 = await upd(w, { name: "สาย R3.2 ชื่อใหม่", steps: MM }); // role change of f's current step
+   const d = await decide("mgr2", f.reqId);
+   const r3 = await upd(w, { name: "สาย R3.2 ชื่อใหม่", steps: [...MM, { order: 3, approverRole: "OWNER" }] }); // add a step
+   const g1 = await decide("mgr", g.reqId);
+   const p = await pol(w.apId);
+   ck("R3.2", { rename: r1 === "ok", role: r2 === "ok" && d.ok === true && d.status === "APPROVED", add: r3 === "ok" && g1.ok === true && (await reqRow(g.reqId)).o === 2, steps: p.includes("สาย R3.2 ชื่อใหม่") && p.includes('[3,"OWNER",null]') }, "title", `${r1.slice(0, 40)}|${r2.slice(0, 40)}|${r3.slice(0, 40)} d=${res3(d).slice(0, 50)}`);
+   const r4 = await upd(w, { name: "สาย R3.2 ชื่อใหม่", steps: [...MM, { order: 3, approverRole: "OWNER" }].reverse() });
+   ck("R3.4", { ok: r4 === "ok", same: (await pol(w.apId)) === p }, "allowed", r4.slice(0, 80));
+  }
+  {
+   const w = await world("R3.7", MO);
+   const f = await file(w);
+   await decide("mgr", f.reqId);
+   const before = await pol(w.apId);
+   const r = await upd(w, { name: "สาย R3.7", steps: [{ order: 1, approverRole: "MANAGER" }, { order: 3, approverRole: "OWNER" }] });
+   ck("R3.7", { text: r === T.edit(1), same: (await pol(w.apId)) === before, pending: (await reqRow(f.reqId)).o === 2 }, "title", r.slice(0, 90));
   }
   {
    const w = await world("R3.5", MO);
@@ -503,8 +537,8 @@ try {
   }
   {
    const w = await world("R3.6a", MO), x = await world("R3.6b", MO);
-   await file(w); await file(w); await file(x);
-   const r = await upd(w, { name: "สาย R3.6", steps: MM });
+   for (const v of [w, w, x]) await decide("mgr", (await file(v)).reqId); // all at step 2
+   const r = await upd(w, { name: "สาย R3.6", steps: [{ order: 1, approverRole: "MANAGER" }] });
    ck("R3.6", { text: r === T.edit(2) }, "text 2", r.slice(0, 90));
   }
  })();
@@ -521,9 +555,9 @@ try {
    const r = await callAct(U.staff, cancelAct, { requestId: f.reqId });
    const b2 = await bal();
    ck("R4.1", { action: !r.threw, req: (await reqRow(f.reqId)).s === "CANCELLED", leave: (await leaveSt(f.leaveId)) === "CANCELLED", audit: (await audN("hr.leave.cancel", f.leaveId)) === 1, noEvent: (await evN("hr.leave.decided", f.leaveId)) === 0, released: b2 === b0 && b1 !== b0 },
-    "both CANCELLED · audit 1 · 0 events · released", `leave=${await leaveSt(f.leaveId)} bal ${b0} → ${b1} → ${b2} ${r.threw ? r.text.slice(0, 60) : ""}`);
+    "title", `leave=${await leaveSt(f.leaveId)} bal ${b0} → ${b1} → ${b2} ${r.threw ? r.text.slice(0, 60) : ""}`);
    const d = await safe(() => LV.decideLeaveAs(c(w.s), V.mgr2, f.leaveId, "APPROVED"));
-   ck("R4.2", { refused: d?.ok === false, leave: (await leaveSt(f.leaveId)) === "CANCELLED", noUse: (await useN(f.leaveId)) === 0 }, "refused · CANCELLED", `d=${JSON.stringify(d).slice(0, 90)} leave=${await leaveSt(f.leaveId)}`);
+   ck("R4.2", { refused: d?.ok === false, leave: (await leaveSt(f.leaveId)) === "CANCELLED", noUse: (await useN(f.leaveId)) === 0 }, "title", `d=${JSON.stringify(d).slice(0, 90)} leave=${await leaveSt(f.leaveId)}`);
   }
   {
    const f = await file(w);
@@ -532,7 +566,7 @@ try {
    const m = await safe(() => LV.decideLeaveAs(c(w.s), V.mgr2, f.leaveId, "APPROVED"));
    const lm = await leaveSt(f.leaveId);
    const o = await safe(() => LV.decideLeaveAs(c(w.s), V.owner, f.leaveId, "APPROVED"));
-   ck("R4.3", { mgr: m?.ok === false && m?.reason === T.gate && lm === "PENDING", owner: o?.ok === true && (await leaveSt(f.leaveId)) === "APPROVED" && (await useN(f.leaveId)) === 1 }, "MANAGER gate text · OWNER decides", `mgr=${JSON.stringify(m).slice(0, 100)} owner=${JSON.stringify(o).slice(0, 60)}`);
+   ck("R4.3", { mgr: m?.ok === false && m?.reason === T.gate && lm === "PENDING", owner: o?.ok === true && (await leaveSt(f.leaveId)) === "APPROVED" && (await useN(f.leaveId)) === 1 }, "title", `mgr=${JSON.stringify(m).slice(0, 100)} owner=${JSON.stringify(o).slice(0, 60)}`);
   }
   {
    const f = await file(w), g = await file(w);
@@ -572,7 +606,7 @@ try {
   const o7 = await race((f) => safe(() => SV.cancelLeave(c(w.s), f.leaveId, { actorUserId: U.staff.id })), "");
   ck("R4.7", { consistent: o7.every((x) => x.endsWith("OK")) }, "OK ×4", dist(o7));
   const o11 = await race((f) => callAct(U.staff, cancelAct, { requestId: f.reqId }), "");
-  ck("R4.11", { consistent: o11.every((x) => x.endsWith("OK")), withdrew: o11.some((x) => x.startsWith("withdrawFirst·CANCELLED/CANCELLED")) }, "OK ×4 · withdraw-first cancels", dist(o11));
+  ck("R4.11", { consistent: o11.every((x) => x.endsWith("OK")), withdrew: o11.some((x) => x.startsWith("withdrawFirst·CANCELLED/CANCELLED")) }, "title", dist(o11));
   { // 4.9 time correction (Q6)
    const sC = await sys("R4 แก้เวลา");
    const ec = await fx.mkUser(TT, "c1", `QL3 c1 ${tag}`, "STAFF" as Any, [S.u1], {});
@@ -584,7 +618,7 @@ try {
    const st = async () => (await rows(`SELECT status::text AS s FROM "HrTimeCorrection" WHERE id = $1`, rq?.id ?? "∅"))[0]?.s;
    const s1 = await st();
    const d = rq?.id ? await safe(() => CORR.decideCorrection(c(sC), V.mgr, rq.id, { decision: "APPROVED" }, { now })) : null;
-   ck("R4.9", { fixture: !!rq?.requestId, cancelled: s1 === "CANCELLED", refused: d?.ok === false && (await st()) === "CANCELLED", audit: (await audN("hr.correction.cancel", rq?.id ?? "∅")) === 1 }, "CANCELLED · refused", `after=${s1} decide=${JSON.stringify(d).slice(0, 70)} ${r.threw ? r.text : ""}`);
+   ck("R4.9", { fixture: !!rq?.requestId, cancelled: s1 === "CANCELLED", refused: d?.ok === false && (await st()) === "CANCELLED", audit: (await audN("hr.correction.cancel", rq?.id ?? "∅")) === 1 }, "title", `after=${s1} decide=${JSON.stringify(d).slice(0, 70)} ${r.threw ? r.text : ""}`);
   }
   { // 4.10 shift swap (Q6)
    const sW = await sys("R4 สลับกะ");
@@ -601,7 +635,7 @@ try {
    const st = async () => (await rows(`SELECT status::text AS s FROM "HrShiftSwapRequest" WHERE id = $1`, rq?.id ?? "∅"))[0]?.s;
    const s1 = await st();
    const d = rq?.id ? await safe(() => SWAP.decideSwap(c(sW), V.mgr, rq.id, { decision: "APPROVED" })) : null;
-   ck("R4.10", { fixture: !!req, cancelled: s1 === "CANCELLED", refused: d?.ok === false && (await st()) === "CANCELLED", audit: (await audN("hr.swap.cancel", rq?.id ?? "∅")) === 1 }, "CANCELLED · refused", `after=${s1} decide=${JSON.stringify(d).slice(0, 70)} ${r.threw ? r.text : ""}`);
+   ck("R4.10", { fixture: !!req, cancelled: s1 === "CANCELLED", refused: d?.ok === false && (await st()) === "CANCELLED", audit: (await audN("hr.swap.cancel", rq?.id ?? "∅")) === 1 }, "title", `after=${s1} decide=${JSON.stringify(d).slice(0, 70)} ${r.threw ? r.text : ""}`);
   }
  })();
 } catch (x) {
