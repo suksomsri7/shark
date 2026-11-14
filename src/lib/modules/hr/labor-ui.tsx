@@ -3,7 +3,7 @@
 //   ป้ายยอดขาย = "ยอดขายสุทธิตามรายงาน POS" (มติ Q2) · ปุ่ม/ช่องกรอกสูง ≥ 44 px · token เท่านั้น · ส่วนของหน้า 03 อยู่ใน roster-ui (client) ◂
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
-import { thaiDateKey } from "@/lib/ui/date";
+import { formatShortDate, thaiDateKey } from "@/lib/ui/date"; // HR H4.2-FIX1 ▸ วันที่ของป้าย "ถึงวันที่" ผ่านตัวช่วยวันไทย ◂
 import { hrViewerOf } from "./privacy";
 import { getLaborSettings, laborDay, laborMonth, type LaborDayDto, type LaborMonthDto } from "./labor";
 import { LABOR_BOUNDS } from "./labor-rules";
@@ -155,7 +155,7 @@ function LaborCardView({ day, month, t, locale, nowHm, today }: { day: LaborDayD
       {month && (
         <div data-testid="hr-labor-month" className="flex flex-col gap-1 rounded-xl bg-[color:var(--color-surface-2)] px-4 py-3">
           <span className={`text-xs ${muted}`}>
-            {month.basis === "ACTUAL" ? t("monthActual", { month: monthName(month.periodKey) }) : month.throughDay ? t("monthToDate", { month: monthName(month.periodKey), day: month.throughDay }) : t("monthEstimate", { month: monthName(month.periodKey) })}
+            {month.basis === "ACTUAL" ? t("monthActual", { month: monthName(month.periodKey) }) : month.throughDay ? t("monthToDate", { month: monthName(month.periodKey), day: formatShortDate(`${month.throughDay}T00:00:00+07:00`, locale) }) /* HR H4.2-FIX1 */ : t("monthEstimate", { month: monthName(month.periodKey) })}
           </span>
           <span className="text-2xl font-semibold tabular-nums">{noDay || month.costSatang === null ? dash : laborBaht(month.costSatang)}</span>
           <span className={`text-xs ${muted}`}>
@@ -165,6 +165,9 @@ function LaborCardView({ day, month, t, locale, nowHm, today }: { day: LaborDayD
               prevPct: month.prev.pctTenths === null ? dash : laborPct(month.prev.pctTenths),
             })}
           </span>
+          {/* HR H4.2-FIX1 (b) ▸ ตัวเลขเดือนนี้/เดือนก่อนที่ไม่รวมคนที่ผู้ดูไม่มีสิทธิ์ดูค่าจ้าง — บอกแยกต่อตัวเลข (ไม่ใช้ของวันนี้แทน) ◂ */}
+          {month.partial && <span className={`text-xs ${muted}`}>{`${monthName(month.periodKey)}: ${t("smallGroup", { n: month.excludedHeadcount })}`}</span>}
+          {month.prev.partial && <span className={`text-xs ${muted}`}>{`${monthName(month.prev.periodKey)}: ${t("smallGroup", { n: month.prev.excludedHeadcount })}`}</span>}
         </div>
       )}
       {truncated && (

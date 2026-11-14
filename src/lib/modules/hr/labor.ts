@@ -255,6 +255,8 @@ type Loaded = {
 };
 /** R4 (review) เพดานแถวของทุกคิวรี: อ่าน cap+1 แถว — เกิน = truncated (ตัวเลขไม่ครบ · UI เตือน) · __takeCap = ตัวลดเพดานสำหรับข้อสอบเท่านั้น (แบบ H3.9) */
 type Capper = { cap: (n: number) => number; hit: boolean };
+/** HR H4.2-FIX1 (c) ▸ เพดานแถวยืมตัวต่อพนักงาน (relation ซ้อน) — เกิน = truncated ◂ */
+const UNITS_PER_EMP = 200;
 const capperOf = (o?: LaborOpts): Capper => {
   const tc = o?.__takeCap;
   return { cap: (n) => (Number.isSafeInteger(tc) && (tc as number) >= 0 ? Math.min(n, tc as number) : n), hit: false };
@@ -270,7 +272,8 @@ function capped<T>(c: Capper, rows: T[], n: number): T[] {
 async function loadRange(ctx: Ctx, g: Gate, from: string, to: string, drafts: boolean, c: Capper): Promise<Loaded> {
   const db = await dbOf(ctx);
   const [emps0, profs0, entries0, hols0, view] = await Promise.all([
-    db.hrEmployee.findMany({ select: { id: true, unitId: true, active: true, startDate: true, endDate: true, units: { select: { id: true, unitId: true, fromDate: true, toDate: true }, take: 200 } }, orderBy: { id: "asc" }, take: c.cap(5000) + 1 }),
+    // HR H4.2-FIX1 (c) ▸ ยืมตัวต่อคนอ่าน 200+1 แถว (เก่าก่อน) — เกิน = truncated (ไม่ตัดเงียบ) ◂
+    db.hrEmployee.findMany({ select: { id: true, unitId: true, active: true, startDate: true, endDate: true, units: { select: { id: true, unitId: true, fromDate: true, toDate: true }, orderBy: [{ fromDate: "asc" }, { id: "asc" }], take: UNITS_PER_EMP + 1 } }, orderBy: { id: "asc" }, take: c.cap(5000) + 1 }),
     db.hrSalaryProfile.findMany({ select: { employeeId: true, payType: true, baseSalarySatang: true, dailyRateSatang: true, hourlyRateSatang: true, ssoEligible: true }, orderBy: { employeeId: "asc" }, take: c.cap(5000) + 1 }),
     db.hrRosterEntry.findMany({
       where: { date: { gte: d0(addDays(from, -1)), lte: d0(to) }, ...(drafts ? {} : { published: true }) },
@@ -285,7 +288,7 @@ async function loadRange(ctx: Ctx, g: Gate, from: string, to: string, drafts: bo
   const profs = capped(c, profs0, 5000);
   const entries = capped(c, entries0, 20_000);
   const hols = capped(c, hols0, 2000);
-  const es: Emp[] = emps.map((e) => ({ id: e.id, unitId: e.unitId, active: e.active, startDate: dayOf(e.startDate), endDate: dayOf(e.endDate), units: e.units }));
+  const es: Emp[] = emps.map((e) => ({ id: e.id, unitId: e.unitId, active: e.active, startDate: dayOf(e.startDate), endDate: dayOf(e.endDate), units: e.units.length > UNITS_PER_EMP ? ((c.hit = true), e.units.slice(0, UNITS_PER_EMP)) : e.units })); // HR H4.2-FIX1 (c) ◂
   const byEmpDay = new Map<string, Entry[]>();
   const byDay = new Map<string, Entry[]>();
   for (const x of entries) {
@@ -605,12 +608,15 @@ async function monthPart(ctx: Ctx, g: Gate, view: View, periodKey: string, now: 
   const db = await dbOf(ctx);
   const all = monthDays(periodKey);
   const today = businessDateAt(now.getTime(), 0);
-  const runs = capped(
-    c,
-    await db.hrPayrollRun.findMany({ where: { periodKey, status: { in: ["APPROVED", "PAID"] } }, select: { id: true, engineVersion: true, journalEntryId: true, stepsJson: true }, orderBy: { id: "asc" }, take: c.cap(50) + 1 }),
-    50,
-  ).filter((r) => r.engineVersion < 2 || !!r.journalEntryId || obj(r.stepsJson).finalized === true);
-  const open = !runs.length && periodKey === today.slice(0, 7);
+  // HR H4.2-FIX1 (a) ▸ เดือนที่ยังไม่จบ = ฐานถึงเมื่อวาน (ประมาณ) เสมอ แม้มีรอบเงินเดือนที่ปิดงานแล้ว — รอบจริงใช้เมื่อเดือนจบแล้วเท่านั้น ◂
+  const open = periodKey === today.slice(0, 7);
+  const runs = open
+    ? []
+    : capped(
+        c,
+        await db.hrPayrollRun.findMany({ where: { periodKey, status: { in: ["APPROVED", "PAID"] } }, select: { id: true, engineVersion: true, journalEntryId: true, stepsJson: true }, orderBy: { id: "asc" }, take: c.cap(50) + 1 }),
+        50,
+      ).filter((r) => r.engineVersion < 2 || !!r.journalEntryId || obj(r.stepsJson).finalized === true);
   const days = open ? all.filter((d) => d < today) : all;
   const sales = days.length ? await salesOf(ctx, g, view.unitIds, new Set(days), now) : new Map<string, UnitSales>();
   const st = days.length ? salesState(view, sales) : { state: "OK" as LaborSales, ok: [] as UnitSales[] };
@@ -668,7 +674,7 @@ async function monthPart(ctx: Ctx, g: Gate, view: View, periodKey: string, now: 
   return {
     periodKey,
     basis,
-    costSatang: cost,
+    costSatang: days.length ? cost : null, // HR H4.2-FIX1 (c) ▸ วันที่ 1 ของเดือนที่ยังไม่จบ = ยังไม่มีวันครบ ⇒ ไม่มีค่าแรง (ไม่ใช่ 0) ◂
     salesSatang: days.length ? salesTotal : null,
     pctTenths: !days.length || salesTotal === null ? null : pctTenths(cost, salesTotal),
     throughDay: open ? (days[days.length - 1] ?? null) : null,
