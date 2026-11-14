@@ -75,3 +75,12 @@ D-PRIV-reader-trust (F5 · R6 · ~35 readers trust ctx+viewer; no membership re-
 
 ## 8. Temp data
 None left by my runs (priv-2 Z1 + RESIDUE none on every run). Raw logs in untracked `scratchpad/priv2b/`.
+
+## 9. Fix round (controller R6–R10 · oracle r2 e1a81f959, 45 checks)
+- R6/N1 `ot.ts`: `toItems` money flag per row; `otRequestList` passes `pay && inPayScope(scope, emp.unitId)` (rows/minutes unchanged; `myOtRequests` passes `true` as before).
+- R6/N2 `stock-charge.ts`: `listStockCharges` filter `employee: payScopeWhere(scope)` (was `unitWhere`); `stockPeriodCapFlags` drops items of employees outside `payScopeWhere` for a limited viewer (all-branch unchanged).
+- R10 `booking/service.ts`: `createStaff` typed name with the H4.8 set ⇒ `throw Error(HR_NAME_BAD_TEXT)` (as createEmployee); `linkStaffToHr` strips the set, empty after strip ⇒ skipped. Oracles listing booking/service.ts as frozen: qc-hr-h4.1 (n/a, H4.1 in base), qc-svc-b.16, qc-svc-d.10 (SVC lane, not run here, not edited).
+- R7 ORACLE-EDIT `qc-hr-h3.8.mts` S3.22 (owner-approved): exact patch of oracle notes §7 — `prof6` + `borrowOpen: !!bor && !!prof6`.
+- Item 5 (review minor, createEmployeeAction throw): NOT done. The employees form is a plain `<form action>` in `ui.tsx` (no `useActionState`, no `?msg=` on the employees page); returning a value from the action cannot reach the user without changing `ui.tsx`/the page, which are outside the PRIV-2 allowed files (priv-2 S5). Needs a controller ruling (allow `ui.tsx` + `actions.ts` client-form change, or `?msg=` allowlist on the employees page).
+- New older-suite REDs found (suites not in my first run list; caused by step-one/fix-round PRIV-2 hunks): `qc-hr-h3.2` S1.8 (frozen marks accept `HR H\d|HR-SET-\d` → needs `|HR PRIV-\d`), `qc-hr-h3.4` S1.6 (`laterOnly` accepts `HR-SET-\d+|HR H\d+\.\d+` → needs `|HR PRIV-\d+`; files ot/attendance-pay/privacy/privacy-shared/service/stock-charge). Same kind as §5.3/§5.4 — not edited (not authorised).
+- Lane refusals (not run): qc-svc-b.11 (wants qc-svc.sh / ep-mute-scene), qc-pos-p2.14 (wants QC4 ep-frosty-lab).
