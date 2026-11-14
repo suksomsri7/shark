@@ -228,6 +228,7 @@ async function YearCard({ y, mine = false }: { y: YearDto; mine?: boolean }) {
       <h3 className="text-base font-semibold">{t("taxYear", { year: yearOf(y.taxYear, locale) })}</h3>
       <p className="text-sm tabular-nums">{t("yearLine", { count: y.count, net: amt(y.netSatang), gross: amt(y.grossSatang) })}</p>
       <p className={`text-xs tabular-nums ${muted}`}>{t("yearTax", { income: amt(y.incomeSatang), tax: amt(y.taxSatang), sso: amt(y.ssoSatang) })}</p>
+      {y.opening ? <p data-testid={`hr-slip-opening-${y.taxYear}`} className={`text-xs tabular-nums ${muted}`}>{t("yearOpening", { asOf: y.opening.asOfDay, months: y.opening.months, income: amt(y.opening.incomeSatang), tax: amt(y.opening.taxSatang), sso: amt(y.opening.ssoSatang) })}</p> : null} {/* HR H3.4-YTD ▸ Q12 บรรทัดยอดยกมา (รวมในยอดปีแล้ว) ◂ */}
       <div className="flex flex-col">
         {y.slips.map((h) => (
           <Link key={h.runId} href={h.href} data-testid={mine ? `hr-self-slip-${h.runId}` : `hr-slip-hist-${h.runId}`} className="flex min-h-[44px] items-center gap-2.5 border-t border-[color:var(--color-line)] py-2 text-[15px] tabular-nums">

@@ -34,6 +34,7 @@ import {
   type YearTotal,
 } from "./payslip-rules";
 import { renderPayslipPdf, renderSalaryCertPdf } from "./payslip-pdf";
+import { liveOpeningsIn } from "./payroll-opening-read"; // HR H3.4-YTD ▸ fix round (NOTE-5): ตัวอ่านยอดยกมาเดียว ◂
 
 type Ctx = { tenantId: string; systemId: string };
 type Opts = { now?: Date };
@@ -63,7 +64,9 @@ export type SlipDto = {
 };
 /** fix round 2 (ruling E): netSatang = null ⇒ แถวกลาง "ข้อมูลสลิปงวดนี้มีปัญหา" ของงวดที่ข้อมูลเสีย (ไม่มีตัวเลข · ไม่รวมในยอดปี) */
 export type SlipRowDto = { runId: string; periodKey: string; payDate: string; netSatang: number | null; href: string };
-export type YearDto = YearTotal<SlipRowDto>;
+export type YearDto = YearTotal<SlipRowDto> & { opening?: OpeningLineDto }; // HR H3.4-YTD ▸ Q12: บรรทัด "ยอดยกมา" (มีคีย์เฉพาะปีที่มียอดยกมา) ◂
+/** HR H3.4-YTD ▸ ยอดยกมาต้นปี (ก่อนใช้ระบบ) ของปีนั้น — รวมอยู่ใน income/tax/sso ของปีแล้ว (= 50 ทวิ) · ไม่ใช่สลิป ไม่อยู่ใน count/gross/net ◂ */
+export type OpeningLineDto = { asOfDay: string; months: number; incomeSatang: number; taxSatang: number; ssoSatang: number };
 export type MySlipsDto = { ok: true; years: YearDto[] };
 export type HistoryDto = { ok: true; employeeId: string; name: string; year: YearDto };
 export type DownloadOk = { ok: true; fileName: string; contentType: string; bytes: Uint8Array };
@@ -277,6 +280,24 @@ function yearsOf(r: IssuedRows): YearDto[] {
   return years.sort((a, c) => c.taxYear - a.taxYear);
 }
 const emptyYear = (taxYear: number): YearDto => ({ taxYear, count: 0, grossSatang: 0, incomeSatang: 0, taxSatang: 0, ssoSatang: 0, netSatang: 0, slips: [] });
+// HR H3.4-YTD ▸ Q12 (controller ruling): ยอดรายปีของสลิป = 50 ทวิ ⇒ บวกยอดยกมาต้นปีที่ยังมีผล (เงินได้ · ภาษี · ประกันสังคม) เข้า income/tax/sso ของปีนั้น
+//   + บรรทัด opening ครั้งเดียวต่อปี · ไม่ใช่สลิปของเดือนใด (ไม่เข้า count/gross/net/slips) · ไม่มียอดยกมา = ไม่มีคีย์ (ทรงเดิมทุกไบต์) · อ่านด้วย tx ของผู้เรียก
+async function openingsOfInTx(tx: Db, ctx: Ctx, employeeId: string, year?: number): Promise<{ taxYear: number; line: OpeningLineDto }[]> {
+  const rows = await liveOpeningsIn(tx, ctx, { employeeIds: [employeeId], ...(year === undefined ? {} : { taxYear: year }) });
+  return rows.map((r) => ({ taxYear: r.taxYear, line: { asOfDay: r.asOfDay, months: r.months, incomeSatang: r.incomeSatang, taxSatang: r.whtSatang, ssoSatang: r.ssoSatang } }));
+}
+function withOpenings(years: YearDto[], ops: { taxYear: number; line: OpeningLineDto }[]): YearDto[] {
+  for (const o of ops) {
+    let y = years.find((x) => x.taxYear === o.taxYear);
+    if (!y) years.push((y = emptyYear(o.taxYear)));
+    y.incomeSatang += o.line.incomeSatang;
+    y.taxSatang += o.line.taxSatang;
+    y.ssoSatang += o.line.ssoSatang;
+    y.opening = o.line;
+  }
+  return years.sort((a, c) => c.taxYear - a.taxYear);
+}
+// ◂ HR H3.4-YTD
 
 /** ประวัติรายปีของพนักงาน 1 คน (ผู้ดูเงินเดือน) — income/tax/SSO ตรงกับ 50 ทวิ ของปีเดียวกัน (H3.6) */
 export async function slipHistory(ctx: Ctx, viewer: PayslipViewer, input: { employeeId: unknown; taxYear: unknown }): Promise<HistoryDto | Refusal> {
@@ -292,10 +313,10 @@ export async function slipHistory(ctx: Ctx, viewer: PayslipViewer, input: { empl
     if (!emp || !homeInScope(m, viewer, emp.unitId)) return null;
     // fix round 2 (ruling H): ล็อกรอบอยู่ใน issuedRows (APPROVED/PAID ของพนักงานคนนี้ในปีนั้น เรียงตาม id) — ไม่ล็อกรอบร่าง/รอบของคนอื่น
     const rows = await issuedRows(tx, ctx, emp.id, (runId) => `/app/sys/${ctx.systemId}/payroll/${runId}/slip/${emp.id}`, taxYear);
-    return { emp, rows };
+    return { emp, rows, ops: await openingsOfInTx(tx, ctx, emp.id, taxYear) }; // HR H3.4-YTD ◂
   });
   if (!out) return NO();
-  const year = yearsOf(out.rows).find((y) => y.taxYear === taxYear) ?? emptyYear(taxYear);
+  const year = withOpenings(yearsOf(out.rows), out.ops).find((y) => y.taxYear === taxYear) ?? emptyYear(taxYear); // HR H3.4-YTD ▸ + ยอดยกมา ◂
   return { ok: true, employeeId: out.emp.id, name: out.emp.name, year };
 }
 
@@ -579,8 +600,8 @@ function myCertDto(r: CertRow): MyCertRowDto {
 export async function mySlips(actor: SelfActor): Promise<MySlipsDto | Refusal> {
   const me = await resolveSelf(actor);
   if (!me) return NO();
-  const rows = await runTx(me.ctx, (tx) => issuedRows(tx, me.ctx, me.employeeId, mySlipHref));
-  return { ok: true, years: yearsOf(rows) };
+  const { rows, ops } = await runTx(me.ctx, async (tx) => ({ rows: await issuedRows(tx, me.ctx, me.employeeId, mySlipHref), ops: await openingsOfInTx(tx, me.ctx, me.employeeId) })); // HR H3.4-YTD ▸ ยอดยกมาของตัวเอง (= 50 ทวิ ที่ได้รับ) ◂
+  return { ok: true, years: withOpenings(yearsOf(rows), ops) }; // HR H3.4-YTD ◂
 }
 /** สลิปของฉัน 1 รอบ (ISSUED เท่านั้น — อื่น ๆ = ไม่พบ) */
 export async function mySlip(actor: SelfActor, input: { runId: unknown }): Promise<SlipDto | Refusal> {

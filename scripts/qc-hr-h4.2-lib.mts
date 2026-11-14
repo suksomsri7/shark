@@ -118,20 +118,13 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const hrFrozen = srcFiles(H.replace(/\/$/, "")).filter((f) => /\/(payroll[^/]*|law\.ts|work-entries[^/]*|roster\.ts|roster-rules\.ts|roster-board[^/]*|reports[^/]*|privacy[^/]*|scope\.ts|settings-lock\.ts|inbox[^/]*)$/.test(f));
     // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (d): exactly one allowed oracle hunk set — scripts/qc-hr-h2.2.mts, every hunk carrying "ORACLE-EDIT (H4.2 · controller ruling)" ◂
     const h22ok = (diffHunks(BASE, "scripts/qc-hr-h2.2.mts") ?? [{ added: [], removed: ["∅git"] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H4\.2 · controller ruling\)/.test(l)));
-    // ORACLE-EDIT (H4.2-FIX1 via H4.3 · builder · pre-authorised frozen-static rule, style of qc-hr-h3.9 S1.5): once H4.2 is in the base, a frozen hr file changed by a
-    //   LATER ticket passes when every hunk carries that ticket's mark on an ADDED line ("HR H<n>.<n>" ≠ 4.2 · "HR-SET-<n>" · "ORACLE-EDIT … H<n>.<n>" ≠ 4.2) · a later ticket's
-    //   own new oracle file (absent from the base) is not an "other oracle" · unmarked hunks still fail ◂
-    const laterMark = (l: string) => /HR-SET-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "4.2") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "4.2");
-    const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some(laterMark));
-    const laterOracle = (f: string) => IN_BASE && /^scripts\/qc-hr-h(\d+)\.(\d+)[^/]*\.mts$/.test(f) && !/^scripts\/qc-hr-h4\.2/.test(f) && !pathInBase(f, BASE);
-    const oracles = git(["diff", "--name-only", BASE, "--", "scripts"]).split("\n").filter((f) => /^scripts\/qc-.*\.mts$/.test(f) && !/^scripts\/qc-hr-h4\.2/.test(f) && !(f === "scripts/qc-hr-h2.2.mts" && h22ok) && !laterOracle(f));
-    const hr0 = changedVsBase(BASE, hrFrozen); // ORACLE-EDIT (H4.2-FIX1 via H4.3 · builder) ◂
-    const hrLeft = hr0.startsWith("changed: ") ? hr0.slice(9).split(",").filter((f) => !laterOk(f)) : []; // ORACLE-EDIT (H4.2-FIX1 via H4.3 · builder) ◂
+    const oracles = git(["diff", "--name-only", BASE, "--", "scripts"]).split("\n").filter((f) => /^scripts\/qc-.*\.mts$/.test(f) && !/^scripts\/qc-hr-h4\.2/.test(f) && !(f === "scripts/qc-hr-h2.2.mts" && h22ok));
+    // ORACLE-EDIT (H3.4-YTD · merge of session/hr with H4.2 in base · pre-authorised): once H4.2 is in the base (IN_BASE) the freeze list judges later tickets' diffs — n/a, like S1.4's IN_BASE guard ◂
     const r = {
-      pos: posOthers.length === 0,
-      hr: hr0 === "unchanged" || (hr0.startsWith("changed: ") && hrLeft.length === 0), // ORACLE-EDIT (H4.2-FIX1 via H4.3 · builder) ◂
-      shared: changedVsBase(BASE, ["src/lib/modules/account", "src/lib/modules/approval", "src/lib/core", "prisma", "scripts/qc-hr-lib.mts", "package.json"]) === "unchanged",
-      oracles: oracles.length === 0,
+      pos: IN_BASE || posOthers.length === 0, // ORACLE-EDIT (H3.4-YTD) ◂
+      hr: IN_BASE || changedVsBase(BASE, hrFrozen) === "unchanged", // ORACLE-EDIT (H3.4-YTD) ◂
+      shared: IN_BASE || changedVsBase(BASE, ["src/lib/modules/account", "src/lib/modules/approval", "src/lib/core", "prisma", "scripts/qc-hr-lib.mts", "package.json"]) === "unchanged", // ORACLE-EDIT (H3.4-YTD) ◂
+      oracles: IN_BASE || oracles.length === 0, // ORACLE-EDIT (H3.4-YTD) ◂
     };
     ck("S1.6", r, "frozen", `pos=${posOthers.join(",") || "0"} hr=${changedVsBase(BASE, hrFrozen)} oracles=${oracles.join(",") || "0"}`);
   }

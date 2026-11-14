@@ -245,6 +245,12 @@ export const REPORT_TEXT_EN = {
   "fullIdLabel": "Include full national ID numbers in the employee register export",
 } as const;
 
+// HR H3.4-YTD ▸ หมายเหตุคงที่ของรายงานภาษีทั้งปีเมื่อรวมยอดยกมาต้นปี (แยกจาก REPORT_TEXT — ชุดข้อความเดิมคงทุกไบต์) ◂
+export const REPORT_YTD_NOTE = {
+  th: "รวมยอดยกมาต้นปี (เงินได้ ภาษี และเงินสมทบที่จ่ายก่อนใช้ระบบ) ตามที่บันทึกในหน้าเงินเดือน",
+  en: "Includes the opening year-to-date figures (income, tax and contributions paid before using the system) recorded on the payroll page",
+} as const;
+// ◂ HR H3.4-YTD
 export type ReportText = { readonly [K in keyof typeof REPORT_TEXT]: string };
 /** ข้อความตามภาษา (en = อังกฤษ · อื่น ๆ = ไทย) */
 export function reportTextFor(locale: string | null | undefined): ReportText {
