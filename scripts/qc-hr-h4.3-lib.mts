@@ -215,7 +215,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const marked = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
     const need = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
     const bad: string[] = [];
-    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT|HR MONEY-2/; // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.7: + "HR HF-SSO" (labor.ts ssoLawForPeriod) ◂ // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" (in base only) ◂
+    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT|HR MONEY-2/; // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.7: + "HR HF-SSO" (labor.ts ssoLawForPeriod) ◂ // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): + "HR MONEY-2" (in base only) ◂ // ORACLE-EDIT (HR HF-SSO · controller fix2) ◂
     const judge = (f: string, re: RegExp, mustHave: boolean) => {
       const hs = diffHunks(BASE, f);
       if (!hs) return void bad.push(`${f.split("/").pop()}:git`);

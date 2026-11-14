@@ -244,7 +244,7 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
     // ORACLE-EDIT (HR HF-SSO · controller fix2) S1.6: "HR HF-SSO" counts only in law.ts (the one HF-SSO file in this FROZEN list) ◂
     // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): "HR MONEY-2" counts as a later-ticket mark like "HR-SET-<n>" · unmarked still fails ◂
     // ORACLE-EDIT (HR-PRIV-2 · controller): S1.6 laterOnly `/HR-SET-\d+|HR H\d+\.\d+/` → `/HR-SET-\d+|HR H\d+\.\d+|HR PRIV-\d+/` · unmarked still fails ◂
-    const laterOnly = (p: string) => pathInBase(F.rules, BASE) && (diffHunks(BASE, p) ?? []).length > 0 && (diffHunks(BASE, p) ?? []).every((h) => h.added.some((l) => (/HR-SET-\d+|HR H\d+\.\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || (p === `${H}law.ts` && /HR HF-SSO/.test(l))) && !/HR H3\.4/.test(l)));
+    const laterOnly = (p: string) => pathInBase(F.rules, BASE) && (diffHunks(BASE, p) ?? []).length > 0 && (diffHunks(BASE, p) ?? []).every((h) => h.added.some((l) => (/HR-SET-\d+|HR H\d+\.\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || (p === `${H}law.ts` && /HR HF-SSO/.test(l))) && !/HR H3\.4/.test(l))); // ORACLE-EDIT (HR HF-SSO · controller fix2) ◂
     const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !laterOnly(p) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p)) && !(p === `${H}attendance-pay.ts` && apOnlyLeaver(p))));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
   }
