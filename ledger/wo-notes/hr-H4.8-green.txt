@@ -156,3 +156,43 @@ scratchpad/h48b/r3/apiv1.txt:JSON_SUMMARY {"total":143,"passed":143,"findings":[
 fitness-hr noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 fitness-hr env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 typecheck (clean, once): exit=0 secs=426
+
+## merge of session/hr b6f1d0719 (H4.5) — 15 Nov
+inventory rows: base 540 · ours 557 · theirs 557 · merged 574 (0 lost) · messages auto-merged, all keys of both sides
+prisma migrate status before: 1 pending (20270111000000_hr_line_link), no drift/failed · deploy applied it · after: Database schema is up to date! (226 migrations)
+seed exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+h48f1 exit=0 ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+h48f2 exit=0 ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+h48u exit=0 ===== qc-hr-h4.8 ===== passed 48/48
+h45 exit=0 ===== qc-hr-h4.5 ===== passed 90/90 (QC_FORCE)
+h42 exit=0 ===== qc-hr-h4.2 ===== passed 53/53
+h38 exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+h39 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+h210 exit=0 ===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE)
+h11 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+h06 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE)
+h13 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE)
+h24 exit=0 ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+h01 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+set1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+hfpriv exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+audit exit=0 
+apiv1 exit=0 ===== QC HF-APIV1 scope =====
+acccore exit=0 ===== QC Account API Core (A3) =====
+acckeys exit=0 ===== QC Account API Keys (A1) =====
+pubapi exit=0 ===== QC Public API =====
+posp02 exit=0 ===== QC: POS P0.2 ทะเบียน op =====
+DONE
+hfpriv: JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+audit: ✅ PASS — 21/21
+apiv1: JSON_SUMMARY {"total":143,"passed":143,"findings":[]}
+acccore: JSON_SUMMARY {"total":64,"passed":64,"findings":[]}
+acckeys: JSON_SUMMARY {"total":51,"passed":51,"findings":[]}
+pubapi: JSON_SUMMARY {"total":18,"passed":18,"findings":[]}
+posp02: JSON_SUMMARY {"total":56,"passed":56,"skipped":[],"findings":[]}
+r4-fitness-noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+r4-fitness-hr-noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+r4-fitness-env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+r4-fitness-hr-env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+typecheck (clean, once): exit=0 secs=410
+privacy.ts / self.ts / payroll.ts unchanged by the merge ⇒ no h3.8 S1.13 re-take, no PAY_MARKED tag; staff/service.ts H4.8 hunk survived (2 marked lines)
