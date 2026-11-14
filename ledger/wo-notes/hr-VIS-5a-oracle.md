@@ -51,11 +51,12 @@ Without `QC_FORCE=1` the suite skips until `payroll-run-ui.tsx` or the page carr
 | I1 | M | G | hr.run2 th = en (msgParity); every literal `t("…")` key and `t(\`x${…}\`)` prefix in payroll-run-ui exists in th and en |
 | I2 | M | R | `hr.payview.{run,hours,adjust,profiles,docs,ytd,history}` in th and en; hr.run2.title has no engine wording; the page `desc=` has no Thai literal |
 | I3 | M | G | no Thai letters in the added non-comment code lines of page, run-ui, reports-ui, period-label and pay-run-view. **Q5 exemption: `payroll-ui.tsx` as a whole (moved legacy sections)** |
-| N1 | M | R | inventory rows (page `/app/sys/[id]/hr/payroll`) for the K4 ids and `hr-pay-view-*`, and for every `hr-run2-*` id in the code; `hr-run2-lines-*` has `kind: "link"` |
+| T1 | M | R | [r3] run table read at 1440 and 1024 via a Tailwind display evaluator (md/xl/2xl): ≥1280 OT column shown and add excludes OT; <1280 no OT column, add = stored total with "รวม OT"; every row and the totals row: wage + add (+OT) + deduct + SSO + WHT (signed cells, WHT read from the ≥1280 view) = net; a no-OT row (Cara) has equal add in both; totals add/OT/net = Σ rows; limited viewer: same rule, in-scope rows only; hint key th+en |
+| N1 | M | R | (r3 fix) code ids without a payroll row are excused only if no payroll render shows them and another page has their row (`hr-run2-engine*` → /hr/settings) · inventory rows (page `/app/sys/[id]/hr/payroll`) for the K4 ids and `hr-pay-view-*`, and for every `hr-run2-*` id in the code; `hr-run2-lines-*` has `kind: "link"` |
 | N2 | m | R | walk matrix: a payroll state whose path has `view=hours|adjust|profiles|docs|ytd|history` (presence only) |
 | Z1 | C | G | residue none · no outbound request · intl shim used · no missing message at render |
 
-RED-by-design 18 · GREEN controls 20 (W2 added in r2). The registry is honest: R7 and R10 are GREEN on base only because the elements do not exist yet. They stay meaningful after the build.
+RED-by-design 19 · GREEN controls 20 (W2 r2 · T1 r3). On builder head e9edb3338: 38/39 pass, only T1 red. The registry is honest: R7 and R10 are GREEN on base only because the elements do not exist yet. They stay meaningful after the build.
 
 ## Names the oracle pins (the brief left them open)
 - `payViewOf` must be **exported from `pay-run-view.ts`**. A Next page file cannot export extra names, so "in page" is not testable.
