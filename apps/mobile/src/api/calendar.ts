@@ -5,7 +5,7 @@
 //   build จริง (production) ไม่เคยใช้ fixture — 404 = ข้อผิดพลาดตามปกติ (จอแสดง "ยังไม่พร้อม" / ว่าง)
 import { useSyncExternalStore } from "react";
 import { api, ApiError } from "@/src/api/client";
-import { fixtureCall } from "@/src/api/calendar.fixtures";
+import { fixtureCall, FIXTURE_LINKS } from "@/src/api/calendar.fixtures";
 
 // ───────── ชนิด (§4.1) ─────────
 export type AgendaSource =
@@ -243,4 +243,41 @@ export function deepLinkRoute(d: AgendaDeepLink, nonce: string): { pathname: str
     if (k) params[decodeURIComponent(k)] = decodeURIComponent(v ?? "");
   }
   return { pathname: p, params };
+}
+
+// ───────── สัญญาณ "ของปฏิทินเปลี่ยน" (CAL2.6/2.7) — แผ่นเพิ่ม/แก้ บันทึกแล้ว ⇒ จอปฏิทิน/ห้องเลขา/การ์ดวันนี้โหลดใหม่ ─────────
+const changeListeners = new Set<() => void>();
+export function calChanged(): void {
+  changeListeners.forEach((fn) => fn());
+}
+export function onCalChanged(fn: () => void): () => void {
+  changeListeners.add(fn);
+  return () => changeListeners.delete(fn);
+}
+
+// ───────── ตัวเลือก "ผูกกับ" (CAL2.6 · จอ 6) ─────────
+export type LinkCandidate = { type: CalLinkType; id: string; label: string };
+/**
+ * รายการที่ผูกได้: fixture = ตัวอย่างในภาพ · จริง = ดีลของฉัน + ผู้ติดต่อของดีลจาก GET /api/mobile/crm/deals (เส้นมือถือเดียวที่มีตอนนี้)
+ * ⚠️ ใบแจ้งหนี้/การ์ดบอร์ดงาน ยังไม่มีเส้นค้นสำหรับแอป (สัญญา §12 จอ 6 "ค้นด้วย API ค้นเดิมของแต่ละระบบ") — รอเส้นจากเซิร์ฟเวอร์
+ */
+export async function linkCandidates(): Promise<LinkCandidate[]> {
+  if (fixtureOn) {
+    return FIXTURE_LINKS;
+  }
+  try {
+    const r = await api<{ items?: { id: string; title: string; contact?: { id: string; name: string } | null }[] }>("/api/mobile/crm/deals");
+    const out: LinkCandidate[] = [];
+    const seen = new Set<string>();
+    for (const d of r.items ?? []) {
+      out.push({ type: "CRM_DEAL", id: d.id, label: d.contact?.name ? `${d.contact.name} (CRM) · ${d.title}` : `${d.title} (CRM)` });
+      if (d.contact?.id && !seen.has(d.contact.id)) {
+        seen.add(d.contact.id);
+        out.push({ type: "CRM_CONTACT", id: d.contact.id, label: `${d.contact.name} (CRM)` });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }

@@ -32,9 +32,9 @@
   {
    "testID": "sec-top-new",
    "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
-   "screen": "โซนเลขา + โซนทีม",
-   "action": "router.push /secretary/new (เลขา) · /secretary/staff/invite (ทีม) · โซนลูกค้าไม่มีปุ่ม",
-   "wo": "S2.1"
+   "screen": "โซนเลขา + โซนทีม + ปฏิทิน",
+   "action": "เลขา → แผ่นเลือก cal-plus (สั่งงาน /secretary/new · เพิ่มเตือน/นัด) · ปฏิทิน → แผ่นเพิ่มเตือน (cal-add) · ทีม → /secretary/staff/invite · นอก CalSheetHost = /secretary/new เดิม",
+   "wo": "CAL2.6"
   },
   {
    "testID": "sec-top-tenant",
@@ -1988,6 +1988,153 @@
    "screen": "หน้าเลขา (จอ 2) การ์ดวันนี้",
    "action": "ดูทั้งหมดในปฏิทิน › → /secretary/calendar",
    "wo": "CAL2.5"
+  },
+  {
+   "testID": "cal-plus-task",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเลือกของปุ่ม +",
+   "action": "router.push /secretary/new (สั่งงานเลขา เส้นเดิม)",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-plus-cal",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเลือกของปุ่ม +",
+   "action": "เปิดแผ่นเพิ่มเตือน (จอ 6)",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-plus-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "แผ่นเลือกของปุ่ม +",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-close",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-kind-REMINDER",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "kind = เตือนความจำ",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-kind-EVENT",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "kind = นัดหมาย (+ แถว ถึง)",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-when-in1h",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "เวลา = อีก 1 ชม.",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-when-tonight",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "เวลา = เย็นนี้ 18:00 (ซ่อนเมื่อเลย 18:00)",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-when-tomorrow9",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "เวลา = พรุ่งนี้ 09:00",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-when-custom",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "เลือกเอง… (แถววัน + ปุ่มเวลา)",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-day-<YYYY-MM-DD>",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน · เลือกเอง",
+   "action": "เลือกวัน (14 วัน)",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-hour-minus",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน · เลือกเอง",
+   "action": "− 1 ชั่วโมง",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-hour-plus",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน · เลือกเอง",
+   "action": "+ 1 ชั่วโมง",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-min-minus",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน · เลือกเอง",
+   "action": "− 15 นาที",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-min-plus",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน · เลือกเอง",
+   "action": "+ 15 นาที",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-until",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (นัดหมาย)",
+   "action": "เปิดตัวเลือกเวลาสิ้นสุด cal-add-until-<นาที>",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-repeat",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "เปิดตัวเลือกทำซ้ำ cal-add-repeat-<NONE|DAILY|WEEKLY|MONTHLY> · cal-add-wd-<0..6>",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-link",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "เปิดตัวเลือกผูกกับ (cal-add-link-q ค้น · cal-add-link-none · cal-add-link-<id>)",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-lead",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "เปิดตัวเลือกเตือนล่วงหน้า cal-add-lead-<นาที>",
+   "wo": "CAL2.6"
+  },
+  {
+   "testID": "cal-add-save",
+   "file": "apps/mobile/src/components/calendar/AddCalSheet.tsx",
+   "screen": "แผ่นเพิ่มเตือน (จอ 6)",
+   "action": "POST calendar/items (เพิ่ม) / PATCH items/[id] (แก้)",
+   "wo": "CAL2.6"
   }
  ]
 }

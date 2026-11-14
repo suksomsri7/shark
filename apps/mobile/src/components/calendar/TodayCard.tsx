@@ -7,7 +7,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon } from "@/src/components/airy";
-import { calApi, type TodayRes } from "@/src/api/calendar";
+import { calApi, onCalChanged, type TodayRes } from "@/src/api/calendar";
 import { useAuth } from "@/src/lib/auth-context";
 import { dayOfMs, dayStartMs, addDays } from "@/src/lib/cal-date";
 import { useT } from "@/src/i18n";
@@ -34,6 +34,7 @@ export function TodayCard({ testID = "cal-today" }: { testID?: string }) {
   }, [activeTenantId]);
 
   useEffect(() => setRes(null), [activeTenantId]);
+  useEffect(() => onCalChanged(() => void load()), [load]);
   useFocusEffect(
     useCallback(() => {
       void load();

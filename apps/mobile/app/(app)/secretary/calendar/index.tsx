@@ -19,7 +19,8 @@ import { WeekStrip } from "@/src/components/calendar/WeekStrip";
 import { MonthGrid } from "@/src/components/calendar/MonthGrid";
 import { RemindList } from "@/src/components/calendar/RemindList";
 import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
-import { calApi, deepLinkRoute, deviceAgenda, sortAgenda, useCalFixture, type AgendaItem, type AgendaResult, type CalItemDto, type ColorKey } from "@/src/api/calendar";
+import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
+import { calApi, deepLinkRoute, deviceAgenda, onCalChanged, sortAgenda, useCalFixture, type AgendaItem, type AgendaResult, type CalItemDto, type ColorKey } from "@/src/api/calendar";
 import { apiErrorText } from "@/src/api/client";
 import { scheduleZoneBadges } from "@/src/api/secretary";
 import { addDays, addMonths, dayOfMs, isDay, monthName, monthYear, shortDate, weekDays, yearLabel, ymOf } from "@/src/lib/cal-date";
@@ -50,8 +51,23 @@ export default function CalendarScreen() {
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [note, setNote] = useState<string | null>(null);
   const [ask, setAsk] = useState<{ it: CalItemDto; run: () => void } | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const sheet = useCalSheet();
   const dayRef = useRef(day);
   dayRef.current = day;
+
+  // ?item=<id> (ลิงก์ของเตือน/push) ⇒ เปิดแผ่นแก้ไขของรายการนั้น (ปิดไปแล้ว/ไม่พบ = เงียบ)
+  useEffect(() => {
+    const id = params.item;
+    if (!id || !sheet) return;
+    router.setParams({ item: undefined });
+    calApi
+      .item(id)
+      .then((r) => {
+        if (r.item.status === "OPEN" || r.item.status === "DRAFT") sheet.openEdit(r.item);
+      })
+      .catch(() => {});
+  }, [params.item, sheet, router]);
 
   // ลิงก์ใหม่ (?day=) ขณะจอเปิดอยู่ ⇒ ไปวันนั้น
   useEffect(() => {
@@ -95,6 +111,17 @@ export default function CalendarScreen() {
     const ms = new Set([ymOf(day), ...weekDays(day).map(ymOf), ym]);
     ms.forEach((m) => void loadMonth(m));
   }, [day, ym, loadMonth]);
+
+  // แผ่นเพิ่ม/แก้บันทึกแล้ว ⇒ โหลดวัน + จุดเดือน + แท็บเตือนฉันใหม่
+  useEffect(
+    () =>
+      onCalChanged(() => {
+        void loadDay(dayRef.current);
+        void loadMonth(ymOf(dayRef.current), true);
+        setReloadKey((k) => k + 1);
+      }),
+    [loadDay, loadMonth],
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -163,7 +190,7 @@ export default function CalendarScreen() {
   };
 
   // แตะแถวเตือนในแท็บเตือนฉัน = แก้ไข (AddCalSheet · CAL2.6)
-  const editItem = (it: CalItemDto) => router.setParams({ item: it.id });
+  const editItem = (it: CalItemDto) => sheet?.openEdit(it);
 
   // หัวจอ
   const rel = day === today ? "today" : day === addDays(today, 1) ? "tomorrow" : day === addDays(today, -1) ? "yesterday" : null;
@@ -283,7 +310,7 @@ export default function CalendarScreen() {
             ) : null}
           </>
         ) : (
-          <RemindList onEdit={editItem} onAskDelete={(it, run) => setAsk({ it, run })} />
+          <RemindList onEdit={editItem} reloadKey={reloadKey} onAskDelete={(it, run) => setAsk({ it, run })} />
         )}
       </ScrollView>
       <ConfirmSheet

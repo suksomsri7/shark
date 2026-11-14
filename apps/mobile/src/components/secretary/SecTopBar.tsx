@@ -23,6 +23,7 @@ import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme, type ZoneKey } from "@/src/theme/index";
 import { size, type as T } from "@/src/theme/tokens";
 import { useBusinessSwitcher } from "./BusinessSwitcherSheet";
+import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
 
 export type SecZone = ZoneKey | "systems" | "calendar"; // "secretary" | "customers" | "team" | "systems" (หน้าระบบ WebView · ไม่มีปุ่มโซนใดทึบ) | "calendar" (CAL2.1)
 export type ZoneBadges = { secretary?: number; customers?: number; team?: number; calendar?: number };
@@ -39,7 +40,7 @@ const PLUS: Record<SecZone, { path: string; label: I18nKey } | null> = {
   secretary: { path: "/secretary/new", label: "sec.top.new" },
   customers: null,
   systems: null,
-  calendar: null,
+  calendar: { path: "/secretary/calendar", label: "cal.plus.cal" },
   team: { path: "/secretary/staff/invite", label: "sec.top.invite" },
 };
 
@@ -72,6 +73,7 @@ export function SecTopBar({
   const t = useT();
   const router = useRouter();
   const switcher = useBusinessSwitcher();
+  const calSheet = useCalSheet(); // CAL2.6: + ของโซนเลขา = แผ่นเลือก (สั่งงาน / เพิ่มเตือน/นัด) · โซนปฏิทิน = แผ่นเพิ่มเตือนตรง · นอก Host = เส้นเดิม
   const shared = useZoneBadgeCounts(); // R-S2.1e: store กลาง (โหลดที่ layout ของโซน) ไม่ยิงต่อ mount
   const counts = badges ?? shared;
   // CAL2.1: 6 ปุ่มซ้าย × 44 + ช่อง 5 ช่อง + ปุ่ม + ขวา 44: ช่อง 6 = 338 ≤ 390 − 36 · จอแคบกว่า 360 ช่อง 2 (iPhone รุ่นเล็กสุดที่รองรับ = 375)
@@ -124,7 +126,20 @@ export function SecTopBar({
         </View>
       }
       center={center === "tenant" ? <TenantTitle onPress={() => switcher.open()} /> : undefined}
-      right={plus ? <IconBtn testID="sec-top-new" icon="plus" label={t(plus.label)} onPress={() => router.push(plus.path)} /> : undefined}
+      right={
+        plus ? (
+          <IconBtn
+            testID="sec-top-new"
+            icon="plus"
+            label={t(plus.label)}
+            onPress={() => {
+              if (calSheet && zone === "secretary") calSheet.openPlus();
+              else if (calSheet && zone === "calendar") calSheet.openAdd();
+              else if (zone !== "calendar") router.push(plus.path);
+            }}
+          />
+        ) : undefined
+      }
     />
   );
 }

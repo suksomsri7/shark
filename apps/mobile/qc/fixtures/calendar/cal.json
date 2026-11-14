@@ -378,6 +378,75 @@
     3,
     1
    ]
+  },
+  {
+   "name": "plus",
+   "route": "/secretary",
+   "steps": [
+    {
+     "wait": "sec-home"
+    },
+    {
+     "tap": "sec-top-new"
+    },
+    {
+     "sleep": 400
+    }
+   ]
+  },
+  {
+   "name": "add-custom",
+   "route": "/secretary/calendar",
+   "steps": [
+    {
+     "wait": "cal-screen"
+    },
+    {
+     "tap": "sec-top-new"
+    },
+    {
+     "tap": "cal-add-kind-EVENT"
+    },
+    {
+     "type": [
+      "cal-add-title",
+      "ประชุมธนาคาร"
+     ]
+    },
+    {
+     "tap": "cal-add-when-custom"
+    },
+    {
+     "tap": "cal-add-repeat"
+    },
+    {
+     "tap": "cal-add-repeat-WEEKLY"
+    },
+    {
+     "sleep": 400
+    }
+   ]
+  },
+  {
+   "name": "add-link",
+   "route": "/secretary",
+   "steps": [
+    {
+     "wait": "sec-home"
+    },
+    {
+     "tap": "sec-top-new"
+    },
+    {
+     "tap": "cal-plus-cal"
+    },
+    {
+     "tap": "cal-add-link"
+    },
+    {
+     "sleep": 600
+    }
+   ]
   }
  ]
 }
