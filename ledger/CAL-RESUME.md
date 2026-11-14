@@ -8,7 +8,7 @@
 ## สถานะใบ (1/29)
 | ใบ | สถานะ | หมายเหตุ |
 |---|---|---|
-| CAL0.1 สำรวจ | ✅ 14 พ.ย. | ledger/cal-briefs/cal-brief-RESOLUTIONS.md · R-CAL-1…24 · คำถามเจ้าของ Q1–Q7 (มีค่าเริ่มทุกข้อ) · APNs ของ th.in.shark.ai ยังไม่ได้ตรวจ (R-CAL-14 · ต้องทำก่อน CAL3.2) |
+| CAL0.1 สำรวจ | ✅ 14 พ.ย. (เจ้าของตอบ Q1–Q7 = ค่าเริ่ม · Q6 ส่ง RUN บัญชี) | ledger/cal-briefs/cal-brief-RESOLUTIONS.md · R-CAL-1…24 · คำถามเจ้าของ Q1–Q7 (มีค่าเริ่มทุกข้อ) · APNs ของ th.in.shark.ai ยังไม่ได้ตรวจ (R-CAL-14 · ต้องทำก่อน CAL3.2) |
 | CAL0.2 สัญญา | ▶️ เริ่ม 14 พ.ย. | docs/modules/32-secretary-calendar.md + scripts/seed-calendar-qc.mts |
 | CAL0.3 ภาพมืด | 🟡 ส่งเจ้าของแล้ว (tg msg 5978–5980) รอ ✅ | /root/mockups/secretary-calendar/cal-dark-{1,2,3}.png · gen.py ส่วน DARK (สำรอง gen.py.bak-r2) |
 
