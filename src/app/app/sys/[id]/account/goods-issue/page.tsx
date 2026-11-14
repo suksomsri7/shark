@@ -9,6 +9,8 @@ import {
 } from "@/lib/modules/account/product";
 import { LIST_TABS, tabToFilter, activeTabKey, presetRangeBkk } from "@/lib/modules/account/list-tabs";
 import { approveGoodsMovementAction } from "@/lib/modules/account/product-actions";
+import { goodsIssueWarnings } from "@/lib/modules/account/stock-issue-reasons"; // ACC T4.8 ◂
+import { LEGAL_WARNINGS } from "@/lib/core/settings/legal/warnings"; // ACC T4.8 ◂
 import { DocListPage } from "@/components/account-v2/DocListPage";
 import { DateText } from "@/lib/ui/DateText";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -144,7 +146,24 @@ export default async function GoodsIssuePage({
           ),
         },
         { key: "issueDate", header: "วันที่", render: (r) => <DateText value={r.issueDate} /> },
-        { key: "reason", header: "สาเหตุการเบิก", render: (r) => r.adjustReason ?? r.note ?? "—" },
+        {
+          key: "reason",
+          header: "สาเหตุการเบิก",
+          // ACC T4.8 ▸ สาเหตุ + หัวข้อคำเตือนผลบัญชี/VAT (ข้อความเต็มอยู่บนฟอร์ม) ◂
+          render: (r) => {
+            const ws = goodsIssueWarnings(r.adjustReason);
+            return (
+              <span className="flex flex-col">
+                <span>{r.adjustReason ?? r.note ?? "—"}</span>
+                {ws.map((w) => (
+                  <span key={w.code} className="text-xs text-[color:var(--color-muted)]" data-testid={`gi-row-warn-${w.code}`}>
+                    {LEGAL_WARNINGS[w.code].titleTh}
+                  </span>
+                ))}
+              </span>
+            );
+          },
+        },
         { key: "qty", header: "จำนวนที่เบิก", align: "right", render: (r) => qtyText(qtySum(r)) },
         {
           key: "status",
@@ -158,11 +177,15 @@ export default async function GoodsIssuePage({
           ? [{ label: "สร้างใบส่งคืน", href: `${pathname}/return/new?ref=${r.id}`, icon: "upload" }]
           : r.status === "DRAFT"
             ? [
-                {
-                  label: "อนุมัติใบเบิก",
-                  icon: "check",
-                  submit: { action: approveGoodsMovementAction, fields: { systemId, id: r.id } },
-                },
+                (() => {
+                  // ACC T4.8 ▸ สาเหตุที่ต้องยืนยัน (ใช้ส่วนตัว = ถือเป็นขาย) — ป้ายเมนูบอกชัดว่ากดแล้วคือรับทราบ ◂
+                  const ackCodes = goodsIssueWarnings(r.adjustReason).filter((w) => w.ack).map((w) => w.code);
+                  return {
+                    label: ackCodes.length ? "อนุมัติใบเบิก (รับทราบคำเตือน: ถือเป็นการขาย)" : "อนุมัติใบเบิก",
+                    icon: "check",
+                    submit: { action: approveGoodsMovementAction, fields: { systemId, id: r.id, ...(ackCodes.length ? { ack: ackCodes.join(",") } : {}) } },
+                  };
+                })(),
               ]
             : []
       }

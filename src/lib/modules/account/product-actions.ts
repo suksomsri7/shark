@@ -330,6 +330,7 @@ export async function createGoodsMovementAction(formData: FormData) {
     tags: formData.getAll("tags").map((t) => String(t).trim()).filter(Boolean),
     asDraft: str(formData, "asDraft") === "1",
     issueDate: str(formData, "issueDate") ? new Date(`${str(formData, "issueDate")}T10:00:00+07:00`) : undefined,
+    ack: formData.getAll("ack").map(String), // ACC T4.8 ▸ คำเตือนของสาเหตุการเบิกที่ติ๊กรับทราบ ◂
   });
   await writeAudit({
     tenantId,
@@ -337,7 +338,7 @@ export async function createGoodsMovementAction(formData: FormData) {
     action: "account.product.manage",
     targetType: "AccountDocument",
     targetId: res.ok ? res.id : undefined,
-    after: res.ok ? { docNo: res.docNo, docType, sourceDocId } : { error: res.reason },
+    after: res.ok ? { docNo: res.docNo, docType, sourceDocId, reason: str(formData, "adjustReason") || null, warnings: res.warnings?.map((w) => w.code) ?? [] } : { error: res.reason },
   });
   revalidatePath(goodsPath(systemId));
   revalidatePath(productsPath(systemId, "catalog"));
@@ -589,6 +590,8 @@ export async function approveGoodsMovementAction(formData: FormData) {
   const id = str(formData, "id");
   const res = await approveGoodsMovement(tenantId, systemId, id, {
     allowNegative: str(formData, "allowNegative") === "1",
+    approverId: userId, // ACC T4.8 ▸ ผู้อนุมัติ ◂
+    ack: formData.getAll("ack").flatMap((x) => String(x).split(",")).map((x) => x.trim()).filter(Boolean),
   });
   await writeAudit({
     tenantId,

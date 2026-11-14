@@ -34,6 +34,10 @@ import * as gl from "./gl";
 import { consumeBundleComponentsInTx, type BundleConsumeResult } from "./bundle";
 import { clampSearch } from "./search-input";
 import { isCodeUniqueConflict } from "./unique-conflict";
+import { GOODS_ISSUE_REASON_LABELS, goodsIssueReasonOf, goodsIssueWarnings } from "./stock-issue-reasons"; // ACC T4.8 ◂
+import { LEGAL_ACK_REASON_TH, LEGAL_ACK_REQUIRED, legalWarningsText, unacknowledged, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings"; // ACC T4.8 ◂
+import { recordLegalAckInTx } from "@/lib/core/legal-ack"; // ACC T4.8 ◂
+import { seedChartOfAccounts } from "./coa"; // ACC T4.8 ◂
 
 // ─────────────────── ค่าคงที่ ───────────────────
 
@@ -653,6 +657,11 @@ export function listIncomeAccounts(tenantId: string, systemId: string) {
   });
 }
 
+/** ACC T4.8 ▸ บัญชีถอนใช้ส่วนตัว (ส่วนของเจ้าของ · mapping OWNER_DRAWINGS = 3100) สำหรับใบเบิกสาเหตุ "ใช้ส่วนตัวเจ้าของ" ◂ */
+export function listDrawingsAccounts(tenantId: string, systemId: string) {
+  return prisma.accountLedger.findMany({ where: { tenantId, systemId, archivedAt: null, type: "EQUITY", code: "3100" }, select: { id: true, code: true, name: true } });
+}
+
 export function listExpenseAccounts(tenantId: string, systemId: string) {
   return prisma.accountLedger.findMany({
     where: { tenantId, systemId, archivedAt: null, type: { in: ["COGS", "EXPENSE"] } },
@@ -700,14 +709,9 @@ async function nextGoodsDocNo(
 //   • คลังต่อบรรทัด · สาเหตุการเบิก · เก็บต้นทุนที่ตัดจริงไว้ที่ `line.unitCost` (ไว้พิมพ์/ตรวจย้อนหลัง)
 
 /** สาเหตุการเบิก (§8.4 select) — เก็บเป็นข้อความไทยตรง ๆ ใน `AccountDocument.adjustReason` ไม่ใช่ enum ใน DB */
-export const GOODS_ISSUE_REASONS = [
-  "ใช้ในกิจการ",
-  "ตัวอย่าง/แจก",
-  "ชำรุด/สูญหาย",
-  "โอนสาขา",
-  "อื่น ๆ",
-] as const;
-export type GoodsIssueReason = (typeof GOODS_ISSUE_REASONS)[number];
+// ACC T4.8 (H3) ▸ สาเหตุครบชุด (ของแถม · อาหารพนักงาน · ใช้ส่วนตัว · ของเสีย · สินค้าขาด) + ผลทางบัญชี/VAT — นิยามที่ stock-issue-reasons.ts ◂
+export const GOODS_ISSUE_REASONS = GOODS_ISSUE_REASON_LABELS;
+export type GoodsIssueReason = string;
 
 /** เหตุผลการปรับต้นทุน (§8.4 ใบปรับต้นทุน CA) */
 export const COST_ADJUST_REASONS = [
@@ -1100,7 +1104,9 @@ export async function createGoodsMovement(input: {
   asDraft?: boolean;
   /** WO 4.3 — แท็กของเอกสาร (§8.4) */
   tags?: string[];
-}): Promise<{ ok: true; id: string; docNo: string } | { ok: false; reason: string }> {
+  /** ACC T4.8 ▸ รหัสคำเตือนที่ผู้ใช้กดยืนยัน (ใช้ส่วนตัว = ถือเป็นขาย ต้องยืนยัน) ◂ */
+  ack?: readonly string[];
+}): Promise<{ ok: true; id: string; docNo: string; warnings?: LegalWarning[] } | { ok: false; reason: string; legal?: LegalAckRequired }> {
   const clean = input.lines
     .map((l) => ({
       productId: l.productId,
@@ -1112,9 +1118,16 @@ export async function createGoodsMovement(input: {
   if (clean.length === 0) return { ok: false, reason: "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ" };
   const issueDate = input.issueDate ?? new Date();
   const asDraft = input.asDraft === true;
+  // ACC T4.8 ▸ สาเหตุ → รหัส · คำเตือนผลบัญชี/VAT · ผู้อนุมัติ = ผู้สร้างเมื่อออกทันที (ไม่ผ่านร่าง) ◂
+  const reasonDef = input.docType === "GOODS_ISSUE" ? goodsIssueReasonOf(input.adjustReason) : null;
+  const giWarnings = input.docType === "GOODS_ISSUE" ? goodsIssueWarnings(input.adjustReason, { createdById: input.createdById, approverId: asDraft ? null : input.createdById }) : [];
+  const giUnacked = asDraft ? [] : unacknowledged(giWarnings, input.ack);
+  if (giUnacked.length) return { ok: false, reason: `${LEGAL_ACK_REASON_TH}: ${legalWarningsText(giUnacked)}`, legal: { code: LEGAL_ACK_REQUIRED, warnings: giUnacked } };
 
   try {
     const res = await prisma.$transaction(async (tx) => {
+      // ACC T4.8 ▸ บัญชีปริยายของสาเหตุใหม่ (ของแถม/อาหาร/ใช้ส่วนตัว/ของเสีย) ต้องมีในผัง — สมุดเก่าเติมให้ (skipDuplicates) ◂
+      if (reasonDef && reasonDef.mappingKey !== "GOODS_ISSUE_EXPENSE") await seedChartOfAccounts({ tenantId: input.tenantId, systemId: input.systemId }, tx);
       const ids = [...new Set(clean.map((l) => l.productId))];
       const products = await tx.accountProduct.findMany({
         where: { id: { in: ids }, tenantId: input.tenantId, systemId: input.systemId },
@@ -1145,7 +1158,9 @@ export async function createGoodsMovement(input: {
           createdById: input.createdById ?? null,
           sourceDocId: input.sourceDocId ?? null,
           adjustReason: input.adjustReason ?? null,
-          adjustAccountCode: input.adjustAccountCode?.trim() || null,
+          adjustReasonCode: reasonDef?.code ?? null, // ACC T4.8 ◂
+          approvedById: asDraft || input.docType !== "GOODS_ISSUE" ? null : input.createdById ?? null, // ACC T4.8 ▸ ออกทันที = ผู้สร้างอนุมัติเอง ◂
+          adjustAccountCode: input.adjustAccountCode?.trim() || reasonDef?.defaultCode || null,
           tags: input.tags ?? [],
           lines: {
             create: clean.map((l, i) => ({
@@ -1187,9 +1202,11 @@ export async function createGoodsMovement(input: {
           docId: doc.id,
           docNo: docNo as string,
           issueDate,
-          adjustAccountCode: input.adjustAccountCode?.trim() || null,
+          adjustAccountCode: input.adjustAccountCode?.trim() || reasonDef?.defaultCode || null,
           costTotal,
         });
+        const acked = giWarnings.filter((w) => w.ack);
+        if (acked.length) await recordLegalAckInTx(tx, { tenantId: input.tenantId, ack: { codes: input.ack ?? [], actorId: input.createdById ?? null, actorType: "USER", via: "screen" }, op: "account.goods.issue", targetType: "AccountDocument", targetId: doc.id, warnings: acked });
       }
 
       if (input.docType === "GOODS_ISSUE_RETURN" && input.sourceDocId) {
@@ -1205,7 +1222,7 @@ export async function createGoodsMovement(input: {
       }
       return { id: doc.id, docNo: docNo ?? "" };
     });
-    return { ok: true, ...res };
+    return { ok: true, ...res, ...(giWarnings.length ? { warnings: giWarnings } : {}) };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "บันทึกเอกสารเบิกไม่สำเร็จ") };
   }
@@ -1216,8 +1233,13 @@ export async function approveGoodsMovement(
   tenantId: string,
   systemId: string,
   id: string,
-  opts?: { allowNegative?: boolean },
-): Promise<{ ok: true; docNo: string } | { ok: false; reason: string }> {
+  opts?: { allowNegative?: boolean; /** ACC T4.8 ▸ ผู้อนุมัติ + รหัสคำเตือนที่ยืนยัน ◂ */ approverId?: string | null; ack?: readonly string[] },
+): Promise<{ ok: true; docNo: string; warnings?: LegalWarning[] } | { ok: false; reason: string; legal?: LegalAckRequired }> {
+  // ACC T4.8 ▸ คำเตือนของสาเหตุ + ผู้อนุมัติคนเดียวกับผู้ทำ (อ่านก่อนเปิดธุรกรรม — ยังไม่ยืนยัน = ไม่เขียนอะไร) ◂
+  const head = await prisma.accountDocument.findFirst({ where: { id, tenantId, systemId, docType: "GOODS_ISSUE" }, select: { adjustReason: true, adjustReasonCode: true, createdById: true } });
+  const giWarnings = head ? goodsIssueWarnings(head.adjustReasonCode ?? head.adjustReason, { createdById: head.createdById, approverId: opts?.approverId ?? null }) : [];
+  const giUnacked = unacknowledged(giWarnings, opts?.ack);
+  if (giUnacked.length) return { ok: false, reason: `${LEGAL_ACK_REASON_TH}: ${legalWarningsText(giUnacked)}`, legal: { code: LEGAL_ACK_REQUIRED, warnings: giUnacked } };
   try {
     const docNo = await prisma.$transaction(async (tx) => {
       const doc = await tx.accountDocument.findFirst({
@@ -1228,7 +1250,9 @@ export async function approveGoodsMovement(
       if (doc.status !== "DRAFT") throw new Error("เอกสารนี้อนุมัติไปแล้ว");
       const docType = doc.docType as "GOODS_ISSUE" | "GOODS_ISSUE_RETURN";
       const no = await nextGoodsDocNo(tx, tenantId, systemId, docType, doc.issueDate);
-      await tx.accountDocument.update({ where: { id }, data: { docNo: no, status: "ISSUED" } });
+      await tx.accountDocument.update({ where: { id }, data: { docNo: no, status: "ISSUED", ...(opts?.approverId ? { approvedById: opts.approverId } : {}) } });
+      const acked = giWarnings.filter((w) => w.ack);
+      if (acked.length) await recordLegalAckInTx(tx, { tenantId, ack: { codes: opts?.ack ?? [], actorId: opts?.approverId ?? null, actorType: "USER", via: "screen" }, op: "account.goods.approve", targetType: "AccountDocument", targetId: id, warnings: acked });
       const { costTotal } = await applyGoodsDocInTx(tx, {
         tenantId,
         systemId,
@@ -1262,7 +1286,7 @@ export async function approveGoodsMovement(
       });
       return no;
     });
-    return { ok: true, docNo };
+    return { ok: true, docNo, ...(giWarnings.length ? { warnings: giWarnings } : {}) };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "อนุมัติใบเบิกไม่สำเร็จ") };
   }

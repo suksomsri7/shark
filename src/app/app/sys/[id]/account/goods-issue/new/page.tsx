@@ -7,6 +7,7 @@ import {
   listProductsPaged,
   listWarehouses,
   listExpenseAccounts,
+  listDrawingsAccounts,
   GOODS_ISSUE_REASONS,
   GOODS_ISSUE_DEFAULT_ACCOUNT,
 } from "@/lib/modules/account/product";
@@ -28,10 +29,11 @@ export default async function NewGoodsIssuePage({
   const { tenantId, systemId } = await requireAccountPage(id, "account.product.manage");
   const base = `/app/sys/${id}/account`;
 
-  const [goods, warehouses, expenseAccounts] = await Promise.all([
+  const [goods, warehouses, expenseAccounts, drawings] = await Promise.all([
     listProductsPaged(tenantId, systemId, { type: "GOODS", pageSize: 100 }),
     listWarehouses(tenantId),
     listExpenseAccounts(tenantId, systemId),
+    listDrawingsAccounts(tenantId, systemId), // ACC T4.8 ▸ บัญชีถอนใช้ส่วนตัว (สาเหตุ "ใช้ส่วนตัวเจ้าของ") ◂
   ]);
   const defaultWarehouse = warehouses.find((w) => w.isDefault)?.name ?? null;
   const ym = todayBkk().slice(0, 7).replace("-", "");
@@ -62,7 +64,7 @@ export default async function NewGoodsIssuePage({
           linked: !!p.invItemId,
         }))}
         warehouses={warehouses}
-        expenseAccounts={expenseAccounts.map((a) => ({ code: a.code, name: a.name }))}
+        expenseAccounts={[...expenseAccounts, ...drawings].map((a) => ({ code: a.code, name: a.name }))}
         defaultAccountCode={
           expenseAccounts.some((a) => a.code === GOODS_ISSUE_DEFAULT_ACCOUNT)
             ? GOODS_ISSUE_DEFAULT_ACCOUNT

@@ -10,6 +10,8 @@ import { AccountIcon } from "./AccountIcon";
 import { DateInput } from "./DateInput";
 import { DocAttachments } from "./DocAttachments";
 import { createGoodsMovementAction } from "@/lib/modules/account/product-actions";
+import { LegalWarnings } from "./LegalWarnings";
+import { goodsIssueReasonOf, goodsIssueWarnings } from "@/lib/modules/account/stock-issue-reasons"; // ACC T4.8 ◂
 
 export type GoodsProductOpt = {
   id: string;
@@ -65,6 +67,14 @@ export function GoodsIssueForm({
   const label = isIssue ? "ใบเบิกสินค้า" : "ใบส่งคืนเบิกสินค้า";
   const [rows, setRows] = useState<Row[]>(() => [presetProductId ? { ...emptyRow(), productId: presetProductId } : emptyRow()]);
   const [accountCode, setAccountCode] = useState(defaultAccountCode);
+  // ACC T4.8 ▸ สาเหตุที่เลือก → บัญชีปริยายของสาเหตุ (ถ้ามีในผัง) + คำเตือนผลบัญชี/VAT (ยืนยันเมื่อจำเป็น) ◂
+  const [reason, setReason] = useState<string>(reasons[0] ?? "");
+  const reasonWarnings = isIssue ? goodsIssueWarnings(reason) : [];
+  const onReason = (v: string) => {
+    setReason(v);
+    const d = goodsIssueReasonOf(v);
+    if (d && expenseAccounts.some((a) => a.code === d.defaultCode)) setAccountCode(d.defaultCode);
+  };
   const [tags, setTags] = useState<string[]>([]);
   const [tagDraft, setTagDraft] = useState("");
   const [allowNegative, setAllowNegative] = useState(false);
@@ -124,7 +134,7 @@ export function GoodsIssueForm({
           </label>
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             {isIssue ? "สาเหตุการเบิก" : "เหตุผลการคืน"}
-            <select name="adjustReason" defaultValue={reasons[0]} className="input" data-testid="gi-reason">
+            <select name="adjustReason" value={reason} onChange={(e) => onReason(e.target.value)} className="input" data-testid="gi-reason">
               {reasons.map((r) => (
                 <option key={r} value={r}>
                   {r}
@@ -137,6 +147,11 @@ export function GoodsIssueForm({
             <textarea name="note" maxLength={512} placeholder="เบิกอุปกรณ์เสริมประจำเดือนให้หน้าร้าน" className="input min-h-[4.5rem]" data-testid="gi-note" />
           </label>
         </div>
+        {reasonWarnings.length > 0 && (
+          <div className="mt-3">
+            <LegalWarnings warnings={reasonWarnings} ackName="ack" testId="gi-reason-warnings" />
+          </div>
+        )}
         {sourceDocNo && (
           <p className="mt-2 text-xs text-[color:var(--color-muted)]">
             อ้างอิงใบเบิก <b>{sourceDocNo}</b>

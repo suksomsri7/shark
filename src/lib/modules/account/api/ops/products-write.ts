@@ -41,6 +41,9 @@ import {
 import { linkProductToItem, productStockMap, unlinkProductFromItem, type LinkOptions } from "../../inventory-link";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError } from "../respond";
+import { legalAckApiError } from "@/lib/api/respond"; // ACC T4.8 ◂
+import { ackField } from "../ack-field"; // ACC T4.8 ◂
+import { GOODS_ISSUE_REASON_DEFS, goodsIssueReasonOf } from "../../stock-issue-reasons"; // ACC T4.8 ◂
 import { categoryView, productRow, unitView } from "../serialize-master";
 
 // ── ตัวช่วยร่วม ─────────────────────────────────────────────────────────────
@@ -604,13 +607,18 @@ const stockDocCreateInput = z
   .object({
     type: z.enum(["GOODS_ISSUE", "GOODS_ISSUE_RETURN", "COST_ADJUSTMENT"]),
     issueDate: ymdField("issueDate").optional(),
-    reason: z.string().max(300).nullish(),
+    reason: z
+      .string()
+      .max(300)
+      .nullish()
+      .describe(`Goods issue reason. Use one of: ${GOODS_ISSUE_REASON_DEFS.map((d) => `${d.code} (${d.labelTh})`).join(", ")} — the code or the Thai label. Each reason has a default debit account and legal warnings (see GET /stock/issue-reasons); PERSONAL_USE is a deemed sale and needs acknowledge.`),
     note: z.string().max(2000).nullish(),
     reference: z.string().max(35).nullish(),
     contactId: z.string().max(40).nullish(),
     sourceDocId: z.string().max(40).nullish(),
     allowNegative: z.boolean().optional(),
     asDraft: z.boolean().optional(),
+    acknowledge: ackField, // ACC T4.8 ◂
     adjustAccountCode: z.string().max(20).nullish(),
     tags: z.array(z.string().max(30)).max(10).optional(),
     lines: z.array(stockLineInput).max(200).optional().describe("Required for GOODS_ISSUE / GOODS_ISSUE_RETURN."),
@@ -670,18 +678,23 @@ const stockDocumentsCreate = defineOp({
       })),
       allowNegative: input.allowNegative,
       sourceDocId: input.sourceDocId ?? null,
-      adjustReason: input.reason ?? null,
+      adjustReason: input.reason ? goodsIssueReasonOf(input.reason)?.labelTh ?? input.reason : null,
       adjustAccountCode: input.adjustAccountCode ?? null,
       reference: input.reference ?? null,
       asDraft: input.asDraft,
       tags: input.tags ?? [],
+      createdById: actor.kind === "user" ? actor.userId ?? null : null,
+      ack: input.acknowledge ?? [],
     });
-    if (!res.ok) failWith(res.reason);
-    return { id: res.id, docNo: res.docNo, type: input.type, status: input.asDraft ? "DRAFT" : "ISSUED" };
+    if (!res.ok) {
+      if (res.legal) throw legalAckApiError(res.legal.warnings); // ACC T4.8 ◂
+      failWith(res.reason);
+    }
+    return { id: res.id, docNo: res.docNo, type: input.type, status: input.asDraft ? "DRAFT" : "ISSUED", warnings: res.warnings ?? [] };
   },
 });
 
-const stockDocApproveInput = z.object({ allowNegative: z.boolean().optional() }).strict();
+const stockDocApproveInput = z.object({ allowNegative: z.boolean().optional(), acknowledge: ackField }).strict();
 
 const stockDocumentsApprove = defineOp({
   id: "stock-documents.approve",
@@ -696,12 +709,13 @@ const stockDocumentsApprove = defineOp({
   async handler({ actor, params, input }) {
     const { tenantId, systemId } = actor;
     const id = params.id ?? "";
-    const res = await approveGoodsMovement(tenantId, systemId, id, { allowNegative: input.allowNegative });
+    const res = await approveGoodsMovement(tenantId, systemId, id, { allowNegative: input.allowNegative, approverId: actor.kind === "user" ? actor.userId ?? null : null, ack: input.acknowledge ?? [] });
     if (!res.ok) {
+      if (res.legal) throw legalAckApiError(res.legal.warnings); // ACC T4.8 ◂
       if (res.reason.startsWith("ไม่พบ")) throw notFoundStockDoc();
       failWith(res.reason);
     }
-    return { id, docNo: res.docNo, status: "ISSUED" };
+    return { id, docNo: res.docNo, status: "ISSUED", warnings: res.warnings ?? [] };
   },
 });
 
