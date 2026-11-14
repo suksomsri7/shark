@@ -2,84 +2,150 @@
 //   ค่าทุกตัวมีป้ายกำกับ · วันที่ พ.ศ. ผ่าน helper กลาง · ปุ่ม/ลิงก์สูง ≥ 44 px · ตารางโควตาเลื่อนในกรอบของตัวเอง (ชื่อค้างซ้าย) ◂
 import Link from "next/link";
 import type { ReactNode } from "react"; // HR H4.2 ◂
-import { getTranslations } from "next-intl/server";
-import { formatThaiDate } from "@/lib/ui/date";
+import { getLocale, getTranslations } from "next-intl/server"; // HR VIS-5b ▸ + getLocale ◂
+import { formatShortDate, formatThaiTime } from "@/lib/ui/date"; // HR VIS-5b ▸ formatThaiDate → formatShortDate (วันตามภาษา) · + formatThaiTime ◂
 import InboxBatch from "./InboxBatch";
 import { INBOX_CAP, INBOX_TYPES, type InboxList, type InboxType } from "./inbox-shared";
 import type { TeamLeaveQuota, TeamOverview } from "./inbox";
+import type { HubBoardFacts, HubKpis } from "./hub-rules"; // HR VIS-5b ◂
 
 const muted = "text-[color:var(--color-muted)]";
 const chip = "inline-flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-sm";
 const chipOn = "border-[color:var(--color-ink)] bg-[color:var(--color-ink)] text-[color:var(--color-surface)]";
 
-function Tile({ testId, label, value, sub, href }: { testId: string; label: string; value: string; sub?: string; href?: string }) {
+// HR VIS-5b ▸ ช่องตัวเลขแบบภาพ 01 (ตัวเลขใหญ่เป็นโหนดของตัวเอง · สีอันตรายเมื่อมีสาย/ยังไม่มา) ◂
+function Tile({ testId, label, value, sub, href, danger, wide }: { testId: string; label: string; value: string; sub?: string; href?: string; danger?: boolean; wide?: boolean }) { // HR VIS-5b ▸ + danger · wide ◂
   const body = (
     <>
       <span className={`text-xs ${muted}`}>{label}</span>
-      <span className="text-2xl font-semibold tabular-nums">{value}</span>
-      {sub && <span className={`text-xs ${muted}`}>{sub}</span>}
+      {/* HR VIS-5b ▸ ตัวเลขใหญ่ขึ้น · สีอันตรายเมื่อมีสาย/ยังไม่มา · บรรทัดรองไม่เกิน 2 บรรทัด ◂ */}
+      <span className={`text-3xl font-semibold tabular-nums ${danger ? "text-[color:var(--color-danger)]" : ""}`}>{value}</span>
+      {sub && <span className={`line-clamp-2 text-xs ${muted}`}>{sub}</span>}
     </>
   );
+  const cls = `card flex min-h-[44px] min-w-0 flex-col gap-1 p-4 ${wide ? "col-span-2 md:col-span-1" : ""}`; // HR VIS-5b ◂
   return href ? (
-    <Link href={href} data-testid={testId} className="card flex min-h-[44px] flex-col gap-1 p-3 transition-colors hover:bg-[color:var(--color-surface-2)]">
+    <Link href={href} data-testid={testId} className={`${cls} transition-colors hover:bg-[color:var(--color-surface-2)]` /* HR VIS-5b ◂ */}>
       {body}
     </Link>
   ) : (
-    <div data-testid={testId} className="card flex flex-col gap-1 p-3">
+    <div data-testid={testId} className={cls /* HR VIS-5b ◂ */}>
       {body}
     </div>
   );
 }
+const hhmm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`; // HR VIS-5b ◂
+// HR VIS-5b ▸ แถวของตาราง 2 คอลัมน์ (≥ xl): ซ้าย = บอร์ด · ค่าแรง · ขวา = คำขอ · เดือน — จอแคบเรียง บอร์ด → คำขอ → ค่าแรง → เดือน ◂
+const COL_AT: Record<string, string> = { "1-1": "xl:col-start-1 xl:row-start-1", "1-2": "xl:col-start-1 xl:row-start-2", "2-1": "xl:col-start-2 xl:row-start-1", "2-2": "xl:col-start-2 xl:row-start-2" };
 
 /** ภาพรวมทีม (ภาพ 01) — ตัวอ่านเดิมทั้งหมด (บอร์ดวันนี้ · ตัวนับคำขอ · วันที่ต้องคิดผลใหม่ · ใกล้ครบกำหนด) + ตัวอย่างคำขอ 5 รายการ */
 // HR H3.9 ▸ reports = ลิงก์ "รายงาน" ของการ์ดเดือน (ภาพ 01) — ส่งมาเฉพาะผู้ดูที่เปิดรายงานได้ (ui.tsx ตัดสินด้วย reportAccessOf) ◂
 // HR H4.2 ▸ labor = การ์ดค่าแรงต่อยอดขาย (labor-ui HrLaborCard) ที่ผู้เรียกส่งมาเป็น slot — ไฟล์นี้ไม่ import โมดูลค่าแรงเอง (facade-only ของ H2.11) ◂
-export async function HrTeamOverviewSection({ systemId, overview, preview, reports, labor }: { systemId: string; overview: TeamOverview; preview: InboxList | null; reports?: { label: string; desc: string } | null; labor?: ReactNode }) { // HR H4.2 ▸ + labor ◂
+// HR VIS-5b ▸ โครงสองคอลัมน์ของภาพ 01: kpis (hub-rules · คิดใน HrHub) · facts (บรรทัดรองของช่อง) · header/board/month/due = slot จาก hub-ui ·
+//   ไฟล์นี้วาดกรอบ + หัวการ์ด (testid เดิม hr-overview-*) เท่านั้น — ไม่โหลดข้อมูลเอง ◂
+export async function HrTeamOverviewSection({ systemId, overview, preview, reports, labor, kpis, facts, header, board, month, due }: { systemId: string; overview: TeamOverview; preview: InboxList | null; reports?: { label: string; desc: string } | null; labor?: ReactNode; kpis?: HubKpis | null; facts?: HubBoardFacts | null; header?: ReactNode; board?: ReactNode; month?: ReactNode; due?: ReactNode }) { // HR H4.2 ▸ + labor ◂ · HR VIS-5b ▸ + kpis · facts · header · board · month · due ◂
   const t = await getTranslations("hr.inbox");
-  const ta = await getTranslations("hr.attendance");
+  const th = await getTranslations("hr.hub"); // HR VIS-5b ◂ (บรรทัดนับ counts/shown ของช่องเดิมถูกแทนด้วย kpis) ◂
+  const ta = await getTranslations("hr.attendance"); // HR VIS-5b ▸ ป้ายสถานะเดิม (สาย · ยังไม่มา · ลา · หยุด) ◂
+  const locale = await getLocale(); // HR VIS-5b ◂
   const s = `/app/sys/${systemId}`;
   const b = overview.board;
-  const counts = b?.totals.counts ?? {};
-  const shown = (["ON_TIME", "LATE", "PENDING", "ABSENT", "LEAVE"] as const).filter((k) => (counts[k] ?? 0) > 0);
+  // HR VIS-5b ▸ ตัวนับสถานะแบบช่อง (counts) ไม่ใช้แล้ว — ช่องตัวเลขนับเป็นคนจาก kpisOf (ส่งมาจาก HrHub) ◂
   const cap = (n: number, trunc: boolean) => (trunc ? t("capPlus", { n: String(n) }) : String(n));
   const trunc = !!preview?.truncated.length;
+  const isToday = !!b && b.day === b.todayKey;
+  const head = "flex flex-wrap items-center gap-x-3 gap-y-1"; // HR VIS-5b ◂
+  const link = "inline-flex min-h-[44px] items-center text-sm font-medium text-[color:var(--color-accent)]";
+  const boardCard = b && board && (
+    <section data-testid="hr-hub-board" className="card flex min-w-0 flex-col gap-3 p-4 md:p-5">
+      <div className={head}>
+        <h2 className="text-base font-semibold">{isToday ? th("board.title") : th("board.titleOn", { date: formatShortDate(new Date(`${b.day}T00:00:00+07:00`), locale) })}</h2>
+        <span className={`text-xs ${muted}`}>{th("board.sub")}</span>
+        {overview.needsRecompute !== null && overview.needsRecompute > 0 && (
+          <Link href={`${s}/hr/attendance`} data-testid="hr-overview-recompute" className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[color:var(--color-danger)] px-3 text-xs font-medium text-[color:var(--color-danger)]">
+            {t("overview.recompute")} <span className="tabular-nums">{overview.needsRecompute}</span>
+          </Link>
+        )}
+        <Link href={`${s}/hr/attendance`} className={`${link} ml-auto`}>
+          {t("overview.openAttendance")}
+        </Link>
+      </div>
+      {board}
+    </section>
+  );
+  const inboxCard = overview.inbox && (
+    <section className="card flex min-w-0 flex-col gap-3 p-4 md:p-5">
+      <div className={head}>
+        <h2 className="text-base font-semibold">{t("title")}</h2>
+        <span className="rounded-full bg-[color:var(--color-ink)] px-2 py-0.5 text-xs font-semibold tabular-nums text-[color:var(--color-surface)]">{cap(overview.inbox.total, trunc)}</span>
+        {overview.inbox.decidable < overview.inbox.total && <span className={`text-xs ${muted}`}>{t("overview.inboxDecidable", { n: cap(overview.inbox.decidable, trunc) })}</span>}
+        <Link href={`${s}/hr/requests`} data-testid="hr-overview-inbox" className={`${link} ml-auto`}>
+          {t("viewAll")}
+        </Link>
+      </div>
+      {preview && preview.items.length > 0 ? <InboxBatch systemId={systemId} items={preview.items} selectable /> : <p className={`text-sm ${muted}`}>{t("empty")}</p>}
+    </section>
+  );
+  const monthCard = month && (
+    <section data-testid="hr-hub-month" className="card flex min-w-0 flex-col gap-3 p-4 md:p-5">
+      <div className={head}>
+        <h2 className="text-base font-semibold">{th("month.title")}</h2>
+        {reports && (
+          <Link href={`${s}/hr/reports`} data-testid="hr-overview-reports-link" className={`${link} ml-auto`}>
+            {reports.label}
+          </Link>
+        )}
+      </div>
+      {month}
+    </section>
+  );
+  const left = [boardCard, labor].filter(Boolean) as ReactNode[];
+  const right = [inboxCard, monthCard].filter(Boolean) as ReactNode[];
+  const two = left.length > 0 && right.length > 0;
+  const cells = Array.from({ length: Math.max(left.length, right.length) }).flatMap((_, i) => [
+    left[i] ? { key: `l${i}`, node: left[i], at: two ? COL_AT[`1-${i + 1}`] : "" } : null,
+    right[i] ? { key: `r${i}`, node: right[i], at: two ? COL_AT[`2-${i + 1}`] : "" } : null,
+  ]).filter((c): c is { key: string; node: ReactNode; at: string } => !!c);
+  const kpiSub = (xs: string[]) => xs.filter(Boolean).join(" · ");
   return (
-    <section data-testid="hr-overview" className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium">{t("overview.title")}</h2>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {b && (
+    <section data-testid="hr-overview" className="flex flex-col gap-4">
+      {header /* HR VIS-5b ▸ หัว: ชื่อ · สาขา · วัน · จัดกะ · + พนักงาน ◂ */}
+      {b && kpis && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <Tile
             testId="hr-overview-today"
-            label={`${t("overview.today")} · ${formatThaiDate(b.day)}`}
-            value={String(b.rows.length)}
-            sub={shown.length ? shown.map((k) => `${ta(`count.${k}`)} ${counts[k]}`).join(" · ") : t("overview.noBoard")}
+            label={t("overview.onShift") /* HR VIS-5b ▸ อยู่กะ = คน (ไม่ใช่จำนวนแถวของบอร์ด) ◂ */}
+            value={String(kpis.onShift)}
+            sub={kpis.onShift === 0 ? th("noShift") : kpiSub([th("kpi.ofPeople", { n: kpis.people }), kpis.leave ? `${ta("count.LEAVE")} ${kpis.leave}` : "", kpis.dayOff ? `${ta("count.DAY_OFF")} ${kpis.dayOff}` : ""])}
             href={`${s}/hr/attendance`}
           />
-        )}
-        {overview.inbox && (
-          <Tile
-            testId="hr-overview-inbox"
-            label={t("overview.inbox")}
-            value={cap(overview.inbox.decidable, trunc)}
-            sub={`${t("overview.inboxDecidable", { n: cap(overview.inbox.decidable, trunc) })} · ${t("overview.inboxTotal", { n: cap(overview.inbox.total, trunc) })}`}
-            href={`${s}/hr/requests`}
-          />
-        )}
-        {overview.needsRecompute !== null && <Tile testId="hr-overview-recompute" label={t("overview.recompute")} value={String(overview.needsRecompute)} href={`${s}/hr/attendance`} />}
-        {overview.lifecycleDue !== null && <Tile testId="hr-overview-due" label={t("overview.due")} value={String(overview.lifecycleDue)} href={`${s}/hr/employees`} />}
-        {reports && <Tile testId="hr-overview-reports-link" label={reports.label} value={reports.label} sub={reports.desc} href={`${s}/hr/reports`} /> /* HR H3.9 ◂ */}
-      </div>
-      {labor /* HR H4.2 ▸ การ์ดค่าแรงต่อยอดขาย (ภาพ 01) ◂ */}
-      {preview && preview.items.length > 0 && (
-        <div className="card flex flex-col gap-3 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium">{t("title")}</h2>
-            <Link href={`${s}/hr/requests`} className="inline-flex min-h-[44px] items-center text-sm text-[color:var(--color-accent)] underline">
-              {t("viewAll")}
+          {/* HR VIS-5b ▸ อีก 4 ช่องของภาพ 01 ◂ */}
+          <Tile testId="hr-hub-kpi-arrived" label={th("arrived")} value={String(kpis.arrived)} sub={kpiSub((facts?.arrivedByShift ?? []).map((x) => `${x.name} ${x.n}`))} />
+          <Tile testId="hr-hub-kpi-late" label={ta("count.LATE")} value={String(kpis.late)} danger={kpis.late > 0} sub={kpiSub((facts?.lateWho ?? []).map((x) => th("kpi.lateWho", { name: x.name, n: x.lateMin, time: x.inAt ? formatThaiTime(x.inAt) : "—" })))} />
+          <Tile testId="hr-hub-kpi-notin" label={ta("count.PENDING")} value={String(kpis.notIn)} danger={kpis.notIn > 0} sub={kpiSub((facts?.notInWho ?? []).map((x) => (x.startMin === null ? x.name : th("kpi.notInWho", { name: x.name, start: hhmm(x.startMin) }))))} />
+          <Tile testId="hr-hub-kpi-leave" label={ta("count.LEAVE")} value={String(kpis.leave)} wide sub={kpiSub((facts?.leaveWho ?? []).map((x) => (x.label ? `${x.name} ${x.label}` : x.name)))} />
+        </div>
+      )}
+      {cells.length > 0 && (
+        <div className={`grid grid-cols-1 gap-4 ${two ? "xl:grid-cols-[minmax(0,1fr)_400px]" : ""}`}>
+          {cells.map((c) => (
+            <div key={c.key} className={`flex min-w-0 flex-col ${c.at}`}>
+              {c.node}
+            </div>
+          ))}
+        </div>
+      )}
+      {due && overview.lifecycleDue !== null && (
+        <section data-testid="hr-hub-due" className="card flex min-w-0 flex-col gap-3 p-4 md:p-5">
+          <div className={head}>
+            <h2 className="text-base font-semibold">{t("overview.due")}</h2>
+            <span className={`text-xs ${muted}`}>{th("due.sub")}</span>
+            <Link href={`${s}/hr/employees`} data-testid="hr-overview-due" className={`${link} ml-auto`}>
+              {t("overview.openEmployees")} <span className="ml-1 tabular-nums">({overview.lifecycleDue})</span>
             </Link>
           </div>
-          <InboxBatch systemId={systemId} items={preview.items} compact />
-        </div>
+          {due /* HR VIS-5b ◂ */}
+        </section>
       )}
     </section>
   );
