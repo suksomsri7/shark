@@ -163,6 +163,11 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "ledger/page.tsx": "account.journal.view",
   "ledger/print/page.tsx": "account.journal.view", // ACC T4.2 — ใบพิมพ์/ส่งออกบัญชีแยกประเภท
   "ledger/subsidiary/page.tsx": "account.journal.view", // ACC T4.2 — บัญชีย่อยลูกหนี้/เจ้าหนี้รายตัว
+  // ACC T5 (เลน 2) ▸ ปฏิทินภาษี · เงินสดรับ-จ่าย · บวกกลับทางภาษี · หนี้สูญ (หน้าเขียน = ตรวจสิทธิ์ในตัว action) ◂
+  "tax/calendar/page.tsx": "account.report.view",
+  "reports/cash-book/page.tsx": "account.report.view",
+  "reports/tax-add-back/page.tsx": "account.report.view",
+  "aging/bad-debt/page.tsx": "account.report.view",
   // WO 2.3: "ดูภาพรวม" รายรับ/รายจ่าย (§6) — อ่านอย่างเดียว เหมือน page.tsx หลัก
   "overview/expense/page.tsx": "account.doc.view",
   "overview/revenue/page.tsx": "account.doc.view",
