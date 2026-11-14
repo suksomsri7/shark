@@ -78,3 +78,6 @@ ALTER TABLE "HrLineLink" ADD CONSTRAINT "HrLineLink_employeeId_fkey" FOREIGN KEY
 CREATE UNIQUE INDEX "HrLineLink_active_employee_key" ON "HrLineLink"("systemId", "employeeId") WHERE "status" = 'ACTIVE';
 CREATE UNIQUE INDEX "HrLineLink_pending_employee_key" ON "HrLineLink"("systemId", "employeeId") WHERE "status" = 'PENDING';
 CREATE UNIQUE INDEX "HrLineLink_active_contact_key" ON "HrLineLink"("tenantId", "chatContactId") WHERE "status" = 'ACTIVE';
+
+-- แถวสมาชิกของสรุปรายวัน (นับ/ปิดตามสรุป) — เฉพาะแถวที่มี digestOf
+CREATE INDEX "HrNotice_digestOf_idx" ON "HrNotice"("digestOf") WHERE "digestOf" IS NOT NULL;

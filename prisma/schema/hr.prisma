@@ -234,6 +234,7 @@ model HrEmployee {
   filingPerson     HrFilingPerson? // HR H3.6 ▸ ชื่อ/ที่อยู่แยกช่องของแบบยื่น (back-relation) ◂
   taxCertificates  HrTaxCertificate[] // HR H3.6 ▸ หนังสือรับรอง 50 ทวิ (back-relation) ◂
   salaryCertificates HrSalaryCertificate[] // HR H3.8 ▸ หนังสือรับรองเงินเดือน (back-relation) ◂
+  lineLinks          HrLineLink[] // HR H4.5 ▸ การผูก LINE (back-relation · FK RESTRICT) ◂
 
   @@index([systemId, active])
   @@index([tenantId])
@@ -802,13 +803,14 @@ model HrEmployeeRegister {
 
 // HR H4.5 ▸ แจ้งเตือนพนักงานผ่าน LINE (migration 20270111000000_hr_line_link) — id/สถานะเท่านั้น (ไม่มีชื่อ · LINE id · ข้อความ · เงิน)
 //   HrLineLink: รหัสผูกครั้งเดียว (PENDING) → ACTIVE · CHECK สถานะ/เหตุผล/ความครบของ ACTIVE + partial unique 3 ตัวอยู่ใน migration.sql เท่านั้น ·
-//   FK employeeId → HrEmployee ON DELETE RESTRICT อยู่ใน migration.sql (ไม่มี relation ฝั่ง Prisma — บล็อก HrEmployee คงเดิม) ·
+//   FK employeeId → HrEmployee ON DELETE RESTRICT (relation + back-relation lineLinks · ตรงกับ migration.sql — pnpm drift สะอาด) ·
 //   HrNotice: 1 แถวต่อ (ร้าน, dedupeKey = hr:<kind>:<refId>:<employeeId>[:<outcome>]) · line = สถานะส่ง LINE · เขียนที่ hr/line-link.ts · hr/line-notify.ts เท่านั้น
 model HrLineLink {
   id              String    @id @default(cuid())
   tenantId        String
   systemId        String
   employeeId      String
+  employee        HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   issuedForUserId String
   status          String
   connectionId    String?
