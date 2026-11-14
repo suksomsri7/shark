@@ -112,16 +112,18 @@ export default async function ApprovalsPage() {
               const c = cards.get(r.id);
               const lg = legalSummaries.get(r.id);
               return c
-                ? { id: r.id, ...posCard(r, c) }
+                ? { id: r.id, step: r.currentStepOrder, ...posCard(r, c) } // HR LEAVE-3 ▸ R2: ขั้นที่เห็น ◂
                 : lg
                   ? {
                       id: r.id,
+                      step: r.currentStepOrder, // HR LEAVE-3 ▸ R2 ◂
                       label: lg.titleTh,
                       meta: `ขั้นที่ ${r.currentStepOrder} · ยื่นเมื่อ ${r.createdAt.toLocaleDateString("th-TH", { day: "numeric", month: "short" })}`,
                       legal: { codes: lg.codes, lines: lg.lines },
                     }
                   : {
                     id: r.id,
+                    step: r.currentStepOrder, // HR LEAVE-3 ▸ R2 ◂
                     label: `${entityLabel(r.entityType)}${r.amountSatang != null ? ` · ${formatBaht(r.amountSatang)}` : ""}`,
                     meta: `ขั้นที่ ${r.currentStepOrder} · ยื่นเมื่อ ${r.createdAt.toLocaleDateString("th-TH", { day: "numeric", month: "short" })}`,
                   };

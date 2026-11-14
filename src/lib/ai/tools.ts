@@ -1794,6 +1794,11 @@ const approvalDecide: AiTool = {
     const payload: Record<string, unknown> = { decision };
     if (requestId) payload.requestId = requestId;
     if (requestSummary) payload.requestSummary = requestSummary;
+    // HR LEAVE-3 ▸ R2: จดขั้นปัจจุบันตอนเสนอ (อ่านผูกร้าน) — กดยืนยันหลังคำขอเลื่อนขั้นแล้ว = ไม่ตัดสินขั้นถัดไปแทน ◂
+    if (requestId) {
+      const cur = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findFirst({ where: { id: requestId }, select: { currentStepOrder: true } });
+      if (cur) payload.expectedStep = cur.currentStepOrder;
+    }
     const note = String(a.note ?? "").trim();
     if (note) payload.note = note;
     const verb = decision === "APPROVED" ? "อนุมัติ" : "ปฏิเสธ";

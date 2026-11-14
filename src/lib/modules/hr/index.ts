@@ -81,6 +81,10 @@ export { applyLeaveDecision, runLeaveYearJob } from "./leave";
 // HR H2.6 ▸ คำขอแก้เวลา — re-export ล้วน (ตรรกะอยู่ที่ `correction.ts`) · ผู้เรียก: approval-effects.ts (ผลของสายอนุมัติชนิด HrTimeCorrection)
 //   applyCorrectionDecision({ tenantId, systemId, correctionId, requestId, approved }) → { applied, code? }
 export { applyCorrectionDecision } from "./correction";
+// HR LEAVE-3 ▸ R4: ผู้ยื่นถอนคำขอในสายอนุมัติ = ยกเลิกใบลา/คำขอแก้เวลา/คำขอสลับกะ (re-export ล้วน) · ผู้เรียก: approval-effects.ts withdrawHrRequest ◂
+export { cancelLeave } from "./service";
+export { cancelCorrection } from "./correction";
+export { cancelSwap } from "./swap";
 // ◂ HR H2.6
 // POS P3.5 ▸ รอยต่อ HR ↔ POS ฉบับ C-8 v2 (มติ 5 · ledger/POS-CONTRACTS.md C-8) — re-export ล้วน (ตัวงานอยู่ที่ pos-seam.ts)
 //   onShiftToday = ใครเป็นพนักงาน · active · ลาวันนี้ · ตารางของวัน (unitId ยังไม่ใช้จนกว่า H1.1) · workedMinutesBetween = นาทีทำงานช่วงหนึ่ง ·
