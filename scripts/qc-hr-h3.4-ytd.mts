@@ -319,6 +319,7 @@ async function runDb(): Promise<void> {
     // ◂ ORACLE-EDIT (H3.4-YTD · controller ruling Q12)
     for (const x of ((await P.hrTaxCertificate.findMany({ where: { tenantId: TT, systemId: S.B, voidedAt: null } })) as Any[])) await FS.voidTaxCertificate(c("B"), V.owner, { certId: x.id, reason: "ทดสอบล้างยอดยกมา" }, NOWC);
     const clr: Any[] = [];
+    const liveBefore = (await liveOf(E.eB)).length + (await liveOf(E.eB2)).length + (await liveOf(E.eL)).length; // ORACLE-EDIT (H3.4-YTD · controller ruling OE-1): live openings right before the clear step (eB2 depends on the S4.2 race) ◂
     for (const e of [E.eB, E.eB2, E.eL]) for (const r of await liveOf(e)) clr.push(await op("clearOpeningYtd", c("B"), V.owner, { employeeId: e, taxYear: 2031, expectRev: r.rev }, NOWC));
     const O = await snap();
     const hO = await hist(V.owner, E.eB); // ORACLE-EDIT (H3.4-YTD · controller ruling Q12) ▸ after clear: no opening line, items only ◂
@@ -326,7 +327,7 @@ async function runDb(): Promise<void> {
     const sumOf = (p: Any, e: string, k: string) => ((p?.rows ?? []) as Any[]).filter((r) => r.employeeId === e).reduce((t, r) => t + Number(r[k] ?? 0), 0);
     ck("S3.12", {
       leaverSaved: svL?.ok === true, p1a: sumOf(W.p1a, E.eB, "amountSatang") === 12 * M + 100 && sumOf(W.p1a, E.eB, "taxSatang") === LIT.annual, leaver: sumOf(W.p1a, E.eL, "amountSatang") === 15_000_000,
-      leaverCand: (W.cand?.items ?? []).some((x: Any) => x.employeeId === E.eL), cleared: clr.length >= 3 && clr.every((x) => x?.ok === true), without: sumOf(O.p1a, E.eB, "amountSatang") === 12 * M - OPEN.incomeSatang,
+      leaverCand: (W.cand?.items ?? []).some((x: Any) => x.employeeId === E.eL), cleared: liveBefore >= 2 && clr.length === liveBefore && clr.every((x) => x?.ok === true) /* ORACLE-EDIT (H3.4-YTD · controller ruling OE-1) ◂ */, without: sumOf(O.p1a, E.eB, "amountSatang") === 12 * M - OPEN.incomeSatang,
       pnd8: W.pnd8 === O.pnd8, pnd9: !W.pnd9.startsWith("✗") && W.pnd9 === O.pnd9, sso9: !W.sso9.startsWith("✗") && W.sso9 === O.sso9,
     }, "1ก with opening · monthly bytes identical", short({ p1a: (W.p1a?.rows ?? []).map((r: Any) => [r.employeeId === E.eB ? "B" : r.employeeId === E.eL ? "L" : "o", r.amountSatang]), pnd9: W.pnd9.slice(0, 12), sso9: W.sso9.slice(0, 12), clr }, 400));
     const tyRow = (x: Any) => ((x?.rows ?? []) as Any[]).find((r) => r.employeeId === E.eB)?.values ?? {};
