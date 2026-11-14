@@ -283,6 +283,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrFilingPerson: sys(),
   HrFilingFile: sys(),
   HrTaxCertificate: sys(),
+  HrSalaryCertificate: sys(), // HR H3.8 ▸ หนังสือรับรองเงินเดือน (คำขอ + ใบที่ออก) ◂
   HrEmployeeRegister: sys(), // HR H3.9 ▸ ทะเบียนลูกจ้าง: สัญชาติ · ประโยชน์ตอบแทนอย่างอื่น (ม.113) ◂
   HrPayrollOpeningYtd: sys(), // HR H3.4-YTD ▸ ยอดยกมาต้นปี (ก่อนใช้ระบบ) ต่อพนักงานต่อปีภาษี ◂
   // HR H1.3 ▸ ตารางกฎหมายเงินเดือนกลางของทั้ง SHARK (ไม่มี tenantId/systemId) ◂

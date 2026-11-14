@@ -29,6 +29,12 @@ import { myStockCharges, type MyStockCharge } from "./stock-charge";
 import { holidaysBetween } from "./holidays";
 import { unitNamesOf } from "./scope";
 import { addDays, bkkDayKey, shiftWindow, TimeRuleError } from "./time-rules";
+import { finalizedOf, slipState } from "./payslip-rules"; // HR H3.8 ▸ สลิปที่ออกแล้ว (pure) ◂
+// HR H3.8 ▸ ทางเข้าของหน้า "ของฉัน" (ใต้ /app/me/hr) สู่สลิป/หนังสือรับรองเงินเดือน — หน้าและ route ของฉัน import ผ่าน facade นี้เท่านั้น (H2.10 R3) ·
+//   ทุกตัวได้พนักงานจาก resolveSelf (payslip.ts) · ไม่มีตัวใดรับรหัสพนักงานจากผู้เรียก ◂
+export { mySlip, mySlips } from "./payslip";
+export { myPayslipPdfGet, mySalaryCertGet } from "./payslip-route";
+export { MySalaryCertCard, MySlipYears, SlipCard, SlipDataNotice, mySlipHistory, mySlipPdfHref } from "./payslip-ui";
 
 // ═══════════════════════════ ข้อความคงที่ (§3 · ไม่มีชื่อคน/รหัสใด ๆ) ═══════════════════════════
 export const SELF_TEXT = {
@@ -510,16 +516,20 @@ export type MyDocuments = { ok: true; payslips: MySlip[]; notes: MyReviewNoteIte
 export async function myDocuments(actor: SelfActor): Promise<MyDocuments | Fail> {
   const me = await resolveSelf(actor);
   if (!me) return no(SELF_TEXT.noEmployee);
-  const items = await tenantDb(me.ctx).hrPayrollItem.findMany({
-    where: { tenantId: me.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, run: { status: { in: ["APPROVED", "PAID"] } } },
-    select: { runId: true, netSatang: true, run: { select: { periodKey: true, status: true } } },
-    orderBy: [{ run: { periodKey: "desc" } }, { runId: "desc" }],
-    take: 36,
-  });
+  // HR H3.8 ▸ R6: เฉพาะสลิปที่ออกแล้ว (รุ่น 2 ต้องปิดงาน) · ลิงก์ไปหน้าสลิปของฉัน /app/me/hr/pay/<รอบ> · คีย์ DTO เดิม ◂
+  const items = (
+    await tenantDb(me.ctx).hrPayrollItem.findMany({
+      // HR H3.8 ▸ merge round m4: ตัวเลือก "ออกแล้ว" อยู่ในคิวรี (รุ่น 1 หรือ stepsJson.finalized) ⇒ 36 แถวไม่สั้นลงหลังกรอง ◂
+      where: { tenantId: me.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, run: { status: { in: ["APPROVED", "PAID"] }, OR: [{ engineVersion: 1 }, { stepsJson: { path: ["finalized"], equals: true } }] } },
+      select: { runId: true, netSatang: true, run: { select: { periodKey: true, status: true, engineVersion: true, stepsJson: true } } },
+      orderBy: [{ run: { periodKey: "desc" } }, { runId: "desc" }],
+      take: 36,
+    })
+  ).filter((i) => slipState({ status: i.run.status, engineVersion: i.run.engineVersion, finalized: finalizedOf(i.run.stepsJson) }) === "ISSUED"); // HR H3.8 ◂
   const notes = await myReviewNotes({ tenantId: me.tenantId, userId: me.userId });
   return {
     ok: true,
-    payslips: items.map((i) => ({ runId: i.runId, periodKey: i.run.periodKey, status: i.run.status, netSatang: i.netSatang, href: `/app/sys/${me.ctx.systemId}/payroll/${i.runId}/slip/${me.employeeId}` })),
+    payslips: items.map((i) => ({ runId: i.runId, periodKey: i.run.periodKey, status: i.run.status, netSatang: i.netSatang, href: `/app/me/hr/pay/${i.runId}` })), // HR H3.8 ▸ หน้าสลิปของฉัน ◂
     notes: notes.items,
     certificate: null, // H3.8 (หนังสือรับรอง)
     myRequestsSlot: null, // H4.6 (คำขอของฉันรวมทุกระบบ)
