@@ -85,7 +85,8 @@ export const SKILLS: Skill[] = [
       "account_deposit_settlement", // ACC T2.4 ▸ ดูก่อนคืน/ริบเงินมัดจำ (ยอดคงเหลือ · VAT · ใบลดหนี้ไหม) (อ่าน) ◂
       "account_wht_context", // ACC T3.1/T3.2 ▸ อัตราหัก ณ ที่จ่ายตามตาราง × ผู้จ่าย × ผู้รับ × ช่องทาง + ฐานรายบรรทัดของเอกสาร (อ่าน) ◂
       "account_tax_deadlines", // ACC T3.7 ▸ กำหนดยื่น ภ.พ.30/ภ.ง.ด. ที่กำลังจะถึง จากตาราง (อ่าน) ◂
-      "account_wht_pnd_report", "account_wht_pnd1k", "account_wht_filing_state", "account_wht_credits_owed", // ACC T3.4 ▸ ภ.ง.ด. แยกแบบ 1/2/3/53/54 · T3.5 ▸ ค้างรับ 50 ทวิ จากลูกค้า (อ่าน) ◂
+      "account_wht_pnd_report", "account_wht_pnd1k", "account_wht_filing_state", "account_wht_credits_owed",
+      "account_vat_threshold", "account_tax_add_back", "account_tax_checks", "account_bad_debt", // ACC T5.3 T5.5 T5.6 T5.7 ▸ เกณฑ์จด VAT · บวกกลับ · ตรวจภาษีประจำเดือน · หนี้สูญ (อ่าน) ◂ // ACC T3.4 ▸ ภ.ง.ด. แยกแบบ 1/2/3/53/54 · T3.5 ▸ ค้างรับ 50 ทวิ จากลูกค้า (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",
@@ -100,6 +101,7 @@ export const SKILLS: Skill[] = [
       "account_input_vat_not_claimable", // ACC T1.4 ▸ ใบกำกับภาษีซื้อไม่มา → ภาษีซื้อไม่ขอคืน (ข้อเสนอ) ◂
       "account_approve_journal", // ACC T4.1 ▸ อนุมัติ JV มือ (ข้อเสนอ) ◂
       "account_set_asset_tax_class", // ACC T4.3 ▸ ประเภททางภาษีของสินทรัพย์ — ที่ดินไม่คิดค่าเสื่อม (ข้อเสนอ) ◂
+      "account_set_tax_add_back", "account_set_stamp_duty_ref", "account_write_off_bad_debt", "account_set_doubtful_allowance", // ACC T5.5 T5.6 T5.7 ▸ ธงบวกกลับ · รหัสอากร · ตัดหนี้สูญ · ค่าเผื่อ (ข้อเสนอ) ◂
       "account_wht_replace_cert", "account_wht_additional_filing", "account_wht_mark_received", "account_wht_unmark_received", // ACC T3.3 ▸ ออก 50 ทวิ แทน · T3.4 ▸ แบบเพิ่มเติม ภ.ง.ด. · T3.5 ▸ ได้รับ 50 ทวิ แล้ว/ยกเลิก (ข้อเสนอ) ◂
       // อันตราย (ยืนยัน 2 ชั้น)
       "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",

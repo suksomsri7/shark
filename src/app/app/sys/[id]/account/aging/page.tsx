@@ -99,7 +99,11 @@ export default async function AgingPage({
         </Link>
         <h1 className="mt-1 text-2xl font-semibold">{title}</h1>
         <p className="text-sm text-[color:var(--color-muted)]">
-          ยอดค้างชำระแยกตามช่วงเวลาเกินกำหนด (ณ วันนี้)
+          ยอดค้างชำระแยกตามช่วงเวลาเกินกำหนด (ณ วันนี้) ·{" "}
+          {/* ACC T5.7 (เลน 2) ▸ ทางเข้าหน้าหนี้สูญ/ค่าเผื่อ ◂ */}
+          <Link href={`${base}/aging/bad-debt`} className="underline print:hidden" data-testid="aging-bad-debt-link">
+            หนี้สูญและค่าเผื่อหนี้สงสัยจะสูญ
+          </Link>
         </p>
       </div>
 

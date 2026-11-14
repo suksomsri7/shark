@@ -568,6 +568,11 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       hiddenPages: [
         page({ label: "ภาษีขายที่ค้างพัก", href: `${base}/tax/parked-vat`, status: "ready", icon: "pct", testId: "PARKED_VAT" }),
         page({ label: "ใบกำกับภาษีซื้อรอรับ", href: `${base}/tax/pending-input-vat`, status: "ready", icon: "pct", testId: "PENDING_INPUT_VAT" }),
+        // ACC T5 (เลน 2) ▸ หน้าใหม่เข้าจากหน้ารายงาน/อายุหนี้ (breadcrumb) — ไม่เพิ่มเมนูหลัก ◂
+        page({ label: "ปฏิทินภาษีของร้าน", href: `${base}/tax/calendar`, status: "ready", icon: "clock", testId: "TAX_CALENDAR" }),
+        page({ label: "รายงานเงินสดรับ-จ่าย", href: `${base}/reports/cash-book`, status: "ready", icon: "report", testId: "CASH_BOOK" }),
+        page({ label: "รายจ่ายที่อาจต้องบวกกลับทางภาษี", href: `${base}/reports/tax-add-back`, status: "ready", icon: "report", testId: "TAX_ADD_BACK" }),
+        page({ label: "หนี้สูญและค่าเผื่อหนี้สงสัยจะสูญ", href: `${base}/aging/bad-debt`, status: "ready", icon: "clock", testId: "BAD_DEBT" }),
       ],
     },
 

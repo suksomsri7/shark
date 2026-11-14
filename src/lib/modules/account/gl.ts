@@ -1165,6 +1165,38 @@ export async function postPayment(
         b.dr(await b.id("AR"), p.amount, "จากเครดิตคงเหลือ", contactId);
         b.cr(await b.id("AR"), p.amount, "หักเครดิตลูกหนี้", contactId);
       }
+    } else if (p.channel === "BAD_DEBT") {
+      // ACC T5.7 (เลน 2) ▸ ตัดหนี้สูญ — ไม่แตะบัญชีรายได้ (NPAEs 18.10 [V]) · ไม่มีเงินเข้า
+      //   ① VAT บริการที่ยังพักใน "ภาษีขายยังไม่ถึงกำหนด" (ไม่ได้รับเงิน = ยังไม่ถึงจุดรับผิด) ส่วนของยอดที่ตัด: JV แยกที่อ้าง "ตัวใบ"
+      //      (refType AccountDocument · event BADDEBT_VAT:<payment>) ⇒ parkedVatOf/รายงานภาษีขายค้างพักเห็นยอดลดเอง · ยกเลิก = reverseBadDebtVat
+      //   ② ส่วนที่เหลือ: ใช้ค่าเผื่อหนี้สงสัยจะสูญคงเหลือ ณ วันที่ตัดก่อน แล้ว Dr หนี้สูญ · Cr ลูกหนี้ (ผู้ติดต่อ) ◂
+      if (isPayable) throw new Error("ตัดหนี้สูญได้เฉพาะลูกหนี้ (เอกสารขาย)");
+      const [docRow, parked] = await Promise.all([
+        db.accountDocument.findFirst({ where: { id: p.documentId, systemId: ctx.systemId }, select: { grandTotal: true, paidTotal: true } }),
+        parkedVatOf(ctx, [p.documentId], db as Tx),
+      ]);
+      const pv = parked.get(p.documentId);
+      const left = Math.max(0, pv?.service ?? 0);
+      // ใบปิดยอดด้วยรายการนี้ = ปล่อย VAT ที่ยังพักทั้งหมด (กันเศษปัด) · ไม่ปิด = ตามสัดส่วนยอดที่ตัดต่อยอดใบ (เหมือนตอนรับเงิน T1.2)
+      const closes = !!docRow && docRow.paidTotal >= docRow.grandTotal;
+      const vatShare = Math.min(p.amount, closes ? left : docRow && docRow.grandTotal > 0 ? Math.min(left, Math.round(((pv?.serviceAtIssue ?? 0) * p.amount) / docRow.grandTotal)) : 0);
+      if (vatShare > 0 && !(await alreadyPosted(ctx, `AccountDocument#${p.documentId}#BADDEBT_VAT:${p.id}`, db))) {
+        const v = new Book(ctx, db);
+        v.dr(await v.id("VAT_OUTPUT_UNDUE"), vatShare, "ภาษีขายที่ยังไม่ถึงกำหนดของหนี้ที่ตัด", contactId);
+        v.cr(await v.id("AR"), vatShare, "ตัดหนี้สูญ (ส่วนภาษีขายที่ยังไม่ถึงกำหนด)", contactId);
+        await commitEntry(ctx, { book: "GENERAL", journal: "ADJUST", date: p.paidAt, refType: "AccountDocument", refId: p.documentId, event: `BADDEBT_VAT:${p.id}`, memo: "ตัดหนี้สูญ — ภาษีขายที่ยังไม่ถึงกำหนด" }, v, db);
+      }
+      const rest = p.amount - vatShare;
+      if (rest > 0) {
+        const allowanceId = await b.id("DOUBTFUL_ALLOWANCE");
+        const allow = await db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: allowanceId, entry: { date: { lte: p.paidAt } } }, _sum: { debit: true, credit: true } });
+        const useAllow = Math.min(Math.max(0, (allow._sum.credit ?? 0) - (allow._sum.debit ?? 0)), rest);
+        if (useAllow > 0) b.dr(allowanceId, useAllow, "ตัดหนี้สูญจากค่าเผื่อ", contactId);
+        b.dr(await b.id("BAD_DEBT_EXPENSE"), rest - useAllow, "หนี้สูญ", contactId);
+        b.cr(await b.id("AR"), rest, "ตัดหนี้สูญ", contactId);
+      } else {
+        return { skipped: true };
+      }
     } else if (isPayable) {
       // จ่ายชำระเจ้าหนี้: Dr 2100 (amount+WHT) + Dr 6500 fee · Cr เงิน (amount+fee) · Cr 2130 WHT ค้างนำส่ง
       const cashId = await financeLedgerId(ctx, p.financeAccountId, p.channel, db, true);
@@ -1189,13 +1221,13 @@ export async function postPayment(
     const entry = await commitEntry(
       ctx,
       {
-        book: isPayable ? "PAYMENTS" : "RECEIPTS",
-        journal: "PAYMENT",
+        book: p.channel === "BAD_DEBT" ? "GENERAL" : isPayable ? "PAYMENTS" : "RECEIPTS", // ACC T5.7 ▸ ตัดหนี้สูญ = สมุดทั่วไป ◂
+        journal: p.channel === "BAD_DEBT" ? "ADJUST" : "PAYMENT",
         date: p.paidAt,
         refType: "AccountDocumentPayment",
         refId: paymentId,
         event,
-        memo: isPayable ? "จ่ายชำระเงิน" : "รับชำระเงิน",
+        memo: p.channel === "BAD_DEBT" ? "ตัดหนี้สูญ" : isPayable ? "จ่ายชำระเงิน" : "รับชำระเงิน",
       },
       b,
       db,
@@ -2759,3 +2791,41 @@ export async function dormDepositHeldMany(tenantId: string, unitId: string, leas
   return out;
 }
 // ◂ SVC D.13
+
+// ─────────────────── ACC T5.7 (เลน 2) ▸ ค่าเผื่อหนี้สงสัยจะสูญ ───────────────────
+/**
+ * ตั้ง/ปรับค่าเผื่อหนี้สงสัยจะสูญ — delta > 0: Dr หนี้สงสัยจะสูญ / Cr ค่าเผื่อ · delta < 0: กลับข้าง (ลดค่าเผื่อ)
+ *   ใบสำคัญ refType "AccountDoubtfulAllowance" (refId = คีย์ของการตั้งครั้งนั้น) · ไม่แก้แถวเดิม (ปรับครั้งใหม่ = ใบใหม่)
+ */
+export async function postDoubtfulAllowance(ctx: GlCtx, o: { key: string; date: Date; delta: number; memo?: string; postedById?: string }, tx?: Tx): Promise<{ entryId: string } | { skipped: true }> {
+  if (o.delta === 0) return { skipped: true };
+  return withTx(tx, async (db) => {
+    if (await alreadyPosted(ctx, `AccountDoubtfulAllowance#${o.key}#ALLOWANCE`, db)) return { skipped: true };
+    const b = new Book(ctx, db);
+    b.dr(await b.id("DOUBTFUL_EXPENSE"), o.delta, "หนี้สงสัยจะสูญ");
+    b.cr(await b.id("DOUBTFUL_ALLOWANCE"), o.delta, "ค่าเผื่อหนี้สงสัยจะสูญ");
+    const entry = await commitEntry(ctx, { book: "GENERAL", journal: "ADJUST", date: o.date, refType: "AccountDoubtfulAllowance", refId: o.key, event: "ALLOWANCE", memo: o.memo ?? "ตั้งค่าเผื่อหนี้สงสัยจะสูญ", postedById: o.postedById }, b, db);
+    return { entryId: entry.id };
+  });
+}
+
+/** ยอดค่าเผื่อหนี้สงสัยจะสูญคงเหลือ (เครดิต) ณ วันที่ */
+export async function doubtfulAllowanceBalance(ctx: GlCtx, at: Date, tx?: Tx): Promise<number> {
+  const db = tx ?? prisma;
+  const m = await db.accountMapping.findFirst({ where: { systemId: ctx.systemId, key: "DOUBTFUL_ALLOWANCE" }, select: { accountId: true } });
+  if (!m) return 0;
+  const a = await db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: m.accountId, entry: { date: { lte: at } } }, _sum: { debit: true, credit: true } });
+  return (a._sum.credit ?? 0) - (a._sum.debit ?? 0);
+}
+
+/** ACC T5.7 ▸ ยกเลิกการตัดหนี้สูญ: กลับ JV ส่วน VAT ที่พัก (ref ตัวใบ) ของรายการนั้น — JV ของรายการเองกลับด้วย reverseFor ตามเดิม */
+export async function reverseBadDebtVat(ctx: GlCtx, documentId: string, paymentId: string, reason: string, tx?: Tx): Promise<void> {
+  const db = tx ?? prisma;
+  const e = await db.accountJournalEntry.findFirst({ where: { systemId: ctx.systemId, idempotencyKey: `AccountDocument#${documentId}#BADDEBT_VAT:${paymentId}` }, select: { id: true } });
+  if (e) await reverseEntry(ctx, e.id, reason, tx);
+}
+
+/** ACC T5.7 ▸ ธุรกรรมของโมดูลบัญชีที่ต้องเขียนเอกสาร + ลงบัญชีพร้อมกัน (ผู้เรียกไม่ต้องลาก prisma ดิบ — fitness F5.1) */
+export function runAccountTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return prisma.$transaction(fn);
+}
