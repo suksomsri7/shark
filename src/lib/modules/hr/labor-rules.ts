@@ -35,9 +35,11 @@ export function laborTextFor(locale: string | null | undefined): LaborText {
 
 // ═════════════ ตัวช่วยเลข/วัน ═════════════
 const B = (n: number) => BigInt(Math.trunc(n));
+// BigInt ผ่านฟังก์ชัน (tsconfig target < ES2020 ไม่รับ literal 1n) — รูปเดียวกับ payroll-run-rules.ts B2
+const [Z0, Z1, Z2, Z30, Z60, Z1000, Z10K] = [0, 1, 2, 30, 60, 1000, 10_000].map((x) => BigInt(x)) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint];
 /** ปัดครึ่งขึ้นของ a ÷ b (a ≥ 0 · b > 0) */
 function halfUp(a: bigint, b: bigint): number {
-  return Number((2n * a + b) / (2n * b));
+  return Number((Z2 * a + b) / (Z2 * b));
 }
 const DAY_MS = 86_400_000;
 const utc = (day: string) => Date.parse(`${day}T00:00:00Z`);
@@ -88,7 +90,7 @@ export function monthlyShare(i: { baseSatang: number; day: string; startDate?: s
   }
   const d = dayDiff(e, s) + 1;
   if (d <= 0) return 0;
-  const E = Math.min(base, halfUp(B(base) * B(d), 30n));
+  const E = Math.min(base, halfUp(B(base) * B(d), Z30));
   const k = dayDiff(day, s) + 1;
   return Math.floor(E / d) + (k <= E % d ? 1 : 0);
 }
@@ -112,7 +114,7 @@ export function dayWage(i: {
     const rate = Math.max(0, Math.trunc(i.dailySatang ?? 0));
     return halfUp(B(rate) * B(Math.min(N, m)), B(N));
   }
-  if (i.payType === "HOURLY") return halfUp(B(Math.max(0, Math.trunc(i.hourlySatang ?? 0))) * B(m), 60n);
+  if (i.payType === "HOURLY") return halfUp(B(Math.max(0, Math.trunc(i.hourlySatang ?? 0))) * B(m), Z60);
   return 0;
 }
 
@@ -127,7 +129,7 @@ export function holidayPremium(i: { payType: LaborPayType | string; rateSatang: 
   const m = Math.max(0, Math.trunc(i.paidMin || 0));
   const dayMin = Math.min(480, Math.max(1, Math.trunc(i.normalMin || 480)));
   const rate = Math.max(0, Math.trunc(i.rateSatang || 0));
-  const den = i.payType === "MONTHLY" ? 30n * B(dayMin) * 10_000n : i.payType === "DAILY" ? B(dayMin) * 10_000n : 60n * 10_000n;
+  const den = i.payType === "MONTHLY" ? Z30 * B(dayMin) * Z10K : i.payType === "DAILY" ? B(dayMin) * Z10K : Z60 * Z10K;
   return halfUp(B(rate) * B(m) * B(i.holidayWorkPaidBp), den);
 }
 
@@ -138,7 +140,7 @@ export function ssoEstimate(i: { wageSatang: number; daysInMonth: number; rateBp
   if (w === 0) return 0;
   const baseM = B(w) * B(D);
   const cap = B(Math.max(0, Math.trunc(i.maxBaseSatang || 0)));
-  return halfUp((baseM < cap ? baseM : cap) * B(Math.max(0, Math.trunc(i.rateBp || 0))), 10_000n * B(D));
+  return halfUp((baseM < cap ? baseM : cap) * B(Math.max(0, Math.trunc(i.rateBp || 0))), Z10K * B(D));
 }
 
 // ═════════════ D7 D8 แบ่งยอด ═════════════
@@ -148,18 +150,18 @@ export function largestRemainder(total: number, weights: readonly number[]): num
   if (n === 0) return [];
   const T = B(total);
   const w = weights.map((x) => B(Math.max(0, x || 0)));
-  const W = w.reduce((a, b) => a + b, 0n);
-  if (W === 0n) return weights.map((_, i) => (i === 0 ? Number(T) : 0));
-  const neg = T < 0n;
+  const W = w.reduce((a, b) => a + b, Z0);
+  if (W === Z0) return weights.map((_, i) => (i === 0 ? Number(T) : 0));
+  const neg = T < Z0;
   const t = neg ? -T : T;
   const q = w.map((x) => (t * x) / W);
   const r = w.map((x) => (t * x) % W);
-  let left = t - q.reduce((a, b) => a + b, 0n);
+  let left = t - q.reduce((a, b) => a + b, Z0);
   const order = r.map((x, i) => [x, i] as const).sort((a, b) => (a[0] > b[0] ? -1 : a[0] < b[0] ? 1 : a[1] - b[1]));
   for (const [, i] of order) {
-    if (left <= 0n) break;
-    q[i] = q[i]! + 1n;
-    left -= 1n;
+    if (left <= Z0) break;
+    q[i] = q[i]! + Z1;
+    left -= Z1;
   }
   return q.map((x) => Number(neg ? -x : x));
 }
@@ -212,7 +214,7 @@ export function forecastDates(day: string, today: string): string[] {
 /** ค่าแรง ÷ ยอดขาย เป็นทศนิยม 1 ตำแหน่งของ % (‰) — ยอดขาย ≤ 0 = null */
 export function pctTenths(cost: number, sales: number): number | null {
   if (!(sales > 0)) return null;
-  return halfUp(B(Math.max(0, cost)) * 1000n, B(sales));
+  return halfUp(B(Math.max(0, cost)) * Z1000, B(sales));
 }
 /** คนที่ต้องการในชั่วโมงนั้น — splh ไม่ตั้ง = null · คาดการณ์ ≤ 0 = 0 · อื่น ๆ = max(ขั้นต่ำ, ⌈คาดการณ์ ÷ splh⌉) */
 export function needed(i: { forecastSatang: number; splhSatang: number | null; minStaff: number }): number | null {
@@ -220,7 +222,7 @@ export function needed(i: { forecastSatang: number; splhSatang: number | null; m
   if (!(i.forecastSatang > 0)) return 0;
   const f = B(i.forecastSatang);
   const s = B(i.splhSatang);
-  return Math.max(Math.max(0, Math.trunc(i.minStaff || 0)), Number((f + s - 1n) / s));
+  return Math.max(Math.max(0, Math.trunc(i.minStaff || 0)), Number((f + s - Z1) / s));
 }
 /** จำนวนคนที่อยู่ในชั่วโมงนั้นอย่างน้อย 30 นาที (รวมทุกช่วงของคนเดียวกัน) */
 export function scheduledAt(slots: readonly { employeeId: string; hour: number; minutes: number }[], hour: number): number {
