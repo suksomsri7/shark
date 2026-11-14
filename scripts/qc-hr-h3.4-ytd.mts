@@ -54,7 +54,7 @@ S3.10|A10 Q10|C|R|[db] rev history: edit ⇒ rev 2, rev 1 intact + superseded ·
 S3.11|A11 Q4|C|R|[db] 50 ทวิ = items + opening (36,000,000 / 205,000 / SSO) · not stale · candidate · live cert ⇒ save CERT_ISSUED + locked · void ⇒ save ok ⇒ re-issue 36,000,100
 S3.12|A12 Q6|C|R|[db] ภ.ง.ด.1ก 2031 includes the opening · opening-only leaver listed (1ก + candidates) · ภ.ง.ด.1 2031-08 / 2031-09 and สปส.1-10 bytes identical with and without openings
 S3.13|A13 Q7|C|R|[db] tax-year = items + opening (income · wht · SSO · months 12) + one extra note · without ⇒ items only · tax-month / payroll-year identical with and without
-S3.14|A14 Q2|C|R|[db] engine-v1 shop: save ok · v1 WHT 17,083 (golden) · 50 ทวิ and 1ก include the opening (27,000,000 / 153,747)
+S3.14|A14 Q2|C|R|[db] engine-v1 shop: save ok · v1 WHT 15,833 (golden · HF-SSO ORACLE-EDIT, was 17,083) · 50 ทวิ and 1ก include the opening (27,000,000 / 152,497 · was 153,747)
 S3.15|A15 R8|C|R|[db] viewer matrix list/save/bulk/clear: owner + gate holder ([] read+pay) ok · unit list · no pay · manager · staff HR key · member · the employee · other tenant · role claim ≠ DB ⇒ NO identical, nothing written · own row ⇒ OWN
 S3.16|A16 R9|C|R|[db] DTO keys exact · no sensitive keys · manager preview without YTD_OPENING / opening amounts · no outbox event
 S3.17|A17 R10|C|R|[db] audits save {employeeId, taxYear, rev, by ONE|BULK} · clear {employeeId, taxYear, rev} · refused {code} · no ฿ in any opening audit · refused bulk writes none
@@ -502,6 +502,9 @@ async function runDb(): Promise<void> {
   });
 
   // ── S3.14 A14 engine v1 ──
+  // ORACLE-EDIT (HF-SSO-2569 · controller ruling): S3.14 v1 run งวด 2031-09 (eV 30,000 · โสด · มีสิทธิ์ ปกส.) ⇒ เพดานฐาน 20,000 ⇒ ปกส. 1,000 · ปีภาษี 2031 เพดานลดหย่อน 12,000:
+  //   360,000 − 100,000 − 60,000 − 12,000 = 188,000 ⇒ 1,900/12 ⇒ item WHT LIT.v1Monthly 17,083 → V1_2031 15,833 · 50 ทวิ/ภ.ง.ด.1ก ภาษี 153,747 → 152,497 (LIT.v1Monthly คงเดิม — ใช้ที่ข้อ pure บนฟังก์ชัน FREEZE)
+  const V1_2031 = 15_833;
   await blk(["S3.14"], async () => {
     need("saveOpeningYtd");
     const sv = await save("V", V.owner, E.eV);
@@ -513,11 +516,11 @@ async function runDb(): Promise<void> {
     const ct = await certOf(is?.certId);
     const p1a = await FS.previewFiling(c("V"), V.owner, { kind: "PND1A", period: "2031" });
     const row = ((p1a?.rows ?? []) as Any[]).filter((x) => x.employeeId === E.eV);
-    const want = [OPEN.incomeSatang + M, OPEN.whtSatang + LIT.v1Monthly];
+    const want = [OPEN.incomeSatang + M, OPEN.whtSatang + V1_2031]; // HF-SSO ORACLE-EDIT
     ck("S3.14", {
-      saved: sv?.ok === true, v1: it?.whtSatang === LIT.v1Monthly, approved: ap?.ok === true, cert: ct?.totalSatang === want[0] && ct?.totalTaxSatang === want[1],
+      saved: sv?.ok === true, v1: it?.whtSatang === V1_2031, approved: ap?.ok === true, cert: ct?.totalSatang === want[0] && ct?.totalTaxSatang === want[1], // HF-SSO ORACLE-EDIT
       pnd1a: row.reduce((t, x) => t + x.amountSatang, 0) === want[0] && row.reduce((t, x) => t + x.taxSatang, 0) === want[1],
-    }, "17,083 · 27,000,000 / 153,747", short({ sv, w: it?.whtSatang, is, t: [ct?.totalSatang, ct?.totalTaxSatang] }, 300));
+    }, "15,833 · 27,000,000 / 152,497", short({ sv, w: it?.whtSatang, is, t: [ct?.totalSatang, ct?.totalTaxSatang] }, 300)); // HF-SSO ORACLE-EDIT
   });
 
   // ── S3.15 A15 viewer matrix (eA3) · S3.16 DTO · S3.18 bulk · S3.17 audits ──

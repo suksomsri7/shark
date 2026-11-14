@@ -238,7 +238,7 @@ function runStatic(): void {
     const oracleEdited = (f: string) =>
       (!!ORACLE_EDITS[f] || IN_BASE) &&
       // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.6: in-base only — a later fix ticket's code hunks marked "HR-SET-<n>" are accepted too · unmarked still fails ◂
-      (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+|HR H\d+\.\d+|HR-SET-\d+/)); // ORACLE-EDIT (H3.7 builder, merge of H3.9): later tickets' src hunks marked "HR H<n>.<n>" accepted too (controller rule) ◂
+      (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H3\.6/.test(l) && (ORACLE_EDITS[f] ?? []).some((id) => l.includes(id))) || laterMarked(h, /ORACLE-EDIT[^\n]*H\d+\.\d+|HR H\d+\.\d+|HR-SET-\d+|HF-SSO/)); // ORACLE-EDIT (H3.7 builder, merge of H3.9): later tickets' src hunks marked "HR H<n>.<n>" accepted too (controller rule) ◂ // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised): + hunks marked "HR HF-SSO" / "HF-SSO ORACLE-EDIT" ◂
     const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
     const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f)) : [];
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;

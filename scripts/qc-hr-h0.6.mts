@@ -66,7 +66,8 @@ const WEBHOOK_LABELS = "src/lib/webhooks/labels.ts";
 const AUTOMATION_LABELS = "src/lib/automation/labels.ts";
 // hashes taken on the base (103fde95 — same values as qc-hr-h0.1 on f85f5455) — FREEZE (hr-brief-COMMON §C.4/C.5 · H0.6 §4)
 const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7";
-const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13";
+// ORACLE-EDIT (HF-SSO-2569 · controller ruling): computeItem body sha re-taken — computeItem gets the run's law (periodKey + tax year) and calls ssoContributionForPeriod / monthlyWhtForTaxYear (payroll-rules.ts itself unchanged): b151a83c… → 451c72e1…
+const COMPUTE_ITEM_SHA = "451c72e1c04068c45a070528571161b4c283316b91e449ed3311282cc95012ba";
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";
 
 // fixed Thai texts — R2.2 (the no-JV text is today's payroll.ts text, kept unchanged: §3 S5 "unchanged text" · qc-hr-h0.1 S4.7 · OQ-1)

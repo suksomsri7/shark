@@ -225,7 +225,8 @@ function runStatic(): void {
   const gn = rd(F.gl);
   const mpB = fnBody(pb, "markPaid");
   const apB = stripMarked(between(pb, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน"));
-  const apN = stripMarked(between(pn, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน"));
+  // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.7: the one marked "HR HF-SSO" line of v1 approveRun (RECOMPUTE → fixed note · ruling Q3) is a later ticket's hunk ◂
+  const apN = stripMarked(between(pn, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน")).split("\n").filter((l) => !/\/\/ HR HF-SSO\b/.test(l)).join("\n");
   const frozen = ["postPayrollJV", "reverseEntry", "reverseFor", "commitEntry", "resolveLine", "ensureAccounting", "postManualJV"].filter((n) => !fnBody(gb, n) || fnBody(gb, n) !== fnBody(gn, n));
   // ORACLE-EDIT (H3.7 fix r1 F8): v1 approveRun may carry exactly ONE marked line, byte-exact (the posting-key shadow of postPayrollJV — Q2)
   const V1_LINE = "    const postPayrollJV = (c: { tenantId: string; systemId: string }, i: Parameters<typeof postPayrollV1KeyedJV>[2]) => postPayrollV1KeyedJV(c, runId, i); // HR H3.7 ▸ Q2: JV รุ่น 1 มีคีย์กันซ้ำ (refId = รอบ) — ผูกไม่สำเร็จแล้วกดใหม่ = ผูกรายการเดิม ไม่ลงซ้ำ (ปิด JV กำพร้า) ◂";
