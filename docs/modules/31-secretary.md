@@ -61,7 +61,7 @@
 | R-K5 | `AiScheduledTask.ownerUserId` · รันด้วย actor ของผู้ตั้ง · claim ด้วย `lastRunDay` · ไม่มีคอลัมน์นาที | §4 §5.21 |
 | R-K6 | โควตา = scope `"jobs"` ที่สาม · นับที่ `startRoom` | §8 |
 | R-K7 | `canRunAi(tenantId, {scope})` ชั้นเดียว · ร้านหลัง `SECRETARY_LAUNCH_AT` ไม่ได้ GRANT | §5.14 §5.18 §8 |
-| R-K8 | ตอบใน request + `after()` · เก็บตกด้วย cron hourly/outbox · **ไม่มี cron รายนาที** | §5.5 §11 |
+| R-K8 | ตอบใน request + `after()` · เก็บตกด้วย cron hourly/outbox · ~~ไม่มี cron รายนาที~~ **ล้าสมัย (R-CAL-1 · 14 พ.ย. 2569)**: มีราง minute-jobs บน VPS แล้ว (`src/lib/platform/minute-jobs.ts` ← crontab `scripts/crm-cron.mts minute`) · `secretary.roomJobs`/`chat.sla` และงานปฏิทิน (`docs/modules/32-secretary-calendar.md`) ขี่รางนี้ | §5.5 §11 |
 | R-K9/K10 | `PhoneOtp` + `UserPhone` (global) · `src/lib/core/phone-auth.ts` (มีแล้ว) · SMS mock ใน QC | §4 §5.22 |
 | R-K11 | `StaffInvite` — ไม่สร้าง Membership จนกว่าจะรับ | §4 §5.25 |
 | R-K12 | `SupportCase.{source, category, roomId}` · `listCasesForUser` · `assignCase` · ระงับเลขา = `setAccess` ทุกโมดูล OFF | §5.20 §5.21 |
@@ -848,7 +848,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | งานข้ามกิจการ | มติ 8 |
 | LINE เป็นช่องสั่งงานเลขา · ห้องเลขาบนเว็บ shark.in.th | มติ 4 (แอปเท่านั้น · `member/assistant` เดิมคงไว้) |
 | **dorm (หอพัก) ในห้องเลขา** | R-K16 — ไม่มีเครื่องมือ/kind/ทะเบียน op ของหอพัก · เส้นสาธิตที่ 3 เปลี่ยนเป็นคืนมัดจำนัดหมาย (booking) · หอพักเลื่อนรุ่นถัดไป |
-| **cron รายนาที** (worker / นาทีของงานประจำ / ยกระดับ SLA) | R-K8 — `vercel.json` มี tick รายวัน + hourly เท่านั้น · ใช้ตอบใน request + `after()` + เก็บตกใน hourly/outbox · งานประจำไม่มีคอลัมน์นาที |
+| ~~**cron รายนาที**~~ (worker / นาทีของงานประจำ / ยกระดับ SLA) | ~~R-K8~~ **ล้าสมัย (R-CAL-1)** — รางรายนาทีบน VPS (`src/lib/platform/minute-jobs.ts` · `scripts/crm-cron.mts minute`) เดินบน prod แล้ว · worker/SLA ใช้อยู่ · ที่ยังตัดคือ "นาทีของงานประจำ" (งานประจำยังไม่มีคอลัมน์นาที) · ปฏิทิน/เตือนความจำใช้ราง (`32-secretary-calendar.md` §5.6) |
 | **เครื่องมือ SVC v2 ใหม่** (deposit/online/planner/no-show/dorm) | R-K17 — เครื่องมือ POS v2/SVC v2 ที่มีอยู่ใช้ได้แล้ว · ไม่เพิ่มของใหม่ ยกเว้น `booking.refund_deposit` (R-K16) |
 | งานประจำรายเดือน/นาทีที่ตั้ง | มติ 16 — เหลือ ทุกวัน/ทุกสัปดาห์ (คอลัมน์ `frequency` รับ MONTHLY ได้แต่ UI ไม่เปิด) |
 | ไมค์สั่งงาน · กฎ TOPIC ใน K5 · กล่อง "เปิดต่อจากทุกที่" ใน A8 · อัดเสียงใน K2 | มติ 16 (แปลภาษาใน K2 กลับมาเป็นใบ S3a.6 · เจ้าของสั่ง 7 พ.ย. · ดู §S) |
