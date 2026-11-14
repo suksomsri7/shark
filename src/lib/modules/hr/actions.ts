@@ -479,7 +479,7 @@ export async function cancelLeaveAction(formData: FormData): Promise<void> {
   const systemId = String(formData.get("systemId") ?? "");
   const leaveId = String(formData.get("leaveId") ?? "");
   if (!systemId || !leaveId) throw new HrLeaveRequestError(CANCEL_FORM_INVALID);
-  const res = await cancelLeave({ tenantId: auth.active.tenantId, systemId }, leaveId, { actorUserId: auth.active.userId });
+  const res = await cancelLeave({ tenantId: auth.active.tenantId, systemId }, leaveId, { actorUserId: auth.active.userId, hideForeign: true }); // HR PRIV-3 ▸ R7 ◂
   if (!res.ok) throw new HrLeaveRequestError(res.reason);
   revalidate(systemId);
   revalidatePath("/app/approvals");

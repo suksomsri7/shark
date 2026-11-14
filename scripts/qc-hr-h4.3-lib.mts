@@ -203,18 +203,20 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
     const H49_ALLOW = new Set(["scripts/qc-nav-functions.mts", "scripts/qc-hr-priv-2.mts"]); // ORACLE-EDIT (HR H4.9 · controller) ◂
     const h49Ok = (f: string) => H49_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR H4.9 · controller)"))); // ORACLE-EDIT (HR H4.9 · controller) ◂
     // ORACLE-EDIT (HR PRIV-3 · controller) S1.6: explicit allowlist — hr privacy.ts (page gates) · the older oracles PRIV-3 edited · its own two oracle files; every hunk must add "HR PRIV-3" on an ADDED line ◂
-    const P3_ALLOW = new Set([`${H}privacy.ts`, "scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-priv-2.mts"]); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
+    const P3_ALLOW = new Set([`${H}privacy.ts`, "scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-priv-2.mts", "scripts/qc-hr-priv-3b.mts", `${H}payroll-actions.ts`, "prisma/schema/payroll.prisma", "prisma/migrations/20270112000000_hr_tenant_scoped_unique_keys/migration.sql"]); // ORACLE-EDIT (HR PRIV-3 · controller) ◂ · ORACLE-EDIT (HR PRIV-3 · controller r2): + priv-3b · payroll-actions (R6) · R10 schema + migration ◂
     const p3Ok = (f: string) => P3_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR PRIV-3"))); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
     const frozenLeft = frozen.filter((f) => !(/\.(ts|mts|json)$/.test(f) && hfOk(f)));
     const hrLeft = hrFrozen.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f) && !p3Ok(f)); // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂ // ORACLE-EDIT (HR PRIV-3 · controller): + p3Ok ◂
     const oraclesLeft = oracles.filter((f) => !hfOk(f) && !m2Marked(f) && !p2Marked(f) && !h49Ok(f) && !p3Ok(f)); // ORACLE-EDIT (HR PRIV-3 · controller): + p3Ok ◂ // ORACLE-EDIT (HR H4.9 · controller): + h49Ok ◂ // HR-MONEY-2 ORACLE-EDIT ◂ // ORACLE-EDIT (HR-PRIV-2 · controller): + p2Marked ◂
+    const aiRaw = changedVsBase(BASE, frozenLeft), aiLeft = aiRaw.startsWith("changed: ") ? aiRaw.slice(9).split(",").filter((f) => !p3Ok(f)) : null; // ORACLE-EDIT (HR PRIV-3 · controller r2): R10 schema/migration accepted file-by-file ◂
+    const aiCh = aiLeft === null ? aiRaw : aiLeft.length ? `changed: ${aiLeft.join(",")}` : "unchanged"; // ORACLE-EDIT (HR PRIV-3 · controller r2) ◂
     const r = {
-      ai: changedVsBase(BASE, frozenLeft) === "unchanged", // HF-SSO ORACLE-EDIT
+      ai: aiCh === "unchanged", // HF-SSO ORACLE-EDIT · ORACLE-EDIT (HR PRIV-3 · controller r2): aiCh ◂
       hr: hrLeft.length === 0 || changedVsBase(BASE, hrLeft) === "unchanged", // HF-SSO ORACLE-EDIT
       labor: changedVsBase(BASE, laborOther) === "unchanged",
       oracles: oraclesLeft.length === 0, // HF-SSO ORACLE-EDIT
     };
-    ck("S1.6", r, "frozen files unchanged", `ai=${changedVsBase(BASE, frozenLeft)} hr=${hrLeft.length ? changedVsBase(BASE, hrLeft) : "unchanged"} labor=${changedVsBase(BASE, laborOther)} oracles=${oraclesLeft.join(",") || "0"}`); // HF-SSO ORACLE-EDIT
+    ck("S1.6", r, "frozen files unchanged", `ai=${aiCh} hr=${hrLeft.length ? changedVsBase(BASE, hrLeft) : "unchanged"} labor=${changedVsBase(BASE, laborOther)} oracles=${oraclesLeft.join(",") || "0"}`); // HF-SSO ORACLE-EDIT · ORACLE-EDIT (HR PRIV-3 · controller r2): ai=${aiCh} ◂
   }
   // S1.7 marked hunks
   {

@@ -30,6 +30,7 @@ import { hrViewerOf } from "./privacy"; // HR H3.4 ◂
 import { giveBackClaim, h37PageText, markPaidRun, setPayrollBook, setPayrollPayAccount, setPayrollPosting } from "./payroll"; // HR H3.7 ▸ จ่าย = ลงบัญชีจ่าย (สมุดของรอบ) · ตั้งสมุด/บัญชีจ่ายเงินเดือน (เจ้าของร้าน) ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขา — สาขาของพนักงานเป้าหมายอ่านจาก DB · รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8) ◂
 import { employeeIdOfAdjustment, employeeUnitsOf, HrBranchError, hrScopeOf, isAllBranches, unitTargetOf } from "./scope";
+import { hrTargetOwned } from "./hr-target"; // HR PRIV-3 ▸ R6 ระบบ HR + แถวที่ระบุต้องเป็นของร้านผู้กด (resolver เดียว) ◂
 
 // Actions โมดูล Payroll (system-scoped HR) — assertCan "hr.payroll.<verb>" ทุกจุดที่แตะเงิน
 // convention action = "hr.<entity>.<verb>" · OWNER/MANAGER ผ่าน · STAFF ตาม permission
@@ -75,6 +76,7 @@ export async function setSalaryProfileAction(formData: FormData) {
   const employeeId = String(formData.get("employeeId") ?? "");
   const baseBaht = Number(String(formData.get("baseSalaryBaht") ?? "").replace(/,/g, "").trim());
   if (!systemId || !employeeId || !Number.isFinite(baseBaht) || baseBaht < 0) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return; // HR PRIV-3 ▸ R6: ระบบ/พนักงานไม่ใช่ของร้านนี้ = เหมือนรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const t = await payTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId); // HR H1.1 ▸ สาขาประจำ ◂
   assertHrCan(auth, "hr.payroll.create", t.unitId);
 
@@ -124,6 +126,7 @@ export async function createPayrollRunAction(_prev: { ok: boolean; reason?: stri
     const periodKey = String(formData.get("periodKey") ?? "").trim();
     const payDateStr = String(formData.get("payDate") ?? "").trim();
     if (!systemId) return { ok: false, reason: BAD_REQUEST_TH };
+    if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return { ok: false, reason: BAD_REQUEST_TH }; // HR PRIV-3 ▸ R6: ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำสั่งไม่ถูกต้อง (ไม่เขียนอะไร) ◂
     if (!PERIOD_RE.test(periodKey)) return { ok: false, reason: PERIOD_INVALID_FORM_TH };
     const payDate = payDateFromForm(payDateStr);
     if (!payDate) return { ok: false, reason: PAYDATE_INVALID_FORM_TH };
@@ -225,6 +228,7 @@ export async function reverseRunAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { runId }))) return; // HR PRIV-3 ▸ R6: รอบ/ระบบไม่ใช่ของร้านนี้ = เหมือนรหัสที่ไม่มี (ไม่ลงประวัติ) ◂
   const reason = String(formData.get("reason") ?? "").trim() || undefined;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   // HR H0.6 ▸ R2 · OQ-5: ผู้กด (actor) ส่งเข้า service — reverseRun ลงประวัติเอง (สำเร็จ `hr.payroll.reverse` · ปฏิเสธ `hr.payroll.reverse.refused`)
@@ -242,6 +246,7 @@ export async function markPaidAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { runId }))) return; // HR PRIV-3 ▸ R6: รอบ/ระบบไม่ใช่ของร้านนี้ = เหมือนรหัสที่ไม่มี (ไม่ลงประวัติ) ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   const res = await markPaidRun(ctx, runId, { actor: { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" } }); // HR H3.7 ▸ รุ่น 1 = markPaid เดิม · รุ่น 2 ที่ลงบัญชีแล้ว = ลงรายการจ่าย (บัญชีจ่ายที่ตั้งไว้) ◂
   await writeAudit({
@@ -549,6 +554,7 @@ export async function reverseRunV2Action(formData: FormData): Promise<{ ok: bool
     const systemId = String(formData.get("systemId") ?? "");
     const runId = String(formData.get("runId") ?? "");
     if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+    if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { runId }))) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" }; // HR PRIV-3 ▸ R6 ◂
     const r = await reverseRun({ tenantId: auth.active.tenantId, systemId }, runId, String(formData.get("reason") ?? "").trim() || undefined, h34Actor(auth));
     revalidate(systemId);
     return r.ok ? { ok: true } : { ok: false, reason: r.note };

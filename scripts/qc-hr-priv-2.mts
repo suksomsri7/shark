@@ -104,14 +104,14 @@ if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
  chk("S3", !miss.length && docs, "", `missing=${miss.join(",") || "none"} docs=${docs}`);
 }
  // ORACLE-EDIT (HR PRIV-3 · controller) S4/S5: explicit allowlist — the older oracles PRIV-3 edited + its own two oracle files (S4) and its seven product files (S5); every hunk must add "HR PRIV-3" on an ADDED line ◂
- const P3_FILES = new Set(["scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", `${H}privacy.ts`, `${H}nav.ts`, `${H}ui.tsx`, `${H}actions.ts`, "src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/leave/page.tsx", "src/app/app/sys/[id]/hr/payroll/page.tsx"]); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
+ const P3_FILES = new Set(["scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", `${H}privacy.ts`, `${H}nav.ts`, `${H}ui.tsx`, `${H}actions.ts`, "src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/leave/page.tsx", "src/app/app/sys/[id]/hr/payroll/page.tsx", ...["payroll-actions", "hr-target", "service", "ot", "swap", "ot-actions", "swap-actions"].map((x) => `${H}${x}.ts`), "scripts/qc-hr-priv-3b.mts", "prisma/schema/payroll.prisma", "prisma/migrations/20270112000000_hr_tenant_scoped_unique_keys/migration.sql"]); // ORACLE-EDIT (HR PRIV-3 · controller) ◂ · ORACLE-EDIT (HR PRIV-3 · controller r2): + R6/R7 product files · priv-3b oracle · R10 schema + migration ◂
  const p3Ok = (f: string) => P3_FILES.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR PRIV-3"))); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
 {
  // ORACLE-EDIT (HR H4.9 · controller) S4: explicit files — skills.ts when every hunk adds "HR H4.9" · the oracles H4.9-FIX1 edited when every hunk adds "ORACLE-EDIT (HR H4.9 · controller)" ◂
  const H49_MARK: Record<string, string> = { "src/lib/ai/skills.ts": "HR H4.9", "scripts/qc-nav-functions.mts": "ORACLE-EDIT (HR H4.9 · controller)", "scripts/qc-hr-h4.3.mts": "ORACLE-EDIT (HR H4.9 · controller)", "scripts/qc-hr-h4.3-lib.mts": "ORACLE-EDIT (HR H4.9 · controller)" }; // ORACLE-EDIT (HR H4.9 · controller) ◂
  const h49Ok = (f: string) => f in H49_MARK && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes(H49_MARK[f]!))); // ORACLE-EDIT (HR H4.9 · controller) ◂
  const ch0 = changedVsBase(BASE, FROZEN), oc = changedVsBase(BASE, OLD); // ORACLE-EDIT (HR H4.9 · controller): ch0 → ch below drops h49Ok files ◂
- const chLeft = ch0.startsWith("changed: ") ? ch0.slice(9).split(",").filter((f) => !h49Ok(f)) : null; // ORACLE-EDIT (HR H4.9 · controller) ◂
+ const chLeft = ch0.startsWith("changed: ") ? ch0.slice(9).split(",").filter((f) => !h49Ok(f) && !p3Ok(f)) : null; // ORACLE-EDIT (HR H4.9 · controller) ◂ · ORACLE-EDIT (HR PRIV-3 · controller r2): + p3Ok (frozen files PRIV-3 r2 touches) ◂
  const ch = chLeft === null ? ch0 : chLeft.length ? `changed: ${chLeft.join(",")}` : "unchanged"; // ORACLE-EDIT (HR H4.9 · controller) ◂
  const bad = oc === "unchanged" ? [] : !oc.startsWith("changed: ") ? [oc] : oc.slice(9).split(",").filter((f) => {
   const hs = diffHunks(BASE, f) ?? [];
