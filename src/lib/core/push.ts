@@ -11,7 +11,8 @@ import {
 } from "@/lib/modules/chat/notify";
 
 // S1.23 (R-K20) ▸ `badge` = ตัวเลขบนไอคอนแอป (ส่งต่อใน payload เฉพาะเมื่อผู้เรียกใส่ — ไม่ใส่ = payload เดิมทุกไบต์) ◂
-type PushMsg = { title: string; body: string; data?: Record<string, unknown>; badge?: number };
+// CAL1.4 ▸ R-CAL-13 `categoryId` = ชุดปุ่มลัดของแจ้งเตือน (iOS category / Android action) — ส่งต่อเฉพาะเมื่อผู้เรียกใส่ (ไม่ใส่ = payload เดิมทุกไบต์) ◂
+type PushMsg = { title: string; body: string; data?: Record<string, unknown>; badge?: number; categoryId?: string };
 type PushDeps = { post?: (payloads: unknown[]) => Promise<unknown> };
 
 const CHUNK = 100; // Expo push API รับได้ ≤100/ครั้ง
@@ -57,6 +58,7 @@ async function deliverBatch(
     data: msg.data,
     sound: "default",
     ...(typeof msg.badge === "number" && Number.isFinite(msg.badge) ? { badge: Math.max(0, Math.floor(msg.badge)) } : {}),
+    ...(typeof msg.categoryId === "string" && msg.categoryId ? { categoryId: msg.categoryId } : {}),
   }));
   // S1.23 ▸ transport ที่ฉีดเข้ามาอาจคืน `{ tickets }` / `{ data }` แทน array — อ่านได้ทั้งสามแบบ (ตัวจริงคืน array) ◂
   const raw = await post(payloads);
@@ -158,15 +160,16 @@ export async function sendPushToUser(
   userId: string,
   msg: PushMsg,
   opts?: { tenantId?: string; post?: PushDeps["post"] },
-): Promise<{ sent: number }> {
+): Promise<{ sent: number; transportErrors: number }> {
   const post = opts?.post ?? expoPost;
   const tenantId = opts?.tenantId;
   let sent = 0;
+  let transportErrors = 0; // CAL1.4 ▸ chunk ที่โยน (เน็ตพัง/Expo ล่ม) — ผู้เรียกที่ลองใหม่เองได้ (calendar.fire) ใช้แยกจาก "ไม่มีเครื่อง" ◂
   try {
     const devices = await prisma.pushDevice.findMany({
       where: { userId, ...(tenantId ? { tenantId } : {}) },
     });
-    if (devices.length === 0) return { sent: 0 };
+    if (devices.length === 0) return { sent: 0, transportErrors: 0 };
 
     for (let i = 0; i < devices.length; i += CHUNK) {
       const batch = devices.slice(i, i + CHUNK);
@@ -184,13 +187,15 @@ export async function sendPushToUser(
           await prisma.pushDevice.deleteMany({ where: { expoToken: { in: r.dead } } });
         }
       } catch (e) {
+        transportErrors += 1;
         await logPushError(`ส่ง push รายคนล้มเหลว (ผู้ใช้ ${userId})`, String(e), tenantId ?? "");
       }
     }
   } catch (e) {
+    transportErrors += 1;
     await logPushError(`push รายคนพัง (ผู้ใช้ ${userId})`, String(e), tenantId ?? "");
   }
-  return { sent };
+  return { sent, transportErrors };
 }
 
 /**

@@ -111,6 +111,10 @@ async function deleteUserTraces(userId: string): Promise<void> {
     prisma.chatConversationHelper.deleteMany({ where: { userId } }),
     prisma.aiRoomMember.deleteMany({ where: { userId } }),
     prisma.aiMemory.deleteMany({ where: { id: { startsWith: `u~${userId}~` } } }),
+    // CAL1.1 ▸ ปฏิทินส่วนตัว (§2.6) — CalLink cascade CalExternalEvent · ถอน token Google ก่อนลบ = งานของ CAL1.8 ◂
+    prisma.calItem.deleteMany({ where: { userId } }),
+    prisma.calPref.deleteMany({ where: { userId } }),
+    prisma.calLink.deleteMany({ where: { userId } }),
   ]);
 }
 

@@ -223,6 +223,11 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   UserPhone: g("เบอร์ของ user (แทน User.phone · core FROZEN) — login ด้วยเบอร์ต้องหาก่อนรู้ร้าน"),
   PhoneOtp: g("OTP SMS ขั้น login — สร้างก่อนรู้ว่า user/ร้านไหน (แบบ AuthToken)"),
   AiNotifyPref: g("การตั้งค่าแจ้งเตือนต่อคน — tenantId null = ทุกร้าน · push ห้องเลขาไม่กรองร้าน (R-K20)"),
+  // CAL1.1 ▸ ปฏิทินส่วนตัวของเลขา (docs/modules/32-secretary-calendar.md §2.3) — CalItem/CalPref ผูกร้าน (purge ลบ · export ร้านยกเว้น R-CAL-33) ◂
+  CalItem: tenant,
+  CalPref: tenant,
+  CalLink: g("ปฏิทิน Google ของ \"คน\" (1 แถว/user/provider) ใช้ข้ามทุกร้าน — ส่วนตัว M4"),
+  CalExternalEvent: g("แคชอีเวนต์ Google ของคน — ผูก CalLink ไม่ผูกร้าน"),
   // Observability (WO-0041) — logger กลางเขียน · backoffice อ่าน (ข้ามร้านโดยเจตนา)
   OpsEvent: { axis: "platform", why: "ops log ข้ามร้าน — เขียนผ่าน core/ops.ts อ่านทาง backoffice" },
   OpsAlertState: { axis: "platform", why: "สถานะ throttle alert — ไม่ใช่ข้อมูลร้าน" },

@@ -2,6 +2,7 @@
 import { getRoom } from "@/lib/ai/secretary/rooms";
 import { roomDto } from "@/lib/ai/secretary/dto";
 import { roomPlansFor } from "@/lib/ai/secretary/views";
+import { roomReminders } from "@/lib/modules/calendar/items";
 import { gate, idParam, notFound, ok, type RouteCtx, withErrors } from "../../_shared";
 
 async function GET_(req: Request, ctx: RouteCtx) {
@@ -10,7 +11,9 @@ async function GET_(req: Request, ctx: RouteCtx) {
   const id = await idParam(ctx, "id");
   const room = id ? await getRoom(a.c.conv, id) : null;
   if (!room) return notFound("ไม่พบห้องงานนี้");
-  return ok({ ...roomDto(room, { userId: a.c.userId, role: a.c.m.role }), plans: await roomPlansFor(a.c.conv, room.conversationId) });
+  // CAL1.6 ▸ R-CAL-20: การ์ดเตือนในห้อง (จอ 5) — เฉพาะ CalItem ของผู้เรียก (userId = โทเค็น) · สมาชิกห้องคนอื่นไม่ได้ ◂
+  const reminders = await roomReminders({ userId: a.c.userId, tenantId: a.c.tenantId, membership: a.c.m }, room.id);
+  return ok({ ...roomDto(room, { userId: a.c.userId, role: a.c.m.role }), plans: await roomPlansFor(a.c.conv, room.conversationId), reminders });
 }
 
 // SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂

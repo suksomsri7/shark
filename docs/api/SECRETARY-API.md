@@ -148,3 +148,21 @@
 - ร่าง S0.3 → ของจริง (S1.14 ย้ายทุกเส้นของเลขามาไว้ใต้ `secretary/` ชุดเดียว · ร่างเดิมไม่มีไฟล์ใดสร้างจริง): `/api/mobile/secretary/me` = คงไว้ (alias ของ `/api/mobile/secretary/secretary`) · `/api/mobile/secretary/proposals/[id]/confirm` → `…/proposals/[id]/approve` · `/api/mobile/secretary/actions*` → `/api/mobile/secretary/log*` · `/api/mobile/secretary/memory*` → `/api/mobile/secretary/memories/*` · `PATCH rooms/[id]` → `POST rooms/[id]/close` + `PUT rooms/[id]/title` · `/api/mobile/tenants/from-app` → `/api/mobile/secretary/tenants/create` · `/api/mobile/staff/invite` · `/api/mobile/staff/list` · `/api/mobile/staff/[userId]/access` → `/api/mobile/secretary/staff/*` · `/api/mobile/help/cases*` → `/api/mobile/secretary/support/cases*` · `/api/mobile/account/delete*` → `/api/mobile/secretary/account/delete*`
 
 - S3a.1-S2 (R-Z13 · R-Z17 · R-Z22): ข้อเสนอชนิด CRM ในห้องเลขา ⇒ ประตู CRM (`confirmProposal`/`cancelProposal`) ตอบ NOT_FOUND · อนุมัติผ่าน `executeProposal` เท่านั้น · `chat.send`/`booking_refund_deposit` ใช้ด่านผู้อนุมัติ (OWNER/MANAGER) ทุกบทสนทนา · ในห้องเลขา `kb_auto_save` = ข้อเสนอ `kb.save` · `forget_fact` = ข้อเสนอ `memory.forget` · `remember_fact` ในห้องที่มีบริบทลูกค้า = PENDING แม้ OWNER · `support_open_case` ในห้องที่มีบริบทลูกค้า = ข้อเสนอ `support.open` (R-Z34 · เปิดเคสเมื่ออนุมัติ · ผู้เปิด = ผู้อนุมัติ) · `api/v1/chat/attachments` ตรวจ magic bytes ตัวเดียวกับ `inbox/attachments` (`storage/sniff.ts`) · ยังไม่มีเครื่องมือส่งออกข้อมูลส่วนบุคคล (`pii.export` = กฎที่ตั้งได้แต่ยังไม่มี tool ใดเข้าชั้นนี้)
+## ปฏิทินส่วนตัว — `secretary/calendar/*` (CAL1.6 · สัญญาเต็ม `docs/modules/32-secretary-calendar.md` §8)
+
+ด่าน = สมาชิกร้าน (`gate(req, null)` · ไม่ต้องมีคีย์) · ตัวตนจากโทเค็น + `x-tenant-id` เท่านั้น — body ส่ง `userId`/`ownerId`/`recipient*`/`now`/`tenantId` = 400 (M3) · ของคนอื่น/ร้านอื่น = 404 `not_found` · เพดาน `sec:cal-<route>:<tenantId>:<userId>`
+
+| METHOD | path | สรุป | rate |
+|---|---|---|---|
+| GET | `calendar/agenda?from&to` | `AgendaResult` · ≤ 42 วัน | 60 |
+| GET | `calendar/month?ym` | `{ ym, days }` | 60 |
+| GET | `calendar/today` | การ์ด "วันนี้" `{ day, dateLabel, count, greeting, lines, more }` | 60 |
+| GET/POST | `calendar/items` | แท็บ today/upcoming/done (+cursor `before`) · สร้าง (`origin:"conflict"` = SUGGEST) | 60/30 |
+| GET/PATCH/DELETE | `calendar/items/[id]` | รายละเอียด (+`phone`) · แก้ · ยกเลิก | 60/30/30 |
+| POST | `calendar/items/[id]/done` · `reopen` · `snooze` · `confirm` | เสร็จ (`{occ?}`) · ติ๊กออก · เลื่อน (`{preset}`/`{until}`) · ยืนยัน DRAFT (410 หมดอายุ) | 60/30/60/30 |
+| POST | `calendar/source-done` | ติ๊กการ์ดบอร์ด/งาน CRM (CAL1.3) | 30 |
+| GET/PUT | `calendar/prefs` | ค่าตั้งจอ 8 | 60/30 |
+| GET | `badges` | + `calendar` (ไม่รวมใน `total`) | 60 |
+| GET | `rooms/[id]` | + `reminders: CalItemDto[]` ของผู้เรียกเท่านั้น | — |
+
+`calendar/google*` = CAL1.8 (เลน b)
