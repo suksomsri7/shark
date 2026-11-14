@@ -507,3 +507,9 @@ export type { ManifestCsvOut, ManifestHealthItem, ManifestHealthOut, ManifestPri
 export { findPublicProduct, loadPublicCatalog, loadPublicProduct } from "./public-catalog";
 export type { PublicRef, PublicText, PublicCatalog, PublicSlot, PublicPrice, PublicPriceResult, PublicProduct, PublicFound, PublicCatalogQuery, PublicProductQuery, PublicOpts } from "./public-catalog";
 // ── /W1.1 public ──
+// ── W1.2 public booking ──
+// TRIPS W1.2 ▸ ตัวอ่านของเส้นจองหน้าสาธารณะ (ref ↔ id · ตัวเลือก · ตะกร้า/ที่ถือ/การจองจาก tokenHash · อ่านอย่างเดียว · ผู้เรียก = platform/trips-book · ใบสั่ง ledger/trips-briefs/W1.2.md) ◂
+export { loadBookCatalog, loadBookDay, loadBookDeparture, findBookBasket, findBookReservation } from "./public-booking";
+export type { BookCatalog, BookDaySlot, BookDepartureRow, BookBasketRow, BookReservationRow } from "./public-booking";
+export { hhmm as tripsHhmm } from "./departures-core";
+// ── /W1.2 public booking ──

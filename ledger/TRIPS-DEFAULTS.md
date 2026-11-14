@@ -399,6 +399,8 @@
 | X26 | `agency.comm.vatMode` | VAT ของค่าคอมมิชชัน | enum NONE·EXCLUSIVE·INCLUSIVE | ค่าใน def = `NONE` ทุกแม่แบบ · (แก้รอบ 3) **ตัดสินตอนใช้**: ร้านไม่ได้ตั้งเอง (resolve ได้ TEMPLATE/FALLBACK) และ `AgentAccount.vatRegistered` = จริง ⇒ ใช้ `EXCLUSIVE` (เครื่องยนต์ค่าตั้งให้ค่าตามแม่แบบได้อย่างเดียว) · ผลจดลง snapshot | SHOP · AGENT_TIER · AGENT | มติผู้คุม 8 · สัญญา §H.4 | ใช่ |
 | X27 | `agency.msg.<kind>` · `ticket.msg.<kind>` | ข้อความแม่แบบต่อชนิด (th + en) แบบ T70 | template | ตามชนิด (ยืนยัน · ถือใกล้หมด · งวดใกล้ครบ · รอบเปลี่ยน · ใบแจ้งยอด / ตั๋ว: ยืนยัน · เตือนวันเข้าชม · ส่งต่อ) | SHOP | สัญญา L-42 · ลงทะเบียนในใบ A2.2 (ไม่อยู่ในทะเบียนของ A1.1) | |
 | X28 | `trips.cash.varianceApprovalSatang` | เงินสดหน้าร้าน (ทริป) ขาด/เกินเกินยอดนี้ = ต้องอนุมัติก่อนลงบัญชี | money | 200 บาท | SHOP | สัญญา §H.0 (N-4) | |
+| X29 | `trips.public.bookingEnabled` | เปิดปุ่มจองออนไลน์ของหน้าจองสาธารณะ (ปิด ⇒ หน้าสินค้าแสดง "ยังไม่เปิดจองออนไลน์ — ติดต่อร้าน") | bool | **ปิด ทุกแม่แบบ** | SHOP | มติ R7 · R15 (W1.2) | |
+| X30 | `trips.public.shopContact` | ช่องทางติดต่อร้านบนหน้าจอง (เบอร์ · LINE · ที่อยู่ — ว่าง = ไม่แสดง ไม่บล็อก) | table `{phone 1–30\|null, line 1–50\|null, address 1–300\|null}` | ว่างทั้งหมด (null) | SHOP | มติ R13 · R15 (W1.2) | |
 | — | **A5 `agency.price.sellerOfRecord` ค่า `AGENT_RESELLS` ซ่อนในรุ่นแรก** (แก้รอบ 3) | ไม่แสดงในจอ · บันทึกไม่ได้ (`VALIDATION`) จนมีชุดรายการบัญชีของโหมดนี้ ⇒ W13 ไม่เกิดในรุ่นแรก | enum (เดิม) | `SHOP_PRINCIPAL` (เดิม) | — | สัญญา §H.3 (N-5) | |
 | — | **T23 `trips.cancel.refundForm` ค่าเริ่มเปลี่ยน** | คืนเงินอย่างเดียวจนมีทางเครดิตร้าน | enum (เดิม) | ทุกแม่แบบ: **`MONEY`** (เดิมเสนอ `CUSTOMER_CHOOSES_MONEY_OR_CREDIT`) | SHOP | มติผู้คุม 7 · สัญญา §G.3 | |
 

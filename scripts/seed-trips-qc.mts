@@ -637,6 +637,7 @@ console.log(`T0.3: รอบ ${Object.keys(tripsDepartures.departureIds).length}
   };
   await want("trips.parkFee.table", "UNIT", unitId, (cur) => ({ ...(cur && typeof cur === "object" ? cur : {}), shopRates: TRIPS_SEED_SHOP_PARK_RATES.map((x) => ({ ...x })) }));
   await want("trips.msg.confirmation", "UNIT", unitId, () => ({ ...TRIPS_SEED_CONFIRMATION }));
+  await want("trips.public.bookingEnabled", "UNIT", unitId, () => true); // TRIPS W1.2 ▸ มติ R17: ร้าน seed เปิดปุ่มจองออนไลน์ (ฉากภาพ w1.2 / w1.2-flow) ◂
   const similan = tripProducts["similan-4-nights"];
   if (!similan) throw new Error("seed T1.1: ไม่พบสินค้าสิมิลัน");
   await want("trips.pay.depositPct", "PRODUCT", similan.productId, () => TRIPS_SEED_SIMILAN_PAY.depositPct);

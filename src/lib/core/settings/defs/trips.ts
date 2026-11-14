@@ -442,6 +442,13 @@ const TABLE_TH: Record<string, TableSpecTh> = {
     },
   },
   "trips.license.expiryReminderDays": { item: { kind: "int", labelTh: "เตือนก่อนหมดอายุ", unitTh: "วัน" }, emptyTh: "ไม่เตือน" },
+  "trips.public.shopContact": {
+    fields: {
+      phone: { kind: "text", labelTh: "เบอร์โทรร้าน", shortTh: "เบอร์", nullTh: "ไม่แสดง" },
+      line: { kind: "text", labelTh: "LINE ของร้าน", shortTh: "LINE", nullTh: "ไม่แสดง" },
+      address: { kind: "text", labelTh: "ที่อยู่ร้าน", shortTh: "ที่อยู่", nullTh: "ไม่แสดง" },
+    },
+  },
   "trips.marine.manifestColumns": { item: { kind: "enum", labelTh: "คอลัมน์", options: PAX_FIELD_TH }, ordered: true, emptyTh: "ไม่มีคอลัมน์" },
   "trips.pdpa.retention": {
     fields: {
@@ -507,6 +514,13 @@ const DEFS: SettingDef[] = [
   }),
   row({ key: "trips.public.otpValidMinutes", type: "minutes", labelTh: "ยืนยันรหัสแล้วแก้การจองได้นาน (นาที)", chain: U, schema: INT(1, 1440), d: all(30) }),
   row({ key: "trips.public.holdCapPerContact", type: "int", labelTh: "จำนวนการถือที่พร้อมกันต่อเบอร์/LINE", chain: U, schema: INT(1, 20), d: all(3) }),
+  // TRIPS W1.2 ▸ X29 ปุ่มจองออนไลน์ของหน้าจองสาธารณะ (ค่าเริ่มปิดทุกแม่แบบ · มติ R7/R15) · X30 ช่องทางติดต่อร้านบนหน้าจอง (ว่าง = ไม่แสดง · มติ R13/R15) ◂
+  row({ key: "trips.public.bookingEnabled", type: "bool", labelTh: "เปิดปุ่มจองออนไลน์ (หน้าจองสาธารณะ)", chain: U, schema: BOOL, d: all(false) }),
+  row({
+    key: "trips.public.shopContact", type: "table", labelTh: "ช่องทางติดต่อร้านบนหน้าจอง", chain: U,
+    schema: z.object({ phone: z.string().trim().min(1).max(30).nullable(), line: z.string().trim().min(1).max(50).nullable(), address: z.string().trim().min(1).max(300).nullable() }).strict(),
+    d: all({ phone: null, line: null, address: null }),
+  }),
 
   // ── 1.2 เงินและงวดจ่าย ──
   row({ key: "trips.pay.depositPct", type: "percent", labelTh: "มัดจำตอนจอง (% ของค่าทริป)", helpTh: "100 = จ่ายเต็มตอนจอง", chain: U_P_AT_A, schema: PCT, d: per(100, 100, 30), extra: { percentScale: 100 } }),

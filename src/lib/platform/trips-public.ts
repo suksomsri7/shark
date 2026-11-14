@@ -447,7 +447,7 @@ async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<Bo
     ),
     requestedUnavailable,
     selected,
-    cta: { enabled: false },
+    cta: { enabled: false, reason: null },
   };
 }
 
@@ -529,7 +529,44 @@ export async function openBookProduct(
   const now = nowOf(opts);
   const vm = await productVM(r.shop, { productSlug: p.productSlug, productId: p.productId, unit: p.unit, locale: bookLocaleOf(q.lang, i.acceptLanguage), month: q.m, date: q.d, slot: parseBookSlot(i.query) }, now);
   if (!vm) return notFound();
+  // TRIPS W1.2 ▸ ปุ่มจอง: รอบที่เลือกขายได้ ⇒ ด่านเปิดปุ่มเดียวกับเส้นจอง (bookSaleState · มติ R7 R8) ◂
+  if (vm.selected?.slots.some((s) => s.selected && s.selectable)) {
+    const st = await bookSaleState({ tenantId: r.shop.tenantId, unitId: p.unit.id, productId: p.productId }, now);
+    vm.cta = { enabled: st === "OPEN", reason: st === "OPEN" ? null : st };
+  }
   const link = await bindLink(r.shop.tenantId, p.productId, q.a);
   if (i.countView !== false) await countBookView({ tenantId: r.shop.tenantId, unit: p.unit, channel: "WEB", clientKey, link, now }, opts);
   return { ok: true, vm, carry: { lang: q.lang, a: link !== null ? q.a : null } };
+}
+
+// ═══════════════ TRIPS W1.2 ▸ ตัวช่วยที่เส้นจอง (platform/trips-book) ใช้ร่วม ◂ ═══════════════
+const K_BOOKING_ON = "trips.public.bookingEnabled";
+const K_CONFIRM_MODE = "trips.sell.confirmMode";
+/**
+ * ด่าน "เปิดปุ่มจอง" (ใบสั่ง W1.2 §4 ข้อ 4 · มติ R7 R8) — ตัวเดียวทั้งหน้าสินค้าและเส้นจอง
+ * ค่าตั้งของหน่วยไม่ใช่ true ⇒ BOOKING_OFF · สินค้าเป็น "ร้านยืนยันก่อน" ⇒ SHOP_CONFIRMS · อ่านค่าตั้งไม่ได้ ⇒ UNAVAILABLE (ปิดเมื่อพัง)
+ */
+export async function bookSaleState(ref: { tenantId: string; unitId: string; productId: string }, now: Date): Promise<"OPEN" | "BOOKING_OFF" | "SHOP_CONFIRMS" | "UNAVAILABLE"> {
+  try {
+    const r = await resolveSettings({ tenantId: ref.tenantId }, [K_BOOKING_ON, K_CONFIRM_MODE], { unitId: ref.unitId, productId: ref.productId }, now);
+    const on = r[K_BOOKING_ON]?.value;
+    const mode = r[K_CONFIRM_MODE]?.value;
+    if (typeof on !== "boolean" || (mode !== "AUTO" && mode !== "SHOP_CONFIRMS")) return "UNAVAILABLE";
+    if (on !== true) return "BOOKING_OFF";
+    return mode === "SHOP_CONFIRMS" ? "SHOP_CONFIRMS" : "OPEN";
+  } catch {
+    return "UNAVAILABLE";
+  }
+}
+/** สินค้าทัวร์ที่มองเห็นของร้านนี้ + หน่วย (ตัวแก้เดียวกับหน้าสินค้า) — ไม่เห็น ⇒ null */
+export async function bookVisibleProduct(shop: BookShop, productSlug: unknown): Promise<{ productId: string; productSlug: string; unit: { id: string; tz: string } } | null> {
+  return visibleProduct(shop, productSlug);
+}
+/** คำขอที่หาไม่เจอของเส้นจอง: ถังเดาเดียวกับหน้าอ่าน (ผ่าน ⇒ ไม่พบ · ไม่ผ่าน ⇒ ถี่เกิน) */
+export async function bookMiss(clientKey: string, opts?: BookOpts): Promise<BookNotFound | BookRateLimited> {
+  return miss(clientKey, opts);
+}
+/** ตราสินค้าของร้าน (ตัวอ่านเดียวกับหน้าสินค้า · ล้ม ⇒ ชื่อร้านอย่างเดียว) */
+export async function bookBrandOf(shop: BookShop): Promise<BookBrandVM> {
+  return brandOf(shop);
 }

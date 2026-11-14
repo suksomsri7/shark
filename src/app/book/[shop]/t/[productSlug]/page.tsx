@@ -1,15 +1,20 @@
-// /book/[shop]/t/[productSlug] — หน้าสินค้าทัวร์ (สาธารณะ · ไม่ต้องล็อกอิน · อ่านอย่างเดียว: ปฏิทินที่ว่าง + ตารางราคา) · RUN TRIPS W1.1a
+// /book/[shop]/t/[productSlug] — หน้าสินค้าทัวร์ (สาธารณะ · ไม่ต้องล็อกอิน) · RUN TRIPS W1.1a + W1.2a (เลือกคน/รับส่ง/เสริม → ถือที่)
 // ทางเข้าเดียวคือ openBookProduct (ไม่รู้ว่าใคร ⇒ ปิด → ตัวแก้ร้าน/สินค้า → ด่านอัตราปิดเมื่อพัง → ตัวโหลด → นับเปิดดูเมื่อหน้าแสดงได้จริง) · หน้าไม่ส่งเวลาเข้าไป
 // 🔴 ชื่อหน้า (metadata) กับเนื้อหาใช้ผลการเปิด **ชุดเดียวกัน** (cache ของ React ต่อคำขอ) — ไม่มีอะไรอ่านข้อมูลร้านนอกด่าน และไม่นับ/ไม่กินเพดานซ้ำ
 // ไม่พบ ⇒ notFound() (404 จริง — ห้ามมี loading ใต้เส้นนี้) · ถี่เกิน ⇒ หน้าแจ้ง · สองกรณีนี้ไม่มีชื่อร้าน/สินค้าทั้งในชื่อหน้าและเนื้อหา
+// W1.2: ปุ่มจองเปิด (vm.cta.enabled) ⇒ quoteBookSelection (ด่านเดียวกัน · ยอดจากบริการราคา) + nonce ของฟอร์มถือที่ — การเลือกมาจากพารามิเตอร์ GET (ไม่ต้องมี JS)
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { BookProduct } from "@/components/book/BookProduct";
 import { BookRateLimited } from "@/components/book/BookRateLimited";
+import type { BookSelectData } from "@/components/book/BookSelect";
+import { issueBookFormNonce, quoteBookSelection } from "@/lib/platform/trips-book";
+import { bookErrorParam, parseBookSelection, selectionParamsOf } from "@/lib/platform/trips-book-core";
 import { bookRequestFromHeaders, openBookProduct } from "@/lib/platform/trips-public";
 import { parseBookQuery, parseBookSlot } from "@/lib/platform/trips-public-core";
+import { startBookHoldAction } from "../../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -42,5 +47,29 @@ export default async function BookProductPage(props: Props) {
     if (!("reason" in r)) notFound();
     return <BookRateLimited />;
   }
-  return <BookProduct vm={r.vm} carry={r.carry} />;
+  const { shop, productSlug } = await props.params;
+  const sp = await props.searchParams;
+  const vm = r.vm;
+  let select: BookSelectData | null = null;
+  const chosen = vm.selected?.slots.find((s) => s.selected && s.selectable) ?? null;
+  if (vm.cta.enabled && vm.selected && chosen) {
+    const h = await headers();
+    const req = bookRequestFromHeaders((name) => h.get(name));
+    const base: Record<string, string> = { ...(r.carry.lang ? { lang: r.carry.lang } : {}), m: vm.month, d: vm.selected.date, ...(chosen.token ? { t: chosen.token } : {}) };
+    const params = selectionParamsOf(sp);
+    const ask = (withSelection: boolean) =>
+      quoteBookSelection({ shop, productSlug, query: { ...base, ...(withSelection ? params : {}) }, acceptLanguage: req.acceptLanguage, clientKey: req.clientKey });
+    let q = await ask(true);
+    let error = bookErrorParam(sp);
+    // การเลือกผิดรูป/ใช้ไม่ได้แล้ว ⇒ แสดงตัวเลือกว่าง + บอกช่องที่ผิด (ไม่สะท้อนค่า)
+    if (!q.ok && q.code === "INVALID") {
+      error = { code: "INVALID", fields: q.fields ?? [] };
+      q = await ask(false);
+    }
+    if (q.ok) {
+      const state = (!error || error.code !== "INVALID" ? parseBookSelection(params) : null) ?? { pax: [], extras: [], zone: null };
+      select = { options: q.options, summary: q.summary, state, nonce: q.summary ? issueBookFormNonce() : null, error, base, shop: vm.shop.slug, productSlug: vm.product.slug, holdAction: startBookHoldAction.bind(null, shop, productSlug) };
+    } else if (q.code === "RATE_LIMITED") return <BookRateLimited />;
+  }
+  return <BookProduct vm={vm} carry={r.carry} select={select} />;
 }

@@ -1,0 +1,68 @@
+# wo-notes · TRIPS W1.2a — เส้นจองทัวร์หน้าสาธารณะ (เลือก → ถือ → ผู้จอง → QR ยอดล็อก → วอเชอร์)
+
+> ผู้สร้าง 14 พ.ย. 2569 · ทรี `shark-trips-l1` · branch `wip/trips-w1.2` @9a8934b98 (ไม่ commit) · ใบสั่ง `ledger/trips-briefs/W1.2.md` รอบ 2 + มติ R1–R17
+
+## 1. สิ่งที่ได้ (ไฟล์)
+| ไฟล์ | สิ่งที่ทำ |
+|---|---|
+| `src/lib/platform/trips-book-core.ts` (ใหม่) | ค่าคงที่ §3.1 · `parseBookSelection` · `selectionSeatsOk` · `cancelDeadlinesOf` · `reservationStateOf` · `bookTodoOf` · ตัวตรวจผู้จอง `bookerNameOf/PhoneOf/EmailOf` (§4.1) · ตัวทำลิงก์ `bookSelectHref/bookCheckoutHref/bookReservationHref` · `bookErrorParam` · `selectionParamsOf/selectionWithPax/selectionQuery` · ชนิด VM ทั้งหมด |
+| `src/lib/platform/trips-book.ts` (ใหม่) | 8 ฟังก์ชัน §3.2 · ด่านอัตราคำสั่งเดียว (`rateBucketCte` ต่อกันแบบ chain + อ่านถัง token แบบไม่นับ) · ref/sel/nonce/basketToken/วอเชอร์ HMAC ด้วย `SESSION_SECRET` · ตารางแปลงรหัส R9 · บรรทัด VAT ฝั่งเซิร์ฟเวอร์ (R16-3) |
+| `src/lib/modules/trips/public-booking.ts` (ใหม่) | ตัวอ่าน: แคตตาล็อก (ประเภทคน/เสริม/โซน + ป้ายตามภาษา) · รอบของวัน (listAvailability) · รอบ+สินค้า · ตะกร้า/ที่ถือ/การจองจาก tokenHash · การจองจาก tokenHash (+เวลาถือ ACTIVE + จำนวนชื่อ/ลายเซ็นผู้เดินทาง) — ไม่มีคำสั่งเขียน ไม่ import core/db |
+| `src/lib/modules/trips/index.ts` | บล็อก `// TRIPS W1.2 ▸ … ◂` +6 บรรทัด (ตัวอ่าน 5 ตัว + ชนิด + `tripsHhmm`) |
+| `src/lib/platform/trips-public.ts` | +34/−1: `cta = { enabled, reason }` ตามด่าน `bookSaleState` · ส่งออก `bookSaleState` `bookVisibleProduct` `bookMiss` `bookBrandOf` (ตัวช่วยเดิมที่เส้นจองใช้ร่วม) |
+| `src/lib/platform/trips-public-core.ts` | +4/−1: ชนิด `cta: { enabled: boolean; reason: BookCtaReason }` |
+| `src/app/book/[shop]/actions.ts` (ใหม่) | `startBookHoldAction` · `confirmBookHoldAction` (bind ร้าน/สินค้า/ตะกร้า/sel) |
+| `src/app/book/[shop]/c/[basket]/page.tsx` · `my/[token]/page.tsx` (ใหม่) | dynamic · noindex · no-referrer · ชื่อหน้าทั่วไป · cache() 1 จุด |
+| `src/app/book/[shop]/t/[productSlug]/page.tsx` | ปุ่มจองเปิด ⇒ `quoteBookSelection` + nonce + แผงเลือก/สรุป/ถือที่ |
+| `src/components/book/BookSelect.tsx` · `BookCheckout.tsx` · `BookReservation.tsx` · `BookFlowParts.tsx` (ใหม่) · `BookProduct.tsx` (แก้) | จอ 01ข/ค/ง + 19 + สถานะแบบ 07 · ไม่มี client component (ทั้งเส้นใช้ได้โดยไม่มี JS) |
+| `src/messages/{th,en}/book.json` | คีย์ LG-1 ครบ + `field.*` `steps.*` `todo.later` ฯลฯ (คีย์ th/en เท่ากัน) |
+| `src/lib/core/settings/defs/trips.ts` | +14 (R15): X29 `trips.public.bookingEnabled` (bool · ปิดทุกแม่แบบ · U) · X30 `trips.public.shopContact` (table strict · null ทั้งหมด · U) + `TABLE_TH` ของ X30 (ป้ายไทย + nullTh — ฟอร์มตั้งค่าแสดงช่องได้ ไม่มีชื่อช่องดิบ) |
+| `ledger/TRIPS-DEFAULTS.md` | 2 แถว X29 X30 |
+| `scripts/seed-trips-qc.mts` | +1 บรรทัด (R17): ร้าน seed ตั้ง X29 = true ผ่าน `want()` เดิม (เทียบก่อนเขียน ⇒ รอบสองไม่เขียน) |
+
+## 2. การตัดสินใจที่ใบสั่งเงียบ
+1. **ป้ายบรรทัดราคา:** สรุปยอดใช้ `quoteTripLine` (บรรทัดมี paxTypeId/extraId/itemRef ⇒ ติดป้ายไทย/อังกฤษจากแคตตาล็อกได้) ส่วน `quoteTrips` ใช้เฉพาะ quoteId/ยอดเทียบตอนถือ/หน้ายืนยัน — ยอดของสองตัวเป็นค่าเดียวกัน (priceOf ตัวเดียว) · หน้ายืนยันจึงคิดราคา 2 ครั้ง (ต้นทุน) · `holdMinutes` อ่าน `trips.sell.holdMinutes` ชั้นเดียวกับ quoteTrips
+2. **ราคาต่อหน่วยในตัวเลือก:** แบบ W1.1 X3 (คนเดียวต่อใบเสนอ · ทารกคู่ผู้ใหญ่ · เสริมคู่ผู้ใหญ่ 1 คน) · ร้าน VAT บวกเพิ่ม ⇒ amount+vat ของบรรทัดจำนวน 1 (X12)
+3. **รายการเสริมที่เลือกได้** = ของสินค้า · ไม่บังคับ · active (แบบ W1.1) · รายการแบบ PER_PAX ของบริการคิดตามจำนวนคนเสมอ ⇒ จอเป็นช่องติ๊ก (ค่า 1)
+4. **โซน `kind` null / `active` null** (โซนรุ่นเก่า A1.1) ⇒ ถือเป็น ZONE ที่เปิด
+5. **ตัวเลือกรอบ:** `t` ตรง ⇒ รอบนั้น · ไม่งั้นรอบแรกที่ขายได้ · ไม่มีเลย ⇒ รอบแรก (ให้ saleBlock/บริการตัดสิน) · saleBlock CUTOFF/STARTED ⇒ CUTOFF_PASSED · อื่น ⇒ SLOT_CLOSED ก่อนกินโควตาถือ
+6. **DONE ก่อนด่านฟอร์ม:** ตะกร้า CHECKED_OUT ⇒ DONE{token} ทันทีหลังตรวจลายเซ็น (ทั้งหน้ายืนยันและยืนยัน) — ส่งซ้ำ/ย้อนกลับไม่ถึงบริการ
+7. **HOLD_EXPIRED ก่อนด่านฟอร์ม:** ที่ถือหมดตามนาฬิกา ⇒ HOLD_EXPIRED (+ rehold) โดยไม่ตรวจช่องกรอก
+8. **seen ≠ sel.t** ⇒ PRICE_CHANGED{heldTotalSatang = totalSatang = sel.t} (ไม่เรียกบริการจึงไม่มียอดใหม่) — หน้ายืนยันโหลดใหม่จะเทียบราคาจริง
+9. **ผลไม่สำเร็จมีช่องเสริม** `shopSlug` (ทุกรหัสหลัง resolve ร้าน ยกเว้น NOT_FOUND ที่ต้องเป็นรูปเดียว) + `back` (ถือ: หน้าสินค้าพร้อมการเลือกที่ตรวจแล้ว) + `rehold` (HOLD_EXPIRED/PRICE_CHANGED) — action redirect จากค่าของ platform เท่านั้น
+10. **VM เพิ่ม `brand`** (ตราสินค้าแบบหน้าสินค้า) ในหน้ายืนยัน/หน้าการจอง เพื่อเปลือกหน้าเหมือนหน้าเดิม — ไม่มี id ภายใน
+11. **ภาษาไม่ถูกพาข้าม action redirect** (R11: query มีแค่ sel/e/f) ⇒ หน้ายืนยัน/หน้าการจองใช้ Accept-Language (มีปุ่มสลับภาษาในหน้า) — หนี้ด้านล่าง
+12. **pay สถานะอื่นของ intent:** HOLD_EXPIRED (แข่งกับเวลา) ⇒ state EXPIRED · NOTHING_DUE ⇒ pay null · อื่น ⇒ BUSY
+13. **todo.people** = Σ SEAT ทุกประเภทใน snapshot (รวมทารก) · named = ผู้เดินทางที่ชื่อไม่ว่าง · WAIVER ตาม `trips.waiver.requiredFor` (ALL / SCUBA_ONLY+deepDive)
+14. **notFound() ใน action** เมื่อไม่มี shopSlug (ไม่พบ / ไม่มีกุญแจเครื่อง) — ไม่มีปลายทางที่ปลอดภัยให้ redirect
+15. **`@prisma/client` (Prisma.sql/join) ใน trips-book.ts** — จำเป็นต่อการต่อ CTE ของ `rateBucketCte` ในคำสั่งเดียว (แบบ trips-public.ts) · ไม่ใช้ prisma client นอกคำสั่งด่าน
+
+## 3. ข้อสังเกตความปลอดภัย
+- id ภายในไม่ออก: ref = base32(HMAC(SESSION_SECRET, ร้าน+ชนิด+id))[:12] · sel = JSON ref/ค่าสาธารณะ + MAC 22 ตัวผูก ร้าน·หน่วย·sha256(token ตะกร้า) · token ตะกร้า = HMAC(ร้าน+nonce) (nonce เดิม ⇒ ตะกร้าเดิม)
+- ไม่มีกุญแจ ⇒ ปิด (nonce null ⇒ ไม่มีปุ่ม · ฟังก์ชันคืน UNAVAILABLE)
+- ฟอร์มผิด/ด่านล่ม/ด่านเกิน ⇒ ไม่ถึงบริการ (ไม่มีที่ถือ/การจอง/Party ใหม่ — C-2 C-9 C-15 RL-2 เขียว)
+- ไม่ log อะไรเลยในไฟล์ใหม่ · คีย์ถัง: `trips:{book,confirm,hold,token}:<tenant>:<ck>` `trips:slot:<tenant>:<departure>:<ck>`
+- ไม่สะท้อนค่า: ข้อความผิดพลาดมาจากรหัสในรายการ · `e`/`f` ของหน้าผ่าน allowlist · `back.query` มีเฉพาะค่าที่ตรวจรูปแล้ว
+- ไม่มี object จากผู้ใช้เข้า `update({data})` (ไม่มีคำสั่งเขียนนอก holdTrips/confirmTrips/คำสั่งด่าน)
+- ⚠️ ผู้คุมดูด้วยตา: POST action ข้ามโดเมน (Origin) · `Cache-Control` ของ c/ my/ · ย้อนกลับหลังยืนยัน (คาด: DONE ⇒ หน้าการจองเดิม)
+
+## 4. หนี้ส่งต่อ
+- **W1.2b:** สลิป/ตรวจอัตโนมัติ · AWAIT_SHOP + SHOP_CONFIRMS สาธารณะ · เก็บชื่อที่ผู้จองพิมพ์ (R11 — **C-12 แสดงผลจริง: ชื่อ+อีเมลเดิมทำให้ได้ Party เดิมพร้อมเบอร์เดิม**) · ช่องเก็บการยอมรับ (`acceptedTermsAt/termsVersion`) · **พาภาษาข้าม redirect ของ action** (เช่น `l` ใน sel หรือคุกกี้ — ต้องมีมติ) · ป้ายภาษาอังกฤษของบรรทัด SEAT ในบริการราคา (ตอนนี้ติดป้ายในแพลตฟอร์มจากแคตตาล็อก)
+- **W1.3:** ลิงก์ในรายการต้องทำ (`/form/[token]`) · เลื่อน/ยกเลิก/OTP บน my/
+- **T0.4c:** `confirmTrips` สาธารณะไม่ตรวจสถานะรอบ/ปิดรับ (แพลตฟอร์มตรวจ `getAvailability` ก่อนเรียก · มีช่อง TOCTOU สั้น) · เพดานที่ถือไม่จ่ายต่อรอบ
+- quote มีช่อง VAT ต่อบรรทัด/รวม VAT (ตอนนี้ VAT = payable − Σ ที่แพลตฟอร์ม) · หน้ายืนยันคิดราคา 2 ครั้ง (quoteTrips + quoteTripLine) — บริการควรคืน id ต่อบรรทัดใน Quote
+- seed: ร้าน `andaman-dive` ยังไม่มีผู้รับเงินพร้อมเพย์ (ฟิกซ์เจอร์ไม่มี) ⇒ ฉาก `book-pay` จะเห็น "ร้านยังไม่ได้ตั้งบัญชีรับเงิน" — ผู้คุมต้องตัดสิน (เพิ่ม PaymentProfile ทดสอบในฟิกซ์เจอร์)
+- token การจองเพิกถอนไม่ได้ (SESSION_SECRET) · ถังเดา token อ่านกับ +1 คนละคำสั่ง (รับในมติ)
+
+## 5. ข้อแย้งต่อข้อสอบ (ปล่อยแดง)
+- **S-10** · คาด: ไม่แตะ `scripts/seed-trips-qc.mts` · เหตุที่ผิด: มติ R17 ให้ผู้สร้างเพิ่มบรรทัดตั้ง X29 ใน seed เอง แต่ FORBIDDEN_PATHS ของข้อสอบยังมี seed · ควรแก้: เพิ่ม `:(exclude)scripts/seed-trips-qc.mts` หรือ LIMITED `[seed, 0, 2]`
+- **C-12** · คาด: Party.phone ของการจองเบอร์ท้องถิ่น = `+66…` ของเบอร์ใหม่ · เหตุที่ผิด: ตัวช่วย `confirm()` ส่ง `name = BOOKER.name` + `email = BOOKER.email` เดิม ⇒ `party.findOrCreate` ขั้น (3) จับคู่ ชื่อ+อีเมล ได้ Party ของ C-3 (เบอร์ของ BOOKER) — แพลตฟอร์มส่ง `+66…` ของเบอร์ใหม่ถูกต้องแล้ว (ส่วน "ผู้จองคนเดียวกัน" เขียว) · ควรแก้: C-12 ส่ง `email: ""` และชื่อใหม่ (`name: \`C12 ${STAMP}\``)
+
+## 6. ผลรันจริง (14 พ.ย. · ทรี l1 · ผ่านตัวห่อ iso/qc-trips/gate-lock)
+- seed ×2: รอบแรกเขียน `tripSettingsT11` 1 (X29) · รอบสอง `updated {}` (ไม่เขียน)
+- qc-trips-w1.2: **77/79** — แดง S-10 · C-12 (ข้อแย้ง §5)
+- qc-trips-w1.1: 79/84 — แดงเพราะใบนี้ตามคาด: S-4 (app/book import trips-book) · S-5 ('use server' ใน app/book) · S-12 (ขอบเขต: ไฟล์ใหม่ของ W1.2 + defs + seed) · SD-5 (`cta` = `{enabled, reason}`) · XR-15 (จอใช้ชื่อช่อง `amountSatang` ตามสัญญา W1.2 §3.2 — ข้อของ W1.1 ห้ามคำนี้ในจอทั้งหมด ⇒ ต้อง ORACLE-EDIT ให้ยกเว้นชื่อช่องของ VM W1.2)
+- qc-trips-t0.6 125/126 · t0.4 109/110 · t0.7 149/150 — แดงข้อเดียวกันทุกชุด: ขอบเขตแตะ `core/settings/defs/trips.ts` (เพิ่ม X29 X30 ตามมติ R15)
+- qc-trips-t0.1 94/96 — R-1 R-2 (คีย์ใหม่ X29 X30 · ORACLE-EDIT §0)
+- fitness 54/54 (มี DB) · 54/54 (`env -u DATABASE_URL`) · CRITICAL 0
+- typecheck: 0 error

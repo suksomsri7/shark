@@ -466,8 +466,11 @@ export type BookProductVM = {
   requestedUnavailable: boolean;
   /** slots = รอบของวันนั้นเรียงเวลาออก (ไม่เกิน BOOK_SLOT_CAP · รอบที่ขายได้มาก่อนเมื่อเกิน) · moreSlots = รอบที่ไม่ได้แสดง · price = ของรอบที่ selected เท่านั้น */
   selected: null | { date: string; slots: BookSlotVM[]; moreSlots: number; price: BookPriceVM | null; priceError: string | null };
-  cta: { enabled: false };
+  /** ปุ่มจองออนไลน์ (W1.2): เปิดเมื่อรอบที่เลือกขายได้ + ร้านเปิดปุ่ม + สินค้าไม่ใช่ "ร้านยืนยันก่อน" · reason = เหตุที่ปิดซึ่งหน้าต้องบอกลูกค้า (null = ไม่มีรอบให้จอง) */
+  cta: { enabled: boolean; reason: BookCtaReason };
 };
+/** เหตุที่ปุ่มจองปิด (W1.2 มติ R7 · R8) */
+export type BookCtaReason = null | "BOOKING_OFF" | "SHOP_CONFIRMS" | "UNAVAILABLE";
 /** พารามิเตอร์ที่ลิงก์ในหน้าพาต่อ (ภาษาที่เลือกเอง · รหัสผู้แนะนำที่ผูกได้จริง) */
 export type BookCarry = { lang: BookLocale | null; a: string | null };
 
