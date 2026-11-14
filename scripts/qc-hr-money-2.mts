@@ -1,7 +1,7 @@
 // QC — HR V2 · fix ticket HR-MONEY-2 (H5.2 money hunt M1 M2 m3 m4 m5) · brief ledger/hr-briefs/hr-brief-MONEY-2.md · numbers ledger/wo-notes/hr-MONEY-2-oracle.md
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
 // Tenant qc-hr-money2-<stamp> · 2031 dates · opts.now injected · own ACTIVE law rows (qc-hr-money2-<tag>-*) removed in finally · --list
-// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_MONEY2_BASE=60659e7c0 pnpm exec tsx scripts/qc-hr-money-2.mts
+// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-money-2.mts  (base = merge-base with session/hr; 60659e7c0 only before the da4cf43a9 merge)
 // Money = integer satang · every expectation is a literal derived by hand in the note · base = QC_MONEY2_BASE || merge-base(HEAD, session/hr) ·
 //   statics vs base are n/a once the base already carries `HR MONEY-2` (in-base guard)
 import { execFileSync } from "node:child_process";
@@ -72,6 +72,7 @@ R5.7|R5|M|R|[db] (Q2) owner cancelLeave approved UNPAID ⇒ refused · APPROVED
 R5.8|R5|M|R|[db] (R6, was control) withdraw approved PAID leave in APPROVED month ⇒ refused · APPROVED
 R5.9|R5|M|R|[db] (Q4) chain apply UNPAID ⇒ PAID · CANCELLED · audit
 R5.10|R5|m|G|[db] (Q4) control: chain apply September ⇒ APPROVED
+R5.11|R5|M|G|[db] (D2; RED at 150877997) legacy APPROVED leave, policy null, APPROVED month: decideLeave revoke + owner cancelLeave ⇒ paid text · still APPROVED · control: same in September ⇒ revoked
 R6.1|R6|C|R|[db] (R6) ABSENT_RULE −300,000 run: approve PAID leave on 11 Aug ⇒ refused · PENDING · deductions + totals unchanged
 R6.2|R6|C|R|[db] (R6) owner PAID leave created-as-approved on 14 Aug ⇒ refused · no row · unchanged
 R6.3|R6|M|R|[db] (R6) chain apply PAID leave on 29 Aug ⇒ PAID · CANCELLED · unchanged
@@ -488,6 +489,15 @@ try {
     ck("R5.9", { refused: ch1.res?.applied === false && ch1.res?.code === "PAID", st: (await stOf(ch1.id)) === "CANCELLED", audit: au.some((a: Any) => a.after?.code === "PAID") }, "PAID · CANCELLED · audit", short(ch1.res, 160));
     const ch2 = await chain("2031-09-10");
     ck("R5.10", { applied: ch2.res?.applied === true, st: (await stOf(ch2.id)) === "APPROVED" }, "applied · APPROVED", short(ch2.res, 160));
+    // ORACLE-EDIT (controller D2): legacy approved leaves without a policy
+    const lg = async (e: string, d: string) => (await P.hrLeave.create({ data: { tenantId: TT, systemId: s5, employeeId: e, type: "PERSONAL", fromDate: dd(d), toDate: dd(d), status: "APPROVED", days: 1, reason: `qc ${tag}` } })).id as string;
+    const rvk = (id: string) => safe(() => SV.decideLeave(c(s5), id, "REJECTED", U.owner.id, { from: "APPROVED" }).then(() => ({ ok: true })));
+    const cnl = (id: string) => safe(() => SV.cancelLeave(c(s5), id, { actorUserId: U.owner.id }));
+    const [g1, g2, g3, g4] = [await lg(eL, "2031-08-19"), await lg(eO, "2031-08-22"), await lg(eL, "2031-09-23"), await lg(eO, "2031-09-24")];
+    const [x1, x2, x3, x4] = [await rvk(g1), await cnl(g2), await rvk(g3), await cnl(g4)];
+    const noAudit = (await rows(`SELECT 1 FROM "AuditLog" WHERE "tenantId" = $1 AND "targetId" IN ($2, $3) AND action LIKE 'hr.leave.%'`, TT, g1, g2)).length === 0;
+    ck("R5.11", { revoke: x1?.__throw?.message === TXT.paid, cancel: x2?.ok === false && x2?.reason === TXT.paid, kept: (await stOf(g1)) === "APPROVED" && (await stOf(g2)) === "APPROVED" && noAudit,
+      ctrl: x3?.ok === true && (await stOf(g3)) === "REJECTED" && x4?.ok === true && (await stOf(g4)) === "CANCELLED" }, "refused ×2 · kept · Sep revoked", short({ x1: x1?.reason ?? x1, x2, x3: x3?.reason ?? x3, x4 }, 260));
   }
   { // ORACLE-EDIT (controller R6) · re-hunt q7 fixture
     const AP = (await import("@/lib/modules/hr/attendance-pay")) as Any;

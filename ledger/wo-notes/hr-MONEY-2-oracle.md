@@ -219,3 +219,21 @@ For R6.1–R6.3, the ABSENT/LATE rows (id, status, runId, amount) and the run ro
 
 **No leave date-edit entry point exists in src** (only `updateLeavePolicy`), so "edit onto a deducted day" has no check.
 Open gap: flipping a policy's `paid` flag while approved leaves sit in paid months.
+
+## 11. ORACLE-EDIT — D2 legacy-leave revoke (R5.11), 15 Nov
+- **Fixture.** Leaves inserted directly, status APPROVED, `policyId` null, `decidedById` null:
+  - eL 19 Aug and eO (owner-linked) 22 Aug, in the APPROVED month;
+  - controls: eL 23 Sep and eO 24 Sep.
+- **Expected:**
+  - `decideLeave` APPROVED→REJECTED on 19 Aug is refused with `CORRECTION_TEXT.paid`.
+  - `cancelLeave` by the owner on 22 Aug returns `{ok:false, reason: paid text}`.
+  - Both leaves stay APPROVED and no `hr.leave.*` audit row is written for them.
+  - The September controls end REJECTED and CANCELLED respectively.
+- **Registry.** Registered GREEN; it would be RED at 150877997.
+- **Result.** GREEN at f6fd867b0, as the coordinator expected.
+- **D1 check skipped.** Reaching the old unordered cap needs more than 1,000 `HrAttendanceDeduction` generations. No route with 50 rows or fewer exercises it, because the fix reads only run-bound deductions, so a small fixture cannot tell old from new.
+- **Base for statics.** After the session/hr da4cf43a9 merge (678efb69d), ST3 must use the default merge-base (da4cf43a9). Pinning QC_MONEY2_BASE=60659e7c0 now flags unmarked session/hr hunks in payroll.ts.
+- **Forced run, lane wrapper, default base.**
+  - 57/57 pass; residue none.
+  - Registry: 35 RED-by-design, 22 GREEN.
+  - Size: suite + lib = 61.5 KB (cap 64 KB).
