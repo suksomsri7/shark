@@ -128,7 +128,7 @@ export function taxCalendarFrom(legal: BookLegal, o: { today: Date; vatRegistere
       paper: view(d.paper, "PAPER"),
       online: view(d.online, "ONLINE"),
       whenTh: null,
-      conditionTh: d.form === "PP30" ? "ยื่นทุกเดือนภาษีแม้ไม่มีการขาย" : "เฉพาะเดือนที่ร้านหักภาษี ณ ที่จ่ายไว้ (นับจากเดือนที่จ่าย)",
+      conditionTh: d.form === "PP30" ? "ยื่นทุกเดือนภาษีแม้ไม่มีการขาย" : "เมื่อมีการหักภาษี ณ ที่จ่ายในเดือนที่จ่าย",
       warnings: d.warnings,
     });
   }

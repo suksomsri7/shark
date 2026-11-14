@@ -1189,7 +1189,8 @@ export async function postPayment(
       const rest = p.amount - vatShare;
       if (rest > 0) {
         const allowanceId = await b.id("DOUBTFUL_ALLOWANCE");
-        const allow = await db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: allowanceId, entry: { date: { lte: p.paidAt } } }, _sum: { debit: true, credit: true } });
+        // ยอดค่าเผื่อ ณ "สิ้นวัน" (เวลาไทย) ของวันที่ตัด — รายการวันเดียวกันนับครบไม่ว่าลงกี่โมง
+        const allow = await db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: allowanceId, entry: { date: { lt: bkkDayEndExclusive(p.paidAt) } } }, _sum: { debit: true, credit: true } });
         const useAllow = Math.min(Math.max(0, (allow._sum.credit ?? 0) - (allow._sum.debit ?? 0)), rest);
         if (useAllow > 0) b.dr(allowanceId, useAllow, "ตัดหนี้สูญจากค่าเผื่อ", contactId);
         b.dr(await b.id("BAD_DEBT_EXPENSE"), rest - useAllow, "หนี้สูญ", contactId);
@@ -2809,12 +2810,18 @@ export async function postDoubtfulAllowance(ctx: GlCtx, o: { key: string; date: 
   });
 }
 
-/** ยอดค่าเผื่อหนี้สงสัยจะสูญคงเหลือ (เครดิต) ณ วันที่ */
+/** เที่ยงคืนต้นวันถัดไปตามเวลาไทยของวันที่ (ขอบบนแบบไม่รวม) */
+export function bkkDayEndExclusive(d: Date): Date {
+  const b = new Date(d.getTime() + 7 * 3_600_000);
+  return new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate() + 1) - 7 * 3_600_000);
+}
+
+/** ยอดค่าเผื่อหนี้สงสัยจะสูญคงเหลือ (เครดิต) ณ สิ้นวัน (เวลาไทย) ของวันที่ */
 export async function doubtfulAllowanceBalance(ctx: GlCtx, at: Date, tx?: Tx): Promise<number> {
   const db = tx ?? prisma;
   const m = await db.accountMapping.findFirst({ where: { systemId: ctx.systemId, key: "DOUBTFUL_ALLOWANCE" }, select: { accountId: true } });
   if (!m) return 0;
-  const a = await db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: m.accountId, entry: { date: { lte: at } } }, _sum: { debit: true, credit: true } });
+  const a = await db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: m.accountId, entry: { date: { lt: bkkDayEndExclusive(at) } } }, _sum: { debit: true, credit: true } });
   return (a._sum.credit ?? 0) - (a._sum.debit ?? 0);
 }
 

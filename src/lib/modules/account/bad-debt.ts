@@ -11,7 +11,7 @@ import { tenantDb } from "@/lib/core/db";
 import { recordLegalAckInTx } from "@/lib/core/legal-ack";
 import { LEGAL_ACK_REQUIRED, legalWarning, unacknowledged, type LegalAck, type LegalAckRequired, type LegalWarning } from "@/lib/core/settings/legal/warnings";
 import { accountNow } from "./clock";
-import { doubtfulAllowanceBalance, ensureAccounting, postDoubtfulAllowance, postPayment, runAccountTx } from "./gl";
+import { bkkDayEndExclusive, doubtfulAllowanceBalance, ensureAccounting, postDoubtfulAllowance, postPayment, runAccountTx } from "./gl";
 import { bkkYmd, bookRuleFrom, loadBookLegal, type BookCtx } from "./legal-values";
 import { liveCreditTotalInTx, lockDocumentRow, receivableStatusOf } from "./service";
 
@@ -44,7 +44,7 @@ export async function badDebtSummary(ctx: BookCtx, asOfDate: Date = accountNow()
     loadBookLegal(ctx),
     doubtfulAllowanceBalance(ctx, asOfDate),
     db.accountMapping.findFirst({ where: { systemId: ctx.systemId, key: "AR" }, select: { accountId: true } }).then((m) =>
-      m ? db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: m.accountId, entry: { date: { lte: asOfDate } } }, _sum: { debit: true, credit: true } }) : null,
+      m ? db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: m.accountId, entry: { date: { lt: bkkDayEndExclusive(asOfDate) } } }, _sum: { debit: true, credit: true } }) : null,
     ),
     db.accountDocument.findMany({
       where: { systemId: ctx.systemId, direction: "OUT", docType: { in: [...AR_TYPES] }, status: { in: [...OPEN] }, dueDate: { lt: new Date(`${asOf}T00:00:00+07:00`) } },

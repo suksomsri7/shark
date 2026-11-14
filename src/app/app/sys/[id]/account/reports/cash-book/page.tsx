@@ -84,6 +84,32 @@ export default async function CashBookPage({ params, searchParams }: { params: P
 
       <section className="flex flex-col gap-2" data-testid="cash-book-rows">
         <h2 className="text-sm font-medium">รายการประจำวัน ({r.rows.length} รายการ)</h2>
+        {/* มือถือ: การ์ดต่อวัน (ตาราง 6 คอลัมน์กว้างเกินจอ) · พิมพ์ใช้ตาราง */}
+        <div className="flex flex-col gap-2 sm:hidden print:hidden" data-testid="cash-book-cards">
+          {[...byDay.entries()].map(([day, rows]) => (
+            <div key={`m-${day}`} className="rounded-lg border text-sm" style={{ borderColor: "var(--color-line)" }}>
+              {rows.map((x) => (
+                <div key={`m-${x.entryId}`} className="flex items-start justify-between gap-2 border-b px-3 py-2 last:border-b-0" style={{ borderColor: "var(--color-line)" }}>
+                  <div className="min-w-0">
+                    <div className="text-xs text-[color:var(--color-muted)]">{ymdTh(x.date)} · {x.docNo}</div>
+                    <div>{x.description}</div>
+                    <div className="text-xs text-[color:var(--color-muted)]">{x.owner ? "เงินทุน/ถอนใช้ส่วนตัว" : x.counterTh}</div>
+                  </div>
+                  <div className="shrink-0 text-right tabular-nums">
+                    {x.receipt ? <span>+<MoneyText satang={x.receipt} decimals /></span> : <span>−<MoneyText satang={x.payment} decimals /></span>}
+                  </div>
+                </div>
+              ))}
+              {dayTotal.get(day) && (
+                <div className="flex justify-between bg-[color:var(--color-surface-2)] px-3 py-1 text-xs font-medium">
+                  <span>รวมวันที่ {ymdTh(day)}</span>
+                  <span className="tabular-nums">รับ <MoneyText satang={dayTotal.get(day)!.receipt} decimals /> · จ่าย <MoneyText satang={dayTotal.get(day)!.payment} decimals /></span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="hidden sm:block print:block">
         <TableWrap>
           <thead>
             <tr className="text-left text-[color:var(--color-muted)]">
@@ -106,6 +132,7 @@ export default async function CashBookPage({ params, searchParams }: { params: P
             )}
           </tbody>
         </TableWrap>
+        </div>
       </section>
     </div>
   );

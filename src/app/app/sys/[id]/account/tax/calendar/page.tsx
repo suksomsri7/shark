@@ -43,7 +43,21 @@ export default async function TaxCalendarPage({ params, searchParams }: { params
 
       <section className="card flex flex-col gap-2 p-5" data-testid="tax-calendar">
         <h2 className="text-base font-semibold">กำหนดยื่นที่กำลังจะถึง</h2>
-        <div className="overflow-x-auto">
+        {/* มือถือ: การ์ดต่อแบบ (ตารางกว้างเกินจอ) */}
+        <ul className="flex flex-col gap-2 sm:hidden" data-testid="tax-calendar-cards">
+          {cal.items.map((i) => (
+            <li key={`m-${i.form}-${i.periodKey}`} className="rounded-lg border p-3 text-sm" style={{ borderColor: "var(--color-line)" }} data-testid={`cal-m-${i.form}`}>
+              <div className="flex flex-wrap items-baseline justify-between gap-1">
+                <span className="font-medium">{i.formLabel}</span>
+                <span className="text-xs text-[color:var(--color-muted)]">{i.periodLabel}</span>
+              </div>
+              <div className="mt-1">กระดาษ: {i.paper ? `${ymdTh(i.paper.date)} (${left(i.paper.daysLeft)})` : (i.whenTh ?? "-")}</div>
+              {i.paper && <div>อินเทอร์เน็ต: {i.online ? `${ymdTh(i.online.date)} (${left(i.online.daysLeft)})` : "ไม่มีช่วงขยายที่มีผล"}</div>}
+              {i.conditionTh && <div className="mt-1 text-xs text-[color:var(--color-muted)]">{i.conditionTh}</div>}
+            </li>
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="text-left text-xs text-[color:var(--color-muted)]">
