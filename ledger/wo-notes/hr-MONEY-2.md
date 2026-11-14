@@ -4,7 +4,7 @@ Tree `/root/projects/shark-hr` · branch `wip/hr-money-2` (from session/hr 60659
 No schema / migration. `payroll-rules.ts` byte-identical (ST1). Files of ST2 untouched.
 
 ## 0. Checkpoint
-- done: R1–R5 code · oracle 49/49 · regression (list in green.txt) · ORACLE-EDITs below · typecheck.
+- done: R1–R5 code (20bd1d017) · ORACLE-EDITs (bcfa069a2) · oracle 49/49 ×4 · regression all green (green.txt) · typecheck clean 431 s.
 - next: controller full regression + reviewer + hunter.
 
 ## 1. What changed where
@@ -17,7 +17,7 @@ No schema / migration. `payroll-rules.ts` byte-identical (ST1). Files of ST2 unt
 | `src/messages/{th,en}/common.json` | `hr.…fl_REFUND_HELD` label (JSON has no marker). |
 
 ## 2. §F self-check
-1 n/a (no page/route) · 2 ✔ inside every new `$transaction` only the tx client (`money2DeleteClaim`; reverse/build/leave helpers take the caller's tx) · 3 n/a (no new scope surface; labor viewer scope unchanged) · 4 ✔ refusals are fixed Thai texts (REFUND_BOUND, RUN_LIMIT, CORRECTION_TEXT.paid), no ids · 5 ✔ new tx uses H34_TX (60 s) like the neighbours · 6 n/a no migration · 7 ✔ no second connection under a lock (audits after commit) · 8 n/a · 9 n/a no new outbox event · 10 ✔ files ⊆ brief list (+ messages, notes, 3 oracle edits).
+1 n/a (no page/route) · 2 ✔ inside every new `$transaction` only the tx client (`money2DeleteClaim`; reverse/build/leave helpers take the caller's tx) · 3 n/a (no new scope surface; labor viewer scope unchanged) · 4 ✔ refusals are fixed Thai texts (REFUND_BOUND, RUN_LIMIT, CORRECTION_TEXT.paid), no ids · 5 ✔ new tx uses H34_TX (60 s) like the neighbours · 6 n/a no migration · 7 ✔ no second connection under a lock (audits after commit) · 8 n/a · 9 n/a no new outbox event · 10 ✔ files ⊆ brief list (+ messages, notes, 6 oracle files with pre-authorised marked edits).
 
 ## 3. ORACLE-EDITs (pre-authorised kind — minimal, marked)
 - `qc-hr-h1.3.mts` S6.1: `PAY_MARKED` + `"HR MONEY-2": 10` (10 × sourceRef in the marked MONEY-2 block of payroll.ts: refund hold/void readers + accrual-input reader for labour ACTUAL).
