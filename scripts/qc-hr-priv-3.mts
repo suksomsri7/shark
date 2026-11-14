@@ -100,7 +100,7 @@ try { fit = await import("./fitness-hr.mjs" as string); } catch (e) { fit = { __
  const uiB = fileAtBase(F.ui) ?? "", acB = fileAtBase(F.acts) ?? "";
  const RANGES: Record<string, [number, number][]> = { [F.ui]: [[1, importEnd(uiB) + 1], fnRange(uiB, "HrLeaveSection"), fnRange(uiB, "HrHub")], [F.acts]: [[1, importEnd(acB) + 1], [fnRange(acB, "requestLeaveAction")[0], fnRange(acB, "requestLeaveAction")[0] + 16]] };
  for (const f of ch) {
-  if (ORACLE_OWN.includes(f) || /^ledger\/wo-notes\/hr-PRIV-3[^/]*\.md$/.test(f)) continue;
+  if (ORACLE_OWN.includes(f) || /^ledger\/wo-notes\/hr-PRIV-3[^/]*\.md$/.test(f) || f === "ledger/hr-briefs/hr-brief-PRIV-3.md") continue; // brief: controller rulings r2 appended
   if (SRC_OK.includes(f)) {
    for (const x of hunksOf(f)) {
     if (!x.added.some((l) => l.includes(MK))) bad.push(`${f.split("/").pop()}@${x.a}:unmarked`);
