@@ -6,11 +6,14 @@
 //   team.help = ห้องแชทลูกค้าสถานะ OPEN ที่ผู้เรียกถูกเรียกมาช่วย (ChatConversationHelper.userId = ฉัน)
 //   team.support = `unreadCaseTotalForUser` (เรื่องที่ทีม SHARK ตอบแล้วยังไม่อ่าน)
 //   total = approvals + customers + invites + help + support
+//   CAL1.6 ▸ calendar = `todayOpenCount` (เรื่องวันนี้ที่ยังไม่เสร็จ · ไอคอนปฏิทินแถบบน M1 · R-CAL-19) — **ไม่รวม** ใน total (มติ Q3) · ล้ม = 0 + logOps WARN ◂
 // ด่าน = สมาชิกร้าน (gate null) · 60/นาที ต่อ Membership · count/aggregate ล้วน ไม่ดึงรายการ (ยกเว้น approvals ที่ใช้ชุดเดียวกับกล่องรวม · เพดาน 100)
 import { tenantDb } from "@/lib/core/db";
 import { inboxForUser } from "@/lib/ai/secretary/inbox";
 import { unreadCaseTotalForUser } from "@/lib/support/service";
 import { READ, can, unreadFor, type InboxCtx } from "../../inbox/_shared";
+import { errDetail, logOps } from "@/lib/core/ops";
+import { todayOpenCount } from "@/lib/modules/calendar/agenda";
 import { gate, ok, thrown, withRateLimit, withErrors } from "../_shared";
 
 /** เพดานเดียวกับกล่องรวม (TAKE_MAX ของ inbox.ts) */
@@ -41,12 +44,21 @@ async function GET_(req: Request) {
     const help = (): Promise<number> =>
       db.chatConversationHelper.count({ where: { tenantId, userId, conversation: { tenantId, status: "OPEN", hiddenAt: null } } });
 
-    const [inbox, cust, inv, hlp, support] = await Promise.all([
+    const calendar = async (): Promise<number> => {
+      try {
+        return await todayOpenCount({ userId, tenantId, membership: m }, now);
+      } catch (e) {
+        await logOps("WARN", "calendar", "badges: นับปฏิทินวันนี้ล้ม", { tenantId, detail: errDetail(e) }).catch(() => undefined);
+        return 0;
+      }
+    };
+    const [inbox, cust, inv, hlp, support, cal] = await Promise.all([
       inboxForUser(userId, { tenantId, take: INBOX_TAKE }),
       customers(),
       invites(),
       help(),
       unreadCaseTotalForUser({ tenantId }, userId, m.role),
+      calendar(),
     ]);
     const approvals = inbox.filter((i) => i.canApprove).length;
     return ok({
@@ -54,6 +66,7 @@ async function GET_(req: Request) {
       customers: cust,
       team: { invites: inv, help: hlp, support },
       total: approvals + cust + inv + hlp + support,
+      calendar: cal,
     });
   } catch (e) {
     return thrown(e, "badges");

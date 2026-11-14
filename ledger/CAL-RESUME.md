@@ -15,6 +15,7 @@
 | CAL1.2 items + nextFire (เลน a) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | modules/calendar/{next-fire,items,links,push-msg}.ts · removeStaff ลบของส่วนตัว · qc-cal-1.2 103/103 ×2 (P บริสุทธิ์ next-fire.ts บรรทัด 100% · กิ่ง 99.4% — กิ่งเดียวที่เหลือเป็นเงาของ tsx ที่บรรทัดหัวฟังก์ชัน) · ส่วนต่าง D-A1…A8 ในสัญญา §15 |
 | CAL1.4 job calendar.fire (เลน a) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | modules/calendar/{fire,jobs}.ts · push.ts +categoryId +transportErrors (additive) · import ใน crm-cron.mts + api/cron/outbox · F5 baseline 50→51 (fire.ts ข้ามผู้ใช้ตาม §3.3) · qc-cal-1.4 30/30 ×2 · ⚠️ push ถึงเครื่องจริงยังไม่พิสูจน์ (CAL3.2) |
 | CAL1.5 job calendar.brief (เลน a) | ✅ 14 พ.ย. | modules/calendar/{brief,summary}.ts + agenda.ts **STUB until CAL1.3** (เลน b แทนทั้งไฟล์) · จองก่อนส่ง · ชุดละ 50 · หน้าต่าง 90 น. · Google เฉพาะกิจการหลัก (R-CAL-31) · F5 51→52 · qc-cal-1.5 24/24 ×2 |
+| CAL1.6 API แอป (เลน a) | ✅ 14 พ.ย. | src/app/api/mobile/secretary/calendar/{agenda,month,today,items,items/[id],items/[id]/{done,reopen,snooze,confirm},source-done,prefs} + modules/calendar/prefs.ts · badges.calendar (ไม่รวม total) · rooms/[id].reminders · google/* = CAL1.8 เลน b · qc-cal-1.6 32/32 ×2 (401 ทุกเส้น · 404 ของคนอื่น · 400 ไทย · strict · 429) |
 
 ## จุดต่อ
 - ถ้า session ตาย: อ่านไฟล์นี้ → ดูใบที่ ▶️ → ดู ledger/cal-briefs/ ว่ามีผลค้างไหม
