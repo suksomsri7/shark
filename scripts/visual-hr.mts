@@ -156,6 +156,11 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "slip-gate", path: (i) => `/app/sys/${i.hr}/payroll/${i.paidRun}/slip/${i.namfon}`, users: ["owner", "payroll", "manager"], expect: { owner: 200, payroll: 200, manager: 404 }, why: "สลิปฝั่งผู้ดูเงินเดือน: การ์ด 07c + ป้ายสถานะ + PDF + ประวัติรายปี (ผู้จัดการ = 404) (H3.8)" },
     { key: "salarycert-gate", path: (i) => `/app/sys/${i.hr}/hr/payroll#hr-salarycert`, users: ["owner"], why: "ส่วนหนังสือรับรองเงินเดือน: คำขอ (ออก/ไม่อนุมัติ) · ออกใหม่ · ใบที่ออก (H3.8)" },
   ],
+  // HR H4.8 ▸ การ์ดคีย์ API ของระบบงานบุคคล (ไม่มี mockup — แบบการ์ดตั้งค่า) · เจ้าของเท่านั้น · ผู้จัดการต้องไม่เห็นการ์ด ◂
+  "4.8": [
+    { key: "apikeys-owner", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-api-keys`, users: ["owner"], why: "เจ้าของ: การ์ดคีย์ API (รายการ · ชุดสิทธิ์ 3 แบบ · อายุ · ช่องยินยอมข้อมูลเงินเดือน O1) (H4.8)" },
+    { key: "apikeys-manager", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["manager"], why: "ผู้จัดการ: หน้าตั้งค่าไม่มีการ์ดคีย์ API (H4.8)" },
+  ],
   // HR H4.6 ▸ brief §5 (ไม่มี mockup — ตามฟอร์มรายการเพิ่ม/หักของหน้าเงินเดือน): ส่วน "หักค่าของ" #hr-stock · ฟอร์ม (ผู้ถือคีย์ยื่น) · รายการ/ยอด/หนังสือยินยอม/ธงเพดาน
   //   (ผู้ดูเงินเดือน) · seed ไม่มีรายการ ⇒ ว่าง เว้นแต่ผู้ควบคุมยื่นก่อนถ่าย · staff/member ไม่มีส่วนนี้ ◂
   "4.6": [

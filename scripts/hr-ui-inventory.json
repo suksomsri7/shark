@@ -14319,6 +14319,454 @@
    "wo": "H3.4-YTD",
    "oracle": "qc-hr-h3.4-ytd",
    "note": "แจ้งว่าแสดงเฉพาะ 500 คนแรก (ไม่ตัดเงียบ — fix round F3)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-card",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "การ์ดคีย์ API ของระบบงานบุคคล"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-error",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · มีคำปฏิเสธ",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "inline-error"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "role=alert ข้อความตามรหัสปฏิเสธ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-raw",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · หลังออกคีย์สำเร็จ",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "คีย์ดิบแสดงครั้งเดียว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-raw-done",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · หลังออกคีย์สำเร็จ",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "ซ่อนคีย์ดิบ"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "ปิดแผงคีย์ดิบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-empty",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · ยังไม่มีคีย์",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "ยังไม่มีคีย์"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-list",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · มีคีย์",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "รายการคีย์ที่ผูกระบบนี้"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-row",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · มีคีย์",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "แถวคีย์ (ชื่อ · prefix · ชุด · ป้ายเงินเดือน · วันที่ · สถานะ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-revoke",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · คีย์ยังไม่ถูกเพิกถอน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "เปิดปุ่มยืนยัน"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "เพิกถอน (ขั้นแรก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-revoke-confirm",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · กดเพิกถอนแล้ว",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:revokeHrApiKeyAction"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "ยืนยันเพิกถอน · ประวัติ hr.apikey.revoke"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-form",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:issueHrApiKeyAction"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "ฟอร์มออกคีย์"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-name",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "ชื่อคีย์ ≤ 60"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-bundle-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "ชุดสิทธิ์ hr-read (ค่าปริยาย) · hr-leave · hr-payroll-read"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-ttl",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "อายุคีย์ 30/90/365/ไม่หมดอายุ (ชุดเงินเดือนไม่มีไม่หมดอายุ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-consent",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · เลือกชุดเงินเดือน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "O1: ข้อมูลเงินเดือนจะออกจากระบบ (ปิดไว้ก่อน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-consent-label",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR) · เลือกชุดเงินเดือน",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "ป้ายยินยอม O1"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-issue",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:issueHrApiKeyAction"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "สร้างคีย์ · ประวัติ hr.apikey.issue {keyId, scopes}"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-apikeys-docs",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (การ์ดคีย์ API ของ HR)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/developers/hr.md"
+   },
+   "wo": "H4.8",
+   "oracle": "qc-hr-h4.8",
+   "note": "คู่มือ HR API"
   }
  ]
 }

@@ -53,6 +53,7 @@ import { saveLinePolicyAction } from "@/lib/modules/hr/line-actions"; // HR H4.5
 import { LaborSettingsCard } from "@/lib/modules/hr/labor-ui"; // HR H4.2 ▸ ค่าตั้งค่าแรงต่อยอดขาย (เป้า % · ยอดขายต่อคนต่อชั่วโมง · คนขั้นต่ำ) ◂
 import { saveLaborSettingsAction } from "@/lib/modules/hr/labor-actions"; // HR H4.2 ◂
 import { LABOR_TEXT } from "@/lib/modules/hr/labor-rules"; // HR H4.2 ◂
+import { ApiKeysCard } from "./ApiKeysCard"; // HR H4.8 ▸ คีย์ API ของระบบงานบุคคล (เจ้าของร้านเท่านั้น) ◂
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
@@ -658,6 +659,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <BankSettingsCard systemId={id} onSaveProfile={auth.active.role === "OWNER" ? onSaveBankProfile : null} onSavePreset={onSaveBankPreset} onDeletePreset={onDeleteBankPreset} />
       {/* HR H3.6 ▸ แบบยื่นภาษี/ประกันสังคม — การ์ดแสดงเฉพาะผู้ผ่านด่าน · บันทึกได้เฉพาะเจ้าของร้าน · ผล ?fmsg= (allowlist ใน ui) ◂ */}
       <FilingSettingsCard systemId={id} msg={{ fmsg: str3(sp, "fmsg"), fflds: str3(sp, "fflds"), fdoc: str3(sp, "fdoc") }} /> {/* HR H3.6 ◂ */}
+      {/* HR H4.8 ▸ คีย์ API ของระบบงานบุคคล — เจ้าของร้านเท่านั้น (ออก/เพิกถอนตรวจซ้ำที่ hr/api/keys.ts) · ชุดเงินเดือนต้องติ๊กยินยอม (O1) ◂ */}
+      {auth.active.role === "OWNER" && <ApiKeysCard systemId={id} />}
     </div>
   );
 }

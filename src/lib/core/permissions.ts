@@ -597,6 +597,10 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     group: "back",
     actions: {
       "hr.employee.create": "เพิ่ม/แก้ทะเบียนพนักงาน",
+      // HR H4.8 ▸ คีย์ของ "คีย์ API" เท่านั้น (มติผู้คุมงาน รอบแก้ ข้อ 2) — ไม่แสดงในหน้าตั้งสิทธิ์พนักงาน · ให้คนไม่ได้ (API_KEY_ONLY_PERMISSIONS)
+      //   ด่านอ่านของ HR ยอมรับคีย์สองตัวนี้เฉพาะผู้ดูสังเคราะห์ของคีย์ API (userId "apikey:…") — คนที่ถือไว้ไม่ได้อะไรเพิ่ม ◂
+      "hr.employee.read": "คีย์ API: อ่านรายชื่อพนักงานแบบไม่มีข้อมูลส่วนตัว (ไม่มีเลขบัตร ที่อยู่ บัญชี เบอร์โทร)", // HR H4.8 ◂
+      "hr.roster.read": "คีย์ API: อ่านตารางกะที่ประกาศแล้วและการมาทำงาน", // HR H4.8 ◂
       "hr.attendance.clock": "ลงเวลาเข้า-ออกแทนพนักงาน",
       "hr.leave.request": "ยื่นใบลา",
       "hr.leave.read": "ดูข้อมูลการลาของทั้งร้าน",
@@ -947,13 +951,19 @@ export type PermissionModuleView = {
   params: readonly PermissionParamDef[];
 };
 
+// HR H4.8 ▸ permission ที่เป็นของ "คีย์ API" เท่านั้น — อยู่ในทะเบียน (ใช้เป็น scope ได้) แต่ไม่โผล่ในหน้าตั้งสิทธิ์/ระดับของคน
+//   และทางเขียน Membership.permissions ปฏิเสธ (staff/service.ts validatePermissionInput) ◂
+export const API_KEY_ONLY_PERMISSIONS: ReadonlySet<string> = new Set(["hr.employee.read", "hr.roster.read"]); // HR H4.8 ◂
+/** HR H4.8 ▸ คีย์นี้ให้ "คน" ได้ไหม (คีย์ของคีย์ API เท่านั้น = ไม่ได้) ◂ */
+export const isApiKeyOnlyPermission = (key: string): boolean => API_KEY_ONLY_PERMISSIONS.has(key); // HR H4.8 ◂
+
 /** โมดูลทั้งหมดพร้อม action ในนั้น — รูปที่หน้าจอใช้วาดได้ตรง ๆ */
 export const PERMISSION_MODULES: readonly PermissionModuleView[] = MODULE_DEFS.map((m) => ({
   module: m.module,
   label: m.label,
   group: m.group,
   wildcardKey: `${m.module}.*`,
-  actions: PERMISSIONS.filter((p) => p.module === m.module),
+  actions: PERMISSIONS.filter((p) => p.module === m.module && !API_KEY_ONLY_PERMISSIONS.has(p.key)), // HR H4.8 ▸ ไม่แสดงคีย์ของคีย์ API ◂
   params: PERMISSION_PARAMS.filter((p) => p.module === m.module),
 }));
 

@@ -121,7 +121,7 @@ const membershipOf = (v: RosterViewer): MembershipCtx =>
 /** เขียนตารางกะได้ไหม (Q5: OWNER หรือ hr.employee.create — MANAGER ผ่านตาม evaluate) */
 const canWrite = (v: RosterViewer | null | undefined): boolean => !!v && canManageHrSettings(v);
 /** อ่านบอร์ด/คำเตือนได้ไหม (R2: ผู้เขียน + บทบาท MANAGER) */
-const canRead = (v: RosterViewer | null | undefined): boolean => !!v && (canWrite(v) || v.role === "MANAGER");
+const canRead = (v: RosterViewer | null | undefined): boolean => !!v && (canWrite(v) || v.role === "MANAGER" || (String(v.userId ?? "").startsWith("apikey:") && (v.permissions as Record<string, unknown> | null | undefined)?.["hr.roster.read"] === true)); // HR H4.8 ▸ + คีย์อ่านตารางกะ เฉพาะผู้ดูสังเคราะห์ของคีย์ API (ไม่ให้สิทธิ์เขียน · คนไม่ได้อะไรเพิ่ม) ◂
 /**
  * สาขาของวันนั้นอยู่ในขอบเขตผู้กดไหม (null = ผ่าน) — R12 ของ H1.1: ส่ง unitId เข้า evaluate เฉพาะผู้ดูรายสาขา
  * ผู้ดูทุกสาขาไม่ส่ง unitId (core canAccessUnit รู้จักแค่ "*"/id)

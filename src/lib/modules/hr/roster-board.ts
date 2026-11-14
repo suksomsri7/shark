@@ -57,7 +57,7 @@ const THAI_LEADING_VOWELS = new Set(["เ", "แ", "โ", "ใ", "ไ"]);
 
 // ── สิทธิ์ ──
 /** อ่านบอร์ดได้ไหม (= ผู้อ่านของ H2.1 R2): ผู้เขียน + บทบาท MANAGER */
-export const canReadRoster = (v: RosterBoardViewer | null | undefined): boolean => !!v && (canManageHrSettings(v) || v.role === "MANAGER");
+export const canReadRoster = (v: RosterBoardViewer | null | undefined): boolean => !!v && (canManageHrSettings(v) || v.role === "MANAGER" || (String(v.userId ?? "").startsWith("apikey:") && (v.permissions as Record<string, unknown> | null | undefined)?.["hr.roster.read"] === true)); // HR H4.8 ▸ + คีย์อ่านตารางกะ เฉพาะผู้ดูสังเคราะห์ของคีย์ API (ไม่ให้สิทธิ์เขียน · คนไม่ได้อะไรเพิ่ม) ◂
 const membershipOf = (v: RosterBoardViewer): MembershipCtx =>
   ({ role: v.role, unitAccess: (Array.isArray(v.unitAccess) ? v.unitAccess : []) as string[], permissions: (v.permissions ?? {}) as Record<string, unknown> }) as MembershipCtx;
 

@@ -40,6 +40,7 @@ import {
   CRM_OWNER_ONLY_KEYS,
   // SVC R0.5 ▸ คีย์ตั้งค่าที่ให้ได้เฉพาะเจ้าของร้าน (settings.integrations.manage) ◂
   SETTINGS_OWNER_ONLY_KEYS,
+  isApiKeyOnlyPermission, // HR H4.8 ▸ คีย์ของคีย์ API เท่านั้น ◂
   isPermissionKey,
   isPermissionParamKey,
   moduleOfPermissionKey,
@@ -185,6 +186,8 @@ export function validatePermissionInput(input: PermissionMap): PermissionValidat
         reason: `ระบบไม่รู้จักสิทธิ์ “${key}” จึงยังบันทึกให้ไม่ได้ — กรุณารีเฟรชหน้านี้แล้วติ๊กใหม่อีกครั้ง`,
       };
     }
+    // HR H4.8 ▸ คีย์ของคีย์ API เท่านั้น (hr.employee.read / hr.roster.read) ให้พนักงานไม่ได้ ◂
+    if (isApiKeyOnlyPermission(key) && (raw === true || raw === "true" || raw === "on" || raw === "1")) return { ok: false, reason: `สิทธิ์ “${permissionLabel(key)}” ใช้ได้กับคีย์ API เท่านั้น — ให้พนักงานไม่ได้` }; // HR H4.8 ◂
     if (raw === true || raw === "true" || raw === "on" || raw === "1") value[key] = true;
     // ค่าอื่น (false / ไม่ติ๊ก) = ไม่ให้สิทธิ์ → ไม่เขียนคีย์ลงไปเลย
   }

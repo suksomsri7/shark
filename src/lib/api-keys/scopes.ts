@@ -84,6 +84,8 @@ export const CRM_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
 ).map((p) => p.key);
 // POS P2.13 ▸ permission key ของ POS ที่ใช้เป็น scope ได้ — ที่มาเดียวคือทะเบียน PERMISSIONS ◂
 export const POS_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter((p) => p.module === "pos" && isApiScope(p.key)).map((p) => p.key);
+// HR H4.8 ▸ permission key ของงานบุคคลที่ใช้เป็น scope ได้ — ที่มาเดียวคือทะเบียน PERMISSIONS (ออกจริงได้เฉพาะชุด hr-* ผ่าน hr/api/keys.ts) ◂
+export const HR_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter((p) => p.module === "hr" && isApiScope(p.key)).map((p) => p.key);
 
 
 export type ApiScopeBundleId =
@@ -108,7 +110,11 @@ export type ApiScopeBundleId =
   // POS P2.13 ▸ ระบบขายหน้าร้าน (read ⊂ operate ⊂ admin · §2.1) ◂
   | "pos-read"
   | "pos-operate"
-  | "pos-admin";
+  | "pos-admin"
+  // HR H4.8 ▸ งานบุคคล (hr-read ⊂ hr-leave · hr-read ⊂ hr-payroll-read — ชุดเงินเดือนต้องติ๊กยินยอมของเจ้าของร้าน) ◂
+  | "hr-read"
+  | "hr-leave"
+  | "hr-payroll-read";
 
 export type ApiScopeBundle = {
   id: ApiScopeBundleId;
@@ -293,6 +299,14 @@ const POS_ADMIN_SCOPES = [
 ] as const;
 // ◂ POS P2.13
 
+// HR H4.8 ▸ งานบุคคล (brief H4.8 R1 · มติ Q1/O1) — คีย์ผูกระบบ HR เดียวเสมอ · ออกได้เฉพาะเจ้าของร้าน (hr/api/keys.ts)
+//   hr-read          → รายชื่อพนักงาน (ไม่มีข้อมูลอ่อนไหว) · ตารางกะ/การมาทำงาน · ใบลา (ค่าปริยาย · ไม่มีเงินเดือน)
+//   hr-leave         → + ยื่นใบลาแทนพนักงาน (รออนุมัติเสมอ) — hr.leave.decide มีไว้ให้ตรงกติกายื่นแทนของหน้าจอ ไม่มี op อนุมัติ
+//   hr-payroll-read  → + สลิป/ประวัติ/รายงานเงินเดือน (เจ้าของร้านต้องติ๊กยินยอม "ข้อมูลเงินเดือนจะออกจากระบบ") ◂
+const HR_READ_SCOPES = ["hr.employee.read", "hr.roster.read", "hr.leave.read"] as const; // HR H4.8 ◂
+const HR_LEAVE_SCOPES = [...HR_READ_SCOPES, "hr.leave.request", "hr.leave.decide"] as const; // HR H4.8 ◂
+const HR_PAYROLL_READ_SCOPES = [...HR_READ_SCOPES, "hr.payroll.read"] as const; // HR H4.8 ◂
+
 /**
  * ชุดสำเร็จรูป 5 ชุด — ซ้อนกันเป็นชั้น: read-only ⊂ issue-and-collect ⊂ accountant
  * `danger` แยกออกจาก accountant เสมอ (ยกเลิก/เปิดงวด/รวมผู้ติดต่อ = กู้คืนยาก ต้องตั้งใจติ๊กเอง)
@@ -422,6 +436,28 @@ export const API_SCOPE_BUNDLES: readonly ApiScopeBundle[] = [
     scopes: POS_ADMIN_SCOPES,
   },
   // ◂ POS P2.13
+  // HR H4.8 ▸ งานบุคคล — 3 ชุด (ดูหัวข้อ HR ข้างบน) ◂
+  {
+    id: "hr-read",
+    label: "งานบุคคล — อ่านอย่างเดียว",
+    summary:
+      "Read the HR system without pay data: the staff list (no national id, bank, address, phone or PIN), shifts, the published roster, attendance and leave (no leave reasons). Writes nothing.",
+    scopes: HR_READ_SCOPES,
+  },
+  {
+    id: "hr-leave",
+    label: "งานบุคคล — อ่าน + ยื่นใบลาแทน",
+    summary:
+      "Everything in hr-read plus filing a leave request for an employee. A filed leave always waits for the shop's normal approval; nothing can be approved through the API.",
+    scopes: HR_LEAVE_SCOPES,
+  },
+  {
+    id: "hr-payroll-read",
+    label: "งานบุคคล — อ่าน + ข้อมูลเงินเดือน",
+    summary:
+      "Everything in hr-read plus payslips, the yearly payslip history and the pay reports. Only the shop owner can issue it, after confirming that pay data will leave SHARK. Every pay read is audited.",
+    scopes: HR_PAYROLL_READ_SCOPES,
+  },
 ];
 
 /** ชุดปริยายเมื่อสร้างคีย์จากหน้าบัญชี (เจ้าของเคาะ: ออกเอกสาร+รับเงิน · 365 วัน) */

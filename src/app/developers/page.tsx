@@ -146,6 +146,21 @@ export default function DevelopersPage() {
         </p>
       </section>
 
+      {/* HR H4.8 ▸ ลิงก์คู่มือ API ระบบงานบุคคล (/developers/hr.md) ◂ */}
+      <section className="flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <h2 className="text-lg font-semibold">HR API — อ่านข้อมูลงานบุคคล (อ่านเป็นหลัก + ยื่นใบลา)</h2>
+        <p className="text-sm text-neutral-700">
+          ถ้าร้านของคุณเปิดใช้ระบบงานบุคคล มี API แยกต่างหากสำหรับอ่านรายชื่อพนักงาน ตารางกะที่ประกาศแล้ว การมาทำงาน ใบลา และยอดวันลา
+          และยื่นใบลาแทนพนักงาน (รออนุมัติตามปกติเสมอ) — ไม่มีเลขบัตร ที่อยู่ บัญชีธนาคาร เบอร์โทร PIN หรือรูปเลย คีย์ออกได้เฉพาะเจ้าของร้าน
+          (งานบุคคล › ตั้งค่า › คีย์ API) และคีย์ที่อ่านสลิป/รายงานเงินเดือนได้ต้องยืนยันว่าข้อมูลเงินเดือนจะออกจากระบบ
+        </p>
+        <p className="text-sm">
+          <a className="font-medium text-emerald-700 underline" href="/developers/hr.md">
+            อ่านคู่มือ HR API ฉบับเต็ม (/developers/hr.md)
+          </a>
+        </p>
+      </section>
+
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">1. การยืนยันตัวตน (Authentication)</h2>
         <p className="text-sm text-neutral-700">

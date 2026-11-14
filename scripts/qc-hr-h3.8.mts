@@ -264,7 +264,7 @@ function runStatic(): void {
   {
     // ORACLE-EDIT (H3.8 merge round · review M3): the two hotfix/self files H3.8 had to touch are pinned at the H3.8 tip — any later change re-takes the pin on purpose ◂
     const PIN: Record<string, string> = {
-      [F.priv]: "9b95844dd0c066914d357429e128118e43078532e0fe2aae029ddd9ad467fa96",
+      [F.priv]: "bbf7604b0b05e280ea6e30f631302b9fd4580440a409030d9499d1c9a84a5acb", // ORACLE-EDIT (H4.8 fix round · after merge of session/hr 292bc5b7e, pre-authorised re-take): ba518b3d… → bbf7604b…: the marked openProfile OR-term now limited to API-key viewers (controller ruling 2) · was ORACLE-EDIT (H4.8 builder): 9b95844d… → ba518b3d… ◂
       [F.self]: "d63dd8899f0974a37b9887e0fb5817fc3ca0be8b36249e07d243ac4099b30a04",
     };
     const bad = Object.entries(PIN).filter(([f, h]) => sha(rd(f)) !== h).map(([f]) => `${f.split("/").pop()}=${sha(rd(f)).slice(0, 12)}`);
