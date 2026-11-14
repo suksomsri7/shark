@@ -1011,14 +1011,17 @@ function periodLabel(p: string, t: (k: string) => string): string {
 }
 
 // ═══════════════════════════ เงินเดือน ═══════════════════════════
-export function SelfPay({ docs, canWrite }: { docs: MyDocuments; canWrite: boolean }) {
+export function SelfPay({ docs, canWrite, children }: { docs?: MyDocuments; canWrite: boolean; children?: React.ReactNode }) { // HR H3.8 ▸ children = รายการสลิปแยกปีภาษี (server) แทนรายการเดิม · fix round 2 (NOTE-5): มี children ไม่ต้องส่ง docs ◂
   const t = useTranslations("hr.self");
   return (
     <>
       <h1 className="text-xl font-semibold">{t("payTitle")}</h1>
       <section data-testid="hr-self-payslips" className="flex flex-col gap-2">
         <Title>{t("slips")}</Title>
-        {docs.payslips.length === 0 ? (
+        {/* HR H3.8 ▸ merge round (ruling 4): รายการเดียว — สลิปแยกปีภาษีจาก server (แถว hr-self-slip-<runId> เดิม) · ไม่มี children = รายการเดิม ◂ */}
+        {children ? (
+          children
+        ) : !docs || docs.payslips.length === 0 ? ( // HR H3.8 ▸ fix round 2: docs ไม่บังคับ ◂
           <p className={`${BOX} p-4 text-sm ${MUTED}`}>{t("noSlips")}</p>
         ) : (
           docs.payslips.map((s) => (
@@ -1042,7 +1045,14 @@ export function SelfPay({ docs, canWrite }: { docs: MyDocuments; canWrite: boole
       ) : null}
       <section data-testid="hr-self-cert-slot" className={`${BOX} flex flex-col gap-1 p-4`}>
         <Title>{t("certTitle")}</Title>
-        <p className={`text-sm ${MUTED}`}>{t("certSoon")}</p>
+        {/* HR H3.8 ▸ ช่องเดิมชี้ไปการ์ดหนังสือรับรองเงินเดือนของฉัน (ขอ/ดาวน์โหลด) · พ้นสภาพ = ขอผ่านแอปไม่ได้ (Q9) ◂ */}
+        {canWrite ? (
+          <Link href={`${ME}/pay#hr-salarycert-mine`} className="btn btn-ghost min-h-11 text-sm">
+            {t("certOpen")}
+          </Link>
+        ) : (
+          <p className={`text-sm ${MUTED}`}>{t("certSoon")}</p>
+        )}
       </section>
     </>
   );

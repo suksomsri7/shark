@@ -186,7 +186,8 @@ function runStatic(): void {
       runSame: !!base && modelBlock(cur, "HrPayrollRun") === modelBlock(base, "HrPayrollRun") && modelBlock(cur, "HrPayrollItem") === modelBlock(base, "HrPayrollItem"),
       // ORACLE-EDIT (H3.6 builder, 13 Nov): the strip left each back-relation line's own "\n" behind, so any added relation line made the block differ ⇒ strip the line WITH its newline
       // ORACLE-EDIT (builder H3.9 merge round · controller 13 Nov): base-aware — when the base already holds H3.6 its back-relation lines are in the base block too ⇒ strip them on both sides ◂
-      empSame: !!hrBase && modelBlock(rd(F.hrSchema), "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, "") === modelBlock(hrBase, "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, ""),
+      // ORACLE-EDIT (H3.8 merge round · controller 13 Nov · S1.2): base-diff part n/a once H3.6 is in the base (IN_BASE) — later tickets add back-relations (H3.8 HrSalaryCertificate[]) ◂
+      empSame: IN_BASE || (!!hrBase && modelBlock(rd(F.hrSchema), "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, "") === modelBlock(hrBase, "HrEmployee").replace(/^[ \t]*\w+\s+(HrFilingPerson|HrTaxCertificate)\S*.*\n/gm, "")),
       scope: MODELS.every((m) => new RegExp(`\\b${m}:\\s*sys\\(\\)`).test(scope)),
       env: MODELS.every((m) => new RegExp(`model:\\s*"${m}"`).test(env)),
     }, "models · frozen blocks · scope · env");

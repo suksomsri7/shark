@@ -530,6 +530,11 @@ const ACCOUNT_DEEP_ALLOWED: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["hr/filings/cert.ts", new Set(["@/lib/modules/account/totals", "@/lib/modules/account/doc-numbering"])],
   ["hr/filings/service.ts", new Set(["@/lib/modules/account/doc-numbering"])],
   ["hr/filings/cert-pdf.tsx", new Set(["@/lib/modules/account/public-doc-pdf"])],
+  // ORACLE-EDIT (HR H3.8 builder, 13 Nov — brief hr-brief-H3.8 R2/R9/R11 + oracle qc-hr-h3.8 S1.3/S1.5 prescribe the same pure helpers as H3.6:
+  //   bahtText (totals) · formatDocNo/reserveSeq (doc-numbering — HRSC series on the one numbering engine) · wrapPdf (public-doc-pdf); extend only) ◂
+  ["hr/payslip-rules.ts", new Set(["@/lib/modules/account/totals", "@/lib/modules/account/doc-numbering"])],
+  ["hr/payslip.ts", new Set(["@/lib/modules/account/doc-numbering"])],
+  ["hr/payslip-pdf.tsx", new Set(["@/lib/modules/account/public-doc-pdf"])],
 ]);
 const deepAccountImports = moduleFiles
   .filter((f) => relative(moduleDir, f).split("/")[0] !== "account")

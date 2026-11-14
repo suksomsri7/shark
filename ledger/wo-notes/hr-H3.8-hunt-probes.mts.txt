@@ -1,0 +1,335 @@
+// H3.8 bug hunt probes (privacy / money / race / injection / IDOR) — calls the service layer directly, like qc-hr-h3.8.
+// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scratchpad/h38-hunt/hunt.mts [P1 P2 ...]
+// Every tenant/user it creates is deleted at the end (RESIDUE line).
+import { type Any, canon, short, errText, sleep, qc4Env, makeFixtures, cleanupFx, residueOf, vOf, tagOf } from "../../scripts/qc-hr-lib.mjs";
+import { VEC, V10, v1Item, type ItemIn } from "../../scripts/qc-hr-h3.8-lib.mjs";
+import { pdfPagesText } from "../../scripts/qc-hr-h3.6-lib.mjs";
+
+const WANT = process.argv.slice(2).filter((a) => /^P\d$/.test(a));
+const on = (p: string) => !WANT.length || WANT.includes(p);
+const { P, coreHash } = await qc4Env("h38-hunt");
+const SV = (await import("@/lib/modules/hr/payslip")) as Any;
+const RT = (await import("@/lib/modules/hr/payslip-route")) as Any;
+const SELF = (await import("@/lib/modules/hr/self")) as Any;
+const INBOX = (await import("@/lib/modules/hr/inbox")) as Any;
+const R = (await import("@/lib/modules/hr/payslip-rules")) as Any;
+const sysSvc = (await import("@/lib/modules/system/service")) as Any;
+const tag = tagOf(String(Date.now())) + Math.random().toString(36).slice(2, 5).replace(/\d/g, "q");
+const SLUG_PREFIX = "qc-hr-h38hunt-";
+const SLUG = `${SLUG_PREFIX}${Date.now()}${tag}`;
+const fx = makeFixtures(P, coreHash, SLUG);
+const NOW = { now: new Date("2032-01-10T03:00:00Z") };
+const out: string[] = [];
+const log = (s: string) => (out.push(s), console.log(s));
+const NO = canon({ ok: false, code: "NO", reason: R.SLIP_TEXT.no });
+const call = async (f: () => Promise<Any>): Promise<Any> => {
+  try {
+    return await f();
+  } catch (e) {
+    return { THROW: errText(e) };
+  }
+};
+const brief = (v: Any) => (v?.THROW ? `THROW ${v.THROW.slice(0, 80)}` : v?.ok === false ? (canon(v) === NO ? "NO" : `${v.code}`) : v?.ok === true ? "OK" : v === null ? "null" : short(v, 60));
+
+let crashed = "";
+try {
+  const TT = await fx.newTenant("", "QC H38 hunt");
+  const T2 = await fx.newTenant("-o", "QC H38 hunt other");
+  const u1 = await fx.newUnit(TT, `หน่วย1 ${tag}`, "u1");
+  const u2 = await fx.newUnit(TT, `หน่วย2 ${tag}`, "u2");
+  const sys = async (n: string, t = TT) => (await sysSvc.createSystem(t, "HR", `${n} ${tag}`)).id as string;
+  const [sA, sB, sO] = [await sys("A"), await sys("B"), await sys("O", T2)];
+  const cA = { tenantId: TT, systemId: sA };
+  const cB = { tenantId: TT, systemId: sB };
+  const cO = { tenantId: T2, systemId: sO };
+  const mk = (t: string, r: "OWNER" | "MANAGER" | "STAFF", ua: string[], p: Record<string, boolean>, tid = TT) => fx.mkUser(tid, t, `H38H ${t} ${tag}`, r, ua, p);
+  const U = {
+    owner: await mk("owner", "OWNER", [], {}),
+    pay: await mk("pay", "STAFF", ["*"], { "hr.payroll.read": true, "hr.payroll.pay": true }),
+    payBranch: await mk("paybr", "STAFF", [u1], { "hr.payroll.read": true }),
+    payBranchPay: await mk("paybrpay", "STAFF", [u1], { "hr.payroll.read": true, "hr.payroll.pay": true }),
+    mgr: await mk("mgr", "MANAGER", [u1], {}),
+    self: await mk("self", "STAFF", [], {}),
+    selfU2: await mk("selfu2", "STAFF", [], {}),
+    ended: await mk("ended", "STAFF", [], {}),
+    gone: await mk("gone", "STAFF", [], {}),
+    selfB: await mk("selfb", "STAFF", [], {}),
+    other: await mk("other", "OWNER", [], {}, T2),
+  };
+  const V: Record<string, Any> = Object.fromEntries(Object.entries(U).map(([k, w]) => [k, vOf(w)]));
+  V.forged = { ...V.mgr, role: "OWNER", unitAccess: ["*"] };
+  V.forgedPerm = { ...V.mgr, permissions: { "hr.payroll.read": true, "hr.payroll.pay": true }, unitAccess: ["*"] };
+  const A = (w: Any) => ({ tenantId: w.tenantId, userId: w.id, role: w.role, unitAccess: w.unitAccess, permissions: w.permissions });
+  const emp = (c: Any, code: string, nm: string, o: Record<string, Any> = {}) => fx.mkEmp(c.tenantId, c.systemId, nm.includes(tag) ? nm : `${nm} ${tag}`, { code, startDate: "2030-01-01", position: "พนักงาน", unitId: o.unitId ?? u1, ...o });
+  const E = {
+    e1: await emp(cA, "A01", "หนึ่ง"),
+    e4: await emp(cA, "A04", "สี่", { linkedUserId: U.self.id }),
+    e5: await emp(cA, "A05", "ห้า", { unitId: u2, linkedUserId: U.selfU2.id }),
+    e7: await emp(cA, "A07", "เจ็ด", { linkedUserId: U.ended.id, status: "ENDED", active: false, endDate: "2031-06-30" }),
+    e8: await emp(cA, "A08", "แปด", { linkedUserId: U.gone.id, status: "ENDED", active: false, endDate: "2031-06-30" }),
+    e9: await emp(cA, "A09", "เก้า"),
+    epb: await emp(cA, "A10", "สิบ", { linkedUserId: U.payBranchPay.id }),
+    b1: await emp(cB, "B01", "บีหนึ่ง", { linkedUserId: U.selfB.id }),
+  };
+  await P.hrEmployee.update({ where: { id: E.e1 }, data: { bankName: "KBank", bankAccountNo: "123-4-54321", nationalId: "1102000123454" } });
+  const mkRun = async (c: Any, periodKey: string, payDay: string, status: string, ev: number, items: { e: string; it: ItemIn }[], final = ev >= 2 && status !== "DRAFT") => {
+    const tot = (f: (i: ItemIn) => number) => items.reduce((a, x) => a + f(x.it), 0);
+    const run = await P.hrPayrollRun.create({
+      data: { tenantId: c.tenantId, systemId: c.systemId, periodKey, payDate: new Date(`${payDay}T12:00:00+07:00`), status, engineVersion: ev, totalGrossSatang: tot((i) => i.grossSatang), totalSsoEmployeeSatang: tot((i) => i.ssoEmployeeSatang), totalSsoEmployerSatang: tot((i) => i.ssoEmployerSatang), totalWhtSatang: tot((i) => i.whtSatang), totalNetSatang: tot((i) => i.netSatang), totalAddSatang: tot((i) => i.addSatang) },
+    });
+    for (const x of items) await P.hrPayrollItem.create({ data: { tenantId: c.tenantId, systemId: c.systemId, runId: run.id, employeeId: x.e, ...x.it } });
+    if (final) await P.$executeRawUnsafe(`UPDATE "HrPayrollRun" SET "stepsJson" = '{"finalized":true}'::jsonb WHERE "id" = $1`, run.id);
+    return run.id as string;
+  };
+  const V1 = VEC.V1!.item;
+  const all = (ids: string[]) => ids.map((e) => ({ e, it: e === E.e1 ? VEC.V2!.item : V1 }));
+  const RA = {
+    r1: await mkRun(cA, "2031-01", "2031-01-30", "PAID", 1, [{ e: E.e1, it: v1Item(3_000_000, [], { add: 0, deduct: 0, gross: 3_000_000, ssoBase: 1_500_000, ee: 75_000, wht: 50_000 }) }]),
+    r2: await mkRun(cA, "2031-02", "2031-02-27", "APPROVED", 2, all([E.e1, E.e4, E.e5, E.e7, E.e8, E.e9, E.epb])),
+    r4: await mkRun(cA, "2031-04", "2031-04-30", "REVERSED", 2, all([E.e1, E.e4])),
+    r5: await mkRun(cA, "2031-05", "2031-05-29", "DRAFT", 2, all([E.e1, E.e4])),
+    r6: await mkRun(cA, "2031-06", "2031-06-30", "APPROVED", 2, all([E.e1, E.e4]), false),
+    r8: await mkRun(cA, "2031-12", "2032-01-05", "PAID", 2, [{ e: E.e1, it: V10 }, { e: E.e9, it: V10 }]),
+    rb: await mkRun(cB, "2031-02", "2031-02-27", "PAID", 2, [{ e: E.b1, it: V1 }]),
+  };
+  const prof = (c: Any) => P.hrFilingProfile.create({ data: { tenantId: c.tenantId, systemId: c.systemId, taxId: "0105555000013", employerName: "บริษัท ล่าบั๊ก จำกัด", employerAddress: "1 ถนนทดสอบ", signerName: "นายผู้ลงนาม" } });
+  await prof(cA);
+  await prof(cB);
+  await prof(cO);
+  const cnt = async (sql: string, ...p: unknown[]) => Number(((await P.$queryRawUnsafe(sql, ...p)) as Any[])[0]?.n ?? -1);
+  const audits = (like: string) => cnt(`SELECT count(*)::int AS n FROM "AuditLog" WHERE "tenantId" = $1 AND "action" LIKE $2`, TT, like);
+
+  // seed: one ISSUED cert for e1 (owner, direct) and one REQUESTED for e4
+  const cert1 = await SV.issueSalaryCertificate(cA, V.owner, { employeeId: E.e1, purpose: "BANK" }, NOW);
+  const req4 = await SV.requestSalaryCertificate(A(U.self), { purpose: "GENERAL" }, NOW);
+  log(`[seed] cert1=${brief(cert1)} ${cert1.docNo ?? ""} · req4=${brief(req4)}`);
+
+  // ═══ P1 privacy matrix (executed) ═══
+  if (on("P1")) {
+    const viewers = ["owner", "pay", "payBranch", "payBranchPay", "mgr", "self", "selfU2", "ended", "other", "forged", "forgedPerm"];
+    const cols: [string, (k: string) => Promise<Any>][] = [
+      ["slip e1", (k) => SV.slipForViewer(cA, V[k], { runId: RA.r2, employeeId: E.e1 })],
+      ["slip e5(u2)", (k) => SV.slipForViewer(cA, V[k], { runId: RA.r2, employeeId: E.e5 })],
+      ["pdf e1", (k) => SV.downloadPayslipPdf(cA, V[k], { runId: RA.r2, employeeId: E.e1 })],
+      ["pdf e5", (k) => SV.downloadPayslipPdf(cA, V[k], { runId: RA.r2, employeeId: E.e5 })],
+      ["hist e1", (k) => SV.slipHistory(cA, V[k], { employeeId: E.e1, taxYear: 2031 })],
+      ["hist e5", (k) => SV.slipHistory(cA, V[k], { employeeId: E.e5, taxYear: 2031 })],
+      ["certList", (k) => SV.listSalaryCertificates(cA, V[k], {})],
+      ["certEmps", (k) => SV.listSalaryCertEmployees(cA, V[k])],
+      ["certDl e1", (k) => SV.downloadSalaryCertificate(cA, V[k], { certId: cert1.certId })],
+      ["mySlip r2", (k) => SELF.mySlip(A((U as Any)[k] ?? U.mgr), { runId: RA.r2 })],
+      ["mySlips", (k) => SELF.mySlips(A((U as Any)[k] ?? U.mgr))],
+      ["myCertDl e1", (k) => SV.downloadMySalaryCertificate(A((U as Any)[k] ?? U.mgr), { certId: cert1.certId })],
+      ["inbox CERT", async (k) => {
+        const l = await INBOX.listInbox(cA, V[k], { type: "CERT" }, NOW);
+        return l ? { ok: true, n: l.counts?.CERT, items: l.items.length } : null;
+      }],
+    ];
+    log(`P1 matrix (cell = OK / NO / code) · rows=viewers · cols=${cols.map((c) => c[0]).join(" | ")}`);
+    const bad: string[] = [];
+    for (const k of viewers) {
+      const cells: string[] = [];
+      for (const [n, f] of cols) {
+        const r = await call(() => f(k));
+        let c = brief(r);
+        if (n === "inbox CERT" && r?.ok) c = `OK(${r.n})`;
+        if (n === "mySlips" && r?.ok) c = `OK(${r.years?.reduce((a: number, y: Any) => a + y.count, 0)})`;
+        if (n === "mySlip r2" && r?.ok) c = `OK(${r.employee?.code})`;
+        cells.push(c);
+        // expectations
+        const gateAll = ["owner", "pay"].includes(k);
+        const certGate = ["owner", "pay"].includes(k);
+        const want: Record<string, boolean> = {
+          "slip e1": gateAll || k.startsWith("payBranch"), "slip e5(u2)": gateAll, "pdf e1": gateAll || k.startsWith("payBranch"), "pdf e5": gateAll,
+          "hist e1": gateAll || k.startsWith("payBranch"), "hist e5": gateAll, certList: certGate, certEmps: certGate, "certDl e1": certGate,
+          "mySlip r2": ["self", "selfU2", "ended", "payBranchPay"].includes(k), mySlips: ["self", "selfU2", "ended", "payBranchPay"].includes(k), "myCertDl e1": false,
+          "inbox CERT": certGate,
+        };
+        const okNow = typeof r === "object" && r?.ok === true;
+        if (n !== "inbox CERT" && okNow !== want[n]) bad.push(`${k}×${n}=${c}`);
+        if (n === "inbox CERT" && (want[n] ? !(r?.ok && r.n >= 1) : r?.ok && r.n > 0)) bad.push(`${k}×${n}=${c}`);
+        if (!okNow && r && !r.THROW && r.ok === false && n !== "inbox CERT" && canon(r) !== NO && !["mySlips", "mySlip r2"].includes(n)) bad.push(`${k}×${n} refusal≠NO bytes (${r.code})`);
+      }
+      log(`  ${k.padEnd(13)} ${cells.join(" | ")}`);
+    }
+    // existence oracle: unknown ids vs forbidden ids give identical bytes (payBranch on e5 vs bogus)
+    const ex = [
+      [await SV.slipForViewer(cA, V.payBranch, { runId: RA.r2, employeeId: E.e5 }), await SV.slipForViewer(cA, V.payBranch, { runId: "nope_run", employeeId: "nope_emp" })],
+      [await SV.downloadSalaryCertificate(cA, V.payBranchPay, { certId: cert1.certId }), await SV.downloadSalaryCertificate(cA, V.payBranchPay, { certId: "nope" })],
+      [await SV.downloadMySalaryCertificate(A(U.self), { certId: cert1.certId }), await SV.downloadMySalaryCertificate(A(U.self), { certId: "nope" })],
+      [await SELF.mySlip(A(U.self), { runId: RA.r8 }), await SELF.mySlip(A(U.self), { runId: "nope" })],
+    ];
+    const exBad = ex.filter(([a, b]) => canon(a) !== canon(b)).length;
+    // former employee whose Membership row was deleted (session would be dead; service-level only)
+    await P.membership.deleteMany({ where: { userId: U.gone.id, tenantId: TT } });
+    const gone = await call(() => SELF.mySlips(A(U.gone)));
+    const goneOne = await call(() => SV.downloadMyPayslipPdf(A(U.gone), { runId: RA.r2 }));
+    // HEAD on the 4 helpers
+    const head = new Request("http://x/y", { method: "HEAD" });
+    const heads = [
+      await RT.payslipPdfGet(head, cA, V.owner, RA.r2, E.e1),
+      await RT.myPayslipPdfGet(head, A(U.self), RA.r2),
+      await RT.salaryCertGet(head, cA, V.owner, cert1.certId),
+      await RT.mySalaryCertGet(head, A(U.self), "x"),
+    ].map((r: Response) => r.status);
+    log(`P1 result: unexpected cells = ${bad.length ? bad.join(" ; ") : "none"} · existence pairs differing = ${exBad}/4 · HEAD = ${heads.join(",")} · membership-deleted former employee: mySlips=${brief(gone)} pdf=${brief(goneOne)}`);
+  }
+
+  // ═══ P2 run states + money ═══
+  if (on("P2")) {
+    const st = async (runId: string) => [brief(await SELF.mySlip(A(U.self), { runId })), brief(await SV.downloadMyPayslipPdf(A(U.self), { runId })), brief(await SV.downloadPayslipPdf(cA, V.owner, { runId, employeeId: E.e4 })), (await SV.slipForViewer(cA, V.owner, { runId, employeeId: E.e4 }))?.state].join("/");
+    log(`P2 states self-view/self-pdf/gate-pdf/gate-state: REVERSED ${await st(RA.r4)} · DRAFT ${await st(RA.r5)} · NOT_FINAL ${await st(RA.r6)}`);
+    const docs = await SELF.myDocuments(A(U.self));
+    log(`P2 myDocuments(self) runs = ${docs.ok ? docs.payslips.map((p: Any) => p.runId === RA.r2 ? "r2" : p.runId).join(",") : brief(docs)}`);
+    // only reversed/draft/future slips ⇒ no certificate
+    const e10 = await emp(cA, "A20", "ยี่สิบ");
+    await mkRun(cA, "2032-01", "2032-01-31", "PAID", 2, [{ e: e10, it: V10 }]); // future-paid (now = 10 Jan 2032)
+    await mkRun(cA, "2031-09", "2031-09-30", "REVERSED", 2, [{ e: e10, it: V10 }]);
+    const c10 = await SV.issueSalaryCertificate(cA, V.owner, { employeeId: e10, purpose: "GENERAL" }, NOW);
+    log(`P2 cert for employee with only future-paid + reversed runs = ${brief(c10)} (want CERT_NO_SLIP)`);
+    // an ISSUED run with one corrupt item for e4 ⇒ does the whole self list disappear?
+    const bad = { ...V1, netSatang: V1.netSatang + 1 };
+    const rx = await mkRun(cA, "2031-08", "2031-08-29", "PAID", 2, [{ e: E.e4, it: bad }]);
+    const ms = await SELF.mySlips(A(U.self));
+    const one = await SELF.mySlip(A(U.self), { runId: RA.r2 });
+    const hx = await SV.slipHistory(cA, V.owner, { employeeId: E.e4, taxYear: 2031 });
+    log(`P2 one corrupt ISSUED item (2031-08) for e4: mySlips=${brief(ms)} · mySlip(r2, healthy)=${brief(one)} · gate history 2031=${brief(hx)}`);
+    // latest issued slip corrupt ⇒ certificate refuses instead of falling back
+    const ce = await SV.issueSalaryCertificate(cA, V.owner, { employeeId: E.e4, purpose: "GENERAL" }, { now: new Date("2031-09-05T03:00:00Z") });
+    log(`P2 cert e4 while latest issued (2031-08) is corrupt = ${brief(ce)}`);
+    await P.hrPayrollItem.deleteMany({ where: { runId: rx } });
+    await P.hrPayrollRun.deleteMany({ where: { id: rx } });
+  }
+
+  // ═══ P3 races ═══
+  if (on("P3")) {
+    // (a) void ∥ download: hold the certificate row; the download renders, then blocks on its counter update; holder voids + commits.
+    const holdCert = async (certId: string, fn: () => Promise<Any>) => {
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      let held: () => void = () => {};
+      const heldP = new Promise<void>((r) => (held = r));
+      let herr = "";
+      const holder = P.$transaction(async (tx: Any) => {
+        await tx.$queryRawUnsafe(`SELECT "id" FROM "HrSalaryCertificate" WHERE "id" = $1 FOR UPDATE`, certId);
+        held();
+        await gate;
+        await tx.$executeRawUnsafe(`UPDATE "HrSalaryCertificate" SET "voidedAt" = now(), "voidedById" = $2, "voidReason" = 'race' WHERE "id" = $1`, certId, U.owner.id);
+      }, { maxWait: 10_000, timeout: 60_000 }).catch((e: unknown) => ((herr = errText(e)), held()));
+      await heldP;
+      const p = call(fn);
+      let seen = 0;
+      for (let i = 0; i < 100 && !seen; i++) {
+        await sleep(100);
+        seen = await cnt(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE '%HrSalaryCertificate%'`);
+      }
+      release();
+      await holder;
+      return { res: await p, waited: seen > 0, herr };
+    };
+    const c4 = await SV.issueSalaryCertificate(cA, V.owner, { requestId: req4.certId }, NOW);
+    const before = await audits("hr.salarycert.download");
+    const h = await holdCert(c4.certId, () => SV.downloadMySalaryCertificate(A(U.self), { certId: c4.certId }));
+    const row = (await P.hrSalaryCertificate.findFirst({ where: { id: c4.certId } })) as Any;
+    const after = await audits("hr.salarycert.download");
+    log(`P3a void ∥ self download: waited=${h.waited} holder=${h.herr || "ok"} result=${brief(h.res)} bytes=${h.res?.bytes?.length ?? 0} · row voided=${!!row?.voidedAt} downloads=${row?.downloads} · audit +${after - before}`);
+    const g1 = await SV.issueSalaryCertificate(cA, V.owner, { employeeId: E.e9, purpose: "VISA" }, NOW);
+    const hg = await holdCert(g1.certId, () => SV.downloadSalaryCertificate(cA, V.pay, { certId: g1.certId }));
+    const rowg = (await P.hrSalaryCertificate.findFirst({ where: { id: g1.certId } })) as Any;
+    log(`P3a' void ∥ gate download: waited=${hg.waited} result=${brief(hg.res)} · voided=${!!rowg?.voidedAt} downloads=${rowg?.downloads}`);
+    // (b) double-click direct issue (same employee, same purpose)
+    const dbl = await Promise.all([1, 2].map(() => call(() => SV.issueSalaryCertificate(cA, V.pay, { employeeId: E.e1, purpose: "BANK" }, NOW))));
+    log(`P3b double-click direct issue e1 BANK: ${dbl.map((r) => `${brief(r)} ${r.docNo ?? ""}`).join(" · ")}`);
+    // (c) direct issue while the employee's own request is open ⇒ request still open ⇒ approve issues a second one
+    const req5 = await SV.requestSalaryCertificate(A(U.selfU2), { purpose: "RENTAL" }, NOW);
+    const d5 = await SV.issueSalaryCertificate(cA, V.owner, { employeeId: E.e5, purpose: "RENTAL" }, NOW);
+    const open5 = await P.hrSalaryCertificate.count({ where: { tenantId: TT, employeeId: E.e5, status: "REQUESTED" } });
+    const a5 = await SV.issueSalaryCertificate(cA, V.owner, { requestId: req5.certId }, NOW);
+    log(`P3c direct issue e5 (${brief(d5)} ${d5.docNo}) while request open ⇒ open requests after = ${open5} · approve later = ${brief(a5)} ${a5.docNo ?? ""}`);
+    // (d) cancel ∥ approve on the same request (10 rounds) — never both succeed
+    let both = 0, neither = 0;
+    for (let i = 0; i < 6; i++) {
+      const rq = await SV.requestSalaryCertificate(A(U.selfU2), { purpose: "OTHER" }, NOW);
+      if (!rq.ok) { log(`P3d round ${i} request ${brief(rq)}`); continue; }
+      const [x, y] = await Promise.all([call(() => SV.issueSalaryCertificate(cA, V.owner, { requestId: rq.certId }, NOW)), call(() => SELF.mySlips && SV.cancelMySalaryCertRequest(A(U.selfU2), { certId: rq.certId }, NOW))]);
+      if (x.ok && y.ok) both++;
+      if (!x.ok && !y.ok) neither++;
+    }
+    const st5 = (await P.$queryRawUnsafe(`SELECT "status", count(*)::int AS n FROM "HrSalaryCertificate" WHERE "employeeId" = $1 GROUP BY 1 ORDER BY 1`, E.e5)) as Any[];
+    const seqs = (await P.$queryRawUnsafe(`SELECT "docSeq" FROM "HrSalaryCertificate" WHERE "systemId" = $1 AND "docSeq" IS NOT NULL ORDER BY 1`, sA)) as Any[];
+    const ns = seqs.map((s) => s.docSeq);
+    const contiguous = ns.every((n, i) => n === i + 1);
+    log(`P3d cancel ∥ approve ×6: both-ok=${both} neither=${neither} · e5 rows ${st5.map((r) => `${r.status}=${r.n}`).join(",")} · system A numbers ${ns.join(",")} contiguous=${contiguous}`);
+  }
+
+  // ═══ P4 injection ═══
+  if (on("P4")) {
+    const C = (n: number) => String.fromCharCode(n);
+    const evil = `${C(0x202e)}evil${C(0x2028)}line${C(0x2029)}${"ก".repeat(300)}${C(0x200f)}`;
+    const ei = await fx.mkEmp(TT, sA, evil, { code: "Z-9_9", startDate: "2030-01-01", unitId: u1, position: C(0x202e) + "tsop" });
+    await mkRun(cA, "2031-03", "2031-03-31", "PAID", 2, [{ e: ei, it: V10 }]);
+    const runs = (await P.hrPayrollRun.findMany({ where: { systemId: sA, periodKey: "2031-03" }, select: { id: true } })) as Any[];
+    const rid = runs[0].id;
+    const pdfR = await RT.payslipPdfGet(new Request("http://x/y"), cA, V.owner, rid, ei);
+    const pdfB = Buffer.from(await pdfR.arrayBuffer());
+    const txt = pdfR.status === 200 ? pdfPagesText(pdfB).join(" ") : "";
+    const ci = await SV.issueSalaryCertificate(cA, V.owner, { employeeId: ei, purpose: "GENERAL" }, NOW);
+    const cr = ci.ok ? await RT.salaryCertGet(new Request("http://x/y"), cA, V.owner, ci.certId) : null;
+    const cb = cr ? Buffer.from(await cr.arrayBuffer()) : Buffer.alloc(0);
+    const ctext = cr?.status === 200 ? pdfPagesText(cb).join(" ") : "";
+    const stored = ci.ok ? ((await P.hrSalaryCertificate.findFirst({ where: { id: ci.certId }, select: { contentJson: true } })) as Any).contentJson.employee.name : "";
+    const CTL = new RegExp("[\\u2028\\u2029\\u202a-\\u202e\\u200f\\u2066-\\u2069]");
+    const ctl = (s: string) => [...s].filter((ch) => CTL.test(ch)).map((ch) => `U+${ch.codePointAt(0)!.toString(16).toUpperCase()}`).join(",");
+    log(`P4 slip PDF status=${pdfR.status} disposition=${pdfR.headers.get("content-disposition")} · bidi/separators in slip text: [${ctl(txt)}] · cert=${brief(ci)} disposition=${cr?.headers.get("content-disposition")} · stored name controls [${ctl(stored)}] len=${stored.length} · cert text controls [${ctl(ctext)}]`);
+    const trav = [
+      await RT.payslipPdfGet(new Request("http://x/y"), cA, V.owner, "../" + rid, ei),
+      await RT.salaryCertGet(new Request("http://x/y"), cA, V.owner, `..%2F${ci.certId ?? "x"}`),
+      await RT.salaryCertGet(new Request("http://x/y"), { tenantId: TT, systemId: "../x" }, V.owner, ci.certId ?? "x"),
+      await RT.mySalaryCertGet(new Request("http://x/y"), A(U.self), "../../etc"),
+    ].map((r: Response) => r.status);
+    const inb = await INBOX.listInbox(cA, V.owner, { type: "CERT" }, NOW);
+    log(`P4 traversal ids ⇒ ${trav.join(",")} (want 404s) · inbox CERT items=${inb?.items?.length}`);
+  }
+
+  // ═══ P5 IDOR across systems/tenants ═══
+  if (on("P5")) {
+    const reqB = await SV.requestSalaryCertificate(A(U.selfB), { purpose: "BANK" }, NOW);
+    const issuedB = await SV.issueSalaryCertificate(cB, V.owner, { employeeId: E.b1, purpose: "BANK" }, NOW);
+    const rq4 = await SV.requestSalaryCertificate(A(U.self), { purpose: "VISA" }, NOW);
+    const cells: [string, Any][] = [
+      ["owner sysA issue reqB", await SV.issueSalaryCertificate(cA, V.owner, { requestId: reqB.certId }, NOW)],
+      ["owner sysA reject reqB", await SV.rejectSalaryCertRequest(cA, V.owner, { requestId: reqB.certId }, NOW)],
+      ["owner sysA void certB", await SV.voidSalaryCertificate(cA, V.owner, { certId: issuedB.certId, reason: "x" }, NOW)],
+      ["owner sysA dl certB", await SV.downloadSalaryCertificate(cA, V.owner, { certId: issuedB.certId })],
+      ["owner sysA issue emp b1", await SV.issueSalaryCertificate(cA, V.owner, { employeeId: E.b1, purpose: "BANK" }, NOW)],
+      ["owner sysA slip rb/b1", await SV.slipForViewer(cA, V.owner, { runId: RA.rb, employeeId: E.b1 })],
+      ["other T2 ctx(T2,sA) dl cert1", await SV.downloadSalaryCertificate({ tenantId: T2, systemId: sA }, V.other, { certId: cert1.certId })],
+      ["other T2 ctx(TT,sA) dl cert1", await SV.downloadSalaryCertificate(cA, V.other, { certId: cert1.certId })],
+      ["other T2 ctx(T2,sO) dl cert1", await SV.downloadSalaryCertificate(cO, V.other, { certId: cert1.certId })],
+      ["other T2 ctx(T2,sO) issue req4", await SV.issueSalaryCertificate(cO, V.other, { requestId: rq4.certId }, NOW)],
+      ["other T2 ctx(T2,sO) slip r2/e1", await SV.slipForViewer(cO, V.other, { runId: RA.r2, employeeId: E.e1 })],
+      ["other T2 ctx(T2,sO) hist e1", await SV.slipHistory(cO, V.other, { employeeId: E.e1, taxYear: 2031 })],
+      ["selfB cancel req4", await SV.cancelMySalaryCertRequest(A(U.selfB), { certId: rq4.certId }, NOW)],
+      ["selfB dl cert1", await SV.downloadMySalaryCertificate(A(U.selfB), { certId: cert1.certId })],
+      ["selfB mySlip r2", await SELF.mySlip(A(U.selfB), { runId: RA.r2 })],
+      ["self(e4) actor tenant=T2", await SELF.mySlips({ ...A(U.self), tenantId: T2 })],
+    ];
+    const leak = cells.filter(([, r]) => r?.ok === true || (r?.ok === false && canon(r) !== NO));
+    const reqBnow = (await P.hrSalaryCertificate.findFirst({ where: { id: reqB.certId }, select: { status: true } })) as Any;
+    const rq4now = (await P.hrSalaryCertificate.findFirst({ where: { id: rq4.certId }, select: { status: true } })) as Any;
+    log(`P5 ${cells.length} cross-system/tenant cells · non-NO = ${leak.length ? leak.map(([n, r]) => `${n}=${brief(r)}`).join(" ; ") : "none"} · reqB=${reqBnow?.status} req4=${rq4now?.status}`);
+  }
+} catch (e) {
+  crashed = errText(e);
+  log(`CRASH ${crashed}`);
+}
+for (const tid of fx.tenants) for (const t of ["HrSalaryCertificate", "HrTaxCertificate", "HrFilingFile", "HrFilingPerson", "HrFilingProfile", "AccountDocSequence"]) await fx.rawRows(`DELETE FROM "${t}" WHERE "tenantId" = $1`, tid);
+await cleanupFx(P, fx, SLUG);
+const res = await residueOf(P, fx, SLUG, SLUG_PREFIX);
+const mine: string[] = [];
+for (const tid of fx.tenants) for (const t of ["HrSalaryCertificate", "HrFilingProfile", "AccountDocSequence", "HrEmployeeUnit"]) {
+  const r = await fx.rawRows(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, tid);
+  if (r && Number(r[0]?.n ?? 0) !== 0) mine.push(`${t}=${r[0]?.n}`);
+}
+log(`CLEANUP residue=${[...res, ...mine].join(",") || "none"}`);
+await P.$disconnect?.();

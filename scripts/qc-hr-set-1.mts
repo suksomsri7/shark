@@ -214,10 +214,33 @@ function runStatic(): void {
   }
   // S1.6
   {
+    // ORACLE-EDIT (H3.8 fix round 2 · controller ruling): once HR-SET-1 is in the base (IN_BASE), prisma/ may differ only by (a) NEW migration folders
+    //   (added files only, folder absent from the base — no edit/delete of an existing migration) or (b) schema files whose every hunk carries a later-ticket
+    //   mark on an ADDED line ("HR H<n>.<n>" · "HR-SET-<n>" other than SET-1 · "ORACLE-EDIT … H<n>.<n>"); unmarked / removed-only hunks fail · before that: unchanged ◂
+    const laterMark = (l: string) => /HR H\d+\.\d+/.test(l) || [...l.matchAll(/HR-SET-(\d+)/g)].some((m) => m[1] !== "1") || /ORACLE-EDIT[^\n]*H\d+\.\d+/.test(l);
+    const prismaLaterOk = (): boolean => {
+      if (!IN_BASE) return false;
+      let out = "";
+      try {
+        out = execFileSync("git", ["diff", "--name-status", BASE, "--", "prisma"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+      } catch {
+        return false;
+      }
+      const rows = out.split("\n").filter(Boolean).map((l) => l.split("\t"));
+      return rows.length > 0 && rows.every(([st, path]) => {
+        const mig = /^prisma\/migrations\/([^/]+)\//.exec(path ?? "");
+        if (mig) return st === "A" && !pathInBase(`prisma/migrations/${mig[1]}`, BASE);
+        if (/^prisma\/(schema\/[^/]+|schema)\.prisma$/.test(path ?? "") && st === "M") {
+          const hs = diffHunks(BASE, path!) ?? [];
+          return hs.length > 0 && hs.every((h) => h.added.some(laterMark));
+        }
+        return false;
+      });
+    };
     const helper = code(HELPER);
     const r = {
       rulesSha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA,
-      prisma: changedVsBase(BASE, ["prisma"]) === "unchanged",
+      prisma: changedVsBase(BASE, ["prisma"]) === "unchanged" || prismaLaterOk(),
       law: changedVsBase(BASE, [`${H}law.ts`]) === "unchanged",
       helperNoLaw: !/HrLawTable|hrLawTable|payroll-rules|loadLawSet/.test(helper),
     };
