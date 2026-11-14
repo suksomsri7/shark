@@ -36,6 +36,7 @@ import {
   renewLineClaim,
   reserveLineCap,
   skipPendingNotices,
+  skipRunSlipNotices,
   type ClaimedNotice,
   type HrLineLocale,
   type SelfActor,
@@ -255,6 +256,12 @@ export async function onHrEventForLine(evt: { id?: string; tenantId: string; sys
     if (!isStr(p.employeeId)) return;
     await endLineLinks({ tenantId: evt.tenantId, employeeId: p.employeeId }, "OFFBOARD", { includePending: true });
     await skipPendingNotices({ tenantId: evt.tenantId, employeeId: p.employeeId }, "OFFBOARD");
+    return;
+  }
+  if (evt.type === "hr.payroll.reversed") {
+    // H4.5 gate fix ▸ ถอนสลิปที่ยังไม่ส่งของรอบนี้ · ไม่ส่งข้อความใหม่ · ล้ม = event retry (bothMain)
+    const p = isRec(evt.payload) ? evt.payload : {};
+    if (isStr(p.runId)) await skipRunSlipNotices({ tenantId: evt.tenantId, runId: p.runId });
     return;
   }
   const plan = await planHrNotices(evt);

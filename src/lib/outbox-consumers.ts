@@ -1434,7 +1434,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   ตัวรับ = ขั้นแรกที่ retry ได้ (ยื่นอนุมัติ/ส่งเงินเดือน/ปิด PAID ต่อจากที่ค้าง · แจ้ง `commission.status`) แล้วจึง automation + เว็บฮุค
   //   ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่เปลี่ยนอะไร (AUDIT-CLASS X4 — guard สถานะ + ล็อกแถว + partial unique ของ HR)
   "hr.payroll.paid": crmFirst(crmCommissionBridge("onPayrollPaid"), withAutomation(bothMain(async () => {}, onHrEventForLine))), // HR H4.5 ▸ + สลิปพร้อมดู ◂
-  "hr.payroll.reversed": crmFirst(crmCommissionBridge("onPayrollReversed"), withAutomation(async () => {})), // HR H0.6 ▸ hr/payroll.ts#reverseRun {runId, periodKey, adjustmentIds} → CRM คืน PAID→APPROVED ครั้งเดียว ◂
+  "hr.payroll.reversed": crmFirst(crmCommissionBridge("onPayrollReversed"), withAutomation(bothMain(async () => {}, onHrEventForLine))), // HR H4.5 ▸ gate fix: ถอนแจ้งเตือนสลิปที่ยังไม่ส่ง ◂ · HR H0.6 ▸ hr/payroll.ts#reverseRun {runId, periodKey, adjustmentIds} → CRM คืน PAID→APPROVED ครั้งเดียว ◂
   // HR H2.1 ▸ เผยแพร่ตารางกะ (ยิงใน tx เดียวกับการพลิก published ของ hr/roster.ts#publishRoster · key `hr.roster.published#<publishId>` ·
   //   payload id/ช่วงวันล้วน) — ยังไม่มีผลข้างเคียง (แจ้งพนักงาน = H2.10) ⇒ no-op ปิด event เป็น DONE + จุดให้ automation/เว็บฮุค · ส่งซ้ำได้ ◂
   "hr.roster.published": withAutomation(bothMain(async () => {}, onHrEventForLine)), // HR H4.5 ▸ + ตารางกะอัปเดต ◂

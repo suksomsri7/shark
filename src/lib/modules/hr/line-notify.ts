@@ -101,9 +101,25 @@ async function recipientsOf(ctx: Ctx, evt: Evt): Promise<Recipient[]> {
       const items = await db.hrPayrollItem.findMany({ where: { runId: p.runId }, select: { employeeId: true }, take: 5000 });
       return items.map((i) => ({ employeeId: i.employeeId, kind: "SLIP" as const, refId: p.runId as string, outcome: null, app: true }));
     }
+    // H4.5 gate fix ▸ กลับรายการรอบจ่าย: ไม่มีแจ้งเตือนใหม่ (ไม่ส่ง LINE เรื่องการกลับรายการ) — สลิปที่ยังไม่ส่งของรอบนั้นถูกถอนที่ skipRunSlipNotices ◂
+    case "hr.payroll.reversed":
+      return [];
     default:
       return [];
   }
+}
+
+/**
+ * H4.5 gate fix ▸ `hr.payroll.reversed`: แจ้งเตือนสลิปของรอบนั้นที่ยังไม่ส่ง (PENDING · HELD/รอสรุป · FAILED/รอส่งซ้ำ · SENDING ที่จองแต่ยังไม่ยิง)
+ * ⇒ SKIPPED(REVERSED) — ไม่ยิง ไม่เข้าสรุป · ที่ SENT แล้วคงเดิม · ส่งซ้ำ = ไม่เปลี่ยนอะไร (ผู้ส่งต่อสัญญาไม่ได้เพราะ line ไม่ใช่ SENDING แล้ว)
+ */
+export async function skipRunSlipNotices(i: { tenantId: string; runId: string }): Promise<number> {
+  const tenantId = str(i?.tenantId);
+  const runId = str(i?.runId);
+  if (!tenantId || !isId(runId)) return 0;
+  return tenantDb({ tenantId }).$executeRaw`
+    UPDATE "HrNotice" SET "line" = 'SKIPPED', "skipCode" = 'REVERSED', "nextAttemptAt" = NULL, "sentAt" = NULL
+    WHERE "tenantId" = ${tenantId} AND "kind" = 'SLIP' AND "refId" = ${runId} AND "line" IN ('PENDING', 'HELD', 'FAILED', 'SENDING')`;
 }
 
 /** ระบบ HR ของเหตุการณ์ (payload.systemId → evt.systemId) ที่เป็นของร้านนี้จริง + นโยบาย */
@@ -247,7 +263,12 @@ async function precheck(r: NoticeRow, now: Date, policies: Map<string, LineNotif
   const why = await lineLinkInvalidReason({ tenantId: r.tenantId, systemId: r.systemId, employeeId: r.employeeId, issuedForUserId: link.issuedForUserId }); // D2 ◂
   if (why) return skip(why === "OFFBOARD" ? "INACTIVE" : "ACCOUNT", why);
   const e = await db.hrEmployee.findFirst({ where: { id: r.employeeId }, select: { unitId: true } });
-  const n = r.kind === "DIGEST" ? await db.hrNotice.count({ where: { digestOf: r.id } }) : 0;
+  // H4.5 gate fix ▸ สลิปของรอบที่กลับรายการแล้ว ⇒ ไม่ส่ง (กันซ้ำกับ skipRunSlipNotices) ◂
+  if (r.kind === "SLIP") {
+    const run = await db.hrPayrollRun.findFirst({ where: { id: r.refId }, select: { status: true } });
+    if (!run || run.status === "REVERSED") return skip("REVERSED");
+  }
+  const n = r.kind === "DIGEST" ? await db.hrNotice.count({ where: { digestOf: r.id, line: "HELD" } }) : 0; // สมาชิกที่ถูกถอนแล้ว (SKIPPED) ไม่นับ
   if (r.kind === "DIGEST" && n < 1) return skip("EMPTY");
   return { ...r, connectionId: link.connectionId, chatContactId: link.chatContactId, homeUnitId: e?.unitId ?? null, policy, n };
 }
